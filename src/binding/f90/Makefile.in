@@ -1,0 +1,156 @@
+# This Makefile.in created by simplemake.  Do not edit
+
+# @configure_input@
+
+# --------------------------------------------------------------------------
+all: all-redirect
+
+SHELL           = @SHELL@
+AR              = @AR@
+RANLIB          = @RANLIB@
+INSTALL         = @INSTALL@
+INSTALL_PROGRAM = @INSTALL_PROGRAM@
+INSTALL_DATA    = @INSTALL_DATA@
+MKDIR_P         = @MKDIR_P@
+master_top_srcdir  = @master_top_srcdir@
+abs_builddir    = @abs_builddir@
+srcdir          = @srcdir@
+abs_srcdir      = @abs_srcdir@
+prefix          = @prefix@
+exec_prefix     = @exec_prefix@
+includedir      = @includedir@
+libdir          = @libdir@
+MAKE            = @MAKE@
+MPILIBNAME      = @MPILIBNAME@
+PMPILIBNAME     = @PMPILIBNAME@
+
+F90              = @F90@
+F90FLAGS        = @F90FLAGS@
+F90_COMPILE     = $(F90) $(F90FLAGS) $(F90INCLUDES)
+
+VPATH = .:@srcdir@
+MOD              = @F90MODEXT@
+MPIMOD           = @MPIMODNAME@
+F90INCFLAG       = @F90INCFLAG@
+F90EXT           = @F90EXT@
+F90_COMPILE_MODS = $(F90_COMPILE) 
+F90INCLUDES = @F90INCFLAG@.
+doc_sources = mpif90.txt manf90.txt
+
+.SUFFIXES:
+.SUFFIXES: .o .f90 .o 
+.f90.o:
+	$(F90_COMPILE) -c $<
+.f90:
+	$(F90_COMPILE) -o $* $< $(LDFLAGS) $(LIBS)
+apply:
+	$(ACTION) $(ACTION_INPUT)
+clean: clean-local
+	-@rm -f *.o ${srcdir}/*.o 
+	-@rm -f .libstamp0 
+	-@rm -f *.lo ${srcdir}/*.lo
+distclean: clean distclean-local distclean-xxx remove-makefile
+distclean-xxx:
+	-@rm -f Makefile
+	-@rm -rf autom4te*.cache
+	-@rm -rf $(DEPS_DIR)
+	-@rm -f TAGS
+remove-makefile:
+	rm -f Makefile
+remove-genmakefiles:
+	rm -f  Makefile
+all-redirect: all-preamble lib${MPILIBNAME}f90.a
+	${MAKE} all-postamble
+
+lib${MPILIBNAME}f90.a: mpi.o 
+	${AR} cr lib${MPILIBNAME}f90.a $?
+	${RANLIB} lib${MPILIBNAME}f90.a
+# --------------------------------------------------------------------------
+# Install target
+install:  FORCE_TARGET 
+	if [ ! -d ${DESTDIR}${prefix} ] ; then $(MKDIR_P) ${DESTDIR}${prefix} ; fi
+	if [ ! -d ${DESTDIR}${includedir} ] ; then $(MKDIR_P) ${DESTDIR}${includedir} ; fi
+	$(INSTALL_DATA) $(MPIMOD).$(MOD) ${DESTDIR}${includedir}/$(MPIMOD).$(MOD)
+	if [ ! -d ${DESTDIR}${exec_prefix} ] ; then $(MKDIR_P) ${DESTDIR}${exec_prefix} ; fi
+	if [ ! -d ${DESTDIR}${libdir} ] ; then $(MKDIR_P) ${DESTDIR}${libdir} ; fi
+	$(INSTALL_DATA) lib${MPILIBNAME}f90.a ${DESTDIR}${libdir}/lib${MPILIBNAME}f90.a
+	if [ -s mpimod.pcl ] ; then $(INSTALL_DATA) mpimod.pcl ${DESTDIR}${includedir}/mpimod.pcl ; fi
+	if [ -s mpimod.pc ] ; then $(INSTALL_DATA) mpimod.pc ${DESTDIR}${includedir}/mpimod.pc ; fi
+
+install-strip:
+	$(MAKE) INSTALL_STRIP_FLAG=-s install
+uninstall:
+	-rm -f ${DESTDIR}${includedir}/$(MPIMOD).$(MOD)
+	-rm -f ${DESTDIR}${libdir}/lib${MPILIBNAME}f90.a
+	-rm -f ${DESTDIR}${includedir}/mpimod.pcl
+	-rm -f ${DESTDIR}${includedir}/mpimod.pc
+installcheck:
+# --------------------------------------------------------------------------
+dependencies:
+# --------------------------------------------------------------------------
+HEADERFILES     = $(HEADERS)
+SOURCEFILES     = $(SOURCES)
+tags: TAGS
+TAGS:
+# --------------------------------------------------------------------------
+
+# We need to tell some compilers (e.g., Solaris f90) to look in the current 
+# directory when the source file is not in the working directory (i.e.,
+# in a VPATH build)
+
+all-preamble: $(MPIMOD).$(MOD)
+
+# Thes copy line in this step makes the F90 modules available to 
+# the mpif90 script before an install takes place
+# The if handles the Intel F90 compiler, which has an unusual interface
+# (The mpimod.pcl file should contain only a local mpimod.pc name; if
+# it contains a file name in another directory and that file does not 
+# exist, the compiler may refuse to compile the file)
+#
+# FIXME: We may want to edit the mpif.h to convert Fortran77-specific
+# items (such as an integer*8 used for file offsets) into the 
+# corresponding Fortran 90 KIND type, to accomodate compilers that
+# reject non-standard features such as integer*8 (such as the Intel
+# Fortran compiler with -std95).
+$(MPIMOD).$(MOD): $(srcdir)/mpi.f90 mpif.h
+	@if [ -n "@F90_WORK_FILES_ARG@" ] ; then \
+	    rm -f mpimod.pc mpimod.pcl ; \
+	    echo "mpimod.pc" > mpimod.pcl ; \
+	    echo $(F90_COMPILE_MODS) @F90_WORK_FILES_ARG@ -c $(srcdir)/mpi.f90 ; \
+	    $(F90_COMPILE_MODS) @F90_WORK_FILES_ARG@ -c $(srcdir)/mpi.f90 ; \
+	    cp mpimod.pc ../../../src/include/mpimod.pc ; \
+	    cp mpimod.pcl ../../../src/include/mpimod.pcl ; \
+	else \
+	    if [ "$(F90EXT)" != "f90" ] ; then \
+	        ln -sf mpi.f90 mpi.$(F90EXT) ; \
+	    fi ; \
+	    echo $(F90_COMPILE_MODS) -c $(srcdir)/mpi.$(F90EXT) ; \
+	    $(F90_COMPILE_MODS) -c $(srcdir)/mpi.$(F90EXT) ; \
+	    if [ "$(F90EXT)" != "f90" ] ; then \
+	        rm -f mpi.$(F90EXT) ; \
+	    fi ; \
+	fi
+
+# We need a free-format version of mpif.h
+mpif.h: ../f77/mpif.h
+	sed -e 's/^C/\!/g' ../f77/mpif.h > mpif.h
+	
+# To ensure that f90 can be used before a make-install step, we copy
+# the library to the build directory (just like we do with the module files)
+all-postamble:
+	if [ -s lib${MPILIBNAME}f90.a ] ; then \
+	   cp -p lib${MPILIBNAME}f90.a ../../../lib ; fi
+
+clean-local:
+	rm -f *.$(MOD)
+
+
+# Documentation sources
+
+distclean-local:
+	rm -f ../../../bin/mpif90
+	rm -f ../../../src/include/$(MPIMOD).$(MOD)
+	rm -f ../../../lib/lib${MPILIBNAME}f90.a
+
+FORCE_TARGET:
+

@@ -1,0 +1,17 @@
+*.vcproj
+*.o
+*.bb
+*.bbg
+*.da
+*.gcov
+Makefile.in
+Makefile
+exitst1
+exitst2
+initstat
+timeout
+version
+.deps
+*ebug
+*elease
+!

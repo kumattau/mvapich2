@@ -1,0 +1,20 @@
+BUILDING ROMIO INTO MPICH2
+
+By default, ROMIO will not be built as a part of MPICH2.  By passing the
+--enable-romio flag, ROMIO will be built with support for NFS and UFS
+file systems.  The file systems to be built can be speicified by passing
+them in  a '+'-delimited list to the --with-file-system configure
+option.   for example: --with-file-system="pvfs+nfs+ufs"
+
+If you need certain compiler or linker flags, pass them to configure by
+way of the LDFLAGS and LIBS environment variable.  For example, in order
+to build pvfs support into ROMIO, it needs to know where to find the
+pvfs header files and library.
+
+Here's an example for sh-style shells.  I've earlier installed pvfs into
+${HOME}/pvfs
+
+export CFLAGS="[whatever compiler flags you want] -I${HOME}/pvfs/include"
+export LDFLAGS=-L${HOME}/pvfs/lib
+export LIBS="-lpvfs"
+./configure --enable-romio --with-file-system=pvfs+nfs+ufs

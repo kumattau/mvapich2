@@ -1,0 +1,118 @@
+#!/bin/bash
+
+source ./make.mvapich2.def
+arch
+
+if [ $ARCH = "MAC_OSX" ]; then
+    die_setup "MVAPICH2 uDAPL is not supported on Mac OS X."
+fi
+
+# Mandatory variables.  These must be set.  All are checked except CXX and F90.
+#
+DAT_LIB=$1
+DAT_INCLUDE=$2
+PREFIX=/tmp/mvapich2
+export CC=gcc
+export CXX=g++
+export F77=g77
+export F90=
+
+# Check mandatory variable settings.
+if [ -z $DAT_LIB ] || [ -z $DAT_INCLUDE ] || [ -z $PREFIX ] || [ -z $CC ] ||
+   [ -z $F77 ]; then
+    echo "usage:  make.mvapich2.udapl [dapl_library_path] [dapl_include_path]"
+    die_setup "Please set mandatory variables in this script."
+elif [ ! -d $DAT_LIB ]; then
+    die_setup "DAT_LIB directory $DAT_LIB does not exist."
+elif [ ! -d $DAT_INCLUDE ]; then
+    die_setup "DAT_INCLUDE directory $DAT_INCLUDE does not exist."
+fi
+
+# Optional variables.  Most of these are prompted for if not set.
+#
+# Cluster size.
+# Supported: "_SMALL_CLUSTER", "_MEDIUM_CLUSTER", and "_LARGE_CLUSTER"
+VCLUSTER=
+
+if [ -z "$VCLUSTER" ]; then
+    prompt_vcluster
+fi
+
+# I/O Bus type.
+# Supported: "_PCI_X_" and "_PCI_EX_"
+IO_BUS=
+
+if [ -z "$IO_BUS" ]; then
+    prompt_io_bus
+fi
+
+# Link speed rate.
+# Supported: "_DDR_" and "_SDR_" (PCI-Express)
+#            "_SDR_" (PCI-X)
+LINKS=
+
+if [ -z "$LINKS" ]; then
+    prompt_link
+fi
+
+# Set this to override automatic optimization setting (-03 on Intel and
+# Solaris with CC=gcc, -x03 on Solaris otherwise).
+OPT_FLAG=
+
+if [ -z $OPT_FLAG ]; then
+    if [ $ARCH = "SOLARIS" ]; then
+	if [ "$CC" = "gcc" ]; then
+	    OPT_FLAG=-O3
+	else
+	    OPT_FLAG=-xO3
+	fi
+    else
+	OPT_FLAG=-O2
+    fi
+fi
+
+if [ $ARCH = "SOLARIS" ]; then
+    export MAKE=gmake
+    export PATH=/usr/xpg4/bin:/usr/ucb:/usr/sbin:/usr/ccs/bin:/usr/sfw/bin:$PATH
+    export LIBS="-L${DAT_LIB} -lsocket -lnsl -lresolv -lpthread -ldat"
+else
+    export MAKE=make
+    export LIBS="-L${DAT_LIB} -lpthread -ldat"
+fi
+
+export FFLAGS="-L${DAT_LIB}"
+export LD_LIBRARY_PATH="${DAT_LIB}:$LD_LIBRARY_PATH"
+export CFLAGS="-D${ARCH}  -D_SMP_ -DRDMA_FAST_PATH -DUSE_HEADER_CACHING \
+        -DLAZY_MEM_UNREGISTER  -DONE_SIDED -DMPID_USE_SEQUENCE_NUMBERS \
+        -D${VCLUSTER} -D${IO_BUS} -D${LINKS} -I${DAT_INCLUDE} $OPT_FLAG"
+
+# Prelogue
+make distclean &>/dev/null
+rm -rf *.cache *.log *.status lib bin
+
+# Configure MVAPICH2
+echo "Configuring MVAPICH2..."
+./configure  --prefix=${PREFIX} \
+    --with-device=osu_ch3:mrail --with-rdma=udapl --with-pm=mpd \
+    --disable-romio --without-mpe 2>&1 |tee config-mine.log
+ret=$?
+tail config-mine.log
+test $ret = 0 ||  die "configuration."
+
+# Build MVAPICH2
+echo "Building MVAPICH2..."
+$MAKE 2>&1 |tee make-mine.log 
+ret=$?
+tail make-mine.log
+test $ret = 0 ||  die "building MVAPICH2."
+
+# Install MVAPICH2
+echo "MVAPICH2 installation..."
+rm -f install-mine.log 
+$MAKE install 2>&1 |tee install-mine.log
+ret=$?
+tail install-mine.log
+test $ret = 0 ||  die "installing MVAPICH2."
+
+# Epilogue
+echo "Congratulations on successfully building MVAPICH2. Please send your feedback to mvapich-help@cse.ohio-state.edu." 

@@ -1,0 +1,12 @@
+LDADD = ../util/mtestf.o 
+DEPADD = @MPILIBLOC@ ../util/mtestf.o
+smvar_do_sharedlibs = 0
+
+# allocmemf is an "extra" program because it requires a Fortran extension
+EXTRA_PROGRAMS = allocmemf
+
+allocmemf_SOURCES = allocmemf.f
+c2f2cf_SOURCES = c2f2c.c c2f2cf.f
+
+../util/mtestf.o: 
+	(cd ../util && $(MAKE) mtestf.o)

@@ -1,0 +1,75 @@
+smvar_do_dependencies = ignore
+smvar_do_sharedlibs   = 0
+
+MOD              = @F90MODEXT@
+MPIMOD           = @MPIMODNAME@
+F90INCFLAG       = @F90INCFLAG@
+F90EXT           = @F90EXT@
+F90_COMPILE_MODS = $(F90_COMPILE) 
+# We need to tell some compilers (e.g., Solaris f90) to look in the current 
+# directory when the source file is not in the working directory (i.e.,
+# in a VPATH build)
+F90INCLUDES = @F90INCFLAG@.
+
+lib${MPILIBNAME}f90_a_SOURCES = mpi.o
+all-preamble: $(MPIMOD).$(MOD)
+
+# Thes copy line in this step makes the F90 modules available to 
+# the mpif90 script before an install takes place
+# The if handles the Intel F90 compiler, which has an unusual interface
+# (The mpimod.pcl file should contain only a local mpimod.pc name; if
+# it contains a file name in another directory and that file does not 
+# exist, the compiler may refuse to compile the file)
+#
+# FIXME: We may want to edit the mpif.h to convert Fortran77-specific
+# items (such as an integer*8 used for file offsets) into the 
+# corresponding Fortran 90 KIND type, to accomodate compilers that
+# reject non-standard features such as integer*8 (such as the Intel
+# Fortran compiler with -std95).
+$(MPIMOD).$(MOD): $(srcdir)/mpi.f90 mpif.h
+	@if [ -n "@F90_WORK_FILES_ARG@" ] ; then \
+	    rm -f mpimod.pc mpimod.pcl ; \
+	    echo "mpimod.pc" > mpimod.pcl ; \
+	    echo $(F90_COMPILE_MODS) @F90_WORK_FILES_ARG@ -c $(srcdir)/mpi.f90 ; \
+	    $(F90_COMPILE_MODS) @F90_WORK_FILES_ARG@ -c $(srcdir)/mpi.f90 ; \
+	    cp mpimod.pc ../../../src/include/mpimod.pc ; \
+	    cp mpimod.pcl ../../../src/include/mpimod.pcl ; \
+	else \
+	    if [ "$(F90EXT)" != "f90" ] ; then \
+	        ln -sf mpi.f90 mpi.$(F90EXT) ; \
+	    fi ; \
+	    echo $(F90_COMPILE_MODS) -c $(srcdir)/mpi.$(F90EXT) ; \
+	    $(F90_COMPILE_MODS) -c $(srcdir)/mpi.$(F90EXT) ; \
+	    if [ "$(F90EXT)" != "f90" ] ; then \
+	        rm -f mpi.$(F90EXT) ; \
+	    fi ; \
+	fi
+
+# We need a free-format version of mpif.h
+mpif.h: ../f77/mpif.h
+	sed -e 's/^C/\!/g' ../f77/mpif.h > mpif.h
+	
+# To ensure that f90 can be used before a make-install step, we copy
+# the library to the build directory (just like we do with the module files)
+all-postamble:
+	if [ -s lib${MPILIBNAME}f90.a ] ; then \
+	   cp -p lib${MPILIBNAME}f90.a ../../../lib ; fi
+
+clean-local:
+	rm -f *.$(MOD)
+
+install_INCLUDE = $(MPIMOD).$(MOD)
+optinstall_INCLUDE = mpimod.pcl mpimod.pc
+install_LIB     = lib${MPILIBNAME}f90.a
+
+# Documentation sources
+doc_sources = mpif90.txt manf90.txt
+DOCDESTDIRS = html:www/www1,man:man/man1,latex:doc/refman
+doc_HTML_SOURCES  = ${doc_sources}
+doc_MAN_SOURCES   = ${doc_sources}
+doc_LATEX_SOURCES = ${doc_sources}
+
+distclean-local:
+	rm -f ../../../bin/mpif90
+	rm -f ../../../src/include/$(MPIMOD).$(MOD)
+	rm -f ../../../lib/lib${MPILIBNAME}f90.a

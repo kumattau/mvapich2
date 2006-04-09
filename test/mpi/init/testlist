@@ -1,0 +1,6 @@
+exitst1 2 TestStatus
+exitst2 4 TestStatus
+initstat 1
+timeout 2 TestTimeout InitQuickTimeout
+version 1
+finalized 1

@@ -1,0 +1,34 @@
+F77INCLUDES = -I. 
+LDADD = ../util/mtestf.o 
+DEPADD = @MPILIBLOC@ ../util/mtestf.o
+smvar_do_sharedlibs = 0
+F77HEADERS = iodisp.h iooffset.h
+
+iwriteatf_SOURCES     = iwriteatf.f
+iwritef_SOURCES       = iwritef.f
+iwriteshf_SOURCES     = iwriteshf.f
+writef_SOURCES        = writef.f
+writeatf_SOURCES      = writeatf.f
+writeallf_SOURCES     = writeallf.f
+writeatallf_SOURCES   = writeatallf.f
+writeallbef_SOURCES   = writeallbef.f
+writeordf_SOURCES     = writeordf.f
+writeordbef_SOURCES   = writeordbef.f
+writeshf_SOURCES      = writeshf.f
+writeatallbef_SOURCES = writeatallbef.f
+fileerrf_SOURCES      = fileerrf.f
+fileinfof_SOURCES     = fileinfof.f
+shpositionf_SOURCES   = shpositionf.f
+
+atomicityf_SOURCES    = atomicityf.f
+miscfilef_SOURCES     = miscfilef.f
+
+# These IO tests are build from a template and a set of definitions.
+iwriteatf.f writef.f writeatf.f writeatallf.f writeallf.f writeallbef.f \
+writeordf.f writeordbef.f writeshf.f writeatallbef.f \
+iwritef.f iwriteshf.f : ioharness.tlt ioharness.defn ../../maint/testmerge
+	../../maint/testmerge -defn=$(top_srcdir)/maint/common.defn \
+		$(srcdir)/ioharness.defn $(srcdir)/ioharness.tlt
+
+../util/mtestf.o: 
+	(cd ../util && $(MAKE) mtestf.o)

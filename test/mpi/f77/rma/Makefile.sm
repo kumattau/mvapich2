@@ -1,0 +1,19 @@
+F77INCLUDES = -I.
+LDADD = ../util/mtestf.o 
+DEPADD = @MPILIBLOC@ ../util/mtestf.o
+smvar_do_sharedlibs = 0
+
+F77HEADERS = addsize.h
+
+# allocmem_SOURCES = allocmem.f
+winscale1f_SOURCES = winscale1f.f
+winscale2f_SOURCES = winscale2f.f
+winfencef_SOURCES  = winfencef.f
+wingetf_SOURCES    = wingetf.f
+winerrf_SOURCES    = winerrf.f
+winnamef_SOURCES   = winnamef.f
+wingroupf_SOURCES  = wingroupf.f
+winaccf_SOURCES    = winaccf.f
+
+../util/mtestf.o: 
+	(cd ../util && $(MAKE) mtestf.o)

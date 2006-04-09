@@ -1,0 +1,3 @@
+structf_SOURCES = structf.f90
+#createf90_SOURCES = createf90.f90
+#createf90types_SOURCES = createf90types.c

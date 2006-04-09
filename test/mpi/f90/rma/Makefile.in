@@ -1,0 +1,98 @@
+# This Makefile.in created by simplemake.  Do not edit
+
+# @configure_input@
+
+# --------------------------------------------------------------------------
+all: all-redirect
+
+SHELL           = @SHELL@
+abs_builddir    = @abs_builddir@
+srcdir          = @srcdir@
+abs_srcdir      = @abs_srcdir@
+LIBS            = @LIBS@
+MAKE            = @MAKE@
+MPILIBNAME      = @MPILIBNAME@
+PMPILIBNAME     = @PMPILIBNAME@
+
+F90              = @F90@
+F90FLAGS        = @F90FLAGS@
+F90_COMPILE     = $(F90) $(F90FLAGS) $(F90INCLUDES)
+F90_LINK    = $(F90)
+LDFLAGS     =  @LDFLAGS@ ../util/mtestf90.o 
+
+VPATH = .:@srcdir@
+F90INCLUDES = -I.
+F90HEADERS = addsize.h
+
+.SUFFIXES:
+.SUFFIXES: .o .f90 
+.f90.o:
+	$(F90_COMPILE) -c $<
+.f90:
+	$(F90_COMPILE) -o $* $< $(LDFLAGS) $(LIBS)
+apply:
+	$(ACTION) $(ACTION_INPUT)
+clean:
+	-@rm -f *.o ${srcdir}/*.o winerrf90 wingetf90 winaccf90 winscale1f90 wingroupf90 winfencef90 winnamef90 winscale2f90
+	-@rm -f winerrf90.exe wingetf90.exe winaccf90.exe winscale1f90.exe wingroupf90.exe winfencef90.exe winnamef90.exe winscale2f90.exe
+	-@rm -f core core.[0-9]*
+	-@rm -f *.lo ${srcdir}/*.lo
+	-@rm -f *.irlog*
+distclean: clean distclean-xxx remove-makefile
+distclean-xxx:
+	-@rm -f Makefile
+	-@rm -rf autom4te*.cache
+	-@rm -rf $(DEPS_DIR)
+	-@rm -f TAGS
+remove-makefile:
+	rm -f Makefile
+remove-genmakefiles:
+	rm -f  Makefile
+all-redirect: winscale1f90 winscale2f90 winfencef90 wingetf90 winerrf90\
+	 winnamef90 wingroupf90 winaccf90
+
+winerrf90: winerrf90.o   @MPILIBLOC@ ../util/mtestf90.o
+	$(F90_LINK) $(F90FLAGS) $(LDFLAGS) -o winerrf90 winerrf90.o  ${LIBS}
+wingetf90: wingetf90.o   @MPILIBLOC@ ../util/mtestf90.o
+	$(F90_LINK) $(F90FLAGS) $(LDFLAGS) -o wingetf90 wingetf90.o  ${LIBS}
+winaccf90: winaccf90.o   @MPILIBLOC@ ../util/mtestf90.o
+	$(F90_LINK) $(F90FLAGS) $(LDFLAGS) -o winaccf90 winaccf90.o  ${LIBS}
+winscale1f90: winscale1f90.o   @MPILIBLOC@ ../util/mtestf90.o
+	$(F90_LINK) $(F90FLAGS) $(LDFLAGS) -o winscale1f90 winscale1f90.o  \
+	${LIBS} 
+wingroupf90: wingroupf90.o   @MPILIBLOC@ ../util/mtestf90.o
+	$(F90_LINK) $(F90FLAGS) $(LDFLAGS) -o wingroupf90 wingroupf90.o  \
+	${LIBS} 
+winfencef90: winfencef90.o   @MPILIBLOC@ ../util/mtestf90.o
+	$(F90_LINK) $(F90FLAGS) $(LDFLAGS) -o winfencef90 winfencef90.o  \
+	${LIBS} 
+winnamef90: winnamef90.o   @MPILIBLOC@ ../util/mtestf90.o
+	$(F90_LINK) $(F90FLAGS) $(LDFLAGS) -o winnamef90 winnamef90.o  \
+	${LIBS} 
+winscale2f90: winscale2f90.o   @MPILIBLOC@ ../util/mtestf90.o
+	$(F90_LINK) $(F90FLAGS) $(LDFLAGS) -o winscale2f90 winscale2f90.o  \
+	${LIBS} 
+# --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+SOURCES         =  winscale1f90.f90 winscale2f90.f90 winfencef90.f90 \
+	wingetf90.f90 winerrf90.f90 winnamef90.f90 wingroupf90.f90 \
+	winaccf90.f90 
+ETAGS           = @ETAGS@ @ETAGSADD@
+HEADERFILES     = $(HEADERS)
+SOURCEFILES     = $(SOURCES)
+tags: TAGS
+TAGS:${HEADERFILES} ${SOURCEFILES}
+	here=`cd ../../../.. && pwd` ; cd ${srcdir} && $(ETAGS) -o $$here/TAGS --append ${HEADERFILES} ${SOURCEFILES}
+# --------------------------------------------------------------------------
+# This Makefile.sm generated automatically by f77tof90
+# from test/mpi/f77/rma/Makefile.sm.  DO NOT EDIT
+
+
+# allocmem_SOURCES = allocmem.f90
+
+../util/mtestf90.o: 
+	(cd ../util && $(MAKE) mtestf90.o)
+
+FORCE_TARGET:
+

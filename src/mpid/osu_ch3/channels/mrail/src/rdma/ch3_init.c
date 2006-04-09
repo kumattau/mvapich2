@@ -1,0 +1,197 @@
+/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/*
+ *  (C) 2001 by Argonne National Laboratory.
+ *      See COPYRIGHT in top-level directory.
+ */
+
+/* Copyright (c) 2003-2006, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT_MVAPICH2 in the top level MVAPICH2 directory.
+ *
+ */
+
+
+
+#include "mpidi_ch3_impl.h"
+
+MPIDI_CH3I_Process_t MPIDI_CH3I_Process;
+
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3_Init
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
+{
+    int mpi_errno = MPI_SUCCESS;
+    MPIDI_VC_t *vc = NULL;
+
+    int pg_size;
+    int p;
+
+    /* initialize the process group setting the rank and size */
+#if 0
+    mpi_errno =
+        MPIDI_CH3I_RDMA_init_process_group(has_parent, &pg, &pg_rank);
+    if (mpi_errno != MPI_SUCCESS) {
+        mpi_errno =
+            MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL, FCNAME,
+                                 __LINE__, MPI_ERR_OTHER,
+                                 "**process_group", 0);
+        return mpi_errno;
+    }
+#endif
+    pg_size = MPIDI_PG_Get_size(pg);
+
+    /* Initialize the VC table associated with this process
+       group (and thus COMM_WORLD) */
+    for (p = 0; p < pg_size; p++) {
+        MPIDI_PG_Get_vcr(pg, p, &vc);
+        vc->ch.sendq_head = NULL;
+        vc->ch.sendq_tail = NULL;
+        vc->ch.req = (MPID_Request *) MPIU_Malloc(sizeof(MPID_Request));
+        vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
+        vc->ch.read_state = MPIDI_CH3I_READ_STATE_IDLE;
+        vc->ch.recv_active = NULL;
+        vc->ch.send_active = NULL;
+#ifdef USE_RDMA_UNEX
+        vc->ch.unex_finished_next = NULL;
+        vc->ch.unex_list = NULL;
+#endif
+    }
+
+    /* save my vc_ptr for easy access */
+    MPIDI_PG_Get_vcr(pg, pg_rank, &MPIDI_CH3I_Process.vc);
+
+    /* Initialize Progress Engine */
+    mpi_errno = MPIDI_CH3I_Progress_init();
+    if (mpi_errno != MPI_SUCCESS) {
+        mpi_errno =
+            MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL, FCNAME,
+                                 __LINE__, MPI_ERR_OTHER, "**ch3_init", 0);
+        return mpi_errno;
+    }
+
+    /* allocate rmda memory and set up the queues */
+    mpi_errno = MPIDI_CH3I_RMDA_init(pg, pg_rank);
+    if (mpi_errno != MPI_SUCCESS) {
+        mpi_errno =
+            MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL, FCNAME,
+                                 __LINE__, MPI_ERR_OTHER, "**ch3_init", 0);
+        return mpi_errno;
+    }
+
+    /* Initialize the smp channel */
+#ifdef _SMP_
+    mpi_errno = MPIDI_CH3I_SMP_init(pg);
+    if (mpi_errno != MPI_SUCCESS) {
+        mpi_errno =
+            MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL, FCNAME,
+                                 __LINE__, MPI_ERR_OTHER, "**ch3_init", 0);
+        return mpi_errno;
+    }
+
+    for (p = 0; p < pg_size; p++) {
+        MPIDI_PG_Get_vcr(pg, p, &vc);
+        vc->smp.sendq_head = NULL;
+        vc->smp.sendq_tail = NULL;
+        vc->smp.recv_active = NULL;
+        vc->smp.send_active = NULL;
+    }
+
+#endif
+#if 0
+	No dynamic process management now
+    /* The rdma interface needs to be adjusted to be able to retrieve the PARENT_ROOT_PORT_NAME */
+    /* If this code copied from the shm channel were used, it assumes that PMI is used in 
+     * MPIDI_CH3I_RDMA_init_process_group */
+    if (has_parent) {
+        /* This process was spawned. Create intercommunicator with parents. */
+
+        if (pg_rank == 0) {
+            /* get the port name of the root of the parents */
+            mpi_errno =
+                PMI_KVS_Get(pg->kvs_name, "PARENT_ROOT_PORT_NAME", val,
+                            val_max_sz);
+            if (mpi_errno != 0) {
+                mpi_errno =
+                    MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL,
+                                         FCNAME, __LINE__, MPI_ERR_OTHER,
+                                         "**pmi_kvs_get",
+                                         "**pmi_kvs_get_parent %d",
+                                         mpi_errno);
+                return mpi_errno;
+            }
+        }
+
+        /* do a connect with the root */
+        MPID_Comm_get_ptr(MPI_COMM_WORLD, commworld);
+        mpi_errno = MPIDI_CH3_Comm_connect(val, 0, commworld, &intercomm);
+        if (mpi_errno != MPI_SUCCESS) {
+            mpi_errno =
+                MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL, FCNAME,
+                                     __LINE__, MPI_ERR_OTHER, "**fail",
+                                     "**fail %s",
+                                     "spawned group unable to connect back to the parent");
+            return mpi_errno;
+        }
+
+        MPIU_Strncpy(intercomm->name, "MPI_COMM_PARENT",
+                     MPI_MAX_OBJECT_NAME);
+        MPIR_Process.comm_parent = intercomm;
+
+        /* TODO: Check that this intercommunicator gets freed in
+           MPI_Finalize if not already freed.  */
+    }
+#endif
+    return MPI_SUCCESS;
+}
+
+int MPIDI_CH3_VC_Init( MPIDI_VC_t *vc ) { 
+#ifdef _SMP_
+    vc->smp.sendq_head = NULL; 
+    vc->smp.sendq_tail = NULL; 
+    vc->smp.recv_active = NULL; 
+    vc->smp.send_active = NULL; 
+#endif
+    vc->ch.sendq_head = NULL; 
+    vc->ch.sendq_tail = NULL; 
+    vc->ch.req = (MPID_Request *) MPIU_Malloc(sizeof(MPID_Request));
+    vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
+    vc->ch.read_state = MPIDI_CH3I_READ_STATE_IDLE;
+    vc->ch.recv_active = NULL; 
+    vc->ch.send_active = NULL; 
+#ifdef USE_RDMA_UNEX
+    vc->ch.unex_finished_next = NULL; 
+    vc->ch.unex_list = NULL; 
+#endif
+    return 0;
+}
+
+int MPIDI_CH3_PortFnsInit( MPIDI_PortFns *portFns ) {
+   portFns->OpenPort    = 0;    
+    portFns->ClosePort   = 0;
+    portFns->CommAccept  = 0;
+    portFns->CommConnect = 0;
+    return MPI_SUCCESS;
+}
+
+int MPIDI_CH3_RMAFnsInit( MPIDI_RMAFns *RMAFns ) 
+{
+    return MPI_SUCCESS;
+} 
+
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3_Connect_to_root
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int MPIDI_CH3_Connect_to_root(const char * port_name, MPIDI_VC_t ** new_vc)      {
+    int mpi_errno;
+    mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**notimpl", 0);                                                   return mpi_errno;       
+}
+

@@ -1,0 +1,5 @@
+romioconf.h
+romioconf.h.in
+.deps
+.*-cache
+!

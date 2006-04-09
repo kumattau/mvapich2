@@ -1,0 +1,16 @@
+Makefile
+Makefile.in
+*.o
+*.lo
+*.bb
+*.bbg
+*.da
+*.gcov
+Debug
+Release
+.deps
+.libs
+.libstamp*
+mpid_thread.c
+.state-cache
+!

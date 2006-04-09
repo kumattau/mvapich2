@@ -1,0 +1,89 @@
+# This Makefile.in created by simplemake.  Do not edit
+
+# @configure_input@
+
+# --------------------------------------------------------------------------
+all: all-redirect
+
+SHELL           = @SHELL@
+abs_builddir    = @abs_builddir@
+srcdir          = @srcdir@
+abs_srcdir      = @abs_srcdir@
+DEFS            = @DEFS@ -I. -I${srcdir}
+CPPFLAGS        = @CPPFLAGS@
+LIBS            = @LIBS@
+MAKE            = @MAKE@
+MPILIBNAME      = @MPILIBNAME@
+PMPILIBNAME     = @PMPILIBNAME@
+
+CC              = @CC@
+CFLAGS          = @CFLAGS@
+C_COMPILE       = $(CC) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
+C_LINK      = $(CC)
+LDFLAGS     =  @LDFLAGS@ 
+
+VPATH = .:@srcdir@
+INCLUDES = -I../include -I${srcdir}/../include
+
+.SUFFIXES:
+.SUFFIXES: .o .c 
+.c.o:
+	$(C_COMPILE) -c $<
+.c:
+	$(C_COMPILE) -o $* $< $(LDFLAGS) $(LIBS)
+apply:
+	$(ACTION) $(ACTION_INPUT)
+clean:
+	-@rm -f *.o ${srcdir}/*.o allmpi self patterns sendrecv netpipe adapt wtime simple srtest
+	-@rm -f allmpi.exe self.exe patterns.exe sendrecv.exe netpipe.exe adapt.exe wtime.exe simple.exe srtest.exe
+	-@rm -f core core.[0-9]*
+	-@rm -f *.lo ${srcdir}/*.lo
+	-@rm -f *.irlog*
+distclean: clean distclean-xxx remove-makefile
+distclean-xxx:
+	-@rm -f Makefile
+	-@rm -rf autom4te*.cache
+	-@rm -rf $(DEPS_DIR)
+	-@rm -f TAGS
+remove-makefile:
+	rm -f Makefile
+remove-genmakefiles:
+	rm -f  Makefile
+all-redirect: self simple sendrecv srtest wtime netpipe patterns adapt
+
+allmpi: allmpi.o   @MPILIBLOC@
+	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o allmpi allmpi.o  ${LIBS}
+self: self.o   @MPILIBLOC@
+	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o self self.o  ${LIBS}
+patterns: patterns.o   @MPILIBLOC@
+	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o patterns patterns.o  ${LIBS}
+sendrecv: sendrecv.o   @MPILIBLOC@
+	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o sendrecv sendrecv.o  ${LIBS}
+netpipe: netmpi.o GetOpt.o   @MPILIBLOC@
+	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o netpipe netmpi.o GetOpt.o  ${LIBS}
+adapt: adapt.o GetOpt.o   @MPILIBLOC@
+	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o adapt adapt.o GetOpt.o  ${LIBS}
+wtime: wtime.o   @MPILIBLOC@
+	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o wtime wtime.o  ${LIBS}
+simple: simple.o   @MPILIBLOC@
+	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o simple simple.o  ${LIBS}
+srtest: srtest.o   @MPILIBLOC@
+	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o srtest srtest.o  ${LIBS}
+# --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+SOURCES         =  self.c simple.c sendrecv.c srtest.c wtime.c netmpi.c \
+	GetOpt.c patterns.c adapt.c GetOpt.c allmpi.c 
+ETAGS           = @ETAGS@ @ETAGSADD@
+HEADERFILES     = $(HEADERS)
+SOURCEFILES     = $(SOURCES)
+tags: TAGS
+TAGS:${HEADERFILES} ${SOURCEFILES}
+	here=`cd ../../.. && pwd` ; cd ${srcdir} && $(ETAGS) -o $$here/TAGS --append ${HEADERFILES} ${SOURCEFILES}
+# --------------------------------------------------------------------------
+
+# The allmpi program uses MPICH internal header files
+
+
+FORCE_TARGET:
+

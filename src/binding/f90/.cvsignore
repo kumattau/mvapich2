@@ -1,0 +1,11 @@
+mpif.h
+Makefile
+Makefile.in
+mpi.f90
+mpimod.pcl
+.deps
+*.mod
+*.MOD
+.libs
+.state-cache
+!

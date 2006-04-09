@@ -1,0 +1,24 @@
+# -*- Mode: shell-script; -*-
+AC_PREREQ(2.59)
+AC_INIT
+#
+# Try to find the version
+if test -s "$srcdir/Version" ; then
+    VERSION="`cat $srcdir/Version`"
+else
+    VERSION="Unknown"
+fi
+AC_SUBST(VERSION)
+AC_PATH_PROG(PERL,perl)
+AC_OUTPUT_COMMANDS([chmod a+x simplemake checkbuilds getcoverage genstates clmake f77tof90 extractstrings extractstates extractfixme])
+# We have to redefine the variables that autoconf always substitutes and that
+# are used in simplemake
+CFLAGS='@CFLAGS@'
+FFLAGS='@FFLAGS@'
+CXXFLAGS='@CXXFLAGS@'
+# The directory substitutions apparently don't work under Cygwin, so
+# simplemake manufactures these in a way that avoids triggering the 
+# autoconf replacement.
+# Note that top_srcdir and srcdir are special cases (they must not
+# be changed in configure.in because configure uses them to find other files)
+AC_OUTPUT(simplemake checkbuilds getcoverage genstates clmake f77tof90 extractstrings extractstates extractfixme)

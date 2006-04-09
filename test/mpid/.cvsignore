@@ -1,0 +1,7 @@
+Makefile.in
+Makefile
+atomic
+Debug*
+Release*
+.deps
+!

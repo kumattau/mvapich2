@@ -1,0 +1,14 @@
+*.vcproj
+*.o
+*.bb
+*.bbg
+*.da
+*.gcov
+Makefile.in
+Makefile
+namepub
+.deps
+*ebug
+*elease
+summary.xml
+!

@@ -1,0 +1,11 @@
+Makefile
+Makefile.in
+configure
+configure.lineno
+config.status
+config.system
+config.log
+localdefs
+*.cache
+.deps
+!

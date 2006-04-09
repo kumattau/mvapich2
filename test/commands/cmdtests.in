@@ -1,0 +1,138 @@
+#! @PERL@ -w
+#
+# Test the commands provided as part of MPICH2
+#
+# mpicc, mpicxx - handle -Dname="foo bar" and -Dname='"foo bar"'
+# (not done yet - see mpich1 test/command/runtests)
+#
+# Configuration values
+my $prefix      = "@prefix@";
+my $exec_prefix = "@exec_prefix@";
+my $bindir      = "@bindir@";
+
+# Global variables
+my $errors = 0;
+
+# mpiexec env handling
+# We assume that we can run non-MPI programs
+%SaveENV = %ENV;
+
+$ENV{TestEnvVar} = "test var name";
+%EnvBase = ('PMI_FD' => 1, 'PMI_RANK' => 0, 'PMI_SIZE' => 1, 
+	    'PMI_DEBUG' => 0, 
+	    'MPI_APPNUM' => 0, 'MPI_UNIVERSE_SIZE' => 1, );
+%EnvExpected = ();
+
+print "Try some environment args\n";
+
+$mpiexec = "$bindir/mpiexec" ;
+
+# Do we get the environment?
+%EnvSeen = ();
+%EnvExpected = ( 'PATH' => $ENV{PATH} );
+open MOUT, "$mpiexec printenv |" || die "Could not run $mpiexec";
+while (<MOUT>) {
+    if (/([^=]+)=(.*)/) {
+	$EnvSeen{$1} = $2;
+    }
+    else {
+	print "Unexpected output from mpiexec: $_";
+	$errors ++;
+    }
+}
+close MOUT;
+# Check that all vars in save are seen
+%copyEnv = %SaveENV;
+foreach my $key (keys(%EnvSeen)) {
+    if (defined($EnvBase{$key})) { next; }
+    delete $copyEnv{$key};
+}
+foreach my $key (keys(%copyEnv)) {
+    print "Enviroment variable $key not delivered to target program\n";
+    $errors ++;
+}
+
+%EnvSeen = ();
+%EnvExpected = ( 'PATH' => $ENV{PATH} );
+open MOUT, "$mpiexec -envnone -envlist PATH printenv |" || die "Could not run $mpiexec";
+while (<MOUT>) {
+    if (/([^=]+)=(.*)/) {
+	$EnvSeen{$1} = $2;
+    }
+    else {
+	print "Unexpected output from mpiexec: $_";
+	$errors ++;
+    }
+}
+close MOUT;
+# Check that only PATH and the PMI variables are set
+$errors += &CheckEnvVars;
+
+%EnvSeen = ();
+%EnvExpected = ( 'PATH' => $ENV{PATH} );
+open MOUT, "$mpiexec -genvnone -genvlist PATH printenv |" || die "Could not run $mpiexec";
+while (<MOUT>) {
+    if (/([^=]+)=(.*)/) {
+	$EnvSeen{$1} = $2;
+    }
+    else {
+	print "Unexpected output from mpiexec: $_";
+	$errors ++;
+    }
+}
+close MOUT;
+# Check that only PATH and the PMI variables are set
+$errors += &CheckEnvVars;
+
+%EnvSeen = ();
+%EnvExpected = ( 'PATH' => $ENV{PATH},
+		 'TestEnvVar' => $ENV{TestEnvVar} );
+open MOUT, "$mpiexec -genvnone -genvlist PATH printenv : -envlist TestEnvVar,PATH printenv |" || die "Could not run $mpiexec";
+while (<MOUT>) {
+    if (/([^=]+)=(.*)/) {
+	$EnvSeen{$1} = $2;
+    }
+    else {
+	print "Unexpected output from mpiexec: $_";
+	$errors ++;
+    }
+}
+close MOUT;
+# Check that only PATH and the PMI variables are set
+$errors += &CheckEnvVars;
+
+# FIXME: 
+# Still to do:
+# Tests for other options to mpiexec (other combinations of env options,
+# all MPI-2 mandated options)
+#
+# Tests for compilation scripts, including handling of spaces in 
+# args, such as -Dfoo="bar bar2" and quotes
+#
+# ------------------------------------------------------------------------
+# Test Summary
+if ($errors != 0) {
+    print " Found $errors errors\n";
+}
+else {
+    print " No Errors\n";
+}
+exit 0;
+# ------------------------------------------------------------------------
+# Testing routines
+# Check for environment variables
+# For simplicity, uses global variables:
+#    EnvSeen - variables seen
+#    EnvBase - variables part of the PMI interface
+#    EnvExpected - other variables
+sub CheckEnvVars {
+    my $errcount = 0;
+    foreach my $key (keys(%EnvSeen)) {
+	if (defined($EnvBase{$key})) { next; }
+	if (defined($EnvExpected{$key})) { next; }
+	print "Unexpected environment variable $key\n";
+	$errcount ++;
+    }
+    return $errcount;
+}
+    

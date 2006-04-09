@@ -1,0 +1,7 @@
+Makefile
+Makefile.in
+.deps
+.libstamp0
+*.o
+.state-cache
+!

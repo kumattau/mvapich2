@@ -1,0 +1,8 @@
+srbtest_SOURCES = srbtest.c
+#
+# Replace the value of CC
+prefix          = @prefix@
+exec_prefix     = @exec_prefix@
+bindir          = @bindir@
+CC              = @MPICC@
+CPPFLAGS        = 

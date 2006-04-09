@@ -1,0 +1,3 @@
+# SUBDIRS_rdma_name contains the list of all possible rdma implementations
+SUBDIRS_rdma_name = shmem iba shm armci shmtp
+SUBDIRS = rdma @rdma_name@ .

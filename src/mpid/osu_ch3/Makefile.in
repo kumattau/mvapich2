@@ -1,0 +1,56 @@
+# This Makefile.in created by simplemake.  Do not edit
+
+# @configure_input@
+all: all-redirect
+
+SHELL           = @SHELL@
+srcdir          = @srcdir@
+MAKE            = @MAKE@
+MPILIBNAME      = @MPILIBNAME@
+
+
+VPATH = .:${srcdir}
+.SUFFIXES:
+.SUFFIXES: .o .lo .c 
+clean:
+	-@rm -f *.o ${srcdir}/*.o 
+	-@rm -f *.lo ${srcdir}/*.lo
+	(cd channels && $(MAKE) clean )
+	(cd src && $(MAKE) clean )
+distclean: clean distclean-local distclean-xxx remove-makefile
+distclean-xxx:
+	(cd channels && $(MAKE) distclean )
+	(cd src && $(MAKE) distclean )
+	-@rm -f Makefile src/Makefile channels/Makefile localdefs config.status config.log config.cache *conf.cache config.system
+	-@rm -rf autom4te*.cache
+	-@rm -f include/mpidi_ch3_conf.h
+	-@rm -rf $(DEPS_DIR)
+	-@rm -f TAGS
+remove-makefile:
+	rm -f Makefile
+remove-genmakefiles:
+	rm -f  Makefile
+
+all-redirect:
+	@(cd channels && ${MAKE} all )
+	@(cd src && ${MAKE} all )
+
+tags: TAGS
+TAGS:
+	(cd channels && $(MAKE) TAGS )
+	(cd src && $(MAKE) TAGS )
+
+distclean-local:
+	-rm -f include/mpidi_ch3_conf.h
+
+maintainer-clean-local:
+	-rm -f include/mpidi_ch3_conf.h.in
+
+#
+# echomaxprocname gives the maximum lenght of a processor name, as used
+# by MPI_GET_PROCESSOR_NAME.  This is initialized in mpid_init
+echomaxprocname:
+	@echo 128
+
+FORCE_TARGET:
+

@@ -1,0 +1,77 @@
+-------------------------------------------------------------------------------
+		       Major Changes Impacting Usability
+-------------------------------------------------------------------------------
+
+- None expected 
+  (see the CHANGES file for a more extensive list of changes and new features)
+
+-------------------------------------------------------------------------------
+                              Known Deficiencies
+-------------------------------------------------------------------------------
+
+- The sock and ssm channels are the only channels that implements dynamic 
+  process support (i.e., MPI_COMM_SPAWN, MPI_COMM_CONNECT, MPI_COMM_ACCEPT, 
+  etc.) under Unix.  All other channels will experience failures for tests 
+  exercising dynamic process functionality.  Under Windows, the sock, ssm, 
+  and sshm channels implement the dynamic process support.
+
+- The ssm channel uses special interprocess locks (often assembly) that may 
+  not work with some compilers or machine architectures. It works on
+  Linux with gcc, Intel, and Pathscale compilers on various Intel
+  architectures. It also works in Windows and Solaris environments.
+
+- Support for the "external32" data representation is incomplete.  This affects
+  the MPI_PACK_EXTERNAL and MPI_UNPACK_EXTERNAL routines, as well the external
+  data representation capabilities of ROMIO.
+
+- The CH3 device does not presently support heterogeneous communication.  That
+  is to say that the processes involved in a job must use the same basic type
+  sizes and format.  The sizes and format are typically determined by the
+  processor architecture, although it may also be influenced by compiler
+  options.  This device does support the use of different executables (e.g.,
+  multiple-program-multiple-data, or MPMD, programming).
+
+- The support for MPI_THREAD_SERIALIZED and MPI_THREAD_MULTIPLE is preliminary,
+  and only available with the sock channel.  Rudimentary testing has been
+  performed; however, several problems still exist.  Several of the MPI I/O
+  routines hang.  Some of the internal routines can cause a hang if they
+  encounter an error.  We plan to correct these issues in the next release.
+  That said, we encourage people to experiment and provide feedback.
+
+- MPI_IRECV operations that are not explicitly completed before MPI_FINALIZE is
+  called may fail to complete before MPI_FINALIZE returns, and thus never
+  complete.  Furthermore, any matching send operations may erroneously fail.
+  By explicitly completed, we mean that the request associated with the
+  operation is completed by one of the MPI_TEST or MPI_WAIT routines.
+
+- C++ Binding:
+  
+  The MPI datatypes corresponding to Fortran datatypes are not available
+  (e.g., no MPI::DOUBLE_PRECISION).
+
+  The C++ binding does not implement a separate profiling interface, 
+  as allowed by the MPI-2 Standard (Section 10.1.10 Profiling).  
+
+  With the exception of the profiling interface, future releases of MPICH2 
+  will address these limitations of the C++ binding.
+
+- For passive target RMA, there is no asynchronous agent at the target
+  that will cause progress to occur. Progress occurs only when the user
+  calls an MPI function at the target (which could well be MPI_WIN_FREE).
+
+- --enable-sharedlibs=gcc does not work on Solaris because of difference
+  between the GNU ld program and the Solaris ld program
+
+-------------------------------------------------------------------------------
+			Issues for Developers
+-------------------------------------------------------------------------------
+
+- MPE2, which is distributed as part of MPICH2, requires autoconf 2.52 or
+  higher.  By default, MPICH2 and MPE use the autoconf programs in one's path.
+  The environment variables AUTOCONF and AUTOHEADER can be set to specify
+  alternative commands for MPICH2.  Likewise, MPE_AUTOCONF and MPE_AUTOHEADER
+  can be set to specify alternative commands for MPE2.  Obviously, these
+  environment variables must be set before running "maint/updatefiles" or
+  "make dist".  In order to handle incompatibilities between different
+  minor versions of autoconf, we've selected autoconf 2.59 as the version
+  required for MPE2 and MPICH2.

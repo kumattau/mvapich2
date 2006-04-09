@@ -1,0 +1,68 @@
+# This Makefile.in created by simplemake.  Do not edit
+
+# @configure_input@
+all: all-redirect
+
+SHELL           = @SHELL@
+AR              = @AR@
+RANLIB          = @RANLIB@
+master_top_srcdir  = @master_top_srcdir@
+srcdir          = @srcdir@
+DEFS            =  @DEFS@ -I. -I${srcdir}
+CPPFLAGS        =  @CPPFLAGS@
+MPILIBNAME      = @MPILIBNAME@
+
+CC          = @CC@
+CFLAGS      = @CFLAGS@
+C_COMPILE   = $(CC) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
+LIBTOOL  = @LIBTOOL@
+CC_SHL      = @CC_SHL@
+C_COMPILE_SHL   = $(CC_SHL) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
+
+VPATH = .:${srcdir}
+.SUFFIXES:
+.SUFFIXES: .o .lo .c 
+.c.o:
+	$(C_COMPILE) -c $<
+.c.lo:
+	$(C_COMPILE_SHL) -c $< -o _s$*.o
+	@mv -f _s$*.o $*.lo
+.c:
+	$(C_COMPILE) -o $* $< $(LDFLAGS) $(LIBS)
+clean:
+	-@rm -f *.o ${srcdir}/*.o 
+	-@rm -f *.lo ${srcdir}/*.lo
+distclean: clean distclean-xxx remove-makefile
+distclean-xxx:
+	-@rm -rf $(DEPS_DIR)
+	-@rm -f TAGS
+remove-makefile:
+	rm -f Makefile
+remove-genmakefiles:
+	rm -f  Makefile
+INCLUDES = -I../../../../../../include -I${master_top_srcdir}/src/include
+
+all-redirect: ../../../../../../../lib/lib${MPILIBNAME}.a
+	@if [ "@ENABLE_SHLIB@" != "none" ] ; then \
+	    ${MAKE} ../../../../../../../lib/lib${MPILIBNAME}.la ; \
+	fi
+
+../../../../../../../lib/lib${MPILIBNAME}.a: ibv_send.o ibv_recv.o rdma_iba_init.o rdma_iba_priv.o\
+dreg.o ibv_param.o vbuf.o ibv_channel_manager.o ibv_rma.o rdma_iba_1sc.o \
+ibv_rndv.o ibv_priv.o avl.o
+	${AR} cr ../../../../../../../lib/lib${MPILIBNAME}.a $?
+	${RANLIB} ../../../../../../../lib/lib${MPILIBNAME}.a
+	sleep 1
+../../../../../../../lib/lib${MPILIBNAME}.la: ibv_send.lo ibv_recv.lo rdma_iba_init.lo rdma_iba_priv.lo\
+dreg.lo ibv_param.lo vbuf.lo ibv_channel_manager.lo ibv_rma.lo rdma_iba_1sc.lo \
+ibv_rndv.lo ibv_priv.lo avl.lo
+	${AR} cr ../../../../../../../lib/lib${MPILIBNAME}.la $?
+SOURCES =  ibv_send.c ibv_recv.c rdma_iba_init.c rdma_iba_priv.c dreg.c ibv_param.c \
+vbuf.c ibv_channel_manager.c ibv_rma.c rdma_iba_1sc.c ibv_rndv.c ibv_priv.c avl.c
+ETAGS = etags --langmap=c:+.i
+tags: TAGS
+TAGS:${HEADERS} ${SOURCES}
+	here=`cd ../../../../../../.. && pwd` ; cd ${srcdir} && $(ETAGS) -o $$here/TAGS --append ${HEADERS} ${SOURCES}
+
+FORCE_TARGET:
+

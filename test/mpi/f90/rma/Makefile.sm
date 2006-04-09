@@ -1,0 +1,21 @@
+# This Makefile.sm generated automatically by f77tof90
+# from test/mpi/f77/rma/Makefile.sm.  DO NOT EDIT
+F90INCLUDES = -I.
+LDADD = ../util/mtestf90.o 
+DEPADD = @MPILIBLOC@ ../util/mtestf90.o
+smvar_do_sharedlibs = 0
+
+F90HEADERS = addsize.h
+
+# allocmem_SOURCES = allocmem.f90
+winscale1f90_SOURCES = winscale1f90.f90
+winscale2f90_SOURCES = winscale2f90.f90
+winfencef90_SOURCES  = winfencef90.f90
+wingetf90_SOURCES    = wingetf90.f90
+winerrf90_SOURCES    = winerrf90.f90
+winnamef90_SOURCES   = winnamef90.f90
+wingroupf90_SOURCES  = wingroupf90.f90
+winaccf90_SOURCES    = winaccf90.f90
+
+../util/mtestf90.o: 
+	(cd ../util && $(MAKE) mtestf90.o)

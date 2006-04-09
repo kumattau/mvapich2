@@ -1,0 +1,4 @@
+# SUBDIRS_pmi_name are the names that @ pmi_name @ can take in SUBDIRS
+SUBDIRS_pmi_name = simple uni smpd
+SUBDIRS = @pmi_name@ .
+

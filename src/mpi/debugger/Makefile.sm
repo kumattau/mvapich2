@@ -1,0 +1,18 @@
+# All of these routines are internal
+mpi_sources = 
+
+lib${MPILIBNAME}_a_SOURCES = dbginit.c
+INCLUDES = -I../../include -I${top_srcdir}/src/include
+profilelib_${MPILIBNAME} = ${PMPILIBNAME}
+#
+# We need to make sure that dbginit is compiled with -g, so
+# we use an explicit target.  Note that there are no PMPI functions in
+# this directory)
+dbginit.o: dbginit.c
+	$(C_COMPILE) -g -c @PROFILE_DEF_MPI@ $<
+#
+# We may want to add some documentation on using the various debugger
+# interfaces by adding the appropriate files to the doc lists
+doc_HTML_SOURCES = ${mpi_sources}
+doc_MAN_SOURCES = ${mpi_sources}
+doc_LATEX_SOURCES = ${mpi_sources}

@@ -1,0 +1,37 @@
+INCLUDES = -I../include -I${srcdir}/../include
+LDADD = ../util/mtest.o
+DEPADD = @MPILIBLOC@
+smvar_do_sharedlibs = 0
+
+# Use extra programs to list programs that should not be built by default.
+EXTRA_PROGRAMS       = 
+
+bottom_SOURCES       = bottom.c
+bsend1_SOURCES       = bsend1.c
+bsend2_SOURCES       = bsend2.c
+bsend3_SOURCES       = bsend3.c
+bsend4_SOURCES       = bsend4.c
+bsend5_SOURCES       = bsend5.c
+bsendalign_SOURCES   = bsendalign.c
+isendself_SOURCES    = isendself.c
+isendselfprobe_SOURCES    = isendselfprobe.c
+bsendfrag_SOURCES    = bsendfrag.c
+bsendpending_SOURCES = bsendpending.c
+errinstatts_SOURCES  = errinstatts.c
+errinstatta_SOURCES  = errinstatta.c
+errinstatws_SOURCES  = errinstatws.c
+errinstatwa_SOURCES  = errinstatwa.c
+icsend_SOURCES       = icsend.c
+rqstatus_SOURCES     = rqstatus.c
+greq1_SOURCES        = greq1.c
+scancel_SOURCES      = scancel.c
+sendrecv1_SOURCES    = sendrecv1.c
+sendrecv2_SOURCES    = sendrecv2.c
+waitany-null_SOURCES = waitany-null.c
+pingping_SOURCES     = pingping.c
+probe-unexp_SOURCES  = probe-unexp.c
+probenull_SOURCES    = probenull.c
+inactivereq_SOURCES  = inactivereq.c
+
+../util/mtest.o:
+	(cd ../util && $(MAKE) mtest.o)

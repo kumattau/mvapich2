@@ -1,0 +1,6 @@
+Makefile
+*.dvi
+*.pdf
+*.log
+*.out
+*.toc

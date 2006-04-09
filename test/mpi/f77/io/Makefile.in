@@ -1,0 +1,123 @@
+# This Makefile.in created by simplemake.  Do not edit
+
+# @configure_input@
+
+# --------------------------------------------------------------------------
+all: all-redirect
+
+SHELL           = @SHELL@
+abs_builddir    = @abs_builddir@
+srcdir          = @srcdir@
+abs_srcdir      = @abs_srcdir@
+top_srcdir      = @top_srcdir@
+LIBS            = @LIBS@
+MAKE            = @MAKE@
+MPILIBNAME      = @MPILIBNAME@
+PMPILIBNAME     = @PMPILIBNAME@
+
+FC              = @FC@
+FFLAGS          = @FFLAGS@
+F77_COMPILE     = $(FC) $(FFLAGS) $(F77INCLUDES)
+F77_LINK    = $(FC)
+LDFLAGS     =  @LDFLAGS@ ../util/mtestf.o 
+
+VPATH = .:@srcdir@
+F77INCLUDES = -I. 
+F77HEADERS = iodisp.h iooffset.h
+
+.SUFFIXES:
+.SUFFIXES: .o .f 
+.f.o:
+	$(F77_COMPILE) -c $<
+.f:
+	$(F77_COMPILE) -o $* $< $(LDFLAGS) $(LIBS)
+apply:
+	$(ACTION) $(ACTION_INPUT)
+clean:
+	-@rm -f *.o ${srcdir}/*.o shpositionf writef iwriteshf writeallf writeatf iwritef writeallbef miscfilef fileinfof writeatallbef atomicityf writeordbef writeshf iwriteatf fileerrf writeatallf writeordf
+	-@rm -f shpositionf.exe writef.exe iwriteshf.exe writeallf.exe writeatf.exe iwritef.exe writeallbef.exe miscfilef.exe fileinfof.exe writeatallbef.exe atomicityf.exe writeordbef.exe writeshf.exe iwriteatf.exe fileerrf.exe writeatallf.exe writeordf.exe
+	-@rm -f core core.[0-9]*
+	-@rm -f *.lo ${srcdir}/*.lo
+	-@rm -f *.irlog*
+distclean: clean distclean-xxx remove-makefile
+distclean-xxx:
+	-@rm -f Makefile iooffset.h iodisp.h ioaint.h
+	-@rm -rf autom4te*.cache
+	-@rm -rf $(DEPS_DIR)
+	-@rm -f TAGS
+remove-makefile:
+	rm -f Makefile
+remove-genmakefiles:
+	rm -f  Makefile
+all-redirect: iwriteatf iwritef iwriteshf writef writeatf writeallf\
+	 writeatallf writeallbef writeordf writeordbef writeshf writeatallbef\
+	 fileerrf fileinfof shpositionf atomicityf miscfilef
+
+shpositionf: shpositionf.o   @MPILIBLOC@ ../util/mtestf.o
+	$(F77_LINK) $(FFLAGS) $(LDFLAGS) -o shpositionf shpositionf.o  \
+	${LIBS} 
+writef: writef.o   @MPILIBLOC@ ../util/mtestf.o
+	$(F77_LINK) $(FFLAGS) $(LDFLAGS) -o writef writef.o  ${LIBS}
+iwriteshf: iwriteshf.o   @MPILIBLOC@ ../util/mtestf.o
+	$(F77_LINK) $(FFLAGS) $(LDFLAGS) -o iwriteshf iwriteshf.o  ${LIBS}
+writeallf: writeallf.o   @MPILIBLOC@ ../util/mtestf.o
+	$(F77_LINK) $(FFLAGS) $(LDFLAGS) -o writeallf writeallf.o  ${LIBS}
+writeatf: writeatf.o   @MPILIBLOC@ ../util/mtestf.o
+	$(F77_LINK) $(FFLAGS) $(LDFLAGS) -o writeatf writeatf.o  ${LIBS}
+iwritef: iwritef.o   @MPILIBLOC@ ../util/mtestf.o
+	$(F77_LINK) $(FFLAGS) $(LDFLAGS) -o iwritef iwritef.o  ${LIBS}
+writeallbef: writeallbef.o   @MPILIBLOC@ ../util/mtestf.o
+	$(F77_LINK) $(FFLAGS) $(LDFLAGS) -o writeallbef writeallbef.o  \
+	${LIBS} 
+miscfilef: miscfilef.o   @MPILIBLOC@ ../util/mtestf.o
+	$(F77_LINK) $(FFLAGS) $(LDFLAGS) -o miscfilef miscfilef.o  ${LIBS}
+fileinfof: fileinfof.o   @MPILIBLOC@ ../util/mtestf.o
+	$(F77_LINK) $(FFLAGS) $(LDFLAGS) -o fileinfof fileinfof.o  ${LIBS}
+writeatallbef: writeatallbef.o   @MPILIBLOC@ ../util/mtestf.o
+	$(F77_LINK) $(FFLAGS) $(LDFLAGS) -o writeatallbef writeatallbef.o  \
+	${LIBS} 
+atomicityf: atomicityf.o   @MPILIBLOC@ ../util/mtestf.o
+	$(F77_LINK) $(FFLAGS) $(LDFLAGS) -o atomicityf atomicityf.o  ${LIBS}
+writeordbef: writeordbef.o   @MPILIBLOC@ ../util/mtestf.o
+	$(F77_LINK) $(FFLAGS) $(LDFLAGS) -o writeordbef writeordbef.o  \
+	${LIBS} 
+writeshf: writeshf.o   @MPILIBLOC@ ../util/mtestf.o
+	$(F77_LINK) $(FFLAGS) $(LDFLAGS) -o writeshf writeshf.o  ${LIBS}
+iwriteatf: iwriteatf.o   @MPILIBLOC@ ../util/mtestf.o
+	$(F77_LINK) $(FFLAGS) $(LDFLAGS) -o iwriteatf iwriteatf.o  ${LIBS}
+fileerrf: fileerrf.o   @MPILIBLOC@ ../util/mtestf.o
+	$(F77_LINK) $(FFLAGS) $(LDFLAGS) -o fileerrf fileerrf.o  ${LIBS}
+writeatallf: writeatallf.o   @MPILIBLOC@ ../util/mtestf.o
+	$(F77_LINK) $(FFLAGS) $(LDFLAGS) -o writeatallf writeatallf.o  \
+	${LIBS} 
+writeordf: writeordf.o   @MPILIBLOC@ ../util/mtestf.o
+	$(F77_LINK) $(FFLAGS) $(LDFLAGS) -o writeordf writeordf.o  ${LIBS}
+# --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+SOURCES         =  iwriteatf.f iwritef.f iwriteshf.f writef.f writeatf.f \
+	writeallf.f writeatallf.f writeallbef.f writeordf.f writeordbef.f \
+	writeshf.f writeatallbef.f fileerrf.f fileinfof.f shpositionf.f \
+	atomicityf.f miscfilef.f 
+ETAGS           = @ETAGS@ @ETAGSADD@
+HEADERFILES     = $(HEADERS)
+SOURCEFILES     = $(SOURCES)
+tags: TAGS
+TAGS:${HEADERFILES} ${SOURCEFILES}
+	here=`cd ../../../.. && pwd` ; cd ${srcdir} && $(ETAGS) -o $$here/TAGS --append ${HEADERFILES} ${SOURCEFILES}
+# --------------------------------------------------------------------------
+
+
+
+# These IO tests are build from a template and a set of definitions.
+iwriteatf.f writef.f writeatf.f writeatallf.f writeallf.f writeallbef.f \
+writeordf.f writeordbef.f writeshf.f writeatallbef.f \
+iwritef.f iwriteshf.f : ioharness.tlt ioharness.defn ../../maint/testmerge
+	../../maint/testmerge -defn=$(top_srcdir)/maint/common.defn \
+		$(srcdir)/ioharness.defn $(srcdir)/ioharness.tlt
+
+../util/mtestf.o: 
+	(cd ../util && $(MAKE) mtestf.o)
+
+FORCE_TARGET:
+

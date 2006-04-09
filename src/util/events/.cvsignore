@@ -1,0 +1,16 @@
+*.o
+*.lo
+Makefile
+Makefile.in
+*Debug*
+*Release*
+.deps
+*.bb
+*.bbg
+*.da
+.libs
+mpiu_events_conf.h
+mpiu_events_conf.h.in
+configure
+.state-cache
+!
