@@ -115,4 +115,4 @@ tail install-mine.log
 test $ret = 0 ||  die "installing MVAPICH2."
 
 # Epilogue
-echo "Congratulations on successfully building MVAPICH2. Please send your feedback to mvapich-help@cse.ohio-state.edu." 
+echo "Congratulations on successfully building MVAPICH2. Please send your feedback to mvapich-discuss@cse.ohio-state.edu." 

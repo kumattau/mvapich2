@@ -14,9 +14,6 @@ Respective copyright information can be obtained from
 COPYRIGHT_MVAPICH2 and COPYRIGHT files in this directory and
 COPYRIGHT_MVICH file under the src/mpid/osu_ch3/channels/mrail/src/gen2.
 
-For details on installation and performance tuning, please refer to
-mvapich2_user_guide.pdf in this directory.
-
 A set of micro-benchmarks (for both point-to-point and one sided) are
 also available under the osu_benchmarks directory.
 
@@ -26,4 +23,4 @@ feedback to mvapich_request@cis.ohio-state.edu.  The Ohio State
 University will include such feedbacks in future MVAPICH2 releases.
 
 If some bug-fixes are specific to MPICH2, they can be sent to both
-mvapich_request@cse.ohio-state.edu and mpi-bugs@mcs.anl.gov.
+mvapich-discuss@cse.ohio-state.edu and mpi-bugs@mcs.anl.gov.
