@@ -6,7 +6,7 @@
  * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
  *
  * For detailed copyright and licencing information, please refer to the
- * copyright file COPYRIGHT_MVAPICH2 in the top level MPICH2 directory.
+ * copyright file COPYRIGHT_MVAPICH2 in the top level MVAPICH2 directory.
  *
  */
 #ifndef MAC_OSX
