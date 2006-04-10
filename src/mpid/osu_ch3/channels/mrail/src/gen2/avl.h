@@ -13,12 +13,12 @@
 /* Copyright (c) 2002-2006, The Ohio State University. All rights
  * reserved.
  *
- * This file is part of the MVAPICH software package developed by the
+ * This file is part of the MVAPICH2 software package developed by the
  * team members of The Ohio State University's Network-Based Computing
  * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
  *
  * For detailed copyright and licencing information, please refer to the
- * copyright file COPYRIGHT_MVAPICH in the top level MPICH directory.
+ * copyright file COPYRIGHT_MVAPICH2 in the top level MPICH2 directory.
  *
  */
 
