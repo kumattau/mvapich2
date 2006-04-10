@@ -32,6 +32,10 @@
 #include <errno.h>
 #include "pmi.h"
 
+#ifdef _AFFINITY_
+#include <sched.h>
+#endif /*_AFFINITY_*/
+
 #ifdef MAC_OSX
 #include <netinet/in.h>
 #endif
@@ -40,6 +44,10 @@
 #include "smp_smpi.h"
 
 #include <stdio.h>
+
+#ifdef _AFFINITY_
+unsigned int viadev_enable_affinity = 0;
+#endif
 
 #ifdef DEBUG
 #define DEBUG_PRINT(args...) \
@@ -383,6 +391,11 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     if ((value = getenv("SMPI_LENGTH_QUEUE")) != NULL) {
         smpi_length_queue = atoi(value);
     }
+#ifdef _AFFINITY_
+    if ((value = getenv("VIADEV_ENABLE_AFFINITY")) != NULL) {
+            viadev_enable_affinity = atoi(value);
+    }
+#endif
 
     if (gethostname(hostname, sizeof(char) * HOSTNAME_LEN) < 0) {
         fprintf(stderr, "[%s:%d] Unable to get hostname\n", __FILE__, __LINE__);
@@ -1001,6 +1014,17 @@ static int smpi_exchange_info(MPIDI_PG_t *pg)
 
     MPIDI_VC_t *vc;
 
+#ifdef _AFFINITY_
+    long N_CPUs_online;
+    unsigned long affinity_mask=1;
+    unsigned long affinity_mask_len=sizeof(affinity_mask);
+
+    /*Get number of CPU on machine*/
+    if ( (N_CPUs_online=sysconf (_SC_NPROCESSORS_ONLN)) < 1 ) {
+            perror("sysconf");
+    }
+#endif /*_AFFINITY_*/
+
     PMI_Get_rank(&pg_rank);
     PMI_Get_size(&pg_size);
 
@@ -1143,6 +1167,14 @@ static int smpi_exchange_info(MPIDI_PG_t *pg)
         if (hostnames_j[pg_rank] == hostnames_j[j]) {
             if (j == pg_rank) {
                 smpi.my_local_id = smpi.num_local_nodes;
+#ifdef _AFFINITY_
+                if ( viadev_enable_affinity > 0 ){
+                        affinity_mask=1<<(smpi.my_local_id%N_CPUs_online);
+                        if ( sched_setaffinity(0,affinity_mask_len,&affinity_mask)<0 ) {
+                                perror("sched_setaffinity");
+                        }
+                }
+#endif /* _AFFINITY_ */
             }
             vc->smp.local_nodes = smpi.num_local_nodes;
             smpi.l2g_rank[smpi.num_local_nodes] = j;
