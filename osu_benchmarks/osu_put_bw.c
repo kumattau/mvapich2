@@ -1,5 +1,5 @@
 /*
- * OSU MPI Latency test v2.2
+ * OSU One Sided MPI_Put Bandwidth test v2.2
  */
 
 /*

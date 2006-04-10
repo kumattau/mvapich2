@@ -1,5 +1,5 @@
 /*
- * OSU MPI Latency test v2.2
+ * OSU MPI One Sided MPI_Accumulate Latency test v2.2
  */
 /*
  * Copyright (C) 2002-2006 the Network-Based Computing Laboratory
