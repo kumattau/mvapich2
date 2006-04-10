@@ -89,7 +89,7 @@ int main (int argc, char *argv[])
 
     if (rank == 0) {
         fprintf (stdout,
-                 "# OSU MPI2 Accumulate Latency Test (Version 2.1)\n");
+                 "# OSU MPI2 Accumulate Latency Test (Version 2.2)\n");
         fprintf (stdout, "# Size\t\tLatency (us) \n");
     }
 

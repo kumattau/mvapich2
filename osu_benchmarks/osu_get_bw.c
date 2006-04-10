@@ -93,7 +93,7 @@ int main (int argc, char *argv[])
 
     if (myid == 0) {
         fprintf (stdout,
-                 "# OSU MPI2 MPI_Get Bandwidth Test (Version 2.1)\n");
+                 "# OSU MPI2 MPI_Get Bandwidth Test (Version 2.2)\n");
         fprintf (stdout, "# Size\t\tBandwidth (MillionBytes/s) \n");
     }
 
