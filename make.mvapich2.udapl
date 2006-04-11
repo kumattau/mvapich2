@@ -11,7 +11,7 @@ fi
 #
 DAT_LIB=$1
 DAT_INCLUDE=$2
-PREFIX=/tmp/mvapich2
+PREFIX=/usr/local/mvapich2
 export CC=gcc
 export CXX=g++
 export F77=g77

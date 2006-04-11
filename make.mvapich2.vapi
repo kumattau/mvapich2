@@ -5,7 +5,7 @@ arch
 
 # Mandatory variables.  All are checked except CXX and F90.
 MTHOME=/usr/local/ibgd/driver/infinihost
-PREFIX=/tmp/mvapich
+PREFIX=/usr/local/mvapich2
 export CC=gcc
 export CXX=g++
 export F77=g77
