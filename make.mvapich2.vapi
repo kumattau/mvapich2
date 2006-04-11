@@ -80,7 +80,7 @@ HAVE_MPD_RING=""
 MULTI_THREAD=""
 
 if [ ! -z $MULTI_THREAD ]; then
-        MULTI_THREAD="--enable-thread"
+        MULTI_THREAD="--enable-threads=multiple"
 fi
 
 # Set this to override automatic optimization setting (-03).

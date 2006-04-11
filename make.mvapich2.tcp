@@ -24,7 +24,7 @@ export PREFIX="/usr/local/mvapich2"
 MULTI_THREAD=""
 
 if [ ! -z $MULTI_THREAD ]; then
-        MULTI_THREAD="--enable-thread"
+        MULTI_THREAD="--enable-threads=multiple"
 fi
 
 # Prelogue
