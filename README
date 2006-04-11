@@ -19,7 +19,7 @@ also available under the osu_benchmarks directory.
 
 We encourage feedback in all forms (bug reports/fixes and suggestions,
 etc.) from users to enhance this software package.  Please send your
-feedback to mvapich_request@cis.ohio-state.edu.  The Ohio State
+feedback to mvapich-discuss@cse.ohio-state.edu.  The Ohio State
 University will include such feedbacks in future MVAPICH2 releases.
 
 If some bug-fixes are specific to MPICH2, they can be sent to both
