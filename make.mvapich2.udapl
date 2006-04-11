@@ -55,6 +55,19 @@ if [ -z "$LINKS" ]; then
     prompt_link
 fi
 
+
+# Whether or not to build with multi-thread support
+# Building with this option the MVAPICH2 will be thread-safe but it may suffer
+# slight performance penalty in single-threaded case
+# This option is default to no
+# Supported: "yes" or ""
+MULTI_THREAD=""
+
+if [ ! -z $MULTI_THREAD ]; then
+        MULTI_THREAD="--enable-thread"
+fi
+
+
 # Set this to override automatic optimization setting (-03 on Intel and
 # Solaris with CC=gcc, -x03 on Solaris otherwise).
 OPT_FLAG=
@@ -92,7 +105,7 @@ rm -rf *.cache *.log *.status lib bin
 
 # Configure MVAPICH2
 echo "Configuring MVAPICH2..."
-./configure  --prefix=${PREFIX} \
+./configure  --prefix=${PREFIX} ${MULTI_THREAD} \
     --with-device=osu_ch3:mrail --with-rdma=udapl --with-pm=mpd \
     --disable-romio --without-mpe 2>&1 |tee config-mine.log
 ret=$?

@@ -9,9 +9,9 @@ arch
 export OPEN_IB_HOME=/usr/local
 PREFIX=/tmp/mvapich2
 
-export CC=gcc
-export CXX=g++
-export F77=g77
+export CC=iccbin
+export CXX=iccbin
+export F77=ifortbin
 export F90=
 
 if [ $ARCH = "SOLARIS" ]; then
@@ -56,12 +56,27 @@ if [ -z $OPT_FLAG ]; then
     OPT_FLAG=-O2
 fi
 
+# Whether or not to build with multi-thread support
+# Building with this option the MVAPICH2 will be thread-safe but it may suffer
+# slight performance penalty in single-threaded case
+# This option is default to no
+# Supported: "yes" or ""
+MULTI_THREAD=""
+
+if [ ! -z $MULTI_THREAD ]; then
+	MULTI_THREAD="--enable-thread"
+fi
+
+
 export LIBS="-L${OPEN_IB_LIB} -libverbs -lpthread $SUPPRESS"
 export FFLAGS="-L${OPEN_IB_LIB}"
-export CFLAGS="-D${ARCH} -DUSE_INLINE -DRDMA_FAST_PATH -D_SMP_ \
-               -DUSE_HEADER_CACHING -DLAZY_MEM_UNREGISTER -DONE_SIDED \
-               $SUPPRESS -D${HCA_COMPILE_FLAG} -DMPID_USE_SEQUENCE_NUMBERS \
-               -D${VCLUSTER} ${HAVE_MPD_RING} -I${OPEN_IB_HOME}/include $OPT_FLAG"
+#export CFLAGS="-D${ARCH} -DUSE_INLINE -DRDMA_FAST_PATH -D_SMP_ \
+#               -DUSE_HEADER_CACHING -DLAZY_MEM_UNREGISTER -DONE_SIDED \
+#               $SUPPRESS -D${HCA_COMPILE_FLAG} -DMPID_USE_SEQUENCE_NUMBERS \
+#               -D${VCLUSTER} ${HAVE_MPD_RING} -I${OPEN_IB_HOME}/include $OPT_FLAG"
+export CFLAGS="-D_X86_64_ -D_SMP_ -DUSE_INLINE -DMPID_USE_SEQUENCE_NUMBERS \
+-D_SMALL_CLUSTER \
+-DUSE_MPD_RING -D_MLX_PCI_EX_SDR_ -O3 -I${OPEN_IB_HOME}/include"
 
 # Prelogue
 make distclean &>/dev/null
@@ -72,7 +87,7 @@ rm -rf *.cache *.log *.status lib bin
 # ./configure --with-device=ch3:sock 
 
 echo "Configuring MVAPICH2..."
-./configure  --prefix=${PREFIX} \
+./configure  --prefix=${PREFIX} ${MULTI_THREAD} \
     --with-device=osu_ch3:mrail --with-rdma=gen2 --with-pm=mpd \
     --disable-romio --without-mpe 2>&1 |tee config-mine.log
 ret=$?

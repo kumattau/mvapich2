@@ -72,6 +72,17 @@ fi
 # Supported: "-DUSE_MPD_RING" and "" (to disable)
 HAVE_MPD_RING=""
 
+# Whether or not to build with multi-thread support
+# Building with this option the MVAPICH2 will be thread-safe but it may suffer
+# slight performance penalty in single-threaded case
+# This option is default to no
+# Supported: "yes" or ""
+MULTI_THREAD=""
+
+if [ ! -z $MULTI_THREAD ]; then
+        MULTI_THREAD="--enable-thread"
+fi
+
 # Set this to override automatic optimization setting (-03).
 OPT_FLAG=
 
@@ -81,7 +92,7 @@ fi
 
 export LIBS="-L${MTHOME_LIB} -lmtl_common -lvapi -lpthread -lmosal -lmpga $SUPPRESS"
 export FFLAGS="-L${MTHOME_LIB}"
-export CFLAGS="-D${ARCH} -DONE_SIDED -DUSE_INLINE -DRDMA_FAST_PATH \
+export CFLAGS="-D${ARCH} -DONE_SIDED -DUSE_INLINE -DRDMA_FAST_PATH ${MULTI_THREAD} \
                -DUSE_HEADER_CACHING -DLAZY_MEM_UNREGISTER -D_SMP_ \
                $SUPPRESS -D${IO_BUS} -D${LINKS} -DMPID_USE_SEQUENCE_NUMBERS \
                -D${VCLUSTER} ${HAVE_MPD_RING} -I${MTHOME}/include $OPT_FLAG"
