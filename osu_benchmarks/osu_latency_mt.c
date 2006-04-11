@@ -103,7 +103,7 @@ int main (int argc, char *argv[])
     finished_size = 1;
     if (provided != MPI_THREAD_MULTIPLE) {
         if(myid == 0) {
-            printf("MPI_Init_thread must return MPI_THREAD_MULTIPLE!\n");
+            printf("MPI_Init_thread must return MPI_THREAD_MULTIPLE! Make sure multithrading support was built into MPI\n");
             fflush(stdout);
         }
         MPI_Finalize();
@@ -217,11 +217,6 @@ send_thread(void *arg) {
     r_buf =
         (char *) (((unsigned long) r_buf1 + (align_size - 1)) /
                   align_size * align_size);
-
-    /*
-       fprintf(stdout, "[send][%d] local window: %d\n", val,
-       local_window_size);
-       */
 
     iter = 0;
     for (size = 1; size <= MAX_MSG_SIZE; size *= 2) {
