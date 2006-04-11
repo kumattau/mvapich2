@@ -7,12 +7,12 @@ arch
 
 # Mandatory variables.  All are checked except CXX and F90.
 export OPEN_IB_HOME=/usr/local
-PREFIX=/tmp/mvapich2
+PREFIX=/usr/local/mvapich2
 
-export CC=iccbin
-export CXX=iccbin
-export F77=ifortbin
-export F90=
+export CC=gcc
+export CXX=g++
+export F77=g77
+export F90=$F77
 
 if [ $ARCH = "SOLARIS" ]; then
     die_setup "MVAPICH2 VAPI is not supported on Solaris."
