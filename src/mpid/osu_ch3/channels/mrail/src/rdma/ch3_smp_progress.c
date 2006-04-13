@@ -45,8 +45,12 @@
 
 #include <stdio.h>
 
+#ifdef _X86_64_
+    #define _AFFINITY_
+#endif
+
 #ifdef _AFFINITY_
-unsigned int viadev_enable_affinity = 0;
+unsigned int viadev_enable_affinity = 1;
 #endif
 
 #ifdef DEBUG
