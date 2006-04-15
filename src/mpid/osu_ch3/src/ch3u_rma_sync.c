@@ -123,7 +123,9 @@ int MPIDI_Win_fence(int assert, MPID_Win * win_ptr)
 		}
 		MPIDI_CH3I_RDMA_post(win_ptr, dst);
 	    }
+	    MPIR_Nest_incr();
 	    NMPI_Barrier(win_ptr->comm);
+	    MPIR_Nest_decr();
 	}
 #endif
 	/* End of OSU-MPI2 */
