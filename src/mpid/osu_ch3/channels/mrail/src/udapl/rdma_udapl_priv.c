@@ -684,7 +684,13 @@ rdma_iba_hca_init (struct MPIDI_CH3I_RDMA_Process_t *proc,
                                 rdma_iba_addr_table.service_id[pg_rank][i],
                                 proc->creq_cq_hndl[i],
                                 DAT_PSP_CONSUMER_FLAG, &(proc->psp_hndl[i]));
-          CHECK_RETURN (ret, "cannot create PSP");
+          while(ret != DAT_SUCCESS){
+              rdma_iba_addr_table.service_id[pg_rank][i] += 1024;
+              ret = dat_psp_create (proc->nic[i],
+                                    rdma_iba_addr_table.service_id[pg_rank][i],
+                                    proc->creq_cq_hndl[i],
+                                    DAT_PSP_CONSUMER_FLAG, &(proc->psp_hndl[i]));
+          }
       }
 
 #ifdef ONE_SIDED
@@ -714,7 +720,14 @@ rdma_iba_hca_init (struct MPIDI_CH3I_RDMA_Process_t *proc,
                         rdma_iba_addr_table.service_id_1sc[pg_rank][0],
                         proc->creq_cq_hndl_1sc, DAT_PSP_CONSUMER_FLAG,
                         &(proc->psp_hndl_1sc));
-    CHECK_RETURN (ret, "cannot create PSP 1sc");
+    while(ret != DAT_SUCCESS){
+        rdma_iba_addr_table.service_id_1sc[pg_rank][0] += 1124;
+        ret = dat_psp_create (proc->nic[0],
+                              rdma_iba_addr_table.service_id_1sc[pg_rank][0],
+                              proc->creq_cq_hndl_1sc, DAT_PSP_CONSUMER_FLAG,
+                              &(proc->psp_hndl_1sc));
+    }
+
 #endif
 
 
