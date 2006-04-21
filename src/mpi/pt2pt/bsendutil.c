@@ -425,7 +425,7 @@ static void MPIR_Bsend_free_segment( BsendData_t *p )
     if (avail_prev) {
 	if ((char *)avail_prev + avail_prev->total_size == (char *)p) {
 	    avail_prev->total_size += p->total_size;
-	    avail_prev->size       = p->total_size - BSENDDATA_HEADER_TRUE_SIZE;
+	    avail_prev->size       = avail_prev->total_size - BSENDDATA_HEADER_TRUE_SIZE;
 	    avail_prev->next = p->next;
 	    if (p->next) p->next->prev = avail_prev;
 	}
