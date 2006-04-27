@@ -92,7 +92,7 @@ fi
 
 export LIBS="-L${MTHOME_LIB} -lmtl_common -lvapi -lpthread -lmosal -lmpga $SUPPRESS"
 export FFLAGS="-L${MTHOME_LIB}"
-export CFLAGS="-D${ARCH} -DONE_SIDED -DUSE_INLINE -DRDMA_FAST_PATH ${MULTI_THREAD} \
+export CFLAGS="-D${ARCH} -DONE_SIDED -DUSE_INLINE -DRDMA_FAST_PATH \
                -DUSE_HEADER_CACHING -DLAZY_MEM_UNREGISTER -D_SMP_ \
                $SUPPRESS -D${IO_BUS} -D${LINKS} -DMPID_USE_SEQUENCE_NUMBERS \
                -D${VCLUSTER} ${HAVE_MPD_RING} -I${MTHOME}/include $OPT_FLAG"
@@ -103,7 +103,7 @@ rm -rf *.cache *.log *.status lib bin
 
 # Configure MVAPICH2
 echo "Configuring MVAPICH2..."
-./configure  --prefix=${PREFIX} \
+./configure  --prefix=${PREFIX} ${MULTI_THREAD} \
     --with-device=osu_ch3:mrail --with-rdma=vapi --with-pm=mpd \
     --disable-romio --without-mpe 2>&1 |tee config-mine.log
 ret=$?
