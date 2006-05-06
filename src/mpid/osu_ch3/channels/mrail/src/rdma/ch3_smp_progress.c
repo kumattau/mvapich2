@@ -103,7 +103,7 @@ int      smpi_length_queue  = SMPI_LENGTH_QUEUE;
  * */
 #define STBAR()  asm volatile ("sync": : :"memory")     /* ": : :" for C++ */
 #define READBAR() asm volatile ("sync": : :"memory")
-#define WRITEBAR() asm volatile ("eieio": : :"memory")
+#define WRITEBAR() asm volatile ("sync": : :"memory")
 #else
 #if  defined (__IBMC__) || defined (__IBMCPP__)
 extern void __iospace_eieio(void);
@@ -954,6 +954,7 @@ int MPIDI_CH3I_SMP_pull_header(MPIDI_VC_t * vc,
         assert(current_bytes[vc->smp.local_nodes] == 0);
     }
 
+    READBAR();
     if (total_bytes[vc->smp.local_nodes] != 0) {
         current_ptr[vc->smp.local_nodes] = NULL;
         smpi_complete_recv(vc->smp.local_nodes,
@@ -963,6 +964,7 @@ int MPIDI_CH3I_SMP_pull_header(MPIDI_VC_t * vc,
         current_bytes[vc->smp.local_nodes] = 0;
     }
 
+    READBAR();  
     if (SMPI_TOTALIN(vc->smp.local_nodes, smpi.my_local_id) !=
         SMPI_TOTALOUT(vc->smp.local_nodes, smpi.my_local_id)) {
         DEBUG_PRINT("remote %d, local %d, total in %d, total out %d\n",
@@ -975,6 +977,7 @@ int MPIDI_CH3I_SMP_pull_header(MPIDI_VC_t * vc,
                                                                   local_nodes,
                                                                   smpi.
                                                                   my_local_id));
+        READBAR();
         total_bytes[vc->smp.local_nodes] =
             *((int *) current_ptr[vc->smp.local_nodes]);
         *pkt_head =
