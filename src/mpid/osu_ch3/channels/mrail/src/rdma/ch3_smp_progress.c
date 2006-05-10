@@ -156,12 +156,15 @@ static inline int get_host_id(char *myhostname, int hostname_len)
 static inline int smpi_get_avail_length(int dest)
 {
     int avail;
+    WRITEBAR();
     if (SMPI_TOTALIN(smpi.my_local_id, dest) >=
         SMPI_TOTALOUT(smpi.my_local_id, dest)) {
+        WRITEBAR();
         avail = (smpi.available_queue_length -
                  (SMPI_TOTALIN(smpi.my_local_id, dest) -
                   SMPI_TOTALOUT(smpi.my_local_id, dest)));
     } else {
+        WRITEBAR();
         avail = smpi.available_queue_length -
             (SMPI_MAX_INT - SMPI_TOTALOUT(smpi.my_local_id, dest) +
              SMPI_TOTALIN(smpi.my_local_id, dest));
@@ -799,6 +802,7 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
          current_bytes[recv_vc_ptr->smp.local_nodes],
          total_bytes[recv_vc_ptr->smp.local_nodes], iovlen,
          iov[0].MPID_IOV_LEN);
+    WRITEBAR();
     if (current_ptr[recv_vc_ptr->smp.local_nodes] != NULL) {
         /** last smp packet has not been drained up yet **/
         DEBUG_PRINT("iov_off %d, current bytes %d, iov len %d\n",
@@ -809,9 +813,11 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
              && current_bytes[recv_vc_ptr->smp.local_nodes] > 0;) {
             if (current_bytes[recv_vc_ptr->smp.local_nodes] >=
                 iov[iov_off].MPID_IOV_LEN) {
+                READBAR(); 
                 memcpy((void *) iov[iov_off].MPID_IOV_BUF,
                        (void *) current_ptr[recv_vc_ptr->smp.local_nodes],
                        iov[iov_off].MPID_IOV_LEN);
+                READBAR();
                 current_ptr[recv_vc_ptr->smp.local_nodes] =
                     (void *) ((unsigned long)
                               current_ptr[recv_vc_ptr->smp.local_nodes] +
@@ -821,9 +827,11 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
                 received_bytes += iov[iov_off].MPID_IOV_LEN;
                 iov_off++;
             } else if (current_bytes[recv_vc_ptr->smp.local_nodes] > 0) {
+                READBAR();
                 memcpy((void *) iov[iov_off].MPID_IOV_BUF,
                        (void *) current_ptr[recv_vc_ptr->smp.local_nodes],
                        current_bytes[recv_vc_ptr->smp.local_nodes]);
+                READBAR();
                 current_ptr[recv_vc_ptr->smp.local_nodes] =
                     (void *) ((unsigned long)
                               current_ptr[recv_vc_ptr->smp.local_nodes] +
@@ -841,6 +849,7 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
              iov_off, iovlen);
 
         if (0 == current_bytes[recv_vc_ptr->smp.local_nodes]) {
+            READBAR();
             current_ptr[recv_vc_ptr->smp.local_nodes] = NULL;
             DEBUG_PRINT("total in %d, total out %d\n",
                         SMPI_TOTALIN(recv_vc_ptr->smp.local_nodes,
@@ -868,17 +877,21 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
         }
     }
 
+    WRITEBAR();
     while (SMPI_TOTALIN(recv_vc_ptr->smp.local_nodes, smpi.my_local_id) !=
            SMPI_TOTALOUT(recv_vc_ptr->smp.local_nodes, smpi.my_local_id)) {
         /****** received the next smp packet **************/
+        READBAR();
         current_ptr[recv_vc_ptr->smp.local_nodes] =
             (void *) ((&smpi_shmem->pool) +
                       SMPI_CURRENT(recv_vc_ptr->smp.local_nodes,
                                    smpi.my_local_id));
+        WRITEBAR();
         total_bytes[recv_vc_ptr->smp.local_nodes] =
             *((int *) current_ptr[recv_vc_ptr->smp.local_nodes]);
         current_bytes[recv_vc_ptr->smp.local_nodes] =
             total_bytes[recv_vc_ptr->smp.local_nodes];
+        READBAR();
         current_ptr[recv_vc_ptr->smp.local_nodes] =
             (void *) ((unsigned long)
                       current_ptr[recv_vc_ptr->smp.local_nodes] +
@@ -890,12 +903,14 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
              && current_bytes[recv_vc_ptr->smp.local_nodes] > 0;) {
             if (current_bytes[recv_vc_ptr->smp.local_nodes] >=
                 iov[iov_off].MPID_IOV_LEN - buf_off) {
+                WRITEBAR();
                 memcpy((void *) ((unsigned long) iov[iov_off].
                                  MPID_IOV_BUF + buf_off),
                        (void *) current_ptr[recv_vc_ptr->smp.local_nodes],
                        iov[iov_off].MPID_IOV_LEN - buf_off);
                 current_bytes[recv_vc_ptr->smp.local_nodes] -=
                     (iov[iov_off].MPID_IOV_LEN - buf_off);
+                READBAR();
                 current_ptr[recv_vc_ptr->smp.local_nodes] =
                     (void *) ((unsigned long)
                               current_ptr[recv_vc_ptr->smp.local_nodes] +
@@ -904,10 +919,12 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
                 iov_off++;
                 buf_off = 0;
             } else if (current_bytes[recv_vc_ptr->smp.local_nodes] > 0) {
+                WRITEBAR();
                 memcpy((void *) ((unsigned long) iov[iov_off].
                                  MPID_IOV_BUF + buf_off),
                        (void *) current_ptr[recv_vc_ptr->smp.local_nodes],
                        current_bytes[recv_vc_ptr->smp.local_nodes]);
+                READBAR();
                 current_ptr[recv_vc_ptr->smp.local_nodes] =
                     (void *) ((unsigned long)
                               current_ptr[recv_vc_ptr->smp.local_nodes] +
@@ -920,6 +937,7 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
         }
         *num_bytes_ptr += received_bytes;
         if (0 == current_bytes[recv_vc_ptr->smp.local_nodes]) {
+            READBAR();
             current_ptr[recv_vc_ptr->smp.local_nodes] = NULL;
             smpi_complete_recv(recv_vc_ptr->smp.local_nodes,
                                smpi.my_local_id,
@@ -931,6 +949,7 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
         if (iov_off == iovlen) {
             goto fn_exit;
         }
+    WRITEBAR();
     }
   fn_exit:
     DEBUG_PRINT("return with nb %d\n", *num_bytes_ptr);
@@ -944,8 +963,6 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
 int MPIDI_CH3I_SMP_pull_header(MPIDI_VC_t * vc,
                                MPIDI_CH3_Pkt_t ** pkt_head)
 {
-    READBAR();
-
     /*assert(vc->smp.local_nodes != smpi.my_local_id);*/
     if (current_bytes[vc->smp.local_nodes] != 0) {
         fprintf(stderr, "current bytes %d, total bytes %d, remote id %d\n",
@@ -954,8 +971,8 @@ int MPIDI_CH3I_SMP_pull_header(MPIDI_VC_t * vc,
         assert(current_bytes[vc->smp.local_nodes] == 0);
     }
 
-    READBAR();
     if (total_bytes[vc->smp.local_nodes] != 0) {
+        READBAR();
         current_ptr[vc->smp.local_nodes] = NULL;
         smpi_complete_recv(vc->smp.local_nodes,
                            smpi.my_local_id,
@@ -964,7 +981,7 @@ int MPIDI_CH3I_SMP_pull_header(MPIDI_VC_t * vc,
         current_bytes[vc->smp.local_nodes] = 0;
     }
 
-    READBAR();  
+    WRITEBAR();
     if (SMPI_TOTALIN(vc->smp.local_nodes, smpi.my_local_id) !=
         SMPI_TOTALOUT(vc->smp.local_nodes, smpi.my_local_id)) {
         DEBUG_PRINT("remote %d, local %d, total in %d, total out %d\n",
@@ -972,14 +989,16 @@ int MPIDI_CH3I_SMP_pull_header(MPIDI_VC_t * vc,
                     SMPI_TOTALIN(vc->smp.local_nodes, smpi.my_local_id),
                     SMPI_TOTALOUT(vc->smp.local_nodes, smpi.my_local_id));
 
+        READBAR();
         current_ptr[vc->smp.local_nodes] = (void *) ((&smpi_shmem->pool) +
                                                      SMPI_CURRENT(vc->smp.
                                                                   local_nodes,
                                                                   smpi.
                                                                   my_local_id));
-        READBAR();
+        WRITEBAR();
         total_bytes[vc->smp.local_nodes] =
             *((int *) current_ptr[vc->smp.local_nodes]);
+        WRITEBAR();
         *pkt_head =
             (void *) ((unsigned long) current_ptr[vc->smp.local_nodes] +
                       sizeof(int));
@@ -990,6 +1009,7 @@ int MPIDI_CH3I_SMP_pull_header(MPIDI_VC_t * vc,
         current_bytes[vc->smp.local_nodes] =
             total_bytes[vc->smp.local_nodes] -
             MPIDI_CH3U_PKT_SIZE(*pkt_head);
+        READBAR();
         current_ptr[vc->smp.local_nodes] =
             (void *) ((unsigned long) current_ptr[vc->smp.local_nodes] +
                       sizeof(int) + MPIDI_CH3U_PKT_SIZE(*pkt_head));
