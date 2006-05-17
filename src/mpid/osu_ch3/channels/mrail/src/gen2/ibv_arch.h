@@ -84,6 +84,10 @@
 #error Only one of MAC_OSX  and _EM64T_ can be defined
 #endif
 
+#if defined(_PPC64_) && defined(USE_MPD_RING)
+#error MPD RING based startup is not supported on PPC64
+#endif
+
 #if defined(MAC_OSX) && defined(_IA32_)
 #error Only one of _IA32_ and MAC_OSX can be defined
 #endif
