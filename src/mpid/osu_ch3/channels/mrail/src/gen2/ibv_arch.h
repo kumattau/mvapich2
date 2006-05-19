@@ -88,6 +88,10 @@
 #error MPD RING based startup is not supported on PPC64
 #endif
 
+#if defined(_PPC64_) && defined (ONE_SIDED)
+#error Direct One Sided is not supported for PPC64
+#endif
+
 #if defined(MAC_OSX) && defined(_IA32_)
 #error Only one of _IA32_ and MAC_OSX can be defined
 #endif
