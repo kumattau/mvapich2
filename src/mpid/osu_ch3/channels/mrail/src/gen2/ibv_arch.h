@@ -84,14 +84,6 @@
 #error Only one of MAC_OSX  and _EM64T_ can be defined
 #endif
 
-#if defined(_PPC64_) && defined(USE_MPD_RING)
-#error MPD RING based startup is not supported on PPC64
-#endif
-
-#if defined(_PPC64_) && defined (ONE_SIDED)
-#error Direct One Sided is not supported for PPC64
-#endif
-
 #if defined(MAC_OSX) && defined(_IA32_)
 #error Only one of _IA32_ and MAC_OSX can be defined
 #endif
@@ -120,6 +112,13 @@ typedef unsigned long aint_t;
 #else
 
 #error Either _IA32_ or _IA64_ or _X86_64_ or _EM64T_ or MAC_OSX or _PPC64_ must be defined.
+#endif
+
+#ifdef _PPC64_
+
+#undef USE_MPD_RING
+#undef ONE_SIDED
+
 #endif
 
 #endif                          /* _VIA64_H */

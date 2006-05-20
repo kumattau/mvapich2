@@ -40,6 +40,8 @@ do {                                                          \
 #define DEBUG_PRINT(args...)
 #endif
 
+#ifdef ONE_SIDED
+
 extern int number_of_op;
 
 static int Decrease_CC(MPID_Win *, int);
@@ -1138,5 +1140,7 @@ int IBA_GET(MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr, int size)
 
     return mpi_errno;
 }
+
+#endif
 
 #endif
