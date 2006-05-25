@@ -80,7 +80,11 @@ extern long rdma_eagersize_1sc;
 #define UDAPL_INITIAL_PREPOST_DEPTH      (10)
 #define UDAPL_LOW_WQE_THRESHOLD          (10)
 #define UDAPL_MAX_RDMA_SIZE            (1048576)
+
+#ifndef DAPL_DEFAULT_PROVIDER
 #define DAPL_DEFAULT_PROVIDER           "ib0"
+#endif
+
 #define DAPL_DEFAULT_MIN_EVD_SIZE            (256)
 #define DAPL_DEFAULT_MAX_RDMA_IN        (4)
 #define DAPL_DEFAULT_MAX_RDMA_OUT       (4)

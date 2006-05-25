@@ -55,6 +55,15 @@ if [ -z "$LINKS" ]; then
     prompt_link
 fi
 
+# Default uDAPL provider interface.
+# Supported: the name of the default uDAPL provider interface.
+#            Suggested: ib0 for Linux, ibd0 for Solaris
+#
+DAPL_DEFAULT_PROVIDER=
+
+if [ -z "$DAPL_DEFAULT_PROVIDER" ]; then
+    prompt_udapl_provider
+fi
 
 # Whether or not to build with multi-thread support
 # Building with this option the MVAPICH2 will be thread-safe but it may suffer
@@ -97,7 +106,9 @@ export FFLAGS="-L${DAT_LIB}"
 export LD_LIBRARY_PATH="${DAT_LIB}:$LD_LIBRARY_PATH"
 export CFLAGS="-D${ARCH}  -D_SMP_ -DRDMA_FAST_PATH -DUSE_HEADER_CACHING \
         -DLAZY_MEM_UNREGISTER  -DONE_SIDED -DMPID_USE_SEQUENCE_NUMBERS \
-        -D${VCLUSTER} -D${IO_BUS} -D${LINKS} -I${DAT_INCLUDE} $OPT_FLAG"
+        -D${VCLUSTER} -D${IO_BUS} -D${LINKS} \
+        -DDAPL_DEFAULT_PROVIDER=\"\\\"$DAPL_DEFAULT_PROVIDER\\\"\" \
+        -I${DAT_INCLUDE}  $OPT_FLAG"
 
 # Prelogue
 make distclean &>/dev/null

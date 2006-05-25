@@ -172,3 +172,26 @@ prompt_link() {
 
     echo "Using $LINKS link speed."
 }
+
+prompt_udapl_provider() {
+    echo
+    echo "Default uDAPL provider interface not set in this script."
+
+    if [ "$ARCH" = "SOLARIS" ]; then
+	echo "The Solaris recommendation is ibd0."
+	REC_DAPL_PROVIDER=ibd0
+    else
+	echo "The Linux recommendation is ib0."
+	REC_DAPL_PROVIDER=ib0
+    fi
+
+    echo
+    echo -n "Please enter an interface name: [$REC_DAPL_PROVIDER] "
+    read DAPL_DEFAULT_PROVIDER
+
+    if [ -z "$DAPL_DEFAULT_PROVIDER" ]; then
+	DAPL_DEFAULT_PROVIDER=$REC_DAPL_PROVIDER
+    fi
+
+    echo "Using $DAPL_DEFAULT_PROVIDER as default uDAPL provider interface."
+}
