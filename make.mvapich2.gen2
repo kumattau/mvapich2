@@ -8,6 +8,7 @@ arch
 # Mandatory variables.  All are checked except CXX and F90.
 export OPEN_IB_HOME=/usr/local
 PREFIX=/usr/local/mvapich2
+
 export CC=gcc
 export CXX=g++
 export F77=g77
@@ -46,11 +47,8 @@ fi
 # Whether to use an optimized queue pair exchange scheme.  This is not
 # checked for a setting in in the script.  It must be set here explicitly.
 # Supported: "-DUSE_MPD_RING" and "" (to disable)
-if [ $ARCH = "_PPC64_" ]; then
-	HAVE_MPD_RING=""
-else
-	HAVE_MPD_RING="-DUSE_MPD_RING"
-fi
+HAVE_MPD_RING="-DUSE_MPD_RING"
+
 # Set this to override automatic optimization setting (-03).
 OPT_FLAG=
 
@@ -69,7 +67,7 @@ if [ ! -z $MULTI_THREAD ]; then
 	MULTI_THREAD="--enable-threads=multiple"
 fi
 
-export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
+
 export LIBS="-L${OPEN_IB_LIB} -libverbs -lpthread $SUPPRESS"
 export FFLAGS="-L${OPEN_IB_LIB}"
 export CFLAGS="-D${ARCH} -DUSE_INLINE -DRDMA_FAST_PATH -D_SMP_ \
