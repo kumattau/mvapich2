@@ -1,0 +1,12 @@
+MVAPICH2 Changelog
+------------------
+
+This file briefly describes the latest changes to the MVAPICH2 software
+package.  The logs are arranged in the "most recent first" order.
+
+05/25/2006
+
+* Added uDAPL build script functionality to set DAPL_DEFAULT_PROVIDER
+  explicitly with default suggestions.
+
+* Thanks to Harvey Richardson from Sun for suggesting this feature.
