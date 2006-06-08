@@ -155,26 +155,6 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
         if (vc_ptr == NULL) {
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
             MPID_Thread_mutex_unlock(&MPIR_Process.global_mutex);
-#endif
-            if (spin_count >= MPIDI_Process.my_pg->ch.nRDMAWaitSpinCount) {
-#ifdef USE_SLEEP_YIELD
-                if (spin_count >=
-                    MPIDI_Process.my_pg->ch.nRDMAWaitYieldCount) {
-                    MPIDI_FUNC_ENTER(MPID_STATE_MPIDU_SLEEP_YIELD);
-                    MPIDU_Sleep_yield();
-                    MPIDI_FUNC_EXIT(MPID_STATE_MPIDU_SLEEP_YIELD);
-                } else {
-                    MPIDI_FUNC_ENTER(MPID_STATE_MPIDU_YIELD);
-                    MPIDU_Yield();
-                    MPIDI_FUNC_EXIT(MPID_STATE_MPIDU_YIELD);
-                }
-#else
-                MPIDI_FUNC_ENTER(MPID_STATE_MPIDU_YIELD);
-                MPIDU_Yield();
-                MPIDI_FUNC_EXIT(MPID_STATE_MPIDU_YIELD);
-#endif
-            }
-#if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
             MPID_Thread_mutex_lock(&MPIR_Process.global_mutex);
 #endif
             spin_count++;
