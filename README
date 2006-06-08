@@ -14,6 +14,11 @@ Respective copyright information can be obtained from
 COPYRIGHT_MVAPICH2 and COPYRIGHT files in this directory and
 COPYRIGHT_MVICH file under the src/mpid/osu_ch3/channels/mrail/src/gen2.
 
+For details on installation and usage instructions, please refer to
+Sections 4 and 5 of the MVAPICH2 user guide:
+
+http://nowlab.cse.ohio-state.edu/projects/mpi-iba/download-mvapich2/mvapich2_user_guide.html
+
 A set of micro-benchmarks (for both point-to-point and one sided) are
 also available under the osu_benchmarks directory.
 
