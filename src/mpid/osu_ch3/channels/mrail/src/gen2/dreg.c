@@ -71,7 +71,7 @@ do {                                                          \
 
 /* statistic */
 unsigned long dreg_stat_cache_hit, dreg_stat_cache_miss, dreg_stat_evicted;
-unsigned long pinned_pages_count;
+static unsigned long pinned_pages_count;
 
 struct dreg_entry *dreg_free_list;
 struct dreg_entry *dreg_unused_list;
@@ -534,6 +534,7 @@ void dreg_init()
     /* Setup original malloc hooks */
     SET_ORIGINAL_MALLOC_HOOKS;
 
+    pinned_pages_count = 0;
     vma_db_init ();
     dreg_free_list = (dreg_entry *)
         malloc(sizeof(dreg_entry) * rdma_ndreg_entries);
@@ -773,8 +774,7 @@ dreg_entry *dreg_new_entry(void *buf, int len)
 
     if ( rdma_dreg_cache_limit != 0 && 
 		  npages >= (int) rdma_dreg_cache_limit ) {
-    	ibv_error_abort(GEN_EXIT_ERR, "Requested more pages then permitted !! Register pages limit %lu, npages=%lu\n",
-                                      rdma_dreg_cache_limit, npages);
+	return NULL;
     }
 
     pagebase_low_p = (void *) pagebase_low_a;
