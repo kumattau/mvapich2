@@ -97,6 +97,9 @@ typedef struct MPIDI_CH3I_SMP_VC
     struct MPID_Request * send_active;
     struct MPID_Request * recv_active;
     int local_nodes;
+#ifdef USE_MPD_RING
+    int hostid;
+#endif
 } MPIDI_CH3I_SMP_VC;
 #endif
 

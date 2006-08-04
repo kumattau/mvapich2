@@ -38,18 +38,52 @@ do {                                                          \
 #define DEBUG_PRINT(args...)
 #endif
 
-#ifdef ONE_SIDED
-#define QPLEN_XDR       (2*8+2*16+4)    /* 52-bytes */
-#else
-#define QPLEN_XDR       (8+2*16+3)      /* 43-bytes */
-#endif
-
-#define UNIT_QPLEN      (8)
 #define IBA_PMI_ATTRLEN (16)
 #define IBA_PMI_VALLEN  (4096)
 
 #ifdef ONE_SIDED
 static uint32_t dst_qp;
+#endif
+
+#ifdef USE_MPD_RING
+
+
+#define MPD_WINDOW 10
+#define ADDR_PKT_SIZE (sizeof(struct addr_packet) + ((pg_size - 1) * sizeof(struct host_addr_inf)))
+#define ADDR_INDEX(_p, _i) ((struct addr_packet *)(_p + (_i * ADDR_PKT_SIZE)))
+
+typedef struct init_addr_inf {
+    uint16_t    lid;
+    uint32_t    qp_num[2];
+} init_addr_inf;
+
+typedef struct host_addr_inf {
+    uint32_t    sr_qp_num; 
+#ifdef ONE_SIDED
+    uint32_t    osc_qp_num;
+#endif
+} host_addr_inf;
+
+typedef struct addr_packet {
+    int         rank;
+    int         host_id;
+    int         lid;
+    int         rail;
+    struct host_addr_inf val[1];
+} addr_packet;
+
+typedef struct ring_packet {
+    int     type;
+    int     value;
+} ring_packet;
+
+
+static void MPI_Ring_Setup(struct init_addr_inf * neighbor_addr,
+              struct MPIDI_CH3I_RDMA_Process_t *proc);
+void 
+MPI_Ring_Exchange(struct ibv_mr * addr_hndl, void * addr_pool,
+        struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank, int pg_size);
+
 #endif
 
 static uint16_t get_local_lid(struct ibv_context * ctx, int port)
@@ -83,7 +117,6 @@ static inline int get_host_id(char *myhostname, int hostname_len)
 int rdma_iba_bootstrap_cleanup(struct MPIDI_CH3I_RDMA_Process_t *proc)
 {
     int ret;
-    /* Free all the temorary memory used for MPD_RING */
     ret = ibv_dereg_mr(proc->boot_mem_hndl);
     free(proc->boot_mem);
 
@@ -98,445 +131,6 @@ int rdma_iba_bootstrap_cleanup(struct MPIDI_CH3I_RDMA_Process_t *proc)
     return ret;
 }
 
-/* A ring-based barrier: process 0 initiates two tokens 
- * going clockwise and counter-clockwise, respectively.
- * The return of these two tokens completes the barrier.
- */
-
-int bootstrap_barrier(struct MPIDI_CH3I_RDMA_Process_t *proc,
-                      int pg_rank, int pg_size)
-{
-    /* work entries related variables */
-    struct ibv_send_wr sr;
-    struct ibv_sge sg_entry_s;
-    struct ibv_send_wr *bad_wr_s;
-
-    /* completion related variables */
-    struct ibv_cq * cq_hndl;
-    struct ibv_wc rc;
-
-    /* Memory related variables */
-    struct ibv_mr *mem_handle;
-
-    char *send_addr;
-    char *send_base_addr;
-
-    int barrier_recvd = 0;
-    int ne, i, offset;
-    int send_comp = 0;
-
-    if (pg_size == 1) 
-	    return 0;
-
-    send_base_addr = (char *) proc->boot_mem + 2;
-    mem_handle = proc->boot_mem_hndl;
-
-    /* make sure there are no conflicts in ids */
-    offset = pg_rank + 2 + 
-             (NUM_BOOTSTRAP_BARRIERS * 2) + (pg_rank % 2);
-
-    sr.opcode       = IBV_WR_SEND;
-    sr.send_flags   = IBV_SEND_SIGNALED;
-    sr.num_sge      = 1;
-    sr.sg_list      = &sg_entry_s;
-    sr.next         = NULL;
-    sg_entry_s.lkey = mem_handle->lkey;
-    cq_hndl         = proc->boot_cq_hndl;
-
-    if (pg_rank == 0) {
-        /* send_lhs(); send_rhs(); recv_lhs(); recv_rhs(); */
-
-        /* post sends */
-
-        for (i = 0; i < 2; i++) {
-            DEBUG_PRINT("Post send to %d\n", i);
-            send_addr = send_base_addr + i;
-            sr.wr_id = offset + i;
-            sg_entry_s.length = 1;
-            sg_entry_s.addr = (uintptr_t) send_addr;
-
-            if (ibv_post_send(proc->boot_qp_hndl[i], &sr, &bad_wr_s)) {
-                DEBUG_PRINT("Posting send had an error\n");
-                ibv_error_abort(IBV_STATUS_ERR,
-                        "Error posting send!\n");
-            }
-        }
-
-        while (barrier_recvd < 2 || send_comp < 2) {
-
-            ne = ibv_poll_cq(cq_hndl, 1, &rc);
-            if (ne < 0) {
-                 ibv_error_abort(IBV_STATUS_ERR, "Poll CQ failed!\n");
-            } else if (ne > 1) {
-                 ibv_error_abort(IBV_STATUS_ERR, "Got more than one\n");
-            } else if (ne == 1) {
-                if (rc.status != IBV_WC_SUCCESS) {
-                        DEBUG_PRINT("status was not success in poll\n");
-                       ibv_error_abort(IBV_STATUS_ERR,
-                               " Error code in polled desc!\n")
-                }
-                /* Make sure it is a recv completion */
-                else if (rc.opcode == IBV_WC_RECV) {
-                    DEBUG_PRINT("(S) Received msg, id: %d\n", (int) rc.wr_id);
-                    barrier_recvd++;
-                }
-                else if (rc.opcode == IBV_WC_SEND) {
-                    DEBUG_PRINT("(S) Send completed for id: %d\n", (int) rc.wr_id);
-                    send_comp++;
-                } else {
-                    DEBUG_PRINT("(S) Got something unxepected\n");
-                }
-
-            }
-        }  /* end of while loop */
-    } else {
-        /* recv_lhs(); send_rhs(); recv_rhs(); send_lhs(); */
-
-        while (barrier_recvd < 2 || send_comp < 2) {
-            ne = ibv_poll_cq(cq_hndl, 1, &rc);
-            if (ne < 0) {
-                ibv_error_abort(IBV_STATUS_ERR, "Poll CQ failed!\n");
-            } else if (ne > 1) {
-                ibv_error_abort(IBV_STATUS_ERR, "Got more than one\n");
-            } else if (ne == 1) {
-
-                if (rc.status != IBV_WC_SUCCESS) {
-                    ibv_error_abort(IBV_STATUS_ERR,
-                            "Error code in polled desc!\n");
-                }
-                /* Make sure it is a recv completion */
-                else if (rc.opcode == IBV_WC_RECV) {
-                    DEBUG_PRINT("(R) Received msg, id: %d\n", (int) rc.wr_id);
-                    barrier_recvd++;
-
-                    send_addr = send_base_addr + (rc.wr_id % 2);
-                    sr.wr_id          = offset + (rc.wr_id % 2);
-                    sr.next           = NULL;
-                    sg_entry_s.length = 1;
-                    sg_entry_s.addr = (uintptr_t) send_addr;
-
-                    if (ibv_post_send(proc->boot_qp_hndl[((int) rc.wr_id + 1) % 2],
-                                &sr, &bad_wr_s)) {
-                       ibv_error_abort(IBV_STATUS_ERR, 
-                                "Error posting send!\n");
-                    }
-
-                    DEBUG_PRINT("(R) Sent to qp id: %d\n", (int) rc.wr_id);
-                } /* end else if */
-                else if (rc.opcode == IBV_WC_SEND) {
-                    DEBUG_PRINT("(R) Send completed for id: %d\n", (int) rc.wr_id);
-                    send_comp++;
-                } else {
-                    DEBUG_PRINT("(R) Got something unexpected \n");
-                }
-            }     /* end else if (ne == 1)                  */
-        }         /* end while                              */
-    }             /* end else                               */
-
-    DEBUG_PRINT("Done with bootstrap barrier\n");
-    return (0);
-}
-
-/* Set up a ring of qp's, here a separate bootstrap channel is used.*/
-static void ibv_enable_ring(int lhs, int rhs, char *ring_addr)
-{
-    struct ibv_qp_init_attr attr;
-    struct ibv_qp_attr      qp_attr;
-
-    uint32_t    qp_attr_mask = 0;
-    int         i;
-    int         ret;
-    char        temp_str[UNIT_QPLEN + 1];
-    char        *temp_ptr;
-
-    MPIDI_CH3I_RDMA_Process_t *proc;
-
-    proc = &MPIDI_CH3I_RDMA_Process;
-    temp_str[UNIT_QPLEN] = '\0';
-
-    for (i = 0; i < 2; i++) {
-        /* hca_lid + lhs_qp + rhs_qp */
-        temp_ptr = ring_addr + i * (UNIT_QPLEN * 3);
-        strncpy(temp_str, temp_ptr, UNIT_QPLEN);
-        proc->boot_tb[i][0] = strtol(temp_str, NULL, 16);
-        DEBUG_PRINT("Got hca_lid %s num %08X\n",
-                    temp_str, proc->boot_tb[i][0]);
-
-        /* qp # to me usually on rhs unless I am at the beginning */
-        temp_ptr += UNIT_QPLEN * (2 - i);
-        strncpy(temp_str, temp_ptr, UNIT_QPLEN);
-        proc->boot_tb[i][1] = strtol(temp_str, NULL, 16);
-        DEBUG_PRINT("Got queue_pair %s num %08X\n",
-                    temp_str, proc->boot_tb[i][1]);
-    }
-
-
-    qp_attr.qp_state        = IBV_QPS_INIT;
-    qp_attr.pkey_index      = 0;
-    qp_attr.qp_access_flags = IBV_ACCESS_LOCAL_WRITE 
-	                            | IBV_ACCESS_REMOTE_WRITE 
-	                            | IBV_ACCESS_REMOTE_READ;
-    qp_attr.port_num        = rdma_default_port;
- 
-    ret = ibv_modify_qp(proc->boot_qp_hndl[0],&qp_attr,(IBV_QP_STATE
-                        | IBV_QP_PKEY_INDEX 
-                        | IBV_QP_PORT               
-                        | IBV_QP_ACCESS_FLAGS));
-    CHECK_RETURN(ret, "Could not modify boot qp to INIT");
-
-    ret = ibv_modify_qp(proc->boot_qp_hndl[1],&qp_attr,(IBV_QP_STATE
-                        | IBV_QP_PKEY_INDEX
-                        | IBV_QP_PORT
-                        | IBV_QP_ACCESS_FLAGS));
-    CHECK_RETURN(ret, "Could not modify boot qp to INIT");
-
-    /**********************  INIT --> RTR  ************************/
-    memset(&qp_attr, 0, sizeof qp_attr);
-    qp_attr.qp_state    =   IBV_QPS_RTR;
-    qp_attr.path_mtu    =   rdma_default_mtu;
-    qp_attr.rq_psn      =   rdma_default_psn;
-    qp_attr.max_dest_rd_atomic  =   rdma_default_max_rdma_dst_ops;
-    qp_attr.min_rnr_timer       =   rdma_default_min_rnr_timer;
-    qp_attr.ah_attr.is_global   =   0;
-    qp_attr.ah_attr.sl          =   rdma_default_service_level;
-    qp_attr.ah_attr.static_rate =   rdma_default_static_rate;
-    qp_attr.ah_attr.src_path_bits   =   rdma_default_src_path_bits;
-    qp_attr.ah_attr.port_num    =   rdma_default_port;
-
-    qp_attr_mask        |=  IBV_QP_STATE;
-    qp_attr_mask        |=  IBV_QP_PATH_MTU;
-    qp_attr_mask        |=  IBV_QP_RQ_PSN;
-    qp_attr_mask        |=  IBV_QP_MAX_DEST_RD_ATOMIC;
-    qp_attr_mask        |=  IBV_QP_MIN_RNR_TIMER;
-    qp_attr_mask        |=  IBV_QP_AV;
-
-    /* lhs */
-    for (i = 0; i < 2; i++) {
-        qp_attr.dest_qp_num     = proc->boot_tb[i][1];
-        qp_attr.ah_attr.dlid    = proc->boot_tb[i][0];
-        qp_attr_mask            |=  IBV_QP_DEST_QPN;
-
-        DEBUG_PRINT("Remote LID[%d] QP=%x, original LID %d qp=%x\n",
-                    qp_attr.ah_attr.dlid, qp_attr.dest_qp_num,
-        		    proc->boot_tb[i][0], proc->boot_tb[i][1]);
-
-        ret = ibv_modify_qp(proc->boot_qp_hndl[i],&qp_attr, qp_attr_mask);
-        CHECK_RETURN(ret, "Could not modify boot qp to RTR");
-
-        DEBUG_PRINT("local QP=%x\n", proc->boot_qp_hndl[i]->qp_num);
-    }
-
-    /************** RTS *******************/
-
-    memset(&qp_attr, 0, sizeof qp_attr);
-    qp_attr.qp_state        = IBV_QPS_RTS;
-    qp_attr.sq_psn          = rdma_default_psn;
-    qp_attr.timeout         = rdma_default_time_out;
-    qp_attr.retry_cnt       = rdma_default_retry_count;
-    qp_attr.rnr_retry       = rdma_default_rnr_retry;
-    qp_attr.max_rd_atomic   = rdma_default_qp_ous_rd_atom;
-
-    qp_attr_mask = 0;
-    qp_attr_mask =    IBV_QP_STATE              |
-                      IBV_QP_TIMEOUT            |
-                      IBV_QP_RETRY_CNT          |
-                      IBV_QP_RNR_RETRY          |
-                      IBV_QP_SQ_PSN             |
-                      IBV_QP_MAX_QP_RD_ATOMIC;
-
-    ret = ibv_modify_qp(proc->boot_qp_hndl[0],&qp_attr,qp_attr_mask);
-	CHECK_RETURN(ret, "Could not modify boot qp to RTS");
-    ret = ibv_modify_qp(proc->boot_qp_hndl[1],&qp_attr,qp_attr_mask);
-	CHECK_RETURN(ret, "Could not modify boot qp to RTS");
-
-    DEBUG_PRINT("Modified to RTS..Qp\n");
-}
-
-/* Using a ring of queue pairs to exchange all the queue_pairs,
- * If mpd is used,  only info about lhs and rsh are provided. */
-static void ibv_bootstrap_ring(int lhs, int rhs,
-                                   char *ring_addr,
-                                   int pg_rank, int pg_size,
-                                   char *local_addr,
-                                   char *alladdrs,
-                                   struct ibv_mr *mem_handle)
-{
-    int i, j, ret;
-    int recv_index;
-    int send_comp, recv_comp;
-
-    /* Now enable the queue pairs and post descriptors */
-    ibv_enable_ring(lhs, rhs, ring_addr);
-
-    /* Register alladdrs and post receive descriptors */
-    {
-        /* work entries related variables */
-        struct ibv_send_wr sr;
-        struct ibv_send_wr *bad_sr;
-        struct ibv_recv_wr rr;
-        struct ibv_recv_wr *bad_rr;
-        struct ibv_sge sg_entry_s; 
-        struct ibv_sge sg_entry_r; 
-        void * base_addr;        
-
-        /* completion related variables */
-        struct ibv_cq * cq_hndl;
-        struct ibv_wc rc, sc;
-
-        /* Memory related variables */
-        int unit_length;
-        char *dest_loc;
-        char *recv_addr;
-        char *send_addr;
-        unsigned long register_nbytes;
-        char *recv_base_addr;
-        char *recv_addr_tmp;
-
-        struct MPIDI_CH3I_RDMA_Process_t *proc;
-        proc = &MPIDI_CH3I_RDMA_Process;
-
-        /* Same as local_addr_len; memory is already regitered */
-        unit_length = pg_size * QPLEN_XDR;
-
-        /* Copy local_addr to the correct slot in alladdrs
-         * and  post receive descriptors for all_addr */
-        dest_loc = alladdrs + pg_rank * unit_length;
-        strncpy(dest_loc, local_addr, unit_length);
-
-        recv_index = 0;
-
-        /* for the bootstrap barrier */
-        recv_base_addr = (char *) proc->boot_mem;
-
-        DEBUG_PRINT("about to call post receive\n");
-
-        /* Post receive for all_addr */
-        for (j = 0; j < pg_size - 1; j++) {
-            if ((j + 1) < pg_size) {
-                recv_addr = alladdrs + unit_length *
-                    ((pg_rank + pg_size - j - 1) % pg_size);
-            } else if (j < pg_size) {
-                recv_addr = alladdrs + unit_length * pg_rank;
-            } else {
-                recv_addr = alladdrs + unit_length * pg_rank + QPLEN_XDR;
-            }
-
-            /* Fillup a recv descriptor */
-            rr.wr_id    = j;
-            rr.num_sge  = 1;
-            rr.sg_list  = &(sg_entry_r);
-            rr.next     = NULL;
-            sg_entry_r.lkey = mem_handle->lkey;
-            sg_entry_r.addr = (uintptr_t)recv_addr;
-
-            if ((j + 1) >= pg_size)
-                sg_entry_r.length = (j + 2 - pg_size) * QPLEN_XDR;
-            else
-                sg_entry_r.length = unit_length;
-
-            if (j < pg_size) {
-                ret = ibv_post_recv(proc->boot_qp_hndl[0], &rr, &bad_rr);
-                CHECK_RETURN(ret, "post recv error");
-            } else {
-                ret = ibv_post_recv(proc->boot_qp_hndl[1], &rr, &bad_rr);
-                CHECK_RETURN(ret, "post recv error");
-            }
-          
-            if(ret){
-                ibv_error_abort(-1, "");
-            } 
-        }
-
-        /* Post the recvs for the bootstrap barriers */
-
-        for (i = 0; i < 2 * NUM_BOOTSTRAP_BARRIERS; i++) {
-            DEBUG_PRINT("Post recv from %d\n", i);
-            recv_addr_tmp   = recv_base_addr + (i % 2);
-            rr.wr_id        = pg_size + i + (pg_size % 2);
-            rr.num_sge      = 1;    
-            rr.sg_list      = &(sg_entry_r);
-            rr.next         = NULL; 
-            sg_entry_r.lkey = mem_handle->lkey;
-            sg_entry_r.addr = (uintptr_t) recv_addr_tmp;
-            sg_entry_r.length = 1;
-
-            if(ibv_post_recv(proc->boot_qp_hndl[i % 2], &rr, &bad_rr)) {
-                ibv_error_abort(IBV_STATUS_ERR,
-                        "Error posting barrier recv!\n");
-            }       
-        }
-
-        /* synchronize all the processes */
-        ret = PMI_Barrier();
-
-        recv_index = 0;
-        recv_comp  = 0;
-        /* transfer all the addresses */
-        for (j = 0; j < pg_size - 1; j++) {
-            send_addr = alladdrs +
-                unit_length * ((pg_rank + pg_size - j) % pg_size);
-
-             /* send to rhs */
-            sr.opcode      = IBV_WR_SEND;
-            sr.send_flags  = IBV_SEND_SIGNALED;
-            sr.wr_id       = j+2*pg_size;
-            sr.num_sge     = 1;
-            sr.sg_list     = &sg_entry_s;
-            sr.next        = NULL;
-            sg_entry_s.addr    = (uintptr_t) send_addr;
-            sg_entry_s.length  = unit_length;
-            sg_entry_s.lkey    = mem_handle->lkey;
-
-            ret = ibv_post_send(proc->boot_qp_hndl[1], &sr, &bad_sr);
-            if(ret){
-                ibv_error_abort(-1, "");
-            } 
-            
-             /* recv from lhs */
-            cq_hndl = proc->boot_cq_hndl;
-            rc.wr_id    = -1;
-            send_comp   =-1;
-
-            DEBUG_PRINT("ABOUT TO CALL CQ POLL\n");
-            do {
-                ret = ibv_poll_cq(cq_hndl,1,&rc);
-                if (ret > 0){
-                    if(rc.status != IBV_WC_SUCCESS){
-                        ibv_error_abort(IBV_STATUS_ERR, "in bootstrap barr\n");
-                    }
-
-                    DEBUG_PRINT("SUCCESFUL POLL rc.opcode %d, rc.wr_id is %d\n",
-                           rc.opcode, rc.wr_id);
-
-                    if (rc.wr_id == (j + 2 * pg_size))
-                        send_comp = rc.wr_id;
-                    else
-                        recv_comp = rc.wr_id + 1;
-
-                    if(rc.opcode == IBV_WR_SEND && rc.status == IBV_WC_SUCCESS){ 
-                        if (rc.wr_id != recv_index) {
-                            fprintf(stderr, "unexpected message"__FILE__, __LINE__);  
-                            exit(1);
-                        }
-                        else{
-                            recv_index = rc.wr_id + 1;
-                        }
-                    }
-                }
-                else if (ret < 0)
-                {
-                    DEBUG_PRINT("ret is < 0\n");
-                }
-            } while(!(send_comp == (j+2*pg_size) && recv_comp > j));
-            DEBUG_PRINT("RETURNED FROM CQ POLL \n");
-        }
-    }
-    PMI_Barrier();
-}
-#endif
-
-
-#ifdef USE_MPD_RING
 /* Exchange address info with other processes in the job.
  * MPD provides the ability for processes within the job to
  * publish information which can then be querried by other
@@ -589,18 +183,12 @@ rdma_pmi_exchange_addresses(int pg_rank, int pg_size,
     ret = PMI_Barrier();
     CHECK_UNEXP((ret != 0), "PMI_Barrier error \n");
 
-#ifdef USE_MPD_RING
-
     lhs = (pg_rank + pg_size - 1) % pg_size;
     rhs = (pg_rank + 1) % pg_size;
 
     for (i = 0; i < 2; i++) {
         /* get lhs and rhs processes' data */
         j = (i == 0) ? lhs : rhs;
-#else
-    for (j = 0; j < pg_size; j++) {
-        /* get lhs and rhs processes' data */
-#endif
         /* Use the key to extract the value */
         memset(attr_buff, 0, IBA_PMI_ATTRLEN * sizeof(char));
         memset(val_buff, 0, IBA_PMI_VALLEN * sizeof(char));
@@ -631,13 +219,41 @@ rdma_pmi_exchange_addresses(int pg_rank, int pg_size,
 }
 #endif
 
+
+#ifdef SRQ
+static struct ibv_srq *create_srq(struct MPIDI_CH3I_RDMA_Process_t *proc,
+                                int hca_num)
+{
+    struct ibv_srq_init_attr srq_init_attr;
+    struct ibv_srq *srq_ptr = NULL;
+
+    memset(&srq_init_attr, 0, sizeof(srq_init_attr));
+
+    srq_init_attr.srq_context = proc->nic_context[hca_num];
+    srq_init_attr.attr.max_wr = viadev_srq_size;
+    srq_init_attr.attr.max_sge = 1;
+    /* The limit value should be ignored during SRQ create */
+    srq_init_attr.attr.srq_limit = viadev_srq_limit;
+
+    srq_ptr = ibv_create_srq(proc->ptag[hca_num], &srq_init_attr);
+
+    if (!srq_ptr) {
+        ibv_error_abort(IBV_RETURN_ERR, "Error creating SRQ\n");
+    }
+
+    return srq_ptr;
+}
+#endif
+
 int
 rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
-                  MPIDI_VC_t * vc, int pg_rank, int pg_size)
+                  int pg_rank, int pg_size)
 {
-    struct ibv_device       *ib_dev;
+    struct ibv_device       *ib_dev = NULL;
     struct ibv_qp_init_attr attr;
+#ifdef USE_MPD_RING
     struct ibv_qp_init_attr boot_attr;
+#endif
     struct ibv_qp_attr      qp_attr;
     struct ibv_port_attr    port_attr;
 #ifdef GEN2_OLD_DEVICE_LIST_VERB
@@ -645,18 +261,22 @@ rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
 #else
     struct ibv_device **dev_list;
 #endif
+    MPIDI_VC_t	*vc;
 
-    int i;
-    int hca_index = 0;
-    int qp_index = 0;
+    int i, j, k;
+    int hca_index  = 0;
+    int port_index = 0;
+    int rail_index = 0;
+    int ports[MAX_NUM_HCAS][MAX_NUM_PORTS];
+    int lids[MAX_NUM_HCAS][MAX_NUM_PORTS];
 
-    proc->num_hcas = 1;
 #ifdef GEN2_OLD_DEVICE_LIST_VERB
     dev_list = ibv_get_devices();
 #else
     dev_list = ibv_get_device_list(NULL);
 #endif
-    for (i = 0; i < proc->num_hcas; i++) {
+    /* step 1: open hca, create ptags  and create cqs */
+    for (i = 0; i < rdma_num_hcas; i++) {
 #ifdef GEN2_OLD_DEVICE_LIST_VERB
         dlist_start(dev_list);
         if (!rdma_iba_default_hca) {
@@ -675,42 +295,45 @@ rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
             }
         }
 #else 
-	if(!strncmp(rdma_iba_hca, RDMA_IBA_NULL_HCA, 32)) {
-        /* User hasn't specified any HCA name
-         * We will use the first available HCA */
-	    if(dev_list[0]) {
-		ib_dev = dev_list[0];
-	    }
-	} else {
-	    int j = 0;
+        if(!strncmp(rdma_iba_hca, RDMA_IBA_NULL_HCA, 32) || rdma_num_hcas > 1) {
+            /* User hasn't specified any HCA name
+             * We will use the first available HCA */
+            if(dev_list[i]) {
+                ib_dev = dev_list[i];
+            }
+        } else {
+            /* User specified a HCA, try to look for it */
+	    j = 0;
+            while(dev_list[j]) {
 
-	    /* User specified a HCA, try to look for it */
-	    while(dev_list[j]) {
-
-		if(!strncmp(ibv_get_device_name(dev_list[j]),
-                        rdma_iba_hca, 32)) {
-		    ib_dev = dev_list[j];
-		    break;
-		}
-		j++;
-	    }
-	}
+                if(!strncmp(ibv_get_device_name(dev_list[j]),
+                            rdma_iba_hca, 32)) {
+                    ib_dev = dev_list[j];
+                    break;
+                }
+                j++;
+            }
+        }
 
         if (!ib_dev) {
             fprintf(stderr, "No IB device found\n");
 	}
 #endif
+        /* Create the context for the HCA */
         proc->nic_context[i] = ibv_open_device(ib_dev);
         if (!proc->nic_context[i]) {
-            fprintf(stderr, "Fail to open HCA\n");
+            fprintf(stderr, "Fail to open HCA number %d\n", i);
             return -1;
         }
    
+        /* Allocate the protection domain for the HCA */
         proc->ptag[i] = ibv_alloc_pd(proc->nic_context[i]);
         if (!proc->ptag[i]) {
-            fprintf(stderr, "Fail to alloc pd\n");
+            fprintf(stderr, "Fail to alloc pd number %d\n", i);
             goto err;
         }
+        
+        /* Allocate the completion queue handle for the HCA */
         proc->cq_hndl[i] = ibv_create_cq(proc->nic_context[i],
                     rdma_default_max_cq_size, NULL, NULL, 0);
 
@@ -718,105 +341,140 @@ rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
             fprintf(stderr, "cannot create cq\n");
             goto err_pd;
         }
+#ifdef SRQ
+        proc->srq_hndl[i] = create_srq(proc, i);
+#endif
 
 #ifdef ONE_SIDED
-        proc->cq_hndl_1sc = ibv_create_cq(proc->nic_context[i],
+        proc->cq_hndl_1sc[i] = ibv_create_cq(proc->nic_context[i],
                             rdma_default_max_cq_size, NULL, NULL, 0);
-        if (!proc->cq_hndl_1sc) {
+        if (!proc->cq_hndl_1sc[i]) {
             fprintf(stderr, 
                      "cannot allocate CQ for one-sided communication\n");
             goto err_cq;
         }
 #endif
+	/* detecting active ports */
+	if (rdma_default_port < 0 || rdma_num_ports > 1) {
+	    k = 0;
+	    for (j = 1; j <= RDMA_DEFAULT_MAX_PORTS; j ++) {
+		if ((! ibv_query_port(MPIDI_CH3I_RDMA_Process.nic_context[i],
+					j, &port_attr)) &&
+			port_attr.state == IBV_PORT_ACTIVE &&
+			port_attr.lid) {
+		    lids[i][k]    = port_attr.lid;
+		    ports[i][k++] = j;
+		} 
+	    }
+	    if (k < rdma_num_ports) {
+		ibv_error_abort(IBV_STATUS_ERR, "Not enough port is in active state"
+				"needed active ports %d\n", rdma_num_ports);
+	    }
+	} else {
+	    if(ibv_query_port(MPIDI_CH3I_RDMA_Process.nic_context[i],
+				rdma_default_port, &port_attr)
+		|| (!port_attr.lid )
+		|| (port_attr.state != IBV_PORT_ACTIVE))
+	    {
+		ibv_error_abort(IBV_STATUS_ERR, "user specified port %d: fail to"
+						"query or not ACTIVE\n",
+						rdma_default_port);
+	    }
+	    ports[i][0] = rdma_default_port;
+	    lids[i][0]  = port_attr.lid;
+	}
     }
 
-    if (rdma_default_port < 0){
-        for (i = 1; i <= RDMA_DEFAULT_MAX_PORTS; i++) {
-            if ((! ibv_query_port(MPIDI_CH3I_RDMA_Process.nic_context[0],
-                                  i, &port_attr)) &&
-                    port_attr.state == IBV_PORT_ACTIVE &&
-                    port_attr.lid ) {
-                rdma_default_port = i;
-            }
-        }
-        if (rdma_default_port < 0) {
-            ibv_error_abort(IBV_STATUS_ERR, "No port is in active state,"
-                          "please check the IB setup\n");
-        }
-    } else {
-        if(ibv_query_port(MPIDI_CH3I_RDMA_Process.nic_context[0],
-                          rdma_default_port, &port_attr) 
-            || (!port_attr.lid ) 
-            || (port_attr.state != IBV_PORT_ACTIVE)
-            ) {
-             ibv_error_abort(IBV_STATUS_ERR, "user specified port %d: fail to"
-                                             "query or not ACTIVE\n", 
-                                             rdma_default_port);
-        }
-    }
-
-
+    rdma_default_port 	    = ports[0][0];
+    /* step 2: create qps for all vc */
     qp_attr.qp_state        = IBV_QPS_INIT;
     qp_attr.pkey_index      = 0;
-    qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE;
+    qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE 
+                                    | IBV_ACCESS_LOCAL_WRITE;
 
     for (i = 0; i < pg_size; i++) {
+        MPIDI_PG_Get_vc(cached_pg, i, &vc);
+
+        vc->mrail.num_rails = rdma_num_rails;
+        vc->mrail.rails = malloc(sizeof *vc->mrail.rails * vc->mrail.num_rails);
+        if (!vc->mrail.rails) {
+            fprintf(stderr, "[INIT] Fail to allocate resources for multirails\n");
+            goto err_cq;
+        }
+
+	vc->mrail.srp.credits = malloc(sizeof *vc->mrail.srp.credits * vc->mrail.num_rails);
+	if (!vc->mrail.srp.credits) {
+	    fprintf(stderr, "[INIT] Fail to allocate resources for credits array\n");
+	    goto err_cq;
+	}
+
         if (i == pg_rank)
             continue;
 
-        MPIDI_PG_Get_vc(cached_pg, i, &vc);
+	for (   rail_index = 0; 
+        	rail_index < vc->mrail.num_rails;
+        	rail_index++) 
+	{
+            hca_index  = rail_index / (vc->mrail.num_rails / rdma_num_hcas);
+	    port_index = (rail_index / (vc->mrail.num_rails / (rdma_num_hcas *
+                    rdma_num_ports))) % rdma_num_ports;
+	    memset(&attr, 0, sizeof attr);
+	    attr.cap.max_send_wr = rdma_default_max_wqe;
+#ifdef SRQ
+        attr.cap.max_recv_wr = 0;
+        attr.srq = proc->srq_hndl[hca_index];
+#else
+        attr.cap.max_recv_wr = rdma_default_max_wqe;
+#endif
+	    attr.cap.max_send_sge = rdma_default_max_sg_list;
+	    attr.cap.max_recv_sge = rdma_default_max_sg_list;
+	    attr.cap.max_inline_data = RDMA_MAX_INLINE_SIZE;
+	    attr.send_cq = proc->cq_hndl[hca_index];
+	    attr.recv_cq = proc->cq_hndl[hca_index];
+	    attr.qp_type = IBV_QPT_RC;
+	    attr.sq_sig_all = 0;
 
-        /* Currently we only support one rail */
-        for (   qp_index = 0; 
-                qp_index < vc->mrail.num_total_subrails; 
-                qp_index++) 
-        {
-            memset(&attr, 0, sizeof attr);
-            attr.cap.max_send_wr = rdma_default_max_wqe;
-            attr.cap.max_recv_wr = rdma_default_max_wqe;
-            attr.cap.max_send_sge = rdma_default_max_sg_list;
-            attr.cap.max_recv_sge = rdma_default_max_sg_list;
-            attr.cap.max_inline_data = RDMA_MAX_INLINE_SIZE;
-            attr.send_cq = proc->cq_hndl[0];
-            attr.recv_cq = proc->cq_hndl[0];
-            attr.qp_type = IBV_QPT_RC;
-            attr.sq_sig_all = 0;
+	    vc->mrail.rails[rail_index].qp_hndl = 
+	        ibv_create_qp(proc->ptag[hca_index], &attr);
+	    if (!vc->mrail.rails[rail_index].qp_hndl) {
+	        fprintf(stderr, "[Init] Fail to create qp for rank %d\n", i);
+	        goto err_cq; 
+	    }
+	    vc->mrail.rails[rail_index].nic_context = proc->nic_context[hca_index];
+	    vc->mrail.rails[rail_index].hca_index   = hca_index;
+	    vc->mrail.rails[rail_index].port	= ports[hca_index][port_index];
+	    vc->mrail.rails[rail_index].lid         = lids[hca_index][port_index];
+	    vc->mrail.rails[rail_index].cq_hndl	= proc->cq_hndl[hca_index];
 
-            vc->mrail.qp_hndl[qp_index] = 
-                ibv_create_qp(proc->ptag[0], &attr);
-            if (!vc->mrail.qp_hndl[qp_index]) {
-                fprintf(stderr, "[Init] Fail to create qp for rank %d\n", i);
-                goto err_cq; 
-            }
+	    rdma_iba_addr_table.lid[i][rail_index] = lids[hca_index][port_index];
+	    rdma_iba_addr_table.qp_num_rdma[i][rail_index] =
+	        vc->mrail.rails[rail_index].qp_hndl->qp_num;
 
-            rdma_iba_addr_table.qp_num_rdma[i][hca_index] =
-                vc->mrail.qp_hndl[qp_index]->qp_num;
+	    qp_attr.qp_state        = IBV_QPS_INIT;
+	    qp_attr.pkey_index      = 0;
+	    qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE;
 
-            qp_attr.qp_state        = IBV_QPS_INIT;
-            qp_attr.pkey_index      = 0;
-            qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_LOCAL_WRITE;
+	    qp_attr.port_num = ports[hca_index][port_index];
 
-            qp_attr.port_num = rdma_default_port;
-
-            if (ibv_modify_qp(vc->mrail.qp_hndl[qp_index], &qp_attr,
-                  IBV_QP_STATE              |
-                  IBV_QP_PKEY_INDEX         |
-                  IBV_QP_PORT               |
-                  IBV_QP_ACCESS_FLAGS)) {
+	    if (ibv_modify_qp(vc->mrail.rails[rail_index].qp_hndl, &qp_attr,
+                    IBV_QP_STATE              |
+                    IBV_QP_PKEY_INDEX         |
+                    IBV_QP_PORT               |
+                    IBV_QP_ACCESS_FLAGS)) {
                 fprintf(stderr, "Failed to modify QP to INIT\n");
                 goto err_cq;
             }
-        }
+	}
     }
 #ifdef USE_MPD_RING
     DEBUG_PRINT("ENTERING MPDRING CASE\n");  
     proc->boot_cq_hndl =
-            ibv_create_cq(proc->nic_context[0],rdma_default_max_cq_size, 
-                        NULL, NULL, 0); 
+        ibv_create_cq(proc->nic_context[0],rdma_default_max_cq_size, 
+                NULL, NULL, 0); 
     if (!proc->boot_cq_hndl) {
-            fprintf(stderr, "cannot create cq\n");
-            goto err_pd;
-        }
+        fprintf(stderr, "cannot create cq\n");
+        goto err_pd;
+    }
 
     /* Create complete Queue and Queue pairs */
     memset(&boot_attr, 0, sizeof boot_attr);
@@ -836,7 +494,7 @@ rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
         fprintf(stderr, "[Init] Fail to create qp for rank %d\n", i);
         goto err_cq;
     }
- 
+
     memset(&boot_attr, 0, sizeof boot_attr);
     boot_attr.cap.max_send_wr   = rdma_default_max_wqe;
     boot_attr.cap.max_recv_wr   = rdma_default_max_wqe;
@@ -848,14 +506,14 @@ rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
 
     boot_attr.send_cq = proc->boot_cq_hndl;
     boot_attr.recv_cq = proc->boot_cq_hndl;
-    
+
     proc->boot_qp_hndl[1] = ibv_create_qp(proc->ptag[0], &boot_attr);
     if (!proc->boot_qp_hndl[1]) {
         fprintf(stderr, "[Init] Fail to create qp for rank %d\n", i);
         goto err_cq;
     }
     DEBUG_PRINT("Created boot qp %x, %x\n",
-	    proc->boot_qp_hndl[0]->qp_num, proc->boot_qp_hndl[1]->qp_num);
+            proc->boot_qp_hndl[0]->qp_num, proc->boot_qp_hndl[1]->qp_num);
 #endif
 
 #ifdef ONE_SIDED
@@ -863,10 +521,10 @@ rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
     qp_attr.qp_state        = IBV_QPS_INIT;
     qp_attr.pkey_index      = 0;
     qp_attr.qp_access_flags =   IBV_ACCESS_LOCAL_WRITE |
-                                IBV_ACCESS_REMOTE_WRITE |
-                                IBV_ACCESS_REMOTE_READ;
+        IBV_ACCESS_REMOTE_WRITE |
+        IBV_ACCESS_REMOTE_READ;
     qp_attr.port_num        = rdma_default_port;
-    
+
     for (i = 0; i < pg_size; i++) {
         memset(&attr, 0, sizeof attr);
         attr.cap.max_send_wr = rdma_default_max_wqe;
@@ -874,51 +532,70 @@ rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
         attr.cap.max_send_sge = rdma_default_max_sg_list;
         attr.cap.max_recv_sge = rdma_default_max_sg_list;
         attr.cap.max_inline_data = sizeof(long long);
-        attr.send_cq = proc->cq_hndl_1sc;
-        attr.recv_cq = proc->cq_hndl_1sc;
+        attr.send_cq = proc->cq_hndl_1sc[hca_index];
+        attr.recv_cq = proc->cq_hndl_1sc[hca_index];
         attr.qp_type = IBV_QPT_RC;
         attr.sq_sig_all = 0;
 
         MPIDI_PG_Get_vc(cached_pg, i, &vc);
-        vc->mrail.qp_hndl_1sc = ibv_create_qp(proc->ptag[0], &attr);
-        if (!vc->mrail.qp_hndl_1sc) {
-            fprintf(stderr, "[Init] Fail to create one sided qp for rank %d\n", i);
-            goto err_cq;
-        }
 
-        if (i == pg_rank) {
-            dst_qp = vc->mrail.qp_hndl_1sc->qp_num;
-        }
-        rdma_iba_addr_table.qp_num_onesided[i][0] =
-            vc->mrail.qp_hndl_1sc->qp_num;
-        DEBUG_PRINT("Created onesdied qp %d, num %X\n",
-                    i, rdma_iba_addr_table.qp_num_onesided[i][0]);
+        for (   rail_index = 0;
+                 rail_index < vc->mrail.num_rails;
+                 rail_index++)
+        {
+            hca_index  = rail_index / (vc->mrail.num_rails / rdma_num_hcas);
+            port_index = (rail_index / (vc->mrail.num_rails / (rdma_num_hcas *
+                    rdma_num_ports))) % rdma_num_ports;
 
-        if (ibv_modify_qp(vc->mrail.qp_hndl_1sc, &qp_attr,
-              IBV_QP_STATE              |
-              IBV_QP_PKEY_INDEX         |
-              IBV_QP_PORT               |
-              IBV_QP_ACCESS_FLAGS)) {
-            fprintf(stderr, "Failed to modify One sided QP to INIT\n");
-            goto err_cq;
-        }
+            vc->mrail.rails[rail_index].qp_hndl_1sc = ibv_create_qp(proc->ptag[hca_index], &attr);
+            if (!vc->mrail.rails[rail_index].qp_hndl_1sc) {
+                fprintf(stderr, "[Init] Fail to create one sided qp for rank %d\n", i);
+                goto err_cq;
+            }
+
+            if (i == pg_rank) {
+                dst_qp = vc->mrail.rails[rail_index].qp_hndl_1sc->qp_num;
+            }
+            rdma_iba_addr_table.qp_num_onesided[i][rail_index] =
+                vc->mrail.rails[rail_index].qp_hndl_1sc->qp_num;
+            DEBUG_PRINT("Created onesdied qp %d, num %X, qp_handle is %x\n",
+                i, rdma_iba_addr_table.qp_num_onesided[i][rail_index],vc->mrail.rails[rail_index].qp_hndl_1sc);
+
+            if (ibv_modify_qp(vc->mrail.rails[rail_index].qp_hndl_1sc, &qp_attr,
+                    IBV_QP_STATE              |
+                    IBV_QP_PKEY_INDEX         |
+                    IBV_QP_PORT               |
+                    IBV_QP_ACCESS_FLAGS)) {
+                fprintf(stderr, "Failed to modify One sided QP to INIT\n");
+                goto err_cq;
+            }
+       }
     }
 #endif
 
     DEBUG_PRINT("Return from init hca\n");
     return 0;
 err_cq:
-    if (proc->cq_hndl[0])
-        ibv_destroy_cq(proc->cq_hndl[0]);
-  #ifdef ONE_SIDED
-    if (proc->cq_hndl_1sc)
-        ibv_destroy_cq(proc->cq_hndl_1sc);
-  #endif
+    for (i = 0; i < rdma_num_hcas; i ++) {
+        if (proc->cq_hndl[i])
+            ibv_destroy_cq(proc->cq_hndl[i]);
+    }
+#ifdef ONE_SIDED
+    for (i = 0; i < rdma_num_hcas; i ++) {
+         if (proc->cq_hndl_1sc[0])
+             ibv_destroy_cq(proc->cq_hndl_1sc[i]);
+    }
+#endif
 err_pd:
-    if (proc->ptag[0])
-        ibv_dealloc_pd(proc->ptag[0]);
+    for (i = 0; i < rdma_num_hcas; i ++) {
+        if (proc->ptag[i])
+            ibv_dealloc_pd(proc->ptag[i]);
+    }
 err:
-    ibv_close_device(proc->nic_context[0]);
+    for (i = 0; i < rdma_num_hcas; i ++) {
+        if (proc->nic_context[i])
+            ibv_close_device(proc->nic_context[i]);
+    }
     return -1;
 
 }
@@ -926,57 +603,61 @@ err:
 /* Allocate memory and handlers */
 int
 rdma_iba_allocate_memory(struct MPIDI_CH3I_RDMA_Process_t *proc,
-                         MPIDI_VC_t * vc, int pg_rank, int pg_size)
+                         int pg_rank, int pg_size)
 {
-    int ret, i = 0;
+    int ret = 0, i = 0;
+    MPIDI_VC_t * vc;
+#if defined(RDMA_FAST_PATH)
     int iter_hca;
-
-#ifdef RDMA_FAST_PATH
+    int vbuf_alignment = 64;
+    int pagesize = getpagesize();
+#endif
     /* FIrst allocate space for RDMA_FAST_PATH for every connection */
     for (i = 0; i < pg_size; i++) {
+        MPIDI_PG_Get_vc(cached_pg, i, &vc);
+#ifdef ONE_SIDED
+	vc->mrail.rails[0].postsend_times_1sc = 0;
+#endif
+
+#ifdef RDMA_FAST_PATH
         if (i == pg_rank)
             continue;
 
         /* Allocate RDMA buffers, have an extra one for some ACK message */
-        MPIDI_PG_Get_vc(cached_pg, i, &vc);
 #define RDMA_ALIGNMENT 4096
 #define RDMA_ALIGNMENT_OFFSET (4096)
         /* allocate RDMA buffers */
-        vc->mrail.rfp.RDMA_send_buf_orig =
-            malloc(sizeof(struct vbuf) * (num_rdma_buffer) +
-                   2 * RDMA_ALIGNMENT);
-        if (!vc->mrail.rfp.RDMA_send_buf_orig) {
-            fprintf(stderr, "[%s:%d]: %s\n", __FILE__, __LINE__,
-                    "Fail to register required buffers");
-            return -1;
+        if (posix_memalign
+            ((void **) &vc->mrail.rfp.RDMA_send_buf, vbuf_alignment,
+             sizeof(struct vbuf) * num_rdma_buffer)) {
+                ibv_error_abort(GEN_EXIT_ERR, "Unable to alloc rdma buffers");
         }
 
-        vc->mrail.rfp.RDMA_recv_buf_orig =
-            malloc(sizeof(struct vbuf) * (num_rdma_buffer) +
-                   2 * RDMA_ALIGNMENT);
-        if (!vc->mrail.rfp.RDMA_recv_buf_orig) {
-            fprintf(stderr, "[%s:%d]: %s\n", __FILE__, __LINE__,
-                    "Fail to register required buffers");
-            ret = -1;
-            goto err_sbuf;
+        if (posix_memalign
+            ((void **) &vc->mrail.rfp.RDMA_recv_buf, vbuf_alignment,
+             sizeof(struct vbuf) * num_rdma_buffer)) {
+                ibv_error_abort(GEN_EXIT_ERR, "Unable to alloc rdma recv buffers");
         }
-
-        /* align vbuf->buffer to 64 byte boundary */
-        vc->mrail.rfp.RDMA_send_buf =
-            (struct vbuf *) 
-                 ((unsigned long) (vc->mrail.rfp.RDMA_send_buf_orig)
-                 / RDMA_ALIGNMENT * RDMA_ALIGNMENT +
-                 RDMA_ALIGNMENT + RDMA_ALIGNMENT_OFFSET);
-        vc->mrail.rfp.RDMA_recv_buf =
-            (struct vbuf
-             *) ((unsigned long) (vc->mrail.rfp.RDMA_recv_buf_orig)
-                 / RDMA_ALIGNMENT * RDMA_ALIGNMENT +
-                 RDMA_ALIGNMENT + RDMA_ALIGNMENT_OFFSET);
 
         memset(vc->mrail.rfp.RDMA_send_buf, 0,
-              sizeof(struct vbuf) * (num_rdma_buffer));
+               sizeof(struct vbuf) * (num_rdma_buffer));
         memset(vc->mrail.rfp.RDMA_recv_buf, 0,
-              sizeof(struct vbuf) * (num_rdma_buffer));
+               sizeof(struct vbuf) * (num_rdma_buffer));
+
+        if (posix_memalign((void **) &vc->mrail.rfp.RDMA_send_buf_DMA, pagesize,
+                           rdma_vbuf_total_size * num_rdma_buffer)) {
+            ibv_error_abort(GEN_EXIT_ERR, "Unable to malloc rdma buffers");
+        }
+
+        if (posix_memalign((void **) &vc->mrail.rfp.RDMA_recv_buf_DMA, pagesize,
+                           rdma_vbuf_total_size * num_rdma_buffer)) {
+            ibv_error_abort(GEN_EXIT_ERR, "Unable to malloc rdma buffers");
+        }
+
+        memset(vc->mrail.rfp.RDMA_send_buf_DMA, 0,
+               rdma_vbuf_total_size * num_rdma_buffer);
+        memset(vc->mrail.rfp.RDMA_recv_buf_DMA, 0,
+               rdma_vbuf_total_size * num_rdma_buffer);
 
         /* set pointers */
         vc->mrail.rfp.phead_RDMA_send = 0;
@@ -984,13 +665,12 @@ rdma_iba_allocate_memory(struct MPIDI_CH3I_RDMA_Process_t *proc,
         vc->mrail.rfp.p_RDMA_recv = 0;
         vc->mrail.rfp.p_RDMA_recv_tail = num_rdma_buffer - 1;
 
-        for (iter_hca = 0; iter_hca < MPIDI_CH3I_RDMA_Process.num_hcas;
-             iter_hca++) {
+        for (iter_hca = 0; iter_hca < rdma_num_hcas; iter_hca++) {
             /* initialize unsignal record */
             vc->mrail.rfp.RDMA_send_buf_mr[iter_hca] = 
                     ibv_reg_mr( MPIDI_CH3I_RDMA_Process.ptag[iter_hca],
-                                vc->mrail.rfp.RDMA_send_buf,
-                                sizeof(struct vbuf) * (num_rdma_buffer),
+                                vc->mrail.rfp.RDMA_send_buf_DMA,
+                                rdma_vbuf_total_size * (num_rdma_buffer),
                                 IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE );
             if (!vc->mrail.rfp.RDMA_send_buf_mr[iter_hca]) {
                 ret = -1;
@@ -1001,8 +681,8 @@ rdma_iba_allocate_memory(struct MPIDI_CH3I_RDMA_Process_t *proc,
 
             vc->mrail.rfp.RDMA_recv_buf_mr[iter_hca] = 
                     ibv_reg_mr( MPIDI_CH3I_RDMA_Process.ptag[iter_hca],
-                                vc->mrail.rfp.RDMA_recv_buf,
-                                sizeof(struct vbuf) * (num_rdma_buffer),
+                                vc->mrail.rfp.RDMA_recv_buf_DMA,
+                                rdma_vbuf_total_size * (num_rdma_buffer),
                                 IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE  );
 
             if (!vc->mrail.rfp.RDMA_send_buf_mr[iter_hca] ||
@@ -1013,252 +693,205 @@ rdma_iba_allocate_memory(struct MPIDI_CH3I_RDMA_Process_t *proc,
             }
             DEBUG_PRINT
                 ("Created buff for rank %d, recvbuff %p, key %p\n", i,
-                 (uintptr_t) vc->mrail.rfp.RDMA_recv_buf,
+                 (uintptr_t) vc->mrail.rfp.RDMA_recv_buf_DMA,
                  vc->mrail.rfp.RDMA_recv_buf_mr[iter_hca]->rkey);
         }
-    }
-#endif
-
-#ifdef ONE_SIDED
-    vc->mrail.postsend_times_1sc = 0;
-#endif
-
-    {
-#if defined(USE_MPD_RING) /* Get a memory handler */
-    int unit_length ;
-
-    /* XXX: Because the value length is rather long,
-     * here there is a little different from MVAPICH */
-    unit_length = (pg_size) * QPLEN_XDR;
-    proc->boot_mem = (char*)malloc( unit_length * pg_size + 4 );
-    CHECK_RETURN (!proc->boot_mem, "Error getting memory\n");
-
-    DEBUG_PRINT("Created boot mem %p, size %d \n",
-        proc->boot_mem, pg_size * unit_length);
-
-    proc->boot_mem_hndl = ibv_reg_mr(proc->ptag[0],
-                                proc->boot_mem,
-                                 (pg_size * unit_length),
-                                (IBV_ACCESS_LOCAL_WRITE|IBV_ACCESS_REMOTE_WRITE ));
+#elif defined(ADAPTIVE_RDMA_FAST_PATH)
+	vc->mrail.rfp.phead_RDMA_send = 0;
+	vc->mrail.rfp.ptail_RDMA_send = 0;
+	vc->mrail.rfp.p_RDMA_recv = 0;
+	vc->mrail.rfp.p_RDMA_recv_tail = 0;
 #endif
     }
+
+#if defined(ADAPTIVE_RDMA_FAST_PATH)
+    MPIDI_CH3I_RDMA_Process.polling_group_size = 0;
+    if (rdma_polling_set_limit > 0) 
+        MPIDI_CH3I_RDMA_Process.polling_set = (MPIDI_VC_t **)
+                        malloc(rdma_polling_set_limit * sizeof(MPIDI_VC_t *));
+    else 
+        MPIDI_CH3I_RDMA_Process.polling_set = (MPIDI_VC_t **)
+                        malloc(pg_size * sizeof(MPIDI_VC_t *));
+    
+    if (! MPIDI_CH3I_RDMA_Process.polling_set) {
+	fprintf(stderr, "[%s:%d]: %s\n", __FILE__, __LINE__,
+		"unable to allocate space for polling set\n");
+	
+	goto err_reg;
+    }
+#endif
 
     /* We need now allocate vbufs for send/recv path */
     ret = allocate_vbufs(MPIDI_CH3I_RDMA_Process.ptag, rdma_vbuf_pool_size);
     if (ret) {
         goto err_reg;
     }
+   
+    /* Post the buffers for the SRQ */
+
+#ifdef SRQ
+    pthread_spin_init(&MPIDI_CH3I_RDMA_Process.srq_post_lock, 0);
+    pthread_spin_lock(&MPIDI_CH3I_RDMA_Process.srq_post_lock);
+
+    int hca_num = 0;
+    
+    for(hca_num = 0; hca_num < rdma_num_hcas; hca_num++) { 
+        MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num] = 
+            viadev_post_srq_buffers(viadev_srq_size, hca_num);
+
+        {
+            struct ibv_srq_attr srq_attr;
+            srq_attr.max_wr = viadev_srq_size;
+            srq_attr.max_sge = 1;
+            srq_attr.srq_limit = viadev_srq_limit;
+
+            if (ibv_modify_srq(MPIDI_CH3I_RDMA_Process.srq_hndl[hca_num], 
+                        &srq_attr, IBV_SRQ_LIMIT)) {
+                ibv_error_abort(IBV_RETURN_ERR, "Couldn't modify SRQ limit\n");
+            }
+
+            /* Start the async thread which watches for SRQ limit events */
+            pthread_create(&MPIDI_CH3I_RDMA_Process.async_thread[hca_num], NULL,
+                    (void *) async_thread, (void *) MPIDI_CH3I_RDMA_Process.nic_context[hca_num]);
+        }
+    }
+
+    pthread_spin_unlock(&MPIDI_CH3I_RDMA_Process.srq_post_lock);
+
+#endif
     
     return MPI_SUCCESS;
 #ifdef RDMA_FAST_PATH
-  err_reg:
-    ibv_dereg_mr(vc->mrail.rfp.RDMA_recv_buf_mr[iter_hca]);
-  err_sreg:
-    ibv_dereg_mr(vc->mrail.rfp.RDMA_send_buf_mr[iter_hca]);
-  err_buf:
-    free(vc->mrail.rfp.RDMA_recv_buf_orig);
-  err_sbuf:
-    free(vc->mrail.rfp.RDMA_send_buf_orig);
+err_reg:
+    for (iter_hca = 0; iter_hca < rdma_num_hcas; iter_hca ++)
+        ibv_dereg_mr(vc->mrail.rfp.RDMA_recv_buf_mr[iter_hca]);
+err_sreg:
+    for (iter_hca = 0; iter_hca < rdma_num_hcas; iter_hca ++)
+        ibv_dereg_mr(vc->mrail.rfp.RDMA_send_buf_mr[iter_hca]);
+err_buf:
+    free(vc->mrail.rfp.RDMA_recv_buf_DMA);
+    free(vc->mrail.rfp.RDMA_send_buf_DMA);
+    free(vc->mrail.rfp.RDMA_recv_buf);
+    free(vc->mrail.rfp.RDMA_send_buf);
 #else
-   err_reg:
+err_reg:
 #endif
     return ret;
 }
 
 #ifdef USE_MPD_RING
-int
-rdma_iba_exchange_info(struct MPIDI_CH3I_RDMA_Process_t *proc,
-                       MPIDI_VC_t * vc, int pg_rank, int pg_size)
-{
-    int i, temp_hostid, local_addr_len;
-    char *alladdrs_self;
-    char *alladdrs_group;
-    char *temp_ptr;
-    char hostname[HOSTNAME_LEN + 1];
 
-    /*#ifdef USE_MPD_RING */
-    int lhs, rhs;
+void
+MPD_Ring_Startup(struct MPIDI_CH3I_RDMA_Process_t *proc,
+        int pg_rank, int pg_size) {
+
+    struct ibv_mr * addr_hndl;
+    void * addr_pool;
+    struct init_addr_inf neighbor_addr[2];
+    int i, bootstrap_len, qp_len;  
+
     char ring_qp_out[64];
     char ring_qp_in[128];
+    char tmp_str[9];
+    char *tmp_char_ptr;
 
-    temp_ptr = (char *) ring_qp_out;
-    lhs = (pg_rank + pg_size - 1) % pg_size;
-    rhs = (pg_rank + 1) % pg_size;
+    tmp_str[8] = '\0';
 
-    /* Prepare my_hca_lid, lhs qp, rsh qp for exchange */
-    sprintf(temp_ptr, "%08X", get_local_lid(MPIDI_CH3I_RDMA_Process.nic_context[0], rdma_default_port));
-    temp_ptr += 8;
-    sprintf(temp_ptr, "%08X", proc->boot_qp_hndl[0]->qp_num);
-    temp_ptr += 8;
-    sprintf(temp_ptr, "%08X", proc->boot_qp_hndl[1]->qp_num);
-    temp_ptr += 8;
-    *temp_ptr = '\0';
-    DEBUG_PRINT("Bootstrap info out %s\n", ring_qp_out);
 
-    local_addr_len = pg_size * QPLEN_XDR;
-    alladdrs_self = (char *) malloc(local_addr_len + 4);
+    DEBUG_PRINT("Before formatting ring_qp_out\n");
+    sprintf(ring_qp_out, "%08d%08d%08d",
+             get_local_lid(MPIDI_CH3I_RDMA_Process.nic_context[0], 
+                           rdma_default_port),
+             proc->boot_qp_hndl[0]->qp_num,
+             proc->boot_qp_hndl[1]->qp_num
+           );
 
-    gethostname(hostname, HOSTNAME_LEN);
-    if (!hostname) {
-        fprintf(stderr, "Could not get hostname\n");
-        exit(1);
-    }
+    DEBUG_PRINT("After setting LID: %d, qp0: %d, qp1: %d\n", get_local_lid(MPIDI_CH3I_RDMA_Process.nic_context[0], rdma_default_port),
+            proc->boot_qp_hndl[0]->qp_num,
+            proc->boot_qp_hndl[1]->qp_num
+            );
 
-    temp_hostid = get_host_id(hostname, HOSTNAME_LEN);
-    temp_ptr = (char *) alladdrs_self;
-
-    for (i = 0; i < pg_size; i++) {
-
-        /* Queue pairs for all processes */
-        if (i == pg_rank) {
-            /* Stash in my hca_lid, node_id, host_id and thread info */
-            sprintf(temp_ptr, "%08X:%08X:%24s:",
-      get_local_lid(MPIDI_CH3I_RDMA_Process.nic_context[0], rdma_default_port), temp_hostid,
-                    "----------ABCD----------");
-#ifdef ONE_SIDED
-            sprintf((char *) temp_ptr + 43, "%8s:", "WITH-1SC");
-#endif
-        } else {
-            /* Stash in my qp_num, and memory */
-            int     qp_num_1sc;
-            long    local_array = 0;
-#ifdef RDMA_FAST_PATH
-            unsigned long osu_recv_buff = 0;
-#endif
-            MPIDI_PG_Get_vc(cached_pg, i, &vc);
-
-#ifdef RDMA_FAST_PATH
-            osu_recv_buff = (unsigned long) vc->mrail.rfp.RDMA_recv_buf;
-            sprintf(temp_ptr, "%08X:%016lX:%016lX:",
-                    vc->mrail.qp_hndl[0]->qp_num,
-                    vc->mrail.rfp.RDMA_recv_buf_mr[0]->rkey,
-                    osu_recv_buff);
-#else
-            sprintf(temp_ptr, "%08X:%16s:%16s:",
-		    vc->mrail.qp_hndl[0]->qp_num,
-                    "NO-RDMA-FASTPATH", "NO-RDMA-FASTPATH");
-#endif
-
-#ifdef ONE_SIDED
-             qp_num_1sc = vc->mrail.qp_hndl_1sc->qp_num;
-             sprintf((char *) temp_ptr + 43, "%08X:", qp_num_1sc);
-#endif
-            DEBUG_PRINT("Before exchange, qp %08X, rkey %016lX,"
-                        " recv_buff %016lX\n",
-                         vc->mrail.qp_hndl[0]->qp_num,
-                        vc->mrail.rfp.RDMA_remote_buf_rkey,
-                        osu_recv_buff);
-        }
-        DEBUG_PRINT("Before exchange, info out %s\n", temp_ptr);
-        temp_ptr += QPLEN_XDR;
-    }
-
-    /* Chop off any remanant bytes */
-    *temp_ptr = '\0';
-#ifdef USE_MPD_RING
-    /* Save the static buffer address */
-    DEBUG_PRINT("Bootstrap info out %s\n", ring_qp_out);
+    DEBUG_PRINT("after formatting ring_qp_out\n");
+    
+    bootstrap_len = strlen(ring_qp_out);
     rdma_pmi_exchange_addresses(pg_rank, pg_size, ring_qp_out,
-                                strlen(ring_qp_out), ring_qp_in);
-    DEBUG_PRINT("Bootstrap info in %s\n", ring_qp_in);
+            bootstrap_len, ring_qp_in);
 
-    /* XXX: Enable the ring to exhange all the others queue_pair numbers.
-     *   Create memory handle 
-     *   Exchange lhs, rhs and memory handle over PMI interface 
-     *   Exchange rdma_iba_table_out and recv into rdma_iba_addr_table */
-    DEBUG_PRINT("ring exchange out %s\n", alladdrs_self);
-    ibv_bootstrap_ring(lhs, rhs, ring_qp_in,
-                           pg_rank, pg_size, alladdrs_self,
-                           proc->boot_mem, proc->boot_mem_hndl);
-#else
-    /* XXX: Exchange all the information over PMI interface,
-     *      Need to double check the val_max_sz, so that to avoid
-     *      overflowing. */
-    DEBUG_PRINT("ring exchange out %s\n", alladdrs_self);
-    rdma_pmi_exchange_addresses(pg_rank, pg_size, alladdrs_self,
-                                local_addr_len, proc->boot_mem);
-#endif
-    DEBUG_PRINT("ring exchange in %s\n", proc->boot_mem);
+    DEBUG_PRINT("after pmi exchange\n");
 
-    /* release temporary memory */
-    free(alladdrs_self);
 
-    for (i = 0; i < pg_size; i++) {
-        char *alladdr_inv;
-        char *temp_ptr;
-        char temp_str[24];
-        long temp_array = 0;
-        unsigned long temp_recv_buff = 0;
-        int num_tokens = 0;
 
-        if (i == pg_rank)
-            continue;
+    qp_len = 8;
+    for (i = 0; i < 2; i++) {
+        /* For hca_lid */
+        tmp_char_ptr = ring_qp_in + i * (qp_len * 3);
+        strncpy(tmp_str, tmp_char_ptr, qp_len);
+        DEBUG_PRINT("Got hca_lid %s \n", tmp_str);
+        neighbor_addr[i].lid = atoi(tmp_str);
 
-        MPIDI_PG_Get_vc(cached_pg, i, &vc);
-        alladdr_inv = proc->boot_mem + i * local_addr_len;
-        temp_ptr = alladdr_inv + i * QPLEN_XDR;
+        tmp_char_ptr += qp_len;
+        strncpy(tmp_str, tmp_char_ptr, qp_len);
+        DEBUG_PRINT("Got queue_pair 0: %s \n", tmp_str);
+        neighbor_addr[i].qp_num[0] = atoi(tmp_str);
 
-        /* Get the hostid and hca_lid */
-        num_tokens = sscanf(temp_ptr, "%08X:%08X:",
-                            &rdma_iba_addr_table.lid[i][0],
-                            &rdma_iba_addr_table.hostid[i][0]);
-        assert(num_tokens == 2);
-        DEBUG_PRINT("After exchange, hostid %08X, hca_lid %08X "
-                    "local_len %d qp len %d\n",
-                    rdma_iba_addr_table.hostid[i][0],
-                    rdma_iba_addr_table.lid[i][0],
-                    local_addr_len, QPLEN_XDR);
-
-        /* Get the qp, key and buffer for this process */
-        temp_ptr = alladdr_inv + pg_rank * QPLEN_XDR;
-
-#ifdef RDMA_FAST_PATH
-        num_tokens = sscanf(temp_ptr, "%08X:%016lX:%016lX:",
-                            &rdma_iba_addr_table.qp_num_rdma[i][0],
-                             &vc->mrail.rfp.RDMA_remote_buf_rkey,
-                            &temp_recv_buff);
-        DEBUG_PRINT("AFTER MPD exchange, remote qpnum from rank %d: %08x\n",
-                i, rdma_iba_addr_table.qp_num_rdma[i][0]);
-        assert(num_tokens == 3);
-#else
-        num_tokens = sscanf(temp_ptr, "%08X:",
-                            &rdma_iba_addr_table.qp_num_rdma[i][0]);
-        assert(num_tokens == 1);
-#endif
-
-#ifdef ONE_SIDED
-        num_tokens = sscanf((char *) temp_ptr + 43, "%08X:",
-                            &rdma_iba_addr_table.qp_num_onesided[i][0]);
-        assert(num_tokens == 1);
-#endif
-
-#ifdef RDMA_FAST_PATH
-        vc->mrail.rfp.remote_RDMA_buf = (void *) temp_recv_buff;
-
-        DEBUG_PRINT("After exchange, qp %08X, rkey %08X,"
-                    " recv_buff %016lX\n",
-                    rdma_iba_addr_table.qp_num_rdma[i][0],
-                    vc->mrail.rfp.RDMA_remote_buf_rkey,
-                    vc->mrail.rfp.remote_RDMA_buf);
-#else
-        DEBUG_PRINT("After exchange, qp %08X\n",
-                    rdma_iba_addr_table.qp_num_rdma[i][0]);
-#endif
+        tmp_char_ptr += qp_len;
+        strncpy(tmp_str, tmp_char_ptr, qp_len); 
+        DEBUG_PRINT("Got queue_pair 1: %s \n", tmp_str);
+        neighbor_addr[i].qp_num[1] = atoi(tmp_str);
     }
-    DEBUG_PRINT("Done exchanging info\n");
-    return 0;
-}
-#endif
 
-int
-rdma_iba_enable_connections(struct MPIDI_CH3I_RDMA_Process_t *proc,
-                            MPIDI_VC_t * vc, int pg_rank, int pg_size)
+    /* Allocate the memory we need */
+
+    addr_pool = malloc(MPD_WINDOW * ADDR_PKT_SIZE);
+    addr_hndl = ibv_reg_mr(proc->ptag[0],
+            addr_pool, MPD_WINDOW * ADDR_PKT_SIZE,
+            IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+        
+    if(addr_hndl == NULL) {
+        ibv_error_abort(GEN_EXIT_ERR,"ibv_reg_mr failed for addr_hndl\n");
+    }
+
+    DEBUG_PRINT("val of addr_pool is: %d, handle: %d\n", 
+            addr_pool, addr_hndl->handle);
+
+    /* Setup the necessary qps for the bootstrap ring */
+    MPI_Ring_Setup(neighbor_addr, proc);
+    MPI_Ring_Exchange(addr_hndl, addr_pool, proc, pg_rank, pg_size);
+
+    proc->boot_mem_hndl = addr_hndl;
+    proc->boot_mem      = addr_pool;
+}
+
+
+/* Set up a ring of qp's, here a separate bootstrap channel is used.*/
+static void MPI_Ring_Setup(struct init_addr_inf * neighbor_addr,
+        struct MPIDI_CH3I_RDMA_Process_t *proc)
 {
-    struct ibv_qp_attr  qp_attr;
-    uint32_t            qp_attr_mask = 0;
-    int                 i, j;
-    int                 hca_index, qp_index;
-    int                 ret = 0;
+    struct ibv_qp_init_attr attr;
+    struct ibv_qp_attr      qp_attr;
+
+    uint32_t    qp_attr_mask = 0;
+    int         i;
+    int         ret;
+
+    qp_attr.qp_state        = IBV_QPS_INIT;
+    qp_attr.pkey_index      = 0;
+    qp_attr.qp_access_flags = IBV_ACCESS_LOCAL_WRITE 
+	                            | IBV_ACCESS_REMOTE_WRITE 
+	                            | IBV_ACCESS_REMOTE_READ;
+    qp_attr.port_num        = rdma_default_port;
+ 
+    ret = ibv_modify_qp(proc->boot_qp_hndl[0],&qp_attr,(IBV_QP_STATE
+                        | IBV_QP_PKEY_INDEX 
+                        | IBV_QP_PORT               
+                        | IBV_QP_ACCESS_FLAGS));
+    CHECK_RETURN(ret, "Could not modify boot qp to INIT");
+
+    ret = ibv_modify_qp(proc->boot_qp_hndl[1],&qp_attr,(IBV_QP_STATE
+                        | IBV_QP_PKEY_INDEX
+                        | IBV_QP_PORT
+                        | IBV_QP_ACCESS_FLAGS));
+    CHECK_RETURN(ret, "Could not modify boot qp to INIT");
 
     /**********************  INIT --> RTR  ************************/
     memset(&qp_attr, 0, sizeof qp_attr);
@@ -1273,6 +906,286 @@ rdma_iba_enable_connections(struct MPIDI_CH3I_RDMA_Process_t *proc,
     qp_attr.ah_attr.src_path_bits   =   rdma_default_src_path_bits;
     qp_attr.ah_attr.port_num    =   rdma_default_port;
 
+    qp_attr_mask        |=  IBV_QP_STATE;
+    qp_attr_mask        |=  IBV_QP_PATH_MTU;
+    qp_attr_mask        |=  IBV_QP_RQ_PSN;
+    qp_attr_mask        |=  IBV_QP_MAX_DEST_RD_ATOMIC;
+    qp_attr_mask        |=  IBV_QP_MIN_RNR_TIMER;
+    qp_attr_mask        |=  IBV_QP_AV;
+
+    /* lhs */
+    for (i = 0; i < 2; i++) {
+        qp_attr.dest_qp_num     = neighbor_addr[i].qp_num[1 - i];
+        qp_attr.ah_attr.dlid    = neighbor_addr[i].lid;
+        qp_attr_mask            |=  IBV_QP_DEST_QPN;
+
+        ret = ibv_modify_qp(proc->boot_qp_hndl[i],&qp_attr, qp_attr_mask);
+        CHECK_RETURN(ret, "Could not modify boot qp to RTR");
+
+        DEBUG_PRINT("local QP=%x\n", proc->boot_qp_hndl[i]->qp_num);
+    }
+
+    /************** RTS *******************/
+
+    memset(&qp_attr, 0, sizeof qp_attr);
+    qp_attr.qp_state        = IBV_QPS_RTS;
+    qp_attr.sq_psn          = rdma_default_psn;
+    qp_attr.timeout         = rdma_default_time_out;
+    qp_attr.retry_cnt       = rdma_default_retry_count;
+    qp_attr.rnr_retry       = rdma_default_rnr_retry;
+    qp_attr.max_rd_atomic   = rdma_default_qp_ous_rd_atom;
+
+    qp_attr_mask = 0;
+    qp_attr_mask =    IBV_QP_STATE              |
+                      IBV_QP_TIMEOUT            |
+                      IBV_QP_RETRY_CNT          |
+                      IBV_QP_RNR_RETRY          |
+                      IBV_QP_SQ_PSN             |
+                      IBV_QP_MAX_QP_RD_ATOMIC;
+
+    ret = ibv_modify_qp(proc->boot_qp_hndl[0],&qp_attr,qp_attr_mask);
+	CHECK_RETURN(ret, "Could not modify boot qp to RTS");
+    ret = ibv_modify_qp(proc->boot_qp_hndl[1],&qp_attr,qp_attr_mask);
+	CHECK_RETURN(ret, "Could not modify boot qp to RTS");
+
+    DEBUG_PRINT("Modified to RTS..Qp\n");
+}
+
+void 
+MPI_Ring_Exchange(struct ibv_mr * addr_hndl, void * addr_pool,
+        struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank, int pg_size)
+{
+    int i, j, ne, index_to_send, rail_index;
+    int hostid;
+    char hostname[HOSTNAME_LEN + 1];
+
+    uint64_t last_send = -2;
+    uint64_t last_send_comp = -1;
+
+    struct addr_packet * send_packet;
+    struct addr_packet * recv_packet;
+
+    /* work entries related variables */
+    struct ibv_recv_wr rr;
+    struct ibv_sge sg_entry_r;
+    struct ibv_recv_wr *bad_wr_r;
+    struct ibv_send_wr sr;
+    struct ibv_sge sg_entry_s;
+    struct ibv_send_wr *bad_wr_s;
+
+    /* completion related variables */
+    struct ibv_cq * cq_hndl;
+    struct ibv_wc rc;
+
+    MPIDI_VC_t * vc;
+
+    /* Post the window of recvs: The first entry
+     * is not posted since it is used for the 
+     * initial send
+     */
+
+    DEBUG_PRINT("Posting recvs\n");
+
+    for(i = 1; i < MPD_WINDOW; i++) {
+        rr.wr_id   = i;
+        rr.num_sge = 1;
+        rr.sg_list = &(sg_entry_r);
+        rr.next    = NULL;
+        sg_entry_r.lkey = addr_hndl->lkey;
+        sg_entry_r.addr = (uintptr_t) ADDR_INDEX(addr_pool, i);
+        sg_entry_r.length = ADDR_PKT_SIZE;
+
+        if(ibv_post_recv(proc->boot_qp_hndl[0], &rr, &bad_wr_r)) {
+            ibv_error_abort(GEN_EXIT_ERR,"Error posting recv!\n");
+        }
+    }
+
+    DEBUG_PRINT("done posting recvs\n");
+
+    index_to_send = 0;
+
+    /* get hostname stuff */
+
+    gethostname(hostname, HOSTNAME_LEN);
+    if (!hostname) {
+        fprintf(stderr, "Could not get hostname\n");
+        exit(1);
+    }
+    hostid = get_host_id(hostname, HOSTNAME_LEN);
+
+    /* send information for each rail */
+
+    DEBUG_PRINT("rails: %d\n", rdma_num_rails);
+
+    PMI_Barrier();
+
+    for(rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
+
+        DEBUG_PRINT("doing rail %d\n", rail_index);
+
+        send_packet          = ADDR_INDEX(addr_pool, index_to_send);
+        DEBUG_PRINT("formatting 1\n");
+        send_packet->rank    = pg_rank;
+        send_packet->rail    = rail_index;
+        send_packet->host_id = hostid;
+        DEBUG_PRINT("formatting 2\n");
+
+        DEBUG_PRINT("formatting \n");
+
+        for(i = 0; i < pg_size; i++) {
+            if(i == pg_rank) {
+                send_packet->val[i].sr_qp_num = -1;
+#ifdef ONE_SIDED
+                send_packet->val[i].osc_qp_num = -1;
+#endif
+            } else {
+                MPIDI_PG_Get_vc(cached_pg, i, &vc);
+
+                send_packet->lid     = vc->mrail.rails[rail_index].lid;
+                send_packet->val[i].sr_qp_num = 
+                    vc->mrail.rails[rail_index].qp_hndl->qp_num;
+#ifdef ONE_SIDED
+                send_packet->val[i].osc_qp_num =
+                    vc->mrail.rails[rail_index].qp_hndl_1sc->qp_num;
+#endif
+            }
+        }
+
+        DEBUG_PRINT("starting to do sends\n");
+
+        for(i = 0; i < pg_size - 1; i++) {
+
+            sr.opcode         = IBV_WR_SEND;
+            sr.send_flags     = IBV_SEND_SIGNALED;
+            sr.wr_id          = MPD_WINDOW + index_to_send;
+            sr.num_sge        = 1;
+            sr.sg_list        = &sg_entry_s;
+            sr.next           = NULL;
+            sg_entry_s.addr   = (uintptr_t)
+                ADDR_INDEX(addr_pool, index_to_send);
+            sg_entry_s.length = ADDR_PKT_SIZE;
+            sg_entry_s.lkey   = addr_hndl->lkey;
+
+            /* keep track of the last send... */
+            last_send         = sr.wr_id;
+
+            if (ibv_post_send(proc->boot_qp_hndl[1], &sr, &bad_wr_s)) {
+                ibv_error_abort(GEN_EXIT_ERR, "Error posting send!\n");
+            }
+
+            /* flag that keeps track if we are waiting
+             * for a recv or more credits
+             */
+
+            while(1) {
+                ne = ibv_poll_cq(proc->boot_cq_hndl, 1, &rc);
+                if (ne < 0) {
+                    ibv_error_abort(GEN_EXIT_ERR, "Poll CQ failed!\n");
+                } else if (ne > 1) {
+                    ibv_error_abort(GEN_EXIT_ERR, "Got more than one\n");
+                } else if (ne == 1) {
+                    if (rc.status != IBV_WC_SUCCESS) {
+                        if(rc.status == IBV_WC_RETRY_EXC_ERR) {
+                            DEBUG_PRINT("Got IBV_WC_RETRY_EXC_ERR\n");
+                        }
+                        ibv_error_abort(GEN_EXIT_ERR,"Error code in polled desc!\n");
+                    }
+
+                    if (rc.wr_id < MPD_WINDOW) {
+                        /* completion of recv */
+
+                        recv_packet = ADDR_INDEX(addr_pool, rc.wr_id);
+
+
+                        rdma_iba_addr_table.lid[recv_packet->rank][rail_index] =
+                            recv_packet->lid;
+
+                        rdma_iba_addr_table.hostid[recv_packet->rank][rail_index] =
+                            recv_packet->host_id;
+
+#ifdef _SMP_
+                        MPIDI_PG_Get_vc(cached_pg, recv_packet->rank, &vc);
+                        vc->smp.hostid = recv_packet->host_id;
+#endif
+                        
+                        rdma_iba_addr_table.qp_num_rdma[recv_packet->rank][rail_index] =
+                            recv_packet->val[pg_rank].sr_qp_num;
+
+#ifdef ONE_SIDED
+                        rdma_iba_addr_table.qp_num_onesided[recv_packet->rank][rail_index] =
+                            recv_packet->val[pg_rank].osc_qp_num;
+#endif
+
+                        /* queue this for sending to the next
+                         * hop in the ring 
+                         */
+                        index_to_send = rc.wr_id;
+
+                        break;
+                    } else {
+                        /* completion of send */
+                        last_send_comp = rc.wr_id;
+
+                        /* now post as recv */
+                        rr.wr_id   = rc.wr_id - MPD_WINDOW;
+                        rr.num_sge = 1;
+                        rr.sg_list = &(sg_entry_r);
+                        rr.next    = NULL;
+                        sg_entry_r.lkey = addr_hndl->lkey;
+                        sg_entry_r.addr = (uintptr_t)
+                            ADDR_INDEX(addr_pool, rr.wr_id);
+                        sg_entry_r.length = ADDR_PKT_SIZE;
+                        if(ibv_post_recv(proc->boot_qp_hndl[0], &rr, &bad_wr_r)) {
+                            ibv_error_abort(GEN_EXIT_ERR,
+                                    "Error posting recv!\n");
+                        }
+                    } 
+                }
+            }
+
+        }
+    } /* end for(rail_index... */
+
+    /* Make sure all sends have completed */
+
+    while(last_send_comp != last_send) {
+        ne = ibv_poll_cq(proc->boot_cq_hndl, 1, &rc);
+        if(ne == 1) {
+            if (rc.status != IBV_WC_SUCCESS) {
+                ibv_error_abort(GEN_EXIT_ERR,"Error code %d in polled desc!\n");
+            }
+            last_send_comp = rc.wr_id;
+        }
+    }
+
+}
+
+
+
+#endif
+
+int
+rdma_iba_enable_connections(struct MPIDI_CH3I_RDMA_Process_t *proc,
+                            int pg_rank, int pg_size)
+{
+    struct ibv_qp_attr  qp_attr;
+    uint32_t            qp_attr_mask = 0;
+    int                 i;
+    int                 rail_index;
+    MPIDI_VC_t * vc;
+
+    /**********************  INIT --> RTR  ************************/
+    memset(&qp_attr, 0, sizeof qp_attr);
+    qp_attr.qp_state    =   IBV_QPS_RTR;
+    qp_attr.path_mtu    =   rdma_default_mtu;
+    qp_attr.rq_psn      =   rdma_default_psn;
+    qp_attr.max_dest_rd_atomic  =   rdma_default_max_rdma_dst_ops;
+    qp_attr.min_rnr_timer       =   rdma_default_min_rnr_timer;
+    qp_attr.ah_attr.is_global   =   0;
+    qp_attr.ah_attr.sl          =   rdma_default_service_level;
+    qp_attr.ah_attr.static_rate =   rdma_default_static_rate;
+    qp_attr.ah_attr.src_path_bits   =   rdma_default_src_path_bits;
+
     qp_attr_mask        |=  IBV_QP_STATE; 
     qp_attr_mask        |=  IBV_QP_PATH_MTU;
     qp_attr_mask        |=  IBV_QP_RQ_PSN;
@@ -1284,53 +1197,43 @@ rdma_iba_enable_connections(struct MPIDI_CH3I_RDMA_Process_t *proc,
         if (i == pg_rank)
             continue;
 
-        j = 0;
-        hca_index   = 0;
-
         MPIDI_PG_Get_vc(cached_pg, i, &vc);
 
 #ifdef ONE_SIDED
+ 
+     for (rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
         if (i == pg_rank)
             qp_attr.dest_qp_num = dst_qp;
         else
             qp_attr.dest_qp_num =
-                rdma_iba_addr_table.qp_num_onesided[i][0];
+                rdma_iba_addr_table.qp_num_onesided[i][rail_index];
 
-        qp_attr.ah_attr.dlid = rdma_iba_addr_table.lid[i][0];
+        qp_attr.ah_attr.dlid = rdma_iba_addr_table.lid[i][rail_index];
         qp_attr_mask    |=  IBV_QP_DEST_QPN;
 
-        if (ibv_modify_qp( vc->mrail.qp_hndl_1sc,
+        if (ibv_modify_qp( vc->mrail.rails[rail_index].qp_hndl_1sc,
                              &qp_attr, qp_attr_mask)) {
             fprintf(stderr, "[%s:%d] Could not modify one sided qp to RTR\n", 
                     __FILE__, __LINE__);
             return 1;
         }
+    }
 #endif                          /* End of ONE_SIDED */
+	for (rail_index = 0; rail_index < rdma_num_rails; rail_index ++) {
+            qp_attr.dest_qp_num =
+                rdma_iba_addr_table.qp_num_rdma[i][rail_index];
+            qp_attr.ah_attr.dlid = rdma_iba_addr_table.lid[i][rail_index];
+     	    qp_attr.ah_attr.port_num = vc->mrail.rails[rail_index].port;
 
-        qp_attr.dest_qp_num =
-            rdma_iba_addr_table.qp_num_rdma[i][hca_index];
-        qp_attr.ah_attr.dlid = rdma_iba_addr_table.lid[i][hca_index];
+            qp_attr_mask    |=  IBV_QP_DEST_QPN;
 
-        qp_attr_mask    |=  IBV_QP_DEST_QPN;
-
-        for (qp_index = 0; qp_index < vc->mrail.num_total_subrails;
-             qp_index++) {
-            DEBUG_PRINT("!!!Modify qp %d with qpnum %08x, dlid %x\n", qp_index,
+            DEBUG_PRINT("!!!Modify qp %d with qpnum %08x, dlid %x\n", rail_index,
                 qp_attr.dest_qp_num, qp_attr.ah_attr.dlid);
-            if (ibv_modify_qp( vc->mrail.qp_hndl[qp_index], 
+            if (ibv_modify_qp( vc->mrail.rails[rail_index].qp_hndl,
                                &qp_attr, qp_attr_mask)) {
                 fprintf(stderr, "[%s:%d] Could not modify qp" 
                         "to RTR\n",__FILE__, __LINE__); 
                 return 1;
-            }
-
-            j++;
-            if (j == vc->mrail.subrail_per_hca) {
-                j = 0;
-                hca_index++;
-                qp_attr.dest_qp_num =
-                    rdma_iba_addr_table.qp_num_rdma[i][hca_index];
-                qp_attr.ah_attr.dlid = rdma_iba_addr_table.lid[i][hca_index];
             }
         }
     }
@@ -1353,38 +1256,31 @@ rdma_iba_enable_connections(struct MPIDI_CH3I_RDMA_Process_t *proc,
                       IBV_QP_MAX_QP_RD_ATOMIC;
 
     for (i = 0; i < pg_size; i++) {
-        hca_index = 0, j = 0;
-
         if (i == pg_rank)
             continue;
 
         MPIDI_PG_Get_vc(cached_pg, i, &vc);
 #ifdef ONE_SIDED
-        if (ibv_modify_qp( vc->mrail.qp_hndl_1sc,
+        for (rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
+             if (ibv_modify_qp( vc->mrail.rails[rail_index].qp_hndl_1sc,
                            &qp_attr, qp_attr_mask))
-        {
-            fprintf(stderr, "[%s:%d] Could not modify one sided qp to RTS\n",
-                    __FILE__, __LINE__);
-            return 1;
-        }
+             {
+                fprintf(stderr, "[%s:%d] Could not modify one sided qp to RTS\n",
+                        __FILE__, __LINE__);
+                return 1;
+             }
+         }     
 #endif                          /* ONE_SIDED */
 
         if (i == pg_rank)
             continue;
-        for (qp_index = 0; qp_index < vc->mrail.num_total_subrails;
-             qp_index++) {
-            if (ibv_modify_qp(  vc->mrail.qp_hndl[qp_index], &qp_attr,
+        for (rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
+            if (ibv_modify_qp(  vc->mrail.rails[rail_index].qp_hndl, &qp_attr,
                                 qp_attr_mask))
             {
-                fprintf(stderr, "[%s:%d] Could not modify one sided qp to RTS\n",
+                fprintf(stderr, "[%s:%d] Could not modify rdma qp to RTS\n",
                     __FILE__, __LINE__);
                 return 1;
-            }
-
-            j++;
-            if (j == vc->mrail.subrail_per_hca) {
-                j = 0;
-                hca_index++;
             }
         }
     }
@@ -1395,28 +1291,40 @@ rdma_iba_enable_connections(struct MPIDI_CH3I_RDMA_Process_t *proc,
 
 void MRAILI_Init_vc(MPIDI_VC_t * vc, int pg_rank)
 {
-    int channels = vc->mrail.num_total_subrails;
     int i;
-    MRAILI_Channel_info subchannel;
 
     /* Now we will need to */
-    for (i = 0; i < channels; i++) {
-        vc->mrail.send_wqes_avail[i]    = rdma_default_max_wqe - 20;
-        vc->mrail.ext_sendq_head[i]     = NULL;
-        vc->mrail.ext_sendq_tail[i]     = NULL;
+    for (i = 0; i < rdma_num_rails; i++) {
+        vc->mrail.rails[i].send_wqes_avail    = rdma_default_max_wqe - 20;
+        vc->mrail.rails[i].ext_sendq_head     = NULL;
+        vc->mrail.rails[i].ext_sendq_tail     = NULL;
     }
+
     vc->mrail.next_packet_expected  = 0;
     vc->mrail.next_packet_tosend    = 0;
 
-#ifdef RDMA_FAST_PATH
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
+#if defined(RDMA_FAST_PATH)
     for (i = 0; i < num_rdma_buffer; i++) {
         vbuf_init_rdma_write(&vc->mrail.rfp.RDMA_send_buf[i]);
         vc->mrail.rfp.RDMA_send_buf[i].vc       = (void *) vc;
         vc->mrail.rfp.RDMA_send_buf[i].padding  = FREE_FLAG;
         vc->mrail.rfp.RDMA_recv_buf[i].vc       = (void *) vc;
         vc->mrail.rfp.RDMA_recv_buf[i].padding  = BUSY_FLAG;
+	vc->mrail.rfp.RDMA_send_buf[i].head_flag =
+		(VBUF_FLAG_TYPE *) ( (char *)(vc->mrail.rfp.RDMA_send_buf_DMA)
+		+ (i + 1) * rdma_vbuf_total_size - sizeof (VBUF_FLAG_TYPE)) ;
+	vc->mrail.rfp.RDMA_send_buf[i].buffer =
+		(char *) ((char *)(vc->mrail.rfp.RDMA_send_buf_DMA) +
+		i * rdma_vbuf_total_size );
+	vc->mrail.rfp.RDMA_recv_buf[i].head_flag =
+		(VBUF_FLAG_TYPE *) ( (char *)(vc->mrail.rfp.RDMA_recv_buf_DMA)
+		+ (i + 1) * rdma_vbuf_total_size - sizeof (VBUF_FLAG_TYPE)) ;
+	vc->mrail.rfp.RDMA_recv_buf[i].buffer =
+		(char *) ((char *)(vc->mrail.rfp.RDMA_recv_buf_DMA) +
+		i * rdma_vbuf_total_size );
     }
-
+#endif
     vc->mrail.rfp.rdma_credit = 0;
 #ifdef USE_HEADER_CACHING
     vc->mrail.rfp.cached_miss   = 0;
@@ -1426,53 +1334,81 @@ void MRAILI_Init_vc(MPIDI_VC_t * vc, int pg_rank)
     memset(vc->mrail.rfp.cached_outgoing, 0, sizeof(MPIDI_CH3_Pkt_send_t));
     memset(vc->mrail.rfp.cached_incoming, 0, sizeof(MPIDI_CH3_Pkt_send_t));
 #endif
-    vc->mrail.cmanager.total_subrails       = 2;
-    vc->mrail.cmanager.num_local_pollings   = 1;
 
-    vc->mrail.cmanager.poll_channel = malloc(sizeof(vbuf *(**)(void *)));
-    
+#ifdef RDMA_FAST_PATH
+    vc->mrail.cmanager.num_channels         = vc->mrail.num_rails + 1;
+    vc->mrail.cmanager.num_local_pollings   = 1;
 #else
-    vc->mrail.cmanager.total_subrails       = 1;
+    vc->mrail.cmanager.num_channels         = vc->mrail.num_rails;
     vc->mrail.cmanager.num_local_pollings   = 0;
 #endif
-    for (i = 0; i < vc->mrail.cmanager.total_subrails; i++) {
-        vc->mrail.cmanager.v_queue_head[i] =
-            vc->mrail.cmanager.v_queue_tail[i] = NULL;
-        vc->mrail.cmanager.len[i] = 0;
+
+#else
+    vc->mrail.cmanager.num_channels         = vc->mrail.num_rails;
+    vc->mrail.cmanager.num_local_pollings   = 0;
+#endif
+
+#ifdef ADAPTIVE_RDMA_FAST_PATH
+    vc->mrail.rfp.eager_start_cnt           = 0;
+    vc->mrail.rfp.in_polling_set            = 0;
+
+    /* extra one channel for later increase the adaptive rdma */
+    vc->mrail.cmanager.msg_channels = malloc(sizeof *vc->mrail.cmanager.msg_channels 
+					* (vc->mrail.cmanager.num_channels + 1));
+    if (!vc->mrail.cmanager.msg_channels) {
+	ibv_error_abort(GEN_EXIT_ERR, "No resource for msg channels\n");
     }
+    memset(vc->mrail.cmanager.msg_channels, 0, 
+		sizeof *vc->mrail.cmanager.msg_channels
+                * (vc->mrail.cmanager.num_channels + 1));
+    
+#else
+    vc->mrail.cmanager.msg_channels = malloc(sizeof *vc->mrail.cmanager.msg_channels
+					* vc->mrail.cmanager.num_channels);
+    if (!vc->mrail.cmanager.msg_channels) {
+	ibv_error_abort(GEN_EXIT_ERR, "No resource for msg channels\n");
+    }
+    memset(vc->mrail.cmanager.msg_channels, 0, 
+		sizeof *vc->mrail.cmanager.msg_channels
+                * vc->mrail.cmanager.num_channels);
+#endif
 
-    DEBUG_PRINT("Cmanager total rail %d, local polling %d\n",
-                vc->mrail.cmanager.total_subrails, vc->mrail.cmanager.num_local_pollings);
+    vc->mrail.cmanager.next_arriving = NULL;
+    vc->mrail.cmanager.inqueue	     = 0;
+    vc->mrail.cmanager.vc	     = (void *)vc;
 
-    vc->mrail.srp.backlog.len       = 0;
-    vc->mrail.srp.backlog.vbuf_head = NULL;
-    vc->mrail.srp.backlog.vbuf_tail = NULL;
+    DEBUG_PRINT("Cmanager total channel %d, local polling %d\n",
+                vc->mrail.cmanager.num_channels, vc->mrail.cmanager.num_local_pollings);
 
     vc->mrail.sreq_head = NULL;
     vc->mrail.sreq_tail = NULL;
     vc->mrail.nextflow  = NULL;
     vc->mrail.inflow    = 0;
 
-    for (i = 0; i < vc->mrail.num_total_subrails; i++) {
+    for (i = 0; i < vc->mrail.num_rails; i++) {
         int k;
-
-        MRAILI_CHANNEL_INFO_INIT(subchannel, i, vc);
-
+#ifndef SRQ
         for (k = 0; k < rdma_initial_prepost_depth; k++) {
-            PREPOST_VBUF_RECV(vc, subchannel);
+            PREPOST_VBUF_RECV(vc, i);
         }
+#endif
+        vc->mrail.srp.credits[i].remote_credit     = rdma_initial_credits;
+        vc->mrail.srp.credits[i].remote_cc         = rdma_initial_credits;
+        vc->mrail.srp.credits[i].local_credit      = 0;
+        vc->mrail.srp.credits[i].preposts          = rdma_initial_prepost_depth;
 
-        vc->mrail.srp.remote_credit[i]  = rdma_initial_credits;
-        vc->mrail.srp.remote_cc[i]      = rdma_initial_credits;
-        vc->mrail.srp.local_credit[i]   = 0;
-        vc->mrail.srp.preposts[i]       = rdma_initial_prepost_depth;
-        vc->mrail.srp.initialized[i]    =
+#ifndef SRQ
+        vc->mrail.srp.credits[i].initialized	   =
             (rdma_prepost_depth == rdma_initial_prepost_depth);
+#else
+        vc->mrail.srp.credits[i].initialized = 1; 
+        vc->mrail.srp.credits[i].pending_r3_sends = 0;
+#endif
 
-        vc->mrail.srp.rendezvous_packets_expected[i] = 0;
+	vc->mrail.srp.credits[i].backlog.len       = 0;
+	vc->mrail.srp.credits[i].backlog.vbuf_head = NULL;
+	vc->mrail.srp.credits[i].backlog.vbuf_tail = NULL;
+
+        vc->mrail.srp.credits[i].rendezvous_packets_expected = 0;
     }
-    DEBUG_PRINT
-        ("[Init:priv] remote_credit %d, remote_cc %d, local_credit %d, prepost%d, local_polling %d\n ",
-         vc->mrail.srp.remote_credit[0], vc->mrail.srp.remote_cc[0],
-         vc->mrail.srp.local_credit[0], vc->mrail.srp.preposts[0], vc->mrail.cmanager.num_local_pollings);
 }

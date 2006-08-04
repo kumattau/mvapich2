@@ -41,7 +41,7 @@ typedef struct dreg_entry dreg_entry;
 
 struct dreg_entry {
     unsigned long pagenum;
-    struct ibv_mr *memhandle;
+    struct ibv_mr *memhandle[MAX_NUM_HCAS];
 
     int refcount;
 

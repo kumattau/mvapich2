@@ -170,7 +170,8 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv_transfer(MPID_Request * sreq,
 
 int MPIDI_CH3I_MRAILI_Get_rndv_rput(MPIDI_VC_t *vc,
                                     MPID_Request * req,
-                                    MPIDI_CH3I_MRAILI_Rndv_info_t * rndv);
+                                    MPIDI_CH3I_MRAILI_Rndv_info_t * rndv,
+				    MPID_IOV *);
 
 int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc, vbuf * v, void **, int
             *headersize);
@@ -178,6 +179,8 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc, vbuf * v, void **, int
 int MPIDI_CH3I_MRAIL_Fill_Request(MPID_Request *, vbuf *v, int header_size, int * nb);
 
 void  MPIDI_CH3I_MRAIL_Release_vbuf(vbuf * v);
+
+int MPIDI_CH3I_MRAIL_Finish_request(MPID_Request *);
 
 #ifdef _SMP_
 

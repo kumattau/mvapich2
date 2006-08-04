@@ -107,19 +107,6 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
                       is_blocking ? "true" : "false"));
     DEBUG_PRINT("Entering ch3 progress\n");
 
-# if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
-    {
-    if (MPIDI_CH3I_progress_blocked == TRUE) {
-        MPIDI_DBG_PRINTF((50, FCNAME, "Progress engine is busy"));
-        MPIDI_CH3I_Progress_delay(MPIDI_CH3I_progress_completion_count);
-        goto fn_exit;
-    } else {
-        MPIDI_CH3I_progress_blocked = TRUE;
-    }
-    }
-#endif
-
-
     do {
 #ifdef _SMP_ 
         /*needed if early send complete doesnot occur */
@@ -154,8 +141,11 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
         }
         if (vc_ptr == NULL) {
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
-            MPID_Thread_mutex_unlock(&MPIR_Process.global_mutex);
-            MPID_Thread_mutex_lock(&MPIR_Process.global_mutex);
+            if(spin_count > 500) {
+                spin_count = 0;
+                MPID_Thread_mutex_unlock(&MPIR_Process.global_mutex);
+                MPID_Thread_mutex_lock(&MPIR_Process.global_mutex);
+            }
 #endif
             spin_count++;
         } else {
@@ -165,7 +155,6 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
 #endif
             mpi_errno = handle_read(vc_ptr, buffer);
             if (mpi_errno != MPI_SUCCESS) {
-                DEBUG_PRINT("fail\n");
                 mpi_errno =
                     MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL, FCNAME,
                                          __LINE__, MPI_ERR_OTHER,
@@ -177,8 +166,11 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
 #ifdef _SMP_
         } else {
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
-            MPID_Thread_mutex_unlock(&MPIR_Process.global_mutex);
-            MPID_Thread_mutex_lock(&MPIR_Process.global_mutex);
+            if(spin_count > 1000) {
+                spin_count = 0;
+                MPID_Thread_mutex_unlock(&MPIR_Process.global_mutex);
+                MPID_Thread_mutex_lock(&MPIR_Process.global_mutex);
+            }
 #endif
         }
 #endif
@@ -189,12 +181,6 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
            && is_blocking);
 
 fn_completion:
-#if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
-{
-    MPIDI_CH3I_progress_blocked = FALSE;
-    MPIDI_CH3I_Progress_continue(MPIDI_CH3I_progress_completion_count);
-}
-#endif
 
 fn_exit:
     MPIDI_DBG_PRINTF((50, FCNAME, "exiting, count=%d",
@@ -297,13 +283,6 @@ fn_exit:
 static int MPIDI_CH3I_Progress_delay(unsigned int completion_count)
 {
     int mpi_errno = MPI_SUCCESS;
-    while (completion_count == MPIDI_CH3I_progress_completion_count
-            && MPIDI_CH3I_progress_blocked == TRUE)
-    {
-        MPID_Thread_cond_wait(&MPIDI_CH3I_progress_completion_cond, 
-                              &MPIR_Process.global_mutex);
-    }
-     DEBUG_PRINT("Exiting ch3 progress delay\n");
     return mpi_errno;
 }
 
@@ -313,7 +292,6 @@ static int MPIDI_CH3I_Progress_delay(unsigned int completion_count)
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 static int MPIDI_CH3I_Progress_continue(unsigned int completion_count)
 {
-    MPID_Thread_cond_broadcast(&MPIDI_CH3I_progress_completion_cond);
     return MPI_SUCCESS;
 }
 
@@ -463,6 +441,9 @@ static int handle_read(MPIDI_VC_t * vc, vbuf * buffer)
     int packetized_recv = 0;
     int finished;
     
+    MPIDI_CH3_Pkt_rput_finish_t * rf_pkt;
+    MPID_Request *rreq;
+
     DEBUG_PRINT("[handle read] buffer %p\n", buffer);
 
     vc->ch.recv_active = vc->ch.req;
@@ -471,11 +452,13 @@ static int handle_read(MPIDI_VC_t * vc, vbuf * buffer)
     /*  save header at req->ch.pkt, and return the header size */
     /*  ??TODO: Possibly just return the address of the header */
     MPIDI_CH3I_MRAIL_Parse_header(vc, buffer, (void **)&header, &header_size);
-
     DEBUG_PRINT("[handle read] header type %d\n", header->type);
 
     switch(header->type) {
     case MPIDI_CH3_PKT_NOOP: 
+#ifdef ADAPTIVE_RDMA_FAST_PATH
+    case MPIDI_CH3_PKT_ADDRESS:
+#endif
         DEBUG_PRINT("NOOP received, don't need to proceed\n");
         MPIDI_CH3I_MRAIL_Release_vbuf(buffer);
         goto fn_exit;
@@ -529,7 +512,6 @@ static int handle_read(MPIDI_VC_t * vc, vbuf * buffer)
             }
         }
 
-        DEBUG_PRINT("data contained in buffer is %d bytes\n", buffer->head_flag);
         mpi_errno =
             MPIDI_CH3I_MRAIL_Fill_Request(vc->ch.recv_active, buffer,
                                            header_size, &nb);

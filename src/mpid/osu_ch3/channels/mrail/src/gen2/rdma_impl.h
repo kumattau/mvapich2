@@ -29,8 +29,6 @@
 typedef struct MPIDI_CH3I_RDMA_Process_t {
     /* keep all rdma implementation specific global variable in a
        structure like this to avoid name collisions */
-    int num_hcas;
-
     int maxtransfersize;
 
     struct ibv_context *nic_context[MAX_NUM_HCAS];
@@ -40,7 +38,7 @@ typedef struct MPIDI_CH3I_RDMA_Process_t {
     /* one cq for both send and recv */
 #ifdef ONE_SIDED
     /* information for the one-sided communication connection */
-    struct ibv_cq * cq_hndl_1sc;
+    struct ibv_cq * cq_hndl_1sc[MAX_NUM_HCAS];
     int inline_size_1sc;
 
     /*information for management of windows */
@@ -56,6 +54,16 @@ typedef struct MPIDI_CH3I_RDMA_Process_t {
     int current_win_num;
 #endif
 
+
+#ifdef SRQ
+    uint32_t pending_r3_sends[MAX_NUM_SUBRAILS];
+    struct ibv_srq      *srq_hndl[MAX_NUM_HCAS];
+    pthread_spinlock_t  srq_post_lock;
+    pthread_t           async_thread[MAX_NUM_HCAS];
+    uint32_t            posted_bufs[MAX_NUM_HCAS];
+    MPIDI_VC_t **vc_mapping;
+#endif
+
 #ifdef USE_MPD_RING
     struct ibv_cq * boot_cq_hndl;
     struct ibv_qp * boot_qp_hndl[2];
@@ -63,6 +71,12 @@ typedef struct MPIDI_CH3I_RDMA_Process_t {
     struct ibv_mr * boot_mem_hndl;
     char * boot_mem;
 #endif
+
+#ifdef ADAPTIVE_RDMA_FAST_PATH
+    int  polling_group_size;
+    MPIDI_VC_t **polling_set;
+#endif
+
 } MPIDI_CH3I_RDMA_Process_t;
 
 struct rdma_iba_addr_tb;

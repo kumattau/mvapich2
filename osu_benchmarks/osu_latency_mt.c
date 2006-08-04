@@ -78,7 +78,8 @@ void * recv_thread(void *arg);
 
 int main (int argc, char *argv[])
 {
-    int numprocs, i, provided, myid, err;
+    int numprocs, provided, myid, err;
+    int i = 0;
 
     pthread_t sr_threads[THREADS];
     thread_tag_t tags[THREADS];

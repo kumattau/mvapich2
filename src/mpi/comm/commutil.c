@@ -81,6 +81,12 @@ int MPIR_Comm_create( MPID_Comm *oldcomm_ptr, MPID_Comm **newcomm_ptr )
 	return mpi_errno;
     }
     /* --END ERROR HANDLING-- */
+
+    /* Insert this new communicator into the list of known communicators.
+       Make this conditional on debugger support to match the test in
+       MPIR_Comm_release . */
+    MPIR_COMML_REMEMBER( newptr );
+
     return 0;
 }
 
@@ -601,6 +607,8 @@ int MPIR_Comm_release(MPID_Comm * comm_ptr)
                 MPIR_Group_release(comm_ptr->remote_group);
 
   	    MPIU_Handle_obj_free( &MPID_Comm_mem, comm_ptr );  
+
+            MPIR_COMML_FORGET( comm_ptr );
 	}
 	else {
 	    /* If the user attribute free function returns an error,

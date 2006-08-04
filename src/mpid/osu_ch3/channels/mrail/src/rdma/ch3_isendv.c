@@ -183,7 +183,7 @@ int MPIDI_CH3_iSendv(MPIDI_VC_t * vc, MPID_Request * sreq, MPID_IOV * iov,
         int nb;
         int pkt_len;
         int complete;
-#ifdef RDMA_FAST_PATH
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
         int rdma_ok;
 #endif
         /* MT - need some signalling to lock down our right to use the
@@ -258,7 +258,7 @@ int MPIDI_CH3_iSendv(MPIDI_VC_t * vc, MPID_Request * sreq, MPID_IOV * iov,
             }
             goto fn_exit;
         }
-#ifdef RDMA_FAST_PATH
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
         DEBUG_PRINT("[send], n_iov: %d, pkt_len %d\n", n_iov, pkt_len);
         rdma_ok = MPIDI_CH3I_MRAILI_Fast_rdma_ok(vc, pkt_len);
         DEBUG_PRINT("[send], rdma ok: %d\n", rdma_ok);

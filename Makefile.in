@@ -119,6 +119,9 @@ install:  install-preamble FORCE_TARGET
 	if [ ! -d ${DESTDIR}${exec_prefix} ] ; then $(MKDIR_P) ${DESTDIR}${exec_prefix} ; fi
 	if [ ! -d ${DESTDIR}${libdir} ] ; then $(MKDIR_P) ${DESTDIR}${libdir} ; fi
 	$(INSTALL_DATA) lib/lib${MPILIBNAME}.a ${DESTDIR}${libdir}/lib${MPILIBNAME}.a
+	@if [ "@BUILD_TVDLL@" = "yes" ] ; then \
+	    $(INSTALL_DATA) src/mpi/debugger/libtvmpich2.@SHLIB_EXT@ \
+		    ${DESTDIR}${libdir}/libtvmpich2.@SHLIB_EXT@ ; fi
 	if [ ! -d ${DESTDIR}${docdir} ] ; then $(MKDIR_P) ${DESTDIR}${docdir} ; fi
 	@if test -d $(srcdir)/www && cd $(srcdir)/www ; then \
 	 for name in * ; do \
@@ -272,7 +275,7 @@ all-preamble:
 # Move the "pkglist.new" file to "pkglist" on successful completion
 all-postamble:
 	@if [ "@BUILD_TVDLL@" = "yes" ] ; then \
-	( cd src/mpi/debugger && $(MAKE) ./libtvmpich.@SHLIB_EXT@ ) ; fi
+	( cd src/mpi/debugger && $(MAKE) ./libtvmpich2.@SHLIB_EXT@ ) ; fi
 	@if [ -s lib/pkglist.new ] ; then mv -f lib/pkglist.new lib/pkglist ; fi
 	@echo "Make completed"
 
@@ -427,8 +430,8 @@ install-preamble:
 
 install-local:
 	-if [ "@BUILD_TVDLL@" = "yes" ] ; then \
-	    $(INSTALL_DATA) src/mpi/debugger/libtvmpich.@SHLIB_EXT@ \
-			${libdir}/libtvmpich.@SHLIB_EXT@ ; fi
+	    $(INSTALL_DATA) src/mpi/debugger/libtvmpich2.@SHLIB_EXT@ \
+			${libdir}/libtvmpich2.@SHLIB_EXT@ ; fi
 	if test ! -d ${exec_prefix}/examples ; then \
 	    $(MKDIR_P) ${exec_prefix}/examples ; \
 	fi

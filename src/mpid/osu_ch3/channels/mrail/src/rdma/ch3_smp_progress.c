@@ -245,14 +245,14 @@ int MPIDI_CH3I_SMP_write_progress(MPIDI_PG_t *pg)
     int nb, i;
     MPIDI_VC_t *vc;
     int complete;
-                                                                                                                                               
+
     for (i = 0; i < smpi.num_local_nodes; i++) {
         MPIDI_PG_Get_vc(pg, smpi.l2g_rank[i], &vc);
                                                                                                                                                
         while (vc->smp.send_active != NULL) {
             MPID_Request *req = vc->smp.send_active;
             
-	        MPIU_Assert(req->ch.iov_offset < req->dev.iov_count);
+	    MPIU_Assert(req->ch.iov_offset < req->dev.iov_count);
             /*MPIDI_DBG_PRINTF((60, FCNAME, "calling rdma_put_datav")); */
             mpi_errno =
                 MPIDI_CH3I_SMP_writev(vc,
@@ -1069,6 +1069,16 @@ static int smpi_exchange_info(MPIDI_PG_t *pg)
 
     /** exchange address hostid using PMI interface **/
     if (pg_size > 1) {
+#ifdef USE_MPD_RING
+        for(i = 0; i < pg_size; i++) {
+            MPIDI_PG_Get_vc(pg, i, &vc);
+            if(i == pg_rank) {
+                hostnames_j[i] = hostid;
+            } else {
+                hostnames_j[i] = vc->smp.hostid;
+            }
+        }
+#else
         char *key;
         char *val;
 
@@ -1168,7 +1178,7 @@ static int smpi_exchange_info(MPIDI_PG_t *pg)
             return mpi_errno;
         }
 
-
+#endif
     }
     /** end of exchange address **/
 

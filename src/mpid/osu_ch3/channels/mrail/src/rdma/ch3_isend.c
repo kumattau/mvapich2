@@ -86,7 +86,7 @@ int MPIDI_CH3_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void *pkt,
     if (MPIDI_CH3I_SendQ_empty(vc)) {   /* MT */
         int nb;
         vbuf *buf;
-#ifdef RDMA_FAST_PATH
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
         int rdma_ok;
 #endif
         MPIDI_DBG_PRINTF((55, FCNAME,
@@ -97,7 +97,7 @@ int MPIDI_CH3_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void *pkt,
 
         iov[0].MPID_IOV_BUF = pkt;
         iov[0].MPID_IOV_LEN = pkt_sz;
-#ifdef RDMA_FAST_PATH
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
         rdma_ok = MPIDI_CH3I_MRAILI_Fast_rdma_ok(vc, pkt_sz);
         DEBUG_PRINT(stdout, "[send], rdma ok: %d\n", rdma_ok);
         if (rdma_ok != 0) {

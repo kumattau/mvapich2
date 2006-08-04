@@ -1208,6 +1208,8 @@ typedef struct MPID_Comm {
 				     intercommunicator collective operations
 				     that wish to use half-duplex operations
 				     to implement a full-duplex operation */
+    struct MPID_Comm     *comm_next;/* Provides a chain through all active
+                                       communicators */
     struct MPID_Collops  *coll_fns; /* Pointer to a table of functions 
                                               implementing the collective 
                                               routines */
@@ -3304,6 +3306,21 @@ int MPID_VCR_Get_lpid(MPID_VCR vcr, int * lpid_ptr);
 /* Debugger support */
 #ifdef HAVE_DEBUGGER_SUPPORT
 void MPIR_WaitForDebugger( void );
+void MPIR_Sendq_remember(MPID_Request *, int, int, int );
+void MPIR_Sendq_forget(MPID_Request *);
+void MPIR_CommL_remember( MPID_Comm * );
+void MPIR_CommL_forget( MPID_Comm * );
+
+#define MPIR_SENDQ_REMEMBER(_a,_b,_c,_d) MPIR_Sendq_remember(_a,_b,_c,_d)
+#define MPIR_SENDQ_FORGET(_a) MPIR_Sendq_forget(_a)
+#define MPIR_COMML_REMEMBER(_a) MPIR_CommL_remember( _a )
+#define MPIR_COMML_FORGET(_a) MPIR_CommL_forget( _a )
+#else
+#define MPIR_SENDQ_REMEMBER(a,b,c,d)
+#define MPIR_SENDQ_FORGET(a)
+#define MPIR_COMML_REMEMBER(_a)
+#define MPIR_COMML_FORGET(_a)
+
 #endif
 
 /* Include definitions from the device which require items defined by this file (mpiimpl.h). */

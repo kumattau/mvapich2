@@ -653,6 +653,7 @@ void dreg_decr_refcount(dreg_entry * d)
     int rc;
     void *buf;
     unsigned long bufint;
+    int i;
 #endif
 
     assert(d->refcount > 0);
@@ -664,10 +665,13 @@ void dreg_decr_refcount(dreg_entry * d)
         bufint = d->pagenum << DREG_PAGEBITS;
         buf = (void *) bufint;
 
-        if (deregister_memory(d->memhandle)) {
-            ibv_error_abort(IBV_RETURN_ERR, "deregister fails\n");
-        }
-	    dreg_remove (d);
+	for(i = 0; i < rdma_num_hcas; i++) {
+	    if (deregister_memory(d->memhandle[i])) {
+		ibv_error_abort(IBV_RETURN_ERR, "deregister fails\n");
+	    }
+	}
+
+	dreg_remove (d);
         DREG_ADD_TO_FREE_LIST(d);
 #endif
 
@@ -700,6 +704,7 @@ int dreg_evict()
     void *buf;
     dreg_entry *d;
     unsigned long bufint;
+    int hca_index;
 
     d = dreg_unused_tail;
     if (d == NULL) {
@@ -713,10 +718,11 @@ int dreg_evict()
     bufint = d->pagenum << DREG_PAGEBITS;
     buf = (void *) bufint;
 
-    if (deregister_memory(d->memhandle)) {
-        ibv_error_abort(IBV_RETURN_ERR,
+    for (hca_index = 0; hca_index < rdma_num_hcas; hca_index ++)      
+	if (deregister_memory(d->memhandle[hca_index])) {
+            ibv_error_abort(IBV_RETURN_ERR,
                         "Deregister fails\n");
-    }
+        }
 
     dreg_remove (d);
 
@@ -737,7 +743,7 @@ int dreg_evict()
 dreg_entry *dreg_new_entry(void *buf, int len)
 {
 
-
+    int i;
     dreg_entry *d;
     unsigned long pagenum_low, pagenum_high;
     unsigned long  npages;
@@ -789,16 +795,18 @@ dreg_entry *dreg_new_entry(void *buf, int len)
 	    return NULL;
     }
 
-    d->memhandle = register_memory((void *)pagebase_low_p, register_nbytes);
+    for(i = 0; i < rdma_num_hcas; i++) {
+        d->memhandle[i] = register_memory((void *)pagebase_low_p, 
+                register_nbytes, i);
 
-    /* if not success, return NULL to indicate that we were unable to
-     * register this memory.  */
-    if (!d->memhandle) {
-	dreg_remove (d);
-        dreg_release(d);
-        return NULL;
+        /* if not success, return NULL to indicate that we were unable to
+         * register this memory.  */
+        if (!d->memhandle[i]) {
+            dreg_remove (d);
+            dreg_release(d);
+            return NULL;
+        }
     }
-
     return d;
 }
 
@@ -1051,7 +1059,7 @@ dreg_entry *is_dreg_registered(void *buf)
  */
 void find_and_free_dregs_inside(void *ptr, int len)
 {
-    int i = 0;
+    int i = 0, j;
     int rc = 0;
     dreg_entry *d;
     int npages = 0;
@@ -1069,19 +1077,22 @@ void find_and_free_dregs_inside(void *ptr, int len)
         if (d) {
             if (d->refcount != 0) {
                 /* Forcefully free it */
-                if (deregister_memory(d->memhandle)) {
-                    ibv_err_abort(IBV_RETURN_ERR, 
+                for(j = 0 ; j < rdma_num_hcas; j++){
+                    if (deregister_memory(d->memhandle[i])) {
+                        ibv_err_abort(IBV_RETURN_ERR, 
                                 "unregister fails\n");
+                    }
                 }
-                
 		        dreg_remove (d)
                 DREG_ADD_TO_FREE_LIST(d);
             } else {
                 /* Safe to remove from unused list */
                 DREG_REMOVE_FROM_UNUSED_LIST(d);
-                if (deregister_memory(d->memhandle)) {
-                    ibv_err_abort(IBV_RETURN_ERR,
+                for(j = 0; j < rdma_num_hcas; j++) {
+                    if (deregister_memory(d->memhandle)) {
+                        ibv_err_abort(IBV_RETURN_ERR,
                                 "unregister fails\n");
+                    }
                 }
 		        dreg_remove (d);
                 DREG_ADD_TO_FREE_LIST(d);

@@ -14,20 +14,20 @@
 #include "pmi.h"
 #include "ibv_priv.h"
 
-#ifdef RDMA_FAST_PATH
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
 #define SET_CREDIT(header, vc, rail) \
 {                                                               \
     vc->mrail.rfp.ptail_RDMA_send += header->mrail.rdma_credit; \
     if (vc->mrail.rfp.ptail_RDMA_send >= num_rdma_buffer)       \
         vc->mrail.rfp.ptail_RDMA_send -= num_rdma_buffer;       \
-    vc->mrail.srp.remote_cc[rail] = header->mrail.remote_credit;\
-    vc->mrail.srp.remote_credit[rail] += header->mrail.vbuf_credit; \
+    vc->mrail.srp.credits[rail].remote_cc = header->mrail.remote_credit;\
+    vc->mrail.srp.credits[rail].remote_credit += header->mrail.vbuf_credit; \
 }
 #else
 #define SET_CREDIT(header, vc, rail) \
 {                             \
-    vc->mrail.srp.remote_cc[rail] = header->mrail.remote_credit;\
-    vc->mrail.srp.remote_credit[rail] += header->mrail.vbuf_credit; \
+    vc->mrail.srp.credits[rail].remote_cc = header->mrail.remote_credit;\
+    vc->mrail.srp.credits[rail].remote_credit += header->mrail.vbuf_credit; \
 }
 
 #endif
@@ -129,6 +129,14 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
             *pkt = vstart;
         }
         break;
+#ifdef ADAPTIVE_RDMA_FAST_PATH
+    case MPIDI_CH3_PKT_ADDRESS:
+	{
+	    *pkt = vstart;
+	    MPIDI_CH3I_MRAILI_Recv_addr(vc, vstart);
+	    break;
+	}
+#endif
     case MPIDI_CH3_PKT_PACKETIZED_SEND_START:
         {
             *pkt = vstart;
@@ -253,28 +261,44 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
         }
     }
     SET_CREDIT((&(((MPIDI_CH3_Pkt_t *) (*pkt))->eager_send)), vc,
-               (v->subchannel.rail_index));
+               (v->rail));
 
     /* MRAILI_Send_noop_if_needed(vc, &v->subchannel); */
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
     DEBUG_PRINT(
             "[parse header] after set the credit, remote_cc %d, remote_credit %d, rdma head %d, tail %d\n",
-            vc->mrail.srp.remote_cc[v->subchannel.rail_index],
-            vc->mrail.srp.remote_credit[v->subchannel.rail_index],
+            vc->mrail.srp.credits[v->rail].remote_cc,
+            vc->mrail.srp.credits[v->rail].remote_credit,
             vc->mrail.rfp.phead_RDMA_send, vc->mrail.rfp.ptail_RDMA_send);
+#endif
 
-    if (vc->mrail.srp.remote_credit[v->subchannel.rail_index] > 0 &&
-        vc->mrail.srp.backlog.len > 0) {
-        MRAILI_Backlog_send(vc, &v->subchannel);
+    if (vc->mrail.srp.credits[v->rail].remote_credit > 0 &&
+        vc->mrail.srp.credits[v->rail].backlog.len > 0) {
+        MRAILI_Backlog_send(vc, v->rail);
     }
     /* if any credits remain, schedule rendezvous progress */
-    if ((vc->mrail.srp.remote_credit[v->subchannel.rail_index] > 0 
-#ifdef RDMA_FAST_PATH
+    if ((vc->mrail.srp.credits[v->rail].remote_credit > 0 
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
             || (vc->mrail.rfp.ptail_RDMA_send != vc->mrail.rfp.phead_RDMA_send)
 #endif
         )
         && (vc->mrail.sreq_head != NULL)) {
         PUSH_FLOWLIST(vc);
     }
+
+#if defined(ADAPTIVE_RDMA_FAST_PATH)
+    if ((vc->mrail.rfp.RDMA_recv_buf == NULL) &&       /*(c->initialized) && */
+	num_rdma_buffer) {
+	if (MPIDI_CH3I_RDMA_Process.polling_group_size <
+	    rdma_polling_set_limit) {
+	    vc->mrail.rfp.eager_start_cnt++;
+	    if (rdma_polling_set_threshold < vc->mrail.rfp.eager_start_cnt) {
+		vbuf_fast_rdma_alloc(vc, 1);
+		vbuf_address_send(vc);
+	    }
+	}
+    }
+#endif
 
     return MPI_SUCCESS;
 }
@@ -288,18 +312,18 @@ int MPIDI_CH3I_MRAIL_Fill_Request(MPID_Request * req, vbuf * v,
 {
     MPID_IOV    *iov;
     int         n_iov;
-    int         len_avail = v->head_flag - header_size;
+    int         len_avail;
     void        *data_buf;
     int         i;
 
-    iov = (req == NULL) ? NULL : req->dev.iov;
-    n_iov = (req == NULL) ? 0 : req->dev.iov_count;
-
-    data_buf = (void *) ((uintptr_t) v->pheader + header_size);
+    len_avail 	= v->content_size - header_size;
+    iov 	= (req == NULL) ? NULL : req->dev.iov;
+    n_iov 	= (req == NULL) ? 0 : req->dev.iov_count;
+    data_buf    = (void *) ((uintptr_t) v->pheader + header_size);
 
     DEBUG_PRINT
         ("[recv:fill request] total len %d, head len %d, n iov %d\n",
-         v->head_flag, header_size, n_iov);
+         v->content_size, header_size, n_iov);
 
     *nb = 0;
     for (i = req->ch.iov_offset; i < n_iov; i++) {
@@ -323,14 +347,39 @@ int MPIDI_CH3I_MRAIL_Fill_Request(MPID_Request * req, vbuf * v,
 
 void MPIDI_CH3I_MRAIL_Release_vbuf(vbuf * v)
 {
-#ifdef RDMA_FAST_PATH
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
     if (v->padding == NORMAL_VBUF_FLAG || v->padding == RPUT_VBUF_FLAG)
         MRAILI_Release_vbuf(v);
     else {
         MRAILI_Release_recv_rdma(v);
-        MRAILI_Send_noop_if_needed((MPIDI_VC_t *) v->vc, &v->subchannel);
+        MRAILI_Send_noop_if_needed((MPIDI_VC_t *) v->vc, v->rail);
     }
 #else
     MRAILI_Release_vbuf(v);
 #endif
 }
+
+#ifdef ADAPTIVE_RDMA_FAST_PATH
+
+int MPIDI_CH3I_MRAILI_Recv_addr(MPIDI_VC_t * vc, void *vstart)
+{
+    MPIDI_CH3_Pkt_address_t *pkt = vstart;
+    int i;
+
+    DEBUG_PRINT("set rdma address, dma address %p\n",
+            (void *)pkt->addr.rdma_address);
+
+    if (pkt->addr.rdma_address != 0) {
+	/* Allocating the send vbufs for the eager RDMA flow */
+	vbuf_fast_rdma_alloc(vc, 0);
+
+	for (i = 0; i < rdma_num_hcas; i ++) {
+	    vc->mrail.rfp.RDMA_remote_buf_rkey[i] = pkt->addr.rdma_hndl[i];
+	}
+	vc->mrail.rfp.remote_RDMA_buf = (void *)pkt->addr.rdma_address;
+    }
+
+    return MPI_SUCCESS;
+}
+
+#endif

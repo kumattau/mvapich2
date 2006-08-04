@@ -34,29 +34,6 @@ do {                                                          \
 #define DEBUG_PRINT(args...)
 #endif
 
-#ifdef RDMA_FAST_PATH
-static inline int MRAILI_Fast_rdma_select_channel(MPIDI_VC_t * vc,
-                                                  MRAILI_Channel_info * const
-                                                  channel)
-{
-    channel->rail_index     = 0;
-    channel->hca_index      = 0;
-    channel->port_index     = 1;
-    return MPI_SUCCESS;
-}
-#endif
-
-static inline int MRAILI_Send_select_channel(MPIDI_VC_t * vc,
-                                             MRAILI_Channel_info * const channel)
-{
-    /* we are supposed to consider both the scheduling policy and credit infor */
-    /* We are supposed to return rail_index = -1 if no rail has available credit */
-    channel->rail_index = 0;
-    channel->hca_index  = 0;
-    channel->port_index = 0;
-    return MPI_SUCCESS;
-}
-                                                                                                                                               
 /* to handle Send Q overflow, we maintain an extended send queue
  * above the HCA.  This permits use to have a virtually unlimited send Q depth
  * (limited by number of vbufs available for send)
@@ -65,22 +42,24 @@ static inline int MRAILI_Send_select_channel(MPIDI_VC_t * vc,
 #define FUNCNAME MRAILI_Ext_sendq_enqueue
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-static inline void MRAILI_Ext_sendq_enqueue(MPIDI_VC_t *c, 
-                                            const MRAILI_Channel_info * channel, 
+static inline void MRAILI_Ext_sendq_enqueue(MPIDI_VC_t *c,
+                                            int rail, 
                                             vbuf * v)          
 {
     MPIDI_STATE_DECL(MRAILI_EXT_SENDQ_ENQUEUE);
     MPIDI_FUNC_ENTER(MRAILI_EXT_SENDQ_ENQUEUE);
 
     v->desc.next = NULL;
-    if (c->mrail.ext_sendq_head[channel->rail_index] == NULL) {
-        c->mrail.ext_sendq_head[channel->rail_index] = v;
+    
+    if (c->mrail.rails[rail].ext_sendq_head == NULL) {
+        c->mrail.rails[rail].ext_sendq_head = v;
     } else {                                     
-        c->mrail.ext_sendq_tail[channel->rail_index]->desc.next = v;
+        c->mrail.rails[rail].ext_sendq_tail->desc.next = v;
     }
-    c->mrail.ext_sendq_tail[channel->rail_index] = v;  
+    c->mrail.rails[rail].ext_sendq_tail = v;  
     DEBUG_PRINT("[ibv_send] enqueue, head %p, tail %p\n", 
-        c->mrail.ext_sendq_head[channel->rail_index], c->mrail.ext_sendq_tail[channel->rail_index]); 
+        c->mrail.rails[rail].ext_sendq_head, 
+        c->mrail.rails[rail].ext_sendq_tail); 
     MPIDI_FUNC_EXIT(MRAILI_EXT_SENDQ_ENQUEUE);
 }
 
@@ -93,26 +72,27 @@ static inline void MRAILI_Ext_sendq_enqueue(MPIDI_VC_t *c,
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME
 static inline void MRAILI_Ext_sendq_send(MPIDI_VC_t *c, 
-                                         const MRAILI_Channel_info *channel)    
+                                         int rail)    
 {
     MPIDI_STATE_DECL(MRAILI_EXT_SENDQ_SEND);
     MPIDI_FUNC_ENTER(MRAILI_EXT_SENDQ_SEND);
 
     vbuf *v;
-    while (c->mrail.send_wqes_avail[channel->rail_index]
-                    && c->mrail.ext_sendq_head[channel->rail_index]) {
-        v = c->mrail.ext_sendq_head[channel->rail_index];
-        c->mrail.ext_sendq_head[channel->rail_index] = v->desc.next;
-        if (v == c->mrail.ext_sendq_tail[channel->rail_index]) {
-            c->mrail.ext_sendq_tail[channel->rail_index] = NULL;
+    while (c->mrail.rails[rail].send_wqes_avail
+                    && c->mrail.rails[rail].ext_sendq_head) {
+        v = c->mrail.rails[rail].ext_sendq_head;
+        c->mrail.rails[rail].ext_sendq_head = v->desc.next;
+        if (v == c->mrail.rails[rail].ext_sendq_tail) {
+            c->mrail.rails[rail].ext_sendq_tail = NULL;
         }
         v->desc.next = NULL;
-        c->mrail.send_wqes_avail[channel->rail_index]--;                
-        IBV_POST_SR(v, c, (*channel), "Mrail_post_sr (viadev_ext_sendq_send)");
+        c->mrail.rails[rail].send_wqes_avail--;                
+        IBV_POST_SR(v, c, rail, "Mrail_post_sr (viadev_ext_sendq_send)");
     }
 
     DEBUG_PRINT( "[ibv_send] dequeue, head %p, tail %p\n",
-        c->mrail.ext_sendq_head[channel->rail_index], c->mrail.ext_sendq_tail[channel->rail_index]);
+        c->mrail.rails[rail].ext_sendq_head,
+        c->mrail.rails[rail].ext_sendq_tail);
 
     MPIDI_FUNC_EXIT(MRAILI_EXT_SENDQ_SEND);
 }
@@ -154,7 +134,7 @@ int MPIDI_CH3I_RDMA_read_datav(MPIDI_VC_t * recv_vc_ptr, MPID_IOV * iov,
     return MPI_SUCCESS;
 }
 
-#ifdef RDMA_FAST_PATH
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_MRAILI_Fast_rdma_fill_start_buf
@@ -166,11 +146,10 @@ static int MRAILI_Fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
 {
     /* FIXME: Here we assume that iov holds a packet header */
 #ifdef USE_HEADER_CACHING
-    MPIDI_CH3_Pkt_send_t *cached =  (NULL == vc)? NULL: vc->mrail.rfp.cached_outgoing;
+    MPIDI_CH3_Pkt_send_t *cached =  vc->mrail.rfp.cached_outgoing;
 #endif
     MPIDI_CH3_Pkt_send_t *header;
-    vbuf *v = 
-        (NULL == vc)? NULL:&(vc->mrail.rfp.RDMA_send_buf[vc->mrail.rfp.phead_RDMA_send]);
+    vbuf *v = &(vc->mrail.rfp.RDMA_send_buf[vc->mrail.rfp.phead_RDMA_send]);
     void *vstart;
     void *data_buf;
 
@@ -310,18 +289,16 @@ int MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(MPIDI_VC_t * vc,
                                               vbuf ** vbuf_handle)
 {
     MPIDI_CH3I_MRAILI_Pkt_comm_header *p;
-    MRAILI_Channel_info channel;
+    int rail;
     int  align_len;
     vbuf *v =
         &(vc->mrail.rfp.RDMA_send_buf[vc->mrail.rfp.phead_RDMA_send]);
-    vbuf *remote =
-        &(vc->mrail.rfp.remote_RDMA_buf[vc->mrail.rfp.phead_RDMA_send]);
-    vbuf *rstart;
+    char *rstart;
 
     MPIDI_STATE_DECL(MPIDI_CH3I_MRAILI_FAST_RDMA_SEND_COMPLETE);
     MPIDI_FUNC_ENTER(MPIDI_CH3I_MRAILI_FAST_RDMA_SEND_COMPLETE);
 
-    MRAILI_Fast_rdma_select_channel(vc, &channel);
+    rail = MRAILI_Fast_rdma_select_rail(vc);
     MRAILI_Fast_rdma_fill_start_buf(vc, iov, n_iov, num_bytes_ptr);
 
     p = v->pheader;
@@ -329,15 +306,18 @@ int MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(MPIDI_VC_t * vc,
     /*
        MRAILI_FAST_RDMA_VBUF_START(v, len, p);
      */
-    MRAILI_FAST_RDMA_VBUF_START(remote, (*num_bytes_ptr), rstart);
-    DEBUG_PRINT("[send: rdma_send] local vbuf %p, remote vbuf %p\n", v,
-                remote);
+    MRAILI_ALIGN_LEN((*num_bytes_ptr), align_len);
+    rstart = vc->mrail.rfp.remote_RDMA_buf +
+            (vc->mrail.rfp.phead_RDMA_send + 1) * rdma_vbuf_total_size
+            - align_len - sizeof(VBUF_FLAG_TYPE);
+    DEBUG_PRINT("[send: rdma_send] local vbuf %p, remote start %p, align size %d\n",
+               v, rstart, align_len);
 
     if (++(vc->mrail.rfp.phead_RDMA_send) >= num_rdma_buffer)
         vc->mrail.rfp.phead_RDMA_send = 0;
 
-    v->head_flag = (VBUF_FLAG_TYPE) (*num_bytes_ptr);
-    v->subchannel = channel;
+    *v->head_flag = (VBUF_FLAG_TYPE) (*num_bytes_ptr);
+    v->rail = rail;
     v->padding = BUSY_FLAG;
 
     /* generate a completion, following statements should have been executed during
@@ -346,23 +326,22 @@ int MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(MPIDI_VC_t * vc,
     align_len += VBUF_FAST_RDMA_EXTRA_BYTES;
 
     DEBUG_PRINT("[send: rdma_send] lkey %p, rkey %p, len %d, flag %d\n",
-                vc->mrail.rfp.RDMA_send_buf_mr[channel.hca_index]->lkey,
-                vc->mrail.rfp.RDMA_remote_buf_rkey, align_len, v->head_flag);
+                vc->mrail.rfp.RDMA_send_buf_mr[vc->mrail.rails[rail].hca_index]->lkey,
+                vc->mrail.rfp.RDMA_remote_buf_rkey, align_len, *v->head_flag);
 
     VBUF_SET_RDMA_ADDR_KEY(v, align_len, p,
-            vc->mrail.rfp.RDMA_send_buf_mr[channel.hca_index]->lkey, rstart,
-            vc->mrail.rfp.RDMA_remote_buf_rkey);
+            vc->mrail.rfp.RDMA_send_buf_mr[vc->mrail.rails[rail].hca_index]->lkey, rstart,
+            vc->mrail.rfp.RDMA_remote_buf_rkey[vc->mrail.rails[rail].hca_index]);
 
-    if (!vc->mrail.send_wqes_avail[channel.rail_index]) {
+    if (!vc->mrail.rails[rail].send_wqes_avail) {
         DEBUG_PRINT("[send: rdma_send] Warning! no send wqe available\n");
-        MRAILI_Ext_sendq_enqueue(vc, &channel, v);
+        MRAILI_Ext_sendq_enqueue(vc, rail, v);
         *vbuf_handle = v;
         return MPI_MRAIL_MSG_QUEUED;
     } else {
-        vc->mrail.send_wqes_avail[channel.rail_index]--;
+        vc->mrail.rails[rail].send_wqes_avail--;
         *vbuf_handle = v;
-
-        IBV_POST_SR(v, vc, channel, "ibv_post_sr (post_fast_rdma)");
+        IBV_POST_SR(v, vc, rail, "ibv_post_sr (post_fast_rdma)");
         DEBUG_PRINT("[send:post rdma] desc posted\n");
     }
 
@@ -376,6 +355,8 @@ int MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(MPIDI_VC_t * vc,
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3I_MRAILI_Fast_rdma_ok(MPIDI_VC_t * vc, int len)
 {
+    int i;
+
     MPIDI_STATE_DECL(MPIDI_CH3I_MRAILI_FAST_RDMA_OK);
     MPIDI_FUNC_ENTER(MPIDI_CH3I_MRAILI_FAST_RDMA_OK);
 
@@ -387,55 +368,126 @@ int MPIDI_CH3I_MRAILI_Fast_rdma_ok(MPIDI_VC_t * vc, int len)
     }
     if (vc->mrail.rfp.RDMA_send_buf[vc->mrail.rfp.phead_RDMA_send].padding == BUSY_FLAG)
         return 0;
-    if (vc->mrail.srp.backlog.len > 0) 
-        return 0;
+    for (i = 0; i < rdma_num_rails; i ++) {
+	if (vc->mrail.srp.credits[i].backlog.len != 0)
+	    return 0;
+    }
 
     return 1;
 } 
 
 #endif
 
+
+#ifdef SRQ
+int viadev_post_srq_buffers(int num_bufs, 
+        int hca_num)
+{
+    int i = 0;
+    vbuf *v;
+    struct ibv_recv_wr *bad_wr;
+
+    if(num_bufs > viadev_srq_size) {
+        ibv_error_abort(GEN_ASSERT_ERR,"Try to post %d to SRQ, max %d\n",
+                num_bufs, viadev_srq_size);
+    }
+
+    for(i = 0; i < num_bufs; i++) {
+
+        v = get_vbuf();
+
+        if(NULL == v) {
+            break;
+        }
+
+        vbuf_init_recv(v, VBUF_BUFFER_SIZE, hca_num * 
+                rdma_num_ports * rdma_num_qp_per_port);
+
+        if(ibv_post_srq_recv(MPIDI_CH3I_RDMA_Process.srq_hndl[hca_num],
+                    &v->desc.rr, &bad_wr)) {
+            MRAILI_Release_vbuf(v);
+            break;
+        }
+    }
+
+    return i;
+}
+#endif
+
 #undef FUNCNAME
 #define FUNCNAME MRAILI_Post_send
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MRAILI_Post_send(MPIDI_VC_t * vc, vbuf * v,
-                     const MRAILI_Channel_info * channel)
+int MRAILI_Post_send(MPIDI_VC_t * vc, vbuf * v, int rail)
 {
+#ifdef SRQ
+    int hca_num = rail / (rdma_num_ports * rdma_num_qp_per_port);
+#endif
     MPIDI_CH3I_MRAILI_Pkt_comm_header *p = v->pheader;
 
     MPIDI_STATE_DECL(MRAILI_POST_SEND);
     MPIDI_FUNC_ENTER(MRAILI_POST_SEND);
     DEBUG_PRINT(
                 "[post send] credit %d,type noop %d, backlog %d, wqe %d, nb will be %d\n",
-                vc->mrail.srp.remote_credit[channel->rail_index],
-                p->type == MPIDI_CH3_PKT_NOOP, vc->mrail.srp.backlog.len,
-                vc->mrail.send_wqes_avail[channel->rail_index],
+                vc->mrail.srp.credits[rail].remote_credit,
+                p->type == MPIDI_CH3_PKT_NOOP, vc->mrail.srp.credits[0].backlog.len,
+                vc->mrail.rails[rail].send_wqes_avail,
                 v->desc.sg_entry.length);
+#ifdef SRQ
 
-    if (vc->mrail.srp.remote_credit[channel->rail_index] > 0
+    PACKET_SET_CREDIT(p, vc, rail);
+
+    v->vc = (void *) vc;
+    p->mrail.src_rank = MPIDI_Process.my_pg_rank;
+    p->mrail.rail     = rail;
+
+    if (!vc->mrail.rails[rail].send_wqes_avail) {
+        MRAILI_Ext_sendq_enqueue(vc, rail, v);
+        MPIDI_FUNC_EXIT(MRAILI_POST_SEND);
+        return MPI_MRAIL_MSG_QUEUED;
+    }
+  
+    vc->mrail.rails[rail].send_wqes_avail--;
+    DEBUG_PRINT("my rank is %d\n", MPIDI_Process.my_pg_rank);
+
+    IBV_POST_SR(v, vc, rail, "ibv_post_sr (post_send_desc)");
+
+    pthread_spin_lock(&MPIDI_CH3I_RDMA_Process.srq_post_lock);
+
+    if(MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num] <= rdma_credit_preserve) {
+        MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num] +=
+            viadev_post_srq_buffers(viadev_srq_size - MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num], 
+                    hca_num);
+    }
+
+    pthread_spin_unlock(&MPIDI_CH3I_RDMA_Process.srq_post_lock);
+
+#else
+    if (vc->mrail.srp.credits[rail].remote_credit > 0
         || p->type == MPIDI_CH3_PKT_NOOP) {
 
-        PACKET_SET_CREDIT(p, vc, channel->rail_index);
+        PACKET_SET_CREDIT(p, vc, rail);
+
         if (p->type != MPIDI_CH3_PKT_NOOP)
-            vc->mrail.srp.remote_credit[channel->rail_index]--;
+            vc->mrail.srp.credits[rail].remote_credit--;
 
         v->vc = (void *) vc;
 
-        if (!vc->mrail.send_wqes_avail[channel->rail_index]) {
-            MRAILI_Ext_sendq_enqueue(vc, channel, v);
+        if (!vc->mrail.rails[rail].send_wqes_avail) {
+            MRAILI_Ext_sendq_enqueue(vc, rail, v);
             MPIDI_FUNC_EXIT(MRAILI_POST_SEND);
             return MPI_MRAIL_MSG_QUEUED;
         }
-        vc->mrail.send_wqes_avail[channel->rail_index]--;
+        vc->mrail.rails[rail].send_wqes_avail--;
         
-        IBV_POST_SR(v, vc, (*channel), "ibv_post_sr (post_send_desc)");
+        IBV_POST_SR(v, vc, rail, "ibv_post_sr (post_send_desc)");
     } else {
-        ibv_backlog_queue_t *q = &(vc->mrail.srp.backlog);
+        ibv_backlog_queue_t *q = &(vc->mrail.srp.credits[rail].backlog);
         BACKLOG_ENQUEUE(q, v);
         MPIDI_FUNC_EXIT(MRAILI_POST_SEND);
         return MPI_MRAIL_MSG_QUEUED;
     }
+#endif
     MPIDI_FUNC_EXIT(MRAILI_POST_SEND);
     return MPI_SUCCESS;
 }
@@ -487,7 +539,7 @@ int MPIDI_CH3I_MRAILI_Eager_send(MPIDI_VC_t * vc,
                                  int *num_bytes_ptr, vbuf ** buf_handle)
 {
     MPIDI_CH3I_MRAILI_Pkt_comm_header *pheader;
-    MRAILI_Channel_info channel;
+    int rail;
     vbuf *v;
     int  mpi_errno; 
 
@@ -499,14 +551,46 @@ int MPIDI_CH3I_MRAILI_Eager_send(MPIDI_VC_t * vc,
     DEBUG_PRINT("[eager send]vbuf addr %p\n", v);
     *num_bytes_ptr = MRAILI_Fill_start_buffer(v, iov, n_iov);
 
-    MRAILI_Send_select_channel(vc, &channel);
-    DEBUG_PRINT("[eager send] len %d, selected channel hca %d, rail %d\n",
-                *num_bytes_ptr, channel.hca_index, channel.rail_index);
+    rail = MRAILI_Send_select_rail(vc);
+    DEBUG_PRINT("[eager send] len %d, selected rail hca %d, rail %d\n",
+                *num_bytes_ptr, vc->mrail.rails[rail].hca_index, rail);
     pheader = v->pheader;
 
-    vbuf_init_send(v, *num_bytes_ptr, &channel);
+    vbuf_init_send(v, *num_bytes_ptr, rail);
     /*PACKET_SET_CREDIT(pheader, vc, channel.rail_index);*/
-    mpi_errno = MRAILI_Post_send(vc, v, &channel);
+    mpi_errno = MRAILI_Post_send(vc, v, rail);
+
+    MPIDI_FUNC_EXIT(MPIDI_CH3I_MRAILI_EAGER_SEND);
+
+    return mpi_errno;
+}
+
+
+int MPIDI_CH3I_MRAILI_rput_complete(MPIDI_VC_t * vc,
+                                 MPID_IOV * iov,
+                                 int n_iov,
+                                 int *num_bytes_ptr, vbuf ** buf_handle
+                                 , int rail)
+{
+    MPIDI_CH3I_MRAILI_Pkt_comm_header *pheader;
+    vbuf *v;
+    int  mpi_errno;
+
+    MPIDI_STATE_DECL(MPIDI_CH3I_MRAILI_EAGER_SEND);
+    MPIDI_FUNC_ENTER(MPIDI_CH3I_MRAILI_EAGER_SEND);
+
+    v = get_vbuf();
+    *buf_handle = v;
+    DEBUG_PRINT("[eager send]vbuf addr %p\n", v);
+    *num_bytes_ptr = MRAILI_Fill_start_buffer(v, iov, n_iov);
+
+    DEBUG_PRINT("[eager send] len %d, selected rail hca %d, rail %d\n",
+                *num_bytes_ptr, vc->mrail.rails[rail].hca_index, rail);
+    pheader = v->pheader;
+
+    vbuf_init_send(v, *num_bytes_ptr, rail);
+    /*PACKET_SET_CREDIT(pheader, vc, channel.rail_index);*/
+    mpi_errno = MRAILI_Post_send(vc, v, rail);
 
     MPIDI_FUNC_EXIT(MPIDI_CH3I_MRAILI_EAGER_SEND);
 
@@ -518,15 +602,15 @@ int MPIDI_CH3I_MRAILI_Eager_send(MPIDI_VC_t * vc,
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MRAILI_Backlog_send(MPIDI_VC_t * vc,
-                        const MRAILI_Channel_info * channel)
+                        int rail)
 {
     MPIDI_STATE_DECL(MRAILI_BACKLOG_SEND);
     MPIDI_FUNC_ENTER(MRAILI_BACKLOG_SEND);
 
-    ibv_backlog_queue_t *q = &vc->mrail.srp.backlog;
+    ibv_backlog_queue_t *q = &vc->mrail.srp.credits[rail].backlog;
 
     while ((q->len > 0)
-           && (vc->mrail.srp.remote_credit[channel->rail_index] > 0)) {
+           && (vc->mrail.srp.credits[rail].remote_credit > 0)) {
         vbuf *v = NULL;
         MPIDI_CH3I_MRAILI_Pkt_comm_header *p;
 #ifdef DEBUG
@@ -537,18 +621,22 @@ int MRAILI_Backlog_send(MPIDI_VC_t * vc,
         /* Assumes packet header is at beginning of packet structure */
         p = (MPIDI_CH3I_MRAILI_Pkt_comm_header *) v->pheader;
 
-        PACKET_SET_CREDIT(p, vc, channel->rail_index);
-        vc->mrail.srp.remote_credit[channel->rail_index]--;
+        PACKET_SET_CREDIT(p, vc, rail);
+        vc->mrail.srp.credits[rail].remote_credit--;
+#ifdef SRQ
+        p->mrail.src_rank = MPIDI_Process.my_pg_rank;
+	p->mrail.rail     = rail;
+#endif
+     	v->vc = vc;
+	    v->rail = rail;
 
-        v->vc = vc;
-
-        if (!vc->mrail.send_wqes_avail[channel->rail_index]) {
-            MRAILI_Ext_sendq_enqueue(vc, channel, v);
+        if (!vc->mrail.rails[rail].send_wqes_avail) {
+            MRAILI_Ext_sendq_enqueue(vc, rail, v);
             continue;
         }
-        vc->mrail.send_wqes_avail[channel->rail_index]--;
+        vc->mrail.rails[rail].send_wqes_avail--;
 
-        IBV_POST_SR(v, vc, (*channel),
+        IBV_POST_SR(v, vc, rail,
                     "ibv_post_sr (viadev_backlog_push)");
     }
 
@@ -575,19 +663,20 @@ int MRAILI_Process_send(void *vbuf_addr)
     p   = v->pheader;
     vc  = v->vc;
     DEBUG_PRINT("process send, type %d\n", p->type);
-    vc->mrail.send_wqes_avail[v->subchannel.rail_index]++;
 
-    if (vc->mrail.ext_sendq_head[v->subchannel.rail_index]) {
-        MRAILI_Ext_sendq_send(vc, &v->subchannel);
+    vc->mrail.rails[v->rail].send_wqes_avail++;
+
+    if (vc->mrail.rails[v->rail].ext_sendq_head) {
+        MRAILI_Ext_sendq_send(vc, v->rail);
     }
-#ifdef RDMA_FAST_PATH
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
     if (v->padding == RPUT_VBUF_FLAG) {
         MRAILI_Release_vbuf(v);
         MPIDI_FUNC_EXIT(MRAILI_PROCESS_SEND);
         return MPI_SUCCESS;
     }
     if (v->padding == CREDIT_VBUF_FLAG) {
-        vc->mrail.send_wqes_avail[v->subchannel.rail_index]--;
+        vc->mrail.rails[v->rail].send_wqes_avail--;
         MPIDI_FUNC_EXIT(MRAILI_PROCESS_SEND);
         return MPI_SUCCESS;
     }
@@ -623,7 +712,7 @@ int MRAILI_Process_send(void *vbuf_addr)
                 ibv_error_abort(IBV_STATUS_ERR, "Get incomplete eager send request\n");
             }
         }
-#if defined(RDMA_FAST_PATH)
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
         if (v->padding == NORMAL_VBUF_FLAG) {
             DEBUG_PRINT("[process send] normal flag, free vbuf\n");
             MRAILI_Release_vbuf(v);
@@ -636,32 +725,35 @@ int MRAILI_Process_send(void *vbuf_addr)
         break;
     case MPIDI_CH3_PKT_RPUT_FINISH:
         req = (MPID_Request *) (v->sreq);
-        v->sreq = NULL;
         if (req == NULL) {
             ibv_error_abort(GEN_EXIT_ERR,
-                                "s == NULL, s is the send, v is %p "
-                                "handler of the rput finish", v);
+                    "s == NULL, s is the send, v is %p "
+                    "handler of the rput finish", v);
         }
-        DEBUG_PRINT("req pointer %p\n", req);
-        if (req->mrail.d_entry != NULL) {
-            dreg_unregister(req->mrail.d_entry);
-            req->mrail.d_entry = NULL;
-        }   
-        if (1 == req->mrail.rndv_buf_alloc && NULL != req->mrail.rndv_buf) {   
-            /* we allocated a tmp buf to do rput */
-            MPIU_Free(req->mrail.rndv_buf);
-            req->mrail.rndv_buf = NULL;
-            req->mrail.rndv_buf_off = req->mrail.rndv_buf_sz = 0;
-            req->mrail.rndv_buf_alloc = 0;
-        }
-        req->mrail.d_entry = NULL;
-        
-        MPIDI_CH3U_Handle_send_req(vc, req, &complete);
 
-        if (complete != TRUE) {
-            ibv_error_abort(IBV_STATUS_ERR, "Get incomplete eager send request\n");
+        req->mrail.completion_counter++;
+        DEBUG_PRINT("req pointer %p, entry %p\n", req, req->mrail.d_entry);
+        if(req->mrail.completion_counter < rdma_num_rails) {
+        } else {
+            if (req->mrail.d_entry != NULL) {
+                dreg_unregister(req->mrail.d_entry);
+                req->mrail.d_entry = NULL;
+            }
+            if (1 == req->mrail.rndv_buf_alloc && NULL != req->mrail.rndv_buf) {   
+                /* we allocated a tmp buf to do rput */
+                MPIU_Free(req->mrail.rndv_buf);
+                req->mrail.rndv_buf = NULL;
+                req->mrail.rndv_buf_off = req->mrail.rndv_buf_sz = 0;
+                req->mrail.rndv_buf_alloc = 0;
+            }
+            req->mrail.d_entry = NULL;
+            MPIDI_CH3U_Handle_send_req(vc, req, &complete);
+
+            if (complete != TRUE) {
+                ibv_error_abort(IBV_STATUS_ERR, "Get incomplete eager send request\n");
+            }
         }
-#if defined(RDMA_FAST_PATH)
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
         if (v->padding == NORMAL_VBUF_FLAG)
             MRAILI_Release_vbuf(v);
         else v->padding = FREE_FLAG;
@@ -693,7 +785,7 @@ int MRAILI_Process_send(void *vbuf_addr)
                 ibv_error_abort(IBV_STATUS_ERR, "Get incomplete eager send request\n");
             }
         }
-#if defined(RDMA_FAST_PATH)
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
         if (v->padding == NORMAL_VBUF_FLAG)
             MRAILI_Release_vbuf(v);
         else v->padding = FREE_FLAG;
@@ -702,6 +794,9 @@ int MRAILI_Process_send(void *vbuf_addr)
 #endif
         break;
     case MPIDI_CH3_PKT_NOOP:
+#ifdef ADAPTIVE_RDMA_FAST_PATH
+    case MPIDI_CH3_PKT_ADDRESS:
+#endif
     case MPIDI_CH3_PKT_PACKETIZED_SEND_START:
     case MPIDI_CH3_PKT_RNDV_REQ_TO_SEND:
     case MPIDI_CH3_PKT_RNDV_READY_REQ_TO_SEND:
@@ -723,7 +818,7 @@ int MRAILI_Process_send(void *vbuf_addr)
     case MPIDI_CH3_PKT_FLOW_CNTL_UPDATE:
     case MPIDI_CH3_PKT_CLOSE:  /*24*/
         DEBUG_PRINT("[process send] get %d\n", p->type);
-#if defined(RDMA_FAST_PATH)
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
         if (v->padding == NORMAL_VBUF_FLAG) {
             MRAILI_Release_vbuf(v);
         }
@@ -748,7 +843,7 @@ int MRAILI_Process_send(void *vbuf_addr)
 #define FUNCNAME MRAILI_Send_noop
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-void MRAILI_Send_noop(MPIDI_VC_t * c, const MRAILI_Channel_info * channel)
+void MRAILI_Send_noop(MPIDI_VC_t * c, int rail)
 {
     /* always send a noop when it is needed even if there is a backlog.
      * noops do not consume credits.
@@ -768,8 +863,8 @@ void MRAILI_Send_noop(MPIDI_VC_t * c, const MRAILI_Channel_info * channel)
 
     p->type = MPIDI_CH3_PKT_NOOP;
     /*PACKET_SET_CREDIT(p, c, channel->rail_index);*/
-    vbuf_init_send(v, sizeof(MPIDI_CH3I_MRAILI_Pkt_noop), channel);
-    MRAILI_Post_send(c, v, channel);
+    vbuf_init_send(v, sizeof(MPIDI_CH3I_MRAILI_Pkt_noop), rail);
+    MRAILI_Post_send(c, v, rail);
 
     MPIDI_FUNC_EXIT(MRAILI_SEND_NOOP);
 }
@@ -778,28 +873,29 @@ void MRAILI_Send_noop(MPIDI_VC_t * c, const MRAILI_Channel_info * channel)
 #define FUNCNAME MRAILI_Send_noop_if_needed
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MRAILI_Send_noop_if_needed(MPIDI_VC_t * vc,
-                               const MRAILI_Channel_info * channel)
+int MRAILI_Send_noop_if_needed(MPIDI_VC_t * vc, int rail)
 {
+#ifndef SRQ
     MPIDI_STATE_DECL(MRAILI_SEND_NOOP_IF_NEEDED);
     MPIDI_FUNC_ENTER(MRAILI_SEND_NOOP_IF_NEEDED);
 
     DEBUG_PRINT( "[ibv_send]local credit %d, rdma redit %d\n",
-        vc->mrail.srp.local_credit[channel->rail_index],
+        vc->mrail.srp.credits[rail].local_credit,
         vc->mrail.rfp.rdma_credit);
-    if (vc->mrail.srp.local_credit[channel->rail_index] >=
+    if (vc->mrail.srp.credits[rail].local_credit >=
         rdma_dynamic_credit_threshold
-#ifdef RDMA_FAST_PATH
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
         || vc->mrail.rfp.rdma_credit > num_rdma_buffer / 2
 #endif
-        || (vc->mrail.srp.remote_cc[channel->rail_index] <=
+        || (vc->mrail.srp.credits[rail].remote_cc <=
             rdma_credit_preserve
-            && vc->mrail.srp.local_credit[channel->rail_index] >=
+            && vc->mrail.srp.credits[rail].local_credit >=
             rdma_credit_notify_threshold)
         ) {
-        MRAILI_Send_noop(vc, channel);
+        MRAILI_Send_noop(vc, rail);
     } 
     MPIDI_FUNC_EXIT(MRAILI_SEND_NOOP_IF_NEEDED);
+#endif
     return MPI_SUCCESS;
 }
 
@@ -810,31 +906,53 @@ int MRAILI_Send_noop_if_needed(MPIDI_VC_t * vc,
 void MRAILI_RDMA_Put(   MPIDI_VC_t * vc, vbuf *v,
                         char * local_addr, uint32_t lkey,
                         char * remote_addr, uint32_t rkey,
-                        int nbytes, MRAILI_Channel_info * subchannel
+                        int nbytes, int rail
                     )
 {
     MPIDI_STATE_DECL(MRAILI_RDMA_PUT);
     MPIDI_FUNC_ENTER(MRAILI_RDMA_PUT);
-#ifdef VAPI_HAVE_RDMA_LIMIT
-    while (viadev.outstanding_rdmas >= viadev_rdma_limit)
-        MPID_DeviceCheck(MPID_BLOCKING);
-    viadev.outstanding_rdmas++;
-#endif
+
     DEBUG_PRINT("viadev_rput: RDMA write, remote addr %p, rkey %p, nbytes %d, hca %d\n",
-            remote_addr, rkey, nbytes, subchannel->hca_index);
+            remote_addr, rkey, nbytes, vc->mrail.rails[rail].hca_index);
     vbuf_init_rput(v, (void *)local_addr, lkey,
-                   remote_addr, rkey, nbytes, subchannel);
+                   remote_addr, rkey, nbytes, rail);
     
     v->vc = (void *)vc;
 
-    if (!vc->mrail.send_wqes_avail[subchannel->rail_index]) {
-        MRAILI_Ext_sendq_enqueue(vc, subchannel, v);
+    if (!vc->mrail.rails[rail].send_wqes_avail) {
+        MRAILI_Ext_sendq_enqueue(vc,rail, v);
         return;
     }
-    vc->mrail.send_wqes_avail[subchannel->rail_index]--;
+    vc->mrail.rails[rail].send_wqes_avail--;
                                                                                                                                                
-    IBV_POST_SR(v, vc, (*subchannel), "viadev_post_rdmawrite");
+    IBV_POST_SR(v, vc, rail, "viadev_post_rdmawrite");
 
     MPIDI_FUNC_EXIT(MRAILI_RDMA_PUT);
 }
 
+#ifdef ADAPTIVE_RDMA_FAST_PATH
+
+void vbuf_address_send(MPIDI_VC_t *vc)
+{
+    vbuf *v;
+    MPIDI_CH3_Pkt_address_t *p;
+    int rail, i;
+
+    v = get_vbuf();
+    p = (MPIDI_CH3_Pkt_address_t *) v->pheader;
+
+    rail = MRAILI_Send_select_rail(vc);
+    p->type = MPIDI_CH3_PKT_ADDRESS;
+    p->addr.type        = 0;
+    p->addr.rdma_address = (unsigned long)vc->mrail.rfp.RDMA_recv_buf_DMA;
+    DEBUG_PRINT("vc %p\n", vc);
+
+    for (i = 0; i < rdma_num_hcas; i ++) {    
+	DEBUG_PRINT("mr %p\n", vc->mrail.rfp.RDMA_recv_buf_mr[i]);
+	p->addr.rdma_hndl[i]   = vc->mrail.rfp.RDMA_recv_buf_mr[i]->rkey;
+    }
+    vbuf_init_send(v, sizeof(MPIDI_CH3_Pkt_address_t), rail);
+    MRAILI_Post_send(vc, v, rail);
+}
+
+#endif

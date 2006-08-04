@@ -27,18 +27,36 @@
 #define MPIDI_CH3I_VC_RDMA_DECL MPIDI_CH3I_MRAIL_VC mrail;
 #define MPIDI_CH3I_MRAILI_IBA_PKT_DEFS 1
 
-/* #define _SCHEDULE 1 */
-
 typedef struct MPIDI_CH3I_MRAILI_IBA_Pkt {
-    u_int8_t vbuf_credit;      /* piggybacked vbuf credit   */
-    u_int8_t remote_credit;    /* our current credit count */
-#if defined(RDMA_FAST_PATH)
-    u_int8_t rdma_credit;
+    uint8_t vbuf_credit;      
+    /* piggybacked vbuf credit   */
+    uint8_t remote_credit;    
+    /* our current credit count */
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
+    uint8_t rdma_credit;
 #endif
+#ifdef SRQ
+    uint32_t src_rank;
+    uint8_t  rail;
+#endif
+
 } MPIDI_CH3I_MRAILI_Iba_pkt_t;
 
 #define MPIDI_CH3I_MRAILI_IBA_PKT_DECL \
     MPIDI_CH3I_MRAILI_Iba_pkt_t mrail;
+
+#ifdef ADAPTIVE_RDMA_FAST_PATH
+
+struct MPIDI_CH3I_MRAILI_Pkt_address {
+    uint8_t type;
+    unsigned long rdma_address;
+    uint32_t rdma_hndl[MAX_NUM_HCAS];
+};
+
+#define MPIDI_CH3I_MRAILI_PKT_ADDRESS_DECL \
+    struct MPIDI_CH3I_MRAILI_Pkt_address addr;
+
+#endif
 
 typedef enum {
     VAPI_PROTOCOL_RENDEZVOUS_UNSPECIFIED = 0,
@@ -49,9 +67,15 @@ typedef enum {
 } MRAILI_Protocol_t;
 
 typedef struct MPIDI_CH3I_MRAILI_Rndv_info {
+    /* Protocol to be used, Choices: R3/RPUT */
     MRAILI_Protocol_t   protocol;
+    /* Buffer Address */
     void                *buf_addr;
-    uint32_t            rkey;
+    /* rkey for RDMA for all HCAs */
+    uint32_t            rkey[MAX_NUM_HCAS];
+    /* This is required for telling the receiver
+     * when to mark the recv as complete */
+    uint8_t            weight_rail[MAX_NUM_HCAS];
 } MPIDI_CH3I_MRAILI_Rndv_info_t;
 
 #define MPIDI_CH3I_MRAILI_RNDV_INFO_DECL \
@@ -60,19 +84,20 @@ typedef struct MPIDI_CH3I_MRAILI_Rndv_info {
 struct dreg_entry;
 
 #define MPIDI_CH3I_MRAILI_REQUEST_DECL \
-struct MPIDI_CH3I_MRAILI_Request {  \
-    MPI_Request partner_id;         \
-    uint8_t rndv_buf_alloc;         \
-    void * rndv_buf;    \
-    int rndv_buf_sz;    \
-    int rndv_buf_off;   \
-    MRAILI_Protocol_t protocol;     \
-    struct dreg_entry *d_entry;     \
-    void     *remote_addr;          \
-    uint32_t rkey;                  \
-    uint8_t  nearly_complete;       \
-    struct MPID_Request *next_inflow;  \
-} mrail;
+    struct MPIDI_CH3I_MRAILI_Request {  \
+        MPI_Request partner_id;         \
+        uint8_t rndv_buf_alloc;         \
+        void * rndv_buf;    \
+        int rndv_buf_sz;    \
+        int rndv_buf_off;   \
+        MRAILI_Protocol_t protocol;     \
+        struct dreg_entry *d_entry;     \
+        void     *remote_addr;          \
+        uint32_t rkey[MAX_NUM_HCAS];    \
+        uint8_t  nearly_complete;       \
+        uint32_t completion_counter;   \
+        struct MPID_Request *next_inflow;  \
+    } mrail;
 
 #ifdef USE_HEADER_CACHING
 #define MAX_SIZE_WITH_HEADER_CACHING 255
@@ -92,7 +117,7 @@ typedef struct MPIDI_CH3I_MRAILI_Pkt_fast_eager_with_req_t {
 #endif
 
 typedef struct MPIDI_CH3I_MRAILI_Pkt_comm_header_t {
-    uint8_t type;  /* XXX - uint8_t to conserve space ??? */
+    uint8_t type;  
 #if defined(MPIDI_CH3I_MRAILI_IBA_PKT_DECL)
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
 #endif
@@ -101,37 +126,49 @@ typedef struct MPIDI_CH3I_MRAILI_Pkt_comm_header_t {
 #define MPIDI_CH3I_MRAILI_Pkt_noop MPIDI_CH3I_MRAILI_Pkt_comm_header
 
 typedef struct MRAILI_Channel_manager_t {
-    int     total_subrails;
-    
-    vbuf    *v_queue_head[MAX_SUBCHANNELS];  /* put vbufs from each channel */
-    vbuf    *v_queue_tail[MAX_SUBCHANNELS];
-    int     len[MAX_SUBCHANNELS];
-
+    int     num_channels;
     int     num_local_pollings;
-    vbuf    *(**poll_channel)(void *vc);
+
+    struct {
+    	vbuf    *v_queue_head;
+    	/* put vbufs from each channel */
+    	vbuf    *v_queue_tail;
+    	int     len;
+    } *msg_channels;
+
+    struct MRAILI_Channel_manager_t *next_arriving;
+    int     inqueue;
+
+#ifdef ADAPTIVE_RDMA_FAST_PATH
+    struct MRAILI_Channel_manager_t *prev;
+    struct MRAILI_Channel_manager_t *next;   /* for msg queue */
+    int     pending_vbuf;
+#endif
+
+    void *vc;
 } MRAILI_Channel_manager;
 
-
-#ifdef RDMA_FAST_PATH
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
 typedef struct MPIDI_CH3I_MRAILI_RDMAPATH_VC
 {
     /**********************************************************
      * Following part of the structure is shared by all rails *
      **********************************************************/
     /* RDMA buffers */
-    void    *RDMA_send_buf_orig;
-    void    *RDMA_recv_buf_orig;
+    void    *RDMA_send_buf_DMA;
+    void    *RDMA_recv_buf_DMA;
     struct vbuf *RDMA_send_buf;
     struct vbuf *RDMA_recv_buf;
-    /* RDMA buffer address on the remote side */
-    struct vbuf *remote_RDMA_buf;
 
     struct ibv_mr *RDMA_send_buf_mr[MAX_NUM_HCAS];
     struct ibv_mr *RDMA_recv_buf_mr[MAX_NUM_HCAS];
-    uint32_t       RDMA_remote_buf_rkey;
+    uint32_t       RDMA_remote_buf_rkey[MAX_NUM_HCAS];
 
     /* current flow control credit accumulated for remote side */
-    u_int8_t rdma_credit;
+    uint8_t rdma_credit;
+
+    /* RDMA buffer address on the remote side */
+    char    *remote_RDMA_buf;
 
     int phead_RDMA_send;
     int ptail_RDMA_send;
@@ -142,6 +179,11 @@ typedef struct MPIDI_CH3I_MRAILI_RDMAPATH_VC
     /* this pointer advances when we receive packets */
     int p_RDMA_recv;
     int p_RDMA_recv_tail;
+
+#ifdef ADAPTIVE_RDMA_FAST_PATH
+    int eager_start_cnt;
+    int in_polling_set;
+#endif
 
 #ifdef USE_HEADER_CACHING
     void    *cached_outgoing;
@@ -161,57 +203,59 @@ typedef struct _ibv_backlog_queue_t {
 
 typedef struct MPIDI_CH3I_MRAILI_SR_VC
 {
-    uint8_t remote_credit[MAX_SUBCHANNELS];   /* how many vbufs I can consume on remote end. */
-    uint8_t local_credit[MAX_SUBCHANNELS];    /* accumulate vbuf credit locally here */
-    uint8_t preposts[MAX_SUBCHANNELS];        /* number of vbufs currently preposted */
-
-    uint8_t remote_cc[MAX_SUBCHANNELS];
-    uint8_t initialized[MAX_SUBCHANNELS];
-
-    /* the backlog queue for this connection. */
-    ibv_backlog_queue_t backlog;
-    /* This field is used for managing preposted receives. It is the
-     * number of rendezvous packets (r3/rput) expected to arrive for
-     * receives we've ACK'd but have not been completed. In general we
-     * can't prepost all of these vbufs, but we do prepost extra ones
-     * to allow sender to keep the pipe full. As packets come in this
-     * field is decremented.  We know when to stop preposting extra
-     * buffers when this number goes to zero.
-     */
-    int rendezvous_packets_expected[MAX_SUBCHANNELS];
+    struct {
+	/* how many vbufs can be consumed on remote end. */
+	uint8_t remote_credit;
+	/* accumulate vbuf credit locally here */
+	uint8_t local_credit;
+	/* number of vbufs currently preposted */
+	uint8_t preposts;
+#ifdef SRQ	
+    uint32_t pending_r3_sends;
+#endif
+	uint8_t remote_cc;
+	uint8_t initialized;
+	int 	rendezvous_packets_expected;
+        ibv_backlog_queue_t backlog;
+    } *credits;
 } MPIDI_CH3I_MRAILI_SR_VC;
+
+struct mrail_rail {
+	struct ibv_context *nic_context;
+	int    hca_index;
+	int    port;
+	int    lid;
+	struct ibv_cq	*cq_hndl;
+	struct ibv_qp 	*qp_hndl;
+	
+	int		send_wqes_avail;
+	struct vbuf 	*ext_sendq_head;
+	struct vbuf	*ext_sendq_tail;
+#ifdef ONE_SIDED
+	struct  ibv_qp * qp_hndl_1sc;
+	int     postsend_times_1sc;
+#endif
+};
 
 /* sample implemenation structure */
 typedef struct MPIDI_CH3I_MRAIL_VC_t
 {
-    int     num_total_subrails;
-    int     subrail_per_hca;
+    int     num_rails;
     /* qp handle for each of the sub-rails */
-    struct  ibv_qp * qp_hndl[MAX_SUBCHANNELS];
-
-#ifdef ONE_SIDED
-    struct  ibv_qp * qp_hndl_1sc;
-    int     postsend_times_1sc;
-#endif
+    struct  mrail_rail *rails;
 
     /* number of send wqes available */
-    /* Following three pointers are allocated in MPIDI_Init_vc function*/
-    int     send_wqes_avail[MAX_SUBCHANNELS];
-     /* queue of sends which didn't fit on send Q */ 
-    struct  vbuf *ext_sendq_head[MAX_SUBCHANNELS]; 
-    struct  vbuf *ext_sendq_tail[MAX_SUBCHANNELS];
+    uint16_t next_packet_expected;
+    uint16_t next_packet_tosend;
 
-    u_int16_t next_packet_expected;
-    u_int16_t next_packet_tosend;
-
-#ifdef RDMA_FAST_PATH
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
     MPIDI_CH3I_MRAILI_RDMAPATH_VC rfp;
 #endif
     MPIDI_CH3I_MRAILI_SR_VC srp;
 
+    MRAILI_Channel_manager  cmanager;
     /* Buffered receiving request for packetized transfer */
     void                    *packetized_recv;
-    MRAILI_Channel_manager  cmanager;
 
     /* these fields are used to remember data transfer operations
      * that are currently in progress on this connection. The
@@ -244,7 +288,7 @@ typedef struct MPIDI_CH3I_MRAIL_VC_t
      * completed on this connection.  Currently, only used during
      * process teardown.
      *
-    int barrier_id; */
+     int barrier_id; */
 } MPIDI_CH3I_MRAIL_VC;
 
 /* add this structure to the implemenation specific macro */
@@ -260,7 +304,7 @@ typedef struct MPIDI_CH3I_MRAIL_VC_t
  */
 struct MPIDI_CH3I_RDMA_put_get_list_t;
 typedef struct MPIDI_CH3I_RDMA_put_get_list_t
-        MPIDI_CH3I_RDMA_put_get_list;
+MPIDI_CH3I_RDMA_put_get_list;
 
 #endif
 

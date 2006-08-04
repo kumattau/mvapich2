@@ -20,13 +20,15 @@
 
 #include "pmi.h"
 
+#ifdef ONE_SIDED
+
 #undef FUNCNAME
 #define FUNCNAME 1SC_PUT_datav
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 
 #define ASSERT assert
-
+/*#define DEBUG */
 #undef DEBUG_PRINT
 #ifdef DEBUG
 #define DEBUG_PRINT(args...) \
@@ -40,28 +42,23 @@ do {                                                          \
 #define DEBUG_PRINT(args...)
 #endif
 
-#ifdef ONE_SIDED
+                                                                                                         
 
+                                                                                         
 extern int number_of_op;
-
 static int Decrease_CC(MPID_Win *, int);
-static int POST_PUT_PUT_GET_LIST(MPID_Win *, int, dreg_entry *, 
-            MPIDI_VC_t *, struct ibv_send_wr *);
-static int POST_GET_PUT_GET_LIST(MPID_Win *, int, void *, void *, 
-            dreg_entry *, MPIDI_VC_t *, struct ibv_send_wr *);
+static int POST_GET_PUT_GET_LIST(  MPID_Win *, int , dreg_entry * ,
+                                MPIDI_VC_t * , void *local_buf[], void *remote_buf[], int length,
+                                uint32_t lkeys[], uint32_t rkeys[], int use_multi);
+
+static int POST_PUT_PUT_GET_LIST(MPID_Win *, int,  dreg_entry *, 
+                                MPIDI_VC_t *, void *local_buf[],void *remote_buf[],int length
+                                ,uint32_t lkeys[], uint32_t rkeys[],int use_multi );
 static int Consume_signals(MPID_Win *, uint64_t);
 static int IBA_PUT(MPIDI_RMA_ops *, MPID_Win *, int);
 static int IBA_GET(MPIDI_RMA_ops *, MPID_Win *, int);
-
 static void Get_Pinned_Buf(MPID_Win * win_ptr, char **origin, int size);
 
-#ifdef _FOO_
-static int IBA_ACCUMULATE(MPIDI_RMA_ops *, MPID_Win *, int);
-static int iba_lock(MPID_Win *, MPIDI_RMA_ops *, int);
-static int iba_unlock(MPID_Win *, MPIDI_RMA_ops *, int);
-static void MPIDI_CH3I_RDMA_lock(MPID_Win * win_ptr,
-                          int target_rank, int lock_type, int blocking);
-#endif
 
 static inline int Find_Avail_Index()
 {
@@ -302,7 +299,6 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr,
                             curr_ptr = tmp_ptr;
 #ifdef _SCHEDULE
                             curr_put = 1;
-                            DEBUG_PRINT("put isssued\n");
                             issued ++;
                         } else {    /* nearest issued rma is a put */
                             if (skipped_op == NULL)
@@ -319,34 +315,8 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr,
                 }
             case (MPIDI_RMA_ACCUMULATE):
                 {
-#if 0
-                    /*int origin_dt_derived, target_dt_derived;
-                    if (HANDLE_GET_KIND(curr_ptr->origin_datatype) !=
-                        HANDLE_KIND_BUILTIN)
-                        origin_dt_derived = 1;
-                    else
-                        origin_dt_derived = 0;
-                    if (HANDLE_GET_KIND(curr_ptr->target_datatype) !=
-                        HANDLE_KIND_BUILTIN)
-                        target_dt_derived = 1;
-                    else
-                        target_dt_derived = 0;
-                    if (!origin_dt_derived && !target_dt_derived) {
-                        IBA_ACCUMULATE(curr_ptr, win_ptr, passive);
-                        if (head_ptr == curr_ptr)
-                            prev_ptr = head_ptr = curr_ptr->next;
-                        else
-                            prev_ptr->next = curr_ptr->next;
-                        tmp_ptr = curr_ptr->next;
-                        MPIU_Free(curr_ptr);
-                        curr_ptr = tmp_ptr;
-                    } else {*/
-#endif
-                        prev_ptr = curr_ptr;
-                        curr_ptr = curr_ptr->next;
-#if 0
-                    /*}*/
-#endif
+                    prev_ptr = curr_ptr;
+                    curr_ptr = curr_ptr->next;
                     break;
                 }
             case (MPIDI_RMA_GET):
@@ -382,7 +352,6 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr,
                         curr_ptr = tmp_ptr;
 #ifdef _SCHEDULE
                             curr_put = 0;
-                            DEBUG_PRINT("Get issued\n");
                             issued ++;
                         } else {
                             if (skipped_op == NULL)
@@ -402,7 +371,7 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr,
                    remain_ptr = curr_ptr;
                    else
                    remain_ptr->next=curr_ptr; */
-                printf("Unknown ONE SIDED OP\n");
+                DEBUG_PRINT("Unknown ONE SIDED OP\n");
                 exit(0);
                 break;
             }
@@ -421,38 +390,29 @@ void MPIDI_CH3I_RDMA_post(MPID_Win * win_ptr, int target_rank)
     char                *origin_addr;
     uint32_t            l_key, r_key;
     int                 size;
+    int                 i;
     struct ibv_qp       *qp_hndl;
     int                 ret;
     struct ibv_send_wr  desc;
     struct ibv_sge      sg_entry;
+    int 		hca_index; 
     MPIDI_VC_t          *tmp_vc;
     MPID_Comm           *comm_ptr;
-
     /*part 1 prepare origin side buffer */
     remote_address = (char *) win_ptr->remote_post_flags[target_rank];
-    l_key = win_ptr->pinnedpool_1sc_dentry->memhandle->lkey;
-    r_key = win_ptr->r_key4[target_rank];
     size = sizeof(int);
     Get_Pinned_Buf(win_ptr, &origin_addr, size);
     *((int *) origin_addr) = 1;
 
     MPID_Comm_get_ptr(win_ptr->comm, comm_ptr);
     MPIDI_Comm_get_vc(comm_ptr, target_rank, &tmp_vc);
-    qp_hndl = tmp_vc->mrail.qp_hndl_1sc;
-    /*part 2 Do RDMA WRITE */
-    desc.send_flags     = IBV_SEND_SIGNALED | IBV_SEND_INLINE;
-    desc.opcode         = IBV_WR_RDMA_WRITE;
-    desc.num_sge        = 1;
-    desc.wr.rdma.remote_addr    = (uintptr_t) (remote_address);
-    desc.wr.rdma.rkey          = r_key;
-    desc.sg_list        = &(sg_entry);
 
-    sg_entry.length     = size;
-    sg_entry.lkey       = l_key;
-    sg_entry.addr       = (uintptr_t) (origin_addr);
+    hca_index = 0;
+    l_key = win_ptr->pinnedpool_1sc_dentry->memhandle[hca_index]->lkey;
+    r_key = win_ptr->r_key4[target_rank * rdma_num_hcas + hca_index];
 
-    POST_PUT_PUT_GET_LIST(win_ptr, -1, NULL, tmp_vc, &desc);
-    Consume_signals(win_ptr, 0);
+     POST_PUT_PUT_GET_LIST(win_ptr, -1, NULL, tmp_vc, (void *)&origin_addr, (void*)&remote_address, size, &l_key, &r_key, 0 );
+     Consume_signals(win_ptr, 0);
 }
 
 void
@@ -462,22 +422,35 @@ MPIDI_CH3I_RDMA_win_create(void *base,
                            int rank,
                            MPID_Win ** win_ptr, MPID_Comm * comm_ptr)
 {
-    int ret, i, index;
-    unsigned long   *tmp;
-    uint32_t        r_key, r_key2, r_key3, postflag_rkey;
+    int ret, i,j, index;
+    unsigned long   *tmp, *tmp_new;
+    uint32_t        r_key[MAX_NUM_HCAS], r_key2[MAX_NUM_HCAS];
+    uint32_t        r_key3[MAX_NUM_HCAS], postflag_rkey[MAX_NUM_HCAS];
     int             my_rank;
     unsigned long   *tmp1, *tmp2, *tmp3, *tmp4;
 
     PMI_Get_rank(&my_rank);
+    
     /*There may be more than one windows existing at the same time */
+   
     MPIDI_CH3I_RDMA_Process.current_win_num++;
     ASSERT(MPIDI_CH3I_RDMA_Process.current_win_num <= MAX_WIN_NUM);
-    index   = Find_Avail_Index();
+    index = Find_Avail_Index();
     ASSERT(index != -1);
 
-    tmp = MPIU_Malloc(comm_size * sizeof(unsigned long) * 7);
+    tmp = MPIU_Malloc(comm_size * sizeof(unsigned long) * 
+            7 * rdma_num_hcas);
+
     if (!tmp) {
-        printf("Error malloc tmp when creating windows\n");
+        DEBUG_PRINT("Error malloc tmp when creating windows\n");
+        exit(0);
+    }
+    
+    tmp_new = MPIU_Malloc(comm_size * sizeof(unsigned long) *
+              rdma_num_rails);
+   
+    if (!tmp_new) {
+        DEBUG_PRINT("Error malloc tmp_new when creating windows\n");
         exit(0);
     }
 
@@ -485,39 +458,55 @@ MPIDI_CH3I_RDMA_win_create(void *base,
     /*Register the exposed buffer in this window */
     if (base != NULL && size > 0) {
         MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry[index] =
+            /* Register the entire window with all HCAs */
             dreg_register(base, size);
         if (NULL == MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry[index]) {
             (*win_ptr)->fall_back = 1;
             goto err_base_register;
         }
-        r_key =
-            MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry[index]->
-            memhandle->rkey;
+        for (i=0; i < rdma_num_hcas; i++) {
+             r_key[i] = MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry
+                 [index]->memhandle[i]->rkey;
+        }
     } else {
+        /* Self */
         MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry[index] = NULL;
-        r_key = 0;
+        for (i = 0; i < rdma_num_hcas; i++) {
+       	     r_key[i] = 0;
+        }
     }
 
     /*Register buffer for completion counter */
-    (*win_ptr)->completion_counter = MPIU_Malloc(sizeof(long long) * comm_size);
+    (*win_ptr)->completion_counter = 
+        MPIU_Malloc(sizeof(long long) * comm_size * rdma_num_rails);
+
+    /* Fallback case */
     if (!(*win_ptr)->completion_counter) {
         (*win_ptr)->fall_back = 1;
         goto err_cc_buf;
     }
 
-    memset((*win_ptr)->completion_counter, 0, sizeof(long long) * comm_size); 
+    memset((*win_ptr)->completion_counter, 0, 
+            sizeof(long long) * comm_size * rdma_num_rails); 
+
     MPIDI_CH3I_RDMA_Process.RDMA_local_wincc_dreg_entry[index] =
         dreg_register((void *) (*win_ptr)->completion_counter,
-                          sizeof(long long) * comm_size);
+                          sizeof(long long) * comm_size * rdma_num_rails);
+
     if (NULL == MPIDI_CH3I_RDMA_Process.RDMA_local_wincc_dreg_entry[index]) {
+        /* FallBack case */
         (*win_ptr)->fall_back = 1;
         goto err_cc_register;
     }
-    r_key2 =
-        MPIDI_CH3I_RDMA_Process.RDMA_local_wincc_dreg_entry[index]->
-        memhandle->rkey;
+
+    for (i = 0; i < rdma_num_hcas; i++) {
+        r_key2[i] =
+            MPIDI_CH3I_RDMA_Process.RDMA_local_wincc_dreg_entry[index]->
+            memhandle[i]->rkey;
+    }
 
     /*Register buffer for accumulation exclusive access lock */
+
     (*win_ptr)->actlock = (long long *) MPIU_Malloc(sizeof(long long));
     if (!(*win_ptr)->actlock) {
         (*win_ptr)->fall_back = 1;
@@ -530,66 +519,119 @@ MPIDI_CH3I_RDMA_win_create(void *base,
         (*win_ptr)->fall_back = 1;
         goto err_actlock_register;
     }
-    r_key3 =
-        MPIDI_CH3I_RDMA_Process.RDMA_local_actlock_dreg_entry[index]->
-        memhandle->rkey;
+    
+    for (i=0; i<rdma_num_hcas; i++) {
+        r_key3[i] =
+            MPIDI_CH3I_RDMA_Process.RDMA_local_actlock_dreg_entry[index]->
+            memhandle[i]->rkey;
+         DEBUG_PRINT("the rkey3 is %x\n", r_key3[i]);
+    }
     *((long long *) ((*win_ptr)->actlock)) = 0;
 
     /*Register buffer for post flags : from target to origin */
-    (*win_ptr)->post_flag = (int *) MPIU_Malloc(comm_size * sizeof(int));
+    
+    (*win_ptr)->post_flag = (int *) MPIU_Malloc(comm_size 
+                                                * sizeof(int));
     if (!(*win_ptr)->post_flag) {
         (*win_ptr)->fall_back = 1;
         goto err_postflag_buf;
     }
 
+    DEBUG_PRINT("rank[%d] : post flag start before exchange is %p\n",rank,(*win_ptr)->post_flag);   
+    /* Register the post flag */
+
     MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry[index] =
         dreg_register((void *) (*win_ptr)->post_flag, sizeof(int) * comm_size);
+    
     if (NULL == MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry[index]) {
+        /* Fallback case */
         (*win_ptr)->fall_back = 1;
         goto err_postflag_register;
     }
-    postflag_rkey =
-        MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry[index]->
-        memhandle->rkey;
 
-    (*win_ptr)->pinnedpool_1sc_buf =
-            MPIU_Malloc(rdma_pin_pool_size);
+    for (i = 0; i < rdma_num_hcas; i++) {
+        postflag_rkey[i] =
+            MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry[index]->
+            memhandle[i]->rkey;
+        DEBUG_PRINT("the rank [%d] postflag_rkey before exchange is %x\n", rank,postflag_rkey[i]);
+    }
+
+    /* Malloc Pinned buffer for one sided communication */
+    (*win_ptr)->pinnedpool_1sc_buf = MPIU_Malloc(rdma_pin_pool_size);
     if (!(*win_ptr)->pinnedpool_1sc_buf) {
         (*win_ptr)->fall_back = 1;
         goto err_pinnedpool_buf;
     }
+    
     (*win_ptr)->pinnedpool_1sc_dentry = 
         dreg_register((*win_ptr)->pinnedpool_1sc_buf,
                     rdma_pin_pool_size);
+          
     if (NULL == (*win_ptr)->pinnedpool_1sc_dentry) {
+        /* FallBack case */
         (*win_ptr)->fall_back = 1;
         goto err_pinnedpool_register;
     }
+     
     (*win_ptr)->pinnedpool_1sc_index = 0;
 
-    /*Exchagne the information about rkeys and addresses */
-    tmp[7 * rank]     = r_key;
-    tmp[7 * rank + 1] = r_key2;
-    tmp[7 * rank + 2] = r_key3;
-    tmp[7 * rank + 3] = (uintptr_t) ((*win_ptr)->actlock);
-    tmp[7 * rank + 4] = (uintptr_t) ((*win_ptr)->completion_counter);
-    tmp[7 * rank + 5] = (uintptr_t) ((*win_ptr)->assist_thr_ack);
-    tmp[7 * rank + 6] = (*win_ptr)->fall_back;
+    /*Exchange the information about rkeys and addresses */
+    
+    for (i = 0; i < rdma_num_hcas; i++){
+    	tmp[(7 * rank * rdma_num_hcas) + i * 7 + 0] = r_key[i];
+    	tmp[(7 * rank * rdma_num_hcas) + i * 7 + 1] = r_key2[i];
+    	tmp[(7 * rank * rdma_num_hcas) + i * 7 + 2] = r_key3[i];
+    	tmp[(7 * rank * rdma_num_hcas) + i * 7 + 3] = (uintptr_t) ((*win_ptr)->actlock);
+    	tmp[(7 * rank * rdma_num_hcas) + i * 7 + 4] = (uintptr_t) ((*win_ptr)->completion_counter 
+                                                            + comm_size * i);
+    	/*  tmp[(7 * rank * rdma_num_hcas) + i*7 + 5] = (uintptr_t) ((*win_ptr)->assist_thr_ack); */
+    	tmp[(7 * rank * rdma_num_hcas) + i * 7 + 5] = (*win_ptr)->fall_back;
+    }
+#ifdef DEBUG 
+    for(i = 0 ; i < rdma_num_hcas; i++) {
+        DEBUG_PRINT("Before Allgather, rank[%d], r_key[%x], r_key2[%x], r_key3[%x], comp_counter[%x], fall_back[%d]\n",
+                my_rank,
+                tmp[(7 * rank * rdma_num_hcas) + i * 7 + 0],
+                tmp[(7 * rank * rdma_num_hcas) + i * 7 + 1],
+                tmp[(7 * rank * rdma_num_hcas) + i * 7 + 2],
+                tmp[(7 * rank * rdma_num_hcas) + i * 7 + 4],
+                tmp[(7 * rank * rdma_num_hcas) + i * 7 + 5]);
+    }
+#endif
+    /* All processes will exchange the setup keys *
+     * since each process has the same data for all other
+     * processes, use allgather */
 
     ret =
-        NMPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, tmp, 7,
-                       MPI_LONG, comm_ptr->handle);
+        NMPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, tmp, 
+                7 * rdma_num_hcas,
+                MPI_LONG, comm_ptr->handle);
+
     if (ret != MPI_SUCCESS) {
-        printf("Error gather rkey  when creating windows\n");
+        DEBUG_PRINT("Error gather rkey  when creating windows\n");
         exit(0);
     }
 
+    for (i = 0; i < rdma_num_rails; i++){
+         tmp_new[rank * rdma_num_rails + i] = (uintptr_t) ((*win_ptr)->completion_counter
+                                         + comm_size * i);
+        
+    }    
+    ret = 
+        NMPI_Allgather(MPI_IN_PLACE, 0 , MPI_DATATYPE_NULL, tmp_new,
+                rdma_num_rails,
+                MPI_LONG, comm_ptr->handle);
+    
+    
     /* check if any peers fail */
-    for (i = 0; i < comm_size; i++) {
-        if (tmp[7 * i + 6] != 0) 
-            break;
-    }
-
+     for (i = 0; i < comm_size; i++) {
+          for (j = 0; j < rdma_num_hcas; j++){
+               if (tmp[(7 * i *rdma_num_hcas) + j * 7 + 5] != 0)
+                   break;
+           }
+           
+      } 
+    
     if (i != comm_size) {
         MPIU_Free(tmp);
         dreg_unregister((*win_ptr)->pinnedpool_1sc_dentry);
@@ -609,113 +651,161 @@ MPIDI_CH3I_RDMA_win_create(void *base,
         goto fn_exit;
     }
 
-    (*win_ptr)->r_key = (uint32_t *) MPIU_Malloc(comm_size * sizeof(uint32_t));
+    /* Now allocate the rkey array for all other processes */
+    (*win_ptr)->r_key = (uint32_t *) MPIU_Malloc(comm_size * 
+                                              sizeof(uint32_t) 
+                                                 * rdma_num_hcas);
     if (!(*win_ptr)->r_key) {
-        printf("Error malloc win->r_key when creating windows\n");
+        DEBUG_PRINT("Error malloc win->r_key when creating windows\n");
         exit(0);
     }
-    (*win_ptr)->r_key2 = (uint32_t *) MPIU_Malloc(comm_size * sizeof(uint32_t));
+
+    /* Now allocate the rkey2 array for all other processes */
+    (*win_ptr)->r_key2 = (uint32_t *) MPIU_Malloc(comm_size * 
+                                                  sizeof(uint32_t)
+                                                  * rdma_num_hcas);
     if (!(*win_ptr)->r_key2) {
-        printf("Error malloc win->r_key2 when creating windows\n");
+        DEBUG_PRINT("Error malloc win->r_key2 when creating windows\n");
         exit(0);
     }
-    (*win_ptr)->r_key3 = (uint32_t *) MPIU_Malloc(comm_size * sizeof(uint32_t));
+
+    /* Now allocate the rkey3 array for all other processes */
+    (*win_ptr)->r_key3 = (uint32_t *) MPIU_Malloc(comm_size * 
+                                                  sizeof(uint32_t)
+                                                  * rdma_num_hcas);
     if (!(*win_ptr)->r_key3) {
-        printf("error malloc win->r_key3 when creating windows\n");
+        DEBUG_PRINT("error malloc win->r_key3 when creating windows\n");
         exit(0);
     }
-    (*win_ptr)->all_actlock_addr =
-        (long long **) MPIU_Malloc(comm_size * sizeof(long long *));
+
+    (*win_ptr)->all_actlock_addr = (long long **) MPIU_Malloc(comm_size 
+                                                              * sizeof(long long *) 
+                                                              * rdma_num_hcas);
+    /* Now allocate the passive communication array for all other processes */
     if (!(*win_ptr)->all_actlock_addr) {
-        printf
+        DEBUG_PRINT
             ("error malloc win->all_actlock_addr when creating windows\n");
         exit(0);
     }
+    
+    /* Now allocate the completion counter array for all other processes */
     (*win_ptr)->all_completion_counter =
-        (long long **) MPIU_Malloc(comm_size * sizeof(long long *));
+        (long long **) MPIU_Malloc(comm_size * sizeof(long long *) * rdma_num_rails);
+
     if (!(*win_ptr)->all_completion_counter) {
-        printf
+        DEBUG_PRINT
             ("error malloc win->all_completion_counter when creating windows\n");
         exit(0);
     }
 
-    (*win_ptr)->all_assist_thr_acks =
-        (int **) MPIU_Malloc(comm_size * sizeof(int *));
-    if (!(*win_ptr)->all_assist_thr_acks) {
-        printf("error malloc win->all_wins when creating windows\n");
-        exit(0);
-    }
 
 
     for (i = 0; i < comm_size; i++) {
-        (*win_ptr)->r_key[i]    = tmp[7 * i];
-        (*win_ptr)->r_key2[i]   = tmp[7 * i + 1];
-        (*win_ptr)->r_key3[i]   = tmp[7 * i + 2];
-        (*win_ptr)->all_actlock_addr[i] = (long long *) tmp[7 * i + 3];
-        (*win_ptr)->all_completion_counter[i] =
-            (long long *) (tmp[7 * i + 4] + sizeof(long long)*rank);
-        (*win_ptr)->all_assist_thr_acks[i] 
-                                = (int *) tmp[7 * i + 5];
+        for (j = 0; j < rdma_num_hcas; j++) 
+        {
+            (*win_ptr)->r_key[i * rdma_num_hcas + j] = tmp[(7 * i * rdma_num_hcas) + 7 * j];
+            (*win_ptr)->r_key2[i * rdma_num_hcas + j] = tmp[(7 * i * rdma_num_hcas) + 7 * j + 1];
+            (*win_ptr)->r_key3[i * rdma_num_hcas + j] = tmp[(7 * i * rdma_num_hcas) + 7 * j + 2];
+            (*win_ptr)->all_actlock_addr[i * rdma_num_hcas + j] = 
+                                (long long *) tmp[7 * i *rdma_num_hcas + 7 * j + 3];
+
+        }
     }
 
-    tmp1 = (unsigned long *) MPIU_Malloc(comm_size * sizeof(unsigned long));
+    for (i = 0; i < comm_size; i++){
+        for (j = 0; j < rdma_num_rails; j++){
+            (*win_ptr)->all_completion_counter[i * rdma_num_rails + j] = (long long *)
+                            (tmp_new[i * rdma_num_rails + j] + sizeof(long long) * rank);
+        }    
+        
+    }
+    
+#ifdef DEBUG
+    for(i = 0 ; i < comm_size; i++) {
+        if(i == my_rank)
+            continue;
+        for(j = 0 ; j < rdma_num_hcas; j++) {
+            DEBUG_PRINT("After Allgather, rank[%d], r_key[%x], r_key2[%x], r_key3[%x], comp_counter[%x]\n",
+                    i,
+                    (*win_ptr)->r_key[i * rdma_num_hcas + j],
+                    (*win_ptr)->r_key2[i * rdma_num_hcas + j], 
+                    (*win_ptr)->r_key3[i * rdma_num_hcas + j],
+                   (*win_ptr)->all_completion_counter[i * rdma_num_hcas + j]); 
+        }
+    }
+#endif
+    
+    tmp1 = (unsigned long *) MPIU_Malloc(comm_size * sizeof(unsigned long)*rdma_num_hcas );
     if (!tmp1) {
-        printf("Error malloc tmp1 when creating windows\n");
+        DEBUG_PRINT("Error malloc tmp1 when creating windows\n");
         exit(0);
     }
-    tmp2 = (unsigned long *) MPIU_Malloc(comm_size * sizeof(unsigned long));
+    tmp2 = (unsigned long *) MPIU_Malloc(comm_size * sizeof(unsigned long) );
     if (!tmp2) {
-        printf("Error malloc tmp2 when creating windows\n");
+        DEBUG_PRINT("Error malloc tmp2 when creating windows\n");
         exit(0);
     }
-    tmp3 = (unsigned long *) MPIU_Malloc(comm_size * sizeof(unsigned long));
+    tmp3 = (unsigned long *) MPIU_Malloc(comm_size * sizeof(unsigned long)*rdma_num_hcas );
     if (!tmp3) {
-        printf("Error malloc tmp3 when creating windows\n");
+        DEBUG_PRINT("Error malloc tmp3 when creating windows\n");
         exit(0);
     }
-    tmp4 = (unsigned long *) MPIU_Malloc(comm_size * sizeof(unsigned long));
+    tmp4 = (unsigned long *) MPIU_Malloc(comm_size * sizeof(unsigned long) );
     if (!tmp4) {
-        printf("Error malloc tmp4 when creating windows\n");
+        DEBUG_PRINT("Error malloc tmp4 when creating windows\n");
         exit(0);
     }
     /* use all to all to exchange rkey and address for post flag */
     for (i = 0; i < comm_size; i++) {
-        if (i != rank)
-            (*win_ptr)->post_flag[i] = 0;
-        else
-            (*win_ptr)->post_flag[i] = 1;
-        tmp1[i] = postflag_rkey;
-        tmp2[i] = (uintptr_t) &((*win_ptr)->post_flag[i]);
+            if (i != rank)
+                (*win_ptr)->post_flag[i] = 0;
+            else
+                (*win_ptr)->post_flag[i] = 1;
+            
+            for(j = 0; j < rdma_num_hcas; j++) { 
+                    tmp1[i * rdma_num_hcas + j] = postflag_rkey[j];
+                } 
+            tmp2[i] = (uintptr_t) &((*win_ptr)->post_flag[i]);
+         
     }
+
+    /* use all to all to exchange rkey of post flag */ 
     ret =
-        NMPI_Alltoall(tmp1, 1, MPI_LONG, tmp3, 1, MPI_LONG,
+        NMPI_Alltoall(tmp1, rdma_num_hcas, MPI_LONG, tmp3, rdma_num_hcas, MPI_LONG,
                       comm_ptr->handle);
     if (ret != MPI_SUCCESS) {
-        printf("Error gather rkey  when creating windows\n");
+        DEBUG_PRINT("Error gather rkey  when creating windows\n");
         exit(0);
     }
+
+    /* use all to all to exchange the address of post flag */
     ret =
         NMPI_Alltoall(tmp2, 1, MPI_LONG, tmp4, 1, MPI_LONG,
                       comm_ptr->handle);
     if (ret != MPI_SUCCESS) {
-        printf("Error gather rkey  when creating windows\n");
+        DEBUG_PRINT("Error gather rkey  when creating windows\n");
         exit(0);
     }
-    (*win_ptr)->r_key4 = (uint32_t *) MPIU_Malloc(comm_size * sizeof(uint32_t));
+    (*win_ptr)->r_key4 = (uint32_t *) MPIU_Malloc(comm_size * sizeof(uint32_t)*rdma_num_hcas);
     if (!(*win_ptr)->r_key4) {
-        printf("error malloc win->r_key3 when creating windows\n");
+        DEBUG_PRINT("error malloc win->r_key3 when creating windows\n");
         exit(0);
     }
+    
     (*win_ptr)->remote_post_flags =
         (long **) MPIU_Malloc(comm_size * sizeof(long *));
     if (!(*win_ptr)->remote_post_flags) {
-        printf
+        DEBUG_PRINT
             ("error malloc win->remote_post_flags when creating windows\n");
         exit(0);
     }
     for (i = 0; i < comm_size; i++) {
-        (*win_ptr)->r_key4[i] = tmp3[i];
+        for (j = 0; j < rdma_num_hcas; j++){
+            (*win_ptr)->r_key4[i*rdma_num_hcas + j] = tmp3[i*rdma_num_hcas + j];
+            DEBUG_PRINT("AFTER ALLTOALL the rank[%d] post_flag_key[%x]\n",rank, (*win_ptr)->r_key4[i*rdma_num_hcas + j]);
+        }
         (*win_ptr)->remote_post_flags[i] = (long *) tmp4[i];
+        DEBUG_PRINT(" rank is %d remote rank %d,  post flag addr is %p\n",rank, i, (*win_ptr)->remote_post_flags[i]);
     }
     MPIU_Free(tmp);
     MPIU_Free(tmp1);
@@ -736,12 +826,14 @@ MPIDI_CH3I_RDMA_win_create(void *base,
     (*win_ptr)->rma_issued = 0;
 
     if (!(*win_ptr)->put_get_list) {
-        printf("Fail to malloc space for window put get list\n");
+        DEBUG_PRINT("Fail to malloc space for window put get list\n");
         exit(0);
     }
 
 
     MPIDI_CH3I_RDMA_Process.win_index2address[index] = (long) *win_ptr;
+    DEBUG_PRINT("done win_create\n");
+
 fn_exit:
     if (1 == (*win_ptr)->fall_back) {
         MPIDI_CH3I_RDMA_Process.win_index2address[index] = 0;
@@ -783,9 +875,10 @@ fn_exit:
     ret = NMPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, tmp, 7,
                        MPI_LONG, comm_ptr->handle);
     if (ret != MPI_SUCCESS) {
-        printf("Error gather rkey  when creating windows\n");
+        DEBUG_PRINT("Error gather rkey  when creating windows\n");
         exit(0);
     }
+    
     return;
 }
 
@@ -794,7 +887,7 @@ void MPIDI_CH3I_RDMA_win_free(MPID_Win ** win_ptr)
     int index;
     index = Find_Win_Index(*win_ptr);
     if (index == -1) {
-        printf("dont know win_ptr %p %d \n", *win_ptr,
+        DEBUG_PRINT("dont know win_ptr %p %d \n", *win_ptr,
                MPIDI_CH3I_RDMA_Process.current_win_num);
     }
     assert(index != -1);
@@ -830,57 +923,64 @@ void MPIDI_CH3I_RDMA_win_free(MPID_Win ** win_ptr)
                             RDMA_post_flag_dreg_entry[index]);
     }
     MPIU_Free((*win_ptr)->actlock);
+    
     MPIU_Free((*win_ptr)->completion_counter);
+
     MPIU_Free((*win_ptr)->all_completion_counter);
+    
 }
 
 static int Decrease_CC(MPID_Win * win_ptr, int target_rank)
 {
+    int                 i;
     int                 mpi_errno = MPI_SUCCESS;
-    uint32_t            r_key2, l_key2;
+    uint32_t            r_key2[MAX_NUM_HCAS], l_key2[MAX_NUM_HCAS];
     int                 ret;
-    struct ibv_send_wr  desc;
-    struct ibv_sge      sg_entry;
     long long           *cc;
-    struct ibv_qp       *qp_hndl;
+    int hca_index;
+    void * remote_addr[MAX_NUM_SUBRAILS], *local_addr[MAX_NUM_SUBRAILS];
 
     MPIDI_VC_t *tmp_vc;
     MPID_Comm *comm_ptr;
 
     MPID_Comm_get_ptr(win_ptr->comm, comm_ptr);
     MPIDI_Comm_get_vc(comm_ptr, target_rank, &tmp_vc);
-    qp_hndl = tmp_vc->mrail.qp_hndl_1sc;
 
-    Get_Pinned_Buf(win_ptr, (char **) &cc, sizeof(long long));
-    *((long long *) cc) = 1;
-    l_key2 = win_ptr->pinnedpool_1sc_dentry->memhandle->lkey;
-    r_key2 = win_ptr->r_key2[target_rank];
-
-    desc.send_flags             = IBV_SEND_SIGNALED | IBV_SEND_INLINE; 
-    desc.opcode                 = IBV_WR_RDMA_WRITE;
-    desc.num_sge                = 1;
-    desc.wr.rdma.remote_addr    = (uintptr_t)(win_ptr->all_completion_counter[target_rank]);
-    desc.wr.rdma.rkey           = r_key2;
-    desc.sg_list                = &(sg_entry);
-
-    sg_entry.length             = sizeof(long long);
-    sg_entry.lkey               = l_key2;
-    sg_entry.addr               = (uintptr_t) (cc);
-
-    POST_PUT_PUT_GET_LIST(win_ptr, -1, NULL, tmp_vc, &desc);
-
-    return mpi_errno;
+    
+  	Get_Pinned_Buf(win_ptr, (char **) &cc, sizeof(long long));
+   	*((long long *) cc) = 1;
+    for (i=0; i<rdma_num_rails; i++) { 
+            hca_index = tmp_vc->mrail.rails[i].hca_index;
+   	        remote_addr[i]    = (void *)(uintptr_t)(win_ptr->all_completion_counter[target_rank*rdma_num_rails+i]);
+            local_addr[i]     = (void *)cc;
+        	l_key2[i] = win_ptr->pinnedpool_1sc_dentry->memhandle[hca_index]->lkey;
+    	    r_key2[i] = win_ptr->r_key2[target_rank*rdma_num_hcas + hca_index];
+    }
+     
+   	POST_PUT_PUT_GET_LIST(win_ptr, -1, NULL, tmp_vc, 
+                   local_addr, remote_addr, sizeof (long long), l_key2, r_key2,2);
+   	return mpi_errno;
+    
 }
 
 static int POST_PUT_PUT_GET_LIST(  MPID_Win * winptr, 
                             int size, 
                             dreg_entry * dreg_tmp,
-                            MPIDI_VC_t * vc_ptr,                         
-                            struct ibv_send_wr * desc_p)
+                            MPIDI_VC_t * vc_ptr,
+                            void *local_buf[], void *remote_buf[],
+                            int length,
+                            uint32_t lkeys[], uint32_t rkeys[],
+                            int use_multi)
 {
-    int index = winptr->put_get_list_tail;
-    int ret;
+    int ret, i;
+    struct ibv_send_wr   send_wr;
+    struct ibv_sge      sg_entry;
     struct ibv_send_wr * bad_wr;
+    int hca_index;
+    int total_sent =0;
+    int rail;
+    int index = winptr->put_get_list_tail;
+   
     winptr->put_get_list[index].op_type     = SIGNAL_FOR_PUT;
     winptr->put_get_list[index].mem_entry   = dreg_tmp;
     winptr->put_get_list[index].data_size   = size;
@@ -888,63 +988,225 @@ static int POST_PUT_PUT_GET_LIST(  MPID_Win * winptr,
     winptr->put_get_list[index].vc_ptr      = vc_ptr;
     winptr->put_get_list_tail = (winptr->put_get_list_tail + 1) %
                     rdma_default_put_get_list_size;
-    winptr->put_get_list_size++;
-    vc_ptr->mrail.postsend_times_1sc ++;
+    winptr->put_get_list[index].completion = 0;
+    
+    if (use_multi == 1) {
+        for (i = 0; i < rdma_num_rails; i ++) {
+            hca_index = vc_ptr->mrail.rails[i].hca_index;
+            winptr->put_get_list[index].completion++;
+            vc_ptr->mrail.rails[hca_index].postsend_times_1sc ++;
+            winptr->put_get_list_size++;
 
-    desc_p->wr_id   = (uintptr_t)(&(winptr->put_get_list[index])); 
-    desc_p->next    = NULL;
+            send_wr.wr_id = (uintptr_t)(&(winptr->put_get_list[index])); 
+            send_wr.next    = NULL;
+#ifdef _IBM_EHCA_
+            send_wr.send_flags             = IBV_SEND_SIGNALED;
+#else
+            if (length < sizeof(long long))
+                send_wr.send_flags             = IBV_SEND_SIGNALED | IBV_SEND_INLINE;
+            else 
+                send_wr.send_flags             = IBV_SEND_SIGNALED;
+#endif
+            send_wr.opcode                 = IBV_WR_RDMA_WRITE;
+            send_wr.num_sge                = 1;
+            if (i < (rdma_num_rails -1) )
+            {
+   	            sg_entry.length             = length/rdma_num_rails;
+                total_sent                  = total_sent + sg_entry.length;
+    	        sg_entry.addr               = (uintptr_t) ( local_buf[0] + i*(size/rdma_num_rails) );
+    	        send_wr.wr.rdma.remote_addr    = (uintptr_t) ( remote_buf[0] + i*(size/rdma_num_rails) );
+            }
+            else
+            {
+                sg_entry.length             = size - total_sent;
+    	        sg_entry.addr               = (uintptr_t) ( local_buf[0] + i*(size/rdma_num_rails) );
+    	        send_wr.wr.rdma.remote_addr    = (uintptr_t) ( remote_buf[0] + i*(size/rdma_num_rails) );
+            }
+            send_wr.wr.rdma.rkey           = rkeys[i];
+            send_wr.sg_list                = &(sg_entry);
+            sg_entry.lkey               = lkeys[i];
+            
+            DEBUG_PRINT("post one,id is %08X, sge %d, send flag %d, size %d, 1sc_qp_hndl is %x,1sc_qp_num is %08X\n",(uint32_t)send_wr.wr_id, 
+                    send_wr.num_sge, send_wr.send_flags, send_wr.sg_list->length, vc_ptr->mrail.rails[i].qp_hndl_1sc,
+                    vc_ptr->mrail.rails[i].qp_hndl_1sc->qp_num); 
+            
+            ret = ibv_post_send(vc_ptr->mrail.rails[i].qp_hndl_1sc, &send_wr, &bad_wr);
+            CHECK_RETURN(ret, "Fail in posting RDMA_Write");
 
-    DEBUG_PRINT("post one, sge %d, send flag %d, size %d\n", 
-            desc_p->num_sge, desc_p->send_flags, desc_p->sg_list->length);
-    ret = ibv_post_send(vc_ptr->mrail.qp_hndl_1sc, desc_p, &bad_wr);
-    CHECK_RETURN(ret, "Fail in posting RDMA_Write");
+        }
+    } else if (use_multi == 0) {
+        winptr->put_get_list[index].completion = 1;
+        rail = 0;
+        winptr->put_get_list_size++;
+        vc_ptr->mrail.rails[rail].postsend_times_1sc ++;
+        send_wr.wr_id = (uintptr_t)(&(winptr->put_get_list[index]));
+        send_wr.next    = NULL;
 
-    if (winptr->put_get_list_size == rdma_default_put_get_list_size
-        || vc_ptr->mrail.postsend_times_1sc == rdma_default_max_wqe - 1) {
-        Consume_signals(winptr, 0);
+#ifdef _IBM_EHCA_
+        send_wr.send_flags             = IBV_SEND_SIGNALED;
+#else
+        if (length < sizeof(long long))
+             send_wr.send_flags             = IBV_SEND_SIGNALED | IBV_SEND_INLINE;
+        else 
+            send_wr.send_flags             = IBV_SEND_SIGNALED;
+#endif
+        send_wr.opcode                 = IBV_WR_RDMA_WRITE;
+        send_wr.num_sge                = 1;
+        send_wr.wr.rdma.remote_addr    = (uintptr_t)remote_buf[rail];
+        send_wr.wr.rdma.rkey           = rkeys[rail];
+        send_wr.sg_list                = &(sg_entry);
+        sg_entry.length             = length;
+        sg_entry.lkey               = lkeys[rail];
+        sg_entry.addr               = (uintptr_t)local_buf[rail];
+            
+        DEBUG_PRINT("post one,id is %08X, sge %d, send flag %d, size %d, 1sc_qp_hndl is %x,1sc_qp_num is %08X\n",(uint32_t)send_wr.wr_id, 
+                   send_wr.num_sge, send_wr.send_flags, send_wr.sg_list->length, vc_ptr->mrail.rails[rail].qp_hndl_1sc,
+                   vc_ptr->mrail.rails[rail].qp_hndl_1sc->qp_num); 
+            
+        ret = ibv_post_send(vc_ptr->mrail.rails[rail].qp_hndl_1sc, &send_wr, &bad_wr);
+        CHECK_RETURN(ret, "Fail in posting RDMA_Write");
+    }
+
+    else if (use_multi == 2) {
+        for (i = 0; i < rdma_num_rails; i ++) {
+             hca_index = vc_ptr->mrail.rails[i].hca_index;
+             winptr->put_get_list[index].completion++;
+             vc_ptr->mrail.rails[hca_index].postsend_times_1sc ++;
+             winptr->put_get_list_size++;
+                  
+             send_wr.wr_id = (uintptr_t)(&(winptr->put_get_list[index])); 
+             send_wr.next    = NULL;
+#ifdef _IBM_EHCA_
+             send_wr.send_flags             = IBV_SEND_SIGNALED;
+#else                    
+             if (length < sizeof(long long) )
+                 send_wr.send_flags          = IBV_SEND_SIGNALED | IBV_SEND_INLINE;
+             else
+                 send_wr.send_flags             = IBV_SEND_SIGNALED;
+#endif
+             send_wr.opcode                 = IBV_WR_RDMA_WRITE;
+             send_wr.num_sge                = 1;
+             send_wr.wr.rdma.remote_addr    = (uintptr_t)remote_buf[i];
+             send_wr.wr.rdma.rkey           = rkeys[i];
+             send_wr.sg_list                = &(sg_entry);
+             sg_entry.length             = length;
+             sg_entry.lkey               = lkeys[i];
+             sg_entry.addr               = (uintptr_t)local_buf[i];
+             DEBUG_PRINT("post one,id is %08X, sge %d, send flag %d, size %d, 1sc_qp_hndl is %x,1sc_qp_num is %08X\n",(uint32_t)send_wr.wr_id, 
+                       send_wr.num_sge, send_wr.send_flags, send_wr.sg_list->length, vc_ptr->mrail.rails[i].qp_hndl_1sc,
+                        vc_ptr->mrail.rails[i].qp_hndl_1sc->qp_num); 
+  
+             ret = ibv_post_send(vc_ptr->mrail.rails[i].qp_hndl_1sc, &send_wr, &bad_wr);
+             CHECK_RETURN(ret, "Fail in posting RDMA_Write");
+                  
+         }
+
+
+    }     
+    for (i = 0; i < rdma_num_rails; i ++) {
+        if (winptr->put_get_list_size == rdma_default_put_get_list_size
+            || vc_ptr->mrail.rails[i].postsend_times_1sc == rdma_default_max_wqe - 1) {
+            Consume_signals(winptr, 0);
+        }
     }
     return index;
 }
 
-/*functions storing the get operations */
-static int POST_GET_PUT_GET_LIST(
-                MPID_Win * winptr,
-                int size,
-                void *target_addr, 
-                void *origin_addr, 
-                dreg_entry * dreg_tmp,
-                MPIDI_VC_t * vc_ptr,
-                struct ibv_send_wr * desc_p)
+
+static int POST_GET_PUT_GET_LIST(  MPID_Win * winptr, 
+                            int size, 
+                            dreg_entry * dreg_tmp,
+                            MPIDI_VC_t * vc_ptr,
+                            void *local_buf[], void *remote_buf[],
+                            int length,
+                            uint32_t lkeys[], uint32_t rkeys[],
+                            int use_multi)
 {
-    int index = winptr->put_get_list_tail;
-    int ret;
-    struct ibv_send_wr  * bad_wr;
-   
-    winptr->put_get_list[index].op_type = SIGNAL_FOR_GET;
-    winptr->put_get_list[index].origin_addr = origin_addr;
-    winptr->put_get_list[index].target_addr = target_addr;
-    winptr->put_get_list[index].data_size = size;
-    winptr->put_get_list[index].mem_entry = dreg_tmp;
-    winptr->put_get_list[index].win_ptr = winptr;
-    winptr->put_get_list[index].vc_ptr = vc_ptr;
-    winptr->put_get_list_size ++;
-    vc_ptr->mrail.postsend_times_1sc ++;
-    winptr->put_get_list_tail = (winptr->put_get_list_tail + 1) % 
-                    rdma_default_put_get_list_size;
+     int ret, i;
+     struct ibv_send_wr   send_wr;
+     struct ibv_sge      sg_entry;
+     struct ibv_send_wr * bad_wr;
+     int hca_index;
+     int total_recv = 0;
+     int rail;
+     int index = winptr->put_get_list_tail;
 
-    desc_p->wr_id   = (uintptr_t)&winptr->put_get_list[index];
-    desc_p->next    = NULL;
-    winptr->wait_for_complete = 1;
+     if(size <= rdma_eagersize_1sc){    
+         winptr->put_get_list[index].origin_addr = remote_buf[0];
+         winptr->put_get_list[index].target_addr = local_buf[0];
+     }
+     else {
+      winptr->put_get_list[index].origin_addr = NULL;
+      winptr->put_get_list[index].target_addr = NULL;
+     }
     
-    ret = ibv_post_send(vc_ptr->mrail.qp_hndl_1sc, desc_p, &bad_wr);
-    CHECK_RETURN(ret, "Fail in posting RDMA_READ");
+     winptr->put_get_list[index].op_type     = SIGNAL_FOR_GET;
+     winptr->put_get_list[index].mem_entry   = dreg_tmp;
+     winptr->put_get_list[index].data_size   = size;
+     winptr->put_get_list[index].win_ptr     = winptr;
+     winptr->put_get_list[index].vc_ptr      = vc_ptr;
+     winptr->put_get_list_tail = (winptr->put_get_list_tail + 1) %
+                                   rdma_default_put_get_list_size;
+     winptr->put_get_list[index].completion = 0;
 
-    if (winptr->put_get_list_size == rdma_default_put_get_list_size
-        || vc_ptr->mrail.postsend_times_1sc == rdma_default_max_wqe - 1) 
-        /* the get queue is full */
-        Consume_signals(winptr, 0);
+    if (use_multi == 1) {
+        for (i = 0; i < rdma_num_rails; i ++) {
+            hca_index = vc_ptr->mrail.rails[i].hca_index;
+            winptr->put_get_list[index].completion++;
+            vc_ptr->mrail.rails[hca_index].postsend_times_1sc ++;
+            winptr->put_get_list_size++;
+
+            send_wr.wr_id = (uintptr_t)(&(winptr->put_get_list[index])); 
+            send_wr.next    = NULL;
+#ifdef _IBM_EHCA_
+            send_wr.send_flags             = IBV_SEND_SIGNALED;
+#else
+            if (length < sizeof(long long))
+                send_wr.send_flags             = IBV_SEND_SIGNALED | IBV_SEND_INLINE;
+            else 
+                send_wr.send_flags             = IBV_SEND_SIGNALED;
+#endif
+            send_wr.opcode                 = IBV_WR_RDMA_READ;
+            send_wr.num_sge                = 1;
+
+            if (i < (rdma_num_rails -1) )
+            {
+   	            sg_entry.length             = length/rdma_num_rails;
+                total_recv                  = total_recv + sg_entry.length;
+    	        sg_entry.addr               = (uintptr_t) ( local_buf[0] + i*(size/rdma_num_rails) );
+    	        send_wr.wr.rdma.remote_addr    = (uintptr_t) ( remote_buf[0] + i*(size/rdma_num_rails) );
+            }
+            else
+            {
+                sg_entry.length             = size - total_recv;
+    	        sg_entry.addr               = (uintptr_t) ( local_buf[0] + i*(size/rdma_num_rails) );
+    	        send_wr.wr.rdma.remote_addr    = (uintptr_t) ( remote_buf[0] + i*(size/rdma_num_rails) );
+            }
+            send_wr.wr.rdma.rkey           = rkeys[i];
+            send_wr.sg_list                = &(sg_entry);
+            sg_entry.lkey               = lkeys[i];
+            
+            DEBUG_PRINT("post one,id is %08X, sge %d, send flag %d, size %d, 1sc_qp_hndl is %x,1sc_qp_num is %08X\n",(uint32_t)send_wr.wr_id, 
+                    send_wr.num_sge, send_wr.send_flags, send_wr.sg_list->length, vc_ptr->mrail.rails[i].qp_hndl_1sc,
+                    vc_ptr->mrail.rails[i].qp_hndl_1sc->qp_num); 
+            
+            ret = ibv_post_send(vc_ptr->mrail.rails[i].qp_hndl_1sc, &send_wr, &bad_wr);
+            CHECK_RETURN(ret, "Fail in posting RDMA_Write");
+
+        }
+    }
+
+    for (i = 0; i < rdma_num_rails; i ++) {
+        if (winptr->put_get_list_size == rdma_default_put_get_list_size
+            || vc_ptr->mrail.rails[i].postsend_times_1sc == rdma_default_max_wqe - 1) {
+            Consume_signals(winptr, 0);
+        }
+    }
     return index;
+
 }
+
+                            
 
 /*if signal == -1, cousume all the signals, 
   otherwise return when signal is found*/
@@ -953,7 +1215,7 @@ static int Consume_signals(MPID_Win * winptr, uint64_t expected)
     struct ibv_wc   wc;
     int             ret;
     dreg_entry      *dreg_tmp;
-    int             i = 0, size;
+    int             i = 0,j, size;
     int             ne;
     void            *target_addr, *origin_addr;
     MPIDI_CH3I_RDMA_put_get_list  *list_entry=NULL;
@@ -961,8 +1223,11 @@ static int Consume_signals(MPID_Win * winptr, uint64_t expected)
     MPIDI_VC_t                    *list_vc_ptr;
 
     while (1) {
-        ne = ibv_poll_cq(MPIDI_CH3I_RDMA_Process.cq_hndl_1sc, 1, &wc);
-        if (ne > 0) {
+      
+       for (j=0; j < rdma_num_hcas; j++)
+       {
+       	 ne = ibv_poll_cq(MPIDI_CH3I_RDMA_Process.cq_hndl_1sc[j], 1, &wc);
+         if (ne > 0) {
             i++;
             if (wc.status != IBV_WC_SUCCESS) {
                 ibv_error_abort(IBV_STATUS_ERR, "in Consume_signals %08lx get wrong status %d \n",
@@ -982,17 +1247,19 @@ static int Consume_signals(MPID_Win * winptr, uint64_t expected)
              * Otherwise we have error.
              */
             list_entry = (MPIDI_CH3I_RDMA_put_get_list *)(uintptr_t)wc.wr_id;
-
+            
             list_win_ptr = list_entry->win_ptr;
             list_vc_ptr = list_entry->vc_ptr;
             if (list_entry->op_type == SIGNAL_FOR_PUT) {
                 dreg_tmp = list_entry->mem_entry;
                 size = list_entry->data_size;
                 if (size > (int)rdma_eagersize_1sc) {
-                    dreg_unregister(dreg_tmp);
+                    list_win_ptr->put_get_list->completion--;
+                    if (list_win_ptr->put_get_list->completion == 0) 
+                        dreg_unregister(dreg_tmp);
                 }
                 list_win_ptr->put_get_list_size --;
-                list_vc_ptr->mrail.postsend_times_1sc --;
+                list_vc_ptr->mrail.rails[j].postsend_times_1sc --;
             } else if (list_entry->op_type == SIGNAL_FOR_GET) {
                 size = list_entry->data_size;
                 target_addr = list_entry->target_addr;
@@ -1000,14 +1267,16 @@ static int Consume_signals(MPID_Win * winptr, uint64_t expected)
                 dreg_tmp = list_entry->mem_entry;
                 if (origin_addr == NULL) {
                     ASSERT(size > rdma_eagersize_1sc);
-                    dreg_unregister(dreg_tmp);
+                    list_win_ptr->put_get_list->completion--;
+                    if (list_win_ptr->put_get_list->completion == 0)
+                        dreg_unregister(dreg_tmp);
                 } else {
                     ASSERT(size <= rdma_eagersize_1sc);
                     ASSERT(target_addr != NULL);
                     memcpy(target_addr, origin_addr, size);
                 }
                 list_win_ptr->put_get_list_size --;
-                list_vc_ptr->mrail.postsend_times_1sc --;
+                list_vc_ptr->mrail.rails[j].postsend_times_1sc --;
             } else {
                 fprintf(stderr, "Error! rank %d, Undefined op_type, op type %d, \
                 list id %u, expecting id %u\n",
@@ -1027,6 +1296,7 @@ static int Consume_signals(MPID_Win * winptr, uint64_t expected)
             winptr->pinnedpool_1sc_index = 0;
             goto fn_exit;
         }
+     } /*end of for */
     } /* end of while */
   fn_exit:
     return 0;
@@ -1036,109 +1306,104 @@ static int IBA_PUT(MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr, int size)
 {
     char                *remote_address;
     int                 mpi_errno = MPI_SUCCESS;
-    uint32_t            r_key, l_key;
+    int		            hca_index;
+    uint32_t            r_key[MAX_NUM_HCAS],l_key1[MAX_NUM_HCAS], l_key[MAX_NUM_HCAS];
     int                 ret;
+    int 		i;
     int                 origin_type_size;
     dreg_entry          *tmp_dreg = NULL;
-    struct ibv_send_wr   desc;
-    struct ibv_sge       sg_entry;
     char                *origin_addr;
 
     MPIDI_VC_t          *tmp_vc;
     MPID_Comm           *comm_ptr;
 
     int                 index;
-
+    int 		total_sent = 0;
+    int         use_multi;
     /*part 1 prepare origin side buffer target buffer and keys */
     remote_address = (char *) win_ptr->base_addrs[rma_op->target_rank]
         + win_ptr->disp_units[rma_op->target_rank]
         * rma_op->target_disp;
 
+ 
     if (size <= rdma_eagersize_1sc) {
         char *tmp = rma_op->origin_addr;
 
         Get_Pinned_Buf(win_ptr, &origin_addr, size);
         memcpy(origin_addr, tmp, size);
-        l_key = win_ptr->pinnedpool_1sc_dentry->memhandle->lkey;
+	for(i = 0; i < rdma_num_hcas; i++) {
+		l_key[i] = win_ptr->pinnedpool_1sc_dentry->memhandle[i]->lkey;
+	}
     } else {
         tmp_dreg = dreg_register(rma_op->origin_addr, size);
-        l_key = tmp_dreg->memhandle->lkey;
-        origin_addr = rma_op->origin_addr;
+	for(i = 0; i < rdma_num_hcas; i++) {
+        	l_key[i] = tmp_dreg->memhandle[i]->lkey;
+	}        
+	origin_addr = rma_op->origin_addr;
         win_ptr->wait_for_complete = 1;
     }
-    r_key = win_ptr->r_key[rma_op->target_rank];
+    
     MPID_Comm_get_ptr(win_ptr->comm, comm_ptr);
     MPIDI_Comm_get_vc(comm_ptr, rma_op->target_rank, &tmp_vc);
 
-    /*part 2 Do RDMA WRITE */
-    desc.send_flags     = IBV_SEND_SIGNALED;
-    desc.opcode         = IBV_WR_RDMA_WRITE;
+   for (i=0; i<rdma_num_rails; i++)
+   {
+    hca_index = tmp_vc->mrail.rails[i].hca_index;
+    r_key[i] = win_ptr->r_key[rma_op->target_rank*rdma_num_hcas + hca_index];
+    l_key1[i] = l_key[hca_index];
+    }
 
-    desc.num_sge        = 1;
-    desc.wr.rdma.remote_addr    = (uintptr_t) (remote_address);
-    desc.wr.rdma.rkey           = r_key;
-    desc.sg_list                = &(sg_entry);
-
-    sg_entry.length             = size;
-    sg_entry.lkey               = l_key;
-    sg_entry.addr               = (uintptr_t) (origin_addr);
-    POST_PUT_PUT_GET_LIST(win_ptr, size, tmp_dreg, tmp_vc,&desc);
+    POST_PUT_PUT_GET_LIST(win_ptr, size, tmp_dreg, tmp_vc, (void *)&origin_addr, (void *)&remote_address, size, l_key1, r_key, 1 );
     return mpi_errno;
 }
+
 
 int IBA_GET(MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr, int size)
 {
     char                *remote_address;
     int                 mpi_errno = MPI_SUCCESS;
-    uint32_t            r_key, l_key;
+    int                 hca_index;
+    uint32_t            r_key[MAX_NUM_HCAS], l_key1[MAX_NUM_HCAS], l_key[MAX_NUM_HCAS];
     int                 ret;
     int                 index;
-    dreg_entry          *tmp_dreg;
-    struct ibv_send_wr  desc;
-    struct ibv_sge      sg_entry;
+    dreg_entry          *tmp_dreg = NULL;
     char                *origin_addr;
-
+    int                 i;
     MPIDI_VC_t          *tmp_vc;
     MPID_Comm           *comm_ptr;
-
+    int                 use_multi;
 
     assert(rma_op->type == MPIDI_RMA_GET);
-    /*part 1 prepare origin side buffer target address and keys */
+    /*part 1 prepare origin side buffer target address and keys  */
     remote_address = (char *) win_ptr->base_addrs[rma_op->target_rank] +
         win_ptr->disp_units[rma_op->target_rank] * rma_op->target_disp;
 
     if (size <= rdma_eagersize_1sc) {
         Get_Pinned_Buf(win_ptr, &origin_addr, size);
-        l_key = win_ptr->pinnedpool_1sc_dentry->memhandle->lkey;
+	for(i = 0; i < rdma_num_hcas; i++) {
+       	    l_key[i] = win_ptr->pinnedpool_1sc_dentry->memhandle[i]->lkey;
+        }
     } else {
         tmp_dreg = dreg_register(rma_op->origin_addr, size);
-        l_key = tmp_dreg->memhandle->lkey;
+	for(i = 0; i < rdma_num_hcas; i++) {
+            l_key[i] = tmp_dreg->memhandle[i]->lkey;
+        }
         origin_addr = rma_op->origin_addr;
+        win_ptr->wait_for_complete = 1;
     }
 
-    r_key = win_ptr->r_key[rma_op->target_rank];
     MPID_Comm_get_ptr(win_ptr->comm, comm_ptr);
     MPIDI_Comm_get_vc(comm_ptr, rma_op->target_rank, &tmp_vc);
 
-    desc.send_flags         = IBV_SEND_SIGNALED;
-    desc.opcode             = IBV_WR_RDMA_READ;
-    desc.num_sge            = 1;
-    desc.wr.rdma.remote_addr  = (uintptr_t)(remote_address);
-    desc.wr.rdma.rkey         = r_key;
-    desc.sg_list            = &(sg_entry);
+   for (i=0; i<rdma_num_rails; i++)
+   {
+       hca_index = tmp_vc->mrail.rails[i].hca_index;
+       r_key[i] = win_ptr->r_key[rma_op->target_rank*rdma_num_hcas + hca_index];
+       l_key1[i] = l_key[hca_index];
+   }
 
-    sg_entry.length         = size;
-    sg_entry.lkey           = l_key;
-    sg_entry.addr           = (uintptr_t) (origin_addr);
-    if (size <= rdma_eagersize_1sc)
-        index = POST_GET_PUT_GET_LIST(win_ptr, size,
-                          rma_op->origin_addr, origin_addr,
-                          NULL, tmp_vc, &desc);
-    else
-        index = POST_GET_PUT_GET_LIST(win_ptr, size, NULL, NULL,
-            tmp_dreg, tmp_vc, &desc);
-
-    return mpi_errno;
+   index = POST_GET_PUT_GET_LIST(win_ptr, size, tmp_dreg, tmp_vc, (void *)&origin_addr, (void *)&remote_address, size, l_key1, r_key, 1 );
+   return mpi_errno;
 }
 
 #endif

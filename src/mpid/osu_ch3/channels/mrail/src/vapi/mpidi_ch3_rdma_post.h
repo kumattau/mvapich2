@@ -202,13 +202,16 @@ int MRAILI_Fill_start_buffer(vbuf *v, MPID_IOV *iov, int n_iov);
 
 int MPIDI_CH3I_MRAILI_Get_next_vbuf_local(MPIDI_VC_t *vc, vbuf ** vbuf_handle);
 
-int MPIDI_CH3I_MRAILI_Waiting_msg(MPIDI_VC_t * vc, vbuf **);
+int MPIDI_CH3I_MRAILI_Waiting_msg(MPIDI_VC_t * vc, vbuf **, int);
 
 int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **, MPIDI_VC_t *, int);
 
 int MRAILI_Send_noop_if_needed(MPIDI_VC_t *vc, const MRAILI_Channel_info *channel);
 
 int MRAILI_Send_rdma_credit_if_needed(MPIDI_VC_t *vc);
+
+int MPIDI_CH3I_MRAILI_rput_complete(MPIDI_VC_t *, MPID_IOV *,
+                                    int, int *, vbuf **, int);
 
 /* Following interface for rndv msgs */
 void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t *vc, MPID_Request * sreq);

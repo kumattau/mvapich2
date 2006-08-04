@@ -42,7 +42,7 @@
 {								\
     int err__;							\
 								\
-    err__ = pthread_mutex_init((mutex_ptr_), NULL);		\
+    err__ = pthread_spin_init((mutex_ptr_), NULL);		\
     if ((err_ptr_) != NULL)					\
     {								\
 	/* FIXME: convert error to an MPE_THREAD_ERR value */	\
@@ -54,7 +54,7 @@
 {								\
     int err__;							\
 								\
-    err__ = pthread_mutex_destroy(mutex_ptr_);			\
+    err__ = pthread_spin_destroy(mutex_ptr_);			\
     if ((err_ptr_) != NULL)					\
     {								\
 	/* FIXME: convert error to an MPE_THREAD_ERR value */	\
@@ -66,7 +66,7 @@
 {								\
     int err__;							\
 								\
-    err__ = pthread_mutex_lock(mutex_ptr_);			\
+    err__ = pthread_spin_lock(mutex_ptr_);			\
     if ((err_ptr_) != NULL)					\
     {								\
 	/* FIXME: convert error to an MPE_THREAD_ERR value */	\
@@ -78,7 +78,7 @@
 {								\
     int err__;							\
 								\
-    err__ = pthread_mutex_unlock(mutex_ptr_);			\
+    err__ = pthread_spin_unlock(mutex_ptr_);			\
     if ((err_ptr_) != NULL)					\
     {								\
 	/* FIXME: convert error to an MPE_THREAD_ERR value */	\
@@ -90,7 +90,7 @@
 {										\
     int err__;									\
 										\
-    err__ = pthread_mutex_trylock(mutex_ptr_);					\
+    err__ = pthread_spin_trylock(mutex_ptr_);					\
     *(flag_ptr_) = (err__ == 0) ? TRUE : FALSE;					\
     if ((err_ptr_) != NULL)							\
     {										\

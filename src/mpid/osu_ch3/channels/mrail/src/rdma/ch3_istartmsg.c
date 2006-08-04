@@ -102,7 +102,7 @@ int MPIDI_CH3_iStartMsg(MPIDI_VC_t * vc, void *pkt, MPIDI_msg_sz_t pkt_sz,
         int nb;
         int pkt_len;
         vbuf *buf;
-#ifdef RDMA_FAST_PATH
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
         int rdma_ok;
 #endif
 
@@ -113,7 +113,7 @@ int MPIDI_CH3_iStartMsg(MPIDI_VC_t * vc, void *pkt, MPIDI_msg_sz_t pkt_sz,
         iov[0].MPID_IOV_BUF = pkt;
         iov[0].MPID_IOV_LEN = pkt_sz;
         pkt_len = pkt_sz;
-#ifdef RDMA_FAST_PATH
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
         rdma_ok = MPIDI_CH3I_MRAILI_Fast_rdma_ok(vc, pkt_len);
         DEBUG_PRINT("[send], rdma ok: %d\n", rdma_ok);
         if (rdma_ok != 0) {

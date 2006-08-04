@@ -925,9 +925,10 @@ implementation.  option may be a list of common separated names including
     gcc     - Standard gcc and GNU ld options for creating shared libraries
     osx-gcc - Special options for gcc needed only on OS/X
     solaris-cc - Solaris native (SPARC) compilers for 32 bit systems
+    solaris86-cc - Solaris compilers for x86 systems
     cygwin-gcc - Special options for gcc needed only for cygwin
     none    - same as --disable-sharedlibs
-Only gcc, osx-gcc, and solaris-cc are currently supported
+Only gcc, osx-gcc, solaris-cc, and solaris86-cc are currently supported
 
 --enable-dependencies - Generate dependencies for sourcefiles.  This
             requires that the Makefile.in files are also created
@@ -2404,10 +2405,10 @@ _ACEOF
     if test "x$exec_prefix" = xNONE ; then
         saveExecPrefix=$exec_prefix
 	exec_prefix=$prefix
-        eval dlldir=$libdir/libtvmpich.so
+        eval dlldir=$libdir/libtvmpich2.so
 	exec_prefix=$saveExecPrefix
     else
-        eval dlldir=$libdir/libtvmpich.so
+        eval dlldir=$libdir/libtvmpich2.so
     fi
     dlldir='"'$dlldir'"'
 
@@ -7171,6 +7172,10 @@ echo "${ECHO_T}no" >&6
 	 FC_SHL="$F77 -xcode=pic32"
          FC_LINKPATH_SHL=$C_LINKPATH_SHL
 	 ;;
+         solaris86-cc)
+         FC_SHL="$F77 -G -KPIC"
+         FC_LINKPATH_SHL=$C_LINKPATH_SHL
+         ;;
 	 libtool)
 	 FC_SHL='${LIBTOOL} --mode=compile ${F77}'
          FC_LINKPATH_SHL="-rpath "
@@ -8023,6 +8028,9 @@ echo "${ECHO_T}$pac_cv_f90_accepts_F90" >&6
     elif test "$ENABLE_SHLIB" = "solaris" -o "$ENABLE_SHLIB" = "solaris-cc" ; then
         F90_SHL="$F90 -xcode=pic32"
         F90_LINKPATH_SHL=$C_LINKPATH_SHL
+    elif test "$ENABLE_SHLIB" = "solaris" -o "$ENABLE_SHLIB" = "solaris86-cc" ; then
+        F90_SHL="$F90 -G -KPIC"
+        F90_LINKPATH_SHL=$C_LINKPATH_SHL
     fi
     # ------------------------------------------------
 fi
@@ -8733,6 +8741,10 @@ echo "$as_me: error: Namespaces are required for the MPI C++ interface" >&2;}
 	CXX_SHL='${LIBTOOL} --mode=compile ${CXX}'
 	CXX_LINKPATH_SHL="-rpath "
 	;;
+        solaris86-cc)
+        CXX_SHL="$CXX -G -KPIC"
+        CXX_LINKPATH_SHL=$C_LINKPATH_SHL
+        ;;
 	*)
 	CXX_SHL=false
 	;;
@@ -9692,6 +9704,16 @@ echo "${ECHO_T}Creating shared libraries using Solaris" >&6
     CC_SHL='${CC} -xcode=pic32'
     C_LINKPATH_SHL="-R"
     enable_sharedlibs="solaris-cc"
+    ;;
+
+    solaris86-cc)
+    # This is for cc on Solaris86 
+    echo "$as_me:$LINENO: result: Creating shared libraries using Solaris86 with cc" >&5
+echo "${ECHO_T}Creating shared libraries using Solaris86 with cc" >&6
+    C_LINK_SHL='${CC} -G'
+    CC_SHL='${CC} -KPIC'
+    C_LINKPATH_SHL="-R"
+    enable_sharedlibs="solaris86-cc"
     ;;
 
     solaris-gcc)
@@ -10953,7 +10975,7 @@ if test "$enable_dependencies" != "no" ; then
 	# instead of a subdirectory
         MAKE_DEPEND_C="gcc -MM"
     ;;
-    solaris)
+    solaris|solaris86)
         # At least some Solaris SunPro compilers accept -xM1 -MT name, though
 	# they ignore the -MT name argument.
         MAKE_DEPEND_C="cc -xM1"

@@ -274,7 +274,7 @@ MPIDI_CH3I_MRAILI_Get_next_vbuf_local (MPIDI_VC_t * vc, vbuf ** vbuf_handle)
     return type;
 }
 
-int MPIDI_CH3I_MRAILI_Waiting_msg(MPIDI_VC_t * vc, vbuf ** vbuf_handle)
+int MPIDI_CH3I_MRAILI_Waiting_msg(MPIDI_VC_t * vc, vbuf ** vbuf_handle, int blocking)
 {
     int i, seq;
     MRAILI_Channel_manager *cmanager = &vc->mrail.cmanager;

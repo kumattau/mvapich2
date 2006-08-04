@@ -116,9 +116,21 @@ typedef unsigned long aint_t;
 
 #ifdef _PPC64_
 
-#undef USE_MPD_RING
 #undef ONE_SIDED
+#undef USE_MPD_RING
 
+#endif
+
+#if !defined(RDMA_FAST_PATH) && !defined(ADAPTIVE_RDMA_FAST_PATH)
+#undef USE_HEADER_CACHING
+#endif
+
+#if defined(_MLX_PCI_X_) && defined(SRQ)
+#error SRQ is not suppported for Mellanox PCI-X cards
+#endif
+
+#if defined(USE_MPD_RING) && defined(RDMA_FAST_PATH)
+#error MPD_RING is not supported with RDMA_FAST_PATH. 
 #endif
 
 #endif                          /* _VIA64_H */

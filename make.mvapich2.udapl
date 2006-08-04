@@ -17,6 +17,15 @@ export CXX=g++
 export F77=g77
 export F90=
 
+# To use Sun Studio compilers on Solaris, please uncomment the lines below
+# To build shared library, you also need to add -KPIC to the compiler options
+#export SUNP=/opt/SUNWspro/bin
+#export CC="$SUNP/cc -xO3 -xtarget=opteron -xarch=amd64"
+#export CXX="$SUNP/CC -xO3 -xtarget=opteron -xarch=amd64"
+#export F77="$SUNP/f77 -xO3 -xtarget=opteron -xarch=amd64"
+#export F90="$SUNP/f90 -xO3 -xtarget=opteron -xarch=amd64"
+#export LDFLAG="-xtarget=opteron -xarch=amd64"
+
 # Check mandatory variable settings.
 if [ -z $DAT_LIB ] || [ -z $DAT_INCLUDE ] || [ -z $PREFIX ] || [ -z $CC ] ||
    [ -z $F77 ]; then
@@ -96,14 +105,14 @@ fi
 if [ $ARCH = "SOLARIS" ]; then
     export MAKE=gmake
     export PATH=/usr/xpg4/bin:/usr/ucb:/usr/sbin:/usr/ccs/bin:/usr/sfw/bin:$PATH
-    export LIBS="-L${DAT_LIB} -lsocket -lnsl -lresolv -lpthread -ldat"
+    export LIBS="-L${DAT_LIB} -L/usr/ucblib/amd64 -lsocket -lnsl -lresolv -lpthread -ldat"
 else
     export MAKE=make
     export LIBS="-L${DAT_LIB} -lpthread -ldat"
 fi
 
 export FFLAGS="-L${DAT_LIB}"
-export LD_LIBRARY_PATH="${DAT_LIB}:$LD_LIBRARY_PATH"
+export LD_LIBRARY_PATH="${DAT_LIB}:/usr/ucblib/amd64:$LD_LIBRARY_PATH"
 export CFLAGS="-D${ARCH}  -D_SMP_ -DRDMA_FAST_PATH -DUSE_HEADER_CACHING \
         -DLAZY_MEM_UNREGISTER  -DONE_SIDED -DMPID_USE_SEQUENCE_NUMBERS \
         -D${VCLUSTER} -D${IO_BUS} -D${LINKS} \

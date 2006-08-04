@@ -147,6 +147,7 @@ int MPID_Cancel_send(MPID_Request * sreq)
 	MPIDI_CH3_Pkt_t upkt;
 	MPIDI_CH3_Pkt_cancel_send_req_t * const csr_pkt = &upkt.cancel_send_req;
 	MPID_Request * csr_sreq;
+	int seqnum;
 	
 	MPIDI_DBG_PRINTF((15, FCNAME, "sending cancel request to %d for 0x%08x", sreq->dev.match.rank, sreq->handle));
 	
@@ -164,7 +165,9 @@ int MPID_Cancel_send(MPID_Request * sreq)
 	csr_pkt->match.tag = sreq->dev.match.tag;
 	csr_pkt->match.context_id = sreq->dev.match.context_id;
 	csr_pkt->sender_req_id = sreq->handle;
-	
+        MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+        MPIDI_Pkt_set_seqnum(csr_pkt, seqnum);
+
 	mpi_errno = MPIDI_CH3_iStartMsg(vc, csr_pkt, sizeof(*csr_pkt), &csr_sreq);
 	/* --BEGIN ERROR HANDLING-- */
 	if (mpi_errno != MPI_SUCCESS)

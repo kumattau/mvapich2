@@ -51,6 +51,16 @@ static long num_free_vbuf = 0;
 static long num_vbuf_get = 0;
 static long num_vbuf_freed = 0;
 
+#ifdef SRQ
+static pthread_spinlock_t vbuf_lock;
+
+void init_vbuf_lock()
+{
+    pthread_spin_init(&vbuf_lock, 0);
+}
+
+#endif
+
 void dump_vbuf_region(vbuf_region * r)
 {
 }
@@ -65,26 +75,34 @@ void dump_vbuf_regions()
     }
 }
 
-void deallocate_vbufs()
+void deallocate_vbufs(int hca_num)
 {
     vbuf_region *r = vbuf_region_head;
+
+#ifdef SRQ
+    pthread_spin_lock(&vbuf_lock);
+#endif
+
     int ret;
     int i;
-                                                                                                                                               
+
     while (r) {
-        for (i = 0; i < MPIDI_CH3I_RDMA_Process.num_hcas; i ++) {
-            if (r->mem_handle[i]) {
-                ret = ibv_dereg_mr(r->mem_handle[i]);
-                if (ret) {
-                    ibv_error_abort(IBV_RETURN_ERR,
-                                    "could not deregister MR");
-                }
-                /* free vbufs add it later */
+        if (r->mem_handle[hca_num] != NULL) {
+            ret = ibv_dereg_mr(r->mem_handle[hca_num]);
+            if (ret) {
+                ibv_error_abort(IBV_RETURN_ERR,
+                        "could not deregister MR");
             }
+            /* free vbufs add it later */
         }
         DEBUG_PRINT("deregister vbufs\n");
         r = r->next;
     }
+
+#ifdef SRQ
+    pthread_spin_unlock(&vbuf_lock);
+#endif
+
 }
 
 static int allocate_vbuf_region(int nvbufs)
@@ -93,8 +111,12 @@ static int allocate_vbuf_region(int nvbufs)
     void *mem;
     int i;
     vbuf *cur;
-    int alignment = VBUF_TOTAL_SIZE;
-                                                                                                                                               
+    void *vbuf_dma_buffer;
+    int alignment_vbuf = 64;
+    int alignment_dma;
+
+    alignment_dma = getpagesize();
+
     if (free_vbuf_head != NULL)
         ibv_error_abort(GEN_ASSERT_ERR, "free_vbuf_head = NULL");
     /* are we limiting vbuf allocation?  If so, make sure
@@ -114,25 +136,35 @@ static int allocate_vbuf_region(int nvbufs)
         ibv_error_abort(GEN_EXIT_ERR,
                             "Unable to malloc a new struct vbuf_region");
     }
-    mem = (void *) malloc(nvbufs * sizeof(vbuf) + (alignment - 1));
-    if (NULL == mem) {
+
+    if(posix_memalign((void **) &mem, alignment_vbuf, nvbufs * sizeof(vbuf))) {
         fprintf(stderr, "[%s %d] Cannot allocate vbuf region\n", __FILE__, __LINE__);
         return -1;
     }
-                                                                                                                                               
+   
+    vbuf_dma_buffer = (void *) memalign(alignment_dma, nvbufs *
+                       rdma_vbuf_total_size);
+    if (NULL == vbuf_dma_buffer) {
+       ibv_error_abort(GEN_EXIT_ERR, "unable to malloc vbufs DMA buffer");
+    }
+
+                                                                                                                                            
     SAVE_MALLOC_HOOKS;
     SET_ORIGINAL_MALLOC_HOOKS;
 
-    memset(mem, 0, nvbufs * sizeof(vbuf) + (alignment - 1));
-                                                                                                                                               
+    memset(mem, 0, nvbufs * sizeof(vbuf));
+    memset(vbuf_dma_buffer, 0, nvbufs * rdma_vbuf_total_size);
+
     vbuf_n_allocated += nvbufs;
     num_free_vbuf += nvbufs;
     reg->malloc_start = mem;
-    reg->malloc_end = (void *) ((char *) mem + nvbufs * sizeof(vbuf) +
-                                alignment - 1);
-    reg->count = nvbufs;
-    free_vbuf_head = (vbuf *) (((uintptr_t) mem + (uintptr_t) (alignment - 1)) &
-                               ~((uintptr_t) alignment - 1));
+    reg->malloc_buf_start = vbuf_dma_buffer;
+    reg->malloc_end = (void *) ((char *) mem + nvbufs * sizeof(vbuf));
+    reg->malloc_buf_end = (void *) ((char *) vbuf_dma_buffer +
+            nvbufs * rdma_vbuf_total_size);
+
+    reg->count     = nvbufs;
+    free_vbuf_head = mem;
     reg->vbuf_head = free_vbuf_head;
                                                                                                                                                
     DEBUG_PRINT("VBUF REGION ALLOCATION SZ %d TOT %d FREE %ld NF %ld NG %ld",
@@ -140,9 +172,9 @@ static int allocate_vbuf_region(int nvbufs)
             num_vbuf_freed, num_vbuf_get);
 
     /* region should be registered for both of the hca */
-    for (i = 0; i < MPIDI_CH3I_RDMA_Process.num_hcas; i ++) {
-        reg->mem_handle[i] = ibv_reg_mr(ptag_save[i], free_vbuf_head, 
-                             nvbufs * sizeof(vbuf), 
+    for (i = 0; i < rdma_num_hcas; i ++) {
+        reg->mem_handle[i] = ibv_reg_mr(ptag_save[i], vbuf_dma_buffer,
+                             nvbufs * rdma_vbuf_total_size,
                              IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
         if (!reg->mem_handle[i]) {
             fprintf(stderr, "[%s %d] Cannot register vbuf region\n", 
@@ -154,16 +186,30 @@ static int allocate_vbuf_region(int nvbufs)
     /* init the free list */
     for (i = 0; i < nvbufs - 1; i++) {
         cur = free_vbuf_head + i;
-                                                                                                                                               
+
         cur->desc.next = free_vbuf_head + i + 1;
         cur->region = reg;
+#if (defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH))
+	cur->head_flag = (VBUF_FLAG_TYPE *) ((char *)(vbuf_dma_buffer) +
+                (i + 1) * rdma_vbuf_total_size - sizeof *cur->head_flag);
+#endif
+        cur->buffer = (char *) ((char *)(vbuf_dma_buffer) +
+                (i * rdma_vbuf_total_size));
     }
     /* last one needs to be set to NULL */
     cur = free_vbuf_head + nvbufs - 1;
-                                                                                                                                               
+
     cur->desc.next = NULL;
-                                                                                                                                               
+
     cur->region = reg;
+
+#if (defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH))
+    cur->head_flag = (VBUF_FLAG_TYPE *) ((char *)vbuf_dma_buffer +
+            (nvbufs * rdma_vbuf_total_size) - sizeof *cur->head_flag);
+#endif
+    cur->buffer = (char *) ((char *)vbuf_dma_buffer +
+            ((nvbufs - 1) * rdma_vbuf_total_size));
+
 
     /* thread region list */
     reg->next = vbuf_region_head;
@@ -179,7 +225,7 @@ int allocate_vbufs(struct ibv_pd * ptag[], int nvbufs)
      */
     int i;
 
-    for (i = 0; i < MPIDI_CH3I_RDMA_Process.num_hcas; i ++) {
+    for (i = 0; i < rdma_num_hcas; i ++) {
         ptag_save[i] = ptag[i];
     }
                                                                                                                                                
@@ -190,6 +236,10 @@ int allocate_vbufs(struct ibv_pd * ptag[], int nvbufs)
 vbuf *get_vbuf()
 {
     vbuf *v;
+#ifdef SRQ
+    pthread_spin_lock(&vbuf_lock);
+#endif
+
     /*
      * It will often be possible for higher layers to recover
      * when no vbuf is available, but waiting for more descriptors
@@ -212,8 +262,7 @@ vbuf *get_vbuf()
 
     /* this correctly handles removing from single entry free list */
     free_vbuf_head = free_vbuf_head->desc.next;
-#if defined(RDMA_FAST_PATH)
-                                                                                                                                               
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
     /* need to change this to RPUT_VBUF_FLAG later
      * if we are doing rput */
     v->padding = NORMAL_VBUF_FLAG;
@@ -225,6 +274,12 @@ vbuf *get_vbuf()
      * a dozen other places, and probably miss one.
      */
     v->sreq = NULL;
+
+#ifdef SRQ
+    /* Make sure it is not inadvertantly used anywhere */
+
+    pthread_spin_unlock(&vbuf_lock);
+#endif
                                                                                                                                           
     return(v);
 }
@@ -232,6 +287,9 @@ vbuf *get_vbuf()
 void MRAILI_Release_vbuf(vbuf *v)
 {
     /* note this correctly handles appending to empty free list */
+#ifdef SRQ
+    pthread_spin_lock(&vbuf_lock);
+#endif
                                                                                                                                                
     DEBUG_PRINT("release_vbuf: releasing %p previous head = %p, padding %d\n",
         v, free_vbuf_head, v->padding);
@@ -239,22 +297,27 @@ void MRAILI_Release_vbuf(vbuf *v)
     assert(v != free_vbuf_head);
                                                                                                                                                
     v->desc.next = free_vbuf_head;
-#if defined(RDMA_FAST_PATH)
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
     if ((v->padding != NORMAL_VBUF_FLAG)
         && (v->padding != RPUT_VBUF_FLAG)) {
         ibv_error_abort(GEN_EXIT_ERR, "vbuf not correct!!!\n");
     }
+    *v->head_flag  = 0;
 #endif
     free_vbuf_head = v;
-    v->pheader = NULL;
-    v->head_flag = 0;
-    v->sreq = NULL;
-    v->vc = NULL;
+    v->pheader     = NULL;
+    v->content_size  = 0;
+    v->sreq        = NULL;
+    v->vc          = NULL;
     num_free_vbuf++;
     num_vbuf_freed++;
+#ifdef SRQ
+    pthread_spin_unlock(&vbuf_lock);
+#endif
+
 }
 
-#if defined(RDMA_FAST_PATH)
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
 void MRAILI_Release_recv_rdma(vbuf *v)
 {
     vbuf *next_free;
@@ -268,8 +331,9 @@ void MRAILI_Release_recv_rdma(vbuf *v)
     next_free = &(c->mrail.rfp.RDMA_recv_buf[next]);
                                                                                                                                                
     v->padding = FREE_FLAG;
-    v->head_flag = 0;
+    *v->head_flag = 0;
     v->sreq = NULL;
+    v->content_size = 0;
 
     if (v != next_free) {
         return;
@@ -283,7 +347,7 @@ void MRAILI_Release_recv_rdma(vbuf *v)
             if (++(c->mrail.rfp.p_RDMA_recv_tail) >= num_rdma_buffer)
                 c->mrail.rfp.p_RDMA_recv_tail = 0;
             c->mrail.rfp.RDMA_recv_buf[i].padding = BUSY_FLAG;
-            c->mrail.rfp.RDMA_recv_buf[i].head_flag = 0;
+            *c->mrail.rfp.RDMA_recv_buf[i].head_flag = 0;
         } else break;
         if (++i >= num_rdma_buffer)
             i = 0;
@@ -299,14 +363,14 @@ void vbuf_init_rdma_write(vbuf * v)
 
     v->desc.sr.num_sge      = 1;
     v->desc.sr.sg_list      = &(v->desc.sg_entry);
-#ifdef RDMA_FAST_PATH
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
     v->padding              = FREE_FLAG;
 #endif
 }
 
-void vbuf_init_send(vbuf *v, unsigned long len, const MRAILI_Channel_info * subchannel)
+void vbuf_init_send(vbuf *v, unsigned long len, int rail)
 {
-    int hca_num = subchannel->hca_index;
+    int hca_num = rail / (rdma_num_rails/rdma_num_hcas);
 
     v->desc.sr.next         = NULL;
     v->desc.sr.send_flags   = IBV_SEND_SIGNALED;
@@ -317,16 +381,15 @@ void vbuf_init_send(vbuf *v, unsigned long len, const MRAILI_Channel_info * subc
     v->desc.sg_entry.length = len;
     v->desc.sg_entry.lkey   = v->region->mem_handle[hca_num]->lkey;
     v->desc.sg_entry.addr   = (uintptr_t)(v->buffer);
-#ifdef RDMA_FAST_PATH
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
     v->padding = NORMAL_VBUF_FLAG;
 #endif
-    v->subchannel = *subchannel;
+    v->rail    = rail;
 }
                                                                                                                                                
-void vbuf_init_recv(vbuf *v, unsigned long len,
-        const MRAILI_Channel_info * subchannel)
+void vbuf_init_recv(vbuf *v, unsigned long len, int rail)
 {
-    int hca_num = subchannel->hca_index;
+    int hca_num = rail / (rdma_num_rails/rdma_num_hcas);
 
     v->desc.rr.next         = NULL;
     v->desc.rr.wr_id        = (uintptr_t) v;
@@ -335,16 +398,16 @@ void vbuf_init_recv(vbuf *v, unsigned long len,
     v->desc.sg_entry.length = len;
     v->desc.sg_entry.lkey   = v->region->mem_handle[hca_num]->lkey;
     v->desc.sg_entry.addr   = (uintptr_t)(v->buffer);
-#ifdef RDMA_FAST_PATH
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
     v->padding = NORMAL_VBUF_FLAG;
 #endif
-    v->subchannel = *subchannel;
+    v->rail    = rail;
 }
 
 void vbuf_init_rput(vbuf * v, 
                     void *local_address, uint32_t lkey, 
                     void *remote_address, uint32_t rkey, int len, 
-                    const MRAILI_Channel_info * subchannel)
+		    int rail)
 {
     v->desc.sr.next         = NULL;
     v->desc.sr.send_flags   = IBV_SEND_SIGNALED;
@@ -360,10 +423,10 @@ void vbuf_init_rput(vbuf * v,
     v->desc.sg_entry.length = len;
     v->desc.sg_entry.lkey   = lkey;
     v->desc.sg_entry.addr   = (uintptr_t)(local_address);
-#ifdef RDMA_FAST_PATH
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
     v->padding = RPUT_VBUF_FLAG;
 #endif
-    v->subchannel = *subchannel;                                                                                           
+    v->rail    = rail;	
     DEBUG_PRINT("RDMA write\n");
 }
 
@@ -383,7 +446,7 @@ int MPI_Debug_vbuf_recv(int rank, int index, int len)
     v = &(vc->mrail.rfp.RDMA_recv_buf[index]);
     MRAILI_ALIGN_LEN(len, align_len);    
  
-    start = (char *)((uintptr_t)(&v->head_flag) - align_len);
+    start = (char *)((uintptr_t)(v->head_flag) - align_len);
     fprintf(stderr, "Printing recv buffer (len %d): ", v->head_flag);
     for (i = 0; i < align_len + 4; i ++) {
         fprintf(stderr, "%c", start[i]);
@@ -408,7 +471,7 @@ int MPI_Debug_vbuf_send(int rank, int index, int len)
     v = &(vc->mrail.rfp.RDMA_send_buf[index]);
     MRAILI_ALIGN_LEN(len, align_len);
     
-    start = (char *)((uintptr_t)(&v->head_flag) - align_len);
+    start = (char *)((uintptr_t)(v->head_flag) - align_len);
     fprintf(stderr, "Printing send buffer (len %d): ", v->head_flag);
     for (i = 0; i < align_len + 4; i ++) {
         fprintf(stderr, "%c", start[i]);
@@ -443,3 +506,4 @@ void dump_vbuf(char *msg, vbuf * v)
     DEBUG_PRINT("\n");
     DEBUG_PRINT("  END OF VBUF DUMP\n");
 }
+

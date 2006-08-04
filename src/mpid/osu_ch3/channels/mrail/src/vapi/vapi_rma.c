@@ -31,7 +31,8 @@ do {                                                          \
 
 int MPIDI_CH3I_MRAILI_Get_rndv_rput(MPIDI_VC_t *vc, 
                                     MPID_Request * req,
-                                    MPIDI_CH3I_MRAILI_Rndv_info_t * rndv)
+                                    MPIDI_CH3I_MRAILI_Rndv_info_t * rndv,
+				    MPID_IOV *iov)
 {
     /* This function will register the local buf, send rdma write to target, and send
      * get_resp_kt as rput finsh. Currently, we assume the local buffer is contiguous,
@@ -68,6 +69,11 @@ int MPIDI_CH3I_MRAILI_Get_rndv_rput(MPIDI_VC_t *vc,
                         req->mrail.rndv_buf_off, req->mrail.remote_handle,
                         nbytes, &channel);
         req->mrail.rndv_buf_off += nbytes;
+    }
+
+    if (VAPI_PROTOCOL_RPUT == req->mrail.protocol) {
+	MPIDI_CH3I_MRAILI_rput_complete(vc, iov, 1, &nbytes, &v, channel.rail_index);
+        v->sreq = req;
     }
 
     return MPI_SUCCESS;

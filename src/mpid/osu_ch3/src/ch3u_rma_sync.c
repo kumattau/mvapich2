@@ -1205,10 +1205,13 @@ int MPIDI_Win_post(MPID_Group * group_ptr, int assert, MPID_Win * win_ptr)
     win_ptr->my_counter = post_grp_size;
 
 #ifdef ONE_SIDED
+    
+    win_ptr->my_counter = post_grp_size; /*MRAIL */
     if (win_ptr->fall_back != 1) {
 	int i = 0;
 	memset(win_ptr->completion_counter, 0,
-	      sizeof(long long) * win_ptr->comm_size);
+	      sizeof(long long) * win_ptr->comm_size * rdma_num_rails); /* MRAIL */
+
     }
 #endif
 
@@ -1428,6 +1431,7 @@ int MPIDI_Win_complete(MPID_Win * win_ptr)
 	 * operations */
 	MPIDI_CH3I_RDMA_start(win_ptr, start_grp_size, ranks_in_win_grp);
 	MPIDI_CH3I_RDMA_try_rma(win_ptr, &win_ptr->rma_ops_list, 0);
+        
 	if (win_ptr->rma_issued != 0)
 	    MPIDI_CH3I_RDMA_complete_rma(win_ptr, start_grp_size,
 					 ranks_in_win_grp, 1);
@@ -1709,7 +1713,6 @@ int MPIDI_Win_complete(MPID_Win * win_ptr)
 }
 
 
-
 #undef FUNCNAME
 #define FUNCNAME MPIDI_Win_wait
 #undef FCNAME
@@ -1719,7 +1722,10 @@ int MPIDI_Win_wait(MPID_Win * win_ptr)
     int mpi_errno = MPI_SUCCESS;
 #ifdef ONE_SIDED
     int newly_finished;
-    int i;
+    int i,j;
+    int rank;
+    int num = 0;
+    PMI_Get_rank(&rank);
 #endif
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_WIN_WAIT);
@@ -1731,12 +1737,20 @@ int MPIDI_Win_wait(MPID_Win * win_ptr)
     if (win_ptr->fall_back != 1) {
 	while (win_ptr->my_counter || win_ptr->outstanding_rma != 0) {
 	    newly_finished = 0;
+
 	    for (i = 0; i < win_ptr->comm_size; i++) {
-		if (win_ptr->completion_counter[i] == 1) {
-		    win_ptr->completion_counter[i] = 0;
-		    newly_finished++;
-		}
+		for (j = 0; j < rdma_num_rails; j++) {
+                   if (win_ptr->completion_counter[i + ( j * win_ptr->comm_size )] == 1) {
+                         win_ptr->completion_counter[i + ( j * win_ptr->comm_size )] = 0;
+                         num++;
+                         if(num == rdma_num_rails){
+                            newly_finished++;
+                            num = 0;
+                         }
+                   }
+                }    
 	    }
+                  
 	    win_ptr->my_counter -= newly_finished;
 	    if (win_ptr->my_counter == 0)
 		break;

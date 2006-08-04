@@ -50,33 +50,9 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr)
     *v_ptr = NULL;
     pg = MPIDI_Process.my_pg;
 
-#ifdef RDMA_FAST_PATH
-    if (!pending_vc) {
-        for (i = 0; i < pg->size; i++) {
-            MPIDI_PG_Get_vcr(MPIDI_Process.my_pg, local_vc_index,
-                             &recv_vc_ptr);
-            /* skip over the vc to myself */
-            if (MPIDI_CH3I_Process.vc == recv_vc_ptr) {
-                if (++local_vc_index == pg->size)
-                    local_vc_index = 0;
-                continue;
-            }
-            type =
-                MPIDI_CH3I_MRAILI_Get_next_vbuf_local(recv_vc_ptr, v_ptr);
-            if (++local_vc_index == pg->size)
-                local_vc_index = 0;
-            if (type != T_CHANNEL_NO_ARRIVE) {
-                *vc_pptr = recv_vc_ptr;
-                DEBUG_PRINT("[read_progress] find one\n");
-                goto fn_exit;
-            }
-        }
-    }
-#endif
-
     if (pending_vc != NULL) {
         type =
-            MPIDI_CH3I_MRAILI_Waiting_msg(pending_vc, v_ptr);
+            MPIDI_CH3I_MRAILI_Waiting_msg(pending_vc, v_ptr, 1);
         if (type == T_CHANNEL_CONTROL_MSG_ARRIVE) {
             assert((void *) pending_vc == (*v_ptr)->vc);
             *vc_pptr = pending_vc;
@@ -89,6 +65,34 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr)
         }
         goto fn_exit;
     }
+
+#ifdef RDMA_FAST_PATH
+    for (i = 0; i < pg->size; i++) {
+        MPIDI_PG_Get_vcr(MPIDI_Process.my_pg, local_vc_index,
+                         &recv_vc_ptr);
+        /* skip over the vc to myself */
+        if (MPIDI_CH3I_Process.vc == recv_vc_ptr) {
+            if (++local_vc_index == pg->size)
+                local_vc_index = 0;
+            continue;
+        }
+        type =
+            MPIDI_CH3I_MRAILI_Get_next_vbuf_local(recv_vc_ptr, v_ptr);
+        if (++local_vc_index == pg->size)
+            local_vc_index = 0;
+        if (type != T_CHANNEL_NO_ARRIVE) {
+            *vc_pptr = recv_vc_ptr;
+            DEBUG_PRINT("[read_progress] find one\n");
+            goto fn_exit;
+        }
+    }
+#elif defined(ADAPTIVE_RDMA_FAST_PATH)
+    type = MPIDI_CH3I_MRAILI_Get_next_vbuf(vc_pptr, v_ptr);
+    if (type != T_CHANNEL_NO_ARRIVE) {
+	goto fn_exit;
+    } 
+#endif
+
     /* local polling has finished, now we need to start global subchannel polling 
      * For convenience, at this stage, we by default refer to the global polling channel 
      * as the send recv channel on each of the queue pair
@@ -115,7 +119,7 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr)
                          v_ptr)->seqnum, recv_vc_ptr->seqnum_recv);
 
             type =
-                MPIDI_CH3I_MRAILI_Waiting_msg(recv_vc_ptr, v_ptr);
+                MPIDI_CH3I_MRAILI_Waiting_msg(recv_vc_ptr, v_ptr, 1);
             if (type == T_CHANNEL_CONTROL_MSG_ARRIVE) {
                 pending_vc = recv_vc_ptr;
             } else if (T_CHANNEL_EXACT_ARRIVE == type) {

@@ -138,7 +138,7 @@ int MPIDI_CH3_iStartMsgv(MPIDI_VC_t * vc, MPID_IOV * iov, int n_iov,
     if (MPIDI_CH3I_SendQ_empty(vc)) {   /* MT */
         int nb;
         int pkt_len;
-#ifdef RDMA_FAST_PATH
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
         int rdma_ok;
 #endif
         /* MT - need some signalling to lock down our right to use the
@@ -156,7 +156,7 @@ int MPIDI_CH3_iStartMsgv(MPIDI_VC_t * vc, MPID_IOV * iov, int n_iov,
             goto fn_exit;
         }
 
-#ifdef RDMA_FAST_PATH
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
         rdma_ok = MPIDI_CH3I_MRAILI_Fast_rdma_ok(vc, pkt_len);
         DEBUG_PRINT("[send], rdma ok: %d\n", rdma_ok);
         if (rdma_ok != 0) {

@@ -481,6 +481,41 @@ int MPIDI_CH3I_MRAILI_Eager_send(MPIDI_VC_t * vc,
     return mpi_errno;
 }
 
+int MPIDI_CH3I_MRAILI_rput_complete(MPIDI_VC_t * vc,
+                                 MPID_IOV * iov,
+                                 int n_iov,
+                                 int *num_bytes_ptr, vbuf ** buf_handle,
+                                 int rail)
+{
+    MPIDI_CH3I_MRAILI_Pkt_comm_header *pheader;
+    vbuf *v;
+    int  mpi_errno;
+    MRAILI_Channel_info channel;
+
+    MPIDI_STATE_DECL(MPIDI_CH3I_MRAILI_EAGER_SEND);
+    MPIDI_FUNC_ENTER(MPIDI_CH3I_MRAILI_EAGER_SEND);
+
+    memset(&channel, 0, sizeof(MRAILI_Channel_info));
+    channel.rail_index = rail;
+    v = get_vbuf();
+    *buf_handle = v;
+    DEBUG_PRINT("[eager send]vbuf addr %p\n", v);
+    *num_bytes_ptr = MRAILI_Fill_start_buffer(v, iov, n_iov);
+
+    DEBUG_PRINT("[eager send] len %d, selected rail hca %d, rail %d\n",
+                *num_bytes_ptr, vc->mrail.rails[rail].hca_index, rail);
+    pheader = v->pheader;
+
+    vbuf_init_send(v, *num_bytes_ptr, &channel);
+    /*PACKET_SET_CREDIT(pheader, vc, channel.rail_index);*/
+    mpi_errno = MRAILI_Post_send(vc, v, &channel);
+
+    MPIDI_FUNC_EXIT(MPIDI_CH3I_MRAILI_EAGER_SEND);
+
+    return mpi_errno;
+}
+
+
 int MRAILI_Backlog_send(MPIDI_VC_t * vc,
                         const MRAILI_Channel_info * channel)
 {

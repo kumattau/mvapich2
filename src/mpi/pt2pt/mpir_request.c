@@ -24,6 +24,7 @@ int MPIR_Request_complete(MPI_Request * request, MPID_Request * request_ptr, MPI
 	    }
 	    mpi_errno = request_ptr->status.MPI_ERROR;
 	    MPID_Request_release(request_ptr);
+	    MPIR_SENDQ_FORGET(request_ptr);
 	    *request = MPI_REQUEST_NULL;
 	    break;
 	}
@@ -91,6 +92,8 @@ int MPIR_Request_complete(MPI_Request * request, MPID_Request * request_ptr, MPI
 		mpi_errno = prequest_ptr->status.MPI_ERROR;
 	    
 		MPID_Request_release(prequest_ptr);
+		MPIR_SENDQ_FORGET(prequest_ptr);
+
 	    }
 	    else
 	    {

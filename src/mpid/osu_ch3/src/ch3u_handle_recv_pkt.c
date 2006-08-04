@@ -61,6 +61,9 @@ int MPIDI_CH3_Pkt_size_index[] = {
     sizeof(MPIDI_CH3_Pkt_packetized_send_start_t),	/* 10 */
     sizeof(MPIDI_CH3_Pkt_packetized_send_data_t),
     sizeof(MPIDI_CH3_Pkt_rndv_r3_data_t),
+#if defined(ADAPTIVE_RDMA_FAST_PATH)
+    sizeof(MPIDI_CH3_Pkt_address_t),
+#endif
     sizeof(MPIDI_CH3_Pkt_eager_sync_send_t),
     sizeof(MPIDI_CH3_Pkt_eager_sync_ack_t),
     sizeof(MPIDI_CH3_Pkt_ready_send_t),	/* 15 */
@@ -550,7 +553,7 @@ int MPIDI_CH3U_Handle_ordered_recv_pkt(MPIDI_VC_t * vc,
 		}
 
 		mpi_errno = MPIDI_CH3_Prepare_rndv_cts(vc, cts_pkt, rreq);
-
+	
 		mpi_errno =
 		    MPIDI_CH3_iStartMsg(vc, cts_pkt, sizeof(*cts_pkt),
 					&cts_req);
@@ -646,6 +649,7 @@ int MPIDI_CH3U_Handle_ordered_recv_pkt(MPIDI_VC_t * vc,
 	    MPIDI_CH3_Pkt_cancel_send_resp_t *resp_pkt =
 		&upkt.cancel_send_resp;
 	    MPID_Request *resp_sreq;
+	    int seqnum;
 
 	    MPIDI_DBG_PRINTF((30, FCNAME,
 			      "received cancel send req pkt, sreq=0x%08x, rank=%d, tag=%d, context=%d",
@@ -674,6 +678,9 @@ int MPIDI_CH3U_Handle_ordered_recv_pkt(MPIDI_VC_t * vc,
 	    MPIDI_Pkt_init(resp_pkt, MPIDI_CH3_PKT_CANCEL_SEND_RESP);
 	    resp_pkt->sender_req_id = req_pkt->sender_req_id;
 	    resp_pkt->ack = ack;
+            MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+            MPIDI_Pkt_set_seqnum(resp_pkt, seqnum);
+
 	    mpi_errno =
 		MPIDI_CH3_iStartMsg(vc, resp_pkt,
 				    sizeof(*resp_pkt), &resp_sreq);

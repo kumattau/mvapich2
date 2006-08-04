@@ -94,7 +94,7 @@ int MPIDI_CH3_Packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
 
     Calculate_IOV_len(iov, n_iov, pkt_len);
 
-#ifdef RDMA_FAST_PATH
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
     rdma_ok = MPIDI_CH3I_MRAILI_Fast_rdma_ok(vc, pkt_len);
     DEBUG_PRINT("[pkt send], rdma ok: %d\n", rdma_ok);
     if (rdma_ok != 0) {
@@ -137,7 +137,7 @@ int MPIDI_CH3_Packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
                     sreq->ch.iov_offset) * sizeof(MPID_IOV));
             n_iov = sreq->dev.iov_count - sreq->ch.iov_offset + 1;
 
-#ifdef RDMA_FAST_PATH
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
             rdma_ok = MPIDI_CH3I_MRAILI_Fast_rdma_ok(vc, pkt_len);
             DEBUG_PRINT("[send], rdma ok: %d\n", rdma_ok);
             if (rdma_ok != 0) {

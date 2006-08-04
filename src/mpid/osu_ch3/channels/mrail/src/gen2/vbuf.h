@@ -91,7 +91,7 @@
 #define CREDIT_VBUF_FLAG (111)
 #define NORMAL_VBUF_FLAG (222)
 #define RPUT_VBUF_FLAG (333)
-#define VBUF_FLAG_TYPE u_int32_t
+#define VBUF_FLAG_TYPE uint32_t
 
 #define FREE_FLAG (0)
 #define BUSY_FLAG (1)
@@ -103,12 +103,12 @@
                 ALIGN_UNIT)) * ALIGN_UNIT;          \
 }
 
-#ifdef RDMA_FAST_PATH
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
 #define MRAILI_FAST_RDMA_VBUF_START(_v, _len, _start) \
 {                                                                       \
     int __align_len;                                                      \
     __align_len = ((int)(((_len)+ALIGN_UNIT-1) / ALIGN_UNIT)) * ALIGN_UNIT; \
-    _start = (void *)((unsigned long)&(_v->head_flag) - __align_len);    \
+    _start = (void *)((unsigned long)((_v)->head_flag) - __align_len);    \
 }
 #endif
 /* 
@@ -146,29 +146,20 @@ struct ibv_wr_descriptor {
     void *next;
 };
 
-typedef struct MPIDI_CH3I_MRAILI_Channel_info_t {
-    int hca_index;
-    int port_index;
-    int rail_index;
-} MRAILI_Channel_info;
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
 
-#define MRAILI_CHANNEL_INFO_INIT(subchannel,i,vc) {         \
-    subchannel.hca_index = i/vc->mrail.subrail_per_hca;     \
-    subchannel.port_index = i%vc->mrail.subrail_per_hca;    \
-    subchannel.rail_index = i;                              \
-}
+#define VBUF_BUFFER_SIZE (rdma_vbuf_total_size -    \
+     sizeof(VBUF_FLAG_TYPE))
 
-#ifdef RDMA_FAST_PATH
-#define VBUF_BUFFER_SIZE                                            \
-(VBUF_TOTAL_SIZE - sizeof(struct ibv_wr_descriptor) - 3*sizeof(void *)         \
- - sizeof(struct vbuf_region*) -sizeof(int) - sizeof(MRAILI_Channel_info) - \
-sizeof(VBUF_FLAG_TYPE))
+#define VBUF_BUFFER_SIZE_DEFAULT (VBUF_TOTAL_SIZE -    \
+     sizeof(VBUF_FLAG_TYPE))
+
 
 #else
-#define VBUF_BUFFER_SIZE   \
-(VBUF_TOTAL_SIZE - sizeof(struct ibv_wr_descriptor) - 3*sizeof(void *)         \
- - sizeof(struct vbuf_region*) - sizeof(MRAILI_Channel_info) - \
-sizeof(VBUF_FLAG_TYPE))
+
+#define VBUF_BUFFER_SIZE  (rdma_vbuf_total_size)
+#define VBUF_BUFFER_SIZE_DEFAULT  (VBUF_TOTAL_SIZE)
+
 #endif
 
 #define MRAIL_MAX_EAGER_SIZE VBUF_BUFFER_SIZE
@@ -176,18 +167,18 @@ sizeof(VBUF_FLAG_TYPE))
 typedef struct vbuf {
     
     struct ibv_wr_descriptor desc;
-    void *pheader;
-    void *sreq;
+    void 	*pheader;
+    void 	*sreq;
     struct vbuf_region *region;
-    void *vc;
-    MRAILI_Channel_info subchannel;
-
-#if defined(RDMA_FAST_PATH)
-    int padding;
+    void 	*vc;
+    int 	rail;
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
+    int 	padding;
+    VBUF_FLAG_TYPE *head_flag;
 #endif
-    unsigned char buffer[VBUF_BUFFER_SIZE];
+    unsigned char *buffer;
 
-    VBUF_FLAG_TYPE head_flag;
+    int content_size;
     /* NULL shandle means not send or not complete. Non-null
      * means pointer to send handle that is now complete. Used
      * by viadev_process_send
@@ -199,6 +190,10 @@ typedef struct vbuf {
 
 #define FAST_RDMA_ALT_TAG 0x8000
 #define FAST_RDMA_SIZE_MASK 0x7fff
+
+#ifdef SRQ
+void init_vbuf_lock();
+#endif
 
 /*
  * Vbufs are allocated in blocks and threaded on a single free list.
@@ -213,6 +208,8 @@ typedef struct vbuf_region {
     struct ibv_mr *mem_handle[MAX_NUM_HCAS]; /* mem hndl for entire region */
     void *malloc_start;         /* used to free region later  */
     void *malloc_end;           /* to bracket mem region      */
+    void *malloc_buf_start;     /* used to free DMA region later */
+    void *malloc_buf_end;       /* bracket DMA region */
     int count;                  /* number of vbufs in region  */
     struct vbuf *vbuf_head;     /* first vbuf in region       */
     struct vbuf_region *next;   /* thread vbuf regions        */
@@ -241,7 +238,7 @@ static void inline VBUF_SET_RDMA_ADDR_KEY(vbuf * v, int len,
 
 int allocate_vbufs(struct ibv_pd * ptag[], int nvbufs);
 
-void deallocate_vbufs(void);
+void deallocate_vbufs(int);
 
 vbuf *get_vbuf();
 
@@ -249,16 +246,14 @@ void MRAILI_Release_vbuf(vbuf * v);
 
 void vbuf_init_rdma_write(vbuf * v);
 
-void vbuf_init_send(vbuf * v, unsigned long len,
-                    const MRAILI_Channel_info *);
+void vbuf_init_send(vbuf * v, unsigned long len, int rail);
 
-void vbuf_init_recv(vbuf * v, unsigned long len,
-                    const MRAILI_Channel_info *);
+void vbuf_init_recv(vbuf * v, unsigned long len, int rail);
 
 void vbuf_init_rput(vbuf * v, void *local_address,
                     uint32_t lkey, void *remote_address,
                     uint32_t rkey, int nbytes,
-                    const MRAILI_Channel_info *);
+		    int rail);
 
 void dump_vbuf(char *msg, vbuf * v);
 

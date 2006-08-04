@@ -51,6 +51,7 @@ int MPIDI_CH3_Prepare_rndv_cts(MPIDI_VC_t * vc,
 {
     int mpi_errno = MPI_SUCCESS;
     int reg_success;
+
     switch (rreq->mrail.protocol) {
     case VAPI_PROTOCOL_R3:
         {
@@ -129,10 +130,6 @@ int MPIDI_CH3_Start_rndv_transfer(MPIDI_VC_t * vc,
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3_Rendezvous_push(MPIDI_VC_t * vc, MPID_Request * sreq)
 {
-    MRAILI_Channel_info channel;
-
-    channel.hca_index = 0;
-    channel.rail_index = 0;
 #ifdef _SMP_
     if (vc->smp.local_nodes >= 0 &&
         vc->smp.local_nodes != smpi.my_local_id) {
@@ -279,7 +276,7 @@ void MPIDI_CH3_Rendezvous_r3_push(MPIDI_VC_t * vc, MPID_Request * sreq)
                         sreq->dev.iov_count, sreq->ch.iov_offset,
                         sreq->dev.iov[0].MPID_IOV_LEN);
 
-#ifdef RDMA_FAST_PATH
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
             rdma_ok = MPIDI_CH3I_MRAILI_Fast_rdma_ok(vc, 0);
             DEBUG_PRINT("[send], rdma ok: %d\n", rdma_ok);
             if (rdma_ok != 0) {
@@ -475,6 +472,9 @@ int MPIDI_CH3_Rendezvous_rput_finish(MPIDI_VC_t * vc,
     MPID_Request *rreq;
     MPID_Request_get_ptr(rf_pkt->receiver_req_id, rreq);
 
+    if (!MPIDI_CH3I_MRAIL_Finish_request(rreq)) 
+	return MPI_SUCCESS;
+
     if (1 == rreq->mrail.rndv_buf_alloc) {
         /* If we are using datatype, then need to unpack data from tmpbuf */
         int iter;
@@ -531,7 +531,6 @@ int MPIDI_CH3_Rendezvous_rput_finish(MPIDI_VC_t * vc,
         rreq->mrail.rndv_buf = NULL;
     }
 
-
     MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(rreq);
 
     mpi_errno = MPIDI_CH3U_Handle_recv_req(vc, rreq, &complete);
@@ -577,8 +576,12 @@ int MPIDI_CH3_Get_rndv_push(MPIDI_VC_t * vc,
         int rdma_ok, nb;
         MPIDI_CH3I_MRAILI_Rndv_info_t rndv;
 
+	iov.MPID_IOV_BUF = get_resp_pkt;
+	iov.MPID_IOV_LEN = sizeof(MPIDI_CH3_Pkt_get_resp_t);
+        get_resp_pkt->protocol = VAPI_PROTOCOL_RPUT;
+
         MPIDI_CH3I_MRAIL_SET_REMOTE_RNDV_INFO(&rndv, req);
-        MPIDI_CH3I_MRAILI_Get_rndv_rput(vc, req, &rndv);
+        MPIDI_CH3I_MRAILI_Get_rndv_rput(vc, req, &rndv, &iov);
 
         if (VAPI_PROTOCOL_R3 == req->mrail.protocol) {
             req->mrail.partner_id = get_resp_pkt->request_handle;
@@ -586,11 +589,12 @@ int MPIDI_CH3_Get_rndv_push(MPIDI_VC_t * vc,
             req->mrail.nearly_complete = 0;
             PUSH_FLOWLIST(vc);
         } else {
+#if 0
             iov.MPID_IOV_BUF = get_resp_pkt;
             iov.MPID_IOV_LEN = sizeof(MPIDI_CH3_Pkt_get_resp_t);
 
             get_resp_pkt->protocol = req->mrail.protocol;
-#if defined(RDMA_FAST_PATH)
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
             rdma_ok =
                 MPIDI_CH3I_MRAILI_Fast_rdma_ok(vc,
                                                sizeof
@@ -631,6 +635,7 @@ int MPIDI_CH3_Get_rndv_push(MPIDI_VC_t * vc,
             }
             /* mark MPI send complete when VIA send completes */
             v->sreq = (void *) req;
+#endif
         }
     }
     return MPI_SUCCESS;

@@ -702,10 +702,10 @@ if test "$enable_debuginfo" = "yes" ; then
     if test "x$exec_prefix" = xNONE ; then
         saveExecPrefix=$exec_prefix
 	exec_prefix=$prefix
-        eval dlldir=$libdir/libtvmpich.so
+        eval dlldir=$libdir/libtvmpich2.so
 	exec_prefix=$saveExecPrefix
     else
-        eval dlldir=$libdir/libtvmpich.so
+        eval dlldir=$libdir/libtvmpich2.so
     fi
     dlldir='"'$dlldir'"'
     AC_DEFINE_UNQUOTED(MPICH_INFODLL_LOC,$dlldir,[Define as the name of the debugger support library])

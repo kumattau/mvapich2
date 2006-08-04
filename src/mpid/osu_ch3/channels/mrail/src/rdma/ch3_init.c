@@ -46,6 +46,12 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         return mpi_errno;
     }
 #endif
+    if (MPIDI_CH3_Pkt_size_index[MPIDI_CH3_PKT_CLOSE] 
+	!= sizeof (MPIDI_CH3_Pkt_close_t)) {
+	fprintf(stderr, "Failed sanity check! Packet size table mismatch\n");
+	return -1;	
+    }
+
     pg_size = MPIDI_PG_Get_size(pg);
 
     /* Initialize the VC table associated with this process

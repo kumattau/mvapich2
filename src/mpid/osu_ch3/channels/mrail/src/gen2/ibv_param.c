@@ -19,6 +19,11 @@
  * Initialize global parameter variables to default values
  * ==============================================================
  */
+int rdma_num_hcas 	= 1;
+int rdma_num_ports 	= 1;
+int rdma_num_qp_per_port = 1;
+int rdma_num_rails;
+
 int      				rdma_pin_pool_size = RDMA_PIN_POOL_SIZE;
 unsigned long        	rdma_default_max_cq_size = RDMA_DEFAULT_MAX_CQ_SIZE;
 int      				rdma_default_port = RDMA_DEFAULT_PORT;
@@ -42,9 +47,14 @@ long    		        rdma_eagersize_1sc = RDMA_EAGERSIZE_1SC;
 int                     rdma_put_fallback_threshold = RDMA_PUT_FALLBACK_THRESHOLD;
 int                     rdma_get_fallback_threshold = RDMA_GET_FALLBACK_THRESHOLD;
 int      				rdma_integer_pool_size = RDMA_INTEGER_POOL_SIZE;
-#ifdef RDMA_FAST_PATH
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
 int						num_rdma_buffer	= NUM_RDMA_BUFFER;
 #endif
+#ifdef ADAPTIVE_RDMA_FAST_PATH
+int                     rdma_polling_set_limit = -1;
+int                     rdma_polling_set_threshold = 10;
+#endif
+
 int                     rdma_iba_eager_threshold = RDMA_IBA_EAGER_THRESHOLD;
 char                    rdma_iba_hca[32];
 unsigned int                     rdma_ndreg_entries = RDMA_NDREG_ENTRIES;
@@ -70,7 +80,11 @@ int rdma_initial_prepost_depth  = RDMA_INITIAL_PREPOST_DEPTH;
 
 /* allow some extra buffers for non-credited packets (eg. NOOP) */
 int rdma_prepost_noop_extra     = 5;
+#ifdef SRQ
+int rdma_credit_preserve        = 100;
+#else
 int rdma_credit_preserve        = 3;
+#endif
 int rdma_initial_credits        = 0; 
 
 /* Max number of entries on the Send Q of QPs per connection.
@@ -87,6 +101,15 @@ int rdma_sq_size                = 200;
  */
 int rdma_rq_size;
 
+#ifdef SRQ
+
+uint32_t viadev_srq_size = 512;
+uint32_t viadev_srq_limit = 30;
+uint32_t viadev_max_r3_oust_send = 32;
+
+#endif
+
+
 /* The number of "extra" vbufs that will be posted as receives
  * on a connection in anticipation of an R3 rendezvous message.
  * The TOTAL number of VBUFs posted on a receive queue at any
@@ -101,6 +124,23 @@ int rdma_prepost_threshold          = 5;
 
 unsigned long rdma_max_registered_pages = RDMA_MAX_REGISTERED_PAGES;
 unsigned long rdma_dreg_cache_limit = 0;
+
+/* The total size of each vbuf. Used to be the eager threshold, but
+ * it can be smaller, so that each eager message will span over few
+ * vbufs
+ */
+int rdma_vbuf_total_size = VBUF_TOTAL_SIZE;
+
+#if defined(ADAPTIVE_RDMA_FAST_PATH)
+static inline int log_2(int np)
+{
+    int lgN, t;
+
+    for (lgN = 0, t = 1; t < np; lgN++, t += t);
+
+    return lgN;
+}
+#endif
 
 void rdma_init_parameters(int num_proc, int me){
     char *value;
@@ -119,6 +159,34 @@ void rdma_init_parameters(int num_proc, int me){
         else
             rdma_default_mtu = IBV_MTU_1024;
     }
+    /* Get number of HCAs/node used by a process */
+    if ((value = getenv("NUM_HCAS")) != NULL) {
+        rdma_num_hcas = (int)atoi(value);
+        if (rdma_num_hcas > MAX_NUM_HCAS) {
+            rdma_num_hcas = MAX_NUM_HCAS;
+            fprintf(stderr, "Warning, max hca is %d, change %s in ibv_param.h to"
+                    "overide the option\n", MAX_NUM_HCAS, "MAX_NUM_HCAS");
+        }
+    }
+    /* Get number of ports/HCA used by a process */
+    if ((value = getenv("NUM_PORTS")) != NULL) {
+        rdma_num_ports = (int)atoi(value);
+        if (rdma_num_ports > MAX_NUM_PORTS) {
+            rdma_num_ports = MAX_NUM_PORTS;
+            fprintf(stderr, "Warning, max ports per hca is %d, change %s in ibv_param.h to"
+                    "overide the option\n", MAX_NUM_PORTS, "MAX_NUM_PORTS");
+        }
+    }
+    /* Get number of qps/port used by a process */
+    if ((value = getenv("NUM_QP_PER_PORT")) != NULL) {
+        rdma_num_qp_per_port = (int)atoi(value);
+        if (rdma_num_qp_per_port > MAX_NUM_QP_PER_PORT) {
+            rdma_num_qp_per_port = MAX_NUM_QP_PER_PORT;
+            fprintf(stderr, "Warning, max qps per port is %d, change %s in ibv_param.h to"
+                    "overide the option\n", MAX_NUM_QP_PER_PORT, "MAX_NUM_QP_PER_PORT");
+        }
+    }
+
     if ((value = getenv("RDMA_PIN_POOL_SIZE")) != NULL) {
         rdma_pin_pool_size = (int)atoi(value);
     }
@@ -128,11 +196,30 @@ void rdma_init_parameters(int num_proc, int me){
     if ((value = getenv("RDMA_READ_RESERVE")) != NULL) {
         rdma_read_reserve = (int)atoi(value);
     }
-#ifdef RDMA_FAST_PATH
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
     if ((value = getenv("NUM_RDMA_BUFFER")) != NULL) { 
         num_rdma_buffer = (int)atoi(value);
     }
 #endif
+#ifdef ADAPTIVE_RDMA_FAST_PATH
+    if ((value = getenv("RDMA_POLLING_SET_THRESHOLD")) != NULL) {
+        rdma_polling_set_threshold = atoi(value);
+    }
+    if ((value = getenv("RDMA_POLLING_SET_LIMIT")) != NULL) {
+        rdma_polling_set_limit = atoi(value);
+        if (rdma_polling_set_limit == -1)
+            rdma_polling_set_limit = log_2(num_proc);
+    } else {
+        rdma_polling_set_limit = num_proc;
+    }
+#endif
+    if ((value = getenv("RDMA_VBUF_TOTAL_SIZE")) != NULL) {
+        rdma_vbuf_total_size= atoi(value);
+       if (rdma_vbuf_total_size <= 2 * sizeof(int))
+           rdma_vbuf_total_size = 2 * sizeof(int);
+    }
+
+
     if ((value = getenv("RDMA_IBA_EAGER_THRESHOLD")) != NULL) {
         rdma_iba_eager_threshold = (int)atoi(value);
     }

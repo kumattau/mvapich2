@@ -170,6 +170,11 @@ if [ $mode = link ] ; then
 	# mpi.def
 	;;
 
+        solaris86-cc)
+        $Show ${C_LINK_SHL} -h $srclibbase.$SHLIB_EXT -o $srclibbase.$SHLIB_EXT $exportDefs \
+            $srclibbase.a .tmp/*.o $dependentLibs 
+        ;;
+
 	*)
         # This is the default model
 	$Show ${C_LINK_SHL} -o $srclibbase.$SHLIB_EXT .tmp/*.o

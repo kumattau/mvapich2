@@ -17,6 +17,12 @@
 #include "ibv_arch.h"
 #include "infiniband/verbs.h"
 
+/* Support multiple QPs/port, multiple ports, multiple HCAs and combinations */
+extern int rdma_num_hcas;
+extern int rdma_num_ports;
+extern int rdma_num_qp_per_port;
+extern int rdma_num_rails;
+
 extern unsigned long 	rdma_default_max_cq_size;
 extern int 		        rdma_default_port;
 extern unsigned long 	rdma_default_max_wqe;
@@ -54,6 +60,18 @@ extern int              rdma_credit_notify_threshold;
 extern int              rdma_credit_preserve;
 extern int              rdma_rq_size;
 extern unsigned long	rdma_dreg_cache_limit;
+extern int             rdma_vbuf_total_size;
+
+#ifdef SRQ
+extern uint32_t             viadev_srq_size;
+extern uint32_t             viadev_srq_limit;
+extern uint32_t             viadev_max_r3_oust_send;
+#endif
+
+#ifdef ADAPTIVE_RDMA_FAST_PATH
+extern int rdma_polling_set_threshold;
+extern int rdma_polling_set_limit;
+#endif
 
 #ifdef ONE_SIDED
 extern int                     rdma_pin_pool_size;
@@ -68,8 +86,8 @@ extern long                    rdma_eagersize_1sc;
 #define RDMA_DEFAULT_MAX_CQ_SIZE        (40000)
 #define RDMA_DEFAULT_PORT               (-1)
 #define RDMA_DEFAULT_MAX_PORTS		(2)
-#define RDMA_DEFAULT_MAX_WQE            (300)
-#define RDMA_READ_RESERVE  				(10)
+#define RDMA_DEFAULT_MAX_WQE            (200)
+#define RDMA_READ_RESERVE  		(10)
 #define RDMA_DEFAULT_MAX_SG_LIST        (1)
 #define RDMA_DEFAULT_PKEY_IX            (0)
 #define RDMA_DEFAULT_QP_OUS_RD_ATOM     (4)
@@ -83,10 +101,13 @@ extern long                    rdma_eagersize_1sc;
 #define RDMA_DEFAULT_RETRY_COUNT        (7)  
 #define RDMA_DEFAULT_RNR_RETRY          (7)
 #define RDMA_DEFAULT_PUT_GET_LIST_SIZE  (200)
-#define RDMA_INTEGER_POOL_SIZE			(1024)
+#define RDMA_INTEGER_POOL_SIZE		(1024)
 #define RDMA_IBA_NULL_HCA            	"nohca"
-#define MAX_NUM_HCAS                    (1)
-#define MAX_SUBCHANNELS                 (2) /* One for RDMA and one for sr*/
+#define MAX_NUM_HCAS                    (4)
+#define MAX_NUM_PORTS                   (2)
+#define MAX_NUM_QP_PER_PORT             (4)
+/* This is a overprovision of resource, do not use in critical structures */
+#define MAX_NUM_SUBRAILS  (MAX_NUM_HCAS*MAX_NUM_PORTS*MAX_NUM_QP_PER_PORT)
 #define RDMA_NDREG_ENTRIES              (1000)
 #define RDMA_VBUF_POOL_SIZE             (5000)
 #define RDMA_VBUF_SECONDARY_POOL_SIZE   (500)
@@ -95,11 +116,15 @@ extern long                    rdma_eagersize_1sc;
 #define RDMA_LOW_WQE_THRESHOLD          (10)
 #define RDMA_MAX_RDMA_SIZE              (1048576)
 
+#define USE_FIRST                       (0)
+#define ROUND_ROBIN                     (1)
+#define EVEN_STRIPING                   (2)
+#define ADAPTIVE_STRIPING               (3)
 /* Inline not supported for PPC */
 #ifdef _PPC64_
 #define RDMA_MAX_INLINE_SIZE            (-1)
 #else
-#define RDMA_MAX_INLINE_SIZE            (256)
+#define RDMA_MAX_INLINE_SIZE            (128)
 #endif
 
 #define HOSTNAME_LEN                    (255)
@@ -132,7 +157,7 @@ extern long                    rdma_eagersize_1sc;
     #define RDMA_IBA_EAGER_THRESHOLD        (12*1024)
     #else
     #define NUM_RDMA_BUFFER                 (32)
-    #define RDMA_IBA_EAGER_THRESHOLD        (VBUF_BUFFER_SIZE)
+    #define RDMA_IBA_EAGER_THRESHOLD        (VBUF_BUFFER_SIZE_DEFAULT)
     #endif
 
     #define RDMA_EAGERSIZE_1SC              (4 * 1024)
@@ -157,7 +182,7 @@ extern long                    rdma_eagersize_1sc;
     #endif
     #else
     #define NUM_RDMA_BUFFER                 (32)
-    #define RDMA_IBA_EAGER_THRESHOLD        (VBUF_BUFFER_SIZE)
+    #define RDMA_IBA_EAGER_THRESHOLD        (VBUF_BUFFER_SIZE_DEFAULT)
     #endif
 
     #define RDMA_EAGERSIZE_1SC              (4 * 1024)
@@ -182,7 +207,7 @@ extern long                    rdma_eagersize_1sc;
     #endif
     #else
     #define NUM_RDMA_BUFFER                 (32)
-    #define RDMA_IBA_EAGER_THRESHOLD        (VBUF_BUFFER_SIZE)
+    #define RDMA_IBA_EAGER_THRESHOLD        (VBUF_BUFFER_SIZE_DEFAULT)
     #endif
 
     #define RDMA_EAGERSIZE_1SC              (4 * 1024)
@@ -207,7 +232,7 @@ extern long                    rdma_eagersize_1sc;
     #endif
     #else
     #define NUM_RDMA_BUFFER                 (32)
-    #define RDMA_IBA_EAGER_THRESHOLD        (VBUF_BUFFER_SIZE)
+    #define RDMA_IBA_EAGER_THRESHOLD        (VBUF_BUFFER_SIZE_DEFAULT)
     #endif
 
     #define RDMA_EAGERSIZE_1SC              (4 * 1024)
@@ -224,7 +249,7 @@ extern long                    rdma_eagersize_1sc;
     #define RDMA_IBA_EAGER_THRESHOLD        (8*1024)
     #else
     #define NUM_RDMA_BUFFER                 (64)
-    #define RDMA_IBA_EAGER_THRESHOLD        (VBUF_BUFFER_SIZE)
+    #define RDMA_IBA_EAGER_THRESHOLD        (VBUF_BUFFER_SIZE_DEFAULT)
     #endif
 
     #define RDMA_EAGERSIZE_1SC              (4 * 1024)
@@ -241,7 +266,7 @@ extern long                    rdma_eagersize_1sc;
         #define RDMA_IBA_EAGER_THRESHOLD        (12*1024)
     #else
         #define NUM_RDMA_BUFFER                 (32)
-        #define RDMA_IBA_EAGER_THRESHOLD        (VBUF_BUFFER_SIZE)
+        #define RDMA_IBA_EAGER_THRESHOLD        (VBUF_BUFFER_SIZE_DEFAULT)
     #endif
 
     #define RDMA_EAGERSIZE_1SC              (4 * 1024)

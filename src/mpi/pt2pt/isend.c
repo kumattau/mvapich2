@@ -124,6 +124,8 @@ int MPI_Isend(void *buf, int count, MPI_Datatype datatype, int dest, int tag,
 			   MPID_CONTEXT_INTRA_PT2PT, &request_ptr);
     if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 
+    MPIR_SENDQ_REMEMBER(request_ptr,dest,tag,comm_ptr->context_id);
+
     /* return the handle of the request to the user */
     *request = request_ptr->handle;
 

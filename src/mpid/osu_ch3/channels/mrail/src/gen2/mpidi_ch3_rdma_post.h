@@ -44,6 +44,7 @@ struct MPIDI_CH3I_RDMA_put_get_list_t{
     void    *origin_addr;   /* get use only, tmp buffer for small msg,
                              * NULL if big msg, do need to do mem cpy
                              */
+    int     completion; /* deregister when complete is 0 */
     MPID_Win    *win_ptr;
     MPIDI_VC_t  *vc_ptr;
 };
@@ -80,10 +81,10 @@ int     iba_unlock(MPID_Win *, MPIDI_RMA_ops *, int);
 
 
 
-#define Calculate_IOV_len(iov, n_iov, len) \
-{   int i; (len) = 0;                         \
-    for (i = 0; i < (n_iov); i ++) {          \
-        (len) += (iov)[i].MPID_IOV_LEN;         \
+#define Calculate_IOV_len(_iov, _n_iov, _len) \
+{   int _i; (_len) = 0;                         \
+    for (_i = 0; _i < (_n_iov); _i ++) {          \
+        (_len) += (_iov)[_i].MPID_IOV_LEN;         \
     }                                       \
 }
 
@@ -166,29 +167,35 @@ int     iba_unlock(MPID_Win *, MPIDI_RMA_ops *, int);
 {   \
     (_pkt)->rndv.protocol = (_req)->mrail.protocol;  \
     if (VAPI_PROTOCOL_RPUT == (_pkt)->rndv.protocol){   \
-        (_pkt)->rndv.rkey = ((_req)->mrail.d_entry)->memhandle->rkey; \
+	int _i;   \
+	for (_i = 0; _i < rdma_num_hcas; _i ++) \
+            (_pkt)->rndv.rkey[_i] = ((_req)->mrail.d_entry)->memhandle[_i]->rkey; \
         (_pkt)->rndv.buf_addr = (_req)->mrail.rndv_buf;  \
     }   \
 }
 
 #define MPIDI_CH3I_MRAIL_SET_REMOTE_RNDV_INFO(_rndv,_req)  \
 {   \
+    int _i;   \
     (_rndv)->protocol = (_req)->mrail.protocol;  \
-    (_rndv)->rkey = (_req)->mrail.rkey;    \
+    for (_i = 0; _i < rdma_num_hcas; _i ++) \
+	(_rndv)->rkey[_i] = (_req)->mrail.rkey[_i];    \
     (_rndv)->buf_addr = (_req)->mrail.remote_addr;  \
 }
 
 #define MPIDI_CH3I_MRAIL_SET_REQ_REMOTE_RNDV(_req,_pkt) \
 {   \
+    int _i;   \
     (_req)->mrail.protocol = (_pkt)->rndv.protocol;     \
     (_req)->mrail.remote_addr = (_pkt)->rndv.buf_addr;  \
-    (_req)->mrail.rkey = (_pkt)->rndv.rkey;         \
+    for (_i = 0; _i < rdma_num_hcas; _i ++) \
+	(_req)->mrail.rkey[_i] = (_pkt)->rndv.rkey[_i];         \
 }
 
 /* Return type of the sending interfaces */
 #define MPI_MRAIL_MSG_QUEUED (-1)
 
-#ifdef RDMA_FAST_PATH
+#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
 int MPIDI_CH3I_MRAILI_Fast_rdma_ok(MPIDI_VC_t * vc, int len);
 
 int MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(MPIDI_VC_t * vc,
@@ -209,10 +216,11 @@ int MPIDI_CH3I_MRAILI_Eager_send(   MPIDI_VC_t * vc,
                                     int * num_bytes_ptr,
                                     vbuf ** buf_handle);
 
-int MRAILI_Post_send(MPIDI_VC_t *vc, vbuf *v, const MRAILI_Channel_info *channel);
+int MRAILI_Post_send(MPIDI_VC_t *vc, vbuf *v, int rail);
 
 int MRAILI_Fill_start_buffer(vbuf *v, MPID_IOV *iov, int n_iov);
 
+int MPIDI_CH3I_MRAILI_Recv_addr(MPIDI_VC_t * vc, void *vstart);
 /* Following functions are defined in vapi_channel_manager.c */
 
 /* return type predefinition */
@@ -224,11 +232,11 @@ int MRAILI_Fill_start_buffer(vbuf *v, MPID_IOV *iov, int n_iov);
 
 int MPIDI_CH3I_MRAILI_Get_next_vbuf_local(MPIDI_VC_t *vc, vbuf ** vbuf_handle);
 
-int MPIDI_CH3I_MRAILI_Waiting_msg(MPIDI_VC_t * vc, vbuf **);
+int MPIDI_CH3I_MRAILI_Waiting_msg(MPIDI_VC_t * vc, vbuf **, int blocking);
 
 int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **, MPIDI_VC_t *, int);
 
-int MRAILI_Send_noop_if_needed(MPIDI_VC_t *vc, const MRAILI_Channel_info *channel);
+int MRAILI_Send_noop_if_needed(MPIDI_VC_t *vc, int rail);
 
 int MRAILI_Send_rdma_credit_if_needed(MPIDI_VC_t *vc);
 
@@ -238,5 +246,13 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t *vc, MPID_Request * sreq)
 void MRAILI_Release_recv_rdma(vbuf *v);
 
 extern MPIDI_VC_t * flowlist;
+
+#ifdef SRQ
+
+/* Post the buffers on an SRQ associated with a particular HCA */
+int viadev_post_srq_buffers(int, int);
+void async_thread(void *ctx);
+
+#endif
 
 #endif /* MPIDI_CH3_RDMA_POST_H */

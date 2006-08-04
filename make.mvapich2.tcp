@@ -15,6 +15,7 @@ export F90=$F77
 
 export CFLAGS="-O2"
 export PREFIX="/usr/local/mvapich2"
+export PATH=/usr/bin:$PATH
 
 # Whether or not to build with multi-thread support
 # Building with this option the MVAPICH2 will be thread-safe but it may suffer
