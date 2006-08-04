@@ -1,5 +1,5 @@
 /*
- * OSU MPI Multi-threaded Latency test v1.0
+ * OSU MPI Multi-threaded Latency test v1.0.1
  */
 
 /*
@@ -112,9 +112,10 @@ int main (int argc, char *argv[])
     }
 
     if (myid == 0) {
-        fprintf (stdout, "# OSU MPI Multi-threaded Latency Test (Version 1.0)\n");
+        fprintf (stdout, "# OSU MPI Multi-threaded Latency Test (Version 1.0.1)\n");
         fprintf (stdout, "# Size\t\tLatency (us) \n");
 
+        tags[i].id = i;
         pthread_create(&sr_threads[i], NULL,
                 send_thread, &tags[i]);
         pthread_join(sr_threads[i], NULL);
