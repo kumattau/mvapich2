@@ -1838,6 +1838,12 @@ int MPIDI_CH3U_Post_data_receive(int found, MPID_Request ** rreqp)
 				     rreq->dev.recv_data_sz, userbuf_sz);
 	    rreq->status.count = userbuf_sz;
 	    data_sz = userbuf_sz;
+
+	    mpi_errno = rreq->status.MPI_ERROR;
+	    fprintf(stderr, "Receive buffer size %d is too small for send size %d\n",
+	            userbuf_sz, rreq->dev.recv_data_sz);
+	    exit(mpi_errno);
+
 	}
 
 	if (dt_contig && data_sz == rreq->dev.recv_data_sz) {
