@@ -111,6 +111,8 @@ int vapi_credit_notify_threshold = 10;
 
 int vapi_prepost_threshold = 5;
 
+int rdma_num_rails = 1;
+
 void rdma_init_parameters(int num_proc, int me){
 
     char *value;

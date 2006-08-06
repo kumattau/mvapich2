@@ -58,6 +58,7 @@ extern int vapi_credit_notify_threshold;
 extern int vapi_credit_preserve;
 extern int vapi_rq_size;
 
+extern int rdma_num_rails;
 
 #ifdef ONE_SIDED
 extern int rdma_pin_pool_size;

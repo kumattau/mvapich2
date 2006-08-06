@@ -218,6 +218,8 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t *vc, MPID_Request * sreq)
 
 void MRAILI_Release_recv_rdma(vbuf *v);
 
+int MPIDI_CH3I_MRAIL_Finish_request(MPID_Request *rreq);
+
 extern MPIDI_VC_t * flowlist;
 
 #endif /* MPIDI_CH3_RDMA_POST_H */
