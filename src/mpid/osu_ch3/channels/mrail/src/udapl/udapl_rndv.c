@@ -312,3 +312,9 @@ MPIDI_CH3I_MRAILI_Rendezvous_rput_push (MPIDI_VC_t * vc, MPID_Request * sreq)
       }
     sreq->mrail.nearly_complete = 1;
 }
+
+int MPIDI_CH3I_MRAIL_Finish_request(MPID_Request *rreq)
+{
+    return 1;
+}
+

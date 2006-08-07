@@ -44,6 +44,8 @@ extern int udapl_dynamic_credit_threshold;
 extern int udapl_credit_notify_threshold;
 extern int udapl_credit_preserve;
 extern int udapl_rq_size;
+
+extern int rdma_num_rails;
 extern DAT_VLEN rdma_default_mtu_size;
 extern char dapl_provider[32];
 
