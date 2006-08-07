@@ -141,7 +141,7 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
         }
         if (vc_ptr == NULL) {
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
-            if(spin_count > 500) {
+            if(spin_count > 5) {
                 spin_count = 0;
                 MPID_Thread_mutex_unlock(&MPIR_Process.global_mutex);
                 MPID_Thread_mutex_lock(&MPIR_Process.global_mutex);
@@ -166,7 +166,8 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
 #ifdef _SMP_
         } else {
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
-            if(spin_count > 1000) {
+            spin_count++;
+            if(spin_count > 50) {
                 spin_count = 0;
                 MPID_Thread_mutex_unlock(&MPIR_Process.global_mutex);
                 MPID_Thread_mutex_lock(&MPIR_Process.global_mutex);
