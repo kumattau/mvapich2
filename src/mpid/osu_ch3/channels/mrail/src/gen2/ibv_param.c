@@ -24,31 +24,31 @@ int rdma_num_ports 	= 1;
 int rdma_num_qp_per_port = 1;
 int rdma_num_rails;
 
-int      				rdma_pin_pool_size = RDMA_PIN_POOL_SIZE;
-unsigned long        	rdma_default_max_cq_size = RDMA_DEFAULT_MAX_CQ_SIZE;
-int      				rdma_default_port = RDMA_DEFAULT_PORT;
+int      		rdma_pin_pool_size = RDMA_PIN_POOL_SIZE;
+unsigned long           rdma_default_max_cq_size = RDMA_DEFAULT_MAX_CQ_SIZE;
+int      		rdma_default_port = RDMA_DEFAULT_PORT;
 unsigned long        	rdma_default_max_wqe = RDMA_DEFAULT_MAX_WQE;
-uint32_t        		rdma_default_max_sg_list = RDMA_DEFAULT_MAX_SG_LIST;
+uint32_t        	rdma_default_max_sg_list = RDMA_DEFAULT_MAX_SG_LIST;
 uint16_t               	rdma_default_pkey_ix = RDMA_DEFAULT_PKEY_IX;
-uint8_t         		rdma_default_qp_ous_rd_atom = RDMA_DEFAULT_QP_OUS_RD_ATOM;
+uint8_t         	rdma_default_qp_ous_rd_atom = RDMA_DEFAULT_QP_OUS_RD_ATOM;
 uint8_t                 rdma_default_max_rdma_dst_ops = RDMA_DEFAULT_MAX_RDMA_DST_OPS;
-enum ibv_mtu       		rdma_default_mtu = RDMA_DEFAULT_MTU;
-uint32_t           		rdma_default_psn = RDMA_DEFAULT_PSN;
+enum ibv_mtu       	rdma_default_mtu = RDMA_DEFAULT_MTU;
+uint32_t           	rdma_default_psn = RDMA_DEFAULT_PSN;
 uint8_t                 rdma_default_min_rnr_timer = RDMA_DEFAULT_MIN_RNR_TIMER;
-uint8_t      			rdma_default_service_level = RDMA_DEFAULT_SERVICE_LEVEL;
+uint8_t      		rdma_default_service_level = RDMA_DEFAULT_SERVICE_LEVEL;
 uint8_t                 rdma_default_static_rate = RDMA_DEFAULT_STATIC_RATE;
-uint8_t         		rdma_default_src_path_bits = RDMA_DEFAULT_SRC_PATH_BITS;
+uint8_t         	rdma_default_src_path_bits = RDMA_DEFAULT_SRC_PATH_BITS;
 uint8_t                	rdma_default_time_out = RDMA_DEFAULT_TIME_OUT;
 uint8_t                 rdma_default_retry_count = RDMA_DEFAULT_RETRY_COUNT;
 uint8_t                 rdma_default_rnr_retry = RDMA_DEFAULT_RNR_RETRY;
-int      				rdma_default_put_get_list_size = RDMA_DEFAULT_PUT_GET_LIST_SIZE;
-int						rdma_read_reserve = RDMA_READ_RESERVE;
-long    		        rdma_eagersize_1sc = RDMA_EAGERSIZE_1SC;
+int      		rdma_default_put_get_list_size = RDMA_DEFAULT_PUT_GET_LIST_SIZE;
+int			rdma_read_reserve = RDMA_READ_RESERVE;
+long    	        rdma_eagersize_1sc = RDMA_EAGERSIZE_1SC;
 int                     rdma_put_fallback_threshold = RDMA_PUT_FALLBACK_THRESHOLD;
 int                     rdma_get_fallback_threshold = RDMA_GET_FALLBACK_THRESHOLD;
-int      				rdma_integer_pool_size = RDMA_INTEGER_POOL_SIZE;
+int      		rdma_integer_pool_size = RDMA_INTEGER_POOL_SIZE;
 #if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
-int						num_rdma_buffer	= NUM_RDMA_BUFFER;
+int			num_rdma_buffer	= NUM_RDMA_BUFFER;
 #endif
 #ifdef ADAPTIVE_RDMA_FAST_PATH
 int                     rdma_polling_set_limit = -1;
@@ -57,7 +57,7 @@ int                     rdma_polling_set_threshold = 10;
 
 int                     rdma_iba_eager_threshold = RDMA_IBA_EAGER_THRESHOLD;
 char                    rdma_iba_hca[32];
-unsigned int                     rdma_ndreg_entries = RDMA_NDREG_ENTRIES;
+unsigned int            rdma_ndreg_entries = RDMA_NDREG_ENTRIES;
 
 /* max (total) number of vbufs to allocate, after which process
  * terminates with a fatal error.

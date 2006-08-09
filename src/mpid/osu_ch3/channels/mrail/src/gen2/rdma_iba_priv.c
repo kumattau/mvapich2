@@ -245,6 +245,64 @@ static struct ibv_srq *create_srq(struct MPIDI_CH3I_RDMA_Process_t *proc,
 }
 #endif
 
+static int check_attrs(struct MPIDI_CH3I_RDMA_Process_t *proc)
+{
+    int ret = 0;
+
+    if(proc->port_attr.active_mtu < rdma_default_mtu) {
+        fprintf(stderr,
+                "Active MTU is %d, VIADEV_DEFAULT_MTU set to %d\n. See User Guide",
+                proc->port_attr.active_mtu, rdma_default_mtu);
+        ret = 1;
+    }
+
+    if(proc->dev_attr.max_qp_rd_atom < rdma_default_qp_ous_rd_atom) {
+        fprintf(stderr,
+                "Max VIADEV_DEFAULT_QP_OUS_RD_ATOM is %d, set to %d\n",
+                proc->dev_attr.max_qp_rd_atom, rdma_default_qp_ous_rd_atom);
+        ret = 1;
+    }
+
+#ifdef SRQ
+    if(proc->dev_attr.max_srq_sge < rdma_default_max_sg_list) {
+        fprintf(stderr,
+                "Max VIADEV_DEFAULT_MAX_SG_LIST is %d, set to %d\n",
+                proc->dev_attr.max_srq_sge, rdma_default_max_sg_list);
+        ret = 1;
+    }
+
+    if(proc->dev_attr.max_srq_wr < viadev_srq_size) {
+        fprintf(stderr,
+                "Max VIADEV_SQ_SIZE is %d, set to %d\n",
+                proc->dev_attr.max_srq_wr, (int) viadev_srq_size);
+        ret = 1;
+    }
+#else
+    if(proc->dev_attr.max_sge < rdma_default_max_sg_list) {
+        fprintf(stderr,
+                "Max VIADEV_DEFAULT_MAX_SG_LIST is %d, set to %d\n",
+                proc->dev_attr.max_sge, rdma_default_max_sg_list);
+        ret = 1;
+    }
+
+    if(proc->dev_attr.max_qp_wr < rdma_default_max_wqe) {
+        fprintf(stderr,
+                "Max VIADEV_SQ_SIZE is %d, set to %d\n",
+                proc->dev_attr.max_qp_wr, (int) rdma_sq_size);
+        ret = 1;
+    }
+#endif
+    if(proc->dev_attr.max_cqe < rdma_default_max_cq_size) {
+        fprintf(stderr,
+                "Max VIADEV_CQ_SIZE is %d, set to %d\n",
+                proc->dev_attr.max_cqe, (int) rdma_default_max_cq_size);
+        ret = 1;
+    }
+
+    return ret;
+}
+
+
 int
 rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
                   int pg_rank, int pg_size)
@@ -325,7 +383,50 @@ rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
             fprintf(stderr, "Fail to open HCA number %d\n", i);
             return -1;
         }
-   
+  
+        /* detecting active ports */
+        if (rdma_default_port < 0 || rdma_num_ports > 1) {
+            k = 0;
+            for (j = 1; j <= RDMA_DEFAULT_MAX_PORTS; j ++) {
+                if ((! ibv_query_port(MPIDI_CH3I_RDMA_Process.nic_context[i],
+                                        j, &port_attr)) &&
+                        port_attr.state == IBV_PORT_ACTIVE &&
+                        port_attr.lid) {
+                    lids[i][k]    = port_attr.lid;
+                    ports[i][k++] = j;
+                    if (j == 1) {
+                        proc->port_attr = port_attr;
+                    }
+                }
+            }
+            if (k < rdma_num_ports) {
+                ibv_error_abort(IBV_STATUS_ERR, "Not enough port is in active state"
+                                "needed active ports %d\n", rdma_num_ports);
+            }
+        } else {
+            if(ibv_query_port(MPIDI_CH3I_RDMA_Process.nic_context[i],
+                                rdma_default_port, &port_attr)
+                || (!port_attr.lid )
+                || (port_attr.state != IBV_PORT_ACTIVE))
+            {
+                ibv_error_abort(IBV_STATUS_ERR, "user specified port %d: fail to"
+                                                "query or not ACTIVE\n",
+                                                rdma_default_port);
+            }
+            ports[i][0] = rdma_default_port;
+            lids[i][0]  = port_attr.lid;
+        }
+
+	if (i == 0) {
+ 	    if(ibv_query_device(proc->nic_context[0], &proc->dev_attr)) {
+ 	        ibv_error_abort(GEN_EXIT_ERR,
+                                "Error getting HCA attributes\n");
+ 	    }
+
+	    if (check_attrs(proc)) {
+		fprintf(stderr, "Attributes failed sanity check\n");
+	    }
+ 	}
         /* Allocate the protection domain for the HCA */
         proc->ptag[i] = ibv_alloc_pd(proc->nic_context[i]);
         if (!proc->ptag[i]) {
@@ -354,35 +455,6 @@ rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
             goto err_cq;
         }
 #endif
-	/* detecting active ports */
-	if (rdma_default_port < 0 || rdma_num_ports > 1) {
-	    k = 0;
-	    for (j = 1; j <= RDMA_DEFAULT_MAX_PORTS; j ++) {
-		if ((! ibv_query_port(MPIDI_CH3I_RDMA_Process.nic_context[i],
-					j, &port_attr)) &&
-			port_attr.state == IBV_PORT_ACTIVE &&
-			port_attr.lid) {
-		    lids[i][k]    = port_attr.lid;
-		    ports[i][k++] = j;
-		} 
-	    }
-	    if (k < rdma_num_ports) {
-		ibv_error_abort(IBV_STATUS_ERR, "Not enough port is in active state"
-				"needed active ports %d\n", rdma_num_ports);
-	    }
-	} else {
-	    if(ibv_query_port(MPIDI_CH3I_RDMA_Process.nic_context[i],
-				rdma_default_port, &port_attr)
-		|| (!port_attr.lid )
-		|| (port_attr.state != IBV_PORT_ACTIVE))
-	    {
-		ibv_error_abort(IBV_STATUS_ERR, "user specified port %d: fail to"
-						"query or not ACTIVE\n",
-						rdma_default_port);
-	    }
-	    ports[i][0] = rdma_default_port;
-	    lids[i][0]  = port_attr.lid;
-	}
     }
 
     rdma_default_port 	    = ports[0][0];
