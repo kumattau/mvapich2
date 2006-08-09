@@ -90,7 +90,11 @@ extern long                    rdma_eagersize_1sc;
 #define RDMA_READ_RESERVE  		(10)
 #define RDMA_DEFAULT_MAX_SG_LIST        (1)
 #define RDMA_DEFAULT_PKEY_IX            (0)
+#ifdef _PATH_HT_
+#define RDMA_DEFAULT_QP_OUS_RD_ATOM     (1)
+#else
 #define RDMA_DEFAULT_QP_OUS_RD_ATOM     (4)
+#endif
 #define RDMA_DEFAULT_MAX_RDMA_DST_OPS   (4)
 #define RDMA_DEFAULT_PSN                (0)
 #define RDMA_DEFAULT_MIN_RNR_TIMER      (12)     /*12 in ib example*/
