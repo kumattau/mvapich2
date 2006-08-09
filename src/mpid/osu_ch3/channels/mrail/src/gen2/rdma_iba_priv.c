@@ -288,7 +288,7 @@ static int check_attrs(struct MPIDI_CH3I_RDMA_Process_t *proc)
     if(proc->dev_attr.max_qp_wr < rdma_default_max_wqe) {
         fprintf(stderr,
                 "Max VIADEV_SQ_SIZE is %d, set to %d\n",
-                proc->dev_attr.max_qp_wr, (int) rdma_sq_size);
+                proc->dev_attr.max_qp_wr, (int) rdma_default_max_wqe);
         ret = 1;
     }
 #endif
