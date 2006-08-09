@@ -604,8 +604,6 @@ rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
         attr.cap.max_send_sge = rdma_default_max_sg_list;
         attr.cap.max_recv_sge = rdma_default_max_sg_list;
         attr.cap.max_inline_data = sizeof(long long);
-        attr.send_cq = proc->cq_hndl_1sc[hca_index];
-        attr.recv_cq = proc->cq_hndl_1sc[hca_index];
         attr.qp_type = IBV_QPT_RC;
         attr.sq_sig_all = 0;
 
@@ -618,6 +616,9 @@ rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
             hca_index  = rail_index / (vc->mrail.num_rails / rdma_num_hcas);
             port_index = (rail_index / (vc->mrail.num_rails / (rdma_num_hcas *
                     rdma_num_ports))) % rdma_num_ports;
+    
+            attr.send_cq = proc->cq_hndl_1sc[hca_index];
+            attr.recv_cq = proc->cq_hndl_1sc[hca_index];
 
             vc->mrail.rails[rail_index].qp_hndl_1sc = ibv_create_qp(proc->ptag[hca_index], &attr);
             if (!vc->mrail.rails[rail_index].qp_hndl_1sc) {
