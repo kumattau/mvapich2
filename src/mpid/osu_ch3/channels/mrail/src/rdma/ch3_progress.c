@@ -144,6 +144,7 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
             if(spin_count > 5) {
                 spin_count = 0;
                 MPID_Thread_mutex_unlock(&MPIR_Process.global_mutex);
+                MPIDU_Yield();
                 MPID_Thread_mutex_lock(&MPIR_Process.global_mutex);
             }
 #endif
@@ -170,6 +171,7 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
             if(spin_count > 50) {
                 spin_count = 0;
                 MPID_Thread_mutex_unlock(&MPIR_Process.global_mutex);
+                MPIDU_Yield();
                 MPID_Thread_mutex_lock(&MPIR_Process.global_mutex);
             }
 #endif
