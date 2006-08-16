@@ -45,6 +45,7 @@ int MPIDI_CH3U_Handle_recv_req(MPIDI_VC_t * vc, MPID_Request * rreq,
 			       int *complete)
 {
     static int in_routine = FALSE;
+    MPID_Request *curr_req = NULL;
     MPID_Win *win_ptr;
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3U_HANDLE_RECV_REQ);
@@ -52,7 +53,7 @@ int MPIDI_CH3U_Handle_recv_req(MPIDI_VC_t * vc, MPID_Request * rreq,
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3U_HANDLE_RECV_REQ);
 
-    MPIU_Assert(in_routine == FALSE);
+    MPIU_Assert(in_routine == FALSE || curr_req != rreq);
     in_routine = TRUE;
 
     switch (rreq->dev.ca) {
