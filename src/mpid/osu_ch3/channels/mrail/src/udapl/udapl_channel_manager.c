@@ -127,6 +127,15 @@ GetSeqNumVbuf (vbuf * buf)
                   seqnum;
           }
 #endif
+      case MPIDI_CH3_PKT_CANCEL_SEND_REQ:
+          {
+              return ((MPIDI_CH3_Pkt_cancel_send_req_t *)(buf->pheader))->seqnum;
+          }
+      case MPIDI_CH3_PKT_CANCEL_SEND_RESP:
+          {
+              return ((MPIDI_CH3_Pkt_cancel_send_resp_t *)(buf->pheader))->seqnum;
+          }
+
       default:
           return PKT_NO_SEQ_NUM;
       }
