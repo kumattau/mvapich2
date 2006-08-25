@@ -3,7 +3,7 @@
 die() {
     echo -n "Failure in "
     echo $1
-    echo "Please file an error report to mvapich-help@cse.ohio-state.edu with all your log files."
+    echo "Please file an error report to mvapich-discuss@cse.ohio-state.edu with all your log files."
     exit 1
 }
 
