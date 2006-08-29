@@ -37,15 +37,6 @@ else
     die_setup "Could not find the MTHOME/lib directory."
 fi
 
-# Optional variables.  Most of these are prompted for if not set.
-# Cluster size.
-# Supported: "_SMALL_CLUSTER", "_MEDIUM_CLUSTER", and "_LARGE_CLUSTER"
-VCLUSTER=
-
-if [ -z "$VCLUSTER" ]; then
-    prompt_vcluster
-fi
-
 # Whether to use an optimized queue pair exchange scheme.  This is not
 # checked for a setting in in the script.  It must be set here explicitly.
 # Supported: "-DUSE_MPD_RING" and "" (to disable)
@@ -75,7 +66,7 @@ export FFLAGS="-L${OPEN_IB_LIB}"
 export CFLAGS="-D${ARCH} -DUSE_INLINE -D_SMP_ -DADAPTIVE_RDMA_FAST_PATH \
 -DUSE_HEADER_CACHING -D_GNU_SOURCE -DSRQ -DUSE_HEADER_CACHING -DLAZY_MEM_UNREGISTER \
 -DONE_SIDED $SUPPRESS -D${HCA_COMPILE_FLAG} -DMPID_USE_SEQUENCE_NUMBERS \
--D${VCLUSTER} ${HAVE_MPD_RING} -D_GNU_SOURCE -I${OPEN_IB_HOME}/include $OPT_FLAG"
+${HAVE_MPD_RING} -D_GNU_SOURCE -I${OPEN_IB_HOME}/include $OPT_FLAG"
 
 # Prelogue
 make distclean &>/dev/null
