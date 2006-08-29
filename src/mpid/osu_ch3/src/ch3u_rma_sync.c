@@ -556,6 +556,7 @@ static int MPIDI_CH3I_Send_rma_msg(MPIDI_RMA_ops * rma_op,
     MPIDI_CH3_Pkt_put_t *put_pkt = &upkt.put;
     MPIDI_CH3_Pkt_accum_t *accum_pkt = &upkt.accum;
     MPID_IOV iov[MPID_IOV_LIMIT];
+    int seqnum;
     int mpi_errno = MPI_SUCCESS;
     int origin_dt_derived, target_dt_derived, origin_type_size, iovcnt,
 	iov_n;
@@ -587,6 +588,9 @@ static int MPIDI_CH3I_Send_rma_msg(MPIDI_RMA_ops * rma_op,
 	put_pkt->target_win_handle = target_win_handle;
 	put_pkt->source_win_handle = source_win_handle;
 
+        MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+        MPIDI_Pkt_set_seqnum(put_pkt, seqnum);
+
 	iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) put_pkt;
 	iov[0].MPID_IOV_LEN = sizeof(*put_pkt);
 
@@ -603,6 +607,9 @@ static int MPIDI_CH3I_Send_rma_msg(MPIDI_RMA_ops * rma_op,
 	accum_pkt->op = rma_op->op;
 	accum_pkt->target_win_handle = target_win_handle;
 	accum_pkt->source_win_handle = source_win_handle;
+
+        MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+        MPIDI_Pkt_set_seqnum(accum_pkt, seqnum);
 
 	iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) accum_pkt;
 	iov[0].MPID_IOV_LEN = sizeof(*accum_pkt);
@@ -951,6 +958,7 @@ static int MPIDI_CH3I_Recv_rma_msg(MPIDI_RMA_ops * rma_op,
     int origin_type_size, total_size, type_size;
     /* End of OSU-MPI2 */
     MPID_IOV iov[MPID_IOV_LIMIT];
+    int seqnum;
     MPIU_CHKPMEM_DECL(1);
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_RECV_RMA_MSG);
     MPIDI_STATE_DECL(MPID_STATE_MEMCPY);
@@ -1038,6 +1046,9 @@ static int MPIDI_CH3I_Recv_rma_msg(MPIDI_RMA_ops * rma_op,
 	if (MPIDI_CH3_Eager_ok(vc, total_size)) {
 	    /* basic datatype on target. simply send the get_pkt. */
 	    req->mrail.protocol = VAPI_PROTOCOL_EAGER;
+            MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+            MPIDI_Pkt_set_seqnum(get_pkt, seqnum);
+
 	    mpi_errno =
 		MPIDI_CH3_iStartMsg(vc, get_pkt, sizeof(*get_pkt), &req);
 	} else {
@@ -1045,6 +1056,9 @@ static int MPIDI_CH3I_Recv_rma_msg(MPIDI_RMA_ops * rma_op,
 	    MPIDI_Pkt_init(get_pkt, MPIDI_CH3_PKT_GET_RNDV);
 	    memcpy((void *) &get_rndv, (void *) get_pkt,
 		   sizeof(MPIDI_CH3_Pkt_get_t));
+            MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+            MPIDI_Pkt_set_seqnum(&get_rndv, seqnum);
+
 	    mpi_errno =
 		MPIDI_CH3_iStartGetRndv(vc, &get_rndv, req, NULL, 0);
 	    req = NULL;
@@ -1101,13 +1115,19 @@ static int MPIDI_CH3I_Recv_rma_msg(MPIDI_RMA_ops * rma_op,
 	if (MPIDI_CH3_Eager_ok(vc, total_size)) {
 	    /* basic datatype on target. simply send the get_pkt. */
 	    req->mrail.protocol = VAPI_PROTOCOL_EAGER;
+            MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+            MPIDI_Pkt_set_seqnum(get_pkt, seqnum);
+
 	    mpi_errno = MPIDI_CH3_iStartMsgv(vc, iov, 3, &req);
 	} else {
 	    MPIDI_CH3_Pkt_get_rndv_t get_rndv;
 	    MPIDI_Pkt_init(get_pkt, MPIDI_CH3_PKT_GET_RNDV);
 	    memcpy((void *) &get_rndv, (void *) get_pkt,
 		   sizeof(MPIDI_CH3_Pkt_get_t));
-	    req->mrail.protocol = VAPI_PROTOCOL_RPUT;
+ 	    req->mrail.protocol = VAPI_PROTOCOL_RPUT;
+            MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+            MPIDI_Pkt_set_seqnum(&get_rndv, seqnum);
+
 	    mpi_errno =
 		MPIDI_CH3_iStartGetRndv(vc, &get_rndv, req, &iov[1], 2);
 	    req = NULL;
@@ -1600,6 +1620,7 @@ int MPIDI_Win_complete(MPID_Win * win_ptr)
 		MPIDI_CH3_Pkt_t upkt;
 		MPIDI_CH3_Pkt_put_t *put_pkt = &upkt.put;
 		MPIDI_VC_t *vc;
+		int seqnum;
 
 		MPIDI_Pkt_init(put_pkt, MPIDI_CH3_PKT_PUT);
 		put_pkt->addr = NULL;
@@ -1612,6 +1633,9 @@ int MPIDI_Win_complete(MPID_Win * win_ptr)
 		/*********** OSU-MPI2 ***********/
 		MPIDI_CH3_SET_RMA_ISSUED_NUM(vc, put_pkt);
 		/********************************/
+
+	        MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+	        MPIDI_Pkt_set_seqnum(put_pkt, seqnum);
 
 		mpi_errno = MPIDI_CH3_iStartMsg(vc, put_pkt,
 						sizeof(*put_pkt),
@@ -1892,6 +1916,7 @@ int MPIDI_Win_unlock(int dest, MPID_Win * win_ptr)
     int wait_for_rma_done_pkt = 0;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_WIN_UNLOCK);
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_WIN_UNLOCK);
+    int seqnum;
 
     if (dest == MPI_PROC_NULL)
 	goto fn_exit;
@@ -1984,6 +2009,9 @@ int MPIDI_Win_unlock(int dest, MPID_Win * win_ptr)
 
 	/* Set the lock granted flag to 0 */
 	win_ptr->lock_granted = 0;
+
+        MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+        MPIDI_Pkt_set_seqnum(lock_pkt, seqnum);
 
 	mpi_errno =
 	    MPIDI_CH3_iStartMsg(vc, lock_pkt, sizeof(*lock_pkt), &req);
@@ -2328,6 +2356,7 @@ static int MPIDI_CH3I_Send_lock_put_or_acc(MPID_Win * win_ptr)
 	&upkt.lock_put_unlock;
     MPIDI_CH3_Pkt_lock_accum_unlock_t *lock_accum_unlock_pkt =
 	&upkt.lock_accum_unlock;
+    int seqnum;
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SEND_LOCK_PUT_OR_ACC);
 
@@ -2358,6 +2387,9 @@ static int MPIDI_CH3I_Send_lock_put_or_acc(MPID_Win * win_ptr)
 	lock_put_unlock_pkt->count = rma_op->target_count;
 	lock_put_unlock_pkt->datatype = rma_op->target_datatype;
 
+        MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+        MPIDI_Pkt_set_seqnum(lock_put_unlock_pkt, seqnum);
+
 	MPIDI_CH3_SET_RMA_ISSUED_NUM(vc, lock_put_unlock_pkt);
 
 	iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) lock_put_unlock_pkt;
@@ -2379,6 +2411,9 @@ static int MPIDI_CH3I_Send_lock_put_or_acc(MPID_Win * win_ptr)
 	lock_accum_unlock_pkt->count = rma_op->target_count;
 	lock_accum_unlock_pkt->datatype = rma_op->target_datatype;
 	lock_accum_unlock_pkt->op = rma_op->op;
+
+        MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+        MPIDI_Pkt_set_seqnum(lock_accum_unlock_pkt, seqnum);
 
 	MPIDI_CH3_SET_RMA_ISSUED_NUM(vc, lock_put_unlock_pkt);
 
@@ -2547,6 +2582,7 @@ static int MPIDI_CH3I_Send_lock_get(MPID_Win * win_ptr)
     /* End of OSU-MPI2 */
     MPIDI_CH3_Pkt_lock_get_unlock_t *lock_get_unlock_pkt =
 	&upkt.lock_get_unlock;
+    int seqnum;
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SEND_LOCK_GET);
 
@@ -2625,6 +2661,9 @@ static int MPIDI_CH3I_Send_lock_get(MPID_Win * win_ptr)
     /************** OSU-MPI2 *********************/
     MPIDI_CH3_SET_RMA_ISSUED_NUM(vc, lock_get_unlock_pkt);
     /*********************************************/
+
+    MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+    MPIDI_Pkt_set_seqnum(lock_get_unlock_pkt, seqnum);
 
     mpi_errno = MPIDI_CH3_iStartMsg(vc, lock_get_unlock_pkt,
 				    sizeof(*lock_get_unlock_pkt), &sreq);

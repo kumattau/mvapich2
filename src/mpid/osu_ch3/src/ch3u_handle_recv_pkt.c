@@ -1082,6 +1082,7 @@ int MPIDI_CH3U_Handle_ordered_recv_pkt(MPIDI_VC_t * vc,
 	{
 	    MPIDI_CH3_Pkt_get_t *get_pkt = &pkt->get;
 	    MPID_Request *req;
+	    int seqnum;
 	    MPID_IOV iov[MPID_IOV_LIMIT];
 
 	    MPIDI_DBG_PRINTF((30, FCNAME, "received get pkt"));
@@ -1119,8 +1120,12 @@ int MPIDI_CH3U_Handle_ordered_recv_pkt(MPIDI_VC_t * vc,
 		MPID_Datatype_get_size_macro(get_pkt->datatype, type_size);
 		iov[1].MPID_IOV_LEN = get_pkt->count * type_size;
 
+                MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+                MPIDI_Pkt_set_seqnum(get_resp_pkt, seqnum);
+
 		if (MPIDI_CH3_PKT_GET == pkt->type ) {
                     get_resp_pkt->protocol = VAPI_PROTOCOL_EAGER;
+
                     mpi_errno = MPIDI_CH3_iSendv(vc, req, iov, 2);
 				
                     req->mrail.protocol = VAPI_PROTOCOL_EAGER;
@@ -1559,6 +1564,7 @@ int MPIDI_CH3U_Handle_ordered_recv_pkt(MPIDI_VC_t * vc,
 	    MPIDI_CH3_Pkt_lock_get_unlock_t
 		* lock_get_unlock_pkt = &pkt->lock_get_unlock;
 	    MPID_Win *win_ptr;
+	    int seqnum;
 
 	    MPIDI_DBG_PRINTF((30, FCNAME, "received lock_get_unlock pkt"));
 
@@ -1608,6 +1614,9 @@ int MPIDI_CH3U_Handle_ordered_recv_pkt(MPIDI_VC_t * vc,
 		    (lock_get_unlock_pkt->datatype, type_size);
 		iov[1].MPID_IOV_LEN =
 		    lock_get_unlock_pkt->count * type_size;
+
+	        MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+	        MPIDI_Pkt_set_seqnum(get_resp_pkt, seqnum);
 
 		mpi_errno = MPIDI_CH3_iSendv(vc, req, iov, 2);
 		/* --BEGIN ERROR HANDLING-- */
@@ -1959,11 +1968,15 @@ int MPIDI_CH3I_Send_lock_granted_pkt(MPIDI_VC_t * vc,
     MPIDI_CH3_Pkt_t upkt;
     MPIDI_CH3_Pkt_lock_granted_t *lock_granted_pkt = &upkt.lock_granted;
     MPID_Request *req;
+    int seqnum;
     int mpi_errno;
 
     /* send lock granted packet */
     MPIDI_Pkt_init(lock_granted_pkt, MPIDI_CH3_PKT_LOCK_GRANTED);
     lock_granted_pkt->source_win_handle = source_win_handle;
+
+    MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+    MPIDI_Pkt_set_seqnum(lock_granted_pkt, seqnum);
 
     mpi_errno = MPIDI_CH3_iStartMsg(vc, lock_granted_pkt,
 				    sizeof(*lock_granted_pkt), &req);

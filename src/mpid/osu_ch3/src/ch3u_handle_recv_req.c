@@ -319,6 +319,7 @@ int MPIDI_CH3U_Handle_recv_req(MPIDI_VC_t * vc, MPID_Request * rreq,
 		MPID_IOV iov[MPID_IOV_LIMIT];
 		MPID_Request *sreq;
 		int iov_n;
+		int seqnum;
 
 		/* create derived datatype */
 		create_derived_datatype(rreq, &new_dtp);
@@ -360,8 +361,10 @@ int MPIDI_CH3U_Handle_recv_req(MPIDI_VC_t * vc, MPID_Request * rreq,
 				  &sreq->dev.segment, 0);
 		sreq->dev.segment_first = 0;
 		sreq->dev.segment_size =
-		    new_dtp->size * sreq->dev.user_count;
+         	new_dtp->size * sreq->dev.user_count;
 
+	        MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+	        MPIDI_Pkt_set_seqnum(get_resp_pkt, seqnum);
 		/*********************** OSU-MPI2 ***********************************/
 		if (VAPI_PROTOCOL_EAGER == sreq->mrail.protocol) {
 		    get_resp_pkt->protocol = VAPI_PROTOCOL_EAGER;
@@ -372,6 +375,7 @@ int MPIDI_CH3U_Handle_recv_req(MPIDI_VC_t * vc, MPID_Request * rreq,
 
 		    if (MPI_SUCCESS == mpi_errno) {
 			iov_n += 1;
+
 			mpi_errno = MPIDI_CH3_iSendv(vc, sreq, iov, iov_n);
 			/* --BEGIN ERROR HANDLING-- */
 			if (mpi_errno != MPI_SUCCESS) {
@@ -1042,9 +1046,13 @@ int MPIDI_CH3I_Send_pt_rma_done_pkt(MPIDI_VC_t * vc,
     MPIDI_CH3_Pkt_pt_rma_done_t *pt_rma_done_pkt = &upkt.pt_rma_done;
     MPID_Request *req;
     int mpi_errno = MPI_SUCCESS;
+    int seqnum;
 
     MPIDI_Pkt_init(pt_rma_done_pkt, MPIDI_CH3_PKT_PT_RMA_DONE);
     pt_rma_done_pkt->source_win_handle = source_win_handle;
+
+    MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+    MPIDI_Pkt_set_seqnum(pt_rma_done_pkt, seqnum);
 
     mpi_errno = MPIDI_CH3_iStartMsg(vc, pt_rma_done_pkt,
 				    sizeof(*pt_rma_done_pkt), &req);
@@ -1126,6 +1134,7 @@ static int do_simple_get(MPID_Win * win_ptr,
     MPID_Request *req;
     MPID_IOV iov[MPID_IOV_LIMIT];
     int type_size, mpi_errno = MPI_SUCCESS;
+    int seqnum;
 
     req = MPID_Request_create();
     if (req == NULL) {
@@ -1156,6 +1165,9 @@ static int do_simple_get(MPID_Win * win_ptr,
     MPID_Datatype_get_size_macro(lock_queue->pt_single_op->datatype,
 				 type_size);
     iov[1].MPID_IOV_LEN = lock_queue->pt_single_op->count * type_size;
+
+    MPIDI_VC_FAI_send_seqnum(lock_queue->vc, seqnum);
+    MPIDI_Pkt_set_seqnum(get_resp_pkt, seqnum);
 
     mpi_errno = MPIDI_CH3_iSendv(lock_queue->vc, req, iov, 2);
     /* --BEGIN ERROR HANDLING-- */

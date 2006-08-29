@@ -257,6 +257,7 @@ typedef struct MPIDI_CH3_Pkt_put
     uint8_t type;
     /* Newly added packet fields for OSU-MPI2 */
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+    MPID_Seqnum_t seqnum;
     uint32_t rma_issued;
     void *addr;
     int count;
@@ -277,6 +278,7 @@ typedef struct MPIDI_CH3_Pkt_put_rndv
 {
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+    MPID_Seqnum_t seqnum;
     uint32_t rma_issued;
     void *addr;
     int count;
@@ -301,6 +303,7 @@ typedef struct MPIDI_CH3_Pkt_get
     uint8_t type;
     /* Newly added packet fields for OSU-MPI2 */
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+    MPID_Seqnum_t seqnum;
     uint32_t rma_issued;
     /* End of OSU-MPI2 */
     void *addr;
@@ -323,6 +326,7 @@ typedef struct MPIDI_CH3_Pkt_get_rndv
 {
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+    MPID_Seqnum_t seqnum;
     uint32_t rma_issued;
     void *addr;
     int count;
@@ -347,6 +351,7 @@ typedef struct MPIDI_CH3_Pkt_get_resp
     uint8_t type;
     /* Newly added packet fields for OSU-MPI2 */
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+    MPID_Seqnum_t seqnum;
     int protocol;
     /* End of OSU-MPI2 */
     MPI_Request request_handle;
@@ -358,6 +363,7 @@ typedef struct MPIDI_CH3_Pkt_accum_rndv
     uint8_t type;
     /* Newly added packet fields for OSU-MPI2 */
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+    MPID_Seqnum_t seqnum;
     uint32_t rma_issued;
     /* End of OSU-MPI2 */
     void *addr;
@@ -384,6 +390,7 @@ typedef struct MPIDI_CH3_Pkt_accum
     uint8_t type;
     /* Newly added packet fields for OSU-MPI2 */
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+    MPID_Seqnum_t seqnum;
     uint32_t rma_issued;
     /* End of OSU-MPI2 */
     void *addr;
@@ -407,6 +414,7 @@ typedef struct MPIDI_CH3_Pkt_lock
     /* Newly added packet fields for OSU-MPI2 */
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
     /* End of OSU-MPI2 */
+    MPID_Seqnum_t seqnum;
     int lock_type;
     MPI_Win target_win_handle;
     MPI_Win source_win_handle;
@@ -418,6 +426,7 @@ typedef struct MPIDI_CH3_Pkt_lock_granted
     uint8_t type;
     /* Newly added packet fields for OSU-MPI2 */
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+    MPID_Seqnum_t seqnum;
     /* End of OSU-MPI2 */
     MPI_Win source_win_handle;
 }
@@ -430,6 +439,7 @@ typedef struct MPIDI_CH3_Pkt_lock_put_unlock
     uint8_t type;
     /* Newly added packet fields for OSU-MPI2 */
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+    MPID_Seqnum_t seqnum;
     uint32_t rma_issued;
     /* End of OSU-MPI2 */
     MPI_Win target_win_handle;
@@ -446,6 +456,7 @@ typedef struct MPIDI_CH3_Pkt_lock_get_unlock
     uint8_t type;
     /* Newly added packet fields for OSU-MPI2 */
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+    MPID_Seqnum_t seqnum;
     uint32_t rma_issued;
     /* End of OSU-MPI2 */
     MPI_Win target_win_handle;
@@ -463,6 +474,7 @@ typedef struct MPIDI_CH3_Pkt_lock_accum_unlock
     uint8_t type;
     /* Newly added packet fields for OSU-MPI2 */
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+    MPID_Seqnum_t seqnum;
     uint32_t rma_issued;
     /* End of OSU-MPI2 */
     MPI_Win target_win_handle;
@@ -481,6 +493,7 @@ typedef struct MPIDI_CH3_Pkt_close
     uint8_t type;
     /* Newly added packet fields for OSU-MPI2 */
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+    MPID_Seqnum_t seqnum;
     /* End of OSU-MPI2 */
     int ack;
 }
