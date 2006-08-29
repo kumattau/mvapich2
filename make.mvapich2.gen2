@@ -31,6 +31,8 @@ elif [ ! -d $OPEN_IB_HOME ]; then
     die_setup "MTHOME directory $OPEN_IB_HOME does not exist."
 elif [ -d $OPEN_IB_HOME/lib ]; then
     OPEN_IB_LIB=$OPEN_IB_HOME/lib
+elif [ -d $OPEN_IB_HOME/lib64 ]; then
+    OPEN_IB_LIB=$OPEN_IB_HOME/lib64
 else
     die_setup "Could not find the MTHOME/lib directory."
 fi
