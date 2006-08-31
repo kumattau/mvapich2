@@ -4,9 +4,28 @@ MVAPICH2 Changelog
 This file briefly describes the latest changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+08/30/2006 (Release date of MVAPICH2-0.9.5)
+
+* Added multi-rail support for both point to point and direct one side
+  operations.
+
+* Added adaptive RDMA fast path.
+
+* Added shared receive queue support.
+
+* Added TotalView debugger support
+
+07/25/2006
+
+* Optimization of SMP startup information exchange for USE_MPD_RING to
+  enhance performance for SLURM. Thanks to Don and team mebers from Bull 
+  and folks for LLNL for their feedbacks and comments. 
+
 05/25/2006
 
 * Added uDAPL build script functionality to set DAPL_DEFAULT_PROVIDER
   explicitly with default suggestions.
 
 * Thanks to Harvey Richardson from Sun for suggesting this feature.
+
+
