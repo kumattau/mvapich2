@@ -19,7 +19,7 @@ package.  The logs are arranged in the "most recent first" order.
 
 * Optimization of SMP startup information exchange for USE_MPD_RING to
   enhance performance for SLURM. Thanks to Don and team mebers from Bull 
-  and folks for LLNL for their feedbacks and comments. 
+  and folks from LLNL for their feedbacks and comments. 
 
 05/25/2006
 
