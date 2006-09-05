@@ -24,6 +24,12 @@ elif [ $ARCH = "MAC_OSX" ]; then
     SUPPRESS="-multiply_defined suppress"
 fi
 
+if [ $HCA_COMPILE_FLAG = "_MLX_PCI_X_" ]; then
+	HAVE_SRQ=""
+else
+	HAVE_SRQ="-DSRQ"
+fi
+
 # Check mandatory variable settings.
 if [ -z $OPEN_IB_HOME ] || [ -z $PREFIX ] || [ -z $CC ] || [ -z $F77 ]; then
     die_setup "Please set mandatory variables in this script."
@@ -64,7 +70,7 @@ export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
 export LIBS="-L${OPEN_IB_LIB} -libverbs -lpthread $SUPPRESS"
 export FFLAGS="-L${OPEN_IB_LIB}"
 export CFLAGS="-D${ARCH} -DUSE_INLINE -D_SMP_ -DADAPTIVE_RDMA_FAST_PATH \
--DUSE_HEADER_CACHING -D_GNU_SOURCE -DSRQ -DUSE_HEADER_CACHING -DLAZY_MEM_UNREGISTER \
+-DUSE_HEADER_CACHING -D_GNU_SOURCE ${HAVE_SRQ} -DUSE_HEADER_CACHING -DLAZY_MEM_UNREGISTER \
 -DONE_SIDED $SUPPRESS -D${HCA_COMPILE_FLAG} -DMPID_USE_SEQUENCE_NUMBERS \
 ${HAVE_MPD_RING} -D_GNU_SOURCE -I${OPEN_IB_HOME}/include $OPT_FLAG"
 
