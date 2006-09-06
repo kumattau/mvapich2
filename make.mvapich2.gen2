@@ -24,12 +24,6 @@ elif [ $ARCH = "MAC_OSX" ]; then
     SUPPRESS="-multiply_defined suppress"
 fi
 
-if [ $HCA_COMPILE_FLAG = "_MLX_PCI_X_" ]; then
-	HAVE_SRQ=""
-else
-	HAVE_SRQ="-DSRQ"
-fi
-
 # Check mandatory variable settings.
 if [ -z $OPEN_IB_HOME ] || [ -z $PREFIX ] || [ -z $CC ] || [ -z $F77 ]; then
     die_setup "Please set mandatory variables in this script."
@@ -37,10 +31,17 @@ elif [ ! -d $OPEN_IB_HOME ]; then
     die_setup "MTHOME directory $OPEN_IB_HOME does not exist."
 elif [ -d $OPEN_IB_HOME/lib ]; then
     OPEN_IB_LIB=$OPEN_IB_HOME/lib
-elif [ -d $OPEN_IB_HOME/lib64 ]; then
-    OPEN_IB_LIB=$OPEN_IB_HOME/lib64
 else
     die_setup "Could not find the MTHOME/lib directory."
+fi
+
+# Optional variables.  Most of these are prompted for if not set.
+# Cluster size.
+# Supported: "_SMALL_CLUSTER", "_MEDIUM_CLUSTER", and "_LARGE_CLUSTER"
+VCLUSTER=
+
+if [ -z "$VCLUSTER" ]; then
+    prompt_vcluster
 fi
 
 # Whether to use an optimized queue pair exchange scheme.  This is not
@@ -54,6 +55,14 @@ OPT_FLAG=
 if [ -z $OPT_FLAG ]; then
     OPT_FLAG=-O2
 fi
+
+# Check if SRQ is valid. for this platform.
+ENABLE_SRQ="-DSRQ"
+
+if [ "$HCA_COMPILE_FLAG" == "_MLX_PCI_X_" ]; then
+    ENABLE_SRQ=""
+fi
+
 
 # Whether or not to build with multi-thread support
 # Building with this option the MVAPICH2 will be thread-safe but it may suffer
@@ -70,9 +79,9 @@ export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
 export LIBS="-L${OPEN_IB_LIB} -libverbs -lpthread $SUPPRESS"
 export FFLAGS="-L${OPEN_IB_LIB}"
 export CFLAGS="-D${ARCH} -DUSE_INLINE -D_SMP_ -DADAPTIVE_RDMA_FAST_PATH \
--DUSE_HEADER_CACHING -D_GNU_SOURCE ${HAVE_SRQ} -DUSE_HEADER_CACHING -DLAZY_MEM_UNREGISTER \
+-DUSE_HEADER_CACHING -D_GNU_SOURCE ${ENABLE_SRQ} -DLAZY_MEM_UNREGISTER \
 -DONE_SIDED $SUPPRESS -D${HCA_COMPILE_FLAG} -DMPID_USE_SEQUENCE_NUMBERS \
-${HAVE_MPD_RING} -D_GNU_SOURCE -I${OPEN_IB_HOME}/include $OPT_FLAG"
+-D${VCLUSTER} ${HAVE_MPD_RING} -D_GNU_SOURCE -I${OPEN_IB_HOME}/include $OPT_FLAG"
 
 # Prelogue
 make distclean &>/dev/null
