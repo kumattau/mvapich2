@@ -21,7 +21,7 @@
  */
 int rdma_num_hcas 	= 1;
 int rdma_num_ports 	= 1;
-int rdma_num_qp_per_port = 4;
+int rdma_num_qp_per_port = 1;
 int rdma_num_rails;
 
 int      		rdma_pin_pool_size = RDMA_PIN_POOL_SIZE;
@@ -160,8 +160,6 @@ void rdma_init_parameters(int num_proc, int me){
             rdma_default_mtu = IBV_MTU_1024;
     }
 
-    fprintf(stdout,"Number of QPs per port = %d\n", rdma_num_qp_per_port);
-    fflush(stdout);
     /* Get number of HCAs/node used by a process */
     if ((value = getenv("NUM_HCAS")) != NULL) {
         rdma_num_hcas = (int)atoi(value);
@@ -190,7 +188,6 @@ void rdma_init_parameters(int num_proc, int me){
         }
     }
 
-    rdma_num_qp_per_port = 4;
     if ((value = getenv("RDMA_PIN_POOL_SIZE")) != NULL) {
         rdma_pin_pool_size = (int)atoi(value);
     }
