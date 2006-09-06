@@ -21,7 +21,7 @@
  */
 int rdma_num_hcas 	= 1;
 int rdma_num_ports 	= 1;
-int rdma_num_qp_per_port = 1;
+int rdma_num_qp_per_port = 4;
 int rdma_num_rails;
 
 int      		rdma_pin_pool_size = RDMA_PIN_POOL_SIZE;
@@ -159,6 +159,9 @@ void rdma_init_parameters(int num_proc, int me){
         else
             rdma_default_mtu = IBV_MTU_1024;
     }
+
+    fprintf(stdout,"Number of QPs per port = %d\n", rdma_num_qp_per_port);
+    fflush(stdout);
     /* Get number of HCAs/node used by a process */
     if ((value = getenv("NUM_HCAS")) != NULL) {
         rdma_num_hcas = (int)atoi(value);
@@ -187,6 +190,7 @@ void rdma_init_parameters(int num_proc, int me){
         }
     }
 
+    rdma_num_qp_per_port = 4;
     if ((value = getenv("RDMA_PIN_POOL_SIZE")) != NULL) {
         rdma_pin_pool_size = (int)atoi(value);
     }
@@ -219,6 +223,18 @@ void rdma_init_parameters(int num_proc, int me){
            rdma_vbuf_total_size = 2 * sizeof(int);
     }
 
+    if ((value = getenv("VIADEV_SRQ_SIZE")) != NULL) {
+        viadev_srq_size = (uint32_t) atoi(value);
+    }       
+
+    if ((value = getenv("VIADEV_SRQ_LIMIT")) != NULL) {
+        viadev_srq_limit = (uint32_t) atoi(value);
+            
+        if(viadev_srq_limit > viadev_srq_size) {
+            fprintf(stderr,
+                    "SRQ limit shouldn't be greater than SRQ size\n");
+        }
+    }
 
     if ((value = getenv("RDMA_IBA_EAGER_THRESHOLD")) != NULL) {
         rdma_iba_eager_threshold = (int)atoi(value);
