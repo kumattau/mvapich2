@@ -245,57 +245,57 @@ static struct ibv_srq *create_srq(struct MPIDI_CH3I_RDMA_Process_t *proc,
 }
 #endif
 
-static int check_attrs(struct MPIDI_CH3I_RDMA_Process_t *proc)
+static int check_attrs( struct ibv_port_attr *port_attr, struct ibv_device_attr *dev_attr)
 {
     int ret = 0;
 
-    if(proc->port_attr.active_mtu < rdma_default_mtu) {
+    if(port_attr->active_mtu < rdma_default_mtu) {
         fprintf(stderr,
-                "Active MTU is %d, VIADEV_DEFAULT_MTU set to %d\n. See User Guide",
-                proc->port_attr.active_mtu, rdma_default_mtu);
+                "Active MTU is %d, RDMA_DEFAULT_MTU set to %d. See User Guide\n",
+                port_attr->active_mtu, rdma_default_mtu);
         ret = 1;
     }
 
-    if(proc->dev_attr.max_qp_rd_atom < rdma_default_qp_ous_rd_atom) {
+    if(dev_attr->max_qp_rd_atom < rdma_default_qp_ous_rd_atom) {
         fprintf(stderr,
-                "Max VIADEV_DEFAULT_QP_OUS_RD_ATOM is %d, set to %d\n",
-                proc->dev_attr.max_qp_rd_atom, rdma_default_qp_ous_rd_atom);
+                "Max RDMA_DEFAULT_QP_OUS_RD_ATOM is %d, set to %d\n",
+                dev_attr->max_qp_rd_atom, rdma_default_qp_ous_rd_atom);
         ret = 1;
     }
 
 #ifdef SRQ
-    if(proc->dev_attr.max_srq_sge < rdma_default_max_sg_list) {
+    if(dev_attr->max_srq_sge < rdma_default_max_sg_list) {
         fprintf(stderr,
-                "Max VIADEV_DEFAULT_MAX_SG_LIST is %d, set to %d\n",
-                proc->dev_attr.max_srq_sge, rdma_default_max_sg_list);
+                "Max RDMA_DEFAULT_MAX_SG_LIST is %d, set to %d\n",
+                dev_attr->max_srq_sge, rdma_default_max_sg_list);
         ret = 1;
     }
 
-    if(proc->dev_attr.max_srq_wr < viadev_srq_size) {
+    if(dev_attr->max_srq_wr < viadev_srq_size) {
         fprintf(stderr,
-                "Max VIADEV_SQ_SIZE is %d, set to %d\n",
-                proc->dev_attr.max_srq_wr, (int) viadev_srq_size);
+                "Max VIADEV_SRQ_SIZE is %d, set to %d\n",
+                dev_attr->max_srq_wr, (int) viadev_srq_size);
         ret = 1;
     }
 #else
-    if(proc->dev_attr.max_sge < rdma_default_max_sg_list) {
+    if(dev_attr->max_sge < rdma_default_max_sg_list) {
         fprintf(stderr,
-                "Max VIADEV_DEFAULT_MAX_SG_LIST is %d, set to %d\n",
-                proc->dev_attr.max_sge, rdma_default_max_sg_list);
+                "Max RDMA_DEFAULT_MAX_SG_LIST is %d, set to %d\n",
+                dev_attr->max_sge, rdma_default_max_sg_list);
         ret = 1;
     }
 
-    if(proc->dev_attr.max_qp_wr < rdma_default_max_wqe) {
+    if(dev_attr->max_qp_wr < rdma_default_max_wqe) {
         fprintf(stderr,
-                "Max VIADEV_SQ_SIZE is %d, set to %d\n",
-                proc->dev_attr.max_qp_wr, (int) rdma_default_max_wqe);
+                "Max RDMA_DEFAULT_MAX_WQE is %d, set to %d\n",
+                dev_attr->max_qp_wr, (int) rdma_default_max_wqe);
         ret = 1;
     }
 #endif
-    if(proc->dev_attr.max_cqe < rdma_default_max_cq_size) {
+    if(dev_attr->max_cqe < rdma_default_max_cq_size) {
         fprintf(stderr,
-                "Max VIADEV_CQ_SIZE is %d, set to %d\n",
-                proc->dev_attr.max_cqe, (int) rdma_default_max_cq_size);
+                "Max RDMA_DEFAULT_MAX_CQ_SIZE is %d, set to %d\n",
+                dev_attr->max_cqe, (int) rdma_default_max_cq_size);
         ret = 1;
     }
 
@@ -314,6 +314,7 @@ rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
 #endif
     struct ibv_qp_attr      qp_attr;
     struct ibv_port_attr    port_attr;
+    struct ibv_device_attr dev_attr;
 #ifdef GEN2_OLD_DEVICE_LIST_VERB
     struct dlist *dev_list;
 #else
@@ -383,6 +384,11 @@ rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
             fprintf(stderr, "Fail to open HCA number %d\n", i);
             return -1;
         }
+
+        if(ibv_query_device(proc->nic_context[i], &dev_attr)) {
+            ibv_error_abort(GEN_EXIT_ERR,
+                    "Error getting HCA attributes\n");
+        }
   
         /* detecting active ports */
         if (rdma_default_port < 0 || rdma_num_ports > 1) {
@@ -394,9 +400,11 @@ rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
                         port_attr.lid) {
                     lids[i][k]    = port_attr.lid;
                     ports[i][k++] = j;
-                    if (j == 1) {
-                        proc->port_attr = port_attr;
+
+                    if (check_attrs(&port_attr, &dev_attr)) {
+                        ibv_error_abort(GEN_EXIT_ERR, "Attributes failed sanity check");
                     }
+
                 }
             }
             if (k < rdma_num_ports) {
@@ -415,18 +423,12 @@ rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
             }
             ports[i][0] = rdma_default_port;
             lids[i][0]  = port_attr.lid;
+
+            if (check_attrs(&port_attr, &dev_attr)) {
+                ibv_error_abort(GEN_EXIT_ERR, "Attributes failed sanity check");
+            }
         }
 
-	if (i == 0) {
- 	    if(ibv_query_device(proc->nic_context[0], &proc->dev_attr)) {
- 	        ibv_error_abort(GEN_EXIT_ERR,
-                                "Error getting HCA attributes\n");
- 	    }
-
-	    if (check_attrs(proc)) {
-		fprintf(stderr, "Attributes failed sanity check\n");
-	    }
- 	}
         /* Allocate the protection domain for the HCA */
         proc->ptag[i] = ibv_alloc_pd(proc->nic_context[i]);
         if (!proc->ptag[i]) {

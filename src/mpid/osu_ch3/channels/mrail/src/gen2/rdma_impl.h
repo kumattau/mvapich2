@@ -36,9 +36,6 @@ typedef struct MPIDI_CH3I_RDMA_Process_t {
     struct ibv_pd * ptag[MAX_NUM_HCAS];
     struct ibv_cq * cq_hndl[MAX_NUM_HCAS];
 
-    /* port and device attributes for sanity check */
-    struct ibv_device_attr dev_attr;
-    struct ibv_port_attr port_attr;
     /* one cq for both send and recv */
 #ifdef ONE_SIDED
     /* information for the one-sided communication connection */
