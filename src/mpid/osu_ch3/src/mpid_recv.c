@@ -188,6 +188,11 @@ int MPID_Recv(void * buf, int count, MPI_Datatype datatype, int rank, int tag, M
                 goto fn_exit;
             }
 
+            if (rreq->dev.iov_count == 1)
+                    cts_pkt->recv_sz = rreq->dev.iov[0].MPID_IOV_LEN;
+            else
+                    cts_pkt->recv_sz = rreq->dev.segment_size;
+
             mpi_errno = MPIDI_CH3_Prepare_rndv_cts(vc, cts_pkt, rreq);
             mpi_errno =
                 MPIDI_CH3_iStartMsg(vc, cts_pkt, sizeof(*cts_pkt),

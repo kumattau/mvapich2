@@ -110,7 +110,7 @@ rdma_init_parameters (int num_proc, int me)
 
     char *value;
 
-    if ((value = (char *) getenv ("DAPL_PROVIDER")) != NULL)
+    if ((value = (char *) getenv ("MV2_DAPL_PROVIDER")) != NULL)
       {
           strcpy (dapl_provider, value);
       }
@@ -142,95 +142,95 @@ rdma_init_parameters (int num_proc, int me)
           rdma_default_mtu_size = RDMA_DEFAULT_MTU_SIZE_SOLARIS;
       }
 
-    if ((value = (char *) getenv ("RDMA_DEFAULT_MTU_SIZE")) != NULL)
+    if ((value = (char *) getenv ("MV2_DEFAULT_MTU_SIZE")) != NULL)
       {
           rdma_default_mtu_size = (int) atoi (value);
       }
 
-    if ((value = (char *) getenv ("RDMA_PIN_POOL_SIZE")) != NULL)
+    if ((value = (char *) getenv ("MV2_PIN_POOL_SIZE")) != NULL)
       {
           rdma_pin_pool_size = (int) atoi (value);
       }
-    if ((value = (char *) getenv ("RDMA_DEFAULT_MAX_CQ_SIZE")) != NULL)
+    if ((value = (char *) getenv ("MV2_DEFAULT_MAX_CQ_SIZE")) != NULL)
       {
           rdma_default_max_cq_size = (int) atoi (value);
       }
-    if ((value = (char *) getenv ("RDMA_READ_RESERVE")) != NULL)
+    if ((value = (char *) getenv ("MV2_READ_RESERVE")) != NULL)
       {
           rdma_read_reserve = (int) atoi (value);
       }
 #ifdef RDMA_FAST_PATH
-    if ((value = (char *) getenv ("NUM_RDMA_BUFFER")) != NULL)
+    if ((value = (char *) getenv ("MV2_NUM_RDMA_BUFFER")) != NULL)
       {
           num_rdma_buffer = (int) atoi (value);
       }
 #endif
-    if ((value = (char *) getenv ("RDMA_IBA_EAGER_THRESHOLD")) != NULL)
+    if ((value = (char *) getenv ("MV2_IBA_EAGER_THRESHOLD")) != NULL)
       {
           rdma_iba_eager_threshold = (int) atoi (value);
       }
-    if ((value = (char *) getenv ("RDMA_CREDIT_UPDATE_THRESHOLD")) != NULL)
+    if ((value = (char *) getenv ("MV2_CREDIT_UPDATE_THRESHOLD")) != NULL)
       {
           rdma_credit_update_threshold = (float) atof (value);
       }
 
-    if ((value = (char *) getenv ("RDMA_INTEGER_POOL_SIZE")) != NULL)
+    if ((value = (char *) getenv ("MV2_INTEGER_POOL_SIZE")) != NULL)
       {
           rdma_integer_pool_size = (int) atoi (value);
       }
-    if ((value = (char *) getenv ("RDMA_DEFAULT_PUT_GET_LIST_SIZE")) != NULL)
+    if ((value = (char *) getenv ("MV2_DEFAULT_PUT_GET_LIST_SIZE")) != NULL)
       {
           rdma_default_put_get_list_size = (int) atoi (value);
       }
-    if ((value = (char *) getenv ("RDMA_EAGERSIZE_1SC")) != NULL)
+    if ((value = (char *) getenv ("MV2_EAGERSIZE_1SC")) != NULL)
       {
           rdma_eagersize_1sc = (int) atoi (value);
       }
-    if ((value = (char *) getenv ("RDMA_PUT_FALLBACK_THRESHOLD")) != NULL)
+    if ((value = (char *) getenv ("MV2_PUT_FALLBACK_THRESHOLD")) != NULL)
       {
           rdma_put_fallback_threshold = (int) atoi (value);
       }
-    if ((value = (char *) getenv ("RDMA_GET_FALLBACK_THRESHOLD")) != NULL)
+    if ((value = (char *) getenv ("MV2_GET_FALLBACK_THRESHOLD")) != NULL)
       {
           rdma_get_fallback_threshold = (int) atoi (value);
       }
-    if ((value = (char *) getenv ("RDMA_DEFAULT_PORT")) != NULL)
+    if ((value = (char *) getenv ("MV2_DEFAULT_PORT")) != NULL)
       {
           rdma_default_port = (int) atoi (value);
       }
-    if ((value = (char *) getenv ("RDMA_DEFAULT_QP_OUS_RD_ATOM")) != NULL)
+    if ((value = (char *) getenv ("MV2_DEFAULT_QP_OUS_RD_ATOM")) != NULL)
       {
           rdma_default_qp_ous_rd_atom = (u_int8_t) atoi (value);
       }
-    if ((value = (char *) getenv ("RDMA_DEFAULT_MAX_RDMA_DST_OPS")) != NULL)
+    if ((value = (char *) getenv ("MV2_DEFAULT_MAX_RDMA_DST_OPS")) != NULL)
       {
           rdma_default_max_rdma_dst_ops = (u_int8_t) atol (value);
       }
-    if ((value = (char *) getenv ("RDMA_DEFAULT_SRC_PATH_BITS")) != NULL)
+    if ((value = (char *) getenv ("MV2_DEFAULT_SRC_PATH_BITS")) != NULL)
       {
           rdma_default_src_path_bits = (u_int8_t) atoi (value);
       }
-    if ((value = (char *) getenv ("RDMA_DEFAULT_MAX_SG_LIST")) != NULL)
+    if ((value = (char *) getenv ("MV2_DEFAULT_MAX_SG_LIST")) != NULL)
       {
           rdma_default_max_sg_list = (u_int32_t) atol (value);
       }
-    if ((value = (char *) getenv ("RDMA_DEFAULT_MAX_WQE")) != NULL)
+    if ((value = (char *) getenv ("MV2_DEFAULT_MAX_WQE")) != NULL)
       {
           rdma_default_max_wqe = (long) atol (value);
       }
-    if ((value = (char *) getenv ("UDAPL_NDREG_ENTRIES")) != NULL)
+    if ((value = (char *) getenv ("MV2_NDREG_ENTRIES")) != NULL)
       {
           udapl_ndreg_entries = (unsigned int) atoi (value);
       }
-    if ((value = (char *) getenv ("UDAPL_VBUF_MAX")) != NULL)
+    if ((value = (char *) getenv ("MV2_VBUF_MAX")) != NULL)
       {
           udapl_vbuf_max = (int) atoi (value);
       }
-    if ((value = (char *) getenv ("UDAPL_INITIAL_PREPOST_DEPTH")) != NULL)
+    if ((value = (char *) getenv ("MV2_INITIAL_PREPOST_DEPTH")) != NULL)
       {
           udapl_initial_prepost_depth = (int) atoi (value);
       }
-    if ((value = (char *) getenv ("UDAPL_PREPOST_DEPTH")) != NULL)
+    if ((value = (char *) getenv ("MV2_PREPOST_DEPTH")) != NULL)
       {
           udapl_prepost_depth = (int) atoi (value);
       }

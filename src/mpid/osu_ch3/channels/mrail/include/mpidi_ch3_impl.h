@@ -44,10 +44,21 @@
 #define MPIDI_CH3I_READ_STATE_IDLE    0
 #define MPIDI_CH3I_READ_STATE_READING 1
 
+#define MPIDI_CH3I_CM_DEFAULT_ON_DEMAND_THRESHOLD   64
+#define MPIDI_CH3I_RDMA_CM_DEFAULT_BASE_LISTEN_PORT 12000
+
+typedef enum {
+    MPIDI_CH3I_CM_BASIC_ALL2ALL,
+    MPIDI_CH3I_CM_ON_DEMAND,
+    MPIDI_CH3I_CM_RDMA_CM,
+}MPIDI_CH3I_CM_type_t;
 
 typedef struct MPIDI_CH3I_Process_s
 {
     MPIDI_VC_t *vc;
+    MPIDI_CH3I_CM_type_t cm_type;
+    /*a flag to indicate whether new connection been established*/
+    volatile int new_conn_door_bell; 
 }
 MPIDI_CH3I_Process_t;
 
@@ -98,6 +109,40 @@ extern MPIDI_CH3I_Process_t MPIDI_CH3I_Process;
 #define MPIDI_CH3I_SendQ_head(vc) (vc->ch.sendq_head)
 
 #define MPIDI_CH3I_SendQ_empty(vc) (vc->ch.sendq_head == NULL)
+
+
+#define MPIDI_CH3I_CM_SendQ_enqueue(vc, req) \
+{  \
+    /* MT - not thread safe! */						\
+    MPIDI_DBG_PRINTF((50, FCNAME, "CM_SendQ_enqueue vc=%08p req=0x%08x",	\
+	              vc, req->handle));		\
+    req->dev.next = NULL;						\
+    if (vc->ch.cm_sendq_tail != NULL)					\
+    {									\
+	vc->ch.cm_sendq_tail->dev.next = req;				\
+    }									\
+    else								\
+    {									\
+	vc->ch.cm_sendq_head = req;					\
+    }									\
+    vc->ch.cm_sendq_tail = req;						\
+}
+
+#define MPIDI_CH3I_CM_SendQ_dequeue(vc) \
+{  \
+    /* MT - not thread safe! */						\
+    MPIDI_DBG_PRINTF((50, FCNAME, "CM_SendQ_dequeue vc=%08p req=0x%08x",	\
+	              vc, vc->ch.sendq_head));		\
+    vc->ch.cm_sendq_head = vc->ch.cm_sendq_head->dev.next;			\
+    if (vc->ch.cm_sendq_head == NULL)					\
+    {									\
+	vc->ch.cm_sendq_tail = NULL;					\
+    }									\
+}
+
+#define MPIDI_CH3I_CM_SendQ_head(vc) (vc->ch.cm_sendq_head)
+
+#define MPIDI_CH3I_CM_SendQ_empty(vc) (vc->ch.cm_sendq_head == NULL)
 
 /* RDMA channel interface */
 
@@ -182,6 +227,23 @@ void  MPIDI_CH3I_MRAIL_Release_vbuf(vbuf * v);
 
 int MPIDI_CH3I_MRAIL_Finish_request(MPID_Request *);
 
+/*Connection Management Interfaces*/
+/* MPIDI_CH3I_CM_Init should replace MPIDI_CH3I_RMDA_init if dynamic
+ * connection is enabled. */
+int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank);
+
+/* MPIDI_CH3I_CM_Finalize should be used if MPIDI_CH3I_CM_Init is used
+ * in initialization */
+int MPIDI_CH3I_CM_Finalize();
+
+/* MPIDI_CH3I_CM_Connect should be called before using a VC to do
+ * communication */
+int MPIDI_CH3I_CM_Connect(MPIDI_VC_t * vc);
+
+/* MPIDI_CH3I_CM_Establish should be called when detecting the first message
+ * from a VC */
+int MPIDI_CH3I_CM_Establish(MPIDI_VC_t * vc);
+
 #ifdef _SMP_
 
 
@@ -231,8 +293,6 @@ int MPIDI_CH3I_MRAIL_Finish_request(MPID_Request *);
                                                                                                                                                
 #define MPIDI_CH3I_SMP_SendQ_empty(vc) (vc->smp.sendq_head == NULL)
 
-#define SMPI_MAX_NUMLOCALNODES 8
-
 extern int SMP_INIT;
 extern int SMP_ONLY;
 
@@ -251,13 +311,15 @@ extern int      smpi_length_queue;
 /* management informations */
 struct smpi_var {
     void *mmap_ptr;
+    void *send_buf_pool_ptr;
     unsigned int my_local_id;
     unsigned int num_local_nodes;
     short int only_one_device;  /* to see if all processes are on one physical node */
 
-    unsigned int l2g_rank[SMPI_MAX_NUMLOCALNODES];
+    unsigned int *l2g_rank;
     int available_queue_length;
     int fd;
+    int fd_pool;
     /*
     struct smpi_send_fifo_req *send_fifo_head;
     struct smpi_send_fifo_req *send_fifo_tail;

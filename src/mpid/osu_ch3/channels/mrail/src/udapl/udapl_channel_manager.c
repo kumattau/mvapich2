@@ -135,22 +135,6 @@ GetSeqNumVbuf (vbuf * buf)
           {
               return ((MPIDI_CH3_Pkt_cancel_send_resp_t *)(buf->pheader))->seqnum;
           }
-      case MPIDI_CH3_PKT_PUT:
-      case MPIDI_CH3_PKT_GET:
-      case MPIDI_CH3_PKT_GET_RESP:
-      case MPIDI_CH3_PKT_ACCUMULATE:
-      case MPIDI_CH3_PKT_LOCK:
-      case MPIDI_CH3_PKT_LOCK_GRANTED:
-      case MPIDI_CH3_PKT_LOCK_PUT_UNLOCK:
-      case MPIDI_CH3_PKT_LOCK_GET_UNLOCK:
-      case MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK:
-      case MPIDI_CH3_PKT_PT_RMA_DONE:
-      case MPIDI_CH3_PKT_PUT_RNDV:
-      case MPIDI_CH3_PKT_ACCUMULATE_RNDV:
-      case MPIDI_CH3_PKT_GET_RNDV:
-        {
-            return ((MPIDI_CH3_Pkt_put_t *)(buf->pheader))->seqnum;
-        }
 
       default:
           return PKT_NO_SEQ_NUM;

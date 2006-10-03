@@ -21,70 +21,306 @@
 
 #include "mpidi_ch3_impl.h"
 #include "mpidi_ch3_rdma_pre.h"
+#include "pmi.h"
 
-#include "infiniband/verbs.h"
+#include <infiniband/verbs.h>
 #include "ibv_param.h"
 
+#undef DEBUG_PRINT
+#ifdef DEBUG
+#define DEBUG_PRINT(args...) \
+do {                                                          \
+    int rank;                                                 \
+    PMI_Get_rank(&rank);                                      \
+    fprintf(stderr, "[%d][%s:%d] ", rank, __FILE__, __LINE__);\
+    fprintf(stderr, args);                                    \
+} while (0)
+#else
+#define DEBUG_PRINT(args...)
+#endif
+
+/* HCA type */
+enum {
+    HCA_ERROR, 
+    UNKNOWN_HCA, 
+    MLX_PCI_EX_SDR, 
+    MLX_PCI_EX_DDR, 
+    PATH_HT, 
+    MLX_PCI_X, 
+    IBM_EHCA
+};
+
+/* cluster size */
+enum {SMALL_CLUSTER, MEDIUM_CLUSTER, LARGE_CLUSTER};
 
 typedef struct MPIDI_CH3I_RDMA_Process_t {
     /* keep all rdma implementation specific global variable in a
        structure like this to avoid name collisions */
-    int maxtransfersize;
+    int                         hca_type;
+    int                         cluster_size;
+    uint8_t                     has_srq;
+    uint8_t                     has_adaptive_fast_path;
+    uint8_t                     has_ring_startup;
+    uint8_t                     has_lazy_mem_unregister;
+    uint8_t                     has_one_sided;
 
-    struct ibv_context *nic_context[MAX_NUM_HCAS];
-    /* Port numbers */
-    struct ibv_pd * ptag[MAX_NUM_HCAS];
-    struct ibv_cq * cq_hndl[MAX_NUM_HCAS];
+    int                         maxtransfersize;
 
-    /* one cq for both send and recv */
-#ifdef ONE_SIDED
+    struct ibv_context          *nic_context[MAX_NUM_HCAS];
+    struct ibv_device           *ib_dev[MAX_NUM_HCAS];
+    struct ibv_pd               *ptag[MAX_NUM_HCAS];
+    struct ibv_cq               *cq_hndl[MAX_NUM_HCAS];
+
+    /*record lid and port information for connection establish later*/
+    int ports[MAX_NUM_HCAS][MAX_NUM_PORTS];
+    int lids[MAX_NUM_HCAS][MAX_NUM_PORTS];
+
+    int    (*post_send)(MPIDI_VC_t * vc, vbuf * v, int rail);
+
     /* information for the one-sided communication connection */
-    struct ibv_cq * cq_hndl_1sc[MAX_NUM_HCAS];
-    int inline_size_1sc;
+    struct ibv_cq               *cq_hndl_1sc[MAX_NUM_HCAS];
+    int                         inline_size_1sc;
 
     /*information for management of windows */
-    struct dreg_entry *RDMA_local_win_dreg_entry[MAX_WIN_NUM];
-    struct dreg_entry *RDMA_local_wincc_dreg_entry[MAX_WIN_NUM];
-    struct dreg_entry *RDMA_local_actlock_dreg_entry[MAX_WIN_NUM];
-    struct dreg_entry *RDMA_post_flag_dreg_entry[MAX_WIN_NUM];
-    struct dreg_entry *RDMA_assist_thr_ack_entry[MAX_WIN_NUM];
+    struct dreg_entry           *RDMA_local_win_dreg_entry[MAX_WIN_NUM];
+    struct dreg_entry           *RDMA_local_wincc_dreg_entry[MAX_WIN_NUM];
+    struct dreg_entry           *RDMA_local_actlock_dreg_entry[MAX_WIN_NUM];
+    struct dreg_entry           *RDMA_post_flag_dreg_entry[MAX_WIN_NUM];
+    struct dreg_entry           *RDMA_assist_thr_ack_entry[MAX_WIN_NUM];
 
     /* there two variables are used to help keep track of different windows
      * */
-    long win_index2address[MAX_WIN_NUM];
-    int current_win_num;
-#endif
+    long                        win_index2address[MAX_WIN_NUM];
+    int                         current_win_num;
 
+    uint32_t                    pending_r3_sends[MAX_NUM_SUBRAILS];
+    struct ibv_srq              *srq_hndl[MAX_NUM_HCAS];
+    pthread_spinlock_t          srq_post_lock;
+    pthread_t                   async_thread[MAX_NUM_HCAS];
+    uint32_t                    posted_bufs[MAX_NUM_HCAS];
+    MPIDI_VC_t                  **vc_mapping;
 
-#ifdef SRQ
-    uint32_t pending_r3_sends[MAX_NUM_SUBRAILS];
-    struct ibv_srq      *srq_hndl[MAX_NUM_HCAS];
-    pthread_spinlock_t  srq_post_lock;
-    pthread_t           async_thread[MAX_NUM_HCAS];
-    uint32_t            posted_bufs[MAX_NUM_HCAS];
-    MPIDI_VC_t **vc_mapping;
-#endif
+    /* data structure for ring based startup */
+    struct ibv_cq               *boot_cq_hndl;
+    struct ibv_qp               *boot_qp_hndl[2];
+    int                         boot_tb[2][2];
+    struct ibv_mr               *boot_mem_hndl;
+    char                        *boot_mem;
 
-#ifdef USE_MPD_RING
-    struct ibv_cq * boot_cq_hndl;
-    struct ibv_qp * boot_qp_hndl[2];
-    int boot_tb[2][2];                /* HCA LID and QP for the ring */
-    struct ibv_mr * boot_mem_hndl;
-    char * boot_mem;
-#endif
-
-#ifdef ADAPTIVE_RDMA_FAST_PATH
-    int  polling_group_size;
-    MPIDI_VC_t **polling_set;
-#endif
+    int                         polling_group_size;
+    MPIDI_VC_t                  **polling_set;
 
 } MPIDI_CH3I_RDMA_Process_t;
 
-struct rdma_iba_addr_tb;
+typedef struct rdma_iba_addr_tb {
+    int         **hostid;
+    uint16_t    **lid;
+    uint32_t    **qp_num_rdma;
+    /* TODO: haven't consider one sided queue pair yet */
+    uint32_t    **qp_num_onesided;
+} rdma_iba_addr_tb_t ;
+
 struct MPIDI_PG;
 
 extern MPIDI_CH3I_RDMA_Process_t MPIDI_CH3I_RDMA_Process;
-extern struct MPIDI_PG *cached_pg;
+extern struct MPIDI_PG      *cached_pg;
+extern struct rdma_iba_addr_tb   rdma_iba_addr_table;
 
+#define GEN_EXIT_ERR     -1     /* general error which forces us to abort */
+#define GEN_ASSERT_ERR   -2     /* general assert error */
+#define IBV_RETURN_ERR   -3     /* gen2 function return error */
+#define IBV_STATUS_ERR   -4     /*  gen2 function status error */
+
+#define ibv_error_abort(code, message, args...)  {              \
+    int my_rank;                                                \
+    PMI_Get_rank(&my_rank);                                     \
+    fprintf(stderr, "[%d] Abort: ", my_rank);                   \
+    fprintf(stderr, message, ##args);                           \
+    fprintf(stderr, " at line %d in file %s\n", __LINE__,       \
+            __FILE__);                                          \
+    exit(code);                                                 \
+}
+
+#define PACKET_SET_RDMA_CREDIT(_p, _c)                          \
+{                                                               \
+    (_p)->mrail.rdma_credit     = (_c)->mrail.rfp.rdma_credit;  \
+    (_c)->mrail.rfp.rdma_credit = 0;                            \
+    (_p)->mrail.vbuf_credit     = 0;                            \
+    (_p)->mrail.remote_credit   = 0;                            \
+}
+
+#define PACKET_SET_CREDIT(_p, _c, _rail_index)                  \
+{                                                               \
+    (_p)->mrail.rdma_credit     = (_c)->mrail.rfp.rdma_credit;  \
+    (_c)->mrail.rfp.rdma_credit = 0;                            \
+    (_p)->mrail.vbuf_credit     =                               \
+    (_c)->mrail.srp.credits[(_rail_index)].local_credit;        \
+    (_p)->mrail.remote_credit   =                               \
+    (_c)->mrail.srp.credits[(_rail_index)].remote_credit;       \
+    (_c)->mrail.srp.credits[(_rail_index)].local_credit = 0;    \
+}
+
+#define PREPOST_VBUF_RECV(_c, _subrail)  {                      \
+    vbuf *__v = get_vbuf();                                     \
+    vbuf_init_recv(__v, VBUF_BUFFER_SIZE, _subrail);            \
+    IBV_POST_RR(_c, __v, (_subrail));                           \
+    (_c)->mrail.srp.credits[(_subrail)].local_credit++;         \
+    (_c)->mrail.srp.credits[(_subrail)].preposts++;             \
+}
+
+#define  IBV_POST_SR(_v, _c, _rail, err_string) {               \
+    {                                                           \
+        int __ret;                                              \
+        if((_v)->desc.sg_entry.length <= rdma_max_inline_size ){\
+           (_v)->desc.sr.send_flags = (enum ibv_send_flags)     \
+                                        (IBV_SEND_SIGNALED |    \
+                                         IBV_SEND_INLINE);      \
+        } else {                                                \
+            (_v)->desc.sr.send_flags = IBV_SEND_SIGNALED ;      \
+        }                                                       \
+        if ((_rail) != (_v)->rail) { \
+                fprintf(stderr, "[%s:%d] rail %d, vrail %d\n",  \
+                        __FILE__, __LINE__,(_rail), (_v)->rail);\
+                assert((_rail) == (_v)->rail);                  \
+        }                                                       \
+        __ret = ibv_post_send((_c)->mrail.rails[(_rail)].qp_hndl,\
+                  &((_v)->desc.sr),&((_v)->desc.bad_sr));       \
+        if(__ret) {                                             \
+            fprintf(stderr, "failed while avail wqe is %d, "    \
+                    "rail %d\n",                                \
+                    (_c)->mrail.rails[(_rail)].send_wqes_avail, \
+                    (_rail));                                   \
+            ibv_error_abort(-1, err_string);                    \
+        }                                                       \
+    }                                                           \
+}
+
+#define IBV_POST_RR(_c,_vbuf,_rail) {                           \
+    int __ret;                                                  \
+    _vbuf->vc = (void *)_c;                                     \
+    __ret = ibv_post_recv(_c->mrail.rails[(_rail)].qp_hndl,     \
+                          &((_vbuf)->desc.rr),                  \
+            &((_vbuf)->desc.bad_rr));                           \
+    if (__ret) {                                                \
+        ibv_error_abort(IBV_RETURN_ERR,                         \
+            "VAPI_post_rr (viadev_post_recv) with %d",          \
+                __ret);                                         \
+    }                                                           \
+}
+
+#define BACKLOG_ENQUEUE(q,v) {                      \
+    v->desc.next = NULL;                            \
+    if (q->vbuf_tail == NULL) {                     \
+         q->vbuf_head = v;                          \
+    } else {                                        \
+         q->vbuf_tail->desc.next = v;               \
+    }                                               \
+    q->vbuf_tail = v;                               \
+    q->len++;                                       \
+}
+
+#define BACKLOG_DEQUEUE(q,v)  {                     \
+    v = q->vbuf_head;                               \
+    q->vbuf_head = v->desc.next;                    \
+    if (v == q->vbuf_tail) {                        \
+        q->vbuf_tail = NULL;                        \
+    }                                               \
+    q->len--;                                       \
+    v->desc.next = NULL;                            \
+}
+
+#define CHECK_UNEXP(ret, s)                           \
+do {                                                  \
+    if (ret) {                                        \
+        fprintf(stderr, "[%s:%d]: %s\n",              \
+                __FILE__,__LINE__, s);                \
+    exit(1);                                          \
+    }                                                 \
+} while (0)
+
+#define CHECK_RETURN(ret, s)                            \
+do {                                                    \
+    if (ret) {                                          \
+    fprintf(stderr, "[%s:%d] error(%d): %s\n",          \
+        __FILE__,__LINE__, ret, s);                     \
+    exit(1);                                            \
+    }                                                   \
+}                                                       \
+while (0)
+
+#undef IN
+#undef OUT
+
+double get_us(void);
+
+#define INVAL_HNDL (0xffffffff)
+
+
+#define IN
+#define OUT
+
+#undef MALLOC
+#undef FREE
+
+#define MALLOC(a)    malloc((unsigned)(a))
+#define CALLOC(a,b)  calloc((unsigned)(a),(unsigned)(b))
+#define FREE(a)      free((char *)(a))
+#define NEW(a)    (a *)MALLOC(sizeof(a))
+#define STRDUP(a)   strdup(a)
+
+#ifdef ONE_SIDED
+
+#define SIGNAL_FOR_PUT        (1)
+#define SIGNAL_FOR_GET        (2)
+#define SIGNAL_FOR_LOCK_ACT   (3)
+#define SIGNAL_FOR_DECR_CC    (4)
+
+#endif
+
+void MPD_Ring_Startup(struct MPIDI_CH3I_RDMA_Process_t *proc,
+	              int pg_rank, int pg_size);
+int rdma_iba_bootstrap_cleanup(struct MPIDI_CH3I_RDMA_Process_t *proc);
+struct ibv_mr * register_memory(void *, int len, int hca_num);
+int deregister_memory(struct ibv_mr * mr);
+int MRAILI_Backlog_send(MPIDI_VC_t * vc, int subrail);
+int rdma_open_hca(struct MPIDI_CH3I_RDMA_Process_t *proc);
+int  rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc);
+void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc);
+void rdma_get_user_parameters(int num_proc, int me);
+int rdma_iba_hca_init_noqp(struct MPIDI_CH3I_RDMA_Process_t *proc,
+              int pg_rank, int pg_size);
+int rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
+              int pg_rank, int pg_size);
+int rdma_iba_allocate_memory(struct MPIDI_CH3I_RDMA_Process_t *proc,
+                 int pg_rank, int pg_size);
+int rdma_iba_enable_connections(struct MPIDI_CH3I_RDMA_Process_t *proc,
+                int pg_rank, int pg_size);
+int MRAILI_Process_send(void *vbuf_addr);
+int post_send(MPIDI_VC_t *vc, vbuf *v, int rail);
+int post_srq_send(MPIDI_VC_t *vc, vbuf *v, int rail);
+int MRAILI_Fill_start_buffer(vbuf *v, MPID_IOV *iov, int n_iov);
+int MPIDI_CH3I_MRAILI_Recv_addr(MPIDI_VC_t * vc, void *vstart);
+void MRAILI_RDMA_Put(MPIDI_VC_t * vc, vbuf *v,
+                     char * local_addr, uint32_t lkey,
+                     char * remote_addr, uint32_t rkey,
+                     int nbytes, int subrail);
+int MRAILI_Fast_rdma_select_rail(MPIDI_VC_t * vc);
+int MRAILI_Send_select_rail(MPIDI_VC_t * vc);
+void vbuf_address_send(MPIDI_VC_t *vc);
+void vbuf_fast_rdma_alloc (struct MPIDI_VC *, int dir);
+int MPIDI_CH3I_MRAILI_rput_complete(MPIDI_VC_t *, MPID_IOV *,
+                                    int, int *num_bytes_ptr, 
+                                    vbuf **, int rail);
+struct ibv_srq *create_srq(struct MPIDI_CH3I_RDMA_Process_t *proc,
+				  int hca_num);
+
+/*function to create qps for the connection and move them to INIT state*/
+int cm_qp_create(MPIDI_VC_t *vc);
+
+/*function to move qps to rtr and prepost buffers*/
+int cm_qp_move_to_rtr(MPIDI_VC_t *vc, uint16_t *lids, uint32_t *qpns);
+
+/*function to move qps to rts and mark the connection available*/
+int cm_qp_move_to_rts(MPIDI_VC_t *vc);
 
 #endif                          /* RDMA_IMPL_H */

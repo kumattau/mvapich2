@@ -83,9 +83,7 @@ typedef enum MPIDI_CH3_Pkt_type
     MPIDI_CH3_PKT_PACKETIZED_SEND_START,
     MPIDI_CH3_PKT_PACKETIZED_SEND_DATA,
     MPIDI_CH3_PKT_RNDV_R3_DATA,
-#if defined(ADAPTIVE_RDMA_FAST_PATH)
     MPIDI_CH3_PKT_ADDRESS,
-#endif
     /* End of OSU-MPI2 */
 
     MPIDI_CH3_PKT_EAGER_SYNC_SEND,    /* FIXME: no sync eager */
@@ -162,7 +160,6 @@ typedef struct MPIDI_CH3_Pkt_rndv_req_to_send
     /* End of OSU-MPI2 */
 } MPIDI_CH3_Pkt_rndv_req_to_send_t;
 
-#if defined(ADAPTIVE_RDMA_FAST_PATH)
 typedef struct MPIDI_CH3I_Pkt_address {
     uint8_t type;  /* XXX - uint8_t to conserve space ??? */
     /* Newly added packet fields for OSU-MPI2 */
@@ -171,7 +168,6 @@ typedef struct MPIDI_CH3I_Pkt_address {
     MPIDI_CH3I_MRAILI_PKT_ADDRESS_DECL
 } MPIDI_CH3_Pkt_address_t;
 
-#endif
 /* End of OSU-MPI2 */
 
 /* typedef MPIDI_CH3_Pkt_send_t MPIDI_CH3_Pkt_rndv_req_to_send_t; */
@@ -186,6 +182,7 @@ typedef struct MPIDI_CH3_Pkt_rndv_clr_to_send
     MPI_Request receiver_req_id;
     /* Newly added packet fields for OSU-MPI2 */
     MPID_Seqnum_t seqnum;
+    int         recv_sz; 
     MPIDI_CH3I_MRAILI_RNDV_INFO_DECL
     /* End of OSU-MPI2 */
 }
@@ -516,9 +513,7 @@ typedef union MPIDI_CH3_Pkt
     MPIDI_CH3_Pkt_get_resp_t get_resp;
     MPIDI_CH3_Pkt_accum_t accum;
     /* OSU-MPI2 */
-#ifdef ADAPTIVE_RDMA_FAST_PATH
     MPIDI_CH3_Pkt_address_t address;
-#endif
     MPIDI_CH3_Pkt_rput_finish_t rput_finish;
     MPIDI_CH3_Pkt_put_rndv_t put_rndv;
     MPIDI_CH3_Pkt_get_rndv_t get_rndv;
@@ -749,7 +744,14 @@ struct MPIDI_Request														\
     MPIDI_REQUEST_SEQNUM													\
 																\
     struct MPID_Request * next;													\
+    enum REQ_TYPE reqtype;    \
 } dev;
+
+enum REQ_TYPE {
+    REQUEST_NORMAL,
+    REQUEST_RNDV_R3_HEADER,
+    REQUEST_RNDV_R3_DATA
+};
 
 #if defined(MPIDI_CH3_REQUEST_DECL)
 #define MPID_DEV_REQUEST_DECL			\

@@ -61,9 +61,7 @@ int MPIDI_CH3_Pkt_size_index[] = {
     sizeof(MPIDI_CH3_Pkt_packetized_send_start_t),	/* 10 */
     sizeof(MPIDI_CH3_Pkt_packetized_send_data_t),
     sizeof(MPIDI_CH3_Pkt_rndv_r3_data_t),
-#if defined(ADAPTIVE_RDMA_FAST_PATH)
     sizeof(MPIDI_CH3_Pkt_address_t),
-#endif
     sizeof(MPIDI_CH3_Pkt_eager_sync_send_t),
     sizeof(MPIDI_CH3_Pkt_eager_sync_ack_t),
     sizeof(MPIDI_CH3_Pkt_ready_send_t),	/* 15 */
@@ -552,6 +550,11 @@ int MPIDI_CH3U_Handle_ordered_recv_pkt(MPIDI_VC_t * vc,
 		    goto fn_exit;
 		}
 
+		if (rreq->dev.iov_count == 1)
+			cts_pkt->recv_sz = rreq->dev.iov[0].MPID_IOV_LEN;
+		else 
+			cts_pkt->recv_sz = rreq->dev.segment_size;
+
 		mpi_errno = MPIDI_CH3_Prepare_rndv_cts(vc, cts_pkt, rreq);
 	
 		mpi_errno =
@@ -589,6 +592,8 @@ int MPIDI_CH3U_Handle_ordered_recv_pkt(MPIDI_VC_t * vc,
 	    MPIDI_CH3_Pkt_rndv_clr_to_send_t *cts_pkt =
 		&pkt->rndv_clr_to_send;
 	    MPID_Request *sreq;
+	    int recv_size;
+	    int i;
 
 	    MPID_Request_get_ptr(cts_pkt->sender_req_id, sreq);
 
@@ -596,6 +601,21 @@ int MPIDI_CH3U_Handle_ordered_recv_pkt(MPIDI_VC_t * vc,
 		sreq->mrail.protocol == VAPI_PROTOCOL_RPUT) {
 		assert(sreq->mrail.rndv_buf_off == 0);
 	    }
+
+	    if (pkt->type == MPIDI_CH3_PKT_RNDV_CLR_TO_SEND) {
+                recv_size = cts_pkt->recv_sz;
+                for (i = 0; i < sreq->dev.iov_count ; i ++) {
+		    if (recv_size < sreq->dev.iov[i].MPID_IOV_LEN) {
+                        fprintf(stderr, "Warning! Receiver is receiving (%d) less than as expected\n", recv_size);
+                        sreq->dev.iov[i].MPID_IOV_LEN = recv_size;
+                        sreq->dev.iov_count = i + 1;
+                        break;
+		    } else 
+		        recv_size -= sreq->dev.iov[i].MPID_IOV_LEN;
+                }
+                sreq->mrail.rndv_buf_sz = cts_pkt->recv_sz;
+            }
+
 	    mpi_errno = MPIDI_CH3_Start_rndv_transfer(vc, sreq, cts_pkt);
 	    if (mpi_errno != MPI_SUCCESS) {
 		mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL,
@@ -1847,12 +1867,6 @@ int MPIDI_CH3U_Post_data_receive(int found, MPID_Request ** rreqp)
 				     rreq->dev.recv_data_sz, userbuf_sz);
 	    rreq->status.count = userbuf_sz;
 	    data_sz = userbuf_sz;
-
-	    mpi_errno = rreq->status.MPI_ERROR;
-	    fprintf(stderr, "Receive buffer size %d is too small for send size %d\n",
-	            userbuf_sz, rreq->dev.recv_data_sz);
-	    exit(mpi_errno);
-
 	}
 
 	if (dt_contig && data_sz == rreq->dev.recv_data_sz) {

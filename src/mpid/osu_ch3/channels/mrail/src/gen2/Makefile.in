@@ -13,7 +13,7 @@ CPPFLAGS        =  @CPPFLAGS@
 MPILIBNAME      = @MPILIBNAME@
 
 CC          = @CC@
-CFLAGS      = @CFLAGS@ -D_GNU_SOURCE -D_SMALL_CLUSTER
+CFLAGS      = @CFLAGS@ -D_GNU_SOURCE -DUSE_INLINE -Wall
 C_COMPILE   = $(CC) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
 LIBTOOL  = @LIBTOOL@
 CC_SHL      = @CC_SHL@
@@ -30,7 +30,7 @@ VPATH = .:${srcdir}
 .c:
 	$(C_COMPILE) -o $* $< $(LDFLAGS) $(LIBS)
 clean:
-	-@rm -f *.o ${srcdir}/*.o 
+	-@rm -f *.o ${srcdir}/*.o ptmalloc2/*.o
 	-@rm -f *.lo ${srcdir}/*.lo
 distclean: clean distclean-xxx remove-makefile
 distclean-xxx:
@@ -42,23 +42,51 @@ remove-genmakefiles:
 	rm -f  Makefile
 INCLUDES = -I../../../../../../include -I${master_top_srcdir}/src/include
 
-all-redirect: ../../../../../../../lib/lib${MPILIBNAME}.a
+PTMALLOC = ptmalloc2
+PTMALLOC_SHL = ptmalloc2_shl
+
+ifeq "$(findstring -DDISABLE_PTMALLOC,$(CFLAGS))" "-DDISABLE_PTMALLOC"
+	PTMALLOC = 
+	PTMALLOC_SHL =
+endif
+
+
+all-redirect: ../../../../../../../lib/lib${MPILIBNAME}.a $(PTMALLOC)
 	@if [ "@ENABLE_SHLIB@" != "none" ] ; then \
-	    ${MAKE} ../../../../../../../lib/lib${MPILIBNAME}.la ; \
+	    ${MAKE} ../../../../../../../lib/lib${MPILIBNAME}.la $(PTMALLOC_SHL); \
 	fi
 
-../../../../../../../lib/lib${MPILIBNAME}.a: ibv_send.o ibv_recv.o rdma_iba_init.o rdma_iba_priv.o\
+../../../../../../../lib/lib${MPILIBNAME}.a: ibv_send.o ibv_recv.o rdma_iba_init.o rdma_iba_priv.o \
 dreg.o ibv_param.o vbuf.o ibv_channel_manager.o ibv_rma.o rdma_iba_1sc.o \
-ibv_rndv.o ibv_priv.o avl.o
+ibv_rndv.o ibv_priv.o avl.o mem_hooks.o cm.o 
 	${AR} cr ../../../../../../../lib/lib${MPILIBNAME}.a $?
 	${RANLIB} ../../../../../../../lib/lib${MPILIBNAME}.a
-	sleep 1
-../../../../../../../lib/lib${MPILIBNAME}.la: ibv_send.lo ibv_recv.lo rdma_iba_init.lo rdma_iba_priv.lo\
+
+../../../../../../../lib/lib${MPILIBNAME}.la: ibv_send.lo ibv_recv.lo rdma_iba_init.lo rdma_iba_priv.lo \
 dreg.lo ibv_param.lo vbuf.lo ibv_channel_manager.lo ibv_rma.lo rdma_iba_1sc.lo \
-ibv_rndv.lo ibv_priv.lo avl.lo
+ibv_rndv.lo ibv_priv.lo avl.lo mem_hooks.lo cm.lo
 	${AR} cr ../../../../../../../lib/lib${MPILIBNAME}.la $?
+
 SOURCES =  ibv_send.c ibv_recv.c rdma_iba_init.c rdma_iba_priv.c dreg.c ibv_param.c \
-vbuf.c ibv_channel_manager.c ibv_rma.c rdma_iba_1sc.c ibv_rndv.c ibv_priv.c avl.c
+vbuf.c ibv_channel_manager.c ibv_rma.c rdma_iba_1sc.c ibv_rndv.c ibv_priv.c avl.c \
+mem_hooks.c cm.c
+
+ptmalloc2: malloc.o
+	${AR} cr ../../../../../../../lib/lib${MPILIBNAME}.a malloc.o
+	${RANLIB} ../../../../../../../lib/lib${MPILIBNAME}.a
+
+malloc.o:
+	${CC} -c -D_GNU_SOURCE=1 -O2 -Wall -Wstrict-prototypes -DUSE_TSD_DATA_HACK \
+	-Iptmalloc2/sysdeps/pthread -Iptmalloc2/sysdeps/generic -I. \
+	-DTHREAD_STATS=1  ptmalloc2/malloc.c
+
+ptmalloc2_shl:
+	${CC_SHL} -c -D_GNU_SOURCE=1 -O2 -Wall -Wstrict-prototypes -DUSE_TSD_DATA_HACK \
+	-Iptmalloc2/sysdeps/pthread -Iptmalloc2/sysdeps/generic -I. \
+	-DTHREAD_STATS=1  ptmalloc2/malloc.c
+	${AR} cr ../../../../../../../lib/lib${MPILIBNAME}.la malloc.o
+
+
 ETAGS = etags --langmap=c:+.i
 tags: TAGS
 TAGS:${HEADERS} ${SOURCES}

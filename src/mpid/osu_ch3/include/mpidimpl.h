@@ -132,6 +132,7 @@ extern volatile int MPIDI_Outstanding_close_ops;
     (req_)->dev.dataloop = NULL;				\
     (req_)->dev.rdma_iov_count = 0;				\
     (req_)->dev.rdma_iov_offset = 0;				\
+    (req_)->dev.reqtype = REQUEST_NORMAL;                       \
 }
 
 #define MPIDI_CH3U_Request_destroy(req_)			\

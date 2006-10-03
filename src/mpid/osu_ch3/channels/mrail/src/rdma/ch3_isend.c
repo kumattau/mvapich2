@@ -81,14 +81,25 @@ int MPIDI_CH3_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void *pkt,
     }
 #endif
 
+    /*CM code*/
+    if (vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE 
+    || !MPIDI_CH3I_CM_SendQ_empty(vc)) {
+        /*Request need to be queued*/
+        MPIDI_DBG_PRINTF((55, FCNAME, "not connected, enqueuing"));
+        update_request(sreq, pkt, pkt_sz, 0);
+        MPIDI_CH3I_CM_SendQ_enqueue(vc, sreq);
+        if (vc->ch.state == MPIDI_CH3I_VC_STATE_UNCONNECTED)  {
+            MPIDI_CH3I_CM_Connect(vc);
+        }
+        goto fn_exit;
+    }
+
     /* The RDMA implementation uses a fixed length header, the size of which is the maximum of all possible packet headers */
 
     if (MPIDI_CH3I_SendQ_empty(vc)) {   /* MT */
         int nb;
         vbuf *buf;
-#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
         int rdma_ok;
-#endif
         MPIDI_DBG_PRINTF((55, FCNAME,
                           "send queue empty, attempting to write"));
 
@@ -97,7 +108,6 @@ int MPIDI_CH3_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void *pkt,
 
         iov[0].MPID_IOV_BUF = pkt;
         iov[0].MPID_IOV_LEN = pkt_sz;
-#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
         rdma_ok = MPIDI_CH3I_MRAILI_Fast_rdma_ok(vc, pkt_sz);
         DEBUG_PRINT(stdout, "[send], rdma ok: %d\n", rdma_ok);
         if (rdma_ok != 0) {
@@ -107,9 +117,7 @@ int MPIDI_CH3_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void *pkt,
                                                           &buf);
             DEBUG_PRINT("[send: send progress] mpi_errno %d, nb %d\n",
                         mpi_errno == MPI_SUCCESS, nb);
-        } else
-#endif
-        {
+        } else {
             /* TODO: Codes to send pkt through send/recv path */
             mpi_errno =
                 MPIDI_CH3I_MRAILI_Eager_send(vc, iov, 1, &nb, &buf);

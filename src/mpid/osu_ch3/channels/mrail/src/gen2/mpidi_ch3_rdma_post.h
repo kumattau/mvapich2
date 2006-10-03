@@ -81,51 +81,51 @@ int     iba_unlock(MPID_Win *, MPIDI_RMA_ops *, int);
 
 
 
-#define Calculate_IOV_len(_iov, _n_iov, _len) \
-{   int _i; (_len) = 0;                         \
-    for (_i = 0; _i < (_n_iov); _i ++) {          \
-        (_len) += (_iov)[_i].MPID_IOV_LEN;         \
-    }                                       \
+#define Calculate_IOV_len(_iov, _n_iov, _len)                   \
+{   int _i; (_len) = 0;                                         \
+    for (_i = 0; _i < (_n_iov); _i ++) {                        \
+        (_len) += (_iov)[_i].MPID_IOV_LEN;                      \
+    }                                                           \
 }
 
-#define MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(rreq) \
-{       \
-    if (rreq != NULL) {         \
-        if (rreq->mrail.d_entry != NULL) {               \
-            dreg_unregister(rreq->mrail.d_entry);           \
-            rreq->mrail.d_entry = NULL;                     \
-        }       \
-        if (1 == rreq->mrail.rndv_buf_alloc \
-            && rreq->mrail.rndv_buf != NULL) { \
+#define MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(rreq)                \
+{                                                               \
+    if (rreq != NULL) {                                         \
+        if (rreq->mrail.d_entry != NULL) {                      \
+            dreg_unregister(rreq->mrail.d_entry);               \
+            rreq->mrail.d_entry = NULL;                         \
+        }                                                       \
+        if (1 == rreq->mrail.rndv_buf_alloc                     \
+            && rreq->mrail.rndv_buf != NULL) {                  \
             MPIU_Free(rreq->mrail.rndv_buf);                    \
             rreq->mrail.rndv_buf = NULL;                        \
             rreq->mrail.rndv_buf_off = rreq->mrail.rndv_buf_sz = 0; \
-            rreq->mrail.rndv_buf_alloc = 0;       \
-        }  else { \
+            rreq->mrail.rndv_buf_alloc = 0;                     \
+        }  else {                                               \
             rreq->mrail.rndv_buf_off = rreq->mrail.rndv_buf_sz = 0; \
-        } \
-        rreq->mrail.d_entry = NULL;                         \
-    }   \
+        }                                                       \
+        rreq->mrail.d_entry = NULL;                             \
+    }                                                           \
 }
 
-#define PUSH_FLOWLIST(c) {                                          \
-    if (0 == c->mrail.inflow) {                                           \
-        c->mrail.inflow = 1;                                              \
-        c->mrail.nextflow = flowlist;                                     \
-        flowlist = c;                                               \
-    }                                                               \
+#define PUSH_FLOWLIST(c) {                                      \
+    if (0 == c->mrail.inflow) {                                 \
+        c->mrail.inflow = 1;                                    \
+        c->mrail.nextflow = flowlist;                           \
+        flowlist = c;                                           \
+    }                                                           \
 }
  
-#define POP_FLOWLIST() {                                            \
-    if (flowlist != NULL) {                                         \
-        MPIDI_VC_t *_c;                                    \
-        _c = flowlist;                                              \
-        flowlist = _c->mrail.nextflow;                                    \
-        _c->mrail.inflow = 0;                                             \
-        _c->mrail.nextflow = NULL;                                        \
-    }                                                               \
+#define POP_FLOWLIST() {                                        \
+    if (flowlist != NULL) {                                     \
+        MPIDI_VC_t *_c;                                         \
+        _c = flowlist;                                          \
+        flowlist = _c->mrail.nextflow;                          \
+        _c->mrail.inflow = 0;                                   \
+        _c->mrail.nextflow = NULL;                              \
+    }                                                           \
 }
-                                                                                                                                              
+
 /*
  * Attached to each connection is a list of send handles that
  * represent rendezvous sends that have been started and acked but not
@@ -146,56 +146,61 @@ int     iba_unlock(MPID_Win *, MPIDI_RMA_ops *, int);
  * both a head and a tail.
  *
  */
-#define RENDEZVOUS_IN_PROGRESS(c, s) {                              \
-    if (NULL == (c)->mrail.sreq_tail) {                               \
-        (c)->mrail.sreq_head = (void *)(s);                                     \
-    } else {                                                        \
-        ((MPID_Request *)(c)->mrail.sreq_tail)->mrail.next_inflow = (void *)(s);  \
-    }                                                               \
-    (c)->mrail.sreq_tail = (void *)(s);                                         \
-    ((MPID_Request *)(s))->mrail.next_inflow = NULL; \
-}
-                                                                                                                                               
-#define RENDEZVOUS_DONE(c) {                                        \
-    (c)->mrail.sreq_head = ((MPID_Request *)(c)->mrail.sreq_head)->mrail.next_inflow; \
-        if (NULL == (c)->mrail.sreq_head) {                              \
-            (c)->mrail.sreq_tail = NULL;                                 \
-        }                                                           \
+
+#define RENDEZVOUS_IN_PROGRESS(c, s) {                          \
+    if (NULL == (c)->mrail.sreq_tail) {                         \
+        (c)->mrail.sreq_head = (void *)(s);                     \
+    } else {                                                    \
+        ((MPID_Request *)                                       \
+         (c)->mrail.sreq_tail)->mrail.next_inflow =             \
+            (void *)(s);                                        \
+    }                                                           \
+    (c)->mrail.sreq_tail = (void *)(s);                         \
+    ((MPID_Request *)(s))->mrail.next_inflow = NULL;            \
 }
 
-#define MPIDI_CH3I_MRAIL_SET_PKT_RNDV(_pkt, _req) \
-{   \
-    (_pkt)->rndv.protocol = (_req)->mrail.protocol;  \
-    if (VAPI_PROTOCOL_RPUT == (_pkt)->rndv.protocol){   \
-	int _i;   \
-	for (_i = 0; _i < rdma_num_hcas; _i ++) \
-            (_pkt)->rndv.rkey[_i] = ((_req)->mrail.d_entry)->memhandle[_i]->rkey; \
-        (_pkt)->rndv.buf_addr = (_req)->mrail.rndv_buf;  \
-    }   \
+#define RENDEZVOUS_DONE(c) {                                    \
+    (c)->mrail.sreq_head =                                      \
+    ((MPID_Request *)                                           \
+     (c)->mrail.sreq_head)->mrail.next_inflow;                  \
+        if (NULL == (c)->mrail.sreq_head) {                     \
+            (c)->mrail.sreq_tail = NULL;                        \
+        }                                                       \
 }
 
-#define MPIDI_CH3I_MRAIL_SET_REMOTE_RNDV_INFO(_rndv,_req)  \
-{   \
-    int _i;   \
-    (_rndv)->protocol = (_req)->mrail.protocol;  \
-    for (_i = 0; _i < rdma_num_hcas; _i ++) \
-	(_rndv)->rkey[_i] = (_req)->mrail.rkey[_i];    \
-    (_rndv)->buf_addr = (_req)->mrail.remote_addr;  \
+#define MPIDI_CH3I_MRAIL_SET_PKT_RNDV(_pkt, _req)               \
+{                                                               \
+    (_pkt)->rndv.protocol = (_req)->mrail.protocol;             \
+    if (VAPI_PROTOCOL_RPUT == (_pkt)->rndv.protocol){           \
+    int _i;                                                     \
+    for (_i = 0; _i < rdma_num_hcas; _i ++)                     \
+            (_pkt)->rndv.rkey[_i] =                             \
+        ((_req)->mrail.d_entry)->memhandle[_i]->rkey;           \
+        (_pkt)->rndv.buf_addr = (_req)->mrail.rndv_buf;         \
+    }                                                           \
 }
 
-#define MPIDI_CH3I_MRAIL_SET_REQ_REMOTE_RNDV(_req,_pkt) \
-{   \
-    int _i;   \
-    (_req)->mrail.protocol = (_pkt)->rndv.protocol;     \
-    (_req)->mrail.remote_addr = (_pkt)->rndv.buf_addr;  \
-    for (_i = 0; _i < rdma_num_hcas; _i ++) \
-	(_req)->mrail.rkey[_i] = (_pkt)->rndv.rkey[_i];         \
+#define MPIDI_CH3I_MRAIL_SET_REMOTE_RNDV_INFO(_rndv,_req)       \
+{                                                               \
+    int _i;                                                     \
+    (_rndv)->protocol = (_req)->mrail.protocol;                 \
+    for (_i = 0; _i < rdma_num_hcas; _i ++)                     \
+    (_rndv)->rkey[_i] = (_req)->mrail.rkey[_i];                 \
+    (_rndv)->buf_addr = (_req)->mrail.remote_addr;              \
+}
+
+#define MPIDI_CH3I_MRAIL_SET_REQ_REMOTE_RNDV(_req,_pkt)         \
+{                                                               \
+    int _i;                                                     \
+    (_req)->mrail.protocol = (_pkt)->rndv.protocol;             \
+    (_req)->mrail.remote_addr = (_pkt)->rndv.buf_addr;          \
+    for (_i = 0; _i < rdma_num_hcas; _i ++)                     \
+    (_req)->mrail.rkey[_i] = (_pkt)->rndv.rkey[_i];             \
 }
 
 /* Return type of the sending interfaces */
 #define MPI_MRAIL_MSG_QUEUED (-1)
 
-#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
 int MPIDI_CH3I_MRAILI_Fast_rdma_ok(MPIDI_VC_t * vc, int len);
 
 int MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(MPIDI_VC_t * vc,
@@ -204,8 +209,6 @@ int MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(MPIDI_VC_t * vc,
                                               int * nb, 
                                               vbuf ** v);
 
-
-#endif                                                                                                                                               
 int MPIDI_CH3I_RDMA_cq_poll();
 
 void MRAILI_Init_vc(MPIDI_VC_t * vc, int pg_rank);
@@ -216,15 +219,10 @@ int MPIDI_CH3I_MRAILI_Eager_send(   MPIDI_VC_t * vc,
                                     int * num_bytes_ptr,
                                     vbuf ** buf_handle);
 
-int MRAILI_Post_send(MPIDI_VC_t *vc, vbuf *v, int rail);
-
-int MRAILI_Fill_start_buffer(vbuf *v, MPID_IOV *iov, int n_iov);
-
-int MPIDI_CH3I_MRAILI_Recv_addr(MPIDI_VC_t * vc, void *vstart);
 /* Following functions are defined in vapi_channel_manager.c */
 
 /* return type predefinition */
-#define T_CHANNEL_NO_ARRIVE 0	
+#define T_CHANNEL_NO_ARRIVE 0   
 #define T_CHANNEL_EXACT_ARRIVE 1
 #define T_CHANNEL_OUT_OF_ORDER_ARRIVE 2
 #define T_CHANNEL_CONTROL_MSG_ARRIVE 3
@@ -247,12 +245,8 @@ void MRAILI_Release_recv_rdma(vbuf *v);
 
 extern MPIDI_VC_t * flowlist;
 
-#ifdef SRQ
-
 /* Post the buffers on an SRQ associated with a particular HCA */
 int viadev_post_srq_buffers(int, int);
 void async_thread(void *ctx);
-
-#endif
 
 #endif /* MPIDI_CH3_RDMA_POST_H */

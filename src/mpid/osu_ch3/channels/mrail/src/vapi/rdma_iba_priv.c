@@ -1066,7 +1066,6 @@ rdma_iba_exchange_info(struct MPIDI_CH3I_RDMA_Process_t *proc,
                     rdma_iba_addr_table.hostid[i][0],
                     rdma_iba_addr_table.lid[i][0],
                     local_addr_len, QPLEN_XDR);
-
 #ifdef _SMP_
         vc->smp.hostid = rdma_iba_addr_table.hostid[i][0];
 #endif

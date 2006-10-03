@@ -194,7 +194,7 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
                         sreq->dev.iov_count, sreq->ch.iov_offset,
                         sreq->dev.iov[0].MPID_IOV_LEN);
 
-            mpi_errno = MPIDI_CH3I_SMP_writev(vc, 
+            mpi_errno = MPIDI_CH3I_SMP_writev_rndv_data(vc, 
                                 &sreq->dev.iov[sreq->ch.iov_offset], 
                                 sreq->dev.iov_count - sreq->ch.iov_offset,
                                 &nb);
@@ -212,14 +212,19 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
                     if (complete) {
                         sreq->mrail.nearly_complete = 1;
                         break;
+                    } else {
+                        vc->smp.send_current_pkt_type = SMP_RNDV_MSG_CONT;
                     }
                 } else {
+                    sreq->dev.reqtype = REQUEST_RNDV_R3_DATA;
                     MPIDI_CH3I_SMP_SendQ_enqueue_head(vc, sreq);
                     vc->smp.send_active = sreq;
                     sreq->mrail.nearly_complete = 1;
+                    vc->smp.send_current_pkt_type = SMP_RNDV_MSG_CONT;
                     break;
                 }
             } else {
+                assert(0);
                 MPIDI_CH3I_SMP_SendQ_enqueue_head(vc, sreq);
                 vc->smp.send_active = sreq;
                 sreq->mrail.nearly_complete = 1;
@@ -227,8 +232,10 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
             }
         }
     } else {
+        sreq->dev.reqtype = REQUEST_RNDV_R3_DATA;
         MPIDI_CH3I_SMP_SendQ_enqueue(vc, sreq);
         sreq->mrail.nearly_complete = 1;
+        vc->smp.send_current_pkt_type = SMP_RNDV_MSG;
         DEBUG_PRINT("Enqueue sreq %p", sreq);
     }
     return MPI_SUCCESS;
@@ -276,7 +283,6 @@ void MPIDI_CH3_Rendezvous_r3_push(MPIDI_VC_t * vc, MPID_Request * sreq)
                         sreq->dev.iov_count, sreq->ch.iov_offset,
                         sreq->dev.iov[0].MPID_IOV_LEN);
 
-#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
             rdma_ok = MPIDI_CH3I_MRAILI_Fast_rdma_ok(vc, 0);
             DEBUG_PRINT("[send], rdma ok: %d\n", rdma_ok);
             if (rdma_ok != 0) {
@@ -287,9 +293,7 @@ void MPIDI_CH3_Rendezvous_r3_push(MPIDI_VC_t * vc, MPID_Request * sreq)
                 DEBUG_PRINT("[send: send progress] mpi_errno %d, nb %d\n",
                             mpi_errno == MPI_SUCCESS, nb);
                 assert(NULL == buf->sreq);
-            } else
-#endif
-            {
+            } else {
                 mpi_errno =
                     MPIDI_CH3I_MRAILI_Eager_send(vc, iov, n_iov, &nb,
                                                  &buf);

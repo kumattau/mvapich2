@@ -13,7 +13,6 @@
 #include "rdma_impl.h"
 #include "vbuf.h"
 #include "dreg.h"
-#include "ibv_priv.h"
 
 #undef DEBUG_PRINT
 #ifdef DEBUG
@@ -169,24 +168,7 @@ void MRAILI_RDMA_Put_finish(MPIDI_VC_t * vc, MPID_Request * sreq, int rail)
     iov.MPID_IOV_LEN = sizeof(MPIDI_CH3_Pkt_rput_finish_t);
 
     DEBUG_PRINT("Sending RPUT FINISH\n");
-#if 0
-#if defined(RDMA_FAST_PATH)
-    rdma_ok =
-        MPIDI_CH3I_MRAILI_Fast_rdma_ok(vc,
-                sizeof
-                (MPIDI_CH3_Pkt_rput_finish_t));
-    if (rdma_ok) {
-        /* the packet header and the data now is in rdma fast buffer */
-        mpi_errno =
-            MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(vc, &iov, n_iov, &nb,
-                    &buf);
-        if (mpi_errno != MPI_SUCCESS && mpi_errno != MPI_MRAIL_MSG_QUEUED) {
-            ibv_error_abort(IBV_STATUS_ERR,
-                    "Cannot send rput through rdma fast path");
-        }
-    } else
-#endif
-#endif
+
     {
         mpi_errno =
             MPIDI_CH3I_MRAILI_rput_complete(vc, &iov, n_iov, &nb, &buf, rail);

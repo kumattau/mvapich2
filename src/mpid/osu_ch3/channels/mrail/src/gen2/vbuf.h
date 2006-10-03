@@ -31,63 +31,6 @@
 
 #include "ibv_param.h"
 
-#if !defined(_PCI_X_) && !defined(_PCI_EX_)
-#error IO_BUS type _PCI_X_, _PCI_EX_ must be defined
-#endif
-
-#if defined(_LARGE_CLUSTER)
-        #define VBUF_TOTAL_SIZE (2*1024)
-#elif defined(_MEDIUM_CLUSTER)
-        #define VBUF_TOTAL_SIZE (4*1024)
-#else
-
-#if defined(MAC_OSX)
-        #define VBUF_TOTAL_SIZE (16*1024)
-#elif defined(_X86_64_)
-        #if defined(_PCI_X_)
-                #define VBUF_TOTAL_SIZE (12*1024)
-        #elif defined(_PCI_EX_)
-                #define VBUF_TOTAL_SIZE (12*1024)
-        #else
-                #define VBUF_TOTAL_SIZE (12*1024)
-        #endif
-                                                                                                                                                             
-#elif defined(_EM64T_)
-        #if defined(_PCI_X_)
-                #define VBUF_TOTAL_SIZE (12*1024)
-        #elif defined(_PCI_EX_)
-                #define VBUF_TOTAL_SIZE (6*1024)
-        #else
-                #define VBUF_TOTAL_SIZE (6*1024)
-        #endif
-
-#elif defined(_PPC64_)
-        #define VBUF_TOTAL_SIZE (6*1024)
-
-#elif defined(_IA32_)
-        #if defined(_PCI_X_)
-                #define VBUF_TOTAL_SIZE (12*1024)
-        #elif defined(_PCI_EX_)
-                #define VBUF_TOTAL_SIZE (6*1024)
-        #else
-                #define VBUF_TOTAL_SIZE (12*1024)
-        #endif
-                                                                                                                                                             
-#else
-        #if defined(_PCI_X_)
-                #define VBUF_TOTAL_SIZE (12*1024)
-        #elif defined(_PCI_EX_)
-                #define VBUF_TOTAL_SIZE (6*1024)
-        #else
-                #define VBUF_TOTAL_SIZE (12*1024)
-        #endif
-                                                                                                                                                             
-#endif
-                                                                                                                                                             
-#endif
-
-#define VBUF_ALIGNMENT VBUF_TOTAL_SIZE
-
 #define CREDIT_VBUF_FLAG (111)
 #define NORMAL_VBUF_FLAG (222)
 #define RPUT_VBUF_FLAG (333)
@@ -103,14 +46,12 @@
                 ALIGN_UNIT)) * ALIGN_UNIT;          \
 }
 
-#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
 #define MRAILI_FAST_RDMA_VBUF_START(_v, _len, _start) \
 {                                                                       \
     int __align_len;                                                      \
     __align_len = ((int)(((_len)+ALIGN_UNIT-1) / ALIGN_UNIT)) * ALIGN_UNIT; \
     _start = (void *)((unsigned long)((_v)->head_flag) - __align_len);    \
 }
-#endif
 /* 
    This function will return -1 if buf is NULL
    else return -2 if buf contains a pkt that doesn't contain sequence number 
@@ -146,21 +87,8 @@ struct ibv_wr_descriptor {
     void *next;
 };
 
-#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
-
 #define VBUF_BUFFER_SIZE (rdma_vbuf_total_size -    \
      sizeof(VBUF_FLAG_TYPE))
-
-#define VBUF_BUFFER_SIZE_DEFAULT (VBUF_TOTAL_SIZE -    \
-     sizeof(VBUF_FLAG_TYPE))
-
-
-#else
-
-#define VBUF_BUFFER_SIZE  (rdma_vbuf_total_size)
-#define VBUF_BUFFER_SIZE_DEFAULT  (VBUF_TOTAL_SIZE)
-
-#endif
 
 #define MRAIL_MAX_EAGER_SIZE VBUF_BUFFER_SIZE
 
@@ -172,10 +100,8 @@ typedef struct vbuf {
     struct vbuf_region *region;
     void 	*vc;
     int 	rail;
-#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
     int 	padding;
     VBUF_FLAG_TYPE *head_flag;
-#endif
     unsigned char *buffer;
 
     int content_size;
@@ -191,9 +117,7 @@ typedef struct vbuf {
 #define FAST_RDMA_ALT_TAG 0x8000
 #define FAST_RDMA_SIZE_MASK 0x7fff
 
-#ifdef SRQ
 void init_vbuf_lock();
-#endif
 
 /*
  * Vbufs are allocated in blocks and threaded on a single free list.

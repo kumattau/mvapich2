@@ -9,19 +9,12 @@
  * copyright file COPYRIGHT_MVAPICH2 in the top level MVAPICH2 directory.
  *
  */
-#ifndef MAC_OSX
-#include <malloc.h>
-#else
-#include <netinet/in.h>
-#endif
 
 #include <netdb.h>
 #include <string.h>
 #include <sysfs/libsysfs.h>
-
 #include "vbuf.h"
 #include "rdma_impl.h"
-#include "ibv_priv.h"
 #include "pmi.h"
 #include "ibv_param.h"
 
@@ -41,12 +34,7 @@ do {                                                          \
 #define IBA_PMI_ATTRLEN (16)
 #define IBA_PMI_VALLEN  (4096)
 
-#ifdef ONE_SIDED
 static uint32_t dst_qp;
-#endif
-
-#ifdef USE_MPD_RING
-
 
 #define MPD_WINDOW 10
 #define ADDR_PKT_SIZE (sizeof(struct addr_packet) + ((pg_size - 1) * sizeof(struct host_addr_inf)))
@@ -59,9 +47,7 @@ typedef struct init_addr_inf {
 
 typedef struct host_addr_inf {
     uint32_t    sr_qp_num; 
-#ifdef ONE_SIDED
     uint32_t    osc_qp_num;
-#endif
 } host_addr_inf;
 
 typedef struct addr_packet {
@@ -83,8 +69,6 @@ static void MPI_Ring_Setup(struct init_addr_inf * neighbor_addr,
 void 
 MPI_Ring_Exchange(struct ibv_mr * addr_hndl, void * addr_pool,
         struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank, int pg_size);
-
-#endif
 
 static uint16_t get_local_lid(struct ibv_context * ctx, int port)
 {
@@ -113,7 +97,6 @@ static inline int get_host_id(char *myhostname, int hostname_len)
     return host_id;
 }
 
-#ifdef USE_MPD_RING
 int rdma_iba_bootstrap_cleanup(struct MPIDI_CH3I_RDMA_Process_t *proc)
 {
     int ret;
@@ -149,14 +132,14 @@ rdma_pmi_exchange_addresses(int pg_rank, int pg_size,
 
     /* Allocate space for pmi keys and values */
     ret = PMI_KVS_Get_key_length_max(&key_max_sz);
-    assert(ret == PMI_SUCCESS);
+    CHECK_UNEXP((ret != PMI_SUCCESS), "Could not get KVS key length");
 
     key_max_sz++;
     key = MPIU_Malloc(key_max_sz);
     CHECK_UNEXP((key == NULL), "Could not get key \n");
 
     ret = PMI_KVS_Get_value_length_max(&val_max_sz);
-    assert(ret == PMI_SUCCESS);
+    CHECK_UNEXP((ret != PMI_SUCCESS), "Could not get KVS value length");
     val_max_sz++;
 
     val = MPIU_Malloc(val_max_sz);
@@ -164,7 +147,7 @@ rdma_pmi_exchange_addresses(int pg_rank, int pg_size,
     len_local = strlen(temp_localaddr);
 
     /* TODO: Double check the value of value */
-    assert(len_local <= val_max_sz);
+    CHECK_UNEXP((len_local > val_max_sz), "local address length is larger then string length");
 
     /* Be sure to use different keys for different processes */
     memset(attr_buff, 0, IBA_PMI_ATTRLEN * sizeof(char));
@@ -201,8 +184,7 @@ rdma_pmi_exchange_addresses(int pg_rank, int pg_size,
 
         /* Simple sanity check before stashing it to the alladdrs */
         len_remote = strlen(val_buff);
-
-        assert(len_remote >= len_local);
+        CHECK_UNEXP((len_remote < len_local), "remote length is smaller than local length");
         strncpy(temp_alladdrs, val_buff, len_local);
         temp_alladdrs += len_local;
     }
@@ -217,11 +199,9 @@ rdma_pmi_exchange_addresses(int pg_rank, int pg_size,
     CHECK_UNEXP((ret != 0), "PMI_Barrier error \n");
     return 0;
 }
-#endif
 
 
-#ifdef SRQ
-static struct ibv_srq *create_srq(struct MPIDI_CH3I_RDMA_Process_t *proc,
+struct ibv_srq *create_srq(struct MPIDI_CH3I_RDMA_Process_t *proc,
                                 int hca_num)
 {
     struct ibv_srq_init_attr srq_init_attr;
@@ -243,7 +223,6 @@ static struct ibv_srq *create_srq(struct MPIDI_CH3I_RDMA_Process_t *proc,
 
     return srq_ptr;
 }
-#endif
 
 static int check_attrs( struct ibv_port_attr *port_attr, struct ibv_device_attr *dev_attr)
 {
@@ -251,50 +230,50 @@ static int check_attrs( struct ibv_port_attr *port_attr, struct ibv_device_attr 
 
     if(port_attr->active_mtu < rdma_default_mtu) {
         fprintf(stderr,
-                "Active MTU is %d, RDMA_DEFAULT_MTU set to %d. See User Guide\n",
+                "Active MTU is %d, MV2_DEFAULT_MTU set to %d. See User Guide\n",
                 port_attr->active_mtu, rdma_default_mtu);
         ret = 1;
     }
 
     if(dev_attr->max_qp_rd_atom < rdma_default_qp_ous_rd_atom) {
         fprintf(stderr,
-                "Max RDMA_DEFAULT_QP_OUS_RD_ATOM is %d, set to %d\n",
+                "Max MV2_DEFAULT_QP_OUS_RD_ATOM is %d, set to %d\n",
                 dev_attr->max_qp_rd_atom, rdma_default_qp_ous_rd_atom);
         ret = 1;
     }
 
-#ifdef SRQ
-    if(dev_attr->max_srq_sge < rdma_default_max_sg_list) {
-        fprintf(stderr,
-                "Max RDMA_DEFAULT_MAX_SG_LIST is %d, set to %d\n",
-                dev_attr->max_srq_sge, rdma_default_max_sg_list);
-        ret = 1;
-    }
+    if(MPIDI_CH3I_RDMA_Process.has_srq) {
+        if(dev_attr->max_srq_sge < rdma_default_max_sg_list) {
+            fprintf(stderr,
+                    "Max MV2_DEFAULT_MAX_SG_LIST is %d, set to %d\n",
+                    dev_attr->max_srq_sge, rdma_default_max_sg_list);
+            ret = 1;
+        }
 
-    if(dev_attr->max_srq_wr < viadev_srq_size) {
-        fprintf(stderr,
-                "Max VIADEV_SRQ_SIZE is %d, set to %d\n",
-                dev_attr->max_srq_wr, (int) viadev_srq_size);
-        ret = 1;
-    }
-#else
-    if(dev_attr->max_sge < rdma_default_max_sg_list) {
-        fprintf(stderr,
-                "Max RDMA_DEFAULT_MAX_SG_LIST is %d, set to %d\n",
-                dev_attr->max_sge, rdma_default_max_sg_list);
-        ret = 1;
-    }
+        if(dev_attr->max_srq_wr < viadev_srq_size) {
+            fprintf(stderr,
+                    "Max MV2_SRQ_SIZE is %d, set to %d\n",
+                    dev_attr->max_srq_wr, (int) viadev_srq_size);
+            ret = 1;
+        }
+    } else {
+        if(dev_attr->max_sge < rdma_default_max_sg_list) {
+            fprintf(stderr,
+                    "Max MV2_DEFAULT_MAX_SG_LIST is %d, set to %d\n",
+                    dev_attr->max_sge, rdma_default_max_sg_list);
+            ret = 1;
+        }
 
-    if(dev_attr->max_qp_wr < rdma_default_max_wqe) {
-        fprintf(stderr,
-                "Max RDMA_DEFAULT_MAX_WQE is %d, set to %d\n",
-                dev_attr->max_qp_wr, (int) rdma_default_max_wqe);
-        ret = 1;
+        if(dev_attr->max_qp_wr < rdma_default_max_wqe) {
+            fprintf(stderr,
+                    "Max MV2_DEFAULT_MAX_WQE is %d, set to %d\n",
+                    dev_attr->max_qp_wr, (int) rdma_default_max_wqe);
+            ret = 1;
+        }
     }
-#endif
     if(dev_attr->max_cqe < rdma_default_max_cq_size) {
         fprintf(stderr,
-                "Max RDMA_DEFAULT_MAX_CQ_SIZE is %d, set to %d\n",
+                "Max MV2_DEFAULT_MAX_CQ_SIZE is %d, set to %d\n",
                 dev_attr->max_cqe, (int) rdma_default_max_cq_size);
         ret = 1;
     }
@@ -302,24 +281,178 @@ static int check_attrs( struct ibv_port_attr *port_attr, struct ibv_device_attr 
     return ret;
 }
 
+int rdma_open_hca(struct MPIDI_CH3I_RDMA_Process_t *proc)
+{
+    struct ibv_device       *ib_dev = NULL;
+    struct ibv_device **dev_list;
+    int i, j;
+
+    dev_list = ibv_get_device_list(NULL);
+
+    for (i = 0; i < rdma_num_hcas; i ++) {
+
+        if(!strncmp(rdma_iba_hca, RDMA_IBA_NULL_HCA, 32) || 
+                rdma_num_hcas > 1) {
+
+            /* User hasn't specified any HCA name
+             * We will use the first available HCA */
+
+            if(dev_list[i]) {
+                ib_dev = dev_list[i];
+            }
+
+        } else {
+
+            /* User specified a HCA, try to look for it */
+            j = 0;
+            while(dev_list[j]) {
+                if(!strncmp(ibv_get_device_name(dev_list[j]),
+                            rdma_iba_hca, 32)) {
+                    ib_dev = dev_list[j];
+                    break;
+                }
+            }
+            j++;
+        }
+
+        if (!ib_dev) {
+            fprintf(stderr, "No IB device found\n");
+        }
+
+        proc->nic_context[i] = ibv_open_device(ib_dev);
+
+        proc->ib_dev[i] = ib_dev;
+
+        if (!proc->nic_context[i]) {
+            fprintf(stderr, "Fail to open HCA number %d\n", i);
+            return -1;
+        }
+
+    }
+
+    return 0;
+}
+
+
+int rdma_iba_hca_init_noqp(struct MPIDI_CH3I_RDMA_Process_t *proc,
+                  int pg_rank, int pg_size)
+{
+    struct ibv_port_attr    port_attr;
+    struct ibv_device_attr  dev_attr;
+
+    int i, j, k;
+
+    /* step 1: open hca, create ptags  and create cqs */
+    for (i = 0; i < rdma_num_hcas; i++) {
+
+        if(ibv_query_device(proc->nic_context[i], &dev_attr)) {
+            ibv_error_abort(GEN_EXIT_ERR,
+                    "Error getting HCA attributes\n");
+        }
+
+        /* detecting active ports */
+        if (rdma_default_port < 0 || rdma_num_ports > 1) {
+            k = 0;
+            for (j = 1; j <= RDMA_DEFAULT_MAX_PORTS; j ++) {
+                if ((! ibv_query_port(MPIDI_CH3I_RDMA_Process.nic_context[i],
+                                        j, &port_attr)) &&
+                        port_attr.state == IBV_PORT_ACTIVE &&
+                        port_attr.lid) {
+                    MPIDI_CH3I_RDMA_Process.lids[i][k]    = port_attr.lid;
+                    MPIDI_CH3I_RDMA_Process.ports[i][k++] = j;
+
+                    if (check_attrs(&port_attr, &dev_attr)) {
+                        ibv_error_abort(GEN_EXIT_ERR, "Attributes failed sanity check");
+                    }
+                }
+            }
+            if (k < rdma_num_ports) {
+                ibv_error_abort(IBV_STATUS_ERR, "Not enough ports are in active state"
+                                "needed active ports %d\n", rdma_num_ports);
+            }
+        } else {
+            if(ibv_query_port(MPIDI_CH3I_RDMA_Process.nic_context[i],
+                                rdma_default_port, &port_attr)
+                || (!port_attr.lid )
+                || (port_attr.state != IBV_PORT_ACTIVE))
+            {
+                ibv_error_abort(IBV_STATUS_ERR, "user specified port %d: fail to"
+                                                "query or not ACTIVE\n",
+                                                rdma_default_port);
+            }
+            MPIDI_CH3I_RDMA_Process.ports[i][0] = rdma_default_port;
+            MPIDI_CH3I_RDMA_Process.lids[i][0]  = port_attr.lid;
+
+            if (check_attrs(&port_attr, &dev_attr)) {
+                ibv_error_abort(GEN_EXIT_ERR, "Attributes failed sanity check");
+            }
+        }
+
+        /* Allocate the protection domain for the HCA */
+        proc->ptag[i] = ibv_alloc_pd(proc->nic_context[i]);
+        if (!proc->ptag[i]) {
+            fprintf(stderr, "Fail to alloc pd number %d\n", i);
+            goto err;
+        }
+        
+        /* Allocate the completion queue handle for the HCA */
+        proc->cq_hndl[i] = ibv_create_cq(proc->nic_context[i],
+                    rdma_default_max_cq_size, NULL, NULL, 0);
+
+        if (!proc->cq_hndl[i]) {
+            fprintf(stderr, "cannot create cq\n");
+            goto err_pd;
+        }
+
+	if (proc->has_srq)
+	        proc->srq_hndl[i] = create_srq(proc, i);
+
+	if (proc->has_one_sided) {
+	    proc->cq_hndl_1sc[i] = ibv_create_cq(proc->nic_context[i],
+                            rdma_default_max_cq_size, NULL, NULL, 0);
+	    if (!proc->cq_hndl_1sc[i]) {
+ 		fprintf(stderr, 
+                         "cannot allocate CQ for one-sided communication\n");
+                goto err_cq;
+            }
+	}
+    }
+
+    /*Port for all mgmt*/
+    rdma_default_port = MPIDI_CH3I_RDMA_Process.ports[0][0]; 
+    return 0;
+    err_cq:
+        for (i = 0; i < rdma_num_hcas; i ++) {
+            if (proc->cq_hndl[i])
+                ibv_destroy_cq(proc->cq_hndl[i]);
+        }
+        for (i = 0; proc->has_one_sided && i < rdma_num_hcas; i ++) {
+             if (proc->cq_hndl_1sc[0])
+                 ibv_destroy_cq(proc->cq_hndl_1sc[i]);
+        }
+    err_pd:
+        for (i = 0; i < rdma_num_hcas; i ++) {
+            if (proc->ptag[i])
+                ibv_dealloc_pd(proc->ptag[i]);
+        }
+    err:
+        for (i = 0; i < rdma_num_hcas; i ++) {
+            if (proc->nic_context[i])
+                ibv_close_device(proc->nic_context[i]);
+        }
+        return -1;
+}
 
 int
 rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
                   int pg_rank, int pg_size)
 {
-    struct ibv_device       *ib_dev = NULL;
     struct ibv_qp_init_attr attr;
-#ifdef USE_MPD_RING
     struct ibv_qp_init_attr boot_attr;
-#endif
     struct ibv_qp_attr      qp_attr;
     struct ibv_port_attr    port_attr;
-    struct ibv_device_attr dev_attr;
-#ifdef GEN2_OLD_DEVICE_LIST_VERB
-    struct dlist *dev_list;
-#else
-    struct ibv_device **dev_list;
-#endif
+    struct ibv_device_attr  dev_attr;
+
     MPIDI_VC_t	*vc;
 
     int i, j, k;
@@ -329,67 +462,13 @@ rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
     int ports[MAX_NUM_HCAS][MAX_NUM_PORTS];
     int lids[MAX_NUM_HCAS][MAX_NUM_PORTS];
 
-#ifdef GEN2_OLD_DEVICE_LIST_VERB
-    dev_list = ibv_get_devices();
-#else
-    dev_list = ibv_get_device_list(NULL);
-#endif
     /* step 1: open hca, create ptags  and create cqs */
     for (i = 0; i < rdma_num_hcas; i++) {
-#ifdef GEN2_OLD_DEVICE_LIST_VERB
-        dlist_start(dev_list);
-        if (!rdma_iba_default_hca) {
-            ib_dev = dlist_next(dev_list);
-            if (!ib_dev) {
-                fprintf(stderr, "No IB device found\n");
-                return -1;
-            }
-        } else {
-            dlist_for_each_data(dev_list, ib_dev, struct ibv_device)
-            if (!strcmp(ibv_get_device_name(ib_dev), rdma_iba_default_hca))
-                break;
-            if (!ib_dev) {
-                fprintf(stderr, "IB device %s not found\n", rdma_iba_default_hca);
-                return -1;
-            }
-        }
-#else 
-        if(!strncmp(rdma_iba_hca, RDMA_IBA_NULL_HCA, 32) || rdma_num_hcas > 1) {
-            /* User hasn't specified any HCA name
-             * We will use the first available HCA */
-            if(dev_list[i]) {
-                ib_dev = dev_list[i];
-            }
-        } else {
-            /* User specified a HCA, try to look for it */
-	    j = 0;
-            while(dev_list[j]) {
-
-                if(!strncmp(ibv_get_device_name(dev_list[j]),
-                            rdma_iba_hca, 32)) {
-                    ib_dev = dev_list[j];
-                    break;
-                }
-                j++;
-            }
-        }
-
-        if (!ib_dev) {
-            fprintf(stderr, "No IB device found\n");
-	}
-#endif
-        /* Create the context for the HCA */
-        proc->nic_context[i] = ibv_open_device(ib_dev);
-        if (!proc->nic_context[i]) {
-            fprintf(stderr, "Fail to open HCA number %d\n", i);
-            return -1;
-        }
-
         if(ibv_query_device(proc->nic_context[i], &dev_attr)) {
             ibv_error_abort(GEN_EXIT_ERR,
                     "Error getting HCA attributes\n");
         }
-  
+
         /* detecting active ports */
         if (rdma_default_port < 0 || rdma_num_ports > 1) {
             k = 0;
@@ -427,6 +506,7 @@ rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
             if (check_attrs(&port_attr, &dev_attr)) {
                 ibv_error_abort(GEN_EXIT_ERR, "Attributes failed sanity check");
             }
+
         }
 
         /* Allocate the protection domain for the HCA */
@@ -444,19 +524,19 @@ rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
             fprintf(stderr, "cannot create cq\n");
             goto err_pd;
         }
-#ifdef SRQ
-        proc->srq_hndl[i] = create_srq(proc, i);
-#endif
 
-#ifdef ONE_SIDED
-        proc->cq_hndl_1sc[i] = ibv_create_cq(proc->nic_context[i],
+	if (proc->has_srq)
+	        proc->srq_hndl[i] = create_srq(proc, i);
+
+	if (proc->has_one_sided) {
+	    proc->cq_hndl_1sc[i] = ibv_create_cq(proc->nic_context[i],
                             rdma_default_max_cq_size, NULL, NULL, 0);
-        if (!proc->cq_hndl_1sc[i]) {
-            fprintf(stderr, 
-                     "cannot allocate CQ for one-sided communication\n");
-            goto err_cq;
-        }
-#endif
+	    if (!proc->cq_hndl_1sc[i]) {
+ 		fprintf(stderr, 
+                         "cannot allocate CQ for one-sided communication\n");
+                goto err_cq;
+            }
+	}
     }
 
     rdma_default_port 	    = ports[0][0];
@@ -470,13 +550,16 @@ rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
         MPIDI_PG_Get_vc(cached_pg, i, &vc);
 
         vc->mrail.num_rails = rdma_num_rails;
-        vc->mrail.rails = malloc(sizeof *vc->mrail.rails * vc->mrail.num_rails);
+        vc->mrail.rails = malloc
+            (sizeof *vc->mrail.rails * vc->mrail.num_rails);
+
         if (!vc->mrail.rails) {
             fprintf(stderr, "[INIT] Fail to allocate resources for multirails\n");
             goto err_cq;
         }
 
-	vc->mrail.srp.credits = malloc(sizeof *vc->mrail.srp.credits * vc->mrail.num_rails);
+	vc->mrail.srp.credits = malloc
+        (sizeof *vc->mrail.srp.credits * vc->mrail.num_rails);
 	if (!vc->mrail.srp.credits) {
 	    fprintf(stderr, "[INIT] Fail to allocate resources for credits array\n");
 	    goto err_cq;
@@ -494,15 +577,17 @@ rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
                     rdma_num_ports))) % rdma_num_ports;
 	    memset(&attr, 0, sizeof attr);
 	    attr.cap.max_send_wr = rdma_default_max_wqe;
-#ifdef SRQ
-        attr.cap.max_recv_wr = 0;
-        attr.srq = proc->srq_hndl[hca_index];
-#else
-        attr.cap.max_recv_wr = rdma_default_max_wqe;
-#endif
+
+            if (proc->has_srq) {
+                attr.cap.max_recv_wr = 0;
+                attr.srq = proc->srq_hndl[hca_index];
+            } else {
+                attr.cap.max_recv_wr = rdma_default_max_wqe;
+            }
+
 	    attr.cap.max_send_sge = rdma_default_max_sg_list;
 	    attr.cap.max_recv_sge = rdma_default_max_sg_list;
-	    attr.cap.max_inline_data = RDMA_MAX_INLINE_SIZE;
+	    attr.cap.max_inline_data = rdma_max_inline_size;
 	    attr.send_cq = proc->cq_hndl[hca_index];
 	    attr.recv_cq = proc->cq_hndl[hca_index];
 	    attr.qp_type = IBV_QPT_RC;
@@ -540,11 +625,13 @@ rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
             }
 	}
     }
-#ifdef USE_MPD_RING
-    DEBUG_PRINT("ENTERING MPDRING CASE\n");  
-    proc->boot_cq_hndl =
-        ibv_create_cq(proc->nic_context[0],rdma_default_max_cq_size, 
-                NULL, NULL, 0); 
+
+
+    if (MPIDI_CH3I_RDMA_Process.has_ring_startup) {
+        DEBUG_PRINT("ENTERING MPDRING CASE\n");  
+        proc->boot_cq_hndl =
+            ibv_create_cq(proc->nic_context[0],rdma_default_max_cq_size, 
+                          NULL, NULL, 0); 
     if (!proc->boot_cq_hndl) {
         fprintf(stderr, "cannot create cq\n");
         goto err_pd;
@@ -556,7 +643,7 @@ rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
     boot_attr.cap.max_recv_wr   = rdma_default_max_wqe;
     boot_attr.cap.max_send_sge  = rdma_default_max_sg_list;
     boot_attr.cap.max_recv_sge  = rdma_default_max_sg_list;
-    boot_attr.cap.max_inline_data = RDMA_MAX_INLINE_SIZE;
+    boot_attr.cap.max_inline_data = rdma_max_inline_size;
     boot_attr.qp_type = IBV_QPT_RC;
     boot_attr.sq_sig_all = 0;
 
@@ -574,7 +661,7 @@ rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
     boot_attr.cap.max_recv_wr   = rdma_default_max_wqe;
     boot_attr.cap.max_send_sge  = rdma_default_max_sg_list;
     boot_attr.cap.max_recv_sge  = rdma_default_max_sg_list;
-    boot_attr.cap.max_inline_data = RDMA_MAX_INLINE_SIZE;
+    boot_attr.cap.max_inline_data = rdma_max_inline_size;
     boot_attr.qp_type = IBV_QPT_RC;
     boot_attr.sq_sig_all = 0;
 
@@ -588,79 +675,79 @@ rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
     }
     DEBUG_PRINT("Created boot qp %x, %x\n",
             proc->boot_qp_hndl[0]->qp_num, proc->boot_qp_hndl[1]->qp_num);
-#endif
-
-#ifdef ONE_SIDED
-    /* This part is for built up QPs and CQ for one-sided communication */
-    qp_attr.qp_state        = IBV_QPS_INIT;
-    qp_attr.pkey_index      = 0;
-    qp_attr.qp_access_flags =   IBV_ACCESS_LOCAL_WRITE |
-        IBV_ACCESS_REMOTE_WRITE |
-        IBV_ACCESS_REMOTE_READ;
-    qp_attr.port_num        = rdma_default_port;
-
-    for (i = 0; i < pg_size; i++) {
-        memset(&attr, 0, sizeof attr);
-        attr.cap.max_send_wr = rdma_default_max_wqe;
-        attr.cap.max_recv_wr = rdma_default_max_wqe;
-        attr.cap.max_send_sge = rdma_default_max_sg_list;
-        attr.cap.max_recv_sge = rdma_default_max_sg_list;
-        attr.cap.max_inline_data = sizeof(long long);
-        attr.qp_type = IBV_QPT_RC;
-        attr.sq_sig_all = 0;
-
-        MPIDI_PG_Get_vc(cached_pg, i, &vc);
-
-        for (   rail_index = 0;
-                 rail_index < vc->mrail.num_rails;
-                 rail_index++)
-        {
-            hca_index  = rail_index / (vc->mrail.num_rails / rdma_num_hcas);
-            port_index = (rail_index / (vc->mrail.num_rails / (rdma_num_hcas *
-                    rdma_num_ports))) % rdma_num_ports;
-    
-            attr.send_cq = proc->cq_hndl_1sc[hca_index];
-            attr.recv_cq = proc->cq_hndl_1sc[hca_index];
-
-            vc->mrail.rails[rail_index].qp_hndl_1sc = ibv_create_qp(proc->ptag[hca_index], &attr);
-            if (!vc->mrail.rails[rail_index].qp_hndl_1sc) {
-                fprintf(stderr, "[Init] Fail to create one sided qp for rank %d\n", i);
-                goto err_cq;
-            }
-
-            if (i == pg_rank) {
-                dst_qp = vc->mrail.rails[rail_index].qp_hndl_1sc->qp_num;
-            }
-            rdma_iba_addr_table.qp_num_onesided[i][rail_index] =
-                vc->mrail.rails[rail_index].qp_hndl_1sc->qp_num;
-            DEBUG_PRINT("Created onesdied qp %d, num %X, qp_handle is %x\n",
-                i, rdma_iba_addr_table.qp_num_onesided[i][rail_index],vc->mrail.rails[rail_index].qp_hndl_1sc);
-
-            if (ibv_modify_qp(vc->mrail.rails[rail_index].qp_hndl_1sc, &qp_attr,
-                    IBV_QP_STATE              |
-                    IBV_QP_PKEY_INDEX         |
-                    IBV_QP_PORT               |
-                    IBV_QP_ACCESS_FLAGS)) {
-                fprintf(stderr, "Failed to modify One sided QP to INIT\n");
-                goto err_cq;
-            }
-       }
     }
-#endif
+
+    if (proc->has_one_sided) {
+	/* This part is for built up QPs and CQ for one-sided communication */
+	qp_attr.qp_state        = IBV_QPS_INIT;
+	qp_attr.pkey_index      = 0;
+	qp_attr.qp_access_flags =   IBV_ACCESS_LOCAL_WRITE |
+	    			    IBV_ACCESS_REMOTE_WRITE |
+				    IBV_ACCESS_REMOTE_READ;
+	qp_attr.port_num        = rdma_default_port;
+
+	for (i = 0; i < pg_size; i++) {
+	    memset(&attr, 0, sizeof attr);
+	    attr.cap.max_send_wr  = rdma_default_max_wqe;
+	    attr.cap.max_recv_wr  = rdma_default_max_wqe;
+	    attr.cap.max_send_sge = rdma_default_max_sg_list;
+	    attr.cap.max_recv_sge = rdma_default_max_sg_list;
+	    attr.cap.max_inline_data = sizeof(long long);
+	    attr.qp_type 	  = IBV_QPT_RC;
+	    attr.sq_sig_all 	  = 0;
+	
+	    MPIDI_PG_Get_vc(cached_pg, i, &vc);
+
+	    for (rail_index = 0;
+	         rail_index < vc->mrail.num_rails;
+	         rail_index++)
+	    {
+	        hca_index  = rail_index / (vc->mrail.num_rails / rdma_num_hcas);
+	        port_index = (rail_index / (vc->mrail.num_rails / (rdma_num_hcas *
+	                     rdma_num_ports))) % rdma_num_ports;
+
+
+	        attr.send_cq = proc->cq_hndl_1sc[hca_index];
+	        attr.recv_cq = proc->cq_hndl_1sc[hca_index];
+
+	        vc->mrail.rails[rail_index].qp_hndl_1sc = ibv_create_qp(proc->ptag[hca_index], &attr);
+	        if (!vc->mrail.rails[rail_index].qp_hndl_1sc) {
+	            fprintf(stderr, "[Init] Fail to create one sided qp for rank %d\n", i);
+	            goto err_cq;
+	        }
+
+	        if (i == pg_rank) {
+	            dst_qp = vc->mrail.rails[rail_index].qp_hndl_1sc->qp_num;
+	        }
+	        rdma_iba_addr_table.qp_num_onesided[i][rail_index] =
+	            vc->mrail.rails[rail_index].qp_hndl_1sc->qp_num;
+	        DEBUG_PRINT("Created onesdied qp %d, num %X, qp_handle is %x\n",
+	            i, rdma_iba_addr_table.qp_num_onesided[i][rail_index],vc->mrail.rails[rail_index].qp_hndl_1sc);
+	
+	        if (ibv_modify_qp(vc->mrail.rails[rail_index].qp_hndl_1sc, &qp_attr,
+	                	  IBV_QP_STATE              |
+	                	  IBV_QP_PKEY_INDEX         |
+	                	  IBV_QP_PORT               |
+	                	  IBV_QP_ACCESS_FLAGS)) {
+	            fprintf(stderr, "Failed to modify One sided QP to INIT\n");
+	            goto err_cq;
+	        }
+	    }
+	}
+    }
 
     DEBUG_PRINT("Return from init hca\n");
+
     return 0;
 err_cq:
     for (i = 0; i < rdma_num_hcas; i ++) {
         if (proc->cq_hndl[i])
             ibv_destroy_cq(proc->cq_hndl[i]);
     }
-#ifdef ONE_SIDED
-    for (i = 0; i < rdma_num_hcas; i ++) {
+    for (i = 0; proc->has_one_sided && i < rdma_num_hcas; i ++) {
          if (proc->cq_hndl_1sc[0])
              ibv_destroy_cq(proc->cq_hndl_1sc[i]);
     }
-#endif
 err_pd:
     for (i = 0; i < rdma_num_hcas; i ++) {
         if (proc->ptag[i])
@@ -680,110 +767,24 @@ int
 rdma_iba_allocate_memory(struct MPIDI_CH3I_RDMA_Process_t *proc,
                          int pg_rank, int pg_size)
 {
-    int ret = 0, i = 0;
+    int ret = 0, i = 0, j;
     MPIDI_VC_t * vc;
-#if defined(RDMA_FAST_PATH)
-    int iter_hca;
-    int vbuf_alignment = 64;
-    int pagesize = getpagesize();
-#endif
     /* FIrst allocate space for RDMA_FAST_PATH for every connection */
     for (i = 0; i < pg_size; i++) {
         MPIDI_PG_Get_vc(cached_pg, i, &vc);
-#ifdef ONE_SIDED
-	vc->mrail.rails[0].postsend_times_1sc = 0;
-#endif
-
-#ifdef RDMA_FAST_PATH
-        if (i == pg_rank)
-            continue;
-
-        /* Allocate RDMA buffers, have an extra one for some ACK message */
-#define RDMA_ALIGNMENT 4096
-#define RDMA_ALIGNMENT_OFFSET (4096)
-        /* allocate RDMA buffers */
-        if (posix_memalign
-            ((void **) &vc->mrail.rfp.RDMA_send_buf, vbuf_alignment,
-             sizeof(struct vbuf) * num_rdma_buffer)) {
-                ibv_error_abort(GEN_EXIT_ERR, "Unable to alloc rdma buffers");
-        }
-
-        if (posix_memalign
-            ((void **) &vc->mrail.rfp.RDMA_recv_buf, vbuf_alignment,
-             sizeof(struct vbuf) * num_rdma_buffer)) {
-                ibv_error_abort(GEN_EXIT_ERR, "Unable to alloc rdma recv buffers");
-        }
-
-        memset(vc->mrail.rfp.RDMA_send_buf, 0,
-               sizeof(struct vbuf) * (num_rdma_buffer));
-        memset(vc->mrail.rfp.RDMA_recv_buf, 0,
-               sizeof(struct vbuf) * (num_rdma_buffer));
-
-        if (posix_memalign((void **) &vc->mrail.rfp.RDMA_send_buf_DMA, pagesize,
-                           rdma_vbuf_total_size * num_rdma_buffer)) {
-            ibv_error_abort(GEN_EXIT_ERR, "Unable to malloc rdma buffers");
-        }
-
-        if (posix_memalign((void **) &vc->mrail.rfp.RDMA_recv_buf_DMA, pagesize,
-                           rdma_vbuf_total_size * num_rdma_buffer)) {
-            ibv_error_abort(GEN_EXIT_ERR, "Unable to malloc rdma buffers");
-        }
-
-        memset(vc->mrail.rfp.RDMA_send_buf_DMA, 0,
-               rdma_vbuf_total_size * num_rdma_buffer);
-        memset(vc->mrail.rfp.RDMA_recv_buf_DMA, 0,
-               rdma_vbuf_total_size * num_rdma_buffer);
-
-        /* set pointers */
-        vc->mrail.rfp.phead_RDMA_send = 0;
-        vc->mrail.rfp.ptail_RDMA_send = num_rdma_buffer - 1;
-        vc->mrail.rfp.p_RDMA_recv = 0;
-        vc->mrail.rfp.p_RDMA_recv_tail = num_rdma_buffer - 1;
-
-        for (iter_hca = 0; iter_hca < rdma_num_hcas; iter_hca++) {
-            /* initialize unsignal record */
-            vc->mrail.rfp.RDMA_send_buf_mr[iter_hca] = 
-                    ibv_reg_mr( MPIDI_CH3I_RDMA_Process.ptag[iter_hca],
-                                vc->mrail.rfp.RDMA_send_buf_DMA,
-                                rdma_vbuf_total_size * (num_rdma_buffer),
-                                IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE );
-            if (!vc->mrail.rfp.RDMA_send_buf_mr[iter_hca]) {
-                ret = -1;
-                fprintf(stderr, "[%s:%d]: %s\n", __FILE__, __LINE__,
-                                "Unable to register RDMA buffer\n");
-                goto err_buf;
-            }
-
-            vc->mrail.rfp.RDMA_recv_buf_mr[iter_hca] = 
-                    ibv_reg_mr( MPIDI_CH3I_RDMA_Process.ptag[iter_hca],
-                                vc->mrail.rfp.RDMA_recv_buf_DMA,
-                                rdma_vbuf_total_size * (num_rdma_buffer),
-                                IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE  );
-
-            if (!vc->mrail.rfp.RDMA_send_buf_mr[iter_hca] ||
-                !vc->mrail.rfp.RDMA_recv_buf_mr[iter_hca] ) {
-                fprintf(stderr, "[%s:%d]: %s\n", __FILE__, __LINE__, 
-                                "Unable to register RDMA buffer\n");
-                goto err_sreg;
-            }
-            DEBUG_PRINT
-                ("Created buff for rank %d, recvbuff %p, key %p\n", i,
-                 (uintptr_t) vc->mrail.rfp.RDMA_recv_buf_DMA,
-                 vc->mrail.rfp.RDMA_recv_buf_mr[iter_hca]->rkey);
-        }
-#elif defined(ADAPTIVE_RDMA_FAST_PATH)
+	if (proc->has_one_sided) 
+	    for (j = 0; j < rdma_num_rails; j ++)
+		vc->mrail.rails[j].postsend_times_1sc = 0;
 	vc->mrail.rfp.phead_RDMA_send = 0;
 	vc->mrail.rfp.ptail_RDMA_send = 0;
 	vc->mrail.rfp.p_RDMA_recv = 0;
 	vc->mrail.rfp.p_RDMA_recv_tail = 0;
-#endif
     }
 
-#if defined(ADAPTIVE_RDMA_FAST_PATH)
     MPIDI_CH3I_RDMA_Process.polling_group_size = 0;
     if (rdma_polling_set_limit > 0) 
         MPIDI_CH3I_RDMA_Process.polling_set = (MPIDI_VC_t **)
-                        malloc(rdma_polling_set_limit * sizeof(MPIDI_VC_t *));
+                        malloc (rdma_polling_set_limit * sizeof(MPIDI_VC_t *));
     else 
         MPIDI_CH3I_RDMA_Process.polling_set = (MPIDI_VC_t **)
                         malloc(pg_size * sizeof(MPIDI_VC_t *));
@@ -794,7 +795,6 @@ rdma_iba_allocate_memory(struct MPIDI_CH3I_RDMA_Process_t *proc,
 	
 	goto err_reg;
     }
-#endif
 
     /* We need now allocate vbufs for send/recv path */
     ret = allocate_vbufs(MPIDI_CH3I_RDMA_Process.ptag, rdma_vbuf_pool_size);
@@ -804,57 +804,40 @@ rdma_iba_allocate_memory(struct MPIDI_CH3I_RDMA_Process_t *proc,
    
     /* Post the buffers for the SRQ */
 
-#ifdef SRQ
-    pthread_spin_init(&MPIDI_CH3I_RDMA_Process.srq_post_lock, 0);
-    pthread_spin_lock(&MPIDI_CH3I_RDMA_Process.srq_post_lock);
+    if (MPIDI_CH3I_RDMA_Process.has_srq) {
+	int hca_num = 0;
 
-    int hca_num = 0;
-    
-    for(hca_num = 0; hca_num < rdma_num_hcas; hca_num++) { 
-        MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num] = 
-            viadev_post_srq_buffers(viadev_srq_size, hca_num);
+	pthread_spin_init(&MPIDI_CH3I_RDMA_Process.srq_post_lock, 0);
+	pthread_spin_lock(&MPIDI_CH3I_RDMA_Process.srq_post_lock);
 
-        {
-            struct ibv_srq_attr srq_attr;
-            srq_attr.max_wr = viadev_srq_size;
-            srq_attr.max_sge = 1;
-            srq_attr.srq_limit = viadev_srq_limit;
+	for(hca_num = 0; hca_num < rdma_num_hcas; hca_num++) { 
+	    MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num] = 
+	        viadev_post_srq_buffers(viadev_srq_size, hca_num);
+	
+	    {
+	        struct ibv_srq_attr srq_attr;
+	        srq_attr.max_wr = viadev_srq_size;
+	        srq_attr.max_sge = 1;
+	        srq_attr.srq_limit = viadev_srq_limit;
+	
+	        if (ibv_modify_srq(MPIDI_CH3I_RDMA_Process.srq_hndl[hca_num], 
+	                    &srq_attr, IBV_SRQ_LIMIT)) {
+	            ibv_error_abort(IBV_RETURN_ERR, "Couldn't modify SRQ limit\n");
+	        }
+	
+	        /* Start the async thread which watches for SRQ limit events */
+	        pthread_create(&MPIDI_CH3I_RDMA_Process.async_thread[hca_num], NULL,
+	                (void *) async_thread, (void *) MPIDI_CH3I_RDMA_Process.nic_context[hca_num]);
+	    }
+	}
 
-            if (ibv_modify_srq(MPIDI_CH3I_RDMA_Process.srq_hndl[hca_num], 
-                        &srq_attr, IBV_SRQ_LIMIT)) {
-                ibv_error_abort(IBV_RETURN_ERR, "Couldn't modify SRQ limit\n");
-            }
-
-            /* Start the async thread which watches for SRQ limit events */
-            pthread_create(&MPIDI_CH3I_RDMA_Process.async_thread[hca_num], NULL,
-                    (void *) async_thread, (void *) MPIDI_CH3I_RDMA_Process.nic_context[hca_num]);
-        }
+	pthread_spin_unlock(&MPIDI_CH3I_RDMA_Process.srq_post_lock);
     }
-
-    pthread_spin_unlock(&MPIDI_CH3I_RDMA_Process.srq_post_lock);
-
-#endif
     
     return MPI_SUCCESS;
-#ifdef RDMA_FAST_PATH
 err_reg:
-    for (iter_hca = 0; iter_hca < rdma_num_hcas; iter_hca ++)
-        ibv_dereg_mr(vc->mrail.rfp.RDMA_recv_buf_mr[iter_hca]);
-err_sreg:
-    for (iter_hca = 0; iter_hca < rdma_num_hcas; iter_hca ++)
-        ibv_dereg_mr(vc->mrail.rfp.RDMA_send_buf_mr[iter_hca]);
-err_buf:
-    free(vc->mrail.rfp.RDMA_recv_buf_DMA);
-    free(vc->mrail.rfp.RDMA_send_buf_DMA);
-    free(vc->mrail.rfp.RDMA_recv_buf);
-    free(vc->mrail.rfp.RDMA_send_buf);
-#else
-err_reg:
-#endif
     return ret;
 }
-
-#ifdef USE_MPD_RING
 
 void
 MPD_Ring_Startup(struct MPIDI_CH3I_RDMA_Process_t *proc,
@@ -942,7 +925,6 @@ MPD_Ring_Startup(struct MPIDI_CH3I_RDMA_Process_t *proc,
 static void MPI_Ring_Setup(struct init_addr_inf * neighbor_addr,
         struct MPIDI_CH3I_RDMA_Process_t *proc)
 {
-    struct ibv_qp_init_attr attr;
     struct ibv_qp_attr      qp_attr;
 
     uint32_t    qp_attr_mask = 0;
@@ -1030,7 +1012,7 @@ void
 MPI_Ring_Exchange(struct ibv_mr * addr_hndl, void * addr_pool,
         struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank, int pg_size)
 {
-    int i, j, ne, index_to_send, rail_index;
+    int i, ne, index_to_send, rail_index;
     int hostid;
     char hostname[HOSTNAME_LEN + 1];
 
@@ -1049,7 +1031,6 @@ MPI_Ring_Exchange(struct ibv_mr * addr_hndl, void * addr_pool,
     struct ibv_send_wr *bad_wr_s;
 
     /* completion related variables */
-    struct ibv_cq * cq_hndl;
     struct ibv_wc rc;
 
     MPIDI_VC_t * vc;
@@ -1110,19 +1091,17 @@ MPI_Ring_Exchange(struct ibv_mr * addr_hndl, void * addr_pool,
         for(i = 0; i < pg_size; i++) {
             if(i == pg_rank) {
                 send_packet->val[i].sr_qp_num = -1;
-#ifdef ONE_SIDED
-                send_packet->val[i].osc_qp_num = -1;
-#endif
+		if (proc->has_one_sided)
+	            send_packet->val[i].osc_qp_num = -1;
             } else {
                 MPIDI_PG_Get_vc(cached_pg, i, &vc);
 
                 send_packet->lid     = vc->mrail.rails[rail_index].lid;
                 send_packet->val[i].sr_qp_num = 
                     vc->mrail.rails[rail_index].qp_hndl->qp_num;
-#ifdef ONE_SIDED
-                send_packet->val[i].osc_qp_num =
-                    vc->mrail.rails[rail_index].qp_hndl_1sc->qp_num;
-#endif
+		if (proc->has_one_sided)
+		    send_packet->val[i].osc_qp_num =
+                        vc->mrail.rails[rail_index].qp_hndl_1sc->qp_num;
             }
         }
 
@@ -1186,10 +1165,9 @@ MPI_Ring_Exchange(struct ibv_mr * addr_hndl, void * addr_pool,
                         rdma_iba_addr_table.qp_num_rdma[recv_packet->rank][rail_index] =
                             recv_packet->val[pg_rank].sr_qp_num;
 
-#ifdef ONE_SIDED
-                        rdma_iba_addr_table.qp_num_onesided[recv_packet->rank][rail_index] =
-                            recv_packet->val[pg_rank].osc_qp_num;
-#endif
+			if (proc->has_one_sided)
+			    rdma_iba_addr_table.qp_num_onesided[recv_packet->rank][rail_index] =
+                                recv_packet->val[pg_rank].osc_qp_num;
 
                         /* queue this for sending to the next
                          * hop in the ring 
@@ -1227,7 +1205,8 @@ MPI_Ring_Exchange(struct ibv_mr * addr_hndl, void * addr_pool,
         ne = ibv_poll_cq(proc->boot_cq_hndl, 1, &rc);
         if(ne == 1) {
             if (rc.status != IBV_WC_SUCCESS) {
-                ibv_error_abort(GEN_EXIT_ERR,"Error code %d in polled desc!\n");
+                ibv_error_abort(GEN_EXIT_ERR,"Error code %d in polled desc!\n",
+			        rc.status);
             }
             last_send_comp = rc.wr_id;
         }
@@ -1236,8 +1215,6 @@ MPI_Ring_Exchange(struct ibv_mr * addr_hndl, void * addr_pool,
 }
 
 
-
-#endif
 
 int
 rdma_iba_enable_connections(struct MPIDI_CH3I_RDMA_Process_t *proc,
@@ -1274,26 +1251,26 @@ rdma_iba_enable_connections(struct MPIDI_CH3I_RDMA_Process_t *proc,
 
         MPIDI_PG_Get_vc(cached_pg, i, &vc);
 
-#ifdef ONE_SIDED
- 
-     for (rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
-        if (i == pg_rank)
-            qp_attr.dest_qp_num = dst_qp;
-        else
-            qp_attr.dest_qp_num =
-                rdma_iba_addr_table.qp_num_onesided[i][rail_index];
+ 	if (proc->has_one_sided) {
+	    for (rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
+		if (i == pg_rank)
+		    qp_attr.dest_qp_num = dst_qp;
+		else
+		    qp_attr.dest_qp_num =
+			rdma_iba_addr_table.qp_num_onesided[i][rail_index];
 
-        qp_attr.ah_attr.dlid = rdma_iba_addr_table.lid[i][rail_index];
-        qp_attr_mask    |=  IBV_QP_DEST_QPN;
+		qp_attr.ah_attr.dlid = rdma_iba_addr_table.lid[i][rail_index];
+		qp_attr_mask    |=  IBV_QP_DEST_QPN;
 
-        if (ibv_modify_qp( vc->mrail.rails[rail_index].qp_hndl_1sc,
-                             &qp_attr, qp_attr_mask)) {
-            fprintf(stderr, "[%s:%d] Could not modify one sided qp to RTR\n", 
-                    __FILE__, __LINE__);
-            return 1;
-        }
-    }
-#endif                          /* End of ONE_SIDED */
+		if (ibv_modify_qp( vc->mrail.rails[rail_index].qp_hndl_1sc,
+                	           &qp_attr, qp_attr_mask)) {
+		    fprintf(stderr, "[%s:%d] Could not modify one sided qp to RTR\n", 
+		            __FILE__, __LINE__);
+		    return 1;
+		}
+	    }
+	}
+
 	for (rail_index = 0; rail_index < rdma_num_rails; rail_index ++) {
             qp_attr.dest_qp_num =
                 rdma_iba_addr_table.qp_num_rdma[i][rail_index];
@@ -1335,17 +1312,18 @@ rdma_iba_enable_connections(struct MPIDI_CH3I_RDMA_Process_t *proc,
             continue;
 
         MPIDI_PG_Get_vc(cached_pg, i, &vc);
-#ifdef ONE_SIDED
-        for (rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
-             if (ibv_modify_qp( vc->mrail.rails[rail_index].qp_hndl_1sc,
-                           &qp_attr, qp_attr_mask))
-             {
-                fprintf(stderr, "[%s:%d] Could not modify one sided qp to RTS\n",
-                        __FILE__, __LINE__);
-                return 1;
-             }
-         }     
-#endif                          /* ONE_SIDED */
+
+	if (proc->has_one_sided) {
+	    for (rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
+		if (ibv_modify_qp( vc->mrail.rails[rail_index].qp_hndl_1sc,
+				   &qp_attr, qp_attr_mask))
+		{
+		    fprintf(stderr, "[%s:%d] Could not modify one sided qp to RTS\n",
+			    __FILE__, __LINE__);
+		    return 1;
+		}
+	    } 
+	}
 
         if (i == pg_rank)
             continue;
@@ -1378,57 +1356,25 @@ void MRAILI_Init_vc(MPIDI_VC_t * vc, int pg_rank)
     vc->mrail.next_packet_expected  = 0;
     vc->mrail.next_packet_tosend    = 0;
 
-#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
-#if defined(RDMA_FAST_PATH)
-    for (i = 0; i < num_rdma_buffer; i++) {
-        vbuf_init_rdma_write(&vc->mrail.rfp.RDMA_send_buf[i]);
-        vc->mrail.rfp.RDMA_send_buf[i].vc       = (void *) vc;
-        vc->mrail.rfp.RDMA_send_buf[i].padding  = FREE_FLAG;
-        vc->mrail.rfp.RDMA_recv_buf[i].vc       = (void *) vc;
-        vc->mrail.rfp.RDMA_recv_buf[i].padding  = BUSY_FLAG;
-	vc->mrail.rfp.RDMA_send_buf[i].head_flag =
-		(VBUF_FLAG_TYPE *) ( (char *)(vc->mrail.rfp.RDMA_send_buf_DMA)
-		+ (i + 1) * rdma_vbuf_total_size - sizeof (VBUF_FLAG_TYPE)) ;
-	vc->mrail.rfp.RDMA_send_buf[i].buffer =
-		(char *) ((char *)(vc->mrail.rfp.RDMA_send_buf_DMA) +
-		i * rdma_vbuf_total_size );
-	vc->mrail.rfp.RDMA_recv_buf[i].head_flag =
-		(VBUF_FLAG_TYPE *) ( (char *)(vc->mrail.rfp.RDMA_recv_buf_DMA)
-		+ (i + 1) * rdma_vbuf_total_size - sizeof (VBUF_FLAG_TYPE)) ;
-	vc->mrail.rfp.RDMA_recv_buf[i].buffer =
-		(char *) ((char *)(vc->mrail.rfp.RDMA_recv_buf_DMA) +
-		i * rdma_vbuf_total_size );
-    }
-#endif
     vc->mrail.rfp.rdma_credit = 0;
 #ifdef USE_HEADER_CACHING
     vc->mrail.rfp.cached_miss   = 0;
     vc->mrail.rfp.cached_hit    = 0;
-    vc->mrail.rfp.cached_incoming = malloc(sizeof(MPIDI_CH3_Pkt_send_t));
-    vc->mrail.rfp.cached_outgoing = malloc(sizeof(MPIDI_CH3_Pkt_send_t));
+    vc->mrail.rfp.cached_incoming = malloc (sizeof(MPIDI_CH3_Pkt_send_t));
+    vc->mrail.rfp.cached_outgoing = malloc (sizeof(MPIDI_CH3_Pkt_send_t));
     memset(vc->mrail.rfp.cached_outgoing, 0, sizeof(MPIDI_CH3_Pkt_send_t));
     memset(vc->mrail.rfp.cached_incoming, 0, sizeof(MPIDI_CH3_Pkt_send_t));
 #endif
 
-#ifdef RDMA_FAST_PATH
-    vc->mrail.cmanager.num_channels         = vc->mrail.num_rails + 1;
-    vc->mrail.cmanager.num_local_pollings   = 1;
-#else
     vc->mrail.cmanager.num_channels         = vc->mrail.num_rails;
     vc->mrail.cmanager.num_local_pollings   = 0;
-#endif
 
-#else
-    vc->mrail.cmanager.num_channels         = vc->mrail.num_rails;
-    vc->mrail.cmanager.num_local_pollings   = 0;
-#endif
-
-#ifdef ADAPTIVE_RDMA_FAST_PATH
     vc->mrail.rfp.eager_start_cnt           = 0;
     vc->mrail.rfp.in_polling_set            = 0;
 
     /* extra one channel for later increase the adaptive rdma */
-    vc->mrail.cmanager.msg_channels = malloc(sizeof *vc->mrail.cmanager.msg_channels 
+    vc->mrail.cmanager.msg_channels = malloc
+        (sizeof *vc->mrail.cmanager.msg_channels 
 					* (vc->mrail.cmanager.num_channels + 1));
     if (!vc->mrail.cmanager.msg_channels) {
 	ibv_error_abort(GEN_EXIT_ERR, "No resource for msg channels\n");
@@ -1437,17 +1383,6 @@ void MRAILI_Init_vc(MPIDI_VC_t * vc, int pg_rank)
 		sizeof *vc->mrail.cmanager.msg_channels
                 * (vc->mrail.cmanager.num_channels + 1));
     
-#else
-    vc->mrail.cmanager.msg_channels = malloc(sizeof *vc->mrail.cmanager.msg_channels
-					* vc->mrail.cmanager.num_channels);
-    if (!vc->mrail.cmanager.msg_channels) {
-	ibv_error_abort(GEN_EXIT_ERR, "No resource for msg channels\n");
-    }
-    memset(vc->mrail.cmanager.msg_channels, 0, 
-		sizeof *vc->mrail.cmanager.msg_channels
-                * vc->mrail.cmanager.num_channels);
-#endif
-
     vc->mrail.cmanager.next_arriving = NULL;
     vc->mrail.cmanager.inqueue	     = 0;
     vc->mrail.cmanager.vc	     = (void *)vc;
@@ -1461,29 +1396,209 @@ void MRAILI_Init_vc(MPIDI_VC_t * vc, int pg_rank)
     vc->mrail.inflow    = 0;
 
     for (i = 0; i < vc->mrail.num_rails; i++) {
-        int k;
-#ifndef SRQ
-        for (k = 0; k < rdma_initial_prepost_depth; k++) {
-            PREPOST_VBUF_RECV(vc, i);
-        }
-#endif
-        vc->mrail.srp.credits[i].remote_credit     = rdma_initial_credits;
-        vc->mrail.srp.credits[i].remote_cc         = rdma_initial_credits;
-        vc->mrail.srp.credits[i].local_credit      = 0;
-        vc->mrail.srp.credits[i].preposts          = rdma_initial_prepost_depth;
+       int k;
+	if (!MPIDI_CH3I_RDMA_Process.has_srq) {
+	    for (k = 0; k < rdma_initial_prepost_depth; k++) {
+		PREPOST_VBUF_RECV(vc, i);
+	    }
+	}
+       vc->mrail.srp.credits[i].remote_credit     = rdma_initial_credits;
+       vc->mrail.srp.credits[i].remote_cc         = rdma_initial_credits;
+       vc->mrail.srp.credits[i].local_credit      = 0;
+       vc->mrail.srp.credits[i].preposts          = rdma_initial_prepost_depth;
 
-#ifndef SRQ
-        vc->mrail.srp.credits[i].initialized	   =
-            (rdma_prepost_depth == rdma_initial_prepost_depth);
-#else
-        vc->mrail.srp.credits[i].initialized = 1; 
-        vc->mrail.srp.credits[i].pending_r3_sends = 0;
-#endif
+	if (!MPIDI_CH3I_RDMA_Process.has_srq) {
+	    vc->mrail.srp.credits[i].initialized	   =
+            	(rdma_prepost_depth == rdma_initial_prepost_depth);
+	} else {
+	    vc->mrail.srp.credits[i].initialized = 1; 
+	    vc->mrail.srp.credits[i].pending_r3_sends = 0;
+	}
 
 	vc->mrail.srp.credits[i].backlog.len       = 0;
 	vc->mrail.srp.credits[i].backlog.vbuf_head = NULL;
 	vc->mrail.srp.credits[i].backlog.vbuf_tail = NULL;
 
-        vc->mrail.srp.credits[i].rendezvous_packets_expected = 0;
+       vc->mrail.srp.credits[i].rendezvous_packets_expected = 0;
     }
 }
+
+/*function to create qps for the connection and move them to INIT state*/
+int cm_qp_create(MPIDI_VC_t *vc)
+{
+    struct ibv_qp_init_attr attr;
+    struct ibv_qp_attr      qp_attr;
+
+    int hca_index  = 0;
+    int port_index = 0;
+    int rail_index = 0;
+    int pg_rank, pg_size;
+
+    PMI_Get_size(&pg_size);
+    PMI_Get_rank(&pg_rank);
+
+    qp_attr.qp_state  = IBV_QPS_INIT;
+    qp_attr.pkey_index = 0;
+    qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE 
+                                    | IBV_ACCESS_LOCAL_WRITE;
+
+
+    vc->mrail.num_rails = rdma_num_rails;
+    vc->mrail.rails = malloc
+        (sizeof *vc->mrail.rails * vc->mrail.num_rails);
+
+    if (!vc->mrail.rails) {
+        ibv_error_abort(GEN_EXIT_ERR, "Fail to allocate resources for multirails\n");
+    }
+
+    vc->mrail.srp.credits = malloc(sizeof *vc->mrail.srp.credits * vc->mrail.num_rails);
+    if (!vc->mrail.srp.credits) {
+        ibv_error_abort(GEN_EXIT_ERR, "Fail to allocate resources for credits array\n");
+    }
+
+    for (rail_index = 0; 
+    	    rail_index < vc->mrail.num_rails;
+    	    rail_index++) 
+    {
+        hca_index  = rail_index / (vc->mrail.num_rails / rdma_num_hcas);
+        port_index = (rail_index / (vc->mrail.num_rails / (rdma_num_hcas *
+                    rdma_num_ports))) % rdma_num_ports;
+        memset(&attr, 0, sizeof attr);
+        attr.cap.max_send_wr = rdma_default_max_wqe;
+
+        if (MPIDI_CH3I_RDMA_Process.has_srq) {
+            attr.cap.max_recv_wr = 0;
+            attr.srq = MPIDI_CH3I_RDMA_Process.srq_hndl[hca_index];
+        } else {
+            attr.cap.max_recv_wr = rdma_default_max_wqe;
+        }
+
+        attr.cap.max_send_sge = rdma_default_max_sg_list;
+        attr.cap.max_recv_sge = rdma_default_max_sg_list;
+        attr.cap.max_inline_data = rdma_max_inline_size;
+        attr.send_cq = MPIDI_CH3I_RDMA_Process.cq_hndl[hca_index];
+        attr.recv_cq = MPIDI_CH3I_RDMA_Process.cq_hndl[hca_index];
+        attr.qp_type = IBV_QPT_RC;
+        attr.sq_sig_all = 0;
+
+        vc->mrail.rails[rail_index].qp_hndl = 
+            ibv_create_qp(MPIDI_CH3I_RDMA_Process.ptag[hca_index], &attr);
+        if (!vc->mrail.rails[rail_index].qp_hndl) {
+            ibv_error_abort(GEN_EXIT_ERR, "Failed to create QP\n");
+        }
+        vc->mrail.rails[rail_index].nic_context = MPIDI_CH3I_RDMA_Process.nic_context[hca_index];
+        vc->mrail.rails[rail_index].hca_index   = hca_index;
+        vc->mrail.rails[rail_index].port	= MPIDI_CH3I_RDMA_Process.ports[hca_index][port_index];
+        vc->mrail.rails[rail_index].lid     = MPIDI_CH3I_RDMA_Process.lids[hca_index][port_index];
+        vc->mrail.rails[rail_index].cq_hndl	= MPIDI_CH3I_RDMA_Process.cq_hndl[hca_index];
+
+        rdma_iba_addr_table.lid[pg_rank][rail_index] = MPIDI_CH3I_RDMA_Process.lids[hca_index][port_index];
+        rdma_iba_addr_table.qp_num_rdma[pg_rank][rail_index] =
+            vc->mrail.rails[rail_index].qp_hndl->qp_num;
+
+        qp_attr.qp_state        = IBV_QPS_INIT;
+        qp_attr.pkey_index      = 0;
+        qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE 
+                                            | IBV_ACCESS_LOCAL_WRITE;
+
+        qp_attr.port_num = MPIDI_CH3I_RDMA_Process.ports[hca_index][port_index];
+
+        if (ibv_modify_qp(vc->mrail.rails[rail_index].qp_hndl, &qp_attr,
+                    IBV_QP_STATE              |
+                    IBV_QP_PKEY_INDEX         |
+                    IBV_QP_PORT               |
+                    IBV_QP_ACCESS_FLAGS)) {
+                ibv_error_abort(GEN_EXIT_ERR, "Failed to modify QP to INIT\n");
+            }
+    }
+
+    return 0;
+}
+
+/*function to move qps to rtr and prepost buffers*/
+int cm_qp_move_to_rtr(MPIDI_VC_t *vc, uint16_t *lids, uint32_t *qpns)
+{
+    struct ibv_qp_attr  qp_attr;
+    uint32_t            qp_attr_mask = 0;
+    int                 rail_index;
+
+    int pg_rank, pg_size;
+
+    PMI_Get_size(&pg_size);
+    PMI_Get_rank(&pg_rank);
+
+    for (rail_index = 0; rail_index < rdma_num_rails; rail_index ++) {
+        memset(&qp_attr, 0, sizeof qp_attr);
+        qp_attr.qp_state    =   IBV_QPS_RTR;
+        qp_attr.path_mtu    =   rdma_default_mtu;
+        qp_attr.rq_psn      =   rdma_default_psn;
+        qp_attr.max_dest_rd_atomic  =   rdma_default_max_rdma_dst_ops;
+        qp_attr.min_rnr_timer       =   rdma_default_min_rnr_timer;
+        qp_attr.ah_attr.is_global   =   0;
+        qp_attr.ah_attr.sl          =   rdma_default_service_level;
+        qp_attr.ah_attr.static_rate =   rdma_default_static_rate;
+        qp_attr.ah_attr.src_path_bits   =   rdma_default_src_path_bits;
+        qp_attr.dest_qp_num = qpns[rail_index];
+        qp_attr.ah_attr.dlid = lids[rail_index];
+        qp_attr.ah_attr.port_num = vc->mrail.rails[rail_index].port;
+        
+        qp_attr_mask        |=  IBV_QP_STATE; 
+        qp_attr_mask        |=  IBV_QP_PATH_MTU;
+        qp_attr_mask        |=  IBV_QP_RQ_PSN;
+        qp_attr_mask        |=  IBV_QP_MAX_DEST_RD_ATOMIC;
+        qp_attr_mask        |=  IBV_QP_MIN_RNR_TIMER;
+        qp_attr_mask        |=  IBV_QP_AV;
+        qp_attr_mask        |=  IBV_QP_DEST_QPN;
+
+        DEBUG_PRINT("!!!Modify qp %d with qpnum %08x, dlid %x\n", rail_index,
+            qp_attr.dest_qp_num, qp_attr.ah_attr.dlid);
+        if (ibv_modify_qp( vc->mrail.rails[rail_index].qp_hndl,
+                           &qp_attr, qp_attr_mask)) {
+            ibv_error_abort(GEN_EXIT_ERR, "Failed to modify QP to RTR\n");
+        }
+    }
+
+    /*Initialize Data structures and prepose receives*/
+    MRAILI_Init_vc(vc,pg_rank);
+    
+    return 0;
+}
+
+/*function to move qps to rts and mark the connection available*/
+int cm_qp_move_to_rts(MPIDI_VC_t *vc)
+{
+    struct ibv_qp_attr  qp_attr;
+    uint32_t            qp_attr_mask = 0;
+    int                 rail_index;
+
+    int pg_rank, pg_size;
+
+    PMI_Get_size(&pg_size);
+    PMI_Get_rank(&pg_rank);
+        
+    for (rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
+        memset(&qp_attr, 0, sizeof qp_attr);
+        qp_attr.qp_state        = IBV_QPS_RTS;
+        qp_attr.sq_psn          = rdma_default_psn;
+        qp_attr.timeout         = rdma_default_time_out;
+        qp_attr.retry_cnt       = rdma_default_retry_count;
+        qp_attr.rnr_retry       = rdma_default_rnr_retry;
+        qp_attr.max_rd_atomic   = rdma_default_qp_ous_rd_atom;
+        
+        qp_attr_mask = 0;
+        qp_attr_mask =    IBV_QP_STATE              |
+                          IBV_QP_TIMEOUT            |
+                          IBV_QP_RETRY_CNT          |
+                          IBV_QP_RNR_RETRY          |
+                          IBV_QP_SQ_PSN             |
+                          IBV_QP_MAX_QP_RD_ATOMIC;
+        if (ibv_modify_qp(vc->mrail.rails[rail_index].qp_hndl, &qp_attr,
+                            qp_attr_mask))
+        {
+            ibv_error_abort(GEN_EXIT_ERR, "Failed to modify QP to RTS\n");
+        }
+    }
+    return 0;
+}
+
+

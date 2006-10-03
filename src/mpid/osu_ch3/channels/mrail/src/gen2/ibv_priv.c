@@ -11,7 +11,6 @@
  */
 
 #include "rdma_impl.h"
-#include "ibv_priv.h"
 
 #undef DEBUG_PRINT
 #ifdef DEBUG
@@ -44,7 +43,6 @@ int deregister_memory(struct ibv_mr * mr)
     return ret;
 }
 
-#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
 int MRAILI_Fast_rdma_select_rail(MPIDI_VC_t * vc)
 {
     static int i = 0;
@@ -54,7 +52,6 @@ int MRAILI_Fast_rdma_select_rail(MPIDI_VC_t * vc)
     }
     return i;
 }
-#endif
 
 int MRAILI_Send_select_rail(MPIDI_VC_t * vc)
 {
@@ -67,7 +64,6 @@ int MRAILI_Send_select_rail(MPIDI_VC_t * vc)
 
 }
 
-#ifdef ADAPTIVE_RDMA_FAST_PATH
 void vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
 {
     vbuf * v;
@@ -83,8 +79,6 @@ void vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
     c->mrail.rfp.rdma_credit = 0;
 
     if (num_rdma_buffer) {
-
-        SET_ORIGINAL_MALLOC_HOOKS;
 
 	/* allocate vbuf struct buffers */
         if(posix_memalign((void **) &vbuf_ctrl_buf, vbuf_alignment,
@@ -167,10 +161,6 @@ void vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
 	   c->mrail.rfp.in_polling_set          = 1;
         }
 
-        SAVE_MALLOC_HOOKS;
-        SET_MVAPICH_MALLOC_HOOKS;
     }
 }
-
-#endif
 

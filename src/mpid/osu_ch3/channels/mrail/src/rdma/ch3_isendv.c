@@ -177,15 +177,26 @@ int MPIDI_CH3_iSendv(MPIDI_VC_t * vc, MPID_Request * sreq, MPID_IOV * iov,
     }
 #endif
 
+    /*CM code*/
+    if (vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE 
+    || !MPIDI_CH3I_CM_SendQ_empty(vc)) {
+        /*Request need to be queued*/
+        MPIDI_DBG_PRINTF((55, FCNAME, "not connected, enqueuing"));
+        update_request(sreq, iov, n_iov, 0, 0);
+        MPIDI_CH3I_CM_SendQ_enqueue(vc, sreq);
+        if (vc->ch.state == MPIDI_CH3I_VC_STATE_UNCONNECTED)  {
+            MPIDI_CH3I_CM_Connect(vc);
+        }
+        goto fn_exit;
+    }
+
     /* If send queue is empty attempt to send
        data, queuing any unsent data. */
     if (MPIDI_CH3I_SendQ_empty(vc)) {   /* MT */
         int nb;
         int pkt_len;
         int complete;
-#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
         int rdma_ok;
-#endif
         /* MT - need some signalling to lock down our right to use the
            channel, thus insuring that the progress engine does also try to
            write */
@@ -258,7 +269,6 @@ int MPIDI_CH3_iSendv(MPIDI_VC_t * vc, MPID_Request * sreq, MPID_IOV * iov,
             }
             goto fn_exit;
         }
-#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
         DEBUG_PRINT("[send], n_iov: %d, pkt_len %d\n", n_iov, pkt_len);
         rdma_ok = MPIDI_CH3I_MRAILI_Fast_rdma_ok(vc, pkt_len);
         DEBUG_PRINT("[send], rdma ok: %d\n", rdma_ok);
@@ -309,9 +319,7 @@ int MPIDI_CH3_iSendv(MPIDI_VC_t * vc, MPID_Request * sreq, MPID_IOV * iov,
 
             }
             goto fn_exit;
-        } else
-#endif
-        {
+        } else {
             /* TODO: Codes to send pkt through send/recv path */
             vbuf *buf;
 

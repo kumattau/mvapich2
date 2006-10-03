@@ -125,10 +125,6 @@ typedef unsigned long aint_t;
 #undef USE_HEADER_CACHING
 #endif
 
-#if defined(_MLX_PCI_X_) && defined(SRQ)
-#error SRQ is not suppported for Mellanox PCI-X cards
-#endif
-
 #if defined(USE_MPD_RING) && defined(RDMA_FAST_PATH)
 #error MPD_RING is not supported with RDMA_FAST_PATH. 
 #endif

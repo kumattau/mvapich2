@@ -94,7 +94,6 @@ int MPIDI_CH3_Packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
 
     Calculate_IOV_len(iov, n_iov, pkt_len);
 
-#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
     rdma_ok = MPIDI_CH3I_MRAILI_Fast_rdma_ok(vc, pkt_len);
     DEBUG_PRINT("[pkt send], rdma ok: %d\n", rdma_ok);
     if (rdma_ok != 0) {
@@ -103,9 +102,7 @@ int MPIDI_CH3_Packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
                                                       &nb, &buf);
         DEBUG_PRINT("[pkt send: send progress] mpi_errno %d, nb %d\n",
                     mpi_errno == MPI_SUCCESS, nb);
-    } else
-#endif
-    {
+    } else {
         mpi_errno =
             MPIDI_CH3I_MRAILI_Eager_send(vc, iov, n_iov, &nb, &buf);
         DEBUG_PRINT("[pkt send] mpierr %d, nb %d\n", mpi_errno, nb);
@@ -137,7 +134,6 @@ int MPIDI_CH3_Packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
                     sreq->ch.iov_offset) * sizeof(MPID_IOV));
             n_iov = sreq->dev.iov_count - sreq->ch.iov_offset + 1;
 
-#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
             rdma_ok = MPIDI_CH3I_MRAILI_Fast_rdma_ok(vc, pkt_len);
             DEBUG_PRINT("[send], rdma ok: %d\n", rdma_ok);
             if (rdma_ok != 0) {
@@ -148,9 +144,7 @@ int MPIDI_CH3_Packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
                 DEBUG_PRINT("[send: send progress] mpi_errno %d, nb %d\n",
                             mpi_errno == MPI_SUCCESS, nb);
                 assert(NULL == buf->sreq);
-            } else
-#endif
-            {
+            } else {
                 mpi_errno =
                     MPIDI_CH3I_MRAILI_Eager_send(vc, iov, n_iov, &nb,
                                                  &buf);

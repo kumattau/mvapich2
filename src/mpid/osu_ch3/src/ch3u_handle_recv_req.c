@@ -55,6 +55,7 @@ int MPIDI_CH3U_Handle_recv_req(MPIDI_VC_t * vc, MPID_Request * rreq,
 
     MPIU_Assert(in_routine == FALSE || curr_req != rreq);
     in_routine = TRUE;
+    curr_req = rreq;
 
     switch (rreq->dev.ca) {
     case MPIDI_CH3_CA_COMPLETE:

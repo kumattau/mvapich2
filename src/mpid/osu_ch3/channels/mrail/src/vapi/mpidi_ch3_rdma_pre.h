@@ -40,6 +40,7 @@ typedef struct MPIDI_CH3I_MRAILI_IBA_Pkt {
 #if defined(RDMA_FAST_PATH)
     u_int8_t rdma_credit;
 #endif
+    int smp_index;
 } MPIDI_CH3I_MRAILI_Iba_pkt_t;
 
 #define MPIDI_CH3I_MRAILI_IBA_PKT_DECL \

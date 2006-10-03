@@ -48,6 +48,9 @@ MPIDI_CH3I_Process_group_t;
 typedef enum MPIDI_CH3I_VC_state
 {
     MPIDI_CH3I_VC_STATE_INVALID,
+    MPIDI_CH3I_VC_STATE_UNCONNECTED,
+    MPIDI_CH3I_VC_STATE_CONNECTING_CLI,
+    MPIDI_CH3I_VC_STATE_CONNECTING_SRV,
     MPIDI_CH3I_VC_STATE_IDLE,
     MPIDI_CH3I_VC_STATE_FAILED
 }
@@ -86,10 +89,20 @@ typedef struct MPIDI_CH3I_VC
     MPIDI_CH3I_Buffer_t read;
     int read_state;
     int port_name_tag;
+    /* Connection management */
+    struct MPID_Request * cm_sendq_head;
+    struct MPID_Request * cm_sendq_tail;
 } MPIDI_CH3I_VC;
 
 /* SMP Channel is added by OSU-MPI2 */
 #ifdef _SMP_
+typedef enum SMP_pkt_type
+{
+    SMP_EAGER_MSG,
+    SMP_RNDV_MSG,
+    SMP_RNDV_MSG_CONT
+} SMP_pkt_type_t;
+
 typedef struct MPIDI_CH3I_SMP_VC
 {
     struct MPID_Request * sendq_head;
@@ -97,9 +110,9 @@ typedef struct MPIDI_CH3I_SMP_VC
     struct MPID_Request * send_active;
     struct MPID_Request * recv_active;
     int local_nodes;
-#ifdef USE_MPD_RING
+    SMP_pkt_type_t send_current_pkt_type;
+    SMP_pkt_type_t recv_current_pkt_type;
     int hostid;
-#endif
 } MPIDI_CH3I_SMP_VC;
 #endif
 

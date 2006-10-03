@@ -4,6 +4,16 @@ MVAPICH2 Changelog
 This file briefly describes the latest changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+10/03/2006
+
+* Added on demand connection management.
+
+* Enhance shared memory communication support.
+
+* Added ptmalloc memory hook support.
+
+* Runtime selection for most configuration options.
+
 08/30/2006 (Release date of MVAPICH2-0.9.5)
 
 * Added multi-rail support for both point to point and direct one side
@@ -27,5 +37,3 @@ package.  The logs are arranged in the "most recent first" order.
   explicitly with default suggestions.
 
 * Thanks to Harvey Richardson from Sun for suggesting this feature.
-
-

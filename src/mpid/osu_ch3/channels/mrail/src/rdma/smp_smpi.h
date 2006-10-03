@@ -24,15 +24,18 @@
 
 /*********** Macro defines of local variables ************/
 #define PID_CHAR_LEN 22
-                                                                                                                                               
+
 #define SMPI_SMALLEST_SIZE (64)
 
 #define SMPI_MAX_INT ((unsigned int)(-1))
 
 #if defined(_IA32_)
 
-#define SMP_EAGERSIZE	    (256)
-#define SMPI_LENGTH_QUEUE   (1) /* 1 Mbytes */
+#define SMP_EAGERSIZE	    (8)
+#define SMPI_LENGTH_QUEUE   (32) /* 32 Kbytes */
+#define SMP_BATCH_SIZE 8
+#define SMP_SEND_BUF_SIZE 8192
+#define SMP_NUM_SEND_BUFFER 128
 
 #define SMPI_CACHE_LINE_SIZE 64
 #define SMPI_ALIGN(a)                                               \
@@ -43,8 +46,11 @@
                                                                                                                                                
 #elif defined(_IA64_)
 
-#define SMP_EAGERSIZE       (256)
-#define SMPI_LENGTH_QUEUE   (4) /* 4 Mbytes */
+#define SMP_EAGERSIZE       (8)
+#define SMPI_LENGTH_QUEUE   (32) /* 32 Kbytes */
+#define SMP_BATCH_SIZE 8
+#define SMP_SEND_BUF_SIZE 8192
+#define SMP_NUM_SEND_BUFFER 128
 
 #define SMPI_CACHE_LINE_SIZE 128
 #define SMPI_ALIGN(a)                                               \
@@ -55,19 +61,39 @@
                                                                                                                                                
 #elif defined(_X86_64_)
 
-#define SMP_EAGERSIZE	    (256)
-#define SMPI_LENGTH_QUEUE   (2) /* 4 Mbytes */
+#define SMP_EAGERSIZE	    (8)
+#define SMPI_LENGTH_QUEUE   (32) /* 32 Kbytes */
+#define SMP_BATCH_SIZE 8
+#define SMP_SEND_BUF_SIZE 8192
+#define SMP_NUM_SEND_BUFFER 32
 
 #define SMPI_CACHE_LINE_SIZE 128
 #define SMPI_ALIGN(a)                                               \
 ((a + SMPI_CACHE_LINE_SIZE + 7) & 0xFFFFFFFFFFFFFFF8)
 #define SMPI_AVAIL(a)   \
  ((a & 0xFFFFFFFFFFFFFFF8) - SMPI_CACHE_LINE_SIZE)
-                                                                                                                                               
+
+#elif defined(_EM64T_)
+
+#define SMP_EAGERSIZE       (64)
+#define SMPI_LENGTH_QUEUE   (256) /* 256 Kbytes */
+#define SMP_BATCH_SIZE 8
+#define SMP_SEND_BUF_SIZE 8192 
+#define SMP_NUM_SEND_BUFFER 256 
+
+#define SMPI_CACHE_LINE_SIZE 64
+#define SMPI_ALIGN(a) (a +SMPI_CACHE_LINE_SIZE)
+
+#define SMPI_AVAIL(a)   \
+((a & 0xFFFFFFFFFFFFFFF8) - SMPI_CACHE_LINE_SIZE)
+
 #elif defined(MAC_OSX)
 
-#define SMP_EAGERSIZE	    (256)
-#define SMPI_LENGTH_QUEUE   (4) /* 4 Mbytes */
+#define SMP_EAGERSIZE	    (8)
+#define SMPI_LENGTH_QUEUE   (32) /* 32 Kbytes */
+#define SMP_BATCH_SIZE 8
+#define SMP_SEND_BUF_SIZE 8192
+#define SMP_NUM_SEND_BUFFER 128
 
 #define SMPI_CACHE_LINE_SIZE 16
 #define SMPI_ALIGN(a)                                               \
@@ -77,8 +103,11 @@
 
 #else
                                                                                                                                                
-#define SMP_EAGERSIZE	    (256)
-#define SMPI_LENGTH_QUEUE   (1) /* 1 Mbytes */
+#define SMP_EAGERSIZE	    (16)
+#define SMPI_LENGTH_QUEUE   (64) /* 32 Kbytes */
+#define SMP_BATCH_SIZE 8
+#define SMP_SEND_BUF_SIZE 8192 
+#define SMP_NUM_SEND_BUFFER 128
 
 #define SMPI_CACHE_LINE_SIZE 64
 #define SMPI_ALIGN(a) (a +SMPI_CACHE_LINE_SIZE)
@@ -88,33 +117,53 @@
 
 #endif
 
+typedef struct {
+    volatile unsigned int current;
+    volatile unsigned int next;
+    volatile unsigned int msgs_total_in;
+} smpi_params;
+
+typedef struct {
+    volatile unsigned int msgs_total_out;
+    char pad[SMPI_CACHE_LINE_SIZE - 4];
+} smpi_rqueues;
+
+typedef struct {
+    volatile unsigned int first;
+    volatile unsigned int last;
+} smpi_rq_limit;
+
 /* the shared area itself */
 struct shared_mem {
-    volatile int pid[SMPI_MAX_NUMLOCALNODES];   /* use for initial synchro */
+    volatile int *pid;   /* use for initial synchro */
     /* receive queues descriptors */
-    volatile struct {
-        volatile struct {
-            volatile unsigned int current;
-            volatile unsigned int next;
-            volatile unsigned int msgs_total_in;
-        } params[SMPI_MAX_NUMLOCALNODES];
-        char pad[SMPI_CACHE_LINE_SIZE];
-    } rqueues_params[SMPI_MAX_NUMLOCALNODES];
-                                                                                                                                               
-    /* rqueues flow control */
-    volatile struct {
-        volatile unsigned int msgs_total_out;
-        char pad[SMPI_CACHE_LINE_SIZE - 4];
-    } rqueues_flow_out[SMPI_MAX_NUMLOCALNODES][SMPI_MAX_NUMLOCALNODES];
-                                                                                                                                               
-    volatile struct {
-        volatile unsigned int first;
-        volatile unsigned int last;
-    } rqueues_limits[SMPI_MAX_NUMLOCALNODES][SMPI_MAX_NUMLOCALNODES];
-    int pad2[SMPI_CACHE_LINE_SIZE];
-                                                                                                                                               
+    smpi_params **rqueues_params;
+
+     /* rqueues flow control */
+    smpi_rqueues **rqueues_flow_out;
+
+    smpi_rq_limit **rqueues_limits;
+
     /* the receives queues */
-    volatile char pool;
+    char *pool;
+};
+
+/* structure for a buffer in the sending buffer pool */
+typedef struct send_buf_t {
+    int myindex;
+    int next;
+    volatile int busy;
+    int len;
+    int has_next;
+    int msg_complete;
+    char buf[SMP_SEND_BUF_SIZE];
+} SEND_BUF_T;
+
+/* send queue, to be initialized */
+struct shared_buffer_pool {
+    int free_head;
+    int *send_queue;
+    int *tail;
 };
 
 extern struct smpi_var smpi;

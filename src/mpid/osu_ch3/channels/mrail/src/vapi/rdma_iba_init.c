@@ -988,6 +988,37 @@ static int MPIDI_CH3I_PG_Destroy(MPIDI_PG_t * pg, void *id)
     return MPI_SUCCESS;
 }
 
+int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank)
+{
+    int p;
+    int ret;
+    MPIDI_VC_t *vc;
+    ret = MPIDI_CH3I_RMDA_init(pg, pg_rank);
+    if (ret != MPI_SUCCESS)
+        return ret;
+    /*Mark all connections ready*/
+    for (p = 0; p < pg->size; p++) {
+        MPIDI_PG_Get_vcr(pg, p, &vc);
+        vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
+    }
+    return MPI_SUCCESS;
+}
+
+int MPIDI_CH3I_CM_Finalize()
+{
+    return MPIDI_CH3I_RMDA_finalize();
+}
+
+int MPIDI_CH3I_CM_Connect(MPIDI_VC_t * vc)
+{
+    return MPI_SUCCESS;
+}
+
+int MPIDI_CH3I_CM_Establish(MPIDI_VC_t * vc)
+{
+    return MPI_SUCCESS;
+}
+
 #ifdef MAC_OSX
 void
 mvapich_malloc_init ()

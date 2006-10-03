@@ -120,7 +120,7 @@ void rdma_init_parameters(int num_proc, int me){
 	VAPI_hca_id_t* vapi_device_list;
 	VAPI_ret_t ret;
 	
-    if ((value = getenv("RDMA_IBA_DEFAULT_HCA")) != NULL) {
+    if ((value = getenv("MV2_IBA_DEFAULT_HCA")) != NULL) {
         strcpy(rdma_iba_default_hca, value);
     } else {
         /* First, to get the number of hcas currently available */
@@ -157,7 +157,7 @@ void rdma_init_parameters(int num_proc, int me){
                 sizeof(VAPI_hca_id_t));
 	}
 
-    if ((value = getenv("RDMA_DEFAULT_MTU")) != NULL) {
+    if ((value = getenv("MV2_DEFAULT_MTU")) != NULL) {
         if (strcmp(value,"MTU256")==0)
             rdma_default_mtu = MTU256;
         else if (strcmp(value,"MTU512")==0)
@@ -171,76 +171,76 @@ void rdma_init_parameters(int num_proc, int me){
         else
             rdma_default_mtu = MTU1024;
     }
-    if ((value = getenv("RDMA_PIN_POOL_SIZE")) != NULL) {
+    if ((value = getenv("MV2_PIN_POOL_SIZE")) != NULL) {
         rdma_pin_pool_size = (int)atoi(value);
     }
-    if ((value = getenv("RDMA_DEFAULT_MAX_CQ_SIZE")) != NULL) {
+    if ((value = getenv("MV2_DEFAULT_MAX_CQ_SIZE")) != NULL) {
         rdma_default_max_cq_size = (int)atoi(value);
     }
-    if ((value = getenv("RDMA_READ_RESERVE")) != NULL) {
+    if ((value = getenv("MV2_READ_RESERVE")) != NULL) {
         rdma_read_reserve = (int)atoi(value);
     }
 #ifdef RDMA_FAST_PATH
-    if ((value = getenv("NUM_RDMA_BUFFER")) != NULL) { 
+    if ((value = getenv("MV2_NUM_RDMA_BUFFER")) != NULL) { 
         num_rdma_buffer = (int)atoi(value);
     }
 #endif
-    if ((value = getenv("RDMA_IBA_EAGER_THRESHOLD")) != NULL) {
+    if ((value = getenv("MV2_IBA_EAGER_THRESHOLD")) != NULL) {
         rdma_iba_eager_threshold = (int)atoi(value);
     }
 
-    if ((value = getenv("RDMA_INTEGER_POOL_SIZE")) != NULL) {
+    if ((value = getenv("MV2_INTEGER_POOL_SIZE")) != NULL) {
         rdma_integer_pool_size = (int)atoi(value);
     }
-    if ((value = getenv("RDMA_DEFAULT_PUT_GET_LIST_SIZE")) != NULL) {
+    if ((value = getenv("MV2_DEFAULT_PUT_GET_LIST_SIZE")) != NULL) {
         rdma_default_put_get_list_size = (int)atoi(value);
     }
-    if ((value = getenv("RDMA_EAGERSIZE_1SC")) != NULL) {
+    if ((value = getenv("MV2_EAGERSIZE_1SC")) != NULL) {
         rdma_eagersize_1sc = (int)atoi(value);
     }
-    if ((value = getenv("RDMA_PUT_FALLBACK_THRESHOLD")) != NULL) {
+    if ((value = getenv("MV2_PUT_FALLBACK_THRESHOLD")) != NULL) {
         rdma_put_fallback_threshold = (int)atoi(value);
     }
-    if ((value = getenv("RDMA_GET_FALLBACK_THRESHOLD")) != NULL) {
+    if ((value = getenv("MV2_GET_FALLBACK_THRESHOLD")) != NULL) {
         rdma_get_fallback_threshold = (int)atoi(value);
     }
-    if ((value = getenv("RDMA_DEFAULT_PORT")) != NULL) {
+    if ((value = getenv("MV2_DEFAULT_PORT")) != NULL) {
         rdma_default_port = (int)atoi(value);
     }
-    if ((value = getenv("RDMA_DEFAULT_QP_OUS_RD_ATOM")) != NULL) {
+    if ((value = getenv("MV2_DEFAULT_QP_OUS_RD_ATOM")) != NULL) {
         rdma_default_qp_ous_rd_atom = (u_int8_t)atoi(value);
     }
-    if ((value = getenv("RDMA_DEFAULT_MAX_RDMA_DST_OPS")) != NULL) {
+    if ((value = getenv("MV2_DEFAULT_MAX_RDMA_DST_OPS")) != NULL) {
         rdma_default_max_rdma_dst_ops = (u_int8_t)atol(value);
     }
-    if ((value = getenv("RDMA_DEFAULT_PSN")) != NULL) {
+    if ((value = getenv("MV2_DEFAULT_PSN")) != NULL) {
         rdma_default_psn = (VAPI_psn_t)atol(value);
     }
-    if ((value = getenv("RDMA_DEFAULT_PKEY_IX")) != NULL) {
+    if ((value = getenv("MV2_DEFAULT_PKEY_IX")) != NULL) {
         rdma_default_pkey_ix = (VAPI_pkey_ix_t)atol(value);
     }
-    if ((value = getenv("RDMA_DEFAULT_MIN_RNR_TIMER")) != NULL) {
+    if ((value = getenv("MV2_DEFAULT_MIN_RNR_TIMER")) != NULL) {
         rdma_default_min_rnr_timer = (IB_rnr_nak_timer_code_t)atol(value);
     }
-    if ((value = getenv("RDMA_DEFAULT_SERVICE_LEVEL")) != NULL) {
+    if ((value = getenv("MV2_DEFAULT_SERVICE_LEVEL")) != NULL) {
         rdma_default_service_level = (IB_sl_t)atol(value);
     }
-    if ((value = getenv("RDMA_DEFAULT_TIME_OUT")) != NULL) {
+    if ((value = getenv("MV2_DEFAULT_TIME_OUT")) != NULL) {
         rdma_default_time_out = (VAPI_timeout_t)atol(value);
     }
-    if ((value = getenv("RDMA_DEFAULT_STATIC_RATE")) != NULL) {
+    if ((value = getenv("MV2_DEFAULT_STATIC_RATE")) != NULL) {
         rdma_default_static_rate = (IB_static_rate_t)atol(value);
     }
-    if ((value = getenv("RDMA_DEFAULT_SRC_PATH_BITS")) != NULL) {
+    if ((value = getenv("MV2_DEFAULT_SRC_PATH_BITS")) != NULL) {
         rdma_default_src_path_bits = (u_int8_t)atoi(value);
     }
-    if ((value = getenv("RDMA_DEFAULT_RETRY_COUNT")) != NULL) {
+    if ((value = getenv("MV2_DEFAULT_RETRY_COUNT")) != NULL) {
         rdma_default_retry_count = (VAPI_retry_count_t)atol(value);
     }
-    if ((value = getenv("RDMA_DEFAULT_RNR_RETRY")) != NULL) {
+    if ((value = getenv("MV2_DEFAULT_RNR_RETRY")) != NULL) {
         rdma_default_rnr_retry = (VAPI_retry_count_t)atol(value);
     }
-    if ((value = getenv("RDMA_DEFAULT_MAX_SG_LIST")) != NULL) {
+    if ((value = getenv("MV2_DEFAULT_MAX_SG_LIST")) != NULL) {
         rdma_default_max_sg_list = (u_int32_t)atol(value);
     }
 #if 0
@@ -248,19 +248,19 @@ void rdma_init_parameters(int num_proc, int me){
         rdma_default_max_rdma_dst_ops = (u_int8_t)atol(value);
     }
 #endif
-    if ((value = getenv("RDMA_DEFAULT_MAX_WQE")) != NULL) {
+    if ((value = getenv("MV2_DEFAULT_MAX_WQE")) != NULL) {
         rdma_default_max_wqe = atol(value);
     }
-    if ((value = getenv("VAPI_NDREG_ENTRIES")) != NULL) {
+    if ((value = getenv("MV2_NDREG_ENTRIES")) != NULL) {
         vapi_ndreg_entries = (unsigned int)atoi(value);
     }
-    if ((value = getenv("VAPI_VBUF_MAX")) != NULL) {
+    if ((value = getenv("MV2_VBUF_MAX")) != NULL) {
         vapi_vbuf_max = atoi(value);
     }
-    if ((value = getenv("VAPI_INITIAL_PREPOST_DEPTH")) != NULL) {
+    if ((value = getenv("MV2_INITIAL_PREPOST_DEPTH")) != NULL) {
         vapi_initial_prepost_depth = atoi(value);
     }    
-    if ((value = getenv("VAPI_PREPOST_DEPTH")) != NULL) {
+    if ((value = getenv("MV2_PREPOST_DEPTH")) != NULL) {
         vapi_prepost_depth = atoi(value);
     }   
     if (vapi_initial_prepost_depth <= vapi_prepost_noop_extra) {

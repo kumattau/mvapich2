@@ -1,12 +1,11 @@
 #!/bin/bash
 
 source ./make.mvapich2.def
-source ./make.mvapich2.detect
 
 arch
 
 # Mandatory variables.  All are checked except CXX and F90.
-export OPEN_IB_HOME=/usr/local
+export OPEN_IB_HOME=/usr/local/ofed
 PREFIX=/usr/local/mvapich2
 
 export CC=gcc
@@ -29,19 +28,12 @@ if [ -z $OPEN_IB_HOME ] || [ -z $PREFIX ] || [ -z $CC ] || [ -z $F77 ]; then
     die_setup "Please set mandatory variables in this script."
 elif [ ! -d $OPEN_IB_HOME ]; then
     die_setup "MTHOME directory $OPEN_IB_HOME does not exist."
+elif [ -d $OPEN_IB_HOME/lib64 ]; then
+    OPEN_IB_LIB=$OPEN_IB_HOME/lib64
 elif [ -d $OPEN_IB_HOME/lib ]; then
     OPEN_IB_LIB=$OPEN_IB_HOME/lib
 else
     die_setup "Could not find the MTHOME/lib directory."
-fi
-
-# Optional variables.  Most of these are prompted for if not set.
-# Cluster size.
-# Supported: "_SMALL_CLUSTER", "_MEDIUM_CLUSTER", and "_LARGE_CLUSTER"
-VCLUSTER=
-
-if [ -z "$VCLUSTER" ]; then
-    prompt_vcluster
 fi
 
 # Whether to use an optimized queue pair exchange scheme.  This is not
@@ -56,13 +48,12 @@ if [ -z $OPT_FLAG ]; then
     OPT_FLAG=-O2
 fi
 
-# Check if SRQ is valid. for this platform.
-ENABLE_SRQ="-DSRQ"
-
-if [ "$HCA_COMPILE_FLAG" == "_MLX_PCI_X_" ]; then
-    ENABLE_SRQ=""
-fi
-
+#PTMALLOC support for MVAPICH2 memory hooks
+#Enabling this will allow MVAPICH2 to release
+#memory to Operating System (when registration
+#cache is enabled)
+#Enabled by default
+PTMALLOC=""
 
 # Whether or not to build with multi-thread support
 # Building with this option the MVAPICH2 will be thread-safe but it may suffer
@@ -73,15 +64,22 @@ MULTI_THREAD=""
 
 if [ ! -z $MULTI_THREAD ]; then
 	MULTI_THREAD="--enable-threads=multiple"
+	PTMALLOC="-DDISABLE_PTMALLOC"
 fi
 
+# Check if SRQ is valid. for this platform.
+ENABLE_SRQ="-DSRQ"
+
+if [ "$HCA_COMPILE_FLAG" == "_MLX_PCI_X_" ]; then
+    ENABLE_SRQ=""
+fi
+
+
 export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
-export LIBS="-L${OPEN_IB_LIB} -libverbs -lpthread $SUPPRESS"
+export LIBS="-L${OPEN_IB_LIB} -libverbs -libumad -lpthread $SUPPRESS"
 export FFLAGS="-L${OPEN_IB_LIB}"
-export CFLAGS="-D${ARCH} -DUSE_INLINE -D_SMP_ -DADAPTIVE_RDMA_FAST_PATH \
--DUSE_HEADER_CACHING -D_GNU_SOURCE ${ENABLE_SRQ} -DLAZY_MEM_UNREGISTER \
--DONE_SIDED $SUPPRESS -D${HCA_COMPILE_FLAG} -DMPID_USE_SEQUENCE_NUMBERS \
--D${VCLUSTER} ${HAVE_MPD_RING} -D_GNU_SOURCE -I${OPEN_IB_HOME}/include $OPT_FLAG"
+export CFLAGS="-D${ARCH} -D_SMP_ -DUSE_HEADER_CACHING ${PTMALLOC} \
+-DONE_SIDED -DMPID_USE_SEQUENCE_NUMBERS -I${OPEN_IB_HOME}/include $OPT_FLAG"
 
 # Prelogue
 make distclean &>/dev/null

@@ -24,20 +24,18 @@
  *
  */
 
-#include "infiniband/verbs.h"
+#include "mem_hooks.h"
+#include <infiniband/verbs.h>
 #include "pmi.h"
 #include "rdma_impl.h"
 #include "vbuf.h"
-#include "ibv_priv.h"
 #include "dreg.h"
 
 /* head of list of allocated vbuf regions */
 static vbuf_region *vbuf_region_head = NULL;
-                                                                                                                                               
 /*
  * free_vbuf_head is the head of the free list
  */
-                                                                                                                                               
 static vbuf *free_vbuf_head = NULL;
 
 /*
@@ -51,7 +49,6 @@ static long num_free_vbuf = 0;
 static long num_vbuf_get = 0;
 static long num_vbuf_freed = 0;
 
-#ifdef SRQ
 static pthread_spinlock_t vbuf_lock;
 
 void init_vbuf_lock()
@@ -59,16 +56,12 @@ void init_vbuf_lock()
     pthread_spin_init(&vbuf_lock, 0);
 }
 
-#endif
-
 void dump_vbuf_region(vbuf_region * r)
 {
 }
-                                                                                                                                               
 void dump_vbuf_regions()
 {
     vbuf_region *r = vbuf_region_head;
-                                                                                                                                               
     while (r) {
         dump_vbuf_region(r);
         r = r->next;
@@ -79,12 +72,11 @@ void deallocate_vbufs(int hca_num)
 {
     vbuf_region *r = vbuf_region_head;
 
-#ifdef SRQ
-    pthread_spin_lock(&vbuf_lock);
-#endif
+    if (MPIDI_CH3I_RDMA_Process.has_srq
+     || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
+        pthread_spin_lock(&vbuf_lock);
 
     int ret;
-    int i;
 
     while (r) {
         if (r->mem_handle[hca_num] != NULL) {
@@ -99,10 +91,9 @@ void deallocate_vbufs(int hca_num)
         r = r->next;
     }
 
-#ifdef SRQ
-    pthread_spin_unlock(&vbuf_lock);
-#endif
-
+    if (MPIDI_CH3I_RDMA_Process.has_srq
+     || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
+         pthread_spin_unlock(&vbuf_lock);
 }
 
 static int allocate_vbuf_region(int nvbufs)
@@ -129,9 +120,7 @@ static int allocate_vbuf_region(int nvbufs)
                                 "VBUF alloc failure, limit exceeded");
         }
     }
-                                                                                                                                               
-    SET_ORIGINAL_MALLOC_HOOKS;
-    reg = (struct vbuf_region *) malloc(sizeof(struct vbuf_region));
+    reg = (struct vbuf_region *) malloc (sizeof(struct vbuf_region));
     if (NULL == reg) {
         ibv_error_abort(GEN_EXIT_ERR,
                             "Unable to malloc a new struct vbuf_region");
@@ -148,10 +137,6 @@ static int allocate_vbuf_region(int nvbufs)
        ibv_error_abort(GEN_EXIT_ERR, "unable to malloc vbufs DMA buffer");
     }
 
-                                                                                                                                            
-    SAVE_MALLOC_HOOKS;
-    SET_ORIGINAL_MALLOC_HOOKS;
-
     memset(mem, 0, nvbufs * sizeof(vbuf));
     memset(vbuf_dma_buffer, 0, nvbufs * rdma_vbuf_total_size);
 
@@ -166,7 +151,7 @@ static int allocate_vbuf_region(int nvbufs)
     reg->count     = nvbufs;
     free_vbuf_head = mem;
     reg->vbuf_head = free_vbuf_head;
-                                                                                                                                               
+
     DEBUG_PRINT("VBUF REGION ALLOCATION SZ %d TOT %d FREE %ld NF %ld NG %ld",
             nvbufs, vbuf_n_allocated, num_free_vbuf,
             num_vbuf_freed, num_vbuf_get);
@@ -189,10 +174,8 @@ static int allocate_vbuf_region(int nvbufs)
 
         cur->desc.next = free_vbuf_head + i + 1;
         cur->region = reg;
-#if (defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH))
 	cur->head_flag = (VBUF_FLAG_TYPE *) ((char *)(vbuf_dma_buffer) +
                 (i + 1) * rdma_vbuf_total_size - sizeof *cur->head_flag);
-#endif
         cur->buffer = (char *) ((char *)(vbuf_dma_buffer) +
                 (i * rdma_vbuf_total_size));
     }
@@ -203,10 +186,8 @@ static int allocate_vbuf_region(int nvbufs)
 
     cur->region = reg;
 
-#if (defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH))
     cur->head_flag = (VBUF_FLAG_TYPE *) ((char *)vbuf_dma_buffer +
             (nvbufs * rdma_vbuf_total_size) - sizeof *cur->head_flag);
-#endif
     cur->buffer = (char *) ((char *)vbuf_dma_buffer +
             ((nvbufs - 1) * rdma_vbuf_total_size));
 
@@ -228,7 +209,6 @@ int allocate_vbufs(struct ibv_pd * ptag[], int nvbufs)
     for (i = 0; i < rdma_num_hcas; i ++) {
         ptag_save[i] = ptag[i];
     }
-                                                                                                                                               
     /* now allocate the first vbuf region */
     return allocate_vbuf_region(nvbufs);
 }
@@ -236,9 +216,9 @@ int allocate_vbufs(struct ibv_pd * ptag[], int nvbufs)
 vbuf *get_vbuf()
 {
     vbuf *v;
-#ifdef SRQ
-    pthread_spin_lock(&vbuf_lock);
-#endif
+    if (MPIDI_CH3I_RDMA_Process.has_srq
+    || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
+	pthread_spin_lock(&vbuf_lock);
 
     /*
      * It will often be possible for higher layers to recover
@@ -247,7 +227,6 @@ vbuf *get_vbuf()
      */
     if (NULL == free_vbuf_head ) {
         DEBUG_PRINT("Allocating new vbuf region\n");
-                                                                                                                                               
         allocate_vbuf_region(rdma_vbuf_secondary_pool_size);
         if (NULL ==free_vbuf_head) {
             ibv_error_abort(GEN_EXIT_ERR,
@@ -255,18 +234,15 @@ vbuf *get_vbuf()
                        vbuf_n_allocated);
         }
     }
-                                                                                                                                               
     v = free_vbuf_head;
     num_free_vbuf--;
     num_vbuf_get++;
 
     /* this correctly handles removing from single entry free list */
     free_vbuf_head = free_vbuf_head->desc.next;
-#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
     /* need to change this to RPUT_VBUF_FLAG later
      * if we are doing rput */
     v->padding = NORMAL_VBUF_FLAG;
-#endif
     v->pheader = (void *)v->buffer;
     /* this is probably not the right place to initialize shandle to NULL.
      * Do it here for now because it will make sure it is always initialized.
@@ -275,35 +251,29 @@ vbuf *get_vbuf()
      */
     v->sreq = NULL;
 
-#ifdef SRQ
-    /* Make sure it is not inadvertantly used anywhere */
+    if (MPIDI_CH3I_RDMA_Process.has_srq
+    || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
+         pthread_spin_unlock(&vbuf_lock);
 
-    pthread_spin_unlock(&vbuf_lock);
-#endif
-                                                                                                                                          
     return(v);
 }
 
 void MRAILI_Release_vbuf(vbuf *v)
 {
     /* note this correctly handles appending to empty free list */
-#ifdef SRQ
-    pthread_spin_lock(&vbuf_lock);
-#endif
-                                                                                                                                               
+    if (MPIDI_CH3I_RDMA_Process.has_srq
+     || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
+        pthread_spin_lock(&vbuf_lock);
+
     DEBUG_PRINT("release_vbuf: releasing %p previous head = %p, padding %d\n",
         v, free_vbuf_head, v->padding);
-                                                                                                                                               
     assert(v != free_vbuf_head);
-                                                                                                                                               
     v->desc.next = free_vbuf_head;
-#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
     if ((v->padding != NORMAL_VBUF_FLAG)
         && (v->padding != RPUT_VBUF_FLAG)) {
         ibv_error_abort(GEN_EXIT_ERR, "vbuf not correct!!!\n");
     }
     *v->head_flag  = 0;
-#endif
     free_vbuf_head = v;
     v->pheader     = NULL;
     v->content_size  = 0;
@@ -311,13 +281,11 @@ void MRAILI_Release_vbuf(vbuf *v)
     v->vc          = NULL;
     num_free_vbuf++;
     num_vbuf_freed++;
-#ifdef SRQ
-    pthread_spin_unlock(&vbuf_lock);
-#endif
-
+    if (MPIDI_CH3I_RDMA_Process.has_srq
+     || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
+        pthread_spin_unlock(&vbuf_lock);
 }
 
-#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
 void MRAILI_Release_recv_rdma(vbuf *v)
 {
     vbuf *next_free;
@@ -329,7 +297,6 @@ void MRAILI_Release_recv_rdma(vbuf *v)
     if (next >= num_rdma_buffer)
         next = 0;
     next_free = &(c->mrail.rfp.RDMA_recv_buf[next]);
-                                                                                                                                               
     v->padding = FREE_FLAG;
     *v->head_flag = 0;
     v->sreq = NULL;
@@ -338,7 +305,6 @@ void MRAILI_Release_recv_rdma(vbuf *v)
     if (v != next_free) {
         return;
     }
-                                                                                                                                               
     /* search all free buffers */
     for (i = next; i != c->mrail.rfp.p_RDMA_recv;) {
 
@@ -353,7 +319,7 @@ void MRAILI_Release_recv_rdma(vbuf *v)
             i = 0;
     }
 }
-#endif
+
 void vbuf_init_rdma_write(vbuf * v)
 {
     v->desc.sr.next         = NULL;
@@ -363,9 +329,7 @@ void vbuf_init_rdma_write(vbuf * v)
 
     v->desc.sr.num_sge      = 1;
     v->desc.sr.sg_list      = &(v->desc.sg_entry);
-#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
     v->padding              = FREE_FLAG;
-#endif
 }
 
 void vbuf_init_send(vbuf *v, unsigned long len, int rail)
@@ -381,12 +345,9 @@ void vbuf_init_send(vbuf *v, unsigned long len, int rail)
     v->desc.sg_entry.length = len;
     v->desc.sg_entry.lkey   = v->region->mem_handle[hca_num]->lkey;
     v->desc.sg_entry.addr   = (uintptr_t)(v->buffer);
-#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
     v->padding = NORMAL_VBUF_FLAG;
-#endif
     v->rail    = rail;
 }
-                                                                                                                                               
 void vbuf_init_recv(vbuf *v, unsigned long len, int rail)
 {
     int hca_num = rail / (rdma_num_rails/rdma_num_hcas);
@@ -398,9 +359,7 @@ void vbuf_init_recv(vbuf *v, unsigned long len, int rail)
     v->desc.sg_entry.length = len;
     v->desc.sg_entry.lkey   = v->region->mem_handle[hca_num]->lkey;
     v->desc.sg_entry.addr   = (uintptr_t)(v->buffer);
-#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
     v->padding = NORMAL_VBUF_FLAG;
-#endif
     v->rail    = rail;
 }
 
@@ -423,69 +382,10 @@ void vbuf_init_rput(vbuf * v,
     v->desc.sg_entry.length = len;
     v->desc.sg_entry.lkey   = lkey;
     v->desc.sg_entry.addr   = (uintptr_t)(local_address);
-#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
     v->padding = RPUT_VBUF_FLAG;
-#endif
     v->rail    = rail;	
     DEBUG_PRINT("RDMA write\n");
 }
-
-#ifdef RDMA_FAST_PATH
-int MPI_Debug_vbuf_recv(int rank, int index, int len)
-{
-    MPID_Comm * comm_ptr;
-    MPIDI_VC_t * vc;
-    vbuf * v;
-    char * start;
-    int i;
-    int align_len;
-     
-    MPID_Comm_get_ptr (MPI_COMM_WORLD, comm_ptr);
-    MPIDI_Comm_get_vc(comm_ptr, rank, &vc);
-    
-    v = &(vc->mrail.rfp.RDMA_recv_buf[index]);
-    MRAILI_ALIGN_LEN(len, align_len);    
- 
-    start = (char *)((uintptr_t)(v->head_flag) - align_len);
-    fprintf(stderr, "Printing recv buffer (len %d): ", v->head_flag);
-    for (i = 0; i < align_len + 4; i ++) {
-        fprintf(stderr, "%c", start[i]);
-    }
-    fprintf(stderr, "\n");
-    fflush(stderr);
-    return 0;
-}
-
-int MPI_Debug_vbuf_send(int rank, int index, int len)
-{
-    MPID_Comm * comm_ptr;
-    MPIDI_VC_t * vc;
-    vbuf * v;
-    char * start;
-    int i;
-    int align_len;
-
-    MPID_Comm_get_ptr (MPI_COMM_WORLD, comm_ptr);
-    MPIDI_Comm_get_vc(comm_ptr, rank, &vc);
-
-    v = &(vc->mrail.rfp.RDMA_send_buf[index]);
-    MRAILI_ALIGN_LEN(len, align_len);
-    
-    start = (char *)((uintptr_t)(v->head_flag) - align_len);
-    fprintf(stderr, "Printing send buffer (len %d): ", v->head_flag);
-    for (i = 0; i < align_len + 4; i ++) {
-        fprintf(stderr, "%c", start[i]);
-    }
-    fprintf(stderr, "\n");
-    fflush(stderr);
-    return 0;
-}
-
-#endif
-
-/*
- * print out vbuf contents for debugging 
- */
 
 void dump_vbuf(char *msg, vbuf * v)
 {
@@ -495,9 +395,6 @@ void dump_vbuf(char *msg, vbuf * v)
     DEBUG_PRINT("%s: dump of vbuf %p, type = %d\n",
             msg, v, header->type);
     len = 100;
-#if defined(RDMA_FAST_PATH)
-    DEBUG_PRINT("total_size = %u\n", v->head_flag);
-#endif
     for (i = 0; i < len; i++) {
         if (0 == i % 16)
             DEBUG_PRINT("\n  ");
@@ -506,4 +403,3 @@ void dump_vbuf(char *msg, vbuf * v)
     DEBUG_PRINT("\n");
     DEBUG_PRINT("  END OF VBUF DUMP\n");
 }
-

@@ -1491,7 +1491,8 @@ int MPIDI_Win_complete(MPID_Win * win_ptr)
 		src = ranks_in_win_grp[i];
 #if defined (_SMP_) && defined(ONE_SIDED)
 		MPIDI_Comm_get_vc(comm_ptr, src, &vc);
-		if (src != rank && vc->smp.local_nodes != -1)
+		if ((src != rank && vc->smp.local_nodes != -1)
+		   ||  win_ptr->fall_back == 1)
 #else
 		if (src != rank)
 #endif

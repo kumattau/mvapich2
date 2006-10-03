@@ -52,6 +52,7 @@ do {                                                          \
     sreq->dev.iov[0].MPID_IOV_BUF = (char *) &sreq->ch.pkt + nb; \
     sreq->dev.iov[0].MPID_IOV_LEN = pkt_sz - nb; \
     sreq->dev.iov_count = 1; \
+    sreq->dev.reqtype = REQUEST_NORMAL; \
     sreq->ch.iov_offset = 0; \
     sreq->dev.ca = MPIDI_CH3_CA_COMPLETE; \
     MPIDI_FUNC_EXIT(MPID_STATE_CREATE_REQUEST); \
@@ -98,13 +99,24 @@ int MPIDI_CH3_iStartMsg(MPIDI_VC_t * vc, void *pkt, MPIDI_msg_sz_t pkt_sz,
         return mpi_errno;
     }
 #endif
+    /*CM code*/
+    if (vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE 
+    || !MPIDI_CH3I_CM_SendQ_empty(vc)) {
+        /*Request need to be queued*/
+        MPIDI_DBG_PRINTF((55, FCNAME, "not connected, enqueuing"));
+        create_request(sreq, pkt, pkt_sz, 0);
+        MPIDI_CH3I_CM_SendQ_enqueue(vc, sreq);
+        if (vc->ch.state == MPIDI_CH3I_VC_STATE_UNCONNECTED)  {
+            MPIDI_CH3I_CM_Connect(vc);
+        }
+        goto fn_exit;
+    }
+
     if (MPIDI_CH3I_SendQ_empty(vc)) {   /* MT */
         int nb;
         int pkt_len;
         vbuf *buf;
-#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
         int rdma_ok;
-#endif
 
         /* MT - need some signalling to lock down our right to use the
            channel, thus insuring that the progress engine does also try to
@@ -113,7 +125,7 @@ int MPIDI_CH3_iStartMsg(MPIDI_VC_t * vc, void *pkt, MPIDI_msg_sz_t pkt_sz,
         iov[0].MPID_IOV_BUF = pkt;
         iov[0].MPID_IOV_LEN = pkt_sz;
         pkt_len = pkt_sz;
-#if defined(RDMA_FAST_PATH) || defined(ADAPTIVE_RDMA_FAST_PATH)
+
         rdma_ok = MPIDI_CH3I_MRAILI_Fast_rdma_ok(vc, pkt_len);
         DEBUG_PRINT("[send], rdma ok: %d\n", rdma_ok);
         if (rdma_ok != 0) {
@@ -125,9 +137,7 @@ int MPIDI_CH3_iStartMsg(MPIDI_VC_t * vc, void *pkt, MPIDI_msg_sz_t pkt_sz,
                                                           &buf);
             DEBUG_PRINT("[send: send progress] mpi_errno %d, nb %d\n",
                         mpi_errno == MPI_SUCCESS, nb);
-        } else
-#endif
-        {
+        } else {
             /* TODO: Codes to send pkt through send/recv path */
             mpi_errno =
                 MPIDI_CH3I_MRAILI_Eager_send(vc, iov, 1, &nb, &buf);
@@ -187,8 +197,11 @@ static int MPIDI_CH3_SMP_iStartMsg(MPIDI_VC_t * vc, void *pkt,
     int mpi_errno = MPI_SUCCESS;
     MPID_Request *sreq = NULL;
     MPID_IOV iov[1];
+    MPIDI_CH3_Pkt_send_t *pkt_header;
 
     DEBUG_PRINT("entering ch3_istartmsg\n");
+
+    pkt_header = (MPIDI_CH3_Pkt_send_t *)pkt;
 
     /* If send queue is empty attempt to send
        data, queuing any unsent data. */
@@ -201,7 +214,12 @@ static int MPIDI_CH3_SMP_iStartMsg(MPIDI_VC_t * vc, void *pkt,
 
         iov[0].MPID_IOV_BUF = pkt;
         iov[0].MPID_IOV_LEN = pkt_sz;
-        mpi_errno = MPIDI_CH3I_SMP_writev(vc, iov, 1, &nb);
+
+        if(pkt_header->type == MPIDI_CH3_PKT_RNDV_R3_DATA)
+            mpi_errno = MPIDI_CH3I_SMP_writev_rndv_header(vc, iov, 1, &nb);
+        else
+            mpi_errno = MPIDI_CH3I_SMP_writev(vc, iov, 1, &nb);
+
         if (mpi_errno == MPI_SUCCESS) {
             if (nb == pkt_sz) {
                 DEBUG_PRINT("data sent immediately\n");
@@ -209,6 +227,8 @@ static int MPIDI_CH3_SMP_iStartMsg(MPIDI_VC_t * vc, void *pkt,
             } else {
                 DEBUG_PRINT("send delayed, request enqueued\n");
                 create_request(sreq, pkt, pkt_sz, nb);
+                if(pkt_header->type == MPIDI_CH3_PKT_RNDV_R3_DATA)
+                    sreq->dev.reqtype = REQUEST_RNDV_R3_HEADER;
                 MPIDI_CH3I_SMP_SendQ_enqueue_head(vc, sreq);
                 vc->smp.send_active = sreq;
             }
@@ -234,6 +254,8 @@ static int MPIDI_CH3_SMP_iStartMsg(MPIDI_VC_t * vc, void *pkt,
         MPIDI_DBG_PRINTF((55, FCNAME,
                           "send in progress, request enqueued"));
         create_request(sreq, pkt, pkt_sz, 0);
+        if(pkt_header->type == MPIDI_CH3_PKT_RNDV_R3_DATA)
+            sreq->dev.reqtype = REQUEST_RNDV_R3_HEADER;
         MPIDI_CH3I_SMP_SendQ_enqueue(vc, sreq);
     }
 

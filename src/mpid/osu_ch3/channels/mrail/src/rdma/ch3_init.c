@@ -51,8 +51,41 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 	fprintf(stderr, "Failed sanity check! Packet size table mismatch\n");
 	return -1;	
     }
-
+   
     pg_size = MPIDI_PG_Get_size(pg);
+
+    {/*Determine to use which connection management*/
+        char *value;
+        int threshold = MPIDI_CH3I_CM_DEFAULT_ON_DEMAND_THRESHOLD;
+
+        /*check ON_DEMAND_THRESHOLD*/
+        value = getenv("MV2_ON_DEMAND_THRESHOLD");
+        if (NULL != value)
+            threshold = atoi(value);
+        if (pg_size >= threshold) {
+            MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_ON_DEMAND;
+            /*Check whether the DIRECT_ONE_SIDED or DISABLE PTMalloc is enabled*/
+#ifdef DISABLE_PTMALLOC
+            if (pg_rank==0) {
+                fprintf(stderr,"Error: On-demand connection management does not work when PTmalloc is disabled\n"
+                "Please recompile MVAPICH2 without the CFLAG -DDISABLE_PTMALLOC, or\n"
+                "Set MV2_ON_DEMAND_THRESHOLD to a value more than the number of processes to use all-to-all connections\n");
+            }
+            return -1;
+#endif            
+            if (NULL != getenv("MV2_ENABLE_RDMA_ONE_SIDED")) {
+                if (pg_rank==0) {
+                    fprintf(stderr,"Error: Optimized one sided operation does not work with on-demand connection management\n"
+                            "Please remove env MV2_ENABLE_RDMA_ONE_SIDED to disable optimized one sided, or\n"
+                            "Set MV2_ON_DEMAND_THRESHOLD to a value more than the number of processes to use all-to-all connections\n");
+                }
+                return -1;
+            }
+        }
+        else
+            MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_BASIC_ALL2ALL;
+    }
+
 
     /* Initialize the VC table associated with this process
        group (and thus COMM_WORLD) */
@@ -61,13 +94,18 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         vc->ch.sendq_head = NULL;
         vc->ch.sendq_tail = NULL;
         vc->ch.req = (MPID_Request *) MPIU_Malloc(sizeof(MPID_Request));
-        vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
+        vc->ch.state = MPIDI_CH3I_VC_STATE_UNCONNECTED;
         vc->ch.read_state = MPIDI_CH3I_READ_STATE_IDLE;
         vc->ch.recv_active = NULL;
         vc->ch.send_active = NULL;
+        vc->ch.cm_sendq_head = NULL;
+        vc->ch.cm_sendq_tail = NULL;
 #ifdef USE_RDMA_UNEX
         vc->ch.unex_finished_next = NULL;
         vc->ch.unex_list = NULL;
+#endif
+#ifdef _SMP_
+	vc->smp.hostid = -1;
 #endif
     }
 
@@ -84,7 +122,19 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     }
 
     /* allocate rmda memory and set up the queues */
-    mpi_errno = MPIDI_CH3I_RMDA_init(pg, pg_rank);
+    if (MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND) {
+        /*FillMe:call MPIDI_CH3I_CM_Init here*/
+        mpi_errno = MPIDI_CH3I_CM_Init(pg, pg_rank);
+    }
+    else {
+        /*call old init to setup all connections*/
+        mpi_errno = MPIDI_CH3I_RMDA_init(pg, pg_rank);
+        for (p = 0; p < pg_size; p++) {
+            MPIDI_PG_Get_vcr(pg, p, &vc);
+            vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
+        }
+    }
+    
     if (mpi_errno != MPI_SUCCESS) {
         mpi_errno =
             MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL, FCNAME,
