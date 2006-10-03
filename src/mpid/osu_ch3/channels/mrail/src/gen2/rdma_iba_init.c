@@ -1125,17 +1125,28 @@ int MPIDI_CH3I_CM_Finalize()
     free(rdma_iba_addr_table.qp_num_rdma);
     free(rdma_iba_addr_table.qp_num_onesided);
 
-    /* STEP 3: release all the cq resource, relaes all the unpinned buffers, release the
-     * ptag 
-     *   and finally, release the hca */
+    /* STEP 3: release all the cq resource, 
+     * release all the unpinned buffers, 
+     * release the ptag and finally, release the hca */
+
     for (i = 0; i < rdma_num_hcas; i++) {
-	ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.cq_hndl[i]);
-	if (MPIDI_CH3I_RDMA_Process.has_one_sided)
-	    ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.cq_hndl_1sc[i]);
-	deallocate_vbufs(i);
-	while (dreg_evict());
-	ibv_dealloc_pd(MPIDI_CH3I_RDMA_Process.ptag[i]);
-	ibv_close_device(MPIDI_CH3I_RDMA_Process.nic_context[i]);
+
+        if (MPIDI_CH3I_RDMA_Process.has_srq) {
+            pthread_cancel(MPIDI_CH3I_RDMA_Process.async_thread[i]);
+            ibv_destroy_srq(MPIDI_CH3I_RDMA_Process.srq_hndl[i]);
+        }
+
+        ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.cq_hndl[i]);
+
+        if (MPIDI_CH3I_RDMA_Process.has_one_sided)
+            ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.cq_hndl_1sc[i]);
+
+        deallocate_vbufs(i);
+
+        while (dreg_evict());
+
+        ibv_dealloc_pd(MPIDI_CH3I_RDMA_Process.ptag[i]);
+        ibv_close_device(MPIDI_CH3I_RDMA_Process.nic_context[i]);
     }
 
 #ifndef DISABLE_PTMALLOC
