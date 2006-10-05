@@ -32,6 +32,8 @@
 /* add this structure to the implemenation specific macro */
 #define MPIDI_CH3I_VC_RDMA_DECL MPIDI_CH3I_MRAIL_VC mrail;
 
+#define MPIDI_CH3I_MRAILI_PKT_ADDRESS_DECL
+
 #define MPIDI_CH3I_MRAILI_IBA_PKT_DEFS 1
 
 #define _SCHEDULE 1
