@@ -60,6 +60,8 @@ struct dreg_entry {
     /* for zero refcount chain */
     dreg_entry *next_unused;
     dreg_entry *prev_unused;
+
+    int is_valid;
 };
 
 

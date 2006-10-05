@@ -479,6 +479,7 @@ void dreg_init()
                 (int) sizeof(dreg_entry) * rdma_ndreg_entries);
     }
 
+    memset(dreg_free_list, 0, sizeof(dreg_entry) * rdma_ndreg_entries);
 
     for (i = 0; i < (int) rdma_ndreg_entries - 1; i++) {
         dreg_free_list[i].next = &dreg_free_list[i + 1];
@@ -617,8 +618,16 @@ void dreg_decr_refcount(dreg_entry * d)
         } else {
 
             for(i = 0; i < rdma_num_hcas; i++) {
-                if (deregister_memory(d->memhandle[i])) {
-                    ibv_error_abort(IBV_RETURN_ERR, "deregister fails\n");
+
+                if(d->memhandle[i]) {
+
+                    d->is_valid = 0;
+
+                    if (deregister_memory(d->memhandle[i])) {
+
+                        ibv_error_abort(IBV_RETURN_ERR, 
+                                "[%d] deregister fails\n", __LINE__);
+                    }
                 }
                 d->memhandle[i] = NULL;
             }
@@ -670,10 +679,14 @@ int dreg_evict()
     buf = (void *) bufint;
 
     for (hca_index = 0; hca_index < rdma_num_hcas; hca_index ++) {          
+
         if(d->memhandle[hca_index]) {
+
+            d->is_valid = 0;
+
             if (deregister_memory(d->memhandle[hca_index])) {
                 ibv_error_abort(IBV_RETURN_ERR,
-                        "Deregister fails\n");
+                        "[%d] Deregister fails\n", __LINE__);
             }
         }
     }
@@ -761,6 +774,9 @@ dreg_entry *dreg_new_entry(void *buf, int len)
             return NULL;
         }
     }
+
+    d->is_valid = 1;
+    
     return d;
 }
 
@@ -811,18 +827,25 @@ void find_and_free_dregs_inside(void *buf, int len)
 
         if(d) {
 
-            if((d->refcount != 0)) {
+            if((d->refcount != 0) || (d->is_valid == 0)) {
                 /* This memory area is still being referenced
                  * by other pending MPI operations, which are
                  * expected to call dreg_unregister and thus
                  * unpin the buffer. We cannot deregister this
                  * page, since other ops are pending from here. */
+
+                /* OR: This memory region is in the process of
+                 * being deregistered. Leave it alone! */
                 continue;
             }
 
             for(i = 0; i < rdma_num_hcas; i++) {
-                if (deregister_memory(d->memhandle[i])) {
-                    ibv_error_abort(IBV_RETURN_ERR, "deregister fails\n");
+
+                if(d->memhandle[i]) {
+
+                    if (deregister_memory(d->memhandle[i])) {
+                        ibv_error_abort(IBV_RETURN_ERR, "[%d] deregister fails\n", __LINE__);
+                    }
                 }
                 d->memhandle[i] = NULL;
             }
