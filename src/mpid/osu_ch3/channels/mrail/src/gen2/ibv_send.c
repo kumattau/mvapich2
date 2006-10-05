@@ -859,7 +859,8 @@ int MRAILI_Send_noop_if_needed(MPIDI_VC_t * vc, int rail)
     MPIDI_FUNC_ENTER(MRAILI_SEND_NOOP_IF_NEEDED);
 
 
-    if (MPIDI_CH3I_RDMA_Process.has_srq)
+    if (MPIDI_CH3I_RDMA_Process.has_srq
+     || vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE)
 	return MPI_SUCCESS;
 
     DEBUG_PRINT( "[ibv_send]local credit %d, rdma redit %d\n",
