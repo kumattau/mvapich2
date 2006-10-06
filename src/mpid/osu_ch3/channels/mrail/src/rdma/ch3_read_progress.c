@@ -86,7 +86,7 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr)
             goto fn_exit;
         }
     }
-#elif
+#else
     type = MPIDI_CH3I_MRAILI_Get_next_vbuf(vc_pptr, v_ptr);
     if (type != T_CHANNEL_NO_ARRIVE) {
 	goto fn_exit;
