@@ -19,6 +19,23 @@
 
 #ifndef DISABLE_MUNMAP_HOOK
 #include <dlfcn.h>
+
+static void set_real_munmap_ptr()
+{
+    char *dlerror_str;
+    void *ptr_dlsym;
+
+    ptr_dlsym = dlsym(RTLD_NEXT, "munmap");
+    dlerror_str = dlerror();
+
+    if(NULL != dlerror_str) {
+        fprintf(stderr,"Error resolving munmap (%s)\n",
+                dlerror_str);
+    }       
+
+    mvapich2_minfo.munmap = ptr_dlsym;
+}
+
 #endif
 
 void mvapich2_mem_unhook(void *ptr, size_t size)
@@ -64,7 +81,8 @@ int mvapich2_minit()
     }
 
 #ifndef DISABLE_MUNMAP_HOOK
-    mvapich2_minfo.munmap = NULL;
+    dlerror(); /* Clear the error string */
+    set_real_munmap_ptr();
 #endif
 
     return ret;
@@ -81,20 +99,7 @@ int mvapich2_munmap(void *buf, int len)
     mvapich2_mem_unhook(buf, len);
 
     if(!mvapich2_minfo.munmap) {
-
-        char *dlerror_str;
-        void *ptr_dlsym;
-
-        dlerror();
-        ptr_dlsym = dlsym(RTLD_NEXT, "munmap");
-        dlerror_str = dlerror();
-
-        if(NULL != dlerror_str) {
-            fprintf(stderr,"Error resolving munmap (%s)\n",
-                    dlerror_str);
-        }       
-
-        mvapich2_minfo.munmap = ptr_dlsym;
+        set_real_munmap_ptr();
     }
 
     return mvapich2_minfo.munmap(buf, len);
