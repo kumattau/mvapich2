@@ -53,6 +53,7 @@ fi
 #memory to Operating System (when registration
 #cache is enabled)
 #Enabled by default
+#Disable by -DDISABLE_PTMALLOC
 PTMALLOC=""
 
 # Whether or not to build with multi-thread support
@@ -64,7 +65,6 @@ MULTI_THREAD=""
 
 if [ ! -z $MULTI_THREAD ]; then
 	MULTI_THREAD="--enable-threads=multiple"
-	PTMALLOC="-DDISABLE_PTMALLOC"
 fi
 
 # Check if SRQ is valid. for this platform.
