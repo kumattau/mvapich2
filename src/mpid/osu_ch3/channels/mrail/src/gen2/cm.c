@@ -76,7 +76,7 @@ int page_size;
     exit(-1);\
 }while(0)
 
-#if CM_DEBUG
+#ifdef CM_DEBUG
 #define CM_DBG(args...)  do {\
     fprintf(stderr, "[Rank %d][%s: line %d]", cm_ib_context.rank ,__FILE__, __LINE__); \
     fprintf(stderr, args); \
@@ -112,17 +112,13 @@ cm_pending *cm_pending_head = NULL;
 
 cm_pending *cm_pending_create()
 {
-    CM_DBG("cm_pending_create Enter");
     cm_pending *temp = (cm_pending *) malloc(sizeof(cm_pending));
     memset(temp, 0, sizeof(cm_pending));
-    CM_DBG("cm_pending_create Exit");
     return temp;
 }
 
 int cm_pending_init(cm_pending * pending, cm_msg * msg)
 {
-    CM_DBG("cm_pending_init Enter");
-    
     if (msg->msg_type == CM_MSG_TYPE_REQ) {
         pending->cli_or_srv = CM_PENDING_CLIENT;
         pending->peer = msg->server_rank;
@@ -134,7 +130,6 @@ int cm_pending_init(cm_pending * pending, cm_msg * msg)
     }
     pending->packet = (cm_packet *) malloc(sizeof(cm_packet));
     memcpy(&(pending->packet->payload), msg, sizeof(cm_msg));
-    CM_DBG("cm_pending_init Exit");
     
     return MPI_SUCCESS;
 }
@@ -142,7 +137,6 @@ int cm_pending_init(cm_pending * pending, cm_msg * msg)
 cm_pending *cm_pending_search_peer(int peer, int cli_or_srv)
 {
     cm_pending *pending = cm_pending_head;
-    CM_DBG("cm_pending_search_peer Enter");
     
     while (pending->next != cm_pending_head) {
         pending = pending->next;
@@ -150,14 +144,12 @@ cm_pending *cm_pending_search_peer(int peer, int cli_or_srv)
             return pending;
         }
     }
-    CM_DBG("cm_pending_search_peer Exit");
      
     return NULL;
 }
 
 int cm_pending_append(cm_pending * node)
 {
-    CM_DBG("cm_pending_append Enter");
     
     cm_pending *last = cm_pending_head->prev;
     last->next = node;
@@ -165,21 +157,17 @@ int cm_pending_append(cm_pending * node)
     cm_pending_head->prev = node;
     node->prev = last;
     cm_pending_num++;
-    CM_DBG("cm_pending_append Exit");
     
     return MPI_SUCCESS;
 }
 
 int cm_pending_remove_and_destroy(cm_pending * node)
 {
-    CM_DBG("cm_pending_remove_and_destroy Enter");
-        
     free(node->packet);
     node->next->prev = node->prev;
     node->prev->next = node->next;
     free(node);
     cm_pending_num--;
-    CM_DBG("cm_pending_remove_and_destroy Exit");
     
     return MPI_SUCCESS;
 }
@@ -236,8 +224,6 @@ int cm_post_ud_packet(cm_msg * msg)
     struct ibv_wc wc;
     int ne;
 
-    CM_DBG("cm_post_ud_packet Enter");
-    
     if (msg->msg_type == CM_MSG_TYPE_REP) {
         peer = msg->client_rank;
     } else {
@@ -266,8 +252,6 @@ int cm_post_ud_packet(cm_msg * msg)
     }
 
     /*poll for completion */
-    CM_DBG("cm_post_ud_packet Poll");
-    
     while (1) {
         ne = ibv_poll_cq(cm_ud_send_cq, 1, &wc);
         if (ne < 0) {
@@ -287,8 +271,6 @@ int cm_post_ud_packet(cm_msg * msg)
                     (int) wc.wr_id);
         }
     }
-
-    CM_DBG("cm_post_ud_packet Exit");
 
     return MPI_SUCCESS;
 }
@@ -346,13 +328,14 @@ int cm_accept(cm_msg * msg)
         msg_send.lids[i] = vc->mrail.rails[i].lid;
         msg_send.qpns[i] = vc->mrail.rails[i].qp_hndl->qp_num;
     }
-    
+
+    vc->ch.state = MPIDI_CH3I_VC_STATE_CONNECTING_SRV;
+
     /*Send rep msg */
     if (cm_send_ud_msg(&msg_send)) {
         CM_ERR_ABORT("cm_send_ud_msg failed");
     }
 
-    vc->ch.state = MPIDI_CH3I_VC_STATE_CONNECTING_SRV;
     CM_DBG("cm_accpet Exit");
     return MPI_SUCCESS;
 }
@@ -379,13 +362,13 @@ int cm_accept_and_cancel(cm_msg * msg)
         msg_send.lids[i] = vc->mrail.rails[i].lid;
         msg_send.qpns[i] = vc->mrail.rails[i].qp_hndl->qp_num;
     }
-    
+
+    vc->ch.state = MPIDI_CH3I_VC_STATE_CONNECTING_SRV;
+   
     /*Send rep msg */
     if (cm_send_ud_msg(&msg_send)) {
         CM_ERR_ABORT("cm_send_ud_msg failed");
     }
-
-    vc->ch.state = MPIDI_CH3I_VC_STATE_CONNECTING_SRV;
 
     CM_DBG("cm_accept_and_cancel Cancel");
     /*Cancel client role */
@@ -884,6 +867,7 @@ int MPIDI_CH3I_CM_Establish(MPIDI_VC_t * vc)
     /*This function should be called when VC received the 
     first message in on-demand case */
     cm_pending *pending;
+    CM_DBG("In MPIDI_CH3I_CM_Establish");
     pthread_mutex_lock(&cm_conn_state_lock);
     if (vc->ch.state !=
         MPIDI_CH3I_VC_STATE_CONNECTING_SRV) {
