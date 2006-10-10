@@ -67,22 +67,22 @@ do {                                                          \
 
 /* Macros for flow control and rqueues management */
 #define SMPI_TOTALIN(sender,receiver)                               \
-smpi_shmem->rqueues_params[sender][receiver].msgs_total_in
+((volatile smpi_params *)smpi_shmem->rqueues_params[sender])[receiver].msgs_total_in
 
 #define SMPI_TOTALOUT(sender,receiver)                              \
-smpi_shmem->rqueues_flow_out[receiver][sender].msgs_total_out
+((volatile smpi_rqueues *)smpi_shmem->rqueues_flow_out[receiver])[sender].msgs_total_out
 
 #define SMPI_CURRENT(sender,receiver)                               \
-smpi_shmem->rqueues_params[receiver][sender].current
+((volatile smpi_params *)smpi_shmem->rqueues_params[receiver])[sender].current
 
 #define SMPI_NEXT(sender,receiver)                                  \
-smpi_shmem->rqueues_params[sender][receiver].next
+((volatile smpi_params *)smpi_shmem->rqueues_params[sender])[receiver].next
 
 #define SMPI_FIRST(sender,receiver)                                 \
-smpi_shmem->rqueues_limits[receiver][sender].first
+((volatile smpi_rq_limit *)smpi_shmem->rqueues_limits[receiver])[sender].first
 
 #define SMPI_LAST(sender,receiver)                                  \
-smpi_shmem->rqueues_limits[receiver][sender].last
+((volatile smpi_rq_limit *)smpi_shmem->rqueues_limits[receiver])[sender].last
 
 struct smpi_var smpi;
 struct shared_mem *smpi_shmem;
