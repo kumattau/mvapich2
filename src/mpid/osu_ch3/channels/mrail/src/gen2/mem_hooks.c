@@ -90,14 +90,13 @@ int mvapich2_minit()
 
 void mvapich2_mfin()
 {
+    mvapich2_minfo.is_mem_hook_finalized = 1;
 }
 
 #ifndef DISABLE_MUNMAP_HOOK
 
 int mvapich2_munmap(void *buf, int len)
 {
-    mvapich2_mem_unhook(buf, len);
-
     if(!mvapich2_minfo.munmap) {
         set_real_munmap_ptr();
     }
@@ -107,6 +106,10 @@ int mvapich2_munmap(void *buf, int len)
 
 int munmap(void *buf, size_t len)
 {
+    if(!mvapich2_minfo.is_mem_hook_finalized) {
+        mvapich2_mem_unhook(buf, len);
+    }
+
     return mvapich2_munmap(buf, len);
 }
 

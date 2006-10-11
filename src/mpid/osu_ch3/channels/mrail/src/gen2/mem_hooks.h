@@ -29,6 +29,7 @@ typedef struct {
     int         is_our_valloc;
     int         is_our_memalign;
     int         is_inside_free;
+    int         is_mem_hook_finalized;
 #ifndef DISABLE_MUNMAP_HOOK
     int         (*munmap)(void*, size_t);
 #endif
