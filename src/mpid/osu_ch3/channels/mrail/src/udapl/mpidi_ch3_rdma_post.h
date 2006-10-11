@@ -191,7 +191,6 @@ int iba_unlock (MPID_Win *, MPIDI_RMA_ops *, int);
 /* Return type of the sending interfaces */
 #define MPI_MRAIL_MSG_QUEUED (-1)
 
-#ifdef RDMA_FAST_PATH
 int MPIDI_CH3I_MRAILI_Fast_rdma_ok (MPIDI_VC_t * vc, int len);
 
 int MPIDI_CH3I_MRAILI_Fast_rdma_send_complete (MPIDI_VC_t * vc,
@@ -199,7 +198,6 @@ int MPIDI_CH3I_MRAILI_Fast_rdma_send_complete (MPIDI_VC_t * vc,
                                                int n_iov, int *nb, vbuf ** v);
 
 
-#endif
 int MPIDI_CH3I_RDMA_cq_poll ();
 
 void MRAILI_Init_vc (MPIDI_VC_t * vc, int pg_rank);

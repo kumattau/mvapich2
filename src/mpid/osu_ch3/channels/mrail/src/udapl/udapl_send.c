@@ -335,6 +335,7 @@ MRAILI_Fast_rdma_fill_start_buf (MPIDI_VC_t * vc,
 
     return MPI_SUCCESS;
 }
+#endif
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_MRAILI_Fast_rdma_send_complete
@@ -347,6 +348,10 @@ MPIDI_CH3I_MRAILI_Fast_rdma_send_complete (MPIDI_VC_t * vc,
                                            int *num_bytes_ptr,
                                            vbuf ** vbuf_handle)
 {
+#ifndef RDMA_FAST_PATH
+    return -1;
+#else
+
     MPIDI_CH3I_MRAILI_Pkt_comm_header *p;
     MRAILI_Channel_info channel;
     int  align_len;
@@ -416,6 +421,7 @@ MPIDI_CH3I_MRAILI_Fast_rdma_send_complete (MPIDI_VC_t * vc,
       }
     MPIDI_FUNC_EXIT(MPIDI_CH3I_MRAILI_FAST_RDMA_SEND_COMPLETE);
     return MPI_SUCCESS;
+#endif
 }
 
 #undef FUNCNAME
@@ -424,6 +430,10 @@ MPIDI_CH3I_MRAILI_Fast_rdma_send_complete (MPIDI_VC_t * vc,
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3I_MRAILI_Fast_rdma_ok (MPIDI_VC_t * vc, int len)
 {
+#ifndef RDMA_FAST_PATH
+    return 0;
+#else
+
     MPIDI_STATE_DECL(MPIDI_CH3I_MRAILI_FAST_RDMA_OK);
     MPIDI_FUNC_ENTER(MPIDI_CH3I_MRAILI_FAST_RDMA_OK);
 
@@ -443,9 +453,8 @@ int MPIDI_CH3I_MRAILI_Fast_rdma_ok (MPIDI_VC_t * vc, int len)
         return 0;
     DEBUG_PRINT ("[send:rdma_ok] return 1\n");
     return 1;
-}
-
 #endif
+}
 
 #undef FUNCNAME
 #define FUNCNAME MRAILI_Post_send
