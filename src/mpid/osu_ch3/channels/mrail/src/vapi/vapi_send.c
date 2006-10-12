@@ -147,7 +147,6 @@ int MPIDI_CH3I_RDMA_read_datav(MPIDI_VC_t * recv_vc_ptr, MPID_IOV * iov,
 }
 
 #ifdef RDMA_FAST_PATH
-
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_MRAILI_Fast_rdma_fill_start_buf
 #undef FCNAME
@@ -292,6 +291,9 @@ int MRAILI_Fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
     return MPI_SUCCESS;
 }
 
+#endif
+
+
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_MRAILI_Fast_rdma_send_complete
 #undef FCNAME
@@ -302,6 +304,7 @@ int MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(MPIDI_VC_t * vc,
                                               int *num_bytes_ptr,
                                               vbuf ** vbuf_handle)
 {
+#ifdef RDMA_FAST_PATH
     int align_len;
     MPIDI_CH3I_MRAILI_Pkt_comm_header *p;
     vbuf *v =
@@ -366,10 +369,14 @@ int MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(MPIDI_VC_t * vc,
         DEBUG_PRINT("[send:post rdma] desc posted\n");
     }
     return MPI_SUCCESS;
+#else
+    return -1;
+#endif
 }
 
 int MPIDI_CH3I_MRAILI_Fast_rdma_ok(MPIDI_VC_t * vc, int len)
 {
+#ifdef RDMA_FAST_PATH
     if (num_rdma_buffer < 2)
         return 0;
     if (vc->mrail.rfp.phead_RDMA_send == vc->mrail.rfp.ptail_RDMA_send) {
@@ -381,9 +388,11 @@ int MPIDI_CH3I_MRAILI_Fast_rdma_ok(MPIDI_VC_t * vc, int len)
         return 0;
     DEBUG_PRINT("[send:rdma_ok] return 1\n");
     return 1;
+#else
+    return 0;
+#endif
 } 
 
-#endif
 
 int MRAILI_Post_send(MPIDI_VC_t * vc, vbuf * v,
                      const MRAILI_Channel_info * channel)

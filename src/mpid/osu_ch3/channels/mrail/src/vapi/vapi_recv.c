@@ -62,7 +62,7 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
 
     DEBUG_PRINT("[parse header] begin, header %d\n", header->type);
     switch (header->type) {
-#ifdef USE_HEADER_CACHING
+#if defined(USE_HEADER_CACHING) && defined(RDMA_FAST_PATH)
     case (MPIDI_CH3_PKT_FAST_EAGER_SEND):
     case (MPIDI_CH3_PKT_FAST_EAGER_SEND_WITH_REQ):
         {
@@ -97,7 +97,7 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
     case (MPIDI_CH3_PKT_EAGER_SEND):
         {
             DEBUG_PRINT("[recv: parse header] pkt eager send\n");
-#ifdef USE_HEADER_CACHING
+#if defined(USE_HEADER_CACHING) && defined(RDMA_FAST_PATH)
             if (v->padding != NORMAL_VBUF_FLAG) {
                 memcpy((vc->mrail.rfp.cached_incoming), vstart,
                        sizeof(MPIDI_CH3_Pkt_eager_send_t));

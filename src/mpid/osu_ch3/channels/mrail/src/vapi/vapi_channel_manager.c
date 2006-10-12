@@ -253,6 +253,15 @@ fn_exit:
     return type;
 }
 
+#ifndef RDMA_FAST_PATH
+int MPIDI_CH3I_MRAILI_Get_next_vbuf(MPIDI_VC_t **vc_pptr, vbuf **v_ptr)
+{
+    *vc_pptr = NULL;
+    *v_ptr   = NULL;
+     return T_CHANNEL_NO_ARRIVE;
+}
+#endif
+
 int MPIDI_CH3I_MRAILI_Waiting_msg(MPIDI_VC_t * vc, vbuf ** vbuf_handle, int blocking) 
 {
     int i, seq;

@@ -925,7 +925,7 @@ int MPIDI_CH3I_RMDA_finalize()
                              "Error while trying to free queue pairs\n");
         }
 #endif
-#ifdef USE_HEADER_CACHING
+#if defined(USE_HEADER_CACHING) && defined(RDMA_FAST_PATH)
         free(vc->mrail.rfp.cached_incoming);
         free(vc->mrail.rfp.cached_outgoing);
 #endif
