@@ -519,8 +519,8 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 #endif
     if (smp_eagersize > smpi_length_queue / 2) {
         fprintf(stderr, "SMP_EAGERSIZE should not exceed half of "
-                "SMPI_LENGTH_QUEUE. Note that SMP_EAGERSIZE is set in KBytes, "
-                "and SMPI_LENGTH_QUEUE is set in MBytes.\n");
+                "SMPI_LENGTH_QUEUE. Note that SMP_EAGERSIZE "
+                "and SMPI_LENGTH_QUEUE are set in KBytes.\n");
         return -1;
     }
 
