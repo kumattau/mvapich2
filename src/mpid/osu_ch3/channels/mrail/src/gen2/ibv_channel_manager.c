@@ -439,7 +439,7 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle, MPIDI_VC_t * vc_req, int recei
     *vbuf_handle = NULL;
     needed = 0;
 
-    if (!receiving) {
+    if (!receiving && !vc_req) {
         type = MPIDI_CH3I_MRAILI_Test_pkt(vbuf_handle);
         if (type == T_CHANNEL_EXACT_ARRIVE || type == T_CHANNEL_CONTROL_MSG_ARRIVE)
             goto fn_exit;

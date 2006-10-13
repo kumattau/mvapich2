@@ -54,6 +54,10 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr)
         type =
             MPIDI_CH3I_MRAILI_Waiting_msg(pending_vc, v_ptr, 1);
         if (type == T_CHANNEL_CONTROL_MSG_ARRIVE) {
+            if((void *) pending_vc != (*v_ptr)->vc) {
+                fprintf(stderr, "mismatch %p %p\n", pending_vc,
+                        (*v_ptr)->vc);
+            }
             assert((void *) pending_vc == (*v_ptr)->vc);
             *vc_pptr = pending_vc;
         } else {                /* must be T_CHANNEL_EXACT_ARRIVE */
