@@ -62,7 +62,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         value = getenv("MV2_ON_DEMAND_THRESHOLD");
         if (NULL != value)
             threshold = atoi(value);
-        if (pg_size >= threshold) {
+        if (pg_size > threshold) {
             MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_ON_DEMAND;
             /*Check whether the DIRECT_ONE_SIDED or DISABLE PTMalloc is enabled*/
 #ifdef DISABLE_PTMALLOC
