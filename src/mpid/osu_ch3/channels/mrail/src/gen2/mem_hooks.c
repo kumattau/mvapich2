@@ -40,7 +40,8 @@ static void set_real_munmap_ptr()
 
 void mvapich2_mem_unhook(void *ptr, size_t size)
 {
-    if(size > 0) {
+    if((size > 0) && 
+            !mvapich2_minfo.is_mem_hook_finalized) {
         find_and_free_dregs_inside(ptr, size);
     }
 }
