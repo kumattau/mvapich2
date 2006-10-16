@@ -1046,6 +1046,10 @@ int MPIDI_CH3I_CM_Finalize()
     pg_rank = MPIDI_Process.my_pg_rank;
     pg_size = MPIDI_PG_Get_size(pg);
 
+#ifndef DISABLE_PTMALLOC
+    mvapich2_mfin();
+#endif
+
     /*barrier to make sure queues are initialized before continuing */
     error = PMI_Barrier();
 
@@ -1149,10 +1153,6 @@ int MPIDI_CH3I_CM_Finalize()
         ibv_dealloc_pd(MPIDI_CH3I_RDMA_Process.ptag[i]);
         ibv_close_device(MPIDI_CH3I_RDMA_Process.nic_context[i]);
     }
-
-#ifndef DISABLE_PTMALLOC
-    mvapich2_mfin();
-#endif
 
     return MPI_SUCCESS;
 }
