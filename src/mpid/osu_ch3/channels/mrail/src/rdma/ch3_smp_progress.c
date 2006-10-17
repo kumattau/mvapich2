@@ -488,7 +488,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
         smp_batch_size = atoi(value);
     }
 #ifdef _AFFINITY_
-    if ((value = getenv("VIADEV_ENABLE_AFFINITY")) != NULL) {
+    if ((value = getenv("MV2_ENABLE_AFFINITY")) != NULL) {
             viadev_enable_affinity = atoi(value);
     }
 #endif
