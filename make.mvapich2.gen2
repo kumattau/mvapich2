@@ -1,30 +1,34 @@
 #!/bin/bash
 
+# Most variables here can be overridden by exporting them in the environment
+# before running this script.  Default values have been provided if the
+# environment variable is not already set.
+
 source ./make.mvapich2.def
 
-arch
+# The target architecture.  If not exported outside of this script,
+# it will be found automatically or prompted for if necessary.
+# Supported: "_IA32_", "_IA64_", "_EM64T_", "_X86_64_"
+#
+if [ -z "$ARCH" ]; then
+    arch
+fi
 
 # Mandatory variables.  All are checked except CXX and F90.
-export OPEN_IB_HOME=/usr/local/ofed
-PREFIX=/usr/local/mvapich2
+export OPEN_IB_HOME=${OPEN_IB_HOME:-/usr/local/ofed}
+PREFIX=${PREFIX:-/usr/local/mvapich2}
 
-export CC=gcc
-export CXX=g++
-export F77=g77
-export F90=$F77
+export CC=${CC:-gcc}
+export CXX=${CXX:-g++}
+export F77=${F77:-g77}
+export F90=${F90:-$F77}
 
-if [ $ARCH = "SOLARIS" ]; then
-    die_setup "MVAPICH2 VAPI is not supported on Solaris."
-elif [ $ARCH = "MAC_OSX" ]; then
-    MTHOME=/usr/SmallTree
-    export F77=/usr/local/bin/g77
-    export F90=/usr/local/bin/g77
-    export MAC_OSX=yes
-    SUPPRESS="-multiply_defined suppress"
+if [ $ARCH = "SOLARIS" ] || [ $ARCH = "MAC_OSX" ]; then
+    die_setup "MVAPICH2 Gen2 is not supported on this architecture: $ARCH."
 fi
 
 # Check mandatory variable settings.
-if [ -z $OPEN_IB_HOME ] || [ -z $PREFIX ] || [ -z $CC ] || [ -z $F77 ]; then
+if [ -z "$OPEN_IB_HOME" ] || [ -z "$PREFIX" ] || [ -z "$CC" ] || [ -z "$F77" ]; then
     die_setup "Please set mandatory variables in this script."
 elif [ ! -d $OPEN_IB_HOME ]; then
     die_setup "MTHOME directory $OPEN_IB_HOME does not exist."
@@ -33,53 +37,41 @@ elif [ -d $OPEN_IB_HOME/lib64 ]; then
 elif [ -d $OPEN_IB_HOME/lib ]; then
     OPEN_IB_LIB=$OPEN_IB_HOME/lib
 else
-    die_setup "Could not find the MTHOME/lib directory."
+    die_setup "Could not find the OPEN_IB_HOME/lib64 or OPEN_IB_HOME/lib directory."
 fi
-
-# Whether to use an optimized queue pair exchange scheme.  This is not
-# checked for a setting in in the script.  It must be set here explicitly.
-# Supported: "-DUSE_MPD_RING" and "" (to disable)
-HAVE_MPD_RING="-DUSE_MPD_RING"
 
 # Set this to override automatic optimization setting (-03).
-OPT_FLAG=
+OPT_FLAG=${OPT_FLAG:--O3}
 
-if [ -z $OPT_FLAG ]; then
-    OPT_FLAG=-O2
+# PTMALLOC support for MVAPICH2 memory hooks.  Enabling this will allow
+# MVAPICH2 to release memory to the Operating System (when registration
+# cache is enabled).  Enabled by default.  Disable with -DDISABLE_PTMALLOC.
+PTMALLOC=${PTMALLOC:-}
+
+# Whether or not to build with multithreaded support.   Building with this
+# option will make MVAPICH2 thread-safe, but it may suffer slight
+# performance penalty in single-threaded case.  Disabled by default.
+# Supported: "yes" or "".
+MULTI_THREAD=${MULTI_THREAD:-}
+
+if [ "$MULTI_THREAD" = "yes" ]; then
+    MULTI_THREAD="--enable-threads=multiple"
 fi
 
-#PTMALLOC support for MVAPICH2 memory hooks
-#Enabling this will allow MVAPICH2 to release
-#memory to Operating System (when registration
-#cache is enabled)
-#Enabled by default
-#Disable by -DDISABLE_PTMALLOC
-PTMALLOC=""
+# Whether or not to build with ROMIO MPI I/O support.  Disabled by default.
+# Supported: "yes" or "".
+ROMIO=${ROMIO:-}
 
-# Whether or not to build with multi-thread support
-# Building with this option the MVAPICH2 will be thread-safe but it may suffer
-# slight performance penalty in single-threaded case
-# This option is default to no
-# Supported: "yes" or ""
-MULTI_THREAD=""
-
-if [ ! -z $MULTI_THREAD ]; then
-	MULTI_THREAD="--enable-threads=multiple"
+if [ "$ROMIO" = "yes" ]; then
+    ROMIO="--enable-romio"
+else
+    ROMIO="--disable-romio"
 fi
-
-# Check if SRQ is valid. for this platform.
-ENABLE_SRQ="-DSRQ"
-
-if [ "$HCA_COMPILE_FLAG" == "_MLX_PCI_X_" ]; then
-    ENABLE_SRQ=""
-fi
-
 
 export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
-export LIBS="-L${OPEN_IB_LIB} -libverbs -libumad -lpthread $SUPPRESS"
-export FFLAGS="-L${OPEN_IB_LIB}"
-export CFLAGS="-D${ARCH} -D_SMP_ -DUSE_HEADER_CACHING ${PTMALLOC} \
--DONE_SIDED -DMPID_USE_SEQUENCE_NUMBERS -I${OPEN_IB_HOME}/include $OPT_FLAG"
+export LIBS=${LIBS:--L${OPEN_IB_LIB} -libverbs -libumad -lpthread}
+export FFLAGS=${FFLAGS:--L${OPEN_IB_LIB}}
+export CFLAGS=${CFLAGS:--D${ARCH} -D_SMP_ -DUSE_HEADER_CACHING ${PTMALLOC} -DONE_SIDED -DMPID_USE_SEQUENCE_NUMBERS -I${OPEN_IB_HOME}/include $OPT_FLAG}
 
 # Prelogue
 make distclean &>/dev/null
@@ -92,7 +84,7 @@ rm -rf *.cache *.log *.status lib bin
 echo "Configuring MVAPICH2..."
 ./configure  --prefix=${PREFIX} ${MULTI_THREAD} \
     --with-device=osu_ch3:mrail --with-rdma=gen2 --with-pm=mpd \
-    --disable-romio --without-mpe 2>&1 |tee config-mine.log
+    ${ROMIO} --without-mpe 2>&1 |tee config-mine.log
 ret=$?
 tail config-mine.log
 test $ret = 0 ||  die "configuration."
