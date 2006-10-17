@@ -602,37 +602,37 @@ int MPICM_Init_UD(uint32_t * ud_qpn)
 
     page_size = sysconf(_SC_PAGESIZE);
 
-    if ((value = getenv("VIADEV_CM_SEND_DEPTH")) != NULL) {
+    if ((value = getenv("MV2_CM_SEND_DEPTH")) != NULL) {
         cm_send_depth = atoi(value);
     } else {
         cm_send_depth = DEFAULT_CM_SEND_DEPTH;
     }
 
-    if ((value = getenv("VIADEV_CM_RECV_BUFFERS")) != NULL) {
+    if ((value = getenv("MV2_CM_RECV_BUFFERS")) != NULL) {
         cm_recv_buffer_size = atoi(value);
     } else {
         cm_recv_buffer_size = DEFAULT_CM_MSG_RECV_BUFFER_SIZE;
     }
 
-    if ((value = getenv("VIADEV_CM_UD_PSN")) != NULL) {
+    if ((value = getenv("MV2_CM_UD_PSN")) != NULL) {
         cm_ud_psn = atoi(value);
     } else {
         cm_ud_psn = CM_UD_DEFAULT_PSN;
     }
 
-    if ((value = getenv("VIADEV_CM_MAX_SPIN_COUNT")) != NULL) {
+    if ((value = getenv("MV2_CM_MAX_SPIN_COUNT")) != NULL) {
         cm_max_spin_count = atoi(value);
     } else {
         cm_max_spin_count = DEFAULT_CM_MAX_SPIN_COUNT;
     }
     
-    if ((value = getenv("VIADEV_CM_THREAD_STACKSIZE")) != NULL) {
+    if ((value = getenv("MV2_CM_THREAD_STACKSIZE")) != NULL) {
         cm_thread_stacksize = atoi(value);
     } else {
         cm_thread_stacksize = DEFAULT_CM_THREAD_STACKSIZE;
     }
    
-    if ((value = getenv("VIADEV_CM_TIMEOUT")) != NULL) {
+    if ((value = getenv("MV2_CM_TIMEOUT")) != NULL) {
         cm_timeout_usec = atoi(value)*1000;
     } else { 
         cm_timeout_usec = CM_DEFAULT_TIMEOUT;
