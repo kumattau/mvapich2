@@ -40,26 +40,34 @@ else
     die_setup "Could not find the OPEN_IB_HOME/lib64 or OPEN_IB_HOME/lib directory."
 fi
 
-# Set this to override automatic optimization setting (-03).
-OPT_FLAG=${OPT_FLAG:--O3}
+# Set this to override automatic optimization setting (-O2).
+OPT_FLAG=${OPT_FLAG:--O2}
 
 # PTMALLOC support for MVAPICH2 memory hooks.  Enabling this will allow
 # MVAPICH2 to release memory to the Operating System (when registration
-# cache is enabled).  Enabled by default.  Disable with -DDISABLE_PTMALLOC.
+# cache is enabled).  Enabled by default.  Disable with "no".
 PTMALLOC=${PTMALLOC:-}
+
+if [ "$PTMALLOC" = "no" ]; then
+    PTMALLOC="-DDISABLE_PTMALLOC"
+else
+    PTMALLOC=""
+fi
 
 # Whether or not to build with multithreaded support.   Building with this
 # option will make MVAPICH2 thread-safe, but it may suffer slight
 # performance penalty in single-threaded case.  Disabled by default.
-# Supported: "yes" or "".
+# Enable with "yes".
 MULTI_THREAD=${MULTI_THREAD:-}
 
 if [ "$MULTI_THREAD" = "yes" ]; then
     MULTI_THREAD="--enable-threads=multiple"
+else
+    MULTI_THREAD=""
 fi
 
 # Whether or not to build with ROMIO MPI I/O support.  Disabled by default.
-# Supported: "yes" or "".
+# Enable with "yes".
 ROMIO=${ROMIO:-}
 
 if [ "$ROMIO" = "yes" ]; then
