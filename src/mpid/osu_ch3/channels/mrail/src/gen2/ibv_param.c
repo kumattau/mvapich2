@@ -313,10 +313,11 @@ int  rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
         proc->has_lazy_mem_unregister = 1;
     }
 
-    if ((value = getenv("MV2_ENABLE_RDMA_ONE_SIDED")) != NULL) {
-        proc->has_one_sided = 1;
-    } else {
+    if ((value = getenv("MV2_DISABLE_RDMA_ONE_SIDED")) != NULL
+     || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND) {
         proc->has_one_sided = 0;
+    } else {
+        proc->has_one_sided = 1;
     }
 
     return 0;

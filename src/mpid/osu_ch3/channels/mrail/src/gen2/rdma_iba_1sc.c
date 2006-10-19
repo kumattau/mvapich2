@@ -431,7 +431,7 @@ MPIDI_CH3I_RDMA_win_create(void *base,
     (*win_ptr)->fall_back = 1;
     return;
     }
-
+    
     PMI_Get_rank(&my_rank);
     
     /*There may be more than one windows existing at the same time */

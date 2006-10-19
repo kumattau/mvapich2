@@ -73,14 +73,6 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
             }
             return -1;
 #endif            
-            if (NULL != getenv("MV2_ENABLE_RDMA_ONE_SIDED")) {
-                if (pg_rank==0) {
-                    fprintf(stderr,"Error: Optimized one sided operation does not work with on-demand connection management\n"
-                            "Please remove env MV2_ENABLE_RDMA_ONE_SIDED to disable optimized one sided, or\n"
-                            "Set MV2_ON_DEMAND_THRESHOLD to a value more than the number of processes to use all-to-all connections\n");
-                }
-                return -1;
-            }
         }
         else
             MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_BASIC_ALL2ALL;
