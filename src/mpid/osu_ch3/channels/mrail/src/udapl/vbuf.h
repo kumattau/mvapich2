@@ -38,7 +38,7 @@
         #if defined(_PCI_X_)
                 #define VBUF_TOTAL_SIZE (12*1024)
         #elif defined(_PCI_EX_)
-                #define VBUF_TOTAL_SIZE (6*1024)
+                #define VBUF_TOTAL_SIZE (4*1024)
         #else
                 #define VBUF_TOTAL_SIZE (6*1024)
         #endif
@@ -81,7 +81,7 @@
         #if defined(_PCI_X_)
                 #define VBUF_TOTAL_SIZE (12*1024)
         #elif defined(_PCI_EX_)
-                #define VBUF_TOTAL_SIZE (6*1024)
+                #define VBUF_TOTAL_SIZE (4*1024)
         #else
                 #define VBUF_TOTAL_SIZE (6*1024)
         #endif
