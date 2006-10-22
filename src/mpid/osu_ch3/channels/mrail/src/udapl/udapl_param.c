@@ -142,7 +142,7 @@ rdma_init_parameters (int num_proc, int me)
           rdma_default_mtu_size = RDMA_DEFAULT_MTU_SIZE_SOLARIS;
       }
 
-    if ((value = (char *) getenv ("MV2_DEFAULT_MTU_SIZE")) != NULL)
+    if ((value = (char *) getenv ("MV2_DEFAULT_MTU")) != NULL)
       {
           rdma_default_mtu_size = (int) atoi (value);
       }
