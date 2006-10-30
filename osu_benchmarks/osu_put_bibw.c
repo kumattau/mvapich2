@@ -1,5 +1,5 @@
 /*
- * OSU One Sided MPI_Put Bi-directional Bandwidth test v2.2
+ * OSU One Sided MPI_Put Bi-directional Bandwidth test v2.3
  */
 /*
  * Copyright (C) 2003-2006 the Network-Based Computing Laboratory
@@ -60,7 +60,6 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 char        s_buf1[MAX_SIZE + 128];
 char        r_buf1[MYBUFSIZE];
 MPI_Request request[MAX_REQ_NUM];
-MPI_Status  stat[MAX_REQ_NUM];
 
 int main (int argc, char *argv[])
 {
@@ -92,7 +91,7 @@ int main (int argc, char *argv[])
 
     if (myid == 0) {
         fprintf (stdout,
-                 "# OSU MPI2 MPI_Put Bidirectional-Bandwidth Test (Version 2.2)\n");
+                 "# OSU MPI2 MPI_Put Bidirectional-Bandwidth Test (Version 2.3)\n");
         fprintf (stdout, "# Size\t\tBandwidth (MillionBytes/s) \n");
     }
 
