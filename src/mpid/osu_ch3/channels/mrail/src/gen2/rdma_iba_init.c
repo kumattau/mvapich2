@@ -654,6 +654,7 @@ int MPIDI_CH3I_RMDA_finalize()
 
     MPIDI_PG_t *pg;
     MPIDI_VC_t *vc;
+    int err;
 
     /* Insert implementation here */
     pg = MPIDI_Process.my_pg;
@@ -684,10 +685,16 @@ int MPIDI_CH3I_RMDA_finalize()
         MPIDI_PG_Get_vc(pg, i, &vc);
 
         for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
-            if (vc->mrail.rfp.RDMA_send_buf_mr[hca_index])
-                ibv_dereg_mr(vc->mrail.rfp.RDMA_send_buf_mr[hca_index]);
-            if (vc->mrail.rfp.RDMA_recv_buf_mr[hca_index])
-                ibv_dereg_mr(vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]);
+            if (vc->mrail.rfp.RDMA_send_buf_mr[hca_index]) {
+                err = ibv_dereg_mr(vc->mrail.rfp.RDMA_send_buf_mr[hca_index]);
+		if (err)
+		    fprintf(stderr, "Failed to deregister mr (%d)\n", err);
+	    }
+            if (vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]) {
+                err = ibv_dereg_mr(vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]);
+		if (err)
+		    fprintf(stderr, "Failed to deregister mr (%d)\n", err);
+	    }
         }
 
         if (vc->mrail.rfp.RDMA_send_buf_DMA)
@@ -708,7 +715,9 @@ int MPIDI_CH3I_RMDA_finalize()
             if (MPIDI_CH3I_RDMA_Process.has_one_sided) {
                 for (rail_index = 0; rail_index < vc->mrail.num_rails;
                      rail_index++) {
-                    ibv_destroy_qp(vc->mrail.rails[rail_index].qp_hndl_1sc);
+                    err = ibv_destroy_qp(vc->mrail.rails[rail_index].qp_hndl_1sc);
+		    if (err) 
+		        fprintf(stderr, "Failed to destroy one sided QP (%d)\n", err);
                 }
             }
             continue;
@@ -716,7 +725,15 @@ int MPIDI_CH3I_RMDA_finalize()
 
         for (rail_index = 0; rail_index < vc->mrail.num_rails;
              rail_index++) {
-            ibv_destroy_qp(vc->mrail.rails[rail_index].qp_hndl);
+ 	    err = ibv_destroy_qp(vc->mrail.rails[rail_index].qp_hndl);
+	    if (err)
+	        fprintf(stderr, "Failed to destroy QP (%d)\n", err);
+            if (MPIDI_CH3I_RDMA_Process.has_one_sided) {
+                err = ibv_destroy_qp(vc->mrail.rails[rail_index].qp_hndl_1sc);
+		if (err)
+	            fprintf(stderr, "Failed to destroy one sided QP (%d)\n", err);
+            }
+
         }
 
 #ifdef USE_HEADER_CACHING
@@ -750,20 +767,32 @@ int MPIDI_CH3I_RMDA_finalize()
 
         if (MPIDI_CH3I_RDMA_Process.has_srq) {
             pthread_cancel(MPIDI_CH3I_RDMA_Process.async_thread[i]);
-            ibv_destroy_srq(MPIDI_CH3I_RDMA_Process.srq_hndl[i]);
+            err = ibv_destroy_srq(MPIDI_CH3I_RDMA_Process.srq_hndl[i]);
+	    if (err)
+	       fprintf(stderr, "Failed to destroy SRQ (%d)\n", err);
         }
 
-        ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.cq_hndl[i]);
+        err = ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.cq_hndl[i]);
+	if (err)
+	    fprintf(stderr, "Failed to destroy CQ (%d)\n", err);
 
-        if (MPIDI_CH3I_RDMA_Process.has_one_sided) 
-            ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.cq_hndl_1sc[i]);
+        if (MPIDI_CH3I_RDMA_Process.has_one_sided) {
+	    err = ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.cq_hndl_1sc[i]);
+	    if (err)
+		fprintf(stderr , "Failed to Destroy one sided CQ (%d)\n", err);
+	}
 
         deallocate_vbufs(i);
 
         while (dreg_evict());
 
-        ibv_dealloc_pd(MPIDI_CH3I_RDMA_Process.ptag[i]);
-        ibv_close_device(MPIDI_CH3I_RDMA_Process.nic_context[i]);
+        err = ibv_dealloc_pd(MPIDI_CH3I_RDMA_Process.ptag[i]);
+	if (err) 
+	    fprintf(stderr, "Failed to dealloc pd (%d)\n", err);
+        err = ibv_close_device(MPIDI_CH3I_RDMA_Process.nic_context[i]);
+	if (err)
+	    fprintf(stderr, "Failed to close ib device (%d)\n", err);
+	
     }
 
 
