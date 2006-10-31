@@ -745,7 +745,7 @@ err_cq:
             ibv_destroy_cq(proc->cq_hndl[i]);
     }
     for (i = 0; proc->has_one_sided && i < rdma_num_hcas; i ++) {
-         if (proc->cq_hndl_1sc[0])
+         if (proc->cq_hndl_1sc[i])
              ibv_destroy_cq(proc->cq_hndl_1sc[i]);
     }
 err_pd:

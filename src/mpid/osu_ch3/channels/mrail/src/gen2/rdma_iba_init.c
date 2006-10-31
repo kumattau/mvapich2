@@ -702,12 +702,18 @@ int MPIDI_CH3I_RMDA_finalize()
 
     /* STEP 2: destry all the qps, tears down all connections */
     for (i = 0; i < pg_size; i++) {
+        MPIDI_PG_Get_vc(pg, i, &vc);
 
         if (pg_rank == i) {
+            if (MPIDI_CH3I_RDMA_Process.has_one_sided) {
+                for (rail_index = 0; rail_index < vc->mrail.num_rails;
+                     rail_index++) {
+                    ibv_destroy_qp(vc->mrail.rails[rail_index].qp_hndl_1sc);
+                }
+            }
             continue;
         }
 
-        MPIDI_PG_Get_vc(pg, i, &vc);
         for (rail_index = 0; rail_index < vc->mrail.num_rails;
              rail_index++) {
             ibv_destroy_qp(vc->mrail.rails[rail_index].qp_hndl);
@@ -1142,9 +1148,6 @@ int MPIDI_CH3I_CM_Finalize()
         }
 
         ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.cq_hndl[i]);
-
-        if (MPIDI_CH3I_RDMA_Process.has_one_sided)
-            ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.cq_hndl_1sc[i]);
 
         deallocate_vbufs(i);
 
