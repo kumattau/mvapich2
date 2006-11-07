@@ -1,6 +1,6 @@
 
 /*
- * OSU MPI Bandwidth test v2.2
+ * OSU MPI Bandwidth test v2.3
  */
 /*
  * Copyright (C) 2002-2006 the Network-Based Computing Laboratory
@@ -90,7 +90,7 @@ int main(int argc, char *argv[])
                   align_size * align_size);
 
     if (myid == 0) {
-        fprintf(stdout, "# OSU MPI Bandwidth Test (Version 2.2)\n");
+        fprintf(stdout, "# OSU MPI Bandwidth Test (Version 2.3)\n");
         fprintf(stdout, "# Size\t\tBandwidth (MB/s) \n");
     }
 
@@ -146,7 +146,7 @@ int main(int argc, char *argv[])
         if (myid == 0) {
             double tmp;
             tmp = ((size * 1.0) / (1000 * 1000)) * loop * window_size;
-            fprintf(stdout, "%d\t\t%f\n", size, tmp / t);
+            fprintf(stdout, "%d\t\t%0.2f\n", size, tmp / t);
         }
 
     }

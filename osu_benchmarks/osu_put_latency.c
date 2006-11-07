@@ -1,5 +1,5 @@
 /*
- * OSU One Sided MPI_Put latency test v2.2
+ * OSU One Sided MPI_Put latency test v2.3
  */
 /*
  * Copyright (C) 2003-2006 the Network-Based Computing Laboratory
@@ -90,7 +90,7 @@ int main (int argc, char *argv[])
 
     if (rank == 0) {
         fprintf (stdout,
-                 "# OSU MPI2 MPI_Put Latency Test (Version 2.2)\n");
+                 "# OSU MPI2 MPI_Put Latency Test (Version 2.3)\n");
         fprintf (stdout, "# Size\t\tLatency (us) \n");
     }
 
@@ -135,7 +135,7 @@ int main (int argc, char *argv[])
         }
 
         if (rank == 0) {
-            printf ("%d\t\t%f\n", size,
+            printf ("%d\t\t%0.2f\n", size,
                     (t_end - t_start) * 1.0e6 / loop / 2);
         }
 
