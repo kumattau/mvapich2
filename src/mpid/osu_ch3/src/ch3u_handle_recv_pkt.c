@@ -62,6 +62,13 @@ int MPIDI_CH3_Pkt_size_index[] = {
     sizeof(MPIDI_CH3_Pkt_packetized_send_data_t),
     sizeof(MPIDI_CH3_Pkt_rndv_r3_data_t),
     sizeof(MPIDI_CH3_Pkt_address_t),
+#ifdef CKPT
+    /* These contrl packet has no packet header,
+     * use noop packet as the packet header size*/
+    sizeof(MPIDI_CH3I_MRAILI_Pkt_noop),
+    sizeof(MPIDI_CH3I_MRAILI_Pkt_noop),
+    sizeof(MPIDI_CH3I_MRAILI_Pkt_noop),
+#endif
     sizeof(MPIDI_CH3_Pkt_eager_sync_send_t),
     sizeof(MPIDI_CH3_Pkt_eager_sync_ack_t),
     sizeof(MPIDI_CH3_Pkt_ready_send_t),	/* 15 */
@@ -688,6 +695,7 @@ int MPIDI_CH3U_Handle_ordered_recv_pkt(MPIDI_VC_t * vc,
 		    && rreq->dev.recv_data_sz > 0) {
 		    MPIU_Free(rreq->dev.tmpbuf);
 		}
+		MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(rreq);
 		MPID_Request_release(rreq);
 		ack = TRUE;
 	    } else {

@@ -43,12 +43,39 @@ fi
 # Set this to override automatic optimization setting (-O2).
 OPT_FLAG=${OPT_FLAG:--O2}
 
+# Checkpoint-Restart Support.  This is disabled by default.  Enable with
+# "yes".  If this is enabled, the following rules apply:
+#
+# - PTMALLOC must be enabled
+# - multithreading cannot be enabled
+# - rdma-cm support cannot be enabled
+ENABLE_CKPT=${ENABLE_CKPT:-}
+
+if [ "$ENABLE_CKPT" = "yes" ]; then
+    if [ ! -z "$BLCR_HOME" ]; then
+        BLCR_LIB="-L$BLCR_HOME/lib -lcr"
+        BLCR_INC="-I$BLCR_HOME/include"
+        CR_FLAG="-DCKPT"
+	SMP_FLAG=""
+        export MPIEXEC_CR=mpiexec_cr # to compile mpiexec_cr
+        LD_LIBRARY_PATH=$BLCR_HOME/lib:$LD_LIBRARY_PATH
+    else
+        die_setup "Please install BLCR and have set BLCR_HOME pointing to the directory."
+    fi
+else
+    SMP_FLAG="-D_SMP_"
+fi
+
 # PTMALLOC support for MVAPICH2 memory hooks.  Enabling this will allow
 # MVAPICH2 to release memory to the Operating System (when registration
 # cache is enabled).  Enabled by default.  Disable with "no".
 PTMALLOC=${PTMALLOC:-}
 
 if [ "$PTMALLOC" = "no" ]; then
+    if [ "$ENABLE_CKPT" = "yes" ]; then
+        die_setup "Checkpoint-Restart requires PTMALLOC support."
+    fi
+
     PTMALLOC="-DDISABLE_PTMALLOC"
 else
     PTMALLOC=""
@@ -61,9 +88,34 @@ fi
 MULTI_THREAD=${MULTI_THREAD:-}
 
 if [ "$MULTI_THREAD" = "yes" ]; then
+    if [ "$ENABLE_CKPT" = "yes" ]; then
+        die_setup "Checkpoint-Restart does not support multithreading."
+    fi
+
     MULTI_THREAD="--enable-threads=multiple"
 else
     MULTI_THREAD=""
+fi
+
+# Whether or not to build rdma-cm support. Disabled by default.
+# Enable with "yes". Please uncomment RDMA_CM_DEVICE for iWARP
+# support.
+RDMA_CM_SUPPORT=${RDMA_CM_SUPPORT:-}
+
+if [ "$RDMA_CM_SUPPORT" = "yes" ]; then
+    if [ "$ENABLE_CKPT" = "yes" ]; then
+        die_setup "Checkpoint-Restart does not support rdma-cm."
+    fi
+
+    RDMA_CM_LIBS="-lrdmacm"
+    #RDMA_CM_DEVICE="-DRDMA_CM_RNIC"
+    RDMA_CM_FLAG="-DRDMA_CM ${RDMA_CM_DEVICE}"
+fi
+
+if [ -n "$RDMA_CM_DEVICE" ]; then
+    COLL_FLAG=""
+else
+    COLL_FLAG="-D_SHMEM_COLL_"
 fi
 
 # Whether or not to build with ROMIO MPI I/O support.  Disabled by default.
@@ -76,10 +128,11 @@ else
     ROMIO="--disable-romio"
 fi
 
+
 export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
-export LIBS=${LIBS:--L${OPEN_IB_LIB} -libverbs -libumad -lpthread}
+export LIBS=${LIBS:--L${OPEN_IB_LIB} ${BLCR_LIB} ${RDMA_CM_LIBS} -libverbs -libumad -lpthread}
 export FFLAGS=${FFLAGS:--L${OPEN_IB_LIB}}
-export CFLAGS=${CFLAGS:--D${ARCH} -D_SMP_ -DUSE_HEADER_CACHING ${PTMALLOC} -DONE_SIDED -DMPID_USE_SEQUENCE_NUMBERS -I${OPEN_IB_HOME}/include $OPT_FLAG}
+export CFLAGS=${CFLAGS:--D${ARCH} ${SMP_FLAG} -DUSE_HEADER_CACHING ${PTMALLOC} -DONE_SIDED -DMPID_USE_SEQUENCE_NUMBERS ${BLCR_INC} -I${OPEN_IB_HOME}/include $OPT_FLAG ${RDMA_CM_FLAG} ${CR_FLAG} ${COLL_FLAG}}
 
 # Prelogue
 make distclean &>/dev/null

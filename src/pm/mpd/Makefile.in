@@ -24,7 +24,7 @@ C_LINK	  = ${CLINKER} ${CFLAGS} ${COPTIONS} ${LDFLAGS}
 
 VPATH     = .:@srcdir@
 
-PROGRAMS  = mpdroot
+PROGRAMS  = mpdroot ${MPIEXEC_CR}
 EXAMPLES  = sigcatcher infloop
 
 SOURCES   = ${mpdroot_SOURCES} ${example_SOURCES}
@@ -75,6 +75,12 @@ mpdroot: ${mpdroot_OBJECTS}
 mpdroot.o: ${srcdir}/mpdroot.c ${srcdir}/mpdroot.h mpdconf.h
 	${C_COMPILE} -c  $< 
 
+mpiexec_cr: mpiexec_cr.o
+	$(C_LINK) -o mpiexec_cr mpiexec_cr.o $(LIBS)
+
+mpiexec_cr.o: ${srcdir}/mpiexec_cr.c
+	${C_COMPILE} -c  $<
+
 # The following lines provide the right libraries for all example programs
 .c:
 	${C_LINK} -o $* $*.c $(LIBS)
@@ -116,6 +122,10 @@ install: all
         else \
 	    ${INSTALL} -m  755 mpdroot $(DESTDIR)${bindir}/mpdroot ;\
 	fi
+	-@if [ ! -z "${MPIEXEC_CR}" ] ; then \
+		${INSTALL} -m  755 ${MPIEXEC_CR} $(DESTDIR)${bindir}/${MPIEXEC_CR} ;\
+		${INSTALL} -m  755 list_mpi_pids.sh $(DESTDIR)${bindir}/list_mpi_pids.sh ;\
+	fi
 	@echo "copying python files/links into " $(DESTDIR)${bindir}
 	-@for cmd in ${PYTHON_SOURCE} ; do \
 	    sed -e 's#/usr/bin/env python.*#/usr/bin/env ${PYTHON}#' ${srcdir}/$$cmd.py > $(DESTDIR)${bindir}/temp$$cmd.py ; \
@@ -134,16 +144,25 @@ install: all
 	-@( rm -f $(DESTDIR)${bindir}/mpdrun.py >/dev/null 2>&1 || exit 0 )
 	-@( rm -f $(DESTDIR)${bindir}/mpirun >/dev/null 2>&1 || exit 0 )
 	-@( rm -f $(DESTDIR)${bindir}/mpirun.py >/dev/null 2>&1 || exit 0 )
-	-@cd $(DESTDIR)${bindir} && @LN_S@ mpiexec mpdrun
-	-@cd $(DESTDIR)${bindir} && @LN_S@ mpiexec.py mpdrun.py
-	-@cd $(DESTDIR)${bindir} && @LN_S@ mpiexec mpirun
-	-@cd $(DESTDIR)${bindir} && @LN_S@ mpiexec.py mpirun.py
+	-@if [ ! -z "${MPIEXEC_CR}" ] ; then \
+		cd $(DESTDIR)${bindir} && rm -f mpiexec ;\
+		cd $(DESTDIR)${bindir} && @LN_S@ mpiexec_cr mpiexec ;\
+		cd $(DESTDIR)${bindir} && @LN_S@ mpiexec_cr mpdrun ;\
+		cd $(DESTDIR)${bindir} && @LN_S@ mpiexec.py mpdrun.py ;\
+		cd $(DESTDIR)${bindir} && @LN_S@ mpiexec_cr mpirun ;\
+		cd $(DESTDIR)${bindir} && @LN_S@ mpiexec.py mpirun.py ;\
+	else \
+		cd $(DESTDIR)${bindir} && @LN_S@ mpiexec mpdrun ;\
+		cd $(DESTDIR)${bindir} && @LN_S@ mpiexec.py mpdrun.py ;\
+		cd $(DESTDIR)${bindir} && @LN_S@ mpiexec mpirun ;\
+		cd $(DESTDIR)${bindir} && @LN_S@ mpiexec.py mpirun.py ;\
+	fi
 	-@if [ "${DO_MTV}" = "yes" ] ; then \
 	    ${INSTALL} -m 755 mtv.so $(DESTDIR)${bindir}/mtv.so ;\
 	fi
 
 
-mpich2-build-install: mpich2-mpdroot install
+mpich2-build-install: mpich2-mpdroot install 
 	-@if [ -n "`id | grep uid=0`" ] ; then \
             ${INSTALL} -m 4755 mpich2-mpdroot $(DESTDIR)${bindir}/mpdroot ;\
 	else \

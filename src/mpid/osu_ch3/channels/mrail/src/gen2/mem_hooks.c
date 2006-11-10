@@ -102,18 +102,38 @@ int mvapich2_munmap(void *buf, int len)
         set_real_munmap_ptr();
     }
 
+    if(!mvapich2_minfo.is_mem_hook_finalized) {
+        mvapich2_mem_unhook(buf, len);
+    }
+
     return mvapich2_minfo.munmap(buf, len);
 }
 
 int munmap(void *buf, size_t len)
 {
-    if(!mvapich2_minfo.is_mem_hook_finalized) {
-        mvapich2_mem_unhook(buf, len);
-    }
-
     return mvapich2_munmap(buf, len);
 }
 
-#endif
+#endif /* DISABLE_MUNMAP_HOOK */
+
+#ifndef DISABLE_TRAP_SBRK
+
+void *mvapich2_sbrk(int delta)
+{
+    if (delta < 0) {
+
+        void *current_brk = sbrk(0);
+
+        mvapich2_mem_unhook((void *)
+                ((uintptr_t) current_brk + delta), -delta);
+
+        /* -delta is actually a +ve number */
+    }
+
+    return sbrk(delta);
+}
+
+#endif /* DISABLE_TRAP_SBRK */
+
 
 #endif /* DISABLE_PTMALLOC */

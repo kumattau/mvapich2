@@ -37,6 +37,10 @@ static int handle_read(MPIDI_VC_t * vc, vbuf * v);
 
 static int cm_handle_pending_send();
 
+#ifdef CKPT
+static int cm_handle_reactivation_complete();
+#endif
+
 volatile unsigned int MPIDI_CH3I_progress_completion_count = 0;
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
     volatile int MPIDI_CH3I_progress_blocked = FALSE;
@@ -109,6 +113,10 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
                       is_blocking ? "true" : "false"));
     DEBUG_PRINT("Entering ch3 progress\n");
 
+#ifdef CKPT
+    MPIDI_CH3I_CR_lock();
+#endif
+
     do {
 #ifdef _SMP_ 
         /*needed if early send complete doesnot occur */
@@ -133,14 +141,20 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
         if (!SMP_ONLY) {
 #endif
         /*CM code*/
-        if (MPIDI_CH3I_Process.new_conn_door_bell) {
+        if (MPIDI_CH3I_Process.new_conn_complete) {
             /*New connection has been established*/
-            MPIDI_CH3I_Process.new_conn_door_bell = 0;
-            /*Door bell should come first in case door bell is raised when
-             * processing cm_handle_pending_send*/
+            MPIDI_CH3I_Process.new_conn_complete = 0;
             cm_handle_pending_send();
         }
-        
+
+#ifdef CKPT
+        if (MPIDI_CH3I_Process.reactivation_complete) {
+            /*Some channel has been reactivated*/
+            MPIDI_CH3I_Process.reactivation_complete = 0;
+            cm_handle_reactivation_complete();
+        }
+#endif
+
         mpi_errno = MPIDI_CH3I_read_progress(&vc_ptr, &buffer);
         if (mpi_errno != MPI_SUCCESS) {
             mpi_errno =
@@ -171,7 +185,17 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
                 MPIDI_CH3I_CM_Establish(vc_ptr);
                 cm_handle_pending_send();
             }
-            
+#ifdef CKPT
+            if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_REACTIVATING_SRV) {
+                MPIDI_CH3I_CM_Establish(vc_ptr);
+                MPIDI_CH3I_CM_Send_logged_msg(vc_ptr);
+                if (vc_ptr->mrail.sreq_head) /*has rndv*/
+                    PUSH_FLOWLIST(vc_ptr);
+                if (!MPIDI_CH3I_CM_SendQ_empty(vc_ptr))
+                    cm_send_pending_msg(vc_ptr);
+            }
+#endif
+
             mpi_errno = handle_read(vc_ptr, buffer);
             if (mpi_errno != MPI_SUCCESS) {
                 mpi_errno =
@@ -197,6 +221,11 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
 #endif
         if (flowlist)
             MPIDI_CH3I_MRAILI_Process_rndv();
+#ifdef CKPT
+        if (MPIDI_CH3I_CR_Get_state()==MPICR_STATE_REQUESTED)
+            /*Release the lock if it is about to checkpoint*/
+            break;
+#endif
     }
     while (completions == MPIDI_CH3I_progress_completion_count
            && is_blocking);
@@ -204,6 +233,9 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
 fn_completion:
 
 fn_exit:
+#ifdef CKPT
+    MPIDI_CH3I_CR_unlock();
+#endif
     MPIDI_DBG_PRINTF((50, FCNAME, "exiting, count=%d",
                       MPIDI_CH3I_progress_completion_count - completions));
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_PROGRESS);
@@ -226,6 +258,10 @@ int MPIDI_CH3I_Progress_test()
     MPIDI_STATE_DECL(MPID_STATE_MPIDU_YIELD);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_PROGRESS);
+
+#ifdef CKPT
+    MPIDI_CH3I_CR_lock();
+#endif
 
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
     {
@@ -258,6 +294,14 @@ int MPIDI_CH3I_Progress_test()
 
     if (!SMP_ONLY) {
 #endif
+
+        /*CM code*/
+        if (MPIDI_CH3I_Process.new_conn_complete) {
+            /*New connection has been established*/
+            MPIDI_CH3I_Process.new_conn_complete = 0;
+            cm_handle_pending_send();
+        }
+
         mpi_errno = MPIDI_CH3I_read_progress(&vc_ptr, &buffer);
         if (mpi_errno != MPI_SUCCESS) {
             mpi_errno =
@@ -275,6 +319,17 @@ int MPIDI_CH3I_Progress_test()
                 MPIDI_CH3I_CM_Establish(vc_ptr);
                 cm_handle_pending_send();
             }
+
+#ifdef CKPT
+            if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_REACTIVATING_SRV) {
+                MPIDI_CH3I_CM_Establish(vc_ptr);
+                MPIDI_CH3I_CM_Send_logged_msg(vc_ptr);
+                if (vc_ptr->mrail.sreq_head) /*has rndv*/
+                    PUSH_FLOWLIST(vc_ptr);
+                if (!MPIDI_CH3I_CM_SendQ_empty(vc_ptr))
+                    cm_send_pending_msg(vc_ptr);
+            }
+#endif
 
             mpi_errno = handle_read(vc_ptr, buffer);
             if (mpi_errno != MPI_SUCCESS) {
@@ -295,6 +350,10 @@ int MPIDI_CH3I_Progress_test()
             MPIDI_CH3I_MRAILI_Process_rndv();
 
 fn_exit:
+
+#ifdef CKPT
+    MPIDI_CH3I_CR_unlock();
+#endif
 
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_PROGRESS);
     DEBUG_PRINT("Exiting ch3 progress test\n");
@@ -454,6 +513,223 @@ static inline int post_pkt_recv(MPIDI_VC_t * vc)
 
 /*#define post_pkt_recv(vc) MPIDI_CH3I_post_read( vc , &(vc)->ch.pkt, sizeof((vc)->ch.pkt))*/
 
+#ifdef CKPT
+#undef FUNCNAME
+#define FUNCNAME cm_handle_reactivation_complete
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+static int cm_handle_reactivation_complete()
+{
+    int i;
+    MPIDI_VC_t *vc;
+    MPIDI_PG_t *pg;
+    pg = MPIDI_Process.my_pg;
+    for (i = 0; i < MPIDI_PG_Get_size(pg); i++) {
+        MPIDI_PG_Get_vc(pg, i, &vc);
+        if (vc->ch.state == MPIDI_CH3I_VC_STATE_REACTIVATING_CLI_2) {
+            MPIDI_CH3I_CM_Send_logged_msg(vc);
+            vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
+            if (vc->mrail.sreq_head) /*has pending rndv*/ {
+                PUSH_FLOWLIST(vc);
+            }
+            if (!MPIDI_CH3I_CM_SendQ_empty(vc))
+                cm_send_pending_msg(vc);
+        }
+    }
+    return MPI_SUCCESS;
+}
+#endif
+
+static int cm_send_pending_msg(MPIDI_VC_t * vc)
+{
+    assert(vc->ch.state=MPIDI_CH3I_VC_STATE_IDLE);
+    while (!MPIDI_CH3I_CM_SendQ_empty(vc)) {
+        int i;
+        int mpi_errno;
+        struct MPID_Request * sreq;
+        MPID_IOV * iov;
+        int n_iov;
+
+        sreq = MPIDI_CH3I_CM_SendQ_head(vc);
+        iov=sreq->dev.iov;
+        n_iov = sreq->dev.iov_count;
+        void *databuf = NULL;
+
+        {
+            /*Code copied from ch3_isendv*/
+            int nb;
+            int pkt_len;
+            int complete;
+            int rdma_ok;
+            /* MT - need some signalling to lock down our right to use the
+               channel, thus insuring that the progress engine does also try to
+               write */
+            Calculate_IOV_len(iov, n_iov, pkt_len);
+
+            if (pkt_len > MRAIL_MAX_EAGER_SIZE) {
+                memcpy(sreq->dev.iov, iov, n_iov * sizeof(MPID_IOV));
+                sreq->dev.iov_count = n_iov;
+                mpi_errno = MPIDI_CH3_Packetized_send(vc, sreq);
+                if (MPI_MRAIL_MSG_QUEUED == mpi_errno) {
+                    mpi_errno = MPI_SUCCESS;
+                }
+                goto loop_exit;
+            }
+
+            if (sreq->dev.ca != MPIDI_CH3_CA_COMPLETE) {
+                /*reload iov */
+                void *tmpbuf;
+                int iter_iov;
+
+                tmpbuf = MPIU_Malloc(sreq->dev.segment_size + pkt_len);
+                databuf = tmpbuf;
+                pkt_len = 0;
+                /* First copy whatever has already been in iov set */
+                for (iter_iov = 0; iter_iov < n_iov; iter_iov++) {
+                    memcpy(tmpbuf, iov[iter_iov].MPID_IOV_BUF,
+                            iov[iter_iov].MPID_IOV_LEN);
+                    tmpbuf = (void *) ((unsigned long) tmpbuf +
+                            iov[iter_iov].MPID_IOV_LEN);
+                    pkt_len += iov[iter_iov].MPID_IOV_LEN;
+                }
+                DEBUG_PRINT("Pkt len after first stage %d\n", pkt_len);
+                /* Second reload iov and copy */
+                do {
+                    sreq->dev.iov_count = MPID_IOV_LIMIT;
+                    mpi_errno = MPIDI_CH3U_Request_load_send_iov(sreq,
+                            sreq->dev.iov,
+                            &sreq->dev.
+                            iov_count);
+                    /* --BEGIN ERROR HANDLING-- */
+                    if (mpi_errno != MPI_SUCCESS) {
+                        mpi_errno =
+                            MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL,
+                                    FCNAME, __LINE__,
+                                    MPI_ERR_OTHER,
+                                    "**ch3|loadsendiov", 0);
+                        goto loop_exit;
+                    }
+                    for (iter_iov = 0; iter_iov < sreq->dev.iov_count;
+                            iter_iov++) {
+                        memcpy(tmpbuf, sreq->dev.iov[iter_iov].MPID_IOV_BUF,
+                                sreq->dev.iov[iter_iov].MPID_IOV_LEN);
+                        tmpbuf =
+                            (void *) ((unsigned long) tmpbuf +
+                                      sreq->dev.iov[iter_iov].MPID_IOV_LEN);
+                        pkt_len += sreq->dev.iov[iter_iov].MPID_IOV_LEN;
+                    }
+                } while (sreq->dev.ca != MPIDI_CH3_CA_COMPLETE);
+                iov[0].MPID_IOV_BUF = databuf;
+                iov[0].MPID_IOV_LEN = pkt_len;
+                n_iov = 1;
+            }
+
+            if (pkt_len > MRAIL_MAX_EAGER_SIZE) {
+                memcpy(sreq->dev.iov, iov, n_iov * sizeof(MPID_IOV));
+                sreq->dev.iov_count = n_iov;
+                mpi_errno = MPIDI_CH3_Packetized_send(vc, sreq);
+                if (MPI_MRAIL_MSG_QUEUED == mpi_errno) {
+                    mpi_errno = MPI_SUCCESS;
+                }
+                goto loop_exit;
+            }
+            DEBUG_PRINT("[send], n_iov: %d, pkt_len %d\n", n_iov, pkt_len);
+            rdma_ok = MPIDI_CH3I_MRAILI_Fast_rdma_ok(vc, pkt_len);
+            DEBUG_PRINT("[send], rdma ok: %d\n", rdma_ok);
+            if (rdma_ok != 0) {
+                /* send pkt through rdma fast path */
+                /* take care of the header caching */
+                vbuf *buf;
+
+                /* the packet header and the data now is in rdma fast buffer */
+                mpi_errno =
+                    MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(vc, iov, n_iov,
+                            &nb, &buf);
+                DEBUG_PRINT("[send: send progress] mpi_errno %d, nb %d\n",
+                        mpi_errno == MPI_SUCCESS, nb);
+                if (mpi_errno == MPI_SUCCESS) {
+                    MPIU_DBG_PRINTF(("ch3_istartmsgv: put_datav returned %d bytes\n", nb));
+
+                    if (nb == 0) {
+                        /* fast rdma ok but cannot send: there is no send wqe available */
+                    } else {
+                        DEBUG_PRINT("Start handle req\n");
+                        MPIDI_CH3U_Handle_send_req(vc, sreq, &complete);
+                        DEBUG_PRINT("Finish handle req with complete %d\n",
+                                complete);
+                        if (!complete) {
+                            /*should not happen*/
+                            assert(0);
+                        } else {
+                            vc->ch.send_active = MPIDI_CH3I_CM_SendQ_head(vc);
+                        }
+                    }
+                } else if (MPI_MRAIL_MSG_QUEUED == mpi_errno) {
+                    buf->sreq = (void *) sreq;
+                    mpi_errno = MPI_SUCCESS;
+                } else {
+                    /* Connection just failed.  Mark the request complete and return an
+                     * error. */
+                    vc->ch.state = MPIDI_CH3I_VC_STATE_FAILED;
+                    /* TODO: Create an appropriate error message based on the value of errno
+                     * */
+                    sreq->status.MPI_ERROR = MPI_ERR_INTERN;
+                    /* MT - CH3U_Request_complete performs write barrier */
+                    MPIDI_CH3U_Request_complete(sreq);
+                }
+                goto loop_exit;
+            } 
+            else {
+                /* TODO: Codes to send pkt through send/recv path */
+                vbuf *buf;
+                mpi_errno =
+                    MPIDI_CH3I_MRAILI_Eager_send(vc, iov, n_iov, &nb, &buf);
+                DEBUG_PRINT("[istartmsgv] mpierr %d, nb %d\n", mpi_errno, nb);
+                if (mpi_errno == MPI_SUCCESS) {
+                    DEBUG_PRINT("[send path] eager send return %d bytes\n",
+                            nb);
+                    if (nb == 0) {
+                        /* under layer cannot send out the msg because there is no credit or
+                         * no send wqe available 
+                         DEBUG_PRINT("Send 0 bytes\n");
+                         create_request(sreq, iov, n_iov, 0, 0);
+                         MPIDI_CH3I_SendQ_enqueue(vc, sreq);
+                         */
+                    } else {
+                        MPIDI_CH3U_Handle_send_req(vc, sreq, &complete);
+                        if (!complete) {
+                            /*should not happen*/
+                            assert(0);
+                        } else {
+                            vc->ch.send_active = MPIDI_CH3I_CM_SendQ_head(vc);
+                        }
+                    }
+                } else if (MPI_MRAIL_MSG_QUEUED == mpi_errno) {
+                    buf->sreq = (void *) sreq;
+                    mpi_errno = MPI_SUCCESS;
+                } else {
+                    /* Connection just failed.  Mark the request complete and return an
+                     * error. */
+                    vc->ch.state = MPIDI_CH3I_VC_STATE_FAILED;
+                    /* TODO: Create an appropriate error message based on the value of errno */
+                    sreq->status.MPI_ERROR = MPI_ERR_INTERN;
+                    /* MT - CH3U_Request_complete performs write barrier */
+                    MPIDI_CH3U_Request_complete(sreq);
+                }
+                goto loop_exit;
+            }
+        }
+loop_exit:
+        if (databuf)
+            MPIU_Free(databuf);
+        /*If mpi_errno is not MPI_SUCCESS, error should be reported?*/
+        /*Does sreq need to be freed? or upper layer will take care*/
+        MPIDI_CH3I_CM_SendQ_dequeue(vc);
+    }
+    
+    return MPI_SUCCESS;
+}
+
 #undef FUNCNAME
 #define FUNCNAME cm_handle_pending_send
 #undef FCNAME
@@ -463,196 +739,14 @@ static int cm_handle_pending_send()
     int i;
     MPIDI_VC_t *vc;
     MPIDI_PG_t *pg;
-    int mpi_errno;
-    struct MPID_Request * sreq;
 
     pg = MPIDI_Process.my_pg;
     for (i = 0; i < MPIDI_PG_Get_size(pg); i++) {
         MPIDI_PG_Get_vc(pg, i, &vc);
         if (vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE
          && !MPIDI_CH3I_CM_SendQ_empty(vc)) {
-            assert(vc->mrail.next_packet_tosend == 0);/*It should be a new connection*/
-            while (!MPIDI_CH3I_CM_SendQ_empty(vc)) {
-                MPID_IOV * iov;
-                int n_iov;
-                
-                sreq = MPIDI_CH3I_CM_SendQ_head(vc);
-                iov=sreq->dev.iov;
-                n_iov = sreq->dev.iov_count;
-                void *databuf = NULL;
-                
-                {
-                    /*Code copied from ch3_isendv*/
-                    int nb;
-                    int pkt_len;
-                    int complete;
-                    int rdma_ok;
-                    /* MT - need some signalling to lock down our right to use the
-                       channel, thus insuring that the progress engine does also try to
-                       write */
-                    Calculate_IOV_len(iov, n_iov, pkt_len);
-            
-                    if (pkt_len > MRAIL_MAX_EAGER_SIZE) {
-                        memcpy(sreq->dev.iov, iov, n_iov * sizeof(MPID_IOV));
-                        sreq->dev.iov_count = n_iov;
-                        mpi_errno = MPIDI_CH3_Packetized_send(vc, sreq);
-                        if (MPI_MRAIL_MSG_QUEUED == mpi_errno) {
-                            mpi_errno = MPI_SUCCESS;
-                        }
-                        goto loop_exit;
-                    }
-            
-                    if (sreq->dev.ca != MPIDI_CH3_CA_COMPLETE) {
-                        /*reload iov */
-                        void *tmpbuf;
-                        int iter_iov;
-            
-                        tmpbuf = MPIU_Malloc(sreq->dev.segment_size + pkt_len);
-                        databuf = tmpbuf;
-                        pkt_len = 0;
-                        /* First copy whatever has already been in iov set */
-                        for (iter_iov = 0; iter_iov < n_iov; iter_iov++) {
-                            memcpy(tmpbuf, iov[iter_iov].MPID_IOV_BUF,
-                                   iov[iter_iov].MPID_IOV_LEN);
-                            tmpbuf = (void *) ((unsigned long) tmpbuf +
-                                               iov[iter_iov].MPID_IOV_LEN);
-                            pkt_len += iov[iter_iov].MPID_IOV_LEN;
-                        }
-                        DEBUG_PRINT("Pkt len after first stage %d\n", pkt_len);
-                        /* Second reload iov and copy */
-                        do {
-                            sreq->dev.iov_count = MPID_IOV_LIMIT;
-                            mpi_errno = MPIDI_CH3U_Request_load_send_iov(sreq,
-                                                                         sreq->dev.iov,
-                                                                         &sreq->dev.
-                                                                         iov_count);
-                            /* --BEGIN ERROR HANDLING-- */
-                            if (mpi_errno != MPI_SUCCESS) {
-                                mpi_errno =
-                                    MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL,
-                                                         FCNAME, __LINE__,
-                                                         MPI_ERR_OTHER,
-                                                         "**ch3|loadsendiov", 0);
-                                goto loop_exit;
-                            }
-                            for (iter_iov = 0; iter_iov < sreq->dev.iov_count;
-                                 iter_iov++) {
-                                memcpy(tmpbuf, sreq->dev.iov[iter_iov].MPID_IOV_BUF,
-                                       sreq->dev.iov[iter_iov].MPID_IOV_LEN);
-                                tmpbuf =
-                                    (void *) ((unsigned long) tmpbuf +
-                                              sreq->dev.iov[iter_iov].MPID_IOV_LEN);
-                                pkt_len += sreq->dev.iov[iter_iov].MPID_IOV_LEN;
-                            }
-                        } while (sreq->dev.ca != MPIDI_CH3_CA_COMPLETE);
-                        iov[0].MPID_IOV_BUF = databuf;
-                        iov[0].MPID_IOV_LEN = pkt_len;
-                        n_iov = 1;
-                    }
-            
-                    if (pkt_len > MRAIL_MAX_EAGER_SIZE) {
-                        memcpy(sreq->dev.iov, iov, n_iov * sizeof(MPID_IOV));
-                        sreq->dev.iov_count = n_iov;
-                        mpi_errno = MPIDI_CH3_Packetized_send(vc, sreq);
-                        if (MPI_MRAIL_MSG_QUEUED == mpi_errno) {
-                            mpi_errno = MPI_SUCCESS;
-                        }
-                        goto loop_exit;
-                    }
-                    DEBUG_PRINT("[send], n_iov: %d, pkt_len %d\n", n_iov, pkt_len);
-                    rdma_ok = MPIDI_CH3I_MRAILI_Fast_rdma_ok(vc, pkt_len);
-                    DEBUG_PRINT("[send], rdma ok: %d\n", rdma_ok);
-                    if (rdma_ok != 0) {
-                        /* send pkt through rdma fast path */
-                        /* take care of the header caching */
-                        vbuf *buf;
-            
-                        /* the packet header and the data now is in rdma fast buffer */
-                        mpi_errno =
-                            MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(vc, iov, n_iov,
-                                                                      &nb, &buf);
-                        DEBUG_PRINT("[send: send progress] mpi_errno %d, nb %d\n",
-                                    mpi_errno == MPI_SUCCESS, nb);
-                        if (mpi_errno == MPI_SUCCESS) {
-                            MPIU_DBG_PRINTF(("ch3_istartmsgv: put_datav returned %d bytes\n", nb));
-            
-                            if (nb == 0) {
-                                /* fast rdma ok but cannot send: there is no send wqe available */
-                            } else {
-                                DEBUG_PRINT("Start handle req\n");
-                                MPIDI_CH3U_Handle_send_req(vc, sreq, &complete);
-                                DEBUG_PRINT("Finish handle req with complete %d\n",
-                                            complete);
-                                if (!complete) {
-                                    /*should not happen*/
-                                    assert(0);
-                                } else {
-                                    vc->ch.send_active = MPIDI_CH3I_CM_SendQ_head(vc);
-                                }
-                            }
-                        } else if (MPI_MRAIL_MSG_QUEUED == mpi_errno) {
-                            buf->sreq = (void *) sreq;
-                            mpi_errno = MPI_SUCCESS;
-                        } else {
-                            /* Connection just failed.  Mark the request complete and return an
-                             * error. */
-                            vc->ch.state = MPIDI_CH3I_VC_STATE_FAILED;
-                            /* TODO: Create an appropriate error message based on the value of errno
-                             * */
-                            sreq->status.MPI_ERROR = MPI_ERR_INTERN;
-                            /* MT - CH3U_Request_complete performs write barrier */
-                            MPIDI_CH3U_Request_complete(sreq);
-                        }
-                        goto loop_exit;
-                    } 
-                    else {
-                        /* TODO: Codes to send pkt through send/recv path */
-                        vbuf *buf;
-                        mpi_errno =
-                            MPIDI_CH3I_MRAILI_Eager_send(vc, iov, n_iov, &nb, &buf);
-                        DEBUG_PRINT("[istartmsgv] mpierr %d, nb %d\n", mpi_errno, nb);
-                        if (mpi_errno == MPI_SUCCESS) {
-                            DEBUG_PRINT("[send path] eager send return %d bytes\n",
-                                        nb);
-                            if (nb == 0) {
-                                /* under layer cannot send out the msg because there is no credit or
-                                 * no send wqe available 
-                                 DEBUG_PRINT("Send 0 bytes\n");
-                                 create_request(sreq, iov, n_iov, 0, 0);
-                                 MPIDI_CH3I_SendQ_enqueue(vc, sreq);
-                                 */
-                            } else {
-                                MPIDI_CH3U_Handle_send_req(vc, sreq, &complete);
-                                if (!complete) {
-                                    /*should not happen*/
-                                    assert(0);
-                                } else {
-                                    vc->ch.send_active = MPIDI_CH3I_CM_SendQ_head(vc);
-                                }
-                            }
-                        } else if (MPI_MRAIL_MSG_QUEUED == mpi_errno) {
-                            buf->sreq = (void *) sreq;
-                            mpi_errno = MPI_SUCCESS;
-                        } else {
-                            /* Connection just failed.  Mark the request complete and return an
-                             * error. */
-                            vc->ch.state = MPIDI_CH3I_VC_STATE_FAILED;
-                            /* TODO: Create an appropriate error message based on the value of errno */
-                            sreq->status.MPI_ERROR = MPI_ERR_INTERN;
-                            /* MT - CH3U_Request_complete performs write barrier */
-                            MPIDI_CH3U_Request_complete(sreq);
-                        }
-                        goto loop_exit;
-                    }
-                }
-                loop_exit:
-                if (databuf)
-                    MPIU_Free(databuf);
-                /*If mpi_errno is not MPI_SUCCESS, error should be reported?*/
-                /*Does sreq need to be freed? or upper layer will take care*/
-                MPIDI_CH3I_CM_SendQ_dequeue(vc);
-            }
-        }
+            cm_send_pending_msg(vc);
+       }
     }
      
     return MPI_SUCCESS;
@@ -687,6 +781,17 @@ static int handle_read(MPIDI_VC_t * vc, vbuf * buffer)
     DEBUG_PRINT("[handle read] header type %d\n", header->type);
 
     switch(header->type) {
+#ifdef CKPT
+    case MPIDI_CH3_PKT_CM_SUSPEND:
+    case MPIDI_CH3_PKT_CM_REACTIVATION_DONE:
+        MPIDI_CH3I_CM_Handle_recv(vc, header->type, buffer);
+        MPIDI_CH3I_MRAIL_Release_vbuf(buffer);
+        goto fn_exit;
+    case MPIDI_CH3_PKT_CR_REMOTE_UPDATE:
+        MPIDI_CH3I_CR_Handle_recv(vc, header->type, buffer);
+        MPIDI_CH3I_MRAIL_Release_vbuf(buffer);
+        goto fn_exit;
+#endif
     case MPIDI_CH3_PKT_NOOP: 
     case MPIDI_CH3_PKT_ADDRESS:
         DEBUG_PRINT("NOOP received, don't need to proceed\n");

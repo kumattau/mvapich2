@@ -17,6 +17,7 @@
 #include "rdma_impl.h"
 #include "pmi.h"
 #include "ibv_param.h"
+#include "rdma_cm.h"
 
 #undef DEBUG_PRINT
 #ifdef DEBUG
@@ -462,6 +463,10 @@ rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
     int ports[MAX_NUM_HCAS][MAX_NUM_PORTS];
     int lids[MAX_NUM_HCAS][MAX_NUM_PORTS];
 
+#ifdef RDMA_CM
+  if (!proc->use_rdma_cm)
+  {
+#endif
     /* step 1: open hca, create ptags  and create cqs */
     for (i = 0; i < rdma_num_hcas; i++) {
         if(ibv_query_device(proc->nic_context[i], &dev_attr)) {
@@ -538,6 +543,9 @@ rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
             }
 	}
     }
+#ifdef RDMA_CM
+  }
+#endif /* RDMA_CM */
 
     rdma_default_port 	    = ports[0][0];
     /* step 2: create qps for all vc */
@@ -567,7 +575,10 @@ rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
 
         if (i == pg_rank)
             continue;
-
+#ifdef RDMA_CM
+	if (proc->use_rdma_cm)
+		continue;
+#endif
 	for (   rail_index = 0; 
         	rail_index < vc->mrail.num_rails;
         	rail_index++) 
@@ -627,7 +638,7 @@ rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
     }
 
 
-    if (MPIDI_CH3I_RDMA_Process.has_ring_startup) {
+    if (MPIDI_CH3I_RDMA_Process.has_ring_startup && pg_size > 1) {
         DEBUG_PRINT("ENTERING MPDRING CASE\n");  
         proc->boot_cq_hndl =
             ibv_create_cq(proc->nic_context[0],rdma_default_max_cq_size, 
@@ -636,6 +647,13 @@ rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
         fprintf(stderr, "cannot create cq\n");
         goto err_pd;
     }
+
+#ifdef RDMA_CM
+    if (proc->use_rdma_cm){
+	    ib_init_rdma_cm(proc, pg_rank, pg_size);
+	    return 0;
+    }
+#endif 
 
     /* Create complete Queue and Queue pairs */
     memset(&boot_attr, 0, sizeof boot_attr);
@@ -745,7 +763,7 @@ err_cq:
             ibv_destroy_cq(proc->cq_hndl[i]);
     }
     for (i = 0; proc->has_one_sided && i < rdma_num_hcas; i ++) {
-         if (proc->cq_hndl_1sc[i])
+         if (proc->cq_hndl_1sc[0])
              ibv_destroy_cq(proc->cq_hndl_1sc[i]);
     }
 err_pd:
@@ -1601,4 +1619,53 @@ int cm_qp_move_to_rts(MPIDI_VC_t *vc)
     return 0;
 }
 
+#ifdef CKPT
+void MRAILI_Init_vc_network(MPIDI_VC_t * vc)
+{
+    /*Reinitialize VC after channel reactivation
+     *      * No change in cmanager, no change in rndv, not support rdma
+     *      fast path*/
+    int i;
+
+#ifdef USE_HEADER_CACHING
+    vc->mrail.rfp.cached_miss   = 0;
+    vc->mrail.rfp.cached_hit    = 0;
+    vc->mrail.rfp.cached_incoming = malloc (sizeof(MPIDI_CH3_Pkt_send_t));
+    vc->mrail.rfp.cached_outgoing = malloc (sizeof(MPIDI_CH3_Pkt_send_t));
+    memset(vc->mrail.rfp.cached_outgoing, 0, sizeof(MPIDI_CH3_Pkt_send_t));
+    memset(vc->mrail.rfp.cached_incoming, 0, sizeof(MPIDI_CH3_Pkt_send_t));
+#endif
+
+    for (i = 0; i < rdma_num_rails; i++) {
+        vc->mrail.rails[i].send_wqes_avail    = rdma_default_max_wqe - 20;
+        vc->mrail.rails[i].ext_sendq_head     = NULL;
+        vc->mrail.rails[i].ext_sendq_tail     = NULL;
+    }
+    for (i = 0; i < vc->mrail.num_rails; i++) {
+        int k;
+        if (!MPIDI_CH3I_RDMA_Process.has_srq) {
+            for (k = 0; k < rdma_initial_prepost_depth; k++) {
+                PREPOST_VBUF_RECV(vc, i);
+            }
+        }
+        vc->mrail.srp.credits[i].remote_credit     = rdma_initial_credits;
+        vc->mrail.srp.credits[i].remote_cc         = rdma_initial_credits;
+        vc->mrail.srp.credits[i].local_credit      = 0;
+        vc->mrail.srp.credits[i].preposts          = rdma_initial_prepost_depth;
+
+        if (!MPIDI_CH3I_RDMA_Process.has_srq) {
+            vc->mrail.srp.credits[i].initialized       =
+                (rdma_prepost_depth == rdma_initial_prepost_depth);
+        } else {
+            vc->mrail.srp.credits[i].initialized = 1;
+            vc->mrail.srp.credits[i].pending_r3_sends = 0;
+        }
+        vc->mrail.srp.credits[i].backlog.len       = 0;
+        vc->mrail.srp.credits[i].backlog.vbuf_head = NULL;
+        vc->mrail.srp.credits[i].backlog.vbuf_tail = NULL;
+        vc->mrail.srp.credits[i].rendezvous_packets_expected = 0;
+    }
+}
+
+#endif
 

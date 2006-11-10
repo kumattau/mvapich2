@@ -33,7 +33,7 @@ mpi_sources = comm_compare.c comm_create.c comm_dup.c comm_free.c \
  comm_get_name.c comm_group.c \
  comm_rank.c comm_size.c comm_remote_group.c comm_remote_size.c \
  comm_set_name.c comm_split.c comm_test_inter.c \
- intercomm_create.c intercomm_merge.c 
+ intercomm_create.c intercomm_merge.c create_2level_comm.c
 HEADERS = mpicomm.h
 INCLUDES = -I../../include -I${top_srcdir}/src/include
 
@@ -77,7 +77,7 @@ all-redirect: .libstamp0 ../../../lib/lib${MPILIBNAME}.a
 	comm_dup.o comm_free.o comm_get_name.o comm_group.o comm_rank.o \
 	comm_size.o comm_remote_group.o comm_remote_size.o comm_set_name.o \
 	comm_split.o comm_test_inter.o intercomm_create.o intercomm_merge.o \
-	commutil.o 
+	commutil.o create_2level_comm.o 
 	${AR} cr ../../../lib/lib${MPILIBNAME}.a $?
 	${RANLIB} ../../../lib/lib${MPILIBNAME}.a
 	date > .libstamp0
@@ -85,7 +85,7 @@ all-redirect: .libstamp0 ../../../lib/lib${MPILIBNAME}.a
 	comm_dup.lo comm_free.lo comm_get_name.lo comm_group.lo comm_rank.lo \
 	comm_size.lo comm_remote_group.lo comm_remote_size.lo \
 	comm_set_name.lo comm_split.lo comm_test_inter.lo intercomm_create.lo \
-	intercomm_merge.lo commutil.lo 
+	intercomm_merge.lo commutil.lo create_2level_comm.lo
 	${AR} cr ../../../lib/lib${MPILIBNAME}.la $?
 	date > .libstamp1
 

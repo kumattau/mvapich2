@@ -52,6 +52,10 @@ int MPIDI_CH3_Prepare_rndv_cts(MPIDI_VC_t * vc,
     int mpi_errno = MPI_SUCCESS;
     int reg_success;
 
+#ifdef CKPT
+    MPIDI_CH3I_CR_lock();
+#endif
+
     switch (rreq->mrail.protocol) {
     case VAPI_PROTOCOL_R3:
         {
@@ -77,6 +81,11 @@ int MPIDI_CH3_Prepare_rndv_cts(MPIDI_VC_t * vc,
             break;
         }
     }
+
+#ifdef CKPT
+    MPIDI_CH3I_CR_unlock();
+#endif
+
     return mpi_errno;
 }
 
@@ -92,6 +101,10 @@ int MPIDI_CH3_Start_rndv_transfer(MPIDI_VC_t * vc,
     int mpi_errno = MPI_SUCCESS;
     MPIDI_CH3I_MRAILI_Rndv_info_t *rndv;        /* contains remote info */
 
+#ifdef CKPT
+    MPIDI_CH3I_CR_lock();
+#endif
+        
     DEBUG_PRINT("Get rndv reply, add to list\n");
     rndv = (cts_pkt == NULL) ? NULL : &cts_pkt->rndv;
 
@@ -109,6 +122,9 @@ int MPIDI_CH3_Start_rndv_transfer(MPIDI_VC_t * vc,
                                          FCNAME, __LINE__,
                                          MPI_ERR_OTHER,
                                          "**fail | unknown protocol", 0);
+#ifdef CKPT
+        MPIDI_CH3I_CR_unlock();
+#endif
         return mpi_errno;
     }
     RENDEZVOUS_IN_PROGRESS(vc, sreq);
@@ -121,6 +137,10 @@ int MPIDI_CH3_Start_rndv_transfer(MPIDI_VC_t * vc,
     sreq->mrail.nearly_complete = 0;
 
     PUSH_FLOWLIST(vc);
+
+#ifdef CKPT
+    MPIDI_CH3I_CR_unlock();
+#endif
     return MPI_SUCCESS;
 }
 
@@ -359,9 +379,21 @@ void MPIDI_CH3I_MRAILI_Process_rndv()
          * bad practice. Find a way to do this so the logic
          * is obvious.
          */
-
+#ifdef CKPT
+        /*If vc is suspended, ignore this flow and move on*/
+        if (flowlist->ch.state != MPIDI_CH3I_VC_STATE_IDLE) {
+            POP_FLOWLIST();/*VC will be push back when state becomes MPIDI_CH3I_VC_STATE_IDLE*/
+            continue;
+        }
+#endif
         sreq = flowlist->mrail.sreq_head;
         while (sreq != NULL) {
+#ifdef CKPT
+            if (flowlist->ch.rput_stop
+             && VAPI_PROTOCOL_RPUT == sreq->mrail.protocol) {
+                break; /*VC will be push back when the rput_stop becomes 0*/
+            }
+#endif
             MPIDI_CH3_Rendezvous_push(flowlist, sreq);
             DEBUG_PRINT("[process rndv] after rndv push\n");
             if (1 != sreq->mrail.nearly_complete) {
@@ -535,6 +567,10 @@ int MPIDI_CH3_Rendezvous_rput_finish(MPIDI_VC_t * vc,
         rreq->mrail.rndv_buf = NULL;
     }
 
+#ifdef CKPT
+    MPIDI_CH3I_CR_req_dequeue(rreq);
+#endif
+
     MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(rreq);
 
     mpi_errno = MPIDI_CH3U_Handle_recv_req(vc, rreq, &complete);
@@ -568,6 +604,10 @@ int MPIDI_CH3_Get_rndv_push(MPIDI_VC_t * vc,
 {
     int mpi_errno = MPI_SUCCESS;
     vbuf *v;
+
+#ifdef CKPT
+    MPIDI_CH3I_CR_lock();
+#endif
 
     if (VAPI_PROTOCOL_R3 == req->mrail.protocol) {
         req->mrail.partner_id = get_resp_pkt->request_handle;
@@ -642,6 +682,10 @@ int MPIDI_CH3_Get_rndv_push(MPIDI_VC_t * vc,
 #endif
         }
     }
+#ifdef CKPT
+    MPIDI_CH3I_CR_unlock();
+#endif
+
     return MPI_SUCCESS;
 }
 
@@ -655,6 +699,10 @@ int MPIDI_CH3_Get_rndv_recv(MPIDI_VC_t * vc, MPID_Request * req)
     int complete;
 
     assert(VAPI_PROTOCOL_RPUT == req->mrail.protocol);
+
+#ifdef CKPT
+    MPIDI_CH3I_CR_lock();
+#endif
 
     if (1 == req->mrail.rndv_buf_alloc) {
         /* If we are using datatype, then need to unpack data from tmpbuf */
@@ -705,6 +753,9 @@ int MPIDI_CH3_Get_rndv_recv(MPIDI_VC_t * vc, MPID_Request * req)
     MPIU_Assert(TRUE == complete);
 
   fn_exit:
+#ifdef CKPT
+    MPIDI_CH3I_CR_unlock();
+#endif
     return mpi_errno;
 }
 

@@ -81,6 +81,10 @@ int MPIDI_CH3_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void *pkt,
     }
 #endif
 
+#ifdef CKPT
+    MPIDI_CH3I_CR_lock();
+#endif
+
     /*CM code*/
     if (vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE 
     || !MPIDI_CH3I_CM_SendQ_empty(vc)) {
@@ -169,6 +173,9 @@ int MPIDI_CH3_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void *pkt,
         MPIDI_CH3I_SendQ_enqueue(vc, sreq);
     }
   fn_exit:
+#ifdef CKPT
+    MPIDI_CH3I_CR_unlock();
+#endif
     MPIDI_DBG_PRINTF((50, FCNAME, "exiting"));
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_ISEND);
     return mpi_errno;

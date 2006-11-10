@@ -208,6 +208,9 @@ struct mrail_rail {
 	int    lid;
 	struct ibv_cq	*cq_hndl;
 	struct ibv_qp 	*qp_hndl;
+#ifdef RDMA_CM
+	struct rdma_cm_id 	*cm_ids;
+#endif
 	int		send_wqes_avail;
 	struct vbuf 	*ext_sendq_head;
 	struct vbuf	*ext_sendq_tail;
@@ -216,6 +219,14 @@ struct mrail_rail {
 	int     postsend_times_1sc;
 #endif
 };
+
+#ifdef CKPT
+typedef struct MPIDI_CH3I_CR_msg_log_queue_entry {
+    vbuf *buf;
+    unsigned long len;
+    struct MPIDI_CH3I_CR_msg_log_queue_entry *next;
+}MPIDI_CH3I_CR_msg_log_queue_entry_t;
+#endif
 
 /* sample implemenation structure */
 typedef struct MPIDI_CH3I_MRAIL_VC_t
@@ -267,6 +278,19 @@ typedef struct MPIDI_CH3I_MRAIL_VC_t
      * process teardown.
      *
      int barrier_id; */
+#ifdef CKPT
+    /*Record the number of suspended rails*/
+    int suspended_rails_send;
+    int suspended_rails_recv;
+
+    /*For buffering the message*/
+    MPIDI_CH3I_CR_msg_log_queue_entry_t *msg_log_queue_head;
+    MPIDI_CH3I_CR_msg_log_queue_entry_t *msg_log_queue_tail;
+
+    /*For reactivation*/
+    int reactivation_done_send;
+    int reactivation_done_recv;
+#endif
 } MPIDI_CH3I_MRAIL_VC;
 
 /* add this structure to the implemenation specific macro */

@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: init.c,v 1.1.1.1 2006/01/18 21:09:43 huangwei Exp $
+/*  $Id: init.c,v 1.2 2006/10/27 06:56:49 mamidala Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -64,12 +64,27 @@ The Fortran binding for 'MPI_Init' has only the error return
 
 .seealso: MPI_Init_thread, MPI_Finalize
 @*/
+#ifdef _SMP_
+extern int split_comm;
+extern int enable_shmem_collectives;
+int disable_shmem_allreduce=0;
+int disable_shmem_reduce=0;
+int disable_shmem_barrier=0;
+#endif
 int MPI_Init( int *argc, char ***argv )
 {
     static const char FCNAME[] = "MPI_Init";
     int mpi_errno = MPI_SUCCESS;
     MPID_MPI_INIT_STATE_DECL(MPID_STATE_MPI_INIT);
 
+#ifdef _SMP_
+#ifdef _SHMEM_COLL_
+    if (setenv("MV2_ENABLE_SHMEM_COLL","1",1) == -1){
+        printf("Error in setting environment\n");
+        exit(0);
+    }
+#endif
+#endif
     MPID_CS_INITIALIZE();
     MPID_CS_ENTER();
     MPID_MPI_INIT_FUNC_ENTER(MPID_STATE_MPI_INIT);
@@ -91,6 +106,40 @@ int MPI_Init( int *argc, char ***argv )
     
     mpi_errno = MPIR_Init_thread( argc, argv, MPI_THREAD_SINGLE, (int *)0 );
     if (mpi_errno != MPI_SUCCESS) goto fn_fail;
+
+#ifdef _SMP_
+    char *value;
+    int flag;
+    if ((value = getenv("MV2_ENABLE_SHMEM_COLL")) != NULL){
+        enable_shmem_collectives = 1;
+    }
+    if ((value = getenv("MV2_DISABLE_SHMEM_ALLREDUCE")) != NULL) {
+        flag = (int)atoi(value);
+        if (flag > 0) disable_shmem_allreduce = 1;
+        else disable_shmem_allreduce = 0;
+    }
+    if ((value = getenv("MV2_DISABLE_SHMEM_REDUCE")) != NULL) {
+        flag = (int)atoi(value);
+        if (flag > 0) disable_shmem_reduce = 1;
+        else disable_shmem_reduce = 0;
+    }
+    if ((value = getenv("MV2_DISABLE_SHMEM_BARRIER")) != NULL) {
+        flag = (int)atoi(value);
+        if (flag > 0) disable_shmem_barrier = 1;
+        else disable_shmem_barrier = 0;
+    }
+
+    if (enable_shmem_collectives){
+    if (split_comm == 1){
+        int my_id, size;
+        MPI_Comm_rank(MPI_COMM_WORLD, &my_id);
+        MPI_Comm_size(MPI_COMM_WORLD, &size);
+        split_comm = 0;
+        create_2level_comm(MPI_COMM_WORLD, size, my_id);
+        split_comm = 1;
+    }
+    }
+#endif
 
     /* ... end of body of routine ... */
     

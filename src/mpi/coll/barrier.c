@@ -4,6 +4,17 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2003-2006, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT_MVAPICH2 in the top level MVAPICH2 directory.
+ *
+ */
 
 #include "mpiimpl.h"
 
@@ -324,11 +335,29 @@ communicator have entered the call.
 .N MPI_SUCCESS
 .N MPI_ERR_COMM
 @*/
+#ifdef _SMP_
+extern int enable_shmem_collectives;
+extern int disable_shmem_barrier;
+#endif
 int MPI_Barrier( MPI_Comm comm )
 {
     static const char FCNAME[] = "MPI_Barrier";
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL;
+#ifdef _SMP_
+    char* shmem_buf;
+    MPI_Comm shmem_comm, leader_comm;
+    MPID_Comm *shmem_commptr = 0, *leader_commptr = 0;
+    int local_rank = -1, global_rank = -1, local_size=0, my_rank;
+    void* local_buf, *tmpbuf;
+    int stride = 0, i, is_commutative, size;
+    int leader_root, total_size, shmem_comm_rank;
+#ifdef RDMA_CM
+    char* value;
+    if ((value = getenv("MV2_USE_RDMA_CM")) != NULL)
+        disable_shmem_barrier = 1;
+#endif
+#endif
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_BARRIER);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
@@ -374,7 +403,45 @@ int MPI_Barrier( MPI_Comm comm )
     {
         MPIR_Nest_incr();
         if (comm_ptr->comm_kind == MPID_INTRACOMM) {
+#ifdef _SMP_
+            if (enable_shmem_collectives){
+                shmem_comm = comm_ptr->shmem_comm;
+                leader_comm = comm_ptr->leader_comm;
+                if ((disable_shmem_barrier == 0) && (shmem_comm != 0)&&(leader_comm !=0) &&(comm_ptr->shmem_coll_ok == 1 )){
+                    my_rank = comm_ptr->rank;
+                    MPI_Comm_size(comm, &total_size);
+                    shmem_comm = comm_ptr->shmem_comm;
+
+                    MPI_Comm_rank(shmem_comm, &local_rank);
+                    MPI_Comm_size(shmem_comm, &local_size);
+                    MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
+                    shmem_comm_rank = shmem_commptr->shmem_comm_rank;
+
+                    leader_comm = comm_ptr->leader_comm;
+                    MPID_Comm_get_ptr(leader_comm, leader_commptr);
+
+                    if (local_size > 1){
+                        MPIDI_CH3I_SHMEM_COLL_Barrier_gather(local_size, local_rank, shmem_comm_rank);
+                    }
+
+                    if ((local_rank == 0) && (local_size != total_size)){
+                        mpi_errno = MPIR_Barrier( leader_commptr );
+                    }
+
+                    if (local_size > 1){
+                        MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(local_size, local_rank, shmem_comm_rank);
+                    }
+                }
+                else{
+                    mpi_errno = MPIR_Barrier( comm_ptr );
+                }
+            }
+            else{
+                mpi_errno = MPIR_Barrier( comm_ptr );
+            }
+#else
 	    mpi_errno = MPIR_Barrier( comm_ptr );
+#endif
         }
         else {
             /* intercommunicator */ 

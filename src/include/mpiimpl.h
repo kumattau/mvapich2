@@ -1216,6 +1216,15 @@ typedef struct MPID_Comm {
     struct MPID_TopoOps  *topo_fns; /* Pointer to a table of functions
 				       implementting the topology routines
 				    */
+#ifdef _SMP_
+    MPI_Comm     leader_comm;
+    MPI_Comm     shmem_comm;
+    int*    leader_map;
+    int*    leader_rank;
+    int     shmem_comm_rank;
+    int     shmem_coll_ok;
+#endif
+
 #ifdef MPID_HAS_HETERO
     int is_hetero;
 #endif

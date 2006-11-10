@@ -310,6 +310,9 @@ int MPI_Intercomm_merge(MPI_Comm intercomm, int high, MPI_Comm *newintracomm)
 
     /* ... end of body of routine ... */
     
+#ifdef _SMP_
+   newcomm_ptr->shmem_coll_ok = 0; 
+#endif
   fn_exit:
     MPIR_Nest_decr();
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_INTERCOMM_MERGE);

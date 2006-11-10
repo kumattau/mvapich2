@@ -91,6 +91,9 @@ int MPID_Cancel_send(MPID_Request * sreq)
 	    /* The cancellation of the RTS request needs to be atomic through the destruction of the RTS request to avoid
                conflict with release of the RTS request if the CTS is received (see handling of a rendezvous CTS packet in
                MPIDI_CH3U_Handle_recv_pkt()).  MPID_Request_fetch_and_clear_rts_sreq() is used to gurantee that atomicity. */
+
+	    MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(sreq);
+
 	    MPIDI_Request_fetch_and_clear_rts_sreq(sreq, &rts_sreq);
 	    if (rts_sreq != NULL) 
 	    {

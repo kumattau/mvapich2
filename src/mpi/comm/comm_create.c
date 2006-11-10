@@ -5,6 +5,18 @@
  *      See COPYRIGHT in top-level directory.
  */
 
+/* Copyright (c) 2003-2006, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT_MVAPICH2 in the top level MVAPICH2 directory.
+ *
+ */
+
 #include "mpiimpl.h"
 #include "mpicomm.h"
 
@@ -50,6 +62,10 @@ Output Parameter:
 
 .seealso: MPI_Comm_free
 @*/
+#ifdef _SMP_
+int split_comm = 1;
+#endif
+
 int MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm)
 {
     static const char FCNAME[] = "MPI_Comm_create";
@@ -58,6 +74,13 @@ int MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm)
     int i, j, n, *mapping = 0, new_context_id;
     MPID_Comm *newcomm_ptr;
     MPID_Group *group_ptr;
+#ifdef _SMP_
+    char* val;
+    int enable_shmem_collectives = 0;
+    if ((val = getenv("MV2_ENABLE_SHMEM_COLL")) != NULL){
+        enable_shmem_collectives = 1;
+    }
+#endif
     MPIU_CHKLMEM_DECL(1);
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_COMM_CREATE);
 
@@ -203,15 +226,36 @@ int MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm)
 	*newcomm = MPI_COMM_NULL;
     }
     
+
     /* ... end of body of routine ... */
 
     /* mpi_errno = MPID_Comm_create(); */
     if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 
+#ifdef _SMP_
+    int flag;
+    if (enable_shmem_collectives){
+        if (split_comm == 1){
+            if (*newcomm != MPI_COMM_NULL){
+                MPI_Comm_test_inter(*newcomm, &flag);
+                if (flag == 0){
+                    int my_id, size;
+                    MPI_Comm_rank(*newcomm, &my_id);
+                    MPI_Comm_size(*newcomm, &size);
+                    split_comm = 0;
+                    create_2level_comm(*newcomm, size, my_id);
+                    split_comm = 1;
+                }
+            }
+        }
+    }
+#endif
+
   fn_exit:
     MPIU_CHKLMEM_FREEALL();
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_COMM_CREATE);
     MPID_CS_EXIT();
+
     return mpi_errno;
 
   fn_fail:

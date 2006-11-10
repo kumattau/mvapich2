@@ -20,6 +20,7 @@
 #include "rdma_impl.h"
 #include "vbuf.h"
 #include "cm.h"
+#include "rdma_cm.h"
 
 /* global rdma structure for the local process */
 MPIDI_CH3I_RDMA_Process_t MPIDI_CH3I_RDMA_Process;
@@ -725,15 +726,14 @@ int MPIDI_CH3I_RMDA_finalize()
 
         for (rail_index = 0; rail_index < vc->mrail.num_rails;
              rail_index++) {
- 	    err = ibv_destroy_qp(vc->mrail.rails[rail_index].qp_hndl);
-	    if (err)
-	        fprintf(stderr, "Failed to destroy QP (%d)\n", err);
+            err = ibv_destroy_qp(vc->mrail.rails[rail_index].qp_hndl);
+            if (err)
+                fprintf(stderr, "Failed to destroy QP (%d)\n", err);
             if (MPIDI_CH3I_RDMA_Process.has_one_sided) {
                 err = ibv_destroy_qp(vc->mrail.rails[rail_index].qp_hndl_1sc);
-		if (err)
-	            fprintf(stderr, "Failed to destroy one sided QP (%d)\n", err);
+                if (err)
+                   fprintf(stderr, "Failed to destroy one sided QP (%d)\n", err);
             }
-
         }
 
 #ifdef USE_HEADER_CACHING
@@ -741,6 +741,7 @@ int MPIDI_CH3I_RMDA_finalize()
         free(vc->mrail.rfp.cached_outgoing);
 #endif
     }
+
     /* free all the spaces */
     for (i = 0; i < pg_size; i++) {
         if (rdma_iba_addr_table.qp_num_rdma[i])
@@ -768,31 +769,38 @@ int MPIDI_CH3I_RMDA_finalize()
         if (MPIDI_CH3I_RDMA_Process.has_srq) {
             pthread_cancel(MPIDI_CH3I_RDMA_Process.async_thread[i]);
             err = ibv_destroy_srq(MPIDI_CH3I_RDMA_Process.srq_hndl[i]);
-	    if (err)
-	       fprintf(stderr, "Failed to destroy SRQ (%d)\n", err);
+            if (err)
+                fprintf(stderr, "Failed to destroy SRQ (%d)\n", err);
         }
 
         err = ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.cq_hndl[i]);
-	if (err)
-	    fprintf(stderr, "Failed to destroy CQ (%d)\n", err);
+        if (err)
+            fprintf(stderr, "Failed to destroy CQ (%d)\n", err);
 
         if (MPIDI_CH3I_RDMA_Process.has_one_sided) {
-	    err = ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.cq_hndl_1sc[i]);
-	    if (err)
-		fprintf(stderr , "Failed to Destroy one sided CQ (%d)\n", err);
-	}
+            err = ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.cq_hndl_1sc[i]);
+            if (err)
+                fprintf(stderr , "Failed to Destroy one sided CQ (%d)\n", err);
+        }
 
         deallocate_vbufs(i);
 
         while (dreg_evict());
 
         err = ibv_dealloc_pd(MPIDI_CH3I_RDMA_Process.ptag[i]);
-	if (err) 
-	    fprintf(stderr, "Failed to dealloc pd (%d)\n", err);
+
+        if (err)  {
+            fprintf(stderr, "[%d] Failed to dealloc pd (%s)\n", 
+                    pg_rank, strerror(errno));
+        }
+
         err = ibv_close_device(MPIDI_CH3I_RDMA_Process.nic_context[i]);
-	if (err)
-	    fprintf(stderr, "Failed to close ib device (%d)\n", err);
-	
+
+        if (err) {
+            fprintf(stderr, "[%d] Failed to close ib device (%s)\n", 
+                    pg_rank, strerror(errno));
+        }
+
     }
 
 
@@ -815,6 +823,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank)
     int i, error;
     int key_max_sz;
     int val_max_sz;
+    int *hosts = NULL;
 
     uint32_t *ud_qpn_all;
     uint32_t ud_qpn_self;
@@ -905,37 +914,90 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank)
         }
     }
 
+    if (MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_RDMA_CM){
+	MPIDI_CH3I_RDMA_Process.use_rdma_cm = 1;
+	MPIDI_CH3I_RDMA_Process.has_one_sided = 0;
+	rdma_num_hcas = 1;
+#ifdef RDMA_CM_RNIC
+	rdma_default_max_cq_size = 2000;
+#endif
+    }
+    else 
+	MPIDI_CH3I_RDMA_Process.use_rdma_cm = 0;
+
+#ifdef RDMA_CM
+    if (MPIDI_CH3I_RDMA_Process.use_rdma_cm)
+    {
+
+	ret = rdma_iba_hca_init(&MPIDI_CH3I_RDMA_Process, pg_rank, pg_size);
+	if (ret){
+	    fprintf(stderr, "Failed RDMA_CM init\n");
+	    return ret;
+	}
+
+	hosts = rdma_cm_get_hostnames(pg_rank, pg_size);
+	if (!hosts)
+	    fprintf(stderr, "Error obtaining hostnames\n");
+
+	ret = rdma_cm_connect_all(hosts, pg_rank, pg_size);
+	if (ret){
+	    fprintf(stderr, "Failed RDMA_CM connect\n");
+	    return ret;
+	}
+	DEBUG_PRINT("Done RDMA_CM based MPIDI_CH3I_CM_Init()\n");
+    }
+#endif
+
     /* Open the device and create cq and qp's */
-    ret = rdma_iba_hca_init_noqp(&MPIDI_CH3I_RDMA_Process, pg_rank, pg_size);
-    if (ret) {
-        fprintf(stderr, "Failed to Initialize HCA type\n");
-        return -1;
+    if (!MPIDI_CH3I_RDMA_Process.use_rdma_cm){
+	ret = rdma_iba_hca_init_noqp(&MPIDI_CH3I_RDMA_Process, pg_rank, pg_size);
+	if (ret) {
+	    fprintf(stderr, "Failed to Initialize HCA type\n");
+	    return -1;
+	}
     }
 
     MPIDI_CH3I_RDMA_Process.maxtransfersize = RDMA_MAX_RDMA_SIZE;
+    
+    if (((num_smp_peers + 1) < pg_size) || (!MPIDI_CH3I_RDMA_Process.use_rdma_cm)){
 
-    /* Initialize the registration cache */
-    dreg_init();
-    /* Allocate RDMA Buffers */
-    ret = rdma_iba_allocate_memory(&MPIDI_CH3I_RDMA_Process,
-				   pg_rank, pg_size);
-    if (ret) {
-	return ret;
+	/* Initialize the registration cache */
+	dreg_init();
+	/* Allocate RDMA Buffers */
+	ret = rdma_iba_allocate_memory(&MPIDI_CH3I_RDMA_Process,
+				       pg_rank, pg_size);
+	if (ret) {
+	    return ret;
+	}
     }
+
+#ifdef RDMA_CM
+ {
+    if (MPIDI_CH3I_RDMA_Process.use_rdma_cm)
+    {
+	/* Prefill post descriptors */
+	for (i = 0; i < pg_size; i++) {
+
+	    if (i == pg_rank) {
+		continue;
+	    }
+
+	    MPIDI_PG_Get_vc(pg, i, &vc);
+
+	    if (hosts[i] != hosts[pg_rank])
+		MRAILI_Init_vc(vc, pg_rank);
+	}
+
+     return MPI_SUCCESS;    
+    }
+ }
+#endif /* RDMA_CM */
 
     {
         /*Init UD*/
         cm_ib_context.rank = pg_rank;
         cm_ib_context.size = pg_size;
         cm_ib_context.pg = pg;
-        cm_ib_context.conn_state = (MPIDI_CH3I_VC_state_t **)malloc
-            (pg_size*sizeof(MPIDI_CH3I_VC_state_t *));
-        for (i=0;i<pg_size;i++)  {
-            if (i == pg_rank)
-                continue;
-            MPIDI_PG_Get_vc(pg, i, &vc);
-            cm_ib_context.conn_state[i] = &(vc->ch.state);
-        }
         ret  = MPICM_Init_UD(&ud_qpn_self);
         if (ret) {
             return ret;
@@ -1096,11 +1158,8 @@ int MPIDI_CH3I_CM_Finalize()
         return error;
     }
 
-
-    if (cm_ib_context.conn_state)
-        free(cm_ib_context.conn_state);
-
-    error = MPICM_Finalize_UD();
+    if (!MPIDI_CH3I_RDMA_Process.use_rdma_cm)
+	    error = MPICM_Finalize_UD();
 
     if (error != 0) {
         error = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
@@ -1130,7 +1189,8 @@ int MPIDI_CH3I_CM_Finalize()
 
         for (rail_index = 0; rail_index < vc->mrail.num_rails;
              rail_index++) {
-	    ibv_destroy_qp(vc->mrail.rails[rail_index].qp_hndl);
+	    if (!MPIDI_CH3I_RDMA_Process.use_rdma_cm)
+		ibv_destroy_qp(vc->mrail.rails[rail_index].qp_hndl);
         }
 
 #ifdef USE_HEADER_CACHING
@@ -1165,26 +1225,32 @@ int MPIDI_CH3I_CM_Finalize()
     free(rdma_iba_addr_table.qp_num_rdma);
     free(rdma_iba_addr_table.qp_num_onesided);
 
-    /* STEP 3: release all the cq resource, 
-     * release all the unpinned buffers, 
-     * release the ptag and finally, release the hca */
+    /* STEP 3: release all the cq resource, relaes all the unpinned buffers, release the
+     * ptag 
+     *   and finally, release the hca */
+    if (!MPIDI_CH3I_RDMA_Process.use_rdma_cm)
+    {
+	for (i = 0; i < rdma_num_hcas; i++) {
+	    ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.cq_hndl[i]);
 
-    for (i = 0; i < rdma_num_hcas; i++) {
+	    if (MPIDI_CH3I_RDMA_Process.has_srq) {
+		pthread_cancel(MPIDI_CH3I_RDMA_Process.async_thread[i]);
+		ibv_destroy_srq(MPIDI_CH3I_RDMA_Process.srq_hndl[i]);
+	    }
 
-        if (MPIDI_CH3I_RDMA_Process.has_srq) {
-            pthread_cancel(MPIDI_CH3I_RDMA_Process.async_thread[i]);
-            ibv_destroy_srq(MPIDI_CH3I_RDMA_Process.srq_hndl[i]);
-        }
-
-        ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.cq_hndl[i]);
-
-        deallocate_vbufs(i);
-
-        while (dreg_evict());
-
-        ibv_dealloc_pd(MPIDI_CH3I_RDMA_Process.ptag[i]);
-        ibv_close_device(MPIDI_CH3I_RDMA_Process.nic_context[i]);
+	    deallocate_vbufs(i);
+	    while (dreg_evict());
+	    ibv_dealloc_pd(MPIDI_CH3I_RDMA_Process.ptag[i]);
+	    ibv_close_device(MPIDI_CH3I_RDMA_Process.nic_context[i]);
+	}
     }
+#ifdef RDMA_CM
+    else
+    {
+	ib_finalize_rdma_cm(pg_rank, pg_size);
+	free(rdma_cm_host_list);
+    }
+#endif /* RDMA_CM */
 
     return MPI_SUCCESS;
 }

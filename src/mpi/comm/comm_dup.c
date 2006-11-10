@@ -4,6 +4,17 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2003-2006, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT_MVAPICH2 in the top level MVAPICH2 directory.
+ *
+ */
 
 #include "mpiimpl.h"
 #include "mpicomm.h"
@@ -73,11 +84,21 @@ Notes:
 .seealso: MPI_Comm_free, MPI_Keyval_create, MPI_Attr_put, MPI_Attr_delete,
  MPI_Comm_create_keyval, MPI_Comm_set_attr, MPI_Comm_delete_attr
 @*/
+#ifdef _SMP_
+extern int split_comm;
+#endif
 int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
 {
     static const char FCNAME[] = "MPI_Comm_dup";
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL, *newcomm_ptr;
+#ifdef _SMP_
+    char* val;
+    int enable_shmem_collectives = 0;
+    if ((val = getenv("MV2_ENABLE_SHMEM_COLL")) != NULL){
+        enable_shmem_collectives = 1;
+    }
+#endif
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_COMM_DUP);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
@@ -155,6 +176,25 @@ int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
     }
 
     *newcomm = newcomm_ptr->handle;
+
+#ifdef _SMP_
+    int flag;
+    if (enable_shmem_collectives){
+        if (split_comm == 1){
+            if (*newcomm != MPI_COMM_NULL){
+                MPI_Comm_test_inter(*newcomm, &flag);
+                if (flag == 0){
+                    int my_id, size;
+                    MPI_Comm_rank(*newcomm, &my_id);
+                    MPI_Comm_size(*newcomm, &size);
+                    split_comm = 0;
+                    create_2level_comm(*newcomm, size, my_id);
+                    split_comm = 1;
+                }
+            }
+        }
+    }
+#endif
     
     /* ... end of body of routine ... */
 

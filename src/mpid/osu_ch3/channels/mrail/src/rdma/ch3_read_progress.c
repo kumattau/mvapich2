@@ -96,6 +96,7 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr)
 	goto fn_exit;
     } 
 #endif
+
     /* local polling has finished, now we need to start global subchannel polling 
      * For convenience, at this stage, we by default refer to the global polling channel 
      * as the send recv channel on each of the queue pair

@@ -260,6 +260,15 @@ int  rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
         strncpy(rdma_iba_hca, value, 32);
     }
 
+    if ((value = getenv("MV2_USE_RDMA_CM")) != NULL) {
+	    proc->use_rdma_cm = 1;
+    }
+    else
+	    proc->use_rdma_cm = 0;
+
+#if defined(RDMA_CM) && defined(RDMA_CM_RNIC) 
+    proc->use_rdma_cm = 1;
+#endif
 
     err = rdma_open_hca(proc);
     
@@ -286,7 +295,7 @@ int  rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
     }
 
     if (!(value = getenv("MV2_DISABLE_SRQ")) && proc->hca_type != PATH_HT
-            && proc->hca_type != MLX_PCI_X  && proc->hca_type != IBM_EHCA) {
+            && proc->hca_type != MLX_PCI_X  && proc->hca_type != IBM_EHCA && !proc->use_rdma_cm) {
         proc->has_srq = 1;
         proc->post_send = post_srq_send;
     } else {
@@ -320,6 +329,14 @@ int  rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
         proc->has_one_sided = 1;
     }
 
+#ifdef CKPT
+    /*RDMA FAST PATH is disabled*/
+    proc->has_adaptive_fast_path = 0;
+    rdma_polling_set_limit       = 0;
+    /*RDMA ONE SIDED is disabled*/
+    proc->has_one_sided = 0;
+#endif
+    
     return 0;
 }
 

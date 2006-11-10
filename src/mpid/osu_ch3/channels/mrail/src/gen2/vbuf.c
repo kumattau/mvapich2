@@ -73,6 +73,9 @@ void deallocate_vbufs(int hca_num)
     vbuf_region *r = vbuf_region_head;
 
     if (MPIDI_CH3I_RDMA_Process.has_srq
+#ifdef CKPT
+     || 1
+#endif
      || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
         pthread_spin_lock(&vbuf_lock);
 
@@ -92,6 +95,9 @@ void deallocate_vbufs(int hca_num)
     }
 
     if (MPIDI_CH3I_RDMA_Process.has_srq
+#ifdef CKPT
+     || 1
+#endif
      || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
          pthread_spin_unlock(&vbuf_lock);
 }
@@ -217,8 +223,11 @@ vbuf *get_vbuf()
 {
     vbuf *v;
     if (MPIDI_CH3I_RDMA_Process.has_srq
-    || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
-	pthread_spin_lock(&vbuf_lock);
+#ifdef CKPT
+     || 1
+#endif
+     || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
+    	pthread_spin_lock(&vbuf_lock);
 
     /*
      * It will often be possible for higher layers to recover
@@ -252,7 +261,10 @@ vbuf *get_vbuf()
     v->sreq = NULL;
 
     if (MPIDI_CH3I_RDMA_Process.has_srq
-    || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
+#ifdef CKPT
+     || 1
+#endif
+     || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
          pthread_spin_unlock(&vbuf_lock);
 
     return(v);
@@ -262,7 +274,10 @@ void MRAILI_Release_vbuf(vbuf *v)
 {
     /* note this correctly handles appending to empty free list */
     if (MPIDI_CH3I_RDMA_Process.has_srq
-     || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
+#ifdef CKPT
+    || 1
+#endif
+    || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
         pthread_spin_lock(&vbuf_lock);
 
     DEBUG_PRINT("release_vbuf: releasing %p previous head = %p, padding %d\n",
@@ -282,6 +297,9 @@ void MRAILI_Release_vbuf(vbuf *v)
     num_free_vbuf++;
     num_vbuf_freed++;
     if (MPIDI_CH3I_RDMA_Process.has_srq
+#ifdef CKPT
+    || 1
+#endif
      || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
         pthread_spin_unlock(&vbuf_lock);
 }
@@ -403,3 +421,27 @@ void dump_vbuf(char *msg, vbuf * v)
     DEBUG_PRINT("\n");
     DEBUG_PRINT("  END OF VBUF DUMP\n");
 }
+
+#ifdef CKPT
+void vbuf_reregister_all()
+{
+    int i;
+    vbuf_region *vr;
+    for (i=0;i<rdma_num_hcas; i++) {
+        ptag_save[i] = MPIDI_CH3I_RDMA_Process.ptag[i];
+    }
+    vr = vbuf_region_head;
+    while(vr) {
+        for (i=0;i<rdma_num_hcas;i++) {
+            vr->mem_handle[i] = ibv_reg_mr(ptag_save[i], vr->malloc_buf_start,
+                    vr->count*rdma_vbuf_total_size,
+                    IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+            if (!vr->mem_handle[i]) {
+                ibv_error_abort(IBV_RETURN_ERR,"Cannot reregister vbuf region\n");
+            }
+        }
+        vr=vr->next;
+    }
+}
+#endif
+

@@ -99,6 +99,22 @@ int MPIDI_CH3_iStartMsg(MPIDI_VC_t * vc, void *pkt, MPIDI_msg_sz_t pkt_sz,
         return mpi_errno;
     }
 #endif
+
+#ifdef CKPT
+    MPIDI_CH3I_CR_lock();
+    /*Detect whether the packet is CTS*/
+    MPIDI_CH3_Pkt_t *upkt = (MPIDI_CH3_Pkt_t *)pkt;
+    if (upkt->type == MPIDI_CH3_PKT_RNDV_CLR_TO_SEND) {
+        MPIDI_CH3_Pkt_rndv_clr_to_send_t * cts_pkt = &(upkt->rndv_clr_to_send);
+        if (cts_pkt->rndv.protocol == VAPI_PROTOCOL_RPUT) {
+            /*If using rput protocol, keep track of the request*/
+            MPID_Request *rreq;
+            MPID_Request_get_ptr(cts_pkt->receiver_req_id, rreq);
+            MPIDI_CH3I_CR_req_enqueue(rreq, vc);
+        }
+    }
+#endif
+
     /*CM code*/
     if (vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE 
     || !MPIDI_CH3I_CM_SendQ_empty(vc)) {
@@ -177,6 +193,9 @@ int MPIDI_CH3_iStartMsg(MPIDI_VC_t * vc, void *pkt, MPIDI_msg_sz_t pkt_sz,
 
   fn_exit:
     *sreq_ptr = sreq;
+#ifdef CKPT
+    MPIDI_CH3I_CR_unlock();
+#endif
 
     DEBUG_PRINT("Exiting istartmsg\n");
     MPIDI_DBG_PRINTF((50, FCNAME, "exiting"));

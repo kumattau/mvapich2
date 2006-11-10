@@ -45,6 +45,10 @@ void mvapich2_mfin(void);
 int mvapich2_munmap(void *buf, int len);
 #endif
 
+#ifndef DISABLE_TRAP_SBRK
+void *mvapich2_sbrk(int delta);
+#endif /* DISABLE_TRAP_SBRK */
+
 #endif /* DISABLE_PTMALLOC */
 
 #endif /* _MEM_HOOKS_H */

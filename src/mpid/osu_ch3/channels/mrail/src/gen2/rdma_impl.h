@@ -26,6 +26,12 @@
 #include <infiniband/verbs.h>
 #include "ibv_param.h"
 
+#ifdef RDMA_CM
+#include <rdma/rdma_cma.h>
+#include <semaphore.h>
+#include <pthread.h>
+#endif /* RDMA_CM */
+
 #undef DEBUG_PRINT
 #ifdef DEBUG
 #define DEBUG_PRINT(args...) \
@@ -109,6 +115,15 @@ typedef struct MPIDI_CH3I_RDMA_Process_t {
 
     int                         polling_group_size;
     MPIDI_VC_t                  **polling_set;
+
+#ifdef RDMA_CM
+    pthread_t                   cmthread;
+    struct rdma_event_channel   *cm_channel;
+    struct rdma_cm_id           **cm_ids;
+    struct rdma_cm_id           *cm_listen_id;
+    sem_t                       rdma_cm;
+#endif /* RDMA_CM */
+    uint8_t                     use_rdma_cm;
 
 } MPIDI_CH3I_RDMA_Process_t;
 
@@ -203,7 +218,7 @@ extern struct rdma_iba_addr_tb   rdma_iba_addr_table;
             &((_vbuf)->desc.bad_rr));                           \
     if (__ret) {                                                \
         ibv_error_abort(IBV_RETURN_ERR,                         \
-            "VAPI_post_rr (viadev_post_recv) with %d",          \
+            "ibv_post_recv err with %d",          \
                 __ret);                                         \
     }                                                           \
 }
@@ -247,6 +262,34 @@ do {                                                    \
     }                                                   \
 }                                                       \
 while (0)
+
+#ifdef CKPT
+#define MSG_LOG_ENQUEUE(vc, entry) { \
+    entry->next = NULL; \
+    if (vc->mrail.msg_log_queue_tail!=NULL) { \
+        vc->mrail.msg_log_queue_tail->next = entry; \
+    } \
+    vc->mrail.msg_log_queue_tail = entry; \
+    if (vc->mrail.msg_log_queue_head==NULL) { \
+        vc->mrail.msg_log_queue_head = entry; \
+    }\
+}
+
+#define MSG_LOG_DEQUEUE(vc, entry) { \
+    entry = vc->mrail.msg_log_queue_head; \
+    if (vc->mrail.msg_log_queue_head!=NULL) {\
+        vc->mrail.msg_log_queue_head = vc->mrail.msg_log_queue_head->next; \
+    }\
+    if (entry == vc->mrail.msg_log_queue_tail) { \
+        vc->mrail.msg_log_queue_tail = NULL; \
+    }\
+}
+
+#define MSG_LOG_EMPTY(vc) (vc->mrail.msg_log_queue_head == NULL)
+
+void MRAILI_Init_vc_network(MPIDI_VC_t * vc);
+
+#endif
 
 #undef IN
 #undef OUT

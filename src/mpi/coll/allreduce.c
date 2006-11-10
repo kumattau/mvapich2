@@ -4,6 +4,17 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2003-2006, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT_MVAPICH2 in the top level MVAPICH2 directory.
+ *
+ */
 
 #include "mpiimpl.h"
 
@@ -590,12 +601,41 @@ Output Parameter:
 .N MPI_ERR_OP
 .N MPI_ERR_COMM
 @*/
+#ifdef _SMP_
+extern int enable_shmem_collectives;
+extern int disable_shmem_allreduce;
+#define SHMEM_COLL_ALLREDUCE_THRESHOLD (1<<19)
+#endif
 int MPI_Allreduce ( void *sendbuf, void *recvbuf, int count, 
 		    MPI_Datatype datatype, MPI_Op op, MPI_Comm comm )
 {
     static const char FCNAME[] = "MPI_Allreduce";
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL;
+#ifdef _SMP_
+    char* shmem_buf;
+    MPI_Comm shmem_comm, leader_comm;
+    MPID_Comm *shmem_commptr = 0, *leader_commptr = 0;
+    int local_rank = -1, global_rank = -1, local_size=0, my_rank;
+    void* local_buf, *tmpbuf;
+    MPI_Aint   true_lb, true_extent, extent;
+    MPI_User_function *uop;
+    int stride = 0, i, is_commutative, size;
+    MPID_Op *op_ptr;
+    MPI_Status status;
+    int leader_root, total_size, shmem_comm_rank;
+    MPIU_CHKLMEM_DECL(1);
+#ifdef HAVE_CXX_BINDING
+    int is_cxx_uop = 0;
+#endif
+
+#ifdef RDMA_CM
+    char* value;
+    if ((value = getenv("MV2_USE_RDMA_CM")) != NULL)
+        disable_shmem_allreduce = 1;
+#endif
+#endif
+
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_ALLREDUCE);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
@@ -676,10 +716,120 @@ int MPI_Allreduce ( void *sendbuf, void *recvbuf, int count,
     }
     else
     {
-        if (comm_ptr->comm_kind == MPID_INTRACOMM) 
+        if (comm_ptr->comm_kind == MPID_INTRACOMM){ 
             /* intracommunicator */
+#ifdef _SMP_
+            if (enable_shmem_collectives){
+                mpi_errno = NMPI_Type_get_true_extent(datatype, &true_lb, &true_extent);  
+                MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPID_Datatype_get_extent_macro(datatype, extent);
+                stride = count*MPIR_MAX(extent,true_extent);
+
+                /* Get the operator and check whether it is commutative or not
+                 * */
+                if (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) {
+                    is_commutative = 1;
+                    /* get the function by indexing into the op table */
+                    uop = MPIR_Op_table[op%16 - 1];
+                }
+                else {
+                    MPID_Op_get_ptr(op, op_ptr);
+                    if (op_ptr->kind == MPID_OP_USER_NONCOMMUTE)
+                        is_commutative = 0;
+                    else
+                        is_commutative = 1;
+
+#ifdef HAVE_CXX_BINDING            
+                    if (op_ptr->language == MPID_LANG_CXX) {
+                        uop = (MPI_User_function *) op_ptr->function.c_function;
+                        is_cxx_uop = 1;
+                    }
+                    else
+#endif
+                        if ((op_ptr->language == MPID_LANG_C))
+                            uop = (MPI_User_function *) op_ptr->function.c_function;
+                        else
+                            uop = (MPI_User_function *) op_ptr->function.f77_function;
+                }
+            }
+            if ((comm_ptr->shmem_coll_ok == 1)&&(stride < SHMEM_COLL_ALLREDUCE_THRESHOLD)&&
+                    (disable_shmem_allreduce == 0) &&(is_commutative) &&(enable_shmem_collectives) &&(check_comm_registry(comm))){
+                my_rank = comm_ptr->rank;
+                MPI_Comm_size(comm, &total_size);
+                shmem_comm = comm_ptr->shmem_comm;
+                MPI_Comm_rank(shmem_comm, &local_rank);
+                MPI_Comm_size(shmem_comm, &local_size);
+                MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
+                shmem_comm_rank = shmem_commptr->shmem_comm_rank;
+
+                leader_comm = comm_ptr->leader_comm;
+                MPID_Comm_get_ptr(leader_comm, leader_commptr);
+
+
+                if (local_rank == 0){
+                    global_rank = leader_commptr->rank;
+                    if (sendbuf != MPI_IN_PLACE){
+                        mpi_errno = MPIR_Localcopy(sendbuf, count, datatype, recvbuf,
+                                count, datatype);
+                    }
+                }
+
+                if (local_size > 1){
+                    MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(local_size, local_rank, shmem_comm_rank, &shmem_buf);
+                }
+
+
+                /* Doing the shared memory gather and reduction by the leader */
+                if (local_rank == 0){
+                    if (local_size > 1){
+                        for (i = 1; i < local_size; i++){
+                            local_buf = (char*)shmem_buf + stride*i;
+#ifdef HAVE_CXX_BINDING
+                            if (is_cxx_uop) {
+                                (*MPIR_Process.cxx_call_op_fn)( local_buf, recvbuf, 
+                                                                count, datatype, uop );
+                            }
+                            else 
+#endif
+                                (*uop)(local_buf, recvbuf, &count, &datatype);
+                        }
+                        MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(local_size, local_rank, shmem_comm_rank);
+                    }
+
+                    if (local_size != total_size){
+                        mpi_errno = MPIR_Allreduce(MPI_IN_PLACE, recvbuf, count, datatype,
+                                op, leader_commptr); 
+                    }
+                }
+                else{
+                    local_buf = (char*)shmem_buf + stride*local_rank;
+                    if (sendbuf != MPI_IN_PLACE){
+                        mpi_errno = MPIR_Localcopy(sendbuf, count, datatype, local_buf,
+                                count, datatype);
+                    }
+                    else{
+                        mpi_errno = MPIR_Localcopy(recvbuf, count, datatype, local_buf,
+                                count, datatype);
+                    }
+                    MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(local_size, local_rank, shmem_comm_rank);
+                }
+
+                /* Broadcasting the mesage from leader to the rest*/
+                if (local_size > 1){
+                    MPI_Bcast(recvbuf, count, datatype, 0, shmem_comm);
+                }
+
+            }
+            else{
+                mpi_errno = MPIR_Allreduce(sendbuf, recvbuf, count, datatype,
+                        op, comm_ptr); 
+            }
+#else
             mpi_errno = MPIR_Allreduce(sendbuf, recvbuf, count, datatype,
                                        op, comm_ptr); 
+            
+#endif
+        }
         else {
             /* intercommunicator */
             mpi_errno = MPIR_Allreduce_inter(sendbuf, recvbuf, count,

@@ -115,6 +115,11 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
     case MPIDI_CH3_PKT_EAGER_SYNC_ACK:
     case MPIDI_CH3_PKT_CANCEL_SEND_REQ:
     case MPIDI_CH3_PKT_CANCEL_SEND_RESP:
+#ifdef CKPT
+    case MPIDI_CH3_PKT_CM_SUSPEND:
+    case MPIDI_CH3_PKT_CM_REACTIVATION_DONE:
+    case MPIDI_CH3_PKT_CR_REMOTE_UPDATE:
+#endif
         {
             *pkt = vstart;
         }

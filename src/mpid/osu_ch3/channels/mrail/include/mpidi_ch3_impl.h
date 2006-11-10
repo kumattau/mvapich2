@@ -58,7 +58,11 @@ typedef struct MPIDI_CH3I_Process_s
     MPIDI_VC_t *vc;
     MPIDI_CH3I_CM_type_t cm_type;
     /*a flag to indicate whether new connection been established*/
-    volatile int new_conn_door_bell; 
+    volatile int new_conn_complete;
+#ifdef CKPT
+    /*a flag to indicate some reactivation has finished*/
+    volatile int reactivation_complete;
+#endif
 }
 MPIDI_CH3I_Process_t;
 
@@ -244,6 +248,65 @@ int MPIDI_CH3I_CM_Connect(MPIDI_VC_t * vc);
  * from a VC */
 int MPIDI_CH3I_CM_Establish(MPIDI_VC_t * vc);
 
+#ifdef CKPT
+
+/*Following CM functions will only be useful for CR*/
+
+/*Disconnect a connection that is not used for a while*/
+int MPIDI_CH3I_CM_Disconnect(MPIDI_VC_t * vc);
+
+/*Suspend connections in use*/
+/*vc_vector is an array of pg_size. Use NULL to fill the vc which should not
+ *  * be suspended*/
+int MPIDI_CH3I_CM_Suspend(MPIDI_VC_t ** vc_vector);
+
+/*Reactivate previously suspended connections*/
+int MPIDI_CH3I_CM_Reactivate(MPIDI_VC_t ** vc_vector);
+
+/*Send all the logged message after channel reactivated*/
+int MPIDI_CH3I_CM_Send_logged_msg(MPIDI_VC_t * vc);
+
+/*CM message handler for RC message in progress engine*/
+void MPIDI_CH3I_CM_Handle_recv(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t msg_type, vbuf * v);
+
+void MPIDI_CH3I_CM_Handle_send_completion(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t msg_type, vbuf * v);
+
+/* Initialization and finalization for CR */
+int MPIDI_CH3I_CR_Init(MPIDI_PG_t *pg, int rank, int size);
+
+int MPIDI_CH3I_CR_Finalize();
+
+/* CR message handler in progress engine */
+void MPIDI_CH3I_CR_Handle_recv(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t msg_type, vbuf * v);
+
+void MPIDI_CH3I_CR_Handle_send_completion(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t msg_type, vbuf * v);
+
+/* CR lock to protect upper layers from accessing communication channel */
+void MPIDI_CH3I_CR_lock();
+
+void MPIDI_CH3I_CR_unlock();
+
+/* Functions to enqueue/dequeue request involving memory registration. e.g.
+ *  * rndv recv */
+void MPIDI_CH3I_CR_req_enqueue(MPID_Request * req, MPIDI_VC_t * vc);
+
+void MPIDI_CH3I_CR_req_dequeue(MPID_Request * req);
+
+typedef enum MPICR_cr_state
+{
+    MPICR_STATE_RUNNING,
+    MPICR_STATE_REQUESTED,
+    MPICR_STATE_PRE_COORDINATION,
+    MPICR_STATE_CHECKPOINTING,
+    MPICR_STATE_POST_COORDINATION,
+    MPICR_STATE_RESTARTING,
+    MPICR_STATE_ERROR,
+} MPICR_cr_state;
+
+MPICR_cr_state MPIDI_CH3I_CR_Get_state();
+
+#endif
+
 #ifdef _SMP_
 
 
@@ -348,6 +411,13 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
 
 int MPIDI_CH3I_SMP_pull_header(MPIDI_VC_t * vc,
                                MPIDI_CH3_Pkt_t ** pkt_head);
+
+/* Shared memory collectives mgmt*/
+struct shmem_coll_mgmt{
+    void *mmap_ptr;
+    int fd;
+};
+
 #endif
 
 /********* End of OSU-MPI2 *************************/

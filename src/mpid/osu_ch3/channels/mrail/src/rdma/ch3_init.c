@@ -57,14 +57,14 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     {/*Determine to use which connection management*/
         char *value;
         int threshold = MPIDI_CH3I_CM_DEFAULT_ON_DEMAND_THRESHOLD;
-
+        
         /*check ON_DEMAND_THRESHOLD*/
-        value = getenv("MV2_ON_DEMAND_THRESHOLD");
-        if (NULL != value)
-            threshold = atoi(value);
-        if (pg_size > threshold) {
-            MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_ON_DEMAND;
-            /*Check whether the DIRECT_ONE_SIDED or DISABLE PTMalloc is enabled*/
+	value = getenv("MV2_ON_DEMAND_THRESHOLD");
+	if (NULL != value)
+	    threshold = atoi(value);
+	if (pg_size > threshold) {
+	    MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_ON_DEMAND;
+        /*Check whether the DIRECT_ONE_SIDED or DISABLE PTMalloc is enabled*/
 #ifdef DISABLE_PTMALLOC
             if (pg_rank==0) {
                 fprintf(stderr,"Error: On-demand connection management does not work when PTmalloc is disabled\n"
@@ -73,11 +73,41 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
             }
             return -1;
 #endif            
-        }
-        else
+	}
+	else {
             MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_BASIC_ALL2ALL;
+        }
+
+#ifdef RDMA_CM
+        if (NULL != getenv("MV2_USE_RDMA_CM")) {
+            MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_RDMA_CM;
+        }
+#ifdef RDMA_CM_RNIC
+        MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_RDMA_CM;
+#endif
+#endif /* RDMA_CM */
     }
 
+#ifdef CKPT
+#ifdef RDMA_CM
+    if (pg_rank==0) {
+        fprintf(stderr,"Error: Checkpointing support doesn't work with RDMA_CM support\n"
+                "Please recompile MVAPICH2 without the CFLAG -DCKPT to disable checkpointing support,\n"
+                "or without the CFLAG -DRDMA_CM to disable RDMA_CM support\n");
+    }
+    return -1;
+#endif
+#ifdef _SMP_
+    if (pg_rank==0) {
+        fprintf(stderr,"Error: Checkpointing support doesn't work with shared memory channel support\n"
+                "Please recompile MVAPICH2 without the CFLAG -DCKPT to disable checkpointing support,\n"
+                "or without the CFLAG -D_SMP_ to disable shared memory channel support\n");
+    }
+    return -1;
+#endif       
+    MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_ON_DEMAND;
+    MPIDI_CH3I_CR_Init(pg, pg_rank, pg_size);
+#endif
 
     /* Initialize the VC table associated with this process
        group (and thus COMM_WORLD) */
@@ -99,6 +129,10 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 #ifdef _SMP_
 	vc->smp.hostid = -1;
 #endif
+#ifdef CKPT
+    vc->ch.rput_stop = 0;
+#endif
+
     }
 
     /* save my vc_ptr for easy access */
@@ -118,6 +152,16 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         /*FillMe:call MPIDI_CH3I_CM_Init here*/
         mpi_errno = MPIDI_CH3I_CM_Init(pg, pg_rank);
     }
+#ifdef RDMA_CM		/* Use the ON_DEMAND code itself */
+    else if (MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_RDMA_CM) {
+        /*FillMe:call RDMA_CM's initialization here*/
+	mpi_errno = MPIDI_CH3I_CM_Init(pg, pg_rank);
+        for (p = 0; p < pg_size; p++) {
+            MPIDI_PG_Get_vcr(pg, p, &vc);
+            vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
+        }
+    }
+#endif
     else {
         /*call old init to setup all connections*/
         mpi_errno = MPIDI_CH3I_RMDA_init(pg, pg_rank);

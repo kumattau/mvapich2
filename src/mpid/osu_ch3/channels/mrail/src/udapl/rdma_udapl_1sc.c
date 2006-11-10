@@ -449,6 +449,11 @@ MPIDI_CH3I_RDMA_win_create (void *base,
     int recvbuf;
 #endif
 
+    if (strcmp(dapl_provider, "nes0") == 0) {
+          (*win_ptr)->fall_back = 1;
+          return;
+    }
+
     PMI_Get_rank (&my_rank);
     /*There may be more than one windows existing at the same time */
     MPIDI_CH3I_RDMA_Process.current_win_num++;

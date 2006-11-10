@@ -16,6 +16,11 @@
 #define CM_MSG_TYPE_REQ     0
 #define CM_MSG_TYPE_REP     1
 
+#ifdef CKPT
+#define CM_MSG_TYPE_REACTIVATE_REQ   2
+#define CM_MSG_TYPE_REACTIVATE_REP   3
+#endif
+
 typedef struct cm_msg {
     uint32_t req_id;
     uint32_t server_rank;
@@ -45,9 +50,10 @@ static int cm_recv_buffer_size;
 static int cm_ud_psn;
 static int cm_req_id_global;
 static int cm_max_spin_count;
+static int cm_is_finalizing;
 static pthread_t cm_comp_thread, cm_timer_thread;
-static pthread_mutex_t cm_conn_state_lock = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t cm_cond_new_pending = PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t cm_conn_state_lock;
+static pthread_cond_t cm_cond_new_pending;
 struct timespec cm_timeout;
 long cm_timeout_usec;
 size_t cm_thread_stacksize;
@@ -86,9 +92,18 @@ int page_size;
 #define CM_DBG(args...)
 #endif
 
-#define CM_LOCK   pthread_mutex_lock(&cm_conn_state_lock)
+/*Interface to lock/unlock connection manager*/
+inline void MPICM_lock()
+{
+/*    printf("[Rank %d],CM lock\n",cm_ib_context.rank); */
+    pthread_mutex_lock(&cm_conn_state_lock);
+}
 
-#define CM_UNLOCK   pthread_mutex_unlock(&cm_conn_state_lock)
+inline void MPICM_unlock()
+{
+/*    printf("[Rank %d],CM unlock\n", cm_ib_context.rank); */
+    pthread_mutex_unlock(&cm_conn_state_lock);
+}
 
 typedef struct cm_packet {
     struct timeval timestamp;        /*the time when timer begins */
@@ -122,10 +137,22 @@ int cm_pending_init(cm_pending * pending, cm_msg * msg)
     if (msg->msg_type == CM_MSG_TYPE_REQ) {
         pending->cli_or_srv = CM_PENDING_CLIENT;
         pending->peer = msg->server_rank;
-    } else if (msg->msg_type == CM_MSG_TYPE_REP) {
+    } 
+    else if (msg->msg_type == CM_MSG_TYPE_REP) {
         pending->cli_or_srv = CM_PENDING_SERVER;
         pending->peer = msg->client_rank;
-    } else {
+    }
+#ifdef CKPT
+    else if (msg->msg_type == CM_MSG_TYPE_REACTIVATE_REQ) {
+        pending->cli_or_srv = CM_PENDING_CLIENT;
+        pending->peer = msg->server_rank;
+    }
+    else if (msg->msg_type == CM_MSG_TYPE_REACTIVATE_REP) {
+        pending->cli_or_srv = CM_PENDING_SERVER;
+        pending->peer = msg->client_rank;
+    }
+#endif    
+    else {
         CM_ERR_ABORT("error message type");
     }
     pending->packet = (cm_packet *) malloc(sizeof(cm_packet));
@@ -137,27 +164,23 @@ int cm_pending_init(cm_pending * pending, cm_msg * msg)
 cm_pending *cm_pending_search_peer(int peer, int cli_or_srv)
 {
     cm_pending *pending = cm_pending_head;
-    
     while (pending->next != cm_pending_head) {
         pending = pending->next;
         if (pending->cli_or_srv == cli_or_srv && pending->peer == peer) {
             return pending;
         }
     }
-     
     return NULL;
 }
 
 int cm_pending_append(cm_pending * node)
 {
-    
     cm_pending *last = cm_pending_head->prev;
     last->next = node;
     node->next = cm_pending_head;
     cm_pending_head->prev = node;
     node->prev = last;
     cm_pending_num++;
-    
     return MPI_SUCCESS;
 }
 
@@ -168,7 +191,6 @@ int cm_pending_remove_and_destroy(cm_pending * node)
     node->prev->next = node->next;
     free(node);
     cm_pending_num--;
-    
     return MPI_SUCCESS;
 }
 
@@ -224,11 +246,24 @@ int cm_post_ud_packet(cm_msg * msg)
     struct ibv_wc wc;
     int ne;
 
-    if (msg->msg_type == CM_MSG_TYPE_REP) {
+    if (msg->msg_type == CM_MSG_TYPE_REQ) {
+        peer = msg->server_rank;
+    } 
+    else if (msg->msg_type == CM_MSG_TYPE_REP) {
         peer = msg->client_rank;
-    } else {
+    }
+#ifdef CKPT
+    else if (msg->msg_type == CM_MSG_TYPE_REACTIVATE_REQ) {
         peer = msg->server_rank;
     }
+    else if (msg->msg_type == CM_MSG_TYPE_REACTIVATE_REP) {
+        peer = msg->client_rank;
+    }
+#endif    
+    else {
+        CM_ERR_ABORT("error message type\n");
+    }
+    CM_DBG("cm_post_ud_packet, post message type %d to rank %d", msg->msg_type, peer);
 
     memcpy(cm_ud_send_buf + 40, msg, sizeof(cm_msg));
     memset(&list, 0, sizeof(struct ibv_sge));
@@ -323,13 +358,39 @@ int cm_accept(cm_msg * msg)
 
     /*Prepare rep msg */
     memcpy(&msg_send, msg, sizeof(cm_msg));
-    msg_send.msg_type = CM_MSG_TYPE_REP;
     for (i=0; i<msg_send.nrails; i++) {
         msg_send.lids[i] = vc->mrail.rails[i].lid;
         msg_send.qpns[i] = vc->mrail.rails[i].qp_hndl->qp_num;
     }
 
-    vc->ch.state = MPIDI_CH3I_VC_STATE_CONNECTING_SRV;
+#ifdef CKPT
+    if (msg->msg_type == CM_MSG_TYPE_REACTIVATE_REQ) {
+        msg_send.msg_type = CM_MSG_TYPE_REACTIVATE_REP;
+        /*Init vc and post buffers*/
+        MRAILI_Init_vc_network(vc);
+        {
+            /*Adding the reactivation done message to the msg_log_queue*/
+            MPIDI_CH3I_CR_msg_log_queue_entry_t *entry = 
+                (MPIDI_CH3I_CR_msg_log_queue_entry_t *)malloc(sizeof(MPIDI_CH3I_CR_msg_log_queue_entry_t));
+            vbuf *v=get_vbuf();
+            MPIDI_CH3I_MRAILI_Pkt_comm_header *p = (MPIDI_CH3I_MRAILI_Pkt_comm_header*)v->pheader;
+            p->type = MPIDI_CH3_PKT_CM_REACTIVATION_DONE;
+            /*Now all logged messages are sent using rail 0, 
+            otherwise every rail needs to have one message*/
+            entry->buf = v;
+            entry->len = sizeof(MPIDI_CH3I_MRAILI_Pkt_comm_header);
+            MSG_LOG_ENQUEUE(vc, entry);
+        }
+        vc->ch.state = MPIDI_CH3I_VC_STATE_REACTIVATING_SRV;
+    }
+    else 
+#endif
+    {
+        /*Init vc and post buffers*/
+        msg_send.msg_type = CM_MSG_TYPE_REP;
+        MRAILI_Init_vc(vc, cm_ib_context.rank);
+        vc->ch.state = MPIDI_CH3I_VC_STATE_CONNECTING_SRV;
+    }
 
     /*Send rep msg */
     if (cm_send_ud_msg(&msg_send)) {
@@ -345,7 +406,7 @@ int cm_accept_and_cancel(cm_msg * msg)
     cm_msg msg_send;
     MPIDI_VC_t * vc;
     int i;
-    CM_DBG("cm_accpet Enter");
+    CM_DBG("cm_accept_and_cancel Enter");
 
     /*Prepare QP */
     MPIDI_PG_Get_vcr(cm_ib_context.pg, msg->client_rank, &vc);
@@ -357,14 +418,40 @@ int cm_accept_and_cancel(cm_msg * msg)
 
     /*Prepare rep msg */
     memcpy(&msg_send, msg, sizeof(cm_msg));
-    msg_send.msg_type = CM_MSG_TYPE_REP;
     for (i=0; i<msg_send.nrails; i++) {
         msg_send.lids[i] = vc->mrail.rails[i].lid;
         msg_send.qpns[i] = vc->mrail.rails[i].qp_hndl->qp_num;
     }
-
-    vc->ch.state = MPIDI_CH3I_VC_STATE_CONNECTING_SRV;
-   
+    
+#ifdef CKPT
+    if (msg->msg_type == CM_MSG_TYPE_REACTIVATE_REQ) {
+        msg_send.msg_type = CM_MSG_TYPE_REACTIVATE_REP;
+        /*Init vc and post buffers*/
+        MRAILI_Init_vc_network(vc);
+        {
+            /*Adding the reactivation done message to the msg_log_queue*/
+            MPIDI_CH3I_CR_msg_log_queue_entry_t *entry = 
+                (MPIDI_CH3I_CR_msg_log_queue_entry_t *)malloc(sizeof(MPIDI_CH3I_CR_msg_log_queue_entry_t));
+            vbuf *v=get_vbuf();
+            MPIDI_CH3I_MRAILI_Pkt_comm_header *p = (MPIDI_CH3I_MRAILI_Pkt_comm_header*)v->pheader;
+            p->type = MPIDI_CH3_PKT_CM_REACTIVATION_DONE;
+            /*Now all logged messages are sent using rail 0, 
+            otherwise every rail needs to have one message*/
+            entry->buf = v;
+            entry->len = sizeof(MPIDI_CH3I_MRAILI_Pkt_comm_header);
+            MSG_LOG_ENQUEUE(vc, entry);
+        }
+        vc->ch.state = MPIDI_CH3I_VC_STATE_REACTIVATING_SRV;
+    }
+    else 
+#endif
+    {
+        /*Init vc and post buffers*/
+        msg_send.msg_type = CM_MSG_TYPE_REP;
+        MRAILI_Init_vc(vc, cm_ib_context.rank);
+        vc->ch.state = MPIDI_CH3I_VC_STATE_CONNECTING_SRV;
+    }
+    
     /*Send rep msg */
     if (cm_send_ud_msg(&msg_send)) {
         CM_ERR_ABORT("cm_send_ud_msg failed");
@@ -398,61 +485,102 @@ int cm_enable(cm_msg * msg)
     }
 
     cm_qp_move_to_rtr(vc, msg->lids, msg->qpns);
+
+#ifdef CKPT
+    if (msg->msg_type == CM_MSG_TYPE_REACTIVATE_REP) {
+        /*Init vc and post buffers*/
+        MRAILI_Init_vc_network(vc);
+        {
+            /*Adding the reactivation done message to the msg_log_queue*/
+            MPIDI_CH3I_CR_msg_log_queue_entry_t *entry = 
+                (MPIDI_CH3I_CR_msg_log_queue_entry_t *)malloc(sizeof(MPIDI_CH3I_CR_msg_log_queue_entry_t));
+            vbuf *v=get_vbuf();
+            MPIDI_CH3I_MRAILI_Pkt_comm_header *p = (MPIDI_CH3I_MRAILI_Pkt_comm_header*)v->pheader;
+            p->type = MPIDI_CH3_PKT_CM_REACTIVATION_DONE;
+            /*Now all logged messages are sent using rail 0, 
+            otherwise every rail needs to have one message*/
+            entry->buf = v;
+            entry->len = sizeof(MPIDI_CH3I_MRAILI_Pkt_comm_header);
+            MSG_LOG_ENQUEUE(vc, entry);
+        }
+    }
+    else 
+#endif
+    {
+        MRAILI_Init_vc(vc, cm_ib_context.rank);
+    }
+
     cm_qp_move_to_rts(vc);
 
-    /*Mark connected */
-    vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
+
     /*No need to send confirm and let the first message serve as confirm*/
-    /*ring the door bell*/
-    MPIDI_CH3I_Process.new_conn_door_bell = 1;
+#ifdef CKPT
+    if (msg->msg_type == CM_MSG_TYPE_REACTIVATE_REP) {
+        /*Mark connected */
+        vc->ch.state = MPIDI_CH3I_VC_STATE_REACTIVATING_CLI_2;
+        MPIDI_CH3I_Process.reactivation_complete = 1;
+    }
+    else
+#endif
+    {
+        /*Mark connected */
+        vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
+        MPIDI_CH3I_Process.new_conn_complete = 1;
+    } 
+
     CM_DBG("cm_enable Exit");
     return MPI_SUCCESS;
 }
 
 int cm_handle_msg(cm_msg * msg)
 {
+    MPIDI_VC_t *vc;
     CM_DBG("Handle cm_msg: msg_type: %d, client_rank %d, server_rank %d",
            msg->msg_type, msg->client_rank, msg->server_rank);
     switch (msg->msg_type) {
     case CM_MSG_TYPE_REQ:
         {
-            pthread_mutex_lock(&cm_conn_state_lock);
-            if (*(cm_ib_context.conn_state[msg->client_rank])
-                == MPIDI_CH3I_VC_STATE_IDLE) {
+            MPICM_lock();
+            MPIDI_PG_Get_vcr(cm_ib_context.pg, msg->client_rank, &vc);
+            if (vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE) {
+                CM_DBG("Connection already exits");
                 /*already existing */
-                pthread_mutex_unlock(&cm_conn_state_lock);
+                MPICM_unlock();
                 return MPI_SUCCESS;
-            } else if (*(cm_ib_context.conn_state[msg->client_rank]) 
-                == MPIDI_CH3I_VC_STATE_CONNECTING_SRV) {
+            } else if (vc->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_SRV) {
+                CM_DBG("Already serving that client");
                 /*already a pending request from that peer */
-                pthread_mutex_unlock(&cm_conn_state_lock);
+                MPICM_unlock();
                 return MPI_SUCCESS;
-            } else if (*(cm_ib_context.conn_state[msg->client_rank]) 
-                == MPIDI_CH3I_VC_STATE_CONNECTING_CLI) {
+            } else if (vc->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_CLI) {
                 /*already initiated a request to that peer */
-                if (msg->client_rank > cm_ib_context.rank) {
+                /*smaller rank will be server*/
+                CM_DBG("Concurrent request");
+                if (msg->client_rank < cm_ib_context.rank) {
                     /*that peer should be server, ignore the request*/
-                    pthread_mutex_unlock(&cm_conn_state_lock);
+                    MPICM_unlock();
+                    CM_DBG("Should act as client, ignore request");
                     return MPI_SUCCESS;
                 } else {
                     /*myself should be server */
+                    CM_DBG("Should act as server, accept and cancel");
                     cm_accept_and_cancel(msg);
                 }
             }
             else {
                 cm_accept(msg);
             }
-            pthread_mutex_unlock(&cm_conn_state_lock);
+            MPICM_unlock();
         }
         break;
     case CM_MSG_TYPE_REP:
         {
             cm_pending *pending;
-            pthread_mutex_lock(&cm_conn_state_lock);
-            if (*(cm_ib_context.conn_state[msg->server_rank])
-                != MPIDI_CH3I_VC_STATE_CONNECTING_CLI) {
+            MPICM_lock();
+            MPIDI_PG_Get_vcr(cm_ib_context.pg, msg->server_rank, &vc); 
+            if (vc->ch.state != MPIDI_CH3I_VC_STATE_CONNECTING_CLI) {
                 /*not waiting for any reply */
-                pthread_mutex_unlock(&cm_conn_state_lock);
+                MPICM_unlock();
                 return MPI_SUCCESS;
             }
             pending =
@@ -463,9 +591,65 @@ int cm_handle_msg(cm_msg * msg)
             }
             cm_pending_remove_and_destroy(pending);
             cm_enable(msg);
-            pthread_mutex_unlock(&cm_conn_state_lock);
+            MPICM_unlock();
         }
         break;
+#ifdef CKPT
+    case CM_MSG_TYPE_REACTIVATE_REQ:
+        {
+            MPICM_lock();
+            MPIDI_PG_Get_vcr(cm_ib_context.pg, msg->client_rank, &vc);
+            if (vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE
+            ||  vc->ch.state == MPIDI_CH3I_VC_STATE_REACTIVATING_CLI_2) {
+                /*already existing */
+                MPICM_unlock();
+                return MPI_SUCCESS;
+            } else if (vc->ch.state == MPIDI_CH3I_VC_STATE_REACTIVATING_SRV) {
+                /*already a pending request from that peer */
+                MPICM_unlock();
+                return MPI_SUCCESS;
+            } else if (vc->ch.state == MPIDI_CH3I_VC_STATE_REACTIVATING_CLI_1) {
+                /*already initiated a request to that peer */
+                /*smaller rank will be server*/
+                if (msg->client_rank < cm_ib_context.rank) {
+                    /*that peer should be server, ignore the request*/
+                    MPICM_unlock();
+                    return MPI_SUCCESS;
+                } else {
+                    /*myself should be server */
+                    cm_accept_and_cancel(msg);
+                }
+            }
+            else {
+                cm_accept(msg);
+            }
+            MPICM_unlock();
+        }
+        break;
+    case CM_MSG_TYPE_REACTIVATE_REP:
+        {
+            cm_pending *pending;
+            MPICM_lock();
+            MPIDI_PG_Get_vcr(cm_ib_context.pg, msg->server_rank, &vc);
+            if (vc->ch.state != MPIDI_CH3I_VC_STATE_REACTIVATING_CLI_1) {
+                /*not waiting for any reply */
+                CM_DBG("Ignore CM_MSG_TYPE_REACTIVATE_REP, local state: %d",
+                        vc->ch.state);
+                MPICM_unlock();
+                return MPI_SUCCESS;
+            }
+            pending =
+                cm_pending_search_peer(msg->server_rank,
+                                       CM_PENDING_CLIENT);
+            if (NULL == pending) {
+                CM_ERR_ABORT("Can't find pending entry");
+            }
+            cm_pending_remove_and_destroy(pending);
+            cm_enable(msg);
+            MPICM_unlock();
+        }
+        break;
+#endif
     default:
         CM_ERR_ABORT("Unknown msg type: %d", msg->msg_type);
     }
@@ -480,14 +664,25 @@ void *cm_timeout_handler(void *arg)
     cm_pending *p;
     struct timespec remain;
     while (1) {
-        pthread_mutex_lock(&cm_conn_state_lock);
+        MPICM_lock();
         while (cm_pending_num == 0) {
             pthread_cond_wait(&cm_cond_new_pending, &cm_conn_state_lock);
+            CM_DBG("cond wait finish");
+            if (cm_is_finalizing) {
+                CM_DBG("Timer thread finalizing");
+                MPICM_unlock();
+                pthread_exit(NULL);
+            }
         }
         while (1) {
-            pthread_mutex_unlock(&cm_conn_state_lock);
+            MPICM_unlock();
             nanosleep(&cm_timeout,&remain);/*Not handle the EINTR*/
-            pthread_mutex_lock(&cm_conn_state_lock);
+            MPICM_lock();
+            if (cm_is_finalizing) {
+                CM_DBG("Timer thread finalizing");
+                MPICM_unlock();
+                pthread_exit(NULL);
+            }
             if (cm_pending_num == 0) {
                 break;
             }
@@ -513,7 +708,7 @@ void *cm_timeout_handler(void *arg)
             }
             CM_DBG("Time out exit");
         }
-        pthread_mutex_unlock(&cm_conn_state_lock);
+        MPICM_unlock();
     }
     return NULL;
 }
@@ -598,6 +793,7 @@ int MPICM_Init_UD(uint32_t * ud_qpn)
     cm_ud_qpn = malloc(cm_ib_context.size * sizeof(uint32_t));
     cm_lid = malloc(cm_ib_context.size * sizeof(uint16_t));
 
+    cm_is_finalizing = 0;
     cm_req_id_global = 0;
 
     page_size = sysconf(_SC_PAGESIZE);
@@ -778,6 +974,9 @@ int MPICM_Connect_UD(uint32_t * qpns, uint16_t * lids)
         }
     }
 
+    pthread_mutex_init(&cm_conn_state_lock, NULL);
+    /*Current protocol requires cm_conn_state_lock not to be Recursive*/
+    pthread_cond_init(&cm_cond_new_pending, NULL);
     /*Spawn cm thread */
     {
         pthread_attr_t attr;
@@ -800,13 +999,33 @@ int MPICM_Finalize_UD()
     int i;
 
     CM_DBG("In MPICM_Finalize_UD");
-
+    cm_is_finalizing = 1;
     cm_pending_list_finalize();
+
     /*Cancel cm thread */
-
     pthread_cancel(cm_comp_thread);
-    pthread_cancel(cm_timer_thread);
+    pthread_join(cm_comp_thread,NULL);
+    CM_DBG("Completion thread destroyed");
+#ifdef CKPT
+    if (MPIDI_CH3I_CR_Get_state()==MPICR_STATE_PRE_COORDINATION) {
+        pthread_cancel(cm_timer_thread);
+/*
+        pthread_mutex_trylock(&cm_cond_new_pending);
+        pthread_cond_signal(&cm_cond_new_pending);
+        CM_DBG("Timer thread signaled");
+*/        
+        MPICM_unlock();
+        pthread_join(cm_timer_thread, NULL);
+    }
+    else 
+#endif
+    {
+        pthread_cancel(cm_timer_thread);
+    }
+    CM_DBG("Timer thread destroyed");
 
+    pthread_mutex_destroy(&cm_conn_state_lock);
+    pthread_cond_destroy(&cm_cond_new_pending);
     /*Clean up */
     for (i = 0; i < cm_ib_context.size; i++)
         ibv_destroy_ah(cm_ah[i]);
@@ -830,13 +1049,13 @@ int MPIDI_CH3I_CM_Connect(MPIDI_VC_t * vc)
 {
     cm_msg msg;
     int i;
-    pthread_mutex_lock(&cm_conn_state_lock);
+    MPICM_lock();
     if (vc->ch.state != MPIDI_CH3I_VC_STATE_UNCONNECTED) {
-        pthread_mutex_unlock(&cm_conn_state_lock);
+        MPICM_unlock();
         return MPI_SUCCESS;
     }
     if (vc->pg_rank == cm_ib_context.rank) {
-        pthread_mutex_unlock(&cm_conn_state_lock);
+        MPICM_unlock();
         return MPI_SUCCESS;
     }
 
@@ -858,7 +1077,7 @@ int MPIDI_CH3I_CM_Connect(MPIDI_VC_t * vc)
     }
     
     vc->ch.state = MPIDI_CH3I_VC_STATE_CONNECTING_CLI;
-    pthread_mutex_unlock(&cm_conn_state_lock);
+    MPICM_unlock();
     return MPI_SUCCESS;
 }
 
@@ -867,12 +1086,17 @@ int MPIDI_CH3I_CM_Establish(MPIDI_VC_t * vc)
     /*This function should be called when VC received the 
     first message in on-demand case */
     cm_pending *pending;
-    CM_DBG("In MPIDI_CH3I_CM_Establish");
-    pthread_mutex_lock(&cm_conn_state_lock);
+    MPICM_lock();
+    CM_DBG("MPIDI_CH3I_CM_Establish peer rank %d",vc->pg_rank);
     if (vc->ch.state !=
-        MPIDI_CH3I_VC_STATE_CONNECTING_SRV) {
+        MPIDI_CH3I_VC_STATE_CONNECTING_SRV
+#ifdef CKPT
+    && vc->ch.state !=
+        MPIDI_CH3I_VC_STATE_REACTIVATING_SRV
+#endif
+        ) {
         /*not waiting for comfirm */
-        pthread_mutex_unlock(&cm_conn_state_lock);
+        MPICM_unlock();
         return MPI_SUCCESS;
     }
     pending = cm_pending_search_peer(vc->pg_rank, CM_PENDING_SERVER);
@@ -882,6 +1106,278 @@ int MPIDI_CH3I_CM_Establish(MPIDI_VC_t * vc)
     cm_pending_remove_and_destroy(pending);
     cm_qp_move_to_rts(vc);
     vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
-    pthread_mutex_unlock(&cm_conn_state_lock);
+    MPICM_unlock();
     return MPI_SUCCESS;
 }
+
+#ifdef CKPT
+
+static pthread_mutex_t cm_automic_op_lock = PTHREAD_MUTEX_INITIALIZER;
+
+int MPIDI_CH3I_CM_Send_logged_msg(MPIDI_VC_t *vc) 
+{/*Send messages buffered in msg log queue*/
+    int rail;
+    vbuf *v;
+    MPIDI_CH3I_CR_msg_log_queue_entry_t *entry; 
+
+    while (!MSG_LOG_EMPTY(vc)) {
+        MSG_LOG_DEQUEUE(vc, entry);
+        v = entry->buf;
+        
+        /*Now only use rail 0 to send logged message*/
+        /*rail = MRAILI_Send_select_rail(vc);*/
+        rail = 0;
+        DEBUG_PRINT("[eager send] len %d, selected rail hca %d, rail %d\n",
+                    entry->len, vc->mrail.rails[rail].hca_index, rail);
+
+        vbuf_init_send(v, entry->len, rail);
+        MPIDI_CH3I_RDMA_Process.post_send(vc, v, rail);
+
+        free(entry);
+    }
+    return 0;
+}
+ 
+int cm_send_suspend_msg(MPIDI_VC_t* vc)
+{
+    vbuf *v;
+    int rail;
+    MPIDI_CH3I_MRAILI_Pkt_comm_header *p;
+
+    CM_DBG("In cm_send_suspend_msg peer %d",vc->pg_rank);
+    for (rail=0;rail<vc->mrail.num_rails;rail++) {
+        /*Send suspend msg to each rail*/
+        v = get_vbuf(); 
+        p = (MPIDI_CH3I_MRAILI_Pkt_comm_header*)v->pheader;
+        p->type = MPIDI_CH3_PKT_CM_SUSPEND;
+        vbuf_init_send(v, sizeof(MPIDI_CH3I_MRAILI_Pkt_comm_header),rail);
+        MPIDI_CH3I_RDMA_Process.post_send(vc,v,rail);
+    }
+    vc->ch.state = MPIDI_CH3I_VC_STATE_SUSPENDING;
+    vc->ch.rput_stop = 1;
+    
+    CM_DBG("Out cm_send_suspend_msg");
+    return 0;
+}
+
+int cm_send_reactivate_msg(MPIDI_VC_t* vc)
+{
+    cm_msg msg;
+    int i;
+    MPICM_lock();
+    if (vc->ch.state != MPIDI_CH3I_VC_STATE_SUSPENDED) {
+        CM_DBG("Already being reactivated by remote side peer rank %d\n", vc->pg_rank);
+        MPICM_unlock();
+        return MPI_SUCCESS;
+    }
+    CM_DBG("Sending CM_MSG_TYPE_REACTIVATE_REQ to rank %d", vc->pg_rank);
+    /*Create qps*/
+    cm_qp_create(vc);
+    msg.server_rank = vc->pg_rank;
+    msg.client_rank = cm_ib_context.rank;
+    msg.msg_type = CM_MSG_TYPE_REACTIVATE_REQ;
+    msg.req_id = ++cm_req_id_global;
+    msg.nrails = vc->mrail.num_rails;
+    for (i=0;i<msg.nrails;i++) {
+        msg.lids[i] = vc->mrail.rails[i].lid;
+        msg.qpns[i] = vc->mrail.rails[i].qp_hndl->qp_num;
+    }
+
+    if (cm_send_ud_msg(&msg)) {
+        CM_ERR_ABORT("cm_send_ud_msg failed");
+    }
+    
+    vc->ch.state = MPIDI_CH3I_VC_STATE_REACTIVATING_CLI_1;
+    MPICM_unlock();
+    return MPI_SUCCESS;
+}
+
+int MPIDI_CH3I_CM_Disconnect(MPIDI_VC_t* vc)
+{
+    /*To be implemented*/
+    assert (0);
+    return 0;
+}
+
+/*Suspend connections in use*/
+int MPIDI_CH3I_CM_Suspend(MPIDI_VC_t ** vc_vector)
+{
+    MPIDI_VC_t * vc;
+    int i;
+    int flag;
+    CM_DBG("MPIDI_CH3I_CM_Suspend Enter");
+    /*Send out all flag messages*/
+    for (i=0;i<cm_ib_context.size;i++)   {
+        if (i == cm_ib_context.rank)
+            continue;
+        if (NULL!=vc_vector[i]) {
+            vc = vc_vector[i];
+            pthread_mutex_lock(&cm_automic_op_lock);
+            if (vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE) 
+                cm_send_suspend_msg(vc);
+            else if (vc->ch.state != MPIDI_CH3I_VC_STATE_SUSPENDING
+                && vc->ch.state != MPIDI_CH3I_VC_STATE_SUSPENDED) 
+                CM_ERR_ABORT("Wrong state when suspending %d\n",vc->ch.state);
+            pthread_mutex_unlock(&cm_automic_op_lock);
+        }
+    }
+    CM_DBG("Progressing"); 
+    /*Make sure all channels suspended*/
+    do {
+        flag = 0;
+        for (i=0;i<cm_ib_context.size;i++)   {
+            if (i == cm_ib_context.rank)
+                continue;
+            if (NULL!=vc_vector[i] 
+            && vc_vector[i]->ch.state != MPIDI_CH3I_VC_STATE_SUSPENDED) {
+                flag = 1;
+                break;
+            }
+        }
+        if (flag==0)
+            break;
+        MPIDI_CH3I_Progress(FALSE, NULL);
+    }while (flag);
+
+    CM_DBG("Channels suspended");
+    /*Sanity check*/
+    for (i=0;i<cm_ib_context.size;i++)   {
+        if (i==cm_ib_context.rank)
+            continue;
+        if (NULL!=vc_vector[i]) {
+            int rail;
+            vc = vc_vector[i];
+            /*assert ext send queue and backlog queue empty*/
+            for (rail=0;rail<vc->mrail.num_rails;rail++)
+            {
+                ibv_backlog_queue_t q = vc->mrail.srp.credits[rail].backlog;
+                assert(q.len == 0);
+                assert(vc->mrail.rails[rail].ext_sendq_head == NULL);
+            }
+        }
+    }
+    CM_DBG("MPIDI_CH3I_CM_Suspend Exit");
+    return 0;
+}
+
+
+/*Reactivate previously suspended connections*/
+int MPIDI_CH3I_CM_Reactivate(MPIDI_VC_t ** vc_vector)
+{
+    MPIDI_VC_t * vc;
+    int i;
+    int flag;
+    CM_DBG("MPIDI_CH3I_CM_Reactivate Enter");
+
+    /*Send out all reactivate messages*/
+    for (i=0;i<cm_ib_context.size;i++) {
+        if (i == cm_ib_context.rank)
+                continue;
+        if (NULL!=vc_vector[i]) {
+            vc = vc_vector[i];
+            pthread_mutex_lock(&cm_automic_op_lock);
+            if (vc->ch.state == MPIDI_CH3I_VC_STATE_SUSPENDED) 
+                cm_send_reactivate_msg(vc);
+            else if (vc->ch.state != MPIDI_CH3I_VC_STATE_REACTIVATING_CLI_1
+                && vc->ch.state != MPIDI_CH3I_VC_STATE_REACTIVATING_CLI_2
+                && vc->ch.state != MPIDI_CH3I_VC_STATE_REACTIVATING_SRV
+                && vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE)
+                CM_ERR_ABORT("Wrong state when reactivation %d\n",vc->ch.state);
+            pthread_mutex_unlock(&cm_automic_op_lock);
+        }
+    }
+
+    /*Make sure all channels reactivated*/
+    do {
+        flag = 0;
+        for (i=0;i<cm_ib_context.size;i++)   {
+            if (i == cm_ib_context.rank)
+                continue;
+            if (NULL!=vc_vector[i]) {
+                vc=vc_vector[i];
+                if (!vc->mrail.reactivation_done_send || !vc->mrail.reactivation_done_recv ) {
+                    flag = 1;
+                    break;
+                }
+            }
+        }
+        if (flag==0)
+            break;
+        MPIDI_CH3I_Progress(FALSE, NULL);
+    }while (flag);
+
+    /*put down flags*/
+    for (i=0;i<cm_ib_context.size;i++)   {
+        if (i == cm_ib_context.rank)
+            continue;
+        if (NULL!=vc_vector[i]) {
+            vc=vc_vector[i];
+            vc->mrail.reactivation_done_send = vc->mrail.reactivation_done_recv = 0;
+        }
+    }
+
+    return 0;
+}
+
+/*CM message handler for RC message in progress engine*/
+void MPIDI_CH3I_CM_Handle_recv(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t msg_type, vbuf * v)
+{
+    /*Only count the total number, specific rail matching is not needed*/
+    if (msg_type == MPIDI_CH3_PKT_CM_SUSPEND) {
+        CM_DBG("handle recv CM_SUSPEND, peer rank %d, rails_send %d, rails_recv %d, ch.state %d",
+                vc->pg_rank, vc->mrail.suspended_rails_send, vc->mrail.suspended_rails_recv, vc->ch.state);
+        pthread_mutex_lock(&cm_automic_op_lock);
+        /*Note no need to lock in ibv_send, because this function is called in 
+        * progress engine, so that it can't be called in parallel with ibv_send*/
+        if (vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE) { 
+            /*passive suspending*/
+            CM_DBG("Not in Suspending state yet, start suspending");
+            cm_send_suspend_msg(vc);
+        }
+        vc->mrail.suspended_rails_recv++;
+        if (vc->mrail.suspended_rails_send == vc->mrail.num_rails
+        && vc->mrail.suspended_rails_recv == vc->mrail.num_rails
+        && vc->ch.state == MPIDI_CH3I_VC_STATE_SUSPENDING) {
+            vc->mrail.suspended_rails_send = vc->mrail.suspended_rails_recv = 0;
+            vc->ch.state = MPIDI_CH3I_VC_STATE_SUSPENDED;
+        }
+        pthread_mutex_unlock(&cm_automic_op_lock);
+        CM_DBG("handle recv CM_SUSPEND done, peer rank %d, rails_send %d, rails_recv %d, ch.state %d",
+                vc->pg_rank, vc->mrail.suspended_rails_send, vc->mrail.suspended_rails_recv, vc->ch.state);
+    } 
+    else if (msg_type == MPIDI_CH3_PKT_CM_REACTIVATION_DONE) {
+        CM_DBG("handle recv MPIDI_CH3_PKT_CM_REACTIVATION_DONE peer rank %d, done_recv %d",
+                vc->pg_rank,vc->mrail.reactivation_done_recv);
+        vc->mrail.reactivation_done_recv = 1;
+        vc->ch.rput_stop = 0;
+        if (vc->mrail.sreq_head)
+            PUSH_FLOWLIST(vc);
+    }
+}
+
+void MPIDI_CH3I_CM_Handle_send_completion(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t msg_type, vbuf * v)
+{
+    /*Only count the total number, specific rail matching is not needed*/
+    if (msg_type == MPIDI_CH3_PKT_CM_SUSPEND) {
+        CM_DBG("handle send CM_SUSPEND, peer rank %d, rails_send %d, rails_recv %d, ch.state %d",
+                vc->pg_rank, vc->mrail.suspended_rails_send, vc->mrail.suspended_rails_recv, vc->ch.state);
+        pthread_mutex_lock(&cm_automic_op_lock);
+        vc->mrail.suspended_rails_send++;
+        if (vc->mrail.suspended_rails_send == vc->mrail.num_rails
+        && vc->mrail.suspended_rails_recv == vc->mrail.num_rails
+        && vc->ch.state == MPIDI_CH3I_VC_STATE_SUSPENDING) {
+            vc->mrail.suspended_rails_send = vc->mrail.suspended_rails_recv = 0;
+            vc->ch.state = MPIDI_CH3I_VC_STATE_SUSPENDED;
+        }
+        pthread_mutex_unlock(&cm_automic_op_lock);
+        CM_DBG("handle send CM_SUSPEND done, peer rank %d, rails_send %d, rails_recv %d, ch.state %d",
+                vc->pg_rank, vc->mrail.suspended_rails_send, vc->mrail.suspended_rails_recv, vc->ch.state);
+    } 
+    else if (msg_type == MPIDI_CH3_PKT_CM_REACTIVATION_DONE) {
+        CM_DBG("handle send MPIDI_CH3_PKT_CM_REACTIVATION_DONE peer rank %d, done_send %d",
+                vc->pg_rank, vc->mrail.reactivation_done_send);
+        vc->mrail.reactivation_done_send = 1;
+    }
+}
+
+#endif

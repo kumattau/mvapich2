@@ -349,9 +349,8 @@ MPIDI_CH3I_MRAILI_Fast_rdma_send_complete (MPIDI_VC_t * vc,
                                            vbuf ** vbuf_handle)
 {
 #ifndef RDMA_FAST_PATH
-    return -1;
+    return -1; 
 #else
-
     MPIDI_CH3I_MRAILI_Pkt_comm_header *p;
     MRAILI_Channel_info channel;
     int  align_len;
@@ -455,6 +454,7 @@ int MPIDI_CH3I_MRAILI_Fast_rdma_ok (MPIDI_VC_t * vc, int len)
     return 1;
 #endif
 }
+
 
 #undef FUNCNAME
 #define FUNCNAME MRAILI_Post_send

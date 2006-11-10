@@ -1,3 +1,15 @@
+/* Copyright (c) 2003-2006, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licencing information, please refer to the
+ * copyright file COPYRIGHT_MVAPICH2 in the top level MVAPICH2 directory.
+ *
+ */
+
 #include <unistd.h>
 #include <sys/mman.h>
 
@@ -7,9 +19,13 @@ extern mvapich2_malloc_info_t mvapich2_minfo;
 
 #define munmap(buf,len) mvapich2_munmap(buf, len)
 
+#ifndef DISABLE_TRAP_SBRK
+#define MORECORE mvapich2_sbrk
+#endif
+
 #define HAVE_MREMAP 0
-#define DEFAULT_MMAP_THRESHOLD (1<<21)
 #define MORECORE_CANNOT_TRIM 1
+#define DEFAULT_MMAP_THRESHOLD (1<<21)
 
 #ifndef __GNUC__
 #define __const const
@@ -36,17 +52,6 @@ extern mvapich2_malloc_info_t mvapich2_minfo;
    write to the Free Software Foundation, Inc., 59 Temple Place - Suite 330,
    Boston, MA 02111-1307, USA.  */
 
-/* Copyright (c) 2003-2006, The Ohio State University. All rights
- * reserved.
- *
- * This file is part of the MVAPICH2 software package developed by the
- * team members of The Ohio State University's Network-Based Computing
- * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
- *
- * For detailed copyright and licencing information, please refer to the
- * copyright file COPYRIGHT_MVAPICH2 in the top level MVAPICH2 directory.
- *
- */
 
 /*
   This is a version (aka ptmalloc2) of malloc/free/realloc written by
@@ -3432,11 +3437,13 @@ public_fREe(Void_t* mem)
   /* <OSU> */
   mvapich2_minfo.is_our_free = 1;
 
+#ifdef DISABLE_TRAP_SBRK
   if(!mvapich2_minfo.is_inside_free) {
       mvapich2_minfo.is_inside_free = 1;
       mvapich2_mem_unhook(mem, mUSABLe(mem));
       mvapich2_minfo.is_inside_free = 0;
   }
+#endif
   /* </OSU> */
 
   if (mem == 0)                              /* free(0) has no effect */

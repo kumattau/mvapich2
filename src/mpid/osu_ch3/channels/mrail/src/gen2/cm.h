@@ -37,7 +37,6 @@
 typedef struct MPICM_ib_context{
     int rank;
     int size;
-    MPIDI_CH3I_VC_state_t **conn_state;
     MPIDI_PG_t * pg;
 }MPICM_ib_context;
 
@@ -62,5 +61,13 @@ Cleanup ud related data structures
 */
 int MPICM_Finalize_UD();
 
+#ifdef CKPT
+
+/*Interface to lock/unlock connection manager*/
+inline void MPICM_lock();
+
+inline void MPICM_unlock();
+
+#endif
 
 #endif  /* MVAPICH2_GEN2_CM_H */

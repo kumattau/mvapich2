@@ -43,6 +43,41 @@
 #include  "avl.h"         /* public types for avl trees */
 #include  "avl_typs.h"    /* private types for avl trees */
 
+#ifndef DISABLE_PTMALLOC
+
+/* We cannot call "free" from within the AVL tree
+ * implementation, since, this may have been
+ * invoked from within a call to free hook. To
+ * avoid calling free, we are keeping a freelist
+ * of AVLtrees */
+
+/* Notes: There are two free calls in this file
+ * One, inside avl_delete (deals with AVLtree)
+ * Second, inside avl_free. However, avl_free is
+ * never called, since avldispose (parent function)
+ * is never used.
+ */
+
+static AVLnode avl_free_list;
+
+#define INIT_AVL_FREE_LIST(_list) {                             \
+    (_list)->data = NULL;                                       \
+}
+
+#define ADD_AVL_FREE_LIST(_list, _v) {                          \
+    (_v)->data = (_list)->data;                                 \
+    (_list)->data = (_v);                                       \
+}
+
+#define GET_AVL_FREE_LIST(_list, _v) {                          \
+    *(_v) = (_list)->data;                                      \
+    if((_list)->data) {                                         \
+        (_list)->data = ((AVLnode*)(_list)->data)->data;        \
+    }                                                           \
+}
+
+#endif
+
 
 /************************************************************************
 *       Auxillary functions
@@ -78,7 +113,16 @@ new_node(data, size)
 {
    AVLtree  root;
 
+#ifndef DISABLE_PTMALLOC
+   GET_AVL_FREE_LIST(&avl_free_list, &root);
+
+   if (NULL == root) {
+       root = (AVLtree) ckalloc(sizeof (AVLnode));
+   }
+   
+#else
    root = (AVLtree) ckalloc(sizeof (AVLnode));
+#endif
    root->data = (void *) ckalloc(size);
    memcpy(root->data, data, size);
    root->bal  = BALANCED;
@@ -96,7 +140,11 @@ PRIVATE  void
 free_node(rootp)
    AVLtree  *rootp;
 {
+#ifndef DISABLE_PTMALLOC
+    ADD_AVL_FREE_LIST(&avl_free_list, *rootp);
+#else
    free((void *) *rootp);
+#endif
    *rootp = NULL_TREE;
 }/* free_node */
 
@@ -618,6 +666,10 @@ avlinit(compar, isize)
    unsigned long   (*isize)();
 {
    AVLdescriptor  *avl_desc;
+
+#ifndef DISABLE_PTMALLOC
+   INIT_AVL_FREE_LIST(&avl_free_list);
+#endif
 
    avl_desc = (AVLdescriptor *) ckalloc(sizeof (AVLdescriptor));
    avl_desc->root   = NULL_TREE;

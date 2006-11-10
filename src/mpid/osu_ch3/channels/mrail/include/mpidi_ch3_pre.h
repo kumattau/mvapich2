@@ -51,6 +51,13 @@ typedef enum MPIDI_CH3I_VC_state
     MPIDI_CH3I_VC_STATE_UNCONNECTED,
     MPIDI_CH3I_VC_STATE_CONNECTING_CLI,
     MPIDI_CH3I_VC_STATE_CONNECTING_SRV,
+#ifdef CKPT
+    MPIDI_CH3I_VC_STATE_SUSPENDING,
+    MPIDI_CH3I_VC_STATE_SUSPENDED,
+    MPIDI_CH3I_VC_STATE_REACTIVATING_CLI_1,
+    MPIDI_CH3I_VC_STATE_REACTIVATING_CLI_2,
+    MPIDI_CH3I_VC_STATE_REACTIVATING_SRV,
+#endif
     MPIDI_CH3I_VC_STATE_IDLE,
     MPIDI_CH3I_VC_STATE_FAILED
 }
@@ -85,13 +92,16 @@ typedef struct MPIDI_CH3I_VC
     struct MPID_Request * send_active;
     struct MPID_Request * recv_active;
     struct MPID_Request * req;
-    MPIDI_CH3I_VC_state_t state;
+    volatile MPIDI_CH3I_VC_state_t state;
     MPIDI_CH3I_Buffer_t read;
     int read_state;
     int port_name_tag;
     /* Connection management */
     struct MPID_Request * cm_sendq_head;
     struct MPID_Request * cm_sendq_tail;
+#ifdef CKPT
+    int rput_stop; /*Stop rput message and wait for rkey update*/
+#endif
 } MPIDI_CH3I_VC;
 
 /* SMP Channel is added by OSU-MPI2 */
@@ -113,6 +123,8 @@ typedef struct MPIDI_CH3I_SMP_VC
     SMP_pkt_type_t send_current_pkt_type;
     SMP_pkt_type_t recv_current_pkt_type;
     int hostid;
+    int read_index;
+    int read_off;
 } MPIDI_CH3I_SMP_VC;
 #endif
 
@@ -155,6 +167,9 @@ struct MPIDI_CH3I_Request						\
     /*  pkt is used to temporarily store a packet header associated	\
        with this request */						\
     MPIDI_CH3_Pkt_t pkt;						\
+    /* For CKPT, hard to put in ifdef because it's in macro define*/ \
+    struct MPID_Request *cr_queue_next;       \
+    MPIDI_VC_t *vc;  \
 } ch;
 
 typedef struct MPIDI_CH3I_Progress_state

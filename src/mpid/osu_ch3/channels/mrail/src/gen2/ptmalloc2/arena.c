@@ -1,3 +1,15 @@
+/* Copyright (c) 2003-2006, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licencing information, please refer to the
+ * copyright file COPYRIGHT_MVAPICH2 in the top level MVAPICH2 directory.
+ *
+ */
+
 /* Malloc implementation for multiple threads without lock contention.
    Copyright (C) 2001 Free Software Foundation, Inc.
    This file is part of the GNU C Library.
@@ -655,6 +667,13 @@ heap_trim(heap, pad) heap_info *heap; size_t pad;
   extra = ((top_size - pad - MINSIZE + (pagesz-1))/pagesz - 1) * pagesz;
   if(extra < (long)pagesz)
     return 0;
+
+  /* <OSU> */
+
+  /* Do NOT try to trim the heap any further */
+  return 0;
+  /* </OSU> */
+
   /* Try to shrink. */
   if(grow_heap(heap, -extra) != 0)
     return 0;

@@ -243,4 +243,9 @@ dreg_entry *dreg_new_entry(void *buf, int len);
 void find_and_free_dregs_inside(void *buf, int len);
 #endif
 
+#ifdef CKPT
+void dreg_deregister_all();
+void dreg_reregister_all();
+#endif
+
 #endif                          /* _DREG_H */

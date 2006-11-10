@@ -123,6 +123,10 @@ int MPIDI_CH3_iStartRndvMsg(MPIDI_VC_t * vc,
     MPIDI_DBG_PRINTF((50, FCNAME, "entering"));
     /* If send queue is empty attempt to send
        data, queuing any unsent data. */
+#ifdef CKPT
+    MPIDI_CH3I_CR_lock();
+#endif
+
     rts_send++;
     if (MPIDI_CH3I_SendQ_empty(vc)) {   /* MT */
         MPID_Request * send_req;
@@ -158,6 +162,9 @@ int MPIDI_CH3_iStartRndvMsg(MPIDI_VC_t * vc,
     }
 
   fn_exit:
+#ifdef CKPT
+    MPIDI_CH3I_CR_unlock();
+#endif
     DEBUG_PRINT("[send rts]successful complete\n");
     MPIDI_DBG_PRINTF((50, FCNAME, "exiting"));
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_ISTARTRNDVMSG);
@@ -180,6 +187,10 @@ int MPIDI_CH3_iStartRmaRndv(MPIDI_VC_t * vc,
         (void *) sreq->dev.iov[0].MPID_IOV_BUF;
     MPID_Request *rts_sreq;
     MPID_IOV *iov;
+
+#ifdef CKPT
+    MPIDI_CH3I_CR_lock();
+#endif
 
     iov = MPIU_Malloc(sizeof(MPID_IOV) * (control_cnt));
     DEBUG_PRINT("sreq before adjust iov0.len %d\n",
@@ -228,6 +239,9 @@ int MPIDI_CH3_iStartRmaRndv(MPIDI_VC_t * vc,
     }
     MPIU_Free(iov);
   fn_exit:
+#ifdef CKPT
+    MPIDI_CH3I_CR_unlock();
+#endif
     DEBUG_PRINT("[send rts]successful complete\n");
     return mpi_errno;
 
@@ -247,6 +261,10 @@ int MPIDI_CH3_iStartGetRndv(MPIDI_VC_t * vc,
     MPID_Request *send_req;
     int mpi_errno = MPI_SUCCESS;
 
+#ifdef CKPT
+    MPIDI_CH3I_CR_lock();
+#endif
+        
     iov = MPIU_Malloc(sizeof(MPID_IOV) * (num_control + 1));
     n_iov = num_control + 1;
     iov[0].MPID_IOV_BUF = (void *) get_rndv;
@@ -263,6 +281,10 @@ int MPIDI_CH3_iStartGetRndv(MPIDI_VC_t * vc,
         MPID_Request_release(send_req);
     }
     MPIU_Free(iov);
+
+#ifdef CKPT
+    MPIDI_CH3I_CR_unlock();
+#endif
 
     return mpi_errno;
 }

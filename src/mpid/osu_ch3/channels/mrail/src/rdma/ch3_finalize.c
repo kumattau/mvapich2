@@ -31,6 +31,10 @@ int MPIDI_CH3_Finalize()
 
     MPIDI_DBG_PRINTF((50, FCNAME, "entering"));
 
+#ifdef CKPT
+    MPIDI_CH3I_CR_Finalize();
+#endif
+    
     /* Shutdown the progress engine */
     mpi_errno = MPIDI_CH3I_Progress_finalize();
     if (mpi_errno != MPI_SUCCESS) {
@@ -45,6 +49,12 @@ int MPIDI_CH3_Finalize()
         /*FillMe:call MPIDI_CH3I_CM_Finalize here*/
         mpi_errno = MPIDI_CH3I_CM_Finalize();
     }
+#ifdef RDMA_CM
+    else if (MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_RDMA_CM) {
+        /*FillMe:call RDMA_CM's finalization here*/
+	mpi_errno = MPIDI_CH3I_CM_Finalize();
+    }
+#endif
     else {
         /*call old init to setup all connections*/
         mpi_errno = MPIDI_CH3I_RMDA_finalize();

@@ -181,4 +181,8 @@ void vbuf_init_rput(vbuf * v, void *local_address,
 
 void dump_vbuf(char *msg, vbuf * v);
 
+#ifdef CKPT
+void vbuf_reregister_all();
+#endif
+
 #endif

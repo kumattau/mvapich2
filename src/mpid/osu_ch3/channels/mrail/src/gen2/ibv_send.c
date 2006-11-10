@@ -554,6 +554,20 @@ int MPIDI_CH3I_MRAILI_Eager_send(MPIDI_VC_t * vc,
     DEBUG_PRINT("[eager send]vbuf addr %p\n", v);
     *num_bytes_ptr = MRAILI_Fill_start_buffer(v, iov, n_iov);
 
+#ifdef CKPT
+    if (vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE) {
+        /*MPIDI_CH3I_MRAILI_Pkt_comm_header * p = (MPIDI_CH3I_MRAILI_Pkt_comm_header *) v->pheader;*/
+        /*printf("%d:log message vbuf %p to vc %p, vc state %d, type %d\n",
+                MPIDI_Process.my_pg_rank, v, vc, vc->ch.state, p->type);*/
+        MPIDI_CH3I_CR_msg_log_queue_entry_t *entry
+            = (MPIDI_CH3I_CR_msg_log_queue_entry_t *)malloc(sizeof(MPIDI_CH3I_CR_msg_log_queue_entry_t));
+        entry->buf = v;
+        entry->len = *num_bytes_ptr;
+        MSG_LOG_ENQUEUE(vc, entry);
+        return MPI_MRAIL_MSG_QUEUED;
+    }
+#endif
+
     rail = MRAILI_Send_select_rail(vc);
     DEBUG_PRINT("[eager send] len %d, selected rail hca %d, rail %d\n",
                 *num_bytes_ptr, vc->mrail.rails[rail].hca_index, rail);
@@ -611,6 +625,12 @@ int MRAILI_Backlog_send(MPIDI_VC_t * vc,
     MPIDI_FUNC_ENTER(MRAILI_BACKLOG_SEND);
 
     ibv_backlog_queue_t *q = &vc->mrail.srp.credits[rail].backlog;
+
+#ifdef CKPT
+    if (MPIDI_CH3I_RDMA_Process.has_srq) {
+        assert(0);
+    }
+#endif
 
     while ((q->len > 0)
            && (vc->mrail.srp.credits[rail].remote_credit > 0)) {
@@ -685,6 +705,21 @@ int MRAILI_Process_send(void *vbuf_addr)
         return MPI_SUCCESS;
     }
     switch (p->type) {
+#ifdef CKPT
+    case MPIDI_CH3_PKT_CM_SUSPEND:
+    case MPIDI_CH3_PKT_CM_REACTIVATION_DONE:
+        MPIDI_CH3I_CM_Handle_send_completion(vc, p->type,v);
+        if (v->padding == NORMAL_VBUF_FLAG) {
+                MRAILI_Release_vbuf(v);
+                }
+        break;
+    case MPIDI_CH3_PKT_CR_REMOTE_UPDATE:
+        MPIDI_CH3I_CR_Handle_send_completion(vc, p->type,v);
+        if (v->padding == NORMAL_VBUF_FLAG) {
+                MRAILI_Release_vbuf(v);
+                }
+        break;
+#endif        
 #ifdef USE_HEADER_CACHING
     case MPIDI_CH3_PKT_FAST_EAGER_SEND:
     case MPIDI_CH3_PKT_FAST_EAGER_SEND_WITH_REQ:

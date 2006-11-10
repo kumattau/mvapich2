@@ -5,6 +5,17 @@
  *      See COPYRIGHT in top-level directory.
  */
 
+/* Copyright (c) 2003-2006, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT_MVAPICH2 in the top level MVAPICH2 directory.
+ *
+ */
 #include "mpiimpl.h"
 #include "mpicomm.h"
 
@@ -259,6 +270,9 @@ int MPIR_Get_contextid( MPID_Comm *comm_ptr )
     }
     memcpy( local_mask, context_mask, MAX_CONTEXT_MASK * sizeof(int) );
     MPIR_Nest_incr();
+#ifdef _SMP_
+    comm_ptr->shmem_coll_ok = 0;/* To prevent Allreduce taking shmem route*/
+#endif
     /* Comm must be an intracommunicator */
     NMPI_Allreduce( MPI_IN_PLACE, local_mask, MAX_CONTEXT_MASK, MPI_INT, 
 		    MPI_BAND, comm_ptr->handle );
@@ -321,6 +335,9 @@ int MPIR_Get_contextid( MPID_Comm *comm_ptr )
 	
 	/* Now, try to get a context id */
 	MPIR_Nest_incr();
+#ifdef _SMP_
+    comm_ptr->shmem_coll_ok = 0;/* To prevent Allreduce taking shmem route*/
+#endif
 	/* Comm must be an intracommunicator */
 	NMPI_Allreduce( MPI_IN_PLACE, local_mask, MAX_CONTEXT_MASK, MPI_INT, 
 			MPI_BAND, comm_ptr->handle );

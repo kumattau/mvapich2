@@ -101,6 +101,7 @@ int      smpi_length_queue  = SMPI_LENGTH_QUEUE;
 int      smp_num_send_buffer = SMP_NUM_SEND_BUFFER;
 int      smp_batch_size = SMP_BATCH_SIZE;
 
+int enable_shmem_collectives = 0;
 
 #if defined(MAC_OSX) || defined(_PPC64_) 
 #ifdef __GNUC__
@@ -474,7 +475,11 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 #ifdef _X86_64_
     volatile char tmpchar;
 #endif
-
+    char* val;
+    if ((val = getenv("MV2_ENABLE_SHMEM_COLL")) != NULL){
+          enable_shmem_collectives = 1;
+    }
+    
     if ((value = getenv("SMP_EAGERSIZE")) != NULL) {
         smp_eagersize = atoi(value);
     }
@@ -679,6 +684,11 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 
     }
 
+    if (enable_shmem_collectives){
+    /* Shared memory for collectives */
+    MPIDI_CH3I_SHMEM_COLL_init(pg);
+    }
+    
     DEBUG_PRINT("process arrives before sync stage\n");
     /* synchronization between local processes */
     do {
@@ -855,6 +865,11 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
         }
     }
 
+    if (enable_shmem_collectives){
+    /* Memory Mapping shared files for collectives*/
+    MPIDI_CH3I_SHMEM_COLL_Mmap();
+    }
+    
     /* another synchronization barrier */
     if (0 == smpi.my_local_id) {
         wait = 1;
@@ -870,6 +885,11 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
          *       up when everyone exits */
         unlink(shmem_file);
         unlink(pool_file);
+        
+    if (enable_shmem_collectives){
+     /* Unlinking shared files for collectives*/  
+     MPIDI_CH3I_SHMEM_COLL_Unlink();
+    }
 
         pid = getpid();
         if (0 == pid) {
@@ -990,6 +1010,11 @@ int MPIDI_CH3I_SMP_finalize()
 
     if(sh_buf_pool.tail) {
         free(sh_buf_pool.tail);
+    }
+    
+    if (enable_shmem_collectives){
+    /* Freeing up shared memory collective resources*/
+    MPIDI_CH3I_SHMEM_COLL_finalize();
     }
 
     return MPI_SUCCESS;
@@ -1466,6 +1491,7 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
     int received_bytes = 0;
     int destination = recv_vc_ptr->smp.local_nodes;
     int current_index = index;
+    int recv_offset = 0;
     int msglen, iov_len;
     void *current_buf;
     SEND_BUF_T *recv_buf;
@@ -1473,38 +1499,44 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
 
     *num_bytes_ptr = 0;
 
-    assert(current_bytes[recv_vc_ptr->smp.local_nodes] == 0);
-    assert(total_bytes[recv_vc_ptr->smp.local_nodes] == 0);
+    if (current_bytes[recv_vc_ptr->smp.local_nodes] == 0) {
+        assert(total_bytes[recv_vc_ptr->smp.local_nodes] == 0);
 
-    if (SMPI_TOTALIN(recv_vc_ptr->smp.local_nodes, smpi.my_local_id) ==
-           SMPI_TOTALOUT(recv_vc_ptr->smp.local_nodes, smpi.my_local_id)) {
-        goto fn_exit;
-    } 
+        if (SMPI_TOTALIN(recv_vc_ptr->smp.local_nodes, smpi.my_local_id) ==
+               SMPI_TOTALOUT(recv_vc_ptr->smp.local_nodes, smpi.my_local_id)) {
+            goto fn_exit;
+        } 
 
-    READBAR();
-    current_ptr[recv_vc_ptr->smp.local_nodes] =
-        (void *) ((smpi_shmem->pool) +
-                  SMPI_CURRENT(recv_vc_ptr->smp.local_nodes,
-                               smpi.my_local_id));
-    WRITEBAR();
-    total_bytes[recv_vc_ptr->smp.local_nodes] =
-        *((int *) current_ptr[recv_vc_ptr->smp.local_nodes]);
-    current_bytes[recv_vc_ptr->smp.local_nodes] =
-        total_bytes[recv_vc_ptr->smp.local_nodes];
+        READBAR();
+        current_ptr[recv_vc_ptr->smp.local_nodes] =
+            (void *) ((smpi_shmem->pool) +
+                      SMPI_CURRENT(recv_vc_ptr->smp.local_nodes,
+                                   smpi.my_local_id));
+        WRITEBAR();
+        total_bytes[recv_vc_ptr->smp.local_nodes] =
+            *((int *) current_ptr[recv_vc_ptr->smp.local_nodes]);
+        current_bytes[recv_vc_ptr->smp.local_nodes] =
+            total_bytes[recv_vc_ptr->smp.local_nodes];
+        
+        DEBUG_PRINT
+            ("current byte %d, total bytes %d, iovlen %d, iov[0].len %d\n",
+             current_bytes[recv_vc_ptr->smp.local_nodes],
+             total_bytes[recv_vc_ptr->smp.local_nodes], iovlen,
+             iov[0].MPID_IOV_LEN);
+        WRITEBAR();
 
-    DEBUG_PRINT
-        ("current byte %d, total bytes %d, iovlen %d, iov[0].len %d\n",
-         current_bytes[recv_vc_ptr->smp.local_nodes],
-         total_bytes[recv_vc_ptr->smp.local_nodes], iovlen,
-          iov[0].MPID_IOV_LEN);
-    WRITEBAR();
-
-    current_ptr[recv_vc_ptr->smp.local_nodes] =
-        (void *)((unsigned long) current_ptr[recv_vc_ptr->smp.local_nodes] +
-                 sizeof(int)); 
-    current_index = *((int *) current_ptr[recv_vc_ptr->smp.local_nodes]);
-    smpi_complete_recv(recv_vc_ptr->smp.local_nodes,
-               smpi.my_local_id, 2*sizeof(int));
+        current_ptr[recv_vc_ptr->smp.local_nodes] =
+            (void *)((unsigned long) current_ptr[recv_vc_ptr->smp.local_nodes] +
+                     sizeof(int)); 
+        current_index = *((int *) current_ptr[recv_vc_ptr->smp.local_nodes]);
+        smpi_complete_recv(recv_vc_ptr->smp.local_nodes,
+                   smpi.my_local_id, 2*sizeof(int));
+    } else {
+        total_bytes[recv_vc_ptr->smp.local_nodes] =
+            current_bytes[recv_vc_ptr->smp.local_nodes]; 
+        current_index = recv_vc_ptr->smp.read_index;
+        recv_offset = recv_vc_ptr->smp.read_off;
+    }
 
     if (current_index != -1) {
         /** last smp packet has not been drained up yet **/
@@ -1514,8 +1546,8 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
 
         recv_buf = &buffer_head[destination][current_index];
         assert(recv_buf->busy == 1);
-        msglen = recv_buf->len;
-        current_buf = (void *)recv_buf->buf;
+        msglen = recv_buf->len - recv_offset;
+        current_buf = (void *)((unsigned long) recv_buf->buf + recv_offset);
         iov_len = iov[0].MPID_IOV_LEN;
 
         for (;
@@ -1538,7 +1570,9 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
                 iov_off++;
 
                 if (iov_off >= iovlen) {
-                    recv_buf->busy = 0; 
+                    recv_vc_ptr->smp.read_index = current_index;
+                    recv_vc_ptr->smp.read_off = (unsigned long) current_buf -
+                                                   (unsigned long) recv_buf->buf;
                     break;
                 }
                 if (current_bytes[recv_vc_ptr->smp.local_nodes] <= 0) {
@@ -1560,6 +1594,8 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
                 iov_off++;
 
                 if (iov_off >= iovlen) {
+                    recv_vc_ptr->smp.read_index = recv_buf->next;
+                    recv_vc_ptr->smp.read_off = 0;
                     recv_buf->busy = 0;
                     break;
                 }
@@ -1700,12 +1736,12 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
         total_bytes[recv_vc_ptr->smp.local_nodes];
     smpi_complete_recv(recv_vc_ptr->smp.local_nodes,
                        smpi.my_local_id,sizeof(int));
-
     DEBUG_PRINT
         ("current byte %d, total bytes %d, iovlen %d, iov[0].len %d\n",
          current_bytes[recv_vc_ptr->smp.local_nodes],
          total_bytes[recv_vc_ptr->smp.local_nodes], iovlen,
-          iov[0].MPID_IOV_LEN);
+         iov[0].MPID_IOV_LEN);
+
     WRITEBAR();
 
     if (current_index != -1) {
@@ -1740,7 +1776,9 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
                 iov_off++;
 
                 if (iov_off >= iovlen) {
-                    recv_buf->busy = 0; 
+                    recv_vc_ptr->smp.read_index = current_index; 
+                    recv_vc_ptr->smp.read_off = (unsigned long) current_buf - 
+                                                   (unsigned long) recv_buf->buf;
                     break;
                 }
                 if (current_bytes[recv_vc_ptr->smp.local_nodes] <= 0) {
@@ -1762,6 +1800,8 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
                 iov_off++;
 
                 if (iov_off >= iovlen) {
+                    recv_vc_ptr->smp.read_index = recv_buf->next;
+                    recv_vc_ptr->smp.read_off = 0;
                     recv_buf->busy = 0;
                     break;
                 }
@@ -2314,7 +2354,7 @@ get_buf_from_pool ()
 {
     SEND_BUF_T *ptr;
 
-    if (sh_buf_pool.free_head == -1)
+    if (sh_buf_pool.free_head == -1) 
         return NULL;
 
     ptr = &my_buffer_head[sh_buf_pool.free_head];

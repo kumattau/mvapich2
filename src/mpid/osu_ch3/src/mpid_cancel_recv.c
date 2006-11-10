@@ -18,7 +18,9 @@ int MPID_Cancel_recv(MPID_Request * rreq)
     MPIDI_DBG_PRINTF((10, FCNAME, "entering"));
     
     MPIU_Assert(rreq->kind == MPID_REQUEST_RECV);
-    
+
+    MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(rreq);
+   
     if (MPIDI_CH3U_Recvq_DP(rreq))
     {
 	MPIDI_DBG_PRINTF((15, FCNAME, "request 0x%08x cancelled", rreq->handle));

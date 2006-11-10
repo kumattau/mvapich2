@@ -196,8 +196,6 @@ int MPIDI_CH3I_MRAILI_Fast_rdma_ok (MPIDI_VC_t * vc, int len);
 int MPIDI_CH3I_MRAILI_Fast_rdma_send_complete (MPIDI_VC_t * vc,
                                                MPID_IOV * iov,
                                                int n_iov, int *nb, vbuf ** v);
-
-
 int MPIDI_CH3I_RDMA_cq_poll ();
 
 void MRAILI_Init_vc (MPIDI_VC_t * vc, int pg_rank);

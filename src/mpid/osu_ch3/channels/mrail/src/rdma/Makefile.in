@@ -55,7 +55,7 @@ all-redirect: ../../../../../../../lib/lib${MPILIBNAME}.a
 	ch3_comm_spawn_multiple.o ch3_comm_accept.o ch3_comm_connect.o \
 	ch3_open_port.o ch3_abort.o ch3_istartrndvmsg.o \
     ch3_packetizedtransfer.o ch3_rndvtransfer.o ch3_smp_progress.o \
-    ch3_eager_ok.o ch3_get_business_card.o
+    ch3_eager_ok.o ch3_get_business_card.o ch3_shmem_coll.o
 	${AR} cr ../../../../../../../lib/lib${MPILIBNAME}.a $?
 	${RANLIB} ../../../../../../../lib/lib${MPILIBNAME}.a
 	sleep 1
@@ -65,14 +65,14 @@ all-redirect: ../../../../../../../lib/lib${MPILIBNAME}.a
 	ch3_read_progress.lo ch3_comm_spawn_multiple.lo ch3_comm_accept.lo \
 	ch3_comm_connect.lo ch3_open_port.lo ch3_abort.lo ch3_istartrndvmsg.lo \
     ch3_packetizedtransfer.lo ch3_rndvtransfer.lo \
-    ch3_smp_progress.lo ch3_eager_ok.lo ch3_get_business_card.lo
+    ch3_smp_progress.lo ch3_eager_ok.lo ch3_get_business_card.lo ch3_shmem_coll.lo
 	${AR} cr ../../../../../../../lib/lib${MPILIBNAME}.la $?
 SOURCES =  ch3_finalize.c ch3_init.c ch3_isend.c ch3_isendv.c ch3_istartmsg.c \
 	ch3_istartmsgv.c ch3_request.c ch3_progress.c ch3_cancel_send.c \
 	ch3_read_progress.c ch3_comm_spawn_multiple.c ch3_comm_accept.c \
 	ch3_comm_connect.c ch3_open_port.c ch3_abort.c ch3_istartrndvmsg.c \
     ch3_packetizedtransfer.c ch3_rndvtransfer.c \
-    ch3_smp_progress.c ch3_eager_ok.c ch3_get_business_card.c
+    ch3_smp_progress.c ch3_eager_ok.c ch3_get_business_card.c ch3_shmem_coll.c
 ETAGS = etags --langmap=c:+.i
 tags: TAGS
 TAGS:${HEADERS} ${SOURCES}

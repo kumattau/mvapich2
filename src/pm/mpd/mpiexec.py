@@ -4,6 +4,16 @@
 #       See COPYRIGHT in top-level directory.
 #
 
+# Copyright (c) 2002-2006, The Ohio State University. All rights
+# reserved.
+#
+# This file is part of the MVAPICH software package developed by the
+# team members of The Ohio State University's Network-Based Computing
+# Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+#
+# For detailed copyright and licencing information, please refer to the
+# copyright file COPYRIGHT_MVAPICH in the top level MPICH directory.
+
 """
 usage:
 mpiexec [-h or -help or --help]    # get this message
@@ -62,7 +72,8 @@ from  time   import time
 from  urllib import unquote
 from  mpdlib import mpd_set_my_id, mpd_get_my_username, mpd_version, mpd_print, \
                     mpd_uncaught_except_tb, mpd_handle_signal, mpd_which, \
-                    MPDListenSock, MPDStreamHandler, MPDConClientSock, MPDParmDB
+                    MPDListenSock, MPDStreamHandler, MPDConClientSock, MPDParmDB,\
+                    MPDSock
 
 try:
     import pwd
@@ -73,12 +84,20 @@ except:
 global parmdb, nextRange, appnum
 global numDoneWithIO, myExitStatus, sigOccurred, outXmlDoc, outECs
 
+#CR_SUPPORT
+global cr_status_vector, cr_succeed_count, cr_nprocs, cr_man_sock, cr_con_sock
+#CR_SUPPORT_END
+
 recvTimeout = 20  # const
 
 
 def mpiexec():
     global parmdb, nextRange, appnum
     global numDoneWithIO, myExitStatus, sigOccurred, outXmlDoc, outECs
+
+    #CR_SUPPORT
+    global cr_status_vector, cr_succeed_count, cr_nprocs, cr_man_sock, cr_con_sock
+    #CR_SUPPORT_END
 
     import sys  # for sys.excepthook on next line
     sys.excepthook = mpd_uncaught_except_tb
@@ -298,6 +317,33 @@ def mpiexec():
     else:
         mshipPid = 0
 
+    #CR_SUPPORT
+    if (os.environ.has_key('MV2_CR_ENABLED') and os.environ['MV2_CR_ENABLED'] == '1'):
+        #Get env for FTC
+        #mpd_print(1, 'mpiexec: CR_ENABLED')
+        cr_enabled = 1
+        if (not os.environ.has_key('MV2_CKPT_MPIEXEC_PORT')):
+            mpd_print(1, 'mpiexec: MV2_CKPT_MPIEXEC_PORT not set')
+            sys.exit(-1)
+        cr_console_port = os.environ['MV2_CKPT_MPIEXEC_PORT']
+        if (not os.environ.has_key('MV2_CKPT_MPD_BASE_PORT')):
+            mpd_print(1, 'mpiexec: MV2_CKPT_MPD_BASE_PORT not set')
+            sys.exit(-1)
+        cr_mpd_base_port = int(os.environ['MV2_CKPT_MPD_BASE_PORT'])
+        if (os.environ.has_key('MV2_CR_RESTART_FILE')):
+            mpd_print(1, 'mpiexec: Restarting')
+            cr_restart_file = os.environ['MV2_CR_RESTART_FILE']
+            cr_succeed_count = 0
+            cr_status_vector = ['invalid' for i in range(parmdb['nprocs'])]  # initialize a list
+        else:
+            cr_restart_file = ''
+
+        #Connect to console
+        cr_nprocs = parmdb['nprocs']
+    else:
+        cr_enabled = 0
+    #CR_SUPPORT_END
+    
     # make sure to do this after nprocs has its value
     linesPerRank = {}  # keep this a dict instead of a list
     for i in range(parmdb['nprocs']):
@@ -429,6 +475,19 @@ def mpiexec():
     if (not msg  or  not msg.has_key('cmd') or msg['cmd'] != 'man_checking_in'):
         mpd_print(1, 'mpiexec: from man, invalid msg=:%s:' % (msg) )
         sys.exit(-1)
+
+    #CR_SUPPORT
+    if (cr_enabled == 1):
+        #Send an additional message to enable FT support for man
+        msgToSend = { 'cmd' : 'enable_cr', 'cr_mpd_base_port' : cr_mpd_base_port, 'cr_restart_file' : cr_restart_file}
+        cr_man_sock = manSock
+        manSock.send_dict_msg(msgToSend)
+        crConSock = MPDSock()
+        crConSock.connect((socket.gethostname(),int(cr_console_port)))
+        streamHandler.set_handler(crConSock,handle_cr_con_input)
+        cr_con_sock = crConSock
+    #CR_SUPPORT_END
+    
     msgToSend = { 'cmd' : 'ringsize', 'ring_ncpus' : currRingNCPUs,
                   'ringsize' : currRingSize }
     manSock.send_dict_msg(msgToSend)
@@ -904,6 +963,9 @@ def read_machinefile(machineFilename):
     return machineFileInfo
 
 def handle_man_input(sock,streamHandler):
+    #CR_SUPPORT
+    global cr_status_vector, cr_succeed_count, cr_con_sock, cr_nprocs
+    #CR_SUPPORT_END
     global numDoneWithIO, myExitStatus
     global outXmlDoc, outECs
     msg = sock.recv_dict_msg()
@@ -972,8 +1034,75 @@ def handle_man_input(sock,streamHandler):
             #       (msg['cli_rank'],exit_status)
         else:
             myExitStatus = 0
+    #CR_SUPPORT
+    elif msg['cmd'] == 'ckpt_rep':
+        #mpd_print(1,'receivd ckpt_rep from %d, result = %s ' % (msg['rank'],msg['result']))
+        if (cr_status_vector[msg['rank']] != 'invalid'):
+            mpd_print(1,'already have result = %s for rank %d' % (msg['result'],msg['rank']))
+            return
+        if (msg['result'] == 'fail'):
+            cr_status_vector[msg['rank']] = msg['result']
+            cr_con_sock.send_char_msg('ckpt_result=fail')
+        elif (msg['result'] == 'succeed'):
+            cr_status_vector[msg['rank']] = msg['result']
+            cr_succeed_count=cr_succeed_count+1
+            if (cr_succeed_count == cr_nprocs):
+                #mpd_print(1,'all MPI procs succeed in checkpointing')
+                cr_con_sock.send_char_msg('ckpt_result=succeed\n')
+    elif msg['cmd'] == 'rsrt_rep':
+        #mpd_print(1,'receivd rsrt_rep from %d, result = %s ' % (msg['rank'],msg['result']))
+        if (cr_status_vector[msg['rank']] != 'invalid'):
+            mpd_print(1,'already have result = %s for rank %d' % (msg['result'],msg['rank']))
+            return
+        if (msg['result'] == 'fail'):
+            cr_status_vector[msg['rank']] = msg['result']
+            cr_con_sock.send_char_msg('rsrt_result=fail')
+        elif (msg['result'] == 'succeed'):
+            cr_status_vector[msg['rank']] = msg['result']
+            cr_succeed_count=cr_succeed_count+1
+            if (cr_succeed_count == cr_nprocs):
+                #mpd_print(1,'all MPI procs succeed in restart')
+                cr_con_sock.send_char_msg('rsrt_result=succeed\n')
+    #CR_SUPPORT_END
     else:
         print 'unrecognized msg from manager :%s:' % msg
+
+#CR_SUPPORT
+def parse_char_msg(msg):
+    parsed_msg = {}
+    try:
+        sm = re.findall(r'\S+',msg)
+        for e in sm:
+            se = e.split('=')
+            parsed_msg[se[0]] = se[1]
+    except:
+        print 'unable to parse char msg %s' % msg
+    return parsed_msg
+
+def handle_cr_con_input(sock):
+    #CR_SUPPORT
+    global cr_status_vector, cr_succeed_count, cr_man_sock, cr_nprocs
+    #CR_SUPPORT_END
+
+    line = sock.recv_char_msg()
+    if not line:
+        mpd_print(1,'mpiexec: cr console disconnected')
+        sock.close()
+        sys.exit(-1)
+    msg = parse_char_msg(line)
+    if not msg.has_key('cmd'):
+        mpd_print(1, "unrecognized msg (no cmd) :%s:" % line )
+        return
+    elif msg['cmd'] == 'ckpt_req':
+        #mpd_print(1, "receivd ckpt_req to file :%s:" % msg['file'] )
+        cr_succeed_count = 0
+        cr_status_vector = ['invalid' for i in range(cr_nprocs)]  # initialize a list
+        msgToSend = {'cmd' : 'ckpt_req', 'file' : msg['file']}
+        cr_man_sock.send_dict_msg(msgToSend)
+        #mpd_print(1, "ckpt_req send to man")
+    else:
+        print 'unrecognized msg:%s:' % msg
+#CR_SUPPORT_END
 
 def handle_cli_stdout_input(sock,parmdb,streamHandler,linesPerRank):
     global numDoneWithIO

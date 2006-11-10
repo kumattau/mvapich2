@@ -1300,8 +1300,8 @@ static int Consume_signals(MPID_Win * winptr, uint64_t expected)
                 dreg_tmp = list_entry->mem_entry;
                 size = list_entry->data_size;
                 if (size > (int)rdma_eagersize_1sc) {
-                    list_win_ptr->put_get_list->completion--;
-                    if (list_win_ptr->put_get_list->completion == 0) 
+                    list_entry->completion--;
+                    if (list_entry->completion == 0) 
                         dreg_unregister(dreg_tmp);
                 }
                 list_win_ptr->put_get_list_size --;
@@ -1313,8 +1313,8 @@ static int Consume_signals(MPID_Win * winptr, uint64_t expected)
                 dreg_tmp = list_entry->mem_entry;
                 if (origin_addr == NULL) {
                     ASSERT(size > rdma_eagersize_1sc);
-                    list_win_ptr->put_get_list->completion--;
-                    if (list_win_ptr->put_get_list->completion == 0)
+                    list_entry->completion--;
+                    if (list_entry->completion == 0)
                         dreg_unregister(dreg_tmp);
                 } else {
                     ASSERT(size <= rdma_eagersize_1sc);

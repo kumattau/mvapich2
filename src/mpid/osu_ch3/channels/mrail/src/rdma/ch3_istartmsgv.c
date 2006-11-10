@@ -132,6 +132,11 @@ int MPIDI_CH3_iStartMsgv(MPIDI_VC_t * vc, MPID_IOV * iov, int n_iov,
         return mpi_errno;
     }
 #endif
+
+#ifdef CKPT
+    MPIDI_CH3I_CR_lock();
+#endif
+
     /*CM code*/
     if (vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE 
     || !MPIDI_CH3I_CM_SendQ_empty(vc)) {
@@ -214,6 +219,9 @@ int MPIDI_CH3_iStartMsgv(MPIDI_VC_t * vc, MPID_IOV * iov, int n_iov,
 
   fn_exit:
     *sreq_ptr = sreq;
+#ifdef CKPT
+    MPIDI_CH3I_CR_unlock();
+#endif
 
     MPIDI_DBG_PRINTF((50, FCNAME, "exiting"));
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_ISTARTMSGV);
