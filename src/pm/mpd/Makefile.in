@@ -124,7 +124,7 @@ install: all
 	fi
 	-@if [ ! -z "${MPIEXEC_CR}" ] ; then \
 		${INSTALL} -m  755 ${MPIEXEC_CR} $(DESTDIR)${bindir}/${MPIEXEC_CR} ;\
-		${INSTALL} -m  755 list_mpi_pids.sh $(DESTDIR)${bindir}/list_mpi_pids.sh ;\
+		${INSTALL} -m  755 mv2_checkpoint $(DESTDIR)${bindir}/mv2_checkpoint ;\
 	fi
 	@echo "copying python files/links into " $(DESTDIR)${bindir}
 	-@for cmd in ${PYTHON_SOURCE} ; do \
