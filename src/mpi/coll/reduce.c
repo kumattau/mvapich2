@@ -715,7 +715,7 @@ Output Parameter:
 #ifdef _SMP_
 extern int enable_shmem_collectives;
 extern int disable_shmem_reduce;
-#define SHMEM_COLL_REDUCE_THRESHOLD (1<<19)
+#define SHMEM_COLL_REDUCE_THRESHOLD (1<<10)
 #endif
 int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, 
 	       MPI_Op op, int root, MPI_Comm comm)
