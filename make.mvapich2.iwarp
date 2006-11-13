@@ -15,7 +15,7 @@ if [ -z "$ARCH" ]; then
 fi
 
 # Mandatory variables.  All are checked except CXX and F90.
-export OPEN_IB_HOME=${OPEN_IB_HOME:-/usr/local/ofed}
+export OPEN_IB_HOME=${OPEN_IB_HOME:-/usr/local}
 PREFIX=${PREFIX:-/usr/local/mvapich2}
 
 export CC=${CC:-gcc}
