@@ -5,7 +5,8 @@ package.  The logs are arranged in the "most recent first" order.
 
 12/04/2006
 
-* Fix for when MV2_IBA_HCA is used. Contributed by Michael Schwind.
+* Fix for when MV2_IBA_HCA is used. Contributed by Michael Schwind 
+  of Technical Univ. of Chemnitz (Germany).
 
 10/03/2006
 
