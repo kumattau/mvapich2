@@ -3,6 +3,9 @@ MVAPICH2 Changelog
 This file briefly describes the latest changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+12/04/2006
+
+* Fix for when MV2_IBA_HCA is used. Contributed by Michael Schwind.
 
 10/03/2006
 
