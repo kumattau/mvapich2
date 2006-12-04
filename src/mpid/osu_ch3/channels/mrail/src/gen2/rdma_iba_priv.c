@@ -312,8 +312,8 @@ int rdma_open_hca(struct MPIDI_CH3I_RDMA_Process_t *proc)
                     ib_dev = dev_list[j];
                     break;
                 }
+                j++;
             }
-            j++;
         }
 
         if (!ib_dev) {
