@@ -43,6 +43,7 @@ do {                                                          \
 
 int *rdma_base_listen_port;
 int *rdma_cm_host_list;
+volatile int rdma_cm_finalized = 0;
 
 char *init_message_buf;		/* Used for message exchange in RNIC case */
 struct ibv_mr *init_mr;
@@ -226,7 +227,7 @@ void *cm_thread(void *arg)
     while (1) {
 
 	ret = rdma_get_cm_event(proc->cm_channel, &event);
-	if (ret) {
+	if (ret && !rdma_cm_finalized) {
 	    ibv_error_abort(IBV_RETURN_ERR,
 			    "rdma_get_cm_event err %d\n", ret);
 	}
@@ -756,6 +757,7 @@ void ib_finalize_rdma_cm(int pg_rank, int pg_size)
 
     if (pg_size > 1) {
 	rdma_destroy_id(proc->cm_listen_id);
+	rdma_cm_finalized = 1;
 	rdma_destroy_event_channel(MPIDI_CH3I_RDMA_Process.cm_channel);
     }
     
