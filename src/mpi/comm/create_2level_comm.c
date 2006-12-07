@@ -35,6 +35,8 @@ void create_2level_comm (MPI_Comm comm, int size, int my_rank){
 
     if (comm_count > MAX_ALLOWED_COMM) return;
 
+    MPIR_Nest_incr();
+
     int* shmem_group = malloc(sizeof(int) * size);
     if (NULL == shmem_group){
         printf("Couldn't malloc shmem_group\n");
@@ -144,6 +146,7 @@ void create_2level_comm (MPI_Comm comm, int size, int my_rank){
     }
 
     ++comm_count;
+    MPIR_Nest_decr();
 }
 
 int check_comm_registry(MPI_Comm comm)
@@ -153,8 +156,10 @@ int check_comm_registry(MPI_Comm comm)
     int context_id = 0, i =0, my_rank, size;
     context_id = comm_ptr->context_id;
 
+    MPIR_Nest_incr();
     MPI_Comm_rank(comm, &my_rank);
     MPI_Comm_size(comm, &size);
+    MPIR_Nest_decr();
 
     for (i = 0; i < comm_registered; i++){
         if (comm_registry[i] == context_id){

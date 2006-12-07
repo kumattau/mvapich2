@@ -866,6 +866,7 @@ int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
             /* intracommunicator */
 #ifdef _SMP_
             if (enable_shmem_collectives){
+                MPIR_Nest_incr();
                 mpi_errno = NMPI_Type_get_true_extent(datatype, &true_lb, &true_extent);  
                 MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER, "**fail");
                 MPID_Datatype_get_extent_macro(datatype, extent);
@@ -897,10 +898,12 @@ int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
                         else
                             uop = (MPI_User_function *) op_ptr->function.f77_function;
                 }
+                MPIR_Nest_decr();
             }
 
             if ((comm_ptr->shmem_coll_ok == 1)&&(stride < SHMEM_COLL_REDUCE_THRESHOLD)&&
                     (disable_shmem_reduce == 0) &&(is_commutative==1) &&(enable_shmem_collectives)&&(check_comm_registry(comm))){
+                MPIR_Nest_incr();
                 my_rank = comm_ptr->rank;
                 MPI_Comm_size(comm, &total_size);
                 shmem_comm = comm_ptr->shmem_comm;
@@ -911,14 +914,17 @@ int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
 
                 leader_comm = comm_ptr->leader_comm;
                 MPID_Comm_get_ptr(leader_comm, leader_commptr);
+                MPIR_Nest_decr();
 
 
                 if (local_rank == 0){
                     global_rank = leader_commptr->rank;
                     MPIU_CHKLMEM_MALLOC(tmpbuf, void *, count*(MPIR_MAX(extent,true_extent)), mpi_errno, "receive buffer");
                     tmpbuf = (void *)((char*)tmpbuf - true_lb);
+                    MPIR_Nest_incr();
                     mpi_errno = MPIR_Localcopy(sendbuf, count, datatype, tmpbuf,
                             count, datatype);
+                    MPIR_Nest_decr();
                 }
 
                 if (local_size > 1){
@@ -949,20 +955,26 @@ int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
 
                     leader_root = comm_ptr->leader_rank[leader_of_root];
                     if (local_size != total_size){
+                        MPIR_Nest_incr();
                         mpi_errno = MPIR_Reduce(tmpbuf, recvbuf, count, datatype,
                                 op, leader_root, leader_commptr); 
+                        MPIR_Nest_decr();
                     }
                     else if (root == my_rank){
+                        MPIR_Nest_incr();
                         mpi_errno = MPIR_Localcopy(tmpbuf, count, datatype, recvbuf,
                                 count, datatype);
+                        MPIR_Nest_decr();
                         goto fn_exit;
                     }
 
                 }
                 else{
                     local_buf = (char*)shmem_buf + stride*local_rank;
+                    MPIR_Nest_incr();
                     mpi_errno = MPIR_Localcopy(sendbuf, count, datatype, local_buf,
                             count, datatype);
+                    MPIR_Nest_decr();
                     MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(local_size, local_rank, shmem_comm_rank);
                 }
 
@@ -970,6 +982,7 @@ int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
                 /* Copying data from leader to the root incase leader is
                  * not the root */
                 if (local_size > 1){
+                    MPIR_Nest_incr();
                     /* Send the message to the root if the leader is not the
                      * root of the reduce operation */
                     if ((local_rank == 0) && (root != my_rank) && (leader_root == global_rank)){
@@ -986,7 +999,9 @@ int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
                     if ((local_rank != 0) && (root == my_rank)){
                         mpi_errno = MPIC_Recv ( recvbuf, count, datatype, leader_of_root, 
                                 MPIR_REDUCE_TAG, comm, &status);
+
                     }
+                    MPIR_Nest_decr();
                 }
 
             }

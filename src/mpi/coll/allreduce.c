@@ -720,6 +720,7 @@ int MPI_Allreduce ( void *sendbuf, void *recvbuf, int count,
             /* intracommunicator */
 #ifdef _SMP_
             if (enable_shmem_collectives){
+                MPIR_Nest_incr();
                 mpi_errno = NMPI_Type_get_true_extent(datatype, &true_lb, &true_extent);  
                 MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER, "**fail");
                 MPID_Datatype_get_extent_macro(datatype, extent);
@@ -751,9 +752,11 @@ int MPI_Allreduce ( void *sendbuf, void *recvbuf, int count,
                         else
                             uop = (MPI_User_function *) op_ptr->function.f77_function;
                 }
+                MPIR_Nest_decr();
             }
             if ((comm_ptr->shmem_coll_ok == 1)&&(stride < SHMEM_COLL_ALLREDUCE_THRESHOLD)&&
                     (disable_shmem_allreduce == 0) &&(is_commutative) &&(enable_shmem_collectives) &&(check_comm_registry(comm))){
+                MPIR_Nest_incr();
                 my_rank = comm_ptr->rank;
                 MPI_Comm_size(comm, &total_size);
                 shmem_comm = comm_ptr->shmem_comm;
@@ -764,6 +767,7 @@ int MPI_Allreduce ( void *sendbuf, void *recvbuf, int count,
 
                 leader_comm = comm_ptr->leader_comm;
                 MPID_Comm_get_ptr(leader_comm, leader_commptr);
+                MPIR_Nest_decr();
 
 
                 if (local_rank == 0){
@@ -816,7 +820,9 @@ int MPI_Allreduce ( void *sendbuf, void *recvbuf, int count,
 
                 /* Broadcasting the mesage from leader to the rest*/
                 if (local_size > 1){
+                    MPIR_Nest_incr();
                     MPI_Bcast(recvbuf, count, datatype, 0, shmem_comm);
+                    MPIR_Nest_decr();
                 }
 
             }
