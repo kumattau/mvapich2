@@ -337,7 +337,7 @@ int CR_Init()
     }
     temp = getenv("MV2_CKPT_INTERVAL");
     if (temp) {
-        checkpoint_interval = atoi(temp)*3600;
+        checkpoint_interval = atoi(temp)*60;
     }
     else {
         checkpoint_interval = -1;
