@@ -525,7 +525,9 @@ static int cm_handle_reactivation_complete()
     MPIDI_PG_t *pg;
     pg = MPIDI_Process.my_pg;
     for (i = 0; i < MPIDI_PG_Get_size(pg); i++) {
-        MPIDI_PG_Get_vc(pg, i, &vc);
+        if (i == MPIDI_Process.my_pg_rank)
+            continue;
+        MPIDI_PG_Get_vcr(pg, i, &vc);
         if (vc->ch.state == MPIDI_CH3I_VC_STATE_REACTIVATING_CLI_2) {
             MPIDI_CH3I_CM_Send_logged_msg(vc);
             vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;

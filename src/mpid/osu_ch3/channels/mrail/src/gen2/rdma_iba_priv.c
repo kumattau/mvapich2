@@ -1576,9 +1576,6 @@ int cm_qp_move_to_rtr(MPIDI_VC_t *vc, uint16_t *lids, uint32_t *qpns)
         }
     }
 
-    /*Initialize Data structures and prepose receives*/
-    MRAILI_Init_vc(vc,pg_rank);
-    
     return 0;
 }
 
