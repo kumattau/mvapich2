@@ -302,6 +302,14 @@ int MPIDI_CH3I_Progress_test()
             cm_handle_pending_send();
         }
 
+#ifdef CKPT
+        if (MPIDI_CH3I_Process.reactivation_complete) {
+            /*Some channel has been reactivated*/
+            MPIDI_CH3I_Process.reactivation_complete = 0;
+            cm_handle_reactivation_complete();
+        }
+#endif
+
         mpi_errno = MPIDI_CH3I_read_progress(&vc_ptr, &buffer);
         if (mpi_errno != MPI_SUCCESS) {
             mpi_errno =
