@@ -59,7 +59,7 @@ int ib_cma_event_handler(struct rdma_cm_id *cma_id,
 void *cm_thread(void *arg);
 
 /* Bind to a random port between 12000 and 18000 */
-int bind_listen_port(); 
+int bind_listen_port(int pg_rank, int pg_size); 
 
 /* Get user defined port number */
 int get_base_listen_port();
@@ -276,7 +276,7 @@ void ib_init_rdma_cm(struct MPIDI_CH3I_RDMA_Process_t *proc,
 
     /* Create port to listen for connections */
     /* Find a base port, relay it to the peers and listen */
-    rdma_base_listen_port[pg_rank] = bind_listen_port(pg_rank);
+    rdma_base_listen_port[pg_rank] = bind_listen_port(pg_rank, pg_size);
 
     exchange_ports(rdma_base_listen_port[pg_rank], pg_rank, pg_size);
 
@@ -308,7 +308,7 @@ int rdma_cm_connect_all(int *hosts, int pg_rank, int pg_size)
     return 0;
 }
 
-int bind_listen_port(int pg_rank)
+int bind_listen_port(int pg_rank, int pg_size)
 {
     struct sockaddr_in sin;
     int ret, count = 0;
@@ -336,7 +336,7 @@ int bind_listen_port(int pg_rank)
 	}
     }
 
-    ret = rdma_listen(proc->cm_listen_id, 10);
+    ret = rdma_listen(proc->cm_listen_id, pg_size - pg_rank);
     if (ret) {
 	ibv_error_abort(IBV_RETURN_ERR,
 			"rdma_listen failed: %d\n", ret);
