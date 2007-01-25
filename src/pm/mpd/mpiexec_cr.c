@@ -54,7 +54,7 @@ static int  CRU_keyval_tab_idx = 0;
 #define CR_RSRT_PORT_CHANGE 16
 
 
-#define MAX_PATH_LEN 128
+#define MAX_PATH_LEN 512
 #define MPIRUN      "mpiexec.py"
 
 #define CR_ERR_ABORT(args...)  do {\
@@ -285,7 +285,7 @@ void CR_timer_loop()
     starting_time = last_ckpt = starting.tv_sec;
     while(1)
     {
-        sleep(60);
+        sleep(1);
         CR_MUTEX_LOCK;
         gettimeofday(&now,NULL);
         time_counter = (now.tv_sec-starting_time);
@@ -406,8 +406,8 @@ int CR_Fork_exec(char *cmd, int argc, char *argv[])
     mpiexec_pid = fork();
     if (mpiexec_pid == 0) {/*Child*/
         execvp(cmd,argv);
-        perror("execvp:");
-        CR_ERR_ABORT("execvp failed\n");
+        perror("execvp");
+        CR_ERR_ABORT("execvp failed, cmd %s, argc %d\n",cmd, argc);
     } else {
         CR_connect_mpd(mpiexec_listen_port);
         CR_DBG("mpd connected\n");
@@ -441,7 +441,9 @@ int main(int argc, char *argv[])
         exit (1);
     }
     strncpy(cmd,argv[0],length);
-    strcat(cmd,MPIRUN);
+    *(cmd+length)='\0';
+    strncat(cmd,MPIRUN,MAX_PATH_LEN-length);
+    *(cmd+MAX_PATH_LEN-1)='\0';
 
     new_argv = (char **)malloc(sizeof(char*)*(argc+1));
     new_argv[0]=cmd;
