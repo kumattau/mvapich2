@@ -15,7 +15,7 @@ if [ -z "$ARCH" ]; then
 fi
 
 # Mandatory variables.  All are checked except CXX and F90.
-export OPEN_IB_HOME=${OPEN_IB_HOME:-/usr/local}
+export OPEN_IB_HOME=${OPEN_IB_HOME:-/usr/local/ofed}
 PREFIX=${PREFIX:-/usr/local/mvapich2}
 
 export CC=${CC:-gcc}
@@ -89,6 +89,15 @@ else
     ROMIO="--disable-romio"
 fi
 
+# Whether or not to build with shared library support.  Disabled by default.
+# Enabled with "yes".
+SHARED_LIBS=${SHARED_LIBS:-}
+
+if [ "$SHARED_LIBS" = "yes" ]; then
+    SHARED_LIBS="--enable-sharedlibs=gcc"
+else
+    SHARED_LIBS=""
+fi
 
 export LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH
 export LIBS=${LIBS:--L${OPEN_IB_LIB} ${BLCR_LIB} ${RDMA_CM_LIBS} -libverbs -libumad -lpthread}
@@ -106,7 +115,7 @@ rm -rf *.cache *.log *.status lib bin
 echo "Configuring MVAPICH2..."
 ./configure  --prefix=${PREFIX} ${MULTI_THREAD} \
     --with-device=osu_ch3:mrail --with-rdma=gen2 --with-pm=mpd \
-    ${ROMIO} --without-mpe 2>&1 |tee config-mine.log
+    ${ROMIO} ${SHARED_LIBS} --without-mpe 2>&1 |tee config-mine.log
 ret=$?
 tail config-mine.log
 test $ret = 0 ||  die "configuration."
