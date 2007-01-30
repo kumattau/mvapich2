@@ -122,6 +122,7 @@ export CFLAGS="-D${ARCH}  -D_SMP_ -DRDMA_FAST_PATH -DUSE_HEADER_CACHING \
 # Prelogue
 make distclean &>/dev/null
 rm -rf *.cache *.log *.status lib bin
+set -o pipefail
 
 # Configure MVAPICH2
 echo "Configuring MVAPICH2..."

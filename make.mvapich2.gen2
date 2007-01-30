@@ -146,6 +146,7 @@ export CFLAGS=${CFLAGS:--D${ARCH} ${SMP_FLAG} -DUSE_HEADER_CACHING ${PTMALLOC} -
 # Prelogue
 make distclean &>/dev/null
 rm -rf *.cache *.log *.status lib bin
+set -o pipefail
 
 # Configure MVAPICH2
 # If you are configuring with tcp/ip stack, please use:

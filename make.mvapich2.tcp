@@ -31,12 +31,12 @@ fi
 # Prelogue
 make distclean 1> /dev/null 2> /dev/null
 rm -rf config-mine.log *.cache *.log *.status lib bin
+set -o pipefail
 
 # Configure MVAPICH2
 echo "Start Configuring MVAPICH2..."
 rm -f config-mine.log
-./configure  --prefix=$PREFIX ${MULTI_THREAD} --with-pm=mpd --without-mpe 
-
+./configure  --prefix=$PREFIX ${MULTI_THREAD} --with-pm=mpd --without-mpe 2>&1 |tee config-mine.log
 ret=$?
 tail config-mine.log
 test $ret = 0 ||  die Configuration
