@@ -553,6 +553,10 @@ int CR_IBU_Release_network()
     MPIDI_PG_t *pg;
     MPIDI_VC_t *vc;
 
+#ifndef DISABLE_PTMALLOC
+    mvapich2_mfin();
+#endif
+
     /* Insert implementation here */
     pg = MPIDI_Process.my_pg;
     pg_rank = MPIDI_Process.my_pg_rank;
@@ -607,6 +611,17 @@ int CR_IBU_Release_network()
         */
     }
 
+    if (MPIDI_CH3I_RDMA_Process.has_srq) {
+        int hca_num = 0;
+        for(hca_num = 0; hca_num < rdma_num_hcas; hca_num++) {
+            pthread_cancel(MPIDI_CH3I_RDMA_Process.async_thread[hca_num]);
+            pthread_join(MPIDI_CH3I_RDMA_Process.async_thread[hca_num], NULL);
+            if (ibv_destroy_srq(MPIDI_CH3I_RDMA_Process.srq_hndl[hca_num])) {
+                ibv_error_abort(IBV_RETURN_ERR, "Couldn't destroy SRQ\n");
+            }
+        }
+    }
+
     /* free all the spaces */
     for (i = 0; i < pg_size; i++) {
         if (rdma_iba_addr_table.qp_num_rdma[i])
@@ -624,17 +639,6 @@ int CR_IBU_Release_network()
     free(rdma_iba_addr_table.qp_num_rdma);
     free(rdma_iba_addr_table.qp_num_onesided);
 
-    if (MPIDI_CH3I_RDMA_Process.has_srq) {
-        int hca_num = 0;
-        for(hca_num = 0; hca_num < rdma_num_hcas; hca_num++) {
-            pthread_cancel(MPIDI_CH3I_RDMA_Process.async_thread[hca_num]);
-            pthread_join(MPIDI_CH3I_RDMA_Process.async_thread[hca_num], NULL);
-            if (ibv_destroy_srq(MPIDI_CH3I_RDMA_Process.srq_hndl[hca_num])) {
-                ibv_error_abort(IBV_RETURN_ERR, "Couldn't destroy SRQ\n");
-            }
-        }
-    }
-
 /*
     while (dreg_evict());
 */
@@ -649,10 +653,6 @@ int CR_IBU_Release_network()
         ibv_close_device(MPIDI_CH3I_RDMA_Process.nic_context[i]);
     }
     
-#ifndef DISABLE_PTMALLOC
-    mvapich2_mfin();
-#endif
-
     return 0;
 }
 

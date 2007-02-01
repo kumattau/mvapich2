@@ -1234,9 +1234,10 @@ int MPIDI_CH3I_CM_Finalize()
 	    ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.cq_hndl[i]);
 
 	    if (MPIDI_CH3I_RDMA_Process.has_srq) {
-		pthread_cancel(MPIDI_CH3I_RDMA_Process.async_thread[i]);
-		ibv_destroy_srq(MPIDI_CH3I_RDMA_Process.srq_hndl[i]);
-	    }
+            pthread_cancel(MPIDI_CH3I_RDMA_Process.async_thread[i]);
+            pthread_join(MPIDI_CH3I_RDMA_Process.async_thread[i], NULL);        
+            ibv_destroy_srq(MPIDI_CH3I_RDMA_Process.srq_hndl[i]);
+        }
 
 	    deallocate_vbufs(i);
 	    while (dreg_evict());
