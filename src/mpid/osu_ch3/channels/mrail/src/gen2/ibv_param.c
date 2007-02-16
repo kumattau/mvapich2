@@ -260,14 +260,23 @@ int  rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
         strncpy(rdma_iba_hca, value, 32);
     }
 
+#if defined(RDMA_CM)
     if ((value = getenv("MV2_USE_RDMA_CM")) != NULL) {
 	    proc->use_rdma_cm = 1;
     }
-    else
+    else {
 	    proc->use_rdma_cm = 0;
+	    proc->use_iwarp_mode = 0;
+    }
 
-#if defined(RDMA_CM) && defined(RDMA_CM_RNIC) 
-    proc->use_rdma_cm = 1;
+    if ((value = getenv("MV2_ENABLE_IWARP_MODE")) != NULL) {
+	    proc->use_rdma_cm = 1;
+	    proc->use_iwarp_mode = 1;
+	    rdma_default_max_cq_size = 2000;
+    }
+#else
+    proc->use_rdma_cm = 0;
+    proc->use_iwarp_mode = 0;
 #endif
 
     err = rdma_open_hca(proc);
@@ -277,8 +286,13 @@ int  rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
     }
     
     /* Set default parameter acc. to the first hca */
-    proc->hca_type = get_hca_type(proc->ib_dev[0],
-				  proc->nic_context[0]);
+    if (proc->use_iwarp_mode) {
+	    proc->hca_type = UNKNOWN_HCA; /* Using default parameter values */
+    }
+    else {
+	    proc->hca_type = get_hca_type(proc->ib_dev[0],
+					  proc->nic_context[0]);
+    }
     
     if (proc->hca_type == HCA_ERROR) {
 	    return -1;
@@ -295,7 +309,8 @@ int  rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
     }
 
     if (!(value = getenv("MV2_DISABLE_SRQ")) && proc->hca_type != PATH_HT
-            && proc->hca_type != MLX_PCI_X  && proc->hca_type != IBM_EHCA && !proc->use_rdma_cm) {
+            && proc->hca_type != MLX_PCI_X  && proc->hca_type != IBM_EHCA && !proc->use_rdma_cm 
+	    && !proc->use_iwarp_mode) {
         proc->has_srq = 1;
         proc->post_send = post_srq_send;
     } else {
@@ -303,7 +318,8 @@ int  rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
         proc->post_send = post_send;
     }
 
-    if ((value = getenv("MV2_DISABLE_RDMA_FAST_PATH")) != NULL) {
+    if (((value = getenv("MV2_ENABLE_RDMA_FAST_PATH")) == NULL) 
+	&& (((value = getenv("MV2_DISABLE_RDMA_FAST_PATH")) != NULL) || proc->use_iwarp_mode)){
         proc->has_adaptive_fast_path = 0;
         rdma_polling_set_limit       = 0;
     } else {
@@ -323,7 +339,8 @@ int  rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
     }
 
     if ((value = getenv("MV2_DISABLE_RDMA_ONE_SIDED")) != NULL
-     || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND) {
+     || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND
+     || proc->use_rdma_cm) {
         proc->has_one_sided = 0;
     } else {
         proc->has_one_sided = 1;

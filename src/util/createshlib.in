@@ -177,7 +177,7 @@ if [ $mode = link ] ; then
 
 	*)
         # This is the default model
-	$Show ${C_LINK_SHL} -o $srclibbase.$SHLIB_EXT .tmp/*.o
+	$Show ${C_LINK_SHL} -o $srclibbase.$SHLIB_EXT .tmp/*.o $dependentLibs
 	;;
     esac
 

@@ -914,17 +914,6 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank)
         }
     }
 
-    if (MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_RDMA_CM){
-	MPIDI_CH3I_RDMA_Process.use_rdma_cm = 1;
-	MPIDI_CH3I_RDMA_Process.has_one_sided = 0;
-	rdma_num_hcas = 1;
-#ifdef RDMA_CM_RNIC
-	rdma_default_max_cq_size = 2000;
-#endif
-    }
-    else 
-	MPIDI_CH3I_RDMA_Process.use_rdma_cm = 0;
-
 #ifdef RDMA_CM
     if (MPIDI_CH3I_RDMA_Process.use_rdma_cm)
     {
@@ -958,7 +947,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank)
     }
 
     MPIDI_CH3I_RDMA_Process.maxtransfersize = RDMA_MAX_RDMA_SIZE;
-    
+
     if (((num_smp_peers + 1) < pg_size) || (!MPIDI_CH3I_RDMA_Process.use_rdma_cm)){
 
 	/* Initialize the registration cache */
@@ -986,6 +975,15 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank)
 
 	    if (hosts[i] != hosts[pg_rank])
 		MRAILI_Init_vc(vc, pg_rank);
+	}
+
+	if (MPIDI_CH3I_RDMA_Process.use_iwarp_mode)
+	{
+	    int error = PMI_Barrier();
+	    if (error != 0) {
+		ibv_error_abort(IBV_RETURN_ERR,
+				"PMI Barrier failed\n");
+	    }
 	}
 
      return MPI_SUCCESS;    

@@ -182,7 +182,6 @@ int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
     if (enable_shmem_collectives){
         if (split_comm == 1){
             if (*newcomm != MPI_COMM_NULL){
-                MPIR_Nest_incr();
                 MPI_Comm_test_inter(*newcomm, &flag);
                 if (flag == 0){
                     int my_id, size;
@@ -192,7 +191,6 @@ int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
                     create_2level_comm(*newcomm, size, my_id);
                     split_comm = 1;
                 }
-                MPIR_Nest_decr();
             }
         }
     }

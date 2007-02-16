@@ -94,14 +94,14 @@ CFLAGS          = @CFLAGS@
 C_COMPILE       = $(CC) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
 # Build the shared library from the shared object files
 lib/lib${MPILIBNAME}.@SHLIB_EXT@: lib/lib${MPILIBNAME}.la
-	(cd lib && $(CREATESHLIB) --mode=link -o lib${MPILIBNAME}.la  -rpath $(libdir) )
+	(cd lib && $(CREATESHLIB) --mode=link -o lib${MPILIBNAME}.la  -rpath $(libdir) $(LIBS) )
 	if [ -n "@NO_WEAK_SYM@" -a \
 		"${MPILIBNAME}" != "${PMPILIBNAME}" ] ; then \
-	(cd lib && $(CREATESHLIB) --mode=link -o lib${PMPILIBNAME}.la  -rpath $(libdir) );\
+	(cd lib && $(CREATESHLIB) --mode=link -o lib${PMPILIBNAME}.la  -rpath $(libdir) $(LIBS) );\
 	fi
 # Build the shared library from the shared object files
 lib/libf${MPILIBNAME}.@SHLIB_EXT@: lib/libf${MPILIBNAME}.la
-	(cd lib && $(CREATESHLIB) --mode=link -o libf${MPILIBNAME}.la  -rpath $(libdir) )
+	(cd lib && $(CREATESHLIB) --mode=link -o libf${MPILIBNAME}.la  -rpath $(libdir) $(LIBS) )
 
 # --------------------------------------------------------------------------
 .libstamp0: 

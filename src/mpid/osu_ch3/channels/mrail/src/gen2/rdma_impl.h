@@ -124,6 +124,7 @@ typedef struct MPIDI_CH3I_RDMA_Process_t {
     sem_t                       rdma_cm;
 #endif /* RDMA_CM */
     uint8_t                     use_rdma_cm;
+    uint8_t                     use_iwarp_mode;
 
 } MPIDI_CH3I_RDMA_Process_t;
 

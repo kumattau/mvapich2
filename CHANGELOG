@@ -1,44 +1,15 @@
 MVAPICH2 Changelog
 ------------------
+
 This file briefly describes the latest changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
-12/04/2006
+02/01/2007
+* Change the CKPT handling to invalidate all unused registration cache.
 
-* Fix for rdma_cm_get_event err in finalize. Reported by Steve Wise.
+01/29/2007
 
-* Fix for when MV2_IBA_HCA is used. Contributed by Michael Schwind 
-  of Technical Univ. of Chemnitz (Germany).
-
-10/03/2006
-
-* Added on demand connection management.
-
-* Enhance shared memory communication support.
-
-* Added ptmalloc memory hook support.
-
-* Runtime selection for most configuration options.
-
-
-08/30/2006 (Release date of MVAPICH2-0.9.5)
-
-* Added multi-rail support for both point to point and direct one side
-  operations.
-
-* Added adaptive RDMA fast path.
-
-* Added shared receive queue support.
-
-* Added TotalView debugger support
-
-
-07/25/2006
-
-* Optimization of SMP startup information exchange for USE_MPD_RING to
-  enhance performance for SLURM. Thanks to Don and team members from Bull 
-  and folks from LLNL for their feedbacks and comments. 
-
+* Added ofed 1.2 interface change patch for iwarp/rdma_cm from Steve Wise.
 
 05/25/2006
 

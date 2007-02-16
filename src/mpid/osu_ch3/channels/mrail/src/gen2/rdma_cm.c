@@ -145,18 +145,25 @@ int ib_cma_event_handler(struct rdma_cm_id *cma_id,
 	break;
     case RDMA_CM_EVENT_CONNECT_REQUEST:
 
-	if (!event->private_data_len){
+	if (!event->param.conn.private_data_len){
             ibv_error_abort(IBV_RETURN_ERR,
 			    "Error obtaining remote rank from event private data\n");
 	}
 	
-	rank = *((int *)event->private_data);
+	rank = *((int *)event->param.conn.private_data);
         MPIDI_PG_Get_vc(cached_pg, rank, &vc);
 	vc->mrail.rails[rail_index].cm_ids = cma_id;
 
 	/* Create qp */
         rdma_cm_create_qp(rank);
 	
+	if (proc->use_iwarp_mode) 
+	{
+	    struct ibv_recv_wr *bad_wr;
+	    ibv_post_recv(cma_id->qp, &init_rwr, &bad_wr);
+	    DEBUG_PRINT("[%d] Posting recv \n", pg_rank);
+	}
+
 	/* Accept remote connection - passive connect */
 	memset(&conn_param, 0, sizeof conn_param);
 	conn_param.responder_resources = 1;
@@ -167,25 +174,18 @@ int ib_cma_event_handler(struct rdma_cm_id *cma_id,
 			    "rdma_accept error: %d\n", ret);
 	}
 
-#ifdef RDMA_CM_RNIC
-	{
-	    struct ibv_recv_wr *bad_wr;
-	    ibv_post_recv(cma_id->qp, &init_rwr, &bad_wr);
-	    DEBUG_PRINT("[%d] Posting recv \n", pg_rank);
-	}
-#endif
 	break;
     case RDMA_CM_EVENT_ESTABLISHED:
 
-#ifdef RDMA_CM_RNIC
-        rank = get_remote_rank(cma_id);
-	if (rank < pg_rank){
-	    struct ibv_send_wr *bad_wr;
-	    DEBUG_PRINT("[%d] Posting send to %d\n", pg_rank, rank);
-	    ibv_post_send(cma_id->qp, &init_swr, &bad_wr);
+	if (proc->use_iwarp_mode) {
+	    rank = get_remote_rank(cma_id);
+	    if (rank < pg_rank){
+		struct ibv_send_wr *bad_wr;
+		DEBUG_PRINT("[%d] Posting send to %d\n", pg_rank, rank);
+		ibv_post_send(cma_id->qp, &init_swr, &bad_wr);
+	    }
 	}
-	    
-#endif
+
 	sem_post(&proc->rdma_cm);
 	break;
 
@@ -243,7 +243,10 @@ void ib_init_rdma_cm(struct MPIDI_CH3I_RDMA_Process_t *proc,
     int i = 0;
     char hostname[64];
 
-    assert (rdma_num_rails == 1);
+    if (rdma_num_rails > 1) {
+	ibv_error_abort(IBV_RETURN_ERR,
+			"Multi-Rail mode not yet supported for RDMA CM\n");
+    }
 
     gethostname(hostname, 64);
     DEBUG_PRINT("%s initializing...\n", hostname);
@@ -298,9 +301,9 @@ int rdma_cm_connect_all(int *hosts, int pg_rank, int pg_size)
 	sem_wait(&proc->rdma_cm);
     }
 
-#ifdef RDMA_CM_RNIC
-    init_messages(hosts, pg_rank, pg_size);
-#endif
+    if (proc->use_iwarp_mode) {
+	init_messages(hosts, pg_rank, pg_size);
+    }
 
     rdma_cm_host_list = hosts;
     /* RDMA CM Connection Setup Complete */
@@ -380,7 +383,7 @@ int create_cm_ids(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank, int pg_si
     int rail_index = 0;
 
     /* Create a port for listening */
-#if (defined(RDMA_CM_RNIC) || defined(RDMA_CM_OFED_1_0))
+#if (defined(RDMA_CM_OFED_1_0))
     ret = rdma_create_id(proc->cm_channel, &proc->cm_listen_id, proc);
 #else
     ret = rdma_create_id(proc->cm_channel, &proc->cm_listen_id, proc, RDMA_PS_TCP);
@@ -392,7 +395,7 @@ int create_cm_ids(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank, int pg_si
 
     for (i = 0; i < pg_rank; i++){
         MPIDI_PG_Get_vc(cached_pg, i, &vc);
-#if (defined(RDMA_CM_RNIC) || defined(RDMA_CM_OFED_1_0))
+#if (defined(RDMA_CM_OFED_1_0))
 	ret = rdma_create_id(proc->cm_channel, &(vc->mrail.rails[rail_index].cm_ids), proc);
 #else
 	ret = rdma_create_id(proc->cm_channel, &(vc->mrail.rails[rail_index].cm_ids), proc, RDMA_PS_TCP);
@@ -619,10 +622,10 @@ int rdma_cm_init_pd_cq(struct rdma_cm_id *cmid){
 	}
     }
 
-#ifdef RDMA_CM_RNIC
-    if (!init_mr) 
-	rnic_init();
-#endif
+    if (proc->use_iwarp_mode) {
+	if (!init_mr) 
+	    rnic_init();
+    }
 
     return 0;
 }

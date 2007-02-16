@@ -79,23 +79,22 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         }
 
 #ifdef RDMA_CM
-        if (NULL != getenv("MV2_USE_RDMA_CM")) {
+        if ((NULL != getenv("MV2_USE_RDMA_CM")) || (NULL != getenv("MV2_ENABLE_IWARP_MODE"))){
             MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_RDMA_CM;
         }
-#ifdef RDMA_CM_RNIC
-        MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_RDMA_CM;
-#endif
 #endif /* RDMA_CM */
     }
 
 #ifdef CKPT
 #ifdef RDMA_CM
-    if (pg_rank==0) {
-        fprintf(stderr,"Error: Checkpointing support doesn't work with RDMA_CM support\n"
-                "Please recompile MVAPICH2 without the CFLAG -DCKPT to disable checkpointing support,\n"
-                "or without the CFLAG -DRDMA_CM to disable RDMA_CM support\n");
+    if (MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_RDMA_CM) {
+	if (pg_rank==0) {
+	    fprintf(stderr,"Error: Checkpointing support doesn't work with RDMA_CM support\n"
+		    "Please recompile MVAPICH2 without the CFLAG -DCKPT to disable checkpointing support,\n"
+		    "or without the CFLAG -DRDMA_CM to disable RDMA_CM support\n");
+	}
+	return -1;
     }
-    return -1;
 #endif
 #ifdef _SMP_
     if (pg_rank==0) {

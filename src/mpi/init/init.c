@@ -4,6 +4,17 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2003-2007, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT_MVAPICH2 in the top level MVAPICH2 directory.
+ *
+ */
 
 #include "mpiimpl.h"
 #include "mpi_init.h"
@@ -78,10 +89,14 @@ int MPI_Init( int *argc, char ***argv )
     MPID_MPI_INIT_STATE_DECL(MPID_STATE_MPI_INIT);
 
 #ifdef _SMP_
+    char *value;
 #ifdef _SHMEM_COLL_
-    if (setenv("MV2_ENABLE_SHMEM_COLL","1",1) == -1){
-        printf("Error in setting environment\n");
-        exit(0);
+    if (((value = getenv("MV2_USE_RDMA_CM")) == NULL) &&
+         ((value = getenv("MV2_ENABLE_IWARP_MODE")) == NULL)){
+        if (setenv("MV2_ENABLE_SHMEM_COLL","1",1) == -1){
+            printf("Error in setting environment\n");
+            exit(0);
+        }
     }
 #endif
 #endif
@@ -108,7 +123,6 @@ int MPI_Init( int *argc, char ***argv )
     if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 
 #ifdef _SMP_
-    char *value;
     int flag;
     if ((value = getenv("MV2_ENABLE_SHMEM_COLL")) != NULL){
         enable_shmem_collectives = 1;
@@ -131,14 +145,12 @@ int MPI_Init( int *argc, char ***argv )
 
     if (enable_shmem_collectives){
     if (split_comm == 1){
-        MPIR_Nest_incr();
         int my_id, size;
         MPI_Comm_rank(MPI_COMM_WORLD, &my_id);
         MPI_Comm_size(MPI_COMM_WORLD, &size);
         split_comm = 0;
         create_2level_comm(MPI_COMM_WORLD, size, my_id);
         split_comm = 1;
-        MPIR_Nest_decr();
     }
     }
 #endif
