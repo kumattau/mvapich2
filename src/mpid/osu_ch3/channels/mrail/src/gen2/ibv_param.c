@@ -318,8 +318,7 @@ int  rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
         proc->post_send = post_send;
     }
 
-    if (((value = getenv("MV2_ENABLE_RDMA_FAST_PATH")) == NULL) 
-	&& (((value = getenv("MV2_DISABLE_RDMA_FAST_PATH")) != NULL) || proc->use_iwarp_mode)){
+    if ((value = getenv("MV2_DISABLE_RDMA_FAST_PATH")) != NULL){
         proc->has_adaptive_fast_path = 0;
         rdma_polling_set_limit       = 0;
     } else {
