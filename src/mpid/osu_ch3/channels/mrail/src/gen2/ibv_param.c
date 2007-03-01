@@ -262,16 +262,16 @@ int  rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 
 #if defined(RDMA_CM)
     if ((value = getenv("MV2_USE_RDMA_CM")) != NULL) {
-	    proc->use_rdma_cm = 1;
+	    proc->use_rdma_cm = !!atoi(value);
     }
     else {
 	    proc->use_rdma_cm = 0;
 	    proc->use_iwarp_mode = 0;
     }
 
-    if ((value = getenv("MV2_ENABLE_IWARP_MODE")) != NULL) {
-	    proc->use_rdma_cm = 1;
-	    proc->use_iwarp_mode = 1;
+    if ((value = getenv("MV2_USE_IWARP_MODE")) != NULL) {
+	    proc->use_rdma_cm = !!atoi(value);
+	    proc->use_iwarp_mode = !!atoi(value);
 	    rdma_default_max_cq_size = 2000;
     }
 #else

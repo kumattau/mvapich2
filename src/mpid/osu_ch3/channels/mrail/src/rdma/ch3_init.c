@@ -79,9 +79,19 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         }
 
 #ifdef RDMA_CM
-        if ((NULL != getenv("MV2_USE_RDMA_CM")) || (NULL != getenv("MV2_ENABLE_IWARP_MODE"))){
-            MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_RDMA_CM;
-        }
+	{
+	    char *value;
+	    if ((value = getenv("MV2_USE_RDMA_CM")) != NULL) {
+		if (atoi(value)){
+		    MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_RDMA_CM;
+		}
+	    }
+	    if ((value = getenv("MV2_USE_IWARP_MODE")) != NULL) {
+		if (atoi(value)){
+		    MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_RDMA_CM;
+		}
+	    }
+	}
 #endif /* RDMA_CM */
     }
 
