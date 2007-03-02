@@ -435,7 +435,8 @@ int main(int argc, char *argv[])
     CR_Init();
     /*replace the command line to mpiexec*/
     rchar = strrchr(argv[0],'/');
-    length = rchar+1-argv[0];
+    /* strrchr returns NULL if char is not found */
+    length = rchar ? rchar+1-argv[0] : 0;
     if (length+strlen(MPIRUN)>MAX_PATH_LEN) {
         fprintf(stderr,"command line too long\n");
         exit (1);
