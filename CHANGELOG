@@ -3,6 +3,11 @@ MVAPICH2 Changelog
 This file briefly describes the latest changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+03/02/2007
+
+* Fix for the "command line too long" problem. Contributed by Xavier Bru
+  <xavier.bru@bull.net> from Bull (http://www.bull.net/)
+
 12/04/2006
 
 * Fix for rdma_cm_get_event err in finalize. Reported by Steve Wise.
