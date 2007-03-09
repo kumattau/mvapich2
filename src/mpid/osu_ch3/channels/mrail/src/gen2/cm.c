@@ -21,6 +21,8 @@
 #define CM_MSG_TYPE_REACTIVATE_REP   3
 #endif
 
+#define CM_MSG_TYPE_FIN_SELF  99
+
 typedef struct cm_msg {
     uint32_t req_id;
     uint32_t server_rank;
@@ -766,6 +768,10 @@ void *cm_completion_handler(void *arg)
                     cm_ud_recv_buf +
                     cm_ud_recv_buf_index * (sizeof(cm_msg) + 40) + 40;
                 cm_msg *msg = (cm_msg *) buf;
+                if (msg->msg_type == CM_MSG_TYPE_FIN_SELF) {
+                    CM_DBG("received finalization message");
+                    return NULL;
+                }
                 cm_handle_msg(msg);
                 CM_DBG("Post recv");
                 cm_post_ud_recv(buf - 40, sizeof(cm_msg));
@@ -1003,7 +1009,33 @@ int MPICM_Finalize_UD()
     cm_pending_list_finalize();
 
     /*Cancel cm thread */
-    pthread_cancel(cm_comp_thread);
+    {
+        cm_msg msg;
+        struct ibv_sge list;
+        struct ibv_send_wr wr;
+        struct ibv_send_wr *bad_wr;
+        struct ibv_wc wc;
+        msg.msg_type = CM_MSG_TYPE_FIN_SELF;
+        memcpy(cm_ud_send_buf + 40, &msg, sizeof(cm_msg));
+        memset(&list, 0, sizeof(struct ibv_sge));
+        list.addr = (uintptr_t) cm_ud_send_buf + 40;
+        list.length = sizeof(cm_msg);
+        list.lkey = cm_ud_mr->lkey;
+
+        memset(&wr, 0, sizeof(struct ibv_send_wr));
+        wr.wr_id = CM_UD_SEND_WR_ID;
+        wr.sg_list = &list;
+        wr.num_sge = 1;
+        wr.opcode = IBV_WR_SEND;
+        wr.send_flags = IBV_SEND_SIGNALED | IBV_SEND_SOLICITED;
+        wr.wr.ud.ah = cm_ah[cm_ib_context.rank];
+        wr.wr.ud.remote_qpn = cm_ud_qpn[cm_ib_context.rank];
+        wr.wr.ud.remote_qkey = 0;
+
+        if (ibv_post_send(cm_ud_qp, &wr, &bad_wr)) {
+            CM_ERR_ABORT("ibv_post_send to ud qp failed");
+        }
+    }
     pthread_join(cm_comp_thread,NULL);
     CM_DBG("Completion thread destroyed");
 #ifdef CKPT

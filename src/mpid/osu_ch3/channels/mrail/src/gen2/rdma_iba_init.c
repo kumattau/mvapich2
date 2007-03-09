@@ -1076,6 +1076,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank)
         for (i = 0; i < pg_size; i++) {
             if (pg_rank == i) {
                 lid_all[i] = MPIDI_CH3I_RDMA_Process.lids[0][0];
+                ud_qpn_all[i] = ud_qpn_self;
                 continue;
             }
             sprintf(key,"ud_info_%08d",i);
