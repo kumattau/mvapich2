@@ -177,11 +177,6 @@ int MRAILI_Fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
         len = VBUF_BUFFER_SIZE;
     avail = len;
 
-    len -= iov[0].MPID_IOV_LEN;
-
-    DEBUG_PRINT("[send: fill buffer] !!!!!!!!!!!!! index %d\n",
-                vc->mrail.rfp.phead_RDMA_send);
-
     PACKET_SET_RDMA_CREDIT(header, vc);
     DEBUG_PRINT("header credit %d cached credit %d\n",
                 header->mrail.rdma_credit, cached->mrail.rdma_credit);
@@ -190,7 +185,7 @@ int MRAILI_Fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
 
 #ifdef USE_HEADER_CACHING
     if ((header->type == MPIDI_CH3_PKT_EAGER_SEND) &&
-        (len <= MAX_SIZE_WITH_HEADER_CACHING) &&
+	(len - sizeof(MPIDI_CH3_Pkt_eager_send_t) <= MAX_SIZE_WITH_HEADER_CACHING) &&
         (header->match.tag == cached->match.tag) &&
         (header->match.rank == cached->match.rank) &&
         (header->match.context_id == cached->match.context_id) &&
@@ -203,44 +198,46 @@ int MRAILI_Fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
 
         if (header->sender_req_id == cached->sender_req_id) {
             MPIDI_CH3I_MRAILI_Pkt_fast_eager *fast_header;
-            MRAILI_FAST_RDMA_VBUF_START(v,
-                                    len +
-                                    sizeof
-                                    (MPIDI_CH3I_MRAILI_Pkt_fast_eager),
-                                    vstart);
+
+	    MRAILI_FAST_RDMA_VBUF_START(v, len - sizeof(MPIDI_CH3_Pkt_eager_send_t) +
+			sizeof(MPIDI_CH3I_MRAILI_Pkt_fast_eager), vstart);
 
             DEBUG_PRINT 
                 ("[send: fill buf], head cached, head_flag %p, vstart %p, length %d",
                  &v->head_flag, vstart,
-                 len + sizeof(MPIDI_CH3I_MRAILI_Pkt_fast_eager));
+		 len - sizeof(MPIDI_CH3_Pkt_eager_send_t) + sizeof(MPIDI_CH3I_MRAILI_Pkt_fast_eager));
     
             fast_header = vstart;
             fast_header->type = MPIDI_CH3_PKT_FAST_EAGER_SEND;
-            fast_header->bytes_in_pkt = len;
+            fast_header->bytes_in_pkt = len - sizeof(MPIDI_CH3_Pkt_eager_send_t);
             fast_header->seqnum = seq_num;
             v->pheader = fast_header;
-            data_buf =
-                (void *) ((aint_t) vstart +
-                          sizeof(MPIDI_CH3I_MRAILI_Pkt_fast_eager));
+            data_buf = (void *) ((aint_t) vstart + sizeof(MPIDI_CH3I_MRAILI_Pkt_fast_eager));
     
+	    if (iov[0].MPID_IOV_LEN - sizeof(MPIDI_CH3_Pkt_eager_send_t))
+		memcpy(data_buf, (void *)((uintptr_t)iov[0].MPID_IOV_BUF +
+		       sizeof(MPIDI_CH3_Pkt_eager_send_t)), iov[0].MPID_IOV_LEN -
+		       sizeof(MPIDI_CH3_Pkt_eager_send_t));
+
+	    data_buf = (void *)((uintptr_t)data_buf + iov[0].MPID_IOV_LEN -
+		       sizeof(MPIDI_CH3_Pkt_eager_send_t));
+
             *num_bytes_ptr += sizeof(MPIDI_CH3I_MRAILI_Pkt_fast_eager);
             avail -= sizeof(MPIDI_CH3I_MRAILI_Pkt_fast_eager);
         } else {
             MPIDI_CH3I_MRAILI_Pkt_fast_eager_with_req *fast_header;
-            MRAILI_FAST_RDMA_VBUF_START(v,
-                                    len +
-                                    sizeof
-                                    (MPIDI_CH3I_MRAILI_Pkt_fast_eager_with_req),
-                                    vstart);
-                                                                                                                                               
-            DEBUG_PRINT
-                ("[send: fill buf], head cached, head_flag %p, vstart %p, length %d",
+
+	    MRAILI_FAST_RDMA_VBUF_START(v, len - sizeof(MPIDI_CH3_Pkt_eager_send_t) +
+			sizeof(MPIDI_CH3I_MRAILI_Pkt_fast_eager_with_req), vstart);
+
+            DEBUG_PRINT("[send: fill buf], head cached, head_flag %p, vstart %p, length %d",
                  &v->head_flag, vstart,
-                 len + sizeof(MPIDI_CH3I_MRAILI_Pkt_fast_eager_with_req));
-                                                                                                                                               
+		 len - sizeof(MPIDI_CH3_Pkt_eager_send_t) + 
+		 sizeof(MPIDI_CH3I_MRAILI_Pkt_fast_eager_with_req));
+
             fast_header = vstart;
             fast_header->type = MPIDI_CH3_PKT_FAST_EAGER_SEND_WITH_REQ;
-            fast_header->bytes_in_pkt = len;
+            fast_header->bytes_in_pkt = len - sizeof(MPIDI_CH3_Pkt_eager_send_t);
             fast_header->seqnum = seq_num;
             fast_header->sender_req_id = header->sender_req_id;
             cached->sender_req_id = header->sender_req_id;
@@ -248,21 +245,29 @@ int MRAILI_Fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
             data_buf =
                 (void *) ((aint_t) vstart +
                           sizeof(MPIDI_CH3I_MRAILI_Pkt_fast_eager_with_req));
-                                                                                                                                               
+
+	    if (iov[0].MPID_IOV_LEN - sizeof(MPIDI_CH3_Pkt_eager_send_t))
+		memcpy(data_buf, (void *)((uintptr_t)iov[0].MPID_IOV_BUF +
+		       sizeof(MPIDI_CH3_Pkt_eager_send_t)), iov[0].MPID_IOV_LEN -
+		       sizeof(MPIDI_CH3_Pkt_eager_send_t));
+
+	    data_buf = (void *)((uintptr_t)data_buf + iov[0].MPID_IOV_LEN -
+		       sizeof(MPIDI_CH3_Pkt_eager_send_t));
+
             *num_bytes_ptr += sizeof(MPIDI_CH3I_MRAILI_Pkt_fast_eager_with_req);
             avail -= sizeof(MPIDI_CH3I_MRAILI_Pkt_fast_eager_with_req);
         }
     } else
 #endif
     {
-        MRAILI_FAST_RDMA_VBUF_START(v, len + iov[0].MPID_IOV_LEN, vstart);
+        MRAILI_FAST_RDMA_VBUF_START(v, len, vstart);
         DEBUG_PRINT
             ("[send: fill buf], head not cached, v %p, vstart %p, length %d, header size %d\n",
              v, vstart, len, iov[0].MPID_IOV_LEN);
         memcpy(vstart, header, iov[0].MPID_IOV_LEN);
 #ifdef USE_HEADER_CACHING
         if (header->type == MPIDI_CH3_PKT_EAGER_SEND)
-            memcpy(cached, header, sizeof(MPIDI_CH3_Pkt_send_t));
+            memcpy(cached, header, sizeof(MPIDI_CH3_Pkt_eager_send_t));
         vc->mrail.rfp.cached_miss++;
 #endif
         data_buf = (void *) ((aint_t) vstart + iov[0].MPID_IOV_LEN);
@@ -273,7 +278,7 @@ int MRAILI_Fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
 
     /* We have filled the header, it is time to fit in the actual data */
     for (i = 1; i < n_iov; i++) {
-        if (avail > iov[i].MPID_IOV_LEN) {
+        if (avail >= iov[i].MPID_IOV_LEN) {
             memcpy(data_buf, iov[i].MPID_IOV_BUF, iov[i].MPID_IOV_LEN);
             data_buf = (void *) ((aint_t) data_buf + iov[i].MPID_IOV_LEN);
             *num_bytes_ptr += iov[i].MPID_IOV_LEN;
