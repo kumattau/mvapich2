@@ -38,6 +38,7 @@ libdir=@libdir@
 # Determined by a combination of environment variables and tests within
 # configure (e.g., determining whehter -lsocket is needee)
 F90="@F90@"
+F90_LINKPATH_SHL="@F90_LINKPATH_SHL@"
 F90CPP="@F90CPP@"
 #
 # Fortran 90 Compiler characteristics
@@ -326,6 +327,10 @@ fi
 # libraries
 
 if [ "$linking" = yes ] ; then
+    if [ -n "$F90_LINKPATH_SHL" ] ; then
+        # Prepend the path for the shared libraries to the library list
+        mpilibs="$F90_LINKPATH_SHL$libdir $mpilibs"
+    fi
     $Show $F90 $F90FLAGS $LDFLAGS $allargs $F90INCDIRS $F90MODDIRS -L$libdir $F90MODLIBS $mpilibs $MPI_OTHERLIBS
     rc=$?
 else

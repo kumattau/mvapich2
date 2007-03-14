@@ -40,6 +40,7 @@ fi
 
 # Set this to override automatic optimization setting (-O2).
 OPT_FLAG=${OPT_FLAG:--O2}
+export MPI_F90FLAGS=$OPT_FLAG
 
 # Checkpoint-Restart Support.  This is disabled by default.  Enable with
 # "yes".  If this is enabled, the following rules apply:

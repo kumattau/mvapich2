@@ -7170,11 +7170,11 @@ echo "${ECHO_T}no" >&6
 	 ;;
 	 solaris|solaris-cc)
 	 FC_SHL="$F77 -xcode=pic32"
-         FC_LINKPATH_SHL=$C_LINKPATH_SHL
+         FC_LINKPATH_SHL="-R"
 	 ;;
          solaris86-cc)
          FC_SHL="$F77 -G -KPIC"
-         FC_LINKPATH_SHL=$C_LINKPATH_SHL
+         FC_LINKPATH_SHL="-R"
          ;;
 	 libtool)
 	 FC_SHL='${LIBTOOL} --mode=compile ${F77}'
@@ -8025,12 +8025,15 @@ echo "${ECHO_T}$pac_cv_f90_accepts_F90" >&6
         # If we have the GNU Fortran 95 compiler (untested)
         F90_SHL="$F90 -shared -fpic"
         F90_LINKPATH_SHL="-Wl,-rpath -Wl,"
+    elif test "$ENABLE_SHLIB" = "gcc" ; then
+        # This is necessary for other compilers or GNU gfortran (rowland).
+        F90_LINKPATH_SHL="-Wl,-rpath -Wl,"
     elif test "$ENABLE_SHLIB" = "solaris" -o "$ENABLE_SHLIB" = "solaris-cc" ; then
         F90_SHL="$F90 -xcode=pic32"
-        F90_LINKPATH_SHL=$C_LINKPATH_SHL
+        F90_LINKPATH_SHL="-R"
     elif test "$ENABLE_SHLIB" = "solaris" -o "$ENABLE_SHLIB" = "solaris86-cc" ; then
         F90_SHL="$F90 -G -KPIC"
-        F90_LINKPATH_SHL=$C_LINKPATH_SHL
+        F90_LINKPATH_SHL="-R"
     fi
     # ------------------------------------------------
 fi
@@ -8735,7 +8738,7 @@ echo "$as_me: error: Namespaces are required for the MPI C++ interface" >&2;}
 	;;
 	solaris|solaris-cc)
         CXX_SHL="$CXX -xcode=pic32"
-        CXX_LINKPATH_SHL=$C_LINKPATH_SHL
+        CXX_LINKPATH_SHL="-R"
 	;;
 	libtool)
 	CXX_SHL='${LIBTOOL} --mode=compile ${CXX}'
@@ -8743,7 +8746,7 @@ echo "$as_me: error: Namespaces are required for the MPI C++ interface" >&2;}
 	;;
         solaris86-cc)
         CXX_SHL="$CXX -G -KPIC"
-        CXX_LINKPATH_SHL=$C_LINKPATH_SHL
+        CXX_LINKPATH_SHL="-R"
         ;;
 	*)
 	CXX_SHL=false

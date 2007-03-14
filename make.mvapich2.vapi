@@ -52,6 +52,7 @@ fi
 
 # Set this to override automatic optimization setting (-O2).
 OPT_FLAG=${OPT_FLAG:--O2}
+export MPI_F90FLAGS=$OPT_FLAG
 
 # Cluster size.
 # Supported: "_SMALL_CLUSTER", "_MEDIUM_CLUSTER", and "_LARGE_CLUSTER"

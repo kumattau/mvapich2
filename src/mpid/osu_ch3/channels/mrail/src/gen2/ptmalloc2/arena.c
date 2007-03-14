@@ -742,7 +742,12 @@ arena_get2(a_tsd, size) mstate a_tsd; size_t size;
   /* Add the new arena to the global list.  */
   (void)mutex_lock(&list_lock);
   a->next = main_arena.next;
+#if defined(__INTEL_COMPILER) && defined(_IA64_)
+#include <ia64intrin.h>
+  __memory_barrier ();
+#else
   atomic_write_barrier ();
+#endif
   main_arena.next = a;
   (void)mutex_unlock(&list_lock);
 

@@ -76,12 +76,12 @@ ptmalloc2: malloc.o
 	${RANLIB} ../../../../../../../lib/lib${MPILIBNAME}.a
 
 malloc.o:
-	${CC} -c -D_GNU_SOURCE=1 -O2 -Wall -Wstrict-prototypes -DUSE_TSD_DATA_HACK \
+	${CC} -c @CFLAGS@ -D_GNU_SOURCE=1 -O2 -Wall -Wstrict-prototypes -DUSE_TSD_DATA_HACK \
 	-Iptmalloc2/sysdeps/pthread -Iptmalloc2/sysdeps/generic -I. \
 	-DTHREAD_STATS=1  ptmalloc2/malloc.c
 
 ptmalloc2_shl:
-	${CC_SHL} -c -D_GNU_SOURCE=1 -O2 -Wall -Wstrict-prototypes -DUSE_TSD_DATA_HACK \
+	${CC_SHL} -c @CFLAGS@ -D_GNU_SOURCE=1 -O2 -Wall -Wstrict-prototypes -DUSE_TSD_DATA_HACK \
 	-Iptmalloc2/sysdeps/pthread -Iptmalloc2/sysdeps/generic -I. \
 	-DTHREAD_STATS=1  ptmalloc2/malloc.c
 	${AR} cr ../../../../../../../lib/lib${MPILIBNAME}.la malloc.o
