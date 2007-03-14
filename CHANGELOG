@@ -3,6 +3,11 @@ MVAPICH2 Changelog
 This file briefly describes the latest changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+03/14/2007
+
+* Updated src/mpi/romio/adio/ad_panfs/Makefile.in include path to find mpi.h.
+  Contributed by David Gunter, Los Alamos National Laboratory.
+
 03/08/2007
 
 * Change the finalization protocol for UD connection manager.
