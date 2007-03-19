@@ -1012,6 +1012,7 @@ int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
     /* ... end of body of routine ... */
     
   fn_exit:
+    MPIU_CHKLMEM_FREEALL();
     MPID_MPI_COLL_FUNC_EXIT(MPID_STATE_MPI_REDUCE);
     MPID_CS_EXIT();
     return mpi_errno;
