@@ -145,12 +145,22 @@ int ib_cma_event_handler(struct rdma_cm_id *cma_id,
 	break;
     case RDMA_CM_EVENT_CONNECT_REQUEST:
 
+#ifndef OFED_VERSION_1_1        /* OFED 1.2 */
 	if (!event->param.conn.private_data_len){
             ibv_error_abort(IBV_RETURN_ERR,
 			    "Error obtaining remote rank from event private data\n");
 	}
 	
 	rank = *((int *)event->param.conn.private_data);
+#else  /* OFED 1.1 */
+	if (!event->private_data_len){
+            ibv_error_abort(IBV_RETURN_ERR,
+			    "Error obtaining remote rank from event private data\n");
+	}
+	
+	rank = *((int *)event->private_data);
+#endif
+
         MPIDI_PG_Get_vc(cached_pg, rank, &vc);
 	vc->mrail.rails[rail_index].cm_ids = cma_id;
 
