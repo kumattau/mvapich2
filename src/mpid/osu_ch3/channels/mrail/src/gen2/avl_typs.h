@@ -46,6 +46,12 @@ typedef struct avl_node {
     void        *data;            /* pointer to data */
     short       bal;             /* balance factor */
     struct avl_node  *subtree[2];      /* LEFT and RIGHT subtrees */
+#ifndef DISABLE_PTMALLOC
+    void        *next;            /* A next field
+                                     to thread AVLnodes
+                                     in case of free
+                                     with PTMALLOC */
+#endif
 } AVLnode, *AVLtree;
 
 

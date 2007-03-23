@@ -61,18 +61,18 @@
 static AVLnode avl_free_list;
 
 #define INIT_AVL_FREE_LIST(_list) {                             \
-    (_list)->data = NULL;                                       \
+    (_list)->next = NULL;                                       \
 }
 
 #define ADD_AVL_FREE_LIST(_list, _v) {                          \
-    (_v)->data = (_list)->data;                                 \
-    (_list)->data = (_v);                                       \
+    (_v)->next = (_list)->next;                                 \
+    (_list)->next = (_v);                                       \
 }
 
 #define GET_AVL_FREE_LIST(_list, _v) {                          \
-    *(_v) = (_list)->data;                                      \
-    if((_list)->data) {                                         \
-        (_list)->data = ((AVLnode*)(_list)->data)->data;        \
+    *(_v) = (_list)->next;                                      \
+    if((_list)->next) {                                         \
+        (_list)->next = ((AVLnode*)(_list)->next)->next;        \
     }                                                           \
 }
 
@@ -119,6 +119,8 @@ new_node(data, size)
    if (NULL == root) {
        root = (AVLtree) ckalloc(sizeof (AVLnode));
    }
+
+   root->next = NULL;
    
 #else
    root = (AVLtree) ckalloc(sizeof (AVLnode));
@@ -141,8 +143,9 @@ free_node(rootp)
    AVLtree  *rootp;
 {
 #ifndef DISABLE_PTMALLOC
-    ADD_AVL_FREE_LIST(&avl_free_list, *rootp);
+   ADD_AVL_FREE_LIST(&avl_free_list, *rootp);
 #else
+   free((*rootp)->data);
    free((void *) *rootp);
 #endif
    *rootp = NULL_TREE;
@@ -418,6 +421,34 @@ avl_insert(data, size, rootp, compar)
       : (short) HEIGHT_UNCHANGED;
 }/* avl_insert */
 
+/*
+ * avl_smallest() -- find smallest element in a given tree
+ *
+ *  PARAMETERS:
+ *              data       -- a pointer to a pointer to key searched
+ *              rootp      -- a pointer to AVL tree
+ */
+PRIVATE AVLtree*
+avl_smallest(data, rootp)
+    void      **data;
+    AVLtree   *rootp;
+{
+    AVLtree *smallest = NULL;
+    long ret;
+
+    while(1) {
+
+        smallest = rootp;
+        ret = avl_min(*data, (*rootp)->data, 
+                node_type(*rootp));
+        if(0 == ret) {
+            break;
+        }
+        rootp = &((*rootp)->subtree[LEFT]);
+    }
+
+    return smallest;
+}
 
 /*
 * avl_delete() -- delete an item from the given tree
@@ -438,6 +469,10 @@ avl_delete(data, rootp, compar)
    short      decrease = 0;
    long        cmp;
    AVLtree    old_root = *rootp;
+   AVLtree    *successor;
+   void       *successor_data;
+   void       *current_data;
+   char       scratch_space[32];
    NODE       nd_typ   = node_type(*rootp);
    DIRECTION  dir      = (nd_typ == IS_LBRANCH) ? LEFT : RIGHT;
 
@@ -484,9 +519,37 @@ avl_delete(data, rootp, compar)
          return  (short)HEIGHT_CHANGED;    /* we just shortened the "dir" subtree */
 
       case  IS_TREE  :
+
+         /* Find the min. item in the right subtree */
+         successor = avl_smallest(&((*rootp)->data),
+                                  &((*rootp)->subtree[RIGHT]));
+         successor_data = (*successor)->data;
+         current_data = (*rootp)->data;
+
+         /* We have to do a swap without calling free over
+          * here to avoid having special code for PTMALLOC
+          * case. So, just copy out the required data into
+          * scratch space. Remember that scratch space is
+          * only 32 bytes long, statically allocated to
+          * avoid calling malloc from here, since we may
+          * already be inside `free'. 32-bytes should be
+          * OK for us, since our data size is max 8 bytes
+          * long.
+          */
+         memcpy(scratch_space, successor_data, sizeof(void *));
+
          decrease = avl_delete(&((*rootp)->data),
                                &((*rootp)->subtree[RIGHT]),
                                avl_min);
+
+         /* Restore the overwritten pointer caused by the
+          * recursive search into the AVL tree */
+         (*rootp)->data = current_data;
+
+         /* Restore the data in the pointer from what
+          * was freed */
+         memcpy((*rootp)->data, scratch_space, sizeof(void *));
+
       default :
          break;
      } /* switch */
