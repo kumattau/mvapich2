@@ -118,14 +118,15 @@ new_node(data, size)
 
    if (NULL == root) {
        root = (AVLtree) ckalloc(sizeof (AVLnode));
+       root->data = (void *) ckalloc(size);
    }
 
    root->next = NULL;
    
 #else
    root = (AVLtree) ckalloc(sizeof (AVLnode));
-#endif
    root->data = (void *) ckalloc(size);
+#endif
    memcpy(root->data, data, size);
    root->bal  = BALANCED;
    root->subtree[LEFT]  = root->subtree[RIGHT] = NULL_TREE;
