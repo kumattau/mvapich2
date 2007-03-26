@@ -26,6 +26,22 @@ int shmem_comm_count = 0;
 extern shmem_coll_region *shmem_coll;
 static pthread_mutex_t shmem_coll_lock  = PTHREAD_MUTEX_INITIALIZER;
 
+void clear_2level_comm (MPID_Comm* comm_ptr)
+{
+    comm_ptr->shmem_coll_ok = 0;
+    comm_ptr->leader_map  = NULL;
+    comm_ptr->leader_rank = NULL;
+}
+
+void free_2level_comm (MPID_Comm* comm_ptr)
+{
+    if (comm_ptr->leader_map)  { free(comm_ptr->leader_map);  }
+    if (comm_ptr->leader_rank) { free(comm_ptr->leader_rank); }
+    if (comm_ptr->leader_comm) { MPI_Comm_free(&(comm_ptr->leader_comm));}
+    if (comm_ptr->shmem_comm)  { MPI_Comm_free(&(comm_ptr->shmem_comm));}
+    clear_2level_comm(comm_ptr);
+}
+
 void create_2level_comm (MPI_Comm comm, int size, int my_rank){
 
     MPID_Comm* comm_ptr;
@@ -33,7 +49,8 @@ void create_2level_comm (MPI_Comm comm, int size, int my_rank){
     MPID_Comm_get_ptr( comm, comm_ptr );
     MPID_Comm_get_ptr( MPI_COMM_WORLD, comm_world_ptr );
 
-    if (comm_count > MAX_ALLOWED_COMM) return;
+
+    MPIR_Nest_incr();
 
     int* shmem_group = malloc(sizeof(int) * size);
     if (NULL == shmem_group){
@@ -59,6 +76,8 @@ void create_2level_comm (MPI_Comm comm, int size, int my_rank){
     /* Creating leader group */
     int leader = 0;
     leader = shmem_group[0];
+    free(shmem_group);
+
 
     /* Gives the mapping to any process's leader in comm */
     comm_ptr->leader_map = malloc(sizeof(int) * size);
@@ -104,6 +123,8 @@ void create_2level_comm (MPI_Comm comm, int size, int my_rank){
 
     MPI_Group_incl(comm_group, leader_group_size, leader_group, &subgroup1);
     MPI_Comm_create(comm, subgroup1, &(comm_ptr->leader_comm));
+
+    free(leader_group);
     MPID_Comm *leader_ptr;
     MPID_Comm_get_ptr( comm_ptr->leader_comm, leader_ptr );
     
@@ -141,10 +162,18 @@ void create_2level_comm (MPI_Comm comm, int size, int my_rank){
     }
     else{
         comm_ptr->shmem_coll_ok = 0;
+        free_2level_comm(comm_ptr);
+        MPI_Group_free(&subgroup1);
+        MPI_Group_free(&comm_group);
+    
     }
 
     ++comm_count;
+    MPIR_Nest_decr();
 }
+
+
+
 
 int check_comm_registry(MPI_Comm comm)
 {
@@ -153,8 +182,10 @@ int check_comm_registry(MPI_Comm comm)
     int context_id = 0, i =0, my_rank, size;
     context_id = comm_ptr->context_id;
 
+    MPIR_Nest_incr();
     MPI_Comm_rank(comm, &my_rank);
     MPI_Comm_size(comm, &size);
+    MPIR_Nest_decr();
 
     for (i = 0; i < comm_registered; i++){
         if (comm_registry[i] == context_id){
