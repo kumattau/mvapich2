@@ -128,7 +128,8 @@ int ib_cma_event_handler(struct rdma_cm_id *cma_id,
 	memset(&conn_param, 0, sizeof conn_param);
 	conn_param.responder_resources = 1;
 	conn_param.initiator_depth = 1;
-	conn_param.retry_count = 10;
+        conn_param.retry_count = rdma_default_rnr_retry;
+        conn_param.rnr_retry_count = rdma_default_rnr_retry;
 	conn_param.private_data_len = sizeof(int);
 	conn_param.private_data = malloc(sizeof(int));
 
@@ -178,6 +179,8 @@ int ib_cma_event_handler(struct rdma_cm_id *cma_id,
 	memset(&conn_param, 0, sizeof conn_param);
 	conn_param.responder_resources = 1;
 	conn_param.initiator_depth = 1;
+        conn_param.retry_count = rdma_default_rnr_retry;
+        conn_param.rnr_retry_count = rdma_default_rnr_retry;
 	ret = rdma_accept(cma_id, &conn_param);
 	if (ret) {
 	    ibv_error_abort(IBV_RETURN_ERR,
