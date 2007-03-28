@@ -240,7 +240,10 @@ void *cm_thread(void *arg)
     while (1) {
 
 	ret = rdma_get_cm_event(proc->cm_channel, &event);
-	if (ret && !rdma_cm_finalized) {
+	if (rdma_cm_finalized) {
+	    return NULL;
+	}
+	if (ret) {
 	    ibv_error_abort(IBV_RETURN_ERR,
 			    "rdma_get_cm_event err %d\n", ret);
 	}

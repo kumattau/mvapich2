@@ -273,6 +273,7 @@ int  rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 	    proc->use_rdma_cm = !!atoi(value);
 	    proc->use_iwarp_mode = !!atoi(value);
 	    rdma_default_max_cq_size = 2000;
+	    rdma_prepost_noop_extra = 7;
     }
 #else
     proc->use_rdma_cm = 0;

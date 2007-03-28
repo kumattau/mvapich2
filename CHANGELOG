@@ -3,6 +3,9 @@ MVAPICH2 Changelog
 This file briefly describes the latest changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+03/28/2007
+* Fix for RDMA_CM invalid event in finalize. Thanks to Steve Wise and Sean Hefty.
+
 03/14/2007
 
 * Updated src/mpi/romio/adio/ad_panfs/Makefile.in include path to find mpi.h.
