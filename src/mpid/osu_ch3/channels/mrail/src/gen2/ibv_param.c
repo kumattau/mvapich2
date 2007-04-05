@@ -56,7 +56,7 @@ int           rdma_polling_set_limit = -1;
 int           rdma_polling_set_threshold = 10;
 int           rdma_iba_eager_threshold;
 char          rdma_iba_hca[32];
-int           rdma_max_inline_size;
+int           rdma_max_inline_size = 128;
 unsigned int  rdma_ndreg_entries = RDMA_NDREG_ENTRIES;
 int           num_rdma_buffer;
 
@@ -272,8 +272,11 @@ int  rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
     if ((value = getenv("MV2_USE_IWARP_MODE")) != NULL) {
 	    proc->use_rdma_cm = !!atoi(value);
 	    proc->use_iwarp_mode = !!atoi(value);
-	    rdma_default_max_cq_size = 2000;
-	    rdma_prepost_noop_extra = 7;
+	    if (proc->use_iwarp_mode) {
+		    rdma_default_max_cq_size = 2000;
+		    rdma_prepost_noop_extra = 7;
+		    rdma_max_inline_size = 64;
+	    }
     }
 #else
     proc->use_rdma_cm = 0;
@@ -449,8 +452,6 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 
     if (proc->hca_type == IBM_EHCA) {
         rdma_max_inline_size = -1;
-    } else {
-        rdma_max_inline_size = 128;
     }
 
     if (proc->hca_type == MLX_PCI_EX_DDR) {
