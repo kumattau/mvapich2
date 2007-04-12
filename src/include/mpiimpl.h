@@ -3344,7 +3344,7 @@ void MPIR_CommL_forget( MPID_Comm * );
    and (b) provide runtime control?  Should these be MPIR_xxx_DEFAULT 
    instead? */
 #define COLL_COUNT 3
-#define COLL_SIZE  5
+#define COLL_SIZE  4
 #define BCAST_IDX  0
 #define ALLREDUCE_IDX 1
 #define REDUCE_IDX 2

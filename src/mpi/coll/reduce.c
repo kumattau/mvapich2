@@ -33,7 +33,7 @@
 #ifndef MPICH_MPI_FROM_PMPI
 #define MPI_Reduce PMPI_Reduce
 
-extern int coll_table[COLL_COUNT][COLL_SIZE];
+extern int coll_table[COLL_COUNT][COLL_SIZE+1];
 
 /* This is the default implementation of reduce. The algorithm is:
    

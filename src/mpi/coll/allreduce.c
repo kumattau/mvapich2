@@ -47,7 +47,7 @@ MPIR_Op_check_dtype_fn *MPIR_Op_check_dtype_table[] = {
     MPIR_LXOR_check_dtype, MPIR_BXOR_check_dtype,
     MPIR_MINLOC_check_dtype, MPIR_MAXLOC_check_dtype, }; 
 
-extern int coll_table[COLL_COUNT][COLL_SIZE];
+extern int coll_table[COLL_COUNT][COLL_SIZE+1];
 
 /* This is the default implementation of allreduce. The algorithm is:
    

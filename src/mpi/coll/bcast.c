@@ -22,7 +22,7 @@
 #ifndef MPICH_MPI_FROM_PMPI
 #define MPI_Bcast PMPI_Bcast
 
-int coll_table[COLL_COUNT][COLL_SIZE] = {{-1, -1, -1, 16384, 16384},
+int coll_table[COLL_COUNT][COLL_SIZE+1] = {{-1, -1, -1, 16384, 16384},
                                          {-1, 4096, 4096, 4096, 4096},
                                          {-1, 4096, 4096, 4096, 4096}
                                         };
