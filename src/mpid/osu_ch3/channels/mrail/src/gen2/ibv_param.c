@@ -189,7 +189,11 @@ static inline int get_hca_type(struct ibv_device *dev,
 
             if(20 == rate) {
 
-                hca_type = MLX_PCI_EX_DDR;
+                if(!strncmp(umad_ca.ca_type, "MT254", 5)) {
+                    hca_type = MLX_CX_DDR;
+                } else {
+                    hca_type = MLX_PCI_EX_DDR;
+                }
 
             } else if (10 == rate) {
 
@@ -312,9 +316,12 @@ int  rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
         proc->cluster_size = LARGE_CLUSTER;
     }
 
-    if (!(value = getenv("MV2_DISABLE_SRQ")) && proc->hca_type != PATH_HT
-            && proc->hca_type != MLX_PCI_X  && proc->hca_type != IBM_EHCA && !proc->use_rdma_cm 
-	    && !proc->use_iwarp_mode) {
+    if (!(value = getenv("MV2_DISABLE_SRQ")) && 
+            proc->hca_type != PATH_HT && 
+            proc->hca_type != MLX_PCI_X  && 
+            proc->hca_type != IBM_EHCA && 
+            !proc->use_rdma_cm && 
+            !proc->use_iwarp_mode) {
         proc->has_srq = 1;
         proc->post_send = post_srq_send;
     } else {
@@ -377,6 +384,9 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
                 case IBM_EHCA:
                     rdma_vbuf_total_size = 12*1024;
                     break;
+                case MLX_CX_DDR:
+                    rdma_vbuf_total_size = 9 * 1024;
+                    break;
                 case MLX_PCI_EX_SDR:
                 case MLX_PCI_EX_DDR:
                 case PATH_HT:
@@ -418,6 +428,7 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
             break;
         case MLX_PCI_EX_SDR:
         case MLX_PCI_EX_DDR:
+        case MLX_CX_DDR:
         case PATH_HT:
         default:
             switch(proc->cluster_size) {

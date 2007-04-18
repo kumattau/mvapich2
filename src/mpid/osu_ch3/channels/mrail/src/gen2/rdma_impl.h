@@ -51,6 +51,7 @@ enum {
     UNKNOWN_HCA, 
     MLX_PCI_EX_SDR, 
     MLX_PCI_EX_DDR, 
+    MLX_CX_DDR,
     PATH_HT, 
     MLX_PCI_X, 
     IBM_EHCA
