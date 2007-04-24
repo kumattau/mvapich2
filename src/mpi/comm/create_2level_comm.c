@@ -25,6 +25,7 @@ unsigned int comm_count = 0;
 int shmem_comm_count = 0;
 extern shmem_coll_region *shmem_coll;
 static pthread_mutex_t shmem_coll_lock  = PTHREAD_MUTEX_INITIALIZER;
+extern int shmem_coll_blocks;
 
 void clear_2level_comm (MPID_Comm* comm_ptr)
 {
@@ -145,7 +146,7 @@ void create_2level_comm (MPI_Comm comm, int size, int my_rank){
     shmem_comm_count = shmem_coll->shmem_comm_count;
     MPI_Bcast (&shmem_comm_count, 1, MPI_INT, 0, comm_ptr->shmem_comm);
 
-    if (shmem_comm_count <= SHMEM_COLL_BLOCKS){
+    if (shmem_comm_count <= shmem_coll_blocks){
         shmem_ptr->shmem_comm_rank = shmem_comm_count-1;
         input_flag = 1;
     }

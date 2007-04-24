@@ -81,6 +81,8 @@ extern int enable_shmem_collectives;
 int disable_shmem_allreduce=0;
 int disable_shmem_reduce=0;
 int disable_shmem_barrier=0;
+extern int shmem_coll_blocks;
+extern int shmem_coll_max_msg_size;
 #endif
 int MPI_Init( int *argc, char ***argv )
 {
@@ -141,6 +143,14 @@ int MPI_Init( int *argc, char ***argv )
         flag = (int)atoi(value);
         if (flag > 0) disable_shmem_barrier = 1;
         else disable_shmem_barrier = 0;
+    }
+    if ((value = getenv("MV2_SHMEM_COLL_NUM_COMM")) != NULL){
+	    flag = (int)atoi(value);
+	    if (flag > 0) shmem_coll_blocks = flag;
+    }
+    if ((value = getenv("MV2_SHMEM_COLL_MAX_MSG_SIZE")) != NULL){
+	    flag = (int)atoi(value);
+	    if (flag > 0) shmem_coll_max_msg_size = flag;
     }
 
     if (enable_shmem_collectives){
