@@ -112,7 +112,7 @@ if test -z "$PYTHON" ; then  ## user did not give us a python; find one
         
         if test "$enable_totalview" = "yes" ; then
             AC_MSG_CHECKING([that $pypgm has development tools for totalview])
-            if test -f /usr/lib/$pypgm/config/Makefile ; then
+            if test -f /usr/lib/$pypgm/config/Makefile -o -f /usr/lib64/$pypgm/config/Makefile ; then
                 AC_MSG_RESULT(yes)
             else
                 AC_MSG_RESULT(no)

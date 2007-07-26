@@ -2735,7 +2735,7 @@ echo "${ECHO_T}no" >&6
         if test "$enable_totalview" = "yes" ; then
             echo "$as_me:$LINENO: checking that $pypgm has development tools for totalview" >&5
 echo $ECHO_N "checking that $pypgm has development tools for totalview... $ECHO_C" >&6
-            if test -f /usr/lib/$pypgm/config/Makefile ; then
+            if test -f /usr/lib/$pypgm/config/Makefile -o -f /usr/lib64/$pypgm/config/Makefile ; then
                 echo "$as_me:$LINENO: result: yes" >&5
 echo "${ECHO_T}yes" >&6
             else
