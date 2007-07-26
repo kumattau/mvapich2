@@ -3,7 +3,7 @@
  * OSU MPI Latency test v2.2
  */
 /*
- * Copyright (C) 2002-2006 the Network-Based Computing Laboratory
+ * Copyright (C) 2002-2007 the Network-Based Computing Laboratory
  * (NBCL), The Ohio State University. 
  *
  * Contact: Dr. D. K. Panda (panda@cse.ohio-state.edu)
