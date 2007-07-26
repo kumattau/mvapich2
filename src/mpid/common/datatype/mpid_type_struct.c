@@ -25,10 +25,19 @@ static int MPID_Type_struct_alignsize(int count,
  * It uses these configure-time defines to do its magic:
  * - HAVE_MAX_INTEGER_ALIGNMENT - maximum byte alignment of integers
  * - HAVE_MAX_FP_ALIGNMENT      - maximum byte alignment of floating points
+ * - HAVE_MAX_LONG_DOUBLE_FP_ALIGNMENT - maximum byte alignment with long
+ *                                   doubles (if different from FP_ALIGNMENT)
+ * - HAVE_MAX_DOUBLE_FP_ALIGNMENT - maximum byte alignment with doubles (if
+ *                                  long double is different from FP_ALIGNMENT)
  * - HAVE_DOUBLE_POS_ALIGNMENT  - indicates that structures with doubles
  *                                are aligned differently if double isn't
  *                                at displacement 0 (e.g. PPC32/64).
  * - HAVE_LLINT_POS_ALIGNMENT   - same as above, for MPI_LONG_LONG_INT
+ *
+ * The different FP, DOUBLE, LONG_DOUBLE alignment case are necessary for
+ * Cygwin on X86 (because long_double is 12 bytes, so double and long double
+ * have different natural alignments).  Linux on X86, however, does not have
+ * different rules for this case.
  */
 static int MPID_Type_struct_alignsize(int count,
 				      MPI_Datatype *oldtype_array,
@@ -44,12 +53,35 @@ static int MPID_Type_struct_alignsize(int count,
 	{
 	    tmp_alignsize = MPID_Datatype_get_basic_size(oldtype_array[i]);
 
+#ifdef HAVE_DOUBLE_ALIGNMENT_EXCEPTION
+	    if (oldtype_array[i] == MPI_DOUBLE) {
+		tmp_alignsize = HAVE_DOUBLE_ALIGNMENT_EXCEPTION;
+	    }
+#endif
+
 	    switch(oldtype_array[i])
 	    {
 		case MPI_FLOAT:
 		case MPI_DOUBLE:
 		case MPI_LONG_DOUBLE:
-#ifdef HAVE_MAX_FP_ALIGNMENT
+#if defined(HAVE_MAX_LONG_DOUBLE_FP_ALIGNMENT) && \
+    defined(HAVE_MAX_DOUBLE_FP_ALIGNMENT)
+		    if (oldtype_array[i] == MPI_LONG_DOUBLE) {
+			if (tmp_alignsize > HAVE_MAX_LONG_DOUBLE_FP_ALIGNMENT)
+			    tmp_alignsize = HAVE_MAX_LONG_DOUBLE_FP_ALIGNMENT;
+		    }
+		    else if (oldtype_array[i] == MPI_DOUBLE) {
+			if (tmp_alignsize > HAVE_MAX_DOUBLE_FP_ALIGNMENT)
+			    tmp_alignsize = HAVE_MAX_DOUBLE_FP_ALIGNMENT;
+		    }
+		    else {
+			/* HAVE_MAX_FP_ALIGNMENT may not be defined, hence commented */
+				/*
+			if (tmp_alignsize > HAVE_MAX_FP_ALIGNMENT)
+			    tmp_alignsize = HAVE_MAX_FP_ALIGNMENT;
+				*/
+		    }
+#elif defined(HAVE_MAX_FP_ALIGNMENT)
 		    if (tmp_alignsize > HAVE_MAX_FP_ALIGNMENT)
 			tmp_alignsize = HAVE_MAX_FP_ALIGNMENT;
 #endif		    
@@ -200,6 +232,7 @@ int MPID_Type_struct(int count,
 					  &(new_dtp->dataloop_depth),
 					  0);
 
+#if defined(MPID_HAS_HETERO) || 1
 	if (!err) {
 	    /* heterogeneous dataloop representation */
 	    err = MPID_Dataloop_create_struct(0,
@@ -211,6 +244,7 @@ int MPID_Type_struct(int count,
 					      &(new_dtp->hetero_dloop_depth),
 					      0);
 	}
+#endif /* MPID_HAS_HETERO */
 	/* --BEGIN ERROR HANDLING-- */
 	if (err) {
 	    mpi_errno = MPIR_Err_create_code(MPI_SUCCESS,
@@ -228,6 +262,7 @@ int MPID_Type_struct(int count,
 	return mpi_errno;
     }
 
+    new_dtp->n_contig_blocks = 0;
     for (i=0; i < count; i++)
     {
 	int is_builtin =
@@ -259,6 +294,8 @@ int MPID_Type_struct(int count,
 	    tmp_true_ub = tmp_ub;
 
 	    size += tmp_el_sz * blocklength_array[i];
+
+	    new_dtp->n_contig_blocks++;
 	}
 	else
 	{
@@ -278,6 +315,8 @@ int MPID_Type_struct(int count,
 	    tmp_true_ub = tmp_ub + (old_dtp->true_ub - old_dtp->ub);
 
 	    size += old_dtp->size * blocklength_array[i];
+
+	    new_dtp->n_contig_blocks += old_dtp->n_contig_blocks;
 	}
 
 	/* element size and type */
@@ -391,7 +430,8 @@ int MPID_Type_struct(int count,
     if ((!found_sticky_lb) && (!found_sticky_ub))
     {
 	/* account for padding */
-	MPI_Aint epsilon = new_dtp->extent % new_dtp->alignsize;
+	MPI_Aint epsilon = (new_dtp->alignsize > 0) ?
+	    new_dtp->extent % new_dtp->alignsize : 0;
 
 	if (epsilon)
 	{
@@ -425,6 +465,7 @@ int MPID_Type_struct(int count,
 				      &(new_dtp->dataloop_size),
 				      &(new_dtp->dataloop_depth),
 				      MPID_DATALOOP_HOMOGENEOUS);
+#if defined(MPID_HAS_HETERO) || 1
     if (!err) {
 	/* heterogeneous dataloop representation */
 	err = MPID_Dataloop_create_struct(count,
@@ -436,6 +477,7 @@ int MPID_Type_struct(int count,
 					  &(new_dtp->hetero_dloop_depth),
 					  0);
     }
+#endif /* MPID_HAS_HETERO */
     /* --BEGIN ERROR HANDLING-- */
     if (err) {
 	mpi_errno = MPIR_Err_create_code(MPI_SUCCESS,

@@ -28,7 +28,18 @@ dnl - set the parallel compiler environment
     CC="$pac_MPI_CC"
     CFLAGS="$pac_MPI_CFLAGS"
     LIBS="$pac_MPI_LIBS"
-    AC_LINK_IFELSE( [ AC_LANG_PROGRAM( [#include "mpi.h"], [
+    AC_LINK_IFELSE( [ AC_LANG_PROGRAM( [
+/* <stdlib.h> is included to get NULL defined */
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#else
+#if !defined( NULL )
+#define NULL 0
+#endif
+#endif
+
+#include "mpi.h"
+    ], [
     int argc; char **argv;
     $4 ; 
     MPI_Init(&argc, &argv);

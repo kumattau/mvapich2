@@ -29,7 +29,7 @@ int MPIDI_Isend_self(const void * buf, int count, MPI_Datatype datatype, int ran
     int found;
     int mpi_errno = MPI_SUCCESS;
 	
-    MPIDI_DBG_PRINTF((15, FCNAME, "sending message to self"));
+    MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"sending message to self");
 	
     MPIDI_Request_create_sreq(sreq, mpi_errno, goto fn_exit);
     MPIDI_Request_set_type(sreq, type);
@@ -62,12 +62,13 @@ int MPIDI_Isend_self(const void * buf, int count, MPI_Datatype datatype, int ran
     {
 	MPIDI_msg_sz_t data_sz;
 	
-	MPIDI_DBG_PRINTF((15, FCNAME, "found posted receive request; copying data"));
+	MPIU_DBG_MSG(CH3_OTHER,VERBOSE,
+		     "found posted receive request; copying data");
 	    
 	MPIDI_CH3U_Buffer_copy(buf, count, datatype, &sreq->status.MPI_ERROR,
 			       rreq->dev.user_buf, rreq->dev.user_count, rreq->dev.datatype, &data_sz, &rreq->status.MPI_ERROR);
 	rreq->status.count = (int)data_sz;
-	MPID_Request_set_completed(rreq);
+	MPID_REQUEST_SET_COMPLETED(rreq);
 	MPID_Request_release(rreq);
 	/* sreq has never been seen by the user or outside this thread, so it is safe to reset ref_count and cc */
 	MPIU_Object_set_ref(sreq, 1);
@@ -81,7 +82,8 @@ int MPIDI_Isend_self(const void * buf, int count, MPI_Datatype datatype, int ran
 	
 	    /* FIXME: Insert code here to buffer small sends in a temporary buffer? */
 
-	    MPIDI_DBG_PRINTF((15, FCNAME, "added receive request to unexpected queue; attaching send request"));
+	    MPIU_DBG_MSG(CH3_OTHER,VERBOSE,
+          "added receive request to unexpected queue; attaching send request");
 	    if (HANDLE_GET_KIND(datatype) != HANDLE_KIND_BUILTIN)
 	    {
 		MPID_Datatype_get_ptr(datatype, sreq->dev.datatype_ptr);
@@ -95,7 +97,8 @@ int MPIDI_Isend_self(const void * buf, int count, MPI_Datatype datatype, int ran
 	else
 	{
 	    /* --BEGIN ERROR HANDLING-- */
-	    MPIDI_DBG_PRINTF((15, FCNAME, "ready send unable to find matching recv req"));
+	    MPIU_DBG_MSG(CH3_OTHER,TYPICAL,
+			 "ready send unable to find matching recv req");
 	    sreq->status.MPI_ERROR = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER,
 							  "**rsendnomatch", "**rsendnomatch %d %d", rank, tag);
 	    rreq->status.MPI_ERROR = sreq->status.MPI_ERROR;
@@ -111,7 +114,7 @@ int MPIDI_Isend_self(const void * buf, int count, MPI_Datatype datatype, int ran
 	}
 	    
 	MPIDI_Request_set_msg_type(rreq, MPIDI_REQUEST_SELF_MSG);
-	MPID_Request_initialized_set(rreq);
+	MPIDI_CH3_Progress_signal_completion();
     }
 
   fn_exit:

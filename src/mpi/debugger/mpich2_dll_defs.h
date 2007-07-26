@@ -25,6 +25,7 @@ typedef struct
   int lrank_to_grank_offs;
   int comm_rank_offs;
   int comm_context_id_offs;
+  int comm_recvcontext_id_offs;
   int comm_next_offs;
   int comm_name_offs;
 

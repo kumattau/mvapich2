@@ -69,13 +69,9 @@ MPIDI_CH3I_Pkt_sc_open_resp_t sc_open_resp;	\
 MPIDI_CH3I_Pkt_sc_close_t sc_close;
 
 
-typedef struct MPIDI_CH3I_PG
-{
-    char * kvs_name;
-}
-MPIDI_CH3I_PG;
+/* This channel has no special channel data for the process group structure */
 
-
+/* FIXME: Explain these; why is this separate from the VC state? */
 typedef enum MPIDI_CH3I_VC_state
 {
     MPIDI_CH3I_VC_STATE_UNCONNECTED,
@@ -85,7 +81,6 @@ typedef enum MPIDI_CH3I_VC_state
 }
 MPIDI_CH3I_VC_state_t;
 
-#define MPIDI_CH3_PG_DECL MPIDI_CH3I_PG ch;
 typedef struct MPIDI_CH3I_VC
 {
     struct MPID_Request * sendq_head;
@@ -93,19 +88,10 @@ typedef struct MPIDI_CH3I_VC
     MPIDI_CH3I_VC_state_t state;
     MPIDU_Sock_t sock;
     struct MPIDI_CH3I_Connection * conn;
-    int port_name_tag;
 }
 MPIDI_CH3I_VC;
 
 #define MPIDI_CH3_VC_DECL MPIDI_CH3I_VC ch;
-
-
-/*
- * MPIDI_CH3_CA_ENUM (additions to MPIDI_CA_t)
- */
-#define MPIDI_CH3_CA_ENUM			\
-MPIDI_CH3I_CA_END_SOCK_CHANNEL
-
 
 /*
  * MPIDI_CH3_REQUEST_DECL (additions to MPID_Request)

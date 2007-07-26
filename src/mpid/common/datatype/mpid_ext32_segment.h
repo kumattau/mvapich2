@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: mpid_ext32_segment.h,v 1.1.1.1 2006/01/18 21:09:46 huangwei Exp $
+/*  $Id: mpid_ext32_segment.h,v 1.13 2006/12/09 16:59:09 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -41,13 +41,34 @@
 #define uint64_t unsigned MPIU_INT64_T
 #endif
 
+/* FIXME: Who defines __BYTE_ORDER or __BIG_ENDIAN?  They aren't part of C */
+/* FIXME: The else test assumes that the byte order is little endian, whereas
+   it may simply have been undetermined.  This should instead use either 
+   a configure-time test (for which there are macros) or a runtime test
+   and not use this non-portable check */
+#if defined(WORDS_BIGENDIAN)
+#define BLENDIAN 0
+#elif defined(WORDS_LITTLEENDIAN)
+#define BLENDIAN 1
+#else
+#if !defined(__BYTE_ORDER) || !defined(__BIG_ENDIAN)
+#error This code assumes that __BYTE_ORDER and __BIG_ENDIAN are defined
+#endif
+/* FIXME: "BLENDIAN" is a non-conforming name - it could conflict with some
+   other definition in a non-mpich2 header file */
 #if ((defined(_BIG_ENDIAN) && !defined(ntohl)) || (__BYTE_ORDER == __BIG_ENDIAN))
 #define BLENDIAN 0 /* detected host arch byte order is big endian */
 #else
 #define BLENDIAN 1 /* detected host arch byte order is little endian */
 #endif
+#endif
 
+#if 0
+#if !defined(__FLOAT_WORD_ORDER) || !defined(__LITTLE_ENDIAN)
+#error This code assumes that __FLOAT_WORD_ORDER and __LITTLE_ENDIAN are defined
+#endif
 #define FLENDIAN (__FLOAT_WORD_ORDER == __LITTLE_ENDIAN)
+#endif
 
 /*
   set to 1: uses manual swapping routines

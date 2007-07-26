@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Reduce_scatter
 #define MPI_Reduce_scatter PMPI_Reduce_scatter
 
 /* This is the default implementation of reduce_scatter. The algorithm is:
@@ -97,7 +98,7 @@ int MPIR_Reduce_scatter (
     MPI_User_function *uop;
     MPID_Op *op_ptr;
     MPI_Comm comm;
-    MPICH_PerThread_t *p;
+    MPIU_THREADPRIV_DECL;
 #ifdef HAVE_CXX_BINDING
     int is_cxx_uop = 0;
 #endif
@@ -107,8 +108,8 @@ int MPIR_Reduce_scatter (
     rank = comm_ptr->rank;
 
     /* set op_errno to 0. stored in perthread structure */
-    MPIR_GetPerThread(&p);
-    p->op_errno = 0;
+    MPIU_THREADPRIV_GET;
+    MPIU_THREADPRIV_FIELD(op_errno) = 0;
 
     MPID_Datatype_get_extent_macro(datatype, extent);
     mpi_errno = NMPI_Type_get_true_extent(datatype, &true_lb,
@@ -887,7 +888,8 @@ int MPIR_Reduce_scatter (
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
 
-    if (p->op_errno) mpi_errno = p->op_errno;
+    if (MPIU_THREADPRIV_FIELD(op_errno)) 
+	mpi_errno = MPIU_THREADPRIV_FIELD(op_errno);
 
     return (mpi_errno);
 }
@@ -1086,7 +1088,7 @@ int MPI_Reduce_scatter(void *sendbuf, void *recvbuf, int *recvcnts,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("coll");
     MPID_MPI_COLL_FUNC_ENTER(MPID_STATE_MPI_REDUCE_SCATTER);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -1166,6 +1168,9 @@ int MPI_Reduce_scatter(void *sendbuf, void *recvbuf, int *recvcnts,
     }
     else
     {
+	MPIU_THREADPRIV_DECL;
+	MPIU_THREADPRIV_GET;
+
 	MPIR_Nest_incr();
         if (comm_ptr->comm_kind == MPID_INTRACOMM) 
             /* intracommunicator */
@@ -1174,9 +1179,6 @@ int MPI_Reduce_scatter(void *sendbuf, void *recvbuf, int *recvcnts,
                                             op, comm_ptr);
         else {
             /* intercommunicator */
-	    /* mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_COMM, 
-					      "**intercommcoll",
-					      "**intercommcoll %s", FCNAME ); */
             mpi_errno = MPIR_Reduce_scatter_inter(sendbuf, recvbuf,
                                                   recvcnts, datatype, 
                                                   op, comm_ptr); 
@@ -1190,7 +1192,7 @@ int MPI_Reduce_scatter(void *sendbuf, void *recvbuf, int *recvcnts,
     
   fn_exit:
     MPID_MPI_COLL_FUNC_EXIT(MPID_STATE_MPI_REDUCE_SCATTER);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("coll");
     return mpi_errno;
 
   fn_fail:

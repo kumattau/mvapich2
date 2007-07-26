@@ -272,7 +272,7 @@ PACKAGE_STRING=
 PACKAGE_BUGREPORT=
 
 ac_unique_file="rlog.c"
-ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS master_top_srcdir master_top_builddir CC CFLAGS LDFLAGS CPPFLAGS ac_ct_CC EXEEXT OBJEXT AR RANLIB MAKE VPATH SET_CFLAGS SET_MAKE CPP EGREP MPILIBNAME java_home java_arch CC_SHL C_LINK_SHL LIBTOOL ENABLE_SHLIB MAKE_DEPEND_C LIBOBJS LTLIBOBJS'
+ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS master_top_srcdir master_top_builddir CC CFLAGS LDFLAGS CPPFLAGS ac_ct_CC EXEEXT OBJEXT AR RANLIB MAKE VPATH SET_CFLAGS SET_MAKE PERL CPP EGREP MPILIBNAME PMPILIBNAME java_home java_arch CC_SHL C_LINK_SHL LIBTOOL ENABLE_SHLIB MAKE_DEPEND_C ETAGS ETAGSADD DOCTEXT LIBOBJS LTLIBOBJS'
 ac_subst_files=''
 
 # Initialize some variables set by options.
@@ -1363,6 +1363,10 @@ ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
           ac_config_headers="$ac_config_headers rlogconf.h"
 
+
+
+
+
 echo "RUNNING CONFIGURE FOR RLOG"
 
 # Check whether --enable-cache or --disable-cache was given.
@@ -1395,10 +1399,14 @@ if test "${enable_sharedlibs+set}" = set; then
   enableval="$enable_sharedlibs"
 
 fi;
-case "$enable_g" in
+# strip off multiple options, separated by commas
+save_IFS="$IFS"
+IFS=","
+for option in $enable_g ; do
+case "$option" in
     no|none)
     ;;
-    mem|all)
+    mem|all|yes)
 
 cat >>confdefs.h <<\_ACEOF
 #define USE_MEMORY_TRACING
@@ -1407,18 +1415,65 @@ _ACEOF
     enable_g_mem=yes
     CFLAGS="$CFLAGS -g"
     ;;
+    log|nesting|handle|debug|dbg)
+    # Ignore these (they are valid for other configures)
+    ;;
     *)
-    { echo "$as_me:$LINENO: WARNING: Unknown value $enable_g for enable-g" >&5
-echo "$as_me: WARNING: Unknown value $enable_g for enable-g" >&2;}
+    { echo "$as_me:$LINENO: WARNING: Unknown value $option for enable-g" >&5
+echo "$as_me: WARNING: Unknown value $option for enable-g" >&2;}
     ;;
 esac
-if test "`cd $srcdir && pwd`" != "`pwd`" && test -f $srcdir/config.status ; then
-    { { echo "$as_me:$LINENO: error: You cannot do a VPATH build if the source directory has been
-    configured.  Run \"make distclean\" in $srcdir first." >&5
+done
+IFS="$save_IFS"
+
+rm -f conftest*
+date >conftest$$
+# If creating a file in the current directory does not show up in the srcdir
+# then we're doing a VPATH build (or something is very wrong)
+if test ! -s $srcdir/conftest$$ ; then
+    pac_dirtyfiles=""
+    pac_dirtydirs=""
+    pac_header=""
+
+    for file in config.status $pac_header  ; do
+        if test -f $srcdir/$file ; then
+	    pac_dirtyfiles="$pac_dirtyfiles $file"
+	fi
+    done
+
+
+    if test -n "$pac_dirtyfiles" -o -n "$pac_dirtydirs" ; then
+	# Create a nice message about what to remove
+	rmmsg=""
+	if test -n "$pac_dirtyfiles" ; then
+	    rmmsg="files $pac_dirtyfiles"
+        fi
+ 	if test -n "$pac_dirtydirs" ; then
+	    if test -n "$rmmsg" ; then
+	        rmmsg="$rmmsg and directories $pac_dirtydirs"
+            else
+                rmmsg="directories $pac_dirtydirs"
+            fi
+        fi
+        if test -f $srcdir/Makefile ; then
+            { { echo "$as_me:$LINENO: error: You cannot do a VPATH build if the source directory has been
+    configured.  Run \"make distclean\" in $srcdir first and make sure that the
+    $rmmsg have been removed." >&5
 echo "$as_me: error: You cannot do a VPATH build if the source directory has been
-    configured.  Run \"make distclean\" in $srcdir first." >&2;}
+    configured.  Run \"make distclean\" in $srcdir first and make sure that the
+    $rmmsg have been removed." >&2;}
    { (exit 1); exit 1; }; }
+        else
+            { { echo "$as_me:$LINENO: error: You cannot do a VPATH build if the source directory has been
+    configured.  Remove the $rmmsg in $srcdir." >&5
+echo "$as_me: error: You cannot do a VPATH build if the source directory has been
+    configured.  Remove the $rmmsg in $srcdir." >&2;}
+   { (exit 1); exit 1; }; }
+        fi
+    fi
 fi
+rm -f conftest*
+
 
 if test -z "$top_srcdir" ; then
    use_top_srcdir=$srcdir
@@ -2703,6 +2758,45 @@ else
     SET_MAKE="MAKE=${MAKE-make}"
 fi
 
+# Extract the first word of "perl", so it can be a program name with args.
+set dummy perl; ac_word=$2
+echo "$as_me:$LINENO: checking for $ac_word" >&5
+echo $ECHO_N "checking for $ac_word... $ECHO_C" >&6
+if test "${ac_cv_path_PERL+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+  case $PERL in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_PERL="$PERL" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+  for ac_exec_ext in '' $ac_executable_extensions; do
+  if $as_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
+    ac_cv_path_PERL="$as_dir/$ac_word$ac_exec_ext"
+    echo "$as_me:$LINENO: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+done
+
+  ;;
+esac
+fi
+PERL=$ac_cv_path_PERL
+
+if test -n "$PERL"; then
+  echo "$as_me:$LINENO: result: $PERL" >&5
+echo "${ECHO_T}$PERL" >&6
+else
+  echo "$as_me:$LINENO: result: no" >&5
+echo "${ECHO_T}no" >&6
+fi
+
 
 echo "$as_me:$LINENO: checking for an ANSI C-conforming const" >&5
 echo $ECHO_N "checking for an ANSI C-conforming const... $ECHO_C" >&6
@@ -3564,7 +3658,7 @@ fi
 # If cpp failed, see if the compiler accepts the header.
 if test "$pac_found_header" != "yes" ; then
     cat >conftest.c<<EOF
-#line 3567 "configure"
+#line 3661 "configure"
 #include "confdefs.h"
 #include <jni.h>
 int conftest() {return 0;}
@@ -3609,6 +3703,8 @@ echo "$as_me: WARNING: cannot compile trace code" >&2;}
 fi
 MPILIBNAME=${MPILIBNAME:-"mpich"}
 
+PMPILIBNAME=${PMPILIBNAME:-"p$MPILIBNAME"}
+
 
 java_home=/soft/com/packages/j2sdk1.4.0
 java_arch=linux
@@ -3636,7 +3732,13 @@ echo "$as_me: WARNING: libtool selected for shared library support but LIBTOOL i
 
 
 
-          ac_config_files="$ac_config_files Makefile"
+export ETAGS
+export ETAGSADD
+
+
+          ac_config_commands="$ac_config_commands default-1"
+
+                    ac_config_files="$ac_config_files Makefile pprintirlog"
 cat >confcache <<\_ACEOF
 # This file is a shell script that caches the results of configure
 # tests run on this system so they can be shared between configure
@@ -4054,6 +4156,9 @@ $config_files
 Configuration headers:
 $config_headers
 
+Configuration commands:
+$config_commands
+
 Report bugs to <bug-autoconf@gnu.org>."
 _ACEOF
 
@@ -4152,7 +4257,14 @@ fi
 
 _ACEOF
 
+cat >>$CONFIG_STATUS <<_ACEOF
+#
+# INIT-COMMANDS section.
+#
 
+
+
+_ACEOF
 
 
 
@@ -4162,6 +4274,8 @@ do
   case "$ac_config_target" in
   # Handling of arguments.
   "Makefile" ) CONFIG_FILES="$CONFIG_FILES Makefile" ;;
+  "pprintirlog" ) CONFIG_FILES="$CONFIG_FILES pprintirlog" ;;
+  "default-1" ) CONFIG_COMMANDS="$CONFIG_COMMANDS default-1" ;;
   "rlogconf.h" ) CONFIG_HEADERS="$CONFIG_HEADERS rlogconf.h" ;;
   *) { { echo "$as_me:$LINENO: error: invalid argument: $ac_config_target" >&5
 echo "$as_me: error: invalid argument: $ac_config_target" >&2;}
@@ -4176,6 +4290,7 @@ done
 if $ac_need_defaults; then
   test "${CONFIG_FILES+set}" = set || CONFIG_FILES=$config_files
   test "${CONFIG_HEADERS+set}" = set || CONFIG_HEADERS=$config_headers
+  test "${CONFIG_COMMANDS+set}" = set || CONFIG_COMMANDS=$config_commands
 fi
 
 # Have a temporary directory for convenience.  Make it in the build tree
@@ -4262,9 +4377,11 @@ s,@MAKE@,$MAKE,;t t
 s,@VPATH@,$VPATH,;t t
 s,@SET_CFLAGS@,$SET_CFLAGS,;t t
 s,@SET_MAKE@,$SET_MAKE,;t t
+s,@PERL@,$PERL,;t t
 s,@CPP@,$CPP,;t t
 s,@EGREP@,$EGREP,;t t
 s,@MPILIBNAME@,$MPILIBNAME,;t t
+s,@PMPILIBNAME@,$PMPILIBNAME,;t t
 s,@java_home@,$java_home,;t t
 s,@java_arch@,$java_arch,;t t
 s,@CC_SHL@,$CC_SHL,;t t
@@ -4272,6 +4389,9 @@ s,@C_LINK_SHL@,$C_LINK_SHL,;t t
 s,@LIBTOOL@,$LIBTOOL,;t t
 s,@ENABLE_SHLIB@,$ENABLE_SHLIB,;t t
 s,@MAKE_DEPEND_C@,$MAKE_DEPEND_C,;t t
+s,@ETAGS@,$ETAGS,;t t
+s,@ETAGSADD@,$ETAGSADD,;t t
+s,@DOCTEXT@,$DOCTEXT,;t t
 s,@LIBOBJS@,$LIBOBJS,;t t
 s,@LTLIBOBJS@,$LTLIBOBJS,;t t
 CEOF
@@ -4731,6 +4851,124 @@ echo "$as_me: error: cannot create directory \"$ac_dir\"" >&2;}
   fi
 done
 _ACEOF
+cat >>$CONFIG_STATUS <<\_ACEOF
+
+#
+# CONFIG_COMMANDS section.
+#
+for ac_file in : $CONFIG_COMMANDS; do test "x$ac_file" = x: && continue
+  ac_dest=`echo "$ac_file" | sed 's,:.*,,'`
+  ac_source=`echo "$ac_file" | sed 's,[^:]*:,,'`
+  ac_dir=`(dirname "$ac_dest") 2>/dev/null ||
+$as_expr X"$ac_dest" : 'X\(.*[^/]\)//*[^/][^/]*/*$' \| \
+	 X"$ac_dest" : 'X\(//\)[^/]' \| \
+	 X"$ac_dest" : 'X\(//\)$' \| \
+	 X"$ac_dest" : 'X\(/\)' \| \
+	 .     : '\(.\)' 2>/dev/null ||
+echo X"$ac_dest" |
+    sed '/^X\(.*[^/]\)\/\/*[^/][^/]*\/*$/{ s//\1/; q; }
+  	  /^X\(\/\/\)[^/].*/{ s//\1/; q; }
+  	  /^X\(\/\/\)$/{ s//\1/; q; }
+  	  /^X\(\/\).*/{ s//\1/; q; }
+  	  s/.*/./; q'`
+  { if $as_mkdir_p; then
+    mkdir -p "$ac_dir"
+  else
+    as_dir="$ac_dir"
+    as_dirs=
+    while test ! -d "$as_dir"; do
+      as_dirs="$as_dir $as_dirs"
+      as_dir=`(dirname "$as_dir") 2>/dev/null ||
+$as_expr X"$as_dir" : 'X\(.*[^/]\)//*[^/][^/]*/*$' \| \
+	 X"$as_dir" : 'X\(//\)[^/]' \| \
+	 X"$as_dir" : 'X\(//\)$' \| \
+	 X"$as_dir" : 'X\(/\)' \| \
+	 .     : '\(.\)' 2>/dev/null ||
+echo X"$as_dir" |
+    sed '/^X\(.*[^/]\)\/\/*[^/][^/]*\/*$/{ s//\1/; q; }
+  	  /^X\(\/\/\)[^/].*/{ s//\1/; q; }
+  	  /^X\(\/\/\)$/{ s//\1/; q; }
+  	  /^X\(\/\).*/{ s//\1/; q; }
+  	  s/.*/./; q'`
+    done
+    test ! -n "$as_dirs" || mkdir $as_dirs
+  fi || { { echo "$as_me:$LINENO: error: cannot create directory \"$ac_dir\"" >&5
+echo "$as_me: error: cannot create directory \"$ac_dir\"" >&2;}
+   { (exit 1); exit 1; }; }; }
+
+  ac_builddir=.
+
+if test "$ac_dir" != .; then
+  ac_dir_suffix=/`echo "$ac_dir" | sed 's,^\.[\\/],,'`
+  # A "../" for each directory in $ac_dir_suffix.
+  ac_top_builddir=`echo "$ac_dir_suffix" | sed 's,/[^\\/]*,../,g'`
+else
+  ac_dir_suffix= ac_top_builddir=
+fi
+
+case $srcdir in
+  .)  # No --srcdir option.  We are building in place.
+    ac_srcdir=.
+    if test -z "$ac_top_builddir"; then
+       ac_top_srcdir=.
+    else
+       ac_top_srcdir=`echo $ac_top_builddir | sed 's,/$,,'`
+    fi ;;
+  [\\/]* | ?:[\\/]* )  # Absolute path.
+    ac_srcdir=$srcdir$ac_dir_suffix;
+    ac_top_srcdir=$srcdir ;;
+  *) # Relative path.
+    ac_srcdir=$ac_top_builddir$srcdir$ac_dir_suffix
+    ac_top_srcdir=$ac_top_builddir$srcdir ;;
+esac
+
+# Do not use `cd foo && pwd` to compute absolute paths, because
+# the directories may not exist.
+case `pwd` in
+.) ac_abs_builddir="$ac_dir";;
+*)
+  case "$ac_dir" in
+  .) ac_abs_builddir=`pwd`;;
+  [\\/]* | ?:[\\/]* ) ac_abs_builddir="$ac_dir";;
+  *) ac_abs_builddir=`pwd`/"$ac_dir";;
+  esac;;
+esac
+case $ac_abs_builddir in
+.) ac_abs_top_builddir=${ac_top_builddir}.;;
+*)
+  case ${ac_top_builddir}. in
+  .) ac_abs_top_builddir=$ac_abs_builddir;;
+  [\\/]* | ?:[\\/]* ) ac_abs_top_builddir=${ac_top_builddir}.;;
+  *) ac_abs_top_builddir=$ac_abs_builddir/${ac_top_builddir}.;;
+  esac;;
+esac
+case $ac_abs_builddir in
+.) ac_abs_srcdir=$ac_srcdir;;
+*)
+  case $ac_srcdir in
+  .) ac_abs_srcdir=$ac_abs_builddir;;
+  [\\/]* | ?:[\\/]* ) ac_abs_srcdir=$ac_srcdir;;
+  *) ac_abs_srcdir=$ac_abs_builddir/$ac_srcdir;;
+  esac;;
+esac
+case $ac_abs_builddir in
+.) ac_abs_top_srcdir=$ac_top_srcdir;;
+*)
+  case $ac_top_srcdir in
+  .) ac_abs_top_srcdir=$ac_abs_builddir;;
+  [\\/]* | ?:[\\/]* ) ac_abs_top_srcdir=$ac_top_srcdir;;
+  *) ac_abs_top_srcdir=$ac_abs_builddir/$ac_top_srcdir;;
+  esac;;
+esac
+
+
+  { echo "$as_me:$LINENO: executing $ac_dest commands" >&5
+echo "$as_me: executing $ac_dest commands" >&6;}
+  case $ac_dest in
+    default-1 ) chmod a+x pprintirlog ;;
+  esac
+done
+_ACEOF
 
 cat >>$CONFIG_STATUS <<\_ACEOF
 
@@ -4760,4 +4998,5 @@ if test "$no_create" != yes; then
   # would make configure fail if this is the last instruction.
   $ac_cs_success || { (exit 1); exit 1; }
 fi
+
 

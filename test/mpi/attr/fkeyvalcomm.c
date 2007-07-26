@@ -12,6 +12,13 @@ static char MTestDescrip[] = "Test freeing keyvals while still attached to \
 a communicator, then make sure that the keyval delete and copy code are still \
 executed";
 
+/* Function prototypes to keep compilers happy */
+int copy_fn( MPI_Comm oldcomm, int keyval, void *extra_state,
+	     void *attribute_val_in, void *attribute_val_out, 
+	     int *flag);
+int delete_fn( MPI_Comm comm, int keyval, void *attribute_val, 
+	       void *extra_state);
+
 /* Copy increments the attribute value */
 int copy_fn( MPI_Comm oldcomm, int keyval, void *extra_state,
 	     void *attribute_val_in, void *attribute_val_out, 

@@ -96,7 +96,11 @@ extern FORT_DLL_SPEC void FORT_CALL mpi_request_get_status_( MPI_Fint *, MPI_Fin
 #define mpi_request_get_status_ pmpi_request_get_status_
 #endif
 /* This defines the routine that we call, which must be the PMPI version
-   since we're renameing the Fortran entry as the pmpi version */
+   since we're renaming the Fortran entry as the pmpi version.  The MPI name
+   must be undefined first to prevent any conflicts with previous renamings,
+   such as those put in place by the globus device when it is building on
+   top of a vendor MPI. */
+#undef MPI_Request_get_status
 #define MPI_Request_get_status PMPI_Request_get_status 
 
 #else

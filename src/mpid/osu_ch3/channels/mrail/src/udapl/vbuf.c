@@ -21,6 +21,7 @@
 #include "udapl_priv.h"
 #include "vbuf.h"
 #include "udapl_util.h"
+#include "mem_hooks.h"
 
 #include <math.h>
 
@@ -118,7 +119,6 @@ allocate_vbuf_region (int nvbufs)
             }
       }
 
-    SET_ORIGINAL_MALLOC_HOOKS;
     reg = (struct vbuf_region *) malloc (sizeof (struct vbuf_region));
     if (NULL == reg)
       {
@@ -130,9 +130,6 @@ allocate_vbuf_region (int nvbufs)
       {
           udapl_error_abort (GEN_EXIT_ERR, "unable to malloc vbufs");
       }
-
-    SAVE_MALLOC_HOOKS;
-    SET_ORIGINAL_MALLOC_HOOKS;
 
     memset (mem, 0, nvbufs * sizeof (vbuf) + (alignment - 1));
 
@@ -238,10 +235,11 @@ get_vbuf ()
     /* this correctly handles removing from single entry free list */
     free_vbuf_head = free_vbuf_head->desc.next;
 #if defined(RDMA_FAST_PATH)
-
-    /* need to change this to RPUT_VBUF_FLAG later
-     * if we are doing rput */
-    v->padding = NORMAL_VBUF_FLAG;
+    if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+        /* need to change this to RPUT_VBUF_FLAG later
+         * if we are doing rput */
+        v->padding = NORMAL_VBUF_FLAG;
+    }
 #endif
     v->pheader = (void *) v->buffer;
     /* this is probably not the right place to initialize shandle to NULL.
@@ -266,10 +264,12 @@ MRAILI_Release_vbuf (vbuf * v)
 
     v->desc.next = free_vbuf_head;
 #if defined(RDMA_FAST_PATH)
-    if ((v->padding != NORMAL_VBUF_FLAG) && (v->padding != RPUT_VBUF_FLAG))
-      {
-          udapl_error_abort (GEN_EXIT_ERR, "vbuf not correct!!!\n");
-      }
+    if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+        if ((v->padding != NORMAL_VBUF_FLAG) && (v->padding != RPUT_VBUF_FLAG))
+          {
+              udapl_error_abort (GEN_EXIT_ERR, "vbuf not correct!!!\n");
+          }
+    }
 #endif
     free_vbuf_head = v;
     v->pheader = NULL;
@@ -329,7 +329,9 @@ vbuf_init_rdma_write (vbuf * v)
     v->desc.opcode = UDAPL_RDMA_WRITE;
     v->desc.cookie.as_ptr = (DAT_PVOID) v;
 #ifdef RDMA_FAST_PATH
-    v->padding = FREE_FLAG;
+    if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+        v->padding = FREE_FLAG;
+    }
 #endif
 
 }
@@ -341,7 +343,9 @@ vbuf_init_send (vbuf * v, unsigned long len,
     int hca_num = subchannel->hca_index;
 
 #ifdef RDMA_FAST_PATH
-    v->padding = NORMAL_VBUF_FLAG;
+    if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+        v->padding = NORMAL_VBUF_FLAG;
+    }
 #endif
     v->subchannel = *subchannel;
 
@@ -363,7 +367,9 @@ vbuf_init_recv (vbuf * v, unsigned long len,
     int hca_num = subchannel->hca_index;
 
 #ifdef RDMA_FAST_PATH
-    v->padding = NORMAL_VBUF_FLAG;
+    if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+        v->padding = NORMAL_VBUF_FLAG;
+    }
 #endif
     v->subchannel = *subchannel;
 
@@ -384,7 +390,9 @@ vbuf_init_rput (vbuf * v, void *local_address,
                 const MRAILI_Channel_info * subchannel)
 {
 #ifdef RDMA_FAST_PATH
-    v->padding = RPUT_VBUF_FLAG;
+    if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+        v->padding = RPUT_VBUF_FLAG;
+    }
 #endif
     v->subchannel = *subchannel;
     v->desc.completion_flag = DAT_COMPLETION_DEFAULT_FLAG;
@@ -474,7 +482,9 @@ dump_vbuf (char *msg, vbuf * v)
     DEBUG_PRINT ("%s: dump of vbuf %p, type = %d\n", msg, v, header->type);
     len = 100;
 #if defined(RDMA_FAST_PATH)
-    DEBUG_PRINT ("total_size = %u\n", v->head_flag);
+    if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+        DEBUG_PRINT ("total_size = %u\n", v->head_flag);
+    }
 #endif
     for (i = 0; i < len; i++)
       {

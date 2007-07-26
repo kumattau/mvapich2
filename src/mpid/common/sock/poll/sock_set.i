@@ -40,7 +40,10 @@ int MPIDU_Sock_create_set(struct MPIDU_Sock_set ** sock_setp)
     sock_set->pollinfos = NULL;
     sock_set->eventq_head = NULL;
     sock_set->eventq_tail = NULL;
-#   if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
+    /* FIXME: Move the thread-specific operations into thread-specific
+       routines (to allow for alternative thread sync models and
+       for runtime control of thread level) */
+#   ifdef MPICH_IS_THREADED
     {
 	sock_set->pollfds_active = NULL;
 	sock_set->pollfds_updated = FALSE;
@@ -51,7 +54,8 @@ int MPIDU_Sock_create_set(struct MPIDU_Sock_set ** sock_setp)
     }
 #   endif
 
-#   if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
+#   ifdef MPICH_IS_THREADED
+    MPIU_THREAD_CHECK_BEGIN
     {
 	struct MPIDU_Sock * sock = NULL;
 	struct pollfd * pollfd;
@@ -60,11 +64,15 @@ int MPIDU_Sock_create_set(struct MPIDU_Sock_set ** sock_setp)
 	int rc;
 	
 	/*
-	 * Acquire a pipe (the interrupter) to wake up a blocking poll should it become necessary.
+	 * Acquire a pipe (the interrupter) to wake up a blocking poll should 
+	 * it become necessary.
 	 *
-	 * Make the read descriptor nonblocking.  The write descriptor is left as a blocking descriptor.  The write has to
-	 * succeed or the system will lock up.  Should the blocking descriptor prove to be a problem, then (1) copy the above
-	 * code, applying it to the write descriptor, and (2) update MPIDU_Socki_wakeup() so that it loops while write returns 0,
+	 * Make the read descriptor nonblocking.  The write descriptor is left
+	 * as a blocking descriptor.  The write has to
+	 * succeed or the system will lock up.  Should the blocking descriptor
+	 * prove to be a problem, then (1) copy the above
+	 * code, applying it to the write descriptor, and (2) update 
+	 * MPIDU_Socki_wakeup() so that it loops while write returns 0,
 	 * performing a thread yield between iterations.
 	 */
 	rc = pipe(sock_set->intr_fds);
@@ -126,6 +134,7 @@ int MPIDU_Sock_create_set(struct MPIDU_Sock_set ** sock_setp)
 
 	MPIDU_SOCKI_POLLFD_OP_SET(pollfd, pollinfo, POLLIN);
     }
+    MPIU_THREAD_CHECK_END
 #   endif
 
     *sock_setp = sock_set;
@@ -138,7 +147,8 @@ int MPIDU_Sock_create_set(struct MPIDU_Sock_set ** sock_setp)
   fn_fail:
     if (sock_set != NULL)
     {
-#       if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
+#       ifdef MPICH_IS_THREADED
+	MPIU_THREAD_CHECK_BEGIN
 	{
 	    if (sock_set->intr_fds[0] != -1)
 	    {
@@ -150,6 +160,7 @@ int MPIDU_Sock_create_set(struct MPIDU_Sock_set ** sock_setp)
 		close(sock_set->intr_fds[1]);
 	    }
 	}
+	MPIU_THREAD_CHECK_END
 #	endif
 	
 	MPIU_Free(sock_set);
@@ -180,13 +191,15 @@ int MPIDU_Sock_destroy_set(struct MPIDU_Sock_set * sock_set)
      */
     
     /*
-     * FIXME: verify no other thread is blocked in poll().  wake it up and get it to exit.
+     * FIXME: verify no other thread is blocked in poll().  wake it up and 
+     * get it to exit.
      */
     
     /*
      * Close pipe for interrupting a blocking poll()
      */
-#   if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
+#   ifdef MPICH_IS_THREADED
+    MPIU_THREAD_CHECK_BEGIN
     {
 	close(sock_set->intr_fds[1]);
 	close(sock_set->intr_fds[0]);
@@ -199,6 +212,7 @@ int MPIDU_Sock_destroy_set(struct MPIDU_Sock_set * sock_set)
 	sock_set->intr_fds[1] = -1;
 	sock_set->intr_sock = NULL;
     }
+    MPIU_THREAD_CHECK_END
 #   endif
 
     /*
@@ -229,7 +243,9 @@ int MPIDU_Sock_destroy_set(struct MPIDU_Sock_set * sock_set)
      */
     MPIU_Free(sock_set);
     
+#ifdef USE_SOCK_VERIFY
   fn_exit:
+#endif
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDU_SOCK_DESTROY_SET);
     return mpi_errno;
 }

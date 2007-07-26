@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Win_unlock
 #define MPI_Win_unlock PMPI_Win_unlock
 
 #endif
@@ -55,7 +56,7 @@ int MPI_Win_unlock(int rank, MPI_Win win)
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("rma");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_WIN_UNLOCK);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -102,7 +103,7 @@ int MPI_Win_unlock(int rank, MPI_Win win)
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_WIN_UNLOCK);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("rma");
     return mpi_errno;
 
   fn_fail:

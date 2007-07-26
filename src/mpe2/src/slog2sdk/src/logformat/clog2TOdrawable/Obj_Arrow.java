@@ -18,6 +18,10 @@ import base.drawable.Primitive;
 
 public class Obj_Arrow extends Primitive
 {
+    /* For arrow event matching in Topo_Arrow */
+    private  int       start_procLineID;
+    private  int       final_procLineID;
+
     private  int       msg_tag;
     private  int       msg_size; 
 
@@ -37,6 +41,23 @@ public class Obj_Arrow extends Primitive
         super( obj_type, 2 );
         super.setStartVertex( start_vtx );
         super.setFinalVertex( final_vtx );
+    }
+
+    /* For arrow event matching in Topo_Arrow */
+    public void setProcessLineIDs( int start_procID, int final_procID )
+    {
+        this.start_procLineID  = start_procID;
+        this.final_procLineID  = final_procID;
+    }
+
+    public int getStartProcessLineID()
+    {
+        return this.start_procLineID;
+    }
+
+    public int getFinalProcessLineID()
+    {
+        return this.final_procLineID;
     }
 
     public void setMsgTag( int in_msg_tag )

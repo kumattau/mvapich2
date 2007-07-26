@@ -7,7 +7,12 @@
 #ifndef MPIIMPLATOMIC_H_INCLUDED
 #define MPIIMPLATOMIC_H_INCLUDED
 
-#if !defined(MPICH_SINGLE_THREADED) && defined(USE_ATOMIC_UPDATES)
+/* These macros currently never get called because USE_THREAD_IMPL is
+ * never set to MPICH_THREAD_IMPL_NOT_IMPLEMENTED, and therefore the
+ * MPIU_Object_add_ref etc macros never get set to use
+ * MPID_Atomic_incr etc in mpiimpl.h.
+ */
+#if defined(MPICH_IS_THREADED) && defined(USE_ATOMIC_UPDATES)
 
 /* These can be implemented using special assembly language operations
    on most processors.  If no such operation is available, then each
@@ -26,22 +31,27 @@
    __asm__ __volatile__ ( "lock; incl %0"				\
                          : "=m" (*count_ptr) :: "memory", "cc" )
 
-#define MPID_Atomic_decr_flag( count_ptr, nzflag )					\
-   __asm__ __volatile__ ( "xor %%eax,%%eax; lock; decl %0 ; setnz %%al"			\
-                         : "=m" (*count_ptr) , "=a" (nzflag) :: "memory", "cc" )
+#define MPID_Atomic_decr_flag( count_ptr, nzflag )			\
+   __asm__ __volatile__ ( "xor %%eax,%%eax; lock; decl %0 ; setnz %%al"	\
+                        : "=m" (*count_ptr) , "=a" (nzflag) :: "memory", "cc" )
 
-#define MPID_Atomic_fetch_and_incr(count_ptr_, count_old_)						\
-    __asm__ __volatile__ ("0: movl %0, %%eax;"								\
-			  "movl %%eax, %%ebx;"								\
-			  "incl %%ebx;"									\
-			  "lock; cmpxchgl %%ebx, %0;"							\
-			  "jnz 0b;"									\
-			  "movl %%eax, %1"								\
+/* FIXME: %ebx cannot be used when shared libraries are built (the
+   register is reserved for the PIC code in gcc) */
+#define MPID_Atomic_fetch_and_incr(count_ptr_, count_old_)	\
+    __asm__ __volatile__ ("0: movl %0, %%eax;"			\
+			  "movl %%eax, %%ebx;"			\
+			  "incl %%ebx;"				\
+			  "lock; cmpxchgl %%ebx, %0;"		\
+			  "jnz 0b;"				\
+			  "movl %%eax, %1"			\
 			  : "+m" (*count_ptr_), "=q" (count_old_) :: "memory", "cc", "eax", "ebx")
 
-/* The Intel Pentium Pro has a bug that can result in out-of-order stores.  The rest of the Intel x86 processors perform writes
-   in order, with the exception of the non-temporal SSE instructions which we don't use.  The IDT WinChip can be configured to
-   perform out-of-order writes.  FIXME: Should this be a configure time or runtime decision?  Right now it is neither and we
+/* The Intel Pentium Pro has a bug that can result in out-of-order stores.  
+   The rest of the Intel x86 processors perform writes
+   in order, with the exception of the non-temporal SSE instructions which we 
+   don't use.  The IDT WinChip can be configured to
+   perform out-of-order writes.  FIXME: Should this be a configure time or 
+   runtime decision?  Right now it is neither and we
    assume stores are ordered for x86 processors. */
 #if !defined(HAVE_X86_OOOSTORE)
 #define MPID_Atomic_write_barrier()		\

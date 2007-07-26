@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Group_translate_ranks
 #define MPI_Group_translate_ranks PMPI_Group_translate_ranks
 
 #endif
@@ -40,7 +41,10 @@
 
   Output Parameter:
 . ranks2 - array of corresponding ranks in group2,  'MPI_UNDEFINED'  when no 
-correspondence exists. 
+  correspondence exists. 
+
+  As a special case (see the MPI-2 errata), if the input rank is 
+  'MPI_PROC_NULL', 'MPI_PROC_NULL' is given as the output rank.
 
 .N ThreadSafe
 
@@ -49,21 +53,24 @@ correspondence exists.
 .N Errors
 .N MPI_SUCCESS
 @*/
-int MPI_Group_translate_ranks(MPI_Group group1, int n, int *ranks1, MPI_Group group2, int *ranks2)
+int MPI_Group_translate_ranks(MPI_Group group1, int n, int *ranks1, 
+			      MPI_Group group2, int *ranks2)
 {
+#ifdef HAVE_ERROR_CHECKING
     static const char FCNAME[] = "MPI_Group_translate_ranks";
+#endif
     int mpi_errno = MPI_SUCCESS;
     MPID_Group *group_ptr1 = NULL;
     MPID_Group *group_ptr2 = NULL;
-#   ifdef HAVE_ERROR_CHECKING
-    int size1;
-#   endif
     int i, g2_idx, l1_pid, l2_pid;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_GROUP_TRANSLATE_RANKS);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    /* The routines that setup the group data structures must be executed
+       within a mutex.  As most of the group routines are not performance
+       critical, we simple run these routines within the SINGLE_CS */
+    MPIU_THREAD_SINGLE_CS_ENTER("group");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_GROUP_TRANSLATE_RANKS);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -96,9 +103,9 @@ int MPI_Group_translate_ranks(MPI_Group group1, int n, int *ranks1, MPI_Group gr
 	    MPIR_ERRTEST_ARGNEG(n,"n",mpi_errno);
 	    if (group_ptr1) {
 		/* Check that the rank entries are valid */
-		size1 = group_ptr1->size;
+		int size1 = group_ptr1->size;
 		for (i=0; i<n; i++) {
-		    if (ranks1[i] < 0 || 
+		    if ( (ranks1[i] < 0 && ranks1[i] != MPI_PROC_NULL) || 
 			ranks1[i] >= size1) {
 			mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, 
                               MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, 
@@ -134,6 +141,10 @@ int MPI_Group_translate_ranks(MPI_Group group1, int n, int *ranks1, MPI_Group gr
 	/* g2_idx can be < 0 if the g2 group is empty */
 	l2_pid = group_ptr2->lrank_to_lpid[g2_idx].lpid;
 	for (i=0; i<n; i++) {
+	    if (ranks1[i] == MPI_PROC_NULL) {
+		ranks2[i] = MPI_PROC_NULL;
+		continue;
+	    }
 	    l1_pid = group_ptr1->lrank_to_lpid[ranks1[i]].lpid;
 	    /* Search for this l1_pid in group2.  Use the following
 	       optimization: start from the last position in the lpid list
@@ -160,22 +171,26 @@ int MPI_Group_translate_ranks(MPI_Group group1, int n, int *ranks1, MPI_Group gr
     
     /* ... end of body of routine ... */
 
+#ifdef HAVE_ERROR_CHECKING
   fn_exit:
+#endif
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_GROUP_TRANSLATE_RANKS);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("group");
     return mpi_errno;
 
-  fn_fail:
     /* --BEGIN ERROR HANDLING-- */
 #   ifdef HAVE_ERROR_CHECKING
+  fn_fail:
     {
 	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_group_translate_ranks",
-	    "**mpi_group_translate_ranks %G %d %p %G %p", group1, n, ranks1, group2, ranks2);
+	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, 
+	    "**mpi_group_translate_ranks",
+	    "**mpi_group_translate_ranks %G %d %p %G %p", 
+	    group1, n, ranks1, group2, ranks2);
     }
-#   endif
     mpi_errno = MPIR_Err_return_comm( NULL, FCNAME, mpi_errno );
     goto fn_exit;
+#   endif
     /* --END ERROR HANDLING-- */
 }
 

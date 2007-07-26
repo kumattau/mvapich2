@@ -8,10 +8,10 @@
 
 /* These are needed for nemesis to know from where to expect a message */
 #ifndef MPIDI_POSTED_RECV_ENQUEUE_HOOK
-#define MPIDI_POSTED_RECV_ENQUEUE_HOOK(x) do {} while (0)
+#define MPIDI_POSTED_RECV_ENQUEUE_HOOK(x)
 #endif
 #ifndef MPIDI_POSTED_RECV_DEQUEUE_HOOK
-#define MPIDI_POSTED_RECV_DEQUEUE_HOOK(x) do {} while (0)
+#define MPIDI_POSTED_RECV_DEQUEUE_HOOK(x)
 #endif
 
 /* FIXME: 
@@ -49,6 +49,8 @@ MPID_Request ** const MPID_Recvq_posted_head_ptr     = &recvq_posted_head;
 MPID_Request ** const MPID_Recvq_unexpected_head_ptr = &recvq_unexpected_head;
 #endif
 
+/* FIXME: If this routine is only used by probe/iprobe, then we don't need
+   to set the cancelled field in status (only set for nonblocking requests) */
 /*
  * MPIDI_CH3U_Recvq_FU()
  *
@@ -56,6 +58,7 @@ MPID_Request ** const MPID_Recvq_unexpected_head_ptr = &recvq_unexpected_head;
  * true if one is found, false otherwise.  If the status arguement is
  * not MPI_STATUS_IGNORE, return information about the request in that
  * parameter.  This routine is used by mpid_probe and mpid_iprobe.
+ *
  */
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3U_Recvq_FU
@@ -72,6 +75,8 @@ int MPIDI_CH3U_Recvq_FU(int source, int tag, int context_id, MPI_Status *s)
     if (tag != MPI_ANY_TAG && source != MPI_ANY_SOURCE)
     {
 	rreq = recvq_unexpected_head;
+	/* FIXME: If the match data fits in an int64_t, we should try
+	   to use a single test here */
 	while(rreq != NULL)
 	{
 	    if (rreq->dev.match.context_id == context_id && 
@@ -151,7 +156,8 @@ int MPIDI_CH3U_Recvq_FU(int source, int tag, int context_id, MPI_Status *s)
 #define FUNCNAME MPIDI_CH3U_Recvq_FDU
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-MPID_Request * MPIDI_CH3U_Recvq_FDU(MPI_Request sreq_id, MPIDI_Message_match * match)
+MPID_Request * MPIDI_CH3U_Recvq_FDU(MPI_Request sreq_id, 
+				    MPIDI_Message_match * match)
 {
     MPID_Request * rreq;
     MPID_Request * prev_rreq;
@@ -218,7 +224,7 @@ MPID_Request * MPIDI_CH3U_Recvq_FDU_or_AEP(int source, int tag,
 					   int context_id, int * foundp)
 {
     int found;
-    MPID_Request * rreq, *prev_rreq;
+    MPID_Request *rreq, *prev_rreq;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3U_RECVQ_FDU_OR_AEP);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3U_RECVQ_FDU_OR_AEP);
@@ -297,15 +303,15 @@ MPID_Request * MPIDI_CH3U_Recvq_FDU_or_AEP(int source, int tag,
     
     /* A matching request was not found in the unexpected queue, so we 
        need to allocate a new request and add it to the posted queue */
-    rreq = MPID_Request_create();
-    if (rreq != NULL) {
-	MPIU_Object_set_ref(rreq, 2);
-	rreq->kind = MPID_REQUEST_RECV;
-	rreq->dev.match.tag = tag;
-	rreq->dev.match.rank = source;
+
+    {
+	int mpi_errno=0;
+	MPIDI_Request_create_rreq( rreq, mpi_errno, 
+				   found = FALSE;goto lock_exit );
+	rreq->dev.match.tag	   = tag;
+	rreq->dev.match.rank	   = source;
 	rreq->dev.match.context_id = context_id;
-	rreq->dev.next = NULL;
-	
+	rreq->dev.next		   = NULL;
 	if (recvq_posted_tail != NULL) {
 	    recvq_posted_tail->dev.next = rreq;
 	}
@@ -331,8 +337,8 @@ MPID_Request * MPIDI_CH3U_Recvq_FDU_or_AEP(int source, int tag,
 /*
  * MPIDI_CH3U_Recvq_DP()
  *
- * Given an existing request, dequeue that request from the posted queue, or return NULL if the request was not in the posted
- * queued
+ * Given an existing request, dequeue that request from the posted queue, or 
+ * return NULL if the request was not in the posted queued
  */
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3U_Recvq_DP
@@ -375,58 +381,6 @@ int MPIDI_CH3U_Recvq_DP(MPID_Request * rreq)
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3U_RECVQ_DP);
     return found;
 }
-
-/* FIXME: No-one uses this routine.  */
-#if 0
-/*
- * MPIDI_CH3U_Recvq_FDP
- *
- * Locate a request in the posted queue and dequeue it, or return NULL.
- */
-#undef FUNCNAME
-#define FUNCNAME MPIDI_CH3U_Recvq_FDP
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-MPID_Request * MPIDI_CH3U_Recvq_FDP(MPIDI_Message_match * match)
-{
-    MPID_Request * rreq;
-    MPID_Request * prev_rreq;
-    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3U_RECVQ_FDP);
-
-    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3U_RECVQ_FDP);
-    
-    prev_rreq = NULL;
-
-    rreq = recvq_posted_head;
-    while (rreq != NULL) {
-	if ((rreq->dev.match.context_id == match->context_id) &&
-	    (rreq->dev.match.rank == match->rank || 
-	     rreq->dev.match.rank == MPI_ANY_SOURCE) &&
-	    (rreq->dev.match.tag == match->tag || 
-	     rreq->dev.match.tag == MPI_ANY_TAG)) {
-	    if (prev_rreq != NULL) {
-		prev_rreq->dev.next = rreq->dev.next;
-	    }
-	    else {
-		recvq_posted_head = rreq->dev.next;
-	    }
-	    if (rreq->dev.next == NULL) {
-		recvq_posted_tail = prev_rreq;
-	    }
-
-	    /* This is for nemesis to know from where to expect a message */
-	    MPIDI_POSTED_RECV_DEQUEUE_HOOK (rreq);
-	    break;
-	}
-	
-	prev_rreq = rreq;
-	rreq = rreq->dev.next;
-    }
-
-    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3U_RECVQ_FDP);
-    return rreq;
-}
-#endif /* Unused routine */
 
 /*
  * MPIDI_CH3U_Recvq_FDP_or_AEU()
@@ -478,13 +432,12 @@ MPID_Request * MPIDI_CH3U_Recvq_FDP_or_AEU(MPIDI_Message_match * match,
 
     /* A matching request was not found in the posted queue, so we 
        need to allocate a new request and add it to the unexpected queue */
-    rreq = MPID_Request_create();
-    if (rreq != NULL) {
-	MPIU_Object_set_ref(rreq, 2);
-	rreq->kind = MPID_REQUEST_RECV;
-	rreq->dev.match = *match;
-	rreq->dev.next = NULL;
-	
+    {
+	int mpi_errno=0;
+	MPIDI_Request_create_rreq( rreq, mpi_errno, 
+				   found=FALSE;goto lock_exit );
+	rreq->dev.match	= *match;
+	rreq->dev.next	= NULL;
 	if (recvq_unexpected_tail != NULL) {
 	    recvq_unexpected_tail->dev.next = rreq;
 	}

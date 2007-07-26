@@ -1,3 +1,8 @@
+/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/*  
+ *  (C) 2006 by Argonne National Laboratory.
+ *      See COPYRIGHT in top-level directory.
+ */
 #include <mpi.h>
 #include <pthread.h>
 #include <unistd.h>
@@ -16,6 +21,7 @@ const int ANS_TAG = 222;
 /* MPI environment description */
 int rank, size, provided;
 
+void* listener(void*);
 
 /* 
    LISTENER THREAD
@@ -45,21 +51,19 @@ void* listener(void*extra) {
 	
 	/* no more requests can arrive */
 	if (no_fins == size) break;
+	
     }
 
     DEBUG(printf( "node %d has stopped listener\n", rank ));
-    pthread_cancel(0);
+    return 0;
 } 
 
 
 int main(int argc, char* argv[]) {
     pthread_t thr;
     pthread_attr_t attr;
-    int host = 0;
     int buf = 0;
-    int key = getpid();
     long int i;
-    const long int N = 1;
     
     MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &provided);
 

@@ -4,7 +4,7 @@ doc_HTML_SOURCES  = ${doc_sources}
 doc_MAN_SOURCES   = ${doc_sources}
 doc_LATEX_SOURCES = ${doc_sources}
 
-install_BIN = mpicc mpich2version
+install_BIN = mpicc mpich2version parkill
 install_ETC = mpicc.conf
 optinstall_BIN = mpicxx mpif77 mpif90
 optinstall_ETC = mpicxx.conf mpif77.conf mpif90.conf

@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: greq_complete.c,v 1.1.1.1 2006/01/18 21:09:43 huangwei Exp $
+/*  $Id: greq_complete.c,v 1.20 2006/12/09 16:42:26 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -21,6 +21,7 @@
    the MPI routines.  You can use USE_WEAK_SYMBOLS to see if MPICH is
    using weak symbols to implement the MPI routines. */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Grequest_complete
 #define MPI_Grequest_complete PMPI_Grequest_complete
 
 /* Any internal routines can go here.  Make them static if possible.  If they
@@ -49,14 +50,16 @@
 @*/
 int MPI_Grequest_complete( MPI_Request request )
 {
+#ifdef HAVE_ERROR_CHECKING
     static const char FCNAME[] = "MPI_Grequest_complete";
+#endif
     int mpi_errno = MPI_SUCCESS;
     MPID_Request *request_ptr;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_GREQUEST_COMPLETE);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("pt2pt");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_GREQUEST_COMPLETE);
     
     /* Validate handle parameters needing to be converted */
@@ -92,28 +95,33 @@ int MPI_Grequest_complete( MPI_Request request )
 
     /* ... body of routine ...  */
     
+    /* Set the request as completed.  This does not change the
+       reference count on the generalized request */
     MPID_Request_set_completed( request_ptr );
+
     /* The request release comes with the wait/test, not this complete
-       routine */
-    /*    MPID_Request_release(request_ptr); */
+       routine, so we don't call the MPID_Request_release routine */
     
     /* ... end of body of routine ... */
 
+#ifdef HAVE_ERROR_CHECKING
   fn_exit:
+#endif
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_GREQUEST_COMPLETE);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("pt2pt");
     return mpi_errno;
     
-  fn_fail:
     /* --BEGIN ERROR HANDLING-- */
 #   ifdef HAVE_ERROR_CHECKING
+  fn_fail:
     {
 	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_grequest_complete",
+	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, 
+	    "**mpi_grequest_complete",
 	    "**mpi_grequest_complete %R", request);
     }
-#   endif
     mpi_errno = MPIR_Err_return_comm( NULL, FCNAME, mpi_errno );
     goto fn_exit;
+#   endif
     /* --END ERROR HANDLING-- */
 }

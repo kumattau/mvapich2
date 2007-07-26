@@ -15,6 +15,7 @@ CFLAGS               = @CFLAGS@
 FFLAGS               = @FFLAGS@
 MPE_INCDIR           = @includebuild_dir@
 MPE_LIBDIR           = @libbuild_dir@
+MPE_SBINDIR          = @sbinbuild_dir@
 F2CMPI_LIBS          = @F2CMPI_LIBS@
 COLLCHK_LIBS         = -L$(MPE_LIBDIR) @COLLCHK_LIBS@ $(MPI_LIBS)
 COLLCHK_FLIBS        = @FLIB_PATH_LEADER@$(MPE_LIBDIR) \
@@ -25,10 +26,13 @@ C_INCS               = -I$(MPE_INCDIR) $(MPI_INC)
 F_INCS               = @FINC_PATH_LEADER@$(MPE_INCDIR) $(MPI_INC)
 LDFLAGS              = @LDFLAGS@
 MPE_BUILD_FORTRAN2C  = @MPE_BUILD_FORTRAN2C@
-RM                   = @RM@
-MPE_OUTFILE          = mpe2_collchk_test.txt
 
 #### End User configurable options ###
+
+SHELL         = @SHELL@
+RM            = @RM@
+
+@VPATH@
 
 srcdir        = @srcdir@
 
@@ -36,8 +40,6 @@ CC_FLAGS      = $(CFLAGS) $(C_INCS) $(MPE_COPTS)
 FC_FLAGS      = $(FFLAGS) $(F_INCS) $(MPE_FOPTS)
 CC_LDFLAGS    = $(LDFLAGS) $(CFLAGS) $(MPE_LDOPTS)
 FC_LDFLAGS    = $(LDFLAGS) $(FFLAGS) $(MPE_LDOPTS)
-
-@VPATH@
 
 .SUFFIXES: .c .f .@OBJEXT@ @EXEEXT@
 
@@ -88,42 +90,33 @@ default: $(C_OBJS) $(C_EXECS) $(OPT_C_EXECS)
 linktest: linktest_C
 
 linktest_C:
-	@-echo ; \
-	echo -n "*** Link C program with the MPI collective/datatype checking library ..... " ; \
-	$(RM) -f wrong_int_byte@EXEEXT@ ; \
-	$(MAKE) wrong_int_byte@EXEEXT@ > $(MPE_OUTFILE) 2>&1 ; \
-	if test -x wrong_int_byte@EXEEXT@ ; then \
-	    echo "Yes." ; \
-	    $(RM) -f wrong_int_byte@EXEEXT@ ; \
-	else \
-	    echo "No." ; \
-	    echo "    The failed command: " ; \
-	    cat $(MPE_OUTFILE) ; \
-	fi ; \
-	$(RM) -f $(MPE_OUTFILE)
+	@-$(MPE_SBINDIR)/mpetestlink wrong_int_byte@EXEEXT@ \
+	  "*** Link C program with the MPI collective/datatype checking library ....."
 	@-echo ; $(MAKE) clean
 
 linktest_F77:
 	@-if [ "$(MPE_BUILD_FORTRAN2C)" = "yes" ] ; then \
+	    $(MPE_SBINDIR)/mpetestlink wrong_reals@EXEEXT@ \
+	    "*** Link F77 program with the MPI collective/datatype checking library ..." ; \
+	    $(MAKE) clean ; \
 	    echo ; \
-	    echo -n "*** Link F77 program with the MPI collective/datatype checking library ... " ; \
-	    $(RM) -f wrong_reals@EXEEXT@ ; \
-	    $(MAKE) wrong_reals@EXEEXT@ > $(MPE_OUTFILE) 2>&1 ; \
-	    if test -x wrong_reals@EXEEXT@ ; then \
-	        echo "Yes." ; \
-	        $(RM) -f wrong_reals@EXEEXT@ ; \
-	    else \
-	        echo "No." ; \
-	        echo "    The failed command: " ; \
-	        cat $(MPE_OUTFILE) ; \
-	    fi ; \
-	    $(RM) -f $(MPE_OUTFILE) ; \
+	  fi
+
+
+runtest_C:
+	@-$(MPE_SBINDIR)/mpetestexec wrong_int_byte@EXEEXT@ \
+	  "*** Test C program with the MPI collective/datatype checking library ....."
+	@-echo ; $(MAKE) clean
+
+runtest_F77:
+	@-if [ "$(MPE_BUILD_FORTRAN2C)" = "yes" ] ; then \
+	    $(MPE_SBINDIR)/mpetestexec wrong_reals@EXEEXT@ \
+	    "*** Test F77 program with the MPI collective/datatype checking library ..." ; \
 	    $(MAKE) clean ; \
 	    echo ; \
 	  fi
 
 clean:
-	@-$(RM) -f $(MPE_OUTFILE)
 	@-$(RM) -f $(C_OBJS) $(F_OBJS) *.@OBJEXT@
 	@-$(RM) -f $(C_EXECS) $(OPT_C_EXECS) $(OPT_F_EXECS)
 

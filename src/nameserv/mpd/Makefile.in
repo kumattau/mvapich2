@@ -23,7 +23,6 @@ CC              = @CC@
 CFLAGS          = @CFLAGS@
 C_COMPILE       = $(CC) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
 LIBTOOL         = @LIBTOOL@
-CREATESHLIB     = @CREATESHLIB@
 CC_SHL          = @CC_SHL@
 C_COMPILE_SHL   = $(CC_SHL) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
 
@@ -39,13 +38,13 @@ INCLUDES = -I../../include -I${master_top_srcdir}/src/include -I${master_top_src
 	@mv -f _s$*.o $*.lo
 .c:
 	$(C_COMPILE) -o $* $< $(LDFLAGS) $(LIBS)
-apply:
+apply: 
 	$(ACTION) $(ACTION_INPUT)
-clean:
+clean: 
 	-@rm -f *.o ${srcdir}/*.o 
 	-@rm -f .libstamp0 .libstamp1 
 	-@rm -f *.lo ${srcdir}/*.lo
-distclean: clean distclean-xxx remove-makefile
+distclean:  clean distclean-xxx remove-makefile
 distclean-xxx:
 	-@rm -f Makefile
 	-@rm -rf autom4te*.cache
@@ -75,7 +74,7 @@ ETAGS           = @ETAGS@ @ETAGSADD@
 HEADERFILES     = $(HEADERS)
 SOURCEFILES     = $(SOURCES)
 tags: TAGS
-TAGS:${HEADERFILES} ${SOURCEFILES}
+TAGS: Makefile${HEADERFILES} ${SOURCEFILES}
 	here=`cd ../../.. && pwd` ; cd ${srcdir} && $(ETAGS) -o $$here/TAGS --append ${HEADERFILES} ${SOURCEFILES}
 # --------------------------------------------------------------------------
 

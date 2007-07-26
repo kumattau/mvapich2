@@ -309,7 +309,7 @@ ac_includes_default="\
 # include <unistd.h>
 #endif"
 
-ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS top_build_dir docdir htmldir RANLIB ac_ct_RANLIB CC F77 CFLAGS LDFLAGS CPPFLAGS ac_ct_CC EXEEXT OBJEXT FFLAGS ac_ct_F77 CPP EGREP F90 HAVE_WEAK_SYMBOLS srcdir master_top_srcdir master_top_builddir master_topbuild_dir MPIO_EXTRA_OBJECTS MPIO_EXTRA_TMP_POBJECTS MPIO_EXTRA_REAL_POBJECTS MPIO_REQOBJECTS MPIO_REQ_TMP_POBJECTS MPIO_REQ_REAL_POBJECTS DOCTEXT EXTRA_SRC_DIRS FILE_SYS_DIRS GLUE_DIR VPATH ARCH FILE_SYSTEM USER_CFLAGS USER_FFLAGS MIPS BITS MPI AR MPI_INCLUDE_DIR MPI_LIB NOF77 NOPROFILE MAKE arch_IRIX ROMIO_HOME LIBNAME TEST_LIBNAME LL F77GETARG F77IARGC F77MPIOINC FTESTDEFINE FORTRAN_MPI_OFFSET FROM_MPICH FROM_MPICH2 FROM_LAM WITHIN_KNOWN_MPI_IMPL NEEDS_MPI_FINT HAVE_MPI_INFO BUILD_MPI_INFO HAVE_MPI_DARRAY_SUBARRAY BUILD_MPI_ARRAY DEFINE_MPI_OFFSET DEFINE_HAVE_MPI_GREQUEST MPI_OFFSET_TYPE MPI_FINFO1 MPI_FINFO2 MPI_FINFO3 MPI_FINFO4 MPI_FARRAY1 MPI_FARRAY2 MPI_FARRAY3 MPI_FARRAY4 MPI_FARRAY5 MPI_FARRAY6 MPI_FARRAY7 MPI_OFFSET_KIND1 MPI_OFFSET_KIND2 TEST_CC TEST_F77 ROMIO_INCLUDE ROMIO_LFLAGS ROMIO_LIBLIST ROMIO_TCFLAGS ROMIO_TCPPFLAGS ROMIO_TFFLAGS MPIRUN FORTRAN_TEST MAKE_DEPEND_C ENABLE_SHLIB CC_SHL LIBTOOL SHLIBNAME LIBOBJS LTLIBOBJS'
+ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS top_build_dir docdir htmldir RANLIB ac_ct_RANLIB CC F77 CFLAGS LDFLAGS CPPFLAGS ac_ct_CC EXEEXT OBJEXT FFLAGS ac_ct_F77 CPP EGREP F90 HAVE_WEAK_SYMBOLS PVFS2_CONFIG srcdir master_top_srcdir master_top_builddir master_topbuild_dir MPIO_EXTRA_OBJECTS MPIO_EXTRA_TMP_POBJECTS MPIO_EXTRA_REAL_POBJECTS MPIO_REQOBJECTS MPIO_REQ_TMP_POBJECTS MPIO_REQ_REAL_POBJECTS DOCTEXT EXTRA_SRC_DIRS FILE_SYS_DIRS GLUE_DIR VPATH ARCH FILE_SYSTEM USER_CFLAGS USER_FFLAGS MIPS BITS MPI AR MPI_INCLUDE_DIR MPI_LIB NOF77 NOPROFILE MAKE arch_IRIX ROMIO_HOME LIBNAME TEST_LIBNAME LL F77GETARG F77IARGC F77MPIOINC FTESTDEFINE FORTRAN_MPI_OFFSET FROM_MPICH FROM_MPICH2 FROM_LAM WITHIN_KNOWN_MPI_IMPL NEEDS_MPI_FINT HAVE_MPI_INFO BUILD_MPI_INFO HAVE_MPI_DARRAY_SUBARRAY BUILD_MPI_ARRAY DEFINE_MPI_OFFSET DEFINE_HAVE_MPI_GREQUEST MPI_OFFSET_TYPE MPI_FINFO1 MPI_FINFO2 MPI_FINFO3 MPI_FINFO4 MPI_FARRAY1 MPI_FARRAY2 MPI_FARRAY3 MPI_FARRAY4 MPI_FARRAY5 MPI_FARRAY6 MPI_FARRAY7 MPI_OFFSET_KIND1 MPI_OFFSET_KIND2 TEST_CC TEST_F77 ROMIO_INCLUDE ROMIO_LFLAGS ROMIO_LIBLIST ROMIO_TCFLAGS ROMIO_TCPPFLAGS ROMIO_TFFLAGS MPIRUN FORTRAN_TEST MAKE_DEPEND_C ENABLE_SHLIB CC_SHL LIBTOOL SHLIBNAME LIBOBJS LTLIBOBJS'
 ac_subst_files=''
 
 # Initialize some variables set by options.
@@ -861,6 +861,8 @@ Optional Packages:
   --without-PACKAGE       do not use PACKAGE (same as --with-PACKAGE=no)
 
 --with-file-system=name - Build with support for the named file systems
+
+--with-pvfs2=path - Path to installation of PVFS (version 2)
 
 --with-mpi=name - Specify MPI implementation to build ROMIO for
 
@@ -1452,6 +1454,12 @@ fi;
 # Check whether --with-file-system or --without-file-system was given.
 if test "${with_file_system+set}" = set; then
   withval="$with_file_system"
+
+fi;
+
+# Check whether --with-pvfs2 or --without-pvfs2 was given.
+if test "${with_pvfs2+set}" = set; then
+  withval="$with_pvfs2"
 
 fi;
 
@@ -2955,7 +2963,7 @@ fi
 
 
 # Provide some information about the compiler.
-echo "$as_me:2958:" \
+echo "$as_me:2966:" \
      "checking for Fortran 77 compiler version" >&5
 ac_compiler=`set X $ac_compile; echo $2`
 { (eval echo "$as_me:$LINENO: \"$ac_compiler --version </dev/null >&5\"") >&5
@@ -3977,7 +3985,9 @@ Turning off Fortran (-nof77 being assumed)" >&2;}
     if test -n "$FORTRANNAMES" ; then
         WDEF="-D$FORTRANNAMES"
     fi
-    rm -f confftest.f confftest.o
+    # Delete confftest files with any extension.  This catches the case
+    # where auxillary files, such as coverage files, are removed.
+    rm -f confftest.*
 
     if test -n "$WDEF" ; then
         CFLAGS="$CFLAGS $WDEF"
@@ -5111,9 +5121,9 @@ cat >>confdefs.h <<_ACEOF
 _ACEOF
 
 
-echo "$as_me:$LINENO: checking for void*" >&5
-echo $ECHO_N "checking for void*... $ECHO_C" >&6
-if test "${ac_cv_type_voidp+set}" = set; then
+echo "$as_me:$LINENO: checking for void *" >&5
+echo $ECHO_N "checking for void *... $ECHO_C" >&6
+if test "${ac_cv_type_void_p+set}" = set; then
   echo $ECHO_N "(cached) $ECHO_C" >&6
 else
   cat >conftest.$ac_ext <<_ACEOF
@@ -5126,9 +5136,9 @@ $ac_includes_default
 int
 main ()
 {
-if ((void* *) 0)
+if ((void * *) 0)
   return 0;
-if (sizeof (void*))
+if (sizeof (void *))
   return 0;
   ;
   return 0;
@@ -5155,24 +5165,24 @@ if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
   ac_status=$?
   echo "$as_me:$LINENO: \$? = $ac_status" >&5
   (exit $ac_status); }; }; then
-  ac_cv_type_voidp=yes
+  ac_cv_type_void_p=yes
 else
   echo "$as_me: failed program was:" >&5
 sed 's/^/| /' conftest.$ac_ext >&5
 
-ac_cv_type_voidp=no
+ac_cv_type_void_p=no
 fi
 rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
 fi
-echo "$as_me:$LINENO: result: $ac_cv_type_voidp" >&5
-echo "${ECHO_T}$ac_cv_type_voidp" >&6
+echo "$as_me:$LINENO: result: $ac_cv_type_void_p" >&5
+echo "${ECHO_T}$ac_cv_type_void_p" >&6
 
-echo "$as_me:$LINENO: checking size of void*" >&5
-echo $ECHO_N "checking size of void*... $ECHO_C" >&6
-if test "${ac_cv_sizeof_voidp+set}" = set; then
+echo "$as_me:$LINENO: checking size of void *" >&5
+echo $ECHO_N "checking size of void *... $ECHO_C" >&6
+if test "${ac_cv_sizeof_void_p+set}" = set; then
   echo $ECHO_N "(cached) $ECHO_C" >&6
 else
-  if test "$ac_cv_type_voidp" = yes; then
+  if test "$ac_cv_type_void_p" = yes; then
   # The cast to unsigned long works around a bug in the HP C Compiler
   # version HP92453-01 B.11.11.23709.GP, which incorrectly rejects
   # declarations like `int a3[[(sizeof (unsigned char)) >= 0]];'.
@@ -5189,7 +5199,7 @@ $ac_includes_default
 int
 main ()
 {
-static int test_array [1 - 2 * !(((long) (sizeof (void*))) >= 0)];
+static int test_array [1 - 2 * !(((long) (sizeof (void *))) >= 0)];
 test_array [0] = 0
 
   ;
@@ -5229,7 +5239,7 @@ $ac_includes_default
 int
 main ()
 {
-static int test_array [1 - 2 * !(((long) (sizeof (void*))) <= $ac_mid)];
+static int test_array [1 - 2 * !(((long) (sizeof (void *))) <= $ac_mid)];
 test_array [0] = 0
 
   ;
@@ -5285,7 +5295,7 @@ $ac_includes_default
 int
 main ()
 {
-static int test_array [1 - 2 * !(((long) (sizeof (void*))) < 0)];
+static int test_array [1 - 2 * !(((long) (sizeof (void *))) < 0)];
 test_array [0] = 0
 
   ;
@@ -5325,7 +5335,7 @@ $ac_includes_default
 int
 main ()
 {
-static int test_array [1 - 2 * !(((long) (sizeof (void*))) >= $ac_mid)];
+static int test_array [1 - 2 * !(((long) (sizeof (void *))) >= $ac_mid)];
 test_array [0] = 0
 
   ;
@@ -5389,7 +5399,7 @@ $ac_includes_default
 int
 main ()
 {
-static int test_array [1 - 2 * !(((long) (sizeof (void*))) <= $ac_mid)];
+static int test_array [1 - 2 * !(((long) (sizeof (void *))) <= $ac_mid)];
 test_array [0] = 0
 
   ;
@@ -5427,10 +5437,10 @@ fi
 rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
 done
 case $ac_lo in
-?*) ac_cv_sizeof_voidp=$ac_lo;;
-'') { { echo "$as_me:$LINENO: error: cannot compute sizeof (void*), 77
+?*) ac_cv_sizeof_void_p=$ac_lo;;
+'') { { echo "$as_me:$LINENO: error: cannot compute sizeof (void *), 77
 See \`config.log' for more details." >&5
-echo "$as_me: error: cannot compute sizeof (void*), 77
+echo "$as_me: error: cannot compute sizeof (void *), 77
 See \`config.log' for more details." >&2;}
    { (exit 1); exit 1; }; } ;;
 esac
@@ -5447,8 +5457,8 @@ cat confdefs.h >>conftest.$ac_ext
 cat >>conftest.$ac_ext <<_ACEOF
 /* end confdefs.h.  */
 $ac_includes_default
-long longval () { return (long) (sizeof (void*)); }
-unsigned long ulongval () { return (long) (sizeof (void*)); }
+long longval () { return (long) (sizeof (void *)); }
+unsigned long ulongval () { return (long) (sizeof (void *)); }
 #include <stdio.h>
 #include <stdlib.h>
 int
@@ -5458,17 +5468,17 @@ main ()
   FILE *f = fopen ("conftest.val", "w");
   if (! f)
     exit (1);
-  if (((long) (sizeof (void*))) < 0)
+  if (((long) (sizeof (void *))) < 0)
     {
       long i = longval ();
-      if (i != ((long) (sizeof (void*))))
+      if (i != ((long) (sizeof (void *))))
 	exit (1);
       fprintf (f, "%ld\n", i);
     }
   else
     {
       unsigned long i = ulongval ();
-      if (i != ((long) (sizeof (void*))))
+      if (i != ((long) (sizeof (void *))))
 	exit (1);
       fprintf (f, "%lu\n", i);
     }
@@ -5489,16 +5499,16 @@ if { (eval echo "$as_me:$LINENO: \"$ac_link\"") >&5
   ac_status=$?
   echo "$as_me:$LINENO: \$? = $ac_status" >&5
   (exit $ac_status); }; }; then
-  ac_cv_sizeof_voidp=`cat conftest.val`
+  ac_cv_sizeof_void_p=`cat conftest.val`
 else
   echo "$as_me: program exited with status $ac_status" >&5
 echo "$as_me: failed program was:" >&5
 sed 's/^/| /' conftest.$ac_ext >&5
 
 ( exit $ac_status )
-{ { echo "$as_me:$LINENO: error: cannot compute sizeof (void*), 77
+{ { echo "$as_me:$LINENO: error: cannot compute sizeof (void *), 77
 See \`config.log' for more details." >&5
-echo "$as_me: error: cannot compute sizeof (void*), 77
+echo "$as_me: error: cannot compute sizeof (void *), 77
 See \`config.log' for more details." >&2;}
    { (exit 1); exit 1; }; }
 fi
@@ -5507,13 +5517,13 @@ fi
 fi
 rm -f conftest.val
 else
-  ac_cv_sizeof_voidp=0
+  ac_cv_sizeof_void_p=0
 fi
 fi
-echo "$as_me:$LINENO: result: $ac_cv_sizeof_voidp" >&5
-echo "${ECHO_T}$ac_cv_sizeof_voidp" >&6
+echo "$as_me:$LINENO: result: $ac_cv_sizeof_void_p" >&5
+echo "${ECHO_T}$ac_cv_sizeof_void_p" >&6
 cat >>confdefs.h <<_ACEOF
-#define SIZEOF_VOIDP $ac_cv_sizeof_voidp
+#define SIZEOF_VOID_P $ac_cv_sizeof_void_p
 _ACEOF
 
 
@@ -5524,9 +5534,9 @@ if test "${pac_cv_int_hold_pointer+set}" = set; then
 else
 
 if test "$ac_cv_sizeof_int" = "0" -o \
-	"$ac_cv_sizeof_voidp" = "0" ; then
+	"$ac_cv_sizeof_void_p" = "0" ; then
     pac_cv_int_hold_pointer=unknown
-elif test "$ac_cv_sizeof_int" -lt "$ac_cv_sizeof_voidp" ; then
+elif test "$ac_cv_sizeof_int" -lt "$ac_cv_sizeof_void_p" ; then
     pac_cv_int_hold_pointer=no
 else
     pac_cv_int_hold_pointer=yes
@@ -5539,6 +5549,11 @@ if test "$pac_cv_int_hold_pointer" != yes ; then
 
 cat >>confdefs.h <<\_ACEOF
 #define INT_LT_POINTER 1
+_ACEOF
+
+
+cat >>confdefs.h <<\_ACEOF
+#define HAVE_INT_LT_POINTER 1
 _ACEOF
 
 fi
@@ -6196,6 +6211,52 @@ fi
   fi
 fi
 #
+# Test that we can use the FORTRAN_MPI_OFFSET type.  If the environment
+# is a strict Fortran 90/95 or later compiler, the "integer*8" format
+# may not work.
+if test "$NOF77" = 0 ; then
+    rm -f conftest*
+    ac_cv_f77_offset_type_works=no
+    echo "$as_me:$LINENO: checking that we can use $FORTRAN_MPI_OFFSET to declare MPI_DISPLACMENT_CURRENT" >&5
+echo $ECHO_N "checking that we can use $FORTRAN_MPI_OFFSET to declare MPI_DISPLACMENT_CURRENT... $ECHO_C" >&6
+    cat >conftest.f <<EOF
+        program main
+        $FORTRAN_MPI_OFFSET j
+        end
+EOF
+    if $F77 -o conftest conftest.f >>config.log 2>&1 && test -x conftest ; then
+        ac_cv_f77_offset_type_works=yes
+    fi
+    rm -f conftest*
+    echo "$as_me:$LINENO: result: $ac_cv_f77_offset_type_works" >&5
+echo "${ECHO_T}$ac_cv_f77_offset_type_works" >&6
+
+    if test "$ac_cv_f77_offset_type_works" != "yes" ; then
+        echo "$as_me:$LINENO: checking whether we can use KIND with the selected F77 compiler $F77" >&5
+echo $ECHO_N "checking whether we can use KIND with the selected F77 compiler $F77... $ECHO_C" >&6
+        ac_cv_f77_allows_offset_kind=no
+        rm -f conftest*
+        cat >conftest.f <<EOF
+        program main
+        integer (kind=$MPI_OFFSET_KIND) j
+        end
+EOF
+        if $F77 -o conftest conftest.f >>config.log 2>&1 && test -x conftest ; then
+            ac_cv_f77_allows_offset_kind=yes
+        fi
+        rm -f conftest*
+        echo "$as_me:$LINENO: result: $ac_cv_f77_allows_offset_kind" >&5
+echo "${ECHO_T}$ac_cv_f77_allows_offset_kind" >&6
+        if test "$ac_cv_f77_allows_offset_kind" ; then
+             FORTRAN_MPI_OFFSET="integer (kind=$MPI_OFFSET_KIND)"
+        else
+             { echo "$as_me:$LINENO: WARNING: Could not find a way to declare an integer type corresponding to MPI_Offset in Fortran." >&5
+echo "$as_me: WARNING: Could not find a way to declare an integer type corresponding to MPI_Offset in Fortran." >&2;}
+        fi
+    fi
+fi
+
+#
 # check if MPI_Info functions are defined in the MPI implementation
 if test $WITHIN_KNOWN_MPI_IMPL = no ; then
 
@@ -6504,6 +6565,39 @@ EOF
     if eval $ac_link2 ; then
         echo "$as_me:$LINENO: result: yes" >&5
 echo "${ECHO_T}yes" >&6
+        echo "$as_me:$LINENO: checking that the compiler correctly implements weak symbols" >&5
+echo $ECHO_N "checking that the compiler correctly implements weak symbols... $ECHO_C" >&6
+        # The gcc 3.4.x compiler accepts the pragma weak, but does not
+        # correctly implement it on systems where the loader doesn't
+        # support weak symbols (e.g., cygwin).  This is a bug in gcc, but it
+        # it is one that *we* have to detect.
+        rm -f conftest*
+        cat >>conftest1.c <<EOF
+extern int PFoo(int);
+#pragma weak PFoo = Foo
+int Foo(int);
+int Foo(int a) { return a; }
+EOF
+    cat >>conftest2.c <<EOF
+extern int Foo(int);
+int PFoo(int a) { return a+1;}
+int main(int argc, char **argv) {
+return Foo(0);}
+EOF
+        if eval $ac_link2 ; then
+            echo "$as_me:$LINENO: result: yes" >&5
+echo "${ECHO_T}yes" >&6
+            has_pragma_weak=1
+        else
+            echo "$as_me:$LINENO: result: no" >&5
+echo "${ECHO_T}no" >&6
+            echo "$ac_link2" >> config.log
+	    echo "Failed program was" >> config.log
+            cat conftest1.c >>config.log
+            cat conftest2.c >>config.log
+            if test -s conftest.out ; then cat conftest.out >> config.log ; fi
+            has_pragma_weak=0
+        fi
     else
       echo "$ac_link2" 1>&5
       echo "Failed program was" 1>&5
@@ -6790,6 +6884,69 @@ fi
 file_system_testfs=1
 FILE_SYSTEM="testfs $FILE_SYSTEM"
 
+# An attempt to "do the right thing" with as little help from the end-user as
+# possible:
+# - if 'with-pvfs2' given, use that to find pvfs2-config.  complain if we
+#   cannot find it, as this is probably what the user would expect
+# - if we can find 'pvfs2-config' in our path, we can use it to set CFLAGS,
+#   LIBS, and LDFLAGS accordingly
+# - as a fallback, use CFLAGS, LIBS, and LDFLAGS passed in by the user
+
+# Extract the first word of "pvfs2-config", so it can be a program name with args.
+set dummy pvfs2-config; ac_word=$2
+echo "$as_me:$LINENO: checking for $ac_word" >&5
+echo $ECHO_N "checking for $ac_word... $ECHO_C" >&6
+if test "${ac_cv_path_PVFS2_CONFIG+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+  case $PVFS2_CONFIG in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_PVFS2_CONFIG="$PVFS2_CONFIG" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+as_dummy="$PATH:${with_pvfs2}/bin"
+for as_dir in $as_dummy
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+  for ac_exec_ext in '' $ac_executable_extensions; do
+  if $as_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
+    ac_cv_path_PVFS2_CONFIG="$as_dir/$ac_word$ac_exec_ext"
+    echo "$as_me:$LINENO: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+done
+
+  test -z "$ac_cv_path_PVFS2_CONFIG" && ac_cv_path_PVFS2_CONFIG="notfound"
+  ;;
+esac
+fi
+PVFS2_CONFIG=$ac_cv_path_PVFS2_CONFIG
+
+if test -n "$PVFS2_CONFIG"; then
+  echo "$as_me:$LINENO: result: $PVFS2_CONFIG" >&5
+echo "${ECHO_T}$PVFS2_CONFIG" >&6
+else
+  echo "$as_me:$LINENO: result: no" >&5
+echo "${ECHO_T}no" >&6
+fi
+
+if test $PVFS2_CONFIG != "notfound" ; then
+	CFLAGS="$CFLAGS $( $PVFS2_CONFIG --cflags)"
+	LIBS="$LIBS $( $PVFS2_CONFIG --libs)"
+	ROMIO_LIBLIST="$ROMIO_LIBLIST $LIBS"
+	FILE_SYSTEM="pvfs2 $FILE_SYSTEM"
+	file_system_pvfs2=1
+fi
+
+if test "$PVFS2_CONFIG" = "notfound" -a -n "$with_pvfs2" ; then
+	{ { echo "$as_me:$LINENO: error: pvfs2-config not found in $with_pvfs2" >&5
+echo "$as_me: error: pvfs2-config not found in $with_pvfs2" >&2;}
+   { (exit 1); exit 1; }; }
+fi
+
 #
 # Print list of configured file systems
 #
@@ -6870,8 +7027,8 @@ if test "${pac_cv_memalignval+set}" = set; then
   echo $ECHO_N "(cached) $ECHO_C" >&6
 else
 
-    /bin/rm -f confmemalignval
-    /bin/rm -f /tmp/romio_tmp.bin
+    rm -f confmemalignval
+    rm -f /tmp/romio_tmp.bin
     if test "$cross_compiling" = yes; then
   pac_cv_memalignval="unknown"
 
@@ -6921,8 +7078,8 @@ pac_cv_memalignval="unknown"
 fi
 rm -f core *.core gmon.out bb.out conftest$ac_exeext conftest.$ac_objext conftest.$ac_ext
 fi
-    /bin/rm -f confmemalignval
-    /bin/rm -f /tmp/romio_tmp.bin
+    rm -f confmemalignval
+    rm -f /tmp/romio_tmp.bin
 
 fi
 echo "$as_me:$LINENO: result: $pac_cv_memalignval" >&5
@@ -7088,7 +7245,7 @@ if test `eval echo '${'$as_ac_Header'}'` = yes; then
 _ACEOF
 
 cat >>confdefs.h <<\_ACEOF
-#define ROMIO_PVFS2 1
+#define ROMIO_PVFS 1
 _ACEOF
 
 else
@@ -7232,6 +7389,8 @@ _ACEOF
 echo "$as_me: WARNING: missing or broken pvfs.h header file; disabling ROMIO PVFS support" >&2;}
     fi
 fi
+
+
 
 #
 # Verify presence of pvfs2.h
@@ -7420,135 +7579,18 @@ fi
 save_libs=$LIBS
 LIBS=
 #
-# Some systems need pthreads to get AIO to work
+# Some systems need pthreads to get AIO to work.  However, we don't want
+# to add pthreads just because it is there, as that can cause problems
+# with some implementations of pthreads and compilers (e.g., gcc version 3
+# would fail if there was an int a[100000] on the stack if the application
+# was *linked* with pthreads, but would succeed if the application was
+# *not linked* with pthreads.
 #
 if test "x$disable_aio" = "xno" ; then
-    echo "$as_me:$LINENO: checking for library containing pthread_create" >&5
-echo $ECHO_N "checking for library containing pthread_create... $ECHO_C" >&6
-if test "${ac_cv_search_pthread_create+set}" = set; then
-  echo $ECHO_N "(cached) $ECHO_C" >&6
-else
-  ac_func_search_save_LIBS=$LIBS
-ac_cv_search_pthread_create=no
-cat >conftest.$ac_ext <<_ACEOF
-/* confdefs.h.  */
-_ACEOF
-cat confdefs.h >>conftest.$ac_ext
-cat >>conftest.$ac_ext <<_ACEOF
-/* end confdefs.h.  */
+    foundPTHREAD=no
 
-/* Override any gcc2 internal prototype to avoid an error.  */
-#ifdef __cplusplus
-extern "C"
-#endif
-/* We use char because int might match the return type of a gcc2
-   builtin and then its argument prototype would still apply.  */
-char pthread_create ();
-int
-main ()
-{
-pthread_create ();
-  ;
-  return 0;
-}
-_ACEOF
-rm -f conftest.$ac_objext conftest$ac_exeext
-if { (eval echo "$as_me:$LINENO: \"$ac_link\"") >&5
-  (eval $ac_link) 2>conftest.er1
-  ac_status=$?
-  grep -v '^ *+' conftest.er1 >conftest.err
-  rm -f conftest.er1
-  cat conftest.err >&5
-  echo "$as_me:$LINENO: \$? = $ac_status" >&5
-  (exit $ac_status); } &&
-	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
-  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
-  (eval $ac_try) 2>&5
-  ac_status=$?
-  echo "$as_me:$LINENO: \$? = $ac_status" >&5
-  (exit $ac_status); }; } &&
-	 { ac_try='test -s conftest$ac_exeext'
-  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
-  (eval $ac_try) 2>&5
-  ac_status=$?
-  echo "$as_me:$LINENO: \$? = $ac_status" >&5
-  (exit $ac_status); }; }; then
-  ac_cv_search_pthread_create="none required"
-else
-  echo "$as_me: failed program was:" >&5
-sed 's/^/| /' conftest.$ac_ext >&5
-
-fi
-rm -f conftest.err conftest.$ac_objext \
-      conftest$ac_exeext conftest.$ac_ext
-if test "$ac_cv_search_pthread_create" = no; then
-  for ac_lib in pthread; do
-    LIBS="-l$ac_lib  $ac_func_search_save_LIBS"
-    cat >conftest.$ac_ext <<_ACEOF
-/* confdefs.h.  */
-_ACEOF
-cat confdefs.h >>conftest.$ac_ext
-cat >>conftest.$ac_ext <<_ACEOF
-/* end confdefs.h.  */
-
-/* Override any gcc2 internal prototype to avoid an error.  */
-#ifdef __cplusplus
-extern "C"
-#endif
-/* We use char because int might match the return type of a gcc2
-   builtin and then its argument prototype would still apply.  */
-char pthread_create ();
-int
-main ()
-{
-pthread_create ();
-  ;
-  return 0;
-}
-_ACEOF
-rm -f conftest.$ac_objext conftest$ac_exeext
-if { (eval echo "$as_me:$LINENO: \"$ac_link\"") >&5
-  (eval $ac_link) 2>conftest.er1
-  ac_status=$?
-  grep -v '^ *+' conftest.er1 >conftest.err
-  rm -f conftest.er1
-  cat conftest.err >&5
-  echo "$as_me:$LINENO: \$? = $ac_status" >&5
-  (exit $ac_status); } &&
-	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
-  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
-  (eval $ac_try) 2>&5
-  ac_status=$?
-  echo "$as_me:$LINENO: \$? = $ac_status" >&5
-  (exit $ac_status); }; } &&
-	 { ac_try='test -s conftest$ac_exeext'
-  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
-  (eval $ac_try) 2>&5
-  ac_status=$?
-  echo "$as_me:$LINENO: \$? = $ac_status" >&5
-  (exit $ac_status); }; }; then
-  ac_cv_search_pthread_create="-l$ac_lib"
-break
-else
-  echo "$as_me: failed program was:" >&5
-sed 's/^/| /' conftest.$ac_ext >&5
-
-fi
-rm -f conftest.err conftest.$ac_objext \
-      conftest$ac_exeext conftest.$ac_ext
-  done
-fi
-LIBS=$ac_func_search_save_LIBS
-fi
-echo "$as_me:$LINENO: result: $ac_cv_search_pthread_create" >&5
-echo "${ECHO_T}$ac_cv_search_pthread_create" >&6
-if test "$ac_cv_search_pthread_create" != no; then
-  test "$ac_cv_search_pthread_create" = "none required" || LIBS="$ac_cv_search_pthread_create $LIBS"
-  ROMIO_LIBLIST="$ROMIO_LIBLIST $LIBS"
-        MPI_LIB="$MPI_LIB $LIBS"
-
-fi
-
+    # Do we have aio_write in aio or rt?
+    saveLIBS=$LIBS
     LIBS=
     echo "$as_me:$LINENO: checking for library containing aio_write" >&5
 echo $ECHO_N "checking for library containing aio_write... $ECHO_C" >&6
@@ -7671,11 +7713,294 @@ echo "$as_me:$LINENO: result: $ac_cv_search_aio_write" >&5
 echo "${ECHO_T}$ac_cv_search_aio_write" >&6
 if test "$ac_cv_search_aio_write" != no; then
   test "$ac_cv_search_aio_write" = "none required" || LIBS="$ac_cv_search_aio_write $LIBS"
-  ROMIO_LIBLIST="$ROMIO_LIBLIST $LIBS"
-        MPI_LIB="$MPI_LIB $LIBS"
-        aio_write_found=yes
+  foundAIO=yes
+else
+  foundAIO=no
+fi
+
+    if test "$foundAIO" = yes ; then
+        AIOLIBS=$LIBS
+        LIBS="$saveLIBS $LIBS"
+    else
+        LIBS="$saveLIBS"
+    fi
+
+    # If not, try finding pthread_create first, and if found, try the
+    # test again.
+    if test "$foundAIO" = no ; then
+        saveLIBS=$LIBS
+	LIBS=
+        echo "$as_me:$LINENO: checking for library containing pthread_create" >&5
+echo $ECHO_N "checking for library containing pthread_create... $ECHO_C" >&6
+if test "${ac_cv_search_pthread_create+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+  ac_func_search_save_LIBS=$LIBS
+ac_cv_search_pthread_create=no
+cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+/* Override any gcc2 internal prototype to avoid an error.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+/* We use char because int might match the return type of a gcc2
+   builtin and then its argument prototype would still apply.  */
+char pthread_create ();
+int
+main ()
+{
+pthread_create ();
+  ;
+  return 0;
+}
+_ACEOF
+rm -f conftest.$ac_objext conftest$ac_exeext
+if { (eval echo "$as_me:$LINENO: \"$ac_link\"") >&5
+  (eval $ac_link) 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } &&
+	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; } &&
+	 { ac_try='test -s conftest$ac_exeext'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; }; then
+  ac_cv_search_pthread_create="none required"
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
 
 fi
+rm -f conftest.err conftest.$ac_objext \
+      conftest$ac_exeext conftest.$ac_ext
+if test "$ac_cv_search_pthread_create" = no; then
+  for ac_lib in pthread; do
+    LIBS="-l$ac_lib  $ac_func_search_save_LIBS"
+    cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+/* Override any gcc2 internal prototype to avoid an error.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+/* We use char because int might match the return type of a gcc2
+   builtin and then its argument prototype would still apply.  */
+char pthread_create ();
+int
+main ()
+{
+pthread_create ();
+  ;
+  return 0;
+}
+_ACEOF
+rm -f conftest.$ac_objext conftest$ac_exeext
+if { (eval echo "$as_me:$LINENO: \"$ac_link\"") >&5
+  (eval $ac_link) 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } &&
+	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; } &&
+	 { ac_try='test -s conftest$ac_exeext'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; }; then
+  ac_cv_search_pthread_create="-l$ac_lib"
+break
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+fi
+rm -f conftest.err conftest.$ac_objext \
+      conftest$ac_exeext conftest.$ac_ext
+  done
+fi
+LIBS=$ac_func_search_save_LIBS
+fi
+echo "$as_me:$LINENO: result: $ac_cv_search_pthread_create" >&5
+echo "${ECHO_T}$ac_cv_search_pthread_create" >&6
+if test "$ac_cv_search_pthread_create" != no; then
+  test "$ac_cv_search_pthread_create" = "none required" || LIBS="$ac_cv_search_pthread_create $LIBS"
+  foundPTHREAD=yes
+else
+  foundPTHREAD=no
+fi
+
+        if test "$foundPTHREAD" = yes ; then
+            echo "$as_me:$LINENO: checking for library containing aio_write" >&5
+echo $ECHO_N "checking for library containing aio_write... $ECHO_C" >&6
+if test "${ac_cv_search_aio_write+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+  ac_func_search_save_LIBS=$LIBS
+ac_cv_search_aio_write=no
+cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+/* Override any gcc2 internal prototype to avoid an error.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+/* We use char because int might match the return type of a gcc2
+   builtin and then its argument prototype would still apply.  */
+char aio_write ();
+int
+main ()
+{
+aio_write ();
+  ;
+  return 0;
+}
+_ACEOF
+rm -f conftest.$ac_objext conftest$ac_exeext
+if { (eval echo "$as_me:$LINENO: \"$ac_link\"") >&5
+  (eval $ac_link) 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } &&
+	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; } &&
+	 { ac_try='test -s conftest$ac_exeext'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; }; then
+  ac_cv_search_aio_write="none required"
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+fi
+rm -f conftest.err conftest.$ac_objext \
+      conftest$ac_exeext conftest.$ac_ext
+if test "$ac_cv_search_aio_write" = no; then
+  for ac_lib in aio rt; do
+    LIBS="-l$ac_lib  $ac_func_search_save_LIBS"
+    cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+/* Override any gcc2 internal prototype to avoid an error.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+/* We use char because int might match the return type of a gcc2
+   builtin and then its argument prototype would still apply.  */
+char aio_write ();
+int
+main ()
+{
+aio_write ();
+  ;
+  return 0;
+}
+_ACEOF
+rm -f conftest.$ac_objext conftest$ac_exeext
+if { (eval echo "$as_me:$LINENO: \"$ac_link\"") >&5
+  (eval $ac_link) 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } &&
+	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; } &&
+	 { ac_try='test -s conftest$ac_exeext'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; }; then
+  ac_cv_search_aio_write="-l$ac_lib"
+break
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+fi
+rm -f conftest.err conftest.$ac_objext \
+      conftest$ac_exeext conftest.$ac_ext
+  done
+fi
+LIBS=$ac_func_search_save_LIBS
+fi
+echo "$as_me:$LINENO: result: $ac_cv_search_aio_write" >&5
+echo "${ECHO_T}$ac_cv_search_aio_write" >&6
+if test "$ac_cv_search_aio_write" != no; then
+  test "$ac_cv_search_aio_write" = "none required" || LIBS="$ac_cv_search_aio_write $LIBS"
+  foundAIO=yes
+else
+  foundAIO=no
+fi
+
+
+	    if test "$foundAIO" = yes ; then
+	        AIO_LIBS=$LIBS
+		LIBS="$saveLIBS $LIBS"
+	    else
+                LIBS=$saveLIBS
+            fi
+        else
+	    LIBS=$saveLIBS
+        fi
+    fi
+
+
+    if test "$foundAIO" = yes ; then
+        ROMIO_LIBLIST="$ROMIO_LIBLIST $AIOLIBS"
+        MPI_LIB="$MPI_LIB $AIOLIBS"
+	aio_write_found=yes
+    fi
 
 fi
 LIBS=$save_libs
@@ -12406,6 +12731,7 @@ s,@CPP@,$CPP,;t t
 s,@EGREP@,$EGREP,;t t
 s,@F90@,$F90,;t t
 s,@HAVE_WEAK_SYMBOLS@,$HAVE_WEAK_SYMBOLS,;t t
+s,@PVFS2_CONFIG@,$PVFS2_CONFIG,;t t
 s,@srcdir@,$srcdir,;t t
 s,@master_top_srcdir@,$master_top_srcdir,;t t
 s,@master_top_builddir@,$master_top_builddir,;t t

@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Rsend
 #define MPI_Rsend PMPI_Rsend
 
 #endif
@@ -62,7 +63,7 @@ int MPI_Rsend(void *buf, int count, MPI_Datatype datatype, int dest, int tag,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("pt2pt");
     MPID_MPI_PT2PT_FUNC_ENTER_FRONT(MPID_STATE_MPI_RSEND);
     
     /* Validate handle parameters needing to be converted */
@@ -156,7 +157,7 @@ int MPI_Rsend(void *buf, int count, MPI_Datatype datatype, int dest, int tag,
     
   fn_exit:
     MPID_MPI_PT2PT_FUNC_EXIT(MPID_STATE_MPI_RSEND);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("pt2pt");
     return mpi_errno;
     
   fn_fail:

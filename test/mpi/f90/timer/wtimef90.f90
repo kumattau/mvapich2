@@ -8,6 +8,8 @@
 ! If this code links, there are no problems.
 !
           use mpi
+          implicit none
+
           double precision time1
 
           time1 = mpi_wtime()

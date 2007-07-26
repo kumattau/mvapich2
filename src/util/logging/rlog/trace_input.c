@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: trace_input.c,v 1.1.1.1 2006/01/18 21:09:48 huangwei Exp $
+/*  $Id: trace_input.c,v 1.12 2006/01/08 00:22:07 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -76,7 +76,7 @@ TRACE_EXPORT int TRACE_Open( const char filespec[], TRACE_file *fp )
     if (filespec == NULL || fp == NULL)
 	return TRACEINPUT_FAIL;
 
-    if (strstr(filespec, "-h"))
+    if (strcmp(filespec, "-h") == 0)
     {
 	*fp = NULL;
 	return TRACEINPUT_SUCCESS;
@@ -476,7 +476,15 @@ TRACE_EXPORT int TRACE_Set_position( TRACE_file fp, TRACE_int64_t offset )
     return TRACEINPUT_FAIL;
 }
 
+/* FIXME: Improve failure reporting */
 TRACE_EXPORT char *TRACE_Get_err_string( int ierr )
 {
-    return "failure";
+    /* ierr == 0 returns the help string (see the documentation on this
+       routine) */
+    switch ( ierr ) {
+    case 0:
+            return "Usage: executable_name ASCII_drawable_filename";
+    default:
+	return "failure";
+    }
 }

@@ -16,7 +16,7 @@
  * so that applications that do not use the MPI-2 routines to create new
  * error codes will not load any of this code.  
  * 
- * ROMIO will be customized to provide error messages with the same tools
+ * ROMIO has been customized to provide error messages with the same tools
  * as the rest of MPICH2 and will not rely on the dynamically assigned
  * error classes.  This leaves all of the classes and codes for the user.
  *
@@ -48,9 +48,6 @@ static const char *(user_class_msgs[ERROR_MAX_NCLASS]) = { 0 };
 static const char *(user_code_msgs[ERROR_MAX_NCODE]) = { 0 };
 static int  first_free_class = 0;
 static int  first_free_code  = 1;  /* code 0 is reserved */
-#if (USE_THREAD_IMPL == MPICH_THREAD_IMPL_NOT_IMPLEMENTED)
-volatile static int ready = 0;
-#endif
 
 /* Forward reference */
 const char *MPIR_Err_get_dynerr_string( int code );
@@ -66,29 +63,19 @@ static int MPIR_Dynerrcodes_finalize( void * );
 /* Local routine to initialize the data structures for the dynamic
    error classes and codes.
 
-   MPIR_Init_err_dyncodes is called if initialized is false.  In
-   a multithreaded case, it must check *again* in case two threads
-   are in a race to call this routine
+   MPIR_Init_err_dyncodes is called if not_initialized is true.  
+   Because all of the routines in this file are called by the 
+   MPI_Add_error_xxx routines, and those routines use the SINGLE_CS
+   when the implementation is multithreaded, these routines (until 
+   we implement finer-grain thread-synchronization) need not worry about
+   multiple threads
  */
 static void MPIR_Init_err_dyncodes( void )
 {
     int i;
-#if (USE_THREAD_IMPL == MPICH_THREAD_IMPL_NOT_IMPLEMENTED)
-    { 
-	int nzflag;
 
-	MPID_Atomic_decr_flag( &not_initialized, nzflag );
-	if (nzflag) {
-	    /* Some other thread is initializing the data.  Wait
-	       until that thread completes */
-	    while (!ready) {
-		MPID_Thread_yield();
-	    }
-	}
-    }
-#else
+    /* FIXME: Does this need a thread-safe init? */
     not_initialized = 0;
-#endif
     
     for (i=0; i<ERROR_MAX_NCLASS; i++) {
 	user_class_msgs[i] = 0;
@@ -102,13 +89,6 @@ static void MPIR_Init_err_dyncodes( void )
 
     /* Add a finalize handler to free any allocated space */
     MPIR_Add_finalize( MPIR_Dynerrcodes_finalize, (void*)0, 9 );
-
-#if (USE_THREAD_IMPL == MPICH_THREAD_IMPL_NOT_IMPLEMENTED)
-    /* Release the other threads */
-    /* FIXME - Add MPID_Write_barrier for thread-safe operation,
-       or consider using a flag incr that contains a write barrier */
-    ready = 1;
-#endif
 }
 
 /*
@@ -126,7 +106,7 @@ int MPIR_Err_set_msg( int code, const char *msg_string )
     int errcode, errclass;
     size_t msg_len;
     char *str;
-    static char FCNAME[] = "MPIR_Err_set_msg";
+    static const char FCNAME[] = "MPIR_Err_set_msg";
 
     /* --BEGIN ERROR HANDLING-- */
     if (not_initialized) {
@@ -211,6 +191,8 @@ int MPIR_Err_set_msg( int code, const char *msg_string )
   Predefined classes are handled directly; this routine is not used to 
   initialize the predefined MPI error classes.  This is done to reduce the
   number of steps that must be executed when starting an MPI program.
+
+  This routine should be run within a SINGLE_CS in the multithreaded case.
 */
 int MPIR_Err_add_class()
 {
@@ -276,50 +258,6 @@ int MPIR_Err_add_code( int class )
        is initialized to null */
     return new_code;
 }
-
-#ifdef USE_ERRDELETE
-/* These were added for completeness and for any other modules that 
-   might be loaded with MPICH2.  No code uses these at this time */
-/*
-  MPIR_Err_delete_code - Delete an error code and its associated string
-
-  Input Parameter:
-. code - Code to delete.
- 
-  Notes:
-  This routine is not needed to implement any MPI routine (there are no
-  routines for deleting error codes or classes in MPI-2), but it is 
-  included both for completeness and to remind the implementation to 
-  carefully manage the memory used for dynamically created error codes and
-  classes.
-  */
-void MPIR_Err_delete_code( int code )
-{
-    if (not_initialized)
-	MPIR_Init_err_dyncodes();
-    /* FIXME : mark as free */
-}
-
-/*
-  MPIR_Err_delete_class - Delete an error class and its associated string
-
-  Input Parameter:
-. class - Class to delete.
-  */
-void MPIR_Err_delete_class( int class )
-{
-    if (not_initialized)
-	MPIR_Init_err_dyncodes();
-    /* FIXME : mark as free */
-}
-
-/* FIXME : For the delete code/class, at least delete if at the top of the
-   list; slightly better is to keep minvalue of freed and count; whenever
-   the minvalue + number = current top; reset.  This allows modular 
-   alloc/dealloc to recover codes and classes independent of the order in
-   which they are freed.
-*/
-#endif
 
 /*
   MPIR_Err_get_dynerr_string - Get the message string that corresponds to a

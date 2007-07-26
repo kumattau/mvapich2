@@ -240,19 +240,21 @@ int main( int argc, char *argv[] )
     lloutbuf[0] = 0;
     lloutbuf[1] = 1;
     lloutbuf[2] = 1;
-    MPI_Reduce( llinbuf, lloutbuf, 3, MPI_LONG_LONG, MPI_BAND, 0, comm );
-    if (rank == 0) {
-	if (lloutbuf[0] != 0xffffffff) {
-	    errs++;
-	    fprintf( stderr, "long long BAND(1) test failed\n" );
-	}
-	if (lloutbuf[1]) {
-	    errs++;
-	    fprintf( stderr, "long long BAND(0) test failed\n" );
-	}
-	if (lloutbuf[2] != 0xf0f0f0f0 && size > 1) {
-	    errs++;
-	    fprintf( stderr, "long long BAND(>) test failed\n" );
+    if (MPI_LONG_LONG != MPI_DATATYPE_NULL) {
+	MPI_Reduce( llinbuf, lloutbuf, 3, MPI_LONG_LONG, MPI_BAND, 0, comm );
+	if (rank == 0) {
+	    if (lloutbuf[0] != 0xffffffff) {
+		errs++;
+		fprintf( stderr, "long long BAND(1) test failed\n" );
+	    }
+	    if (lloutbuf[1]) {
+		errs++;
+		fprintf( stderr, "long long BAND(0) test failed\n" );
+	    }
+	    if (lloutbuf[2] != 0xf0f0f0f0 && size > 1) {
+		errs++;
+		fprintf( stderr, "long long BAND(>) test failed\n" );
+	    }
 	}
     }
     }

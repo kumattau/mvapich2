@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Graphdims_get
 #define MPI_Graphdims_get PMPI_Graphdims_get
 
 #endif
@@ -60,7 +61,6 @@ int MPI_Graphdims_get(MPI_Comm comm, int *nnodes, int *nedges)
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_GRAPHDIMS_GET);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -110,7 +110,6 @@ int MPI_Graphdims_get(MPI_Comm comm, int *nnodes, int *nedges)
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_GRAPHDIMS_GET);
-    MPID_CS_EXIT();
     return mpi_errno;
 
   fn_fail:

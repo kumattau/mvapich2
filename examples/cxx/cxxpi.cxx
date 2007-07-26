@@ -5,8 +5,23 @@
  */
 
 #include "mpi.h"
+/* Support both new (e.g., has iostream) and old (requires iostream.h) 
+   C++ compilers */
+#ifdef HAVE_CXX_IOSTREAM
+#include <iostream>
+#ifdef HAVE_NAMESPACE_STD
+// Those that do often need the std namespace; otherwise, a bare "cout"
+// is likely to fail to compile
+using namespace std;
+#endif
+#else
 #include <iostream.h>
+#endif
+#ifdef HAVE_CXX_MATH
+#include <math>
+#else
 #include <math.h>
+#endif
 
 double f(double);
 

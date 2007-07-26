@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: initialized.c,v 1.1.1.1 2006/01/18 21:09:43 huangwei Exp $
+/*  $Id: initialized.c,v 1.12 2006/12/09 16:42:26 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Initialized
 #define MPI_Initialized PMPI_Initialized
 #endif
 
@@ -42,7 +43,9 @@ Output Argument:
 @*/
 int MPI_Initialized( int *flag )
 {
+#ifdef HAVE_ERROR_CHECKING
     static const char FCNAME[] = "MPI_Initialized";
+#endif
     int mpi_errno = MPI_SUCCESS;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_INITIALIZED);
 
@@ -69,26 +72,27 @@ int MPI_Initialized( int *flag )
     
     /* ... end of body of routine ... */
 
+#ifdef HAVE_ERROR_CHECKING
   fn_exit:
+#endif
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_INITIALIZED);
     return mpi_errno;
     
-  fn_fail:
     /* --BEGIN ERROR HANDLING-- */
+#   ifdef HAVE_ERROR_CHECKING
+  fn_fail:
     if (MPIR_Process.initialized == MPICH_WITHIN_MPI)
     { 
-	MPID_CS_ENTER();
-#       ifdef HAVE_ERROR_CHECKING
 	{
 	    mpi_errno = MPIR_Err_create_code(
-		mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_initialized",
+		mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, 
+		MPI_ERR_OTHER, "**mpi_initialized",
 		"**mpi_initialized %p", flag);
 	}
-#       endif
 	
 	mpi_errno = MPIR_Err_return_comm( 0, FCNAME, mpi_errno );
-	MPID_CS_EXIT();
     }
     goto fn_exit;
+#   endif
     /* --END ERROR HANDLING-- */
 }

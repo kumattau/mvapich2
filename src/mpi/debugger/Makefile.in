@@ -40,12 +40,11 @@ C_COMPILE_SHL   = $(CC_SHL) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
 LDFLAGS     =  @LDFLAGS@ 
 
 VPATH = .:@srcdir@
-DOCTEXT         = @DOCTEXT@
 mpi_sources = 
 INCLUDES = -I../../include -I${top_srcdir}/src/include
 
 .SUFFIXES:
-.SUFFIXES: .o .lo .c .man .html .latex .txt 
+.SUFFIXES: .o .lo .c 
 .c.o:
 	$(C_COMPILE) -c $<
 .c.lo:
@@ -53,42 +52,14 @@ INCLUDES = -I../../include -I${top_srcdir}/src/include
 	@mv -f _s$*.o $*.lo
 .c:
 	$(C_COMPILE) -o $* $< $(LDFLAGS) $(LIBS)
-.c.man:
-	$(DOCTEXT) -man -mpath ../../../man/man3 -ext 3 -heading MPI \
-		-quotefmt ${master_top_srcdir}/maint/docnotes $<
-.c.html:
-	$(DOCTEXT) -html -mpath ../../../www/www3  -heading MPI \
-		-quotefmt ${master_top_srcdir}/maint/docnotes $<
-.c.latex:
-	$(DOCTEXT) -latex -mpath ../../../doc/refman  -heading MPI \
-		-quotefmt ${master_top_srcdir}/maint/docnotes $<
-
-# --------------------------------------------------------------------------
-${srcdir}/Makefile.in: ${srcdir}/Makefile.sm
-	( cd ${srcdir} && /data/mpich2-snap-200605302016/maint/simplemake \
-	-rootdir=../../../ \
-	-configdir=. \
-	-common=/data/mpich2-snap-200605302016/maint/makedefs \
-	-docnamedefs=\$${master_top_srcdir}/maint/docnotes \
-	"-autoconf=-I ROOTDIR/confdb" \
-	-libdir=\$${MPILIBNAME}=ROOTDIR/lib \
-	-distcleanfiles="Makefile" \
-	-smvar_doc_attop=0 \
-		Makefile.sm )
-Makefile: ${srcdir}/Makefile.in
-	-cd ../../../ && \
-	if [ -x config.status ] ; then CONFIG_FILES=src/mpi/debugger/Makefile CONFIG_HEADERS= ${SHELL} ./config.status ; fi
-# --------------------------------------------------------------------------
 apply: 
 	$(ACTION) $(ACTION_INPUT)
 clean: 
-	-@rm -f *.o ${srcdir}/*.o tvtest
+	-@rm -f *.o ${srcdir}/*.o qdemo tvtest
 	-@rm -f .libstamp0 .libstamp1 .libstamp2 .libstamp3 
-	-@rm -f tvtest.exe
+	-@rm -f qdemo.exe tvtest.exe
 	-@rm -f core core.[0-9]*
 	-@rm -f *.lo ${srcdir}/*.lo
-	-@rm -f ${srcdir}/*.bb ${srcdir}/*.bbg ${srcdir}/*.da
-	-@rm -f *.bb *.bbg *.da
 	-@rm -f *.irlog*
 distclean:  clean distclean-xxx remove-makefile
 distclean-xxx:
@@ -96,11 +67,10 @@ distclean-xxx:
 	-@rm -rf autom4te*.cache
 	-@rm -rf $(DEPS_DIR)
 	-@rm -f TAGS
-maintainer-clean:  distclean-xxx remove-genmakefiles
 remove-makefile:
 	rm -f Makefile
 remove-genmakefiles:
-	rm -f  Makefile.in Makefile
+	rm -f  Makefile
 all-redirect: .libstamp0 ../../../lib/lib${MPILIBNAME}.a
 	@if [ -n "@NO_WEAK_SYM@" ] ; then \
 	    ${MAKE} .libstamp2 ; \
@@ -136,23 +106,16 @@ _dbginit.o: dbginit.c
 _dbginit.lo: dbginit.c
 	$(C_COMPILE_SHL) -c @PROFILE_DEF_MPI@ $(srcdir)/dbginit.c -o _dbginit.lo
 # --------------------------------------------------------------------------
-coverage: 
-	-@for file in dbginit.c ; do \
-		gcov -b -f $$file ; done
+qdemo: qdemo.o   
+	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o qdemo qdemo.o  ${LIBS}
 tvtest: tvtest.o dll_mpich2.o dbgstub.o  ../../../lib/libpmpich.a  
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o tvtest tvtest.o dll_mpich2.o \
 	dbgstub.o  -L../../../lib -lpmpich -lmpich  ${LIBS} 
-# --------------------------------------------------------------------------
-mandoc: ${mpi_sources}
-htmldoc: ${mpi_sources}
-latexdoc: ${mpi_sources}
-# --------------------------------------------------------------------------
 # --------------------------------------------------------------------------
 # Install target
 install:  FORCE_TARGET 
 	if [ ! -d ${DESTDIR}${libdir} ] ; then $(MKDIR_P) ${DESTDIR}${libdir} ; fi
 	if [ -s libtvmpich2.@SHLIB_EXT@ ] ; then $(CREATESHLIB) --mode=install libtvmpich2.@SHLIB_EXT@ ${DESTDIR}${libdir}/libtvmpich2.@SHLIB_EXT@ ; fi
-	${INSTALL} -m 755 libtvmpich2.@SHLIB_EXT@ $(DESTDIR)${libdir}/libtvmpich2.@SHLIB_EXT@ 
 
 install-strip:
 	$(MAKE) INSTALL_STRIP_FLAG=-s install
@@ -161,24 +124,8 @@ uninstall:
 installcheck: 
 # --------------------------------------------------------------------------
 # --------------------------------------------------------------------------
-# Dependencies
-DEPS_DIR = .deps
-MAKE_DEPEND_C   = @MAKE_DEPEND_C@ $(DEFS) $(INCLUDES) $(CPPFLAGS)
-
-dependencies: $(DEPS_DIR)/timestamp
-$(DEPS_DIR)/dbginit.d: $(srcdir)/dbginit.c
-	$(MAKE_DEPEND_C) -MT '_dbginit.o dbginit.o' $(srcdir)/dbginit.c >$(DEPS_DIR)/dbginit.d
-$(DEPS_DIR)/timestamp: dbginit.c Makefile
-	rm -f $(DEPS_DIR)/newalldeps
-	$(MAKE_DEPEND_C) -MT '_dbginit.o dbginit.o' $(srcdir)/dbginit.c >$(DEPS_DIR)/dbginit.d
-	echo "include $(DEPS_DIR)/dbginit.d" >>$(DEPS_DIR)/newalldeps
-	if [ -s $(DEPS_DIR)/newalldeps ] ; then mv -f $(DEPS_DIR)/newalldeps $(DEPS_DIR)/alldeps ; fi
-	date >$(DEPS_DIR)/timestamp
-# include $(DEPS_DIR)/alldeps
-# End of Dependencies
-# --------------------------------------------------------------------------
-# --------------------------------------------------------------------------
-SOURCES         =  tvtest.c dll_mpich2.c dbgstub.c dbginit.c dll_mpich2.c
+SOURCES         =  tvtest.c dll_mpich2.c dbgstub.c qdemo.c dbginit.c \
+	dll_mpich2.c 
 ETAGS           = @ETAGS@ @ETAGSADD@
 HEADERFILES     = $(HEADERS)
 SOURCEFILES     = $(SOURCES)

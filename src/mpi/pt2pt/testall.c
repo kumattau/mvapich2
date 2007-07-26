@@ -24,6 +24,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Testall
 #define MPI_Testall PMPI_Testall
 
 #endif
@@ -89,7 +90,7 @@ int MPI_Testall(int count, MPI_Request array_of_requests[], int *flag,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("pt2pt");
     MPID_MPI_PT2PT_FUNC_ENTER(MPID_STATE_MPI_TESTALL);
 
     /* Check the arguments */
@@ -101,9 +102,11 @@ int MPI_Testall(int count, MPI_Request array_of_requests[], int *flag,
             if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 
 	    if (count != 0) {
-		MPIR_ERRTEST_ARGNULL(array_of_requests, "array_of_requests", mpi_errno);
+		MPIR_ERRTEST_ARGNULL(array_of_requests, "array_of_requests", 
+				     mpi_errno);
 		/* NOTE: MPI_STATUSES_IGNORE != NULL */
-		MPIR_ERRTEST_ARGNULL(array_of_statuses, "array_of_statuses", mpi_errno);
+		MPIR_ERRTEST_ARGNULL(array_of_statuses, "array_of_statuses", 
+				     mpi_errno);
 	    }
 	    MPIR_ERRTEST_ARGNULL(flag, "flag", mpi_errno);
 	    if (mpi_errno != MPI_SUCCESS) goto fn_fail;
@@ -123,7 +126,8 @@ int MPI_Testall(int count, MPI_Request array_of_requests[], int *flag,
     /* Convert MPI request handles to a request object pointers */
     if (count > MPID_REQUEST_PTR_ARRAY_SIZE)
     {
-	MPIU_CHKLMEM_MALLOC_ORJUMP(request_ptrs, MPID_Request **, count * sizeof(MPID_Request *), mpi_errno, "request pointers");
+	MPIU_CHKLMEM_MALLOC_ORJUMP(request_ptrs, MPID_Request **, 
+		 count * sizeof(MPID_Request *), mpi_errno, "request pointers");
     }
 
     n_completed = 0;
@@ -226,7 +230,7 @@ int MPI_Testall(int count, MPI_Request array_of_requests[], int *flag,
     }
     
     MPID_MPI_PT2PT_FUNC_EXIT(MPID_STATE_MPI_TESTALL);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("pt2pt");
     return mpi_errno;
 
   fn_fail:

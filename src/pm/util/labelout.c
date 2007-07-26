@@ -42,7 +42,8 @@ int snprintf(char *, size_t, const char *, ...);
 #endif
 
 #define MAX_LABEL 32
-typedef struct { char label[MAX_LABEL]; int lastNL; } IOLabel;
+
+typedef struct { char label[MAX_LABEL]; int lastNL; FILE *dest; } IOLabel;
 
 static int IOLabelWriteLine( int, int, void * );
 static int IOLabelSetLabelText( const char [], char [], int, int, int );
@@ -89,7 +90,7 @@ int IOLabelSetupFinishInServer( IOLabelSetup *iofds, ProcessState *pState )
     close( iofds->readErr[1] );
 
     /* We need dedicated storage for the private data */
-    leader = (IOLabel *)malloc( sizeof(IOLabel) );
+    leader = (IOLabel *)MPIU_Malloc( sizeof(IOLabel) );
     if (useLabels) {
 	IOLabelSetLabelText( outLabelPattern, 
 			     leader->label, sizeof(leader->label),
@@ -99,7 +100,8 @@ int IOLabelSetupFinishInServer( IOLabelSetup *iofds, ProcessState *pState )
 	leader->label[0] = 0;
     }
     leader->lastNL = 1;
-    leadererr = (IOLabel *)malloc( sizeof(IOLabel) );
+    leader->dest   = stdout;
+    leadererr = (IOLabel *)MPIU_Malloc( sizeof(IOLabel) );
     if (useLabels) {
 	IOLabelSetLabelText( errLabelPattern, 
 			     leadererr->label, sizeof(leadererr->label),
@@ -109,6 +111,7 @@ int IOLabelSetupFinishInServer( IOLabelSetup *iofds, ProcessState *pState )
 	leadererr->label[0] = 0;
     }
     leadererr->lastNL = 1;
+    leadererr->dest   = stderr;
     MPIE_IORegister( iofds->readOut[0], IO_READ, IOLabelWriteLine, leader );
     MPIE_IORegister( iofds->readErr[0], IO_READ, IOLabelWriteLine, leadererr );
 
@@ -127,6 +130,7 @@ static int IOLabelWriteLine( int fd, int rdwr, void *data )
 
     MPIE_SYSCALL(n,read,( fd, buf, 1024 ));
     if (n == 0) {
+	/* If read blocks, then returning a 0 is end-of-file */
 	return 1;  /* ? EOF */
     }
 
@@ -135,13 +139,13 @@ static int IOLabelWriteLine( int fd, int rdwr, void *data )
 	int c;
 	if (label->lastNL) {
 	    if (label->label[0]) {
-		printf( "%s", label->label );
+		fprintf( label->dest, "%s", label->label );
 	    }
 	    label->lastNL = 0;
 	}
 	c = *p++; n--;
-	putchar(c);
-	label->lastNL = c == '\n';
+	if (fputc( c, label->dest ) != c) return 1;
+	label->lastNL = (c == '\n');
     }
     return 0;
 }
@@ -207,7 +211,7 @@ static int IOLabelSetLabelText( const char pattern[], char label[],
 	    case 'd': 
 		dlen = strlen( rankAsChar );
 		if (dlen < lenleft) {
-		    MPIU_Strnapp( pout, rankAsChar, maxlabel );
+		    MPIU_Strncpy( pout, rankAsChar, lenleft );
 		    pout += dlen;
 		    lenleft -= dlen;
 		}
@@ -219,7 +223,7 @@ static int IOLabelSetLabelText( const char pattern[], char label[],
 	    case 'w':
 		dlen = strlen(worldnumAsChar);
 		if (dlen < lenleft) {
-		    MPIU_Strnapp( pout, worldnumAsChar, maxlabel );
+		    MPIU_Strncpy( pout, worldnumAsChar, lenleft );
 		    pout += dlen;
 		    lenleft -= dlen;
 		}
@@ -241,11 +245,12 @@ static int IOLabelSetLabelText( const char pattern[], char label[],
 		    }
 		    *wptr = 0;
 		    if (worldnum > 0) {
+			/* Recursively invoke the label routine */
 			IOLabelSetLabelText( wPattern, wLabel, sizeof(wLabel), 
 					     rank, worldnum );
 			dlen = strlen(wLabel);
 			if (dlen < lenleft) {
-			    MPIU_Strnapp( pout, wLabel, maxlabel );
+			    MPIU_Strncpy( pout, wLabel, lenleft );
 			    pout    += dlen;
 			    lenleft -= dlen;
 			}

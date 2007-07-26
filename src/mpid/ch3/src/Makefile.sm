@@ -11,6 +11,9 @@ lib${MPILIBNAME}_a_SOURCES =	\
     ch3u_request.c		\
     ch3u_rma_ops.c		\
     ch3u_rma_sync.c		\
+    ch3u_rndv.c                 \
+    ch3u_eager.c                \
+    ch3u_eagersync.c            \
     mpid_abort.c		\
     mpid_cancel_recv.c		\
     mpid_cancel_send.c		\
@@ -36,6 +39,4 @@ lib${MPILIBNAME}_a_SOURCES =	\
     mpid_rma.c			\
     mpidi_isend_self.c		\
     mpidi_pg.c			\
-    mpidi_printf.c		\
-    mpidi_kvs.c			\
-    @MPID_THREAD_SOURCES@
+    mpidi_printf.c		@MPID_THREAD_SOURCES@

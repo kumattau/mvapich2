@@ -23,10 +23,14 @@
 
 #ifdef RDMA_FAST_PATH
 #define SET_CREDIT(header, vc, rail) \
+if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path)                 \
 {                                                               \
     vc->mrail.rfp.ptail_RDMA_send += header->mrail.rdma_credit; \
     if (vc->mrail.rfp.ptail_RDMA_send >= num_rdma_buffer)       \
         vc->mrail.rfp.ptail_RDMA_send -= num_rdma_buffer;       \
+    vc->mrail.srp.remote_cc[rail] = header->mrail.remote_credit;\
+    vc->mrail.srp.remote_credit[rail] += header->mrail.vbuf_credit; \
+} else {                                                        \
     vc->mrail.srp.remote_cc[rail] = header->mrail.remote_credit;\
     vc->mrail.srp.remote_credit[rail] += header->mrail.vbuf_credit; \
 }
@@ -110,7 +114,8 @@ MPIDI_CH3I_MRAIL_Parse_header (MPIDI_VC_t * vc,
           {
               DEBUG_PRINT ("[recv: parse header] pkt eager send\n");
 #ifdef USE_HEADER_CACHING
-              if (v->padding != NORMAL_VBUF_FLAG)
+              if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path 
+                  && v->padding != NORMAL_VBUF_FLAG)
                 {
                     /* Only cache header if the packet is from RdMA path 
                      * XXXX: what is R3_FLAG? 
@@ -121,13 +126,14 @@ MPIDI_CH3I_MRAIL_Parse_header (MPIDI_VC_t * vc,
 #endif
               *pkt = (MPIDI_CH3_Pkt_t *) vstart;
 #ifdef RDMA_FAST_PATH
-              if (v->padding == NORMAL_VBUF_FLAG)
+              if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) 
+                  if (v->padding == NORMAL_VBUF_FLAG)
 #endif
-                {
-                }
-              *header_size = sizeof (MPIDI_CH3_Pkt_eager_send_t);
-              DEBUG_PRINT ("[recv: parse header] headersize returned %d\n",
-                           *header_size);
+                  {
+                  }
+                  *header_size = sizeof (MPIDI_CH3_Pkt_eager_send_t);
+                  DEBUG_PRINT ("[recv: parse header] headersize returned %d\n",
+                               *header_size);
           }
           break;
       case (MPIDI_CH3_PKT_RNDV_REQ_TO_SEND):
@@ -284,7 +290,8 @@ MPIDI_CH3I_MRAIL_Parse_header (MPIDI_VC_t * vc,
     /* if any credits remain, schedule rendezvous progress */
     if ((vc->mrail.srp.remote_credit[v->subchannel.rail_index] > 0
 #ifdef RDMA_FAST_PATH
-         || (vc->mrail.rfp.ptail_RDMA_send != vc->mrail.rfp.phead_RDMA_send)
+         || (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path
+         && vc->mrail.rfp.ptail_RDMA_send != vc->mrail.rfp.phead_RDMA_send)
 #endif
         ) && (vc->mrail.sreq_head != NULL))
       {
@@ -357,13 +364,17 @@ void
 MPIDI_CH3I_MRAIL_Release_vbuf (vbuf * v)
 {
 #ifdef RDMA_FAST_PATH
-    if (v->padding == NORMAL_VBUF_FLAG || v->padding == RPUT_VBUF_FLAG)
-        MRAILI_Release_vbuf (v);
-    else
-      {
-          MRAILI_Release_recv_rdma (v);
-          MRAILI_Send_noop_if_needed ((MPIDI_VC_t *) v->vc, &v->subchannel);
-      }
+    if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+        if (v->padding == NORMAL_VBUF_FLAG || v->padding == RPUT_VBUF_FLAG)
+            MRAILI_Release_vbuf (v);
+        else
+          {
+              MRAILI_Release_recv_rdma (v);
+              MRAILI_Send_noop_if_needed ((MPIDI_VC_t *) v->vc, &v->subchannel);
+          }
+    } else {
+        MRAILI_Release_vbuf (v);  
+    }
 #else
     MRAILI_Release_vbuf (v);
 #endif

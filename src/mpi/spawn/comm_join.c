@@ -18,12 +18,13 @@
 /* -- End Profiling Symbol Block */
 
 /* Prototypes for local functions */
-int MPIR_fd_send(int, void *, int);
-int MPIR_fd_recv(int, void *, int);
+PMPI_LOCAL int MPIR_fd_send(int, void *, int);
+PMPI_LOCAL int MPIR_fd_recv(int, void *, int);
 
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Comm_join
 #define MPI_Comm_join PMPI_Comm_join
 
 #ifdef HAVE_ERRNO_H
@@ -39,7 +40,7 @@ int MPIR_fd_recv(int, void *, int);
 #define SOCKET_EINTR	    EINTR
 #endif
 
-int MPIR_fd_send(int fd, void *buffer, int length)
+PMPI_LOCAL int MPIR_fd_send(int fd, void *buffer, int length)
 {
     int result, num_bytes;
 
@@ -68,7 +69,7 @@ int MPIR_fd_send(int fd, void *buffer, int length)
     return 0;
 }
 
-int MPIR_fd_recv(int fd, void *buffer, int length)
+PMPI_LOCAL int MPIR_fd_recv(int fd, void *buffer, int length)
 {
     int result, num_bytes;
 
@@ -131,16 +132,20 @@ int MPI_Comm_join(int fd, MPI_Comm *intercomm)
     static const char FCNAME[] = "MPI_Comm_join";
     int mpi_errno = MPI_SUCCESS, err;
     char *local_port, *remote_port;
+    MPIU_THREADPRIV_DECL;
     MPIU_CHKLMEM_DECL(2);
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_COMM_JOIN);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("spawn");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_COMM_JOIN);
 
     /* ... body of routine ...  */
 
+    MPIU_THREADPRIV_GET;
+    /* Set the nest incr here so that we can jump to fn_fail and 
+       call nest_decr without worry */
     MPIR_Nest_incr();
     
     MPIU_CHKLMEM_MALLOC(local_port, char *, MPI_MAX_PORT_NAME, mpi_errno, "local port name");
@@ -171,16 +176,17 @@ int MPI_Comm_join(int fd, MPI_Comm *intercomm)
     mpi_errno = NMPI_Close_port(local_port);
     if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 
+    MPIR_Nest_decr();
     /* ... end of body of routine ... */
 
   fn_exit:
     MPIU_CHKLMEM_FREEALL();
-    MPIR_Nest_decr();
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_COMM_JOIN);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("spawn");
     return mpi_errno;
 
   fn_fail:
+    MPIR_Nest_decr();
     /* --BEGIN ERROR HANDLING-- */
 #   ifdef HAVE_ERROR_CHECKING
     {

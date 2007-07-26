@@ -12,18 +12,17 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2003-2006, The Ohio State University. All rights
+/* Copyright (c) 2002-2006, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
  * team members of The Ohio State University's Network-Based Computing
  * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
  *
- * For detailed copyright and licensing information, please refer to the
+ * For detailed copyright and licencing information, please refer to the
  * copyright file COPYRIGHT_MVAPICH2 in the top level MVAPICH2 directory.
  *
  */
-
 
 /*
  *
@@ -35,31 +34,35 @@
 #ifndef _DREG_H
 #define _DREG_H
 
+#include "udapl_param.h"
 #include "udapl_header.h"
 
+#ifndef DISABLE_PTMALLOC
+
+#include "ptmalloc2/malloc.h"
+#include "ptmalloc2/sysdeps/pthread/malloc-machine.h"
+
+#endif /* DISABLE_PTMALLOC */
 
 typedef struct dreg_entry dreg_entry;
 
-struct dreg_entry
-{
-    aint_t pagenum;
+struct dreg_entry {
+    unsigned long pagenum;
     VIP_MEM_HANDLE memhandle;
 
     int refcount;
 
     /* page number, e.g. address >> DREG_PAGEBITS */
-    int npages;
+    unsigned long  npages;
 
-#ifdef MAC_OSX
-    void *ptr;
-    unsigned long long epoch;
-#endif
     /* for hash chain or free chain */
     dreg_entry *next;
 
     /* for zero refcount chain */
     dreg_entry *next_unused;
     dreg_entry *prev_unused;
+
+    int is_valid;
 };
 
 
@@ -126,7 +129,7 @@ struct dreg_entry
  *    xxx consider deleting/replacing unused list later on. 
  */
 
-/* LAZY_MEM_UNREGISTER, if defined, will not un-register memory
+/* LAZY_MEM_UNREGISTER, enabled, will not un-register memory
  * after the ref-count drops to zero, rather the entry will
  * be put on the unused list in case the memory is to be
  * used again.  These are the semantics described above.
@@ -162,87 +165,92 @@ extern struct dreg_entry *dreg_unused_tail;
 #define DREG_HASHBITS 7         /* must be ln2 DREG_HASHSIZE */
 #define DREG_HASHMASK (DREG_HASHSIZE-1)
 
-#define DREG_HASH(a) ( ( ((aint_t)(a)) >> DREG_PAGEBITS) & DREG_HASHMASK )
+#define DREG_HASH(a) ( ( ((uintptr_t)(a)) >> DREG_PAGEBITS) & DREG_HASHMASK )
 
-void dreg_init (DAT_IA_HANDLE nic, DAT_PZ_HANDLE ptag);
+/*
+ * Delete entry d from the double-linked unused list.
+ * Take care if d is either the head or the tail of the list.
+ */
 
-dreg_entry *dreg_register (void *buf, int len);
-void dreg_unregister (dreg_entry * entry);
-dreg_entry *dreg_find (void *buf, int len);
-dreg_entry *dreg_get (void);
-int dreg_evict (void);
-void dreg_release (dreg_entry * d);
-void dreg_decr_refcount (dreg_entry * d);
-void dreg_incr_refcount (dreg_entry * d);
-dreg_entry *dreg_new_entry (void *buf, int len);
+#define DREG_REMOVE_FROM_UNUSED_LIST(d) {                           \
+    dreg_entry *prev = (d)->prev_unused;                            \
+        dreg_entry *next = (d)->next_unused;                        \
+        (d)->next_unused = NULL;                                    \
+        (d)->prev_unused = NULL;                                    \
+        if (prev != NULL) {                                         \
+            prev->next_unused = next;                               \
+        }                                                           \
+    if (next != NULL) {                                             \
+        next->prev_unused = prev;                                   \
+    }                                                               \
+    if (dreg_unused_list == (d)) {                                  \
+        dreg_unused_list = next;                                    \
+    }                                                               \
+    if (dreg_unused_tail == (d)) {                                  \
+        dreg_unused_tail = prev;                                    \
+    }                                                               \
+}
 
-#ifdef MAC_OSX
-void mvapich_malloc_init (void);
+/*
+ * Add entries to the head of the unused list. dreg_evict() takes
+ * them from the tail. This gives us a simple LRU mechanism 
+ */
+
+#define DREG_ADD_TO_UNUSED_LIST(d) {                                \
+    d->next_unused = dreg_unused_list;                              \
+    d->prev_unused = NULL;                                          \
+    if (dreg_unused_list != NULL) {                                 \
+        dreg_unused_list->prev_unused = d;                          \
+    }                                                               \
+    dreg_unused_list = d;                                           \
+    if (NULL == dreg_unused_tail) {                                 \
+        dreg_unused_tail = d;                                       \
+    }                                                               \
+}
+
+#define DREG_GET_FROM_FREE_LIST(d) {                                \
+    d = dreg_free_list;                                             \
+    if (dreg_free_list != NULL) {                                   \
+        dreg_free_list = dreg_free_list->next;                      \
+    }                                                               \
+}
+
+#define DREG_ADD_TO_FREE_LIST(d) {                                  \
+    d->next = dreg_free_list;                                       \
+    dreg_free_list = d;                                             \
+}
+
+void dreg_init(void);
+
+dreg_entry *dreg_register(void *buf, int len);
+
+void dreg_unregister(dreg_entry * entry);
+
+dreg_entry *dreg_find(void *buf, int len);
+
+dreg_entry *dreg_get(void);
+
+int dreg_evict(void);
+
+void dreg_release(dreg_entry * d);
+
+void dreg_decr_refcount(dreg_entry * d);
+
+void dreg_incr_refcount(dreg_entry * d);
+
+dreg_entry *dreg_new_entry(void *buf, int len);
+
+int register_memory(void *buf, int len, int hca_num, dreg_entry *d);
+
+int deregister_memory(VIP_MEM_HANDLE * mr);
+
+#ifndef DISABLE_PTMALLOC
+void find_and_free_dregs_inside(void *buf, int len);
 #endif
 
-#if (defined(MALLOC_HOOK) &&                                       \
-        defined(VIADEV_RPUT_SUPPORT) &&                             \
-        defined(LAZY_MEM_UNREGISTER))
-
-dreg_entry *is_dreg_registered (void *buf);
-void find_and_free_dregs_inside (void *buf, int len);
-void mvapich_init_malloc_hook (void);
-void *mvapich_malloc_hook (size_t, const void *);
-void mvapich_free_hook (void *, const void *);
-
-#ifndef MAC_OSX
-void *old_malloc_hook;
-void *old_free_hook;
+#ifdef CKPT
+void dreg_deregister_all();
+void dreg_reregister_all();
 #endif
 
-enum
-{ HASH_TABLE_SIZE = 4096 };
-
-typedef struct _hash_table
-{
-    void *symbol;
-} Hash_Table;
-
-/* Symbol data structure */
-typedef struct _hash_symbol
-{
-    void *mem_ptr;
-    unsigned int len;
-    struct _hash_symbol *next;
-} Hash_Symbol;
-
-unsigned int hash (unsigned int);
-void create_hash_table (void);
-
-#ifdef  MAC_OSX
-#define SET_ORIGINAL_MALLOC_HOOKS
-#define SET_MVAPICH_MALLOC_HOOKS
-#define SAVE_MALLOC_HOOKS
-#else
-#define SET_ORIGINAL_MALLOC_HOOKS do {                              \
-    __malloc_hook = old_malloc_hook;                                \
-        __free_hook = old_free_hook;                                    \
-} while(0);
-
-#define SET_MVAPICH_MALLOC_HOOKS do {                               \
-    __malloc_hook = mvapich_malloc_hook;                            \
-        __free_hook = mvapich_free_hook;                                \
-} while(0);
-
-#define SAVE_MALLOC_HOOKS do {                                      \
-    old_malloc_hook = __malloc_hook;                                \
-        old_free_hook = __free_hook;                                    \
-} while(0);
-
-#endif
-
-#else
-
-#define SET_ORIGINAL_MALLOC_HOOKS
-#define SET_MVAPICH_MALLOC_HOOKS
-#define SAVE_MALLOC_HOOKS
-
-
-#endif /* MALLOC_HOOK && RPUT_SUPPORT && LAZY_MEM */
-
-#endif /* _DREG_H */
+#endif                          /* _DREG_H */

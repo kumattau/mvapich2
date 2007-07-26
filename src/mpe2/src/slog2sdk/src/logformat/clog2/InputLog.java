@@ -110,6 +110,13 @@ public class InputLog
                            preamble.getUserStateIDCount() );
     }
 
+    public List getKnownUndefinedInitedEventDefs()
+    {
+        return RecDefEvent.getUndefinedInitedEventDefs(
+                           preamble.getKnownSoloEventIDStart(),
+                           preamble.getKnownSoloEventIDCount() );
+    }
+
     public List getUserUndefinedInitedEventDefs()
     {
         return RecDefEvent.getUndefinedInitedEventDefs(

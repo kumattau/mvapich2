@@ -96,7 +96,11 @@ extern FORT_DLL_SPEC void FORT_CALL mpi_info_get_nthkey_( MPI_Fint *, MPI_Fint *
 #define mpi_info_get_nthkey_ pmpi_info_get_nthkey_
 #endif
 /* This defines the routine that we call, which must be the PMPI version
-   since we're renameing the Fortran entry as the pmpi version */
+   since we're renaming the Fortran entry as the pmpi version.  The MPI name
+   must be undefined first to prevent any conflicts with previous renamings,
+   such as those put in place by the globus device when it is building on
+   top of a vendor MPI. */
+#undef MPI_Info_get_nthkey
 #define MPI_Info_get_nthkey PMPI_Info_get_nthkey 
 
 #else
@@ -116,10 +120,13 @@ extern FORT_DLL_SPEC void FORT_CALL mpi_info_get_nthkey_( MPI_Fint *, MPI_Fint *
 /* Prototypes for the Fortran interfaces */
 #include "fproto.h"
 FORT_DLL_SPEC void FORT_CALL mpi_info_get_nthkey_ ( MPI_Fint *v1, MPI_Fint *v2, char *v3 FORT_MIXED_LEN(d3), MPI_Fint *ierr FORT_END_LEN(d3) ){
-    *ierr = MPI_Info_get_nthkey( (MPI_Info)(*v1), *v2, v3 );
+    char *p3;
+    p3 = (char *)MPIU_Malloc( d3 + 1 );
+    *ierr = MPI_Info_get_nthkey( (MPI_Info)(*v1), *v2, p3 );
 
-    {char *p = v3;
-        while (*p) p++;
+    {char *p = v3, *pc=p3;
+        while (*pc) {*p++ = *pc++;}
         while ((p-v3) < d3) { *p++ = ' '; }
     }
+    MPIU_Free( p3 );
 }

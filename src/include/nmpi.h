@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: nmpi.h,v 1.1.1.1 2006/01/18 21:09:42 huangwei Exp $
+/*  $Id: nmpi.h,v 1.36 2006/07/05 23:29:22 toonen Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -91,6 +91,9 @@
 #define NMPI_Grequest_complete MPI_Grequest_complete
 #define NMPI_Cancel MPI_Cancel
 #define NMPI_Test_cancelled MPI_Test_cancelled
+#define NMPI_Ibsend MPI_Ibsend
+#define NMPI_Buffer_detach MPI_Buffer_detach
+#define NMPI_Gather MPI_Gather
 #else
 #define NMPI_Abort PMPI_Abort
 #define NMPI_Bcast PMPI_Bcast
@@ -160,5 +163,8 @@
 #define NMPI_Grequest_complete PMPI_Grequest_complete
 #define NMPI_Cancel PMPI_Cancel
 #define NMPI_Test_cancelled PMPI_Test_cancelled
+#define NMPI_Ibsend PMPI_Ibsend
+#define NMPI_Buffer_detach PMPI_Buffer_detach
+#define NMPI_Gather PMPI_Gather
 #endif
 #endif /* MPICH_NMPI_H_INCLUDED */

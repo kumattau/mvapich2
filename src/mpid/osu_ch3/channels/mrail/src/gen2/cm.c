@@ -1,5 +1,5 @@
 
-/* Copyright (c) 2002-2006, The Ohio State University. All rights
+/* Copyright (c) 2002-2007, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH software package developed by the
@@ -12,6 +12,9 @@
  */
 
 #include "cm.h"
+#include "rdma_cm.h"
+#include <errno.h>
+#include <string.h>
 
 #define CM_MSG_TYPE_REQ     0
 #define CM_MSG_TYPE_REP     1
@@ -54,8 +57,8 @@ static int cm_req_id_global;
 static int cm_max_spin_count;
 static int cm_is_finalizing;
 static pthread_t cm_comp_thread, cm_timer_thread;
-static pthread_mutex_t cm_conn_state_lock;
 static pthread_cond_t cm_cond_new_pending;
+pthread_mutex_t cm_conn_state_lock;
 struct timespec cm_timeout;
 long cm_timeout_usec;
 size_t cm_thread_stacksize;
@@ -76,6 +79,7 @@ void *cm_ud_recv_buf;
 int cm_ud_recv_buf_index;
 int page_size;
 
+extern int *rdma_cm_host_list;
 
 #define CM_ERR_ABORT(args...)  do {\
     fprintf(stderr, "[Rank %d][%s: line %d]", cm_ib_context.rank ,__FILE__, __LINE__); \
@@ -93,19 +97,6 @@ int page_size;
 #else
 #define CM_DBG(args...)
 #endif
-
-/*Interface to lock/unlock connection manager*/
-inline void MPICM_lock()
-{
-/*    printf("[Rank %d],CM lock\n",cm_ib_context.rank); */
-    pthread_mutex_lock(&cm_conn_state_lock);
-}
-
-inline void MPICM_unlock()
-{
-/*    printf("[Rank %d],CM unlock\n", cm_ib_context.rank); */
-    pthread_mutex_unlock(&cm_conn_state_lock);
-}
 
 typedef struct cm_packet {
     struct timeval timestamp;        /*the time when timer begins */
@@ -127,6 +118,22 @@ int cm_pending_num;
 
 cm_pending *cm_pending_head = NULL;
 
+/*Interface to lock/unlock connection manager*/
+void MPICM_lock()
+{
+  /*    printf("[Rank %d],CM lock\n",cm_ib_context.rank); */
+  pthread_mutex_lock(&cm_conn_state_lock);
+}
+
+void MPICM_unlock()
+{
+  /*    printf("[Rank %d],CM unlock\n", cm_ib_context.rank); */
+  pthread_mutex_unlock(&cm_conn_state_lock);
+}
+
+/*
+ * TODO add error checking
+ */
 cm_pending *cm_pending_create()
 {
     cm_pending *temp = (cm_pending *) malloc(sizeof(cm_pending));
@@ -196,6 +203,9 @@ int cm_pending_remove_and_destroy(cm_pending * node)
     return MPI_SUCCESS;
 }
 
+/*
+ * TODO add error checking
+ */
 int cm_pending_list_init()
 {
     cm_pending_num = 0;
@@ -527,6 +537,7 @@ int cm_enable(cm_msg * msg)
     {
         /*Mark connected */
         vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
+        vc->state = MPIDI_VC_STATE_ACTIVE;
         MPIDI_CH3I_Process.new_conn_complete = 1;
     } 
 
@@ -789,20 +800,45 @@ void *cm_completion_handler(void *arg)
     return NULL;
 }
 
+#undef FUNCNAME
+#define FUNCNAME MPICM_Init_UD
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPICM_Init_UD(uint32_t * ud_qpn)
 {
     int i, ret;
     char *value;
+    int mpi_errno = MPI_SUCCESS;
 
     /*Initialization */
     cm_ah = malloc(cm_ib_context.size * sizeof(struct ibv_ah *));
+    if(cm_ah == NULL) {
+	MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+		"**nomem %s", "cm_ah");
+    }
+
     cm_ud_qpn = malloc(cm_ib_context.size * sizeof(uint32_t));
+    if(cm_ud_qpn == NULL) {
+	MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+		"**nomem %s", "cm_ud_qpn");
+    }
+
     cm_lid = malloc(cm_ib_context.size * sizeof(uint16_t));
+    if(cm_lid == NULL) {
+	MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+		"**nomem %s", "cm_lid");
+    }
+
 
     cm_is_finalizing = 0;
     cm_req_id_global = 0;
 
+    errno = 0;
     page_size = sysconf(_SC_PAGESIZE);
+    if(errno != 0) {
+	MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail", "%s: %s",
+		"sysconf", strerror(errno));
+    }
 
     if ((value = getenv("MV2_CM_SEND_DEPTH")) != NULL) {
         cm_send_depth = atoi(value);
@@ -846,11 +882,11 @@ int MPICM_Init_UD(uint32_t * ud_qpn)
     cm_timeout.tv_sec = cm_timeout_usec/1000000;
     cm_timeout.tv_nsec = (cm_timeout_usec-cm_timeout.tv_sec*1000000)*1000;
 
-    cm_ud_buf =
-        memalign(page_size,
+    cm_ud_buf = memalign(page_size,
                  (sizeof(cm_msg) + 40) * (cm_recv_buffer_size + 1));
     if (!cm_ud_buf) {
-        CM_ERR_ABORT("Couldn't allocate work buf");
+	MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+		"**nomem %s", "cm_ud_buf");
     }
     
     memset(cm_ud_buf, 0,
@@ -861,7 +897,8 @@ int MPICM_Init_UD(uint32_t * ud_qpn)
     /*use default nic*/
     cm_ud_comp_ch = ibv_create_comp_channel(MPIDI_CH3I_RDMA_Process.nic_context[0]);
     if (!cm_ud_comp_ch) {
-        CM_ERR_ABORT("Couldn't create completion channel");
+	MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+		"**fail %s", "Couldn't create completion channel");
     }
 
     cm_ud_mr = ibv_reg_mr(MPIDI_CH3I_RDMA_Process.ptag[0], cm_ud_buf,
@@ -869,20 +906,23 @@ int MPICM_Init_UD(uint32_t * ud_qpn)
                            40) * (cm_recv_buffer_size + 1),
                           IBV_ACCESS_LOCAL_WRITE);
     if (!cm_ud_mr) {
-        CM_ERR_ABORT("Couldn't allocate MR");
+	MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+		"**fail %s", "Couldn't allocate MR");
     }
 
     cm_ud_recv_cq =
         ibv_create_cq(MPIDI_CH3I_RDMA_Process.nic_context[0], cm_recv_buffer_size, NULL,
                       cm_ud_comp_ch, 0);
     if (!cm_ud_recv_cq) {
-        CM_ERR_ABORT("Couldn't create CQ");
+	MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+		"**fail %s", "Couldn't create CQ");
     }
 
     cm_ud_send_cq =
         ibv_create_cq(MPIDI_CH3I_RDMA_Process.nic_context[0], cm_send_depth, NULL, NULL, 0);
     if (!cm_ud_send_cq) {
-        CM_ERR_ABORT("Couldn't create CQ");
+	MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+		"**fail %s", "Couldn't create CQ");
     }
 
     {
@@ -898,7 +938,8 @@ int MPICM_Init_UD(uint32_t * ud_qpn)
 
         cm_ud_qp = ibv_create_qp(MPIDI_CH3I_RDMA_Process.ptag[0], &attr);
         if (!cm_ud_qp) {
-            CM_ERR_ABORT("Couldn't create UD QP");
+	    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+		    "**fail %s", "Couldn't create UD QP");
         }
     }
 
@@ -916,8 +957,8 @@ int MPICM_Init_UD(uint32_t * ud_qpn)
                                  IBV_QP_STATE |
                                  IBV_QP_PKEY_INDEX |
                                  IBV_QP_PORT | IBV_QP_QKEY))) {
-            CM_ERR_ABORT("Failed to modify QP to INIT, ret = %d, errno=%d",
-                    ret, errno);
+	    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+		    "**fail %s", "Failed to modify QP to INIT");
         }
     }
     {
@@ -926,7 +967,8 @@ int MPICM_Init_UD(uint32_t * ud_qpn)
 
         attr.qp_state = IBV_QPS_RTR;
         if (ibv_modify_qp(cm_ud_qp, &attr, IBV_QP_STATE)) {
-            CM_ERR_ABORT("Failed to modify QP to RTR");
+	    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+		    "**fail %s", "Failed to modify QP to RTR");
         }
     }
 
@@ -937,29 +979,38 @@ int MPICM_Init_UD(uint32_t * ud_qpn)
         attr.qp_state = IBV_QPS_RTS;
         attr.sq_psn = cm_ud_psn;
         if (ibv_modify_qp(cm_ud_qp, &attr, IBV_QP_STATE | IBV_QP_SQ_PSN)) {
-            CM_ERR_ABORT("Failed to modify QP to RTS");
+	    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+		    "**fail %s", "Failed to modify QP to RTS");
         }
     }
 
     for (i = 0; i < cm_recv_buffer_size; i++) {
         if (cm_post_ud_recv(cm_ud_recv_buf + 
             (sizeof(cm_msg) + 40) * i, sizeof(cm_msg))) {
-            CM_ERR_ABORT("cm_post_ud_recv failed");
+	    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+		    "**fail %s", "cm_post_ud_recv failed");
         }
     }
     cm_ud_recv_buf_index = 0;
 
     if (ibv_req_notify_cq(cm_ud_recv_cq, 1)) {
-        CM_ERR_ABORT("Couldn't request CQ notification");
+	MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+		"**fail %s", "Couldn't request CQ notification");
     }
 
     cm_pending_list_init();
-    return MPI_SUCCESS;
+
+fn_exit:
+    return mpi_errno;
+
+fn_fail:
+    goto fn_exit;
 }
 
 int MPICM_Connect_UD(uint32_t * qpns, uint16_t * lids)
 {
     int i, ret;
+    int mpi_errno = MPI_SUCCESS;
     
     /*Copy qpns and lids */
     memcpy(cm_ud_qpn, qpns, cm_ib_context.size * sizeof(uint32_t));
@@ -976,7 +1027,8 @@ int MPICM_Connect_UD(uint32_t * qpns, uint16_t * lids)
         ah_attr.port_num = rdma_default_port;
         cm_ah[i] = ibv_create_ah(MPIDI_CH3I_RDMA_Process.ptag[0], &ah_attr);
         if (!cm_ah[i]) {
-            CM_ERR_ABORT("Failed to create AH");
+	    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+		    "**fail %s", "Failed to create AH");
         }
     }
 
@@ -988,16 +1040,23 @@ int MPICM_Connect_UD(uint32_t * qpns, uint16_t * lids)
         pthread_attr_t attr;
         if (pthread_attr_init(&attr))
         {
-            CM_ERR_ABORT("pthread_attr_init failed\n");
+	    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+		    "**fail %s", "pthread_attr_init failed");
         }
         ret = pthread_attr_setstacksize(&attr,cm_thread_stacksize);
         if (ret && ret != EINVAL) {
-            CM_ERR_ABORT("pthread_attr_setstacksize failed\n");
+	    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+		    "**fail %s", "pthread_attr_setstacksize failed");
         }
         pthread_create(&cm_comp_thread, &attr, cm_completion_handler, NULL);
         pthread_create(&cm_timer_thread, &attr, cm_timeout_handler, NULL);
     }
-    return MPI_SUCCESS;
+
+fn_exit:
+    return mpi_errno;
+
+fn_fail:
+    goto fn_exit;
 }
 
 int MPICM_Finalize_UD()
@@ -1035,6 +1094,7 @@ int MPICM_Finalize_UD()
         if (ibv_post_send(cm_ud_qp, &wr, &bad_wr)) {
             CM_ERR_ABORT("ibv_post_send to ud qp failed");
         }
+        CM_DBG("Self send issued");
     }
     pthread_join(cm_comp_thread,NULL);
     CM_DBG("Completion thread destroyed");
@@ -1060,18 +1120,39 @@ int MPICM_Finalize_UD()
     pthread_cond_destroy(&cm_cond_new_pending);
     /*Clean up */
     for (i = 0; i < cm_ib_context.size; i++)
-        ibv_destroy_ah(cm_ah[i]);
-    ibv_destroy_qp(cm_ud_qp);
+    {
+        if (ibv_destroy_ah(cm_ah[i])) {
+            CM_ERR_ABORT("ibv_destroy_ah failed\n");
+        }
+    }
+    if (ibv_destroy_qp(cm_ud_qp)){
+        CM_ERR_ABORT("ibv_destroy_qp failed\n");
+    }
 
-    ibv_destroy_comp_channel(cm_ud_comp_ch);
-    ibv_destroy_cq(cm_ud_recv_cq);
-    ibv_destroy_cq(cm_ud_send_cq);
-    ibv_dereg_mr(cm_ud_mr);
+    if (ibv_destroy_cq(cm_ud_recv_cq)) {
+        CM_ERR_ABORT("ibv_destroy_cq failed\n");
+    }
 
-    free(cm_ud_buf);
-    free(cm_ah);
-    free(cm_ud_qpn);
-    free(cm_lid);
+    if (ibv_destroy_cq(cm_ud_send_cq)) {
+        CM_ERR_ABORT("ibv_destroy_cq failed\n");
+    }
+
+    if (ibv_destroy_comp_channel(cm_ud_comp_ch)) {
+        CM_ERR_ABORT("ibv_destroy_comp_channel failed\n");
+    }
+
+    if (ibv_dereg_mr(cm_ud_mr)) {
+        CM_ERR_ABORT("ibv_dereg_mr failed\n");
+    }
+
+    if (cm_ud_buf)
+        free(cm_ud_buf);
+    if (cm_ah)
+        free(cm_ah);
+    if (cm_ud_qpn)
+        free(cm_ud_qpn);
+    if (cm_lid)
+        free(cm_lid);
 
     CM_DBG("MPICM_Finalize_UD done");
     return MPI_SUCCESS;
@@ -1090,6 +1171,22 @@ int MPIDI_CH3I_CM_Connect(MPIDI_VC_t * vc)
         MPICM_unlock();
         return MPI_SUCCESS;
     }
+
+#ifdef RDMA_CM
+    /* Trap into the RDMA_CM connection initiation */
+    if (MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand){
+      int j, rail_index;
+	vc->ch.state = MPIDI_CH3I_VC_STATE_CONNECTING_CLI;
+	for (i = 0; i < rdma_num_hcas; i++){
+	    for (j = 0; j < (rdma_num_ports * rdma_num_qp_per_port); j++){
+	        rail_index = i * rdma_num_ports * rdma_num_qp_per_port + j;
+	        rdma_cm_connect_to_server(vc->pg_rank, rdma_cm_host_list[vc->pg_rank * rdma_num_hcas + i], rail_index, 0);
+	    }
+	}
+	MPICM_unlock();
+	return MPI_SUCCESS;
+    }
+#endif 
 
     CM_DBG("Sending Req to rank %d", vc->pg_rank);
     /*Create qps*/
@@ -1119,6 +1216,10 @@ int MPIDI_CH3I_CM_Establish(MPIDI_VC_t * vc)
     first message in on-demand case */
     cm_pending *pending;
     MPICM_lock();
+    if (MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand){
+	    MPICM_unlock();
+	    return MPI_SUCCESS;
+    }
     CM_DBG("MPIDI_CH3I_CM_Establish peer rank %d",vc->pg_rank);
     if (vc->ch.state !=
         MPIDI_CH3I_VC_STATE_CONNECTING_SRV
@@ -1138,6 +1239,7 @@ int MPIDI_CH3I_CM_Establish(MPIDI_VC_t * vc)
     cm_pending_remove_and_destroy(pending);
     cm_qp_move_to_rts(vc);
     vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
+    vc->state = MPIDI_VC_STATE_ACTIVE;
     MPICM_unlock();
     return MPI_SUCCESS;
 }
@@ -1413,3 +1515,5 @@ void MPIDI_CH3I_CM_Handle_send_completion(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t 
 }
 
 #endif
+
+/* vi:set sw=4 tw=80: */

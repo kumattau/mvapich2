@@ -8,11 +8,9 @@ errstring_SOURCES = errstring.c
 errcode_SOURCES = errcode.c errmsg.c
 errring_SOURCES = errring.c
 commcall_SOURCES = commcall.c
-winerr_SOURCES = winerr.c
-winerr2_SOURCES = winerr2.c
 errfatal_SOURCES = errfatal.c
 
-EXTRA_PROGRAMS = errcode errring
+EXTRA_PROGRAMS = errcode errring errstring
 
 ../util/mtest.o: 
 	(cd ../util && make mtest.o)

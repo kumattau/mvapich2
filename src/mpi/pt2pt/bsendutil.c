@@ -32,7 +32,6 @@
  *                as no more MPID requests available).
  *  BsendBuffer - This global structure contains pointers to the user buffer
  *                and the three lists, along with the size of the user buffer.
- *                Multithreaded versions contain a thread lock as well.
  *
  * Miscellaneous comments
  * By storing total_size along with "size available for messages", we avoid
@@ -63,9 +62,8 @@
  *                information in the bsend buffer (the BsendData_t entries)
  */
 
-#if 0
-#define DBG_PRINT_AVAIL
-#define DBG_PRINT_ARENA
+#ifdef USE_DBG_LOGGING
+static void MPIR_Bsend_dump( void );
 #endif
 
 /* Private structures for the bsend buffers */
@@ -123,8 +121,6 @@ static struct BsendBuffer {
 					  available) */
     BsendData_t        *active;        /* Pointer to the first active (sending)
 					  message */
-    MPIU_IFTHREADED(
-    MPID_Thread_mutex_t bsend_lock;)    /* Thread lock for bsend access */
 } BsendBuffer = { 0, 0, 0, 0, 0, 0, 0 };
 
 static int initialized = 0;   /* keep track of the first call to any
@@ -160,8 +156,10 @@ int MPIR_Bsend_attach( void *buffer, int buffer_size )
 		 but the Intel test wants MPI_ERR_BUFFER, and it seems
 		 to violate the principle of least surprise to not use
 		 MPI_ERR_BUFFER for errors with the Buffer */
-		return MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, "MPIR_Bsend_attach", __LINE__, MPI_ERR_BUFFER, 
-					     "**bsendbufsmall", "**bsendbufsmall %d %d", buffer_size, MPI_BSEND_OVERHEAD );
+		return MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE,
+		    "MPIR_Bsend_attach", __LINE__, MPI_ERR_BUFFER, 
+		    "**bsendbufsmall", 
+                    "**bsendbufsmall %d %d", buffer_size, MPI_BSEND_OVERHEAD );
 	    }
 	}
 	MPID_END_ERROR_CHECKS;
@@ -189,7 +187,6 @@ int MPIR_Bsend_attach( void *buffer, int buffer_size )
     BsendBuffer.avail		= buffer;
     BsendBuffer.pending		= 0;
     BsendBuffer.active		= 0;
-    MPIU_IFTHREADED(MPID_Thread_mutex_create( BsendBuffer.bsend_lock ));
 
     /* Set the first block */
     p		  = (BsendData_t *)buffer;
@@ -208,18 +205,17 @@ int MPIR_Bsend_attach( void *buffer, int buffer_size )
 int MPIR_Bsend_detach( void *bufferp, int *size )
 {
     if (BsendBuffer.pending) {
+	/* FIXME: This is the wrong error text (notimpl) */
 	return MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, 
              "MPIR_Bsend_detach", __LINE__, MPI_ERR_OTHER, "**notimpl", 0 );
-    }
-    if (BsendBuffer.buffer == 0) {
-	/* Error - detaching an already detached buffer */
-	return MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, 
-             "MPIR_Bsend_detach", __LINE__, MPI_ERR_OTHER, "**bsendnobuf", 0 );
     }
     if (BsendBuffer.active) {
 	/* Loop through each active element and wait on it */
 	BsendData_t *p = BsendBuffer.active;
+	MPIU_THREADPRIV_DECL;
 	
+	MPIU_THREADPRIV_GET;
+
 	MPIR_Nest_incr();
 	while (p) {
 	    MPI_Request r = p->request->handle;
@@ -229,9 +225,13 @@ int MPIR_Bsend_detach( void *bufferp, int *size )
 	MPIR_Nest_decr();
     }
 
+/* Note that this works even when the buffer does not exist */
     *(void **) bufferp  = BsendBuffer.origbuffer;
     *size = BsendBuffer.origbuffer_size;
+    BsendBuffer.origbuffer = NULL;
+    BsendBuffer.origbuffer_size = 0;
     BsendBuffer.buffer  = 0;
+    BsendBuffer.buffer_size  = 0;
     BsendBuffer.avail   = 0;
     BsendBuffer.active  = 0;
     BsendBuffer.pending = 0;
@@ -248,6 +248,7 @@ int MPIR_Bsend_isend( void *buf, int count, MPI_Datatype dtype,
 {
     BsendData_t *p;
     int packsize, mpi_errno, pass;
+    MPIU_THREADPRIV_DECL;
 
     /* Find a free segment and copy the data into it.  If we could 
        have, we would already have used tBsend to send the message with
@@ -257,6 +258,7 @@ int MPIR_Bsend_isend( void *buf, int count, MPI_Datatype dtype,
        or if we can just use (a memcpy) of the buffer.
     */
 
+    MPIU_THREADPRIV_GET;
     MPIR_Nest_incr();
 
     /* We check the active buffer first.  This helps avoid storage 
@@ -265,21 +267,19 @@ int MPIR_Bsend_isend( void *buf, int count, MPI_Datatype dtype,
 
     (void)NMPI_Pack_size( count, dtype, comm_ptr->handle, &packsize );
 
-    MPIU_DBG_PRINTF(("looking for buffer of size %d\n", packsize));
+    MPIU_DBG_MSG_D(BSEND,TYPICAL,"looking for buffer of size %d", packsize);
     /*
      * Use two passes.  Each pass is the same; between the two passes,
      * attempt to complete any active requests, and start any pending
      * ones.  If the message can be initiated in the first pass,
      * do not perform the second pass.
      */
-    MPIU_IFTHREADED(
-       MPIU_DBG_MSG(THREAD,TYPICAL,"Enter bsend critical section");
-       MPID_Thread_mutex_lock( &BsendBuffer.bsend_lock ));
     for (pass = 0; pass < 2; pass++) {
 	
 	p = MPIR_Bsend_find_buffer( packsize );
 	if (p) {
-	    MPIU_DBG_PRINTF(("found buffer of size %d with address %x\n",packsize,p));
+	    MPIU_DBG_MSG_FMT(BSEND,TYPICAL,(MPIU_DBG_FDEST,
+                     "found buffer of size %d with address %p",packsize,p));
 	    /* Found a segment */
 	    
 	    /* Pack the data into the buffer */
@@ -295,7 +295,8 @@ int MPIR_Bsend_isend( void *buf, int count, MPI_Datatype dtype,
 				   dest, tag, comm_ptr,
 				   MPID_CONTEXT_INTRA_PT2PT, &p->request );
 	    if (p->request) {
-		MPIU_DBG_PRINTF(("saving request %x in %x\n",p->request,p));
+		MPIU_DBG_MSG_FMT(BSEND,TYPICAL,
+		    (MPIU_DBG_FDEST,"saving request %p in %p",p->request,p));
 		/* An optimization is to check to see if the 
 		   data has already been sent.  The original code
 		   to do this was commented out and probably did not match
@@ -307,7 +308,7 @@ int MPIR_Bsend_isend( void *buf, int count, MPI_Datatype dtype,
 	    else {
 		/* --BEGIN ERROR HANDLING-- */
 		if (mpi_errno) {
-		    MPIU_Internal_error_printf ("Bsend internal error: isend returned err = %d\n", mpi_errno );
+		    MPIU_Internal_error_printf ("Bsend internal error: isend returned err = %d", mpi_errno );
 		}
 		/* --END ERROR HANDLING-- */
 		/* If the error is "request not available", we should 
@@ -317,24 +318,21 @@ int MPIR_Bsend_isend( void *buf, int count, MPI_Datatype dtype,
 	    break;
 	}
 	if (p || pass == 2) break;
-	MPIU_DBG_PRINTF(("Could not find storage, checking active\n" ));
+	MPIU_DBG_MSG(BSEND,TYPICAL,"Could not find storage, checking active");
 	/* Try to complete some pending bsends */
 	MPIR_Bsend_check_active( );
 	/* Give priority to any pending operations */
 	MPIR_Bsend_retry_pending( );
     }
-    MPIU_IFTHREADED(MPIU_DBG_MSG(THREAD,TYPICAL,"Exit bsend critical section");
-                    MPID_Thread_mutex_unlock( &BsendBuffer.bsend_lock ));
     MPIR_Nest_decr();
     
     if (!p) {
 	/* Return error for no buffer space found */
-#ifdef DBG_PRINT_ARENA
 	/* Generate a traceback of the allocated space, explaining why
 	   packsize could not be found */
-	DBG_PRINTF( "Could not find space; dumping arena\n" );
-	MPIR_Bsend_dump();
-#endif
+	MPIU_DBG_MSG(BSEND,TYPICAL,"Could not find space; dumping arena" );
+	MPIU_DBG_STMT(BSEND,TYPICAL,MPIR_Bsend_dump());
+
 	return MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, "MPIR_Bsend_isend", __LINE__, MPI_ERR_BUFFER, "**bufbsend", 
 				     "**bufbsend %d %d", packsize, 
 				     BsendBuffer.buffer_size );
@@ -358,22 +356,22 @@ static void MPIR_Bsend_free_segment( BsendData_t *p )
 {
     BsendData_t *prev = p->prev, *avail = BsendBuffer.avail, *avail_prev;
 
-    MPIU_DBG_PRINTF(("Freeing bsend segment at %x of size %d, next at %x\n",
+    MPIU_DBG_MSG_FMT(BSEND,TYPICAL,(MPIU_DBG_FDEST,
+                 "Freeing bsend segment at %p of size %d, next at %p",
 		 p,p->size, ((char *)p)+p->total_size));
 
-#ifdef DBG_PRINT_ARENA
-    DBG_PRINTF( "At the begining of free_segment with size %d:\n", p->total_size );
-    MPIR_Bsend_dump();
-#endif    
+    MPIU_DBG_MSG_D(BSEND,TYPICAL,
+	     "At the begining of free_segment with size %d:", p->total_size );
+    MPIU_DBG_STMT(BSEND,TYPICAL,MPIR_Bsend_dump());
 
     /* Remove the segment from the free list */
     if (prev) {
-	MPIU_DBG_PRINTF(("free segment is within active list\n"));
+	MPIU_DBG_MSG(BSEND,TYPICAL,"free segment is within active list");
 	prev->next = p->next;
     }
     else {
 	/* p was at the head of the active list */
-	MPIU_DBG_PRINTF(("free segment is head of active list\n"));
+	MPIU_DBG_MSG(BSEND,TYPICAL,"free segment is head of active list");
 	BsendBuffer.active = p->next;
 	/* The next test sets the prev pointer to null */
     }
@@ -381,17 +379,8 @@ static void MPIR_Bsend_free_segment( BsendData_t *p )
 	p->next->prev = prev;
     }
 
-#ifdef DBG_PRINT_AVAIL_LIST
-    {
-	BsendData_t *a = BsendBuffer.avail;
-	DBG_PRINTF( "Avail list is:\n" );
-	while (a) {
-	    DBG_PRINTF( "[%x] totalsize = %d(%x)\n", a, a->total_size, 
-		   a->total_size );
-	    a = a->next;
-	}
-    }
-#endif
+    MPIU_DBG_STMT(BSEND,VERBOSE,MPIR_Bsend_dump());
+
     /* Merge into the avail list */
     /* Find avail_prev, avail, such that p is between them.
        either may be null if p is at either end of the list */
@@ -439,10 +428,9 @@ static void MPIR_Bsend_free_segment( BsendData_t *p )
 	BsendBuffer.avail = p;
 	p->prev           = 0;
     }
-#ifdef DBG_PRINT_ARENA
-    DBG_PRINTF( "At the end of free_segment:\n" );
-    MPIR_Bsend_dump();
-#endif    
+
+    MPIU_DBG_MSG(BSEND,TYPICAL,"At the end of free_segment:" );
+    MPIU_DBG_STMT(BSEND,TYPICAL,MPIR_Bsend_dump());
 }
 /* end:nested */
 /* 
@@ -457,7 +445,7 @@ static void MPIR_Bsend_check_active( void )
 {
     BsendData_t *active = BsendBuffer.active, *next_active;
 
-    MPIU_DBG_PRINTF(("Checking active starting at %x\n", active ));
+    MPIU_DBG_MSG_P(BSEND,TYPICAL,"Checking active starting at %p", active);
     while (active) {
 	MPI_Request r = active->request->handle;
 	int         flag;
@@ -465,7 +453,7 @@ static void MPIR_Bsend_check_active( void )
 	next_active = active->next;
 
 	if (active->kind == IBSEND) {
-	    /* We handle ibsend specially to allow for the uesr
+	    /* We handle ibsend specially to allow for the user
 	       to attempt and cancel the request. Also, to allow
 	       for a cancel attempt (which must be attempted before
 	       a successful test or wait), we only start
@@ -475,17 +463,25 @@ static void MPIR_Bsend_check_active( void )
 	    if (active->request->ref_count == 1) {
 		NMPI_Test(&r, &flag, MPI_STATUS_IGNORE );
 	    }
+	    else {
+		/* We need to invoke the progress engine in case we 
+		 need to advance other, incomplete communication.  */
+		MPID_Progress_state progress_state;
+		MPID_Progress_start(&progress_state);
+		MPID_Progress_test( );
+		MPID_Progress_end(&progress_state);
+	    }
 	}
 	else {
 	    NMPI_Test( &r, &flag, MPI_STATUS_IGNORE );
 	}
 	if (flag) {
 	    /* We're done.  Remove this segment */
-	    MPIU_DBG_PRINTF(("Removing segment %x\n", active ));
+	    MPIU_DBG_MSG_P(BSEND,TYPICAL,"Removing segment %p", active);
 	    MPIR_Bsend_free_segment( active );
 	}
 	active = next_active;
-	MPIU_DBG_PRINTF(("Next active is %x\n",active));
+	MPIU_DBG_MSG_P(BSEND,TYPICAL,"Next active is %p",active);
     }
 }
 
@@ -544,10 +540,9 @@ static void MPIR_Bsend_take_buffer( BsendData_t *p, int size  )
     /* alloc_size is the amount of space (out of size) that we will 
        allocate for this buffer. */
 
-#ifdef DBG_PRINT_ARENA
-    DBG_PRINTF( "Taking %d bytes from a block with %d bytes\n", alloc_size, 
-		p->total_size );
-#endif
+    MPIU_DBG_MSG_FMT(BSEND,TYPICAL,(MPIU_DBG_FDEST,
+			    "Taking %d bytes from a block with %d bytes\n", 
+				    alloc_size, p->total_size ));
 
     /* Is there enough space left to create a new block? */
     if (alloc_size + (int)BSENDDATA_HEADER_TRUE_SIZE + MIN_BUFFER_BLOCK <= p->size) {
@@ -555,7 +550,7 @@ static void MPIR_Bsend_take_buffer( BsendData_t *p, int size  )
 	   carve out a new block */
 	BsendData_t *newp;
 	
-	MPIU_DBG_PRINTF(("Breaking block into used and allocated at %x\n", p ));
+	MPIU_DBG_MSG_P(BSEND,TYPICAL,"Breaking block into used and allocated at %p", p );
 	newp = (BsendData_t *)( (char *)p + BSENDDATA_HEADER_TRUE_SIZE + 
 				alloc_size );
 	newp->total_size = p->total_size - alloc_size - 
@@ -574,10 +569,9 @@ static void MPIR_Bsend_take_buffer( BsendData_t *p, int size  )
 	p->total_size = (char *)newp - (char*)p;
 	p->size       = p->total_size - BSENDDATA_HEADER_TRUE_SIZE;
 
-#ifdef DBG_PRINT_ARENA
-	DBG_PRINTF( "broken blocks p (%d) and new (%d)\n",
-		    p->total_size, newp->total_size ); fflush(stdout);
-#endif
+	MPIU_DBG_MSG_FMT(BSEND,TYPICAL,(MPIU_DBG_FDEST,
+		   "broken blocks p (%d) and new (%d)\n",
+		    p->total_size, newp->total_size ));
     }
 
     /* Remove p from the avail list and add it to the active list */
@@ -600,11 +594,9 @@ static void MPIR_Bsend_take_buffer( BsendData_t *p, int size  )
     p->prev	       = 0;
     BsendBuffer.active = p;
 
-#ifdef DBG_PRINT_ARENA
-    DBG_PRINTF( "At end of take buffer\n" );
-    MPIR_Bsend_dump();
-#endif
-    MPIU_DBG_PRINTF(("segment %x now head of active\n", p ));
+    MPIU_DBG_MSG_P(BSEND,VERBOSE,"segment %p now head of active",p); 
+    MPIU_DBG_MSG(BSEND,TYPICAL,"At end of take buffer" );
+    MPIU_DBG_STMT(BSEND,TYPICAL,MPIR_Bsend_dump());
 }
 
 /* Ignore p */
@@ -622,35 +614,41 @@ static int MPIR_Bsend_finalize( void *p )
     return 0;
 }
 
-#ifdef DBG_PRINT_ARENA
-void MPIR_Bsend_dump( void )
+/* 
+ * These routines are defined only if debug logging is enabled
+ */
+#ifdef USE_DBG_LOGGING
+static void MPIR_Bsend_dump( void )
 {
     BsendData_t *a = BsendBuffer.avail;
 
-    DBG_PRINTF( "Total size is %d\n", BsendBuffer.buffer_size );
-    DBG_PRINTF( "Avail list is:\n" );
+    MPIU_DBG_MSG_D(BSEND,TYPICAL,"Total size is %d",BsendBuffer.buffer_size );
+    MPIU_DBG_MSG(BSEND,TYPICAL,"Avail list is:" );
     while (a) {
-	DBG_PRINTF( "[%x] totalsize = %d(%x)\n", a, a->total_size, 
-		    a->total_size );
+	MPIU_DBG_MSG_FMT(BSEND,TYPICAL,(MPIU_DBG_FDEST,
+				"[%p] totalsize = %d(%x)", a, a->total_size, 
+					a->total_size ));
 	if (a == a->next) {
-	    DBG_PRINTF( "@@@Corrupt list; avail block points at itself\n" );
+	    MPIU_DBG_MSG(BSEND,TYPICAL,
+			 "@@@Corrupt list; avail block points at itself" );
 	    break;
 	}
 	a = a->next;
     }
-
-    DBG_PRINTF( "Active list is:\n" );
+    
+    MPIU_DBG_MSG(BSEND,TYPICAL,"Active list is:" );
     a = BsendBuffer.active;
     while (a) {
-	DBG_PRINTF( "[%x] totalsize = %d(%x)\n", a, a->total_size, 
-		    a->total_size );
+	MPIU_DBG_MSG_FMT(BSEND,TYPICAL,(MPIU_DBG_FDEST,
+				"[%p] totalsize = %d(%x)", a, a->total_size, 
+					a->total_size ));
 	if (a == a->next) {
-	    DBG_PRINTF( "@@@Corrupt list; active block points at itself\n" );
+	    MPIU_DBG_MSG(BSEND,TYPICAL,
+			 "@@@Corrupt list; active block points at itself" );
 	    break;
 	}
 	a = a->next;
     }
-    DBG_PRINTF( "end of list\n" );
-    fflush( stdout );
+    MPIU_DBG_MSG(BSEND,TYPICAL,"end of list" );
 }
 #endif

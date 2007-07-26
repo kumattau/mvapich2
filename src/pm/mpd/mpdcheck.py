@@ -56,7 +56,7 @@ The three major modes of operation for this program are:
 from time import ctime
 __author__ = "Ralph Butler and Rusty Lusk"
 __date__ = ctime()
-__version__ = "$Revision: 1.1.1.1 $"
+__version__ = "$Revision: 1.19 $"
 __credits__ = ""
 
 import re

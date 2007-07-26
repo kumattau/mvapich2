@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2006, The Ohio State University. All rights
+/* Copyright (c) 2003-2007, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -70,7 +70,6 @@ int MPIDI_CH3_Packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
     int complete;
     int pkt_len;
     int seqnum;
-    int rdma_ok;
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_ISENDV);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_ISENDV);
@@ -94,19 +93,9 @@ int MPIDI_CH3_Packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
 
     Calculate_IOV_len(iov, n_iov, pkt_len);
 
-    rdma_ok = MPIDI_CH3I_MRAILI_Fast_rdma_ok(vc, pkt_len);
-    DEBUG_PRINT("[pkt send], rdma ok: %d\n", rdma_ok);
-    if (rdma_ok != 0) {
-        mpi_errno =
-            MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(vc, iov, n_iov,
-                                                      &nb, &buf);
-        DEBUG_PRINT("[pkt send: send progress] mpi_errno %d, nb %d\n",
-                    mpi_errno == MPI_SUCCESS, nb);
-    } else {
-        mpi_errno =
-            MPIDI_CH3I_MRAILI_Eager_send(vc, iov, n_iov, &nb, &buf);
-        DEBUG_PRINT("[pkt send] mpierr %d, nb %d\n", mpi_errno, nb);
-    }
+    mpi_errno =
+        MPIDI_CH3I_MRAILI_Eager_send(vc, iov, n_iov, pkt_len, &nb, &buf);
+    DEBUG_PRINT("[pkt send] mpierr %d, nb %d\n", mpi_errno, nb);
 
     if (MPI_SUCCESS != mpi_errno && MPI_MRAIL_MSG_QUEUED != mpi_errno) {
         vc->ch.state = MPIDI_CH3I_VC_STATE_FAILED;
@@ -134,24 +123,12 @@ int MPIDI_CH3_Packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
                     sreq->ch.iov_offset) * sizeof(MPID_IOV));
             n_iov = sreq->dev.iov_count - sreq->ch.iov_offset + 1;
 
-            rdma_ok = MPIDI_CH3I_MRAILI_Fast_rdma_ok(vc, pkt_len);
-            DEBUG_PRINT("[send], rdma ok: %d\n", rdma_ok);
-            if (rdma_ok != 0) {
-                mpi_errno =
-                    MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(vc, iov,
-                                                              n_iov, &nb,
-                                                              &buf);
-                DEBUG_PRINT("[send: send progress] mpi_errno %d, nb %d\n",
-                            mpi_errno == MPI_SUCCESS, nb);
-                assert(NULL == buf->sreq);
-            } else {
-                mpi_errno =
-                    MPIDI_CH3I_MRAILI_Eager_send(vc, iov, n_iov, &nb,
-                                                 &buf);
-                DEBUG_PRINT("[istartmsgv] mpierr %d, nb %d\n", mpi_errno,
-                            nb);
-                assert(NULL == buf->sreq);
-            }
+            mpi_errno =
+                MPIDI_CH3I_MRAILI_Eager_send(vc, iov, n_iov, pkt_len, &nb,
+                        &buf);
+            DEBUG_PRINT("[istartmsgv] mpierr %d, nb %d\n", mpi_errno,
+                    nb);
+            assert(NULL == buf->sreq);
 
             if (MPI_SUCCESS != mpi_errno
                 && MPI_MRAIL_MSG_QUEUED != mpi_errno) {
@@ -165,7 +142,7 @@ int MPIDI_CH3_Packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
 
             nb -= sizeof(MPIDI_CH3_Pkt_packetized_send_data_t);
         }
-        if (sreq->dev.ca != MPIDI_CH3_CA_COMPLETE) {
+        if (sreq->dev.OnDataAvail == MPIDI_CH3_ReqHandler_SendReloadIOV) {
             MPIDI_CH3U_Handle_send_req(vc, sreq, &complete);
             nb = 0;
             complete = 0;

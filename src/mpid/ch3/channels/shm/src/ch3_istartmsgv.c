@@ -6,6 +6,8 @@
 
 #include "mpidi_ch3_impl.h"
 
+/* STATES:NO WARNINGS */
+
 /*static MPID_Request * create_request(MPID_IOV * iov, int iov_count, int iov_offset, int nb)*/
 #undef create_request
 #define create_request(sreq, iov, count, offset, nb) \
@@ -14,7 +16,7 @@
     MPIDI_STATE_DECL(MPID_STATE_CREATE_REQUEST); \
     MPIDI_STATE_DECL(MPID_STATE_MEMCPY); \
     MPIDI_FUNC_ENTER(MPID_STATE_CREATE_REQUEST); \
-    sreq = MPIDI_CH3_Request_create(); \
+    sreq = MPID_Request_create(); \
     /*MPIU_Assert(sreq != NULL);*/ \
     if (sreq == NULL) \
     { \
@@ -40,7 +42,7 @@
     sreq->dev.iov[offset].MPID_IOV_LEN -= nb; \
     sreq->ch.iov_offset = offset; \
     sreq->dev.iov_count = count; \
-    sreq->dev.ca = MPIDI_CH3_CA_COMPLETE; \
+    sreq->dev.OnDataAvail = 0;\
     MPIDI_FUNC_EXIT(MPID_STATE_CREATE_REQUEST); \
 }
 
@@ -54,13 +56,13 @@
  * status field of the request.
  */
 
-/* XXX - What do we do if MPIDI_CH3_Request_create() returns NULL???  If
+/* XXX - What do we do if MPID_Request_create() returns NULL???  If
    MPIDI_CH3_iStartMsgv() returns NULL, the calling code assumes the request
    completely successfully, but the reality is that we couldn't allocate the
    memory for a request.  This seems like a flaw in the CH3 API. */
 
 /* NOTE - The completion action associated with a request created by
-   CH3_iStartMsgv() is alway MPIDI_CH3_CA_COMPLETE.  This implies that
+   CH3_iStartMsgv() always has OnDataAvail == 0.  This implies that
    CH3_iStartMsgv() can only be used when the entire message can be described
    by a single iovec of size MPID_IOV_LIMIT. */
     
@@ -68,7 +70,8 @@
 #define FUNCNAME MPIDI_CH3_iStartMsgv
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_CH3_iStartMsgv(MPIDI_VC_t * vc, MPID_IOV * iov, int n_iov, MPID_Request **sreq_ptr)
+int MPIDI_CH3_iStartMsgv(MPIDI_VC_t * vc, MPID_IOV * iov, int n_iov, 
+			 MPID_Request **sreq_ptr)
 {
     int mpi_errno = MPI_SUCCESS;
     MPID_Request * sreq = NULL;
@@ -136,7 +139,7 @@ int MPIDI_CH3_iStartMsgv(MPIDI_VC_t * vc, MPID_IOV * iov, int n_iov, MPID_Reques
 	}
 	else
 	{
-	    sreq = MPIDI_CH3_Request_create();
+	    sreq = MPID_Request_create();
 	    if (sreq == NULL)
 	    {
 		mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0);

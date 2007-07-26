@@ -140,7 +140,8 @@ void MPID_Thread_cond_create(MPID_Thread_cond_t * cond, int * err);
 . cond - condition variable
 
   Output Parameter:
-. err - location to store the error code; pointer may be NULL; error is zero for success, non-zero if a failure occurred
+. err - location to store the error code; pointer may be NULL; error is zero 
+        for success, non-zero if a failure occurred
 @*/
 void MPID_Thread_cond_destroy(MPID_Thread_cond_t * cond, int * err);
 
@@ -152,8 +153,10 @@ void MPID_Thread_cond_destroy(MPID_Thread_cond_t * cond, int * err);
 - mutex - mutex
 
   Notes:
-  This function may return even though another thread has not requested that a thread be released.  Therefore, the calling
-  program must wrap the function in a while loop that verifies program state has changed in a way that warrants letting the
+  This function may return even though another thread has not requested that a 
+  thread be released.  Therefore, the calling
+  program must wrap the function in a while loop that verifies program state 
+  has changed in a way that warrants letting the
   thread proceed.
 @*/
 void MPID_Thread_cond_wait(MPID_Thread_cond_t * cond, MPID_Thread_mutex_t * mutex);
@@ -185,11 +188,13 @@ typedef void (*MPID_Thread_tls_exit_func_t)(void * value);
   MPID_Thread_tls_create - create a thread local storage space
 
   Input Parameter:
-. exit_func - function to be called when the thread exists; may be NULL if a callback is not desired
+. exit_func - function to be called when the thread exists; may be NULL if a 
+  callback is not desired
   
   Output Parameters:
 + tls - new thread local storage space
-- err - location to store the error code; pointer may be NULL; error is zero for success, non-zero if a failure occurred
+- err - location to store the error code; pointer may be NULL; error is zero 
+        for success, non-zero if a failure occurred
 @*/
 void MPID_Thread_tls_create(MPID_Thread_tls_exit_func_t exit_func, MPID_Thread_tls_t * tls, int * err);
 
@@ -200,15 +205,18 @@ void MPID_Thread_tls_create(MPID_Thread_tls_exit_func_t exit_func, MPID_Thread_t
 . tls - thread local storage space to be destroyed
 
   Output Parameter:
-. err - location to store the error code; pointer may be NULL; error is zero for success, non-zero if a failure occurred
+. err - location to store the error code; pointer may be NULL; error is zero 
+        for success, non-zero if a failure occurred
   
   Notes:
-  The destroy function associated with the thread local storage will not called after the space has been destroyed.
+  The destroy function associated with the thread local storage will not 
+  called after the space has been destroyed.
 @*/
 void MPID_Thread_tls_destroy(MPID_Thread_tls_t * tls, int * err);
 
 /*@
-  MPID_Thread_tls_set - associate a value with the current thread in the thread local storage space
+  MPID_Thread_tls_set - associate a value with the current thread in the 
+  thread local storage space
   
   Input Parameters:
 + tls - thread local storage space
@@ -217,7 +225,8 @@ void MPID_Thread_tls_destroy(MPID_Thread_tls_t * tls, int * err);
 void MPID_Thread_tls_set(MPID_Thread_tls_t * tls, void * value);
 
 /*@
-  MPID_Thread_tls_get - obtain the value associated with the current thread from the thread local storage space
+  MPID_Thread_tls_get - obtain the value associated with the current thread 
+  from the thread local storage space
   
   Input Parameter:
 . tls - thread local storage space

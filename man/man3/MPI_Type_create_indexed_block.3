@@ -1,4 +1,4 @@
-.TH MPI_Type_create_indexed_block 3 "11/23/2005" " " "MPI"
+.TH MPI_Type_create_indexed_block 3 "1/30/2007" " " "MPI"
 .SH NAME
 MPI_Type_create_indexed_block \-  Create an indexed datatype with constant-sized blocks 
 .SH SYNOPSIS
@@ -37,6 +37,41 @@ int MPI_Type_create_indexed_block(int count,
 .B newtype 
 - new datatype (handle) 
 .PD 1
+
+.SH NOTES
+The indices are displacements, and are based on a zero origin.  A common error
+is to do something like the following
+.nf
+integer a(100)
+integer blens(10), indices(10)
+do i=1,10
+10       indices(i) = 1 + (i-1)*10
+call MPI_TYPE_CREATE_INDEXED_BLOCK(10,1,indices,MPI_INTEGER,newtype,ierr)
+call MPI_TYPE_COMMIT(newtype,ierr)
+call MPI_SEND(a,1,newtype,...)
+.fi
+
+expecting this to send 
+.I a(1),a(11),...
+because the indices have values
+.I 1,11,...
+\&.
+Because these are 
+.B displacements
+from the beginning of 
+.I a
+,
+it actually sends 
+.I a(1+1),a(1+11),...
+\&.
+
+
+If you wish to consider the displacements as indices into a Fortran array,
+consider declaring the Fortran array with a zero origin
+.nf
+integer a(0:99)
+.fi
+
 
 .SH THREAD AND INTERRUPT SAFETY
 

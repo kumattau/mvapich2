@@ -803,6 +803,7 @@ if test -n "$ac_init_help"; then
 Optional Features:
   --disable-FEATURE       do not include FEATURE (same as --enable-FEATURE=no)
   --enable-FEATURE[=ARG]  include FEATURE [ARG=yes]
+--enable-sock-debug - Turn on tests of the socket data structures
 --enable-echo - turn on echoing from within configure script
 
 Some influential environment variables:
@@ -1382,7 +1383,19 @@ ac_config_sub=$ac_aux_dir/config.sub
 ac_configure=$ac_aux_dir/configure # This should be Cygnus configure.
 
 
+# Check whether --enable-sock-debug or --disable-sock-debug was given.
+if test "${enable_sock_debug+set}" = set; then
+  enableval="$enable_sock_debug"
+
+else
+  enable_sock_debug=no
+fi;
+
           ac_config_headers="$ac_config_headers mpidu_socki_conf.h"
+
+
+
+
 
 
 echo "RUNNING CONFIGURE FOR THE POLL IMPLEMENTATION OF SOCK"
@@ -1393,12 +1406,70 @@ if test "${enable_echo+set}" = set; then
   set -x
 fi;
 
-if test "`cd $srcdir && pwd`" != "`pwd`" && test -f $srcdir/config.status ; then
-    { { echo "$as_me:$LINENO: error: You cannot do a VPATH build if the source directory has been
-    configured.  Run \"make distclean\" in $srcdir first." >&5
+
+rm -f conftest*
+date >conftest$$
+# If creating a file in the current directory does not show up in the srcdir
+# then we're doing a VPATH build (or something is very wrong)
+if test ! -s $srcdir/conftest$$ ; then
+    pac_dirtyfiles=""
+    pac_dirtydirs=""
+    pac_header=""
+
+    for file in config.status $pac_header  ; do
+        if test -f $srcdir/$file ; then
+	    pac_dirtyfiles="$pac_dirtyfiles $file"
+	fi
+    done
+
+
+    if test -n "$pac_dirtyfiles" -o -n "$pac_dirtydirs" ; then
+	# Create a nice message about what to remove
+	rmmsg=""
+	if test -n "$pac_dirtyfiles" ; then
+	    rmmsg="files $pac_dirtyfiles"
+        fi
+ 	if test -n "$pac_dirtydirs" ; then
+	    if test -n "$rmmsg" ; then
+	        rmmsg="$rmmsg and directories $pac_dirtydirs"
+            else
+                rmmsg="directories $pac_dirtydirs"
+            fi
+        fi
+        if test -f $srcdir/Makefile ; then
+            { { echo "$as_me:$LINENO: error: You cannot do a VPATH build if the source directory has been
+    configured.  Run \"make distclean\" in $srcdir first and make sure that the
+    $rmmsg have been removed." >&5
 echo "$as_me: error: You cannot do a VPATH build if the source directory has been
-    configured.  Run \"make distclean\" in $srcdir first." >&2;}
+    configured.  Run \"make distclean\" in $srcdir first and make sure that the
+    $rmmsg have been removed." >&2;}
    { (exit 1); exit 1; }; }
+        else
+            { { echo "$as_me:$LINENO: error: You cannot do a VPATH build if the source directory has been
+    configured.  Remove the $rmmsg in $srcdir." >&5
+echo "$as_me: error: You cannot do a VPATH build if the source directory has been
+    configured.  Remove the $rmmsg in $srcdir." >&2;}
+   { (exit 1); exit 1; }; }
+        fi
+    fi
+fi
+rm -f conftest*
+
+
+
+if test -n "$CONF_BASE_CACHEFILE" -a -s "$CONF_BASE_CACHEFILE" ; then
+    echo "Loading base cachefile $CONF_BASE_CACHEFILE"
+    . $CONF_BASE_CACHEFILE
+    export CONF_BASE_CACHEFILE
+fi
+
+
+if test "$enable_sock_debug" = yes ; then
+
+cat >>confdefs.h <<\_ACEOF
+#define USE_SOCK_VERIFY 1
+_ACEOF
+
 fi
 
 
@@ -3077,7 +3148,7 @@ fi
 # If cpp failed, see if the compiler accepts the header.
 if test "$pac_found_header" != "yes" ; then
     cat >conftest.c<<EOF
-#line 3080 "configure"
+#line 3151 "configure"
 #include "confdefs.h"
 #include <$ac_header>
 int conftest() {return 0;}
@@ -3738,70 +3809,8 @@ fi
 TCP_LIBS="$TCP_LIBS $LIBS"
 LIBS="$saveLIBS $LIBS"
 #
-# Check for socklen_t .  If undefined, define it as int
-echo "$as_me:$LINENO: checking whether socklen_t is defined" >&5
-echo $ECHO_N "checking whether socklen_t is defined... $ECHO_C" >&6
-if test "${pac_cv_have_socklen_t+set}" = set; then
-  echo $ECHO_N "(cached) $ECHO_C" >&6
-else
-
-cat >conftest.$ac_ext <<_ACEOF
-/* confdefs.h.  */
-_ACEOF
-cat confdefs.h >>conftest.$ac_ext
-cat >>conftest.$ac_ext <<_ACEOF
-/* end confdefs.h.  */
-
-#include <sys/types.h>
-#include <sys/socket.h>
-typedef double socklen_t;
-int
-main ()
-{
-socklen_t a;
-  ;
-  return 0;
-}
-_ACEOF
-rm -f conftest.$ac_objext
-if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
-  (eval $ac_compile) 2>conftest.er1
-  ac_status=$?
-  grep -v '^ *+' conftest.er1 >conftest.err
-  rm -f conftest.er1
-  cat conftest.err >&5
-  echo "$as_me:$LINENO: \$? = $ac_status" >&5
-  (exit $ac_status); } &&
-	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
-  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
-  (eval $ac_try) 2>&5
-  ac_status=$?
-  echo "$as_me:$LINENO: \$? = $ac_status" >&5
-  (exit $ac_status); }; } &&
-	 { ac_try='test -s conftest.$ac_objext'
-  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
-  (eval $ac_try) 2>&5
-  ac_status=$?
-  echo "$as_me:$LINENO: \$? = $ac_status" >&5
-  (exit $ac_status); }; }; then
-  pac_cv_have_socklen_t=no
-else
-  echo "$as_me: failed program was:" >&5
-sed 's/^/| /' conftest.$ac_ext >&5
-
-pac_cv_have_socklen_t=yes
-fi
-rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
-fi
-echo "$as_me:$LINENO: result: $pac_cv_have_socklen_t" >&5
-echo "${ECHO_T}$pac_cv_have_socklen_t" >&6
-if test "$pac_cv_have_socklen_t" = no ; then
-
-cat >>confdefs.h <<\_ACEOF
-#define socklen_t int
-_ACEOF
-
-fi
+# Check first for sys/socket.h .  We check not only for existence but whether
+# it can be compiled (!), as we have seen some problems with this.
 cat >conftest.$ac_ext <<_ACEOF
 /* confdefs.h.  */
 _ACEOF
@@ -3853,6 +3862,74 @@ if test "$ac_cv_header_sys_socket_h" = yes ; then
 
 cat >>confdefs.h <<\_ACEOF
 #define HAVE_SYS_SOCKET_H 1
+_ACEOF
+
+fi
+# Check for socklen_t .  If undefined, define it as int
+# (note the conditional inclusion of sys/socket.h)
+echo "$as_me:$LINENO: checking whether socklen_t is defined (in sys/socket.h if present)" >&5
+echo $ECHO_N "checking whether socklen_t is defined (in sys/socket.h if present)... $ECHO_C" >&6
+if test "${pac_cv_have_socklen_t+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+
+cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+#include <sys/types.h>
+#ifdef HAVE_SYS_SOCKET_H
+#include <sys/socket.h>
+#endif
+
+typedef struct { double a; int b; } socklen_t;
+int
+main ()
+{
+socklen_t a;a.a=1.0;
+  ;
+  return 0;
+}
+_ACEOF
+rm -f conftest.$ac_objext
+if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+  (eval $ac_compile) 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } &&
+	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; } &&
+	 { ac_try='test -s conftest.$ac_objext'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; }; then
+  pac_cv_have_socklen_t=no
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+pac_cv_have_socklen_t=yes
+fi
+rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
+fi
+echo "$as_me:$LINENO: result: $pac_cv_have_socklen_t" >&5
+echo "${ECHO_T}$pac_cv_have_socklen_t" >&6
+if test "$pac_cv_have_socklen_t" = no ; then
+
+cat >>confdefs.h <<\_ACEOF
+#define socklen_t int
 _ACEOF
 
 fi
@@ -3924,6 +4001,17 @@ test -n "$ETAGS" || ETAGS="true"
 
 export ETAGS
 export ETAGSADD
+
+
+if test -n "$CONF_BASE_CACHEFILE" -a -s "$CONF_BASE_CACHEFILE" ; then
+    set | grep ac_cv > $CONF_BASE_CACHEFILE.new
+    if cmp -s $CONF_BASE_CACHEFILE.new $CONF_BASE_CACHEFILE ; then
+	:
+    else
+	echo "Replacing $CONF_BASE_CACHEFILE"
+	mv $CONF_BASE_CACHEFILE.new $CONF_BASE_CACHEFILE
+    fi
+fi
 
 
                     ac_config_files="$ac_config_files Makefile localdefs"

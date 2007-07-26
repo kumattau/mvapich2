@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: rlogutil.c,v 1.1.1.1 2006/01/18 21:09:48 huangwei Exp $
+/*  $Id: rlogutil.c,v 1.19 2006/09/13 21:51:05 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -114,7 +114,8 @@ RLOG_IOStruct *RLOG_CreateInputStruct(const char *filename)
 	    /*printf("type: RLOG_HEADER_SECTION, length: %d\n", length);*/
 	    if (length != sizeof(RLOG_FILE_HEADER))
 	    {
-		MPIU_Error_printf("error in header size %d != %d\n", length, sizeof(RLOG_FILE_HEADER));
+		MPIU_Error_printf("error in header size %d != %d\n", length, 
+				  (int)sizeof(RLOG_FILE_HEADER));
 	    }
 	    if (ReadFileData((char*)&pInput->header, sizeof(RLOG_FILE_HEADER), pInput->f))
 	    {

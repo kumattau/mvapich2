@@ -18,7 +18,7 @@ int parse_args(int argc, char **argv);
 
 int main(int argc, char *argv[])
 {
-    int i, err, errs = 0;
+    int i, err, errs = 0, rank, toterrs;
 
     int         index;
     MPI_Request requests[10];
@@ -32,26 +32,34 @@ int main(int argc, char *argv[])
     }
 
     /* begin testing */
+    /* To improve reporting of problems about operations, we
+       change the error handler to errors return */
+    MPI_Comm_set_errhandler( MPI_COMM_WORLD, MPI_ERRORS_RETURN );
 
     err = MPI_Waitany(10, requests, &index, statuses);
 
     if (err != MPI_SUCCESS) {
 	errs++;
-	if (verbose) fprintf(stderr, "MPI_Waitany did not return MPI_SUCCESS\n");
+	fprintf(stderr, "MPI_Waitany did not return MPI_SUCCESS\n");
     }
 
     if (index != MPI_UNDEFINED) {
 	errs++;
-	if (verbose) fprintf(stderr, "MPI_Waitany did not set index to MPI_UNDEFINED\n");
+	fprintf(stderr, "MPI_Waitany did not set index to MPI_UNDEFINED\n");
     }
 
     /* end testing */
-
-    if (errs) {
-	fprintf(stderr, "Found %d errors\n", errs);
-    }
-    else {
-	printf("No errors\n");
+    
+    MPI_Comm_set_errhandler( MPI_COMM_WORLD, MPI_ERRORS_ARE_FATAL );
+    MPI_Comm_rank( MPI_COMM_WORLD, & rank );
+    MPI_Allreduce( &errs, &toterrs, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD );
+    if (rank == 0) {
+	if (toterrs) {
+	    fprintf(stderr, " Found %d errors\n", toterrs);
+	}
+	else {
+	    printf(" No Errors\n");
+	}
     }
     MPI_Finalize();
     return 0;

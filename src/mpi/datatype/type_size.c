@@ -20,12 +20,15 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Type_size
 #define MPI_Type_size PMPI_Type_size
 
 #endif
 
 #undef FUNCNAME
 #define FUNCNAME MPI_Type_size
+#undef FCNAME
+#define FCNAME "MPI_Type_size"
 
 /*@
     MPI_Type_size - Return the number of bytes occupied by entries
@@ -48,14 +51,12 @@ Output Parameter:
 @*/
 int MPI_Type_size(MPI_Datatype datatype, int *size)
 {
-    static const char FCNAME[] = "MPI_Type_size";
     int mpi_errno = MPI_SUCCESS;
     MPID_Datatype *datatype_ptr = NULL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_TYPE_SIZE);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_TYPE_SIZE);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -101,19 +102,19 @@ int MPI_Type_size(MPI_Datatype datatype, int *size)
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_TYPE_SIZE);
-    MPID_CS_EXIT();
     return mpi_errno;
 
-  fn_fail:
     /* --BEGIN ERROR HANDLING-- */
 #   ifdef HAVE_ERROR_CHECKING
+  fn_fail:
     {
 	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_type_size", 
+	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, 
+	    "**mpi_type_size", 
 	    "**mpi_type_size %D %p", datatype, size);
     }
-#   endif
     mpi_errno = MPIR_Err_return_comm( NULL, FCNAME, mpi_errno );
     goto fn_exit;
+#   endif
     /* --END ERROR HANDLING-- */
 }

@@ -91,7 +91,7 @@
 typedef struct { PMISetup pmiinfo; IOLabelSetup labelinfo; } SetupInfo;
 
 /* Forward declarations */
-int mypreamble( void *, ProcessState * );
+int mypreamble( void *, ProcessState* );
 int mypostfork( void *, void *, ProcessState* );
 int mypostamble( void *, void *, ProcessState* );
 int myspawn( ProcessWorld *, void * );
@@ -115,7 +115,9 @@ int main( int argc, char *argv[], char *envp[] )
     /* MPIE_ProcessInit initializes the global pUniv */
     MPIE_ProcessInit();
     /* Set a default for the universe size */
-    pUniv.size  = 64;
+    pUniv.size = 64;
+    /* Tell the PMI untility routines that we are the server */
+    PMIU_SetServer();
 
     /* Set defaults for any arguments that are options.  Also check the
        environment for special options, such as debugging.  Set 
@@ -128,12 +130,20 @@ int main( int argc, char *argv[], char *envp[] )
     MPIE_Args( argc, argv, &pUniv, 0, 0 );
     /* If there were any soft arguments, we need to handle them now */
     rc = MPIE_InitWorldWithSoft( &pUniv.worlds[0], pUniv.size );
+    if (!rc) {
+	MPIU_Error_printf( "Unable to process soft arguments\n" );
+	exit(1);
+    }
 
     if (pUniv.fromSingleton) {
 	/* The MPI process is already running.  We create a simple entry
 	   for a single process rather than creating the process */
 	MPIE_SetupSingleton( &pUniv );
+	/* The handshake to synchronize with the process happens below */
     }
+
+    /* Here is where we would choose the hosts for the job; as gforker
+       uses same machine on which it runs, we don't perform this step */
 
     if (MPIE_Debug) MPIE_PrintProcessUniverse( stdout, &pUniv );
 
@@ -169,6 +179,8 @@ int main( int argc, char *argv[], char *envp[] )
     s.pmiinfo.pWorld = &pUniv.worlds[0];
     PMISetupNewGroup( pUniv.worlds[0].nProcess, 0 );
     MPIE_ForwardCommonSignals();
+    MPIE_IgnoreSigPipe();
+    
     if (!pUniv.fromSingleton) {
 	MPIE_ForkProcesses( &pUniv.worlds[0], envp, mypreamble, &s,
 			    mypostfork, 0, mypostamble, 0 );
@@ -193,9 +205,19 @@ int main( int argc, char *argv[], char *envp[] )
 	pState = pUniv.worlds[0].apps->pState;
 	/* FIXME: The following should be a single routine in pmiport */
 	pmiprocess = PMISetupNewProcess( newfd, pState );
-	PMI_Init_port_connection( newfd );
-	PMI_Init_remote_proc( newfd, pmiprocess );
-	printf( "Done with init_remote_proc\n" );
+
+	PMI_InitSingletonConnection( newfd, pmiprocess );
+	/* PMI_Init_port_connection is used with regular (as opposed to
+	   singleton init) and is used to get the pmiid among other 
+	   items.  It isn't needed (and the commands aren't sent by the 
+	   client) in the singleton case */
+	/*	PMI_Init_port_connection( newfd ); */
+
+	/* Init_remote_proc initiates the process of setting the rank and 
+	   debug flags.  This also isn't needed for the singleton init
+	   case */
+	/* PMI_Init_remote_proc( newfd, pmiprocess ); */
+	/* Ready to handle new input */
 	MPIE_IORegister( newfd, IO_READ, PMIServHandleInput, 
 			 pmiprocess );
     }
@@ -204,8 +226,14 @@ int main( int argc, char *argv[], char *envp[] )
     if (reason == IOLOOP_TIMEOUT) {
 	/* Exited due to timeout.  Generate an error message and
 	   terminate the children */
-	MPIU_Error_printf( "Timeout of %d minutes expired; job aborted\n",
-			 pUniv.timeout / 60 );
+	if (pUniv.timeout > 60) {
+	    MPIU_Error_printf( "Timeout of %d minutes expired; job aborted\n",
+			       pUniv.timeout / 60 );
+	}
+	else {
+	    MPIU_Error_printf( "Timeout of %d seconds expired; job aborted\n",
+			       pUniv.timeout );
+	}
 	erc = 1;
 	MPIE_KillUniverse( &pUniv );
     }

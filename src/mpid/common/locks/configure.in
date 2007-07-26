@@ -11,17 +11,22 @@ dnl
 dnl Definitions will be placed in this file rather than in the DEFS variable
 dnl
 AC_CONFIG_HEADER(mpid_locksconf.h)
+AH_TOP([/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/*  
+ *  (C) 2001 by Argonne National Laboratory.
+ *      See COPYRIGHT in top-level directory.
+ */
+#ifndef MPID_LOCKSCONF_H_INCLUDED
+#define MPID_LOCKSCONF_H_INCLUDED
+])
+AH_BOTTOM([#endif])
 
 
 echo "RUNNING CONFIGURE FOR LOCKS"
 
 dnl
 dnl First check that we have a clean build if we are doing a VPATH build
-if test "`cd $srcdir && pwd`" != "`pwd`" && \
-   test -f $srcdir/config.status ; then
-    AC_MSG_ERROR([You cannot do a VPATH build if the source directory has been
-    configured.  Run "make distclean" in $srcdir first.])
-fi
+PAC_VPATH_CHECK()
 
 AC_CHECK_FUNCS( yield sched_yield usleep sleep select )
 AC_CHECK_FUNCS( mutex_init compare_and_swap )
@@ -30,6 +35,11 @@ AC_CHECK_HEADERS( pthread.h sched.h )
 
 if test "$HAVE_SPARC_INLINE_PROCESS_LOCKS" = "yes" ; then
     AC_DEFINE(HAVE_SPARC_INLINE_PROCESS_LOCKS, 1, [Use inline spin locks on SPARC architectures])
+    # The current code design adds a .il file to CFLAGS, which (a) doesn't 
+    # always reach all of the necessary files (I saw failures in ch3_progress.c
+    # where the inline file was not in the Makefile) and (a) adds the inline
+    # where it should not be, such as in mpicc.
+    AC_MSG_ERROR([Use of inline process locks is not supported.  Please volunteer to fix this code])
 fi
 
 AC_SUBST(AR)

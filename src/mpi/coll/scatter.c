@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Scatter
 #define MPI_Scatter PMPI_Scatter
 
 /* This is the default implementation of scatter. The algorithm is:
@@ -622,7 +623,7 @@ int MPI_Scatter(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("coll");
     MPID_MPI_COLL_FUNC_ENTER(MPID_STATE_MPI_SCATTER);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -724,6 +725,9 @@ int MPI_Scatter(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
     }
     else
     {
+	MPIU_THREADPRIV_DECL;
+	MPIU_THREADPRIV_GET;
+
 	MPIR_Nest_incr();
         if (comm_ptr->comm_kind == MPID_INTRACOMM) 
             /* intracommunicator */
@@ -732,10 +736,6 @@ int MPI_Scatter(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
                                      comm_ptr); 
         else {
             /* intercommunicator */ 
-/*	    mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, 
-                         MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_COMM, 
-					      "**intercommcoll",
-					      "**intercommcoll %s", FCNAME );*/
             mpi_errno = MPIR_Scatter_inter(sendbuf, sendcnt, sendtype,
                                            recvbuf, recvcnt, recvtype, root,
                                            comm_ptr); 
@@ -749,7 +749,7 @@ int MPI_Scatter(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
     
   fn_exit:
     MPID_MPI_COLL_FUNC_EXIT(MPID_STATE_MPI_SCATTER);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("coll");
     return mpi_errno;
 
   fn_fail:

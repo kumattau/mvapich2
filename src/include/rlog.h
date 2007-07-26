@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: rlog.h,v 1.1.1.1 2006/01/18 21:09:42 huangwei Exp $
+/*  $Id: rlog.h,v 1.16 2006/01/06 23:05:23 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -9,11 +9,6 @@
 #define RLOG_H_INCLUDED
 
 #include <stdio.h>
-
-/*
-#include "mpi.h"
-#define RLOG_timestamp PMPI_Wtime
-*/
 
 #if defined(__cplusplus)
 extern "C" {
@@ -70,6 +65,10 @@ typedef struct RLOG_STATE
     char description[RLOG_DESCRIPTION_LENGTH];
 } RLOG_STATE;
 
+/* FIXME: RLOG should use the generic (and lighter weight) timestamp type,
+   not a double, for recording the timestamp bits.  This is an unnecessary
+   extra overhead that makes RLOG less appropriate for fine-grain logging */
+   
 typedef struct RLOG_EVENT
 {
     int rank;

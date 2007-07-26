@@ -19,8 +19,10 @@ int main( int argc, char *argv[] )
     MPI_Request   req;
     static int bufsizes[4] = { 1, 100, 10000, 1000000 };
     char *buf;
+#ifdef TEST_IRSEND
     int veryPicky = 0;   /* Set to 1 to test "quality of implementation" in
 			    a tricky part of cancel */
+#endif
     int  cs, flag, n;
 
     MTest_Init( &argc, &argv );
@@ -32,6 +34,7 @@ int main( int argc, char *argv[] )
     source = 0;
     dest   = size - 1;
 
+    MTestPrintfMsg( 1, "Starting scancel test\n" );
     for (cs=0; cs<4; cs++) {
 	if (rank == 0) {
 	    n = bufsizes[cs];
@@ -40,9 +43,11 @@ int main( int argc, char *argv[] )
 		fprintf( stderr, "Unable to allocate %d bytes\n", n );
 		MPI_Abort( MPI_COMM_WORLD, 1 );
 	    }
+	    MTestPrintfMsg( 1, "(%d) About to create isend and cancel\n",cs );
 	    MPI_Isend( buf, n, MPI_CHAR, dest, cs+n+1, comm, &req );
 	    MPI_Cancel( &req );
 	    MPI_Wait( &req, &status );
+	    MTestPrintfMsg( 1, "Completed wait on isend\n" );
 	    MPI_Test_cancelled( &status, &flag );
 	    if (!flag) {
 		errs ++;
@@ -98,6 +103,7 @@ int main( int argc, char *argv[] )
 		MPI_Abort( MPI_COMM_WORLD, 1 );
 	    }
 	    MPI_Buffer_attach( bsendbuf, bsendbufsize );
+	    MTestPrintfMsg( 1, "About to create and cancel ibsend\n" );
 	    MPI_Ibsend( buf, n, MPI_CHAR, dest, cs+n+2, comm, &req );
 	    MPI_Cancel( &req );
 	    MPI_Wait( &req, &status );
@@ -155,6 +161,7 @@ int main( int argc, char *argv[] )
 		fprintf( stderr, "Unable to allocate %d bytes\n", n );
 		MPI_Abort( MPI_COMM_WORLD, 1 );
 	    }
+	    MTestPrintfMsg( 1, "About to create and cancel irsend\n" );
 	    MPI_Irsend( buf, n, MPI_CHAR, dest, cs+n+3, comm, &req );
 	    MPI_Cancel( &req );
 	    MPI_Wait( &req, &status );
@@ -213,6 +220,7 @@ int main( int argc, char *argv[] )
 		fprintf( stderr, "Unable to allocate %d bytes\n", n );
 		MPI_Abort( MPI_COMM_WORLD, 1 );
 	    }
+	    MTestPrintfMsg( 1, "About to create and cancel issend\n" );
 	    MPI_Issend( buf, n, MPI_CHAR, dest, cs+n+4, comm, &req );
 	    MPI_Cancel( &req );
 	    MPI_Wait( &req, &status );

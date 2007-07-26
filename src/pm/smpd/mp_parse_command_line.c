@@ -2181,7 +2181,7 @@ configfile_loop:
 		    else
 		    {
 			/* larger jobs use the scalable shared memory channel */
-			strcpy(channel, "sshm");
+			strcpy(channel, "ssm");
 		    }
 		}
 	    }

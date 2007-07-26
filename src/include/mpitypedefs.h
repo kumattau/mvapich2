@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: mpitypedefs.h,v 1.1.1.1 2006/01/18 21:09:42 huangwei Exp $
+/*  $Id: mpitypedefs.h,v 1.8 2005/07/09 19:05:51 ashton Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.

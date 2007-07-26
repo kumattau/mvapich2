@@ -110,6 +110,7 @@ C
        enddo
 C
        asizev(1) = pbufsize
+       asizev(2) = 0
        call mpi_pack_external( 'external32', inbuf, insize, MPI_INTEGER,
      &               packbuf, asizev(1), asizev(2), ierr )
        call mpi_pack_external( 'external32', rbuf, rsize, 

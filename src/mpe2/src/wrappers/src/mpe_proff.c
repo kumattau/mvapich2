@@ -96,7 +96,16 @@ MPI_Fint MPER_F_TRUE = MPE_F77_TRUE_VALUE;
 MPI_Fint MPER_F_FALSE = MPE_F77_FALSE_VALUE;
 
 /* Fortran logical values */
-#ifndef _CRAY
+#if defined( WITH_CRAY_FCD_LOGICAL )
+/*
+   CRAY Vector processors only; these are defined in /usr/include/fortran.h 
+   Thanks to lmc@cray.com
+*/
+#include <fortran.h>
+#define MPIR_TO_FLOG(a) (_btol(a))
+#define MPIR_FROM_FLOG(a) ( _ltob(&(a)) )    /*(a) must be a pointer */
+
+#else
 /*  extern MPI_Fint MPER_F_TRUE, MPER_F_FALSE;  */
 #define MPIR_TO_FLOG(a) ((a) ? MPER_F_TRUE : MPER_F_FALSE)
 /* 
@@ -107,12 +116,6 @@ MPI_Fint MPER_F_FALSE = MPE_F77_FALSE_VALUE;
    system.
  */
 #define MPIR_FROM_FLOG(a) ( (a) == MPER_F_TRUE ? 1 : 0 )
-
-#else
-/* CRAY Vector processors only; these are defined in /usr/include/fortran.h 
-   Thanks to lmc@cray.com */
-#define MPIR_TO_FLOG(a) (_btol(a))
-#define MPIR_FROM_FLOG(a) ( _ltob(&(a)) )    /*(a) must be a pointer */
 #endif
 
 /* MPIR_F_MPI_BOTTOM is the address of the Fortran MPI_BOTTOM value */
@@ -178,6 +181,7 @@ int MPER_Err_setmsg();
 
 #ifdef F77_NAME_UPPER
 #define mpi_init_ MPI_INIT
+#define mpi_pcontrol_ MPI_PCONTROL
 #define mpi_comm_create_ MPI_COMM_CREATE
 #define mpi_comm_dup_ MPI_COMM_DUP
 #define mpe_comm_free_ MPI_COMM_FREE
@@ -257,6 +261,7 @@ int MPER_Err_setmsg();
 #define mpi_finalize_ MPI_FINALIZE
 #elif defined(F77_NAME_LOWER_2USCORE)
 #define mpi_init_ mpi_init__
+#define mpi_pcontrol_ mpi_pcontrol__
 #define mpi_comm_create_ mpi_comm_create__
 #define mpi_comm_dup_ mpi_comm_dup__
 #define mpe_comm_free_ mpi_comm_free__
@@ -336,6 +341,7 @@ int MPER_Err_setmsg();
 #define mpi_finalize_ mpi_finalize__
 #elif defined(F77_NAME_LOWER)
 #define mpi_init_ mpi_init
+#define mpi_pcontrol_ mpi_pcontrol
 #define mpi_comm_create_ mpi_comm_create
 #define mpi_comm_dup_ mpi_comm_dup
 #define mpe_comm_free_ mpi_comm_free
@@ -493,6 +499,14 @@ void mpi_init_( int *ierr )
         FREE( ArgvSave[i] );
     }
     FREE( ArgvSave );
+}
+
+
+
+void mpi_pcontrol_( MPI_Fint *icontrol, MPI_Fint *__ierr );
+void mpi_pcontrol_( MPI_Fint *icontrol, MPI_Fint *__ierr )
+{
+    *__ierr = MPI_Pcontrol( *icontrol );
 }
 
 

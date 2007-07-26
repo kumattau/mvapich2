@@ -16,22 +16,22 @@ public class RecHeader
 {
     private static final int BYTESIZE = 8 + 4 * 4;
     public         double time;
-    private        int    icomm;    // unique communicator ID
-    private        int    rank;     // rank of communicator labelled by icomm
-    public         int    thread;
+    private        int    icomm;       // unique communicator ID
+    private        int    rank;        // rank of communicator labeled by icomm
+    private        int    thread;
     public         int    rectype;
 
-    public         int    lineID;   // lineID used in drawable
+    public         int    gthdLineID;  // Global threadID, lineID for drawable
 
     public RecHeader()
     {
-        time       = Const.INVALID_double;
-        icomm      = Const.INVALID_int;
-        rank       = Const.INVALID_int;
-        thread     = Const.INVALID_int;
-        rectype    = Const.INVALID_int;
+        time        = Const.INVALID_double;
+        icomm       = Const.INVALID_int;
+        rank        = Const.INVALID_int;
+        thread      = Const.INVALID_int;
+        rectype     = Const.INVALID_int;
 
-        lineID     = Const.INVALID_int;
+        gthdLineID  = Const.INVALID_int;
     }
 
     public RecHeader( DataInputStream istm )
@@ -52,9 +52,14 @@ public class RecHeader
             return 0;
         }
 
-        lineID  = LineID.compute( icomm, rank );
+        gthdLineID  = LineID.computeGlobalThreadID( icomm, rank, thread );
 
         return BYTESIZE;
+    }
+
+    public int getProcessLineID()
+    {
+        return LineID.computeGlobalProcessID( icomm, rank );
     }
 
     public int skipBytesFromDataStream( DataInputStream in )
@@ -80,7 +85,8 @@ public class RecHeader
         cp.thread     = this.thread;
         cp.rectype    = this.rectype;
 
-        lineID  = LineID.compute( icomm, rank );
+        gthdLineID  = LineID.computeGlobalThreadID( icomm, rank, thread );
+
         return cp;
     }
 */

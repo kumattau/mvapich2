@@ -35,12 +35,11 @@ int main( int argc, char **argv )
     MPI::Op sumop;
     MPI::Intracomm comm = MPI::COMM_WORLD;
     int errs = 0;
-    int size, i, count, rank;
+    int i, count, rank;
 
     MTest_Init( );
 
     sumop.Init( uop, true );
-    size = comm.Get_size();
     rank = comm.Get_rank();
     
     for (count = 1; count < 66000; count = count * 2) {

@@ -11,17 +11,24 @@ dnl
 dnl Definitions will be placed in this file rather than in the DEFS variable
 dnl
 AC_CONFIG_HEADER(mpidu_sock_conf.h)
+AH_TOP([/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/*  
+ *  (C) 2001 by Argonne National Laboratory.
+ *      See COPYRIGHT in top-level directory.
+ */
+#ifndef MPIDU_SOCK_CONF_H_INCLUDED
+#define MPIDU_SOCK_CONF_H_INCLUDED
+])
+AH_BOTTOM([#endif])
 
 
 echo "RUNNING CONFIGURE FOR THE SOCK INTERFACE"
 
 dnl
 dnl First check that we have a clean build if we are doing a VPATH build
-if test "`cd $srcdir && pwd`" != "`pwd`" && \
-   test -f $srcdir/config.status ; then
-    AC_MSG_ERROR([You cannot do a VPATH build if the source directory has been
-    configured.  Run "make distclean" in $srcdir first.])
-fi
+PAC_VPATH_CHECK()
+
+PAC_LOAD_BASE_CACHE
 
 . ${master_top_srcdir}/src/mpid/common/sock/setup.args
 export sock_name
@@ -58,6 +65,7 @@ export ETAGS
 export ETAGSADD
 
 PAC_SUBDIR_CACHE
+
 AC_CONFIG_SUBDIRS(${sock_name})
 
 AC_OUTPUT(Makefile localdefs)

@@ -636,14 +636,17 @@ static int DLOOP_Dataloop_create_flattened_struct(int count,
     }
     nr_blks = first_ind;
 
-#ifdef MPID_STRUCT_FLATTEN_DEBUG
-    MPIU_dbg_printf("--- start of flattened type ---\n");
-    for (i=0; i < nr_blks; i++) {
-	MPIU_dbg_printf("a[%d] = (%d, %d)\n", i,
-			iov_array[i].MPID_IOV_BUF,
-			iov_array[i].MPID_IOV_LEN);
+#ifdef USE_DBG_LOGGING
+    if (MPIU_DBG_SELECTED(DATATYPE,VERBOSE)) {
+	MPIU_DBG_OUT(DATATYPE,"--- start of flattened type ---");
+        for (i=0; i < nr_blks; i++) {
+	MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,
+				   "a[%d] = (%d, %d)\n", i,
+				   iov_array[i].MPID_IOV_BUF,
+				   iov_array[i].MPID_IOV_LEN));
+	}
+	MPIU_DBG_OUT(DATATYPE,"--- end of flattened type ---");
     }
-    MPIU_dbg_printf("--- end of flattened type ---\n");
 #endif
 
     for (i=0; i < nr_blks; i++)

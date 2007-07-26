@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Type_create_keyval
 #define MPI_Type_create_keyval PMPI_Type_create_keyval
 
 #endif
@@ -46,6 +47,8 @@ Notes:
 . MPI_TYPE_NULL_DELETE_FN - empty delete function
 - MPI_TYPE_DUP_FN         - simple dup function
 
+.N AttrErrReturn
+
 .N ThreadSafe
 
 .N Fortran
@@ -65,7 +68,7 @@ int MPI_Type_create_keyval(MPI_Type_copy_attr_function *type_copy_attr_fn,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("attr");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_TYPE_CREATE_KEYVAL);
     
     /* Validate parameters and objects (post conversion) */
@@ -83,15 +86,8 @@ int MPI_Type_create_keyval(MPI_Type_copy_attr_function *type_copy_attr_fn,
     /* ... body of routine ...  */
     
     keyval_ptr = (MPID_Keyval *)MPIU_Handle_obj_alloc( &MPID_Keyval_mem );
-    /* --BEGIN ERROR HANDLING-- */
-    if (!keyval_ptr)
-    {
-	mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, 
-				  FCNAME, __LINE__, MPI_ERR_OTHER, 
-				  "**nomem", "**nomem %s", "MPID_Keyval" );
-	goto fn_fail;
-    }
-    /* --END ERROR HANDLING-- */
+    MPIU_ERR_CHKANDJUMP(!keyval_ptr,mpi_errno,MPI_ERR_OTHER,"**nomem");
+
     /* Initialize the attribute dup function */
     if (!MPIR_Process.attr_dup) {
 	MPIR_Process.attr_dup  = MPIR_Attr_dup_list;
@@ -114,7 +110,7 @@ int MPI_Type_create_keyval(MPI_Type_copy_attr_function *type_copy_attr_fn,
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_TYPE_CREATE_KEYVAL);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("attr");
     return mpi_errno;
 
   fn_fail:

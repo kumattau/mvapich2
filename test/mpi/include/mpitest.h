@@ -20,6 +20,11 @@ void MTestPrintfMsg( int, const char [], ... );
 void MTestError( const char [] );
 
 /*
+ * Utilities
+ */
+void MTestSleep( int );
+
+/*
  * This structure contains the information used to test datatypes
  * buf is set to null when an MTestDatatype is created; the
  * InitBuf routine will allocate (if necessary) and initialize

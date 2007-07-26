@@ -5,6 +5,15 @@ AC_PREREQ(2.59)
 # Autoconf header:
 rm -f ${srcdir}/mpdconf.h mpdconf.h
 AC_CONFIG_HEADER(mpdconf.h)
+AH_TOP([/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/*  
+ *  (C) 2001 by Argonne National Laboratory.
+ *      See COPYRIGHT in top-level directory.
+ */
+#ifndef MPDCONF_H_INCLUDED
+#define MPDCONF_H_INCLUDED
+])
+AH_BOTTOM([#endif])
 
 dnl Process configure arguments
 AC_ARG_ENABLE(echo,
@@ -21,20 +30,6 @@ AC_ARG_ENABLE(g, [--enable-g  - turn on debugging flags ] )
 if test "$enable_g" = "yes" -o "$enable_g" = "all" ; then
     COPTIONS="${COPTIONS} -g"
 fi
-
-AC_ARG_ENABLE(totalview,[--enable-totalview - turn on mpd-totalview support],,
-              enable_totalview=default )
-if test "$enable_totalview" = "no" ; then
-    DO_MTV="no"
-elif test "$enable_totalview" = "yes" ; then
-    DO_MTV="yes"
-else
-    AC_CHECK_PROG(TOTALVIEW, totalview, totalview)
-    if test -n "$TOTALVIEW" ; then
-        DO_MTV="yes"
-    fi
-fi
-AC_SUBST(DO_MTV)
 
 dnl Checks for programs.
 dnl Determine the executable and object file extensions.  These
@@ -57,6 +52,20 @@ if test "$installOk" = "no" ; then
     INSTALL="${srcdir}/install.sh"
 fi
 echo Using INSTALL=$INSTALL
+
+AC_ARG_ENABLE(totalview,[--enable-totalview - turn on mpd-totalview support],,
+              enable_totalview=default )
+if test "$enable_totalview" = "no" ; then
+    DO_MTV="no"
+elif test "$enable_totalview" = "yes" ; then
+    DO_MTV="yes"
+else
+    AC_CHECK_PROG(TOTALVIEW, totalview, totalview)
+    if test -n "$TOTALVIEW" ; then
+        DO_MTV="yes"
+    fi
+fi
+AC_SUBST(DO_MTV)
 
 AC_ARG_WITH(python,
             [--with-python=name - Specify a particular python to use for mpd],,
@@ -101,6 +110,16 @@ if test -z "$PYTHON" ; then  ## user did not give us a python; find one
             continue
         fi
         
+        if test "$enable_totalview" = "yes" ; then
+            AC_MSG_CHECKING([that $pypgm has development tools for totalview])
+            if test -f /usr/lib/$pypgm/config/Makefile ; then
+                AC_MSG_RESULT(yes)
+            else
+                AC_MSG_RESULT(no)
+                continue
+            fi
+        fi
+
         PYTHON="$pypgm"
         break
     done
@@ -125,6 +144,7 @@ fi
 # echo "RMB PYTHON=" $PYTHON
 AC_SUBST(PYTHON)
 
+
 # In case clinker is not defined
 if test -z "$CLINKER" ; then 
     CLINKER="$CC"
@@ -139,7 +159,8 @@ dnl Checks for header files.
 # Checking headers
 AC_HEADER_STDC
 AC_HEADER_SYS_WAIT
-AC_CHECK_HEADERS(fcntl.h strings.h sys/time.h unistd.h stdlib.h)
+# sys/param.h for MAXHOSTNAMELEN
+AC_CHECK_HEADERS(fcntl.h strings.h sys/time.h unistd.h stdlib.h sys/param.h)
 
 dnl Checks for library functions.
 # Checking library functions

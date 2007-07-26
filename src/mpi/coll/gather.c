@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Gather
 #define MPI_Gather PMPI_Gather
 /* This is the default implementation of gather. The algorithm is:
    
@@ -91,16 +92,17 @@ int MPIR_Gather (
     
     if (is_homogeneous)
     {
+
         /* communicator is homogeneous. no need to pack buffer. */
 
         if (rank == root)
 	{
-            MPID_Datatype_get_size_macro(recvtype, recvtype_size);
+	    MPID_Datatype_get_size_macro(recvtype, recvtype_size);
             nbytes = recvtype_size * recvcnt;
         }
         else
 	{
-            MPID_Datatype_get_size_macro(sendtype, sendtype_size);
+	    MPID_Datatype_get_size_macro(sendtype, sendtype_size);
             nbytes = sendtype_size * sendcnt;
         }
 
@@ -609,7 +611,7 @@ int MPI_Gather(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("coll");
     MPID_MPI_COLL_FUNC_ENTER(MPID_STATE_MPI_GATHER);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -712,6 +714,9 @@ int MPI_Gather(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
     }
     else
     {
+	MPIU_THREADPRIV_DECL;
+	MPIU_THREADPRIV_GET;
+
 	MPIR_Nest_incr();
         if (comm_ptr->comm_kind == MPID_INTRACOMM) 
             /* intracommunicator */
@@ -721,9 +726,6 @@ int MPI_Gather(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
         else
 	{
             /* intercommunicator */ 
-/*	    mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_COMM, 
-					      "**intercommcoll",
-					      "**intercommcoll %s", FCNAME );*/
             mpi_errno = MPIR_Gather_inter(sendbuf, sendcnt, sendtype,
                                           recvbuf, recvcnt, recvtype, root,
                                           comm_ptr);
@@ -737,7 +739,7 @@ int MPI_Gather(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
     
   fn_exit:
     MPID_MPI_COLL_FUNC_EXIT(MPID_STATE_MPI_GATHER);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("coll");
     return mpi_errno;
 
   fn_fail:

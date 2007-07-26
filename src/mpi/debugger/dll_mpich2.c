@@ -246,6 +246,7 @@ int mqs_image_has_queues (mqs_image *image, char **message)
 	    i_info->comm_rsize_offs = dbgr_field_offset( co_type, "remote_size" );
 	    i_info->comm_rank_offs = dbgr_field_offset( co_type, "rank" );
 	    i_info->comm_context_id_offs = dbgr_field_offset( co_type, "context_id" );
+	    i_info->comm_recvcontext_id_offs = dbgr_field_offset( co_type, "recvcontext_id" );
 	}
     }
 
@@ -419,6 +420,8 @@ typedef struct communicator_t
   struct communicator_t * next;
   group_t *               group;		/* Translations */
   int                     context_id;		/* To catch changes */
+  int                     recvcontext_id;       /* May also be needed for 
+						   matchine */
   int                     present;
   mqs_communicator        comm_info;		/* Info needed at the higher level */
 } communicator_t;
@@ -567,8 +570,8 @@ static int fetch_receive (mqs_process *proc, mpich_process_info *p_info,
 {
     mqs_image * image          = dbgr_get_image (proc);
     mpich_image_info *i_info   = (mpich_image_info *)dbgr_get_image_info (image);
-    communicator_t   *comm   = p_info->current_communicator;
-    int16_t wanted_context = comm->context_id;
+    communicator_t   *comm     = p_info->current_communicator;
+    int16_t wanted_context     = comm->recvcontext_id;
     mqs_taddr_t base           = fetch_pointer (proc, p_info->next_msg, p_info);
 
     while (base != 0) {
@@ -818,7 +821,7 @@ static communicator_t * find_communicator (mpich_process_info *p_info,
   for (; comm; comm=comm->next)
     {
       if (comm->comm_info.unique_id == comm_base &&
-	  comm->context_id == recv_ctx)
+	  comm->recvcontext_id == recv_ctx)
 	return comm;
     }
 
@@ -831,7 +834,7 @@ static int compare_comms (const void *a, const void *b)
   communicator_t * ca = *(communicator_t **)a;
   communicator_t * cb = *(communicator_t **)b;
 
-  return cb->context_id - ca->context_id;
+  return cb->recvcontext_id - ca->recvcontext_id;
 } /* compare_comms */
 static int rebuild_communicator_list (mqs_process *proc)
 {
@@ -855,7 +858,7 @@ static int rebuild_communicator_list (mqs_process *proc)
      */
     while (comm_base) {
 	/* We do have one to look at, so extract the info */
-	int recv_ctx = fetch_int (proc, comm_base+i_info->comm_context_id_offs, p_info);
+	int recv_ctx = fetch_int (proc, comm_base+i_info->comm_recvcontext_id_offs, p_info);
 	communicator_t *old = find_communicator (p_info, comm_base, recv_ctx);
 
 	char *name = "--unnamed--";

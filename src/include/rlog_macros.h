@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: rlog_macros.h,v 1.1.1.1 2006/01/18 21:09:42 huangwei Exp $
+/*  $Id: rlog_macros.h,v 1.16 2006/01/03 21:04:25 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -12,6 +12,9 @@
 #include "mpichtimer.h"
 
 /* structures, global variables */
+/* FIXME: All global names should follow the prefix rules to ensure that 
+   there are no collisions with user-defined global names.  g_pRLOG should be
+   RLOG_something */
 extern RLOG_Struct *g_pRLOG;
 
 /* state declaration macros */

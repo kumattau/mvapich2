@@ -323,9 +323,9 @@ void MPID_Segment_unpack_external32(struct DLOOP_Segment *segp,
 				    DLOOP_Buffer unpack_buffer)
 {
     struct MPID_Segment_piece_params pack_params;
-    MPIDI_STATE_DECL(MPID_STATE_MPID_SEGMENT_UNPACK_EXTERNAL);
+    MPIDI_STATE_DECL(MPID_STATE_MPID_SEGMENT_UNPACK_EXTERNAL32);
     
-    MPIDI_FUNC_ENTER(MPID_STATE_MPID_SEGMENT_UNPACK_EXTERNAL);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPID_SEGMENT_UNPACK_EXTERNAL32);
 
     pack_params.u.unpack.unpack_buffer = unpack_buffer;
     MPID_Segment_manipulate(segp,
@@ -338,6 +338,6 @@ void MPID_Segment_unpack_external32(struct DLOOP_Segment *segp,
                             MPIDI_Datatype_get_basic_size_external32,
 			    &pack_params);
 
-    MPIDI_FUNC_EXIT(MPID_STATE_MPID_SEGMENT_UNPACK_EXTERNAL);
+    MPIDI_FUNC_EXIT(MPID_STATE_MPID_SEGMENT_UNPACK_EXTERNAL32);
     return;
 }

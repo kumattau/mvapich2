@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Group_range_incl
 #define MPI_Group_range_incl PMPI_Group_range_incl
 
 #endif
@@ -68,7 +69,7 @@ int MPI_Group_range_incl(MPI_Group group, int n, int ranges[][3],
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("group");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_GROUP_RANGE_INCL);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -158,7 +159,7 @@ int MPI_Group_range_incl(MPI_Group group, int n, int ranges[][3],
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_GROUP_RANGE_INCL);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("group");
     return mpi_errno;
 
   fn_fail:

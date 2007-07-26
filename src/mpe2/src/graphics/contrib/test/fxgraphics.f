@@ -92,8 +92,9 @@ C     call sleep( 15 )
 C         The following is non-portable; the $ asks the Fortran runtime
 C         not to generate a newline at the end of the line.  If this
 C         causes problems, replace this line with a simple print statement
-          write(6,'(A,$)') 'Hit any key then return to terminate  '
-          read(5,'(A)') chr
+C           write(6,'(A,$)') 'Hit any key then return to terminate  '
+C           read(5,'(A)') chr
+          call system( 'sleep 1' )
       endif
       call MPI_Barrier( MPI_COMM_WORLD, ierr )
 

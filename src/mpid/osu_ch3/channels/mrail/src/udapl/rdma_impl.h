@@ -24,13 +24,19 @@
 #include "mpidi_ch3_impl.h"
 #include "udapl_priv.h"
 #include "mpidi_ch3_rdma_pre.h"
+
 #include <dat/udat.h>
+#include <pthread.h>
 
 typedef struct MPIDI_CH3I_RDMA_Process_t
 {
     /* keep all rdma implementation specific global variable in a
        structure like this to avoid name collisions */
     int num_hcas;
+
+    uint8_t                     has_lazy_mem_unregister;
+    uint8_t                     has_rdma_fast_path;
+    uint8_t                     has_one_sided;
 
     int maxtransfersize;
 
@@ -47,6 +53,8 @@ typedef struct MPIDI_CH3I_RDMA_Process_t
     DAT_EVD_HANDLE creq_cq_hndl[MAX_NUM_HCAS];
     DAT_CONN_QUAL service_id[MAX_SUBCHANNELS];
     DAT_PSP_HANDLE psp_hndl[MAX_SUBCHANNELS];
+
+    pthread_t              server_thread;
 
 #ifdef ONE_SIDED
     /* information for the one-sided communication connection */
@@ -102,5 +110,6 @@ rdma_iba_enable_connections(struct MPIDI_CH3I_RDMA_Process_t *proc,
 
 int MRAILI_Process_send(void *vbuf_addr);
 
+void rdma_init_parameters (MPIDI_CH3I_RDMA_Process_t *proc);
 
 #endif /* RDMA_IMPL_H */

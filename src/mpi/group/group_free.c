@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Group_free
 #define MPI_Group_free PMPI_Group_free
 
 #endif
@@ -56,7 +57,7 @@ int MPI_Group_free(MPI_Group *group)
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("group");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_GROUP_FREE);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -103,7 +104,7 @@ int MPI_Group_free(MPI_Group *group)
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_GROUP_FREE);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("group");
     return mpi_errno;
 
   fn_fail:

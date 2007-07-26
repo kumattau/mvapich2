@@ -5,14 +5,12 @@
 #if !defined( _CLOG_MERGER )
 #define _CLOG_MERGER
 
+#include "clog_const.h"
 #include "clog_block.h"
 #include "clog_buffer.h"
 #include "clog_record.h"
-#include "clog_const.h"
 
 #define CLOG_MERGE_LOGBUFTYPE  777
-
-#define CLOG_MAXTIME           100000000.0       /* later than all times */
 
 typedef struct {
    CLOG_BlockData_t   *left_blk;
@@ -27,7 +25,7 @@ typedef struct {
    int                 right_world_rank;
    int                 parent_world_rank;
 
-   int                 is_big_endian;
+   CLOG_BOOL_T         is_big_endian;
    char                out_filename[ CLOG_PATH_STRLEN ];
    int                 out_fd;
 } CLOG_Merger_t;
@@ -42,13 +40,12 @@ void CLOG_Merger_init(       CLOG_Merger_t    *merger,
                        const CLOG_Preamble_t  *preamble,
                        const char             *merged_file_prefix );
 
-void CLOG_Merger_finalize( CLOG_Merger_t *merger );
+void CLOG_Merger_finalize( CLOG_Merger_t *merger, CLOG_Buffer_t *buffer );
 
 void CLOG_Merger_flush( CLOG_Merger_t *merger );
 
-void CLOG_Merger_save_rec( CLOG_Merger_t *merger, CLOG_Rec_Header_t *hdr );
-
-int CLOG_Merger_reserved_block_size( unsigned int rectype );
+void CLOG_Merger_save_rec(       CLOG_Merger_t *merger,
+                           const CLOG_Rec_Header_t *hdr );
 
 void CLOG_Merger_refill_sideblock( CLOG_BlockData_t  *blockdata,
                                    int block_world_rank, int block_size );

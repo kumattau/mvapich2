@@ -157,7 +157,7 @@ int MPIDI_CH3_Rendezvous_push(MPIDI_VC_t * vc, MPID_Request * sreq);
 void MPIDI_CH3_Rendezvous_r3_push(MPIDI_VC_t * vc, MPID_Request * sreq);
 void MPIDI_CH3I_MRAILI_Process_rndv(void);
 
-int MPIDI_CH3I_read_progress(MPIDI_VC_t **vc_pptr, vbuf **);
+int MPIDI_CH3I_read_progress(MPIDI_VC_t **vc_pptr, vbuf **, int);
 int MPIDI_CH3I_write_progress();
 int MPIDI_CH3I_post_read(MPIDI_VC_t *vc, void *buf, int len);
 int MPIDI_CH3I_post_readv(MPIDI_VC_t *vc, MPID_IOV *iov, int n);
@@ -173,11 +173,13 @@ function if you want to use the PMI interface for process management (recommende
 int MPIDI_CH3I_RDMA_init_process_group(int * has_parent, MPIDI_PG_t ** pg_pptr, int * pg_rank_ptr);
 
 /*
-MPIDI_CH3I_RMDA_init is called after the RDMA channel has been initialized and the VC structures have
-been allocated.  VC stands for Virtual Connection.  This should be the main initialization
-routine that fills in any implementation specific fields to the VCs, connects all the processes
-to each other and performs all other global initialization.  After this function is called 
-all the processes must be connected.  The ch channel assumes a fully connected network.
+MPIDI_CH3I_RMDA_init is called after the RDMA channel has been initialized
+and the VC structures have been allocated.  VC stands for Virtual
+Connection.  This should be the main initialization routine that fills in
+any implementation specific fields to the VCs, connects all the processes to
+each other and performs all other global initialization.  After this
+function is called all the processes must be connected.  The ch channel
+assumes a fully connected network.
 */
 int MPIDI_CH3I_RMDA_init();
 
@@ -185,53 +187,65 @@ int MPIDI_CH3I_RMDA_init();
 int MPIDI_CH3I_RMDA_finalize();
 
 /*
-MPIDI_CH3I_RDMA_put_datav puts data into the ch memory of the remote process specified by the vc.
-It returns the number of bytes successfully written in the num_bytes_ptr parameter.  This may be zero 
-or up to the total amount of data described by the input iovec.  The data does not have to arrive
-at the destination before this function returns but the local buffers may be touched.
+MPIDI_CH3I_RDMA_put_datav puts data into the ch memory of the remote process
+specified by the vc.  It returns the number of bytes successfully written in
+the num_bytes_ptr parameter.  This may be zero or up to the total amount of
+data described by the input iovec.  The data does not have to arrive at the
+destination before this function returns but the local buffers may be
+touched.
 */
-int MPIDI_CH3I_RDMA_put_datav(MPIDI_VC_t *vc, MPID_IOV *iov, int n, int *num_bytes_ptr);
+int MPIDI_CH3I_RDMA_put_datav(MPIDI_VC_t *vc, 
+        MPID_IOV *iov, int n, int *num_bytes_ptr);
 
 /*
-MPIDI_CH3I_RDMA_read_datav reads data from the local ch memory into the user buffer described by 
-the iovec.  This function sets num_bytes_ptr to the amout of data successfully read which may be zero.
-This function only reads data that was previously put by the remote process indentified by the vc.
+MPIDI_CH3I_RDMA_read_datav reads data from the local ch memory into the user
+buffer described by the iovec.  This function sets num_bytes_ptr to the
+amout of data successfully read which may be zero.  This function only reads
+data that was previously put by the remote process indentified by the vc.
 */
-int MPIDI_CH3I_RDMA_read_datav(MPIDI_VC_t *vc, MPID_IOV *iov, int n, int *num_bytes_ptr);
+int MPIDI_CH3I_RDMA_read_datav(MPIDI_VC_t *vc, 
+        MPID_IOV *iov, int n, int *num_bytes_ptr);
 
 /********** Added interface for OSU-MPI2 ************/
-int MPIDI_CH3_Rendezvous_rput_finish(MPIDI_VC_t *, MPIDI_CH3_Pkt_rput_finish_t *);
+int MPIDI_CH3_Rendezvous_rput_finish(MPIDI_VC_t *, 
+        MPIDI_CH3_Pkt_rput_finish_t *);
+
+int MPIDI_CH3_Rendezvous_rget_recv_finish(MPIDI_VC_t *, 
+        MPID_Request *);
+
+int MPIDI_CH3_Rendezvous_rget_send_finish(MPIDI_VC_t *, 
+        MPIDI_CH3_Pkt_rget_finish_t *);
 
 int MPIDI_CH3_Packetized_send(MPIDI_VC_t * vc, MPID_Request *);
 
 int MPIDI_CH3_Packetized_recv_data(MPIDI_VC_t * vc, vbuf * v);
-                                                                                                                                               
+
 int MPIDI_CH3_Rendezvouz_r3_recv_data(MPIDI_VC_t * vc, vbuf * v);
-                                                                                                                                               
 int MPIDI_CH3_Packetized_recv_req(MPIDI_VC_t * vc, MPID_Request *);
 
 /* Mrail interfaces*/
 int MPIDI_CH3I_MRAIL_Prepare_rndv(
                 MPIDI_VC_t * vc, MPID_Request * rreq);
-                                                                                                                                               
 int MPIDI_CH3I_MRAIL_Prepare_rndv_transfer(MPID_Request * sreq,
                 MPIDI_CH3I_MRAILI_Rndv_info_t *rndv);
 
 int MPIDI_CH3I_MRAILI_Get_rndv_rput(MPIDI_VC_t *vc,
-                                    MPID_Request * req,
-                                    MPIDI_CH3I_MRAILI_Rndv_info_t * rndv,
-				    MPID_IOV *);
+        MPID_Request * req,
+        MPIDI_CH3I_MRAILI_Rndv_info_t * rndv,
+        MPID_IOV *);
 
-int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc, vbuf * v, void **, int
-            *headersize);
-                                                                                                                                               
-int MPIDI_CH3I_MRAIL_Fill_Request(MPID_Request *, vbuf *v, int header_size, int * nb);
+int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc, 
+        vbuf * v, void **, int *headersize);
+
+int MPIDI_CH3I_MRAIL_Fill_Request(MPID_Request *, 
+        vbuf *v, int header_size, int * nb);
 
 void  MPIDI_CH3I_MRAIL_Release_vbuf(vbuf * v);
 
 int MPIDI_CH3I_MRAIL_Finish_request(MPID_Request *);
 
-/*Connection Management Interfaces*/
+/* Connection Management Interfaces */
+
 /* MPIDI_CH3I_CM_Init should replace MPIDI_CH3I_RMDA_init if dynamic
  * connection is enabled. */
 int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank);
@@ -239,6 +253,11 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank);
 /* MPIDI_CH3I_CM_Finalize should be used if MPIDI_CH3I_CM_Init is used
  * in initialization */
 int MPIDI_CH3I_CM_Finalize();
+
+/* Let the lower layer flush out anything from the ext_sendq
+ * and reclaim all WQEs
+ */
+int MPIDI_CH3_Flush();
 
 /* MPIDI_CH3I_CM_Connect should be called before using a VC to do
  * communication */
@@ -267,9 +286,11 @@ int MPIDI_CH3I_CM_Reactivate(MPIDI_VC_t ** vc_vector);
 int MPIDI_CH3I_CM_Send_logged_msg(MPIDI_VC_t * vc);
 
 /*CM message handler for RC message in progress engine*/
-void MPIDI_CH3I_CM_Handle_recv(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t msg_type, vbuf * v);
+void MPIDI_CH3I_CM_Handle_recv(MPIDI_VC_t * vc, 
+        MPIDI_CH3_Pkt_type_t msg_type, vbuf * v);
 
-void MPIDI_CH3I_CM_Handle_send_completion(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t msg_type, vbuf * v);
+void MPIDI_CH3I_CM_Handle_send_completion(MPIDI_VC_t * vc, 
+        MPIDI_CH3_Pkt_type_t msg_type, vbuf * v);
 
 /* Initialization and finalization for CR */
 int MPIDI_CH3I_CR_Init(MPIDI_PG_t *pg, int rank, int size);
@@ -277,9 +298,11 @@ int MPIDI_CH3I_CR_Init(MPIDI_PG_t *pg, int rank, int size);
 int MPIDI_CH3I_CR_Finalize();
 
 /* CR message handler in progress engine */
-void MPIDI_CH3I_CR_Handle_recv(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t msg_type, vbuf * v);
+void MPIDI_CH3I_CR_Handle_recv(MPIDI_VC_t * vc, 
+        MPIDI_CH3_Pkt_type_t msg_type, vbuf * v);
 
-void MPIDI_CH3I_CR_Handle_send_completion(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t msg_type, vbuf * v);
+void MPIDI_CH3I_CR_Handle_send_completion(MPIDI_VC_t * vc, 
+        MPIDI_CH3_Pkt_type_t msg_type, vbuf * v);
 
 /* CR lock to protect upper layers from accessing communication channel */
 void MPIDI_CH3I_CR_lock();
@@ -304,6 +327,8 @@ typedef enum MPICR_cr_state
 } MPICR_cr_state;
 
 MPICR_cr_state MPIDI_CH3I_CR_Get_state();
+
+void MPIDI_CH3I_CR_Sync_ckpt_request();
 
 #endif
 
@@ -351,9 +376,9 @@ MPICR_cr_state MPIDI_CH3I_CR_Get_state();
     vc->smp.sendq_tail = NULL;                   \
     }                                   \
 }
-                                                                                                                                               
+
 #define MPIDI_CH3I_SMP_SendQ_head(vc) (vc->smp.sendq_head)
-                                                                                                                                               
+
 #define MPIDI_CH3I_SMP_SendQ_empty(vc) (vc->smp.sendq_head == NULL)
 
 extern int SMP_INIT;

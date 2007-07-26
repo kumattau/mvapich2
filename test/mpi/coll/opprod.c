@@ -142,19 +142,21 @@ int main( int argc, char *argv[] )
     ldoutbuf[0] = 0;
     ldoutbuf[1] = 1;
     ldoutbuf[2] = 1;
-    MPI_Reduce( ldinbuf, ldoutbuf, 3, MPI_LONG_DOUBLE, MPI_PROD, 0, comm );
-    if (rank == 0) {
-	if (ldoutbuf[0] != (long double)result[maxsize-1]) {
-	    errs++;
-	    fprintf( stderr, "long double PROD(rank) test failed\n" );
-	}
-	if (ldoutbuf[1]) {
-	    errs++;
-	    fprintf( stderr, "long double PROD(0) test failed\n" );
-	}
-	if (size > 1 && ldoutbuf[2] != 0) {
-	    errs++;
-	    fprintf( stderr, "long double PROD(>) test failed\n" );
+    if (MPI_LONG_DOUBLE != MPI_DATATYPE_NULL) {
+	MPI_Reduce( ldinbuf, ldoutbuf, 3, MPI_LONG_DOUBLE, MPI_PROD, 0, comm );
+	if (rank == 0) {
+	    if (ldoutbuf[0] != (long double)result[maxsize-1]) {
+		errs++;
+		fprintf( stderr, "long double PROD(rank) test failed\n" );
+	    }
+	    if (ldoutbuf[1]) {
+		errs++;
+		fprintf( stderr, "long double PROD(0) test failed\n" );
+	    }
+	    if (size > 1 && ldoutbuf[2] != 0) {
+		errs++;
+		fprintf( stderr, "long double PROD(>) test failed\n" );
+	    }
 	}
     }
     }
@@ -171,19 +173,21 @@ int main( int argc, char *argv[] )
     lloutbuf[0] = 0;
     lloutbuf[1] = 1;
     lloutbuf[2] = 1;
-    MPI_Reduce( llinbuf, lloutbuf, 3, MPI_LONG_LONG, MPI_PROD, 0, comm );
-    if (rank == 0) {
-	if (lloutbuf[0] != (long long)result[maxsize-1]) {
-	    errs++;
-	    fprintf( stderr, "long long PROD(rank) test failed\n" );
-	}
-	if (lloutbuf[1]) {
-	    errs++;
-	    fprintf( stderr, "long long PROD(0) test failed\n" );
-	}
-	if (size > 1 && lloutbuf[2]) {
-	    errs++;
-	    fprintf( stderr, "long long PROD(>) test failed\n" );
+    if (MPI_LONG_LONG != MPI_DATATYPE_NULL) {
+	MPI_Reduce( llinbuf, lloutbuf, 3, MPI_LONG_LONG, MPI_PROD, 0, comm );
+	if (rank == 0) {
+	    if (lloutbuf[0] != (long long)result[maxsize-1]) {
+		errs++;
+		fprintf( stderr, "long long PROD(rank) test failed\n" );
+	    }
+	    if (lloutbuf[1]) {
+		errs++;
+		fprintf( stderr, "long long PROD(0) test failed\n" );
+	    }
+	    if (size > 1 && lloutbuf[2]) {
+		errs++;
+		fprintf( stderr, "long long PROD(>) test failed\n" );
+	    }
 	}
     }
     }

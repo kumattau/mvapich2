@@ -116,11 +116,12 @@ int test_attrs( void )
     }
     if (err && d2 != MPI_DATATYPE_NULL) {
 	errs++;
-	printf( "dup did not return MPI_COMM_NULL on error\n" );
+	printf( "dup did not return MPI_DATATYPE_NULL on error\n" );
     }
 
     delete_flag = 1;
-    MPI_Type_free(&d2);
+    if (d2 != MPI_DATATYPE_NULL) 
+	MPI_Type_free(&d2);
     MPI_Type_free( &dup_type );
 
     return errs;

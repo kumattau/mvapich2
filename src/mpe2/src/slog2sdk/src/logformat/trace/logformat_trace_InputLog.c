@@ -12,6 +12,9 @@
  */
 
 #include "trace_impl.h"
+#if defined( HAVE_JNI_H )
+#include <jni.h>
+#endif
 #if defined( STDC_HEADERS ) || defined( HAVE_STDIO_H )
 #include <stdio.h>
 #endif
@@ -20,9 +23,6 @@
 #endif
 #if defined( STDC_HEADERS ) || defined( HAVE_STRING_H )
 #include <string.h>
-#endif
-#if defined( HAVE_JNI_H )
-#include <jni.h>
 #endif
 #include "logformat_trace_InputLog.h"
 #include "trace_API.h"
@@ -48,6 +48,7 @@ static jmethodID  mid4NewCmplx     = NULL;
  *      a Java long is a 64 bit entity by definition,
  *      a C pointer may be 32 or 64 bits.
  */
+/*
 static void *Jlong2Cptr(jlong a_jlong);
 static void *Jlong2Cptr(jlong a_jlong)
 {
@@ -81,6 +82,23 @@ static jlong Cptr2Jlong(void *a_ptr)
 #endif
     return (jlong) tmp;
 }
+*/
+#if SIZEOF_INT == SIZEOF_VOIDP
+#define Jlong2Cptr   (void*)(unsigned int)
+#define Cptr2Jlong   (jlong)(unsigned int)
+#elif SIZEOF_LONG == SIZEOF_VOIDP
+#define Jlong2Cptr   (void*)(unsigned long)
+#define Cptr2Jlong   (jlong)(unsigned long)
+#elif SIZEOF_LONG_LONG == SIZEOF_VOIDP
+#define Jlong2Cptr   (void*)(unsigned long long)
+#define Cptr2Jlong   (jlong)(unsigned long long)
+#elif SIZEOF___INT64 == SIZEOF_VOIDP
+#define Jlong2Cptr   (void*)(unsigned int64)
+#define Cptr2Jlong   (jlong)(unsigned int64)
+#else
+#define Jlong2Cptr   (void*)(jlong)
+#define Cptr2Jlong   (jlong)(void *)
+#endif
 
 JNIEXPORT void JNICALL
 Java_logformat_trace_InputLog_initIDs( JNIEnv *env , jclass myclass )

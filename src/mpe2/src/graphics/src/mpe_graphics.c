@@ -1,7 +1,3 @@
-/*
-   (C) 2001 by Argonne National Laboratory.
-       See COPYRIGHT in top-level directory.
-*/
 #include <math.h>
 #include "mpe_graphics_conf.h"
 #include "mpetools.h" 
@@ -105,10 +101,14 @@ N*/
 
     Input Parameters:
 +   comm - Communicator of participating processes
-.   display - Name of X window display.  If null, display will be taken from
-    the DISPLAY variable on the process with rank 0 in 'comm'.  If that is
-    either undefined, or starts with w ":", then the value of display is
-    ``hostname``:0
+
+.   display - Name of X window display.  If NULL, display will be taken
+    from the local DISPLAY variable on each process. If the local DISPLAY is
+    undefined, the DISPLAY variable of the process with rank 0 in 'comm'
+    will be used.  If that is either undefined then the value of display is
+    ``hostname``:0, or if it starts with w ":xy", then the value of
+    display is ``hostname``:xy.
+
 .   x,y - position of the window.  If '(-1,-1)', then the user should be
     asked to position the window (this is a window manager issue).
 .   w,h - width and height of the window, in pixels.
@@ -147,6 +147,7 @@ int        is_collective;
   Window     win;
 #endif
   MPE_XGraph new;
+  char       *local_display;
 #ifdef FOO
   XFontStruct **font_info;
   XGCValues  values;
@@ -191,6 +192,8 @@ int        is_collective;
   MPI_Comm_rank(comm,&myid);
 #endif
 
+  local_display = getenv( "DISPLAY" );
+
   if (!display) {
 #ifndef MPE_NOMPI
     int str_len;
@@ -198,23 +201,22 @@ int        is_collective;
 
 #if DEBUG
     fprintf( stderr, "[%d] Guessing at display name.\n", myid );
+    fprintf( stderr, "[%d] DISPLAY = %s\n", myid, local_display );
     fflush( stderr );
 #endif
 
     if (myid == 0) {
-      display = getenv( "DISPLAY" );
 
-#if DEBUG
-      fprintf( stderr, "$DISPLAY = %s\n", display );
-      fflush( stderr );
-#endif
-
-      if (!display || display[0] == ':') {
-	/* Replace display with hostname:0 */
+      if (!local_display || local_display[0] == ':') {
+	/*
+           Replace display with hostname:xy if undefined for the remote
+	   nodes.  Do not modify on the master node because X11 may work
+	   with an Unix socket and not INET one for security reason.
+        */
 
 #ifdef MPE_NOMPI
-	display = (char *)malloc( 100 );
-	MPE_GetHostName( display, 100 );
+	display = (char *)malloc( 257 );
+	MPE_GetHostName( display, 257 );
 #else
 	/* This is not correct, since there is no guarentee that this
 	   is the "correct" network name */
@@ -226,7 +228,12 @@ int        is_collective;
 	fprintf( stderr, "Process 0 is: %s\n", display );
 	fflush( stderr );
 #endif
-	strcat( display, ":0" );
+	if (local_display)
+	  /* Add the X11 screen number: */
+	  strcat( display, local_display);
+	else
+	  /* Assume screen 0 by default: */
+	  strcat( display, ":0" );
 
 #if DEBUG
 	fprintf( stderr, "Process 0 is: %s\n", display );
@@ -234,13 +241,16 @@ int        is_collective;
 #endif
 
       }
+      else
+	/* Trust the DISPLAY environment variable: */
+	display = local_display;
 
 #ifndef MPE_NOMPI
       str_len = strlen( display ) + 1;
       MPI_Bcast( &str_len, 1, MPI_INT, 0, comm );
 #endif
 
-    } 
+    }
 
 #ifndef MPE_NOMPI
     else {
@@ -250,6 +260,14 @@ int        is_collective;
     MPI_Bcast( display, str_len, MPI_CHAR, 0, comm );
 #endif
 
+    if (local_display)
+      /*
+         If the DISPLAY environment variable is set externally, trust this
+	 value because it may be set by ssh or specifically set on the
+	 master node to use a Unix socket instead of an IFNET one for
+	 efficiency or security reason:
+      */
+      display = local_display;
   }
 
   new->display_name = (char *)malloc( strlen(display) + 1 );

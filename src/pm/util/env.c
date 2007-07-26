@@ -20,6 +20,7 @@
 #include "mpimem.h"
 #include "process.h"
 #include "env.h"
+#include "cmnargs.h" /* for mpiexec_usage */
 
 /*
  * 

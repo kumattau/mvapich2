@@ -17,7 +17,7 @@ int main( int argc, char *argv[] )
     int *buf = 0;
     int *recvcounts;
     int *recvdispls;
-    int leftGroup, i, count, rank, rsize;
+    int leftGroup, i, count, rank, rsize, size;
     MPI_Comm comm;
     MPI_Datatype datatype;
 
@@ -26,9 +26,16 @@ int main( int argc, char *argv[] )
     datatype = MPI_INT;
     while (MTestGetIntercomm( &comm, &leftGroup, 4 )) {
 	if (comm == MPI_COMM_NULL) continue;
+	MPI_Comm_rank( comm, &rank );
+	MPI_Comm_remote_size( comm, &rsize );
+	MPI_Comm_size( comm, &size );
+		
+	/* To improve reporting of problems about operations, we
+	   change the error handler to errors return */
+	MPI_Comm_set_errhandler( comm, MPI_ERRORS_RETURN );
+
 	for (count = 1; count < 65000; count = 2 * count) {
 	    /* Get an intercommunicator */
-	    MPI_Comm_remote_size( comm, &rsize );
 	    recvcounts = (int *)malloc( rsize * sizeof(int) );
 	    recvdispls = (int *)malloc( rsize * sizeof(int) );
 	    /* This simple test duplicates the Gather test, 
@@ -38,7 +45,6 @@ int main( int argc, char *argv[] )
 		recvdispls[i] = count * i;
 	    }
 	    if (leftGroup) {
-		MPI_Comm_rank( comm, &rank );
 		buf = (int *)malloc( count * rsize * sizeof(int) );
 		for (i=0; i<count*rsize; i++) buf[i] = -1;
 
@@ -69,10 +75,7 @@ int main( int argc, char *argv[] )
 		}
 	    }
 	    else {
-		int size;
 		/* In the right group */
-		MPI_Comm_rank( comm, &rank );
-		MPI_Comm_size( comm, &size );
 		buf = (int *)malloc( count * sizeof(int) );
 		for (i=0; i<count; i++) buf[i] = rank * count + i;
 		err = MPI_Gatherv( buf, count, datatype, 

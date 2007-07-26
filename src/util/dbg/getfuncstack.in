@@ -1,11 +1,18 @@
 #! @PERL@
+# -*- Mode: perl; -*-
 #
-#
+# In Progress script to make the default log files more readable.
+# This indents the routine enter/exit lines, and applies that indent to
+# other lines.  It also simplifies the lines, removing all but the message
+# and location (and computing the time within each function)
+# 
 # Set defaults
-my $whichrank = 0;
-my $filenameTrim = "";
+my $whichrank = -1;
+my $filenameTrim = "default";
 my %elideCall = ();
 my $infile = "";
+my $isThreaded = 1;
+my $onlyRoutine = 0;
 
 for (@ARGV) {
     if (/^--?rank=(\d+)/) {
@@ -40,22 +47,28 @@ my @routineStack = ();
 my @routineTime = ();
 my $inElide  = 0;
 
-
 while (<>) {
     my $spaces = "";
     my $tottime = "";
+    my $extraMsg = "";
     $linecount++;
     ($world,$rank,$thread,$class,$time,$file,$line,$msg) = split( /\t/, $_ );
 
-    # Check for validity
-    if ($thread != 0 || $class < 0) {
-	# These should really be checks for is-int as well
-	next;
-    }
+#    # Check for validity
+#    Removed for now - best to use on separate file output
+#    if ((!$isThreaded && $thread != 0) || $class < 0) {
+#	# These should really be checks for is-int as well
+#	next;
+#    }
 
     # Discard unwanted ranks
     if ($whichrank >= 0 && ($rank != $whichrank || $world > 0) ) { next; }
-    
+
+    # Automatically choose the default filename trim
+    if ($filenameTrim eq "default") {
+	$filenameTrim = $file;
+	$filenameTrim =~ s/(.*\/mpich2[^\/]*\/src\/).*/\1/;
+    }
     if ($filenameTrim ne "" && $file =~ /^$filenameTrim/) {
 	$file =~ s/^$filenameTrim//;
     }
@@ -88,13 +101,20 @@ while (<>) {
 		# Get the total time in this routine
 		$tottime = $time - $routineTime[$#routineTime];
 		$#routineTime--;
+		# Round totaltime to a few digits
+		$tottime = sprintf("%.3g",$tottime);
 		$tottime = "($tottime)";
 	    }
 	}
     }
     else {
-	print STDERR "Malformed line $linecount: $_"; 
-	next;
+	if ($onlyRoutine) {
+	    print STDERR "Malformed line $linecount: $_"; 
+	    next;
+	}
+	$spaces = &indent($nestlevel);
+	$extraMsg = $msg;
+	$extraMsg =~ s/\r?\n//;
     }
 
     # Strip common text off of state
@@ -102,7 +122,13 @@ while (<>) {
     $curstate =~ s/\r?\n//g;
     
     if (! $inElide) {
-	my $baseinfo = $spaces . $curstate . "$tottime";
+	my $baseinfo = $spaces;
+	if ($extraMsg ne "") {
+	    $baseinfo .= $extraMsg;
+	}
+	else {
+	    $baseinfo .= $curstate . "$tottime";
+	}
 	my $location = "$file\[$line\]";
 	my $pad = 40 - length($baseinfo);
 	for (my $i=0; $i<$pad; $i++) { $baseinfo .= " "; }
@@ -118,6 +144,4 @@ sub indent {
     }
     return $spaces;
 }
-	
 
-    

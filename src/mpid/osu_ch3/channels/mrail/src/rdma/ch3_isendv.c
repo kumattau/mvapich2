@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2006, The Ohio State University. All rights
+/* Copyright (c) 2003-2007, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -168,7 +168,7 @@ int MPIDI_CH3_iSendv(MPIDI_VC_t * vc, MPID_Request * sreq, MPID_IOV * iov,
     MPIDI_DBG_PRINTF((50, FCNAME, "entering"));
 
 #ifdef _SMP_
-    if (vc->smp.local_nodes >= 0 &&
+    if (SMP_INIT && vc->smp.local_nodes >= 0 &&
         vc->smp.local_nodes != smpi.my_local_id) {
         mpi_errno = MPIDI_CH3_SMP_iSendv(vc, sreq, iov, n_iov);
         MPIDI_DBG_PRINTF((50, FCNAME, "exiting"));
@@ -200,7 +200,6 @@ int MPIDI_CH3_iSendv(MPIDI_VC_t * vc, MPID_Request * sreq, MPID_IOV * iov,
         int nb;
         int pkt_len;
         int complete;
-        int rdma_ok;
         /* MT - need some signalling to lock down our right to use the
            channel, thus insuring that the progress engine does also try to
            write */
@@ -216,7 +215,7 @@ int MPIDI_CH3_iSendv(MPIDI_VC_t * vc, MPID_Request * sreq, MPID_IOV * iov,
             goto fn_exit;
         }
 
-        if (sreq->dev.ca != MPIDI_CH3_CA_COMPLETE) {
+        if (sreq->dev.OnDataAvail == MPIDI_CH3_ReqHandler_SendReloadIOV) {
             /*reload iov */
             void *tmpbuf;
             int iter_iov;
@@ -258,7 +257,7 @@ int MPIDI_CH3_iSendv(MPIDI_VC_t * vc, MPID_Request * sreq, MPID_IOV * iov,
                                   sreq->dev.iov[iter_iov].MPID_IOV_LEN);
                     pkt_len += sreq->dev.iov[iter_iov].MPID_IOV_LEN;
                 }
-            } while (sreq->dev.ca != MPIDI_CH3_CA_COMPLETE);
+            } while (sreq->dev.OnDataAvail == MPIDI_CH3_ReqHandler_SendReloadIOV);
             iov[0].MPID_IOV_BUF = databuf;
             iov[0].MPID_IOV_LEN = pkt_len;
             n_iov = 1;
@@ -274,61 +273,13 @@ int MPIDI_CH3_iSendv(MPIDI_VC_t * vc, MPID_Request * sreq, MPID_IOV * iov,
             goto fn_exit;
         }
         DEBUG_PRINT("[send], n_iov: %d, pkt_len %d\n", n_iov, pkt_len);
-        rdma_ok = MPIDI_CH3I_MRAILI_Fast_rdma_ok(vc, pkt_len);
-        DEBUG_PRINT("[send], rdma ok: %d\n", rdma_ok);
-        if (rdma_ok != 0) {
-            /* send pkt through rdma fast path */
-            /* take care of the header caching */
-            vbuf *buf;
 
-            /* the packet header and the data now is in rdma fast buffer */
-            mpi_errno =
-                MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(vc, iov, n_iov,
-                                                          &nb, &buf);
-            DEBUG_PRINT("[send: send progress] mpi_errno %d, nb %d\n",
-                        mpi_errno == MPI_SUCCESS, nb);
-            if (mpi_errno == MPI_SUCCESS) {
-                MPIU_DBG_PRINTF(("ch3_istartmsgv: put_datav returned %d bytes\n", nb));
 
-                if (nb == 0) {
-                    /* fast rdma ok but cannot send: there is no send wqe available */
-                } else {
-                    DEBUG_PRINT("Start handle req\n");
-                    MPIDI_CH3U_Handle_send_req(vc, sreq, &complete);
-                    DEBUG_PRINT("Finish handle req with complete %d\n",
-                                complete);
-                    if (!complete) {
-                        /* NOTE: dev.iov_count is used to detect completion instead of cc
-                         * because the transfer may be complete, but
-                         request may still be active (see MPI_Ssend()) */
-                        MPIDI_CH3I_SendQ_enqueue_head(vc, sreq);
-                        vc->ch.send_active = sreq;
-                        assert(0);
-                    } else {
-                        vc->ch.send_active = MPIDI_CH3I_SendQ_head(vc);
-                    }
-                }
-            } else if (MPI_MRAIL_MSG_QUEUED == mpi_errno) {
-                buf->sreq = (void *) sreq;
-                mpi_errno = MPI_SUCCESS;
-            } else {
-                /* Connection just failed.  Mark the request complete and return an
-                 * error. */
-                vc->ch.state = MPIDI_CH3I_VC_STATE_FAILED;
-                /* TODO: Create an appropriate error message based on the value of errno
-                 * */
-                sreq->status.MPI_ERROR = MPI_ERR_INTERN;
-                /* MT - CH3U_Request_complete performs write barrier */
-                MPIDI_CH3U_Request_complete(sreq);
-
-            }
-            goto fn_exit;
-        } else {
-            /* TODO: Codes to send pkt through send/recv path */
+        {
             vbuf *buf;
 
             mpi_errno =
-                MPIDI_CH3I_MRAILI_Eager_send(vc, iov, n_iov, &nb, &buf);
+                MPIDI_CH3I_MRAILI_Eager_send(vc, iov, n_iov, pkt_len, &nb, &buf);
             DEBUG_PRINT("[istartmsgv] mpierr %d, nb %d\n", mpi_errno, nb);
             if (mpi_errno == MPI_SUCCESS) {
                 DEBUG_PRINT("[send path] eager send return %d bytes\n",

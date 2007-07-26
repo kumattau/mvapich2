@@ -32,12 +32,10 @@
 int MPIDI_CH3_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void * pkt, MPIDI_msg_sz_t pkt_sz)
 {
     int mpi_errno = MPI_SUCCESS;
-    int complete;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_ISEND);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_ISEND);
 
-    MPIDI_DBG_PRINTF((50, FCNAME, "entering"));
 #ifdef MPICH_DBG_OUTPUT
     if (pkt_sz > sizeof(MPIDI_CH3_Pkt_t))
     {
@@ -78,25 +76,33 @@ int MPIDI_CH3_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void * pkt, MPIDI_msg_
 
 		if (nb == pkt_sz)
 		{ 
-		    MPIDI_DBG_PRINTF((55, FCNAME, "write complete %d bytes, calling MPIDI_CH3U_Handle_send_req()", nb));
-		    MPIDI_CH3U_Handle_send_req(vc, sreq, &complete);
-		    if (!complete)
-		    {
-			sreq->ch.iov_offset = 0;
-			MPIDI_CH3I_SendQ_enqueue_head(vc, sreq);
-			if (vc->ch.bShm)
-			{
-			    vc->ch.send_active = sreq;
-			}
-			else
-			{
-			    vc->ch.conn->send_active = sreq;
-			    mpi_errno = MPIDU_Sock_post_writev(vc->ch.conn->sock, sreq->dev.iov, sreq->dev.iov_count, NULL);
-			    if (mpi_errno != MPI_SUCCESS)
+		    int (*reqFn)(MPIDI_VC_t *, MPID_Request *, int *);
+		    MPIDI_DBG_PRINTF((55, FCNAME, "write complete %d bytes", nb));
+		    reqFn = sreq->dev.OnDataAvail;
+		    if (!reqFn) {
+			MPIDI_CH3U_Request_complete(sreq);
+		    }
+		    else {
+			int complete;
+			mpi_errno = reqFn( vc, sreq, &complete );
+			if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+			if (!complete) {
+			    sreq->ch.iov_offset = 0;
+			    MPIDI_CH3I_SendQ_enqueue_head(vc, sreq);
+			    if (vc->ch.bShm)
 			    {
-				mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER,
-				    "**ch3|sock|postwrite", "ch3|sock|postwrite %p %p %p",
-				    sreq, vc->ch.conn, vc);
+				vc->ch.send_active = sreq;
+			    }
+			    else
+			    {
+				vc->ch.conn->send_active = sreq;
+				mpi_errno = MPIDU_Sock_post_writev(vc->ch.conn->sock, sreq->dev.iov, sreq->dev.iov_count, NULL);
+				if (mpi_errno != MPI_SUCCESS)
+				{
+				    mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER,
+								     "**ch3|sock|postwrite", "ch3|sock|postwrite %p %p %p",
+								     sreq, vc->ch.conn, vc);
+				}
 			    }
 			}
 		    }
@@ -170,7 +176,7 @@ int MPIDI_CH3_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void * pkt, MPIDI_msg_
 	MPIDI_CH3U_Request_complete(sreq);
     }
     
-    MPIDI_DBG_PRINTF((50, FCNAME, "exiting"));
+ fn_fail:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_ISEND);
     return mpi_errno;
 }

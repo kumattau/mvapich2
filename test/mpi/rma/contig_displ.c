@@ -34,6 +34,10 @@ int main(int argc, char **argv)
         MPI_Abort(MPI_COMM_WORLD,1);
     }
 
+    /* To improve reporting of problems about operations, we
+       change the error handler to errors return */
+    MPI_Comm_set_errhandler( MPI_COMM_WORLD, MPI_ERRORS_RETURN );
+
     /* create an indexed datatype that points to the second integer 
        in an array (the first integer is skipped). */
     disp  =  1;
@@ -56,6 +60,10 @@ int main(int argc, char **argv)
     array[1] = 200;
 
     getval = 0;
+    
+    /* To improve reporting of problems about operations, we
+       change the error handler to errors return */
+    MPI_Win_set_errhandler( win, MPI_ERRORS_RETURN );
 
     mpi_err = MPI_Win_lock(MPI_LOCK_EXCLUSIVE, 0, 0, win);
     if (mpi_err != MPI_SUCCESS) goto err_return;
@@ -82,7 +90,9 @@ int main(int argc, char **argv)
     return 0;
 
  err_return:
-    printf("MPI function error\n");
+    printf("MPI function error returned an error\n");
+    MTestPrintError( mpi_err );
+    errs++;
     MTest_Finalize(errs);
     MPI_Finalize();
     return 1;

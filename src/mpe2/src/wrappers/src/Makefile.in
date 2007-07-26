@@ -32,9 +32,10 @@ LDFLAGS              = @LDFLAGS@
 MPE_BUILD_FORTRAN2C  = @MPE_BUILD_FORTRAN2C@
 
 ### End User configurable options ###
-SHELL = /bin/sh
-RM    = @RM@
-CP    = @CPRP@
+
+SHELL            = @SHELL@
+RM               = @RM@
+CP               = @CPRP@
 
 @VPATH@
 
@@ -70,9 +71,6 @@ MPE_SHLWOBJECTS  = $(MPE_WOBJECTS:.@OBJEXT@=.lo)
 .c.@OBJEXT@:
 	$(MPI_CC) $(CC_FLAGS) -c $<
 
-.c.a:
-	$(MPI_CC) $(CC_FLAGS) -c $<
-
 # Allow compilers that do not allow -o for renaming object files
 .c.lo:
 	$(CC_SHL) $(CC_FLAGS) -c $< $(INC_DIR)
@@ -90,7 +88,7 @@ profile_all:
 # configure, src/wrappers needs, "${F2CMPI_LIBS}" = "-l${F2CMPI_LIBNAME}" set
 # by src/wrappers/configure, to be fulfilled to guarantee that libmpe_f2cmpi.a
 # is needed and all the pre-requisites of libmpe_f2cmpi.a are met.
-default: clean
+default:
 	 $(MAKE) ${libbuild_dir}/lib$(LOG_LIBNAME).a
 	 $(MAKE) ${libbuild_dir}/lib$(TRACE_LIBNAME).a
 	@if [    "$(MPE_BUILD_FORTRAN2C)" = "yes" \
@@ -114,17 +112,14 @@ default: clean
 ${libbuild_dir}/lib$(LOG_LIBNAME).a: log_mpi_core.@OBJEXT@
 	$(AR) $(ARFLAGS) $@ $?
 	$(RANLIB) $@
-#	-$(RM) -f $?
 
 ${libbuild_dir}/lib$(TRACE_LIBNAME).a: trace_mpi_core.@OBJEXT@
 	$(AR) $(ARFLAGS) $@ $?
 	$(RANLIB) $@
-#	-$(RM) -f $?
 
 ${libbuild_dir}/lib$(F2CMPI_LIBNAME).a: mpe_proff.@OBJEXT@
 	$(AR) $(ARFLAGS) $@ $?
 	$(RANLIB) $@
-#	-$(RM) -f $?
 
 ${libbuild_dir}/mpe_prof.@OBJEXT@: mpe_prof.@OBJEXT@
 	@-if [ "${libbuild_dir}" != "." ] ; then \
@@ -144,7 +139,9 @@ rmprog:
 	@-$(RM) -f $(EXECS)
 
 clean: rmprog
-	@-$(RM) -f *.@OBJEXT@ ${srcdir}/*.@OBJEXT@ *~ $(EXECS) PI*
+	@-$(RM) -f *.@OBJEXT@ ${srcdir}/*.@OBJEXT@ *~ PI*
+	@-$(RM) -f *.gcno *.gcda *.bb *.bbg
+	@-$(RM) -f ${srcdir}/*.gcno ${scrdir}/*.gcda
 
 distclean: clean rmlib
 	@-$(RM) -f Makefile

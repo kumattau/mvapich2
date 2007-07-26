@@ -49,6 +49,7 @@
 
 #define MPIDI_MAX_SHM_NAME_LENGTH 100
 
+/* for MAXHOSTNAMELEN under Linux ans OSX */
 #ifdef HAVE_SYS_PARAM_H
 #include <sys/param.h>
 #endif
@@ -61,7 +62,6 @@ typedef struct MPIDI_CH3I_BootstrapQ_struct * MPIDI_CH3I_BootstrapQ;
 
 typedef struct MPIDI_Process_group_s
 {
-    char * kvs_name;
     int nShmEagerLimit;
 #ifdef HAVE_SHARED_PROCESS_READ
     int nShmRndvLimit;
@@ -243,16 +243,6 @@ typedef struct MPIDI_CH3I_VC
 #define MPIDI_CH3_VC_DECL MPIDI_CH3I_VC ch;
 
 
-/*
- * MPIDI_CH3_CA_ENUM (additions to MPIDI_CA_t)
- *
- * MPIDI_CH3I_CA_HANDLE_PKT - The completion of a packet request (send or 
- * receive) needs to be handled.
- */
-#define MPIDI_CH3_CA_ENUM			\
-MPIDI_CH3I_CA_HANDLE_PKT,			\
-MPIDI_CH3I_CA_END_SSM_CHANNEL
-
 #define MPIDI_CH3_REQUEST_KIND_DECL \
 MPIDI_CH3I_IOV_WRITE_REQUEST, \
 MPIDI_CH3I_IOV_READ_REQUEST, \
@@ -272,6 +262,12 @@ struct MPIDI_CH3I_Request						\
                                                                         \
     struct MPID_Request *req;						\
 } ch;
+
+/* Use MPIDI_CH3_REQUEST_INIT to initialize the channel-specific fields
+   in the request */
+#define MPIDI_CH3_REQUEST_INIT(req_) \
+    (req_)->ch.iov_offset=0;\
+    (req_)->ch.req=NULL
 
 typedef struct MPIDI_CH3I_Progress_state
 {

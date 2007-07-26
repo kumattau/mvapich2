@@ -49,35 +49,7 @@ struct MPIDI_CH3I_RDMA_put_get_list_t{
     MPIDI_VC_t * vc_ptr;
 };
 
-void
-MPIDI_CH3I_RDMA_win_create(void *base,
-                           MPI_Aint size,
-                           int comm_size,
-                           int rank,
-                           MPID_Win ** win_ptr, MPID_Comm * comm_ptr);
-void MPIDI_CH3I_RDMA_win_free(MPID_Win ** win_ptr);
-
-
-
-
-void
-MPIDI_CH3I_RDMA_start(MPID_Win * win_ptr,
-                      int start_grp_size, int *ranks_in_win_grp);
-void
-MPIDI_CH3I_RDMA_complete(MPID_Win * win_ptr,
-                         int start_grp_size, int *ranks_in_win_grp);
-void
-MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr,
-                        MPIDI_RMA_ops ** MPIDI_RMA_ops_list, int passive);
-void MPIDI_CH3I_RDMA_post(MPID_Win * win_ptr, int target_rank);
-int MPIDI_CH3I_RDMA_finish_rma(MPID_Win * win_ptr);
-void MPIDI_CH3I_RDMA_post(MPID_Win * win_ptr, int target_rank);
-int iba_lock(MPID_Win *, MPIDI_RMA_ops *, int);
-int iba_unlock(MPID_Win *, MPIDI_RMA_ops *, int);
-
 #endif
-
-
 
 #define Calculate_IOV_len(iov, n_iov, len) \
 {   int i; (len) = 0;                         \
@@ -103,6 +75,7 @@ int iba_unlock(MPID_Win *, MPIDI_RMA_ops *, int);
             rreq->mrail.rndv_buf_off = rreq->mrail.rndv_buf_sz = 0; \
         } \
         rreq->mrail.d_entry = NULL;                         \
+	rreq->mrail.protocol = VAPI_PROTOCOL_RENDEZVOUS_UNSPECIFIED; \
     }   \
 }
 
@@ -140,6 +113,12 @@ int iba_unlock(MPID_Win *, MPIDI_RMA_ops *, int);
             (c)->mrail.sreq_tail = NULL;                                 \
         }                                                           \
 }
+
+#define MPIDI_CH3I_MRAIL_REVERT_RPUT(_sreq)                     \
+{                                                               \
+    if (VAPI_PROTOCOL_RGET == (_sreq)->mrail.protocol)          \
+        (_sreq)->mrail.protocol = VAPI_PROTOCOL_RPUT;           \
+} 
 
 #define MPIDI_CH3I_MRAIL_SET_PKT_RNDV(_pkt, _req) \
 {   \
@@ -184,6 +163,7 @@ void MRAILI_Init_vc(MPIDI_VC_t * vc, int pg_rank);
 int MPIDI_CH3I_MRAILI_Eager_send(   MPIDI_VC_t * vc,
                                     MPID_IOV * iov,
                                     int n_iov,
+                                    int pkt_len,
                                     int * num_bytes_ptr,
                                     vbuf ** buf_handle);
 
@@ -206,7 +186,8 @@ int MPIDI_CH3I_MRAILI_Waiting_msg(MPIDI_VC_t * vc, vbuf **, int);
 
 int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **, MPIDI_VC_t *, int);
 
-int MRAILI_Send_noop_if_needed(MPIDI_VC_t *vc, const MRAILI_Channel_info *channel);
+int MRAILI_Send_noop_if_needed(MPIDI_VC_t *vc, 
+        const MRAILI_Channel_info *channel);
 
 int MRAILI_Send_rdma_credit_if_needed(MPIDI_VC_t *vc);
 
@@ -214,7 +195,10 @@ int MPIDI_CH3I_MRAILI_rput_complete(MPIDI_VC_t *, MPID_IOV *,
                                     int, int *, vbuf **, int);
 
 /* Following interface for rndv msgs */
-void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t *vc, MPID_Request * sreq);
+void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t *vc, 
+        MPID_Request * sreq);
+void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t *vc, 
+        MPID_Request * rreq);
 
 void MRAILI_Release_recv_rdma(vbuf *v);
 

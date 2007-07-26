@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: type_contiguous.c,v 1.1.1.1 2006/01/18 21:09:43 huangwei Exp $
+/*  $Id: type_contiguous.c,v 1.17 2006/05/08 15:34:41 toonen Exp $
  *
  *  (C) 2002 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -21,6 +21,7 @@
    the MPI routines.  You can use USE_WEAK_SYMBOLS to see if MPICH is
    using weak symbols to implement the MPI routines. */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Type_contiguous
 #define MPI_Type_contiguous PMPI_Type_contiguous
 #endif
 
@@ -58,7 +59,7 @@ int MPI_Type_contiguous(int count,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("datatype");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_TYPE_CONTIGUOUS);
 
 #   ifdef HAVE_ERROR_CHECKING
@@ -108,7 +109,7 @@ int MPI_Type_contiguous(int count,
     
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_TYPE_CONTIGUOUS);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("datatype");
     return mpi_errno;
 
   fn_fail:

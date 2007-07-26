@@ -30,7 +30,7 @@ extern void free();
 #include "mpe_log.h"
 
 /* This is needed to process Cray - style character data */
-#if defined(MPI_CRAY) || defined(_CRAY)
+#if defined( WITH_CRAY_FCD_STRING )
 #include <fortran.h>
 #endif
 
@@ -176,7 +176,7 @@ int mpe_log_receive_( int *otherParty, int *tag, int *size )
     return MPE_Log_receive( *otherParty, *tag, *size );
 }
 
-#ifdef MPI_CRAY
+#if defined( WITH_CRAY_FCD_STRING )
 int  mpe_describe_info_state_( start_etype, final_etype, name, color, format )
 int *start_etype, *final_etype;
 _fcd name, color, format;
@@ -214,7 +214,7 @@ int  d1, d2, d3;
 }
 #endif
 
-#ifdef MPI_CRAY
+#if defined( WITH_CRAY_FCD_STRING )
 int  mpe_describe_state_( start_etype, final_etype, name, color )
 int *start_etype, *final_etype;
 _fcd name, color;
@@ -246,7 +246,7 @@ int  d1, d2;
 }
 #endif
 
-#ifdef MPI_CRAY
+#if defined( WITH_CRAY_FCD_STRING )
 int  mpe_describe_info_event_( event, name, color, format )
 int *event;
 _fcd name, color, format;
@@ -282,7 +282,7 @@ int  d1, d2, d3;
 }
 #endif
 
-#ifdef MPI_CRAY
+#if defined( WITH_CRAY_FCD_STRING )
 int mpe_describe_event_( event, name, color )
 int *event;
 _fcd name, color;
@@ -321,7 +321,7 @@ int  mpe_log_pack_( void *bytebuf, int *position,
     return MPE_Log_pack( bytebuf, position, *tokentype, *count, data );
 }
 
-#ifdef MPI_CRAY
+#if defined( WITH_CRAY_FCD_STRING )
 int  mpe_log_event_( event, data, byteinfo )
 int *event, *data;
 _fcd byteinfo;
@@ -355,7 +355,7 @@ int  d1;
 }
 #endif
 
-#ifdef MPI_CRAY
+#if defined( WITH_CRAY_FCD_STRING )
 int  mpe_log_info_event_( event, byteinfo )
 int *event;
 _fcd byteinfo;
@@ -379,7 +379,7 @@ int  mpe_log_bare_event_( int *event )
     return MPE_Log_bare_event( *event );
 }
 
-#ifdef MPI_CRAY
+#if defined( WITH_CRAY_FCD_STRING )
 int  mpe_finish_log_( filename )
 _fcd filename;
 {

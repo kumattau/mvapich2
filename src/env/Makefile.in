@@ -29,14 +29,14 @@ doc_sources = mpicc.txt mpif77.txt mpicxx.txt mpif90.txt mpiexec.txt
 .SUFFIXES:
 # Some make programs complain if no suffixes are set
 .SUFFIXES: .c .o
-apply:
+apply: 
 	$(ACTION) $(ACTION_INPUT)
-clean:
+clean: 
 	-@rm -f *.o ${srcdir}/*.o 
 	-@rm -f *.lo ${srcdir}/*.lo
-distclean: clean distclean-xxx remove-makefile
+distclean:  clean distclean-xxx remove-makefile
 distclean-xxx:
-	-@rm -f mpicc mpicc.conf mpicxx mpicxx.conf mpif77 mpif77.conf mpif90 mpif90.conf mpich2version Makefile
+	-@rm -f mpicc mpicc.conf mpicc.bash mpicxx mpicxx.conf mpicxx.bash mpif77 mpif77.conf mpif77.bash mpif90 mpif90.conf mpif90.bash mpich2version parkill Makefile
 	-@rm -rf autom4te*.cache
 	-@rm -rf $(DEPS_DIR)
 	-@rm -f TAGS
@@ -54,6 +54,7 @@ install:  FORCE_TARGET
 	if [ ! -d ${DESTDIR}${bindir} ] ; then $(MKDIR_P) ${DESTDIR}${bindir} ; fi
 	$(INSTALL_PROGRAM) $(INSTALL_STRIP_FLAG) mpicc ${DESTDIR}${bindir}/mpicc
 	$(INSTALL_PROGRAM) $(INSTALL_STRIP_FLAG) mpich2version ${DESTDIR}${bindir}/mpich2version
+	$(INSTALL_PROGRAM) $(INSTALL_STRIP_FLAG) parkill ${DESTDIR}${bindir}/parkill
 	if [ ! -d ${DESTDIR}${sysconfdir} ] ; then $(MKDIR_P) ${DESTDIR}${sysconfdir} ; fi
 	$(INSTALL_DATA) mpicc.conf ${DESTDIR}${sysconfdir}/mpicc.conf
 	if [ -s mpicxx ] ; then $(INSTALL_PROGRAM) $(INSTALL_STRIP_FLAG) mpicxx ${DESTDIR}${bindir}/mpicxx ; fi
@@ -65,9 +66,10 @@ install:  FORCE_TARGET
 
 install-strip:
 	$(MAKE) INSTALL_STRIP_FLAG=-s install
-uninstall:
+uninstall: 
 	-rm -f ${DESTDIR}${bindir}/mpicc
 	-rm -f ${DESTDIR}${bindir}/mpich2version
+	-rm -f ${DESTDIR}${bindir}/parkill
 	-rm -f ${DESTDIR}${sysconfdir}/mpicc.conf
 	-rm -f ${DESTDIR}${bindir}/mpicxx
 	-rm -f ${DESTDIR}${bindir}/mpif77
@@ -75,13 +77,13 @@ uninstall:
 	-rm -f ${DESTDIR}${sysconfdir}/mpicxx.conf
 	-rm -f ${DESTDIR}${sysconfdir}/mpif77.conf
 	-rm -f ${DESTDIR}${sysconfdir}/mpif90.conf
-installcheck:
+installcheck: 
 # --------------------------------------------------------------------------
 # --------------------------------------------------------------------------
 HEADERFILES     = $(HEADERS)
 SOURCEFILES     = $(SOURCES)
 tags: TAGS
-TAGS:
+TAGS: Makefile
 # --------------------------------------------------------------------------
 
 

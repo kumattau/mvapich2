@@ -4,14 +4,14 @@
 	Version="7.10"
 	Name="PROJECTNAME"
 	ProjectGUID="{UUID1}"
-	Keyword="Win32Proj">
+	Keyword="KEYWORD">
 	<Platforms>
 		<Platform
-			Name="Win32"/>
+			Name="PLATFORM_NAME"/>
 	</Platforms>
 	<Configurations>
 		<Configuration
-			Name="Debug|Win32"
+			Name="Debug|PLATFORM_NAME"
 			OutputDirectory="Debug"
 			IntermediateDirectory="Debug"
 			ConfigurationType="1"
@@ -19,8 +19,8 @@
 			<Tool
 				Name="VCCLCompilerTool"
 				Optimization="0"
-				AdditionalIncludeDirectories="DOTDOTS..\..\src\include;DOTDOTS..\..\src\include\win32;DOTDOTSinclude"
-				PreprocessorDefinitions="WIN32;_DEBUG;_CONSOLE"
+				AdditionalIncludeDirectories="DOTDOTS..\..\src\include;DOTDOTSTARGET_HEADER;DOTDOTSinclude"
+				PreprocessorDefinitions="TARGET_PREPROCESSOR_DEFN;_DEBUG;_CONSOLE"
 				MinimalRebuild="TRUE"
 				BasicRuntimeChecks="3"
 				RuntimeLibrary="5"
@@ -39,9 +39,10 @@
 				GenerateDebugInformation="TRUE"
 				ProgramDatabaseFile="$(OutDir)/PROJECTNAME.pdb"
 				SubSystem="1"
-				TargetMachine="1"/>
+				TargetMachine="TARGET_MACHINE"/>
 			<Tool
-				Name="VCMIDLTool"/>
+				Name="VCMIDLTool"
+				TargetEnvironment="TARGET_ENV"/>
 			<Tool
 				Name="VCPostBuildEventTool"/>
 			<Tool
@@ -62,15 +63,15 @@
 				Name="VCAuxiliaryManagedWrapperGeneratorTool"/>
 		</Configuration>
 		<Configuration
-			Name="Release|Win32"
+			Name="Release|PLATFORM_NAME"
 			OutputDirectory="Release"
 			IntermediateDirectory="Release"
 			ConfigurationType="1"
 			CharacterSet="2">
 			<Tool
 				Name="VCCLCompilerTool"
-				AdditionalIncludeDirectories="DOTDOTS..\..\src\include;DOTDOTS..\..\src\include\win32;DOTDOTSinclude"
-				PreprocessorDefinitions="WIN32;NDEBUG;_CONSOLE"
+				AdditionalIncludeDirectories="DOTDOTS..\..\src\include;DOTDOTSTARGET_HEADER;DOTDOTSinclude"
+				PreprocessorDefinitions="TARGET_PREPROCESSOR_DEFN;NDEBUG;_CONSOLE"
 				RuntimeLibrary="4"
 				UsePrecompiledHeader="0"
 				WarningLevel="3"
@@ -88,9 +89,10 @@
 				SubSystem="1"
 				OptimizeReferences="2"
 				EnableCOMDATFolding="2"
-				TargetMachine="1"/>
+				TargetMachine="TARGET_MACHINE"/>
 			<Tool
-				Name="VCMIDLTool"/>
+				Name="VCMIDLTool"
+				TargetEnvironment="TARGET_ENV"/>
 			<Tool
 				Name="VCPostBuildEventTool"/>
 			<Tool

@@ -252,7 +252,7 @@ typedef struct DLOOP_Dataloop {
 		referenced in some cases.
 . curblock - Current block value...NEED MORE NOTES ON THIS!!!
 . orig_block - original block value (caches so we don't have to look it up);
-               not used in indexed type (?)
+               INVALID FOR INDEX AND STRUCT TYPES.
 - loop_p  - pointer to Loop-based description of the dataloop
 
 S*/

@@ -14,6 +14,7 @@ int MPIE_Args( int, char *[], ProcessUniverse *,
 	       int (*)( int, char *[], void *), void * );
 int MPIE_CheckEnv( ProcessUniverse *, 
 		   int (*)( ProcessUniverse *, void * ), void * );
+int MPIE_StdioSetMode( FILE *, const char * );
 const char *MPIE_ArgDescription( void );
 void MPIE_PrintProcessUniverse( FILE *, ProcessUniverse * );
 void MPIE_PrintProcessWorld( FILE *, ProcessWorld * );

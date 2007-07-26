@@ -198,6 +198,7 @@ int MPIE_ProcessGetExitStatus( int *signaled )
     ProcessState *pState;
     int          i, rc = 0, sig = 0;
 
+    DBG_PRINTF(("Getting exit status\n"));
     world = pUniv.worlds;
     while (world) {
 	app = world->apps;
@@ -215,6 +216,8 @@ int MPIE_ProcessGetExitStatus( int *signaled )
 	}
 	world = world->nextWorld;
     }
+
+    DBG_PRINTF(("Done getting exit status\n" ));
     *signaled = sig;
     return rc;
 }
@@ -226,8 +229,11 @@ int MPIE_ProcessGetExitStatus( int *signaled )
 #endif
 #define MAX_CLIENT_ARG 50
 #define MAX_CLIENT_ENV 200
-
+/* MAXNAMELEN is used for sizing the char arrays used for 
+ * defining environment variables */
 #define MAXNAMELEN 1024
+
+
 int MPIE_ExecProgram( ProcessState *pState, char *envp[] )
 {
     int j, rc, nj;
@@ -507,16 +513,24 @@ static void handle_sigchild( int sig )
 	DBG_PRINTF(("Found process %d in sigchld handler\n", pid ) );
 	pState = MPIE_FindProcessByPid( pid );
 	if (pState) {
+	    ProcessStatus_t pstatus = pState->status;  /* Original status */
 	    MPIE_ProcessSetExitStatus( pState, prog_stat );
 	    pState->status = PROCESS_GONE;
-	    if (pState->exitStatus.exitReason != EXIT_NORMAL) {
+	    /* If the exit wasn't NORMAL *AND* it didn't exit without
+	       finalize but never called PMI, invoke the OnAbend. */
+	    if (pState->exitStatus.exitReason != EXIT_NORMAL && 
+		!(pState->exitStatus.exitReason == EXIT_NOFINALIZE &&
+		 pstatus == PROCESS_ALIVE)) {
 		/* Not a normal exit.  We may want to abort all 
 		   remaining processes */
+		DBG_PRINTF(("Calling OnAbend because exitReason was not normal (was %d)\n",
+			    pState->exitStatus.exitReason ));
 		MPIE_OnAbend( &pUniv );
 	    }
 	    /* Let the universe know that there are fewer processes */
 	    pUniv.nLive--;
 	    if (pUniv.nLive == 0) {
+		DBG_PRINTF(("All children have exited\n"));
 		/* Invoke any special code for handling all processes
 		   exited (e.g., terminate a listener socket) */
 		if (pUniv.OnNone) { (*pUniv.OnNone)(); }
@@ -524,6 +538,7 @@ static void handle_sigchild( int sig )
 	}
 	else {
 	    /* Remember this process id and exit status for later */
+	    DBG_PRINTF(("An unknown process (pid = %d) has exited\n", pid ));
 	    unexpectedExit[nUnexpected].pid  = pid;
 	    unexpectedExit[nUnexpected].stat = prog_stat;
 	}
@@ -566,6 +581,7 @@ int MPIE_WaitForProcesses( ProcessUniverse *pUniv, int timeout )
     ProcessState *pState;
     int           i, nactive;
 
+    DBG_PRINTF(("Waiting for processes\n"));
     /* Determine the number of processes that we have left to wait on */
     TimeoutInit( timeout );
     nactive = 0;
@@ -584,6 +600,8 @@ int MPIE_WaitForProcesses( ProcessUniverse *pUniv, int timeout )
 	    world = world->nextWorld;
 	}
     } while (nactive > 0 && TimeoutGetRemaining() > 0);
+
+    DBG_PRINTF(("Done waiting for processes\n"));
 
     return 0;
 }
@@ -748,6 +766,7 @@ int MPIE_SignalWorld( ProcessWorld *world, int signum )
 	    pid = pState[i].pid;
 	    if (pid > 0 && pState[i].status != PROCESS_GONE) {
 		/* Ignore error returns */
+		DBG_PRINTF(("Sending signal %d to pid %d\n",signum,pid));
 		kill( pid, signum );
 	    }
 	}
@@ -757,17 +776,26 @@ int MPIE_SignalWorld( ProcessWorld *world, int signum )
 }
     
 
+/* We use inKillWorld to avoid invoking KillWorld while within KillWorld.
+   This could happen if kill world is called outside of the sigchild handler,
+   which (as a result of the kill action) may invoke KillWorld if the 
+*/
+static int inKillWorld = 0;
 /*@
   MPIE_KillWorld - Kill all of the processes in a world
  @*/
 int MPIE_KillWorld( ProcessWorld *world )
 {
+    if (inKillWorld) return 0;
+    inKillWorld=1;
+    DBG_PRINTF(("Entering KillWorld\n"));
     MPIE_SignalWorld( world, SIGINT );
 
     /* We should wait here to give time for the processes to exit */
     sleep( 1 );
     MPIE_SignalWorld( world, SIGQUIT );
 
+    inKillWorld=0;
     return 0;
 }
 
@@ -858,13 +886,21 @@ int MPIE_ForwardSignal( int sig )
 
 /*
  * This routine contains the action to take on an abnormal exit from
- * a managed procese.  The normal action is to kill all of the other processes 
+ * a managed process.  The normal action is to kill all of the other processes 
  */
+static volatile int haveAbended = 0;     
 int MPIE_OnAbend( ProcessUniverse *p )
 {
     if (!p) p = &pUniv;
+    /* Remember that we've abended (this allows an easy check outside of the
+       signal handler that may invoke this) */
+    haveAbended = 1;
     MPIE_KillUniverse( p );
     return 0;
+}
+int MPIE_HasAbended( void )
+{
+    return haveAbended;
 }
 
 int MPIE_ForwardCommonSignals( void )
@@ -912,6 +948,10 @@ static void MPIE_InstallSigHandler( int sig, void (*handler)(int) )
 #endif
 }
 
+void MPIE_IgnoreSigPipe( void )
+{
+    MPIE_InstallSigHandler( SIGPIPE, SIG_IGN );
+}
 /* 
  * Setup pUniv for a singleton init.  That is a single pWorld with a 
  * single app containing a single process.

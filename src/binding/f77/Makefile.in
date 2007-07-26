@@ -29,7 +29,6 @@ CC              = @CC@
 CFLAGS          = @CFLAGS@
 C_COMPILE       = $(CC) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
 LIBTOOL         = @LIBTOOL@
-CREATESHLIB     = @CREATESHLIB@
 CC_SHL          = @CC_SHL@
 C_COMPILE_SHL   = $(CC_SHL) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
 FC              = @FC@
@@ -189,7 +188,7 @@ wrap_objs = _wsendf.o _wrecvf.o _wget_countf.o _wbsendf.o _wssendf.o _wrsendf.o 
 	_wstatusc2f.o 
 FWRAPNAME = @FWRAPNAME@
 HEADERS = fproto.h mpi_fortimpl.h
-INCLUDES = -I../../include -I${master_top_srcdir}/src/include
+INCLUDES = -I../../include -I${master_top_srcdir}/src/include -I${master_top_srcdir}/src/binding/f77 
 doc_sources = mpif77.txt
 
 .SUFFIXES:
@@ -208,13 +207,13 @@ doc_sources = mpif77.txt
 	@mv -f _s$*.o $*.lo
 .f:
 	$(F77_COMPILE) -o $* $< $(LDFLAGS) $(LIBS)
-apply:
+apply: 
 	$(ACTION) $(ACTION_INPUT)
-clean:
+clean: 
 	-@rm -f *.o ${srcdir}/*.o 
 	-@rm -f .libstamp0 .libstamp1 .libstamp2 .libstamp3 .libstamp4 .libstamp5 
 	-@rm -f *.lo ${srcdir}/*.lo
-distclean: clean distclean-local distclean-xxx remove-makefile
+distclean:  clean distclean-local distclean-xxx remove-makefile
 distclean-xxx:
 	-@rm -f Makefile mpif.h setbotf.f
 	-@rm -rf autom4te*.cache
@@ -1912,9 +1911,9 @@ install:  FORCE_TARGET
 
 install-strip:
 	$(MAKE) INSTALL_STRIP_FLAG=-s install
-uninstall:
+uninstall: 
 	-rm -f ${DESTDIR}${includedir}/mpif.h
-installcheck:
+installcheck: 
 # --------------------------------------------------------------------------
 dependencies:
 # --------------------------------------------------------------------------
@@ -2059,7 +2058,7 @@ SOURCEFILES     = sendf.c recvf.c get_countf.c bsendf.c ssendf.c rsendf.c \
 	null_type_del_fnf.c null_type_copy_fnf.c statusf2c.c statusc2f.c \
 	setbot.c $(abs_builddir)/setbotf.f 
 tags: TAGS
-TAGS:${HEADERFILES} ${SOURCEFILES}
+TAGS: Makefile${HEADERFILES} ${SOURCEFILES}
 	here=`cd ../../.. && pwd` ; cd ${srcdir} && $(ETAGS) -o $$here/TAGS --append ${HEADERFILES} ${SOURCEFILES}
 # --------------------------------------------------------------------------
 # DO NOT EDIT

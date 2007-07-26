@@ -59,6 +59,9 @@ C Now, open the same file for reading
                 <deletefile/>
             enddo
 10      continue
+C
+C Jump to 111 on a failure to open
+111	continue
         if (comm .ne. MPI_COMM_WORLD) then
             call mpi_comm_free( comm, ierr )
         endif
@@ -66,5 +69,4 @@ C Now, open the same file for reading
 
         call MTest_Finalize( errs )
         call mpi_finalize( ierr )
-
         end

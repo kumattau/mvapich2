@@ -13,7 +13,7 @@ CPPFLAGS        =  @CPPFLAGS@
 MPILIBNAME      = @MPILIBNAME@
 
 CC          = @CC@
-CFLAGS      = @CFLAGS@ -D_GNU_SOURCE -DUSE_INLINE -Wall
+CFLAGS      = @CFLAGS@ -D_GNU_SOURCE -DUSE_INLINE
 C_COMPILE   = $(CC) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
 LIBTOOL  = @LIBTOOL@
 CC_SHL      = @CC_SHL@
@@ -76,12 +76,12 @@ ptmalloc2: malloc.o
 	${RANLIB} ../../../../../../../lib/lib${MPILIBNAME}.a
 
 malloc.o:
-	${CC} -c @CFLAGS@ -D_GNU_SOURCE=1 -O2 -Wall -Wstrict-prototypes -DUSE_TSD_DATA_HACK \
+	${CC} -c @CFLAGS@ -D_GNU_SOURCE=1 -O2 -DUSE_TSD_DATA_HACK \
 	-Iptmalloc2/sysdeps/pthread -Iptmalloc2/sysdeps/generic -I. \
 	-DTHREAD_STATS=1  ptmalloc2/malloc.c
 
 ptmalloc2_shl:
-	${CC_SHL} -c @CFLAGS@ -D_GNU_SOURCE=1 -O2 -Wall -Wstrict-prototypes -DUSE_TSD_DATA_HACK \
+	${CC_SHL} -c @CFLAGS@ -D_GNU_SOURCE=1 -O2 -DUSE_TSD_DATA_HACK \
 	-Iptmalloc2/sysdeps/pthread -Iptmalloc2/sysdeps/generic -I. \
 	-DTHREAD_STATS=1  ptmalloc2/malloc.c
 	${AR} cr ../../../../../../../lib/lib${MPILIBNAME}.la malloc.o

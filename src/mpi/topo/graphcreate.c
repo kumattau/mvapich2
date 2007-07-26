@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Graph_create
 #define MPI_Graph_create PMPI_Graph_create
 
 #endif
@@ -43,6 +44,10 @@ int MPIR_Graph_create( const MPID_Comm *comm_ptr, int nnodes,
     if (reorder) {
 	int nrank;
 	MPI_Comm ncomm;
+	MPIU_THREADPRIV_DECL;
+
+	MPIU_THREADPRIV_GET;
+
 	/* Allow the cart map routine to remap the assignment of ranks to 
 	   processes */
 	MPIR_Nest_incr();
@@ -170,7 +175,7 @@ int MPI_Graph_create(MPI_Comm comm_old, int nnodes, int *index, int *edges,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("topo");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_GRAPH_CREATE);
     
     /* Validate parameters, especially handles needing to be converted */
@@ -323,7 +328,7 @@ int MPI_Graph_create(MPI_Comm comm_old, int nnodes, int *index, int *edges,
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_GRAPH_CREATE);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("topo");
     return mpi_errno;
 
   fn_fail:

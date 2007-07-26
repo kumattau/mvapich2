@@ -10,30 +10,35 @@ abs_builddir    = @abs_builddir@
 srcdir          = @srcdir@
 abs_srcdir      = @abs_srcdir@
 MAKE            = @MAKE@
-MPILIBNAME      = @MPILIBNAME@
-PMPILIBNAME     = @PMPILIBNAME@
-
 
 VPATH = .:@srcdir@
 
 .SUFFIXES:
 # Some make programs complain if no suffixes are set
 .SUFFIXES: .c .o
-apply:
+apply: 
 	$(ACTION) $(ACTION_INPUT)
-	(cd coll && $(MAKE) apply )
-	(cd pt2pt && $(MAKE) apply )
-clean:
+	for dir in coll comm group pt2pt rma spawn io @otherlangs@ - ; do \
+		if [ "$$dir" = "-" ] ; then break ; fi ; \
+		(cd $$dir && ${MAKE} apply ; ) ; done
+clean: 
 	-@rm -f *.o ${srcdir}/*.o 
 	-@rm -f *.lo ${srcdir}/*.lo
-	(cd coll && $(MAKE) clean )
-	(cd pt2pt && $(MAKE) clean )
-distclean: clean distclean-xxx remove-makefile
+	for dir in coll comm group pt2pt rma spawn io @otherlangs@ - ; do \
+		if [ "$$dir" = "-" ] ; then break ; fi ; \
+		(cd $$dir && ${MAKE} clean ; ) ; done
+distclean:  clean distclean-xxx remove-makefile
 distclean-xxx:
-	(cd coll && $(MAKE) distclean )
-	(cd pt2pt && $(MAKE) distclean )
-	-@rm -f Makefile
+	for dir in coll comm group pt2pt rma spawn io @otherlangs@ - ; do \
+		if [ "$$dir" = "-" ] ; then break ; fi ; \
+		if [ ! -s $$dir/Makefile ] ; then continue ; fi ;\
+		(cd $$dir && ${MAKE} distclean ; ) ; done
+	-@rm -f Makefile testlist
 	-@rm -rf autom4te*.cache
+	-@for dir in  cxx f77 f90 ; do \
+	    if [ -s $$dir/Makefile ] ; then \
+	      (cd $$dir && ${MAKE} distclean ;) ; fi ; \
+	done
 	-@rm -rf $(DEPS_DIR)
 	-@rm -f TAGS
 remove-makefile:
@@ -42,7 +47,16 @@ remove-genmakefiles:
 	rm -f  Makefile
 all-redirect:
 	@(cd coll && ${MAKE} all )
+	@(cd comm && ${MAKE} all )
+	@(cd group && ${MAKE} all )
 	@(cd pt2pt && ${MAKE} all )
+	@(cd rma && ${MAKE} all )
+	@(cd spawn && ${MAKE} all )
+	@(cd io && ${MAKE} all )
+	@for dir in @otherlangs@ - ; do \
+		if [ "$$dir" = "-" ] ; then break ; fi ; \
+		if ( cd $$dir && ${MAKE} all ) ; then : ; else exit 1; fi \
+	done
 
 # --------------------------------------------------------------------------
 # --------------------------------------------------------------------------
@@ -50,11 +64,12 @@ all-redirect:
 HEADERFILES     = $(HEADERS)
 SOURCEFILES     = $(SOURCES)
 tags: TAGS
-TAGS:
-	(cd coll && $(MAKE) TAGS )
-	(cd pt2pt && $(MAKE) TAGS )
+TAGS: Makefile
+	for dir in coll comm group pt2pt rma spawn io @otherlangs@ - ; do \
+		if [ "$$dir" = "-" ] ; then break ; fi ; \
+		(cd $$dir && ${MAKE} TAGS ; ) ; done
 # --------------------------------------------------------------------------
-#SUBDIRS = util attr basic datatype coll comm errhan group info init pt2pt rma spawn topo io @otherlangs@ @threadsdir@ errors .
+#SUBDIRS = util attr basic datatype info init rma topo @threadsdir@ .
 
 testing:
 	../runtests -srcdir=$(srcdir) -tests=testlist \

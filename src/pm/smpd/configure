@@ -1359,6 +1359,10 @@ ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
           ac_config_headers="$ac_config_headers smpdconf.h"
 
+
+
+
+
 if test -f $CONFIG_AUX_DIR/install-sh ; then ac_aux_dir=$CONFIG_AUX_DIR
 else
 ac_aux_dir=
@@ -1415,13 +1419,55 @@ if test "${enable_g+set}" = set; then
 else
   enable_g=none
 fi;
-if test "`cd $srcdir && pwd`" != "`pwd`" && test -f $srcdir/config.status ; then
-    { { echo "$as_me:$LINENO: error: You cannot do a VPATH build if the source directory has been
-    configured.  Run \"make distclean\" in $srcdir first." >&5
+
+rm -f conftest*
+date >conftest$$
+# If creating a file in the current directory does not show up in the srcdir
+# then we're doing a VPATH build (or something is very wrong)
+if test ! -s $srcdir/conftest$$ ; then
+    pac_dirtyfiles=""
+    pac_dirtydirs=""
+    pac_header=""
+
+    for file in config.status $pac_header  ; do
+        if test -f $srcdir/$file ; then
+	    pac_dirtyfiles="$pac_dirtyfiles $file"
+	fi
+    done
+
+
+    if test -n "$pac_dirtyfiles" -o -n "$pac_dirtydirs" ; then
+	# Create a nice message about what to remove
+	rmmsg=""
+	if test -n "$pac_dirtyfiles" ; then
+	    rmmsg="files $pac_dirtyfiles"
+        fi
+ 	if test -n "$pac_dirtydirs" ; then
+	    if test -n "$rmmsg" ; then
+	        rmmsg="$rmmsg and directories $pac_dirtydirs"
+            else
+                rmmsg="directories $pac_dirtydirs"
+            fi
+        fi
+        if test -f $srcdir/Makefile ; then
+            { { echo "$as_me:$LINENO: error: You cannot do a VPATH build if the source directory has been
+    configured.  Run \"make distclean\" in $srcdir first and make sure that the
+    $rmmsg have been removed." >&5
 echo "$as_me: error: You cannot do a VPATH build if the source directory has been
-    configured.  Run \"make distclean\" in $srcdir first." >&2;}
+    configured.  Run \"make distclean\" in $srcdir first and make sure that the
+    $rmmsg have been removed." >&2;}
    { (exit 1); exit 1; }; }
+        else
+            { { echo "$as_me:$LINENO: error: You cannot do a VPATH build if the source directory has been
+    configured.  Remove the $rmmsg in $srcdir." >&5
+echo "$as_me: error: You cannot do a VPATH build if the source directory has been
+    configured.  Remove the $rmmsg in $srcdir." >&2;}
+   { (exit 1); exit 1; }; }
+        fi
+    fi
 fi
+rm -f conftest*
+
 case "$enable_g" in
     no|none)
     ;;
@@ -3636,7 +3682,7 @@ fi
 # If cpp failed, see if the compiler accepts the header.
 if test "$pac_found_header" != "yes" ; then
     cat >conftest.c<<EOF
-#line 3639 "configure"
+#line 3685 "configure"
 #include "confdefs.h"
 #include <$ac_header>
 int conftest() {return 0;}
@@ -3731,7 +3777,98 @@ fi
 # If cpp failed, see if the compiler accepts the header.
 if test "$pac_found_header" != "yes" ; then
     cat >conftest.c<<EOF
-#line 3734 "configure"
+#line 3780 "configure"
+#include "confdefs.h"
+#include <$ac_header>
+int conftest() {return 0;}
+EOF
+    ac_compile_for_cpp='${CC-cc} -c $CFLAGS $CPPFLAGS conftest.c 1>&5'
+    if { (eval echo "$as_me:$LINENO: \"$ac_compile_for_cpp\"") >&5
+  (eval $ac_compile_for_cpp) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; then
+	pac_found_header=yes
+    else
+        echo "configure: failed program was:" >&5
+        cat conftest.c >&5
+    fi
+    rm -f conftest*
+fi
+# Finally, set the ac variable.
+if test "$pac_found_header" = "yes" ; then
+    eval "ac_cv_header_$ac_safe=yes"
+else
+    eval "ac_cv_header_$ac_safe=no"
+fi
+
+fi
+if eval "test \"`echo '$ac_cv_header_'$ac_safe`\" = yes"; then
+  echo "$as_me:$LINENO: result: yes" >&5
+echo "${ECHO_T}yes" >&6
+  cat >>confdefs.h <<_ACEOF
+#define `echo "HAVE_$ac_header" | $as_tr_cpp` 1
+_ACEOF
+
+else
+  echo "$as_me:$LINENO: result: no" >&5
+echo "${ECHO_T}no" >&6
+fi
+done
+
+
+
+
+for ac_header in stddef.h md5.h openssl/md5.h
+do
+ac_safe=`echo "$ac_header" | sed 'y%./+-%__p_%'`
+echo "$as_me:$LINENO: checking for $ac_header" >&5
+echo $ECHO_N "checking for $ac_header... $ECHO_C" >&6
+if eval "test \"\${ac_cv_header_$ac_safe+set}\" = set"; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+
+pac_found_header=no
+if test "$CPP" != "/lib/cpp" ; then
+    cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+#include <$ac_header>
+_ACEOF
+if { (eval echo "$as_me:$LINENO: \"$ac_cpp conftest.$ac_ext\"") >&5
+  (eval $ac_cpp conftest.$ac_ext) 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } >/dev/null; then
+  if test -s conftest.err; then
+    ac_cpp_err=$ac_c_preproc_warn_flag
+    ac_cpp_err=$ac_cpp_err$ac_c_werror_flag
+  else
+    ac_cpp_err=
+  fi
+else
+  ac_cpp_err=yes
+fi
+if test -z "$ac_cpp_err"; then
+  pac_found_header=yes
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+
+fi
+rm -f conftest.err conftest.$ac_ext
+fi
+# If cpp failed, see if the compiler accepts the header.
+if test "$pac_found_header" != "yes" ; then
+    cat >conftest.c<<EOF
+#line 3871 "configure"
 #include "confdefs.h"
 #include <$ac_header>
 int conftest() {return 0;}
@@ -4207,6 +4344,109 @@ if test "$ac_cv_search_MD5" != no; then
 
 fi
 
+# Make configure check for MD5 so that the variable will be set
+
+for ac_func in MD5
+do
+as_ac_var=`echo "ac_cv_func_$ac_func" | $as_tr_sh`
+echo "$as_me:$LINENO: checking for $ac_func" >&5
+echo $ECHO_N "checking for $ac_func... $ECHO_C" >&6
+if eval "test \"\${$as_ac_var+set}\" = set"; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+  cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+/* Define $ac_func to an innocuous variant, in case <limits.h> declares $ac_func.
+   For example, HP-UX 11i <limits.h> declares gettimeofday.  */
+#define $ac_func innocuous_$ac_func
+
+/* System header to define __stub macros and hopefully few prototypes,
+    which can conflict with char $ac_func (); below.
+    Prefer <limits.h> to <assert.h> if __STDC__ is defined, since
+    <limits.h> exists even on freestanding compilers.  */
+
+#ifdef __STDC__
+# include <limits.h>
+#else
+# include <assert.h>
+#endif
+
+#undef $ac_func
+
+/* Override any gcc2 internal prototype to avoid an error.  */
+#ifdef __cplusplus
+extern "C"
+{
+#endif
+/* We use char because int might match the return type of a gcc2
+   builtin and then its argument prototype would still apply.  */
+char $ac_func ();
+/* The GNU C library defines this for functions which it implements
+    to always fail with ENOSYS.  Some functions are actually named
+    something starting with __ and the normal name is an alias.  */
+#if defined (__stub_$ac_func) || defined (__stub___$ac_func)
+choke me
+#else
+char (*f) () = $ac_func;
+#endif
+#ifdef __cplusplus
+}
+#endif
+
+int
+main ()
+{
+return f != $ac_func;
+  ;
+  return 0;
+}
+_ACEOF
+rm -f conftest.$ac_objext conftest$ac_exeext
+if { (eval echo "$as_me:$LINENO: \"$ac_link\"") >&5
+  (eval $ac_link) 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } &&
+	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; } &&
+	 { ac_try='test -s conftest$ac_exeext'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; }; then
+  eval "$as_ac_var=yes"
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+eval "$as_ac_var=no"
+fi
+rm -f conftest.err conftest.$ac_objext \
+      conftest$ac_exeext conftest.$ac_ext
+fi
+echo "$as_me:$LINENO: result: `eval echo '${'$as_ac_var'}'`" >&5
+echo "${ECHO_T}`eval echo '${'$as_ac_var'}'`" >&6
+if test `eval echo '${'$as_ac_var'}'` = yes; then
+  cat >>confdefs.h <<_ACEOF
+#define `echo "HAVE_$ac_func" | $as_tr_cpp` 1
+_ACEOF
+
+fi
+done
+
+#
 echo "$as_me:$LINENO: checking for library containing md5_calc" >&5
 echo $ECHO_N "checking for library containing md5_calc... $ECHO_C" >&6
 if test "${ac_cv_search_md5_calc+set}" = set; then
@@ -4340,6 +4580,9 @@ cat confdefs.h >>conftest.$ac_ext
 cat >>conftest.$ac_ext <<_ACEOF
 /* end confdefs.h.  */
 
+#ifdef HAVE_STDDEF_H
+ #include <stddef.h>
+#endif
 #include <md5.h>
 
 int
@@ -4394,7 +4637,16 @@ else
 echo "${ECHO_T}no" >&6
 fi
 
-#AC_SEARCH_LIBS( MD5, crypto, SMPD_LIBS="$SMPD_LIBS -lcrypto" )
+# md5 appears to be required for SMPD.  Test that we have either mp5_calc
+# or MP5 (may be part of openssl/md5.h)
+if test "$ac_cv_have_md5_calc" != yes -a \
+  \( "$ac_cv_header_openssl_md5_h" != yes -o "$ac_cv_func_MD5" != yes \) ; then
+    { { echo "$as_me:$LINENO: error: SMPD requires MD5 support, and configure could not find either md5_calc in md5.h or MD5 in openssl/md5.h" >&5
+echo "$as_me: error: SMPD requires MD5 support, and configure could not find either md5_calc in md5.h or MD5 in openssl/md5.h" >&2;}
+   { (exit 1); exit 1; }; }
+fi
+
+
 SMPD_LIBS="$SMPD_LIBS $LIBS"
 
 

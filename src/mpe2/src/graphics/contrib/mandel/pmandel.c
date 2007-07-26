@@ -93,7 +93,7 @@ char **argv;
 
   if (np == 1) {
       fprintf( stderr, 
-	      "pmandle requires at least 2 processes (master + slaves)\n" );
+	      "pmandel requires at least 2 processes (master + slaves)\n" );
       MPI_Finalize();
       return 1;
       }

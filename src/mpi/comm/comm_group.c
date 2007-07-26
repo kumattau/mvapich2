@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Comm_group
 #define MPI_Comm_group PMPI_Comm_group
 
 #endif
@@ -61,7 +62,7 @@ int MPI_Comm_group(MPI_Comm comm, MPI_Group *group)
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("comm");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_COMM_GROUP);
     
     /* Validate parameters, especially handles needing to be converted */
@@ -131,13 +132,13 @@ int MPI_Comm_group(MPI_Comm comm, MPI_Group *group)
        communicators */
 
     *group = comm_ptr->local_group->handle;
-    MPIU_Object_add_ref( comm_ptr->local_group );
+    MPIR_Group_add_ref( comm_ptr->local_group );
 
     /* ... end of body of routine ... */
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_COMM_GROUP);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("comm");
     return mpi_errno;
 
   fn_fail:

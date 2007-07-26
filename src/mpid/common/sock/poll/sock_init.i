@@ -5,6 +5,8 @@
  *      See COPYRIGHT in top-level directory.
  */
 
+/* FIXME: The usual missing documentation (what are these routines for?
+   preconditions?  who calls? post conditions? */
 #undef FUNCNAME
 #define FUNCNAME MPIDU_Sock_init
 #undef FCNAME
@@ -41,7 +43,7 @@ int MPIDU_Sock_init(void)
     return MPI_SUCCESS;
 }
 
-
+/* FIXME: Who calls?  When?  Should this be a finalize handler instead? */
 #undef FUNCNAME
 #define FUNCNAME MPIDU_Sock_finalize
 #undef FCNAME
@@ -62,7 +64,9 @@ int MPIDU_Sock_finalize(void)
 	MPIDU_Socki_free_eventq_mem();
     }
 
+#ifdef USE_SOCK_VERIFY
   fn_exit:
+#endif
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDU_SOCK_FINALIZE);
     return mpi_errno;
 }

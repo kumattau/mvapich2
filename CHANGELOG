@@ -3,13 +3,74 @@ MVAPICH2 Changelog
 This file briefly describes the latest changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+07/25/2007 (Release data of MVAPICH2-1.0-beta)
+
+* Following features are added in this new MVAPICH2-1.0-beta release:
+
+- Message coalescing support to enable reduction of per Queue-pair
+  send queues for reduction in memory requirement on large scale
+  clusters. This design also increases the small message messaging
+  rate significantly. Available for Open Fabrics Gen2-IB.
+
+- Hot-Spot Avoidance Mechanism (HSAM) for alleviating
+  network congestion in large scale clusters. Available for
+  Open Fabrics Gen2-IB.
+
+- RDMA CM based on-demand connection management for large scale
+  clusters. Available for OpenFabrics Gen2-IB and Gen2-iWARP.
+
+- uDAPL on-demand connection management for large scale clusters.
+  Available for uDAPL interface (including Solaris IB implementation).
+
+- RDMA Read support for increased overlap of computation and
+  communication. Available for OpenFabrics Gen2-IB and Gen2-iWARP.
+
+- Application-initiated system-level (synchronous) checkpointing in
+  addition to the user-transparent checkpointing. User application can
+  now request a whole program checkpoint synchronously with BLCR by
+  calling special functions within the application. Available for
+  OpenFabrics Gen2-IB.
+
+- Network-Level fault tolerance with Automatic Path Migration (APM)
+  for tolerating intermittent network failures over InfiniBand.
+  Available for OpenFabrics Gen2-IB.
+
+- Integrated multi-rail communication support for OpenFabrics
+  Gen2-iWARP.
+
+- Blocking mode of communication progress. Available for OpenFabrics
+  Gen2-IB.
+
+- Based on MPICH2 1.0.5p4.
+
+07/25/2007
+* Fix for hang while using IMB with -multi option. 
+  Thanks to Pasha (Mellanox) for reporting this.
+
+07/20/2007
+* Fix for hang in memory allocations > 2^31 - 1.
+  Thanks to Bryan Putnam (Purdue) for reporting this.
+
+07/10/2007
+* Fix for RDMA_CM finalize rdma_destroy_id failure. 
+  Added Timeout env variable for RDMA_CM ARP. 
+  Thanks to Steve Wise for suggesting these.
+
 03/28/2007
 * Fix for RDMA_CM invalid event in finalize. Thanks to Steve Wise and Sean Hefty.
+
+03/26/2007
+* Fix for shmem memory collectives related memory leaks
 
 03/14/2007
 
 * Updated src/mpi/romio/adio/ad_panfs/Makefile.in include path to find mpi.h.
   Contributed by David Gunter, Los Alamos National Laboratory.
+
+03/13/2007
+
+* Fixed header caching error on handling datatype messages with small vector 
+  sizes.
 
 03/08/2007
 
@@ -19,6 +80,14 @@ package.  The logs are arranged in the "most recent first" order.
 
 * Fix for the "command line too long" problem. Contributed by Xavier Bru
   <xavier.bru@bull.net> from Bull (http://www.bull.net/)
+
+02/01/2007
+
+* Change the CKPT handling to invalidate all unused registration cache.
+
+01/29/2007
+
+* Added ofed 1.2 interface change patch for iwarp/rdma_cm from Steve Wise.
 
 12/04/2006
 
@@ -63,3 +132,4 @@ package.  The logs are arranged in the "most recent first" order.
   explicitly with default suggestions.
 
 * Thanks to Harvey Richardson from Sun for suggesting this feature.
+

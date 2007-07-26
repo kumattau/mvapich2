@@ -308,7 +308,7 @@ ac_includes_default="\
 # include <unistd.h>
 #endif"
 
-ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS top_srcdir_abs VPATH MAKE MKDIR CPRP RM MV build build_cpu build_vendor build_os host host_cpu host_vendor host_os includebuild_dir libbuild_dir binbuild_dir etcbuild_dir CC CFLAGS LDFLAGS CPPFLAGS ac_ct_CC EXEEXT OBJEXT AR RANLIB ac_ct_RANLIB CPP DEBUG_LIBS EGREP ALLOCA MPI_IMPL MPE_BUILD_FORTRAN2C CLINKER MPI_CC F77 FLINKER FFLAGS MPI_F77 FINC_PATH_LEADER FLIB_PATH_LEADER MPI_INC MPI_LIBS LOG_LIBNAME TRACE_LIBNAME F2CMPI_LIBNAME PROF_LIBS LOG_LIBS TRACE_LIBS F2CMPI_LIBS LIBOBJS LTLIBOBJS'
+ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS top_srcdir_abs VPATH MAKE MKDIR CPRP RM MV includebuild_dir libbuild_dir binbuild_dir sbinbuild_dir etcbuild_dir CC CFLAGS LDFLAGS CPPFLAGS ac_ct_CC EXEEXT OBJEXT AR RANLIB ac_ct_RANLIB CPP DEBUG_LIBS EGREP ALLOCA build build_cpu build_vendor build_os host host_cpu host_vendor host_os MPI_IMPL MPE_BUILD_FORTRAN2C CLINKER MPI_CC F77 FLINKER FFLAGS MPI_F77 FINC_PATH_LEADER FLIB_PATH_LEADER MPI_INC MPI_LIBS LOG_LIBNAME TRACE_LIBNAME F2CMPI_LIBNAME PROF_LIBS LOG_LIBS TRACE_LIBS F2CMPI_LIBS LIBOBJS LTLIBOBJS'
 ac_subst_files=''
 
 # Initialize some variables set by options.
@@ -848,6 +848,8 @@ Optional Features:
 --enable-softerror                 - Turn on soft error, i.e. instead of
                                      issuing MSG_ERROR, MSG_WARN + exit 0
                                      are used.  The default is enable=no.
+--enable-romio                     - Enable/Disable ROMIO MPI-IO logging
+                                     in MPICHx build.  The default is yes.
 --enable-checkMPI                  - Turn on/off the linking test for the MPI
                                      include files, MPI libraries and MPI_CC
                                      compiler. The default is enable=yes.
@@ -856,17 +858,23 @@ Optional Features:
                                      The library is needed for profiling
                                      Fortran program in Non-MPICH platform.
                                      The default is enable=yes.
---enable-broken-procnull           - Handle MPI implementations with buggy
-                                     handling of MPI_PROC_NULL.
+--enable-safePMPI                  - Turn on/off the safe PMPI invocation, ie.
+                                     Turn off logging before making PMPI call.
+                                     Turn on logging after PMPI call.  For
+                                     non-MPICH2 (standalone build), the default
+                                     is enable=yes.  For MPICH2 build, the
+                                     default is enable=no.
 --enable-debugcheck                - Turn on/off the debugging & diagnostic
                                      checking code in MPE code.
                                      The default is enable=no.
+--enable-broken-procnull           - Handle MPI implementations with buggy
+                                     handling of MPI_PROC_NULL.
 
 Optional Packages:
   --with-PACKAGE[=ARG]    use PACKAGE [ARG=yes]
   --without-PACKAGE       do not use PACKAGE (same as --with-PACKAGE=no)
---with-mpiio                       - Include/exclude MPI-IO from mpe logging.
-                                     The default is yes.
+--with-mpiio                       - Enable/Disable MPI-IO logging
+                                     in MPICHx build.  The default is yes.
 --enable-checkMPIO                 - Turn on/off the linking test for MPI-IO
                                      routines in MPI implementation.
                                      The default is enable=yes.
@@ -1323,18 +1331,18 @@ echo $ECHO_N "checking for current directory name... $ECHO_C" >&6
 top_srcdir_abs=$PWD
 if test "${top_srcdir_abs}" != "" -a -d "${top_srcdir_abs}" ; then
     if test -r ${top_srcdir_abs}/.foo$$ ; then
-        /bin/rm -f ${top_srcdir_abs}/.foo$$
-        /bin/rm -f .foo$$
+        rm -f ${top_srcdir_abs}/.foo$$
+        rm -f .foo$$
     fi
     if test -r ${top_srcdir_abs}/.foo$$ -o -r .foo$$ ; then
         top_srcdir_abs=
     else
         echo "test" > ${top_srcdir_abs}/.foo$$
         if test ! -r .foo$$ ; then
-            /bin/rm -f ${top_srcdir_abs}/.foo$$
+            rm -f ${top_srcdir_abs}/.foo$$
             top_srcdir_abs=
         else
-             /bin/rm -f ${top_srcdir_abs}/.foo$$
+            rm -f ${top_srcdir_abs}/.foo$$
         fi
     fi
 fi
@@ -1417,7 +1425,7 @@ F2CMPI_LIBS=""
 
 echo "$as_me:$LINENO: checking gnumake" >&5
 echo $ECHO_N "checking gnumake... $ECHO_C" >&6
-/bin/rm -f conftest
+rm -f conftest
 cat > conftest <<.
 SHELL=/bin/sh
 ALL:
@@ -1440,13 +1448,13 @@ else
     echo "$as_me:$LINENO: result: no" >&5
 echo "${ECHO_T}no" >&6
 fi
-/bin/rm -f conftest
+rm -f conftest
 str=""
 
 
 echo "$as_me:$LINENO: checking BSD 4.4 make" >&5
 echo $ECHO_N "checking BSD 4.4 make... $ECHO_C" >&6
-/bin/rm -f conftest
+rm -f conftest
 cat > conftest <<.
 ALL:
 	@echo "success"
@@ -1455,7 +1463,7 @@ cat > conftest1 <<.
 include conftest
 .
 str=`$MAKE -f conftest1 2>&1`
-/bin/rm -f conftest conftest1
+rm -f conftest conftest1
 if test "$str" != "success" ; then
     echo "$as_me:$LINENO: result: Found BSD 4.4 so-called make" >&5
 echo "${ECHO_T}Found BSD 4.4 so-called make" >&6
@@ -1472,7 +1480,7 @@ str=""
 
 echo "$as_me:$LINENO: checking OSF V3 make" >&5
 echo $ECHO_N "checking OSF V3 make... $ECHO_C" >&6
-/bin/rm -f conftest
+rm -f conftest
 cat > conftest <<.
 SHELL=/bin/sh
 ALL:
@@ -1480,7 +1488,7 @@ ALL:
 	@echo "success"
 .
 str=`$MAKE -f conftest 2>&1`
-/bin/rm -f conftest
+rm -f conftest
 if test "$str" != "success" ; then
     echo "$as_me:$LINENO: result: Found OSF V3 make" >&5
 echo "${ECHO_T}Found OSF V3 make" >&6
@@ -1564,6 +1572,14 @@ else
   with_mpiio=yes
 fi;
 
+# Check whether --enable-romio or --disable-romio was given.
+if test "${enable_romio+set}" = set; then
+  enableval="$enable_romio"
+  with_mpiio=$enableval
+else
+  with_mpiio=yes
+fi;
+
 # Check whether --enable-checkMPI or --disable-checkMPI was given.
 if test "${enable_checkMPI+set}" = set; then
   enableval="$enable_checkMPI"
@@ -1596,86 +1612,19 @@ if test "${with_f2cmpilibs+set}" = set; then
   F2CMPI_LIBS="$withval" ; enable_f2cmpilib=no
 fi;
 
+# Check whether --enable-safePMPI or --disable-safePMPI was given.
+if test "${enable_safePMPI+set}" = set; then
+  enableval="$enable_safePMPI"
 
-if test -z "$nonopt" ; then nonopt=NONE ; fi
-ac_aux_dir=
-for ac_dir in $srcdir $srcdir/.. $srcdir/../..; do
-  if test -f $ac_dir/install-sh; then
-    ac_aux_dir=$ac_dir
-    ac_install_sh="$ac_aux_dir/install-sh -c"
-    break
-  elif test -f $ac_dir/install.sh; then
-    ac_aux_dir=$ac_dir
-    ac_install_sh="$ac_aux_dir/install.sh -c"
-    break
-  elif test -f $ac_dir/shtool; then
-    ac_aux_dir=$ac_dir
-    ac_install_sh="$ac_aux_dir/shtool install -c"
-    break
-  fi
-done
-if test -z "$ac_aux_dir"; then
-  { { echo "$as_me:$LINENO: error: cannot find install-sh or install.sh in $srcdir $srcdir/.. $srcdir/../.." >&5
-echo "$as_me: error: cannot find install-sh or install.sh in $srcdir $srcdir/.. $srcdir/../.." >&2;}
-   { (exit 1); exit 1; }; }
-fi
-ac_config_guess="$SHELL $ac_aux_dir/config.guess"
-ac_config_sub="$SHELL $ac_aux_dir/config.sub"
-ac_configure="$SHELL $ac_aux_dir/configure" # This should be Cygnus configure.
-
-# Make sure we can run config.sub.
-$ac_config_sub sun4 >/dev/null 2>&1 ||
-  { { echo "$as_me:$LINENO: error: cannot run $ac_config_sub" >&5
-echo "$as_me: error: cannot run $ac_config_sub" >&2;}
-   { (exit 1); exit 1; }; }
-
-echo "$as_me:$LINENO: checking build system type" >&5
-echo $ECHO_N "checking build system type... $ECHO_C" >&6
-if test "${ac_cv_build+set}" = set; then
-  echo $ECHO_N "(cached) $ECHO_C" >&6
 else
-  ac_cv_build_alias=$build_alias
-test -z "$ac_cv_build_alias" &&
-  ac_cv_build_alias=`$ac_config_guess`
-test -z "$ac_cv_build_alias" &&
-  { { echo "$as_me:$LINENO: error: cannot guess build type; you must specify one" >&5
-echo "$as_me: error: cannot guess build type; you must specify one" >&2;}
-   { (exit 1); exit 1; }; }
-ac_cv_build=`$ac_config_sub $ac_cv_build_alias` ||
-  { { echo "$as_me:$LINENO: error: $ac_config_sub $ac_cv_build_alias failed" >&5
-echo "$as_me: error: $ac_config_sub $ac_cv_build_alias failed" >&2;}
-   { (exit 1); exit 1; }; }
+  enable_safePMPI=yes
+fi;
 
-fi
-echo "$as_me:$LINENO: result: $ac_cv_build" >&5
-echo "${ECHO_T}$ac_cv_build" >&6
-build=$ac_cv_build
-build_cpu=`echo $ac_cv_build | sed 's/^\([^-]*\)-\([^-]*\)-\(.*\)$/\1/'`
-build_vendor=`echo $ac_cv_build | sed 's/^\([^-]*\)-\([^-]*\)-\(.*\)$/\2/'`
-build_os=`echo $ac_cv_build | sed 's/^\([^-]*\)-\([^-]*\)-\(.*\)$/\3/'`
+# Check whether --enable-debugcheck or --disable-debugcheck was given.
+if test "${enable_debugcheck+set}" = set; then
+  enableval="$enable_debugcheck"
 
-
-echo "$as_me:$LINENO: checking host system type" >&5
-echo $ECHO_N "checking host system type... $ECHO_C" >&6
-if test "${ac_cv_host+set}" = set; then
-  echo $ECHO_N "(cached) $ECHO_C" >&6
-else
-  ac_cv_host_alias=$host_alias
-test -z "$ac_cv_host_alias" &&
-  ac_cv_host_alias=$ac_cv_build_alias
-ac_cv_host=`$ac_config_sub $ac_cv_host_alias` ||
-  { { echo "$as_me:$LINENO: error: $ac_config_sub $ac_cv_host_alias failed" >&5
-echo "$as_me: error: $ac_config_sub $ac_cv_host_alias failed" >&2;}
-   { (exit 1); exit 1; }; }
-
-fi
-echo "$as_me:$LINENO: result: $ac_cv_host" >&5
-echo "${ECHO_T}$ac_cv_host" >&6
-host=$ac_cv_host
-host_cpu=`echo $ac_cv_host | sed 's/^\([^-]*\)-\([^-]*\)-\(.*\)$/\1/'`
-host_vendor=`echo $ac_cv_host | sed 's/^\([^-]*\)-\([^-]*\)-\(.*\)$/\2/'`
-host_os=`echo $ac_cv_host | sed 's/^\([^-]*\)-\([^-]*\)-\(.*\)$/\3/'`
-
+fi;
 
 # Check whether --enable-broken-procnull or --disable-broken-procnull was given.
 if test "${enable_broken_procnull+set}" = set; then
@@ -1684,37 +1633,16 @@ if test "${enable_broken_procnull+set}" = set; then
 else
   procnull_broken=default
 fi;
-if test "$host" = "irix" ; then
-    if test "$MPI_IMPL" != "MPICH" -a "$MPI_IMPL" != "MPICH2" ; then
-        if test "$procnull_broken" = "default" ; then
-            procnull_broken=yes
-        fi
-    fi
-fi
-if test "$procnull_broken" = "yes" ; then
-
-cat >>confdefs.h <<\_ACEOF
-#define HAVE_MPI_STATUS_BROKEN_ON_PROC_NULL 1
-_ACEOF
-
-fi
-
-
-# Check whether --enable-debugcheck or --disable-debugcheck was given.
-if test "${enable_debugcheck+set}" = set; then
-  enableval="$enable_debugcheck"
-
-fi;
 
 rootbuild_dir=`pwd`
-for dir in include lib bin etc ; do
+for dir in include lib bin sbin etc ; do
     dirname=${dir}build_dir
     mpe_dirname=mpe_${dirname}
     eval dirvalue=\$"$dirname"
     eval $dirname=\$\{${mpe_dirname}\}
 done
 
-for dir in include lib bin etc ; do
+for dir in include lib bin sbin etc ; do
     dirname=${dir}build_dir
     eval dirvalue=\$"$dirname"
     if test -n "$dirvalue" ; then
@@ -1737,6 +1665,7 @@ fi
         fi
     fi
 done
+
 
 
 
@@ -4142,7 +4071,7 @@ return 0;
 }
 int main() { func( 1, 2 ); return 0;}
 EOF
-if { (eval echo configure:4145: \"$ac_compile\") 1>&5; (eval $ac_compile) 2>&5; }; then
+if { (eval echo configure:4074: \"$ac_compile\") 1>&5; (eval $ac_compile) 2>&5; }; then
   echo "$as_me:$LINENO: result: yes" >&5
 echo "${ECHO_T}yes" >&6
   rm -rf conftest*
@@ -4151,7 +4080,7 @@ cat >>confdefs.h <<\_ACEOF
 #define USE_STDARG 1
 _ACEOF
 
-CFLAGS="$CFLAGS -DUSE_STDARG"
+
 
    else echo "$as_me:$LINENO: result: no" >&5
 echo "${ECHO_T}no" >&6
@@ -4211,12 +4140,180 @@ cat >>confdefs.h <<\_ACEOF
 #define HAVE_PROTOTYPES 1
 _ACEOF
 
-    CFLAGS="$CFLAGS -DHAVE_PROTOTYPES"
     echo "$as_me:$LINENO: result: yes" >&5
 echo "${ECHO_T}yes" >&6
 else
     echo "$as_me:$LINENO: result: no" >&5
 echo "${ECHO_T}no" >&6
+fi
+
+if test -z "$nonopt" ; then nonopt=NONE ; fi
+if test -f $CONFIG_AUX_DIR/install-sh ; then ac_aux_dir=$CONFIG_AUX_DIR
+else
+ac_aux_dir=
+# We force the test to use the absolute path to ensure that the install
+# program can be used if we cd to a different directory before using
+# install.
+for ac_dir in $srcdir $srcdir/.. $srcdir/../..; do
+  if test -f $ac_dir/install-sh; then
+    ac_aux_dir=$ac_dir
+    abs_ac_aux_dir=`(cd $ac_aux_dir && pwd)`
+    ac_install_sh="$abs_ac_aux_dir/install-sh -c"
+    break
+  elif test -f $ac_dir/install.sh; then
+    ac_aux_dir=$ac_dir
+    abs_ac_aux_dir=`(cd $ac_aux_dir && pwd)`
+    ac_install_sh="$abs_ac_aux_dir/install.sh -c"
+    break
+  fi
+done
+fi
+if test -z "$ac_aux_dir"; then
+  { { echo "$as_me:$LINENO: error: can not find install-sh or install.sh in $srcdir $srcdir/.. $srcdir/../.." >&5
+echo "$as_me: error: can not find install-sh or install.sh in $srcdir $srcdir/.. $srcdir/../.." >&2;}
+   { (exit 1); exit 1; }; }
+fi
+ac_config_guess=$ac_aux_dir/config.guess
+ac_config_sub=$ac_aux_dir/config.sub
+ac_configure=$ac_aux_dir/configure # This should be Cygnus configure.
+
+# Make sure we can run config.sub.
+$ac_config_sub sun4 >/dev/null 2>&1 ||
+  { { echo "$as_me:$LINENO: error: cannot run $ac_config_sub" >&5
+echo "$as_me: error: cannot run $ac_config_sub" >&2;}
+   { (exit 1); exit 1; }; }
+
+echo "$as_me:$LINENO: checking build system type" >&5
+echo $ECHO_N "checking build system type... $ECHO_C" >&6
+if test "${ac_cv_build+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+  ac_cv_build_alias=$build_alias
+test -z "$ac_cv_build_alias" &&
+  ac_cv_build_alias=`$ac_config_guess`
+test -z "$ac_cv_build_alias" &&
+  { { echo "$as_me:$LINENO: error: cannot guess build type; you must specify one" >&5
+echo "$as_me: error: cannot guess build type; you must specify one" >&2;}
+   { (exit 1); exit 1; }; }
+ac_cv_build=`$ac_config_sub $ac_cv_build_alias` ||
+  { { echo "$as_me:$LINENO: error: $ac_config_sub $ac_cv_build_alias failed" >&5
+echo "$as_me: error: $ac_config_sub $ac_cv_build_alias failed" >&2;}
+   { (exit 1); exit 1; }; }
+
+fi
+echo "$as_me:$LINENO: result: $ac_cv_build" >&5
+echo "${ECHO_T}$ac_cv_build" >&6
+build=$ac_cv_build
+build_cpu=`echo $ac_cv_build | sed 's/^\([^-]*\)-\([^-]*\)-\(.*\)$/\1/'`
+build_vendor=`echo $ac_cv_build | sed 's/^\([^-]*\)-\([^-]*\)-\(.*\)$/\2/'`
+build_os=`echo $ac_cv_build | sed 's/^\([^-]*\)-\([^-]*\)-\(.*\)$/\3/'`
+
+
+echo "$as_me:$LINENO: checking host system type" >&5
+echo $ECHO_N "checking host system type... $ECHO_C" >&6
+if test "${ac_cv_host+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+  ac_cv_host_alias=$host_alias
+test -z "$ac_cv_host_alias" &&
+  ac_cv_host_alias=$ac_cv_build_alias
+ac_cv_host=`$ac_config_sub $ac_cv_host_alias` ||
+  { { echo "$as_me:$LINENO: error: $ac_config_sub $ac_cv_host_alias failed" >&5
+echo "$as_me: error: $ac_config_sub $ac_cv_host_alias failed" >&2;}
+   { (exit 1); exit 1; }; }
+
+fi
+echo "$as_me:$LINENO: result: $ac_cv_host" >&5
+echo "${ECHO_T}$ac_cv_host" >&6
+host=$ac_cv_host
+host_cpu=`echo $ac_cv_host | sed 's/^\([^-]*\)-\([^-]*\)-\(.*\)$/\1/'`
+host_vendor=`echo $ac_cv_host | sed 's/^\([^-]*\)-\([^-]*\)-\(.*\)$/\2/'`
+host_os=`echo $ac_cv_host | sed 's/^\([^-]*\)-\([^-]*\)-\(.*\)$/\3/'`
+
+
+case "$host" in
+    *irix*)
+        if test "$MPI_IMPL" != "MPICH" -a "$MPI_IMPL" != "MPICH2" ; then
+            if test "$procnull_broken" = "default" ; then
+                procnull_broken=yes
+            fi
+        fi
+        ;;
+    *cray*)
+        if test "$MPE_BUILD_FORTRAN2C" = "yes" ; then
+            echo "$as_me:$LINENO: checking for Cray's FCD logical type " >&5
+echo $ECHO_N "checking for Cray's FCD logical type ... $ECHO_C" >&6
+            cat >conftest.$ac_ext <<_ACEOF
+ /* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+#include <fortran.h>
+int
+main ()
+{
+
+                                int clogical, flogical;
+                                clogical = 1;
+                                flogical = _btol( clogical );
+                                clogical = _ltob( &flogical );
+
+  ;
+  return 0;
+}
+_ACEOF
+rm -f conftest.$ac_objext conftest$ac_exeext
+if { (eval echo "$as_me:$LINENO: \"$ac_link\"") >&5
+  (eval $ac_link) 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } &&
+	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; } &&
+	 { ac_try='test -s conftest$ac_exeext'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; }; then
+   mpe_link_ok=yes
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+ mpe_link_ok=no
+fi
+rm -f conftest.err conftest.$ac_objext \
+      conftest$ac_exeext conftest.$ac_ext
+            if test "$mpe_link_ok" = "yes" ; then
+                echo "$as_me:$LINENO: result: yes" >&5
+echo "${ECHO_T}yes" >&6
+
+cat >>confdefs.h <<\_ACEOF
+#define HAVE_CRAY_FCD_LOGICAL 1
+_ACEOF
+
+            else
+                echo "$as_me:$LINENO: result: no" >&5
+echo "${ECHO_T}no" >&6
+            fi
+        fi
+        ;;
+esac
+if test "$procnull_broken" = "yes" ; then
+
+cat >>confdefs.h <<\_ACEOF
+#define HAVE_MPI_STATUS_BROKEN_ON_PROC_NULL 1
+_ACEOF
+
 fi
 
 
@@ -4228,6 +4325,24 @@ if test "$MPE_BUILD_FORTRAN2C" = "yes" ; then
 #   value supplied in --with-f2cmpilibs will be used.
 else
     F2CMPI_LIBS=""
+fi
+
+echo "$as_me:$LINENO: checking for safe PMPI invocations " >&5
+echo $ECHO_N "checking for safe PMPI invocations ... $ECHO_C" >&6
+if test "$MPI_IMPL" = "MPICH" -o "$MPI_IMPL" = "MPICH2" ; then
+    enable_safePMPI=no
+fi
+if test "$enable_safePMPI" = "yes" ; then
+    echo "$as_me:$LINENO: result: yes" >&5
+echo "${ECHO_T}yes" >&6
+
+cat >>confdefs.h <<\_ACEOF
+#define MAKE_SAFE_PMPI_CALL 1
+_ACEOF
+
+else
+    echo "$as_me:$LINENO: result: no" >&5
+echo "${ECHO_T}no" >&6
 fi
 
 
@@ -4259,7 +4374,18 @@ _ACEOF
 cat confdefs.h >>conftest.$ac_ext
 cat >>conftest.$ac_ext <<_ACEOF
 /* end confdefs.h.  */
+
+/* <stdlib.h> is included to get NULL defined */
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#else
+#if !defined( NULL )
+#define NULL 0
+#endif
+#endif
+
 #include "mpi.h"
+
 int
 main ()
 {
@@ -4349,7 +4475,18 @@ _ACEOF
 cat confdefs.h >>conftest.$ac_ext
 cat >>conftest.$ac_ext <<_ACEOF
 /* end confdefs.h.  */
+
+/* <stdlib.h> is included to get NULL defined */
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#else
+#if !defined( NULL )
+#define NULL 0
+#endif
+#endif
+
 #include "mpi.h"
+
 int
 main ()
 {
@@ -4443,7 +4580,18 @@ _ACEOF
 cat confdefs.h >>conftest.$ac_ext
 cat >>conftest.$ac_ext <<_ACEOF
 /* end confdefs.h.  */
+
+/* <stdlib.h> is included to get NULL defined */
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#else
+#if !defined( NULL )
+#define NULL 0
+#endif
+#endif
+
 #include "mpi.h"
+
 int
 main ()
 {
@@ -4562,7 +4710,18 @@ _ACEOF
 cat confdefs.h >>conftest.$ac_ext
 cat >>conftest.$ac_ext <<_ACEOF
 /* end confdefs.h.  */
+
+/* <stdlib.h> is included to get NULL defined */
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#else
+#if !defined( NULL )
+#define NULL 0
+#endif
+#endif
+
 #include "mpi.h"
+
 int
 main ()
 {
@@ -4571,9 +4730,6 @@ main ()
      int itmp; MPI_Win win  ;
     MPI_Init(&argc, &argv);
 
-#ifndef NULL
-#define NULL 0
-#endif
     itmp=MPI_Win_create( NULL, 0, 1, MPI_INFO_NULL, MPI_COMM_WORLD, &win )
                                ;
     MPI_Finalize();
@@ -4656,7 +4812,18 @@ _ACEOF
 cat confdefs.h >>conftest.$ac_ext
 cat >>conftest.$ac_ext <<_ACEOF
 /* end confdefs.h.  */
+
+/* <stdlib.h> is included to get NULL defined */
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#else
+#if !defined( NULL )
+#define NULL 0
+#endif
+#endif
+
 #include "mpi.h"
+
 int
 main ()
 {
@@ -4665,9 +4832,6 @@ main ()
      int itmp; MPI_Win win  ;
     MPI_Init(&argc, &argv);
 
-#ifndef NULL
-#define NULL 0
-#endif
     itmp=PMPI_Win_create( NULL, 0, 1, MPI_INFO_NULL, MPI_COMM_WORLD, &win )
                                    ;
     MPI_Finalize();
@@ -4756,7 +4920,18 @@ _ACEOF
 cat confdefs.h >>conftest.$ac_ext
 cat >>conftest.$ac_ext <<_ACEOF
 /* end confdefs.h.  */
+
+/* <stdlib.h> is included to get NULL defined */
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#else
+#if !defined( NULL )
+#define NULL 0
+#endif
+#endif
+
 #include "mpi.h"
+
 int
 main ()
 {
@@ -4765,9 +4940,6 @@ main ()
      int itmp; MPI_Win win  ;
     MPI_Init(&argc, &argv);
 
-#ifndef NULL
-#define NULL 0
-#endif
     itmp=MPI_Win_create( NULL, 0, 1, MPI_INFO_NULL, MPI_COMM_WORLD, &win );
     itmp=MPI_Win_lock( MPI_LOCK_EXCLUSIVE, 0, 0, win );
     itmp=MPI_Win_unlock( 0, win )
@@ -4852,7 +5024,18 @@ _ACEOF
 cat confdefs.h >>conftest.$ac_ext
 cat >>conftest.$ac_ext <<_ACEOF
 /* end confdefs.h.  */
+
+/* <stdlib.h> is included to get NULL defined */
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#else
+#if !defined( NULL )
+#define NULL 0
+#endif
+#endif
+
 #include "mpi.h"
+
 int
 main ()
 {
@@ -4861,9 +5044,6 @@ main ()
      int itmp; MPI_Win win  ;
     MPI_Init(&argc, &argv);
 
-#ifndef NULL
-#define NULL 0
-#endif
     itmp=PMPI_Win_create( NULL, 0, 1, MPI_INFO_NULL, MPI_COMM_WORLD, &win );
     itmp=PMPI_Win_lock( MPI_LOCK_EXCLUSIVE, 0, 0, win );
     itmp=PMPI_Win_unlock( 0, win )
@@ -4962,7 +5142,18 @@ _ACEOF
 cat confdefs.h >>conftest.$ac_ext
 cat >>conftest.$ac_ext <<_ACEOF
 /* end confdefs.h.  */
+
+/* <stdlib.h> is included to get NULL defined */
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#else
+#if !defined( NULL )
+#define NULL 0
+#endif
+#endif
+
 #include "mpi.h"
+
 int
 main ()
 {
@@ -4971,9 +5162,6 @@ main ()
      int itmp, flag; MPI_Win win  ;
     MPI_Init(&argc, &argv);
 
-#ifndef NULL
-#define NULL 0
-#endif
     itmp=MPI_Win_create( NULL, 0, 1, MPI_INFO_NULL, MPI_COMM_WORLD, &win );
     itmp=MPI_Win_test( win, &flag )
                                       ;
@@ -5057,7 +5245,18 @@ _ACEOF
 cat confdefs.h >>conftest.$ac_ext
 cat >>conftest.$ac_ext <<_ACEOF
 /* end confdefs.h.  */
+
+/* <stdlib.h> is included to get NULL defined */
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#else
+#if !defined( NULL )
+#define NULL 0
+#endif
+#endif
+
 #include "mpi.h"
+
 int
 main ()
 {
@@ -5066,9 +5265,6 @@ main ()
      int itmp, flag; MPI_Win win  ;
     MPI_Init(&argc, &argv);
 
-#ifndef NULL
-#define NULL 0
-#endif
     itmp=PMPI_Win_create( NULL, 0, 1, MPI_INFO_NULL, MPI_COMM_WORLD, &win );
     itmp=PMPI_Win_test( win, &flag )
                                           ;
@@ -5170,6 +5366,460 @@ _ACEOF
 fi
 
 if test "$MPI_IMPL" != "MPICH" -a "$MPI_IMPL" != "MPICH2" ; then
+    if test "$enable_checkMPI" = "yes" ; then
+        echo "$as_me:$LINENO: checking for the C version of MPI_Comm_connect/accept() " >&5
+echo $ECHO_N "checking for the C version of MPI_Comm_connect/accept() ... $ECHO_C" >&6
+
+    pac_MPI_CC="$MPI_CC"
+    pac_MPI_CFLAGS="$CFLAGS $MPI_INC"
+    pac_MPI_LIBS="$MPI_LIBS"
+
+
+    ac_ext=c
+ac_cpp='$CPP $CPPFLAGS'
+ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
+ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
+ac_compiler_gnu=$ac_cv_c_compiler_gnu
+
+    pac_saved_CC="$CC"
+    pac_saved_CFLAGS="$CFLAGS"
+    pac_saved_LIBS="$LIBS"
+    CC="$pac_MPI_CC"
+    CFLAGS="$pac_MPI_CFLAGS"
+    LIBS="$pac_MPI_LIBS"
+    cat >conftest.$ac_ext <<_ACEOF
+ /* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+/* <stdlib.h> is included to get NULL defined */
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#else
+#if !defined( NULL )
+#define NULL 0
+#endif
+#endif
+
+#include "mpi.h"
+
+int
+main ()
+{
+
+    int argc; char **argv;
+     MPI_Comm intercomm; char *port  ;
+    MPI_Init(&argc, &argv);
+
+    MPI_Comm_connect( port, MPI_INFO_NULL, 0, MPI_COMM_WORLD, &intercomm );
+    MPI_Comm_accept( port, MPI_INFO_NULL, 0, MPI_COMM_WORLD, &intercomm )
+                               ;
+    MPI_Finalize();
+
+  ;
+  return 0;
+}
+_ACEOF
+rm -f conftest.$ac_objext conftest$ac_exeext
+if { (eval echo "$as_me:$LINENO: \"$ac_link\"") >&5
+  (eval $ac_link) 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } &&
+	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; } &&
+	 { ac_try='test -s conftest$ac_exeext'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; }; then
+  pac_mpi_working=yes
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+pac_mpi_working=no
+fi
+rm -f conftest.err conftest.$ac_objext \
+      conftest$ac_exeext conftest.$ac_ext
+    CC="$pac_saved_CC"
+    CFLAGS="$pac_saved_CFLAGS"
+    LIBS="$pac_saved_LIBS"
+    ac_ext=c
+ac_cpp='$CPP $CPPFLAGS'
+ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
+ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
+ac_compiler_gnu=$ac_cv_c_compiler_gnu
+
+    if test "$pac_mpi_working" = "yes" ; then
+        mpe_link_ok=yes
+    else
+        mpe_link_ok=no
+    fi
+
+        if test "$mpe_link_ok" = "yes" ; then
+            echo "$as_me:$LINENO: result: yes" >&5
+echo "${ECHO_T}yes" >&6
+            echo "$as_me:$LINENO: checking for the C version of PMPI_Comm_connect/accept() " >&5
+echo $ECHO_N "checking for the C version of PMPI_Comm_connect/accept() ... $ECHO_C" >&6
+
+    pac_MPI_CC="$MPI_CC"
+    pac_MPI_CFLAGS="$CFLAGS $MPI_INC"
+    pac_MPI_LIBS="$MPI_LIBS"
+
+
+    ac_ext=c
+ac_cpp='$CPP $CPPFLAGS'
+ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
+ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
+ac_compiler_gnu=$ac_cv_c_compiler_gnu
+
+    pac_saved_CC="$CC"
+    pac_saved_CFLAGS="$CFLAGS"
+    pac_saved_LIBS="$LIBS"
+    CC="$pac_MPI_CC"
+    CFLAGS="$pac_MPI_CFLAGS"
+    LIBS="$pac_MPI_LIBS"
+    cat >conftest.$ac_ext <<_ACEOF
+ /* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+/* <stdlib.h> is included to get NULL defined */
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#else
+#if !defined( NULL )
+#define NULL 0
+#endif
+#endif
+
+#include "mpi.h"
+
+int
+main ()
+{
+
+    int argc; char **argv;
+     MPI_Comm intercomm; char *port  ;
+    MPI_Init(&argc, &argv);
+
+    PMPI_Comm_connect( port, MPI_INFO_NULL, 0, MPI_COMM_WORLD, &intercomm );
+    PMPI_Comm_accept( port, MPI_INFO_NULL, 0, MPI_COMM_WORLD, &intercomm )
+                                   ;
+    MPI_Finalize();
+
+  ;
+  return 0;
+}
+_ACEOF
+rm -f conftest.$ac_objext conftest$ac_exeext
+if { (eval echo "$as_me:$LINENO: \"$ac_link\"") >&5
+  (eval $ac_link) 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } &&
+	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; } &&
+	 { ac_try='test -s conftest$ac_exeext'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; }; then
+  pac_mpi_working=yes
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+pac_mpi_working=no
+fi
+rm -f conftest.err conftest.$ac_objext \
+      conftest$ac_exeext conftest.$ac_ext
+    CC="$pac_saved_CC"
+    CFLAGS="$pac_saved_CFLAGS"
+    LIBS="$pac_saved_LIBS"
+    ac_ext=c
+ac_cpp='$CPP $CPPFLAGS'
+ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
+ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
+ac_compiler_gnu=$ac_cv_c_compiler_gnu
+
+    if test "$pac_mpi_working" = "yes" ; then
+        mpe_link_ok=yes
+    else
+        mpe_link_ok=no
+    fi
+
+            if test "$mpe_link_ok" = "yes" ; then
+                echo "$as_me:$LINENO: result: yes" >&5
+echo "${ECHO_T}yes" >&6
+
+cat >>confdefs.h <<\_ACEOF
+#define HAVE_MPI_SPAWN 1
+_ACEOF
+
+
+                                echo "$as_me:$LINENO: checking for the C version of MPI_Publish/Lookup_name() " >&5
+echo $ECHO_N "checking for the C version of MPI_Publish/Lookup_name() ... $ECHO_C" >&6
+
+    pac_MPI_CC="$MPI_CC"
+    pac_MPI_CFLAGS="$CFLAGS $MPI_INC"
+    pac_MPI_LIBS="$MPI_LIBS"
+
+
+    ac_ext=c
+ac_cpp='$CPP $CPPFLAGS'
+ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
+ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
+ac_compiler_gnu=$ac_cv_c_compiler_gnu
+
+    pac_saved_CC="$CC"
+    pac_saved_CFLAGS="$CFLAGS"
+    pac_saved_LIBS="$LIBS"
+    CC="$pac_MPI_CC"
+    CFLAGS="$pac_MPI_CFLAGS"
+    LIBS="$pac_MPI_LIBS"
+    cat >conftest.$ac_ext <<_ACEOF
+ /* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+/* <stdlib.h> is included to get NULL defined */
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#else
+#if !defined( NULL )
+#define NULL 0
+#endif
+#endif
+
+#include "mpi.h"
+
+int
+main ()
+{
+
+    int argc; char **argv;
+     char *port  ;
+    MPI_Init(&argc, &argv);
+
+    MPI_Publish_name( "mpe_port_name", MPI_INFO_NULL, port );
+    MPI_Lookup_name( "mpe_port_name", MPI_INFO_NULL, port );
+    MPI_Unpublish_name( "mpe_port_name", MPI_INFO_NULL, port );
+                                       ;
+    MPI_Finalize();
+
+  ;
+  return 0;
+}
+_ACEOF
+rm -f conftest.$ac_objext conftest$ac_exeext
+if { (eval echo "$as_me:$LINENO: \"$ac_link\"") >&5
+  (eval $ac_link) 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } &&
+	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; } &&
+	 { ac_try='test -s conftest$ac_exeext'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; }; then
+  pac_mpi_working=yes
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+pac_mpi_working=no
+fi
+rm -f conftest.err conftest.$ac_objext \
+      conftest$ac_exeext conftest.$ac_ext
+    CC="$pac_saved_CC"
+    CFLAGS="$pac_saved_CFLAGS"
+    LIBS="$pac_saved_LIBS"
+    ac_ext=c
+ac_cpp='$CPP $CPPFLAGS'
+ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
+ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
+ac_compiler_gnu=$ac_cv_c_compiler_gnu
+
+    if test "$pac_mpi_working" = "yes" ; then
+        mpe_link_ok=yes
+    else
+        mpe_link_ok=no
+    fi
+
+                if test "$mpe_link_ok" = "yes" ; then
+                    echo "$as_me:$LINENO: result: yes" >&5
+echo "${ECHO_T}yes" >&6
+                    echo "$as_me:$LINENO: checking for the C version of PMPI_Publish/Lookup_name() " >&5
+echo $ECHO_N "checking for the C version of PMPI_Publish/Lookup_name() ... $ECHO_C" >&6
+
+    pac_MPI_CC="$MPI_CC"
+    pac_MPI_CFLAGS="$CFLAGS $MPI_INC"
+    pac_MPI_LIBS="$MPI_LIBS"
+
+
+    ac_ext=c
+ac_cpp='$CPP $CPPFLAGS'
+ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
+ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
+ac_compiler_gnu=$ac_cv_c_compiler_gnu
+
+    pac_saved_CC="$CC"
+    pac_saved_CFLAGS="$CFLAGS"
+    pac_saved_LIBS="$LIBS"
+    CC="$pac_MPI_CC"
+    CFLAGS="$pac_MPI_CFLAGS"
+    LIBS="$pac_MPI_LIBS"
+    cat >conftest.$ac_ext <<_ACEOF
+ /* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+/* <stdlib.h> is included to get NULL defined */
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#else
+#if !defined( NULL )
+#define NULL 0
+#endif
+#endif
+
+#include "mpi.h"
+
+int
+main ()
+{
+
+    int argc; char **argv;
+     char *port  ;
+    MPI_Init(&argc, &argv);
+
+    PMPI_Publish_name( "mpe_port_name", MPI_INFO_NULL, port );
+    PMPI_Lookup_name( "mpe_port_name", MPI_INFO_NULL, port );
+    PMPI_Unpublish_name( "mpe_port_name", MPI_INFO_NULL, port );
+                                          ;
+    MPI_Finalize();
+
+  ;
+  return 0;
+}
+_ACEOF
+rm -f conftest.$ac_objext conftest$ac_exeext
+if { (eval echo "$as_me:$LINENO: \"$ac_link\"") >&5
+  (eval $ac_link) 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } &&
+	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; } &&
+	 { ac_try='test -s conftest$ac_exeext'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; }; then
+  pac_mpi_working=yes
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+pac_mpi_working=no
+fi
+rm -f conftest.err conftest.$ac_objext \
+      conftest$ac_exeext conftest.$ac_ext
+    CC="$pac_saved_CC"
+    CFLAGS="$pac_saved_CFLAGS"
+    LIBS="$pac_saved_LIBS"
+    ac_ext=c
+ac_cpp='$CPP $CPPFLAGS'
+ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
+ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
+ac_compiler_gnu=$ac_cv_c_compiler_gnu
+
+    if test "$pac_mpi_working" = "yes" ; then
+        mpe_link_ok=yes
+    else
+        mpe_link_ok=no
+    fi
+
+                    if test "$mpe_link_ok" = "yes" ; then
+                        echo "$as_me:$LINENO: result: yes" >&5
+echo "${ECHO_T}yes" >&6
+
+cat >>confdefs.h <<\_ACEOF
+#define HAVE_MPI_NAMING 1
+_ACEOF
+
+                    else
+                        echo "$as_me:$LINENO: result: no" >&5
+echo "${ECHO_T}no" >&6
+                    fi
+                else
+                    echo "$as_me:$LINENO: result: no" >&5
+echo "${ECHO_T}no" >&6
+                fi
+                            else
+                echo "$as_me:$LINENO: result: no" >&5
+echo "${ECHO_T}no" >&6
+            fi
+        else
+            echo "$as_me:$LINENO: result: no" >&5
+echo "${ECHO_T}no" >&6
+        fi
+    fi
+else
+    if test "$MPI_IMPL" = "MPICH2" ; then
+
+cat >>confdefs.h <<\_ACEOF
+#define HAVE_MPI_SPAWN 1
+_ACEOF
+
+    fi
+fi
+
+if test "$MPI_IMPL" != "MPICH" -a "$MPI_IMPL" != "MPICH2" ; then
     echo "$as_me:$LINENO: checking for MPI_STATUS_IGNORE " >&5
 echo $ECHO_N "checking for MPI_STATUS_IGNORE ... $ECHO_C" >&6
 
@@ -5196,7 +5846,18 @@ _ACEOF
 cat confdefs.h >>conftest.$ac_ext
 cat >>conftest.$ac_ext <<_ACEOF
 /* end confdefs.h.  */
+
+/* <stdlib.h> is included to get NULL defined */
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#else
+#if !defined( NULL )
+#define NULL 0
+#endif
+#endif
+
 #include "mpi.h"
+
 int
 main ()
 {
@@ -5302,7 +5963,18 @@ _ACEOF
 cat confdefs.h >>conftest.$ac_ext
 cat >>conftest.$ac_ext <<_ACEOF
 /* end confdefs.h.  */
+
+/* <stdlib.h> is included to get NULL defined */
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#else
+#if !defined( NULL )
+#define NULL 0
+#endif
+#endif
+
 #include "mpi.h"
+
 int
 main ()
 {
@@ -5521,7 +6193,18 @@ _ACEOF
 cat confdefs.h >>conftest.$ac_ext
 cat >>conftest.$ac_ext <<_ACEOF
 /* end confdefs.h.  */
+
+/* <stdlib.h> is included to get NULL defined */
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#else
+#if !defined( NULL )
+#define NULL 0
+#endif
+#endif
+
 #include "mpi.h"
+
 int
 main ()
 {
@@ -5622,7 +6305,18 @@ _ACEOF
 cat confdefs.h >>conftest.$ac_ext
 cat >>conftest.$ac_ext <<_ACEOF
 /* end confdefs.h.  */
+
+/* <stdlib.h> is included to get NULL defined */
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#else
+#if !defined( NULL )
+#define NULL 0
+#endif
+#endif
+
 #include "mpi.h"
+
 int
 main ()
 {
@@ -5721,7 +6415,18 @@ _ACEOF
 cat confdefs.h >>conftest.$ac_ext
 cat >>conftest.$ac_ext <<_ACEOF
 /* end confdefs.h.  */
+
+/* <stdlib.h> is included to get NULL defined */
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#else
+#if !defined( NULL )
+#define NULL 0
+#endif
+#endif
+
 #include "mpi.h"
+
 int
 main ()
 {
@@ -5820,7 +6525,18 @@ _ACEOF
 cat confdefs.h >>conftest.$ac_ext
 cat >>conftest.$ac_ext <<_ACEOF
 /* end confdefs.h.  */
+
+/* <stdlib.h> is included to get NULL defined */
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#else
+#if !defined( NULL )
+#define NULL 0
+#endif
+#endif
+
 #include "mpi.h"
+
 int
 main ()
 {
@@ -6060,7 +6776,18 @@ _ACEOF
 cat confdefs.h >>conftest.$ac_ext
 cat >>conftest.$ac_ext <<_ACEOF
 /* end confdefs.h.  */
+
+/* <stdlib.h> is included to get NULL defined */
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#else
+#if !defined( NULL )
+#define NULL 0
+#endif
+#endif
+
 #include "mpi.h"
+
 int
 main ()
 {
@@ -6164,7 +6891,18 @@ _ACEOF
 cat confdefs.h >>conftest.$ac_ext
 cat >>conftest.$ac_ext <<_ACEOF
 /* end confdefs.h.  */
+
+/* <stdlib.h> is included to get NULL defined */
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#else
+#if !defined( NULL )
+#define NULL 0
+#endif
+#endif
+
 #include "mpi.h"
+
 int
 main ()
 {
@@ -6266,7 +7004,18 @@ _ACEOF
 cat confdefs.h >>conftest.$ac_ext
 cat >>conftest.$ac_ext <<_ACEOF
 /* end confdefs.h.  */
+
+/* <stdlib.h> is included to get NULL defined */
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#else
+#if !defined( NULL )
+#define NULL 0
+#endif
+#endif
+
 #include "mpi.h"
+
 int
 main ()
 {
@@ -6368,7 +7117,18 @@ _ACEOF
 cat confdefs.h >>conftest.$ac_ext
 cat >>conftest.$ac_ext <<_ACEOF
 /* end confdefs.h.  */
+
+/* <stdlib.h> is included to get NULL defined */
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#else
+#if !defined( NULL )
+#define NULL 0
+#endif
+#endif
+
 #include "mpi.h"
+
 int
 main ()
 {
@@ -6470,7 +7230,18 @@ _ACEOF
 cat confdefs.h >>conftest.$ac_ext
 cat >>conftest.$ac_ext <<_ACEOF
 /* end confdefs.h.  */
+
+/* <stdlib.h> is included to get NULL defined */
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#else
+#if !defined( NULL )
+#define NULL 0
+#endif
+#endif
+
 #include "mpi.h"
+
 int
 main ()
 {
@@ -6572,7 +7343,18 @@ _ACEOF
 cat confdefs.h >>conftest.$ac_ext
 cat >>conftest.$ac_ext <<_ACEOF
 /* end confdefs.h.  */
+
+/* <stdlib.h> is included to get NULL defined */
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#else
+#if !defined( NULL )
+#define NULL 0
+#endif
+#endif
+
 #include "mpi.h"
+
 int
 main ()
 {
@@ -7470,17 +8252,10 @@ s,@MKDIR@,$MKDIR,;t t
 s,@CPRP@,$CPRP,;t t
 s,@RM@,$RM,;t t
 s,@MV@,$MV,;t t
-s,@build@,$build,;t t
-s,@build_cpu@,$build_cpu,;t t
-s,@build_vendor@,$build_vendor,;t t
-s,@build_os@,$build_os,;t t
-s,@host@,$host,;t t
-s,@host_cpu@,$host_cpu,;t t
-s,@host_vendor@,$host_vendor,;t t
-s,@host_os@,$host_os,;t t
 s,@includebuild_dir@,$includebuild_dir,;t t
 s,@libbuild_dir@,$libbuild_dir,;t t
 s,@binbuild_dir@,$binbuild_dir,;t t
+s,@sbinbuild_dir@,$sbinbuild_dir,;t t
 s,@etcbuild_dir@,$etcbuild_dir,;t t
 s,@CC@,$CC,;t t
 s,@CFLAGS@,$CFLAGS,;t t
@@ -7496,6 +8271,14 @@ s,@CPP@,$CPP,;t t
 s,@DEBUG_LIBS@,$DEBUG_LIBS,;t t
 s,@EGREP@,$EGREP,;t t
 s,@ALLOCA@,$ALLOCA,;t t
+s,@build@,$build,;t t
+s,@build_cpu@,$build_cpu,;t t
+s,@build_vendor@,$build_vendor,;t t
+s,@build_os@,$build_os,;t t
+s,@host@,$host,;t t
+s,@host_cpu@,$host_cpu,;t t
+s,@host_vendor@,$host_vendor,;t t
+s,@host_os@,$host_os,;t t
 s,@MPI_IMPL@,$MPI_IMPL,;t t
 s,@MPE_BUILD_FORTRAN2C@,$MPE_BUILD_FORTRAN2C,;t t
 s,@CLINKER@,$CLINKER,;t t

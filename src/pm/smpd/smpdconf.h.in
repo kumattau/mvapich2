@@ -1,5 +1,14 @@
 /* smpdconf.h.in.  Generated from configure.in by autoheader.  */
 
+/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/*  
+ *  (C) 2001 by Argonne National Laboratory.
+ *      See COPYRIGHT in top-level directory.
+ */
+#ifndef SMPDCONF_H_INCLUDED
+#define SMPDCONF_H_INCLUDED
+
+
 /* Define to 1 if you have the `CFUUIDCreate' function. */
 #undef HAVE_CFUUIDCREATE
 
@@ -15,8 +24,17 @@
 /* Define to 1 if you have the <math.h> header file. */
 #undef HAVE_MATH_H
 
+/* Define to 1 if you have the `MD5' function. */
+#undef HAVE_MD5
+
 /* Define if you have the md5_calc function. */
 #undef HAVE_MD5_CALC
+
+/* Define to 1 if you have the <md5.h> header file. */
+#undef HAVE_MD5_H
+
+/* Define to 1 if you have the <openssl/md5.h> header file. */
+#undef HAVE_OPENSSL_MD5_H
 
 /* Define to 1 if you have the <pthread.h> header file. */
 #undef HAVE_PTHREAD_H
@@ -32,6 +50,9 @@
 
 /* Define to 1 if you have the <stdarg.h> header file. */
 #undef HAVE_STDARG_H
+
+/* Define to 1 if you have the <stddef.h> header file. */
+#undef HAVE_STDDEF_H
 
 /* Define to 1 if you have the <stdio.h> header file. */
 #undef HAVE_STDIO_H
@@ -104,3 +125,5 @@
 
 /* if C does not support volatile */
 #undef volatile
+
+#endif

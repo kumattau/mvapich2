@@ -6,6 +6,9 @@
 all: all-redirect
 
 SHELL           = @SHELL@
+bindir          = @bindir@
+exec_prefix     = @exec_prefix@
+prefix          = @prefix@
 abs_builddir    = @abs_builddir@
 srcdir          = @srcdir@
 abs_srcdir      = @abs_srcdir@
@@ -13,13 +16,10 @@ DEFS            = @DEFS@ -I. -I${srcdir}
 CPPFLAGS        = @CPPFLAGS@
 LIBS            = @LIBS@
 MAKE            = @MAKE@
-MPILIBNAME      = @MPILIBNAME@
-PMPILIBNAME     = @PMPILIBNAME@
-
 CC              = @CC@
 CFLAGS          = @CFLAGS@
 C_COMPILE       = $(CC) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
-C_LINK      = $(CC)
+C_LINK         = $(CC)
 LDFLAGS     =  @LDFLAGS@ 
 
 VPATH = .:@srcdir@
@@ -31,15 +31,15 @@ INCLUDES = -I../include -I${srcdir}/../include
 	$(C_COMPILE) -c $<
 .c:
 	$(C_COMPILE) -o $* $< $(LDFLAGS) $(LIBS)
-apply:
+apply: 
 	$(ACTION) $(ACTION_INPUT)
-clean:
-	-@rm -f *.o ${srcdir}/*.o icreduce red3 bcasttest icbarrier coll4 allgatherv2 alltoallv allredmany icallgather scatter3 opsum icallreduce scatterv alltoallw2 coll13 opmax alltoall1 longuser coll9 icalltoallw icgatherv exscan2 alltoallw1 icgather reduce allgather3 alltoallv0 rerr coll10 opband icalltoall scattern scatter2 oplxor opprod opbxor gather2 icscatterv icalltoallv coll12 allred coll7 coll11 opbor exscan allgather2 opland scantst oplor coll5 red4 opminloc bcast2 coll3 icbcast allred2 allgatherv3 bcast3 coll6 coll2 icscatter opmin gather opmaxloc allred3 coll8 redscat icallgatherv allred4
-	-@rm -f icreduce.exe red3.exe bcasttest.exe icbarrier.exe coll4.exe allgatherv2.exe alltoallv.exe allredmany.exe icallgather.exe scatter3.exe opsum.exe icallreduce.exe scatterv.exe alltoallw2.exe coll13.exe opmax.exe alltoall1.exe longuser.exe coll9.exe icalltoallw.exe icgatherv.exe exscan2.exe alltoallw1.exe icgather.exe reduce.exe allgather3.exe alltoallv0.exe rerr.exe coll10.exe opband.exe icalltoall.exe scattern.exe scatter2.exe oplxor.exe opprod.exe opbxor.exe gather2.exe icscatterv.exe icalltoallv.exe coll12.exe allred.exe coll7.exe coll11.exe opbor.exe exscan.exe allgather2.exe opland.exe scantst.exe oplor.exe coll5.exe red4.exe opminloc.exe bcast2.exe coll3.exe icbcast.exe allred2.exe allgatherv3.exe bcast3.exe coll6.exe coll2.exe icscatter.exe opmin.exe gather.exe opmaxloc.exe allred3.exe coll8.exe redscat.exe icallgatherv.exe allred4.exe
+clean: 
+	-@rm -f *.o ${srcdir}/*.o icreduce red3 bcasttest icbarrier coll4 allgatherv2 alltoallv allredmany icallgather scatter3 opsum icallreduce scatterv alltoallw2 coll13 opmax alltoall1 longuser coll9 icalltoallw icgatherv exscan2 alltoallw1 icgather reduce allgather3 alltoallv0 coll10 opband icalltoall scattern scatter2 oplxor opprod opbxor gather2 icscatterv icalltoallv coll12 allred coll7 coll11 opbor exscan allgather2 opland scantst oplor coll5 red4 opminloc bcast2 coll3 icbcast allred2 allgatherv3 bcast3 coll6 coll2 icscatter opmin gather opmaxloc allred3 coll8 redscat icallgatherv allred4
+	-@rm -f icreduce.exe red3.exe bcasttest.exe icbarrier.exe coll4.exe allgatherv2.exe alltoallv.exe allredmany.exe icallgather.exe scatter3.exe opsum.exe icallreduce.exe scatterv.exe alltoallw2.exe coll13.exe opmax.exe alltoall1.exe longuser.exe coll9.exe icalltoallw.exe icgatherv.exe exscan2.exe alltoallw1.exe icgather.exe reduce.exe allgather3.exe alltoallv0.exe coll10.exe opband.exe icalltoall.exe scattern.exe scatter2.exe oplxor.exe opprod.exe opbxor.exe gather2.exe icscatterv.exe icalltoallv.exe coll12.exe allred.exe coll7.exe coll11.exe opbor.exe exscan.exe allgather2.exe opland.exe scantst.exe oplor.exe coll5.exe red4.exe opminloc.exe bcast2.exe coll3.exe icbcast.exe allred2.exe allgatherv3.exe bcast3.exe coll6.exe coll2.exe icscatter.exe opmin.exe gather.exe opmaxloc.exe allred3.exe coll8.exe redscat.exe icallgatherv.exe allred4.exe
 	-@rm -f core core.[0-9]*
 	-@rm -f *.lo ${srcdir}/*.lo
 	-@rm -f *.irlog*
-distclean: clean distclean-xxx remove-makefile
+distclean:  clean distclean-xxx remove-makefile
 distclean-xxx:
 	-@rm -f Makefile
 	-@rm -rf autom4te*.cache
@@ -53,196 +53,194 @@ all-redirect: bcasttest bcast2 bcast3 allred allred2 allred3 allred4 red3 red4\
 	 reduce coll8 coll13 alltoallv alltoallv0 alltoallw1 alltoallw2\
 	 alltoall1 redscat coll9 coll7 coll6 coll5 coll4 coll3 coll2\
 	 allredmany scantst longuser coll10 coll11 coll12 scatterv scattern\
-	 scatter2 scatter3 rerr gather gather2 allgather2 allgather3\
-	 allgatherv2 allgatherv3 icbcast icbarrier icscatter icgather\
-	 icscatterv icgatherv icallgather icallgatherv icallreduce icreduce\
-	 icalltoall icalltoallv icalltoallw opland oplor oplxor opband opbor\
-	 opbxor opsum opmax opmin opminloc opmaxloc opprod exscan exscan2
+	 scatter2 scatter3 gather gather2 allgather2 allgather3 allgatherv2\
+	 allgatherv3 icbcast icbarrier icscatter icgather icscatterv icgatherv\
+	 icallgather icallgatherv icallreduce icreduce icalltoall icalltoallv\
+	 icalltoallw opland oplor oplxor opband opbor opbxor opsum opmax opmin\
+	 opminloc opmaxloc opprod exscan exscan2
 
-icreduce: icreduce.o   @MPILIBLOC@
+icreduce: icreduce.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o icreduce icreduce.o  \
 	../util/mtest.o ${LIBS} 
-red3: red3.o   @MPILIBLOC@
+red3: red3.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o red3 red3.o  ../util/mtest.o \
 	${LIBS} 
-bcasttest: bcasttest.o   @MPILIBLOC@
+bcasttest: bcasttest.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o bcasttest bcasttest.o  ${LIBS}
-icbarrier: icbarrier.o   @MPILIBLOC@
+icbarrier: icbarrier.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o icbarrier icbarrier.o  \
 	../util/mtest.o ${LIBS} 
-coll4: coll4.o   @MPILIBLOC@
+coll4: coll4.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o coll4 coll4.o  ${LIBS}
-allgatherv2: allgatherv2.o   @MPILIBLOC@
+allgatherv2: allgatherv2.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o allgatherv2 allgatherv2.o  \
 	../util/mtest.o ${LIBS} 
-alltoallv: alltoallv.o   @MPILIBLOC@
+alltoallv: alltoallv.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o alltoallv alltoallv.o  \
 	../util/mtest.o ${LIBS} 
-allredmany: allredmany.o   @MPILIBLOC@
+allredmany: allredmany.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o allredmany allredmany.o  ${LIBS}
-icallgather: icallgather.o   @MPILIBLOC@
+icallgather: icallgather.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o icallgather icallgather.o  \
 	../util/mtest.o ${LIBS} 
-scatter3: scatter3.o   @MPILIBLOC@
+scatter3: scatter3.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o scatter3 scatter3.o  \
 	../util/mtest.o ${LIBS} 
-opsum: opsum.o   @MPILIBLOC@
+opsum: opsum.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o opsum opsum.o  ../util/mtest.o \
 	${LIBS} 
-icallreduce: icallreduce.o   @MPILIBLOC@
+icallreduce: icallreduce.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o icallreduce icallreduce.o  \
 	../util/mtest.o ${LIBS} 
-scatterv: scatterv.o   @MPILIBLOC@
+scatterv: scatterv.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o scatterv scatterv.o  ${LIBS}
-alltoallw2: alltoallw2.o   @MPILIBLOC@
+alltoallw2: alltoallw2.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o alltoallw2 alltoallw2.o  \
 	../util/mtest.o ${LIBS} 
-coll13: coll13.o   @MPILIBLOC@
+coll13: coll13.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o coll13 coll13.o  ${LIBS}
-opmax: opmax.o   @MPILIBLOC@
+opmax: opmax.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o opmax opmax.o  ../util/mtest.o \
 	${LIBS} 
-alltoall1: alltoall1.o   @MPILIBLOC@
+alltoall1: alltoall1.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o alltoall1 alltoall1.o  \
 	../util/mtest.o ${LIBS} 
-longuser: longuser.o   @MPILIBLOC@
+longuser: longuser.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o longuser longuser.o  ${LIBS}
-coll9: coll9.o   @MPILIBLOC@
+coll9: coll9.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o coll9 coll9.o  ${LIBS}
-icalltoallw: icalltoallw.o   @MPILIBLOC@
+icalltoallw: icalltoallw.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o icalltoallw icalltoallw.o  \
 	../util/mtest.o ${LIBS} 
-icgatherv: icgatherv.o   @MPILIBLOC@
+icgatherv: icgatherv.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o icgatherv icgatherv.o  \
 	../util/mtest.o ${LIBS} 
-exscan2: exscan2.o   @MPILIBLOC@
+exscan2: exscan2.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o exscan2 exscan2.o  ../util/mtest.o \
 	${LIBS} 
-alltoallw1: alltoallw1.o   @MPILIBLOC@
+alltoallw1: alltoallw1.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o alltoallw1 alltoallw1.o  \
 	../util/mtest.o ${LIBS} 
-icgather: icgather.o   @MPILIBLOC@
+icgather: icgather.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o icgather icgather.o  \
 	../util/mtest.o ${LIBS} 
-reduce: reduce.o   @MPILIBLOC@
+reduce: reduce.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o reduce reduce.o  ../util/mtest.o \
 	${LIBS} 
-allgather3: allgather3.o   @MPILIBLOC@
+allgather3: allgather3.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o allgather3 allgather3.o  \
 	../util/mtest.o ${LIBS} 
-alltoallv0: alltoallv0.o   @MPILIBLOC@
+alltoallv0: alltoallv0.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o alltoallv0 alltoallv0.o  \
 	../util/mtest.o ${LIBS} 
-rerr: rerr.o   @MPILIBLOC@
-	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o rerr rerr.o  ${LIBS}
-coll10: coll10.o   @MPILIBLOC@
+coll10: coll10.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o coll10 coll10.o  ${LIBS}
-opband: opband.o   @MPILIBLOC@
+opband: opband.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o opband opband.o  ../util/mtest.o \
 	${LIBS} 
-icalltoall: icalltoall.o   @MPILIBLOC@
+icalltoall: icalltoall.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o icalltoall icalltoall.o  \
 	../util/mtest.o ${LIBS} 
-scattern: scattern.o   @MPILIBLOC@
+scattern: scattern.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o scattern scattern.o  ${LIBS}
-scatter2: scatter2.o   @MPILIBLOC@
+scatter2: scatter2.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o scatter2 scatter2.o  \
 	../util/mtest.o ${LIBS} 
-oplxor: oplxor.o   @MPILIBLOC@
+oplxor: oplxor.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o oplxor oplxor.o  ../util/mtest.o \
 	${LIBS} 
-opprod: opprod.o   @MPILIBLOC@
+opprod: opprod.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o opprod opprod.o  ../util/mtest.o \
 	${LIBS} 
-opbxor: opbxor.o   @MPILIBLOC@
+opbxor: opbxor.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o opbxor opbxor.o  ../util/mtest.o \
 	${LIBS} 
-gather2: gather2.o   @MPILIBLOC@
+gather2: gather2.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o gather2 gather2.o  ../util/mtest.o \
 	${LIBS} 
-icscatterv: icscatterv.o   @MPILIBLOC@
+icscatterv: icscatterv.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o icscatterv icscatterv.o  \
 	../util/mtest.o ${LIBS} 
-icalltoallv: icalltoallv.o   @MPILIBLOC@
+icalltoallv: icalltoallv.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o icalltoallv icalltoallv.o  \
 	../util/mtest.o ${LIBS} 
-coll12: coll12.o   @MPILIBLOC@
+coll12: coll12.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o coll12 coll12.o  ${LIBS}
-allred: allred.o   @MPILIBLOC@
+allred: allred.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o allred allred.o  -lm ${LIBS}
-coll7: coll7.o   @MPILIBLOC@
+coll7: coll7.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o coll7 coll7.o  ${LIBS}
-coll11: coll11.o   @MPILIBLOC@
+coll11: coll11.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o coll11 coll11.o  ${LIBS}
-opbor: opbor.o   @MPILIBLOC@
+opbor: opbor.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o opbor opbor.o  ../util/mtest.o \
 	${LIBS} 
-exscan: exscan.o   @MPILIBLOC@
+exscan: exscan.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o exscan exscan.o  ../util/mtest.o \
 	${LIBS} 
-allgather2: allgather2.o   @MPILIBLOC@
+allgather2: allgather2.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o allgather2 allgather2.o  \
 	../util/mtest.o ${LIBS} 
-opland: opland.o   @MPILIBLOC@
+opland: opland.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o opland opland.o  ../util/mtest.o \
 	${LIBS} 
-scantst: scantst.o   @MPILIBLOC@
+scantst: scantst.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o scantst scantst.o  ${LIBS}
-oplor: oplor.o   @MPILIBLOC@
+oplor: oplor.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o oplor oplor.o  ../util/mtest.o \
 	${LIBS} 
-coll5: coll5.o   @MPILIBLOC@
+coll5: coll5.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o coll5 coll5.o  ${LIBS}
-red4: red4.o   @MPILIBLOC@
+red4: red4.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o red4 red4.o  ../util/mtest.o \
 	${LIBS} 
-opminloc: opminloc.o   @MPILIBLOC@
+opminloc: opminloc.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o opminloc opminloc.o  \
 	../util/mtest.o ${LIBS} 
-bcast2: bcast2.o   @MPILIBLOC@
+bcast2: bcast2.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o bcast2 bcast2.o  ../util/mtest.o \
 	${LIBS} 
-coll3: coll3.o   @MPILIBLOC@
+coll3: coll3.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o coll3 coll3.o  ${LIBS}
-icbcast: icbcast.o   @MPILIBLOC@
+icbcast: icbcast.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o icbcast icbcast.o  ../util/mtest.o \
 	${LIBS} 
-allred2: allred2.o   @MPILIBLOC@
+allred2: allred2.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o allred2 allred2.o  ../util/mtest.o \
 	${LIBS} 
-allgatherv3: allgatherv3.o   @MPILIBLOC@
+allgatherv3: allgatherv3.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o allgatherv3 allgatherv3.o  \
 	../util/mtest.o ${LIBS} 
-bcast3: bcast3.o   @MPILIBLOC@
+bcast3: bcast3.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o bcast3 bcast3.o  ../util/mtest.o \
 	${LIBS} 
-coll6: coll6.o   @MPILIBLOC@
+coll6: coll6.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o coll6 coll6.o  ${LIBS}
-coll2: coll2.o   @MPILIBLOC@
+coll2: coll2.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o coll2 coll2.o  ${LIBS}
-icscatter: icscatter.o   @MPILIBLOC@
+icscatter: icscatter.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o icscatter icscatter.o  \
 	../util/mtest.o ${LIBS} 
-opmin: opmin.o   @MPILIBLOC@
+opmin: opmin.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o opmin opmin.o  ../util/mtest.o \
 	${LIBS} 
-gather: gather.o   @MPILIBLOC@
+gather: gather.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o gather gather.o  ../util/mtest.o \
 	${LIBS} 
-opmaxloc: opmaxloc.o   @MPILIBLOC@
+opmaxloc: opmaxloc.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o opmaxloc opmaxloc.o  \
 	../util/mtest.o ${LIBS} 
-allred3: allred3.o   @MPILIBLOC@
+allred3: allred3.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o allred3 allred3.o  ../util/mtest.o \
 	${LIBS} 
-coll8: coll8.o   @MPILIBLOC@
+coll8: coll8.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o coll8 coll8.o  ${LIBS}
-redscat: redscat.o   @MPILIBLOC@
+redscat: redscat.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o redscat redscat.o  ${LIBS}
-icallgatherv: icallgatherv.o   @MPILIBLOC@
+icallgatherv: icallgatherv.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o icallgatherv icallgatherv.o  \
 	../util/mtest.o ${LIBS} 
-allred4: allred4.o   @MPILIBLOC@
+allred4: allred4.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o allred4 allred4.o  ../util/mtest.o \
 	${LIBS} 
 # --------------------------------------------------------------------------
@@ -253,24 +251,29 @@ SOURCES         =  bcasttest.c bcast2.c bcast3.c allred.c allred2.c allred3.c \
 	alltoallv0.c alltoallw1.c alltoallw2.c alltoall1.c redscat.c coll9.c \
 	coll7.c coll6.c coll5.c coll4.c coll3.c coll2.c allredmany.c \
 	scantst.c longuser.c coll10.c coll11.c coll12.c scatterv.c scattern.c \
-	scatter2.c scatter3.c rerr.c gather.c gather2.c allgather2.c \
-	allgather3.c allgatherv2.c allgatherv3.c icbcast.c icbarrier.c \
-	icscatter.c icgather.c icscatterv.c icgatherv.c icallgather.c \
-	icallgatherv.c icallreduce.c icreduce.c icalltoall.c icalltoallv.c \
-	icalltoallw.c opland.c oplor.c oplxor.c opband.c opbor.c opbxor.c \
-	opsum.c opmax.c opmin.c opminloc.c opmaxloc.c opprod.c exscan.c \
-	exscan2.c 
+	scatter2.c scatter3.c gather.c gather2.c allgather2.c allgather3.c \
+	allgatherv2.c allgatherv3.c icbcast.c icbarrier.c icscatter.c \
+	icgather.c icscatterv.c icgatherv.c icallgather.c icallgatherv.c \
+	icallreduce.c icreduce.c icalltoall.c icalltoallv.c icalltoallw.c \
+	opland.c oplor.c oplxor.c opband.c opbor.c opbxor.c opsum.c opmax.c \
+	opmin.c opminloc.c opmaxloc.c opprod.c exscan.c exscan2.c 
 ETAGS           = @ETAGS@ @ETAGSADD@
 HEADERFILES     = $(HEADERS)
 SOURCEFILES     = $(SOURCES)
 tags: TAGS
-TAGS:${HEADERFILES} ${SOURCEFILES}
+TAGS: Makefile${HEADERFILES} ${SOURCEFILES}
 	here=`cd ../../.. && pwd` ; cd ${srcdir} && $(ETAGS) -o $$here/TAGS --append ${HEADERFILES} ${SOURCEFILES}
 # --------------------------------------------------------------------------
 #
 
 ../util/mtest.o:
 	(cd ../util && $(MAKE))
+
+# A special testing target to simplify running just the collective tests
+testing:
+	../runtests -srcdir=$(srcdir) -tests=testlist \
+		   -mpiexec=$(bindir)/mpiexec \
+		   -xmlfile=summary.xml
 
 FORCE_TARGET:
 

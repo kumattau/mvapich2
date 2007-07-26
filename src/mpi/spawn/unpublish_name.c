@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Unpublish_name
 #define MPI_Unpublish_name PMPI_Unpublish_name
 
 #endif
@@ -56,7 +57,7 @@ int MPI_Unpublish_name(char *service_name, MPI_Info info, char *port_name)
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("spawn");  
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_UNPUBLISH_NAME);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -121,7 +122,7 @@ int MPI_Unpublish_name(char *service_name, MPI_Info info, char *port_name)
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_UNPUBLISH_NAME);
-        MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("spawn");
     return mpi_errno;
 
   fn_fail:

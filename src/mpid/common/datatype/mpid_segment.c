@@ -11,8 +11,35 @@
 #include <mpiimpl.h>
 #include <mpid_dataloop.h>
 
+/* 
+ * Define these two names to enable debugging output.  
+ */
 #undef MPID_SP_VERBOSE
 #undef MPID_SU_VERBOSE
+
+/*
+ * These macros allow us to add a test to an if for required alignments.
+ *
+ * Some CPUs require aligned data when using longer types,
+ * using int64_t failed on SPARC when using the gcc compiler, probably
+ * because gcc make good use of the longer move instructions at the
+ * default optimization level.  The fixme here is to arrange these
+ * so that weaker alignments can still be used, e.g., a basic size of
+ * 8 can use the code for length 4 when the alignment is by 4s.
+ * Note also that unaligned moves, even when supported, are often slower
+ * than aligned moves.
+ */
+#ifdef HAVE_ANY_INT64_T_ALIGNEMENT
+#define MPIR_ALIGN8_TEST(p1,p2)
+#else
+#define MPIR_ALIGN8_TEST(p1,p2) && ((((MPI_Aint)p1 | (MPI_Aint)p2) & 0x7) == 0)
+#endif
+
+#ifdef HAVE_ANY_INT32_T_ALIGNEMENT
+#define MPIR_ALIGN4_TEST(p1,p2)
+#else
+#define MPIR_ALIGN4_TEST(p1,p2) && ((((MPI_Aint)p1 | (MPI_Aint)p2) & 0x3) == 0)
+#endif
 
 /* MPID_Segment_piece_params
  *
@@ -466,14 +493,13 @@ static int MPID_Segment_contig_pack_to_iov(DLOOP_Offset *blocks_p,
     el_size = MPID_Datatype_get_basic_size(el_type);
     size = *blocks_p * (DLOOP_Offset) el_size;
 
-#ifdef MPID_SP_VERBOSE
-    MPIU_dbg_printf("\t[contig to vec: do=%d, dp=%x, ind=%d, sz=%d, blksz=%d]\n",
+    MPIU_DBG_MSG_FMT(DATATYPE,VERBOSE,(MPIU_DBG_FDEST,
+             "\t[contig to vec: do=%d, dp=%x, ind=%d, sz=%d, blksz=%d]\n",
 		    (unsigned) rel_off,
 		    (unsigned) bufp,
 		    paramp->u.pack_vector.index,
 		    el_size,
-		    (int) *blocks_p);
-#endif
+		    (int) *blocks_p));
     
     last_idx = paramp->u.pack_vector.index - 1;
     if (last_idx >= 0) {
@@ -542,8 +568,8 @@ static int MPID_Segment_vector_pack_to_iov(DLOOP_Offset *blocks_p,
     basic_size = MPID_Datatype_get_basic_size(el_type);
     blocks_left = *blocks_p;
 
-#ifdef MPID_SP_VERBOSE
-    MPIU_dbg_printf("\t[vector to vec: do=%d, dp=%x, len=%d, ind=%d, ct=%d, blksz=%d, str=%d, blks=%d]\n",
+    MPIU_DBG_MSG_FMT(DATATYPE,VERBOSE,(MPIU_DBG_FDEST,
+	     "\t[vector to vec: do=%d, dp=%x, len=%d, ind=%d, ct=%d, blksz=%d, str=%d, blks=%d]\n",
 		    (unsigned) rel_off,
 		    (unsigned) bufp,
 		    paramp->u.pack_vector.length,
@@ -551,8 +577,7 @@ static int MPID_Segment_vector_pack_to_iov(DLOOP_Offset *blocks_p,
 		    count,
 		    blksz,
 		    stride,
-		    (int) *blocks_p);
-#endif
+		    (int) *blocks_p));
 
     for (i=0; i < count && blocks_left > 0; i++) {
 	int last_idx;
@@ -886,11 +911,13 @@ static int MPID_Segment_vector_unpack_to_buf(DLOOP_Offset *blocks_p,
 	       (int) *blocks_p);
 #endif
 
-    if (basic_size == 8) {
+    if (basic_size == 8 
+	MPIR_ALIGN8_TEST(paramp->u.unpack.unpack_buffer,cbufp)) {
 	MPIDI_COPY_TO_VEC(paramp->u.unpack.unpack_buffer, cbufp, stride, int64_t, blksz, whole_count);
 	MPIDI_COPY_TO_VEC(paramp->u.unpack.unpack_buffer, cbufp, 0, int64_t, blocks_left, 1);
     }
-    else if (basic_size == 4) {
+    else if (basic_size == 4
+	     MPIR_ALIGN4_TEST(paramp->u.unpack.unpack_buffer,cbufp)) {
 	MPIDI_COPY_TO_VEC(paramp->u.unpack.unpack_buffer, cbufp, stride, int32_t, blksz, whole_count);
 	MPIDI_COPY_TO_VEC(paramp->u.unpack.unpack_buffer, cbufp, 0, int32_t, blocks_left, 1);
     }
@@ -956,17 +983,20 @@ static int MPID_Segment_blkidx_unpack_to_buf(DLOOP_Offset *blocks_p,
 
     el_size = MPID_Datatype_get_basic_size(el_type);
 
+    /* FIXME: Add debug output */
     while (blocks_left) {
 	cbufp = (char *) bufp + rel_off + offsetarray[curblock];
 
 	if (blocklen > blocks_left) blocklen = blocks_left;
 
-	if (el_size == 8) {
+	if (el_size == 8 
+	    MPIR_ALIGN8_TEST(paramp->u.unpack.unpack_buffer,cbufp)) {
 	    /* note: macro updates pack buffer location */
 	    MPIDI_COPY_TO_VEC(paramp->u.unpack.unpack_buffer,
 			      cbufp, 0, int64_t, blocklen, 1);
 	}
-	else if (el_size == 4) {
+	else if (el_size == 4
+	    MPIR_ALIGN4_TEST(paramp->u.unpack.unpack_buffer,cbufp)) {
 	    MPIDI_COPY_TO_VEC(paramp->u.unpack.unpack_buffer,
 			      cbufp, 0, int32_t, blocklen, 1);
 	}
@@ -1019,15 +1049,20 @@ static int MPID_Segment_index_unpack_to_buf(DLOOP_Offset *blocks_p,
 
 	if (cur_block_sz > blocks_left) cur_block_sz = blocks_left;
 
-	if (el_size == 8) {
+	if (el_size == 8
+	    MPIR_ALIGN8_TEST(paramp->u.unpack.unpack_buffer,cbufp)) {
 	    /* note: macro updates pack buffer location */
-	    MPIDI_COPY_TO_VEC(paramp->u.unpack.unpack_buffer, cbufp, 0, int64_t, cur_block_sz, 1);
+	    MPIDI_COPY_TO_VEC(paramp->u.unpack.unpack_buffer, cbufp, 0, 
+			      int64_t, cur_block_sz, 1);
 	}
-	else if (el_size == 4) {
-	    MPIDI_COPY_TO_VEC(paramp->u.unpack.unpack_buffer, cbufp, 0, int32_t, cur_block_sz, 1);
+	else if (el_size == 4
+		 MPIR_ALIGN4_TEST(paramp->u.unpack.unpack_buffer,cbufp)) {
+	    MPIDI_COPY_TO_VEC(paramp->u.unpack.unpack_buffer, cbufp, 0, 
+			      int32_t, cur_block_sz, 1);
 	}
 	else if (el_size == 2) {
-	    MPIDI_COPY_TO_VEC(paramp->u.unpack.unpack_buffer, cbufp, 0, int16_t, cur_block_sz, 1);
+	    MPIDI_COPY_TO_VEC(paramp->u.unpack.unpack_buffer, cbufp, 0, 
+			      int16_t, cur_block_sz, 1);
 	}
 	else {
 	    DLOOP_Offset size = cur_block_sz * el_size;
@@ -1135,17 +1170,25 @@ static int MPID_Segment_vector_pack_to_buf(DLOOP_Offset *blocks_p,
 	       (int) *blocks_p);
 #endif
 
-    if (basic_size == 8) {
-	MPIDI_COPY_FROM_VEC(cbufp, paramp->u.pack.pack_buffer, stride, int64_t, blksz, whole_count);
-	MPIDI_COPY_FROM_VEC(cbufp, paramp->u.pack.pack_buffer, 0, int64_t, blocks_left, 1);
+    if (basic_size == 8 
+	MPIR_ALIGN8_TEST(cbufp, paramp->u.pack.pack_buffer)) {
+	MPIDI_COPY_FROM_VEC(cbufp, paramp->u.pack.pack_buffer, stride, int64_t,
+			    blksz, whole_count);
+	MPIDI_COPY_FROM_VEC(cbufp, paramp->u.pack.pack_buffer, 0, int64_t, 
+			    blocks_left, 1);
     }
-    else if (basic_size == 4) {
-	MPIDI_COPY_FROM_VEC(cbufp, paramp->u.pack.pack_buffer, stride, int32_t, blksz, whole_count);
-	MPIDI_COPY_FROM_VEC(cbufp, paramp->u.pack.pack_buffer, 0, int32_t, blocks_left, 1);
+    else if (basic_size == 4 
+	     MPIR_ALIGN4_TEST(cbufp,paramp->u.pack.pack_buffer)) {
+	MPIDI_COPY_FROM_VEC(cbufp, paramp->u.pack.pack_buffer, stride, int32_t,
+			    blksz, whole_count);
+	MPIDI_COPY_FROM_VEC(cbufp, paramp->u.pack.pack_buffer, 0, int32_t, 
+			    blocks_left, 1);
     }
     else if (basic_size == 2) {
-	MPIDI_COPY_FROM_VEC(cbufp, paramp->u.pack.pack_buffer, stride, int16_t, blksz, whole_count);
-	MPIDI_COPY_FROM_VEC(cbufp, paramp->u.pack.pack_buffer, 0, int16_t, blocks_left, 1);
+	MPIDI_COPY_FROM_VEC(cbufp, paramp->u.pack.pack_buffer, stride, int16_t,
+			    blksz, whole_count);
+	MPIDI_COPY_FROM_VEC(cbufp, paramp->u.pack.pack_buffer, 0, int16_t, 
+			    blocks_left, 1);
     }
     else {
 	for (i=0; i < whole_count; i++) {
@@ -1231,15 +1274,20 @@ static int MPID_Segment_index_pack_to_buf(DLOOP_Offset *blocks_p,
 		       el_size,
 		       (int) cur_block_sz * el_size);
 #endif
-	if (el_size == 8) {
+	if (el_size == 8
+	    MPIR_ALIGN8_TEST(paramp->u.pack.pack_buffer,cbufp)) {
 	    /* note: macro updates pack buffer location */
-	    MPIDI_COPY_FROM_VEC(cbufp, paramp->u.pack.pack_buffer, 0, int64_t, cur_block_sz, 1);
+	    MPIDI_COPY_FROM_VEC(cbufp, paramp->u.pack.pack_buffer, 0, int64_t, 
+				cur_block_sz, 1);
 	}
-	else if (el_size == 4) {
-	    MPIDI_COPY_FROM_VEC(cbufp, paramp->u.pack.pack_buffer, 0, int32_t, cur_block_sz, 1);
+	else if (el_size == 4
+	    MPIR_ALIGN4_TEST(paramp->u.pack.pack_buffer,cbufp)) {
+	    MPIDI_COPY_FROM_VEC(cbufp, paramp->u.pack.pack_buffer, 0, int32_t, 
+				cur_block_sz, 1);
 	}
 	else if (el_size == 2) {
-	    MPIDI_COPY_FROM_VEC(cbufp, paramp->u.pack.pack_buffer, 0, int16_t, cur_block_sz, 1);
+	    MPIDI_COPY_FROM_VEC(cbufp, paramp->u.pack.pack_buffer, 0, int16_t, 
+				cur_block_sz, 1);
 	}
 	else {
 	    DLOOP_Offset size = cur_block_sz * el_size;
@@ -1288,12 +1336,14 @@ static int MPID_Segment_blkidx_pack_to_buf(DLOOP_Offset *blocks_p,
 
 	if (blocklen > blocks_left) blocklen = blocks_left;
 
-	if (el_size == 8) {
+	if (el_size == 8
+	    MPIR_ALIGN8_TEST(paramp->u.pack.pack_buffer,cbufp)) {
 	    /* note: macro updates pack buffer location */
 	    MPIDI_COPY_FROM_VEC(cbufp, paramp->u.pack.pack_buffer,
 				0, int64_t, blocklen, 1);
 	}
-	else if (el_size == 4) {
+	else if (el_size == 4
+	    MPIR_ALIGN4_TEST(paramp->u.pack.pack_buffer,cbufp)) {
 	    MPIDI_COPY_FROM_VEC(cbufp, paramp->u.pack.pack_buffer,
 				0, int32_t, blocklen, 1);
 	}

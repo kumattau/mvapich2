@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Gatherv
 #define MPI_Gatherv PMPI_Gatherv
 
 /* This is the default implementation of gatherv. The algorithm is:
@@ -199,7 +200,7 @@ int MPI_Gatherv(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("coll");
     MPID_MPI_COLL_FUNC_ENTER(MPID_STATE_MPI_GATHERV);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -319,13 +320,8 @@ int MPI_Gatherv(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
     }
     else
     {
-        /* if (comm_ptr->comm_kind == MPID_INTERCOMM) {
-	    mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_COMM, 
-					      "**intercommcoll",
-					      "**intercommcoll %s", FCNAME );
-	}
-	else 
-        */
+	MPIU_THREADPRIV_DECL;
+	MPIU_THREADPRIV_GET;
         
         MPIR_Nest_incr();
         mpi_errno = MPIR_Gatherv(sendbuf, sendcnt, sendtype, 
@@ -340,7 +336,7 @@ int MPI_Gatherv(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
     
   fn_exit:
     MPID_MPI_COLL_FUNC_EXIT(MPID_STATE_MPI_GATHERV);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("coll");
     return mpi_errno;
 
   fn_fail:

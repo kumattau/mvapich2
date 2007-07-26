@@ -12,274 +12,728 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2003-2006, The Ohio State University. All rights
+/* Copyright (c) 2002-2006, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
  * team members of The Ohio State University's Network-Based Computing
  * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
  *
- * For detailed copyright and licensing information, please refer to the
+ * For detailed copyright and licencing information, please refer to the
  * copyright file COPYRIGHT_MVAPICH2 in the top level MVAPICH2 directory.
  *
  */
 
+/* Thanks to Voltaire for contributing enhancements to
+ * registration cache implementation
+ */
 
 #include <stdlib.h>
-#include "pmi.h"
-#include "dreg.h"
-#include "udapl_util.h"
-#include "assert.h"
 
-#if (defined (MALLOC_HOOK) &&                                       \
-        defined (VIADEV_RPUT_SUPPORT) &&                            \
-        defined (LAZY_MEM_UNREGISTER))
-/************************
- * For overriding malloc
- *************************/
-#include <malloc.h>
-/***************************
- * Global Hash Table
- ***************************/
-Hash_Table *my_hash_table = NULL;
-#endif /* MALLOC_HOOK && VIADEV_RPUT_SUPPORT &&
-          LAZY_MEM_UNREGISTER */
+#include "dreg.h"
+#include "avl.h"
+#include "rdma_impl.h"
+#include "udapl_util.h"
+
+#undef DEBUG_PRINT
+#ifdef DEBUG
+#define DEBUG_PRINT(args...) \
+    do {                                                          \
+        int rank;                                                 \
+        PMI_Get_rank(&rank);                                      \
+        fprintf(stderr, "[%d][%s:%d] ", rank, __FILE__, __LINE__);\
+        fprintf(stderr, args);                                    \
+    } while (0)
+#else
+#define DEBUG_PRINT(args...)
+#endif
 
 /*
  * dreg.c: everything having to do with dynamic memory registration. 
  */
 
-struct dreg_entry *dreg_table[DREG_HASHSIZE];
+
+/* statistic */
+unsigned long dreg_stat_cache_hit, dreg_stat_cache_miss, dreg_stat_evicted;
+static unsigned long pinned_pages_count;
 
 struct dreg_entry *dreg_free_list;
 struct dreg_entry *dreg_unused_list;
 struct dreg_entry *dreg_unused_tail;
 
-static DAT_IA_HANDLE _dreg_nic;
-static DAT_PZ_HANDLE _dreg_ptag;
+static int is_dreg_initialized = 0;
+#ifdef CKPT
+struct dreg_entry *dreg_all_list;
+#endif
 
-/*
- * Delete entry d from the double-linked unused list.
- * Take care if d is either the head or the tail of the list.
+#define DREG_BEGIN(R) ((R)->pagenum)
+#define DREG_END(R) ((R)->pagenum + (R)->npages - 1)
+
+/* list element */
+typedef struct _entry
+{
+    dreg_entry *reg;
+    struct _entry *next;
+} entry_t;
+
+typedef struct _vma 
+{
+    unsigned long start;      /* first page number of the area */
+    unsigned long end;        /* last page number of the area */
+    entry_t *list;	  	  /* all dregs on this virtual memory region */
+    unsigned long list_count;  /* number of elements on the list */
+    struct _vma *next, *prev; /* double linked list of vmas */
+} vma_t;
+
+vma_t vma_list;
+AVL_TREE *vma_tree;
+
+#ifndef DISABLE_PTMALLOC
+static pthread_spinlock_t dreg_lock = 0;
+static pthread_t          th_id_of_lock = -1;
+
+/* Array which stores the memory regions 
+ * ptrs which are to be deregistered after 
+ * free hook pulls them out of the reg cache
  */
+static VIP_MEM_HANDLE **deregister_mr_array;
 
-#define DREG_REMOVE_FROM_UNUSED_LIST(d) {                           \
-    dreg_entry *prev = (d)->prev_unused;                            \
-        dreg_entry *next = (d)->next_unused;                        \
-        (d)->next_unused = NULL;                                    \
-        (d)->prev_unused = NULL;                                    \
-        if (prev != NULL) {                                         \
-            prev->next_unused = next;                               \
-        }                                                           \
-    if (next != NULL) {                                             \
-        next->prev_unused = prev;                                   \
-    }                                                               \
-    if (dreg_unused_list == (d)) {                                  \
-        dreg_unused_list = next;                                    \
-    }                                                               \
-    if (dreg_unused_tail == (d)) {                                  \
-        dreg_unused_tail = prev;                                    \
-    }                                                               \
-}
-
-/*
- * Add entries to the head of the unused list. dreg_evict() takes
- * them from the tail. This gives us a simple LRU mechanism 
+/* Number of pending deregistration
+ * operations 
+ * Note: This number can never exceed
+ * the total number of reg. cache
+ * entries
  */
+static int n_dereg_mr;
 
-#define DREG_ADD_TO_UNUSED_LIST(d) {                                \
-    d->next_unused = dreg_unused_list;                              \
-    d->prev_unused = NULL;                                          \
-    if (dreg_unused_list != NULL) {                                 \
-        dreg_unused_list->prev_unused = d;                          \
-    }                                                               \
-    dreg_unused_list = d;                                           \
-    if (NULL == dreg_unused_tail) {                                 \
-        dreg_unused_tail = d;                                       \
-    }                                                               \
+/* Keep free list of VMA data structs
+ * and entries */
+static vma_t vma_free_list;
+static entry_t entry_free_list;
+
+#define INIT_FREE_LIST(_list) {                                 \
+    (_list)->next = NULL;                                       \
 }
 
-#define DREG_GET_FROM_FREE_LIST(d) {                                \
-    d = dreg_free_list;                                             \
-    if (dreg_free_list != NULL) {                                   \
-        dreg_free_list = dreg_free_list->next;                      \
-    }                                                               \
+#define ADD_FREE_LIST(_list, _v) {                              \
+    (_v)->next = (_list)->next;                                 \
+    (_list)->next = (_v);                                       \
 }
 
-#define DREG_ADD_TO_FREE_LIST(d) {                                  \
-    d->next = dreg_free_list;                                       \
-    dreg_free_list = d;                                             \
+#define GET_FREE_LIST(_list, _v) {                              \
+    *(_v) = (_list)->next;                                      \
+    if((_list)->next) {                                         \
+        (_list)->next = (_list)->next->next;                    \
+    }                                                           \
 }
 
-/*
- * adding to the hash table is just 
- * putting it on the head of the hash chain
- */
+#endif
 
-#define DREG_ADD_TO_HASH_TABLE(addr, d) {                           \
-    int hash = DREG_HASH(addr);                                     \
-        dreg_entry *d1 = dreg_table[hash];                          \
-        dreg_table[hash] = d;                                       \
-        d->next = d1;                                               \
+static inline int dreg_remove (dreg_entry *r);
+
+/* Tree functions */
+static long vma_compare (void *a, void *b)
+{
+    const vma_t *vma1 = *(vma_t**)a, *vma2 = *(vma_t**)b;
+    return vma1->start - vma2->start;
 }
 
-/*
- * deleting from the hash table (hopefully a rare event)
- * may be expensive because we have to walk the single-linked
- * hash chain until we find the entry. The special and easy
- * case is if the entry is at the head of the chain
- */
+static long vma_compare_search (void *a, void *b)
+{
+    const vma_t *vma = *(vma_t**)b;
+    const unsigned long addr = (unsigned long)a;
 
-#define DREG_DELETE_FROM_HASH_TABLE(d) {                            \
-    aint_t addr = d->pagenum << DREG_PAGEBITS;                      \
-    int hash = DREG_HASH(addr);                                     \
-    dreg_entry *d1 = dreg_table[hash];                              \
-    if (d1 == d) {                                                  \
-        dreg_table[hash] = d1->next;                                \
-    } else {                                                        \
-        while(d1->next != d) {                                      \
-            assert(d1->next != NULL);                               \
-            d1 = d1->next;                                          \
-        }                                                           \
-        d1->next = d->next;                                         \
-    }                                                               \
+    if (vma->end < addr)
+        return 1;
+
+    if (vma->start <= addr)
+        return 0;
+
+    return -1;
 }
 
-void
-dreg_init (DAT_IA_HANDLE nic, DAT_PZ_HANDLE ptag)
+static long vma_compare_closest (void *a, void *b)
+{
+    const vma_t *vma = *(vma_t**)b;
+    const unsigned long addr = (unsigned long)a;
+
+    if (vma->end < addr)
+        return 1;
+
+    if (vma->start <= addr)
+        return 0;
+
+    if (vma->prev->end < addr)
+        return 0;
+
+    return -1;
+}
+
+static inline vma_t *vma_search (unsigned long addr)
+{
+    vma_t **vma;
+    vma = avlfindex (vma_compare_search, (void*)addr, vma_tree);
+    return vma?(*vma):NULL;
+}
+
+
+static unsigned long  avldatasize (void)
+{
+    return (unsigned long) (sizeof (void *));
+}
+
+static inline vma_t *vma_new (unsigned long start, unsigned long end)
+{
+    vma_t *vma;
+
+    if (rdma_dreg_cache_limit &&
+            pinned_pages_count + (end - start + 1) > 
+            rdma_dreg_cache_limit)
+        return NULL;
+
+#ifndef DISABLE_PTMALLOC
+    GET_FREE_LIST(&vma_free_list, &vma);
+
+    if(NULL == vma) {
+        vma = malloc(sizeof (vma_t));
+    }
+#else
+    vma = malloc (sizeof (vma_t));
+#endif
+
+    if (vma == NULL)
+        return NULL;
+
+    vma->start = start;
+    vma->end = end;
+    vma->next = vma->prev = NULL;
+    vma->list = NULL;
+    vma->list_count = 0;
+
+    avlins (&vma, vma_tree);
+
+    pinned_pages_count += (vma->end - vma->start + 1);
+
+    return vma;
+}
+
+static inline void vma_remove (vma_t *vma)
+{
+    avldel (&vma, vma_tree);
+    pinned_pages_count -= (vma->end - vma->start + 1);
+}
+
+static inline void vma_destroy (vma_t *vma)
+{
+    entry_t *e = vma->list;
+
+    while (e)
+    {
+        entry_t *t = e;
+        e = e->next;
+#ifndef DISABLE_PTMALLOC
+        ADD_FREE_LIST(&entry_free_list, t);
+#else
+        free (t);
+#endif
+    }
+
+#ifndef DISABLE_PTMALLOC
+    ADD_FREE_LIST(&vma_free_list, vma);
+#else
+    free (vma);
+#endif
+}
+
+static inline long compare_dregs (entry_t *e1, entry_t *e2)
+{
+    if (DREG_END (e1->reg) != DREG_END (e2->reg))
+        return DREG_END (e1->reg) - DREG_END (e2->reg);
+
+    /* tie breaker */
+    return (unsigned long)e1->reg - (unsigned long)e2->reg;
+}
+
+/* add entry to list of dregs. List sorted by region last page number */
+static inline void add_entry (vma_t *vma, dreg_entry *r)
+{
+    entry_t **i, *e;
+
+#ifndef DISABLE_PTMALLOC
+    GET_FREE_LIST(&entry_free_list, &e);
+
+    if(NULL == e) {
+        e = malloc(sizeof(entry_t));
+    }
+#else
+    e = malloc (sizeof (entry_t));
+#endif
+    if (e == NULL)
+        return;
+
+    e->reg = r;
+
+    for (i = &vma->list; *i != NULL && compare_dregs (*i, e) > 0; i=&(*i)->next);
+
+    e->next = (*i);
+    (*i) = e;
+    vma->list_count++;
+}
+
+static inline void remove_entry (vma_t *vma, dreg_entry *r)
+{
+    entry_t **i;
+
+    for (i = &vma->list; *i != NULL && (*i)->reg != r; i=&(*i)->next);
+
+    if (*i)
+    {
+        entry_t *e = *i;
+        *i = (*i)->next;
+#ifndef DISABLE_PTMALLOC
+        ADD_FREE_LIST(&entry_free_list, e);
+#else
+        free (e);
+#endif
+        vma->list_count--;
+    }
+}
+
+static inline void copy_list (vma_t *to, vma_t *from)
+{
+    entry_t *f = from->list, **t = &to->list;
+
+    while (f)
+    {
+        entry_t *e;
+
+#ifndef DISABLE_PTMALLOC
+        GET_FREE_LIST(&entry_free_list, &e);
+
+        if(NULL == e) {
+            e = malloc(sizeof(entry_t));
+        }
+#else
+        e = malloc (sizeof (entry_t));
+#endif
+
+        e->reg = f->reg;
+        e->next = NULL;
+
+        *t = e;
+        t = &e->next;
+        f = f->next;
+    }
+    to->list_count = from->list_count;
+}
+
+/* returns 1 iff two lists contain the same entries */
+static inline int compare_lists (vma_t *vma1, vma_t *vma2)
+{
+    entry_t *e1 = vma1->list, *e2 = vma2->list;
+
+    if (vma1->list_count != vma2->list_count)
+        return 0;
+
+    while (1)
+    {
+        if (e1 == NULL || e2 == NULL)
+            return 1;
+
+        if (e1->reg != e2->reg)
+            break;
+
+        e1 = e1->next;
+        e2 = e2->next;
+    }
+
+    return 0;
+}
+
+static inline int dreg_remove (dreg_entry *r)
+{
+    vma_t  *vma;
+
+
+    vma = vma_search (DREG_BEGIN (r));
+
+
+    if (vma == NULL)  /* no such region in database */
+        return -1;
+
+    while (vma != &vma_list && vma->start <= DREG_END (r))
+    {
+        remove_entry (vma, r);
+
+
+        if (vma->list == NULL)
+        {
+            vma_t *next = vma->next;
+
+            vma_remove (vma);
+            vma->prev->next = vma->next;
+            vma->next->prev = vma->prev;
+            vma_destroy (vma);
+            vma = next;
+        }
+        else
+        {
+            int merged;
+
+            do {
+                merged = 0;
+                if (vma->start == vma->prev->end + 1 &&
+                        compare_lists (vma, vma->prev))
+                {
+                    vma_t *t = vma;
+                    vma = vma->prev;
+                    vma->end = t->end;
+                    vma->next = t->next;
+                    vma->next->prev = vma;
+                    vma_remove (t);
+                    vma_destroy (t);
+                    merged = 1;
+                }
+                if (vma->end + 1 == vma->next->start &&
+                        compare_lists (vma, vma->next))
+                {
+                    vma_t *t = vma->next;
+                    vma->end = t->end;
+                    vma->next = t->next;
+                    vma->next->prev = vma;
+                    vma_remove (t);
+                    vma_destroy (t);
+                    merged = 1;
+                }
+            } while (merged);
+            vma = vma->next;
+        }
+    }
+
+    return 0;
+}
+
+static int dreg_insert (dreg_entry *r)
+{
+    vma_t *i = &vma_list, **v;
+    unsigned long begin = DREG_BEGIN (r), end = DREG_END (r);
+
+    v = avlfindex (vma_compare_closest, (void*)begin, vma_tree);
+
+    if (v)
+        i = *v;
+
+    while (begin <= end)
+    {
+        vma_t *vma;
+
+        if (i == &vma_list)
+        {
+            vma = vma_new (begin, end);
+
+            if (!vma)
+                goto remove;
+
+            vma->next = i;
+            vma->prev = i->prev;
+            i->prev->next = vma;
+            i->prev = vma;
+
+            begin = vma->end + 1;
+
+            add_entry (vma, r);
+        } 
+        else if (i->start > begin)
+        {
+            vma = vma_new (begin, 
+                    (i->start <= end)?(i->start - 1):end);
+
+            if (!vma)
+                goto remove;
+
+            /* insert before */
+            vma->next = i;
+            vma->prev = i->prev;
+            i->prev->next = vma;
+            i->prev = vma;
+
+            i = vma;
+
+            begin = vma->end + 1;
+
+            add_entry (vma, r);
+        }
+        else if (i->start == begin)
+        {
+            if (i->end > end)
+            {
+                vma = vma_new (end+1, i->end);
+
+                if (!vma)
+                    goto remove;
+
+                i->end = end;
+
+                copy_list (vma, i);
+
+                /* add after */
+                vma->next = i->next;
+                vma->prev = i;
+                i->next->prev = vma;
+                i->next = vma;
+
+                add_entry (i, r);
+                begin = end + 1;
+            }
+            else
+            {
+                add_entry (i, r);
+                begin = i->end + 1;
+            }
+        }
+        else
+        {
+            vma = vma_new (begin, i->end);
+
+            if (!vma)
+                goto remove;
+
+            i->end = begin - 1;
+
+            copy_list (vma, i);
+
+            /* add after */
+            vma->next = i->next;
+            vma->prev = i;
+            i->next->prev = vma;
+            i->next = vma;
+        }
+
+        i = i->next;
+    }
+    return 0;
+
+remove:
+    dreg_remove (r);
+    return -1;
+}
+
+
+static inline dreg_entry *dreg_lookup (unsigned long begin, unsigned long end )
+{
+    vma_t *vma;
+
+    vma = vma_search (begin);
+
+    if (!vma)
+        return NULL;
+
+#ifdef CKPT
+#if 0
+    if (vma->list->reg->npages==0)
+    {
+        return NULL;
+    }
+#endif    
+#endif
+
+    if(!vma->list)
+        return NULL;
+
+    if (DREG_END (vma->list->reg) >= end)
+        return vma->list->reg;
+
+    return NULL;
+}
+
+void vma_db_init (void)
+{
+    vma_tree = avlinit (vma_compare, avldatasize);
+    vma_list.next = &vma_list;
+    vma_list.prev = &vma_list;
+    vma_list.list = NULL; 
+    vma_list.list_count = 0;
+}
+
+void dreg_init()
 {
     int i;
 
-    /* Setup original malloc hooks */
-    SET_ORIGINAL_MALLOC_HOOKS;
-
-    for (i = 0; i < DREG_HASHSIZE; i++)
-      {
-          dreg_table[i] = NULL;
-      }
-
+    pinned_pages_count = 0;
+    vma_db_init ();
     dreg_free_list = (dreg_entry *)
-        malloc (sizeof (dreg_entry) * udapl_ndreg_entries);
-    if (dreg_free_list == NULL)
-      {
-          udapl_error_abort (GEN_EXIT_ERR,
-                             "dreg_init: unable to malloc %d bytes",
-                             (int) sizeof (dreg_entry) * udapl_ndreg_entries);
-      }
+        MALLOC(sizeof(dreg_entry) * rdma_ndreg_entries);
 
-    SAVE_MALLOC_HOOKS;
+    if (dreg_free_list == NULL) {
+        udapl_error_abort(GEN_EXIT_ERR,
+                "dreg_init: unable to malloc %d bytes",
+                (int) sizeof(dreg_entry) * rdma_ndreg_entries);
+    }
 
-    /* Setup our hooks again */
-    SET_MVAPICH_MALLOC_HOOKS;
+    memset(dreg_free_list, 0, sizeof(dreg_entry) * rdma_ndreg_entries);
 
+#ifdef CKPT
+    dreg_all_list = dreg_free_list;
+#endif
 
-    for (i = 0; i < udapl_ndreg_entries - 1; i++)
-      {
-          dreg_free_list[i].next = &dreg_free_list[i + 1];
-      }
-    dreg_free_list[udapl_ndreg_entries - 1].next = NULL;
+    for (i = 0; i < (int) rdma_ndreg_entries - 1; i++) {
+        dreg_free_list[i].next = &dreg_free_list[i + 1];
+    }
+    dreg_free_list[rdma_ndreg_entries - 1].next = NULL;
 
     dreg_unused_list = NULL;
     dreg_unused_tail = NULL;
-    _dreg_nic = nic;
-    _dreg_ptag = ptag;
+    /* cache hit and miss time stat variables initisalization */
+
+    is_dreg_initialized = 1;
+
+#ifndef DISABLE_PTMALLOC
+    pthread_spin_init(&dreg_lock, 0);
+
+    deregister_mr_array = (VIP_MEM_HANDLE **)
+        malloc(sizeof(VIP_MEM_HANDLE *) * 
+                rdma_ndreg_entries * MAX_NUM_HCAS);
+
+    if(NULL == deregister_mr_array) {
+        udapl_error_abort(GEN_EXIT_ERR,
+                "dreg_init: unable to malloc %d bytes",
+                (int) sizeof(VIP_MEM_HANDLE *) * 
+                rdma_ndreg_entries * MAX_NUM_HCAS);
+    }
+
+    memset(deregister_mr_array, 0, 
+            sizeof(VIP_MEM_HANDLE *) * 
+            rdma_ndreg_entries *
+            MAX_NUM_HCAS);
+
+    n_dereg_mr = 0;
+
+    INIT_FREE_LIST(&vma_free_list);
+
+    INIT_FREE_LIST(&entry_free_list);
+    
+#endif
 }
 
+#ifndef DISABLE_PTMALLOC
+
+static void lock_dreg()
+{
+    pthread_spin_lock(&dreg_lock);
+    th_id_of_lock = pthread_self();
+}
+
+static void unlock_dreg()
+{
+    th_id_of_lock = -1;
+    pthread_spin_unlock(&dreg_lock);
+}
+
+/* 
+ * Check if we have to deregister some memory regions
+ * which were previously marked invalid by free hook 
+ *
+ * Note: this function should be called only with the
+ * dreg lock acquired.
+ */
+
+static void flush_dereg_mrs()
+{
+    int i;
+
+    for(i = 0; i < n_dereg_mr; i++) {
+
+        if(deregister_mr_array[i]) {
+
+            if(dat_lmr_free(deregister_mr_array[i]->hndl)) {
+                udapl_error_abort(UDAPL_RETURN_ERR,
+                        "deregistration failed\n");
+            }
+        }
+
+        deregister_mr_array[i] = NULL;
+    }
+
+    n_dereg_mr = 0;
+}
+#endif
+
 /* will return a NULL pointer if registration fails */
-dreg_entry *
-dreg_register (void *buf, int len)
+dreg_entry *dreg_register(void *buf, int len)
 {
     struct dreg_entry *d;
     int rc;
-    d = dreg_find (buf, len);
 
-    if (d != NULL)
-      {
-          D_PRINT ("find an old one \n");
-          dreg_incr_refcount (d);
-          D_PRINT ("dreg_register: found registered buffer for "
-                   AINT_FORMAT " length %d", (aint_t) buf, len);
-      }
-    else
-      {
-          while ((d = dreg_new_entry (buf, len)) == NULL)
-            {
-                /* either was not able to obtain a dreg_entry data strucrure
-                 * or was not able to register memory.  In either case,
-                 * attempt to evict a currently unused entry and try again.
+#ifndef DISABLE_PTMALLOC
+    lock_dreg();
+
+    flush_dereg_mrs();
+#endif
+
+    d = dreg_find(buf, len);
+
+    if (d != NULL) {
+        dreg_stat_cache_hit++;
+        dreg_incr_refcount(d);
+
+
+    } else {
+        dreg_stat_cache_miss++;
+        while ((d = dreg_new_entry(buf, len)) == NULL) {
+            /* either was not able to obtain a dreg_entry data strucrure
+             * or was not able to register memory.  In either case,
+             * attempt to evict a currently unused entry and try again.
+             */
+            rc = dreg_evict();
+            if (rc == 0) {
+                /* could not evict anything, will not be able to
+                 * register this memory.  Return failure.
                  */
-                D_PRINT ("dreg_register: no entries available. Evicting.");
-                rc = dreg_evict ();
-                if (rc == 0)
-                  {
-                      /* could not evict anything, will not be able to
-                       * register this memory.  Return failure.
-                       */
-                      D_PRINT ("dreg_register: evict failed, cant register");
-                      return NULL;
-                  }
-                /* eviction successful, try again */
+#ifndef DISABLE_PTMALLOC
+                unlock_dreg();
+#endif
+                return NULL;
             }
-          dreg_incr_refcount (d);
-          D_PRINT ("dreg_register: created new entry for buffer "
-                   AINT_FORMAT " length %d", (aint_t) buf, len);
-      }
+            /* eviction successful, try again */
+        }
+
+        dreg_incr_refcount(d);
+
+    }
+
+#ifndef DISABLE_PTMALLOC
+    unlock_dreg();
+#endif
 
     return d;
 }
 
-void
-dreg_unregister (dreg_entry * d)
+void dreg_unregister(dreg_entry * d)
 {
-    dreg_decr_refcount (d);
+#ifndef DISABLE_PTMALLOC
+    lock_dreg();
+#endif
+
+    dreg_decr_refcount(d);
+
+#ifndef DISABLE_PTMALLOC
+    flush_dereg_mrs();
+
+    unlock_dreg();
+#endif
 }
 
 
-dreg_entry *
-dreg_find (void *buf, int len)
+dreg_entry *dreg_find(void *buf, int len)
 {
+    unsigned long begin = ((unsigned long)buf) >> DREG_PAGEBITS;
+    unsigned long end = ((unsigned long)(((char*)buf) + len - 1)) >> DREG_PAGEBITS;
 
-
-    /* this should be consolidated with dreg_register, where
-     * the same calculation for number of pages is done. 
-     */
-
-    dreg_entry *d = dreg_table[DREG_HASH (buf)];
-    aint_t pagebase_a, buf_a, pagenum;
-    int npages;
-
-    if (NULL == d)
-      {
-          return NULL;
-      }
-
-    buf_a = (aint_t) buf;
-    pagebase_a = buf_a & ~DREG_PAGEMASK;
-    pagenum = buf_a >> DREG_PAGEBITS;
-    /*
-     * how many pages should we register? worst case is that
-     * address is just below a page boundary and extends just above
-     * a page boundary. In that case, we need to register both 
-     * pages.
-     */
-
-    npages = 1 + ((buf_a + (aint_t) len - 1 - pagebase_a) >> DREG_PAGEBITS);
-
-    while (d != NULL)
-      {
-          if (d->pagenum == pagenum && d->npages >= npages)
-              break;
-          d = d->next;
-      }
-
-    if (d != NULL)
-      {
-          D_PRINT ("dreg_find: found entry pagebase="
-                   AINT_FORMAT " npages=%d",
-                   d->pagenum << DREG_PAGEBITS, d->npages);
-      }
-
-    return d;
+    if(is_dreg_initialized) {
+        return dreg_lookup (begin, end);
+    } else {
+        return NULL;
+    }
 }
 
 
@@ -288,28 +742,23 @@ dreg_find (void *buf, int len)
  * Ok to return NULL. Higher levels will deal with it. 
  */
 
-dreg_entry *
-dreg_get ()
+dreg_entry *dreg_get()
 {
     dreg_entry *d;
-    DREG_GET_FROM_FREE_LIST (d);
+    DREG_GET_FROM_FREE_LIST(d);
 
-    if (d != NULL)
-      {
-          d->refcount = 0;
-          d->next_unused = NULL;
-          d->prev_unused = NULL;
-          d->next = NULL;
-      }
-    else
-      {
-          D_PRINT ("dreg_get: no free dreg entries");
-      }
+    if (d != NULL) {
+        d->refcount = 0;
+        d->next_unused = NULL;
+        d->prev_unused = NULL;
+        d->next = NULL;
+    } else {
+        DEBUG_PRINT("dreg_get: no free dreg entries");
+    }
     return (d);
 }
 
-void
-dreg_release (dreg_entry * d)
+void dreg_release(dreg_entry * d)
 {
     /* note this correctly handles appending to empty free list */
     d->next = dreg_free_list;
@@ -321,40 +770,33 @@ dreg_release (dreg_entry * d)
  * zero, don't free it, but put it on the unused list so we
  * can evict it if necessary. Put on head of unused list. 
  */
-void
-dreg_decr_refcount (dreg_entry * d)
+void dreg_decr_refcount(dreg_entry * d)
 {
-#ifndef LAZY_MEM_UNREGISTER
-    DAT_RETURN rc;
-    void *buf;
-    aint_t bufint;
-#endif
+    int i;
 
-    assert (d->refcount > 0);
+    assert(d->refcount > 0);
     d->refcount--;
-    if (d->refcount == 0)
-      {
-#ifdef LAZY_MEM_UNREGISTER
-          DREG_ADD_TO_UNUSED_LIST (d);
-#else
-          bufint = d->pagenum << DREG_PAGEBITS;
-          buf = (void *) bufint;
 
-          rc = dat_lmr_free (d->memhandle.hndl);
-          if (rc != DAT_SUCCESS)
-            {
-                udapl_error_abort (UDAPL_RETURN_ERR,
-                                   "UDAPL error[%d] \"%s\" in routine dreg_decr_refcount: dat_lmr_free",
-                                   rc);
+    if (d->refcount == 0) {
+        if(MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister) {
+            DREG_ADD_TO_UNUSED_LIST(d);
+        } else {
+
+            for(i = 0; i < rdma_num_hcas; i++) {
+
+                    d->is_valid = 0;
+
+                    if (deregister_memory(&(d->memhandle))) {
+
+                        udapl_error_abort(UDAPL_RETURN_ERR, 
+                                "[%d] deregister fails\n", __LINE__);
+                    }
             }
-          DREG_DELETE_FROM_HASH_TABLE (d);
-          DREG_ADD_TO_FREE_LIST (d);
-#endif
 
-      }
-    D_PRINT ("decr_refcount: entry " AINT_FORMAT
-             " refcount" AINT_FORMAT " memhandle" AINT_FORMAT,
-             (aint_t) d, (aint_t) d->refcount, (aint_t) d->memhandle.hndl);
+            dreg_remove (d);
+            DREG_ADD_TO_FREE_LIST(d);
+        }
+    }
 }
 
 /*
@@ -364,14 +806,12 @@ dreg_decr_refcount (dreg_entry * d)
  * we should take it off
  */
 
-void
-dreg_incr_refcount (dreg_entry * d)
+void dreg_incr_refcount(dreg_entry * d)
 {
-    assert (d != NULL);
-    if (d->refcount == 0)
-      {
-          DREG_REMOVE_FROM_UNUSED_LIST (d);
-      }
+    assert(d != NULL);
+    if (d->refcount == 0) {
+        DREG_REMOVE_FROM_UNUSED_LIST(d);
+    }
     d->refcount++;
 }
 
@@ -379,45 +819,51 @@ dreg_incr_refcount (dreg_entry * d)
  * Evict a registration. This means delete it from the unused list, 
  * add it to the free list, and deregister the associated memory.
  * Return 1 if success, 0 if nothing to evict.
+ *
+ * If PTMALLOC is defined, its OK to call flush_dereg_mrs()
+ * since dreg_evict() is called from within dreg_register()
+ * which has the dreg_lock. Otherwise, it can only be called
+ * from finalize, where there's only one thread executing
+ * anyways.
  */
-
-int
-dreg_evict ()
+int dreg_evict()
 {
-    int rc;
     void *buf;
     dreg_entry *d;
-    aint_t bufint;
+    unsigned long bufint;
+    int hca_index;
+
+#ifndef DISABLE_PTMALLOC
+    flush_dereg_mrs();
+#endif
 
     d = dreg_unused_tail;
-    if (d == NULL)
-      {
-          /* no entries left on unused list, return failure */
-          return 0;
-      }
-    DREG_REMOVE_FROM_UNUSED_LIST (d);
+    if (d == NULL) {
+        /* no entries left on unused list, return failure */
+        return 0;
+    }
 
-    assert (d->refcount == 0);
+    DREG_REMOVE_FROM_UNUSED_LIST(d);
 
+    assert(d->refcount == 0);
     bufint = d->pagenum << DREG_PAGEBITS;
     buf = (void *) bufint;
 
+    for (hca_index = 0; hca_index < rdma_num_hcas; hca_index ++) {          
 
-    D_PRINT ("dreg_evict: deregistering address="
-             AINT_FORMAT " memhandle = %x",
-             bufint, (unsigned int) d->memhandle.hndl);
+            d->is_valid = 0;
 
-    rc = dat_lmr_free (d->memhandle.hndl);
-    if (rc != DAT_SUCCESS)
-      {
-          udapl_error_abort (UDAPL_RETURN_ERR,
-                             "uDAPL error: cannot free lmr");
-      }
+            if (deregister_memory(&(d->memhandle))) {
+                udapl_error_abort(UDAPL_RETURN_ERR,
+                        "[%d] Deregister fails\n", __LINE__);
+            }
+    }
 
-    D_PRINT ("dreg_evict: dat_lmr_free\n");
+    dreg_remove (d);
 
-    DREG_DELETE_FROM_HASH_TABLE (d);
-    DREG_ADD_TO_FREE_LIST (d);
+    DREG_ADD_TO_FREE_LIST(d);
+
+    dreg_stat_evicted++;
     return 1;
 }
 
@@ -428,42 +874,39 @@ dreg_evict ()
  * found that the memory isn't registered. Register it 
  * and put it in the hash table 
  */
-
-dreg_entry *
-dreg_new_entry (void *buf, int len)
+dreg_entry *dreg_new_entry(void *buf, int len)
 {
 
-
+    int i;
     dreg_entry *d;
-    aint_t pagenum_low, pagenum_high;
-    int npages;
+    unsigned long pagenum_low, pagenum_high;
+    unsigned long  npages;
+
     /* user_low_a is the bottom address the user wants to register;
      * user_high_a is one greater than the top address the 
      * user wants to register
      */
-    aint_t user_low_a, user_high_a;
+    unsigned long user_low_a, user_high_a;
+
     /* pagebase_low_a and pagebase_high_a are the addresses of 
      * the beginning of the page containing user_low_a and 
      * user_high_a respectively. 
      */
-
-    aint_t pagebase_low_a, pagebase_high_a;
+    unsigned long pagebase_low_a, pagebase_high_a;
     void *pagebase_low_p;
-    int rc;
     unsigned long register_nbytes;
-    DAT_REGION_DESCRIPTION region;
-    DAT_VLEN reg_size;
-    DAT_VADDR reg_addr;
+    
+    int ret;
 
-    d = dreg_get ();
-    if (NULL == d)
-      {
-          return d;
-      }
+    d = dreg_get();
+
+    if (NULL == d) {
+        return d;
+    }
 
     /* calculate base page address for registration */
-    user_low_a = (aint_t) buf;
-    user_high_a = user_low_a + (aint_t) len - 1;
+    user_low_a = (unsigned long) buf;
+    user_high_a = user_low_a + (unsigned long) len - 1;
 
     pagebase_low_a = user_low_a & ~DREG_PAGEMASK;
     pagebase_high_a = user_high_a & ~DREG_PAGEMASK;
@@ -473,362 +916,171 @@ dreg_new_entry (void *buf, int len)
     pagenum_high = pagebase_high_a >> DREG_PAGEBITS;
     npages = 1 + (pagenum_high - pagenum_low);
 
+    if (rdma_dreg_cache_limit != 0 && 
+            npages >= (int) rdma_dreg_cache_limit ) {
+        return NULL;
+    }
+
     pagebase_low_p = (void *) pagebase_low_a;
     register_nbytes = npages * DREG_PAGESIZE;
-
-    region.for_va = pagebase_low_p;
-    /* add later */
-    rc = dat_lmr_create (_dreg_nic,
-                         DAT_MEM_TYPE_VIRTUAL, region, register_nbytes,
-                         _dreg_ptag, DAT_MEM_PRIV_ALL_FLAG,
-                         &d->memhandle.hndl, &d->memhandle.lkey,
-                         &d->memhandle.rkey, &reg_size, &reg_addr);
-
-    /* if not success, return NULL to indicate that we were unable to
-     * register this memory.  */
-    if (rc != DAT_SUCCESS)
-      {
-          dreg_release (d);
-          return NULL;
-      }
-
-
 
     d->pagenum = pagenum_low;
     d->npages = npages;
 
-    DREG_ADD_TO_HASH_TABLE (pagebase_low_a, d);
+    if (dreg_insert (d) < 0) {
+        dreg_release(d);
+        return NULL;
+    }
 
-    return d;
+    for(i = 0; i < rdma_num_hcas; i++) {
+         ret = register_memory((void *)pagebase_low_p, 
+                register_nbytes, i, d);
 
-}
+        /* if not success, return NULL to indicate that we were unable to
+         * register this memory.  */
+        if (ret) {
+            dreg_remove (d);
+            dreg_release(d);
+            return NULL;
+        }
+    }
 
-
-#if (defined (MALLOC_HOOK) &&                                       \
-        defined (VIADEV_RPUT_SUPPORT) &&                            \
-        defined (LAZY_MEM_UNREGISTER))
-/* Overriding normal malloc init */
-void
-mvapich_init_malloc_hook (void)
-{
-    old_malloc_hook = __malloc_hook;
-    old_free_hook = __free_hook;
-    __malloc_hook = mvapich_malloc_hook;
-    __free_hook = mvapich_free_hook;
-}
-
-/*
- * Malloc Hook
- * It is necessary to have the malloc hook
- * because we want to store the starting address
- * of the buffer and the size allocated. This information
- * is needed by the free hook, so that it can look through
- * the region and find out whether any portion of it was
- * registered before or not.
- *
- * Currently, the malloc hook simply stores addr & len
- * in a hash table.
- */
-void *
-mvapich_malloc_hook (size_t size, const void *caller)
-{
-    void *result;
-    unsigned int hash_value;
-    Hash_Symbol *new_symbol = NULL;
-    Hash_Symbol *sym_i = NULL;
-    Hash_Symbol *sym_temp = NULL;
-
-    /* Restore old hooks */
-    SET_ORIGINAL_MALLOC_HOOKS;
-
-    /* Call the real malloc */
-    result = malloc (size);
-
-    /* Now we have to put this in the Hash Table */
-
-    /* Check whether we've created the HT or not ! */
-    if (my_hash_table != NULL)
-      {
-          hash_value = hash ((aint_t) result);
-
-          if (NULL == my_hash_table[hash_value].symbol)
-            {
-                /* First element */
-                new_symbol = (Hash_Symbol *) malloc (sizeof (Hash_Symbol));
-                new_symbol->mem_ptr = result;
-                new_symbol->len = (unsigned int) size;
-                new_symbol->next = NULL;
-
-                my_hash_table[hash_value].symbol = (void *) new_symbol;
-            }
-          else
-            {
-                /* There are other elements, walk to end of list
-                 * and then add at the end
-                 */
-                for (sym_i = (Hash_Symbol *) my_hash_table[hash_value].symbol;
-                     sym_i != NULL; sym_i = sym_i->next)
-                  {
-
-                      sym_temp = sym_i;
-
-                  }
-                /* sym_temp is now pointing to the last element */
-                new_symbol = (Hash_Symbol *) malloc (sizeof (Hash_Symbol));
-                new_symbol->mem_ptr = result;
-                new_symbol->len = (unsigned int) size;
-                new_symbol->next = NULL;
-                sym_temp->next = new_symbol;
-            }
-      }
-    /* Save the hooks again */
-    SAVE_MALLOC_HOOKS;
-
-    /* Restore our hooks again */
-    SET_MVAPICH_MALLOC_HOOKS;
-
-    return result;
-}
-
-/*
- * Free hook.
- * Before freeing a buffer, we have to search whether
- * any portion of it was registered or not.
- * Look up in the Hash table.
- * If any part was registered, we have to de-register it
- * before we free the buffer.
- */
-void
-mvapich_free_hook (void *ptr, const void *caller)
-{
-    unsigned int hash_value;
-    int found_flag = 0;
-    Hash_Symbol *sym_i = NULL;
-    Hash_Symbol *sym_temp = NULL;
-
-    /* Restore all old hooks */
-    SET_ORIGINAL_MALLOC_HOOKS;
-    /* We have to look for the buffer we had put in
-     * the HT */
-    if (my_hash_table != NULL)
-      {
-          /*
-           * OK, we've set up the table.
-           * But is this buffer in it ?
-           * If it is, then return the length *and* free the buffer
-           */
-          hash_value = hash ((aint_t) ptr);
-          if (NULL == my_hash_table[hash_value].symbol)
-            {
-                /* It cannot possibly be in our HT */
-                free (ptr);
-            }
-          else
-            {
-                /* It is here ... but where is it hiding ? */
-
-                /* Check the first one */
-                sym_i = (Hash_Symbol *) my_hash_table[hash_value].symbol;
-                if (sym_i->mem_ptr == ptr)
-                  {
-                      /* Found it ! */
-                      find_and_free_dregs_inside (ptr, sym_i->len);
-                      if (NULL == sym_i->next)
-                        {
-                            /* There are no more entries */
-                            free (sym_i);
-                            free (ptr);
-                            my_hash_table[hash_value].symbol = NULL;
-                        }
-                      else
-                        {
-                            sym_temp = sym_i->next;
-                            my_hash_table[hash_value].symbol = sym_temp;
-                            free (sym_i);
-                            free (ptr);
-                        }
-                  }
-                else
-                  {
-                      /* Follow the link list */
-                      /* sym_temp always points one behind sym_i */
-                      sym_temp =
-                          (Hash_Symbol *) my_hash_table[hash_value].symbol;
-
-                      for (sym_i = sym_temp->next;
-                           sym_i != NULL; sym_i = sym_i->next)
-                        {
-                            if (sym_i->mem_ptr == ptr)
-                              {
-                                  /* Found it ! */
-                                  find_and_free_dregs_inside (ptr,
-                                                              sym_i->len);
-
-                                  if (sym_i->next != NULL)
-                                    {
-                                        /* There is more to follow */
-                                        sym_temp->next = sym_i->next;
-                                        free (sym_i);
-                                        free (ptr);
-                                        found_flag = 1;
-                                        break;
-                                    }
-                                  else
-                                    {
-                                        /* This was the last one -- whew ! */
-                                        sym_temp->next = NULL;
-                                        free (sym_i);
-                                        free (ptr);
-                                        found_flag = 1;
-                                        break;
-                                    }
-                              }
-                            if (!found_flag)
-                              {
-                                  sym_temp = sym_i;
-                              }
-                        }
-                      /* Wasn't the first. Did we find it in the link list search ?
-                       *         * found_flag tells all !
-                       *                 */
-                      if (!found_flag)
-                        {
-                            free (ptr);
-                        }
-                  }
-            }
-      }
-    else
-      {
-          /* Don't bother, just free the stuff */
-          free (ptr);
-      }
-
-    /* Save underlying hooks */
-    SAVE_MALLOC_HOOKS;
-    /* Restore our own hooks */
-    SET_MVAPICH_MALLOC_HOOKS;
-}
-
-/*
- * Hash Function
- * gives a number between 0 - HASH_TABLE_SIZE
- */
-unsigned int
-hash (unsigned int key)
-{
-    key += ~(key << 15);
-    key ^= (key >> 10);
-    key += (key << 3);
-    key ^= (key >> 6);
-    key += ~(key << 11);
-    key ^= (key >> 16);
-    return (key % (HASH_TABLE_SIZE));
-}
-
-/*
- * Creates the Hash Table that stores the malloc'd
- * memory address and the length associated along
- * with it
- */
-void
-create_hash_table (void)
-{
-    int i = 0;
-
-    /* This malloc doesn't go in the Hash Table */
-    SET_ORIGINAL_MALLOC_HOOKS;
-
-    my_hash_table = (Hash_Table *)
-        malloc (sizeof (Hash_Table) * HASH_TABLE_SIZE);
-    if (NULL == my_hash_table)
-      {
-          udapl_error_abort (GEN_EXIT_ERR,
-                             "Malloc failed, not enough space for Hash Table!\n");
-      }
-
-    /* Save the old hooks */
-    SAVE_MALLOC_HOOKS;
-
-    /* Initialize Hash Table */
-    for (i = 0; i < HASH_TABLE_SIZE; i++)
-      {
-          my_hash_table[i].symbol = NULL;
-      }
-
-    /* Set up our hooks again */
-    SET_MVAPICH_MALLOC_HOOKS;
-}
-
-/*
- * is_dreg_registered
- * A function which is called to find out whether
- * a particular address is registered or not.
- *
- * Returns :
- * . `NULL' if the address is not registered
- * . `dreg_entry*' ie the pointer to the registered region.
- */
-dreg_entry *
-is_dreg_registered (void *buf)
-{
-    dreg_entry *d = NULL;
-    d = dreg_table[DREG_HASH (buf)];
+    d->is_valid = 1;
+    
     return d;
 }
 
-/*
- * Finds if any portion of the buffer was
- * registered before. If it was then deregister it
- * otherwise leave it alone and return
- */
-void
-find_and_free_dregs_inside (void *ptr, int len)
+#ifndef DISABLE_PTMALLOC
+void find_and_free_dregs_inside(void *buf, int len)
 {
-    int i = 0;
-    DAT_RETURN rc = 0;
-    dreg_entry *d;
-    int npages = 0;
-    int pagesize = 0;
-    int pagebase_a = 0;
-    unsigned int buf_a;
+    int i;
+    unsigned long pagenum_low, pagenum_high;
+    unsigned long  npages, begin, end;
+    unsigned long user_low_a, user_high_a;
+    unsigned long pagebase_low_a, pagebase_high_a;
+    struct dreg_entry *d;
+    void *addr;
 
-    buf_a = (aint_t) ptr;
-    pagebase_a = buf_a & ~DREG_PAGEMASK;
-    npages = 1 + ((buf_a + (aint_t) len - pagebase_a - 1) >> DREG_PAGEBITS);
-    for (i = 0; i < npages; i++)
-      {
-          d = dreg_find ((void *) ((aint_t) ptr + i * pagesize), pagesize);
-          if (d)
-            {
-                if (d->refcount != 0)
-                  {
-                      /* Forcefully free it */
-                      rc = dat_lmr_free (d->memhandle.hndl);
-                      if (rc != DAT_SUCCESS)
-                        {
-                            udapl_error_abort (UDAPL_RETURN_ERR,
-                                               "uDAPL error in find_and_free_dregs_inside: cannot create lmr");
-                        }
-                      DREG_DELETE_FROM_HASH_TABLE (d);
-                      DREG_ADD_TO_FREE_LIST (d);
-                  }
-                else
-                  {
-                      /* Safe to remove from unused list */
-                      DREG_REMOVE_FROM_UNUSED_LIST (d);
-                      rc = dat_lmr_free (d->memhandle.hndl);
-                      if (rc != DAT_SUCCESS)
-                        {
-                            udapl_error_abort (UDAPL_RETURN_ERR,
-                                               "uDAPL error in find_and_free_dregs_inside: cannot create lmr");
-                        }
+    /* calculate base page address for registration */
+    user_low_a = (unsigned long) buf;
+    user_high_a = user_low_a + (unsigned long) len - 1;
 
-                      DREG_DELETE_FROM_HASH_TABLE (d);
-                      DREG_ADD_TO_FREE_LIST (d);
-                  }
+    pagebase_low_a = user_low_a & ~DREG_PAGEMASK;
+    pagebase_high_a = user_high_a & ~DREG_PAGEMASK;
+
+    /* info to store in hash table */
+    pagenum_low = pagebase_low_a >> DREG_PAGEBITS;
+    pagenum_high = pagebase_high_a >> DREG_PAGEBITS;
+    npages = 1 + (pagenum_high - pagenum_low);
+
+    /* For every page in this buffer find out whether
+     * it is registered or not. This is fine, since
+     * we register only at a page granularity */
+
+    if(!is_dreg_initialized ||
+           !MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister) {
+        return;
+    }
+
+    if(pthread_self() == th_id_of_lock) {
+
+        /*
+         * This comparison is necessary to distinguish
+         * between recursive and multi-threaded calls to
+         * the registration cache.
+         *
+         * The recursive calls are possible since
+         * dat_lmr_free calls free after de-registering
+         * memory regions. However, this free should be
+         * for a smaller memory region, which is not
+         * handled by the MPI cache. We shouldn't
+         * try to do anything more in this routine.
+         */
+        
+        return;
+    }
+
+    lock_dreg();
+
+    for(i = 0; i < npages; i++) {
+
+        addr = (void *) ((uintptr_t) pagebase_low_a + i * DREG_PAGESIZE);
+
+        begin = ((unsigned long)addr) >> DREG_PAGEBITS;
+
+        end = ((unsigned long)(((char*)addr) + 
+                    DREG_PAGESIZE - 1)) >> DREG_PAGEBITS;
+
+        while( (d = dreg_lookup (begin, end)) != NULL) {
+
+            if((d->refcount != 0) || (d->is_valid == 0)) {
+                /* This memory area is still being referenced
+                 * by other pending MPI operations, which are
+                 * expected to call dreg_unregister and thus
+                 * unpin the buffer. We cannot deregister this
+                 * page, since other ops are pending from here. */
+
+                /* OR: This memory region is in the process of
+                 * being deregistered. Leave it alone! */
+                continue;
             }
-      }
+
+            for(i = 0; i < rdma_num_hcas; i++) {
+
+                d->is_valid = 0;
+
+                    MPIU_Assert(n_dereg_mr < 
+                            (rdma_ndreg_entries * MAX_NUM_HCAS));
+
+                    deregister_mr_array[n_dereg_mr] = &(d->memhandle);
+                    n_dereg_mr++;
+
+            }
+
+            if(d->refcount == 0) {
+                if(MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister) {
+                    DREG_REMOVE_FROM_UNUSED_LIST(d);
+                }
+            } else {
+                d->refcount--;
+            }
+
+            dreg_remove (d);
+            DREG_ADD_TO_FREE_LIST(d);
+        }
+    }
+    unlock_dreg();
+}
+#endif
+
+int register_memory(void * buf, int len, int hca_num, dreg_entry *d)
+{
+    DAT_RETURN ret;
+    DAT_REGION_DESCRIPTION region;
+    DAT_VLEN reg_size;
+    DAT_VADDR reg_addr;
+
+    region.for_va = buf;
+    
+    ret = dat_lmr_create (MPIDI_CH3I_RDMA_Process.nic[hca_num],
+                         DAT_MEM_TYPE_VIRTUAL, region, len,
+                         MPIDI_CH3I_RDMA_Process.ptag[hca_num], 
+                         DAT_MEM_PRIV_ALL_FLAG,
+                         &d->memhandle.hndl, &d->memhandle.lkey,
+                         &d->memhandle.rkey, &reg_size, &reg_addr);
+
+    CHECK_RETURN(ret, "cannot create lmr\n");
+    DEBUG_PRINT("register return mr %p, buf %p, len %d\n", mr, buf, len);
+    return ret;
 }
 
-#endif /* MALLOC_HOOK */
+int deregister_memory(VIP_MEM_HANDLE *mr)
+{
+    int ret;
+
+    ret = dat_lmr_free(mr->hndl);
+    CHECK_RETURN(ret, "cannot deregister memory");
+    DEBUG_PRINT("deregister mr %p, ret %d\n", mr, ret);
+    return ret;
+}
+

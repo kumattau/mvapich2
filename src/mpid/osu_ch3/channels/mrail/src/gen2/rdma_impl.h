@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2002-2006, The Ohio State University. All rights
+/* Copyright (c) 2002-2007, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -32,14 +32,16 @@
 #include <pthread.h>
 #endif /* RDMA_CM */
 
+#include <errno.h>
+
 #undef DEBUG_PRINT
 #ifdef DEBUG
 #define DEBUG_PRINT(args...) \
 do {                                                          \
     int rank;                                                 \
     PMI_Get_rank(&rank);                                      \
-    fprintf(stderr, "[%d][%s:%d] ", rank, __FILE__, __LINE__);\
-    fprintf(stderr, args);                                    \
+    MPIU_Error_printf("[%d][%s:%d] ", rank, __FILE__, __LINE__);\
+    MPIU_Error_printf(args);                                    \
 } while (0)
 #else
 #define DEBUG_PRINT(args...)
@@ -54,7 +56,8 @@ enum {
     MLX_CX_DDR,
     PATH_HT, 
     MLX_PCI_X, 
-    IBM_EHCA
+    IBM_EHCA,
+    CHELSIO_T3
 };
 
 /* cluster size */
@@ -66,17 +69,21 @@ typedef struct MPIDI_CH3I_RDMA_Process_t {
     int                         hca_type;
     int                         cluster_size;
     uint8_t                     has_srq;
+    uint8_t                     has_hsam;
+    uint8_t                     has_apm;
     uint8_t                     has_adaptive_fast_path;
     uint8_t                     has_ring_startup;
     uint8_t                     has_lazy_mem_unregister;
     uint8_t                     has_one_sided;
 
     int                         maxtransfersize;
+    uint8_t                     lmc;
 
     struct ibv_context          *nic_context[MAX_NUM_HCAS];
     struct ibv_device           *ib_dev[MAX_NUM_HCAS];
     struct ibv_pd               *ptag[MAX_NUM_HCAS];
     struct ibv_cq               *cq_hndl[MAX_NUM_HCAS];
+    struct ibv_comp_channel     *comp_channel[MAX_NUM_HCAS];
 
     /*record lid and port information for connection establish later*/
     int ports[MAX_NUM_HCAS][MAX_NUM_PORTS];
@@ -102,7 +109,10 @@ typedef struct MPIDI_CH3I_RDMA_Process_t {
 
     uint32_t                    pending_r3_sends[MAX_NUM_SUBRAILS];
     struct ibv_srq              *srq_hndl[MAX_NUM_HCAS];
-    pthread_spinlock_t          srq_post_lock;
+    pthread_spinlock_t          srq_post_spin_lock;
+    pthread_mutex_t             srq_post_mutex_lock[MAX_NUM_HCAS];
+    pthread_cond_t              srq_post_cond[MAX_NUM_HCAS];
+    uint32_t                    srq_zero_post_counter[MAX_NUM_HCAS];
     pthread_t                   async_thread[MAX_NUM_HCAS];
     uint32_t                    posted_bufs[MAX_NUM_HCAS];
     MPIDI_VC_t                  **vc_mapping;
@@ -120,12 +130,12 @@ typedef struct MPIDI_CH3I_RDMA_Process_t {
 #ifdef RDMA_CM
     pthread_t                   cmthread;
     struct rdma_event_channel   *cm_channel;
-    struct rdma_cm_id           **cm_ids;
     struct rdma_cm_id           *cm_listen_id;
     sem_t                       rdma_cm;
 #endif /* RDMA_CM */
     uint8_t                     use_rdma_cm;
     uint8_t                     use_iwarp_mode;
+    uint8_t                     use_rdma_cm_on_demand;
 
 } MPIDI_CH3I_RDMA_Process_t;
 
@@ -136,6 +146,14 @@ typedef struct rdma_iba_addr_tb {
     /* TODO: haven't consider one sided queue pair yet */
     uint32_t    **qp_num_onesided;
 } rdma_iba_addr_tb_t ;
+
+typedef struct ud_addr_info {
+#ifdef _SMP_
+    int hostid;
+#endif    
+    uint16_t lid;
+    uint32_t qpn;
+}ud_addr_info_t;
 
 struct MPIDI_PG;
 
@@ -188,7 +206,8 @@ extern struct rdma_iba_addr_tb   rdma_iba_addr_table;
 #define  IBV_POST_SR(_v, _c, _rail, err_string) {               \
     {                                                           \
         int __ret;                                              \
-        if((_v)->desc.sg_entry.length <= rdma_max_inline_size ){\
+        if(((_v)->desc.sg_entry.length <= rdma_max_inline_size) \
+                && ((_v)->desc.sr.opcode != IBV_WR_RDMA_READ)){ \
            (_v)->desc.sr.send_flags = (enum ibv_send_flags)     \
                                         (IBV_SEND_SIGNALED |    \
                                          IBV_SEND_INLINE);      \
@@ -196,7 +215,7 @@ extern struct rdma_iba_addr_tb   rdma_iba_addr_table;
             (_v)->desc.sr.send_flags = IBV_SEND_SIGNALED ;      \
         }                                                       \
         if ((_rail) != (_v)->rail) { \
-                fprintf(stderr, "[%s:%d] rail %d, vrail %d\n",  \
+                DEBUG_PRINT(stderr, "[%s:%d] rail %d, vrail %d\n",\
                         __FILE__, __LINE__,(_rail), (_v)->rail);\
                 assert((_rail) == (_v)->rail);                  \
         }                                                       \
@@ -287,6 +306,8 @@ while (0)
     }\
 }
 
+#define MSG_LOG_QUEUE_TAIL(vc) (vc->mrail.msg_log_queue_tail)
+
 #define MSG_LOG_EMPTY(vc) (vc->mrail.msg_log_queue_head == NULL)
 
 void MRAILI_Init_vc_network(MPIDI_VC_t * vc);
@@ -349,16 +370,26 @@ void MRAILI_RDMA_Put(MPIDI_VC_t * vc, vbuf *v,
                      char * local_addr, uint32_t lkey,
                      char * remote_addr, uint32_t rkey,
                      int nbytes, int subrail);
-int MRAILI_Fast_rdma_select_rail(MPIDI_VC_t * vc);
+void MRAILI_RDMA_Get(MPIDI_VC_t * vc, vbuf *v,
+                     char * local_addr, uint32_t lkey,
+                     char * remote_addr, uint32_t rkey,
+                     int nbytes, int subrail);
 int MRAILI_Send_select_rail(MPIDI_VC_t * vc);
 void vbuf_address_send(MPIDI_VC_t *vc);
 void vbuf_fast_rdma_alloc (struct MPIDI_VC *, int dir);
 int MPIDI_CH3I_MRAILI_rput_complete(MPIDI_VC_t *, MPID_IOV *,
                                     int, int *num_bytes_ptr, 
                                     vbuf **, int rail);
+int MPIDI_CH3I_MRAILI_rget_finish(MPIDI_VC_t *, MPID_IOV *,
+                                    int, int *num_bytes_ptr, 
+                                    vbuf **, int rail);
 struct ibv_srq *create_srq(struct MPIDI_CH3I_RDMA_Process_t *proc,
 				  int hca_num);
 
+void IB_ring_based_alltoall(void *sbuf, int data_size, 
+        int proc_rank, void *rbuf, int job_size, 
+        struct MPIDI_CH3I_RDMA_Process_t *proc);
+    
 /*function to create qps for the connection and move them to INIT state*/
 int cm_qp_create(MPIDI_VC_t *vc);
 
@@ -367,5 +398,8 @@ int cm_qp_move_to_rtr(MPIDI_VC_t *vc, uint16_t *lids, uint32_t *qpns);
 
 /*function to move qps to rts and mark the connection available*/
 int cm_qp_move_to_rts(MPIDI_VC_t *vc);
+
+uint16_t get_pkey_index(uint16_t pkey, int hca_num, int port_num);
+void set_pkey_index(uint16_t * pkey_index, int hca_num, int port_num);
 
 #endif                          /* RDMA_IMPL_H */

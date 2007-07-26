@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Allgatherv
 #define MPI_Allgatherv PMPI_Allgatherv
 
 /* This is the default implementation of allgatherv. The algorithm is:
@@ -199,18 +200,16 @@ int MPIR_Allgatherv (
                     send_offset = 0;
                     for (j=0; j<my_tree_root; j++)
                         send_offset += recvcounts[j];
-                    send_offset *= recvtype_extent;
                     
                     recv_offset = 0;
                     for (j=0; j<dst_tree_root; j++)
                         recv_offset += recvcounts[j];
-                    recv_offset *= recvtype_extent;
 
-                    mpi_errno = MPIC_Sendrecv(((char *)tmp_buf + send_offset),
+                    mpi_errno = MPIC_Sendrecv(((char *)tmp_buf + send_offset * recvtype_extent),
                                               curr_cnt, recvtype, dst,
                                               MPIR_ALLGATHERV_TAG,  
-                                              ((char *)tmp_buf + recv_offset),
-                                              total_count, recvtype, dst,
+                                              ((char *)tmp_buf + recv_offset * recvtype_extent),
+                                              total_count - recv_offset, recvtype, dst,
                                               MPIR_ALLGATHERV_TAG,
                                               comm, &status); 
                     /* for convenience, recv is posted for a bigger amount
@@ -302,10 +301,9 @@ int MPIR_Allgatherv (
                             offset = 0;
                             for (j=0; j<(my_tree_root+mask); j++)
                                 offset += recvcounts[j];
-                            offset *= recvtype_extent;
 
-                            mpi_errno = MPIC_Recv(((char *)tmp_buf + offset),
-                                                  total_count, recvtype,
+                            mpi_errno = MPIC_Recv(((char *)tmp_buf + offset * recvtype_extent),
+                                                  total_count - offset, recvtype,
                                                   dst, MPIR_ALLGATHERV_TAG,
                                                   comm, &status);
 			    /* --BEGIN ERROR HANDLING-- */
@@ -421,7 +419,7 @@ int MPIR_Allgatherv (
                                               curr_cnt, MPI_BYTE, dst,
                                               MPIR_ALLGATHERV_TAG,  
                                               ((char *)tmp_buf + recv_offset),
-                                              nbytes*total_count, MPI_BYTE, dst,
+                                              tmp_buf_size-recv_offset, MPI_BYTE, dst,
                                               MPIR_ALLGATHERV_TAG, comm, &status);
                     /* for convenience, recv is posted for a bigger amount
                        than will be sent */ 
@@ -501,7 +499,7 @@ int MPIR_Allgatherv (
                                  (dst < tree_root + nprocs_completed) &&
                                  (rank >= tree_root + nprocs_completed)) {
                             mpi_errno = MPIC_Recv(((char *)tmp_buf + offset),
-                                                  nbytes*total_count, MPI_BYTE,
+                                                  tmp_buf_size-offset, MPI_BYTE,
                                                   dst,
                                                   MPIR_ALLGATHERV_TAG,
                                                   comm, &status); 
@@ -611,7 +609,7 @@ int MPIR_Allgatherv (
             mpi_errno = MPIC_Sendrecv(tmp_buf, curr_cnt, recvtype, dst,
                                       MPIR_ALLGATHERV_TAG,
                                   ((char *)tmp_buf + curr_cnt*recvtype_extent),
-                                      total_count, recvtype,
+                                      total_count - curr_cnt, recvtype,
                                       src, MPIR_ALLGATHERV_TAG, comm, &status);
 	    /* --BEGIN ERROR HANDLING-- */
             if (mpi_errno)
@@ -641,7 +639,7 @@ int MPIR_Allgatherv (
             mpi_errno = MPIC_Sendrecv(tmp_buf, send_cnt, recvtype,
                                       dst, MPIR_ALLGATHERV_TAG,
                                   ((char *)tmp_buf + curr_cnt*recvtype_extent),
-                                      total_count, recvtype,
+                                      total_count - curr_cnt, recvtype,
                                       src, MPIR_ALLGATHERV_TAG, comm,
                                       MPI_STATUS_IGNORE);
 	    /* --BEGIN ERROR HANDLING-- */
@@ -906,7 +904,7 @@ int MPI_Allgatherv(void *sendbuf, int sendcount, MPI_Datatype sendtype,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("coll");
     MPID_MPI_COLL_FUNC_ENTER(MPID_STATE_MPI_ALLGATHERV);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -988,6 +986,9 @@ int MPI_Allgatherv(void *sendbuf, int sendcount, MPI_Datatype sendtype,
     }
     else
     {
+	MPIU_THREADPRIV_DECL;
+	MPIU_THREADPRIV_GET;
+
 	MPIR_Nest_incr();
         if (comm_ptr->comm_kind == MPID_INTRACOMM) 
             /* intracommunicator */
@@ -997,9 +998,6 @@ int MPI_Allgatherv(void *sendbuf, int sendcount, MPI_Datatype sendtype,
                                         recvtype, comm_ptr); 
         else {
             /* intracommunicator */
-/*	    mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_COMM, 
-					      "**intercommcoll",
-					      "**intercommcoll %s", FCNAME );*/
             mpi_errno = MPIR_Allgatherv_inter(sendbuf, sendcount, 
 					      sendtype, recvbuf,
 					      recvcounts, displs,
@@ -1014,7 +1012,7 @@ int MPI_Allgatherv(void *sendbuf, int sendcount, MPI_Datatype sendtype,
 
   fn_exit:
     MPID_MPI_COLL_FUNC_EXIT(MPID_STATE_MPI_ALLGATHERV);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("coll");
     return mpi_errno;
 
   fn_fail:

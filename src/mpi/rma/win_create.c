@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Win_create
 #define MPI_Win_create PMPI_Win_create
 #endif
 
@@ -61,7 +62,7 @@ int MPI_Win_create(void *base, MPI_Aint size, int disp_unit, MPI_Info info,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("rma");
     MPID_MPI_RMA_FUNC_ENTER(MPID_STATE_MPI_WIN_CREATE);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -113,6 +114,10 @@ int MPI_Win_create(void *base, MPI_Aint size, int disp_unit, MPI_Info info,
     mpi_errno = MPID_Win_create(base, size, disp_unit, info_ptr, comm_ptr, &win_ptr);
     if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 
+    /* Initialize a few fields that have specific defaults */
+    win_ptr->name[0]    = 0;
+    win_ptr->errhandler = 0;
+
     /* return the handle of the window object to the user */
     *win = win_ptr->handle;
 
@@ -120,7 +125,7 @@ int MPI_Win_create(void *base, MPI_Aint size, int disp_unit, MPI_Info info,
 
   fn_exit:
     MPID_MPI_RMA_FUNC_EXIT(MPID_STATE_MPI_WIN_CREATE);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("rma");
     return mpi_errno;
 
   fn_fail:

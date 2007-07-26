@@ -19,6 +19,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Type_create_subarray
 #define MPI_Type_create_subarray PMPI_Type_create_subarray
 
 #endif
@@ -74,14 +75,16 @@ int MPI_Type_create_subarray(int ndims,
     MPID_Datatype *new_dtp;
 
     MPID_Datatype *datatype_ptr = NULL;
+    MPIU_THREADPRIV_DECL;
     MPIU_CHKLMEM_DECL(1);
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_TYPE_CREATE_SUBARRAY);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("datatype");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_TYPE_CREATE_SUBARRAY);
 
+    MPIU_THREADPRIV_GET;
     MPIR_Nest_incr();
     
     /* Get handles to MPI objects. */
@@ -311,16 +314,17 @@ int MPI_Type_create_subarray(int ndims,
     if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 
     /* ... end of body of routine ... */
+    MPIR_Nest_decr();
     
   fn_exit:
-    MPIR_Nest_decr();
     MPIU_CHKLMEM_FREEALL();
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_TYPE_CREATE_SUBARRAY);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("datatype");
     return mpi_errno;
 
   fn_fail:
     /* --BEGIN ERROR HANDLING-- */
+    MPIR_Nest_decr();
 #   ifdef HAVE_ERROR_CHECKING
     {
 	mpi_errno = MPIR_Err_create_code(

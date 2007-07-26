@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2002-2006, The Ohio State University. All rights
+/* Copyright (c) 2002-2007, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -30,6 +30,8 @@
 #include "rdma_impl.h"
 #include "vbuf.h"
 #include "dreg.h"
+#include <errno.h>
+#include <string.h>
 
 /* head of list of allocated vbuf regions */
 static vbuf_region *vbuf_region_head = NULL;
@@ -51,9 +53,17 @@ static long num_vbuf_freed = 0;
 
 static pthread_spinlock_t vbuf_lock;
 
-void init_vbuf_lock()
+int init_vbuf_lock()
 {
-    pthread_spin_init(&vbuf_lock, 0);
+    int mpi_errno = MPI_SUCCESS;
+
+    if(pthread_spin_init(&vbuf_lock, 0)) {
+	mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL,
+		"init_vbuf_lock", __LINE__, MPI_ERR_OTHER, "**fail",
+		"%s: %s", "pthread_spin_init", strerror(errno));
+    }
+
+    return mpi_errno;
 }
 
 void dump_vbuf_region(vbuf_region * r)
@@ -76,6 +86,7 @@ void deallocate_vbufs(int hca_num)
 #ifdef CKPT
      || 1
 #endif
+     || MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
      || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
         pthread_spin_lock(&vbuf_lock);
 
@@ -98,6 +109,7 @@ void deallocate_vbufs(int hca_num)
 #ifdef CKPT
      || 1
 #endif
+     || MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
      || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
          pthread_spin_unlock(&vbuf_lock);
 }
@@ -184,6 +196,10 @@ static int allocate_vbuf_region(int nvbufs)
                 (i + 1) * rdma_vbuf_total_size - sizeof *cur->head_flag);
         cur->buffer = (char *) ((char *)(vbuf_dma_buffer) +
                 (i * rdma_vbuf_total_size));
+
+        cur->eager = 0;
+        cur->content_size = 0;
+        cur->coalesce = 0;
     }
     /* last one needs to be set to NULL */
     cur = free_vbuf_head + nvbufs - 1;
@@ -196,6 +212,9 @@ static int allocate_vbuf_region(int nvbufs)
             (nvbufs * rdma_vbuf_total_size) - sizeof *cur->head_flag);
     cur->buffer = (char *) ((char *)vbuf_dma_buffer +
             ((nvbufs - 1) * rdma_vbuf_total_size));
+    cur->eager = 0;
+    cur->content_size = 0;
+    cur->coalesce = 0;
 
 
     /* thread region list */
@@ -226,6 +245,7 @@ vbuf *get_vbuf()
 #ifdef CKPT
      || 1
 #endif
+     || MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
      || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
     	pthread_spin_lock(&vbuf_lock);
 
@@ -264,6 +284,7 @@ vbuf *get_vbuf()
 #ifdef CKPT
      || 1
 #endif
+     || MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
      || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
          pthread_spin_unlock(&vbuf_lock);
 
@@ -275,19 +296,24 @@ void MRAILI_Release_vbuf(vbuf *v)
     /* note this correctly handles appending to empty free list */
     if (MPIDI_CH3I_RDMA_Process.has_srq
 #ifdef CKPT
-    || 1
+            || 1
 #endif
-    || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
+            || MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
+            || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
         pthread_spin_lock(&vbuf_lock);
 
     DEBUG_PRINT("release_vbuf: releasing %p previous head = %p, padding %d\n",
-        v, free_vbuf_head, v->padding);
+            v, free_vbuf_head, v->padding);
+
     assert(v != free_vbuf_head);
     v->desc.next = free_vbuf_head;
-    if ((v->padding != NORMAL_VBUF_FLAG)
-        && (v->padding != RPUT_VBUF_FLAG)) {
+
+    if ((v->padding != NORMAL_VBUF_FLAG) && 
+            (v->padding != RPUT_VBUF_FLAG) &&
+            (v->padding != RGET_VBUF_FLAG)) {
         ibv_error_abort(GEN_EXIT_ERR, "vbuf not correct!!!\n");
     }
+
     *v->head_flag  = 0;
     free_vbuf_head = v;
     v->pheader     = NULL;
@@ -296,11 +322,13 @@ void MRAILI_Release_vbuf(vbuf *v)
     v->vc          = NULL;
     num_free_vbuf++;
     num_vbuf_freed++;
+
     if (MPIDI_CH3I_RDMA_Process.has_srq
 #ifdef CKPT
-    || 1
+            || 1
 #endif
-     || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
+            || MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
+            || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
         pthread_spin_unlock(&vbuf_lock);
 }
 
@@ -381,6 +409,31 @@ void vbuf_init_recv(vbuf *v, unsigned long len, int rail)
     v->rail    = rail;
 }
 
+void vbuf_init_rget(vbuf * v, 
+                    void *local_address, uint32_t lkey, 
+                    void *remote_address, uint32_t rkey, int len, 
+		    int rail)
+{
+    v->desc.sr.next         = NULL;
+    v->desc.sr.send_flags   = IBV_SEND_SIGNALED;
+    v->desc.sr.opcode       = IBV_WR_RDMA_READ;
+    v->desc.sr.wr_id        = (uintptr_t) v;
+
+    v->desc.sr.num_sge      = 1;
+    v->desc.sr.wr.rdma.remote_addr 
+                            = (uintptr_t)(remote_address);
+    v->desc.sr.wr.rdma.rkey = rkey;
+
+    v->desc.sr.sg_list      = &(v->desc.sg_entry);
+    v->desc.sg_entry.length = len;
+    v->desc.sg_entry.lkey   = lkey;
+    v->desc.sg_entry.addr   = (uintptr_t)(local_address);
+    v->padding = RGET_VBUF_FLAG;
+    v->rail    = rail;	
+    DEBUG_PRINT("RDMA Read\n");
+}
+
+
 void vbuf_init_rput(vbuf * v, 
                     void *local_address, uint32_t lkey, 
                     void *remote_address, uint32_t rkey, int len, 
@@ -445,3 +498,4 @@ void vbuf_reregister_all()
 }
 #endif
 
+/* vi:set sw=4 tw=80: */

@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: timelimit.c,v 1.1.1.1 2006/01/18 21:09:48 huangwei Exp $
+/*  $Id: timelimit.c,v 1.3 2006/11/02 17:28:49 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -25,6 +25,8 @@ void MPIU_SetTimeout( int seconds )
     struct timeval tzero;
 
     if (seconds > 0) {
+	tzero.tv_sec	      = 0;
+	tzero.tv_usec	      = 0;
 	tval.tv_sec	      = seconds;
 	tval.tv_usec	      = 0;
 	timelimit.it_interval = tzero;       /* Only one alarm */

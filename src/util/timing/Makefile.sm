@@ -1,2 +1,0 @@
-lib${MPILIBNAME}_a_SOURCES = timer.c
-INCLUDES = -I${top_srcdir} -I../../include -I${master_top_srcdir}/src/include

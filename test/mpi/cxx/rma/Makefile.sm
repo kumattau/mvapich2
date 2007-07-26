@@ -8,6 +8,7 @@ getgroupx_SOURCES = getgroupx.cxx
 winfencex_SOURCES = winfencex.cxx
 winscale1x_SOURCES = winscale1x.cxx
 winscale2x_SOURCES = winscale2x.cxx
+fkeyvalwinx_SOURCES = fkeyvalwinx.cxx 
 
 ../util/mtest.o:
 	cd ../util && $(MAKE) mtest.o

@@ -22,12 +22,17 @@ int main( int argc, char *argv[] )
     MTest_Init( &argc, &argv );
 
     datatype = MPI_INT;
+    /* Get an intercommunicator */
     while (MTestGetIntercomm( &comm, &leftGroup, 4 )) {
+	MPI_Comm_rank( comm, &rank );
+
+	/* To improve reporting of problems about operations, we
+	   change the error handler to errors return */
+	MPI_Comm_set_errhandler( comm, MPI_ERRORS_RETURN );
+
 	for (count = 1; count < 65000; count = 2 * count) {
 	    buf = (int *)malloc( count * sizeof(int) );
-	    /* Get an intercommunicator */
 	    if (leftGroup) {
-		MPI_Comm_rank( comm, &rank );
 		if (rank == 0) {
 		    for (i=0; i<count; i++) buf[i] = i;
 		}

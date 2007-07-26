@@ -17,7 +17,7 @@ Delivers a Unix signal to all the application processes in the job
 from time import ctime
 __author__ = "Ralph Butler and Rusty Lusk"
 __date__ = ctime()
-__version__ = "$Revision: 1.1.1.1 $"
+__version__ = "$Revision: 1.21 $"
 __credits__ = ""
 
 
@@ -92,7 +92,7 @@ def mpdsigjob():
     parmdb.get_parms_from_rcfile(parmsToOverride)
     if getuid() == 0  or  parmdb['MPD_USE_ROOT_MPD']:
         fullDirName = path.abspath(path.split(argv[0])[0])  # normalize
-        mpdroot = os.path.join(fullDirName,'mpdroot')
+        mpdroot = path.join(fullDirName,'mpdroot')
         conSock = MPDConClientSock(mpdroot=mpdroot,secretword=parmdb['MPD_SECRETWORD'])
     else:
         conSock = MPDConClientSock(secretword=parmdb['MPD_SECRETWORD'])

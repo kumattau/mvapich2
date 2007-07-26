@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: info_free.c,v 1.1.1.1 2006/01/18 21:09:48 huangwei Exp $
+/*  $Id: info_free.c,v 1.17 2006/12/09 17:05:30 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Info_free
 #define MPI_Info_free PMPI_Info_free
 #endif
 
@@ -44,14 +45,16 @@ Input Parameter:
 @*/
 int MPI_Info_free( MPI_Info *info )
 {
+#ifdef HAVE_ERROR_CHECKING
     static const char FCNAME[] = "MPI_Info_free";
+#endif
     int mpi_errno = MPI_SUCCESS;
     MPID_Info *info_ptr=0;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_INFO_FREE);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("info");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_INFO_FREE);
     
     /* Validate parameters, especially handles needing to be converted */
@@ -89,21 +92,24 @@ int MPI_Info_free( MPI_Info *info )
     
     /* ... end of body of routine ... */
 
+#ifdef HAVE_ERROR_CHECKING
   fn_exit:
+#endif
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_INFO_FREE);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("info");
     return mpi_errno;
 
-  fn_fail:
     /* --BEGIN ERROR HANDLING-- */
 #   ifdef HAVE_ERROR_CHECKING
+  fn_fail:
     {
 	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_info_free",
+	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER,
+	    "**mpi_info_free",
 	    "**mpi_info_free %p", info);
     }
-#   endif
     mpi_errno = MPIR_Err_return_comm( NULL, FCNAME, mpi_errno );
     goto fn_exit;
+#   endif
     /* --END ERROR HANDLING-- */
 }

@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Keyval_create
 #define MPI_Keyval_create PMPI_Keyval_create
 
 #endif
@@ -68,11 +69,12 @@ int MPI_Keyval_create(MPI_Copy_function *copy_fn,
 {
     static const char FCNAME[] = "MPI_Keyval_create";
     int mpi_errno = MPI_SUCCESS;
+    MPIU_THREADPRIV_DECL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_KEYVAL_CREATE);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("attr");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_KEYVAL_CREATE);
 
     /* Validate parameters and objects (post conversion) */
@@ -88,7 +90,8 @@ int MPI_Keyval_create(MPI_Copy_function *copy_fn,
 #   endif /* HAVE_ERROR_CHECKING */
 
     /* ... body of routine ...  */
-    
+
+    MPIU_THREADPRIV_GET;
     MPIR_Nest_incr();
     mpi_errno = NMPI_Comm_create_keyval( copy_fn, delete_fn, keyval, 
 					extra_state );
@@ -99,7 +102,7 @@ int MPI_Keyval_create(MPI_Copy_function *copy_fn,
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_KEYVAL_CREATE);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("attr");
     return mpi_errno;
 
   fn_fail:

@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: mpichtimer.h.in,v 1.1.1.1 2006/01/18 21:09:42 huangwei Exp $
+/*  $Id: mpichtimer.h.in,v 1.2 2006/01/03 22:03:52 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -236,11 +236,8 @@ void MPID_Wtime_init(void);
                               "=m" (*(((char *) (var_ptr))+4)) \
                             :: "eax", "ebx", "ecx", "edx" ); \
 }
-extern double g_seconds_per_tick;
-#define MPIDM_Wtime_todouble(t, d) *d = (double)*t * g_seconds_per_tick
-#if 0
-#define MPIDM_Wtime_todouble(t, d) *d = (double)*t
-#endif
+extern double MPID_Seconds_per_tick;
+#define MPIDM_Wtime_todouble(t, d) *d = (double)*t * MPID_Seconds_per_tick
 
 #elif MPICH_TIMER_KIND == USE_GCC_IA64_CYCLE
 #ifdef __INTEL_COMPILER
@@ -251,8 +248,8 @@ extern double g_seconds_per_tick;
 #define MPID_Wtime(var_ptr) { MPID_Time_t t_val;\
 	__asm__ __volatile__("mov %0=ar.itc" : "=r" (t_val)); *var_ptr=t_val;}
 #endif
-extern double g_seconds_per_tick;
-#define MPIDM_Wtime_todouble(t, d) *d = (double)*t * g_seconds_per_tick
+extern double MPID_Seconds_per_tick;
+#define MPIDM_Wtime_todouble(t, d) *d = (double)*t * MPID_Seconds_per_tick
 
 #elif MPICH_TIMER_KIND == USE_LINUXALPHA_CYCLE
 #define MPID_Wtime_init()
@@ -260,13 +257,9 @@ extern double g_seconds_per_tick;
 
 #elif MPICH_TIMER_KIND == USE_QUERYPERFORMANCECOUNTER
 #define MPID_Wtime(var) QueryPerformanceCounter(var)
-extern double g_seconds_per_tick;
+extern double MPID_Seconds_per_tick;
 #define MPIDM_Wtime_todouble( t, d ) \
-  *d = (double)t->QuadPart * g_seconds_per_tick /* convert to seconds */
-#if 0
-#define MPIDM_Wtime_todouble( t, d ) \
-  *d = (double)t->QuadPart /* don't convert to seconds */
-#endif
+  *d = (double)t->QuadPart * MPID_Seconds_per_tick /* convert to seconds */
 
 #elif MPICH_TIMER_KIND == USE_WIN86_CYCLE
 #define MPID_Wtime(var_ptr) \
@@ -278,9 +271,9 @@ extern double g_seconds_per_tick;
     __asm mov [ecx], eax \
     __asm mov [ecx + TYPE int], edx \
 }
-extern double g_seconds_per_tick;
-#define MPIDM_Wtime_todouble(t, d) *d = (double)(__int64)*t * g_seconds_per_tick
-#define MPIDM_Wtime_diff(t1,t2,diff) *diff = (double)((__int64)( *t2 - *t1 )) * g_seconds_per_tick
+extern double MPID_Seconds_per_tick;
+#define MPIDM_Wtime_todouble(t, d) *d = (double)(__int64)*t * MPID_Seconds_per_tick
+#define MPIDM_Wtime_diff(t1,t2,diff) *diff = (double)((__int64)( *t2 - *t1 )) * MPID_Seconds_per_tick
 
 #endif
 

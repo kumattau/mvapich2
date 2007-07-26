@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: template.c,v 1.1.1.1 2006/01/18 21:09:42 huangwei Exp $
+/*  $Id: template.c,v 1.17 2006/05/08 15:34:38 toonen Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -21,6 +21,11 @@
    the MPI routines.  You can use USE_WEAK_SYMBOLS to see if MPICH is
    using weak symbols to implement the MPI routines. */
 #ifndef MPICH_MPI_FROM_PMPI
+/* The PMPI routine is built using a CPP macro to rename the MPI routine
+   implemented below.  The MPI name must be undefined first to prevent any
+   conflicts with previous renamings, such as those put in place by the
+   globus device when it is building on top of a vendor MPI. */
+#undef MPI_Foo
 #define MPI_Foo PMPI_Foo
 
 /* Any internal routines can go here.  Make them static if possible.  If they

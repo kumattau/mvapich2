@@ -92,3 +92,16 @@
         call MPI_Error_string( errcode, string, slen, ierr )
         print *, "Error class ", errclass, "(", string(1:slen), ")"
         end
+!
+        subroutine MTestPrintErrorMsg( msg, errcode )
+        use mpi
+        character*(*) msg
+        integer errcode
+        integer errclass, slen, ierr
+        character*(MPI_MAX_ERROR_STRING) string
+
+        call MPI_Error_class( errcode, errclass, ierr )
+        call MPI_Error_string( errcode, string, slen, ierr )
+        print *, msg, ": Error class ", errclass, " &
+      &       (", string(1:slen), ")" 
+        end

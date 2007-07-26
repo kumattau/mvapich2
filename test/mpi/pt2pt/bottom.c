@@ -41,11 +41,16 @@ int main( int argc, char *argv[] )
     source = 0;
     dest = 1;
 
+    /* To improve reporting of problems about operations, we
+       change the error handler to errors return */
+    MPI_Comm_set_errhandler( comm, MPI_ERRORS_RETURN );
+
     if (rank == source) {
 	ii = 2;
 	err = MPI_Send( MPI_BOTTOM, 1, newtype, dest, 0, comm );
 	if (err) {
 	    errs++;
+	    MTestPrintError( err );
 	    printf( "MPI_Send did not return MPI_SUCCESS\n" );
 	}
     }
@@ -53,6 +58,7 @@ int main( int argc, char *argv[] )
 	ii = -1;
 	err = MPI_Recv( MPI_BOTTOM, 1, newtype, source, 0, comm, &status );
 	if (err) {
+	    MTestPrintError( err );
 	    errs++;
 	    printf( "MPI_Recv did not return MPI_SUCCESS\n" );
 	}
@@ -61,6 +67,8 @@ int main( int argc, char *argv[] )
 	    printf( "Received %d but expected %d\n", ii, 2 );
 	}
     }
+
+    MPI_Comm_set_errhandler( comm, MPI_ERRORS_ARE_FATAL );
 
     MPI_Type_free( &newtype );
 

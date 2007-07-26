@@ -309,7 +309,7 @@ ac_includes_default="\
 # include <unistd.h>
 #endif"
 
-ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS MAKE VPATH SET_CFLAGS SET_MAKE CC CFLAGS LDFLAGS CPPFLAGS ac_ct_CC EXEEXT OBJEXT CPP EGREP device_name channel_name SSM_LIBS AR RANLIB MPILIBNAME CC_SHL C_LINK_SHL LIBTOOL ENABLE_SHLIB master_top_srcdir master_top_builddir MAKE_DEPEND_C LIBOBJS LTLIBOBJS'
+ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS MAKE VPATH SET_CFLAGS SET_MAKE CC CFLAGS LDFLAGS CPPFLAGS ac_ct_CC EXEEXT OBJEXT CPP EGREP device_name channel_name SSM_LIBS AR RANLIB MPILIBNAME CC_SHL C_LINK_SHL LIBTOOL ENABLE_SHLIB master_top_srcdir master_top_builddir MAKE_DEPEND_C ETAGS ETAGSADD LIBOBJS LTLIBOBJS'
 ac_subst_files=''
 
 # Initialize some variables set by options.
@@ -1422,18 +1422,72 @@ ac_configure=$ac_aux_dir/configure # This should be Cygnus configure.
           ac_config_headers="$ac_config_headers include/mpidi_ch3i_ssm_conf.h"
 
 
+
+
+
+
 echo "RUNNING CONFIGURE FOR THE SOCK-SHARED_MEMORY CHANNEL"
 
 save_libs=$LIBS
 LIBS=
 
-if test "`cd $srcdir && pwd`" != "`pwd`" && test -f $srcdir/config.status ; then
-    { { echo "$as_me:$LINENO: error: You cannot do a VPATH build if the source directory has been
-    configured.  Run \"make distclean\" in $srcdir first." >&5
+
+rm -f conftest*
+date >conftest$$
+# If creating a file in the current directory does not show up in the srcdir
+# then we're doing a VPATH build (or something is very wrong)
+if test ! -s $srcdir/conftest$$ ; then
+    pac_dirtyfiles=""
+    pac_dirtydirs=""
+    pac_header=""
+
+    for file in config.status $pac_header  ; do
+        if test -f $srcdir/$file ; then
+	    pac_dirtyfiles="$pac_dirtyfiles $file"
+	fi
+    done
+
+
+    if test -n "$pac_dirtyfiles" -o -n "$pac_dirtydirs" ; then
+	# Create a nice message about what to remove
+	rmmsg=""
+	if test -n "$pac_dirtyfiles" ; then
+	    rmmsg="files $pac_dirtyfiles"
+        fi
+ 	if test -n "$pac_dirtydirs" ; then
+	    if test -n "$rmmsg" ; then
+	        rmmsg="$rmmsg and directories $pac_dirtydirs"
+            else
+                rmmsg="directories $pac_dirtydirs"
+            fi
+        fi
+        if test -f $srcdir/Makefile ; then
+            { { echo "$as_me:$LINENO: error: You cannot do a VPATH build if the source directory has been
+    configured.  Run \"make distclean\" in $srcdir first and make sure that the
+    $rmmsg have been removed." >&5
 echo "$as_me: error: You cannot do a VPATH build if the source directory has been
-    configured.  Run \"make distclean\" in $srcdir first." >&2;}
+    configured.  Run \"make distclean\" in $srcdir first and make sure that the
+    $rmmsg have been removed." >&2;}
    { (exit 1); exit 1; }; }
+        else
+            { { echo "$as_me:$LINENO: error: You cannot do a VPATH build if the source directory has been
+    configured.  Remove the $rmmsg in $srcdir." >&5
+echo "$as_me: error: You cannot do a VPATH build if the source directory has been
+    configured.  Remove the $rmmsg in $srcdir." >&2;}
+   { (exit 1); exit 1; }; }
+        fi
+    fi
 fi
+rm -f conftest*
+
+
+
+if test -n "$CONF_BASE_CACHEFILE" -a -s "$CONF_BASE_CACHEFILE" ; then
+    echo "Loading base cachefile $CONF_BASE_CACHEFILE"
+    . $CONF_BASE_CACHEFILE
+    export CONF_BASE_CACHEFILE
+fi
+
 
 
 true
@@ -2926,7 +2980,7 @@ fi
 # If cpp failed, see if the compiler accepts the header.
 if test "$pac_found_header" != "yes" ; then
     cat >conftest.c<<EOF
-#line 2929 "configure"
+#line 2983 "configure"
 #include "confdefs.h"
 #include <$ac_header>
 int conftest() {return 0;}
@@ -3273,7 +3327,7 @@ fi
 # If cpp failed, see if the compiler accepts the header.
 if test "$pac_found_header" != "yes" ; then
     cat >conftest.c<<EOF
-#line 3276 "configure"
+#line 3330 "configure"
 #include "confdefs.h"
 #include <$ac_header>
 int conftest() {return 0;}
@@ -3321,7 +3375,8 @@ done
 
 
 
-for ac_header in sys/stat.h sys/ptrace.h sys/wait.h errno.h ctype.h process.h sys/mman.h uuid/uuid.h mqueue.h
+
+for ac_header in sys/stat.h sys/ptrace.h sys/wait.h errno.h ctype.h process.h sys/mman.h uuid/uuid.h mqueue.h sys/sysctl.h
 do
 ac_safe=`echo "$ac_header" | sed 'y%./+-%__p_%'`
 echo "$as_me:$LINENO: checking for $ac_header" >&5
@@ -3370,7 +3425,7 @@ fi
 # If cpp failed, see if the compiler accepts the header.
 if test "$pac_found_header" != "yes" ; then
     cat >conftest.c<<EOF
-#line 3373 "configure"
+#line 3428 "configure"
 #include "confdefs.h"
 #include <$ac_header>
 int conftest() {return 0;}
@@ -3528,7 +3583,8 @@ done
 
 
 
-for ac_func in sysconf pthread_mutexattr_setpshared pthread_mutexattr_init
+
+for ac_func in sysconf sysctl pthread_mutexattr_setpshared pthread_mutexattr_init
 do
 as_ac_var=`echo "ac_cv_func_$ac_func" | $as_tr_sh`
 echo "$as_me:$LINENO: checking for $ac_func" >&5
@@ -3872,7 +3928,7 @@ fi
 # If cpp failed, see if the compiler accepts the header.
 if test "$pac_found_header" != "yes" ; then
     cat >conftest.c<<EOF
-#line 3875 "configure"
+#line 3931 "configure"
 #include "confdefs.h"
 #include <$ac_header>
 int conftest() {return 0;}
@@ -3963,7 +4019,7 @@ fi
 # If cpp failed, see if the compiler accepts the header.
 if test "$pac_found_header" != "yes" ; then
     cat >conftest.c<<EOF
-#line 3966 "configure"
+#line 4022 "configure"
 #include "confdefs.h"
 #include <$ac_header>
 int conftest() {return 0;}
@@ -4950,10 +5006,13 @@ cat confdefs.h >>conftest.$ac_ext
 cat >>conftest.$ac_ext <<_ACEOF
 /* end confdefs.h.  */
 #include <sys/shm.h>
-key_t key = rand();
-int id = shmget(key,128,IPC_CREAT);
-if (id) shmctl(id,IPC_RMID,0);
-return (id > 0) ? 0 : 1;
+int main(int argc, char *argv[])
+{
+   key_t key = rand();
+   int id = shmget(key,128,IPC_CREAT);
+   if (id) shmctl(id,IPC_RMID,0);
+   return (id > 0) ? 0 : 1;
+}
 
 _ACEOF
 rm -f conftest$ac_exeext
@@ -5577,6 +5636,9 @@ fi
 SSM_LIBS=$LIBS
 LIBS=$save_libs
 
+# We need the util/sock/ch3usock.h header file
+CPPFLAGS="${CPPFLAGS} -I${master_top_srcdir}/src/mpid/ch3/util/sock"
+
 
 
 
@@ -5600,6 +5662,23 @@ echo "$as_me: WARNING: libtool selected for shared library support but LIBTOOL i
 
 
 
+
+
+
+
+export ETAGS
+export ETAGSADD
+
+
+if test -n "$CONF_BASE_CACHEFILE" -a -s "$CONF_BASE_CACHEFILE" ; then
+    set | grep ac_cv > $CONF_BASE_CACHEFILE.new
+    if cmp -s $CONF_BASE_CACHEFILE.new $CONF_BASE_CACHEFILE ; then
+	:
+    else
+	echo "Replacing $CONF_BASE_CACHEFILE"
+	mv $CONF_BASE_CACHEFILE.new $CONF_BASE_CACHEFILE
+    fi
+fi
 
 
                               ac_config_files="$ac_config_files Makefile src/Makefile localdefs"
@@ -6241,6 +6320,8 @@ s,@ENABLE_SHLIB@,$ENABLE_SHLIB,;t t
 s,@master_top_srcdir@,$master_top_srcdir,;t t
 s,@master_top_builddir@,$master_top_builddir,;t t
 s,@MAKE_DEPEND_C@,$MAKE_DEPEND_C,;t t
+s,@ETAGS@,$ETAGS,;t t
+s,@ETAGSADD@,$ETAGSADD,;t t
 s,@LIBOBJS@,$LIBOBJS,;t t
 s,@LTLIBOBJS@,$LTLIBOBJS,;t t
 CEOF

@@ -309,7 +309,7 @@ ac_includes_default="\
 # include <unistd.h>
 #endif"
 
-ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS COPTIONS TOTALVIEW DO_MTV CC CFLAGS LDFLAGS CPPFLAGS ac_ct_CC EXEEXT OBJEXT SET_MAKE LN_S INSTALL_PROGRAM INSTALL_SCRIPT INSTALL_DATA PY25 PY24 PY23 PY22 PY2 PY PYTHON CLINKER CPP EGREP MPD_HOME MAKE_DEPEND_C LIBOBJS LTLIBOBJS'
+ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS COPTIONS CC CFLAGS LDFLAGS CPPFLAGS ac_ct_CC EXEEXT OBJEXT SET_MAKE LN_S INSTALL_PROGRAM INSTALL_SCRIPT INSTALL_DATA TOTALVIEW DO_MTV PY25 PY24 PY23 PY22 PY2 PY PYTHON CLINKER CPP EGREP MPD_HOME MAKE_DEPEND_C LIBOBJS LTLIBOBJS'
 ac_subst_files=''
 
 # Initialize some variables set by options.
@@ -1302,6 +1302,10 @@ rm -f ${srcdir}/mpdconf.h mpdconf.h
           ac_config_headers="$ac_config_headers mpdconf.h"
 
 
+
+
+
+
 # Check whether --enable-echo or --disable-echo was given.
 if test "${enable_echo+set}" = set; then
   enableval="$enable_echo"
@@ -1321,59 +1325,6 @@ fi;
 if test "$enable_g" = "yes" -o "$enable_g" = "all" ; then
     COPTIONS="${COPTIONS} -g"
 fi
-
-# Check whether --enable-totalview or --disable-totalview was given.
-if test "${enable_totalview+set}" = set; then
-  enableval="$enable_totalview"
-
-else
-  enable_totalview=default
-fi;
-if test "$enable_totalview" = "no" ; then
-    DO_MTV="no"
-elif test "$enable_totalview" = "yes" ; then
-    DO_MTV="yes"
-else
-    # Extract the first word of "totalview", so it can be a program name with args.
-set dummy totalview; ac_word=$2
-echo "$as_me:$LINENO: checking for $ac_word" >&5
-echo $ECHO_N "checking for $ac_word... $ECHO_C" >&6
-if test "${ac_cv_prog_TOTALVIEW+set}" = set; then
-  echo $ECHO_N "(cached) $ECHO_C" >&6
-else
-  if test -n "$TOTALVIEW"; then
-  ac_cv_prog_TOTALVIEW="$TOTALVIEW" # Let the user override the test.
-else
-as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
-for as_dir in $PATH
-do
-  IFS=$as_save_IFS
-  test -z "$as_dir" && as_dir=.
-  for ac_exec_ext in '' $ac_executable_extensions; do
-  if $as_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
-    ac_cv_prog_TOTALVIEW="totalview"
-    echo "$as_me:$LINENO: found $as_dir/$ac_word$ac_exec_ext" >&5
-    break 2
-  fi
-done
-done
-
-fi
-fi
-TOTALVIEW=$ac_cv_prog_TOTALVIEW
-if test -n "$TOTALVIEW"; then
-  echo "$as_me:$LINENO: result: $TOTALVIEW" >&5
-echo "${ECHO_T}$TOTALVIEW" >&6
-else
-  echo "$as_me:$LINENO: result: no" >&5
-echo "${ECHO_T}no" >&6
-fi
-
-    if test -n "$TOTALVIEW" ; then
-        DO_MTV="yes"
-    fi
-fi
-
 
 
 
@@ -2473,6 +2424,59 @@ if test "$installOk" = "no" ; then
 fi
 echo Using INSTALL=$INSTALL
 
+# Check whether --enable-totalview or --disable-totalview was given.
+if test "${enable_totalview+set}" = set; then
+  enableval="$enable_totalview"
+
+else
+  enable_totalview=default
+fi;
+if test "$enable_totalview" = "no" ; then
+    DO_MTV="no"
+elif test "$enable_totalview" = "yes" ; then
+    DO_MTV="yes"
+else
+    # Extract the first word of "totalview", so it can be a program name with args.
+set dummy totalview; ac_word=$2
+echo "$as_me:$LINENO: checking for $ac_word" >&5
+echo $ECHO_N "checking for $ac_word... $ECHO_C" >&6
+if test "${ac_cv_prog_TOTALVIEW+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+  if test -n "$TOTALVIEW"; then
+  ac_cv_prog_TOTALVIEW="$TOTALVIEW" # Let the user override the test.
+else
+as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+  for ac_exec_ext in '' $ac_executable_extensions; do
+  if $as_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
+    ac_cv_prog_TOTALVIEW="totalview"
+    echo "$as_me:$LINENO: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+done
+
+fi
+fi
+TOTALVIEW=$ac_cv_prog_TOTALVIEW
+if test -n "$TOTALVIEW"; then
+  echo "$as_me:$LINENO: result: $TOTALVIEW" >&5
+echo "${ECHO_T}$TOTALVIEW" >&6
+else
+  echo "$as_me:$LINENO: result: no" >&5
+echo "${ECHO_T}no" >&6
+fi
+
+    if test -n "$TOTALVIEW" ; then
+        DO_MTV="yes"
+    fi
+fi
+
+
 
 # Check whether --with-python or --without-python was given.
 if test "${with_python+set}" = set; then
@@ -2728,6 +2732,19 @@ echo "${ECHO_T}no" >&6
             continue
         fi
 
+        if test "$enable_totalview" = "yes" ; then
+            echo "$as_me:$LINENO: checking that $pypgm has development tools for totalview" >&5
+echo $ECHO_N "checking that $pypgm has development tools for totalview... $ECHO_C" >&6
+            if test -f /usr/lib/$pypgm/config/Makefile ; then
+                echo "$as_me:$LINENO: result: yes" >&5
+echo "${ECHO_T}yes" >&6
+            else
+                echo "$as_me:$LINENO: result: no" >&5
+echo "${ECHO_T}no" >&6
+                continue
+            fi
+        fi
+
         PYTHON="$pypgm"
         break
     done
@@ -2754,6 +2771,7 @@ echo "$as_me: error: *** fork may fail on this cygwin system; you may need to ru
 fi
 
 # echo "RMB PYTHON=" $PYTHON
+
 
 
 # In case clinker is not defined
@@ -3375,6 +3393,7 @@ _ACEOF
 
 fi
 
+# sys/param.h for MAXHOSTNAMELEN
 # On IRIX 5.3, sys/types and inttypes.h are conflicting.
 
 
@@ -3451,7 +3470,8 @@ done
 
 
 
-for ac_header in fcntl.h strings.h sys/time.h unistd.h stdlib.h
+
+for ac_header in fcntl.h strings.h sys/time.h unistd.h stdlib.h sys/param.h
 do
 as_ac_Header=`echo "ac_cv_header_$ac_header" | $as_tr_sh`
 if eval "test \"\${$as_ac_Header+set}\" = set"; then
@@ -4322,8 +4342,6 @@ s,@ECHO_N@,$ECHO_N,;t t
 s,@ECHO_T@,$ECHO_T,;t t
 s,@LIBS@,$LIBS,;t t
 s,@COPTIONS@,$COPTIONS,;t t
-s,@TOTALVIEW@,$TOTALVIEW,;t t
-s,@DO_MTV@,$DO_MTV,;t t
 s,@CC@,$CC,;t t
 s,@CFLAGS@,$CFLAGS,;t t
 s,@LDFLAGS@,$LDFLAGS,;t t
@@ -4336,6 +4354,8 @@ s,@LN_S@,$LN_S,;t t
 s,@INSTALL_PROGRAM@,$INSTALL_PROGRAM,;t t
 s,@INSTALL_SCRIPT@,$INSTALL_SCRIPT,;t t
 s,@INSTALL_DATA@,$INSTALL_DATA,;t t
+s,@TOTALVIEW@,$TOTALVIEW,;t t
+s,@DO_MTV@,$DO_MTV,;t t
 s,@PY25@,$PY25,;t t
 s,@PY24@,$PY24,;t t
 s,@PY23@,$PY23,;t t

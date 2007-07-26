@@ -4,6 +4,7 @@
 */
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include "mpe.h"
 #include "mpe_graphics.h"
 
@@ -49,9 +50,12 @@ int main( int argc, char** argv )
     ierr = MPE_Update( graph );
 
     if ( my_rank == 0 ) {
+        /*
         fprintf( stdout, "Hit any key then return to continue  " );
         fscanf( stdin, "%s", &ckey );
         fprintf( stdout, "\n" );
+        */
+        sleep(1);
     }
     MPI_Barrier( MPI_COMM_WORLD );
 

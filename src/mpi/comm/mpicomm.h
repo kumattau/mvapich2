@@ -1,12 +1,13 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: mpicomm.h,v 1.1.1.1 2006/01/18 21:09:43 huangwei Exp $
- *
+/*  
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
 
 /* Function prototypes for communicator helper functions */
-int MPIR_Get_contextid( MPID_Comm * );
-int MPIR_Get_intercomm_contextid( MPID_Comm * );
+/* The MPIR_Get_contextid routine is in mpiimpl.h so that the device 
+   may use it */
+/* int MPIR_Get_contextid( MPID_Comm * ); */
+int MPIR_Get_intercomm_contextid( MPID_Comm *, int *, int * );
 void MPIR_Free_contextid( int );
 

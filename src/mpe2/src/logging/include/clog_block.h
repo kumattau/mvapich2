@@ -29,9 +29,15 @@ void  CLOG_BlockData_free( CLOG_BlockData_t **data_handle );
 
 void CLOG_BlockData_reset( CLOG_BlockData_t *data );
 
-void CLOG_BlockData_patch(       CLOG_BlockData_t *data,
-                                 CLOG_Time_t      *local_proc_timediff,
-                           const CLOG_CommIDs_t   *commtable );
+void CLOG_BlockData_patch_all(       CLOG_BlockData_t *data,
+                                     CLOG_Time_t      *local_proc_timediff,
+                               const CLOG_CommIDs_t   *commtable );
+
+void CLOG_BlockData_patch_comm(       CLOG_BlockData_t *data,
+                                const CLOG_CommIDs_t   *commtable );
+
+void CLOG_BlockData_patch_time( CLOG_BlockData_t *data,
+                                CLOG_Time_t      *local_proc_timediff );
 
 void CLOG_BlockData_swap_bytes_last( CLOG_BlockData_t *data );
 

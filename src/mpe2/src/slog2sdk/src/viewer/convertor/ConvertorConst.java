@@ -19,13 +19,15 @@ public class ConvertorConst
 {
     public  static final String  CLOG2_TO_SLOG2     = "  CLOG-2  -->  SLOG-2  ";
     public  static final String  CLOG_TO_SLOG2      = "  CLOG    -->  SLOG-2  ";
-    public  static final String  RLOG_TO_SLOG2      = "  RLOG    -->  SLOG-2  ";
     public  static final String  UTE_TO_SLOG2       = "  UTE     -->  SLOG-2  ";
+    public  static final String  RLOG_TO_SLOG2      = "  RLOG    -->  SLOG-2  ";
+    public  static final String  TXT_TO_SLOG2       = "  TXT     -->  SLOG-2  ";
 
     private static final String  CLOG2_TO_SLOG2_JAR = "clog2TOslog2.jar";
     private static final String  CLOG_TO_SLOG2_JAR  = "clogTOslog2.jar";
     private static final String  RLOG_TO_SLOG2_JAR  = "traceTOslog2.jar";
     private static final String  UTE_TO_SLOG2_JAR   = "traceTOslog2.jar";
+    private static final String  TXT_TO_SLOG2_JAR   = "traceTOslog2.jar";
 
     // Assume Unix convention.
     private static       String  FileSeparator      = "/";
@@ -38,9 +40,11 @@ public class ConvertorConst
     // if XXX_TraceLibPath contains ".", i.e. Jar Directory.
     private static       String  CLOG2_TraceLibPath = "";
     private static       String  CLOG_TraceLibPath  = "";
-    private static       String  RLOG_TraceLibPath  = ".:../trace_rlog/lib";
     private static       String  UTE_TraceLibPath   = ".:/usr/lpp/ppe.perf/lib";
-
+    private static       String  TXT_TraceLibPath   = ".:./trace_sample";
+    private static       String  RLOG_TraceLibPath  = ".:../trace_rlog/lib:./trace_rlog";
+    // "../trace_rlog/lib" is for backward compatibility
+    //  and could be removed after a while, today=11/22/2006
 
 
     public  static String getDefaultConvertor( String filename )
@@ -54,6 +58,8 @@ public class ConvertorConst
             return RLOG_TO_SLOG2;
         else if ( log_ext.equals( TraceName.UTE_EXT ) )
             return UTE_TO_SLOG2;
+        else if ( log_ext.equals( TraceName.TXT_EXT ) )
+            return TXT_TO_SLOG2;
         else
             return "";
     }
@@ -73,6 +79,8 @@ public class ConvertorConst
             return RLOG_TO_SLOG2_JAR;
         else if ( convertor.equals( UTE_TO_SLOG2 ) )
             return UTE_TO_SLOG2_JAR;
+        else if ( convertor.equals( TXT_TO_SLOG2 ) )
+            return TXT_TO_SLOG2_JAR;
         else
             return "";
     }
@@ -96,6 +104,8 @@ public class ConvertorConst
             return updateLibraryPath( prefix, RLOG_TraceLibPath );
         else if ( convertor.equals( UTE_TO_SLOG2 ) )
             return updateLibraryPath( prefix, UTE_TraceLibPath );
+        else if ( convertor.equals( TXT_TO_SLOG2 ) )
+            return updateLibraryPath( prefix, TXT_TraceLibPath );
         else
             return ".";
     }
@@ -115,6 +125,9 @@ public class ConvertorConst
                                                                new_char );
             if ( UTE_TraceLibPath != null )
                 UTE_TraceLibPath  = UTE_TraceLibPath.replace( old_char,
+                                                              new_char );
+            if ( TXT_TraceLibPath != null )
+                TXT_TraceLibPath  = UTE_TraceLibPath.replace( old_char,
                                                               new_char );
             return true;
         }

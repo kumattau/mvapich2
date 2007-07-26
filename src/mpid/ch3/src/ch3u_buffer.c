@@ -6,12 +6,27 @@
 
 #include "mpidimpl.h"
 
+/* FIXME: Explain the contents of this file */
+/*
+ * A first guess.  This file contains routines to manage memory-to-memory
+ * copies of buffers described by MPI datatypes
+ */
+
+/* MPIDI_COPY_BUFFER_SZ is the size of the buffer that is allocated when 
+   copying from one non-contiguous buffer to another.  In this case, an 
+   intermediate contiguous buffer is used of this size */
 #if !defined(MPIDI_COPY_BUFFER_SZ)
 #define MPIDI_COPY_BUFFER_SZ 16384
 #endif
 
 /* FIXME: Explain this routine .
-Used by mpid_irecv, mpid_recv, mpidi_isend_self */
+Used indirectly by mpid_irecv, mpid_recv (through MPIDI_CH3_RecvFromSelf) and 
+ in mpidi_isend_self.c */
+
+/* This routine appears to handle copying data from one buffer (described by
+ the usual MPI triple (buf,count,datatype) to another, as is needed in send 
+ and receive from self.  We may want to put all of the "from self" routines
+ into a single file, and make MPIDI_CH3U_Buffer_copy static to this file. */
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3U_Buffer_copy
@@ -42,7 +57,8 @@ void MPIDI_CH3U_Buffer_copy(
     /* --BEGIN ERROR HANDLING-- */
     if (sdata_sz > rdata_sz)
     {
-	MPIDI_DBG_PRINTF((15, FCNAME, "message truncated, sdata_sz=" MPIDI_MSG_SZ_FMT " rdata_sz=" MPIDI_MSG_SZ_FMT,
+	MPIU_DBG_MSG_FMT(CH3_OTHER,TYPICAL,(MPIU_DBG_FDEST,
+	    "message truncated, sdata_sz=" MPIDI_MSG_SZ_FMT " rdata_sz=" MPIDI_MSG_SZ_FMT,
 			  sdata_sz, rdata_sz));
 	sdata_sz = rdata_sz;
 	*rmpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_TRUNCATE, "**truncate", "**truncate %d %d", sdata_sz, rdata_sz );
@@ -69,9 +85,11 @@ void MPIDI_CH3U_Buffer_copy(
 
 	MPID_Segment_init(rbuf, rcount, rdt, &seg, 0);
 	last = sdata_sz;
-	MPIDI_DBG_PRINTF((40, FCNAME, "pre-unpack last=" MPIDI_MSG_SZ_FMT, last ));
+	MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST, 
+                          "pre-unpack last=" MPIDI_MSG_SZ_FMT, last ));
 	MPID_Segment_unpack(&seg, 0, &last, (char*)sbuf + sdt_true_lb);
-	MPIDI_DBG_PRINTF((40, FCNAME, "pre-unpack last=" MPIDI_MSG_SZ_FMT, last ));
+	MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
+			 "pre-unpack last=" MPIDI_MSG_SZ_FMT, last ));
 	/* --BEGIN ERROR HANDLING-- */
 	if (last != sdata_sz)
 	{
@@ -88,9 +106,11 @@ void MPIDI_CH3U_Buffer_copy(
 
 	MPID_Segment_init(sbuf, scount, sdt, &seg, 0);
 	last = sdata_sz;
-	MPIDI_DBG_PRINTF((40, FCNAME, "pre-pack last=" MPIDI_MSG_SZ_FMT, last ));
+	MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
+			       "pre-pack last=" MPIDI_MSG_SZ_FMT, last ));
 	MPID_Segment_pack(&seg, 0, &last, (char*)rbuf + rdt_true_lb);
-	MPIDI_DBG_PRINTF((40, FCNAME, "post-pack last=" MPIDI_MSG_SZ_FMT, last ));
+	MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
+			    "post-pack last=" MPIDI_MSG_SZ_FMT, last ));
 	/* --BEGIN ERROR HANDLING-- */
 	if (last != sdata_sz)
 	{
@@ -113,7 +133,7 @@ void MPIDI_CH3U_Buffer_copy(
 	/* --BEGIN ERROR HANDLING-- */
 	if (buf == NULL)
 	{
-	    MPIDI_DBG_PRINTF((40, FCNAME, "SRBuf allocation failure"));
+	    MPIU_DBG_MSG(CH3_OTHER,TYPICAL,"SRBuf allocation failure");
 	    *smpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0);
 	    *rmpi_errno = *smpi_errno;
 	    *rsz = 0;
@@ -142,9 +162,13 @@ void MPIDI_CH3U_Buffer_copy(
 		last = sdata_sz;
 	    }
 	    
-	    MPIDI_DBG_PRINTF((40, FCNAME, "pre-pack first=" MPIDI_MSG_SZ_FMT ", last=" MPIDI_MSG_SZ_FMT, sfirst, last ));
+	    MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
+               "pre-pack first=" MPIDI_MSG_SZ_FMT ", last=" MPIDI_MSG_SZ_FMT, 
+						sfirst, last ));
 	    MPID_Segment_pack(&sseg, sfirst, &last, buf + buf_off);
-	    MPIDI_DBG_PRINTF((40, FCNAME, "post-pack first=" MPIDI_MSG_SZ_FMT ", last=" MPIDI_MSG_SZ_FMT, sfirst, last ));
+	    MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
+               "post-pack first=" MPIDI_MSG_SZ_FMT ", last=" MPIDI_MSG_SZ_FMT, 
+               sfirst, last ));
 	    /* --BEGIN ERROR HANDLING-- */
 	    MPIU_Assert(last > sfirst);
 	    /* --END ERROR HANDLING-- */
@@ -152,9 +176,13 @@ void MPIDI_CH3U_Buffer_copy(
 	    buf_end = buf + buf_off + (last - sfirst);
 	    sfirst = last;
 	    
-	    MPIDI_DBG_PRINTF((40, FCNAME, "pre-unpack first=" MPIDI_MSG_SZ_FMT ", last=" MPIDI_MSG_SZ_FMT, rfirst, last ));
+	    MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
+             "pre-unpack first=" MPIDI_MSG_SZ_FMT ", last=" MPIDI_MSG_SZ_FMT, 
+						rfirst, last ));
 	    MPID_Segment_unpack(&rseg, rfirst, &last, buf);
-	    MPIDI_DBG_PRINTF((40, FCNAME, "post-unpack first=" MPIDI_MSG_SZ_FMT ", last=" MPIDI_MSG_SZ_FMT, rfirst, last ));
+	    MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
+             "post-unpack first=" MPIDI_MSG_SZ_FMT ", last=" MPIDI_MSG_SZ_FMT, 
+						rfirst, last ));
 	    /* --BEGIN ERROR HANDLING-- */
 	    MPIU_Assert(last > rfirst);
 	    /* --END ERROR HANDLING-- */
@@ -179,7 +207,8 @@ void MPIDI_CH3U_Buffer_copy(
 	    buf_off = sfirst - rfirst;
 	    if (buf_off > 0)
 	    {
-		MPIDI_DBG_PRINTF((40, FCNAME, "moved " MPIDI_MSG_SZ_FMT " bytes to the beginning of the tmp buffer", buf_off));
+		MPIU_DBG_MSG_FMT(CH3_OTHER, VERBOSE, (MPIU_DBG_FDEST,
+                  "moved " MPIDI_MSG_SZ_FMT " bytes to the beginning of the tmp buffer", buf_off));
 		memmove(buf, buf_end - buf_off, buf_off);
 	    }
 	}
@@ -190,4 +219,41 @@ void MPIDI_CH3U_Buffer_copy(
 
   fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3U_BUFFER_COPY);
+}
+
+
+/*
+ * This routine is called by mpid_recv and mpid_irecv when a request
+ * matches a send-to-self message 
+ */
+int MPIDI_CH3_RecvFromSelf( MPID_Request *rreq, void *buf, int count, 
+			    MPI_Datatype datatype )
+{
+    MPID_Request * const sreq = rreq->partner_request;
+
+    if (sreq != NULL)
+    {
+	MPIDI_msg_sz_t data_sz;
+	
+	MPIDI_CH3U_Buffer_copy(sreq->dev.user_buf, sreq->dev.user_count,
+			       sreq->dev.datatype, &sreq->status.MPI_ERROR,
+			       buf, count, datatype, &data_sz, 
+			       &rreq->status.MPI_ERROR);
+	rreq->status.count = (int)data_sz;
+	MPID_REQUEST_SET_COMPLETED(sreq);
+	MPID_Request_release(sreq);
+    }
+    else
+    {
+	/* The sreq is missing which means an error occurred.  
+	   rreq->status.MPI_ERROR should have been set when the
+	   error was detected. */
+    }
+    
+    /* no other thread can possibly be waiting on rreq, so it is safe to 
+       reset ref_count and cc */
+    rreq->cc = 0;
+    MPIU_Object_set_ref(rreq, 1);
+
+    return MPI_SUCCESS;
 }

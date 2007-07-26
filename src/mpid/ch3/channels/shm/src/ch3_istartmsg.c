@@ -6,13 +6,15 @@
 
 #include "mpidi_ch3_impl.h"
 
+/* STATES:NO WARNINGS */
+
 /*static MPID_Request * create_request(void * pkt, int pkt_sz, int nb)*/
 #undef create_request
 #define create_request(sreq, pkt, pkt_sz, nb) \
 { \
     MPIDI_STATE_DECL(MPID_STATE_CREATE_REQUEST); \
     MPIDI_FUNC_ENTER(MPID_STATE_CREATE_REQUEST); \
-    sreq = MPIDI_CH3_Request_create(); \
+    sreq = MPID_Request_create(); \
     /*MPIU_Assert(sreq != NULL);*/ \
     if (sreq == NULL) \
     { \
@@ -28,7 +30,7 @@
     sreq->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)((char *) &sreq->ch.pkt + nb); \
     sreq->dev.iov[0].MPID_IOV_LEN = pkt_sz - nb; \
     sreq->dev.iov_count = 1; \
-    sreq->dev.ca = MPIDI_CH3_CA_COMPLETE; \
+    sreq->dev.OnDataAvail = 0;\
     MPIDI_FUNC_EXIT(MPID_STATE_CREATE_REQUEST); \
 }
 
@@ -95,7 +97,7 @@ int MPIDI_CH3_iStartMsg(MPIDI_VC_t * vc, void * pkt, MPIDI_msg_sz_t pkt_sz, MPID
 	}
 	else
 	{
-	    sreq = MPIDI_CH3_Request_create();
+	    sreq = MPID_Request_create();
 	    if (sreq == NULL)
 	    {
 		mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0);

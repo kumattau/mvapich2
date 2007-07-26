@@ -8,11 +8,19 @@
 
 /* FIXME: Why is this the _immed file (what does immed stand for?) */
 
+/* FIXME: What do any of these routines do?  What are the arguments?
+   Special conditions (see the FIXME on len = SSIZE_MAX)?  preconditions?
+   postconditions? */
+
+/* FIXME: What does this function do?  What are its arguments?
+   It appears to execute a nonblocking accept call */
 #undef FUNCNAME
 #define FUNCNAME MPIDU_Sock_accept
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIDU_Sock_accept(struct MPIDU_Sock * listener, struct MPIDU_Sock_set * sock_set, void * user_ptr, struct MPIDU_Sock ** sockp)
+int MPIDU_Sock_accept(struct MPIDU_Sock * listener, 
+		      struct MPIDU_Sock_set * sock_set, void * user_ptr,
+		      struct MPIDU_Sock ** sockp)
 {
     struct MPIDU_Sock * sock;
     struct pollfd * pollfd;
@@ -38,32 +46,39 @@ int MPIDU_Sock_accept(struct MPIDU_Sock * listener, struct MPIDU_Sock_set * sock
     /* --BEGIN ERROR HANDLING-- */
     if (pollinfo->type != MPIDU_SOCKI_TYPE_LISTENER)
     {
-	mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPIDU_SOCK_ERR_BAD_SOCK,
-					 "**sock|listener_bad_sock", "**sock|listener_bad_sock %d %d",
-					 pollinfo->sock_set->id, pollinfo->sock_id);
+	mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, 
+		 FCNAME, __LINE__, MPIDU_SOCK_ERR_BAD_SOCK,
+		 "**sock|listener_bad_sock", "**sock|listener_bad_sock %d %d",
+		 pollinfo->sock_set->id, pollinfo->sock_id);
 	goto fn_exit;
     }
     
-    if (pollinfo->state != MPIDU_SOCKI_STATE_CONNECTED_RO && pollinfo->state != MPIDU_SOCKI_STATE_CLOSING)
+    if (pollinfo->state != MPIDU_SOCKI_STATE_CONNECTED_RO && 
+	pollinfo->state != MPIDU_SOCKI_STATE_CLOSING)
     {
-	mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPIDU_SOCK_ERR_BAD_SOCK,
-					 "**sock|listener_bad_state", "**sock|listener_bad_state %d %d %d",
-					 pollinfo->sock_set->id, pollinfo->sock_id, pollinfo->state);
+	mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, 
+		FCNAME, __LINE__, MPIDU_SOCK_ERR_BAD_SOCK,
+	     "**sock|listener_bad_state", "**sock|listener_bad_state %d %d %d",
+		pollinfo->sock_set->id, pollinfo->sock_id, pollinfo->state);
 	goto fn_exit;
     }
     /* --END ERROR HANDLING-- */
 
     /*
-     * Get a socket for the new connection from the operating system.  Make the socket nonblocking, and disable Nagle's
+     * Get a socket for the new connection from the operating system.  
+     * Make the socket nonblocking, and disable Nagle's
      * alogorithm (to minimize latency of small messages).
      */
     addr_len = sizeof(struct sockaddr_in);
+    /* FIXME: Either use the syscall macro or correctly wrap this in a
+       test for EINTR */
     fd = accept(pollinfo->fd, (struct sockaddr *) &addr, &addr_len);
 
     if (pollinfo->state != MPIDU_SOCKI_STATE_CLOSING)
     {
 	/*
-	 * Unless the listener sock is being closed, add it back into the poll list so that new connections will be detected.
+	 * Unless the listener sock is being closed, add it back into the 
+	 * poll list so that new connections will be detected.
 	 */
 	MPIDU_SOCKI_POLLFD_OP_SET(pollfd, pollinfo, POLLIN);
     }
@@ -73,24 +88,30 @@ int MPIDU_Sock_accept(struct MPIDU_Sock * listener, struct MPIDU_Sock_set * sock
     {
 	if (errno == EAGAIN || errno == EWOULDBLOCK)
 	{
-	    mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPIDU_SOCK_ERR_NO_NEW_SOCK,
-					     "**sock|nosock", NULL);
+	    mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, 
+			     FCNAME, __LINE__, MPIDU_SOCK_ERR_NO_NEW_SOCK,
+			     "**sock|nosock", NULL);
 	}
 	else if (errno == ENOBUFS || errno == ENOMEM)
 	{
-	    mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPIDU_SOCK_ERR_NOMEM,
-					     "**sock|osnomem", NULL);
+	    mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, 
+				FCNAME, __LINE__, MPIDU_SOCK_ERR_NOMEM,
+				"**sock|osnomem", NULL);
 	}
 	else if (errno == EBADF || errno == ENOTSOCK || errno == EOPNOTSUPP)
 	{
-	    mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPIDU_SOCK_ERR_BAD_SOCK,
-					     "**sock|badhandle", "**sock|poll|badhandle %d %d %d",
-					     pollinfo->sock_set->id, pollinfo->sock_id, pollinfo->fd);
+	    mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, 
+                           FCNAME, __LINE__, MPIDU_SOCK_ERR_BAD_SOCK,
+			  "**sock|badhandle", "**sock|poll|badhandle %d %d %d",
+			  pollinfo->sock_set->id, pollinfo->sock_id, 
+			  pollinfo->fd);
 	}
 	else
 	{
-	    mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPIDU_SOCK_ERR_NO_NEW_SOCK,
-					     "**sock|poll|accept", "**sock|poll|accept %d %s", errno, MPIU_Strerror(errno));
+	    mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_RECOVERABLE,
+                           FCNAME, __LINE__, MPIDU_SOCK_ERR_NO_NEW_SOCK,
+			   "**sock|poll|accept", "**sock|poll|accept %d %s", 
+			   errno, MPIU_Strerror(errno));
 	}
 	
 	goto fn_fail;
@@ -98,11 +119,14 @@ int MPIDU_Sock_accept(struct MPIDU_Sock * listener, struct MPIDU_Sock_set * sock
     /* --END ERROR HANDLING-- */
 
     flags = fcntl(fd, F_GETFL, 0);
+    /* FIXME: There should be a simpler macro for reporting errno messages */
     /* --BEGIN ERROR HANDLING-- */
     if (flags == -1)
     {
-	mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPIDU_SOCK_ERR_FAIL,
-					 "**sock|poll|nonblock", "**sock|poll|nonblock %d %s", errno, MPIU_Strerror(errno));
+	mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_RECOVERABLE, 
+			 FCNAME, __LINE__, MPIDU_SOCK_ERR_FAIL,
+			 "**sock|poll|nonblock", "**sock|poll|nonblock %d %s", 
+			 errno, MPIU_Strerror(errno));
 	goto fn_fail;
     }
     /* --END ERROR HANDLING-- */
@@ -110,8 +134,10 @@ int MPIDU_Sock_accept(struct MPIDU_Sock * listener, struct MPIDU_Sock_set * sock
     /* --BEGIN ERROR HANDLING-- */
     if (rc == -1)
     {
-	mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPIDU_SOCK_ERR_FAIL,
-					 "**sock|poll|nonblock", "**sock|poll|nonblock %d %s", errno, MPIU_Strerror(errno));
+	mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_RECOVERABLE, 
+			 FCNAME, __LINE__, MPIDU_SOCK_ERR_FAIL,
+			 "**sock|poll|nonblock", "**sock|poll|nonblock %d %s",
+			 errno, MPIU_Strerror(errno));
 	goto fn_fail;
     }
     /* --END ERROR HANDLING-- */
@@ -121,8 +147,10 @@ int MPIDU_Sock_accept(struct MPIDU_Sock * listener, struct MPIDU_Sock_set * sock
     /* --BEGIN ERROR HANDLING-- */
     if (rc != 0)
     {
-	mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPIDU_SOCK_ERR_FAIL,
-					 "**sock|poll|nodelay", "**sock|poll|nodelay %d %s", errno, MPIU_Strerror(errno));
+	mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_RECOVERABLE, 
+			 FCNAME, __LINE__, MPIDU_SOCK_ERR_FAIL,
+			 "**sock|poll|nodelay", "**sock|poll|nodelay %d %s", 
+                         errno, MPIU_Strerror(errno));
 	goto fn_fail;
     }
     /* --END ERROR HANDLING-- */
@@ -130,6 +158,8 @@ int MPIDU_Sock_accept(struct MPIDU_Sock * listener, struct MPIDU_Sock_set * sock
     /*
      * Verify that the socket buffer size is correct
      */
+    /* FIXME: Who sets the socket buffer size?  Why isn't the test
+       made at that time? */
     if (MPIDU_Socki_socket_bufsz > 0)
     {
 	int bufsz;
@@ -143,7 +173,8 @@ int MPIDU_Sock_accept(struct MPIDU_Sock * listener, struct MPIDU_Sock_set * sock
 	/* --BEGIN ERROR HANDLING-- */
 	if (rc == 0)
 	{
-	    if (bufsz < MPIDU_Socki_socket_bufsz * 0.9 || bufsz < MPIDU_Socki_socket_bufsz * 1.0)
+	    if (bufsz < MPIDU_Socki_socket_bufsz * 0.9 || 
+		bufsz < MPIDU_Socki_socket_bufsz * 1.0)
 	    {
 		MPIU_Msg_printf("WARNING: send socket buffer size differs from requested size (requested=%d, actual=%d)\n",
 				MPIDU_Socki_socket_bufsz, bufsz);
@@ -156,10 +187,14 @@ int MPIDU_Sock_accept(struct MPIDU_Sock * listener, struct MPIDU_Sock_set * sock
 	/* FIXME: There's normally no need to check that the socket buffer
 	   size was set to the requested size.  This should only be part of
 	   some more verbose diagnostic output, not a general action */
+	/* FIXME: Cut and paste code is a disaster waiting to happen. 
+	   Particularly in any non-performance critical section,
+	   create a separate routine instead of using cut and paste. */
 	/* --BEGIN ERROR HANDLING-- */
 	if (rc == 0)
 	{
-	    if (bufsz < MPIDU_Socki_socket_bufsz * 0.9 || bufsz < MPIDU_Socki_socket_bufsz * 1.0)
+	    if (bufsz < MPIDU_Socki_socket_bufsz * 0.9 || 
+		bufsz < MPIDU_Socki_socket_bufsz * 1.0)
 	    {
 		MPIU_Msg_printf("WARNING: receive socket buffer size differs from requested size (requested=%d, actual=%d)\n",
 				MPIDU_Socki_socket_bufsz, bufsz);
@@ -217,7 +252,8 @@ int MPIDU_Sock_accept(struct MPIDU_Sock * listener, struct MPIDU_Sock_set * sock
 #define FUNCNAME MPIDU_Sock_read
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIDU_Sock_read(MPIDU_Sock_t sock, void * buf, MPIU_Size_t len, MPIU_Size_t * num_read)
+int MPIDU_Sock_read(MPIDU_Sock_t sock, void * buf, MPIU_Size_t len, 
+		    MPIU_Size_t * num_read)
 {
     struct pollfd * pollfd;
     struct pollinfo * pollinfo;
@@ -238,7 +274,13 @@ int MPIDU_Sock_read(MPIDU_Sock_t sock, void * buf, MPIU_Size_t len, MPIU_Size_t 
     MPIDU_SOCKI_VERIFY_CONNECTED_READABLE(pollinfo, mpi_errno, fn_exit);
     MPIDU_SOCKI_VERIFY_NO_POSTED_READ(pollfd, pollinfo, mpi_errno, fn_exit);
     
-    /* FIXME: multiple passes should be made if len > SSIZE_MAX and nb == SSIZE_MAX */
+    /* FIXME: multiple passes should be made if 
+       len > SSIZE_MAX and nb == SSIZE_MAX */
+    /* FIXME: This is a scary test/assignment.  It needs an explanation 
+       (presumably that this routine will be called again if len is 
+       shortened.  However, in that case, the description of the routine 
+       (which is also missing!!!!) needs to be very clear about this
+       requirement.  */
     if (len > SSIZE_MAX)
     {
 	len = SSIZE_MAX;
@@ -262,13 +304,17 @@ int MPIDU_Sock_read(MPIDU_Sock_t sock, void * buf, MPIU_Size_t len, MPIU_Size_t 
 	*num_read = 0;
 	
 	mpi_errno = MPIR_Err_create_code(
-	    MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPIDU_SOCK_ERR_CONN_CLOSED,
-	    "**sock|connclosed", "**sock|connclosed %d %d", pollinfo->sock_set->id, pollinfo->sock_id);
+	    MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, 
+	    MPIDU_SOCK_ERR_CONN_CLOSED,
+	    "**sock|connclosed", "**sock|connclosed %d %d", 
+	    pollinfo->sock_set->id, pollinfo->sock_id);
 	
 	if (MPIDU_SOCKI_POLLFD_OP_ISSET(pollfd, pollinfo, POLLOUT))
 	{ 
-	    /* A write is posted on this connection.  Enqueue an event for the write indicating the connection is closed. */
-	    MPIDU_SOCKI_EVENT_ENQUEUE(pollinfo, MPIDU_SOCK_OP_WRITE, pollinfo->write_nb, pollinfo->user_ptr,
+	    /* A write is posted on this connection.  Enqueue an event for
+	       the write indicating the connection is closed. */
+	    MPIDU_SOCKI_EVENT_ENQUEUE(pollinfo, MPIDU_SOCK_OP_WRITE,
+				      pollinfo->write_nb, pollinfo->user_ptr,
 				      mpi_errno, mpi_errno, fn_exit);
 	    MPIDU_SOCKI_POLLFD_OP_CLEAR(pollfd, pollinfo, POLLOUT);
 	}
@@ -285,11 +331,13 @@ int MPIDU_Sock_read(MPIDU_Sock_t sock, void * buf, MPIU_Size_t len, MPIU_Size_t 
 	
 	*num_read = 0;
 	
-	mpi_errno = MPIDU_Socki_os_to_mpi_errno(pollinfo, errno, FCNAME, __LINE__, &disconnected);
+	mpi_errno = MPIDU_Socki_os_to_mpi_errno(pollinfo, errno, 
+					    FCNAME, __LINE__, &disconnected);
 	if (MPIR_Err_is_fatal(mpi_errno))
 	{
 	    /*
-	     * A serious error occurred.  There is no guarantee that the data structures are still intact.  Therefore, we avoid
+	     * A serious error occurred.  There is no guarantee that the 
+	     * data structures are still intact.  Therefore, we avoid
 	     * modifying them.
 	     */
 	    goto fn_exit;
@@ -299,9 +347,11 @@ int MPIDU_Sock_read(MPIDU_Sock_t sock, void * buf, MPIU_Size_t len, MPIU_Size_t 
 	{
 	    if (MPIDU_SOCKI_POLLFD_OP_ISSET(pollfd, pollinfo, POLLOUT))
 	    { 
-		/* A write is posted on this connection.  Enqueue an event for the write indicating the connection is closed. */
-		MPIDU_SOCKI_EVENT_ENQUEUE(pollinfo, MPIDU_SOCK_OP_WRITE, pollinfo->write_nb, pollinfo->user_ptr,
-					  mpi_errno, mpi_errno, fn_exit);
+		/* A write is posted on this connection.  Enqueue an event 
+		   for the write indicating the connection is closed. */
+		MPIDU_SOCKI_EVENT_ENQUEUE(pollinfo, MPIDU_SOCK_OP_WRITE, 
+					pollinfo->write_nb, pollinfo->user_ptr,
+					mpi_errno, mpi_errno, fn_exit);
 		MPIDU_SOCKI_POLLFD_OP_CLEAR(pollfd, pollinfo, POLLOUT);
 	    }
 	    
@@ -321,7 +371,8 @@ int MPIDU_Sock_read(MPIDU_Sock_t sock, void * buf, MPIU_Size_t len, MPIU_Size_t 
 #define FUNCNAME MPIDU_Sock_readv
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIDU_Sock_readv(MPIDU_Sock_t sock, MPID_IOV * iov, int iov_n, MPIU_Size_t * num_read)
+int MPIDU_Sock_readv(MPIDU_Sock_t sock, MPID_IOV * iov, int iov_n, 
+		     MPIU_Size_t * num_read)
 {
     struct pollfd * pollfd;
     struct pollinfo * pollinfo;
@@ -343,8 +394,10 @@ int MPIDU_Sock_readv(MPIDU_Sock_t sock, MPID_IOV * iov, int iov_n, MPIU_Size_t *
     MPIDU_SOCKI_VERIFY_NO_POSTED_READ(pollfd, pollinfo, mpi_errno, fn_exit);
 
     /*
-     * FIXME: The IEEE 1003.1 standard says that if the sum of the iov_len fields exceeds SSIZE_MAX, an errno of EINVAL will be
-     * returned.  How do we handle this?  Can we place an equivalent limitation in the Sock interface?
+     * FIXME: The IEEE 1003.1 standard says that if the sum of the iov_len 
+     * fields exceeds SSIZE_MAX, an errno of EINVAL will be
+     * returned.  How do we handle this?  Can we place an equivalent 
+     * limitation in the Sock interface?
      */
     do
     {
@@ -364,14 +417,18 @@ int MPIDU_Sock_readv(MPIDU_Sock_t sock, MPID_IOV * iov, int iov_n, MPIU_Size_t *
 	*num_read = 0;
 	
 	mpi_errno = MPIR_Err_create_code(
-	    MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPIDU_SOCK_ERR_CONN_CLOSED,
-	    "**sock|connclosed", "**sock|connclosed %d %d", pollinfo->sock_set->id, pollinfo->sock_id);
+	    MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, 
+	    MPIDU_SOCK_ERR_CONN_CLOSED,
+	    "**sock|connclosed", "**sock|connclosed %d %d", 
+	    pollinfo->sock_set->id, pollinfo->sock_id);
 	
 	if (MPIDU_SOCKI_POLLFD_OP_ISSET(pollfd, pollinfo, POLLOUT))
 	{ 
 	    
-	    /* A write is posted on this connection.  Enqueue an event for the write indicating the connection is closed. */
-	    MPIDU_SOCKI_EVENT_ENQUEUE(pollinfo, MPIDU_SOCK_OP_WRITE, pollinfo->write_nb, pollinfo->user_ptr,
+	    /* A write is posted on this connection.  Enqueue an event 
+	       for the write indicating the connection is closed. */
+	    MPIDU_SOCKI_EVENT_ENQUEUE(pollinfo, MPIDU_SOCK_OP_WRITE, 
+				      pollinfo->write_nb, pollinfo->user_ptr,
 				      mpi_errno, mpi_errno, fn_exit);
 	    MPIDU_SOCKI_POLLFD_OP_CLEAR(pollfd, pollinfo, POLLOUT);
 	}
@@ -388,11 +445,13 @@ int MPIDU_Sock_readv(MPIDU_Sock_t sock, MPID_IOV * iov, int iov_n, MPIU_Size_t *
 	
 	*num_read = 0;
 	
-	mpi_errno = MPIDU_Socki_os_to_mpi_errno(pollinfo, errno, FCNAME, __LINE__, &disconnected);
+	mpi_errno = MPIDU_Socki_os_to_mpi_errno(pollinfo, errno, FCNAME,
+						__LINE__, &disconnected);
 	if (MPIR_Err_is_fatal(mpi_errno))
 	{
 	    /*
-	     * A serious error occurred.  There is no guarantee that the data structures are still intact.  Therefore, we avoid
+	     * A serious error occurred.  There is no guarantee that the 
+	     * data structures are still intact.  Therefore, we avoid
 	     * modifying them.
 	     */
 	    goto fn_exit;
@@ -402,8 +461,10 @@ int MPIDU_Sock_readv(MPIDU_Sock_t sock, MPID_IOV * iov, int iov_n, MPIU_Size_t *
 	{
 	    if (MPIDU_SOCKI_POLLFD_OP_ISSET(pollfd, pollinfo, POLLOUT))
 	    { 
-		/* A write is posted on this connection.  Enqueue an event for the write indicating the connection is closed. */
-		MPIDU_SOCKI_EVENT_ENQUEUE(pollinfo, MPIDU_SOCK_OP_WRITE, pollinfo->write_nb, pollinfo->user_ptr,
+		/* A write is posted on this connection.  Enqueue an event 
+		   for the write indicating the connection is closed. */
+		MPIDU_SOCKI_EVENT_ENQUEUE(pollinfo, MPIDU_SOCK_OP_WRITE, 
+					pollinfo->write_nb, pollinfo->user_ptr,
 					  mpi_errno, mpi_errno, fn_exit);
 		MPIDU_SOCKI_POLLFD_OP_CLEAR(pollfd, pollinfo, POLLOUT);
 	    }
@@ -424,7 +485,8 @@ int MPIDU_Sock_readv(MPIDU_Sock_t sock, MPID_IOV * iov, int iov_n, MPIU_Size_t *
 #define FUNCNAME MPIDU_Sock_write
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIDU_Sock_write(MPIDU_Sock_t sock, void * buf, MPIU_Size_t len, MPIU_Size_t * num_written)
+int MPIDU_Sock_write(MPIDU_Sock_t sock, void * buf, MPIU_Size_t len, 
+		     MPIU_Size_t * num_written)
 {
     struct pollfd * pollfd;
     struct pollinfo * pollinfo;
@@ -474,11 +536,13 @@ int MPIDU_Sock_write(MPIDU_Sock_t sock, void * buf, MPIU_Size_t len, MPIU_Size_t
 	
 	*num_written = 0;
 	
-	mpi_errno = MPIDU_Socki_os_to_mpi_errno(pollinfo, errno, FCNAME, __LINE__, &disconnected);
+	mpi_errno = MPIDU_Socki_os_to_mpi_errno(pollinfo, errno, FCNAME, 
+						__LINE__, &disconnected);
 	if (MPIR_Err_is_fatal(mpi_errno))
 	{
 	    /*
-	     * A serious error occurred.  There is no guarantee that the data structures are still intact.  Therefore, we avoid
+	     * A serious error occurred.  There is no guarantee that the data 
+	     * structures are still intact.  Therefore, we avoid
 	     * modifying them.
 	     */
 	    goto fn_exit;
@@ -487,7 +551,8 @@ int MPIDU_Sock_write(MPIDU_Sock_t sock, void * buf, MPIU_Size_t len, MPIU_Size_t
 	if (disconnected)
 	{
 	    /*
-	     * The connection is dead but data may still be in the socket buffer; thus, we change the state and let
+	     * The connection is dead but data may still be in the socket
+	     * buffer; thus, we change the state and let
 	     * MPIDU_Sock_wait() clean things up.
 	     */
 	    pollinfo->state = MPIDU_SOCKI_STATE_CONNECTED_RO;
@@ -528,8 +593,10 @@ int MPIDU_Sock_writev(MPIDU_Sock_t sock, MPID_IOV * iov, int iov_n, MPIU_Size_t 
     MPIDU_SOCKI_VERIFY_NO_POSTED_WRITE(pollfd, pollinfo, mpi_errno, fn_exit);
     
     /*
-     * FIXME: The IEEE 1003.1 standard says that if the sum of the iov_len fields exceeds SSIZE_MAX, an errno of EINVAL will be
-     * returned.  How do we handle this?  Can we place an equivalent limitation in the Sock interface?
+     * FIXME: The IEEE 1003.1 standard says that if the sum of the iov_len 
+     * fields exceeds SSIZE_MAX, an errno of EINVAL will be
+     * returned.  How do we handle this?  Can we place an equivalent 
+     * limitation in the Sock interface?
      */
     do
     {
@@ -554,11 +621,13 @@ int MPIDU_Sock_writev(MPIDU_Sock_t sock, MPID_IOV * iov, int iov_n, MPIU_Size_t 
 	
 	*num_written = 0;
 	
-	mpi_errno = MPIDU_Socki_os_to_mpi_errno(pollinfo, errno, FCNAME, __LINE__, &disconnected);
+	mpi_errno = MPIDU_Socki_os_to_mpi_errno(pollinfo, errno, FCNAME, 
+						__LINE__, &disconnected);
 	if (MPIR_Err_is_fatal(mpi_errno))
 	{
 	    /*
-	     * A serious error occurred.  There is no guarantee that the data structures are still intact.  Therefore, we avoid
+	     * A serious error occurred.  There is no guarantee that the 
+	     * data structures are still intact.  Therefore, we avoid
 	     * modifying them.
 	     */
 	    goto fn_exit;
@@ -567,7 +636,8 @@ int MPIDU_Sock_writev(MPIDU_Sock_t sock, MPID_IOV * iov, int iov_n, MPIU_Size_t 
 	if (disconnected)
 	{
 	    /*
-	     * The connection is dead but data may still be in the socket buffer; thus, we change the state and let
+	     * The connection is dead but data may still be in the socket 
+	     * buffer; thus, we change the state and let
 	     * MPIDU_Sock_wait() clean things up.
 	     */
 	    pollinfo->state = MPIDU_SOCKI_STATE_CONNECTED_RO;
@@ -595,15 +665,23 @@ int MPIDU_Sock_wakeup(struct MPIDU_Sock_set * sock_set)
 
     MPIDU_SOCKI_VERIFY_INIT(mpi_errno, fn_exit);
     MPIDU_SOCKI_VALIDATE_SOCK_SET(sock_set, mpi_errno, fn_exit);
-    
-#if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
+
+    /* FIXME: We need (1) a standardized test for including multithreaded
+       code and (2) include support for user requests for a lower-level
+       of thread safety.  Finally, things like this should probably 
+       be implemented as an abstraction (e.g., wakeup_progress_threads?)
+       rather than this specific code.  */
+#ifdef MPICH_IS_THREADED
+    MPIU_THREAD_CHECK_BEGIN
     {
 	struct pollinfo * pollinfo;
 	
 	pollinfo = MPIDU_Socki_sock_get_pollinfo(sock_set->intr_sock);
-	MPIDU_SOCKI_EVENT_ENQUEUE(pollinfo, MPIDU_SOCK_OP_WAKEUP, 0, NULL, mpi_errno, mpi_errno, fn_exit);
+	MPIDU_SOCKI_EVENT_ENQUEUE(pollinfo, MPIDU_SOCK_OP_WAKEUP, 0, NULL, 
+				  mpi_errno, mpi_errno, fn_exit);
 	MPIDU_Socki_wakeup(sock_set);
     }
+    MPIU_THREAD_CHECK_END
 #   endif
     
   fn_exit:

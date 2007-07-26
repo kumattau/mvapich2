@@ -19,5 +19,8 @@ char *CLOG_Util_strbuf_put(       char *buf_ptr, const char *buf_tail,
 char *CLOG_Util_strbuf_get(       char *val_ptr, const char *val_tail,
                             const char *buf_str, const char *err_str );
 
-int CLOG_Util_is_MPIWtime_synchronized( void );
+CLOG_BOOL_T CLOG_Util_is_MPIWtime_synchronized( void );
+
+CLOG_BOOL_T CLOG_Util_is_runtime_bigendian( void );
+
 #endif  /* of _CLOG_UTIL */

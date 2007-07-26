@@ -4,17 +4,6 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2006, The Ohio State University. All rights
- * reserved.
- *
- * This file is part of the MVAPICH2 software package developed by the
- * team members of The Ohio State University's Network-Based Computing
- * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
- *
- * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT_MVAPICH2 in the top level MVAPICH2 directory.
- *
- */
 
 #include "mpiimpl.h"
 #include "mpicomm.h"
@@ -32,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Comm_split
 #define MPI_Comm_split PMPI_Comm_split
 
 #endif
@@ -103,7 +93,9 @@ Algorithm:
 @*/
 #ifdef _SMP_
 extern int split_comm;
+extern int enable_shmem_collectives;
 #endif
+
 int MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm)
 {
     static const char FCNAME[] = "MPI_Comm_split";
@@ -111,19 +103,15 @@ int MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm)
     MPID_Comm *comm_ptr = NULL, *newcomm_ptr;
     splittype *table, *keytable;
     int       rank, size, i, new_size, first_entry = 0, *last_ptr;
-#ifdef _SMP_
-    char* val;
-    int enable_shmem_collectives = 0;
-    if ((val = getenv("MV2_ENABLE_SHMEM_COLL")) != NULL){
-        enable_shmem_collectives = 1;
-    }
-#endif
+    int       new_context_id;
+    MPIU_THREADPRIV_DECL;
+
     MPIU_CHKLMEM_DECL(2);
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_COMM_SPLIT);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("comm");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_COMM_SPLIT);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -166,6 +154,8 @@ int MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm)
     table[rank].color = color;
     table[rank].key   = key;
     
+    MPIU_THREADPRIV_GET;
+
     MPIR_Nest_incr();
     NMPI_Allgather( MPI_IN_PLACE, 2, MPI_INT, table, 2, MPI_INT, comm );
     MPIR_Nest_decr();
@@ -193,15 +183,30 @@ int MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm)
        the list for only the known size of the group */
 
     /* Step 3: Create the communicator */
-    /* Must collectively create the communicator but we
-       can recover the storage for color == MPI_UNDEFINED */
-    mpi_errno = MPIR_Comm_create( comm_ptr, &newcomm_ptr );
-    if (mpi_errno) goto fn_fail;
-
+    /* Collectively create a new context id.  The same context id will
+       be used by each (disjoint) collections of processes.  The
+       processes whose color is MPI_UNDEFINED will return the 
+       context id to the pool */
+    /* In the multi-threaded case, MPIR_Get_contextid assumes that the
+       calling routine already holds the single criticial section */
+    new_context_id = MPIR_Get_contextid( comm_ptr );
+    if (new_context_id == 0) {
+	mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, 
+                                 "MPI_Comm_split", __LINE__, MPI_ERR_OTHER,
+					  "**toomanycomm", 0 );
+	goto fn_fail;
+    }
+    
+    /* Now, create the new communicator structure if necessary */
     if (color != MPI_UNDEFINED) {
-	newcomm_ptr->remote_size = new_size;
-	newcomm_ptr->local_size  = new_size;
-	newcomm_ptr->comm_kind   = MPID_INTRACOMM;
+	mpi_errno = MPIR_Comm_create( &newcomm_ptr );
+	if (mpi_errno) goto fn_fail;
+
+	newcomm_ptr->context_id	    = new_context_id;
+	newcomm_ptr->recvcontext_id = new_context_id;
+	newcomm_ptr->remote_size    = new_size;
+	newcomm_ptr->local_size	    = new_size;
+	newcomm_ptr->comm_kind	    = MPID_INTRACOMM;
     
 	/* Step 4: Order the processes by their key values.  Sort the
 	   list that is stored in table.  To simplify the sort, we 
@@ -233,15 +238,8 @@ int MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm)
 	/* Inherit the error handler (if any) */
 	newcomm_ptr->errhandler = comm_ptr->errhandler;
 	if (comm_ptr->errhandler) {
-	    MPIU_Object_add_ref( comm_ptr->errhandler );
+	    MPIR_Errhandler_add_ref( comm_ptr->errhandler );
 	}
-
-	/* Clear other items */
-	newcomm_ptr->remote_group = 0;
-	newcomm_ptr->local_group  = 0;
-	newcomm_ptr->coll_fns	  = 0;
-	newcomm_ptr->topo_fns     = 0;
-	newcomm_ptr->name[0]	  = 0;
 
         /* Notify the device of this new communicator */
 	/*printf( "about to notify device\n" ); */
@@ -251,8 +249,9 @@ int MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm)
 	*newcomm = newcomm_ptr->handle;
     }
     else {
+	/* color was MPI_UNDEFINED.  Free the context id */
 	*newcomm = MPI_COMM_NULL;
-	MPIU_Handle_obj_free( &MPID_Comm_mem, newcomm_ptr ); 
+	MPIR_Free_contextid( new_context_id );
     }
     
 #ifdef _SMP_
@@ -275,13 +274,13 @@ int MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm)
         }
     }
 #endif
-  
+
     /* ... end of body of routine ... */
 
   fn_exit:
     MPIU_CHKLMEM_FREEALL();
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_COMM_SPLIT);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("comm");
     return mpi_errno;
     
   fn_fail:

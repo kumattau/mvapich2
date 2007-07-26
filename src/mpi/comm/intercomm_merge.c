@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Intercomm_merge
 #define MPI_Intercomm_merge PMPI_Intercomm_merge
 
 #endif
@@ -45,11 +46,7 @@ Output Parameter:
 Notes:
  While all processes may provide the same value for the 'high' parameter,
  this requires the MPI implementation to determine which group of 
- processes should be ranked first.  The MPICH implementation uses various
- techniques to determine which group should go first, but there is a 
- possibility that the implementation will be unable to break the tie. 
- Robust applications should avoid using the same value for 'high' in 
- both groups.
+ processes should be ranked first. 
 
 .N ThreadSafe
 
@@ -77,15 +74,16 @@ int MPI_Intercomm_merge(MPI_Comm intercomm, int high, MPI_Comm *newintracomm)
     MPID_Comm *comm_ptr = NULL;
     MPID_Comm *newcomm_ptr;
     int  local_high, remote_high, i, j, new_size, new_context_id;
+    MPIU_THREADPRIV_DECL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_INTERCOMM_MERGE);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("comm");  
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_INTERCOMM_MERGE);
-    
-    MPIR_Nest_incr();
 
+    MPIU_THREADPRIV_GET;
+    
     /* Validate parameters, especially handles needing to be converted */
 #   ifdef HAVE_ERROR_CHECKING
     {
@@ -137,9 +135,11 @@ int MPI_Intercomm_merge(MPI_Comm intercomm, int high, MPI_Comm *newintracomm)
 	     The Intel test suite checks for this; it is also an easy
 	     error to make */
 	    acthigh = high ? 1 : 0;   /* Clamp high into 1 or 0 */
-	    NMPI_Allreduce( MPI_IN_PLACE, &acthigh, 1, MPI_INT, MPI_SUM,
-			    comm_ptr->local_comm->handle );
-
+	    MPIR_Nest_incr();
+	    mpi_errno = NMPI_Allreduce( MPI_IN_PLACE, &acthigh, 1, MPI_INT, 
+				MPI_SUM, comm_ptr->local_comm->handle );
+	    MPIR_Nest_decr();
+	    if (mpi_errno) goto fn_fail;
 	    /* acthigh must either == 0 or the size of the local comm */
 	    if (acthigh != 0 && acthigh != comm_ptr->local_size) {
 		mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, 
@@ -166,78 +166,24 @@ int MPI_Intercomm_merge(MPI_Comm intercomm, int high, MPI_Comm *newintracomm)
 		       MPI_STATUS_IGNORE );
 	
 	/* If local_high and remote_high are the same, then order is arbitrary.
-	   we use the lpids of the rank 0 member of the local and remote
+	   we use the gpids of the rank 0 member of the local and remote
 	   groups to choose an order in this case. */
 	if (local_high == remote_high) {
-	    int rpid, lpid;
-	    int inpids[2], outpids[2];
+	    int ingpid[2], outgpid[2];
 	    
-	    /* We can't guarantee that rpid will give us the same value
-	       as the lpid on the partner process, since this
-	       may not be different than the lpid if either of these
-	       aren't in the same MPI_COMM_WORLD.  Instead, do the following:
-	       1) Use the rpid and lpid.  Then, let the
-	       lead processes exchange.  If the agree on which 
-	       is high and which is low, then done
-	       2) Else use MPI_Wtime to generate trial values.  May
-	       5 trials (5 is arbitrarily chosen) with
-	       the lead processes exchanging values.  Once the
-	       tie is broken, done
-	       3) If the tie is not broken, then issue an error message
-	       asking the user to avoid using the same value of high 
-	       on both processes.  See the manpage comments above.
-	    */
-	    
-	    /* Start by getting the lpid and rpid.  This
-	       works for processes within the same MPI_COMM_WORLD */
-	    (void)MPID_VCR_Get_lpid( comm_ptr->vcr[0], &rpid );
-	    (void)MPID_VCR_Get_lpid( comm_ptr->local_vcr[0], &lpid );
-
-	    inpids[0] = rpid;
-	    inpids[1] = lpid;
-	    MPIC_Sendrecv( inpids, 2, MPI_INT, 0, 1,
-			   outpids, 2, MPI_INT, 0, 1, intercomm, 
+	    MPID_GPID_Get( comm_ptr, 0, ingpid );
+	    MPIC_Sendrecv( ingpid, 2, MPI_INT, 0, 1,
+			   outgpid, 2, MPI_INT, 0, 1, intercomm, 
 			   MPI_STATUS_IGNORE );
 
-	    /* Do the values agree? */
-	    if (outpids[0] != lpid || outpids[1] != rpid) {
-		double tin, tout;
-		int    cycle = 0;
-		/* The don't.  This means that we can't use them */
-		/* Get "alternate" values to use to decide who is low
-		   and who is high */
-		while (cycle < 5) {
-		    tin = NMPI_Wtime();
-		    MPIC_Sendrecv( &tin, 1, MPI_DOUBLE, 0, cycle+2, 
-				   &tout, 1, MPI_DOUBLE, 0, cycle+2,
-				   intercomm, MPI_STATUS_IGNORE );
-		    /* Both processors now have the same values */
-		    if (tout != tin) break;
-		    cycle++;
-		}
-		if (tout == tin) {
-		    /* Error.  The likelihood of this happening is small
-		       but not zero.  Indicate an internal error and 
-		       exit.  */
-		    /* --BEGIN ERROR HANDLING-- */
-		    mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, 
-						      MPIR_ERR_RECOVERABLE,
-		       FCNAME, __LINE__, MPI_ERR_INTERN, "**nouniquehigh", 0 );
-		    goto fn_fail;
-		    /* --END ERROR HANDLING-- */
-		}
-		if (tout < tin) {
-		    local_high = 1;
-		}
-		else {
-		    local_high = 0;
-		}
+	    /* Note that the gpids cannot be the same because we are 
+	       starting from a valid intercomm */
+	    if (ingpid[0] < outgpid[0] ||
+		(ingpid[0] == outgpid[0] && ingpid[1] < outgpid[1])) {
+		local_high = 0;
 	    }
 	    else {
-	    if (rpid < lpid) 
 		local_high = 1;
-	    else
-		local_high = 0;
 	    }
 	}
     }
@@ -247,21 +193,30 @@ int MPI_Intercomm_merge(MPI_Comm intercomm, int high, MPI_Comm *newintracomm)
        value of local_high, which may have changed if both groups
        of processes had the same value for high
     */
-    NMPI_Bcast( &local_high, 1, MPI_INT, 0, comm_ptr->local_comm->handle );
-        
+    MPIR_Nest_incr();
+    mpi_errno = NMPI_Bcast( &local_high, 1, MPI_INT, 0, 
+			    comm_ptr->local_comm->handle );
+    MPIR_Nest_decr();
+    if (mpi_errno) goto fn_fail;
 
-    newcomm_ptr = (MPID_Comm *)MPIU_Handle_obj_alloc( &MPID_Comm_mem );
-    MPIU_ERR_CHKANDJUMP(!newcomm_ptr,mpi_errno,MPI_ERR_OTHER,"**nomem");
+    mpi_errno = MPIR_Comm_create( &newcomm_ptr );
+    if (mpi_errno) goto fn_fail;
 
     new_size = comm_ptr->local_size + comm_ptr->remote_size;
-    MPIU_Object_set_ref( newcomm_ptr, 1 );
-    newcomm_ptr->context_id   = comm_ptr->context_id + 2; /* See below */
-    newcomm_ptr->remote_size  = newcomm_ptr->local_size   = new_size;
-    newcomm_ptr->rank         = -1;
-    newcomm_ptr->local_group  = 0;
-    newcomm_ptr->remote_group = 0;
-    newcomm_ptr->comm_kind    = MPID_INTRACOMM;
-    newcomm_ptr->attributes   = 0;
+
+    /* FIXME: For the intracomm, we need a consistent context id.  
+       That means that one of the two groups needs to use 
+       the recvcontext_id and the other must use the context_id */
+    if (local_high) {
+	newcomm_ptr->context_id	= comm_ptr->recvcontext_id + 2; /* See below */
+    }
+    else {
+	newcomm_ptr->context_id	= comm_ptr->context_id + 2; /* See below */
+    }
+    newcomm_ptr->recvcontext_id	= newcomm_ptr->context_id;
+    newcomm_ptr->remote_size	= newcomm_ptr->local_size   = new_size;
+    newcomm_ptr->rank		= -1;
+    newcomm_ptr->comm_kind	= MPID_INTRACOMM;
 
     /* Now we know which group comes first.  Build the new vcr 
        from the existing vcrs */
@@ -296,12 +251,14 @@ int MPI_Intercomm_merge(MPI_Comm intercomm, int high, MPI_Comm *newintracomm)
        have a valid (almost - see comm_create_hook) communicator.
     */
     /* printf( "About to get context id \n" ); fflush( stdout ); */
+    /* In the multi-threaded case, MPIR_Get_contextid assumes that the
+       calling routine already holds the single criticial section */
     new_context_id = MPIR_Get_contextid( newcomm_ptr );
     MPIU_ERR_CHKANDJUMP(new_context_id == 0,mpi_errno,MPI_ERR_OTHER,
 			"**toomanycomm" );
 
-    /* printf( "Resetting contextid\n" ); fflush( stdout ); */
-    newcomm_ptr->context_id = new_context_id;
+    newcomm_ptr->context_id	= new_context_id;
+    newcomm_ptr->recvcontext_id	= new_context_id;
 
     /* Notify the device of this new communicator */
     MPID_Dev_comm_create_hook( newcomm_ptr );
@@ -310,13 +267,9 @@ int MPI_Intercomm_merge(MPI_Comm intercomm, int high, MPI_Comm *newintracomm)
 
     /* ... end of body of routine ... */
     
-#ifdef _SMP_
-   newcomm_ptr->shmem_coll_ok = 0; 
-#endif
   fn_exit:
-    MPIR_Nest_decr();
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_INTERCOMM_MERGE);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("comm");
     return mpi_errno;
 
   fn_fail:
@@ -324,7 +277,8 @@ int MPI_Intercomm_merge(MPI_Comm intercomm, int high, MPI_Comm *newintracomm)
 #   ifdef HAVE_ERROR_CHECKING
     {
 	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_intercomm_merge",
+	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, 
+	    "**mpi_intercomm_merge",
 	    "**mpi_intercomm_merge %C %d %p", intercomm, high, newintracomm);
     }
 #   endif

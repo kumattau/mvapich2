@@ -1,3 +1,4 @@
+# -*- Mode: makefile; -*-
 SUBDIRS = . src @EXTERNAL_SRC_DIRS@ examples
 # Do not include test in the basic build.  
 OTHER_DIRS = test
@@ -21,11 +22,15 @@ DOC_SUBDIRS = doc
 #          then mv lib/pkglist.new lib/pkglist
 #          
 all-local:
-	if [ ! -d lib ] ; then mkdir lib ; \
+	@if [ ! -d lib ] ; then mkdir lib ; date > lib/.mpich2created ; \
 	else \
 	    echo "@subsystems@" > lib/pkglist.new ; \
-	    echo "@CC@" >>lib/pkglist.new ;\
+	    echo "@CC@ @CFLAGS@" >>lib/pkglist.new ;\
+	    echo "@CXX@ @CXXFLAGS@" >> lib/pkglist.new ;\
+	    echo "@F77@ @FFLAGS@" >> lib/pkglist.new ;\
+	    echo "@F90@ @F90FLAGS@" >> lib/pkglist.new ;\
 	    echo "@CONFIGURE_ARGUMENTS@" >>lib/pkglist.new ; \
+	    echo "@LDFLAGS@" >> lib/pkglist.new ;\
 	    if diff lib/pkglist lib/pkglist.new >/dev/null 2>&1 ; then \
 	        rm -f lib/pkglist.new ; \
             else \
@@ -34,15 +39,24 @@ all-local:
 		mv -f lib/pkglist.new lib/pkglist ; \
 	    fi ; \
 	fi
+
+clean-preamble:
+	${MAKE} cleanlibs
+
 cleanobjsandlibs:
+	${MAKE} clean && cd test && ${MAKE} clean
+	rm -f lib/newconfig
+# cleanlibs makes sure that we clean all of the library files
+cleanlibs:
 	rm -f lib/lib${MPILIBNAME}.a lib/lib${PMPILIBNAME}.a
 	rm -f lib/lib${MPILIBNAME}cxx.a 
+	rm -f lib/libf${MPILIBNAME}.a 
 	rm -f lib/lib${MPILIBNAME}.@SHLIB_EXT@* lib/lib${PMPILIBNAME}.@SHLIB_EXT@*
 	rm -f lib/lib${MPILIBNAME}cxx.@SHLIB_EXT@* 
+	rm -f lib/libf${MPILIBNAME}.@SHLIB_EXT@* 
 	rm -f lib/lib${MPILIBNAME}.la* lib/lib${PMPILIBNAME}.la*
 	rm -f lib/lib${MPILIBNAME}cxx.la* 
-	${MAKE} clean ; cd test && ${MAKE} clean
-	rm -f lib/newconfig
+	rm -f lib/libf${MPILIBNAME}.la* 
 
 all-preamble:
 	@echo "Beginning make"
@@ -56,9 +70,12 @@ all-postamble:
 	@if [ -s lib/pkglist.new ] ; then mv -f lib/pkglist.new lib/pkglist ; fi
 	@echo "Make completed"
 
+# The test on lib/.mpich2created lets us delete the local lib directory
+# if we created it, and not otherwise
 distclean-local:
 	-@rm -f lib/lib${MPILIBNAME}.a lib/pkglist lib/pkglist.new
 	-@rm -f lib/lib${MPILIBNAME}.@SHLIB_EXT@* lib/lib${MPILIBNAME}.la
+	-@if [ -s lib/.mpich2created ] ; then rm -rf lib ; fi
 	-@rm -f src/include/${MPILIBNAME}conf.h
 	-@rm -f src/include/mpio.h
 	-@rm -f bin/mpicc
@@ -72,7 +89,7 @@ PACKAGE = mpich2
 # Version is now set in the Configure file so that we can easily include the
 # version on the configure output and to match the common practice of
 # current autoconfs
-VERSION = 1.0.3
+VERSION = 1.0.5
 MPICVSHOME = @MPICVSHOME@
 #
 # Build a distribution tarfile
@@ -85,8 +102,8 @@ MPICVSHOME = @MPICVSHOME@
 dist: dist-check
 	@version=${VERSION} ; \
 	prever=`echo ${VERSION} | sed -e 's/^[^-]*//'` ; \
-	if test "$$prever" = "-CVS" ; then version=$${version}-`date "+%Y%m%d%H%M"` ; fi ; \
-	if test -z "${TAG}" ; then tag=HEAD ; else tag=${TAG}; fi ; \
+	if [ "$$prever" = "-CVS" ] ; then version=$${version}-`date "+%Y%m%d%H%M"` ; fi ; \
+	if [ -z "${TAG}" ] ; then tag=HEAD ; else tag=${TAG}; fi ; \
 	$(MAKE) version=$${version} tag=$${tag} doc=yes dist-with-version
 
 # snap creates a simple snapshot of the currently checked in MPICH2 sources.
@@ -95,6 +112,16 @@ snap:
 	@version=snap-`date "+%Y%m%d%H%M"` ; \
 	$(MAKE) version=$${version} tag=HEAD doc=no dist-with-version
 
+#
+# Note on dist process
+# Some directories and files are not included with the distribution.
+# These may be old experimental versions or internal projects.
+# Some may have other copyrights which we wish to keep out of the "clean" 
+# code (Zeroconf.py is an example of this).
+# 
+# Note that for the documentation, we need to configure with romio enabled
+# to ensure that the documentation pages are built
+#
 dist-with-version:
 	@if [ -z "$(version)" ] ; then \
 	    echo "Must invoke with make version=value tag=value dist-with-version" ;\
@@ -109,19 +136,28 @@ dist-with-version:
 	( cd tmpdir/mpich2 && sed -e "s/^VERSION = .*/VERSION = ${version}/" Makefile.sm >.tmp && mv .tmp Makefile.sm )
 	echo "${version}" >tmpdir/mpich2/maint/Version
 	mv tmpdir/mpich2 tmpdir/${PACKAGE}-${version}
-	( cd tmpdir/${PACKAGE}-${version}/src/mpid && /bin/rm -rf mm rdma globus)
-	( cd tmpdir/${PACKAGE}-${version}/doc && /bin/rm -rf notes develop )
-	( cd tmpdir/${PACKAGE}-${version}/src/pm && /bin/rm -rf forker rmpd ompd remshell )
+	( cd tmpdir/${PACKAGE}-${version}/src/mpid && rm -rf mm rdma globus)
+	( cd tmpdir/${PACKAGE}-${version}/doc && rm -rf notes develop )
+	( cd tmpdir/${PACKAGE}-${version}/src/pm && rm -rf forker rmpd ompd )
+	( cd tmpdir/$(PACKAGE)-$(version)/src/pm/mpd && rm -f Zeroconf.py)
+	( cd tmpdir/$(PACKAGE)-$(version)/src/mpid/ch3/channels && rm -rf ib rdma gasnet sshm)
+	( cd tmpdir/$(PACKAGE)-$(version)/src/mpid/ch3/channels/nemesis/nemesis/net_mod && rm -rf newtcp_module/* sctp_module/* ib_module/*)
+	( cd tmpdir/$(PACKAGE)-$(version)/src/mpid/ch3/channels/nemesis/nemesis/net_mod && \
+	echo "# Stub Makefile" > newtcp_module/Makefile.sm && \
+	echo "# Stub Makefile" > ib_module/Makefile.sm && \
+	echo "# Stub Makefile" > sctp_module/Makefile.sm )
 	( cd tmpdir/${PACKAGE}-${version} && rm -f ToDo* )
+	( cd tmpdir/${PACKAGE}-${version} && rm -rf archive )
 	( cd tmpdir/${PACKAGE}-${version} && maint/updatefiles )
+	( cd tmpdir/${PACKAGE}-${version} && rm -f unusederr.txt )
 	( cd tmpdir/${PACKAGE}-${version} && find . -name 'autom4te.cache' \
 	  -print | xargs -r rm -rf)
-	( cd tmpdir//${PACKAGE}-${version} && rm -rf src/mpe2/src/slog2sdk/doc/jumpshot-4/tex  )
-	if test "$(doc)" = "yes" ; then \
+	( cd tmpdir/${PACKAGE}-${version} && rm -rf src/mpe2/src/slog2sdk/doc/jumpshot-4/tex  )
+	if [ "$(doc)" = "yes" ] ; then \
 	    cp -r tmpdir/${PACKAGE}-${version} tmpdir2 ; \
 	    rm -f manlog.txt ; \
 	    ( cd tmpdir2 && ./configure --without-mpe --disable-f90 \
-              --disable-f7 && \
+              --disable-f77 --disable-cxx && \
               ${MAKE} mandoc && ${MAKE} htmldoc && \
               ${MAKE} latexdoc ) >manlog.txt 2>&1 ; \
 	    if [ ! -d tmpdir2/man ] ; then echo "WARNING: unable to build manpages" ; \
@@ -133,9 +169,12 @@ dist-with-version:
 	    cp tmpdir2/doc/installguide/install.pdf tmpdir/${PACKAGE}-${version}/doc/installguide/install.pdf ; \
 	    cp tmpdir2/doc/smpd/smpd_pmi.pdf tmpdir/${PACKAGE}-${version}/doc/smpd/smpd_pmi.pdf ; \
 	    cp tmpdir2/doc/logging/logging.pdf tmpdir/${PACKAGE}-${version}/doc/logging/logging.pdf ; \
+	    cp tmpdir2/doc/windev/windev.pdf tmpdir/${PACKAGE}-${version}/doc/windev/windev.pdf ; \
 	    rm -rf tmpdir2 ; \
 	fi
 	( cd tmpdir/${PACKAGE}-${version} && maint/updatefiles -distrib )
+	( cd tmpdir/${PACKAGE}-${version} && find . -name 'CVS' -print | \
+	    xargs -r rm -rf )
 	( cd tmpdir && tar cf ${PACKAGE}-${version}.tar ${PACKAGE}-${version} )
 	mv -f tmpdir/${PACKAGE}-${version}.tar . 
 	rm -rf tmpdir
@@ -186,9 +225,11 @@ testing:
 profilelib_${MPILIBNAME} = ${PMPILIBNAME}
 MPICXXLIBNAME = @MPICXXLIBNAME@
 MPIFLIBNAME   = @MPIFLIBNAME@
+MPIFWRAPNAME  = @FWRAPNAME@
 install_LIB = lib/lib${MPILIBNAME}.a
 optinstall_LIB = lib/lib${MPIFLIBNAME}.a
 optinstall_LIB = lib/lib${MPICXXLIBNAME}.a
+optinstall_LIB = lib/lib${MPIFWRAPNAME}.a
 #optinstall_SHLIB = lib/lib${MPIFLIBNAME}.@SHLIB_EXT@
 #optinstall_SHLIB = lib/lib${MPICXXLIBNAME}.@SHLIB_EXT@
 
@@ -198,7 +239,7 @@ optinstall_LIB = lib/lib${MPICXXLIBNAME}.a
 # UNUSED, example for experimentation only
 #lib${MPILIBNAME}_so_EXPORTS = maint/mpi.def
 #libf${MPILIBNAME}_so_EXPORTS = maint/fmpi.def
-#libf${MPILIBNAME}_so_LIBS = -L. -l$(MPILIBNAME)
+libf${MPILIBNAME}_so_LIBS = -L. -l$(MPILIBNAME)
 
 install_INCLUDE = src/include/mpi.h
 
@@ -217,7 +258,7 @@ INSTALL_SUBDIRS = src/util/thread src/env @bindings_dirs@ @other_install_dirs@
 install-preamble:
 	@if [ "@ENABLE_SHLIB@" = none ] ; then\
              found=no ; \
-	     for file in ${libdir}/lib*${MPILIBNAME}.so ; do \
+	     for file in ${libdir}/lib*${MPILIBNAME}.@SHLIB_EXT@ ; do \
                  if [ -f $$file ] ; then \
 		     echo "Remove $$file and rerun ${MAKE} install" ; \
 		     found=yes ; \
@@ -226,18 +267,43 @@ install-preamble:
 	     if [ $$found != no ] ; then exit 1 ; fi ;\
 	fi
 
+# Install optional features which require special actions:
+#   The debugger interface (the "Totalview" DLL)
+#   The "other" process managers when more that one are built
+install_local_DIR = libdir
 install-local:
 	-if [ "@BUILD_TVDLL@" = "yes" ] ; then \
 	    $(INSTALL_DATA) src/mpi/debugger/libtvmpich2.@SHLIB_EXT@ \
-			${libdir}/libtvmpich2.@SHLIB_EXT@ ; fi
-	if test ! -d ${exec_prefix}/examples ; then \
-	    $(MKDIR_P) ${exec_prefix}/examples ; \
+			${DESTDIR}${libdir}/libtvmpich2.@SHLIB_EXT@ ; fi
+	-if [ -n "@other_pm_names@" ] ; then \
+	    for pm in @other_pm_names@ /dev/null ; do \
+		if [ -d src/pm/$$pm ] ; then \
+		     (cd src/pm/$$pm && $(MAKE) install-alt ) ; fi ; \
+	    done ; \
 	fi
-	$(INSTALL_PROGRAM) examples/cpi ${exec_prefix}/examples/cpi
+
+# 
+# The install-examples target may be used if you want to install the cpi
+# program for others to use.  This is nto part of the default installation
+# because there isn't a good place to put this in the GNU recommended 
+# installation targets (its a kind of hardware-architecture-specific
+# documentation)
+install-examples:
+	if [ ! -d ${DESTDIR}${exec_prefix}/examples ] ; then \
+	    $(MKDIR_P) ${DESTDIR}${exec_prefix}/examples ; \
+	fi
+	$(INSTALL_PROGRAM) examples/cpi ${DESTDIR}${exec_prefix}/examples/cpi
 
 install-devdocs:
 	(cd doc && $(MAKE) install-devdocs)
 
+# installcheck-postable adds checks that may require special
+# handling.  
+# FIXME: Some install checks require that the Process Manager be
+# started first.  This step does not handle that.
+installcheck-postamble:
+	@if [ -n "@mpe_dir@" -a -d "src/@mpe_dir@" ] ; then \
+	    (cd src/@mpe_dir@ && $(MAKE) installcheck-all ; ) ; fi
 #
 # The documents are shipped as part of the release, and so should be 
 # installed from the source directory, not a VPATH build directory
@@ -251,3 +317,5 @@ installdir_HTML = $(srcdir)/www
 installdir_MAN  = $(srcdir)/man
 #install_BIN = 
 #install_SBIN = 	
+# Still to do: figure out the appropriate target for installing the html
+# versions of the documents.

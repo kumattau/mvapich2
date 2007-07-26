@@ -1,5 +1,14 @@
 /* pmiconf.h.in.  Generated from configure.in by autoheader.  */
 
+/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/*  
+ *  (C) 2001 by Argonne National Laboratory.
+ *      See COPYRIGHT in top-level directory.
+ */
+#ifndef PMICONF_H_INCLUDED
+#define PMICONF_H_INCLUDED
+
+
 /* Define to 1 if you have the `gethostbyname' function. */
 #undef HAVE_GETHOSTBYNAME
 
@@ -72,3 +81,5 @@
 
 /* Define if socklen_t is not defined */
 #undef socklen_t
+
+#endif

@@ -19,10 +19,14 @@
 #define mpirinitc2_ mpirinitc2
 #endif
 /* These functions are called from Fortran so only need prototypes in 
-   this file */
+   this file.  Note that the last argument is a character array, so
+   we need to include the elements of the Fortran character "dope vector".
+*/
 FORT_DLL_SPEC void FORT_CALL mpirinitc_( void *, void *, void *, void *, 
-                                         void *, void * );
-FORT_DLL_SPEC void FORT_CALL mpirinitc2_( char * );
+                                         void *, void * FORT_MIXED_LEN_DECL 
+                                         FORT_END_LEN_DECL );
+FORT_DLL_SPEC void FORT_CALL mpirinitc2_( char * FORT_MIXED_LEN_DECL 
+                                          FORT_END_LEN_DECL );
 
 #ifndef F77_USE_BOOLEAN_LITERALS
 #if defined(F77_RUNTIME_VALUES) || !defined(F77_TRUE_VALUE_SET)
@@ -49,7 +53,8 @@ void *MPI_F_ARGVS_NULL      = 0;
 
 
 FORT_DLL_SPEC void FORT_CALL mpirinitc_( void *a, void *b, void *c, void *d, 
-                                         void *e, void *f )
+                                         void *e, void *f FORT_MIXED_LEN(d1) 
+                                         FORT_END_LEN(d1) )
 {
     MPIR_F_MPI_BOTTOM     = a;
     MPIR_F_MPI_IN_PLACE   = b;
@@ -61,7 +66,8 @@ FORT_DLL_SPEC void FORT_CALL mpirinitc_( void *a, void *b, void *c, void *d,
 /* Initialize the Fortran ARGV_NULL to a blank.  Using this routine
    avoids potential problems with string manipulation routines that
    exist in the Fortran runtime but not in the C runtime libraries */
-FORT_DLL_SPEC void FORT_CALL mpirinitc2_( char *a )
+FORT_DLL_SPEC void FORT_CALL mpirinitc2_( char *a FORT_MIXED_LEN(d1) 
+                                          FORT_END_LEN(d1) )
 {
     *a = ' ';
 }

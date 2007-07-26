@@ -11,14 +11,11 @@ attrerrtype_SOURCES = attrerrtype.c
 attrorder_SOURCES = attrorder.c
 attrordercomm_SOURCES = attrordercomm.c
 attrordertype_SOURCES = attrordertype.c
-attrorderwin_SOURCES = attrorderwin.c
 baseattr2_SOURCES = baseattr2.c
 baseattrcomm_SOURCES = baseattrcomm.c
-baseattrwin_SOURCES = baseattrwin.c
 fkeyval_SOURCES = fkeyval.c
 fkeyvalcomm_SOURCES = fkeyvalcomm.c
 fkeyvaltype_SOURCES = fkeyvaltype.c
-fkeyvalwin_SOURCES = fkeyvalwin.c 
 
 ../util/mtest.o:
 	(cd ../util && $(MAKE) mtest.o)
@@ -26,3 +23,5 @@ testing:
 	../runtests -srcdir=$(srcdir) -tests=testlist \
 			-mpiexec=$(bindir)/mpiexec \
 		   	-xmlfile=summary.xml
+clean-local:
+	-rm -f summary.xml

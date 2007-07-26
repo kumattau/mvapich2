@@ -9,7 +9,7 @@ MPILIBNAME      = @MPILIBNAME@
 
 MPICHDIR = ../..
 F90         = $(MPICHDIR)/bin/mpif90
-F90FLAGS    = 
+F90FLAGS    = @F90FLAGS@
 F90_COMPILE = $(F90) $(F90FLAGS)
 LDFLAGS     = 
 VPATH = .:${srcdir}

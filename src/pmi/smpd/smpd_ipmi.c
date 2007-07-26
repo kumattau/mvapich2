@@ -620,6 +620,7 @@ static int rPMI_Finalize()
     if (pmi_process.local_kvs)
     {
 	smpd_dbs_finalize();
+	result = MPIDU_Sock_finalize();
 	pmi_process.init_finalized = PMI_FINALIZED;
 	return PMI_SUCCESS;
     }
@@ -677,12 +678,12 @@ static int rPMI_Finalize()
 #endif
     }
 
-    if (pmi_process.sock != MPIDU_SOCK_INVALID_SOCK)
+    /*if (pmi_process.sock != MPIDU_SOCK_INVALID_SOCK)*/
     {
 	result = MPIDU_Sock_finalize();
 	if (result != MPI_SUCCESS)
 	{
-	    pmi_err_printf("MPIDU_Sock_finalize failed, error: %d\n", result);
+	    /*pmi_err_printf("MPIDU_Sock_finalize failed, error: %d\n", result);*/
 	}
     }
 
@@ -969,6 +970,7 @@ int iPMI_Finalize()
     if (pmi_process.local_kvs)
     {
 	smpd_dbs_finalize();
+	result = MPIDU_Sock_finalize();
 	pmi_process.init_finalized = PMI_FINALIZED;
 	return PMI_SUCCESS;
     }
@@ -1003,12 +1005,12 @@ int iPMI_Finalize()
 	goto fn_fail;
     }
 
-    if (pmi_process.sock != MPIDU_SOCK_INVALID_SOCK)
+    /*if (pmi_process.sock != MPIDU_SOCK_INVALID_SOCK)*/
     {
 	result = MPIDU_Sock_finalize();
 	if (result != MPI_SUCCESS)
 	{
-	    pmi_err_printf("MPIDU_Sock_finalize failed,\nsock error: %s\n", get_sock_error_string(result));
+	    /*pmi_err_printf("MPIDU_Sock_finalize failed,\nsock error: %s\n", get_sock_error_string(result));*/
 	}
     }
 

@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Comm_disconnect
 #define MPI_Comm_disconnect PMPI_Comm_disconnect
 
 #endif
@@ -56,7 +57,7 @@ int MPI_Comm_disconnect(MPI_Comm * comm)
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("spawn");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_COMM_DISCONNECT);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -96,7 +97,10 @@ int MPI_Comm_disconnect(MPI_Comm * comm)
     /*
      * Since outstanding I/O bumps the reference count on the communicator, 
      * we wait until we hold the last reference count to
-     * ensure that all communication has completed.
+     * ensure that all communication has completed.  The reference count
+     * is 1 when the communicator is created, and it is incremented
+     * only for pending communication operations (and decremented when
+     * those complete).
      */
     if (comm_ptr->ref_count > 1)
     {
@@ -117,7 +121,7 @@ int MPI_Comm_disconnect(MPI_Comm * comm)
 	MPID_Progress_end(&progress_state);
     }
     
-    mpi_errno = MPIR_Comm_release(comm_ptr);
+    mpi_errno = MPID_Comm_disconnect(comm_ptr);
     if (mpi_errno != MPI_SUCCESS) goto fn_fail;
     
     *comm = MPI_COMM_NULL;
@@ -126,7 +130,7 @@ int MPI_Comm_disconnect(MPI_Comm * comm)
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_COMM_DISCONNECT);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("spawn");
     return mpi_errno;
 
   fn_fail:

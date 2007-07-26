@@ -9,7 +9,7 @@
                               Known Deficiencies
 -------------------------------------------------------------------------------
 
-- The sock and ssm channels are the only channels that implements dynamic 
+- The sock, sctp, and ssm channels are the only channels that implement dynamic 
   process support (i.e., MPI_COMM_SPAWN, MPI_COMM_CONNECT, MPI_COMM_ACCEPT, 
   etc.) under Unix.  All other channels will experience failures for tests 
   exercising dynamic process functionality.  Under Windows, the sock, ssm, 
@@ -32,11 +32,8 @@
   multiple-program-multiple-data, or MPMD, programming).
 
 - The support for MPI_THREAD_SERIALIZED and MPI_THREAD_MULTIPLE is preliminary,
-  and only available with the sock channel.  Rudimentary testing has been
-  performed; however, several problems still exist.  Several of the MPI I/O
-  routines hang.  Some of the internal routines can cause a hang if they
-  encounter an error.  We plan to correct these issues in the next release.
-  That said, we encourage people to experiment and provide feedback.
+  and only available with the sock channel.  We encourage people to
+  experiment and provide feedback.  
 
 - MPI_IRECV operations that are not explicitly completed before MPI_FINALIZE is
   called may fail to complete before MPI_FINALIZE returns, and thus never
@@ -62,9 +59,57 @@
 - --enable-sharedlibs=gcc does not work on Solaris because of difference
   between the GNU ld program and the Solaris ld program
 
+- For the initial release, the sctp channel is fully supported for
+  FreeBSD and Mac OS X.  As of the time of this release, bugs in the
+  stack currently existed in the Linux kernel, and will hopefully soon be 
+  resolved. 
+
+  The sctp channel is known to currently not work under Solaris and Windows.
+
+  For Solaris, the SCTP API available in the kernel of standard
+  Solaris 10 is a subset of the standard API used by the sctp channel.
+  Cooperation with the Sun SCTP developers to support ch3:sctp under
+  Solaris for future releases is currently ongoing.  
+
+  For Windows, no known kernel-based SCTP stack for Windows currently
+  exists.
+
+  An alternative for Linux, FreeBSD, Mac OS X, Solaris and Windows is
+  the user-based SCTP stack available at 
+  http://www.sctp.de/sctp-download.html ; it is currently being
+  evaluated for use with a future MPICH2 release.
+  
+  
 -------------------------------------------------------------------------------
 			Issues for Developers
 -------------------------------------------------------------------------------
+
+- In order to handle the construction of intercommunicators in the dynamic
+  process case, the context id in MPID_Comm has been split into a receive 
+  and a send context id.  In the case of intracommunicators (e.g.,
+  MPI_COMM_WORLD), these two context id values are the same.  The send
+  context is still the context_id field in the MPID_Comm structure; 
+  the receive context is now recvcontext_id .  This makes the total number
+  of changes relatively small; only in a few places in the ADI3 code 
+  (primarily the MPID_Recv, MPID_Irecv, and persisistent receive request
+  routines) are changes needed.  
+
+- To enable the use of singleton init with more than one process, e.g., 
+  to allow starting two processes as singletons and then have them connect
+  using MPI_Comm_connect/MPI_Comm_accept, it was necessary to change the part
+  of the PMI wire prototcol that implemented the singleton init actions.
+  The "gforker" process manager is the only process manager that supports
+  singleton init in the 1.0.5 release.  We plan to extend support to the
+  mpd process manager in a subsequent release.
+
+- There are significant changes to the ch3 code base.  We expect further
+  changes in the next release, particularly to reduce latency and 
+  eliminate "copy and paste" code, in order to ease maintenance and tuning.
+
+-------------------------------------------------------------------------------
+                        Issues From Previous Releases (1.0.4)
+-------------------------------------------------------------------------------
+
 
 - MPE2, which is distributed as part of MPICH2, requires autoconf 2.52 or
   higher.  By default, MPICH2 and MPE use the autoconf programs in one's path.
@@ -75,3 +120,4 @@
   "make dist".  In order to handle incompatibilities between different
   minor versions of autoconf, we've selected autoconf 2.59 as the version
   required for MPE2 and MPICH2.
+

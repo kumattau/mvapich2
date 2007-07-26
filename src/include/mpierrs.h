@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: mpierrs.h,v 1.1.1.1 2006/01/18 21:09:42 huangwei Exp $
+/*  $Id: mpierrs.h,v 1.37 2006/11/05 16:29:06 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -145,14 +145,14 @@
    }
 
 /* An intracommunicator must have a root between 0 and local_size-1. */
-/* intercomm can be between MPI_PROC_NULL (or MPI_ROOT) and local_size-1 */
+/* intercomm can be between MPI_PROC_NULL (or MPI_ROOT) and remote_size-1 */
 #define MPIR_ERRTEST_INTRA_ROOT(comm_ptr,root,err) \
   if ((root) < 0 || (root) >= (comm_ptr)->local_size) {\
       err = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_ROOT, "**root", "**root %d", root );}
 /* We use -2 (MPI_PROC_NULL and MPI_ROOT are negative) for the intercomm 
    test */
 #define MPIR_ERRTEST_INTER_ROOT(comm_ptr,root,err) \
-  if ((root) < -3 || (root) >= (comm_ptr)->local_size) {\
+  if ((root) < -3 || (root) >= (comm_ptr)->remote_size) {\
       err = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_ROOT, "**root", "**root %d", root );}
 #define MPIR_ERRTEST_PERSISTENT(reqp,err) \
   if ((reqp)->kind != MPID_PREQUEST_SEND && reqp->kind != MPID_PREQUEST_RECV) { \
@@ -262,48 +262,48 @@
     MPIU_ERR_SETANDSTMT(err,MPI_ERR_GROUP,goto fn_fail,"**groupnull");\
 }else { MPIR_ERRTEST_VALID_HANDLE(group,MPID_GROUP,err,MPI_ERR_GROUP,"**group");}
 
-#define MPIR_ERRTEST_COMM(comm_, err_)							\
-{											\
-    if ((comm_) == MPI_COMM_NULL)							\
-    {											\
-	MPIU_ERR_SETANDSTMT((err_), MPI_ERR_COMM,;, "**commnull");			\
-    }											\
-    else										\
-    {											\
+#define MPIR_ERRTEST_COMM(comm_, err_)					\
+{									\
+    if ((comm_) == MPI_COMM_NULL)					\
+    {									\
+	MPIU_ERR_SETANDSTMT((err_), MPI_ERR_COMM,;, "**commnull");	\
+    }									\
+    else								\
+    {									\
 	MPIR_ERRTEST_VALID_HANDLE((comm_), MPID_COMM, (err_), MPI_ERR_COMM, "**comm");	\
-    }											\
+    }									\
 }
 
-#define MPIR_ERRTEST_WIN(win_, err_)							\
-{											\
-    if ((win_) == MPI_WIN_NULL)								\
-    {											\
-	MPIU_ERR_SETANDSTMT((err_), MPI_ERR_WIN,;, "**winnull");			\
-    }											\
-    else										\
-    {											\
+#define MPIR_ERRTEST_WIN(win_, err_)					\
+{									\
+    if ((win_) == MPI_WIN_NULL)						\
+    {									\
+	MPIU_ERR_SETANDSTMT((err_), MPI_ERR_WIN,;, "**winnull");	\
+    }									\
+    else								\
+    {									\
 	MPIR_ERRTEST_VALID_HANDLE((win_), MPID_WIN, (err_), MPI_ERR_WIN, "**win");	\
-    }											\
+    }									\
 }
 
-#define MPIR_ERRTEST_REQUEST(request_, err_)								\
-{													\
-    if ((request_) == MPI_REQUEST_NULL)									\
-    {													\
-	MPIU_ERR_SETANDSTMT((err_), MPI_ERR_REQUEST,;, "**requestnull");				\
-    }													\
-    else												\
-    {													\
+#define MPIR_ERRTEST_REQUEST(request_, err_)				\
+{									\
+    if ((request_) == MPI_REQUEST_NULL)					\
+    {									\
+	MPIU_ERR_SETANDSTMT((err_), MPI_ERR_REQUEST,;, "**requestnull");\
+    }									\
+    else								\
+    {									\
 	MPIR_ERRTEST_VALID_HANDLE((request_), MPID_REQUEST, (err_), MPI_ERR_REQUEST, "**request");	\
-    }													\
+    }									\
 }
 
-#define MPIR_ERRTEST_REQUEST_OR_NULL(request_, err_)							\
-{													\
-    if ((request_) != MPI_REQUEST_NULL)									\
-    {													\
+#define MPIR_ERRTEST_REQUEST_OR_NULL(request_, err_)			\
+{									\
+    if ((request_) != MPI_REQUEST_NULL)					\
+    {									\
         MPIR_ERRTEST_VALID_HANDLE((request_), MPID_REQUEST, (err_), MPI_ERR_REQUEST, "**request");	\
-    }													\
+    }									\
 }
 
 #define MPIR_ERRTEST_ERRHANDLER(errhandler_,err_)			\
@@ -315,24 +315,24 @@
 				  err_,MPI_ERR_ARG,"**errhandler");	\
     }
 
-#define MPIR_ERRTEST_INFO(info_, err_)							\
-{											\
-    if ((info_) == MPI_INFO_NULL)							\
-    {											\
-	MPIU_ERR_SETANDSTMT(err_, MPI_ERR_ARG,;, "**infonull");				\
-    }											\
-    else										\
-    {											\
+#define MPIR_ERRTEST_INFO(info_, err_)					\
+{									\
+    if ((info_) == MPI_INFO_NULL)					\
+    {									\
+	MPIU_ERR_SETANDSTMT(err_, MPI_ERR_ARG,;, "**infonull");		\
+    }									\
+    else								\
+    {									\
 	MPIR_ERRTEST_VALID_HANDLE((info_), MPID_INFO, (err_), MPI_ERR_ARG, "**info");	\
-    }											\
+    }									\
 }
 
-#define MPIR_ERRTEST_INFO_OR_NULL(info_, err_)						\
-{											\
-    if ((info_) != MPI_INFO_NULL)							\
-    {											\
+#define MPIR_ERRTEST_INFO_OR_NULL(info_, err_)				\
+{									\
+    if ((info_) != MPI_INFO_NULL)					\
+    {									\
         MPIR_ERRTEST_VALID_HANDLE((info_), MPID_INFO, (err_), MPI_ERR_ARG, "**info");	\
-    }											\
+    }									\
 }
 
 #define MPIR_ERRTEST_KEYVAL(keyval_, object_, objectdesc_, err_)	\
@@ -374,7 +374,12 @@
 /* --BEGIN ERROR MACROS-- */
 #define MPIU_ERR_POP(err_) \
     MPIU_ERR_SETANDSTMT(err_,MPI_ERR_OTHER,goto fn_fail,"**fail")
+#define MPIU_ERR_POPFATAL(err_) \
+    MPIU_ERR_SETFATALANDSTMT(err_,MPI_ERR_OTHER,goto fn_fail,"**fail")
 
+/* If you add any macros to this list, make sure that you update
+ maint/extracterrmsgs to handle the additional macros (see the hash 
+ KnownErrRoutines in that script) */
 #ifdef HAVE_ERROR_CHECKING
 #define MPIU_ERR_SET(err_,class_,msg_) \
     err_ = MPIR_Err_create_code( err_,MPIR_ERR_RECOVERABLE,FCNAME,\
@@ -397,6 +402,9 @@
 #define MPIU_ERR_SETANDSTMT3(err_,class_,stmt_,gmsg_,smsg_,arg1_,arg2_, arg3_) \
     {err_ = MPIR_Err_create_code( err_,MPIR_ERR_RECOVERABLE,FCNAME,\
            __LINE__, class_, gmsg_, smsg_, arg1_, arg2_, arg3_ ); stmt_ ;}
+#define MPIU_ERR_SETANDSTMT4(err_,class_,stmt_,gmsg_,smsg_,arg1_,arg2_, arg3_, arg4_) \
+    {err_ = MPIR_Err_create_code( err_,MPIR_ERR_RECOVERABLE,FCNAME,\
+	    __LINE__, class_, gmsg_, smsg_, arg1_, arg2_, arg3_, arg4_ ); stmt_ ;}
 #define MPIU_ERR_SETFATALANDSTMT(err_,class_,stmt_,msg_) \
     {err_ = MPIR_Err_create_code( err_,MPIR_ERR_FATAL,FCNAME,\
            __LINE__, class_, msg_, 0 ); stmt_ ;}
@@ -409,6 +417,11 @@
 #define MPIU_ERR_SETFATALANDSTMT3(err_,class_,stmt_,gmsg_,smsg_,arg1_,arg2_, arg3_) \
     {err_ = MPIR_Err_create_code( err_,MPIR_ERR_FATAL,FCNAME,\
            __LINE__, class_, gmsg_, smsg_, arg1_, arg2_, arg3_ ); stmt_ ;}
+#define MPIU_ERR_SETFATALANDSTMT4(err_,class_,stmt_,gmsg_,smsg_,arg1_,arg2_, arg3_, arg4_) \
+    {err_ = MPIR_Err_create_code( err_,MPIR_ERR_FATAL,FCNAME,\
+	    __LINE__, class_, gmsg_, smsg_, arg1_, arg2_, arg3_, arg4_ ); stmt_ ;}
+#define MPIU_ERR_ADD(err_, newerr_) \
+    {(err_) = MPIR_Err_combine_codes((newerr_), (err_));}
 #else
 /* Simply set the class, being careful not to override a previously
    set class */
@@ -426,6 +439,8 @@
      MPIU_ERR_SETANDSTMT(err_,class_,stmt_,gmsg_)
 #define MPIU_ERR_SETANDSTMT3(err_,class_,stmt_,gmsg_,smsg_,arg1_,arg2_,arg3_) \
      MPIU_ERR_SETANDSTMT(err_,class_,stmt_,gmsg_)
+#define MPIU_ERR_SETANDSTMT4(err_,class_,stmt_,gmsg_,smsg_,arg1_,arg2_,arg3_,arg4_) \
+     MPIU_ERR_SETANDSTMT(err_,class_,stmt_,gmsg_)
 #define MPIU_ERR_SETFATALANDSTMT(err_,class_,stmt_,msg_) \
      MPIU_ERR_SETANDSTMT(err_,class_,stmt_,msg_)
 #define MPIU_ERR_SETFATALANDSTMT1(err_,class_,stmt_,gmsg_,smsg_,arg1_) \
@@ -434,6 +449,10 @@
      MPIU_ERR_SETANDSTMT(err_,class_,stmt_,gmsg_)
 #define MPIU_ERR_SETFATALANDSTMT3(err_,class_,stmt_,gmsg_,smsg_,arg1_,arg2_,arg3_) \
      MPIU_ERR_SETANDSTMT(err_,class_,stmt_,gmsg_)
+#define MPIU_ERR_SETFATALANDSTMT4(err_,class_,stmt_,gmsg_,smsg_,arg1_,arg2_,arg3_,arg4_) \
+     MPIU_ERR_SETANDSTMT(err_,class_,stmt_,gmsg_)
+#define MPIU_ERR_ADD(err_, newerr_) \
+     MPIU_ERR_SET((err_), (newerr_), foo)
 #endif
 
 /* The following definitions are the same independent of the choice of 
@@ -449,6 +468,8 @@
 
 #define MPIU_ERR_SETANDJUMP1(err_,class_,gmsg_,smsg_,arg1_) \
      MPIU_ERR_SETANDSTMT1(err_,class_,goto fn_fail,gmsg_,smsg_,arg1_)
+#define MPIU_ERR_SETFATALANDJUMP1(err_,class_,gmsg_,smsg_,arg1_) \
+     MPIU_ERR_SETFATALANDSTMT1(err_,class_,goto fn_fail,gmsg_,smsg_,arg1_)
 #define MPIU_ERR_CHKANDSTMT1(cond_,err_,class_,stmt_,gmsg_,smsg_,arg1_) \
     {if (cond_) { MPIU_ERR_SETANDSTMT1(err_,class_,stmt_,gmsg_,smsg_,arg1_); }}
 #define MPIU_ERR_CHKANDJUMP1(cond_,err_,class_,gmsg_,smsg_,arg1_) \
@@ -456,6 +477,8 @@
 
 #define MPIU_ERR_SETANDJUMP2(err_,class_,gmsg_,smsg_,arg1_,arg2_) \
      MPIU_ERR_SETANDSTMT2(err_,class_,goto fn_fail,gmsg_,smsg_,arg1_,arg2_)
+#define MPIU_ERR_SETFATALANDJUMP2(err_,class_,gmsg_,smsg_,arg1_,arg2_) \
+     MPIU_ERR_SETFATALANDSTMT2(err_,class_,goto fn_fail,gmsg_,smsg_,arg1_,arg2_)
 #define MPIU_ERR_CHKANDSTMT2(cond_,err_,class_,stmt_,gmsg_,smsg_,arg1_,arg2_) \
     {if (cond_) { MPIU_ERR_SETANDSTMT2(err_,class_,stmt_,gmsg_,smsg_,arg1_,arg2_); }}
 #define MPIU_ERR_CHKANDJUMP2(cond_,err_,class_,gmsg_,smsg_,arg1_,arg2_) \
@@ -463,10 +486,21 @@
 
 #define MPIU_ERR_SETANDJUMP3(err_,class_,gmsg_,smsg_,arg1_,arg2_,arg3_) \
      MPIU_ERR_SETANDSTMT3(err_,class_,goto fn_fail,gmsg_,smsg_,arg1_,arg2_,arg3_)
+#define MPIU_ERR_SETFATALANDJUMP3(err_,class_,gmsg_,smsg_,arg1_,arg2_,arg3_) \
+     MPIU_ERR_SETFATALANDSTMT3(err_,class_,goto fn_fail,gmsg_,smsg_,arg1_,arg2_,arg3_)
 #define MPIU_ERR_CHKANDSTMT3(cond_,err_,class_,stmt_,gmsg_,smsg_,arg1_,arg2_,arg3_) \
     {if (cond_) { MPIU_ERR_SETANDSTMT3(err_,class_,stmt_,gmsg_,smsg_,arg1_,arg2_,arg3_); }}
 #define MPIU_ERR_CHKANDJUMP3(cond_,err_,class_,gmsg_,smsg_,arg1_,arg2_,arg3_) \
      MPIU_ERR_CHKANDSTMT3(cond_,err_,class_,goto fn_fail,gmsg_,smsg_,arg1_,arg2_,arg3_)
+
+#define MPIU_ERR_SETANDJUMP4(err_,class_,gmsg_,smsg_,arg1_,arg2_,arg3_,arg4_) \
+     MPIU_ERR_SETANDSTMT4(err_,class_,goto fn_fail,gmsg_,smsg_,arg1_,arg2_,arg3_,arg4_)
+#define MPIU_ERR_SETFATALANDJUMP4(err_,class_,gmsg_,smsg_,arg1_,arg2_,arg3_,arg4_) \
+     MPIU_ERR_SETFATALANDSTMT4(err_,class_,goto fn_fail,gmsg_,smsg_,arg1_,arg2_,arg3_,arg4_)
+#define MPIU_ERR_CHKANDSTMT4(cond_,err_,class_,stmt_,gmsg_,smsg_,arg1_,arg2_,arg3_, arg4_) \
+    {if (cond_) { MPIU_ERR_SETANDSTMT4(err_,class_,stmt_,gmsg_,smsg_,arg1_,arg2_,arg3_,arg4_); }}
+#define MPIU_ERR_CHKANDJUMP4(cond_,err_,class_,gmsg_,smsg_,arg1_,arg2_,arg3_,arg4_) \
+     MPIU_ERR_CHKANDSTMT4(cond_,err_,class_,goto fn_fail,gmsg_,smsg_,arg1_,arg2_,arg3_,arg4_)
 /* --END ERROR MACROS-- */
 
 /* 
@@ -479,7 +513,7 @@
 {								\
     if (MPIR_Process.initialized != MPICH_WITHIN_MPI)		\
     {								\
-	MPIR_Err_preinit();					\
+	MPIR_Err_preOrPostInit();				\
     }                                                           \
 }
 #else

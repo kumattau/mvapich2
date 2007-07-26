@@ -8,7 +8,7 @@
 usage: mpd [--host=<host> --port=<portnum>] [--noconsole]
            [--trace] [--echo] [--daemon] [--bulletproof] --ncpus=<ncpus>
            [--ifhn=<interface-hostname>] [--listenport=<listenport>]
-           [--pid=<pidfilename>]
+           [--pid=<pidfilename>] [-zc] [--debug]
 
 Some long parameter names may be abbreviated to their first letters by using
   only one hyphen and no equal sign:
@@ -22,6 +22,7 @@ Some long parameter names may be abbreviated to their first letters by using
 --noconsole is useful for running 2 mpds on the same machine; only one of
   them will accept mpd commands
 --trace yields lots of traces thru mpd routines; currently too verbose
+--debug turns on some debugging prints; currently not verbose enough
 --echo causes the mpd echo its listener port by which other mpds may connect
 --daemon causes mpd to run backgrounded, with no controlling tty
 --bulletproof says to turn bulletproofing on (experimental)
@@ -35,6 +36,14 @@ Some long parameter names may be abbreviated to their first letters by using
   will acquire one from the system
 --pid=filename writes the mpd pid into the specified file, or --pid alone
   writes it into /var/run/mpd.pid
+-zc is a purely EXPERIMENTAL option right now used to investigate zeroconf
+  networking; it can be used to allow mpds to discover each other locally
+  using multicast DNS; its usage may change over time
+  Currently, -zc is specified like this:  -zc N
+  where N specifies a 'level' in a startup set of mpds.  The first mpd in a ring
+  must have 1 and it will establish a ring of one mpd.  Subsequent mpds can specify
+  -zc 2 and will hook into the ring via the one at level 1.  Except for level 1, new
+  mpds enter the ring via an mpd at level-1.
 
 A file named .mpd.conf file must be present in the user's home directory
   with read and write access only for the user, and must contain at least
@@ -47,7 +56,7 @@ from  time    import  ctime
 from  mpdlib  import  mpd_version
 __author__ = "Ralph Butler and Rusty Lusk"
 __date__ = ctime()
-__version__ = "$Revision: 1.1.1.1 $"
+__version__ = "$Revision: 1.157 $"
 __version__ += "  " + str(mpd_version())
 __credits__ = ""
 
@@ -62,9 +71,10 @@ from  random      import  seed, randrange, random
 from  time        import  sleep
 from  md5         import  new as md5new
 from  mpdlib      import  mpd_set_my_id, mpd_check_python_version, mpd_sockpair, \
-                          mpd_print, mpd_get_my_username, \
+                          mpd_print, mpd_get_my_username, mpd_close_zc, \
                           mpd_get_groups_for_username, mpd_uncaught_except_tb, \
                           mpd_set_procedures_to_trace, mpd_trace_calls, \
+                          mpd_dbg_level, mpd_set_dbg_level, \
                           MPDSock, MPDListenSock, MPDConListenSock, \
                           MPDStreamHandler, MPDRing, MPDParmDB
 from  mpdman      import  MPDMan
@@ -110,6 +120,8 @@ class MPD(object):
             syslog.openlog("mpd",0,syslog.LOG_DAEMON)
             syslog.syslog(syslog.LOG_INFO,"mpd starting; no mpdid yet")
         sys.excepthook = mpd_uncaught_except_tb
+        self.spawnQ = []
+        self.spawnInProgress = 0
         self.parmdb = MPDParmDB(orderedSources=['cmdline','xml','env','rcfile','thispgm'])
         self.parmsToOverride = {
                                  'MPD_SECRETWORD'       :  '',
@@ -124,6 +136,7 @@ class MPD(object):
                                  'MPD_DAEMON_FLAG'      :  0,
                                  'MPD_BULLETPROOF_FLAG' :  0,
                                  'MPD_PID_FILENAME'     :  '',
+                                 'MPD_ZC'               :  0,
                                  'MPD_LOGFILE_TRUNC_SZ' :  4000000,  # -1 -> don't trunc
                                }
         for (k,v) in self.parmsToOverride.items():
@@ -144,7 +157,8 @@ class MPD(object):
                             listenSock=self.listenSock,
                             myIfhn=self.myIfhn,
                             entryIfhn=self.parmdb['MPD_ENTRY_IFHN'],
-                            entryPort=self.parmdb['MPD_ENTRY_PORT'])
+                            entryPort=self.parmdb['MPD_ENTRY_PORT'],
+                            zcMyLevel=self.parmdb['MPD_ZC'])
         # setup tracing if requested via args
         if self.parmdb['MPD_TRACE_FLAG']:
             proceduresToTrace = []
@@ -173,8 +187,8 @@ class MPD(object):
             print self.parmdb['MPD_LISTEN_PORT']
             sys.stdout.flush()
             ##### NEXT 2 for debugging
-            print >>sys.stderr, self.parmdb['MPD_LISTEN_PORT']
-            sys.stderr.flush()
+            ## print >>sys.stderr, self.parmdb['MPD_LISTEN_PORT']
+            ## sys.stderr.flush()
         self.myRealUsername = mpd_get_my_username()
         self.currRingSize = 1    # default
         self.currRingNCPUs = 1   # default
@@ -227,6 +241,7 @@ class MPD(object):
         self.allExiting    = 0    # for mpdallexit (for first loop for graceful exit)
         self.exiting       = 0    # for mpdexit or mpdallexit
         self.kvs_cntr      = 0    # for mpdman
+        self.pulse_cntr    = 0
         rc = self.ring.enter_ring(lhsHandler=self.handle_lhs_input,
                                   rhsHandler=self.handle_rhs_input)
         if rc < 0:
@@ -263,12 +278,41 @@ class MPD(object):
     def runmainloop(self):
         # Main Loop
         while 1:
+            if self.spawnQ  and  not self.spawnInProgress:
+                self.ring.rhsSock.send_dict_msg(self.spawnQ[0])
+                self.spawnQ = self.spawnQ[1:]
+                self.spawnInProgress = 1
+                continue
             rv = self.streamHandler.handle_active_streams(timeout=8.0)
             if rv[0] < 0:
                 if type(rv[1]) == ClassType  and  rv[1] == KeyboardInterrupt: # ^C
                     sys.exit(-1)
             if self.exiting:
                 break
+            if rv[0] == 0:
+                if self.pulse_cntr == 0  and  self.ring.rhsSock:
+                    self.ring.rhsSock.send_dict_msg({'cmd':'pulse'})
+                self.pulse_cntr += 1
+            if self.pulse_cntr >= 3:
+                if self.ring.rhsSock:  # rhs must have disappeared
+                    self.streamHandler.del_handler(self.ring.rhsSock)
+                    self.ring.rhsSock.close()
+                    self.ring.rhsSock = 0
+                if self.ring.lhsSock:
+                    self.streamHandler.del_handler(self.ring.lhsSock)
+                    self.ring.lhsSock.close()
+                    self.ring.lhsSock = 0
+                mpd_print(1,'no pulse_ack from rhs; re-entering ring')
+                rc = self.ring.reenter_ring(lhsHandler=self.handle_lhs_input,
+                                            rhsHandler=self.handle_rhs_input,
+                                            ntries=16)
+                if rc == 0:
+                    mpd_print(1,'back in ring')
+		else:
+                    mpd_print(1,'failed to reenter ring')
+                    sys.exit(-1)
+                self.pulse_cntr = 0
+        mpd_close_zc()  # only does something if we have zc
     def usage(self):
         print __doc__
         print "This version of mpd is", mpd_version()
@@ -285,6 +329,7 @@ class MPD(object):
         except:
             pass
     def get_parms_from_cmdline(self):
+        global mpd_dbg_level
         argidx = 1
         while argidx < len(sys.argv):
             if sys.argv[argidx] == '--help':
@@ -398,6 +443,9 @@ class MPD(object):
             elif sys.argv[argidx] == '-t'  or  sys.argv[argidx] == '--trace':
                 self.parmdb[('cmdline','MPD_TRACE_FLAG')] = 1
                 argidx += 1
+            elif sys.argv[argidx] == '--debug':
+                mpd_set_dbg_level(1)
+                argidx += 1
             elif sys.argv[argidx] == '-n'  or  sys.argv[argidx] == '--noconsole':
                 self.parmdb[('cmdline','MPD_CONSOLE_FLAG')] = 0
                 argidx += 1
@@ -410,6 +458,19 @@ class MPD(object):
             elif sys.argv[argidx] == '-b'  or  sys.argv[argidx] == '--bulletproof':
                 self.parmdb[('cmdline','MPD_BULLETPROOF_FLAG')] = 1 
                 argidx += 1
+            elif sys.argv[argidx] == '-zc':
+                if argidx >= (len(sys.argv)-1):
+                    print 'missing arg for -zc'
+                    sys.exit(-1)
+                if not sys.argv[argidx+1].isdigit():
+                    print 'invalid arg for -zc %s ; must be numeric' % (sys.argv[argidx+1])
+                    sys.exit(-1)
+                intarg = int(sys.argv[argidx+1])
+                if intarg < 1:
+                    print 'invalid arg for -zc %s ; must be >= 1' % (sys.argv[argidx+1])
+                    sys.exit(-1)
+                self.parmdb[('cmdline','MPD_ZC')] = intarg
+                argidx += 2
             else:
                 print 'unrecognized arg: %s' % (sys.argv[argidx])
                 sys.exit(-1)
@@ -432,19 +493,21 @@ class MPD(object):
                     (kv1,kv2) = line.split(' ',1)  # 'realusername=xxx secretword=yyy'
                 except:
                     errorMsg = 'failed to split this msg on " ": %s' % line
-                try:
-                    (k1,self.conSock.realUsername) = kv1.split('=',1)
-                except:
-                    errorMsg = 'failed to split first kv pair on "=": %s' % line
-                try:
-                    (k2,secretword) = kv2.split('=',1)
-                except:
-                    errorMsg = 'failed to split second kv pair on "=": %s' % line
-                if k1 != 'realusername':
+                if not errorMsg:
+                    try:
+                        (k1,self.conSock.realUsername) = kv1.split('=',1)
+                    except:
+                        errorMsg = 'failed to split first kv pair on "=": %s' % line
+                if not errorMsg:
+                    try:
+                        (k2,secretword) = kv2.split('=',1)
+                    except:
+                        errorMsg = 'failed to split second kv pair on "=": %s' % line
+                if not errorMsg  and  k1 != 'realusername':
                     errorMsg = 'first key is not realusername'
-                if k2 != 'secretword':
+                if not errorMsg  and  k2 != 'secretword':
                     errorMsg = 'second key is not secretword'
-                if os.getuid() == 0  and  secretword != self.parmdb['MPD_SECRETWORD']:
+                if not errorMsg  and  os.getuid() == 0  and  secretword != self.parmdb['MPD_SECRETWORD']:
                     errorMsg = 'invalid secretword to root mpd'
                 if errorMsg:
                     try:
@@ -657,6 +720,8 @@ class MPD(object):
                 deleted = 0
                 for manPid in self.activeJobs[jobid]:
                     if sock == self.activeJobs[jobid][manPid]['socktoman']:
+			mpd_print(mpd_dbg_level,\
+                                  "Deleting %s %d" % (str(jobid),manPid))
                         del self.activeJobs[jobid][manPid]
                         if len(self.activeJobs[jobid]) == 0:
                             del self.activeJobs[jobid]
@@ -674,13 +739,34 @@ class MPD(object):
             self.streamHandler.del_handler(sock)
             sock.close()
             return
+	# Who asks, and why?  
+        # We have a failure that deletes the spawnerManPid from the
+	# activeJobs[jobid] variable.   The temporary work-around is
+        # to ignore this request if the target process is no longer 
+	# in the activeJobs table.
         if msg['cmd'] == 'client_info':
             jobid = msg['jobid']
             manPid = msg['manpid']
             self.activeJobs[jobid][manPid]['clipid'] = msg['clipid']
+            if msg['spawner_manpid']  and  msg['rank'] == 0:
+                if msg['spawner_mpd'] == self.myId:
+                    spawnerManPid = msg['spawner_manpid']
+		    mpd_print(mpd_dbg_level,\
+                       "About to check %s:%s" % (str(jobid),str(spawnerManPid)))
+
+                    if not self.activeJobs[jobid].has_key(spawnerManPid):
+                        mpd_print(0,"Missing %d in %s" % (spawnerManPid,str(jobid)))
+                    elif not self.activeJobs[jobid][spawnerManPid].has_key('socktoman'):
+                        mpd_print(0,"Missing socktoman!")
+                    else:
+                        spawnerManSock = self.activeJobs[jobid][spawnerManPid]['socktoman']
+                        msgToSend = { 'cmd' : 'spawn_done_by_mpd', 'rc' : 0, 'reason' : '' }
+                        spawnerManSock.send_dict_msg(msgToSend)
+                else:
+                    self.ring.rhsSock.send_dict_msg(msg)
         elif msg['cmd'] == 'spawn':
-            msg['cmd'] = 'mpdrun'  # handle much like an mpdrun from a console
             msg['mpdid_mpdrun_start'] = self.myId
+            msg['spawner_mpd'] = self.myId
             msg['nstarted_on_this_loop'] = 0
             msg['first_loop'] = 1
             msg['jobalias'] = ''
@@ -688,8 +774,10 @@ class MPD(object):
             msg['ringsize'] = 0
             msg['ring_ncpus'] = 0
             msg['gdb'] = 0
+            msg['gdba'] = ''
             msg['totalview'] = 0
-            self.ring.rhsSock.send_dict_msg(msg)
+            msg['ifhns'] = {}
+            self.spawnQ.append(msg)
         elif msg['cmd'] == 'publish_name':
             self.pmi_published_names[msg['service']] = msg['port']
             msgToSend = { 'cmd' : 'publish_result', 'info' : 'ok' }
@@ -712,11 +800,12 @@ class MPD(object):
             else:
                 msg['cmd'] = 'pmi_unpublish_name'    # add pmi_
                 msg['src'] = self.myId
-                self.ring.rhsSocket.send_dict_msg(msg)
+                self.ring.rhsSock.send_dict_msg(msg)
         else:
             mpd_print(1, 'INVALID request from man msg=:%s:' % (msg) )
             msgToSend = { 'cmd' : 'invalid_request' }
             sock.send_dict_msg(msgToSend)
+
     def handle_lhs_input(self,sock):
         msg = self.ring.lhsSock.recv_dict_msg()
         if not msg:    # lost lhs; don't worry
@@ -725,29 +814,39 @@ class MPD(object):
             self.ring.lhsSock.close()
             self.ring.lhsSock = 0
             return
-        if msg['cmd'] == 'mpdrun':
+        if msg['cmd'] == 'mpdrun'  or  msg['cmd'] == 'spawn':
             if  msg.has_key('mpdid_mpdrun_start')  \
             and msg['mpdid_mpdrun_start'] == self.myId:
                 if msg['first_loop']:
                     self.currRingSize = msg['ringsize']
                     self.currRingNCPUs = msg['ring_ncpus']
                 if msg['nstarted'] == msg['nprocs']:
+                    if msg['cmd'] == 'spawn':
+                        self.spawnInProgress = 0
                     if self.conSock:
-                        msgToSend = {'cmd' : 'mpdrun_ack',
-                                     'ringsize' : self.currRingSize,
-                                     'ring_ncpus' : self.currRingNCPUs}
+                        msgToSend = { 'cmd' : 'mpdrun_ack',
+                                      'ringsize' : self.currRingSize,
+                                      'ring_ncpus' : self.currRingNCPUs}
                         self.conSock.send_dict_msg(msgToSend)
                     return
                 if not msg['first_loop']  and  msg['nstarted_on_this_loop'] == 0:
                     if msg.has_key('jobid'):
-                        msgToSend = {'cmd' : 'abortjob', 'src' : self.myId,
-                                     'jobid' : msg['jobid'],
-                                     'reason' : 'some_procs_not_started'}
-                        self.ring.rhsSock.send_dict_msg(msgToSend)
+                        if msg['cmd'] == 'mpdrun':
+                            msgToSend = { 'cmd' : 'abortjob', 'src' : self.myId,
+                                          'jobid' : msg['jobid'],
+                                          'reason' : 'some_procs_not_started' }
+                            self.ring.rhsSock.send_dict_msg(msgToSend)
+                        else:  # spawn
+                            msgToSend = { 'cmd' : 'startup_status', 'rc' : -1,
+                                          'reason' : 'some_procs_not_started' }
+                            jobid = msg['jobid']
+                            manPid = msg['spawner_manpid']
+                            manSock = self.activeJobs[jobid][manPid]['socktoman']
+                            manSock.send_dict_msg(msgToSend)
                     if self.conSock:
-                        msgToSend = {'cmd' : 'job_failed',
-                                     'reason' : 'some_procs_not_started',
-                                     'remaining_hosts' : msg['hosts']}
+                        msgToSend = { 'cmd' : 'job_failed',
+                                      'reason' : 'some_procs_not_started',
+                                      'remaining_hosts' : msg['hosts'] }
                         self.conSock.send_dict_msg(msgToSend)
                     return
                 msg['first_loop'] = 0
@@ -954,8 +1053,19 @@ class MPD(object):
                     del self.pmi_published_names[msg['service']]
                     msg['done'] = 1
                 self.ring.rhsSock.send_dict_msg(msg)
+        elif msg['cmd'] == 'client_info':
+            if msg['spawner_manpid']  and  msg['rank'] == 0:
+                if msg['spawner_mpd'] == self.myId:
+                    jobid = msg['jobid']
+                    spawnerManPid = msg['spawner_manpid']
+                    spawnerManSock = self.activeJobs[jobid][spawnerManPid]['socktoman']
+                    msgToSend = { 'cmd' : 'spawn_done_by_mpd', 'rc' : 0, 'reason' : '' }
+                    spawnerManSock.send_dict_msg(msgToSend)
+                else:
+                    self.ring.rhsSock.send_dict_msg(msg)
         else:
             mpd_print(1, 'unrecognized cmd from lhs: %s' % (msg) )
+
     def handle_rhs_input(self,sock):
         if self.allExiting:
             return
@@ -985,7 +1095,7 @@ class MPD(object):
                     sys.exit(-1)
             return
         if msg['cmd'] == 'pulse_ack':
-            self.pulse_ctr = 0
+            self.pulse_cntr = 0
         elif msg['cmd'] == 'mpdexiting':    # for mpdexit
             if self.ring.rhsSock:
                 self.streamHandler.del_handler(self.ring.rhsSock)
@@ -994,7 +1104,6 @@ class MPD(object):
             # connect to new rhs
             self.ring.rhsIfhn = msg['rhsifhn']
             self.ring.rhsPort = int(msg['rhsport'])
-            mpd_print(0000,"TRYING TO CONN TO %s %s" % (self.ring.rhsIfhn,self.ring.rhsPort))
             if self.ring.rhsIfhn == self.myIfhn  and  self.ring.rhsPort == self.parmdb['MPD_LISTEN_PORT']:
                 rv = self.ring.connect_rhs(rhsHost=self.ring.rhsIfhn,
                                            rhsPort=self.ring.rhsPort,
@@ -1006,6 +1115,7 @@ class MPD(object):
                 return
             self.ring.rhsSock = MPDSock(name='rhs')
             self.ring.rhsSock.connect((self.ring.rhsIfhn,self.ring.rhsPort))
+            self.pulse_cntr = 0
             if not self.ring.rhsSock:
                 mpd_print(1,'handle_rhs_input failed to obtain rhs socket')
                 return
@@ -1029,10 +1139,11 @@ class MPD(object):
                (not msg.has_key('cmd')) or  \
                (msg['cmd'] != 'OK_to_enter_as_lhs'):
                 mpd_print(1, 'NOT OK to enter ring; msg=:%s:' % (msg) )
-            mpd_print(0000,"GOT CONN TO %s %s" % (self.ring.rhsIfhn,self.ring.rhsPort))
+            self.streamHandler.set_handler(self.ring.rhsSock,self.handle_rhs_input)
         else:
             mpd_print(1, 'unexpected from rhs; msg=:%s:' % (msg) )
         return
+
     def do_mpdrun(self,msg):
         if self.parmdb['MPD_LOGFILE_TRUNC_SZ'] >= 0:
             try:
@@ -1131,10 +1242,6 @@ class MPD(object):
         for ranks in envvars.keys():
             (lo,hi) = ranks
             if currRank >= lo  and  currRank <= hi:
-                if msg.has_key('MPICH_ifhn'):
-                    envvars[ranks]['MPICH_INTERFACE_HOSTNAME'] = msg['MPICH_ifhn']
-                else:
-                    envvars[ranks]['MPICH_INTERFACE_HOSTNAME'] = self.myIfhn
                 pgmEnvVars = dumps(envvars[ranks])
                 break
         limits = msg['limits']
@@ -1156,6 +1263,10 @@ class MPD(object):
                 pgmUmask = umasks[ranks]
                 break
         man_env = {}
+        if msg['ifhns'].has_key(currRank):
+            man_env['MPICH_INTERFACE_HOSTNAME'] = msg['ifhns'][currRank]
+        else:
+            man_env['MPICH_INTERFACE_HOSTNAME'] = self.myIfhn
         man_env.update(os.environ)    # may only want to mov non-MPD_ stuff
         man_env['MPDMAN_MYHOST'] = self.myHost
         man_env['MPDMAN_MYIFHN'] = self.myIfhn
@@ -1168,6 +1279,14 @@ class MPD(object):
         man_env['MPDMAN_CWD'] = cwd
         man_env['MPDMAN_UMASK'] = pgmUmask
         man_env['MPDMAN_SPAWNED'] = str(msg['spawned'])
+        if msg.has_key('spawner_manpid'):
+            man_env['MPDMAN_SPAWNER_MANPID'] = str(msg['spawner_manpid'])
+        else:
+            man_env['MPDMAN_SPAWNER_MANPID'] = '0'
+        if msg.has_key('spawner_mpd'):
+            man_env['MPDMAN_SPAWNER_MPD'] = msg['spawner_mpd']
+        else:
+            man_env['MPDMAN_SPAWNER_MPD'] = ''
         man_env['MPDMAN_NPROCS'] = str(msg['nprocs'])
         man_env['MPDMAN_MPD_LISTEN_PORT'] = str(self.parmdb['MPD_LISTEN_PORT'])
         man_env['MPDMAN_MPD_CONF_SECRETWORD'] = self.parmdb['MPD_SECRETWORD']
@@ -1179,6 +1298,7 @@ class MPD(object):
         man_env['MPDMAN_STDIN_DEST'] = msg['stdin_dest']
         man_env['MPDMAN_TOTALVIEW'] = str(msg['totalview'])
         man_env['MPDMAN_GDB'] = str(msg['gdb'])
+        man_env['MPDMAN_GDBA'] = str(msg['gdba'])  # for attach to running pgm
         fullDirName = os.path.abspath(os.path.split(sys.argv[0])[0])  # normalize
         man_env['MPDMAN_FULLPATHDIR'] = fullDirName    # used to find gdbdrv
         man_env['MPDMAN_SINGINIT_PID']  = str(msg['singinitpid'])
@@ -1215,6 +1335,7 @@ class MPD(object):
                                            'username' : username,
                                            'clipid' : -1,    # until report by man
                                            'socktoman' : toManSock }
+        mpd_print(mpd_dbg_level,"Created entry for %s %d" % (str(jobid),manPid) )
     def launch_mpdman_via_fork(self,msg,man_env):
         man_env['MPDMAN_HOW_LAUNCHED'] = 'FORK'
         currRank = int(man_env['MPDMAN_RANK'])
@@ -1237,7 +1358,10 @@ class MPD(object):
         man_env['MPDMAN_LHS_PORT'] = str(manEntryPort)
         man_env['MPDMAN_MY_LISTEN_FD'] = str(manListenSock.fileno())
         man_env['MPDMAN_MY_LISTEN_PORT'] = str(manListenPort)
+        mpd_print(mpd_dbg_level,"About to get sockpair for mpdman")
         (toManSock,toMpdSock) = mpd_sockpair()
+        mpd_print(mpd_dbg_level,"Found sockpair (%d,%d) for mpdman" % \
+                                (toManSock.fileno(), toMpdSock.fileno()) )
         toManSock.name = 'to_man'
         toMpdSock.name = 'to_mpd'  ## to be used by mpdman below
         man_env['MPDMAN_TO_MPD_FD'] = str(toMpdSock.fileno())
@@ -1283,6 +1407,8 @@ class MPD(object):
             mpdman = MPDMan()
             mpdman.run()
             sys.exit(0)  # do NOT do cleanup (eliminated atexit handlers above)
+        # After the fork, if we're the parent, close the other side of the
+        # mpdpair sockets, as well as the listener socket
         manListenSock.close()
         toMpdSock.close()
         return (manPid,toManSock)

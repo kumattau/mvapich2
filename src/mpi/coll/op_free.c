@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Op_free
 #define MPI_Op_free PMPI_Op_free
 
 #endif
@@ -51,7 +52,9 @@
 @*/
 int MPI_Op_free(MPI_Op *op)
 {
+#ifdef HAVE_ERROR_CHECKING
     static const char FCNAME[] = "MPI_Op_free";
+#endif
     MPID_Op *op_ptr = NULL;
     int     in_use;
     int     mpi_errno = MPI_SUCCESS;
@@ -59,7 +62,7 @@ int MPI_Op_free(MPI_Op *op)
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("coll");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_OP_FREE);
     
     MPID_Op_get_ptr( *op, op_ptr );
@@ -83,7 +86,7 @@ int MPI_Op_free(MPI_Op *op)
     
     /* ... body of routine ...  */
     
-    MPIU_Object_release_ref( op_ptr, &in_use);
+    MPIR_Op_release_ref( op_ptr, &in_use);
     if (!in_use) {
 	MPIU_Handle_obj_free( &MPID_Op_mem, op_ptr );
     }
@@ -91,21 +94,24 @@ int MPI_Op_free(MPI_Op *op)
     
     /* ... end of body of routine ... */
 
+#ifdef HAVE_ERROR_CHECKING
   fn_exit:
+#endif
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_OP_FREE);
-        MPID_CS_EXIT();
+        MPIU_THREAD_SINGLE_CS_EXIT("coll");
 	return mpi_errno;
 	
-  fn_fail:
     /* --BEGIN ERROR HANDLING-- */
 #   ifdef HAVE_ERROR_CHECKING
+  fn_fail:
     {
 	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_op_free", "**mpi_op_free %p", op);
+	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, 
+	    "**mpi_op_free", "**mpi_op_free %p", op);
     }
-#   endif
     mpi_errno = MPIR_Err_return_comm( 0, FCNAME, mpi_errno );
     goto fn_exit;
+#   endif
     /* --END ERROR HANDLING-- */
 }
 

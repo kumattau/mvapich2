@@ -135,6 +135,10 @@ doc_<type>_FLAGS    = Flags to pass doctext when building <type>.
                       (We also need a way to make a common rule of this type
                       for all files.  Perhaps a DOC_<TYPE>_FLAGS make variable?
 
+configure_LOC       = Directory containing the controlling configure
+configure_DEPEND    = list of files in this directory (without the .in)
+                      that are created by configure
+
 Details
 -------
 SUBDIRS:
@@ -264,4 +268,10 @@ Suggestions and Plans for Future Versions
 2. The targets to regenerate files need to understand the scoping of the
    configure calls, since the project may contain configure files within the 
    tree.  
+
+ToDo Notes:
+
+We should reorganize simplemake along the lines of the sm experiment
+in buildsys (more formallized langauge for the Makefile.sm, use of 
+loadable modules to provide customization).
    

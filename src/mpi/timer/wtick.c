@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Wtick
 #define MPI_Wtick PMPI_Wtick
 
 #endif
@@ -45,10 +46,9 @@ double MPI_Wtick( void )
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_WTICK);
     tick = MPID_Wtick();
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_WTICK);
-    MPID_CS_EXIT();
+
     return tick;
 }

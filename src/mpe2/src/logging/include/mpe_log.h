@@ -50,62 +50,69 @@
 
 #include "clog_commset.h"
 
+/* call before calling any other logging functions */
 int MPE_Init_log( void );
-  /* call before calling any other logging functions */
 
 int MPE_Initialized_logging( void );
 
+/* create state with byte info data description lines in MPI_Comm */
 int MPE_Describe_comm_state( MPI_Comm comm, int local_thread,
                              int state_startID, int state_finalID,
                              const char *name, const char *color,
                              const char *format );
-  /* create state with byte info data description lines in MPI_Comm */
 
+/* create state with byte info data description lines in MPI_COMM_WORLD */
 int MPE_Describe_info_state( int state_startID, int state_finalID,
                              const char *name, const char *color,
                              const char *format );
-  /* create state with byte info data description lines in MPI_COMM_WORLD */
 
+/* Internal MPE routine for MPI logging in MPI_Comm */
 int MPE_Describe_known_state( const CLOG_CommIDs_t *commIDs, int local_thread,
                               int stateID, int state_startID, int state_finalID,
                               const char *name, const char *color,
                               const char *format );
-  /* Internal MPE routine for MPI logging in MPI_Comm*/
 
+/* create state description lines in MPI_COMM_WORLD */
 int MPE_Describe_state( int state_startID, int state_finalID,
                         const char *name, const char *color );
-  /* create state description lines in MPI_COMM_WORLD */
 
+/* create event with byte info data description lines in MPI_comm */
 int MPE_Describe_comm_event( MPI_Comm comm, int local_thread,
                              int eventID,
                              const char *name, const char *color,
                              const char *format );
-  /* create event with byte info data description lines in MPI_comm */
 
+/* create event with byte info data description lines in MPI_COMM_WORLD */
 int MPE_Describe_info_event( int eventID,
                              const char *name, const char *color,
                              const char *format );
-  /* create event with byte info data description lines in MPI_COMM_WORLD */
 
+/* Internal MPE routine for MPI logging in MPI_Eventm */
+int MPE_Describe_known_event( const CLOG_CommIDs_t *commIDs, int local_thread,
+                              int eventID,
+                              const char *name, const char *color,
+                              const char *format );
+
+/* create event description lines in MPI_COMM_WORLD */
 int MPE_Describe_event( int eventID,
                         const char *name, const char *color );
-  /* create event description lines in MPI_COMM_WORLD */
 
+/* fetch new user-space event number(s) */
 int MPE_Log_get_event_number( void );
 int MPE_Log_get_state_eventIDs( int *statedef_startID,
                                 int *statedef_finalID );
 int MPE_Log_get_solo_eventID( int *eventdef_eventID );
-  /* Get new user-space event number */
 
-  /* Internal MPE routine for MPI logging */
+/* Internal MPE routine for MPI logging */
+
+/* fetch a new known event ID of state for MPE Logging system */
 int MPE_Log_get_known_eventID( void );
-  /* Get a new event number for MPE Logging system */
+/* fetch a new known state ID for MPE Logging system */
 int MPE_Log_get_known_stateID( void );
-  /* Get a new state number for MPE Logging system */
+/* fetch a new known solo event ID for MPE Logging system */
+int MPE_Log_get_known_solo_eventID( void );
 
-int MPE_Start_log( void );
-  /* set timer to 0 */
-
+/* log a MPI_Comm creation/destruction event */
 int MPE_Log_commIDs_intracomm( const CLOG_CommIDs_t *commIDs, int local_thread,
                                int comm_etype,
                                const CLOG_CommIDs_t *intracommIDs );
@@ -115,26 +122,26 @@ int MPE_Log_commIDs_intercomm( const CLOG_CommIDs_t *commIDs, int local_thread,
                                int comm_etype,
                                const CLOG_CommIDs_t *intercommIDs );
 
+/* log the sending of a message in MPI_Comm */
 int MPE_Log_commIDs_send( const CLOG_CommIDs_t *commIDs, int local_thread,
                           int receiver, int tag, int size );
 int MPE_Log_comm_send( MPI_Comm comm, int local_thread,
                        int receiver, int tag, int size );
-  /* log the sending of a message in MPI_Comm */
 
+/* log the sending of a message in MPI_COMM_WORLD */
 int MPE_Log_send( int receiver, int tag, int size );
-  /* log the sending of a message in MPI_COMM_WORLD */
 
+/* log the receiving of a message in MPI_Comm */
 int MPE_Log_commIDs_receive( const CLOG_CommIDs_t *commIDs, int local_thread,
                              int sender, int tag, int size );
 int MPE_Log_comm_receive( MPI_Comm comm, int local_thread,
                           int sender, int tag, int size );
-  /* log the receiving of a message in MPI_Comm */
 
+/* log the receiving of a message in MPI_COMM_WORLD */
 int MPE_Log_receive( int sender, int tag, int size );
-  /* log the receiving of a message in MPI_COMM_WORLD */
 
-#define MPE_LOG_BYTESIZE  (4 * sizeof(double))
 /* MPE_LOG_BYTESIZE is equal to sizeof(CLOG_BYTES) defined in clog.h */
+#define MPE_LOG_BYTESIZE  (4 * sizeof(double))
 typedef char MPE_LOG_BYTES[ MPE_LOG_BYTESIZE ];
 
 int MPE_Log_pack( MPE_LOG_BYTES bytebuf, int *position,
@@ -143,30 +150,36 @@ int MPE_Log_pack( MPE_LOG_BYTES bytebuf, int *position,
 int MPE_Log_commIDs_event( const CLOG_CommIDs_t *commIDs, int local_thread,
                            int event, const char *bytebuf );
 
+/* log a event in MPI_Comm */
 int MPE_Log_comm_event( MPI_Comm comm, int local_thread,
                         int event, const char *bytebuf );
-  /* log one event in MPI_Comm */
 
 
+/* log a event in MPI_COMM_WORLD */
 int MPE_Log_event( int event, int data, const char *bytebuf );
-  /* log one event in MPI_COMM_WORLD */
 
+/* log a bare event in MPI_COMM_WORLD */
 int MPE_Log_bare_event( int event );
-  /* log one bare event in MPI_COMM_WORLD */
 
+/* log a infomational event in MPI_COMM_WORLD */
 int MPE_Log_info_event( int event, const char *bytebuf );
-  /* log one infomational event in MPI_COMM_WORLD */
 
 int MPE_Log_sync_clocks( void );
 
+/* start logging events */
+int MPE_Start_log( void );
+
+/* stop logging events */
 int MPE_Stop_log( void );
-  /* stop logging events */
 
+/* Synchronize thread related data to all processes */
+void MPE_Log_thread_sync( int local_thread_count );
+
+/* write out data to a file */
 int MPE_Finish_log( const char *filename );
-  /* write out data to a file */
 
+/* get the immutable merged logfile name */
 const char* MPE_Log_merged_logfilename( void );
-  /* get the merged logfile name */
 
 #endif
 

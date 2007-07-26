@@ -15,6 +15,8 @@
 #endif
 
 #include "clog.h"
+#include "clog_mem.h"
+#include "clog_util.h"
 #include "clog_record.h"
 #include "clog_preamble.h"
 #include "clog_timer.h"
@@ -68,6 +70,7 @@ void CLOG_Local_init( CLOG_Stream_t *stream, const char *local_tmpfile_name )
 {
     CLOG_Buffer_t  *buffer;
 
+    stream->known_solo_eventID = CLOG_KNOWN_SOLO_EVENTID_START;
     stream->known_eventID      = CLOG_KNOWN_EVENTID_START;
     stream->known_stateID      = CLOG_KNOWN_STATEID_START;
     stream->user_eventID       = CLOG_USER_EVENTID_START;
@@ -76,7 +79,7 @@ void CLOG_Local_init( CLOG_Stream_t *stream, const char *local_tmpfile_name )
 
     CLOG_Rec_sizes_init();
     buffer  = stream->buffer;
-    CLOG_Buffer_init( buffer, local_tmpfile_name );
+    CLOG_Buffer_init4write( buffer, local_tmpfile_name );
 
     /* Initialize the synchronizer */
     stream->syncer = CLOG_Sync_create( buffer->world_size, buffer->world_rank );
@@ -96,13 +99,17 @@ void CLOG_Local_finalize( CLOG_Stream_t *stream )
 {
     const CLOG_CommIDs_t *commIDs;
           CLOG_Buffer_t  *buffer;
+          CLOG_Sync_t    *syncer;
           CLOG_Time_t     local_timediff;
 
-    if ( stream->syncer->world_rank == 0 ) {
-        if ( stream->syncer->is_ok_to_sync == CLOG_BOOL_TRUE )
-            printf( "Enabling the synchronization of the clocks...\n" );
+    syncer = stream->syncer;
+    if ( syncer->world_rank == 0 ) {
+        if ( syncer->is_ok_to_sync == CLOG_BOOL_TRUE ) {
+            printf( "Enabling the %s clock synchronization...\n",
+                    CLOG_Sync_print_type( syncer ) );
+        }
         else
-            printf( "Disabling the synchronization of the clocks...\n" );
+            printf( "Disabling the clock synchronization...\n" );
     }
 
     buffer  = stream->buffer;
@@ -120,13 +127,28 @@ void CLOG_Local_finalize( CLOG_Stream_t *stream )
     }
 
     if ( stream->syncer->is_ok_to_sync == CLOG_BOOL_TRUE ) {
-        local_timediff = CLOG_Sync_update_timediffs( stream->syncer );
+        local_timediff = CLOG_Sync_run( stream->syncer );
         CLOG_Buffer_set_timeshift( buffer, local_timediff, CLOG_BOOL_FALSE );
     }
     CLOG_Sync_free( &(stream->syncer) );
 
     CLOG_Buffer_save_endlog( buffer );
     CLOG_Buffer_localIO_flush( buffer );
+}
+
+int  CLOG_Get_known_solo_eventID( CLOG_Stream_t *stream )
+{
+    if ( stream->known_solo_eventID < CLOG_KNOWN_EVENTID_START )
+        return (stream->known_solo_eventID)++;
+    else {
+        fprintf( stderr, __FILE__":CLOG_Get_known_solo_eventID() - \n"
+                         "\t""CLOG internal KNOWN solo eventID are used up, "
+                         "last known solo eventID is %d.  Aborting...\n",
+                         stream->known_solo_eventID );
+        fflush( stderr );
+        CLOG_Util_abort( 1 );
+        return stream->known_solo_eventID;
+    }
 }
 
 int  CLOG_Get_known_eventID( CLOG_Stream_t *stream )
@@ -201,6 +223,8 @@ void CLOG_Converge_init(       CLOG_Stream_t *stream,
     */
     stream->buffer->preamble->user_stateID_count
     = stream->user_stateID - CLOG_USER_STATEID_START; 
+    stream->buffer->preamble->known_solo_eventID_count
+    = stream->known_solo_eventID  - CLOG_KNOWN_SOLO_EVENTID_START;
     stream->buffer->preamble->user_solo_eventID_count
     = stream->user_solo_eventID  - CLOG_USER_SOLO_EVENTID_START;
     CLOG_Merger_init( stream->merger, stream->buffer->preamble,
@@ -209,7 +233,7 @@ void CLOG_Converge_init(       CLOG_Stream_t *stream,
 
 void CLOG_Converge_finalize( CLOG_Stream_t *stream )
 {
-    CLOG_Merger_finalize( stream->merger );
+    CLOG_Merger_finalize( stream->merger, stream->buffer );
     CLOG_Merger_free( &(stream->merger) );
 }
 

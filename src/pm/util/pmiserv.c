@@ -12,17 +12,18 @@
 
 #include "pmutilconf.h"
 #include <stdio.h>
-#ifdef HAVE_UNISTD_H
-#include <unistd.h>
+#ifdef HAVE_SYS_TYPES_H
+#include <sys/types.h>
 #endif
 #ifdef HAVE_STDLIB_H
 #include <stdlib.h>
 #endif
-#ifdef HAVE_SYS_TYPES_H
-#include <sys/types.h>
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>
 #endif
 #include <string.h>
 #include <ctype.h>
+#include <errno.h>
 /* Use the memory defintions from mpich2/src/include */
 #include "mpimem.h"
 #include "pmutil.h"
@@ -87,6 +88,8 @@ static PMIKVSpace *fPMIKVSAllocate( void );
 static int fPMIInfoKey( ProcessApp *, const char [], const char [] );
 
 int PMIServHandleInput( int, int, void * );
+
+static int PMIUBufferedReadLine( PMIProcess *, char *, int );
 
 /*
  * All PMI commands are handled by calling a routine that is associated with
@@ -177,11 +180,17 @@ int PMISetupInClient( int usePort, PMISetup *pmiinfo )
     }
     else {
 	/* We must communicate the port name to the process */
-	MPIU_Snprintf( env_pmi_port, sizeof(env_pmi_port), "PMI_PORT=%s",
-		       pmiinfo->portName );
-	if (MPIE_Putenv( pmiinfo->pWorld, env_pmi_port )) {
-	    MPIU_Internal_error_printf( "Could not set environment PMI_PORT" );
-	    perror( "Reason: " );
+	if (pmiinfo->portName) {
+	    MPIU_Snprintf( env_pmi_port, sizeof(env_pmi_port), "PMI_PORT=%s",
+			   pmiinfo->portName );
+	    if (MPIE_Putenv( pmiinfo->pWorld, env_pmi_port )) {
+		MPIU_Internal_error_printf( "Could not set environment PMI_PORT" );
+		perror( "Reason: " );
+		return 1;
+	    }
+	}
+	else {
+	    MPIU_Internal_error_printf( "Required portname was not defined\n" );
 	    return 1;
 	}
 	
@@ -233,6 +242,8 @@ PMIProcess *PMISetupNewProcess( int fd, ProcessState *pState )
     pmiprocess = (PMIProcess *)MPIU_Malloc( sizeof(PMIProcess) );
     if (!pmiprocess) return 0;
     pmiprocess->fd           = fd;
+    pmiprocess->nextChar     = pmiprocess->readBuf;
+    pmiprocess->endChar      = pmiprocess->readBuf;
     pmiprocess->group        = curPMIGroup;
     pmiprocess->pState       = pState;
     pmiprocess->spawnApp     = 0;
@@ -309,13 +320,14 @@ int PMIServHandleInput( int fd, int rdwr, void *extra )
     int        cmdtype;
 
     DBG_PRINTFCOND(pmidebug,("Handling PMI input\n") );
-    if ( ( rc = PMIReadLine( pentry->fd, inbuf, PMIU_MAXLINE ) ) > 0 ) {
+    if ( ( rc = PMIUBufferedReadLine( pentry, inbuf, PMIU_MAXLINE ) ) > 0 ) {
 	DBG_PRINTFCOND(pmidebug,
 		       ("Entering PMIServHandleInputFd %s\n", inbuf) );
 
 	PMIU_parse_keyvals( inbuf );
 	cmdtype = PMIGetCommand( cmd, sizeof(cmd) );
 	DBG_PRINTFCOND(pmidebug,( "cmd = %s\n", cmd ));
+	/* Look for the command and execute the related function */
 	p = pmiCommands;
 	while (p->handler) {
 	    if (strncmp( cmd, p->cmdName, MAXPMICMD ) == 0) {
@@ -440,7 +452,15 @@ static PMIKVSpace *fPMIKVSAllocate( void )
 	MPIU_Internal_error_printf( "too many kvs's\n" );
 	return 0;
     }
-    MPIU_Snprintf( (char *)(kvs->kvsname), MAXNAMELEN, "kvs_%d", kvsnum++ );
+    /* We include the pid of the PMI server as a way to allow multiple
+       PMI servers to coexist.  This is needed to support connect/accept
+       operations when multiple mpiexec's are used, and the KVS space
+       is served directly by mpiexec (it should really have the 
+       hostname as well, just to avoid getting the same pid on two
+       different hosts, but this is probably good enough for most
+       uses) */
+    MPIU_Snprintf( (char *)(kvs->kvsname), MAXNAMELEN, "kvs_%d_%d", 
+		   (int)getpid(), kvsnum++ );
     kvs->pairs     = 0;
     kvs->lastByIdx = 0;
     kvs->lastIdx   = -1;
@@ -1036,7 +1056,7 @@ static int fPMI_Handle_spawn( PMIProcess *pentry )
 
     /* Get lines until we find either cmd or mcmd (an error) or endcmd 
        (expected end) */
-    while ((rc = PMIReadLine( pentry->fd, inbuf, sizeof(inbuf) )) > 0) {
+    while ((rc = PMIUBufferedReadLine( pentry, inbuf, sizeof(inbuf) )) > 0) {
 	char *cmdPtr, *valPtr, *p;
 
 	/* Find the command = format */
@@ -1237,13 +1257,51 @@ int PMI_Init_port_connection( int fd )
     PMIU_parse_keyvals( message );
     PMIU_getval( "cmd", cmd, MAXPMICMD );
     if (strcmp(cmd,"initack")) {
-	PMIU_printf( 1, "Unexpected cmd %s\n", cmd );
+	PMIU_printf( 1, "Unexpected cmd %s, expected initack\n", cmd );
 	return -1;
     }
     PMIU_getval( "pmiid", cmd, MAXPMICMD );
     pmiid = atoi(cmd);
 
     return pmiid;
+}
+
+/* Implement the singleton init handshake.  See the discussion in 
+   simplepmi.c for the protocol */
+int PMI_InitSingletonConnection( int fd, PMIProcess *pmiprocess )
+{
+    char buf[PMIU_MAXLINE], cmd[PMIU_MAXLINE];
+    int  rc;
+    char version[PMIU_MAXLINE], subversion[PMIU_MAXLINE];
+    
+    /* We start with the singinit command, wait for the singinit from
+       the client, and then send the singinit_info */
+    MPIU_Snprintf( buf, PMIU_MAXLINE, 
+   "cmd=singinit pmi_version=%d pmi_subversion=%d stdio=no authtype=none\n",
+	   PMI_VERSION, PMI_SUBVERSION );
+    PMIWriteLine( fd, buf );
+    PMIReadLine( fd, buf, PMIU_MAXLINE );
+    PMIU_parse_keyvals( buf );
+    PMIU_getval( "cmd", cmd, MAXPMICMD );
+    if (strcmp(cmd,"singinit")) {
+	PMIU_printf( 1, "Unexpected cmd %s\n", cmd );
+	return -1;
+    }
+    /* Could look at authtype */
+    /* check version compatibility with PMI client library */
+    PMIU_getval( "pmi_version", version, PMIU_MAXLINE );
+    PMIU_getval( "pmi_subversion", subversion, PMIU_MAXLINE );
+    if (PMI_VERSION == atoi(version) && PMI_SUBVERSION >= atoi(subversion))
+	rc = 0;
+    else
+	rc = -1;
+    
+    MPIU_Snprintf( buf, PMIU_MAXLINE,
+		   "cmd=singinit_info versionok=%s stdio=no kvsname=%s\n",
+		   (rc == 0) ? "yes" : "no",  pmiprocess->group->kvs );
+    PMIWriteLine( fd, buf );
+
+    return 0;
 }
 
 /* Handle the default info values */
@@ -1281,7 +1339,6 @@ int PMIWriteLine( int fd, const char *buf )
     rc = PMIU_writeline( fd, (char*)buf );
     DBG_PRINTFCOND(pmidebug&&rc<0,( "Write on fd %d returned rc %d\n", fd, rc ));
 
-
     return rc;
 }
 int PMIReadLine( int fd, char *buf, int maxlen )
@@ -1306,3 +1363,68 @@ int PMIReadLine( int fd, char *buf, int maxlen )
 }
 #endif
 /* ------------------------------------------------------------------------- */
+/* 
+ * To handle multiple incoming command streams, we need to have a separate
+ * states buffered input (replacing PMIU_readline from the client-side
+ * code)
+ */
+/* ------------------------------------------------------------------------- */
+/* 
+ * Return the next newline-terminated string of maximum length maxlen.
+ * This is a buffered version, and reads from fd as necessary.  A
+ */
+static int PMIUBufferedReadLine( PMIProcess *pentry, char *buf, int maxlen )
+{
+    int curlen, n;
+    char *p, ch;
+    int  fd = pentry->fd;
+    char *readbuf  = pentry->readBuf;
+    char *nextChar = pentry->nextChar;
+    char *endChar  = pentry->endChar;
+
+    p      = buf;
+    curlen = 1;    /* Make room for the null */
+    while (curlen < maxlen) {
+	if (nextChar == endChar) {
+	    do {
+		n = read( fd, readbuf, sizeof(readbuf)-1 );
+	    } while (n == -1 && errno == EINTR);
+	    if (n == 0) {
+		/* EOF */
+		break;
+	    }
+	    else if (n < 0) {
+		/* Error.  Return a negative value if there is no
+		   data.  Save the errno in case we need to return it
+		   later. */
+		if (curlen == 1) {
+		    curlen = 0;
+		}
+		break;
+	    }
+	    nextChar = readbuf;
+	    endChar  = readbuf + n;
+	    pentry->endChar  = endChar;
+	    /* Add a null at the end just to make it easier to print
+	       the read buffer */
+	    readbuf[n] = 0;
+	    /* FIXME: Make this an optional output */
+	    /* printf( "Readline %s\n", readbuf ); */
+	}
+	
+	ch   = *nextChar++;
+	*p++ = ch;
+	curlen++;
+	if (ch == '\n') break;
+    }
+
+    /* We null terminate the string for convenience in printing */
+    *p = 0;
+
+    /* Save the state of the buffer */
+    pentry->nextChar = nextChar;
+
+    /* Return the number of characters, not counting the null */
+    return curlen-1;
+}
+

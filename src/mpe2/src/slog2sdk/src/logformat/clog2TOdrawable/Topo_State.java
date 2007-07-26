@@ -65,7 +65,7 @@ public class Topo_State extends Topology
     throws NoMatchingEventException
     {
         Obj_State state = new Obj_State( this.getCategory() );
-        state.setStartVertex( new Coord( header.time, header.lineID ) );
+        state.setStartVertex( new Coord( header.time, header.gthdLineID ) );
         if ( cargo != null ) // This is a precaution measure
             state.setInfoBuffer( cargo.bytes );
         partialstates.add( state );
@@ -82,9 +82,10 @@ public class Topo_State extends Topology
         Iterator itr = partialstates.iterator();
         while ( itr.hasNext() ) {
             state = ( Obj_State ) itr.next();
-            if ( state.getStartVertex().lineID == header.lineID ) {
+            if ( state.getStartVertex().lineID == header.gthdLineID ) {
                 itr.remove();
-                state.setFinalVertex( new Coord( header.time, header.lineID ) );
+                state.setFinalVertex( new Coord( header.time,
+                                                 header.gthdLineID ) );
                 if ( cargo != null )
                     state.setInfoBuffer( cargo.bytes );
                     // ? need new copy of byte[] bytes for setInfoBuffer(), GC ?

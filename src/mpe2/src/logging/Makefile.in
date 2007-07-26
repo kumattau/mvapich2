@@ -1,7 +1,7 @@
 ALL: all
 
 MAKE   = @MAKE@
-SHELL  = /bin/sh
+SHELL  = @SHELL@
 MKDIR  = @MKDIR@
 RM     = @RM@
 CP     = @CPRP@
@@ -21,7 +21,8 @@ MPE_BUILD_FORTRAN2C  = @MPE_BUILD_FORTRAN2C@
 # MPI implementation: used to turn on/off of certain feature
 # MPI_IMPL             = @MPI_IMPL@
 # MPE header files that are needed by endusers
-MPE_HEADERS          = clog_uuid.h clog_commset.h mpe_log.h mpe_logf.h
+MPE_HEADERS          = clog_inttypes.h clog_const.h clog_uuid.h clog_commset.h \
+                       mpe_log.h mpe_logf.h
 
 all: build_include build_lib_bin build_etc
 
@@ -35,6 +36,10 @@ build_include:
 	          if [ -f $(top_srcdir)/include/$$file ] ; then \
 	              $(CP) -f $(top_srcdir)/include/$$file \
 	                       $(includebuild_dir) ; \
+	          else \
+	               if [ -f include/$$file ] ; then \
+	                   $(CP) -f include/$$file $(includebuild_dir) ; \
+	               fi ; \
 	          fi ; \
 	      done ; \
 	  fi

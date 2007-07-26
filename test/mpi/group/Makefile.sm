@@ -14,7 +14,5 @@ gtranks_LDADD = ../util/mtest.o
 groupnullincl_SOURCES = groupnullincl.c
 groupnullincl_LDADD = ../util/mtest.o
 
-gerr_SOURCES = gerr.c
-
 ../util/mtest.o:
 	(cd ../util && $(MAKE) mtest.o)

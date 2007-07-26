@@ -18,6 +18,7 @@ MAKE                 = @MAKE@
 MPI_INC              = @MPI_INC@
 MPI_LIBS             = @MPI_LIBS@
 INCLUDE_DIR          = -I.. -I${top_srcdir}/include \
+                       -I${includebuild_dir} \
                        -I../../.. -I${top_srcdir}/../../include \
                        $(MPI_INC)
 PROF_LIBNAME         = @PROF_LIBNAME@
@@ -29,8 +30,10 @@ LDFLAGS              = @LDFLAGS@
 MPE_BUILD_FORTRAN2C  = @MPE_BUILD_FORTRAN2C@
 
 ### End User configurable options ###
-SHELL = /bin/sh
-RM    = @RM@
+
+SHELL            = @SHELL@
+RM               = @RM@
+MV               = @MV@
 
 @VPATH@
 
@@ -41,40 +44,51 @@ bindir           = @bindir@
 includedir       = @includedir@
 libdir           = @libdir@
 # Build directories
+includebuild_dir = @includebuild_dir@
 libbuild_dir     = @libbuild_dir@
 binbuild_dir     = @binbuild_dir@
 srcdir           = @srcdir@
 
-# EXECS            = ${binbuild_dir}/clog2_print@EXEEXT@ testlog@EXEEXT@
-EXECS            = ${binbuild_dir}/clog2_print@EXEEXT@
+EXECS            = ${binbuild_dir}/clog2_print@EXEEXT@ \
+                   ${binbuild_dir}/clog2_join@EXEEXT@ \
+                   ${binbuild_dir}/clog2_repair@EXEEXT@
 
 # GETNAME_DEFS are needed by mpehname.c
 CC_FLAGS         = $(CFLAGS) $(INCLUDE_DIR) $(MPE_COPTS)
 CC_LDFLAGS       = $(LDFLAGS) $(CFLAGS) $(MPE_LDOPTS)
 
 MPE_CSOURCES     = clog_util.c clog_timer.c clog_uuid.c clog_commset.c \
-                   clog_preamble.c clog_block.c clog_buffer.c \
-                   clog_record.c clog_sync.c clog_merger.c clog.c mpe_log.c
-MPE_COBJECTS     = $(MPE_CSOURCES:.c=.@OBJEXT@)
+                   clog_preamble.c clog_record.c clog_sync.c \
+                   clog_block.c clog_buffer.c clog_merger.c \
+                   clog_cache.c clog_joiner.c clog.c mpe_log.c
+MPE_P_COBJECTS   = $(MPE_CSOURCES:.c=.p@OBJEXT@)
+MPE_N_COBJECTS   = $(MPE_CSOURCES:.c=.n@OBJEXT@)
 
 MPE_WSOURCES     = mpe_logf.c
-MPE_WOBJECTS     = $(MPE_WSOURCES:.c=.@OBJEXT@)
+MPE_P_WOBJECTS   = $(MPE_WSOURCES:.c=.p@OBJEXT@)
+MPE_N_WOBJECTS   = $(MPE_WSOURCES:.c=.n@OBJEXT@)
+
+MPE_XSOURCES     = mpe_log_null.c
+MPE_P_XOBJECTS   = $(MPE_XSOURCES:.c=.p@OBJEXT@)
+MPE_N_XOBJECTS   = $(MPE_XSOURCES:.c=.n@OBJEXT@)
 
 MPE_SHLCOBJECTS  = $(MPE_COBJECTS:.@OBJEXT@=.lo)
 MPE_SHLWOBJECTS  = $(MPE_WOBJECTS:.@OBJEXT@=.lo)
 
-.SUFFIXES: .c .@OBJEXT@ .lo .a @EXEEXT@
+.SUFFIXES: .c .@OBJEXT@ .p@OBJEXT@ .n@OBJEXT@ .lo .a @EXEEXT@
 
-.c.@OBJEXT@:
-	$(MPE_ICC) $(MPE_ICFLAGS) -c $<
+.c.p@OBJEXT@:
+	$(MPI_CC) $(CC_FLAGS) -c $<
+	$(MV) $*.@OBJEXT@ $*.p@OBJEXT@
 
-.c.a:
-	$(MPE_ICC) $(MPE_ICFLAGS) -c $<
+.c.n@OBJEXT@:
+	$(CC) $(CC_FLAGS) -DCLOG_NOMPI -c $<
+	$(MV) $*.@OBJEXT@ $*.n@OBJEXT@
 
 # Allow compilers that do not allow -o for renaming object files
 .c.lo:
 	$(CC_SHL) $(CC_FLAGS) -c $< $(INC_DIR)
-	@mv $*.@OBJEXT@ $*.lo
+	@$(MV) $*.@OBJEXT@ $*.lo
 
 # default_all is the same as default, but without the RANLIB.  This
 # can speed up the build (ranlibs can take a LONG time).  profile_all 
@@ -84,7 +98,7 @@ default_all: default
 profile_all: 
 
 #
-default: clean
+default:
 	$(MAKE) ${libbuild_dir}/lib$(PROF_LIBNAME)_nompi.a
 	$(MAKE) ${libbuild_dir}/lib$(PROF_LIBNAME)_nompi_null.a
 	$(MAKE) ${libbuild_dir}/lib$(PROF_LIBNAME)_null.a
@@ -103,66 +117,66 @@ default: clean
 # is done once (e.g., a blip in the filesystem time can't be 
 # responsible if make works as Sun documents it).  To fix this, we
 # add all the objects to the library, not just the "recent" ones.
-${libbuild_dir}/lib$(PROF_LIBNAME).a: clean
-	@$(MAKE) $(MPE_COBJECTS) \
-	 "MPE_ICC=${MPI_CC}" "MPE_ICFLAGS=${CC_FLAGS}"
+${libbuild_dir}/lib$(PROF_LIBNAME).a: $(MPE_P_COBJECTS)
+	$(AR) $(ARFLAGS) $@ $(MPE_P_COBJECTS)
 	@if [ "$(MPE_BUILD_FORTRAN2C)" = "yes" ] ; then \
-	     $(MAKE) $(MPE_WOBJECTS) \
-	     "MPE_ICC=${MPI_CC}" "MPE_ICFLAGS=${CC_FLAGS}" ; \
+	     $(MAKE) $(MPE_P_WOBJECTS) ; \
+	     $(AR) $(ARFLAGS) $@ $(MPE_P_WOBJECTS) ; \
 	 fi
-	$(AR) $(ARFLAGS) $@ *.@OBJEXT@
 	$(RANLIB) $@
 
-${libbuild_dir}/lib$(PROF_LIBNAME)_nompi.a: clean
-	@$(MAKE) $(MPE_COBJECTS) \
-	 "MPE_ICC=${CC}" "MPE_ICFLAGS=${CC_FLAGS} -DCLOG_NOMPI"
+${libbuild_dir}/lib$(PROF_LIBNAME)_nompi.a: $(MPE_N_COBJECTS)
+	$(AR) $(ARFLAGS) $@ $(MPE_N_COBJECTS)
 	@if [ "$(MPE_BUILD_FORTRAN2C)" = "yes" ] ; then \
-	     $(MAKE) $(MPE_WOBJECTS) \
-	     "MPE_ICC=${CC}" "MPE_ICFLAGS=${CC_FLAGS} -DCLOG_NOMPI" ; \
+	     $(MAKE) $(MPE_N_WOBJECTS) ; \
+	     $(AR) $(ARFLAGS) $@ $(MPE_N_WOBJECTS) ; \
 	 fi
-	$(AR) $(ARFLAGS) $@ *.@OBJEXT@
 	$(RANLIB) $@
 
 # -DCLOG_NOMPI can be used when creating lib$(PROF_LIBNAME)_null.a
-${libbuild_dir}/lib$(PROF_LIBNAME)_null.a: clean
-	@$(MAKE) mpe_log_null.@OBJEXT@ \
-	 "MPE_ICC=${MPI_CC}" "MPE_ICFLAGS=${CC_FLAGS} "
+${libbuild_dir}/lib$(PROF_LIBNAME)_null.a: $(MPE_P_XOBJECTS)
+	$(AR) $(ARFLAGS) $@ $(MPE_P_XOBJECTS)
 	@if [ "$(MPE_BUILD_FORTRAN2C)" = "yes" ] ; then \
-	     $(MAKE) $(MPE_WOBJECTS) \
-	     "MPE_ICC=${MPI_CC}" "MPE_ICFLAGS=${CC_FLAGS}" ; \
+	     $(MAKE) $(MPE_P_WOBJECTS) ; \
+	     $(AR) $(ARFLAGS) $@ $(MPE_P_WOBJECTS) ; \
 	 fi
-	$(AR) $(ARFLAGS) $@ *.@OBJEXT@
 	$(RANLIB) $@
 
 # -DCLOG_NOMPI can be used when creating lib$(PROF_LIBNAME)_nompi_null.a
-${libbuild_dir}/lib$(PROF_LIBNAME)_nompi_null.a: clean
-	@$(MAKE) mpe_log_null.@OBJEXT@ \
-	 "MPE_ICC=${CC}" "MPE_ICFLAGS=${CC_FLAGS} -DCLOG_NOMPI"
+${libbuild_dir}/lib$(PROF_LIBNAME)_nompi_null.a: $(MPE_N_XOBJECTS)
+	$(AR) $(ARFLAGS) $@ $(MPE_N_XOBJECTS)
 	@if [ "$(MPE_BUILD_FORTRAN2C)" = "yes" ] ; then \
-	     $(MAKE) $(MPE_WOBJECTS) \
-	     "MPE_ICC=${CC}" "MPE_ICFLAGS=${CC_FLAGS} -DCLOG_NOMPI" ; \
+	     $(MAKE) $(MPE_N_WOBJECTS) ; \
+	     $(AR) $(ARFLAGS) $@ $(MPE_N_WOBJECTS) ; \
 	 fi
-	$(AR) $(ARFLAGS) $@ *.@OBJEXT@
 	$(RANLIB) $@
 
-${binbuild_dir}/clog2_print@EXEEXT@: clean
-	@$(MAKE) clog_print.@OBJEXT@ \
-	 "MPE_ICC=${CC}" "MPE_ICFLAGS=${CC_FLAGS} -DCLOG_NOMPI"
-	$(CLINKER) $(CC_LDFLAGS) -o $@ clog_print.@OBJEXT@ \
-                   -L${libbuild_dir} -l$(PROF_LIBNAME)_nompi
+${binbuild_dir}/clog2_print@EXEEXT@: clog_print.n@OBJEXT@
+	$(CLINKER) $(CC_LDFLAGS) -o $@ clog_print.n@OBJEXT@ \
+	                         -L${libbuild_dir} -l$(PROF_LIBNAME)_nompi
+
+${binbuild_dir}/clog2_join@EXEEXT@: clog_join.n@OBJEXT@
+	$(CLINKER) $(CC_LDFLAGS) -o $@ clog_join.n@OBJEXT@ \
+	                         -L${libbuild_dir} -l$(PROF_LIBNAME)_nompi
+
+${binbuild_dir}/clog2_repair@EXEEXT@: clog_repair.n@OBJEXT@
+	$(CLINKER) $(CC_LDFLAGS) -o $@ clog_repair.n@OBJEXT@ \
+	                         -L${libbuild_dir} -l$(PROF_LIBNAME)_nompi
 
 #
 # Remove the old libraries before rebuilding (in case they came from another
 # architecture or are otherwise damaged)
 rmlib:
 	@-$(RM) -f ${libbuild_dir}/lib$(PROF_LIBNAME).a 
+	@-$(RM) -f ${libbuild_dir}/lib$(PROF_LIBNAME)_null.a
+	@-$(RM) -f ${libbuild_dir}/lib$(PROF_LIBNAME)_nompi_null.a
 	@-$(RM) -f ${libbuild_dir}/lib$(PROF_LIBNAME)_nompi.a 
 
 rmprog:
 	@-$(RM) -f $(EXECS)
 
 clean: rmprog
-	@-$(RM) -f *.@OBJEXT@ ${srcdir}/*.@OBJEXT@ *~ $(EXECS) PI*
+	@-$(RM) -f ${srcdir}/*.*@OBJEXT@ *.*@OBJEXT@ *~ PI*
 
 distclean: clean rmlib
 	@-$(RM) -f Makefile

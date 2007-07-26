@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Win_create_keyval
 #define MPI_Win_create_keyval PMPI_Win_create_keyval
 
 #endif
@@ -45,6 +46,8 @@
 . MPI_WIN_NULL_DELETE_FN - empty delete function
 - MPI_WIN_DUP_FN         - simple dup function
 
+.N AttrErrReturn
+
 .N ThreadSafe
 
 .N Fortran
@@ -65,7 +68,7 @@ int MPI_Win_create_keyval(MPI_Win_copy_attr_function *win_copy_attr_fn,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("attr");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_WIN_CREATE_KEYVAL);
 
     /* Validate parameters and objects (post conversion) */
@@ -107,7 +110,7 @@ int MPI_Win_create_keyval(MPI_Win_copy_attr_function *win_copy_attr_fn,
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_WIN_CREATE_KEYVAL);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("attr");
     return mpi_errno;
 
   fn_fail:

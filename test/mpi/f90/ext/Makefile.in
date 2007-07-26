@@ -14,17 +14,15 @@ INCLUDES        =
 CPPFLAGS        = @CPPFLAGS@
 LIBS            = @LIBS@
 MAKE            = @MAKE@
-MPILIBNAME      = @MPILIBNAME@
-PMPILIBNAME     = @PMPILIBNAME@
-
 CC              = @CC@
 CFLAGS          = @CFLAGS@
 C_COMPILE       = $(CC) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
+C_LINK         = $(CC)
 F90              = @F90@
 F90FLAGS        = @F90FLAGS@
 F90_COMPILE     = $(F90) $(F90FLAGS) $(F90INCLUDES)
-F90_LINK    = $(F90)
-LDFLAGS     =  @LDFLAGS@ ../util/mtestf90.o 
+F90_LINK       = $(F90)
+LDFLAGS     =  @LDFLAGS@ 
 
 VPATH = .:@srcdir@
 
@@ -38,17 +36,17 @@ VPATH = .:@srcdir@
 	$(F90_COMPILE) -c $<
 .f90:
 	$(F90_COMPILE) -o $* $< $(LDFLAGS) $(LIBS)
-apply:
+apply: 
 	$(ACTION) $(ACTION_INPUT)
-clean:
-	-@rm -f *.o ${srcdir}/*.o c2f2cf90 allocmemf90
-	-@rm -f c2f2cf90.exe allocmemf90.exe
+clean: 
+	-@rm -f *.o ${srcdir}/*.o c2f2cf90 c2f90mult allocmemf90
+	-@rm -f c2f2cf90.exe c2f90mult.exe allocmemf90.exe
 	-@rm -f core core.[0-9]*
 	-@rm -f *.lo ${srcdir}/*.lo
 	-@rm -f *.irlog*
-distclean: clean distclean-xxx remove-makefile
+distclean:  clean distclean-xxx remove-makefile
 distclean-xxx:
-	-@rm -f Makefile
+	-@rm -f Makefile testlist
 	-@rm -rf autom4te*.cache
 	-@rm -rf $(DEPS_DIR)
 	-@rm -f TAGS
@@ -56,29 +54,34 @@ remove-makefile:
 	rm -f Makefile
 remove-genmakefiles:
 	rm -f  Makefile
-all-redirect: c2f2cf90
+all-redirect: c2f2cf90 c2f90mult
 
 c2f2cf90: c2f2cf90.o c2f902c.o   @MPILIBLOC@ ../util/mtestf90.o
 	$(F90_LINK) $(F90FLAGS) $(LDFLAGS) -o c2f2cf90 c2f2cf90.o c2f902c.o  \
-	${LIBS} 
+	../util/mtestf90.o  ${LIBS} 
+c2f90mult: c2f90mult.o   @MPILIBLOC@ ../util/mtestf90.o
+	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o c2f90mult c2f90mult.o  ${LIBS}
 allocmemf90: allocmemf90.o   @MPILIBLOC@ ../util/mtestf90.o
 	$(F90_LINK) $(F90FLAGS) $(LDFLAGS) -o allocmemf90 allocmemf90.o  \
 	${LIBS} 
 # --------------------------------------------------------------------------
 # --------------------------------------------------------------------------
 # --------------------------------------------------------------------------
-SOURCES         =  allocmemf90.f90 c2f2cf90.f90 c2f902c.c
+SOURCES         =  allocmemf90.f90 c2f2cf90.f90 c2f902c.c c2f90mult.c
 ETAGS           = @ETAGS@ @ETAGSADD@
 HEADERFILES     = $(HEADERS)
 SOURCEFILES     = $(SOURCES)
 tags: TAGS
-TAGS:${HEADERFILES} ${SOURCEFILES}
+TAGS: Makefile${HEADERFILES} ${SOURCEFILES}
 	here=`cd ../../../.. && pwd` ; cd ${srcdir} && $(ETAGS) -o $$here/TAGS --append ${HEADERFILES} ${SOURCEFILES}
 # --------------------------------------------------------------------------
 # This Makefile.sm generated automatically by f77tof90
 # from test/mpi/f77/ext/Makefile.sm.  DO NOT EDIT
+# We don't use a general LDADD for mtestf90.o because c2fmult is a C-only
+# program
 
 # allocmemf is an "extra" program because it requires a Fortran extension
+
 
 
 ../util/mtestf90.o: 

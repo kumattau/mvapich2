@@ -114,6 +114,15 @@ int test_communicators( void )
 	errs++;
 	printf( "copy function return code was MPI_SUCCESS in dup\n" );
     }
+    if (err != MPI_ERR_OTHER) {
+	int lerrclass;
+	MPI_Error_class( err, &lerrclass );
+	if (lerrclass != MPI_ERR_OTHER) {
+	    errs++;
+	    printf( "dup did not return an error code of class ERR_OTHER; " );
+	    printf( "err = %d, class = %d\n", err, lerrclass );
+	}
+    }
     if (err && d2 != MPI_COMM_NULL) {
 	errs++;
 	printf( "dup did not return MPI_COMM_NULL on error\n" );

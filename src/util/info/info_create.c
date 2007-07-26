@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: info_create.c,v 1.1.1.1 2006/01/18 21:09:48 huangwei Exp $
+/*  $Id: info_create.c,v 1.20 2006/05/08 15:55:47 toonen Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Info_create
 #define MPI_Info_create PMPI_Info_create
 #endif
 
@@ -50,7 +51,7 @@ int MPI_Info_create( MPI_Info *info )
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("info");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_INFO_CREATE);
 
     /* Validate parameters and objects (post conversion) */
@@ -82,7 +83,7 @@ int MPI_Info_create( MPI_Info *info )
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_INFO_CREATE);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("info");
     return mpi_errno;
     
   fn_fail:

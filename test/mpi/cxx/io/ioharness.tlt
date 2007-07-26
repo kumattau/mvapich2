@@ -23,6 +23,10 @@ using namespace std;
 #define MAX_FPARM 5
 #define MAX_BUFFER 65536
 #define MAX_FTYPE 3
+// We print no more than 10 errors.  To ensure a clean exit,
+// we normally continue until the end of the job (so that 
+// we can write out the standard No Errors or Found %d Errors message)
+#define MAX_ERRORS 10
 
 // This structure is used to determine how data is placed across the file
 typedef struct { int n, b; } fileparm;

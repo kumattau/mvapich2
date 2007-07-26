@@ -7,10 +7,8 @@
 #include "ch3i_progress.h"
 
 volatile unsigned int MPIDI_CH3I_progress_completion_count = 0;
-MPIDI_CH3I_Connection_t * MPIDI_CH3I_listener_conn = NULL;
 
 /* local prototypes */
-/* static int MPIDI_CH3I_Shm_connect(MPIDI_VC_t *vc, char *business_card, int *flag); */
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Connection_terminate
@@ -22,7 +20,8 @@ int MPIDI_CH3_Connection_terminate(MPIDI_VC_t * vc)
 
     if (vc->ch.bShm)
     {
-	/* There is no post_close for shm connections so handle them as closed immediately. */
+	/* There is no post_close for shm connections so handle them as closed 
+	   immediately. */
 	MPIDI_CH3I_SHM_Remove_vc_references(vc);
 	MPIDI_CH3U_Handle_connection(vc, MPIDI_VC_EVENT_TERMINATED);
     }
@@ -295,9 +294,6 @@ int MPIDI_CH3I_Shm_connect(MPIDI_VC_t *vc, const char *business_card, int *flag)
     int i;
 #ifdef HAVE_SHARED_PROCESS_READ
     char pid_str[20];
-#ifndef HAVE_WINDOWS_H
-    char filename[256];
-#endif
 #endif
 
     /* get the host and queue from the business card */
@@ -375,11 +371,10 @@ int MPIDI_CH3I_Shm_connect(MPIDI_VC_t *vc, const char *business_card, int *flag)
     /*MPIU_DBG_PRINTF(("write_shmq: %p, name - %s\n", vc->ch.write_shmq, vc->ch.shm_write_queue_info.key));*/
     shm_info.info = vc->ch.shm_write_queue_info;
     /*
-    printf("comm_world rank %d\nvc->pg_rank %d\nmy_pg_rank %d\nkvs_name:\n<%s>\npg_id:\n<%s>\n",
+    printf("comm_world rank %d\nvc->pg_rank %d\nmy_pg_rank %d\n\npg_id:\n<%s>\n",
 	MPIR_Process.comm_world->rank,
 	vc->pg_rank,
 	MPIDI_Process.my_pg_rank,
-	vc->pg->ch.kvs_name,
 	vc->pg->id);
     fflush(stdout);
     */
@@ -418,28 +413,23 @@ int MPIDI_CH3I_Shm_connect(MPIDI_VC_t *vc, const char *business_card, int *flag)
     if (vc->ch.hSharedProcessHandle == NULL)
     {
 	int err = GetLastError();
-	MPIDI_CH3I_SHM_Unlink_mem(&vc->ch.shm_write_queue_info);
-	MPIDI_CH3I_SHM_Release_mem(&vc->ch.shm_write_queue_info);
-	*flag = FALSE;
 	mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**OpenProcess", "**OpenProcess %d %d", i, err);
-	return mpi_errno;
+	goto fn_fail;
     }
 #else
-    MPIU_Snprintf(filename, 256, "/proc/%s/mem", pid_str);
     vc->ch.nSharedProcessID = atoi(pid_str);
-    vc->ch.nSharedProcessFileDescriptor = open(filename, O_RDWR/*O_RDONLY*/);
-    if (vc->ch.nSharedProcessFileDescriptor == -1)
-    {
-	MPIDI_CH3I_SHM_Unlink_mem(&vc->ch.shm_write_queue_info);
-	MPIDI_CH3I_SHM_Release_mem(&vc->ch.shm_write_queue_info);
-	*flag = FALSE;
-	mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**open", "**open %s %d %d", filename, atoi(pid_str), errno);
-	return mpi_errno;
-    }
+    mpi_errno = MPIDI_SHM_InitRWProc( vc->ch.nSharedProcessID, 
+			      &vc->ch.nSharedProcessFileDescriptor );
+    if (mpi_errno) { goto fn_fail; }
 #endif
 #endif
 
     return MPI_SUCCESS;
+ fn_fail:
+    MPIDI_CH3I_SHM_Unlink_mem(&vc->ch.shm_write_queue_info);
+    MPIDI_CH3I_SHM_Release_mem(&vc->ch.shm_write_queue_info);
+    *flag = FALSE;
+    return mpi_errno;
 }
 
 #undef FUNCNAME
@@ -449,11 +439,10 @@ int MPIDI_CH3I_Shm_connect(MPIDI_VC_t *vc, const char *business_card, int *flag)
 int MPIDI_CH3I_VC_post_connect(MPIDI_VC_t * vc)
 {
     int mpi_errno = MPI_SUCCESS;
-    char key[MPIDI_MAX_KVS_KEY_LEN];
     char val[MPIDI_MAX_KVS_VALUE_LEN];
     char host_description[MAX_HOST_DESCRIPTION_LEN];
     int port;
-    unsigned char ifaddr[4];
+    MPIDU_Sock_ifaddr_t ifaddr;
     int hasIfaddr = 0;
     int rc;
     MPIDI_CH3I_Connection_t * conn;
@@ -473,21 +462,10 @@ int MPIDI_CH3I_VC_post_connect(MPIDI_VC_t * vc)
     vc->ch.state = MPIDI_CH3I_VC_STATE_CONNECTING;
 
     /* get the business card */
-
-    rc = MPIU_Snprintf(key, MPIDI_MAX_KVS_KEY_LEN, "P%d-businesscard", vc->pg_rank);
-    if (rc < 0 || rc > MPIDI_MAX_KVS_KEY_LEN)
-    {
-	mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**snprintf", "**snprintf %d", rc);
-	goto fn_fail;
+    mpi_errno = MPIDI_PG_GetConnString( vc->pg, vc->pg_rank, val, sizeof(val));
+    if (mpi_errno) {
+	MPIU_ERR_POP(mpi_errno);
     }
-
-    mpi_errno = MPIDI_KVS_Get(vc->pg->ch.kvs_name, key, val);
-    if (mpi_errno != MPI_SUCCESS) {
-	mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**pmi_kvs_get", "**pmi_kvs_get %d", rc);
-	goto fn_fail;
-    }
-
-/*     MPIU_DBG_PRINTF(("%s: %s\n", key, val)); */
 
     /* attempt to connect through shared memory */
 /*    printf( "trying to connect through shared memory...\n"); fflush(stdout); */
@@ -530,12 +508,12 @@ int MPIDI_CH3I_VC_post_connect(MPIDI_VC_t * vc)
     }
 
 /*    printf( "Attempting to connect through socket\n" );fflush(stdout); */
-    MPIU_DBG_MSG_S(CH3_CONNECT,TYPICAL,
-		   "Attempting to connect with business card %s", val );
+    MPIU_DBG_MSG_FMT(CH3_CONNECT,TYPICAL,(MPIU_DBG_FDEST,
+	   "vc=%p: Attempting to connect with business card %s", vc, val ));
     /* attempt to connect through sockets */
     mpi_errno = MPIDU_Sock_get_conninfo_from_bc( val, host_description,
 						 sizeof(host_description),
-						 &port, ifaddr, &hasIfaddr );
+						 &port, &ifaddr, &hasIfaddr );
     if (mpi_errno) {
 	MPIU_ERR_POP(mpi_errno);
     }
@@ -553,7 +531,7 @@ int MPIDI_CH3I_VC_post_connect(MPIDI_VC_t * vc)
 #ifndef HAVE_WINDOWS_H
 	if (hasIfaddr) {
 	    mpi_errno = MPIDU_Sock_post_connect_ifaddr(MPIDI_CH3I_sock_set, 
-						       conn, ifaddr, port, 
+						       conn, &ifaddr, port, 
 						       &conn->sock);
 	}
 	else 
@@ -578,6 +556,7 @@ int MPIDI_CH3I_VC_post_connect(MPIDI_VC_t * vc)
 		"**ch3|sock|postconnect %d %d %s", MPIR_Process.comm_world->rank, vc->pg_rank, val);
 
 	    vc->ch.state = MPIDI_CH3I_VC_STATE_FAILED;
+	    if (vc->ch.conn == conn) vc->ch.conn = 0;
 	    MPIDI_CH3I_Connection_free(conn);
 	}
     }

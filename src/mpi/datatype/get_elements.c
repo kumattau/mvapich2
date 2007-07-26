@@ -21,17 +21,18 @@
 #define MIN(__a, __b) (((__a) < (__b)) ? (__a) : (__b))
 #endif
 
-/* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
-   the MPI routines */
-#ifndef MPICH_MPI_FROM_PMPI
-#define MPI_Get_elements PMPI_Get_elements
-
 PMPI_LOCAL int MPIR_Type_get_basic_type_elements(int *bytes_p,
 						 int count,
 						 MPI_Datatype datatype);
 PMPI_LOCAL int MPIR_Type_get_elements(int *bytes_p,
 				      int count,
 				      MPI_Datatype datatype);
+
+/* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
+   the MPI routines */
+#ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Get_elements
+#define MPI_Get_elements PMPI_Get_elements
 
 /* NOTE: I think that this is in here so that we don't get two copies of it
  * in the case where we don't have weak symbols.
@@ -50,7 +51,8 @@ PMPI_LOCAL int MPIR_Type_get_elements(int *bytes_p,
  * up by the types.
  *
  * Assumptions:
- * - the type passed to this function must be a basic
+ * - the type passed to this function must be a basic *or* a pairtype
+ *   (which aren't 
  * - the count is not zero (otherwise we can't tell between a "no more
  *   complete types" case and a "zero count" case)
  *
@@ -167,7 +169,13 @@ PMPI_LOCAL int MPIR_Type_get_elements(int *bytes_p,
     /* if we have gotten down to a type with only one element type,
      * call MPIR_Type_get_basic_type_elements() and return.
      */
-    if (HANDLE_GET_KIND(datatype) == HANDLE_KIND_BUILTIN) {
+    if (HANDLE_GET_KIND(datatype) == HANDLE_KIND_BUILTIN ||
+	datatype == MPI_FLOAT_INT ||
+	datatype == MPI_DOUBLE_INT ||
+	datatype == MPI_LONG_INT ||
+	datatype == MPI_SHORT_INT ||
+	datatype == MPI_LONG_DOUBLE_INT)
+    {
 	return MPIR_Type_get_basic_type_elements(bytes_p, count, datatype);
     }
     else if (datatype_ptr->element_size >= 0) {
@@ -274,6 +282,8 @@ PMPI_LOCAL int MPIR_Type_get_elements(int *bytes_p,
 
 #undef FUNCNAME
 #define FUNCNAME MPI_Get_elements
+#undef FCNAME
+#define FCNAME "MPI_Get_elements"
 
 /*@
    MPI_Get_elements - get_elements
@@ -296,7 +306,6 @@ PMPI_LOCAL int MPIR_Type_get_elements(int *bytes_p,
 @*/
 int MPI_Get_elements(MPI_Status *status, MPI_Datatype datatype, int *elements)
 {
-    static const char FCNAME[] = "MPI_Get_elements";
     int mpi_errno = MPI_SUCCESS, byte_count;
     MPID_Datatype *datatype_ptr = NULL;
 
@@ -304,7 +313,6 @@ int MPI_Get_elements(MPI_Status *status, MPI_Datatype datatype, int *elements)
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_GET_ELEMENTS);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -399,22 +407,24 @@ int MPI_Get_elements(MPI_Status *status, MPI_Datatype datatype, int *elements)
 
     /* ... end of body of routine ... */
 
+#ifdef HAVE_ERROR_CHECKING
   fn_exit:
+#endif
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_GET_ELEMENTS);
-    MPID_CS_EXIT();
     return mpi_errno;
 
-  fn_fail:
     /* --BEGIN ERROR HANDLING-- */
 #   ifdef HAVE_ERROR_CHECKING
+  fn_fail:
     {
 	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_get_elements",
+	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, 
+	    "**mpi_get_elements",
 	    "**mpi_get_elements %p %D %p", status, datatype, elements);
     }
-#   endif
     mpi_errno = MPIR_Err_return_comm( 0, FCNAME, mpi_errno );
     goto fn_exit;
+#   endif
     /* --END ERROR HANDLING-- */
 }
 

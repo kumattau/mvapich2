@@ -5,6 +5,18 @@
  *      See COPYRIGHT in top-level directory.
  */
 
+/* Copyright (c) 2003-2007, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT_MVAPICH2 in the top level MVAPICH2 directory.
+ *
+ */
+
 #include "mpiimpl.h"
 
 /* -- Begin Profiling Symbol Block for routine MPI_Send */
@@ -20,6 +32,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Send
 #define MPI_Send PMPI_Send
 
 #endif
@@ -67,7 +80,7 @@ int MPI_Send(void *buf, int count, MPI_Datatype datatype, int dest, int tag,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("pt2pt");
     MPID_MPI_PT2PT_FUNC_ENTER_FRONT(MPID_STATE_MPI_SEND);
     
     /* Validate handle parameters needing to be converted */
@@ -128,6 +141,11 @@ int MPI_Send(void *buf, int count, MPI_Datatype datatype, int dest, int tag,
 
     if (request_ptr == NULL)
     {
+        mpi_errno = MPID_Progress_test();
+        if (mpi_errno != MPI_SUCCESS)
+        {
+            goto fn_fail;
+        }
 	goto fn_exit;
     }
 
@@ -161,7 +179,7 @@ int MPI_Send(void *buf, int count, MPI_Datatype datatype, int dest, int tag,
     
   fn_exit:
     MPID_MPI_PT2PT_FUNC_EXIT(MPID_STATE_MPI_SEND);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("pt2pt");
     return mpi_errno;
 
   fn_fail:

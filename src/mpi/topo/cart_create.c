@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Cart_create
 #define MPI_Cart_create PMPI_Cart_create
 
 #endif
@@ -34,7 +35,9 @@
 int MPIR_Cart_create( const MPID_Comm *comm_ptr, int ndims, const int dims[], 
 		      const int periods[], int reorder, MPI_Comm *comm_cart )
 {
+#ifdef HAVE_ERROR_CHECKING
     static const char FCNAME[] = "MPIR_Cart_create";
+#endif
     int       i, newsize, rank, nranks, mpi_errno = MPI_SUCCESS;
     MPID_Comm *newcomm_ptr = NULL;
     MPIR_Topology *cart_ptr = NULL;
@@ -55,8 +58,11 @@ int MPIR_Cart_create( const MPID_Comm *comm_ptr, int ndims, const int dims[],
        (but do not duplicate the attributes) */
     if (reorder) {
 	MPI_Comm ncomm;
+	MPIU_THREADPRIV_DECL;
+
 	/* Allow the cart map routine to remap the assignment of ranks to 
 	   processes */
+	MPIU_THREADPRIV_GET;
 	MPIR_Nest_incr();
 	mpi_errno = NMPI_Cart_map( comm_ptr->handle, ndims, (int *)dims, 
 				   (int *)periods, &rank );
@@ -170,14 +176,16 @@ We ignore 'reorder' info currently.
 int MPI_Cart_create(MPI_Comm comm_old, int ndims, int *dims, int *periods, 
 		    int reorder, MPI_Comm *comm_cart)
 {
+#ifdef HAVE_ERROR_CHECKING
     static const char FCNAME[] = "MPI_Cart_create";
+#endif
     int       mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_CART_CREATE);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("topo");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_CART_CREATE);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -239,14 +247,16 @@ int MPI_Cart_create(MPI_Comm comm_old, int ndims, int *dims, int *periods,
     }
     /* ... end of body of routine ... */
 
+#ifdef HAVE_ERROR_CHECKING
   fn_exit:
+#endif
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_CART_CREATE);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("topo");
     return mpi_errno;
 
-  fn_fail:
     /* --BEGIN ERROR HANDLING-- */
 #   ifdef HAVE_ERROR_CHECKING
+  fn_fail:
     {
 	mpi_errno = MPIR_Err_create_code(
 	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, 
@@ -254,8 +264,8 @@ int MPI_Cart_create(MPI_Comm comm_old, int ndims, int *dims, int *periods,
 	    "**mpi_cart_create %C %d %p %p %d %p", comm_old, ndims, dims, 
 	    periods, reorder, comm_cart);
     }
-#   endif
     mpi_errno = MPIR_Err_return_comm( comm_ptr, FCNAME, mpi_errno );
     goto fn_exit;
+#   endif
     /* --END ERROR HANDLING-- */
 }

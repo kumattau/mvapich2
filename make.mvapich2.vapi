@@ -89,18 +89,6 @@ else
     HAVE_MPD_RING=""
 fi
 
-# Whether or not to build with multithreaded support.  Building with this
-# option will make MVAPICH2 thread-safe, but it may suffer slight
-# performance penalty in single-threaded case.  Disabled by default.
-# Enable with "yes".
-MULTI_THREAD=${MULTI_THREAD:-}
-
-if [ "$MULTI_THREAD" = "yes" ]; then
-    MULTI_THREAD="--enable-threads=multiple"
-else
-    MULTI_THREAD=""
-fi
-
 # Whether or not to build with ROMIO MPI I/O support.  Disabled by default.
 # Enable with "yes".
 ROMIO=${ROMIO:-}
@@ -128,7 +116,7 @@ fi
 export LD_LIBRARY_PATH=$MTHOME_LIB:$LD_LIBRARY_PATH
 export LIBS=${LIBS:--L${MTHOME_LIB} -lmtl_common -lvapi -lpthread -lmosal -lmpga $SUPPRESS}
 export FFLAGS=${FFLAGS:--L${MTHOME_LIB}}
-export CFLAGS=${CFLAGS:--D${ARCH} -DONE_SIDED -DUSE_INLINE -DRDMA_FAST_PATH -DUSE_HEADER_CACHING -DLAZY_MEM_UNREGISTER -D_SMP_ -D${IO_BUS} -D${LINKS} -DMPID_USE_SEQUENCE_NUMBERS -D${VCLUSTER} ${HAVE_MPD_RING} -I${MTHOME}/include $OPT_FLAG $SUPPRESS}
+export CFLAGS=${CFLAGS:--D${ARCH} -DONE_SIDED -DUSE_INLINE -DRDMA_FAST_PATH -DUSE_HEADER_CACHING -DLAZY_MEM_UNREGISTER -D_SMP_ -D${IO_BUS} -D${LINKS} -DMPIDI_CH3_CHANNEL_RNDV -DMPID_USE_SEQUENCE_NUMBERS -D${VCLUSTER} ${HAVE_MPD_RING} -I${MTHOME}/include $OPT_FLAG $SUPPRESS}
 
 # Prelogue
 make distclean &>/dev/null
@@ -137,7 +125,7 @@ set -o pipefail
 
 # Configure MVAPICH2
 echo "Configuring MVAPICH2..."
-./configure  --prefix=${PREFIX} ${MULTI_THREAD} \
+./configure  --prefix=${PREFIX} \
     --with-device=osu_ch3:mrail --with-rdma=vapi --with-pm=mpd \
     ${ROMIO} ${SHARED_LIBS} --without-mpe 2>&1 |tee config-mine.log
 ret=$?

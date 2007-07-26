@@ -16,15 +16,18 @@ int main( int argc, char *argv[] )
     MPI_Comm comm;
 
     MTest_Init( &argc, &argv );
+    /* To improve reporting of problems about operations, we
+       change the error handler to errors return */
+    MPI_Comm_set_errhandler( MPI_COMM_WORLD, MPI_ERRORS_RETURN );
 
     while (MTestGetComm( &comm, 1 )) {
 	if (comm == MPI_COMM_NULL) continue;
 
 	MPI_Comm_group( comm, &group );
 	rc = MPI_Group_incl( group, 0, 0, &outgroup );
-	
 	if (rc) {
 	    errs++;
+	    MTestPrintError( rc );
 	    printf( "Error in creating an empty group\n" );
 	}
 	if (outgroup != MPI_GROUP_EMPTY) {
@@ -32,12 +35,21 @@ int main( int argc, char *argv[] )
 	    rc = MPI_Group_compare( outgroup, MPI_GROUP_EMPTY, &result );
 	    if (result != MPI_IDENT) {
 		errs++;
+		MTestPrintError( rc );
 		printf( "Did not create a group equivalent to an empty group\n" );
 	    }
 	}
-	MPI_Group_free( &group );
+	rc = MPI_Group_free( &group );
+	if (rc) {
+	    errs++;
+	    MTestPrintError( rc );
+	}	    
 	if (outgroup != MPI_GROUP_NULL) {
-	    MPI_Group_free( &outgroup );
+	    rc = MPI_Group_free( &outgroup );
+	    if (rc) {
+		errs++;
+		MTestPrintError( rc );
+	    }
 	}
 
 	MTestFreeComm( &comm );

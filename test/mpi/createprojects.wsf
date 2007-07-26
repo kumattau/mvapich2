@@ -46,6 +46,23 @@ For arg = 0 To argCount - 1
   End If
 Next
 
+' Set the Target arch specifics
+If bWin64 Then
+  platform_name = "x64"
+  keyword = "x64Proj"
+  target_header = "..\..\src\include\win64"
+  target_preprocessor_defn = "WIN64"
+  target_machine = "17"
+  target_env = "3"
+Else
+  platform_name = "Win32"
+  keyword = "Win32Proj"
+  target_header = "..\..\src\include\win32"
+  target_preprocessor_defn = "WIN32"
+  target_machine = "1"
+  target_env = ""
+End If
+
 ' check if we are running cscript or wscript
 bEcho = false
 If InStr(1, LCase(WScript.FullName), "cscript") > 0 Then
@@ -156,7 +173,7 @@ Function TestsToProjects(filename, dotdot)
 						solution_guid = "8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942" ' The C/C++ project guid
 					end if
 					project_list = project_list + "Project(""{" + solution_guid + "}"") = """ + project_name + """, """ + project_relative_filename + """, ""{" + project_uuid + "}""" + vbCrLf + "	ProjectSection(ProjectDependencies) = postProject" + vbCrLf + "	EndProjectSection" + vbCrLf + "EndProject" + vbCrLf
-					config_list = config_list + "		{" + project_uuid + "}.Debug.ActiveCfg = Debug|Win32" + vbCrLf + "		{" + project_uuid + "}.Debug.Build.0 = Debug|Win32" + vbCrLf + "		{" + project_uuid + "}.Release.ActiveCfg = Release|Win32" + vbCrLf + "		{" + project_uuid + "}.Release.Build.0 = Release|Win32" + vbCrLf
+					config_list = config_list + "		{" + project_uuid + "}.Debug.ActiveCfg = Debug|" + platform_name + vbCrLf + "		{" + project_uuid + "}.Debug.Build.0 = Debug|" + platform_name + vbCrLf + "		{" + project_uuid + "}.Release.ActiveCfg = Release|" + platform_name + vbCrLf + "		{" + project_uuid + "}.Release.Build.0 = Release|" + platform_name + vbCrLf
 				End If
 			    End If
 			  end if
@@ -166,16 +183,30 @@ Function TestsToProjects(filename, dotdot)
 	fin.Close()
 End Function
 
+' Add architecture specific details
+Function AddArchDetails(template)
+	template = Replace( template, "PLATFORM_NAME", platform_name )
+	template = Replace( template, "KEYWORD", keyword )
+	template = Replace( template, "TARGET_HEADER", target_header )
+	template = Replace( template, "TARGET_PREPROCESSOR_DEFN", target_preprocessor_defn )
+	template = Replace( template, "TARGET_MACHINE", target_machine )
+	template = Replace( template, "TARGET_ENV", target_env )
+	AddArchDetails = template
+End Function
+
 set fin = f.OpenTextFile("project.txt")
 project_template = fin.ReadAll()
+project_template = AddArchDetails(project_template)
 fin.Close()
 
 set fin = f.OpenTextFile("project_cxx.txt")
 project_cxx_template = fin.ReadAll()
+project_cxx_template = AddArchDetails(project_cxx_template)
 fin.Close()
 
 set fin = f.OpenTextFile("project_f.txt")
 project_f_template = fin.ReadAll()
+project_f_template = AddArchDetails(project_f_template)
 fin.Close()
 
 GetTestLists cur_folder, ""

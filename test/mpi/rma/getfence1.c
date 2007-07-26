@@ -50,6 +50,10 @@ int main( int argc, char *argv[] )
 		    MPI_Win_fence( 0, win );
 		}
 		else if (rank == dest) {
+		    /* To improve reporting of problems about operations, we
+		       change the error handler to errors return */
+		    MPI_Win_set_errhandler( win, MPI_ERRORS_RETURN );
+
 		    /* This should have the same effect, in terms of
 		       transfering data, as a send/recv pair */
 		    err = MPI_Get( recvtype.buf, recvtype.count, 
@@ -61,7 +65,13 @@ int main( int argc, char *argv[] )
 			    MTestPrintError( err );
 			}
 		    }
-		    MPI_Win_fence( 0, win );
+		    err = MPI_Win_fence( 0, win );
+		    if (err) {
+			errs++;
+			if (errs < 10) {
+			    MTestPrintError( err );
+			}
+		    }
 		    err = MTestCheckRecv( 0, &recvtype );
 		    if (err) {
 			errs += err;

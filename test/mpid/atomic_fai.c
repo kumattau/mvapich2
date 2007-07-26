@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: atomic_fai.c,v 1.1.1.1 2006/01/18 21:09:56 huangwei Exp $
+/*  $Id: atomic_fai.c,v 1.1 2003/04/30 19:09:25 toonen Exp $
  *
  *  (C) 2002 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.

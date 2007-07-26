@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Keyval_free
 #define MPI_Keyval_free PMPI_Keyval_free
 
 #endif
@@ -55,11 +56,12 @@ int MPI_Keyval_free(int *keyval)
 {
     static const char FCNAME[] = "MPI_Keyval_free";
     int mpi_errno = MPI_SUCCESS;
+    MPIU_THREADPRIV_DECL;                                       \
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_KEYVAL_FREE);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("attr");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_KEYVAL_FREE);
 #   ifdef HAVE_ERROR_CHECKING
     {
@@ -74,6 +76,7 @@ int MPI_Keyval_free(int *keyval)
 
     /* ... body of routine ...  */
     
+    MPIU_THREADPRIV_GET;                                        \
     MPIR_Nest_incr();
     mpi_errno = NMPI_Comm_free_keyval( keyval );
     MPIR_Nest_decr();
@@ -83,7 +86,7 @@ int MPI_Keyval_free(int *keyval)
 
   fn_exit: 
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_KEYVAL_FREE);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("attr");
     return mpi_errno;
 
   fn_fail:

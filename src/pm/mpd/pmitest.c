@@ -42,6 +42,7 @@ int main(int argc, char *argv[])
     printf("%d: recvd msg=:%s:\n",pmi_rank,msg_recvd);
 
 
+#define TEST_THESE
 #ifdef TEST_THESE
     strcpy(msg_to_send,"cmd=get_maxes\n");
     write(pmi_sock,msg_to_send,strlen(msg_to_send));
@@ -90,15 +91,14 @@ int main(int argc, char *argv[])
 	
     sprintf(msg_to_send,"cmd=get kvsname=%s key=ralph\n", kvsname);
     write(pmi_sock,msg_to_send,strlen(msg_to_send));
-    printf("sent get for appnum (likely 0)\n");
+    printf("sent get for key ralph\n");
     n = read(pmi_sock,msg_recvd,1024);
     if (n >= 0)
         msg_recvd[n] = '\0';
     printf("%d: recvd msg=:%s:\n",pmi_rank,msg_recvd);
 	
     /* interface may have changed
-    sprintf(msg_to_send,"cmd=spawn nprocs=%d execname=%s arg=%s\n",
-	    1,"/home/rbutler/mpd2/pmitest","spawned");
+    sprintf(msg_to_send,"cmd=spawn nprocs=1 totspawns=1 spawnssofar=1 preput_num=0 info_num=0 execname=./pmitest argcnt=1 arg1=spawned\n");
     write(pmi_sock,msg_to_send,strlen(msg_to_send));
     printf("sent spawn\n");
     ***/

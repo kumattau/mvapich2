@@ -36,9 +36,10 @@ COLLCHK_BUILD_RMA    = @COLLCHK_BUILD_RMA@
 COLLCHK_BUILD_COMMS  = @COLLCHK_BUILD_COMMS@
 
 ### End User configurable options ###
-SHELL = /bin/sh
-RM    = @RM@
-CP    = @CPRP@
+
+SHELL            = @SHELL@
+RM               = @RM@
+CP               = @CPRP@
 
 @VPATH@
 
@@ -107,7 +108,7 @@ MPI_RMA_OBJ  = $(MPI_RMA_SRC:.c=.@OBJEXT@)
 .c.@OBJEXT@:
 	$(MPI_CC) $(CC_FLAGS) -c $<
 
-default: clean
+default:
 	$(MAKE) ${libbuild_dir}/lib$(COLLCHK_LIBNAME).a
 
 ${libbuild_dir}/lib$(COLLCHK_LIBNAME).a: $(UTIL_OBJ) $(MPI_CORE_OBJ)
@@ -135,9 +136,12 @@ rmlib:
 	@-$(RM) -f ${libbuild_dir}/lib$(COLLCHK_LIBNAME).a
 
 rmprog:
+	@-$(RM) -f $(EXECS)
 
 clean: rmprog
-	@-$(RM) -f *.@OBJEXT@ ${srcdir}/*.@OBJEXT@ *~ $(EXECS) PI*
+	@-$(RM) -f *.@OBJEXT@ ${srcdir}/*.@OBJEXT@ *~ PI*
+	@-$(RM) -f *.gcno *.gcda *.bb *.bbg
+	@-$(RM) -f ${srcdir}/*.gcno ${scrdir}/*.gcda
 
 distclean: clean 
 	@-$(RM) -f Makefile

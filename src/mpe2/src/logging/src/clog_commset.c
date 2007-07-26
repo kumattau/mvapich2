@@ -13,8 +13,12 @@
 #if defined( STDC_HEADERS ) || defined( HAVE_STRING_H )
 #include <string.h>
 #endif
+#if defined( HAVE_UNISTD_H )
+#include <unistd.h>
+#endif
 
 #include "clog_const.h"
+#include "clog_mem.h"
 #include "clog_uuid.h"
 #include "clog_commset.h"
 #include "clog_util.h"
@@ -37,6 +41,8 @@
 #define PMPI_Comm_get_attr PMPI_Attr_get
 #endif
 
+#endif
+
 CLOG_CommSet_t* CLOG_CommSet_create( void )
 {
     CLOG_CommSet_t  *commset;
@@ -50,7 +56,11 @@ CLOG_CommSet_t* CLOG_CommSet_create( void )
     }
 
     /* LID_key Initialized to 'unallocated' */
+#if !defined( CLOG_NOMPI )
     commset->LID_key   = MPI_KEYVAL_INVALID;
+#else
+    commset->LID_key   = 0;
+#endif
     commset->max       = CLOG_COMM_TABLE_INCRE;
     commset->count     = 0;
     table_size         = commset->max * sizeof(CLOG_CommIDs_t);
@@ -64,36 +74,21 @@ void CLOG_CommSet_free( CLOG_CommSet_t **comm_handle )
     CLOG_CommSet_t  *commset;
 
     commset = *comm_handle;
-    if ( commset->table != NULL )
-        FREE( commset->table );
-    PMPI_Comm_free_keyval( &(commset->LID_key) );
-    if ( commset != NULL )
+    if ( commset != NULL ) {
+        if ( commset->table != NULL )
+            FREE( commset->table );
+#if !defined( CLOG_NOMPI )
+        PMPI_Comm_free_keyval( &(commset->LID_key) );
+#endif
         FREE( commset );
+    }
     *comm_handle = NULL;
 }
 
-/*
-   CLOG_CommSet_init() should only be called if MPI is involved.
-*/
-void CLOG_CommSet_init( CLOG_CommSet_t *commset )
-{
-    int          *extra_state = NULL; /* unused variable */
 
-    CLOG_Uuid_init();
 
-    /* create LID_Key */
-    PMPI_Comm_create_keyval( MPI_COMM_NULL_COPY_FN,
-                             MPI_COMM_NULL_DELETE_FN, 
-                             &(commset->LID_key), extra_state );
-
-    PMPI_Comm_size( MPI_COMM_WORLD, &(commset->world_size) );
-    PMPI_Comm_rank( MPI_COMM_WORLD, &(commset->world_rank) );
-
-    CLOG_CommSet_add_intracomm( commset, MPI_COMM_WORLD );
-    CLOG_CommSet_add_intracomm( commset, MPI_COMM_SELF );
-}
-
-static CLOG_CommIDs_t* CLOG_CommSet_get_new_IDs( CLOG_CommSet_t *commset )
+static
+CLOG_CommIDs_t* CLOG_CommSet_get_new_IDs( CLOG_CommSet_t *commset )
 {
     CLOG_CommIDs_t  *new_table;
     CLOG_CommIDs_t  *new_entry;
@@ -115,7 +110,7 @@ static CLOG_CommIDs_t* CLOG_CommSet_get_new_IDs( CLOG_CommSet_t *commset )
     }
 
     /* return the next available table entry in CLOG_CommSet_t */
-    new_entry  = &(commset->table[ commset->count ]);
+    new_entry  = &( commset->table[commset->count] );
 
     /* Set the local Comm ID temporarily equal to the table entry's index */
     new_entry->local_ID   = commset->count;
@@ -133,6 +128,129 @@ static CLOG_CommIDs_t* CLOG_CommSet_get_new_IDs( CLOG_CommSet_t *commset )
     commset->count++;
 
     return new_entry;
+}
+
+static
+const CLOG_CommIDs_t* CLOG_CommTable_get(       int             table_count,
+                                          const CLOG_CommIDs_t *table,
+                                          const CLOG_CommGID_t  commgid )
+{
+    int              idx;
+
+    for ( idx = 0; idx < table_count; idx++ ) {
+        if ( CLOG_Uuid_compare( table[idx].global_ID, commgid ) == 0 )
+            return &( table[idx] );
+    }
+    return NULL;
+}
+
+static
+CLOG_CommIDs_t* CLOG_CommSet_add_new_GID(       CLOG_CommSet_t *commset,
+                                          const CLOG_CommGID_t  commgid )
+{
+    CLOG_CommIDs_t  *commIDs;
+
+    /* Update the next available table entry in CLOG_CommSet_t */
+    commIDs              = CLOG_CommSet_get_new_IDs( commset );
+    commIDs->kind        = CLOG_COMM_KIND_UNKNOWN;
+
+    /* Set the global Comm ID */
+    CLOG_Uuid_copy( commgid, commIDs->global_ID );
+
+    /* Set the Comm field's */
+#if !defined( CLOG_NOMPI )
+    commIDs->comm        = MPI_COMM_NULL;
+#else
+    commIDs->comm        = 0;
+#endif
+    commIDs->comm_rank   = -1;
+
+    return commIDs;
+}
+
+void CLOG_CommSet_add_GID(       CLOG_CommSet_t *commset,
+                           const CLOG_CommGID_t  commgid )
+{
+    const CLOG_CommIDs_t  *commIDs;
+
+    /* If commgid is not in commset, add commgid as a new entry in commset. */
+    commIDs = CLOG_CommTable_get( commset->count, commset->table, commgid );
+    if ( commIDs == NULL )
+        CLOG_CommSet_add_new_GID( commset, commgid );
+}
+
+/* Append all child_table[]'s global_IDs to the parent_commset's table[]. */
+void CLOG_CommSet_append_GIDs(       CLOG_CommSet_t *parent_commset,
+                                     int             child_table_count,
+                               const CLOG_CommIDs_t *child_table ) 
+{
+    int              idx;
+
+    /*
+       If child_table[ idx ].global_ID is not in parent_commset,
+       add child_table[ idx ].global_ID to parent_commset
+    */
+    for ( idx = 0; idx < child_table_count; idx++ ) {
+        CLOG_CommSet_add_GID( parent_commset, child_table[idx].global_ID );
+    }
+}
+
+/*
+   Synchronize the local_IDs of the parent_commset's table[] and that of
+   the child_table[] for the same CLOG_Uuid_t's.  This function does modify
+   the content of parent_commset's table[] but does not enlarge the size of
+   parent_commset's table[].
+*/
+CLOG_BOOL_T CLOG_CommSet_sync_IDs(       CLOG_CommSet_t *parent_commset,
+                                         int             child_table_count,
+                                   const CLOG_CommIDs_t *child_table )
+{
+    const CLOG_CommIDs_t  *commIDs;
+          int              idx;
+
+    /* Update the local_ID in CLOG_CommSet_t's table to globally unique ID */
+    for ( idx = 0; idx < parent_commset->count; idx++ ) {
+        commIDs  = CLOG_CommTable_get( child_table_count, child_table,
+                                       parent_commset->table[idx].global_ID );
+        if ( commIDs == NULL ) {
+            char uuid_str[CLOG_UUID_STR_SIZE] = {0};
+            CLOG_Uuid_sprint( parent_commset->table[idx].global_ID, uuid_str );
+            fprintf( stderr, __FILE__":CLOG_CommSet_sync_IDs() - \n"
+                             "\t""The parent CLOG_CommSet_t does not contain "
+                             "%d-th GID %s in the child_table[]/n",
+                             idx, uuid_str );
+            fflush( stderr );
+            return CLOG_BOOL_FALSE;
+        }
+        /* if commIDs != NULL */
+        parent_commset->table[idx].local_ID = commIDs->local_ID;
+    }
+
+    return CLOG_BOOL_TRUE;
+}
+
+
+
+#if !defined( CLOG_NOMPI )
+/*
+   CLOG_CommSet_init() should only be called if MPI is involved.
+*/
+void CLOG_CommSet_init( CLOG_CommSet_t *commset )
+{
+    int          *extra_state = NULL; /* unused variable */
+
+    CLOG_Uuid_init();
+
+    /* create LID_Key */
+    PMPI_Comm_create_keyval( MPI_COMM_NULL_COPY_FN,
+                             MPI_COMM_NULL_DELETE_FN, 
+                             &(commset->LID_key), extra_state );
+
+    PMPI_Comm_size( MPI_COMM_WORLD, &(commset->world_size) );
+    PMPI_Comm_rank( MPI_COMM_WORLD, &(commset->world_rank) );
+
+    CLOG_CommSet_add_intracomm( commset, MPI_COMM_WORLD );
+    CLOG_CommSet_add_intracomm( commset, MPI_COMM_SELF );
 }
 
 /*
@@ -295,51 +413,18 @@ const CLOG_CommIDs_t* CLOG_CommSet_get_IDs( CLOG_CommSet_t *commset,
         fflush( stderr );
         CLOG_Util_abort( 1 );
     }
-    return &(commset->table[ (CLOG_CommLID_t) ptrlen_value ]);
+    return &( commset->table[(CLOG_CommLID_t) ptrlen_value] );
 }
 
-const CLOG_CommIDs_t* CLOG_CommTable_get( const CLOG_CommIDs_t *table,
-                                                int             table_count,
-                                          const CLOG_CommGID_t  commgid )
-{
-    int              idx;
-
-    for ( idx = 0; idx < table_count; idx++ ) {
-        if ( CLOG_Uuid_compare( table[idx].global_ID, commgid ) == 0 )
-            return &(table[idx]);
-    }
-    return NULL;
-}
-
-const CLOG_CommIDs_t *CLOG_CommSet_add_GID( CLOG_CommSet_t *commset,
-                                            CLOG_CommGID_t  commgid )
-{
-    CLOG_CommIDs_t  *commIDs;
-
-    /* Update the next available table entry in CLOG_CommSet_t */
-    commIDs              = CLOG_CommSet_get_new_IDs( commset );
-    commIDs->kind        = CLOG_COMM_KIND_UNKNOWN;
-
-    /* Set the global Comm ID */
-    CLOG_Uuid_copy( commgid, commIDs->global_ID );
-
-    /* Set the Comm field's */
-    commIDs->comm        = MPI_COMM_NULL;
-    commIDs->comm_rank   = -1;
-
-    return commIDs;
-}
 
 void CLOG_CommSet_merge( CLOG_CommSet_t *commset )
 {
-          int              comm_world_size, comm_world_rank;
-          int              rank_sep, rank_quot, rank_rem;
-          int              rank_src, rank_dst;
-          int              recv_table_count, recv_table_size;
-          CLOG_CommIDs_t  *recv_table;
-    const CLOG_CommIDs_t  *commIDs;
-          MPI_Status       status;
-          int              idx;
+    int              comm_world_size, comm_world_rank;
+    int              rank_sep, rank_quot, rank_rem;
+    int              rank_src, rank_dst;
+    int              recv_table_count, recv_table_size;
+    CLOG_CommIDs_t  *recv_table;
+    MPI_Status       status;
 
     comm_world_rank  = commset->world_rank;
     comm_world_size  = commset->world_size;
@@ -373,18 +458,9 @@ void CLOG_CommSet_merge( CLOG_CommSet_t *commset )
                 PMPI_Recv( recv_table, recv_table_size, MPI_CHAR, rank_src,
                            CLOG_COMM_TAG_START+1, MPI_COMM_WORLD, &status );
 
-                for ( idx = 0; idx < recv_table_count; idx++ ) {
-                    /*
-                       If recv_table[ idx ].global_ID is not in commset,
-                       add recv_table[ idx ].global_ID to commset
-                    */
-                    commIDs = CLOG_CommTable_get( commset->table,
-                                                  commset->count,
-                                                  recv_table[ idx ].global_ID );
-                    if ( commIDs == NULL ) 
-                        CLOG_CommSet_add_GID( commset,
-                                              recv_table[ idx ].global_ID );
-                }
+                /* Append all global_IDs in the recv_table to commset's */
+                CLOG_CommSet_append_GIDs( commset,
+                                          recv_table_count, recv_table );
                 if ( recv_table != NULL ) {
                     FREE( recv_table );
                     recv_table = NULL;
@@ -426,7 +502,7 @@ void CLOG_CommSet_merge( CLOG_CommSet_t *commset )
         recv_table_count  = commset->count;
     else
         recv_table_count  = 0;
-    MPI_Bcast( &recv_table_count, 1, MPI_INT, 0, MPI_COMM_WORLD );
+    PMPI_Bcast( &recv_table_count, 1, MPI_INT, 0, MPI_COMM_WORLD );
 
     /* Allocate a buffer for root process's commset->table */
     recv_table_size  = recv_table_count * sizeof(CLOG_CommIDs_t);
@@ -440,23 +516,15 @@ void CLOG_CommSet_merge( CLOG_CommSet_t *commset )
 
     if ( comm_world_rank == 0 )
         memcpy( recv_table, commset->table, recv_table_size );
-    MPI_Bcast( recv_table, recv_table_size, MPI_CHAR, 0, MPI_COMM_WORLD );
+    PMPI_Bcast( recv_table, recv_table_size, MPI_CHAR, 0, MPI_COMM_WORLD );
 
-    /* Update the local_ID in CLOG_CommSet_t's table to globally unique ID */
-    for ( idx = 0; idx < commset->count; idx++ ) {
-        commIDs  = CLOG_CommTable_get( recv_table, recv_table_count,
-                                       commset->table[idx].global_ID ); 
-        if ( commIDs == NULL ) {
-            char uuid_str[CLOG_UUID_STR_SIZE] = {0};
-            CLOG_Uuid_sprint( commset->table[idx].global_ID, uuid_str );
-            fprintf( stderr, __FILE__":CLOG_CommSet_merge() - \n"
-                             "\t""collected table from root does not contain "
-                             "%d-th GID %s/n", idx, uuid_str );
-            fflush( stderr );
-            CLOG_Util_abort( 1 );
-        }
-        /* if commIDs != NULL */
-        commset->table[idx].local_ID = commIDs->local_ID;
+    /* Make local_IDs in CLOG_CommSet_t's table[] to globally unique integers */
+    if (    CLOG_CommSet_sync_IDs( commset, recv_table_count, recv_table )
+         != CLOG_BOOL_TRUE ) {
+        fprintf( stderr, __FILE__":CLOG_CommSet_merge() - \n"
+                         "\t""CLOG_CommSet_sync_IDs() fails!\n" );
+        fflush( stderr );
+        CLOG_Util_abort( 1 );
     }
     if ( recv_table != NULL ) {
         FREE( recv_table );
@@ -465,5 +533,167 @@ void CLOG_CommSet_merge( CLOG_CommSet_t *commset )
 
     PMPI_Barrier( MPI_COMM_WORLD );
 }
-
 #endif
+
+static void CLOG_CommRec_swap_bytes( char *commrec )
+{
+    char  *ptr;
+
+    ptr  = commrec;
+    CLOG_Uuid_swap_bytes( ptr );
+    ptr += CLOG_UUID_SIZE;
+    CLOG_Util_swap_bytes( ptr, sizeof(CLOG_CommLID_t), 1 );
+    ptr += sizeof(CLOG_CommLID_t);
+    CLOG_Util_swap_bytes( ptr, sizeof(CLOG_int32_t), 1 );
+    ptr += sizeof(CLOG_int32_t);
+}
+
+static void CLOG_CommRec_print_kind( CLOG_int32_t comm_kind, FILE *stream )
+{
+    switch (comm_kind) {
+        case CLOG_COMM_KIND_INTER:
+            fprintf( stream, "InterComm " );
+            break;
+        case CLOG_COMM_KIND_INTRA:
+            fprintf( stream, "IntraComm " );
+            break;
+        case CLOG_COMM_KIND_LOCAL:
+            fprintf( stream, "LocalComm " );
+            break;
+        case CLOG_COMM_KIND_REMOTE:
+            fprintf( stream, "RemoteComm" );
+            break;
+        default:
+            fprintf( stream, "Unknown("i32fmt")", comm_kind );
+    }
+}
+
+/*
+   If succeeds, returns the number of CLOG_CommIDs_t in CLOG_CommSet_t, ie >= 0.
+   If fails, returns -1;
+*/
+int CLOG_CommSet_write( const CLOG_CommSet_t *commset, int fd,
+                              CLOG_BOOL_T     do_byte_swap )
+{
+    char            *local_buffer, *ptr;
+    CLOG_int32_t     count_buffer;
+    CLOG_CommIDs_t  *commIDs;
+    int              commrec_size, buffer_size;
+    int              ierr, idx;
+
+    count_buffer   = commset->count;
+    /* Swap bytes of the "count" buffer BEFORE writting to disk */
+    if ( do_byte_swap == CLOG_BOOL_TRUE )
+        CLOG_Util_swap_bytes( &count_buffer, sizeof(CLOG_int32_t), 1 );
+
+    ierr = write( fd, &count_buffer, sizeof(CLOG_int32_t) );
+    if ( ierr != sizeof(CLOG_int32_t) )
+        return -1;
+
+    commrec_size = CLOG_UUID_SIZE + sizeof(CLOG_CommLID_t)
+                 + sizeof(CLOG_int32_t);
+    buffer_size  = commrec_size * commset->count;
+    local_buffer = (char *) MALLOC( buffer_size );
+
+    ptr  = local_buffer;
+    /* Save the CLOG_CommIDs_t[] in the order the entries were created */
+    for ( idx = 0; idx < commset->count; idx++ ) {
+        commIDs = &( commset->table[idx] );
+        memcpy( ptr, commIDs->global_ID, CLOG_UUID_SIZE );
+        ptr += CLOG_UUID_SIZE;
+        memcpy( ptr, &(commIDs->local_ID), sizeof(CLOG_CommLID_t) );
+        ptr += sizeof(CLOG_CommLID_t);
+        memcpy( ptr, &(commIDs->kind), sizeof(CLOG_int32_t) );
+        ptr += sizeof(CLOG_int32_t);
+    }
+
+    /* Swap bytes of the content buffer BEFORE writting to disk */
+    if ( do_byte_swap == CLOG_BOOL_TRUE ) {
+        ptr  = local_buffer;
+        for ( idx = 0; idx < commset->count; idx++ ) {
+            CLOG_CommRec_swap_bytes( ptr );
+            ptr += commrec_size;
+        }
+    }
+
+    ierr = write( fd, local_buffer, buffer_size );
+    if ( ierr != buffer_size )
+        return -1;
+
+    if ( local_buffer != NULL )
+        FREE( local_buffer );
+
+    return (int) commset->count;
+}
+
+/*
+   If succeeds, returns the number of CLOG_CommIDs_t in CLOG_CommSet_t, ie >= 0.
+   If fails, returns -1;
+*/
+int CLOG_CommSet_read( CLOG_CommSet_t *commset, int fd,
+                       CLOG_BOOL_T     do_byte_swap )
+{
+    char            *local_buffer, *ptr;
+    CLOG_int32_t     count_buffer;
+    CLOG_CommIDs_t  *commIDs;
+    int              commrec_size, buffer_size;
+    int              ierr, idx;
+
+    ierr = read( fd, &count_buffer, sizeof(CLOG_int32_t) );
+    if ( ierr != sizeof(CLOG_int32_t) )
+        return -1;
+    /* Swap bytes of the "count" buffer AFTER reading from disk */
+    if ( do_byte_swap == CLOG_BOOL_TRUE )
+        CLOG_Util_swap_bytes( &count_buffer, sizeof(CLOG_int32_t), 1 );
+
+    commrec_size = CLOG_UUID_SIZE + sizeof(CLOG_CommLID_t)
+                 + sizeof(CLOG_int32_t);
+    buffer_size  = count_buffer * commrec_size;
+    local_buffer = (char *) MALLOC( buffer_size );
+
+    ierr = read( fd, local_buffer, buffer_size );
+    if ( ierr != buffer_size )
+        return -1;
+
+    /* Swap bytes before reading into memory */
+    if ( do_byte_swap == CLOG_BOOL_TRUE ) {
+        ptr  = local_buffer;
+        for ( idx = 0; idx < count_buffer; idx++ ) {
+            CLOG_CommRec_swap_bytes( ptr );
+            ptr += commrec_size;
+        }
+    }
+
+    ptr  = local_buffer;
+    /* Resurrect the CLOG_CommIDs_t[] in the order the entries were created */
+    for ( idx = 0; idx < count_buffer; idx++ ) {
+        commIDs = CLOG_CommSet_add_new_GID( commset, ptr );
+        ptr += CLOG_UUID_SIZE;
+        commIDs->local_ID = *( (CLOG_CommLID_t *) ptr );
+        ptr += sizeof(CLOG_CommLID_t);
+        commIDs->kind     = *( (CLOG_int32_t *) ptr );
+        ptr += sizeof(CLOG_int32_t);
+    }
+
+    if ( local_buffer != NULL )
+        FREE( local_buffer );
+
+    return count_buffer;
+}
+
+void CLOG_CommSet_print( CLOG_CommSet_t *commset, FILE *stream )
+{
+    CLOG_CommIDs_t *commIDs;
+    char            uuid_str[CLOG_UUID_STR_SIZE] = {0};
+    int             idx;
+
+    for ( idx = 0; idx < commset->count; idx++ ) {
+        commIDs = &( commset->table[idx] );
+        CLOG_Uuid_sprint( commIDs->global_ID, uuid_str );
+        fprintf( stream, "GID=%s ", uuid_str );
+        fprintf( stream, "LID="i32fmt" ", commIDs->local_ID );
+        fprintf( stream, "kind=" );
+        CLOG_CommRec_print_kind( commIDs->kind, stream );
+        fprintf( stream, "\n" );
+    }
+}

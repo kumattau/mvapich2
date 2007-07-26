@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Cancel
 #define MPI_Cancel PMPI_Cancel
 
 #endif
@@ -67,7 +68,7 @@ int MPI_Cancel(MPI_Request *request)
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("pt2pt");
     MPID_MPI_PT2PT_FUNC_ENTER(MPID_STATE_MPI_CANCEL);
     
     /* Convert MPI object handles to object pointers */
@@ -108,8 +109,24 @@ int MPI_Cancel(MPI_Request *request)
 	{
 	    if (request_ptr->partner_request != NULL)
 	    {
-		mpi_errno = MPID_Cancel_send(request_ptr->partner_request);
-		if (mpi_errno) goto fn_fail;
+		if (request_ptr->partner_request->kind != MPID_UREQUEST)
+		{
+		    mpi_errno = MPID_Cancel_send(request_ptr->partner_request);
+		    if (mpi_errno) goto fn_fail;
+		}
+		else
+		{
+		    /* This is needed for persistent Bsend requests */
+		    MPIU_THREADPRIV_DECL;
+		    MPIU_THREADPRIV_GET;
+		    MPIR_Nest_incr();
+		    {
+			mpi_errno = MPIR_Grequest_cancel(
+			    request_ptr->partner_request,
+			    (request_ptr->partner_request->cc == 0));
+		    }
+		    MPIR_Nest_decr();
+		}
 	    }
 	    else
 	    {
@@ -138,11 +155,15 @@ int MPI_Cancel(MPI_Request *request)
 
 	case MPID_UREQUEST:
 	{
-	    mpi_errno = (request_ptr->cancel_fn)(request_ptr->grequest_extra_state, (request_ptr->cc == 0));
-	    if (mpi_errno) {
-		MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**user",
-				     "**usercancel %d", mpi_errno);
+	    MPIU_THREADPRIV_DECL;
+	    MPIU_THREADPRIV_GET;
+	    MPIR_Nest_incr();
+	    {
+		mpi_errno = MPIR_Grequest_cancel(request_ptr,
+		    (request_ptr->cc == 0));
 	    }
+	    MPIR_Nest_decr();
+	    
 	    break;
 	}
 
@@ -160,15 +181,16 @@ int MPI_Cancel(MPI_Request *request)
     
   fn_exit:
     MPID_MPI_PT2PT_FUNC_EXIT(MPID_STATE_MPI_CANCEL);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("pt2pt");
     return mpi_errno;
 
   fn_fail:
     /* --BEGIN ERROR HANDLING-- */
 #   ifdef HAVE_ERROR_CHECKING
     {
-	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_cancel", "**mpi_cancel %p", request);
+	mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE,
+	    FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_cancel",
+	    "**mpi_cancel %p", request);
     }
 #   endif
     mpi_errno = MPIR_Err_return_comm(NULL, FCNAME, mpi_errno);

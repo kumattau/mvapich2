@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Start
 #define MPI_Start PMPI_Start
 
 #endif
@@ -51,7 +52,7 @@ int MPI_Start(MPI_Request *request)
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("pt2pt");
     MPID_MPI_PT2PT_FUNC_ENTER(MPID_STATE_MPI_START);
 
     /* Validate handle parameters needing to be converted */
@@ -95,7 +96,7 @@ int MPI_Start(MPI_Request *request)
     
   fn_exit:
     MPID_MPI_PT2PT_FUNC_EXIT(MPID_STATE_MPI_START);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("pt2pt");
     return mpi_errno;
 
   fn_fail:

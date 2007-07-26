@@ -36,6 +36,12 @@ The actual meaning of these error classes is defined by each function.
 Module:
 Utility-Sock
 D*/
+/* FIXME: This is not the right way to add error values to an MPICH module.
+   Note that (a) the last class values are not respected by the error handling
+   code, (b) the entire point of codes and classes is to provide a 
+   natural grouping of codes to a class, (c) this approach can only be used 
+   by one module and hence breaks any component design, and (d) this is 
+   what the MPI dynamic error codes and classes was designed for. */
 #define MPIDU_SOCK_SUCCESS		MPI_SUCCESS
 #define MPIDU_SOCK_ERR_FAIL		MPICH_ERR_LAST_CLASS + 1
 #define MPIDU_SOCK_ERR_INIT		MPICH_ERR_LAST_CLASS + 2
@@ -139,28 +145,35 @@ int MPIDU_Sock_finalize(void);
 
 
 /*@
-MPIDU_Sock_get_host_description - obtain a description of the host's communication capabilities
+MPIDU_Sock_get_host_description - obtain a description of the host's 
+communication capabilities
 
 Input Parameters:
-+ host_description - character array in which the function can store a string describing the communication capabilities of the host
++ myRank - Rank of this process in its MPI_COMM_WORLD.  This can be used
+  to find environment variables that are specific for this process.
+. host_description - character array in which the function can store a string 
+  describing the communication capabilities of the host
 - len - length of the character array
 
 Return value: a MPI error code with a Sock extended error class
 + MPI_SUCCESS - description successfully obtained and placed in host_description
 . MPIDU_SOCK_ERR_INIT - Sock module not initialized
 . MPIDU_SOCK_ERR_BAD_LEN - len parameter is less than zero
-. MPIDU_SOCK_ERR_BAD_HOST - host_description parameter not big enough to store required information
+. MPIDU_SOCK_ERR_BAD_HOST - host_description parameter not big enough to 
+  store required information
 . MPIDU_SOCK_ERR_NOMEM - unable to allocate required memory
 - MPIDU_SOCK_ERR_FAIL - unable to obtain network interface information from OS
 
 Notes:
-The host description string returned by the function is defined by the implementation and should not be interpreted by the
-application.  This string is to be supplied to MPIDU_Sock_post_connect() when one wishes to form a connection with this host.
+The host description string returned by the function is defined by the 
+implementation and should not be interpreted by the
+application.  This string is to be supplied to MPIDU_Sock_post_connect() when 
+one wishes to form a connection with this host.
 
 Module:
 Utility-Sock
 @*/
-int MPIDU_Sock_get_host_description(char * host_description, int len);
+int MPIDU_Sock_get_host_description(int myRank, char * host_description, int len);
 
 
 /*@
@@ -300,18 +313,25 @@ Event errors:
 - MPIDU_SOCK_ERR_FAIL - other failure?
 
 Notes:
-While not a post routine, this routine can generate events.  In fact, unlike the post routine, many MPIDU_SOCK_OP_ACCEPT events can
+While not a post routine, this routine can generate events.  In fact,
+unlike the post routine, many MPIDU_SOCK_OP_ACCEPT events can 
 be generated from a listener (typically one per incoming connection attempt).
 
-The implementation may generate an event as soon it is notified that a new connection is forming.  In such an implementation,
-MPIDU_Sock_accept() may be responsible for finalizing the connection.  It is also possible that the connection may fail to
-complete, causing MPIDU_Sock_accept() to be unable to obtain a sock despite the event notification.
+The implementation may generate an event as soon it is notified that a
+new connection is forming.  In such an implementation, 
+MPIDU_Sock_accept() may be responsible for finalizing the connection.
+It is also possible that the connection may fail to 
+complete, causing MPIDU_Sock_accept() to be unable to obtain a sock
+despite the event notification. 
 
-The environment variable MPICH_PORTRANGE=min,max may be used to restrict the ports mpich processes listen on.
+The environment variable MPICH_PORT_RANGE=min:max may be used to
+restrict the ports mpich processes listen on. 
 
 Thread safety:
-The addition of the listener sock object to the sock set may occur while other threads are performing operations on the same sock
-set.  Thread safety of simultaneously operations on the same sock set must be guaranteed by the Sock implementation.
+The addition of the listener sock object to the sock set may occur
+while other threads are performing operations on the same sock 
+set.  Thread safety of simultaneously operations on the same sock set
+must be guaranteed by the Sock implementation. 
 
 Module:
 Utility-Sock
@@ -405,16 +425,28 @@ Utility-Sock
 @*/
 int MPIDU_Sock_post_connect(MPIDU_Sock_set_t set, void * user_ptr, char * host_description, int port, MPIDU_Sock_t * sock);
 
+/*S
+  MPIDU_Sock_ifaddr_t - Structure to hold an Internet address.
+
++ len - Length of the address.  4 for IPv4, 16 for IPv6.
+- ifaddr - Address bytes (as bytes, not characters)
+
+S*/
+typedef struct MPIDU_Sock_ifaddr_t {
+    int len, type;
+    unsigned char ifaddr[16];
+} MPIDU_Sock_ifaddr_t;
+
 /*@ MPIDU_Sock_post_connect_ifaddr - Post a connection given an interface
   address (bytes, not string).
 
   This is the basic routine.  MPIDU_Sock_post_connect converts the
   host description into the ifaddr and calls this routine.
   @*/
-int MPIDU_Sock_post_connect_ifaddr( struct MPIDU_Sock_set * sock_set, 
+int MPIDU_Sock_post_connect_ifaddr( MPIDU_Sock_set_t sock_set, 
 				    void * user_ptr, 
-				    unsigned char ifaddr[], int port,
-				    struct MPIDU_Sock ** sockp);
+				    MPIDU_Sock_ifaddr_t *ifaddr, int port,
+				    MPIDU_Sock_t * sockp);
 
 
 /*@

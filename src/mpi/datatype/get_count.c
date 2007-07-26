@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: get_count.c,v 1.1.1.1 2006/01/18 21:09:43 huangwei Exp $
+/*  $Id: get_count.c,v 1.11 2006/12/09 16:42:24 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -20,11 +20,14 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Get_count
 #define MPI_Get_count PMPI_Get_count
 #endif
 
 #undef FUNCNAME
 #define FUNCNAME MPI_Get_count
+#undef FCNAME
+#define FCNAME "MPI_Get_count"
 
 /*@
   MPI_Get_count - Gets the number of "top level" elements
@@ -41,7 +44,7 @@ zero.  If the amount of data in 'status' is not an exact multiple of the
 size of 'datatype' (so that 'count' would not be integral), a 'count' of
 'MPI_UNDEFINED' is returned instead.
 
-.N fortran
+.N Fortran
 
 .N Errors
 .N MPI_SUCCESS
@@ -49,14 +52,12 @@ size of 'datatype' (so that 'count' would not be integral), a 'count' of
 @*/
 int MPI_Get_count( MPI_Status *status, 	MPI_Datatype datatype, int *count )
 {
-    static const char FCNAME[] = "MPI_Get_count";
     int mpi_errno = MPI_SUCCESS;
     int size;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_GET_COUNT);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_GET_COUNT);
 
 #   ifdef HAVE_ERROR_CHECKING
@@ -115,21 +116,23 @@ int MPI_Get_count( MPI_Status *status, 	MPI_Datatype datatype, int *count )
     
     /* ... end of body of routine ... */
 
+#ifdef HAVE_ERROR_CHECKING
   fn_exit:
+#endif
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_GET_COUNT);
-    MPID_CS_EXIT();
     return mpi_errno;
     
-  fn_fail:
     /* --BEGIN ERROR HANDLING-- */
 #   ifdef HAVE_ERROR_CHECKING
+  fn_fail:
     {
 	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_get_count",
+	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER,
+	    "**mpi_get_count",
 	    "**mpi_get_count %p %D %p", status, datatype, count);
     }
-#   endif
     mpi_errno = MPIR_Err_return_comm( 0, FCNAME, mpi_errno );
     goto fn_exit;
+#   endif
     /* --END ERROR HANDLING-- */
 }

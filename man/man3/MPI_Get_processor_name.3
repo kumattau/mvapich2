@@ -1,4 +1,4 @@
-.TH MPI_Get_processor_name 3 "11/23/2005" " " "MPI"
+.TH MPI_Get_processor_name 3 "1/30/2007" " " "MPI"
 .SH NAME
 MPI_Get_processor_name \-  Gets the name of the processor 
 .SH SYNOPSIS
@@ -82,6 +82,19 @@ character name(MPI_MAX_PROCESSOR_NAME)
 .fi
 
 The two
+
+
+The sizes of MPI strings in Fortran are one less than the sizes of that
+string in C/C++ because the C/C++ versions provide room for the trailing
+null character required by C/C++.  For example, 
+.I MPI_MAX_ERROR_STRING
+is
+.I mpif.h
+is one smaller than the same value in 
+.I mpi.h
+\&.
+See the MPI-2
+standard, sections 2.6.2 and 4.12.9.
 
 
 .SH ERRORS

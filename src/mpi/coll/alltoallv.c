@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Alltoallv
 #define MPI_Alltoallv PMPI_Alltoallv
 /* This is the default implementation of alltoallv. The algorithm is:
    
@@ -288,7 +289,7 @@ int MPI_Alltoallv(void *sendbuf, int *sendcnts, int *sdispls,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("coll");
     MPID_MPI_COLL_FUNC_ENTER(MPID_STATE_MPI_ALLTOALLV);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -371,6 +372,9 @@ int MPI_Alltoallv(void *sendbuf, int *sendcnts, int *sdispls,
     }
     else
     {
+	MPIU_THREADPRIV_DECL;
+	MPIU_THREADPRIV_GET;
+
 	MPIR_Nest_incr();
         if (comm_ptr->comm_kind == MPID_INTRACOMM) 
             /* intracommunicator */
@@ -379,9 +383,6 @@ int MPI_Alltoallv(void *sendbuf, int *sendcnts, int *sdispls,
                                        rdispls, recvtype, comm_ptr);
         else {
             /* intercommunicator */
-	    /* mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_COMM, 
-					      "**intercommcoll",
-					      "**intercommcoll %s", FCNAME ); */
             mpi_errno = MPIR_Alltoallv_inter(sendbuf, sendcnts, sdispls,
                                              sendtype, recvbuf, recvcnts,
                                              rdispls, recvtype, comm_ptr);
@@ -395,7 +396,7 @@ int MPI_Alltoallv(void *sendbuf, int *sendcnts, int *sdispls,
 
   fn_exit:
     MPID_MPI_COLL_FUNC_EXIT(MPID_STATE_MPI_ALLTOALLV);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("coll");
     return mpi_errno;
 
   fn_fail:

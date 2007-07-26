@@ -271,7 +271,7 @@ PACKAGE_VERSION=
 PACKAGE_STRING=
 PACKAGE_BUGREPORT=
 
-ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS VERSION PERL LIBOBJS LTLIBOBJS'
+ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS VERSION PERL abs_mpich2srcdir XARGS_NODATA_OPT LIBOBJS LTLIBOBJS'
 ac_subst_files=''
 
 # Initialize some variables set by options.
@@ -1261,6 +1261,23 @@ else
 echo "${ECHO_T}no" >&6
 fi
 
+
+# Find the location of the mpich2 sources
+if test -z "$abs_srcdir" ; then
+    abs_srcdir=`cd $srcdir && pwd`
+fi
+abs_mpich2srcdir=`cd $abs_srcdir && cd .. && pwd`
+
+
+
+# Does xargs need the -r option to handle the case where the input
+# is empty (gnu utils do, Mac OSX does not accept -r)
+xargs_out=`echo "" | xargs ls | wc -l | sed -e 's/ //g'`
+if test "$xargs_out" != "0" ; then
+    XARGS_NODATA_OPT=-r
+fi
+
+
           ac_config_commands="$ac_config_commands default-1"
 
 # We have to redefine the variables that autoconf always substitutes and that
@@ -1273,7 +1290,7 @@ CXXFLAGS='@CXXFLAGS@'
 # autoconf replacement.
 # Note that top_srcdir and srcdir are special cases (they must not
 # be changed in configure.in because configure uses them to find other files)
-                                                                                          ac_config_files="$ac_config_files simplemake checkbuilds getcoverage genstates clmake f77tof90 extractstrings extractstates extractfixme"
+                                                                                                    ac_config_files="$ac_config_files simplemake checkbuilds getcoverage genstates clmake f77tof90 extractstrings extractstates extractfixme createcoverage"
 cat >confcache <<\_ACEOF
 # This file is a shell script that caches the results of configure
 # tests run on this system so they can be shared between configure
@@ -1843,6 +1860,7 @@ do
   "extractstrings" ) CONFIG_FILES="$CONFIG_FILES extractstrings" ;;
   "extractstates" ) CONFIG_FILES="$CONFIG_FILES extractstates" ;;
   "extractfixme" ) CONFIG_FILES="$CONFIG_FILES extractfixme" ;;
+  "createcoverage" ) CONFIG_FILES="$CONFIG_FILES createcoverage" ;;
   "default-1" ) CONFIG_COMMANDS="$CONFIG_COMMANDS default-1" ;;
   *) { { echo "$as_me:$LINENO: error: invalid argument: $ac_config_target" >&5
 echo "$as_me: error: invalid argument: $ac_config_target" >&2;}
@@ -1930,6 +1948,8 @@ s,@ECHO_T@,$ECHO_T,;t t
 s,@LIBS@,$LIBS,;t t
 s,@VERSION@,$VERSION,;t t
 s,@PERL@,$PERL,;t t
+s,@abs_mpich2srcdir@,$abs_mpich2srcdir,;t t
+s,@XARGS_NODATA_OPT@,$XARGS_NODATA_OPT,;t t
 s,@LIBOBJS@,$LIBOBJS,;t t
 s,@LTLIBOBJS@,$LTLIBOBJS,;t t
 CEOF
@@ -2280,7 +2300,7 @@ esac
   { echo "$as_me:$LINENO: executing $ac_dest commands" >&5
 echo "$as_me: executing $ac_dest commands" >&6;}
   case $ac_dest in
-    default-1 ) chmod a+x simplemake checkbuilds getcoverage genstates clmake f77tof90 extractstrings extractstates extractfixme ;;
+    default-1 ) chmod a+x simplemake checkbuilds getcoverage genstates clmake f77tof90 extractstrings extractstates extractfixme createcoverage ;;
   esac
 done
 _ACEOF

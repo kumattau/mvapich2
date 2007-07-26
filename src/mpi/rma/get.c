@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Get
 #define MPI_Get PMPI_Get
 
 #endif
@@ -65,7 +66,7 @@ int MPI_Get(void *origin_addr, int origin_count, MPI_Datatype
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("rma");
     MPID_MPI_RMA_FUNC_ENTER(MPID_STATE_MPI_GET);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -142,7 +143,7 @@ int MPI_Get(void *origin_addr, int origin_count, MPI_Datatype
 
   fn_exit:
     MPID_MPI_RMA_FUNC_EXIT(MPID_STATE_MPI_GET);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("rma");
     return mpi_errno;
 
   fn_fail:

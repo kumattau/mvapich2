@@ -33,6 +33,7 @@ PMPI_LOCAL int MPIR_Factor( int, Factors [], int * );
 PMPI_LOCAL int MPIR_ChooseFactors( int, Factors [], int, int, int [] );
 
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Dims_create
 #define MPI_Dims_create PMPI_Dims_create
 
 /* Return the factors of n and their multiplicity in factors; the number of 
@@ -196,7 +197,7 @@ int MPIR_Dims_create( int nnodes, int ndims, int *dims )
     Factors factors[MAX_FACTORS];
     int chosen[MAX_DIMS];
     int i, j, mpi_errno;
-    int dims_needed, dims_product, nfactors, ndivisors;
+    int dims_needed, dims_product, nfactors, ndivisors=0;
     
     /* Find the number of unspecified dimensions in dims and the product
        of the positive values in dims */
@@ -347,6 +348,8 @@ int MPIR_Dims_create( int nnodes, int ndims, int *dims )
 
 #undef FUNCNAME
 #define FUNCNAME MPI_Dims_create
+#undef FCNAME
+#define FCNAME "MPI_Dims_create"
 
 /*@
     MPI_Dims_create - Creates a division of processors in a cartesian grid
@@ -369,13 +372,11 @@ int MPIR_Dims_create( int nnodes, int ndims, int *dims )
 @*/
 int MPI_Dims_create(int nnodes, int ndims, int *dims)
 {
-    static const char FCNAME[] = "MPI_Dims_create";
     int mpi_errno = MPI_SUCCESS;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_DIMS_CREATE);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_DIMS_CREATE);
     
     /* Validate parameters and objects (post conversion) */
@@ -401,22 +402,23 @@ int MPI_Dims_create(int nnodes, int ndims, int *dims)
     }
     /* ... end of body of routine ... */
 
+#ifdef HAVE_ERROR_CHECKING
   fn_exit:
+#endif
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_DIMS_CREATE);
-    MPID_CS_EXIT();
     return mpi_errno;
 
-  fn_fail:
     /* --BEGIN ERROR HANDLING-- */
 #   ifdef HAVE_ERROR_CHECKING
+  fn_fail:
     {
 	mpi_errno = MPIR_Err_create_code(
 	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, 
 	    "**mpi_dims_create",
 	    "**mpi_dims_create %d %d %p", nnodes, ndims, dims);
     }
-#   endif
     mpi_errno = MPIR_Err_return_comm( NULL, FCNAME, mpi_errno );
     goto fn_exit;
+#   endif
     /* --END ERROR HANDLING-- */
 }

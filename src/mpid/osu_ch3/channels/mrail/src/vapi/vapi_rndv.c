@@ -78,7 +78,9 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv(MPIDI_VC_t * vc, MPID_Request * req)
 
     req->mrail.protocol = VAPI_PROTOCOL_RPUT;
     /* Step 1: ready for user space (user buffer or pack) */
-    if (1 == req->dev.iov_count && MPIDI_CH3_CA_COMPLETE == req->dev.ca) {
+    if (1 == req->dev.iov_count && (req->dev.OnDataAvail == NULL ||
+        (req->dev.OnDataAvail == req->dev.OnFinal) ||
+        (req->dev.OnDataAvail == MPIDI_CH3_ReqHandler_UnpackSRBufComplete))) {
         req->mrail.rndv_buf = req->dev.iov[0].MPID_IOV_BUF;
         req->mrail.rndv_buf_sz = req->dev.iov[0].MPID_IOV_LEN;
         req->mrail.rndv_buf_alloc = 0;
@@ -162,7 +164,7 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv_transfer(MPID_Request * sreq, /* contains loca
             /* TODO: Following part is a workaround to deal with datatype with large number
              * of segments. We check if the datatype has finished loading and reload if not.
              * May be better interface with upper layer should be considered*/
-            while (sreq->dev.ca != MPIDI_CH3_CA_COMPLETE) {
+            while (sreq->dev.OnDataAvail == MPIDI_CH3_ReqHandler_SendReloadIOV) {
                 sreq->dev.iov_count = MPID_IOV_LIMIT;
                 mpi_errno =
                     MPIDI_CH3U_Request_load_send_iov(sreq,
@@ -217,7 +219,9 @@ void MRAILI_RDMA_Put_finish(MPIDI_VC_t * vc, MPID_Request * sreq,
 #endif
     {
         mpi_errno =
-            MPIDI_CH3I_MRAILI_Eager_send(vc, &iov, n_iov, &nb, &buf);
+            MPIDI_CH3I_MRAILI_Eager_send(vc, &iov, n_iov, 
+					 sizeof(MPIDI_CH3_Pkt_rput_finish_t),
+					 &nb, &buf);
         if (mpi_errno != MPI_SUCCESS && mpi_errno != MPI_MRAIL_MSG_QUEUED) {
             vapi_error_abort(VAPI_STATUS_ERR,
                              "Cannot send rput through send/recv path");
@@ -226,6 +230,13 @@ void MRAILI_RDMA_Put_finish(MPIDI_VC_t * vc, MPID_Request * sreq,
     }
     /* mark MPI send complete when VIA send completes */
     buf->sreq = (void *) sreq;
+}
+
+void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
+                                            MPID_Request * rreq)
+{
+    vapi_error_abort(VAPI_STATUS_ERR,
+            "RDMA Read not supported for VAPI device");
 }
 
 void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,

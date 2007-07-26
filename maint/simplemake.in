@@ -1,5 +1,9 @@
 #! @PERL@ -w
 # -*- Mode: perl; -*-
+# 
+# (C) 2006 by Argonne National Laboratory.
+#     See COPYRIGHT in top-level directory.
+#
 #
 # Set some defaults
 $includedir = ".";
@@ -11,6 +15,11 @@ $vpath_config = 0;   # set to 1 for @VPATH@
 $nocomments = 0;     # set to 1 to exclude comments from the source file
 $commonmake = "";    # Common entries for each generated Makefile
 $maint_targets = 1;  # set to 0 for distribution versions
+$maint_perf_targets = 0; # set to 1 to get extra targets to aid in 
+                         # performance tuning.  These may cause problems
+                         # if the generated files are sometimes used
+                         # in preference to the original source files,
+                         # so this is not the default
 $verbose = 0;        # set to 1 to get more information
 $am_a = "";          # set to _a for automake style input
 $do_dependencies = "dynamic"; # set to no, static, or dynamic to attempt
@@ -22,6 +31,10 @@ $makeInclude = "include";     # set to the include command to use.
                               # (e.g., the gnumake "-include")
 $gCheckForTargets = 0;        # Set to 1 to look for files not included
                               # in the Makefile.sm
+$gSubdirSMVarsSeen = "";      # Set to contain the names of variables in
+                              # Makefile.sm that override variables for 
+                              # a subdirectory
+@subdirsSMVars = ();          # Stack used with gSubdirSMVarsSeen
 
 # makeBlockSep is used to deliniate blocks of code in the generated makefile
 # to enhance readability
@@ -126,11 +139,13 @@ $debug_confdir = 0;         # Track the directory containing the controlling
                             # configure.in
 $gDebugWhy = 0;             # Provide an explanation of why certain
                             # targets are created
-
+$gDebugSubdirVar = 0;       # Track changes to internal variables that 
+                            # apply to a subdirectory
 # Allow us to set the debug variables from the environment:
 if (defined($ENV{"DEBUG"})) { $debug = 1; }
 if (defined($ENV{"DEBUG_DIRS"})) { $debug_dirs = 1; }
 if (defined($ENV{"DEBUG_CONFDIR"})) { $debug_confdir = 1; }
+if (defined($ENV{"DEBUG_SUBDIRVAR"})) { $gDebugSubdirVar = 1; }
 
 # Initialize global variables used in informal modules
 &printInit();
@@ -237,12 +252,12 @@ CXX_COMPILE_SHL = $(CXX_SHL) $(DEFS) $(INCLUDES) $(CXXFLAGS) $(CPPFLAGS)',
 	       'f'   => '$(F77_LINK) $(FFLAGS) $(LDFLAGS)',
 	       'f90' => '$(F90_LINK) $(F90FLAGS) $(LDFLAGS)',
 	      );
-%progdefs = ( 'c' =>   'C_LINK      = $(CC)',
-	      'cxx' => 'CXX_LINK    = $(CXX)',
-	      'cpp' => 'CXX_LINK    = $(CXX)',
-	      'cs'  => 'CSHARP_LINK = $(CSHARP)',
-	      'f'   => 'F77_LINK    = $(FC)',
-	      'f90' => 'F90_LINK    = $(F90)',
+%progdefs = ( 'c' =>   'C_LINK         = $(CC)',
+	      'cxx' => 'CXX_LINK       = $(CXX)',
+	      'cpp' => 'CXX_LINK       = $(CXX)',
+	      'cs'  => 'CSHARP_LINK    = $(CSHARP)',
+	      'f'   => 'F77_LINK       = $(FC)',
+	      'f90' => 'F90_LINK       = $(F90)',
 	     );
 
 # Rules to build shared libraries (these are like programs
@@ -364,7 +379,7 @@ $globaldocdir  = 'ROOTDIR/$dockinddirval';
 		  "latex" => "latexdoc" );
 # doctext name to produce documentation
 %doctextOptionName = ( "html" => "-html",
-		       "man" => "",
+		       "man" => "-man",       # New version allows -man
 		      "latex" => "-latex" );
 $doc_namedefs   = "";
 $doc_attop = 1;
@@ -422,9 +437,15 @@ foreach $_ (@ARGV) {
     elsif (/-distrib/) {
 	# Turn off the maintenance targets in the distribution version
 	$maint_targets = 0;
+	$maint_perf_targets = 0;
 	$do_docs = 0;
 	# Use the robust sleep, not the fast perl version
 	$Sleep = $SleepSlow;
+    }
+    elsif (/-perftargets/) {
+	# This option enables any performance targets of interest to 
+	# maintainers (currently adds options to build asm (.s) files)
+	$maint_perf_targets = 1;
     }
     elsif (/-dos/) {
 	$newline = "\r\n";
@@ -466,6 +487,14 @@ foreach $_ (@ARGV) {
     }
     elsif (/-checktargets/) {
 	$gCheckForTargets = 1;
+    }
+    elsif (/-configdir=(.*)/) {
+	# Use this option to specify the location of the configure
+	# that controls the Makefile.in in this directory.
+	# This is normally used when rebuilding a single Makefile.in
+	# from a Makefile.sm .
+	$last_config_dir = $1;
+	$#keepargs--;  # remove this entry (it is explicitly recreated)
     }
     elsif (/-debugdirs/) {
 	$debug_dirs = 1;
@@ -523,10 +552,12 @@ if ($do_dependencies eq "static") {
 # =========================================================================
 # Read Makefile.sm
 sub ReadMfile {
-    $Mfile = $_[0];
+    my $Mfile = $_[0];
+    my $linecount = 0;
     open (MFILE,"<$Mfile" ) || die "Could not open $Mfile\n";
     &ClearVars;
     while (<MFILE>) {
+	$linecount++;
 	s/\r//g;              # Remove \r for DOS
 	$origline = $_;
 	# Remove trailing newline (we had trouble with chomp on DOS)
@@ -541,15 +572,26 @@ sub ReadMfile {
 	    }
 	    $nextline = <MFILE>;
 	    $nextline =~ s/\r//g; # Remove \r for DOS
+	    $linecount++;
 	    $origline .= $nextline;
 	    #chomp $nextline;
 	    $nextline =~ s/[\r\n]*$//; 
             $_ .= $nextline;
         }
 
+	# Check for portability problems
+	# Check for a blank line that starts with a tab
+	if (/^\t\s*$/) {
+	    print STDERR "File $curdir$Mfile contains a blank line beginning with a tab\nat line $linecount.  Some make programs will fail with a syntax error.\n";
+	}
+	if (/^\t#/) {
+	    print STDERR "File $curdir$Mfile contains a comment line beginning with a tab\nat line $linecount.  Some make programs will fail if this comment is part\nof a command script in a target\n";
+	}
+
         # Look for reserved forms:
         #lib([\w-]*)_SOURCES = names
         #lib([\w-]*)_DIR = name
+	#install_local_DIR = name(s)
         #SUBDIRS = names
         #DOC_SUBDIRS = names
 	#DOCDESTDIRS = kind:dir [, kind:dir ]*
@@ -618,6 +660,9 @@ sub ReadMfile {
             $shared_libraries_exports{ $libname } = $libexports;
         }
         elsif (/^lib([@\${}\(\)\w-]*)_so_LIBS\s*=\s*(.*)$/) {
+	    # Specify dependent libraries for a shared library
+	    # (Some systems require knowledge of all of the libraries
+	    # needed when creating a shared library.)
             $libname = "$1";
             $dependentlibs = $2;
             $shared_libraries_libs{ $libname } = $dependentlibs;
@@ -630,6 +675,9 @@ sub ReadMfile {
 	    print "Setting libdir{$1} to $2/\n";
             $libdir{$1}  = "$2/";
         }
+	elsif (/^install_local_DIR\s*=\s*(.*)\s*$/) {
+	    $install_local_dirs = $1;
+	}
 	elsif (/^doc_([\w-]*)_SOURCES\s*=\s*(.*)\s*$/) {
 	    # Lowercase the type
 	    $docsrc{lc($1)} = $2;
@@ -674,6 +722,7 @@ sub ReadMfile {
 	    # The \r is used to remove any \r in DOS-style files
             @subdirs = split(/\s+/,$1);
 	    $subdirs_has_autoconf = 0;
+	    $smmakevars{'SUBDIRS'} = $1;
         }
 	elsif (/^SUBDIRS_(\w+)\s*=\s*(.*)\s*/) {
 	    # use SUBDIRS_acname = realname to say that the
@@ -688,9 +737,11 @@ sub ReadMfile {
         elsif (/^DOC_SUBDIRS\s*=\s*(.*)\s*\r?$/) {
 	    # The \r is used to remove any \r in DOS-style files
             @doc_subdirs = split(/\s+/,$1);
+	    $smmakevars{'DOC_SUBDIRS'} = $1;
         }
 	elsif (/^DOCDESTDIRS\s*=\s*(.*)\s*\r?$/) {
 	# kind:dir [, kind:dir ]*
+	    $smmakevars{'DOCDESTDIRS'} = $1;
 	    for $pair (split(/,\s*/,$1)) {
 		$pair =~ /(.*):(.*)/;
 		$docthiskinddir{$1} = $2;
@@ -698,6 +749,7 @@ sub ReadMfile {
         }
 	elsif (/^INSTALL_SUBDIRS\s*=\s*(.*)\s*\r?$/) {
 	    @install_subdirs = split(/\s+/,$1);
+	    $smmakevars{'INSTALL_SUBDIRS'} = $1;
 	}
 	elsif (/^NOTSIMPLEMAKE_SUBDIRS\s*=\s*(.*)\s*\r?$/) {
 	    foreach my $dir (split(/\s+/,$1)) {
@@ -708,25 +760,30 @@ sub ReadMfile {
 	    foreach $program (split(/\s+/,$1)) {
 		$extra_programs{$program} = 1;
 	    }
+	    $smmakevars{'EXTRA_PROGRAMS'} = $1;
 	}
 	elsif (/^TAGS_DIRS\s*=\s*(.*)\s*$/) {
 	    # Keep track of tags dirs
 	    @tags_dirs = split( /\s+/,$1);
+	    $smmakevars{'TAGS_DIRS'} = $1;
 	}
 	elsif (/^EXTRA_DIRS\s*=\s*(.*)\s*$/) {
 	    @extra_dirs = split( /\s+/,$1);
+	    $smmakevars{'EXTRA_DIRS'} = $1;
 	}
 	elsif (/^OTHER_DIRS\s*=\s*(.*)\s*$/) {
 	    @other_dirs = split( /\s+/,$1);
+	    $smmakevars{'OTHER_DIRS'} = $1;
 	}
 	elsif (/^EXTERNAL_LIBS\s*=\s*(.*)\s*$/) {
 	    foreach $lib (split(/\s+/,$1)) {
 		$external_libraries{$lib} = 1;
 	    }
+	    $smmakevars{'EXTERNAL_LIBS'} = $1;
 	}
 	elsif (/^(\w+)\s*\+=\s*(.*)\s*$/){
 	    # Use this form to prepend values to some of the 
-	    # autoconf generate names, e.g., to change
+	    # autoconf generated names, e.g., to change
 	    # LIBS = \@LIBS\@ 
 	    # to
 	    # LIBS = \@EXAMPLE_LIBS\@ \@LIBS\@
@@ -761,6 +818,29 @@ sub ReadMfile {
 	    $$varname = $value;
 	    print STDERR "setting $varname to $value\n" if $debug;
 	}
+	elsif (/^smvarSubdir_(\w+)\s*=\s*(.*)/) {
+	    my $varname = $1;
+	    my $varvalue = $2;
+	    if ($varname =~ /;/ || $varvalue =~ /;/) {
+		print STDERR "smvarSubdir_$varname=$varvalue must not contain a semicolon\n";
+		print STDERR "This command will be ignored\n";
+	    }
+	    else {
+		# Save the name with the CURRENT value, then update the
+		# value
+		my $oldvalue = "";
+		if (defined($$varname)) {
+		    $oldvalue = $$varname;
+		}
+		if ($oldvalue =~ /;/) {
+		    print STDERR "Cannot use smvarSubdir_$varname to replace a value that includes a semicolon (current value is $oldvalue)\n";
+		}
+		else {
+		    $gSubdirSMVarsSeen .= "$varname=$oldvalue;";
+		    $$varname = $varvalue;
+		}
+	    }
+	}	    
 	elsif (/^noinst/) {
 	    # Automake target to identify some programs/libraries as
 	    # not to be installed.
@@ -809,6 +889,7 @@ sub ReadMfile {
 	    # Look for special autoconf directory names
 	    &LookForAutoconfDirs( $_ );
 	    &LookForSuffixes( $_ );
+	    &LookForVariables( $_ );
 	}
 	else {
 	    $other_text .= "$origline";
@@ -816,6 +897,7 @@ sub ReadMfile {
 	    if (!/^\s*#/) {
 	        &LookForAutoconfDirs( $_ );
 	    }
+	    &LookForVariables( $_ );
 	}
     $origline = "";
     }
@@ -854,6 +936,23 @@ sub WriteMfile {
 	print FD $other_vars;
 	print FD "$newline";
 
+	# If there were any uses of the smmakevars, add them to the
+	# output here
+	my $sawvar = 0;
+	foreach my $var (keys(%vars_seen)) {
+	    if (defined($smmakevars{$var})) {
+		print FD "$var = ";
+		my $contline = "";
+		foreach my $varline (split(/\n/,$smmakevars{$var})) {
+		    print FD "$contline$varline";
+		    $contline = "\\$newline\t";
+		}
+		print FD $newline;
+		$sawvar = 1;
+	    }
+	}
+	if ($sawvar) { print FD $newline; }
+
         &DefaultRules;
     }
     
@@ -869,9 +968,15 @@ sub WriteMfile {
 	&TargetSharedLibraries( \%libraries );
 	if (defined($optinstall_files{'SHLIB'})) {
 	    foreach $libspec (split(/\s+/,$optinstall_files{'SHLIB'})) {
-		$libspec =~ /(.*)\/([^\/]*)/;
-		$libdir = $1;
-		$libname = $2;
+		if ($libspec =~ /(.*)\/([^\/]*)/) {
+		    $libdir = $1;
+		    $libname = $2;
+		}
+		else {
+		    # The library is built in this directory
+		    $libdir = ".";
+		    $libname = $libspec;
+		}
 		$libsrc = $libname;
 		if ($libsrc =~ /\.so$/) {
 		    $libsrc =~ s/\.so/\.la/;
@@ -888,8 +993,12 @@ sub WriteMfile {
 		$baselibname =~ s/^lib//;
 		$baselibname =~ s/\..*//;
 		if (!defined($profile_libraries_basename{$baselibname})) {
-		    print "Building sharedlib library $baselibname (from $libname) in $libdir as part of optinstall\n" if $gDebugWhy;
-		    &TargetSharedLibraryFinal( $libsrc, $libname, $libdir );
+		    # Skip libraries that will be built in the step 
+		    # below
+		    if (!defined($shared_libraries{$baselibname})) {
+			print "Building sharedlib library $baselibname (from $libname) in $libdir as part of optinstall\n" if $gDebugWhy;
+			&TargetSharedLibraryFinal( $libsrc, $libname, $libdir );
+		    }
 		}
 	    }
 	}
@@ -1004,7 +1113,7 @@ sub DefaultVariables {
 	}
     }
 
-    if (scalar(%install_files)) { 
+    if (scalar(%install_files) || scalar(%optinstall_files)) { 
 	print FD "INSTALL         = \@INSTALL\@$newline";
 	print FD "INSTALL_PROGRAM = \@INSTALL_PROGRAM\@$newline";
 	print FD "INSTALL_DATA    = \@INSTALL_DATA\@$newline";
@@ -1027,11 +1136,13 @@ sub DefaultVariables {
 	    }
 	}
     }
-    if (scalar(%install_files)) {
-	$dir_added{'prefix'} = 1;
-	print FD "$dirdefs{'prefix'}$newline";
+    if (scalar(%install_files) || scalar(%optinstall_files)) {
+	if (!defined($dir_added{'prefix'})) {
+	    $dir_added{'prefix'} = 1;
+	    print FD "$dirdefs{'prefix'}$newline";
+	}
     }
-    foreach $dir (keys(%install_files)) {
+    foreach $dir (keys(%install_files),keys(%optinstall_files)) {
 	# Handle the derived dirs for the install directories
 	$dir = $InstallDirFromKind{$dir};
 	foreach $rdir (split(/\s+/,$required_dirs{$dir})) {
@@ -1041,10 +1152,13 @@ sub DefaultVariables {
 	    }
 	}
     }
-    foreach $dir (keys(%install_files)) {
+    foreach $dir (keys(%install_files),keys(%optinstall_files)) {
 	$dir = $InstallDirFromKind{$dir};
-	#$resultdir = $dirdefs{$dir};
-	print FD "$dirdefs{$dir}$newline";
+	if (!defined($dir_added{$dir})) {
+	    #$resultdir = $dirdefs{$dir};
+	    print FD "$dirdefs{$dir}$newline";
+	    $dir_added{$dir} = 1;
+	}
     }
 
     &InstallDocDirs;
@@ -1109,7 +1223,14 @@ sub DefaultVariables {
 	    }
 	}
 	if (defined($pgmlinktypes{$ext})) {
-	    print FD "$progdefs{$ext}$newline";
+	    # Allow the user to override the definition
+	    my $def = $progdefs{$ext};
+	    if ($def =~ /(\S+)\s*=.*/) {
+		$def = $1;
+	    }
+	    if (!defined($makevars{$def})) {
+		print FD "$progdefs{$ext}$newline";
+	    }
 	    $any_prog_def = 1;
 	}
 	if ($do_sharedlibs || $found_sharedlib) {
@@ -1117,7 +1238,10 @@ sub DefaultVariables {
 		# Only add the libtool definition if there are targets that
 		# may need it.
 		printMakeVariable( FD, "LIBTOOL", "\@LIBTOOL\@" );
-		printMakeVariable( FD, "CREATESHLIB", "\@CREATESHLIB\@" );
+		# We only need CREATESHLIB to finish off the library
+		if (%shared_libraries) {
+		    printMakeVariable( FD, "CREATESHLIB", "\@CREATESHLIB\@" );
+		}
 	    }
 	    $extkey = "$ext:lo";
 	    if (defined($extdef{$extkey})) {
@@ -1162,6 +1286,9 @@ sub DefaultRules {
     # given files.  Remove all default suffix rules
     if (scalar(%ext_seen)) {
 	$suffixes = ".o";
+	if ($maint_perf_targets && !($suffixes =~ /\.s/)) {
+	    $suffixes .= " .s";
+	}
 	if ($do_sharedlibs || $found_sharedlib) { 
 	    $suffixes .= " .lo";
 	}
@@ -1191,6 +1318,9 @@ sub DefaultRules {
     foreach $ext (keys(%ext_seen)) {
 	# Skip any rules for .o files that we've seen
 	if ($ext eq "o") { next; }
+	# If we overrode the default rule for this key, then skip that
+	# as well
+	if (defined($usertargets{".$ext.o"})) { next; }
 	print FD ".$ext.o:$newline";
 	if ($found_profilelib) {
 	    # Use a special rule when building the non-profile-lib version
@@ -1213,6 +1343,15 @@ sub DefaultRules {
 		print FD "\t$extrules{$extkey}$newline";
 	    }
 	}
+	# For maintainers, make it easy to create the asm versions
+	if ($maint_perf_targets) {
+	    $extkey = "$ext:s";
+	    if (defined($extrules{$extkey})) {
+		print FD ".$ext.s:$newline";
+		print FD "\t$extrules{$extkey}$newline";
+	    }
+	}
+
 	$extkey = "$ext:";
 	# We may want to make this conditional, only generating it
 	# when desired.
@@ -1304,17 +1443,23 @@ sub DefaultRules {
 	}
     }
     if ($maint_targets && $smdir && $smdir ne "") {
+	# FIXME: make smdir take a value from the Makefile.in (e.g,
+	# $(top_abs_src)/maint instead of the location where it 
+	# was originally run.
 	print FD "$newline";
 	print FD $makeBlockSep;
 	print FD "\${srcdir}/Makefile.in: \${srcdir}/Makefile.sm$newline";
+	print FD "\t( cd \${srcdir} && $smdir/simplemake \\$newline";
 	if ($rootdir) {
-	    print FD "\t( cd \${srcdir} && $smdir/simplemake -rootdir=$rootdir \\$newline";
+	    print FD "\t-rootdir=$rootdir \\$newline";
 	}
-	else {
-	    # This should be the top level directory
-	    print FD "\t( cd \${srcdir} && $smdir/simplemake \\$newline";
+	print STDOUT "last_config_dir is $last_config_dir in $curdir\n" if $debug_confdir;
+	if (defined($last_config_dir) && $last_config_dir ne "") {
+	    print FD "\t-configdir=$last_config_dir \\$newline";
 	}
 	foreach $curarg (@keepargs) {
+	    # Skip some special cases
+	    if ($curarg =~ /^-smvar_doc_attop=0/) { next; }
 	    # Must handle $ specially
 	    $tmparg = $curarg;
 	    $tmparg =~ s/\$/\\\$\$/;
@@ -1357,7 +1502,8 @@ sub DefaultRules {
 	}
 	$relcurdir = $curdir;
 	if ($last_config_dir) {
-	    $relcurdir =~ s/^$last_config_dir//;
+	    my $quoted_dir = quotemeta $last_config_dir;
+	    $relcurdir =~ s/^$quoted_dir//;
 	}
 	print STDOUT "curdir is $curdir and relcurdir is $relcurdir\n" if $debug_confdir;
 	print FD "\t${ignore_step}if [ -x config.status ] ; then CONFIG_FILES=${relcurdir}Makefile CONFIG_HEADERS= \${SHELL} ./config.status ; fi$newline";
@@ -1365,7 +1511,8 @@ sub DefaultRules {
     }
     # The following are general targets that can be used to run a program
     # specified on the make command line
-    print FD "apply:$newline";
+    &TargetInit( "apply" );
+    print FD "\n";
     print FD "\t\$(ACTION) \$(ACTION_INPUT)$newline";
     # ToDo: we could control the subdirectories over which the recursion
     # is applied.
@@ -1497,6 +1644,7 @@ sub ClearVars {
     @install_subdirs = ();
     %install_dirs = ();
     %optinstall_files = ();
+    $install_local_dirs = "";
     $gIssuedInstallLocal = 0;
     %external_libraries = ();
     $found_profilelib = 0;
@@ -1508,6 +1656,8 @@ sub ClearVars {
     %pgm_depadd = ();
     $depadd_all = "";
 
+    $gSubdirSMVarsSeen = "";
+
     # Variables
     # makevars are variables seen in the Makefile.sm
     # addedMakeVars are variables that have been added to the output
@@ -1515,6 +1665,10 @@ sub ClearVars {
     %PrependVar = ();
     %makevars = ();
     %addedMakeVars = ();
+    # smmakevars are variables that have been defined as SM variables.
+    %smmakevars = ();
+    # vars_seen is a hash of the variables used in the makefile
+    %vars_seen = ();
     # Information about program targets
     %pgmlinktypes = ();
     # Other directories
@@ -1591,6 +1745,9 @@ sub ExpandMakeVars {
 
 $last_config_dir = "";
 
+#
+# ===========================================================================
+
 # These next two routines let us print out the file being processed only
 # when we need to (e.g., before an error message).
 $curFilename = "";
@@ -1608,6 +1765,8 @@ sub ShowFileName {
 sub ProcessFile {
     $file = $_[0];
 
+    $gSubdirSMVarsSeen = "";
+
     # FIXME: curdir?
     if (!$curdir) { $curdir = ""; }
     &ResetFileName( "$curdir$file" );
@@ -1615,8 +1774,9 @@ sub ProcessFile {
     $configure_has_config_headers = "no";
     if (-s "configure.in") {
 	&ReadAutoconf;
-	print "Found configure.in in $curdir\n" if $debug_confdir;
-	$last_config_dir = $curdir;
+	print "Found configure.in in $curdir, set last_config_dir to $curdir\n" if $debug_confdir;
+	if ($curdir eq "") { $last_config_dir = "."; }
+	else {	$last_config_dir = $curdir; }
     }
     &ReadMfile( $file );
     $output_name = $file;
@@ -1630,11 +1790,15 @@ sub ProcessFile {
     }
 
     # Process any subdirectories
-
+    # The list of directories to process comes from the variables
+    # defined in the Makefile.sm.  The following is the list
     my @dirs = (@subdirs,@other_dirs,@doc_subdirs,@tags_dirs);
     # Get a local copy of the "notsimplemake" hash
     my %notSimplemake = %notSimplemakeDirs;
     # First, check for names that are replaced by autoconf (e.g., @name@)
+    # in the names of the directories.  For those variables, there should
+    # be a corresponding SUBDIRS_name variable in the makefile that lists
+    # *all* directories to which @name@ may be expanded by configure.
     my @actdirs = ();
     foreach my $dir (@dirs) {
 	$sdir = $dir;
@@ -1656,6 +1820,12 @@ sub ProcessFile {
             $actdirs[$#actdirs+1] = $dir;
         }
     }
+
+    # Push the saved subdir vars onto a stack, to be popped at the end.
+    print "Saving $gSubdirSMVarsSeen\n" if $gDebugSubdirVar && ($gSubdirSMVarsSeen ne "");
+    $subdirsSMVars[$#subdirsSMVars+1] = $gSubdirSMVarsSeen;
+    
+    # For each of the directories, process it.
     M: foreach my $dir (@actdirs) {
 	if ($dir eq ".") { next M; }
 	if ($dir =~ /\.\./ || $dir =~ /.\/./) {
@@ -1709,7 +1879,7 @@ sub ProcessFile {
 	print "config stack has depth $#config_dir\n" if $debug_confdir;
 	print "relative path to configure dir is " . &GetPathToParent( $curdir, $last_config_dir ) . "\n" if $debug_confdir;
 	&ProcessFile( $file );
-	$last_config_dir = $config_dir[$#config_dir-1]; $#config_dir--;
+	$last_config_dir = $config_dir[$#config_dir]; $#config_dir--;
 	print "after processing, last_config_dir = $last_config_dir\n" if $debug_confdir;
 	print "config stack has depth $#config_dir\n" if $debug_confdir;
 	$rootdirpath =~ s/\.\.\/$//;
@@ -1717,6 +1887,26 @@ sub ProcessFile {
 	$curdir =~ s/[^\/]*\/$//;
 	$curdir = &CleanCurDir( $curdir );
     }
+    # End of processing directories
+
+    # Restore any variables that were changed for the scope of this directory
+    # subtree (emulate a stack; don't trust perls dynamic scoped local)
+    my $subdirvars = $subdirsSMVars[$#subdirsSMVars]; $#subdirsSMVars--;
+    if (!defined($subdirvars)) {
+	print STDERR "subdirsSMVars stack count = $#subdirsSMVars in $curdir\n";
+	print STDERR "previous value is $subdirsSMVars[$#subdirsSMVars]\n";
+    }
+    foreach my $varstring (split(/;/,$subdirvars)) {
+	if ($varstring =~ /(\w+)=(.*)/s) {
+	    my $varname = $1;
+	    my $varvalue = $2;
+	    print "Restoring $$varname to $varvalue in $curdir\n" if $gDebugSubdirVar;
+	    $$varname = $varvalue;
+	}
+	elsif ($varstring ne "") {
+	    print STDERR "Internal Error: varstring = $varstring\n";
+	}
+    }			       
 }
 
 sub ListTargets {
@@ -1735,22 +1925,31 @@ sub ListTargets {
 
 #
 # Add to a target the designate operation in all subdirs (except for .)
-#     &RecursiveOp( "target" [, optional array of directories ] );
+#     &RecursiveOp( "target" [, optional array of directories, [checkMakefile] ] );
 # If the array of directories is not included, (@extra_dirs,@subdirs) 
 # is used.  These are the arrays maintined by simplemake of the 
 # directories set by EXTRA_DIRS and SUB_DIRS.  The "optional array"
 # is passed by name (i.e., the name of the array is passed, not the array
 # itself).
+#
+# The third argument allows you to only execute the test if the
+# Makefile is present.  This is used in the distclean targets and 
+# may be useful elsewhere.
+#
 # Special notes:
 #    For a small number of directories, use a simpler (non loop) approach
 #    
 sub RecursiveOp {
     my $target = $_[0];
     my $subdirname = $_[1];
+    my $checkForMakefile = $_[2];
     my $forThreashold = 3;
 
+    if (!defined($checkForMakefile) || $checkForMakefile eq "") {
+	$checkForMakefile = 0;
+    }
     # Get the optional arrays
-    if ($subdirname && $subdirname ne "") {
+    if (defined($subdirname) && $subdirname ne "") {
 	@dirs = @$subdirname;
     }
     else {
@@ -1786,10 +1985,17 @@ sub RecursiveOp {
 	    # Add a - incase there is a problem
           print FD " - ; do \\$newline";
 	  print FD "\t\tif [ \"\$\$dir\" = \"-\" ] ; then break ; fi ; \\$newline";
+	  if ($checkForMakefile) {
+	      print FD "\t\tif [ ! -s \$\$dir/Makefile ] ; then continue ; fi ;\\$newline";
+	  }
 	  print FD "\t\t(cd \$\$dir && \${MAKE} $target ; ) ; done$newline";
         }	
 	else {
-          print FD " ; do \\$newline\t\t(cd \$\$dir && \${MAKE} $target ; ) ; " .
+          print FD " ; do \\$newline";
+	  if ($checkForMakefile) {
+	      print FD "\t\tif [ ! -s \$\$dir/Makefile ] ; then continue ; fi ;\\$newline";
+	  }
+	  print FD "\t\t(cd \$\$dir && \${MAKE} $target ; ) ; " .
 	    "done$newline";
         }
     }
@@ -1797,7 +2003,12 @@ sub RecursiveOp {
 	foreach $dir (@dirs) {
 	    # Skip . and any empty names
 	    if ($dir ne "." && $dir =~ /\S/) {
-		print FD "\t(cd $dir && \$(MAKE) $target )$newline";
+		if ($checkForMakefile) {
+		    print FD "\tif [ -s $dir/Makefile ] ; then (cd $dir && \$(MAKE) $target ) ; fi$newline";
+		}
+		else {
+		    print FD "\t(cd $dir && \$(MAKE) $target )$newline";
+		}
 	    }
 	}
     }
@@ -1805,10 +2016,12 @@ sub RecursiveOp {
 
 # A version of RecuriveOps for optional directories; this is careful
 # to check for existence of both the directory and the Makefile
-# RecursiveOpForOptionalDirs( dirs, target )
+# RecursiveOpForOptionalDirs( dirs, target, checkmake )
 sub RecursiveOpForOptionalDirs {
     my $subdirs = $_[0];
     my $target = $_[1];
+    my $checkForMakefile = $_[2];
+
     my $forThreshold = 3;
 
     if ($subdirs ne "") {
@@ -1823,7 +2036,12 @@ sub RecursiveOpForOptionalDirs {
 	else {
 	    foreach my $dir (@sdirs) {
 		if ($dir ne "." && $dir =~ /\S/) {
-		    print FD "\t(cd $dir && \$(MAKE) $target )$newline";
+		    if ($checkForMakefile) {
+			print FD "\tif [ -s $dir/Makefile ] ; then (cd $dir && \$(MAKE) $target ) ; fi$newline";
+		    }
+		    else {
+			print FD "\t(cd $dir && \$(MAKE) $target )$newline";
+		    }
 		}
 	    }
 	}
@@ -1870,6 +2088,20 @@ sub LookForAutoconfDirs {
 	    print "Adding $varname to dirs_seen\n" if $debug;
 	    $dirs_seen{$varname} = $varname;
 	}
+    }
+}
+
+#
+# Look for autoconf directory variables that are used 
+sub LookForVariables {
+    $line = $_[0];
+    print "Looking at $line\n" if $debug;
+    # Look for \$\{\w*\} and \$\(\w*\) 
+    while ($line =~ /^[^\$]*\$[\{\(](\w*)[\}\)](.*)$/) {
+	$varname = $1;
+	$line = $2;
+	print "Found $varname in line\n" if $debug;
+	$vars_seen{$varname} = 1;
     }
 }
 
@@ -2007,7 +2239,19 @@ sub TargetAll {
     }
     print_make_endline( FD );
 }
-
+# ---------------------------------------------------------------------------
+# Routines to provide standard extensions through -preamble, -postamble,
+# and -local
+# -preamble allows you to *ADD* a step to be performed before the other
+# dependencies, -postamble adds a step after the target is formed
+#
+# To ensure uniform handling of -preamble, the routine TargetInit( name )
+# outputs the target and the preamble.
+sub TargetInit {
+    my $name = $_[0];
+    print FD "$name: ";
+    &TargetPreamble( $name );
+}
 sub TargetPreamble {
     my $name = $_[0];
     $name .= "-preamble";
@@ -2105,7 +2349,7 @@ sub TargetClean {
     my $otherMakefiles = "";
 
     $programnames = join( ' ', keys(%programs));
-    print FD "clean:";
+    &TargetInit( "clean" );
     if (defined($usertargets{"clean-local"})) { print FD " clean-local"; }
     print FD "$newline";
     print FD "\t-${quietLine}rm -f *.o \${srcdir}/*.o $programnames$newline";
@@ -2138,14 +2382,42 @@ sub TargetClean {
 	# any existing irlog files
 	print FD "\t-${quietLine}rm -f *.irlog*$newline";
     }
-    
+
+    if ($maint_perf_targets) {
+	# In this case, we want to remove any generated asm files, 
+	# to prevent them from being used in preference to the 
+	# original (e.g., C) source file
+	my $input_sources;
+	if ($regular_sources =~ /\S/) {
+	    $input_sources = $regular_sources;
+	}
+	elsif (defined($makevars{'SOURCES'})) {
+	    $input_sources = $makevars{'SOURCES'};
+	}
+	if (defined($input_sources)) {
+	    my $clean_files = "";
+	    foreach my $file (split(/\s+/,$input_sources)) {
+		if ($file =~ /(.*)\.([^\.]+)/) {
+		    my $base = $1;
+		    my $ext  = $2;
+		    if ($ext ne "s") {
+			$clean_files .= " $base.s";
+		    }
+		}
+	    }
+	    if ($clean_files ne "") {
+		print FD "\t-${quietLine}rm -f $clean_files$newline";
+	    }
+	}
+    }
 
     # Finally, execute make clean in any subdirs
     &RecursiveOp( "clean" );
 
     # --------------------------------------------
     # distclean target
-    print FD "distclean: clean";
+    &TargetInit( "distclean" );
+    print FD " clean";
     if (defined($usertargets{"distclean-local"})) { 
 	print FD " distclean-local";
     }
@@ -2153,7 +2425,9 @@ sub TargetClean {
     print FD "$newline";
     
     print FD "distclean-xxx:$newline";
-    &RecursiveOp( "distclean" );
+    # RecursiveOp uses extra_dirs,subdirs; the "1" forces it to check
+    # for the existence of the Makefile
+    &RecursiveOp( "distclean", "", 1 );
     # Remove any local files last (in case this file is one of them)
     $rmfile = "";
     if (!$curdir) { $curdir = ""; }
@@ -2191,7 +2465,7 @@ sub TargetClean {
     # a SUBDIRS = foo \@bar\@ 
     # line (without the \, included since the simplemake.in file is
     # itself processed with autoconf)
-    &RecursiveOpForOptionalDirs( $subdir_optionals, "distclean" );
+    &RecursiveOpForOptionalDirs( $subdir_optionals, "distclean", 1 );
 
     &DistCleanDependencies;
 
@@ -2206,7 +2480,7 @@ sub TargetClean {
 	# No, because distclean needs to remove the Makefiles, and 
 	# this target needs to remove entries that have dependencies
 	# (e.g., the Makefile : Makefile.in : Makefile.sm dependency)
-	print FD "maintainer-clean:";
+	&TargetInit( "maintainer-clean" );
 	if (defined($usertargets{"maintainer-clean-local"})) {
 	    print FD " maintainer-clean-local";
 	}
@@ -2643,10 +2917,11 @@ library, or new library name)\n" if $debug;
     if (defined($shared_libraries_libs{$libbasename})) {
 	$otherlibs = $shared_libraries_libs{$libbasename};
     }
-    print FD "# Build the shared library from the shared object files\n";
-    print FD "$libdir/$newlibname: $libdir/$libname
+    if (!defined($usertargets{"$libdir/$newlibname"})) {
+	print FD "# Build the shared library from the shared object files\n";
+	print FD "$libdir/$newlibname: $libdir/$libname
 \t(cd $libdir && \$(CREATESHLIB) --mode=link -o $libname $exports -rpath \$(libdir) $otherlibs)\n";
-
+    }
     # If there is a profiling library, we need to build it
     # now, as part of this target, to handle the case where the
     # profiling library name might be the same as the regular name
@@ -2853,7 +3128,10 @@ sub TargetTags {
 	printMakeVariable( FD, "SOURCEFILES", '$(SOURCES)' );
     }
     print FD "tags: TAGS$newline"; 
-    print FD "TAGS:";
+    # By adding "Makefile" to TAGS, we ensure that the TAGS target
+    # will be rebuilt anytime the package is reconfigured.  We
+    # could also make TAGS always rebuild, to catch any source changes.
+    print FD "TAGS: Makefile";
     # Only generate a local etags call if there are local sources
     # This target is designed for VPATH builds to build a TAGS file in
     if ($has_headers || $has_sources) {
@@ -3162,10 +3440,10 @@ sub InstallDocDirs {
 # maintainers may create them in the builddir.
 sub TargetInstall {
     %dirschecked = ();
-    if (!scalar(%install_files) && !scalar($install_dirs)) { return ; }
+    if (!scalar(%install_files) && !scalar($install_dirs) &&
+	!scalar(%optinstall_files) && !scalar($optinstall_dirs)) { return ; }
     print FD "# Install target$newline";
-    print FD "install: ";
-    &TargetPreamble( "install" );   # allow an install-preamble for testing
+    &TargetInit( "install" );
     print FD " FORCE_TARGET $newline";
     # Create the directories for the install directories
     foreach $kind (keys(%install_dirs)) {
@@ -3208,9 +3486,24 @@ sub TargetInstall {
 	#
 	# If there is an install-local target, invoke it here:
 	if (defined($usertargets{"install-local"}) && !$gIssuedInstallLocal) {
+	    if ($install_local_dirs ne "") {
+		foreach my $dir (split(/\s+/,$install_local_dirs)) {
+		    foreach $checkdir (split(/\s+/,$required_dirs{$dir})) {
+			if ($checkdir ne "" && !defined($dirschecked{$checkdir})) {
+			    $dirschecked{$checkdir} = 1;
+			    print FD "\tif [ ! -d \${DESTDIR}\${$checkdir} ] ; then \$(MKDIR_P) \${DESTDIR}\${$checkdir} ; fi$newline";
+			}
+		    }
+		    if ($dir ne "" && !defined($dirschecked{$dir})) {
+			$dirschecked{$dir} = 1;
+			print FD "\tif [ ! -d \${DESTDIR}\${$dir} ] ; then \$(MKDIR_P) \${DESTDIR}\${$dir} ; fi$newline";
+		    }
+		}
+	    }
 	    print FD "\t\${MAKE} install-local$newline";
 	    $gIssuedInstallLocal = 1;
 	}
+
 	foreach $file (split(/\s+/,$install_files{$kind})) {
 	    $destfile = $file;
 	    $destfile =~ s/.*\///;
@@ -3249,18 +3542,20 @@ sub TargetInstall {
 	    #print FD "\t\@-test -d $srcdir && cd $srcdir && for name in * ; do \\
 	    print FD "\t\@if test -d $srcdir && cd $srcdir ; then \\
 \t for name in * ; do \\
+\t  if [ \"\$\$name\" = \"*\" ] ; then continue ; fi ; \\
 \t  if [ -f \$\$name ] ; then \\
 \t    echo \"$this_install_choice \$\$name \${DESTDIR}\${$dir}/\$\$name\" ; \\
 \t    $this_install_choice \$\$name \${DESTDIR}\${$dir}/\$\$name ; \\
 \t  elif [ -d \$\$name ] ; then \\
 \t    if [ ! -d \${DESTDIR}\${$dir}/\$\$name ] ; then \$(MKDIR_P) \${DESTDIR}\${$dir}/\$\$name ; fi ;\\
 \t    ( cd \$\$name && for name2 in * ; do \\
+\t        if [ \"\$\$name2\" = \"*\" ] ; then continue ; fi ; \\
 \t        if [ -f \$\$name2 ] ; then \\
 \t            echo \"$this_install_choice \$\$name2 \${DESTDIR}\${$dir}/\$\$name/\$\$name2\" ; \\
 \t            $this_install_choice \$\$name2 \${DESTDIR}\${$dir}/\$\$name/\$\$name2 ; \\
-\t        else \\
-\t            echo \"cp -rp \$\$name \${DESTDIR}\${$dir}/\$\$name\" ; \\
-\t            cp -rp \$\$name \${DESTDIR}\${$dir}/\$\$name ; \\
+\t        elif [ -d \$\$name2 ] ; then  \\
+\t            echo \"cp -rp \$\$name2 \${DESTDIR}\${$dir}/\$\$name\" ; \\
+\t            cp -rp \$\$name2 \${DESTDIR}\${$dir}/\$\$name ; \\
 \t        fi \\
 \t    done ) ; \\
 \t  else \\
@@ -3321,7 +3616,8 @@ sub TargetInstall {
     # unilaterally uninstalling files, we may want an option to create
     # a file that will uninstall only the installed files (as MPICH-1
     # does).
-    print FD "uninstall:$newline";
+    &TargetInit( "uninstall" );
+    print FD "\n";
     foreach $kind (keys(%install_files)) {
 	$dir = $InstallDirFromKind{$kind};
 	foreach $file (split(/\s+/,$install_files{$kind})) {
@@ -3344,11 +3640,10 @@ sub TargetInstall {
     }
 
     # also add the recursive installcheck target
-    print FD "installcheck:";
+    &TargetInit( "installcheck" );
     if (defined($usertargets{"installcheck-local"})) {
 	print FD " installcheck-local"; 
     }
-    &TargetPreamble( "installcheck" );
     print FD $newline;
     if ($#install_subdirs >= 0) {
 	&RecursiveOp( "installcheck", "install_subdirs" );
@@ -3400,6 +3695,9 @@ simplemake [ -nocomments ] [ -am ] [ -libdir=NAME=DIR ] [ -include=LIST ]\
     -nodepend        - Do not generate dependency information\
 \
     -rootdir=PATH    - Set the root directory for all Makefiles\
+    -configdir=PATH  - Location of the configure that controls the Makefile\
+                       in this directory (used to rebuild a single \
+                       Makefile.in)\
     -debug           - Turn on debugging output\
     -dos             - Use DOS-style newlines on output files\
     -help            - This output\
@@ -3777,7 +4075,11 @@ sub GetPathToParent {
     my ($path_child, $path_parent) = @_;
     # Remove parent path from child path
     if (defined($path_parent)) {
+	# first, deal with a possible "." path
+	$path_parent = quotemeta $path_parent;
+	#print "path_parent = $path_parent, child = $path_child\n";
 	$path_child =~ s/^$path_parent//;
+	#print "After parent, child = $path_child\n";
 	# convert all of the non directory separators into ..
     }
     else {
@@ -4008,14 +4310,16 @@ sub FindWorkingAutoconf {
 sub GcovClean {
     if ($maint_targets) {
 	print FD "\t-${quietLine}rm -f \${srcdir}/*.bb \${srcdir}/*.bbg \${srcdir}/*.da$newline";
-	print FD "\t-${quietLine}rm -f *.bb *.bbg *.da$newline";
+	print FD "\t-${quietLine}rm -f \${srcdir}/*.gcda \${srcdir}/*.gcno$newline";
+	print FD "\t-${quietLine}rm -f *.gcov *.bb *.bbg *.da *.gcda *.gcno$newline";
     }
 }
 
 # coverage target
 sub TargetGcov {
     if (!$maint_targets) { return; }
-    print FD "coverage:$newline";
+    &TargetInit( "coverage" );
+    print FD "$newline";
     foreach $lib (keys(%libraries)) {
 	$sourcefiles = $libraries{$lib};
 	PrintMakeLongline( FD, 

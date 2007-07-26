@@ -6,6 +6,9 @@
 all: all-redirect
 
 SHELL           = @SHELL@
+bindir          = @bindir@
+exec_prefix     = @exec_prefix@
+prefix          = @prefix@
 abs_builddir    = @abs_builddir@
 srcdir          = @srcdir@
 abs_srcdir      = @abs_srcdir@
@@ -13,13 +16,10 @@ DEFS            = @DEFS@ -I. -I${srcdir}
 CPPFLAGS        = @CPPFLAGS@
 LIBS            = @LIBS@
 MAKE            = @MAKE@
-MPILIBNAME      = @MPILIBNAME@
-PMPILIBNAME     = @PMPILIBNAME@
-
 CC              = @CC@
 CFLAGS          = @CFLAGS@
 C_COMPILE       = $(CC) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
-C_LINK      = $(CC)
+C_LINK         = $(CC)
 LDFLAGS     =  @LDFLAGS@ ../util/mtest.o 
 
 VPATH = .:@srcdir@
@@ -31,15 +31,15 @@ INCLUDES = -I../include -I${srcdir}/../include
 	$(C_COMPILE) -c $<
 .c:
 	$(C_COMPILE) -o $* $< $(LDFLAGS) $(LIBS)
-apply:
+apply: 
 	$(ACTION) $(ACTION_INPUT)
-clean: clean-local
-	-@rm -f *.o ${srcdir}/*.o setviewcur rdwrord i_noncontig setinfo async rdwrzero async_any getextent
-	-@rm -f setviewcur.exe rdwrord.exe i_noncontig.exe setinfo.exe async.exe rdwrzero.exe async_any.exe getextent.exe
+clean:  clean-local
+	-@rm -f *.o ${srcdir}/*.o setviewcur rdwrord userioerr i_noncontig setinfo async rdwrzero async_any getextent
+	-@rm -f setviewcur.exe rdwrord.exe userioerr.exe i_noncontig.exe setinfo.exe async.exe rdwrzero.exe async_any.exe getextent.exe
 	-@rm -f core core.[0-9]*
 	-@rm -f *.lo ${srcdir}/*.lo
 	-@rm -f *.irlog*
-distclean: clean distclean-xxx remove-makefile
+distclean:  clean distclean-xxx remove-makefile
 distclean-xxx:
 	-@rm -f Makefile
 	-@rm -rf autom4te*.cache
@@ -50,12 +50,14 @@ remove-makefile:
 remove-genmakefiles:
 	rm -f  Makefile
 all-redirect: rdwrord rdwrzero getextent setinfo setviewcur i_noncontig async\
-	 async_any
+	 async_any userioerr
 
 setviewcur: setviewcur.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o setviewcur setviewcur.o  ${LIBS}
 rdwrord: rdwrord.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o rdwrord rdwrord.o  ${LIBS}
+userioerr: userioerr.o   @MPILIBLOC@ ../util/mtest.o
+	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o userioerr userioerr.o  ${LIBS}
 i_noncontig: i_noncontig.o   @MPILIBLOC@ ../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o i_noncontig i_noncontig.o  ${LIBS}
 setinfo: setinfo.o   @MPILIBLOC@ ../util/mtest.o
@@ -72,12 +74,12 @@ getextent: getextent.o   @MPILIBLOC@ ../util/mtest.o
 # --------------------------------------------------------------------------
 # --------------------------------------------------------------------------
 SOURCES         =  rdwrord.c rdwrzero.c getextent.c setinfo.c setviewcur.c \
-	i_noncontig.c async.c async_any.c 
+	i_noncontig.c async.c async_any.c userioerr.c 
 ETAGS           = @ETAGS@ @ETAGSADD@
 HEADERFILES     = $(HEADERS)
 SOURCEFILES     = $(SOURCES)
 tags: TAGS
-TAGS:${HEADERFILES} ${SOURCEFILES}
+TAGS: Makefile${HEADERFILES} ${SOURCEFILES}
 	here=`cd ../../.. && pwd` ; cd ${srcdir} && $(ETAGS) -o $$here/TAGS --append ${HEADERFILES} ${SOURCEFILES}
 # --------------------------------------------------------------------------
 
@@ -88,6 +90,12 @@ TAGS:${HEADERFILES} ${SOURCEFILES}
 # Add the temporary files that might be left behind by the test programs
 clean-local:
 	-@rm -f testfile testfile.?
+
+# A special testing target to simplify running just the io tests
+testing:
+	../runtests -srcdir=$(srcdir) -tests=testlist \
+		   -mpiexec=$(bindir)/mpiexec \
+		   -xmlfile=summary.xml
 
 FORCE_TARGET:
 

@@ -104,9 +104,10 @@ int single_mandelbrot_point(complex_t coord_point,
 color_t getColor(double fraction, double intensity);
 int Make_color_array(int num_colors, color_t colors[]);
 void output_data(int *in_grid_array, int coord[4], int *out_grid_array, int width, int height);
-void PrintUsage();
+void PrintUsage(void);
 static int sock_write(int sock, void *buffer, int length);
 static int sock_read(int sock, void *buffer, int length);
+void swap(int *i, int *j);
 
 #ifdef USE_PPM
 const char *default_filename = "pmandel.ppm";
@@ -570,7 +571,7 @@ int main(int argc, char *argv[])
     return 0;
 } /* end of main */
 
-void PrintUsage()
+void PrintUsage(void)
 {
     printf("usage: mpiexec -n x pmandel [options]\n");
     printf("options:\n -xmin # -xmax #\n -ymin # -ymax #\n -depth #\n -xscale # -yscale #\n -out filename\n -i\n");
@@ -1148,7 +1149,7 @@ void complex_points_to_image(complex_t in_julia_coord_set[],
     x_resolution_element =  (x_max - x_min)/(double)i_pixels_across;
     y_resolution_element =  (y_max - y_min)/(double)i_pixels_down;
 
-#if DEBUG
+#ifdef DEBUG
     printf("%lf %lf\n",x_resolution_element, y_resolution_element);
 #endif
 
@@ -1172,7 +1173,7 @@ void complex_points_to_image(complex_t in_julia_coord_set[],
 	if (i_temp_quantize > i_pixels_across*i_pixels_down)
 	    i_temp_quantize = i_pixels_across*i_pixels_down;
 
-#if DEBUG
+#ifdef DEBUG
 	printf("%d %lf %lf %lf %lf %lf %lf %lf\n",
 	    i_temp_quantize, temp_quantize, x_min, x_resolution_element,
 	    in_julia_coord_set[i].real, y_max, y_resolution_element,

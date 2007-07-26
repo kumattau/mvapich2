@@ -133,7 +133,7 @@ int PREPEND_PREFIX(Dataloop_create_blockindexed)(int count,
 	for (i=2; i < count; i++) {
 	    eff_disp0 = eff_disp1;
 	    eff_disp1 = (dispinbytes) ? ((DLOOP_Offset *) disp_array)[i] :
-		(((DLOOP_Offset) ((int *) disp_array)[1]) * old_extent);
+		(((DLOOP_Offset) ((int *) disp_array)[i]) * old_extent);
 	    if (eff_disp1 - eff_disp0 != last_stride) {
 		is_vectorizable = 0;
 		break;

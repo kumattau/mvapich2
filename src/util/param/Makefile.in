@@ -23,9 +23,8 @@ PMPILIBNAME     = @PMPILIBNAME@
 CC              = @CC@
 CFLAGS          = @CFLAGS@
 C_COMPILE       = $(CC) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
-C_LINK      = $(CC)
+C_LINK         = $(CC)
 LIBTOOL         = @LIBTOOL@
-CREATESHLIB     = @CREATESHLIB@
 CC_SHL          = @CC_SHL@
 C_COMPILE_SHL   = $(CC_SHL) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
 LDFLAGS     =  @LDFLAGS@ 
@@ -43,16 +42,16 @@ INCLUDES = -I../../include -I${top_srcdir}/src/include
 	@mv -f _s$*.o $*.lo
 .c:
 	$(C_COMPILE) -o $* $< $(LDFLAGS) $(LIBS)
-apply:
+apply: 
 	$(ACTION) $(ACTION_INPUT)
-clean:
+clean: 
 	-@rm -f *.o ${srcdir}/*.o testparam
 	-@rm -f .libstamp0 .libstamp1 
 	-@rm -f testparam.exe
 	-@rm -f core core.[0-9]*
 	-@rm -f *.lo ${srcdir}/*.lo
 	-@rm -f *.irlog*
-distclean: clean distclean-xxx remove-makefile
+distclean:  clean distclean-xxx remove-makefile
 distclean-xxx:
 	-@rm -f Makefile
 	-@rm -rf autom4te*.cache
@@ -85,7 +84,7 @@ ETAGS           = @ETAGS@ @ETAGSADD@
 HEADERFILES     = $(HEADERS)
 SOURCEFILES     = $(SOURCES)
 tags: TAGS
-TAGS:${HEADERFILES} ${SOURCEFILES}
+TAGS: Makefile${HEADERFILES} ${SOURCEFILES}
 	here=`cd ../../.. && pwd` ; cd ${srcdir} && $(ETAGS) -o $$here/TAGS --append ${HEADERFILES} ${SOURCEFILES}
 # --------------------------------------------------------------------------
 

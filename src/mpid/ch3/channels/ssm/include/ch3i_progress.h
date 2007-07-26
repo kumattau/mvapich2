@@ -48,40 +48,8 @@ typedef unsigned __int64 MPID_CPU_Tick_t;
 
 extern volatile unsigned int MPIDI_CH3I_progress_completion_count;
 
-typedef enum MPIDI_CH3I_Conn_state
-{
-    CONN_STATE_UNCONNECTED,
-    CONN_STATE_LISTENING,
-    CONN_STATE_CONNECTING,
-    CONN_STATE_CONNECT_ACCEPT, 
-    CONN_STATE_OPEN_CSEND,
-    CONN_STATE_OPEN_CRECV,
-    CONN_STATE_OPEN_LRECV_PKT,
-    CONN_STATE_OPEN_LRECV_DATA,
-    CONN_STATE_OPEN_LSEND,
-    CONN_STATE_CONNECTED,
-    CONN_STATE_CLOSING,
-    CONN_STATE_CLOSED,
-    CONN_STATE_FAILED
-} MPIDI_CH3I_Conn_state;
-
-typedef struct MPIDI_CH3I_Connection
-{
-    MPIDI_VC_t * vc;
-    MPIDU_Sock_t sock;
-    MPIDI_CH3I_Conn_state state;
-    MPID_Request * send_active;
-    MPID_Request * recv_active;
-    MPIDI_CH3_Pkt_t pkt;
-    char * pg_id;
-    MPID_IOV iov[2];
-} MPIDI_CH3I_Connection_t;
-
 extern MPIDU_Sock_set_t MPIDI_CH3I_sock_set;
-extern MPIDI_CH3I_Connection_t * MPIDI_CH3I_listener_conn;
 
-int MPIDI_CH3I_Connection_alloc(MPIDI_CH3I_Connection_t **);
-void MPIDI_CH3I_Connection_free(MPIDI_CH3I_Connection_t * conn);
 int MPIDI_CH3I_Progress_handle_sock_event(MPIDU_Sock_event_t * event);
 int MPIDI_CH3I_Handle_shm_read(MPIDI_VC_t *vc, int nb);
 int MPIDI_CH3I_SHM_write_progress(MPIDI_VC_t * vc);

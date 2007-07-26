@@ -23,7 +23,7 @@
 
 #define MPE_Thread_same(id1_ptr_, id2_ptr_, same_ptr_)	\
 {							\
-    *(id1_ptr_) = *(id2_ptr_) ? TRUE : FALSE;		\
+    *(same_ptr_) = (*(id1_ptr_) == *(id2_ptr_)) ? TRUE : FALSE;		\
 }
 
 #define MPE_Thread_yield()			\

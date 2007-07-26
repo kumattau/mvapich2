@@ -50,8 +50,8 @@ expout = 'hello\nhello\n'
 mpdtest.run(cmd="mpiexec%s -n 2 /bin/echo hello" % (PYEXT), chkOut=1, expOut=expout )
 os.system("mpdallexit%s 1> /dev/null 2> /dev/null" % (PYEXT) )
 
-# test: simple with 3 mpds on 3 machines  (-h and -p options)
-print "TEST -h and -p"
+# test: simple with 3 mpds on 3 machines
+print "TEST simple hello msg on 3 nodes"
 PYEXT = '.py'
 NMPDS = 3
 HFILE = 'temph'
@@ -68,8 +68,8 @@ expout = 'hello\nhello\nhello\n'
 mpdtest.run(cmd="mpiexec%s -n 3 /bin/echo hello" % (PYEXT), chkOut=1, expOut=expout )
 os.system("mpdallexit%s 1> /dev/null 2> /dev/null" % (PYEXT) )
 
-# test: simple 2 mpds on local machine (-l option)
-print "TEST -l"
+# test: simple 2 mpds on local machine (-l, -h, and -p option)
+print "TEST -l, -h, and -p"
 PYEXT = '.py'
 NMPDS = 3
 HFILE = 'temph'
@@ -108,7 +108,7 @@ os.system("mpdallexit%s 1> /dev/null 2> /dev/null" % (PYEXT) )
 
 # test: simple with 2 mpds on 2 machines  (--ifhn option)
 #   this is not a great test, but shows working with real ifhn, then failure with 127.0.0.1
-print "TEST --ifhn"
+print "TEST minimal use of --ifhn"
 PYEXT = '.py'
 NMPDS = 2
 HFILE = 'temph'

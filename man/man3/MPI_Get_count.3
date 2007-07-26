@@ -1,4 +1,4 @@
-.TH MPI_Get_count 3 "11/23/2005" " " "MPI"
+.TH MPI_Get_count 3 "1/30/2007" " " "MPI"
 .SH NAME
 MPI_Get_count \-  Gets the number of "top level" elements 
 .SH SYNOPSIS
@@ -38,6 +38,28 @@ of
 is returned instead.
 .PD 1
 
+.SH NOTES FOR FORTRAN
+All MPI routines in Fortran (except for 
+.I MPI_WTIME
+and 
+.I MPI_WTICK
+) have
+an additional argument 
+.I ierr
+at the end of the argument list.  
+.I ierr
+is an integer and has the same meaning as the return value of the routine
+in C.  In Fortran, MPI routines are subroutines, and are invoked with the
+.I call
+statement.
+
+All MPI objects (e.g., 
+.I MPI_Datatype
+, 
+.I MPI_Comm
+) are of type 
+.I INTEGER
+in Fortran.
 
 .SH ERRORS
 

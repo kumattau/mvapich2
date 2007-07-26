@@ -11,7 +11,7 @@
 #include <string.h>
 #endif
 
-static int verbose = 0;
+static int verbose = 1;
 
 static struct { MPI_Datatype atype, ptype; char name[32]; }
 pairtypes[] =
@@ -31,44 +31,35 @@ MPI_Aint pairtype_displacement(MPI_Datatype type, int *out_size_p)
 {
     MPI_Aint disp;
 
-    switch(type) {
-	case MPI_FLOAT_INT:
-	    {
-		struct { float a; int b; } foo;
-		disp = (MPI_Aint) ((char *) &foo.b - (char *) &foo.a);
-		*out_size_p = sizeof(foo);
-	    }
-	    break;
-	case MPI_DOUBLE_INT:
-	    {
-		struct { double a; int b; } foo;
-		disp = (MPI_Aint) ((char *) &foo.b - (char *) &foo.a);
-		*out_size_p = sizeof(foo);
-	    }
-	    break;
-	case MPI_LONG_INT:
-	    {
-		struct { long a; int b; } foo;
-		disp = (MPI_Aint) ((char *) &foo.b - (char *) &foo.a);
-		*out_size_p = sizeof(foo);
-	    }
-	    break;
-	case MPI_SHORT_INT:
-	    {
-		struct { short a; int b; } foo;
-		disp = (MPI_Aint) ((char *) &foo.b - (char *) &foo.a);
-		*out_size_p = sizeof(foo);
-	    }
-	    break;
-	case MPI_LONG_DOUBLE_INT:
-	    {
-		struct { long double a; int b; } foo;
-		disp = (MPI_Aint) ((char *) &foo.b - (char *) &foo.a);
-		*out_size_p = sizeof(foo);
-	    }
-	    break;
-	default:
-	    disp = -1;
+    /* Note that a portable test may not use a switch statement for 
+       datatypes, as they are not required to be compile-time constants */
+    if (type == MPI_FLOAT_INT) {
+	struct { float a; int b; } foo;
+	disp = (MPI_Aint) ((char *) &foo.b - (char *) &foo.a);
+	*out_size_p = sizeof(foo);
+    }
+    else if (type == MPI_DOUBLE_INT) {
+	struct { double a; int b; } foo;
+	disp = (MPI_Aint) ((char *) &foo.b - (char *) &foo.a);
+	*out_size_p = sizeof(foo);
+    }
+    else if (type == MPI_LONG_INT) {
+	struct { long a; int b; } foo;
+	disp = (MPI_Aint) ((char *) &foo.b - (char *) &foo.a);
+	*out_size_p = sizeof(foo);
+    }
+    else if (type == MPI_SHORT_INT) {
+	struct { short a; int b; } foo;
+	disp = (MPI_Aint) ((char *) &foo.b - (char *) &foo.a);
+	*out_size_p = sizeof(foo);
+    }
+    else if (type == MPI_LONG_DOUBLE_INT && type != MPI_DATATYPE_NULL) {
+	struct { long double a; int b; } foo;
+	disp = (MPI_Aint) ((char *) &foo.b - (char *) &foo.a);
+	*out_size_p = sizeof(foo);
+    }
+    else {
+	disp = -1;
     }
     return disp;
 }
@@ -91,6 +82,11 @@ int main(int argc, char *argv[])
 	MPI_Aint ptype_extent, stype_extent, dummy_lb;
 
 	types[0] = pairtypes[i].atype;
+
+	/* Check for undefined optional types, such as
+	   LONG_DOUBLE_INT (if, for example, long double or
+	   long long are not supported) */
+	if (types[0] == MPI_DATATYPE_NULL) continue;
 
 	MPI_Type_size(types[0], &atype_size);
 	disps[1] = pairtype_displacement(pairtypes[i].ptype,
@@ -136,19 +132,10 @@ int main(int argc, char *argv[])
 
 int parse_args(int argc, char **argv)
 {
-    /*
-    int ret;
-
-    while ((ret = getopt(argc, argv, "v")) >= 0)
-    {
-	switch (ret) {
-	    case 'v':
-		verbose = 1;
-		break;
-	}
-    }
-    */
+    /* We use a simple test because getopt isn't universally available */
     if (argc > 1 && strcmp(argv[1], "-v") == 0)
 	verbose = 1;
+    if (argc > 1 && strcmp(argv[1], "-nov") == 0)
+	verbose = 0;
     return 0;
 }

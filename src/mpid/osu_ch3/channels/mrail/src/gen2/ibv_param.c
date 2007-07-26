@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2006, The Ohio State University. All rights
+/* Copyright (c) 2003-2007, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -35,6 +35,7 @@ int           rdma_default_port = RDMA_DEFAULT_PORT;
 unsigned long rdma_default_max_wqe = RDMA_DEFAULT_MAX_WQE;
 uint32_t      rdma_default_max_sg_list = RDMA_DEFAULT_MAX_SG_LIST;
 uint16_t      rdma_default_pkey_ix = RDMA_DEFAULT_PKEY_IX;
+uint16_t      rdma_default_pkey = RDMA_DEFAULT_PKEY;
 uint8_t       rdma_default_qp_ous_rd_atom; 
 uint8_t       rdma_default_max_rdma_dst_ops = RDMA_DEFAULT_MAX_RDMA_DST_OPS;
 enum ibv_mtu  rdma_default_mtu;
@@ -54,11 +55,22 @@ int           rdma_get_fallback_threshold;
 int           rdma_integer_pool_size = RDMA_INTEGER_POOL_SIZE;
 int           rdma_polling_set_limit = -1;
 int           rdma_polling_set_threshold = 10;
+int	      rdma_eager_limit = 32;
 int           rdma_iba_eager_threshold;
 char          rdma_iba_hca[32];
-int           rdma_max_inline_size = 128;
+int           rdma_max_inline_size;
 unsigned int  rdma_ndreg_entries = RDMA_NDREG_ENTRIES;
+int           rdma_rndv_protocol = VAPI_PROTOCOL_RPUT;
 int           num_rdma_buffer;
+
+/* Whether coalescing of messages should be attempted */
+int           rdma_use_coalesce = 1;
+
+/* If this number of eager sends are already outstanding
+ * the message can be coalesced with other messages (and
+ * will not be sent until a previous message completes)
+ */
+int           rdma_coalesce_threshold = 6;
 
 /* max (total) number of vbufs to allocate, after which process
  * terminates with a fatal error.
@@ -80,7 +92,7 @@ int rdma_prepost_depth          = RDMA_PREPOST_DEPTH;
 int rdma_initial_prepost_depth  = RDMA_INITIAL_PREPOST_DEPTH;
 
 /* allow some extra buffers for non-credited packets (eg. NOOP) */
-int rdma_prepost_noop_extra     = 5;
+int rdma_prepost_noop_extra     = 6;
 int rdma_credit_preserve;
 int rdma_initial_credits        = 0; 
 
@@ -118,11 +130,32 @@ int rdma_prepost_threshold          = 5;
 unsigned long rdma_max_registered_pages = RDMA_MAX_REGISTERED_PAGES;
 unsigned long rdma_dreg_cache_limit = 0;
 
+/* Blocking mode progress */
+int rdma_use_blocking = 0;
+unsigned long rdma_spin_count = 5000;
+
 /* The total size of each vbuf. Used to be the eager threshold, but
  * it can be smaller, so that each eager message will span over few
  * vbufs
  */
 int rdma_vbuf_total_size; 
+
+/* Small message scheduling policy
+ * currently optimized for minimal QP cache misses */
+int sm_scheduling = USE_FIRST;
+
+/* This value should increase with the increase in number
+ * of rails */
+int striping_threshold = STRIPING_THRESHOLD;
+
+/* Linear update factor for HSAM */
+int alpha = 0.9;
+
+int stripe_factor = 1;
+
+int apm_tester = 0;
+
+int apm_count;
 
 static inline int log_2(int np)
 {
@@ -231,6 +264,10 @@ static inline int get_hca_type(struct ibv_device *dev,
 
         hca_type = IBM_EHCA;
 
+    } else if (!strncmp(dev_name, "cxgb3", 5)) {
+
+        hca_type = CHELSIO_T3;
+
     } else {
 
         hca_type = UNKNOWN_HCA;
@@ -238,25 +275,114 @@ static inline int get_hca_type(struct ibv_device *dev,
     return hca_type;
 }
 
+#ifdef RDMA_CM
+int rdma_cm_get_hca_type(){
+	int numdevices = 0, i, ret;
+	struct ibv_device_attr dev_attr;
+	char *dev_name;
+	int hca_type = UNKNOWN_HCA;
+	MPIDI_CH3I_RDMA_Process_t *proc = &MPIDI_CH3I_RDMA_Process;
+	struct ibv_context** ctx = rdma_get_devices(&numdevices);
+
+	for (i = 0; i < numdevices; i++){
+
+	    ret = ibv_query_device(ctx[i], &dev_attr);
+
+	    if(ret) {
+		return HCA_ERROR;
+	    }
+	    
+	    dev_name = (char *) ibv_get_device_name(ctx[i]->device);
+	    
+	    if(NULL == dev_name) {
+		return HCA_ERROR;
+	    }
+	    
+	    if (!strncmp(dev_name, "cxgb3", 5)) {
+
+		hca_type = CHELSIO_T3;
+		break;
+
+	    }		
+	}
+
+	if ((hca_type != CHELSIO_T3)){
+		fprintf(stderr, "iWARP RNIC not found. Assuming a generic Adapter.\n");
+		return UNKNOWN_HCA;
+	}
+
+	rdma_free_devices(ctx);
+	return hca_type;
+}
+#endif
+
+#undef FUNCNAME
+#define FUNCNAME rdma_get_control_parameters
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 int  rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 {
     char *value;
     int size;
-    int err;
+    int mpi_errno = MPI_SUCCESS;
 
     if ((value = getenv("MV2_NUM_HCAS")) != NULL) {
         rdma_num_hcas = (int)atoi(value);
 
         if (rdma_num_hcas > MAX_NUM_HCAS) {
-
             rdma_num_hcas = MAX_NUM_HCAS;
 
-            fprintf(stderr, "Warning, max hca is %d,"
-                   " change %s in ibv_param.h to"
-                    "overide the option\n", 
-                    MAX_NUM_HCAS, "MAX_NUM_HCAS");
+	    MPIU_Msg_printf("Warning, max hca is %d, change %s in ibv_param.h "
+		    "to overide the option\n", MAX_NUM_HCAS, "MAX_NUM_HCAS");
         }
     }
+
+    /* Start HSAM Parameters */
+    if ((value = getenv("MV2_USE_HSAM")) != NULL) {
+        proc->has_hsam = (int)atoi(value);
+        if(proc->has_hsam) {
+            check_hsam_parameters();
+        }
+    } else {
+        /* By default disable the HSAM, due to problem with
+         * multi-pathing with current version of opensm and
+         * up/down */
+        proc->has_hsam = 0;
+    }
+
+    if ((value = getenv("MV2_USE_APM")) != NULL) {
+        proc->has_apm = (int)atoi(value);
+    } else {
+        proc->has_apm = 0;
+    }
+
+    if ((value = getenv("MV2_USE_APM_TEST")) != NULL) {
+        apm_tester = (int)atoi(value);
+    } else {
+        apm_tester = 0;
+    }
+    
+    if ((value = getenv("MV2_APM_COUNT")) != NULL) {
+        apm_count = (int)atoi(value);
+    } else {
+        apm_count = APM_COUNT;
+    }
+    
+    
+    /* Scheduling Parameters */
+    if ( (value = getenv("MV2_SM_SCHEDULING")) != NULL) {
+        if (!strcmp(value, "USE_FIRST")) {
+            sm_scheduling = USE_FIRST;
+        } else if (!strcmp(value, "ROUND_ROBIN")) {
+            sm_scheduling = ROUND_ROBIN;
+        } else if (!strcmp(value, "PROCESS_BINDING")) {
+            sm_scheduling = PROCESS_BINDING;
+        } else {
+            MPIU_Usage_printf("Invalid small message scheduling\n");
+        }
+    }
+
+    /* End : HSAM Parameters */
 
     strncpy(rdma_iba_hca, RDMA_IBA_NULL_HCA, 32);
 
@@ -266,44 +392,54 @@ int  rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 
 #if defined(RDMA_CM)
     if ((value = getenv("MV2_USE_RDMA_CM")) != NULL) {
-	    proc->use_rdma_cm = !!atoi(value);
+            proc->use_rdma_cm = !!atoi(value);
     }
     else {
-	    proc->use_rdma_cm = 0;
-	    proc->use_iwarp_mode = 0;
+            proc->use_rdma_cm = 0;
+            proc->use_iwarp_mode = 0;
     }
 
     if ((value = getenv("MV2_USE_IWARP_MODE")) != NULL) {
-	    proc->use_rdma_cm = !!atoi(value);
-	    proc->use_iwarp_mode = !!atoi(value);
-	    if (proc->use_iwarp_mode) {
-		    rdma_default_max_cq_size = 2000;
-		    rdma_prepost_noop_extra = 7;
-		    rdma_max_inline_size = 64;
+            proc->use_rdma_cm = !!atoi(value);
+            proc->use_iwarp_mode = !!atoi(value);
+    }
+    if (proc->use_rdma_cm){
+	    int threshold = MPIDI_CH3I_CM_DEFAULT_ON_DEMAND_THRESHOLD;
+	    int pg_size, rank;
+
+	    PMI_Get_size(&pg_size);
+	    PMI_Get_rank(&rank);                                      
+
+	    if ((value = getenv("MV2_ON_DEMAND_THRESHOLD")) != NULL){
+		    threshold = atoi(value);
 	    }
+	    if (pg_size > threshold) {
+		    proc->use_rdma_cm_on_demand = 1;
+	    }	    
     }
 #else
     proc->use_rdma_cm = 0;
     proc->use_iwarp_mode = 0;
+    proc->use_rdma_cm_on_demand = 0;
 #endif
 
-    err = rdma_open_hca(proc);
-    
-    if (err) {
-	    return err;
-    }
+    mpi_errno = rdma_open_hca(proc);
+    if(mpi_errno) MPIU_ERR_POP(mpi_errno);
     
     /* Set default parameter acc. to the first hca */
     if (proc->use_iwarp_mode) {
-	    proc->hca_type = UNKNOWN_HCA; /* Using default parameter values */
+#ifdef RDMA_CM
+            proc->hca_type = rdma_cm_get_hca_type();
+#endif
     }
     else {
-	    proc->hca_type = get_hca_type(proc->ib_dev[0],
-					  proc->nic_context[0]);
+            proc->hca_type = get_hca_type(proc->ib_dev[0],
+                                          proc->nic_context[0]);
     }
-    
+
     if (proc->hca_type == HCA_ERROR) {
-	    return -1;
+	MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+		"**fail %s", "proc->hca_type == HCA_ERROR");
     }
 
     PMI_Get_size(&size); 
@@ -316,44 +452,93 @@ int  rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
         proc->cluster_size = LARGE_CLUSTER;
     }
 
-    if (!(value = getenv("MV2_DISABLE_SRQ")) && 
-            proc->hca_type != PATH_HT && 
-            proc->hca_type != MLX_PCI_X  && 
-            proc->hca_type != IBM_EHCA && 
-            !proc->use_rdma_cm && 
-            !proc->use_iwarp_mode) {
-        proc->has_srq = 1;
+
+    if ((value = getenv("MV2_USE_SRQ")) != NULL) {
+	proc->has_srq = !!atoi(value);
+    } else {
+	proc->has_srq = 1;
+    }
+    
+    if ( proc->has_srq && proc->hca_type != PATH_HT
+         && proc->hca_type != MLX_PCI_X  && proc->hca_type != IBM_EHCA
+	 && !proc->use_iwarp_mode) {
         proc->post_send = post_srq_send;
     } else {
         proc->has_srq = 0;
         proc->post_send = post_send;
     }
 
-    if ((value = getenv("MV2_DISABLE_RDMA_FAST_PATH")) != NULL){
-        proc->has_adaptive_fast_path = 0;
-        rdma_polling_set_limit       = 0;
+    if ((value = getenv("MV2_USE_RDMA_FAST_PATH")) != NULL) {
+        proc->has_adaptive_fast_path = !!atoi(value);
+	if (!proc->has_adaptive_fast_path)
+	    rdma_polling_set_limit       = 0;
     } else {
         proc->has_adaptive_fast_path = 1;
     }
 
-    if ((value = getenv("MV2_DISABLE_RING_STARTUP")) != NULL) {
-        proc->has_ring_startup = 0;
+    if ((value = getenv("MV2_USE_RING_STARTUP")) != NULL) {
+        proc->has_ring_startup = !!atoi(value);
     } else {
         proc->has_ring_startup = 1;
     }
 
-    if ((value = getenv("MV2_DISABLE_LAZY_MEM_UNREGISTER")) != NULL) {
-        proc->has_lazy_mem_unregister = 0;
+    if ((value = getenv("MV2_USE_LAZY_MEM_UNREGISTER")) != NULL) {
+        proc->has_lazy_mem_unregister = !!atoi(value);
     } else {
         proc->has_lazy_mem_unregister = 1;
     }
 
-    if ((value = getenv("MV2_DISABLE_RDMA_ONE_SIDED")) != NULL
-     || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND
-     || proc->use_rdma_cm) {
-        proc->has_one_sided = 0;
+    if ((value = getenv("MV2_USE_RDMA_ONE_SIDED")) != NULL) {
+        proc->has_one_sided = !!atoi(value);
     } else {
         proc->has_one_sided = 1;
+    }
+
+    if ((value = getenv("MV2_COALESCE_THRESHOLD")) != NULL) {
+        rdma_coalesce_threshold = atoi(value);
+        if(rdma_coalesce_threshold < 1) {
+            MPIU_Usage_printf("MV2_COALESCE_THRESHOLD must be >= 1\n");
+            rdma_coalesce_threshold = 1;
+        }
+    }
+
+    if ((value = getenv("MV2_USE_COALESCE")) != NULL) {
+        rdma_use_coalesce = !!atoi(value);
+    }
+
+    if ((MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND) 
+	|| proc->use_rdma_cm_on_demand)
+	    proc->has_one_sided = 0;
+
+    if ((value = getenv("MV2_USE_BLOCKING")) != NULL) {
+        rdma_use_blocking = !!atoi(value);
+
+        /* Automatically turn off RDMA fast path */
+        if(rdma_use_blocking) {
+            proc->has_adaptive_fast_path = 0;
+        }
+    }
+
+    if ((value = getenv("MV2_SPIN_COUNT")) != NULL) {
+        rdma_spin_count = atol(value);
+    }
+
+    if ((value = getenv("MV2_RNDV_PROTOCOL")) != NULL) {
+        if (strncmp(value,"RPUT", 4) == 0) {
+            rdma_rndv_protocol = VAPI_PROTOCOL_RPUT;
+        } else if (strncmp(value,"RGET", 4) == 0) {
+            rdma_rndv_protocol = VAPI_PROTOCOL_RGET;
+        } else if (strncmp(value,"R3", 2) == 0) {
+            rdma_rndv_protocol = VAPI_PROTOCOL_R3;
+        } else {
+            MPIU_Usage_printf("MV2_RNDV_PROTOCOL "
+                    "must be either \"RPUT\", \"RGET\", or \"R3\"");
+            rdma_rndv_protocol = VAPI_PROTOCOL_RPUT;
+        }
+    }
+
+    if (proc->use_rdma_cm_on_demand){
+	    proc->use_iwarp_mode = 1;
     }
 
 #ifdef CKPT
@@ -363,8 +548,12 @@ int  rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
     /*RDMA ONE SIDED is disabled*/
     proc->has_one_sided = 0;
 #endif
-    
-    return 0;
+
+fn_exit:
+    return mpi_errno;
+
+fn_fail:
+    goto fn_exit;
 }
 
 void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
@@ -387,6 +576,9 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
                 case MLX_CX_DDR:
                     rdma_vbuf_total_size = 9 * 1024;
                     break;
+	        case CHELSIO_T3:
+		    rdma_vbuf_total_size = 6 * 1024;
+		    break;
                 case MLX_PCI_EX_SDR:
                 case MLX_PCI_EX_DDR:
                 case PATH_HT:
@@ -426,6 +618,28 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
             rdma_put_fallback_threshold = 8 * 1024;
             rdma_get_fallback_threshold = 394 * 1024;
             break;
+        case CHELSIO_T3:
+	    switch(proc->cluster_size) {
+		case LARGE_CLUSTER:
+			num_rdma_buffer         = 4;
+			rdma_iba_eager_threshold    = 2 * 1024;
+			break;
+                case MEDIUM_CLUSTER:
+			num_rdma_buffer         = 8;
+			rdma_iba_eager_threshold = 4 * 1024;
+
+			break;
+                case SMALL_CLUSTER:
+                default:
+			num_rdma_buffer         = 16;
+			rdma_iba_eager_threshold = rdma_vbuf_total_size -
+				sizeof(VBUF_FLAG_TYPE);
+			break;
+		}
+	    rdma_eagersize_1sc      = 4 * 1024;
+	    rdma_put_fallback_threshold = 8 * 1024;
+	    rdma_get_fallback_threshold = 394 * 1024;
+	    break;
         case MLX_PCI_EX_SDR:
         case MLX_PCI_EX_DDR:
         case MLX_CX_DDR:
@@ -463,12 +677,21 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 
     if (proc->hca_type == IBM_EHCA) {
         rdma_max_inline_size = -1;
+    } else if (proc->hca_type == CHELSIO_T3) {
+	rdma_max_inline_size = 64;
+    } else {
+        rdma_max_inline_size = 128;
     }
 
     if (proc->hca_type == MLX_PCI_EX_DDR) {
         rdma_default_mtu = IBV_MTU_2048;
     } else {
         rdma_default_mtu = IBV_MTU_1024;
+    }
+
+    if (proc->hca_type == CHELSIO_T3) {
+	rdma_default_max_cq_size = 5000;
+	rdma_prepost_noop_extra = 8;
     }
 
     if (proc->has_srq) {
@@ -504,10 +727,9 @@ void rdma_get_user_parameters(int num_proc, int me)
         rdma_num_ports = (int)atoi(value);
         if (rdma_num_ports > MAX_NUM_PORTS) {
             rdma_num_ports = MAX_NUM_PORTS;
-            fprintf(stderr, "Warning, max ports per hca is %d,"
-                   " change %s in ibv_param.h to"
-                   "overide the option\n", 
-                   MAX_NUM_PORTS, "MAX_NUM_PORTS");
+	    MPIU_Usage_printf("Warning, max ports per hca is %d, change %s in "
+		    "ibv_param.h to overide the option\n", MAX_NUM_PORTS,
+		    "MAX_NUM_PORTS");
         }
     }
 
@@ -518,10 +740,9 @@ void rdma_get_user_parameters(int num_proc, int me)
 
         if (rdma_num_qp_per_port > MAX_NUM_QP_PER_PORT) {
             rdma_num_qp_per_port = MAX_NUM_QP_PER_PORT;
-            fprintf(stderr, "Warning, max qps per port is %d,"
-                   " change %s in ibv_param.h to"
-                   "overide the option\n", 
-                   MAX_NUM_QP_PER_PORT, "MAX_NUM_QP_PER_PORT");
+            MPIU_Usage_printf("Warning, max qps per port is %d, change %s in "
+		    "ibv_param.h to overide the option\n", MAX_NUM_QP_PER_PORT,
+		    "MAX_NUM_QP_PER_PORT");
         }
     }
 
@@ -541,6 +762,12 @@ void rdma_get_user_parameters(int num_proc, int me)
         && MPIDI_CH3I_RDMA_Process.has_adaptive_fast_path) {
         rdma_polling_set_threshold = atoi(value);
     }
+    if ((value = getenv("MV2_RDMA_EAGER_LIMIT")) != NULL
+        && MPIDI_CH3I_RDMA_Process.has_adaptive_fast_path) {
+        rdma_eager_limit = atoi(value);
+	if (rdma_eager_limit < 0)
+	    rdma_eager_limit = 0;
+    }
     if ((value = getenv("MV2_POLLING_SET_LIMIT")) != NULL
         && MPIDI_CH3I_RDMA_Process.has_adaptive_fast_path) {
         rdma_polling_set_limit = atoi(value);
@@ -556,6 +783,16 @@ void rdma_get_user_parameters(int num_proc, int me)
             rdma_vbuf_total_size = 2 * sizeof(int);
     }
 
+    /* We have read the value of the rendezvous threshold, and the number of
+     * rails used for communication, increase the striping threshold
+     * accordingly */
+
+    /* Messages in between will use the rendezvous protocol, however will
+     * not be striped */
+
+    striping_threshold = rdma_vbuf_total_size * rdma_num_ports *
+        rdma_num_qp_per_port * rdma_num_hcas;
+       
     if ((value = getenv("MV2_SRQ_SIZE")) != NULL) {
         viadev_srq_size = (uint32_t) atoi(value);
     }
@@ -564,8 +801,7 @@ void rdma_get_user_parameters(int num_proc, int me)
         viadev_srq_limit = (uint32_t) atoi(value);
 
         if(viadev_srq_limit > viadev_srq_size) {
-            fprintf(stderr,
-                    "SRQ limit shouldn't be greater than SRQ size\n");
+	    MPIU_Usage_printf("SRQ limit shouldn't be greater than SRQ size\n");
         }
     }
 
@@ -600,9 +836,13 @@ void rdma_get_user_parameters(int num_proc, int me)
     if ((value = getenv("MV2_DEFAULT_PSN")) != NULL) {
         rdma_default_psn = (uint32_t)atoi(value);
     }
-    if ((value = getenv("MV2_DEFAULT_PKEY_IX")) != NULL) {
+
+    if ((value = getenv("MV2_DEFAULT_PKEY")) != NULL) {
+        rdma_default_pkey = (uint16_t)strtol(value, (char **) NULL,0); 
+    } else if((value = getenv("MV2_DEFAULT_PKEY_IX")) != NULL) {
         rdma_default_pkey_ix = (uint16_t)atoi(value);
     }
+
     if ((value = getenv("MV2_DEFAULT_MIN_RNR_TIMER")) != NULL) {
         rdma_default_min_rnr_timer = (uint8_t)atoi(value);
     }
@@ -653,19 +893,16 @@ void rdma_get_user_parameters(int num_proc, int me)
     }
     if (rdma_vbuf_pool_size <= 10) {
         rdma_vbuf_pool_size = 10;
-        fprintf(stderr, "[%s:%d] Warning! Too small vbuf pool size (%d) "
-                "Reset to %d\n", __FILE__, __LINE__, 
-                rdma_vbuf_pool_size, 10);
+        MPIU_Usage_printf("Warning! Too small vbuf pool size (%d).  "
+		"Reset to %d\n", rdma_vbuf_pool_size, 10);
     }
     if ((value = getenv("MV2_VBUF_SECONDARY_POOL_SIZE")) != NULL) {
         rdma_vbuf_secondary_pool_size = atoi(value);
     }
     if (rdma_vbuf_secondary_pool_size <= 0) {
         rdma_vbuf_secondary_pool_size = 1;
-        fprintf(stderr, "[%s:%d] Warning! Too small secondary "
-                "vbuf pool size (%d). "
-                "Reset to %d\n", __FILE__, __LINE__, 
-                rdma_vbuf_secondary_pool_size, 1);
+        MPIU_Usage_printf("Warning! Too small secondary vbuf pool size (%d).  "
+                "Reset to %d\n", rdma_vbuf_secondary_pool_size, 1);
     }
     if (rdma_initial_prepost_depth <= rdma_prepost_noop_extra) {
         rdma_initial_credits = rdma_initial_prepost_depth;
@@ -677,3 +914,51 @@ void rdma_get_user_parameters(int num_proc, int me)
     rdma_rq_size = rdma_prepost_depth + 
         rdma_prepost_rendezvous_extra + rdma_prepost_noop_extra;
 }
+
+/* This function is specifically written to make sure that HSAM
+ * parameters are configured correctly */
+
+int check_hsam_parameters()
+{
+    char *value;
+
+    int pg_size;
+
+    int size;
+
+    /* Get the number of processes */
+    PMI_Get_size(&size);
+ 
+    /* If the number of processes is less than 64, we can afford * to
+     * have more RC QPs and hence a value of 4 is chosen, for * other
+     * cases, a value of 2 is chosen */
+
+    /* (rdma_num_qp_per_port/ stripe factor) represents the number
+     * of QPs which will be chosen for data transfer at a given point */
+
+    /* If the user has not specified any value, then perform
+     * this tuning */
+
+    if ((value = getenv("MV2_NUM_QP_PER_PORT")) != NULL) {
+        rdma_num_qp_per_port = atoi(value);
+        if(rdma_num_qp_per_port <= 2) {
+            stripe_factor = 1;
+        } else {
+            stripe_factor = (rdma_num_qp_per_port / 2);
+        }
+    } else {
+        /* Speculated value */
+
+        /* The congestion is actually never seen for less
+         * than 8 nodes */
+        if((size > 8) && (size < 64)) {
+            rdma_num_qp_per_port = 4;
+            stripe_factor = (rdma_num_qp_per_port / 2);
+        } else {
+            rdma_num_qp_per_port = 2;
+            stripe_factor = 1;
+        }
+    }
+}
+
+/* vi:set sw=4 tw=80: */

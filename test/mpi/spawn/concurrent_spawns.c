@@ -15,10 +15,16 @@
 #include <string.h>
 #endif
 
-/* This test tests the ability to handle multiple simultaneous calls to MPI_Comm_spawn.
- * The first process spawns MAX_NUM_SPAWNS processes and tells them to spawn MAX_NUM_SPAWNS -1 processes.
- * This repeats until no processes are spawned.  For MAX_NUM_SPAWNS = 4 this results in 64 processes 
- * created.  Hopefully this will result in concurrent handling of MPI_Comm_spawn calls from multiple processes.
+/* #include <fcntl.h> */
+
+/* This test tests the ability to handle multiple simultaneous calls to 
+ * MPI_Comm_spawn.
+ * The first process spawns MAX_NUM_SPAWNS processes and tells them to spawn 
+ * MAX_NUM_SPAWNS -1 processes.
+ * This repeats until no processes are spawned.  For MAX_NUM_SPAWNS = 4 this 
+ * results in 64 processes 
+ * created.  Hopefully this will result in concurrent handling of 
+ * MPI_Comm_spawn calls from multiple processes.
  */
 
 #define IF_VERBOSE(a) if (verbose) { printf a ; fflush(stdout); }
@@ -56,8 +62,13 @@ int main(int argc, char *argv[])
 	num_spawns = MAX_NUM_SPAWNS;
     }
 
+#if 0
+    { int fd1 = open("concurrent_spawns",O_RDONLY);
+    printf( "fd = %d\n", fd1 ); fflush(stdout); close(fd1); }
+#endif
     /* If an argument is passed in use it for num_spawns */
-    /* This is the case for all spawned processes and optionally the first process as well */
+    /* This is the case for all spawned processes and optionally the first 
+       process as well */
     if (argc > 1)
     {
 	num_spawns = atoi(argv[1]);
@@ -97,7 +108,8 @@ int main(int argc, char *argv[])
 	}
     }
 
-    /* Receive the error count from each of your children and add it to your error count */
+    /* Receive the error count from each of your children and add it to your 
+       error count */
     for (i=0; i<num_spawns; i++)
     {
 	MPI_Recv(&child_errs, 1, MPI_INT, 0, 0, intercomm[i], &status);

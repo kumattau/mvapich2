@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: getpname.c,v 1.1.1.1 2006/01/18 21:09:43 huangwei Exp $
+/*  $Id: getpname.c,v 1.14 2006/06/22 18:29:06 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -21,6 +21,7 @@
    the MPI routines.  You can use USE_WEAK_SYMBOLS to see if MPICH is
    using weak symbols to implement the MPI routines. */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Get_processor_name
 #define MPI_Get_processor_name PMPI_Get_processor_name
 
 /* Any internal routines can go here.  Make them static if possible.  If they
@@ -74,7 +75,6 @@ int MPI_Get_processor_name( char *name, int *resultlen )
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_GET_PROCESSOR_NAME);
 
     /* Validate parameters and objects (post conversion) */
@@ -92,7 +92,8 @@ int MPI_Get_processor_name( char *name, int *resultlen )
 
     /* ... body of routine ...  */
     
-    mpi_errno = MPID_Get_processor_name( name, resultlen );
+    mpi_errno = MPID_Get_processor_name( name, MPI_MAX_PROCESSOR_NAME, 
+					 resultlen );
     
     /* ... end of body of routine ... */
 
@@ -100,7 +101,6 @@ int MPI_Get_processor_name( char *name, int *resultlen )
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_GET_PROCESSOR_NAME);
-    MPID_CS_EXIT();
     return mpi_errno;
 
   fn_fail:

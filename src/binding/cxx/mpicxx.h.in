@@ -36,6 +36,17 @@
 #endif
 #endif
 
+// Check for incompatible GCC versions
+// GCC (specifically) g++ changed the calling convention
+// between 3.2.3 and 3.4.3 (!!)  Normally such changes
+// should only occur at major releases (e.g., version 3 to 4)
+#ifdef __GNUC__ 
+# if __GNUC__ >= @GNUC_VERSION@ 
+#  if __GNUC_MINOR__ > 2 && @GNUC_MINORVERSION@ == 2 
+#  error 'Please use the same version of GCC for compiling MPICH2 and user MPI programs'
+#  endif
+# endif     
+#endif
 namespace MPI {
 #if @HAVE_CXX_EXCEPTIONS@
 #define MPIX_CALL( fnc ) \
@@ -48,6 +59,9 @@ namespace MPI {
 typedef MPI_Offset Offset;
 typedef MPI_Aint   Aint;
 typedef MPI_Fint   Fint;
+
+// Special internal routine
+void MPIR_CXX_InitDatatypeNames( void );
 
 // Forward class declarations
 class Comm;
@@ -312,6 +326,7 @@ class Datatype  {
     }
     virtual void Get_name( char * v2, int &v3 ) const
     {
+    MPIR_CXX_InitDatatypeNames();
         MPIX_CALL( MPI_Type_get_name( (MPI_Datatype) the_real_datatype, v2, &v3 ));
     }
 
@@ -2438,9 +2453,17 @@ extern Datatype WCHAR;
 extern Datatype SIGNED_CHAR;
 extern Datatype UNSIGNED_LONG_LONG;
 extern Datatype TWOINT;
+extern Datatype BOOL;
+#define MPIR_CXX_BOOL @MPIR_CXX_BOOL@
+extern Datatype COMPLEX;
+#define MPIR_CXX_COMPLEX @MPIR_CXX_COMPLEX@
+extern Datatype DOUBLE_COMPLEX;
+#define MPIR_CXX_DOUBLE_COMPLEX @MPIR_CXX_DOUBLE_COMPLEX@
+extern Datatype LONG_DOUBLE_COMPLEX;
+#define MPIR_CXX_LONG_DOUBLE_COMPLEX @MPIR_CXX_LONG_DOUBLE_COMPLEX@
 extern Datatype DATATYPE_NULL;
 
-#ifdef HAVE_FORTRAN_BINDING
+#if @FORTRAN_BINDING@
 extern Datatype INTEGER;
 extern Datatype REAL;
 extern Datatype DOUBLE_PRECISION;
@@ -2478,7 +2501,7 @@ extern const Errhandler ERRORS_ARE_FATAL;
 extern const Errhandler ERRORS_THROW_EXCEPTIONS;
 extern const Info INFO_NULL;
 extern const Win WIN_NULL;
-extern const File FILE_NULL;
+extern  File FILE_NULL;
 extern const int BSEND_OVERHEAD;
 extern const int KEYVAL_INVALID;
 extern const int CART;

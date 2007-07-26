@@ -117,6 +117,8 @@ int MPID_Type_indexed(int count,
 	new_dtp->alignsize    = el_sz; /* ??? */
 	new_dtp->element_size = el_sz;
 	new_dtp->eltype       = el_type;
+
+	new_dtp->n_contig_blocks = count;
     }
     else
     {
@@ -140,6 +142,8 @@ int MPID_Type_indexed(int count,
 	new_dtp->has_sticky_ub = old_dtp->has_sticky_ub;
 	new_dtp->element_size  = el_sz;
 	new_dtp->eltype        = el_type;
+
+	new_dtp->n_contig_blocks = old_dtp->n_contig_blocks * count;
     }
 
 
@@ -235,6 +239,7 @@ int MPID_Type_indexed(int count,
 				       &(new_dtp->dataloop_size),
 				       &(new_dtp->dataloop_depth),
 				       0);
+#if defined(MPID_HAS_HETERO) || 1
     if (!err) {
 	/* heterogeneous dataloop representation */
 	err = MPID_Dataloop_create_indexed(count,
@@ -247,6 +252,7 @@ int MPID_Type_indexed(int count,
 					   &(new_dtp->hetero_dloop_depth),
 					   0);
     }
+#endif /* MPID_HAS_HETERO */
     /* --BEGIN ERROR HANDLING-- */
     if (err) {
 	mpi_errno = MPIR_Err_create_code(MPI_SUCCESS,
@@ -363,6 +369,7 @@ static int MPIDI_Type_indexed_zero_size(MPID_Datatype *new_dtp)
 				       &(new_dtp->dataloop_size),
 				       &(new_dtp->dataloop_depth),
 				       0);
+#if defined(MPID_HAS_HETERO) || 1
     if (!err) {
 	/* heterogeneous dataloop representation */
 	err = MPID_Dataloop_create_indexed(0,
@@ -375,6 +382,7 @@ static int MPIDI_Type_indexed_zero_size(MPID_Datatype *new_dtp)
 					   &(new_dtp->hetero_dloop_depth),
 					   0);
     }
+#endif /* MPID_HAS_HETERO */
     /* --BEGIN ERROR HANDLING-- */
     if (err) {
 	mpi_errno = MPIR_Err_create_code(MPI_SUCCESS,

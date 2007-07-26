@@ -37,6 +37,32 @@ void MPID_Datatype_create_dataloop(MPID_Datatype *dtp,
 
     MPIU_Assert(cp->combiner != MPI_COMBINER_NAMED);
 
+    /* first check for zero count on types where that makes sense */
+    switch(cp->combiner) {
+	case MPI_COMBINER_CONTIGUOUS:
+	case MPI_COMBINER_VECTOR:
+	case MPI_COMBINER_HVECTOR_INTEGER:
+	case MPI_COMBINER_HVECTOR:
+	case MPI_COMBINER_INDEXED_BLOCK:
+	case MPI_COMBINER_INDEXED:
+	case MPI_COMBINER_HINDEXED_INTEGER:
+	case MPI_COMBINER_HINDEXED:
+	case MPI_COMBINER_STRUCT_INTEGER:
+	case MPI_COMBINER_STRUCT:
+	    if (ints[0] == 0) {
+		MPID_Dataloop_create_contiguous(0,
+						MPI_INT,
+						dlp_p,
+						dlsz_p,
+						dldepth_p,
+						flags);
+		return;
+	    }
+	    break;
+	default:
+	    break;
+    }
+
     switch(cp->combiner) {
 	case MPI_COMBINER_CONTIGUOUS:
 	    MPID_Dataloop_create_contiguous(ints[0] /* count */,

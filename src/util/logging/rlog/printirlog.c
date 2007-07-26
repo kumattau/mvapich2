@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: printirlog.c,v 1.1.1.1 2006/01/18 21:09:48 huangwei Exp $
+/*  $Id: printirlog.c,v 1.4 2003/09/30 20:47:02 David Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.

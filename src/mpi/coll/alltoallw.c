@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Alltoallw
 #define MPI_Alltoallw PMPI_Alltoallw
 /* This is the default implementation of alltoallw. The algorithm is:
    
@@ -60,6 +61,7 @@ int MPIR_Alltoallw (
     MPI_Request *reqarray;
     int dst, rank;
     MPI_Comm comm;
+    int outstanding_requests;
     
     comm = comm_ptr->handle;
     comm_size = comm_ptr->local_size;
@@ -84,41 +86,50 @@ int MPIR_Alltoallw (
     }
     /* --END ERROR HANDLING-- */
 
+    outstanding_requests = 0;
     for ( i=0; i<comm_size; i++ ) { 
         dst = (rank+i) % comm_size;
-        mpi_errno = MPIC_Irecv((char *)recvbuf+rdispls[dst], 
-                               recvcnts[dst], recvtypes[dst], dst,
-                               MPIR_ALLTOALLW_TAG, comm,
-                               &reqarray[i]);
-	/* --BEGIN ERROR HANDLING-- */
-        if (mpi_errno)
-	{
-	    mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", 0);
-	    return mpi_errno;
+	if (recvcnts[dst]) {
+	    mpi_errno = MPIC_Irecv((char *)recvbuf+rdispls[dst], 
+				   recvcnts[dst], recvtypes[dst], dst,
+				   MPIR_ALLTOALLW_TAG, comm,
+				   &reqarray[outstanding_requests]);
+	    /* --BEGIN ERROR HANDLING-- */
+	    if (mpi_errno)
+	    {
+		mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", 0);
+		return mpi_errno;
+	    }
+	    /* --END ERROR HANDLING-- */
+
+	    outstanding_requests++;
 	}
-	/* --END ERROR HANDLING-- */
     }
 
     for ( i=0; i<comm_size; i++ ) { 
         dst = (rank+i) % comm_size;
-        mpi_errno = MPIC_Isend((char *)sendbuf+sdispls[dst], 
-                               sendcnts[dst], sendtypes[dst], dst,
-                               MPIR_ALLTOALLW_TAG, comm,
-                               &reqarray[i+comm_size]);
-	/* --BEGIN ERROR HANDLING-- */
-        if (mpi_errno)
-	{
-	    mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", 0);
-	    return mpi_errno;
+	if (sendcnts[dst]) {
+	    mpi_errno = MPIC_Isend((char *)sendbuf+sdispls[dst], 
+				   sendcnts[dst], sendtypes[dst], dst,
+				   MPIR_ALLTOALLW_TAG, comm,
+				   &reqarray[outstanding_requests]);
+	    /* --BEGIN ERROR HANDLING-- */
+	    if (mpi_errno)
+	    {
+		mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", 0);
+		return mpi_errno;
+	    }
+	    /* --END ERROR HANDLING-- */
+
+	    outstanding_requests++;
 	}
-	/* --END ERROR HANDLING-- */
     }
 
-    mpi_errno = NMPI_Waitall(2*comm_size, reqarray, starray);
+    mpi_errno = NMPI_Waitall(outstanding_requests, reqarray, starray);
 
     /* --BEGIN ERROR HANDLING-- */
     if (mpi_errno == MPI_ERR_IN_STATUS) {
-        for (i=0; i<2*comm_size; i++) {
+        for (i=0; i<outstanding_requests; i++) {
             if (starray[i].MPI_ERROR != MPI_SUCCESS) 
                 mpi_errno = starray[i].MPI_ERROR;
         }
@@ -310,7 +321,7 @@ int MPI_Alltoallw(void *sendbuf, int *sendcnts, int *sdispls,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("coll");
     MPID_MPI_COLL_FUNC_ENTER(MPID_STATE_MPI_ALLTOALLW);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -393,6 +404,9 @@ int MPI_Alltoallw(void *sendbuf, int *sendcnts, int *sdispls,
     }
     else
     {
+	MPIU_THREADPRIV_DECL;
+	MPIU_THREADPRIV_GET;
+
 	MPIR_Nest_incr();
         if (comm_ptr->comm_kind == MPID_INTRACOMM) 
             /* intracommunicator */
@@ -401,9 +415,6 @@ int MPI_Alltoallw(void *sendbuf, int *sendcnts, int *sdispls,
                                        rdispls, recvtypes, comm_ptr);
         else {
             /* intercommunicator */
-	    /* mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_COMM, 
-					      "**intercommcoll",
-					      "**intercommcoll %s", FCNAME ); */
             mpi_errno = MPIR_Alltoallw_inter(sendbuf, sendcnts, sdispls,
                                        sendtypes, recvbuf, recvcnts,
                                        rdispls, recvtypes, comm_ptr);
@@ -417,7 +428,7 @@ int MPI_Alltoallw(void *sendbuf, int *sendcnts, int *sdispls,
 
   fn_exit:
     MPID_MPI_COLL_FUNC_EXIT(MPID_STATE_MPI_ALLTOALLW);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("coll");
     return mpi_errno;
 
   fn_fail:

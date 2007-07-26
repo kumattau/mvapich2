@@ -21,37 +21,38 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg_p, int pg_rank )
 {
     int mpi_errno = MPI_SUCCESS;
     char *publish_bc_orig = NULL;
-    char *bc_key = NULL;
     char *bc_val = NULL;
     int val_max_remaining;
     MPIDI_STATE_DECL(MPID_STATE_MPID_CH3_INIT);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_CH3_INIT);
 
-    mpi_errno = MPIDI_CH3I_Acceptq_init();
-    if (mpi_errno != MPI_SUCCESS) MPIU_ERR_POP(mpi_errno);
-
     mpi_errno = MPIDI_CH3I_Progress_init();
     if (mpi_errno != MPI_SUCCESS) MPIU_ERR_POP(mpi_errno);
 
     /* Initialize the business card */
-    mpi_errno = MPIDI_CH3I_BCInit( pg_rank, &publish_bc_orig, &bc_key, &bc_val,
-				   &val_max_remaining );
+    mpi_errno = MPIDI_CH3I_BCInit( &bc_val, &val_max_remaining );
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    publish_bc_orig = bc_val;
 
     /* initialize aspects specific to sockets  */
     mpi_errno = MPIDI_CH3U_Init_sock(has_parent, pg_p, pg_rank,
-				     &publish_bc_orig, &bc_key, &bc_val, 
-				     &val_max_remaining);
+				     &bc_val, &val_max_remaining);
+
+    /* Set the connection information in our process group 
+       (publish the business card ) */
+    MPIDI_PG_SetConnInfo( pg_rank, (const char *)publish_bc_orig );
+
+    /* Free the business card now that it is published
+     (note that publish_bc_orig is the head of bc_val ) */
+    MPIDI_CH3I_BCFree( publish_bc_orig );
+
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
  fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_CH3_INIT);
     return mpi_errno;
  fn_fail:
-    if (bc_key != NULL) {
-        MPIU_Free(bc_key);
-    }
     if (publish_bc_orig != NULL) {
         MPIU_Free(publish_bc_orig);
     }           
@@ -69,7 +70,8 @@ int MPIDI_CH3_PortFnsInit( MPIDI_PortFns *portFns )
 /* This function simply tells the CH3 device to use the defaults for the 
    MPI-2 RMA functions */
 int MPIDI_CH3_RMAFnsInit( MPIDI_RMAFns *a ) 
-{ 
+{
+    MPIU_UNREFERENCED_ARG(a);
     return 0;
 }
 
@@ -79,6 +81,7 @@ int MPIDI_CH3_VC_Init( MPIDI_VC_t *vc ) {
     vc->ch.sendq_tail         = NULL;
     vc->ch.state              = MPIDI_CH3I_VC_STATE_UNCONNECTED;
     MPIDI_VC_InitSock( vc );
+    MPIU_DBG_MSG_P(CH3_CONNECT,TYPICAL,"vc=%p: Setting state (ch) to VC_STATE_UNCONNECTED (Initialization)", vc );
     return 0;
 }
 
@@ -88,4 +91,11 @@ int MPIDI_CH3_Connect_to_root(const char * port_name,
 			      MPIDI_VC_t ** new_vc)
 {
     return MPIDI_CH3I_Connect_to_root_sock( port_name, new_vc );
+}
+
+/* This routine is a hook for initializing information for a process
+   group before the MPIDI_CH3_VC_Init routine is called */
+int MPIDI_CH3_PG_Init( MPIDI_PG_t *pg )
+{
+    return MPI_SUCCESS;
 }

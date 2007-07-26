@@ -16,17 +16,18 @@
 #if defined( HAVE_FCNTL_H )
 #include <fcntl.h>
 #endif
-#if defined( HAVE_UNISTD_H )
-#include <unistd.h>
-#endif
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
+#endif
+#if defined( HAVE_UNISTD_H )
+#include <unistd.h>
 #endif
 #ifdef HAVE_IO_H
 #include <io.h>
 #endif
 
 #include "clog_const.h"
+#include "clog_mem.h"
 #include "clog_preamble.h"
 #include "clog_buffer.h"
 #include "clog_util.h"
@@ -35,8 +36,6 @@
 #if !defined( CLOG_NOMPI )
 #include "mpi.h"
 #endif
-
-#define CLOG_NULL_FILE       -5
 
 static int clog_buffer_minblocksize;
 
@@ -166,7 +165,8 @@ void CLOG_Buffer_env_init( CLOG_Buffer_t *buffer )
     If local_tmpfile_name is NULL, the local temporary filename will be chosen
     randomly
 */
-void CLOG_Buffer_init( CLOG_Buffer_t *buffer, const char *local_tmpfile_name )
+void CLOG_Buffer_init4write( CLOG_Buffer_t *buffer,
+                             const char    *local_tmpfile_name )
 {
     CLOG_Block_t  *block;
     int            num_buffered_blocks;
@@ -206,7 +206,7 @@ void CLOG_Buffer_init( CLOG_Buffer_t *buffer, const char *local_tmpfile_name )
     if ( strlen( buffer->local_filename ) == 0 ) {
         CLOG_Util_set_tmpfilename( buffer->local_filename );
         if ( strlen( buffer->local_filename ) == 0 ) {
-            fprintf( stderr, __FILE__":CLOG_Buffer_init() - \n"
+            fprintf( stderr, __FILE__":CLOG_Buffer_init4write() - \n"
                              "\t""CLOG_Util_set_tmpfilename() fails.\n" );
             fflush( stderr );
             CLOG_Util_abort( 1 );
@@ -251,7 +251,8 @@ void CLOG_Buffer_localIO_init4write( CLOG_Buffer_t *buffer )
        CLOG's user_stateID_count & user_solo_eventID_count are set with
        some typical values and they are set in CLOG_Preamble_env_init().
     */
-    CLOG_Preamble_write( buffer->preamble, CLOG_BOOL_FALSE, buffer->local_fd );
+    CLOG_Preamble_write( buffer->preamble, CLOG_BOOL_NULL, CLOG_BOOL_NULL,
+                         buffer->local_fd );
 }
 
 void CLOG_Buffer_localIO_write( CLOG_Buffer_t *buffer )
@@ -323,8 +324,34 @@ void CLOG_Buffer_advance_block( CLOG_Buffer_t *buffer )
 
 void CLOG_Buffer_localIO_flush( CLOG_Buffer_t *buffer )
 {
+#if !defined( CLOG_NOMPI )
+    int  ierr;
+#endif
+
     if ( buffer->local_fd != CLOG_NULL_FILE ) {
         CLOG_Buffer_localIO_write( buffer );
+#if !defined( CLOG_NOMPI )
+        /* Update CLOG_Preamble_t with commtable_fptr */
+        buffer->preamble->commtable_fptr
+        = (CLOG_int64_t) lseek( buffer->local_fd, 0, SEEK_CUR );
+        /*
+           Save CLOG_CommSet_t to file after local buffer has been flushed
+           localIO, so no byte swapping, i.e. consistent with
+           CLOG_Buffer_localIO_write().
+        */
+        ierr = CLOG_CommSet_write( buffer->commset, buffer->local_fd,
+                                   CLOG_BOOL_FALSE );
+        if ( ierr < 0 ) {
+            fprintf( stderr, __FILE__":CLOG_Buffer_localIO_flush() - \n"
+                             "\t""CLOG_CommSet_write() fails!\n" );
+            fflush( stderr );
+            return;
+        }
+        /* Save the updated CLOG_Preamble_t */
+        lseek( buffer->local_fd, 0, SEEK_SET );
+        CLOG_Preamble_write( buffer->preamble, CLOG_BOOL_NULL, CLOG_BOOL_NULL,
+                             buffer->local_fd );
+#endif
     }
 }
 
@@ -352,7 +379,7 @@ void CLOG_Buffer_init_timeshift( CLOG_Buffer_t *buffer )
 {
     const CLOG_CommIDs_t  *commIDs;
     /*
-       The default CLOG_Rec_Timeshift recird needs to be saved before
+       The default CLOG_Rec_Timeshift record needs to be saved before
        CLOG_Buffer_t.timeshift_fptr is updated to account for the possibility
        that CLOG_Buffer_t.curr_block may not have enough room for a
        CLOG_Rec_Timeshift record.  After saving the record, the location
@@ -491,6 +518,7 @@ void CLOG_Buffer_localIO_reinit4read( CLOG_Buffer_t *buffer )
 void CLOG_Buffer_localIO_read( CLOG_Buffer_t *buffer )
 {
     CLOG_Block_t  *block;
+    CLOG_int64_t   commtable_fptr, curr_fptr;
     int            ierr;
 
     /* If CLOG_Buffer_t.local_fd isn't initialized, nothing to read from disk */
@@ -503,28 +531,33 @@ void CLOG_Buffer_localIO_read( CLOG_Buffer_t *buffer )
     */
     buffer->num_used_blocks  = 0;
     ierr                     = buffer->block_size;
-    for ( block = buffer->head_block; block != NULL; block = block->next ) {
+    commtable_fptr           = buffer->preamble->commtable_fptr;
+    curr_fptr                = (CLOG_int64_t) lseek( buffer->local_fd,
+                                                     0, SEEK_CUR );
+    for ( block = buffer->head_block;
+          block != NULL && curr_fptr < commtable_fptr;
+          block = block->next ) {
         ierr = read( buffer->local_fd, block->data->head, buffer->block_size );
-        if ( ierr > 0 ) {
-            if ( ierr != buffer->block_size ) {
+        if ( ierr != buffer->block_size ) {
+            if ( ierr > 0 ) {
                 fprintf( stderr, __FILE__":CLOG_Buffer_localIO_read() - \n"
-                                 "\t""read(%s) cannot fetch the whole block "
-                                 "in one scoop.\n", buffer->local_filename );
-                fflush( stderr );
-                CLOG_Util_abort( 1 );
+                                 "\t""read() fetches only %d/%d bytes "
+                                 "at block number %d of file %s.\n", ierr,
+                                  buffer->block_size,
+                                  buffer->num_used_blocks,
+                                  buffer->local_filename );
             }
-        }
-        else { /* if ierr <= 0 */ 
-            if ( ierr < 0 ) {
+            else { /* if ierr <= 0 */ 
                 fprintf( stderr, __FILE__":CLOG_Buffer_localIO_read() - \n"
-                                 "\t""read(%s) fails with an error=%d.\n",
-                                 buffer->local_filename, ierr );
-                fflush( stderr );
-                CLOG_Util_abort( 1 );
+                                 "\t""read() returns an errorcode=%d "
+                                 "at block number %d of file %s\n", ierr,
+                                 buffer->num_used_blocks,
+                                 buffer->local_filename );
             }
-            else /* if ierr == 0 */
-                break;
+            fflush( stderr );
+            CLOG_Util_abort( 1 );
         }
+        curr_fptr += buffer->block_size;
         buffer->num_used_blocks++;
     }
 
@@ -550,20 +583,10 @@ void CLOG_Buffer_localIO_finalize( CLOG_Buffer_t *buffer )
 /*
     clog_buffer_minblocksize is defined in CLOG_Buffer_init()
 */
-int CLOG_Buffer_reserved_block_size( unsigned int rectype )
+static int CLOG_Buffer_reserved_block_size( CLOG_int32_t rectype )
 {
-    if ( rectype < CLOG_REC_NUM )
-        return CLOG_Rec_size( rectype ) + clog_buffer_minblocksize;
-    else {
-        fprintf( stderr, __FILE__":CLOG_Buffer_reserved_block_size() - Warning!"
-                         "\t""Unknown record type %d\n", rectype );
-        fflush( stderr );
-        /*
-           size to guarantee enough room in each block for the longest record
-           + trailer(endblock rec) + internal record(CLOG_Buffer_write2disk)
-        */
-        return CLOG_Rec_size_max() +  clog_buffer_minblocksize;
-    }
+    /* Have CLOG_Rec_size() do the error checking */
+    return CLOG_Rec_size( rectype ) + clog_buffer_minblocksize;
 }
 
 

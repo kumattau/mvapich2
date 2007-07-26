@@ -17,6 +17,9 @@ srcdir = @srcdir@
 
 all-redirect: design.pdf
 
+clean:
+	-rm -f *.toc *.out *.dvi user.ps user.pdf *.aux *.blg *.bbl *.log
+
 mandoc:
 
 htmldoc:

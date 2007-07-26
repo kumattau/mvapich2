@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: group.h,v 1.1.1.1 2006/01/18 21:09:43 huangwei Exp $
+/*  $Id: group.h,v 1.2 2002/09/16 12:37:53 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.

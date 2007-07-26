@@ -53,14 +53,6 @@ static MPI_Datatype mpi_dtypes[] = {
     MPI_LB,
     MPI_UB,
     MPI_2INT,
-#if 0
-    /* no longer builtins */
-    MPI_FLOAT_INT,
-    MPI_DOUBLE_INT,
-    MPI_LONG_INT,
-    MPI_SHORT_INT,
-    MPI_LONG_DOUBLE_INT,
-#endif
 /* Fortran types */
     MPI_COMPLEX,
     MPI_DOUBLE_COMPLEX,
@@ -125,8 +117,6 @@ int MPIR_Datatype_init(void)
     int i;
     MPIU_Handle_common *ptr;
 
-    MPIU_Handle_obj_alloc_start(&MPID_Datatype_mem);
-
     MPIU_Assert(MPID_Datatype_mem.initialized == 0);
     MPIU_Assert(MPID_DATATYPE_PREALLOC >= 5);
 
@@ -143,10 +133,20 @@ int MPIR_Datatype_init(void)
     MPID_Type_create_pairtype(mpi_pairtypes[0], (MPID_Datatype *) ptr);
 
     for (i=1; mpi_pairtypes[i] != (MPI_Datatype) -1; i++) {
+	/* types based on 'long long' and 'long double', may be disabled at
+	   configure time, and their values set to MPI_DATATYPE_NULL.  skip any
+	   such types. */
+	if (mpi_pairtypes[i] == MPI_DATATYPE_NULL) continue;
+
+	/* XXX: this allocation strategy isn't right if one or more of the
+	   pairtypes is MPI_DATATYPE_NULL.  in fact, the assert below will
+	   fail if any type other than the las in the list is equal to
+	   MPI_DATATYPE_NULL.  obviously, this should be fixed, but I need
+	   to talk to Rob R. first. -- BRT */
 	ptr = MPID_Datatype_mem.avail;
 	MPID_Datatype_mem.avail = ptr->next;
 	ptr->next = 0;
-	
+
 	MPIU_Assert(ptr);
 	MPIU_Assert((void *) ptr ==
 		    (void *) (MPID_Datatype_direct + HANDLE_INDEX(mpi_pairtypes[i])));
@@ -156,7 +156,8 @@ int MPIR_Datatype_init(void)
 
     MPIU_Handle_obj_alloc_complete(&MPID_Datatype_mem, 1);
 
-    MPIR_Add_finalize(MPIR_Datatype_finalize, 0, 8);
+    MPIR_Add_finalize(MPIR_Datatype_finalize, 0, 
+		      MPIR_FINALIZE_CALLBACK_PRIO-1);
 
     return MPI_SUCCESS;
 }
@@ -176,6 +177,10 @@ static int MPIR_Datatype_finalize(void *dummy)
     return 0;
 }
 
+/* Called ONLY from MPIR_Datatype_init_names (type_get_name.c).  
+   That routine calls it from within a single-init section to 
+   ensure thread-safety. */
+
 int MPIR_Datatype_builtin_fillin(void)
 {
     static const char FCNAME[] = "MPIR_Datatype_builtin_fillin";
@@ -186,31 +191,30 @@ int MPIR_Datatype_builtin_fillin(void)
     static int is_init = 0;
     char error_msg[1024];
 
-    /* --BEGIN ERROR HANDLING-- */
+    /* FIXME: This is actually an error, since this routine 
+       should only be called once */
     if (is_init)
     {
 	return MPI_SUCCESS;
     }
-    /* --END ERROR HANDLING-- */
 
-    {
-	MPID_Common_thread_lock();
-	if (!is_init) { 
-	    for (i=0; i<MPID_DATATYPE_N_BUILTIN; i++) {
-		/* Compute the index from the value of the handle */
-		d = mpi_dtypes[i];
-		if (d == -1) {
-		    /* At the end of mpi_dtypes */
-		    break;
-		}
-		/* Some of the size-specific types may be null,
-		   so skip that case */
-		if (d == MPI_DATATYPE_NULL) continue;
-
-		MPID_Datatype_get_ptr(d,dptr);
-		/* --BEGIN ERROR HANDLING-- */
-		if (dptr < MPID_Datatype_builtin || 
-		    dptr > MPID_Datatype_builtin + MPID_DATATYPE_N_BUILTIN)
+    if (!is_init) { 
+	for (i=0; i<MPID_DATATYPE_N_BUILTIN; i++) {
+	    /* Compute the index from the value of the handle */
+	    d = mpi_dtypes[i];
+	    if (d == -1) {
+		/* At the end of mpi_dtypes */
+		break;
+	    }
+	    /* Some of the size-specific types may be null, as might be types
+	       based on 'long long' and 'long double' if those types were
+	       disabled at configure time.  skip those cases. */
+	    if (d == MPI_DATATYPE_NULL) continue;
+	    
+	    MPID_Datatype_get_ptr(d,dptr);
+	    /* --BEGIN ERROR HANDLING-- */
+	    if (dptr < MPID_Datatype_builtin || 
+		dptr > MPID_Datatype_builtin + MPID_DATATYPE_N_BUILTIN)
 		{
 		    MPIU_Snprintf(error_msg, 1024,
 				  "%dth builtin datatype handle references invalid memory",
@@ -222,25 +226,25 @@ int MPIR_Datatype_builtin_fillin(void)
 						     error_msg);
 		    return mpi_errno;
 		}
-		/* --END ERROR HANDLING-- */
-
-		/* dptr will point into MPID_Datatype_builtin */
-		dptr->handle	   = d;
-		dptr->is_permanent = 1;
-		dptr->is_contig	   = 1;
-		MPIU_Object_set_ref( dptr, 1 );
-		MPID_Datatype_get_size_macro(mpi_dtypes[i], dptr->size);
-		dptr->extent	   = dptr->size;
-		dptr->ub	   = dptr->size;
-		dptr->true_ub	   = dptr->size;
-		dptr->contents     = NULL; /* should never get referenced? */
-	    }
-	    /* --BEGIN ERROR HANDLING-- */
-	    if (d != -1 && mpi_dtypes[i] != -1) {
-		/* We did not hit the end-of-list */
-		/*MPIU_Internal_error_printf( "Did not initialize all of the predefined datatypes (only did first %d)\n", i-1 );*/
-		MPIU_Snprintf(error_msg, 1024,
-			      "Did not initialize all of the predefined datatypes (only did first %d)\n",
+	    /* --END ERROR HANDLING-- */
+	    
+	    /* dptr will point into MPID_Datatype_builtin */
+	    dptr->handle	   = d;
+	    dptr->is_permanent = 1;
+	    dptr->is_contig	   = 1;
+	    MPIU_Object_set_ref( dptr, 1 );
+	    MPID_Datatype_get_size_macro(mpi_dtypes[i], dptr->size);
+	    dptr->extent	   = dptr->size;
+	    dptr->ub	   = dptr->size;
+	    dptr->true_ub	   = dptr->size;
+	    dptr->contents     = NULL; /* should never get referenced? */
+	}
+	/* --BEGIN ERROR HANDLING-- */
+	if (d != -1 && mpi_dtypes[i] != -1) {
+	    /* We did not hit the end-of-list */
+	    /*MPIU_Internal_error_printf( "Did not initialize all of the predefined datatypes (only did first %d)\n", i-1 );*/
+	    MPIU_Snprintf(error_msg, 1024,
+			  "Did not initialize all of the predefined datatypes (only did first %d)\n",
 			      i-1);
 
 		mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL,
@@ -248,11 +252,9 @@ int MPIR_Datatype_builtin_fillin(void)
 						 MPI_ERR_INTERN, "**fail",
 						 "**fail %s", error_msg);
 		return mpi_errno;
-	    }
-	    /* --END ERROR HANDLING-- */
-	    is_init = 1;
 	}
-	MPID_Common_thread_unlock();
+	/* --END ERROR HANDLING-- */
+	is_init = 1;
     }
     return mpi_errno;
 }

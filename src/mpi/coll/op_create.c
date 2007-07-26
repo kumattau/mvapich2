@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Op_create
 #define MPI_Op_create PMPI_Op_create
 
 #ifndef MPID_OP_PREALLOC 
@@ -91,7 +92,7 @@ int MPI_Op_create(MPI_User_function *function, int commute, MPI_Op *op)
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("coll");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_OP_CREATE);
 
     /* ... body of routine ...  */
@@ -109,14 +110,15 @@ int MPI_Op_create(MPI_User_function *function, int commute, MPI_Op *op)
     *op	             = op_ptr->handle;
     op_ptr->language = MPID_LANG_C;
     op_ptr->kind     = commute ? MPID_OP_USER : MPID_OP_USER_NONCOMMUTE;
-    op_ptr->function.c_function = (void (*)(const void *, void *, const int *, const MPI_Datatype *))function;
+    op_ptr->function.c_function = (void (*)(const void *, void *, 
+				   const int *, const MPI_Datatype *))function;
     MPIU_Object_set_ref(op_ptr,1);
     
     /* ... end of body of routine ... */
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_OP_CREATE);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("coll");
     return mpi_errno;
     
   fn_fail:

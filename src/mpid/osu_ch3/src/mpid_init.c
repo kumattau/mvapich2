@@ -18,15 +18,22 @@
 char *MPIU_DBG_parent_str = "?";
 #endif
 
+#ifdef CKPT
+pthread_mutex_t MVAPICH2_sync_ckpt_lock;
+pthread_cond_t MVAPICH2_sync_ckpt_cond;
+#endif
+
 /* FIXME: the PMI init function should ONLY do the PMI operations, not the 
    process group or bc operations.  These should be in a separate routine */
 #include "pmi.h"
-static int InitPG( int *has_args, int *has_env, int *has_parent, 
+static int InitPG( int *argc_p, char ***argv_p,
+		   int *has_args, int *has_env, int *has_parent, 
 		   int *pg_rank_p, MPIDI_PG_t **pg_p );
 static int MPIDI_CH3I_PG_Compare_ids(void * id1, void * id2);
 static int MPIDI_CH3I_PG_Destroy(MPIDI_PG_t * pg );
 
 MPIDI_Process_t MPIDI_Process = { NULL };
+MPIDI_CH3U_SRBuf_element_t * MPIDI_CH3U_SRBuf_pool = NULL;
 
 #undef FUNCNAME
 #define FUNCNAME MPID_Init
@@ -37,19 +44,17 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 {
     int mpi_errno = MPI_SUCCESS;
     int has_parent;
-    MPIDI_PG_t * pg;
-    int pg_rank;
+    MPIDI_PG_t * pg=NULL;
+    int pg_rank=-1;
     int pg_size;
     MPID_Comm * comm;
     int p;
+    char *value;
+    int blocking_val;
+
     MPIDI_STATE_DECL(MPID_STATE_MPID_INIT);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_INIT);
-
-    /* FIXME: These should not be unreferenced (they should be used!) */
-    MPIU_UNREFERENCED_ARG(argc);
-    MPIU_UNREFERENCED_ARG(argv);
-    MPIU_UNREFERENCED_ARG(requested);
 
     /*
      * Initialize the device's process information structure
@@ -68,7 +73,11 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     /*
      * Perform channel-independent PMI initialization
      */
-    mpi_errno = InitPG( has_args, has_env, &has_parent, &pg_rank, &pg );
+    mpi_errno = InitPG( argc, argv, 
+			has_args, has_env, &has_parent, &pg_rank, &pg );
+    if (mpi_errno) {
+	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**ch3|ch3_init");
+    }
 
     /*
      * Let the channel perform any necessary initialization
@@ -76,18 +85,20 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
      * the basic information about the job has been extracted from PMI (e.g.,
      * the size and rank of this process, and the process group id)
      */
-    mpi_errno = MPIDI_CH3_Init(has_parent, pg, pg_rank); 
+    mpi_errno = MPIDI_CH3_Init(has_parent, pg, pg_rank);
     if (mpi_errno != MPI_SUCCESS) {
 	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**ch3|ch3_init");
     }
 
     /* FIXME: Why are pg_size and pg_rank handled differently? */
     pg_size = MPIDI_PG_Get_size(pg);
-    MPIDI_Process.my_pg = pg;  /* brad : this is rework for shared memories because they need this set earlier
-                                *         for getting the business card
+    MPIDI_Process.my_pg = pg;  /* brad : this is rework for shared memories 
+				* because they need this set earlier
+                                * for getting the business card
                                 */
     MPIDI_Process.my_pg_rank = pg_rank;
-    MPIDI_PG_Add_ref(pg);
+    /* FIXME: Why do we add a ref to pg here? */
+    MPIDI_PG_add_ref(pg);
 
     /*
      * Initialize the MPI_COMM_WORLD object
@@ -119,7 +130,8 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 	MPID_VCR_Dup(&pg->vct[p], &comm->vcr[p]);
     }
 
-    
+    MPID_Dev_comm_create_hook (comm);
+
     /*
      * Initialize the MPI_COMM_SELF object
      */
@@ -202,12 +214,32 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
      */
     if (provided != NULL)
     {
-	/* FIXME: It should be possible to select a thread-safety level 
-	   lower than the configure level, avoiding the locks with a
-	   simple if test */
-	*provided = MPICH_THREAD_LEVEL;
+        /* This must be min(requested,MPICH_THREAD_LEVEL) if runtime
+           control of thread level is available */
+        *provided = (MPICH_THREAD_LEVEL < requested) ? 
+            MPICH_THREAD_LEVEL : requested;
+
+        /* If user has enabled blocking mode progress,
+         * then we cannot support MPI_THREAD_MULTIPLE */
+        if ((value = getenv("MV2_USE_BLOCKING")) != NULL) {
+            blocking_val = !!atoi(value);
+
+            if(blocking_val) {
+                *provided = (MPICH_THREAD_LEVEL < requested) ?
+                    MPICH_THREAD_LEVEL : MPI_THREAD_SERIALIZED;
+            }
+        }
     }
 
+#if defined(CKPT) && defined(SYNC_CKPT)
+    {
+        MPIDI_Process.use_sync_ckpt = 1;
+        /*Initialize conditional variable*/
+        pthread_mutex_init(&MVAPICH2_sync_ckpt_lock, NULL);
+        pthread_cond_init(&MVAPICH2_sync_ckpt_cond, NULL);
+    }
+#endif    
+    
   fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_INIT);
     return mpi_errno;
@@ -224,12 +256,13 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
  * process group structures.
  * 
  */
-static int InitPG( int *has_args, int *has_env, int *has_parent, 
+static int InitPG( int *argc, char ***argv, 
+		   int *has_args, int *has_env, int *has_parent, 
 		   int *pg_rank_p, MPIDI_PG_t **pg_p )
 {
     int pmi_errno;
     int mpi_errno = MPI_SUCCESS;
-    int pg_rank, pg_size, appnum, pg_id_sz, kvs_name_sz;
+    int pg_rank, pg_size, appnum, pg_id_sz;
     int usePMI=1;
     char *pg_id;
     MPIDI_PG_t *pg = 0;
@@ -237,6 +270,7 @@ static int InitPG( int *has_args, int *has_env, int *has_parent,
     /* See if the channel will provide the PMI values.  The channel
      is responsible for defining HAVE_CH3_PRE_INIT and providing 
     the MPIDI_CH3_Pre_init function.  */
+    /* FIXME: Document this */
 #ifdef HAVE_CH3_PRE_INIT
     {
 	int setvals;
@@ -292,16 +326,6 @@ static int InitPG( int *has_args, int *has_env, int *has_parent,
 	    MPIR_Process.attrs.appnum = appnum;
 	}
 	
-	/* FIXME: Who does/does not use this? */
-#ifdef MPIDI_DEV_IMPLEMENTS_KVS
-	/* Initialize the CH3 device KVS cache interface */
-	/* KVS is used for connection handling; thus, this should go into 
-	   code for that purpose, not here */
-	/* Do this after PMI_Init because MPIDI_KVS uses PMI (The init 
-	   funcion may or may not use PMI)*/
-	MPIDI_KVS_Init();
-#endif
-
 	/* Now, initialize the process group information with PMI calls */
 	/*
 	 * Get the process group id
@@ -318,7 +342,10 @@ static int InitPG( int *has_args, int *has_env, int *has_parent,
 	if (pg_id == NULL) {
 	    MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**nomem");
 	}
-    
+
+	/* Note in the singleton init case, the pg_id is a dummy.
+	   We'll want to replace this value if we join an 
+	   Process manager */
 	pmi_errno = PMI_Get_id(pg_id, pg_id_sz);
 	if (pmi_errno != PMI_SUCCESS) {
 	    MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**pmi_get_id",
@@ -337,42 +364,25 @@ static int InitPG( int *has_args, int *has_env, int *has_parent,
     /*
      * Initialize the process group tracking subsystem
      */
-    mpi_errno = MPIDI_PG_Init(MPIDI_CH3I_PG_Compare_ids, MPIDI_CH3I_PG_Destroy);
+    mpi_errno = MPIDI_PG_Init(argc, argv, 
+			     MPIDI_CH3I_PG_Compare_ids, MPIDI_CH3I_PG_Destroy);
     if (mpi_errno != MPI_SUCCESS) {
 	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**dev|pg_init");
     }
 
     /*
-     * Create a new structure to track the process group
+     * Create a new structure to track the process group for our MPI_COMM_WORLD
      */
     mpi_errno = MPIDI_PG_Create(pg_size, pg_id, &pg);
     if (mpi_errno != MPI_SUCCESS) {
 	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**dev|pg_create");
     }
-    pg->ch.kvs_name = NULL;
 
+    /* FIXME: We can allow the channels to tell the PG how to get
+       connection information by passing the pg to the channel init routine */
     if (usePMI) {
-	/*
-	 * Get the name of the key-value space (KVS)
-	 */
-	pmi_errno = PMI_KVS_Get_name_length_max(&kvs_name_sz);
-	if (pmi_errno != PMI_SUCCESS) {
-	    MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, 
-				 "**pmi_kvs_get_name_length_max", 
-			 "**pmi_kvs_get_name_length_max %d", pmi_errno);
-	}
-	
-	pg->ch.kvs_name = MPIU_Malloc(kvs_name_sz + 1);
-	if (pg->ch.kvs_name == NULL) {
-	    MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**nomem");
-	}
-	
-	pmi_errno = PMI_KVS_Get_my_name(pg->ch.kvs_name, kvs_name_sz);
-	if (pmi_errno != PMI_SUCCESS) {
-	    MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, 
-				 "**pmi_kvs_get_my_name", 
-				 "**pmi_kvs_get_my_name %d", pmi_errno);
-	}
+	/* Tell the process group how to get connection information */
+	MPIDI_PG_InitConnKVS( pg );
     }
 
     /* FIXME: Who is this for and where does it belong? */
@@ -394,43 +404,24 @@ static int InitPG( int *has_args, int *has_env, int *has_parent,
     if (pg) {
 	MPIDI_PG_Destroy( pg );
     }
-    /* --END ERROR HANDLING-- */
     goto fn_exit;
+    /* --END ERROR HANDLING-- */
 }
 
 /*
- * Initialize the business card.  This creates only the key part of the
- * business card; the value is later set by the channel.
- * 
- * FIXME: The code to set the business card should be more channel-specific, 
- * and not in this routine (and it should be performed within the channel 
- * init)
+ * Create the storage for the business card. 
+ *
+ * The routine MPIDI_CH3I_BCFree should be called with the original 
+ * value *bc_val_p .  Note that the routines that set the value 
+ * of the businesscard return a pointer to the first free location,
+ * so you need to remember the original location in order to free 
+ * it later.
+ *
  */
-int MPIDI_CH3I_BCInit( int pg_rank, 
-		       char **publish_bc_p, char **bc_key_p,
-		       char **bc_val_p, int *val_max_sz_p )
+int MPIDI_CH3I_BCInit( char **bc_val_p, int *val_max_sz_p )
 {
     int pmi_errno;
     int mpi_errno = MPI_SUCCESS;
-    int key_max_sz;
-
-    /*
-     * Publish the contact information (a.k.a. business card) for this 
-     * process into the PMI keyval space associated with this process group.
-     */
-    pmi_errno = PMI_KVS_Get_key_length_max(&key_max_sz);
-    if (pmi_errno != PMI_SUCCESS)
-    {
-	MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,
-			     "**pmi_kvs_get_key_length_max", 
-			     "**pmi_kvs_get_key_length_max %d", pmi_errno);
-    }
-
-    /* This memroy is returned by this routine */
-    *bc_key_p = MPIU_Malloc(key_max_sz);
-    if (*bc_key_p == NULL) {
-	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**nomem");
-    }
 
     pmi_errno = PMI_KVS_Get_value_length_max(val_max_sz_p);
     if (pmi_errno != PMI_SUCCESS)
@@ -445,20 +436,10 @@ int MPIDI_CH3I_BCInit( int pg_rank,
     if (*bc_val_p == NULL) {
 	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**nomem");
     }
-    *publish_bc_p = *bc_val_p;  /* need to keep a pointer to the front of the 
-				   front of this buffer to publish */
+    
+    /* Add a null to simplify looking at the bc */
+    **bc_val_p = 0;
 
-    /* Create the bc key but not the value */ 
-    mpi_errno = MPIU_Snprintf(*bc_key_p, key_max_sz, "P%d-businesscard", 
-			      pg_rank);
-    if (mpi_errno < 0 || mpi_errno > key_max_sz)
-    {
-	MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**snprintf",
-			     "**snprintf %d", mpi_errno);
-    }
-    mpi_errno = MPI_SUCCESS;
-    
-    
   fn_exit:
     return mpi_errno;
 
@@ -466,6 +447,20 @@ int MPIDI_CH3I_BCInit( int pg_rank,
     goto fn_exit;
 }
 
+/* Free the business card.  This routine should be called once the business
+   card is published. */
+int MPIDI_CH3I_BCFree( char *bc_val )
+{
+    /* */
+    if (bc_val) {
+	MPIU_Free( bc_val );
+    }
+    
+    return 0;
+}
+
+/* FIXME: The PG code should supply these, since it knows how the 
+   pg_ids and other data are represented */
 static int MPIDI_CH3I_PG_Compare_ids(void * id1, void * id2)
 {
     return (strcmp((char *) id1, (char *) id2) == 0) ? TRUE : FALSE;
@@ -474,11 +469,6 @@ static int MPIDI_CH3I_PG_Compare_ids(void * id1, void * id2)
 
 static int MPIDI_CH3I_PG_Destroy(MPIDI_PG_t * pg)
 {
-    if (pg->ch.kvs_name != NULL)
-    {
-	MPIU_Free(pg->ch.kvs_name);
-    }
-
     if (pg->id != NULL)
     { 
 	MPIU_Free(pg->id);
@@ -486,3 +476,26 @@ static int MPIDI_CH3I_PG_Destroy(MPIDI_PG_t * pg)
     
     return MPI_SUCCESS;
 }
+
+#if defined(CKPT) && defined(SYNC_CKPT)
+/*Synchronous checkpoint interface*/
+int MVAPICH2_Sync_Checkpoint()
+{
+    MPID_Comm * comm_ptr;
+    if (MPIDI_Process.use_sync_ckpt == 0) /*Not enabled*/
+        return 0;
+
+    MPID_Comm_get_ptr (MPI_COMM_WORLD, comm_ptr);
+    MPIR_Barrier(comm_ptr);
+
+    if (MPIDI_Process.my_pg_rank == 0)
+    {/*Notify console to take checkpoint*/
+        MPIDI_CH3I_CR_Sync_ckpt_request();
+    }
+
+    /*Now wait for the lower layer to indicate that the checkpoint finished*/
+    pthread_mutex_lock(&MVAPICH2_sync_ckpt_lock);
+    pthread_cond_wait(&MVAPICH2_sync_ckpt_cond,&MVAPICH2_sync_ckpt_lock);
+    pthread_mutex_unlock(&MVAPICH2_sync_ckpt_lock);
+}
+#endif

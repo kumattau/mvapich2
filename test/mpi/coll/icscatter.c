@@ -15,24 +15,27 @@ int main( int argc, char *argv[] )
 {
     int errs = 0, err;
     int *buf = 0;
-    int leftGroup, i, count, rank;
+    int leftGroup, i, count, rank, size, rsize;
     MPI_Comm comm;
     MPI_Datatype datatype;
 
     MTest_Init( &argc, &argv );
 
     datatype = MPI_INT;
+    /* Get an intercommunicator */
     while (MTestGetIntercomm( &comm, &leftGroup, 4 )) {
 	if (comm == MPI_COMM_NULL) continue;
+	MPI_Comm_remote_size( comm, &rsize );
+	MPI_Comm_rank( comm, &rank );
+	MPI_Comm_size( comm, &size );
+
+	/* To improve reporting of problems about operations, we
+	   change the error handler to errors return */
+	MPI_Comm_set_errhandler( comm, MPI_ERRORS_RETURN );
+
 	for (count = 1; count < 65000; count = 2 * count) {
-	    /* Get an intercommunicator */
 	    buf = 0;
 	    if (leftGroup) {
-		int rsize;
-
-		MPI_Comm_remote_size( comm, &rsize );
-		MPI_Comm_rank( comm, &rank );
-
 		buf = (int *)malloc( count * rsize * sizeof(int) );
 		if (rank == 0) {
 		    for (i=0; i<count*rsize; i++) buf[i] = i;
@@ -62,11 +65,6 @@ int main( int argc, char *argv[] )
 		}
 	    }
 	    else {
-		int rank, size;
-
-		MPI_Comm_rank( comm, &rank );
-		MPI_Comm_size( comm, &size );
-
 		buf = (int *)malloc( count * sizeof(int) );
 		/* In the right group */
 		for (i=0; i<count; i++) buf[i] = -1;

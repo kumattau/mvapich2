@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Graph_map
 #define MPI_Graph_map PMPI_Graph_map
 int MPIR_Graph_map( const MPID_Comm *comm_ptr, int nnodes, const int index[], 
 		    const int edges[], int *newrank )
@@ -75,7 +76,6 @@ int MPI_Graph_map(MPI_Comm comm_old, int nnodes, int *index, int *edges,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_GRAPH_MAP);
     
     /* Validate parameters, especially handles needing to be converted */
@@ -131,7 +131,6 @@ int MPI_Graph_map(MPI_Comm comm_old, int nnodes, int *index, int *edges,
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_GRAPH_MAP);
-    MPID_CS_EXIT();
     return mpi_errno;
 
   fn_fail:

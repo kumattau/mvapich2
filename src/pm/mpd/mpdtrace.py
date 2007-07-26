@@ -13,7 +13,7 @@ The -l (long) option shows full hostnames and listening ports and ifhn
 from time import ctime
 __author__ = "Ralph Butler and Rusty Lusk"
 __date__ = ctime()
-__version__ = "$Revision: 1.1.1.1 $"
+__version__ = "$Revision: 1.18 $"
 __credits__ = ""
 
 import sys, os, signal

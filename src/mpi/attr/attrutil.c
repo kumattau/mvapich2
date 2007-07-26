@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: attrutil.c,v 1.1.1.1 2006/01/18 21:09:42 huangwei Exp $
+/*  $Id: attrutil.c,v 1.43 2006/10/14 20:53:43 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -60,6 +60,9 @@ int MPIR_Call_attr_delete( int handle, MPID_Attribute *attr_p )
     MPID_Delete_function delfn;
     MPID_Lang_t          language;
     int                  mpi_errno=0;
+    MPIU_THREADPRIV_DECL;
+
+    MPIU_THREADPRIV_GET;
 
     MPIR_Nest_incr();
     
@@ -91,12 +94,12 @@ int MPIR_Call_attr_delete( int handle, MPID_Attribute *attr_p )
 						attr_p->value,
 						attr_p->keyval->extra_state, 
 				(void (*)(void)) delfn.C_DeleteFunction );
-	    /* --BEGIN ERROR HANDLING-- */
-	    if (mpi_errno != 0)
-	    {
-		mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**user", "**userdel %d", mpi_errno);
+	    if (mpi_errno != 0) {
+		mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, 
+                              MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, 
+			      MPI_ERR_OTHER, "**user", "**userdel %d", 
+                              mpi_errno);
 	    }
-	    /* --END ERROR HANDLING-- */
 	}
 	break;
 #endif
@@ -122,12 +125,12 @@ int MPIR_Call_attr_delete( int handle, MPID_Attribute *attr_p )
 					  fextra, &ierr );
 		if (ierr) mpi_errno = (int)ierr;
 		else      mpi_errno = MPI_SUCCESS;
-		/* --BEGIN ERROR HANDLING-- */
-		if (mpi_errno != 0)
-		{
-		    mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**user", "**userdel %d", mpi_errno);
+		if (mpi_errno != 0) {
+		    mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, 
+				   MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, 
+                                   MPI_ERR_OTHER, "**user", "**userdel %d", 
+				   mpi_errno);
 		}
-		/* --END ERROR HANDLING-- */
 	    }
 	}
 	break;
@@ -144,12 +147,12 @@ int MPIR_Call_attr_delete( int handle, MPID_Attribute *attr_p )
 					  fextra, &ierr );
 		if (ierr) mpi_errno = (int)ierr;
 		else      mpi_errno = MPI_SUCCESS;
-		/* --BEGIN ERROR HANDLING-- */
-		if (mpi_errno != 0)
-		{
-		    mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**user", "**userdel %d", mpi_errno);
+		if (mpi_errno != 0) {
+		    mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, 
+                                  MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, 
+                                  MPI_ERR_OTHER, "**user", "**userdel %d", 
+                                  mpi_errno);
 		}
-		/* --END ERROR HANDLING-- */
 	    }
 	}
 	break;
@@ -171,7 +174,9 @@ int MPIR_Attr_dup_list( int handle, MPID_Attribute *old_attrs,
     void               *new_value = NULL;
     int                flag;
     int                mpi_errno = 0;
+    MPIU_THREADPRIV_DECL;
 
+    MPIU_THREADPRIV_GET;
     MPIR_Nest_incr();
     
     p = old_attrs;
@@ -297,7 +302,7 @@ int MPIR_Attr_dup_list( int handle, MPID_Attribute *old_attrs,
 	    new_p->keyval        = p->keyval;
 	    *(next_new_attr_ptr) = new_p;
 	    /* Remember that we need this keyval */
-	    MPIU_Object_add_ref(p->keyval);
+	    MPIR_Keyval_add_ref(p->keyval);
 	    
 	    new_p->pre_sentinal  = 0;
 	    new_p->value 	 = new_value;

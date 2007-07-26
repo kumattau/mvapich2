@@ -45,6 +45,7 @@ $total_count = 0;        # Number of programs tested
 $np_default = 2;         # Default number of processes to use
 $np_max     = -1;        # Maximum number of processes to use (overrides any
                          # value in the test list files.  -1 is Infinity
+$defaultTimeLimit = 180; # default timeout
 
 $srcdir = ".";           # Used to set the source dir for testlist files
 
@@ -52,6 +53,8 @@ $curdir = ".";           # used to track the relative current directory
 
 # Output forms
 $xmloutput = 0;          # Set to true to get xml output (also specify file)
+$closeXMLOutput = 1;     # Set to false to leave XML output file open to
+                         # accept additional data
 $verbose = 0;            # Set to true to get more output
 $newline = "\r\n";       # Set to \r\n for Windows-friendly, \n for Unix only
 
@@ -70,6 +73,7 @@ $clean_pgms      = 1;
 #   RUNTESTS_VERBOSE  (an alias for VERBOSE in case you want to 
 #                      reserve VERBOSE)
 #   MPITEST_STOPTEST
+#   MPITEST_TIMEOUT
 #---------------------------------------------------------------------------
 if ( defined($ENV{"VERBOSE"}) || defined($ENV{"RUNTESTS_VERBOSE"}) ) {
     $verbose = 1;
@@ -80,6 +84,15 @@ if (defined($ENV{"MPITEST_STOPTEST"})) {
 else {
     $stopfile = `pwd` . "/.stoptest";
     $stopfile =~ s/\r*\n*//g;    # Remove any newlines (from pwd)
+}
+
+if (defined($ENV{"MPITEST_TIMEOUT"})) {
+    $defaultTimeLimit = $ENV{"MPITEST_TIMEOUT"};
+}
+ 
+# Define this to leave the XML output file open to receive additional data
+if (defined($ENV{'NOXMLCLOSE'}) && $ENV{'NOXMLCLOSE'} eq 'YES') {
+    $closeXMLOutput = 0;
 }
 
 
@@ -124,17 +137,20 @@ foreach $_ (@ARGV) {
 	$date =~ s/\r?\n//;
 	# MPISOURCE can be used to describe the source of MPI for this
 	# test.
-	print XMLOUT "<?xml version='1.0' ?>
-<?xml-stylesheet href=\"TestResults.xsl\" type=\"text/xsl\" ?>
-<MPITESTRESULTS>
-<DATE>$date</DATE>
-<MPISOURCE></MPISOURCE>\n";
+	print XMLOUT "<?xml version='1.0' ?>$newline";
+	print XMLOUT "<?xml-stylesheet href=\"TestResults.xsl\" type=\"text/xsl\" ?>$newline";
+	print XMLOUT "<MPITESTRESULTS>$newline";
+	print XMLOUT "<DATE>$date</DATE>$newline";
+	print XMLOUT "<MPISOURCE>@MPI_SOURCE@</MPISOURCE>$newline";
+    }
+    elsif (/-noxmlclose/) {
+	$closeXMLOutput = 0;
     }
     else {
 	print STDERR "Unrecognized argument $_\n";
 	print STDERR "runtests [-tests=testfile] [-np=nprocesses] \
         [-maxnp=max-nprocesses] [-srcdir=location-of-tests] \
-        [-xmlfile=filename ] \
+        [-xmlfile=filename ] [-noxmlclose] \
         [-verbose] [-debug]\n";
     }
 }
@@ -151,8 +167,8 @@ else {
     &RunList( $listfiles );
 }
 
-if ($xmloutput) { 
-    print XMLOUT "</MPITESTRESULTS>\n";
+if ($xmloutput && $closeXMLOutput) { 
+    print XMLOUT "</MPITESTRESULTS>$newline";
     close XMLOUT; 
 }
 
@@ -200,7 +216,7 @@ sub ProcessDir {
 # ---------------------------------------------------------------------------
 # Run the programs listed in the file given as the argument. 
 # This file describes the tests in the format
-#  programname number-of-processes [ routine to test success [ setup routine ] ]
+#  programname number-of-processes [ key=value ... ]
 # If the second value is not given, the default value is used.
 # 
 sub RunList { 
@@ -208,14 +224,14 @@ sub RunList {
     my $listfile = $_[0];
     my $ResultTest = "";
     my $InitForRun = "";
+    my $listfileSource = $listfile;
 
     print "Looking in $curdir/$listfile\n" if $debug;
     if (! -s "$listfile" && -s "$srcdir/$curdir/$listfile" ) {
-	open( $LIST, "<$srcdir/$curdir/$listfile" ) || die "Could not open $srcdir/$curdir/$listfile\n";
+	$listfileSource = "$srcdir/$curdir/$listfile";
     }
-    else {
-	open( $LIST, "<$listfile" ) || die "Could not open $listfile\n";
-    }
+    open( $LIST, "<$listfileSource" ) || 
+	die "Could not open $listfileSource\n";
     while (<$LIST>) {
 	# Check for stop file
 	if (-s $stopfile) {
@@ -227,6 +243,8 @@ sub RunList {
 	s/#.*//g;
 	# Remove any trailing newlines/returns
 	s/\r?\n//;
+        # Remove any leading whitespace
+        s/^\s*//;
 	# Some tests require that support routines are built first
 	# This is specified with !<dir>:<target>
 	if (/^\s*\!([^:]*):(.*)/) {
@@ -235,8 +253,37 @@ sub RunList {
 	    `cd $1 && make $2`;
 	    next;
 	}
-	# List files are "program <optional-np>"
-	my ($programname,$np,$ResultTest,$InitForRun) = split(/\s+/,$_);
+	# List file entries have the form:
+	# program [ np [ name=value ... ] ]
+	# See files errhan/testlist, init/testlist, and spawn/testlist
+	# for examples of using the key=value form
+	my @args = split(/\s+/,$_);
+	my $programname = $args[0];
+	my $np = "";
+	my $ResultTest = "";
+	my $InitForRun = "";
+	my $timeLimit  = "";
+	if ($#args >= 1) { $np = $args[1]; }
+	# Process the key=value arguments
+	for (my $i=2; $i <= $#args; $i++) {
+	    if ($args[$i] =~ /([^=]+)=(.*)/) {
+		my $key = $1;
+		my $value = $2;
+		if ($key eq "resultTest") {
+		    $ResultTest = $value;
+		}
+		elsif ($key eq "init") {
+		    $InitForRun = $value;
+		}
+		elsif ($key eq "timeLimit") {
+		    $timeLimit = $value;
+		}
+		else {
+		    print STDERR "Unrecognized key $key in $listfileSource\n";
+		}
+	    }
+	}
+
 	if ($np eq "") { $np = $np_default; }
 	if ($np_max > 0 && $np > $np_max) { $np = $np_max; }
 	# skip empty lines
@@ -249,7 +296,8 @@ sub RunList {
 	else {
 	    $total_count++;
 	    if (&BuildMPIProgram( $programname ) == 0) {
-		&RunMPIProgram( $programname, $np, $ResultTest, $InitForRun );
+		&RunMPIProgram( $programname, $np, $ResultTest, $InitForRun, 
+				$timeLimit );
 	    }
 	    else {
 		# We expected to run this program, so failure to build
@@ -338,7 +386,7 @@ sub ProcessImplicitList {
 # If the 3rd arg is not present, the a default that simply checks that the
 # return status is 0 and that the output is " No Errors" is used.
 sub RunMPIProgram {
-    my ($programname,$np,$ResultTest,$InitForTest) = @_;
+    my ($programname,$np,$ResultTest,$InitForTest,$timeLimit) = @_;
     my $found_error   = 0;
     my $found_noerror = 0;
     my $inline = "";
@@ -347,7 +395,11 @@ sub RunMPIProgram {
 
     unlink "err";
     # Set a default timeout on tests (3 minutes for now)
-    $ENV{"MPIEXEC_TIMEOUT"} = 180;
+    my $timeout = $defaultTimeLimit;
+    if (defined($timeLimit) && $timeLimit =~ /^\d+$/) {
+	$timeout = $timeLimit;
+    }
+    $ENV{"MPIEXEC_TIMEOUT"} = $timeout;
     
     # Run the optional setup routine. For example, the timeout tests could
     # be set to a shorter timeout.
@@ -433,6 +485,13 @@ sub BuildMPIProgram {
 	if ($rc == 0) {
 	    $rc = 1;
 	}
+	# Add a line to the summary file describing the failure
+	# This will ensure that failures to build will end up 
+	# in the summary file (which is otherwise written by the
+	# RunMPIProgram step)
+	&RunPreMsg( $programname, $np, $curdir );
+	&RunTestFailed( "Failed to build $programname; $output" );
+	&RunPostMsg;
     }
     return $rc;
 }

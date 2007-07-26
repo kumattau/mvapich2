@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2003-2006, The Ohio State University. All rights
+/* Copyright (c) 2003-2007, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -30,6 +30,7 @@
 #include <netdb.h>
 #include <sys/mman.h>
 #include <errno.h>
+#include <string.h>
 #include "pmi.h"
 
 #ifdef _AFFINITY_
@@ -74,32 +75,30 @@ int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t *pg)
     volatile char tmpchar;
 #endif
 
-
     if (gethostname(hostname, sizeof(char) * SHMEM_COLL_HOSTNAME_LEN) < 0) {
-        fprintf(stderr, "[%s:%d] Unable to get hostname\n", __FILE__, __LINE__);
-        return -1;
+	MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail", "%s: %s",
+		"gethostname", strerror(errno));
     }
-
 
     PMI_Get_rank(&my_rank);
 
     /* add pid for unique file name */
     shmem_file = (char *) malloc(sizeof(char) * (SHMEM_COLL_HOSTNAME_LEN + 26 + PID_CHAR_LEN));
 
+    if(!shmem_file) {
+	MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+		"**nomem %s", "shmem_file");
+    }
 
     /* unique shared file name */
     sprintf(shmem_file, "/tmp/ib_shmem_coll-%s-%s-%d.tmp",
             pg->ch.kvs_name, hostname, getuid());
 
-
-
     /* open the shared memory file */
     shmem_coll_obj.fd = open(shmem_file, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
     if (shmem_coll_obj.fd < 0) {
-        perror("open");
-        fprintf(stderr, "[%d] shmem_coll_init:error in opening " "shared memory file <%s>: %d\n",
-                         my_rank, shmem_file, errno);
-        return -1;
+	MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail", "%s: %s",
+		"open", strerror(errno));
     }
 
 
@@ -107,20 +106,22 @@ int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t *pg)
 
     if (smpi.my_local_id == 0) {
         if (ftruncate(shmem_coll_obj.fd, 0)) {
+	    int ftruncate_errno = errno;
+
             /* to clean up tmp shared file */
             unlink(shmem_file);
-            fprintf(stderr,  "[%d] shmem_coll_init:error in ftruncate to zero "
-                             "shared memory file: %d\n", my_rank, errno);
-            return -1;
+	    MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
+		    "%s: %s", "ftruncate", strerror(ftruncate_errno));
         }
 
         /* set file size, without touching pages */
         if (ftruncate(shmem_coll_obj.fd, shmem_coll_size)) {
+	    int ftruncate_errno = errno;
+
             /* to clean up tmp shared file */
             unlink(shmem_file);
-            fprintf(stderr,  "[%d] shmem_coll_init:error in ftruncate to size "
-                             "shared memory file: %d\n", my_rank, errno);
-            return -1;
+	    MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
+		    "%s: %s", "ftruncate", strerror(ftruncate_errno));
         }
 
 /* Ignoring optimal memory allocation for now */
@@ -129,26 +130,32 @@ int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t *pg)
             char *buf;
             buf = (char *) calloc(shmem_coll_size + 1, sizeof(char));
             if (write(shmem_coll_obj.fd, buf, shmem_coll_size) != shmem_coll_size) {
-                printf("[%d] shmem_coll_init:error in writing " "shared memory file: %d\n", my_rank, errno);
+		int write_errno = errno;
+
                 free(buf);
-                return -1;
+		MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
+			"%s: %s", "write", strerror(write_errno));
             }
             free(buf);
         }
 
 #endif
         if (lseek(shmem_coll_obj.fd, 0, SEEK_SET) != 0) {
+	    int lseek_errno = errno;
+
             /* to clean up tmp shared file */
             unlink(shmem_file);
-            fprintf(stderr,  "[%d] shmem_coll_init:error in lseek "
-                             "on shared memory file: %d\n",
-                             my_rank, errno);
-            return -1;
+	    MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
+		    "%s: %s", "lseek", strerror(lseek_errno));
         }
 
     }
 
-    return MPI_SUCCESS;
+fn_exit:
+    return mpi_errno;
+
+fn_fail:
+    goto fn_exit;
 }
 
 #undef FUNCNAME
@@ -158,16 +165,20 @@ int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t *pg)
 int MPIDI_CH3I_SHMEM_COLL_Mmap()
 {
     int i = 0, j = 0;
+    int mpi_errno = MPI_SUCCESS;
+
     shmem_coll_obj.mmap_ptr = mmap(0, shmem_coll_size,
                          (PROT_READ | PROT_WRITE), (MAP_SHARED), shmem_coll_obj.fd,
                          0);
     if (shmem_coll_obj.mmap_ptr == (void *) -1) {
+	int mmap_errno = errno;
+
         /* to clean up tmp shared file */
         unlink(shmem_file);
-        fprintf(stderr,  "[%d] shmem_coll_mmap:error in mmapping "
-                         "shared memory: %d\n", my_rank, errno);
-        return -1;
+	MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail", "%s: %s",
+		"mmap", strerror(errno));
     }
+
     shmem_coll = (shmem_coll_region *) shmem_coll_obj.mmap_ptr;
 
     if (smpi.my_local_id == 0){
@@ -180,9 +191,14 @@ int MPIDI_CH3I_SHMEM_COLL_Mmap()
                 shmem_coll->root_complete_gather[j][i] = 1;
             }
         }
+        pthread_mutex_init(&shmem_coll->shmem_coll_lock,NULL);
     }
     
-    return MPI_SUCCESS;
+fn_exit:
+    return mpi_errno;
+
+fn_fail:
+    goto fn_exit;
 }
 
 
@@ -304,4 +320,4 @@ void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int size, int rank, int shmem_comm_rank
 }
 #endif
 
-
+/* vi:set sw=4 tw=80: */

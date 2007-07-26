@@ -1,6 +1,6 @@
-MAKE=@MAKE@
-RM=@RM@
-SHELL=/bin/sh
+MAKE    = @MAKE@
+SHELL   = @SHELL@
+RM      = @RM@
 
 TARGETS = @slog2_make_dirs@
 

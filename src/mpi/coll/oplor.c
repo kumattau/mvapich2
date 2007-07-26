@@ -7,7 +7,7 @@
 
 #include "mpiimpl.h"
 #ifdef HAVE_FORTRAN_BINDING
-#include "mpi_fortimpl.h"
+#include "mpi_fortlogical.h"
 #endif
 
 /* 

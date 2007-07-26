@@ -20,12 +20,15 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Get_address
 #define MPI_Get_address PMPI_Get_address
 
 #endif
 
 #undef FUNCNAME
 #define FUNCNAME MPI_Get_address
+#undef FCNAME
+#define FCNAME "MPI_Get_address"
 
 /*@
    MPI_Get_address - Get the address of a location in memory 
@@ -49,19 +52,28 @@ Output Parameter:
 
 .N Fortran
 
+ In Fortran, the integer type is always signed.  This can cause problems
+ on systems where the address fits into a four byte unsigned integer but
+ the value is larger than the largest signed integer.  For example, a system
+ with more than 2 GBytes of memory may have addresses that do not fit within
+ a four byte signed integer.  Unfortunately, there is no easy solution to 
+ this problem, as there is no Fortran datatype that can be used here (using
+ a longer integer type will cause other problems, as well as surprising
+ users when the size of the integer type is larger that the size of a pointer
+ in C).  In this case, it is recommended that you use C to manipulate 
+ addresses.
+
 .N Errors
 .N MPI_SUCCESS
 .N MPI_ERR_OTHER
 @*/
 int MPI_Get_address(void *location, MPI_Aint *address)
 {
-    static const char FCNAME[] = "MPI_Get_address";
     int mpi_errno = MPI_SUCCESS;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_GET_ADDRESS);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_GET_ADDRESS);
     
     /* Validate parameters and objects (post conversion) */
@@ -99,21 +111,23 @@ int MPI_Get_address(void *location, MPI_Aint *address)
     
     /* ... end of body of routine ... */
 
+#ifdef HAVE_ERROR_CHECKING
   fn_exit:
+#endif
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_GET_ADDRESS);
-    MPID_CS_EXIT();
     return mpi_errno;
     
-  fn_fail:
     /* --BEGIN ERROR HANDLING-- */
 #   ifdef HAVE_ERROR_CHECKING
+  fn_fail:
     {
 	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_get_address",
+	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, 
+	    "**mpi_get_address",
 	    "**mpi_get_address %p %p", location, address);
     }
-#   endif
     mpi_errno = MPIR_Err_return_comm( 0, FCNAME, mpi_errno );
     goto fn_exit;
+#   endif
     /* --END ERROR HANDLING-- */
 }

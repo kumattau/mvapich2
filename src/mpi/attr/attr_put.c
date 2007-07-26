@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Attr_put
 #define MPI_Attr_put PMPI_Attr_put
 
 #endif
@@ -72,11 +73,12 @@ int MPI_Attr_put(MPI_Comm comm, int keyval, void *attr_value)
     static const char FCNAME[] = "MPI_Attr_put";
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL;
+    MPIU_THREADPRIV_DECL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_ATTR_PUT);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("attr");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_ATTR_PUT);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -109,7 +111,8 @@ int MPI_Attr_put(MPI_Comm comm, int keyval, void *attr_value)
 #   endif /* HAVE_ERROR_CHECKING */
 
     /* ... body of routine ...  */
-    
+
+    MPIU_THREADPRIV_GET;
     MPIR_Nest_incr();
     mpi_errno = NMPI_Comm_set_attr( comm, keyval, attr_value );
     MPIR_Nest_decr();
@@ -119,7 +122,7 @@ int MPI_Attr_put(MPI_Comm comm, int keyval, void *attr_value)
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_ATTR_PUT);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("attr");
     return mpi_errno;
 
   fn_fail:

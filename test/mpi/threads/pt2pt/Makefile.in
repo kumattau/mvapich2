@@ -6,6 +6,9 @@
 all: all-redirect
 
 SHELL           = @SHELL@
+bindir          = @bindir@
+exec_prefix     = @exec_prefix@
+prefix          = @prefix@
 abs_builddir    = @abs_builddir@
 srcdir          = @srcdir@
 abs_srcdir      = @abs_srcdir@
@@ -13,13 +16,10 @@ DEFS            = @DEFS@ -I. -I${srcdir}
 CPPFLAGS        = @CPPFLAGS@
 LIBS            = @LIBS@
 MAKE            = @MAKE@
-MPILIBNAME      = @MPILIBNAME@
-PMPILIBNAME     = @PMPILIBNAME@
-
 CC              = @CC@
 CFLAGS          = @CFLAGS@
 C_COMPILE       = $(CC) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
-C_LINK      = $(CC)
+C_LINK         = $(CC)
 LDFLAGS     =  @LDFLAGS@ ../../util/mtest.o
 
 VPATH = .:@srcdir@
@@ -31,15 +31,15 @@ INCLUDES = -I../../include -I${srcdir}/../../include
 	$(C_COMPILE) -c $<
 .c:
 	$(C_COMPILE) -o $* $< $(LDFLAGS) $(LIBS)
-apply:
+apply: 
 	$(ACTION) $(ACTION_INPUT)
-clean:
-	-@rm -f *.o ${srcdir}/*.o alltoall threaded_sr
-	-@rm -f alltoall.exe threaded_sr.exe
+clean: 
+	-@rm -f *.o ${srcdir}/*.o alltoall threaded_sr sendselfth
+	-@rm -f alltoall.exe threaded_sr.exe sendselfth.exe
 	-@rm -f core core.[0-9]*
 	-@rm -f *.lo ${srcdir}/*.lo
 	-@rm -f *.irlog*
-distclean: clean distclean-xxx remove-makefile
+distclean:  clean distclean-xxx remove-makefile
 distclean-xxx:
 	-@rm -f Makefile
 	-@rm -rf autom4te*.cache
@@ -49,22 +49,24 @@ remove-makefile:
 	rm -f Makefile
 remove-genmakefiles:
 	rm -f  Makefile
-all-redirect: threaded_sr alltoall
+all-redirect: threaded_sr alltoall sendselfth
 
-alltoall: alltoall.o   @MPILIBLOC@
+alltoall: alltoall.o   @MPILIBLOC@ ../../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o alltoall alltoall.o  ${LIBS}
-threaded_sr: threaded_sr.o   @MPILIBLOC@
+threaded_sr: threaded_sr.o   @MPILIBLOC@ ../../util/mtest.o
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o threaded_sr threaded_sr.o  \
 	-lpthread  ${LIBS} 
+sendselfth: sendselfth.o   @MPILIBLOC@ ../../util/mtest.o
+	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o sendselfth sendselfth.o  ${LIBS}
 # --------------------------------------------------------------------------
 # --------------------------------------------------------------------------
 # --------------------------------------------------------------------------
-SOURCES         =  threaded_sr.c alltoall.c
+SOURCES         =  threaded_sr.c alltoall.c sendselfth.c
 ETAGS           = @ETAGS@ @ETAGSADD@
 HEADERFILES     = $(HEADERS)
 SOURCEFILES     = $(SOURCES)
 tags: TAGS
-TAGS:${HEADERFILES} ${SOURCEFILES}
+TAGS: Makefile${HEADERFILES} ${SOURCEFILES}
 	here=`cd ../../../.. && pwd` ; cd ${srcdir} && $(ETAGS) -o $$here/TAGS --append ${HEADERFILES} ${SOURCEFILES}
 # --------------------------------------------------------------------------
 
@@ -73,6 +75,12 @@ TAGS:${HEADERFILES} ${SOURCEFILES}
 
 ../../util/mtest.o:
 	(cd ../../util && $(MAKE) mtest.o)
+
+# A special testing target to simplify running just the thread pt2pt tests
+testing:
+	../runtests -srcdir=$(srcdir) -tests=testlist \
+		   -mpiexec=$(bindir)/mpiexec \
+		   -xmlfile=summary.xml
 
 FORCE_TARGET:
 

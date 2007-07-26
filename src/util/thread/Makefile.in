@@ -29,7 +29,6 @@ CC              = @CC@
 CFLAGS          = @CFLAGS@
 C_COMPILE       = $(CC) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
 LIBTOOL         = @LIBTOOL@
-CREATESHLIB     = @CREATESHLIB@
 CC_SHL          = @CC_SHL@
 C_COMPILE_SHL   = $(CC_SHL) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
 
@@ -46,13 +45,13 @@ INCLUDES = -I../../include -I${top_srcdir}/src/include
 	@mv -f _s$*.o $*.lo
 .c:
 	$(C_COMPILE) -o $* $< $(LDFLAGS) $(LIBS)
-apply:
+apply: 
 	$(ACTION) $(ACTION_INPUT)
-clean:
+clean: 
 	-@rm -f *.o ${srcdir}/*.o 
 	-@rm -f .libstamp0 .libstamp1 
 	-@rm -f *.lo ${srcdir}/*.lo
-distclean: clean distclean-local distclean-xxx remove-makefile
+distclean:  clean distclean-local distclean-xxx remove-makefile
 distclean-xxx:
 	-@rm -f Makefile mpe_thread.h
 	-@rm -rf autom4te*.cache
@@ -83,9 +82,9 @@ install:  FORCE_TARGET
 
 install-strip:
 	$(MAKE) INSTALL_STRIP_FLAG=-s install
-uninstall:
+uninstall: 
 	-rm -f ${DESTDIR}${includedir}/mpe_thread.h
-installcheck:
+installcheck: 
 # --------------------------------------------------------------------------
 # --------------------------------------------------------------------------
 SOURCES         =  mpe_thread.c
@@ -93,7 +92,7 @@ ETAGS           = @ETAGS@ @ETAGSADD@
 HEADERFILES     = $(HEADERS)
 SOURCEFILES     = $(SOURCES)
 tags: TAGS
-TAGS:${HEADERFILES} ${SOURCEFILES}
+TAGS: Makefile${HEADERFILES} ${SOURCEFILES}
 	here=`cd ../../.. && pwd` ; cd ${srcdir} && $(ETAGS) -o $$here/TAGS --append ${HEADERFILES} ${SOURCEFILES}
 # --------------------------------------------------------------------------
 

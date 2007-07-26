@@ -1,6 +1,6 @@
 
 ## End User configurable options ###
-SHELL = /bin/sh
+SHELL = @SHELL@
 
 @VPATH@
 # Installation directories
@@ -26,7 +26,7 @@ SRC     = ColorNameMap.java ObjDef.java \
           Obj_Event.java Obj_Arrow.java Obj_State.java ObjMethod.java \
           NoMatchingEventException.java TwoEventsMatching.java \
           Topo_Event.java Topo_Arrow.java Topo_State.java \
-          CommLineID.java CommLineIDMap.java \
+          CommProcThdID.java CommProcThdIDMap.java \
           InputLog.java Print.java Print_1pass.java Print_2pass.java
 
 OBJ    = $(SRC:.java=.class)

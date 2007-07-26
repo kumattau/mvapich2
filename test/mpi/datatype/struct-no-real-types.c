@@ -26,6 +26,10 @@ int main(int argc, char **argv)
     MPI_Init(&argc, &argv); /* MPI-1.2 doesn't allow for MPI_Init(0,0) */
     parse_args(argc, argv);
 
+    /* To improve reporting of problems about operations, we
+       change the error handler to errors return */
+    MPI_Comm_set_errhandler( MPI_COMM_WORLD, MPI_ERRORS_RETURN );
+
     /* perform some tests */
     err = no_real_types_test();
     if (err && verbose) fprintf(stderr, "%d errors in blockindexed test.\n",

@@ -1246,30 +1246,34 @@ ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
 
 
+if test -f $CONFIG_AUX_DIR/install-sh ; then ac_aux_dir=$CONFIG_AUX_DIR
+else
 ac_aux_dir=
+# We force the test to use the absolute path to ensure that the install
+# program can be used if we cd to a different directory before using
+# install.
 for ac_dir in .. $srcdir/..; do
   if test -f $ac_dir/install-sh; then
     ac_aux_dir=$ac_dir
-    ac_install_sh="$ac_aux_dir/install-sh -c"
+    abs_ac_aux_dir=`(cd $ac_aux_dir && pwd)`
+    ac_install_sh="$abs_ac_aux_dir/install-sh -c"
     break
   elif test -f $ac_dir/install.sh; then
     ac_aux_dir=$ac_dir
-    ac_install_sh="$ac_aux_dir/install.sh -c"
-    break
-  elif test -f $ac_dir/shtool; then
-    ac_aux_dir=$ac_dir
-    ac_install_sh="$ac_aux_dir/shtool install -c"
+    abs_ac_aux_dir=`(cd $ac_aux_dir && pwd)`
+    ac_install_sh="$abs_ac_aux_dir/install.sh -c"
     break
   fi
 done
+fi
 if test -z "$ac_aux_dir"; then
-  { { echo "$as_me:$LINENO: error: cannot find install-sh or install.sh in .. $srcdir/.." >&5
-echo "$as_me: error: cannot find install-sh or install.sh in .. $srcdir/.." >&2;}
+  { { echo "$as_me:$LINENO: error: can not find install-sh or install.sh in .. $srcdir/.." >&5
+echo "$as_me: error: can not find install-sh or install.sh in .. $srcdir/.." >&2;}
    { (exit 1); exit 1; }; }
 fi
-ac_config_guess="$SHELL $ac_aux_dir/config.guess"
-ac_config_sub="$SHELL $ac_aux_dir/config.sub"
-ac_configure="$SHELL $ac_aux_dir/configure" # This should be Cygnus configure.
+ac_config_guess=$ac_aux_dir/config.guess
+ac_config_sub=$ac_aux_dir/config.sub
+ac_configure=$ac_aux_dir/configure # This should be Cygnus configure.
 
 
 # Check whether --enable-echo or --disable-echo was given.
@@ -2128,7 +2132,7 @@ case "$host" in
     *freebsd*)
         if test -d "/software/freebsd" ; then
             subdir="freebsd"
-   	    fi
+        fi
 esac
 #
 if test -z "$subdir" ; then
@@ -2159,6 +2163,7 @@ for dir in \
     /usr/contrib/java* \
     /usr/contrib/jdk* \
     /usr/contrib/j2sdk* \
+    /System/Library/Frameworks/JavaVM.framework/Versions/*/Home \
     $HOME/java* \
     $HOME/jdk* \
     $HOME/j2sdk* \
@@ -2200,7 +2205,7 @@ for dir in $reverse_dirs ; do
                     fi
                 fi
                 ;;
-            *java* | *jdk* | *j2sdk* )
+            *)
                 if test -x "$dir/bin/javac" ; then
                     JC="$dir/bin/javac"
                 fi
@@ -2511,7 +2516,7 @@ fi
 done
 
 CPRP=cp
-RM="/bin/rm -f"
+RM="rm -f"
 MKDIR=mkdir
 
 

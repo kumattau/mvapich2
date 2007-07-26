@@ -84,6 +84,7 @@ typedef enum {
     CR_CHECKPOINT_ABORT,
     CR_RESTART,
     CR_RESTART_CONFIRM,
+    CR_FINALIZED,
 }CR_state_t;
 
 static int checkpoint_count;
@@ -97,6 +98,7 @@ static int mpd_base_port;
 static int max_save_ckpts;
 static int max_ckpts;
 
+static int enable_sync_ckpt = 0;
 
 static pthread_mutex_t cr_lock;
 
@@ -140,12 +142,6 @@ void Int_handler(int signal)
             kill(mpiexec_pid, SIGINT);
         exit(-1);
     }
-    else if (signal==SIGCHLD) {
-        int status;
-        wait(&status);
-        CR_DBG("exiting with status: %d\n", WEXITSTATUS(status));
-        exit(WEXITSTATUS(status));
-    }
 }
 
 static int CR_callback(void *arg)
@@ -182,9 +178,17 @@ static int CR_callback(void *arg)
     }
     CR_MPDU_readline(mpiexec_fd, buf, MAX_CR_MSG_LEN);
     CR_DBG("Got message from MPD %s\n",buf);
-    CR_MPDU_parse_keyvals(buf);
+    if(CR_MPDU_parse_keyvals(buf)<0) {
+       CR_ERR_ABORT("CR_MPDU_parse_keyvals failed\n");
+    }
     CR_MPDU_getval("ckpt_result",val, CRU_MAX_VAL_LEN);
     if (strcmp(val,"succeed")!=0) {
+        if (strcmp(val,"finalize_ckpt")==0) {
+            /*MPI Process finalized*/
+            cr_state = CR_FINALIZED;
+            CR_MUTEX_UNLOCK;
+            return 0;
+        }
         CR_DBG("MPI process checkpoint failed\n");
         ret = cr_checkpoint(CR_CHECKPOINT_TEMP_FAILURE);
         if (ret != CR_ETEMPFAIL) {
@@ -229,7 +233,9 @@ static int CR_callback(void *arg)
         }
         CR_MPDU_readline(mpiexec_fd, buf, MAX_CR_MSG_LEN);
         CR_DBG("Got message from MPD %s\n",buf);
-        CR_MPDU_parse_keyvals(buf);
+        if(CR_MPDU_parse_keyvals(buf)<0) {
+            CR_ERR_ABORT("CR_MPDU_parse_keyvals failed\n");
+        }
         CR_MPDU_getval("rsrt_result",val, CRU_MAX_VAL_LEN);
         if (strcmp(val,"succeed")!=0) {
             CR_ERR_ABORT("abort: restart failed\n");
@@ -269,7 +275,6 @@ int CR_connect_mpd(int port)
     return 0;
 }
 
-
 void CR_timer_loop()
 {
     /*Do scheduled jobs*/
@@ -285,31 +290,85 @@ void CR_timer_loop()
     starting_time = last_ckpt = starting.tv_sec;
     while(1)
     {
-        sleep(1);
+        struct timeval tv;
+        char cr_msg_buf[MAX_CR_MSG_LEN];
+        fd_set set;
+        char valstr[CRU_MAX_VAL_LEN];
+        int ret;
+
+        tv.tv_sec = 1;
+        tv.tv_usec = 0;
+        
         CR_MUTEX_LOCK;
-        gettimeofday(&now,NULL);
-        time_counter = (now.tv_sec-starting_time);
-        if (checkpoint_interval > 0 
-         && now.tv_sec != last_ckpt 
-         && time_counter%checkpoint_interval ==0
-         && cr_state == CR_READY)
-        {/*inject a checkpoint*/
-            char buf[CR_MAX_FILENAME];
-            if (max_ckpts == 0 || max_ckpts > checkpoint_count) {
-                sprintf(buf,"%s.%d.auto",ckpt_filename,checkpoint_count+1);
-                cr_request_file(buf);
-                last_ckpt = now.tv_sec;
-            }
-            if (max_save_ckpts > 0 && max_save_ckpts < checkpoint_count+1)
+        if (cr_state == CR_FINALIZED)
+            break;
+        CR_MUTEX_UNLOCK;
+        FD_ZERO(&set);
+        FD_SET(mpiexec_fd, &set);
+        ret = select(mpiexec_fd+1, &set, NULL, NULL, &tv);
+        if (ret < 0 && errno != EINTR && errno != EBUSY)
+        {
+            CR_ERR_ABORT("select failed\n");
+        }
+        else if (ret > 0) {
+            int n;
+            if (cr_state != CR_READY)
             {
-                /*remove the ealier checkpoints*/
-                sprintf(buf,"%s.%d.auto",ckpt_filename,checkpoint_count+1-max_save_ckpts);
-                /*Ignore errors because old checkpoints may be placed manually
-                 *              * with unknown file names*/
-                unlink(buf);
+                continue;
+            }
+            n = CR_MPDU_readline(mpiexec_fd, cr_msg_buf, MAX_CR_MSG_LEN);
+            if (n == 0) {
+                cr_state = CR_FINALIZED;
+                continue;
+            }
+            CR_DBG("Got message from MPI Process %s\n",cr_msg_buf);
+            if (CR_MPDU_parse_keyvals(cr_msg_buf)<0)
+                break;
+            CR_MPDU_getval("cmd",valstr, CRU_MAX_VAL_LEN);
+            if (strcmp(valstr,"app_ckpt_req")==0) {
+                if (enable_sync_ckpt == 0) {
+                    continue;
+                }
+                {
+                    CR_MUTEX_LOCK;
+                    char buf[CR_MAX_FILENAME];
+                    sprintf(buf,"%s.%d.sync",ckpt_filename,checkpoint_count+1);
+                    cr_request_file(buf);
+                    last_ckpt = now.tv_sec;
+                    CR_MUTEX_UNLOCK;
+                }
+            }
+            else if (strcmp(valstr,"finalize_ckpt")==0) {
+                cr_state = CR_FINALIZED;
+                continue;
             }
         }
-        CR_MUTEX_UNLOCK;
+        else {
+            CR_MUTEX_LOCK;
+            gettimeofday(&now,NULL);
+            time_counter = (now.tv_sec-starting_time);
+            if (checkpoint_interval > 0 
+             && now.tv_sec != last_ckpt 
+             && time_counter%checkpoint_interval ==0
+             && cr_state == CR_READY)
+            {/*inject a checkpoint*/
+                char buf[CR_MAX_FILENAME];
+                if (max_ckpts == 0 || max_ckpts > checkpoint_count) {
+                    sprintf(buf,"%s.%d.auto",ckpt_filename,checkpoint_count+1);
+                    cr_request_file(buf);
+                    last_ckpt = now.tv_sec;
+                }
+                if (max_save_ckpts > 0 && max_save_ckpts < checkpoint_count+1)
+                {
+                    /*remove the ealier checkpoints*/
+                    sprintf(buf,"%s.%d.auto",ckpt_filename,checkpoint_count+1-max_save_ckpts);
+                    /*Ignore errors because old checkpoints may be placed manually
+                      with unknown file names*/
+                    unlink(buf);
+                }
+            }
+            CR_MUTEX_UNLOCK;
+        }
     }
 }
 
@@ -328,6 +387,10 @@ int CR_Init()
     mpiexec_listen_fd = 0;
     mpiexec_fd = 0;
 
+#ifdef SYNC_CKPT
+    enable_sync_ckpt = 1;
+#endif
+    
     temp = getenv("MV2_CKPT_FILE");
     if (temp) {
         strncpy(ckpt_filename,temp,CR_MAX_FILENAME);
@@ -335,13 +398,15 @@ int CR_Init()
     else {
         strncpy(ckpt_filename,DEFAULT_CHECKPOINT_FILENAME,CR_MAX_FILENAME);
     }
+    
     temp = getenv("MV2_CKPT_INTERVAL");
     if (temp) {
-        checkpoint_interval = atoi(temp)*3600;
+        checkpoint_interval = atoi(temp)*60;
     }
     else {
         checkpoint_interval = -1;
     }
+
     unsetenv("MV2_CR_RESTART_FILE");
 
     /*Set env for listen port and ftc hostname*/
@@ -409,10 +474,15 @@ int CR_Fork_exec(char *cmd, int argc, char *argv[])
         perror("execvp");
         CR_ERR_ABORT("execvp failed, cmd %s, argc %d\n",cmd, argc);
     } else {
+        int status;
         CR_connect_mpd(mpiexec_listen_port);
         CR_DBG("mpd connected\n");
         cr_state = CR_READY;
         CR_timer_loop();
+        CR_DBG("wait for child\n");
+        wait(&status);
+        CR_DBG("exiting\n");
+        exit(WEXITSTATUS(status));
     }
     return 0;
 }
@@ -461,10 +531,10 @@ int main(int argc, char *argv[])
 }
 
 
-/*==================*
-  *  MPD messaging functions  *
-  *    Courtesy from PMI         *
-  *==================*/
+/*==========================*
+*  MPD messaging functions  *
+*    Courtesy of PMI        *
+*==========================*/
 
 int CR_MPDU_readline( int fd, char *buf, int maxlen)
 {
@@ -537,8 +607,7 @@ int CR_MPDU_parse_keyvals( char *st )
             p++;
         /* got non-blank */
         if ( *p == '=' ) {
-            fprintf(stderr, "CRU_parse_keyvals:  unexpected = at character %d in %s\n",
-                   (int)(p - st), st );
+            fprintf(stderr, "CRU_parse_keyvals: Error parsing keyvals\n");
             return( -1 );
         }
         if ( *p == '\n' || *p == '\0' )

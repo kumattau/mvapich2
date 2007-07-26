@@ -11,6 +11,15 @@ dnl
 dnl Definitions will be placed in this file rather than in the DEFS variable
 dnl
 AC_CONFIG_HEADER(include/mpidi_ch3i_ssm_conf.h)
+AH_TOP([/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/*  
+ *  (C) 2001 by Argonne National Laboratory.
+ *      See COPYRIGHT in top-level directory.
+ */
+#ifndef MPIDI_CH3I_SSM_CONF_H_INCLUDED
+#define MPIDI_CH3I_SSM_CONF_H_INCLUDED
+])
+AH_BOTTOM([#endif])
 
 echo "RUNNING CONFIGURE FOR THE SOCK-SHARED_MEMORY CHANNEL"
 
@@ -19,10 +28,9 @@ LIBS=
 
 dnl
 dnl First check that we have a clean build if we are doing a VPATH build
-if test "`cd $srcdir && pwd`" != "`pwd`" && test -f $srcdir/config.status ; then
-    AC_MSG_ERROR([You cannot do a VPATH build if the source directory has been
-    configured.  Run "make distclean" in $srcdir first.])
-fi
+PAC_VPATH_CHECK()
+
+PAC_LOAD_BASE_CACHE
 
 PAC_PROG_MAKE
 
@@ -68,9 +76,9 @@ rm -f conftest*
 AC_SEARCH_LIBS(socket, socket)
 AC_CHECK_LIB(thread, mutex_init)
 AC_CHECK_HEADERS(pthread.h fcntl.h string.h strings.h sys/time.h sys/sem.h sys/ipc.h sys/msg.h sys/shm.h unistd.h sys/param.h sys/ioctl.h netinet/in.h netinet/tcp.h netdb.h sys/uio.h sys/select.h sys/types.h stdlib.h sys/socket.h sys/filio.h netinet/in.h values.h sys/uio.h sched.h arpa/inet.h sys/sockio.h net/if.h)
-AC_CHECK_HEADERS(sys/stat.h sys/ptrace.h sys/wait.h errno.h ctype.h process.h sys/mman.h uuid/uuid.h mqueue.h)
+AC_CHECK_HEADERS(sys/stat.h sys/ptrace.h sys/wait.h errno.h ctype.h process.h sys/mman.h uuid/uuid.h mqueue.h sys/sysctl.h)
 AC_CHECK_FUNCS(msgget yield mutex_init shmget shmat shmdt shmctl usleep sleep getcwd gethostname gettimeofday putenv select socket sched_yield)
-AC_CHECK_FUNCS(sysconf pthread_mutexattr_setpshared pthread_mutexattr_init)
+AC_CHECK_FUNCS(sysconf sysctl pthread_mutexattr_setpshared pthread_mutexattr_init)
 dnl AC_CHECK_FUNCS( mmap )
 # This autoconf code checks that mmap works, at least in 
 # a simple case (private, fixed mapping of an already mapped memory)
@@ -134,10 +142,13 @@ fi
 # program to immediately abort with "Bad system call".
 AC_CACHE_CHECK([whether shmget works],pac_cv_func_shmget_works,[
 AC_TRY_RUN([#include <sys/shm.h>
-key_t key = rand();
-int id = shmget(key,128,IPC_CREAT);
-if (id) shmctl(id,IPC_RMID,0);
-return (id > 0) ? 0 : 1;
+int main(int argc, char *argv[])
+{
+   key_t key = rand();
+   int id = shmget(key,128,IPC_CREAT);
+   if (id) shmctl(id,IPC_RMID,0);
+   return (id > 0) ? 0 : 1;
+}
 ],pac_cv_func_shmget_works=yes,pac_cv_func_shmget_works=no)])
 if test "$pac_cv_func_shmget_works" = "yes" ; then
     AC_DEFINE(HAVE_WORKING_SHMGET,1,[Define if shmget works])
@@ -320,6 +331,9 @@ fi
 SSM_LIBS=$LIBS
 LIBS=$save_libs
 
+# We need the util/sock/ch3usock.h header file
+CPPFLAGS="${CPPFLAGS} -I${master_top_srcdir}/src/mpid/ch3/util/sock"
+
 AC_SUBST(device_name)
 AC_SUBST(channel_name)
 AC_SUBST(SSM_LIBS)
@@ -335,5 +349,14 @@ AC_SUBST(master_top_builddir)
 dnl
 dnl Dependency handling
 AC_SUBST(MAKE_DEPEND_C)
+
+dnl
+dnl Etags
+AC_SUBST(ETAGS)
+AC_SUBST(ETAGSADD)
+export ETAGS
+export ETAGSADD
+
+PAC_UPDATE_BASE_CACHE
 
 AC_OUTPUT(Makefile src/Makefile localdefs)

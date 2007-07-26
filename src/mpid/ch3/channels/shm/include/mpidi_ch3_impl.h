@@ -98,12 +98,6 @@
 #define MPID_READ_WRITE_BARRIER()
 #endif
 
-/* This value is defined in sys/param.h under Linux but in netdb.h 
-   under Solaris */
-#ifndef MAXHOSTNAMELEN
-#define MAXHOSTNAMELEN 256
-#endif
-
 #define MPIDI_CH3I_NUM_PACKETS          16
 #define MPIDI_CH3I_PACKET_SIZE         (16*1024)
 #define MPIDI_CH3I_PKT_AVAILABLE        0
@@ -115,6 +109,13 @@
 #define MPIDI_SHM_RNDV_LIMIT            10240
 #endif
 #define MPID_SHMEM_PER_PROCESS          1048576
+
+/* FIXME: The ssm channel uses these names instead.  We'll switch to them 
+   eventually (since there is a great deal of commonality between the ssm and
+   shm code, and that commonality should be reflected in common support 
+   routines) */
+#define MPIDI_CH3I_PKT_EMPTY            MPIDI_CH3I_PKT_AVAILABLE
+#define MPIDI_CH3I_PKT_FILLED           MPIDI_CH3I_PKT_USED
 
 
 /* This structure uses the avail field to signal that the data is available for reading.
@@ -212,12 +213,14 @@ int MPIDI_CH3I_Request_adjust_iov(MPID_Request *, MPIDI_msg_sz_t);
 int MPIDI_CH3I_SHM_Get_mem(MPIDI_PG_t *pg, int nTotalSize, int nRank, int nNproc, BOOL bUseShm);
 int MPIDI_CH3I_SHM_Release_mem(MPIDI_PG_t *pg, BOOL bUseShm);
 
-int MPIDI_CH3I_SHM_wait(MPIDI_VC_t *vc, int millisecond_timeout, MPIDI_VC_t **vc_pptr, int *num_bytes_ptr, shm_wait_t *shm_out);
+int MPIDI_CH3I_SHM_read_progress(MPIDI_VC_t *vc, int millisecond_timeout, MPIDI_VC_t **vc_pptr, int *num_bytes_ptr, shm_wait_t *shm_out);
 int MPIDI_CH3I_SHM_post_read(MPIDI_VC_t *vc, void *buf, int len, int (*read_progress_update)(int, void*));
 int MPIDI_CH3I_SHM_post_readv(MPIDI_VC_t *vc, MPID_IOV *iov, int n, int (*read_progress_update)(int, void*));
 int MPIDI_CH3I_SHM_write(MPIDI_VC_t *vc, void *buf, int len, int *num_bytes_ptr);
 int MPIDI_CH3I_SHM_writev(MPIDI_VC_t *vc, MPID_IOV *iov, int n, int *num_bytes_ptr);
 int MPIDI_CH3I_SHM_rdma_readv(MPIDI_VC_t *vc, MPID_Request *rreq);
 int MPIDI_CH3I_SHM_rdma_writev(MPIDI_VC_t *vc, MPID_Request *sreq);
+
+int MPIDI_CH3I_SHM_Progress_init(void);
 
 #endif /* !defined(MPICH_MPIDI_CH3_IMPL_H_INCLUDED) */

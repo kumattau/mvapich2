@@ -27,6 +27,9 @@ int main( int argc, char *argv[] )
     datatype = MPI_INT;
     while (MTestGetIntercomm( &comm, &leftGroup, 4 )) {
 	/* Get an intercommunicator */
+	/* To improve reporting of problems about operations, we
+	   change the error handler to errors return */
+	MPI_Comm_set_errhandler( comm, MPI_ERRORS_RETURN );
 	if (leftGroup) {
 	    err = MPI_Barrier( comm );
 	    if (err) {

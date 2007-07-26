@@ -1,7 +1,3 @@
-#SUBDIRS = mpiexec
-# Do not build the example mpiexec by default (since this is not the 
-# mpiexec that we want users to use)
-OTHER_DIRS = mpiexec
 #OTHER_DIRS = f77 f90 cxx
 # We want to replace the compilation and linking rule used by simplement
 MPICHDIR=..
@@ -22,8 +18,6 @@ EXTRA_PROGRAMS = pmandel pmandel_spawn pmandel_service pmandel_spaserv \
 # LIBS includes -lmpich and other libraries (e.g., -lpmpich if
 # weak symbols are not supported)
 hellow_SOURCES = hellow.c
-sr_SOURCES = sr.c
-srvec_SOURCES = srvec.c
 srtest_SOURCES = srtest.c
 child_SOURCES = child.c
 parent_SOURCES = parent.c
@@ -44,3 +38,6 @@ pmandel_fence_LDADD = -lm
 spawn_merge_parent_SOURCES = spawn_merge_parent.c
 spawn_merge_child1_SOURCES = spawn_merge_child1.c
 spawn_merge_child2_SOURCES = spawn_merge_child2.c
+
+# Use make all-programs to test building all example programs
+all-programs: cpi $(EXTRA_PROGRAMS) 

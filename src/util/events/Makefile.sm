@@ -1,2 +1,0 @@
-lib${MPILIBNAME}_a_SOURCES = mpiu_events.c
-INCLUDES = -I../../include -I${top_srcdir}/src/include

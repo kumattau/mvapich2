@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2006, The Ohio State University. All rights
+/* Copyright (c) 2003-2007, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -98,7 +98,7 @@ int cts_recv = 0;
 static inline void MPIDI_CH3_Prepare_rndv(MPIDI_VC_t *vc, MPID_Request *sreq)
 {
 #if _SMP_
-    if (vc->smp.local_nodes >= 0 &&
+    if (SMP_INIT && vc->smp.local_nodes >= 0 &&
         vc->smp.local_nodes != smpi.my_local_id) {
         sreq->mrail.protocol = VAPI_PROTOCOL_R3;
     } else 
@@ -209,6 +209,7 @@ int MPIDI_CH3_iStartRmaRndv(MPIDI_VC_t * vc,
        channel, thus insuring that the progress engine does also try to
        write */
     MPIDI_CH3_Prepare_rndv(vc, sreq);
+    MPIDI_CH3I_MRAIL_REVERT_RPUT(sreq);
     if (MPIDI_CH3_PKT_PUT_RNDV == put_rndv->type) {
         MPIDI_CH3I_MRAIL_SET_PKT_RNDV(put_rndv, sreq);
     } else {
@@ -273,6 +274,7 @@ int MPIDI_CH3_iStartGetRndv(MPIDI_VC_t * vc,
            sizeof(MPID_IOV) * num_control);
 
     MPIDI_CH3_Prepare_rndv(vc, sreq);
+    MPIDI_CH3I_MRAIL_REVERT_RPUT(sreq);
 
     MPIDI_CH3I_MRAIL_SET_PKT_RNDV(get_rndv, sreq);
 

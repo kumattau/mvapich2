@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Free_mem
 #define MPI_Free_mem PMPI_Free_mem
 
 #endif
@@ -51,7 +52,7 @@ int MPI_Free_mem(void *base)
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("rma");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_FREE_MEM);
 
     /* ... body of routine ...  */
@@ -64,7 +65,7 @@ int MPI_Free_mem(void *base)
   fn_exit:
 #endif    
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_FREE_MEM);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("rma");
     return mpi_errno;
 
     /* There should never be any fn_fail case; this suppresses warnings from

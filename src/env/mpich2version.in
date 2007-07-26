@@ -1,17 +1,20 @@
 #! /bin/sh
 #
-# Simple script to report information about the MPICH2 installation. This script will likely be replaced with a program closer to
-# that found in MPICH1 once the library contains information on patches applied, etc.
+# Simple script to report information about the MPICH2 installation. This 
+# script will likely be replaced with a program closer to 
+# that found in MPICH1 once the library contains information on patches 
+# applied, etc.
 #
 
 print_usage()
 {
     echo ""
-    echo "usage: mpich2version [-v|--version] [-d|--device] [-c|--configure] [-h|--help]"
+    echo "usage: mpich2version [-v|--version] [-d|--device] [-c|--configure] [-b|--compilers] [-h|--help]"
     echo ""
     echo "    --version - Show the version number for this installation of MPICH2"
     echo "    --device - Show the device used by this installation"
     echo "    --configure - Show the configure options used to build this installation"
+    echo "    --compilers - Show the compilers used to build this installation"
     echo ""
 }
 
@@ -19,6 +22,7 @@ if test $# -eq 0 ; then
     include_version=true
     include_device=true
     include_config_opts=true
+    include_compilers=true
 elif test $# -eq 1 ; then
     arg=$1
     case $arg in
@@ -32,6 +36,13 @@ elif test $# -eq 1 ; then
 
 	-c|--configure)
 	echo "@CONFIGURE_ARGUMENTS@"
+	;;
+
+	-b|--compiler)
+	echo "@CC@ @CFLAGS@"
+	echo "@CXX@ @CXXFLAGS@"
+	echo "@F77@ @FFLAGS@"
+	echo "@F90@ @F90FLAGS@"
 	;;
 
 	-h|--help)
@@ -65,6 +76,10 @@ else
 	    include_config_opts=true
 	    ;;
 
+	    -b|--compiler)
+	    include_compilers=true
+	    ;;
+
 	    -h|--help)
 	    print_usage
 	    exit 0
@@ -89,5 +104,12 @@ fi
 if test "$include_config_opts" = "true" ; then
     echo "Configure Options: @CONFIGURE_ARGUMENTS@"
 fi
+if test "$include_compilers" = true ; then
+    echo "CC:  @CC@ @CFLAGS@"
+    echo "CXX: @CXX@ @CXXFLAGS@"
+    echo "F77: @F77@ @FFLAGS@"
+    echo "F90: @F90@ @F90FLAGS@"
+fi
+
 
 exit 0

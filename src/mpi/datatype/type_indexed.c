@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Type_indexed
 #define MPI_Type_indexed PMPI_Type_indexed
 
 #endif
@@ -87,7 +88,7 @@ int MPI_Type_indexed(int count,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("datatype");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_TYPE_INDEXED);
 
     /* Validate parameters and objects (post conversion) */
@@ -160,7 +161,7 @@ int MPI_Type_indexed(int count,
   fn_exit:
     MPIU_CHKLMEM_FREEALL();
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_TYPE_INDEXED);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("datatype");
     return mpi_errno;
 
   fn_fail:

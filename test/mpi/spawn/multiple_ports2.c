@@ -9,21 +9,20 @@
 #include <string.h>
 #include "mpitest.h"
 
-#ifdef HAVE_WINDOWS_H
-#include <windows.h>
-#define sleep(a) Sleep(a*1000)
-#else
-#include <unistd.h>
-#endif
-
 #define IF_VERBOSE(a) if (verbose) { printf a ; fflush(stdout); }
 
-/* This test checks to make sure that two MPI_Comm_connects to two different MPI ports
- * match their corresponding MPI_Comm_accepts.  The root process opens two MPI ports and
- * sends the first port to process 1 and the second to process 2.  Then the root process
- * accepts a connection from the second port followed by the first port.  Processes 1 and
- * 2 both connect back to the root but process 2 first sleeps for three seconds to give
- * process 1 time to attempt to connect to the root.  The root should wait until
+/* This test checks to make sure that two MPI_Comm_connects to two different 
+ * MPI ports
+ * match their corresponding MPI_Comm_accepts.  The root process opens two 
+ * MPI ports and
+ * sends the first port to process 1 and the second to process 2.  Then the 
+ * root process
+ * accepts a connection from the second port followed by the first port.  '
+ * Processes 1 and
+ * 2 both connect back to the root but process 2 first sleeps for three 
+ * seconds to give
+ * process 1 time to attempt to connect to the root.  The root should wait 
+ * until
  * process 2 connects before accepting the connection from process 1.
  */
 
@@ -125,8 +124,9 @@ int main( int argc, char *argv[] )
 	MPI_Recv(port2, MPI_MAX_PORT_NAME, MPI_CHAR, 0, 0, MPI_COMM_WORLD, &status);
 
 	IF_VERBOSE(("2: received port2: <%s>\n", port2));
-	/* make sure process 1 has time to do the connect before this process attempts to connect */
-	sleep(2);
+	/* make sure process 1 has time to do the connect before this process 
+	   attempts to connect */
+	MTestSleep(2);
 	IF_VERBOSE(("2: connecting.\n"));
 	MPI_Comm_connect(port2, MPI_INFO_NULL, 0, MPI_COMM_SELF, &comm2);
 
@@ -147,8 +147,9 @@ int main( int argc, char *argv[] )
 	MPI_Recv(port3, MPI_MAX_PORT_NAME, MPI_CHAR, 0, 0, MPI_COMM_WORLD, &status);
 
 	IF_VERBOSE(("2: received port2: <%s>\n", port2));
-	/* make sure process 1 and 2 have time to do the connect before this process attempts to connect */
-	sleep(4);
+	/* make sure process 1 and 2 have time to do the connect before this 
+	   process attempts to connect */
+	MTestSleep(4);
 	IF_VERBOSE(("3: connecting.\n"));
 	MPI_Comm_connect(port3, MPI_INFO_NULL, 0, MPI_COMM_SELF, &comm3);
 

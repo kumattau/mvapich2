@@ -8,3 +8,5 @@ $(srcdir)/ioharness.tlt: $(srcdir)/../../f77/io/ioharness.tlt
 	    -e 's/^C/!/g' \
 	    -e '/implicit *none/d' \
 	$(srcdir)/../../f77/io/ioharness.tlt > $(srcdir)/ioharness.tlt
+c2f902cio.c: $(srcdir)/../../f90/io/c2f902cio.c
+	cp $(srcdir)/../../f90/io/c2f902cio.c c2f902cio.c

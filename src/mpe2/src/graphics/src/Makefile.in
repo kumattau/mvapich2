@@ -31,8 +31,10 @@ LIB_PATH             = @X_LIB@ $(MPI_LIBS)
 LDFLAGS              = @LDFLAGS@
 
 ### End User configurable options ###
-SHELL = /bin/sh
-RM    = @RM@
+
+SHELL            = @SHELL@
+RM               = @RM@
+MV               = @MV@
 
 @VPATH@
 
@@ -56,26 +58,34 @@ CC_LDFLAGS       = $(LDFLAGS) $(CFLAGS) $(MPE_LDOPTS)
 
 MPE_CSOURCES     = mpe_graphics.c xcolor.c xframe.c xinit.c xwmap.c \
                    xmouse.c xkey.c
-MPE_COBJECTS     = $(MPE_CSOURCES:.c=.@OBJEXT@)
+MPE_P_COBJECTS   = $(MPE_CSOURCES:.c=.p@OBJEXT@)
+MPE_N_COBJECTS   = $(MPE_CSOURCES:.c=.n@OBJEXT@)
 
 MPE_WSOURCES     = mpe_graphicsf.c xmousef.c
-MPE_WOBJECTS     = $(MPE_WSOURCES:.c=.@OBJEXT@)
+MPE_P_WOBJECTS   = $(MPE_WSOURCES:.c=.p@OBJEXT@)
+# MPE_N_WOBJECTS   = $(MPE_WSOURCES:.c=.n@OBJEXT@)
+
+MPE_XSOURCES     = visual_mess.c
+MPE_P_XOBJECTS   = $(MPE_XSOURCES:.c=.p@OBJEXT@)
+# MPE_N_XOBJECTS   = $(MPE_XSOURCES:.c=.n@OBJEXT@)
 
 MPE_SHLCOBJECTS  = $(MPE_COBJECTS:.@OBJEXT@=.lo)
 MPE_SHLWOBJECTS  = $(MPE_WOBJECTS:.@OBJEXT@=.lo)
 
-.SUFFIXES: .c .@OBJEXT@ .lo .a @EXEEXT@
+.SUFFIXES: .c .@OBJEXT@ .p@OBJEXT@ .n@OBJEXT@ .lo .a @EXEEXT@
 
-.c.@OBJEXT@:
-	$(MPE_ICC) $(MPE_ICFLAGS) -c $<
+.c.p@OBJEXT@:
+	$(MPI_CC) $(CC_FLAGS) -c $<
+	$(MV) $*.@OBJEXT@ $*.p@OBJEXT@
 
-.c.a:
-	$(MPE_ICC) $(MPE_ICFLAGS) -c $<
+.c.n@OBJEXT@:
+	$(CC) $(CC_FLAGS) -DMPE_NOMPI -c $<
+	$(MV) $*.@OBJEXT@ $*.n@OBJEXT@
 
 # Allow compilers that do not allow -o for renaming object files
 .c.lo:
 	$(CC_SHL) $(CC_FLAGS) -c $< $(INC_DIR)
-	@mv $*.@OBJEXT@ $*.lo
+	@$(MV) $*.@OBJEXT@ $*.lo
 
 # default_all is the same as default, but without the RANLIB.  This
 # can speed up the build (ranlibs can take a LONG time).  profile_all 
@@ -85,11 +95,7 @@ default_all: default
 profile_all: 
 
 #
-# libmpe_nompi must be last because some make's "optimize" by computing
-# all dependencies at the beginning, rather than when each target is
-# evaluated.  Since libmpe_nompi cleans the object files (to force a rebuild
-# with the NO_MPI switch), this can cause problems.
-default: clean 
+default:
 	 $(MAKE) ${libbuild_dir}/lib$(PROF_LIBNAME)_nompi.a 
 	 $(MAKE) ${libbuild_dir}/lib$(PROF_LIBNAME).a 
 	 $(MAKE) ${libbuild_dir}/lib$(ANIM_LIBNAME).a
@@ -106,26 +112,20 @@ default: clean
 # is done once (e.g., a blip in the filesystem time can't be 
 # responsible if make works as Sun documents it).  To fix this, we
 # add all the objects to the library, not just the "recent" ones.
-${libbuild_dir}/lib$(PROF_LIBNAME).a: clean
-	@$(MAKE) $(MPE_COBJECTS) \
-	 "MPE_ICC=${MPI_CC}" "MPE_ICFLAGS=${CC_FLAGS}"
+${libbuild_dir}/lib$(PROF_LIBNAME).a: $(MPE_P_COBJECTS)
+	$(AR) $(ARFLAGS) $@ $(MPE_P_COBJECTS)
 	@if [ "$(MPE_BUILD_FORTRAN2C)" = "yes" ] ; then \
-	     $(MAKE) $(MPE_WOBJECTS) \
-	     "MPE_ICC=${MPI_CC}" "MPE_ICFLAGS=${CC_FLAGS}" ; \
+	     $(MAKE) $(MPE_P_WOBJECTS) ; \
+	     $(AR) $(ARFLAGS) $@ $(MPE_P_WOBJECTS) ; \
 	 fi
-	$(AR) $(ARFLAGS) $@ *.@OBJEXT@
 	$(RANLIB) $@
 
-${libbuild_dir}/lib$(ANIM_LIBNAME).a: clean
-	@$(MAKE) visual_mess.@OBJEXT@ \
-	 "MPE_ICC=${MPI_CC}" "MPE_ICFLAGS=${CC_FLAGS}"
-	$(AR) $(ARFLAGS) $@ visual_mess.@OBJEXT@
+${libbuild_dir}/lib$(ANIM_LIBNAME).a: $(MPE_P_XOBJECTS)
+	$(AR) $(ARFLAGS) $@ $(MPE_P_XOBJECTS)
 	$(RANLIB) $@
 
-${libbuild_dir}/lib$(PROF_LIBNAME)_nompi.a: clean
-	@$(MAKE) $(MPE_COBJECTS) \
-	 "MPE_ICC=${MPI_CC}" "MPE_ICFLAGS=${CC_FLAGS} -DMPE_NOMPI"
-	$(AR) $(ARFLAGS) $@ *.@OBJEXT@
+${libbuild_dir}/lib$(PROF_LIBNAME)_nompi.a: $(MPE_N_COBJECTS)
+	$(AR) $(ARFLAGS) $@ $(MPE_N_COBJECTS)
 	$(RANLIB) $@
 
 # ********
@@ -142,7 +142,7 @@ rmprog:
 	@-$(RM) -f $(EXECS)
 
 clean: rmprog
-	@-$(RM) -f *.@OBJEXT@ ${srcdir}/*.@OBJEXT@ *~ $(EXECS) PI*
+	@-$(RM) -f *.*@OBJEXT@ ${srcdir}/*.*@OBJEXT@ *~ PI*
 
 distclean: clean rmlib
 	@-$(RM) -f Makefile Makefile_nompi

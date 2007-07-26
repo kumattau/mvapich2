@@ -63,7 +63,7 @@
             if (port_name .ne. port_name_out) then
                 errs = errs + 1
                 print *, "Lookup name returned the wrong value (", &
-      &               port_name_out, ")" 
+      &               port_name_out, "), expected (", port_name, ")" 
              endif
           endif
 

@@ -1381,16 +1381,61 @@ ac_configure=$ac_aux_dir/configure # This should be Cygnus configure.
 
 
 
+
+
+
+
 echo "RUNNING CONFIGURE FOR LOCKS"
 
-if test "`cd $srcdir && pwd`" != "`pwd`" && \
-   test -f $srcdir/config.status ; then
-    { { echo "$as_me:$LINENO: error: You cannot do a VPATH build if the source directory has been
-    configured.  Run \"make distclean\" in $srcdir first." >&5
+
+rm -f conftest*
+date >conftest$$
+# If creating a file in the current directory does not show up in the srcdir
+# then we're doing a VPATH build (or something is very wrong)
+if test ! -s $srcdir/conftest$$ ; then
+    pac_dirtyfiles=""
+    pac_dirtydirs=""
+    pac_header=""
+
+    for file in config.status $pac_header  ; do
+        if test -f $srcdir/$file ; then
+	    pac_dirtyfiles="$pac_dirtyfiles $file"
+	fi
+    done
+
+
+    if test -n "$pac_dirtyfiles" -o -n "$pac_dirtydirs" ; then
+	# Create a nice message about what to remove
+	rmmsg=""
+	if test -n "$pac_dirtyfiles" ; then
+	    rmmsg="files $pac_dirtyfiles"
+        fi
+ 	if test -n "$pac_dirtydirs" ; then
+	    if test -n "$rmmsg" ; then
+	        rmmsg="$rmmsg and directories $pac_dirtydirs"
+            else
+                rmmsg="directories $pac_dirtydirs"
+            fi
+        fi
+        if test -f $srcdir/Makefile ; then
+            { { echo "$as_me:$LINENO: error: You cannot do a VPATH build if the source directory has been
+    configured.  Run \"make distclean\" in $srcdir first and make sure that the
+    $rmmsg have been removed." >&5
 echo "$as_me: error: You cannot do a VPATH build if the source directory has been
-    configured.  Run \"make distclean\" in $srcdir first." >&2;}
+    configured.  Run \"make distclean\" in $srcdir first and make sure that the
+    $rmmsg have been removed." >&2;}
    { (exit 1); exit 1; }; }
+        else
+            { { echo "$as_me:$LINENO: error: You cannot do a VPATH build if the source directory has been
+    configured.  Remove the $rmmsg in $srcdir." >&5
+echo "$as_me: error: You cannot do a VPATH build if the source directory has been
+    configured.  Remove the $rmmsg in $srcdir." >&2;}
+   { (exit 1); exit 1; }; }
+        fi
+    fi
 fi
+rm -f conftest*
+
 
 ac_ext=c
 ac_cpp='$CPP $CPPFLAGS'
@@ -2912,7 +2957,7 @@ fi
 # If cpp failed, see if the compiler accepts the header.
 if test "$pac_found_header" != "yes" ; then
     cat >conftest.c<<EOF
-#line 2915 "configure"
+#line 2960 "configure"
 #include "confdefs.h"
 #include <$ac_header>
 int conftest() {return 0;}
@@ -2958,6 +3003,13 @@ cat >>confdefs.h <<\_ACEOF
 #define HAVE_SPARC_INLINE_PROCESS_LOCKS 1
 _ACEOF
 
+    # The current code design adds a .il file to CFLAGS, which (a) doesn't
+    # always reach all of the necessary files (I saw failures in ch3_progress.c
+    # where the inline file was not in the Makefile) and (a) adds the inline
+    # where it should not be, such as in mpicc.
+    { { echo "$as_me:$LINENO: error: Use of inline process locks is not supported.  Please volunteer to fix this code" >&5
+echo "$as_me: error: Use of inline process locks is not supported.  Please volunteer to fix this code" >&2;}
+   { (exit 1); exit 1; }; }
 fi
 
 

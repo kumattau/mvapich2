@@ -32,6 +32,10 @@ int main(int argc, char **argv)
     MPI_Init(&argc, &argv); /* MPI-1.2 doesn't allow for MPI_Init(0,0) */
     parse_args(argc, argv);
 
+    /* To improve reporting of problems about operations, we
+       change the error handler to errors return */
+    MPI_Comm_set_errhandler( MPI_COMM_WORLD, MPI_ERRORS_RETURN );
+
     /* perform some tests */
     err = builtin_float_test();
     errs += err;
@@ -99,7 +103,8 @@ int builtin_float_test(void)
     
     if (combiner != MPI_COMBINER_NAMED) errs++;
     if (verbose && combiner != MPI_COMBINER_NAMED)
-	fprintf(stderr, "combiner = %s; should be named\n", combiner_to_string(combiner));
+	fprintf(stderr, "combiner = %s; should be named\n", 
+		combiner_to_string(combiner));
 
     /* Note: it is erroneous to call MPI_Type_get_contents() on a basic. */
     return errs;
@@ -107,8 +112,9 @@ int builtin_float_test(void)
 
 /* vector_of_vectors_test()
  *
- * Builds a vector of a vector of ints.  Assuming an int array of size 9 integers,
- * and treating the array as a 3x3 2D array, this will grab the corners.
+ * Builds a vector of a vector of ints.  Assuming an int array of size 9 
+ * integers, and treating the array as a 3x3 2D array, this will grab the 
+ * corners.
  *
  * MPICH1 fails this test because it converts the vectors into hvectors.
  *
@@ -132,7 +138,8 @@ int vector_of_vectors_test(void)
 			  MPI_INT,
 			  &inner_vector);
     if (err != MPI_SUCCESS) {
-	if (verbose) fprintf(stderr, "error in MPI call; aborting after %d errors\n",
+	if (verbose) fprintf(stderr, 
+			     "error in MPI call; aborting after %d errors\n",
 			     errs+1);
 	return errs+1;
     }
@@ -143,7 +150,8 @@ int vector_of_vectors_test(void)
 			  inner_vector,
 			  &outer_vector);
     if (err != MPI_SUCCESS) {
-	if (verbose) fprintf(stderr, "error in MPI call; aborting after %d errors\n",
+	if (verbose) fprintf(stderr, 
+			     "error in MPI call; aborting after %d errors\n",
 			     errs+1);
 	return errs+1;
     }
@@ -155,7 +163,8 @@ int vector_of_vectors_test(void)
 				&ntypes,
 				&combiner);
     if (err != MPI_SUCCESS) {
-	if (verbose) fprintf(stderr, "error in MPI call; aborting after %d errors\n",
+	if (verbose) fprintf(stderr, 
+			     "error in MPI call; aborting after %d errors\n",
 			     errs+1);
 	return errs+1;
     }
@@ -166,11 +175,14 @@ int vector_of_vectors_test(void)
     if (combiner != MPI_COMBINER_VECTOR) errs++;
 
     if (verbose) {
-	if (nints != 3) fprintf(stderr, "outer vector nints = %d; should be 3\n",
+	if (nints != 3) fprintf(stderr, 
+				"outer vector nints = %d; should be 3\n",
 				nints);
-	if (nadds != 0) fprintf(stderr, "outer vector nadds = %d; should be 0\n",
+	if (nadds != 0) fprintf(stderr, 
+				"outer vector nadds = %d; should be 0\n",
 				nadds);
-	if (ntypes != 1) fprintf(stderr, "outer vector ntypes = %d; should be 1\n",
+	if (ntypes != 1) fprintf(stderr, 
+				 "outer vector ntypes = %d; should be 1\n",
 				 ntypes);
 	if (combiner != MPI_COMBINER_VECTOR)
 	    fprintf(stderr, "outer vector combiner = %s; should be vector\n",
@@ -199,7 +211,8 @@ int vector_of_vectors_test(void)
     if (ints[2] != 2) errs++;
 
     if (verbose) {
-	if (ints[0] != 2) fprintf(stderr, "outer vector count = %d; should be 2\n",
+	if (ints[0] != 2) fprintf(stderr, 
+				  "outer vector count = %d; should be 2\n",
 				  ints[0]);
 	if (ints[1] != 1) fprintf(stderr,
 				  "outer vector blocklength = %d; should be 1\n",
@@ -224,7 +237,8 @@ int vector_of_vectors_test(void)
 				&ntypes,
 				&combiner);
     if (err != MPI_SUCCESS) {
-	if (verbose) fprintf(stderr, "error in MPI call; aborting after %d errors\n",
+	if (verbose) fprintf(stderr, 
+			     "error in MPI call; aborting after %d errors\n",
 			     errs+1);
 	return errs+1;
     }
@@ -235,11 +249,14 @@ int vector_of_vectors_test(void)
     if (combiner != MPI_COMBINER_VECTOR) errs++;
 
     if (verbose) {
-	if (nints != 3) fprintf(stderr, "inner vector nints = %d; should be 3\n",
+	if (nints != 3) fprintf(stderr, 
+				"inner vector nints = %d; should be 3\n",
 				nints);
-	if (nadds != 0) fprintf(stderr, "inner vector nadds = %d; should be 0\n",
+	if (nadds != 0) fprintf(stderr, 
+				"inner vector nadds = %d; should be 0\n",
 				nadds);
-	if (ntypes != 1) fprintf(stderr, "inner vector ntypes = %d; should be 1\n",
+	if (ntypes != 1) fprintf(stderr, 
+				 "inner vector ntypes = %d; should be 1\n",
 				 ntypes);
 	if (combiner != MPI_COMBINER_VECTOR)
 	    fprintf(stderr, "inner vector combiner = %s; should be vector\n",
@@ -267,12 +284,14 @@ int vector_of_vectors_test(void)
     if (ints[2] != 2) errs++;
 
     if (verbose) {
-	if (ints[0] != 2) fprintf(stderr, "inner vector count = %d; should be 2\n",
+	if (ints[0] != 2) fprintf(stderr, 
+				  "inner vector count = %d; should be 2\n",
 				  ints[0]);
 	if (ints[1] != 1) fprintf(stderr,
 				  "inner vector blocklength = %d; should be 1\n",
 				  ints[1]);
-	if (ints[2] != 2) fprintf(stderr, "inner vector stride = %d; should be 2\n",
+	if (ints[2] != 2) fprintf(stderr, 
+				  "inner vector stride = %d; should be 2\n",
 				  ints[2]);
     }
     if (errs) {
@@ -442,13 +461,20 @@ int indexed_of_basics_test(void)
     if (types[0] != MPI_INT) errs++;
 
     if (verbose) {
-	if (ints[0] != s_count) fprintf(stderr, "count = %d; should be %d\n", ints[0], s_count);
-	if (ints[1] != s_blocklengths[0]) fprintf(stderr, "blocklength[0] = %d; should be %d\n", ints[1], s_blocklengths[0]);
-	if (ints[2] != s_blocklengths[1]) fprintf(stderr, "blocklength[1] = %d; should be %d\n", ints[2], s_blocklengths[1]);
-	if (ints[3] != s_blocklengths[2]) fprintf(stderr, "blocklength[2] = %d; should be %d\n", ints[3], s_blocklengths[2]);
-	if (ints[4] != s_displacements[0]) fprintf(stderr, "displacement[0] = %d; should be %d\n", ints[4], s_displacements[0]);
-	if (ints[5] != s_displacements[1]) fprintf(stderr, "displacement[1] = %d; should be %d\n", ints[5], s_displacements[1]);
-	if (ints[6] != s_displacements[2]) fprintf(stderr, "displacement[2] = %d; should be %d\n", ints[6], s_displacements[2]);
+	if (ints[0] != s_count) 
+	    fprintf(stderr, "count = %d; should be %d\n", ints[0], s_count);
+	if (ints[1] != s_blocklengths[0]) 
+	    fprintf(stderr, "blocklength[0] = %d; should be %d\n", ints[1], s_blocklengths[0]);
+	if (ints[2] != s_blocklengths[1]) 
+	    fprintf(stderr, "blocklength[1] = %d; should be %d\n", ints[2], s_blocklengths[1]);
+	if (ints[3] != s_blocklengths[2]) 
+	    fprintf(stderr, "blocklength[2] = %d; should be %d\n", ints[3], s_blocklengths[2]);
+	if (ints[4] != s_displacements[0]) 
+	    fprintf(stderr, "displacement[0] = %d; should be %d\n", ints[4], s_displacements[0]);
+	if (ints[5] != s_displacements[1]) 
+	    fprintf(stderr, "displacement[1] = %d; should be %d\n", ints[5], s_displacements[1]);
+	if (ints[6] != s_displacements[2]) 
+	    fprintf(stderr, "displacement[2] = %d; should be %d\n", ints[6], s_displacements[2]);
 	if (types[0] != MPI_INT) fprintf(stderr, "type[0] does not match\n");
     }
 
@@ -489,7 +515,8 @@ int indexed_of_vectors_test(void)
 			  MPI_INT,
 			  &inner_vector);
     if (err != MPI_SUCCESS) {
-	if (verbose) fprintf(stderr, "error in MPI call; aborting after %d errors\n",
+	if (verbose) fprintf(stderr, 
+			     "error in MPI call; aborting after %d errors\n",
 			     errs+1);
 	return errs+1;
     }
@@ -500,7 +527,8 @@ int indexed_of_vectors_test(void)
 			   inner_vector,
 			   &outer_indexed);
     if (err != MPI_SUCCESS) {
-	if (verbose) fprintf(stderr, "error in MPI call; aborting after %d errors\n",
+	if (verbose) fprintf(stderr, 
+			     "error in MPI call; aborting after %d errors\n",
 			     errs+1);
 	return errs+1;
     }
@@ -512,7 +540,8 @@ int indexed_of_vectors_test(void)
 				&ntypes,
 				&combiner);
     if (err != MPI_SUCCESS) {
-	if (verbose) fprintf(stderr, "error in MPI call; aborting after %d errors\n",
+	if (verbose) fprintf(stderr, 
+			     "error in MPI call; aborting after %d errors\n",
 			     errs+1);
 	return errs+1;
     }
@@ -558,13 +587,20 @@ int indexed_of_vectors_test(void)
     if (ints[6] != i_displacements[2]) errs++;
 
     if (verbose) {
-	if (ints[0] != i_count) fprintf(stderr, "count = %d; should be %d\n", ints[0], i_count);
-	if (ints[1] != i_blocklengths[0]) fprintf(stderr, "blocklength[0] = %d; should be %d\n", ints[1], i_blocklengths[0]);
-	if (ints[2] != i_blocklengths[1]) fprintf(stderr, "blocklength[1] = %d; should be %d\n", ints[2], i_blocklengths[1]);
-	if (ints[3] != i_blocklengths[2]) fprintf(stderr, "blocklength[2] = %d; should be %d\n", ints[3], i_blocklengths[2]);
-	if (ints[4] != i_displacements[0]) fprintf(stderr, "displacement[0] = %d; should be %d\n", ints[4], i_displacements[0]);
-	if (ints[5] != i_displacements[1]) fprintf(stderr, "displacement[1] = %d; should be %d\n", ints[5], i_displacements[1]);
-	if (ints[6] != i_displacements[2]) fprintf(stderr, "displacement[2] = %d; should be %d\n", ints[6], i_displacements[2]);
+	if (ints[0] != i_count) 
+	    fprintf(stderr, "count = %d; should be %d\n", ints[0], i_count);
+	if (ints[1] != i_blocklengths[0]) 
+	    fprintf(stderr, "blocklength[0] = %d; should be %d\n", ints[1], i_blocklengths[0]);
+	if (ints[2] != i_blocklengths[1]) 
+	    fprintf(stderr, "blocklength[1] = %d; should be %d\n", ints[2], i_blocklengths[1]);
+	if (ints[3] != i_blocklengths[2]) 
+	    fprintf(stderr, "blocklength[2] = %d; should be %d\n", ints[3], i_blocklengths[2]);
+	if (ints[4] != i_displacements[0]) 
+	    fprintf(stderr, "displacement[0] = %d; should be %d\n", ints[4], i_displacements[0]);
+	if (ints[5] != i_displacements[1]) 
+	    fprintf(stderr, "displacement[1] = %d; should be %d\n", ints[5], i_displacements[1]);
+	if (ints[6] != i_displacements[2]) 
+	    fprintf(stderr, "displacement[2] = %d; should be %d\n", ints[6], i_displacements[2]);
     }
 
     if (errs) {
@@ -584,7 +620,8 @@ int indexed_of_vectors_test(void)
 				&ntypes,
 				&combiner);
     if (err != MPI_SUCCESS) {
-	if (verbose) fprintf(stderr, "error in MPI call; aborting after %d errors\n",
+	if (verbose) fprintf(stderr, 
+			     "error in MPI call; aborting after %d errors\n",
 			     errs+1);
 	return errs+1;
     }
@@ -595,11 +632,14 @@ int indexed_of_vectors_test(void)
     if (combiner != MPI_COMBINER_VECTOR) errs++;
 
     if (verbose) {
-	if (nints != 3) fprintf(stderr, "inner vector nints = %d; should be 3\n",
+	if (nints != 3) fprintf(stderr, 
+				"inner vector nints = %d; should be 3\n",
 				nints);
-	if (nadds != 0) fprintf(stderr, "inner vector nadds = %d; should be 0\n",
+	if (nadds != 0) fprintf(stderr, 
+				"inner vector nadds = %d; should be 0\n",
 				nadds);
-	if (ntypes != 1) fprintf(stderr, "inner vector ntypes = %d; should be 1\n",
+	if (ntypes != 1) fprintf(stderr, 
+				 "inner vector ntypes = %d; should be 1\n",
 				 ntypes);
 	if (combiner != MPI_COMBINER_VECTOR)
 	    fprintf(stderr, "inner vector combiner = %s; should be vector\n",
@@ -627,12 +667,14 @@ int indexed_of_vectors_test(void)
     if (ints[2] != 2) errs++;
 
     if (verbose) {
-	if (ints[0] != 2) fprintf(stderr, "inner vector count = %d; should be 2\n",
+	if (ints[0] != 2) fprintf(stderr, 
+				  "inner vector count = %d; should be 2\n",
 				  ints[0]);
 	if (ints[1] != 1) fprintf(stderr,
 				  "inner vector blocklength = %d; should be 1\n",
 				  ints[1]);
-	if (ints[2] != 2) fprintf(stderr, "inner vector stride = %d; should be 2\n",
+	if (ints[2] != 2) fprintf(stderr, 
+				  "inner vector stride = %d; should be 2\n",
 				  ints[2]);
     }
     if (errs) {
@@ -726,16 +768,26 @@ int struct_of_basics_test(void)
     if (types[2] != s_types[2]) errs++;
 
     if (verbose) {
-	if (ints[0] != s_count) fprintf(stderr, "count = %d; should be %d\n", ints[0], s_count);
-	if (ints[1] != s_blocklengths[0]) fprintf(stderr, "blocklength[0] = %d; should be %d\n", ints[1], s_blocklengths[0]);
-	if (ints[2] != s_blocklengths[1]) fprintf(stderr, "blocklength[1] = %d; should be %d\n", ints[2], s_blocklengths[1]);
-	if (ints[3] != s_blocklengths[2]) fprintf(stderr, "blocklength[2] = %d; should be %d\n", ints[3], s_blocklengths[2]);
-	if (adds[0] != s_displacements[0]) fprintf(stderr, "displacement[0] = %d; should be %d\n", adds[0], s_displacements[0]);
-	if (adds[1] != s_displacements[1]) fprintf(stderr, "displacement[1] = %d; should be %d\n", adds[1], s_displacements[1]);
-	if (adds[2] != s_displacements[2]) fprintf(stderr, "displacement[2] = %d; should be %d\n", adds[2], s_displacements[2]);
-	if (types[0] != s_types[0]) fprintf(stderr, "type[0] does not match\n");
-	if (types[1] != s_types[1]) fprintf(stderr, "type[1] does not match\n");
-	if (types[2] != s_types[2]) fprintf(stderr, "type[2] does not match\n");
+	if (ints[0] != s_count) 
+	    fprintf(stderr, "count = %d; should be %d\n", ints[0], s_count);
+	if (ints[1] != s_blocklengths[0])
+	    fprintf(stderr, "blocklength[0] = %d; should be %d\n", ints[1], s_blocklengths[0]);
+	if (ints[2] != s_blocklengths[1]) 
+	    fprintf(stderr, "blocklength[1] = %d; should be %d\n", ints[2], s_blocklengths[1]);
+	if (ints[3] != s_blocklengths[2]) 
+	    fprintf(stderr, "blocklength[2] = %d; should be %d\n", ints[3], s_blocklengths[2]);
+	if (adds[0] != s_displacements[0]) 
+	    fprintf(stderr, "displacement[0] = %d; should be %d\n", adds[0], s_displacements[0]);
+	if (adds[1] != s_displacements[1]) 
+	    fprintf(stderr, "displacement[1] = %d; should be %d\n", adds[1], s_displacements[1]);
+	if (adds[2] != s_displacements[2]) 
+	    fprintf(stderr, "displacement[2] = %d; should be %d\n", adds[2], s_displacements[2]);
+	if (types[0] != s_types[0]) 
+	    fprintf(stderr, "type[0] does not match\n");
+	if (types[1] != s_types[1]) 
+	    fprintf(stderr, "type[1] does not match\n");
+	if (types[2] != s_types[2]) 
+	    fprintf(stderr, "type[2] does not match\n");
     }
 
     free(ints);

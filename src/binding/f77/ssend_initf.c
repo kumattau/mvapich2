@@ -96,7 +96,11 @@ extern FORT_DLL_SPEC void FORT_CALL mpi_ssend_init_( void*, MPI_Fint *, MPI_Fint
 #define mpi_ssend_init_ pmpi_ssend_init_
 #endif
 /* This defines the routine that we call, which must be the PMPI version
-   since we're renameing the Fortran entry as the pmpi version */
+   since we're renaming the Fortran entry as the pmpi version.  The MPI name
+   must be undefined first to prevent any conflicts with previous renamings,
+   such as those put in place by the globus device when it is building on
+   top of a vendor MPI. */
+#undef MPI_Ssend_init
 #define MPI_Ssend_init PMPI_Ssend_init 
 
 #else

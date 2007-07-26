@@ -50,8 +50,6 @@
 
       call MPI_Init( ierr )
 
-      call MPI_Pcontrol( 0, ierr )
-
       call MPI_Comm_rank( MPI_COMM_WORLD, myid, ierr )
       call MPI_Comm_size( MPI_COMM_WORLD, numprocs, ierr )
       print *, "Process ", myid, " of ", numprocs, " is alive"
@@ -98,7 +96,6 @@
       endif
 
       call MPI_Barrier( MPI_COMM_WORLD, ierr )
-      call MPI_Pcontrol( 1, ierr )
 
       do idx = 1, 5
 
@@ -106,9 +103,13 @@
           call MPI_Bcast( n, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr )
           ierr = MPE_Log_event( event1b, 0, '' )
 
+          call MPI_Pcontrol( 0, ierr )
+
           ierr = MPE_Log_event( event2a, 0, '' )
           call MPI_Barrier( MPI_COMM_WORLD, ierr )
           ierr = MPE_Log_event( event2b, 0, '' )
+
+          call MPI_Pcontrol( 1, ierr )
 
           ierr = MPE_Log_event( event3a, 0, '' )
           h = 1.0d0/n

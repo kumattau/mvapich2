@@ -26,6 +26,7 @@
 #include "process.h"
 #include "labelout.h"
 #include "env.h"
+#include "pmiserv.h"
 #include "cmnargs.h"
 
 /* Use the memory defintions from mpich2/src/include */
@@ -83,7 +84,11 @@ static int ReadConfigFile( const char *, ProcessUniverse * );
   number of arguments that should be skipped.  The 'void * pointer' in
   the call to 'ProcessArg' is filled with the 'extraData' pointer.  If
   'ProcessArg' is null, then any unrecognized argument causes mpiexec to 
-  print a help message and exit.
+  print a help message and exit.  In most cases, this will invoke the
+  'MPIE_ArgsCheckForEnv' routine which will check for control of the
+  environment variables to be provided to the created processes.  In 
+  some cases, 
+  
  
   In addition the the arguments specified by the MPI standard, 
   -np is accepted as a synonym for -n and -hostfile is allowed
@@ -204,6 +209,11 @@ int MPIE_Args( int argc, char *argv[], ProcessUniverse *pUniv,
     -exitinfo  - Provide exit code and signal info if there is an abnormal
                  exit (either non-zero, a process died on a signal, or
 		 pmi was initialized but not finalized)
+    -stdoutbuf=type
+    -stderrbuf=type - Control the buffering on stdout and stderr.
+                 By default, uses the default Unix choice.  Does *not*
+		 control the application; the application may 
+		 also need to control buffering.
 */
 	else if (strcmp( argv[i], "-usize" ) == 0) {
 	    pUniv->size = getInt( i+1, argc, argv );
@@ -222,6 +232,14 @@ int MPIE_Args( int argc, char *argv[], ProcessUniverse *pUniv,
 	else if (strcmp( argv[i], "-exitinfo" ) == 0) {
 	    pUniv->giveExitInfo = 1;
 	    optionArgs = 1;
+	}
+	else if ( strncmp( argv[i], "-stdoutbuf=",  11) == 0) {
+	    const char *cmd = argv[i] + 11;
+	    MPIE_StdioSetMode( stdout, cmd );
+	}
+	else if (strncmp( argv[i], "-stderrbuf=", 11 ) == 0) {
+	    const char *cmd = argv[i] + 11;
+	    MPIE_StdioSetMode( stderr, cmd );
 	}
 /* End of the MPICH2 mpiexec common extentions */
 
@@ -353,6 +371,8 @@ int MPIE_CheckEnv( ProcessUniverse *pUniv,
 		   void *extraData )
 {
     int rc = 0;
+    const char *s;
+
     /* A negative universe size is none set */
     pUniv->size    = GetIntValue( "MPIEXEC_UNIVERSE_SIZE", -1 );
     /* A negative timeout is infinite */
@@ -362,6 +382,25 @@ int MPIE_CheckEnv( ProcessUniverse *pUniv,
 	/* Any value of MPIEXEC_DEBUG turns on debugging */
 	MPIE_Debug = 1;
 	PMISetDebug( 1 );
+    }
+
+    /* Check for stdio buffering controls.  Set the default to none
+       as that preserves the behavior of the user's program.
+    */
+    s = getenv( "MPIEXEC_STDOUTBUF" );
+    if (s) {
+	rc = MPIE_StdioSetMode( stdout, s );
+    }
+    else {
+	MPIE_StdioSetMode( stdout, "none" );
+    }
+
+    s = getenv( "MPIEXEC_STDERRBUF" );
+    if (s) {
+	rc = MPIE_StdioSetMode( stderr, s );
+    }
+    else {
+	MPIE_StdioSetMode( stderr, "none" );
     }
 
     if (processEnv) {
@@ -663,3 +702,27 @@ static int LineToArgv( char *linebuf, char *(argv[]), int maxargv )
     return 0;
 }
 
+/* Set the buffering mode for the specified FILE descriptor */
+int MPIE_StdioSetMode( FILE *fp, const char *mode )
+{
+    int rc = 0;
+    /* Set the default to none (makes the buffering mimic the 
+       users program) */
+    setvbuf( fp, NULL, _IONBF, 0 );
+    if (strcmp( mode, "none" ) == 0 || strcmp( mode, "NONE" ) == 0) {
+	DBG_PRINTF(("Setting buffer mode to unbuffered\n"));
+	setvbuf( fp, NULL, _IONBF, 0 );
+    }
+    else if (strcmp( mode, "line" ) == 0 || strcmp( mode, "LINE" ) == 0) {
+	DBG_PRINTF(("Setting buffer mode to line buffered\n"));
+	setvbuf( fp, NULL, _IOLBF, 0 );
+    }
+    else if (strcmp( mode, "block" ) == 0 || strcmp( mode, "BLOCK" ) == 0) {
+	DBG_PRINTF(("Setting buffer mode to block buffered\n"));
+	setvbuf( fp, NULL, _IOFBF, 0 );
+    }
+    else {
+	rc = 1;
+    }
+    return rc;
+}

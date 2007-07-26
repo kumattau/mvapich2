@@ -1353,6 +1353,10 @@ ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
           ac_config_headers="$ac_config_headers pmiconf.h"
 
+
+
+
+
 echo "RUNNING CONFIGURE FOR THE SMPD PMI"
 
 # Check whether --enable-cache or --disable-cache was given.
@@ -2845,7 +2849,7 @@ fi
 # If cpp failed, see if the compiler accepts the header.
 if test "$pac_found_header" != "yes" ; then
     cat >conftest.c<<EOF
-#line 2848 "configure"
+#line 2852 "configure"
 #include "confdefs.h"
 #include <$ac_header>
 int conftest() {return 0;}

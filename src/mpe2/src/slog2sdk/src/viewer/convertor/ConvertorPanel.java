@@ -184,6 +184,7 @@ public class ConvertorPanel extends JPanel
                     cmd_pulldown.addItem( ConvertorConst.CLOG_TO_SLOG2 );
                     cmd_pulldown.addItem( ConvertorConst.RLOG_TO_SLOG2 );
                     cmd_pulldown.addItem( ConvertorConst.UTE_TO_SLOG2 );
+                    cmd_pulldown.addItem( ConvertorConst.TXT_TO_SLOG2 );
                     cmd_pulldown.setBorder( raised_border );
                     cmd_pulldown.setEditable( false );
                     cmd_pulldown.setAlignmentX( Component.CENTER_ALIGNMENT );

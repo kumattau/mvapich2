@@ -7,18 +7,9 @@
 
 #include "mpiimpl.h"
 
-#ifdef USE_ROMIO_FILE
-/* Forward ref for the routine to extract and set the error handler
-   in a ROMIO File structure.  FIXME: These should be imported from a common
-   header file that is also used in mpich2_fileutil.c
- */
-int MPIR_ROMIO_Get_file_errhand( MPI_File, MPI_Errhandler * );
-int MPIR_ROMIO_Set_file_errhand( MPI_File, MPI_Errhandler );
-void MPIR_Get_file_error_routine( MPID_Errhandler *, 
-				  void (**)(MPI_File *, int *, ...), 
-				  int * );
-int MPIO_Err_return_file( MPI_File, int );
-#endif
+/* mpiext.h contains the prototypes for functions to interface MPICH2
+   and ROMIO */
+#include "mpiext.h"
 
 /* -- Begin Profiling Symbol Block for routine MPI_File_get_errhandler */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -33,6 +24,7 @@ int MPIO_Err_return_file( MPI_File, int );
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_File_get_errhandler
 #define MPI_File_get_errhandler PMPI_File_get_errhandler
 
 #endif
@@ -58,16 +50,17 @@ int MPIO_Err_return_file( MPI_File, int );
 @*/
 int MPI_File_get_errhandler(MPI_File file, MPI_Errhandler *errhandler)
 {
+#ifdef HAVE_ERROR_CHECKING
     static const char FCNAME[] = "MPI_File_get_errhandler";
-    int mpi_errno = MPI_SUCCESS;
-#ifndef USE_ROMIO_FILE
-    MPID_File *file_ptr = NULL;
 #endif
+    int mpi_errno = MPI_SUCCESS;
+    MPI_Errhandler eh;
+    MPID_Errhandler *e;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_FILE_GET_ERRHANDLER);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("errhan");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_FILE_GET_ERRHANDLER);
 
 #ifdef MPI_MODE_RDONLY
@@ -75,25 +68,11 @@ int MPI_File_get_errhandler(MPI_File file, MPI_Errhandler *errhandler)
     /* FIXME: check for a valid file handle (fh) before converting to a pointer */
     
     /* Validate parameters and objects (post conversion) */
-#   ifndef USE_ROMIO_FILE
-    {
-	MPID_File_get_ptr( file, file_ptr );
-    }
-#   endif
-    
-    /* Validate parameters and objects (post conversion) */
 #   ifdef HAVE_ERROR_CHECKING
     {
         MPID_BEGIN_ERROR_CHECKS;
         {
 	    MPIR_ERRTEST_ARGNULL(errhandler,"errhandler",mpi_errno);
-#           ifndef USE_ROMIO_FILE
-	    {
-		/* Validate file_ptr */
-		MPID_File_valid_ptr( file_ptr, mpi_errno );
-		/* If file_ptr is not valid, it will be reset to null */
-	    }
-#           endif
             if (mpi_errno) goto fn_fail;
         }
         MPID_END_ERROR_CHECKS;
@@ -102,32 +81,15 @@ int MPI_File_get_errhandler(MPI_File file, MPI_Errhandler *errhandler)
 
     /* ... body of routine ...  */
     
-#   ifdef USE_ROMIO_FILE
-    {
-	MPI_Errhandler eh;
-	MPID_Errhandler *e;
-	MPIR_ROMIO_Get_file_errhand( file, &eh );
-	if (!eh) {
-	    MPID_Errhandler_get_ptr( MPI_ERRORS_RETURN, e );
-	}
-	else {
-	    MPID_Errhandler_get_ptr( eh, e );
-	}
-	MPIU_Object_add_ref( e );
-	*errhandler = e->handle;
+    MPIR_ROMIO_Get_file_errhand( file, &eh );
+    if (!eh) {
+	MPID_Errhandler_get_ptr( MPI_ERRORS_RETURN, e );
     }
-#   else
-    {
-	/* Check for default error handler */
-	if (!file_ptr->errhandler) {
-	    *errhandler = MPI_ERRORS_RETURN;
-	}
-	else {
-	    *errhandler = file_ptr->errhandler->handle;
-	    MPIU_Object_add_ref(file_ptr->errhandler);
-	}
+    else {
+	MPID_Errhandler_get_ptr( eh, e );
     }
-#   endif
+    MPIR_Errhandler_add_ref( e );
+    *errhandler = e->handle;
 
 #else
     /* Dummy in case ROMIO is not defined */
@@ -135,32 +97,28 @@ int MPI_File_get_errhandler(MPI_File file, MPI_Errhandler *errhandler)
 #endif    
     /* ... end of body of routine ... */
 
+#ifdef HAVE_ERROR_CHECKING
   fn_exit:
+#endif
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_FILE_GET_ERRHANDLER);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("errhan");
     return mpi_errno;
 
-  fn_fail:
     /* --BEGIN ERROR HANDLING-- */
 #   ifdef HAVE_ERROR_CHECKING
+  fn_fail:
     {
 	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_file_get_errhandler",
+	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, 
+	    "**mpi_file_get_errhandler",
 	    "**mpi_file_get_errhandler %F %p", file, errhandler);
     }
-#   endif
+    /* FIXME: Is this obsolete now? */
 #ifdef MPI_MODE_RDONLY
-#   ifdef USE_ROMIO_FILE
-    {
-	mpi_errno = MPIO_Err_return_file( file, mpi_errno );
-    }
-#   else
-    {
-	mpi_errno = MPIR_Err_return_file( file_ptr, FCNAME, mpi_errno );
-    }
-#   endif
+    mpi_errno = MPIO_Err_return_file( file, mpi_errno );
 #endif
     goto fn_exit;
+#   endif
     /* --END ERROR HANDLING-- */
 }
 

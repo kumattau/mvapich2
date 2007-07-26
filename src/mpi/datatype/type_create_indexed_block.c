@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Type_create_indexed_block
 #define MPI_Type_create_indexed_block PMPI_Type_create_indexed_block
 
 #endif
@@ -39,6 +40,28 @@
 
     Output Parameter:
 . newtype - new datatype (handle) 
+
+Notes:
+The indices are displacements, and are based on a zero origin.  A common error
+is to do something like the following
+.vb
+    integer a(100)
+    integer blens(10), indices(10)
+    do i=1,10
+10       indices(i) = 1 + (i-1)*10
+    call MPI_TYPE_CREATE_INDEXED_BLOCK(10,1,indices,MPI_INTEGER,newtype,ierr)
+    call MPI_TYPE_COMMIT(newtype,ierr)
+    call MPI_SEND(a,1,newtype,...)
+.ve
+expecting this to send 'a(1),a(11),...' because the indices have values 
+'1,11,...'.   Because these are `displacements` from the beginning of 'a',
+it actually sends 'a(1+1),a(1+11),...'.
+
+If you wish to consider the displacements as indices into a Fortran array,
+consider declaring the Fortran array with a zero origin
+.vb
+    integer a(0:99)
+.ve
 
 .N ThreadSafe
 
@@ -64,7 +87,7 @@ int MPI_Type_create_indexed_block(int count,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("datatype");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_TYPE_CREATE_INDEXED_BLOCK);
     
     /* Validate parameters and objects */
@@ -132,7 +155,7 @@ int MPI_Type_create_indexed_block(int count,
   fn_exit:
     MPIU_CHKLMEM_FREEALL();
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_TYPE_CREATE_INDEXED_BLOCK);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("datatype");
     return mpi_errno;
 
   fn_fail:

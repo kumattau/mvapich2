@@ -1,19 +1,8 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: init.c,v 1.2 2006/10/27 06:56:49 mamidala Exp $
+/*  $Id: init.c,v 1.31 2006/12/09 16:42:26 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
- */
-/* Copyright (c) 2003-2007, The Ohio State University. All rights
- * reserved.
- *
- * This file is part of the MVAPICH2 software package developed by the
- * team members of The Ohio State University's Network-Based Computing
- * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
- *
- * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT_MVAPICH2 in the top level MVAPICH2 directory.
- *
  */
 
 #include "mpiimpl.h"
@@ -33,6 +22,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Init
 #define MPI_Init PMPI_Init
 
 /* Fortran logical values. extern'd in mpiimpl.h */
@@ -78,11 +68,6 @@ The Fortran binding for 'MPI_Init' has only the error return
 #ifdef _SMP_
 extern int split_comm;
 extern int enable_shmem_collectives;
-int disable_shmem_allreduce=0;
-int disable_shmem_reduce=0;
-int disable_shmem_barrier=0;
-extern int shmem_coll_blocks;
-extern int shmem_coll_max_msg_size;
 #endif
 int MPI_Init( int *argc, char ***argv )
 {
@@ -92,19 +77,17 @@ int MPI_Init( int *argc, char ***argv )
 
 #ifdef _SMP_
     char *value;
-#ifdef _SHMEM_COLL_
-    if (((value = getenv("MV2_USE_RDMA_CM")) == NULL) &&
-         ((value = getenv("MV2_ENABLE_IWARP_MODE")) == NULL)){
-        if (setenv("MV2_ENABLE_SHMEM_COLL","1",1) == -1){
-            printf("Error in setting environment\n");
-            exit(0);
-        }
-    }
-#endif
+    MPIU_THREADPRIV_DECL;
+    MPIU_THREADPRIV_GET;
 #endif
     MPID_CS_INITIALIZE();
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("init");
     MPID_MPI_INIT_FUNC_ENTER(MPID_STATE_MPI_INIT);
+    
+#ifdef _SMP_
+    MV2_Read_env_vars();
+#endif
+
 #   ifdef HAVE_ERROR_CHECKING
     {
         MPID_BEGIN_ERROR_CHECKS;
@@ -125,64 +108,36 @@ int MPI_Init( int *argc, char ***argv )
     if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 
 #ifdef _SMP_
-    int flag;
-    if ((value = getenv("MV2_ENABLE_SHMEM_COLL")) != NULL){
-        enable_shmem_collectives = 1;
-    }
-    if ((value = getenv("MV2_DISABLE_SHMEM_ALLREDUCE")) != NULL) {
-        flag = (int)atoi(value);
-        if (flag > 0) disable_shmem_allreduce = 1;
-        else disable_shmem_allreduce = 0;
-    }
-    if ((value = getenv("MV2_DISABLE_SHMEM_REDUCE")) != NULL) {
-        flag = (int)atoi(value);
-        if (flag > 0) disable_shmem_reduce = 1;
-        else disable_shmem_reduce = 0;
-    }
-    if ((value = getenv("MV2_DISABLE_SHMEM_BARRIER")) != NULL) {
-        flag = (int)atoi(value);
-        if (flag > 0) disable_shmem_barrier = 1;
-        else disable_shmem_barrier = 0;
-    }
-    if ((value = getenv("MV2_SHMEM_COLL_NUM_COMM")) != NULL){
-	    flag = (int)atoi(value);
-	    if (flag > 0) shmem_coll_blocks = flag;
-    }
-    if ((value = getenv("MV2_SHMEM_COLL_MAX_MSG_SIZE")) != NULL){
-	    flag = (int)atoi(value);
-	    if (flag > 0) shmem_coll_max_msg_size = flag;
-    }
-
     if (enable_shmem_collectives){
-    if (split_comm == 1){
-        MPIR_Nest_incr();
-        int my_id, size;
-        MPI_Comm_rank(MPI_COMM_WORLD, &my_id);
-        MPI_Comm_size(MPI_COMM_WORLD, &size);
-        split_comm = 0;
-        create_2level_comm(MPI_COMM_WORLD, size, my_id);
-        split_comm = 1;
-        MPIR_Nest_decr();
-    }
+        if (split_comm == 1){
+            MPIR_Nest_incr();
+            int my_id, size;
+            MPI_Comm_rank(MPI_COMM_WORLD, &my_id);
+            MPI_Comm_size(MPI_COMM_WORLD, &size);
+            split_comm = 0;
+            create_2level_comm(MPI_COMM_WORLD, size, my_id);
+            split_comm = 1;
+            MPIR_Nest_decr();
+        }
     }
 #endif
-
     /* ... end of body of routine ... */
     
     MPID_MPI_INIT_FUNC_EXIT(MPID_STATE_MPI_INIT);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("init");
     return mpi_errno;
     
   fn_fail:
     /* --BEGIN ERROR HANDLING-- */
-#   ifdef HAVE_ERROR_HANDLING
+#   ifdef HAVE_ERROR_REPORTING
     {
 	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_init", "**mpi_init %p %p", argc, argv);
+	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, 
+	    "**mpi_init", "**mpi_init %p %p", argc, argv);
     }
 #   endif
     mpi_errno = MPIR_Err_return_comm( 0, FCNAME, mpi_errno );
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("init");
     MPID_CS_FINALIZE();
     return mpi_errno;
     /* --END ERROR HANDLING-- */

@@ -65,7 +65,9 @@ int MPIE_ChooseHosts( ProcessWorld *pWorld,
 		      void *readDBdata )
 {
     int i, nNeeded=0;
-    MachineTable *mt;
+    MachineTable *mt = 0;
+    const char *curMtArch = 0;
+    int         curHost = 0;
     ProcessApp   *app;
     ProcessState *pState;
 
@@ -99,7 +101,7 @@ int MPIE_ChooseHosts( ProcessWorld *pWorld,
     if (nNeeded == 0) return 0;
 
     /* Now, for each app, find the hostnames by reading the
-       machine table associate with the architecture */
+       machine table associated with the architecture */
     app = pWorld->apps;
     while (app && nNeeded > 0) {
 	int nForApp = 0;
@@ -109,39 +111,45 @@ int MPIE_ChooseHosts( ProcessWorld *pWorld,
 	    if (!pState[i].hostname) nForApp++;
 	}
 	
-	mt = (*readDB)( app->arch, nForApp, readDBdata );
-#if 0
-    /* Read the appropriate machines file.  There may be multiple files, 
-       one for each requested architecture.  We'll read one machine file
-       at a time, filling in all of the processes for each particular 
-       architecture */
-    /* ntest is used to ensure that we exit this loop in the case that 
-       there are no machines of the requested architecture */
-    ntest = ptable->nProcesses;
-    while (nNeeded && ntest--) {
-	for (i=0; i<ptable->nProcesses; i++) {
-	    if (!ptable->table[i].spec.hostname) break;
-	}
-	/* Read the machines file for this architecture.  Use the
-	   default architecture if none selected */
-	arch = ptable->table[i].spec.arch;
-	mt = (*readDB)( arch, nNeeded, readDBdata );
-	if (!mt) {
-	    /* FIXME : needs an error message */
-	    /* By default, run on local host? */
-	    if (1) {
-		for (; i<ptable->nProcesses; i++) {
-		    if ((!arch || 
-			 (strcmp( ptable->table[i].spec.arch, arch )== 0)) &&
-			!ptable->table[i].spec.hostname) {
-			ptable->table[i].spec.hostname = "localhost";
-			nNeeded--;
-		    }
+	if (nForApp) {
+	    if (!mt || app->arch != curMtArch) {
+		/* Only read machines file if we need to, even 
+		   with multiple applications */
+		if (mt) {
+		    MPIE_FreeMachineTable( mt );
 		}
-		continue;
+		mt = (*readDB)( app->arch, nForApp, readDBdata );
+		curMtArch = app->arch;
+		curHost   = 0;
+		if (!mt) {
+		    MPIU_Error_printf( "Could not find machines for %s\n",
+		       app->arch ? app->arch : "default architecture" );
+		    return nNeeded;
+		}
+		/* We might want to consider using localhost for
+		 a null arch if there is no machine file. */
 	    }
-	    return 1;
+
+	    /* Now that we have a table, make the assignments */
+	    for (i=0; i<app->nProcess; i++) {
+		if (!pState[i].hostname) {
+		    if (curHost >= mt->nHosts) {
+			/* We've run out of systems */
+			break;
+		    }
+		    DBG_PRINTF(("Adding host %s for state %d\n", 
+				mt->desc[curHost].hostname, i ));
+		    nNeeded --;
+		    nForApp--;
+		    pState[i].hostname = MPIU_Strdup( mt->desc[curHost].hostname );
+		    mt->desc[curHost].np--;
+		    if (mt->desc[curHost].np == 0) 
+			curHost++;
+		}
+	    }
 	}
+	
+#if 0
 	if (mt->nHosts == 0) {
 	    if (arch) {
 		MPIU_Error_printf( "No machines specified for %s\n", arch );
@@ -152,23 +160,11 @@ int MPIE_ChooseHosts( ProcessWorld *pWorld,
 		
 	    return 1;
 	}
-	/* Assign machines to all processes with this arch */
-	k = 0;
-	/* Start from the first process that needs this arch */
-	for (; i<ptable->nProcesses; i++) {
-	    if ((!arch || (strcmp( ptable->table[i].spec.arch, arch )== 0)) &&
-		!ptable->table[i].spec.hostname) {
-		ptable->table[i].spec.hostname = mt->desc[k++].name;
-		if (k >= mt->nHosts) k = 0;
-		nNeeded--;
-	    }
-	}
-	/* We can't free the machines table because we made references
-	   to storage (hostnames) in the table */
-	/* FIXME: Must be able to free the table */
-    }
 #endif
 	app = app->nextApp;
+    }
+    if (mt) {
+	MPIE_FreeMachineTable( mt );
     }
     return nNeeded != 0;   /* Return nonzero on failure */
 }
@@ -398,4 +394,23 @@ int MPIE_RMProcessArg( int argc, char *argv[], void *extra )
 	/* else not an argument for this routine */
     }
     return incr;
+}
+
+/* Free the machine table (returned by MPIE_ReadMachines or similar routines) */
+int MPIE_FreeMachineTable( MachineTable *mt )
+{
+    int i;
+    for (i=0; i<mt->nHosts; i++) {
+	MPIU_Free( mt->desc[i].hostname );
+	if (mt->desc[i].login) {
+	    MPIU_Free( mt->desc[i].login );
+	}
+	if (mt->desc[i].netname) {
+	    MPIU_Free( mt->desc[i].netname );
+	}
+    }
+    MPIU_Free( mt->desc );
+    MPIU_Free( mt );
+
+    return 0;
 }

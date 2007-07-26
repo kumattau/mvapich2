@@ -1,5 +1,5 @@
 
-/* Copyright (c) 2002-2006, The Ohio State University. All rights
+/* Copyright (c) 2002-2007, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH software package developed by the
@@ -40,6 +40,7 @@ typedef struct MPICM_ib_context{
     MPIDI_PG_t * pg;
 }MPICM_ib_context;
 
+extern pthread_mutex_t cm_conn_state_lock;
 extern MPICM_ib_context cm_ib_context;
 /*
 MPICM_Init_UD
@@ -61,13 +62,9 @@ Cleanup ud related data structures
 */
 int MPICM_Finalize_UD();
 
-#ifdef CKPT
-
 /*Interface to lock/unlock connection manager*/
-inline void MPICM_lock();
+void MPICM_lock();
 
-inline void MPICM_unlock();
-
-#endif
+void MPICM_unlock();
 
 #endif  /* MVAPICH2_GEN2_CM_H */

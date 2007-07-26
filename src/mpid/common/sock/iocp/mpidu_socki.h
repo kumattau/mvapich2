@@ -9,7 +9,21 @@
 #include <winsock2.h>
 #include <windows.h>
 #include <mswsock.h>
-#include <ws2tcpip.h>
+
+/* 
+	ws2tcpip.h is a C++ header file. This header file,
+	mpidu_socki.h, if included within a extern "C" {}
+	block would give an error if ws2tcpip is not
+	included in a extern "C++" {} block.
+   
+ */
+#ifdef __cplusplus
+extern "C++" {
+#endif
+	#include <ws2tcpip.h>
+#ifdef __cplusplus
+}
+#endif
 
 #define MPIDU_SOCK_INVALID_SOCK   NULL
 #define MPIDU_SOCK_INVALID_SET    NULL

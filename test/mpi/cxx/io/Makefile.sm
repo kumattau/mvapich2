@@ -1,5 +1,5 @@
 INCLUDES = -I../../include -I${srcdir}/../../include
-LDADD = -L../../../../lib ../util/mtest.o 
+LDADD = ../util/mtest.o 
 DEPADD = @MPILIBLOC@ ../util/mtest.o
 smvar_do_sharedlibs = 0
 
@@ -49,3 +49,6 @@ writeatallbenosx.cxx : ioharness.tlt ioharness.defn
 
 ../util/mtest.o: 
 	(cd ../util && $(MAKE) mtest.o)
+
+clean-local:
+	rm -f .iotest.txt.*

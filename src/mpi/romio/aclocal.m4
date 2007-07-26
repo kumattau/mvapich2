@@ -62,7 +62,9 @@ Turning off Fortran (-nof77 being assumed)])
     if test -n "$FORTRANNAMES" ; then
         WDEF="-D$FORTRANNAMES"
     fi
-    rm -f confftest.f confftest.o
+    # Delete confftest files with any extension.  This catches the case
+    # where auxillary files, such as coverage files, are removed.
+    rm -f confftest.*
     ])dnl
 dnl
 define(PAC_GET_SPECIAL_SYSTEM_INFO,[
@@ -613,8 +615,8 @@ dnl
 dnl
 define(PAC_GET_XFS_MEMALIGN,
 [AC_MSG_CHECKING([for memory alignment needed for direct I/O])
-/bin/rm -f memalignval
-/bin/rm -f /tmp/romio_tmp.bin
+rm -f memalignval
+rm -f /tmp/romio_tmp.bin
 AC_TEST_PROGRAM([#include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
@@ -629,8 +631,8 @@ main() {
   fprintf( f, "%u\n", st.d_mem);
   exit(0);
 }],Pac_CV_NAME=`cat memalignval`,Pac_CV_NAME="")
-/bin/rm -f memalignval
-/bin/rm -f /tmp/romio_tmp.bin
+rm -f memalignval
+rm -f /tmp/romio_tmp.bin
 if test -n "$Pac_CV_NAME" -a "$Pac_CV_NAME" != 0 ; then
     AC_MSG_RESULT($Pac_CV_NAME)
     CFLAGS="$CFLAGS -DXFS_MEMALIGN=$Pac_CV_NAME"

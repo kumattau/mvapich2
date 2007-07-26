@@ -308,7 +308,7 @@ ac_includes_default="\
 # include <unistd.h>
 #endif"
 
-ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS top_srcdir_abs VPATH MAKE MKDIR CPRP RM MV includebuild_dir libbuild_dir binbuild_dir etcbuild_dir CC CFLAGS LDFLAGS CPPFLAGS ac_ct_CC EXEEXT OBJEXT AR RANLIB ac_ct_RANLIB CPP DEBUG_LIBS EGREP MPI_IMPL MPE_BUILD_FORTRAN2C CLINKER MPI_CC F77 FLINKER FFLAGS MPI_F77 FINC_PATH_LEADER FLIB_PATH_LEADER MPI_INC MPI_LIBS X_INC X_LIB XGRAPH_LIBS PROF_LIBNAME ANIM_LIBNAME PROF_LIBS ANIM_LIBS LIBOBJS LTLIBOBJS'
+ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS top_srcdir_abs VPATH MAKE MKDIR CPRP RM MV includebuild_dir libbuild_dir binbuild_dir sbinbuild_dir etcbuild_dir CC CFLAGS LDFLAGS CPPFLAGS ac_ct_CC EXEEXT OBJEXT AR RANLIB ac_ct_RANLIB CPP DEBUG_LIBS EGREP MPI_IMPL MPE_BUILD_FORTRAN2C CLINKER MPI_CC F77 FLINKER FFLAGS MPI_F77 FINC_PATH_LEADER FLIB_PATH_LEADER MPI_INC MPI_LIBS X_INC X_LIB XGRAPH_LIBS PROF_LIBNAME ANIM_LIBNAME PROF_LIBS ANIM_LIBS LIBOBJS LTLIBOBJS'
 ac_subst_files=''
 
 # Initialize some variables set by options.
@@ -1301,18 +1301,18 @@ echo $ECHO_N "checking for current directory name... $ECHO_C" >&6
 top_srcdir_abs=$PWD
 if test "${top_srcdir_abs}" != "" -a -d "${top_srcdir_abs}" ; then
     if test -r ${top_srcdir_abs}/.foo$$ ; then
-        /bin/rm -f ${top_srcdir_abs}/.foo$$
-        /bin/rm -f .foo$$
+        rm -f ${top_srcdir_abs}/.foo$$
+        rm -f .foo$$
     fi
     if test -r ${top_srcdir_abs}/.foo$$ -o -r .foo$$ ; then
         top_srcdir_abs=
     else
         echo "test" > ${top_srcdir_abs}/.foo$$
         if test ! -r .foo$$ ; then
-            /bin/rm -f ${top_srcdir_abs}/.foo$$
+            rm -f ${top_srcdir_abs}/.foo$$
             top_srcdir_abs=
         else
-             /bin/rm -f ${top_srcdir_abs}/.foo$$
+            rm -f ${top_srcdir_abs}/.foo$$
         fi
     fi
 fi
@@ -1393,7 +1393,7 @@ XGRAPH_LIBS="$PROF_LIBS"
 
 echo "$as_me:$LINENO: checking gnumake" >&5
 echo $ECHO_N "checking gnumake... $ECHO_C" >&6
-/bin/rm -f conftest
+rm -f conftest
 cat > conftest <<.
 SHELL=/bin/sh
 ALL:
@@ -1416,13 +1416,13 @@ else
     echo "$as_me:$LINENO: result: no" >&5
 echo "${ECHO_T}no" >&6
 fi
-/bin/rm -f conftest
+rm -f conftest
 str=""
 
 
 echo "$as_me:$LINENO: checking BSD 4.4 make" >&5
 echo $ECHO_N "checking BSD 4.4 make... $ECHO_C" >&6
-/bin/rm -f conftest
+rm -f conftest
 cat > conftest <<.
 ALL:
 	@echo "success"
@@ -1431,7 +1431,7 @@ cat > conftest1 <<.
 include conftest
 .
 str=`$MAKE -f conftest1 2>&1`
-/bin/rm -f conftest conftest1
+rm -f conftest conftest1
 if test "$str" != "success" ; then
     echo "$as_me:$LINENO: result: Found BSD 4.4 so-called make" >&5
 echo "${ECHO_T}Found BSD 4.4 so-called make" >&6
@@ -1448,7 +1448,7 @@ str=""
 
 echo "$as_me:$LINENO: checking OSF V3 make" >&5
 echo $ECHO_N "checking OSF V3 make... $ECHO_C" >&6
-/bin/rm -f conftest
+rm -f conftest
 cat > conftest <<.
 SHELL=/bin/sh
 ALL:
@@ -1456,7 +1456,7 @@ ALL:
 	@echo "success"
 .
 str=`$MAKE -f conftest 2>&1`
-/bin/rm -f conftest
+rm -f conftest
 if test "$str" != "success" ; then
     echo "$as_me:$LINENO: result: Found OSF V3 make" >&5
 echo "${ECHO_T}Found OSF V3 make" >&6
@@ -1538,14 +1538,14 @@ if test "${enable_debugcheck+set}" = set; then
 fi;
 
 rootbuild_dir=`pwd`
-for dir in include lib bin etc ; do
+for dir in include lib bin sbin etc ; do
     dirname=${dir}build_dir
     mpe_dirname=mpe_${dirname}
     eval dirvalue=\$"$dirname"
     eval $dirname=\$\{${mpe_dirname}\}
 done
 
-for dir in include lib bin etc ; do
+for dir in include lib bin sbin etc ; do
     dirname=${dir}build_dir
     eval dirvalue=\$"$dirname"
     if test -n "$dirvalue" ; then
@@ -1568,6 +1568,7 @@ fi
         fi
     fi
 done
+
 
 
 
@@ -3892,7 +3893,18 @@ _ACEOF
 cat confdefs.h >>conftest.$ac_ext
 cat >>conftest.$ac_ext <<_ACEOF
 /* end confdefs.h.  */
+
+/* <stdlib.h> is included to get NULL defined */
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#else
+#if !defined( NULL )
+#define NULL 0
+#endif
+#endif
+
 #include "mpi.h"
+
 int
 main ()
 {
@@ -3999,7 +4011,18 @@ _ACEOF
 cat confdefs.h >>conftest.$ac_ext
 cat >>conftest.$ac_ext <<_ACEOF
 /* end confdefs.h.  */
+
+/* <stdlib.h> is included to get NULL defined */
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#else
+#if !defined( NULL )
+#define NULL 0
+#endif
+#endif
+
 #include "mpi.h"
+
 int
 main ()
 {
@@ -4680,6 +4703,7 @@ s,@MV@,$MV,;t t
 s,@includebuild_dir@,$includebuild_dir,;t t
 s,@libbuild_dir@,$libbuild_dir,;t t
 s,@binbuild_dir@,$binbuild_dir,;t t
+s,@sbinbuild_dir@,$sbinbuild_dir,;t t
 s,@etcbuild_dir@,$etcbuild_dir,;t t
 s,@CC@,$CC,;t t
 s,@CFLAGS@,$CFLAGS,;t t

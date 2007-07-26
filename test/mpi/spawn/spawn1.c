@@ -99,7 +99,12 @@ int main( int argc, char *argv[] )
     }
 
     /* It isn't necessary to free the intercomm, but it should not hurt */
-    MPI_Comm_free( &intercomm );
+    /* Using Comm_disconnect instead of free should provide a stronger
+     * test, as a high-quality MPI implementation will be able to
+     * recover some resources that it should hold on to in the case 
+     * of MPI_Comm_free */
+    /*     MPI_Comm_free( &intercomm ); */
+    MPI_Comm_disconnect( &intercomm );
 
     /* Note that the MTest_Finalize get errs only over COMM_WORLD */
     /* Note also that both the parent and child will generate "No Errors"

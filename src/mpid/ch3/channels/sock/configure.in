@@ -11,15 +11,23 @@ dnl
 dnl Definitions will be placed in this file rather than in the DEFS variable
 dnl
 AC_CONFIG_HEADER(include/mpidi_ch3i_sock_conf.h)
+AH_TOP([/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/*  
+ *  (C) 2001 by Argonne National Laboratory.
+ *      See COPYRIGHT in top-level directory.
+ */
+#ifndef MPIDI_CH3I_SOCK_CONF_H_INCLUDED
+#define MPIDI_CH3I_SOCK_CONF_H_INCLUDED
+])
+AH_BOTTOM([#endif])
 
 echo "RUNNING CONFIGURE FOR THE SOCK CHANNEL"
 
 dnl
 dnl First check that we have a clean build if we are doing a VPATH build
-if test "`cd $srcdir && pwd`" != "`pwd`" && test -f $srcdir/config.status ; then
-    AC_MSG_ERROR([You cannot do a VPATH build if the source directory has been
-    configured.  Run "make distclean" in $srcdir first.])
-fi
+PAC_VPATH_CHECK()
+
+PAC_LOAD_BASE_CACHE
 
 PAC_PROG_MAKE
 
@@ -60,6 +68,9 @@ if test "$ac_cv_header_netinet_in_h" = yes ; then
     AC_DEFINE(HAVE_NETINET_IN_H,1,[Define if netinet/in.h exists])
 fi
 
+# We need the util/sock/ch3usock.h header file
+CPPFLAGS="${CPPFLAGS} -I${master_top_srcdir}/src/mpid/ch3/util/sock"
+
 AC_SUBST(device_name)
 AC_SUBST(channel_name)
 
@@ -88,5 +99,7 @@ AC_SUBST(ETAGS)
 AC_SUBST(ETAGSADD)
 export ETAGS
 export ETAGSADD
+
+PAC_UPDATE_BASE_CACHE
 
 AC_OUTPUT(Makefile src/Makefile localdefs)

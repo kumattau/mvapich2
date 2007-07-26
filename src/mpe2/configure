@@ -277,7 +277,7 @@ ac_subdirs_all="$ac_subdirs_all src/wrappers"
 ac_subdirs_all="$ac_subdirs_all src/graphics"
 ac_subdirs_all="$ac_subdirs_all src/collchk"
 ac_subdirs_all="$ac_subdirs_all src/slog2sdk"
-ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS top_srcdir_abs VPATH MAKE MKDIR CPRP RM MV includebuild_dir libbuild_dir binbuild_dir sbinbuild_dir etcbuild_dir MPI_CC MPI_F77 MPI_INC MPI_LIBS htmldir docdir CC CFLAGS LDFLAGS CPPFLAGS ac_ct_CC EXEEXT OBJEXT F77 FFLAGS ac_ct_F77 FLIBS F77_NAME_MANGLE F77_LIBDIR_LEADER F77_INCDIR CPP LN_S MPI_IMPL MPE_LIBNAME MPE_BUILD_FORTRAN2C CLINKER MPE_CFLAGS FLINKER MPE_FFLAGS subdirs LIBOBJS LTLIBOBJS'
+ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS top_srcdir_abs VPATH MAKE MKDIR CPRP RM MV includebuild_dir libbuild_dir binbuild_dir sbinbuild_dir etcbuild_dir MPI_CC MPI_F77 MPI_INC MPI_LIBS MPERUN htmldir docdir CC CFLAGS LDFLAGS CPPFLAGS ac_ct_CC EXEEXT OBJEXT F77 FFLAGS ac_ct_F77 FLIBS F77_NAME_MANGLE F77_LIBDIR_LEADER F77_INCDIR CPP LN_S INSTALL_PROGRAM INSTALL_SCRIPT INSTALL_DATA RANLIB ac_ct_RANLIB RANLIB_AFTER_INSTALL MPI_IMPL MPE_LIBNAME MPE_BUILD_FORTRAN2C CLINKER MPE_CFLAGS FLINKER MPE_FFLAGS subdirs LIBOBJS LTLIBOBJS'
 ac_subst_files=''
 
 # Initialize some variables set by options.
@@ -734,6 +734,10 @@ ac_env_MPI_LIBS_set=${MPI_LIBS+set}
 ac_env_MPI_LIBS_value=$MPI_LIBS
 ac_cv_env_MPI_LIBS_set=${MPI_LIBS+set}
 ac_cv_env_MPI_LIBS_value=$MPI_LIBS
+ac_env_MPERUN_set=${MPERUN+set}
+ac_env_MPERUN_value=$MPERUN
+ac_cv_env_MPERUN_set=${MPERUN+set}
+ac_cv_env_MPERUN_value=$MPERUN
 ac_env_CC_set=${CC+set}
 ac_env_CC_value=$CC
 ac_cv_env_CC_set=${CC+set}
@@ -929,6 +933,10 @@ Some influential environment variables:
               path and prefixed with -l for the name of the MPI libraries. It
               specifies the location of the MPI libraries. e.g.
               -L/pkgs/MPI/lib -lpmpich -lmpich.
+  MPERUN      MPI application launch command. This variable is necessary only
+              if user wants to run "make check", "make installcheck-all" or
+              "$sbindir/mpecheckinstall -run" and the default MPERUN value,
+              "$bindir/mpiexec -n 4", is not correct.
   CC          C compiler command
   CFLAGS      C compiler flags
   LDFLAGS     linker flags, e.g. -L<lib dir> if you have libraries in a
@@ -1362,10 +1370,39 @@ ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
 
 
+if test -f $CONFIG_AUX_DIR/install-sh ; then ac_aux_dir=$CONFIG_AUX_DIR
+else
+ac_aux_dir=
+# We force the test to use the absolute path to ensure that the install
+# program can be used if we cd to a different directory before using
+# install.
+for ac_dir in . $srcdir/.; do
+  if test -f $ac_dir/install-sh; then
+    ac_aux_dir=$ac_dir
+    abs_ac_aux_dir=`(cd $ac_aux_dir && pwd)`
+    ac_install_sh="$abs_ac_aux_dir/install-sh -c"
+    break
+  elif test -f $ac_dir/install.sh; then
+    ac_aux_dir=$ac_dir
+    abs_ac_aux_dir=`(cd $ac_aux_dir && pwd)`
+    ac_install_sh="$abs_ac_aux_dir/install.sh -c"
+    break
+  fi
+done
+fi
+if test -z "$ac_aux_dir"; then
+  { { echo "$as_me:$LINENO: error: can not find install-sh or install.sh in . $srcdir/." >&5
+echo "$as_me: error: can not find install-sh or install.sh in . $srcdir/." >&2;}
+   { (exit 1); exit 1; }; }
+fi
+ac_config_guess=$ac_aux_dir/config.guess
+ac_config_sub=$ac_aux_dir/config.sub
+ac_configure=$ac_aux_dir/configure # This should be Cygnus configure.
+
           ac_config_headers="$ac_config_headers mpe_conf.h"
 
 #
-echo "Configuring MPE Profiling Libraries with $ac_configure_args"
+echo "Configuring MPE Profiling System with $ac_configure_args"
 if test "X$srcdir" != "X." -a -s $srcdir/include/mpe.h ; then
     top_srcdir_abs=$srcdir
 else
@@ -1375,18 +1412,18 @@ echo $ECHO_N "checking for current directory name... $ECHO_C" >&6
 top_srcdir_abs=$PWD
 if test "${top_srcdir_abs}" != "" -a -d "${top_srcdir_abs}" ; then
     if test -r ${top_srcdir_abs}/.foo$$ ; then
-        /bin/rm -f ${top_srcdir_abs}/.foo$$
-        /bin/rm -f .foo$$
+        rm -f ${top_srcdir_abs}/.foo$$
+        rm -f .foo$$
     fi
     if test -r ${top_srcdir_abs}/.foo$$ -o -r .foo$$ ; then
         top_srcdir_abs=
     else
         echo "test" > ${top_srcdir_abs}/.foo$$
         if test ! -r .foo$$ ; then
-            /bin/rm -f ${top_srcdir_abs}/.foo$$
+            rm -f ${top_srcdir_abs}/.foo$$
             top_srcdir_abs=
         else
-             /bin/rm -f ${top_srcdir_abs}/.foo$$
+            rm -f ${top_srcdir_abs}/.foo$$
         fi
     fi
 fi
@@ -1462,7 +1499,7 @@ FROM_LAM=${FROM_LAM:-no}
 
 echo "$as_me:$LINENO: checking gnumake" >&5
 echo $ECHO_N "checking gnumake... $ECHO_C" >&6
-/bin/rm -f conftest
+rm -f conftest
 cat > conftest <<.
 SHELL=/bin/sh
 ALL:
@@ -1485,13 +1522,13 @@ else
     echo "$as_me:$LINENO: result: no" >&5
 echo "${ECHO_T}no" >&6
 fi
-/bin/rm -f conftest
+rm -f conftest
 str=""
 
 
 echo "$as_me:$LINENO: checking BSD 4.4 make" >&5
 echo $ECHO_N "checking BSD 4.4 make... $ECHO_C" >&6
-/bin/rm -f conftest
+rm -f conftest
 cat > conftest <<.
 ALL:
 	@echo "success"
@@ -1500,7 +1537,7 @@ cat > conftest1 <<.
 include conftest
 .
 str=`$MAKE -f conftest1 2>&1`
-/bin/rm -f conftest conftest1
+rm -f conftest conftest1
 if test "$str" != "success" ; then
     echo "$as_me:$LINENO: result: Found BSD 4.4 so-called make" >&5
 echo "${ECHO_T}Found BSD 4.4 so-called make" >&6
@@ -1517,7 +1554,7 @@ str=""
 
 echo "$as_me:$LINENO: checking OSF V3 make" >&5
 echo $ECHO_N "checking OSF V3 make... $ECHO_C" >&6
-/bin/rm -f conftest
+rm -f conftest
 cat > conftest <<.
 SHELL=/bin/sh
 ALL:
@@ -1525,7 +1562,7 @@ ALL:
 	@echo "success"
 .
 str=`$MAKE -f conftest 2>&1`
-/bin/rm -f conftest
+rm -f conftest
 if test "$str" != "success" ; then
     echo "$as_me:$LINENO: result: Found OSF V3 make" >&5
 echo "${ECHO_T}Found OSF V3 make" >&6
@@ -1783,6 +1820,12 @@ fi;
 
 
 
+
+
+# Prepend/Append '"' before/after MPERUN.
+if test "x$MPERUN" != "x" ; then
+    MPERUN="\"$MPERUN\""
+fi
 
 
 # Check whether --with-htmldir or --without-htmldir was given.
@@ -2746,8 +2789,7 @@ ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
 
 
-echo "$as_me:$LINENO: checking whether to add strict compiler check flags to CFLAGS " >&5
-echo $ECHO_N "checking whether to add strict compiler check flags to CFLAGS ... $ECHO_C" >&6
+
 # We must know the compiler type
 if test -z "CC" ; then
     for ac_prog in gcc
@@ -2793,40 +2835,276 @@ done
 fi
 case "$enable_strict" in
     yes)
+        echo "$as_me:$LINENO: checking whether CFLAGS accepts strict compiler flags " >&5
+echo $ECHO_N "checking whether CFLAGS accepts strict compiler flags ... $ECHO_C" >&6
         if test "$ac_cv_c_compiler_gnu" = "yes" ; then
-            CFLAGS="$CFLAGS -Wall -O2 -Wstrict-prototypes -Wmissing-prototypes -Wundef -Wpointer-arith -Wbad-function-cast -ansi -DGCC_WALL -std=c89"
+            CFLAGS="$CFLAGS -Wall -O2 -Wstrict-prototypes -Wmissing-prototypes -Wundef -Wpointer-arith -Wbad-function-cast -ansi -DGCC_WALL"
             echo "$as_me:$LINENO: result: yes" >&5
 echo "${ECHO_T}yes" >&6
+
+echo "$as_me:$LINENO: checking whether CFLAGS accepts -std=c89" >&5
+echo $ECHO_N "checking whether CFLAGS accepts -std=c89... $ECHO_C" >&6
+# We must know the compiler type, assumed used in PAC_GET_GCC_STRICT_FLAGS.
+# See if we can add -std=c89
+savedCFLAGS="$CFLAGS"
+CFLAGS="$CFLAGS -std=c89"
+cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+int
+main ()
+{
+int a;
+  ;
+  return 0;
+}
+_ACEOF
+rm -f conftest.$ac_objext
+if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+  (eval $ac_compile) 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } &&
+	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; } &&
+	 { ac_try='test -s conftest.$ac_objext'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; }; then
+  stdc_ok=yes
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+stdc_ok=no
+fi
+rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
+echo "$as_me:$LINENO: result: $stdc_ok" >&5
+echo "${ECHO_T}$stdc_ok" >&6
+if test "$stdc_ok" != yes ; then
+   CFLAGS="$savedCFLAGS"
+fi
+
         else
             { echo "$as_me:$LINENO: WARNING: no, strict support for gcc only!" >&5
 echo "$as_me: WARNING: no, strict support for gcc only!" >&2;}
         fi
         ;;
     all)
+        echo "$as_me:$LINENO: checking whether CFLAGS accepts strict compiler flags " >&5
+echo $ECHO_N "checking whether CFLAGS accepts strict compiler flags ... $ECHO_C" >&6
         if test "$ac_cv_c_compiler_gnu" = "yes" ; then
-            CFLAGS="$CFLAGS -Wall -O -Wstrict-prototypes -Wmissing-prototypes -Wundef -Wpointer-arith -Wbad-function-cast -ansi -DGCC_WALL -Wunused -Wshadow -Wmissing-declarations -Wno-long-long -std=c89"
+            CFLAGS="$CFLAGS -Wall -O -Wstrict-prototypes -Wmissing-prototypes -Wundef -Wpointer-arith -Wbad-function-cast -ansi -DGCC_WALL -Wunused -Wshadow -Wmissing-declarations -Wno-long-long"
             echo "$as_me:$LINENO: result: yes, all possible flags." >&5
 echo "${ECHO_T}yes, all possible flags." >&6
+
+echo "$as_me:$LINENO: checking whether CFLAGS accepts -std=c89" >&5
+echo $ECHO_N "checking whether CFLAGS accepts -std=c89... $ECHO_C" >&6
+# We must know the compiler type, assumed used in PAC_GET_GCC_STRICT_FLAGS.
+# See if we can add -std=c89
+savedCFLAGS="$CFLAGS"
+CFLAGS="$CFLAGS -std=c89"
+cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+int
+main ()
+{
+int a;
+  ;
+  return 0;
+}
+_ACEOF
+rm -f conftest.$ac_objext
+if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+  (eval $ac_compile) 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } &&
+	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; } &&
+	 { ac_try='test -s conftest.$ac_objext'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; }; then
+  stdc_ok=yes
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+stdc_ok=no
+fi
+rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
+echo "$as_me:$LINENO: result: $stdc_ok" >&5
+echo "${ECHO_T}$stdc_ok" >&6
+if test "$stdc_ok" != yes ; then
+   CFLAGS="$savedCFLAGS"
+fi
+
         else
             { echo "$as_me:$LINENO: WARNING: no, strict support for gcc only!" >&5
 echo "$as_me: WARNING: no, strict support for gcc only!" >&2;}
         fi
         ;;
     posix)
+        echo "$as_me:$LINENO: checking whether CFLAGS accepts strict compiler flags " >&5
+echo $ECHO_N "checking whether CFLAGS accepts strict compiler flags ... $ECHO_C" >&6
         if test "$ac_cv_c_compiler_gnu" = "yes" ; then
-            CFLAGS="$CFLAGS -Wall -O2 -Wstrict-prototypes -Wmissing-prototypes -Wundef -Wpointer-arith -Wbad-function-cast -ansi -DGCC_WALL -D_POSIX_C_SOURCE=199506L -std=c89"
+            CFLAGS="$CFLAGS -Wall -O2 -Wstrict-prototypes -Wmissing-prototypes -Wundef -Wpointer-arith -Wbad-function-cast -ansi -DGCC_WALL -D_POSIX_C_SOURCE=199506L"
             echo "$as_me:$LINENO: result: yes, POSIX flavored flags." >&5
 echo "${ECHO_T}yes, POSIX flavored flags." >&6
+
+echo "$as_me:$LINENO: checking whether CFLAGS accepts -std=c89" >&5
+echo $ECHO_N "checking whether CFLAGS accepts -std=c89... $ECHO_C" >&6
+# We must know the compiler type, assumed used in PAC_GET_GCC_STRICT_FLAGS.
+# See if we can add -std=c89
+savedCFLAGS="$CFLAGS"
+CFLAGS="$CFLAGS -std=c89"
+cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+int
+main ()
+{
+int a;
+  ;
+  return 0;
+}
+_ACEOF
+rm -f conftest.$ac_objext
+if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+  (eval $ac_compile) 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } &&
+	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; } &&
+	 { ac_try='test -s conftest.$ac_objext'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; }; then
+  stdc_ok=yes
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+stdc_ok=no
+fi
+rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
+echo "$as_me:$LINENO: result: $stdc_ok" >&5
+echo "${ECHO_T}$stdc_ok" >&6
+if test "$stdc_ok" != yes ; then
+   CFLAGS="$savedCFLAGS"
+fi
+
         else
             { echo "$as_me:$LINENO: WARNING: no, strict support for gcc only!" >&5
 echo "$as_me: WARNING: no, strict support for gcc only!" >&2;}
         fi
         ;;
     noopt)
+        echo "$as_me:$LINENO: checking whether CFLAGS accepts strict compiler flags " >&5
+echo $ECHO_N "checking whether CFLAGS accepts strict compiler flags ... $ECHO_C" >&6
         if test "$ac_cv_c_compiler_gnu" = "yes" ; then
-            CFLAGS="$CFLAGS -Wall -Wstrict-prototypes -Wmissing-prototypes -Wundef -Wpointer-arith -Wbad-function-cast -ansi -DGCC_WALL -std=c89"
+            CFLAGS="$CFLAGS -Wall -Wstrict-prototypes -Wmissing-prototypes -Wundef -Wpointer-arith -Wbad-function-cast -ansi -DGCC_WALL"
             echo "$as_me:$LINENO: result: yes, non-optimized flags." >&5
 echo "${ECHO_T}yes, non-optimized flags." >&6
+
+echo "$as_me:$LINENO: checking whether CFLAGS accepts -std=c89" >&5
+echo $ECHO_N "checking whether CFLAGS accepts -std=c89... $ECHO_C" >&6
+# We must know the compiler type, assumed used in PAC_GET_GCC_STRICT_FLAGS.
+# See if we can add -std=c89
+savedCFLAGS="$CFLAGS"
+CFLAGS="$CFLAGS -std=c89"
+cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+int
+main ()
+{
+int a;
+  ;
+  return 0;
+}
+_ACEOF
+rm -f conftest.$ac_objext
+if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+  (eval $ac_compile) 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } &&
+	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; } &&
+	 { ac_try='test -s conftest.$ac_objext'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; }; then
+  stdc_ok=yes
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+stdc_ok=no
+fi
+rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
+echo "$as_me:$LINENO: result: $stdc_ok" >&5
+echo "${ECHO_T}$stdc_ok" >&6
+if test "$stdc_ok" != yes ; then
+   CFLAGS="$savedCFLAGS"
+fi
+
         else
             { echo "$as_me:$LINENO: WARNING: no, strict support for gcc only!" >&5
 echo "$as_me: WARNING: no, strict support for gcc only!" >&2;}
@@ -2946,7 +3224,7 @@ fi
 
 
 # Provide some information about the compiler.
-echo "$as_me:2949:" \
+echo "$as_me:3227:" \
      "checking for Fortran 77 compiler version" >&5
 ac_compiler=`set X $ac_compile; echo $2`
 { (eval echo "$as_me:$LINENO: \"$ac_compiler --version </dev/null >&5\"") >&5
@@ -3114,7 +3392,6 @@ if test "$MPI_IMPL" != "MPICH" -a "$MPI_IMPL" != "MPICH2" ; then
         echo "$as_me:$LINENO: checking for the linkage of the supplied MPI C definitions " >&5
 echo $ECHO_N "checking for the linkage of the supplied MPI C definitions ... $ECHO_C" >&6
 
-
     pac_MPI_CC="$MPI_CC"
     pac_MPI_CFLAGS="$CFLAGS $MPI_INC"
     pac_MPI_LIBS="$MPI_LIBS"
@@ -3138,7 +3415,18 @@ _ACEOF
 cat confdefs.h >>conftest.$ac_ext
 cat >>conftest.$ac_ext <<_ACEOF
 /* end confdefs.h.  */
+
+/* <stdlib.h> is included to get NULL defined */
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#else
+#if !defined( NULL )
+#define NULL 0
+#endif
+#endif
+
 #include "mpi.h"
+
 int
 main ()
 {
@@ -3355,7 +3643,18 @@ _ACEOF
 cat confdefs.h >>conftest.$ac_ext
 cat >>conftest.$ac_ext <<_ACEOF
 /* end confdefs.h.  */
+
+/* <stdlib.h> is included to get NULL defined */
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#else
+#if !defined( NULL )
+#define NULL 0
+#endif
+#endif
+
 #include "mpi.h"
+
 int
 main ()
 {
@@ -3510,7 +3809,7 @@ _ACEOF
 # flags.
 ac_save_FFLAGS=$FFLAGS
 FFLAGS="$FFLAGS $ac_verb"
-(eval echo $as_me:3513: \"$ac_link\") >&5
+(eval echo $as_me:3812: \"$ac_link\") >&5
 ac_f77_v_output=`eval $ac_link 5>&1 2>&1 | grep -v 'Driving:'`
 echo "$ac_f77_v_output" >&5
 FFLAGS=$ac_save_FFLAGS
@@ -3588,7 +3887,7 @@ _ACEOF
 # flags.
 ac_save_FFLAGS=$FFLAGS
 FFLAGS="$FFLAGS $ac_cv_prog_f77_v"
-(eval echo $as_me:3591: \"$ac_link\") >&5
+(eval echo $as_me:3890: \"$ac_link\") >&5
 ac_f77_v_output=`eval $ac_link 5>&1 2>&1 | grep -v 'Driving:'`
 echo "$ac_f77_v_output" >&5
 FFLAGS=$ac_save_FFLAGS
@@ -4635,6 +4934,258 @@ echo "${ECHO_T}no, using $LN_S" >&6
 fi
 
 
+# Find a good install program.  We prefer a C program (faster),
+# so one script is as good as another.  But avoid the broken or
+# incompatible versions:
+# SysV /etc/install, /usr/sbin/install
+# SunOS /usr/etc/install
+# IRIX /sbin/install
+# AIX /bin/install
+# AmigaOS /C/install, which installs bootblocks on floppy discs
+# AIX 4 /usr/bin/installbsd, which doesn't work without a -g flag
+# AFS /usr/afsws/bin/install, which mishandles nonexistent args
+# SVR4 /usr/ucb/install, which tries to use the nonexistent group "staff"
+# OS/2's system install, which has a completely different semantic
+# ./install, which can be erroneously created by make from ./install.sh.
+echo "$as_me:$LINENO: checking for a BSD-compatible install" >&5
+echo $ECHO_N "checking for a BSD-compatible install... $ECHO_C" >&6
+if test -z "$INSTALL"; then
+if test "${ac_cv_path_install+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+  # Account for people who put trailing slashes in PATH elements.
+case $as_dir/ in
+  ./ | .// | /cC/* | \
+  /etc/* | /usr/sbin/* | /usr/etc/* | /sbin/* | /usr/afsws/bin/* | \
+  ?:\\/os2\\/install\\/* | ?:\\/OS2\\/INSTALL\\/* | \
+  /usr/ucb/* ) ;;
+  *)
+    # OSF1 and SCO ODT 3.0 have their own names for install.
+    # Don't use installbsd from OSF since it installs stuff as root
+    # by default.
+    for ac_prog in ginstall scoinst install; do
+      for ac_exec_ext in '' $ac_executable_extensions; do
+	if $as_executable_p "$as_dir/$ac_prog$ac_exec_ext"; then
+	  if test $ac_prog = install &&
+	    grep dspmsg "$as_dir/$ac_prog$ac_exec_ext" >/dev/null 2>&1; then
+	    # AIX install.  It has an incompatible calling convention.
+	    :
+	  elif test $ac_prog = install &&
+	    grep pwplus "$as_dir/$ac_prog$ac_exec_ext" >/dev/null 2>&1; then
+	    # program-specific install script used by HP pwplus--don't use.
+	    :
+	  else
+	    ac_cv_path_install="$as_dir/$ac_prog$ac_exec_ext -c"
+	    break 3
+	  fi
+	fi
+      done
+    done
+    ;;
+esac
+done
+
+
+fi
+  if test "${ac_cv_path_install+set}" = set; then
+    INSTALL=$ac_cv_path_install
+  else
+    # As a last resort, use the slow shell script.  We don't cache a
+    # path for INSTALL within a source directory, because that will
+    # break other packages using the cache if that directory is
+    # removed, or if the path is relative.
+    INSTALL=$ac_install_sh
+  fi
+fi
+echo "$as_me:$LINENO: result: $INSTALL" >&5
+echo "${ECHO_T}$INSTALL" >&6
+
+# Use test -z because SunOS4 sh mishandles braces in ${var-val}.
+# It thinks the first close brace ends the variable substitution.
+test -z "$INSTALL_PROGRAM" && INSTALL_PROGRAM='${INSTALL}'
+
+test -z "$INSTALL_SCRIPT" && INSTALL_SCRIPT='${INSTALL}'
+
+test -z "$INSTALL_DATA" && INSTALL_DATA='${INSTALL} -m 644'
+
+
+if test -z "$INSTALL" ; then
+    echo "$as_me:$LINENO: result: No install program available" >&5
+echo "${ECHO_T}No install program available" >&6
+else
+    # Check that this install really works
+    rm -f conftest
+    echo "Test file" > conftest
+    if test ! -d .conftest ; then mkdir .conftest ; fi
+    echo "$as_me:$LINENO: checking whether install works" >&5
+echo $ECHO_N "checking whether install works... $ECHO_C" >&6
+    if $INSTALL conftest .conftest >/dev/null 2>&1 ; then
+        installOk=yes
+    else
+        installOk=no
+    fi
+    rm -rf .conftest conftest
+    echo "$as_me:$LINENO: result: $installOk" >&5
+echo "${ECHO_T}$installOk" >&6
+    if test "$installOk" = no ; then
+        if test -n "$ac_install_sh" ; then
+            INSTALL=$ac_install_sh
+        else
+            { { echo "$as_me:$LINENO: error: Unable to find working install" >&5
+echo "$as_me: error: Unable to find working install" >&2;}
+   { (exit 1); exit 1; }; }
+        fi
+    fi
+fi
+
+if test -n "$ac_tool_prefix"; then
+  # Extract the first word of "${ac_tool_prefix}ranlib", so it can be a program name with args.
+set dummy ${ac_tool_prefix}ranlib; ac_word=$2
+echo "$as_me:$LINENO: checking for $ac_word" >&5
+echo $ECHO_N "checking for $ac_word... $ECHO_C" >&6
+if test "${ac_cv_prog_RANLIB+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+  if test -n "$RANLIB"; then
+  ac_cv_prog_RANLIB="$RANLIB" # Let the user override the test.
+else
+as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+  for ac_exec_ext in '' $ac_executable_extensions; do
+  if $as_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
+    ac_cv_prog_RANLIB="${ac_tool_prefix}ranlib"
+    echo "$as_me:$LINENO: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+done
+
+fi
+fi
+RANLIB=$ac_cv_prog_RANLIB
+if test -n "$RANLIB"; then
+  echo "$as_me:$LINENO: result: $RANLIB" >&5
+echo "${ECHO_T}$RANLIB" >&6
+else
+  echo "$as_me:$LINENO: result: no" >&5
+echo "${ECHO_T}no" >&6
+fi
+
+fi
+if test -z "$ac_cv_prog_RANLIB"; then
+  ac_ct_RANLIB=$RANLIB
+  # Extract the first word of "ranlib", so it can be a program name with args.
+set dummy ranlib; ac_word=$2
+echo "$as_me:$LINENO: checking for $ac_word" >&5
+echo $ECHO_N "checking for $ac_word... $ECHO_C" >&6
+if test "${ac_cv_prog_ac_ct_RANLIB+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+  if test -n "$ac_ct_RANLIB"; then
+  ac_cv_prog_ac_ct_RANLIB="$ac_ct_RANLIB" # Let the user override the test.
+else
+as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+  for ac_exec_ext in '' $ac_executable_extensions; do
+  if $as_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
+    ac_cv_prog_ac_ct_RANLIB="ranlib"
+    echo "$as_me:$LINENO: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+done
+
+  test -z "$ac_cv_prog_ac_ct_RANLIB" && ac_cv_prog_ac_ct_RANLIB=":"
+fi
+fi
+ac_ct_RANLIB=$ac_cv_prog_ac_ct_RANLIB
+if test -n "$ac_ct_RANLIB"; then
+  echo "$as_me:$LINENO: result: $ac_ct_RANLIB" >&5
+echo "${ECHO_T}$ac_ct_RANLIB" >&6
+else
+  echo "$as_me:$LINENO: result: no" >&5
+echo "${ECHO_T}no" >&6
+fi
+
+  RANLIB=$ac_ct_RANLIB
+else
+  RANLIB="$ac_cv_prog_RANLIB"
+fi
+
+
+echo "$as_me:$LINENO: checking whether install breaks libraries" >&5
+echo $ECHO_N "checking whether install breaks libraries... $ECHO_C" >&6
+if test "${ac_cv_prog_install_breaks_libs+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+
+
+
+
+ac_cv_prog_install_breaks_libs=yes
+rm -f libconftest* conftest*
+echo 'int foo(int);int foo(int a){return a;}' > conftest1.c
+echo 'extern int foo(int); int main( int argc, char **argv){ return foo(0); }' > conftest2.c
+if ${CC-cc} $CFLAGS -c conftest1.c >conftest.out 2>&1 ; then
+    if ${AR-ar} cr libconftest.a conftest1.o >/dev/null 2>&1 ; then
+        if ${RANLIB-:} libconftest.a >/dev/null 2>&1 ; then
+            # Anything less than sleep 10, and Mac OS/X (Darwin)
+            # will claim that install works because ranlib won't complain
+            sleep 10
+            libinstall="$INSTALL"
+            eval "libinstall=\"$libinstall\""
+            if ${libinstall} libconftest.a libconftest1.a  >/dev/null 2>&1 ; then
+                if ${CC-cc} $CFLAGS -o conftest conftest2.c $LDFLAGS libconftest1.a >>conftest.out 2>&1 && test -x conftest ; then
+                    # Success!  Install works
+                    ac_cv_prog_install_breaks_libs=no
+                else
+                    # Failure!  Does install -p work?
+                    rm -f libconftest1.a
+                    if ${libinstall} -p libconftest.a libconftest1.a >/dev/null 2>&1 ; then
+                        if ${CC-cc} $CFLAGS -o conftest conftest2.c $LDFLAGS libconftest1.a >>conftest.out 2>&1 && test -x conftest ; then
+                        # Success!  Install works
+                            ac_cv_prog_install_breaks_libs="no, with -p"
+                        fi
+                    fi
+                fi
+            fi
+        fi
+    fi
+fi
+rm -f conftest* libconftest*
+fi
+echo "$as_me:$LINENO: result: $ac_cv_prog_install_breaks_libs" >&5
+echo "${ECHO_T}$ac_cv_prog_install_breaks_libs" >&6
+
+if test -z "$RANLIB_AFTER_INSTALL" ; then
+    RANLIB_AFTER_INSTALL=no
+fi
+case "$ac_cv_prog_install_breaks_libs" in
+        yes)
+            RANLIB_AFTER_INSTALL=yes
+        ;;
+        "no, with -p")
+            INSTALL="$INSTALL -p"
+        ;;
+        *)
+        # Do nothing
+        :
+        ;;
+esac
+
+
+
 MPE_CFLAGS="$CFLAGS"
 if test "$MPE_BUILD_FORTRAN2C" = "yes" ; then
     MPE_FFLAGS="$FFLAGS"
@@ -4642,6 +5193,7 @@ fi
 
 if test -z "$CLINKER" ; then CLINKER="$CC" ; fi
 if test -z "$FLINKER" ; then FLINKER="$F77" ; fi
+
 
 
 
@@ -4767,31 +5319,6 @@ selected_pkgs=""
 
 if test "$enable_misc" = "yes" -a -s $srcdir/src/misc/configure ; then
     selected_pkgs="$selected_pkgs misc"
-    ac_aux_dir=
-for ac_dir in $srcdir $srcdir/.. $srcdir/../..; do
-  if test -f $ac_dir/install-sh; then
-    ac_aux_dir=$ac_dir
-    ac_install_sh="$ac_aux_dir/install-sh -c"
-    break
-  elif test -f $ac_dir/install.sh; then
-    ac_aux_dir=$ac_dir
-    ac_install_sh="$ac_aux_dir/install.sh -c"
-    break
-  elif test -f $ac_dir/shtool; then
-    ac_aux_dir=$ac_dir
-    ac_install_sh="$ac_aux_dir/shtool install -c"
-    break
-  fi
-done
-if test -z "$ac_aux_dir"; then
-  { { echo "$as_me:$LINENO: error: cannot find install-sh or install.sh in $srcdir $srcdir/.. $srcdir/../.." >&5
-echo "$as_me: error: cannot find install-sh or install.sh in $srcdir $srcdir/.. $srcdir/../.." >&2;}
-   { (exit 1); exit 1; }; }
-fi
-ac_config_guess="$SHELL $ac_aux_dir/config.guess"
-ac_config_sub="$SHELL $ac_aux_dir/config.sub"
-ac_configure="$SHELL $ac_aux_dir/configure" # This should be Cygnus configure.
-
 
 
 subdirs="$subdirs src/misc"
@@ -4846,6 +5373,10 @@ if test -s $srcdir/$slog2_dirname/configure ; then
                 slog2_enable_softerror=yes
         export slog2_enable_softerror
         selected_pkgs="$selected_pkgs slog2"
+        if test "$MPI_IMPL" = "MPICH" -o "$MPI_IMPL" = "MPICH2" ; then
+                        slog2_enable_sample=no
+            export slog2_enable_sample
+        fi
 
 
 subdirs="$subdirs src/slog2sdk"
@@ -4863,7 +5394,7 @@ fi
 
           ac_config_commands="$ac_config_commands default-1"
 
-                                                            ac_config_files="$ac_config_files Makefile sbin/mpeinstall sbin/mpeinstallcheck etc/mpe_help.conf etc/mpe_f77env.conf $mpe_compilers"
+                                                                                                    ac_config_files="$ac_config_files Makefile sbin/mpetestlink sbin/mpetestexec sbin/mpetestexeclog sbin/mpeinstall sbin/mpecheckinstall sbin/mpecheckbuild etc/mpe_help.conf etc/mpe_f77env.conf $mpe_compilers"
 
 
 test "x$prefix" = xNONE && prefix=$ac_default_prefix
@@ -5244,6 +5775,7 @@ Copyright (C) 2003 Free Software Foundation, Inc.
 This config.status script is free software; the Free Software Foundation
 gives unlimited permission to copy, distribute and modify it."
 srcdir=$srcdir
+INSTALL="$INSTALL"
 _ACEOF
 
 cat >>$CONFIG_STATUS <<\_ACEOF
@@ -5346,8 +5878,12 @@ do
   case "$ac_config_target" in
   # Handling of arguments.
   "Makefile" ) CONFIG_FILES="$CONFIG_FILES Makefile" ;;
+  "sbin/mpetestlink" ) CONFIG_FILES="$CONFIG_FILES sbin/mpetestlink" ;;
+  "sbin/mpetestexec" ) CONFIG_FILES="$CONFIG_FILES sbin/mpetestexec" ;;
+  "sbin/mpetestexeclog" ) CONFIG_FILES="$CONFIG_FILES sbin/mpetestexeclog" ;;
   "sbin/mpeinstall" ) CONFIG_FILES="$CONFIG_FILES sbin/mpeinstall" ;;
-  "sbin/mpeinstallcheck" ) CONFIG_FILES="$CONFIG_FILES sbin/mpeinstallcheck" ;;
+  "sbin/mpecheckinstall" ) CONFIG_FILES="$CONFIG_FILES sbin/mpecheckinstall" ;;
+  "sbin/mpecheckbuild" ) CONFIG_FILES="$CONFIG_FILES sbin/mpecheckbuild" ;;
   "etc/mpe_help.conf" ) CONFIG_FILES="$CONFIG_FILES etc/mpe_help.conf" ;;
   "etc/mpe_f77env.conf" ) CONFIG_FILES="$CONFIG_FILES etc/mpe_f77env.conf" ;;
   "$mpe_compilers" ) CONFIG_FILES="$CONFIG_FILES $mpe_compilers" ;;
@@ -5454,6 +5990,7 @@ s,@MPI_CC@,$MPI_CC,;t t
 s,@MPI_F77@,$MPI_F77,;t t
 s,@MPI_INC@,$MPI_INC,;t t
 s,@MPI_LIBS@,$MPI_LIBS,;t t
+s,@MPERUN@,$MPERUN,;t t
 s,@htmldir@,$htmldir,;t t
 s,@docdir@,$docdir,;t t
 s,@CC@,$CC,;t t
@@ -5472,6 +6009,12 @@ s,@F77_LIBDIR_LEADER@,$F77_LIBDIR_LEADER,;t t
 s,@F77_INCDIR@,$F77_INCDIR,;t t
 s,@CPP@,$CPP,;t t
 s,@LN_S@,$LN_S,;t t
+s,@INSTALL_PROGRAM@,$INSTALL_PROGRAM,;t t
+s,@INSTALL_SCRIPT@,$INSTALL_SCRIPT,;t t
+s,@INSTALL_DATA@,$INSTALL_DATA,;t t
+s,@RANLIB@,$RANLIB,;t t
+s,@ac_ct_RANLIB@,$ac_ct_RANLIB,;t t
+s,@RANLIB_AFTER_INSTALL@,$RANLIB_AFTER_INSTALL,;t t
 s,@MPI_IMPL@,$MPI_IMPL,;t t
 s,@MPE_LIBNAME@,$MPE_LIBNAME,;t t
 s,@MPE_BUILD_FORTRAN2C@,$MPE_BUILD_FORTRAN2C,;t t
@@ -5643,6 +6186,10 @@ case $ac_abs_builddir in
 esac
 
 
+  case $INSTALL in
+  [\\/$]* | ?:[\\/]* ) ac_INSTALL=$INSTALL ;;
+  *) ac_INSTALL=$ac_top_builddir$INSTALL ;;
+  esac
 
   # Let's still pretend it is `configure' which instantiates (i.e., don't
   # use $as_me), people would be surprised to read:
@@ -5705,6 +6252,7 @@ s,@builddir@,$ac_builddir,;t t
 s,@abs_builddir@,$ac_abs_builddir,;t t
 s,@top_builddir@,$ac_top_builddir,;t t
 s,@abs_top_builddir@,$ac_abs_top_builddir,;t t
+s,@INSTALL@,$ac_INSTALL,;t t
 " $ac_file_inputs | (eval "$ac_sed_cmds") >$tmp/out
   rm -f $tmp/stdin
   if test x"$ac_file" != x-; then
@@ -6057,8 +6605,20 @@ echo "$as_me: executing $ac_dest commands" >&6;}
 if test ! -x ./sbin/mpeinstall -a -s ./sbin/mpeinstall; then
     chmod u+x ./sbin/mpeinstall
 fi
-if test ! -x ./sbin/mpeinstallcheck -a -s ./sbin/mpeinstallcheck; then
-    chmod u+x ./sbin/mpeinstallcheck
+if test ! -x ./sbin/mpecheckinstall -a -s ./sbin/mpecheckinstall; then
+    chmod u+x ./sbin/mpecheckinstall
+fi
+if test ! -x ./sbin/mpecheckbuild -a -s ./sbin/mpecheckbuild; then
+    chmod u+x ./sbin/mpecheckbuild
+fi
+if test ! -x ./sbin/mpetestlink -a -s ./sbin/mpetestlink; then
+    chmod u+x ./sbin/mpetestlink
+fi
+if test ! -x ./sbin/mpetestexec -a -s ./sbin/mpetestexec; then
+    chmod u+x ./sbin/mpetestexec
+fi
+if test ! -x ./sbin/mpetestexeclog -a -s ./sbin/mpetestexeclog; then
+    chmod u+x ./sbin/mpetestexeclog
 fi
 if test ! -x ./bin/mpecc -a -s ./bin/mpecc; then
     chmod a+x ./bin/mpecc

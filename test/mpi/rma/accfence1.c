@@ -46,6 +46,10 @@ int main( int argc, char *argv[] )
 		if (rank == source) {
 		    sendtype.InitBuf( &sendtype );
 
+		    /* To improve reporting of problems about operations, we
+		       change the error handler to errors return */
+		    MPI_Win_set_errhandler( win, MPI_ERRORS_RETURN );
+		    
 		    /* MPI_REPLACE on accumulate is almost the same 
 		       as MPI_Put; the only difference is in the
 		       handling of overlapping accumulate operations,
@@ -60,7 +64,13 @@ int main( int argc, char *argv[] )
 			    MTestPrintError( err );
 			}
 		    }
-		    MPI_Win_fence( 0, win );
+		    err = MPI_Win_fence( 0, win );
+		    if (err) {
+			errs++;
+			if (errs < 10) {
+			    MTestPrintError( err );
+			}
+		    }
 		}
 		else if (rank == dest) {
 		    MPI_Win_fence( 0, win );

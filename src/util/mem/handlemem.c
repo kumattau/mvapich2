@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: handlemem.c,v 1.1.1.1 2006/01/18 21:09:48 huangwei Exp $
+/*  $Id: handlemem.c,v 1.28 2006/11/07 21:42:38 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -21,7 +21,7 @@ static void MPIU_Print_handle( int handle );
    C comment convention should be used of course.)  The usage is described
    below.
 
-    // Declarations begin here
+   // Declarations begin here
    // Static declaration of the information about the block
    // Define the number of preallocated entries # omitted)
    define MPID_<OBJ>_PREALLOC 256
@@ -214,14 +214,11 @@ static int MPIU_Handle_finalize( void *objmem_ptr )
     return 0;
 }
 
-void MPIU_Handle_obj_alloc_start(MPIU_Object_alloc_t *objmem)
-{
-    MPIU_UNREFERENCED_ARG(objmem);
-    /* FIXME: we should use memory atomic routines to acquire an item from
-       the list without the lock (see 3.12.5 in the MPICH2 coding document) */
-    /* Lock if necessary */
-    MPID_Allocation_lock();
-}
+/* FIXME: The alloc_complete routine should be removed.
+   It is used only in typeutil.c (in MPIR_Datatype_init, which is only 
+   executed from within the MPI_Init/MPI_Init_thread startup and hence is
+   guaranteed to be single threaded).  When used by the obj_alloc, it
+   adds unnecessary overhead, particularly when MPI is single threaded */
 
 void MPIU_Handle_obj_alloc_complete(MPIU_Object_alloc_t *objmem,
 				    int initialized)
@@ -238,8 +235,6 @@ void MPIU_Handle_obj_alloc_complete(MPIU_Object_alloc_t *objmem,
 	 */
 	MPIR_Add_finalize(MPIU_Handle_finalize, objmem, 0);
     }
-
-    MPID_Allocation_unlock();
 }
 
 /*+
@@ -257,23 +252,26 @@ void MPIU_Handle_obj_alloc_complete(MPIU_Object_alloc_t *objmem,
   allocate additional space for more objects.
 
   This routine is thread-safe.
+
+  This routine is performance-critical (it may be used to allocate 
+  MPI_Requests) and should not call any other routines in the common
+  case.
   +*/
 void *MPIU_Handle_obj_alloc(MPIU_Object_alloc_t *objmem)
 {
     MPIU_Handle_common *ptr;
-    int performed_initialize = 0;
-
-    MPIU_Handle_obj_alloc_start(objmem);
 
     if (objmem->avail) {
 	ptr	      = objmem->avail;
 	objmem->avail = objmem->avail->next;
-	ptr->next     = 0;
-
+	/* We do not clear ptr->next as we set it to an invalid pattern
+	   when doing memory debugging and we don't need to set it 
+	   for the production/default case */
 	/* ptr points to object to allocate */
     }
     else {
 	int objsize, objkind;
+	int performed_initialize = 0;
 
 	objsize = objmem->size;
 	objkind = objmem->kind;
@@ -310,14 +308,23 @@ void *MPIU_Handle_obj_alloc(MPIU_Object_alloc_t *objmem)
 
 	    /* ptr points to object to allocate */
 	}
+	MPIU_Handle_obj_alloc_complete(objmem, performed_initialize);
     }
 
-#ifdef MPICH_DEBUG_HANDLES
-    MPIU_DBG_PRINTF(("Allocating handle %x (0x%08x)\n",
-		     (unsigned) ptr, ptr->handle));
+    MPIU_DBG_MSG_FMT(HANDLE,TYPICAL,(MPIU_DBG_FDEST,
+				     "Allocating handle %x (0x%08x)\n",
+				     (unsigned) ptr, ptr->handle));
+
+#ifdef USE_MEMORY_TRACING
+    /* We set the object to an invalid pattern.  This is similar to 
+       what is done by MPIU_trmalloc by default (except that trmalloc uses
+       0xda as the byte in the memset)
+    */
+    if (ptr) {
+	memset( (void*)&ptr->ref_count, 0xef, objmem->size-sizeof(int));
+    }
 #endif
 
-    MPIU_Handle_obj_alloc_complete(objmem, performed_initialize);
     return ptr;
 }   
 
@@ -329,17 +336,15 @@ void *MPIU_Handle_obj_alloc(MPIU_Object_alloc_t *objmem)
 - object - Object to delete
 
   Notes: 
-  This routine is thread-safe.
+  This routine assumes that only a single thread calls it at a time; this
+  is true for the SINGLE_CS approach to thread safety
   +*/
 void MPIU_Handle_obj_free( MPIU_Object_alloc_t *objmem, void *object )
 {
     MPIU_Handle_common *obj = (MPIU_Handle_common *)object;
-    /* Lock */
-    MPID_Allocation_lock();
+
     obj->next	        = objmem->avail;
     objmem->avail	= obj;
-    /* Unlock */
-    MPID_Allocation_unlock();
 }
 
 /* 

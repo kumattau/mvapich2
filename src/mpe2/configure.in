@@ -9,9 +9,10 @@ dnl
 dnl
 AC_INIT()
 AC_PREREQ(2.52)
+AC_CONFIG_AUX_DIR([.])
 AC_CONFIG_HEADER(mpe_conf.h)
 #
-echo "Configuring MPE Profiling Libraries with $ac_configure_args"
+echo "Configuring MPE Profiling System with $ac_configure_args"
 dnl
 dnl  Set top_srcdir_abs to be the ABSOLUTE path to the home directory of MPE
 dnl  top_srcdir is in relative path.
@@ -277,6 +278,12 @@ AC_ARG_VAR( MPI_CC, [C compiler to compile MPI program and to create parallel ex
 AC_ARG_VAR( MPI_F77, [F77 compiler to compile MPI program and to create parallel executable, e.g. mpxlf for IBM MPI, or mpif77 from MPICHx or LAM-MPI.] )
 AC_ARG_VAR( MPI_INC, [MPI compiler's include flags prefixed with -I.  It specifies where mpi.h and mpif.h are located, e.g. -I/pkgs/MPI/include.] )
 AC_ARG_VAR( MPI_LIBS, [MPI compiler's library flags prefixed with -L for the library path and prefixed with -l for the name of the MPI libraries. It specifies the location of the MPI libraries. e.g. -L/pkgs/MPI/lib -lpmpich -lmpich.] )
+AC_ARG_VAR( MPERUN, [MPI application launch command.  This variable is necessary only if user wants to run "make check", "make installcheck-all" or "$sbindir/mpecheckinstall -run" and the default MPERUN value, "$bindir/mpiexec -n 4", is not correct.] )
+
+# Prepend/Append '"' before/after MPERUN.
+if test "x$MPERUN" != "x" ; then
+    MPERUN="\"$MPERUN\""
+fi
 
 dnl
 dnl Set non-standard autoconf/GNU install directory variables, htmldir & docdir
@@ -433,6 +440,11 @@ fi
 dnl  check for "ln -s" exists.  It is for install program, mpeinstall
 AC_PROG_LN_S
 
+dnl checking for working INSTALL
+AC_PROG_INSTALL
+PAC_PROG_CHECK_INSTALL_WORKS
+PAC_PROG_INSTALL_BREAKS_LIBS
+
 dnl
 dnl MPE_CFLAGS/MPE_FFLAGS are used to pass MPE-modified CFLAGS/FFLAGS
 dnl to other subpackages.  Can't use CFLAGS to pass this info because
@@ -446,7 +458,7 @@ if test "$MPE_BUILD_FORTRAN2C" = "yes" ; then
 fi
 
 dnl The following does not work as expected because
-dnl AC_SUBDIRS_CONFIG sets the "precious" variables like CFLAGS from the
+dnl AC_CONFIG_SUBDIRS sets the "precious" variables like CFLAGS from the
 dnl settings recorded at the top of the configure. That means CFLAGS cannot
 dnl be inherit from the mpich2's configure enviroment.
 dnl
@@ -472,6 +484,7 @@ AC_SUBST(MPI_F77)
 AC_SUBST(MPI_INC)
 AC_SUBST(MPI_LIBS)
 AC_SUBST(LDFLAGS)
+AC_SUBST(MPERUN)
 
 dnl  Make the directories that do not contain Makefiles (should they?) but 
 dnl  are needed for the subsequent directories.
@@ -629,6 +642,11 @@ if test -s $srcdir/$slog2_dirname/configure ; then
         slog2_enable_softerror=yes
         export slog2_enable_softerror
         selected_pkgs="$selected_pkgs slog2"
+        if test "$MPI_IMPL" = "MPICH" -o "$MPI_IMPL" = "MPICH2" ; then
+            dnl  Disable the SAMPLE code in slog2sdk for MPICH2
+            slog2_enable_sample=no
+            export slog2_enable_sample
+        fi
         AC_CONFIG_SUBDIRS(src/slog2sdk)
     fi
 fi
@@ -647,8 +665,20 @@ AC_OUTPUT_COMMANDS( [
 if test ! -x ./sbin/mpeinstall -a -s ./sbin/mpeinstall; then
     chmod u+x ./sbin/mpeinstall
 fi
-if test ! -x ./sbin/mpeinstallcheck -a -s ./sbin/mpeinstallcheck; then
-    chmod u+x ./sbin/mpeinstallcheck
+if test ! -x ./sbin/mpecheckinstall -a -s ./sbin/mpecheckinstall; then
+    chmod u+x ./sbin/mpecheckinstall
+fi
+if test ! -x ./sbin/mpecheckbuild -a -s ./sbin/mpecheckbuild; then
+    chmod u+x ./sbin/mpecheckbuild
+fi
+if test ! -x ./sbin/mpetestlink -a -s ./sbin/mpetestlink; then
+    chmod u+x ./sbin/mpetestlink
+fi
+if test ! -x ./sbin/mpetestexec -a -s ./sbin/mpetestexec; then
+    chmod u+x ./sbin/mpetestexec
+fi
+if test ! -x ./sbin/mpetestexeclog -a -s ./sbin/mpetestexeclog; then
+    chmod u+x ./sbin/mpetestexeclog
 fi
 if test ! -x ./bin/mpecc -a -s ./bin/mpecc; then
     chmod a+x ./bin/mpecc
@@ -657,7 +687,8 @@ if test ! -x ./bin/mpefc -a -s ./bin/mpefc; then
     chmod a+x ./bin/mpefc
 fi
 ] )
-AC_OUTPUT( Makefile sbin/mpeinstall sbin/mpeinstallcheck \
+AC_OUTPUT( Makefile sbin/mpetestlink sbin/mpetestexec sbin/mpetestexeclog \
+           sbin/mpeinstall sbin/mpecheckinstall sbin/mpecheckbuild \
            etc/mpe_help.conf etc/mpe_f77env.conf $mpe_compilers )
 
 configured_pkgs=""

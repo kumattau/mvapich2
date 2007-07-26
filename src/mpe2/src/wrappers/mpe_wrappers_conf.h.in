@@ -15,6 +15,9 @@
    */
 #undef HAVE_ALLOCA_H
 
+/* Define if CRAY's FCD logical is found */
+#undef HAVE_CRAY_FCD_LOGICAL
+
 /* Define to 1 if you have the <inttypes.h> header file. */
 #undef HAVE_INTTYPES_H
 
@@ -39,13 +42,16 @@
 /* Define if MPI-IO available */
 #undef HAVE_MPI_IO
 
+/* Define if MPI Naming Service is available */
+#undef HAVE_MPI_NAMING
+
 /* Define if MPI_Op_f2c and c2f available */
 #undef HAVE_MPI_OP_F2C
 
 /* Define if MPI_Request_f2c and c2f available */
 #undef HAVE_MPI_REQUEST_F2C
 
-/* Define if MPI-RMA available */
+/* Define if MPI-RMA is available */
 #undef HAVE_MPI_RMA
 
 /* Define if MPI_Win_lock/unlock are available */
@@ -53,6 +59,9 @@
 
 /* Define if MPI_Win_test is available */
 #undef HAVE_MPI_RMA_TEST
+
+/* Define if MPI-SPAWN is available */
+#undef HAVE_MPI_SPAWN
 
 /* Define if MPI_STATUSES_IGNORE available */
 #undef HAVE_MPI_STATUSES_IGNORE
@@ -101,6 +110,9 @@
 
 /* Define to 1 if you have the <unistd.h> header file. */
 #undef HAVE_UNISTD_H
+
+/* Define if safe PMPI calls are made */
+#undef MAKE_SAFE_PMPI_CALL
 
 /* Define as the value for Fortran logical false */
 #undef MPE_F77_FALSE_VALUE

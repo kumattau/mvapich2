@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Sendrecv
 #define MPI_Sendrecv PMPI_Sendrecv
 
 #endif
@@ -76,7 +77,7 @@ int MPI_Sendrecv(void *sendbuf, int sendcount, MPI_Datatype sendtype,
     
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("pt2pt");
     MPID_MPI_PT2PT_FUNC_ENTER_BOTH(MPID_STATE_MPI_SENDRECV);
     
     /* Validate handle parameters needing to be converted */
@@ -205,7 +206,7 @@ int MPI_Sendrecv(void *sendbuf, int sendcount, MPI_Datatype sendtype,
     
   fn_exit:
     MPID_MPI_PT2PT_FUNC_EXIT_BOTH(MPID_STATE_MPI_SENDRECV);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("pt2pt");
     return mpi_errno;
 
   fn_fail:

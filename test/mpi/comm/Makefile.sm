@@ -1,12 +1,11 @@
 INCLUDES = -I../include -I${top_srcdir}/include
 LDADD = ../util/mtest.o
-DEPADD = @MPILIBLOC@
+DEPADD = @MPILIBLOC@ ../util/mtest.o
 smvar_do_sharedlibs = 0
 
 dup_SOURCES      = dup.c
 dupic_SOURCES    = dupic.c
 ic1_SOURCES      = ic1.c
-cfree_SOURCES    = cfree.c
 commname_SOURCES = commname.c
 ctxalloc_SOURCES = ctxalloc.c
 icgroup_SOURCES  = icgroup.c

@@ -7,6 +7,8 @@
 #include "mpiimpl.h"
 #include <string.h>
 
+/* FIXME: Delete this file (functionality switched to MPIU_DBG_MSG interface */
+
 #define MAX_DEBUG_NAME 256
 /* 
    This routine checks the argument against the value of the environment

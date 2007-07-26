@@ -28,7 +28,7 @@
 
 #define MPE_Thread_yield()						\
 {									\
-    /* XXX: FIXME: need to check for different types of yield */	\
+    /* FIXME: need to check for different types of yield */	\
     sched_yield();							\
 }
 
@@ -65,7 +65,7 @@
 #define MPE_Thread_mutex_lock(mutex_ptr_, err_ptr_)		\
 {								\
     int err__;							\
-								\
+    MPIU_DBG_MSG(THREAD,TYPICAL,"Enter MPE_Thread_mutex");      \
     err__ = pthread_mutex_lock(mutex_ptr_);			\
     if ((err_ptr_) != NULL)					\
     {								\
@@ -78,6 +78,7 @@
 {								\
     int err__;							\
 								\
+    MPIU_DBG_MSG(THREAD,TYPICAL,"Exiting MPE_Thread_mutex");    \
     err__ = pthread_mutex_unlock(mutex_ptr_);			\
     if ((err_ptr_) != NULL)					\
     {								\

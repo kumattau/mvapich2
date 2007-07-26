@@ -17,7 +17,7 @@ PMPILIBNAME     = @PMPILIBNAME@
 
 CFLAGS          = @CFLAGS@
 C_COMPILE       = $(CC) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
-C_LINK      = $(CC)
+C_LINK         = $(CC)
 CC_SHL          = @CC_SHL@
 C_COMPILE_SHL   = $(CC_SHL) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
 LDFLAGS     =  @LDFLAGS@ -L../lib
@@ -29,6 +29,8 @@ CPPFLAGS =
 DEFS     = 
 INCLUDES = -I../src/include -I${top_srcdir}/src/include
 
+EXTRA_PROGRAMS = pmandel pmandel_spawn pmandel_service pmandel_spaserv 	         pmandel_fence hellow icpi parent child srtest srvec sr 		 spawn_merge_parent spawn_merge_child1 spawn_merge_child2
+
 .SUFFIXES:
 .SUFFIXES: .o .lo .c 
 .c.o:
@@ -38,15 +40,15 @@ INCLUDES = -I../src/include -I${top_srcdir}/src/include
 	@mv -f _s$*.o $*.lo
 .c:
 	$(C_COMPILE) -o $* $< $(LDFLAGS) $(LIBS)
-apply:
+apply: 
 	$(ACTION) $(ACTION_INPUT)
-clean:
-	-@rm -f *.o ${srcdir}/*.o parent hellow pmandel_spawn pmandel icpi child spawn_merge_child2 cpi pmandel_fence spawn_merge_parent spawn_merge_child1 pmandel_spaserv srvec pmandel_service sr srtest
-	-@rm -f parent.exe hellow.exe pmandel_spawn.exe pmandel.exe icpi.exe child.exe spawn_merge_child2.exe cpi.exe pmandel_fence.exe spawn_merge_parent.exe spawn_merge_child1.exe pmandel_spaserv.exe srvec.exe pmandel_service.exe sr.exe srtest.exe
+clean: 
+	-@rm -f *.o ${srcdir}/*.o parent hellow pmandel_spawn pmandel icpi child spawn_merge_child2 cpi pmandel_fence spawn_merge_parent spawn_merge_child1 pmandel_spaserv pmandel_service srtest
+	-@rm -f parent.exe hellow.exe pmandel_spawn.exe pmandel.exe icpi.exe child.exe spawn_merge_child2.exe cpi.exe pmandel_fence.exe spawn_merge_parent.exe spawn_merge_child1.exe pmandel_spaserv.exe pmandel_service.exe srtest.exe
 	-@rm -f core core.[0-9]*
 	-@rm -f *.lo ${srcdir}/*.lo
 	-@rm -f *.irlog*
-distclean: clean distclean-xxx remove-makefile
+distclean:  clean distclean-xxx remove-makefile
 distclean-xxx:
 	-@rm -f Makefile
 	-@rm -rf autom4te*.cache
@@ -88,32 +90,24 @@ spawn_merge_child1: spawn_merge_child1.o   ../lib/lib${MPILIBNAME}.a
 pmandel_spaserv: pmandel_spaserv.o   ../lib/lib${MPILIBNAME}.a
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o pmandel_spaserv pmandel_spaserv.o  \
 	-lm ${LIBS} 
-srvec: srvec.o   ../lib/lib${MPILIBNAME}.a
-	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o srvec srvec.o  ${LIBS}
 pmandel_service: pmandel_service.o   ../lib/lib${MPILIBNAME}.a
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o pmandel_service pmandel_service.o  \
 	-lm ${LIBS} 
-sr: sr.o   ../lib/lib${MPILIBNAME}.a
-	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o sr sr.o  ${LIBS}
 srtest: srtest.o   ../lib/lib${MPILIBNAME}.a
 	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o srtest srtest.o  ${LIBS}
 # --------------------------------------------------------------------------
 # --------------------------------------------------------------------------
 # --------------------------------------------------------------------------
-SOURCES         =  hellow.c sr.c srvec.c srtest.c child.c parent.c cpi.c \
-	icpi.c pmandel.c pmandel_spawn.c pmandel_service.c pmandel_spaserv.c \
-	pmandel_fence.c spawn_merge_parent.c spawn_merge_child1.c \
-	spawn_merge_child2.c 
+SOURCES         =  hellow.c srtest.c child.c parent.c cpi.c icpi.c pmandel.c \
+	pmandel_spawn.c pmandel_service.c pmandel_spaserv.c pmandel_fence.c \
+	spawn_merge_parent.c spawn_merge_child1.c spawn_merge_child2.c 
 ETAGS           = @ETAGS@ @ETAGSADD@
 HEADERFILES     = $(HEADERS)
 SOURCEFILES     = $(SOURCES)
 tags: TAGS
-TAGS:${HEADERFILES} ${SOURCEFILES}
+TAGS: Makefile${HEADERFILES} ${SOURCEFILES}
 	here=`cd .. && pwd` ; cd ${srcdir} && $(ETAGS) -o $$here/TAGS --append ${HEADERFILES} ${SOURCEFILES}
 # --------------------------------------------------------------------------
-#SUBDIRS = mpiexec
-# Do not build the example mpiexec by default (since this is not the 
-# mpiexec that we want users to use)
 #OTHER_DIRS = f77 f90 cxx
 # We want to replace the compilation and linking rule used by simplement
 
@@ -122,6 +116,9 @@ TAGS:${HEADERFILES} ${SOURCEFILES}
 
 # LIBS includes -lmpich and other libraries (e.g., -lpmpich if
 # weak symbols are not supported)
+
+# Use make all-programs to test building all example programs
+all-programs: cpi $(EXTRA_PROGRAMS) 
 
 FORCE_TARGET:
 

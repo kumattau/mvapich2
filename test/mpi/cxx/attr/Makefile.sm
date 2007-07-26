@@ -17,7 +17,6 @@ baseattrcommx_SOURCES = baseattrcommx.cxx
 #baseattrwinx_SOURCES = baseattrwinx.cxx
 fkeyvalcommx_SOURCES = fkeyvalcommx.cxx
 fkeyvaltypex_SOURCES = fkeyvaltypex.cxx
-fkeyvalwinx_SOURCES = fkeyvalwinx.cxx 
 
 ../util/mtest.o:
 	(cd ../util && $(MAKE) mtest.o)

@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Group_compare
 #define MPI_Group_compare PMPI_Group_compare
 
 #endif
@@ -52,7 +53,9 @@ and 'MPI_UNEQUAL' otherwise
 @*/
 int MPI_Group_compare(MPI_Group group1, MPI_Group group2, int *result)
 {
+#ifdef HAVE_ERROR_CHECKING
     static const char FCNAME[] = "MPI_Group_compare";
+#endif
     int mpi_errno = MPI_SUCCESS;
     MPID_Group *group_ptr1 = NULL;
     MPID_Group *group_ptr2 = NULL;
@@ -60,8 +63,11 @@ int MPI_Group_compare(MPI_Group group1, MPI_Group group2, int *result)
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_GROUP_COMPARE);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
-    
-    MPID_CS_ENTER();
+
+    /* The routines that setup the group data structures must be executed
+       within a mutex.  As most of the group routines are not performance
+       critical, we simple run these routines within the SINGLE_CS */
+    MPIU_THREAD_SINGLE_CS_ENTER("group");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_GROUP_COMPARE);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -69,6 +75,7 @@ int MPI_Group_compare(MPI_Group group1, MPI_Group group2, int *result)
     {
         MPID_BEGIN_ERROR_CHECKS;
         {
+	    MPIR_ERRTEST_ARGNULL( result, "result", mpi_errno );
 	    MPIR_ERRTEST_GROUP(group1, mpi_errno);
 	    MPIR_ERRTEST_GROUP(group2, mpi_errno);
             if (mpi_errno != MPI_SUCCESS) goto fn_fail;
@@ -89,7 +96,6 @@ int MPI_Group_compare(MPI_Group group1, MPI_Group group2, int *result)
             /* Validate group_ptr */
             MPID_Group_valid_ptr( group_ptr1, mpi_errno );
             MPID_Group_valid_ptr( group_ptr2, mpi_errno );
-	    /* MPID_ERRTEST_ARGNULL( result, "result", mpi_errno );*/
 	    /* If group_ptr is not valid, it will be reset to null */
             if (mpi_errno) goto fn_fail;
         }
@@ -145,19 +151,20 @@ int MPI_Group_compare(MPI_Group group1, MPI_Group group2, int *result)
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_GROUP_COMPARE);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("group");
     return mpi_errno;
 
-  fn_fail:
     /* --BEGIN ERROR HANDLING-- */
 #   ifdef HAVE_ERROR_CHECKING
+  fn_fail:
     {
 	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_group_compare",
+	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, 
+	    "**mpi_group_compare",
 	    "**mpi_group_compare %G %G %p", group1, group2, result);
     }
-#   endif
     mpi_errno = MPIR_Err_return_comm( NULL, FCNAME, mpi_errno );
     goto fn_exit;
+#   endif
     /* --END ERROR HANDLING-- */
 }

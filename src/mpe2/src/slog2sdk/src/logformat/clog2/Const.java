@@ -12,7 +12,7 @@ package logformat.clog2;
 public class Const
 {
     // Current Version ID
-           static final String    VERSION         = "CLOG-02.40";
+           static final String    VERSION         = "CLOG-02.44";
 
     /*
        Older Version IDs, COMPAT_VERSIONS, that are compataible to VERSION.
@@ -21,10 +21,27 @@ public class Const
            static final String[]  COMPAT_VERSIONS = {};
        If VERSION is compatible with CLOG-02.10, define COMPAT_VERSIONS as
            static final String[]  COMPAT_VERSIONS = { "CLOG-02.10" };
-       VERSION 2.30 updates CLOG2 format to supports MPI_Comm.
-       VERSION 2.40 updates clog2TOdrawable to support user-defined events,
-                    and updates CLOG2's preamble to contain various
-                    eventID and stateID info.
+       VERSION 2.30: Updates CLOG2 format to supports MPI_Comm.
+       VERSION 2.40: Updates clog2TOdrawable to support user-defined events,
+                     and updates CLOG2's preamble to contain various
+                     eventID and stateID info.
+       VERSION 2.41: Updates CLOG2's preamble with (MPE internal solo events)
+                     known_solo_events' info and updates clog2TOdrawable to
+                     understand/prefdefine known_solo_events.
+       VERSION 2.42: Added a Communicator Table at the end of CLOG2.
+                     Updated CLOG_Preamble with a pointer that points to the
+                     communicator table.
+       VERSION 2.43: Added a boolean value in CLOG_Preamble to indicate if
+                     the file is a finalized file so 1) clog2TOslog2 can
+                     refuse to process a local file, 2) clog2_join can "patch"
+                     the timestamps by using the timeshift events, 3) a repair
+                     program can fixup the broken/unfinish local clog2 file
+                     (for debugging).
+       VERSION 2.44: Added a max_thread_count in CLOG_Preamble for thread-safe
+                     support.  The variable shows the maximum local threads
+                     (per process) among processes recorded in the logfile
+                     and is used to generate unique LineID in the YaxisViewMap
+                     in clog2TOslog2
     */
            static final String[]  COMPAT_VERSIONS = {};
 

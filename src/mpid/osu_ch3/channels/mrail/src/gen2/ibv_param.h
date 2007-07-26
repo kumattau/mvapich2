@@ -1,5 +1,5 @@
 
-/* Copyright (c) 2003-2006, The Ohio State University. All rights
+/* Copyright (c) 2003-2007, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -27,6 +27,7 @@ extern int                  rdma_default_port;
 extern unsigned long        rdma_default_max_wqe;
 extern uint32_t             rdma_default_max_sg_list;
 extern uint16_t             rdma_default_pkey_ix;
+extern uint16_t             rdma_default_pkey;
 extern uint8_t              rdma_default_qp_ous_rd_atom;
 extern uint8_t              rdma_default_max_rdma_dst_ops;
 extern enum ibv_mtu         rdma_default_mtu;
@@ -59,6 +60,7 @@ extern int                  rdma_credit_notify_threshold;
 extern int                  rdma_credit_preserve;
 extern int                  rdma_rq_size;
 extern unsigned long        rdma_dreg_cache_limit;
+extern int                  rdma_rndv_protocol;
 extern int                  rdma_vbuf_total_size;
 extern int                  rdma_max_inline_size;
 
@@ -68,6 +70,7 @@ extern uint32_t             viadev_max_r3_oust_send;
 
 extern int                  rdma_polling_set_threshold;
 extern int                  rdma_polling_set_limit;
+extern int		    rdma_eager_limit;
 
 extern int                  rdma_pin_pool_size;
 extern int                  rdma_put_fallback_threshold;
@@ -75,6 +78,21 @@ extern int                  rdma_get_fallback_threshold;
 extern int                  rdma_integer_pool_size;
 extern int                  rdma_iba_eager_threshold;
 extern long                 rdma_eagersize_1sc;
+
+/* HSAM Definitions */
+
+extern  int                 striping_threshold;
+extern  int                 sm_scheduling;
+extern  int                 alpha;
+extern  int                 stripe_factor;
+extern  int                 apm_tester;
+extern  int                 apm_count;
+
+extern int                  rdma_coalesce_threshold;
+extern int                  rdma_use_coalesce;
+
+extern int                  rdma_use_blocking;
+extern unsigned long        rdma_spin_count;
 
 #define RDMA_PIN_POOL_SIZE              (2*1024*1024)
 #define RDMA_DEFAULT_MAX_CQ_SIZE        (40000)
@@ -84,13 +102,14 @@ extern long                 rdma_eagersize_1sc;
 #define RDMA_READ_RESERVE               (10)
 #define RDMA_DEFAULT_MAX_SG_LIST        (1)
 #define RDMA_DEFAULT_PKEY_IX            (0)
+#define RDMA_DEFAULT_PKEY               (0x0)
 #define RDMA_DEFAULT_MAX_RDMA_DST_OPS   (4)
 #define RDMA_DEFAULT_PSN                (0)
 #define RDMA_DEFAULT_MIN_RNR_TIMER      (12)
 #define RDMA_DEFAULT_SERVICE_LEVEL      (0)
 #define RDMA_DEFAULT_STATIC_RATE        (0)
 #define RDMA_DEFAULT_SRC_PATH_BITS      (0)
-#define RDMA_DEFAULT_TIME_OUT           (10)
+#define RDMA_DEFAULT_TIME_OUT          (20)
 #define RDMA_DEFAULT_RETRY_COUNT        (7)  
 #define RDMA_DEFAULT_RNR_RETRY          (7)
 #define RDMA_DEFAULT_PUT_GET_LIST_SIZE  (200)
@@ -113,10 +132,6 @@ extern long                 rdma_eagersize_1sc;
 #define RDMA_LOW_WQE_THRESHOLD          (10)
 #define RDMA_MAX_RDMA_SIZE              (4194304)
 
-#define USE_FIRST                       (0)
-#define ROUND_ROBIN                     (1)
-#define EVEN_STRIPING                   (2)
-#define ADAPTIVE_STRIPING               (3)
 /* Inline not supported for PPC */
 #define HOSTNAME_LEN                    (255)
 #define MAX_WIN_NUM                     (16)
@@ -126,4 +141,22 @@ extern long                 rdma_eagersize_1sc;
 
 #define NUM_BOOTSTRAP_BARRIERS  2
 
+/* Statistically sending a stripe below this may not lead
+ * to benefit */                               
+#define STRIPING_THRESHOLD              8 * 1024
+                               
+#define ROUND_ROBIN                     0                               
+#define USE_FIRST                       1
+#define EVEN_STRIPING                   2
+#define ADAPTIVE_STRIPING               3
+#define PROCESS_BINDING                 4
+#define PARTIAL_ADAPTIVE                5 
+#define BEST_ADAPTIVE                   6
+
+#define APM_COUNT                       2
+
+#define DYNAMIC_TOTAL_WEIGHT            (3* 1024)
+
+                               
+                               
 #endif /* _RDMA_PARAM_H */

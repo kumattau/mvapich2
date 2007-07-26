@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Get_version
 #define MPI_Get_version PMPI_Get_version
 
 #endif
@@ -43,14 +44,15 @@
 @*/
 int MPI_Get_version( int *version, int *subversion )
 {
+#ifdef HAVE_ERROR_CHECKING
     static const char FCNAME[] = "MPI_Get_version";
+#endif
     int mpi_errno = MPI_SUCCESS;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_GET_VERSION);
 
     /* Note that this routine may be called before MPI_Init */
     /* MPIR_ERRTEST_INITIALIZED_ORDIE(); */
     
-    MPID_CS_ENTER();
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_GET_VERSION);
     
     /* Validate parameters and objects (post conversion) */
@@ -73,21 +75,23 @@ int MPI_Get_version( int *version, int *subversion )
     
     /* ... end of body of routine ... */
 
+#ifdef HAVE_ERROR_CHECKING
   fn_exit:
+#endif
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_GET_VERSION);
-    MPID_CS_EXIT();
     return mpi_errno;
     
-  fn_fail:
     /* --BEGIN ERROR HANDLING-- */
 #   ifdef HAVE_ERROR_CHECKING
+  fn_fail:
     {
 	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_get_version",
+	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER,
+	    "**mpi_get_version",
 	    "**mpi_get_version %p %p", version, subversion);
     }
-#   endif
     mpi_errno = MPIR_Err_return_comm( 0, FCNAME, mpi_errno );
     goto fn_exit;
+#   endif
     /* --END ERROR HANDLING-- */
 }

@@ -275,7 +275,7 @@ ac_subdirs_all="$ac_subdirs_all src"
 ac_subdirs_all="$ac_subdirs_all trace_sample"
 ac_subdirs_all="$ac_subdirs_all trace_rlog"
 ac_subdirs_all="$ac_subdirs_all $oldsource_dirname"
-ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS top_srcdir_abs logfilesdir docdir VPATH MAKE RM build build_cpu build_vendor build_os host host_cpu host_vendor host_os JVMFLAGS JVM JPATH_START JPATH_FINAL libbuild_dir binbuild_dir docbuild_dir etcbuild_dir sharebuild_dir sbinbuild_dir logfilesbuild_dir subdirs TRACE_LIBDIR EXEFILES LIBOBJS LTLIBOBJS'
+ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS top_srcdir_abs docdir VPATH MAKE INSTALL_PROGRAM INSTALL_SCRIPT INSTALL_DATA RM build build_cpu build_vendor build_os host host_cpu host_vendor host_os JVMFLAGS JVM JPATH_START JPATH_FINAL libbuild_dir binbuild_dir docbuild_dir etcbuild_dir sharebuild_dir sbinbuild_dir subdirs TRACE_LIBDIR EXEFILES LIBOBJS LTLIBOBJS'
 ac_subst_files=''
 
 # Initialize some variables set by options.
@@ -841,7 +841,6 @@ Optional Packages:
 --with-trace-name=TRACE_NAME       - The new name prefix that replaces
                                      the word trace in the utility programs
                                      traceprint and traceTOslog2.
---with-logfilesdir=dir             - Specify the logfiles directory.
 --with-docdir=dir                  - Specify the documentation directory.
 --with-oldsource=OLD_SRCDIR        - Build the old jar files from the given OLD
                                      Java source and to build slog2updater.
@@ -1271,30 +1270,34 @@ ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
 
 
+if test -f $CONFIG_AUX_DIR/install-sh ; then ac_aux_dir=$CONFIG_AUX_DIR
+else
 ac_aux_dir=
+# We force the test to use the absolute path to ensure that the install
+# program can be used if we cd to a different directory before using
+# install.
 for ac_dir in . $srcdir/.; do
   if test -f $ac_dir/install-sh; then
     ac_aux_dir=$ac_dir
-    ac_install_sh="$ac_aux_dir/install-sh -c"
+    abs_ac_aux_dir=`(cd $ac_aux_dir && pwd)`
+    ac_install_sh="$abs_ac_aux_dir/install-sh -c"
     break
   elif test -f $ac_dir/install.sh; then
     ac_aux_dir=$ac_dir
-    ac_install_sh="$ac_aux_dir/install.sh -c"
-    break
-  elif test -f $ac_dir/shtool; then
-    ac_aux_dir=$ac_dir
-    ac_install_sh="$ac_aux_dir/shtool install -c"
+    abs_ac_aux_dir=`(cd $ac_aux_dir && pwd)`
+    ac_install_sh="$abs_ac_aux_dir/install.sh -c"
     break
   fi
 done
+fi
 if test -z "$ac_aux_dir"; then
-  { { echo "$as_me:$LINENO: error: cannot find install-sh or install.sh in . $srcdir/." >&5
-echo "$as_me: error: cannot find install-sh or install.sh in . $srcdir/." >&2;}
+  { { echo "$as_me:$LINENO: error: can not find install-sh or install.sh in . $srcdir/." >&5
+echo "$as_me: error: can not find install-sh or install.sh in . $srcdir/." >&2;}
    { (exit 1); exit 1; }; }
 fi
-ac_config_guess="$SHELL $ac_aux_dir/config.guess"
-ac_config_sub="$SHELL $ac_aux_dir/config.sub"
-ac_configure="$SHELL $ac_aux_dir/configure" # This should be Cygnus configure.
+ac_config_guess=$ac_aux_dir/config.guess
+ac_config_sub=$ac_aux_dir/config.sub
+ac_configure=$ac_aux_dir/configure # This should be Cygnus configure.
 
 
 # Check whether --enable-echo or --disable-echo was given.
@@ -1452,15 +1455,6 @@ if test "${with_trace_name+set}" = set; then
 fi;
 
 
-# Check whether --with-logfilesdir or --without-logfilesdir was given.
-if test "${with_logfilesdir+set}" = set; then
-  withval="$with_logfilesdir"
-
-else
-  with_logfilesdir='${prefix}/logfiles'
-fi;
-
-
 # Check whether --with-docdir or --without-docdir was given.
 if test "${with_docdir+set}" = set; then
   withval="$with_docdir"
@@ -1471,14 +1465,6 @@ fi;
 
 #
 # Set the defaults for directories that are not included in configure's
-# repetoire
-if test -n "$with_logfilesdir" ; then
-    logfilesdir=$with_logfilesdir
-else
-    logfilesdir='${prefix}/logfiles'
-fi
-
-
 if test -n "$with_docdir" ; then
     docdir=$with_docdir
 else
@@ -1617,6 +1603,116 @@ echo "$as_me: error: No virtual MAKE path command found.
 	You may need to set your make command.
 	The GNU make (sometimes available as gnumake) can be used." >&2;}
    { (exit 1); exit 1; }; }
+fi
+
+
+# Find a good install program.  We prefer a C program (faster),
+# so one script is as good as another.  But avoid the broken or
+# incompatible versions:
+# SysV /etc/install, /usr/sbin/install
+# SunOS /usr/etc/install
+# IRIX /sbin/install
+# AIX /bin/install
+# AmigaOS /C/install, which installs bootblocks on floppy discs
+# AIX 4 /usr/bin/installbsd, which doesn't work without a -g flag
+# AFS /usr/afsws/bin/install, which mishandles nonexistent args
+# SVR4 /usr/ucb/install, which tries to use the nonexistent group "staff"
+# OS/2's system install, which has a completely different semantic
+# ./install, which can be erroneously created by make from ./install.sh.
+echo "$as_me:$LINENO: checking for a BSD-compatible install" >&5
+echo $ECHO_N "checking for a BSD-compatible install... $ECHO_C" >&6
+if test -z "$INSTALL"; then
+if test "${ac_cv_path_install+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+  # Account for people who put trailing slashes in PATH elements.
+case $as_dir/ in
+  ./ | .// | /cC/* | \
+  /etc/* | /usr/sbin/* | /usr/etc/* | /sbin/* | /usr/afsws/bin/* | \
+  ?:\\/os2\\/install\\/* | ?:\\/OS2\\/INSTALL\\/* | \
+  /usr/ucb/* ) ;;
+  *)
+    # OSF1 and SCO ODT 3.0 have their own names for install.
+    # Don't use installbsd from OSF since it installs stuff as root
+    # by default.
+    for ac_prog in ginstall scoinst install; do
+      for ac_exec_ext in '' $ac_executable_extensions; do
+	if $as_executable_p "$as_dir/$ac_prog$ac_exec_ext"; then
+	  if test $ac_prog = install &&
+	    grep dspmsg "$as_dir/$ac_prog$ac_exec_ext" >/dev/null 2>&1; then
+	    # AIX install.  It has an incompatible calling convention.
+	    :
+	  elif test $ac_prog = install &&
+	    grep pwplus "$as_dir/$ac_prog$ac_exec_ext" >/dev/null 2>&1; then
+	    # program-specific install script used by HP pwplus--don't use.
+	    :
+	  else
+	    ac_cv_path_install="$as_dir/$ac_prog$ac_exec_ext -c"
+	    break 3
+	  fi
+	fi
+      done
+    done
+    ;;
+esac
+done
+
+
+fi
+  if test "${ac_cv_path_install+set}" = set; then
+    INSTALL=$ac_cv_path_install
+  else
+    # As a last resort, use the slow shell script.  We don't cache a
+    # path for INSTALL within a source directory, because that will
+    # break other packages using the cache if that directory is
+    # removed, or if the path is relative.
+    INSTALL=$ac_install_sh
+  fi
+fi
+echo "$as_me:$LINENO: result: $INSTALL" >&5
+echo "${ECHO_T}$INSTALL" >&6
+
+# Use test -z because SunOS4 sh mishandles braces in ${var-val}.
+# It thinks the first close brace ends the variable substitution.
+test -z "$INSTALL_PROGRAM" && INSTALL_PROGRAM='${INSTALL}'
+
+test -z "$INSTALL_SCRIPT" && INSTALL_SCRIPT='${INSTALL}'
+
+test -z "$INSTALL_DATA" && INSTALL_DATA='${INSTALL} -m 644'
+
+
+if test -z "$INSTALL" ; then
+    echo "$as_me:$LINENO: result: No install program available" >&5
+echo "${ECHO_T}No install program available" >&6
+else
+    # Check that this install really works
+    rm -f conftest
+    echo "Test file" > conftest
+    if test ! -d .conftest ; then mkdir .conftest ; fi
+    echo "$as_me:$LINENO: checking whether install works" >&5
+echo $ECHO_N "checking whether install works... $ECHO_C" >&6
+    if $INSTALL conftest .conftest >/dev/null 2>&1 ; then
+        installOk=yes
+    else
+        installOk=no
+    fi
+    rm -rf .conftest conftest
+    echo "$as_me:$LINENO: result: $installOk" >&5
+echo "${ECHO_T}$installOk" >&6
+    if test "$installOk" = no ; then
+        if test -n "$ac_install_sh" ; then
+            INSTALL=$ac_install_sh
+        else
+	    { { echo "$as_me:$LINENO: error: Unable to find working install" >&5
+echo "$as_me: error: Unable to find working install" >&2;}
+   { (exit 1); exit 1; }; }
+        fi
+    fi
 fi
 
 
@@ -2114,7 +2210,7 @@ case "$host" in
     *freebsd*)
         if test -d "/software/freebsd" ; then
             subdir="freebsd"
-   	    fi
+        fi
 esac
 #
 if test -z "$subdir" ; then
@@ -2145,6 +2241,7 @@ for dir in \
     /usr/contrib/java* \
     /usr/contrib/jdk* \
     /usr/contrib/j2sdk* \
+    /System/Library/Frameworks/JavaVM.framework/Versions/*/Home \
     $HOME/java* \
     $HOME/jdk* \
     $HOME/j2sdk* \
@@ -2186,7 +2283,7 @@ for dir in $reverse_dirs ; do
                     fi
                 fi
                 ;;
-            *java* | *jdk* | *j2sdk* )
+            *)
                 if test -x "$dir/bin/$pac_JVM" ; then
                     JVM="$dir/bin/$pac_JVM"
                 fi
@@ -2447,7 +2544,7 @@ fi
 # Naming the various build directories, don't inherit them from environment
 #
 rootbuild_dir=`pwd`
-for dir in lib bin doc etc share sbin logfiles ; do
+for dir in lib bin doc etc share sbin ; do
     dirname=${dir}build_dir
     eval dirvalue=\$"$dirname"
     eval $dirname=$rootbuild_dir/$dir
@@ -2483,18 +2580,16 @@ fi
 
 
 # VPATH build: Set the sharebuild_dir
-if test ! -d $sharebuild_dir -a -d $srcdir/share ; then
-    echo "creating $sharebuild_dir from source"
-    $CPRP -pr $srcdir/share $sharebuild_dir
+if test ! -d $sharebuild_dir ; then
+    echo "creating $sharebuild_dir"
+    $MKDIR $sharebuild_dir
 fi
 
 
-
-
-# VPATH build: Set the logfilesbuild_dir
-if test ! -d $logfilesbuild_dir -a -d $srcdir/logfiles ; then
-    echo "creating $logfilesbuild_dir from source"
-    $CPRP -pr $srcdir/logfiles $logfilesbuild_dir
+# Copying $srcdir/logfiles to sharebuild_dir
+if test -d $srcdir/logfiles ; then
+    echo "creating sample logfiles from source"
+    $CPRP -pr $srcdir/logfiles $sharebuild_dir
 fi
 
 
@@ -2538,7 +2633,7 @@ if test "${enable_clog+set}" = set; then
   enableval="$enable_clog"
 
 else
-  enable_clog=yes
+  enable_clog=${slog2_enable_clog:-yes}
 fi;
 
 
@@ -3083,6 +3178,7 @@ Copyright (C) 2003 Free Software Foundation, Inc.
 This config.status script is free software; the Free Software Foundation
 gives unlimited permission to copy, distribute and modify it."
 srcdir=$srcdir
+INSTALL="$INSTALL"
 _ACEOF
 
 cat >>$CONFIG_STATUS <<\_ACEOF
@@ -3263,10 +3359,12 @@ s,@ECHO_N@,$ECHO_N,;t t
 s,@ECHO_T@,$ECHO_T,;t t
 s,@LIBS@,$LIBS,;t t
 s,@top_srcdir_abs@,$top_srcdir_abs,;t t
-s,@logfilesdir@,$logfilesdir,;t t
 s,@docdir@,$docdir,;t t
 s,@VPATH@,$VPATH,;t t
 s,@MAKE@,$MAKE,;t t
+s,@INSTALL_PROGRAM@,$INSTALL_PROGRAM,;t t
+s,@INSTALL_SCRIPT@,$INSTALL_SCRIPT,;t t
+s,@INSTALL_DATA@,$INSTALL_DATA,;t t
 s,@RM@,$RM,;t t
 s,@build@,$build,;t t
 s,@build_cpu@,$build_cpu,;t t
@@ -3286,7 +3384,6 @@ s,@docbuild_dir@,$docbuild_dir,;t t
 s,@etcbuild_dir@,$etcbuild_dir,;t t
 s,@sharebuild_dir@,$sharebuild_dir,;t t
 s,@sbinbuild_dir@,$sbinbuild_dir,;t t
-s,@logfilesbuild_dir@,$logfilesbuild_dir,;t t
 s,@subdirs@,$subdirs,;t t
 s,@TRACE_LIBDIR@,$TRACE_LIBDIR,;t t
 s,@EXEFILES@,$EXEFILES,;t t
@@ -3453,6 +3550,10 @@ case $ac_abs_builddir in
 esac
 
 
+  case $INSTALL in
+  [\\/$]* | ?:[\\/]* ) ac_INSTALL=$INSTALL ;;
+  *) ac_INSTALL=$ac_top_builddir$INSTALL ;;
+  esac
 
   # Let's still pretend it is `configure' which instantiates (i.e., don't
   # use $as_me), people would be surprised to read:
@@ -3515,6 +3616,7 @@ s,@builddir@,$ac_builddir,;t t
 s,@abs_builddir@,$ac_abs_builddir,;t t
 s,@top_builddir@,$ac_top_builddir,;t t
 s,@abs_top_builddir@,$ac_abs_top_builddir,;t t
+s,@INSTALL@,$ac_INSTALL,;t t
 " $ac_file_inputs | (eval "$ac_sed_cmds") >$tmp/out
   rm -f $tmp/stdin
   if test x"$ac_file" != x-; then

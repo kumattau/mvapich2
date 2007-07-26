@@ -1,27 +1,37 @@
 # This Makefile.in created by simplemake.  Do not edit
 
 # @configure_input@
+
+# --------------------------------------------------------------------------
 all: all-redirect
 
 SHELL           = @SHELL@
+abs_builddir    = @abs_builddir@
 srcdir          = @srcdir@
+abs_srcdir      = @abs_srcdir@
 MAKE            = @MAKE@
 MPILIBNAME      = @MPILIBNAME@
 
+VPATH = .:@srcdir@
 
-VPATH = .:${srcdir}
 .SUFFIXES:
-.SUFFIXES: .o .lo .c 
-clean:
+# Some make programs complain if no suffixes are set
+.SUFFIXES: .c .o
+apply: 
+	$(ACTION) $(ACTION_INPUT)
+	for dir in channels src util ; do \
+		(cd $$dir && ${MAKE} apply ; ) ; done
+clean: 
 	-@rm -f *.o ${srcdir}/*.o 
 	-@rm -f *.lo ${srcdir}/*.lo
-	(cd channels && $(MAKE) clean )
-	(cd src && $(MAKE) clean )
-distclean: clean distclean-local distclean-xxx remove-makefile
+	for dir in channels src util ; do \
+		(cd $$dir && ${MAKE} clean ; ) ; done
+distclean:  clean distclean-local distclean-xxx remove-makefile
 distclean-xxx:
-	(cd channels && $(MAKE) distclean )
-	(cd src && $(MAKE) distclean )
-	-@rm -f Makefile src/Makefile channels/Makefile localdefs config.status config.log config.cache *conf.cache config.system
+	for dir in channels src util ; do \
+		if [ ! -s $$dir/Makefile ] ; then continue ; fi ;\
+		(cd $$dir && ${MAKE} distclean ; ) ; done
+	-@rm -f Makefile src/Makefile util/Makefile util/sock/Makefile util/shm/Makefile util/shmbase/Makefile channels/Makefile localdefs config.status config.log config.cache *conf.cache config.system
 	-@rm -rf autom4te*.cache
 	-@rm -f include/mpidi_ch3_conf.h
 	-@rm -rf $(DEPS_DIR)
@@ -30,27 +40,27 @@ remove-makefile:
 	rm -f Makefile
 remove-genmakefiles:
 	rm -f  Makefile
-
 all-redirect:
 	@(cd channels && ${MAKE} all )
 	@(cd src && ${MAKE} all )
+	@(cd util && ${MAKE} all )
 
+# --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+HEADERFILES     = $(HEADERS)
+SOURCEFILES     = $(SOURCES)
 tags: TAGS
-TAGS:
-	(cd channels && $(MAKE) TAGS )
-	(cd src && $(MAKE) TAGS )
+TAGS: Makefile
+	for dir in channels src util ; do \
+		(cd $$dir && ${MAKE} TAGS ; ) ; done
+# --------------------------------------------------------------------------
 
 distclean-local:
-	-rm -f include/mpidi_ch3_conf.h
+	-rm -f include/mpidi_ch3_conf.h @MPID_THREAD_DISTCLEAN@
 
 maintainer-clean-local:
 	-rm -f include/mpidi_ch3_conf.h.in
-
-#
-# echomaxprocname gives the maximum lenght of a processor name, as used
-# by MPI_GET_PROCESSOR_NAME.  This is initialized in mpid_init
-echomaxprocname:
-	@echo 128
 
 FORCE_TARGET:
 

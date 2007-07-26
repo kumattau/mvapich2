@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: simple_pmiutil.c,v 1.1.1.1 2006/01/18 21:09:48 huangwei Exp $
+/*  $Id: simple_pmiutil.c,v 1.22 2006/12/09 17:03:11 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -30,11 +30,14 @@
 
 /* Use the memory definitions from mpich2/src/include */
 #include "mpimem.h"
+/* Use the MPI error message routines from mpich2/src/include */
+#include "mpibase.h"
 
 #define MAXVALLEN 1024
 #define MAXKEYLEN   32
 
-/* These are not the keyvals in the keyval space that is part of the PMI specification.
+/* These are not the keyvals in the keyval space that is part of the 
+   PMI specification.
    They are just part of this implementation's internal utilities.
 */
 struct PMIU_keyval_pairs {
@@ -52,6 +55,12 @@ void PMIU_Set_rank( int PMI_rank )
 {
     MPIU_Snprintf( PMIU_print_id, PMIU_IDSIZE, "cli_%d", PMI_rank );
 }
+void PMIU_SetServer( void )
+{
+    MPIU_Strncpy( PMIU_print_id, "server", PMIU_IDSIZE );
+}
+
+/* Note that vfprintf is part of C89 */
 
 /* style: allow:fprintf:1 sig:0 */
 /* style: allow:vfprintf:1 sig:0 */
@@ -95,39 +104,72 @@ void PMIU_printf( int print_flag, char *fmt, ... )
     }
 }
 
-/* This function reads until it finds a newline character.  It returns the number of
-   characters read, including the newline character.  The newline character is stored
-   in buf, as in fgets.  It does not supply a string-terminating null character.
-*/
+#define MAX_READLINE 1024
+/* 
+ * Return the next newline-terminated string of maximum length maxlen.
+ * This is a buffered version, and reads from fd as necessary.  A
+ */
 int PMIU_readline( int fd, char *buf, int maxlen )
 {
-    int n, rc;
-    char c, *ptr;
+    static char readbuf[MAX_READLINE];
+    static char *nextChar = 0, *lastChar = 0;  /* lastChar is really one past 
+						  last char */
+    static int  lastErrno = 0;
+    static int lastfd = -1;
+    int curlen, n;
+    char *p, ch;
 
-    ptr = buf;
-    for ( n = 1; n < maxlen; n++ ) {
-      again:
-	rc = read( fd, &c, 1 );
-	if ( rc == 1 ) {
-	    *ptr++ = c;
-	    if ( c == '\n' )	/* note \n is stored, like in fgets */
-		break;
-	}
-	else if ( rc == 0 ) {
-	    if ( n == 1 )
-		return( 0 );	/* EOF, no data read */
-	    else
-		break;		/* EOF, some data read */
-	}
-	else {
-	    if ( errno == EINTR )
-		goto again;
-	    return ( -1 );	/* error, errno set by read */
-	}
+    /* Note: On the client side, only one thread at a time should 
+       be calling this, and there should only be a single fd.  
+       Server side code should not use this routine (see the 
+       replacement version in src/pm/util/pmiserv.c) */
+    if (nextChar != lastChar && fd != lastfd) {
+	MPIU_Internal_error_printf( "Panic - buffer inconsistent\n" );
+	return -1;
     }
-    *ptr = 0;			/* null terminate, like fgets */
-    PMIU_printf( 0, " received :%s:\n", buf );
-    return( n );
+
+    p      = buf;
+    curlen = 1;    /* Make room for the null */
+    while (curlen < maxlen) {
+	if (nextChar == lastChar) {
+	    lastfd = fd;
+	    do {
+		n = read( fd, readbuf, sizeof(readbuf)-1 );
+	    } while (n == -1 && errno == EINTR);
+	    if (n == 0) {
+		/* EOF */
+		break;
+	    }
+	    else if (n < 0) {
+		/* Error.  Return a negative value if there is no
+		   data.  Save the errno in case we need to return it
+		   later. */
+		lastErrno = errno;
+		if (curlen == 1) {
+		    curlen = 0;
+		}
+		break;
+	    }
+	    nextChar = readbuf;
+	    lastChar = readbuf + n;
+	    /* Add a null at the end just to make it easier to print
+	       the read buffer */
+	    readbuf[n] = 0;
+	    /* FIXME: Make this an optional output */
+	    /* printf( "Readline %s\n", readbuf ); */
+	}
+	
+	ch   = *nextChar++;
+	*p++ = ch;
+	curlen++;
+	if (ch == '\n') break;
+    }
+
+    /* We null terminate the string for convenience in printing */
+    *p = 0;
+
+    /* Return the number of characters, not counting the null */
+    return curlen-1;
 }
 
 int PMIU_writeline( int fd, char *buf )	
@@ -143,7 +185,10 @@ int PMIU_writeline( int fd, char *buf )
 	    PMIU_printf( 1, "write_line: message string doesn't end in newline: :%s:\n",
 		       buf );
     else {
-	n = write( fd, buf, size );
+	do {
+	    n = write( fd, buf, size );
+	} while (n == -1 && errno == EINTR);
+
 	if ( n < 0 ) {
 	    PMIU_printf( 1, "write_line error; fd=%d buf=:%s:\n", fd, buf );
 	    perror("system msg for write_line failure ");
@@ -185,18 +230,23 @@ int PMIU_parse_keyvals( char *st )
 	    p++;
 	if ( *p == ' ' || *p == '\n' || *p == '\0' ) {
 	    PMIU_printf( 1,
-	       "PMIU_parse_keyvals: unexpected key delimiter at character %d in %s\n",
+       "PMIU_parse_keyvals: unexpected key delimiter at character %d in %s\n",
 		       p - st, st );
 	    return( -1 );
 	}
-        MPIU_Strncpy( PMIU_keyval_tab[PMIU_keyval_tab_idx].key, keystart, MAXKEYLEN );
-	PMIU_keyval_tab[PMIU_keyval_tab_idx].key[p - keystart] = '\0'; /* store key */
+	/* Null terminate the key */
+	*p = 0;
+	/* store key */
+        MPIU_Strncpy( PMIU_keyval_tab[PMIU_keyval_tab_idx].key, keystart, 
+		      MAXKEYLEN );
 
 	valstart = ++p;			/* start of value */
 	while ( *p != ' ' && *p != '\n' && *p != '\0' )
 	    p++;
-        MPIU_Strncpy( PMIU_keyval_tab[PMIU_keyval_tab_idx].value, valstart, MAXVALLEN );
-	PMIU_keyval_tab[PMIU_keyval_tab_idx].value[p - valstart] = '\0'; /* store value */
+	/* store value */
+        MPIU_Strncpy( PMIU_keyval_tab[PMIU_keyval_tab_idx].value, valstart, 
+		      MAXVALLEN );
+	PMIU_keyval_tab[PMIU_keyval_tab_idx].value[p - valstart] = '\0'; 
 	PMIU_keyval_tab_idx++;
 	if ( *p == ' ' )
 	    continue;
@@ -214,12 +264,15 @@ void PMIU_dump_keyvals( void )
 
 char *PMIU_getval( const char *keystr, char *valstr, int vallen )
 {
-    int i;
+    int i, rc;
     
     for (i = 0; i < PMIU_keyval_tab_idx; i++) {
 	if ( strcmp( keystr, PMIU_keyval_tab[i].key ) == 0 ) { 
-	    MPIU_Strncpy( valstr, PMIU_keyval_tab[i].value, vallen - 1 );
-	    valstr[vallen - 1] = '\0';
+	    rc = MPIU_Strncpy( valstr, PMIU_keyval_tab[i].value, vallen );
+	    if (rc != 0) {
+		PMIU_printf( 1, "MPIU_Strncpy failed in PMIU_getval\n" );
+		return NULL;
+	    }
 	    return valstr;
        } 
     }

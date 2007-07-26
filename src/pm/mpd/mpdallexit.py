@@ -11,7 +11,7 @@ causes all mpds in the ring to exit
 from time import ctime
 __author__ = "Ralph Butler and Rusty Lusk"
 __date__ = ctime()
-__version__ = "$Revision: 1.1.1.1 $"
+__version__ = "$Revision: 1.19 $"
 __credits__ = ""
 
 

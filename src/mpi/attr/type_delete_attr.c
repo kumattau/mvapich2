@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Type_delete_attr
 #define MPI_Type_delete_attr PMPI_Type_delete_attr
 
 #endif
@@ -56,7 +57,9 @@ int MPI_Type_delete_attr(MPI_Datatype type, int type_keyval)
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    /* The thread lock prevents a valid attr delete on the same datatype
+       but in a different thread from causing problems */
+    MPIU_THREAD_SINGLE_CS_ENTER("attr");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_TYPE_DELETE_ATTR);
     
     /* Validate parameters, especially handles needing to be converted */
@@ -96,9 +99,6 @@ int MPI_Type_delete_attr(MPI_Datatype type, int type_keyval)
     
     /* Look for attribute.  They are ordered by keyval handle */
 
-    /* The thread lock prevents a valid attr delete on the same datatype
-       but in a different thread from causing problems */
-    MPID_Common_thread_lock();
     old_p = &type_ptr->attributes;
     p     = type_ptr->attributes;
     while (p)
@@ -128,7 +128,7 @@ int MPI_Type_delete_attr(MPI_Datatype type, int type_keyval)
 	    /* We found the attribute.  Remove it from the list */
 	    *old_p = p->next;
 	    /* Decrement the use of the keyval */
-	    MPIU_Object_release_ref( p->keyval, &in_use);
+	    MPIR_Keyval_release_ref( p->keyval, &in_use);
 	    if (!in_use)
 	    {
 		MPIU_Handle_obj_free( &MPID_Keyval_mem, p->keyval );
@@ -138,14 +138,13 @@ int MPI_Type_delete_attr(MPI_Datatype type, int type_keyval)
 	/* --END ERROR HANDLING-- */
     }
 
-    MPID_Common_thread_unlock( );
     if (mpi_errno != MPI_SUCCESS) goto fn_fail;
     
     /* ... end of body of routine ... */
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_TYPE_DELETE_ATTR);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("attr");
     return mpi_errno;
 
   fn_fail:
@@ -153,7 +152,8 @@ int MPI_Type_delete_attr(MPI_Datatype type, int type_keyval)
 #   ifdef HAVE_ERROR_CHECKING
     {
 	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_type_delete_attr",
+	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER,
+	    "**mpi_type_delete_attr",
 	    "**mpi_type_delete_attr %D %d", type, type_keyval);
     }
 #   endif

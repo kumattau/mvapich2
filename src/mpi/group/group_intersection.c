@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Group_intersection
 #define MPI_Group_intersection PMPI_Group_intersection
 
 #endif
@@ -67,7 +68,7 @@ int MPI_Group_intersection(MPI_Group group1, MPI_Group group2, MPI_Group *newgro
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("group");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_GROUP_INTERSECTION);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -111,64 +112,54 @@ int MPI_Group_intersection(MPI_Group group1, MPI_Group group2, MPI_Group *newgro
     /* Insure that the lpid lists are setup */
     MPIR_Group_setup_lpid_pairs( group_ptr1, group_ptr2 );
 
-    /* We must lock against other threads while using the flag array */
-    MPID_Common_thread_lock();
-    {
-	for (i=0; i<size1; i++) {
-	    group_ptr1->lrank_to_lpid[i].flag = 0;
+    for (i=0; i<size1; i++) {
+	group_ptr1->lrank_to_lpid[i].flag = 0;
+    }
+    g1_idx = group_ptr1->idx_of_first_lpid;
+    g2_idx = group_ptr2->idx_of_first_lpid;
+    
+    nnew = 0;
+    while (g1_idx >= 0 && g2_idx >= 0) {
+	l1_pid = group_ptr1->lrank_to_lpid[g1_idx].lpid;
+	l2_pid = group_ptr2->lrank_to_lpid[g2_idx].lpid;
+	if (l1_pid < l2_pid) {
+	    g1_idx = group_ptr1->lrank_to_lpid[g1_idx].next_lpid;
 	}
-	g1_idx = group_ptr1->idx_of_first_lpid;
-	g2_idx = group_ptr2->idx_of_first_lpid;
-	
-	nnew = 0;
-	while (g1_idx >= 0 && g2_idx >= 0) {
-	    l1_pid = group_ptr1->lrank_to_lpid[g1_idx].lpid;
-	    l2_pid = group_ptr2->lrank_to_lpid[g2_idx].lpid;
-	    if (l1_pid < l2_pid) {
-		g1_idx = group_ptr1->lrank_to_lpid[g1_idx].next_lpid;
-	    }
-	    else if (l1_pid > l2_pid) {
-		g2_idx = group_ptr2->lrank_to_lpid[g2_idx].next_lpid;
-	    }
-	    else {
-		/* Equal */
-		group_ptr1->lrank_to_lpid[g1_idx].flag = 1;
-		g1_idx = group_ptr1->lrank_to_lpid[g1_idx].next_lpid;
-		g2_idx = group_ptr2->lrank_to_lpid[g2_idx].next_lpid;
-		nnew ++;
-	    }
+	else if (l1_pid > l2_pid) {
+	    g2_idx = group_ptr2->lrank_to_lpid[g2_idx].next_lpid;
 	}
-	/* Create the group.  Handle the trivial case first */
-	if (nnew == 0) {
-	    *newgroup = MPI_GROUP_EMPTY;
-	    MPID_Common_thread_unlock();
-	    goto fn_exit;
-	}
-	
-	mpi_errno = MPIR_Group_create( nnew, &new_group_ptr );
-	/* --BEGIN ERROR HANDLING-- */
-	if (mpi_errno)
-	{
-	    MPID_Common_thread_unlock();
-	    goto fn_fail;
-	}
-	/* --END ERROR HANDLING-- */
-	new_group_ptr->rank = MPI_UNDEFINED;
-	k = 0;
-	for (i=0; i<size1; i++)
-	{
-	    if (group_ptr1->lrank_to_lpid[i].flag)
-	    {
-		new_group_ptr->lrank_to_lpid[k].lrank = k;
-		new_group_ptr->lrank_to_lpid[k].lpid = 
-		    group_ptr1->lrank_to_lpid[i].lpid;
-		if (i == group_ptr1->rank) 
-		    new_group_ptr->rank = k;
-		k++;
-	    }
+	else {
+	    /* Equal */
+	    group_ptr1->lrank_to_lpid[g1_idx].flag = 1;
+	    g1_idx = group_ptr1->lrank_to_lpid[g1_idx].next_lpid;
+	    g2_idx = group_ptr2->lrank_to_lpid[g2_idx].next_lpid;
+	    nnew ++;
 	}
     }
-    MPID_Common_thread_unlock();
+    /* Create the group.  Handle the trivial case first */
+    if (nnew == 0) {
+	*newgroup = MPI_GROUP_EMPTY;
+	goto fn_exit;
+    }
+    
+    mpi_errno = MPIR_Group_create( nnew, &new_group_ptr );
+    /* --BEGIN ERROR HANDLING-- */
+    if (mpi_errno) {
+	goto fn_fail;
+    }
+    /* --END ERROR HANDLING-- */
+    new_group_ptr->rank = MPI_UNDEFINED;
+    k = 0;
+    for (i=0; i<size1; i++) {
+	if (group_ptr1->lrank_to_lpid[i].flag) {
+	    new_group_ptr->lrank_to_lpid[k].lrank = k;
+	    new_group_ptr->lrank_to_lpid[k].lpid = 
+		group_ptr1->lrank_to_lpid[i].lpid;
+	    if (i == group_ptr1->rank) 
+		new_group_ptr->rank = k;
+	    k++;
+	}
+    }
 
     *newgroup = new_group_ptr->handle;
 
@@ -176,7 +167,7 @@ int MPI_Group_intersection(MPI_Group group1, MPI_Group group2, MPI_Group *newgro
     
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_GROUP_INTERSECTION);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("group");
     return mpi_errno;
 
   fn_fail:

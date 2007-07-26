@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2006, The Ohio State University. All rights
+/* Copyright (c) 2003-2007, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -18,6 +18,11 @@
 
 #include "mpidi_ch3_impl.h"
 #include <stdio.h>
+
+#ifdef DAPL_DEFAULT_PROVIDER
+#include "rdma_impl.h"
+extern MPIDI_CH3I_RDMA_Process_t MPIDI_CH3I_RDMA_Process;
+#endif
 
 #ifdef DEBUG
 #define DEBUG_PRINT(args...) \
@@ -35,7 +40,7 @@ do {                                                          \
 #define FUNCNAME MPIDI_CH3I_RDMA_read_progress
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr)
+int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int is_blocking)
 {
     static int 		local_vc_index = 0;
     static MPIDI_VC_t 	*pending_vc = NULL;
@@ -52,7 +57,7 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr)
 
     if (pending_vc != NULL) {
         type =
-            MPIDI_CH3I_MRAILI_Waiting_msg(pending_vc, v_ptr, 1);
+            MPIDI_CH3I_MRAILI_Waiting_msg(pending_vc, v_ptr, is_blocking);
         if (type == T_CHANNEL_CONTROL_MSG_ARRIVE) {
             if((void *) pending_vc != (*v_ptr)->vc) {
                 fprintf(stderr, "mismatch %p %p\n", pending_vc,
@@ -71,6 +76,8 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr)
     }
 
 #ifdef RDMA_FAST_PATH
+#ifdef DAPL_DEFAULT_PROVIDER
+  if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
     for (i = 0; i < pg->size; i++) {
         MPIDI_PG_Get_vcr(MPIDI_Process.my_pg, local_vc_index,
                          &recv_vc_ptr);
@@ -90,8 +97,37 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr)
             goto fn_exit;
         }
     }
+  } else {
+       type = MPIDI_CH3I_MRAILI_Get_next_vbuf(vc_pptr, v_ptr, is_blocking);
+       if (type != T_CHANNEL_NO_ARRIVE) {
+           goto fn_exit;
+       }
+  }
+
 #else
-    type = MPIDI_CH3I_MRAILI_Get_next_vbuf(vc_pptr, v_ptr);
+    for (i = 0; i < pg->size; i++) {
+        MPIDI_PG_Get_vcr(MPIDI_Process.my_pg, local_vc_index,
+                         &recv_vc_ptr);
+        /* skip over the vc to myself */
+        if (MPIDI_CH3I_Process.vc == recv_vc_ptr) {
+            if (++local_vc_index == pg->size)
+                local_vc_index = 0;
+            continue;
+        }
+        type =
+            MPIDI_CH3I_MRAILI_Get_next_vbuf_local(recv_vc_ptr, v_ptr);
+        if (++local_vc_index == pg->size)
+            local_vc_index = 0;
+        if (type != T_CHANNEL_NO_ARRIVE) {
+            *vc_pptr = recv_vc_ptr;
+            DEBUG_PRINT("[read_progress] find one\n");
+            goto fn_exit;
+        }
+    }
+
+#endif
+#else
+    type = MPIDI_CH3I_MRAILI_Get_next_vbuf(vc_pptr, v_ptr, is_blocking);
     if (type != T_CHANNEL_NO_ARRIVE) {
 	goto fn_exit;
     } 
@@ -107,7 +143,7 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr)
      * packet on *v_ptr
      * TODO: Is this the optimal way?
      */
-    type = MPIDI_CH3I_MRAILI_Cq_poll(v_ptr, NULL, 0);
+    type = MPIDI_CH3I_MRAILI_Cq_poll(v_ptr, NULL, 0, is_blocking);
     if (type != T_CHANNEL_NO_ARRIVE) {
         recv_vc_ptr = (*v_ptr)->vc;
         *vc_pptr = recv_vc_ptr;

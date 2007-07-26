@@ -1,6 +1,6 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
 /*
- *   $Id: datatype.h,v 1.1.1.1 2006/01/18 21:09:43 huangwei Exp $
+ *   $Id: datatype.h,v 1.5 2004/10/06 20:15:43 rross Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.

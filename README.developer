@@ -11,19 +11,12 @@ To update files faster, use:
     maint/updatefiles --without-codecheck
 
 
-Within MCS (Windows), assuming cygwin (and the cvs available as part of
-cygwin, not the cvs for windows) and that drive f: is mapped to
-/home:
-
-    cvs -d /cygdrive/f/MPI/cvsMaster checkout mpich2all
-    cd mpich2
-    maint/updatefiles
-
-Note that the cygwin cvs may not properly handle the defined modules; in that 
-case, use the directory names for each component:
-
-    cvs -d /cygdrive/f/MPI/cvsMaster checkout mpich2-01
-    ...
+Within MCS (Windows), there are two approaches.  You can either map
+the Unixhome to a Windows drive (such as f:) or use the CVS's 
+external interface.  We recommend using the external interface even
+withing MCS because it is much faster than using the Unixhome drive.
+Instructions on using the Unixhome are at the end of this note, if you
+decide to use it.
 
 Outside of MCS, but with an MCS account (replace "yourname" with your
 MCS login name):
@@ -49,3 +42,21 @@ the top-level mpich2 directory:
     maint/updatefiles [--without-codecheck]
     ./configure [configopts]
     make
+
+
+Appendix
+========
+Using Unixhome (within MCS) and cygwin, with the cvs available as part of
+cygwin, not the cvs for windows) and that drive f: is mapped to
+/home:
+
+    cvs -d /cygdrive/f/MPI/cvsMaster checkout mpich2all
+    cd mpich2
+    maint/updatefiles
+
+Note that the cygwin cvs may not properly handle the defined modules; in that 
+case, use the directory names for each component:
+
+    cvs -d /cygdrive/f/MPI/cvsMaster checkout mpich2-01
+    ...
+

@@ -22,7 +22,7 @@ static inline void setupProcessorName( void );
 #define FUNCNAME MPID_Send
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPID_Get_processor_name(char * name, int * resultlen)
+int MPID_Get_processor_name(char * name, int namelen, int * resultlen)
 {
     /* FIXME: Make thread safe */
     if (!setProcessorName) {
@@ -32,11 +32,12 @@ int MPID_Get_processor_name(char * name, int * resultlen)
     if (processorNameLen > 0)
     {
 	/* MPIU_Strncpy only copies until (and including) the null, 
-	   unlink strncpy, it does not blank pad.  This is a good thing
+	   unlike strncpy, it does not blank pad.  This is a good thing
 	   here, because users don't always allocated MPI_MAX_PROCESSOR_NAME
 	   characters */
-	MPIU_Strncpy(name, processorName, MPI_MAX_PROCESSOR_NAME );
-	*resultlen = processorNameLen;
+	MPIU_Strncpy(name, processorName, namelen );
+	if (resultlen) 
+	    *resultlen = processorNameLen;
     }
     /* --BEGIN ERROR HANDLING-- */
     else
@@ -67,6 +68,8 @@ int MPID_Get_processor_name(char * name, int * resultlen)
 #endif
 
 #if defined(HAVE_WINDOWS_H)
+/* We prefer this function to gethostname because gethostname requires 
+   additional libraries.  */
 static inline void setupProcessorName( void )
 {
     DWORD size = MPI_MAX_PROCESSOR_NAME;

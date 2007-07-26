@@ -1,7 +1,9 @@
 mpiexec_SOURCES = mpiexec.c 
 # Some C compilers won't take ../libfoo.a as a library, so we use
 # -Ldir -llib for each of the libraries instead.
-mpiexec_LDADD = -L../util -lmpiexec -L../../../lib -lmpich
+# Force the use of the static, not shared library for mpich and for mpiexec
+mpiexec_LDADD = ../util/libmpiexec.a ../../../lib/libmpich.a
+mpiexec_DEPADD = ../util/libmpiexec.a 
 INCLUDES = -I../../include -I${master_top_srcdir}/src/include \
     -I../../pmi/simple -I${master_top_srcdir}/src/pmi/simple \
 	-I${master_top_srcdir}/src/pm/util 
@@ -19,7 +21,7 @@ mpich2-build-uninstall: uninstall
 
 # A special alternate installation target when using multiple process managers
 install-alt: mpiexec
-	$(INSTALL_PROGRAM) $(INSTALL_STRIP_FLAG) mpiexec ${bindir}/mpiexec.gforker
+	$(INSTALL_PROGRAM) $(INSTALL_STRIP_FLAG) mpiexec $(DESTDIR)${bindir}/mpiexec.gforker
 
 doc_sources = mpiexec.txt
 DOCDESTDIRS = html:www/www1,man:man/man1,latex:doc/refman

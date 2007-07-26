@@ -5,14 +5,20 @@
  */
 
 #include "mpidimpl.h"
+#include "mpidrma.h"
 
-static int MPIDI_CH3I_Send_rma_msg(MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr, MPI_Win source_win_handle, 
-				   MPI_Win target_win_handle, MPIDI_RMA_dtype_info * dtype_info, 
+static int MPIDI_CH3I_Send_rma_msg(MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr, 
+				   MPI_Win source_win_handle, 
+				   MPI_Win target_win_handle, 
+				   MPIDI_RMA_dtype_info * dtype_info, 
 				   void ** dataloop, MPID_Request ** request);
-static int MPIDI_CH3I_Recv_rma_msg(MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr, MPI_Win source_win_handle, 
-				   MPI_Win target_win_handle, MPIDI_RMA_dtype_info * dtype_info, 
+static int MPIDI_CH3I_Recv_rma_msg(MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr, 
+				   MPI_Win source_win_handle, 
+				   MPI_Win target_win_handle, 
+				   MPIDI_RMA_dtype_info * dtype_info, 
 				   void ** dataloop, MPID_Request ** request); 
-static int MPIDI_CH3I_Do_passive_target_rma(MPID_Win *win_ptr, int *wait_for_rma_done_pkt);
+static int MPIDI_CH3I_Do_passive_target_rma(MPID_Win *win_ptr, 
+					    int *wait_for_rma_done_pkt);
 static int MPIDI_CH3I_Send_lock_put_or_acc(MPID_Win *win_ptr);
 static int MPIDI_CH3I_Send_lock_get(MPID_Win *win_ptr);
 
@@ -34,10 +40,12 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
     void **dataloops=NULL;    /* to store dataloops for each datatype */
     MPID_Progress_state progress_state;
     MPIU_CHKLMEM_DECL(7);
+    MPIU_THREADPRIV_DECL;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_WIN_FENCE);
 
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_WIN_FENCE);
 
+    MPIU_THREADPRIV_GET;
     /* In case this process was previously the target of passive target rma
      * operations, we need to take care of the following...
      * Since we allow MPI_Win_unlock to return without a done ack from
@@ -119,12 +127,14 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
 	
 	if (total_op_count != 0)
 	{
-	    MPIU_CHKLMEM_MALLOC(requests, MPID_Request **, total_op_count*sizeof(MPID_Request*),
+	    MPIU_CHKLMEM_MALLOC(requests, MPID_Request **, 
+				total_op_count*sizeof(MPID_Request*),
 				mpi_errno, "requests");
 	    MPIU_CHKLMEM_MALLOC(dtype_infos, MPIDI_RMA_dtype_info *, 
 				total_op_count*sizeof(MPIDI_RMA_dtype_info),
 				mpi_errno, "dtype_infos");
-	    MPIU_CHKLMEM_MALLOC(dataloops, void **, total_op_count*sizeof(void*),
+	    MPIU_CHKLMEM_MALLOC(dataloops, void **, 
+				total_op_count*sizeof(void*),
 				mpi_errno, "dataloops");
 	    for (i=0; i<total_op_count; i++) dataloops[i] = NULL;
 	}
@@ -142,7 +152,8 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
 	for (i=0; i<comm_size; i++) recvcnts[i] = 1;
             
 	MPIR_Nest_incr();
-	mpi_errno = NMPI_Reduce_scatter(MPI_IN_PLACE, rma_target_proc, recvcnts,
+	mpi_errno = NMPI_Reduce_scatter(MPI_IN_PLACE, rma_target_proc, 
+					recvcnts,
 					MPI_INT, MPI_SUM, win_ptr->comm);
 	/* result is stored in rma_target_proc[0] */
 	MPIR_Nest_decr();
@@ -151,7 +162,8 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
 	/* Set the completion counter */
 	/* FIXME: MT: this needs to be done atomically because other
 	   procs have the address and could decrement it. */
-	win_ptr->my_counter = win_ptr->my_counter - comm_size + rma_target_proc[0];  
+	win_ptr->my_counter = win_ptr->my_counter - comm_size + 
+	    rma_target_proc[0];  
             
 	i = 0;
 	curr_ptr = win_ptr->rma_ops_list;
@@ -174,14 +186,16 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
 	    case (MPIDI_RMA_PUT):
 	    case (MPIDI_RMA_ACCUMULATE):
 		mpi_errno = MPIDI_CH3I_Send_rma_msg(curr_ptr, win_ptr,
-						    source_win_handle, target_win_handle, &dtype_infos[i],
-						    &dataloops[i], &requests[i]);
+					source_win_handle, target_win_handle, 
+					&dtype_infos[i],
+					&dataloops[i], &requests[i]);
 		if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
 		break;
 	    case (MPIDI_RMA_GET):
 		mpi_errno = MPIDI_CH3I_Recv_rma_msg(curr_ptr, win_ptr,
-						    source_win_handle, target_win_handle, &dtype_infos[i], 
-						    &dataloops[i], &requests[i]);
+					source_win_handle, target_win_handle, 
+					&dtype_infos[i], 
+					&dataloops[i], &requests[i]);
 		if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
 		break;
 	    default:
@@ -259,7 +273,8 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
 	    {
 		if (dataloops[i] != NULL)
 		{
-		    MPIU_Free(dataloops[i]); /* allocated in send_rma_msg or recv_rma_msg */
+		    MPIU_Free(dataloops[i]); /* allocated in send_rma_msg or 
+						recv_rma_msg */
 		}
 	    }
 	}
@@ -316,15 +331,16 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 static int MPIDI_CH3I_Send_rma_msg(MPIDI_RMA_ops *rma_op, MPID_Win *win_ptr,
-                            MPI_Win source_win_handle, MPI_Win target_win_handle, 
-                            MPIDI_RMA_dtype_info *dtype_info, 
-                            void **dataloop, MPID_Request **request) 
+				   MPI_Win source_win_handle, 
+				   MPI_Win target_win_handle, 
+				   MPIDI_RMA_dtype_info *dtype_info, 
+				   void **dataloop, MPID_Request **request) 
 {
     MPIDI_CH3_Pkt_t upkt;
     MPIDI_CH3_Pkt_put_t *put_pkt = &upkt.put;
     MPIDI_CH3_Pkt_accum_t *accum_pkt = &upkt.accum;
     MPID_IOV iov[MPID_IOV_LIMIT];
-    int mpi_errno=MPI_SUCCESS;
+    int mpi_errno=MPI_SUCCESS, predefined;
     int origin_dt_derived, target_dt_derived, origin_type_size, iovcnt, iov_n; 
     MPIDI_VC_t * vc;
     MPID_Comm *comm_ptr;
@@ -374,7 +390,8 @@ static int MPIDI_CH3I_Send_rma_msg(MPIDI_RMA_ops *rma_op, MPID_Win *win_ptr,
     MPID_Comm_get_ptr(win_ptr->comm, comm_ptr);
     MPIDI_Comm_get_vc(comm_ptr, rma_op->target_rank, &vc);
 
-    if (HANDLE_GET_KIND(rma_op->origin_datatype) != HANDLE_KIND_BUILTIN)
+    MPIDI_CH3I_DATATYPE_IS_PREDEFINED(rma_op->origin_datatype, predefined);
+    if (!predefined)
     {
         origin_dt_derived = 1;
         MPID_Datatype_get_ptr(rma_op->origin_datatype, origin_dtp);
@@ -384,7 +401,8 @@ static int MPIDI_CH3I_Send_rma_msg(MPIDI_RMA_ops *rma_op, MPID_Win *win_ptr,
         origin_dt_derived = 0;
     }
 
-    if (HANDLE_GET_KIND(rma_op->target_datatype) != HANDLE_KIND_BUILTIN)
+    MPIDI_CH3I_DATATYPE_IS_PREDEFINED(rma_op->target_datatype, predefined);
+    if (!predefined)
     {
         target_dt_derived = 1;
         MPID_Datatype_get_ptr(rma_op->target_datatype, target_dtp);
@@ -412,7 +430,8 @@ static int MPIDI_CH3I_Send_rma_msg(MPIDI_RMA_ops *rma_op, MPID_Win *win_ptr,
         dtype_info->has_sticky_ub = target_dtp->has_sticky_ub;
         dtype_info->has_sticky_lb = target_dtp->has_sticky_lb;
 
-	MPIU_CHKPMEM_MALLOC(*dataloop, void *, target_dtp->dataloop_size, mpi_errno, "dataloop");
+	MPIU_CHKPMEM_MALLOC(*dataloop, void *, target_dtp->dataloop_size, 
+			    mpi_errno, "dataloop");
 
 	MPIDI_FUNC_ENTER(MPID_STATE_MEMCPY);
         memcpy(*dataloop, target_dtp->dataloop, target_dtp->dataloop_size);
@@ -505,6 +524,9 @@ static int MPIDI_CH3I_Send_rma_msg(MPIDI_RMA_ops *rma_op, MPID_Win *win_ptr,
         (*request)->dev.segment_size = rma_op->origin_count * origin_type_size;
 	    
         iov_n = MPID_IOV_LIMIT - iovcnt;
+	/* On the initial load of a send iov req, set the OnFinal action (null
+	   for point-to-point) */
+	(*request)->dev.OnFinal = 0;
         mpi_errno = MPIDI_CH3U_Request_load_send_iov(*request,
                                                      &iov[iovcnt],
                                                      &iov_n); 
@@ -562,13 +584,14 @@ static int MPIDI_CH3I_Send_rma_msg(MPIDI_RMA_ops *rma_op, MPID_Win *win_ptr,
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 static int MPIDI_CH3I_Recv_rma_msg(MPIDI_RMA_ops *rma_op, MPID_Win *win_ptr,
-                            MPI_Win source_win_handle, MPI_Win target_win_handle, 
-                            MPIDI_RMA_dtype_info *dtype_info, void **dataloop, 
-                            MPID_Request **request) 
+				   MPI_Win source_win_handle, 
+				   MPI_Win target_win_handle, 
+				   MPIDI_RMA_dtype_info *dtype_info, 
+				   void **dataloop, MPID_Request **request) 
 {
     MPIDI_CH3_Pkt_t upkt;
     MPIDI_CH3_Pkt_get_t *get_pkt = &upkt.get;
-    int mpi_errno;
+    int mpi_errno, predefined;
     MPIDI_VC_t * vc;
     MPID_Comm *comm_ptr;
     MPID_Request *req = NULL;
@@ -602,7 +625,8 @@ static int MPIDI_CH3I_Recv_rma_msg(MPIDI_RMA_ops *rma_op, MPID_Win *win_ptr,
     req->dev.datatype = rma_op->origin_datatype;
     req->dev.target_win_handle = MPI_WIN_NULL;
     req->dev.source_win_handle = source_win_handle;
-    if (HANDLE_GET_KIND(req->dev.datatype) != HANDLE_KIND_BUILTIN)
+    MPIDI_CH3I_DATATYPE_IS_PREDEFINED(req->dev.datatype, predefined);
+    if (!predefined)
     {
         MPID_Datatype_get_ptr(req->dev.datatype, dtp);
         req->dev.datatype_ptr = dtp;
@@ -627,8 +651,8 @@ static int MPIDI_CH3I_Recv_rma_msg(MPIDI_RMA_ops *rma_op, MPID_Win *win_ptr,
     MPID_Comm_get_ptr(win_ptr->comm, comm_ptr);
     MPIDI_Comm_get_vc(comm_ptr, rma_op->target_rank, &vc);
 
-    if (HANDLE_GET_KIND(rma_op->target_datatype) ==
-        HANDLE_KIND_BUILTIN)
+    MPIDI_CH3I_DATATYPE_IS_PREDEFINED(rma_op->target_datatype, predefined);
+    if (predefined)
     {
         /* basic datatype on target. simply send the get_pkt. */
         mpi_errno = MPIDI_CH3_iStartMsg(vc, get_pkt, sizeof(*get_pkt), &req);
@@ -654,7 +678,8 @@ static int MPIDI_CH3I_Recv_rma_msg(MPIDI_RMA_ops *rma_op, MPID_Win *win_ptr,
         dtype_info->has_sticky_ub = dtp->has_sticky_ub;
         dtype_info->has_sticky_lb = dtp->has_sticky_lb;
 
-	MPIU_CHKPMEM_MALLOC(*dataloop, void *, dtp->dataloop_size, mpi_errno, "dataloop");
+	MPIU_CHKPMEM_MALLOC(*dataloop, void *, dtp->dataloop_size, 
+			    mpi_errno, "dataloop");
 
 	MPIDI_FUNC_ENTER(MPID_STATE_MEMCPY);
         memcpy(*dataloop, dtp->dataloop, dtp->dataloop_size);
@@ -715,13 +740,16 @@ int MPIDI_Win_post(MPID_Group *group_ptr, int assert, MPID_Win *win_ptr)
     MPI_Group win_grp, post_grp;
     int i, post_grp_size, *ranks_in_post_grp, *ranks_in_win_grp, dst, rank;
     MPIU_CHKLMEM_DECL(2);
+    MPIU_THREADPRIV_DECL;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_WIN_POST);
 
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_WIN_POST);
 
-    /* Reset the fence counter so that in case the user has switched from fence to 
-       post-wait synchronization, he cannot use the previous fence to mark the beginning 
-       of a fence epoch.  */
+    MPIU_THREADPRIV_GET;
+    /* Reset the fence counter so that in case the user has switched from 
+       fence to 
+       post-wait synchronization, he cannot use the previous fence to mark 
+       the beginning of a fence epoch.  */
     win_ptr->fence_cnt = 0;
 
     /* In case this process was previously the target of passive target rma
@@ -767,9 +795,11 @@ int MPIDI_Win_post(MPID_Group *group_ptr, int assert, MPID_Win *win_ptr)
 	   post_group to ranks in win_ptr->comm, so that we
 	   can do communication */
             
-	MPIU_CHKLMEM_MALLOC(ranks_in_post_grp, int *, post_grp_size * sizeof(int),
+	MPIU_CHKLMEM_MALLOC(ranks_in_post_grp, int *, 
+			    post_grp_size * sizeof(int),
 			    mpi_errno, "ranks_in_post_grp");
-	MPIU_CHKLMEM_MALLOC(ranks_in_win_grp, int *, post_grp_size * sizeof(int),
+	MPIU_CHKLMEM_MALLOC(ranks_in_win_grp, int *, 
+			    post_grp_size * sizeof(int),
 			    mpi_errno, "ranks_in_win_grp");
         
 	for (i=0; i<post_grp_size; i++)
@@ -786,7 +816,8 @@ int MPIDI_Win_post(MPID_Group *group_ptr, int assert, MPID_Win *win_ptr)
 	post_grp = group_ptr->handle;
 	
 	mpi_errno = NMPI_Group_translate_ranks(post_grp, post_grp_size,
-					       ranks_in_post_grp, win_grp, ranks_in_win_grp);
+					       ranks_in_post_grp, win_grp, 
+					       ranks_in_win_grp);
 	if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
 	
 	NMPI_Comm_rank(win_ptr->comm, &rank);
@@ -833,9 +864,9 @@ int MPIDI_Win_start(MPID_Group *group_ptr, int assert, MPID_Win *win_ptr)
 
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_WIN_START);
 
-    /* Reset the fence counter so that in case the user has switched from fence to 
-       start-complete synchronization, he cannot use the previous fence to mark the 
-       beginning of a fence epoch.  */
+    /* Reset the fence counter so that in case the user has switched from 
+       fence to start-complete synchronization, he cannot use the previous 
+       fence to mark the beginning of a fence epoch.  */
     win_ptr->fence_cnt = 0;
 
     /* In case this process was previously the target of passive target rma
@@ -868,7 +899,7 @@ int MPIDI_Win_start(MPID_Group *group_ptr, int assert, MPID_Win *win_ptr)
     }
     
     win_ptr->start_group_ptr = group_ptr;
-    MPIU_Object_add_ref( group_ptr );
+    MPIR_Group_add_ref( group_ptr );
     win_ptr->start_assert = assert;
     
  fn_exit:
@@ -897,10 +928,12 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
     MPI_Group win_grp, start_grp;
     int start_grp_size, *ranks_in_start_grp, *ranks_in_win_grp, rank;
     MPIU_CHKLMEM_DECL(7);
+    MPIU_THREADPRIV_DECL;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_WIN_COMPLETE);
 
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_WIN_COMPLETE);
 
+    MPIU_THREADPRIV_GET;
     MPID_Comm_get_ptr( win_ptr->comm, comm_ptr );
     comm_size = comm_ptr->local_size;
         
@@ -929,16 +962,17 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
     start_grp = win_ptr->start_group_ptr->handle;
 
     mpi_errno = NMPI_Group_translate_ranks(start_grp, start_grp_size,
-					   ranks_in_start_grp, win_grp, ranks_in_win_grp);
+					   ranks_in_start_grp, win_grp, 
+					   ranks_in_win_grp);
     if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
         
         
+    NMPI_Comm_rank(win_ptr->comm, &rank);
     /* If MPI_MODE_NOCHECK was not specified, we need to check if
        Win_post was called on the target processes. Wait for a 0-byte sync
        message from each target process */
     if ((win_ptr->start_assert & MPI_MODE_NOCHECK) == 0)
     {
-	NMPI_Comm_rank(win_ptr->comm, &rank);
 	for (i=0; i<start_grp_size; i++)
 	{
 	    src = ranks_in_win_grp[i];
@@ -1010,14 +1044,16 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
 	case (MPIDI_RMA_PUT):
 	case (MPIDI_RMA_ACCUMULATE):
 	    mpi_errno = MPIDI_CH3I_Send_rma_msg(curr_ptr, win_ptr,
-						source_win_handle, target_win_handle, &dtype_infos[i],
-						&dataloops[i], &requests[i]); 
+				source_win_handle, target_win_handle, 
+				&dtype_infos[i],
+				&dataloops[i], &requests[i]); 
 	    if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
 	    break;
 	case (MPIDI_RMA_GET):
 	    mpi_errno = MPIDI_CH3I_Recv_rma_msg(curr_ptr, win_ptr,
-						source_win_handle, target_win_handle, &dtype_infos[i], 
-						&dataloops[i], &requests[i]);
+				source_win_handle, target_win_handle, 
+				&dtype_infos[i], 
+				&dataloops[i], &requests[i]);
 	    if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
 	    break;
 	default:
@@ -1041,7 +1077,11 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
     for (i=0; i<start_grp_size; i++)
     {
 	dst = ranks_in_win_grp[i];
-	if (nops_to_proc[dst] == 0)
+	if (dst == rank) {
+	    /* FIXME: MT: this has to be done atomically */
+	    win_ptr->my_counter -= 1;
+	}
+	else if (nops_to_proc[dst] == 0)
 	{
 	    MPIDI_CH3_Pkt_t upkt;
 	    MPIDI_CH3_Pkt_put_t *put_pkt = &upkt.put;
@@ -1216,9 +1256,9 @@ int MPIDI_Win_lock(int lock_type, int dest, int assert, MPID_Win *win_ptr)
 
     MPIU_UNREFERENCED_ARG(assert);
 
-    /* Reset the fence counter so that in case the user has switched from fence to 
-       lock-unlock synchronization, he cannot use the previous fence to mark the beginning 
-       of a fence epoch.  */
+    /* Reset the fence counter so that in case the user has switched from 
+       fence to lock-unlock synchronization, he cannot use the previous fence 
+       to mark the beginning of a fence epoch.  */
     win_ptr->fence_cnt = 0;
 
     if (dest == MPI_PROC_NULL) goto fn_exit;
@@ -1292,7 +1332,7 @@ int MPIDI_Win_unlock(int dest, MPID_Win *win_ptr)
     MPIDI_CH3_Pkt_t upkt;
     MPIDI_CH3_Pkt_lock_t *lock_pkt = &upkt.lock;
     MPIDI_VC_t * vc;
-    int wait_for_rma_done_pkt = 0;
+    int wait_for_rma_done_pkt = 0, predefined;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_WIN_UNLOCK);
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_WIN_UNLOCK);
 
@@ -1343,8 +1383,10 @@ int MPIDI_Win_unlock(int dest, MPID_Win *win_ptr)
 	
 	MPID_Datatype_get_size_macro(curr_op->origin_datatype, type_size);
 	
-	if ( (HANDLE_GET_KIND(curr_op->target_datatype) == HANDLE_KIND_BUILTIN) 
-	     && (type_size * curr_op->origin_count <= MPIDI_CH3_EAGER_MAX_MSG_SIZE) ) {
+	MPIDI_CH3I_DATATYPE_IS_PREDEFINED(curr_op->target_datatype, predefined);
+
+	if ( predefined &&
+	     (type_size * curr_op->origin_count <= MPIDI_CH3_EAGER_MAX_MSG_SIZE) ) {
 	    single_op_opt = 1;
 	    /* Set the lock granted flag to 1 */
 	    win_ptr->lock_granted = 1;
@@ -1391,7 +1433,8 @@ int MPIDI_Win_unlock(int dest, MPID_Win *win_ptr)
 	
 	/* After the target grants the lock, it sends a lock_granted
 	 * packet. This packet is received in ch3u_handle_recv_pkt.c.
-	 * The handler for the packet sets the win_ptr->lock_granted flag to 1. */
+	 * The handler for the packet sets the win_ptr->lock_granted flag to 1.
+	 */
 	
 	/* poke the progress engine until lock_granted flag is set to 1 */
 	if (win_ptr->lock_granted == 0)
@@ -1416,7 +1459,8 @@ int MPIDI_Win_unlock(int dest, MPID_Win *win_ptr)
 	}
 	
 	/* Now do all the RMA operations */
-	mpi_errno = MPIDI_CH3I_Do_passive_target_rma(win_ptr, &wait_for_rma_done_pkt);
+	mpi_errno = MPIDI_CH3I_Do_passive_target_rma(win_ptr, 
+						     &wait_for_rma_done_pkt);
 	if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
     }
         
@@ -1467,7 +1511,8 @@ int MPIDI_Win_unlock(int dest, MPID_Win *win_ptr)
 #define FUNCNAME MPIDI_CH3I_Do_passive_target_rma
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-static int MPIDI_CH3I_Do_passive_target_rma(MPID_Win *win_ptr, int *wait_for_rma_done_pkt)
+static int MPIDI_CH3I_Do_passive_target_rma(MPID_Win *win_ptr, 
+					    int *wait_for_rma_done_pkt)
 {
     int mpi_errno = MPI_SUCCESS, comm_size, done, i, nops;
     MPIDI_RMA_ops *curr_ptr, *next_ptr, **curr_ptr_ptr, *tmp_ptr;
@@ -1694,10 +1739,12 @@ static int MPIDI_CH3I_Send_lock_put_or_acc(MPID_Win *win_ptr)
     MPID_IOV iov[MPID_IOV_LIMIT];
     MPID_Comm *comm_ptr;
     MPID_Datatype *origin_dtp=NULL;
-    int origin_type_size;
+    int origin_type_size, predefined;
     MPIDI_CH3_Pkt_t upkt;
-    MPIDI_CH3_Pkt_lock_put_unlock_t *lock_put_unlock_pkt = &upkt.lock_put_unlock;
-    MPIDI_CH3_Pkt_lock_accum_unlock_t *lock_accum_unlock_pkt = &upkt.lock_accum_unlock;
+    MPIDI_CH3_Pkt_lock_put_unlock_t *lock_put_unlock_pkt = 
+	&upkt.lock_put_unlock;
+    MPIDI_CH3_Pkt_lock_accum_unlock_t *lock_accum_unlock_pkt = 
+	&upkt.lock_accum_unlock;
         
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SEND_LOCK_PUT_OR_ACC);
 
@@ -1749,7 +1796,8 @@ static int MPIDI_CH3I_Send_lock_put_or_acc(MPID_Win *win_ptr)
     MPID_Comm_get_ptr(win_ptr->comm, comm_ptr);
     MPIDI_Comm_get_vc(comm_ptr, rma_op->target_rank, &vc);
 
-    if (HANDLE_GET_KIND(rma_op->origin_datatype) != HANDLE_KIND_BUILTIN)
+    MPIDI_CH3I_DATATYPE_IS_PREDEFINED(rma_op->origin_datatype, predefined);
+    if (!predefined)
     {
         origin_dt_derived = 1;
         MPID_Datatype_get_ptr(rma_op->origin_datatype, origin_dtp);
@@ -1806,6 +1854,9 @@ static int MPIDI_CH3I_Send_lock_put_or_acc(MPID_Win *win_ptr)
         request->dev.segment_size = rma_op->origin_count * origin_type_size;
 	    
         iov_n = MPID_IOV_LIMIT - iovcnt;
+	/* On the initial load of a send iov req, set the OnFinal action (null
+	   for point-to-point) */
+	request->dev.OnFinal = 0;
         mpi_errno = MPIDI_CH3U_Request_load_send_iov(request,
                                                      &iov[iovcnt],
                                                      &iov_n); 
@@ -1890,7 +1941,7 @@ static int MPIDI_CH3I_Send_lock_put_or_acc(MPID_Win *win_ptr)
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 static int MPIDI_CH3I_Send_lock_get(MPID_Win *win_ptr)
 {
-    int mpi_errno=MPI_SUCCESS, lock_type;
+    int mpi_errno=MPI_SUCCESS, lock_type, predefined;
     MPIDI_RMA_ops *rma_op;
     MPID_Request *rreq=NULL, *sreq=NULL;
     MPIDI_VC_t * vc;
@@ -1898,7 +1949,8 @@ static int MPIDI_CH3I_Send_lock_get(MPID_Win *win_ptr)
     MPID_Comm *comm_ptr;
     MPID_Datatype *dtp;
     MPIDI_CH3_Pkt_t upkt;
-    MPIDI_CH3_Pkt_lock_get_unlock_t *lock_get_unlock_pkt = &upkt.lock_get_unlock;
+    MPIDI_CH3_Pkt_lock_get_unlock_t *lock_get_unlock_pkt = 
+	&upkt.lock_get_unlock;
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SEND_LOCK_GET);
 
@@ -1927,7 +1979,9 @@ static int MPIDI_CH3I_Send_lock_get(MPID_Win *win_ptr)
     rreq->dev.datatype = rma_op->origin_datatype;
     rreq->dev.target_win_handle = MPI_WIN_NULL;
     rreq->dev.source_win_handle = win_ptr->handle;
-    if (HANDLE_GET_KIND(rreq->dev.datatype) != HANDLE_KIND_BUILTIN)
+
+    MPIDI_CH3I_DATATYPE_IS_PREDEFINED(rreq->dev.datatype, predefined);
+    if (!predefined)
     {
         MPID_Datatype_get_ptr(rreq->dev.datatype, dtp);
         rreq->dev.datatype_ptr = dtp;

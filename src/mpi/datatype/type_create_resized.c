@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Type_create_resized
 #define MPI_Type_create_resized PMPI_Type_create_resized
 
 #endif
@@ -60,7 +61,7 @@ int MPI_Type_create_resized(MPI_Datatype oldtype,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("datatype");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_TYPE_CREATE_RESIZED);
 
     /* Get handles to MPI objects. */
@@ -110,7 +111,7 @@ int MPI_Type_create_resized(MPI_Datatype oldtype,
     
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_TYPE_CREATE_RESIZED);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("datatype");
     return mpi_errno;
 
   fn_fail:

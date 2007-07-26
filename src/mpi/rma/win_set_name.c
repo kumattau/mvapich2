@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Win_set_name
 #define MPI_Win_set_name PMPI_Win_set_name
 
 #endif
@@ -46,14 +47,15 @@
 @*/
 int MPI_Win_set_name(MPI_Win win, char *win_name)
 {
+#ifdef HAVE_ERROR_CHECKING
     static const char FCNAME[] = "MPI_Win_set_name";
+#endif
     int mpi_errno = MPI_SUCCESS;
     MPID_Win *win_ptr = NULL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_WIN_SET_NAME);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_WIN_SET_NAME);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -93,22 +95,24 @@ int MPI_Win_set_name(MPI_Win win, char *win_name)
     
     /* ... end of body of routine ... */
 
+#ifdef HAVE_ERROR_CHECKING
   fn_exit:
+#endif
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_WIN_SET_NAME);
-    MPID_CS_EXIT();
     return mpi_errno;
 
-  fn_fail:
     /* --BEGIN ERROR HANDLING-- */
 #   ifdef HAVE_ERROR_CHECKING
+  fn_fail:
     {
 	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_win_set_name", 
+	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER,
+	    "**mpi_win_set_name", 
 	    "**mpi_win_set_name %W %s", win, win_name);
     }
-#   endif
     mpi_errno = MPIR_Err_return_win( win_ptr, FCNAME, mpi_errno );
     goto fn_exit;
+#   endif
     /* --END ERROR HANDLING-- */
 }
 

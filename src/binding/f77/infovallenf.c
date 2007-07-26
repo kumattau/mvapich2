@@ -96,7 +96,11 @@ extern FORT_DLL_SPEC void FORT_CALL mpi_info_get_valuelen_( MPI_Fint *, char * F
 #define mpi_info_get_valuelen_ pmpi_info_get_valuelen_
 #endif
 /* This defines the routine that we call, which must be the PMPI version
-   since we're renameing the Fortran entry as the pmpi version */
+   since we're renaming the Fortran entry as the pmpi version.  The MPI name
+   must be undefined first to prevent any conflicts with previous renamings,
+   such as those put in place by the globus device when it is building on
+   top of a vendor MPI. */
+#undef MPI_Info_get_valuelen
 #define MPI_Info_get_valuelen PMPI_Info_get_valuelen 
 
 #else

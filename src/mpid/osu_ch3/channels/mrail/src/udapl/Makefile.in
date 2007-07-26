@@ -13,7 +13,7 @@ CPPFLAGS        =  @CPPFLAGS@
 MPILIBNAME      = @MPILIBNAME@
 
 CC          = @CC@
-CFLAGS      = @CFLAGS@
+CFLAGS      = @CFLAGS@ -D_GNU_SOURCE
 C_COMPILE   = $(CC) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
 LIBTOOL  = @LIBTOOL@
 CC_SHL      = @CC_SHL@
@@ -42,23 +42,51 @@ remove-genmakefiles:
 	rm -f  Makefile
 INCLUDES = -I../../../../../../include -I${master_top_srcdir}/src/include
 
-all-redirect: ../../../../../../../lib/lib${MPILIBNAME}.a
+PTMALLOC = ptmalloc2
+PTMALLOC_SHL = ptmalloc2_shl
+
+ifeq "$(findstring -DDISABLE_PTMALLOC,$(CFLAGS))" "-DDISABLE_PTMALLOC"
+	PTMALLOC =
+	PTMALLOC_SHL =
+endif
+
+ifeq "$(findstring -DSOLARIS,$(CFLAGS))" "-DSOLARIS"
+        PTMALLOC =
+        PTMALLOC_SHL =
+endif
+
+all-redirect: ../../../../../../../lib/lib${MPILIBNAME}.a $(PTMALLOC)
 	@if [ "@ENABLE_SHLIB@" != "none" ] ; then \
-	    ${MAKE} ../../../../../../../lib/lib${MPILIBNAME}.la ; \
+	    ${MAKE} ../../../../../../../lib/lib${MPILIBNAME}.la $(PTMALLOC_SHL); \
 	fi
 
 ../../../../../../../lib/lib${MPILIBNAME}.a: udapl_send.o udapl_recv.o rdma_udapl_init.o rdma_udapl_priv.o\
 dreg.o udapl_param.o vbuf.o udapl_channel_manager.o udapl_rma.o rdma_udapl_1sc.o \
-udapl_rndv.o 
+udapl_rndv.o avl.o mem_hooks.o 
 	${AR} cr ../../../../../../../lib/lib${MPILIBNAME}.a $?
 	${RANLIB} ../../../../../../../lib/lib${MPILIBNAME}.a
 	sleep 1
 ../../../../../../../lib/lib${MPILIBNAME}.la: udapl_send.lo udapl_recv.lo rdma_udapl_init.lo rdma_udapl_priv.lo\
 dreg.lo udapl_param.lo vbuf.lo udapl_channel_manager.lo udapl_rma.lo rdma_udapl_1sc.lo \
-udapl_rndv.lo
+udapl_rndv.lo avl.lo mem_hooks.lo
 	${AR} cr ../../../../../../../lib/lib${MPILIBNAME}.la $?
 SOURCES =  udapl_send.c udapl_recv.c rdma_udapl_init.c rdma_udapl_priv.c dreg.c udapl_param.c \
-vbuf.c udapl_channel_manager.c udapl_rma.c rdma_udapl_1sc.c udapl_rndv.c 
+vbuf.c udapl_channel_manager.c udapl_rma.c rdma_udapl_1sc.c udapl_rndv.c avl.c mem_hooks.c 
+
+ptmalloc2: malloc.o
+	${AR} cr ../../../../../../../lib/lib${MPILIBNAME}.a malloc.o
+	${RANLIB} ../../../../../../../lib/lib${MPILIBNAME}.a
+
+malloc.o:
+	${CC} -c @CFLAGS@ -D_GNU_SOURCE=1 -O2 -DUSE_TSD_DATA_HACK \
+	-Iptmalloc2/sysdeps/pthread -Iptmalloc2/sysdeps/generic -I. \
+	-DTHREAD_STATS=1  ptmalloc2/malloc.c
+
+ptmalloc2_shl:
+	${CC_SHL} -c @CFLAGS@ -D_GNU_SOURCE=1 -O2 -DUSE_TSD_DATA_HACK \
+	-Iptmalloc2/sysdeps/pthread -Iptmalloc2/sysdeps/generic -I. \
+	-DTHREAD_STATS=1  ptmalloc2/malloc.c
+	${AR} cr ../../../../../../../lib/lib${MPILIBNAME}.la malloc.o
 
 ETAGS = etags --langmap=c:+.i
 tags: TAGS

@@ -47,7 +47,7 @@ public class Topo_Event extends Topology
     throws NoMatchingEventException
     {
         Obj_Event event = new Obj_Event( this.getCategory() );
-        event.setStartVertex( new Coord( header.time, header.lineID ) );
+        event.setStartVertex( new Coord( header.time, header.gthdLineID ) );
         if ( cargo != null ) // This is a precaution measure
             event.setInfoBuffer( cargo.bytes );
         return event;

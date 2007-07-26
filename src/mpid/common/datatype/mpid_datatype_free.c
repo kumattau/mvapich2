@@ -35,9 +35,7 @@
   @*/
 void MPID_Datatype_free(MPID_Datatype *ptr)
 {
-#ifdef MPID_TYPE_ALLOC_DEBUG
-    MPIU_dbg_printf("type %x freed.\n", ptr->handle);
-#endif
+    MPIU_DBG_MSG_P(DATATYPE,VERBOSE,"type %x freed.", ptr->handle);
 
     /* before freeing the contents, check whether the pointer is not
        null because it is null in the case of a datatype shipped to the target
@@ -46,8 +44,10 @@ void MPID_Datatype_free(MPID_Datatype *ptr)
         MPID_Datatype_free_contents(ptr);
     }
     MPID_Dataloop_free(&(ptr->dataloop));
+#if defined(MPID_HAS_HETERO) || 1
     if (ptr->hetero_dloop) {
 	MPID_Dataloop_free(&(ptr->hetero_dloop));
     }
+#endif /* MPID_HAS_HETERO */
     MPIU_Handle_obj_free(&MPID_Datatype_mem, ptr);
 }

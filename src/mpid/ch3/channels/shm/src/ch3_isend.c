@@ -6,6 +6,8 @@
 
 #include "mpidi_ch3_impl.h"
 
+/* STATES:NO WARNINGS */
+
 #undef update_request
 #ifdef MPICH_DBG_OUTPUT
 #define update_request(sreq, pkt, pkt_sz, nb) \
@@ -47,13 +49,10 @@
 int MPIDI_CH3_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void * pkt, MPIDI_msg_sz_t pkt_sz)
 {
     int mpi_errno = MPI_SUCCESS;
-    int complete;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_ISEND);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_ISEND);
 
-    MPIU_DBG_PRINTF(("ch3_isend\n"));
-    MPIDI_DBG_PRINTF((50, FCNAME, "entering"));
 #ifdef MPICH_DBG_OUTPUT
     if (pkt_sz > sizeof(MPIDI_CH3_Pkt_t))
     {
@@ -84,17 +83,27 @@ int MPIDI_CH3_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void * pkt, MPIDI_msg_
 
 	    if (nb == pkt_sz)
 	    {
-		MPIDI_DBG_PRINTF((55, FCNAME, "write complete, calling MPIDI_CH3U_Handle_send_req()"));
-		MPIDI_CH3U_Handle_send_req(vc, sreq, &complete);
-		if (!complete)
-		{
-		    sreq->ch.iov_offset = 0;
-		    MPIDI_CH3I_SendQ_enqueue_head(vc, sreq);
-		    vc->ch.send_active = sreq;
-		}
-		else
-		{
+		int (*reqFn)(MPIDI_VC_t *, MPID_Request *, int *);
+
+		reqFn = sreq->dev.OnDataAvail;
+		if (!reqFn) {
+		    MPIDI_CH3U_Request_complete(sreq);
 		    vc->ch.send_active = MPIDI_CH3I_SendQ_head(vc);
+		}
+		else {
+		    int complete;
+		    mpi_errno = reqFn( vc, sreq, &complete );
+		    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+		    if (!complete)
+		    {
+			sreq->ch.iov_offset = 0;
+			MPIDI_CH3I_SendQ_enqueue_head(vc, sreq);
+			vc->ch.send_active = sreq;
+		    }
+		    else
+		    {
+			vc->ch.send_active = MPIDI_CH3I_SendQ_head(vc);
+		    }
 		}
 	    }
 	    else
@@ -121,7 +130,7 @@ int MPIDI_CH3_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void * pkt, MPIDI_msg_
 	MPIDI_CH3I_SendQ_enqueue(vc, sreq);
     }
 
-    MPIDI_DBG_PRINTF((50, FCNAME, "exiting"));
+ fn_fail:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_ISEND);
     return mpi_errno;
 }

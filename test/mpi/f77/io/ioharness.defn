@@ -8,9 +8,14 @@
 # from the read step, insert it here.
 <checkfile>
 </checkfile>
+#
+# If the open fails, jump to 111
 <openfile>
 call mpi_file_open( comm, filename, MPI_MODE_RDWR + MPI_MODE_CREATE, MPI_INFO_NULL, fh, ierr )
 <checkErr/>
+if (ierr .ne. MPI_SUCCESS) then
+    goto 111
+endif
 </openfile>
 <closefile>
 call mpi_file_close( fh, ierr )
@@ -80,6 +85,25 @@ if (ierr .ne. MPI_SUCCESS) then
     endif
 endif
 </checkErr>
+
+# Common error check when MPI_ERR_IN_STATUS is a possibility
+# (status array is then statuses, of length nreq (one status per request)
+<checkErrInStatus>
+if (ierr .ne. MPI_SUCCESS) then
+    errs = errs + 1
+    if (errs .le. 10) then
+        call MTestPrintError( ierr )
+        if (ierr .eq. MPI_ERR_IN_STATUS) then
+            do i=1, nreq
+                if (statuses(MPI_ERROR,i) .ne. MPI_SUCCESS) then
+                    print *, 'For statuses[', i, '], error is:'
+                    call MTestPrintError( statuses(MPI_ERROR,i) )
+                endif
+            enddo
+        endif
+    endif
+endif
+</checkErrInStatus>
 
 # Common offset computation, based on the block, rank, size
 <findOffset>
@@ -244,7 +268,7 @@ do k=1, b ,2
        <checkErr/>
    endif
    call mpi_waitall( nreq, req, statuses, ierr )
-   <checkErr/>
+   <checkErrInStatus/>
 enddo
 </writefile>
 # No extra declarations are needed for the read step
@@ -265,7 +289,7 @@ do k=1, b ,2
        <checkErr/>
    endif
    call mpi_waitall( nreq, req, statuses, ierr )
-   <checkErr/>
+   <checkErrInStatus/>
    <checkContigBuffer/>
    if (nreq .eq. 2) then
         <checkContigBuffer2/>
@@ -300,7 +324,7 @@ do k=1, b ,2
        <checkErr/>
    endif
    call mpi_waitall( nreq, req, statuses, ierr )
-   <checkErr/>
+   <checkErrInStatus/>
 enddo
 </writefile>
 # No extra declarations are needed for the read step
@@ -323,7 +347,7 @@ do k=1, b ,2
        <checkErr/>
    endif
    call mpi_waitall( nreq, req, statuses, ierr )
-   <checkErr/>
+   <checkErrInStatus/>
    <checkContigBuffer/>
    if (nreq .eq. 2) then
         <checkContigBuffer2/>

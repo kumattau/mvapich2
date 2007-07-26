@@ -1,5 +1,14 @@
 /* include/mpidi_ch3i_sock_conf.h.in.  Generated from configure.in by autoheader.  */
 
+/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/*  
+ *  (C) 2001 by Argonne National Laboratory.
+ *      See COPYRIGHT in top-level directory.
+ */
+#ifndef MPIDI_CH3I_SOCK_CONF_H_INCLUDED
+#define MPIDI_CH3I_SOCK_CONF_H_INCLUDED
+
+
 /* Define to 1 if you have the <errno.h> header file. */
 #undef HAVE_ERRNO_H
 
@@ -38,3 +47,5 @@
 
 /* Define to the version of this package. */
 #undef PACKAGE_VERSION
+
+#endif

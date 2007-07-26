@@ -9,6 +9,15 @@ AC_INIT(mpiexec.c)
 dnl
 dnl Definitions will be placed in this file rather than in the DEFS variable
 AC_CONFIG_HEADER(forkerconf.h)
+AH_TOP([/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/*  
+ *  (C) 2001 by Argonne National Laboratory.
+ *      See COPYRIGHT in top-level directory.
+ */
+#ifndef FORKERCONF_H_INCLUDED
+#define FORKERCONF_H_INCLUDED
+])
+AH_BOTTOM([#endif])
 dnl
 dnl Set the directory that contains support scripts such as install-sh and
 dnl config.guess
@@ -27,6 +36,7 @@ AC_ARG_ENABLE(echo,
 dnl
 AC_ARG_ENABLE(strict,[--enable-strict - Turn on strict debugging with gcc],,
 enable_strict=no)
+AC_ARG_ENABLE(allowport,[--enable-allowport - Turn on use of a port for communicating with the processes started by mpiexec],,enable_allowport=yes)
 dnl
 dnl
 dnl Set single for now
@@ -45,14 +55,10 @@ AC_ARG_ENABLE(newsession,
 dnl With options
 dnl
 dnl First check that we have a clean build if we are doing a VPATH build
-if test "`cd $srcdir && pwd`" != "`pwd`" && test -f $srcdir/config.status ; then
-    AC_MSG_ERROR([You cannot do a VPATH build if the source directory has been
-    configured.  Run "make distclean" in $srcdir first.])
-fi
+PAC_VPATH_CHECK()
 dnl
 dnl Process any enable or with values
 dnl
-dnl enable-g
 # enable-g
 # strip off multiple options, separated by commas
 save_IFS="$IFS"
@@ -78,6 +84,9 @@ if test -z "$top_srcdir" ; then
 else
    use_top_srcdir=$top_srcdir
 fi
+
+PAC_LOAD_BASE_CACHE
+
 dnl The recommended order for items in a configure.in file is
 dnl     check for programs
 dnl     check for libraries
@@ -113,7 +122,8 @@ case "$ENABLE_SHLIB" in
     # We need to panic; -static won't work on OS/X.
     ;;
     gcc) 
-    LDFLAGS="$LDFLAGS -static"    
+    # Gahh.  Gcc even complains about this now.  
+    #LDFLAGS="$LDFLAGS -static"    
     ;;
     solaris)
     # Gahh.  We'd like to use -Bstatic, but on some of our Solaris systems,
@@ -192,27 +202,31 @@ AC_CHECK_FUNCS(strsignal)
 dnl 
 dnl Check for signal handlers
 AC_CHECK_FUNCS(sigaction signal sigset)
+sigaction_ok=no
 if test "$ac_cv_func_sigaction" = "yes" ; then
-    AC_MSG_CHECKING(for struct sigaction)
+    AC_CACHE_CHECK([for struct sigaction],pac_cv_struct_sigaction,[
     AC_TRY_COMPILE([#include <signal.h>],[
-struct sigaction act; sigaddset( &act.sa_mask, SIGINT );],sigaction_ok="yes",sigaction_ok="no")
-    AC_MSG_RESULT($sigaction_ok)
-    if test "$sigaction_ok" = "no" ; then
-        AC_MSG_CHECKING(for struct sigaction with _POSIX_SOURCE)
+struct sigaction act; sigaddset( &act.sa_mask, SIGINT );],
+    pac_cv_struct_sigaction="yes",pac_cv_struct_sigaction="no")])
+    if test "$pac_cv_struct_sigaction" = "no" ; then
+        AC_CACHE_CHECK([for struct sigaction with _POSIX_SOURCE],
+	pac_cv_struct_sigaction_needs_posix,[
         AC_TRY_COMPILE([#define _POSIX_SOURCE
 #include <signal.h>],[
-struct sigaction act; sigaddset( &act.sa_mask, SIGINT );],sigaction_with_posix_ok="yes",sigaction_with_posix_ok="no")
-        AC_MSG_RESULT($sigaction_with_posix_ok)
-        if test "$sigaction_with_posix_ok" = "yes" ; then
+struct sigaction act; sigaddset( &act.sa_mask, SIGINT );],
+       pac_cv_struct_sigaction_needs_posix="yes",
+       pac_cv_struct_sigaction_needs_posix="no")])
+        if test "$pac_cv_struct_sigaction_needs_posix" = "yes" ; then
             sigaction_ok=yes
-	    sigaction_needs_posix=yes
 	fi
+    else
+        sigaction_ok=yes
     fi
 fi
 dnl
 # Decide on the signal handler to use
 if test "$ac_cv_func_sigaction" = "yes" -a "$sigaction_ok" = "yes" ; then
-    if test "$sigaction_needs_posix" = yes ; then
+    if test "$pac_struct_sigaction_needs_posix" = yes ; then
         AC_DEFINE(NEEDS_POSIX_FOR_SIGACTION,1,[Define if _POSIX_SOURCE needed to get sigaction])
     fi
     AC_DEFINE(USE_SIGACTION,1,[Define if sigaction should be used to set signals])
@@ -220,6 +234,9 @@ elif test "$ac_cv_func_signal" = "yes" ; then
     AC_DEFINE(USE_SIGNAL,1,[Define if signal should be used to set signals])
 fi
 dnl
+if test "$enable_allowport" = "yes" ; then
+   AC_DEFINE(MPIEXEC_ALLOW_PORT,1,[Define if a port may be used to communicate with the processes])
+fi
 dnl Setup other replaceable values
 MPILIBNAME=${MPILIBNAME:-"mpich"}
 dnl
@@ -271,5 +288,8 @@ export ETAGSADD
 dnl
 dnl Other autoconf variables that may be imported from the calling environment
 AC_SUBST(DOCTEXT)
+
+PAC_UPDATE_BASE_CACHE
+
 dnl Generate the Makefiles from Makefile.in
 AC_OUTPUT(Makefile)

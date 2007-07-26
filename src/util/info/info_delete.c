@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: info_delete.c,v 1.1.1.1 2006/01/18 21:09:48 huangwei Exp $
+/*  $Id: info_delete.c,v 1.22 2006/05/08 15:55:47 toonen Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Info_delete
 #define MPI_Info_delete PMPI_Info_delete
 #endif
 
@@ -51,7 +52,7 @@ int MPI_Info_delete( MPI_Info info, char *key )
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("info");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_INFO_DELETE);
     
 
@@ -115,7 +116,7 @@ int MPI_Info_delete( MPI_Info info, char *key )
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_INFO_DELETE);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("info");
     return mpi_errno;
     
   fn_fail:

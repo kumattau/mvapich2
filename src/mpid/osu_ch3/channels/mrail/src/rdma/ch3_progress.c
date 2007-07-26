@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2006, The Ohio State University. All rights
+/* Copyright (c) 2003-2007, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -18,6 +18,7 @@
 
 #include "mpidi_ch3_impl.h"
 #include "mpidu_process_locks.h"        /* for MPIDU_Yield */
+
 
 #ifdef DEBUG
 #include "pmi.h"
@@ -34,11 +35,17 @@ do {                                                          \
 #endif
 
 static int handle_read(MPIDI_VC_t * vc, vbuf * v);
+static int handle_read_individual(MPIDI_VC_t * vc, 
+        vbuf * buffer, int *header_type);
 
 static int cm_handle_pending_send();
 
+extern volatile int *rdma_cm_iwarp_msg_count;
+extern volatile int *rdma_cm_connect_count;
+
 #ifdef CKPT
 static int cm_handle_reactivation_complete();
+static int cm_send_pending_msg(MPIDI_VC_t * vc);
 #endif
 
 volatile unsigned int MPIDI_CH3I_progress_completion_count = 0;
@@ -49,6 +56,45 @@ volatile unsigned int MPIDI_CH3I_progress_completion_count = 0;
     static int MPIDI_CH3I_Progress_continue(unsigned int completion_count);
     MPID_Thread_cond_t MPIDI_CH3I_progress_completion_cond;
 #endif
+
+inline static int MPIDI_CH3I_Seq(int type)
+{ 
+
+    switch(type) {
+        case MPIDI_CH3_PKT_EAGER_SEND:
+        case MPIDI_CH3_PKT_READY_SEND:
+        case MPIDI_CH3_PKT_EAGER_SYNC_SEND:
+        case MPIDI_CH3_PKT_RNDV_REQ_TO_SEND:
+        case MPIDI_CH3_PKT_RNDV_READY_REQ_TO_SEND:
+        case MPIDI_CH3_PKT_RNDV_CLR_TO_SEND:
+        case MPIDI_CH3_PKT_PACKETIZED_SEND_START:
+        case MPIDI_CH3_PKT_PACKETIZED_SEND_DATA:
+        case MPIDI_CH3_PKT_RNDV_R3_DATA:
+#ifdef USE_HEADER_CACHING
+        case MPIDI_CH3_PKT_FAST_EAGER_SEND:
+        case MPIDI_CH3_PKT_FAST_EAGER_SEND_WITH_REQ:
+#endif
+        case MPIDI_CH3_PKT_CANCEL_SEND_REQ:
+        case MPIDI_CH3_PKT_CANCEL_SEND_RESP:
+        case MPIDI_CH3_PKT_PUT:
+        case MPIDI_CH3_PKT_GET:
+        case MPIDI_CH3_PKT_GET_RESP:
+        case MPIDI_CH3_PKT_ACCUMULATE:
+        case MPIDI_CH3_PKT_LOCK:
+        case MPIDI_CH3_PKT_LOCK_GRANTED:
+        case MPIDI_CH3_PKT_LOCK_PUT_UNLOCK:
+        case MPIDI_CH3_PKT_LOCK_GET_UNLOCK:
+        case MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK:
+        case MPIDI_CH3_PKT_PT_RMA_DONE:
+        case MPIDI_CH3_PKT_PUT_RNDV:
+        case MPIDI_CH3_PKT_ACCUMULATE_RNDV:
+        case MPIDI_CH3_PKT_GET_RNDV:
+            return 1;
+        default:
+            return 0;
+    }
+}
+
 
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
 #undef FUNCNAME
@@ -69,7 +115,8 @@ int MPIDI_CH3_Connection_terminate(MPIDI_VC_t * vc)
 {
     int mpi_errno = MPI_SUCCESS;
 
-    /* There is no post_close for shm connections so handle them as closed immediately. */
+    /* There is no post_close for shm connections so 
+     * handle them as closed immediately. */
     mpi_errno =
         MPIDI_CH3U_Handle_connection(vc, MPIDI_VC_EVENT_TERMINATED);
     if (mpi_errno != MPI_SUCCESS) {
@@ -155,7 +202,7 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
         }
 #endif
 
-        mpi_errno = MPIDI_CH3I_read_progress(&vc_ptr, &buffer);
+        mpi_errno = MPIDI_CH3I_read_progress(&vc_ptr, &buffer, is_blocking);
         if (mpi_errno != MPI_SUCCESS) {
             mpi_errno =
                 MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL, FCNAME,
@@ -166,12 +213,24 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
         }
         if (vc_ptr == NULL) {
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
+            MPIU_THREAD_CHECK_BEGIN
+#ifdef SOLARIS
+            if(spin_count > 100) {
+#else
             if(spin_count > 5) {
+#endif
                 spin_count = 0;
                 MPID_Thread_mutex_unlock(&MPIR_Process.global_mutex);
+#ifdef CKPT
+                MPIDI_CH3I_CR_unlock();
+#endif                
                 MPIDU_Yield();
                 MPID_Thread_mutex_lock(&MPIR_Process.global_mutex);
+#ifdef CKPT
+                MPIDI_CH3I_CR_lock();
+#endif
             }
+            MPIU_THREAD_CHECK_END
 #endif
             spin_count++;
         } else {
@@ -208,15 +267,25 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
         }
 #ifdef _SMP_
         } else {
+            if (SMP_INIT) {
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
-            spin_count++;
-            if(spin_count > 50) {
-                spin_count = 0;
-                MPID_Thread_mutex_unlock(&MPIR_Process.global_mutex);
-                MPIDU_Yield();
-                MPID_Thread_mutex_lock(&MPIR_Process.global_mutex);
-            }
+                MPIU_THREAD_CHECK_BEGIN
+                spin_count++;
+                if(spin_count > 10) {
+                    spin_count = 0;
+                    MPID_Thread_mutex_unlock(&MPIR_Process.global_mutex);
+#ifdef CKPT
+                    MPIDI_CH3I_CR_unlock();
 #endif
+                    MPIDU_Yield();
+                    MPID_Thread_mutex_lock(&MPIR_Process.global_mutex);
+#ifdef CKPT
+                    MPIDI_CH3I_CR_lock();
+#endif
+                }
+                MPIU_THREAD_CHECK_END
+#endif
+            }
         }
 #endif
         if (flowlist)
@@ -250,9 +319,9 @@ fn_exit:
 int MPIDI_CH3I_Progress_test()
 {
     MPIDI_VC_t *vc_ptr = NULL;
-    int mpi_errno;
     int completion_count = MPIDI_CH3I_progress_completion_count;
     vbuf *buffer = NULL;
+    int mpi_errno = MPI_SUCCESS;
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_PROGRESS);
     MPIDI_STATE_DECL(MPID_STATE_MPIDU_YIELD);
@@ -266,6 +335,7 @@ int MPIDI_CH3I_Progress_test()
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
     {
     if (MPIDI_CH3I_progress_blocked == TRUE) {
+        DEBUG_PRINT("progress blocked\n");
         goto fn_exit;
     }
     }
@@ -274,22 +344,19 @@ int MPIDI_CH3I_Progress_test()
 #ifdef _SMP_ 
     /*needed if early send complete doesnot occur */
     if (SMP_INIT) {
-        mpi_errno = MPIDI_CH3I_SMP_write_progress(MPIDI_Process.my_pg);
-        if (mpi_errno != MPI_SUCCESS) {
-            mpi_errno =
-                MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL, FCNAME,
-                        __LINE__, MPI_ERR_OTHER,
-                        "**ch3progress", 0);
-            MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_PROGRESS);
-            return mpi_errno;
-        }
+	mpi_errno = MPIDI_CH3I_SMP_write_progress(MPIDI_Process.my_pg);
 
-        /* check if we made any progress */
-        if(completion_count != MPIDI_CH3I_progress_completion_count) {
-            goto fn_exit;
-        }
+	if(mpi_errno) {
+	    MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**progress");
+	}
 
-        MPIDI_CH3I_SMP_read_progress(MPIDI_Process.my_pg);
+	/* check if we made any progress */
+	if(completion_count != MPIDI_CH3I_progress_completion_count) {
+	    goto fn_exit;
+	}
+
+	mpi_errno = MPIDI_CH3I_SMP_read_progress(MPIDI_Process.my_pg);
+	if(mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
 
     if (!SMP_ONLY) {
@@ -310,7 +377,8 @@ int MPIDI_CH3I_Progress_test()
         }
 #endif
 
-        mpi_errno = MPIDI_CH3I_read_progress(&vc_ptr, &buffer);
+        /* SS: Progress test should not be blocking */
+        mpi_errno = MPIDI_CH3I_read_progress(&vc_ptr, &buffer, 0);
         if (mpi_errno != MPI_SUCCESS) {
             mpi_errno =
                 MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL, FCNAME,
@@ -365,7 +433,10 @@ fn_exit:
 
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_PROGRESS);
     DEBUG_PRINT("Exiting ch3 progress test\n");
-    return MPI_SUCCESS;
+    return mpi_errno;
+
+fn_fail:
+    goto fn_exit;
 }
 
 
@@ -433,8 +504,10 @@ int MPIDI_CH3I_Progress_init()
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_PROGRESS_INIT);
 
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
+    MPIU_THREAD_CHECK_BEGIN
     MPID_Thread_cond_create(
             &MPIDI_CH3I_progress_completion_cond, NULL);
+    MPIU_THREAD_CHECK_END
 #endif
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_PROGRESS_INIT);
@@ -497,30 +570,6 @@ int MPIDI_CH3I_Request_adjust_iov(MPID_Request * req, MPIDI_msg_sz_t nb)
     return TRUE;
 }
 
-static inline int post_pkt_recv(MPIDI_VC_t * vc)
-{
-    int mpi_errno;
-    MPIDI_STATE_DECL(MPID_STATE_POST_PKT_RECV);
-    MPIDI_FUNC_ENTER(MPID_STATE_POST_PKT_RECV);
-    vc->ch.req->dev.iov[0].MPID_IOV_BUF = (void *) &vc->ch.req->ch.pkt;
-    vc->ch.req->dev.iov[0].MPID_IOV_LEN = sizeof(MPIDI_CH3_Pkt_t);
-    vc->ch.req->dev.iov_count = 1;
-    vc->ch.req->ch.iov_offset = 0;
-    vc->ch.req->dev.ca = MPIDI_CH3I_CA_HANDLE_PKT;
-    vc->ch.recv_active = vc->ch.req;
-    mpi_errno =
-        MPIDI_CH3I_post_read(vc, &vc->ch.req->ch.pkt,
-                             sizeof(vc->ch.req->ch.pkt));
-    if (mpi_errno != MPI_SUCCESS)
-        mpi_errno =
-            MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL, FCNAME,
-                                 __LINE__, MPI_ERR_OTHER, "**postpkt", 0);
-    MPIDI_FUNC_EXIT(MPID_STATE_POST_PKT_RECV);
-    return mpi_errno;
-}
-
-/*#define post_pkt_recv(vc) MPIDI_CH3I_post_read( vc , &(vc)->ch.pkt, sizeof((vc)->ch.pkt))*/
-
 #ifdef CKPT
 #undef FUNCNAME
 #define FUNCNAME cm_handle_reactivation_complete
@@ -552,7 +601,7 @@ static int cm_handle_reactivation_complete()
 
 static int cm_send_pending_msg(MPIDI_VC_t * vc)
 {
-    assert(vc->ch.state=MPIDI_CH3I_VC_STATE_IDLE);
+    assert(vc->ch.state==MPIDI_CH3I_VC_STATE_IDLE);
     while (!MPIDI_CH3I_CM_SendQ_empty(vc)) {
         int i;
         int mpi_errno;
@@ -570,7 +619,6 @@ static int cm_send_pending_msg(MPIDI_VC_t * vc)
             int nb;
             int pkt_len;
             int complete;
-            int rdma_ok;
             /* MT - need some signalling to lock down our right to use the
                channel, thus insuring that the progress engine does also try to
                write */
@@ -586,7 +634,7 @@ static int cm_send_pending_msg(MPIDI_VC_t * vc)
                 goto loop_exit;
             }
 
-            if (sreq->dev.ca != MPIDI_CH3_CA_COMPLETE) {
+            if (sreq->dev.OnDataAvail == MPIDI_CH3_ReqHandler_SendReloadIOV) {
                 /*reload iov */
                 void *tmpbuf;
                 int iter_iov;
@@ -628,7 +676,8 @@ static int cm_send_pending_msg(MPIDI_VC_t * vc)
                                       sreq->dev.iov[iter_iov].MPID_IOV_LEN);
                         pkt_len += sreq->dev.iov[iter_iov].MPID_IOV_LEN;
                     }
-                } while (sreq->dev.ca != MPIDI_CH3_CA_COMPLETE);
+                } while (sreq->dev.OnDataAvail ==
+			 MPIDI_CH3_ReqHandler_SendReloadIOV);
                 iov[0].MPID_IOV_BUF = databuf;
                 iov[0].MPID_IOV_LEN = pkt_len;
                 n_iov = 1;
@@ -643,57 +692,12 @@ static int cm_send_pending_msg(MPIDI_VC_t * vc)
                 }
                 goto loop_exit;
             }
-            DEBUG_PRINT("[send], n_iov: %d, pkt_len %d\n", n_iov, pkt_len);
-            rdma_ok = MPIDI_CH3I_MRAILI_Fast_rdma_ok(vc, pkt_len);
-            DEBUG_PRINT("[send], rdma ok: %d\n", rdma_ok);
-            if (rdma_ok != 0) {
-                /* send pkt through rdma fast path */
-                /* take care of the header caching */
-                vbuf *buf;
 
-                /* the packet header and the data now is in rdma fast buffer */
-                mpi_errno =
-                    MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(vc, iov, n_iov,
-                            &nb, &buf);
-                DEBUG_PRINT("[send: send progress] mpi_errno %d, nb %d\n",
-                        mpi_errno == MPI_SUCCESS, nb);
-                if (mpi_errno == MPI_SUCCESS) {
-                    MPIU_DBG_PRINTF(("ch3_istartmsgv: put_datav returned %d bytes\n", nb));
-
-                    if (nb == 0) {
-                        /* fast rdma ok but cannot send: there is no send wqe available */
-                    } else {
-                        DEBUG_PRINT("Start handle req\n");
-                        MPIDI_CH3U_Handle_send_req(vc, sreq, &complete);
-                        DEBUG_PRINT("Finish handle req with complete %d\n",
-                                complete);
-                        if (!complete) {
-                            /*should not happen*/
-                            assert(0);
-                        } else {
-                            vc->ch.send_active = MPIDI_CH3I_CM_SendQ_head(vc);
-                        }
-                    }
-                } else if (MPI_MRAIL_MSG_QUEUED == mpi_errno) {
-                    buf->sreq = (void *) sreq;
-                    mpi_errno = MPI_SUCCESS;
-                } else {
-                    /* Connection just failed.  Mark the request complete and return an
-                     * error. */
-                    vc->ch.state = MPIDI_CH3I_VC_STATE_FAILED;
-                    /* TODO: Create an appropriate error message based on the value of errno
-                     * */
-                    sreq->status.MPI_ERROR = MPI_ERR_INTERN;
-                    /* MT - CH3U_Request_complete performs write barrier */
-                    MPIDI_CH3U_Request_complete(sreq);
-                }
-                goto loop_exit;
-            } 
-            else {
+            {
                 /* TODO: Codes to send pkt through send/recv path */
                 vbuf *buf;
                 mpi_errno =
-                    MPIDI_CH3I_MRAILI_Eager_send(vc, iov, n_iov, &nb, &buf);
+                    MPIDI_CH3I_MRAILI_Eager_send(vc, iov, n_iov, pkt_len, &nb, &buf);
                 DEBUG_PRINT("[istartmsgv] mpierr %d, nb %d\n", mpi_errno, nb);
                 if (mpi_errno == MPI_SUCCESS) {
                     DEBUG_PRINT("[send path] eager send return %d bytes\n",
@@ -749,17 +753,23 @@ static int cm_handle_pending_send()
     int i;
     MPIDI_VC_t *vc;
     MPIDI_PG_t *pg;
+    int mpi_errno = MPI_SUCCESS;
 
     pg = MPIDI_Process.my_pg;
     for (i = 0; i < MPIDI_PG_Get_size(pg); i++) {
-        MPIDI_PG_Get_vc(pg, i, &vc);
-        if (vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE
-         && !MPIDI_CH3I_CM_SendQ_empty(vc)) {
-            cm_send_pending_msg(vc);
-       }
+	MPIDI_PG_Get_vc(pg, i, &vc);
+	if (vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE
+		&& !MPIDI_CH3I_CM_SendQ_empty(vc)) {
+	    mpi_errno = cm_send_pending_msg(vc);
+	    if(mpi_errno) MPIU_ERR_POP(mpi_errno);
+	}
     }
-     
-    return MPI_SUCCESS;
+
+fn_exit:
+    return mpi_errno;
+
+fn_fail:
+    goto fn_exit;
 }
 
 #undef FUNCNAME
@@ -768,64 +778,161 @@ static int cm_handle_pending_send()
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 static int handle_read(MPIDI_VC_t * vc, vbuf * buffer)
 {
+    unsigned char *original_buffer;
+    int mpi_errno;
+    int total_consumed = 0;
+    int header_type;
+    int first = 1;
+
+    MPIDI_CH3_Pkt_rput_finish_t * rf_pkt;
+    MPID_Request *rreq;
+
+#ifdef MPIDI_MRAILI_COALESCE_ENABLED
+    /* we don't know how many packets may be combined, so
+     * we check after reading a packet to see if there are
+     * more bytes yet to be consumed
+     */
+
+    buffer->content_consumed = 0;
+    original_buffer = buffer->buffer;
+
+    DEBUG_PRINT("[handle read] buffer %p\n", buffer);
+
+    do {
+        vc->ch.recv_active = vc->ch.req;
+        buffer->content_consumed = 0;
+
+        mpi_errno = handle_read_individual(vc, buffer, &header_type);
+        if(MPI_SUCCESS != mpi_errno) {
+            return mpi_errno;
+        }
+
+        buffer->pheader = (void *) ((uintptr_t) buffer->pheader + 
+                buffer->content_consumed);
+        total_consumed += buffer->content_consumed;
+
+        if(MPIDI_CH3I_Seq(header_type) && !first) {
+            vc->seqnum_recv++;
+        }
+
+        first = 0;
+    } while(total_consumed != buffer->content_size);
+
+    DEBUG_PRINT("Finished with buffer -- size: %d, consumed: %d\n", 
+            buffer->content_size, buffer->content_consumed);
+
+    /* put the original buffer address back */
+    buffer->buffer = original_buffer; 
+    buffer->pheader = original_buffer;
+    
+    DEBUG_PRINT("buffer set to: %p\n", buffer->buffer);
+#else
+    mpi_errno = handle_read_individual(vc, buffer, &header_type);
+#endif
+
+    /* by this point we can always free the vbuf */
+    MPIDI_CH3I_MRAIL_Release_vbuf(buffer);
+
+    return mpi_errno;
+}
+
+static int handle_read_individual(MPIDI_VC_t * vc, 
+        vbuf * buffer, int *header_type)
+{
     int mpi_errno;
     MPID_Request *req;
     int complete;
-    int header_size;
+    int header_size = 0;
     int nb;
     MPIDI_CH3_Pkt_send_t *header;
     int packetized_recv = 0;
     int finished;
-    
-    MPIDI_CH3_Pkt_rput_finish_t * rf_pkt;
-    MPID_Request *rreq;
 
-    DEBUG_PRINT("[handle read] buffer %p\n", buffer);
-
-    vc->ch.recv_active = vc->ch.req;
-    req = vc->ch.recv_active;
     /* Step one, ask lower level to provide header */
     /*  save header at req->ch.pkt, and return the header size */
     /*  ??TODO: Possibly just return the address of the header */
+
+    DEBUG_PRINT("[handle read] pheader: %p\n", buffer->pheader);
+
     MPIDI_CH3I_MRAIL_Parse_header(vc, buffer, (void **)&header, &header_size);
+
+#ifdef MPIDI_MRAILI_COALESCE_ENABLED
+    buffer->content_consumed = header_size;
+#endif
+
     DEBUG_PRINT("[handle read] header type %d\n", header->type);
+
+    *header_type = header->type;
+
+    req = vc->ch.recv_active;
 
     switch(header->type) {
 #ifdef CKPT
     case MPIDI_CH3_PKT_CM_SUSPEND:
     case MPIDI_CH3_PKT_CM_REACTIVATION_DONE:
         MPIDI_CH3I_CM_Handle_recv(vc, header->type, buffer);
-        MPIDI_CH3I_MRAIL_Release_vbuf(buffer);
         goto fn_exit;
     case MPIDI_CH3_PKT_CR_REMOTE_UPDATE:
         MPIDI_CH3I_CR_Handle_recv(vc, header->type, buffer);
-        MPIDI_CH3I_MRAIL_Release_vbuf(buffer);
         goto fn_exit;
 #endif
     case MPIDI_CH3_PKT_NOOP: 
+#ifdef RDMA_CM 
+        {
+	    if (vc->ch.state == MPIDI_CH3I_VC_STATE_IWARP_CLI_WAITING){
+
+		/* This case is needed only for multi-rail with rdma_cm */
+
+		vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
+		vc->state = MPIDI_VC_STATE_ACTIVE;
+		MPIDI_CH3I_Process.new_conn_complete = 1;
+                DEBUG_PRINT("NOOP Received, RDMA CM is setting up "
+			    "the proper status on the client side for multirail.\n");
+	    }
+
+            if (vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE) {
+
+                rdma_cm_iwarp_msg_count[vc->pg_rank]++;
+                if (rdma_cm_iwarp_msg_count[vc->pg_rank] >= rdma_num_rails 
+                        && rdma_cm_connect_count[vc->pg_rank] >= 
+                        rdma_num_rails) {
+                    vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
+		    vc->state = MPIDI_VC_STATE_ACTIVE;
+                    MPIDI_CH3I_Process.new_conn_complete = 1;
+		    if (rdma_num_rails > 1)
+			MRAILI_Send_noop(vc, 0);
+                }
+                DEBUG_PRINT("NOOP Received, RDMA CM is setting up "
+			    "the proper status on the server side.\n");
+            }
+        }
+#endif
     case MPIDI_CH3_PKT_ADDRESS:
         DEBUG_PRINT("NOOP received, don't need to proceed\n");
-        MPIDI_CH3I_MRAIL_Release_vbuf(buffer);
         goto fn_exit;
     case MPIDI_CH3_PKT_PACKETIZED_SEND_DATA:
         DEBUG_PRINT("Packetized data received, don't need to proceed\n");
         mpi_errno = MPIDI_CH3_Packetized_recv_data(vc, buffer);
-        MPIDI_CH3I_MRAIL_Release_vbuf(buffer);
         goto fn_exit;
     case MPIDI_CH3_PKT_RNDV_R3_DATA:
         DEBUG_PRINT("R3 data received, don't need to proceed\n");
         mpi_errno = MPIDI_CH3_Rendezvouz_r3_recv_data(vc, buffer);
-        MPIDI_CH3I_MRAIL_Release_vbuf(buffer);
         goto fn_exit;
     case MPIDI_CH3_PKT_RPUT_FINISH:
         DEBUG_PRINT("RPUT finish received, don't need to proceed\n");
         mpi_errno = MPIDI_CH3_Rendezvous_rput_finish(vc, (void *)header);
-        MPIDI_CH3I_MRAIL_Release_vbuf(buffer);
+        goto fn_exit;
+    case MPIDI_CH3_PKT_RGET_FINISH:
+        DEBUG_PRINT("RGET finish received\n");
+        mpi_errno = MPIDI_CH3_Rendezvous_rget_send_finish(vc, (void *)header);
         goto fn_exit;
     case MPIDI_CH3_PKT_PACKETIZED_SEND_START:
         packetized_recv = 1;
         header_size +=
             ((MPIDI_CH3_Pkt_packetized_send_start_t *)(header))->origin_head_size;
+#ifdef MPIDI_MRAILI_COALESCE_ENABLED
+        buffer->content_consumed = header_size;
+#endif
         header = (void *)((uintptr_t)header +
             sizeof(MPIDI_CH3_Pkt_packetized_send_start_t));
         break;
@@ -953,7 +1060,6 @@ static int handle_read(MPIDI_VC_t * vc, vbuf * buffer)
     } else {
         /* we are getting a 0 byte msg header */
     }
-    MPIDI_CH3I_MRAIL_Release_vbuf(buffer);
   fn_exit:
     DEBUG_PRINT("exiting handle read\n");
     return MPI_SUCCESS;
@@ -1039,4 +1145,4 @@ int MPIDI_CH3I_write_progress()
     return MPI_SUCCESS;
 }
 
-
+/* vi:set sw=4 tw=80: */

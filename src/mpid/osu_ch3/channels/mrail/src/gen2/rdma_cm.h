@@ -1,5 +1,5 @@
 
-/* Copyright (c) 2002-2006, The Ohio State University. All rights
+/* Copyright (c) 2002-2007, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -36,11 +36,14 @@ extern int *rdma_cm_host_list;
 /* Initiate all active connect requests */
 int rdma_cm_connect_all(int *hosts, int pg_rank, int pg_size);
 
+/* Initiate single active connect request */
+int rdma_cm_connect_to_server(int rank, int ipnum, int rail_index, int one_sided);
+
 /* Exchange the ip information with all the processes */
 int *rdma_cm_get_hostnames(int pg_rank, int pg_size);
 
 /* Initialize rdma_cm resources + cm_ids + bind port + connection thrd */
-void ib_init_rdma_cm(struct MPIDI_CH3I_RDMA_Process_t *proc,
+int ib_init_rdma_cm(struct MPIDI_CH3I_RDMA_Process_t *proc,
 		     int pg_rank, int pg_size);
 
 /* Finalize rdma_cm specific resources */

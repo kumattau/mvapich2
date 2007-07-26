@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Send_init
 #define MPI_Send_init PMPI_Send_init
 
 #endif
@@ -67,7 +68,7 @@ int MPI_Send_init(void *buf, int count, MPI_Datatype datatype, int dest,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("pt2pt");
     MPID_MPI_PT2PT_FUNC_ENTER(MPID_STATE_MPI_SEND_INIT);
     
     /* Validate handle parameters needing to be converted */
@@ -134,7 +135,7 @@ int MPI_Send_init(void *buf, int count, MPI_Datatype datatype, int dest,
     
   fn_exit:
     MPID_MPI_PT2PT_FUNC_EXIT(MPID_STATE_MPI_SEND_INIT);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("pt2pt");
     return mpi_errno;
 
   fn_fail:

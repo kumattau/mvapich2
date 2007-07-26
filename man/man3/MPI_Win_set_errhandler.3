@@ -1,4 +1,4 @@
-.TH MPI_Win_set_errhandler 3 "11/23/2005" " " "MPI"
+.TH MPI_Win_set_errhandler 3 "1/30/2007" " " "MPI"
 .SH NAME
 MPI_Win_set_errhandler \-  Set window error handler 
 .SH SYNOPSIS
@@ -16,6 +16,24 @@ int MPI_Win_set_errhandler(MPI_Win win, MPI_Errhandler errhandler)
 .B errhandler 
 - new error handler for window (handle) 
 .PD 1
+
+
+.SH THREAD AND INTERRUPT SAFETY
+
+This routine is thread and interrupt safe only if no MPI routine that
+updates or frees the same MPI object may be called concurrently
+with this routine.
+
+The MPI standard defined a thread-safe interface but this does not
+mean that all routines may be called without any thread locks.  For
+example, two threads must not attempt to change the contents of the
+same 
+.I MPI_Info
+object concurrently.  The user is responsible in this
+case for using some mechanism, such as thread locks, to ensure that
+only one thread at a time makes use of this routine.
+
+
 .SH NOTES FOR FORTRAN
 All MPI routines in Fortran (except for 
 .I MPI_WTIME

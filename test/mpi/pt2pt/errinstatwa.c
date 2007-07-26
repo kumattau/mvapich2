@@ -25,7 +25,6 @@ int main( int argc, char *argv[] )
     /* Create some receive requests.  tags 0-9 will succeed, tags 10-19 
        will be used for ERR_TRUNCATE (fewer than 20 messages will be used) */
     comm = MPI_COMM_WORLD;
-    MPI_Errhandler_set( comm, MPI_ERRORS_RETURN );
 
     MPI_Comm_rank( comm, &rank );
     MPI_Comm_size( comm, &size );
@@ -33,10 +32,26 @@ int main( int argc, char *argv[] )
     src  = 1;
     dest = 0;
     if (rank == dest) {
-	MPI_Irecv( b1, 10, MPI_INT, src, 0, comm, &r[0] );
-	MPI_Irecv( b2, 10, MPI_INT, src, 10, comm, &r[1] );
+	MPI_Errhandler_set( comm, MPI_ERRORS_RETURN );
+	errval = MPI_Irecv( b1, 10, MPI_INT, src, 0, comm, &r[0] );
+	if (errval) {
+	    errs++;
+	    MTestPrintError( errval );
+	    printf( "Error returned from Irecv\n" );
+	}
+	errval = MPI_Irecv( b2, 10, MPI_INT, src, 10, comm, &r[1] );
+	if (errval) {
+	    errs++;
+	    MTestPrintError( errval );
+	    printf( "Error returned from Irecv\n" );
+	}
 
-	MPI_Barrier(comm);
+	errval = MPI_Barrier(comm);
+	if (errval) {
+	    errs++;
+	    MTestPrintError( errval );
+	    printf( "Error returned from Barrier\n" );
+	}
 	for (i=0; i<2; i++) {
 	    s[i].MPI_ERROR = -1;
 	}

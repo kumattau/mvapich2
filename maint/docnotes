@@ -98,6 +98,18 @@ N*/
  as in 'integer status(MPI_STATUS_SIZE,10)' (assuming no more than 10 
  requests are provided as input).
 N*/
+
+/*N FortranString
+
+ The sizes of MPI strings in Fortran are one less than the sizes of that 
+ string in C/C++ because the C/C++ versions provide room for the trailing
+ null character required by C/C++.  For example, 'MPI_MAX_ERROR_STRING' is 
+ 'mpif.h' is one smaller than the same value in 'mpi.h'.  See the MPI-2 
+ standard, sections 2.6.2 and 4.12.9.
+
+N*/
+
+
 -----------------------------------------------------------------------------
 /*N collops
 Notes on collective operations:
@@ -113,10 +125,23 @@ all collective routines return the same error value.
 N*/
 
 /*N waitstatus
- Note on status for send operations:
+ Notes on the MPI_Status argument:
+
+ The 'MPI_ERROR' field of the status return is only set if 
+ the return from the MPI routine is 'MPI_ERR_IN_STATUS'.  That error class
+ is only returned by the routines that take an array of status arguments
+ ('MPI_Testall', 'MPI_Testsome', 'MPI_Waitall', and 'MPI_Waitsome').  In
+ all other cases, the value of the 'MPI_ERROR' field in the status is
+ unchanged.  See section 3.2.5 in the MPI-1.1 specification for the 
+ exact text.
+
  For send operations, the only use of status is for 'MPI_Test_cancelled' or
- in the case that there is an error, in which case the 'MPI_ERROR' field of
- status will be set.  
+ in the case that there is an error in one of the four routines that 
+ may return the error class 'MPI_ERR_IN_STATUS', in which case the 
+ 'MPI_ERROR' field of status will be set.  In that case, the value 
+ will be set to 'MPI_SUCCESS' for any send or receive operation that completed
+ successfully, or 'MPI_ERR_PENDING' for any operation which has neither
+ failed nor completed.
 N*/
 
 -----------------------------------------------------------------------------
@@ -130,7 +155,11 @@ MPI-2 deprecated some routines (see 2.6.1)
 N*/
 -----------------------------------------------------------------------------
 /*N Errhandler
-  The MPI error handler for this routine is taken from 'MPI_COMM_WORLD'.
+    Error handlers:
+    The MPI error handler for this routine is taken from 'MPI_COMM_WORLD'.
+    For MPI routines that do not have an obvious communicator, file, or
+    window object, the MPI standard specifies that the error handler 
+    attached to 'MPI_COMM_WORLD' be used.
 N*/
 -----------------------------------------------------------------------------
 
@@ -452,3 +481,14 @@ N*/
  as input to MPI routines unless otherwise specified, using 'MPI_COMM_NULL'
  as input to this routine is an error.
 N*/
+
+/*N AttrErrReturn
+ 
+ Return value from attribute callbacks:
+ The MPI-2 versions of the attribute callbacks should return either 
+ 'MPI_SUCCESS' on success or a valid MPI error code or class on failure.
+ The MPI standard is ambiguous on this point, but as MPI-2 provides
+ the routines 'MPI_Add_error_class' and 'MPI_Add_error_code' that allow the
+ user to define and use MPI error codes and classes.
+N*/
+

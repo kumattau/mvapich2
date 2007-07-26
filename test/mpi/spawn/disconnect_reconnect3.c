@@ -18,9 +18,12 @@
 /*
  * This test tests the disconnect code for processes that span process groups.
  *
- * This test spawns a group of processes and then merges them into a single communicator.
- * Then the single communicator is split into two communicators, one containing the even ranks and the other the odd ranks.
- * Then the two new communicators do MPI_Comm_accept/connect/disconnect calls in a loop.
+ * This test spawns a group of processes and then merges them into a single 
+ * communicator.
+ * Then the single communicator is split into two communicators, one containing
+ * the even ranks and the other the odd ranks.
+ * Then the two new communicators do MPI_Comm_accept/connect/disconnect calls 
+ * in a loop.
  * The even group does the accepting while the odd group does the connecting.
  *
  */
@@ -51,7 +54,8 @@ int main(int argc, char *argv[])
 
     MTest_Init( &argc, &argv );
 
-    /* command line arguments can change the number of loop iterations and whether or not messages are sent over the new communicators */
+    /* command line arguments can change the number of loop iterations and 
+       whether or not messages are sent over the new communicators */
     if (argc > 1)
     {
 	num_loops = atoi(argv[1]);
@@ -86,7 +90,8 @@ int main(int argc, char *argv[])
 
     MPI_Comm_rank(intracomm, &rank);
 
-    /* Split the communicator so that the even ranks are in one communicator and the odd ranks are in another */
+    /* Split the communicator so that the even ranks are in one communicator 
+       and the odd ranks are in another */
     even_odd = rank % 2;
     MPI_Comm_split(intracomm, even_odd, rank, &comm);
 
@@ -97,7 +102,9 @@ int main(int argc, char *argv[])
 	MPI_Open_port(MPI_INFO_NULL, port);
 	IF_VERBOSE(("port = %s\n", port));
     }
-    /* Broadcast the port to everyone.  This makes the logic easier than trying to figure out which process in the odd communicator to send it to */
+    /* Broadcast the port to everyone.  This makes the logic easier than 
+       trying to figure out which process in the odd communicator to send it 
+       to */
     MPI_Bcast(port, MPI_MAX_PORT_NAME, MPI_CHAR, 0, intracomm);
 
     IF_VERBOSE(("disconnecting parent/child communicator\n"));
@@ -135,7 +142,8 @@ int main(int argc, char *argv[])
 	    MPI_Comm_disconnect(&intercomm);
 	}
 
-	/* Errors cannot be sent back to the parent because there is no communicator connected to the children
+	/* Errors cannot be sent back to the parent because there is no 
+	   communicator connected to the children
 	for (i=0; i<rsize; i++)
 	{
 	    MPI_Recv( &err, 1, MPI_INT, i, 1, intercomm, MPI_STATUS_IGNORE );
@@ -168,7 +176,8 @@ int main(int argc, char *argv[])
 	}
 
 	/* Send the errs back to the master process */
-	/* Errors cannot be sent back to the parent because there is no communicator connected to the parent */
+	/* Errors cannot be sent back to the parent because there is no 
+	   communicator connected to the parent */
 	/*MPI_Ssend( &errs, 1, MPI_INT, 0, 1, intercomm );*/
     }
 

@@ -265,19 +265,21 @@ int main( int argc, char *argv[] )
     lloutbuf[0] = 0;
     lloutbuf[1] = 1;
     lloutbuf[2] = 1;
-    MPI_Reduce( llinbuf, lloutbuf, 3, MPI_LONG_LONG, MPI_BXOR, 0, comm );
-    if (rank == 0) {
-	if (lloutbuf[0] != ((size % 2) ? 0xffffffff : 0)) {
-	    errs++;
-	    fprintf( stderr, "long long BXOR(1) test failed\n" );
-	}
-	if (lloutbuf[1]) {
-	    errs++;
-	    fprintf( stderr, "long long BXOR(0) test failed\n" );
-	}
-	if (lloutbuf[2] != ((size % 2) ? 0xc3c3c3c3 : 0xffffffff)) {
-	    errs++;
-	    fprintf( stderr, "long long BXOR(>) test failed\n" );
+    if (MPI_LONG_LONG != MPI_DATATYPE_NULL) {
+	MPI_Reduce( llinbuf, lloutbuf, 3, MPI_LONG_LONG, MPI_BXOR, 0, comm );
+	if (rank == 0) {
+	    if (lloutbuf[0] != ((size % 2) ? 0xffffffff : 0)) {
+		errs++;
+		fprintf( stderr, "long long BXOR(1) test failed\n" );
+	    }
+	    if (lloutbuf[1]) {
+		errs++;
+		fprintf( stderr, "long long BXOR(0) test failed\n" );
+	    }
+	    if (lloutbuf[2] != ((size % 2) ? 0xc3c3c3c3 : 0xffffffff)) {
+		errs++;
+		fprintf( stderr, "long long BXOR(>) test failed\n" );
+	    }
 	}
     }
     }

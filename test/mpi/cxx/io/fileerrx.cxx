@@ -17,7 +17,7 @@ using namespace std;
 #else
 #include <iostream.h>
 #endif
-#include "iostream"
+
 #ifdef HAVE_STRING_H
 #include <string.h>
 #endif

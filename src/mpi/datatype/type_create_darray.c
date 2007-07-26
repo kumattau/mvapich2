@@ -21,11 +21,6 @@
 #define MIN(__a, __b) (((__a) < (__b)) ? (__a) : (__b))
 #endif
 
-/* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
-   the MPI routines */
-#ifndef MPICH_MPI_FROM_PMPI
-#define MPI_Type_create_darray PMPI_Type_create_darray
-
 PMPI_LOCAL int MPIR_Type_block(int *array_of_gsizes,
 			       int dim,
 			       int ndims,
@@ -48,6 +43,13 @@ PMPI_LOCAL int MPIR_Type_cyclic(int *array_of_gsizes,
 				MPI_Datatype type_old,
 				MPI_Datatype *type_new,
 				MPI_Aint *st_offset); 
+
+/* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
+   the MPI routines */
+#ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Type_create_darray
+#define MPI_Type_create_darray PMPI_Type_create_darray
+
 
 
 PMPI_LOCAL int MPIR_Type_block(int *array_of_gsizes,
@@ -195,6 +197,9 @@ PMPI_LOCAL int MPIR_Type_cyclic(int *array_of_gsizes,
 	local_size, rem, count;
     MPI_Aint stride, disps[3];
     MPI_Datatype type_tmp, types[3];
+    MPIU_THREADPRIV_DECL;
+
+    MPIU_THREADPRIV_GET;
 
     if (darg == MPI_DISTRIBUTE_DFLT_DARG) blksize = 1;
     else blksize = darg;
@@ -370,14 +375,16 @@ int MPI_Type_create_darray(int size,
 
     int *ints;
     MPID_Datatype *datatype_ptr = NULL;
+    MPIU_THREADPRIV_DECL;
     MPIU_CHKLMEM_DECL(3);
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_TYPE_CREATE_DARRAY);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("datatype");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_TYPE_CREATE_DARRAY);
 
+    MPIU_THREADPRIV_GET;
     
     /* Validate parameters, especially handles needing to be converted */
 #   ifdef HAVE_ERROR_CHECKING
@@ -710,7 +717,7 @@ int MPI_Type_create_darray(int size,
   fn_exit:
     MPIU_CHKLMEM_FREEALL();
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_TYPE_CREATE_DARRAY);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("datatype");
     return mpi_errno;
 
   fn_fail:

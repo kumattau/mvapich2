@@ -1,4 +1,4 @@
-#! @PERL5@
+#! @PERL@
 # -*- mode: perl; -*-
 #
 # Create an index of web pages for MPICH2

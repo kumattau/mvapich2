@@ -5,18 +5,6 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2006, The Ohio State University. All rights
- * reserved.
- *
- * This file is part of the MVAPICH2 software package developed by the
- * team members of The Ohio State University's Network-Based Computing
- * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
- *
- * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT_MVAPICH2 in the top level MVAPICH2 directory.
- *
- */
-
 #include "mpiimpl.h"
 #include "mpicomm.h"
 
@@ -33,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Comm_create
 #define MPI_Comm_create PMPI_Comm_create
 
 #endif
@@ -62,10 +51,11 @@ Output Parameter:
 
 .seealso: MPI_Comm_free
 @*/
+
 #ifdef _SMP_
 int split_comm = 1;
+extern int enable_shmem_collectives;
 #endif
-
 int MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm)
 {
     static const char FCNAME[] = "MPI_Comm_create";
@@ -75,18 +65,16 @@ int MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm)
     MPID_Comm *newcomm_ptr;
     MPID_Group *group_ptr;
 #ifdef _SMP_
-    char* val;
-    int enable_shmem_collectives = 0;
-    if ((val = getenv("MV2_ENABLE_SHMEM_COLL")) != NULL){
-        enable_shmem_collectives = 1;
-    }
+    MPIU_THREADPRIV_DECL;
+    MPIU_THREADPRIV_GET;
 #endif
+
     MPIU_CHKLMEM_DECL(1);
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_COMM_CREATE);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("comm");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_COMM_CREATE);
 
     /* Validate parameters, and convert MPI object handles to object pointers */
@@ -138,6 +126,8 @@ int MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm)
        Creating the context id is collective over the *input* communicator,
        so it must be created before we decide if this process is a 
        member of the group */
+    /* In the multi-threaded case, MPIR_Get_contextid assumes that the
+       calling routine already holds the single criticial section */
     new_context_id = MPIR_Get_contextid( comm_ptr );
     MPIU_ERR_CHKANDJUMP(new_context_id == 0, mpi_errno, MPI_ERR_OTHER, 
 			"**toomanycomm" );
@@ -182,25 +172,22 @@ int MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm)
 	}
 
 	/* Get the new communicator structure and context id */
-	newcomm_ptr = (MPID_Comm *)MPIU_Handle_obj_alloc( &MPID_Comm_mem );
-	MPIU_ERR_CHKANDJUMP(!newcomm_ptr,mpi_errno,MPI_ERR_OTHER,"**nomem");
+	
+	mpi_errno = MPIR_Comm_create( &newcomm_ptr );
+	if (mpi_errno) goto fn_fail;
 
-	MPIU_Object_set_ref( newcomm_ptr, 1 );
-	newcomm_ptr->attributes  = 0;
-	newcomm_ptr->context_id  = new_context_id;
-	newcomm_ptr->remote_size = newcomm_ptr->local_size = n;
-	newcomm_ptr->rank        = group_ptr->rank;
-	newcomm_ptr->comm_kind   = MPID_INTRACOMM;
+	newcomm_ptr->context_id	    = new_context_id;
+	newcomm_ptr->recvcontext_id = new_context_id;
+	newcomm_ptr->remote_size    = newcomm_ptr->local_size = n;
+	newcomm_ptr->rank	    = group_ptr->rank;
+	newcomm_ptr->comm_kind	    = MPID_INTRACOMM;
 	/* Since the group has been provided, let the new communicator know
 	   about the group */
-        newcomm_ptr->local_comm  = 0;
-	newcomm_ptr->local_group  = group_ptr;
-	newcomm_ptr->remote_group = group_ptr;
-	MPIU_Object_add_ref( group_ptr );
-	MPIU_Object_add_ref( group_ptr );
-
-	newcomm_ptr->coll_fns = 0;
-	newcomm_ptr->topo_fns = 0;
+        newcomm_ptr->local_comm	    = 0;
+	newcomm_ptr->local_group    = group_ptr;
+	newcomm_ptr->remote_group   = group_ptr;
+	MPIR_Group_add_ref( group_ptr );
+	MPIR_Group_add_ref( group_ptr );
 
 	/* Setup the communicator's vc table */
 	MPID_VCRT_Create( n, &newcomm_ptr->vcrt );
@@ -226,7 +213,6 @@ int MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm)
 	*newcomm = MPI_COMM_NULL;
     }
     
-
     /* ... end of body of routine ... */
 
     /* mpi_errno = MPID_Comm_create(); */
@@ -253,11 +239,11 @@ int MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm)
     }
 #endif
 
+
   fn_exit:
     MPIU_CHKLMEM_FREEALL();
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_COMM_CREATE);
-    MPID_CS_EXIT();
-
+    MPIU_THREAD_SINGLE_CS_EXIT("comm");
     return mpi_errno;
 
   fn_fail:

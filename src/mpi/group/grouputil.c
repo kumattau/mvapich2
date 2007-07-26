@@ -25,7 +25,7 @@ int MPIR_Group_release(MPID_Group *group_ptr)
     int mpi_errno = MPI_SUCCESS;
     int inuse;
 
-    MPIU_Object_release_ref(group_ptr, &inuse);
+    MPIR_Group_release_ref(group_ptr, &inuse);
     if (!inuse) {
         /* Only if refcount is 0 do we actually free. */
         MPIU_Free(group_ptr->lrank_to_lpid);
@@ -171,22 +171,20 @@ static int MPIR_Mergesort_lpidarray( MPID_Group_pmap_t maparray[], int n )
 
 /* 
  * Create a list of the lpids, in lpid order.
+ *
+ * Called by group_compare, group_translate_ranks, group_union
+ *
+ * In the case of a single master thread lock, the lock must
+ * be held on entry to this routine.  This forces some of the routines
+ * noted above to hold the SINGLE_CS; which would otherwise not be required.
  */
 void MPIR_Group_setup_lpid_list( MPID_Group *group_ptr )
 {
-    /* Lock around the data structure updates in case another thread
-       decides to update the same group.  Note that this is needed only
-       for MPI_THREAD_MULTIPLE */
-    MPID_Common_thread_lock();
-    {
-	if (group_ptr->idx_of_first_lpid == -1) {
-	    group_ptr->idx_of_first_lpid = 
-		MPIR_Mergesort_lpidarray( group_ptr->lrank_to_lpid, 
-					  group_ptr->size );
-	}
+    if (group_ptr->idx_of_first_lpid == -1) {
+	group_ptr->idx_of_first_lpid = 
+	    MPIR_Mergesort_lpidarray( group_ptr->lrank_to_lpid, 
+				      group_ptr->size );
     }
-    MPID_Common_thread_unlock();
-    return;
 }
 
 void MPIR_Group_setup_lpid_pairs( MPID_Group *group_ptr1, 
@@ -206,64 +204,68 @@ void MPIR_Group_setup_lpid_pairs( MPID_Group *group_ptr1,
  * The following routines are needed only for error checking
  */
 
+#undef FUNCNAME
+#define FUNCNAME MPIR_Group_check_valid_ranks
+#undef FCNAME
+#define FCNAME "MPIR_Group_check_valid_ranks"
 /*
  * This routine is for error checking for a valid ranks array, used
- * by Group_incl and Group_excl
+ * by Group_incl and Group_excl.
+ *
+ * Note that because this uses the flag field in the group, it
+ * must be used by only on thread at a time (per group).  For the SINGLE_CS
+ * case, that means that the SINGLE_CS must be held on entry to this routine.
  */
 int MPIR_Group_check_valid_ranks( MPID_Group *group_ptr, int ranks[], int n )
 {
     int mpi_errno = MPI_SUCCESS, i;
 
-    /* Thread lock in case any other thread wants to use the group
-       data structure.  Needed only for MPI_THREAD_MULTIPLE */
-    if (n < 0) {
-	mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, "MPIR_Group_check_valid_ranks", __LINE__,
-					  MPI_ERR_ARG, "**argneg", "**argneg %s %d", "n", n );
-	return mpi_errno;
+    for (i=0; i<group_ptr->size; i++) {
+	group_ptr->lrank_to_lpid[i].flag = 0;
     }
-
-    MPID_Common_thread_lock();
-    {
-	for (i=0; i<group_ptr->size; i++) {
-	    group_ptr->lrank_to_lpid[i].flag = 0;
+    for (i=0; i<n; i++) {
+	if (ranks[i] < 0 ||
+	    ranks[i] >= group_ptr->size) {
+	    mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_RANK,
+				      "**rankarray", "**rankarray %d %d %d",
+				      i, ranks[i], group_ptr->size-1 );
+	    break;
 	}
-	for (i=0; i<n; i++) {
-	    if (ranks[i] < 0 ||
-		ranks[i] >= group_ptr->size) {
-		mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, "MPIR_Group_check_valid_ranks", __LINE__, MPI_ERR_RANK,
-				  "**rankarray", "**rankarray %d %d %d",
-				  i, ranks[i], group_ptr->size-1 );
-		break;
-	    }
-	    if (group_ptr->lrank_to_lpid[ranks[i]].flag) {
-		mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, "MPIR_Group_check_valid_ranks", __LINE__, MPI_ERR_RANK,
-				"**rankdup", "**rankdup %d %d %d",
-				  i, ranks[i], 
-				  group_ptr->lrank_to_lpid[ranks[i]].flag-1);
-		break;
-	    }
-	    group_ptr->lrank_to_lpid[ranks[i]].flag = i+1;
+	if (group_ptr->lrank_to_lpid[ranks[i]].flag) {
+	    mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_RANK,
+			      "**rankdup", "**rankdup %d %d %d",
+			      i, ranks[i], 
+			      group_ptr->lrank_to_lpid[ranks[i]].flag-1);
+	    break;
 	}
+	group_ptr->lrank_to_lpid[ranks[i]].flag = i+1;
     }
-    MPID_Common_thread_unlock();
 
     return mpi_errno;
 }
 
+/* Service routine to check for valid range arguments.  This routine makes use
+ of some of the internal fields in a group; in a multithreaded MPI program,
+ these must ensure that only one thread is accessing the group at a time.
+ In the SINGLE_CS model, this routine requires that the calling routine 
+ be within the SINGLE_CS (the routines are group_range_incl and 
+ group_range_excl) */
+
+#undef FUNCNAME
+#define FUNCNAME MPIR_Group_check_valid_ranges
+#undef FCNAME
+#define FCNAME "MPIR_Group_check_valid_ranges"
 int MPIR_Group_check_valid_ranges( MPID_Group *group_ptr, 
 				   int ranges[][3], int n )
 {
     int i, j, size, first, last, stride, mpi_errno = MPI_SUCCESS;
 
     if (n < 0) {
-	mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, "MPIR_Group_check_valid_ranges", __LINE__, MPI_ERR_ARG,
-					  "**argneg", "**argneg %s %d", "n", n );
+	MPIU_ERR_SETANDSTMT2(mpi_errno,MPI_ERR_ARG,;,
+                             "**argneg", "**argneg %s %d", "n", n );
 	return mpi_errno;
     }
 
-    /* Lock in case another thread is accessing the group 
-       data structures */
-    MPID_Common_thread_lock();
     size = group_ptr->size;
     
     /* First, clear the flag */
@@ -276,14 +278,14 @@ int MPIR_Group_check_valid_ranges( MPID_Group *group_ptr,
 	first = ranges[i][0]; last = ranges[i][1]; 
 	stride = ranges[i][2];
 	if (first < 0 || first >= size) {
-	    mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, "MPIR_Group_check_valid_ranges", __LINE__, MPI_ERR_ARG,
+	    mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_ARG,
 					      "**rangestartinvalid", 
 					      "**rangestartinvalid %d %d %d", 
 					      i, first, size );
 	    break;
 	}
 	if (stride == 0) {
-	    mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, "MPIR_Group_check_valid_ranges", __LINE__, MPI_ERR_ARG, 
+	    mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_ARG, 
 					      "**stridezero", 0 );
 	    break;
 	}
@@ -297,7 +299,7 @@ int MPIR_Group_check_valid_ranges( MPID_Group *group_ptr,
 	if (last < 0 || act_last >= size) {
 	    /* Use last instead of act_last in the error message since
 	       the last value is the one that the user provided */
-	    mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, "MPIR_Group_check_valid_ranges", __LINE__, MPI_ERR_ARG,
+	    mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_ARG,
 					      "**rangeendinvalid", 
 					      "**rangeendinvalid %d %d %d", 
 					      i, last, size );
@@ -305,7 +307,7 @@ int MPIR_Group_check_valid_ranges( MPID_Group *group_ptr,
 	}
 	if ( (stride > 0 && first > last) ||
 	     (stride < 0 && first < last) ) {
-	    mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, "MPIR_Group_check_valid_ranges", __LINE__, MPI_ERR_ARG, 
+	    mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_ARG, 
 					      "**stride", "**stride %d %d %d", 
 					      first, last, stride );
 	    break;
@@ -315,7 +317,7 @@ int MPIR_Group_check_valid_ranges( MPID_Group *group_ptr,
 	if (stride > 0) {
 	    for (j=first; j<=last; j+=stride) {
 		if (group_ptr->lrank_to_lpid[j].flag) {
-		    mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, "MPIR_Group_check_valid_ranges", __LINE__,
+		    mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__,
 						      MPI_ERR_ARG, "**rangedup", "**rangedup %d %d %d",
 						      j, i, group_ptr->lrank_to_lpid[j].flag - 1);
 		    break;
@@ -327,7 +329,7 @@ int MPIR_Group_check_valid_ranges( MPID_Group *group_ptr,
 	else {
 	    for (j=first; j>=last; j+=stride) {
 		if (group_ptr->lrank_to_lpid[j].flag) {
-		    mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, "MPIR_Group_check_valid_ranges", __LINE__,
+		    mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__,
 						      MPI_ERR_ARG, "**rangedup", "**rangedup %d %d %d",
 						      j, i, group_ptr->lrank_to_lpid[j].flag - 1);
 		    break;
@@ -340,7 +342,6 @@ int MPIR_Group_check_valid_ranges( MPID_Group *group_ptr,
 	}
 	if (mpi_errno) break;
     }
-    MPID_Common_thread_unlock();
 
     return mpi_errno;
 }

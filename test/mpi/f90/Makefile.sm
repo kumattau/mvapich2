@@ -1,5 +1,5 @@
-SUBDIRS = util timer attr coll datatype pt2pt info comm rma spawn topo io ext init
-# Other dirs: misc (sizeof, only in more complete F90 implementation)
+SUBDIRS = util timer attr coll datatype pt2pt info comm rma spawn topo io ext \
+	init misc
 
 # A special testing target to simplify testing just the Fortran 90 code
 testing:

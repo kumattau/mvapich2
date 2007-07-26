@@ -4,6 +4,18 @@
  *      See COPYRIGHT in top-level directory.
  */
 
+/* Copyright (c) 2003-2007, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT_MVAPICH2 in the top level MVAPICH2 directory.
+ *
+ */
+
 #include "mpidimpl.h"
 
 static int setupRMAFunctions = 1;
@@ -27,8 +39,6 @@ int MPID_Win_create(void *base, MPI_Aint size, int disp_unit, MPID_Info *info,
     
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPID_WIN_CREATE);
 
-    MPIU_UNREFERENCED_ARG(info);
-
     /* Check to see if we need to setup channel-specific functions
        for handling the RMA operations */
     if (setupRMAFunctions) {
@@ -51,13 +61,14 @@ int MPID_Win_create(void *base, MPI_Aint size, int disp_unit, MPID_Info *info,
 	mpi_errno = RMAFns.Win_create(base, size, disp_unit, info, comm_ptr, 
 				      win_ptr, &RMAFns);
 	if (mpi_errno != MPI_SUCCESS) {
-	    MPIU_ERR_SET(mpi_errno,MPI_ERR_OTHER,"**fail");
+	    MPIU_ERR_POP(mpi_errno);
 	}
     }
     else {
 	MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**notimpl");
     }
 
+ fn_fail:
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_WIN_CREATE);
     return mpi_errno;
 }
@@ -90,13 +101,14 @@ int MPID_Win_free(MPID_Win **win_ptr)
     if (RMAFns.Win_free) {
 	mpi_errno = RMAFns.Win_free(win_ptr);
 	if (mpi_errno != MPI_SUCCESS) {
-	    MPIU_ERR_SET(mpi_errno,MPI_ERR_OTHER,"**fail");
+	    MPIU_ERR_POP(mpi_errno);
 	}
     }
     else {
 	MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**notimpl");
     }
 
+ fn_fail:
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_WIN_FREE);
     return mpi_errno;
 }
@@ -133,13 +145,14 @@ int MPID_Put(void *origin_addr, int origin_count, MPI_Datatype
 			       target_rank, target_disp, target_count, target_datatype,
 			       win_ptr);
 	if (mpi_errno != MPI_SUCCESS) {
-	    MPIU_ERR_SET(mpi_errno,MPI_ERR_OTHER,"**fail");
+	    MPIU_ERR_POP(mpi_errno);
 	}
     }
     else {
 	MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**notimpl");
     }
 
+ fn_fail:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPID_PUT);    
     return mpi_errno;
 }
@@ -177,13 +190,14 @@ int MPID_Get(void *origin_addr, int origin_count, MPI_Datatype
 			       target_rank, target_disp, target_count, target_datatype,
 			       win_ptr);
 	if (mpi_errno != MPI_SUCCESS) {
-	    MPIU_ERR_SET(mpi_errno,MPI_ERR_OTHER,"**fail");
+	    MPIU_ERR_POP(mpi_errno);
 	}
     }
     else {
 	MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**notimpl");
     }
 
+ fn_fail:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPID_GET);
     return mpi_errno;
 }
@@ -222,13 +236,14 @@ int MPID_Accumulate(void *origin_addr, int origin_count, MPI_Datatype
 			       target_rank, target_disp, target_count, target_datatype,
 			       op, win_ptr);
 	if (mpi_errno != MPI_SUCCESS) {
-	    MPIU_ERR_SET(mpi_errno,MPI_ERR_OTHER,"**fail");
+	    MPIU_ERR_POP(mpi_errno);
 	}
     }
     else {
 	MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**notimpl");
     }
 
+ fn_fail:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPID_ACCUMULATE);
     return mpi_errno;
 }
@@ -261,13 +276,14 @@ int MPID_Win_fence(int assert, MPID_Win *win_ptr)
     if (RMAFns.Win_fence) {
 	mpi_errno = RMAFns.Win_fence(assert, win_ptr);
 	if (mpi_errno != MPI_SUCCESS) {
-	    MPIU_ERR_SET(mpi_errno,MPI_ERR_OTHER,"**fail");
+	    MPIU_ERR_POP(mpi_errno);
 	}
     }
     else {
 	MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**notimpl");
     }
 
+ fn_fail:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPID_WIN_FENCE);
     return mpi_errno;
 }
@@ -300,13 +316,14 @@ int MPID_Win_post(MPID_Group *group_ptr, int assert, MPID_Win *win_ptr)
     if (RMAFns.Win_post) {
 	mpi_errno = RMAFns.Win_post(group_ptr, assert, win_ptr);
 	if (mpi_errno != MPI_SUCCESS) {
-	    MPIU_ERR_SET(mpi_errno,MPI_ERR_OTHER,"**fail");
+	    MPIU_ERR_POP(mpi_errno);
 	}
     }
     else {
 	MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**notimpl");
     }
 
+ fn_fail:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPID_WIN_POST);
     return mpi_errno;
 }
@@ -339,13 +356,14 @@ int MPID_Win_start(MPID_Group *group_ptr, int assert, MPID_Win *win_ptr)
     if (RMAFns.Win_start) {
 	mpi_errno = RMAFns.Win_start(group_ptr, assert, win_ptr);
 	if (mpi_errno != MPI_SUCCESS) {
-	    MPIU_ERR_SET(mpi_errno,MPI_ERR_OTHER,"**fail");
+	    MPIU_ERR_POP(mpi_errno);
 	}
     }
     else {
 	MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**notimpl");
     }
 
+ fn_fail:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPID_WIN_START);
     return mpi_errno;
 }
@@ -378,13 +396,14 @@ int MPID_Win_complete(MPID_Win *win_ptr)
     if (RMAFns.Win_complete) {
 	mpi_errno = RMAFns.Win_complete(win_ptr);
 	if (mpi_errno != MPI_SUCCESS) {
-	    MPIU_ERR_SET(mpi_errno,MPI_ERR_OTHER,"**fail");
+	    MPIU_ERR_POP(mpi_errno);
 	}
     }
     else {
 	MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**notimpl");
     }
 
+ fn_fail:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPID_WIN_COMPLETE);
     return mpi_errno;
 }
@@ -417,13 +436,14 @@ int MPID_Win_wait(MPID_Win *win_ptr)
     if (RMAFns.Win_wait) {
 	mpi_errno = RMAFns.Win_wait(win_ptr);
 	if (mpi_errno != MPI_SUCCESS) {
-	    MPIU_ERR_SET(mpi_errno,MPI_ERR_OTHER,"**fail");
+	    MPIU_ERR_POP(mpi_errno);
 	}
     }
     else {
 	MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**notimpl");
     }
 
+ fn_fail:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPID_WIN_WAIT);
     return mpi_errno;
 }
@@ -456,13 +476,14 @@ int MPID_Win_lock(int lock_type, int dest, int assert, MPID_Win *win_ptr)
     if (RMAFns.Win_lock) {
 	mpi_errno = RMAFns.Win_lock(lock_type, dest, assert, win_ptr);
 	if (mpi_errno != MPI_SUCCESS) {
-	    MPIU_ERR_SET(mpi_errno,MPI_ERR_OTHER,"**fail");
+	    MPIU_ERR_POP(mpi_errno);
 	}
     }
     else {
 	MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**notimpl");
     }
 
+ fn_fail:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPID_WIN_LOCK);
     return mpi_errno;
 }
@@ -495,13 +516,14 @@ int MPID_Win_unlock(int dest, MPID_Win *win_ptr)
     if (RMAFns.Win_unlock) {
 	mpi_errno = RMAFns.Win_unlock(dest, win_ptr);
 	if (mpi_errno != MPI_SUCCESS) {
-	    MPIU_ERR_SET(mpi_errno,MPI_ERR_OTHER,"**fail");
+	    MPIU_ERR_POP(mpi_errno);
 	}
     }
     else {
 	MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**notimpl");
     }
 
+ fn_fail:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPID_WIN_UNLOCK);
     return mpi_errno;
 }
@@ -567,13 +589,14 @@ int MPID_Free_mem( void *ptr )
     if (RMAFns.Free_mem) {
 	mpi_errno = RMAFns.Free_mem(ptr);
 	if (mpi_errno != MPI_SUCCESS) {
-	    MPIU_ERR_SET(mpi_errno,MPI_ERR_OTHER,"**fail");
+	    MPIU_ERR_POP(mpi_errno);
 	}
     }
     else {
 	MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**notimpl");
     }
         
+ fn_fail:
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_FREE_MEM);
     return mpi_errno;
 }

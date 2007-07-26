@@ -12,16 +12,21 @@
 
 #ifdef ONE_SIDED
 
-#include "rdma_impl.h"
-#include "vapi_header.h"
-#include "dreg.h"
+#include <math.h>
+
 #include "evapi.h"
 #include "vapi.h"
 #include <vapi_common.h>
-#include <math.h>
-#include "vapi_param.h"
+
 #include "pmi.h"
+
+#include "rdma_impl.h"
+#include "vapi_header.h"
+#include "dreg.h"
+#include "vapi_param.h"
 #include "vapi_util.h"
+
+#include "mpidrma.h"
 
 #undef FUNCNAME
 #define FUNCNAME 1SC_PUT_datav
@@ -63,6 +68,8 @@ int IBA_ACCUMULATE(MPIDI_RMA_ops *, MPID_Win *, int);
 void MPIDI_CH3I_RDMA_lock(MPID_Win * win_ptr,
                           int target_rank, int lock_type, int blocking);
 void Get_Pinned_Buf(MPID_Win * win_ptr, char **origin, int size);
+int iba_lock(MPID_Win *, MPIDI_RMA_ops *, int);
+int iba_unlock(MPID_Win *, MPIDI_RMA_ops *, int);
 
 
 
@@ -94,6 +101,7 @@ MPIDI_CH3I_RDMA_start(MPID_Win * win_ptr,
     int flag = 0, src, i;
 
 #ifdef _SMP_
+  if (SMP_INIT)
     MPID_Comm_get_ptr( win_ptr->comm, comm_ptr );
 #endif
     DEBUG_PRINT("before while loop %d\n", win_ptr->post_flag[1]);
@@ -102,8 +110,16 @@ MPIDI_CH3I_RDMA_start(MPID_Win * win_ptr,
             flag = 1;
             src = ranks_in_win_grp[i];  /*src is the rank in comm*/
 #ifdef _SMP_
+         if (SMP_INIT) {
             MPIDI_Comm_get_vc(comm_ptr, src, &vc);
             if (win_ptr->post_flag[src] == 0 && vc->smp.local_nodes == -1)
+            {
+                /*correspoding post has not been issued */
+                flag = 0;
+                break;
+            }
+
+         } else if (win_ptr->post_flag[src] == 0)
 #else 
             if (win_ptr->post_flag[src] == 0) 
 #endif
@@ -132,6 +148,13 @@ MPIDI_CH3I_RDMA_complete_rma(MPID_Win * win_ptr,
     MPIDI_RMA_ops *curr_ptr;
 #ifdef _SMP_
     MPIDI_VC_t *vc;
+         if (SMP_INIT)
+            {
+                /*correspoding post has not been issued */
+                flag = 0;
+                break;
+            }
+
 #endif
 
     MPID_Comm_get_ptr(win_ptr->comm, comm_ptr);
@@ -166,9 +189,18 @@ MPIDI_CH3I_RDMA_complete_rma(MPID_Win * win_ptr,
     for (i = 0; i < start_grp_size; i++) {
         target = ranks_in_win_grp[i];   /* target is the rank is comm */
 #ifdef _SMP_
+      if(SMP_INIT) {
         MPIDI_Comm_get_vc(comm_ptr, target, &vc);
         if (nops_to_proc[target] == 0 && send_complete == 1 
             && vc->smp.local_nodes == -1)
+        {
+            Decrease_CC(win_ptr, target);
+            if (win_ptr->wait_for_complete == 1) {
+                MPIDI_CH3I_RDMA_finish_rma(win_ptr);
+            }
+        }
+
+      } else if (nops_to_proc[target] == 0 && send_complete == 1)
 #else
         if (nops_to_proc[target] == 0 && send_complete == 1) 
 #endif
@@ -212,6 +244,7 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr,
     MPIDI_VC_t * vc;
     MPID_Comm * comm_ptr;
 
+  if (SMP_INIT)
     MPID_Comm_get_ptr( win_ptr->comm, comm_ptr );
 #endif
 
@@ -235,6 +268,7 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr,
     while (curr_ptr != NULL) {
 #endif
 #ifdef _SMP_
+      if (SMP_INIT) {
         MPIDI_Comm_get_vc(comm_ptr, curr_ptr->target_rank, &vc);
 
         if (vc->smp.local_nodes != -1)  {
@@ -242,6 +276,7 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr,
             curr_ptr = curr_ptr->next;
             continue;
         }
+      }
 #endif
         if (passive == 0 && win_ptr->post_flag[curr_ptr->target_rank] == 1
             && win_ptr->using_lock == 0

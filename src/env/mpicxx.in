@@ -1,4 +1,7 @@
 #! /bin/sh
+# 
+# (C) 2006 by Argonne National Laboratory.
+#     See COPYRIGHT in top-level directory.
 #
 # mpicxx
 # Simple script to compile and/or link MPI programs.
@@ -108,6 +111,11 @@ for arg in "$@" ; do
     CXX=`echo A$arg | sed -e 's/A-cxx=//g'`
     addarg=no
     ;;
+    # Backwards compatibility for MPICH1 - scripts
+    -CC=*)
+    CXX=`echo A$arg | sed -e 's/A-CC=//g'`
+    addarg=no
+    ;;
     -show)
     addarg=no
     Show=echo
@@ -165,6 +173,7 @@ for arg in "$@" ; do
     qarg='\"'"$arg"'\"'
     ;;
     *)
+    qarg="'$arg'"
     ;;
 
     esac

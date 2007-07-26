@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: comm_size.c,v 1.1.1.1 2006/01/18 21:09:43 huangwei Exp $
+/*  $Id: comm_size.c,v 1.18 2006/12/09 16:42:24 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -20,11 +20,14 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Comm_size
 #define MPI_Comm_size PMPI_Comm_size
 #endif
 
 #undef FUNCNAME
 #define FUNCNAME MPI_Comm_size
+#undef FCNAME
+#define FCNAME "MPI_Comm_size"
 
 /*@
 
@@ -51,14 +54,12 @@ Notes:
 @*/
 int MPI_Comm_size( MPI_Comm comm, int *size ) 
 {
-    static const char FCNAME[] = "MPI_Comm_size";
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = 0;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_COMM_SIZE);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_COMM_SIZE);
     
     /* Validate parameters, especially handles needing to be converted */
@@ -97,21 +98,23 @@ int MPI_Comm_size( MPI_Comm comm, int *size )
     
     /* ... end of body of routine ... */
 
+#ifdef HAVE_ERROR_CHECKING
   fn_exit:
+#endif
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_COMM_SIZE);
-    MPID_CS_EXIT();
     return mpi_errno;
     
-  fn_fail:
     /* --BEGIN ERROR HANDLING-- */
 #   ifdef HAVE_ERROR_CHECKING
+  fn_fail:
     {
 	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_comm_size",
+	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, 
+	    "**mpi_comm_size",
 	    "**mpi_comm_size %C %p", comm, size);
     }
-#   endif
     mpi_errno = MPIR_Err_return_comm( comm_ptr, FCNAME, mpi_errno );
     goto fn_exit;
+#   endif
     /* --END ERROR HANDLING-- */
 }

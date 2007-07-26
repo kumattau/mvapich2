@@ -1,19 +1,8 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: allreduce.c,v 1.2 2006/03/22 16:41:17 mamidala Exp $
+/*  $Id: allreduce.c,v 1.68 2006/12/09 16:42:23 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
- */
-/* Copyright (c) 2003-2006, The Ohio State University. All rights
- * reserved.
- *
- * This file is part of the MVAPICH2 software package developed by the
- * team members of The Ohio State University's Network-Based Computing
- * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
- *
- * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT_MVAPICH2 in the top level MVAPICH2 directory.
- *
  */
 
 #include "mpiimpl.h"
@@ -31,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Allreduce
 #define MPI_Allreduce PMPI_Allreduce
 
 MPI_User_function *MPIR_Op_table[] = { MPIR_MAXF, MPIR_MINF, MPIR_SUM,
@@ -47,7 +37,6 @@ MPIR_Op_check_dtype_fn *MPIR_Op_check_dtype_table[] = {
     MPIR_LXOR_check_dtype, MPIR_BXOR_check_dtype,
     MPIR_MINLOC_check_dtype, MPIR_MAXLOC_check_dtype, }; 
 
-extern int coll_table[COLL_COUNT][COLL_SIZE+1];
 
 /* This is the default implementation of allreduce. The algorithm is:
    
@@ -99,7 +88,11 @@ extern int coll_table[COLL_COUNT][COLL_SIZE+1];
 */
 
 
-/* not declared static because a machine-specific function may call this one in some cases */
+/* not declared static because a machine-specific function may call this one 
+   in some cases */
+#undef FCNAME 
+#define FCNAME "MPIR_Allreduce"
+
 int MPIR_Allreduce ( 
     void *sendbuf, 
     void *recvbuf, 
@@ -108,7 +101,6 @@ int MPIR_Allreduce (
     MPI_Op op, 
     MPID_Comm *comm_ptr )
 {
-    static const char FCNAME[] = "MPIR_Allreduce";
     int is_homogeneous;
 #ifdef MPID_HAS_HETERO
     int rc;
@@ -122,16 +114,16 @@ int MPIR_Allreduce (
     MPI_User_function *uop;
     MPID_Op *op_ptr;
     MPI_Comm comm;
-    MPICH_PerThread_t *p;
+    MPIU_THREADPRIV_DECL;
 #ifdef HAVE_CXX_BINDING
     int is_cxx_uop = 0;
 #endif
     MPIU_CHKLMEM_DECL(3);
-    int lgn = -1;
     
     if (count == 0) return MPI_SUCCESS;
     comm = comm_ptr->handle;
 
+    MPIU_THREADPRIV_GET;
     MPIR_Nest_incr();
     
     is_homogeneous = 1;
@@ -163,8 +155,7 @@ int MPIR_Allreduce (
         /* homogeneous */
         
         /* set op_errno to 0. stored in perthread structure */
-        MPIR_GetPerThread(&p);
-        p->op_errno = 0;
+        MPIU_THREADPRIV_FIELD(op_errno) = 0;
 
         comm_size = comm_ptr->local_size;
         rank = comm_ptr->rank;
@@ -215,13 +206,8 @@ int MPIR_Allreduce (
 
         /* find nearest power-of-two less than or equal to comm_size */
         pof2 = 1;
-        while (pof2 <= comm_size){
-		 pof2 <<= 1;
-		 lgn++;
-	}
+        while (pof2 <= comm_size) pof2 <<= 1;
         pof2 >>=1;
-	lgn--;
-	if (lgn > COLL_SIZE) lgn = COLL_SIZE;
 
         rem = comm_size - pof2;
 
@@ -284,8 +270,7 @@ int MPIR_Allreduce (
            using recursive doubling in that case.) */
 
         if (newrank != -1) {
-            if ((coll_table[ALLREDUCE_IDX][lgn] == -1) ||
-		        (count*type_size < coll_table[ALLREDUCE_IDX][lgn]) ||
+            if ((count*type_size <= MPIR_ALLREDUCE_SHORT_MSG) ||
                 (HANDLE_GET_KIND(op) != HANDLE_KIND_BUILTIN) ||  
                 (count < pof2)) { /* use recursive doubling */
                 mask = 0x1;
@@ -485,7 +470,8 @@ int MPIR_Allreduce (
         /* check if multiple threads are calling this collective function */
         MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
 
-        if (p->op_errno) mpi_errno = p->op_errno;
+        if (MPIU_THREADPRIV_FIELD(op_errno)) 
+	    mpi_errno = MPIU_THREADPRIV_FIELD(op_errno);
     }
 
   fn_exit:
@@ -498,7 +484,10 @@ int MPIR_Allreduce (
 }
 
 
-/* not declared static because a machine-specific function may call this one in some cases */
+/* not declared static because a machine-specific function may call this one 
+   in some cases */
+#undef FCNAME
+#define FCNAME "MPIR_Allreduce_inter"
 int MPIR_Allreduce_inter ( 
     void *sendbuf, 
     void *recvbuf, 
@@ -515,9 +504,11 @@ int MPIR_Allreduce_inter (
    We don't do local reduces first and then intercommunicator
    broadcasts because it would require allocation of a temporary buffer. 
 */
-    static const char FCNAME[] = "MPIR_Allreduce_inter";
     int rank, mpi_errno, root;
     MPID_Comm *newcomm_ptr = NULL;
+    MPIU_THREADPRIV_DECL;
+
+    MPIU_THREADPRIV_GET;
 
     MPIR_Nest_incr();
     
@@ -573,6 +564,7 @@ int MPIR_Allreduce_inter (
 
 #undef FUNCNAME
 #define FUNCNAME MPI_Allreduce
+#undef FCNAME
 
 /*@
 MPI_Allreduce - Combines values from all processes and distributes the result
@@ -629,18 +621,15 @@ int MPI_Allreduce ( void *sendbuf, void *recvbuf, int count,
     int is_cxx_uop = 0;
 #endif
 
-#ifdef RDMA_CM
-    char* value;
-    if ((value = getenv("MV2_USE_RDMA_CM")) != NULL)
-        disable_shmem_allreduce = 1;
-#endif
+    MPIU_THREADPRIV_DECL;
+    MPIU_THREADPRIV_GET;
 #endif
 
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_ALLREDUCE);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("coll");
     MPID_MPI_COLL_FUNC_ENTER(MPID_STATE_MPI_ALLREDUCE);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -835,7 +824,7 @@ int MPI_Allreduce ( void *sendbuf, void *recvbuf, int count,
                                        op, comm_ptr); 
             
 #endif
-        }
+    }
         else {
             /* intercommunicator */
             mpi_errno = MPIR_Allreduce_inter(sendbuf, recvbuf, count,
@@ -849,7 +838,7 @@ int MPI_Allreduce ( void *sendbuf, void *recvbuf, int count,
     
   fn_exit:
     MPID_MPI_COLL_FUNC_EXIT(MPID_STATE_MPI_ALLREDUCE);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("coll");
     return mpi_errno;
 
   fn_fail:

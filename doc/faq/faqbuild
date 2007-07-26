@@ -16,6 +16,10 @@ $use_contracted    = 1;
 $faqfilename       = "faq.txt";
 $htmlfilename      = "faq.htm";
 $latexfilename     = "faq.tex";
+$outfilename       = "";
+$AddLaTeXMenu      = 0;
+@LaTeXSections = ( "section", "subsection" );
+
 
 # HTML options
 $special_entity = 0;
@@ -25,8 +29,24 @@ $gDebug = 0;
 #
 # Read the args
 foreach $_ (@ARGV) {
-    if (/-latex/) { $is_latex = 1; }
+    if (/-elatex=(.*)/) {
+	my $topsection = $1;
+	$is_latex = 1;
+	$is_complete_latex = 0;
+	if ($topsection =~ /section/) {
+	    @LaTeXSections = ( $topsection, "sub" . $topsection );
+	}
+	$is_html = 0;
+	$is_text = 0;
+    }
+    elsif (/-latex/) { $is_latex = 1; }
     elsif (/-dosnl/) { $is_dos = 1; }
+    elsif (/-outfile=(.*)/) {
+	$outfilename = $1;
+	if ($is_latex)   { $latexfilename = $outfilename; }
+	elsif ($is_html) { $htmlfilename  = $outfilename; }
+	elsif ($is_text) { $faqfilename   = $outfilename; }
+    }
     else {
 	print STDERR "Unrecognized arg $_\n";
     }
@@ -40,6 +60,7 @@ else {
     $nl = "\n";
 }
 
+# Translations from the LaTeX allowed in faq.txt to HTML
 %latexCmdToHtml = ( 'file' => '1:<tt>\1</tt>',
 		    'textem' => '1:<em>\1</em>',
 		    'textbf' => '1:<b>\1</b>',
@@ -68,6 +89,7 @@ else {
 		    '}'           => '0:}',
 		    );
 
+# Translations from the LaTeX allowed in faq.txt to ASCII text
 %latexCmdToText = ( 'file' => '1:\'\1\'',
 		    'textem' => '1:\1',
 		    'textbf' => '1:\1',
@@ -154,7 +176,11 @@ if ($is_html) {
 if ($is_latex) {
     open LATEXFD, ">$latexfilename" || die "Could not open $latexfilename";
     &CreateLatexHeader();
-    &CreateLatexMenu();
+    if ($AddLaTeXMenu) {
+	# Only add the menu if requested (it isn't as useful for 
+	# LaTeX versions of the FAQ)
+	&CreateLatexMenu();
+    }
     &CreateLatexBody();
     &CreateLatexTail();
     close LATEXFD;
@@ -203,9 +229,15 @@ sub ReadHeading {
     }
     if (! $foundEnd) {
 	print STDERR "Malformed heading entry; no %% End found\n";
+	if ($heading ne "") {
+	    print STDERR "Heading was $heading\n";
+	}
     }
     if ($shortfile eq "") {
 	print STDERR "Malformed heading entry; no %% Filename: found\n";
+	if ($heading ne "") {
+	    print STDERR "Heading was $heading\n";
+	}
     }
     return ($heading,$shortfile);
 }
@@ -242,6 +274,14 @@ sub htmlify {
     $line =~ s%[\\]+&%&amp;%g;
     $line =~ s%[\\]+<%&lt;%g;
     $line =~ s%[\\]+>%&gt;%g;
+
+    # These may occur within a verbatim environment
+    # (We hope not to see a raw &, since we'd also need to 
+    # watch for &amp;.
+    #$line =~ s%&%&amp;%g;
+    $line =~ s%<%&lt;%g;
+    $line =~ s%>%&gt;%g;
+
     # Convert various TeX commands
     # $...$
     $line =~ s%\$([^\$]*)\$%<EM>$1</EM>%g;
@@ -364,36 +404,48 @@ sub CreateLatexHeader {
     }
 }
 
+#
+# Create an itemized list of sections, with an enumerated list of topics
+# within each section
 sub CreateLatexMenu {
     # Create headings
-    my $inItemize = 0;
+    my $inEnumerate = 0;
+    print LATEXFD "\\section{List of FAQ Items}\n";
+    print LATEXFD "\\begin{itemize}\n";
     for (my $i=0; $i<=$#filelist; $i++) {
 	if (defined($IndexToSectionHead{$i})) {
-	    if ($inItemize) {
-		print LATEXFD "\\end{itemize}\n";
-		$inItemize = 0;
+	    if ($inEnumerate) {
+		print LATEXFD "\\end{enumerate}\n";
+		$inEnumerate = 0;
 	    }
-	    print LATEXFD "\\section{" . $IndexToSectionHead{$i} . "}\n";
+	    print LATEXFD "\\item " . $IndexToSectionHead{$i} . "\n";
 	}
 	my $file = $filelist[$i];
 	my $heading = $fileToHeading{$file};
-	if (! $inItemize) {
-	    print LATEXFD "\\begin{itemize}\n";
-	    $inItemize = 1;
+	if (! $inEnumerate) {
+	    print LATEXFD "\\begin{enumerate}\n";
+	    $inEnumerate = 1;
 	}
 	print LATEXFD "\\item $heading\n";
     }
-    if ($inItemize) {
-	print LATEXFD "\\end{itemize}\n";
+    if ($inEnumerate) {
+	print LATEXFD "\\end{enumerate}\n";
     }
+    print LATEXFD "\\end{itemize}\n";
 }
 
 sub CreateLatexBody {
     # Create items
+    $topsection = $LaTeXSections[0];
+    $subsection = $LaTeXSections[1];
+
     for (my $i=0; $i<=$#filelist; $i++) {
 	my $file = $filelist[$i];
 	my $heading = $fileToHeading{$file};
-	print LATEXFD "\\subsection{$heading}\n";
+	if (defined($IndexToSectionHead{$i})) {
+	    print LATEXFD "\\${topsection}{" . $IndexToSectionHead{$i} . "}\n";
+	}
+	print LATEXFD "\\${subsection}{$heading}\n";
 	foreach $line (split(/\n/,$fileToText{$file})) {
 	    print LATEXFD $line . "\n";
 	}
@@ -496,6 +548,8 @@ sub CreateHTMLBody {
 	}
 	print HTMLFD "<div id=\"answer$i\">$nl";
 	foreach my $line (split(/\n/,$fileToText{$file})) {
+	    if ($line =~ /</) { print "Saw less than: $line\n" ; }
+	    $line = &tophtmlify2( $line );
 	    print HTMLFD &htmlify2($line) . $nl;
 	}
 	print HTMLFD "</div>$nl";
@@ -507,12 +561,38 @@ sub CreateHTMLTail {
     }
 }
 
+# Tophtmlify2 just handles the three special html characters (<,>,&)
+# by making them look like \<, \>, and \&, which htmlify2 can handle.
+# This is done to avoid processing HTML commands
+sub tophtmlify2 {
+    my $line = $_[0];
+
+    my $before = "";
+    my $after  = $line;
+    while ($after =~ /([^<>&]*)([<>&])(.*)/) {
+	$before .= $1;
+	my $cmd = $2;
+	$after  = $3;
+	if (! ($before =~ /\\$/)) {
+	    $before .= "\\";
+	}
+	$before .= $cmd;
+    }
+    $line = $before . $after;
+
+    return $line;
+}
+
 sub htmlify2 {
     my $line = $_[0];
 
     $line =~ s%[\\]+&%&amp;%g;
     $line =~ s%[\\]+<%&lt;%g;
     $line =~ s%[\\]+>%&gt;%g;
+
+    #$line =~ s%[\\]+&%&amp;%g;
+    #$line =~ s%<%&lt;%g;
+    #$line =~ s%>%&gt;%g;
 
     # --- -> &mdash;
     $line =~ s%---%&mdash;%g if $special_entity;
@@ -530,10 +610,12 @@ sub textify {
 # Take the input and make it value HTML (handle simple LaTeX)
 sub deLaTeX {
     my ($line, $cmdhash) = @_;
-    
+
     if (!defined($line)) { return ""; }
+
     my $before = "";
     my $after  = "";
+
     while ($line =~ /([^\\]*)\\(\w+)(.*)/) {
 	$before .= $1;
 	my $cmd = $2;
@@ -603,6 +685,9 @@ sub deLaTeX {
 
 	    # Substitute the arguments
 	    for (my $i=1; $i<=$argcount; $i++) {
+		if (!defined($args[$i-1])) {
+		    $args[$i-1] = "";
+		}
 		$val =~ s/\\$i/$args[$i-1]/g;
 	    }
 	    # Handle simple recursion (e.g., \_ within an argument)

@@ -112,39 +112,39 @@ void PrintOptions()
 
 int main(int argc, char *argv[])
 {
-    FILE *out=0;		/* Output data file 				*/
-    char s[255]; 		/* Generic string				*/
+    FILE *out=0;		/* Output data file 			*/
+    char s[255]; 		/* Generic string			*/
     char *memtmp;
     char *memtmp1;
     MPI_Status status;
 
-    int ii, i, j, k, n, nq,	/* Loop indices					*/
-	bufoffset = 0,		/* Align buffer to this				*/
-	bufalign = 16*1024,	/* Boundary to align buffer to			*/
-	nrepeat01, nrepeat12,	/* Number of time to do the transmission	*/
+    int ii, i, j, k, n, nq,	/* Loop indices				*/
+	bufoffset = 0,		/* Align buffer to this			*/
+	bufalign = 16*1024,	/* Boundary to align buffer to		*/
+	nrepeat01, nrepeat12,	/* Number of time to do the transmission*/
 	nrepeat012,
-	len,			/* Number of bytes to be transmitted		*/
-	inc = 1,		/* Increment value				*/
-	pert,			/* Perturbation value				*/
-        ipert,                  /* index of the perturbation loop		*/
-	start = 0,		/* Starting value for signature curve 		*/
-	end = MAXINT,		/* Ending value for signature curve		*/
-	printopt = 1,		/* Debug print statements flag			*/
+	len,			/* Number of bytes to be transmitted	*/
+	inc = 1,		/* Increment value			*/
+	pert,			/* Perturbation value			*/
+        ipert,                  /* index of the perturbation loop	*/
+	start = 0,		/* Starting value for signature curve 	*/
+	end = MAXINT,		/* Ending value for signature curve	*/
+	printopt = 1,		/* Debug print statements flag		*/
 	middle_rank = 0,        /* rank 0, 1 or 2 where 2-0-1 or 0-1-2 or 1-2-0 */
 	tint;
     
-    ArgStruct	args01, args12, args012;/* Argumentsfor all the calls		*/
+    ArgStruct	args01, args12, args012;/* Argumentsfor all the calls	*/
     
-    double t, t0, t1,           /* Time variables				*/
-	tlast01, tlast12, tlast012,/* Time for the last transmission		*/
-	latency01, latency12,	/* Network message latency			*/
+    double t, t0, t1,           /* Time variables			*/
+	tlast01, tlast12, tlast012,/* Time for the last transmission	*/
+	latency01, latency12,	/* Network message latency		*/
 	latency012, tdouble;    /* Network message latency to go from 0 -> 1 -> 2 */
 #ifdef CREATE_DIFFERENCE_CURVES
     int itrial, ntrials;
     double *dtrials;
 #endif
 
-    Data *bwdata01, *bwdata12, *bwdata012;/* Bandwidth curve data 		*/
+    Data *bwdata01, *bwdata12, *bwdata012;/* Bandwidth curve data 	*/
     
     BOOL bNoCache = FALSE;
     BOOL bSavePert = FALSE;

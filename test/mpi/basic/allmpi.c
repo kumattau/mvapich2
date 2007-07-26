@@ -4,8 +4,11 @@
  *      See COPYRIGHT in top-level directory.
  */
 #include "mpi.h"
-/* necessary to get the conditional definitions */
-#include "mpichconf.h"
+/* necessary to get the conditional definitions:
+   HAVE_FORTRAN_BINDING
+   MPI_MPI_IO
+*/
+#include "mpitestconf.h"
 #include <stdio.h>
 #include <string.h>
 
@@ -17,7 +20,7 @@ int tdelete_attr_fn(MPI_Datatype dtype, int i, void *buf1, void *buf2) {return 0
 int win_copy_attr_fn(MPI_Win win, int i, void *buf1, void *buf2, void *buf3, int *int_ptr) {return 0;}
 int win_delete_attr_fn(MPI_Win win, int i, void *buf1, void *buf2) {return 0;}
 void comm_errhan(MPI_Comm *comm_ptr, int *int_ptr, ...) {}
-#ifdef ROMIO_VERSION
+#ifdef HAVE_MPI_IO
 void file_errhan(MPI_File *file_ptr, int *int_ptr, ...) {}
 #endif
 void win_errhan(MPI_Win *win_ptr, int *int_ptr, ...) {}
@@ -58,12 +61,12 @@ void testAll(void)
     MPI_Info info = MPI_INFO_NULL;
     char *cmd = NULL;
     char *type_name = NULL;
-#ifdef ROMIO_VERSION
+#ifdef HAVE_MPI_IO
     MPI_File file = MPI_FILE_NULL;
     char *filename = NULL;
     int amode = 0;
     MPI_Offset size = 0, offset = 0;
-    MPIO_Request iorequest;
+    MPI_Request iorequest;
 #endif
 
     MPI_Send(vbuf, i, dtype, i, i, comm);
@@ -235,8 +238,8 @@ void testAll(void)
     MPI_Comm_get_name(comm, cbuf, &i);
     MPI_Comm_set_attr(comm, i, vbuf);
     MPI_Comm_set_name(comm, cbuf);
-#ifdef ROMIO_VERSION
-    /*MPI_File_call_errhandler(file, i);*/
+#ifdef HAVE_MPI_IO
+    MPI_File_call_errhandler(file, i);
 #endif
     MPI_Grequest_complete(request);
     MPI_Grequest_start(&query_fn, &free_fn, &cancel_fn, vbuf, &request);
@@ -267,8 +270,8 @@ void testAll(void)
     MPI_Comm_create_errhandler(&comm_errhan, &errhan);
     MPI_Comm_get_errhandler(comm, &errhan);
     MPI_Comm_set_errhandler(comm, errhan);
-#ifdef ROMIO_VERSION
-    /*MPI_File_create_errhandler(&file_errhan, &errhan);*/
+#ifdef HAVE_MPI_IO
+    MPI_File_create_errhandler(&file_errhan, &errhan);
     MPI_File_get_errhandler(file, &errhan);
     MPI_File_set_errhandler(file, errhan);
 #endif
@@ -291,11 +294,8 @@ void testAll(void)
     MPI_Status_c2f(&status, &fint);
     MPI_Status_f2c(&fint, &status);
 #endif
-#ifdef ROMIO_VERSION
-    /* Leave these out until they are moved out of ROMIO */
     MPI_Type_create_darray(i, i, i, &i, &i, &i, &i, i, dtype, &dtype);
     MPI_Type_create_subarray(i, &i, &i, &i, i, dtype, &dtype);
-#endif
     MPI_Type_create_hindexed(i, &i, &aint, dtype, &dtype);
     MPI_Type_create_hvector(i, i, aint, dtype, &dtype);
     MPI_Type_create_indexed_block(i, i, &i, dtype, &dtype);
@@ -307,7 +307,7 @@ void testAll(void)
     MPI_Win_create_errhandler(&win_errhan, &errhan);
     MPI_Win_get_errhandler(win, &errhan);
     MPI_Win_set_errhandler(win, errhan);
-#ifdef ROMIO_VERSION
+#ifdef HAVE_MPI_IO
     MPI_File_open(comm, filename, amode, info, &file);
     MPI_File_close(&file);
     MPI_File_delete(filename, info);
@@ -365,13 +365,6 @@ void testAll(void)
     MPI_Type_create_darray(i, i, i, &i, &i, &i, &i, i, dtype, &dtype);
     MPI_File_f2c(fint);
     MPI_File_c2f(file);
-    /* These are in mpio.h  Are they MPI functions? */
-    /*
-    MPIO_Test(&iorequest, &i, &status);
-    MPIO_Wait(&iorequest, &status);
-    MPIO_Request_c2f(iorequest);
-    MPIO_Request_f2c(fint);
-    */
 #endif
 }
 

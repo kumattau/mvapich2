@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: mpihandlemem.h,v 1.1.1.1 2006/01/18 21:09:42 huangwei Exp $
+/*  $Id: mpihandlemem.h,v 1.9 2006/06/27 17:20:55 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -42,7 +42,16 @@
   multiple types (for example, we may want a universal error handler for 
   errors return).  This is also used to indicate the type of MPI object a 
   MPI handle represents.  It is an enum because only this applies only the
-  the MPI objects.
+  the MPI and internal MPICH2 objects.
+
+  The 'MPID_PROCGROUP' kind is used to manage process groups (different
+  from MPI Groups) that are used to keep track of collections of
+  processes (each 'MPID_PROCGROUP' corresponds to a group of processes
+  that define an 'MPI_COMM_WORLD'.  This becomes important only 
+  when MPI-2 dynamic process features are supported.  'MPID_VCONN' is
+  a virtual connection; while this is not part of the overall ADI3
+  design, an object that manages connections to other processes is
+  a common need, and 'MPID_VCONN' may be used for that.
 
   Module:
   Attribute-DS
@@ -51,16 +60,18 @@ typedef enum MPID_Object_kind {
   MPID_COMM       = 0x1, 
   MPID_GROUP      = 0x2,
   MPID_DATATYPE   = 0x3,
-  MPID_FILE       = 0x4,
+  MPID_FILE       = 0x4,               /* This is not used */
   MPID_ERRHANDLER = 0x5,
   MPID_OP         = 0x6,
   MPID_INFO       = 0x7,
   MPID_WIN        = 0x8,
   MPID_KEYVAL     = 0x9,
   MPID_ATTR       = 0xa,
-  MPID_REQUEST    = 0xb
+  MPID_REQUEST    = 0xb,
+  MPID_PROCGROUP  = 0xc,               /* These are internal device objects */
+  MPID_VCONN      = 0xd
   } MPID_Object_kind;
-/* The above objects should correspond to MPI objects only. */
+
 #define HANDLE_MPI_KIND_SHIFT 26
 #define HANDLE_GET_MPI_KIND(a) ( ((a)&0x3c000000) >> HANDLE_MPI_KIND_SHIFT )
 
@@ -72,7 +83,7 @@ typedef enum MPID_Object_kind {
 /* Mask assumes that ints are at least 4 bytes */
 #define HANDLE_KIND_MASK 0xc0000000
 #define HANDLE_KIND_SHIFT 30
-#define HANDLE_GET_KIND(a) (((a)&HANDLE_KIND_MASK)>>HANDLE_KIND_SHIFT)
+#define HANDLE_GET_KIND(a) (((unsigned)(a)&HANDLE_KIND_MASK)>>HANDLE_KIND_SHIFT)
 #define HANDLE_SET_KIND(a,kind) ((a)|((kind)<<HANDLE_KIND_SHIFT))
 
 /* For indirect, the remainder of the handle has a block and index */
@@ -124,7 +135,6 @@ typedef struct MPIU_Object_alloc_t {
     int                direct_size;     /* Size of direct block */
 } MPIU_Object_alloc_t;
 extern void *MPIU_Handle_obj_alloc(MPIU_Object_alloc_t *);
-extern void MPIU_Handle_obj_alloc_start(MPIU_Object_alloc_t *);
 extern void MPIU_Handle_obj_alloc_complete(MPIU_Object_alloc_t *, int init);
 extern void MPIU_Handle_obj_free( MPIU_Object_alloc_t *, void * );
 void *MPIU_Handle_get_ptr_indirect( int, MPIU_Object_alloc_t * );

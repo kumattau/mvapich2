@@ -18,6 +18,7 @@ require "$maintdir/parse.sub";
 
 $debug = 0;
 $careful = 0;        # Set careful to 1 to flag unused messages
+$carefulFilename = "";
 $showfiles = 0;
 $quiet = 0;
 $build_test_pgm = 1;
@@ -36,6 +37,10 @@ foreach $arg (@ARGV) {
     elsif( $arg =~ /-quiet/) { $quiet = 1; }
     elsif( $arg =~ /-notest/) { $build_test_pgm = 0; }
     elsif( $arg =~ /-outfile=(.*)/) { $outfile = $1; }
+    elsif( $arg =~ /-careful=(.*)/) {
+	$careful = 1;
+	$carefulFilename = $1;
+    }
     elsif( $arg =~ /-careful/) { $careful = 1; }
     elsif( $arg =~ /-strict/)  { $gStrict = 1; }
     elsif( $arg =~ /-skip=(.*)/) { $skipFiles{$1} = 1; }
@@ -43,7 +48,7 @@ foreach $arg (@ARGV) {
 	print "Adding $arg to files\n" if $debug;
 	if (-d $arg) {
 	    # Add all .c files from directory $arg to the list of files 
-	    # to process (this lets shorten the arg list)
+	    # to process (this lets us shorten the arg list)
 	    @files = (@files, &ExpandDir( $arg ));
 	}
 	else {
@@ -51,17 +56,21 @@ foreach $arg (@ARGV) {
 	}
     }
 }
+# End of argument processing
+
+# Setup the basic file for errnames - Now determined in ExpandDirs
+#@errnameFiles = ( "$rootdir/src/mpi/errhan/errnames.txt" );
 
 if ($outfile ne "") {
     $OUTFD = "MyOutFile";
-    open( $OUTFD, ">$outfile" ) || die "Could not open $outfile\n";
+    open( $OUTFD, ">$outfile" ) or die "Could not open $outfile\n";
 }
 else {
     $OUTFD = STDOUT;
 }
 # Setup before processing the files
 if ($build_test_pgm && -d "test/mpi/errhan") {
-    open( TESTFD, ">test/mpi/errhan/errcode.c" ) || die "Cannot create test program\n";
+    open( TESTFD, ">test/mpi/errhan/errcode.c" ) or die "Cannot create test program\n";
     print TESTFD "/* -*- Mode: C++; c-basic-offset:4 ; -*- */\
 /*  \
  *  (C) 2004 by Argonne National Laboratory.\
@@ -84,6 +93,16 @@ foreach $file (@files) {
     print "$file\n" if $showfiles;
     &ProcessFile( $file );
 }
+
+#
+# Create the hash %longnames that maps the short names to the long names,
+# $longnames{shortname} => longname, by reading the errnames.txt files
+foreach my $sourcefile (@errnameFiles) {
+    #print STDERR "processing $sourcefile for error names\n";
+    &ReadErrnamesFile( $sourcefile );
+}
+
+# Create the output files from the input that we've read
 &CreateErrmsgsHeader( $OUTFD );
 &CreateErrMsgMapping( $OUTFD );
 
@@ -95,12 +114,20 @@ if ($build_test_pgm && -d "test/mpi/errhan") {
 #
 # Generate a list of unused keys
 if ($careful) {
+    my $OUTFD = STDERR;
+    if ($carefulFilename ne "") {
+	$OUTFD = "ERRFD";
+	open $OUTFD, ">$carefulFilename" or die "Cannot open $carefulFilename";
+    }
     foreach $shortname (keys(%longnames)) {
 	if (!defined($longnamesUsed{$shortname}) ||
 	    $longnamesUsed{$shortname} < 1) {
 	    $loc = $longnamesDefined{$shortname};
-	    print STDERR "Name $shortname is defined in $loc but never used\n";
+	    print $OUTFD "Name $shortname is defined in $loc but never used\n";
 	}
+    }
+    if ($carefulFilename ne "") {
+	close $OUTFD;
     }
 }
 
@@ -136,57 +163,9 @@ sub CreateErrmsgsHeader {
 # static const char[] long1 = "";
 # ...
 # static const namemap[] = { {short1, long1}, {...} }
+#
 sub CreateErrMsgMapping {
     my $OUTFD = $_[0];
-    my $sourcefile = "$rootdir/src/mpi/errhan/errnames.txt";
-    #
-    # Read the file with the long names
-    # Create the hash %longnames that maps the short names to the long names,
-    # $longnames{shortname} => longname.
-    #...
-    open( FD, "<$sourcefile" ) || return 0;
-    my $linecount = 0;
-    while (<FD>) {
-	$linecount++;
-	if (/^\s*\#/) { next; }
-	if (/^\s*(\*\*[^:]*):(.*)$/) {
-	    my $name = $1;
-	    my $repl = $2;
-	    $repl =~ s/\r*\n*$//g;
-	    while ($repl =~ /\\\s*$/) {
-		# If there is a \\ at the end, read another.  
-		# Remove the \ at the end (an alternative is to turn
-		# it into a \n (newline), but we may want to avoid 
-		# multiline messages
-		$repl =~ s/\\\s*$//;
-		my $inline = <FD>;
-		$linecount++;
-		$inline =~ s/^\s*//;   # remove leading spaces
-		$repl .= $inline;
-		$repl =~ s/[\r\n]*$//g; # remove newlines
-	    }
-	    my $namehasformat = ($name =~ /%/);
-	    my $replhasformat = ($repl =~ /%/);
-	    if ($namehasformat != $replhasformat) {
-		print STDERR "Warning: format control usage in $name and $repl do not agree in errnames.txt\n";
-	    }
-#	    if (!defined($longnames{"\"$name\""}))
-#	    {
-#		$longnames{"\"$name\""} = $repl;
-#		$longnamesDefined{"\"$name\""} = "$sourcefile:$linecount";
-#	    }
-	    if (!defined($longnames{$name}))
-	    {
-		$longnames{$name} = $repl;
-		$longnamesDefined{$name} = "$sourcefile:$linecount";
-	    }
-	    else
-	    {
-		print STDERR "Warning: attempt to redefine $name.  Duplicate ignored.\n";
-	    }
-	}
-    }
-    close( FD );
 
     # Create a mapping of MPI error classes to the specific error
     # message by index into generic_err_msgs.  This reads the file
@@ -197,8 +176,7 @@ sub CreateErrMsgMapping {
     @class_msgs = ();
     open (FD, "<$rootdir/src/mpi/errhan/baseerrnames.txt" ) || 
 	die "Could not open $rootdir/src/mpi/errhan/baseerrnames.txt\n";
-    while (<FD>)
-    {
+    while (<FD>) {
 	s/#.*$//;
 	my ($mpiname,$num,$shortmsg) = split(/\s\s*/);
 	if (!defined($shortmsg)) {
@@ -212,14 +190,9 @@ sub CreateErrMsgMapping {
 		print STDERR "Warning: generic message $shortmsg in baseerrnames.txt contains format control\n";
 	    }
 
-	    # Can we avoid using the quotes?  We'd like to because
-	    # they change the sort order
-#	    $generic_msgs{"\"$shortmsg\""}++;
-#	    $generic_loc{"\"$shortmsg\""} = ":baseerrnames.txt";
 	    $generic_msgs{$shortmsg}++;
 	    $generic_loc{$shortmsg} = ":baseerrnames.txt";
 
-#	    $class_msgs[$num] = "\"$shortmsg\"";
 	    $class_msgs[$num] = "$shortmsg";
 	}
     }
@@ -495,6 +468,76 @@ sub AddTestCall {
     }
 }
 
+# ==========================================================================
+# Read an errnames file.  This allows us to distribute the errnames.txt
+# files in the relevant modules, rather than making them part of one
+# single master file.
+# This updates the global hashs longnames and longnamesDefined
+#  ReadErrnamesFile( filename )
+# ==========================================================================
+sub ReadErrnamesFile {
+    my $sourcefile = $_[0];
+
+    open( FD, "<$sourcefile" ) or return 0;
+    my $linecount = 0;
+    while (<FD>) {
+	$linecount++;
+	# Skip Comments
+	if (/^\s*\#/) { next; }
+	# Read entire error message (allow \ at end of line to continue)
+	if (/^\s*(\*\*[^:]*):(.*)$/) {
+	    my $name = $1;
+	    my $repl = $2;
+	    $repl =~ s/\r*\n*$//g;
+	    while ($repl =~ /\\\s*$/) {
+		# If there is a \\ at the end, read another.  
+		# Remove the \ at the end (an alternative is to turn
+		# it into a \n (newline), but we may want to avoid 
+		# multiline messages
+		$repl =~ s/\\\s*$//;
+		my $inline = <FD>;
+		$linecount++;
+		$inline =~ s/^\s*//;   # remove leading spaces
+		$repl .= $inline;
+		$repl =~ s/[\r\n]*$//g; # remove newlines
+	    }
+
+	    # Check that the name and the replacement text at least
+	    # partially match as to format specifiers
+	    # (They should have exactly the same pattern, i.e., 
+	    # if the name has %d %x in is, the replacement should 
+	    # have %d %x, in that order)
+	    my $namehasformat = ($name =~ /%/);
+	    my $replhasformat = ($repl =~ /%/);
+	    if ($namehasformat != $replhasformat) {
+		print STDERR "Warning: format control usage in $name and $repl do not agree in $sourcefile\n";
+	    }
+#	    if (!defined($longnames{"\"$name\""}))
+#	    {
+#		$longnames{"\"$name\""} = $repl;
+#		$longnamesDefined{"\"$name\""} = "$sourcefile:$linecount";
+#	    }
+	    # Check that the replacement text doesn't include a unquoted
+	    # double quote
+	    if ($repl =~ /(.)\"/) {
+		my $prechar = $1;
+		if ($1 ne "\\") {
+		    print STDERR "Warning: Replacement text for $name contains an unescaped double quote: $repl\n";
+		}
+	    }
+	    if (!defined($longnames{$name}))
+	    {
+		$longnames{$name} = $repl;
+		$longnamesDefined{$name} = "$sourcefile:$linecount";
+	    }
+	    else
+	    {
+		print STDERR "Warning: attempt to redefine $name.  Duplicate ignored.\n";
+	    }
+	}
+    }
+    close( FD );
+}
 
 # ==========================================================================
 # Call this for each file
@@ -511,7 +554,7 @@ sub ProcessFile
     # Leave filename global for AddTest
     $filename = $_[0];
     my $linecount = 0;
-    open (FD, "<$filename" ) || die "Could not open $filename\n";
+    open (FD, "<$filename" ) or die "Could not open $filename\n";
 
     while (<FD>) {
 	$linecount++;
@@ -544,26 +587,37 @@ sub ProcessFile
 	%KnownErrRoutines = ( 'MPIR_Err_create_code'      => '5:3:1:1', 
 			      'MPIO_Err_create_code'      => '5:3:1:0', 
 			      'MPIU_ERR_SET'              => '2:-1:0:1',
+			      'MPIU_ERR_SET1'             => '2:-1:1:1',
+			      'MPIU_ERR_SET2'             => '2:-1:2:1',
 			      'MPIU_ERR_SETANDSTMT'       => '3:-1:0:1',
 			      'MPIU_ERR_SETFATALANDSTMT'  => '3:-1:0:1',
+			      'MPIU_ERR_SETFATALANDJUMP'  => '2:-1:0:1',
 			      'MPIU_ERR_SETANDSTMT1'      => '3:-1:1:1', 
 			      'MPIU_ERR_SETFATALANDSTMT1' => '3:-1:1:1', 
+			      'MPIU_ERR_SETFATALANDJUMP1' => '2:-1:1:1',
 			      'MPIU_ERR_SETANDSTMT2'      => '3:-1:1:1', 
-			      'MPIU_ERR_SETFATALANDSTMT2' => '3:-1:1:1', 
+			      'MPIU_ERR_SETFATALANDSTMT2' => '3:-1:1:1',
+			      'MPIU_ERR_SETFATALANDJUMP2' => '2:-1:1:1',
 			      'MPIU_ERR_SETANDSTMT3'      => '3:-1:1:1', 
 			      'MPIU_ERR_SETFATALANDSTMT3' => '3:-1:1:1', 
+			      'MPIU_ERR_SETANDSTMT4'      => '3:-1:1:1', 
+			      'MPIU_ERR_SETFATALANDSTMT4' => '3:-1:1:1', 
 			      'MPIU_ERR_SETANDJUMP'       => '2:-1:0:1',
 			      'MPIU_ERR_SETANDJUMP1'      => '2:-1:1:1', 
 			      'MPIU_ERR_SETANDJUMP2'      => '2:-1:1:1', 
 			      'MPIU_ERR_SETANDJUMP3'      => '2:-1:1:1', 
+			      'MPIU_ERR_SETANDJUMP4'      => '2:-1:1:1', 
 			      'MPIU_ERR_CHKANDSTMT'       => '4:-1:0:1', 
 			      'MPIU_ERR_CHKANDSTMT1'      => '4:-1:1:1', 
 			      'MPIU_ERR_CHKANDSTMT2'      => '4:-1:1:1', 
 			      'MPIU_ERR_CHKANDSTMT3'      => '4:-1:1:1', 
+			      'MPIU_ERR_CHKANDSTMT4'      => '4:-1:1:1', 
 			      'MPIU_ERR_CHKANDJUMP'       => '3:-1:0:1',
 			      'MPIU_ERR_CHKANDJUMP1'      => '3:-1:1:1',
 			      'MPIU_ERR_CHKANDJUMP2'      => '3:-1:1:1',
 			      'MPIU_ERR_CHKANDJUMP3'      => '3:-1:1:1',
+			      'MPIU_ERR_CHKANDJUMP4'      => '3:-1:1:1',
+			      'MPIR_ERRTEST_VALID_HANDLE' => '4:-1:0:1',
 			      );
 	while (/(MPI[OUR]_E[A-Za-z0-9_]+)\s*(\(.*)$/) {
 	    my $routineName = $1;
@@ -721,6 +775,7 @@ sub ProcessFile
 }
 
 # Get all of the .c files from the named directory, including any subdirs
+# Also, add any errnames.txt files to the errnamesFiles arrays
 sub ExpandDir {
     my $dir = $_[0];
     my @otherdirs = ();
@@ -736,9 +791,12 @@ sub ExpandDir {
 	elsif ($filename =~ /(.*\.[chi])$/) {
 	    # Test for both Unix- and Windows-style directory separators
 	    if (!defined($skipFiles{"$dir/$filename"}) &&
-		!defined($skipFiles{"dir\\$filename"})) {
+		!defined($skipFiles{"$dir\\$filename"})) {
 		$files[$#files + 1] = "$dir/$filename";
 	    }
+	}
+	elsif ($filename eq "errnames.txt") {
+	    $errnameFiles[$#errnameFiles+1] = "$dir/$filename";
 	}
     }
     closedir DIR;

@@ -5,9 +5,3 @@ distclean-local:
 
 maintainer-clean-local:
 	-rm -f include/mpidi_ch3_conf.h.in
-
-#
-# echomaxprocname gives the maximum length of a processor name, as used
-# by MPI_GET_PROCESSOR_NAME.  This is initialized in mpid_init
-echomaxprocname:
-	@echo 128

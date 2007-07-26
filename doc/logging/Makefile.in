@@ -17,6 +17,9 @@ srcdir = @srcdir@
 
 all-redirect: logging.pdf
 
+clean:
+	-rm -f *.toc *.out *.dvi user.ps user.pdf *.aux *.blg *.bbl *.log
+
 mandoc:
 
 htmldoc:

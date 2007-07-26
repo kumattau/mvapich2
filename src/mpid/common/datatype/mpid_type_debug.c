@@ -5,8 +5,8 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-#include <mpiimpl.h>
-#include <mpid_dataloop.h>
+#include "mpiimpl.h"
+#include "mpid_dataloop.h"
 #include <stdlib.h>
 #include <limits.h>
 
@@ -36,7 +36,8 @@ void MPIDI_Datatype_dot_printf(MPI_Datatype type,
 			       int header)
 {
     if (HANDLE_GET_KIND(type) == HANDLE_KIND_BUILTIN) {
-	MPIU_dbg_printf("MPIDI_Datatype_dot_printf: type is a basic\n");
+	MPIU_DBG_OUT(DATATYPE,
+			 "MPIDI_Datatype_dot_printf: type is a basic");
 	return;
     }
     else {
@@ -58,116 +59,128 @@ void MPIDI_Dataloop_dot_printf(MPID_Dataloop *loop_p,
     int i;
 
     if (header) {
-	MPIU_dbg_printf("digraph %p {   {\n", loop_p);
+	MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,
+				   "digraph %p {   {", loop_p));
     }
 
     switch (loop_p->kind & DLOOP_KIND_MASK) {
 	case DLOOP_KIND_CONTIG:
-	    MPIU_dbg_printf("      dl%d [shape = record, label = \"contig |{ ct = %d; el_sz = %d; el_ext = %d }\"];\n",
+	    MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,
+	    "      dl%d [shape = record, label = \"contig |{ ct = %d; el_sz = %d; el_ext = %d }\"];",
 			    depth,
 			    (int) loop_p->loop_params.c_t.count,
 			    (int) loop_p->el_size,
-			    (int) loop_p->el_extent);
+			    (int) loop_p->el_extent));
 	    break;
 	case DLOOP_KIND_VECTOR:
-	    MPIU_dbg_printf("      dl%d [shape = record, label = \"vector |{ ct = %d; blk = %d; str = %d; el_sz = %d; el_ext = %d }\"];\n",
+	    MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,
+	    "      dl%d [shape = record, label = \"vector |{ ct = %d; blk = %d; str = %d; el_sz = %d; el_ext = %d }\"];",
 			    depth,
 			    (int) loop_p->loop_params.v_t.count,
 			    (int) loop_p->loop_params.v_t.blocksize,
 			    (int) loop_p->loop_params.v_t.stride,
 			    (int) loop_p->el_size,
-			    (int) loop_p->el_extent);
+			    (int) loop_p->el_extent));
 	    break;
 	case DLOOP_KIND_INDEXED:
-	    MPIU_dbg_printf("      dl%d [shape = record, label = \"indexed |{ ct = %d; tot_blks = %d; regions = ",
+	    MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,
+	    "      dl%d [shape = record, label = \"indexed |{ ct = %d; tot_blks = %d; regions = ",
 			    depth,
 			    (int) loop_p->loop_params.i_t.count,
-			    (int) loop_p->loop_params.i_t.total_blocks);
+			    (int) loop_p->loop_params.i_t.total_blocks));
 	    
 	    /* 3 picked as arbitrary cutoff */
 	    for (i=0; i < 3 && i < loop_p->loop_params.i_t.count; i++) {
 		if (i + 1 < loop_p->loop_params.i_t.count) {
 		    /* more regions after this one */
-		    MPIU_dbg_printf("(%d, %d), ",
-				    (int) loop_p->loop_params.i_t.offset_array[i],
-				    (int) loop_p->loop_params.i_t.blocksize_array[i]);
+		    MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,
+		    "(%d, %d), ",
+			  (int) loop_p->loop_params.i_t.offset_array[i],
+		          (int) loop_p->loop_params.i_t.blocksize_array[i]));
 		}
 		else {
-		    MPIU_dbg_printf("(%d, %d); ",
-				    (int) loop_p->loop_params.i_t.offset_array[i],
-				    (int) loop_p->loop_params.i_t.blocksize_array[i]);
+		    MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,
+		           "(%d, %d); ",
+		           (int) loop_p->loop_params.i_t.offset_array[i],
+			   (int) loop_p->loop_params.i_t.blocksize_array[i]));
 		}
 	    }
 	    if (i < loop_p->loop_params.i_t.count) {
-		MPIU_dbg_printf("...; ");
+		MPIU_DBG_OUT(DATATYPE,"...; ");
 	    }
 
-	    MPIU_dbg_printf("el_sz = %d; el_ext = %d }\"];\n",
-			    (int) loop_p->el_size,
-			    (int) loop_p->el_extent);
+	    MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,
+				       "el_sz = %d; el_ext = %d }\"];\n",
+				       (int) loop_p->el_size,
+				       (int) loop_p->el_extent));
 	    break;
 	case DLOOP_KIND_BLOCKINDEXED:
-	    MPIU_dbg_printf("      dl%d [shape = record, label = \"blockindexed |{ ct = %d; blk = %d; disps = ",
+	    MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,
+	    "      dl%d [shape = record, label = \"blockindexed |{ ct = %d; blk = %d; disps = ",
 			    depth,
 			    (int) loop_p->loop_params.bi_t.count,
-			    (int) loop_p->loop_params.bi_t.blocksize);
+			    (int) loop_p->loop_params.bi_t.blocksize));
 	    
 	    /* 3 picked as arbitrary cutoff */
 	    for (i=0; i < 3 && i < loop_p->loop_params.bi_t.count; i++) {
 		if (i + 1 < loop_p->loop_params.bi_t.count) {
 		    /* more regions after this one */
-		    MPIU_dbg_printf("%d, ",
-				    (int) loop_p->loop_params.bi_t.offset_array[i]);
+		    MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,
+		        "%d, ",
+			(int) loop_p->loop_params.bi_t.offset_array[i]));
 		}
 		else {
-		    MPIU_dbg_printf("%d; ",
-				    (int) loop_p->loop_params.bi_t.offset_array[i]);
+		    MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,
+		         "%d; ",
+		         (int) loop_p->loop_params.bi_t.offset_array[i]));
 		}
 	    }
 	    if (i < loop_p->loop_params.bi_t.count) {
-		MPIU_dbg_printf("...; ");
+		MPIU_DBG_OUT(DATATYPE,"...; ");
 	    }
 
-	    MPIU_dbg_printf("el_sz = %d; el_ext = %d }\"];\n",
-			    (int) loop_p->el_size,
-			    (int) loop_p->el_extent);
+	    MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,
+				      "el_sz = %d; el_ext = %d }\"];",
+				       (int) loop_p->el_size,
+				       (int) loop_p->el_extent));
 	    break;
 	case DLOOP_KIND_STRUCT:
-	    MPIU_dbg_printf("      dl%d [shape = record, label = \"struct | {ct = %d; blks = ",
+	    MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,
+	    "      dl%d [shape = record, label = \"struct | {ct = %d; blks = ",
 			    depth,
-			    (int) loop_p->loop_params.s_t.count);
+			    (int) loop_p->loop_params.s_t.count));
 	    for (i=0; i < 3 && i < loop_p->loop_params.s_t.count; i++) {
 		if (i + 1 < loop_p->loop_params.s_t.count) {
-		    MPIU_dbg_printf("%d, ",
-				    (int) loop_p->loop_params.s_t.blocksize_array[i]);
+		    MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,"%d, ",
+			    (int) loop_p->loop_params.s_t.blocksize_array[i]));
 		}
 		else {
-		    MPIU_dbg_printf("%d; ",
-				    (int) loop_p->loop_params.s_t.blocksize_array[i]);
+		    MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,"%d; ",
+			    (int) loop_p->loop_params.s_t.blocksize_array[i]));
 		}
 	    }
 	    if (i < loop_p->loop_params.s_t.count) {
-		MPIU_dbg_printf("...; disps = ");
+		MPIU_DBG_OUT(DATATYPE,"...; disps = ");
 	    }
 	    else {
-		MPIU_dbg_printf("disps = ");
+		MPIU_DBG_OUT(DATATYPE,"disps = ");
 	    }
 
 	    for (i=0; i < 3 && i < loop_p->loop_params.s_t.count; i++) {
 		if (i + 1 < loop_p->loop_params.s_t.count) {
-		    MPIU_dbg_printf("%d, ",
-				    (int) loop_p->loop_params.s_t.offset_array[i]);
+		    MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,"%d, ",
+			    (int) loop_p->loop_params.s_t.offset_array[i]));
 		}
 		else {
-		    MPIU_dbg_printf("%d; ",
-				    (int) loop_p->loop_params.s_t.offset_array[i]);
+		    MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,"%d; ",
+			    (int) loop_p->loop_params.s_t.offset_array[i]));
 		}
 	    }
 	    if (i < loop_p->loop_params.s_t.count) {
-		MPIU_dbg_printf("... }\"];\n");
+		MPIU_DBG_OUT(DATATYPE,"... }\"];");
 	    }
 	    else {
-		MPIU_dbg_printf("}\"];\n");
+		MPIU_DBG_OUT(DATATYPE,"}\"];");
 	    }
 	    break;
 	default:
@@ -176,7 +189,8 @@ void MPIDI_Dataloop_dot_printf(MPID_Dataloop *loop_p,
 
     if (!(loop_p->kind & DLOOP_FINAL_MASK)) {
 	/* more loops to go; recurse */
-	MPIU_dbg_printf("      dl%d -> dl%d;\n", depth, depth + 1);
+	MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,
+				   "      dl%d -> dl%d;\n", depth, depth + 1));
 	switch (loop_p->kind & DLOOP_KIND_MASK) {
 	    case DLOOP_KIND_CONTIG:
 		MPIDI_Dataloop_dot_printf(loop_p->loop_params.c_t.dataloop, depth + 1, 0);
@@ -197,13 +211,13 @@ void MPIDI_Dataloop_dot_printf(MPID_Dataloop *loop_p,
 		}
 		break;
 	    default:
-		MPIU_dbg_printf("      < unsupported type >\n");
+		MPIU_DBG_OUT(DATATYPE,"      < unsupported type >");
 	}
     }
 
 
     if (header) {
-	MPIU_dbg_printf("   }\n}\n");
+	MPIU_DBG_OUT(DATATYPE,"   }\n}");
     }
     return;
 }
@@ -217,6 +231,9 @@ void MPIDI_Datatype_printf(MPI_Datatype type,
     char *string;
     int size;
     MPI_Aint extent, true_lb, true_ub, lb, ub, sticky_lb, sticky_ub;
+    MPIU_THREADPRIV_DECL;
+    
+    MPIU_THREADPRIV_GET;
 
     if (HANDLE_GET_KIND(type) == HANDLE_KIND_BUILTIN) {
 	string = MPIDU_Datatype_builtin_to_string(type);
@@ -244,11 +261,11 @@ void MPIDI_Datatype_printf(MPI_Datatype type,
 
     if (header == 1) {
 	/*               012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789 */
-	MPIU_dbg_printf("------------------------------------------------------------------------------------------------------------------------------------------\n");
-	MPIU_dbg_printf("depth                   type         size       extent      true_lb      true_ub           lb(s)           ub(s)         disp       blklen\n");
-	MPIU_dbg_printf("------------------------------------------------------------------------------------------------------------------------------------------\n");
+	MPIU_DBG_OUT(DATATYPE,"------------------------------------------------------------------------------------------------------------------------------------------\n");
+	MPIU_DBG_OUT(DATATYPE,"depth                   type         size       extent      true_lb      true_ub           lb(s)           ub(s)         disp       blklen\n");
+	MPIU_DBG_OUT(DATATYPE,"------------------------------------------------------------------------------------------------------------------------------------------\n");
     }
-    MPIU_dbg_printf("%5d  %21s  %11d  %11d  %11d  %11d  %11d(%1d)  %11d(%1d)  %11d  %11d\n",
+    MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,"%5d  %21s  %11d  %11d  %11d  %11d  %11d(%1d)  %11d(%1d)  %11d  %11d",
 		    depth,
 		    string,
 		    (int) size,
@@ -260,7 +277,7 @@ void MPIDI_Datatype_printf(MPI_Datatype type,
 		    (int) ub,
 		    (int) sticky_ub,
 		    (int) displacement,
-		    (int) blocklength);
+		    (int) blocklength));
     return;
 }
 /* --END ERROR HANDLING-- */
@@ -413,15 +430,17 @@ void MPIDU_Datatype_debug(MPI_Datatype type,
 
     is_builtin = (HANDLE_GET_KIND(type) == HANDLE_KIND_BUILTIN);
 
-    MPIU_dbg_printf("# MPIU_Datatype_debug: MPI_Datatype = 0x%0x (%s)\n", type,
-		    (is_builtin) ? MPIDU_Datatype_builtin_to_string(type) :
-		    "derived");
+    MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,
+	       "# MPIU_Datatype_debug: MPI_Datatype = 0x%0x (%s)", type,
+	       (is_builtin) ? MPIDU_Datatype_builtin_to_string(type) :
+	        "derived"));
 
     if (is_builtin) return;
 
     MPID_Datatype_get_ptr(type, dtp);
 
-    MPIU_dbg_printf("# Size = %d, Extent = %d, LB = %d%s, UB = %d%s, Extent = %d, Element Size = %d (%s), %s\n",
+    MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,
+      "# Size = %d, Extent = %d, LB = %d%s, UB = %d%s, Extent = %d, Element Size = %d (%s), %s",
 		    (int) dtp->size,
 		    (int) dtp->extent,
 		    (int) dtp->lb,
@@ -432,12 +451,12 @@ void MPIDU_Datatype_debug(MPI_Datatype type,
 		    (int) dtp->element_size,
 		    dtp->element_size == -1 ? "multiple types" :
 		    MPIDU_Datatype_builtin_to_string(dtp->eltype),
-		    dtp->is_contig ? "is N contig" : "is not N contig");
+		    dtp->is_contig ? "is N contig" : "is not N contig"));
 
-    MPIU_dbg_printf("# Contents:\n");
+    MPIU_DBG_OUT(DATATYPE,"# Contents:");
     MPIDI_Datatype_contents_printf(type, 0, array_ct);
 
-    MPIU_dbg_printf("# Dataloop:\n");
+    MPIU_DBG_OUT(DATATYPE,"# Dataloop:");
     MPIDI_Datatype_dot_printf(type, 0, 1);
 }
 
@@ -473,9 +492,9 @@ void MPIDI_Datatype_contents_printf(MPI_Datatype type,
     int *ints;
 
     if (HANDLE_GET_KIND(type) == HANDLE_KIND_BUILTIN) {
-	MPIU_dbg_printf("# %stype: %s\n",
+	MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,"# %stype: %s\n",
 			MPIDI_Datatype_depth_spacing(depth),
-			MPIDU_Datatype_builtin_to_string(type));
+			MPIDU_Datatype_builtin_to_string(type)));
 	return;
     }
 
@@ -489,9 +508,9 @@ void MPIDI_Datatype_contents_printf(MPI_Datatype type,
     aints = (MPI_Aint *) (((char *) ints) +
 			  cp->nr_ints * sizeof(int));
 
-    MPIU_dbg_printf("# %scombiner: %s\n",
+    MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,"# %scombiner: %s",
 		    MPIDI_Datatype_depth_spacing(depth),
-		    MPIDU_Datatype_combiner_to_string(cp->combiner));
+		    MPIDU_Datatype_combiner_to_string(cp->combiner)));
 
     switch (cp->combiner) {
 	case MPI_COMBINER_NAMED:
@@ -501,81 +520,86 @@ void MPIDI_Datatype_contents_printf(MPI_Datatype type,
 	    /* not done */
 	    return;
 	case MPI_COMBINER_CONTIGUOUS:
-	    MPIU_dbg_printf("# %scontig ct = %d\n", 
+	    MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,"# %scontig ct = %d\n", 
 			    MPIDI_Datatype_depth_spacing(depth),
-			    *ints);
+				       *ints));
 	    MPIDI_Datatype_contents_printf(*types,
 					   depth + 1,
 					   acount);
 	    return;
 	case MPI_COMBINER_VECTOR:
-	    MPIU_dbg_printf("# %svector ct = %d, blk = %d, str = %d\n",
-			    MPIDI_Datatype_depth_spacing(depth),
+	    MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,
+	                "# %svector ct = %d, blk = %d, str = %d\n",
+			MPIDI_Datatype_depth_spacing(depth), 
 			    ints[0],
 			    ints[1],
-			    ints[2]);
+			    ints[2]));
 	    MPIDI_Datatype_contents_printf(*types,
 					   depth + 1,
 					   acount);
 	    return;
-	case MPI_COMBINER_HVECTOR:
-	    MPIU_dbg_printf("# %shvector ct = %d, blk = %d, str = %d\n",
+        case MPI_COMBINER_HVECTOR:
+	    MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,
+	                  "# %shvector ct = %d, blk = %d, str = %d\n",
 			    MPIDI_Datatype_depth_spacing(depth),
 			    ints[0],
 			    ints[1],
-			    (int) aints[0]);
+			    (int) aints[0]));
 	    MPIDI_Datatype_contents_printf(*types,
 					   depth + 1,
 					   acount);
 	    return;
 	case MPI_COMBINER_INDEXED:
-	    MPIU_dbg_printf("# %sindexed ct = %d:\n",
+	    MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,"# %sindexed ct = %d:",
 			    MPIDI_Datatype_depth_spacing(depth),
-			    ints[0]);
+			    ints[0]));
 	    for (i=0; i < acount && i < ints[0]; i++) {
-		MPIU_dbg_printf("# %s  indexed [%d]: blk = %d, disp = %d\n",
+		MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,
+		         "# %s  indexed [%d]: blk = %d, disp = %d\n",
 				MPIDI_Datatype_depth_spacing(depth),
 				i,
 				ints[i+1],
-				ints[i+(cp->nr_ints/2)+1]);
+				ints[i+(cp->nr_ints/2)+1]));
 		MPIDI_Datatype_contents_printf(*types,
 					       depth + 1,
 					       acount);
 	    }
 	    return;
 	case MPI_COMBINER_HINDEXED:
-	    MPIU_dbg_printf("# %shindexed ct = %d:\n",
+	    MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,"# %shindexed ct = %d:",
 			    MPIDI_Datatype_depth_spacing(depth),
-			    ints[0]);
+			    ints[0]));
 	    for (i=0; i < acount && i < ints[0]; i++) {
-		MPIU_dbg_printf("# %s  hindexed [%d]: blk = %d, disp = %d\n",
+		MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,
+		            "# %s  hindexed [%d]: blk = %d, disp = %d\n",
 				MPIDI_Datatype_depth_spacing(depth),
 				i,
 				(int) ints[i+1],
-				(int) aints[i]);
+				(int) aints[i]));
 		MPIDI_Datatype_contents_printf(*types,
 					       depth + 1,
 					       acount);
 	    }
 	    return;
 	case MPI_COMBINER_STRUCT:
-	    MPIU_dbg_printf("# %sstruct ct = %d:\n",
+	    MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,"# %sstruct ct = %d:",
 			    MPIDI_Datatype_depth_spacing(depth),
-			    (int) ints[0]);
+			    (int) ints[0]));
 	    for (i=0; i < acount && i < ints[0]; i++) {
-		MPIU_dbg_printf("# %s  struct[%d]: blk = %d, disp = %d\n",
+		MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,
+		           "# %s  struct[%d]: blk = %d, disp = %d\n",
 				MPIDI_Datatype_depth_spacing(depth),
 				i,
 				(int) ints[i+1],
-				(int) aints[i]);
+				(int) aints[i]));
 		MPIDI_Datatype_contents_printf(types[i],
 					       depth + 1,
 					       acount);
 	    }
 	    return;
 	default:
-	    MPIU_dbg_printf("# %sunhandled combiner\n",
-			MPIDI_Datatype_depth_spacing(depth));
+	    MPIU_DBG_OUT_FMT(DATATYPE,(MPIU_DBG_FDEST,"# %sunhandled combiner",
+			MPIDI_Datatype_depth_spacing(depth)));
 	    return;
     }
 }

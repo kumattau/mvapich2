@@ -1,5 +1,5 @@
 ### End User configurable options ###
-SHELL = /bin/sh
+SHELL = @SHELL@
 
 # Installation directories ( not being used here )
 prefix           = @prefix@
@@ -24,8 +24,8 @@ TRACE_SRCDIR     = $(TRACE_HOME)/src/logformat/trace
 
 # Define the TRACE-API shared library name and utility program names here
 LIB_TRACE        = @LIBSO_PREFIX@TraceInput.la
-PGM_PRINT        = @TRACE_NAME@_print
-PGM_CHECK        = @TRACE_NAME@_check_timeorder
+PGM_PRINT        = @TRACE_NAME@_print@EXEEXT@
+PGM_CHECK        = @TRACE_NAME@_check_timeorder@EXEEXT@
 
 # Define the TRACE-API implementation here, only variable needs to be changed
 IMPL_CSRC        = trace_input.c rlogutil.c
@@ -35,10 +35,10 @@ CSRC             = $(IMPL_CSRC) logformat_trace_InputLog.c
 CSRC4T           = $(IMPL_CSRC) trace_print.c
 CSRC4E           = $(IMPL_CSRC) trace_check_timeorder.c
 
-OBJ              = $(CSRC:.c=.o)
+OBJ              = $(CSRC:.c=.@OBJEXT@)
 LOBJ             = $(CSRC:.c=.lo)
-OBJ4T            = $(CSRC4T:.c=.o)
-OBJ4E            = $(CSRC4E:.c=.o)
+OBJ4T            = $(CSRC4T:.c=.@OBJEXT@)
+OBJ4E            = $(CSRC4E:.c=.@OBJEXT@)
 
 CC               = @CC@
 INSTALL          = @INSTALL@ 
@@ -54,17 +54,17 @@ LDFLAGS          = -module -no-undefined -avoid-version @LDFLAGS@
 MEMLIBS          = @DEBUG_LIBS@
 
 .SUFFIXES:
-.SUFFIXES: .h .c .o .lo .la
+.SUFFIXES: .h .c .@OBJEXT@ .lo .la @EXEEXT@
 
-.c.o:
+.c.@OBJEXT@:
 	$(CC) $(CFLAGS) -c $<
 
 .c.lo:
 	$(LIBTOOL) --mode=compile $(CC) $(CFLAGS) -c $<
 
-ALL: BUILD_LIBSO $(PGM_PRINT) $(PGM_CHECK)
+ALL: $(libbuild_dir)/$(LIB_TRACE) $(binbuild_dir)/$(PGM_PRINT) $(binbuild_dir)/$(PGM_CHECK)
 
-BUILD_LIBSO: $(LOBJ)
+$(libbuild_dir)/$(LIB_TRACE): $(LOBJ)
 	if [ "$(EXPORT_SYMBOLS)" = "yes" ] ; then \
 	    $(LIBTOOL) --mode=link $(CC) -o $(LIB_TRACE) $(LOBJ) $(LDFLAGS) \
 	               -export-symbols $(srcdir)/JavaTraceInput.sym \
@@ -88,14 +88,14 @@ INSTALL_LIBSO: $(LOBJ)
 	$(LIBTOOL) --mode=install $(INSTALL) $(LIB_TRACE) $(DESTDIR)$(LIBDIR)
 	$(LIBTOOL) --finish $(LIBDIR)
 
-$(PGM_PRINT): $(OBJ4T)
-	$(CC) -o $(binbuild_dir)/$@ $(OBJ4T) $(MEMLIBS)
+$(binbuild_dir)/$(PGM_PRINT): $(OBJ4T)
+	$(CC) -o $@ $(OBJ4T) $(MEMLIBS)
 
-$(PGM_CHECK): $(OBJ4E)
-	$(CC) -o $(binbuild_dir)/$@ $(OBJ4E) $(MEMLIBS)
+$(binbuild_dir)/$(PGM_CHECK): $(OBJ4E)
+	$(CC) -o $@ $(OBJ4E) $(MEMLIBS)
 
 clean:
-	@-$(RM) *.o *.lo *.la
+	@-$(RM) *.@OBJEXT@ *.lo *.la
 
 realclean: clean
 	$(LIBTOOL) --mode=uninstall $(RM) $(libbuild_dir)/$(LIB_TRACE)

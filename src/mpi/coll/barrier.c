@@ -4,17 +4,6 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2006, The Ohio State University. All rights
- * reserved.
- *
- * This file is part of the MVAPICH2 software package developed by the
- * team members of The Ohio State University's Network-Based Computing
- * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
- *
- * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT_MVAPICH2 in the top level MVAPICH2 directory.
- *
- */
 
 #include "mpiimpl.h"
 
@@ -31,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Barrier
 #define MPI_Barrier PMPI_Barrier
 
 
@@ -227,7 +217,8 @@ int MPIR_Barrier( MPID_Comm *comm_ptr )
 #endif
 
 
-/* not declared static because a machine-specific function may call this one in some cases */
+/* not declared static because a machine-specific function may call this one 
+   in some cases */
 int MPIR_Barrier_inter( MPID_Comm *comm_ptr )
 {
     static const char FCNAME[] = "MPIR_Barrier_inter";
@@ -352,17 +343,12 @@ int MPI_Barrier( MPI_Comm comm )
     void* local_buf, *tmpbuf;
     int stride = 0, i, is_commutative, size;
     int leader_root, total_size, shmem_comm_rank;
-#ifdef RDMA_CM
-    char* value;
-    if ((value = getenv("MV2_USE_RDMA_CM")) != NULL)
-        disable_shmem_barrier = 1;
-#endif
 #endif
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_BARRIER);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("coll");
     MPID_MPI_COLL_FUNC_ENTER(MPID_STATE_MPI_BARRIER);
     
     /* Validate parameters, especially handles needing to be converted */
@@ -401,6 +387,8 @@ int MPI_Barrier( MPI_Comm comm )
     }
     else
     {
+	MPIU_THREADPRIV_DECL;
+	MPIU_THREADPRIV_GET;
         MPIR_Nest_incr();
         if (comm_ptr->comm_kind == MPID_INTRACOMM) {
 #ifdef _SMP_
@@ -445,10 +433,6 @@ int MPI_Barrier( MPI_Comm comm )
         }
         else {
             /* intercommunicator */ 
-	    /* mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_COMM, 
-					      "**intercommcoll",
-					      "**intercommcoll %s",
-                                              FCNAME ); */
             mpi_errno = MPIR_Barrier_inter( comm_ptr );
 	}
         MPIR_Nest_decr();
@@ -462,7 +446,7 @@ int MPI_Barrier( MPI_Comm comm )
 
   fn_exit:
     MPID_MPI_COLL_FUNC_EXIT(MPID_STATE_MPI_BARRIER);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("coll");
     return mpi_errno;
 
   fn_fail:
@@ -470,7 +454,8 @@ int MPI_Barrier( MPI_Comm comm )
 #   ifdef HAVE_ERROR_CHECKING
     {
 	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_barrier", "**mpi_barrier %C", comm);
+	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, 
+	    "**mpi_barrier", "**mpi_barrier %C", comm);
     }
 #   endif
     mpi_errno = MPIR_Err_return_comm( comm_ptr, FCNAME, mpi_errno );

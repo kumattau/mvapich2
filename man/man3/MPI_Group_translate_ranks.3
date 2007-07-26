@@ -1,9 +1,10 @@
-.TH MPI_Group_translate_ranks 3 "11/23/2005" " " "MPI"
+.TH MPI_Group_translate_ranks 3 "1/30/2007" " " "MPI"
 .SH NAME
 MPI_Group_translate_ranks \-  Translates the ranks of processes in one group to  those in another group 
 .SH SYNOPSIS
 .nf
-int MPI_Group_translate_ranks(MPI_Group group1, int n, int *ranks1, MPI_Group group2, int *ranks2)
+int MPI_Group_translate_ranks(MPI_Group group1, int n, int *ranks1, 
+                            MPI_Group group2, int *ranks2)
 .fi
 .SH INPUT PARAMETERS
 .PD 0
@@ -42,6 +43,12 @@ arrays (integer)
 when no 
 correspondence exists. 
 .PD 1
+
+As a special case (see the MPI-2 errata), if the input rank is
+.I MPI_PROC_NULL
+, 
+.I MPI_PROC_NULL
+is given as the output rank.
 
 .SH THREAD AND INTERRUPT SAFETY
 

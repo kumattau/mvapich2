@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Pack
 #define MPI_Pack PMPI_Pack
 
 #endif
@@ -39,14 +40,14 @@
 .  int *position - position
 -  MPI_Comm comm - communicator
 
-   Notes (from the specifications):
+  Notes (from the specifications):
 
-   The input value of position is the first location in the output buffer to be
-   used for packing.  position is incremented by the size of the packed message,
-   and the output value of position is the first location in the output buffer
-   following the locations occupied by the packed message.  The comm argument is
-   the communicator that will be subsequently used for sending the packed
-   message.
+  The input value of position is the first location in the output buffer to be
+  used for packing.  position is incremented by the size of the packed message,
+  and the output value of position is the first location in the output buffer
+  following the locations occupied by the packed message.  The comm argument is
+  the communicator that will be subsequently used for sending the packed
+  message.
 
 
 .N Fortran
@@ -71,7 +72,6 @@ int MPI_Pack(void *inbuf,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_PACK);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -97,7 +97,9 @@ int MPI_Pack(void *inbuf,
 	    MPIR_ERRTEST_COUNT(incount,mpi_errno);
 	    MPIR_ERRTEST_COUNT(outcount,mpi_errno);
 	    /* NOTE: inbuf could be null (MPI_BOTTOM) */
-	    MPIR_ERRTEST_ARGNULL(outbuf, "output buffer", mpi_errno);
+	    if (incount > 0) {
+		MPIR_ERRTEST_ARGNULL(outbuf, "output buffer", mpi_errno);
+	    }
 	    MPIR_ERRTEST_ARGNULL(position, "position", mpi_errno);
             /* Validate comm_ptr */
 	    /* If comm_ptr is not valid, it will be reset to null */
@@ -129,20 +131,33 @@ int MPI_Pack(void *inbuf,
 	MPID_Datatype_get_size_macro(datatype, tmp_sz);
 
 	if (tmp_sz * incount > outcount - *position) {
-	    mpi_errno = MPIR_Err_create_code(MPI_SUCCESS,
-					     MPIR_ERR_RECOVERABLE,
-					     FCNAME,
-					     __LINE__,
-					     MPI_ERR_ARG,
-					     "**arg",
-					     0);
-	    goto fn_fail;
+	    if (*position < 0) {
+		MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_ARG,
+				     "**argposneg","**argposneg %d",
+				     *position)
+	    }
+	    else if (outcount < 0) {
+		MPIU_ERR_SETANDJUMP2(mpi_errno,MPI_ERR_ARG,"**argneg",
+				     "**argneg %s %d","outcount",outcount);
+	    }
+	    else if (incount < 0) {
+		MPIU_ERR_SETANDJUMP2(mpi_errno,MPI_ERR_ARG,"**argneg",
+				     "**argneg %s %d","incount",incount);
+	    }
+	    else {
+		MPIU_ERR_SETANDJUMP2(mpi_errno,MPI_ERR_ARG,"**argpackbuf",
+				     "**argpackbuf %d %d", tmp_sz * incount, 
+				     outcount - *position );
+	    }
 	}
 	MPID_END_ERROR_CHECKS;
     }
 #endif /* HAVE_ERROR_CHECKING */
     
     /* ... body of routine ... */
+    if (incount == 0) {
+	goto fn_exit;
+    }
     
     /* TODO: CHECK RETURN VALUES?? */
     /* TODO: SHOULD THIS ALL BE IN A MPID_PACK??? */
@@ -188,7 +203,6 @@ int MPI_Pack(void *inbuf,
     
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_PACK);
-    MPID_CS_EXIT();
     return mpi_errno;
     
   fn_fail:

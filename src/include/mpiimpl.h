@@ -77,7 +77,7 @@
    portability)
    More detailed documentation is contained in the MPICH2 and ADI3 manuals.
  */
-/* ... to do ... */
+/* FIXME: ... to do ... */
 #include "mpitypedefs.h"
 
 #include "mpiimplthread.h"
@@ -88,7 +88,9 @@
 
 /* Include definitions from the device which must exist before items in this
    file (mpiimpl.h) can be defined. */
+/* ------------------------------------------------------------------------- */
 #include "mpidpre.h"
+/* ------------------------------------------------------------------------- */
 
 
 /* ------------------------------------------------------------------------- */
@@ -141,6 +143,9 @@ int MPIU_dbglog_vprintf(const char *str, va_list ap);
 #define MPIU_DBG_PRINTF(e)
 #define MPIU_DBG_PRINTF_CLASS(_c,_l,_e)
 #endif
+/* FIXME: These should use the MPIU_DBG_STMT macros and not be defined
+   as macros themselves (to make it clear that they are macros, and not
+   always called) */
 #ifdef USE_MPIU_DBG_PRINT_VC
 void MPIU_DBG_PrintVC(MPIDI_VC_t *vc);
 void MPIU_DBG_PrintVCState2(MPIDI_VC_t *vc, MPIDI_VC_State_t new_state);
@@ -166,30 +171,12 @@ void MPIU_dump_dbg_memlog(FILE * fp);
    using dbg_printf should be updated to use MPIU_DBG_PRINTF. */
 #define dbg_printf MPIU_dbg_printf
 
-/* For unconditional debug output, use the following */
-#define DBG_PRINTF printf
-#define DBG_FPRINTF fprintf
-
-/* Define MPICH_DEBUG_INTERNAL to compile in optional debugging
-   tests and routines.  These are enabled with the appropriate 
-   value for MPICH_DEBUG_ITEM, an environment variable that contains
-   a string.  This string is matched in the routine
-   MPIR_IDebug .
-
-   MPICH_DEBUG_INTERNAL is selected with a suitably high level choice of the
-   --enable-g option to configure.
- */
-#ifdef MPICH_DEBUG_INTERNAL
-extern int MPIR_IDebug( const char * );
-#endif
+/* MPIR_IDebug withdrawn because the MPIU_DBG_MSG interface provides 
+   a more flexible, integrated, and documented mechanism */
 
 /* ------------------------------------------------------------------------- */
 /* end of mpidebug.h */
 /* ------------------------------------------------------------------------- */
-
-/* Provisional routine (src/util/dbg/dbg_control.c) to test that the
-   environment value of "MPICH_DEBUG_ITEM" matches the input argument */
-int MPIR_IDebug( const char * );
 
 /* Routines for memory management */
 #include "mpimem.h"
@@ -358,17 +345,23 @@ typedef enum MPID_Lang_t { MPID_LANG_C
 /* This isn't quite right, since we need to distinguish between multiple 
    user threads and multiple implementation threads.
  */
-#define MPICH_DEBUG_MAX_REFCOUNT 64
 
-#if (USE_THREAD_IMPL != MPICH_THREAD_IMPL_NOT_IMPLEMENTED)
+
+/* If we're debugging the handles (including reference counts), 
+   add an additional test.  The check on a max refcount helps to 
+   detect objects whose refcounts are not decremented as many times
+   as they are incremented */
 #ifdef MPICH_DEBUG_HANDLES
-#define MPIU_Object_set_ref(objptr,val)												\
-{																\
-    if (1) {															\
-        MPIU_DBG_PRINTF(("set %p (0x%08x) refcount to %d in %s:%d\n", (objptr), (objptr)->handle, val, __FILE__, __LINE__));	\
-    }																\
-    ((MPIU_Handle_head*)(objptr))->ref_count = val;										\
-}
+#define MPICH_DEBUG_MAX_REFCOUNT 64
+#define MPIU_HANDLE_CHECK_REFCOUNT(_objptr,_op)           \
+  if (((MPIU_Handle_head*)(_objptr))->ref_count > MPICH_DEBUG_MAX_REFCOUNT){\
+        MPIU_DBG_MSG_FMT(HANDLE,TYPICAL,(MPIU_DBG_FDEST,  \
+         "Invalid refcount in %p (0x%08x) %s",            \
+         (_objptr), (_objptr)->handle, _op)); }	
+#else
+#define MPIU_HANDLE_CHECK_REFCOUNT(_objptr,_op)
+#endif
+
 
 /*M
    MPIU_Object_add_ref - Increment the reference count for an MPI object
@@ -413,17 +406,6 @@ typedef enum MPID_Lang_t { MPID_LANG_C
    as 'volatile' only when needed?  For now, the answer is no; there isn''t
    enough to be gained in that case.
 M*/
-#define MPIU_Object_add_ref(objptr)												\
-{																\
-    ((MPIU_Handle_head*)(objptr))->ref_count++;											\
-    if (1) {															\
-	MPIU_DBG_PRINTF(("incr %p (0x%08x) refcount in %s:%d, count=%d\n",							\
-			 (objptr), (objptr)->handle, __FILE__, __LINE__, (objptr)->ref_count));					\
-    }																\
-    if (((MPIU_Handle_head*)(objptr))->ref_count > MPICH_DEBUG_MAX_REFCOUNT){							\
-        MPIU_DBG_PRINTF(("Invalid refcount in %p (0x%08x) incr at %s:%d\n", (objptr), (objptr)->handle, __FILE__, __LINE__));	\
-    }																\
-}
 
 /*M
    MPIU_Object_release_ref - Decrement the reference count for an MPI object
@@ -486,54 +468,33 @@ M*/
    Module: 
    MPID_CORE
   M*/
-#define MPIU_Object_release_ref(objptr,inuse_ptr)										\
-{																\
-    *(inuse_ptr)=--((MPIU_Handle_head*)(objptr))->ref_count;									\
-    if (1) {															\
-	MPIU_DBG_PRINTF(("decr %p (0x%08x) refcount in %s:%d, count=%d\n",							\
-			 (objptr), (objptr)->handle, __FILE__, __LINE__, (objptr)->ref_count));					\
-    }																\
-    if (((MPIU_Handle_head*)(objptr))->ref_count > MPICH_DEBUG_MAX_REFCOUNT){							\
-        MPIU_DBG_PRINTF(("Invalid refcount in %p (0x%08x) decr at %s:%d\n", (objptr), (objptr)->handle, __FILE__, __LINE__));	\
-    }																\
-}
-#else
-#define MPIU_Object_set_ref(objptr,val) \
-    {((MPIU_Handle_head*)(objptr))->ref_count = val;}
-#define MPIU_Object_add_ref(objptr) \
-    {((MPIU_Handle_head*)(objptr))->ref_count++;}
-#define MPIU_Object_release_ref(objptr,inuse_ptr) \
-    {*(inuse_ptr)=--((MPIU_Handle_head*)(objptr))->ref_count;}
-#endif
-#else
-#if defined(USE_ATOMIC_UPDATES)
-#define MPIU_Object_set_ref(objptr,val) \
-    {((MPIU_Handle_head*)(objptr))->ref_count = val;}
-#define MPIU_Object_add_ref(objptr) \
-    {MPID_Atomic_incr(&((objptr)->ref_count));}
-#define MPIU_Object_release_ref(objptr,inuse_ptr)		\
-{								\
-    int nzflag__;						\
-    MPID_Atomic_decr_flag(&((objptr)->ref_count),nzflag__);	\
-    *inuse_ptr = nzflag__;					\
-}
-#else
-#define MPIU_Object_set_ref(objptr,val) \
-    {((MPIU_Handle_head*)(objptr))->ref_count = val;}
-#define MPIU_Object_add_ref(objptr)		\
-{						\
-    MPID_Common_thread_lock();			\
-    (objptr)->ref_count++;			\
-    MPID_Common_thread_unlock();		\
-}
-#define MPIU_Object_release_ref(objptr,inuse_ptr)	\
-{							\
-    MPID_Common_thread_lock();				\
-    *(inuse_ptr)=--(objptr)->ref_count;			\
-    MPID_Common_thread_unlock();			\
-}
-#endif
-#endif
+
+/* The MPIU_DBG... statements are macros that vanish unless
+   --enable-g=log is selected.  MPIU_HANDLE_CHECK_REFCOUNT is 
+   defined above, and adds an additional sanity check for the refcounts
+*/
+#define MPIU_Object_set_ref(objptr,val)                \
+    {((MPIU_Handle_head*)(objptr))->ref_count = val;   \
+    MPIU_DBG_MSG_FMT(HANDLE,TYPICAL,(MPIU_DBG_FDEST,   \
+            "set %p (0x%08x) refcount to %d",          \
+       (objptr), (objptr)->handle, val));              \
+    }
+#define MPIU_Object_add_ref(objptr)                    \
+    {((MPIU_Handle_head*)(objptr))->ref_count++;       \
+    MPIU_DBG_MSG_FMT(HANDLE,TYPICAL,(MPIU_DBG_FDEST,   \
+      "incr %p (0x%08x) refcount to %d",	       \
+     (objptr), (objptr)->handle, (objptr)->ref_count));\
+    MPIU_HANDLE_CHECK_REFCOUNT(objptr,"incr");         \
+    }
+#define MPIU_Object_release_ref(objptr,inuse_ptr)             \
+    {*(inuse_ptr)=--((MPIU_Handle_head*)(objptr))->ref_count; \
+	MPIU_DBG_MSG_FMT(HANDLE,TYPICAL,(MPIU_DBG_FDEST,      \
+        "decr %p (0x%08x) refcount to %d",                    \
+        (objptr), (objptr)->handle, (objptr)->ref_count));    \
+    MPIU_HANDLE_CHECK_REFCOUNT(objptr,"decr");                \
+    }
+
+
 
 /* ------------------------------------------------------------------------- */
 /* mpiobjref.h */
@@ -700,6 +661,8 @@ int MPIU_Param_get_string( const char [], const char *, char ** );
 void MPIU_Param_finalize( void );
 
 int MPIU_GetEnvRange( const char *, int *, int * );
+int MPIU_GetEnvInt( const char *, int * );
+int MPIU_GetEnvBool( const char *envName, int *val );
 
 /* ------------------------------------------------------------------------- */
 /* end of mpiparam.h*/
@@ -760,8 +723,9 @@ int MPIU_GetEnvRange( const char *, int *, int * );
   and a simple linked list is easy to implement and to maintain.  Similarly,
   a single structure rather than separate header and element structures are
   defined for simplicity.  No separate thread lock is provided because
-  info routines are not performance critical; they use the 'common_lock' 
-  in the 'MPIR_Process' structure when they need a thread lock.
+  info routines are not performance critical; they may use the single
+  critical section lock in the 'MPIR_Process' structure when they need a
+  thread lock.
   
   This particular form of linked list (in particular, with this particular
   choice of the first two members) is used because it allows us to use 
@@ -850,6 +814,15 @@ extern MPIU_Object_alloc_t MPID_Errhandler_mem;
 /* Preallocated errhandler objects */
 extern MPID_Errhandler MPID_Errhandler_builtin[];
 extern MPID_Errhandler MPID_Errhandler_direct[];
+
+#define MPIR_Errhandler_add_ref( _errhand ) \
+    { MPIU_Object_add_ref( _errhand );      \
+      MPIU_DBG_MSG_FMT(REFCOUNT,TYPICAL,(MPIU_DBG_FDEST,\
+         "Incr errhandler %p ref count to %d",_errhand,_errhand->ref_count));}
+#define MPIR_Errhandler_release_ref( _errhand, _inuse ) \
+     { MPIU_Object_release_ref( _errhand, _inuse ); \
+       MPIU_DBG_MSG_FMT(REFCOUNT,TYPICAL,(MPIU_DBG_FDEST,\
+         "Decr errhandler %p ref count to %d",_errhand,_errhand->ref_count));}
 /* ------------------------------------------------------------------------- */
 
 /* ------------------------------------------------------------------------- */
@@ -1004,6 +977,16 @@ typedef struct MPID_Keyval {
 #endif
 } MPID_Keyval;
 
+#define MPIR_Keyval_add_ref( _keyval ) \
+    { MPIU_Object_add_ref( _keyval );                   \
+      MPIU_DBG_MSG_FMT(REFCOUNT,TYPICAL,(MPIU_DBG_FDEST,\
+         "Incr keyval %p ref count to %d",_keyval,_keyval->ref_count));}
+
+#define MPIR_Keyval_release_ref( _keyval, _inuse ) \
+    { MPIU_Object_release_ref( _keyval, _inuse );        \
+       MPIU_DBG_MSG_FMT(REFCOUNT,TYPICAL,(MPIU_DBG_FDEST,\
+         "Decr keyval %p ref count to %d",_keyval,_keyval->ref_count));}
+
 /* Attributes need no ref count or handle, but since we want to use the
    common block allocator for them, we must provide those elements 
 */
@@ -1119,6 +1102,17 @@ extern MPIU_Object_alloc_t MPID_Group_mem;
 #define MPID_GROUP_N_BUILTIN 1
 extern MPID_Group MPID_Group_builtin[MPID_GROUP_N_BUILTIN];
 extern MPID_Group MPID_Group_direct[];
+
+#define MPIR_Group_add_ref( _group ) \
+    { MPIU_Object_add_ref( _group );                    \
+      MPIU_DBG_MSG_FMT(REFCOUNT,TYPICAL,(MPIU_DBG_FDEST,\
+         "Incr group %p ref count to %d",_group,_group->ref_count));}
+
+#define MPIR_Group_release_ref( _group, _inuse ) \
+     { MPIU_Object_release_ref( _group, _inuse ); \
+       MPIU_DBG_MSG_FMT(REFCOUNT,TYPICAL,(MPIU_DBG_FDEST,\
+         "Decr group %p ref count to %d",_group,_group->ref_count));}
+
 /* ------------------------------------------------------------------------- */
 
 /*E
@@ -1140,6 +1134,12 @@ typedef enum MPID_Comm_kind_t {
   This definition provides only a 16-bit integer for context id''s .
   This should be sufficient for most applications.  However, extending
   this to a 32-bit (or longer) integer should be easy.
+
+  There are two context ids.  One is used for sending and one for 
+  receiving.  In the case of an Intracommunicator, they are the same
+  context id.  They differ in the case of intercommunicators, where 
+  they may come from processes in different comm worlds (in the
+  case of MPI-2 dynamic process intercomms).  
 
   The virtual connection table is an explicit member of this structure.
   This contains the information used to contact a particular process,
@@ -1182,7 +1182,8 @@ typedef enum MPID_Comm_kind_t {
 typedef struct MPID_Comm { 
     int           handle;        /* value of MPI_Comm for this structure */
     volatile int  ref_count;
-    int16_t       context_id;    /* Assigned context id */
+    int16_t       context_id;    /* Send context id.  See notes */
+    int16_t       recvcontext_id;/* Assigned context id */
     int           remote_size;   /* Value of MPI_Comm_(remote)_size */
     int           rank;          /* Value of MPI_Comm_rank */
     MPID_VCRT     vcrt;          /* virtual connecton reference table */
@@ -1208,8 +1209,8 @@ typedef struct MPID_Comm {
 				     intercommunicator collective operations
 				     that wish to use half-duplex operations
 				     to implement a full-duplex operation */
-    struct MPID_Comm     *comm_next;/* Provides a chain through all active
-                                       communicators */
+    struct MPID_Comm     *comm_next;/* Provides a chain through all active 
+				       communicators */
     struct MPID_Collops  *coll_fns; /* Pointer to a table of functions 
                                               implementing the collective 
                                               routines */
@@ -1234,10 +1235,26 @@ typedef struct MPID_Comm {
 #endif
 } MPID_Comm;
 extern MPIU_Object_alloc_t MPID_Comm_mem;
-void MPIR_Comm_add_ref(MPID_Comm *);
-int MPIR_Comm_release(MPID_Comm *);
 
-#define MPIR_Comm_add_ref(_comm) MPIU_Object_add_ref((_comm))
+/* MPIR_Comm_release is a helper routine that releases references to a comm.
+   The second arg is false unless this is called as part of 
+   MPI_Comm_disconnect .
+
+   Question: Should this only be called if the ref count on the 
+   comm is zero, thus avoiding a function call in the typical case?
+*/
+int MPIR_Comm_release(MPID_Comm *, int );
+
+#define MPIR_Comm_add_ref(_comm) \
+    { MPIU_Object_add_ref((_comm));                     \
+      MPIU_DBG_MSG_FMT(REFCOUNT,TYPICAL,(MPIU_DBG_FDEST,\
+         "Incr comm %p ref count to %d",_comm,_comm->ref_count));}
+
+#define MPIR_Comm_release_ref( _comm, _inuse ) \
+     { MPIU_Object_release_ref( _comm, _inuse );         \
+       MPIU_DBG_MSG_FMT(REFCOUNT,TYPICAL,(MPIU_DBG_FDEST,\
+         "Decr comm %p ref count to %d",_comm,_comm->ref_count));}
+
 /* Preallocated comm objects */
 #define MPID_COMM_N_BUILTIN 2
 extern MPID_Comm MPID_Comm_builtin[MPID_COMM_N_BUILTIN];
@@ -1260,6 +1277,13 @@ extern MPID_Comm MPID_Comm_direct[];
 #define MPID_CONTEXT_INTER_COLL  1
 #define MPID_CONTEXT_INTER_COLLA 2
 #define MPID_CONTEXT_INTER_COLLB 3
+
+/* Utility routines.  Where possible, these are kept in the source directory
+   with the other comm routines (src/mpi/comm, in mpicomm.h).  However,
+   to create a new communicator after a spawn or connect-accept operation, 
+   the device may need to create a new contextid */
+int MPIR_Get_contextid( MPID_Comm * );
+
 /* ------------------------------------------------------------------------- */
 
 /* Requests */
@@ -1308,10 +1332,6 @@ typedef void (MPIR_Grequest_f77_query_function)(void *, MPI_Status *, int *);
 typedef struct MPID_Request {
     int          handle;
     volatile int ref_count;
-#if (USE_THREAD_IMPL == MPICH_THREAD_IMPL_NOT_IMPLEMENTED)
-    /* initialized flag/lock used to by recv queue and recv code for thread safety */
-    MPID_Thread_mutex_t initialized;
-#endif
     MPID_Request_kind_t kind;
     /* completion counter */
     volatile int cc;
@@ -1331,7 +1351,7 @@ typedef struct MPID_Request {
     MPI_Grequest_free_function   *free_fn;
     MPI_Grequest_query_function  *query_fn;
     void *grequest_extra_state;
-    MPID_Lang_t                  greq_lang;         /* langage that defined
+    MPID_Lang_t                  greq_lang;         /* language that defined
 						       the generalize req */
     
     /* Other, device-specific information */
@@ -1342,6 +1362,40 @@ typedef struct MPID_Request {
 extern MPIU_Object_alloc_t MPID_Request_mem;
 /* Preallocated request objects */
 extern MPID_Request MPID_Request_direct[];
+
+#define MPIR_Request_add_ref( _req ) \
+    { MPIU_Object_add_ref( _req );                      \
+      MPIU_DBG_MSG_FMT(REFCOUNT,TYPICAL,(MPIU_DBG_FDEST,\
+         "Incr request %p ref count to %d",_req,_req->ref_count));}
+
+#define MPIR_Request_release_ref( _req, _inuse ) \
+     { MPIU_Object_release_ref( _req, _inuse );          \
+       MPIU_DBG_MSG_FMT(REFCOUNT,TYPICAL,(MPIU_DBG_FDEST,\
+         "Decr request %p ref count to %d",_req,_req->ref_count));}
+
+/* These macros allow us to implement a sendq when debugger support is
+   selected.  As there is extra overhead for this, we only do this
+   when specifically requested 
+*/
+#ifdef HAVE_DEBUGGER_SUPPORT
+void MPIR_WaitForDebugger( void );
+void MPIR_Sendq_remember(MPID_Request *, int, int, int );
+void MPIR_Sendq_forget(MPID_Request *);
+void MPIR_CommL_remember( MPID_Comm * );
+void MPIR_CommL_forget( MPID_Comm * );
+
+#define MPIR_SENDQ_REMEMBER(_a,_b,_c,_d) MPIR_Sendq_remember(_a,_b,_c,_d)
+#define MPIR_SENDQ_FORGET(_a) MPIR_Sendq_forget(_a)
+#define MPIR_COMML_REMEMBER(_a) MPIR_CommL_remember( _a )
+#define MPIR_COMML_FORGET(_a) MPIR_CommL_forget( _a )
+#else
+#define MPIR_SENDQ_REMEMBER(a,b,c,d)
+#define MPIR_SENDQ_FORGET(a)
+#define MPIR_COMML_REMEMBER(_a) 
+#define MPIR_COMML_FORGET(_a) 
+#endif
+
+
 /* ------------------------------------------------------------------------- */
 
 
@@ -1417,6 +1471,7 @@ typedef struct MPID_Win {
 #ifdef USE_THREADED_WINDOW_CODE
     /* These were causing compilation errors.  We need to figure out how to
        integrate threads into MPICH2 before including these fields. */
+    /* FIXME: The test here should be within a test for threaded support */
 #ifdef HAVE_PTHREAD_H
     pthread_t wait_thread_id; /* id of thread handling MPI_Win_wait */
     pthread_t passive_target_thread_id; /* thread for passive target RMA */
@@ -1626,6 +1681,12 @@ typedef struct MPID_Op {
 extern MPID_Op MPID_Op_builtin[MPID_OP_N_BUILTIN];
 extern MPID_Op MPID_Op_direct[];
 extern MPIU_Object_alloc_t MPID_Op_mem;
+
+#define MPIR_Op_release_ref( _op, _inuse ) \
+    { MPIU_Object_release_ref( _op, _inuse ); \
+       MPIU_DBG_MSG_FMT(REFCOUNT,TYPICAL,(MPIU_DBG_FDEST,\
+         "Decr MPI_Op %p ref count to %d",_op,_op->ref_count));}
+
 /* ------------------------------------------------------------------------- */
 
 /* ------------------------------------------------------------------------- */
@@ -1697,28 +1758,6 @@ typedef struct MPID_TopoOps {
 /* end of mpitopo.h (in src/mpi/topo? */
 /* ------------------------------------------------------------------------- */
 
-/* ------------------------------------------------------------------------- */
-/* Files */
-/* FIXME: Make this compatible with ROMIO */
-/* The "USE_ROMIO_FILE" definition tells MPICH2 to use the MPI_File
-   defined by ROMIO, rather than the standard object handles used for the
-   other MPI objects.  This is temporary, until ROMIO is modified to 
-   work with the new object handles */
-#define USE_ROMIO_FILE
-typedef struct MPID_File {
-    int           handle;             /* value of MPI_File for this structure */
-    volatile int  ref_count;
-    MPID_Errhandler *errhandler;  /* Pointer to the error handler structure */
-  /* Other, device-specific information */
-#ifdef MPID_DEV_FILE_DECL
-    MPID_DEV_FILE_DECL
-#endif
-} MPID_File;
-extern MPIU_Object_alloc_t MPID_File_mem;
-/* Preallocated file objects */
-extern MPID_File MPID_File_direct[];
-/* ------------------------------------------------------------------------- */
-
 /* Time stamps */
 /* Get the timer definitions.  The source file for this include is
    src/mpi/timer/mpichtimer.h.in */
@@ -1744,13 +1783,15 @@ typedef struct MPICH_Nestinfo {
     int  line;
 } MPICH_Nestinfo_t;
 #define MPICH_MAX_NESTINFO 16
-#endif
+#endif /* MPICH_DEBUG_NESTING */
+
 typedef struct MPICH_PerThread_t {
     int              nest_count;   /* For layered MPI implementation */
     int              op_errno;     /* For errors in predefined MPI_Ops */
 #ifdef MPICH_DEBUG_NESTING
     MPICH_Nestinfo_t nestinfo[MPICH_MAX_NESTINFO];
 #endif
+    /* FIXME: Is this used anywhere? */
 #ifdef HAVE_TIMING
     MPID_Stateinfo_t timestamps[MPICH_MAX_STATES];  /* per thread state info */
 #endif
@@ -1759,134 +1800,77 @@ typedef struct MPICH_PerThread_t {
 #endif    
 } MPICH_PerThread_t;
 
-#if (MPICH_THREAD_LEVEL < MPI_THREAD_MULTIPLE || USE_THREAD_IMPL != MPICH_THREAD_IMPL_NOT_IMPLEMENTED)
+#if !defined(MPICH_IS_THREADED)
+/* If single threaded, make this point at a pre-allocated segment.
+   This structure is allocated in src/mpi/init/initthread.c */
 extern MPICH_PerThread_t MPIR_Thread;
 
-#define MPID_Common_thread_lock()
-#define MPID_Common_thread_unlock()
+/* The following three macros define a way to portably access thread-private
+   storage in MPICH2, and avoid extra overhead when MPICH2 is single 
+   threaded
+   INITKEY - Create the key.  Must happen *before* the other threads 
+             are created
+   INIT    - Create the thread-private storage.  Must happen once per thread
+   DECL    - Declare local variables
+   GET     - Access the thread-private storage
+   FIELD   - Access the thread-private field (by name)
 
-/*M
-  MPID_Comm_thread_lock - Acquire a thread lock for a communicator
+   The "DECL" is the extern so that there is always a statement for
+   the declaration.
+*/
+#define MPIU_THREADPRIV_INITKEY
+#define MPIU_THREADPRIV_INIT 
+/* Empty declarations are not allowed in C. However multiple decls are allowed */
+#define MPIU_THREADPRIV_DECL extern MPICH_PerThread_t MPIR_Thread
+#define MPIU_THREADPRIV_GET
+#define MPIU_THREADPRIV_FIELD(_a) (MPIR_Thread._a)
 
-  Synopsis:
-.vb
-    void MPID_Comm_thread_lock( MPID_Comm *comm )
-.ve
+#elif  defined(HAVE_RUNTIME_THREADCHECK)
+/* In the case where the thread level is set in MPI_Init_thread, we
+   need a blended version of the non-threaded and the thread-multiple
+   definitions.
+   
+   The approach is to have TWO MPICH_PerThread_t pointers.  One is local
+   (The MPIU_THREADPRIV_DECL is used in the routines local definitions), 
+   as in the threaded version of these macros.  This is set by using a routine
+   to get thread-private storage.  The second is a preallocated, extern 
+   MPICH_PerThread_t struct, as in the single threaded case.  Based on
+   MPIR_Process.isThreaded, one or the other is used.
+   
+ */
+/* For the single threaded case, we use a preallocated structure 
+   This structure is allocated in src/mpi/init/initthread.c */
+extern MPICH_PerThread_t MPIR_ThreadSingle;
 
-  Input Parameter:
-. comm - Communicator to lock
+#define MPIU_THREADPRIV_INITKEY  \
+    {if (MPIR_Process.isThreaded) {\
+    MPID_Thread_tls_create(NULL,&MPIR_Process.thread_storage,NULL);}}
+#define MPIU_THREADPRIV_INIT {if (MPIR_Process.isThreaded) {\
+	MPICH_PerThread_t *(pt_) = (MPICH_PerThread_t *) MPIU_Calloc(1, sizeof(MPICH_PerThread_t));	\
+	MPID_Thread_tls_set(&MPIR_Process.thread_storage, (void *) (pt_)); \
+        }}
+#define MPIU_THREADPRIV_DECL \
+    MPICH_PerThread_t *MPIR_Thread=0
+#define MPIU_THREADPRIV_GET  \
+    {if (!MPIR_Thread){MPIR_GetPerThread( &MPIR_Thread );}}
+#define MPIU_THREADPRIV_FIELD(_a) (MPIR_Thread->_a)
 
-  Notes:
-  This routine acquires a lock among threads in the same MPI process that
-  may use this communicator.  In all MPI thread modes except for
-  'MPI_THREAD_MULTIPLE', this can be a no-op.  In an MPI implementation
-  that does not provide 'MPI_THREAD_MULTIPLE', this may be a macro.
+#else /* Thread multiple */
+/* The following three macros define a way to portably access thread-private
+   storage in MPICH2, and avoid extra overhead when MPICH2 is single 
+   threaded.  We initialize the MPIR_Thread pointer to null so that
+   we need call the routine to get the thread-private storage only once
+   in an invocation of a routine.  */
 
-  It is invalid for a thread that has acquired the lock to attempt to 
-  acquire it again.  The lock must be released by 'MPID_Comm_thread_unlock'.
-
-  Note that there is also a common per-process lock ('common_lock').  
-  That lock should be used instead of a lock on lock on 'MPI_COMM_WORLD' when
-  a lock across all threads is required.
-
-  A high-quality implementation may wish to provide fair access to the lock.
-
-  In general, the MPICH implementation tries to avoid using locks because 
-  they can cause problems such as livelock and deadlock, particularly when
-  an error occurs.  However, the semantics of MPI collective routines make 
-  it difficult to avoid using locks.  Further, good programming practice by
-  MPI programmers should be to avoid having multiple threads using the
-  same communicator.
-
-  Module:
-  Communicator
-
-  See Also: 
-  'MPID_Comm_thread_unlock'
-
-  Questions:
-  Do we also need versions of this for datatypes and window objects?  
-  For example, communicators, datatypes, and window objects all have 
-  attributes; do we need a thread lock for each type?  Should we instead have
-  an MPI Object, on which some common operations, such as thread lock, 
-  reference count, and name are implemented?  Note that there is a 
-  common lock for operations that are infrequently performed and do not 
-  require fine-grain locking.
-  M*/
-#define MPID_Comm_thread_lock(comm_ptr_)
-/*M
-  MPID_Comm_thread_unlock - Release a thread lock for a communicator
-
-  Synopsis:
-.vb
-   void MPID_Comm_thread_unlock( MPID_Comm *comm )
-.ve
-
-  Input Parameter:
-. comm - Communicator to unlock
-
-  Module:
-  Communicator
-
-  See Also: 
-  'MPID_Comm_thread_lock'
-M*/
-#define MPID_Comm_thread_unlock(comm_ptr_)
-
-#define MPID_Request_construct(request_ptr_)
-#define MPID_Request_destruct(request_ptr_)
-#define MPID_Request_thread_lock(request_ptr_)
-#define MPID_Request_thread_unlock(request_ptr_)
-#define MPID_Request_initialized_clear(request_ptr_)
-#define MPID_Request_initialized_set(request_ptr_)
-#define MPID_Request_initialized_wait(request_ptr_)
-/* The basic thread lock/unlock are defined in mpiimplthread.h */
-/* #define MPID_Thread_lock( ptr ) */
-/* #define MPID_Thread_unlock( ptr ) */
-#else
-#define MPID_Common_thread_lock() \
-     { MPIU_DBG_MSG(THREAD,TYPICAL,"Enter global critical section");\
-     MPID_Thread_mutex_lock( &MPIR_Process.common_lock ); }
-#define MPID_Common_thread_unlock() \
-     { MPIU_DBG_MSG(THREAD,TYPICAL,"Exit global critical section");\
-     MPID_Thread_mutex_unlock( &MPIR_Process.common_lock ); }
-
-#define MPID_Comm_thread_lock(comm_ptr_) \
-   { MPIU_DBG_MSG(THREAD,TYPICAL,"Enter comm critical section");\
-     MPID_Thread_mutex_lock(&(comm_ptr_)->mutex); }
-#define MPID_Comm_thread_unlock(comm_ptr_) \
-   { MPIU_DBG_MSG(THREAD,TYPICAL,"Exit global critical section");\
-     MPID_Thread_mutex_unlock(&(comm_ptr_)->mutex); }
-
-#define MPID_Request_construct(request_ptr_)			\
-{								\
-    MPID_Thread_lock_init(&(request_ptr_)->mutex);		\
-    MPID_Thread_lock_init(&(request_ptr_)->initialized);	\
-}
-#define MPID_Request_destruct(request_ptr_)			\
-{								\
-    MPID_Thread_lock_destroy(&(request_ptr_)->mutex);		\
-    MPID_Thread_lock_destroy(&(request_ptr_)->initialized);	\
-}
-#define MPID_Request_thread_lock(request_ptr_) \
-        { MPIU_DBG_MSG(THREAD,TYPICAL,"Enter request critical section");\
-        MPID_Thread_mutex_lock(&(request_ptr_)->mutex); }
-#define MPID_Request_thread_unlock(request_ptr_) \
-        { MPIU_DBG_MSG(THREAD,TYPICAL,"Exit request critical section");\
-        MPID_Thread_mutex_unlock(&(request_ptr_)->mutex); }
-/* TODO: MT: these should be rewritten to use busy waiting and appropriate processor memory fences.  They and an necessary
-   variables should probably be defined by the device rather than in the top level include file.  */
-#define MPID_Request_initialized_clear(request_ptr_) \
-   { MPIU_DBG_MSG(THREAD,TYPICAL,"Enter request critical section");\
-     MPID_Thread_mutex_lock(&(request_ptr_)->initialized); }
-#define MPID_Request_initialized_set(request_ptr_)  \
-   { MPIU_DBG_MSG(THREAD,TYPICAL,"Exit request critical section");\
-     MPID_Thread_mutex_unlock(&(request_ptr_)->initialized); }
-#define MPID_Request_initialized_wait(request_ptr_)		\
-{								\
-    MPID_Thread_mutex_lock(&(request_ptr_)->initialized);	\
-    MPID_Thread_mutex_unlock(&(request_ptr_)->initialized);	\
-}    
+#define MPIU_THREADPRIV_INITKEY  \
+    MPID_Thread_tls_create(NULL,&MPIR_Process.thread_storage,NULL)
+#define MPIU_THREADPRIV_INIT {\
+	MPICH_PerThread_t *(pt_) = (MPICH_PerThread_t *) MPIU_Calloc(1, sizeof(MPICH_PerThread_t));	\
+	MPID_Thread_tls_set(&MPIR_Process.thread_storage, (void *) (pt_)); \
+        }
+#define MPIU_THREADPRIV_DECL MPICH_PerThread_t *MPIR_Thread=0
+#define MPIU_THREADPRIV_GET {if (!MPIR_Thread)MPIR_GetPerThread( &MPIR_Thread );}
+#define MPIU_THREADPRIV_FIELD(_a) (MPIR_Thread->_a)
 #endif
 
 /* Per process data */
@@ -1908,13 +1892,15 @@ struct MPID_Datatype;
 typedef struct MPICH_PerProcess_t {
     MPIR_MPI_State_t  initialized;      /* Is MPI initalized? */
     int               thread_provided;  /* Provided level of thread support */
+    /* This is a special case for is_thread_main, which must be
+       implemented even if MPICH2 itself is single threaded.  */
 #if (MPICH_THREAD_LEVEL >= MPI_THREAD_SERIALIZED)    
     MPID_Thread_tls_t thread_storage;   /* Id for perthread data */
     MPID_Thread_id_t  master_thread;    /* Thread that started MPI */
 #endif
-#if (USE_THREAD_IMPL == MPICH_THREAD_IMPL_NOT_IMPLEMENTED)
-    MPID_Thread_mutex_t allocation_lock; /* Used to lock around list-allocations */
-    MPID_Thread_mutex_t common_lock;     /* General purpose common lock */
+#ifdef HAVE_RUNTIME_THREADCHECK
+    int isThreaded;                      /* Set to true if user requested
+					    THREAD_MULTIPLE */
 #endif
     int               do_error_checks;  /* runtime error check control */
     MPID_Comm         *comm_world;      /* Easy access to comm_world for
@@ -1961,28 +1947,21 @@ typedef struct MPICH_PerProcess_t {
 } MPICH_PerProcess_t;
 extern MPICH_PerProcess_t MPIR_Process;
 
-/* Record the level of thread support */
-/* FIXME: Where is this used, and why isn't in the PerProcess structure? */
-/* [BRT] MPID_THREAD_LEVEL appears not to used, nor is it ever defined.
-   I had to remove the external declaration because the insure linker
-   failed, complaining that the symbol could not be resolved. */
-/* extern int MPID_THREAD_LEVEL; */
-
 /*D
-  MPID_MAX_THREAD_LEVEL - Indicates the maximum level of thread
+  MPICH_THREAD_LEVEL - Indicates the maximum level of thread
   support provided at compile time.
  
   Values:
   Any of the 'MPI_THREAD_xxx' values (these are preprocessor-time constants)
 
   Notes:
-  The macro 'MPID_MAX_THREAD_LEVEL' defines the maximum level of
+  The macro 'MPICH_THREAD_LEVEL' defines the maximum level of
   thread support provided, and may be used at compile time to remove
   thread locks and other code needed only in a multithreaded environment.
 
   A typical use is 
 .vb
-  #if MPID_MAX_THREAD_LEVEL >= MPI_THREAD_MULTIPLE
+  #if MPICH_IS_THREADED
      lock((r)->lock_ptr);
      (r)->ref_count++;
      unlock((r)->lock_ptr);
@@ -1991,35 +1970,17 @@ extern MPICH_PerProcess_t MPIR_Process;
   #fi
 .ve
 
+  Note that 'MPICH_IS_THREADED' is defined as 1 if 
+.vb
+  MPICH_THREAD_LEVEL >= MPI_THREAD_MULTIPLE
+.ve
+  is true.  The test should be used only for special cases (such as 
+  handling 'SERIALIZED').
+
   Module:
   Environment-DS
   D*/
-#define MPID_MAX_THREAD_LEVEL MPICH_THREAD_LEVEL
 
-/* Define a macro that can be used to select code for thread-safe handling */
-/* This is used in bsendutil.c */
-#if MPID_MAX_THREAD_LEVEL >= MPI_THREAD_MULTIPLE && USE_THREAD_IMPL == MPICH_THREAD_IMPL_NOT_IMPLEMENTED
-#define MPIU_IFTHREADED(_a) _a
-#else
-#define MPIU_IFTHREADED(_a) 
-#endif
-
-/* Allocation locks */
-#if MPID_MAX_THREAD_LEVEL <= MPI_THREAD_SERIALIZED || USE_THREAD_IMPL != MPICH_THREAD_IMPL_NOT_IMPLEMENTED
-
-#define MPID_Allocation_lock()
-#define MPID_Allocation_unlock()
-#else
-/* A more sophisticated version of these would handle the case where 
-   the library supports MPI_THREAD_MULTIPLE but the user only asked for
-   MPI_THREAD_FUNNELLED */
-#define MPID_Allocation_lock() \
-    { MPIU_DBG_MSG(THREAD,TYPICAL,"Enter allocation critical section");\
-      MPID_Thread_mutex_lock( &MPIR_Process.allocation_lock ); }
-#define MPID_Allocation_unlock() \
-    { MPIU_DBG_MSG(THREAD,TYPICAL,"Exit global critical section");\
-    MPID_Thread_mutex_unlock( &MPIR_Procss.allocation_lock ); }
-#endif
 /* ------------------------------------------------------------------------- */
 /* In MPICH2, each function has an "enter" and "exit" macro.  These can be 
  * used to add various features to each function at compile time, or they
@@ -2042,7 +2003,7 @@ extern MPICH_PerProcess_t MPIR_Process;
 #   include "mpidu_func_nesting.h"
 #elif defined(USE_DBG_LOGGING)
 #   include "mpifunclog.h"
-#else
+#elif !defined(NEEDS_FUNC_ENTER_EXIT_DEFS)
     /* If no timing choice is selected, this sets the entry/exit macros 
        to empty */
 #   include "mpitimerimpl.h"
@@ -2122,25 +2083,19 @@ extern MPICH_PerProcess_t MPIR_Process;
  * If not, do we want a separate set of definitions that can be used
  * in the code where serialized is ok.
  *
- * Currently, these are used in the routines to create new error classes
- * and codes.  Note that MPI object reference counts are handled with
- * their own routines.
+ * Currently, these are used only in the routines to create new error classes
+ * and codes (src/mpi/errhan/dynerrutil.c and add_error_class.c).  
+ * Note that MPI object reference counts are handled with their own routines.
+ *
+ * Because of the current use of these routines is within the SINGLE_CS
+ * thread lock (for the THREAD_MULTIPLE case), we currently
+ * do *not* include a separate Critical section for these operations.
+ *
  */
-#if (MPID_MAX_THREAD_LEVEL <= MPI_THREAD_SERIALIZED || USE_THREAD_IMPL != MPICH_THREAD_IMPL_NOT_IMPLEMENTED)
 #define MPIR_Setmax(a_ptr,b) if (b>*(a_ptr)) { *(a_ptr) = b; }
 #define MPIR_Fetch_and_increment(count_ptr,value_ptr) \
     { *value_ptr = *count_ptr; *count_ptr += 1; }
-/* Here should go assembly language versions for various architectures */
-#else
-#define MPIR_Setmax(a_ptr,b) \
-    {MPID_Thread_mutex_lock(&MPIR_Process.common_lock);\
-    if (b > *(a_ptr)) *(a_ptr)=b;\
-    MPID_Thread_mutex_unlock(&MPIR_Process.common_lock);}
-#define MPIR_Fetch_and_increment(count_ptr,value_ptr) \
-    {MPID_Thread_mutex_lock(&MPIR_Process.common_lock);\
-    *value_ptr = *count_ptr; *count_ptr += 1; \
-    MPID_Thread_mutex_unlock(&MPIR_Process.common_lock);}
-#endif
+
 /* ------------------------------------------------------------------------- */
 
 /* FIXME: Move these to the communicator block; make sure that all 
@@ -2209,47 +2164,57 @@ extern MPICH_PerProcess_t MPIR_Process;
 - priority - Indicates the priority of this callback and controls the order
   in which callbacks are executed.  Use a priority of zero for most handlers;
   higher priorities will be executed first.
+
+Notes:
+  The routine 'MPID_Finalize' is executed with priority 
+  'MPIR_FINALIZE_CALLBACK_PRIO' (currently defined as 5).  Handlers with
+  a higher priority execute before 'MPID_Finalize' is called; those with
+  a lower priority after 'MPID_Finalize' is called.  
 @*/
 void MPIR_Add_finalize( int (*routine)( void * ), void *extra, int priority );
 
+#define MPIR_FINALIZE_CALLBACK_PRIO 5
+#define MPIR_FINALIZE_CALLBACK_MAX_PRIO 10
+
 /* For no error checking, we could define MPIR_Nest_incr/decr as empty */
-void MPIR_Nest_incr(void);
-void MPIR_Nest_decr(void);
-int MPIR_Nest_value(void);
-#if (MPICH_THREAD_LEVEL < MPI_THREAD_MULTIPLE)
-/* Eventually, we can make this work independent of thread level */
+
+/* These routines export the nesting controls for use in ROMIO */
+void MPIR_Nest_incr_export(void);
+void MPIR_Nest_decr_export(void);
+
 #ifdef MPICH_DEBUG_NESTING
+/* FIXME: We should move the initialization and error reporting into
+   routines that can be called when necessary */
 #define MPIR_Nest_init() {\
    int _i;\
    for (_i=0;_i<MPICH_MAX_NESTINFO;_i++) {\
-      MPIR_Thread.nestinfo[_i].file[0] = 0;\
-      MPIR_Thread.nestinfo[_i].line = 0;}}
+      MPIU_THREADPRIV_FIELD(nestinfo)[_i].file[0] = 0;\
+      MPIU_THREADPRIV_FIELD(nestinfo)[_i].line = 0;}}
 #define MPIR_Nest_incr() {\
-     if (MPIR_Thread.nest_count >= MPICH_MAX_NESTINFO) {\
+     if (MPIU_THREADPRIV_FIELD(nest_count) >= MPICH_MAX_NESTINFO) {\
      MPIU_Internal_error_printf("nest stack exceeded at %s:%d\n",\
           __FILE__,__LINE__);\
      }else{\
-     MPIU_Strncpy(MPIR_Thread.nestinfo[MPIR_Thread.nest_count].file,__FILE__,\
+     MPIU_Strncpy(MPIU_THREADPRIV_FIELD(nestinfo)[MPIU_THREADPRIV_FIELD(nest_count)].file,__FILE__,\
                   MPICH_MAX_NESTFILENAME);\
-     MPIR_Thread.nestinfo[MPIR_Thread.nest_count].line=__LINE__;}\
-     MPIR_Thread.nest_count++; }
-#define MPIR_Nest_decr() {MPIR_Thread.nest_count--; \
-     if (MPIR_Thread.nest_count < MPICH_MAX_NESTINFO && \
-    strcmp(MPIR_Thread.nestinfo[MPIR_Thread.nest_count].file,__FILE__) != 0) {\
+     MPIU_THREADPRIV_FIELD(nestinfo)[MPIU_THREADPRIV_FIELD(nest_count)].line=__LINE__;}\
+     MPIU_THREADPRIV_FIELD(nest_count)++; }
+#define MPIR_Nest_decr() {MPIU_THREADPRIV_FIELD(nest_count)--; \
+     if (MPIU_THREADPRIV_FIELD(nest_count) < MPICH_MAX_NESTINFO && \
+    strcmp(MPIU_THREADPRIV_FIELD(nestinfo)[MPIU_THREADPRIV_FIELD(nest_count)].file,__FILE__) != 0) {\
          MPIU_Msg_printf( "Decremented nest count int file %s:%d but incremented in different file (%s:%d)\n",\
                           __FILE__,__LINE__,\
-                          MPIR_Thread.nestinfo[MPIR_Thread.nest_count].file,\
-                          MPIR_Thread.nestinfo[MPIR_Thread.nest_count].line);\
+                          MPIU_THREADPRIV_FIELD(nestinfo)[MPIU_THREADPRIV_FIELD(nest_count)].file,\
+                          MPIU_THREADPRIV_FIELD(nestinfo)[MPIU_THREADPRIV_FIELD(nest_count)].line);\
 }}
 #else
 #define MPIR_Nest_init()
-#define MPIR_Nest_incr() {MPIR_Thread.nest_count++;}
-#define MPIR_Nest_decr() {MPIR_Thread.nest_count--;}
+#define MPIR_Nest_incr() {MPIU_THREADPRIV_FIELD(nest_count)++;}
+#define MPIR_Nest_decr() {MPIU_THREADPRIV_FIELD(nest_count)--;}
 #endif /* MPICH_DEBUG_NESTING */
-#define MPIR_Nest_value() (MPIR_Thread.nest_count)
-#else
-#define MPIR_Nest_init()
-#endif
+
+#define MPIR_Nest_value() (MPIU_THREADPRIV_FIELD(nest_count))
+
 
 /*int MPIR_Comm_attr_dup(MPID_Comm *, MPID_Attribute **);
   int MPIR_Comm_attr_delete(MPID_Comm *, MPID_Attribute *);*/
@@ -2267,6 +2232,14 @@ int MPIR_Group_release(MPID_Group *group_ptr);
 int MPIR_dup_fn ( MPI_Comm, int, void *, void *, void *, int * );
 int MPIR_Request_complete(MPI_Request *, MPID_Request *, MPI_Status *, int *);
 int MPIR_Request_get_error(MPID_Request *);
+
+/* The following routines perform the callouts to the user routines registered
+   as part of a generalized request.  They handle any language binding issues
+   that are necessary. They are used when completing, freeing, cancelling or
+   extracting the status from a generalized request. */
+int MPIR_Grequest_cancel(MPID_Request * request_ptr, int complete);
+int MPIR_Grequest_query(MPID_Request * request_ptr);
+int MPIR_Grequest_free(MPID_Request * request_ptr);
 
 /* ------------------------------------------------------------------------- */
 /* Prototypes for language-specific routines, such as routines to set
@@ -3238,10 +3211,14 @@ int MPID_Topo_cluster_info( MPID_Comm *comm,
 /*@
   MPID_Get_processor_name - Return the name of the current processor
 
+  Input Parameter:
+. namelen - Length of name
+  
   Output Parameters:
 + name - A unique specifier for the actual (as opposed to virtual) node. This
   must be an array of size at least 'MPI_MAX_PROCESSOR_NAME'.
-- resultlen - Length (in characters) of the name 
+- resultlen - Length (in characters) of the name.  If this pointer is null,
+   this value is not set.
 
   Notes:
   The name returned should identify a particular piece of hardware; 
@@ -3250,9 +3227,12 @@ int MPID_Topo_cluster_info( MPID_Comm *comm,
 
   This routine is essentially an MPID version of 'MPI_Get_processor_name' .  
   It must be part of the device because not all environments support calls
-  to return the processor name.
+  to return the processor name.  The additional argument (input name 
+  length) is used to provide better error checking and to ensure that 
+  the input buffer is large enough (rather than assuming that it is
+  'MPI_MAX_PROCESSOR_NAME' long).
   @*/
-int MPID_Get_processor_name( char *name, int *resultlen);
+int MPID_Get_processor_name( char *name, int namelen, int *resultlen);
 
 void MPID_Errhandler_free(MPID_Errhandler *errhan_ptr);
 
@@ -3282,14 +3262,22 @@ int MPID_Get_universe_size(int  * universe_size);
   MPID_VCRT_Create - Create a virtual connection reference table
   @*/
 int MPID_VCRT_Create(int size, MPID_VCRT *vcrt_ptr);
+
 /*@
   MPID_VCRT_Add_ref - Add a reference to a VCRT
   @*/
 int MPID_VCRT_Add_ref(MPID_VCRT vcrt);
+
 /*@
   MPID_VCRT_Release - Release a reference to a VCRT
+  
+  Notes:
+  The 'isDisconnect' argument allows this routine to handle the special
+  case of 'MPI_Comm_disconnect', which needs to take special action
+  if all references to a VC are removed.
   @*/
-int MPID_VCRT_Release(MPID_VCRT vcrt);
+int MPID_VCRT_Release(MPID_VCRT vcrt, int isDisconnect);
+
 /*@
   MPID_VCRT_Get_ptr - 
   @*/
@@ -3312,27 +3300,9 @@ int MPID_VCR_Dup(MPID_VCR orig_vcr, MPID_VCR * new_vcr);
   @*/
 int MPID_VCR_Get_lpid(MPID_VCR vcr, int * lpid_ptr);
 
-/* Debugger support */
-#ifdef HAVE_DEBUGGER_SUPPORT
-void MPIR_WaitForDebugger( void );
-void MPIR_Sendq_remember(MPID_Request *, int, int, int );
-void MPIR_Sendq_forget(MPID_Request *);
-void MPIR_CommL_remember( MPID_Comm * );
-void MPIR_CommL_forget( MPID_Comm * );
 
-#define MPIR_SENDQ_REMEMBER(_a,_b,_c,_d) MPIR_Sendq_remember(_a,_b,_c,_d)
-#define MPIR_SENDQ_FORGET(_a) MPIR_Sendq_forget(_a)
-#define MPIR_COMML_REMEMBER(_a) MPIR_CommL_remember( _a )
-#define MPIR_COMML_FORGET(_a) MPIR_CommL_forget( _a )
-#else
-#define MPIR_SENDQ_REMEMBER(a,b,c,d)
-#define MPIR_SENDQ_FORGET(a)
-#define MPIR_COMML_REMEMBER(_a)
-#define MPIR_COMML_FORGET(_a)
-
-#endif
-
-/* Include definitions from the device which require items defined by this file (mpiimpl.h). */
+/* Include definitions from the device which require items defined by this 
+   file (mpiimpl.h). */
 #include "mpidpost.h"
 
 /* ------------------------------------------------------------------------- */
@@ -3343,13 +3313,7 @@ void MPIR_CommL_forget( MPID_Comm * );
 /* FIXME: Should there be a way to (a) update/compute these at configure time
    and (b) provide runtime control?  Should these be MPIR_xxx_DEFAULT 
    instead? */
-#define COLL_COUNT 3
-#define COLL_SIZE  4
-#define BCAST_IDX  0
-#define ALLREDUCE_IDX 1
-#define REDUCE_IDX 2
-
-
+#define MPIR_BCAST_SHORT_MSG          12288
 #define MPIR_BCAST_LONG_MSG           524288
 #define MPIR_BCAST_MIN_PROCS          8
 #define MPIR_ALLTOALL_SHORT_MSG       256
@@ -3358,6 +3322,8 @@ void MPIR_CommL_forget( MPID_Comm * );
 #define MPIR_REDSCAT_NONCOMMUTATIVE_SHORT_MSG 512
 #define MPIR_ALLGATHER_SHORT_MSG      81920
 #define MPIR_ALLGATHER_LONG_MSG       524288
+#define MPIR_REDUCE_SHORT_MSG         2048
+#define MPIR_ALLREDUCE_SHORT_MSG      2048
 #define MPIR_SCATTER_SHORT_MSG        2048  /* for intercommunicator scatter */
 #define MPIR_GATHER_SHORT_MSG         2048  /* for intercommunicator scatter */
 
@@ -3525,7 +3491,7 @@ int MPIR_Barrier( MPID_Comm *comm_ptr );
 
 int MPIR_Setup_intercomm_localcomm( MPID_Comm * );
 
-int MPIR_Comm_create( MPID_Comm *, MPID_Comm ** );
+int MPIR_Comm_create( MPID_Comm ** );
 
 void MPIR_Free_err_dyncodes( void );
 

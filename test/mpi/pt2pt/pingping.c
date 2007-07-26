@@ -10,6 +10,8 @@
 
 static char MTEST_Descrip[] = "Send flood test";
 
+#define MAX_MSG_SIZE 40000000
+#define MAX_COUNT    4000
 int main( int argc, char *argv[] )
 {
     int errs = 0, err;
@@ -32,9 +34,25 @@ int main( int argc, char *argv[] )
 	source = 0;
 	dest   = size - 1;
 	
-	for (count = 1; count < 65000; count = count * 2) {
+	/* To improve reporting of problems about operations, we
+	   change the error handler to errors return */
+	MPI_Comm_set_errhandler( comm, MPI_ERRORS_RETURN );
+
+	for (count = 1; count < MAX_COUNT; count = count * 2) {
 	    while (MTestGetDatatypes( &sendtype, &recvtype, count )) {
-		maxmsg = 65000 - count;
+		int nbytes;
+		MPI_Type_size( sendtype.datatype, &nbytes );
+
+		/* We may want to limit the total message size sent */
+		if (nbytes > MAX_MSG_SIZE) {
+		    /* We do not need to free, as we haven't 
+		       initialized any of the buffers (?) */
+		    continue;
+		}
+		maxmsg = MAX_COUNT - count;
+		MTestPrintfMsg( 1, "Sending count = %d of sendtype %s of total size %d bytes\n", 
+				count, MTestGetDatatypeName( &sendtype ), 
+				nbytes*count );
 		/* Make sure that everyone has a recv buffer */
 		recvtype.InitBuf( &recvtype );
 

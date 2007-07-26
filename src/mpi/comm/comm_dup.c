@@ -4,17 +4,6 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2006, The Ohio State University. All rights
- * reserved.
- *
- * This file is part of the MVAPICH2 software package developed by the
- * team members of The Ohio State University's Network-Based Computing
- * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
- *
- * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT_MVAPICH2 in the top level MVAPICH2 directory.
- *
- */
 
 #include "mpiimpl.h"
 #include "mpicomm.h"
@@ -32,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Comm_dup
 #define MPI_Comm_dup PMPI_Comm_dup
 
 #endif
@@ -86,24 +76,24 @@ Notes:
 @*/
 #ifdef _SMP_
 extern int split_comm;
+extern int enable_shmem_collectives;
 #endif
+
 int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
 {
     static const char FCNAME[] = "MPI_Comm_dup";
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL, *newcomm_ptr;
 #ifdef _SMP_
-    char* val;
-    int enable_shmem_collectives = 0;
-    if ((val = getenv("MV2_ENABLE_SHMEM_COLL")) != NULL){
-        enable_shmem_collectives = 1;
-    }
+    MPIU_THREADPRIV_DECL;
+    MPIU_THREADPRIV_GET;
 #endif
+
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_COMM_DUP);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("comm");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_COMM_DUP);
     
     /* Validate parameters, especially handles needing to be converted */
@@ -159,7 +149,7 @@ int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
 					   &newcomm_ptr->attributes );
 	if (mpi_errno)
 	{
-	    /* The error code returned here should reflect the error code
+	    /* FIXME: The error code returned here should reflect the error code
 	       determined by the user routine called during the
 	       attribute duplication step.  Adding additional text to the 
 	       message associated with the code is allowable; changing the
@@ -176,7 +166,6 @@ int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
     }
 
     *newcomm = newcomm_ptr->handle;
-
 #ifdef _SMP_
     int flag;
     if (enable_shmem_collectives){
@@ -197,12 +186,13 @@ int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
         }
     }
 #endif
+
     
     /* ... end of body of routine ... */
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_COMM_DUP);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("comm");
     return mpi_errno;
     
   fn_fail:

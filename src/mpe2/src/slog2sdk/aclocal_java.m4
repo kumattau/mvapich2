@@ -146,7 +146,7 @@ case "$host" in
     *freebsd*)
         if test -d "/software/freebsd" ; then
             subdir="freebsd"
-   	    fi
+        fi
 esac
 #
 if test -z "$subdir" ; then
@@ -176,6 +176,7 @@ for dir in \
     /usr/contrib/java* \
     /usr/contrib/jdk* \
     /usr/contrib/j2sdk* \
+    /System/Library/Frameworks/JavaVM.framework/Versions/*/Home \
     $HOME/java* \
     $HOME/jdk* \
     $HOME/j2sdk* \
@@ -218,7 +219,8 @@ for dir in $reverse_dirs ; do
                     fi
                 fi
                 ;;
-            *java* | *jdk* | *j2sdk* )
+dnl         *java* | *jdk* | *j2sdk* | *Frameworks* )
+            *)
                 if test -x "$dir/bin/$2" ; then
                     $1="$dir/bin/$2"
                 fi

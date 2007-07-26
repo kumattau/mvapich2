@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Irsend
 #define MPI_Irsend PMPI_Irsend
 
 #endif
@@ -66,7 +67,7 @@ int MPI_Irsend(void *buf, int count, MPI_Datatype datatype, int dest, int tag,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("pt2pt");
     MPID_MPI_PT2PT_FUNC_ENTER_FRONT(MPID_STATE_MPI_IRSEND);
 
     /* Validate handle parameters needing to be converted */
@@ -125,9 +126,8 @@ int MPI_Irsend(void *buf, int count, MPI_Datatype datatype, int dest, int tag,
     mpi_errno = MPID_Irsend(buf, count, datatype, dest, tag, comm_ptr,
 			    MPID_CONTEXT_INTRA_PT2PT, &request_ptr);
     if (mpi_errno != MPI_SUCCESS) goto fn_fail;
-
     MPIR_SENDQ_REMEMBER(request_ptr,dest,tag,comm_ptr->context_id);
-
+	
     /* return the handle of the request to the user */
     *request = request_ptr->handle;
 
@@ -135,7 +135,7 @@ int MPI_Irsend(void *buf, int count, MPI_Datatype datatype, int dest, int tag,
     
   fn_exit:
     MPID_MPI_PT2PT_FUNC_EXIT(MPID_STATE_MPI_IRSEND);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("pt2pt");
     return mpi_errno;
     
   fn_fail:

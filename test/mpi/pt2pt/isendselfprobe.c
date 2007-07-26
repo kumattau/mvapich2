@@ -39,6 +39,7 @@ int main( int argc, char * argv[] )
 	{
 	    errs++;
 	}
+	MPI_Wait( &request, &status );
     }
     MTest_Finalize( errs );
     MPI_Finalize();

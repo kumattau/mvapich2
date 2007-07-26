@@ -596,11 +596,15 @@ int smpd_init_process(void)
     smpd_process.hLaunchProcessMutex = CreateMutex(NULL, FALSE, NULL);
 #else
     homedir = getenv("HOME");
-    strcpy(smpd_process.smpd_filename, homedir);
-    if (smpd_process.smpd_filename[strlen(smpd_process.smpd_filename)-1] != '/')
-	strcat(smpd_process.smpd_filename, "/.smpd");
-    else
-	strcat(smpd_process.smpd_filename, ".smpd");
+    if(homedir != NULL){
+        strcpy(smpd_process.smpd_filename, homedir);
+        if (smpd_process.smpd_filename[strlen(smpd_process.smpd_filename)-1] != '/')
+	    strcat(smpd_process.smpd_filename, "/.smpd");
+        else
+	    strcat(smpd_process.smpd_filename, ".smpd");
+    }else{
+	strcpy(smpd_process.smpd_filename, ".smpd");
+    }
     if (stat(smpd_process.smpd_filename, &s) == 0)
     {
 	if (s.st_mode & 00077)

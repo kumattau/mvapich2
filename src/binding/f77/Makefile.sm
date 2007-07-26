@@ -159,7 +159,7 @@ lib${MPIFLIBNAME}_a_SOURCES = ${mpi_sources} setbot.c setbotf.f
 HEADERS = fproto.h mpi_fortimpl.h
 profilelib_${MPIFLIBNAME} = ${PMPIFLIBNAME}
 profilelib_${MPIFLIBNAME}_SOURCES = ${mpi_sources}
-INCLUDES = -I../../include -I${master_top_srcdir}/src/include
+INCLUDES = -I../../include -I${master_top_srcdir}/src/include -I${master_top_srcdir}/src/binding/f77 
 maint-clean:
 	rm -f ${mpi_sources} fproto.h
 install_INCLUDE = mpif.h

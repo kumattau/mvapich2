@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Cart_map
 #define MPI_Cart_map PMPI_Cart_map
 
 int MPIR_Cart_map( const MPID_Comm *comm_ptr, int ndims, const int dims[], 
@@ -91,14 +92,15 @@ Output Parameter:
 int MPI_Cart_map(MPI_Comm comm_old, int ndims, int *dims, int *periods, 
 		 int *newrank)
 {
+#ifdef HAVE_ERROR_CHECKING
     static const char FCNAME[] = "MPI_Cart_map";
+#endif
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_CART_MAP);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_CART_MAP);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -152,14 +154,15 @@ int MPI_Cart_map(MPI_Comm comm_old, int ndims, int *dims, int *periods,
     }
     /* ... end of body of routine ... */
 
+#ifdef HAVE_ERROR_CHECKING
   fn_exit:
+#endif
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_CART_MAP);
-    MPID_CS_EXIT();
     return mpi_errno;
 
-  fn_fail:
     /* --BEGIN ERROR HANDLING-- */
 #   ifdef HAVE_ERROR_CHECKING
+  fn_fail:
     {
 	mpi_errno = MPIR_Err_create_code(
 	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, 
@@ -167,8 +170,8 @@ int MPI_Cart_map(MPI_Comm comm_old, int ndims, int *dims, int *periods,
 	    "**mpi_cart_map %C %d %p %p %p", comm_old, ndims, dims, periods, 
 	    newrank);
     }
-#   endif
     mpi_errno = MPIR_Err_return_comm( comm_ptr, FCNAME, mpi_errno );
     goto fn_exit;
+#   endif
     /* --END ERROR HANDLING-- */
 }

@@ -53,7 +53,6 @@ also the value at index %d
 **cartdim:Size of Cartesian grid is larger than the size of the communicator
 **cartdim %d %d:Size of the communicator (%d) is smaller than the size of the \
  Cartesian topology (%d)
-**cartshiftzero:Displacement must be non-zero
 **edgeoutrange:Edge index in graph topology is out of range
 **edgeoutrange %d %d %d:Edge index edges[%d] is %d but must be nonnegative \
  and less than %d
@@ -89,9 +88,6 @@ also the value at index %d
 **bsendbufsmall %d %d:Buffer size of %d is smaller than MPI_BSEND_OVERHEAD (%d)
 **notgenreq:Attempt to complete a request with MPI_GREQUEST_COMPLETE that \
 was not started with MPI_GREQUEST_START
-**cancelperrecv:Cancellation of persistent receive requests is not supported
-**cancelpersend:Cancellation of persistent send requests is not supported
-**cancelsend:Cancellation of send requests is not supported
 **cancelunknown:Attempt to cancel an unknown type of request
 **permop:Cannot free permanent MPI_Op 
 **attrsentinal:Internal fields in an attribute have been overwritten; \
@@ -127,7 +123,6 @@ be in the range 0 to %d
 **bufbsend:Insufficient space in Bsend buffer
 **bufbsend %d %d:Insufficient space in Bsend buffer; requested %d; total \
  buffer size is %d
-**bsendnobuf:No buffer to detach. 
 **inttoosmall:An address does not fit into a Fortran INTEGER.  Use \
  MPI_Get_address instead
 **namepublish:Unable to publish service name
@@ -157,13 +152,21 @@ MPI_TYPECLASS_INTEGER, or MPI_TYPECLASS_COMPLEX
 **f90typetoomany %s %d:Too many requests for unnamed, predefined f90 %s \
  types; no more than %d allowed.
 #
+**noConnInfoToString:No ConnInfoToString routine defined for this process group
+#
+**typeinitbadmem:builtin datatype handle references invalid memory
+**typeinitbadmem %d:%dth builtin datatype handle references invalid memory
+**typeinitfail:Did not initialize name for all of the predefined datatypes
+**typeinitfail %d:Did not initialize name for all of the predefined datatypes \
+ (only did first %d)
+**typeinitminmaxloc: Could not determine pointer for predefined minloc or \
+ maxloc type.  Initialization of those names failed.
+
+# -- FIXME: Some (but not all) of the messages below this line have been used
 #---- The messages below this line haven't been used yet.
 #
 **buffer:Invalid buffer pointer
 **bufalias:Buffers must not be aliased
-**bufalias %s %s:Buffer parameters %s and %s must not be aliased 
-**bufsize:Invalid buffer size
-**bufsize %d:Invalid buffer size (value is %d)
 **countarray:Invalid count in count array 
 **countarray %d %d:Invalid count in the %d element of the count array; value \
 is %d
@@ -215,10 +218,6 @@ be in the range 0 to %d
 **arg %s:Invalid argument %s
 **argerrcode:Invalid error code
 **argerrcode %d:Invalid error code %d
-**argaddress:Address of location given to MPI_ADDRESS does not fix in a \
-Fortran integer
-**argaddress %ld:Address of location given to MPI_ADDRESS does not fix in a \
-Fortran integer (value is %ld)
 **errhandler:Invalid errhandler
 **errhandlernull:Null errhandler 
 **errhandlerperm:Cannot free permanent error handler
@@ -226,10 +225,6 @@ Fortran integer (value is %ld)
 **errhandnotfile:Error handler is not a file error handler
 **errhandnotwin:Error handler is not a win error handler
 **statusignore:Invalid use of MPI_STATUS_IGNORE or MPI_STATUSES_IGNORE
-**argarray:Invalid value in array
-**argarray %s %d %d:Invalid value in %s[%d] = %d
-**argnamed:Invalid argument
-**argnamed %s %d:Invalid argument %s with value %d
 **darraydist:For MPI_DISTRIBUTE_NONE, the number of processes in that \
       dimension of the grid must be 1
 **darraydist %d %d:For MPI_DISTRIBUTE_NONE, the value of array_of_psizes[%d] \
@@ -248,6 +243,9 @@ Fortran integer (value is %ld)
  distribution
 **argposneg:Value of position must be nonnegative
 **argposneg %d:Value of position is %d but must be nonnegative
+**argpackbuf:Pack buffer is too small for data
+**argpackbuf %d %d:Size of data to pack (%d bytes) is larger than remaining \
+ space in pack buffer (%d bytes)
 **unknown:Unknown error.  Please file a bug report.
 **truncate:Message truncated
 **truncate %d %d:Message truncated; %d bytes received but buffer size is %d
@@ -265,8 +263,6 @@ Fortran integer (value is %ld)
 **startup:Error on startup, such as a \
       mismatch between mpiexec and the MPI libraries
 **startup %s:Error on startup: reason is %s
-**attrcopy:User defined attribute copy routine returned a non-zero return code
-**attrcopy %d:User defined attribute copy routine returned a non-zero return code %d
 **attrnotptr:The attribute value is not the address of a pointer or \
  pointer-sized integer.  A common error is to pass the address of an integer \
  to any of the MPI_Xxx_get_attr routines on systems where the size of a \
@@ -374,7 +370,6 @@ Fortran integer (value is %ld)
 **servicename:Attempt to lookup an unknown service name 
 **servicename %s:Attempt to lookup an unknown service name %s
 **allocmem:Unable to allocate memory for MPI_Alloc_mem
-**allocmem %d %d:Unable to allocate %d memory for MPI_Alloc_mem; only %d available
 **notsame:Inconsistent arguments to collective routine 
 **notsame %s %s:Inconsistent arguments %s to collective routine %s
 **notsamevalue:Arguments to collective routine must be the same
@@ -418,7 +413,6 @@ Fortran integer (value is %ld)
 with MPI_Alloc_mem. 
 **freemembase:Invalid base address in MPI_Free_mem 
 **base:Invalid base address
-**base %d:Invalid base address %d
 **locktype:Invalid lock type
 **keyvalnull:Null keyval 
 **keyvalperm:Cannot free permanent attribute key
@@ -436,7 +430,6 @@ with MPI_Alloc_mem.
 **nomemreq:failure occurred while allocating memory for a request object
 **notcstatignore:MPI_STATUS_IGNORE cannot be passed to MPI_Status_c2f()
 **notfstatignore:MPI_STATUS_IGNORE cannot be passed to MPI_Status_f2c()
-**abort:application called MPI_ABORT
 **user:user defined function returned an error code
 **userdel %d:user delete function returned error code %d
 **usercopy %d:user copy function returned error code %d
@@ -455,7 +448,10 @@ with MPI_Alloc_mem.
 **badcase:INTERNAL ERROR: unexpected value in case statement
 **badcase %d:INTERNAL ERROR: unexpected value in case statement (value=%d)
 **node_root_rank:Unable to get the node root rank
-
+**contextIdInUse:Context id already in use
+**contextIdInUse %d:Context id %d already in use
+**contextIdNotInUse:Context id to be freed is not in use
+**contextIdNotInUse %d:Context id %d to be freed is not in use
 # Duplicates?
 #**argnull:Invalid null parameter
 #**argnull %s:Invalid null parameter %s
@@ -480,55 +476,15 @@ with MPI_Alloc_mem.
 **dev|vcrt_get_ptr:failed to get a pointer to VCR table
 **dev|vcrt_get_ptr %s:failed to get a pointer to VCR table for %s
 
-#
-# CH3 errors
-#
-**ch3|badca %d:specified completion action in not known (%d)
-**ch3|badca:specified completion action in not known
-**ch3|badmsgtype %d:request contained an invalid message type (%d)
-**ch3|badmsgtype:request contained an invalid message type
-**ch3|badreqtype %d:request contained an invalid request type (%d)
-**ch3|badreqtype:request contained an invalid request type
-**ch3|canceleager:failure occurred while performing local cancellation of a eager message
-**ch3|cancelreq:failure occurred while sending remote cancellation request packet
-**ch3|cancelresp:failure occurred while attempting to send cancel response packet
-**ch3|cancelrndv:failure occurred while performing local cancellation of a rendezvous message
-**ch3|ch3_init:channel initialization failed
-**ch3|ctspkt:failure occurred while attempting to send CTS packet
-**ch3|eagermsg:failure occurred while attempting to send an eager message
-**ch3|flowcntlpkt:UNIMPLEMENTED: unable to handle flow control packets
-**ch3|get_universe_size_notimpl: MPIDI_CH3_Get_universe_size() is not implemented
-**ch3|loadrecviov %s:failure occurred while loading the receive I/O vector (%s)
-**ch3|loadrecviov:failure occurred while loading the receive I/O vector
-**ch3|loadsendiov:failure occurred while loading the send I/O vector
-**ch3|nopktcontainermem:failed to allocate memory for a packet reorder container
-**ch3|ooocancelreq:UNIMPLEMENTED: unable to process out-of-order cancellation requests
-**ch3|pktordered:failure occurred while processing a reordered packet
-**ch3|postrecv %s:failure occurred while posting a receive for message data (%s)
-**ch3|postrecv:failure occurred while posting a receive for message data
-**ch3|putpkt:UNIMPLEMENTED: unable to handling put packets
-**ch3|recvdata %s:failure occurred while attempting to receive message data (%s)
-**ch3|recvdata:failure occurred while attempting to receive message data
-**ch3|rmamsg:failure occurred while attempting to send an RMA message
-**ch3|rtspkt:failure occurred while attempting to send RTS packet
-**ch3|senddata:failure occurred while attempting to send message data
-**ch3|syncack:failure occurred while attempting to send eager synchronization packet
-**ch3|unknownpkt %d:received unknown packet type (type=%d)
-**ch3|unknownpkt:received unknown packet type
 **init_comm_create %d:unable to create an intercommunicator for the parent (error %d)
 **init_comm_create:unable to create an intercommunicator for the parent
 **opnotpredefined %d:only predefined ops are valid (op = %d)
 **opnotpredefined:only predefined ops are valid
 **opundefined_rma %d:RMA target received unknown RMA operation type %d
 **opundefined_rma:RMA target received unknown RMA operation
-**ch3|get_parent_port:spawn process group was unable to obtain parent port name from the channel
-**ch3|get_parent_port_err_bcast:an error occurred while broadcasting the error code from MPIDI_CH3_Get_parent_port()
-**ch3|conn_parent:spawned process group was unable to connect back to the parent
-**ch3|conn_parent %s:spawned process group was unable to connect back to the parent on port <%s>
-**ch3|unhandled_connection_state:encountered an unexpected connection state
-**ch3|unhandled_connection_state %p %d:encountered an unexpected connection state (vc=%p, state=%d)
-**ch3|send_close_ack:an error occurred when the device attempted to acknowledge the closing of a connection
-**ch3|close_progress:an error occurred while the device was waiting for all open connections to close
+
+**init:Initialization failed
+**bad_sock:bad sock
 
 #
 # To be removed
@@ -537,66 +493,8 @@ with MPI_Alloc_mem.
 **init_getptr:failed to get the vcr
 
 #
-# CH3:sock errors
-#
-**ch3|sock|strdup:[ch3:sock] MPIU_Strdup failed
-**ch3|sock|connclose:[ch3:sock] active connection unexpectedly closed
-**ch3|sock|hostlookup:[ch3:sock] hostname lookup failed
-**ch3|sock|hostlookup %s %d %s:[ch3:sock] failed to obtain host information for process %s:%d (%s)
-**ch3|sock|connrefused:[ch3:sock] connection refused
-**ch3|sock|connrefused %s %d %s:[ch3:sock] failed to connect to process %s:%d (%s)
-**ch3|sock|connterm:[ch3:sock] active connection unexpectedly terminated
-**ch3|sock|connfailed:[ch3:sock] failed to connnect to remote process
-**ch3|sock|connfailed %d %d:[ch3:sock] failed to connnect to remote process %d:%d
-**ch3|sock|connfailed %s %d:[ch3:sock] failed to connnect to remote process %s:%d
-**ch3|sock|badsock:[ch3:sock] internal error - bad sock
-**ch3|sock|failure:[ch3:sock] unknown failure
-**ch3|sock|failure %d:[ch3:sock] unknown failure, sock_errno=%d
-**ch3|sock|badpacket:[ch3:sock] received packet of unknow type
-**ch3|sock|badpacket %d:[ch3:sock] received packet of unknown type (%d)
-**ch3|sock|badbuscard:[ch3:sock] GetHostAndPort - Invalid business card
-**ch3|sock|badbuscard %s:[ch3:sock] GetHostAndPort - Invalid business card (%s)
-**ch3|sock|connallocfailed:[ch3:sock] unable to allocate a connection structure
-**ch3|pmi_finalize:PMI_Finalize failed
-**ch3|pmi_finalize %d:PMI_Finalize failed, error %d
-**ch3|sock|postread:attempt to post a read operation failed
-**ch3|sock|postread %p %p %p:attempt to post a read operation failed (rreq=%p,conn=%p,vc=%p)
-**ch3|sock|immedread:immediate read operation failed
-**ch3|sock|immedread %p %p %p:immediate read operation failed (rreq=%p,conn=%p,vc=%p)
-**ch3|sock|postwrite:attempt to post a write operation failed
-**ch3|sock|postwrite %p %p %p:attempt to post a write operation failed (sreq=%p,conn=%p,vc=%p)
-**ch3|sock|immedwrite:immediate write operation failed
-**ch3|sock|immedwrite %p %p %p:immediate write operation failed (rreq=%p,conn=%p,vc=%p)
-**ch3|sock|addrinuse:[ch3:sock] tcp port already in use
-**ch3|sock|addrinuse %d:[ch3:sock] tcp port %d already in use
-**ch3|sock|post_write:[ch3:sock] posting a write failed
-**ch3|sock|progress_finalize:[ch3:sock] progress_finalize failed
-**ch3|sock|accept:[ch3:sock] accepting a new connection failed
-**ch3|sock|postconnect:[ch3:sock] post connect failed
-**ch3|sock|postconnect %d %d %s:[ch3:sock] rank %d unable to connect to rank %d using business card <%s>
-**ch3|sock|connalloc:[ch3:sock] unable to allocate an internal connection structure
-**ch3|sock|scopenresp:[ch3:sock] failed to handle open response packet
-**ch3|sock|openlsend:[ch3:sock] failed to handle open lsend packet
-**ch3|sock|open_lrecv_data:[ch3:sock] failed to handle open lrecv data packet
-**ch3|sock|scconnaccept:[ch3:sock] failed to handle connection accept packet
-**ch3|sock|badhost:[ch3:soc] invalid host description
-**ch3|sock|badhost %s %d %s:[ch3:sock] invalid host description, %s:%d (%s)
-**pglookup:unable to find the process group structure
-**pglookup %s:unable to find the process group structure with id <%s>
-**ch3|sock|handle_sock_event:an error occurred while handling an event returned by MPIDU_Sock_Wait()
-**ch3|sock|pgsize_cache:process group size does not match the one in the cache
-**ch3|sock|pgsize_cache %d %d:size in cache %d, size passed %d
-**ch3|sock|bizcard_cache:business card does not match the one in the cache
-**ch3|sock|bizcard_cache %s %s:business card in cache: %s, business card passed: %s
-**ch3|sock|pgrank_cache:rank must be less than process group size in the cache
-**ch3|sock|pgrank_cache %d %d:pg size in cache %d, rank passed %d
-**ch3|sock|pg_limit:reached the limit of process groups for spawn/connect/accept
-**ch3|sock|pgsize:process group sizes don't match
-**ch3|sock|pgsize %d %d:existing pg size %d, matching pg size %d
-**ch3|sock|pgrank:rank must be less than process group size
-**ch3|sock|pgrank %d %d:pg size %d, rank passed %d
-**ch3|sock|pg_finalize:process group finalization failed
-
+**ifnameinvalid:Interface name was invalid in call to inet_pton
+**afinetinvalid:Network type AF_INET invalid in call to inet_pton
 #
 # CH3:ssm
 #
@@ -610,8 +508,6 @@ with MPI_Alloc_mem.
 **connrefused:Connection refused
 **connrefused %d %d %s:Connection refused for process group %d, rank %d, business card <%s>
 **connallocfailed:Connection failed
-**badpacket:Received a packet of unknown type
-**badpacket %d:Received a packet of unknown type (%d)
 **connfailed:Failed to connect to remote process
 **connfailed %d %d:Failed to connect to remote process %d-%d
 **OpenProcess:OpenProcess failed
@@ -656,8 +552,6 @@ with MPI_Alloc_mem.
 **CreateThread %d:CreateThread failed, error %d
 **FindWindowEx:FindWindowEx failed
 **FindWindowEx %d:FindWindowEx failed, error %d
-**boot_attach:failed to attach to a bootstrap queue
-**boot_attach %s:failed to attach to a bootstrap queue - %s
 **mq_open:failed to open a posix message queue
 **mq_open %d:failed to open a posix message queue, error %d
 **mq_close:failed to close a posix message queue
@@ -697,22 +591,15 @@ with MPI_Alloc_mem.
 **ftok:failed to create a sysv key from a file name
 **ftok %s %d %d:failed to create a sysv key from the file '%s' and id %d, error %d
 **mqp_failure:failed to make progress on the shared memory bootstrap message queue
-**bad_conn:bad conn structure pointer
-**bad_conn %p %p:bad conn structure pointer (%p != %p)
 **invalid_listener:invalid listener
 **invalid_listener %p:invalid listener (%p)
 **pkt_type:invalid packet type
 **pkt_type %d:invalid packet type (%d)
 **pkt_ptr:invalid shm queue packet pointer
 **pkt_ptr %p %p:invalid shm queue packet pointer (%p != %p)
-**bad_sock:bad sock
-**bad_sock %d %d:bad sock (%d != %d)
 **bad_listenersock:bad listener sock
 **bootqmsg:invalid bootstrap queue message size
 **bootqmsg %d:invalid bootstrap queue message size (%d bytes)
-**bootqmsg %d %d:invalid bootstrap queue message size (%d bytes > %d)
-**ca:invalid completion action
-**ca %d:invalid completion action (%d)
 **conn_still_active:connection closed while still active
 **handle_written:unable to handle written data
 **init_vcrdup:failed to duplicate the virtual connection reference
@@ -754,9 +641,13 @@ with MPI_Alloc_mem.
 **argstr_hostd:no space for the host description
 **argstr_port:no space for the listener port
 **argstr_port_name_tag:no space for port_name tag
+**argstr_no_port_name_tag:no port_name tag in MPI port.  Make sure that port \
+ was created with MPI_Open_port
 **argstr_shmhost:no space for the host name
 **argstr_shmq:no space for the shared memory queue name
 **argstr_shmpid:no process id in the business card
+**argstr_missinghost:Missing hostname or invalid host/port description in business card
+**argstr_missingport:Missing port or invalid host/port description in business card
 **bad_set:bad set parameter
 **buscard:unable to create a business card
 **buscard_len:no space left in the business card to add a parameter
@@ -790,6 +681,7 @@ with MPI_Alloc_mem.
 **sock_closed:socket closed
 **sock_connect:connect failed
 **sock_connect %d:connect failed (errno %d)
+**sock_connect %d %s:connect failed - %s (errno %d)
 **sock_connect %s %d %d:unable to connect to %s on port %d, error %d
 **sock_connect %s %d %s %d:unable to connect to %s on port %d, %s (errno %d)
 **sock_create:unable to create a socket
@@ -811,24 +703,12 @@ with MPI_Alloc_mem.
 **wsasock %s %d:WSAStartup failed, %s (errno %d)
 **post_write:Unable to post a write
 **post_write %p %p:Unable to post a write (%p %p)
-**sock_accept:Unable to accept a socket connection
+#**sock_accept:Unable to accept a socket connection
 **sock_writev:Unable to write an iovec to a socket
 **sock_write:Unable to write to a socket
 
-#
-# ch3:essm
-#
-**argstr_shmevent:shared memory event not found in the business card
-**event_create:unable to create an event
-**event_open:unable to open an event
-**event_reset:unable to reset an event
-**event_set:unable to set an event
-**event_wait:unable to wait on an event
 **write:write failed
 **writev:writev failed
-
-**postwrite:postwrite failed
-**postwrite %p %p:postwrite failed (%p %p)
 
 #
 # CH3:shm
@@ -849,255 +729,133 @@ with MPI_Alloc_mem.
 **shmsize:Shared memory subsystem unable to allocate a block of the requested size
 **shmsize %d:Shared memory subsystem unable to allocate a block of the requested size, %d bytes
 
-#
-# CH3:rdma
-#
-**ch3progress:Unable to make message passing progress
-**read_progress:Unable to make read progress
-**handle_read:Unable to handle the read data
-**process_group:Process group initialization failed
-**ch3_finalize:Channel finalization failed
-**ch3_send:send failed
-**rdma_finalize:Channel rdma finalization failed
-**ch3_init:Channel init failed
-**init:Initialization failed
-**rdma_init:Channel rdma initialization failed
-**poke:progress_poke failed
-**postpkt:Unable to post a read for the next packet header
-**write_progress:Write progress failed
-**ch3progress %d:Channel progress engine failed on line %d
 
 #
-# CH3:ib
+# Nemesis
 #
-**ibu_wait:ibu_wait failed
-**ibu_wait %d:ibu_wait failed (errno %d)
-**init_ibu:infiniband initialization failed
-**init_ibu_set:unable to create an infinband completion queue
-**ca_guids:unable to get the guids from the infiniband access layer
-**ca_guids %s:unable to get the infiniband guids - %s
-**get_guids:unable to get the guids for the infiniband channel adapter
-**noca:unable to find an active infiniband channel adapter
-**pd_alloc:unable to allocate a protection domain
-**pd_alloc %s:unable to allocate a protection domain - %s
-**finish_qp:unable to establish a queue pair connection
-**setup_connections:MPIDI_CH3I_Setup_connections failed
+**shmdt:shmdt failed
+**shmdt %s:shmdt failed - %s
+**alloc_shar_mem:unable to allocate shared memory
+**alloc_shar_mem %s %s:unable to allocate shared memory - %s %s
+**attach_shar_mem:unable to attach to shared memory
+**attach_shar_mem %s %s:unable to attach to shared memory - %s %s
+**remove_shar_mem:unable to remove shared memory
+**remove_shar_mem %s %s:unable to remove shared memory - %s %s
+**detach_shar_mem:unable to detach shared memory
+**detach_shar_mem %s %s:unable to detach shared memory - %s %s
+**getsockname:getsockname failed
+**getsockname %s:getsockname failed - %s
+**setsockopt:setsockopt failed
+**setsockopt %s:setsockopt failed - %s
+**fcntl:fcntl failed
+**fcntl %s:fcntl failed - %s
+**gm_init:gm_init failed
+**gm_init %d:gm_init failed gm_status=%d
+**gm_regmem:gm_register_memory failed
+**gm_regmem %d:gm_register_memory failed gm_status=%d
+**gm_get_unique_board_id:gm_get_unique_board_id failed
+**gm_get_unique_board_id %d:gm_get_unique_board_id failed status=%d
+**gm_incompatible_lib:GM library and driver are different versions
+**gm_no_port:unable to find a free GM port
+**not_in_local_ranks:cannot find our rank in the list of local processes
+**write %s:write to socket failed - %s
+**writev %s:writev to socket failed - %s
+**select:select failed
+**select %s:select failed - %s
+**read:read from socket failed
+**read %s:read from socket failed - %s
+**winput_oob:target pointer for win_put is out of bounds
+**winget_oob:source pointer for win_get is out of bounds
+**winserialize:serializing win object
+**windeserialize:deserializing win object
+**open %s:open failed - %s
+**setenv:setenv failed
+**mx_close_endpoint: mx_close_endpoint failed
+**mx_close_endpoint %s:mx_close_endpoint failed (%s)
+**mx_finalize:mx_finalize failed
+**mx_finalize %s:mx_finalize failed (%s)
+**mx_init:mx_init failed
+**mx_init %s:mx_init failed (%s)
+**mx_get_info:mx_get_info failed
+**mx_get_info %s:mx_get_info failed (%s)
+**mx_open_endpoint:mx_open_endpoint failed
+**mx_open_endpoint %s:mx_open_endpoint failed (%s)
+**mx_get_endpoint_addr:mx_get_endpoint_addr failed
+**mx_get_endpoint_addr %s:mx_get_endpoint_addr failed (%s)
+**mx_decompose_endpoint_addr:mx_decompose_endpoint_addr failed
+**mx_decompose_endpoint_addr %s:mx_decompose_endpoint_addr failed (%s)
+**mx_connect:mx_connect failed
+**mx_connect %s:mx_connect failed (%s)
+**mx_test:mx_test failed
+**mx_test %s:mx_test failed (%s)
+**mx_irecv:mx_irecv failed
+**mx_irecv %s:mx_irecv failed (%s)
+**mx_isend:mx_isend failed
+**mx_isend %s:mx_isend failed (%s)
+**mx_wait:mx_wait failed
+**mx_wait %s:mx_wait failed (%s)
+**inet_ntop:inet_ntop failed
+**inet_ntop %s:inet_ntop failed - %s
+**inet_pton:inet_pton failed
+**inet_pton %s:inet_pton failed - %s
+**close:close of socket failed
+**close %s:close of socket failed - %s
+**poll:poll of socket fds failed
+**poll %s:poll of socket fds failed - %s
+**sock_accept:accept of socket fd failed
+**sock_accept %s:accept of socket fd failed - %s
+**ibv_alloc_pd:ibv_alloc_pd failed
+**ibv_alloc_pd %s:ibv_alloc_pd failed for device (%s)
+**ibv_create_comp_channel:ibv_create_comp_channel failed
+**ibv_create_comp_channel %s:ibv_create_comp_channel failed for device (%s)
+**ibv_destroy_comp_channel:ibv_destroy_comp_channel failed
+**ibv_destroy_comp_channel %s:ibv_destroy_comp_channel failed (%s)
+**ibv_create_cq:ibv_create_cq failed
+**ibv_create_cq %s:ibv_create_cq failed for device (%s)
+**ibv_destroy_cq:ibv_destroy_cq failed
+**ibv_destroy_cq %s:ibv_destroy_cq failed (%s)
+**ibv_create_srq:ibv_create_srq failed
+**ibv_create_srq %s:ibv_create_srq failed for device (%s)
+**ibv_modify_srq:ibv_modify_srq failed
+**ibv_modify_srq %d:ibv_modify_srq failed (%d)
+**ibv_get_device_list:ibv_get_device_list failed
+**ibv_get_device_list %p:ibv_get_device_list failed got list (%p)
+**ibv_open_device:ibv_open_device failed
+**ibv_open_device %p:ibv_open_device failed got list (%p)
+**ibv_open_device %s:ibv_open_device failed for device (%s)
+**ibv_reg_mr:ibv_reg_mr failed
+**ibv_reg_mr %d:ibv_reg_mr failed for buffer length (%d)
+**ibv_dereg_mr:ibv_dereg_mr failed
+**ibv_dereg_mr %s:ibv_dereg_mr failed (%s)
+**ibv_create_qp:ibv_create_qp failed
+**ibv_create_qp %s:ibv_create_qp failed for device (%s)
+**ibv_destroy_qp:ibv_destroy_qp failed
+**ibv_destroy_qp %s:ibv_destroy_qp failed (%s)
+**ibv_query_device:ibv_query_device failed
+**ibv_query_device %s:ibv_query_device failed for device (%s)
+**ibv_modify_qp:ibv_modify_qp failed
+**ibv_modify_qp %s:ibv_modify_qp failed for device (%s)
+**ibv_post_recv:ibv_post_recv failed
+**ibv_post_recv %d:ibv_post_recv failed len (%d)
+**ibv_req_notify_cq:ibv_req_notify_cq failed
+**ibv_req_notify_cq %s:ibv_req_notify_cq failed for device (%s)
+**ibv_create_ah:ibv_create_ah failed
+**ibv_create_ah %p:ibv_create_ah failed returned handle (%p)
+**ibv_post_send:ibv_post_send failed
+**ibv_post_send %s:ibv_post_send failed msg (%s)
+**ibv_poll_cq:ibv_poll_cq failed
+**ibv_poll_cq %d:ibv_poll_cq failed ret (%d)
+**ibv_post_srq_recv:ibv_post_srq_recv failed
+**ibv_post_srq_recv %d:ibv_post_srq_recv failed ret (%d)
+**ibv_post_send %d:ibv_post_send failed ret (%d)
+**pthread_create:pthread_create failed
+**pthread_create %d:pthread_create failed with status (%d)
+**pthread_cancel:pthread_cancel failed
+**pthread_cancel %s:pthread_cancel failed (%s)
+**badportrange:MPICH_PORT_RANGE - invalid range specified
 
-#
-# Globus device
-#
-**globus|badreqtype:request contained an invalid request type
-**globus|badreqtype %d:request contained an invalid request type (%d)
-**globus|bc_init:failed to initialize the business card module
-**globus|cm_add_contact:an error occurred while a communication module was adding its contact information to the business card
-**globus|cm_add_contact %s:an error occurred while the '%s' communication module was adding its contact information to the business card
-**globus|cm_finalize:an error occurred while shutting down a communication module
-**globus|cm_finalize %s:an error occurred while shutting down the '%s' communication module
-**globus|cm_init:an error occured while initializing a communication module
-**globus|cm_init %s:an error occured while initializing the '%s' communication module
-**globus|cm_no_module:no communication module was selected
-**globus|cm_no_module %s %d:no communication module was selection for process %s:%d
-**globus|cm_select_module:an error ocurred when a communication module was asked to perform selection
-**globus|cm_select_module %s %s %d:an error ocurred when the '%s' communication module was asked to perform selection for process %s:%d
-**globus|cm_self_hostname:the 'self' communication module was unable to obtain the machine's hostname
-**globus|cm_xio_ver:the 'xio' communication module detected a protocol incompatibility
-**globus|cm_other_send_any_source:MPI_ANY_SOURCE is not a valid destination
-**globus|cm_other_invalid_dest:destination rank may only be MPI_ANY_SOURCE or MPI_PROC_NULL
-**globus|cm_other_invalid_dest %d:destination rank may only be MPI_PROC_NULL, not %d
-**globus|cm_other_invalid_src:source rank may only be MPI_ANY_SOURCE or MPI_PROC_NULL
-**globus|cm_other_invalid_src %d:source rank may only be MPI_ANY_SOURCE or MPI_PROC_NULL, not %d
-**globus|duroc_sjrank:a error occurred while retrieving the rank of this process within its subjob
-**globus|duroc_sjsize:a error occurred while retrieving the size of the subjob to which this process belongs
-**globus|module_activate:attempt to activate a Globus module failed
-**globus|module_activate %s:attempt to activate the Globus %s module failed
-**globus|module_deactivate:attempt to deactivate a Globus module failed
-**globus|module_deactivate %s:attempt to deactivate the Globus %s module failed
-**globus|pm_init_failed:an error occurred while initializing the process management module
-**globus|pm_not_init:attempt to use the process manangement module before initialization
-**globus|pm_finalized:attempt to use the process manangement module after shutdown
-**globus|pm_no_pg_id:the process manager is unable to supply the process group ID at this time
-**globus|pm_no_pg_rank:the process manager is unable to supply the process group rank at this time
-**globus|pm_no_pg_size:the process manager is unable to supply the process group size at this time
-**globus|pm_xchg:an error occurred while exchanging business cards with the other processes
-**globus|recvq_init:an error occurred while initialized the receive queue modules
-**globus|vmpi_init:an error occurred while initializing the vendor MPI
-**globus|vmpi_get_comm_rank:attempt to obtain the rank of the process from a vendor MPI communicator failed
-**globus|vmpi_get_comm_size:attempt to obtain the size of a vendor MPI communicator failed
-**globus|vmpi_get_comm_world:attempt to obtain the vendor MPI_COMM_WORLD failed
-**globus|xio_handle_create:an error occurred while creating a new globus_xio handle
-**globus|xio_handle_create %s:an error occurred while creating a new globus_xio handle\n%s
-**globus|xio_msg_hdr_trunc:the XIO communication module received a truncated message header
-**globus|xio_reg_accept:an error occurred while performing a globus_xio_register_accept()
-**globus|xio_reg_accept %s:an error occurred while performing a globus_xio_register_accept()\n%s
-**globus|xio_reg_close:an error occurred while performing a globus_xio_register_close()
-**globus|xio_reg_close %s:an error occurred while performing a globus_xio_register_close()\n%s
-**globus|xio_reg_open:an error occurred while performing a globus_xio_register_open()
-**globus|xio_reg_open %s:an error occurred while performing a globus_xio_register_open()\n%s
-**globus|xio_reg_read:an error occurred while performing a globus_xio_register_read()
-**globus|xio_reg_read %s:an error occurred while performing a globus_xio_register_read()\n%s
-**globus|xio_reg_write:an error occurred while performing a globus_xio_register_write()
-**globus|xio_reg_write %s:an error occurred while performing a globus_xio_register_write()\n%s
-**globus|xio_server_init:an error occurred while constructing the listener object
-**globus|xio_server_init %s:an error occurred while constructing the listener object:\n%s
-**globus|xio_server_multiple_fail:the XIO communication module encountered too many errors while accepting connections from the listener
 
-#
-# Sock
-#
-**sock|setalloc:unable to allocate a new sock set object
-**sock|sockalloc:unable to allocate a new sock object
-**sock|badbuf:the supplied buffer contains invalid memory
-**sock|badbuf %d %d:the supplied buffer contains invalid memory (set=%d,sock=%d)
-**sock|badhandle:sock contains an invalid handle
-**sock|badhdbuf:a memory fault occurred while accessing the host description string
-**sock|badhdmax:the length of the host description string must be non-negative
-**sock|badhdlen:host description string to small to store description
-**sock|badiovn:size of iov is invalid
-**sock|badiovn %d %d %d:size of iov is invalid (set=%d,sock=%d,iov_n=%d)
-**sock|badlen:bad length parameter(s)
-**sock|badlen %d %d %d %d:bad length parameter(s) (set=%d,sock=%d,min=%d,max=%d)
-**sock|badport:port number is out of range
-**sock|badport %d:port number is out of range (sock=%d)
-**sock|badsock:supplied sock is corrupt
-**sock|connclosed:connection closed by peer
-**sock|connclosed %d %d:connection closed by peer (set=%d,sock=%d)
-**sock|connfailed:connection failure
-**sock|connfailed %d %d:connection failure (set=%d,sock=%d)
-**sock|connrefused:connection refused
-**sock|close_cancel:operation cancelled because sock was closed locally
-**sock|close_cancel %d %d:operation cancelled because sock was closed locally (set=%d,sock=%d)
-**sock|closing:sock is in the process of being closed locally
-**sock|closing %d %d:sock is in the process of being closed locally (set=%d,sock=%d)
-**sock|closing_already:a close operation is already posted
-**sock|closing_already %d %d:a close operation is already post (set=%d,sock=%d)
-**sock|closed:sock has been closed locally
-**sock|getport:failed to obtain port number of the listener
-**sock|hostres:unable to resolve host name to an address
-**sock|listener_bad_sock:supplied sock is not a listener
-**sock|listener_bad_sock %d %d:supplied sock is not a listener (set=%d,sock=%d)
-**sock|listener_bad_state:supplied listener sock is in a bad state
-**sock|listener_bad_state %d %d %d:supplied listener sock is in a bad state (set=%d,sock=%d,state=%d)
-**sock|listener_read:read operation not allowed on a listener
-**sock|listener_read %d %d:read operation not allowed on a listener (set=%d,sock=%d)
-**sock|listener_write:write operation not allowed on a listener
-**sock|listener_write %d %d:write operation not allowed on a listener (set=%d,sock=%d)
-**sock|notconnected:sock is not connected
-**sock|notconnected %d %d:sock is not connected (set=%d,sock=%d)
-**sock|nosock:no new sock was available to accept
-**sock|oserror:unexpected operating system error
-**sock|osnomem:operating system routine failed due to lack of memory
-**sock|osnomem %d %d:operating system routine failed due to lack of memory (set=%d,sock=%d)
-**sock|osnomem %s %d %d:operating system routine %s failed due to lack of memory (set=%d,sock=%d)
-**sock|reads:attempt to perform multiple simultaneous reads
-**sock|reads %d %d:attempt to perform multiple simultaneous reads (set=%d,sock=%d)
-**sock|uninit:Sock library has not been initialized
-**sock|writes:attempt to perform multiple simultaneous writes
-**sock|writes %d %d:attempt to perform multiple simultaneous writes (set=%d,sock=%d)
 **pmi_kvs_get_parent %d:unable to get the PARENT_ROOT_PORT_NAME from the keyval space (pmi_error %d)
-
-#
-# Sock:poll
-#
-**sock|poll|accept:accept failed to acquire a new socket
-**sock|poll|accept %d %s:accept failed to acquire a new socket (errno=%d:%s)
-**sock|poll|badbuf %d %d %d %s:the supplied buffer contains invalid memory (set=%d,sock=%d,errno=%d:%s)
-**sock|poll|badhandle %d %d %d:sock contains an invalid file descriptor (set=%d,sock=%d,fd=%d)
-**sock|poll|badhandle %d %d %d %d:sock contains an invalid file descriptor (set=%d,sock=%d,fd=%d:%d)
-**sock|poll|bind:unable to bind socket to port
-**sock|poll|bind %d %d %s:unable to bind socket to port (port=%d,errno=%d:%s)
-**sock|poll|connclosed %d %d %d %s:connection closed by peer (set=%d,sock=%d,errno=%d:%s)
-**sock|poll|connfailed %d %d %d %s:connection failure (set=%d,sock=%d,errno=%d:%s)
-**sock|poll|connrefused %d %d %s:connection refused (set=%d,sock=%d,host=%s)
-**sock|poll|eqmalloc:MPIU_Malloc failed to allocate memory for an event queue structure
-**sock|poll|eqfail:fatal error: failed to enqueue an event; event was lost
-**sock|poll|eqfail %d %d %d:fatal error: failed to enqueue an event; event was lost (set=%d,sock=%d,op=%d)
-**sock|poll|getport %d %s:failed to obtain port number of listener (errno=%d:%s)
-**sock|poll|hostres %d %d %s:unable to resolve host name to an address (set=%d,sock=%d,host=%s)
-**sock|poll|listen:listen() failed
-**sock|poll|listen %d %s:listen() failed (errno=%d:%s)
-**sock|poll|nodelay:unable to set TCP no delay attribute on socket
-**sock|poll|nodelay %d %s:unable to set TCP no delay attribute on socket (errno=%d:%s)
-**sock|poll|nonblock:unable to set socket to nonblocking
-**sock|poll|nonblock %d %s:unable to set socket to nonblocking (errno=%d:%s)
-**sock|poll|oserror %d %s:unexpected operating system error (errno=%d:%s)
-**sock|poll|oserror %s %d %s:unexpected operating system error from %s (errno=%d:%s)
-**sock|poll|oserror %d %d %d %s:unexpected operating system error (set=%d,sock=%d,errno=%d:%s)
-**sock|poll|oserror %s %d %d %d %s:unpected operating system error from %s (set=%d,sock=%d,errno=%d:%s)
-**sock|poll|osnomem %d %d %d %s:operating system routine failed due to lack of memory (set=%d,sock=%d,errno=%d:%s)
-**sock|poll|pipe:unable to allocate pipe to wakeup a blocking poll()
-**sock|poll|pipe %d %s:unable to allocate pipe to wakeup a blocking poll() (errno=%d:%s)
-**sock|poll|pipenonblock:unable to set wakeup pipe to nonblocking
-**sock|poll|pipenonblock %d %s:unable to set wakeup pipe to nonblocking (errno=%d:%s)
-**sock|poll|reuseaddr:unable to set reuseaddr attribute on socket
-**sock|poll|reuseaddr %d %s:unable to set reuseaddr attribute on socket (errno=%d:%s)
-**sock|poll|setrcvbufsz: unable to set the receive socket buffer size
-**sock|poll|setrcvbufsz %d %d %s: unable to set the receive socket buffer size (size=%d,errno=%d:%s)
-**sock|poll|setsndbufsz: unable to set the send socket buffer size
-**sock|poll|setsndbufsz %d %d %s: unable to set the send socket buffer size (size=%d,errno=%d:%s)
-**sock|poll|socket:unable to obtain new socket
-**sock|poll|socket %d %s:unable to obtain new socket (errno=%d:%s)
-**sock|poll|unhandledstate:encountered an unexpected state
-**sock|poll|unhandledstate %d:encountered an unexpected state (%d)
-**sock|poll|unhandledtype:encountered an unexpected sock type
-**sock|poll|unhandledtype %d:encountered an unexpected sock type (%d)
-
-#
-# pmi
-#
-**pmi_init:PMI_Init failed
-**pmi_init %d:PMI_Init returned %d
-**pmi_initialized:PMI_Initialized failed
-**pmi_initialized %d:PMI_Initialized returned %d
-**pmi_get_size:PMI_Get_size failed
-**pmi_get_size %d:PMI_Get_size returned %d
-**pmi_get_universe_size:PMI_Get_universe_size failed
-**pmi_get_universe_size %d:PMI_Get_universe_size returned %d
-**pmi_get_appnum:PMI_Get_appnum failed
-**pmi_get_appnum %d:PMI_Get_appnum returned %d
-**pmi_get_rank:PMI_Get_rank failed
-**pmi_get_rank %d:PMI_Get_rank returned %d
-**pmi_get_id_length_max:PMI_Get_id_length_max failed
-**pmi_get_id_length_max %d:PMI_Get_id_length_max returned %d
-**pmi_get_id:PMI_Get_id failed
-**pmi_get_id %d:PMI_Get_id returned %d
-**pmi_barrier:PMI_Barrier failed
-**pmi_barrier %d:PMI_Barrier returned %d
-**pmi_finalize:PMI_Finalize failed
-**pmi_finalize %d:PMI_Finalize returned %d
-**pmi_kvs_get_my_name:PMI_KVS_Get_my_name failed
-**pmi_kvs_get_my_name %d:PMI_KVS_Get_my_name returned %d
-**pmi_kvs_get_name_length_max:PMI_KVS_Get_name_length_max failed
-**pmi_kvs_get_name_length_max %d:PMI_KVS_Get_name_length_max returned %d
-**pmi_kvs_get_key_length_max:PMI_KVS_Get_key_length_max failed
-**pmi_kvs_get_key_length_max %d:PMI_KVS_Get_key_length_max returned %d
-**pmi_kvs_get_value_length_max:PMI_KVS_Get_value_length_max failed
-**pmi_kvs_get_value_length_max %d:PMI_KVS_Get_value_length_max returned %d
-**pmi_kvs_create:PMI_KVS_Create failed
-**pmi_kvs_create %d:PMI_KVS_Create returned %d
-**pmi_kvs_destroy:PMI_KVS_Destroy failed
-**pmi_kvs_destroy %d:PMI_KVS_Destroy returned %d
-**pmi_kvs_put:PMI_KVS_Put failed
-**pmi_kvs_put %s %s %s %d:PMI_KVS_Put(%s, %s, %s) returned %d
-**pmi_kvs_put %d:PMI_KVS_Put returned %d
-**pmi_kvs_commit:PMI_KVS_Commit failed
-**pmi_kvs_commit %d:PMI_KVS_Commit returned %d
-**pmi_kvs_get:PMI_KVS_Get failed
-**pmi_kvs_get %d:PMI_KVS_Get returned %d
-**pmi_kvs_get %s %s %d:PMI_KVS_Get(%s, %s) returned %d
-**pmi_kvs_iter_first:PMI_KVS_iter_first failed
-**pmi_kvs_iter_first %s %d:PMI_KVS_iter_first(%s) returned %d
-**pmi_kvs_iter_first %d:PMI_KVS_iter_first returned %d
-**pmi_kvs_iter_next:PMI_KVS_iter_next failed
-**pmi_kvs_iter_next %s %d:PMI_KVS_iter_next(%s) returned %d
-**pmi_kvs_iter_next %d:PMI_KVS_iter_next returned %d
-**pmi_spawn_multiple:PMI_Spawn_multiple failed
-**pmi_spawn_multiple %d:PMI_Spawn_multiple returned %d
-**pmi_get_clique_size:PMI_Get_clique_size failed
-**pmi_get_clique_size %d:PMI_Get_clique_size returned %d
-**pmi_get_clique_ranks:PMI_Get_clique_ranks failed
-**pmi_get_clique_ranks %d:PMI_Get_clique_ranks returned %d
-**pmi_invalid_clique_size:PMI_Get_clique_ranks returned an invalid size
-**pmi_invalid_clique_size %d:PMI_Get_clique_ranks returned an invalid size %d
 
 #
 # mpi functions

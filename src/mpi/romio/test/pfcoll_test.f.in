@@ -1,3 +1,8 @@
+! -*- Mode: Fortran; -*- 
+!  
+!  (C) 2001 by Argonne National Laboratory.
+!      See COPYRIGHT in top-level directory.
+!
       program main
       implicit none
 
@@ -149,7 +154,7 @@
 !     check the data read
       do i=1, bufcount
          if (readbuf(i) .ne. writebuf(i)) then
-	     errs = errs + 1
+             errs = errs + 1
              print *, 'Node ', mynod, '  readbuf ', readbuf(i),         &
      &          '  writebuf ', writebuf(i), '  i', i
          end if

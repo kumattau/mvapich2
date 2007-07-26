@@ -5,6 +5,8 @@
  *      See COPYRIGHT in top-level directory.
  */
 
+/* FIXME: Provide an overview for the functions in this file */
+
 #undef FUNCNAME 
 #define FUNCNAME MPIDU_Sock_post_connect_ifaddr
 #undef FCNAME
@@ -29,22 +31,21 @@
  */
 int MPIDU_Sock_post_connect_ifaddr( struct MPIDU_Sock_set * sock_set, 
 				    void * user_ptr, 
-				    unsigned char ifaddr[], int port,
+				    MPIDU_Sock_ifaddr_t *ifaddr, int port,
 				    struct MPIDU_Sock ** sockp)
 {
     struct MPIDU_Sock * sock = NULL;
     struct pollfd * pollfd;
     struct pollinfo * pollinfo;
-    struct hostent * hostent;
     int fd = -1;
     struct sockaddr_in addr;
     long flags;
     int nodelay;
     int rc;
     int mpi_errno = MPI_SUCCESS;
-    MPIDI_STATE_DECL(MPID_STATE_MPIDU_SOCK_POST_CONNECT);
+    MPIDI_STATE_DECL(MPID_STATE_MPIDU_SOCK_POST_CONNECT_IFADDR);
 
-    MPIDI_FUNC_ENTER(MPID_STATE_MPIDU_SOCK_POST_CONNECT);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDU_SOCK_POST_CONNECT_IFADDR);
 
     MPIDU_SOCKI_VERIFY_INIT(mpi_errno, fn_exit);
 
@@ -53,6 +54,10 @@ int MPIDU_Sock_post_connect_ifaddr( struct MPIDU_Sock_set * sock_set,
      */
     fd = socket(PF_INET, SOCK_STREAM, 0);
     if (fd == -1) {
+	/* FIXME: It would be better to include a special formatting
+	   clue for system error messages (e.g., %dSE; in the recommended
+	   revision for error reporting (that is, value (errno) is an int, 
+	   but should be interpreted as an System Error string) */
 	MPIU_ERR_SETANDJUMP2(mpi_errno,MPIDU_SOCK_ERR_FAIL,
 			     "**sock|poll|socket", 
 		    "**sock|poll|socket %d %s", errno, MPIU_Strerror(errno));
@@ -107,7 +112,8 @@ int MPIDU_Sock_post_connect_ifaddr( struct MPIDU_Sock_set * sock_set,
 
     memset(&addr, 0, sizeof(addr));
     addr.sin_family = AF_INET;
-    memcpy(&addr.sin_addr.s_addr, ifaddr, sizeof(addr.sin_addr.s_addr));
+    memcpy(&addr.sin_addr.s_addr, ifaddr->ifaddr, 
+	   sizeof(addr.sin_addr.s_addr));
     addr.sin_port = htons(port);
 
     /*
@@ -139,6 +145,9 @@ int MPIDU_Sock_post_connect_ifaddr( struct MPIDU_Sock_set * sock_set,
 	bufsz_len = sizeof(bufsz);
 	/* FIXME: This should not be an error or even a warning if
 	 we don't get the requested socket size */
+	/* FIXME: There are other places that the code checks
+	   for the socket buffer size.  These tests (and the messaging,
+	   which is itself problematic), should be in one place. */
 	rc = getsockopt(fd, SOL_SOCKET, SO_SNDBUF, &bufsz, &bufsz_len);
 	/* --BEGIN ERROR HANDLING-- */
 	if (rc == 0)
@@ -179,6 +188,7 @@ int MPIDU_Sock_post_connect_ifaddr( struct MPIDU_Sock_set * sock_set,
     if (rc == 0)
     {
 	/* connection succeeded */
+	MPIU_DBG_MSG_P(CH3_CONNECT,TYPICAL,"Setting state to SOCKI_STATE_CONNECTED_RW for sock %p",sock);
 	pollinfo->state = MPIDU_SOCKI_STATE_CONNECTED_RW;
 	MPIDU_SOCKI_EVENT_ENQUEUE(pollinfo, MPIDU_SOCK_OP_CONNECT, 0, user_ptr, MPI_SUCCESS, mpi_errno, fn_fail);
     }
@@ -186,11 +196,13 @@ int MPIDU_Sock_post_connect_ifaddr( struct MPIDU_Sock_set * sock_set,
     else if (errno == EINPROGRESS)
     {
 	/* connection pending */
+	MPIU_DBG_MSG_P(CH3_CONNECT,TYPICAL,"Setting state to SOCKI_STATE_CONNECTING for sock %p",sock);
 	pollinfo->state = MPIDU_SOCKI_STATE_CONNECTING;
 	MPIDU_SOCKI_POLLFD_OP_SET(pollfd, pollinfo, POLLOUT);
     }
     else
     {
+	MPIU_DBG_MSG_P(CH3_CONNECT,TYPICAL,"Setting state to SOCKI_STATE_DISCONNECTED (failure in connect) for sock %p",sock);
 	pollinfo->os_errno = errno;
 	pollinfo->state = MPIDU_SOCKI_STATE_DISCONNECTED;
 
@@ -214,7 +226,7 @@ int MPIDU_Sock_post_connect_ifaddr( struct MPIDU_Sock_set * sock_set,
     *sockp = sock;
 
   fn_exit:
-    MPIDI_FUNC_EXIT(MPID_STATE_MPIDU_SOCK_POST_CONNECT);
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDU_SOCK_POST_CONNECT_IFADDR);
     return mpi_errno;
 
     /* --BEGIN ERROR HANDLING-- */
@@ -244,6 +256,7 @@ int MPIDU_Sock_post_connect(struct MPIDU_Sock_set * sock_set, void * user_ptr,
 			    struct MPIDU_Sock ** sockp)
 {
     int mpi_errno = MPI_SUCCESS;
+    MPIDU_Sock_ifaddr_t ifaddr;
     struct hostent * hostent;
 
     /*
@@ -265,9 +278,12 @@ int MPIDU_Sock_post_connect(struct MPIDU_Sock_set * sock_set, void * user_ptr,
 	goto fn_exit;
     }
     /* --END ERROR HANDLING-- */
+    /* These are correct for IPv4 */
+    memcpy( ifaddr.ifaddr, (unsigned char *)hostent->h_addr_list[0], 4 );
+    ifaddr.len  = 4;
+    ifaddr.type = AF_INET;
     mpi_errno = MPIDU_Sock_post_connect_ifaddr( sock_set, user_ptr, 
-			(unsigned char *)hostent->h_addr_list[0], port, 
-			sockp );
+						&ifaddr, port, sockp );
  fn_exit:
     return mpi_errno;
 }
@@ -367,6 +383,7 @@ int MPIDU_Sock_listen(struct MPIDU_Sock_set * sock_set, void * user_ptr,
 	low_port = high_port = 0;
 	/* Get range here.  These leave low_port, high_port unchanged
 	   if the env variable is not set */
+	/* FIXME: Use the parameter interface and document this */
 	MPIU_GetEnvRange( "MPICH_PORT_RANGE", &low_port, &high_port );
 
 	for (portnum=low_port; portnum<=high_port; portnum++) {
@@ -494,7 +511,8 @@ int MPIDU_Sock_listen(struct MPIDU_Sock_set * sock_set, void * user_ptr,
     *port = (unsigned int) ntohs(addr.sin_port);
 
     /*
-     * Allocate and initialize sock and poll structures.  If another thread is blocking in poll(), that thread must be woke up
+     * Allocate and initialize sock and poll structures.  If another thread is
+     * blocking in poll(), that thread must be woke up
      * long enough to pick up the addition of the listener socket.
      */
     mpi_errno = MPIDU_Socki_sock_alloc(sock_set, &sock);
@@ -536,6 +554,7 @@ int MPIDU_Sock_listen(struct MPIDU_Sock_set * sock_set, void * user_ptr,
 /* end MPIDU_Sock_listen() */
 
 
+/* FIXME: What does this function do? */
 #undef FUNCNAME
 #define FUNCNAME MPIDU_Sock_post_read
 #undef FCNAME
@@ -796,8 +815,10 @@ int MPIDU_Sock_post_close(struct MPIDU_Sock * sock)
     else /* if (pollinfo->type == MPIDU_SOCKI_TYPE_LISTENER) */
     {
 	/*
-	 * The event queue may contain an accept event which means that MPIDU_Sock_accept() may be legally called after
-	 * MPIDU_Sock_post_close().  However, MPIDU_Sock_accept() must be called before the close event is return by
+	 * The event queue may contain an accept event which means that 
+	 * MPIDU_Sock_accept() may be legally called after
+	 * MPIDU_Sock_post_close().  However, MPIDU_Sock_accept() must be 
+	 * called before the close event is return by
 	 * MPIDU_Sock_wait().
 	 */
 	MPIDU_SOCKI_POLLFD_OP_CLEAR(pollfd, pollinfo, POLLIN);

@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Comm_set_attr
 #define MPI_Comm_set_attr PMPI_Comm_set_attr
 
 #endif
@@ -72,7 +73,7 @@ int MPI_Comm_set_attr(MPI_Comm comm, int comm_keyval, void *attribute_val)
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("attr");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_COMM_SET_ATTR);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -115,9 +116,6 @@ int MPI_Comm_set_attr(MPI_Comm comm, int comm_keyval, void *attribute_val)
        a simple linear list algorithm because few applications use more than a 
        handful of attributes */
     
-    /* The thread lock prevents a valid attr delete on the same communicator
-       but in a different thread from causing problems */
-    MPID_Comm_thread_lock( comm_ptr );
     old_p = &comm_ptr->attributes;
     p = comm_ptr->attributes;
     while (p) {
@@ -126,7 +124,6 @@ int MPI_Comm_set_attr(MPI_Comm comm, int comm_keyval, void *attribute_val)
 	       attribute */
 	    mpi_errno = MPIR_Call_attr_delete( comm, p );
 	    if (mpi_errno) {
-		MPID_Comm_thread_unlock( comm_ptr );
 		goto fn_fail;
 	    }
 	    p->value = attribute_val;
@@ -141,7 +138,7 @@ int MPI_Comm_set_attr(MPI_Comm comm, int comm_keyval, void *attribute_val)
 	    new_p->value	 = attribute_val;
 	    new_p->post_sentinal = 0;
 	    new_p->next		 = p->next;
-	    MPIU_Object_add_ref( keyval_ptr );
+	    MPIR_Keyval_add_ref( keyval_ptr );
 	    p->next		 = new_p;
 	    break;
 	}
@@ -157,7 +154,7 @@ int MPI_Comm_set_attr(MPI_Comm comm, int comm_keyval, void *attribute_val)
 	new_p->value	     = attribute_val;
 	new_p->post_sentinal = 0;
 	new_p->next	     = 0;
-	MPIU_Object_add_ref( keyval_ptr );
+	MPIR_Keyval_add_ref( keyval_ptr );
 	*old_p		     = new_p;
     }
     
@@ -165,13 +162,12 @@ int MPI_Comm_set_attr(MPI_Comm comm, int comm_keyval, void *attribute_val)
        value changes, using something like
        MPID_Dev_comm_attr_hook( comm_ptr, keyval, attribute_val );
     */
-    MPID_Comm_thread_unlock( comm_ptr );
     
     /* ... end of body of routine ... */
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_COMM_SET_ATTR);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("attr");
     return mpi_errno;
 
   fn_fail:

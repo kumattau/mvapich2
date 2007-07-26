@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Cart_sub
 #define MPI_Cart_sub PMPI_Cart_sub
 
 #endif
@@ -60,13 +61,16 @@ int MPI_Cart_sub(MPI_Comm comm, int *remain_dims, MPI_Comm *comm_new)
     int ndims, key, color, ndims_in_subcomm, nnodes_in_subcomm, i, j, rank;
     MPID_Comm *comm_ptr = NULL, *newcomm_ptr;
     MPIR_Topology *topo_ptr, *toponew_ptr;
+    MPIU_THREADPRIV_DECL;
     MPIU_CHKPMEM_DECL(4);
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_CART_SUB);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("topo");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_CART_SUB);
+
+    MPIU_THREADPRIV_GET;
 
     /* Validate parameters, especially handles needing to be converted */
 #   ifdef HAVE_ERROR_CHECKING
@@ -182,7 +186,7 @@ int MPI_Cart_sub(MPI_Comm comm, int *remain_dims, MPI_Comm *comm_new)
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_CART_SUB);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("topo");
     return mpi_errno;
 
   fn_fail:

@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Win_delete_attr
 #define MPI_Win_delete_attr PMPI_Win_delete_attr
 
 #endif
@@ -57,7 +58,9 @@ int MPI_Win_delete_attr(MPI_Win win, int win_keyval)
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    /* The thread lock prevents a valid attr delete on the same window
+       but in a different thread from causing problems */
+    MPIU_THREAD_SINGLE_CS_ENTER("attr");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_WIN_DELETE_ATTR);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -97,9 +100,6 @@ int MPI_Win_delete_attr(MPI_Win win, int win_keyval)
     
     /* Look for attribute.  They are ordered by keyval handle */
 
-    /* The thread lock prevents a valid attr delete on the same window
-       but in a different thread from causing problems */
-    MPID_Common_thread_lock();
     old_p = &win_ptr->attributes;
     p     = win_ptr->attributes;
     while (p) {
@@ -127,7 +127,7 @@ int MPI_Win_delete_attr(MPI_Win win, int win_keyval)
 	    /* We found the attribute.  Remove it from the list */
 	    *old_p = p->next;
 	    /* Decrement the use of the keyval */
-	    MPIU_Object_release_ref( p->keyval, &in_use);
+	    MPIR_Keyval_release_ref( p->keyval, &in_use);
 	    if (!in_use)
 	    {
 		MPIU_Handle_obj_free( &MPID_Keyval_mem, p->keyval );
@@ -137,14 +137,13 @@ int MPI_Win_delete_attr(MPI_Win win, int win_keyval)
 	/* --END ERROR HANDLING-- */
     }
 
-    MPID_Common_thread_unlock( );
     if (mpi_errno != MPI_SUCCESS) goto fn_fail;
     
     /* ... end of body of routine ... */
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_WIN_DELETE_ATTR);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("attr");
     return mpi_errno;
 
   fn_fail:

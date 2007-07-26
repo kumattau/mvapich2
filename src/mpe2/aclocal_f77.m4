@@ -150,7 +150,7 @@ define(<<PAC_CV_NAME>>, translit(pac_cv_f77_sizeof_$1, [ *], [__]))dnl
 changequote([, ])dnl
 AC_CACHE_CHECK([for size of Fortran type $1],PAC_CV_NAME,[
 AC_REQUIRE([PAC_PROG_F77_NAME_MANGLE])
-/bin/rm -f conftest*
+rm -f conftest*
 cat <<EOF > conftest.f
       subroutine isize( )
       $1 i(2)
@@ -229,7 +229,7 @@ if test "$cross_compiling" = yes ; then
     ifelse([$2],,[AC_MSG_WARN([No value provided for size of $1 when cross-compiling])]
 ,eval PAC_CV_NAME=$2)
 else
-    /bin/rm -f conftest*
+    rm -f conftest*
     cat <<EOF > conftestc.c
 #include <stdio.h>
 #include "confdefs.h"
@@ -377,8 +377,8 @@ if AC_TRY_EVAL(ac_fscompilelink) && test -x conftest ; then
       if diff -b conftest.out conftest.bas >/dev/null 2>&1 ; then
          AC_MSG_RESULT(yes)
          AC_MSG_CHECKING([that routines compiled with $1 can be linked with ones compiled  without $1])       
-         /bin/rm -f conftest2.out
-         /bin/rm -f conftest.bas
+         rm -f conftest2.out
+         rm -f conftest.bas
 	 ac_fscompile3='${F77-f77} -c $save_FFLAGS conftest2.f >conftest2.out 2>&1'
 	 ac_fscompilelink4='${F77-f77} $FFLAGS -o conftest conftest2.o conftest.f $LDFLAGS >conftest.bas 2>&1'
          if AC_TRY_EVAL(ac_fscompile3) && test -s conftest2.o ; then
@@ -982,7 +982,7 @@ dnl Fortran routine MUST be named ftest unless you include code
 dnl to select the appropriate Fortran name.
 dnl 
 AC_DEFUN(PAC_PROG_F77_RUN_PROC_FROM_C,[
-/bin/rm -f conftest*
+rm -f conftest*
 cat <<EOF > conftest.f
 $2
 EOF
@@ -1031,7 +1031,7 @@ dnl
 AC_DEFUN(PAC_PROG_F77_IN_C_LIBS,[
 AC_MSG_CHECKING([what Fortran libraries are needed to link C with Fortran])
 F77_IN_C_LIBS="$FLIBS"
-/bin/rm -f conftest*
+rm -f conftest*
 cat <<EOF > conftest.f
         subroutine ftest
         end

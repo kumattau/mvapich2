@@ -7,7 +7,8 @@ mpi_sources =
 # dll_mpich2.
 tvtest_SOURCES = tvtest.c dll_mpich2.c dbgstub.c
 tvtest_LDADD = -L../../../lib -lpmpich -lmpich 
-EXTRA_PROGRAMS = tvtest 
+qdemo_SOURCES = qdemo.c
+EXTRA_PROGRAMS = tvtest qdemo
 
 lib${MPILIBNAME}_a_SOURCES = dbginit.c
 # There is no static debugger interface library

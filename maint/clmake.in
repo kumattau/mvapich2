@@ -9,13 +9,18 @@ $gDebugOther = 0;
 # echo)
 # We include /bin/rm and /bin/mv because some Makefile authors prefer
 # to get the full path for these routines
-@commands = ( "cc", "pgcc", "gcc", "icc", 
+@commands = ( "cc", "pgcc", "gcc", "icc", "acc", 
               "rm", "mv", "ar", "ranlib", "perl", "for", 
 	      "/bin/rm", "/bin/mv", 
-	      "if", "make", "[A-Za-z0-9_\/\.-]*\/mpicc",
+	      "if", "make", "gnumake", "[A-Za-z0-9_\/\.-]*\/mpicc",
 	      "cleaning", "sleep", "date", "g77", "f77", "f90", "pgCC",
 	      "pgf77", "pgf90", "CC", "g95", "g\\+\\+", "c\\+\\+",
-	      "/bin/sh\s+[A-Za-z0-9_\/\.-]*libtool\s+--mode=",
+	      "acc\\+\\+", "xlc", "xlf", "xlC", "xlf90", 
+	      "true", "false", "/[A-Za-z0-9_\/\.-]*createshlib", 
+	      "/bin/sh\\s+[A-Za-z0-9_\/\.-]*libtool\\s+--mode=\\w+",
+	      "/bin/bash\\s+[A-Za-z0-9_\/\.-]*libtool\\s+--mode=\\w+",
+	      "/bin/sh\\s+[A-Za-z0-9_\/\.-]*libtool\\s+--finish",
+	      "/bin/bash\\s+[A-Za-z0-9_\/\.-]*libtool\\s+--finish",
 	      "[A-Za-z0-9_\/-]*\/icc",
 	      "[A-Za-z0-9_\/-]*\/install-sh",
 	      "/usr/bin/ar", "mkdir",
@@ -25,14 +30,17 @@ $gDebugOther = 0;
 	      "Make completed",
 	      "echo", "cat",
 	      "\\(?cd",
-	      "cd\s+\&\&\s+make",
+	      "\\(\\s*cd",
+	      "creating\s+lib.*",
+	      "cd\\s+\&\&\\s+make",
 	      "sed -e",
-	      "PATH=\"\$PATH.*\sldconfig\s",
+	      "PATH=\"\\\$PATH.*\\sldconfig\\s",
 	      "building profiling interface in directory",
 	      "/usr/bin/install",
 	      "Copying Upshot",
+	      "Cleaning directory",
 	      "Making .*\.\.\.\.",        # mpe writes this
-	      "Making upshot", "\s*\$", );
+	      "Making upshot", "\\s*\$", );
 
 # OtherNoise is an array of patterns that describe blocks of
 # text that we'd like to skip.  The initial use it to handle 
@@ -50,7 +58,9 @@ $gDebugOther = 0;
 # This next is a general version to handle all of these mistakes
 		'^PGC-W-0114-More than one type specified.*/usr/include<SEP>^PGC-W-0143-Useless typedef declaration \(no declarators present\).*/usr/include<SEP>2',
 		);
-
+# In the past, we also needed
+# WARNING 84.*not used for resolving any symbol
+# Info: File not optimized
 
 
 $trimCompileLine = 1;
@@ -80,6 +90,8 @@ $cmdline = "";
 T:
 while ($line = <>) {
     if (eof()) { next; }
+
+    $line =~ s/\r//;    # remove returns from line (de DOSify)
 
     # Read the next line, including handling any continuation lines
     while ($line =~ /\\$/) {
@@ -156,9 +168,9 @@ while ($line = <>) {
     if ($cmdline ne "") { 
 	if ($trimCompileLine) {
 	    # Simplify the command line before printing
-	    $cmdline =~ s/-I[^\s]*\s+//g;
+	    $cmdline =~ s/-I\S*\s+//g;
 	    $cmdline =~ s/-ansi//g;
-	    $cmdline =~ s/-W[^\s]*\s+//g;
+	    $cmdline =~ s/-W\S*\s+//g;
 	    $cmdline =~ s/-DHAVE_CONFIG_H//g;
 	    $cmdline =~ s/-DGCC_WALL//g;
 	}

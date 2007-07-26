@@ -54,6 +54,10 @@ int main(int argc, char *argv[])
     MPI_Pack_size(1, xpose, MPI_COMM_WORLD, &bufsize);
     buffer = (char *) malloc((unsigned) bufsize);
 
+    /* To improve reporting of problems about operations, we
+       change the error handler to errors return */
+    MPI_Comm_set_errhandler( MPI_COMM_WORLD, MPI_ERRORS_RETURN );
+
     err = MPI_Pack(a,
 		   1,
 		   xpose,

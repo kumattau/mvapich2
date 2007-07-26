@@ -5,27 +5,42 @@
  *      See COPYRIGHT in top-level directory.
  */
 
+/* Make sure that we can properly ensure atomic access to the poll routine */
+#ifdef MPICH_IS_THREADED
+#if (USE_THREAD_IMPL != MPICH_THREAD_IMPL_GLOBAL_MUTEX)
+#error selected multi-threaded implementation is not supported
+#endif
+#endif
 
-static int MPIDU_Socki_handle_pollhup(struct pollfd * const pollfd, struct pollinfo * const pollinfo);
-static int MPIDU_Socki_handle_pollerr(struct pollfd * const pollfd, struct pollinfo * const pollinfo);
-static int MPIDU_Socki_handle_read(struct pollfd * const pollfd, struct pollinfo * const pollinfo);
-static int MPIDU_Socki_handle_write(struct pollfd * const pollfd, struct pollinfo * const pollinfo);
-static int MPIDU_Socki_handle_connect(struct pollfd * const pollfd, struct pollinfo * const pollinfo);
+
+static int MPIDU_Socki_handle_pollhup(struct pollfd * const pollfd, 
+				      struct pollinfo * const pollinfo);
+static int MPIDU_Socki_handle_pollerr(struct pollfd * const pollfd, 
+				      struct pollinfo * const pollinfo);
+static int MPIDU_Socki_handle_read(struct pollfd * const pollfd, 
+				   struct pollinfo * const pollinfo);
+static int MPIDU_Socki_handle_write(struct pollfd * const pollfd, 
+				    struct pollinfo * const pollinfo);
+static int MPIDU_Socki_handle_connect(struct pollfd * const pollfd, 
+				      struct pollinfo * const pollinfo);
 
 /*
  * MPIDU_Sock_wait()
  *
  * NOTES:
  *
- * For fatal errors, the state of the connection progresses directly to the failed state and the connection is marked inactive in
- * the poll array.  Under normal conditions, the fatal error should result in the termination of the process; but, if that
+ * For fatal errors, the state of the connection progresses directly to the 
+ * failed state and the connection is marked inactive in
+ * the poll array.  Under normal conditions, the fatal error should result in 
+ * the termination of the process; but, if that
  * doesn't happen, we try to leave the implementation in a somewhat sane state.
  */
 #undef FUNCNAME
 #define FUNCNAME MPIDU_Sock_wait
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIDU_Sock_wait(struct MPIDU_Sock_set * sock_set, int millisecond_timeout, struct MPIDU_Sock_event * eventp)
+int MPIDU_Sock_wait(struct MPIDU_Sock_set * sock_set, int millisecond_timeout,
+		    struct MPIDU_Sock_event * eventp)
 {
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_MPIDU_SOCK_WAIT);
@@ -35,13 +50,13 @@ int MPIDU_Sock_wait(struct MPIDU_Sock_set * sock_set, int millisecond_timeout, s
 
     for (;;)
     { 
-	int elem;
+	int elem=0;   /* Keep compiler happy */
 	int n_fds;
 	int n_elems;
 	int found_active_elem = FALSE;
-	
-	if (MPIDU_Socki_event_dequeue(sock_set, &elem, eventp) == MPI_SUCCESS)
-	{
+
+	mpi_errno = MPIDU_Socki_event_dequeue(sock_set, &elem, eventp);
+	if (mpi_errno == MPI_SUCCESS) {
 	    struct pollinfo * pollinfo;
 	    int flags;
 	    
@@ -53,13 +68,19 @@ int MPIDU_Sock_wait(struct MPIDU_Sock_set * sock_set, int millisecond_timeout, s
 	    pollinfo = &sock_set->pollinfos[elem];
 
 	    /*
-	     * Attempt to set socket back to blocking.  This *should* prevent any data in the socket send buffer from being
-	     * discarded.  Instead close() will block until the buffer is flushed or the connection timeouts and is considered
-	     * lost.  Theoretically, this could cause the MPIDU_Sock_wait() to hang indefinitely; however, the calling code
-	     * should ensure this will not happen by going through a shutdown protocol before posting a close operation.
+	     * Attempt to set socket back to blocking.  This *should* prevent 
+	     * any data in the socket send buffer from being
+	     * discarded.  Instead close() will block until the buffer is 
+	     * flushed or the connection timeouts and is considered
+	     * lost.  Theoretically, this could cause the MPIDU_Sock_wait() to
+	     * hang indefinitely; however, the calling code
+	     * should ensure this will not happen by going through a shutdown 
+	     * protocol before posting a close operation.
 	     *
-	     * FIXME: If the attempt to set the socket back to blocking fails, we presently ignore it.  Should we return an
-	     * error?  We need to define acceptible data loss at close time.  MS Windows has worse problems with this, so it
+	     * FIXME: If the attempt to set the socket back to blocking fails, 
+	     * we presently ignore it.  Should we return an
+	     * error?  We need to define acceptible data loss at close time.  
+	     * MS Windows has worse problems with this, so it
 	     * may not be possible to make any guarantees.
 	     */
 	    flags = fcntl(pollinfo->fd, F_GETFL, 0);
@@ -68,7 +89,8 @@ int MPIDU_Sock_wait(struct MPIDU_Sock_set * sock_set, int millisecond_timeout, s
 		fcntl(pollinfo->fd, F_SETFL, flags & ~O_NONBLOCK);
 	    }
 
-	    /* FIXME: return code?  If an error occurs do we return it instead of the error specified in the event? */
+	    /* FIXME: return code?  If an error occurs do we return it 
+	       instead of the error specified in the event? */
 	    close(pollinfo->fd);
 
 	    MPIDU_Socki_sock_free(pollinfo->sock);
@@ -78,16 +100,33 @@ int MPIDU_Sock_wait(struct MPIDU_Sock_set * sock_set, int millisecond_timeout, s
 
 	for(;;)
 	{
-#	    if (MPICH_THREAD_LEVEL < MPI_THREAD_MULTIPLE)
+#	    ifndef MPICH_IS_THREADED
 	    {
 		MPIDI_FUNC_ENTER(MPID_STATE_POLL);
-		n_fds = poll(sock_set->pollfds, sock_set->poll_array_elems, millisecond_timeout);
+		n_fds = poll(sock_set->pollfds, sock_set->poll_array_elems, 
+			     millisecond_timeout);
 		MPIDI_FUNC_EXIT(MPID_STATE_POLL);
 	    }
-#	    else /* (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE) */
+#	    else /* MPICH_IS_THREADED */
 	    {
+		/* If we've enabled runtime checking of the thread level,
+		 then test for that and if we are *not* multithreaded, 
+		 just use the same code as above.  Otherwise, use 
+		 multithreaded code (and we don't then need the 
+		 MPIU_THREAD_CHECK_BEGIN/END macros) */
+#ifdef HAVE_RUNTIME_THREADCHECK
+		if (!MPIR_Process.isThreaded) {
+		    MPIDI_FUNC_ENTER(MPID_STATE_POLL);
+		    n_fds = poll(sock_set->pollfds, sock_set->poll_array_elems, 
+				 millisecond_timeout);
+		    MPIDI_FUNC_EXIT(MPID_STATE_POLL);
+		}
+		else
+#endif
+		{    
 		/*
-		 * First try a non-blocking poll to see if any immediate progress can be made.  This avoids the lock manipulation
+		 * First try a non-blocking poll to see if any immediate 
+		 * progress can be made.  This avoids the lock manipulation
 		 * overhead.
 		 */
 		MPIDI_FUNC_ENTER(MPID_STATE_POLL);
@@ -100,94 +139,37 @@ int MPIDU_Sock_wait(struct MPIDU_Sock_set * sock_set, int millisecond_timeout, s
 		
 		    sock_set->pollfds_active = sock_set->pollfds;
 		    
-#                   if (USE_THREAD_IMPL == MPICH_THREAD_IMPL_GLOBAL_MUTEX)
-		    {
-			/* Release the lock so that other threads may make progress while this thread waits for something to do */
-			MPIU_DBG_MSG(THREAD,TYPICAL,"Exit global critical section");
-			MPID_Thread_mutex_unlock(&MPIR_Process.global_mutex);
-		    }
-#                   elif (USE_THREAD_IMPL == MPICH_THREAD_IMPL_GLOBAL_MONITOR)
-		    {
-			/* FIXME: this code is an experiment and is not even close to correct. */
-			if (MPIU_Monitor_closet_get_occupany_count(MPIR_Process.global_closet) == 0)
-			{
-			    MPIU_Monitor_exit(&MPIR_Process.global_monitor);
-			}
-			else
-			{
-			    MPIU_Monitor_continue(&MPIR_Process.global_monitor, &MPIR_Process.global_closet);
-			}
-		    }
-#                   else
-#                       error selected multi-threaded implementation is not supported
-#                   endif
+		    /* Release the lock so that other threads may make 
+		       progress while this thread waits for something to 
+		       do */
+		    MPIU_DBG_MSG(THREAD,TYPICAL,"Exit global critical section");
+		    MPID_Thread_mutex_unlock(&MPIR_Process.global_mutex);
 			    
 		    MPIDI_FUNC_ENTER(MPID_STATE_POLL);
-		    n_fds = poll(sock_set->pollfds_active, pollfds_active_elems, millisecond_timeout);
+		    n_fds = poll(sock_set->pollfds_active, 
+				 pollfds_active_elems, millisecond_timeout);
 		    MPIDI_FUNC_EXIT(MPID_STATE_POLL);
 		    
-#                   if (USE_THREAD_IMPL == MPICH_THREAD_IMPL_GLOBAL_MUTEX)
-		    {
-			/* Reaquire the lock before processing any of the information returned from poll */
-			MPIU_DBG_MSG(THREAD,TYPICAL,"Enter global critical section");
-			MPID_Thread_mutex_lock(&MPIR_Process.global_mutex);
-		    }
-#                   elif (USE_THREAD_IMPL == MPICH_THREAD_IMPL_GLOBAL_MONITOR)
-		    {
-			MPIU_Monitor_enter(&MPIR_Process.global_monitor);
-		    }
-#                   else
-#                       error selected multi-threaded implementation is not supported
-#                   endif
+		    /* Reaquire the lock before processing any of the 
+		       information returned from poll */
+		    MPIU_DBG_MSG(THREAD,TYPICAL,"Enter global critical section");
+		    MPID_Thread_mutex_lock(&MPIR_Process.global_mutex);
 
 		    /*
-		     * Update pollfds array if changes were posted while we were blocked in poll
+		     * Update pollfds array if changes were posted while we 
+		     * were blocked in poll
 		     */
-		    if (sock_set->pollfds_updated)
-		    { 
-			for (elem = 0; elem < sock_set->poll_array_elems; elem++)
-			{
-			    sock_set->pollfds[elem].events = sock_set->pollinfos[elem].pollfd_events;
-			    if ((sock_set->pollfds[elem].events & (POLLIN | POLLOUT)) != 0)
-			    {
-				sock_set->pollfds[elem].fd = sock_set->pollinfos[elem].fd;
-			    }
-			    else
-			    {
-				sock_set->pollfds[elem].fd = -1;
-			    }
-
-			    if (elem < pollfds_active_elems)
-			    {
-				if (sock_set->pollfds_active == sock_set->pollfds)
-				{
-				    sock_set->pollfds[elem].revents &= ~(POLLIN | POLLOUT) | sock_set->pollfds[elem].events;
-				}
-				else 
-				{
-				    sock_set->pollfds[elem].revents = sock_set->pollfds_active[elem].revents &
-					(~(POLLIN | POLLOUT) | sock_set->pollfds[elem].events);				
-				}
-			    }
-			    else   
-			    {
-				sock_set->pollfds[elem].revents = 0;
-			    }
-			}
-
-			if (sock_set->pollfds_active != sock_set->pollfds)
-			{
-			    MPIU_Free(sock_set->pollfds_active);
-			}
-
-			sock_set->pollfds_updated = FALSE;
+		    if (sock_set->pollfds_updated) {
+			mpi_errno = MPIDI_Sock_update_sock_set( 
+				       sock_set, pollfds_active_elems );
 		    }
 
 		    sock_set->pollfds_active = NULL;
 		    sock_set->wakeup_posted = FALSE;
 		}
-	    }
-#	    endif /* (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE) */
+		} /* else !MPIR_Process.isThreaded */
+	    } 
+#	    endif /* MPICH_IS_THREADED */
 
 	    if (n_fds > 0)
 	    {
@@ -272,7 +254,8 @@ int MPIDU_Sock_wait(struct MPIDU_Sock_set * sock_set, int millisecond_timeout, s
 		}
 	    }
 
-	    /* According to Stevens, some errors are reported as normal data (POLLIN) and some are reported with POLLERR. */
+	    /* According to Stevens, some errors are reported as normal data 
+	       (POLLIN) and some are reported with POLLERR. */
 	    if (pollfd->revents & POLLERR)
 	    {
 		mpi_errno = MPIDU_Socki_handle_pollerr(pollfd, pollinfo);
@@ -287,7 +270,8 @@ int MPIDU_Sock_wait(struct MPIDU_Sock_set * sock_set, int millisecond_timeout, s
 	    {
 		if (pollinfo->type == MPIDU_SOCKI_TYPE_COMMUNICATION)
 		{ 
-		    if (pollinfo->state == MPIDU_SOCKI_STATE_CONNECTED_RW || pollinfo->state == MPIDU_SOCKI_STATE_CONNECTED_RO)
+		    if (pollinfo->state == MPIDU_SOCKI_STATE_CONNECTED_RW || 
+			pollinfo->state == MPIDU_SOCKI_STATE_CONNECTED_RO)
 		    {
 			mpi_errno = MPIDU_Socki_handle_read(pollfd, pollinfo);
 			/* --BEGIN ERROR HANDLING-- */
@@ -314,7 +298,7 @@ int MPIDU_Sock_wait(struct MPIDU_Sock_set * sock_set, int millisecond_timeout, s
 		    MPIDU_SOCKI_EVENT_ENQUEUE(pollinfo, MPIDU_SOCK_OP_ACCEPT, 0, pollinfo->user_ptr,
 					      MPI_SUCCESS, mpi_errno, fn_exit);
 		}
-		else if ((MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE) && pollinfo->type == MPIDU_SOCKI_TYPE_INTERRUPTER)
+	else if ((MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE) && pollinfo->type == MPIDU_SOCKI_TYPE_INTERRUPTER)
 		{
 		    char c[16];
 		    int nb;
@@ -650,7 +634,8 @@ static int MPIDU_Socki_handle_read(struct pollfd * const pollfd, struct pollinfo
 	if (MPIR_Err_is_fatal(event_mpi_errno))
 	{
 	    /*
-	     * A serious error occurred.  There is no guarantee that the data structures are still intact.  Therefore, we avoid
+	     * A serious error occurred.  There is no guarantee that the data 
+	     * structures are still intact.  Therefore, we avoid
 	     * modifying them.
 	     */
 	    mpi_errno = event_mpi_errno;

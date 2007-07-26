@@ -170,12 +170,14 @@ int MPIE_OnAbend( ProcessUniverse * );
 
 int MPIE_SetupSingleton( ProcessUniverse * );
 
+int MPIE_HasAbended(void);
 int MPIE_SignalWorld( ProcessWorld *, int );
 int MPIE_KillWorld( ProcessWorld * );
 int MPIE_KillUniverse( ProcessUniverse * );
 
 int MPIE_ForwardSignal( int );
 int MPIE_ForwardCommonSignals( void );
+void MPIE_IgnoreSigPipe( void );
 
 /* Currently, parse soft spec is in cmnargs */
 int MPIE_ParseSoftspec( const char *, ProcessSoftSpec * );

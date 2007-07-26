@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Close_port
 #define MPI_Close_port PMPI_Close_port
 
 #endif
@@ -48,7 +49,7 @@ int MPI_Close_port(char *port_name)
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("spawn");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_CLOSE_PORT);
 
     /* ... body of routine ...  */
@@ -60,7 +61,7 @@ int MPI_Close_port(char *port_name)
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_CLOSE_PORT);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("spawn");
     return mpi_errno;
 
   fn_fail:

@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: trmem.c,v 1.1.1.1 2006/01/18 21:09:48 huangwei Exp $
+/*  $Id: trmem.c,v 1.31 2006/11/02 19:48:50 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -234,8 +234,9 @@ void *MPIU_trmalloc( unsigned int a, int lineno, const char fname[] )
     head->size     = nsize;
     head->id       = TRid;
     head->lineno   = lineno;
-    if ((l = (int)strlen( fname )) > TR_FNAME_LEN-1 ) fname += (l - (TR_FNAME_LEN-1));
-    MPIU_Strncpy( head->fname, fname, (TR_FNAME_LEN-1) );
+    if ((l = (int)strlen( fname )) > TR_FNAME_LEN-1 ) 
+	fname += (l - (TR_FNAME_LEN-1));
+    MPIU_Strncpy( head->fname, fname, TR_FNAME_LEN );
     head->fname[TR_FNAME_LEN-1]= 0;
     head->cookie   = COOKIE_VALUE;
     nend           = (unsigned long *)(new + nsize);
@@ -320,8 +321,8 @@ called in %s at line %d\n", world_rank, (long)a + sizeof(TrSPACE),
 	    head->fname[TR_FNAME_LEN-1]	  = 0;  /* Just in case */
 	    head->freed_fname[TR_FNAME_LEN-1] = 0;  /* Just in case */
 	    MPIU_Error_printf(
-		     "[%d] Block freed in %s[%d]\n", world_rank, head->freed_fname, 
-		     head->freed_lineno );
+		     "[%d] Block freed in %s[%d]\n", world_rank, 
+		     head->freed_fname, head->freed_lineno );
 	    MPIU_Error_printf(
 		     "[%d] Block allocated at %s[%d]\n", 
 		     world_rank, head->fname, head->lineno );
@@ -349,8 +350,9 @@ called in %s at line %d\n", world_rank, (long)a + sizeof(TrSPACE),
 /* Mark the location freed */
     *nend		   = ALREADY_FREED;
     head->freed_lineno = line;
-    if ((l = (int)strlen( file )) > TR_FNAME_LEN-1 ) file += (l - (TR_FNAME_LEN-1));
-    MPIU_Strncpy( head->freed_fname, file, (TR_FNAME_LEN-1) );
+    if ((l = (int)strlen( file )) > TR_FNAME_LEN-1 ) 
+	file += (l - (TR_FNAME_LEN-1));
+    MPIU_Strncpy( head->freed_fname, file, TR_FNAME_LEN );
 
     allocated -= head->size;
     frags     --;
@@ -560,7 +562,8 @@ void MPIU_trSummary( FILE *fp, int minid )
 	    key->lineno = head->lineno;
 	    key->fname  = head->fname;
 #if defined(USE_TSEARCH_WITH_CHARP)
-	    fnd    = (TRINFO **)tsearch( (char *) key, (char **) &root, IntCompare );
+	    fnd    = (TRINFO **)tsearch( (char *) key, (char **) &root, 
+					 IntCompare );
 #else
 	    fnd    = (TRINFO **)tsearch( (void *) key, (void **) &root, 
 					 (int (*)())IntCompare );
@@ -620,7 +623,8 @@ void MPIU_trlevel( int level )
 
 
 /*+C
-    MPIU_trDebugLevel - set the level of debugging for the space management routines
+    MPIU_trDebugLevel - set the level of debugging for the space management
+    routines
 
     Input Parameter:
 .   level - level of debugging.  Currently, either 0 (no checking) or 1
@@ -675,29 +679,32 @@ void *MPIU_trrealloc( void *p, int size, int lineno, const char fname[] )
     void    *pnew;
     char    *pa;
     int     nsize;
-    TRSPACE *head;
+    TRSPACE *head=0;
     char    hexstring[MAX_ADDRESS_CHARS];
 
 /* We should really use the size of the old block... */
-    pa   = (char *)p;
-    head = (TRSPACE *)(pa - sizeof(TrSPACE));
-    if (head->cookie != COOKIE_VALUE) {
-	/* Damaged header */
-	addrToHex( pa, hexstring );
-	MPIU_Error_printf( 
-"[%d] Block at address %s is corrupted; cannot realloc;\n\
+    if (p) {
+	pa   = (char *)p;
+	head = (TRSPACE *)(pa - sizeof(TrSPACE));
+	if (head->cookie != COOKIE_VALUE) {
+	    /* Damaged header */
+	    addrToHex( pa, hexstring );
+	    MPIU_Error_printf( 
+		"[%d] Block at address %s is corrupted; cannot realloc;\n\
 may be block not allocated with MPIU_trmalloc or MALLOC\n", 
-		     world_rank, hexstring );
-	return 0;
+		world_rank, hexstring );
+	    return 0;
+	}
     }
-
     pnew = MPIU_trmalloc( (unsigned)size, lineno, fname );
     if (!pnew) return p;
 
-    nsize = size;
-    if (head->size < (unsigned long)nsize) nsize = (int)(head->size);
-    memcpy( pnew, p, nsize );
-    MPIU_trfree( p, lineno, fname );
+    if (p) {
+	nsize = size;
+	if (head->size < (unsigned long)nsize) nsize = (int)(head->size);
+	memcpy( pnew, p, nsize );
+	MPIU_trfree( p, lineno, fname );
+    }
     return pnew;
 }
 

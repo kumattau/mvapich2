@@ -20,7 +20,17 @@
 #define MPICH_MPIDI_CH3_POST_H_INCLUDED
 
 /* #define MPIDI_CH3_EAGER_MAX_MSG_SIZE (1500 - sizeof(MPIDI_CH3_Pkt_t)) */
-#define MPIDI_CH3_EAGER_MAX_MSG_SIZE rdma_iba_eager_threshold
+/* #define MPIDI_CH3_EAGER_MAX_MSG_SIZE rdma_iba_eager_threshold */
+extern int smp_eagersize;
+
+static inline int MPIDI_CH3_EAGER_MAX_MSG_SIZE(MPIDI_VC_t *vc)
+{
+#ifdef _SMP_
+    return (vc->smp.local_nodes >=0) ? smp_eagersize : rdma_iba_eager_threshold;
+#else
+    return rdma_iba_eager_threshold;
+#endif
+}
 
 /*
  * Channel level request management macros
@@ -80,9 +90,9 @@ extern volatile unsigned int MPIDI_CH3I_progress_completion_count;
 {											\
     (progress_state_)->ch.completion_count = MPIDI_CH3I_progress_completion_count;	\
 }
-#define MPIDI_CH3_Progress_end(progress_state_)
-#define MPIDI_CH3_Progress_poke() (MPIDI_CH3_Progress_test())
 #endif
+#define MPIDI_CH3_Progress_poke() MPIDI_CH3_Progress_test()
+
 #define MPIDI_CH3_Progress_test() (MPIDI_CH3I_Progress_test());
 
 int MPIDI_CH3I_Progress(int blocking, MPID_Progress_state *state);
@@ -102,6 +112,12 @@ int MPIDI_CH3I_Progress_test(void);
 {       \
     rreq->mrail.protocol = rts_pkt->rndv.protocol;  \
 }
+
+#define MPIDI_CH3_RNDV_PROTOCOL_IS_READ(rts_pkt) \
+    (VAPI_PROTOCOL_RGET == rts_pkt->rndv.protocol)
+
+#define MPIDI_CH3_RECV_REQ_IS_READ(rreq) \
+    (VAPI_PROTOCOL_RGET == rreq->mrail.protocol)
 
 extern int SMP_INIT;
 extern int SMP_ONLY;

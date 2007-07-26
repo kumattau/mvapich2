@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: finalize.c,v 1.1.1.1 2006/01/18 21:09:43 huangwei Exp $
+/*  $Id: finalize.c,v 1.52 2006/11/07 19:18:14 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Finalize
 #define MPI_Finalize PMPI_Finalize
 
 /* Any internal routines can go here.  Make them static if possible */
@@ -31,7 +32,7 @@
    have a callback calls MPIR_Add_finalize( routine, extra, priority ).
    
  */
-PMPI_LOCAL void MPIR_Call_finalize_callbacks( void );
+PMPI_LOCAL void MPIR_Call_finalize_callbacks( int, int );
 typedef struct Finalize_func_t {
     int (*f)( void * );      /* The function to call */
     void *extra_data;        /* Data for the function */
@@ -66,20 +67,22 @@ void MPIR_Add_finalize( int (*f)( void * ), void *extra_data, int priority )
 	fstack_max_priority = priority;
 }
 
-PMPI_LOCAL void MPIR_Call_finalize_callbacks( void )
+/* Invoke the registered callbacks */
+PMPI_LOCAL void MPIR_Call_finalize_callbacks( int min_prio, int max_prio )
 {
     int i, j;
-    for (j=fstack_max_priority; j>=0; j--) {
+    for (j=fstack_max_priority; j>=min_prio; j--) {
 	for (i=fstack_sp-1; i>=0; i--) {
-	    if (fstack[i].f && fstack[i].priority == j) 
+	    if (fstack[i].f && fstack[i].priority == j) {
 		fstack[i].f( fstack[i].extra_data );
+		fstack[i].f = 0;
+	    }
 	}
     }
-    fstack_sp = 0;
 }
 #else
 #ifndef USE_WEAK_SYMBOLS
-PMPI_LOCAL void MPIR_Call_finalize_callbacks( void );
+PMPI_LOCAL void MPIR_Call_finalize_callbacks( int, int );
 #endif
 #endif
 
@@ -113,15 +116,15 @@ int MPI_Finalize( void )
 #endif
     MPID_MPI_FINALIZE_STATE_DECL(MPID_STATE_MPI_FINALIZE);
 
-
     MPIR_ERRTEST_INITIALIZED_ORDIE();
 
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("init");
     MPID_MPI_FINALIZE_FUNC_ENTER(MPID_STATE_MPI_FINALIZE);
     
     /* ... body of routine ... */
     
 #if defined(HAVE_USLEEP) && defined(USE_COVERAGE)
+    /* We need to get the rank before freeing MPI_COMM_WORLD */
     rank = MPIR_Process.comm_world->rank;
 #endif    
 
@@ -131,7 +134,7 @@ int MPI_Finalize( void )
        MPI_COMM_SELF are deleted before almost anything else happens */
     if (MPIR_Process.attr_free && MPIR_Process.comm_self->attributes) {
         mpi_errno = MPIR_Process.attr_free( MPI_COMM_SELF,
-                                         MPIR_Process.comm_self->attributes);
+					   MPIR_Process.comm_self->attributes);
     }
     if (MPIR_Process.attr_free && MPIR_Process.comm_world->attributes) {
         mpi_errno = MPIR_Process.attr_free( MPI_COMM_WORLD, 
@@ -142,8 +145,14 @@ int MPI_Finalize( void )
        pre and post MPID_Finalize callbacks? */
     MPIU_Timer_finalize();
 
+    /* Call the high-priority callbacks */
+    MPIR_Call_finalize_callbacks( MPIR_FINALIZE_CALLBACK_PRIO+1, 
+				  MPIR_FINALIZE_CALLBACK_MAX_PRIO );
+
     mpi_errno = MPID_Finalize();
-    MPIU_ERR_CHKANDSTMT((mpi_errno != MPI_SUCCESS), mpi_errno, MPI_ERR_OTHER,;, "**fail");
+    if (mpi_errno) {
+	MPIU_ERR_POP(mpi_errno);
+    }
     
     /* delete local and remote groups on comm_world and comm_self if
        they had been created (should we use a function pointer here
@@ -157,7 +166,8 @@ int MPI_Finalize( void )
     if (MPIR_Process.comm_self->remote_group)
         MPIR_Group_release(MPIR_Process.comm_self->remote_group);
 
-    MPIR_Call_finalize_callbacks();
+    /* Call the low-priority (post Finalize) callbacks */
+    MPIR_Call_finalize_callbacks( 0, MPIR_FINALIZE_CALLBACK_PRIO-1 );
 
     /* FIXME: Both the memory tracing and debug nesting code blocks should
        be finalize callbacks */
@@ -180,6 +190,9 @@ int MPI_Finalize( void )
     /* FIXME: the (1) in the if test should be replaced by a 
        parameter call */
     if (1) {
+	MPIU_THREADPRIV_DECL;
+
+	MPIU_THREADPRIV_GET;
 	/* Check for an error in the nesting level */
 	if (MPIR_Nest_value()) {
 	    int i,n;
@@ -188,8 +201,8 @@ int MPI_Finalize( void )
 	    fprintf( stderr, "Nest stack is:\n" );
 	    for (i=n-1; i>=0; i--) {
 		fprintf( stderr, "\t[%d] %s:%d\n", i, 
-			 MPIR_Thread.nestinfo[i].file, 
-			 MPIR_Thread.nestinfo[i].line );
+			 MPIU_THREADPRIV_FIELD(nestinfo[i].file), 
+			 MPIU_THREADPRIV_FIELD(nestinfo[i].line) );
 	    }
 	}
     }
@@ -209,15 +222,16 @@ int MPI_Finalize( void )
 
   fn_exit:
     MPID_MPI_FINALIZE_FUNC_EXIT(MPID_STATE_MPI_FINALIZE);
-    MPID_CS_EXIT();
-    MPID_CS_FINALIZE();
+    MPIU_THREAD_SINGLE_CS_EXIT("init");
+    MPIU_THREAD_SINGLE_CS_FINALIZE;
     return mpi_errno;
 
   fn_fail:
     /* --BEGIN ERROR HANDLING-- */
 #   ifdef HAVE_ERROR_CHECKING
     {
-	mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_finalize", 0);
+	mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, 
+			FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_finalize", 0);
     }
 #   endif
     mpi_errno = MPIR_Err_return_comm( 0, FCNAME, mpi_errno );

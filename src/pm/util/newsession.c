@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: newsession.c,v 1.1.1.1 2006/01/18 21:09:48 huangwei Exp $
+/*  $Id: newsession.c,v 1.7 2006/06/25 16:05:57 gropp Exp $
  *
  *  (C) 2003 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -25,6 +25,9 @@ void MPIE_CreateNewSession( void )
 {
 #if defined(HAVE_SETSID) && defined(HAVE_ISATTY) && \
     defined(USE_NEW_SESSION) && defined(HAVE_GETSID)
+#ifdef NEEDS_GETSID_PROTOTYPE
+pid_t getsid(pid_t);
+#endif
 if (!isatty(0) && !isatty(1) && !isatty(2) && getsid(0) != getpid()) {
     pid_t rc;
     /* printf( "Creating a new session\n" ); */

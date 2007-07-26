@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Cart_shift
 #define MPI_Cart_shift PMPI_Cart_shift
 
 #endif
@@ -69,7 +70,6 @@ int MPI_Cart_shift(MPI_Comm comm, int direction, int displ, int *source,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_CART_SHIFT);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -99,12 +99,8 @@ int MPI_Cart_shift(MPI_Comm comm, int direction, int displ, int *source,
 	    MPIR_ERRTEST_ARGNULL( source, "source", mpi_errno );
 	    MPIR_ERRTEST_ARGNULL( dest, "dest", mpi_errno );
 	    MPIR_ERRTEST_ARGNEG( direction, "direction", mpi_errno );
-/* Nothing in the standard indicates that a zero displacement is not valid
-	    if (displ == 0) {
-		mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_ARG,
-						  "**cartshiftzero", 0 );
-	    }
-*/
+	    /* Nothing in the standard indicates that a zero displacement 
+	       is not valid, so we don't check for a zero shift */
             if (mpi_errno) goto fn_fail;
         }
         MPID_END_ERROR_CHECKS;
@@ -125,6 +121,10 @@ int MPI_Cart_shift(MPI_Comm comm, int direction, int displ, int *source,
 	*source = *dest = rank;
     }
     else {
+	MPIU_THREADPRIV_DECL;
+
+	MPIU_THREADPRIV_GET;
+
 	/* To support advanced implementations that support MPI_Cart_create,
 	   we compute the new position and call PMPI_Cart_rank to get the
 	   source and destination.  We could bypass that step if we know that
@@ -161,7 +161,6 @@ int MPI_Cart_shift(MPI_Comm comm, int direction, int displ, int *source,
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_CART_SHIFT);
-    MPID_CS_EXIT();
     return mpi_errno;
 
   fn_fail:

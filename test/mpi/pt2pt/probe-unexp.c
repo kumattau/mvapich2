@@ -13,9 +13,9 @@ char buf[1 << MAX_BUF_SIZE_LG];
 
 /* 
  * This program verifies that MPI_Probe() is operating properly in the face of
- *  unexpected messages arriving after MPI_Probe() has
+ * unexpected messages arriving after MPI_Probe() has
  * been called.  This program may hang if MPI_Probe() does not return when the
- *  message finally arrives (see req #375).
+ * message finally arrives (see req #375).
  */
 int main(int argc, char **argv)
 {
@@ -29,17 +29,23 @@ int main(int argc, char **argv)
 
     MPI_Comm_size(MPI_COMM_WORLD, &p_size);
     MPI_Comm_rank(MPI_COMM_WORLD, &p_rank);
+    /* To improve reporting of problems about operations, we
+       change the error handler to errors return */
+    MPI_Comm_set_errhandler( MPI_COMM_WORLD, MPI_ERRORS_RETURN );
+
 
     for (msg_size_lg = 0; msg_size_lg <= MAX_BUF_SIZE_LG; msg_size_lg++)
     {
 	const int msg_size = 1 << msg_size_lg;
 	int msg_cnt;
-	
+
+	MTestPrintfMsg( 2, "testing messages of size %d\n", msg_size );
 	for (msg_cnt = 0; msg_cnt < NUM_MSGS_PER_BUF_SIZE; msg_cnt++)
         {
 	    MPI_Status status;
 	    const int tag = msg_size_lg * NUM_MSGS_PER_BUF_SIZE + msg_cnt;
 	    
+	    MTestPrintfMsg( 2, "Message count %d\n", msg_cnt );
 	    if (p_rank == 0)
 	    {
 		int p;
@@ -108,12 +114,12 @@ int main(int argc, char **argv)
 		if (status.MPI_TAG != tag && errs++ < 10)
 		{
 		    printf("ERROR: unexpected message tag from MPI_Probe(): p=%d, expected=%d, actual=%d, count=%d\n",
-			   p_rank, status.MPI_TAG, tag, msg_cnt);
+			   p_rank, tag, status.MPI_TAG, msg_cnt);
 		}
 		if (incoming_msg_size != msg_size && errs++ < 10)
 		{
 		    printf("ERROR: unexpected message size from MPI_Probe(): p=%d, expected=%d, actual=%d, count=%d\n",
-			   p_rank, incoming_msg_size, msg_size, msg_cnt);
+			   p_rank, msg_size, incoming_msg_size, msg_cnt);
 		}
 
 		/* Receive the probed message from the master process */
@@ -136,12 +142,12 @@ int main(int argc, char **argv)
 		if (status.MPI_TAG != tag && errs++ < 10)
 		{
 		    printf("ERROR: unexpected message tag from MPI_Recv(): p=%d, expected=%d, actual=%d, count=%d\n",
-			   p_rank, status.MPI_TAG, tag, msg_cnt);
+			   p_rank, tag, status.MPI_TAG, msg_cnt);
 		}
 		if (incoming_msg_size != msg_size && errs++ < 10)
 		{
 		    printf("ERROR: unexpected message size from MPI_Recv(): p=%d, expected=%d, actual=%d, count=%d\n",
-			   p_rank, incoming_msg_size, msg_size, msg_cnt);
+			   p_rank, msg_size, incoming_msg_size, msg_cnt);
 		}
 	    }
 	}

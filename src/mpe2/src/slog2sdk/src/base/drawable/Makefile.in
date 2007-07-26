@@ -1,6 +1,6 @@
 
 ## End User configurable options ###
-SHELL = /bin/sh
+SHELL = @SHELL@
 
 @VPATH@
 # Installation directories

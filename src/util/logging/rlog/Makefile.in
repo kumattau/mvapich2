@@ -23,15 +23,14 @@ PMPILIBNAME     = @PMPILIBNAME@
 CC              = @CC@
 CFLAGS          = @CFLAGS@
 C_COMPILE       = $(CC) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
-C_LINK      = $(CC)
+C_LINK         = $(CC)
 LIBTOOL         = @LIBTOOL@
-CREATESHLIB     = @CREATESHLIB@
 CC_SHL          = @CC_SHL@
 C_COMPILE_SHL   = $(CC_SHL) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
 LDFLAGS     =  @LDFLAGS@ 
 
 VPATH = .:@srcdir@
-INCLUDES = -I../../../include -I${master_top_srcdir}/src/include -I../../../mpi/timer
+INCLUDES = -I../../../include -I${master_top_srcdir}/src/include -I../../../mpi/timer -I../common -I${master_top_srcdir}/src/util/logging/common
 
 .SUFFIXES:
 .SUFFIXES: .o .lo .c 
@@ -42,18 +41,18 @@ INCLUDES = -I../../../include -I${master_top_srcdir}/src/include -I../../../mpi/
 	@mv -f _s$*.o $*.lo
 .c:
 	$(C_COMPILE) -o $* $< $(LDFLAGS) $(LIBS)
-apply:
+apply: 
 	$(ACTION) $(ACTION_INPUT)
-clean:
+clean: 
 	-@rm -f *.o ${srcdir}/*.o printrlog printirlog minalignrlog irlog2rlog
 	-@rm -f .libstamp0 .libstamp1 
 	-@rm -f printrlog.exe printirlog.exe minalignrlog.exe irlog2rlog.exe
 	-@rm -f core core.[0-9]*
 	-@rm -f *.lo ${srcdir}/*.lo
 	-@rm -f *.irlog*
-distclean: clean distclean-xxx remove-makefile
+distclean:  clean distclean-xxx remove-makefile
 distclean-xxx:
-	-@rm -f Makefile config.status config.log config.cache *conf.cache config.system
+	-@rm -f Makefile pprintirlog config.status config.log config.cache *conf.cache config.system
 	-@rm -rf autom4te*.cache
 	-@rm -f rlogconf.h
 	-@rm -rf $(DEPS_DIR)
@@ -68,12 +67,13 @@ all-redirect: .libstamp0 ../../../../lib/lib${MPILIBNAME}.a irlog2rlog\
 	    ${MAKE} .libstamp1 ; \
 	fi
 
-.libstamp0 ../../../../lib/lib${MPILIBNAME}.a: rlog.o rlogutil.o irlogutil.o 
+.libstamp0 ../../../../lib/lib${MPILIBNAME}.a: rlog.o rlogutil.o rlogtime.o \
+	irlogutil.o 
 	${AR} cr ../../../../lib/lib${MPILIBNAME}.a $?
 	${RANLIB} ../../../../lib/lib${MPILIBNAME}.a
 	date > .libstamp0
 .libstamp1 ../../../../lib/lib${MPILIBNAME}.la: rlog.lo rlogutil.lo \
-	irlogutil.lo 
+	rlogtime.lo irlogutil.lo 
 	${AR} cr ../../../../lib/lib${MPILIBNAME}.la $?
 	date > .libstamp1
 printrlog: printrlog.o   
@@ -91,21 +91,16 @@ irlog2rlog: irlog2rlog.o
 # --------------------------------------------------------------------------
 # --------------------------------------------------------------------------
 # --------------------------------------------------------------------------
-SOURCES         =  rlog.c rlogutil.c irlogutil.c irlog2rlog.c printirlog.c \
-	printrlog.c minalignrlog.c 
+SOURCES         =  rlog.c rlogutil.c rlogtime.c irlogutil.c irlog2rlog.c \
+	printirlog.c printrlog.c minalignrlog.c 
 ETAGS           = @ETAGS@ @ETAGSADD@
 HEADERFILES     = $(HEADERS)
 SOURCEFILES     = $(SOURCES)
 tags: TAGS
-TAGS:${HEADERFILES} ${SOURCEFILES}
+TAGS: Makefile${HEADERFILES} ${SOURCEFILES}
 	here=`cd ../../../.. && pwd` ; cd ${srcdir} && $(ETAGS) -o $$here/TAGS --append ${HEADERFILES} ${SOURCEFILES}
 # --------------------------------------------------------------------------
 #SUBDIRS = TraceInput .
-#libTraceInput_so_SOURCES = logformat_trace_InputLog.c trace_input.c rlogutil.c
-#INCLUDES = -I../../../include -I${master_top_srcdir}/src/include -I@java_home@/include -I@java_home@/include/@java_arch@
-#libTraceInput_so_LDADD = -shared
-#CC_SHL=${CC}
-#C_LINK_SHL=${CC} -shared
 
 
 FORCE_TARGET:

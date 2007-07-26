@@ -30,7 +30,6 @@ CXX             = @CXX@
 CXXFLAGS        = @CXXFLAGS@
 CXX_COMPILE     = $(CXX) $(DEFS) $(INCLUDES) $(CXXFLAGS) $(CPPFLAGS)
 LIBTOOL         = @LIBTOOL@
-CREATESHLIB     = @CREATESHLIB@
 CXX_SHL         = @CXX_SHL@
 CXX_COMPILE_SHL = $(CXX_SHL) $(DEFS) $(INCLUDES) $(CXXFLAGS) $(CPPFLAGS)
 
@@ -53,13 +52,13 @@ doc_sources = mpicxx.txt
 .h.o:
 
 .h.lo:
-apply:
+apply: 
 	$(ACTION) $(ACTION_INPUT)
-clean:
+clean: 
 	-@rm -f *.o ${srcdir}/*.o 
 	-@rm -f .libstamp0 .libstamp1 
 	-@rm -f *.lo ${srcdir}/*.lo
-distclean: clean distclean-local distclean-xxx remove-makefile
+distclean:  clean distclean-local distclean-xxx remove-makefile
 distclean-xxx:
 	-@rm -f Makefile mpicxx.h
 	-@rm -rf autom4te*.cache
@@ -90,9 +89,9 @@ install:  FORCE_TARGET
 
 install-strip:
 	$(MAKE) INSTALL_STRIP_FLAG=-s install
-uninstall:
+uninstall: 
 	-rm -f ${DESTDIR}${includedir}/mpicxx.h
-installcheck:
+installcheck: 
 # --------------------------------------------------------------------------
 dependencies:
 # --------------------------------------------------------------------------
@@ -102,7 +101,7 @@ ETAGS           = @ETAGS@ @ETAGSADD@
 HEADERFILES     = $(HEADERS)
 SOURCEFILES     = $(SOURCES)
 tags: TAGS
-TAGS:${HEADERFILES} ${SOURCEFILES}
+TAGS: Makefile${HEADERFILES} ${SOURCEFILES}
 	here=`cd ../../.. && pwd` ; cd ${srcdir} && $(ETAGS) -o $$here/TAGS --append ${HEADERFILES} ${SOURCEFILES}
 # --------------------------------------------------------------------------
 # DO NOT EDIT

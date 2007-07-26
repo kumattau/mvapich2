@@ -25,7 +25,6 @@ int MPID_Irsend(const void * buf, int count, MPI_Datatype datatype, int rank, in
     MPI_Aint dt_true_lb;
     MPID_Datatype * dt_ptr;
     MPID_Request * sreq;
-    MPID_IOV iov[MPID_IOV_LIMIT];
     MPIDI_VC_t * vc;
 #if defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
@@ -35,8 +34,9 @@ int MPID_Irsend(const void * buf, int count, MPI_Datatype datatype, int rank, in
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_IRSEND);
 
-    MPIDI_DBG_PRINTF((10, FCNAME, "entering"));
-    MPIDI_DBG_PRINTF((15, FCNAME, "rank=%d, tag=%d, context=%d", rank, tag, comm->context_id + context_offset));
+    MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
+                "rank=%d, tag=%d, context=%d", 
+                rank, tag, comm->context_id + context_offset));
     
     if (rank == comm->rank && comm->comm_kind != MPID_INTERCOMM)
     {
@@ -68,9 +68,9 @@ int MPID_Irsend(const void * buf, int count, MPI_Datatype datatype, int rank, in
 
     if (data_sz == 0)
     {
-	MPIDI_DBG_PRINTF((15, FCNAME, "sending zero length message"));
+	MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"sending zero length message");
 
-	sreq->dev.ca = MPIDI_CH3_CA_COMPLETE;
+	sreq->dev.OnDataAvail = 0;
 	
 	MPIDI_VC_FAI_send_seqnum(vc, seqnum);
 	MPIDI_Pkt_set_seqnum(ready_pkt, seqnum);
@@ -90,98 +90,38 @@ int MPID_Irsend(const void * buf, int count, MPI_Datatype datatype, int rank, in
 	goto fn_exit;
     }
     
-    iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)ready_pkt;
-    iov[0].MPID_IOV_LEN = sizeof(*ready_pkt);
+    if (dt_contig) {
+	mpi_errno = MPIDI_CH3_EagerContigIsend( &sreq, 
+						MPIDI_CH3_PKT_READY_SEND,
+						(char*)buf + dt_true_lb, 
+						data_sz, rank, tag, 
+						comm, context_offset );
 
-    if (dt_contig)
-    {
-	MPIDI_DBG_PRINTF((15, FCNAME, "sending contiguous ready-mode message, data_sz=" MPIDI_MSG_SZ_FMT, data_sz));
-	    
-	sreq->dev.ca = MPIDI_CH3_CA_COMPLETE;
-	
-	/* FIXME: handle case where data_sz is greater than what can be stored in iov.MPID_IOV_LEN.  hand off to segment code? */
-	iov[1].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)((char*) buf + dt_true_lb);
-	iov[1].MPID_IOV_LEN = data_sz;
-
-	MPIDI_VC_FAI_send_seqnum(vc, seqnum);
-	MPIDI_Pkt_set_seqnum(ready_pkt, seqnum);
-	MPIDI_Request_set_seqnum(sreq, seqnum);
-
-	mpi_errno = MPIDI_CH3_iSendv(vc, sreq, iov, 2);
-	/* --BEGIN ERROR HANDLING-- */
-	if (mpi_errno != MPI_SUCCESS)
-	{
-	    MPIU_Object_set_ref(sreq, 0);
-	    MPIDI_CH3_Request_destroy(sreq);
-	    sreq = NULL;
-	    mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**ch3|eagermsg", 0);
-	    goto fn_exit;
-	}
-	/* --END ERROR HANDLING-- */
     }
-    else
-    {
-	int iov_n;
-	    
-	MPIDI_DBG_PRINTF((15, FCNAME, "sending non-contiguous ready-mode message, data_sz=" MPIDI_MSG_SZ_FMT, data_sz));
-	    
-	MPID_Segment_init(buf, count, datatype, &sreq->dev.segment, 0);
-	sreq->dev.segment_first = 0;
-	sreq->dev.segment_size = data_sz;
-	    
-	iov_n = MPID_IOV_LIMIT - 1;
-	mpi_errno = MPIDI_CH3U_Request_load_send_iov(sreq, &iov[1], &iov_n);
-	if (mpi_errno == MPI_SUCCESS)
-	{
-	    iov_n += 1;
-
-	    MPIDI_VC_FAI_send_seqnum(vc, seqnum);
-	    MPIDI_Pkt_set_seqnum(ready_pkt, seqnum);
-	    MPIDI_Request_set_seqnum(sreq, seqnum);
-	    
-	    if (sreq->dev.ca != MPIDI_CH3_CA_COMPLETE)
-	    {
-		sreq->dev.datatype_ptr = dt_ptr;
-		MPID_Datatype_add_ref(dt_ptr);
-	    }
-	    
-	    mpi_errno = MPIDI_CH3_iSendv(vc, sreq, iov, iov_n);
-	    /* --BEGIN ERROR HANDLING-- */
-	    if (mpi_errno != MPI_SUCCESS)
-	    {
-		MPIU_Object_set_ref(sreq, 0);
-		MPIDI_CH3_Request_destroy(sreq);
-		sreq = NULL;
-		mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**ch3|eagermsg", 0);
-		goto fn_exit;
-	    }
-	    /* --END ERROR HANDLING-- */
-	}
-	else
-	{
-	    /* --BEGIN ERROR HANDLING-- */
-	    MPIU_Object_set_ref(sreq, 0);
-	    MPIDI_CH3_Request_destroy(sreq);
-	    sreq = NULL;
-	    mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**ch3|loadsendiov", 0);
-	    goto fn_exit;
-	    /* --END ERROR HANDLING-- */
+    else {
+	mpi_errno = MPIDI_CH3_EagerNoncontigSend( &sreq, 
+						  MPIDI_CH3_PKT_READY_SEND,
+						  buf, count, datatype,
+						  data_sz, rank, tag, 
+						  comm, context_offset );
+	/* If we're not complete, then add a reference to the datatype */
+	if (sreq && sreq->dev.OnDataAvail) {
+	    sreq->dev.datatype_ptr = dt_ptr;
+	    MPID_Datatype_add_ref(dt_ptr);
 	}
     }
  
   fn_exit:
     *request = sreq;
-    
-#   if defined(MPICH_DBG_OUTPUT)
-    {
+
+    MPIU_DBG_STMT(CH3_OTHER,VERBOSE,{
 	if (sreq != NULL)
 	{
-	    MPIDI_DBG_PRINTF((15, FCNAME, "request allocated, handle=0x%08x", sreq->handle));
+	    MPIU_DBG_MSG_P(CH3_OTHER,VERBOSE,"request allocated, handle=0x%08x", sreq->handle);
 	}
     }
-#   endif
+		  );
     
-    MPIDI_DBG_PRINTF((10, FCNAME, "exiting"));
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_IRSEND);
     return mpi_errno;
 }

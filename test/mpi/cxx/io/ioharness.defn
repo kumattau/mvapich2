@@ -19,14 +19,18 @@ try {
 <checkErrEnd>
 } catch ( MPI::Exception e ) {
     errs++;
-    MTestPrintError( e.Get_error_code() );
+    if (errs <= MAX_ERRORS) {
+        MTestPrintError( e.Get_error_code() );
     }
+}
 </checkErrEnd>
 
 <openfile>
 <checkErrStart/>
 fh = MPI::File::Open( comm, filename, MPI::MODE_RDWR + MPI::MODE_CREATE, MPI::INFO_NULL );
 <checkErrEnd/>
+// If the file open failed, skip the rest of this test
+if (fh == MPI::FILE_NULL) { continue; }
 </openfile>
 <closefile>
 <checkErrStart/>
@@ -41,8 +45,7 @@ if (status.Get_count( MPI::INT ) != n) {
 </checkStatus>
 <deletefile>
 comm.Barrier();
-r = comm.Get_rank();
-if (r == 0) {
+if (comm.Get_rank() == 0) {
     <checkErrStart/>
     MPI::File::Delete( filename, MPI::INFO_NULL );
     <checkErrEnd/>
@@ -68,7 +71,7 @@ for (i=0; i<n; i++) {
     ans = r*n + k*n*s + i;
     if (buf[i] !=  ans) {
         errs++;
-        if (errs <= 10) {
+        if (errs <= MAX_ERRORS) {
 	    cout << r << " buf[" << i << "] = " << buf[i] << " expected " <<
 			ans << "\n";
         }
@@ -84,7 +87,7 @@ for (i=0; i<n; i++) {
 for (i=0; i<n; i++) {
     if (buf2[i] != r*n + (k+1)*n*s + i) {
         errs++;
-        if (errs <= 10) {
+        if (errs <= MAX_ERRORS) {
             cout << r << " buf2[" << i << "] = " << buf2[i] << "\n";
         }
     }

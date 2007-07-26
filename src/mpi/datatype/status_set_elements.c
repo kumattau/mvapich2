@@ -20,12 +20,15 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Status_set_elements
 #define MPI_Status_set_elements PMPI_Status_set_elements
 
 #endif
 
 #undef FUNCNAME
 #define FUNCNAME MPI_Status_set_elements
+#undef FCNAME
+#define FCNAME "MPI_Status_set_elements"
 
 /*@
    MPI_Status_set_elements - Set the number of elements in a status
@@ -47,14 +50,12 @@
 int MPI_Status_set_elements(MPI_Status *status, MPI_Datatype datatype, 
 			    int count)
 {
-    static const char FCNAME[] = "MPI_Status_set_elements";
     int mpi_errno = MPI_SUCCESS;
     int size;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_STATUS_SET_ELEMENTS);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_STATUS_SET_ELEMENTS);
     
     /* Validate parameters and objects (post conversion) */
@@ -87,21 +88,23 @@ int MPI_Status_set_elements(MPI_Status *status, MPI_Datatype datatype,
 
     /* ... end of body of routine ... */
 
+#ifdef HAVE_ERROR_CHECKING
   fn_exit:
+#endif
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_STATUS_SET_ELEMENTS);
-    MPID_CS_EXIT();
     return mpi_errno;
     
-  fn_fail:
     /* --BEGIN ERROR HANDLING-- */
 #   ifdef HAVE_ERROR_CHECKING
+  fn_fail:
     {
 	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_status_set_elements",
+	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, 
+	    "**mpi_status_set_elements",
 	    "**mpi_status_set_elements %p %D %d", status, datatype, count);
     }
-#   endif
     mpi_errno = MPIR_Err_return_comm( NULL, FCNAME, mpi_errno );
     goto fn_exit;
+#   endif
     /* --END ERROR HANDLING-- */
 }

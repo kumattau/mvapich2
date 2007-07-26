@@ -23,7 +23,6 @@ CC              = @CC@
 CFLAGS          = @CFLAGS@
 C_COMPILE       = $(CC) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
 LIBTOOL         = @LIBTOOL@
-CREATESHLIB     = @CREATESHLIB@
 CC_SHL          = @CC_SHL@
 C_COMPILE_SHL   = $(CC_SHL) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
 
@@ -39,13 +38,13 @@ INCLUDES = -I../../include -I${top_srcdir}/src/include
 	@mv -f _s$*.o $*.lo
 .c:
 	$(C_COMPILE) -o $* $< $(LDFLAGS) $(LIBS)
-apply:
+apply: 
 	$(ACTION) $(ACTION_INPUT)
-clean:
+clean: 
 	-@rm -f *.o ${srcdir}/*.o 
 	-@rm -f .libstamp0 .libstamp1 
 	-@rm -f *.lo ${srcdir}/*.lo
-distclean: clean distclean-xxx remove-makefile
+distclean:  clean distclean-xxx remove-makefile
 distclean-xxx:
 	-@rm -f Makefile getfuncstack
 	-@rm -rf autom4te*.cache
@@ -60,24 +59,22 @@ all-redirect: .libstamp0 ../../../lib/lib${MPILIBNAME}.a
 	    ${MAKE} .libstamp1 ; \
 	fi
 
-.libstamp0 ../../../lib/lib${MPILIBNAME}.a: dbg_printf.o dbg_control.o \
-	timelimit.o 
+.libstamp0 ../../../lib/lib${MPILIBNAME}.a: dbg_printf.o timelimit.o 
 	${AR} cr ../../../lib/lib${MPILIBNAME}.a $?
 	${RANLIB} ../../../lib/lib${MPILIBNAME}.a
 	date > .libstamp0
-.libstamp1 ../../../lib/lib${MPILIBNAME}.la: dbg_printf.lo dbg_control.lo \
-	timelimit.lo 
+.libstamp1 ../../../lib/lib${MPILIBNAME}.la: dbg_printf.lo timelimit.lo 
 	${AR} cr ../../../lib/lib${MPILIBNAME}.la $?
 	date > .libstamp1
 # --------------------------------------------------------------------------
 # --------------------------------------------------------------------------
 # --------------------------------------------------------------------------
-SOURCES         =  dbg_printf.c dbg_control.c timelimit.c
+SOURCES         =  dbg_printf.c timelimit.c
 ETAGS           = @ETAGS@ @ETAGSADD@
 HEADERFILES     = $(HEADERS)
 SOURCEFILES     = $(SOURCES)
 tags: TAGS
-TAGS:${HEADERFILES} ${SOURCEFILES}
+TAGS: Makefile${HEADERFILES} ${SOURCEFILES}
 	here=`cd ../../.. && pwd` ; cd ${srcdir} && $(ETAGS) -o $$here/TAGS --append ${HEADERFILES} ${SOURCEFILES}
 # --------------------------------------------------------------------------
 

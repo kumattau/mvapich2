@@ -445,7 +445,7 @@ int smpd_get_user_name(char *account, char *domain, char *full_domain)
 #define FCNAME "SetEnvironmentVariables"
 static void SetEnvironmentVariables(char *bEnv)
 {
-    char name[MAX_PATH], equals[3], value[MAX_PATH];
+    char name[SMPD_MAX_ENV_LENGTH], equals[3], value[SMPD_MAX_ENV_LENGTH];
 
     smpd_enter_fn(FCNAME);
     for (;;)
@@ -453,7 +453,7 @@ static void SetEnvironmentVariables(char *bEnv)
 	name[0] = '\0';
 	equals[0] = '\0';
 	value[0] = '\0';
-	if (MPIU_Str_get_string(&bEnv, name, MAX_PATH) != MPIU_STR_SUCCESS)
+	if (MPIU_Str_get_string(&bEnv, name, SMPD_MAX_ENV_LENGTH) != MPIU_STR_SUCCESS)
 	    break;
 	if (name[0] == '\0')
 	    break;
@@ -461,7 +461,7 @@ static void SetEnvironmentVariables(char *bEnv)
 	    break;
 	if (equals[0] == '\0')
 	    break;
-	if (MPIU_Str_get_string(&bEnv, value, MAX_PATH) != MPIU_STR_SUCCESS)
+	if (MPIU_Str_get_string(&bEnv, value, SMPD_MAX_ENV_LENGTH) != MPIU_STR_SUCCESS)
 	    break;
 	smpd_dbg_printf("setting environment variable: <%s> = <%s>\n", name, value);
 	SetEnvironmentVariable(name, value);
@@ -473,7 +473,7 @@ static void SetEnvironmentVariables(char *bEnv)
 #define FCNAME "RemoveEnvironmentVariables"
 static void RemoveEnvironmentVariables(char *bEnv)
 {
-    char name[MAX_PATH], equals[3], value[MAX_PATH];
+    char name[SMPD_MAX_ENV_LENGTH], equals[3], value[SMPD_MAX_ENV_LENGTH];
 
     smpd_enter_fn(FCNAME);
     for (;;)
@@ -481,7 +481,7 @@ static void RemoveEnvironmentVariables(char *bEnv)
 	name[0] = '\0';
 	equals[0] = '\0';
 	value[0] = '\0';
-	if (MPIU_Str_get_string(&bEnv, name, MAX_PATH) != MPIU_STR_SUCCESS)
+	if (MPIU_Str_get_string(&bEnv, name, SMPD_MAX_ENV_LENGTH) != MPIU_STR_SUCCESS)
 	    break;
 	if (name[0] == '\0')
 	    break;
@@ -489,7 +489,7 @@ static void RemoveEnvironmentVariables(char *bEnv)
 	    break;
 	if (equals[0] == '\0')
 	    break;
-	if (MPIU_Str_get_string(&bEnv, value, MAX_PATH) != MPIU_STR_SUCCESS)
+	if (MPIU_Str_get_string(&bEnv, value, SMPD_MAX_ENV_LENGTH) != MPIU_STR_SUCCESS)
 	    break;
 	/*smpd_dbg_printf("removing environment variable <%s>\n", name);*/
 	SetEnvironmentVariable(name, NULL);
@@ -1000,7 +1000,8 @@ int smpd_launch_process(smpd_process_t *process, int priorityClass, int priority
 		goto CLEANUP;
 	    }
 	    listener_context->state = SMPD_PMI_LISTENING;
-	    nError = MPIDU_Sock_get_host_description(host_description, 256);
+	    /* Adding process rank since the interface for MPIDU_Sock_get_host_description changed */
+	    nError = MPIDU_Sock_get_host_description(process->rank, host_description, 256);
 	    if (nError != MPI_SUCCESS)
 	    {
 		smpd_err_printf("MPIDU_Sock_get_host_description failed,\nsock error: %s\n", get_sock_error_string(nError));

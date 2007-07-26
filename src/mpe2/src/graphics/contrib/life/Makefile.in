@@ -14,17 +14,17 @@ PROF_LIBS   = -L$(MPE_LIBDIR) @PROF_LIBS@ @X_LIB@ $(MPI_LIBS) -lm
 INCLUDE_DIR = -I$(MPE_INCDIR) $(MPI_INC)
 LDFLAGS     = @LDFLAGS@
 
-RM          = rm
-
 ### End User configurable options ###
+
+RM          = rm
 
 @VPATH@
 
 srcdir      = @srcdir@
 
-CC_FLAGS   = $(CFLAGS) $(INCLUDE_DIR) $(MPE_COPTS)
-CC_LDFLAGS = $(LDFLAGS) $(CFLAGS) $(MPE_LDOPTS)
-EXECS      = life_g@EXEEXT@
+CC_FLAGS    = $(CFLAGS) $(INCLUDE_DIR) $(MPE_COPTS)
+CC_LDFLAGS  = $(LDFLAGS) $(CFLAGS) $(MPE_LDOPTS)
+EXECS       = life_g@EXEEXT@
 
 .SUFFIXES: .c .@OBJEXT@ @EXEEXT@
 

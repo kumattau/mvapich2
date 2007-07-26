@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Errhandler_set
 #define MPI_Errhandler_set PMPI_Errhandler_set
 
 #endif
@@ -53,12 +54,15 @@ int MPI_Errhandler_set(MPI_Comm comm, MPI_Errhandler errhandler)
     static const char FCNAME[] = "MPI_Errhandler_set";
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL;
+    MPIU_THREADPRIV_DECL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_ERRHANDLER_SET);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("errhan");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_ERRHANDLER_SET);
+
+    MPIU_THREADPRIV_GET;
 
     /* Validate parameters, especially handles needing to be converted */
 #   ifdef HAVE_ERROR_CHECKING
@@ -106,7 +110,7 @@ int MPI_Errhandler_set(MPI_Comm comm, MPI_Errhandler errhandler)
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_ERRHANDLER_SET);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("errhan");
     return mpi_errno;
 
   fn_fail:

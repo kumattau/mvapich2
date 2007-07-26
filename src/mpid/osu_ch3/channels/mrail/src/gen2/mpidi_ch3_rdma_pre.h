@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2002-2006, The Ohio State University. All rights
+/* Copyright (c) 2002-2007, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -22,6 +22,11 @@
 #include "vbuf.h"
 #include "mpiimpl.h"
 #include "ibv_param.h"
+
+/* this device supports the coalescing interface */
+#define MPIDI_MRAILI_COALESCE_ENABLED 1
+
+#define MPIDI_CH3I_MRAILI_FLUSH 1
 
 /* add this structure to the implemenation specific macro */
 #define MPIDI_CH3I_VC_RDMA_DECL MPIDI_CH3I_MRAIL_VC mrail;
@@ -57,7 +62,7 @@ typedef enum {
 } MRAILI_Protocol_t;
 
 typedef struct MPIDI_CH3I_MRAILI_Rndv_info {
-    /* Protocol to be used, Choices: R3/RPUT */
+    /* Protocol to be used, Choices: R3/RPUT/RGET */
     MRAILI_Protocol_t   protocol;
     /* Buffer Address */
     void                *buf_addr;
@@ -86,6 +91,9 @@ struct dreg_entry;
         uint32_t rkey[MAX_NUM_HCAS];    \
         uint8_t  nearly_complete;       \
         uint32_t completion_counter;   \
+        double  initial_weight[MAX_NUM_SUBRAILS];   \
+        double  stripe_start_time;   \
+        double  stripe_finish_time[MAX_NUM_SUBRAILS];   \
         struct MPID_Request *next_inflow;  \
     } mrail;
 
@@ -206,10 +214,12 @@ struct mrail_rail {
 	int    hca_index;
 	int    port;
 	int    lid;
+    int    s_weight;
 	struct ibv_cq	*cq_hndl;
 	struct ibv_qp 	*qp_hndl;
 #ifdef RDMA_CM
 	struct rdma_cm_id 	*cm_ids;
+        struct rdma_cm_id       *cm_ids_1sc;
 #endif
 	int		send_wqes_avail;
 	struct vbuf 	*ext_sendq_head;
@@ -238,6 +248,12 @@ typedef struct MPIDI_CH3I_MRAIL_VC_t
     /* number of send wqes available */
     uint16_t 	next_packet_expected;
     uint16_t 	next_packet_tosend;
+
+    /* how many eager sends do we have outstanding */
+    int outstanding_eager_vbufs;
+
+    /* what buffer are we currently packing */
+    struct vbuf *coalesce_vbuf;
 
     MPIDI_CH3I_MRAILI_RDMAPATH_VC 	rfp;
     MPIDI_CH3I_MRAILI_SR_VC 		srp;

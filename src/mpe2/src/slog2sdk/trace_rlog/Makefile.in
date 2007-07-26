@@ -1,6 +1,6 @@
 MAKE         = @MAKE@
 RM           = @RM@
-SHELL        = /bin/sh
+SHELL        = @SHELL@
 LIBTOOL_DEPS = @LIBTOOL_DEPS@
 
 all:	

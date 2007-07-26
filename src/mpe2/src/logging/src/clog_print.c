@@ -23,62 +23,39 @@
 #include "clog_const.h"
 #include "clog_record.h"
 #include "clog_preamble.h"
-#include "clog_block.h"
+#include "clog_commset.h"
+#include "clog_cache.h"
 
 int main( int argc, char *argv[] )
 {
-    CLOG_Preamble_t   *preamble;
-    CLOG_BlockData_t  *blkdata;
-    int                logfd;                  /* logfile */
-    int                ierr;
+    CLOG_Cache_t       *cache;
+    CLOG_Rec_Header_t  *rec_hdr;
 
     if ( argc < 2 ) {
         fprintf( stderr,"usage: %s <logfile>\n", argv[0] );
         exit( -1 );
     }
-
-    logfd = OPEN( argv[1], O_RDONLY, 0 );
-    if ( logfd == -1 ) {
-        printf( "Could not open file %s for reading\n", argv[1] );
-        exit( -2 );
-    }
-
     CLOG_Rec_sizes_init();
 
-    preamble = CLOG_Preamble_create();
-    CLOG_Preamble_read( preamble, logfd );
-    CLOG_Preamble_print( preamble, stdout );
+    cache = CLOG_Cache_create();
+    if ( cache == NULL ) {
+        fprintf( stderr, __FILE__":CLOG_Cache_create() fails!\n" );
+        fflush( stderr );
+        exit( 1 );
+    }
+    CLOG_Cache_open4read( cache, argv[1] );
+    CLOG_Cache_init4read( cache );
+    
+    CLOG_Preamble_print( cache->preamble, stdout );
+    CLOG_CommSet_print( cache->commset, stdout );
 
-    blkdata  = CLOG_BlockData_create( preamble->block_size );
-    do {
-        ierr = read( logfd, blkdata->head, preamble->block_size );
-        if ( ierr > 0 ) {
-            if ( ierr == preamble->block_size ) {
-#if defined( WORDS_BIGENDIAN )
-                if ( preamble->is_big_endian != CLOG_BOOL_TRUE )
-                    CLOG_BlockData_swap_bytes_first( blkdata );
-#else
-                if ( preamble->is_big_endian == CLOG_BOOL_TRUE )
-                    CLOG_BlockData_swap_bytes_first( blkdata );
-#endif
-                CLOG_BlockData_reset( blkdata );
-                CLOG_BlockData_print( blkdata, stdout );
-            }
-            else
-                fprintf( stderr, "%s: %d bytes out of expected %d bytes read\n",
-                         argv[0], ierr, preamble->block_size );
-        }
-    } while ( ierr > 0 );
-
-    if ( ierr < 0 ) {
-        fprintf( stderr, "%s: could not read %d bytes with error code=%d\n",
-                         argv[0], preamble->block_size, ierr );
-        exit( -3 );
+    while ( CLOG_Cache_has_rec( cache ) == CLOG_BOOL_TRUE ) {
+        rec_hdr = CLOG_Cache_get_rec( cache );
+        CLOG_Rec_print( rec_hdr, stdout );
     }
 
-    CLOG_BlockData_free( &(blkdata) );
-    CLOG_Preamble_free( &(preamble) );
-    close( logfd );
+    CLOG_Cache_close4read( cache );
+    CLOG_Cache_free( &cache );
 
     return( 0 );
 }

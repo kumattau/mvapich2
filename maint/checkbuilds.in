@@ -47,24 +47,28 @@ $hasDemon   = 0;
 		  'error-messages;all;generic;class;none',
 		  'timer-type;linux86_cycle;gethrtime;clock_gettime;gettimeofday;linuxalpha_cycle',
 		  'timing;none;all;runtime;log;log_detailed',
-		  'g;none;all;handle;dbg',
+		  'g;none;all;handle;dbg;log;meminit',
 		  'fast',
 		  'f77',
+		  'f90',
 		  'cxx',
 		  'romio',
 		  'coverage',
-		  'strict',
+		  'strict',    #;posix
+		  'debuginfo', # Message queues
 		  'weak_symbols;no;yes',
-#                 'threads;single;multiple',
-#		  'dependencies',
+                  'threads;single;multiple',
+ 		  'dependencies',
+		  'nmpi-as-mpi',
+		  'runtimevalues',   # Fortran true/false
 );
 %chosenEnable = ();
 @with_array = (
 	       'logging;none;rlog',
-	       'pmi;simple',    #; uni no longer supported
+	       'pmi;simple;smpd',    #; uni no longer supported
 	       'pm;gforker;mpd', #;remshell
-	       'namepublisher;no;file', #;ldap:ldapserver',
-	       'device;ch3;ch3:shm;ch3:ssm',
+	       'namepublisher;no;file;mpd', #;ldap:ldapserver',
+	       'device;ch3;ch3:shm;ch3:ssm;ch3:nemesis',
 );
 %chosenWith = ();
 @env_array = (
@@ -790,6 +794,11 @@ sub RunIntelTestSuite {
     # Switch to using the checked-in version of the Intel test
     $config[$nargs++] = "$projects_dir/IntelMPITEST/configure";
     $config[$nargs++] = "--with-mpich2=$instdir";
+    # The Absoft Fortran compiler fails some tests if MAX_RANKS
+    # (used to dimension some arrays) is too large.  Since the 
+    # default tests never use more than 6 processes, setting a 
+    # maximum of 16 is safe.
+    $config[$nargs++] = "--enable-maxprocs=16";
     # f77 is now the default, so we should run with the f77 tests
     # unless we did not build f77
     if (!$has_f77) {       # defined($chosenEnable{"f77"})

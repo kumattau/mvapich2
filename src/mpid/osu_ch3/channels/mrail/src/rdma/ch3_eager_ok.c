@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2006, The Ohio State University. All rights
+/* Copyright (c) 2003-2007, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -31,12 +31,12 @@
 int MPIDI_CH3_Eager_ok(MPIDI_VC_t * vc, int len)
 {
 #ifdef _SMP_
-    if (vc->smp.local_nodes >=0) {
+    if (vc->smp.local_nodes >=0 && SMP_INIT) {
         if (len <= smp_eagersize) return 1;
         else return 0;
     }
 #endif
-    if (len < MPIDI_CH3_EAGER_MAX_MSG_SIZE) 
+    if (len < MPIDI_CH3_EAGER_MAX_MSG_SIZE(vc)) 
         return 1;
     else return 0;
 }

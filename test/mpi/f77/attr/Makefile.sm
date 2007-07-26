@@ -7,12 +7,9 @@ F77HEADERS = attraints.h
 
 baseattrf_SOURCES    = baseattrf.f
 baseattr2f_SOURCES    = baseattr2f.f
-baseattrwinf_SOURCES = baseattrwinf.f
 commattrf_SOURCES    = commattrf.f
 commattr2f_SOURCES   = commattr2f.f
 commattr3f_SOURCES   = commattr3f.f
-winattrf_SOURCES     = winattrf.f
-winattr2f_SOURCES    = winattr2f.f
 typeattrf_SOURCES    = typeattrf.f
 typeattr2f_SOURCES   = typeattr2f.f
 typeattr3f_SOURCES   = typeattr3f.f

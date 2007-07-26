@@ -19,6 +19,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Comm_spawn_multiple
 #define MPI_Comm_spawn_multiple PMPI_Comm_spawn_multiple
 
 /* Any internal routines can go here.  Make them static if possible */
@@ -69,7 +70,7 @@ int MPI_Comm_spawn_multiple(int count, char *array_of_commands[], char* *array_o
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("spawn");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_COMM_SPAWN_MULTIPLE);
     
     /* Validate parameters, especially handles needing to be converted */
@@ -130,7 +131,7 @@ int MPI_Comm_spawn_multiple(int count, char *array_of_commands[], char* *array_o
   fn_exit:
     MPIU_CHKLMEM_FREEALL();
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_COMM_SPAWN_MULTIPLE);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("spawn");
     return mpi_errno;
 
   fn_fail:

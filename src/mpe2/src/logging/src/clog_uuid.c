@@ -61,26 +61,26 @@ void CLOG_Uuid_finalize( void )
 void CLOG_Uuid_generate( CLOG_Uuid_t uuid )
 {
 #if !defined( CLOG_NOMPI )
-    int     random_number;
-    double  time;
-    int     namelen;
-    char   *ptr;
-    char    processor_name[ MPI_MAX_PROCESSOR_NAME ] = {0};
+    CLOG_int32_t  random_number;
+    double        time;
+    int           namelen;
+    char         *ptr;
+    char          processor_name[ MPI_MAX_PROCESSOR_NAME ] = {0};
 
 #ifdef HAVE_WINDOWS_H
     random_number  = rand();
 #else
-    random_number  = (int) lrand48();
+    random_number  = (CLOG_int32_t) lrand48();
 #endif
 
     /* Can't use CLOG_Timer_get() as CLOG_Timer_start() has been called yet */
-    time  = MPI_Wtime();
+    time  = PMPI_Wtime();
 
-    MPI_Get_processor_name( processor_name, &namelen );
+    PMPI_Get_processor_name( processor_name, &namelen );
 
     ptr  = &uuid[0];
-    memcpy( ptr, &random_number, sizeof(int) );
-    ptr += sizeof(int);
+    memcpy( ptr, &random_number, sizeof(CLOG_int32_t) );
+    ptr += sizeof(CLOG_int32_t);
     memcpy( ptr, &time, sizeof(double) );
     ptr += sizeof(double);
     if ( namelen < CLOG_UUID_NAME_SIZE ) {
@@ -102,18 +102,18 @@ void CLOG_Uuid_generate( CLOG_Uuid_t uuid )
 */
 void CLOG_Uuid_sprint( CLOG_Uuid_t uuid, char *str )
 {
-    int     random_number;
-    double  time;
-    char    name[ CLOG_UUID_NAME_SIZE+1 ] = {0};
-    char   *ptr;
+    CLOG_int32_t  random_number;
+    double        time;
+    char          name[ CLOG_UUID_NAME_SIZE+1 ] = {0};
+    char         *ptr;
 
     ptr  = &uuid[0];
-    memcpy( &random_number, ptr, sizeof(int) );
-    ptr += sizeof(int);
+    memcpy( &random_number, ptr, sizeof(CLOG_int32_t) );
+    ptr += sizeof(CLOG_int32_t);
     memcpy( &time, ptr, sizeof(double) );
     ptr += sizeof(double);
     memcpy( &name, ptr, CLOG_UUID_NAME_SIZE );
-    sprintf( str, "%d-%f-%s", random_number, time, name );
+    sprintf( str, i32fmt"-%f-%s", random_number, time, name );
 }
 
 int  CLOG_Uuid_is_equal( const CLOG_Uuid_t uuid1, const CLOG_Uuid_t uuid2 )
@@ -139,7 +139,7 @@ void CLOG_Uuid_swap_bytes( CLOG_Uuid_t uuid )
     char   *ptr;
 
     ptr  = &uuid[0];
-    CLOG_Util_swap_bytes( ptr, sizeof(int), 1 );
-    ptr += sizeof(int);
+    CLOG_Util_swap_bytes( ptr, sizeof(CLOG_int32_t), 1 );
+    ptr += sizeof(CLOG_int32_t);
     CLOG_Util_swap_bytes( ptr, sizeof(double), 1 );
 }

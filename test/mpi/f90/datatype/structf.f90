@@ -52,7 +52,7 @@
       if(me.eq.src) then
           i=5
           x=5.1234d0
-          name="hello"
+          name="Hello"
 
           type(1)=MPI_CHARACTER
           length(1)=5
@@ -92,13 +92,11 @@
                 errs = errs + 1
                 print *, "Received ", x, " but expected 5.1234"
              endif
-             print 1, name, x
- 1           format( " Received ", a, f7.4 )
           endif
       endif
 !
 !     Sum up errs and report the result
-      call mpi_reduce( errs, toterrs, 1, MPI_INTEGER, 0,                   &
+      call mpi_reduce( errs, toterrs, 1, MPI_INTEGER, MPI_SUM, 0,         &
      &                 MPI_COMM_WORLD, ierr )
       if (me .eq. 0) then
          if (toterrs .eq. 0) then

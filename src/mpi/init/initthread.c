@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: initthread.c,v 1.1.1.1 2006/01/18 21:09:43 huangwei Exp $
+/*  $Id: initthread.c,v 1.94 2006/12/09 16:42:26 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -25,6 +25,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Init_thread
 #define MPI_Init_thread PMPI_Init_thread
 
 /* Any internal routines can go here.  Make them static if possible */
@@ -82,9 +83,13 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpReserved)
 #endif
 
 
-#if (MPICH_THREAD_LEVEL < MPI_THREAD_MULTIPLE)
+#if !defined(MPICH_IS_THREADED)
 /* If single threaded, we preallocate this.  Otherwise, we create it */
 MPICH_PerThread_t  MPIR_Thread = { 0 };
+#elif defined(HAVE_RUNTIME_THREADCHECK)
+/* If we may be single threaded, we need a preallocated version to use
+   if we are single threaded case */
+MPICH_PerThread_t  MPIR_ThreadSingle = { 0 };
 #endif
 
 
@@ -95,38 +100,36 @@ int MPIR_Init_thread(int * argc, char ***argv, int required,
     int has_args;
     int has_env;
     int thread_provided;
-#if defined(HAVE_WINDOWS_H) && defined(_WIN64)
-    UINT mode, old_mode;
-#endif
+    MPIU_THREADPRIV_DECL;
 
+    /* FIXME: Move to os-dependent interface? */
 #ifdef HAVE_WINDOWS_H
-    /* prevent the process from bringing up an error message window if mpich asserts */
+    /* prevent the process from bringing up an error message window if mpich 
+       asserts */
     _CrtSetReportMode( _CRT_ASSERT, _CRTDBG_MODE_FILE );
     _CrtSetReportFile( _CRT_ASSERT, _CRTDBG_FILE_STDERR );
     _CrtSetReportHook2(_CRT_RPTHOOK_INSTALL, assert_hook);
 #ifdef _WIN64
-    /* FIXME: This severly degrades performance but fixes alignment issues with the datatype code. */
+    {
+    /* FIXME: This severly degrades performance but fixes alignment issues 
+       with the datatype code. */
     /* Prevent misaligned faults on Win64 machines */
+    UINT mode, old_mode;
+    
     old_mode = SetErrorMode(SEM_NOALIGNMENTFAULTEXCEPT);
     mode = old_mode | SEM_NOALIGNMENTFAULTEXCEPT;
     SetErrorMode(mode);
+    }
 #endif
 #endif
 
+    /* We need this inorder to implement IS_THREAD_MAIN */
 #   if (MPICH_THREAD_LEVEL >= MPI_THREAD_SERIALIZED)
     {
 	MPID_Thread_self(&MPIR_Process.master_thread);
     }
 #   endif
     
-#   if (USE_THREAD_IMPL == MPICH_THREAD_IMPL_NOT_IMPLEMENTED)
-    {
-	MPID_Thread_lock_init(&MPIR_Process.common_lock);
-	MPID_Thread_lock_init(&MPIR_Process.allocation_lock);
-    }
-#   endif    
-    
-
 #ifdef HAVE_ERROR_CHECKING
     /* Eventually this will support commandline and environment options
      for controlling error checks.  It will use the routine 
@@ -172,39 +175,41 @@ int MPIR_Init_thread(int * argc, char ***argv, int required,
        (partially) initialize predefined communicators.  comm_parent is
        intially NULL and will be allocated by the device if the process group
        was started using one of the MPI_Comm_spawn functions. */
-    MPIR_Process.comm_world		  = MPID_Comm_builtin + 0;
-    MPIR_Process.comm_world->handle	  = MPI_COMM_WORLD;
+    MPIR_Process.comm_world		    = MPID_Comm_builtin + 0;
+    MPIR_Process.comm_world->handle	    = MPI_COMM_WORLD;
     MPIU_Object_set_ref( MPIR_Process.comm_world, 1 );
-    MPIR_Process.comm_world->context_id	  = 0; /* XXX */
-    MPIR_Process.comm_world->attributes	  = NULL;
-    MPIR_Process.comm_world->local_group  = NULL;
-    MPIR_Process.comm_world->remote_group = NULL;
-    MPIR_Process.comm_world->comm_kind	  = MPID_INTRACOMM;
+    MPIR_Process.comm_world->context_id	    = 0; /* XXX */
+    MPIR_Process.comm_world->recvcontext_id = 0;
+    MPIR_Process.comm_world->attributes	    = NULL;
+    MPIR_Process.comm_world->local_group    = NULL;
+    MPIR_Process.comm_world->remote_group   = NULL;
+    MPIR_Process.comm_world->comm_kind	    = MPID_INTRACOMM;
     /* This initialization of the comm name could be done only when 
        comm_get_name is called */
     MPIU_Strncpy(MPIR_Process.comm_world->name, "MPI_COMM_WORLD",
 		 MPI_MAX_OBJECT_NAME);
-    MPIR_Process.comm_world->errhandler	  = NULL; /* XXX */
-    MPIR_Process.comm_world->coll_fns	  = NULL; /* XXX */
-    MPIR_Process.comm_world->topo_fns     = NULL; /* XXX */
+    MPIR_Process.comm_world->errhandler	    = NULL; /* XXX */
+    MPIR_Process.comm_world->coll_fns	    = NULL; /* XXX */
+    MPIR_Process.comm_world->topo_fns	    = NULL; /* XXX */
     
-    MPIR_Process.comm_self		 = MPID_Comm_builtin + 1;
-    MPIR_Process.comm_self->handle	 = MPI_COMM_SELF;
+    MPIR_Process.comm_self		    = MPID_Comm_builtin + 1;
+    MPIR_Process.comm_self->handle	    = MPI_COMM_SELF;
     MPIU_Object_set_ref( MPIR_Process.comm_self, 1 );
-    MPIR_Process.comm_self->context_id	 = 4; /* XXX */
-    MPIR_Process.comm_self->attributes	 = NULL;
-    MPIR_Process.comm_self->local_group	 = NULL;
-    MPIR_Process.comm_self->remote_group = NULL;
-    MPIR_Process.comm_self->comm_kind	 = MPID_INTRACOMM;
+    MPIR_Process.comm_self->context_id	    = 4; /* XXX */
+    MPIR_Process.comm_self->recvcontext_id  = 4; /* XXX */
+    MPIR_Process.comm_self->attributes	    = NULL;
+    MPIR_Process.comm_self->local_group	    = NULL;
+    MPIR_Process.comm_self->remote_group    = NULL;
+    MPIR_Process.comm_self->comm_kind	    = MPID_INTRACOMM;
     MPIU_Strncpy(MPIR_Process.comm_self->name, "MPI_COMM_SELF",
 		 MPI_MAX_OBJECT_NAME);
-    MPIR_Process.comm_self->errhandler	 = NULL; /* XXX */
-    MPIR_Process.comm_self->coll_fns	 = NULL; /* XXX */
-    MPIR_Process.comm_self->topo_fns     = NULL; /* XXX */
+    MPIR_Process.comm_self->errhandler	    = NULL; /* XXX */
+    MPIR_Process.comm_self->coll_fns	    = NULL; /* XXX */
+    MPIR_Process.comm_self->topo_fns	    = NULL; /* XXX */
 
     MPIR_Process.comm_parent = NULL;
 
-    /* Setup the initial communicator list in case we have
+    /* Setup the initial communicator list in case we have 
        enabled the debugger message-queue interface */
     MPIR_COMML_REMEMBER( MPIR_Process.comm_world );
     MPIR_COMML_REMEMBER( MPIR_Process.comm_self );
@@ -212,9 +217,15 @@ int MPIR_Init_thread(int * argc, char ***argv, int required,
     /* Call any and all MPID_Init type functions */
     /* FIXME: The call to err init should be within an ifdef
        HAVE_ ERROR_CHECKING block (as must all uses of Err_create_code) */
-    MPIR_Err_init();
     MPID_Wtime_init();
+#ifdef USE_DBG_LOGGING
+    MPIU_DBG_PreInit( argc, argv );
+#endif
+    MPIR_Err_init();
     MPIR_Datatype_init();
+
+    MPIU_THREADPRIV_GET;
+
     MPIR_Nest_init();
     /* MPIU_Timer_pre_init(); */
 
@@ -222,6 +233,12 @@ int MPIR_Init_thread(int * argc, char ***argv, int required,
        MPID_Init if necessary */
     MPIR_Process.initialized = MPICH_WITHIN_MPI;
 
+    /* For any code in the device that wants to check for runtime 
+       decisions on the value of isThreaded, set a provisional
+       value here. We could let the MPID_Init routine override this */
+#ifdef HAVE_RUNTIME_THREADCHECK
+    MPIR_Process.isThreaded = required == MPI_THREAD_MULTIPLE;
+#endif
     mpi_errno = MPID_Init(argc, argv, required, &thread_provided, 
 			  &has_args, &has_env);
     /* --BEGIN ERROR HANDLING-- */
@@ -240,7 +257,19 @@ int MPIR_Init_thread(int * argc, char ***argv, int required,
     /* Capture the level of thread support provided */
     MPIR_Process.thread_provided = thread_provided;
     if (provided) *provided = thread_provided;
+    /* FIXME: Rationalize this with the above */
+#ifdef HAVE_RUNTIME_THREADCHECK
+    MPIR_Process.isThreaded = required == MPI_THREAD_MULTIPLE;
+#if 0
+    /* Preallocated MPIR_Thread if we're single-threaded */
+    if (provided < MPI_THREAD_MULTIPLE) {
+	MPIR_Thread = (MPICH_PerThread_t *) 
+	    MPIU_Calloc(1, sizeof(MPICH_PerThread_t));
+    }
+#endif
+#endif
 
+    /* FIXME: Define these in the interface.  Does Timer init belong here? */
     MPIU_dbg_init(MPIR_Process.comm_world->rank);
     MPIU_Timer_init(MPIR_Process.comm_world->rank,
 		    MPIR_Process.comm_world->local_size);
@@ -255,7 +284,8 @@ int MPIR_Init_thread(int * argc, char ***argv, int required,
     /* MPIU_trid( 1 ); */
 #endif
 #ifdef USE_DBG_LOGGING
-    MPIU_DBG_Init( argc, argv, MPIR_Process.comm_world->rank );
+    MPIU_DBG_Init( argc, argv, has_args, has_env, 
+		   MPIR_Process.comm_world->rank );
 #endif
 
     /* FIXME: There is no code for this comment */
@@ -318,16 +348,40 @@ Notes for Fortran:
 
 .seealso: MPI_Init, MPI_Finalize
 @*/
+#ifdef _SMP_
+extern int split_comm;
+int enable_shmem_collectives = 1;
+int disable_shmem_allreduce=0;
+int disable_shmem_reduce=0;
+int disable_shmem_barrier=0;
+extern int shmem_coll_blocks;
+extern int shmem_coll_max_msg_size;
+void MV2_Read_env_vars(void);
+#endif
 int MPI_Init_thread( int *argc, char ***argv, int required, int *provided )
 {
     static const char FCNAME[] = "MPI_Init_thread";
     int mpi_errno = MPI_SUCCESS;
     MPID_MPI_INIT_STATE_DECL(MPID_STATE_MPI_INIT_THREAD);
 
+#ifdef _SMP_
+    MPIU_THREADPRIV_DECL;
+    MPIU_THREADPRIV_GET;
+#endif
     MPID_CS_INITIALIZE();
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("init");
+
+    /* Create the thread-private region if necessary and go ahead 
+       and initialize it */
+    MPIU_THREADPRIV_INITKEY;
+    MPIU_THREADPRIV_INIT;
+
     MPID_MPI_INIT_FUNC_ENTER(MPID_STATE_MPI_INIT_THREAD);
     
+#ifdef _SMP_
+    MV2_Read_env_vars();
+#endif
+
 #   ifdef HAVE_ERROR_CHECKING
     {
         MPID_BEGIN_ERROR_CHECKS;
@@ -347,25 +401,83 @@ int MPI_Init_thread( int *argc, char ***argv, int required, int *provided )
     mpi_errno = MPIR_Init_thread( argc, argv, required, provided );
     if (mpi_errno != MPI_SUCCESS) goto fn_fail; 
 
+#ifdef _SMP_
+    if (enable_shmem_collectives){
+        if (split_comm == 1){
+            MPIR_Nest_incr();
+            int my_id, size;
+            MPI_Comm_rank(MPI_COMM_WORLD, &my_id);
+            MPI_Comm_size(MPI_COMM_WORLD, &size);
+            split_comm = 0;
+            create_2level_comm(MPI_COMM_WORLD, size, my_id);
+            split_comm = 1;
+            MPIR_Nest_decr();
+        }
+    }
+#endif
     /* ... end of body of routine ... */
     
     MPID_MPI_INIT_FUNC_EXIT(MPID_STATE_MPI_INIT_THREAD);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("init");
     return mpi_errno;
     
   fn_fail:
     /* --BEGIN ERROR HANDLING-- */
-#   ifdef HAVE_ERROR_HANDLING
+#   ifdef HAVE_ERROR_REPORTING
     {
 	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_init_thread",
+	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, 
+	    "**mpi_init_thread",
 	    "**mpi_init_thread %p %p %d %p", argc, argv, required, provided);
     }
 #   endif
     mpi_errno = MPIR_Err_return_comm( 0, FCNAME, mpi_errno );
     MPID_MPI_INIT_FUNC_EXIT(MPID_STATE_MPI_INIT_THREAD);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("init");
     MPID_CS_FINALIZE();
     return mpi_errno;
     /* --END ERROR HANDLING-- */
 }
+
+#ifdef _SMP_
+void MV2_Read_env_vars(void){
+    char *value;
+    int flag;
+    if ((value = getenv("MV2_USE_SHMEM_COLL")) != NULL){
+        flag = (int)atoi(value); 
+        if (flag > 0) enable_shmem_collectives = 1;
+        else enable_shmem_collectives = 0;
+    }
+    if ((value = getenv("MV2_USE_SHMEM_ALLREDUCE")) != NULL) {
+        flag = (int)atoi(value);
+        if (flag > 0) disable_shmem_allreduce = 0;
+        else disable_shmem_allreduce = 1;
+    }
+    if ((value = getenv("MV2_USE_SHMEM_REDUCE")) != NULL) {
+        flag = (int)atoi(value);
+        if (flag > 0) disable_shmem_reduce = 0;
+        else disable_shmem_reduce = 1;
+    }
+    if ((value = getenv("MV2_USE_SHMEM_BARRIER")) != NULL) {
+        flag = (int)atoi(value);
+        if (flag > 0) disable_shmem_barrier = 0;
+        else disable_shmem_barrier = 1;
+    }
+    if ((value = getenv("MV2_SHMEM_COLL_NUM_COMM")) != NULL){
+	    flag = (int)atoi(value);
+	    if (flag > 0) shmem_coll_blocks = flag;
+    }
+    if ((value = getenv("MV2_SHMEM_COLL_MAX_MSG_SIZE")) != NULL){
+	    flag = (int)atoi(value);
+	    if (flag > 0) shmem_coll_max_msg_size = flag;
+    }
+    if ((value = getenv("MV2_USE_SHARED_MEM")) != NULL){
+	    flag = (int)atoi(value);
+	    if (flag <= 0) enable_shmem_collectives = 0;
+    }
+    if ((value = getenv("MV2_USE_BLOCKING")) != NULL){
+	    flag = (int)atoi(value);
+	    if (flag > 0) enable_shmem_collectives = 0;
+    }
+}
+#endif

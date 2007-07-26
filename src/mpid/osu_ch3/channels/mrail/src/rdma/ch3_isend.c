@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2006, The Ohio State University. All rights
+/* Copyright (c) 2003-2007, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -71,7 +71,7 @@ int MPIDI_CH3_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void *pkt,
     MPIU_DBG_PRINTF(("ch3_isend\n"));
     MPIDI_DBG_PRINTF((50, FCNAME, "entering"));
 #ifdef _SMP_
-    if (vc->smp.local_nodes >= 0 &&
+    if (SMP_INIT && vc->smp.local_nodes >= 0 &&
         vc->smp.local_nodes != smpi.my_local_id) {
         mpi_errno =
             MPIDI_CH3_SMP_iSend(vc, sreq, pkt, pkt_sz);
@@ -103,7 +103,6 @@ int MPIDI_CH3_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void *pkt,
     if (MPIDI_CH3I_SendQ_empty(vc)) {   /* MT */
         int nb;
         vbuf *buf;
-        int rdma_ok;
         MPIDI_DBG_PRINTF((55, FCNAME,
                           "send queue empty, attempting to write"));
 
@@ -112,21 +111,11 @@ int MPIDI_CH3_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void *pkt,
 
         iov[0].MPID_IOV_BUF = pkt;
         iov[0].MPID_IOV_LEN = pkt_sz;
-        rdma_ok = MPIDI_CH3I_MRAILI_Fast_rdma_ok(vc, pkt_sz);
-        DEBUG_PRINT(stdout, "[send], rdma ok: %d\n", rdma_ok);
-        if (rdma_ok != 0) {
-            /* the packet header and the data now is in rdma fast buffer */
-            mpi_errno =
-                MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(vc, iov, 1, &nb,
-                                                          &buf);
-            DEBUG_PRINT("[send: send progress] mpi_errno %d, nb %d\n",
-                        mpi_errno == MPI_SUCCESS, nb);
-        } else {
-            /* TODO: Codes to send pkt through send/recv path */
-            mpi_errno =
-                MPIDI_CH3I_MRAILI_Eager_send(vc, iov, 1, &nb, &buf);
-            DEBUG_PRINT("[istartmsgv] mpierr %d, nb %d\n", mpi_errno, nb);
-        }
+
+        mpi_errno =
+            MPIDI_CH3I_MRAILI_Eager_send(vc, iov, 1, pkt_sz, &nb, &buf);
+        DEBUG_PRINT("[istartmsgv] mpierr %d, nb %d\n", mpi_errno, nb);
+       
         if (mpi_errno == MPI_SUCCESS) {
             DEBUG_PRINT("[send path] eager send return %d bytes\n", nb);
 

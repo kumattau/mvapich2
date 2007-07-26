@@ -24,13 +24,10 @@ DEFS            = @DEFS@ -I. -I${srcdir}
 CPPFLAGS        = @CPPFLAGS@
 MAKE            = @MAKE@
 MPILIBNAME      = @MPILIBNAME@
-PMPILIBNAME     = @PMPILIBNAME@
-
 CC              = @CC@
 CFLAGS          = @CFLAGS@
 C_COMPILE       = $(CC) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
 LIBTOOL         = @LIBTOOL@
-CREATESHLIB     = @CREATESHLIB@
 CC_SHL          = @CC_SHL@
 C_COMPILE_SHL   = $(CC_SHL) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
 
@@ -48,17 +45,17 @@ INCLUDES = -I../../include -I${master_top_srcdir}/src/include \
 	@mv -f _s$*.o $*.lo
 .c:
 	$(C_COMPILE) -o $* $< $(LDFLAGS) $(LIBS)
-apply:
+apply: 
 	$(ACTION) $(ACTION_INPUT)
 	(cd ../../mpid/common/sock && $(MAKE) apply )
-clean:
+clean: 
 	-@rm -f *.o ${srcdir}/*.o 
 	-@rm -f .libstamp0 .libstamp1 
 	-@rm -f *.lo ${srcdir}/*.lo
 	(cd ../../mpid/common/sock && $(MAKE) clean )
-distclean: clean distclean-local distclean-xxx remove-makefile
+distclean:  clean distclean-local distclean-xxx remove-makefile
 distclean-xxx:
-	(cd ../../mpid/common/sock && $(MAKE) distclean )
+	if [ -s ../../mpid/common/sock/Makefile ] ; then (cd ../../mpid/common/sock && $(MAKE) distclean ) ; fi
 	-@rm -f Makefile localdefs config.status config.log config.cache *conf.cache config.system
 	-@rm -rf autom4te*.cache
 	-@rm -f smpdconf.h
@@ -106,10 +103,10 @@ install:  FORCE_TARGET
 
 install-strip:
 	$(MAKE) INSTALL_STRIP_FLAG=-s install
-uninstall:
+uninstall: 
 	-rm -f ${DESTDIR}${bindir}/mpiexec
 	-rm -f ${DESTDIR}${bindir}/smpd
-installcheck:
+installcheck: 
 # --------------------------------------------------------------------------
 # --------------------------------------------------------------------------
 SOURCES         =  smpd_hash.c smpd_authenticate.c smpd_printf.c \
@@ -122,7 +119,7 @@ ETAGS           = @ETAGS@ @ETAGSADD@
 HEADERFILES     = $(HEADERS)
 SOURCEFILES     = $(SOURCES)
 tags: TAGS
-TAGS:${HEADERFILES} ${SOURCEFILES}
+TAGS: Makefile${HEADERFILES} ${SOURCEFILES}
 	here=`cd ../../.. && pwd` ; cd ${srcdir} && $(ETAGS) -o $$here/TAGS --append ${HEADERFILES} ${SOURCEFILES}
 # --------------------------------------------------------------------------
 #mpiexec_SOURCES = mpiexec.c mp_parse_command_line.c

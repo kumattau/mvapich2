@@ -21,12 +21,15 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Type_set_name
 #define MPI_Type_set_name PMPI_Type_set_name
 
 #endif
 
 #undef FUNCNAME
 #define FUNCNAME MPI_Type_set_name
+#undef FCNAME
+#define FCNAME "MPI_Type_set_name"
 
 /*@
    MPI_Type_set_name - set datatype name
@@ -45,7 +48,6 @@
 @*/
 int MPI_Type_set_name(MPI_Datatype type, char *type_name)
 {
-    static const char FCNAME[] = "MPI_Type_set_name";
     int mpi_errno = MPI_SUCCESS;
     MPID_Datatype *datatype_ptr = NULL;
     static int setup = 0;
@@ -53,7 +55,6 @@ int MPI_Type_set_name(MPI_Datatype type, char *type_name)
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_TYPE_SET_NAME);
     
     /* Validate parameters, especially handles needing to be converted */
@@ -85,7 +86,8 @@ int MPI_Type_set_name(MPI_Datatype type, char *type_name)
 	    if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 
 	    slen = (int)strlen( type_name );
-	    MPIU_ERR_CHKANDSTMT1((slen >= MPI_MAX_OBJECT_NAME), mpi_errno, MPI_ERR_ARG,;, "**typenamelen",
+	    MPIU_ERR_CHKANDSTMT1((slen >= MPI_MAX_OBJECT_NAME), mpi_errno, 
+				 MPI_ERR_ARG,;, "**typenamelen",
 				    "**typenamelen %d", slen );
             if (mpi_errno) goto fn_fail;
         }
@@ -107,21 +109,23 @@ int MPI_Type_set_name(MPI_Datatype type, char *type_name)
     
     /* ... end of body of routine ... */
 
+#ifdef HAVE_ERROR_CHECKING
   fn_exit:
+#endif
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_TYPE_SET_NAME);
-    MPID_CS_EXIT();
     return mpi_errno;
 
-  fn_fail:
     /* --BEGIN ERROR HANDLING-- */
 #   ifdef HAVE_ERROR_CHECKING
+  fn_fail:
     {
 	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_type_set_name",
+	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, 
+	    "**mpi_type_set_name",
 	    "**mpi_type_set_name %D %s", type, type_name);
     }
-#   endif
     mpi_errno = MPIR_Err_return_comm( NULL, FCNAME, mpi_errno );
     goto fn_exit;
+#   endif
     /* --END ERROR HANDLING-- */
 }

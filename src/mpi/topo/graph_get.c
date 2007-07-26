@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Graph_get
 #define MPI_Graph_get PMPI_Graph_get
 
 #endif
@@ -64,7 +65,6 @@ int MPI_Graph_get(MPI_Comm comm, int maxindex, int maxedges,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_GRAPH_GET);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -126,7 +126,6 @@ int MPI_Graph_get(MPI_Comm comm, int maxindex, int maxedges,
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_GRAPH_GET);
-    MPID_CS_EXIT();
     return mpi_errno;
 
   fn_fail:

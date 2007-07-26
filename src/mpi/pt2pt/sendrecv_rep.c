@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Sendrecv_replace
 #define MPI_Sendrecv_replace PMPI_Sendrecv_replace
 
 #endif
@@ -67,6 +68,7 @@ int MPI_Sendrecv_replace(void *buf, int count, MPI_Datatype datatype,
     static const char FCNAME[] = "MPI_Sendrecv_replace";
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL;
+    MPIU_THREADPRIV_DECL;
 #ifdef MPID_LOG_ARROWS
     /* This isn't the right test, but it is close enough for now */
     int sendcount = count, recvcount = count;
@@ -76,9 +78,10 @@ int MPI_Sendrecv_replace(void *buf, int count, MPI_Datatype datatype,
     
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("pt2pt");
     MPID_MPI_PT2PT_FUNC_ENTER_BOTH(MPID_STATE_MPI_SENDRECV_REPLACE);
 
+    MPIU_THREADPRIV_GET;
     
     /* Convert handles to MPI objects. */
     MPID_Comm_get_ptr(comm, comm_ptr);
@@ -215,15 +218,16 @@ int MPI_Sendrecv_replace(void *buf, int count, MPI_Datatype datatype,
     if (mpi_errno != MPI_SUCCESS) goto fn_fail;
     
     /* ... end of body of routine ... */
+    MPIR_Nest_decr();
 
   fn_exit:
     MPIU_CHKLMEM_FREEALL();
-    MPIR_Nest_decr();
     MPID_MPI_PT2PT_FUNC_EXIT_BOTH(MPID_STATE_MPI_SENDRECV_REPLACE);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("pt2pt");
     return mpi_errno;
     
   fn_fail:
+    MPIR_Nest_decr();
     /* --BEGIN ERROR HANDLING-- */
 #   ifdef HAVE_ERROR_CHECKING
     {

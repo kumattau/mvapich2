@@ -12,7 +12,9 @@
 #include <string.h>
 #endif
 
-#define MAX_INFOS 256
+#ifndef MAX_INFOS
+#define MAX_INFOS 4000
+#endif
 #define info_list 16
 /* #define DBG  */
 

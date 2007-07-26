@@ -74,6 +74,11 @@ if (eval $lac_compile) 2>lconftest.err ; then
 	cat lconftest.err
     echo "SPARC V8 inline spin locks supported...yes"
     echo "SPARC V8 inline spin locks supported...yes" >>config.log
+    # FIXME: DO NOT SET CFLAGS UNCONDITIONALLY LIKE THIS
+    # (autoconf can fail if CFLAGS is changed; this should also 
+    # only be applied where it is needed; this can cause this
+    # inline to be added to mpicc et al, which is definately *not* what
+    # you want to do)
     if test -z "$HAVE_SPARC_INLINE_PROCESS_LOCKS" ; then
         CFLAGS="$CFLAGS ${master_top_srcdir}/src/mpid/common/locks/mpidu_process_locks_sparc_v8.il"
         HAVE_SPARC_INLINE_PROCESS_LOCKS=yes

@@ -53,6 +53,9 @@ do {                                                          \
 #define IBA_PMI_ATTRLEN (16)
 #define IBA_PMI_VALLEN  (4096)
 
+extern int cached_pg_size;
+extern int cached_pg_rank;
+
 DAT_EP_HANDLE temp_ep_handle;
 void
 MPIDI_CH3I_RDMA_util_atos (char *str, DAT_SOCK_ADDR * addr);
@@ -545,6 +548,7 @@ rdma_pmi_exchange_addresses (int pg_rank, int pg_size,
     char *temp_localaddr = (char *) localaddr;
     char *temp_alladdrs = (char *) alladdrs;
     char *key, *val;
+    char    *kvsname = NULL;
 
     /* Allocate space for pmi keys and values */
     ret = PMI_KVS_Get_key_length_max (&key_max_sz);
@@ -570,10 +574,12 @@ rdma_pmi_exchange_addresses (int pg_rank, int pg_size,
     /* put the kvs into PMI */
     MPIU_Strncpy (key, attr_buff, key_max_sz);
     MPIU_Strncpy (val, temp_localaddr, val_max_sz);
-    ret = PMI_KVS_Put (cached_pg->ch.kvs_name, key, val);
+    MPIDI_PG_GetConnKVSname( &kvsname );
+    ret = PMI_KVS_Put(kvsname, key, val);
+
     CHECK_UNEXP ((ret != 0), "PMI_KVS_Put error \n");
 
-    ret = PMI_KVS_Commit (cached_pg->ch.kvs_name);
+    ret = PMI_KVS_Commit(kvsname);
     CHECK_UNEXP ((ret != 0), "PMI_KVS_Commit error \n");
 
     /* Wait until all processes done the same */
@@ -600,7 +606,7 @@ rdma_pmi_exchange_addresses (int pg_rank, int pg_size,
           snprintf (attr_buff, IBA_PMI_ATTRLEN, "MVAPICH2_%04d", j);
           MPIU_Strncpy (key, attr_buff, key_max_sz);
 
-          ret = PMI_KVS_Get (cached_pg->ch.kvs_name, key, val, val_max_sz);
+	  ret = PMI_KVS_Get(kvsname, key, val, val_max_sz);
           CHECK_UNEXP ((ret != 0), "PMI_KVS_Get error \n");
           MPIU_Strncpy (val_buff, val, val_max_sz);
 
@@ -694,6 +700,7 @@ rdma_iba_hca_init (struct MPIDI_CH3I_RDMA_Process_t *proc,
       }
 
 #ifdef ONE_SIDED
+  if (MPIDI_CH3I_RDMA_Process.has_one_sided) {
     /* This part is for built up QPs and CQ for one-sided communication */
     ret = dat_evd_create (proc->nic[0],
                           MIN (RDMA_DEFAULT_MAX_CQ_SIZE,
@@ -727,7 +734,7 @@ rdma_iba_hca_init (struct MPIDI_CH3I_RDMA_Process_t *proc,
                               proc->creq_cq_hndl_1sc, DAT_PSP_CONSUMER_FLAG,
                               &(proc->psp_hndl_1sc));
     }
-
+  }
 #endif
 
 
@@ -839,7 +846,7 @@ rdma_iba_hca_init (struct MPIDI_CH3I_RDMA_Process_t *proc,
       }
 
 #ifdef ONE_SIDED
-
+  if (MPIDI_CH3I_RDMA_Process.has_one_sided) {
     for (i = 0; i < pg_size; i++)
       {
 
@@ -856,10 +863,232 @@ rdma_iba_hca_init (struct MPIDI_CH3I_RDMA_Process_t *proc,
           CHECK_RETURN (ret, "Could not create EP for _1SC_");
 
       }
+  }
 #endif
 
     return DAT_SUCCESS;
 
+}
+
+/* For on demand connection mode */
+int
+rdma_iba_hca_init_noep (struct MPIDI_CH3I_RDMA_Process_t *proc,
+                   MPIDI_VC_t * vc, int pg_rank, int pg_size)
+{
+    DAT_EP_ATTR ep_attr;
+    DAT_EVD_HANDLE async_evd_handle = DAT_HANDLE_NULL;
+    DAT_EVENT event;
+    DAT_IA_ATTR ia_attr;
+    DAT_EP_PARAM param;
+
+    unsigned int act_num_cqe;
+    int i;
+    DAT_RETURN ret = DAT_SUCCESS;
+
+    /* XXX: The device name now defaults to be "InfiniHost0" */
+    /* XXX: Now the default number of hca is 1 */
+
+    for (i = 0; i < proc->num_hcas; i++)
+      {
+          ret =
+              dat_ia_open (dapl_provider, DAPL_DEFAULT_ASYNC_EVD_SIZE,
+                           &async_evd_handle, &proc->nic[i]);
+          CHECK_RETURN (ret, "Cannot open IA");
+
+          ret = dat_ia_query (proc->nic[i], &async_evd_handle, DAT_IA_ALL, &ia_attr, 0, /* provider attr mask */
+                              NULL);    /* provider attr */
+          CHECK_RETURN (ret, "Cannot query IA");
+
+          MPIDI_CH3I_RDMA_util_get_ia_addr (ia_attr.ia_address_ptr,
+                                            &(rdma_iba_addr_table.
+                                              ia_addr[pg_rank][i]));
+
+          /* allocate completion queues, protection handle before qp */
+          ret = dat_pz_create (proc->nic[i], &(proc->ptag[i]));
+          CHECK_RETURN (ret, "Cannot create PZ");
+
+          ret = dat_evd_create (proc->nic[i],
+                                MIN (RDMA_DEFAULT_MAX_CQ_SIZE,
+                                     ia_attr.max_evd_qlen), DAT_HANDLE_NULL,
+                                DAT_EVD_DTO_FLAG, &(proc->cq_hndl[i]));
+          CHECK_RETURN (ret, "cannot create EVD");
+
+          ret = dat_evd_create (proc->nic[i],
+                                MIN (DAPL_DEFAULT_MIN_EVD_SIZE,
+                                     ia_attr.max_evd_qlen), DAT_HANDLE_NULL,
+                                DAT_EVD_CR_FLAG, &(proc->creq_cq_hndl[i]));
+          CHECK_RETURN (ret, "cannot create creq EVD");
+
+          ret = dat_evd_create (proc->nic[i],
+                                MIN (DAPL_DEFAULT_MIN_EVD_SIZE,
+                                     ia_attr.max_evd_qlen), DAT_HANDLE_NULL,
+                                DAT_EVD_CONNECTION_FLAG,
+                                &(proc->conn_cq_hndl[i]));
+          CHECK_RETURN (ret, "cannot create conn EVD");
+
+          rdma_iba_addr_table.service_id[pg_rank][i] = 1024 + getpid () + i;
+          MPIDI_CH3I_RDMA_Process.service_id[i] =
+              rdma_iba_addr_table.service_id[pg_rank][i];
+
+          ret = dat_psp_create (proc->nic[i],
+                                rdma_iba_addr_table.service_id[pg_rank][i],
+                                proc->creq_cq_hndl[i],
+                                DAT_PSP_CONSUMER_FLAG, &(proc->psp_hndl[i]));
+          while(ret != DAT_SUCCESS){
+              rdma_iba_addr_table.service_id[pg_rank][i] += 1024;
+              ret = dat_psp_create (proc->nic[i],
+                                    rdma_iba_addr_table.service_id[pg_rank][i],
+                                    proc->creq_cq_hndl[i],
+                                    DAT_PSP_CONSUMER_FLAG, &(proc->psp_hndl[i]));
+          }
+      }
+#ifdef ONE_SIDED
+  if (MPIDI_CH3I_RDMA_Process.has_one_sided) {
+    /* This part is for built up QPs and CQ for one-sided communication */
+    ret = dat_evd_create (proc->nic[0],
+                          MIN (RDMA_DEFAULT_MAX_CQ_SIZE,
+                               ia_attr.max_evd_qlen), DAT_HANDLE_NULL,
+                          DAT_EVD_DTO_FLAG, &proc->cq_hndl_1sc);
+    CHECK_RETURN (ret, "cannot create cq evd 1sc");
+
+    ret = dat_evd_create (proc->nic[0],
+                          MIN (DAPL_DEFAULT_MIN_EVD_SIZE,
+                               ia_attr.max_evd_qlen), DAT_HANDLE_NULL,
+                          DAT_EVD_CR_FLAG, &(proc->creq_cq_hndl_1sc));
+    CHECK_RETURN (ret, "cannot create creq EVD 1sc");
+
+    ret = dat_evd_create (proc->nic[0],
+                          MIN (DAPL_DEFAULT_MIN_EVD_SIZE,
+                               ia_attr.max_evd_qlen), DAT_HANDLE_NULL,
+                          DAT_EVD_CONNECTION_FLAG, &(proc->conn_cq_hndl_1sc));
+    CHECK_RETURN (ret, "cannot create conn EVD 1sc");
+
+    rdma_iba_addr_table.service_id_1sc[pg_rank][0] =
+        getpid () + pg_size + 1124;
+    ret =
+        dat_psp_create (proc->nic[0],
+                        rdma_iba_addr_table.service_id_1sc[pg_rank][0],
+                        proc->creq_cq_hndl_1sc, DAT_PSP_CONSUMER_FLAG,
+                        &(proc->psp_hndl_1sc));
+    while(ret != DAT_SUCCESS){
+        rdma_iba_addr_table.service_id_1sc[pg_rank][0] += 1124;
+        ret = dat_psp_create (proc->nic[0],
+                              rdma_iba_addr_table.service_id_1sc[pg_rank][0],
+                              proc->creq_cq_hndl_1sc, DAT_PSP_CONSUMER_FLAG,
+                              &(proc->psp_hndl_1sc));
+    }
+  }
+#endif
+
+    for (i = 0; i < pg_size; i++) {
+        if (i == pg_rank)
+            continue;
+
+        MPIDI_PG_Get_vc (cached_pg, i, &vc);
+        vc->mrail.qp_hndl =
+            (DAT_EP_HANDLE *) malloc (sizeof (DAT_EP_HANDLE) *
+                                      vc->mrail.num_total_subrails);
+    }
+
+    return DAT_SUCCESS;
+
+}
+
+void cm_ep_create(MPIDI_VC_t *vc)
+{
+    DAT_EP_ATTR ep_attr;
+    DAT_IA_ATTR ia_attr;
+    DAT_EP_PARAM param;
+    DAT_EVD_HANDLE async_evd_handle = DAT_HANDLE_NULL;
+
+    unsigned int act_num_cqe;
+    int i;
+    DAT_RETURN ret = DAT_SUCCESS;
+    MPIDI_CH3I_RDMA_Process_t *proc = &MPIDI_CH3I_RDMA_Process;
+
+    ret = dat_ia_query (proc->nic[0], &async_evd_handle, DAT_IA_ALL, 
+                        &ia_attr, 
+                        0, /* provider attr mask */
+                        NULL);    /* provider attr */
+    CHECK_RETURN (ret, "Cannot query IA");
+
+    /* Queue Pair creation, Basic */
+    if (strcmp (dapl_provider, "ccil") == 0)
+      {
+          ret = dat_ep_create (proc->nic[0],
+                               proc->ptag[0],
+                               proc->cq_hndl[0],
+                               proc->cq_hndl[0],
+                               proc->conn_cq_hndl[0], 
+                               NULL, &temp_ep_handle);
+          ret =
+              dat_ep_query (temp_ep_handle, DAT_EP_FIELD_EP_ATTR_ALL, &param);
+
+          ep_attr = param.ep_attr;
+          ep_attr.max_rdma_read_iov = 1;
+          ep_attr.max_rdma_write_iov = 4;
+          ep_attr.max_recv_dtos = rdma_default_max_wqe;
+          ep_attr.max_request_dtos = rdma_default_max_wqe;
+      }
+    else if (strcmp (dapl_provider, "ib0") == 0)
+      {
+          ep_attr.service_type = DAT_SERVICE_TYPE_RC;
+          ep_attr.max_mtu_size = DAPL_GEN2_MAX_MSG_SIZE;
+          ep_attr.max_message_size = DAPL_GEN2_MAX_MSG_SIZE;
+          ep_attr.max_rdma_size = 0;
+          ep_attr.qos = DAT_QOS_BEST_EFFORT;
+          ep_attr.recv_completion_flags = DAT_COMPLETION_DEFAULT_FLAG;
+          ep_attr.request_completion_flags = DAT_COMPLETION_UNSIGNALLED_FLAG;
+          ep_attr.max_recv_dtos = rdma_default_max_wqe;
+          ep_attr.max_request_dtos = rdma_default_max_wqe;
+          ep_attr.max_recv_iov = 4;
+          ep_attr.max_request_iov = 4;
+          ep_attr.max_rdma_read_in = DAPL_DEFAULT_MAX_RDMA_IN;
+          ep_attr.max_rdma_read_out = DAPL_DEFAULT_MAX_RDMA_OUT;
+
+          ep_attr.ep_transport_specific_count = 0;
+          ep_attr.ep_transport_specific = NULL;
+          ep_attr.ep_provider_specific_count = 0;
+          ep_attr.ep_provider_specific = NULL;
+          ep_attr.max_rdma_read_iov = 0;
+          ep_attr.max_rdma_write_iov = 0;
+          ep_attr.srq_soft_hw = 0;
+      }
+    else
+      {
+          ep_attr.service_type = DAT_SERVICE_TYPE_RC;
+          ep_attr.max_mtu_size = rdma_default_mtu_size;
+          ep_attr.max_rdma_size = ia_attr.max_rdma_size;
+          ep_attr.qos = DAT_QOS_BEST_EFFORT;
+          ep_attr.recv_completion_flags = DAT_COMPLETION_DEFAULT_FLAG;
+          ep_attr.request_completion_flags = DAT_COMPLETION_UNSIGNALLED_FLAG;
+          ep_attr.max_recv_dtos =
+              MIN (rdma_default_max_wqe, ia_attr.max_dto_per_ep);
+          ep_attr.max_request_dtos =
+              MIN (rdma_default_max_wqe, ia_attr.max_dto_per_ep);
+          ep_attr.max_recv_iov =
+              MIN (rdma_default_max_sg_list,
+                   ia_attr.max_iov_segments_per_dto);
+          ep_attr.max_request_iov =
+              MIN (rdma_default_max_sg_list,
+                   ia_attr.max_iov_segments_per_dto);
+          ep_attr.max_rdma_read_in = DAPL_DEFAULT_MAX_RDMA_IN;
+          ep_attr.max_rdma_read_out = DAPL_DEFAULT_MAX_RDMA_OUT;
+
+          ep_attr.ep_transport_specific_count = 0;
+          ep_attr.ep_transport_specific = NULL;
+          ep_attr.ep_provider_specific_count = 0;
+          ep_attr.ep_provider_specific = NULL;
+      }
+
+      ret = dat_ep_create (proc->nic[0],
+                           proc->ptag[0],
+                           proc->cq_hndl[0],
+                           proc->cq_hndl[0],
+                           proc->conn_cq_hndl[0],
+                           &ep_attr,
+                           &(vc->mrail.qp_hndl[0]));
+      CHECK_RETURN (ret, "Could not create EP");
 }
 
 /* Allocate memory and handlers */
@@ -871,6 +1100,7 @@ rdma_iba_allocate_memory (struct MPIDI_CH3I_RDMA_Process_t *proc,
     int iter_hca;
 
 #ifdef RDMA_FAST_PATH
+  if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
     /*The memory for sending the long int variable */
 
     VIP_MEM_HANDLE mem_handle;
@@ -980,9 +1210,12 @@ rdma_iba_allocate_memory (struct MPIDI_CH3I_RDMA_Process_t *proc,
 
             }
       }
+  }
 #endif
 #ifdef ONE_SIDED
+  if (MPIDI_CH3I_RDMA_Process.has_one_sided) {
     vc->mrail.postsend_times_1sc = 0;
+  }
 #endif
 
     /* We need now allocate vbufs for send/recv path */
@@ -1076,6 +1309,7 @@ rdma_iba_enable_connections (struct MPIDI_CH3I_RDMA_Process_t *proc,
       }
 
 #ifdef ONE_SIDED
+  if (MPIDI_CH3I_RDMA_Process.has_one_sided) {
     num_connected_1sc = 0;
     for (step = 1; step < pg_size; step++)
       {
@@ -1129,7 +1363,7 @@ rdma_iba_enable_connections (struct MPIDI_CH3I_RDMA_Process_t *proc,
           num_connected_1sc = 0;
           PMI_Barrier ();
       }
-
+  }
 #endif
     return DAT_SUCCESS;
 }
@@ -1158,6 +1392,7 @@ MRAILI_Init_vc (MPIDI_VC_t * vc, int pg_rank)
     vc->mrail.next_packet_tosend = 0;
 
 #ifdef RDMA_FAST_PATH
+  if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
     /* prefill desc of credit_vbuf */
     for (i = 0; i < num_rdma_buffer; i++)
       {
@@ -1182,6 +1417,10 @@ MRAILI_Init_vc (MPIDI_VC_t * vc, int pg_rank)
     vc->mrail.cmanager.total_subrails = 2;
     vc->mrail.cmanager.num_local_pollings = 1;
     vc->mrail.cmanager.poll_channel = malloc (sizeof (vbuf * (**)(void *)));
+  } else {
+      vc->mrail.cmanager.total_subrails = 1;
+      vc->mrail.cmanager.num_local_pollings = 0;
+  }
 #else
     vc->mrail.cmanager.total_subrails = 1;
     vc->mrail.cmanager.num_local_pollings = 0;

@@ -32,9 +32,14 @@ typedef struct rdma_iba_addr_tb
 }
 
 #define PACKET_SET_CREDIT(_p, _c, _rail_index) \
+if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) \
 {                                                                   \
     (_p)->mrail.rdma_credit = (_c)->mrail.rfp.rdma_credit;  \
     (_c)->mrail.rfp.rdma_credit = 0;                                        \
+    (_p)->mrail.vbuf_credit = (_c)->mrail.srp.local_credit[(_rail_index)];      \
+    (_p)->mrail.remote_credit = (_c)->mrail.srp.remote_credit[(_rail_index)];   \
+    (_c)->mrail.srp.local_credit[(_rail_index)] = 0;         \
+} else {     \
     (_p)->mrail.vbuf_credit = (_c)->mrail.srp.local_credit[(_rail_index)];      \
     (_p)->mrail.remote_credit = (_c)->mrail.srp.remote_credit[(_rail_index)];   \
     (_c)->mrail.srp.local_credit[(_rail_index)] = 0;         \

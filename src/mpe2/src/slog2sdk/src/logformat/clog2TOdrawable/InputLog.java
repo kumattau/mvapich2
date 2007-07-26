@@ -212,7 +212,7 @@ private class ContentIterator implements Iterator
     private MixedDataInputStream   blk_ins;
     private long                   total_bytesize;
 
-    private CommLineIDMap          commlineIDmap;
+    private CommProcThdIDMap       cptIDmap;
     private Map                    evtdefs;
     private List                   topos;
     private ObjDef                 statedef;
@@ -241,9 +241,10 @@ private class ContentIterator implements Iterator
 
     public ContentIterator( int kindID )
     {
-        // Map to hold (CommLineID's lineID, CommLineID) pairs. 
-        commlineIDmap  = new CommLineIDMap();
-        commlineIDmap.initialize();
+        int max_thread_count = InputLog.super.getPreamble().getMaxThreadCount();
+        // Map to hold (CommProcThdID's gthdLineID, CommProcThdID) pairs. 
+        cptIDmap  = new CommProcThdIDMap( max_thread_count );
+        cptIDmap.initialize();
 
         InputLog.this.next_avail_kindID  = kindID;
 
@@ -272,14 +273,16 @@ private class ContentIterator implements Iterator
         evtdefs.put( arrowdef.final_evt,
                      arrowform.getFinalEventObjMethod() );
 
+        List      defs;
+        Iterator  itr;
         // Gather all the known (i.e. MPI's, internal MPE/CLOG's) and
         // user-defined undefined RecDefStates, i.e. CLOG_Rec_StateDef_t.
-        List defs = InputLog.super.getKnownUndefinedInitedStateDefs();
+        defs = InputLog.super.getKnownUndefinedInitedStateDefs();
         defs.addAll( InputLog.super.getUserUndefinedInitedStateDefs() );
 
-        // Convert them to the appropriate categories + corresponding
-        // stack event matching object functions.
-        Iterator itr = defs.iterator();
+        // Convert statedef[] to the appropriate categories
+        // and corresponding stack event matching object functions.
+        itr = defs.iterator();
         while ( itr.hasNext() ) {
             staterec = ( RecDefState ) itr.next();
 
@@ -293,8 +296,24 @@ private class ContentIterator implements Iterator
                          stateform.getFinalEventObjMethod() );
         }
 
-        // Add all the user-defined undefined RecDefEvents, CLOG_Rec_EventDef_t.
+        // Add all the known and user-defined undefined RecDefEvents,
+        // CLOG_Rec_EventDef_t.
+        defs = InputLog.super.getKnownUndefinedInitedEventDefs();
         defs.addAll( InputLog.super.getUserUndefinedInitedEventDefs() );
+
+        // Convert eventdef[] to the appropriate categories
+        // and corresponding stack event matching object functions.
+        itr = defs.iterator();
+        while ( itr.hasNext() ) {
+            eventrec = ( RecDefEvent ) itr.next();
+
+            eventform = new Topo_Event();
+            def_idx   = ObjDef.getNextCategoryIndex();
+            eventdef  = new ObjDef( def_idx, eventrec, eventform, 1 );
+            eventform.setCategory( eventdef );
+            evtdefs.put( eventdef.start_evt,
+                         eventform.getEventObjMethod() );
+        }
 
         /*
         System.err.println( "\n\t evtdefs : " );
@@ -329,7 +348,7 @@ private class ContentIterator implements Iterator
     public boolean hasNext()
     {
         ObjMethod       evt_pairing, obj_meth1, obj_meth2;
-        CommLineID      commlineID;
+        CommProcThdID   commlineID;
         int             bytes_read;
         int             bare_etype, cargo_etype, msg_etype;
         int             rectype;
@@ -441,7 +460,7 @@ private class ContentIterator implements Iterator
                             }
 
                             if ( drawobj != null ) {
-                                commlineIDmap.setCommLineIDUsed( drawobj );
+                                cptIDmap.setCommProcThdIDUsed( drawobj );
                                 InputLog.this.next_avail_kindID
                                 = Kind.PRIMITIVE_ID;
                                 return true;
@@ -481,7 +500,7 @@ private class ContentIterator implements Iterator
                             }
 
                             if ( drawobj != null ) {
-                                commlineIDmap.setCommLineIDUsed( drawobj );
+                                cptIDmap.setCommProcThdIDUsed( drawobj );
                                 InputLog.this.next_avail_kindID
                                 = Kind.PRIMITIVE_ID;
                                 return true;
@@ -520,7 +539,7 @@ private class ContentIterator implements Iterator
                             }
 
                             if ( drawobj != null ) {
-                                commlineIDmap.setCommLineIDUsed( drawobj );
+                                cptIDmap.setCommProcThdIDUsed( drawobj );
                                 InputLog.this.next_avail_kindID
                                 = Kind.PRIMITIVE_ID;
                                 return true;
@@ -534,8 +553,7 @@ private class ContentIterator implements Iterator
                     case RecComm.RECTYPE:
                         bytes_read = comm.readFromDataStream( blk_ins );
                         total_bytesize += bytes_read;
-                        commlineID = new CommLineID( comm );
-                        commlineIDmap.addCommLineID( commlineID );
+                        cptIDmap.addComm( comm );
                         break;
                     case RecSrc.RECTYPE:
                         bytes_read = src.skipBytesFromDataStream( blk_ins );
@@ -586,8 +604,8 @@ private class ContentIterator implements Iterator
 
     public List getYCoordMapList()
     {
-        commlineIDmap.finish();
-        return commlineIDmap.createYCoordMapList();
+        cptIDmap.finish();
+        return cptIDmap.createYCoordMapList();
     }
 
     public long getTotalBytesRead()

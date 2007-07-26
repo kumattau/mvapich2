@@ -47,7 +47,12 @@ int main( int argc, char **argv )
 	    }
 	}
     }
-    MPI_Comm_free( &newcomm1 );
+    err = MPI_Comm_free( &newcomm1 );
+    if (err) {
+	errs++;
+	fprintf( stderr, "Failed to free newcomm1\n" );
+	MTestPrintError( err );
+    }
       
     MTest_Finalize( errs );
 

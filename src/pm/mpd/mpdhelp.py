@@ -26,7 +26,7 @@ information for the command without running it.
 from time import ctime
 __author__ = "Ralph Butler and Rusty Lusk"
 __date__ = ctime()
-__version__ = "$Revision: 1.1.1.1 $"
+__version__ = "$Revision: 1.8 $"
 __credits__ = ""
 
 

@@ -19,26 +19,27 @@ VPATH = .:@srcdir@
 .SUFFIXES:
 # Some make programs complain if no suffixes are set
 .SUFFIXES: .c .o
-apply:
+apply: 
 	$(ACTION) $(ACTION_INPUT)
-	for dir in attr coll comm datatype errhan group init io misc pt2pt rma spawn timer topo @romio_dir@ @debugger_dir@ - ; do \
+	for dir in attr coll comm datatype errhan group init misc pt2pt rma spawn timer topo @romio_dir@ @debugger_dir@ - ; do \
 		if [ "$$dir" = "-" ] ; then break ; fi ; \
 		(cd $$dir && ${MAKE} apply ; ) ; done
-clean:
+clean: 
 	-@rm -f *.o ${srcdir}/*.o 
 	-@rm -f *.lo ${srcdir}/*.lo
-	for dir in attr coll comm datatype errhan group init io misc pt2pt rma spawn timer topo @romio_dir@ @debugger_dir@ - ; do \
+	for dir in attr coll comm datatype errhan group init misc pt2pt rma spawn timer topo @romio_dir@ @debugger_dir@ - ; do \
 		if [ "$$dir" = "-" ] ; then break ; fi ; \
 		(cd $$dir && ${MAKE} clean ; ) ; done
-distclean: clean distclean-xxx remove-makefile
+distclean:  clean distclean-xxx remove-makefile
 distclean-xxx:
-	for dir in attr coll comm datatype errhan group init io misc pt2pt rma spawn timer topo @romio_dir@ @debugger_dir@ - ; do \
+	for dir in attr coll comm datatype errhan group init misc pt2pt rma spawn timer topo @romio_dir@ @debugger_dir@ - ; do \
 		if [ "$$dir" = "-" ] ; then break ; fi ; \
+		if [ ! -s $$dir/Makefile ] ; then continue ; fi ;\
 		(cd $$dir && ${MAKE} distclean ; ) ; done
 	-@rm -f Makefile
 	-@rm -rf autom4te*.cache
-	(cd romio && $(MAKE) distclean )
-	(cd debugger && $(MAKE) distclean )
+	if [ -s romio/Makefile ] ; then (cd romio && $(MAKE) distclean ) ; fi
+	if [ -s debugger/Makefile ] ; then (cd debugger && $(MAKE) distclean ) ; fi
 	-@rm -rf $(DEPS_DIR)
 	-@rm -f TAGS
 remove-makefile:
@@ -53,7 +54,6 @@ all-redirect:
 	@(cd errhan && ${MAKE} all )
 	@(cd group && ${MAKE} all )
 	@(cd init && ${MAKE} all )
-	@(cd io && ${MAKE} all )
 	@(cd misc && ${MAKE} all )
 	@(cd pt2pt && ${MAKE} all )
 	@(cd rma && ${MAKE} all )
@@ -75,8 +75,8 @@ all-redirect:
 HEADERFILES     = $(HEADERS)
 SOURCEFILES     = $(SOURCES)
 tags: TAGS
-TAGS:
-	for dir in attr coll comm datatype errhan group init io misc pt2pt rma spawn timer topo @romio_dir@ @debugger_dir@ - ; do \
+TAGS: Makefile
+	for dir in attr coll comm datatype errhan group init misc pt2pt rma spawn timer topo @romio_dir@ @debugger_dir@ - ; do \
 		if [ "$$dir" = "-" ] ; then break ; fi ; \
 		(cd $$dir && ${MAKE} TAGS ; ) ; done
 # --------------------------------------------------------------------------

@@ -94,8 +94,16 @@ int PMIServGetPort( int *fdout, char *portString, int portLen )
        the port value */
     
     /* Get the low and high portnumber range.  zero may be used to allow
-       the system to choose */
+       the system to choose.  There is a priority to these values, 
+       we keep going until we get one (and skip if none is found) */
+    
     range_ptr = getenv( "MPIEXEC_PORTRANGE" );
+    if (!range_ptr) {
+	range_ptr = getenv( "MPIEXEC_PORT_RANGE" );
+    }
+    if (!range_ptr) {
+	range_ptr = getenv( "MPICH_PORT_RANGE" );
+    }
     if (range_ptr) {
 	char *p;
 	/* Look for n:m format */
@@ -205,7 +213,7 @@ int PMIServAcceptFromPort( int fd, int rdwr, void *data )
 {
     int             newfd;
     struct sockaddr sock;
-    socklen_t       addrlen;
+    socklen_t       addrlen = sizeof(sock);
     int             id;
     ProcessUniverse *univ = (ProcessUniverse *)data;
     ProcessWorld    *pWorld = univ->worlds;
@@ -213,7 +221,11 @@ int PMIServAcceptFromPort( int fd, int rdwr, void *data )
 
     /* Get the new socket */
     MPIE_SYSCALL(newfd,accept,( fd, &sock, &addrlen ));
-    if (newfd < 0) return newfd;
+    DBG_PRINTF(("Acquired new socket in accept (fd = %d)\n", newfd ));
+    if (newfd < 0) {
+	DBG(perror("Error on accept: " ));
+	return newfd;
+    }
 
 #ifdef FOO
     /* Mark this fd as non-blocking */
@@ -273,6 +285,7 @@ int PMIServAcceptFromPort( int fd, int rdwr, void *data )
 	/* An alternative would be to dynamically assign the ranks
 	   as processes come in (but we'd still need to use the 
 	   PMI_ID to identify the ProcessApp) */
+	DBG_PRINTF(("Found an invalid id\n" ));
 	return -1;
     }
 
@@ -313,8 +326,9 @@ int PMIServSetupPort( ProcessUniverse *pUniv, char *portString, int portLen )
 }
 /* This is a signal-safe routine, used to terminate the use of the port
    within the ioloop */
-int PMIServEndPort( )
+int PMIServEndPort( void )
 {
+    DBG_PRINTF(("deregistering listenerfd %d\n", listenfd ));
     MPIE_IODeregister( listenfd );
     return 0;
 }
@@ -355,8 +369,13 @@ int MPIE_ConnectToPort( char *hostname, int portnum )
 	return -1;
     }
     
-    bzero( (void *)&sa, sizeof(sa) );
-    bcopy( (void *)hp->h_addr_list[0], (void *)&sa.sin_addr, hp->h_length);
+    memset( (void *)&sa, 0, sizeof(sa) );
+    /* POSIX might define h_addr_list only and node define h_addr */
+#ifdef HAVE_H_ADDR_LIST
+    memcpy( (void *)&sa.sin_addr, (void *)hp->h_addr_list[0], hp->h_length);
+#else
+    memcpy( (void *)&sa.sin_addr, (void *)hp->h_addr, hp->h_length);
+#endif
     sa.sin_family = hp->h_addrtype;
     sa.sin_port   = htons( (unsigned short) portnum );
     

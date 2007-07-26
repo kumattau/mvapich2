@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: pmi_nameserv.c,v 1.1.1.1 2006/01/18 21:09:46 huangwei Exp $
+/*  $Id: pmi_nameserv.c,v 1.4 2006/11/17 19:41:37 jayesh Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -24,9 +24,11 @@ struct MPID_NS_Handle { int dummy; };    /* unused for now */
 int MPID_NS_Create( const MPID_Info *info_ptr, MPID_NS_Handle *handle_ptr )
 {
     static const char FCNAME[] = "MPID_NS_Create";
+    static struct MPID_NS_Handle nsHandleWithNoData;
 
     MPIU_UNREFERENCED_ARG(info_ptr);
-    *handle_ptr = NULL;		/* The name service needs no local data */
+    /* MPID_NS_Create() should always create a valid handle */
+    *handle_ptr = &nsHandleWithNoData;	/* The name service needs no local data */
     return 0;
 }
 

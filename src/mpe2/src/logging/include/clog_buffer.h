@@ -5,7 +5,6 @@
 #if !defined( _CLOG_BUFFER )
 #define _CLOG_BUFFER
 
-#include "clog_const.h"
 #include "clog_preamble.h"
 #include "clog_block.h"
 #include "clog_commset.h"
@@ -61,7 +60,8 @@ void CLOG_Buffer_free( CLOG_Buffer_t **buffer_handle );
 
 void CLOG_Buffer_env_init( CLOG_Buffer_t *buffer );
 
-void CLOG_Buffer_init( CLOG_Buffer_t *buffer, const char *local_tmpfile_name );
+void CLOG_Buffer_init4write( CLOG_Buffer_t *buffer,
+                             const char    *local_tmpfile_name );
 
 void CLOG_Buffer_localIO_init4write( CLOG_Buffer_t *buffer );
 
@@ -84,8 +84,6 @@ void CLOG_Buffer_localIO_reinit4read( CLOG_Buffer_t *buffer );
 void CLOG_Buffer_localIO_read( CLOG_Buffer_t *buffer );
 
 void CLOG_Buffer_localIO_finalize( CLOG_Buffer_t *buffer );
-
-int CLOG_Buffer_reserved_block_size( unsigned int rectype );
 
 
 

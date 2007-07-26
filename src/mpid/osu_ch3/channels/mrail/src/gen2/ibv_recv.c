@@ -1,4 +1,4 @@
-/* Copyright (c) 2002-2006, The Ohio State University. All rights
+/* Copyright (c) 2002-2007, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -52,6 +52,9 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
     header = vstart;
     DEBUG_PRINT("[parse header] header type %d\n", header->type);
 
+    /* set it to the header size by default */
+    *header_size = MPIDI_CH3_Pkt_size_index[header->type];
+     
     switch (header->type) {
 #ifdef USE_HEADER_CACHING
     case (MPIDI_CH3_PKT_FAST_EAGER_SEND):
@@ -244,42 +247,55 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
             *pkt = vstart;
         }
         break;
+    case MPIDI_CH3_PKT_RGET_FINISH:
+        {
+            *header_size = sizeof(MPIDI_CH3_Pkt_rget_finish_t);
+            *pkt = vstart;
+            break;
+        }
     default:
         {
             /* Header is corrupted if control has reached here in prototype */
             /* */
-            ibv_error_abort(-1,
-                             "Control shouldn't reach here in prototype, header %d\n",
-                             header->type);
+            ibv_error_abort(-1, "Control shouldn't reach here "
+                    "in prototype, header %d\n",
+                    header->type);
         }
     }
-    SET_CREDIT((&(((MPIDI_CH3_Pkt_t *) (*pkt))->eager_send)), vc,
-               (v->rail));
+
+    DEBUG_PRINT("Before set credit, vc: %p, v->rail: %d, "
+            "pkt: %p, pheader: %p\n", vc, v->rail, pkt, v->pheader);
+
+    SET_CREDIT((&(((MPIDI_CH3_Pkt_t *) 
+                        (*pkt))->eager_send)), vc, (v->rail));
+
 
     if (vc->mrail.srp.credits[v->rail].remote_credit > 0 &&
         vc->mrail.srp.credits[v->rail].backlog.len > 0) {
         MRAILI_Backlog_send(vc, v->rail);
     }
+
     /* if any credits remain, schedule rendezvous progress */
     if ((vc->mrail.srp.credits[v->rail].remote_credit > 0 
-            || (vc->mrail.rfp.ptail_RDMA_send != vc->mrail.rfp.phead_RDMA_send)
+            || (vc->mrail.rfp.ptail_RDMA_send != 
+                vc->mrail.rfp.phead_RDMA_send)
         )
         && (vc->mrail.sreq_head != NULL)) {
         PUSH_FLOWLIST(vc);
     }
 
     if ((vc->mrail.rfp.RDMA_recv_buf == NULL) &&       /*(c->initialized) && */
-	num_rdma_buffer) {
-	if (MPIDI_CH3I_RDMA_Process.polling_group_size <
-	    rdma_polling_set_limit) {
-	    vc->mrail.rfp.eager_start_cnt++;
-	    if (rdma_polling_set_threshold < vc->mrail.rfp.eager_start_cnt) {
-		vbuf_fast_rdma_alloc(vc, 1);
-		vbuf_address_send(vc);
-	    }
-	}
+            num_rdma_buffer) {
+        if (MPIDI_CH3I_RDMA_Process.polling_group_size <
+                rdma_polling_set_limit) {
+            vc->mrail.rfp.eager_start_cnt++;
+            if (rdma_polling_set_threshold < 
+                    vc->mrail.rfp.eager_start_cnt) {
+                vbuf_fast_rdma_alloc(vc, 1);
+                vbuf_address_send(vc);
+            }
+        }
     }
-
     return MPI_SUCCESS;
 }
 
@@ -320,6 +336,8 @@ int MPIDI_CH3I_MRAIL_Fill_Request(MPID_Request * req, vbuf * v,
         }
     }
 
+    v->content_consumed = header_size + *nb;
+
     DEBUG_PRINT
         ("[recv:fill request] about to return form request, nb %d\n", *nb);
     return MPI_SUCCESS;
@@ -327,6 +345,10 @@ int MPIDI_CH3I_MRAIL_Fill_Request(MPID_Request * req, vbuf * v,
 
 void MPIDI_CH3I_MRAIL_Release_vbuf(vbuf * v)
 {
+    v->eager = 0;
+    v->coalesce = 0;
+    v->content_size = 0;
+
     if (v->padding == NORMAL_VBUF_FLAG || v->padding == RPUT_VBUF_FLAG)
         MRAILI_Release_vbuf(v);
     else {

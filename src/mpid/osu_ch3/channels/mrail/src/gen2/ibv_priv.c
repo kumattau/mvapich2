@@ -1,4 +1,4 @@
-/* Copyright (c) 2002-2006, The Ohio State University. All rights
+/* Copyright (c) 2002-2007, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -43,25 +43,20 @@ int deregister_memory(struct ibv_mr * mr)
     return ret;
 }
 
-int MRAILI_Fast_rdma_select_rail(MPIDI_VC_t * vc)
-{
-    static int i = 0;
-    i = i - 1;
-    if(i == -1) {
-        i = rdma_num_rails - 1; 
-    }
-    return i;
-}
+/* Rail selection policy:
+ * For small messages, use USE_FIRST to avoid QP cache misses */
 
 int MRAILI_Send_select_rail(MPIDI_VC_t * vc)
 {
     static int i = 0;
-    i = i - 1;
-    if(i == -1) {
-        i = rdma_num_rails - 1;
+    
+    if(ROUND_ROBIN == sm_scheduling) {
+        i = (i + 1) % rdma_num_rails;
+        return i;
+    } else {
+        /* Currently the best scenario for latency */
+        return 0;
     }
-    return i;
-
 }
 
 void vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)

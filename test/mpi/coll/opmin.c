@@ -89,19 +89,21 @@ int main( int argc, char *argv[] )
     ldoutbuf[0] = 0;
     ldoutbuf[1] = 1;
     ldoutbuf[2] = 1;
-    MPI_Reduce( ldinbuf, ldoutbuf, 3, MPI_LONG_DOUBLE, MPI_MIN, 0, comm );
-    if (rank == 0) {
-	if (ldoutbuf[0] != 1) {
-	    errs++;
-	    fprintf( stderr, "long double MIN(1) test failed\n" );
-	}
-	if (ldoutbuf[1] != 0.0) {
-	    errs++;
-	    fprintf( stderr, "long double MIN(0) test failed\n" );
-	}
-	if (ldoutbuf[2] != 0.0) {
-	    errs++;
-	    fprintf( stderr, "long double MIN(>) test failed\n" );
+    if (MPI_LONG_DOUBLE != MPI_DATATYPE_NULL) {
+	MPI_Reduce( ldinbuf, ldoutbuf, 3, MPI_LONG_DOUBLE, MPI_MIN, 0, comm );
+	if (rank == 0) {
+	    if (ldoutbuf[0] != 1) {
+		errs++;
+		fprintf( stderr, "long double MIN(1) test failed\n" );
+	    }
+	    if (ldoutbuf[1] != 0.0) {
+		errs++;
+		fprintf( stderr, "long double MIN(0) test failed\n" );
+	    }
+	    if (ldoutbuf[2] != 0.0) {
+		errs++;
+		fprintf( stderr, "long double MIN(>) test failed\n" );
+	    }
 	}
     }
     }
@@ -118,19 +120,21 @@ int main( int argc, char *argv[] )
     lloutbuf[0] = 0;
     lloutbuf[1] = 1;
     lloutbuf[2] = 1;
-    MPI_Reduce( llinbuf, lloutbuf, 3, MPI_LONG_LONG, MPI_MIN, 0, comm );
-    if (rank == 0) {
-	if (lloutbuf[0] != 1) {
-	    errs++;
-	    fprintf( stderr, "long long MIN(1) test failed\n" );
-	}
-	if (lloutbuf[1] != 0) {
-	    errs++;
-	    fprintf( stderr, "long long MIN(0) test failed\n" );
-	}
-	if (lloutbuf[2] != 0) {
-	    errs++;
-	    fprintf( stderr, "long long MIN(>) test failed\n" );
+    if (MPI_LONG_LONG != MPI_DATATYPE_NULL) {
+	MPI_Reduce( llinbuf, lloutbuf, 3, MPI_LONG_LONG, MPI_MIN, 0, comm );
+	if (rank == 0) {
+	    if (lloutbuf[0] != 1) {
+		errs++;
+		fprintf( stderr, "long long MIN(1) test failed\n" );
+	    }
+	    if (lloutbuf[1] != 0) {
+		errs++;
+		fprintf( stderr, "long long MIN(0) test failed\n" );
+	    }
+	    if (lloutbuf[2] != 0) {
+		errs++;
+		fprintf( stderr, "long long MIN(>) test failed\n" );
+	    }
 	}
     }
     }

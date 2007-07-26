@@ -7,7 +7,7 @@
 
 #include "mpiimpl.h"
 #ifdef HAVE_FORTRAN_BINDING
-#include "mpi_fortimpl.h"
+#include "mpi_fortlogical.h"
 #endif
 /* 
  * In MPI-1, this operation is valid only for  C integer, Fortran logical

@@ -9,6 +9,9 @@
 #include <mpid_dataloop.h>
 #include <stdlib.h>
 
+#undef FCNAME
+#define FCNAME "MPID_Type_dup"
+
 /* #define MPID_TYPE_ALLOC_DEBUG */
 
 /*@
@@ -27,16 +30,15 @@ int MPID_Type_dup(MPI_Datatype oldtype,
 		  MPI_Datatype *newtype)
 {
     int mpi_errno = MPI_SUCCESS;
-    MPID_Datatype *new_dtp, *old_dtp;
+    MPID_Datatype *new_dtp = 0, *old_dtp;
     struct MPID_Dataloop *dlp;
 
     if (HANDLE_GET_KIND(oldtype) == HANDLE_KIND_BUILTIN) {
 	/* use contiguous function, then fix is_committed value */
 	mpi_errno = MPID_Type_contiguous(1, oldtype, newtype);
-	if (mpi_errno == MPI_SUCCESS) {
-	    MPID_Datatype_get_ptr(*newtype, new_dtp);
-	    new_dtp->is_committed = 1;
-	}
+	if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
+	MPID_Datatype_get_ptr(*newtype, new_dtp);
+	new_dtp->is_committed = 1;
     }
     else {
 	/* get pointer to old datatype from handle */
@@ -49,7 +51,7 @@ int MPID_Type_dup(MPI_Datatype oldtype,
 	    mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_RECOVERABLE,
 					     "MPID_Type_dup", __LINE__, MPI_ERR_OTHER,
 					     "**nomem", 0);
-	    return mpi_errno;
+	    goto fn_fail;
 	    /* --END ERROR HANDLING-- */
 	}
 
@@ -90,12 +92,19 @@ int MPID_Type_dup(MPI_Datatype oldtype,
 	new_dtp->dataloop       = dlp;
 	new_dtp->dataloop_depth = old_dtp->dataloop_depth;
 	new_dtp->dataloop_size  = old_dtp->dataloop_size;
+
+#if defined(MPID_HAS_HETERO) || 1
+	MPID_Dataloop_dup(old_dtp->dataloop, old_dtp->dataloop_size, 
+			  &new_dtp->hetero_dloop);
+	new_dtp->hetero_dloop_depth = old_dtp->hetero_dloop_depth;
+	new_dtp->hetero_dloop_size  = old_dtp->hetero_dloop_size;
+#endif
 	
 	*newtype = new_dtp->handle;
     }
 
-#ifdef MPID_TYPE_ALLOC_DEBUG
-    MPIU_dbg_printf("dup type %x created.\n", new_dtp->handle);
-#endif
+    MPIU_DBG_MSG_P(DATATYPE,VERBOSE,"dup type %x created.", new_dtp->handle);
+
+ fn_fail:
     return mpi_errno;
 }

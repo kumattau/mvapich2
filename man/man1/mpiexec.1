@@ -1,4 +1,4 @@
-.TH mpiexec 1 "11/23/2005" " " "MPI"
+.TH mpiexec 1 "1/30/2007" " " "MPI"
 .SH NAME
 mpiexec \-  Run an MPI program 
 .SH SYNOPSIS
@@ -143,7 +143,11 @@ or
 .I -genv
 arguments) to the processes being run by 
 .I mpiexec
+\&.
 
+By default, all environment
+variables are provided to each MPI process (rationale: principle of
+least surprise for the user)
 .PD 1
 .PD 0
 .TP
@@ -238,7 +242,7 @@ terminate MPI programs that take longer than the value specified by
 .PD 1
 .PD 0
 .TP
-.B MPIEXEC_PORTRANGE 
+.B MPIEXEC_PORT_RANGE 
 - Set the range of ports that 
 .I mpiexec
 will use 
@@ -251,6 +255,16 @@ For example, to specify any port between
 .I 10000:10100
 \&.
 
+.PD 1
+.PD 0
+.TP
+.B MPICH_PORT_RANGE 
+- Has the same meaning as 
+.I MPIEXEC_PORT_RANGE
+and 
+is used if 
+.I MPIEXEC_PORT_RANGE
+is not set.
 .PD 1
 .PD 0
 .TP

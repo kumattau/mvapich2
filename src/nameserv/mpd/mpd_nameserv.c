@@ -1,24 +1,26 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: mpd_nameserv.c,v 1.1.1.1 2006/01/18 21:09:46 huangwei Exp $
+/*  $Id: mpd_nameserv.c,v 1.5 2006/08/08 14:16:07 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
 
 /*
- * This file contains a simple mpd-based implementation of the name server routines,
- * using the mpd daemons to hold the data, but accessing it through the PMI interface.
- * Publishing will go to the local mpd; lookup will search the ring, looking for the
- * data.
+ * This file contains a simple mpd-based implementation of the name server 
+ * routines, using the mpd daemons to hold the data, but accessing it through 
+ * the PMI interface. 
+ * Publishing will go to the local mpd; lookup will search the ring, looking 
+ * for the data.
  */
 
 #include "mpiimpl.h"
 #include "namepub.h"
 #include "pmi.h"
 
-/* style: allow:fprintf:1 sig:0 */   /* For writing the name/service pair */
-
-/* Define the name service handle */
+/* Define the name service handle.
+   Note that the interface requires that we return a non-null handle to an 
+   object of this type, even though we don't use it. We use a single,
+   statically allocated instance for simplicity. */
 #define MPID_MAX_NAMEPUB 64
 struct MPID_NS_Handle {
     int foo;			/* unused for now; some compilers object
@@ -31,10 +33,10 @@ struct MPID_NS_Handle {
 #define FUNCNAME MPID_NS_Create
 int MPID_NS_Create( const MPID_Info *info_ptr, MPID_NS_Handle *handle_ptr )
 {
-    static const char FCNAME[] = "MPID_NS_Create";
-
-    *handle_ptr = NULL;		/* The mpd name service needs no local data */
-                                /* All will be handled at the mpd through the PMI interface */
+    static struct MPID_NS_Handle myNShandle;
+    *handle_ptr = &myNShandle;	/* The mpd name service needs no local data */
+                                /* All will be handled at the mpd through the 
+				   PMI interface */
     return 0;
 }
 
@@ -99,7 +101,8 @@ int MPID_NS_Unpublish( MPID_NS_Handle handle, const MPID_Info *info_ptr,
 #define FUNCNAME MPID_NS_Free
 int MPID_NS_Free( MPID_NS_Handle *handle_ptr )
 {
-    /* MPID_NS_Handle is Null */
+    /* MPID_NS_Handle is points to statically allocated storage
+       (see MPID_NS_Create) */
 
     return 0;
 }

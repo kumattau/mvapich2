@@ -483,6 +483,7 @@ rdma_pmi_exchange_addresses(int pg_rank, int pg_size,
     char *temp_localaddr = (char *) localaddr;
     char *temp_alladdrs = (char *) alladdrs;
     char *key, *val;
+    char *kvsname = NULL;
 
     /* Allocate space for pmi keys and values */
     ret = PMI_KVS_Get_key_length_max(&key_max_sz);
@@ -508,10 +509,11 @@ rdma_pmi_exchange_addresses(int pg_rank, int pg_size,
     /* put the kvs into PMI */
     MPIU_Strncpy(key, attr_buff, key_max_sz);
     MPIU_Strncpy(val, temp_localaddr, val_max_sz);
-    ret = PMI_KVS_Put(cached_pg->ch.kvs_name, key, val);
+    MPIDI_PG_GetConnKVSname( &kvsname );
+    ret = PMI_KVS_Put(kvsname, key, val);
     CHECK_UNEXP((ret != 0), "PMI_KVS_Put error \n");
 
-    ret = PMI_KVS_Commit(cached_pg->ch.kvs_name);
+    ret = PMI_KVS_Commit(kvsname);
     CHECK_UNEXP((ret != 0), "PMI_KVS_Commit error \n");
 
     /* Wait until all processes done the same */
@@ -536,7 +538,7 @@ rdma_pmi_exchange_addresses(int pg_rank, int pg_size,
         snprintf(attr_buff, IBA_PMI_ATTRLEN, "MVAPICH2_%04d", j);
         MPIU_Strncpy(key, attr_buff, key_max_sz);
 
-        ret = PMI_KVS_Get(cached_pg->ch.kvs_name, key, val, val_max_sz);
+        ret = PMI_KVS_Get(kvsname, key, val, val_max_sz);
         CHECK_UNEXP((ret != 0), "PMI_KVS_Get error \n");
         MPIU_Strncpy(val_buff, val, val_max_sz);
 
@@ -1067,6 +1069,7 @@ rdma_iba_exchange_info(struct MPIDI_CH3I_RDMA_Process_t *proc,
                     rdma_iba_addr_table.lid[i][0],
                     local_addr_len, QPLEN_XDR);
 #ifdef _SMP_
+      if (SMP_INIT)
         vc->smp.hostid = rdma_iba_addr_table.hostid[i][0];
 #endif
 

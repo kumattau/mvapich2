@@ -8,7 +8,8 @@
 usage:  mpdboot --totalnum=<n_to_start> [--file=<hostsfile>]  [--help] \ 
                 [--rsh=<rshcmd>] [--user=<user>] [--mpd=<mpdcmd>]      \ 
                 [--loccons] [--remcons] [--shell] [--verbose] [-1]     \
-                [--ncpus=<ncpus>] [--ifhn=<ifhn>] [--chkup] [--chkuponly]
+                [--ncpus=<ncpus>] [--ifhn=<ifhn>] [--chkup] [--chkuponly] \
+                [--maxbranch=<maxbranch>]
  or, in short form, 
         mpdboot -n n_to_start [-f <hostsfile>] [-h] [-r <rshcmd>] [-u <user>] \ 
                 [-m <mpdcmd>]  -s -v [-1] [-c]
@@ -39,23 +40,26 @@ usage:  mpdboot --totalnum=<n_to_start> [--file=<hostsfile>]  [--help] \
   of hosts specified by -n
 --chkuponly requests that mpdboot try to verify that the hosts in the host file
   are up; it then terminates; it just checks the number of hosts specified by -n
+--maxbranch indicates the maximum number of mpds to enter the ring under another;
+  the default is 4
 """
 from time import ctime
 __author__ = "Ralph Butler and Rusty Lusk"
 __date__ = ctime()
-__version__ = "$Revision: 1.1.1.1 $"
+__version__ = "$Revision: 1.47 $"
 __credits__ = ""
 
 import re
 
-from os     import environ, system, path, kill, access, X_OK
-from sys    import argv, exit, stdout
-from popen2 import Popen4, Popen3, popen2
-from socket import gethostname, gethostbyname_ex
-from select import select, error
-from signal import SIGKILL
-from mpdlib import mpd_set_my_id, mpd_get_my_username, mpd_same_ips, mpd_get_ranks_in_binary_tree, \
-                   mpd_print, MPDSock
+from os       import environ, path, kill, access, X_OK
+from sys      import argv, exit, stdout
+from popen2   import Popen4, Popen3, popen2
+from socket   import gethostname, gethostbyname_ex
+from select   import select, error
+from signal   import SIGKILL
+from commands import getoutput, getstatusoutput
+from mpdlib   import mpd_set_my_id, mpd_get_my_username, mpd_same_ips, \
+                     mpd_get_ranks_in_binary_tree, mpd_print, MPDSock
 
 global myHost, fullDirName, rshCmd, user, mpdCmd, debug, verbose
 
@@ -77,6 +81,7 @@ def mpdboot():
     myNcpus = 1
     myIfhn = ''
     chkupIndicator = 0  # 1 -> chk and start ; 2 -> just chk
+    maxUnderOneRoot = 4
     try:
         shell = path.split(environ['SHELL'])[-1]
     except:
@@ -154,6 +159,14 @@ def mpdboot():
                 print 'mpdboot: invalid argument:', argv[argidx]
                 usage()
             argidx += 1
+        elif argv[argidx].startswith('--maxbranch'):
+            splitArg = argv[argidx].split('=')
+            try:
+                maxUnderOneRoot = int(splitArg[1])
+            except:
+                print 'mpdboot: invalid argument:', argv[argidx]
+                usage()
+            argidx += 1
         elif argv[argidx] == '-d' or argv[argidx] == '--debug':
             debug = 1
             argidx += 1
@@ -210,17 +223,25 @@ def mpdboot():
             if k == 'ifhn':
                 ifhn = v
         hostsAndInfo.append( {'host' : host, 'ncpus' : ncpus, 'ifhn' : ifhn} )
+    cachedIPs = {}
     if oneMPDPerHost  and  totalnumToStart > 1:
-        oldHosts = hostsAndInfo[:]
+        oldHostsAndInfo = hostsAndInfo[:]
         hostsAndInfo = []
-        for x in oldHosts:
-           keep = 1
-           for y in hostsAndInfo:
-               if mpd_same_ips(x['host'],y['host']):
-                   keep = 0
-                   break
-           if keep:
-               hostsAndInfo.append(x)
+        for hostAndInfo in oldHostsAndInfo:
+            oldhost = hostAndInfo['host']
+            try:
+                ips = gethostbyname_ex(oldhost)[2]    # may fail if invalid host
+            except:
+                print 'unable to obtain IP for host:', oldhost
+                continue
+            keep = 1
+            for ip in ips:
+                if cachedIPs.has_key(ip):
+                    keep = 0
+                else:
+                    cachedIPs[ip] = 1
+            if keep:
+                hostsAndInfo.append(hostAndInfo)
     if len(hostsAndInfo) < totalnumToStart:    # one is local
         print 'totalnum=%d  numhosts=%d' % (totalnumToStart,len(hostsAndInfo))
         print 'there are not enough hosts on which to start all processes'
@@ -237,7 +258,8 @@ def mpdboot():
             exit(0)
 
     try:
-        system('%s/mpdallexit.py > /dev/null' % (fullDirName)) # stop current mpds
+        # stop current (if any) mpds; ignore the output
+        getoutput('%s/mpdallexit.py' % (fullDirName))
         if verbose or debug:
             print 'running mpdallexit on %s' % (myHost)
     except:
@@ -252,6 +274,7 @@ def mpdboot():
     mpdArgs = '%s %s --ncpus=%d' % (localConArg,ifhn,myNcpus)
     (mpdPID,mpdFD) = launch_one_mpd(0,0,mpdArgs,hostsAndInfo)
     fd2idx = {mpdFD : 0}
+
     handle_mpd_output(mpdFD,fd2idx,hostsAndInfo)
 
     try:
@@ -260,7 +283,6 @@ def mpdboot():
     except:
         maxfds = 1024
     maxAtOnce = min(128,maxfds-8)  # -8  for stdeout, etc. + a few more for padding
-    maxUnderOneRoot = 4
 
     hostsSeen = { myHost : 1 }
     fdsToSelect = []
@@ -279,6 +301,7 @@ def mpdboot():
                 hostsAndInfo[idxToStart]['entry_port'] = entryPort
                 if hostsSeen.has_key(hostsAndInfo[idxToStart]['host']):
                     remoteConArg = '-n'
+                myNcpus = hostsAndInfo[idxToStart]['ncpus']
                 ifhn = hostsAndInfo[idxToStart]['ifhn']
                 if ifhn:
                     ifhn = '--ifhn=%s' % (ifhn)
@@ -318,7 +341,7 @@ def launch_one_mpd(idxToStart,currRoot,mpdArgs,hostsAndInfo):
         cmd = '%s %s -e -d' % (mpdCmd,mpdArgs)
     else:
         if rshCmd == 'ssh':
-            rshArgs = '-x -n'
+            rshArgs = '-x -n -q'
         else:
             rshArgs = '-n'
         mpdHost = hostsAndInfo[idxToStart]['host']
@@ -356,24 +379,24 @@ def handle_mpd_output(fd,fd2idx,hostsAndInfo):
             tempSock.send_dict_msg(msgToSend)
             msg = tempSock.recv_dict_msg()    # RMB: WITH TIMEOUT ??
             if not msg  or  not msg.has_key('cmd')  or  msg['cmd'] != 'challenge':
-                mpd_print(1,'failed to ping mpd on %s; recvd output=%s' % \
+                mpd_print(1,'failed to handshake with mpd on %s; recvd output=%s' % \
                           (host,msg) )
                 tempOut = tempSock.recv(1000)
                 print tempOut
-                try: system('%s/mpdallexit.py > /dev/null &' % (fullDirName))
+                try: getoutput('%s/mpdallexit.py' % (fullDirName))
                 except: pass
                 exit(-1)
             tempSock.close()
         else:
             mpd_print(1,'failed to connect to mpd on %s' % (host) )
-            try: system('%s/mpdallexit.py > /dev/null &' % (fullDirName))
+            try: getoutput('%s/mpdallexit.py' % (fullDirName))
             except: pass
             exit(-1)
     else:
         mpd_print(1,'from mpd on %s, invalid port info:' % (host) )
         print port
         print fd.read()
-        try: system('%s/mpdallexit.py > /dev/null &' % (fullDirName))
+        try: getoutput('%s/mpdallexit.py' % (fullDirName))
         except: pass
         exit(-1)
     if verbose:

@@ -5,5 +5,5 @@ init
 info
 datatype
 @iodir@
-spawn
-rma
+@spawndir@
+@rmadir@

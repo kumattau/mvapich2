@@ -211,6 +211,7 @@ MPIDI_CH3I_MRAILI_Get_next_vbuf_local (MPIDI_VC_t * vc, vbuf ** vbuf_handle)
 
     *vbuf_handle = NULL;
 #ifdef RDMA_FAST_PATH
+ if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) { 
     /*First loop over all queues to see if there is any pkt already there */
     for (i = 0; i < cmanager->total_subrails; i++)
       {
@@ -277,6 +278,7 @@ MPIDI_CH3I_MRAILI_Get_next_vbuf_local (MPIDI_VC_t * vc, vbuf ** vbuf_handle)
                   }
             }
       }
+  }
 #endif
     type = T_CHANNEL_NO_ARRIVE;
     *vbuf_handle = NULL;
@@ -293,20 +295,18 @@ MPIDI_CH3I_MRAILI_Get_next_vbuf_local (MPIDI_VC_t * vc, vbuf ** vbuf_handle)
     if (i != vc->mrail.num_total_subrails)
       {
           vbuf *vbuffer;
-          MPIDI_CH3I_MRAILI_Cq_poll (&vbuffer, vc, 1);
+          MPIDI_CH3I_MRAILI_Cq_poll (&vbuffer, vc, 1, 0);
       }
 
     return type;
 }
 
-#ifndef RDMA_FAST_PATH
 int MPIDI_CH3I_MRAILI_Get_next_vbuf(MPIDI_VC_t **vc_pptr, vbuf **v_ptr)
 {
     *vc_pptr = NULL;
     *v_ptr   = NULL;
      return T_CHANNEL_NO_ARRIVE;
 }
-#endif
 
 int MPIDI_CH3I_MRAILI_Waiting_msg(MPIDI_VC_t * vc, vbuf ** vbuf_handle, int blocking)
 {
@@ -362,29 +362,31 @@ int MPIDI_CH3I_MRAILI_Waiting_msg(MPIDI_VC_t * vc, vbuf ** vbuf_handle, int bloc
 #ifdef RDMA_FAST_PATH
                 else
                   {
-                      *vbuf_handle = MPIDI_CH3I_RDMA_poll (vc);
-                      seq = GetSeqNumVbuf (*vbuf_handle);
-                      if (seq == seq_expected)
-                        {
-                            type = T_CHANNEL_EXACT_ARRIVE;
-                            vc->seqnum_recv++;
-                            goto fn_exit;
-                        }
-                      else if (seq == PKT_NO_SEQ_NUM)
-                        {
-                            type = T_CHANNEL_CONTROL_MSG_ARRIVE;
-                            goto fn_exit;
-                        }
-                      else if (*vbuf_handle != NULL)
-                        {
-                            VQUEUE_ENQUEUE (cmanager, i, *vbuf_handle);
-                            *vbuf_handle = NULL;
-                        }
+                      if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+                          *vbuf_handle = MPIDI_CH3I_RDMA_poll (vc);
+                          seq = GetSeqNumVbuf (*vbuf_handle);
+                          if (seq == seq_expected)
+                            {
+                                type = T_CHANNEL_EXACT_ARRIVE;
+                                vc->seqnum_recv++;
+                                goto fn_exit;
+                            }
+                          else if (seq == PKT_NO_SEQ_NUM)
+                            {
+                                type = T_CHANNEL_CONTROL_MSG_ARRIVE;
+                                goto fn_exit;
+                            }
+                          else if (*vbuf_handle != NULL)
+                            {
+                                VQUEUE_ENQUEUE (cmanager, i, *vbuf_handle);
+                                *vbuf_handle = NULL;
+                            }
+                      }
                   }
 #endif
             }
 
-          type = MPIDI_CH3I_MRAILI_Cq_poll (vbuf_handle, vc, 0);
+          type = MPIDI_CH3I_MRAILI_Cq_poll (vbuf_handle, vc, 0, 0);
           if (type != T_CHANNEL_NO_ARRIVE)
             {
                 switch (type)
@@ -432,7 +434,8 @@ int MPIDI_CH3I_MRAILI_Waiting_msg(MPIDI_VC_t * vc, vbuf ** vbuf_handle, int bloc
  *      #define T_CHANNEL_CONTROL_MSG_ARRIVE 3
  *      #define T_CHANNEL_ERROR -1
  */
-int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle, MPIDI_VC_t * vc_req, int receiving)
+int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle, MPIDI_VC_t * vc_req, 
+                              int receiving, int is_blocking)
 {
     DAT_RETURN ret1;
     MPIDI_VC_t *vc;

@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2006, The Ohio State University. All rights
+/* Copyright (c) 2003-2007, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -15,7 +15,7 @@
 #include "dreg.h"
 #include "ibv_param.h"
 #include "infiniband/verbs.h"
-
+#include "mpidrma.h"
 #include "pmi.h"
 
 
@@ -56,6 +56,8 @@ static int Consume_signals(MPID_Win *, uint64_t);
 static int iba_put(MPIDI_RMA_ops *, MPID_Win *, int);
 static int iba_get(MPIDI_RMA_ops *, MPID_Win *, int);
 static void Get_Pinned_Buf(MPID_Win * win_ptr, char **origin, int size);
+int     iba_lock(MPID_Win *, MPIDI_RMA_ops *, int);
+int     iba_unlock(MPID_Win *, MPIDI_RMA_ops *, int);
 
 
 static inline int Find_Avail_Index()
@@ -107,18 +109,36 @@ MPIDI_CH3I_RDMA_start(MPID_Win * win_ptr,
     MPIDI_VC_t *vc;
     MPID_Comm * comm_ptr;
 #endif
-    int flag = 0, src, i;
+    int flag = 0, src, i, counter = 0;
 
 #ifdef _SMP_
-    MPID_Comm_get_ptr( win_ptr->comm, comm_ptr );
+    if (SMP_INIT)
+        MPID_Comm_get_ptr( win_ptr->comm, comm_ptr );
 #endif
     while (flag == 0 && start_grp_size != 0) {
+
+        /* need to make sure we make some progress on
+         * anything in the extended sendq or coalesced
+         * or we can have a deadlock 
+         */
+        if(counter++ % 200 == 0) {
+            MPIDI_CH3I_Progress_test();
+        }
+
         for (i = 0; i < start_grp_size; i++) {
             flag = 1;
             src = ranks_in_win_grp[i];  /*src is the rank in comm*/
 #ifdef _SMP_
+         if (SMP_INIT) {
             MPIDI_Comm_get_vc(comm_ptr, src, &vc);
             if (win_ptr->post_flag[src] == 0 && vc->smp.local_nodes == -1)
+            {
+                /*correspoding post has not been issued */
+                flag = 0;
+                break;
+            }
+
+         } else if (win_ptr->post_flag[src] == 0)
 #else 
             if (win_ptr->post_flag[src] == 0) 
 #endif
@@ -180,9 +200,18 @@ MPIDI_CH3I_RDMA_complete_rma(MPID_Win * win_ptr,
     for (i = 0; i < start_grp_size; i++) {
         target = ranks_in_win_grp[i];   /* target is the rank is comm */
 #ifdef _SMP_
+      if(SMP_INIT) {
         MPIDI_Comm_get_vc(comm_ptr, target, &vc);
         if (nops_to_proc[target] == 0 && send_complete == 1 
             && vc->smp.local_nodes == -1)
+        {
+            Decrease_CC(win_ptr, target);
+            if (win_ptr->wait_for_complete == 1) {
+                MPIDI_CH3I_RDMA_finish_rma(win_ptr);
+            }
+        }
+
+      } else if (nops_to_proc[target] == 0 && send_complete == 1)  
 #else
         if (nops_to_proc[target] == 0 && send_complete == 1) 
 #endif
@@ -225,7 +254,7 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr,
 #ifdef _SMP_
     MPIDI_VC_t * vc;
     MPID_Comm * comm_ptr;
-
+  if (SMP_INIT)
     MPID_Comm_get_ptr( win_ptr->comm, comm_ptr );
 #endif
 
@@ -249,6 +278,7 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr,
     while (curr_ptr != NULL) {
 #endif
 #ifdef _SMP_
+     if(SMP_INIT) {
         MPIDI_Comm_get_vc(comm_ptr, curr_ptr->target_rank, &vc);
 
         if (vc->smp.local_nodes != -1)  {
@@ -256,6 +286,7 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr,
             curr_ptr = curr_ptr->next;
             continue;
         }
+     }
 #endif
         if (passive == 0 && win_ptr->post_flag[curr_ptr->target_rank] == 1
             && win_ptr->using_lock == 0
@@ -426,6 +457,7 @@ MPIDI_CH3I_RDMA_win_create(void *base,
     uint32_t        r_key3[MAX_NUM_HCAS], postflag_rkey[MAX_NUM_HCAS];
     int             my_rank;
     unsigned long   *tmp1, *tmp2, *tmp3, *tmp4;
+    int             fallback_trigger = 0;
 
     if (!MPIDI_CH3I_RDMA_Process.has_one_sided) {
     (*win_ptr)->fall_back = 1;
@@ -619,27 +651,16 @@ MPIDI_CH3I_RDMA_win_create(void *base,
         exit(0);
     }
 
-    for (i = 0; i < rdma_num_rails; i++){
-         tmp_new[rank * rdma_num_rails + i] = 
-             (uintptr_t) ((*win_ptr)->completion_counter + comm_size * i);
-        
-    }    
-    ret = 
-        NMPI_Allgather(MPI_IN_PLACE, 0 , MPI_DATATYPE_NULL, tmp_new,
-                rdma_num_rails,
-                MPI_LONG, comm_ptr->handle);
-    
-    
     /* check if any peers fail */
      for (i = 0; i < comm_size; i++) {
           for (j = 0; j < rdma_num_hcas; j++){
                if (tmp[(7 * i *rdma_num_hcas) + j * 7 + 5] != 0)
-                   break;
+		       fallback_trigger = 1;
            }
            
       } 
     
-    if (i != comm_size) {
+    if (fallback_trigger) {
         MPIU_Free(tmp);
         dreg_unregister((*win_ptr)->pinnedpool_1sc_dentry);
         MPIU_Free((*win_ptr)->pinnedpool_1sc_buf);
@@ -657,6 +678,16 @@ MPIDI_CH3I_RDMA_win_create(void *base,
         (*win_ptr)->fall_back = 1;
         goto fn_exit;
     }
+
+    for (i = 0; i < rdma_num_rails; i++){
+         tmp_new[rank * rdma_num_rails + i] = 
+             (uintptr_t) ((*win_ptr)->completion_counter + comm_size * i);
+        
+    }    
+    ret = 
+        NMPI_Allgather(MPI_IN_PLACE, 0 , MPI_DATATYPE_NULL, tmp_new,
+                rdma_num_rails,
+                MPI_LONG, comm_ptr->handle);
 
     /* Now allocate the rkey array for all other processes */
     (*win_ptr)->r_key = (uint32_t *) MPIU_Malloc(comm_size * 
@@ -1342,6 +1373,9 @@ static int Consume_signals(MPID_Win * winptr, uint64_t expected)
             && (expected == 0)) {
             winptr->rma_issued = 0;
             winptr->pinnedpool_1sc_index = 0;
+
+            DEBUG_PRINT("exiting from the 1sc\n");
+
             goto fn_exit;
         }
      } /*end of for */

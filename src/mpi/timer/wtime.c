@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: wtime.c,v 1.1.1.1 2006/01/18 21:09:43 huangwei Exp $
+/*  $Id: wtime.c,v 1.13 2006/05/08 15:34:48 toonen Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -19,6 +19,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Wtime
 #define MPI_Wtime PMPI_Wtime
 #endif
 
@@ -50,11 +51,10 @@ double MPI_Wtime( void )
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
 
-    MPID_CS_ENTER();
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_WTIME);
     MPID_Wtime( &t );
     MPID_Wtime_todouble( &t, &d );
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_WTIME);
-    MPID_CS_EXIT();
+
     return d;
 }

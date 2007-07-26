@@ -5,6 +5,7 @@
 #if !defined( _CLOG_RECORD )
 #define _CLOG_RECORD
 
+#include "clog_inttypes.h"
 #include "clog_block.h"
 #include "clog_timer.h"
 #include "clog_commset.h"
@@ -26,13 +27,14 @@
 typedef struct {
     CLOG_Time_t       time;    /* Crucial to be the 1st item */
     CLOG_CommLID_t    icomm;   /* LOCAL intracomm's internal local/global ID */
-    int               rank;    /* rank within communicator labelled by icomm */
-    int               thread;  /* local thread ID */
-    int               rectype;
+    CLOG_int32_t      rank;    /* rank within communicator labelled by icomm */
+    CLOG_int32_t      thread;  /* local thread ID */
+    CLOG_int32_t      rectype;
     CLOG_DataUnit_t   rest[1];
 } CLOG_Rec_Header_t;
 /*  3 CLOG_Time_t's */
-#define CLOG_RECLEN_HEADER     ( sizeof(CLOG_Time_t) + 4 * sizeof(int) )
+#define CLOG_RECLEN_HEADER     ( sizeof(CLOG_Time_t) \
+                               + 4 * sizeof(CLOG_int32_t) )
 
 typedef char CLOG_Str_Color_t[ 3 * sizeof(CLOG_Time_t) ];
 typedef char CLOG_Str_Desc_t[ 4 * sizeof(CLOG_Time_t) ];
@@ -42,112 +44,112 @@ typedef char CLOG_Str_Bytes_t[ 4 * sizeof(CLOG_Time_t) ];
 
 /* Rec_StateDef defines the attributes of a state which consists of 2 events */
 typedef struct {
-    int               stateID;   /* integer identifier for state */
-    int               startetype;/* beginning event for state */
-    int               finaletype;/* ending event for state */
-    int               pad;
+    CLOG_int32_t      stateID;   /* integer identifier for state */
+    CLOG_int32_t      startetype;/* beginning event for state */
+    CLOG_int32_t      finaletype;/* ending event for state */
+    CLOG_int32_t      pad;
     CLOG_Str_Color_t  color;     /* string for color */
     CLOG_Str_Desc_t   name;      /* string describing state */
     CLOG_Str_Format_t format;    /* format string for state's decription data */
     CLOG_DataUnit_t   end[1];
 } CLOG_Rec_StateDef_t;
 /* 14 CLOG_Time_t's */
-#define CLOG_RECLEN_STATEDEF   ( 4 * sizeof(int) \
+#define CLOG_RECLEN_STATEDEF   ( 4 * sizeof(CLOG_int32_t) \
                                + sizeof(CLOG_Str_Color_t) \
                                + sizeof(CLOG_Str_Desc_t) \
                                + sizeof(CLOG_Str_Format_t) )
 
 /* Rec_EventDef defines the attributes of a event */
 typedef struct {
-    int               etype;     /* event ID */
-    int               pad;
+    CLOG_int32_t      etype;     /* event ID */
+    CLOG_int32_t      pad;
     CLOG_Str_Color_t  color;     /* string for color */
     CLOG_Str_Desc_t   name;      /* string describing event */
     CLOG_Str_Format_t format;    /* format string for the event */
     CLOG_DataUnit_t   end[1];
 } CLOG_Rec_EventDef_t;
 /* 13 CLOG_Time_t's */
-#define CLOG_RECLEN_EVENTDEF   ( 2 * sizeof(int) \
+#define CLOG_RECLEN_EVENTDEF   ( 2 * sizeof(CLOG_int32_t) \
                                + sizeof(CLOG_Str_Color_t) \
                                + sizeof(CLOG_Str_Desc_t) \
                                + sizeof(CLOG_Str_Format_t) )
 
 /* Rec_Const defines some specific constant of the logfile */
 typedef struct {
-    int               etype;     /* raw event */
-    int               value;     /* uninterpreted data */
+    CLOG_int32_t      etype;     /* raw event */
+    CLOG_int32_t      value;     /* uninterpreted data */
     CLOG_Str_Desc_t   name;      /* uninterpreted string */
     CLOG_DataUnit_t   end[1];
 } CLOG_Rec_ConstDef_t;
 /*  5 CLOG_Time_t's */
-#define CLOG_RECLEN_CONSTDEF   ( 2 * sizeof(int) \
+#define CLOG_RECLEN_CONSTDEF   ( 2 * sizeof(CLOG_int32_t) \
                                + sizeof(CLOG_Str_Desc_t) )
 
 /* Rec_BareEvt defines the simplest event, i.e. bare */
 typedef struct {
-    int               etype;     /* basic event */
-    int               pad;
+    CLOG_int32_t      etype;     /* basic event */
+    CLOG_int32_t      pad;
     CLOG_DataUnit_t   end[1];
 } CLOG_Rec_BareEvt_t;
 /*  1 CLOG_Time_t's */
-#define CLOG_RECLEN_BAREEVT    ( 2 * sizeof(int) )
+#define CLOG_RECLEN_BAREEVT    ( 2 * sizeof(CLOG_int32_t) )
 
 /* Rec_CargoEvt defines a event with a payload */
 typedef struct {
-    int               etype;     /* basic event */
-    int               pad;
+    CLOG_int32_t      etype;     /* basic event */
+    CLOG_int32_t      pad;
     CLOG_Str_Bytes_t  bytes;     /* byte storage */
     CLOG_DataUnit_t   end[1];
 } CLOG_Rec_CargoEvt_t;
 /*  5 CLOG_Time_t's */
-#define CLOG_RECLEN_CARGOEVT   ( 2 * sizeof(int) \
+#define CLOG_RECLEN_CARGOEVT   ( 2 * sizeof(CLOG_int32_t) \
                                + sizeof(CLOG_Str_Bytes_t) )
 
 /* Rec_MsgEvt defines a message event pairs */
 typedef struct {
-    int               etype;   /* kind of message event */
+    CLOG_int32_t      etype;   /* kind of message event */
     CLOG_CommLID_t    icomm;   /* REMOTE intracomm's internal local/global ID */
-    int               rank;    /* src/dest rank in send/recv in REMOTE icomm */
-    int               tag;     /* message tag */
-    int               size;    /* length in bytes */
-    int               pad;
+    CLOG_int32_t      rank;    /* src/dest rank in send/recv in REMOTE icomm */
+    CLOG_int32_t      tag;     /* message tag */
+    CLOG_int32_t      size;    /* length in bytes */
+    CLOG_int32_t      pad;
     CLOG_DataUnit_t   end[1];
 } CLOG_Rec_MsgEvt_t;
 /*  2 CLOG_Time_t's */
-#define CLOG_RECLEN_MSGEVT        ( 6 * sizeof(int) )
+#define CLOG_RECLEN_MSGEVT        ( 6 * sizeof(CLOG_int32_t) )
 
 /* Rec_CollEvt defines events for collective operation */
 typedef struct {
-    int               etype;   /* type of collective event */
-    int               root;    /* root of collective op */
-    int               size;    /* length in bytes */
-    int               pad;
+    CLOG_int32_t      etype;   /* type of collective event */
+    CLOG_int32_t      root;    /* root of collective op */
+    CLOG_int32_t      size;    /* length in bytes */
+    CLOG_int32_t      pad;
     CLOG_DataUnit_t   end[1];
 } CLOG_Rec_CollEvt_t;
 /*  2 CLOG_Time_t's */
-#define CLOG_RECLEN_COLLEVT    ( 4 * sizeof(int) )
+#define CLOG_RECLEN_COLLEVT    ( 4 * sizeof(CLOG_int32_t) )
 
 /* Rec_CommEvt defines events for {Intra|Inter}Communicator */
 /* Assume CLOG_CommGID_t is of size of multiple of sizeof(double) */
 typedef struct {
-    int               etype;      /* type of communicator creation */
+    CLOG_int32_t      etype;      /* type of communicator creation */
     CLOG_CommLID_t    icomm;      /* communicator's internal local/global ID */
-    int               rank;       /* rank in icomm */
-    int               wrank;      /* rank in MPI_COMM_WORLD */
+    CLOG_int32_t      rank;       /* rank in icomm */
+    CLOG_int32_t      wrank;      /* rank in MPI_COMM_WORLD */
     CLOG_CommGID_t    gcomm;      /* globally unique ID */
     CLOG_DataUnit_t   end[1];
 } CLOG_Rec_CommEvt_t;
 /*  2 CLOG_Time_t's */
-#define CLOG_RECLEN_COMMEVT    ( 4 * sizeof(int) + CLOG_UUID_SIZE )
+#define CLOG_RECLEN_COMMEVT    ( 4 * sizeof(CLOG_int32_t) + CLOG_UUID_SIZE )
 
 typedef struct {
-    int               srcloc;    /* id of source location */
-    int               lineno;    /* line number in source file */
+    CLOG_int32_t      srcloc;    /* id of source location */
+    CLOG_int32_t      lineno;    /* line number in source file */
     CLOG_Str_File_t   filename;  /* source file of log statement */
     CLOG_DataUnit_t   end[1];
 } CLOG_Rec_Srcloc_t;
 /*  6 CLOG_Time_t's */
-#define CLOG_RECLEN_SRCLOC     ( 2 * sizeof(int) \
+#define CLOG_RECLEN_SRCLOC     ( 2 * sizeof(CLOG_int32_t) \
                                + sizeof(CLOG_Str_File_t) )
 
 typedef struct {
@@ -202,10 +204,10 @@ typedef struct {
 /* special event type for defining constants */
 #define CLOG_EVT_CONST     -201
 
-void CLOG_Rec_print_rectype( int rectype, FILE *stream );
-void CLOG_Rec_print_msgtype( int etype, FILE *stream );
-void CLOG_Rec_print_commtype( int etype, FILE *stream );
-void CLOG_Rec_print_colltype( int etype, FILE *stream );
+void CLOG_Rec_print_rectype( CLOG_int32_t rectype, FILE *stream );
+void CLOG_Rec_print_msgtype( CLOG_int32_t etype, FILE *stream );
+void CLOG_Rec_print_commtype( CLOG_int32_t etype, FILE *stream );
+void CLOG_Rec_print_colltype( CLOG_int32_t etype, FILE *stream );
 
 void CLOG_Rec_Header_swap_bytes( CLOG_Rec_Header_t *hdr );
 void CLOG_Rec_Header_print( CLOG_Rec_Header_t *hdr, FILE *stream );
@@ -244,7 +246,7 @@ void CLOG_Rec_swap_bytes_last( CLOG_Rec_Header_t *hdr );
 void CLOG_Rec_swap_bytes_first( CLOG_Rec_Header_t *hdr );
 void CLOG_Rec_print( CLOG_Rec_Header_t *hdr, FILE *stream );
 void CLOG_Rec_sizes_init( void );
-int CLOG_Rec_size( unsigned int rectype );
+int CLOG_Rec_size( CLOG_int32_t rectype );
 int CLOG_Rec_size_max( void );
 
 #endif  /* of _CLOG_RECORD */

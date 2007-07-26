@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Graph_neighbors_count
 #define MPI_Graph_neighbors_count PMPI_Graph_neighbors_count
 
 #endif
@@ -60,7 +61,7 @@ int MPI_Graph_neighbors_count(MPI_Comm comm, int rank, int *nneighbors)
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("topo");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_GRAPH_NEIGHBORS_COUNT);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -112,7 +113,7 @@ int MPI_Graph_neighbors_count(MPI_Comm comm, int rank, int *nneighbors)
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_GRAPH_NEIGHBORS_COUNT);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("topo");
     return mpi_errno;
 
   fn_fail:

@@ -1,4 +1,4 @@
-.TH MPI_Waitany 3 "11/23/2005" " " "MPI"
+.TH MPI_Waitany 3 "1/30/2007" " " "MPI"
 .SH NAME
 MPI_Waitany \-  Waits for any specified MPI Request to complete 
 .SH SYNOPSIS
@@ -59,14 +59,47 @@ While it is possible to list a request handle more than once in the
 array_of_requests, such an action is considered erroneous and may cause the
 program to unexecpectedly terminate or produce incorrect results.
 
-.SH NOTE ON STATUS FOR SEND OPERATIONS
+.SH NOTES ON THE MPI_STATUS ARGUMENT
+
+The 
+.I MPI_ERROR
+field of the status return is only set if
+the return from the MPI routine is 
+.I MPI_ERR_IN_STATUS
+\&.
+That error class
+is only returned by the routines that take an array of status arguments
+(
+.I MPI_Testall
+, 
+.I MPI_Testsome
+, 
+.I MPI_Waitall
+, and 
+.I MPI_Waitsome
+).  In
+all other cases, the value of the 
+.I MPI_ERROR
+field in the status is
+unchanged.  See section 3.2.5 in the MPI-1.1 specification for the
+exact text.
+
 For send operations, the only use of status is for 
 .I MPI_Test_cancelled
 or
-in the case that there is an error, in which case the 
+in the case that there is an error in one of the four routines that
+may return the error class 
+.I MPI_ERR_IN_STATUS
+, in which case the
 .I MPI_ERROR
-field of
-status will be set.
+field of status will be set.  In that case, the value
+will be set to 
+.I MPI_SUCCESS
+for any send or receive operation that completed
+successfully, or 
+.I MPI_ERR_PENDING
+for any operation which has neither
+failed nor completed.
 
 .SH THREAD AND INTERRUPT SAFETY
 

@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: pmiserv.h,v 1.1.1.1 2006/01/18 21:09:48 huangwei Exp $
+/*  $Id: pmiserv.h,v 1.17 2006/11/02 17:28:03 gropp Exp $
  *
  *  (C) 2003 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -13,6 +13,7 @@
  * pmi server package
  */
 
+#define MAX_READLINE 1024
 /* 
    The basic item is the PMIProcess, which contains the fd used to 
    communicate with the PMI client code, a pointer to the PMI Group 
@@ -21,6 +22,9 @@
 */
 typedef struct PMIProcess {
     int                  fd;             /* fd to client */
+    char                 readBuf[MAX_READLINE];
+    char                *nextChar, *endChar;
+ 
     struct PMIGroup     *group;          /* PMI group to which this process 
 					    belongs */
     struct ProcessState *pState;         /* ProcessState */
@@ -104,7 +108,7 @@ int PMISetupSockets( int, PMISetup * );
 int PMISetupInClient( int, PMISetup * );
 int PMISetupFinishInServer( int, PMISetup *, ProcessState * );
 int PMISetupNewGroup( int, PMIKVSpace * );
-
+int PMI_InitSingletonConnection( int, PMIProcess * );
 int PMIServHandleInput( int, int, void * );
 
 /* Setup for initialization with a port */
@@ -117,6 +121,7 @@ int PMIServGetPort( int *, char *, int );
 int PMIServAcceptFromPort( int, int, void * );
 int PMIServSetupPort( ProcessUniverse *, char *, int );
 int MPIE_GetMyHostName( char myname[], int );
+int MPIE_ConnectToPort( char *hostname, int portnum );
 
 int PMISetDebug( int );
 

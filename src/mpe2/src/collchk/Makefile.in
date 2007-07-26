@@ -1,7 +1,7 @@
 ALL: all
 
 MAKE   = @MAKE@
-SHELL  = /bin/sh
+SHELL  = @SHELL@
 MKDIR  = @MKDIR@
 RM     = @RM@
 CP     = @CPRP@

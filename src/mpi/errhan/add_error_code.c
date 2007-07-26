@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Add_error_code
 #define MPI_Add_error_code PMPI_Add_error_code
 
 #endif
@@ -54,7 +55,7 @@ int MPI_Add_error_code(int errorclass, int *errorcode)
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("errhan");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_ADD_ERROR_CODE);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -81,7 +82,7 @@ int MPI_Add_error_code(int errorclass, int *errorcode)
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_ADD_ERROR_CODE);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("errhan");
     return mpi_errno;
 
   fn_fail:

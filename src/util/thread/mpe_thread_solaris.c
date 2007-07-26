@@ -7,7 +7,6 @@
 
 #include <stdlib.h>
 #include "mpe_thread.h"
-#include "mpimem.h"
 
 
 /*

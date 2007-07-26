@@ -44,7 +44,10 @@ extern int udapl_dynamic_credit_threshold;
 extern int udapl_credit_notify_threshold;
 extern int udapl_credit_preserve;
 extern int udapl_rq_size;
+extern unsigned int         rdma_ndreg_entries;
+extern unsigned long        rdma_dreg_cache_limit;
 
+extern int rdma_num_hcas;
 extern int rdma_num_rails;
 extern DAT_VLEN rdma_default_mtu_size;
 extern char dapl_provider[32];
@@ -58,6 +61,7 @@ extern int rdma_iba_eager_threshold;
 extern long rdma_eagersize_1sc;
 #endif
 
+#define RDMA_NDREG_ENTRIES              (1000)
 #define RDMA_PIN_POOL_SIZE         (2*1024*1024)        /* for small size message */
 #define RDMA_DEFAULT_MAX_CQ_SIZE        (6000)
 #define RDMA_DEFAULT_PORT               (1)
@@ -429,8 +433,6 @@ extern long rdma_eagersize_1sc;
 
   #endif
 #endif
-
-void rdma_init_parameters (int num_proc, int me);
 
 #define MIN(a,b) ((a)<(b)?(a):(b))
 

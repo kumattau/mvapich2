@@ -1,12 +1,11 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: mpidtime.c,v 1.1.1.1 2006/01/18 21:09:43 huangwei Exp $
+/*  $Id: mpidtime.c,v 1.38 2006/03/18 18:23:54 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
 
 #include "mpiimpl.h"
-
 
 #if MPICH_TIMER_KIND == USE_GETHRTIME 
 /* 
@@ -75,6 +74,8 @@ void MPID_Wtime_acc( MPID_Time_t *t1, MPID_Time_t *t2, MPID_Time_t *t3 )
     t3->tv_sec = sec;
     t3->tv_nsec = nsec;
 }
+
+/* FIXME: We need to cleanup the use of the MPID_Generic_wtick prototype */
 double MPID_Generic_wtick(void);
 
 double MPID_Wtick( void )
@@ -87,8 +88,8 @@ double MPID_Wtick( void )
 	/* May return -1 for unimplemented ! */
 	return res.tv_sec + 1.0e-9 * res.tv_nsec;
 
-    /* Sigh.  If not POSIX not implemented, then we need to use the generic 
-       tick routine */
+    /* Sigh.  If not implemented (POSIX allows that), 
+       then we need to use the generic tick routine */
     return MPID_Generic_wtick();
 }
 #define MPICH_NEEDS_GENERIC_WTICK
@@ -134,10 +135,10 @@ void MPID_Wtime_acc( MPID_Time_t *t1, MPID_Time_t *t2, MPID_Time_t *t3 )
 
 #elif MPICH_TIMER_KIND == USE_LINUX86_CYCLE
 #include <sys/time.h>
-double g_seconds_per_tick;
+double MPID_Seconds_per_tick=0.0;
 double MPID_Wtick(void)
 {
-    return g_seconds_per_tick;
+    return MPID_Seconds_per_tick;
 }
 void MPID_Wtime_init()
 {
@@ -154,19 +155,19 @@ void MPID_Wtime_init()
     td1 = tv1.tv_sec + tv1.tv_usec / 1000000.0;
     td2 = tv2.tv_sec + tv2.tv_usec / 1000000.0;
 
-    g_seconds_per_tick = (td2 - td1) / (double)(t2 - t1);
+    MPID_Seconds_per_tick = (td2 - td1) / (double)(t2 - t1);
 }
 /* Time stamps created by a macro */
 void MPID_Wtime_diff( MPID_Time_t *t1, MPID_Time_t *t2, double *diff )
 {
-    *diff = (double)( *t2 - *t1 ) * g_seconds_per_tick;
+    *diff = (double)( *t2 - *t1 ) * MPID_Seconds_per_tick;
 }
 void MPID_Wtime_todouble( MPID_Time_t *t, double *val )
 {
     /* This returns the number of cycles as the "time".  This isn't correct
        for implementing MPI_Wtime, but it does allow us to insert cycle
        counters into test programs */
-    *val = (double)*t * g_seconds_per_tick;
+    *val = (double)*t * MPID_Seconds_per_tick;
 }
 void MPID_Wtime_acc( MPID_Time_t *t1,MPID_Time_t *t2, MPID_Time_t *t3 )
 {
@@ -177,10 +178,10 @@ void MPID_Wtime_acc( MPID_Time_t *t1,MPID_Time_t *t2, MPID_Time_t *t3 )
 
 #elif MPICH_TIMER_KIND == USE_GCC_IA64_CYCLE
 #include <sys/time.h>
-double g_seconds_per_tick;
+double MPID_Seconds_per_tick = 0.0;
 double MPID_Wtick(void)
 {
-    return g_seconds_per_tick;
+    return MPID_Seconds_per_tick;
 }
 void MPID_Wtime_init()
 {
@@ -197,19 +198,19 @@ void MPID_Wtime_init()
     td1 = tv1.tv_sec + tv1.tv_usec / 1000000.0;
     td2 = tv2.tv_sec + tv2.tv_usec / 1000000.0;
 
-    g_seconds_per_tick = (td2 - td1) / (double)(t2 - t1);
+    MPID_Seconds_per_tick = (td2 - td1) / (double)(t2 - t1);
 }
 /* Time stamps created by a macro */
 void MPID_Wtime_diff( MPID_Time_t *t1, MPID_Time_t *t2, double *diff )
 {
-    *diff = (double)( *t2 - *t1 ) * g_seconds_per_tick;
+    *diff = (double)( *t2 - *t1 ) * MPID_Seconds_per_tick;
 }
 void MPID_Wtime_todouble( MPID_Time_t *t, double *val )
 {
     /* This returns the number of cycles as the "time".  This isn't correct
        for implementing MPI_Wtime, but it does allow us to insert cycle
        counters into test programs */
-    *val = (double)*t * g_seconds_per_tick;
+    *val = (double)*t * MPID_Seconds_per_tick;
 }
 void MPID_Wtime_acc( MPID_Time_t *t1,MPID_Time_t *t2, MPID_Time_t *t3 )
 {
@@ -246,18 +247,18 @@ double MPID_Wtick( void )
 
 
 #elif (MPICH_TIMER_KIND == USE_WIN86_CYCLE) || (MPICH_TIMER_KIND == USE_WIN64_CYCLE)
-double g_seconds_per_tick;
+double MPID_Seconds_per_tick = 0.0;
 double MPID_Wtick(void)
 {
-    return g_seconds_per_tick;
+    return MPID_Seconds_per_tick;
 }
 void MPID_Wtime_todouble( MPID_Time_t *t, double *d)
 {
-    *d = (double)(__int64)*t * g_seconds_per_tick;
+    *d = (double)(__int64)*t * MPID_Seconds_per_tick;
 }
 void MPID_Wtime_diff( MPID_Time_t *t1, MPID_Time_t *t2, double *diff)
 {
-    *diff = (double)((__int64)( *t2 - *t1 )) * g_seconds_per_tick;
+    *diff = (double)((__int64)( *t2 - *t1 )) * MPID_Seconds_per_tick;
 }
 void MPID_Wtime_init()
 {
@@ -282,10 +283,10 @@ void MPID_Wtime_init()
     MPID_Wtime(&t2);
 
     /* calculate the frequency of the assembly cycle counter */
-    g_seconds_per_tick = ((double)(s2 - s1) / 1000.0) / (double)((__int64)(t2 - t1));
+    MPID_Seconds_per_tick = ((double)(s2 - s1) / 1000.0) / (double)((__int64)(t2 - t1));
     /*
     printf("t2-t1 %10d\nsystime diff %d\nfrequency %g\n CPU MHz %g\n", 
-	(int)(t2-t1), (int)(s2 - s1), g_seconds_per_tick, g_seconds_per_tick * 1.0e6);
+	(int)(t2-t1), (int)(s2 - s1), MPID_Seconds_per_tick, MPID_Seconds_per_tick * 1.0e6);
     */
 }
 /*
@@ -320,37 +321,37 @@ void TIMER_INIT()
     u2.QuadPart = u2.QuadPart << 32;
     u2.QuadPart |= ft2.dwLowDateTime;
 
-    g_seconds_per_tick = (1e-7 * (double)((__int64)(u2.QuadPart - u1.QuadPart))) / (double)((__int64)(t2 - t1));
+    MPID_Seconds_per_tick = (1e-7 * (double)((__int64)(u2.QuadPart - u1.QuadPart))) / (double)((__int64)(t2 - t1));
     printf("t2   %10d\nt1   %10d\ndiff %10d\nsystime diff %d\nfrequency %g\n CPU MHz %g\n", 
-	(int)t2, (int)t1, (int)(t2-t1), (int)(u2.QuadPart - u1.QuadPart), g_seconds_per_tick, g_seconds_per_tick * 1.0e6);
+	(int)t2, (int)t1, (int)(t2-t1), (int)(u2.QuadPart - u1.QuadPart), MPID_Seconds_per_tick, MPID_Seconds_per_tick * 1.0e6);
     printf("t2-t1 %10d\nsystime diff %d\nfrequency %g\n CPU MHz %g\n", 
-	(int)(t2-t1), (int)(u2.QuadPart - u1.QuadPart), g_seconds_per_tick, g_seconds_per_tick * 1.0e6);
+	(int)(t2-t1), (int)(u2.QuadPart - u1.QuadPart), MPID_Seconds_per_tick, MPID_Seconds_per_tick * 1.0e6);
 }
 */
 
 
 
 #elif MPICH_TIMER_KIND == USE_QUERYPERFORMANCECOUNTER
-double g_seconds_per_tick=0.0;  /* High performance counter frequency */
+double MPID_Seconds_per_tick=0.0;  /* High performance counter frequency */
 void MPID_Wtime_init(void)
 {
     LARGE_INTEGER n;
     QueryPerformanceFrequency(&n);
-    g_seconds_per_tick = 1.0 / (double)n.QuadPart;
+    MPID_Seconds_per_tick = 1.0 / (double)n.QuadPart;
 }
 double MPID_Wtick(void)
 {
-    return g_seconds_per_tick;
+    return MPID_Seconds_per_tick;
 }
 void MPID_Wtime_todouble( MPID_Time_t *t, double *val )
 {
-    *val = (double)t->QuadPart * g_seconds_per_tick;
+    *val = (double)t->QuadPart * MPID_Seconds_per_tick;
 }
 void MPID_Wtime_diff( MPID_Time_t *t1, MPID_Time_t *t2, double *diff )
 {
     LARGE_INTEGER n;
     n.QuadPart = t2->QuadPart - t1->QuadPart;
-    *diff = (double)n.QuadPart * g_seconds_per_tick;
+    *diff = (double)n.QuadPart * MPID_Seconds_per_tick;
 }
 void MPID_Wtime_acc( MPID_Time_t *t1, MPID_Time_t *t2, MPID_Time_t *t3 )
 {
@@ -365,16 +366,21 @@ void MPID_Wtime_acc( MPID_Time_t *t1, MPID_Time_t *t2, MPID_Time_t *t3 )
 /*
  * For timers that do not have defined resolutions, compute the resolution
  * by sampling the clock itself.
+ *
+ * Note that this uses a thread-safe initialization procedure in the
+ * event that multiple threads invoke this routine
  */
 double MPID_Wtick( void )
 {
+    MPIU_THREADSAFE_INIT_DECL(initTick);
     static double tickval = -1.0;
     double timediff;
     MPID_Time_t t1, t2;
     int    cnt;
     int    icnt;
 
-    if (tickval < 0.0) {
+    if (initTick) {
+	MPIU_THREADSAFE_INIT_BLOCK_BEGIN(initTick);
 	tickval = 1.0e6;
 	for (icnt=0; icnt<10; icnt++) {
 	    cnt = 1000;
@@ -388,6 +394,8 @@ double MPID_Wtick( void )
 		MPID_Wtime_diff( &t1, &t2, &tickval );
 	    }
 	}
+	MPIU_THREADSAFE_INIT_CLEAR(initTick);
+	MPIU_THREADSAFE_INIT_BLOCK_END(initTick);
     }
     return tickval;
 }

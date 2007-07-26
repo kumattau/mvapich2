@@ -2,4 +2,6 @@
 # Let the ch3 configure know which utility modules are needed for this channel
 # (in ch3/util/<directory>, in this case, ch3/util/sock and shm because
 # this channel uses only shared memory)
-#ch3subsystems="$ch3subsystems shm"
+ch3subsystems="$ch3subsystems shmbase"
+#needs_shm=yes
+needs_shmbase=yes

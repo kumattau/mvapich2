@@ -18,6 +18,32 @@
 /* FIXME: Where is the memory registration call in the init routines, 
    in case the channel wishes to take special action (such as pinning for DMA)
    the memory? This was part of the design. */
+
+/* This macro initializes all of the fields in a persistent request */
+#define MPIDI_Request_create_psreq(sreq_, mpi_errno_, FAIL_)		\
+{									\
+    (sreq_) = MPID_Request_create();				\
+    if ((sreq_) == NULL)						\
+    {									\
+	MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"send request allocation failed");\
+	(mpi_errno_) = MPIR_ERR_MEMALLOCFAILED;				\
+	FAIL_;								\
+    }									\
+									\
+    MPIU_Object_set_ref((sreq_), 1);					\
+    (sreq_)->cc   = 0;                                                  \
+    (sreq_)->kind = MPID_PREQUEST_SEND;					\
+    (sreq_)->comm = comm;						\
+    MPIR_Comm_add_ref(comm);						\
+    (sreq_)->dev.match.rank = rank;					\
+    (sreq_)->dev.match.tag = tag;					\
+    (sreq_)->dev.match.context_id = comm->context_id + context_offset;	\
+    (sreq_)->dev.user_buf = (void *) buf;				\
+    (sreq_)->dev.user_count = count;					\
+    (sreq_)->dev.datatype = datatype;					\
+    (sreq_)->partner_request = NULL;					\
+}
+
 	
 /*
  * MPID_Startall()
@@ -47,7 +73,7 @@ int MPID_Startall(int count, MPID_Request * requests[])
 	    case MPIDI_REQUEST_TYPE_RECV:
 	    {
 		rc = MPID_Irecv(preq->dev.user_buf, preq->dev.user_count, preq->dev.datatype, preq->dev.match.rank,
-		    preq->dev.match.tag, preq->comm, preq->dev.match.context_id - preq->comm->context_id,
+		    preq->dev.match.tag, preq->comm, preq->dev.match.context_id - preq->comm->recvcontext_id,
 		    &preq->partner_request);
 		break;
 	    }
@@ -78,34 +104,23 @@ int MPID_Startall(int count, MPID_Request * requests[])
 
 	    case MPIDI_REQUEST_TYPE_BSEND:
 	    {
-		MPID_Request * sreq;
-		
-		sreq = MPIDI_CH3_Request_create();
-		if (sreq != NULL)
-		{
-		    rc = MPIR_Bsend_isend(preq->dev.user_buf, preq->dev.user_count, preq->dev.datatype, preq->dev.match.rank,
-					  preq->dev.match.tag, preq->comm, BSEND_INIT, &preq->partner_request);
+		MPI_Request sreq_handle;
+		MPIU_THREADPRIV_DECL;
 
-		    MPIU_Object_set_ref(sreq, 1);
-		    sreq->kind = MPID_REQUEST_SEND;
-		    sreq->cc   = 0;
-		    sreq->comm = NULL;
-/* FIXME: why the #if 0? */		    
-#if 0		    
-		    sreq->comm = preq->comm;
-		    MPIR_Comm_add_ref(sreq->comm);
-#endif		    
-		    sreq->status.MPI_ERROR = rc;
-		    preq->partner_request = sreq;
-		    rc = MPI_SUCCESS;
-		}
-		else
-		{
-		    /* --BEGIN ERROR HANDLING-- */
-		    rc = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0);
-		    /* --END ERROR HANDLING-- */
-		}
+		MPIU_THREADPRIV_GET;
 		
+		MPIR_Nest_incr();
+		{
+		    rc = NMPI_Ibsend(preq->dev.user_buf, preq->dev.user_count,
+				     preq->dev.datatype, preq->dev.match.rank,
+				     preq->dev.match.tag, preq->comm->handle, 
+				     &sreq_handle);
+		    if (rc == MPI_SUCCESS)
+		    {
+			MPID_Request_get_ptr(sreq_handle, preq->partner_request);
+		    }
+		}
+		MPIR_Nest_decr();
 		break;
 	    }
 
@@ -126,8 +141,10 @@ int MPID_Startall(int count, MPID_Request * requests[])
 	/* --BEGIN ERROR HANDLING-- */
 	else
 	{
-	    /* If a failure occurs attempting to start the request, then we assume that partner request was not created, and stuff
-	       the error code in the persistent request.  The wait and test routines will look at the error code in the persistent
+	    /* If a failure occurs attempting to start the request, then we 
+	       assume that partner request was not created, and stuff
+	       the error code in the persistent request.  The wait and test
+	       routines will look at the error code in the persistent
 	       request if a partner request is not present. */
 	    preq->partner_request = NULL;
 	    preq->status.MPI_ERROR = rc;
@@ -289,7 +306,7 @@ int MPID_Recv_init(void * buf, int count, MPI_Datatype datatype, int rank, int t
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_RECV_INIT);
     
-    rreq = MPIDI_CH3_Request_create();
+    rreq = MPID_Request_create();
     if (rreq == NULL)
     {
 	/* --BEGIN ERROR HANDLING-- */
@@ -301,10 +318,11 @@ int MPID_Recv_init(void * buf, int count, MPI_Datatype datatype, int rank, int t
     MPIU_Object_set_ref(rreq, 1);
     rreq->kind = MPID_PREQUEST_RECV;
     rreq->comm = comm;
+    rreq->cc   = 0;
     MPIR_Comm_add_ref(comm);
     rreq->dev.match.rank = rank;
     rreq->dev.match.tag = tag;
-    rreq->dev.match.context_id = comm->context_id + context_offset;
+    rreq->dev.match.context_id = comm->recvcontext_id + context_offset;
     rreq->dev.user_buf = (void *) buf;
     rreq->dev.user_count = count;
     rreq->dev.datatype = datatype;

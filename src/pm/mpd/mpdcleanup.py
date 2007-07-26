@@ -7,30 +7,35 @@
 ## NOTE: we do NOT allow this pgm to run via mpdroot
 
 """
-usage: mpdcleanup', '[-f <hostsfile>] [-r <rshcmd>] [-u <user>] [-c <cleancmd>] or
-   or: mpdcleanup', '[--file=<hostsfile>] [--rsh=<rshcmd>] [-user=<user>] [-clean=<cleancmd>]
+usage: mpdcleanup [-h] [-v] [-f <hostsfile>] [-r <rshcmd>] [-u <user>] [-c <cleancmd>] [-k 'killcmd'] [-n <num_from_hostsfile>]
+   or: mpdcleanup [--help] [--verbose] [--file=<hostsfile>] [--rsh=<rshcmd>] [--user=<user>]
+                  [--clean=<cleancmd>] [--kill="killcmd"]
 Removes the Unix socket on local (the default) and remote machines
 This is useful in case the mpd crashed badly and did not remove it, which it normally does
 """
 from time import ctime
 __author__ = "Ralph Butler and Rusty Lusk"
 __date__ = ctime()
-__version__ = "$Revision: 1.1.1.1 $"
+__version__ = "$Revision: 1.11 $"
 __credits__ = ""
 
 
-import sys, os
+import sys, os, socket
 
 from getopt import getopt
-from mpdlib import mpd_get_my_username
+from mpdlib import mpd_get_my_username, mpd_same_ips
 
 def mpdcleanup():
     rshCmd    = 'ssh'
     user      = mpd_get_my_username()
-    cleanCmd  = '/bin/rm -f '
+    killCmd   = ''  # perhaps '~/bin/kj mpd'  (in quotes)
+    cleanCmd  = 'rm -f '
     hostsFile = ''
+    verbose = 0
+    numFromHostsFile = 0  # chgd below
     try:
-	(opts, args) = getopt(sys.argv[1:], 'hf:r:u:c:', ['help', 'file=', 'rsh=', 'user=', 'clean='])
+	(opts, args) = getopt(sys.argv[1:], 'hvf:r:u:c:k:n:',
+                              ['help', 'verbose', 'file=', 'rsh=', 'user=', 'clean=','kill='])
     except:
         print 'invalid arg(s) specified'
 	usage()
@@ -44,8 +49,14 @@ def mpdcleanup():
 		hostsFile = opt[1]
 	    elif opt[0] == '-h' or opt[0] == '--help':
 		usage()
+	    elif opt[0] == '-v' or opt[0] == '--verbose':
+		verbose = 1
+	    elif opt[0] == '-n':
+		numFromHostsFile = int(opt[1])
 	    elif opt[0] == '-c' or opt[0] == '--clean':
 		cleanCmd = opt[1]
+	    elif opt[0] == '-k' or opt[0] == '--kill':
+		killCmd = opt[1]
     if args:
         print 'invalid arg(s) specified: ' + ' '.join(args)
 	usage()
@@ -55,11 +66,12 @@ def mpdcleanup():
     else:
         conExt = ''
     cleanFile = '/tmp/mpd2.console_' + user + conExt
-    os.system( '%s %s' % (cleanCmd,cleanFile) )
     if rshCmd == 'ssh':
 	xOpt = '-x'
     else:
 	xOpt = ''
+    try: localIP = socket.gethostbyname_ex(socket.gethostname())[2]
+    except: localIP = 'unknownlocal'
 
     if hostsFile:
         try:
@@ -67,13 +79,35 @@ def mpdcleanup():
         except:
 	    print 'Not cleaning up on remote hosts; file %s not found' % hostsFile
 	    sys.exit(0)
-        hosts  = f.readlines()
+        hosts = f.readlines()
+        if numFromHostsFile:
+            hosts = hosts[0:numFromHostsFile]
         for host in hosts:
 	    host = host.strip()
 	    if host[0] != '#':
+                try: remoteIP = socket.gethostbyname_ex(host)[2]
+                except: remoteIP = 'unknownremote'
+                if localIP == remoteIP:  # local machine handled last below loop
+                    continue
 	        cmd = '%s %s -n %s %s %s &' % (rshCmd, xOpt, host, cleanCmd, cleanFile)
-	        # print 'cmd=:%s:' % (cmd)
+                if verbose:
+	            print 'cmd=:%s:' % (cmd)
 	        os.system(cmd)
+                if killCmd:
+	            cmd = "%s %s -n %s \"/bin/sh -c '%s' &\"" % (rshCmd, xOpt, host, killCmd)
+                    if verbose:
+	                print "cmd=:%s:" % (cmd)
+	            os.system(cmd)
+
+    ## clean up local machine last
+    cmd = '%s %s' % (cleanCmd,cleanFile)
+    if verbose:
+        print 'cmd=:%s:' % (cmd)
+    os.system(cmd)
+    if killCmd:
+        if verbose:
+            print 'cmd=:%s:' % (killCmd)
+        os.system(killCmd)
 
 def usage():
     print __doc__
@@ -81,9 +115,4 @@ def usage():
 
 
 if __name__ == '__main__':
-    try:
-        mpdcleanup()
-    except SystemExit, errmsg:
-        pass
-    except mpdError, errmsg:
-	print 'mpdcleanup failed: %s' % (errmsg)
+    mpdcleanup()

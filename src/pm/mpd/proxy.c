@@ -6,7 +6,14 @@
 
 #include <stdio.h>
 #include <unistd.h>
-#define MAXHOSTNAMELEN 128
+/* MAXHOSTNAMELEN may be defined in sys/param.h (Linux, OSX) or 
+   netdb.h (Solaris); a typical value is 256 */
+#ifdef HAVE_SYS_PARAM_H
+#include <sys/param.h>
+#endif
+#ifndef MAXHOSTNAMELEN
+#define MAXHOSTNAMELEN 256
+#endif
 
 int main( int argc, char * argv[] )
 {

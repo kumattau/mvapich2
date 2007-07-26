@@ -8,3 +8,7 @@ dnl
 dnl
 dnl Include MPI related definitions
 builtin(include,../../aclocal_mpi.m4)
+dnl
+dnl
+dnl Include C99 intXX_t related definitions
+builtin(include,../../aclocal_inttypes.m4)

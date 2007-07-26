@@ -18,7 +18,7 @@ static int parse_args(int argc, char **argv);
 
 int main( int argc, char *argv[] )
 {
-    int i, j, errs = 0, err;
+    int i, j, errs = 0;
     int rank, size;
     MPI_Datatype newtype;
     char *buf = NULL;
@@ -43,7 +43,7 @@ int main( int argc, char *argv[] )
     }
 
     for (i = 8; i < 64; i += 4) {
-	err = MPI_Type_vector(i, 128, 129, MPI_CHAR, &newtype);
+	MPI_Type_vector(i, 128, 129, MPI_CHAR, &newtype);
 
 	MPI_Type_commit(&newtype);
 	memset(buf, 0, 64*129);
@@ -58,11 +58,11 @@ int main( int argc, char *argv[] )
 	    }
 
 	    /* send */
-	    err = MPI_Send(buf, 1, newtype, 1, i, MPI_COMM_WORLD);
+	    MPI_Send(buf, 1, newtype, 1, i, MPI_COMM_WORLD);
 	}
 	else if (rank == 1) {
 	    /* recv */
-	    err = MPI_Recv(buf, 1, newtype, 0, i, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+	    MPI_Recv(buf, 1, newtype, 0, i, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
 	    /* check buffer */
 	    for (j=0; j < i; j++) {
@@ -90,8 +90,8 @@ int main( int argc, char *argv[] )
     if (rank == 0) {
 	int recv_errs = 0;
 
-	err = MPI_Recv(&recv_errs, 1, MPI_INT, 1, 0, MPI_COMM_WORLD,
-		       MPI_STATUS_IGNORE);
+	MPI_Recv(&recv_errs, 1, MPI_INT, 1, 0, MPI_COMM_WORLD,
+		 MPI_STATUS_IGNORE);
 	if (recv_errs) {
 	    if (verbose) fprintf(stderr, "%d errors reported from receiver\n",
 				 recv_errs);
@@ -99,7 +99,7 @@ int main( int argc, char *argv[] )
 	}
     }
     else if (rank == 1) {
-	err = MPI_Send(&errs, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
+	MPI_Send(&errs, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
     }
 	
  fn_exit:

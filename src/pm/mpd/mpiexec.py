@@ -1,18 +1,8 @@
-#!/usr/bin/env python2.4
+#!/usr/bin/env python
 #
 #   (C) 2001 by Argonne National Laboratory.
 #       See COPYRIGHT in top-level directory.
 #
-
-# Copyright (c) 2002-2006, The Ohio State University. All rights
-# reserved.
-#
-# This file is part of the MVAPICH software package developed by the
-# team members of The Ohio State University's Network-Based Computing
-# Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
-#
-# For detailed copyright and licencing information, please refer to the
-# copyright file COPYRIGHT_MVAPICH in the top level MPICH directory.
 
 """
 usage:
@@ -27,6 +17,7 @@ mpiexec [global args] [local args] executable [args]
       -1                           # override default of trying 1st proc locally
       -ifhn                        # network interface to use locally
       -tv                          # run procs under totalview (must be installed)
+      -tvsu                        # totalview startup only
       -gdb                         # run procs under gdb
       -m                           # merge output lines (default with gdb)
       -a                           # means assign this alias to the job
@@ -58,7 +49,7 @@ Examples:
 from time import ctime
 __author__ = "Ralph Butler and Rusty Lusk"
 __date__ = ctime()
-__version__ = "$Revision: 1.1.1.1 $"
+__version__ = "$Revision: 1.88 $"
 __credits__ = ""
 
 import signal
@@ -72,7 +63,7 @@ from  time   import time
 from  urllib import unquote
 from  mpdlib import mpd_set_my_id, mpd_get_my_username, mpd_version, mpd_print, \
                     mpd_uncaught_except_tb, mpd_handle_signal, mpd_which, \
-                    MPDListenSock, MPDStreamHandler, MPDConClientSock, MPDParmDB,\
+                    MPDListenSock, MPDStreamHandler, MPDConClientSock, MPDParmDB, \
                     MPDSock
 
 try:
@@ -130,6 +121,7 @@ def mpiexec():
                         'MPIEXEC_MACHINEFILE'         :  '',
                         'MPIEXEC_BNR'                 :  0,
                         'MPIEXEC_TOTALVIEW'           :  0,
+                        'MPIEXEC_TVSU'                :  0,
                         'MPIEXEC_EXITCODES_FILENAME'  :  '',
                         'MPIEXEC_TRY_1ST_LOCALLY'     :  1,
                         'MPIEXEC_TIMEOUT'             :  0,
@@ -143,7 +135,7 @@ def mpiexec():
     parmdb[('thispgm','userpgm')] = ''
     parmdb[('thispgm','nprocs')] = 0
     parmdb[('thispgm','ecfn_format')] = ''
-    parmdb[('thispgm','gdb_attach_jobid')] = ''
+    parmdb[('thispgm','-gdba')] = ''
     parmdb[('thispgm','singinitpid')] = 0
     parmdb[('thispgm','singinitport')] = 0
     parmdb[('thispgm','ignore_rcfile')] = 0
@@ -160,6 +152,11 @@ def mpiexec():
 	if len(sys.argv) != 3:
             print '-gdba arg must appear only with jobid'
 	    usage()
+        parmdb[('cmdline','-gdba')] = sys.argv[2]
+        parmdb[('cmdline','MPIEXEC_GDB')] = 1
+        parmdb[('cmdline','MPIEXEC_MERGE_OUTPUT')] = 1       # implied
+        parmdb[('cmdline','MPIEXEC_SHOW_LINE_LABELS')] = 1   # implied
+        parmdb[('cmdline','MPIEXEC_STDIN_DEST')]   = 'all'   # implied
     elif sys.argv[1] == '-file'  or  sys.argv[1] == '-f':
 	if len(sys.argv) != 3:
             print '-file (-f) arg must appear alone'
@@ -184,9 +181,12 @@ def mpiexec():
             configLines = [ x.strip() + ' : '  for x in configLines if x[0] != '#' ]
             tempargv = []
             for line in configLines:
+                line = 'mpddummyarg ' + line  # gets pitched in shells that can't handle --
                 (shellIn,shellOut) = \
                     os.popen4("/bin/sh -c 'for a in $*; do echo _$a; done' -- %s" % (line))
                 for shellLine in shellOut:
+                    if shellLine.startswith('_mpddummyarg'):
+                        continue
                     tempargv.append(shellLine[1:].strip())    # 1: strips off the leading _
 	    tempargv = [sys.argv[0]] + tempargv[0:-1]   # strip off the last : I added
             collect_args(tempargv,localArgSets)
@@ -208,6 +208,7 @@ def mpiexec():
                  'args'           : {},
                  'limits'         : {},
                  'envvars'        : {},
+                 'ifhns'          : {},
                }
 
     if parmdb['inXmlFilename']:
@@ -281,7 +282,7 @@ def mpiexec():
     elif not parmdb['MPIEXEC_IFHN']:    # if user did not specify one, use mpd's
         parmdb[('thispgm','MPIEXEC_IFHN')] = msg['mpd_ifhn']    # not really thispgm here
 
-    if parmdb['gdb_attach_jobid']:
+    if parmdb['-gdba']:
         get_vals_for_attach(parmdb,conSock,msgToMPD)
     elif not parmdb['inXmlFilename']:
         parmdb[('cmdline','nprocs')] = 0  # for incr later
@@ -343,7 +344,7 @@ def mpiexec():
     else:
         cr_enabled = 0
     #CR_SUPPORT_END
-    
+
     # make sure to do this after nprocs has its value
     linesPerRank = {}  # keep this a dict instead of a list
     for i in range(parmdb['nprocs']):
@@ -390,6 +391,7 @@ def mpiexec():
         msgToMPD['line_labels'] = ''
     msgToMPD['stdin_dest'] = stdinDest
     msgToMPD['gdb'] = parmdb['MPIEXEC_GDB']
+    msgToMPD['gdba'] = parmdb['-gdba']
     msgToMPD['totalview'] = parmdb['MPIEXEC_TOTALVIEW']
     msgToMPD['singinitpid'] = parmdb['singinitpid']
     msgToMPD['singinitport'] = parmdb['singinitport']
@@ -487,7 +489,7 @@ def mpiexec():
         streamHandler.set_handler(crConSock,handle_cr_con_input)
         cr_con_sock = crConSock
     #CR_SUPPORT_END
-    
+
     msgToSend = { 'cmd' : 'ringsize', 'ring_ncpus' : currRingNCPUs,
                   'ringsize' : currRingSize }
     manSock.send_dict_msg(msgToSend)
@@ -503,14 +505,30 @@ def mpiexec():
             else:
                 outECs += 'jobid=%s\n' % (jobid.strip())
         # print 'mpiexec: job %s started' % (jobid)
-        if parmdb['MPIEXEC_TOTALVIEW']:
-            if not mpd_which('totalview'):
-                print 'cannot find "totalview" in your $PATH:'
+        if parmdb['MPIEXEC_TVSU']:
+            import mtv
+            mtv.allocate_proctable(parmdb['nprocs'])
+            # extract procinfo (rank,hostname,exec,pid) tuples from msg
+            for i in range(parmdb['nprocs']):
+                tvhost = msg['procinfo'][i][0]
+                tvpgm  = msg['procinfo'][i][1]
+                tvpid  = msg['procinfo'][i][2]
+                # print "%d %s %s %d" % (i,host,pgm,pid)
+                mtv.append_proctable_entry(tvhost,tvpgm,tvpid)
+            mtv.complete_spawn()
+            msgToSend = { 'cmd' : 'tv_ready' }
+            manSock.send_dict_msg(msgToSend)
+        elif parmdb['MPIEXEC_TOTALVIEW']:
+            tvname = 'totalview'
+            if os.environ.has_key('TOTALVIEW'):
+                tvname = os.environ['TOTALVIEW']
+            if not mpd_which(((tvname.strip()).split()[0])):
+                print 'cannot find "%s" in your $PATH:' % (tvname)
                 print '    ', os.environ['PATH']
                 sys.exit(-1)
             import mtv
             tv_cmd = 'dattach python ' + `os.getpid()` + '; dgo; dassign MPIR_being_debugged 1'
-            os.system('totalview -e "%s" &' % (tv_cmd) )
+            os.system(tvname + ' -e "%s" &' % (tv_cmd) )
             mtv.wait_for_debugger()
             mtv.allocate_proctable(parmdb['nprocs'])
             # extract procinfo (rank,hostname,exec,pid) tuples from msg
@@ -568,7 +586,8 @@ def mpiexec():
 
 
 def collect_args(args,localArgSets):
-    validGlobalArgs = { '-l' : 0, '-usize' : 1, '-gdb' : 0, '-bnr' : 0, '-tv' : 0,
+    validGlobalArgs = { '-l' : 0, '-usize' : 1, '-gdb' : 0, '-bnr' : 0,
+                        '-tv' : 0, '-tvsu' : 0,
                         '-ifhn' : 1, '-machinefile' : 1, '-s' : 1, '-1' : 0,
                         '-a' : 1, '-m' : 0, '-ecfn' : 1,
                         '-gn' : 1, '-gnp' : 1, '-ghost' : 1, '-gpath' : 1, '-gwdir' : 1,
@@ -590,8 +609,11 @@ def collect_args(args,localArgSets):
     argidx = 1
     while argidx < len(args)  and  args[argidx] in validGlobalArgs.keys():
         garg = args[argidx]
+        if len(args) <= (argidx+validGlobalArgs[garg]):
+            print "missing sub-arg to %s" % (garg)
+            usage()
         if garg == '-genv':
-            parmdb['genv'][args[argidx+1]] = args[argidx+2]
+            parmdb['-genv'][args[argidx+1]] = args[argidx+2]
             argidx += 3
         elif garg == '-gn'  or  garg == '-gnp':
             if args[argidx+1].isdigit():
@@ -630,7 +652,7 @@ def collect_args(args,localArgSets):
             parmdb[('cmdline','-genv')] = args[argidx+1]
             argidx += 2
         elif garg == '-genvlist':
-            parmdb[('cmdline','-genvlist')] = args[argidx+1]
+            parmdb[('cmdline','-genvlist')] = args[argidx+1].split(',')
             argidx += 2
         elif garg == '-genvnone':
             parmdb[('cmdline','-genvnone')] = args[argidx+1]
@@ -677,12 +699,19 @@ def collect_args(args,localArgSets):
         elif garg == '-tv':
             parmdb[('cmdline','MPIEXEC_TOTALVIEW')] = 1
             argidx += 1
+        elif garg == '-tvsu':
+            parmdb[('cmdline','MPIEXEC_TOTALVIEW')] = 1
+            parmdb[('cmdline','MPIEXEC_TVSU')] = 1
+            argidx += 1
         elif garg == '-ecfn':
             parmdb[('cmdline','MPIEXEC_EXITCODES_FILENAME')] = args[argidx+1]
             argidx += 2
         elif garg == '-1':
             parmdb[('cmdline','MPIEXEC_TRY_1ST_LOCALLY')] = 0  # reverses meaning
             argidx += 1
+    if len(args) <= argidx:
+        print "mpiexec: missing arguments after global args"
+        usage()
     if args[argidx] == ':':
         argidx += 1
     localArgsKey = 0
@@ -712,8 +741,6 @@ def handle_local_argset(argset,machineFileInfo,msgToMPD):
         envall = 0
     else:
         envall = 1
-    if parmdb['-genvlist']:
-        parmdb[('cmdline','-genvlist')] = parmdb['-genvlist'].split(',')
     localEnvlist = []
     localEnv  = {}
     
@@ -822,13 +849,14 @@ def handle_local_argset(argset,machineFileInfo,msgToMPD):
     defaultHostForArgset = host
     while loRange <= argsetHiRange:
         host = defaultHostForArgset
-        ifhn = ''
         if machineFileInfo:
             if len(machineFileInfo) <= hiRange:
                 print 'too few entries in machinefile'
                 sys.exit(-1)
             host = machineFileInfo[loRange]['host']
             ifhn = machineFileInfo[loRange]['ifhn']
+            if ifhn:
+                msgToMPD['ifhns'][loRange] = ifhn
             for i in range(loRange+1,hiRange+1):
                 if machineFileInfo[i]['host'] != host  or  machineFileInfo[i]['ifhn'] != ifhn:
                     hiRange = i - 1
@@ -870,10 +898,8 @@ def handle_local_argset(argset,machineFileInfo,msgToMPD):
         for envvar in localEnv.keys():
             envToSend[envvar] = localEnv[envvar]
         if usize:
-            envToSend['MPI_UNIVERSE_SIZE'] = '%s' % (usize)
-        envToSend['MPI_APPNUM'] = '%s' % '%s' % str(appnum)
-        if ifhn:
-            msgToMPD['MPICH_ifhn'] = '%s' % (ifhn)
+            envToSend['MPI_UNIVERSE_SIZE'] = str(usize)
+        envToSend['MPI_APPNUM'] = str(appnum)
         msgToMPD['envvars'][(loRange,hiRange)] = envToSend
 
         loRange = hiRange + 1
@@ -975,14 +1001,15 @@ def handle_man_input(sock,streamHandler):
     elif not msg.has_key('cmd'):
         mpd_print(1,'mpiexec: from man, invalid msg=:%s:' % (msg) )
         sys.exit(-1)
-    elif msg['cmd'] == 'execution_problem':
-        # print 'rank %d (%s) in job %s failed to find executable %s' % \
-              # ( msg['rank'], msg['src'], msg['jobid'], msg['exec'] )
-        host = msg['src'].split('_')[0]
-        reason = unquote(msg['reason'])
-        print 'problem with execution of %s  on  %s:  %s ' % \
-              (msg['exec'],host,reason)
-        # keep going until all man's finish
+    elif msg['cmd'] == 'startup_status':
+        if msg['rc'] != 0:
+            # print 'rank %d (%s) in job %s failed to find executable %s' % \
+                  # ( msg['rank'], msg['src'], msg['jobid'], msg['exec'] )
+            host = msg['src'].split('_')[0]
+            reason = unquote(msg['reason'])
+            print 'problem with execution of %s  on  %s:  %s ' % \
+                  (msg['exec'],host,reason)
+            # don't stop ; keep going until all top-level mans finish
     elif msg['cmd'] == 'job_aborted_early':
         print 'rank %d in job %s caused collective abort of all ranks' % \
               ( msg['rank'], msg['jobid'] )
@@ -1063,6 +1090,10 @@ def handle_man_input(sock,streamHandler):
             if (cr_succeed_count == cr_nprocs):
                 #mpd_print(1,'all MPI procs succeed in restart')
                 cr_con_sock.send_char_msg('rsrt_result=succeed\n')
+    elif msg['cmd'] == 'app_ckpt_req':
+	cr_con_sock.send_char_msg('cmd=app_ckpt_req\n')
+    elif msg['cmd'] == 'finalize_ckpt':
+        cr_con_sock.send_char_msg('cmd=finalize_ckpt\n')
     #CR_SUPPORT_END
     else:
         print 'unrecognized msg from manager :%s:' % msg
@@ -1080,9 +1111,7 @@ def parse_char_msg(msg):
     return parsed_msg
 
 def handle_cr_con_input(sock):
-    #CR_SUPPORT
     global cr_status_vector, cr_succeed_count, cr_man_sock, cr_nprocs
-    #CR_SUPPORT_END
 
     line = sock.recv_char_msg()
     if not line:
@@ -1154,6 +1183,7 @@ def handle_stdin_input(stdin_stream,parmdb,streamHandler,manSock):
         sys.stdin.flush()  # probably does nothing
         # print "I/O err on stdin:", errinfo
         mpd_print(1,'stdin problem; if pgm is run in background, redirect from /dev/null')
+        mpd_print(1,'    e.g.: mpiexec -n 4 a.out < /dev/null &')
     else:
         gdbFlag = parmdb['MPIEXEC_GDB']
         if line:    # not EOF
@@ -1488,6 +1518,8 @@ def get_vals_for_attach(parmdb,conSock,msgToMPD):
                 msgToMPD['args'][(rank,rank)]    = [msg['clipid']]
                 msgToMPD['envvars'][(rank,rank)] = {}
                 msgToMPD['limits'][(rank,rank)]  = {}
+                currumask = os.umask(0) ; os.umask(currumask)  # grab it and set it back
+                msgToMPD['umasks'][(rank,rank)]  = str(currumask)
         elif  msg['cmd'] == 'mpdlistjobs_trailer':
             if not got_info:
                 print 'no info on this jobid; probably invalid'

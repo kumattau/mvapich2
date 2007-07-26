@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Group_range_excl
 #define MPI_Group_range_excl PMPI_Group_range_excl
 
 #endif
@@ -73,7 +74,7 @@ int MPI_Group_range_excl(MPI_Group group, int n, int ranges[][3],
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("group");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_GROUP_RANGE_EXCL);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -147,40 +148,36 @@ int MPI_Group_range_excl(MPI_Group group, int n, int ranges[][3],
        was enabled *and* we are not MPI_THREAD_MULTIPLE, but since this
        is a low-usage routine, we haven't taken that optimization.  */
 
-    MPID_Common_thread_lock();
-    {
-	/* First, mark the members to exclude */
-	for (i=0; i<size; i++) 
-	    group_ptr->lrank_to_lpid[i].flag = 0;
-	
-	for (i=0; i<n; i++) {
-	    first = ranges[i][0]; last = ranges[i][1]; stride = ranges[i][2];
-	    if (stride > 0) {
-		for (j=first; j<=last; j += stride) {
-		    group_ptr->lrank_to_lpid[j].flag = 1;
-		}
-	    }
-	    else {
-		for (j=first; j>=last; j += stride) {
-		    group_ptr->lrank_to_lpid[j].flag = 1;
-		}
+    /* First, mark the members to exclude */
+    for (i=0; i<size; i++) 
+	group_ptr->lrank_to_lpid[i].flag = 0;
+    
+    for (i=0; i<n; i++) {
+	first = ranges[i][0]; last = ranges[i][1]; stride = ranges[i][2];
+	if (stride > 0) {
+	    for (j=first; j<=last; j += stride) {
+		group_ptr->lrank_to_lpid[j].flag = 1;
 	    }
 	}
-	/* Now, run through the group and pick up the members that were 
-	   not excluded */
-	k = 0;
-	for (i=0; i<size; i++) {
-	    if (!group_ptr->lrank_to_lpid[i].flag) {
-		new_group_ptr->lrank_to_lpid[k].lrank = k;
-		new_group_ptr->lrank_to_lpid[k].lpid = 
-		    group_ptr->lrank_to_lpid[i].lpid;
-		if (group_ptr->rank == i) {
-		    new_group_ptr->rank = k;
-		}
-		k++;
+	else {
+	    for (j=first; j>=last; j += stride) {
+		group_ptr->lrank_to_lpid[j].flag = 1;
 	    }
 	}
-
+    }
+    /* Now, run through the group and pick up the members that were 
+       not excluded */
+    k = 0;
+    for (i=0; i<size; i++) {
+	if (!group_ptr->lrank_to_lpid[i].flag) {
+	    new_group_ptr->lrank_to_lpid[k].lrank = k;
+	    new_group_ptr->lrank_to_lpid[k].lpid = 
+		group_ptr->lrank_to_lpid[i].lpid;
+	    if (group_ptr->rank == i) {
+		new_group_ptr->rank = k;
+	    }
+	    k++;
+	}
     }
     
     *newgroup = new_group_ptr->handle;
@@ -189,7 +186,7 @@ int MPI_Group_range_excl(MPI_Group group, int n, int ranges[][3],
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_GROUP_RANGE_EXCL);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("group");
     return mpi_errno;
 
   fn_fail:

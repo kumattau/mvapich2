@@ -233,7 +233,7 @@ char *CLOG_Util_strbuf_get(       char *val_ptr, const char *val_tail,
     The function returns CLOG_BOOL_TRUE if the MPI implementation sychronized.
 */
 #if !defined( CLOG_NOMPI )
-int CLOG_Util_is_MPIWtime_synchronized( void )
+CLOG_BOOL_T CLOG_Util_is_MPIWtime_synchronized( void )
 {
     int           flag, *is_globalp;
     /* int           my_rank; */
@@ -250,8 +250,21 @@ int CLOG_Util_is_MPIWtime_synchronized( void )
         return CLOG_BOOL_TRUE;   /* MPI Clocks are synchronized */
 }
 #else
-int CLOG_Util_is_MPIWtime_synchronized( void )
+CLOG_BOOL_T CLOG_Util_is_MPIWtime_synchronized( void )
 {
     return CLOG_BOOL_FALSE;
 }
 #endif
+
+CLOG_BOOL_T CLOG_Util_is_runtime_bigendian( void )
+{
+    union {
+        long ll;
+        char cc[sizeof(long)];
+    } uu;
+    uu.ll = 1;
+    if ( uu.cc[sizeof(long) - 1] == 1 )
+        return CLOG_BOOL_TRUE;
+    else
+        return CLOG_BOOL_FALSE;
+}

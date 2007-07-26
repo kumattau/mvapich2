@@ -5,21 +5,23 @@
 #if !defined( _CLOG_UUID )
 #define _CLOG_UUID
 
+#include "clog_inttypes.h"
 /*
    Only CLOG_UUID_NAME_SIZE-1 is useful.
    The last char in CLOG_UUID_NAME_SIZE is NULL char,
    the terminating character.
-#define CLOG_UUID_NAME_SIZE  17
-#define CLOG_UUID_SIZE       sizeof(int)+sizeof(double)+CLOG_UUID_NAME_SIZE-1
+#define CLOG_UUID_NAME_SIZE 17
+#define CLOG_UUID_SIZE sizeof(CLOG_int32_t)+sizeof(double)+CLOG_UUID_NAME_SIZE-1
 
 typedef struct {
-  int     rand;
-  double  time;
-  char    name[CLOG_UUID_NAME_SIZE];
+  CLOG_int32_t  rand;
+  double        time;
+  char          name[CLOG_UUID_NAME_SIZE];
 } CLOG_Uuid_t;
 */
-#define CLOG_UUID_NAME_SIZE  20
-#define CLOG_UUID_SIZE       sizeof(int)+sizeof(double)+CLOG_UUID_NAME_SIZE
+#define CLOG_UUID_NAME_SIZE   20
+#define CLOG_UUID_SIZE        sizeof(CLOG_int32_t) + sizeof(double) \
+                            + CLOG_UUID_NAME_SIZE
 
 /* size of string representation of CLOG_Uuit_t */
 #define CLOG_UUID_STR_SIZE   80

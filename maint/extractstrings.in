@@ -61,8 +61,8 @@
 # -------------------------------------------------------------------------
 $gDebug     = 0;
 # verbose of 1 gives the least amount of data, higher values give
-# increasing amount of detail.
-$gVerbose   = 1;
+# increasing amount of detail. (0, of course, gives no detail)
+$gVerbose   = 0;
 $gUpdateAll = 0;
 # -------------------------------------------------------------------------
 # Return an array of regular files in the named directory
@@ -136,7 +136,7 @@ sub ReadCacheContents {
 
     return %fileInfo;
 }
-# Print the cache.  Pass fileInfo by referecne (\%fileInfo)
+# Print the cache.  Pass fileInfo by reference (\%fileInfo)
 sub PrintCacheFile {
     my ($dir,$cachefile,$fileInfo) = @_;
 

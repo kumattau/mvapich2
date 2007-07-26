@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Buffer_detach
 #define MPI_Buffer_detach PMPI_Buffer_detach
 
 #endif
@@ -96,7 +97,7 @@ int MPI_Buffer_detach(void *buffer, int *size)
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("pt2pt");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_BUFFER_DETACH);
     
 #   ifdef HAVE_ERROR_CHECKING
@@ -119,7 +120,7 @@ int MPI_Buffer_detach(void *buffer, int *size)
     
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_BUFFER_DETACH);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("pt2pt");
     return mpi_errno;
 
   fn_fail:

@@ -132,11 +132,15 @@ int main(int argc, char* argv[])
 	smpd_get_password(smpd_process.passphrase);
 #ifndef HAVE_WINDOWS_H
 	homedir = getenv("HOME");
-	strcpy(smpd_filename, homedir);
-	if (smpd_filename[strlen(smpd_filename)-1] != '/')
-	    strcat(smpd_filename, "/.smpd");
-	else
-	    strcat(smpd_filename, ".smpd");
+	if(homedir != NULL){
+	    strcpy(smpd_filename, homedir);
+	    if (smpd_filename[strlen(smpd_filename)-1] != '/')
+	        strcat(smpd_filename, "/.smpd");
+	    else
+	        strcat(smpd_filename, ".smpd");
+	}else{
+	    strcpy(smpd_filename, ".smpd");
+	}
 	printf("Would you like to save this passphrase in '%s'? ", smpd_filename);
 	fflush(stdout);
 	fgets(response, 100, stdin);

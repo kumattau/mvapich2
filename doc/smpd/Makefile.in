@@ -25,6 +25,9 @@ srcdir = @srcdir@
 
 all-redirect: smpd_pmi.pdf
 
+clean:
+	-rm -f *.toc *.out *.dvi user.ps user.pdf *.aux *.blg *.bbl *.log
+
 mandoc:
 
 htmldoc:

@@ -52,16 +52,16 @@ struct protocolstruct
 typedef struct argstruct ArgStruct;
 struct argstruct 
 {
-    /* This is the common information that is needed for all tests		*/
-    char    *host;	/* Name of receiving host				*/
-    char    *buff;	/* Transmitted buffer					*/
-    char    *buff1;	/* Transmitted buffer					*/
-    int     bufflen,	/* Length of transmitted buffer 			*/
-	    tr, 	/* Transmit flag 					*/
-	    nbuff;	/* Number of buffers to transmit 			*/
+    /* This is the common information that is needed for all tests	*/
+    char    *host;	/* Name of receiving host			*/
+    char    *buff;	/* Transmitted buffer				*/
+    char    *buff1;	/* Transmitted buffer				*/
+    int     bufflen,	/* Length of transmitted buffer 		*/
+	    tr, 	/* Transmit flag 				*/
+	    nbuff;	/* Number of buffers to transmit		*/
     
-    /* Now we work with a union of information for protocol dependent stuff	*/
-    ProtocolStruct prot;	/* Structure holding necessary info for TCP 	*/
+    /* Now we work with a union of information for protocol dependent stuff */
+    ProtocolStruct prot;	/* Structure holding necessary info for TCP */
 };
 
 typedef struct data Data;
@@ -110,38 +110,38 @@ void PrintOptions()
 
 int main(int argc, char *argv[])
 {
-    FILE *out=0;		/* Output data file 				*/
-    char s[255]; 		/* Generic string				*/
+    FILE *out=0;		/* Output data file 			*/
+    char s[255]; 		/* Generic string			*/
     char *memtmp;
     char *memtmp1;
     
-    int i, j, n, nq,		/* Loop indices					*/
-	bufoffset = 0,		/* Align buffer to this				*/
-	bufalign = 16*1024,	/* Boundary to align buffer to			*/
-	nrepeat,		/* Number of time to do the transmission	*/
+    int i, j, n, nq,		/* Loop indices				*/
+	bufoffset = 0,		/* Align buffer to this			*/
+	bufalign = 16*1024,	/* Boundary to align buffer to		*/
+	nrepeat,		/* Number of time to do the transmission*/
 	nzero = 0,
-	len,			/* Number of bytes to be transmitted		*/
-	inc = 1,		/* Increment value				*/
+	len,			/* Number of bytes to be transmitted	*/
+	inc = 1,		/* Increment value			*/
 	detailflag = 0,		/* Set to examine the signature curve detail*/
-	pert,			/* Perturbation value				*/
-        ipert,                  /* index of the perturbation loop		*/
-	start = 0,		/* Starting value for signature curve 		*/
-	end = MAXINT,		/* Ending value for signature curve		*/
-	streamopt = 0,		/* Streaming mode flag				*/
-	printopt = 1;		/* Debug print statements flag			*/
+	pert,			/* Perturbation value			*/
+        ipert,                  /* index of the perturbation loop	*/
+	start = 0,		/* Starting value for signature curve 	*/
+	end = MAXINT,		/* Ending value for signature curve	*/
+	streamopt = 0,		/* Streaming mode flag			*/
+	printopt = 1;		/* Debug print statements flag		*/
     int one_buffer = 0;
     int onebuffersize = 100*1024*1024;
     int quit = 0;
     
-    ArgStruct	args;		/* Argumentsfor all the calls			*/
+    ArgStruct	args;		/* Argumentsfor all the calls		*/
     
-    double t, t0, t1, t2,	/* Time variables				*/
-	tlast,			/* Time for the last transmission		*/
+    double t, t0, t1, t2,	/* Time variables			*/
+	tlast,			/* Time for the last transmission	*/
 	tzero = 0,
-	latency,		/* Network message latency			*/
-	synctime;		/* Network synchronization time 		*/
+	latency,		/* Network message latency		*/
+	synctime;		/* Network synchronization time 	*/
     
-    Data *bwdata;		/* Bandwidth curve data 			*/
+    Data *bwdata;		/* Bandwidth curve data 		*/
     
     BOOL bNoCache = FALSE;
     BOOL bHeadToHead = FALSE;
@@ -252,7 +252,8 @@ int main(int argc, char *argv[])
 	/* This is a perturbation loop to test nearby values */
 	for (ipert = 0, pert = (!detailflag && inc > PERT + 1)? -PERT: 0;
 	     pert <= PERT && !quit; 
-	     ipert++, n++, pert += (!detailflag && inc > PERT + 1)? PERT: PERT + 1)
+	     ipert++, n++, 
+		 pert += (!detailflag && inc > PERT + 1)? PERT: PERT + 1)
 	{
 	    
 	    /* Calculate howmany times to repeat the experiment. */
@@ -298,7 +299,8 @@ int main(int argc, char *argv[])
 	    }
 	    else
 	    {
-		/* printf("allocating %d bytes\n", args.bufflen * nrepeat + bufalign); */
+		/* printf("allocating %d bytes\n", 
+		   args.bufflen * nrepeat + bufalign); */
 		if (bNoCache)
 		{
 		    if ((args.buff = (char *)malloc(args.bufflen * nrepeat + bufalign)) == (char *)NULL)

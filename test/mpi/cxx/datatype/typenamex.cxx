@@ -62,7 +62,8 @@ int main( int argc, char **argv )
 
     /* Now we try them ALL */
     for (i=0; mpi_names[i].name != 0; i++) {
-	/* The size-specific types may be DATATYPE_NULL */
+	/* The size-specific types, as well as the language optional
+	   long long and long double, may be DATATYPE_NULL */
 	if (mpi_names[i].dtype == MPI::DATATYPE_NULL) continue;
 	name[0] = 0;
 	mpi_names[i].dtype.Get_name( name, namelen );
@@ -132,18 +133,16 @@ void InitMPINames (void) {
 	{ MPI::TWOINT, "MPI_2INT" },
 	{ MPI::LONG_DOUBLE_INT, "MPI_LONG_DOUBLE_INT" },
 	/* Fortran */
-#if 0
-	{ MPI::COMPLEX, "MPI_COMPLEX" },
-	{ MPI::DOUBLE_COMPLEX, "MPI_DOUBLE_COMPLEX" },
+#ifdef HAVE_FORTRAN_BINDING
+	{ MPI::F_COMPLEX, "MPI_COMPLEX" },
+	{ MPI::F_DOUBLE_COMPLEX, "MPI_DOUBLE_COMPLEX" },
 	{ MPI::LOGICAL, "MPI_LOGICAL" },
 	{ MPI::REAL, "MPI_REAL" },
 	{ MPI::DOUBLE_PRECISION, "MPI_DOUBLE_PRECISION" },
 	{ MPI::INTEGER, "MPI_INTEGER" },
-	{ MPI::2INTEGER, "MPI_2INTEGER" },
-	{ MPI::2COMPLEX, "MPI_2COMPLEX" },
-	{ MPI::2DOUBLE_COMPLEX, "MPI_2DOUBLE_COMPLEX" },
-	{ MPI::2REAL, "MPI_2REAL" },
-	{ MPI::2DOUBLE_PRECISION, "MPI_2DOUBLE_PRECISION" },
+	{ MPI::TWOINTEGER, "MPI_2INTEGER" },
+	{ MPI::TWOREAL, "MPI_2REAL" },
+	{ MPI::TWODOUBLE_PRECISION, "MPI_2DOUBLE_PRECISION" },
 	{ MPI::CHARACTER, "MPI_CHARACTER" },
 #endif
     /* Size-specific types */
@@ -158,6 +157,11 @@ void InitMPINames (void) {
 	{ MPI::INTEGER4, "MPI_INTEGER4" },
 	{ MPI::INTEGER8, "MPI_INTEGER8" },
 	{ MPI::INTEGER16, "MPI_INTEGER16" },
+	/* C++ only types */
+	{ MPI::BOOL, "MPI::BOOL" },
+	{ MPI::COMPLEX, "MPI::COMPLEX" },
+	{ MPI::DOUBLE_COMPLEX, "MPI::DOUBLE_COMPLEX" },
+	{ MPI::LONG_DOUBLE_COMPLEX, "MPI::LONG_DOUBLE_COMPLEX" },
 	{ 0, (char *)0 },  /* Sentinal used to indicate the last element */
     };
 

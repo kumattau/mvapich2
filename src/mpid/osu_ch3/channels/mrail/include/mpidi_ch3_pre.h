@@ -40,12 +40,11 @@ MPIDI_CH3I_Process_group_t;
 #define MPIDI_CH3_PG_DECL MPIDI_CH3I_Process_group_t ch;
 
 #define MPIDI_CH3_PKT_DECL 
-#define MPIDI_CH3_PKT_ENUM
 #define MPIDI_CH3_PKT_DEFS
 
 #define MPIDI_DEV_IMPLEMENTS_KVS
 
-typedef enum MPIDI_CH3I_VC_state
+typedef volatile enum MPIDI_CH3I_VC_state
 {
     MPIDI_CH3I_VC_STATE_INVALID,
     MPIDI_CH3I_VC_STATE_UNCONNECTED,
@@ -58,6 +57,10 @@ typedef enum MPIDI_CH3I_VC_state
     MPIDI_CH3I_VC_STATE_REACTIVATING_CLI_2,
     MPIDI_CH3I_VC_STATE_REACTIVATING_SRV,
 #endif
+#ifdef RDMA_CM
+    MPIDI_CH3I_VC_STATE_IWARP_SRV_WAITING,
+    MPIDI_CH3I_VC_STATE_IWARP_CLI_WAITING,
+#endif 
     MPIDI_CH3I_VC_STATE_IDLE,
     MPIDI_CH3I_VC_STATE_FAILED
 }
@@ -100,7 +103,7 @@ typedef struct MPIDI_CH3I_VC
     struct MPID_Request * cm_sendq_head;
     struct MPID_Request * cm_sendq_tail;
 #ifdef CKPT
-    int rput_stop; /*Stop rput message and wait for rkey update*/
+    volatile int rput_stop; /*Stop rput message and wait for rkey update*/
 #endif
 } MPIDI_CH3I_VC;
 
@@ -154,6 +157,11 @@ MPIDI_CH3I_VC_RDMA_DECL
 MPIDI_CH3I_CA_HANDLE_PKT,			\
 MPIDI_CH3I_CA_END_RDMA
 
+enum REQ_TYPE {
+    REQUEST_NORMAL,
+    REQUEST_RNDV_R3_HEADER,
+    REQUEST_RNDV_R3_DATA
+};
 
 /*
  * MPIDI_CH3_REQUEST_DECL (additions to MPID_Request)
@@ -166,7 +174,8 @@ struct MPIDI_CH3I_Request						\
     									\
     /*  pkt is used to temporarily store a packet header associated	\
        with this request */						\
-    MPIDI_CH3_Pkt_t pkt;						\
+    MPIDI_CH3_Pkt_t pkt; 						\
+    enum REQ_TYPE   reqtype;						\
     /* For CKPT, hard to put in ifdef because it's in macro define*/ \
     struct MPID_Request *cr_queue_next;       \
     MPIDI_VC_t *vc;  \

@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2006, The Ohio State University. All rights
+/* Copyright (c) 2003-2007, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -34,34 +34,49 @@ do {                                                          \
 #define DEBUG_PRINT(args...)
 #endif
 
-/*static MPID_Request * create_request(MPID_IOV * iov, int iov_count, int iov_offset, int nb)*/
-#undef create_request
-#define create_request(sreq, iov, count, offset, nb) \
-{ \
-    /*int i;*/ \
-    MPIDI_STATE_DECL(MPID_STATE_CREATE_REQUEST); \
-    MPIDI_STATE_DECL(MPID_STATE_MEMCPY); \
-    MPIDI_FUNC_ENTER(MPID_STATE_CREATE_REQUEST); \
-    sreq = MPIDI_CH3_Request_create(); \
-    MPIU_Assert(sreq != NULL); \
-    MPIU_Object_set_ref(sreq, 2); \
-    sreq->kind = MPID_REQUEST_SEND; \
-    MPIDI_FUNC_ENTER(MPID_STATE_MEMCPY); \
-    memcpy(sreq->dev.iov, iov, count * sizeof(MPID_IOV)); \
-    MPIDI_FUNC_EXIT(MPID_STATE_MEMCPY); \
-    /*for (i = 0; i < count; i++) { sreq->dev.iov[i] = iov[i]; }*/ \
-    if (offset == 0) \
-    { \
-	/* memcpy(&sreq->ch.pkt, iov[0].MPID_IOV_BUF, iov[0].MPID_IOV_LEN); */ \
-	sreq->ch.pkt = *(MPIDI_CH3_Pkt_t *) iov[0].MPID_IOV_BUF; \
-	sreq->dev.iov[0].MPID_IOV_BUF = (void*)&sreq->ch.pkt; \
-    } \
-    sreq->dev.iov[offset].MPID_IOV_BUF = ((char*)sreq->dev.iov[offset].MPID_IOV_BUF) + nb; \
-    sreq->dev.iov[offset].MPID_IOV_LEN -= nb; \
-    sreq->ch.iov_offset = offset; \
-    sreq->dev.iov_count = count; \
-    sreq->dev.ca = MPIDI_CH3_CA_COMPLETE; \
-    MPIDI_FUNC_EXIT(MPID_STATE_CREATE_REQUEST); \
+#undef FUNCNAME
+#define FUNCNAME create_request
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+static inline MPID_Request * create_request(MPID_IOV * iov, int iov_count, 
+					    int iov_offset, MPIU_Size_t nb)
+{
+    MPID_Request * sreq;
+    int i;
+    MPIDI_STATE_DECL(MPID_STATE_CREATE_REQUEST);
+
+    MPIDI_FUNC_ENTER(MPID_STATE_CREATE_REQUEST);
+
+    sreq = MPID_Request_create();
+    /* --BEGIN ERROR HANDLING-- */
+    if (sreq == NULL)
+        return NULL;
+    /* --END ERROR HANDLING-- */
+    MPIU_Object_set_ref(sreq, 2);
+    sreq->kind = MPID_REQUEST_SEND;
+
+    for (i = 0; i < iov_count; i++)
+    {
+        sreq->dev.iov[i] = iov[i];
+    }
+    if (iov_offset == 0)
+    {
+	/*
+        MPIU_Assert(iov[0].MPID_IOV_LEN == sizeof(MPIDI_CH3_Pkt_t));
+	*/
+        sreq->ch.pkt = *(MPIDI_CH3_Pkt_t *) iov[0].MPID_IOV_BUF;
+        sreq->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) &sreq->ch.pkt;
+    }
+    sreq->ch.reqtype = REQUEST_NORMAL;
+    sreq->dev.iov[iov_offset].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)((char *)
+			sreq->dev.iov[iov_offset].MPID_IOV_BUF + nb);
+    sreq->dev.iov[iov_offset].MPID_IOV_LEN -= nb;
+    sreq->ch.iov_offset = iov_offset;
+    sreq->dev.iov_count = iov_count;
+    sreq->dev.OnDataAvail = 0;
+
+    MPIDI_FUNC_EXIT(MPID_STATE_CREATE_REQUEST);
+    return sreq;
 }
 
 #ifdef _SMP_
@@ -123,7 +138,7 @@ int MPIDI_CH3_iStartMsgv(MPIDI_VC_t * vc, MPID_IOV * iov, int n_iov,
 #ifdef _SMP_
     DEBUG_PRINT("remote local nodes %d, myid %d\n", 
                 vc->smp.local_nodes, smpi.my_local_id);
-    if (vc->smp.local_nodes >= 0 &&
+    if (SMP_INIT && vc->smp.local_nodes >= 0 &&
         vc->smp.local_nodes != smpi.my_local_id) {
         mpi_errno =
             MPIDI_CH3_SMP_iStartMsgv(vc, iov, n_iov, sreq_ptr);
@@ -142,7 +157,7 @@ int MPIDI_CH3_iStartMsgv(MPIDI_VC_t * vc, MPID_IOV * iov, int n_iov,
     || !MPIDI_CH3I_CM_SendQ_empty(vc)) {
         /*Request need to be queued*/
         MPIDI_DBG_PRINTF((55, FCNAME, "not connected, enqueuing"));
-        create_request(sreq, iov, n_iov, 0, 0);
+        sreq = create_request(iov, n_iov, 0, 0);
         MPIDI_CH3I_CM_SendQ_enqueue(vc, sreq);
         if (vc->ch.state == MPIDI_CH3I_VC_STATE_UNCONNECTED)  {
             MPIDI_CH3I_CM_Connect(vc);
@@ -155,7 +170,6 @@ int MPIDI_CH3_iStartMsgv(MPIDI_VC_t * vc, MPID_IOV * iov, int n_iov,
     if (MPIDI_CH3I_SendQ_empty(vc)) {   /* MT */
         int nb;
         int pkt_len;
-        int rdma_ok;
 
         /* MT - need some signalling to lock down our right to use the
            channel, thus insuring that the progress engine does also try to
@@ -164,7 +178,7 @@ int MPIDI_CH3_iStartMsgv(MPIDI_VC_t * vc, MPID_IOV * iov, int n_iov,
         DEBUG_PRINT("[send], n_iov: %d, pkt_len %d\n", n_iov,
                     pkt_len);
         if (pkt_len > MRAIL_MAX_EAGER_SIZE) {
-            create_request(sreq, iov, n_iov, 0, 0);
+            sreq = create_request(iov, n_iov, 0, 0);
             mpi_errno = MPIDI_CH3_Packetized_send(vc, sreq);
             if (MPI_MRAIL_MSG_QUEUED == mpi_errno) {
                 mpi_errno = MPI_SUCCESS;
@@ -172,33 +186,20 @@ int MPIDI_CH3_iStartMsgv(MPIDI_VC_t * vc, MPID_IOV * iov, int n_iov,
             goto fn_exit;
         }
 
-        rdma_ok = MPIDI_CH3I_MRAILI_Fast_rdma_ok(vc, pkt_len);
-        DEBUG_PRINT("[send], rdma ok: %d\n", rdma_ok);
-        if (rdma_ok != 0) {
-            /* send pkt through rdma fast path */
-            /* take care of the header caching */
-            /* the packet header and the data now is in rdma fast buffer */
-            mpi_errno =
-                MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(vc, iov, n_iov,
-                                                          &nb, &buf);
-            DEBUG_PRINT("[send: send progress] mpi_errno %d, nb %d\n",
-                        mpi_errno == MPI_SUCCESS, nb);
-        } else {
-            /* TODO: Codes to send pkt through send/recv path */
-            mpi_errno =
-                MPIDI_CH3I_MRAILI_Eager_send(vc, iov, n_iov, &nb, &buf);
-            DEBUG_PRINT("[istartmsgv] mpierr %d, nb %d\n", mpi_errno, nb);
+        /* TODO: Codes to send pkt through send/recv path */
+        mpi_errno =
+            MPIDI_CH3I_MRAILI_Eager_send(vc, iov, n_iov, pkt_len, &nb, &buf);
+        DEBUG_PRINT("[istartmsgv] mpierr %d, nb %d\n", mpi_errno, nb);
 
-        }
         if (mpi_errno == MPI_SUCCESS) {
             DEBUG_PRINT("[send path] eager send return %d bytes\n", nb);
         } else if (MPI_MRAIL_MSG_QUEUED == mpi_errno) {
             /* fast rdma ok but cannot send: there is no send wqe available */
-            create_request(sreq, iov, n_iov, 0, 0);
+            sreq = create_request(iov, n_iov, 0, 0);
             buf->sreq = (void *) sreq;
             mpi_errno = MPI_SUCCESS;
         } else {
-            sreq = MPIDI_CH3_Request_create();
+            sreq = MPID_Request_create();
             if (sreq == NULL) {
                 mpi_errno =
                     MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL,
@@ -214,7 +215,7 @@ int MPIDI_CH3_iStartMsgv(MPIDI_VC_t * vc, MPID_IOV * iov, int n_iov,
         }
         goto fn_exit;
     }
-    create_request(sreq, iov, n_iov, 0, 0);
+    sreq = create_request(iov, n_iov, 0, 0);
     MPIDI_CH3I_SendQ_enqueue(vc, sreq);
 
   fn_exit:
@@ -263,14 +264,14 @@ static int MPIDI_CH3_SMP_iStartMsgv(MPIDI_VC_t * vc,
                     DEBUG_PRINT
                         ("ch3_istartmsgv: shm_writev did not complete the send,\
                     allocating request\n");
-                    create_request(sreq, iov, n_iov, offset, nb);
+                    sreq = create_request(iov, n_iov, offset, nb);
                     MPIDI_CH3I_SMP_SendQ_enqueue_head(vc, sreq);
                     vc->smp.send_active = sreq;
                     break;
                 }
             }
         } else {
-            sreq = MPIDI_CH3_Request_create();
+            sreq = MPID_Request_create();
             if (sreq == NULL) {
                 mpi_errno =
                     MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL,
@@ -283,7 +284,7 @@ static int MPIDI_CH3_SMP_iStartMsgv(MPIDI_VC_t * vc,
             sreq->status.MPI_ERROR = MPI_ERR_INTERN;
         }
     } else {
-        create_request(sreq, iov, n_iov, 0, 0);
+        sreq = create_request(iov, n_iov, 0, 0);
         MPIDI_CH3I_SMP_SendQ_enqueue(vc, sreq);
     }
 

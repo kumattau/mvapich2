@@ -23,7 +23,8 @@
 
 #define MPIU_STR_TRUNCATED MPIU_STR_NOMEM
 
-static int encode_buffer(char *dest, int dest_length, const char *src, int src_length, int *num_encoded)
+static int encode_buffer(char *dest, int dest_length, const char *src, 
+			 int src_length, int *num_encoded)
 {
     int num_used;
     int n = 0;
@@ -48,13 +49,15 @@ static int encode_buffer(char *dest, int dest_length, const char *src, int src_l
     while (src_length && dest_length)
     {
 	ch = *src;
-	num_used = MPIU_Snprintf(dest, dest_length, "%02X", (int)*src);
+	num_used = MPIU_Snprintf(dest, dest_length, "%02X", 
+				 (unsigned char)*src);
 	if (num_used < 0)
 	{
 	    *num_encoded = n;
 	    return MPIU_STR_TRUNCATED;
 	}
-	/*MPIU_DBG_PRINTF((" %c = %c%c\n", ch, dest[0], dest[1]));*/
+	/*MPIU_DBG_MSG_FMT(OTHER,VERBOSE,(MPIU_DBG_FDEST," %c = %c%c", 
+	  ch, dest[0], dest[1]));*/
 	dest += num_used;
 	dest_length -= num_used;
 	src++;
@@ -65,7 +68,8 @@ static int encode_buffer(char *dest, int dest_length, const char *src, int src_l
     return src_length ? MPIU_STR_TRUNCATED : MPIU_STR_SUCCESS;
 }
 
-static int decode_buffer(const char *str, char *dest, int length, int *num_decoded)
+static int decode_buffer(const char *str, char *dest, int length, 
+			 int *num_decoded)
 {
     char hex[3];
     int value;
@@ -94,7 +98,8 @@ static int decode_buffer(const char *str, char *dest, int length, int *num_decod
 	str++;
 	sscanf(hex, "%X", &value);
 	*dest = (char)value;
-	/*MPIU_DBG_PRINTF((" %s = %c\n", hex, *dest));*/
+	/*MPIU_DBG_MSG_FMT(OTHER,VERBOSE,(MPIU_DBG_FDEST," %s = %c\n", 
+	  hex, *dest));*/
 	dest++;
 	n++;
 	length--;
@@ -183,14 +188,16 @@ static int compare_token(const char *token, const char *str)
     {
 	/* compare quoted strings */
 	token++; /* move over the first quote */
-	/* compare characters until reaching the end of the string or the end quote character */
+	/* compare characters until reaching the end of the string or the 
+	   end quote character */
 	for(;;)
 	{
 	    if (*token == MPIU_STR_ESCAPE_CHAR)
 	    {
 		if (*(token+1) == MPIU_STR_QUOTE_CHAR)
 		{
-		    /* move over the escape character if the next character is a quote character */
+		    /* move over the escape character if the next character 
+		       is a quote character */
 		    token++;
 		}
 		if (*token != *str)
@@ -234,17 +241,17 @@ static int compare_token(const char *token, const char *str)
     while (*token == *str &&
 	   *str != '\0' &&
 	   *token != MPIU_STR_DELIM_CHAR && 
-	   (/*isascii(*token) && !isspace(*token)*/ *token != MPIU_STR_SEPAR_CHAR) )
+	   (*token != MPIU_STR_SEPAR_CHAR) )
     {
 	token++;
 	str++;
     }
     if ( (*str == '\0') &&
 	 (*token == MPIU_STR_DELIM_CHAR ||
-	  (/*isascii(*token) && isspace(*token)*/ *token == MPIU_STR_SEPAR_CHAR) || *token == '\0') )
+	  (*token == MPIU_STR_SEPAR_CHAR) || *token == '\0') )
 	return 0;
     if (*token == MPIU_STR_DELIM_CHAR || 
-	(/*isascii(*token) && isspace(*token)*/ *token == MPIU_STR_SEPAR_CHAR) || *token < *str)
+	(*token == MPIU_STR_SEPAR_CHAR) || *token < *str)
 	return -1;
     return 1;
 }
@@ -306,7 +313,8 @@ static int token_copy(const char *token, char *str, int maxlen)
 	    token++;
 	    maxlen--;
 	} while (maxlen);
-	/* we've run out of destination characters so back up and null terminate the string */
+	/* we've run out of destination characters so back up and null 
+	   terminate the string */
 	str--;
 	*str = '\0';
 	return MPIU_STR_TRUNCATED;
@@ -314,7 +322,7 @@ static int token_copy(const char *token, char *str, int maxlen)
 
     /* literal copy */
     while (*token != MPIU_STR_DELIM_CHAR && 
-	   (/*isascii(*token) && !isspace(*token)*/ *token != MPIU_STR_SEPAR_CHAR) && *token != '\0' && maxlen)
+	   (*token != MPIU_STR_SEPAR_CHAR) && *token != '\0' && maxlen)
     {
 	*str = *token;
 	str++;
@@ -380,14 +388,15 @@ static void token_hide(char *token)
 
     /* literal */
     while (*token != MPIU_STR_DELIM_CHAR && 
-	   (/*isascii(*token) && !isspace(*token)*/ *token != MPIU_STR_SEPAR_CHAR) && *token != '\0')
+	   (*token != MPIU_STR_SEPAR_CHAR) && *token != '\0')
     {
 	*token = MPIU_STR_HIDE_CHAR;
 	token++;
     }
 }
 
-/*@ MPIU_Str_get_string_arg - Extract an option from a string with a maximum length
+/*@ MPIU_Str_get_string_arg - Extract an option from a string with a 
+  maximum length
   
     Input Parameters:
 +   str - Source string
@@ -406,7 +415,8 @@ static void token_hide(char *token)
   Module:
   Utility
   @*/
-int MPIU_Str_get_string_arg(const char *str, const char *flag, char *val, int maxlen)
+int MPIU_Str_get_string_arg(const char *str, const char *flag, char *val, 
+			    int maxlen)
 {
     if (maxlen < 1)
 	return MPIU_STR_FAIL;
@@ -438,7 +448,8 @@ int MPIU_Str_get_string_arg(const char *str, const char *flag, char *val, int ma
     return MPIU_STR_FAIL;
 }
 
-/*@ MPIU_Str_get_binary_arg - Extract an option from a string with a maximum length
+/*@ MPIU_Str_get_binary_arg - Extract an option from a string with a maximum 
+  length
   
     Input Parameters:
 +   str - Source string
@@ -453,13 +464,16 @@ int MPIU_Str_get_string_arg(const char *str, const char *flag, char *val, int ma
     MPIU_STR_SUCCESS, MPIU_STR_NOMEM, MPIU_STR_FAIL
 
     Notes:
-    This routine searches for a "key = value" entry in a string and decodes the value
-    back to binary data.  The data must have been encoded with MPIU_Str_add_binary_arg.
+    This routine searches for a "key = value" entry in a string and decodes 
+    the value
+    back to binary data.  The data must have been encoded with 
+    MPIU_Str_add_binary_arg.
 
   Module:
   Utility
   @*/
-int MPIU_Str_get_binary_arg(const char *str, const char *flag, char *buffer, int maxlen, int *out_length)
+int MPIU_Str_get_binary_arg(const char *str, const char *flag, char *buffer, 
+			    int maxlen, int *out_length)
 {
     if (maxlen < 1)
 	return MPIU_STR_FAIL;
@@ -491,7 +505,8 @@ int MPIU_Str_get_binary_arg(const char *str, const char *flag, char *buffer, int
     return MPIU_STR_FAIL;
 }
 
-/*@ MPIU_Str_hide_string_arg - Over-write the value of an string option with * characters
+/*@ MPIU_Str_hide_string_arg - Over-write the value of an string option 
+  with * characters
   
     Input Parameters:
 +   str - input string
@@ -504,7 +519,8 @@ int MPIU_Str_get_binary_arg(const char *str, const char *flag, char *buffer, int
     MPIU_STR_SUCCESS, MPIU_STR_FAIL
 
     Notes:
-    This routine covers an option in a string converting "key = value" to "key = *****"
+    This routine covers an option in a string converting "key = value" to 
+    "key = *****"
 
   Module:
   Utility
@@ -621,17 +637,20 @@ static int quoted_printf(char *str, int maxlen, const char *val)
 -   val - string to add
 
     Output Parameter:
-+   str_ptr - The string pointer is updated to the next available location in the string
++   str_ptr - The string pointer is updated to the next available location in 
+    the string
 -   maxlen_ptr - maxlen is decremented by the amount str_ptr is incremented
 
     Return value:
     MPIU_STR_SUCCESS, MPIU_STR_NOMEM, MPIU_STR_FAIL
 
     Notes:
-    This routine adds a string to a string in such a way that MPIU_Str_get_string can
-    retreive the same string back.  It takes into account spaces and quote characters.
-    The string pointer is updated to the start of the next string in the string and maxlen
-    is updated accordingly.
+    This routine adds a string to a string in such a way that 
+    MPIU_Str_get_string can
+    retreive the same string back.  It takes into account spaces and quote 
+    characters.
+    The string pointer is updated to the start of the next string in the 
+    string and maxlen is updated accordingly.
 
   Module:
   Utility
@@ -671,11 +690,13 @@ int MPIU_Str_add_string(char **str_ptr, int *maxlen_ptr, const char *val)
     {
 	if (*val == '\0')
 	{
-	    num_chars = MPIU_Snprintf(str, maxlen, MPIU_STR_QUOTE_STR MPIU_STR_QUOTE_STR/*"\"\""*/);
+	    num_chars = MPIU_Snprintf(str, maxlen, 
+		      MPIU_STR_QUOTE_STR MPIU_STR_QUOTE_STR/*"\"\""*/);
 	}
 	else
 	{
-	    num_chars = MPIU_Snprintf(str, maxlen, "%s%c", val, MPIU_STR_SEPAR_CHAR);
+	    num_chars = MPIU_Snprintf(str, maxlen, "%s%c", val, 
+				      MPIU_STR_SEPAR_CHAR);
 	}
 	if (num_chars == maxlen)
 	{
@@ -702,12 +723,14 @@ int MPIU_Str_add_string(char **str_ptr, int *maxlen_ptr, const char *val)
     MPIU_STR_SUCCESS, MPIU_STR_NOMEM, MPIU_STR_FAIL
 
     Return Value:
-    The return value is 0 for success, -1 for insufficient buffer space, and 1 for failure.
+    The return value is 0 for success, -1 for insufficient buffer space, and 
+    1 for failure.
 
     Notes:
-    This routine gets a string that was previously added by MPIU_Str_add_string.
-    It takes into account spaces and quote characters. The string pointer is updated to the
-    start of the next string in the string.
+    This routine gets a string that was previously added by 
+    MPIU_Str_add_string.
+    It takes into account spaces and quote characters. The string pointer is 
+    updated to the start of the next string in the string.
 
   Module:
   Utility
@@ -762,7 +785,8 @@ int MPIU_Str_get_string(char **str_ptr, char *val, int maxlen)
 -   val - input string
 
     Output Parameter:
-+   str_ptr - The string pointer is updated to the next available location in the string
++   str_ptr - The string pointer is updated to the next available location in
+    the string
 -   maxlen_ptr - maxlen is reduced by the number of characters written
 
     Return value:
@@ -774,7 +798,8 @@ int MPIU_Str_get_string(char **str_ptr, char *val, int maxlen)
   Module:
   Utility
   @*/
-int MPIU_Str_add_string_arg(char **str_ptr, int *maxlen_ptr, const char *flag, const char *val)
+int MPIU_Str_add_string_arg(char **str_ptr, int *maxlen_ptr, const char *flag, 
+			    const char *val)
 {
     int num_chars;
     char **orig_str_ptr;
@@ -791,7 +816,8 @@ int MPIU_Str_add_string_arg(char **str_ptr, int *maxlen_ptr, const char *flag, c
 
     /* add the flag */
 /*     printf("strstr flag\n"); */
-    if (strstr(flag, MPIU_STR_SEPAR_STR) || strstr(flag, MPIU_STR_DELIM_STR) || flag[0] == MPIU_STR_QUOTE_CHAR)
+    if (strstr(flag, MPIU_STR_SEPAR_STR) || strstr(flag, MPIU_STR_DELIM_STR) ||
+	flag[0] == MPIU_STR_QUOTE_CHAR)
     {
 	num_chars = quoted_printf(*str_ptr, *maxlen_ptr, flag);
     }
@@ -802,7 +828,8 @@ int MPIU_Str_add_string_arg(char **str_ptr, int *maxlen_ptr, const char *flag, c
     *maxlen_ptr = *maxlen_ptr - num_chars;
     if (*maxlen_ptr < 1)
     {
-	MPIU_DBG_PRINTF(("partial argument added to string: '%s'\n", *str_ptr));
+	MPIU_DBG_MSG_S(OTHER,VERBOSE,
+                  "partial argument added to string: '%s'", *str_ptr);
 	**str_ptr = '\0';
 	/*(*str_ptr)[num_chars-1] = '\0';*/
 	return MPIU_STR_NOMEM;
@@ -816,7 +843,8 @@ int MPIU_Str_add_string_arg(char **str_ptr, int *maxlen_ptr, const char *flag, c
 
     /* add the value string */
 /*     printf("strstr val\n"); */
-    if (strstr(val, MPIU_STR_SEPAR_STR) || strstr(val, MPIU_STR_DELIM_STR) || val[0] == MPIU_STR_QUOTE_CHAR)
+    if (strstr(val, MPIU_STR_SEPAR_STR) || strstr(val, MPIU_STR_DELIM_STR) ||
+	val[0] == MPIU_STR_QUOTE_CHAR)
     {
 	num_chars = quoted_printf(*str_ptr, *maxlen_ptr, val);
     }
@@ -824,7 +852,8 @@ int MPIU_Str_add_string_arg(char **str_ptr, int *maxlen_ptr, const char *flag, c
     {
 	if (*val == '\0')
 	{
-	    num_chars = MPIU_Snprintf(*str_ptr, *maxlen_ptr, MPIU_STR_QUOTE_STR MPIU_STR_QUOTE_STR/*"\"\""*/);
+	    num_chars = MPIU_Snprintf(*str_ptr, *maxlen_ptr, 
+			      MPIU_STR_QUOTE_STR MPIU_STR_QUOTE_STR/*"\"\""*/);
 	}
 	else
 	{
@@ -835,7 +864,8 @@ int MPIU_Str_add_string_arg(char **str_ptr, int *maxlen_ptr, const char *flag, c
     *maxlen_ptr = *maxlen_ptr - num_chars;
     if (*maxlen_ptr < 2)
     {
-	MPIU_DBG_PRINTF(("partial argument added to string: '%s'\n", *str_ptr));
+	MPIU_DBG_MSG_S(OTHER,VERBOSE,
+		       "partial argument added to string: '%s'", *str_ptr);
 	**orig_str_ptr = '\0';
 	/*
 	*str_ptr = *str_ptr - 1;
@@ -862,7 +892,8 @@ int MPIU_Str_add_string_arg(char **str_ptr, int *maxlen_ptr, const char *flag, c
 -   val - input integer
 
     Output Parameter:
-+   str_ptr - The string pointer is updated to the next available location in the string
++   str_ptr - The string pointer is updated to the next available location in 
+    the string
 -   maxlen_ptr - maxlen is reduced by the number of characters written
 
     Return value:
@@ -874,7 +905,8 @@ int MPIU_Str_add_string_arg(char **str_ptr, int *maxlen_ptr, const char *flag, c
   Module:
   Utility
   @*/
-int MPIU_Str_add_int_arg(char **str_ptr, int *maxlen_ptr, const char *flag, int val)
+int MPIU_Str_add_int_arg(char **str_ptr, int *maxlen_ptr, const char *flag, 
+			 int val)
 {
     char val_str[12];
     MPIU_Snprintf(val_str, 12, "%d", val);
@@ -891,19 +923,22 @@ int MPIU_Str_add_int_arg(char **str_ptr, int *maxlen_ptr, const char *flag, int 
 -   length - length of the input data
 
     Output Parameter:
-+   str_ptr - The string pointer is updated to the next available location in the string
++   str_ptr - The string pointer is updated to the next available location in 
+    the string
 -   maxlen_ptr - maxlen is reduced by the number of characters written
 
     Return value:
     MPIU_STR_SUCCESS, MPIU_STR_NOMEM, MPIU_STR_FAIL
 
     Notes:
-    This routine encodes binary data into a string option in the form "key = encoded_value".
+    This routine encodes binary data into a string option in the form 
+    "key = encoded_value".
 
   Module:
   Utility
   @*/
-int MPIU_Str_add_binary_arg(char **str_ptr, int *maxlen_ptr, const char *flag, const char *buffer, int length)
+int MPIU_Str_add_binary_arg(char **str_ptr, int *maxlen_ptr, const char *flag,
+			    const char *buffer, int length)
 {
     int result;
     int num_chars;
@@ -920,7 +955,8 @@ int MPIU_Str_add_binary_arg(char **str_ptr, int *maxlen_ptr, const char *flag, c
 	return MPIU_STR_FAIL;
 
     /* add the flag */
-    if (strstr(flag, MPIU_STR_SEPAR_STR) || strstr(flag, MPIU_STR_DELIM_STR) || flag[0] == MPIU_STR_QUOTE_CHAR)
+    if (strstr(flag, MPIU_STR_SEPAR_STR) || strstr(flag, MPIU_STR_DELIM_STR) ||
+	flag[0] == MPIU_STR_QUOTE_CHAR)
     {
 	num_chars = quoted_printf(*str_ptr, *maxlen_ptr, flag);
     }
@@ -931,7 +967,8 @@ int MPIU_Str_add_binary_arg(char **str_ptr, int *maxlen_ptr, const char *flag, c
     *maxlen_ptr = *maxlen_ptr - num_chars;
     if (*maxlen_ptr < 1)
     {
-	MPIU_DBG_PRINTF(("partial argument added to string: '%s'\n", *str_ptr));
+	MPIU_DBG_MSG_S(OTHER,VERBOSE,
+		       "partial argument added to string: '%s'", *str_ptr);
 	**str_ptr = '\0';
 	/*(*str_ptr)[num_chars-1] = '\0';*/
 	return MPIU_STR_NOMEM;
@@ -950,12 +987,14 @@ int MPIU_Str_add_binary_arg(char **str_ptr, int *maxlen_ptr, const char *flag, c
 	**orig_str_ptr = '\0';
 	return result;
     }
-    num_chars = num_chars * 2; /* the encoding function turns one source character into two destination characters */
+    num_chars = num_chars * 2; /* the encoding function turns one source 
+				  character into two destination characters */
     *str_ptr = *str_ptr + num_chars;
     *maxlen_ptr = *maxlen_ptr - num_chars;
     if (*maxlen_ptr < 2)
     {
-	MPIU_DBG_PRINTF(("partial argument added to string: '%s'\n", *str_ptr));
+	MPIU_DBG_MSG_S(OTHER,VERBOSE,
+		       "partial argument added to string: '%s'", *str_ptr);
 	/*
 	*str_ptr = *str_ptr - 1;
 	**str_ptr = '\0';

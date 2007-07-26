@@ -20,7 +20,7 @@ if version[0] == '1' and version[1] == '.':
 from time import ctime
 __author__ = "Ralph Butler and Rusty Lusk"
 __date__ = ctime()
-__version__ = "$Revision: 1.1.1.1 $"
+__version__ = "$Revision: 1.4 $"
 __credits__ = ""
 
 from sys     import argv, exit

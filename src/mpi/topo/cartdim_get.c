@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Cartdim_get
 #define MPI_Cartdim_get PMPI_Cartdim_get
 
 #endif
@@ -58,7 +59,6 @@ int MPI_Cartdim_get(MPI_Comm comm, int *ndims)
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_CARTDIM_GET);
     
     /* Validate parameters, especially handles needing to be converted */
@@ -103,7 +103,6 @@ int MPI_Cartdim_get(MPI_Comm comm, int *ndims)
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_CARTDIM_GET);
-    MPID_CS_EXIT();
     return mpi_errno;
 
   fn_fail:

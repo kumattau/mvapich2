@@ -475,6 +475,26 @@ int MPE_Describe_info_event( int eventID,
                                     eventID, name, color, format );
 }
 
+/*
+    This is an MPE internal function to describe MPI events.
+    It is not meant for user application.
+    eventID should be fetched from CLOG_Get_known_solo_eventID()
+    i.e, MPE_Log_get_known_solo_eventID()
+*/
+int MPE_Describe_known_event( const CLOG_CommIDs_t *commIDs, int local_thread,
+                              int eventID,
+                              const char *name, const char *color,
+                              const char *format )
+{
+    if (!MPE_Log_hasBeenInit)
+        return MPE_LOG_NOT_INITIALIZED;
+
+    CLOG_Buffer_save_eventdef( CLOG_Buffer, commIDs, local_thread,
+                               eventID, color, name, format );
+
+    return MPE_LOG_OK;
+}
+
 /*@
    MPE_Describe_event - Describe the attributes of an event
                         without byte informational data in
@@ -571,6 +591,15 @@ int MPE_Log_get_solo_eventID( int *eventdef_eventID )
 int MPE_Log_get_known_eventID( void )
 {
     return CLOG_Get_known_eventID( CLOG_Stream );
+}
+
+/*
+    This is an MPE internal function in defining MPE_Event[] evtID components.
+    It is not meant for user application.
+*/
+int MPE_Log_get_known_solo_eventID( void )
+{
+    return CLOG_Get_known_solo_eventID( CLOG_Stream );
 }
 
 /*
@@ -715,13 +744,13 @@ int MPE_Log_pack( MPE_LOG_BYTES bytebuf, int *position,
      */
     switch (tokentype) {
         case 's':  /* STR */
-            tot_sz = sizeof( short ) + count;
+            tot_sz = sizeof( CLOG_int16_t ) + count;
             if ( *position + tot_sz <= sizeof( MPE_LOG_BYTES ) ) {
-                *((short *) vptr) = (short) count;
+                *((CLOG_int16_t *) vptr) = (CLOG_int16_t) count;
 #if !defined( WORDS_BIGENDIAN )
-                CLOG_Util_swap_bytes( vptr, sizeof( short ) , 1 );
+                CLOG_Util_swap_bytes( vptr, sizeof( CLOG_int16_t ) , 1 );
 #endif
-                vptr = (void *)( (char *) vptr + sizeof( short ) );
+                vptr = (void *)( (char *) vptr + sizeof( CLOG_int16_t ) );
                 memcpy( vptr, data, count );
                 *position += tot_sz;
                 return MPE_LOG_OK;
@@ -876,13 +905,25 @@ int MPE_Log_sync_clocks( void )
 
     clog_syncer = CLOG_Stream->syncer;
     if ( clog_syncer->is_ok_to_sync == CLOG_BOOL_TRUE ) {
-        local_timediff = CLOG_Sync_update_timediffs( clog_syncer );
+        local_timediff = CLOG_Sync_run( clog_syncer );
         CLOG_Buffer_set_timeshift( CLOG_Buffer, local_timediff,
                                    CLOG_BOOL_TRUE );
     }
     return MPE_LOG_OK;
 }
 
+
+void MPE_Log_thread_sync( int local_thread_count )
+{
+     int max_thread_count;
+#if !defined( CLOG_NOMPI )
+     PMPI_Allreduce( &local_thread_count, &max_thread_count, 1, MPI_INT,
+                     MPI_MAX, MPI_COMM_WORLD );
+#else
+     max_thread_count = local_thread_count;
+#endif
+     CLOG_Stream->buffer->preamble->max_thread_count = max_thread_count;
+}
 
 /* Declare clog_merged_filename same as CLOG_Merger_t.out_filename */
 static char clog_merged_filename[ CLOG_PATH_STRLEN ] = "0";
@@ -892,7 +933,7 @@ static char clog_merged_filename[ CLOG_PATH_STRLEN ] = "0";
 
     Notes:
     MPE_Finish_log() & MPE_Init_log() are NOT needed when liblmpe.a is linked
-    because MPI_Finalize) would have called MPE_Finish_log() already.
+    because MPI_Finalize() would have called MPE_Finish_log() already.
     liblmpe.a will be included in the final executable if it is linked with
     either "mpicc -mpe=mpilog" or "mpecc -mpilog"
 

@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Type_get_attr
 #define MPI_Type_get_attr PMPI_Type_get_attr
 
 #endif
@@ -58,9 +59,12 @@ Notes for C:
 .N MPI_ERR_KEYVAL
 .N MPI_ERR_ARG
 @*/
-int MPI_Type_get_attr(MPI_Datatype type, int type_keyval, void *attribute_val, int *flag)
+int MPI_Type_get_attr(MPI_Datatype type, int type_keyval, void *attribute_val, 
+		      int *flag)
 {
+#ifdef HAVE_ERROR_CHECKING
     static const char FCNAME[] = "MPI_Type_get_attr";
+#endif
     int mpi_errno = MPI_SUCCESS;
     MPID_Datatype *type_ptr = NULL;
     MPID_Attribute *p;
@@ -68,7 +72,7 @@ int MPI_Type_get_attr(MPI_Datatype type, int type_keyval, void *attribute_val, i
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("attr");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_TYPE_GET_ATTR);
     
     /* Validate parameters, especially handles needing to be converted */
@@ -126,21 +130,25 @@ int MPI_Type_get_attr(MPI_Datatype type, int type_keyval, void *attribute_val, i
     
     /* ... end of body of routine ... */
 
+#ifdef HAVE_ERROR_CHECKING
   fn_exit:
+#endif
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_TYPE_GET_ATTR);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("attr");
     return mpi_errno;
 
-  fn_fail:
     /* --BEGIN ERROR HANDLING-- */
 #   ifdef HAVE_ERROR_CHECKING
+  fn_fail:
     {
 	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_type_get_attr",
-	    "**mpi_type_get_attr %D %d %p %p", type, type_keyval, attribute_val, flag);
+	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, 
+	    "**mpi_type_get_attr",
+	    "**mpi_type_get_attr %D %d %p %p", 
+	    type, type_keyval, attribute_val, flag);
     }
-#   endif
     mpi_errno = MPIR_Err_return_comm( NULL, FCNAME, mpi_errno );
     goto fn_exit;
+#   endif
     /* --END ERROR HANDLING-- */
 }

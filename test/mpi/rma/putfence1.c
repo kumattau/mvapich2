@@ -36,6 +36,12 @@ int main( int argc, char *argv[] )
 	
 	for (count = 1; count < 65000; count = count * 2) {
 	    while (MTestGetDatatypes( &sendtype, &recvtype, count )) {
+
+		MTestPrintfMsg( 1, 
+		       "Putting count = %d of sendtype %s receive type %s\n", 
+				count, MTestGetDatatypeName( &sendtype ),
+				MTestGetDatatypeName( &recvtype ) );
+
 		/* Make sure that everyone has a recv buffer */
 		recvtype.InitBuf( &recvtype );
 
@@ -44,10 +50,14 @@ int main( int argc, char *argv[] )
 				extent, MPI_INFO_NULL, comm, &win );
 		MPI_Win_fence( 0, win );
 		if (rank == source) {
+		    /* To improve reporting of problems about operations, we
+		       change the error handler to errors return */
+		    MPI_Win_set_errhandler( win, MPI_ERRORS_RETURN );
+
 		    sendtype.InitBuf( &sendtype );
 		    
 		    err = MPI_Put( sendtype.buf, sendtype.count, 
-				    sendtype.datatype, dest, 0, 
+				   sendtype.datatype, dest, 0, 
 				   recvtype.count, recvtype.datatype, win );
 		    if (err) {
 			errs++;
@@ -55,7 +65,13 @@ int main( int argc, char *argv[] )
 			    MTestPrintError( err );
 			}
 		    }
-		    MPI_Win_fence( 0, win );
+		    err = MPI_Win_fence( 0, win );
+		    if (err) {
+			errs++;
+			if (errs < 10) {
+			    MTestPrintError( err );
+			}
+		    }
 		}
 		else if (rank == dest) {
 		    MPI_Win_fence( 0, win );

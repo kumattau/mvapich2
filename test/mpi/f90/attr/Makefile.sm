@@ -9,12 +9,9 @@ F90HEADERS = attraints.h
 
 baseattrf90_SOURCES    = baseattrf90.f90
 baseattr2f90_SOURCES    = baseattr2f90.f90
-baseattrwinf90_SOURCES = baseattrwinf90.f90
 commattrf90_SOURCES    = commattrf90.f90
 commattr2f90_SOURCES   = commattr2f90.f90
 commattr3f90_SOURCES   = commattr3f90.f90
-winattrf90_SOURCES     = winattrf90.f90
-winattr2f90_SOURCES    = winattr2f90.f90
 typeattrf90_SOURCES    = typeattrf90.f90
 typeattr2f90_SOURCES   = typeattr2f90.f90
 typeattr3f90_SOURCES   = typeattr3f90.f90

@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Win_get_group
 #define MPI_Win_get_group PMPI_Win_get_group
 
 #endif
@@ -57,12 +58,15 @@ int MPI_Win_get_group(MPI_Win win, MPI_Group *group)
     static const char FCNAME[] = "MPI_Win_get_group";
     int mpi_errno = MPI_SUCCESS;
     MPID_Win *win_ptr = NULL;
+    MPIU_THREADPRIV_DECL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_WIN_GET_GROUP);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("rma");
     MPID_MPI_RMA_FUNC_ENTER(MPID_STATE_MPI_WIN_GET_GROUP);
+
+    MPIU_THREADPRIV_GET;
 
     /* Validate parameters, especially handles needing to be converted */
 #   ifdef HAVE_ERROR_CHECKING
@@ -104,7 +108,7 @@ int MPI_Win_get_group(MPI_Win win, MPI_Group *group)
 
   fn_exit:
     MPID_MPI_RMA_FUNC_EXIT(MPID_STATE_MPI_WIN_GET_GROUP);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("rma");
     return mpi_errno;
 
   fn_fail:

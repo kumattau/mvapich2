@@ -800,6 +800,17 @@ if test -n "$ac_init_help"; then
 
   cat <<\_ACEOF
 
+Optional Features:
+  --disable-FEATURE       do not include FEATURE (same as --enable-FEATURE=no)
+  --enable-FEATURE[=ARG]  include FEATURE [ARG=yes]
+  --enable-g=option      Control the level of debugging support.  option may be
+      a list of common separated names including...
+      none    - No debugging
+      dbg     - Add compiler -g flags
+      all     - All of the above choices
+
+
+
 Some influential environment variables:
   CC          C compiler command
   CFLAGS      C compiler flags
@@ -1375,9 +1386,30 @@ fi
 ac_config_guess=$ac_aux_dir/config.guess
 ac_config_sub=$ac_aux_dir/config.sub
 ac_configure=$ac_aux_dir/configure # This should be Cygnus configure.
+ac_config_headers="$ac_config_headers include/mpidi_ch3i_rdma_conf.h"
 
 
-          ac_config_headers="$ac_config_headers include/mpidi_ch3i_rdma_conf.h"
+# Check whether --enable-g or --disable-g was given.
+if test "${enable_g+set}" = set; then
+  enableval="$enable_g"
+
+else
+  enable_g=none
+fi;
+
+# --enable-g
+# strip off multiple options, separated by commas
+save_IFS="$IFS"
+IFS=","
+for option in $enable_g; do
+  case "$option" in
+    debug|dbg|all|yes)
+    CFLAGS="$CFLAGS -g"
+    echo "Adding -g to CFLAGS" ;;
+    *) ;;
+  esac
+done
+IFS="$save_IFS"
 
 
 echo "RUNNING CONFIGURE FOR THE RDMA CHANNEL"

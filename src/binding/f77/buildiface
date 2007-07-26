@@ -341,8 +341,9 @@ foreach $_ (@ARGV) {
 #             the third term give the array size.
 #    addnull: Add a null character to a *copy* of the input string,
 #             after trimming any blanks.
-#    blankpad: Add blanks and remove nulls.  Use a copy of the string
-#             for the call to the C routine.
+#    blankpad: Add blanks and remove nulls.  Only used for out args;
+#             must use an allocated space to provide room for the null
+#             that the C routines may require
 #    bufptr:  Detect MPI_BOTTOM.  Note that a better alternative is to
 #             use MPI_Address and MPI_Get_address to make addresses
 #             relative to the Fortran MPI_BOTTOM.  The lines that
@@ -618,6 +619,7 @@ if ("$buildMakefile") {
     &print_endline( MAKEFD );
     print MAKEFD "MPIFLIBNAME = \@MPIFLIBNAME\@\n";
     print MAKEFD "PMPIFLIBNAME = \@PMPIFLIBNAME\@\n";
+
     # The definitions for the Fortran wrappers are special
     &AddFwrapDefs;
     print MAKEFD "\
@@ -627,7 +629,7 @@ lib\${MPIFLIBNAME}_a_SOURCES = \${mpi_sources} setbot.c setbotf.f\
 HEADERS = fproto.h mpi_fortimpl.h\
 profilelib_\${MPIFLIBNAME} = \${PMPIFLIBNAME}\
 profilelib_\${MPIFLIBNAME}_SOURCES = \${mpi_sources}\
-INCLUDES = -I../../include -I\${master_top_srcdir}/src/include\
+INCLUDES = -I../../include -I\${master_top_srcdir}/src/include -I\${master_top_srcdir}/src/binding/f77 \
 maint-clean:\
 \trm -f \${mpi_sources} $prototype_header_file\n";
 
@@ -843,7 +845,11 @@ sub print_name_map_block {
 #define ${out_prefix}${lcname}_ pmpi_${lcname}_
 #endif
 /* This defines the routine that we call, which must be the PMPI version
-   since we're renameing the Fortran entry as the pmpi version */
+   since we're renaming the Fortran entry as the pmpi version.  The MPI name
+   must be undefined first to prevent any conflicts with previous renamings,
+   such as those put in place by the globus device when it is building on
+   top of a vendor MPI. */
+#undef MPI_${routine_name}
 #define MPI_${routine_name} PMPI_${routine_name} 
 
 #else
@@ -1584,11 +1590,25 @@ sub print_post_call {
 # ---------------------------------------------------------------------------
 #
 # Blankpad strings
+# This is complicated by the fact that the Fortran strings do not contain
+# null terminators and the MPI definitions of string lengths, such as
+# MPI_MAX_PORT_NAME, are one smaller in Fortran than in C (see 4.12.9
+# in the MPI-2 specification).  Because of this, we need to allocate a 
+# temporary that is one longer on 
 sub blankpad_out_decl {
+    my $count = $_[0];
+    print $OUTFD "    char *p$count;\n";
 }
 sub blankpad_out_arg {
     my $count = $_[0];
-    print $OUTFD "v$count";
+    print $OUTFD "p$count";
+}
+sub blankpad_out_ftoc {
+    my $count = $_[0];
+
+    # Allocate space to hold the C version of the output
+    $strlen = "d$count";
+    print $OUTFD "    p$count = (char *)$malloc( $strlen + 1 );\n";
 }
 sub blankpad_ctof {
     my $coutvar = $_[0];
@@ -1599,12 +1619,15 @@ sub blankpad_ctof {
     # whose name is derived from outvar
     $strlen = $outvar;
     $strlen =~ s/^v/d/;
+    my $cvar = $outvar; 
+    $cvar =~ s/^v/p/;
     print $OUTFD "\
-    {char *p = $outvar;
-        while (*p) p++;
+    {char *p = $outvar, *pc=$cvar;
+        while (*pc) {*p++ = *pc++;}
         while ((p-$outvar) < $strlen) { *p++ = ' '; }
     }
 ";
+    $clean_up .= "    $free( $cvar );\n";
 }
 
 # ---------------------------------------------------------------------------
@@ -2262,7 +2285,8 @@ if ($write_mpif) {
 	foreach $distrib (BLOCK, CYCLIC, NONE, DFLT_DARG) {
 	    &print_mpif_int("MPI_DISTRIBUTE_$distrib");
 	}
-	&print_mpif_int( "MPI_DISPLACEMENT_CURRENT" );
+	&print_mpif_int( "MPI_DISPLACEMENT_CURRENT", 0,
+			 "\@FORTRAN_MPI_OFFSET\@" );
     }
     # 
     # Finally, the special symbols
@@ -2439,10 +2463,14 @@ sub build_specials {
 #define mpirinitc2_ mpirinitc2
 #endif
 /* These functions are called from Fortran so only need prototypes in 
-   this file */
+   this file.  Note that the last argument is a character array, so
+   we need to include the elements of the Fortran character \"dope vector\".
+*/
 FORT_DLL_SPEC void FORT_CALL mpirinitc_( void *, void *, void *, void *, 
-                                         void *, void * );
-FORT_DLL_SPEC void FORT_CALL mpirinitc2_( char * );
+                                         void *, void * FORT_MIXED_LEN_DECL 
+                                         FORT_END_LEN_DECL );
+FORT_DLL_SPEC void FORT_CALL mpirinitc2_( char * FORT_MIXED_LEN_DECL 
+                                          FORT_END_LEN_DECL );
 ";
     # These are here rather than in initf.c to solve some link order 
     # problems for Windows when separate libraries are used for the C and
@@ -2482,7 +2510,8 @@ void *MPI_F_ARGVS_NULL      = 0;
 
     print $OUTFD "
 FORT_DLL_SPEC void FORT_CALL mpirinitc_( void *a, void *b, void *c, void *d, 
-                                         void *e, void *f )
+                                         void *e, void *f FORT_MIXED_LEN(d1) 
+                                         FORT_END_LEN(d1) )
 {
     MPIR_F_MPI_BOTTOM     = a;
     MPIR_F_MPI_IN_PLACE   = b;
@@ -2494,7 +2523,8 @@ FORT_DLL_SPEC void FORT_CALL mpirinitc_( void *a, void *b, void *c, void *d,
 /* Initialize the Fortran ARGV_NULL to a blank.  Using this routine
    avoids potential problems with string manipulation routines that
    exist in the Fortran runtime but not in the C runtime libraries */
-FORT_DLL_SPEC void FORT_CALL mpirinitc2_( char *a )
+FORT_DLL_SPEC void FORT_CALL mpirinitc2_( char *a FORT_MIXED_LEN(d1) 
+                                          FORT_END_LEN(d1) )
 {
     *a = ' ';
 }
@@ -2660,6 +2690,7 @@ FORT_DLL_SPEC void FORT_CALL mpirinitc2_( char *a )
     &print_header( "MPI_Keyval_create", "keyval_create", $args );
     print $OUTFD " 
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Comm_create_keyval
 #define MPI_Comm_create_keyval PMPI_Comm_create_keyval
 #endif
 ";
@@ -2736,22 +2767,28 @@ FORT_DLL_SPEC void FORT_CALL mpirinitc2_( char *a )
     &WriteAttrDefaults( "type_" );
 
     # Datarep conversion function
-#     $OUTFD = "NULLCONVERSIONFN";
-#     $filename = "null_conv_fnf.c";
-#     $returnType = "int";
-#     open ($OUTFD, ">$filename.new" ) || die "Cannot open $filename.new\n";
-#     $files[$#files+1] = $filename;
-#     $args = "void *, MPI_Fint *, MPI_Fint *, void *, MPI_Offset *, MPI_Aint *, MPI_Fint *";
-#     &print_header( "mpi_conversion_fn_null", "conversion_fn_null", $args,
-# 	   "#ifdef MPI_CONVERSION_FN_NULL\n#undef MPI_CONVERSION_FN_NULL\n#endif\n" );
-#     &print_routine_type_decl( $OUTFD, "conversion_fn_null" );
-#     &print_args( $OUTFD, $args, 0, "conversion_fn_null" );
-#     # This is tricky; we don't want to call this function at all
-#     # FIXME    
-#     print $OUTFD "\n{\n   return MPI_SUCCESS;\n}\n";
-#     close ($OUTFD);
-#     &ReplaceIfDifferent( $filename, $filename . ".new" );
-#     &AddPrototype( "conversion_fn_null", $args );
+    # This is a special case.  We need to define this function
+    # but it should never be called (we convert a reference to it
+    # to a reference to null, which is how the C version of this
+    # routine is defined.
+#
+# This is now part of the register_datarep function
+#    $OUTFD = "NULLCONVERSIONFN";
+#    $filename = "null_conv_fnf.c";
+#    $returnType = "int";
+#    open ($OUTFD, ">$filename.new" ) || die "Cannot open $filename.new\n";
+#    $files[$#files+1] = $filename;
+#    $args = "void *, MPI_Fint *, MPI_Fint *, void *, MPI_Offset *, MPI_Aint *, MPI_Fint *";
+#    &print_header( "mpi_conversion_fn_null", "conversion_fn_null", $args,
+#	   "#ifdef MPI_CONVERSION_FN_NULL\n#undef MPI_CONVERSION_FN_NULL\n#endif\n" );
+#    &print_routine_type_decl( $OUTFD, "conversion_fn_null" );
+#    &print_args( $OUTFD, $args, 0, "conversion_fn_null" );
+#    # This is tricky; we don't want to call this function at all
+#    # FIXME    
+#    print $OUTFD "\n{\n   return MPI_SUCCESS;\n}\n";
+#    close ($OUTFD);
+#    &ReplaceIfDifferent( $filename, $filename . ".new" );
+#    &AddPrototype( "conversion_fn_null", $args );
 
 
     # The status conversion functions.
@@ -2795,6 +2832,7 @@ FORT_DLL_SPEC void FORT_CALL mpirinitc2_( char *a )
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Status_f2c
 #define MPI_Status_f2c PMPI_Status_f2c
 #endif
 
@@ -2853,6 +2891,7 @@ print $OUTFD "\
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Status_c2f
 #define MPI_Status_c2f PMPI_Status_c2f
 #endif
 
@@ -2882,6 +2921,18 @@ sub print_mpif_int {
     my $key = $_[0];
     my $value = $mpidef{$key};
     my $valueOffset = $_[1];
+    my $inttype = $_[2];
+
+    # integertype lets use change the integer type of the 
+    # variable; e.g., to make it integer*8 or integer (kind=MPI_OFFSET_KIND).
+    # This is needed for MPI_DISPLACEMENT_CURRENT.
+    # Because this will need to be set by configure, if set, this 
+    # needs to be a configure variable.
+    my $integertype = "INTEGER";
+
+    if (defined($inttype)) {
+	$integertype = $inttype;
+    }
     
     if (!defined($value) || $value eq "") {
 	print STDERR "No value found for \"$key\"\n";
@@ -2903,15 +2954,15 @@ sub print_mpif_int {
 	$value = hex $value;
 	print "hex conversion: $value\n" if $debug;
     }
-    if (defined($valueOffset)) { 
-	if ($value =~ /^\d+/) {
+    if (defined($valueOffset) && $valueOffset ne "0") { 
+	if ($value =~ /^-?\d+/) {
 	    $value += $valueOffset;
 	}
 	else {
 	    $value .= "$valueOffset";
 	}
     }
-    print MPIFFD "       INTEGER $key\n";
+    print MPIFFD "       $integertype $key\n";
     print MPIFFD "       PARAMETER ($key=$value)\n";
 }
 

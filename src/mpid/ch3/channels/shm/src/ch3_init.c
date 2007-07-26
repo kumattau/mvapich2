@@ -45,15 +45,13 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank )
     int p;
     char * key;
     char * val;
+    char *kvsname = NULL;
     int key_max_sz;
     int val_max_sz;
     char shmemkey[MPIDI_MAX_SHM_NAME_LENGTH];
     int i, j, k;
     int shm_block;
     char local_host[100];
-#ifdef HAVE_WINDOWS_H
-    DWORD host_len;
-#endif
 
     /*
      * Extract process group related information from PMI and initialize
@@ -61,6 +59,9 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank )
      * MPI_COMM_SELF
      */
     /* MPID_Init in mpid_init.c handles the process group initialization. */
+
+    /* Get the kvsname associated with MPI_COMM_WORLD */
+    MPIDI_PG_GetConnKVSname( &kvsname );
 
     /* set the global variable defaults */
     pg->ch.nShmEagerLimit = MPIDI_SHM_EAGER_LIMIT;
@@ -111,7 +112,12 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank )
     }
     
     /* save my vc_ptr for easy access */
-    MPIDI_PG_Get_vcr(pg, pg_rank, &MPIDI_CH3I_Process.vc);
+    /* MPIDI_PG_Get_vcr(pg, pg_rank, &MPIDI_CH3I_Process.vc); */
+    /* FIXME: Figure out whether this is a common feature of process 
+       groups (and thus make it part of the general PG_Init) or 
+       something else.  Avoid a "get" routine because of the danger in
+       using "get" where "dup" is required. */
+    MPIDI_CH3I_Process.vc = &pg->vct[pg_rank];
 
     /* Initialize Progress Engine */
     mpi_errno = MPIDI_CH3I_Progress_init();
@@ -168,7 +174,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank )
 		mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**strncpy", 0);
 		return mpi_errno;
 	    }
-	    mpi_errno = PMI_KVS_Put(pg->ch.kvs_name, key, val);
+	    mpi_errno = PMI_KVS_Put(kvsname, key, val);
 	    if (mpi_errno != 0)
 	    {
 		mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**pmi_kvs_put", "**pmi_kvs_put %d", mpi_errno);
@@ -181,21 +187,15 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank )
 		mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**strncpy", 0);
 		return mpi_errno;
 	    }
-#ifdef HAVE_WINDOWS_H
-	    host_len = val_max_sz;
-	    /*GetComputerName(val, &host_len);*/
-	    GetComputerNameEx(ComputerNameDnsFullyQualified, val, &host_len);
-#else
-	    gethostname(val, val_max_sz); /* Don't call this under Windows because it requires the socket library */
-#endif
-	    mpi_errno = PMI_KVS_Put(pg->ch.kvs_name, key, val);
+	    MPID_Get_processor_name( val, val_max_sz, 0 );
+	    mpi_errno = PMI_KVS_Put(kvsname, key, val);
 	    if (mpi_errno != 0)
 	    {
 		mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**pmi_kvs_put", "**pmi_kvs_put %d", mpi_errno);
 		return mpi_errno;
 	    }
 
-	    mpi_errno = PMI_KVS_Commit(pg->ch.kvs_name);
+	    mpi_errno = PMI_KVS_Commit(kvsname);
 	    if (mpi_errno != 0)
 	    {
 		mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**pmi_kvs_commit", "**pmi_kvs_commit %d", mpi_errno);
@@ -222,7 +222,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank )
 		mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**pmi_barrier", "**pmi_barrier %d", mpi_errno);
 		return mpi_errno;
 	    }
-	    mpi_errno = PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz);
+	    mpi_errno = PMI_KVS_Get(kvsname, key, val, val_max_sz);
 	    if (mpi_errno != 0)
 	    {
 		mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**pmi_kvs_get", "**pmi_kvs_get %d", mpi_errno);
@@ -239,19 +239,13 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank )
 		mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**strncpy", 0);
 		return mpi_errno;
 	    }
-	    mpi_errno = PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz);
+	    mpi_errno = PMI_KVS_Get(kvsname, key, val, val_max_sz);
 	    if (mpi_errno != 0)
 	    {
 		mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**pmi_kvs_get", "**pmi_kvs_get %d", mpi_errno);
 		return mpi_errno;
 	    }
-#ifdef HAVE_WINDOWS_H
-	    host_len = 100;
-	    /*GetComputerName(local_host, &host_len);*/
-	    GetComputerNameEx(ComputerNameDnsFullyQualified, local_host, &host_len);
-#else
-	    gethostname(local_host, 100); /* Don't call this under Windows because it requires the socket library */
-#endif
+	    MPID_Get_processor_name( local_host, sizeof(local_host), NULL );
 	    if (strcmp(val, local_host))
 	    {
 		mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**shmhost", "**shmhost %s %s", local_host, val);
@@ -292,7 +286,10 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank )
     /* initialize each shared memory queue */
     for (i=0; i<pg_size; i++)
     {
-	MPIDI_PG_Get_vcr(pg, i, &vc);
+	/* MPIDI_PG_Get_vcr(pg, i, &vc); */
+	/* FIXME: Move this code to the general init pg for shared
+	   memory */
+	vc = &pg->vct[i];
 #ifdef HAVE_SHARED_PROCESS_READ
 #ifdef HAVE_WINDOWS_H
 	if (pg->ch.pSharedProcessHandles)
@@ -358,7 +355,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank )
 #endif
 #endif
 
-    mpi_errno = PMI_KVS_Commit(pg->ch.kvs_name);
+    mpi_errno = PMI_KVS_Commit(kvsname);
     if (mpi_errno != 0)
     {
 	mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**pmi_kvs_commit", "**pmi_kvs_commit %d", mpi_errno);
@@ -429,3 +426,12 @@ int MPIDI_CH3_RMAFnsInit( MPIDI_RMAFns *a )
     return 0;
 }
 
+/* This routine is a hook for initializing information for a process
+   group before the MPIDI_CH3_VC_Init routine is called */
+int MPIDI_CH3_PG_Init( MPIDI_PG_t *pg )
+{
+    /* FIXME: This should call a routine from the ch3/util/shm directory
+       to initialize the use of shared memory for processes WITHIN this 
+       process group */
+    return MPI_SUCCESS;
+}

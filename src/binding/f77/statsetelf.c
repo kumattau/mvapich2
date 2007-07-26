@@ -96,7 +96,11 @@ extern FORT_DLL_SPEC void FORT_CALL mpi_status_set_elements_( MPI_Fint *, MPI_Fi
 #define mpi_status_set_elements_ pmpi_status_set_elements_
 #endif
 /* This defines the routine that we call, which must be the PMPI version
-   since we're renameing the Fortran entry as the pmpi version */
+   since we're renaming the Fortran entry as the pmpi version.  The MPI name
+   must be undefined first to prevent any conflicts with previous renamings,
+   such as those put in place by the globus device when it is building on
+   top of a vendor MPI. */
+#undef MPI_Status_set_elements
 #define MPI_Status_set_elements PMPI_Status_set_elements 
 
 #else

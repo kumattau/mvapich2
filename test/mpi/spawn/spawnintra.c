@@ -72,7 +72,7 @@ int main( int argc, char *argv[] )
     /* Check on the intra comm */
     {
 	int icsize, icrank, wrank;
-	
+
 	MPI_Comm_size( intracomm, &icsize );
 	MPI_Comm_rank( intracomm, &icrank );
 	MPI_Comm_rank( MPI_COMM_WORLD, &wrank );
@@ -108,7 +108,7 @@ int main( int argc, char *argv[] )
     /* Check on the intra comm */
     {
 	int icsize, icrank, wrank;
-	
+
 	MPI_Comm_size( intracomm2, &icsize );
 	MPI_Comm_rank( intracomm2, &icrank );
 	MPI_Comm_rank( MPI_COMM_WORLD, &wrank );
@@ -143,7 +143,7 @@ int main( int argc, char *argv[] )
     /* Check on the intra comm */
     {
 	int icsize, icrank, wrank;
-	
+
 	MPI_Comm_size( intracomm3, &icsize );
 	MPI_Comm_rank( intracomm3, &icrank );
 	MPI_Comm_rank( MPI_COMM_WORLD, &wrank );

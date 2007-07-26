@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Win_fence
 #define MPI_Win_fence PMPI_Win_fence
 
 #endif
@@ -69,7 +70,7 @@ int MPI_Win_fence(int assert, MPI_Win win)
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("rma");
     MPID_MPI_RMA_FUNC_ENTER(MPID_STATE_MPI_WIN_FENCE);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -109,7 +110,7 @@ int MPI_Win_fence(int assert, MPI_Win win)
 
   fn_exit:
     MPID_MPI_RMA_FUNC_EXIT(MPID_STATE_MPI_WIN_FENCE);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("rma");
     return mpi_errno;
 
   fn_fail:

@@ -23,14 +23,19 @@ int main( int argc, char *argv[] )
     MTest_Init( &argc, &argv );
 
     datatype = MPI_INT;
+	    /* Get an intercommunicator */
     while (MTestGetIntercomm( &comm, &leftGroup, 4 )) {
 	if (comm == MPI_COMM_NULL) continue;
+	MPI_Comm_rank( comm, &rank );
+	MPI_Comm_remote_size( comm, &rsize );
+
+	/* To improve reporting of problems about operations, we
+	   change the error handler to errors return */
+	MPI_Errhandler_set( comm, MPI_ERRORS_RETURN );
+
 	for (count = 1; count < 65000; count = 2 * count) {
-	    /* Get an intercommunicator */
 	    /* The left group will send rank to the right group;
 	       The right group will send -rank to the left group */
-	    MPI_Comm_rank( comm, &rank );
-	    MPI_Comm_remote_size( comm, &rsize );
 	    rbuf = (int *)malloc( count * rsize * sizeof(int) );
 	    sbuf = (int *)malloc( count * sizeof(int) );
 	    recvcounts = (int *) malloc( rsize * sizeof(int) );

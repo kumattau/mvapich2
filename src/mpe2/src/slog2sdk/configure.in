@@ -102,27 +102,14 @@ AC_ARG_WITH(trace_name,
 TRACE_NAME=$withval, )
 
 dnl
-dnl Set non-standard autoconf/GNU install directory variables,
-dnl i.e. docdir & logfilesdir
+dnl Set non-standard autoconf/GNU install directory variables, i.e. docdir 
 dnl
-AC_ARG_WITH(logfilesdir,
-[--with-logfilesdir=dir             - Specify the logfiles directory.],,
-with_logfilesdir='${prefix}/logfiles')
-
 AC_ARG_WITH(docdir,
 [--with-docdir=dir                  - Specify the documentation directory.],,
 with_docdir='${prefix}/doc')
 
 #
 # Set the defaults for directories that are not included in configure's
-# repetoire
-if test -n "$with_logfilesdir" ; then
-    logfilesdir=$with_logfilesdir
-else
-    logfilesdir='${prefix}/logfiles'
-fi
-AC_SUBST(logfilesdir)
-
 if test -n "$with_docdir" ; then
     docdir=$with_docdir
 else
@@ -143,6 +130,10 @@ if test ! -s bin/jumpshot.in -a -z "$VPATH" ; then
 	The GNU make (sometimes available as gnumake) can be used.])
 fi
 AC_SUBST(MAKE)
+
+dnl checking for working INSTALL
+AC_PROG_INSTALL
+PAC_PROG_CHECK_INSTALL_WORKS
  
 CPRP=cp
 MKDIR=mkdir
@@ -312,7 +303,7 @@ AC_SUBST(JPATH_FINAL)
 # Naming the various build directories, don't inherit them from environment
 #
 rootbuild_dir=`pwd`
-for dir in lib bin doc etc share sbin logfiles ; do
+for dir in lib bin doc etc share sbin ; do
     dirname=${dir}build_dir
     eval dirvalue=\$"$dirname"
     eval $dirname=$rootbuild_dir/$dir
@@ -348,21 +339,19 @@ fi
 AC_SUBST(etcbuild_dir)
 
 # VPATH build: Set the sharebuild_dir
-if test ! -d $sharebuild_dir -a -d $srcdir/share ; then
-    echo "creating $sharebuild_dir from source"
-    $CPRP -pr $srcdir/share $sharebuild_dir
+if test ! -d $sharebuild_dir ; then
+    echo "creating $sharebuild_dir"
+    $MKDIR $sharebuild_dir
 fi
 AC_SUBST(sharebuild_dir)
 
-AC_SUBST(sbinbuild_dir)
-
-# VPATH build: Set the logfilesbuild_dir
-if test ! -d $logfilesbuild_dir -a -d $srcdir/logfiles ; then
-    echo "creating $logfilesbuild_dir from source"
-    $CPRP -pr $srcdir/logfiles $logfilesbuild_dir
+# Copying $srcdir/logfiles to sharebuild_dir
+if test -d $srcdir/logfiles ; then
+    echo "creating sample logfiles from source"
+    $CPRP -pr $srcdir/logfiles $sharebuild_dir
 fi
-AC_SUBST(logfilesbuild_dir)
 
+AC_SUBST(sbinbuild_dir)
 
 # Options to disselect individual subpackage
 # slog2_enable_{build|source|sample|rlog} are env. variables set by MPE2
@@ -395,7 +384,7 @@ AC_ARG_ENABLE(clog,
 [--enable-clog                      - Build CLOG related wrappers, e.g.
                                      clog2TOslog2, clog2print....
                                      The default is enable=yes.],
-,enable_clog=yes)
+,enable_clog=${slog2_enable_clog:-yes})
 
 AC_ARG_WITH(oldsource,
 [--with-oldsource=OLD_SRCDIR        - Build the old jar files from the given OLD

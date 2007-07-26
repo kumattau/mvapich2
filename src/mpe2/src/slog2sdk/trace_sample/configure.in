@@ -112,12 +112,39 @@ AC_HEADER_STDC
 AC_CHECK_HEADERS( stdlib.h stdio.h string.h )
 dnl Checks for typedefs, structures, and compiler characteristics.
 AC_C_CONST
-AC_C_BIGENDIAN
+dnl SIZEOF_VOIDP, SIZEOF_LONG, SIZEOF_LONG_LONG and SIZEOF__INT64 created
+dnl by AC_CHECK_SIZEOF( *, * ) are needed to compile
+dnl slog2sdk/src/logformat/trace/logformat_trace_InputLog.c
 AC_CHECK_SIZEOF( void*, $CROSS_SIZEOF_VOIDP )
 AC_CHECK_SIZEOF( int, $CROSS_SIZEOF_INT )
 AC_CHECK_SIZEOF( long, $CROSS_SIZEOF_LONG )
 AC_CHECK_SIZEOF( long long, $CROSS_SIZEOF_LONG_LONG )
 AC_CHECK_SIZEOF( __int64, $CROSS_SIZEOF___INT64 )
+dnl   -- Check if byteswapping needs to be done.
+if test "$cross_compiling" = "yes" -o "$cross_compiling" = 1 ; then
+    AC_MSG_CHECKING([for byte ordering])
+    if test "X$CROSS_BIGENDIAN" != "X" ; then
+        if test "$CROSS_BIGENDIAN" = "true" \
+             -o "$CROSS_BIGENDIAN" = "false" ; then
+            if test "$CROSS_BIGENDIAN" = "true" ; then
+                AC_DEFINE( WORDS_BIGENDIAN, 1,
+                           [Define if byte order is bigendian] )
+                AC_MSG_RESULT( [defined to be big endian] )
+            else
+                AC_MSG_RESULT( [defined to be little endian] )
+            fi
+        else
+            AC_DEFINE( WORDS_BIGENDIAN, 1,
+                       [Define if byte order is bigendian] )
+            AC_MSG_RESULT( [Unknown CROSS_BIGENDIAN, $CROSS_BIGENDIAN! Assumed big endian] )
+        fi
+    else
+        AC_DEFINE( WORDS_BIGENDIAN, 1, [Define if byte order is bigendian] )
+        AC_MSG_RESULT( [Undefined CROSS_BIGENDIAN! Assumed big endian] )
+    fi
+else
+    AC_C_BIGENDIAN
+fi
 
 LIBSO_PREFIX="lib"
 AC_CANONICAL_HOST
@@ -126,6 +153,10 @@ case "$host_os" in
         dnl  temporary fix to force libtool on AIX to generate .so file,
         dnl  i.e. inform libtool to do runtime linking.
         LDFLAGS="$LDFLAGS -brtl"
+        ;;
+    *darwin* )
+        dnl  force libtool to build .jnilib which is needed by Mac's JVM
+        LDFLAGS="$LDFLAGS -shrext .jnilib"
         ;;
     *cygwin* )
         dnl  Since SUN's JDK assumes a win32 compiler, so force cygwin/gcc
@@ -159,8 +190,6 @@ AC_LIBTOOL_WIN32_DLL
 dnl  Set SED that is not set in AC_PROG_LIBTOOL in autoconf 2.5x
 AC_CHECK_PROG(SED, sed, sed, ;)
 AC_PROG_LIBTOOL
-AC_PROG_INSTALL
-PAC_PROG_CHECK_INSTALL_WORKS
 AC_SUBST(LIBTOOL_DEPS)
 
 dnl Checks for libraries.
@@ -186,6 +215,11 @@ JAC_CHECK_CYGPATH(JPATH_START, JPATH_FINAL)
 AC_SUBST(JPATH_START)
 AC_SUBST(JPATH_FINAL)
 
+dnl Checking for working INSTALL
+AC_PROG_INSTALL
+PAC_PROG_CHECK_INSTALL_WORKS
+PAC_PROG_INSTALL_BREAKS_LIBS
+
 CPRP=cp
 RM="rm -f"
 MV="mv -f"
@@ -198,7 +232,7 @@ AC_SUBST(RM)
 # includebuild_dir is for all user header files
 #
 rootbuild_dir=`pwd`
-for dir in lib bin sbin logfiles ; do
+for dir in lib bin share sbin ; do
     dirname=${dir}build_dir
     eval dirvalue=\$"$dirname"
     eval $dirname=$rootbuild_dir/$dir
@@ -215,25 +249,22 @@ if test ! -d $libbuild_dir ; then
     $MKDIR $libbuild_dir
 fi
 
-# VPATH build: Set the logfilesbuild_dir
-for dir in logfiles ; do
-    dirname=${dir}build_dir
-    eval dirvalue=\$"$dirname"
-    if test -n "$dirvalue" ; then
-        if test ! -d $dirvalue ; then
-            if $CPRP -pr $srcdir/$dir $dirvalue ; then
-                echo "creating $dirvalue from source"
-            else
-                AC_MSG_ERROR( [Could not create directory $dirvalue] )
-            fi
-        fi
-    fi
-done
+# VPATH build: Set the sharebuild_dir
+if test ! -d $sharebuild_dir ; then
+    echo "creating $sharebuild_dir"
+    $MKDIR $sharebuild_dir
+fi
+
+# Copying $srcdir/logfiles to sharebuild_dir
+if test -d $srcdir/logfiles ; then
+    echo "creating sample logfiles from source"
+    $CPRP -pr $srcdir/logfiles $sharebuild_dir
+fi
 
 AC_SUBST(libbuild_dir)
 AC_SUBST(binbuild_dir)
 AC_SUBST(sbinbuild_dir)
-AC_SUBST(logfilesbuild_dir)
+AC_SUBST(sharebuild_dir)
 AC_SUBST(gui_libbuild_dir)
 
 # Define bindir's executables, and pass them down to sbindir's install-package

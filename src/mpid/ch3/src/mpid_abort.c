@@ -6,11 +6,16 @@
 
 #include "mpidimpl.h"
 
+/* FIXME: Who uses/sets MPIDI_DEV_IMPLEMENTS_ABORT? */
 #ifdef MPIDI_DEV_IMPLEMENTS_ABORT
 #include "pmi.h"
 static int MPIDI_CH3I_PMI_Abort(int exit_code, const char *error_msg);
 #endif
 
+/* FIXME: We should move this into a header file so that we don't
+   need the ifdef.  Also, don't use exit (add to coding check) since
+   not safe in windows.  To avoid confusion, define a RobustExit? or
+   MPIU_Exit? */
 #ifdef HAVE_WINDOWS_H
 /* exit can hang if libc fflushes output while in/out/err buffers are locked
    (this must be a bug in exit?).  ExitProcess does not hang (what does this
@@ -34,7 +39,6 @@ int MPID_Abort(MPID_Comm * comm, int mpi_errno, int exit_code,
     MPIDI_STATE_DECL(MPID_STATE_MPID_ABORT);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_ABORT);
-    MPIDI_DBG_PRINTF((10, FCNAME, "entering"));
 
     if (error_msg == NULL) {
 	/* Create a default error message */
@@ -85,8 +89,6 @@ int MPID_Abort(MPID_Comm * comm, int mpi_errno, int exit_code,
     /* ch3_abort should not return but if it does, exit here */
     exit(exit_code);
     
-    MPIDI_DBG_PRINTF((10, FCNAME, "exiting"));
-
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_ABORT);
     return MPI_ERR_INTERN;
 }

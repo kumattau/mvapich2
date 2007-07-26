@@ -1,3 +1,4 @@
+C -*- Mode: Fortran; -*- 
 C
 C (C) 2005 by Argonne National Laboratory.
 C     See COPYRIGHT in top-level directory.

@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Comm_get_attr
 #define MPI_Comm_get_attr PMPI_Comm_get_attr
 
 #endif
@@ -69,7 +70,7 @@ int MPI_Comm_get_attr(MPI_Comm comm, int comm_keyval, void *attribute_val, int *
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("attr");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_COMM_GET_ATTR);
     
     /* Validate parameters, especially handles needing to be converted */
@@ -257,7 +258,15 @@ int MPI_Comm_get_attr(MPI_Comm comm, int comm_keyval, void *attribute_val, int *
 	    *attr_int = attr_copy.lastusedcode;
 	    break;
 	case 14: /* APPNUM */
-	    *attr_int = attr_copy.appnum;
+	    /* This is another special case.  If appnum is negative,
+	       we take that as indicating no value of APPNUM, and set
+	       the flag accordingly */
+	    if (attr_copy.appnum < 0) {
+		*flag = 0;
+	    }
+	    else {
+		*attr_int = attr_copy.appnum;
+	    }
 	    break;
 #endif
 	}
@@ -279,7 +288,7 @@ int MPI_Comm_get_attr(MPI_Comm comm, int comm_keyval, void *attribute_val, int *
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_COMM_GET_ATTR);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("attr");
     return mpi_errno;
 
   fn_fail:

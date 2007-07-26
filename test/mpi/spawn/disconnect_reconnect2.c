@@ -8,6 +8,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+/* Note: In this program, the return codes from the MPI routines are checked.
+   Since the error handlers for the communicators are not set to 
+   MPI_ERRORS_RETURN, any error should cause an abort rather than a return.
+   The test on the return value is an extra safety check; note that a 
+   return value of other than MPI_SUCCESS in these routines indicates an
+   error in the error handling by the MPI implementation */
+
 #define IF_VERBOSE(a) if (verbose) { printf a ; fflush(stdout); }
 void check_error(int, char *);
 
@@ -24,7 +31,8 @@ void check_error(int error, char *fcname)
     }
 }
 
-/* This test spawns two child jobs and has them open a port and connect to each other.
+/* This test spawns two child jobs and has them open a port and connect to 
+ * each other.
  * The two children repeatedly connect, accept, and disconnect from each other.
  */
 int main(int argc, char *argv[])

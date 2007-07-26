@@ -1,4 +1,4 @@
-/* $Id: basex11.h,v 1.1.1.1 2006/01/18 21:09:49 huangwei Exp $ */
+/* $Id: basex11.h,v 1.2 2004/08/18 20:45:50 chan Exp $ */
 /*
    (C) 2001 by Argonne National Laboratory.
        See COPYRIGHT in top-level directory.

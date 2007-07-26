@@ -16,6 +16,7 @@
 #include "udapl_param.h"
 #include "udapl_header.h"
 #include "vbuf.h"
+#include "rdma_impl.h"
 #include <string.h>
 
 /*
@@ -104,8 +105,13 @@ int udapl_prepost_threshold = 5;
 
 int rdma_num_rails = 1;
 
+int rdma_num_hcas = 1;
+
+unsigned int  rdma_ndreg_entries = RDMA_NDREG_ENTRIES;
+unsigned long rdma_dreg_cache_limit = 0;
+
 void
-rdma_init_parameters (int num_proc, int me)
+rdma_init_parameters (MPIDI_CH3I_RDMA_Process_t *proc)
 {
 
     char *value;
@@ -151,6 +157,9 @@ rdma_init_parameters (int num_proc, int me)
       {
           rdma_pin_pool_size = (int) atoi (value);
       }
+    if ((value = getenv("MV2_DREG_CACHE_LIMIT")) != NULL) {
+        rdma_dreg_cache_limit = atol(value);
+    }
     if ((value = (char *) getenv ("MV2_DEFAULT_MAX_CQ_SIZE")) != NULL)
       {
           rdma_default_max_cq_size = (int) atoi (value);
@@ -159,6 +168,21 @@ rdma_init_parameters (int num_proc, int me)
       {
           rdma_read_reserve = (int) atoi (value);
       }
+    if ((value = getenv("MV2_USE_LAZY_MEM_UNREGISTER")) != NULL) {
+        proc->has_lazy_mem_unregister = !!atoi(value);
+    } else {
+        proc->has_lazy_mem_unregister = 1;
+    }
+    if ((value = (char *) getenv ("MV2_USE_RDMA_FAST_PATH")) != NULL)
+    {
+        proc->has_rdma_fast_path = (int) atoi (value);
+    }
+    if ((value = getenv("MV2_USE_RDMA_ONE_SIDED")) != NULL) {
+        proc->has_one_sided = !!atoi(value);
+    } else {
+        proc->has_one_sided = 1;
+    }
+
 #ifdef RDMA_FAST_PATH
     if ((value = (char *) getenv ("MV2_NUM_RDMA_BUFFER")) != NULL)
       {
@@ -218,6 +242,9 @@ rdma_init_parameters (int num_proc, int me)
       {
           rdma_default_max_wqe = (long) atol (value);
       }
+    if ((value = getenv("MV2_NDREG_ENTRIES")) != NULL) {
+        rdma_ndreg_entries = (unsigned int)atoi(value);
+    }
     if ((value = (char *) getenv ("MV2_NDREG_ENTRIES")) != NULL)
       {
           udapl_ndreg_entries = (unsigned int) atoi (value);

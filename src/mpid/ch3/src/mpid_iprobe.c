@@ -10,9 +10,10 @@
 #define FUNCNAME MPID_Iprobe
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPID_Iprobe(int source, int tag, MPID_Comm * comm, int context_offset, int * flag, MPI_Status * status)
+int MPID_Iprobe(int source, int tag, MPID_Comm *comm, int context_offset, 
+		int *flag, MPI_Status *status)
 {
-    const int context = comm->context_id + context_offset;
+    const int context = comm->recvcontext_id + context_offset;
     int found = 0;
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_MPID_IPROBE);

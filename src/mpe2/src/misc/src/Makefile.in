@@ -30,8 +30,10 @@ MPE_BUILD_FORTRAN2C  = @MPE_BUILD_FORTRAN2C@
 MPEDBG               = @MPEDBG@
 
 ### End User configurable options ###
-SHELL = /bin/sh
-RM    = @RM@
+
+SHELL            = @SHELL@
+RM               = @RM@
+MV               = @MV@
 
 @VPATH@
 
@@ -54,27 +56,35 @@ CC_LDFLAGS       = $(LDFLAGS) $(CFLAGS) $(MPE_LDOPTS)
 
 MPE_CSOURCES     = decomp.c mpe_seq.c dbxerr.c getgrank.c \
                    examine.c privtags.c mpehname.c mpe_io.c
-MPE_TSOURCES     = decomp.c mpe_seq.c dbxerr.c getgrank.c
-MPE_COBJECTS     = $(MPE_CSOURCES:.c=.@OBJEXT@)
+# MPE_TSOURCES     = decomp.c mpe_seq.c dbxerr.c getgrank.c
+MPE_P_COBJECTS   = $(MPE_CSOURCES:.c=.p@OBJEXT@)
+# MPE_N_COBJECTS   = $(MPE_CSOURCES:.c=.n@OBJEXT@)
 
 MPE_WSOURCES     = decompf.c mpe_seqf.c getgrankf.c
-MPE_WOBJECTS     = $(MPE_WSOURCES:.c=.@OBJEXT@)
+MPE_P_WOBJECTS   = $(MPE_WSOURCES:.c=.p@OBJEXT@)
+# MPE_N_WOBJECTS   = $(MPE_WSOURCES:.c=.n@OBJEXT@)
+
+MPE_XSOURCES     = mpehname.c
+# MPE_P_XOBJECTS   = $(MPE_XSOURCES:.c=.p@OBJEXT@)
+MPE_N_XOBJECTS   = $(MPE_XSOURCES:.c=.n@OBJEXT@)
 
 MPE_SHLCOBJECTS  = $(MPE_COBJECTS:.@OBJEXT@=.lo)
 MPE_SHLWOBJECTS  = $(MPE_WOBJECTS:.@OBJEXT@=.lo)
 
-.SUFFIXES: .c .@OBJEXT@ .lo .a @EXEEXT@
+.SUFFIXES: .c .@OBJEXT@ .p@OBJEXT@ .n@OBJEXT@ .lo .a @EXEEXT@
 
-.c.@OBJEXT@:
+.c.p@OBJEXT@:
 	$(MPI_CC) $(CC_FLAGS) -c $<
+	$(MV) $*.@OBJEXT@ $*.p@OBJEXT@
 
-.c.a:
-	$(MPI_CC) $(CC_FLAGS) -c $<
+.c.n@OBJEXT@:
+	$(CC) $(CC_FLAGS) -DMPE_NOMPI -c $<
+	$(MV) $*.@OBJEXT@ $*.n@OBJEXT@
 
 # Allow compilers that do not allow -o for renaming object files
 .c.lo:
 	$(CC_SHL) $(CC_FLAGS) -c $< $(INC_DIR)
-	@mv $*.@OBJEXT@ $*.lo
+	@$(MV) $*.@OBJEXT@ $*.lo
 
 # default_all is the same as default, but without the RANLIB.  This
 # can speed up the build (ranlibs can take a LONG time).  profile_all 
@@ -84,7 +94,7 @@ default_all: default
 profile_all: 
 
 #
-default: clean rmprog
+default:
 	$(MAKE) mpe_debug_objs 
 	$(MAKE) ${libbuild_dir}/lib$(PROF_LIBNAME)_nompi.a
 	$(MAKE) ${libbuild_dir}/lib$(PROF_LIBNAME).a
@@ -109,32 +119,23 @@ mpe_debug_objs:
 # is done once (e.g., a blip in the filesystem time can't be 
 # responsible if make works as Sun documents it).  To fix this, we
 # add all the objects to the library, not just the "recent" ones.
-build_Cobjs: $(MPE_COBJECTS)
-	$(AR) $(ARFLAGS) ${libbuild_dir}/lib$(PROF_LIBNAME).a ${MPE_COBJECTS}
-	$(RANLIB) ${libbuild_dir}/lib$(PROF_LIBNAME).a
-#	-$(RM) -f $?
-
-build_Wobjs: $(MPE_WOBJECTS)
-	$(AR) $(ARFLAGS) ${libbuild_dir}/lib$(PROF_LIBNAME).a ${MPE_WOBJECTS}
-	$(RANLIB) ${libbuild_dir}/lib$(PROF_LIBNAME).a
-#	-$(RM) -f $?
-
-${libbuild_dir}/lib$(PROF_LIBNAME).a: build_Cobjs
+${libbuild_dir}/lib$(PROF_LIBNAME).a: $(MPE_P_COBJECTS)
+	$(AR) $(ARFLAGS) $@ $(MPE_P_COBJECTS)
 	@if [ "$(MPE_BUILD_FORTRAN2C)" = "yes" ] ; then \
-	     $(MAKE) build_Wobjs ; \
+	     $(MAKE) ${MPE_P_WOBJECTS} ; \
+	     $(AR) $(ARFLAGS) $@ ${MPE_P_WOBJECTS} ; \
 	 fi
+	$(RANLIB) $@
 
-${libbuild_dir}/lib$(PROF_LIBNAME)_nompi.a: clean
-	 $(CC) $(CC_FLAGS) -DMPE_NOMPI -c $(srcdir)/mpehname.c
-	 $(AR) $(ARFLAGS) $@ mpehname.@OBJEXT@
+${libbuild_dir}/lib$(PROF_LIBNAME)_nompi.a: $(MPE_N_XOBJECTS)
+	 $(AR) $(ARFLAGS) $@ $(MPE_N_XOBJECTS)
 	 $(RANLIB) $@
-	 -$(RM) -f mpehname.@OBJEXT@
 
-dbxtest: dbxtest.@OBJEXT@ ${libbuild_dir}/lib$(PROF_LIBNAME).a
-	$(MPI_CLINKER) $(CC_LDFLAGS) -o dbxtest@EXEEXT@ dbxtest.@OBJEXT@ \
+dbxtest@EXEEXT@: dbxtest.p@OBJEXT@ ${libbuild_dir}/lib$(PROF_LIBNAME).a
+	$(MPI_CLINKER) $(CC_LDFLAGS) -o $@ dbxtest.p@OBJEXT@ \
 	               -L${libbuild_dir} -l$(PROF_LIBNAME) $(MPI_LIBS) 
-dbxtest2: dbxtest2.@OBJEXT@ 
-	$(MPI_CLINKER) $(CC_LDFLAGS) -o dbxtest2@EXEEXT@ dbxtest2.@OBJEXT@ \
+dbxtest2@EXEEXT@: dbxtest2.p@OBJEXT@ 
+	$(MPI_CLINKER) $(CC_LDFLAGS) -o $@ dbxtest2.p@OBJEXT@ \
 	               $(LIB_PATH) 
 
 #
@@ -147,7 +148,7 @@ rmprog:
 	@-$(RM) -f $(EXECS)
 
 clean: rmprog
-	@-$(RM) -f *.@OBJEXT@ ${srcdir}/*.@OBJEXT@ *~ $(EXECS) PI*
+	@-$(RM) -f *.*@OBJEXT@ ${srcdir}/*.*@OBJEXT@ *~ PI*
 
 distclean: clean rmlib
 	@-$(RM) -f Makefile dbxerr.c

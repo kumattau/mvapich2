@@ -28,17 +28,24 @@ int main(int argc, char **argv)
     MPI_Init(&argc, &argv); /* MPI-1.2 doesn't allow for MPI_Init(0,0) */
     parse_args(argc, argv);
 
+    /* To improve reporting of problems about operations, we
+       change the error handler to errors return */
+    MPI_Comm_set_errhandler( MPI_COMM_WORLD, MPI_ERRORS_RETURN );
+
     /* perform some tests */
     err = builtin_float_test();
-    if (err && verbose) fprintf(stderr, "%d errors in builtin float test.\n", err);
+    if (err && verbose) fprintf(stderr, "%d errors in builtin float test.\n", 
+				err);
     errs += err;
 
     err = vector_of_vectors_test();
-    if (err && verbose) fprintf(stderr, "%d errors in vector of vectors test.\n", err);
+    if (err && verbose) fprintf(stderr, 
+				"%d errors in vector of vectors test.\n", err);
     errs += err;
 
     err = optimizable_vector_of_basics_test();
-    if (err && verbose) fprintf(stderr, "%d errors in vector of basics test.\n", err);
+    if (err && verbose) fprintf(stderr, 
+				"%d errors in vector of basics test.\n", err);
     errs += err;
 
     /* print message and exit */
@@ -78,8 +85,9 @@ int builtin_float_test(void)
 
 /* vector_of_vectors_test()
  *
- * Builds a vector of a vector of ints.  Assuming an int array of size 9 integers,
- * and treating the array as a 3x3 2D array, this will grab the corners.
+ * Builds a vector of a vector of ints.  Assuming an int array of size 9 
+ * integers, and treating the array as a 3x3 2D array, this will grab the 
+ * corners.
  *
  * Returns the number of errors encountered.
  */
@@ -102,7 +110,8 @@ int vector_of_vectors_test(void)
 			  &inner_vector);
     if (err != MPI_SUCCESS) {
 	errs++;
-	if (verbose) fprintf(stderr, "error in MPI call; aborting after %d errors\n",
+	if (verbose) fprintf(stderr, 
+			     "error in MPI call; aborting after %d errors\n",
 			     errs+1);
 	return errs;
     }
@@ -114,7 +123,8 @@ int vector_of_vectors_test(void)
 			  &outer_vector);
     if (err != MPI_SUCCESS) {
 	errs++;
-	if (verbose) fprintf(stderr, "error in MPI call; aborting after %d errors\n",
+	if (verbose) fprintf(stderr, 
+			     "error in MPI call; aborting after %d errors\n",
 			     errs+1);
 	return errs;
     }

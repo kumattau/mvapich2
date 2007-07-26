@@ -17,19 +17,15 @@ prefix          = @prefix@
 abs_builddir    = @abs_builddir@
 srcdir          = @srcdir@
 abs_srcdir      = @abs_srcdir@
-prefix          = @prefix@
-bindir          = @bindir@
 DEFS            = @DEFS@ -I. -I${srcdir}
 CPPFLAGS        = @CPPFLAGS@
 LIBS            = @LIBS@
 MAKE            = @MAKE@
 MPILIBNAME      = @MPILIBNAME@
-PMPILIBNAME     = @PMPILIBNAME@
-
 CC              = @CC@
 CFLAGS          = @CFLAGS@
 C_COMPILE       = $(CC) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
-C_LINK      = $(CC)
+C_LINK         = $(CC)
 CC_SHL          = @CC_SHL@
 C_COMPILE_SHL   = $(CC_SHL) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
 LDFLAGS     =  @LDFLAGS@ 
@@ -49,15 +45,15 @@ doc_sources = mpiexec.txt
 	@mv -f _s$*.o $*.lo
 .c:
 	$(C_COMPILE) -o $* $< $(LDFLAGS) $(LIBS)
-apply:
+apply: 
 	$(ACTION) $(ACTION_INPUT)
-clean: clean-local
+clean:  clean-local
 	-@rm -f *.o ${srcdir}/*.o mpiexec
 	-@rm -f mpiexec.exe
 	-@rm -f core core.[0-9]*
 	-@rm -f *.lo ${srcdir}/*.lo
 	-@rm -f *.irlog*
-distclean: clean distclean-local distclean-xxx remove-makefile
+distclean:  clean distclean-local distclean-xxx remove-makefile
 distclean-xxx:
 	-@rm -f Makefile config.status config.log config.cache *conf.cache config.system
 	-@rm -rf autom4te*.cache
@@ -71,8 +67,8 @@ remove-genmakefiles:
 all-redirect: mpiexec
 
 mpiexec: mpiexec.o  ../util/libmpiexec.a  
-	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o mpiexec mpiexec.o  -L../util \
-	-lmpiexec -L../../../lib -lmpich ${LIBS} 
+	$(C_LINK) $(CFLAGS) $(LDFLAGS) -o mpiexec mpiexec.o  \
+	../util/libmpiexec.a ../../../lib/libmpich.a ${LIBS} 
 # --------------------------------------------------------------------------
 # Install target
 install:  FORCE_TARGET 
@@ -83,9 +79,9 @@ install:  FORCE_TARGET
 
 install-strip:
 	$(MAKE) INSTALL_STRIP_FLAG=-s install
-uninstall:
+uninstall: 
 	-rm -f ${DESTDIR}${bindir}/mpiexec
-installcheck:
+installcheck: 
 # --------------------------------------------------------------------------
 # --------------------------------------------------------------------------
 SOURCES         =  mpiexec.c
@@ -93,11 +89,12 @@ ETAGS           = @ETAGS@ @ETAGSADD@
 HEADERFILES     = $(HEADERS)
 SOURCEFILES     = $(SOURCES)
 tags: TAGS
-TAGS:${HEADERFILES} ${SOURCEFILES}
+TAGS: Makefile${HEADERFILES} ${SOURCEFILES}
 	here=`cd ../../.. && pwd` ; cd ${srcdir} && $(ETAGS) -o $$here/TAGS --append ${HEADERFILES} ${SOURCEFILES}
 # --------------------------------------------------------------------------
 # Some C compilers won't take ../libfoo.a as a library, so we use
 # -Ldir -llib for each of the libraries instead.
+# Force the use of the static, not shared library for mpich and for mpiexec
 
 clean-local:
 	@-(cd ../util && $(MAKE) clean)
@@ -111,7 +108,7 @@ mpich2-build-uninstall: uninstall
 
 # A special alternate installation target when using multiple process managers
 install-alt: mpiexec
-	$(INSTALL_PROGRAM) $(INSTALL_STRIP_FLAG) mpiexec ${bindir}/mpiexec.gforker
+	$(INSTALL_PROGRAM) $(INSTALL_STRIP_FLAG) mpiexec $(DESTDIR)${bindir}/mpiexec.gforker
 
 
 # We use a dummy dependency to ensure that we always go to the util

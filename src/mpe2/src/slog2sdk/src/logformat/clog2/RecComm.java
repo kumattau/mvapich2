@@ -23,8 +23,6 @@ public class RecComm
     public         int       wrank;   // MPI_COMM_WORLD rank of the process
     public         UUID      gcomm;   // icomm's UUID
 
-    public         int       lineID;  // lineID used in drawable
-
     public int readFromDataStream( DataInputStream in )
     {
         try {
@@ -38,8 +36,6 @@ public class RecComm
             ioerr.printStackTrace();
             return 0;
         }
-
-        lineID   = LineID.compute( icomm, rank );
 
         return BYTESIZE;
     }

@@ -11,26 +11,25 @@ srcdir          = @srcdir@
 abs_srcdir      = @abs_srcdir@
 MAKE            = @MAKE@
 MPILIBNAME      = @MPILIBNAME@
-PMPILIBNAME     = @PMPILIBNAME@
-
 
 VPATH = .:@srcdir@
 
 .SUFFIXES:
 # Some make programs complain if no suffixes are set
 .SUFFIXES: .c .o
-apply:
+apply: 
 	$(ACTION) $(ACTION_INPUT)
 	for dir in ../../../common/sock ../../../common/locks src ; do \
 		(cd $$dir && ${MAKE} apply ; ) ; done
-clean:
+clean: 
 	-@rm -f *.o ${srcdir}/*.o 
 	-@rm -f *.lo ${srcdir}/*.lo
 	for dir in ../../../common/sock ../../../common/locks src ; do \
 		(cd $$dir && ${MAKE} clean ; ) ; done
-distclean: clean distclean-local distclean-xxx remove-makefile
+distclean:  clean distclean-local distclean-xxx remove-makefile
 distclean-xxx:
 	for dir in ../../../common/sock ../../../common/locks src ; do \
+		if [ ! -s $$dir/Makefile ] ; then continue ; fi ;\
 		(cd $$dir && ${MAKE} distclean ; ) ; done
 	-@rm -f Makefile src/Makefile localdefs config.status config.log config.cache *conf.cache config.system
 	-@rm -rf autom4te*.cache
@@ -52,7 +51,7 @@ all-redirect:
 HEADERFILES     = $(HEADERS)
 SOURCEFILES     = $(SOURCES)
 tags: TAGS
-TAGS:
+TAGS: Makefile
 	(cd src && $(MAKE) TAGS )
 # --------------------------------------------------------------------------
 

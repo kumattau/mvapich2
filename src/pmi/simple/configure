@@ -1355,6 +1355,10 @@ ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
           ac_config_headers="$ac_config_headers pmiconf.h"
 
+
+
+
+
 echo "RUNNING CONFIGURE FOR THE SIMPLE PMI"
 
 # Check whether --enable-cache or --disable-cache was given.
@@ -1376,6 +1380,64 @@ fi;
 if test "$enable_pmiport" != "no" ; then
    enable_pmiport=yes
 fi
+
+
+rm -f conftest*
+date >conftest$$
+# If creating a file in the current directory does not show up in the srcdir
+# then we're doing a VPATH build (or something is very wrong)
+if test ! -s $srcdir/conftest$$ ; then
+    pac_dirtyfiles=""
+    pac_dirtydirs=""
+    pac_header=""
+
+    for file in config.status $pac_header  ; do
+        if test -f $srcdir/$file ; then
+	    pac_dirtyfiles="$pac_dirtyfiles $file"
+	fi
+    done
+
+
+    if test -n "$pac_dirtyfiles" -o -n "$pac_dirtydirs" ; then
+	# Create a nice message about what to remove
+	rmmsg=""
+	if test -n "$pac_dirtyfiles" ; then
+	    rmmsg="files $pac_dirtyfiles"
+        fi
+ 	if test -n "$pac_dirtydirs" ; then
+	    if test -n "$rmmsg" ; then
+	        rmmsg="$rmmsg and directories $pac_dirtydirs"
+            else
+                rmmsg="directories $pac_dirtydirs"
+            fi
+        fi
+        if test -f $srcdir/Makefile ; then
+            { { echo "$as_me:$LINENO: error: You cannot do a VPATH build if the source directory has been
+    configured.  Run \"make distclean\" in $srcdir first and make sure that the
+    $rmmsg have been removed." >&5
+echo "$as_me: error: You cannot do a VPATH build if the source directory has been
+    configured.  Run \"make distclean\" in $srcdir first and make sure that the
+    $rmmsg have been removed." >&2;}
+   { (exit 1); exit 1; }; }
+        else
+            { { echo "$as_me:$LINENO: error: You cannot do a VPATH build if the source directory has been
+    configured.  Remove the $rmmsg in $srcdir." >&5
+echo "$as_me: error: You cannot do a VPATH build if the source directory has been
+    configured.  Remove the $rmmsg in $srcdir." >&2;}
+   { (exit 1); exit 1; }; }
+        fi
+    fi
+fi
+rm -f conftest*
+
+
+
+if test -n "$CONF_BASE_CACHEFILE" -a -s "$CONF_BASE_CACHEFILE" ; then
+    echo "Loading base cachefile $CONF_BASE_CACHEFILE"
+    . $CONF_BASE_CACHEFILE
+    export CONF_BASE_CACHEFILE
+fi
+
 
 
 true
@@ -2852,7 +2914,7 @@ fi
 # If cpp failed, see if the compiler accepts the header.
 if test "$pac_found_header" != "yes" ; then
     cat >conftest.c<<EOF
-#line 2855 "configure"
+#line 2917 "configure"
 #include "confdefs.h"
 #include <$ac_header>
 int conftest() {return 0;}
@@ -3133,7 +3195,7 @@ fi
 # If cpp failed, see if the compiler accepts the header.
 if test "$pac_found_header" != "yes" ; then
     cat >conftest.c<<EOF
-#line 3136 "configure"
+#line 3198 "configure"
 #include "confdefs.h"
 #include <$ac_header>
 int conftest() {return 0;}
@@ -3546,8 +3608,9 @@ echo "$as_me: error: Cannot build simple PMI with support for an IP port because
 fi
 
 # Check for socklen_t .  If undefined, define it as int
-echo "$as_me:$LINENO: checking whether socklen_t is defined" >&5
-echo $ECHO_N "checking whether socklen_t is defined... $ECHO_C" >&6
+# (note the conditional inclusion of sys/socket.h)
+echo "$as_me:$LINENO: checking whether socklen_t is defined (in sys/socket.h if present)" >&5
+echo $ECHO_N "checking whether socklen_t is defined (in sys/socket.h if present)... $ECHO_C" >&6
 if test "${pac_cv_have_socklen_t+set}" = set; then
   echo $ECHO_N "(cached) $ECHO_C" >&6
 else
@@ -3560,12 +3623,15 @@ cat >>conftest.$ac_ext <<_ACEOF
 /* end confdefs.h.  */
 
 #include <sys/types.h>
+#ifdef HAVE_SYS_SOCKET_H
 #include <sys/socket.h>
-typedef double socklen_t;
+#endif
+
+typedef struct { double a; int b; } socklen_t;
 int
 main ()
 {
-socklen_t a;
+socklen_t a;a.a=1.0;
   ;
   return 0;
 }
@@ -3697,6 +3763,18 @@ echo "$as_me: WARNING: libtool selected for shared library support but LIBTOOL i
 
 export ETAGS
 export ETAGSADD
+
+
+
+if test -n "$CONF_BASE_CACHEFILE" -a -s "$CONF_BASE_CACHEFILE" ; then
+    set | grep ac_cv > $CONF_BASE_CACHEFILE.new
+    if cmp -s $CONF_BASE_CACHEFILE.new $CONF_BASE_CACHEFILE ; then
+	:
+    else
+	echo "Replacing $CONF_BASE_CACHEFILE"
+	mv $CONF_BASE_CACHEFILE.new $CONF_BASE_CACHEFILE
+    fi
+fi
 
 
                     ac_config_files="$ac_config_files Makefile localdefs"

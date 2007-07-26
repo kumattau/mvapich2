@@ -11,27 +11,25 @@ srcdir          = @srcdir@
 abs_srcdir      = @abs_srcdir@
 MAKE            = @MAKE@
 MPILIBNAME      = @MPILIBNAME@
-PMPILIBNAME     = @PMPILIBNAME@
-
 
 VPATH = .:@srcdir@
 
 .SUFFIXES:
 # Some make programs complain if no suffixes are set
 .SUFFIXES: .c .o
-apply:
+apply: 
 	$(ACTION) $(ACTION_INPUT)
 	(cd ../../../common/locks && $(MAKE) apply )
 	(cd src && $(MAKE) apply )
-clean:
+clean: 
 	-@rm -f *.o ${srcdir}/*.o 
 	-@rm -f *.lo ${srcdir}/*.lo
 	(cd ../../../common/locks && $(MAKE) clean )
 	(cd src && $(MAKE) clean )
-distclean: clean distclean-local distclean-xxx remove-makefile
+distclean:  clean distclean-local distclean-xxx remove-makefile
 distclean-xxx:
-	(cd ../../../common/locks && $(MAKE) distclean )
-	(cd src && $(MAKE) distclean )
+	if [ -s ../../../common/locks/Makefile ] ; then (cd ../../../common/locks && $(MAKE) distclean ) ; fi
+	if [ -s src/Makefile ] ; then (cd src && $(MAKE) distclean ) ; fi
 	-@rm -f Makefile src/Makefile localdefs config.status config.log config.cache *conf.cache config.system
 	-@rm -rf autom4te*.cache
 	-@rm -f include/mpidi_ch3i_shm_conf.h
@@ -51,7 +49,7 @@ all-redirect:
 HEADERFILES     = $(HEADERS)
 SOURCEFILES     = $(SOURCES)
 tags: TAGS
-TAGS:
+TAGS: Makefile
 	(cd src && $(MAKE) TAGS )
 # --------------------------------------------------------------------------
 

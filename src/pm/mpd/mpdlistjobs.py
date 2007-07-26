@@ -13,7 +13,7 @@ lists jobs being run by an mpd ring, all by default, or filtered'
 from time import ctime
 __author__ = "Ralph Butler and Rusty Lusk"
 __date__ = ctime()
-__version__ = "$Revision: 1.1.1.1 $"
+__version__ = "$Revision: 1.21 $"
 __credits__ = ""
 
 

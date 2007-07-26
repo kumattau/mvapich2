@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: states.c,v 1.1.1.1 2006/01/18 21:09:48 huangwei Exp $
+/*  $Id: states.c,v 1.4 2004/11/29 17:04:49 toonen Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.

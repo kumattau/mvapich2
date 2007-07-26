@@ -39,6 +39,11 @@ int main( int argc, char *argv[] )
     error = MPI_Init(&argc, &argv);
     check_error(error, "MPI_Init");
 
+    /* To improve reporting of problems about operations, we
+       change the error handler to errors return */
+    MPI_Comm_set_errhandler( MPI_COMM_WORLD, MPI_ERRORS_RETURN );
+    MPI_Comm_set_errhandler( MPI_COMM_SELF, MPI_ERRORS_RETURN );
+
     if (verbose) { printf("size.\n");fflush(stdout); }
     error = MPI_Comm_size(MPI_COMM_WORLD, &size);
     check_error(error, "MPI_Comm_size");
@@ -87,6 +92,8 @@ int main( int argc, char *argv[] )
 	if (verbose) { printf("connect.\n");fflush(stdout); }
 	error = MPI_Comm_connect(port, MPI_INFO_NULL, 0, MPI_COMM_SELF, &comm);
 	check_error(error, "MPI_Comm_connect");
+
+	MPI_Comm_set_errhandler( comm, MPI_ERRORS_RETURN );
 
 	if (verbose) { printf("disconnect.\n");fflush(stdout); }
 	error = MPI_Comm_disconnect(&comm);

@@ -14,8 +14,6 @@
 # or different from the source directory
 #
 
-MAKE="@MAKE@"
-
 # Source locations
 top_srcdir=@top_srcdir_abs@
 
@@ -23,7 +21,7 @@ top_srcdir=@top_srcdir_abs@
 libbuild_dir=@libbuild_dir@
 binbuild_dir=@binbuild_dir@
 sbinbuild_dir=@sbinbuild_dir@
-logfilesbuild_dir=@logfilesbuild_dir@
+sharebuild_dir=@sharebuild_dir@
 
 # Installation directories: Default paths (set at configure time)
 prefix=@prefix@
@@ -33,21 +31,25 @@ bindir=@bindir@
 sbindir=@sbindir@
 datadir=@datadir@
 sysconfdir=@sysconfdir@
-logfilesdir=$prefix/logfiles
 etcdir=$sysconfdir
 sharedir=$datadir
 gui_libdir="`echo $prefix | sed -e 's%\(.*\)/[^/]*/[^/]*$%\1/lib%'`"
 
 # Determine this package's name
-tmpname="`echo $top_srcdir | sed -e 's%\(.*\)/\([^/]*\)%\2%'`"
-pkgname="`echo $tmpname | sed -e 'y%abcdefghijklmnopqrstuvwxyz/%ABCDEFGHIJKLMNOPQRSTUVWXYZ_%'`"
-if [ "x$pkgname" = "x" ] ; then
-    pkgname="TRACE-IMPL"
+pkgname="`echo $top_srcdir | sed -e 's%\(.*\)/\([^/]*\)%\2%'`"
+titlename="`echo $pkgname | sed -e 'y%abcdefghijklmnopqrstuvwxyz/%ABCDEFGHIJKLMNOPQRSTUVWXYZ_%'`"
+if [ "x$titlename" = "x" ] ; then
+    titlename="TRACE-IMPL"
 fi
+
+MAKE="@MAKE@"
+INSTALL="@INSTALL@"
+RM="@RM@"
 
 # File access mode
 MODE=0644
 XMODE=0755
+DMODE=0755
 replace=1
 # set failmode to soft to let failures accumulate
 failmode="hard"
@@ -97,6 +99,9 @@ for arg in "$@" ; do
         -xmode=*)
             XMODE=`echo $arg | sed -e 's/-xmode=//g'`
             ;;
+        -dmode=*)
+            DMODE=`echo $arg | sed -e 's/-dmode=//g'`
+            ;;
         -echo)                    set -x ;;
         -noreplace|-no_replace)   replace=0 ;;
         -replace)                 replace=1 ;;
@@ -107,11 +112,12 @@ for arg in "$@" ; do
         -softchmod)               chmodfailmode="soft" ;;
         -help|-u|-usage|-h)
 cat <<EOF
-Install $pkgname into $prefix.
+Install $titlename into $prefix.
 -prefix=path     - Destination directory.
 -uninstall=file  - File to append uninstall information to
 -mode=nnnn       - mode for regular files.  Default is $MODE .
--xmode=nnnn      - mode for execuables and directories.  Default is $XMODE .
+-xmode=nnnn      - mode for execuables.  Default is $XMODE .
+-dmode=nnnn      - mode for directories.  Default is $DMODE .
 -noreplace       - Do not replace files found in the installation directory
 -soft		 - Do not abort on failure
 -softchmod       - Do not abort on failure of chmod
@@ -137,14 +143,10 @@ fi
 # Start of Routines
 #
 ##############################################################################
-RM="@RM@"
 
-# We could use install, but install is too different and too hard to 
-# test.  So here are the routines to copy file, make directories, and 
-# replace #...# and @...@ in files
-CP=cp
+INSTALLER="$INSTALL"
 #
-CopyFile() {
+InstallFile() {
 if [ -z "$3" ] ; then
     mode=$MODE
 else
@@ -160,73 +162,61 @@ fi
 if [ $replace = 0 -a -f $dest ] ; then
     if [ $verbose = 1 ] ; then echo "$dest exists; not changed" ; fi
 elif [ -d $1 ] ; then
-    echo ">>> $1 is a directory; not copied <<<"
+    echo ">>> $1 is a directory; not installed <<<"
     errs=`expr $errs + 1`
     if [ $failmode = "hard" ] ; then exit 1 ; fi
 elif [ ! -f $1 ] ; then
-    echo "**File $1 does not exist (or is not a regular file)!"
+    echo "*** File $1 does not exist (or is not a regular file)! ***"
     errs=`expr $errs + 1`
     if [ $failmode = "hard" ] ; then exit 1 ; fi
 elif [ "$1" = "$dest" ] ; then
-    echo "**File $1 is being copied to itself!"
+    echo "*** File $1 is being installed to itself! ***"
     errs=`expr $errs + 1`
     if [ $failmode = "hard" ] ; then exit 1 ; fi
 else
-    if [ $verbose = 1 ] ; then echo "Copying $1 to $dest" ; fi
-    # We don't delete the file in the event that we are copying the
+    if [ $verbose = 1 ] ; then echo "Installing $1 to $dest" ; fi
+    # We don't delete the file in the event that we are installing the
     # file over itself (we SHOULD check for that separately, by checking 
     # that directories are distinct)
     if [ -f $dest ] ; then
         echo "Replacing existing file $dest..."
         $Show $RM $dest
     fi
-    $Show $CP $1 $dest
+    if [ "X$mode" != "X" ] ; then
+        $Show $INSTALLER -m $mode $1 $dest
+    else
+        $Show $INSTALLER $1 $dest
+    fi
     rc=$?
     if [ $rc != 0 ] ; then
-        echo "**Error copying file $1 to $dest **"
+        echo "*** Error installing file $1 to $dest with mode $mode. ***"
         errs=`expr $errs + 1`
         if [ $failmode = "hard" ] ; then exit $rc ; fi
     else
-        # store the destination filename copied
+        # store the destination installed filename
         filelist="$filelist $destfile"
-    fi
-    $Show chmod $mode $dest
-    rc=$?
-    if [ $rc != 0 ] ; then
-        echo "**Error setting mode on file $dest**"
-        errs=`expr $errs + 1`
-        if [ $chmodefailmode = "hard" ] ; then exit $rc ; fi
     fi
 fi
 }
 
 
-#
-# A version of copy file that preserves file dates
-CPRP=cp
-CopyFileP() {
-    CP="$CPRP -p"
-    CopyFile $1 $2 $3
-    CP=cp
-}
-
-
 
 #
-# A version of recursive directory copy that preserves file dates
-# but does NOT copy CVS, old, tex directory. 
+# Recursive directory install that installs or replaces files
+# (file replacement of replace=1) but excluding directories,
+# CVS/, old/ and tex/.
 # $1 is the src directory, $2 is dest directory, $3 is $MODE or $XMODE
-CopyDirRecurP() {
+InstallDirRecur() {
 if [ -n "$1" -a -n "$2" ] ; then
     if [ -d $1 ] ; then
         MkDir $2
         # use $4 as a local variable
         # & set it as the original PWD before "cd $1"
-        set $1 $2 ${3:-$MODE} `pwd`
+        set $1 $2 ${3:-"$MODE"} `pwd`
         cd $1
         for file in * ; do
             if [ -f $file ] ; then
-                CopyFileP $file $2/$file $3
+                InstallFile $file $2/$file $3
             fi
         done
         for dir in * ; do
@@ -234,7 +224,7 @@ if [ -n "$1" -a -n "$2" ] ; then
                  -a "$dir" != "CVS" -a "$dir" != "old" \
                  -a "$dir" != "tex" \
                ] ; then
-                CopyDirRecurP $dir $2/$dir $3
+                InstallDirRecur $dir $2/$dir $3
             fi
         done
         # cd back where it comes from
@@ -261,7 +251,7 @@ if [ ! -d $dest ] ; then
             $Show "mkdir $path_to_date"
             rc=$?
             if [ $rc != 0 ] ; then
-                echo "**Error making directory $dest**"
+                echo "*** Error making directory $dest. ***"
                 errs=`expr $errs + 1`
                 if [ $failmode = "hard" ] ; then exit $rc ; fi
                 echo "Failed to create directory $path_to_date"
@@ -270,12 +260,14 @@ if [ ! -d $dest ] ; then
                 # Note that we store in inverse order
                 dirlist="$1 $dirlist"
             fi
-            $Show chmod $XMODE $path_to_date
-            rc=$?
-            if [ $rc != 0 ] ; then
-                echo "**Error setting mode to $XMODE on directory $path_to_date**"
-                errs=`expr $errs + 1`
-                if [ $chmodfailmode = "hard" ] ; then exit $rc ; fi
+            if [ "X$DMODE" != "X" ] ; then
+                $Show chmod $DMODE $path_to_date
+                rc=$?
+                if [ $rc != 0 ] ; then
+                    echo "*** Error setting mode to $DMODE on directory $path_to_date. ***"
+                    errs=`expr $errs + 1`
+                    if [ $chmodfailmode = "hard" ] ; then exit $rc ; fi
+                fi
             fi
         fi
     done
@@ -294,7 +286,6 @@ FixupFileForInstall() {
     # Change the FIRST libpath to the new form.  This allows 
     # the LIB_PATH to contain multiple names, as long as the MPICH libpath
     # is first
-dest=$DESTDIR$2
 if [ -d $DESTDIR$2 ] ; then
     dest=$DESTDIR$2/`basename $1`
     destfile=$2/`basename $1`
@@ -305,25 +296,25 @@ fi
 if [ $replace = 0 -a -f $dest ] ; then
     if [ $verbose = 1 ] ; then echo "$dest exists; not changed" ; fi
 elif [ -d $1 ] ; then
-    echo "$1 is a directory; not copied"
+    echo "$1 is a directory; not fixed"
 else
     if [ -f $dest ] ; then $Show $RM $dest ; fi
     if [ $just_testing = 0 ] ; then
         sed \
-        -e "s%^TRACE_LIBDIR=.*%TRACE_LIBDIR=$libdir%g" \
-        -e "s%^GUI_LIBDIR=.*%GUI_LIBDIR=$gui_libdir%g" \
+        -e "s%^TRACE_LIBDIR=.*%TRACE_LIBDIR=$libdir/$pkgname%g" \
+        -e "s%^GUI_LIBDIR=.*%GUI_LIBDIR=$libdir%g" \
         $1 > $dest
         rc=$?
         if [ $rc != 0 ] ; then
-            echo "**Error fixing up file $dest**"
+            echo "*** Error fixing up file $dest. ***"
             errs=`expr $errs + 1`
             if [ $failmode = "hard" ] ; then exit $rc ; fi
         else
-            # store the destination filename copied
+            # store the destination installed filename
             filelist="$filelist $destfile"
         fi
     else
-        if [ $verbose = 1 ] ; then echo "Fixup $1.in and copy to $dest" ; fi
+        if [ $verbose = 1 ] ; then echo "Fixup $1.in and install to $dest" ; fi
     fi
 fi
 if [ -z "$3" ] ; then
@@ -331,12 +322,14 @@ if [ -z "$3" ] ; then
 else
     mode=$3
 fi
-$Show chmod $mode $dest
-rc=$?
-if [ $rc != 0 ] ; then
-    echo "**Error setting mode on file $dest**"
-    errs=`expr $errs + 1`
-    if [ $failmode = "hard" ] ; then exit $rc ; fi
+if [ "X$mode" != "X" ] ; then
+    $Show chmod $mode $dest
+    rc=$?
+    if [ $rc != 0 ] ; then
+        echo "*** Error setting mode on file $dest. ***"
+        errs=`expr $errs + 1`
+        if [ $failmode = "hard" ] ; then exit $rc ; fi
+    fi
 fi
 }
 
@@ -367,7 +360,7 @@ if [ "$prefix_override" = 1 ] ; then
     libdir=$prefix/lib
     bindir=$prefix/bin
     sbindir=$prefix/sbin
-    logfilesdir=$prefix/logfiles
+    sharedir=$prefix/share
     gui_libdir="`echo $prefix | sed -e 's%\(.*\)/[^/]*/[^/]*$%\1/lib%'`"
     if [ $appendUninstall = 0 ] ; then
         UNINSTALLFILE=$DESTDIR${sbindir}/${UNINSTALL_base}
@@ -380,41 +373,51 @@ fi
 uninstall_dirname=`dirname $UNINSTALLFILE`
 if [ "$uninstall_dirname" = "$DESTDIR$sbindir" ] ; then
     if [ ! -d $DESTDIR$sbindir ] ; then
-        echo "Creating ${pkgname}'s sbin"
+        echo "Creating ${titlename}'s sbin"
         MkDir $sbindir
     fi
 fi
 
-# Copy libraries
-for type in lib logfiles ; do
+if [ ! -d $DESTDIR$sharedir ] ; then
+    echo "Creating ${titlename}'s share"
+    MkDir $sharedir
+fi
+
+for type in share ; do
     fromdir_name=${type}build_dir
     todir_name=${type}dir
     eval fromdir_value=\$"$fromdir_name"
     eval todir_value=\$"$todir_name"
     if [ -n "$fromdir_value" ] ; then
         if [ -d $fromdir_value ] ; then
-            echo "Copying ${pkgname}'s $type"
+            echo "Installing ${titlename}'s $type"
             if [ $verbose = 1 ] ; then
                 echo "$fromdir_value -> $DESTDIR$todir_value"
             fi
-            CopyDirRecurP $fromdir_value $todir_value $MODE
+            InstallDirRecur $fromdir_value $todir_value $MODE
         fi
     fi
 done
 
-cd $libbuild_dir/../src && $MAKE INSTALL_LIBSO LIBDIR=$libdir
+# Install libraries
+if [ ! -d $DESTDIR$libdir/$pkgname ] ; then
+    echo "Creating ${titlename}'s lib"
+    MkDir $libdir/$pkgname
+fi
+
+cd $libbuild_dir/../src && $MAKE INSTALL_LIBSO LIBDIR=$libdir/$pkgname
 
 EXEFILES="@EXEFILES@"
 
-# Copy utility programs
+# Install utility programs
 if [ -n "$binbuild_dir" ] ; then
     if [ -d $binbuild_dir ] ; then
-        echo "Copying ${pkgname}'s bin"
+        echo "Installing ${titlename}'s bin"
         if [ $verbose = 1 ] ; then
             echo "$binbuild_dir -> $DESTDIR$bindir"
         fi
-#       Copying all
-        CopyDirRecurP $binbuild_dir $bindir $XMODE
+#       Installing all
+        InstallDirRecur $binbuild_dir $bindir $XMODE
 #       Fixing up the scripts
         for exefile in $EXEFILES ; do
             if [ -x $binbuild_dir/$exefile ] ; then
@@ -455,7 +458,7 @@ for dir in $dirlist ; do
 done
 
 #
-echo "Installed ${pkgname} in $prefix"
+echo "Installed ${titlename} in $prefix"
 echo "$UNINSTALLFILE may be used to remove the installation"
 #
 if [ $errs -gt 0 ] ; then

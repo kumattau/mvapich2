@@ -60,6 +60,7 @@ int main( int argc, char *argv[] )
 
         err = bind(listenfd, (struct sockaddr *) &servaddr, sizeof(servaddr));
         if (err < 0) {
+	    errs++;
             printf("bind failed\n");
             MPI_Abort(MPI_COMM_WORLD,1);
         }
@@ -67,6 +68,7 @@ int main( int argc, char *argv[] )
         len = sizeof(servaddr);
         err = getsockname(listenfd, (struct sockaddr *) &servaddr, &len);
         if (err < 0) {
+	    errs++;
             printf("getsockname failed\n");
             MPI_Abort(MPI_COMM_WORLD,1);
         }
@@ -74,14 +76,15 @@ int main( int argc, char *argv[] )
         port = ntohs(servaddr.sin_port);
         MPI_Get_processor_name(hostname, &namelen);
 
-        MPI_Send(hostname, namelen+1, MPI_CHAR, 0, 0, MPI_COMM_WORLD);
-        MPI_Send(&port, 1, MPI_INT, 0, 1, MPI_COMM_WORLD);
-
         err = listen(listenfd, 5);
         if (err < 0) {
+	    errs++;
             printf("listen failed\n");
             MPI_Abort(MPI_COMM_WORLD, 1);
         }
+
+        MPI_Send(hostname, namelen+1, MPI_CHAR, 0, 0, MPI_COMM_WORLD);
+        MPI_Send(&port, 1, MPI_INT, 0, 1, MPI_COMM_WORLD);
 
         clilen = sizeof(cliaddr);
 
@@ -118,6 +121,7 @@ int main( int argc, char *argv[] )
         /* connect to server */
         err = connect(connfd, (struct sockaddr *) &servaddr, sizeof(servaddr));
         if (err < 0) {
+	    errs++;
             printf("client cannot connect\n");
             MPI_Abort(MPI_COMM_WORLD, 1);
         }
@@ -125,8 +129,17 @@ int main( int argc, char *argv[] )
 
     MPI_Barrier(MPI_COMM_WORLD);
 
+    /* To improve reporting of problems about operations, we
+       change the error handler to errors return */
+    MPI_Comm_set_errhandler( MPI_COMM_WORLD, MPI_ERRORS_RETURN );
+
     err = MPI_Comm_join(connfd, &intercomm);
-    if (err) printf("Error in MPI_Comm_join\n");
+    if (err) { errs++; printf("Error in MPI_Comm_join %d\n", err); }
+
+    /* To improve reporting of problems about operations, we
+       change the error handler to errors return */
+    MPI_Comm_set_errhandler( intercomm, MPI_ERRORS_RETURN );
+
 
     for (i=0; i<COUNT; i++) {
         recvbuf[i] = -1;
@@ -135,8 +148,10 @@ int main( int argc, char *argv[] )
 
     err = MPI_Sendrecv(sendbuf, COUNT, MPI_INT, 0, 0, recvbuf, COUNT, MPI_INT, 
                        0, 0, intercomm, MPI_STATUS_IGNORE);
-    if (err != MPI_SUCCESS)
+    if (err != MPI_SUCCESS) {
         errs++;
+	printf( "Error in MPI_Sendrecv on new communicator\n" );
+    }
 
     for (i=0; i<COUNT; i++) {
         if (recvbuf[i] != ((rank+1)%2) * COUNT + i)
@@ -146,8 +161,10 @@ int main( int argc, char *argv[] )
     MPI_Barrier(MPI_COMM_WORLD);
 
     err = MPI_Comm_disconnect(&intercomm);
-    if (err != MPI_SUCCESS)
+    if (err != MPI_SUCCESS) {
         errs++;
+	printf( "Error in MPI_Comm_disconnect\n" );
+    }
 
     MTest_Finalize(errs);
     MPI_Finalize();

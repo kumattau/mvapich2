@@ -1,5 +1,5 @@
 /*
- * OSU MPI Multi-threaded Latency test v1.0.1
+ * OSU MPI Multi-threaded Latency test v1.0.2
  */
 
 /*
@@ -104,7 +104,7 @@ int main (int argc, char *argv[])
     finished_size = 1;
     if (provided != MPI_THREAD_MULTIPLE) {
         if(myid == 0) {
-            printf("MPI_Init_thread must return MPI_THREAD_MULTIPLE! Make sure multithrading support was built into MPI\n");
+            printf("MPI_Init_thread must return MPI_THREAD_MULTIPLE!\n");
             fflush(stdout);
         }
         MPI_Finalize();

@@ -96,7 +96,11 @@ extern FORT_DLL_SPEC void FORT_CALL mpi_get_processor_name_( char * FORT_MIXED_L
 #define mpi_get_processor_name_ pmpi_get_processor_name_
 #endif
 /* This defines the routine that we call, which must be the PMPI version
-   since we're renameing the Fortran entry as the pmpi version */
+   since we're renaming the Fortran entry as the pmpi version.  The MPI name
+   must be undefined first to prevent any conflicts with previous renamings,
+   such as those put in place by the globus device when it is building on
+   top of a vendor MPI. */
+#undef MPI_Get_processor_name
 #define MPI_Get_processor_name PMPI_Get_processor_name 
 
 #else
@@ -116,10 +120,13 @@ extern FORT_DLL_SPEC void FORT_CALL mpi_get_processor_name_( char * FORT_MIXED_L
 /* Prototypes for the Fortran interfaces */
 #include "fproto.h"
 FORT_DLL_SPEC void FORT_CALL mpi_get_processor_name_ ( char *v1 FORT_MIXED_LEN(d1), MPI_Fint *v2, MPI_Fint *ierr FORT_END_LEN(d1) ){
-    *ierr = MPI_Get_processor_name( v1, v2 );
+    char *p1;
+    p1 = (char *)MPIU_Malloc( d1 + 1 );
+    *ierr = MPI_Get_processor_name( p1, v2 );
 
-    {char *p = v1;
-        while (*p) p++;
+    {char *p = v1, *pc=p1;
+        while (*pc) {*p++ = *pc++;}
         while ((p-v1) < d1) { *p++ = ' '; }
     }
+    MPIU_Free( p1 );
 }

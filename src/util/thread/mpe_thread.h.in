@@ -2,6 +2,9 @@
 /*
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
+ *
+ *  Only edit the mpe_thread.h.in version of this file:
+ *  @configure_input@
  */
 
 #if !defined(MPE_THREAD_H_INCLUDED)

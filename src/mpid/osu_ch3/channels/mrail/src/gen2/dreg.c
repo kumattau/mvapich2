@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2002-2006, The Ohio State University. All rights
+/* Copyright (c) 2002-2007, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -552,6 +552,9 @@ void vma_db_init (void)
     vma_list.list_count = 0;
 }
 
+/*
+ * TODO add error handling
+ */
 void dreg_init()
 {
     int i;
@@ -1066,9 +1069,7 @@ void dreg_deregister_all()
     dreg_entry *d;
 
 #ifndef DISABLE_PTMALLOC
-    lock_dreg();
     flush_dereg_mrs();
-    unlock_dreg();
 #endif    
     for (i=0;i< (int) rdma_ndreg_entries; i++) {
         d = &(dreg_all_list[i]);
@@ -1078,19 +1079,6 @@ void dreg_deregister_all()
                     ibv_error_abort(IBV_RETURN_ERR, "deregister fails\n");
                 }
                 d->memhandle[j] = NULL;
-            }
-            if (d->refcount == 0) {
-                /*Invalidate the cache entry*/
-                d->is_valid = 0;
-                dreg_remove (d);
-                DREG_ADD_TO_FREE_LIST(d);
-            }
-        }
-        else
-        {
-            assert(d->refcount == 0);
-            for (j = 0; j < rdma_num_hcas; j++) {
-                assert(d->memhandle[j] == NULL);
             }
         }
     }
@@ -1111,8 +1099,8 @@ void dreg_reregister_all()
             for(j = 0; j < rdma_num_hcas; j++) {
                 d->memhandle[j] = register_memory(pagebase_low_p, register_nbytes, j);
                 if (!d->memhandle[j]) {
-                    printf("%d: reregister dentry %p, addr %p pagebase_low_p, %lu register_nbytes, to hca %d\n",
-                            MPIDI_Process.my_pg_rank, d, pagebase_low_p, register_nbytes, j);
+                    printf("%d: reregister dentry %p, addr %p pagebase_low_p, %lu register_nbytes\n",
+                            MPIDI_Process.my_pg_rank, d, pagebase_low_p, register_nbytes);
                     ibv_error_abort(IBV_RETURN_ERR, "reregister fails\n");
                 }
             }

@@ -3,9 +3,9 @@ coll
 datatype
 pt2pt
 info
-spawn
+@spawndir@
 @iodir@
-rma
+@rmadir@
 init
 comm
 ext

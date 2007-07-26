@@ -96,14 +96,14 @@ dnl sbinbuild_dir is for all system admin tools
 dnl etcbuild_dir is for all system admin configuration settings
 dnl
 rootbuild_dir=`pwd`
-for dir in include lib bin etc ; do
+for dir in include lib bin sbin etc ; do
     dirname=${dir}build_dir
     mpe_dirname=mpe_${dirname}
     eval dirvalue=\$"$dirname"
     eval $dirname=\$\{${mpe_dirname}\}
 done
 
-for dir in include lib bin etc ; do
+for dir in include lib bin sbin etc ; do
     dirname=${dir}build_dir
     eval dirvalue=\$"$dirname"
     if test -n "$dirvalue" ; then
@@ -121,6 +121,7 @@ done
 AC_SUBST(includebuild_dir)
 AC_SUBST(libbuild_dir)
 AC_SUBST(binbuild_dir)
+AC_SUBST(sbinbuild_dir)
 AC_SUBST(etcbuild_dir)
 
 AC_PROG_CC

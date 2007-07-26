@@ -47,9 +47,10 @@ void create_2level_comm (MPI_Comm comm, int size, int my_rank){
 
     MPID_Comm* comm_ptr;
     MPID_Comm* comm_world_ptr;
+    MPIU_THREADPRIV_DECL;
+    MPIU_THREADPRIV_GET;
     MPID_Comm_get_ptr( comm, comm_ptr );
     MPID_Comm_get_ptr( MPI_COMM_WORLD, comm_world_ptr );
-
 
     MPIR_Nest_incr();
 
@@ -138,12 +139,12 @@ void create_2level_comm (MPI_Comm comm, int size, int my_rank){
     MPI_Comm_rank(comm_ptr->shmem_comm, &my_local_id);
 
     if (my_local_id == 0){
-        pthread_mutex_lock(&shmem_coll_lock);
+        pthread_mutex_lock(&shmem_coll->shmem_coll_lock);
         shmem_coll->shmem_comm_count++;
-        pthread_mutex_unlock(&shmem_coll_lock);
+        shmem_comm_count = shmem_coll->shmem_comm_count;
+        pthread_mutex_unlock(&shmem_coll->shmem_coll_lock);
     }
 
-    shmem_comm_count = shmem_coll->shmem_comm_count;
     MPI_Bcast (&shmem_comm_count, 1, MPI_INT, 0, comm_ptr->shmem_comm);
 
     if (shmem_comm_count <= shmem_coll_blocks){
@@ -179,6 +180,8 @@ void create_2level_comm (MPI_Comm comm, int size, int my_rank){
 int check_comm_registry(MPI_Comm comm)
 {
     MPID_Comm* comm_ptr;
+    MPIU_THREADPRIV_DECL;
+    MPIU_THREADPRIV_GET;
     MPID_Comm_get_ptr( comm, comm_ptr );
     int context_id = 0, i =0, my_rank, size;
     context_id = comm_ptr->context_id;

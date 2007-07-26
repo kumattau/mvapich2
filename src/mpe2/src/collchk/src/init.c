@@ -4,6 +4,42 @@
 */
 #include "collchk.h" 
 
+#if defined( HAVE_MPI_IO )
+CollChk_fh_t *CollChk_fh_list = NULL;
+
+int CollChk_fh_cnt = 0;
+#endif
+
+#if defined( HAVE_MPI_RMA )
+CollChk_win_t *CollChk_win_list = NULL;
+
+int CollChk_win_cnt = 0;
+#endif
+
+/* begin string */
+char CollChk_begin_str[128] = {0};
+
+/* constants */
+int     COLLCHK_CALLED_BEGIN = 0;
+int     COLLCHK_ERRORS = 0;
+int     COLLCHK_ERR_NOT_INIT = 0;
+int     COLLCHK_ERR_ROOT = 0 ;
+int     COLLCHK_ERR_CALL = 0;
+int     COLLCHK_ERR_OP = 0;
+int     COLLCHK_ERR_INPLACE = 0;
+int     COLLCHK_ERR_DTYPE = 0;
+int     COLLCHK_ERR_HIGH_LOW = 0;
+int     COLLCHK_ERR_LL = 0;
+int     COLLCHK_ERR_TAG = 0;
+int     COLLCHK_ERR_DIMS = 0;
+int     COLLCHK_ERR_GRAPH = 0;
+int     COLLCHK_ERR_AMODE = 0;
+int     COLLCHK_ERR_WHENCE = 0;
+int     COLLCHK_ERR_DATAREP = 0;
+int     COLLCHK_ERR_PREVIOUS_BEGIN = 0;
+int     COLLCHK_ERR_FILE_NOT_OPEN = 0;
+
+
 int MPI_Init(int * c, char *** v)
 {
     int ret;

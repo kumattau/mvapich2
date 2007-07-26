@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2002-2006, The Ohio State University. All rights
+/* Copyright (c) 2002-2007, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -34,6 +34,7 @@
 #define CREDIT_VBUF_FLAG (111)
 #define NORMAL_VBUF_FLAG (222)
 #define RPUT_VBUF_FLAG (333)
+#define RGET_VBUF_FLAG (444)
 #define VBUF_FLAG_TYPE uint32_t
 
 #define FREE_FLAG (0)
@@ -105,6 +106,12 @@ typedef struct vbuf {
     unsigned char *buffer;
 
     int content_size;
+    int content_consumed;
+
+    /* used to keep track of eager sends */
+    uint8_t eager;
+    uint8_t coalesce;
+
     /* NULL shandle means not send or not complete. Non-null
      * means pointer to send handle that is now complete. Used
      * by viadev_process_send
@@ -117,7 +124,7 @@ typedef struct vbuf {
 #define FAST_RDMA_ALT_TAG 0x8000
 #define FAST_RDMA_SIZE_MASK 0x7fff
 
-void init_vbuf_lock();
+int init_vbuf_lock();
 
 /*
  * Vbufs are allocated in blocks and threaded on a single free list.
@@ -175,6 +182,11 @@ void vbuf_init_send(vbuf * v, unsigned long len, int rail);
 void vbuf_init_recv(vbuf * v, unsigned long len, int rail);
 
 void vbuf_init_rput(vbuf * v, void *local_address,
+                    uint32_t lkey, void *remote_address,
+                    uint32_t rkey, int nbytes,
+		    int rail);
+
+void vbuf_init_rget(vbuf * v, void *local_address,
                     uint32_t lkey, void *remote_address,
                     uint32_t rkey, int nbytes,
 		    int rail);

@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: rlog.c,v 1.1.1.1 2006/01/18 21:09:48 huangwei Exp $
+/*  $Id: rlog.c,v 1.16 2006/01/21 02:34:02 ashton Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -12,12 +12,13 @@
 #include <math.h>
 
 #include "mpichconf.h" /* HAVE_SNPRINTF */
-#include "mpimem.h" /* MPIU_Snprintf */
+#include "mpimem.h"    /* MPIU_Snprintf */
+#include "mpibase.h"   /* MPIU_Error_printf */
 
 #include "mpi.h"
 /*#define RLOG_timestamp PMPI_Wtime*/
 #include "mpichtimer.h"
-double RLOG_timestamp()
+static double RLOG_timestamp(void)
 {
     double d;
     MPID_Time_t t;
@@ -363,15 +364,19 @@ static unsigned long random_color(unsigned char *r, unsigned char *g, unsigned c
 {
     double d1, d2;
 
-    d1 = (double)rand() / (double)RAND_MAX;
-    d2 = (double)rand() / (double)RAND_MAX;
+    /* To avoid warning messages from about "cast does not match function type"
+       we allow implicit casts */
+    d1 = rand();
+    d1 = d1 / (double) RAND_MAX;
+    d2 = rand();
+    d2 = d2 / (double)RAND_MAX;
 
     return getColorRGB(d1, d2 + 0.5, r, g, b);
 }
 
 #define MAX_RANDOM_COLOR_STR 40
 static char random_color_str[MAX_RANDOM_COLOR_STR];
-static char *get_random_color_str()
+static char *get_random_color_str(void)
 {
     unsigned char r,g,b;
     random_color(&r, &g, &b);

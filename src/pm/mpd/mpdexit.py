@@ -14,7 +14,7 @@ entered the ring through the exiting one.
 from time import ctime
 __author__ = "Ralph Butler and Rusty Lusk"
 __date__ = ctime()
-__version__ = "$Revision: 1.1.1.1 $"
+__version__ = "$Revision: 1.15 $"
 __credits__ = ""
 
 

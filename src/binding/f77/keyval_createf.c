@@ -96,7 +96,11 @@ extern FORT_DLL_SPEC void FORT_CALL mpi_keyval_create_( MPI_Copy_function, MPI_D
 #define mpi_keyval_create_ pmpi_keyval_create_
 #endif
 /* This defines the routine that we call, which must be the PMPI version
-   since we're renameing the Fortran entry as the pmpi version */
+   since we're renaming the Fortran entry as the pmpi version.  The MPI name
+   must be undefined first to prevent any conflicts with previous renamings,
+   such as those put in place by the globus device when it is building on
+   top of a vendor MPI. */
+#undef MPI_Keyval_create
 #define MPI_Keyval_create PMPI_Keyval_create 
 
 #else
@@ -117,6 +121,7 @@ extern FORT_DLL_SPEC void FORT_CALL mpi_keyval_create_( MPI_Copy_function, MPI_D
 #include "fproto.h"
  
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Comm_create_keyval
 #define MPI_Comm_create_keyval PMPI_Comm_create_keyval
 #endif
 FORT_DLL_SPEC void FORT_CALL mpi_keyval_create_ ( MPI_Copy_function v1, MPI_Delete_function v2, MPI_Fint *v3, void*v4, MPI_Fint *ierr ){

@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: uni_pmiutil.c,v 1.1.1.1 2006/01/18 21:09:48 huangwei Exp $
+/*  $Id: uni_pmiutil.c,v 1.2 2003/02/17 14:23:02 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.

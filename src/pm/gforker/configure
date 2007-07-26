@@ -807,6 +807,7 @@ Optional Features:
 --enable-cache  - Turn on configure caching
 --enable-echo  - Turn on strong echoing. The default is enable=no.
 --enable-strict - Turn on strict debugging with gcc
+--enable-allowport - Turn on use of a port for communicating with the processes started by mpiexec
 --enable-g=option - Control the level of debugging support in the PMI
 implementation.  option may be a list of common separated names including
     none  - No debugging
@@ -1364,6 +1365,10 @@ ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
           ac_config_headers="$ac_config_headers forkerconf.h"
 
+
+
+
+
 if test -f $CONFIG_AUX_DIR/install-sh ; then ac_aux_dir=$CONFIG_AUX_DIR
 else
 ac_aux_dir=
@@ -1415,6 +1420,13 @@ if test "${enable_strict+set}" = set; then
 else
   enable_strict=no
 fi;
+# Check whether --enable-allowport or --disable-allowport was given.
+if test "${enable_allowport+set}" = set; then
+  enableval="$enable_allowport"
+
+else
+  enable_allowport=yes
+fi;
 # Check whether --enable-g or --disable-g was given.
 if test "${enable_g+set}" = set; then
   enableval="$enable_g"
@@ -1436,13 +1448,55 @@ if test "${enable_newsession+set}" = set; then
 else
   enable_newsession=yes
 fi;
-if test "`cd $srcdir && pwd`" != "`pwd`" && test -f $srcdir/config.status ; then
-    { { echo "$as_me:$LINENO: error: You cannot do a VPATH build if the source directory has been
-    configured.  Run \"make distclean\" in $srcdir first." >&5
+
+rm -f conftest*
+date >conftest$$
+# If creating a file in the current directory does not show up in the srcdir
+# then we're doing a VPATH build (or something is very wrong)
+if test ! -s $srcdir/conftest$$ ; then
+    pac_dirtyfiles=""
+    pac_dirtydirs=""
+    pac_header=""
+
+    for file in config.status $pac_header  ; do
+        if test -f $srcdir/$file ; then
+	    pac_dirtyfiles="$pac_dirtyfiles $file"
+	fi
+    done
+
+
+    if test -n "$pac_dirtyfiles" -o -n "$pac_dirtydirs" ; then
+	# Create a nice message about what to remove
+	rmmsg=""
+	if test -n "$pac_dirtyfiles" ; then
+	    rmmsg="files $pac_dirtyfiles"
+        fi
+ 	if test -n "$pac_dirtydirs" ; then
+	    if test -n "$rmmsg" ; then
+	        rmmsg="$rmmsg and directories $pac_dirtydirs"
+            else
+                rmmsg="directories $pac_dirtydirs"
+            fi
+        fi
+        if test -f $srcdir/Makefile ; then
+            { { echo "$as_me:$LINENO: error: You cannot do a VPATH build if the source directory has been
+    configured.  Run \"make distclean\" in $srcdir first and make sure that the
+    $rmmsg have been removed." >&5
 echo "$as_me: error: You cannot do a VPATH build if the source directory has been
-    configured.  Run \"make distclean\" in $srcdir first." >&2;}
+    configured.  Run \"make distclean\" in $srcdir first and make sure that the
+    $rmmsg have been removed." >&2;}
    { (exit 1); exit 1; }; }
+        else
+            { { echo "$as_me:$LINENO: error: You cannot do a VPATH build if the source directory has been
+    configured.  Remove the $rmmsg in $srcdir." >&5
+echo "$as_me: error: You cannot do a VPATH build if the source directory has been
+    configured.  Remove the $rmmsg in $srcdir." >&2;}
+   { (exit 1); exit 1; }; }
+        fi
+    fi
 fi
+rm -f conftest*
+
 # enable-g
 # strip off multiple options, separated by commas
 save_IFS="$IFS"
@@ -1466,6 +1520,15 @@ if test -z "$top_srcdir" ; then
 else
    use_top_srcdir=$top_srcdir
 fi
+
+
+if test -n "$CONF_BASE_CACHEFILE" -a -s "$CONF_BASE_CACHEFILE" ; then
+    echo "Loading base cachefile $CONF_BASE_CACHEFILE"
+    . $CONF_BASE_CACHEFILE
+    export CONF_BASE_CACHEFILE
+fi
+
+
 
 
 ac_ext=c
@@ -3120,7 +3183,8 @@ case "$ENABLE_SHLIB" in
     # We need to panic; -static won't work on OS/X.
     ;;
     gcc)
-    LDFLAGS="$LDFLAGS -static"
+    # Gahh.  Gcc even complains about this now.
+    #LDFLAGS="$LDFLAGS -static"
     ;;
     solaris)
     # Gahh.  We'd like to use -Bstatic, but on some of our Solaris systems,
@@ -4861,7 +4925,7 @@ fi
 # If cpp failed, see if the compiler accepts the header.
 if test "$pac_found_header" != "yes" ; then
     cat >conftest.c<<EOF
-#line 4864 "configure"
+#line 4928 "configure"
 #include "confdefs.h"
 #include <$ac_header>
 int conftest() {return 0;}
@@ -5104,9 +5168,14 @@ _ACEOF
 fi
 done
 
+sigaction_ok=no
 if test "$ac_cv_func_sigaction" = "yes" ; then
     echo "$as_me:$LINENO: checking for struct sigaction" >&5
 echo $ECHO_N "checking for struct sigaction... $ECHO_C" >&6
+if test "${pac_cv_struct_sigaction+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+
     cat >conftest.$ac_ext <<_ACEOF
 /* confdefs.h.  */
 _ACEOF
@@ -5144,19 +5213,24 @@ if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
   ac_status=$?
   echo "$as_me:$LINENO: \$? = $ac_status" >&5
   (exit $ac_status); }; }; then
-  sigaction_ok="yes"
+  pac_cv_struct_sigaction="yes"
 else
   echo "$as_me: failed program was:" >&5
 sed 's/^/| /' conftest.$ac_ext >&5
 
-sigaction_ok="no"
+pac_cv_struct_sigaction="no"
 fi
 rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
-    echo "$as_me:$LINENO: result: $sigaction_ok" >&5
-echo "${ECHO_T}$sigaction_ok" >&6
-    if test "$sigaction_ok" = "no" ; then
+fi
+echo "$as_me:$LINENO: result: $pac_cv_struct_sigaction" >&5
+echo "${ECHO_T}$pac_cv_struct_sigaction" >&6
+    if test "$pac_cv_struct_sigaction" = "no" ; then
         echo "$as_me:$LINENO: checking for struct sigaction with _POSIX_SOURCE" >&5
 echo $ECHO_N "checking for struct sigaction with _POSIX_SOURCE... $ECHO_C" >&6
+if test "${pac_cv_struct_sigaction_needs_posix+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+
         cat >conftest.$ac_ext <<_ACEOF
 /* confdefs.h.  */
 _ACEOF
@@ -5195,25 +5269,27 @@ if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
   ac_status=$?
   echo "$as_me:$LINENO: \$? = $ac_status" >&5
   (exit $ac_status); }; }; then
-  sigaction_with_posix_ok="yes"
+  pac_cv_struct_sigaction_needs_posix="yes"
 else
   echo "$as_me: failed program was:" >&5
 sed 's/^/| /' conftest.$ac_ext >&5
 
-sigaction_with_posix_ok="no"
+pac_cv_struct_sigaction_needs_posix="no"
 fi
 rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
-        echo "$as_me:$LINENO: result: $sigaction_with_posix_ok" >&5
-echo "${ECHO_T}$sigaction_with_posix_ok" >&6
-        if test "$sigaction_with_posix_ok" = "yes" ; then
+fi
+echo "$as_me:$LINENO: result: $pac_cv_struct_sigaction_needs_posix" >&5
+echo "${ECHO_T}$pac_cv_struct_sigaction_needs_posix" >&6
+        if test "$pac_cv_struct_sigaction_needs_posix" = "yes" ; then
             sigaction_ok=yes
-	    sigaction_needs_posix=yes
 	fi
+    else
+        sigaction_ok=yes
     fi
 fi
 # Decide on the signal handler to use
 if test "$ac_cv_func_sigaction" = "yes" -a "$sigaction_ok" = "yes" ; then
-    if test "$sigaction_needs_posix" = yes ; then
+    if test "$pac_struct_sigaction_needs_posix" = yes ; then
 
 cat >>confdefs.h <<\_ACEOF
 #define NEEDS_POSIX_FOR_SIGACTION 1
@@ -5229,6 +5305,13 @@ elif test "$ac_cv_func_signal" = "yes" ; then
 
 cat >>confdefs.h <<\_ACEOF
 #define USE_SIGNAL 1
+_ACEOF
+
+fi
+if test "$enable_allowport" = "yes" ; then
+
+cat >>confdefs.h <<\_ACEOF
+#define MPIEXEC_ALLOW_PORT 1
 _ACEOF
 
 fi
@@ -5295,7 +5378,7 @@ fi
 # If cpp failed, see if the compiler accepts the header.
 if test "$pac_found_header" != "yes" ; then
     cat >conftest.c<<EOF
-#line 5298 "configure"
+#line 5381 "configure"
 #include "confdefs.h"
 #include <$ac_header>
 int conftest() {return 0;}
@@ -5350,6 +5433,19 @@ fi
 
 export ETAGS
 export ETAGSADD
+
+
+
+if test -n "$CONF_BASE_CACHEFILE" -a -s "$CONF_BASE_CACHEFILE" ; then
+    set | grep ac_cv > $CONF_BASE_CACHEFILE.new
+    if cmp -s $CONF_BASE_CACHEFILE.new $CONF_BASE_CACHEFILE ; then
+	:
+    else
+	echo "Replacing $CONF_BASE_CACHEFILE"
+	mv $CONF_BASE_CACHEFILE.new $CONF_BASE_CACHEFILE
+    fi
+fi
+
 
           ac_config_files="$ac_config_files Makefile"
 cat >confcache <<\_ACEOF

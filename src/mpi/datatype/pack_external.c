@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Pack_external
 #define MPI_Pack_external PMPI_Pack_external
 
 #endif
@@ -71,7 +72,6 @@ int MPI_Pack_external(char *datarep,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_PACK_EXTERNAL);
 
     /* Validate parameters and objects (post conversion) */
@@ -82,7 +82,9 @@ int MPI_Pack_external(char *datarep,
 	    MPIR_ERRTEST_COUNT(incount, mpi_errno);
 	    MPIR_ERRTEST_COUNT(outcount, mpi_errno);
 	    /* NOTE: inbuf could be null (MPI_BOTTOM) */
-	    MPIR_ERRTEST_ARGNULL(outbuf, "output buffer", mpi_errno);
+	    if (incount > 0) {
+		MPIR_ERRTEST_ARGNULL(outbuf, "output buffer", mpi_errno);
+	    }
 	    MPIR_ERRTEST_ARGNULL(position, "position", mpi_errno);
             if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 
@@ -103,7 +105,10 @@ int MPI_Pack_external(char *datarep,
 #   endif /* HAVE_ERROR_CHECKING */
     
     /* ... body of routine ... */
-    
+    if (incount == 0) {
+	goto fn_exit;
+    }
+
     segp = MPID_Segment_alloc();
     /* --BEGIN ERROR HANDLING-- */
     if (segp == NULL)
@@ -142,7 +147,6 @@ int MPI_Pack_external(char *datarep,
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_PACK_EXTERNAL);
-    MPID_CS_EXIT();
     return mpi_errno;
     
   fn_fail:

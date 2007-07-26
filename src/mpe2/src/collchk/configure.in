@@ -63,7 +63,7 @@ PAC_MAKE_VPATH
 AC_SUBST(MAKE)
 
 dnl If we are relying on vpath and no vpath is set, then we must exit
-if test ! -s src/log_mpi_core.c -a -z "$VPATH" ; then
+if test ! -s include/collchk.h -a -z "$VPATH" ; then
     AC_MSG_ERROR( [No virtual MAKE path command found.
         You may need to set your make command
         The GNU make (sometimes available as gnumake) can be used.] )
@@ -80,8 +80,14 @@ AC_SUBST(RM)
 AC_SUBST(MV)
 
 AC_ARG_WITH( mpiio,
-[--with-mpiio                       - Include/exclude MPI-IO from Verification.
-                                     The default is yes.], ,
+[--with-mpiio                       - Enable/Disable MPI-IO checking.
+                                     in MPICHx buiid. The default is yes.], ,
+with_mpiio=yes )
+
+AC_ARG_ENABLE( romio,
+[--enable-romio                     - Enable/Disable ROMIO MPI-IO checking
+                                     in MPICHx build. The default is yes.] ,
+with_mpiio=$enableval,
 with_mpiio=yes )
 
 AC_ARG_ENABLE( checkMPI,
@@ -119,14 +125,14 @@ dnl sbinbuild_dir is for all system admin tools
 dnl etcbuild_dir is for all system admin configuration settings
 dnl
 rootbuild_dir=`pwd`
-for dir in include lib bin etc ; do
+for dir in include lib bin sbin etc ; do
     dirname=${dir}build_dir
     mpe_dirname=mpe_${dirname}
     eval dirvalue=\$"$dirname"
     eval $dirname=\$\{${mpe_dirname}\}
 done
 
-for dir in include lib bin etc ; do
+for dir in include lib bin sbin etc ; do
     dirname=${dir}build_dir
     eval dirvalue=\$"$dirname"
     if test -n "$dirvalue" ; then
@@ -144,6 +150,7 @@ done
 AC_SUBST(includebuild_dir)
 AC_SUBST(libbuild_dir)
 AC_SUBST(binbuild_dir)
+AC_SUBST(sbinbuild_dir)
 AC_SUBST(etcbuild_dir)
 
 AC_PROG_CC
@@ -550,13 +557,13 @@ if test "$MPI_IMPL" != "MPICH" -a "$MPI_IMPL" != "MPICH2" ; then
     if test "$enable_checkMPI" = "yes" ; then
         AC_MSG_CHECKING( [for the C version of MPI_Alltoallw] )
         PAC_MPI_LINK_CC_FUNC( $MPI_CC, [$CFLAGS $MPI_INC], $MPI_LIBS,
-                              [
+                              [[
 #define MAX 10
     int *sbuff, *rbuff;
     int scounts[MAX], rcounts[MAX], sdispls[MAX], rdispls[MAX];
     MPI_Datatype  stypes[MAX], rtypes[MAX];
     int itmp
-                              ],
+                              ]],
                               [
     itmp=MPI_Alltoallw( sbuff, scounts, sdispls, stypes,
                         rbuff, rcounts, rdispls, rtypes, MPI_COMM_WORLD )
@@ -566,13 +573,13 @@ if test "$MPI_IMPL" != "MPICH" -a "$MPI_IMPL" != "MPICH2" ; then
             AC_MSG_RESULT(yes)
             AC_MSG_CHECKING( [for the C version of PMPI_Alltoallw] )
             PAC_MPI_LINK_CC_FUNC( $MPI_CC, [$CFLAGS $MPI_INC], $MPI_LIBS,
-                                  [
+                                  [[
 #define MAX 10
     int *sbuff, *rbuff;
     int scounts[MAX], rcounts[MAX], sdispls[MAX], rdispls[MAX];
     MPI_Datatype  stypes[MAX], rtypes[MAX];
     int itmp
-                                  ],
+                                  ]],
                                   [
     itmp=PMPI_Alltoallw( sbuff, scounts, sdispls, stypes,
                          rbuff, rcounts, rdispls, rtypes, MPI_COMM_WORLD )
@@ -639,7 +646,7 @@ if test "$MPI_IMPL" != "MPICH" -a "$MPI_IMPL" != "MPICH2" ; then
         fi
     fi
 else
-dnl When it is built with MPICHx, MPE configure observes --with[out]-mpiio
+dnl When built with MPICHx, MPE configure observes --with-mpiio & --enable-romio
 dnl if test \( "$MPI_IMPL" = "MPICH" -o "$MPI_IMPL" = "MPICH2" \) \
     if test "$with_mpiio" = "yes" ; then
         COLLCHK_BUILD_IO=yes
@@ -656,9 +663,6 @@ if test "$MPI_IMPL" != "MPICH" -a "$MPI_IMPL" != "MPICH2" ; then
         PAC_MPI_LINK_CC_FUNC( $MPI_CC, [$CFLAGS $MPI_INC], $MPI_LIBS,
                               [ int itmp; MPI_Win win ],
                               [
-#ifndef NULL
-#define NULL 0
-#endif
     itmp=MPI_Win_create( NULL, 0, 1, MPI_INFO_NULL, MPI_COMM_WORLD, &win )
                               ],
                               [ mpe_link_ok=yes ], [ mpe_link_ok=no ] )
@@ -668,9 +672,6 @@ if test "$MPI_IMPL" != "MPICH" -a "$MPI_IMPL" != "MPICH2" ; then
             PAC_MPI_LINK_CC_FUNC( $MPI_CC, [$CFLAGS $MPI_INC], $MPI_LIBS,
                                   [ int itmp; MPI_Win win ],
                                   [
-#ifndef NULL
-#define NULL 0
-#endif
     itmp=PMPI_Win_create( NULL, 0, 1, MPI_INFO_NULL, MPI_COMM_WORLD, &win )
                                   ],
                                   [ mpe_link_ok=yes ], [ mpe_link_ok=no ] )

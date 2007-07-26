@@ -1,7 +1,7 @@
 ALL: all
 
 MAKE   = @MAKE@
-SHELL  = /bin/sh
+SHELL  = @SHELL@
 MKDIR  = @MKDIR@
 RM     = @RM@
 CP     = @CPRP@
@@ -48,11 +48,7 @@ build_include:
 	      done ; \
 	  fi
 
-## Do an extra cleaning of $binbuild_dir for MPICH/MPICH2
-build_lib_bin: clean_lib 
-	@-if [ "$(MPI_IMPL)" = "MPICH" -o "$(MPI_IMPL)" = "MPICH2" ] ; then \
-	     ( $(MAKE) clean_bin ) ; \
-	  fi
+build_lib_bin:
 	@for pkg in $(PKGS) ; do \
 	     if [ -n "$$pkg" -a -s $$pkg/Makefile ] ; then \
 	         echo "Making $$pkg ...." ; \
@@ -60,19 +56,45 @@ build_lib_bin: clean_lib
 	     fi ; \
 	 done
 
-########  Installing
-install:
-	@if [ -n "$(PREFIX)" ] ; then \
-	     ./sbin/mpeinstall -prefix=$(PREFIX) ; \
+build_check:
+	@if [ -n "$(MPERUN)" ] ; then \
+	     ./sbin/mpecheckbuild -run="$(MPERUN)" ; \
 	 else \
-	     ./sbin/mpeinstall ; \
+	     ./sbin/mpecheckbuild -run ; \
+	 fi ; \
+
+check : build_check
+
+FORCE_TARGET:
+
+########  Installing
+install: FORCE_TARGET
+	@if [ -n "$(PREFIX)" ] ; then \
+	     ./sbin/mpeinstall -prefix=$(PREFIX) -dmode="" ; \
+	 else \
+	     ./sbin/mpeinstall -dmode="" ; \
 	 fi
 
 installcheck:
 	@if [ -n "$(PREFIX)" ] ; then \
-	     ./sbin/mpeinstallcheck -prefix=$(PREFIX) ; \
+	     ./sbin/mpecheckinstall -prefix=$(PREFIX) ; \
 	 else \
-	     ./sbin/mpeinstallcheck ; \
+	     ./sbin/mpecheckinstall ; \
+	 fi
+
+installcheck-all:
+	@if [ -n "$(PREFIX)" ] ; then \
+	     if [ -n "$(MPERUN)" ] ; then \
+	         ./sbin/mpecheckinstall -prefix=$(PREFIX) -run="$(MPERUN)" ; \
+	     else \
+	         ./sbin/mpecheckinstall -prefix=$(PREFIX) -run ; \
+	     fi ; \
+	 else \
+	     if [ -n "$(MPERUN)" ] ; then \
+	         ./sbin/mpecheckinstall -run="$(MPERUN)" ; \
+	     else \
+	         ./sbin/mpecheckinstall -run ; \
+	     fi ; \
 	 fi
 
 uninstall:
@@ -113,6 +135,8 @@ clean: clean_lib
 	@-$(RM) -f work.pc work.pcl
 
 distclean-misc: clean_include clean_etc
+	@-$(RM) -f sbin/mpetestlink sbin/mpetestexec sbin/mpetestexeclog
+	@-$(RM) -f sbin/mpecheckinstall sbin/mpecheckbuild
 	@-$(RM) -f sbin/mpeinstall sbin/mpeuninstall
 	@-$(RM) -f Makefile
 	@-$(RM) -f mpe_conf.h

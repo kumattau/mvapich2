@@ -219,6 +219,7 @@ void MPIR_SUM (
     }
 #endif
 #ifdef HAVE_FORTRAN_BINDING
+    case MPI_COMPLEX8:
     case MPI_COMPLEX: {
         s_complex * restrict a = (s_complex *)inoutvec; 
         s_complex * restrict b = (s_complex *)invec;
@@ -228,6 +229,7 @@ void MPIR_SUM (
         }
         break;
     }
+    case MPI_COMPLEX16:
     case MPI_DOUBLE_COMPLEX: {
         d_complex * restrict a = (d_complex *)inoutvec; 
         d_complex * restrict b = (d_complex *)invec;

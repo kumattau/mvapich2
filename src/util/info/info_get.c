@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: info_get.c,v 1.1.1.1 2006/01/18 21:09:48 huangwei Exp $
+/*  $Id: info_get.c,v 1.25 2006/12/09 17:05:30 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Info_get
 #define MPI_Info_get PMPI_Info_get
 #endif
 
@@ -54,14 +55,16 @@ Output Parameters:
 int MPI_Info_get(MPI_Info info, char *key, int valuelen, char *value, 
 		 int *flag)
 {
-    MPID_Info *curr_ptr, *info_ptr=0;
+#ifdef HAVE_ERROR_CHECKING
     static const char FCNAME[] = "MPI_Info_get";
+#endif
+    MPID_Info *curr_ptr, *info_ptr=0;
     int mpi_errno = MPI_SUCCESS;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_INFO_GET);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("info");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_INFO_GET);
     
     /* Validate parameters, especially handles needing to be converted */
@@ -91,14 +94,18 @@ int MPI_Info_get(MPI_Info info, char *key, int valuelen, char *value,
             if (mpi_errno) goto fn_fail;
 	    
 	    /* Check key */
-	    MPIU_ERR_CHKANDJUMP((!key), mpi_errno, MPI_ERR_INFO_KEY, "**infokeynull");
+	    MPIU_ERR_CHKANDJUMP((!key), mpi_errno, MPI_ERR_INFO_KEY, 
+				"**infokeynull");
 	    keylen = (int)strlen(key);
-	    MPIU_ERR_CHKANDJUMP((keylen > MPI_MAX_INFO_KEY), mpi_errno, MPI_ERR_INFO_KEY, "**infokeylong");
-	    MPIU_ERR_CHKANDJUMP((keylen == 0), mpi_errno, MPI_ERR_INFO_KEY, "**infokeyempty");
+	    MPIU_ERR_CHKANDJUMP((keylen > MPI_MAX_INFO_KEY), mpi_errno, 
+				MPI_ERR_INFO_KEY, "**infokeylong");
+	    MPIU_ERR_CHKANDJUMP((keylen == 0), mpi_errno, MPI_ERR_INFO_KEY, 
+				"**infokeyempty");
 
 	    /* Check value arguments */
 	    MPIR_ERRTEST_ARGNEG(valuelen, "valuelen", mpi_errno);
-	    MPIU_ERR_CHKANDSTMT((!value), mpi_errno, MPI_ERR_INFO_VALUE,;, "**infovalnull");
+	    MPIU_ERR_CHKANDSTMT((!value), mpi_errno, MPI_ERR_INFO_VALUE,;, 
+				"**infovalnull");
             if (mpi_errno) goto fn_fail;
         }
         MPID_END_ERROR_CHECKS;
@@ -116,6 +123,9 @@ int MPI_Info_get(MPI_Info info, char *key, int valuelen, char *value,
 	    /* The following is problematic - if the user passes the
 	       declared length, then this will access memory one
 	       passed that point */
+	    /* FIXME: The real fix is to change MPIU_Strncpy to 
+	       set the null at the end (always!) and return an error
+	       if it had to truncate the result. */
 	    /* value[valuelen] = '\0'; */
 	    *flag = 1;
 	    break;
@@ -124,21 +134,24 @@ int MPI_Info_get(MPI_Info info, char *key, int valuelen, char *value,
     }
     /* ... end of body of routine ... */
 
+#ifdef HAVE_ERROR_CHECKING
   fn_exit:
+#endif
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_INFO_GET);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("info");
     return mpi_errno;
 
-  fn_fail:
     /* --BEGIN ERROR HANDLING-- */
 #   ifdef HAVE_ERROR_CHECKING
+  fn_fail:
     {
-	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_info_get",
+	mpi_errno = MPIR_Err_create_code( mpi_errno, MPIR_ERR_RECOVERABLE,
+	    FCNAME, __LINE__, MPI_ERR_OTHER, 
+	    "**mpi_info_get",
 	    "**mpi_info_get %I %s %d %p %p", info, key, valuelen, value, flag);
     }
-#   endif
     mpi_errno = MPIR_Err_return_comm( NULL, FCNAME, mpi_errno );
     goto fn_exit;
+#   endif
     /* --END ERROR HANDLING-- */
 }

@@ -1,5 +1,14 @@
 /* pmiconf.h.in.  Generated from configure.in by autoheader.  */
 
+/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/*  
+ *  (C) 2001 by Argonne National Laboratory.
+ *      See COPYRIGHT in top-level directory.
+ */
+#ifndef PMICONF_H_INCLUDED
+#define PMICONF_H_INCLUDED
+
+
 /* Define to 1 if you have the <ctype.h> header file. */
 #undef HAVE_CTYPE_H
 
@@ -44,3 +53,5 @@
 
 /* Define to the version of this package. */
 #undef PACKAGE_VERSION
+
+#endif

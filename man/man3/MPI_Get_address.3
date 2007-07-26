@@ -1,4 +1,4 @@
-.TH MPI_Get_address 3 "11/23/2005" " " "MPI"
+.TH MPI_Get_address 3 "1/30/2007" " " "MPI"
 .SH NAME
 MPI_Get_address \-  Get the address of a location in memory  
 .SH SYNOPSIS
@@ -61,6 +61,17 @@ All MPI objects (e.g.,
 ) are of type 
 .I INTEGER
 in Fortran.
+
+In Fortran, the integer type is always signed.  This can cause problems
+on systems where the address fits into a four byte unsigned integer but
+the value is larger than the largest signed integer.  For example, a system
+with more than 2 GBytes of memory may have addresses that do not fit within
+a four byte signed integer.  Unfortunately, there is no easy solution to
+this problem, as there is no Fortran datatype that can be used here (using
+a longer integer type will cause other problems, as well as surprising
+users when the size of the integer type is larger that the size of a pointer
+in C).  In this case, it is recommended that you use C to manipulate
+addresses.
 
 .SH ERRORS
 

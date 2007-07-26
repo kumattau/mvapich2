@@ -24,10 +24,13 @@ MPIR_Topology *MPIR_Topology_get( MPID_Comm *comm_ptr )
 {
     MPIR_Topology *topo_ptr;
     int flag;
+    MPIU_THREADPRIV_DECL;
 
     if (MPIR_Topology_keyval == MPI_KEYVAL_INVALID) {
 	return 0;
     }
+
+    MPIU_THREADPRIV_GET;
     MPIR_Nest_incr();
     (void)NMPI_Comm_get_attr(comm_ptr->handle, MPIR_Topology_keyval,
 			     &topo_ptr, &flag );
@@ -39,6 +42,9 @@ MPIR_Topology *MPIR_Topology_get( MPID_Comm *comm_ptr )
 int MPIR_Topology_put( MPID_Comm *comm_ptr, MPIR_Topology *topo_ptr )
 {
     int mpi_errno;
+    MPIU_THREADPRIV_DECL;
+
+    MPIU_THREADPRIV_GET;
 
     if (MPIR_Topology_keyval == MPI_KEYVAL_INVALID) {
 	/* Create a new keyval */
@@ -52,7 +58,8 @@ int MPIR_Topology_put( MPID_Comm *comm_ptr, MPIR_Topology *topo_ptr )
 	MPIR_Nest_decr();
 	/* Register the finalize handler */
 	if (mpi_errno) return mpi_errno;
-	MPIR_Add_finalize( MPIR_Topology_finalize, (void*)0, 9 );
+	MPIR_Add_finalize( MPIR_Topology_finalize, (void*)0, 
+			   MPIR_FINALIZE_CALLBACK_PRIO-1);
     }
     MPIR_Nest_incr();
     mpi_errno = NMPI_Comm_set_attr(comm_ptr->handle, MPIR_Topology_keyval, 
@@ -65,6 +72,10 @@ int MPIR_Topology_put( MPID_Comm *comm_ptr, MPIR_Topology *topo_ptr )
 /* begin:nested */
 static int MPIR_Topology_finalize( void *p )
 {
+    MPIU_THREADPRIV_DECL;
+
+    MPIU_THREADPRIV_GET;
+
     MPIR_Nest_incr();
 
     MPIU_UNREFERENCED_ARG(p);
@@ -125,7 +136,7 @@ static int MPIR_Topology_copy_fn ( MPI_Comm comm, int keyval, void *extra_data,
 	int ndims = old_topology->topo.cart.ndims;
 	copy_topology->topo.cart.nnodes = old_topology->topo.cart.nnodes;
 	copy_topology->topo.cart.ndims  = ndims;
-	copy_topology->topo.cart.dims = MPIR_Copy_array( ndims,
+	copy_topology->topo.cart.dims   = MPIR_Copy_array( ndims,
 				     old_topology->topo.cart.dims, 
 				     &mpi_errno );
 	copy_topology->topo.cart.periodic = MPIR_Copy_array( ndims,
@@ -137,8 +148,7 @@ static int MPIR_Topology_copy_fn ( MPI_Comm comm, int keyval, void *extra_data,
 	int nnodes = old_topology->topo.graph.nnodes;
 	copy_topology->topo.graph.nnodes = nnodes;
 	copy_topology->topo.graph.nedges = old_topology->topo.graph.nedges;
-	copy_topology->topo.graph.index = MPIR_Copy_array( 
-				 old_topology->topo.graph.index[nnodes-1],
+	copy_topology->topo.graph.index  = MPIR_Copy_array( nnodes,
 				 old_topology->topo.graph.index, &mpi_errno );
 	copy_topology->topo.graph.edges = MPIR_Copy_array( 
 				 old_topology->topo.graph.nedges, 

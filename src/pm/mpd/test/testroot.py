@@ -58,7 +58,7 @@ rv = mpdtest.run(cmd="%s/bin/mpdtrace%s -l" % (ROOTDIR,PYEXT), grepOut=1, expOut
 print "TEST that user cannot remove files owned by root"
 os.system("sudo touch /tmp/testroot")
 expout = ['cannot remove']
-rv = mpdtest.run(cmd="%s/bin/mpiexec%s -n 1 /bin/rm -f /tmp/testroot" % (ROOTDIR,PYEXT),
+rv = mpdtest.run(cmd="%s/bin/mpiexec%s -n 1 rm -f /tmp/testroot" % (ROOTDIR,PYEXT),
                  grepOut=1, expOut=expout )
 
 os.system("sudo rm -f /tmp/testroot")

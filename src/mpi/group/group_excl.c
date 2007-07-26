@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Group_excl
 #define MPI_Group_excl PMPI_Group_excl
 
 #endif
@@ -65,12 +66,12 @@ int MPI_Group_excl(MPI_Group group, int n, int *ranks, MPI_Group *newgroup)
     static const char FCNAME[] = "MPI_Group_excl";
     int mpi_errno = MPI_SUCCESS;
     MPID_Group *group_ptr = NULL, *new_group_ptr;
-    int size, i;
+    int size, i, newi;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_GROUP_EXCL);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("group");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_GROUP_EXCL);
     /* Validate parameters, especially handles needing to be converted */
 #   ifdef HAVE_ERROR_CHECKING
@@ -78,6 +79,7 @@ int MPI_Group_excl(MPI_Group group, int n, int *ranks, MPI_Group *newgroup)
         MPID_BEGIN_ERROR_CHECKS;
         {
 	    MPIR_ERRTEST_GROUP(group, mpi_errno);
+	    MPIR_ERRTEST_ARGNEG(n,"n",mpi_errno);
             if (mpi_errno != MPI_SUCCESS) goto fn_fail;
         }
         MPID_END_ERROR_CHECKS;
@@ -95,7 +97,6 @@ int MPI_Group_excl(MPI_Group group, int n, int *ranks, MPI_Group *newgroup)
             MPID_Group_valid_ptr( group_ptr, mpi_errno );
 	    /* If group_ptr is not valid, it will be reset to null */
 	    if (group_ptr) {
-		/* This also checks for negative n */
 		mpi_errno = MPIR_Group_check_valid_ranks( group_ptr, 
 							  ranks, n );
 	    }
@@ -121,34 +122,25 @@ int MPI_Group_excl(MPI_Group group, int n, int *ranks, MPI_Group *newgroup)
     }
     /* --END ERROR HANDLING-- */
     new_group_ptr->rank = MPI_UNDEFINED;
-    /* Use flag fields to mark the members to *exclude* .
-       Note: except in a THREAD_MULTIPLE case, and if error checking
-       is turned on, the flag fields are already set in the error checking
-       section.  Because of the low use of this function, this 
-       optimization has not been taken. */
-    MPID_Common_thread_lock();
-    {
-	int newi;
+    /* Use flag fields to mark the members to *exclude* . */
 
-	for (i=0; i<size; i++) {
-	    group_ptr->lrank_to_lpid[i].flag = 0;
-	}
-	for (i=0; i<n; i++) {
-	    group_ptr->lrank_to_lpid[ranks[i]].flag = 1;
-	}
-	
-	newi = 0;
-	for (i=0; i<size; i++) {
-	    if (group_ptr->lrank_to_lpid[i].flag == 0) {
-		new_group_ptr->lrank_to_lpid[newi].lrank = newi;
-		new_group_ptr->lrank_to_lpid[newi].lpid = 
-		    group_ptr->lrank_to_lpid[i].lpid;
-		if (group_ptr->rank == i) new_group_ptr->rank = newi;
-		newi++;
-	    }
+    for (i=0; i<size; i++) {
+	group_ptr->lrank_to_lpid[i].flag = 0;
+    }
+    for (i=0; i<n; i++) {
+	group_ptr->lrank_to_lpid[ranks[i]].flag = 1;
+    }
+    
+    newi = 0;
+    for (i=0; i<size; i++) {
+	if (group_ptr->lrank_to_lpid[i].flag == 0) {
+	    new_group_ptr->lrank_to_lpid[newi].lrank = newi;
+	    new_group_ptr->lrank_to_lpid[newi].lpid = 
+		group_ptr->lrank_to_lpid[i].lpid;
+	    if (group_ptr->rank == i) new_group_ptr->rank = newi;
+	    newi++;
 	}
     }
-    MPID_Common_thread_unlock();
 
     new_group_ptr->size = size - n;
     new_group_ptr->idx_of_first_lpid = -1;
@@ -159,7 +151,7 @@ int MPI_Group_excl(MPI_Group group, int n, int *ranks, MPI_Group *newgroup)
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_GROUP_EXCL);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("group");
     return mpi_errno;
 
   fn_fail:

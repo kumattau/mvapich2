@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Comm_accept
 #define MPI_Comm_accept PMPI_Comm_accept
 
 #endif
@@ -60,7 +61,7 @@ int MPI_Comm_accept(char *port_name, MPI_Info info, int root, MPI_Comm comm,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("spawn");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_COMM_ACCEPT);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -105,7 +106,7 @@ int MPI_Comm_accept(char *port_name, MPI_Info info, int root, MPI_Comm comm,
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_COMM_ACCEPT);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("spawn");
     return mpi_errno;
 
   fn_fail:

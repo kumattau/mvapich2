@@ -1,7 +1,7 @@
 INCLUDES = -I../include -I${srcdir}/../include
 EXTERNAL_LIBS = m
 LDADD = 
-DEPADD = @MPILIBLOC@
+DEPADD = @MPILIBLOC@ ../util/mtest.o
 smvar_do_sharedlibs = 0
 #
 bcasttest_SOURCES = bcasttest.c
@@ -54,7 +54,6 @@ scatter2_SOURCES = scatter2.c
 scatter2_LDADD = ../util/mtest.o
 scatter3_SOURCES = scatter3.c
 scatter3_LDADD = ../util/mtest.o
-rerr_SOURCES = rerr.c
 gather_SOURCES = gather.c
 gather_LDADD = ../util/mtest.o
 gather2_SOURCES = gather2.c
@@ -125,3 +124,9 @@ exscan2_LDADD = ../util/mtest.o
 
 ../util/mtest.o:
 	(cd ../util && $(MAKE))
+
+# A special testing target to simplify running just the collective tests
+testing:
+	../runtests -srcdir=$(srcdir) -tests=testlist \
+		   -mpiexec=$(bindir)/mpiexec \
+		   -xmlfile=summary.xml

@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Status_set_cancelled
 #define MPI_Status_set_cancelled PMPI_Status_set_cancelled
 
 #endif
@@ -45,13 +46,14 @@ Input Parameters:
 @*/
 int MPI_Status_set_cancelled(MPI_Status *status, int flag)
 {
+#ifdef HAVE_ERROR_CHECKING
     static const char FCNAME[] = "MPI_Status_set_cancelled";
+#endif
     int mpi_errno = MPI_SUCCESS;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_STATUS_SET_CANCELLED);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_STATUS_SET_CANCELLED);
 
 #   ifdef HAVE_ERROR_CHECKING
@@ -71,22 +73,24 @@ int MPI_Status_set_cancelled(MPI_Status *status, int flag)
 
     /* ... end of body of routine ... */
     
+#ifdef HAVE_ERROR_CHECKING
   fn_exit:
+#endif
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_STATUS_SET_CANCELLED);
-    MPID_CS_EXIT();
     return mpi_errno;
 
-  fn_fail:
     /* --BEGIN ERROR HANDLING-- */
 #   ifdef HAVE_ERROR_CHECKING
+  fn_fail:
     {
 	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_status_set_cancelled",
+	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, 
+	    "**mpi_status_set_cancelled",
 	    "**mpi_status_set_cancelled %p %d", status, flag);
     }
-#   endif
     mpi_errno = MPIR_Err_return_comm( 0, FCNAME, mpi_errno );
     goto fn_exit;
+#   endif
     /* --END ERROR HANDLING-- */
 }
 

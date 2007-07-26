@@ -20,12 +20,15 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Win_call_errhandler
 #define MPI_Win_call_errhandler PMPI_Win_call_errhandler
 
 #endif
 
 #undef FUNCNAME
 #define FUNCNAME MPI_Win_call_errhandler
+#undef FCNAME
+#define FCNAME "MPI_Win_call_errhander"
 
 /*@
    MPI_Win_call_errhandler - Call the error handler installed on a 
@@ -49,15 +52,16 @@
 @*/
 int MPI_Win_call_errhandler(MPI_Win win, int errorcode)
 {
-    static const char FCNAME[] = "MPI_Win_call_errhandler";
     int mpi_errno = MPI_SUCCESS;
     MPID_Win *win_ptr = NULL;
+    MPIU_THREADPRIV_DECL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_WIN_CALL_ERRHANDLER);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_WIN_CALL_ERRHANDLER);
+
+    MPIU_THREADPRIV_GET;
     
     /* Validate parameters, especially handles needing to be converted */
 #   ifdef HAVE_ERROR_CHECKING
@@ -128,19 +132,19 @@ int MPI_Win_call_errhandler(MPI_Win win, int errorcode)
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_WIN_CALL_ERRHANDLER);
-    MPID_CS_EXIT();
     return mpi_errno;
 
-  fn_fail:
     /* --BEGIN ERROR HANDLING-- */
 #   ifdef HAVE_ERROR_CHECKING
+  fn_fail:
     {
 	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_win_call_errhandler", 
+	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, 
+	    "**mpi_win_call_errhandler", 
 	    "**mpi_win_call_errhandler %W %d", win, errorcode);
     }
-#   endif
     mpi_errno = MPIR_Err_return_win(win_ptr, FCNAME, mpi_errno);
     goto fn_exit;
+#   endif
     /* --END ERROR HANDLING-- */
 }

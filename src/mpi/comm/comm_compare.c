@@ -20,12 +20,15 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Comm_compare
 #define MPI_Comm_compare PMPI_Comm_compare
 
 #endif
 
 #undef FUNCNAME
 #define FUNCNAME MPI_Comm_compare
+#undef FCNAME
+#define FCNAME "MPI_Comm_compare"
 
 /*@
 
@@ -65,16 +68,17 @@ this routine is only thread-safe.)
 @*/
 int MPI_Comm_compare(MPI_Comm comm1, MPI_Comm comm2, int *result)
 {
-    static const char FCNAME[] = "MPI_Comm_compare";
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr1 = NULL;
     MPID_Comm *comm_ptr2 = NULL;
+    MPIU_THREADPRIV_DECL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_COMM_COMPARE);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_COMM_COMPARE);
+
+    MPIU_THREADPRIV_GET;
     
 #   ifdef HAVE_ERROR_CHECKING
     {
@@ -164,22 +168,25 @@ int MPI_Comm_compare(MPI_Comm comm1, MPI_Comm comm2, int *result)
     }
     /* ... end of body of routine ... */
 
+#ifdef HAVE_ERROR_CHECKING
   fn_exit:
+#endif
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_COMM_COMPARE);
-    MPID_CS_EXIT();
     return mpi_errno;
     
-  fn_fail:
     /* --BEGIN ERROR HANDLING-- */
-#   ifdef HAVE_ERROR_HANDLING
+#   ifdef HAVE_ERROR_CHECKING
+  fn_fail:
     {
 	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_comm_compare",
+	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER,
+	    "**mpi_comm_compare",
 	    "**mpi_comm_compare %C %C %p", comm1, comm2, result);
     }
-#   endif
     /* Use whichever communicator is non-null if possible */
-    mpi_errno = MPIR_Err_return_comm( comm_ptr1 ? comm_ptr1 : comm_ptr2, FCNAME, mpi_errno );
+    mpi_errno = MPIR_Err_return_comm( comm_ptr1 ? comm_ptr1 : comm_ptr2, 
+				      FCNAME, mpi_errno );
     goto fn_exit;
+#   endif
     /* --END ERROR HANDLING-- */
 }

@@ -1,5 +1,14 @@
 /* src/include/mpichconf.h.in.  Generated from configure.in by autoheader.  */
 
+/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/*  
+ *  (C) 2001 by Argonne National Laboratory.
+ *      See COPYRIGHT in top-level directory.
+ */
+#ifndef MPICHCONF_H_INCLUDED
+#define MPICHCONF_H_INCLUDED
+
+
 /* define if char * is byte pointer */
 #undef CHAR_PTR_IS_BYTE
 
@@ -37,9 +46,6 @@
 /* Define if Fortran names are uppercase */
 #undef F77_NAME_UPPER
 
-/* Define if Fortran environment should be determined at runtime */
-#undef F77_RUNTIME_VALUES
-
 /* The value of true in Fortran */
 #undef F77_TRUE_VALUE
 
@@ -62,6 +68,12 @@
    */
 #undef HAVE_ALLOCA_H
 
+/* Define if int32_t works with any alignment */
+#undef HAVE_ANY_INT32_T_ALIGNMENT
+
+/* Define if int64_t works with any alignment */
+#undef HAVE_ANY_INT64_T_ALIGNMENT
+
 /* Define to 1 if you have the `clock_getres' function. */
 #undef HAVE_CLOCK_GETRES
 
@@ -76,6 +88,10 @@
 
 /* Define if debugger support is included */
 #undef HAVE_DEBUGGER_SUPPORT
+
+/* Controls how alignment of doubles is performed, separate from other FP
+   values */
+#undef HAVE_DOUBLE_ALIGNMENT_EXCEPTION
 
 /* Controls how alignment is applied based on position of doubles in the
    structure */
@@ -145,11 +161,18 @@
 /* Define if long long is supported */
 #undef HAVE_LONG_LONG_INT
 
-/* Controls byte alignment of integer structures (for MPI structs) */
+/* Controls byte alignment of structs with doubles */
+#undef HAVE_MAX_DOUBLE_FP_ALIGNMENT
+
+/* Controls byte alignment of structures with floats, doubles, and long
+   doubles (for MPI structs) */
 #undef HAVE_MAX_FP_ALIGNMENT
 
 /* Controls byte alignment of integer structures (for MPI structs) */
 #undef HAVE_MAX_INTEGER_ALIGNMENT
+
+/* Controls byte alignment of structs with long doubles */
+#undef HAVE_MAX_LONG_DOUBLE_FP_ALIGNMENT
 
 /* Controls byte alignment of structures (for aligning allocated structures)
    */
@@ -157,6 +180,10 @@
 
 /* Define to 1 if you have the <memory.h> header file. */
 #undef HAVE_MEMORY_H
+
+/* Define so that we can test whether the mpichconf.h file has been included
+   */
+#undef HAVE_MPICHCONF
 
 /* Define if multiple weak symbols may be defined */
 #undef HAVE_MULTIPLE_PRAGMA_WEAK
@@ -166,6 +193,9 @@
 
 /* define if the compiler implements namespaces */
 #undef HAVE_NAMESPACES
+
+/* define if the compiler implements namespace std */
+#undef HAVE_NAMESPACE_STD
 
 /* Define if the Fortran types are not available in C */
 #undef HAVE_NO_FORTRAN_MPI_TYPES_IN_C
@@ -187,6 +217,10 @@
 
 /* Define if ROMIO is enabled */
 #undef HAVE_ROMIO
+
+/* Define if MPI supports MPI_THREAD_MULTIPLE with a runtime check for thread
+   level */
+#undef HAVE_RUNTIME_THREADCHECK
 
 /* Define to 1 if you have the `sched_yield' function. */
 #undef HAVE_SCHED_YIELD
@@ -287,9 +321,6 @@
 /* Define to enable handle checking */
 #undef MPICH_DEBUG_HANDLES
 
-/* Define to compile in optional debugging tests and output */
-#undef MPICH_DEBUG_INTERNAL
-
 /* Define to enable preinitialization of memory used by structures and unions
    */
 #undef MPICH_DEBUG_MEMINIT
@@ -302,9 +333,6 @@
 
 /* Define as the name of the debugger support library */
 #undef MPICH_INFODLL_LOC
-
-/* FIXME: for now always defined regardless of thread support */
-#undef MPICH_SINGLE_THREADED
 
 /* Level of thread support selected at compile time */
 #undef MPICH_THREAD_LEVEL
@@ -378,11 +406,20 @@
 /* Define to the version of this package. */
 #undef PACKAGE_VERSION
 
+/* The size of a `bool', as computed by sizeof. */
+#undef SIZEOF_BOOL
+
 /* The size of a `char', as computed by sizeof. */
 #undef SIZEOF_CHAR
 
+/* The size of a `Complex', as computed by sizeof. */
+#undef SIZEOF_COMPLEX
+
 /* The size of a `double', as computed by sizeof. */
 #undef SIZEOF_DOUBLE
+
+/* The size of a `DoubleComplex', as computed by sizeof. */
+#undef SIZEOF_DOUBLECOMPLEX
 
 /* Define size of PAC_TYPE_NAME */
 #undef SIZEOF_F77_DOUBLE_PRECISION
@@ -404,6 +441,9 @@
 
 /* The size of a `long', as computed by sizeof. */
 #undef SIZEOF_LONG
+
+/* The size of a `LongDoubleComplex', as computed by sizeof. */
+#undef SIZEOF_LONGDOUBLECOMPLEX
 
 /* The size of a `long double', as computed by sizeof. */
 #undef SIZEOF_LONG_DOUBLE
@@ -447,9 +487,6 @@
 /* Define if file should be used for name publisher */
 #undef USE_FILE_FOR_NAMEPUB
 
-/* Define if using gcc and g77 together */
-#undef USE_GCC_G77_DECLS
-
 /* Define to use ='s and spaces in the string utilities. */
 #undef USE_HUMAN_READABLE_TOKENS
 
@@ -477,6 +514,13 @@
 /* Define if weak symbols should be used */
 #undef USE_WEAK_SYMBOLS
 
+/* Define to 1 if your processor stores words with the most significant byte
+   first (like Motorola and SPARC, unlike Intel and VAX). */
+#undef WORDS_BIGENDIAN
+
+/* Define if words are little endian */
+#undef WORDS_LITTLEENDIAN
+
 /* define if bool is a built-in type */
 #undef bool
 
@@ -492,5 +536,10 @@
 /* if C does not support restrict */
 #undef restrict
 
+/* Define to `unsigned' if <sys/types.h> does not define. */
+#undef size_t
+
 /* if C does not support volatile */
 #undef volatile
+
+#endif

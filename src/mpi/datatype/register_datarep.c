@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Register_datarep
 #define MPI_Register_datarep PMPI_Register_datarep
 
 #endif
@@ -58,7 +59,7 @@ int MPI_Register_datarep(char *datarep,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("datatype");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_REGISTER_DATAREP);
     
     /* Validate parameters and objects (post conversion) */
@@ -83,7 +84,7 @@ int MPI_Register_datarep(char *datarep,
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_REGISTER_DATAREP);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("datatype");
     return mpi_errno;
 
   fn_fail:

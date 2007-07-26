@@ -37,8 +37,13 @@ destdir=""
 Show=eval
 exportDefs=""
 dependentLibs=""
+#
+# Check for options from the environment
+if [ "$CREATESHLIB_ECHO" = "yes" ] ; then
+    set -x 
+fi
 
-# Get the options
+# Get the options from the commandline
 nextarg=""
 for arg in "$@" ; do
    if [ -n "$nextarg" ] ; then
@@ -77,6 +82,10 @@ for arg in "$@" ; do
        -l*|-L*)
        dependentLibs="$dependentLibs $arg"
        ;;
+       # -cc and -clink allow us to override the commands used to 
+       # build the shared library
+       -cc=*) CC_SHL=$option ;;
+       -clink=*) C_LINK_SHL=$option ;;
        *)
        # The remaining arguments are used for install
        if [ -z "$srclibname" ] ; then
@@ -169,11 +178,6 @@ if [ $mode = link ] ; then
 	# names of the symbols that need to be exported, such as 
 	# mpi.def
 	;;
-
-        solaris86-cc)
-        $Show ${C_LINK_SHL} -h $srclibbase.$SHLIB_EXT -o $srclibbase.$SHLIB_EXT $exportDefs \
-            $srclibbase.a .tmp/*.o $dependentLibs 
-        ;;
 
 	*)
         # This is the default model

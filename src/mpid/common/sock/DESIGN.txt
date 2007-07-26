@@ -102,7 +102,8 @@ typedef int (*MPIDU_Sock_progress_update_func_t)(MPIDU_Sock_size_t num_bytes, vo
 int MPIDU_Sock_init(void);
 int MPIDU_Sock_finalize(void);
 
-int MPIDU_Sock_get_host_description(char * host_description, int len);
+int MPIDU_Sock_get_host_description(int myRank, 
+    char * host_description, int len);
 
 int MPIDU_Sock_create_set(MPIDU_Sock_set_t * set);
 int MPIDU_Sock_destroy_set(MPIDU_Sock_set_t set);

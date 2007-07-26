@@ -1,4 +1,4 @@
-/* Copyright (c) 2002-2006, The Ohio State University. All rights
+/* Copyright (c) 2002-2007, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -41,6 +41,8 @@ int MPIDI_CH3I_MRAILI_Get_rndv_rput(MPIDI_VC_t *vc,
 
     MPIDI_CH3I_MRAIL_Prepare_rndv(vc, req);
 
+    MPIDI_CH3I_MRAIL_REVERT_RPUT(req);
+
     if (VAPI_PROTOCOL_RPUT == req->mrail.protocol) {
         MPIDI_CH3I_MRAIL_Prepare_rndv_transfer(req, rndv);
     }
@@ -50,16 +52,23 @@ int MPIDI_CH3I_MRAILI_Get_rndv_rput(MPIDI_VC_t *vc,
     /* STEP 2: Push RDMA write */
     while ((req->mrail.rndv_buf_off < req->mrail.rndv_buf_sz)
             && VAPI_PROTOCOL_RPUT == req->mrail.protocol) {
+
         v = get_vbuf();
+        v->sreq = req;
+        
         assert(v != NULL);
+        
         nbytes = req->mrail.rndv_buf_sz - req->mrail.rndv_buf_off;
+        
         if (nbytes > MPIDI_CH3I_RDMA_Process.maxtransfersize) {
             nbytes = MPIDI_CH3I_RDMA_Process.maxtransfersize;
         }
+        
         DEBUG_PRINT("[buffer content]: offset %d\n", req->mrail.rndv_buf_off);
         MRAILI_RDMA_Put(vc, v,
                 (char *) (req->mrail.rndv_buf) + req->mrail.rndv_buf_off,
-                ((dreg_entry *) req->mrail.d_entry)->memhandle[vc->mrail.rails[rail].hca_index]->lkey,
+                ((dreg_entry *) req->mrail.d_entry)->memhandle[vc->
+                mrail.rails[rail].hca_index]->lkey,
                 (char *) (req->mrail.remote_addr) +
                 req->mrail.rndv_buf_off, 
                 req->mrail.rkey[vc->mrail.rails[rail].hca_index],

@@ -27,6 +27,10 @@ int main(int argc, char *argv[])
     MPI_Init(&argc, &argv);
     parse_args(argc, argv);
 
+    /* To improve reporting of problems about operations, we
+       change the error handler to errors return */
+    MPI_Comm_set_errhandler( MPI_COMM_WORLD, MPI_ERRORS_RETURN );
+
     err = lots_of_types_test();
     if (verbose && err) fprintf(stderr, "error in lots_of_types_test\n");
     errs += err;

@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2006, The Ohio State University. All rights
+/* Copyright (c) 2003-2007, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -35,22 +35,29 @@ int MPID_Ssend(const void * buf, int count, MPI_Datatype datatype, int rank, int
     MPI_Aint dt_true_lb;
     MPID_Datatype * dt_ptr;
     MPID_Request * sreq = NULL;
-    MPIDI_VC_t * vc;
 #if defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
 #endif    
     int mpi_errno = MPI_SUCCESS;
+    MPIDI_VC_t *vc;
     MPIDI_STATE_DECL(MPID_STATE_MPID_SSEND);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_SSEND);
 
-    MPIDI_DBG_PRINTF((10, FCNAME, "entering"));
-    MPIDI_DBG_PRINTF((15, FCNAME, "rank=%d, tag=%d, context=%d", rank, tag, comm->context_id + context_offset));
+    MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
+              "rank=%d, tag=%d, context=%d", 
+              rank, tag, comm->context_id + context_offset));
 
+    MPIDI_Comm_get_vc(comm, rank, &vc);
     if (rank == comm->rank && comm->comm_kind != MPID_INTERCOMM)
     {
-	mpi_errno = MPIDI_Isend_self(buf, count, datatype, rank, tag, comm, context_offset, MPIDI_REQUEST_TYPE_SSEND, &sreq);
-#       if (MPICH_THREAD_LEVEL < MPI_THREAD_MULTIPLE)
+	mpi_errno = MPIDI_Isend_self(buf, count, datatype, rank, tag, comm, 
+				     context_offset, MPIDI_REQUEST_TYPE_SSEND, 
+				     &sreq);
+	/* In the single threaded case, sending to yourself will cause 
+	   deadlock.  Note that in the runtime-thread case, this check
+	   will not be made (long-term FIXME) */
+#       ifndef MPICH_IS_THREADED
 	{
 	    /* --BEGIN ERROR HANDLING-- */
 	    if (sreq != NULL && sreq->cc != 0)
@@ -72,237 +79,43 @@ int MPID_Ssend(const void * buf, int count, MPI_Datatype datatype, int rank, int
 
     MPIDI_Datatype_get_info(count, datatype, dt_contig, data_sz, dt_ptr, dt_true_lb);
 
-    MPIDI_Comm_get_vc(comm, rank, &vc);
-	
     MPIDI_Request_create_sreq(sreq, mpi_errno, goto fn_exit);
     MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_SSEND);
     
-    /* FIXME: Since the request is never returned to the user and they can't do things like cancel it or wait on it, we may not
-       need to fill in all of the fields.  For example, it may be completely unnecessary to supply the matching information.  Also,
-       some of the fields can be set after the message has been sent.  These issues should be looked at more closely when we are
-       trying to squeeze those last few nanoseconds out of the code.  */
-    
     if (data_sz == 0)
     {
-	MPIDI_CH3_Pkt_t upkt;
-	MPIDI_CH3_Pkt_eager_sync_send_t * const es_pkt = &upkt.eager_sync_send;
-
-	MPIDI_DBG_PRINTF((15, FCNAME, "sending zero length message"));
-
-	sreq->cc = 2;
-	sreq->dev.ca = MPIDI_CH3_CA_COMPLETE;
-	
-	MPIDI_Pkt_init(es_pkt, MPIDI_CH3_PKT_EAGER_SYNC_SEND);
-	es_pkt->match.rank = comm->rank;
-	es_pkt->match.tag = tag;
-	es_pkt->match.context_id = comm->context_id + context_offset;
-	es_pkt->sender_req_id = sreq->handle;
-	es_pkt->data_sz = 0;
-
-	MPIDI_VC_FAI_send_seqnum(vc, seqnum);
-	MPIDI_Pkt_set_seqnum(es_pkt, seqnum);
-	MPIDI_Request_set_seqnum(sreq, seqnum);
-	
-	mpi_errno = MPIDI_CH3_iSend(vc, sreq, es_pkt, sizeof(*es_pkt));
-	/* --BEGIN ERROR HANDLING-- */
-	if (mpi_errno != MPI_SUCCESS)
-	{
-	    MPIU_Object_set_ref(sreq, 0);
-	    MPIDI_CH3_Request_destroy(sreq);
-	    sreq = NULL;
-	    mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**ch3|eagermsg", 0);
-	    goto fn_exit;
-	}
-	/* --END ERROR HANDLING-- */
-	
+	mpi_errno = MPIDI_CH3_EagerSyncZero( &sreq, rank, tag, comm, 
+					     context_offset );
 	goto fn_exit;
     }
     
-    /* FIXME: flow control: limit number of outstanding eager messsages containing data and need to be buffered by the receiver */
-
-    if (MPIDI_CH3_Eager_ok(vc, data_sz + sizeof(MPIDI_CH3_Pkt_eager_sync_send_t)))
+    /* OSU-MPI2 changes MPIDI_CH3_EAGER_MAX_MSG_SIZE to inline function */
+    if (data_sz + sizeof(MPIDI_CH3_Pkt_eager_sync_send_t) <= MPIDI_CH3_EAGER_MAX_MSG_SIZE(vc))
     {
-	MPIDI_CH3_Pkt_t upkt;
-	MPIDI_CH3_Pkt_eager_sync_send_t * const es_pkt = &upkt.eager_sync_send;
-	MPID_IOV iov[MPID_IOV_LIMIT];
-	    
-	sreq->cc = 2;
-	sreq->dev.ca = MPIDI_CH3_CA_COMPLETE;
-	
-	MPIDI_Pkt_init(es_pkt, MPIDI_CH3_PKT_EAGER_SYNC_SEND);
-	es_pkt->match.rank = comm->rank;
-	es_pkt->match.tag = tag;
-	es_pkt->match.context_id = comm->context_id + context_offset;
-	es_pkt->sender_req_id = sreq->handle;
-	es_pkt->data_sz = data_sz;
-
-	iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)es_pkt;
-	iov[0].MPID_IOV_LEN = sizeof(*es_pkt);
-
-	if (dt_contig)
-	{
-	    MPIDI_DBG_PRINTF((15, FCNAME, "sending contiguous sync eager message, data_sz=" MPIDI_MSG_SZ_FMT, data_sz));
-	    
-	    iov[1].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) ((char *)buf + dt_true_lb);
-	    iov[1].MPID_IOV_LEN = data_sz;
-	    
-	    MPIDI_VC_FAI_send_seqnum(vc, seqnum);
-	    MPIDI_Pkt_set_seqnum(es_pkt, seqnum);
-	    MPIDI_Request_set_seqnum(sreq, seqnum);
-	    
-	    mpi_errno = MPIDI_CH3_iSendv(vc, sreq, iov, 2);
-	    /* --BEGIN ERROR HANDLING-- */
-	    if (mpi_errno != MPI_SUCCESS)
-	    {
-		MPIU_Object_set_ref(sreq, 0);
-		MPIDI_CH3_Request_destroy(sreq);
-		sreq = NULL;
-		mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**ch3|eagermsg", 0);
-		goto fn_exit;
-	    }
-	    /* --END ERROR HANDLING-- */
-	}
-	else
-	{
-	    int iov_n;
-	    
-	    MPIDI_DBG_PRINTF((15, FCNAME, "sending non-contiguous sync eager message, data_sz=" MPIDI_MSG_SZ_FMT, data_sz));
-	    
-	    MPID_Segment_init(buf, count, datatype, &sreq->dev.segment, 0);
-	    sreq->dev.segment_first = 0;
-	    sreq->dev.segment_size = data_sz;
-	    
-	    iov_n = MPID_IOV_LIMIT - 1;
-	    mpi_errno = MPIDI_CH3U_Request_load_send_iov(sreq, &iov[1], &iov_n);
-	    if (mpi_errno == MPI_SUCCESS)
-	    {
-		iov_n += 1;
-		
-		MPIDI_VC_FAI_send_seqnum(vc, seqnum);
-		MPIDI_Pkt_set_seqnum(es_pkt, seqnum);
-		MPIDI_Request_set_seqnum(sreq, seqnum);
-		
-		if (sreq->dev.ca != MPIDI_CH3_CA_COMPLETE)
-		{
-		    /* sreq->dev.datatype_ptr = dt_ptr;
-		       MPID_Datatype_add_ref(dt_ptr); -- not needed for blocking operations */
-		}
-
-		mpi_errno = MPIDI_CH3_iSendv(vc, sreq, iov, iov_n);
-		/* --BEGIN ERROR HANDLING-- */
-		if (mpi_errno != MPI_SUCCESS)
-		{
-		    MPIU_Object_set_ref(sreq, 0);
-		    MPIDI_CH3_Request_destroy(sreq);
-		    sreq = NULL;
-		    mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**ch3|eagermsg", 0);
-		    goto fn_exit;
-		}
-		/* --END ERROR HANDLING-- */
-	    }
-	    else
-	    {
-		/* --BEGIN ERROR HANDLING-- */
-		MPIU_Object_set_ref(sreq, 0);
-		MPIDI_CH3_Request_destroy(sreq);
-		sreq = NULL;
-		mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**ch3|loadsendiov", 0);
-		goto fn_exit;
-		/* --END ERROR HANDLING-- */
-	    }
-	}
+	mpi_errno = MPIDI_CH3_EagerSyncNoncontigSend( &sreq, buf, count,
+						      datatype, data_sz, 
+						      dt_contig, dt_true_lb,
+						      rank, tag, comm, 
+						      context_offset );
     }
     else
     {
-	MPIDI_CH3_Pkt_t upkt;
-	MPIDI_CH3_Pkt_rndv_req_to_send_t * const rts_pkt = &upkt.rndv_req_to_send;
-	MPID_Request * rts_sreq;
-	
-	MPIDI_DBG_PRINTF((15, FCNAME, "sending rndv RTS, data_sz=" MPIDI_MSG_SZ_FMT, data_sz));
-	    
-	sreq->partner_request = NULL;
-	
-	MPIDI_Pkt_init(rts_pkt, MPIDI_CH3_PKT_RNDV_REQ_TO_SEND);
-	rts_pkt->match.rank = comm->rank;
-	rts_pkt->match.tag = tag;
-	rts_pkt->match.context_id = comm->context_id + context_offset;
-	rts_pkt->sender_req_id = sreq->handle;
-	rts_pkt->data_sz = data_sz;
-
-	MPIDI_VC_FAI_send_seqnum(vc, seqnum);
-	MPIDI_Pkt_set_seqnum(rts_pkt, seqnum);
-	MPIDI_Request_set_seqnum(sreq, seqnum);
-
-	MPIDI_DBG_PRINTF((30, FCNAME, "Rendezvous send using iStartRndvMsg"));
-    
-	if (dt_contig) 
-	{
-	    MPIDI_DBG_PRINTF((30, FCNAME, "  contiguous rndv data, data_sz="
-			      MPIDI_MSG_SZ_FMT, data_sz));
-		
-	    sreq->dev.ca = MPIDI_CH3_CA_COMPLETE;
-	    
-	    sreq->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) ((char*)sreq->dev.user_buf + dt_true_lb);
-	    sreq->dev.iov[0].MPID_IOV_LEN = data_sz;
-	    sreq->dev.iov_count = 1;
-	}
-	else
-	{
-	    MPID_Segment_init(sreq->dev.user_buf, sreq->dev.user_count,
-			      sreq->dev.datatype, &sreq->dev.segment, 0);
-	    sreq->dev.iov_count = MPID_IOV_LIMIT;
-	    sreq->dev.segment_first = 0;
-	    sreq->dev.segment_size = data_sz;
-	    mpi_errno = MPIDI_CH3U_Request_load_send_iov(sreq, &sreq->dev.iov[0],
-							 &sreq->dev.iov_count);
-	    /* --BEGIN ERROR HANDLING-- */
-	    if (mpi_errno != MPI_SUCCESS)
-	    {
-		mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL,
-						 FCNAME, __LINE__, MPI_ERR_OTHER,
-						 "**ch3|loadsendiov", 0);
-		goto fn_exit;
-	    }
-	    /* --END ERROR HANDLING-- */
-	}
-	mpi_errno = MPIDI_CH3_iStartRndvMsg (vc, sreq, &upkt);
-	/* --BEGIN ERROR HANDLING-- */
-	if (mpi_errno != MPI_SUCCESS)
-	{
-	    MPIU_Object_set_ref(sreq, 0);
-	    MPIDI_CH3_Request_destroy(sreq);
-	    sreq = NULL;
-	    mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL,
-					     FCNAME, __LINE__, MPI_ERR_OTHER,
-					     "**ch3|rtspkt", 0);
-	    goto fn_exit;
-	}
-	/* --END ERROR HANDLING-- */
-
-	/* FIXME: fill temporary IOV or pack temporary buffer after send to hide some latency.  This requires synchronization
-           because the CTS packet could arrive and be processed before the above iStartmsg completes (depending on the progress
-           engine, threads, etc.). */
-	
-	if (dt_ptr != NULL)
-	{
-	    /* sreq->dev.datatype_ptr = dt_ptr;
-	       MPID_Datatype_add_ref(dt_ptr); -- not needed for blocking operations */
-	}
+	/* Note that the sreq was created above */
+	mpi_errno = MPIDI_CH3_RndvSend( &sreq, buf, count, datatype, dt_contig,
+					data_sz, dt_true_lb, rank, tag, comm, 
+					context_offset );
+	/* Note that we don't increase the ref cound on the datatype
+	   because this is a blocking call, and the calling routine 
+	   must wait until sreq completes */
     }
 
   fn_exit:
     *request = sreq;
     
-#   ifdef MPICH_DBG_OUTPUT
-    {
-	if (sreq != NULL)
-	{
-	    MPIDI_DBG_PRINTF((15, FCNAME, "request allocated, handle=0x%08x", sreq->handle));
-	}
-    }
-#   endif
+    MPIU_DBG_STMT(CH3_OTHER,VERBOSE,{if (sreq!=NULL) {
+            MPIU_DBG_MSG_P(CH3_OTHER,VERBOSE,
+			   "request allocated, handle=0x%08x", sreq->handle);}});
     
-    MPIDI_DBG_PRINTF((10, FCNAME, "exiting"));
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_SSEND);
     return mpi_errno;
 }

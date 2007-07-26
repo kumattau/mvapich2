@@ -24,8 +24,8 @@ public class RecMsg
     public         int       size;        // length in bytes 
     private static int       pad;         // byte padding
 
-    public         int       lineID;      // lineID used in drawable
   
+
     public int readFromDataStream( DataInputStream in )
     {
         try {
@@ -40,9 +40,13 @@ public class RecMsg
             return 0;
         }
 
-        lineID   = LineID.compute( icomm, rank );
-
         return BYTESIZE;
+    }
+
+    // Global Process LineID for arrow event matching
+    public int getProcessLineID()
+    {
+        return LineID.computeGlobalProcessID( icomm, rank );
     }
 
     public int skipBytesFromDataStream( DataInputStream in )

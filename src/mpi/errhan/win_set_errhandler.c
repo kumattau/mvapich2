@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Win_set_errhandler
 #define MPI_Win_set_errhandler PMPI_Win_set_errhandler
 
 #endif
@@ -33,6 +34,9 @@
    Input Parameters:
 + win - window (handle) 
 - errhandler - new error handler for window (handle) 
+
+.N ThreadSafeNoUpdate
+
 .N Fortran
 
 .N Errors
@@ -41,7 +45,9 @@
 @*/
 int MPI_Win_set_errhandler(MPI_Win win, MPI_Errhandler errhandler)
 {
+#ifdef HAVE_ERROR_CHECKING
     static const char FCNAME[] = "MPI_Win_set_errhandler";
+#endif
     int mpi_errno = MPI_SUCCESS;
     MPID_Win *win_ptr = NULL;
     int  in_use;
@@ -50,7 +56,6 @@ int MPI_Win_set_errhandler(MPI_Win win, MPI_Errhandler errhandler)
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_WIN_SET_ERRHANDLER);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -85,7 +90,8 @@ int MPI_Win_set_errhandler(MPI_Win win, MPI_Errhandler errhandler)
 		if (!mpi_errno) {
 		    if (errhan_ptr->kind != MPID_WIN) {
 			mpi_errno = MPIR_Err_create_code(
-			    MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_ARG, "**errhandnotwin", NULL );
+			    MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME,
+			    __LINE__, MPI_ERR_ARG, "**errhandnotwin", NULL );
 		    }
 		}
 	    }
@@ -99,33 +105,35 @@ int MPI_Win_set_errhandler(MPI_Win win, MPI_Errhandler errhandler)
     
     if (win_ptr->errhandler != NULL) {
 	if (HANDLE_GET_KIND(errhandler) != HANDLE_KIND_BUILTIN) {
-	    MPIU_Object_release_ref(win_ptr->errhandler,&in_use);
+	    MPIR_Errhandler_release_ref(win_ptr->errhandler,&in_use);
 	    if (!in_use) {
 		MPID_Errhandler_free( win_ptr->errhandler );
 	    }
 	}
     }
     
-    MPIU_Object_add_ref(errhan_ptr);
+    MPIR_Errhandler_add_ref(errhan_ptr);
     win_ptr->errhandler = errhan_ptr;
     
     /* ... end of body of routine ... */
 
+#ifdef HAVE_ERROR_CHECKING
   fn_exit:
+#endif
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_WIN_SET_ERRHANDLER);
-    MPID_CS_EXIT();
     return mpi_errno;
 
-  fn_fail:
     /* --BEGIN ERROR HANDLING-- */
 #   ifdef HAVE_ERROR_CHECKING
+  fn_fail:
     {
 	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_win_set_errhandler",
+	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, 
+	    "**mpi_win_set_errhandler",
 	    "**mpi_win_set_errhandler %W %E", win, errhandler);
     }
-#   endif
     mpi_errno = MPIR_Err_return_win(win_ptr, FCNAME, mpi_errno);
     goto fn_exit;
+#   endif
     /* --END ERROR HANDLING-- */
 }

@@ -357,7 +357,7 @@ for exe in "$JH" "$RMIC" "$JAR" ; do
 done
 
 CPRP=cp
-RM="/bin/rm -f"
+RM="rm -f"
 MKDIR=mkdir
 AC_SUBST(RM)
 

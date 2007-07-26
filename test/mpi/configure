@@ -309,7 +309,7 @@ ac_includes_default="\
 # include <unistd.h>
 #endif"
 
-ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS errordir MAKE VPATH SET_CFLAGS SET_MAKE MPILIBLOC CC CFLAGS LDFLAGS CPPFLAGS ac_ct_CC EXEEXT OBJEXT F77 FFLAGS ac_ct_F77 CXX CXXFLAGS ac_ct_CXX spawndir CPP f77dir EGREP F77_NAME_MANGLE F77_GETARG_LIBS F90_GETARG_LIBS ALLOCMEMF F77_MPI_OFFSET F77_MPI_ADDRESS f90dir F90 F90FLAGS ac_ct_F90 cxxdir CXXCPP iodir PERL otherlangs threadsdir FC MPIEXEC MPILIBNAME ETAGS ETAGSADD LIBOBJS LTLIBOBJS'
+ac_subst_vars='SHELL PATH_SEPARATOR PACKAGE_NAME PACKAGE_TARNAME PACKAGE_VERSION PACKAGE_STRING PACKAGE_BUGREPORT exec_prefix prefix program_transform_name bindir sbindir libexecdir datadir sysconfdir sharedstatedir localstatedir libdir includedir oldincludedir infodir mandir build_alias host_alias target_alias DEFS ECHO_C ECHO_N ECHO_T LIBS VERSION errordir MAKE VPATH SET_CFLAGS SET_MAKE MPILIBLOC CC CFLAGS LDFLAGS CPPFLAGS ac_ct_CC EXEEXT OBJEXT F77 FFLAGS ac_ct_F77 CXX CXXFLAGS ac_ct_CXX spawndir rmadir CPP f77dir EGREP F77_NAME_MANGLE F77_GETARG_LIBS F90_GETARG_LIBS ALLOCMEMF F77_MPI_OFFSET F77_MPI_ADDRESS f90dir F90 F90FLAGS ac_ct_F90 ALLOCMEMF90 cxxdir CXXCPP iodir PERL otherlangs threadsdir FC MPIEXEC MPILIBNAME MPI_SOURCE MPICVSHOME ETAGS ETAGSADD LIBOBJS LTLIBOBJS'
 ac_subst_files=''
 
 # Initialize some variables set by options.
@@ -875,6 +875,7 @@ Optional Features:
 --enable-romio - Enable ROMIO MPI I/O implementation
 --enable-spawn - Enable tests of the dynamic process parts of MPI-2 (default)
 --enable-checkerrors - Add some tests for checking for errors in user programs
+--enable-fast - Indicates that the MPI implementation may have been built for fastest operation, such as building without error checking.  Has the effect of --enable-checkerrors=no
 --enable-threads=level - Specify the level of thread support expected from the
 MPI implementation.  The following levels are supported.
     single - No threads (MPI_THREAD_SINGLE)
@@ -883,6 +884,10 @@ MPI implementation.  The following levels are supported.
     multiple - Fully multi-threaded (MPI_THREAD_MULTIPLE)
 The default is funneled.  If enabled and no level is specified, the
 level is set to multiple.  If disabled, the level is set to single.
+If the environment variable MPICH_THREAD_LEVEL is set, that thread
+level is used (this is to let MPICH2 build for the correct thread
+support without requiring a specific --enable-threads argument.
+
 
 Optional Packages:
   --with-PACKAGE[=ARG]    use PACKAGE [ARG=yes]
@@ -1445,6 +1450,13 @@ ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
           ac_config_headers="$ac_config_headers include/mpitestconf.h"
 
+
+
+
+
+# This version is the version of the test suite.
+VERSION=1.0
+
 if test -f $CONFIG_AUX_DIR/install-sh ; then ac_aux_dir=$CONFIG_AUX_DIR
 else
 ac_aux_dir=
@@ -1523,6 +1535,12 @@ if test "${enable_checkerrors+set}" = set; then
 else
   enable_checkerrors=default
 fi;
+# Check whether --enable-fast or --disable-fast was given.
+if test "${enable_fast+set}" = set; then
+  enableval="$enable_fast"
+
+fi;
+
 
 # Check whether --with-mpi or --without-mpi was given.
 if test "${with_mpi+set}" = set; then
@@ -1535,20 +1553,43 @@ if test "${enable_threads+set}" = set; then
   enableval="$enable_threads"
 
 else
-  enable_threads=funneled
+  enable_threads=default
 fi;
-
 # ------------------------------------------------------------------------
 if test "$enable_threads" = "yes" ; then
     enable_threads=multiple
 elif test "$enable_threads" = "no" ; then
     enable_threads=single
+elif test "$enable_threads" = default ; then
+    if test -n "$MPICH_THREAD_LEVEL" ; then
+        case $MPICH_THREAD_LEVEL in
+	    MPI_THREAD_MULTIPLE)
+	    enable_threads=multiple
+	    ;;
+	    MPI_THREAD_SERIALIZED)
+	    enable_threads=serialized
+	    ;;
+	    MPI_THREAD_FUNNELED)
+	    enable_threads=funneled
+	    ;;
+	    MPI_THREAD_SINGLE)
+	    enable_threads=single
+	    ;;
+        esac
+    else
+        enable_threads=funneled
+    fi
 fi
 
+if test "$enable_fast" = "yes" ; then
+    if test "$enable_checkerrors" = "default" ; then
+        enable_checkerrors=no
+    fi
+fi
 # default for MPICH2 is to check error handling; for other cases it
 # is to only check correct programs.
 if test "$FROM_MPICH2" = "yes" ; then
-    if test "$enable_checkerrors" = "default" ; then
+    if test "$enable_checkerrors" = "default" -a "$MPICH_FAST" != "YES" ; then
          enable_checkerrors=yes
     else
          enable_checkerrors=no
@@ -1572,8 +1613,21 @@ if test "$enable_threads" = "multiple" ; then
 fi
 
 
-if test "`cd $srcdir && pwd`" != "`pwd`" ; then
+if test -n "$CONF_BASE_CACHEFILE" -a -s "$CONF_BASE_CACHEFILE" ; then
+    echo "Loading base cachefile $CONF_BASE_CACHEFILE"
+    . $CONF_BASE_CACHEFILE
+    export CONF_BASE_CACHEFILE
+fi
+
+
+
+rm -f conftest*
+date >conftest$$
+# If creating a file in the current directory does not show up in the srcdir
+# then we're doing a VPATH build (or something is very wrong)
+if test ! -s $srcdir/conftest$$ ; then
     pac_dirtyfiles=""
+    pac_dirtydirs=""
     pac_header=""
 
     for file in config.status $pac_header  ; do
@@ -1582,24 +1636,38 @@ if test "`cd $srcdir && pwd`" != "`pwd`" ; then
 	fi
     done
 
-    if test -n "$pac_dirtyfiles" ; then
+
+    if test -n "$pac_dirtyfiles" -o -n "$pac_dirtydirs" ; then
+	# Create a nice message about what to remove
+	rmmsg=""
+	if test -n "$pac_dirtyfiles" ; then
+	    rmmsg="files $pac_dirtyfiles"
+        fi
+ 	if test -n "$pac_dirtydirs" ; then
+	    if test -n "$rmmsg" ; then
+	        rmmsg="$rmmsg and directories $pac_dirtydirs"
+            else
+                rmmsg="directories $pac_dirtydirs"
+            fi
+        fi
         if test -f $srcdir/Makefile ; then
             { { echo "$as_me:$LINENO: error: You cannot do a VPATH build if the source directory has been
     configured.  Run \"make distclean\" in $srcdir first and make sure that the
-    files $pac_dirtyfiles have been removed." >&5
+    $rmmsg have been removed." >&5
 echo "$as_me: error: You cannot do a VPATH build if the source directory has been
     configured.  Run \"make distclean\" in $srcdir first and make sure that the
-    files $pac_dirtyfiles have been removed." >&2;}
+    $rmmsg have been removed." >&2;}
    { (exit 1); exit 1; }; }
         else
             { { echo "$as_me:$LINENO: error: You cannot do a VPATH build if the source directory has been
-    configured.  Remove the files $pac_dirtyfiles in $srcdir." >&5
+    configured.  Remove the $rmmsg in $srcdir." >&5
 echo "$as_me: error: You cannot do a VPATH build if the source directory has been
-    configured.  Remove the files $pac_dirtyfiles in $srcdir." >&2;}
+    configured.  Remove the $rmmsg in $srcdir." >&2;}
    { (exit 1); exit 1; }; }
         fi
     fi
 fi
+rm -f conftest*
 
 
 
@@ -2914,7 +2982,7 @@ fi
 
 
 # Provide some information about the compiler.
-echo "$as_me:2917:" \
+echo "$as_me:2985:" \
      "checking for Fortran 77 compiler version" >&5
 ac_compiler=`set X $ac_compile; echo $2`
 { (eval echo "$as_me:$LINENO: \"$ac_compiler --version </dev/null >&5\"") >&5
@@ -3427,11 +3495,28 @@ fi
 # Some MPI-2 implementations (including some of the MPICH2 shared-memory
 # channels and BG/L) leave out the dynamic process routines.  This
 # allows tests to avoid reporting failure for these routines.
+# This can be controlled by either a --disable-spawn argument or by
+# setting the environment variable MPI_NO_SPAWN to yes.
 spawndir=spawn
 if test "$enable_spawn" != yes ; then
     spawndir="#"
+elif test "$MPI_NO_SPAWN" = yes ; then
+    spawndir="#"
 fi
+#echo "MPI_NO_SPAWN = $MPI_NO_SPAWN"
 
+
+# Also allow rma to be disabled
+rmadir=rma
+if test "$MPI_NO_RMA"  = yes ; then
+    rmadir="#"
+else
+
+cat >>confdefs.h <<\_ACEOF
+#define HAVE_MPI_WIN_CREATE 1
+_ACEOF
+
+fi
 
 #
 # Now, get the versions of the compilers that we'll use for MPI programs
@@ -3516,7 +3601,7 @@ if test "${pac_cv_have_long_double+set}" = set; then
   echo $ECHO_N "(cached) $ECHO_C" >&6
 else
 
-cat >conftest.$ac_ext <<_ACEOF
+     cat >conftest.$ac_ext <<_ACEOF
 /* confdefs.h.  */
 _ACEOF
 cat confdefs.h >>conftest.$ac_ext
@@ -3570,9 +3655,13 @@ cat >>confdefs.h <<\_ACEOF
 _ACEOF
 
 fi
-echo "$as_me:$LINENO: checking whether long long available" >&5
-echo $ECHO_N "checking whether long long available... $ECHO_C" >&6
-cat >conftest.$ac_ext <<_ACEOF
+echo "$as_me:$LINENO: checking whether long long is supported" >&5
+echo $ECHO_N "checking whether long long is supported... $ECHO_C" >&6
+if test "${pac_cv_have_long_long+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+
+    cat >conftest.$ac_ext <<_ACEOF
 /* confdefs.h.  */
 _ACEOF
 cat confdefs.h >>conftest.$ac_ext
@@ -3616,9 +3705,10 @@ sed 's/^/| /' conftest.$ac_ext >&5
 pac_cv_have_long_long=no
 fi
 rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
+fi
 echo "$as_me:$LINENO: result: $pac_cv_have_long_long" >&5
 echo "${ECHO_T}$pac_cv_have_long_long" >&6
-if test "$pac_cv_have_long_long" ; then
+if test "$pac_cv_have_long_long" = yes ; then
 
 cat >>confdefs.h <<\_ACEOF
 #define HAVE_LONG_LONG 1
@@ -3626,6 +3716,274 @@ _ACEOF
 
 fi
 #
+# Check for const and restrict (used in some of the performance tests)
+echo "$as_me:$LINENO: checking for an ANSI C-conforming const" >&5
+echo $ECHO_N "checking for an ANSI C-conforming const... $ECHO_C" >&6
+if test "${ac_cv_c_const+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+  cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+int
+main ()
+{
+/* FIXME: Include the comments suggested by Paul. */
+#ifndef __cplusplus
+  /* Ultrix mips cc rejects this.  */
+  typedef int charset[2];
+  const charset x;
+  /* SunOS 4.1.1 cc rejects this.  */
+  char const *const *ccp;
+  char **p;
+  /* NEC SVR4.0.2 mips cc rejects this.  */
+  struct point {int x, y;};
+  static struct point const zero = {0,0};
+  /* AIX XL C 1.02.0.0 rejects this.
+     It does not let you subtract one const X* pointer from another in
+     an arm of an if-expression whose if-part is not a constant
+     expression */
+  const char *g = "string";
+  ccp = &g + (g ? g-g : 0);
+  /* HPUX 7.0 cc rejects these. */
+  ++ccp;
+  p = (char**) ccp;
+  ccp = (char const *const *) p;
+  { /* SCO 3.2v4 cc rejects this.  */
+    char *t;
+    char const *s = 0 ? (char *) 0 : (char const *) 0;
+
+    *t++ = 0;
+  }
+  { /* Someone thinks the Sun supposedly-ANSI compiler will reject this.  */
+    int x[] = {25, 17};
+    const int *foo = &x[0];
+    ++foo;
+  }
+  { /* Sun SC1.0 ANSI compiler rejects this -- but not the above. */
+    typedef const int *iptr;
+    iptr p = 0;
+    ++p;
+  }
+  { /* AIX XL C 1.02.0.0 rejects this saying
+       "k.c", line 2.27: 1506-025 (S) Operand must be a modifiable lvalue. */
+    struct s { int j; const int *ap[3]; };
+    struct s *b; b->j = 5;
+  }
+  { /* ULTRIX-32 V3.1 (Rev 9) vcc rejects this */
+    const int foo = 10;
+  }
+#endif
+
+  ;
+  return 0;
+}
+_ACEOF
+rm -f conftest.$ac_objext
+if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+  (eval $ac_compile) 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } &&
+	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; } &&
+	 { ac_try='test -s conftest.$ac_objext'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; }; then
+  ac_cv_c_const=yes
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+ac_cv_c_const=no
+fi
+rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
+fi
+echo "$as_me:$LINENO: result: $ac_cv_c_const" >&5
+echo "${ECHO_T}$ac_cv_c_const" >&6
+if test $ac_cv_c_const = no; then
+
+cat >>confdefs.h <<\_ACEOF
+#define const
+_ACEOF
+
+fi
+
+
+echo "$as_me:$LINENO: checking for restrict" >&5
+echo $ECHO_N "checking for restrict... $ECHO_C" >&6
+if test "${pac_cv_c_restrict+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+
+cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+int
+main ()
+{
+int * restrict a;
+  ;
+  return 0;
+}
+_ACEOF
+rm -f conftest.$ac_objext
+if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+  (eval $ac_compile) 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } &&
+	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; } &&
+	 { ac_try='test -s conftest.$ac_objext'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; }; then
+  pac_cv_c_restrict="restrict"
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+pac_cv_c_restrict="no"
+fi
+rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
+if test "$pac_cv_c_restrict" = "no" ; then
+   cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+int
+main ()
+{
+int * _Restrict a;
+  ;
+  return 0;
+}
+_ACEOF
+rm -f conftest.$ac_objext
+if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+  (eval $ac_compile) 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } &&
+	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; } &&
+	 { ac_try='test -s conftest.$ac_objext'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; }; then
+  pac_cv_c_restrict="_Restrict"
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+pac_cv_c_restrict="no"
+fi
+rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
+fi
+if test "$pac_cv_c_restrict" = "no" ; then
+   cat >conftest.$ac_ext <<_ACEOF
+/* confdefs.h.  */
+_ACEOF
+cat confdefs.h >>conftest.$ac_ext
+cat >>conftest.$ac_ext <<_ACEOF
+/* end confdefs.h.  */
+
+int
+main ()
+{
+int * __restrict a;
+  ;
+  return 0;
+}
+_ACEOF
+rm -f conftest.$ac_objext
+if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+  (eval $ac_compile) 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } &&
+	 { ac_try='test -z "$ac_c_werror_flag"			 || test ! -s conftest.err'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; } &&
+	 { ac_try='test -s conftest.$ac_objext'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; }; then
+  pac_cv_c_restrict="__restrict"
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+pac_cv_c_restrict="no"
+fi
+rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
+fi
+
+fi
+echo "$as_me:$LINENO: result: $pac_cv_c_restrict" >&5
+echo "${ECHO_T}$pac_cv_c_restrict" >&6
+if test "$pac_cv_c_restrict" = "no" ; then
+  restrict_val=""
+elif test "$pac_cv_c_restrict" != "restrict" ; then
+  restrict_val=$pac_cv_c_restrict
+fi
+if test "$restrict_val" != "restrict" ; then
+
+cat >>confdefs.h <<_ACEOF
+#define restrict $restrict_val
+_ACEOF
+
+fi
+
+
 # General headers
 ac_ext=c
 ac_cpp='$CPP $CPPFLAGS'
@@ -3867,8 +4225,7 @@ ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
 
 
-
-for ac_header in unistd.h stdarg.h string.h stdio.h stdlib.h memory.h
+for ac_header in unistd.h stdarg.h string.h stdlib.h memory.h
 do
 ac_safe=`echo "$ac_header" | sed 'y%./+-%__p_%'`
 echo "$as_me:$LINENO: checking for $ac_header" >&5
@@ -3917,7 +4274,7 @@ fi
 # If cpp failed, see if the compiler accepts the header.
 if test "$pac_found_header" != "yes" ; then
     cat >conftest.c<<EOF
-#line 3920 "configure"
+#line 4277 "configure"
 #include "confdefs.h"
 #include <$ac_header>
 int conftest() {return 0;}
@@ -3958,11 +4315,6 @@ done
 
 
 # Define functionality that we support
-
-cat >>confdefs.h <<\_ACEOF
-#define HAVE_MPI_WIN_CREATE 1
-_ACEOF
-
 
 # Now, select the proper compilers for the tests
 if test "$FROM_MPICH2" = yes ; then
@@ -4069,6 +4421,17 @@ echo "${ECHO_T}no" >&6
     fi
     rm -f conftest*
 fi
+#
+# At least one test (C++ test of C and Fortran datatypes) needs to
+# know if Fortran is supported
+if test "$f77dir" = "f77" ; then
+
+cat >>confdefs.h <<\_ACEOF
+#define HAVE_FORTRAN_BINDING 1
+_ACEOF
+
+fi
+
 # Common tests for F77
 if test "$buildingF77" = "yes" ; then
     # Match integer types to the MPI types for MPI_Aint and MPI_Offset
@@ -4324,7 +4687,7 @@ fi
 # If cpp failed, see if the compiler accepts the header.
 if test "$pac_found_header" != "yes" ; then
     cat >conftest.c<<EOF
-#line 4327 "configure"
+#line 4690 "configure"
 #include "confdefs.h"
 #include <$ac_header>
 int conftest() {return 0;}
@@ -4946,7 +5309,7 @@ fi
 
 
 # Provide some information about the compiler.
-echo "$as_me:4949:" \
+echo "$as_me:5312:" \
      "checking for Fortran 77 compiler version" >&5
 ac_compiler=`set X $ac_compile; echo $2`
 { (eval echo "$as_me:$LINENO: \"$ac_compiler --version </dev/null >&5\"") >&5
@@ -5100,10 +5463,14 @@ ac_compile='$F77 -c $FFLAGS conftest.$ac_ext >&5'
 ac_link='$F77 -o conftest$ac_exeext $FFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
 ac_compiler_gnu=$ac_cv_f77_compiler_gnu
 
-    echo "$as_me:$LINENO: checking whether integer*4 is supported" >&5
-echo $ECHO_N "checking whether integer*4 is supported... $ECHO_C" >&6
 
-cat >conftest.$ac_ext <<_ACEOF
+echo "$as_me:$LINENO: checking whether integer*4 is supported" >&5
+echo $ECHO_N "checking whether integer*4 is supported... $ECHO_C" >&6
+if test "${pac_cv_fort_integer4+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+
+    cat >conftest.$ac_ext <<_ACEOF
       program main
       integer*4 i
       end
@@ -5129,23 +5496,23 @@ if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
   ac_status=$?
   echo "$as_me:$LINENO: \$? = $ac_status" >&5
   (exit $ac_status); }; }; then
-  has_integer_4=4
+  pac_cv_fort_integer4=yes
 else
   echo "$as_me: failed program was:" >&5
 sed 's/^/| /' conftest.$ac_ext >&5
 
-has_integer_4=0
+pac_cv_fort_integer4=no
 fi
 rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
-    if test "$has_integer_4" != 0 ; then
-        echo "$as_me:$LINENO: result: yes" >&5
-echo "${ECHO_T}yes" >&6
-    else
-        echo "$as_me:$LINENO: result: no" >&5
-echo "${ECHO_T}no" >&6
-    fi
+fi
+echo "$as_me:$LINENO: result: $pac_cv_fort_integer4" >&5
+echo "${ECHO_T}$pac_cv_fort_integer4" >&6
     echo "$as_me:$LINENO: checking whether integer*8 is supported" >&5
 echo $ECHO_N "checking whether integer*8 is supported... $ECHO_C" >&6
+if test "${pac_cv_fort_integer8+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+
     cat >conftest.$ac_ext <<_ACEOF
       program main
       integer*8 i
@@ -5172,23 +5539,23 @@ if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
   ac_status=$?
   echo "$as_me:$LINENO: \$? = $ac_status" >&5
   (exit $ac_status); }; }; then
-  has_integer_8=8
+  pac_cv_fort_integer8=yes
 else
   echo "$as_me: failed program was:" >&5
 sed 's/^/| /' conftest.$ac_ext >&5
 
-has_integer_8=0
+pac_cv_fort_integer8=no
 fi
 rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
-    if test "$has_integer_8" != 0 ; then
-        echo "$as_me:$LINENO: result: yes" >&5
-echo "${ECHO_T}yes" >&6
-    else
-        echo "$as_me:$LINENO: result: no" >&5
-echo "${ECHO_T}no" >&6
-    fi
+fi
+echo "$as_me:$LINENO: result: $pac_cv_fort_integer8" >&5
+echo "${ECHO_T}$pac_cv_fort_integer8" >&6
     echo "$as_me:$LINENO: checking whether integer*16 is supported" >&5
 echo $ECHO_N "checking whether integer*16 is supported... $ECHO_C" >&6
+if test "${pac_cv_fort_integer16+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+
     cat >conftest.$ac_ext <<_ACEOF
       program main
       integer*16 i
@@ -5215,21 +5582,18 @@ if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
   ac_status=$?
   echo "$as_me:$LINENO: \$? = $ac_status" >&5
   (exit $ac_status); }; }; then
-  has_integer_16=16
+  pac_cv_fort_integer16=yes
 else
   echo "$as_me: failed program was:" >&5
 sed 's/^/| /' conftest.$ac_ext >&5
 
-has_integer_16=0
+pac_cv_fort_integer16=no
 fi
 rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
-    if test "$has_integer_16" != 0 ; then
-        echo "$as_me:$LINENO: result: yes" >&5
-echo "${ECHO_T}yes" >&6
-    else
-        echo "$as_me:$LINENO: result: no" >&5
-echo "${ECHO_T}no" >&6
-    fi
+fi
+echo "$as_me:$LINENO: result: $pac_cv_fort_integer16" >&5
+echo "${ECHO_T}$pac_cv_fort_integer16" >&6
+
     F77=$saveF77
     ac_ext=c
 ac_cpp='$CPP $CPPFLAGS'
@@ -5239,8 +5603,9 @@ ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
     # Determine Aint and Offset
     for len in 4 8 16 ; do
-        eval testval=\$"has_integer_$len"
-	if test "$testval" = 0 ; then continue ; fi
+        eval testval=\$"pac_cv_fort_integer$len"
+	if test "$testval" = no ; then continue ; fi
+	testval=$len
         if test $len = "$MPI_SIZEOF_AINT" ; then
 	    F77_MPI_ADDRESS="integer*$len"
         fi
@@ -5718,8 +6083,6 @@ _ACEOF
 
 
 
-    F77=$saveF77
-    CC=$saveCC
 
     # Check whether we need -lU77 to get iargc and getarg, which
     # are used for a few of the tests in spawn
@@ -5729,7 +6092,8 @@ _ACEOF
 echo $ECHO_N "checking for Fortran libraries needed for getarg... $ECHO_C" >&6
     cat >conftest.$ac_ext <<_ACEOF
       program main
-character*64 s
+
+        character*64 s
         integer i
         i = iargc()
         call getarg(i,s)
@@ -5765,13 +6129,14 @@ pac_cv_getarg_needs_u77=unknown
 fi
 rm -f conftest.err conftest.$ac_objext \
       conftest$ac_exeext conftest.$ac_ext
-    if test "$pac_cv_getarg_needs_u77" != "yes" ; then
+    if test "$pac_cv_getarg_needs_u77" != "no" ; then
         # Try again with -lU77
         saveLIBS="$LIBS"
         LIBS="$LIBS -lU77"
         cat >conftest.$ac_ext <<_ACEOF
       program main
-character*64 s
+
+        character*64 s
         integer i
         i = iargc()
         call getarg(i,s)
@@ -5816,8 +6181,13 @@ rm -f conftest.err conftest.$ac_objext \
         echo "$as_me:$LINENO: result: $F77_GETARG_LIBS" >&5
 echo "${ECHO_T}$F77_GETARG_LIBS" >&6
     else
-        echo "$as_me:$LINENO: result: none needed" >&5
+        if test "$pac_cv_getarg_needs_u77" = "unavailable" ; then
+	    echo "$as_me:$LINENO: result: getarg and/or iargc are not available.  Some spawn tests will fail to link" >&5
+echo "${ECHO_T}getarg and/or iargc are not available.  Some spawn tests will fail to link" >&6
+	else
+            echo "$as_me:$LINENO: result: none needed" >&5
 echo "${ECHO_T}none needed" >&6
+        fi
     fi
 
     # FIXME: Currently, we hope that F90 accepts the same library
@@ -5895,6 +6265,12 @@ else
 fi
 
 
+    # See the f90 block of code for the Fortran 90 version of
+    # ALLOCMEMF
+
+    # It is safe to now switch back to the "final" (MPI) compilers
+    F77=$saveF77
+    CC=$saveCC
 fi
 # Set a default for the Fortran 77 version of MPI_Offset.
 if test -z "$F77_MPI_OFFSET" ; then
@@ -5921,6 +6297,8 @@ if test "$enable_f90" = default -a "$enable_f77" = yes ; then
         saveF90=$F90
         F90=$BASEF90
     fi
+    # Work around bug in autoconf that adds -g to F90FLAGS
+    saveF90FLAGS="$F90FLAGS"
     # This is the fortran90 version of f90 language support
 ac_ext=${ac_f90ext-f}
 ac_compile='$F90 -c $F90FLAGS conftest.$ac_ext >&5'
@@ -6073,7 +6451,7 @@ echo "${ECHO_T}unknown!" >&6
     rm -f conftest*
 fi
 # Provide some information about the compiler.
-echo "$as_me:6076:" \
+echo "$as_me:6454:" \
      "checking for Fortran 90 compiler version" >&5
 ac_compiler=`set X $ac_compile; echo $2`
 { (eval echo "$as_me:$LINENO: \"$ac_compiler --version </dev/null >&5\"") >&5
@@ -6301,11 +6679,407 @@ echo $ECHO_N "checking whether the Fortran 90 compiler ($F90 $F90FLAGS $LDFLAGS)
 echo "$as_me:$LINENO: result: $pac_cv_prog_f90_cross" >&5
 echo "${ECHO_T}$pac_cv_prog_f90_cross" >&6
 
+    F90FLAGS=$saveF90FLAGS
     if test -z "$F90" -o "$pac_cv_prog_f90_works" != yes ; then
         { echo "$as_me:$LINENO: WARNING: Use --disable-f90 to keep configure from searching for a Fortran 90 compiler" >&5
 echo "$as_me: WARNING: Use --disable-f90 to keep configure from searching for a Fortran 90 compiler" >&2;}
 	enable_f90=no
-    elif test -n "$F90" ; then
+    elif test -z "$BASEF90" ; then
+        BASEF90=$F90
+    fi
+    F90=$saveF90
+fi
+
+if test "$enable_f90" = yes ; then
+    if test -n "$BASEF90" ; then
+        saveF90=$F90
+        F90=$BASEF90
+    fi
+    # Work around bug in autoconf that adds -g to F90FLAGS
+    saveF90FLAGS="$F90FLAGS"
+    # This is the fortran90 version of f90 language support
+ac_ext=${ac_f90ext-f}
+ac_compile='$F90 -c $F90FLAGS conftest.$ac_ext >&5'
+ac_link='$F90 -o conftest$ac_exeext $F90FLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
+ac_compiler_gnu=$ac_cv_f90_compiler_gnu
+if test -n "$ac_tool_prefix"; then
+  for ac_prog in f90 xlf90 pgf90 ifort epcf90 f95 fort xlf95 lf95 pathf90 g95 gfortran ifc efc
+  do
+    # Extract the first word of "$ac_tool_prefix$ac_prog", so it can be a program name with args.
+set dummy $ac_tool_prefix$ac_prog; ac_word=$2
+echo "$as_me:$LINENO: checking for $ac_word" >&5
+echo $ECHO_N "checking for $ac_word... $ECHO_C" >&6
+if test "${ac_cv_prog_F90+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+  if test -n "$F90"; then
+  ac_cv_prog_F90="$F90" # Let the user override the test.
+else
+as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+  for ac_exec_ext in '' $ac_executable_extensions; do
+  if $as_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
+    ac_cv_prog_F90="$ac_tool_prefix$ac_prog"
+    echo "$as_me:$LINENO: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+done
+
+fi
+fi
+F90=$ac_cv_prog_F90
+if test -n "$F90"; then
+  echo "$as_me:$LINENO: result: $F90" >&5
+echo "${ECHO_T}$F90" >&6
+else
+  echo "$as_me:$LINENO: result: no" >&5
+echo "${ECHO_T}no" >&6
+fi
+
+    test -n "$F90" && break
+  done
+fi
+if test -z "$F90"; then
+  ac_ct_F90=$F90
+  for ac_prog in f90 xlf90 pgf90 ifort epcf90 f95 fort xlf95 lf95 pathf90 g95 gfortran ifc efc
+do
+  # Extract the first word of "$ac_prog", so it can be a program name with args.
+set dummy $ac_prog; ac_word=$2
+echo "$as_me:$LINENO: checking for $ac_word" >&5
+echo $ECHO_N "checking for $ac_word... $ECHO_C" >&6
+if test "${ac_cv_prog_ac_ct_F90+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+  if test -n "$ac_ct_F90"; then
+  ac_cv_prog_ac_ct_F90="$ac_ct_F90" # Let the user override the test.
+else
+as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  test -z "$as_dir" && as_dir=.
+  for ac_exec_ext in '' $ac_executable_extensions; do
+  if $as_executable_p "$as_dir/$ac_word$ac_exec_ext"; then
+    ac_cv_prog_ac_ct_F90="$ac_prog"
+    echo "$as_me:$LINENO: found $as_dir/$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+done
+
+fi
+fi
+ac_ct_F90=$ac_cv_prog_ac_ct_F90
+if test -n "$ac_ct_F90"; then
+  echo "$as_me:$LINENO: result: $ac_ct_F90" >&5
+echo "${ECHO_T}$ac_ct_F90" >&6
+else
+  echo "$as_me:$LINENO: result: no" >&5
+echo "${ECHO_T}no" >&6
+fi
+
+  test -n "$ac_ct_F90" && break
+done
+
+  F90=$ac_ct_F90
+fi
+
+
+# once we find the compiler, confirm the extension
+echo "$as_me:$LINENO: checking that $ac_ext works as the extension for Fortran 90 program" >&5
+echo $ECHO_N "checking that $ac_ext works as the extension for Fortran 90 program... $ECHO_C" >&6
+cat > conftest.$ac_ext <<EOF
+      program conftest
+      end
+EOF
+if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+  (eval $ac_compile) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } ; then
+    echo "$as_me:$LINENO: result: yes" >&5
+echo "${ECHO_T}yes" >&6
+else
+    echo "$as_me:$LINENO: result: no" >&5
+echo "${ECHO_T}no" >&6
+    echo "$as_me:$LINENO: checking for extension for Fortran 90 programs" >&5
+echo $ECHO_N "checking for extension for Fortran 90 programs... $ECHO_C" >&6
+    ac_ext="f90"
+    cat > conftest.$ac_ext <<EOF
+      program conftest
+      end
+EOF
+    if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+  (eval $ac_compile) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } ; then
+        echo "$as_me:$LINENO: result: f90" >&5
+echo "${ECHO_T}f90" >&6
+    else
+        rm -f conftest*
+        ac_ext="f"
+        cat > conftest.$ac_ext <<EOF
+      program conftest
+      end
+EOF
+        if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+  (eval $ac_compile) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } ; then
+            echo "$as_me:$LINENO: result: f" >&5
+echo "${ECHO_T}f" >&6
+        else
+            echo "$as_me:$LINENO: result: unknown!" >&5
+echo "${ECHO_T}unknown!" >&6
+        fi
+    fi
+    ac_f90ext=$ac_ext
+    if test "$ac_ext" = "f90" ; then
+        pac_cv_f90_ext_f90=yes
+    else
+        pac_cv_f90_ext_f90=no
+    fi
+    pac_cv_f90_ext=$ac_ext
+    rm -f conftest*
+fi
+# Provide some information about the compiler.
+echo "$as_me:6852:" \
+     "checking for Fortran 90 compiler version" >&5
+ac_compiler=`set X $ac_compile; echo $2`
+{ (eval echo "$as_me:$LINENO: \"$ac_compiler --version </dev/null >&5\"") >&5
+  (eval $ac_compiler --version </dev/null >&5) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }
+{ (eval echo "$as_me:$LINENO: \"$ac_compiler -v </dev/null >&5\"") >&5
+  (eval $ac_compiler -v </dev/null >&5) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }
+{ (eval echo "$as_me:$LINENO: \"$ac_compiler -V </dev/null >&5\"") >&5
+  (eval $ac_compiler -V </dev/null >&5) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }
+
+# If we don't use `.F' as extension, the preprocessor is not run on the
+# input file.
+if test -n "$F90" ; then
+    ac_save_ext=$ac_ext
+    ac_ext=F
+    echo "$as_me:$LINENO: checking whether we are using the GNU Fortran 90 compiler" >&5
+echo $ECHO_N "checking whether we are using the GNU Fortran 90 compiler... $ECHO_C" >&6
+if test "${ac_cv_f90_compiler_gnu+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+  cat >conftest.$ac_ext <<_ACEOF
+      program main
+#ifndef __GNUC__
+       choke me
+#endif
+
+      end
+_ACEOF
+rm -f conftest.$ac_objext
+if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+  (eval $ac_compile) 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } &&
+	 { ac_try='test -z "$ac_f90_werror_flag"			 || test ! -s conftest.err'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; } &&
+	 { ac_try='test -s conftest.$ac_objext'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; }; then
+  ac_compiler_gnu=yes
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+ac_compiler_gnu=no
+fi
+rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
+ac_cv_f90_compiler_gnu=$ac_compiler_gnu
+
+fi
+echo "$as_me:$LINENO: result: $ac_cv_f90_compiler_gnu" >&5
+echo "${ECHO_T}$ac_cv_f90_compiler_gnu" >&6
+    ac_ext=$ac_save_ext
+    G90=`test $ac_compiler_gnu = yes && echo yes`
+    ac_test_F90FLAGS=${F90FLAGS+set}
+ac_save_F90FLAGS=$F90FLAGS
+F90FLAGS=
+echo "$as_me:$LINENO: checking whether $F90 accepts -g" >&5
+echo $ECHO_N "checking whether $F90 accepts -g... $ECHO_C" >&6
+if test "${ac_cv_prog_f90_g+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+  F90FLAGS=-g
+cat >conftest.$ac_ext <<_ACEOF
+      program main
+
+      end
+_ACEOF
+rm -f conftest.$ac_objext
+if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+  (eval $ac_compile) 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } &&
+	 { ac_try='test -z "$ac_f90_werror_flag"			 || test ! -s conftest.err'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; } &&
+	 { ac_try='test -s conftest.$ac_objext'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; }; then
+  ac_cv_prog_f90_g=yes
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+ac_cv_prog_f90_g=no
+fi
+rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
+
+fi
+echo "$as_me:$LINENO: result: $ac_cv_prog_f90_g" >&5
+echo "${ECHO_T}$ac_cv_prog_f90_g" >&6
+if test "$ac_test_F90FLAGS" = set; then
+  F90FLAGS=$ac_save_F90FLAGS
+elif test $ac_cv_prog_f90_g = yes; then
+  if test "$G90" = yes; then
+    F90FLAGS="-g -O2"
+  else
+    F90FLAGS="-g"
+  fi
+else
+  if test "$G90" = yes; then
+    F90FLAGS="-O2"
+  else
+    F90FLAGS=
+  fi
+fi
+fi
+ac_ext=f
+ac_compile='$F77 -c $FFLAGS conftest.$ac_ext >&5'
+ac_link='$F77 -o conftest$ac_exeext $FFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
+ac_compiler_gnu=$ac_cv_f77_compiler_gnu
+
+    echo "$as_me:$LINENO: checking for extension for Fortran 90 programs" >&5
+echo $ECHO_N "checking for extension for Fortran 90 programs... $ECHO_C" >&6
+pac_cv_f90_ext="f90"
+cat > conftest.$pac_cv_f90_ext <<EOF
+      program conftest
+      end
+EOF
+ac_compile='${F90-f90} -c $F90FLAGS conftest.$pac_cv_f90_ext 1>&5'
+if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+  (eval $ac_compile) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } ; then
+    echo "$as_me:$LINENO: result: f90" >&5
+echo "${ECHO_T}f90" >&6
+else
+    rm -f conftest*
+    pac_cv_f90_ext="f"
+    cat > conftest.$pac_cv_f90_ext <<EOF
+      program conftest
+      end
+EOF
+    if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+  (eval $ac_compile) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } ; then
+	echo "$as_me:$LINENO: result: f" >&5
+echo "${ECHO_T}f" >&6
+    else
+        echo "$as_me:$LINENO: result: unknown!" >&5
+echo "${ECHO_T}unknown!" >&6
+    fi
+fi
+echo "$as_me:$LINENO: checking whether the Fortran 90 compiler ($F90 $F90FLAGS $LDFLAGS) works" >&5
+echo $ECHO_N "checking whether the Fortran 90 compiler ($F90 $F90FLAGS $LDFLAGS) works... $ECHO_C" >&6
+
+
+# We cannot use _LANG_FORTRAN90 here because we will usually be executing this
+# test in the context of _PROG_F90, which is a require on _LANG_FORTRAN90.
+# Instead, we insert the necessary code from _LANG_FORTRAN90 here
+
+ac_ext=$pac_cv_f90_ext
+ac_compile='${F90-f90} -c $F90FLAGS conftest.$ac_ext 1>&5'
+ac_link='${F90-f90} -o conftest${ac_exeext} $F90FLAGS $LDFLAGS conftest.$ac_ext $LIBS 1>&5'
+# Include a Fortran 90 construction to distinguish between Fortran 77
+# and Fortran 90 compilers.
+cat >conftest.$ac_ext <<EOF
+      program conftest
+      integer, dimension(10) :: n
+      end
+EOF
+if { (eval echo "$as_me:$LINENO: \"$ac_link\"") >&5
+  (eval $ac_link) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } && test -s conftest${ac_exeext} ; then
+    pac_cv_prog_f90_works="yes"
+    if (./conftest; exit) 2>/dev/null ; then
+        pac_cv_prog_f90_cross="no"
+    else
+        pac_cv_prog_f90_cross="yes"
+    fi
+else
+  echo "configure: failed program was:" >&5
+  cat conftest.$ac_ext >&5
+  pac_cv_prog_f90_works="no"
+fi
+rm -f conftest*
+# The intel compiler sometimes generates these work.pc and .pcl files
+rm -f work.pc work.pcl
+ac_ext=f
+ac_compile='$F77 -c $FFLAGS conftest.$ac_ext >&5'
+ac_link='$F77 -o conftest$ac_exeext $FFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
+ac_compiler_gnu=$ac_cv_f77_compiler_gnu
+
+echo "$as_me:$LINENO: result: $pac_cv_prog_f90_works" >&5
+echo "${ECHO_T}$pac_cv_prog_f90_works" >&6
+if test $pac_cv_prog_f90_works = no; then
+  { echo "$as_me:$LINENO: WARNING: installation or configuration problem: Fortran 90 compiler cannot create executables." >&5
+echo "$as_me: WARNING: installation or configuration problem: Fortran 90 compiler cannot create executables." >&2;}
+fi
+echo "$as_me:$LINENO: checking whether the Fortran 90 compiler ($F90 $F90FLAGS $LDFLAGS) is a cross-compiler" >&5
+echo $ECHO_N "checking whether the Fortran 90 compiler ($F90 $F90FLAGS $LDFLAGS) is a cross-compiler... $ECHO_C" >&6
+echo "$as_me:$LINENO: result: $pac_cv_prog_f90_cross" >&5
+echo "${ECHO_T}$pac_cv_prog_f90_cross" >&6
+
+    F90FLAGS=$saveF90FLAGS
+
+    if test -n "$F90" ; then
         # Make sure that the compilers are compatible.  This
 	# will also make sure that the program named in F90 is
 	# a working Fortran 90 compiler
@@ -6408,6 +7182,77 @@ echo "$as_me: WARNING: Fortran 90 tests being disabled because the $F90 compiler
             enable_f90=no
         fi
     fi
+
+    # See if the compiler supports the Cray-style pointers
+    ALLOCMEMF90=""
+
+
+echo "$as_me:$LINENO: checking whether Fortran 90 has Cray-style pointer declaration" >&5
+echo $ECHO_N "checking whether Fortran 90 has Cray-style pointer declaration... $ECHO_C" >&6
+if test "${pac_cv_prog_f90_has_pointer+set}" = set; then
+  echo $ECHO_N "(cached) $ECHO_C" >&6
+else
+
+ac_ext=${ac_f90ext-f}
+ac_compile='$F90 -c $F90FLAGS conftest.$ac_ext >&5'
+ac_link='$F90 -o conftest$ac_exeext $F90FLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
+ac_compiler_gnu=$ac_cv_f90_compiler_gnu
+
+cat >conftest.$ac_ext <<_ACEOF
+      program main
+
+        integer M
+        pointer (MPTR,M)
+        data MPTR/0/
+
+      end
+_ACEOF
+rm -f conftest.$ac_objext
+if { (eval echo "$as_me:$LINENO: \"$ac_compile\"") >&5
+  (eval $ac_compile) 2>conftest.er1
+  ac_status=$?
+  grep -v '^ *+' conftest.er1 >conftest.err
+  rm -f conftest.er1
+  cat conftest.err >&5
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); } &&
+	 { ac_try='test -z "$ac_f90_werror_flag"			 || test ! -s conftest.err'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; } &&
+	 { ac_try='test -s conftest.$ac_objext'
+  { (eval echo "$as_me:$LINENO: \"$ac_try\"") >&5
+  (eval $ac_try) 2>&5
+  ac_status=$?
+  echo "$as_me:$LINENO: \$? = $ac_status" >&5
+  (exit $ac_status); }; }; then
+  pac_cv_prog_f90_has_pointer="yes"
+else
+  echo "$as_me: failed program was:" >&5
+sed 's/^/| /' conftest.$ac_ext >&5
+
+pac_cv_prog_f90_has_pointer="no"
+fi
+rm -f conftest.err conftest.$ac_objext conftest.$ac_ext
+ac_ext=f
+ac_compile='$F77 -c $FFLAGS conftest.$ac_ext >&5'
+ac_link='$F77 -o conftest$ac_exeext $FFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
+ac_compiler_gnu=$ac_cv_f77_compiler_gnu
+
+
+fi
+echo "$as_me:$LINENO: result: $pac_cv_prog_f90_has_pointer" >&5
+echo "${ECHO_T}$pac_cv_prog_f90_has_pointer" >&6
+if test "$pac_cv_prog_f90_has_pointer" = "yes" ; then
+    ALLOCMEMF90="allocmemf90 1"
+else
+    :
+fi
+
+
+
     if test -n "$BASEF90" ; then
         F90=$saveF90
     fi
@@ -6835,7 +7680,7 @@ fi
 # If cpp failed, see if the compiler accepts the header.
 if test "$pac_found_header" != "yes" ; then
     cat >conftest.c<<EOF
-#line 6838 "configure"
+#line 7683 "configure"
 #include "confdefs.h"
 #include <$ac_header>
 int conftest() {return 0;}
@@ -7063,6 +7908,11 @@ fi
 iodir="#"
 if test "$enable_romio" != no ; then
     iodir=io
+
+cat >>confdefs.h <<\_ACEOF
+#define HAVE_MPI_IO 1
+_ACEOF
+
 fi
 
 
@@ -7125,6 +7975,18 @@ fi
 if test -z "$MPILIBNAME" ; then MPILIBNAME=mpich ; fi
 
 
+
+# Get the location of the CVS repository, if present
+    # We can use this test (for CVS/Root) for creating maintainer targets
+    # as well, and tests for maintainer-required software, such as
+    # doctext
+if test -s CVS/Root ; then
+    MPICVSHOME=`cat CVS/Root`
+elif test -s "$srcdir/CVS/Root" ; then
+    MPICVSHOME=`cat $srcdir/CVS/Root`
+fi
+
+
 for ac_prog in etags
 do
   # Extract the first word of "$ac_prog", so it can be a program name with args.
@@ -7175,7 +8037,9 @@ export ETAGSADD
 
           ac_config_commands="$ac_config_commands default-2"
 
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              ac_config_files="$ac_config_files maint/testmerge runtests Makefile basic/Makefile attr/Makefile util/Makefile coll/Makefile comm/Makefile datatype/Makefile errhan/Makefile group/Makefile info/Makefile init/Makefile pt2pt/Makefile rma/Makefile spawn/Makefile topo/Makefile io/Makefile f77/Makefile f77/attr/Makefile f77/attr/attraints.h f77/datatype/Makefile f77/datatype/typeaints.h f77/util/Makefile f77/coll/Makefile f77/comm/Makefile f77/topo/Makefile f77/init/Makefile f77/rma/addsize.h f77/pt2pt/Makefile f77/info/Makefile f77/spawn/Makefile f77/spawn/type1aint.h f77/rma/Makefile f77/ext/Makefile f77/ext/testlist f77/io/Makefile f77/io/iooffset.h f77/io/iodisp.h f77/io/ioaint.h f90/Makefile f90/attr/Makefile f90/datatype/Makefile f90/util/Makefile f90/coll/Makefile f90/comm/Makefile f90/topo/Makefile f90/init/Makefile f90/pt2pt/Makefile f90/rma/Makefile f90/info/Makefile f90/spawn/Makefile f90/timer/Makefile f90/ext/Makefile f90/io/Makefile cxx/Makefile cxx/util/Makefile cxx/attr/Makefile cxx/comm/Makefile cxx/coll/Makefile cxx/info/Makefile cxx/datatype/Makefile cxx/io/Makefile cxx/init/Makefile cxx/rma/Makefile cxx/spawn/Makefile threads/Makefile threads/pt2pt/Makefile errors/Makefile errors/coll/Makefile errors/pt2pt/Makefile testlist cxx/testlist f77/testlist f90/testlist"
+          ac_config_commands="$ac_config_commands default-3"
+
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            ac_config_files="$ac_config_files maint/testmerge runtests Makefile basic/Makefile attr/Makefile util/Makefile coll/Makefile comm/Makefile datatype/Makefile errhan/Makefile group/Makefile info/Makefile init/Makefile pt2pt/Makefile rma/Makefile spawn/Makefile topo/Makefile io/Makefile f77/Makefile f77/attr/Makefile f77/attr/attraints.h f77/datatype/Makefile f77/datatype/typeaints.h f77/util/Makefile f77/coll/Makefile f77/comm/Makefile f77/topo/Makefile f77/init/Makefile f77/rma/addsize.h f77/pt2pt/Makefile f77/info/Makefile f77/spawn/Makefile f77/spawn/type1aint.h f77/rma/Makefile f77/ext/Makefile f77/ext/testlist f77/io/Makefile f77/io/iooffset.h f77/io/iodisp.h f77/io/ioaint.h f90/Makefile f90/attr/Makefile f90/datatype/Makefile f90/util/Makefile f90/coll/Makefile f90/comm/Makefile f90/topo/Makefile f90/init/Makefile f90/pt2pt/Makefile f90/rma/Makefile f90/info/Makefile f90/spawn/Makefile f90/timer/Makefile f90/ext/Makefile f90/ext/testlist f90/io/Makefile f90/misc/Makefile cxx/Makefile cxx/util/Makefile cxx/attr/Makefile cxx/comm/Makefile cxx/coll/Makefile cxx/info/Makefile cxx/datatype/Makefile cxx/io/Makefile cxx/init/Makefile cxx/rma/Makefile cxx/spawn/Makefile threads/Makefile threads/pt2pt/Makefile threads/util/Makefile threads/comm/Makefile errors/Makefile errors/coll/Makefile errors/comm/Makefile errors/group/Makefile errors/pt2pt/Makefile errors/rma/Makefile errors/spawn/Makefile errors/io/Makefile errors/cxx/Makefile errors/cxx/errhan/Makefile errors/cxx/io/Makefile errors/f77/Makefile errors/f90/Makefile manual/Makefile manual/manyconnect perf/Makefile testlist cxx/testlist f77/testlist f90/testlist errors/testlist errors/cxx/testlist"
 cat >confcache <<\_ACEOF
 # This file is a shell script that caches the results of configure
 # tests run on this system so they can be shared between configure
@@ -7702,6 +8566,7 @@ cat >>$CONFIG_STATUS <<_ACEOF
 
 
 
+
 _ACEOF
 
 
@@ -7765,7 +8630,9 @@ do
   "f90/spawn/Makefile" ) CONFIG_FILES="$CONFIG_FILES f90/spawn/Makefile" ;;
   "f90/timer/Makefile" ) CONFIG_FILES="$CONFIG_FILES f90/timer/Makefile" ;;
   "f90/ext/Makefile" ) CONFIG_FILES="$CONFIG_FILES f90/ext/Makefile" ;;
+  "f90/ext/testlist" ) CONFIG_FILES="$CONFIG_FILES f90/ext/testlist" ;;
   "f90/io/Makefile" ) CONFIG_FILES="$CONFIG_FILES f90/io/Makefile" ;;
+  "f90/misc/Makefile" ) CONFIG_FILES="$CONFIG_FILES f90/misc/Makefile" ;;
   "cxx/Makefile" ) CONFIG_FILES="$CONFIG_FILES cxx/Makefile" ;;
   "cxx/util/Makefile" ) CONFIG_FILES="$CONFIG_FILES cxx/util/Makefile" ;;
   "cxx/attr/Makefile" ) CONFIG_FILES="$CONFIG_FILES cxx/attr/Makefile" ;;
@@ -7779,15 +8646,33 @@ do
   "cxx/spawn/Makefile" ) CONFIG_FILES="$CONFIG_FILES cxx/spawn/Makefile" ;;
   "threads/Makefile" ) CONFIG_FILES="$CONFIG_FILES threads/Makefile" ;;
   "threads/pt2pt/Makefile" ) CONFIG_FILES="$CONFIG_FILES threads/pt2pt/Makefile" ;;
+  "threads/util/Makefile" ) CONFIG_FILES="$CONFIG_FILES threads/util/Makefile" ;;
+  "threads/comm/Makefile" ) CONFIG_FILES="$CONFIG_FILES threads/comm/Makefile" ;;
   "errors/Makefile" ) CONFIG_FILES="$CONFIG_FILES errors/Makefile" ;;
   "errors/coll/Makefile" ) CONFIG_FILES="$CONFIG_FILES errors/coll/Makefile" ;;
+  "errors/comm/Makefile" ) CONFIG_FILES="$CONFIG_FILES errors/comm/Makefile" ;;
+  "errors/group/Makefile" ) CONFIG_FILES="$CONFIG_FILES errors/group/Makefile" ;;
   "errors/pt2pt/Makefile" ) CONFIG_FILES="$CONFIG_FILES errors/pt2pt/Makefile" ;;
+  "errors/rma/Makefile" ) CONFIG_FILES="$CONFIG_FILES errors/rma/Makefile" ;;
+  "errors/spawn/Makefile" ) CONFIG_FILES="$CONFIG_FILES errors/spawn/Makefile" ;;
+  "errors/io/Makefile" ) CONFIG_FILES="$CONFIG_FILES errors/io/Makefile" ;;
+  "errors/cxx/Makefile" ) CONFIG_FILES="$CONFIG_FILES errors/cxx/Makefile" ;;
+  "errors/cxx/errhan/Makefile" ) CONFIG_FILES="$CONFIG_FILES errors/cxx/errhan/Makefile" ;;
+  "errors/cxx/io/Makefile" ) CONFIG_FILES="$CONFIG_FILES errors/cxx/io/Makefile" ;;
+  "errors/f77/Makefile" ) CONFIG_FILES="$CONFIG_FILES errors/f77/Makefile" ;;
+  "errors/f90/Makefile" ) CONFIG_FILES="$CONFIG_FILES errors/f90/Makefile" ;;
+  "manual/Makefile" ) CONFIG_FILES="$CONFIG_FILES manual/Makefile" ;;
+  "manual/manyconnect" ) CONFIG_FILES="$CONFIG_FILES manual/manyconnect" ;;
+  "perf/Makefile" ) CONFIG_FILES="$CONFIG_FILES perf/Makefile" ;;
   "testlist" ) CONFIG_FILES="$CONFIG_FILES testlist" ;;
   "cxx/testlist" ) CONFIG_FILES="$CONFIG_FILES cxx/testlist" ;;
   "f77/testlist" ) CONFIG_FILES="$CONFIG_FILES f77/testlist" ;;
   "f90/testlist" ) CONFIG_FILES="$CONFIG_FILES f90/testlist" ;;
+  "errors/testlist" ) CONFIG_FILES="$CONFIG_FILES errors/testlist" ;;
+  "errors/cxx/testlist" ) CONFIG_FILES="$CONFIG_FILES errors/cxx/testlist" ;;
   "default-1" ) CONFIG_COMMANDS="$CONFIG_COMMANDS default-1" ;;
   "default-2" ) CONFIG_COMMANDS="$CONFIG_COMMANDS default-2" ;;
+  "default-3" ) CONFIG_COMMANDS="$CONFIG_COMMANDS default-3" ;;
   "include/mpitestconf.h" ) CONFIG_HEADERS="$CONFIG_HEADERS include/mpitestconf.h" ;;
   *) { { echo "$as_me:$LINENO: error: invalid argument: $ac_config_target" >&5
 echo "$as_me: error: invalid argument: $ac_config_target" >&2;}
@@ -7874,6 +8759,7 @@ s,@ECHO_C@,$ECHO_C,;t t
 s,@ECHO_N@,$ECHO_N,;t t
 s,@ECHO_T@,$ECHO_T,;t t
 s,@LIBS@,$LIBS,;t t
+s,@VERSION@,$VERSION,;t t
 s,@errordir@,$errordir,;t t
 s,@MAKE@,$MAKE,;t t
 s,@VPATH@,$VPATH,;t t
@@ -7894,6 +8780,7 @@ s,@CXX@,$CXX,;t t
 s,@CXXFLAGS@,$CXXFLAGS,;t t
 s,@ac_ct_CXX@,$ac_ct_CXX,;t t
 s,@spawndir@,$spawndir,;t t
+s,@rmadir@,$rmadir,;t t
 s,@CPP@,$CPP,;t t
 s,@f77dir@,$f77dir,;t t
 s,@EGREP@,$EGREP,;t t
@@ -7907,6 +8794,7 @@ s,@f90dir@,$f90dir,;t t
 s,@F90@,$F90,;t t
 s,@F90FLAGS@,$F90FLAGS,;t t
 s,@ac_ct_F90@,$ac_ct_F90,;t t
+s,@ALLOCMEMF90@,$ALLOCMEMF90,;t t
 s,@cxxdir@,$cxxdir,;t t
 s,@CXXCPP@,$CXXCPP,;t t
 s,@iodir@,$iodir,;t t
@@ -7916,6 +8804,8 @@ s,@threadsdir@,$threadsdir,;t t
 s,@FC@,$FC,;t t
 s,@MPIEXEC@,$MPIEXEC,;t t
 s,@MPILIBNAME@,$MPILIBNAME,;t t
+s,@MPI_SOURCE@,$MPI_SOURCE,;t t
+s,@MPICVSHOME@,$MPICVSHOME,;t t
 s,@ETAGS@,$ETAGS,;t t
 s,@ETAGSADD@,$ETAGSADD,;t t
 s,@LIBOBJS@,$LIBOBJS,;t t
@@ -8493,6 +9383,7 @@ echo "$as_me: executing $ac_dest commands" >&6;}
   case $ac_dest in
     default-1 ) chmod a+x maint/testmerge ;;
     default-2 ) chmod a+x runtests ;;
+    default-3 ) chmod a+x manual/manyconnect ;;
   esac
 done
 _ACEOF

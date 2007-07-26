@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Cart_rank
 #define MPI_Cart_rank PMPI_Cart_rank
 
 #endif
@@ -67,7 +68,6 @@ int MPI_Cart_rank(MPI_Comm comm, int *coords, int *rank)
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_CART_RANK);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -145,7 +145,6 @@ int MPI_Cart_rank(MPI_Comm comm, int *coords, int *rank)
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_CART_RANK);
-    MPID_CS_EXIT();
     return mpi_errno;
 
   fn_fail:

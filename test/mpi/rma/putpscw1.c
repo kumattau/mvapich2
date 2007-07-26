@@ -45,19 +45,34 @@ int main( int argc, char *argv[] )
 				extent, MPI_INFO_NULL, comm, &win );
 		MPI_Win_get_group( win, &wingroup );
 		if (rank == source) {
+		    /* To improve reporting of problems about operations, we
+		       change the error handler to errors return */
+		    MPI_Win_set_errhandler( win, MPI_ERRORS_RETURN );
 		    sendtype.InitBuf( &sendtype );
 		    
 		    /* Neighbor is dest only */
 		    MPI_Group_incl( wingroup, 1, &dest, &neighbors );
-		    MPI_Win_start( neighbors, 0, win );
+		    err = MPI_Win_start( neighbors, 0, win );
+		    if (err) {
+			errs++;
+			if (errs < 10) {
+			    MTestPrintError( err );
+			}
+		    }
 		    MPI_Group_free( &neighbors );
 		    err = MPI_Put( sendtype.buf, sendtype.count, 
 				    sendtype.datatype, dest, 0, 
 				   recvtype.count, recvtype.datatype, win );
-		    MPI_Win_complete( win );
 		    if (err) {
 			errs++;
 			MTestPrintError( err );
+		    }
+		    err = MPI_Win_complete( win );
+		    if (err) {
+			errs++;
+			if (errs < 10) {
+			    MTestPrintError( err );
+			}
 		    }
 		}
 		else if (rank == dest) {

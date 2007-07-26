@@ -1,4 +1,4 @@
-/* Copyright (c) 2002-2006, The Ohio State University. All rights
+/* Copyright (c) 2002-2007, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH software package developed by the
@@ -27,6 +27,8 @@
 #include <netinet/tcp.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <errno.h>
+#include <string.h>
 
 #include "libcr.h"
 #include "rdma_impl.h"
@@ -67,7 +69,7 @@ static pthread_mutex_t MPICR_cond_callback_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t MPICR_cond_callback = PTHREAD_COND_INITIALIZER;
 */
 static pthread_mutex_t MPICR_cs_lock;
-    
+
 #define CR_ERR_ABORT(args...)  do {\
     fprintf(stderr, "[Rank %d][%s: line %d]", MPIDI_Process.my_pg_rank ,__FILE__, __LINE__); \
     fprintf(stderr, args); \
@@ -179,20 +181,18 @@ inline void MPIDI_CH3I_CR_lock()
 {
 /*
     pthread_t current_thread = pthread_self();
-    if (current_thread != MPICR_child_thread) {
-*/  
+    printf("%d:%d Lock Req\n",MPICR_pg_rank,current_thread); */
     pthread_mutex_lock(&MPICR_cs_lock);
-/*    }*/
+/*    
+    printf("%d:%d Lock Acq\n",MPICR_pg_rank,current_thread);
+*/
 }
 
 inline void MPIDI_CH3I_CR_unlock()
 {
-/*    
-    pthread_t current_thread = pthread_self();
-    if (current_thread != MPICR_child_thread) {
-*/
-        pthread_mutex_unlock(&MPICR_cs_lock);
-/*    }*/
+/*  pthread_t current_thread = pthread_self();
+    printf("%d:%d Unlock\n",MPICR_pg_rank,current_thread);*/
+    pthread_mutex_unlock(&MPICR_cs_lock);
 }
 
 MPICR_cr_state MPIDI_CH3I_CR_Get_state()
@@ -202,7 +202,6 @@ MPICR_cr_state MPIDI_CH3I_CR_Get_state()
 
 int CR_Set_state(MPICR_cr_state state)
 {
-    CR_DBG("Change state to");
     switch (state) {
         case MPICR_STATE_CHECKPOINTING:
             CR_DBG("MPICR_STATE_CHECKPOINTING\n");
@@ -329,6 +328,9 @@ int CR_Thread_loop()
                 }
             }
             MPIDI_CH3I_CR_unlock();
+            if (MPIDI_Process.use_sync_ckpt) {
+                pthread_cond_signal(&MVAPICH2_sync_ckpt_cond);
+            }
             MPICR_is_restarting = 0;
         }
         else {
@@ -341,7 +343,7 @@ int CR_Reset_proc_info()
 {
     int has_parent;
     int pg_id_sz;
-    int kvs_name_sz;
+    int kvs_name_sz;    
     free(MPIDI_Process.my_pg->id);
     free(MPIDI_Process.my_pg->ch.kvs_name);
     unsetenv("PMI_FD");
@@ -371,6 +373,7 @@ int CR_Reset_proc_info()
     if (PMI_KVS_Get_my_name(MPIDI_Process.my_pg->ch.kvs_name,kvs_name_sz)) {
         CR_ERR_ABORT("PMI_KVS_Get_my_name failed\n");
     }
+    MPIDI_PG_InitConnKVS(MPIDI_Process.my_pg);
     return 0;    
 }
 
@@ -458,40 +461,79 @@ void* CR_Thread_entry(void *arg)
     return NULL;
 }
 
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_CR_Init
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3I_CR_Init(MPIDI_PG_t *pg, int rank, int size)
 {
     MPICR_pg = pg;
     MPICR_pg_rank = rank;
     MPICR_pg_size = size;
+    int mpi_errno = MPI_SUCCESS;
+
     /*Initialize the cr lock MPICR_cs_lock*/
     {
         pthread_mutexattr_t attr;
         pthread_mutexattr_init(&attr);
         pthread_mutexattr_settype(&attr,PTHREAD_MUTEX_RECURSIVE);
+
         if (pthread_mutex_init(&MPICR_cs_lock, &attr)) {
-            CR_ERR_ABORT("pthread_mutex_init failed\n");    
+	    MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
+		    "%s: %s", "pthread_mutex_init", strerror(errno));    
         }
+
         pthread_mutexattr_destroy(&attr);
     }
     /*Create a new thread*/
     CR_DBG("Creating a new thread for running cr controller\n");
-    pthread_create(&MPICR_child_thread,NULL,CR_Thread_entry,NULL);
-    return 0;
+    if(pthread_create(&MPICR_child_thread,NULL,CR_Thread_entry,NULL)) {
+	MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
+		"%s: %s", "pthread_create", strerror(errno));
+    }
+
+fn_exit:
+    return mpi_errno;
+
+fn_fail:
+    goto fn_exit;
 }
 
 int MPIDI_CH3I_CR_Finalize()
 {
-    if (0==MPICR_is_initialized)
-        return 0;
+    if (0==MPICR_is_initialized) return 0;
+
     pthread_cancel(MPICR_child_thread);
     pthread_join(MPICR_child_thread, NULL);
     pthread_mutex_destroy(&MPICR_cs_lock);
-    if (MPICR_MPD_fd>0)
-        close(MPICR_MPD_fd);
+
+    if (MPICR_pg_rank == 0) {
+        char cr_msg_buf[MAX_CR_MSG_LEN];
+
+        sprintf(cr_msg_buf,"cmd=finalize_ckpt\n");
+        CR_MPDU_writeline(MPICR_MPD_fd,cr_msg_buf);
+    }
+
+    if (MPICR_MPD_fd>0) close(MPICR_MPD_fd);
+
     MPICR_is_initialized = 0;
-    return 0;
+
+    return MPI_SUCCESS;
 }
 
+void MPIDI_CH3I_CR_Sync_ckpt_request()
+{
+    if (MPICR_state != MPICR_STATE_RUNNING) {
+        /*Another checkpoint is going on */
+        return;
+    }
+    CR_DBG("Send ckpt request to MPD\n");
+    {
+        char cr_msg_buf[MAX_CR_MSG_LEN];
+        sprintf(cr_msg_buf,"cmd=app_ckpt_req\n");
+        CR_MPDU_writeline(MPICR_MPD_fd,cr_msg_buf);
+    }
+}
 /*
 CR message handler in progress engine
 */
@@ -515,6 +557,9 @@ void MPIDI_CH3I_CR_Handle_recv(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t msg_type, v
             }
             sreq = sreq->mrail.next_inflow;
         }
+#ifdef MPIDI_MRAILI_COALESCE_ENABLED       
+        v->content_consumed += sizeof(MPICR_remote_update_msg);
+#endif        
     }
     else {
         /*Unkonwn*/
@@ -552,10 +597,6 @@ int CR_IBU_Release_network()
 
     MPIDI_PG_t *pg;
     MPIDI_VC_t *vc;
-
-#ifndef DISABLE_PTMALLOC
-    mvapich2_mfin();
-#endif
 
     /* Insert implementation here */
     pg = MPIDI_Process.my_pg;
@@ -611,17 +652,6 @@ int CR_IBU_Release_network()
         */
     }
 
-    if (MPIDI_CH3I_RDMA_Process.has_srq) {
-        int hca_num = 0;
-        for(hca_num = 0; hca_num < rdma_num_hcas; hca_num++) {
-            pthread_cancel(MPIDI_CH3I_RDMA_Process.async_thread[hca_num]);
-            pthread_join(MPIDI_CH3I_RDMA_Process.async_thread[hca_num], NULL);
-            if (ibv_destroy_srq(MPIDI_CH3I_RDMA_Process.srq_hndl[hca_num])) {
-                ibv_error_abort(IBV_RETURN_ERR, "Couldn't destroy SRQ\n");
-            }
-        }
-    }
-
     /* free all the spaces */
     for (i = 0; i < pg_size; i++) {
         if (rdma_iba_addr_table.qp_num_rdma[i])
@@ -639,6 +669,19 @@ int CR_IBU_Release_network()
     free(rdma_iba_addr_table.qp_num_rdma);
     free(rdma_iba_addr_table.qp_num_onesided);
 
+    if (MPIDI_CH3I_RDMA_Process.has_srq) {
+        int hca_num = 0;
+        for(hca_num = 0; hca_num < rdma_num_hcas; hca_num++) {
+            pthread_cond_destroy(&MPIDI_CH3I_RDMA_Process.srq_post_cond[hca_num]);
+            pthread_mutex_destroy(&MPIDI_CH3I_RDMA_Process.srq_post_mutex_lock[hca_num]);
+            pthread_cancel(MPIDI_CH3I_RDMA_Process.async_thread[hca_num]);
+            pthread_join(MPIDI_CH3I_RDMA_Process.async_thread[hca_num], NULL);
+            if (ibv_destroy_srq(MPIDI_CH3I_RDMA_Process.srq_hndl[hca_num])) {
+                ibv_error_abort(IBV_RETURN_ERR, "Couldn't destroy SRQ\n");
+            }
+        }
+    }
+
 /*
     while (dreg_evict());
 */
@@ -653,9 +696,20 @@ int CR_IBU_Release_network()
         ibv_close_device(MPIDI_CH3I_RDMA_Process.nic_context[i]);
     }
     
+#ifndef DISABLE_PTMALLOC
+    mvapich2_mfin();
+#endif
+
     return 0;
 }
 
+/*
+ * TODO finish adding error handling
+ */
+#undef FUNCNAME
+#define FUNCNAME CR_IBU_Rebuild_network
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 int CR_IBU_Rebuild_network()
 {
     int ret;
@@ -671,13 +725,12 @@ int CR_IBU_Rebuild_network()
     uint32_t ud_qpn_self;
     uint16_t *lid_all;
     char tmp_hname[256];
+    int mpi_errno = MPI_SUCCESS;
 
 #ifndef DISABLE_PTMALLOC
     if(mvapich2_minit()) {
-        fprintf(stderr,
-                "[%s:%d] Error initializing MVAPICH2 malloc library\n",
-                __FILE__, __LINE__);
-        return MPI_ERR_OTHER;
+	MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+		"**fail %s", "Error initializing MVAPICH2 malloc library");
     }
 #else
     mallopt(M_TRIM_THRESHOLD, -1);
@@ -797,10 +850,15 @@ int CR_IBU_Rebuild_network()
     if (MPIDI_CH3I_RDMA_Process.has_srq) {
         int hca_num = 0;
         
-        pthread_spin_init(&MPIDI_CH3I_RDMA_Process.srq_post_lock, 0);
-        pthread_spin_lock(&MPIDI_CH3I_RDMA_Process.srq_post_lock);
+        pthread_spin_init(&MPIDI_CH3I_RDMA_Process.srq_post_spin_lock, 0);
+        pthread_spin_lock(&MPIDI_CH3I_RDMA_Process.srq_post_spin_lock);
         
         for(hca_num = 0; hca_num < rdma_num_hcas; hca_num++) { 
+            pthread_mutex_init(
+                            &MPIDI_CH3I_RDMA_Process.srq_post_mutex_lock[hca_num], 0);
+            pthread_cond_init(&MPIDI_CH3I_RDMA_Process.srq_post_cond[hca_num], 0);
+            MPIDI_CH3I_RDMA_Process.srq_zero_post_counter[hca_num] = 0;
+
             MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num] = 
                 viadev_post_srq_buffers(viadev_srq_size, hca_num);
         
@@ -818,34 +876,39 @@ int CR_IBU_Rebuild_network()
                         (void *) async_thread, (void *) MPIDI_CH3I_RDMA_Process.nic_context[hca_num]);
             }
         }
-        pthread_spin_unlock(&MPIDI_CH3I_RDMA_Process.srq_post_lock);
+        pthread_spin_unlock(&MPIDI_CH3I_RDMA_Process.srq_post_spin_lock);
     }
     
     {
-        /*Init UD*/
-        /*
-        cm_ib_context.rank = pg_rank;
-        cm_ib_context.size = pg_size;
-        cm_ib_context.pg = pg;
-        cm_ib_context.conn_state = (MPIDI_CH3I_VC_state_t **)malloc
-            (pg_size*sizeof(MPIDI_CH3I_VC_state_t *));
-        for (i=0;i<pg_size;i++)  {
-            if (i == pg_rank)
-                continue;
-            MPIDI_PG_Get_vc(pg, i, &vc);
-            cm_ib_context.conn_state[i] = &(vc->ch.state);
-        }
-        */
-        ret  = MPICM_Init_UD(&ud_qpn_self);
-        if (ret) {
-            return ret;
-        }
+        mpi_errno  = MPICM_Init_UD(&ud_qpn_self);
+        if(mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
+    
     if (pg_size > 1) {
+        if (MPIDI_CH3I_RDMA_Process.has_ring_startup) {
+            ud_addr_info_t self_info;
+            CR_DBG("Ring-based exchange\n");
+
+            self_info.lid = MPIDI_CH3I_RDMA_Process.lids[0][0];
+            self_info.qpn = ud_qpn_self;
+            ud_addr_info_t * all_info = (ud_addr_info_t *)malloc(sizeof(ud_addr_info_t)*pg_size);
+            /*will be freed in rdma_iba_bootstrap_cleanup*/
+            IB_ring_based_alltoall(&self_info, sizeof(self_info), pg_rank, all_info, pg_size, &MPIDI_CH3I_RDMA_Process);
+            for (i=0;i<pg_size;i++) {
+                ud_qpn_all[i] = all_info[i].qpn;
+                lid_all[i] = all_info[i].lid;
+            }
+
+            mpi_errno = rdma_iba_bootstrap_cleanup(&MPIDI_CH3I_RDMA_Process);
+	    if(mpi_errno) MPIU_ERR_POP(mpi_errno);
+        }
+        else {
         char *key;
         char *val;
         /*Exchange the information about HCA_lid and qp_num */
         /* Allocate space for pmi keys and values */
+
+        CR_DBG("Normal PMI exchange\n");
         error = PMI_KVS_Get_key_length_max(&key_max_sz);
         assert(error == PMI_SUCCESS);
         key_max_sz++;
@@ -884,6 +947,7 @@ int CR_IBU_Rebuild_network()
         for (i = 0; i < pg_size; i++) {
             if (pg_rank == i) {
                 lid_all[i] = MPIDI_CH3I_RDMA_Process.lids[0][0];
+                ud_qpn_all[i] = ud_qpn_self;
                 continue;
             }
             sprintf(key,"ud_info_%08d",i);
@@ -893,12 +957,13 @@ int CR_IBU_Rebuild_network()
             }
             sscanf(val,"%08x:%08x",&(lid_all[i]),&(ud_qpn_all[i]));
         }
+        }
     }
 
-    ret  = MPICM_Connect_UD(ud_qpn_all, lid_all);
-    if (ret) {
-        return ret;
-    }
+    CR_DBG("Exchanging parameters done\n");
+
+    mpi_errno = MPICM_Connect_UD(ud_qpn_all, lid_all);
+    if(mpi_errno) MPIU_ERR_POP(mpi_errno);
 
     /*barrier to make sure queues are initialized before continuing */
     /*  error = bootstrap_barrier(&MPIDI_CH3I_RDMA_Process, pg_rank, pg_size);
@@ -909,7 +974,12 @@ int CR_IBU_Rebuild_network()
     }
 
     CR_DBG("CR_IBU_Rebuild_network finish\n");
-    return 0;
+
+fn_exit:
+    return mpi_errno;
+
+fn_fail:
+    goto fn_exit;
 }
 
 int CR_IBU_Prep_remote_update()
@@ -1057,12 +1127,16 @@ int CR_IBU_Reactivate_channels()
     MPIDI_VC_t **vc_vector = (MPIDI_VC_t **)malloc(sizeof(MPIDI_VC_t *)*MPICR_pg_size);
     MPIDI_VC_t * vc;
 
+    CR_DBG("CR_IBU_Rebuild_network\n");
     ret = CR_IBU_Rebuild_network();
     if (ret)
         return ret;
+    
+    CR_DBG("CR_IBU_Prep_remote_update\n");
     ret = CR_IBU_Prep_remote_update();
     if (ret)
         return ret;
+
     for (i=0;i<MPICR_pg_size;i++) {
         if (i==MPICR_pg_rank)
             continue;
@@ -1082,6 +1156,7 @@ int CR_IBU_Reactivate_channels()
             vc_vector[i] = NULL;
     }
     
+    CR_DBG("MPIDI_CH3I_CM_Reactivate\n");
     ret = MPIDI_CH3I_CM_Reactivate(vc_vector);
     if (ret)
         return ret;
@@ -1253,3 +1328,4 @@ char* CR_MPDU_getval( const char *keystr, char *valstr, int vallen)
 
 #endif
 
+/* vi:set sw=4 tw=80: */

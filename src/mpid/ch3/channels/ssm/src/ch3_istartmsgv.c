@@ -15,7 +15,7 @@
     MPIDI_STATE_DECL(MPID_STATE_CREATE_REQUEST); \
     MPIDI_STATE_DECL(MPID_STATE_MEMCPY); \
     MPIDI_FUNC_ENTER(MPID_STATE_CREATE_REQUEST); \
-    sreq = MPIDI_CH3_Request_create(); \
+    sreq = MPID_Request_create(); \
     if (sreq == NULL) \
     { \
 	mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0); \
@@ -39,24 +39,32 @@
     sreq->dev.iov[offset].MPID_IOV_LEN -= nb; \
     sreq->dev.iov_count = count; \
     sreq->ch.iov_offset = offset; \
-    sreq->dev.ca = MPIDI_CH3_CA_COMPLETE; \
+    sreq->dev.OnDataAvail = 0;\
     MPIDI_FUNC_EXIT(MPID_STATE_CREATE_REQUEST); \
     /*return sreq;*/ \
 }
 
 /*
- * MPIDI_CH3_iStartMsgv() attempts to send the message immediately.  If the entire message is successfully sent, then NULL is
- * returned.  Otherwise a request is allocated, the iovec and the first buffer pointed to by the iovec (which is assumed to be a
- * MPIDI_CH3_Pkt_t) are copied into the request, and a pointer to the request is returned.  An error condition also results in a
- * request be allocated and the errror being returned in the status field of the request.
+ * MPIDI_CH3_iStartMsgv() attempts to send the message immediately.  
+ * If the entire message is successfully sent, then NULL is
+ * returned.  Otherwise a request is allocated, the iovec and the first 
+ * buffer pointed to by the iovec (which is assumed to be a
+ * MPIDI_CH3_Pkt_t) are copied into the request, and a pointer to the request 
+ * is returned.  An error condition also results in a
+ * request be allocated and the errror being returned in the status field of 
+ * the request.
  */
 
-/* XXX - What do we do if MPIDI_CH3_Request_create() returns NULL???  If MPIDI_CH3_iStartMsgv() returns NULL, the calling code
-   assumes the request completely successfully, but the reality is that we couldn't allocate the memory for a request.  This
+/* XXX - What do we do if MPID_Request_create() returns NULL???  
+   If MPIDI_CH3_iStartMsgv() returns NULL, the calling code
+   assumes the request completely successfully, but the reality is that we 
+   couldn't allocate the memory for a request.  This
    seems like a flaw in the CH3 API. */
 
-/* NOTE - The completion action associated with a request created by CH3_iStartMsgv() is alway MPIDI_CH3_CA_COMPLETE.  This
-   implies that CH3_iStartMsgv() can only be used when the entire message can be described by a single iovec of size
+/* NOTE - The completion action associated with a request created by 
+   CH3_iStartMsgv() is alway MPIDI_CH3_CA_COMPLETE.  This
+   implies that CH3_iStartMsgv() can only be used when the entire message 
+   can be described by a single iovec of size
    MPID_IOV_LIMIT. */
     
 #undef FUNCNAME
@@ -97,7 +105,8 @@ int MPIDI_CH3_iStartMsgv(MPIDI_VC_t * vc, MPID_IOV * iov, int n_iov, MPID_Reques
 	    int nb;
 	    MPIDU_Sock_size_t snb;
 
-	    /* MT - need some signalling to lock down our right to use the channel, thus insuring that the progress engine does
+	    /* MT - need some signalling to lock down our right to use the 
+	       channel, thus insuring that the progress engine does
                also try to write */
 	    if (vc->ch.bShm)
 	    {
@@ -163,7 +172,7 @@ int MPIDI_CH3_iStartMsgv(MPIDI_VC_t * vc, MPID_IOV * iov, int n_iov, MPID_Reques
 	    else
 	    {
 		MPIDI_DBG_PRINTF((55, FCNAME, "ERROR - MPIDI_CH3I_SHM_writev failed"));
-		sreq = MPIDI_CH3_Request_create();
+		sreq = MPID_Request_create();
 		if (sreq == NULL)
 		{
 		    mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0);
@@ -235,7 +244,7 @@ int MPIDI_CH3_iStartMsgv(MPIDI_VC_t * vc, MPID_IOV * iov, int n_iov, MPID_Reques
     {
 	/* Connection failed, so allocate a request and return an error. */
 	MPIDI_DBG_PRINTF((55, FCNAME, "ERROR - connection failed"));
-	sreq = MPIDI_CH3_Request_create();
+	sreq = MPID_Request_create();
 	if (sreq == NULL)
 	{
 	    mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0);

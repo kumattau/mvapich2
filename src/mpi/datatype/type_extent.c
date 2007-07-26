@@ -20,12 +20,15 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Type_extent
 #define MPI_Type_extent PMPI_Type_extent
 
 #endif
 
 #undef FUNCNAME
 #define FUNCNAME MPI_Type_extent
+#undef FCNAME
+#define FCNAME "MPI_Type_extent"
 
 /*@
     MPI_Type_extent - Returns the extent of a datatype
@@ -49,7 +52,6 @@ The replacement for this routine is 'MPI_Type_get_extent'.
 @*/
 int MPI_Type_extent(MPI_Datatype datatype, MPI_Aint *extent)
 {
-    static const char FCNAME[] = "MPI_Type_extent";
     int mpi_errno = MPI_SUCCESS;
     int type_extent;
     MPID_Datatype *datatype_ptr = NULL;
@@ -57,7 +59,6 @@ int MPI_Type_extent(MPI_Datatype datatype, MPI_Aint *extent)
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_TYPE_EXTENT);
     
     /* Validate parameters, especially handles needing to be converted */
@@ -95,21 +96,23 @@ int MPI_Type_extent(MPI_Datatype datatype, MPI_Aint *extent)
 
     /* ... end of body of routine ... */
 
+#ifdef HAVE_ERROR_CHECKING
   fn_exit:
+#endif
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_TYPE_EXTENT);
-    MPID_CS_EXIT();
     return mpi_errno;
 
-  fn_fail:
     /* --BEGIN ERROR HANDLING-- */
 #   ifdef HAVE_ERROR_CHECKING
+  fn_fail:
     {
 	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_type_extent",
+	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, 
+	    "**mpi_type_extent",
 	    "**mpi_type_extent %D %p", datatype, extent);
     }
-#   endif
     mpi_errno = MPIR_Err_return_comm( NULL, FCNAME, mpi_errno );
     goto fn_exit;
+#   endif
     /* --END ERROR HANDLING-- */
 }

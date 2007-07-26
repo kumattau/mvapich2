@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Unpack
 #define MPI_Unpack PMPI_Unpack
 
 #endif
@@ -71,7 +72,6 @@ int MPI_Unpack(void *inbuf,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_UNPACK);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -94,7 +94,9 @@ int MPI_Unpack(void *inbuf,
     {
         MPID_BEGIN_ERROR_CHECKS;
         {
-	    MPIR_ERRTEST_ARGNULL(inbuf, "input buffer", mpi_errno);
+	    if (insize > 0) {
+		MPIR_ERRTEST_ARGNULL(inbuf, "input buffer", mpi_errno);
+	    }
 	    /* Note: outbuf could be MPI_BOTTOM; don't test for NULL */
 	    MPIR_ERRTEST_COUNT(insize, mpi_errno);
 	    MPIR_ERRTEST_COUNT(outcount, mpi_errno);
@@ -106,7 +108,8 @@ int MPI_Unpack(void *inbuf,
 	    MPIR_ERRTEST_DATATYPE(datatype, "datatype", mpi_errno);
 	    if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 	    
-	    if (datatype != MPI_DATATYPE_NULL &&HANDLE_GET_KIND(datatype) != HANDLE_KIND_BUILTIN) {
+	    if (datatype != MPI_DATATYPE_NULL && 
+		HANDLE_GET_KIND(datatype) != HANDLE_KIND_BUILTIN) {
 		MPID_Datatype *datatype_ptr = NULL;
 
 		MPID_Datatype_get_ptr(datatype, datatype_ptr);
@@ -120,6 +123,9 @@ int MPI_Unpack(void *inbuf,
 #   endif /* HAVE_ERROR_CHECKING */
 
     /* ... body of routine ...  */
+    if (insize == 0) {
+	goto fn_exit;
+    }
     
     segp = MPID_Segment_alloc();
     MPIU_ERR_CHKANDJUMP1((segp == NULL), mpi_errno, MPI_ERR_OTHER, "**nomem", "**nomem %s", "MPID_Segment_alloc");
@@ -144,7 +150,6 @@ int MPI_Unpack(void *inbuf,
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_UNPACK);
-    MPID_CS_EXIT();
     return mpi_errno;
 
 

@@ -7,9 +7,7 @@ lib${MPILIBNAME}_a_SOURCES = \
  ch3_istartmsg.c \
  ch3_istartmsgv.c \
  ch3_progress.c \
- ch3_cancel_send.c \
  shm_memory.c \
- shm.c \
  ch3_open_port.c \
  ch3_istartrndvmsg.c \
  ch3_istartrndvtransfer.c

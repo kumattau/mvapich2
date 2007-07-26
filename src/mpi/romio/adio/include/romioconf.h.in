@@ -27,6 +27,9 @@
 /* Define to 1 if you have the <inttypes.h> header file. */
 #undef HAVE_INTTYPES_H
 
+/* Define if int smaller than pointer */
+#undef HAVE_INT_LT_POINTER
+
 /* Define if long long is 64 bits */
 #undef HAVE_LONG_LONG_64
 
@@ -297,8 +300,8 @@
 /* The size of a `long long', as computed by sizeof. */
 #undef SIZEOF_LONG_LONG
 
-/* The size of a `void*', as computed by sizeof. */
-#undef SIZEOF_VOIDP
+/* The size of a `void *', as computed by sizeof. */
+#undef SIZEOF_VOID_P
 
 /* Define for SPPUX (Convex) */
 #undef SPPUX

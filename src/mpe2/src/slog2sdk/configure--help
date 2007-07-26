@@ -21,6 +21,6 @@ for config in $configs ; do
     $config --help > tmpconfig.txt
 #   Print from line 44 till the end from the output of `configure --help`
     sed -n '44,$p' tmpconfig.txt
-    /bin/rm -f tmpconfig.txt
+    rm -f tmpconfig.txt
     echo ; echo
 done

@@ -32,10 +32,6 @@ typedef struct {
         MPI_File fh;
         MPI_Comm comm;
 } CollChk_fh_t;
-
-CollChk_fh_t *CollChk_fh_list;
-
-int CollChk_fh_cnt;
 #endif
 
 #if defined( HAVE_MPI_RMA )
@@ -44,14 +40,7 @@ typedef struct {
         MPI_Win win;
         MPI_Comm comm;
 } CollChk_win_t;
-
-CollChk_win_t *CollChk_win_list;
-
-int CollChk_win_cnt;
 #endif
-
-/* begin string */
-char CollChk_begin_str[128];
 
 /* the hash struct */
 typedef struct {
@@ -59,25 +48,41 @@ typedef struct {
         unsigned int count;
 } CollChk_hash_t;
 
-/* constants */
-int     COLLCHK_CALLED_BEGIN,
-        COLLCHK_ERRORS,
-        COLLCHK_ERR_NOT_INIT, 
-        COLLCHK_ERR_ROOT, 
-        COLLCHK_ERR_CALL, 
-        COLLCHK_ERR_OP,
-        COLLCHK_ERR_INPLACE,
-        COLLCHK_ERR_DTYPE,
-        COLLCHK_ERR_HIGH_LOW,
-        COLLCHK_ERR_LL,
-        COLLCHK_ERR_TAG,
-        COLLCHK_ERR_DIMS,
-        COLLCHK_ERR_GRAPH,
-        COLLCHK_ERR_AMODE,
-        COLLCHK_ERR_WHENCE,
-        COLLCHK_ERR_DATAREP,
-        COLLCHK_ERR_PREVIOUS_BEGIN,
-        COLLCHK_ERR_FILE_NOT_OPEN;
+/* Global variables -- start */
+#if defined( HAVE_MPI_IO )
+extern CollChk_fh_t *CollChk_fh_list;
+
+extern int CollChk_fh_cnt;
+#endif
+
+#if defined( HAVE_MPI_RMA )
+extern CollChk_win_t *CollChk_win_list;
+
+extern int CollChk_win_cnt;
+#endif
+
+/* begin string */
+extern char CollChk_begin_str[128];
+
+extern int     COLLCHK_CALLED_BEGIN;
+extern int     COLLCHK_ERRORS;
+extern int     COLLCHK_ERR_NOT_INIT;
+extern int     COLLCHK_ERR_ROOT ;
+extern int     COLLCHK_ERR_CALL;
+extern int     COLLCHK_ERR_OP;
+extern int     COLLCHK_ERR_INPLACE;
+extern int     COLLCHK_ERR_DTYPE;
+extern int     COLLCHK_ERR_HIGH_LOW;
+extern int     COLLCHK_ERR_LL;
+extern int     COLLCHK_ERR_TAG;
+extern int     COLLCHK_ERR_DIMS;
+extern int     COLLCHK_ERR_GRAPH;
+extern int     COLLCHK_ERR_AMODE;
+extern int     COLLCHK_ERR_WHENCE;
+extern int     COLLCHK_ERR_DATAREP;
+extern int     COLLCHK_ERR_PREVIOUS_BEGIN;
+extern int     COLLCHK_ERR_FILE_NOT_OPEN;
+/* Global variables -- End */
 
 
 #if defined( HAVE_MPI_IO )

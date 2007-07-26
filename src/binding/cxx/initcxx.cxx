@@ -10,6 +10,7 @@
 
 #include "mpi.h"
 #include <stdarg.h>
+#include "mpichconf.h"
 
 // #define MPIX_TRACE_MEMORY
 #ifdef MPIX_TRACE_MEMORY
@@ -76,6 +77,10 @@ Datatype WCHAR(MPI_WCHAR);
 Datatype SIGNED_CHAR(MPI_SIGNED_CHAR);
 Datatype UNSIGNED_LONG_LONG(MPI_UNSIGNED_LONG_LONG);
 Datatype TWOINT(MPI_2INT);
+Datatype BOOL(MPIR_CXX_BOOL);
+Datatype COMPLEX(MPIR_CXX_COMPLEX);
+Datatype DOUBLE_COMPLEX(MPIR_CXX_DOUBLE_COMPLEX);
+Datatype LONG_DOUBLE_COMPLEX(MPIR_CXX_LONG_DOUBLE_COMPLEX);
 Datatype DATATYPE_NULL;
 
 #ifdef HAVE_FORTRAN_BINDING
@@ -116,7 +121,7 @@ const Errhandler ERRORS_ARE_FATAL(MPI_ERRORS_ARE_FATAL);
 const Errhandler ERRORS_THROW_EXCEPTIONS(MPI_ERRORS_RETURN);
 const Info INFO_NULL;
 const Win WIN_NULL;
-const File FILE_NULL;
+ File FILE_NULL;
 const int BSEND_OVERHEAD= MPI_BSEND_OVERHEAD;
 const int KEYVAL_INVALID= MPI_KEYVAL_INVALID;
 const int CART= MPI_CART;
@@ -533,6 +538,8 @@ int Win::Create_keyval( Copy_attr_function *cf, Delete_attr_function *df,
     return keyval;
 }
 
+// Provide a C routine that can call the C++ error handler, handling
+// any calling-sequence change.  
 extern "C" void MPIR_Errhandler_set_cxx( MPI_Errhandler, void (*)(void) );
 extern "C" 
 void MPIR_Call_errhandler_fn( int kind, int *handle, int *errcode, 
@@ -541,7 +548,21 @@ void MPIR_Call_errhandler_fn( int kind, int *handle, int *errcode,
     // Use horrible casts to get the correct routine signature
     switch (kind) {
     case 0: // comm
-	    //	    MPI::Comm::Err
+	    {
+		MPI_Comm *ch = (MPI_Comm *)handle;
+		int flag;
+		MPI::Comm::Errhandler_fn *f = (MPI::Comm::Errhandler_fn *)cxxfn;
+		// Make an actual Comm (inter or intra-comm)
+		MPI_Comm_test_inter( *ch, &flag );
+		if (flag) {
+		    MPI::Intercomm ic(*ch);
+		    (*f)( ic, errcode );
+		}
+		else {
+		    MPI::Intracomm ic(*ch);
+		    (*f)( ic, errcode );
+		}
+	    }
 	    break;
 #ifdef MPI_MODE_RDONLY
     case 1: // file
@@ -553,6 +574,11 @@ void MPIR_Call_errhandler_fn( int kind, int *handle, int *errcode,
 	    break;
 #endif // IO
     case 2: // win
+	    {
+		MPI::Win fh = (MPI_Win)*(MPI_Win*)handle;
+		MPI::Win::Errhandler_fn *f = (MPI::Win::Errhandler_fn *)cxxfn;
+		(*f)( fh, errcode );
+	    }
 	    break;
     }
 }
@@ -638,16 +664,15 @@ void Register_datarep( const char *datarep,
 		       Datarep_extent_function *extent_fn,
 		       void *orig_extra_state )
 {
-    int err;
     MPIR_Datarep_data *ldata = new(MPIR_Datarep_data);
-    ldata->read_fn = read_fn;
-    ldata->write_fn = write_fn;
-    ldata->extent_fn = extent_fn;
+    ldata->read_fn          = read_fn;
+    ldata->write_fn         = write_fn;
+    ldata->extent_fn        = extent_fn;
     ldata->orig_extra_state = orig_extra_state;
-    err = MPI_Register_datarep( (char *)datarep, 
+    MPIX_CALL(MPI_Register_datarep( (char *)datarep, 
 				MPIR_Call_datarep_read_fn,
 				MPIR_Call_datarep_write_fn, 
-				MPIR_Call_datarep_extent_fn, (void *)ldata );
+				MPIR_Call_datarep_extent_fn, (void *)ldata ));
     /* Because datareps are never freed, the space allocated in this
        routine for ldata will never be freed */
 }
@@ -868,5 +893,19 @@ Grequest Grequest::Start( Grequest::Query_function query_fn,
 			MPIR_Grequest_call_cancel_fn,
 			(void *)d, &req.the_real_request );
     return req;
+}
+
+void MPIR_CXX_InitDatatypeNames( void )
+{
+    static int _isInit = 1; 
+    if (_isInit) { 
+	_isInit=0; 
+	PMPI_Type_set_name( MPI::BOOL, (char *)"MPI::BOOL" );
+	PMPI_Type_set_name( MPI::COMPLEX, (char *)"MPI::COMPLEX" );
+	PMPI_Type_set_name( MPI::DOUBLE_COMPLEX, (char *)"MPI::DOUBLE_COMPLEX" );
+#if defined(HAVE_LONG_DOUBLE)
+	PMPI_Type_set_name( MPI::LONG_DOUBLE_COMPLEX, (char *)"MPI::LONG_DOUBLE_COMPLEX" );
+#endif
+    }
 }
 } // namespace MPI

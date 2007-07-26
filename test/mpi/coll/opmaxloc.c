@@ -217,19 +217,22 @@ int main( int argc, char *argv[] )
 	coutbuf[1].loc = -1;
 	coutbuf[2].val = 1;
 	coutbuf[2].loc = -1;
-	MPI_Reduce( cinbuf, coutbuf, 3, MPI_LONG_DOUBLE_INT, MPI_MAXLOC, 0, comm );
-	if (rank == 0) {
-	    if (coutbuf[0].val != 1 && coutbuf[0].loc != -1) {
-		errs++;
-		fprintf( stderr, "long double-int MAXLOC(1) test failed\n" );
-	    }
-	    if (coutbuf[1].val != 0 && coutbuf[1].loc != -1) {
-		errs++;
-		fprintf( stderr, "long double-int MAXLOC(0) test failed\n" );
-	    }
-	    if (coutbuf[2].val != size-1 && coutbuf[2].loc != size-1) {
-		errs++;
-		fprintf( stderr, "long double-int MAXLOC(>) test failed\n" );
+	if (MPI_LONG_DOUBLE != MPI_DATATYPE_NULL) {
+	    MPI_Reduce( cinbuf, coutbuf, 3, MPI_LONG_DOUBLE_INT, MPI_MAXLOC, 
+			0, comm );
+	    if (rank == 0) {
+		if (coutbuf[0].val != 1 && coutbuf[0].loc != -1) {
+		    errs++;
+		    fprintf( stderr, "long double-int MAXLOC(1) test failed\n" );
+		}
+		if (coutbuf[1].val != 0 && coutbuf[1].loc != -1) {
+		    errs++;
+		    fprintf( stderr, "long double-int MAXLOC(0) test failed\n" );
+		}
+		if (coutbuf[2].val != size-1 && coutbuf[2].loc != size-1) {
+		    errs++;
+		    fprintf( stderr, "long double-int MAXLOC(>) test failed\n" );
+		}
 	    }
 	}
     }

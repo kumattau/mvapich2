@@ -22,6 +22,7 @@ typedef struct {
 } MachineTable;
 
 MachineTable *MPIE_ReadMachines( const char *, int, void * );
+int MPIE_FreeMachineTable( MachineTable * );
 int MPIE_ChooseHosts( ProcessWorld *, 
 		      MachineTable* (*)(const char *, int, void *), 
 		      void * );

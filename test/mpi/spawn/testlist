@@ -12,19 +12,17 @@ spaconacc2 1
 selfconacc 2
 spaiccreate 2
 join 2
-# There is a race condition in the MPICH2 disconnect code that
-# can cause failure if you reconnect a process while the 
-# code that is disconnecting it is still in progress.  This is a 
-# rare case (which needs to be fixed) but we'll leave it out
-# of the tests for now.
-#disconnect_reconnect 3
-#disconnect_reconnect2 3
-# The third version of this test fails for a reason other than the
-# race condition mentioned above.
-#disconnect_reconnect3 3
+disconnect_reconnect 3
+disconnect_reconnect2 3
+disconnect_reconnect3 3
 multiple_ports 3
 multiple_ports2 4
 disconnect 3
 disconnect2 3
 disconnect3 3
-# concurrent_spawns 1
+# The concurrent_spawns test can overtax the process manager, so
+# we set a shorter time limit in case it hangs.
+# There's a problem with mpd that causes concurrent_spawns to cause problems
+# with mpd, leading to many runaway concurrent_spawn processes.  This 
+# test is being disabled until mpd is fixed.
+concurrent_spawns 1 timeLimit=30

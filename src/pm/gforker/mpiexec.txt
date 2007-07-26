@@ -35,9 +35,15 @@
    if 'MPI_Comm_spawn' is used, the expression '%w' is replaced with a
    numeric `world number`, assigned by 'mpiexec'.  The expression '%%' 
    produces a single percent character.
-.  MPIEXEC_PREFIX_STDOUT - Like 'MPIEXEC_PREFIX_STDOUT', but for output from
+.  MPIEXEC_PREFIX_STDERR - Like 'MPIEXEC_PREFIX_STDOUT', but for output from
    standard error.
--  MPIEXEC_STDIN_DEST - Sets the destination for input from standard in.
+.  MPIEXEC_STDIN_DEST - Sets the destination process for input from standard in,
+   by rank in the corresponding 'MPI_COMM_WORLD'.
+.  MPIEXEC_STDOUTBUF - Sets the buffering mode for standard output.  Valid
+   values are 'NONE' (no buffering), 'LINE' (buffering by lines), and
+   'BLOCK' (buffering by blocks of characters; the size of the block is
+   implementation defined).  The default is 'NONE'.
+-  MPIEXEC_STDERRBUF - Like 'MPIEXEC_STDOUTBUF', but for standard error.
 
    Note that the 'MPIEXEC_PREFIX_xxx' and 'MPIEXEC_STDIN_DEST' variables
    are not fully implemented.

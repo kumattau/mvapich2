@@ -1,5 +1,14 @@
 /* mpid_locksconf.h.in.  Generated from configure.in by autoheader.  */
 
+/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/*  
+ *  (C) 2001 by Argonne National Laboratory.
+ *      See COPYRIGHT in top-level directory.
+ */
+#ifndef MPID_LOCKSCONF_H_INCLUDED
+#define MPID_LOCKSCONF_H_INCLUDED
+
+
 /* Define to 1 if you have the `compare_and_swap' function. */
 #undef HAVE_COMPARE_AND_SWAP
 
@@ -50,3 +59,5 @@
 
 /* Define to the version of this package. */
 #undef PACKAGE_VERSION
+
+#endif

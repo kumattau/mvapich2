@@ -13,6 +13,17 @@
 #include <stdarg.h>
 #endif
 
+/*
+ * Utility routines for writing MPI tests.
+ *
+ * We check the return codes on all MPI routines (other than INIT)
+ * to allow the program that uses these routines to select MPI_ERRORS_RETURN
+ * as the error handler.  We do *not* set MPI_ERRORS_RETURN because
+ * the code that makes use of these routines may not check return
+ * codes.
+ * 
+ */
+
 /* Here is where we could put the includes and definitions to enable
    memory testing */
 
@@ -79,11 +90,14 @@ void MTest_Init( int *argc, char ***argv )
  */
 void MTest_Finalize( int errs )
 {
-    int rank, toterrs;
+    int rank, toterrs, merr;
 
-    MPI_Comm_rank( MPI_COMM_WORLD, &rank );
+    merr = MPI_Comm_rank( MPI_COMM_WORLD, &rank );
+    if (merr) MTestPrintError( merr );
 
-    MPI_Reduce( &errs, &toterrs, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD );
+    merr = MPI_Reduce( &errs, &toterrs, 1, MPI_INT, MPI_SUM, 
+		      0, MPI_COMM_WORLD );
+    if (merr) MTestPrintError( merr );
     if (rank == 0) {
 	if (toterrs) {
 	    printf( " Found %d errors\n", toterrs );
@@ -96,11 +110,44 @@ void MTest_Finalize( int errs )
 }
 
 /*
+ * Miscellaneous utilities, particularly to eliminate OS dependencies
+ * from the tests.
+ * MTestSleep( seconds )
+ */
+#ifdef HAVE_WINDOWS_H
+#include <windows.h>
+void MTestSleep( int sec )
+{
+    Sleep( 1000 * sec );
+}
+#else
+#include <unistd.h>
+void MTestSleep( int sec )
+{
+    sleep( sec );
+}
+#endif
+
+/*
  * Datatypes
  *
  * Eventually, this could read a description of a file.  For now, we hard 
- * code the choices
+ * code the choices.
  *
+ * Each kind of datatype has the following functions:
+ *    MTestTypeXXXInit     - Initialize a send buffer for that type
+ *    MTestTypeXXXInitRecv - Initialize a receive buffer for that type
+ *    MTestTypeXXXFree     - Free any buffers associate with that type
+ *    MTestTypeXXXCheckbuf - Check that the buffer contains the expected data
+ * These routines work with (nearly) any datatype that is of type XXX, 
+ * allowing the test codes to create a variety of contiguous, vector, and
+ * indexed types, then test them by calling these routines.
+ *
+ * Available types (for the XXX) are
+ *    Contig   - Simple contiguous buffers
+ *    Vector   - Simple strided "vector" type
+ *    Indexed  - Indexed datatype.  Only for a count of 1 instance of the 
+ *               datatype
  */
 static int datatype_index = 0;
 
@@ -113,10 +160,13 @@ static int datatype_index = 0;
 static void *MTestTypeContigInit( MTestDatatype *mtype )
 {
     MPI_Aint size;
+    int merr;
+
     if (mtype->count > 0) {
 	signed char *p;
 	int  i, totsize;
-	MPI_Type_extent( mtype->datatype, &size );
+	merr = MPI_Type_extent( mtype->datatype, &size );
+	if (merr) MTestPrintError( merr );
 	totsize = size * mtype->count;
 	if (!mtype->buf) {
 	    mtype->buf = (void *) malloc( totsize );
@@ -146,10 +196,13 @@ static void *MTestTypeContigInit( MTestDatatype *mtype )
 static void *MTestTypeContigInitRecv( MTestDatatype *mtype )
 {
     MPI_Aint size;
+    int      merr;
+
     if (mtype->count > 0) {
 	signed char *p;
 	int  i, totsize;
-	MPI_Type_extent( mtype->datatype, &size );
+	merr = MPI_Type_extent( mtype->datatype, &size );
+	if (merr) MTestPrintError( merr );
 	totsize = size * mtype->count;
 	if (!mtype->buf) {
 	    mtype->buf = (void *) malloc( totsize );
@@ -183,12 +236,13 @@ static int MTestTypeContigCheckbuf( MTestDatatype *mtype )
 {
     unsigned char *p;
     unsigned char expected;
-    int  i, totsize, err = 0;
+    int  i, totsize, err = 0, merr;
     MPI_Aint size;
 
     p = (unsigned char *)mtype->buf;
     if (p) {
-	MPI_Type_extent( mtype->datatype, &size );
+	merr = MPI_Type_extent( mtype->datatype, &size );
+	if (merr) MTestPrintError( merr );
 	totsize = size * mtype->count;
 	for (i=0; i<totsize; i++) {
 	    expected = (0xff ^ (i & 0xff));
@@ -212,12 +266,14 @@ static int MTestTypeContigCheckbuf( MTestDatatype *mtype )
 static void *MTestTypeVectorInit( MTestDatatype *mtype )
 {
     MPI_Aint size;
+    int      merr;
 
     if (mtype->count > 0) {
 	unsigned char *p;
 	int  i, j, k, nc, totsize;
 
-	MPI_Type_extent( mtype->datatype, &size );
+	merr = MPI_Type_extent( mtype->datatype, &size );
+	if (merr) MTestPrintError( merr );
 	totsize	   = mtype->count * size;
 	if (!mtype->buf) {
 	    mtype->buf = (void *) malloc( totsize );
@@ -267,10 +323,13 @@ static void *MTestTypeVectorFree( MTestDatatype *mtype )
 static void *MTestTypeVectorInitRecv( MTestDatatype *mtype )
 {
     MPI_Aint size;
+    int      merr;
+
     if (mtype->count > 0) {
 	signed char *p;
 	int  i, totsize;
-	MPI_Type_extent( mtype->datatype, &size );
+	merr = MPI_Type_extent( mtype->datatype, &size );
+	if (merr) MTestPrintError( merr );
 	totsize = size * mtype->count;
 	if (!mtype->buf) {
 	    mtype->buf = (void *) malloc( totsize );
@@ -297,12 +356,13 @@ static int MTestTypeVectorCheckbuf( MTestDatatype *mtype )
 {
     unsigned char *p;
     unsigned char expected;
-    int  i, totsize, err = 0;
+    int  i, totsize, err = 0, merr;
     MPI_Aint size;
 
     p = (unsigned char *)mtype->buf;
     if (p) {
-	MPI_Type_extent( mtype->datatype, &size );
+	merr = MPI_Type_extent( mtype->datatype, &size );
+	if (merr) MTestPrintError( merr );
 	totsize = size * mtype->count;
 
 	/* count is usually one for a vector type */
@@ -329,16 +389,17 @@ static int MTestTypeVectorCheckbuf( MTestDatatype *mtype )
     return err;
 }
 #endif
-#if 0
 /* ------------------------------------------------------------------------ */
 /* Datatype routines for indexed block datatypes                            */
 /* ------------------------------------------------------------------------ */
+
 /* 
  * Setup a buffer for one copy of an indexed datatype. 
  */
 static void *MTestTypeIndexedInit( MTestDatatype *mtype )
 {
     MPI_Aint totsize;
+    int      merr;
     
     if (mtype->count > 1) {
 	MTestError( "This datatype is supported only for a single count" );
@@ -348,7 +409,8 @@ static void *MTestTypeIndexedInit( MTestDatatype *mtype )
 	int  i, k, offset, j;
 
 	/* Allocate the send/recv buffer */
-	MPI_Type_extent( mtype->datatype, &totsize );
+	merr = MPI_Type_extent( mtype->datatype, &totsize );
+	if (merr) MTestPrintError( merr );
 	if (!mtype->buf) {
 	    mtype->buf = (void *) malloc( totsize );
 	}
@@ -364,10 +426,15 @@ static void *MTestTypeIndexedInit( MTestDatatype *mtype )
 	   We require that the base type is a contiguous type */
 	k = 0;
 	for (i=0; i<mtype->nelm; i++) {
+	    int b;
 	    /* Compute the offset: */
 	    offset = mtype->displs[i] * mtype->basesize;
-	    for (j=0; j<mtype->basesize; j++) {
-		p[offset+j] = 0xff ^ (k++ & 0xff);
+	    /* For each element in the block */
+	    for (b=0; b<mtype->index[i]; b++) {
+		for (j=0; j<mtype->basesize; j++) {
+		    p[offset+j] = 0xff ^ (k++ & 0xff);
+		}
+		offset += mtype->basesize;
 	    }
 	}
     }
@@ -385,16 +452,19 @@ static void *MTestTypeIndexedInit( MTestDatatype *mtype )
  * Setup indexed buffers for 1 copy of a datatype.  Initialize for
  * reception (e.g., set initial data to detect failure)
  */
-static void *MTestTypeIndexInitRecv( MTestDatatype *mtype )
+static void *MTestTypeIndexedInitRecv( MTestDatatype *mtype )
 {
     MPI_Aint totsize;
+    int      merr;
+
     if (mtype->count > 1) {
 	MTestError( "This datatype is supported only for a single count" );
     }
     if (mtype->count == 1) {
 	signed char *p;
 	int  i;
-	MPI_Type_extent( mtype->datatype, &totsize );
+	merr = MPI_Type_extent( mtype->datatype, &totsize );
+	if (merr) MTestPrintError( merr );
 	if (!mtype->buf) {
 	    mtype->buf = (void *) malloc( totsize );
 	}
@@ -417,49 +487,58 @@ static void *MTestTypeIndexInitRecv( MTestDatatype *mtype )
     return mtype->buf;
 }
 
-static void *MTestTypeIndexFree( MTestDatatype *mtype )
+static void *MTestTypeIndexedFree( MTestDatatype *mtype )
 {
     if (mtype->buf) {
 	free( mtype->buf );
 	free( mtype->displs );
+	free( mtype->index );
 	mtype->buf    = 0;
 	mtype->displs = 0;
+	mtype->index  = 0;
     }
     return 0;
 }
-static int MTestTypeIndexCheckbuf( MTestDatatype *mtype )
+
+static int MTestTypeIndexedCheckbuf( MTestDatatype *mtype )
 {
     unsigned char *p;
     unsigned char expected;
-    int  i, err = 0;
+    int  i, err = 0, merr;
     MPI_Aint totsize;
 
     p = (unsigned char *)mtype->buf;
     if (p) {
 	int j, k, offset;
-	MPI_Type_extent( mtype->datatype, &totsize );
+	merr = MPI_Type_extent( mtype->datatype, &totsize );
+	if (merr) MTestPrintError( merr );
 	
 	k = 0;
 	for (i=0; i<mtype->nelm; i++) {
+	    int b;
 	    /* Compute the offset: */
 	    offset = mtype->displs[i] * mtype->basesize;
-	    for (j=0; j<mtype->basesize; j++) {
-		expected = (0xff ^ (k & 0xff));
-		if (p[offset+j] != expected) {
-		    err++;
-		    if (mtype->printErrors && err < 10) {
-			printf( "Data expected = %x but got %x for %dth entry\n",
-				expected, p[offset+j], k );
-			fflush( stdout );
+	    for (b=0; b<mtype->index[i]; b++) {
+		for (j=0; j<mtype->basesize; j++) {
+		    expected = (0xff ^ (k & 0xff));
+		    if (p[offset+j] != expected) {
+			err++;
+			if (mtype->printErrors && err < 10) {
+			    printf( "Data expected = %x but got %x for %dth entry\n",
+				    expected, p[offset+j], k );
+			    fflush( stdout );
+			}
 		    }
+		    k++;
 		}
-		k++;
+		offset += mtype->basesize;
 	    }
 	}
     }
     return err;
 }
-#endif /* 0 */
+
+
 /* ------------------------------------------------------------------------ */
 /* Routines to select a datatype and associated buffer create/fill/check    */
 /* routines                                                                 */
@@ -475,6 +554,9 @@ static int MTestTypeIndexCheckbuf( MTestDatatype *mtype )
 int MTestGetDatatypes( MTestDatatype *sendtype, MTestDatatype *recvtype,
 		       int count )
 {
+    int merr;
+    int i;
+
     sendtype->InitBuf	  = 0;
     sendtype->FreeBuf	  = 0;
     sendtype->CheckBuf	  = 0;
@@ -483,6 +565,7 @@ int MTestGetDatatypes( MTestDatatype *sendtype, MTestDatatype *recvtype,
     sendtype->printErrors = 0;
     recvtype->InitBuf	  = 0;
     recvtype->FreeBuf	  = 0;
+
     recvtype->CheckBuf	  = 0;
     recvtype->datatype	  = 0;
     recvtype->isBasic	  = 0;
@@ -523,26 +606,33 @@ int MTestGetDatatypes( MTestDatatype *sendtype, MTestDatatype *recvtype,
 	recvtype->isBasic  = 1;
 	break;
     case 4:
-	MPI_Type_dup( MPI_INT, &sendtype->datatype );
-	MPI_Type_set_name( sendtype->datatype, "dup of MPI_INT" );
-	MPI_Type_dup( MPI_INT, &recvtype->datatype );
-	MPI_Type_set_name( recvtype->datatype, "dup of MPI_INT" );
+	merr = MPI_Type_dup( MPI_INT, &sendtype->datatype );
+	if (merr) MTestPrintError( merr );
+	merr = MPI_Type_set_name( sendtype->datatype, "dup of MPI_INT" );
+	if (merr) MTestPrintError( merr );
+	merr = MPI_Type_dup( MPI_INT, &recvtype->datatype );
+	if (merr) MTestPrintError( merr );
+	merr = MPI_Type_set_name( recvtype->datatype, "dup of MPI_INT" );
+	if (merr) MTestPrintError( merr );
 	/* dup'ed types are already committed if the original type 
 	   was committed (MPI-2, section 8.8) */
 	break;
     case 5:
 	/* vector send type and contiguous receive type */
 	/* These sizes are in bytes (see the VectorInit code) */
-	sendtype->stride   = 3 * sizeof(int);
+ 	sendtype->stride   = 3 * sizeof(int);
 	sendtype->blksize  = sizeof(int);
 	sendtype->nelm     = recvtype->count;
 
-	MPI_Type_vector( recvtype->count, 1, 3, MPI_INT, 
-			 &sendtype->datatype );
-        MPI_Type_commit( &sendtype->datatype );
-	MPI_Type_set_name( sendtype->datatype, "int-vector" );
+	merr = MPI_Type_vector( recvtype->count, 1, 3, MPI_INT, 
+				&sendtype->datatype );
+	if (merr) MTestPrintError( merr );
+        merr = MPI_Type_commit( &sendtype->datatype );
+	if (merr) MTestPrintError( merr );
+	merr = MPI_Type_set_name( sendtype->datatype, "int-vector" );
+	if (merr) MTestPrintError( merr );
 	sendtype->count    = 1;
-	recvtype->datatype = MPI_INT;
+ 	recvtype->datatype = MPI_INT;
 	recvtype->isBasic  = 1;
 	sendtype->InitBuf  = MTestTypeVectorInit;
 	recvtype->InitBuf  = MTestTypeContigInitRecv;
@@ -551,18 +641,136 @@ int MTestGetDatatypes( MTestDatatype *sendtype, MTestDatatype *recvtype,
 	sendtype->CheckBuf = 0;
 	recvtype->CheckBuf = MTestTypeContigCheckbuf;
 	break;
-#if 0
+
     case 6:
+	/* Indexed send using many small blocks and contig receive */
+	sendtype->blksize  = sizeof(int);
+	sendtype->nelm     = recvtype->count;
+	sendtype->basesize = sizeof(int);
+	sendtype->displs   = (int *)malloc( sendtype->nelm * sizeof(int) );
+	sendtype->index    = (int *)malloc( sendtype->nelm * sizeof(int) );
+	if (!sendtype->displs || !sendtype->index) {
+	    MTestError( "Out of memory in type init\n" );
+	}
+	/* Make the sizes larger (4 ints) to help push the total
+	   size to over 256k in some cases, as the MPICH2 code as of
+	   10/1/06 used large internal buffers for packing non-contiguous
+	   messages */
+	for (i=0; i<sendtype->nelm; i++) {
+	    sendtype->index[i]   = 4;
+	    sendtype->displs[i]  = 5*i;
+	}
+	merr = MPI_Type_indexed( sendtype->nelm,
+				 sendtype->index, sendtype->displs, 
+				 MPI_INT, &sendtype->datatype );
+	if (merr) MTestPrintError( merr );
+        merr = MPI_Type_commit( &sendtype->datatype );
+	if (merr) MTestPrintError( merr );
+	merr = MPI_Type_set_name( sendtype->datatype, "int-indexed(4-int)" );
+	if (merr) MTestPrintError( merr );
+	sendtype->count    = 1;
+	sendtype->InitBuf  = MTestTypeIndexedInit;
+	sendtype->FreeBuf  = MTestTypeIndexedFree;
+	sendtype->CheckBuf = 0;
+
+ 	recvtype->datatype = MPI_INT;
+	recvtype->isBasic  = 1;
+	recvtype->count    = count * 4;
+	recvtype->InitBuf  = MTestTypeContigInitRecv;
+	recvtype->FreeBuf  = MTestTypeContigFree;
+	recvtype->CheckBuf = MTestTypeContigCheckbuf;
+	break;
+
+    case 7:
+	/* Indexed send using 2 large blocks and contig receive */
+	sendtype->blksize  = sizeof(int);
+	sendtype->nelm     = 2;
+	sendtype->basesize = sizeof(int);
+	sendtype->displs   = (int *)malloc( sendtype->nelm * sizeof(int) );
+	sendtype->index    = (int *)malloc( sendtype->nelm * sizeof(int) );
+	if (!sendtype->displs || !sendtype->index) {
+	    MTestError( "Out of memory in type init\n" );
+	}
+	sendtype->index[0]   = (recvtype->count + 1) / 2;
+	sendtype->displs[0]  = 0;
+	sendtype->index[1]   = (recvtype->count + 1) / 2;
+	sendtype->displs[1]  = sendtype->index[0] + 1;
+
+	merr = MPI_Type_indexed( sendtype->nelm,
+				 sendtype->index, sendtype->displs, 
+				 MPI_INT, &sendtype->datatype );
+	if (merr) MTestPrintError( merr );
+        merr = MPI_Type_commit( &sendtype->datatype );
+	if (merr) MTestPrintError( merr );
+	merr = MPI_Type_set_name( sendtype->datatype, "int-indexed(2 blocks)" );
+	if (merr) MTestPrintError( merr );
+	sendtype->count    = 1;
+	sendtype->InitBuf  = MTestTypeIndexedInit;
+	sendtype->FreeBuf  = MTestTypeIndexedFree;
+	sendtype->CheckBuf = 0;
+
+ 	recvtype->datatype = MPI_INT;
+	recvtype->isBasic  = 1;
+	recvtype->count    = sendtype->index[0] + sendtype->index[1];
+	recvtype->InitBuf  = MTestTypeContigInitRecv;
+	recvtype->FreeBuf  = MTestTypeContigFree;
+	recvtype->CheckBuf = MTestTypeContigCheckbuf;
+	break;
+
+    case 8:
+	/* Indexed receive using many small blocks and contig send */
+	recvtype->blksize  = sizeof(int);
+	recvtype->nelm     = recvtype->count;
+	recvtype->basesize = sizeof(int);
+	recvtype->displs   = (int *)malloc( recvtype->nelm * sizeof(int) );
+	recvtype->index    = (int *)malloc( recvtype->nelm * sizeof(int) );
+	if (!recvtype->displs || !recvtype->index) {
+	    MTestError( "Out of memory in type recv init\n" );
+	}
+	/* Make the sizes larger (4 ints) to help push the total
+	   size to over 256k in some cases, as the MPICH2 code as of
+	   10/1/06 used large internal buffers for packing non-contiguous
+	   messages */
+	for (i=0; i<recvtype->nelm; i++) {
+	    recvtype->index[i]   = 4;
+	    recvtype->displs[i]  = 5*i;
+	}
+	merr = MPI_Type_indexed( recvtype->nelm,
+				 recvtype->index, recvtype->displs, 
+				 MPI_INT, &recvtype->datatype );
+	if (merr) MTestPrintError( merr );
+        merr = MPI_Type_commit( &recvtype->datatype );
+	if (merr) MTestPrintError( merr );
+	merr = MPI_Type_set_name( recvtype->datatype, "recv-int-indexed(4-int)" );
+	if (merr) MTestPrintError( merr );
+	recvtype->count    = 1;
+	recvtype->InitBuf  = MTestTypeIndexedInitRecv;
+	recvtype->FreeBuf  = MTestTypeIndexedFree;
+	recvtype->CheckBuf = MTestTypeIndexedCheckbuf;
+
+ 	sendtype->datatype = MPI_INT;
+	sendtype->isBasic  = 1;
+	sendtype->count    = count * 4;
+	sendtype->InitBuf  = MTestTypeContigInit;
+	sendtype->FreeBuf  = MTestTypeContigFree;
+	sendtype->CheckBuf = 0;
+	break;
+
+#if 0
+    case 9:
 	/* vector recv type and contiguous send type */
 	/* These sizes are in bytes (see the VectorInit code) */
 	recvtype->stride   = 4 * sizeof(int);
 	recvtype->blksize  = sizeof(int);
 	recvtype->nelm     = recvtype->count;
 
-	MPI_Type_vector( sendtype->count, 1, 4, MPI_INT, 
-			 &recvtype->datatype );
-        MPI_Type_commit( &recvtype->datatype );
-	MPI_Type_set_name( recvtype->datatype, "int-vector" );
+	merr = MPI_Type_vector( sendtype->count, 1, 4, MPI_INT, 
+				&recvtype->datatype );
+	if (merr) MTestPrintError( merr );
+        merr = MPI_Type_commit( &recvtype->datatype );
+	if (merr) MTestPrintError( merr );
+	merr = MPI_Type_set_name( recvtype->datatype, "int-vector" );
+	if (merr) MTestPrintError( merr );
 	recvtype->count    = 1;
 	sendtype->datatype = MPI_INT;
 	sendtype->isBasic  = 1;
@@ -573,7 +781,7 @@ int MTestGetDatatypes( MTestDatatype *sendtype, MTestDatatype *recvtype,
 	recvtype->CheckBuf = MTestTypeVectorCheckbuf;
 	sendtype->CheckBuf = 0;
 	break;
-    case 7:
+    case 10:
 	/* contig send and block indexed recv */
 	/* Make indexes 5*((count-1) - i), for i=0, ..., count-1, i.e., 
 	   every 5th element, but starting from the end. */
@@ -589,10 +797,15 @@ int MTestGetDatatypes( MTestDatatype *sendtype, MTestDatatype *recvtype,
 	}
 	sendtype->basesize = sizeof(int);
 	sendtype->nelm     = sendtype->count;
-	MPI_Type_create_index_block( sendtype->count, 1, sendtype->displs, 
-				     MPI_INT, &recvtype->datatype );
-        MPI_Type_commit( &recvtype->datatype );
-	MPI_Type_set_name( recvtype->datatype, "int-decreasing-indexed" );
+	merr = MPI_Type_create_index_block( sendtype->count, 1, 
+					    sendtype->displs, 
+					    MPI_INT, &recvtype->datatype );
+	if (merr) MTestPrintError( merr );
+        merr = MPI_Type_commit( &recvtype->datatype );
+	if (merr) MTestPrintError( merr );
+	merr = MPI_Type_set_name( recvtype->datatype, 
+				  "int-decreasing-indexed" );
+	if (merr) MTestPrintError( merr );
 	recvtype->count    = 1;
 	sendtype->datatype = MPI_INT;
 	sendtype->isBasic  = 1;
@@ -603,7 +816,7 @@ int MTestGetDatatypes( MTestDatatype *sendtype, MTestDatatype *recvtype,
 	recvtype->CheckBuf = MTestTypeIndexedCheckBuf;
 	sendtype->CheckBuf = 0;
 	break;
-    case 8: 
+    case 11: 
 	/* index send and vector recv (using shorts) */
 	break;
 #endif
@@ -624,10 +837,12 @@ int MTestGetDatatypes( MTestDatatype *sendtype, MTestDatatype *recvtype,
     if (dbgflag && datatype_index > 0) {
 	int typesize;
 	fprintf( stderr, "%d: sendtype is %s\n", wrank, MTestGetDatatypeName( sendtype ) );
-	MPI_Type_size( sendtype->datatype, &typesize );
+	merr = MPI_Type_size( sendtype->datatype, &typesize );
+	if (merr) MTestPrintError( merr );
 	fprintf( stderr, "%d: sendtype size = %d\n", wrank, typesize );
 	fprintf( stderr, "%d: recvtype is %s\n", wrank, MTestGetDatatypeName( recvtype ) );
-	MPI_Type_size( recvtype->datatype, &typesize );
+	merr = MPI_Type_size( recvtype->datatype, &typesize );
+	if (merr) MTestPrintError( merr );
 	fprintf( stderr, "%d: recvtype size = %d\n", wrank, typesize );
 	fflush( stderr );
 	
@@ -653,6 +868,7 @@ int MTestGetDatatypeIndex( void )
 /* Free the storage associated with a datatype */
 void MTestFreeDatatype( MTestDatatype *mtype )
 {
+    int merr;
     /* Invoke a datatype-specific free function to handle
        both the datatype and the send/receive buffers */
     if (mtype->FreeBuf) {
@@ -660,7 +876,8 @@ void MTestFreeDatatype( MTestDatatype *mtype )
     }
     /* Free the datatype itself if it was created */
     if (!mtype->isBasic) {
-	MPI_Type_free( &mtype->datatype );
+	merr = MPI_Type_free( &mtype->datatype );
+	if (merr) MTestPrintError( merr );
     }
 }
 
@@ -669,10 +886,11 @@ void MTestFreeDatatype( MTestDatatype *mtype )
 int MTestCheckRecv( MPI_Status *status, MTestDatatype *recvtype )
 {
     int count;
-    int errs = 0;
+    int errs = 0, merr;
 
     if (status && status != MPI_STATUS_IGNORE) {
-	MPI_Get_count( status, recvtype->datatype, &count );
+	merr = MPI_Get_count( status, recvtype->datatype, &count );
+	if (merr) MTestPrintError( merr );
 	
 	/* Check count against expected count */
 	if (count != recvtype->count) {
@@ -693,10 +911,11 @@ const char *MTestGetDatatypeName( MTestDatatype *dtype )
 {
     static char name[4][MPI_MAX_OBJECT_NAME];
     static int sp=0;
-    int rlen;
+    int rlen, merr;
 
     if (sp >= 4) sp = 0;
-    MPI_Type_get_name( dtype->datatype, name[sp], &rlen );
+    merr = MPI_Type_get_name( dtype->datatype, name[sp], &rlen );
+    if (merr) MTestPrintError( merr );
     return (const char *)name[sp++];
 }
 /* ----------------------------------------------------------------------- */
@@ -721,13 +940,14 @@ static const char *interCommName = 0;
  */
 int MTestGetIntracommGeneral( MPI_Comm *comm, int min_size, int allowSmaller )
 {
-    int size, rank;
+    int size, rank, merr;
     int done=0;
     int isBasic = 0;
 
     /* The while loop allows us to skip communicators that are too small.
        MPI_COMM_NULL is always considered large enough */
     while (!done) {
+	intraCommName = "";
 	switch (intraCommIdx) {
 	case 0:
 	    *comm = MPI_COMM_WORLD;
@@ -736,21 +956,29 @@ int MTestGetIntracommGeneral( MPI_Comm *comm, int min_size, int allowSmaller )
 	    break;
 	case 1:
 	    /* dup of world */
-	    MPI_Comm_dup(MPI_COMM_WORLD, comm );
+	    merr = MPI_Comm_dup(MPI_COMM_WORLD, comm );
+	    if (merr) MTestPrintError( merr );
 	    intraCommName = "Dup of MPI_COMM_WORLD";
 	    break;
 	case 2:
 	    /* reverse ranks */
-	    MPI_Comm_size( MPI_COMM_WORLD, &size );
-	    MPI_Comm_rank( MPI_COMM_WORLD, &rank );
-	    MPI_Comm_split( MPI_COMM_WORLD, 0, size-rank, comm );
+	    merr = MPI_Comm_size( MPI_COMM_WORLD, &size );
+	    if (merr) MTestPrintError( merr );
+	    merr = MPI_Comm_rank( MPI_COMM_WORLD, &rank );
+	    if (merr) MTestPrintError( merr );
+	    merr = MPI_Comm_split( MPI_COMM_WORLD, 0, size-rank, comm );
+	    if (merr) MTestPrintError( merr );
 	    intraCommName = "Rank reverse of MPI_COMM_WORLD";
 	    break;
 	case 3:
 	    /* subset of world, with reversed ranks */
-	    MPI_Comm_size( MPI_COMM_WORLD, &size );
-	    MPI_Comm_rank( MPI_COMM_WORLD, &rank );
-	    MPI_Comm_split( MPI_COMM_WORLD, (rank < size/2), size-rank, comm );
+	    merr = MPI_Comm_size( MPI_COMM_WORLD, &size );
+	    if (merr) MTestPrintError( merr );
+	    merr = MPI_Comm_rank( MPI_COMM_WORLD, &rank );
+	    if (merr) MTestPrintError( merr );
+	    merr = MPI_Comm_split( MPI_COMM_WORLD, (rank < size/2), 
+				   size-rank, comm );
+	    if (merr) MTestPrintError( merr );
 	    intraCommName = "Rank reverse of half of MPI_COMM_WORLD";
 	    break;
 	case 4:
@@ -767,15 +995,23 @@ int MTestGetIntracommGeneral( MPI_Comm *comm, int min_size, int allowSmaller )
 	case 8:
 	{
 	    int newsize;
-	    MPI_Comm_size( MPI_COMM_WORLD, &size );
+	    merr = MPI_Comm_size( MPI_COMM_WORLD, &size );
+	    if (merr) MTestPrintError( merr );
 	    newsize = size - (intraCommIdx - 4);
 	    
 	    if (allowSmaller && newsize >= min_size) {
-		MPI_Comm_rank( MPI_COMM_WORLD, &rank );
-		MPI_Comm_split( MPI_COMM_WORLD, rank < newsize, rank, comm );
+		merr = MPI_Comm_rank( MPI_COMM_WORLD, &rank );
+		if (merr) MTestPrintError( merr );
+		merr = MPI_Comm_split( MPI_COMM_WORLD, rank < newsize, rank, 
+				       comm );
+		if (merr) MTestPrintError( merr );
 		if (rank >= newsize) {
-		    MPI_Comm_free( comm );
+		    merr = MPI_Comm_free( comm );
+		    if (merr) MTestPrintError( merr );
 		    *comm = MPI_COMM_NULL;
+		}
+		else {
+		    intraCommName = "Split of WORLD";
 		}
 	    }
 	    else {
@@ -798,12 +1034,16 @@ int MTestGetIntracommGeneral( MPI_Comm *comm, int min_size, int allowSmaller )
 	}
 
 	if (*comm != MPI_COMM_NULL) {
-	    MPI_Comm_size( *comm, &size );
+	    merr = MPI_Comm_size( *comm, &size );
+	    if (merr) MTestPrintError( merr );
 	    if (size >= min_size) 
 		done = 1;
 	    else {
 		/* Try again */
-		if (!isBasic) MPI_Comm_free( comm );
+		if (!isBasic) {
+		    merr = MPI_Comm_free( comm );
+		    if (merr) MTestPrintError( merr );
+		}
 		intraCommIdx++;
 	    }
 	}
@@ -835,7 +1075,7 @@ const char *MTestGetIntracommName( void )
  */
 int MTestGetIntercomm( MPI_Comm *comm, int *isLeftGroup, int min_size )
 {
-    int size, rank, remsize;
+    int size, rank, remsize, merr;
     int done=0;
     MPI_Comm mcomm;
     int rleader;
@@ -847,11 +1087,14 @@ int MTestGetIntercomm( MPI_Comm *comm, int *isLeftGroup, int min_size )
 	switch (interCommIdx) {
 	case 0:
 	    /* Split comm world in half */
-	    MPI_Comm_rank( MPI_COMM_WORLD, &rank );
-	    MPI_Comm_size( MPI_COMM_WORLD, &size );
+	    merr = MPI_Comm_rank( MPI_COMM_WORLD, &rank );
+	    if (merr) MTestPrintError( merr );
+	    merr = MPI_Comm_size( MPI_COMM_WORLD, &size );
+	    if (merr) MTestPrintError( merr );
 	    if (size > 1) {
-		MPI_Comm_split( MPI_COMM_WORLD, (rank < size/2), rank, 
-				&mcomm );
+		merr = MPI_Comm_split( MPI_COMM_WORLD, (rank < size/2), rank, 
+				       &mcomm );
+		if (merr) MTestPrintError( merr );
 		if (rank == 0) {
 		    rleader = size/2;
 		}
@@ -864,9 +1107,11 @@ int MTestGetIntercomm( MPI_Comm *comm, int *isLeftGroup, int min_size )
 		    rleader = -1;
 		}
 		*isLeftGroup = rank < size/2;
-		MPI_Intercomm_create( mcomm, 0, MPI_COMM_WORLD, rleader, 12345,
-				      comm );
-		MPI_Comm_free( &mcomm );
+		merr = MPI_Intercomm_create( mcomm, 0, MPI_COMM_WORLD, rleader,
+					     12345, comm );
+		if (merr) MTestPrintError( merr );
+		merr = MPI_Comm_free( &mcomm );
+		if (merr) MTestPrintError( merr );
 		interCommName = "Intercomm by splitting MPI_COMM_WORLD";
 	    }
 	    else 
@@ -874,11 +1119,14 @@ int MTestGetIntercomm( MPI_Comm *comm, int *isLeftGroup, int min_size )
 	    break;
 	case 1:
 	    /* Split comm world in to 1 and the rest */
-	    MPI_Comm_rank( MPI_COMM_WORLD, &rank );
-	    MPI_Comm_size( MPI_COMM_WORLD, &size );
+	    merr = MPI_Comm_rank( MPI_COMM_WORLD, &rank );
+	    if (merr) MTestPrintError( merr );
+	    merr = MPI_Comm_size( MPI_COMM_WORLD, &size );
+	    if (merr) MTestPrintError( merr );
 	    if (size > 1) {
-		MPI_Comm_split( MPI_COMM_WORLD, rank == 0, rank, 
-				&mcomm );
+		merr = MPI_Comm_split( MPI_COMM_WORLD, rank == 0, rank, 
+				       &mcomm );
+		if (merr) MTestPrintError( merr );
 		if (rank == 0) {
 		    rleader = 1;
 		}
@@ -891,9 +1139,11 @@ int MTestGetIntercomm( MPI_Comm *comm, int *isLeftGroup, int min_size )
 		    rleader = -1;
 		}
 		*isLeftGroup = rank == 0;
-		MPI_Intercomm_create( mcomm, 0, MPI_COMM_WORLD, rleader, 12346,
-				      comm );
-		MPI_Comm_free( &mcomm );
+		merr = MPI_Intercomm_create( mcomm, 0, MPI_COMM_WORLD, 
+					     rleader, 12346, comm );
+		if (merr) MTestPrintError( merr );
+		merr = MPI_Comm_free( &mcomm );
+		if (merr) MTestPrintError( merr );
 		interCommName = "Intercomm by splitting MPI_COMM_WORLD into 1, rest";
 	    }
 	    else 
@@ -902,11 +1152,14 @@ int MTestGetIntercomm( MPI_Comm *comm, int *isLeftGroup, int min_size )
 
 	case 2:
 	    /* Split comm world in to 2 and the rest */
-	    MPI_Comm_rank( MPI_COMM_WORLD, &rank );
-	    MPI_Comm_size( MPI_COMM_WORLD, &size );
+	    merr = MPI_Comm_rank( MPI_COMM_WORLD, &rank );
+	    if (merr) MTestPrintError( merr );
+	    merr = MPI_Comm_size( MPI_COMM_WORLD, &size );
+	    if (merr) MTestPrintError( merr );
 	    if (size > 3) {
-		MPI_Comm_split( MPI_COMM_WORLD, rank < 2, rank, 
-				&mcomm );
+		merr = MPI_Comm_split( MPI_COMM_WORLD, rank < 2, rank, 
+				       &mcomm );
+		if (merr) MTestPrintError( merr );
 		if (rank == 0) {
 		    rleader = 2;
 		}
@@ -919,9 +1172,11 @@ int MTestGetIntercomm( MPI_Comm *comm, int *isLeftGroup, int min_size )
 		    rleader = -1;
 		}
 		*isLeftGroup = rank < 2;
-		MPI_Intercomm_create( mcomm, 0, MPI_COMM_WORLD, rleader, 12347,
-				      comm );
-		MPI_Comm_free( &mcomm );
+		merr = MPI_Intercomm_create( mcomm, 0, MPI_COMM_WORLD, 
+					     rleader, 12347, comm );
+		if (merr) MTestPrintError( merr );
+		merr = MPI_Comm_free( &mcomm );
+		if (merr) MTestPrintError( merr );
 		interCommName = "Intercomm by splitting MPI_COMM_WORLD into 2, rest";
 	    }
 	    else 
@@ -935,8 +1190,10 @@ int MTestGetIntercomm( MPI_Comm *comm, int *isLeftGroup, int min_size )
 	    break;
 	}
 	if (*comm != MPI_COMM_NULL) {
-	    MPI_Comm_size( *comm, &size );
-	    MPI_Comm_remote_size( *comm, &remsize );
+	    merr = MPI_Comm_size( *comm, &size );
+	    if (merr) MTestPrintError( merr );
+	    merr = MPI_Comm_remote_size( *comm, &remsize );
+	    if (merr) MTestPrintError( merr );
 	    if (size + remsize >= min_size) done = 1;
 	}
 	else
@@ -980,10 +1237,12 @@ int MTestGetComm( MPI_Comm *comm, int min_size )
  or MPI_COMM_NULL */
 void MTestFreeComm( MPI_Comm *comm )
 {
+    int merr;
     if (*comm != MPI_COMM_WORLD &&
 	*comm != MPI_COMM_SELF &&
 	*comm != MPI_COMM_NULL) {
-	MPI_Comm_free( comm );
+	merr = MPI_Comm_free( comm );
+	if (merr) MTestPrintError( merr );
     }
 }
 
@@ -1043,58 +1302,75 @@ int MTestGetWin( MPI_Win *win, int mustBePassive )
     static char actbuf[1024];
     static char *pasbuf;
     char        *buf;
-    int         n, rank;
+    int         n, rank, merr;
     MPI_Info    info;
 
     if (mem_keyval == MPI_KEYVAL_INVALID) {
 	/* Create the keyval */
-	MPI_Win_create_keyval( MPI_WIN_NULL_COPY_FN, MPI_WIN_NULL_DELETE_FN, 
-			       &mem_keyval, 0 );
+	merr = MPI_Win_create_keyval( MPI_WIN_NULL_COPY_FN, 
+				      MPI_WIN_NULL_DELETE_FN, 
+				      &mem_keyval, 0 );
+	if (merr) MTestPrintError( merr );
+
     }
 
     switch (win_index) {
     case 0:
 	/* Active target window */
-	MPI_Win_create( actbuf, 1024, 1, MPI_INFO_NULL, MPI_COMM_WORLD, 
-			win );
+	merr = MPI_Win_create( actbuf, 1024, 1, MPI_INFO_NULL, MPI_COMM_WORLD, 
+			       win );
+	if (merr) MTestPrintError( merr );
 	winName = "active-window";
-	MPI_Win_set_attr( *win, mem_keyval, (void *)0 );
+	merr = MPI_Win_set_attr( *win, mem_keyval, (void *)0 );
+	if (merr) MTestPrintError( merr );
 	break;
     case 1:
 	/* Passive target window */
-	MPI_Alloc_mem( 1024, MPI_INFO_NULL, &pasbuf );
-	MPI_Win_create( pasbuf, 1024, 1, MPI_INFO_NULL, MPI_COMM_WORLD, 
-			win );
+	merr = MPI_Alloc_mem( 1024, MPI_INFO_NULL, &pasbuf );
+	if (merr) MTestPrintError( merr );
+	merr = MPI_Win_create( pasbuf, 1024, 1, MPI_INFO_NULL, MPI_COMM_WORLD, 
+			       win );
+	if (merr) MTestPrintError( merr );
 	winName = "passive-window";
-	MPI_Win_set_attr( *win, mem_keyval, (void *)2 );
+	merr = MPI_Win_set_attr( *win, mem_keyval, (void *)2 );
+	if (merr) MTestPrintError( merr );
 	break;
     case 2:
 	/* Active target; all windows different sizes */
-	MPI_Comm_rank( MPI_COMM_WORLD, &rank );
+	merr = MPI_Comm_rank( MPI_COMM_WORLD, &rank );
+	if (merr) MTestPrintError( merr );
 	n = rank * 64;
 	if (n) 
 	    buf = (char *)malloc( n );
 	else
 	    buf = 0;
-	MPI_Win_create( buf, n, 1, MPI_INFO_NULL, MPI_COMM_WORLD, 
-			win );
+	merr = MPI_Win_create( buf, n, 1, MPI_INFO_NULL, MPI_COMM_WORLD, 
+			       win );
+	if (merr) MTestPrintError( merr );
 	winName = "active-all-different-win";
-	MPI_Win_set_attr( *win, mem_keyval, (void *)1 );
+	merr = MPI_Win_set_attr( *win, mem_keyval, (void *)1 );
+	if (merr) MTestPrintError( merr );
 	break;
     case 3:
 	/* Active target, no locks set */
-	MPI_Comm_rank( MPI_COMM_WORLD, &rank );
+	merr = MPI_Comm_rank( MPI_COMM_WORLD, &rank );
+	if (merr) MTestPrintError( merr );
 	n = rank * 64;
 	if (n) 
 	    buf = (char *)malloc( n );
 	else
 	    buf = 0;
-	MPI_Info_create( &info );
-	MPI_Info_set( info, "nolocks", "true" );
-	MPI_Win_create( buf, n, 1, info, MPI_COMM_WORLD, win );
-	MPI_Info_free( &info );
+	merr = MPI_Info_create( &info );
+	if (merr) MTestPrintError( merr );
+	merr = MPI_Info_set( info, "nolocks", "true" );
+	if (merr) MTestPrintError( merr );
+	merr = MPI_Win_create( buf, n, 1, info, MPI_COMM_WORLD, win );
+	if (merr) MTestPrintError( merr );
+	merr = MPI_Info_free( &info );
+	if (merr) MTestPrintError( merr );
 	winName = "active-nolocks-all-different-win";
-	MPI_Win_set_attr( *win, mem_keyval, (void *)1 );
+	merr = MPI_Win_set_attr( *win, mem_keyval, (void *)1 );
+	if (merr) MTestPrintError( merr );
 	break;
     default:
 	win_index = -1;
@@ -1111,25 +1387,29 @@ const char *MTestGetWinName( void )
 void MTestFreeWin( MPI_Win *win )
 {
     void *addr;
-    int  flag;
+    int  flag, merr;
 
-    MPI_Win_get_attr( *win, MPI_WIN_BASE, &addr, &flag );
+    merr = MPI_Win_get_attr( *win, MPI_WIN_BASE, &addr, &flag );
+    if (merr) MTestPrintError( merr );
     if (!flag) {
 	MTestError( "Could not get WIN_BASE from window" );
     }
     if (addr) {
 	void *val;
-	MPI_Win_get_attr( *win, mem_keyval, &val, &flag );
+	merr = MPI_Win_get_attr( *win, mem_keyval, &val, &flag );
+	if (merr) MTestPrintError( merr );
 	if (flag) {
 	    if (val == (void *)1) {
 		free( addr );
 	    }
 	    else if (val == (void *)2) {
-		MPI_Free_mem( addr );
+		merr = MPI_Free_mem( addr );
+		if (merr) MTestPrintError( merr );
 	    }
 	    /* if val == (void *)0, then static data that must not be freed */
 	}
     }
-    MPI_Win_free(win);
+    merr = MPI_Win_free(win);
+    if (merr) MTestPrintError( merr );
 }
 #endif

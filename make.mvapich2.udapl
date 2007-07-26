@@ -97,18 +97,6 @@ if [ -z "$DAPL_DEFAULT_PROVIDER" ]; then
     prompt_udapl_provider
 fi
 
-# Whether or not to build with multithreaded support.  Building with this
-# option will make MVAPICH2 thread-safe, but it may suffer slight
-# performance penalty in single-threaded case.  Disabled by default.
-# Enable with "yes".
-MULTI_THREAD=${MULTI_THREAD:-}
-
-if [ "$MULTI_THREAD" = "yes" ]; then
-    MULTI_THREAD="--enable-threads=multiple"
-else
-    MULTI_THREAD=""
-fi
-
 # Whether or not to build with ROMIO MPI I/O support.  Disabled by default.
 # Enable with "yes".
 ROMIO=${ROMIO:-}
@@ -142,7 +130,7 @@ fi
 if [ $ARCH = "SOLARIS" ]; then
     export MAKE=gmake
     export PATH=/usr/xpg4/bin:/usr/ucb:/usr/sbin:/usr/ccs/bin:/usr/sfw/bin:$PATH
-    export LIBS=${LIBS:--L${DAT_LIB} -L/usr/ucblib/amd64 -lsocket -lnsl -lresolv -lpthread -ldat}
+    export LIBS=${LIBS:--L${DAT_LIB} -L/usr/ucblib/amd64 -lsocket -lnsl -lresolv -lpthread -ldat -lrt}
 else
     export MAKE=make
     export LIBS=${LIBS:--L${DAT_LIB} -lpthread -ldat}
@@ -150,7 +138,11 @@ fi
 
 export LD_LIBRARY_PATH=${DAT_LIB}:/usr/ucblib/amd64:$LD_LIBRARY_PATH
 export FFLAGS=${FFLAGS:--L${DAT_LIB}}
-export CFLAGS=${CFLAGS:--D${ARCH} -D_SMP_ -DRDMA_FAST_PATH -DUSE_HEADER_CACHING -DLAZY_MEM_UNREGISTER  -DONE_SIDED -DMPID_USE_SEQUENCE_NUMBERS -D${VCLUSTER} -D${IO_BUS} -D${LINKS} -DDAPL_DEFAULT_PROVIDER=\"\\\"$DAPL_DEFAULT_PROVIDER\\\"\" -I${DAT_INCLUDE} $OPT_FLAG}
+export CFLAGS=${CFLAGS:--D${ARCH} -D_SMP_ -DRDMA_FAST_PATH -DUSE_HEADER_CACHING -DLAZY_MEM_UNREGISTER  -DONE_SIDED -DMPIDI_CH3_CHANNEL_RNDV -DMPID_USE_SEQUENCE_NUMBERS -D${VCLUSTER} -D${IO_BUS} -D${LINKS} -DDAPL_DEFAULT_PROVIDER=\"\\\"$DAPL_DEFAULT_PROVIDER\\\"\" -I${DAT_INCLUDE} $OPT_FLAG}
+
+if [ $ARCH = "SOLARIS" ]; then
+	export CFLAGS="${CFLAGS} -DDISABLE_PTMALLOC"   
+fi
 
 # Prelogue
 make distclean &>/dev/null
@@ -159,7 +151,7 @@ set -o pipefail
 
 # Configure MVAPICH2
 echo "Configuring MVAPICH2..."
-./configure  --prefix=${PREFIX} ${MULTI_THREAD} \
+./configure  --prefix=${PREFIX} \
     --with-device=osu_ch3:mrail --with-rdma=udapl --with-pm=mpd \
     ${ROMIO} ${SHARED_LIBS} --without-mpe 2>&1 |tee config-mine.log
 ret=$?

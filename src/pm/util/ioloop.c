@@ -138,8 +138,6 @@ int MPIE_IOLoop( int timeoutSeconds )
     fd_set readfds, writefds;
     int    (*handler)(int,int,void*);
     struct timeval tv;
-    int    activefds = 0;
-
 
     /* Loop on the fds, with the timeout */
     TimeoutInit( timeoutSeconds );
@@ -151,12 +149,10 @@ int MPIE_IOLoop( int timeoutSeconds )
 	FD_ZERO( &writefds );
 	/* maxfd is the maximum active fd */
 	maxfd = -1;
-	activefds = 0;
 	for (i=0; i<=maxFD; i++) {
 	    if (handlesByFD[i].handler) {
 		fd = handlesByFD[i].fd;
 		if (handlesByFD[i].rdwr & IO_READ) {
-		    activefds++;
 		    FD_SET( fd, &readfds );
 		    maxfd = i;
 		}
@@ -167,6 +163,9 @@ int MPIE_IOLoop( int timeoutSeconds )
 	    }
 	}
 	if (maxfd < 0) break;
+	
+	DBG_PRINTF(("Calling select with readfds = %x writefds = %x\n",
+		    *(int *)&readfds, *(int*)&writefds));
 	MPIE_SYSCALL(nfds,select,( maxfd + 1, &readfds, &writefds, 0, &tv ));
 	if (nfds < 0 && (errno == EINTR || errno == 0)) {
 	    /* Continuing through EINTR */
@@ -177,6 +176,10 @@ int MPIE_IOLoop( int timeoutSeconds )
 	       signal handler returns (we suspect Linux of this problem),
 	       which is why we have the signal handler in process.c reset 
 	       errno to 0 (we may need to allow ECHILD here (!)) */
+	    /* FIXME: an EINTR may also mean that a process has exited 
+	       (SIGCHILD).  If all processes have exited, we may want to 
+	       exit */
+	    DBG_PRINTF(("errno = EINTR in select\n"));
 	    continue;
 	}
 	if (nfds < 0) {
@@ -186,9 +189,11 @@ int MPIE_IOLoop( int timeoutSeconds )
 	}
 	if (nfds == 0) { 
 	    /* Timeout from select */
+	    DBG_PRINTF(("Timeout in select\n"));
 	    return IOLOOP_TIMEOUT;
 	}
 	/* nfds > 0 */
+	DBG_PRINTF(("Found some fds to process (n = %d)\n",nfds));
 	for (fd=0; fd<=maxfd; fd++) {
 	    if (FD_ISSET( fd, &writefds )) {
 		handler = handlesByFD[fd].handler;
@@ -216,6 +221,7 @@ int MPIE_IOLoop( int timeoutSeconds )
 	    }
 	}
     }
+    DBG_PRINTF(("Returning from IOLOOP handler\n"));
     return 0;
 }
 

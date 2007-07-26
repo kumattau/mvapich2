@@ -8,13 +8,14 @@ NOF77       = @NOF77@
 NOPROFILE   = @NOPROFILE@
 MPI         = @MPI@
 PREFIX      = @prefix@
+srcdir      = @srcdir@
 BUILD_MPI_INFO = @BUILD_MPI_INFO@
 BUILD_MPI_ARRAY = @BUILD_MPI_ARRAY@
 DIRS        = mpi-io adio/common @GLUE_DIR@
 MPIO_DIRS   = mpi-io
 EXTRA_SRC_DIRS = @EXTRA_SRC_DIRS@
 FILE_SYS_DIRS = @FILE_SYS_DIRS@
-ALL_DIRS    = mpi-io mpi-io/fortran mpi2-other/info mpi2-other/info/fortran mpi2-other/array mpi2-other/array/fortran adio/common adio/ad_pfs adio/ad_piofs adio/ad_nfs adio/ad_ufs adio/ad_xfs adio/ad_hfs adio/ad_sfs adio/ad_testfs adio/ad_pvfs adio/ad_pvfs2 adio/ad_panfs adio/ad_gridftp test
+ALL_DIRS    = mpi-io mpi-io/fortran mpi2-other/info mpi2-other/info/fortran mpi2-other/array mpi2-other/array/fortran adio/common adio/ad_pfs adio/ad_piofs adio/ad_nfs adio/ad_ufs adio/ad_xfs adio/ad_hfs adio/ad_sfs adio/ad_testfs adio/ad_pvfs adio/ad_pvfs2 adio/ad_panfs adio/ad_gridftp test mpi-io/glue/default mpi-io/glue/mpich1 mpi-io/glue/mpich2
 SHELL       = /bin/sh
 
 @VPATH@
@@ -61,7 +62,7 @@ clean:
          do \
             echo " " ;\
             echo cleaning directory $$dir ;\
-            (cd $$dir && rm -f *.o *.lo) ;\
+            (cd $$dir && rm -f *.o *.lo *.gcno *.gcda *.bb *.bbg) ;\
          done; \
          echo " " ;\
          echo cleaning directory test ;\
@@ -85,9 +86,9 @@ mpiolib:
             fi ;\
          done
 
+# We no longer need to clean before building the profiling interface
 profile: 
 	@if [ "@HAVE_WEAK_SYMBOLS@" = 0 ] ; then \
-	    $(MAKE) clean ;\
 	   for dir in $(MPIO_DIRS) $(EXTRA_SRC_DIRS) ;\
               do \
                echo " " ;\
@@ -99,9 +100,9 @@ profile:
                     echo "Make failed in directory $$dir" ; exit 1 ;\
                 fi ;\
             done ;\
-	   $(MAKE) clean ;\
 	fi
 
+# FIXME: This should look at the enabled File systems
 coverage:
 	(cd mpi-io && make coverage)
 	(cd adio/ad_ufs && make coverage)
@@ -112,20 +113,23 @@ cleanall:
 	echo "cleaning test directory" ;\
 	(cd test && ${MAKE} cleanall ) ;\
         echo cleaning current directory ;\
-        (rm -f config.status Makefile *~ *.log romio.tar*) ;\
+        (rm -f config.status Makefile *~ *.log romio.tar* localdefs) ;\
         for dir in $$dirs ;\
          do \
             echo " " ;\
 	    if [ ! -d $$dir ] ; then continue ; fi ; \
             echo cleaning directory $$dir ;\
-            (cd $$dir; rm -f *.o Makefile *~) ;\
+            (cd $$dir && rm -f *.o Makefile *~) ;\
          done; \
          echo " " ;\
          echo "cleaning directory include" ;\
-         (cd include; rm -f *.h);\
+         (cd include && rm -f *.h);\
+         echo " " ;\
+         echo "cleaning directory adio/include" ;\
+         (cd adio/include && rm -f romioconf.h);\
          echo " " ;\
          echo "cleaning directory util" ;\
-         (cd util; rm -f romioinstall *~)
+         (cd util && rm -f romioinstall *~)
 	-rm -f lib
 
 install:
@@ -136,6 +140,8 @@ install:
 uninstall:
 	@./util/romioinstall -prefix=$(PREFIX) -uninstall
 
+# FIXME: To avoid problems with noisy make programs, these should be accessed
+# through entries in localdefs .
 romio_lflags:
 	@echo '@ROMIO_LFLAGS@'
 
@@ -171,3 +177,11 @@ TAGS:
 	for dir in mpi-io adio/common - ; do \
 		if [ "$$dir" = "-" ] ; then break ; fi ; \
 		(cd $$dir && ${MAKE} TAGS ; ) ; done
+
+# This target is appropriate for autoconf 2.59 (the command line options
+# for selecting the macro directories changes in incompatible ways between
+# autoconf releases).
+configure: ${srcdir}/configure
+${srcdir}/configure ${srcdir}/adio/include/romioconf.h: ${srcdir}/configure.in ${srcdir}/aclocal.m4
+	cd ${srcdir} && rm -rf autom4te*.cache && autoconf -I .
+	cd ${srcdir} && autoheader -I .

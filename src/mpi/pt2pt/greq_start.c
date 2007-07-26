@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: greq_start.c,v 1.1.1.1 2006/01/18 21:09:43 huangwei Exp $
+/*  $Id: greq_start.c,v 1.24 2006/07/11 16:15:14 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -21,6 +21,7 @@
    the MPI routines.  You can use USE_WEAK_SYMBOLS to see if MPICH is
    using weak symbols to implement the MPI routines. */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Grequest_start
 #define MPI_Grequest_start PMPI_Grequest_start
 
 /* Any internal routines can go here.  Make them static if possible.  If they
@@ -44,6 +45,32 @@ Input Parameters:
 Output Parameter:
 .  request - Generalized request (handle)
 
+ Notes on the callback functions:
+ The return values from the callback functions must be a valid MPI error code
+ or class.  This value may either be the return value from any MPI routine
+ (with one exception noted below) or any of the MPI error classes. 
+ For portable programs, 'MPI_ERR_OTHER' may be used; to provide more 
+ specific information, create a new MPI error class or code with 
+ 'MPI_Add_error_class' or 'MPI_Add_error_code' and return that value.
+
+ The MPI standard is not clear on the return values from the callback routines.
+ However, there are notes in the standard that imply that these are MPI error
+ codes.  For example, pages 169 line 46 through page 170, line 1 require that
+ the 'free_fn' return an MPI error code that may be used in the MPI completion
+ functions when they return 'MPI_ERR_IN_STATUS'.  
+
+ The one special case is the error value returned by 'MPI_Comm_dup' when
+ the attribute callback routine returns a failure.  The MPI standard is not
+ clear on what values may be used to indicate an error return.  Further,
+ the Intel MPI test suite made use of non-zero values to indicate failure, 
+ and expected these values to be returned by the 'MPI_Comm_dup' when the 
+ attribute routines encountered an error.  Such error values may not be valid 
+ MPI error codes or classes.  Because of this, it is the user's responsibility
+ to either use valid MPI error codes in return from the attribute callbacks,
+ if those error codes are to be returned by a generalized request callback,
+ or to detect and convert those error codes to valid MPI error codes (recall
+ that MPI error classes are valid error codes).  
+
 .N ThreadSafe
 
 .N Fortran
@@ -64,7 +91,7 @@ int MPI_Grequest_start( MPI_Grequest_query_function *query_fn,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("pt2pt");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_GREQUEST_START);
 
     /* Validate parameters if error checking is enabled */
@@ -109,7 +136,7 @@ int MPI_Grequest_start( MPI_Grequest_query_function *query_fn,
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_GREQUEST_START);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("pt2pt");
     return mpi_errno;
     
   fn_fail:

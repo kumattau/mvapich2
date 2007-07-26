@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: irlogutil.c,v 1.1.1.1 2006/01/18 21:09:48 huangwei Exp $
+/*  $Id: irlogutil.c,v 1.5 2005/07/05 18:35:39 ashton Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.

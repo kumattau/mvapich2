@@ -8,40 +8,51 @@ define([AC_CACHE_SAVE], )dnl
 dnl
 dnl
 AH_BOTTOM([
+/* Temporary fix of undefined int64_t on SLES8 with "icc -no-gcc" */
+#if defined(FIX_STDINT_ORDER)
+#include "clog_inttypes.h"
+#endif
+
 /* Define WINDOWS specific features */
 /*
    Windows' open() opens an ASCII file by default, add Windows specific
    flag O_BINARY to open()'s argument
 */
-#ifdef HAVE_WINDOWS_H
+#if !defined( OPEN )
+
+#if defined(HAVE_WINDOWS_H)
+
 #define OPEN( a, b, c )    open( a, b | O_BINARY, c )
+
 #else
 
-#ifdef _LARGEFILE64_SOURCE
+#if defined(_LARGEFILE64_SOURCE)
 
-#ifdef HAVE_O_BINARY
+#if defined(HAVE_O_BINARY)
 #define OPEN( a, b, c )    open( a, b | O_LARGEFILE | O_BINARY, c )
 #else
 #define OPEN( a, b, c )    open( a, b | O_LARGEFILE, c )
-#endif
+#endif    /* HAVE_O_BINARY */
 
 #else
 
-#ifdef HAVE_O_BINARY
+#if defined(HAVE_O_BINARY)
 #define OPEN( a, b, c )    open( a, b | O_BINARY, c )
 #else
 #define OPEN( a, b, c )    open( a, b, c )
-#endif
+#endif    /* HAVE_O_BINARY */
 
-#endif
+#endif    /* _LARGEFILE64_SOURCE */
 
-#endif
+#endif    /* HAVE_WINDOWS_H */
+
+#endif    /* OPEN */
 ])
 AC_INIT()
 AC_PREREQ(2.52)
-AC_CONFIG_HEADER(mpe_logging_conf.h)
+AC_CONFIG_HEADER( mpe_logging_conf.h )
 dnl
-echo "Configuring MPE Logging Library with $ac_configure_args"
+echo "Configuring MPE Logging Library and Tools with $ac_configure_args"
 dnl
 dnl Set top_srcdir_abs to be the ABSOLUTE path to the home directory of MPE
 dnl top_srcdir is in relative path.
@@ -100,15 +111,6 @@ AC_SUBST(MKDIR)
 AC_SUBST(CPRP)
 AC_SUBST(RM)
 AC_SUBST(MV)
- 
-if test -z "$nonopt" ; then nonopt=NONE ; fi
-AC_CANONICAL_HOST
-case "$host" in
-   *cray*)
-        host=cray
-        CFLAGS="$CFLAGS -DMPI_CRAY"
-        ;;
-esac
 
 dnl Set the various build directories from their mpe_ prefixed env variables.
 dnl
@@ -161,7 +163,11 @@ if test "$CPP" = "/lib/cpp" -a ! -x /lib/cpp ; then
 fi
 
 AC_HEADER_STDC
+
 AC_C_CONST
+
+AC_DEFINE( CLOG_IMPL, 1,
+           [The configuration header enables CLOG2 implementation related API] )
 
 dnl   -- Check if byteswapping needs to be done.
 if test "$cross_compiling" = "yes" -o "$cross_compiling" = 1 ; then
@@ -189,7 +195,111 @@ else
     AC_C_BIGENDIAN
 fi
 
+AC_CHECK_HEADERS(stdio.h stdlib.h string.h sys/time.h sys/types.h sys/bitypes.h)
+
+
+dnl
+dnl Check system headers for C99 intXX_t.
+dnl
+PAC_GET_STDINT_HEADER([mpe_c99_stdint_h])
+
+if test "X$mpe_c99_stdint_h" != "X" ; then
+    mpe_int8_t="int8_t"
+    mpe_int16_t="int16_t"
+    mpe_int32_t="int32_t"
+    mpe_int64_t="int64_t"
+else
+dnl Since there isn't any intXX_t defined in the system headers.
+dnl Define intXX_t based on basic integer types, char, short, int, long...
+    PAC_GET_BASIC_INT_TYPES([mpe_int8_t], [mpe_int16_t],
+                            [mpe_int32_t], [mpe_int64_t])
+fi
+
+dnl
+dnl Check for PRIdXX
+dnl
+PAC_GET_STDINT_FORMATS([$mpe_int8_t], [$mpe_int16_t],
+                        [$mpe_int32_t], [$mpe_int64_t],
+                        [mpe_int8_fmt], [mpe_int16_fmt],
+                        [mpe_int32_fmt], [mpe_int64_fmt],
+                        [mpe_c99_pridxx_h])
+
+dnl Create the output stdint.h for MPE logging
+dnl PAC_OUTPUT_STDINT_HEADER([include/clog_stdint.h],
+dnl                          [$mpe_c99_stdint_h], [$mpe_c99_pridxx_h],
+dnl                          [$mpe_int8_t], [$mpe_int16_t],
+dnl                          [$mpe_int32_t], [$mpe_int64_t],
+dnl                          [$mpe_int8_fmt], [$mpe_int16_fmt],
+dnl                          [$mpe_int32_fmt], [$mpe_int64_fmt])
+mpe_c99_stdint_inc=""
+mpe_c99_pridxx_inc=""
+if test "X$mpe_c99_stdint_h" != "X" ; then
+    mpe_c99_stdint_inc="#include <$mpe_c99_stdint_h>"
+    if test "X$mpe_c99_pridxx_h" != "X" ; then
+        if test "$mpe_c99_pridxx_h" != "$mpe_c99_stdint_h" ; then
+            mpe_c99_pridxx_inc="#include <$mpe_c99_pridxx_h>"
+        fi
+    fi
+fi
+AC_SUBST(mpe_c99_stdint_inc)
+AC_SUBST(mpe_c99_pridxx_inc)
+AC_SUBST(mpe_int8_t)
+AC_SUBST(mpe_int16_t)
+AC_SUBST(mpe_int32_t)
+AC_SUBST(mpe_int64_t)
+AC_SUBST(mpe_int8_fmt)
+AC_SUBST(mpe_int16_fmt)
+AC_SUBST(mpe_int32_fmt)
+AC_SUBST(mpe_int64_fmt)
+
+if test "X$mpe_c99_stdint_h" != "X" ; then
+    AC_MSG_CHECKING( [if <$mpe_c99_stdint_h> can be behind system headers] )
+    AC_COMPILE_IFELSE( [ AC_LANG_PROGRAM( [
+#if defined( STDC_HEADERS ) || defined( HAVE_STDIO_H )
+#include <stdio.h>
+#endif
+#if defined( STDC_HEADERS ) || defined( HAVE_STDLIB_H )
+#include <stdlib.h>
+#endif
+#include <$mpe_c99_stdint_h>
+                                          ],
+                                          [ int64_t   ii64 = 0; ] )
+                       ], [ mpe_link_ok=yes ], [ mpe_link_ok=no ] )
+    if test "$mpe_link_ok" = "yes" ; then
+        AC_MSG_RESULT(yes)
+    else
+        AC_MSG_RESULT(no)
+        AC_DEFINE( FIX_STDINT_ORDER, 1,
+                   [Define if stdint.h should be before system headers] )
+    fi
+fi
+
+
 dnl ****   Checking for specific functions needed for the package.
+ 
+if test -z "$nonopt" ; then nonopt=NONE ; fi
+AC_CANONICAL_HOST
+case "$host" in
+   *cray*)
+        if test "$MPE_BUILD_FORTRAN2C" = "yes" ; then
+            AC_MSG_CHECKING( [for Cray's FCD string type] )
+            AC_LINK_IFELSE( [ AC_LANG_PROGRAM( [#include <fortran.h>], [
+                                char  *cstr;
+                                int   cstrlen;
+                                _fcd  fstr;
+                                cstr      = _fcdtocp( fstr );
+                                cstr_len  = _fcdlen( fstr );
+                            ] ) ], [ mpe_link_ok=yes ], [ mpe_link_ok=no ] )
+            if test "$mpe_link_ok" = "yes" ; then
+                AC_MSG_RESULT(yes)
+                AC_DEFINE( HAVE_CRAY_FCD_STRING, 1,
+                           [Define if CRAY's FCD string is found] )
+            else
+                AC_MSG_RESULT(no)
+            fi
+        fi
+        ;;
+esac
 
 dnl snprintf may have been missing in headerfile,
 dnl e.g. gcc -ansi remove snprintf's prototype
@@ -236,24 +346,34 @@ dnl     )
 dnl )
 
 dnl check if Large File support is available for 32-bit OS
-AC_CHECK_HEADERS( unistd.h,
-    AC_MSG_CHECKING( [for large file support in 32-bit OS] )
-    AC_TRY_COMPILE( [
-        #define _LARGEFILE64_SOURCE 1
-        #include <unistd.h>
-        ], [
-        #ifndef _LFS64_LARGEFILE
-        #error no largefile support
-        #endif
-        ],
-        AC_DEFINE( _LARGEFILE64_SOURCE, 1,
-                   [Define if 64-bit file address support in 32-bit OS.] )
-        AC_DEFINE( _FILE_OFFSET_BITS, 64,
-                   [Define if 64-bit file address support in 32-bit OS.] )
-        AC_MSG_RESULT(yes),
-        AC_MSG_RESULT(none)
-    )
-)
+dnl AC_CHECK_HEADERS( unistd.h,
+dnl     AC_MSG_CHECKING( [for large file support in 32-bit OS] )
+dnl     AC_TRY_COMPILE( [
+dnl         #define _LARGEFILE64_SOURCE 1
+dnl         #include <unistd.h>
+dnl         ], [
+dnl         #ifndef _LFS64_LARGEFILE
+dnl         #error no largefile support
+dnl         #endif
+dnl         ],
+dnl         AC_DEFINE( _LARGEFILE64_SOURCE, 1,
+dnl                    [Define if 64-bit file address support in 32-bit OS.] )
+dnl         AC_DEFINE( _FILE_OFFSET_BITS, 64,
+dnl                    [Define if 64-bit file address support in 32-bit OS.] )
+dnl         AC_MSG_RESULT(yes),
+dnl         AC_MSG_RESULT(none)
+dnl     )
+dnl )
+AC_SYS_LARGEFILE
+AC_MSG_CHECKING( [whether _LARGEFILE64_SOURCE is needed] )
+if test "$ac_cv_sys_file_offset_bits" != no \
+     -o "$ac_cv_sys_large_files" != no ; then
+    AC_DEFINE( _LARGEFILE64_SOURCE, 1,
+               [Define if 64-bit file address support in 32-bit OS.] )
+    AC_MSG_RESULT(yes)
+else
+    AC_MSG_RESULT(no)
+fi
 
 AC_CHECK_HEADERS( fcntl.h,
     AC_MSG_CHECKING( [for O_BINARY for open()] )
@@ -269,16 +389,11 @@ AC_CHECK_HEADERS( fcntl.h,
     )
 )
 
-AC_CHECK_HEADERS( stdio.h stdlib.h string.h sys/time.h )
-
 dnl   Determine if PMPI_Comm_create_keyval exists
 if test "$MPI_IMPL" != "MPICH" -a "$MPI_IMPL" != "MPICH2" ; then
     AC_MSG_CHECKING( [for PMPI_Comm_create_keyval()] )
     PAC_MPI_LINK_CC_FUNC( $MPI_CC, [$CFLAGS $MPI_INC], $MPI_LIBS,
                           [ int comm_keyval ], [
-#ifndef NULL
-#define NULL 0
-#endif
                           PMPI_Comm_create_keyval( MPI_COMM_NULL_COPY_FN,
                                                    MPI_COMM_NULL_DELETE_FN,
                                                    &comm_keyval, NULL )
@@ -376,5 +491,5 @@ AC_SUBST(MPI_INC)
 AC_SUBST(MPI_LIBS)
 AC_SUBST(PROF_LIBNAME)
 
-AC_OUTPUT( Makefile src/Makefile \
+AC_OUTPUT( Makefile src/Makefile include/clog_inttypes.h \
            etc/mpe_log.conf etc/mpe_nolog.conf )

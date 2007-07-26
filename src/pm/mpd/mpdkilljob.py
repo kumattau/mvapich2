@@ -13,7 +13,7 @@ usage: mpdkilljob  jobnum  [mpdid]  # as obtained from mpdlistjobs
 from time import ctime
 __author__ = "Ralph Butler and Rusty Lusk"
 __date__ = ctime()
-__version__ = "$Revision: 1.1.1.1 $"
+__version__ = "$Revision: 1.17 $"
 __credits__ = ""
 
 

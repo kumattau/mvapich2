@@ -470,6 +470,7 @@ int MRAILI_Fill_start_buffer(vbuf * v,
 int MPIDI_CH3I_MRAILI_Eager_send(MPIDI_VC_t * vc,
                                  MPID_IOV * iov,
                                  int n_iov,
+                                 int pkt_len,
                                  int *num_bytes_ptr, vbuf ** buf_handle)
 {
     MRAILI_Channel_info channel;
@@ -477,6 +478,13 @@ int MPIDI_CH3I_MRAILI_Eager_send(MPIDI_VC_t * vc,
     MPIDI_CH3I_MRAILI_Pkt_comm_header *pheader;
     int mpi_errno; 
 
+    /* first we check if we can take the RDMA FP */
+    if(MPIDI_CH3I_MRAILI_Fast_rdma_ok(vc, pkt_len)) {
+        return MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(vc, iov,
+                n_iov, num_bytes_ptr, buf_handle);
+    } 
+
+    /* otherwise we can take the send/recv path */
     v = get_vbuf();
     *buf_handle = v;
     DEBUG_PRINT("[eager send]vbuf addr %p\n", v);

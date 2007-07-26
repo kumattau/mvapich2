@@ -1,6 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: mpi.h.in,v 1.1.1.1 2006/01/18 21:09:42 huangwei Exp $
- *
+/*  
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
@@ -105,16 +104,12 @@ typedef int MPI_Win;
 #define MPI_WIN_NULL ((MPI_Win)0x20000000)
 
 /* File and IO */
-/* This define is temporary; it lets ROMIO know that MPI_File has been defined */
+/* This define lets ROMIO know that MPI_File has been defined */
 #define MPI_FILE_DEFINED
-#ifdef MPICH_NEW_MPIIO
-typedef int MPI_File;
-/* commenting out the line below otherwise maint/updatefiles prints a warning */
-/* #define MPI_FILE_NULL ((MPI_File)0x10000000) */
-#else
+/* ROMIO uses a pointer for MPI_File objects.  This must be the same definition
+   as in src/mpi/romio/include/mpio.h.in  */
 typedef struct ADIOI_FileD *MPI_File;
 #define MPI_FILE_NULL ((MPI_File)0)
-#endif
 
 /* Collective operations */
 typedef int MPI_Op;
@@ -288,7 +283,7 @@ typedef int MPI_Info;
 #define MPI_DISTRIBUTE_NONE     123
 #define MPI_DISTRIBUTE_DFLT_DARG -49767
 
-#define MPI_IN_PLACE  (void *) -1  /* temporary, don't know the right value */
+#define MPI_IN_PLACE  (void *) -1
 
 /* asserts for one-sided communication */
 #define MPI_MODE_NOCHECK      1024
@@ -384,20 +379,6 @@ typedef int (MPI_Grequest_cancel_function)(void *, int);
 typedef int (MPI_Grequest_free_function)(void *); 
 typedef int (MPI_Grequest_query_function)(void *, MPI_Status *); 
 
-#ifdef HAVE_MPICH2G2
-/*************** Experimental MPICH FEATURES BEGIN HERE *******************/
-/* Attribute keys.  These are set to MPI_KEYVAL_INVALID by default */
-extern int MPICHX_QOS_BANDWIDTH;
-extern int MPICHX_QOS_PARAMETERS;
-/**************** Experimental MPICH FEATURES END HERE ********************/
-
-/******** Globus-2 device gives access to the underlying processor ********/
-/******** topology at the user level using attribute caching **************/
-extern int MPICHX_TOPOLOGY_DEPTHS;
-extern int MPICHX_TOPOLOGY_COLORS;
-/******** End of Globus-2 device keys *************************************/
-#endif
-
 /* MPI's error classes */
 #define MPI_SUCCESS          0      /* Successful return code */
 /* Communication argument parameters */
@@ -492,6 +473,9 @@ typedef int (MPI_Datarep_extent_function)(MPI_Datatype datatype, MPI_Aint *,
    conventions or DLL import/export controls).  
 */
 /* --Insert Additional Definitions Here-- */
+
+/* Include any device specific definitions */
+@INCLUDE_MPIDDEFS_H@
 
 /*
  * Normally, we provide prototypes for all MPI routines.  In a few wierd
@@ -1119,6 +1103,10 @@ int PMPI_Win_set_errhandler(MPI_Win, MPI_Errhandler);
    compiler but MPI was built without the C++ bindings */
 @INCLUDE_MPICXX_H@
 #endif 
+#endif
+
+#if defined(CKPT) && defined(SYNC_CKPT)
+int MVAPICH2_Sync_Checkpoint();
 #endif
 
 #endif

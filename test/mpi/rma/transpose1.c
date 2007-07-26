@@ -5,18 +5,19 @@
  */
 #include "mpi.h" 
 #include "stdio.h"
+#include <stdlib.h>
 #include "mpitest.h"
 
 /* transposes a matrix using put, fence, and derived datatypes. Uses
    vector and hvector (Example 3.32 from MPI 1.1 Standard). Run on
    2 processes */
 
-#define NROWS 100
-#define NCOLS 100
+#define NROWS 1000
+#define NCOLS 1000
 
 int main(int argc, char *argv[]) 
 { 
-    int rank, nprocs, A[NROWS][NCOLS], i, j;
+    int rank, nprocs, **A, *A_data, i, j;
     MPI_Win win;
     MPI_Datatype column, xpose;
     int errs = 0;
@@ -29,6 +30,13 @@ int main(int argc, char *argv[])
         printf("Run this program with 2 processes\n");
         MPI_Abort(MPI_COMM_WORLD,1);
     }
+
+    A_data = (int *) malloc(NROWS * NCOLS * sizeof(int));
+    A = (int **) malloc(NROWS * sizeof(int *));
+
+    A[0] = A_data;
+    for (i=1; i<NROWS; i++)
+	A[i] = A[i-1] + NCOLS;
 
     if (rank == 0)
     {
@@ -46,7 +54,7 @@ int main(int argc, char *argv[])
 
         MPI_Win_fence(0, win); 
 
-        MPI_Put(A, NROWS*NCOLS, MPI_INT, 1, 0, 1, xpose, win);
+        MPI_Put(&A[0][0], NROWS*NCOLS, MPI_INT, 1, 0, 1, xpose, win);
     
         MPI_Type_free(&column);
         MPI_Type_free(&xpose);
@@ -58,7 +66,7 @@ int main(int argc, char *argv[])
         for (i=0; i<NROWS; i++) 
             for (j=0; j<NCOLS; j++)
                 A[i][j] = -1;
-        MPI_Win_create(A, NROWS*NCOLS*sizeof(int), sizeof(int), MPI_INFO_NULL, 
+        MPI_Win_create(&A[0][0], NROWS*NCOLS*sizeof(int), sizeof(int), MPI_INFO_NULL, 
                        MPI_COMM_WORLD, &win); 
         MPI_Win_fence(0, win); 
 
@@ -86,6 +94,10 @@ int main(int argc, char *argv[])
     }
 
     MPI_Win_free(&win); 
+
+    free(A_data);
+    free(A);
+
     MTest_Finalize(errs);
     MPI_Finalize(); 
     return 0; 

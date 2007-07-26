@@ -21,6 +21,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Comm_delete_attr
 #define MPI_Comm_delete_attr PMPI_Comm_delete_attr
 
 #endif
@@ -58,7 +59,7 @@ int MPI_Comm_delete_attr(MPI_Comm comm, int comm_keyval)
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("attr");
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_COMM_DELETE_ATTR);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -99,9 +100,6 @@ int MPI_Comm_delete_attr(MPI_Comm comm, int comm_keyval)
     
     /* Look for attribute.  They are ordered by keyval handle */
 
-    /* The thread lock prevents a valid attr delete on the same communicator
-       but in a different thread from causing problems */
-    MPID_Comm_thread_lock( comm_ptr );
     old_p = &comm_ptr->attributes;
     p     = comm_ptr->attributes;
     while (p) {
@@ -126,7 +124,7 @@ int MPI_Comm_delete_attr(MPI_Comm comm, int comm_keyval)
 	    /* We found the attribute.  Remove it from the list */
 	    *old_p = p->next;
 	    /* Decrement the use of the keyval */
-	    MPIU_Object_release_ref( p->keyval, &in_use);
+	    MPIR_Keyval_release_ref( p->keyval, &in_use);
 	    if (!in_use) {
 		MPIU_Handle_obj_free( &MPID_Keyval_mem, p->keyval );
 	    }
@@ -134,15 +132,13 @@ int MPI_Comm_delete_attr(MPI_Comm comm, int comm_keyval)
 	}
     }
 
-    MPID_Comm_thread_unlock( comm_ptr );
-    
     /* ... end of body of routine ... */
 
     if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_COMM_DELETE_ATTR);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("attr");
     return mpi_errno;
 
   fn_fail:

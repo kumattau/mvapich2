@@ -475,10 +475,13 @@ void PREPEND_PREFIX(Segment_manipulate)(struct DLOOP_Segment *segp,
 		    }
 		    break;
 		case DLOOP_KIND_INDEXED:
-		    /* only use index piecefn if at start of the index type */
+		    /* only use index piecefn if at start of the index type.
+		     *   count test checks that we're on first block.
+		     *   block test checks that we haven't made progress on first block.
+		     */
 		    if (indexfn &&
-			cur_elmp->orig_block == cur_elmp->curblock &&
-			cur_elmp->orig_count == cur_elmp->curcount)
+			cur_elmp->orig_count == cur_elmp->curcount &&
+			cur_elmp->curblock == DLOOP_STACKELM_INDEXED_BLOCKSIZE(cur_elmp, 0))
 		    {
 			/* TODO: RELAX CONSTRAINT ON COUNT? */
 			myblocks = cur_elmp->loop_p->loop_params.i_t.total_blocks;
@@ -604,8 +607,6 @@ void PREPEND_PREFIX(Segment_manipulate)(struct DLOOP_Segment *segp,
 		 * of the current block, or we're processing as many blocks as
 		 * we like starting at the beginning of one.
 		 */
-		DLOOP_Assert(myblocks == cur_elmp->curblock ||
-		       cur_elmp->curblock == cur_elmp->orig_block);
 
 		switch (cur_elmp->loop_p->kind & DLOOP_KIND_MASK) {
 		    case DLOOP_KIND_INDEXED:
@@ -708,37 +709,37 @@ void PREPEND_PREFIX(Segment_manipulate)(struct DLOOP_Segment *segp,
 			    (unsigned) cur_elmp, cur_sp);
 #endif
 	    cur_elmp->curcount--;
+
+	    /* new block.  for indexed and struct reset orig_block.
+	     * reset curblock for all types
+	     */
+	    switch (cur_elmp->loop_p->kind & DLOOP_KIND_MASK) {
+		case DLOOP_KIND_CONTIG:
+		case DLOOP_KIND_VECTOR:
+		case DLOOP_KIND_BLOCKINDEXED:
+		    break;
+		case DLOOP_KIND_INDEXED:
+		    cur_elmp->orig_block =
+			DLOOP_STACKELM_INDEXED_BLOCKSIZE(cur_elmp, cur_elmp->curcount ? cur_elmp->orig_count - cur_elmp->curcount : 0);
+		    break;
+		case DLOOP_KIND_STRUCT:
+		    cur_elmp->orig_block =
+			DLOOP_STACKELM_STRUCT_BLOCKSIZE(cur_elmp, cur_elmp->orig_count - cur_elmp->curcount);
+		    break;
+		default:
+		    /* --BEGIN ERROR HANDLING-- */
+		    DLOOP_Assert(0);
+		    break;
+		    /* --END ERROR HANDLING-- */
+	    }
+	    cur_elmp->curblock = cur_elmp->orig_block;
+
 	    if (cur_elmp->curcount == 0) {
 #ifdef DLOOP_DEBUG_MANIPULATE
 		DLOOP_dbg_printf("\talso hit end of count; elmp=%x [%d]\n",
 				(unsigned) cur_elmp, cur_sp);
 #endif
 		DLOOP_SEGMENT_POP_AND_MAYBE_EXIT;
-	    }
-	    else {
-		/* new block.  for indexed and struct reset orig_block.
-		 * reset curblock for all types
-		 */
-		switch (cur_elmp->loop_p->kind & DLOOP_KIND_MASK) {
-		    case DLOOP_KIND_CONTIG:
-		    case DLOOP_KIND_VECTOR:
-		    case DLOOP_KIND_BLOCKINDEXED:
-			break;
-		    case DLOOP_KIND_INDEXED:
-			cur_elmp->orig_block =
-			    DLOOP_STACKELM_INDEXED_BLOCKSIZE(cur_elmp, cur_elmp->orig_count - cur_elmp->curcount);
-			break;
-		    case DLOOP_KIND_STRUCT:
-			cur_elmp->orig_block =
-			    DLOOP_STACKELM_STRUCT_BLOCKSIZE(cur_elmp, cur_elmp->orig_count - cur_elmp->curcount);
-			break;
-		    default:
-			/* --BEGIN ERROR HANDLING-- */
-			DLOOP_Assert(0);
-			break;
-			/* --END ERROR HANDLING-- */
-		}
-		cur_elmp->curblock = cur_elmp->orig_block;
 	    }
 	}
 	else /* push the stackelm */ {

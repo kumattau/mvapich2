@@ -15,6 +15,7 @@ CFLAGS               = @CFLAGS@
 FFLAGS               = @FFLAGS@
 MPE_INCDIR           = @includebuild_dir@
 MPE_LIBDIR           = @libbuild_dir@
+MPE_SBINDIR          = @sbinbuild_dir@
 ANIM_LIBS            = -L$(MPE_LIBDIR) @ANIM_LIBS@ $(MPI_LIBS)
 C_XGRAPH_LIBS        = -L$(MPE_LIBDIR) @XGRAPH_LIBS@ $(MPI_LIBS)
 F_XGRAPH_LIBS        = @FLIB_PATH_LEADER@$(MPE_LIBDIR) @XGRAPH_LIBS@ $(MPI_LIBS)
@@ -23,10 +24,11 @@ C_INCS               = -I$(MPE_INCDIR) $(MPI_INC)
 F_INCS               = @FINC_PATH_LEADER@$(MPE_INCDIR) $(MPI_INC)
 LDFLAGS              = @LDFLAGS@
 MPE_BUILD_FORTRAN2C  = @MPE_BUILD_FORTRAN2C@
-RM                   = @RM@ 
-MPE_OUTFILE          = mpe2_graphics_test.txt
 
 ### End User configurable options ###
+
+SHELL         = @SHELL@
+RM            = @RM@ 
 
 @VPATH@
 
@@ -62,56 +64,37 @@ fxgraphics@EXEEXT@: fxgraphics.@OBJEXT@
 linktest: linktest_C
 
 linktest_C: 
-	@-echo ; \
-	echo -n "*** Link C program with the MPI animation library ........................ " ; \
-	$(RM) -f cpi_anim@EXEEXT@ ; \
-	$(MAKE) cpi_anim@EXEEXT@ > $(MPE_OUTFILE) 2>&1 ; \
-	if test -x cpi_anim@EXEEXT@ ; then \
-	    echo "Yes." ; \
-	    $(RM) -f cpi_anim@EXEEXT@ ; \
-	else \
-	    echo "No." ; \
-	    echo "    The failed command: " ; \
-	    cat $(MPE_OUTFILE) ; \
-	fi ; \
-	$(RM) -f $(MPE_OUTFILE)
-	@-echo ; \
-	echo -n "*** Link C program with the X11 graphics library ......................... " ; \
-	$(RM) -f cxgraphics@EXEEXT@ ; \
-	$(MAKE) cxgraphics@EXEEXT@ > $(MPE_OUTFILE) 2>&1 ; \
-	if test -x cxgraphics@EXEEXT@ ; then \
-	    echo "Yes." ; \
-	    $(RM) -f cxgraphics@EXEEXT@ ; \
-	else \
-	    echo "No." ; \
-	    echo "    The failed command: " ; \
-	    cat $(MPE_OUTFILE) ; \
-	fi ; \
-	$(RM) -f $(MPE_OUTFILE)
+	@-$(MPE_SBINDIR)/mpetestlink cpi_anim@EXEEXT@ \
+	  "*** Link C program with the MPI animation library ........................"
+	@-$(MPE_SBINDIR)/mpetestlink cxgraphics@EXEEXT@ \
+	  "*** Link C program with the X11 graphics library ........................."
 	@-echo ; $(MAKE) clean
 
 linktest_F77: 
 	@-if [ "$(MPE_BUILD_FORTRAN2C)" = "yes" ] ; then \
+	      $(MPE_SBINDIR)/mpetestlink fxgraphics@EXEEXT@ \
+	      "*** Link F77 program with the X11 graphics library ......................." ; \
+	      $(MAKE) clean ; \
 	      echo ; \
-	      echo -n "** Link F77 program with the X11 graphics library ........................ " ; \
-	      $(RM) -f fxgraphics@EXEEXT@ ; \
-	      $(MAKE) fxgraphics@EXEEXT@ > $(MPE_OUTFILE) 2>&1 ; \
-	      if test -x fxgraphics@EXEEXT@ ; then \
-	          echo "Yes." ; \
-	          $(RM) -f fxgraphics@EXEEXT@ ; \
-	      else \
-	          echo "No." ; \
-	          echo "    The failed command: " ; \
-	          cat $(MPE_OUTFILE) ; \
-	      fi ; \
-	      $(RM) -f $(MPE_OUTFILE) ; \
+	  fi
+
+runtest_C: 
+	@-$(MPE_SBINDIR)/mpetestexec cpi_anim@EXEEXT@ \
+	  "*** Test C program with the MPI animation library ........................"
+	@-$(MPE_SBINDIR)/mpetestexec cxgraphics@EXEEXT@ \
+	  "*** Test C program with the X11 graphics library ........................."
+	@-echo ; $(MAKE) clean
+
+runtest_F77: 
+	@-if [ "$(MPE_BUILD_FORTRAN2C)" = "yes" ] ; then \
+	      $(MPE_SBINDIR)/mpetestexec fxgraphics@EXEEXT@ \
+	      "*** Test F77 program with the X11 graphics library ......................." ; \
 	      $(MAKE) clean ; \
 	      echo ; \
 	  fi
 
 clean:
 	@-$(RM) -f work.pc work.pcl
-	@-$(RM) -f $(MPE_OUTFILE)
 	@-$(RM) -f *.@OBJEXT@ *~ PI* $(EXECS)
 	@-$(RM) -f cpi_anim@EXEEXT@ cxgraphics@EXEEXT@ fxgraphics@EXEEXT@
 

@@ -16,17 +16,18 @@
 #if defined( HAVE_FCNTL_H )
 #include <fcntl.h>
 #endif
-#if defined( HAVE_UNISTD_H )
-#include <unistd.h>
-#endif
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
+#endif
+#if defined( HAVE_UNISTD_H )
+#include <unistd.h>
 #endif
 #ifdef HAVE_IO_H
 #include <io.h>
 #endif
 
 #include "clog_const.h"
+#include "clog_mem.h"
 #include "clog_merger.h"
 #include "clog_util.h"
 
@@ -175,7 +176,8 @@ void CLOG_Merger_init(       CLOG_Merger_t    *merger,
             fflush( stderr );
             CLOG_Util_abort( 1 );
         }
-        CLOG_Preamble_write( preamble, CLOG_BOOL_TRUE, merger->out_fd );
+        CLOG_Preamble_write( preamble, CLOG_BOOL_TRUE, CLOG_BOOL_TRUE,
+                             merger->out_fd );
     }
 
     /*
@@ -185,10 +187,35 @@ void CLOG_Merger_init(       CLOG_Merger_t    *merger,
 }
                                                                                 
 /* Finalize the CLOG_Merger_t */
-void CLOG_Merger_finalize( CLOG_Merger_t *merger )
+void CLOG_Merger_finalize( CLOG_Merger_t *merger, CLOG_Buffer_t *buffer )
 {
-    if ( merger->out_fd != -1 )
+#if !defined( CLOG_NOMPI )
+    CLOG_BOOL_T  do_byte_swap;
+    int          ierr;
+#endif
+
+    if ( merger->out_fd != -1 ) {
+#if !defined( CLOG_NOMPI )
+        /* Update CLOG_Preamble_t with commtable_fptr */
+        buffer->preamble->commtable_fptr
+        = (CLOG_int64_t) lseek( merger->out_fd, 0, SEEK_CUR );
+        /* Save CLOG_CommSet_t to file */
+        do_byte_swap = merger->is_big_endian != CLOG_BOOL_TRUE;
+        ierr = CLOG_CommSet_write( buffer->commset, merger->out_fd,
+                                   do_byte_swap );
+        if ( ierr < 0 ) {
+            fprintf( stderr, __FILE__":CLOG_Merger_finalize() - \n"
+                             "\t""CLOG_CommSet_write() fails!\n" );
+            fflush( stderr );
+            return;
+        }
+        /* Save the updated CLOG_Preamble_t */
+        lseek( merger->out_fd, 0, SEEK_SET );
+        CLOG_Preamble_write( buffer->preamble, CLOG_BOOL_TRUE, CLOG_BOOL_TRUE,
+                             merger->out_fd );
+#endif
         close( merger->out_fd );
+    }
 }
 
 /*
@@ -215,26 +242,16 @@ void CLOG_Merger_flush( CLOG_Merger_t *merger )
 /*
     clog_merger_minblocksize is defined in CLOG_Merger_init()
 */
-int CLOG_Merger_reserved_block_size( unsigned int rectype )
+static int CLOG_Merger_reserved_block_size( CLOG_int32_t rectype )
 {
-    if ( rectype < CLOG_REC_NUM )
-        return CLOG_Rec_size( rectype ) + clog_merger_minblocksize;
-    else {
-        fprintf( stderr, __FILE__":CLOG_Merger_reserved_block_size() - Warning!"
-                         "\t""Unknown record type %d\n", rectype );
-        fflush( stderr );
-        /*
-           size to guarantee enough room in each block for the longest record
-           + trailer(endblock rec) + internal record(CLOG_Buffer_write2disk)
-        */
-        return CLOG_Rec_size_max() +  clog_merger_minblocksize;
-    }
+    /* Have CLOG_Rec_size() do the error checking */
+    return CLOG_Rec_size( rectype ) + clog_merger_minblocksize;
 }
 
 /*
    Save the CLOG record marked by CLOG_Rec_Header_t to the output file.
 */
-void CLOG_Merger_save_rec( CLOG_Merger_t *merger, CLOG_Rec_Header_t *hdr )
+void CLOG_Merger_save_rec( CLOG_Merger_t *merger, const CLOG_Rec_Header_t *hdr )
 {
     CLOG_BlockData_t   *sorted_blk;
     CLOG_Rec_Header_t  *sorted_hdr;
@@ -308,10 +325,10 @@ void CLOG_Merger_refill_localblock( CLOG_BlockData_t *blockdata,
     if ( buffer->num_used_blocks > 0 ) {
         blockdata->head = buffer->curr_block->data->head;
 #if !defined( CLOG_NOMPI )
-        CLOG_BlockData_patch( blockdata, timediff_handle,
-                              buffer->commset->table );
+        CLOG_BlockData_patch_all( blockdata, timediff_handle,
+                                  buffer->commset->table );
 #else
-        CLOG_BlockData_patch( blockdata, timediff_handle, NULL );
+        CLOG_BlockData_patch_time( blockdata, timediff_handle );
 #endif
         CLOG_BlockData_reset( blockdata );
         buffer->curr_block = buffer->curr_block->next;
@@ -339,7 +356,7 @@ CLOG_Merger_next_sideblock_hdr( CLOG_BlockData_t   *blockdata,
     else {
         CLOG_Merger_save_rec( merger, hdr );
         blockdata->ptr += CLOG_Rec_size( hdr->rectype );
-        hdr = ( CLOG_Rec_Header_t *) blockdata->ptr;
+        hdr = (CLOG_Rec_Header_t *) blockdata->ptr;
         if ( hdr->rectype == CLOG_REC_ENDBLOCK ) {
             CLOG_Merger_refill_sideblock( blockdata, block_world_rank,
                                           block_size );
@@ -364,7 +381,7 @@ CLOG_Merger_next_localblock_hdr( CLOG_BlockData_t   *blockdata,
     else {
         CLOG_Merger_save_rec( merger, hdr );
         blockdata->ptr += CLOG_Rec_size( hdr->rectype );
-        hdr = ( CLOG_Rec_Header_t *) blockdata->ptr;
+        hdr = (CLOG_Rec_Header_t *) blockdata->ptr;
         if ( hdr->rectype == CLOG_REC_ENDBLOCK ) {
             CLOG_Merger_refill_localblock( blockdata, buffer,
                                            timediff_handle );
@@ -400,7 +417,7 @@ void CLOG_Merger_sort( CLOG_Merger_t *merger, CLOG_Buffer_t *buffer )
     merger->num_active_blks = 0;
     block_size              = merger->block_size;
 
-    /* local_timediff's init. value can be modified by CLOG_BlockData_patch() */
+    /* local_timediff's value is modifiable by CLOG_BlockData_patch_all() */
     local_timediff          = 0.0;
     left_world_rank         = merger->left_world_rank;
     right_world_rank        = merger->right_world_rank;

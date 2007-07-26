@@ -28,7 +28,11 @@ int MPIR_Err_return_file( MPI_File, const char [], int ); /* Romio version */
   to report an error
 
   Input Parameters:
-+ class - Error class
++ lastcode - Previous error code (see notes)
+. severity  - Indicates severity of error
+. fcname - Name of the function in which the error has occurred.  
+. line  - Line number (usually '__LINE__')
+. class - Error class
 . generic_msg - A generic message to be used if not instance-specific
  message is available
 . instance_msg - A message containing printf-style formatting commands
@@ -40,8 +44,9 @@ int MPIR_Err_return_file( MPI_File, const char [], int ); /* Romio version */
  Notes:
  A typical use is\:
 .vb
-   mpi_errno = MPIR_Err_create_code( MPI_ERR_RANK, "Invalid Rank",
-                                "Invalid rank %d", rank );
+   mpi_errno = MPIR_Err_create_code( mpi_errno, MPIR_ERR_RECOVERABLE, 
+               FCNAME, __LINE__, MPI_ERR_RANK, 
+               "Invalid Rank", "Invalid rank %d", rank );
 .ve
  
   Predefined message may also be used.  Any message that uses the
@@ -54,12 +59,20 @@ int MPIR_Err_return_file( MPI_File, const char [], int ); /* Romio version */
    Invalid rank provided.  The rank must be between 0 and the 1 less than
    the size of the communicator in this call.
 .ve
-  
   This interface is compatible with the 'gettext' interface for 
   internationalization, in the sense that the 'generic_msg' and 'instance_msg' 
   may be used as arguments to 'gettext' to return a string in the appropriate 
   language; the implementation of 'MPID_Err_create_code' can then convert
   this text into the appropriate code value.
+
+  The current set of formatting commands is undocumented and will change.
+  You may safely use '%d' and '%s' (though only use '%s' for names of 
+  objects, not text messages, as using '%s' for a message breaks support for
+  internationalization.
+
+  This interface allows error messages to be chained together.  The first 
+  argument is the last error code; if there is no previous error code, 
+  use 'MPI_SUCCESS'.  
 
   Module:
   Error
@@ -71,9 +84,39 @@ int MPIR_Err_create_code( int, int, const char [], int, int, const char [], cons
 int MPIR_Err_create_code_valist( int, int, const char [], int, int, const char [], const char [], va_list );
 #endif
 
+/*@
+  MPIR_Err_combine_codes - Combine two error codes, or more importantly
+  two lists of error messages.  The list associated with the second error
+  code is appended to the list associated with the first error code.  If
+  the list associated with the first error code has a dangling tail, which
+  is possible if the ring has wrapped and overwritten entries that were
+  once part of the list, then the append operation is not performed and
+  the error code for the first list is returned.
+
+  Input Parameter:
++ errorcode1 - the error code associated with the first list
+- errorcode2 - the error code associated with the second list
+
+  Return value:
+  An error code which resolves to the combined list of error messages
+
+  Notes:
+  If errorcode1 is equal to MPI_SUCCESS, then errorcode2 is returned.
+  Likewise, if errorcode2 is equal to MPI_SUCCESS, then errorcode1 is
+  returned.
+
+  Module:
+  Error 
+  @*/
+int MPIR_Err_combine_codes(int, int);
+
 int MPIR_Err_is_fatal(int);
 void MPIR_Err_init(void);
-void MPIR_Err_preinit( void );
+void MPIR_Err_preOrPostInit( void );
+
+/* FIXME: This comment is incorrect because the routine was improperly modified
+   to take an additional argument (the MPIR_Err_get_class_string_func_t).  
+   That arg needs to be removed and this function restored. */
 /*@
   MPID_Err_get_string - Get the message string that corresponds to an error
   class or code
@@ -108,10 +151,8 @@ void MPIR_Err_preinit( void );
   @*/
 typedef int (* MPIR_Err_get_class_string_func_t)(int error, char *str, int length);
 void MPIR_Err_get_string( int, char *, int, MPIR_Err_get_class_string_func_t );
+
 void MPIR_Err_print_stack(FILE *, int);
-extern int MPIR_Err_print_stack_flag;
-void MPIR_Err_print_stack_string(int errcode, char *str, int maxlen);
-void MPIR_Err_print_stack_string_ext(int errcode, char *str, int maxlen, MPIR_Err_get_class_string_func_t fn);
 
 int MPIR_Err_set_msg( int code, const char *msg_string );
 

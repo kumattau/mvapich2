@@ -20,6 +20,7 @@
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
 #ifndef MPICH_MPI_FROM_PMPI
+#undef MPI_Recv
 #define MPI_Recv PMPI_Recv
 
 #endif
@@ -71,7 +72,7 @@ int MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPID_CS_ENTER();
+    MPIU_THREAD_SINGLE_CS_ENTER("pt2pt");
     MPID_MPI_PT2PT_FUNC_ENTER_BACK(MPID_STATE_MPI_RECV);
     
     /* Validate handle parameters needing to be converted */
@@ -128,7 +129,10 @@ int MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
 #   endif /* HAVE_ERROR_CHECKING */
 
     /* ... body of routine ...  */
-    
+
+    /* MT: Note that MPID_Recv may release the SINGLE_CS if it
+       decides to block internally.  MPID_Recv in that case will
+       re-aquire the SINGLE_CS before returnning */
     mpi_errno = MPID_Recv(buf, count, datatype, source, tag, comm_ptr, 
 			  MPID_CONTEXT_INTRA_PT2PT, status, &request_ptr);
     if (mpi_errno != MPI_SUCCESS) goto fn_fail;
@@ -138,7 +142,8 @@ int MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
 	goto fn_exit;
     }
     
-    /* If a request was returned, then we need to block until the request is complete */
+    /* If a request was returned, then we need to block until the request is 
+       complete */
     if ((*(request_ptr)->cc_ptr) != 0)
     {
 	MPID_Progress_state progress_state;
@@ -146,6 +151,8 @@ int MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
 	MPID_Progress_start(&progress_state);
 	while((*(request_ptr)->cc_ptr) != 0)
 	{
+	    /* MT: Progress_wait may release the SINGLE_CS while it
+	       waits */
 	    mpi_errno = MPID_Progress_wait(&progress_state);
 	    if (mpi_errno != MPI_SUCCESS)
 	    { 
@@ -168,7 +175,7 @@ int MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
     
   fn_exit:
     MPID_MPI_PT2PT_FUNC_EXIT_BACK(MPID_STATE_MPI_RECV);
-    MPID_CS_EXIT();
+    MPIU_THREAD_SINGLE_CS_EXIT("pt2pt");
     return mpi_errno;
 
   fn_fail:

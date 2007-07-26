@@ -9,6 +9,15 @@ AC_INIT(mpiexec.c)
 dnl
 dnl Definitions will be placed in this file rather than in the DEFS variable
 AC_CONFIG_HEADER(smpdconf.h)
+AH_TOP([/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/*  
+ *  (C) 2001 by Argonne National Laboratory.
+ *      See COPYRIGHT in top-level directory.
+ */
+#ifndef SMPDCONF_H_INCLUDED
+#define SMPDCONF_H_INCLUDED
+])
+AH_BOTTOM([#endif])
 dnl
 dnl Set the directory that contains support scripts such as install-sh and
 dnl config.guess
@@ -38,10 +47,7 @@ implementation.  option may be a list of common separated names including
 dnl
 dnl
 dnl First check that we have a clean build if we are doing a VPATH build
-if test "`cd $srcdir && pwd`" != "`pwd`" && test -f $srcdir/config.status ; then
-    AC_MSG_ERROR([You cannot do a VPATH build if the source directory has been
-    configured.  Run "make distclean" in $srcdir first.])
-fi
+PAC_VPATH_CHECK()
 dnl
 dnl Process any enable or with values
 dnl
@@ -97,6 +103,7 @@ AC_SUBST(MPILIBNAME)
 
 AC_CHECK_HEADERS( sys/types.h sys/wait.h signal.h unistd.h stdlib.h errno.h stdarg.h pthread.h sys/socket.h sys/stat.h ctype.h )
 AC_CHECK_HEADERS( math.h stdio.h termios.h string.h sys/stat.h malloc.h uuid/uuid.h )
+AC_CHECK_HEADERS( stddef.h md5.h openssl/md5.h )
 AC_CHECK_FUNCS( sigaction usleep CFUUIDCreate uuid_generate setenv md5_calc )
 AC_SEARCH_LIBS( uuid_generate, uuid )
 AC_MSG_CHECKING([for poll stdin capability])
@@ -145,9 +152,15 @@ int main(int argc, char *argv[])
    AC_MSG_RESULT(yes),
    AC_MSG_RESULT(not checking when cross compiling))
 AC_SEARCH_LIBS( MD5, ssl crypto )
+# Make configure check for MD5 so that the variable will be set
+AC_CHECK_FUNCS(MD5)
+#
 AC_SEARCH_LIBS( md5_calc, md5 )
 AC_MSG_CHECKING([for md5_calc function])
 AC_TRY_COMPILE([
+#ifdef HAVE_STDDEF_H
+ #include <stddef.h>
+#endif
 #include <md5.h>
 ],[unsigned char hash[16];
 unsigned char c='a';
@@ -159,7 +172,17 @@ else
     AC_MSG_RESULT(no)
 fi
 
-#AC_SEARCH_LIBS( MD5, crypto, SMPD_LIBS="$SMPD_LIBS -lcrypto" )
+# md5 appears to be required for SMPD.  Test that we have either mp5_calc
+# or MP5 (may be part of openssl/md5.h)
+if test "$ac_cv_have_md5_calc" != yes -a \
+  \( "$ac_cv_header_openssl_md5_h" != yes -o "$ac_cv_func_MD5" != yes \) ; then
+    AC_MSG_ERROR([SMPD requires MD5 support, and configure could not find either md5_calc in md5.h or MD5 in openssl/md5.h])
+fi
+
+dnl Note that # does not comment out lines that are passed to autoconf,
+dnl and thus # MUST NEVER be used to comment out AC_xxx commands
+dnl AC_SEARCH_LIBS( MD5, crypto, SMPD_LIBS="$SMPD_LIBS -lcrypto" )
+
 SMPD_LIBS="$SMPD_LIBS $LIBS"
 AC_SUBST(SMPD_LIBS)
 AC_SUBST(AR)

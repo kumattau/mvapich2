@@ -14,6 +14,10 @@ simple-resized_SOURCES = simple-resized.c
 
 triangular-pack_SOURCES = triangular-pack.c
 
+get-elements-pairtype_SOURCES = get-elements-pairtype.c
+
+simple-commit_SOURCES = simple-commit.c
+
 simple-commit_SOURCES = simple-commit.c
 
 simple-size-extent_SOURCES = simple-size-extent.c
@@ -52,11 +56,16 @@ unusual-noncontigs_SOURCES = unusual-noncontigs.c
 
 pairtype-pack_SOURCES = pairtype-pack.c
 
+struct-ezhov_SOURCES = struct-ezhov.c
+
 pairtype-size-extent_SOURCES = pairtype-size-extent.c
 
 localpack_SOURCES = localpack.c
 
 lbub_SOURCES = lbub.c
+
+unpack_SOURCES = unpack.c
+unpack_LDADD = ../util/mtest.o
 
 zeroparms_SOURCES = zeroparms.c
 gaddress_SOURCES = gaddress.c
@@ -81,6 +90,15 @@ sizedtypes_SOURCES = sizedtypes.c
 sizedtypes_LDADD = ../util/mtest.o
 
 contigstruct_SOURCES = contigstruct.c
-		 
+
 ../util/mtest.o:
 	(cd ../util && $(MAKE) mtest.o )
+
+# A special testing target to simplify running just the datatype tests
+testing:
+	../runtests -srcdir=$(srcdir) -tests=testlist \
+		   -mpiexec=$(bindir)/mpiexec \
+		   -xmlfile=summary.xml
+
+clean-local:
+	-rm -f summary.xml
