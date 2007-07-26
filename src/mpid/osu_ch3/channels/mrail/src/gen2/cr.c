@@ -329,7 +329,9 @@ int CR_Thread_loop()
             }
             MPIDI_CH3I_CR_unlock();
             if (MPIDI_Process.use_sync_ckpt) {
+		pthread_mutex_lock(&MVAPICH2_sync_ckpt_lock);
                 pthread_cond_signal(&MVAPICH2_sync_ckpt_cond);
+		pthread_mutex_unlock(&MVAPICH2_sync_ckpt_lock);
             }
             MPICR_is_restarting = 0;
         }
