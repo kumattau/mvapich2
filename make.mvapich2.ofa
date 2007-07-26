@@ -91,7 +91,7 @@ if [ "$RDMA_CM_SUPPORT" = "yes" ]; then
 
     RDMA_CM_LIBS="-lrdmacm"
     RDMA_CM_FLAG="-DRDMA_CM"
-    RDMA_CM_FLAG="-DRDMA_CM -DOFED_VERSION_1_1"
+#    RDMA_CM_FLAG="-DRDMA_CM -DOFED_VERSION_1_1"
 fi
 
 # Whether or not to build with ROMIO MPI I/O support.  Disabled by default.
