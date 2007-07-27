@@ -96,7 +96,7 @@ void mvapich2_mfin()
 
 #ifndef DISABLE_MUNMAP_HOOK
 
-int mvapich2_munmap(void *buf, int len)
+int mvapich2_munmap(void *buf, size_t len)
 {
     if(!mvapich2_minfo.munmap) {
         set_real_munmap_ptr();

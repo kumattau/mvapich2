@@ -240,7 +240,7 @@ void dreg_incr_refcount(dreg_entry * d);
 dreg_entry *dreg_new_entry(void *buf, int len);
 
 #ifndef DISABLE_PTMALLOC
-void find_and_free_dregs_inside(void *buf, int len);
+void find_and_free_dregs_inside(void *buf, size_t len);
 #endif
 
 #ifdef CKPT

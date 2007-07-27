@@ -42,7 +42,7 @@ int  mvapich2_minit(void);
 void mvapich2_mfin(void);
 
 #ifndef DISABLE_MUNMAP_HOOK
-int mvapich2_munmap(void *buf, int len);
+int mvapich2_munmap(void *buf, size_t len);
 #endif
 
 #ifndef DISABLE_TRAP_SBRK

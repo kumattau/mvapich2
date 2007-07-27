@@ -956,9 +956,9 @@ dreg_entry *dreg_new_entry(void *buf, int len)
 }
 
 #ifndef DISABLE_PTMALLOC
-void find_and_free_dregs_inside(void *buf, int len)
+void find_and_free_dregs_inside(void *buf, size_t len)
 {
-    int i;
+    unsigned long i;
     unsigned long pagenum_low, pagenum_high;
     unsigned long  npages, begin, end;
     unsigned long user_low_a, user_high_a;
