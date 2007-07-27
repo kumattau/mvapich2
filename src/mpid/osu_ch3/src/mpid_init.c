@@ -494,12 +494,20 @@ static int MPIDI_CH3I_PG_Destroy(MPIDI_PG_t * pg)
 int MVAPICH2_Sync_Checkpoint()
 {
     MPID_Comm * comm_ptr;
+    MPIU_THREADPRIV_DECL;
+    MPIU_THREADPRIV_GET;
+
     if (MPIDI_Process.use_sync_ckpt == 0) /*Not enabled*/
         return 0;
 
     MPID_Comm_get_ptr (MPI_COMM_WORLD, comm_ptr);
-    MPIR_Barrier(comm_ptr);
 
+    MPIU_THREAD_SINGLE_CS_ENTER("coll");
+    MPIR_Nest_incr();
+    MPIR_Barrier(comm_ptr);
+    MPIR_Nest_decr();
+    MPIU_THREAD_SINGLE_CS_EXIT("coll");
+    
     if (MPIDI_Process.my_pg_rank == 0)
     {/*Notify console to take checkpoint*/
         MPIDI_CH3I_CR_Sync_ckpt_request();
