@@ -3,7 +3,7 @@ coll
 datatype
 pt2pt
 info
-@spawndir@
+#@spawndir@
 @iodir@
 @rmadir@
 init

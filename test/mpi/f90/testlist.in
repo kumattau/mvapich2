@@ -9,6 +9,6 @@ misc
 pt2pt
 datatype
 @rmadir@
-@spawndir@
+#@spawndir@
 timer
 topo

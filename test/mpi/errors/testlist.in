@@ -3,7 +3,7 @@ comm
 group
 pt2pt
 @rmadir@
-@spawndir@
+#@spawndir@
 @iodir@
 @f77dir@
 @cxxdir@
