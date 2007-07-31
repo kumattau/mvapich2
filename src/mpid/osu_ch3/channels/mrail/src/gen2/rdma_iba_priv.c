@@ -748,6 +748,12 @@ int rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
 	}
     }
 
+#ifdef RDMA_CM
+    if (proc->use_rdma_cm){
+	    ib_init_rdma_cm(proc, pg_rank, pg_size);
+	    goto fn_exit;
+    }
+#endif 
 
     if (MPIDI_CH3I_RDMA_Process.has_ring_startup && pg_size > 1) {
         DEBUG_PRINT("ENTERING MPDRING CASE\n");  
@@ -758,13 +764,6 @@ int rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
 	MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto err_pd,
 		"**fail", "**fail %s", "cannot create cq");
     }
-
-#ifdef RDMA_CM
-    if (proc->use_rdma_cm){
-	    ib_init_rdma_cm(proc, pg_rank, pg_size);
-	    goto fn_exit;
-    }
-#endif 
 
     /* Create complete Queue and Queue pairs */
     memset(&boot_attr, 0, sizeof boot_attr);
