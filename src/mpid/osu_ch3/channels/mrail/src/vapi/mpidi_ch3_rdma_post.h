@@ -184,7 +184,7 @@ int MPIDI_CH3I_MRAILI_Get_next_vbuf_local(MPIDI_VC_t *vc, vbuf ** vbuf_handle);
 
 int MPIDI_CH3I_MRAILI_Waiting_msg(MPIDI_VC_t * vc, vbuf **, int);
 
-int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **, MPIDI_VC_t *, int);
+int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **, MPIDI_VC_t *, int, int is_blocking);
 
 int MRAILI_Send_noop_if_needed(MPIDI_VC_t *vc, 
         const MRAILI_Channel_info *channel);

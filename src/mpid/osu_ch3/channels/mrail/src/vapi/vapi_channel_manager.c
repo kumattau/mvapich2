@@ -247,7 +247,7 @@ fn_exit:
 
     if (i != vc->mrail.num_total_subrails) {
         vbuf * vbuffer;
-        MPIDI_CH3I_MRAILI_Cq_poll(&vbuffer, vc, 1);
+        MPIDI_CH3I_MRAILI_Cq_poll(&vbuffer, vc, 1, 0);
     }
 
     return type;
@@ -323,7 +323,7 @@ int MPIDI_CH3I_MRAILI_Waiting_msg(MPIDI_VC_t * vc, vbuf ** vbuf_handle, int bloc
 #endif
         }
         
-        type = MPIDI_CH3I_MRAILI_Cq_poll(vbuf_handle, vc, 0);
+        type = MPIDI_CH3I_MRAILI_Cq_poll(vbuf_handle, vc, 0, 0);
         if (type != T_CHANNEL_NO_ARRIVE) {
             switch(type) {
             case (T_CHANNEL_EXACT_ARRIVE):
@@ -366,7 +366,8 @@ fn_exit:
  *      #define T_CHANNEL_CONTROL_MSG_ARRIVE 3
  *      #define T_CHANNEL_ERROR -1
  */
-int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle, MPIDI_VC_t * vc_req, int receiving)
+int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle, MPIDI_VC_t * vc_req, 
+			      int receiving, int is_blocking)
 {
     VAPI_ret_t ret1;
     MPIDI_VC_t *vc;

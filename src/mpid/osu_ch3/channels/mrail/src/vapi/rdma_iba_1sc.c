@@ -148,13 +148,6 @@ MPIDI_CH3I_RDMA_complete_rma(MPID_Win * win_ptr,
     MPIDI_RMA_ops *curr_ptr;
 #ifdef _SMP_
     MPIDI_VC_t *vc;
-         if (SMP_INIT)
-            {
-                /*correspoding post has not been issued */
-                flag = 0;
-                break;
-            }
-
 #endif
 
     MPID_Comm_get_ptr(win_ptr->comm, comm_ptr);

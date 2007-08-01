@@ -338,7 +338,6 @@ int MPIDI_CH3I_RMDA_init(MPIDI_PG_t *pg, int pg_rank)
     mallopt(M_TRIM_THRESHOLD, -1);
     mallopt(M_MMAP_MAX, 0);
 #endif
-
     gethostname(tmp_hname, 255);
     cached_pg = pg;
     cached_pg_rank = pg_rank;
