@@ -44,7 +44,7 @@ MPIDI_CH3I_Process_group_t;
 
 #define MPIDI_DEV_IMPLEMENTS_KVS
 
-typedef volatile enum MPIDI_CH3I_VC_state
+typedef enum MPIDI_CH3I_VC_state
 {
     MPIDI_CH3I_VC_STATE_INVALID,
     MPIDI_CH3I_VC_STATE_UNCONNECTED,
