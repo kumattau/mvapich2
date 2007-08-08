@@ -993,14 +993,16 @@ void ib_finalize_rdma_cm(int pg_rank, int pg_size)
 		continue;
 	    
 	    MPIDI_PG_Get_vc(cached_pg, i, &vc);
-	    for (rail_index = 0; rail_index < rdma_num_rails; rail_index++){
-		if (vc->mrail.rails[rail_index].cm_ids != NULL) {
-		    rdma_disconnect(vc->mrail.rails[rail_index].cm_ids);
-		    rdma_destroy_qp(vc->mrail.rails[rail_index].cm_ids);
-		}
-		if (proc->has_one_sided){
-		    rdma_disconnect(vc->mrail.rails[rail_index].cm_ids_1sc);
-		    rdma_destroy_qp(vc->mrail.rails[rail_index].cm_ids_1sc);
+	    if (vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE) {
+		for (rail_index = 0; rail_index < rdma_num_rails; rail_index++){
+		    if (vc->mrail.rails[rail_index].cm_ids != NULL) {
+			rdma_disconnect(vc->mrail.rails[rail_index].cm_ids);
+			rdma_destroy_qp(vc->mrail.rails[rail_index].cm_ids);
+		    }
+		    if (proc->has_one_sided){
+			rdma_disconnect(vc->mrail.rails[rail_index].cm_ids_1sc);
+			rdma_destroy_qp(vc->mrail.rails[rail_index].cm_ids_1sc);
+		    }
 		}
 	    }
 	}
@@ -1035,11 +1037,13 @@ void ib_finalize_rdma_cm(int pg_rank, int pg_size)
 		continue;
 
 	    MPIDI_PG_Get_vc(cached_pg, i, &vc);
-	    for (rail_index = 0; rail_index < rdma_num_rails; rail_index++){
-		if (vc->mrail.rails[rail_index].cm_ids != NULL)
-		    rdma_destroy_id(vc->mrail.rails[rail_index].cm_ids);
-		if (proc->has_one_sided)
-		    rdma_destroy_id(vc->mrail.rails[rail_index].cm_ids);
+            if (vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE) {
+		for (rail_index = 0; rail_index < rdma_num_rails; rail_index++){
+		    if (vc->mrail.rails[rail_index].cm_ids != NULL)
+			rdma_destroy_id(vc->mrail.rails[rail_index].cm_ids);
+		    if (proc->has_one_sided)
+			rdma_destroy_id(vc->mrail.rails[rail_index].cm_ids);
+		}
 	    }
 	}
 
