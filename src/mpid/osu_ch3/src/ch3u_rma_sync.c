@@ -288,7 +288,7 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
 #endif
 	/* End of OSU-MPI2 */
         DEBUG_PRINT
-            (stderr, "rankd %d comm_size %d, rmatarget procs[%d][%d][%d][%d]\n",
+            ("rankd %d comm_size %d, rmatarget procs[%d][%d][%d][%d]\n",
              win_ptr->my_id, comm_size, rma_target_proc[0],
              rma_target_proc[1], rma_target_proc[2], rma_target_proc[3]);
 	
@@ -1313,7 +1313,7 @@ int MPIDI_Win_post(MPID_Group *group_ptr, int assert, MPID_Win *win_ptr)
         }
 #endif  
 	    if (dst != rank) {
-#ifdef      ONE_SIDED
+#ifdef ONE_SIDED
 		if (win_ptr->fall_back != 1
 #ifdef _SMP_
 		    && (!SMP_INIT || vc->smp.local_nodes == -1)
@@ -1483,6 +1483,7 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
 	    MPIDI_CH3I_RDMA_complete_rma(win_ptr, start_grp_size,
 	                                 ranks_in_win_grp, 0);
 	}
+	
 	if (win_ptr->rma_ops_list == NULL && need_dummy == 0) {
 	    MPIU_Free(ranks_in_win_grp);
 	    MPIU_Free(ranks_in_start_grp);
@@ -1514,15 +1515,15 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
 #if defined (_SMP_) && defined(ONE_SIDED)
               if (SMP_INIT) {
 		MPIDI_Comm_get_vc(comm_ptr, src, &vc);
-		if ((src != rank && vc->smp.local_nodes != -1)
-                   ||  win_ptr->fall_back == 1) 
+		if (src != rank && 
+		    (vc->smp.local_nodes != -1 || win_ptr->fall_back == 1)) 
                   {
                     mpi_errno = NMPI_Recv(NULL, 0, MPI_INT, src, 100,
                                           win_ptr->comm, MPI_STATUS_IGNORE);
                     if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
                   }
 
-              } else if (src != rank)
+              } else if (src != rank && win_ptr->fall_back == 1)
 #else
 		if (src != rank)
 #endif
