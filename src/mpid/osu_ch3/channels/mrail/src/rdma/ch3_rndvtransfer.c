@@ -539,6 +539,8 @@ int MPIDI_CH3_Rendezvouz_r3_recv_data(MPIDI_VC_t * vc, vbuf * buffer)
                VAPI_PROTOCOL_RPUT == rreq->mrail.protocol);
     }
 
+    rreq->mrail.protocol = VAPI_PROTOCOL_R3;
+
     mpi_errno = MPIDI_CH3I_MRAIL_Fill_Request(rreq, buffer, skipsize, &nb);
     if (mpi_errno != MPI_SUCCESS) {
         mpi_errno =

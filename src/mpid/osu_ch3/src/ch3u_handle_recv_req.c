@@ -73,10 +73,9 @@ int MPIDI_CH3U_Handle_recv_req(MPIDI_VC_t * vc, MPID_Request * rreq,
     }
 
 fn_exit:
-    if (TRUE == *complete && 
-	(VAPI_PROTOCOL_RPUT == rreq->mrail.protocol || 
-	 VAPI_PROTOCOL_R3 == rreq->mrail.protocol))
+    if (TRUE == *complete && VAPI_PROTOCOL_R3 == rreq->mrail.protocol)
 	MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(rreq);
+
     in_routine = FALSE;
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3U_HANDLE_RECV_REQ);
     return mpi_errno;
