@@ -3,7 +3,7 @@ sendrecv2 2
 sendrecv3 2
 sendself 1
 eagerdt 2
-pingping 2
+#pingping 2
 bottom 2
 bsend1 1
 bsend2 1
