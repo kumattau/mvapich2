@@ -4,7 +4,7 @@ comm
 ext
 info
 init
-@iodir@
+#@iodir@
 misc
 pt2pt
 datatype

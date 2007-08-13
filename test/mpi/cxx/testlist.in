@@ -4,6 +4,6 @@ coll
 init
 info
 datatype
-@iodir@
+#@iodir@
 #@spawndir@
 @rmadir@

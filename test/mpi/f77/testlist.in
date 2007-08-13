@@ -4,7 +4,7 @@ datatype
 pt2pt
 info
 #@spawndir@
-@iodir@
+#@iodir@
 @rmadir@
 init
 comm
