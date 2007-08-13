@@ -592,8 +592,8 @@ int MPIDI_CH3_PktHandler_Put( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 	    } else {
 		req->mrail.protocol = VAPI_PROTOCOL_EAGER;
 	    }
-	    DEBUG_PRINT("put_rndv_t size %d, buf0 size %d, buf1 size %d,
-	        sender_req_id %p, data_sz %d\n",
+	    DEBUG_PRINT("put_rndv_t size %d, buf0 size %d, buf1 size %d, "
+	        "sender_req_id %p, data_sz %d\n",
 	        sizeof(MPIDI_CH3_Pkt_put_rndv_t), req->dev.iov[0].MPID_IOV_LEN,
 	        req->dev.iov[1].MPID_IOV_LEN, req->dev.sender_req_id,
 	        req->dev.recv_data_sz);
