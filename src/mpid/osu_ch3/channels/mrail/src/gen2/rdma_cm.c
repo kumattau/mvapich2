@@ -1042,7 +1042,7 @@ void ib_finalize_rdma_cm(int pg_rank, int pg_size)
 		    if (vc->mrail.rails[rail_index].cm_ids != NULL)
 			rdma_destroy_id(vc->mrail.rails[rail_index].cm_ids);
 		    if (proc->has_one_sided)
-			rdma_destroy_id(vc->mrail.rails[rail_index].cm_ids);
+			rdma_destroy_id(vc->mrail.rails[rail_index].cm_ids_1sc);
 		}
 	    }
 	}
