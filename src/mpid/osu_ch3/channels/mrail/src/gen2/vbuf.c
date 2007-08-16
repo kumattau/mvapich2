@@ -279,6 +279,7 @@ vbuf *get_vbuf()
      * a dozen other places, and probably miss one.
      */
     v->sreq = NULL;
+    v->coalesce = 0;
 
     if (MPIDI_CH3I_RDMA_Process.has_srq
 #ifdef CKPT
