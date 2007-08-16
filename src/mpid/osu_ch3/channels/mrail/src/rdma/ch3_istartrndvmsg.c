@@ -138,6 +138,12 @@ int MPIDI_CH3_iStartRndvMsg(MPIDI_VC_t * vc,
            write */
         MPIDI_CH3_Prepare_rndv(vc, sreq);
         MPIDI_CH3I_MRAIL_SET_PKT_RNDV(rndv_pkt, sreq);
+        if(1 == sreq->mrail.rndv_buf_alloc) {
+            MPIDI_CH3I_MRAIL_REVERT_RPUT(sreq);
+            if (VAPI_PROTOCOL_RGET == rndv_pkt->rndv.protocol) {
+                rndv_pkt->rndv.protocol = VAPI_PROTOCOL_RPUT;
+            }
+        }
 
         mpi_errno = MPIDI_CH3_iStartMsg(vc, rndv_pkt, 
                                         sizeof(MPIDI_CH3_Pkt_rndv_req_to_send_t),
