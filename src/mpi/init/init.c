@@ -121,14 +121,14 @@ int MPI_Init( int *argc, char ***argv )
 
 #ifdef _SMP_
     if (enable_shmem_collectives){
-        if (split_comm == 1){
+        if (check_split_comm(pthread_self())){
             MPIR_Nest_incr();
             int my_id, size;
             MPI_Comm_rank(MPI_COMM_WORLD, &my_id);
             MPI_Comm_size(MPI_COMM_WORLD, &size);
-            split_comm = 0;
+            disable_split_comm(pthread_self());
             create_2level_comm(MPI_COMM_WORLD, size, my_id);
-            split_comm = 1;
+            enable_split_comm(pthread_self());
             MPIR_Nest_decr();
         }
     }

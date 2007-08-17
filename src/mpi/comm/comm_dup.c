@@ -178,27 +178,27 @@ int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
     }
 
     *newcomm = newcomm_ptr->handle;
+
 #ifdef _SMP_
     int flag;
     if (enable_shmem_collectives){
-        if (split_comm == 1){
+        MPIR_Nest_incr();
+        if (check_split_comm(pthread_self())){
             if (*newcomm != MPI_COMM_NULL){
-                MPIR_Nest_incr();
                 MPI_Comm_test_inter(*newcomm, &flag);
                 if (flag == 0){
                     int my_id, size;
                     MPI_Comm_rank(*newcomm, &my_id);
                     MPI_Comm_size(*newcomm, &size);
-                    split_comm = 0;
+                    disable_split_comm(pthread_self());
                     create_2level_comm(*newcomm, size, my_id);
-                    split_comm = 1;
+                    enable_split_comm(pthread_self());
                 }
-                MPIR_Nest_decr();
             }
         }
+        MPIR_Nest_decr();
     }
 #endif
-
     
     /* ... end of body of routine ... */
 

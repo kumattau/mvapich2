@@ -25,7 +25,11 @@ unsigned int comm_count = 0;
 int shmem_comm_count = 0;
 extern shmem_coll_region *shmem_coll;
 static pthread_mutex_t shmem_coll_lock  = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t comm_lock  = PTHREAD_MUTEX_INITIALIZER;
 extern int shmem_coll_blocks;
+
+#define MAX_NUM_THREADS 1024
+pthread_t thread_reg[MAX_NUM_THREADS];
 
 void clear_2level_comm (MPID_Comm* comm_ptr)
 {
@@ -154,7 +158,6 @@ void create_2level_comm (MPI_Comm comm, int size, int my_rank){
     else{
         input_flag = 0;
     }
-
     comm_ptr->shmem_coll_ok = 0;/* To prevent Allreduce taking shmem route*/
     MPI_Allreduce(&input_flag, &output_flag, 1, MPI_INT, MPI_LAND, comm);
 
@@ -169,13 +172,74 @@ void create_2level_comm (MPI_Comm comm, int size, int my_rank){
         MPI_Group_free(&comm_group);
     
     }
-
     ++comm_count;
     MPIR_Nest_decr();
 }
 
 
+int init_thread_reg(void){
+    int j;
 
+    for ( j=0; j < MAX_NUM_THREADS; j++ ){
+        thread_reg[j] = -1;        
+    }
+}
+
+int check_split_comm(pthread_t my_id){
+    int j, value;
+
+    pthread_mutex_lock(&comm_lock);
+    for ( j=0; j < MAX_NUM_THREADS; j++ ){
+        if (pthread_equal(thread_reg[j], my_id)){
+            value = 0;
+            pthread_mutex_unlock(&comm_lock);
+            return value;
+        }
+    }
+    value = 1;
+    pthread_mutex_unlock(&comm_lock);
+
+    return value;
+}
+
+int disable_split_comm(pthread_t my_id){
+    int j,found = 0;
+
+    pthread_mutex_lock(&comm_lock);
+    for ( j=0; j < MAX_NUM_THREADS; j++ ){
+        if (thread_reg[j] == -1){
+            thread_reg[j] = my_id;
+            found = 1;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&comm_lock);
+
+    if (found == 0){
+        printf("Error:max number of threads reached\n");
+        exit(0);
+    }
+}
+
+
+int enable_split_comm(pthread_t my_id){
+    int j,found = 0;
+
+    pthread_mutex_lock(&comm_lock);
+    for ( j=0; j < MAX_NUM_THREADS; j++ ){
+        if (pthread_equal(thread_reg[j], my_id)){
+            thread_reg[j] = -1;
+            found = 1;
+            break;
+        }
+    }
+    pthread_mutex_unlock(&comm_lock);
+
+    if (found == 0){
+        printf("Error: Could not locate thread id\n");
+        exit(0);
+    }
+}
 
 int check_comm_registry(MPI_Comm comm)
 {

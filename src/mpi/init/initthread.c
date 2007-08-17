@@ -369,6 +369,7 @@ int disable_shmem_barrier=0;
 extern int shmem_coll_blocks;
 extern int shmem_coll_max_msg_size;
 void MV2_Read_env_vars(void);
+void init_thread_reg();
 #endif
 int MPI_Init_thread( int *argc, char ***argv, int required, int *provided )
 {
@@ -415,14 +416,14 @@ int MPI_Init_thread( int *argc, char ***argv, int required, int *provided )
 
 #ifdef _SMP_
     if (enable_shmem_collectives){
-        if (split_comm == 1){
+        if (check_split_comm(pthread_self())){
             MPIR_Nest_incr();
             int my_id, size;
             MPI_Comm_rank(MPI_COMM_WORLD, &my_id);
             MPI_Comm_size(MPI_COMM_WORLD, &size);
-            split_comm = 0;
+            disable_split_comm(pthread_self());
             create_2level_comm(MPI_COMM_WORLD, size, my_id);
-            split_comm = 1;
+            enable_split_comm(pthread_self());
             MPIR_Nest_decr();
         }
     }
@@ -491,5 +492,7 @@ void MV2_Read_env_vars(void){
 	    flag = (int)atoi(value);
 	    if (flag > 0) enable_shmem_collectives = 0;
     }
+
+    init_thread_reg();
 }
 #endif
