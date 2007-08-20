@@ -36,7 +36,7 @@ while [ -z "$PID" ]; do
 done
 
 echo "Checkpointing PID $PID"
-cr_checkpoint $PID
+cr_checkpoint -p $PID
 
 if [ $? = 0 ]; then
    echo "Checkpoint file: context.$PID"
