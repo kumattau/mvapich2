@@ -390,7 +390,10 @@ int MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(MPIDI_VC_t * vc,
             vc->mrail.rfp.RDMA_remote_buf_rkey[vc->mrail.rails[rail].hca_index]);
 
     FLUSH_RAIL(vc, rail);
-
+#ifdef CRC_CHECK
+    p->mrail.crc = update_crc(1, (void *)((uintptr_t)p+sizeof *p),
+                              *v->head_flag - sizeof *p);
+#endif
     if (!vc->mrail.rails[rail].send_wqes_avail) {
         DEBUG_PRINT("[send: rdma_send] Warning! no send wqe available\n");
         MRAILI_Ext_sendq_enqueue(vc, rail, v);
@@ -541,7 +544,10 @@ int post_send(MPIDI_VC_t * vc, vbuf * v, int rail)
         || p->type == MPIDI_CH3_PKT_NOOP) {
 
         PACKET_SET_CREDIT(p, vc, rail);
-
+#ifdef CRC_CHECK
+	p->mrail.crc = update_crc(1, (void *)((uintptr_t)p+sizeof *p),
+				  v->desc.sg_entry.length - sizeof *p );
+#endif
         if (p->type != MPIDI_CH3_PKT_NOOP)
             vc->mrail.srp.credits[rail].remote_credit--;
 
@@ -747,7 +753,10 @@ int MPIDI_CH3I_MRAILI_Eager_send(MPIDI_VC_t * vc,
             (v->buffer + v->content_size - *num_bytes_ptr);
 
         PACKET_SET_CREDIT(p, vc, v->rail);
-
+#ifdef CRC_CHECK
+	p->mrail.crc = update_crc(1, (void *)((uintptr_t)p+sizeof *p),
+                                  v->desc.sg_entry.length - sizeof *p);
+#endif
         v->vc = (void *) vc;
         p->mrail.src_rank = MPIDI_Process.my_pg_rank;
         p->mrail.rail     = v->rail;
@@ -853,6 +862,10 @@ int MRAILI_Backlog_send(MPIDI_VC_t * vc,
         p = (MPIDI_CH3I_MRAILI_Pkt_comm_header *) v->pheader;
 
         PACKET_SET_CREDIT(p, vc, rail);
+#ifdef CRC_CHECK
+	p->mrail.crc = update_crc(1, (void *)((uintptr_t)p+sizeof *p),
+                                  v->desc.sg_entry.length - sizeof *p);
+#endif
         vc->mrail.srp.credits[rail].remote_credit--;
 
         if (MPIDI_CH3I_RDMA_Process.has_srq) {

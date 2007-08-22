@@ -361,7 +361,6 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
                     break;
                 }
             } else {
-                assert(0);
                 MPIDI_CH3I_SMP_SendQ_enqueue_head(vc, sreq);
                 vc->smp.send_active = sreq;
                 sreq->mrail.nearly_complete = 1;
@@ -814,7 +813,6 @@ int MPIDI_CH3_Rendezvous_rput_finish(MPIDI_VC_t * vc,
     MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(rreq);
 
     mpi_errno = MPIDI_CH3U_Handle_recv_req(vc, rreq, &complete);
-
     if (mpi_errno != MPI_SUCCESS) {
         mpi_errno =
             MPIR_Err_create_code(mpi_errno,

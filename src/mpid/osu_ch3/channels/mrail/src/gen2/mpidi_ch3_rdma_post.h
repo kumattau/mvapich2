@@ -27,6 +27,12 @@
    have been included.
 */
 
+#ifdef CRC_CHECK
+void gen_crc_table();
+unsigned long update_crc(unsigned long crc_accum, char *data_blk_ptr,
+			 int data_blk_size);
+#endif
+
 #ifdef ONE_SIDED
 /* structure MPIDI_CH3I_RDMA_put_get_list is the queue pool to record every
  * issued signaled RDMA write and RDMA read operation. The address of

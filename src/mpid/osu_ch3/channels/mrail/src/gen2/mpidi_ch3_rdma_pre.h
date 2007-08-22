@@ -36,9 +36,12 @@ typedef struct MPIDI_CH3I_MRAILI_IBA_Pkt {
     uint8_t  vbuf_credit;      
     uint8_t  remote_credit;    
     uint8_t  rdma_credit;
-    int smp_index;
+    int      smp_index;
     uint32_t src_rank;
     uint8_t  rail;
+#ifdef CRC_CHECK
+    unsigned long crc;
+#endif
 } MPIDI_CH3I_MRAILI_Iba_pkt_t;
 
 #define MPIDI_CH3I_MRAILI_IBA_PKT_DECL \

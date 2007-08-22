@@ -58,18 +58,18 @@ all-redirect: ../../../../../../../lib/lib${MPILIBNAME}.a $(PTMALLOC)
 
 ../../../../../../../lib/lib${MPILIBNAME}.a: ibv_send.o ibv_recv.o rdma_iba_init.o rdma_iba_priv.o \
 dreg.o ibv_param.o vbuf.o ibv_channel_manager.o ibv_rma.o rdma_iba_1sc.o \
-ibv_rndv.o ibv_priv.o avl.o mem_hooks.o rdma_cm.o cm.o cr.o
+ibv_rndv.o ibv_priv.o avl.o mem_hooks.o rdma_cm.o cm.o cr.o crc32h.o
 	${AR} cr ../../../../../../../lib/lib${MPILIBNAME}.a $?
 	${RANLIB} ../../../../../../../lib/lib${MPILIBNAME}.a
 
 ../../../../../../../lib/lib${MPILIBNAME}.la: ibv_send.lo ibv_recv.lo rdma_iba_init.lo rdma_iba_priv.lo \
 dreg.lo ibv_param.lo vbuf.lo ibv_channel_manager.lo ibv_rma.lo rdma_iba_1sc.lo \
-ibv_rndv.lo ibv_priv.lo avl.lo mem_hooks.lo cm.lo rdma_cm.lo cr.lo
+ibv_rndv.lo ibv_priv.lo avl.lo mem_hooks.lo cm.lo rdma_cm.lo cr.lo crc32h.lo
 	${AR} cr ../../../../../../../lib/lib${MPILIBNAME}.la $?
 
 SOURCES =  ibv_send.c ibv_recv.c rdma_iba_init.c rdma_iba_priv.c dreg.c ibv_param.c \
 vbuf.c ibv_channel_manager.c ibv_rma.c rdma_iba_1sc.c ibv_rndv.c ibv_priv.c avl.c \
-mem_hooks.c cm.c rdma_cm.c cr.c
+mem_hooks.c cm.c rdma_cm.c cr.c crc32h.c
 
 ptmalloc2: malloc.o
 	${AR} cr ../../../../../../../lib/lib${MPILIBNAME}.a malloc.o

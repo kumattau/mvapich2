@@ -331,7 +331,9 @@ int rdma_open_hca(struct MPIDI_CH3I_RDMA_Process_t *proc)
     struct ibv_device **dev_list;
     int i, j;
     int mpi_errno = MPI_SUCCESS;
-
+#ifdef CRC_CHECK
+    gen_crc_table();
+#endif
     dev_list = ibv_get_device_list(NULL);
 
     for (i = 0; i < rdma_num_hcas; i ++) {

@@ -518,6 +518,7 @@ int MPIDI_CH3_PktHandler_Put( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 		    MPID_Request *cts_req;
 		    MPIDI_CH3_Pkt_t upkt;
 		    MPIDI_CH3_Pkt_rndv_clr_to_send_t *cts_pkt = &upkt.rndv_clr_to_send;
+		    MPID_Seqnum_t seqnum;
 
 		    req->dev.sender_req_id = rts_pkt->sender_req_id;
 		    req->dev.recv_data_sz = rts_pkt->data_sz;
@@ -527,7 +528,8 @@ int MPIDI_CH3_PktHandler_Put( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 		    MPIDI_CH3U_Post_data_receive_found(req);
 
 		    MPIDI_Pkt_init(cts_pkt, MPIDI_CH3_PKT_RMA_RNDV_CLR_TO_SEND);
-		    MPIDI_Pkt_set_seqnum(cts_pkt, -1);
+		    MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+	            MPIDI_Pkt_set_seqnum(cts_pkt, seqnum);
 
 		    cts_pkt->sender_req_id = rts_pkt->sender_req_id;
 		    cts_pkt->receiver_req_id = req->handle;
@@ -893,6 +895,7 @@ int MPIDI_CH3_PktHandler_Accumulate( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 		MPID_Request *cts_req;
 		MPIDI_CH3_Pkt_t upkt;
 		MPIDI_CH3_Pkt_rndv_clr_to_send_t *cts_pkt = &upkt.rndv_clr_to_send;
+		MPID_Seqnum_t seqnum;
 
 		req->dev.sender_req_id = rts_pkt->sender_req_id;
 	
@@ -902,7 +905,8 @@ int MPIDI_CH3_PktHandler_Accumulate( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 		MPIDI_CH3U_Post_data_receive_found(req);
 
 		MPIDI_Pkt_init(cts_pkt, MPIDI_CH3_PKT_RMA_RNDV_CLR_TO_SEND);
-		MPIDI_Pkt_set_seqnum(cts_pkt, -1);
+		MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+                MPIDI_Pkt_set_seqnum(cts_pkt, seqnum);
 
 		cts_pkt->sender_req_id = rts_pkt->sender_req_id;
 		cts_pkt->receiver_req_id = req->handle;

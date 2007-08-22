@@ -229,10 +229,12 @@ int MPIDI_CH3_ReqHandler_PutRespDerivedDTComplete( MPIDI_VC_t *vc,
 	MPIDI_CH3_Pkt_t upkt;
 	MPIDI_CH3_Pkt_rndv_clr_to_send_t *cts_pkt =
 	    &upkt.rndv_clr_to_send;
+	MPID_Seqnum_t seqnum;
 
 	MPIDI_Pkt_init(cts_pkt,
 	               MPIDI_CH3_PKT_RMA_RNDV_CLR_TO_SEND);
-	MPIDI_Pkt_set_seqnum(cts_pkt, -1);
+	MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+	MPIDI_Pkt_set_seqnum(cts_pkt, seqnum);
 	
 	cts_pkt->sender_req_id = rreq->dev.sender_req_id;
 	cts_pkt->receiver_req_id = rreq->handle;
@@ -341,10 +343,12 @@ int MPIDI_CH3_ReqHandler_AccumRespDerivedDTComplete( MPIDI_VC_t *vc,
 	MPIDI_CH3_Pkt_t upkt;
 	MPIDI_CH3_Pkt_rndv_clr_to_send_t *cts_pkt =
 	    &upkt.rndv_clr_to_send;
+	MPID_Seqnum_t seqnum;
 
 	MPIDI_Pkt_init(cts_pkt,
 	               MPIDI_CH3_PKT_RMA_RNDV_CLR_TO_SEND);
-	MPIDI_Pkt_set_seqnum(cts_pkt, -1);
+	MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+	MPIDI_Pkt_set_seqnum(cts_pkt, seqnum);
 
 	cts_pkt->sender_req_id = rreq->dev.sender_req_id;
 	cts_pkt->receiver_req_id = rreq->handle;

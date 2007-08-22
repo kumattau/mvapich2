@@ -46,6 +46,9 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
 {
     void *vstart;
     MPIDI_CH3I_MRAILI_Pkt_comm_header *header;
+#ifdef CRC_CHECK
+    unsigned long crc;
+#endif
 
     DEBUG_PRINT("[parse header] vbuf address %p\n", v);
     vstart = v->pheader;
@@ -54,7 +57,17 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
 
     /* set it to the header size by default */
     *header_size = MPIDI_CH3_Pkt_size_index[header->type];
-     
+#ifdef CRC_CHECK
+    crc = update_crc(1, (void *)((uintptr_t)header+sizeof *header),
+                     v->content_size - sizeof *header);
+    if (crc != header->mrail.crc) {
+	int rank; PMI_Get_rank(&rank);
+	fprintf(stderr, "CRC mismatch, get %lx, should be %lx "
+		"type %d, ocntent size %d\n", 
+		crc, header->mrail.crc, header->type, v->content_size);
+	assert(0);
+    }
+#endif
     switch (header->type) {
 #ifdef USE_HEADER_CACHING
     case (MPIDI_CH3_PKT_FAST_EAGER_SEND):
