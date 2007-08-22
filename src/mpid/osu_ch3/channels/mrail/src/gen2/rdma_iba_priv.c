@@ -681,6 +681,8 @@ int rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
 		    "**fail", "**fail %s", "Failed to allocate resources for "
 		    "credits array");
 	}
+	memset(vc->mrail.srp.credits, 0,
+	       (sizeof *vc->mrail.srp.credits * vc->mrail.num_rails));
 
         if (i == pg_rank)
             continue;
