@@ -3354,6 +3354,22 @@ int MPID_VCR_Get_lpid(MPID_VCR vcr, int * lpid_ptr);
 #define MPIR_EXSCAN_TAG               24
 #define MPIR_ALLTOALLW_TAG            25
 
+#ifdef _SMP_
+#define SHMEM_ALLREDUCE_THRESHOLD (1<<15)
+#define SHMEM_REDUCE_THRESHOLD (1<<10)
+#endif
+
+
+struct coll_runtime {
+    int allreduce_short_msg;
+    int reduce_short_msg;
+#ifdef _SMP_
+    int shmem_allreduce_msg;
+    int shmem_reduce_msg;
+#endif
+};
+
+
 /* These functions are used in the implementation of collective
    operations. They are wrappers around MPID send/recv functions. They do
    sends/receives by setting the context offset to

@@ -371,6 +371,15 @@ extern int shmem_coll_max_msg_size;
 void MV2_Read_env_vars(void);
 void init_thread_reg();
 #endif
+
+struct coll_runtime coll_param = { MPIR_ALLREDUCE_SHORT_MSG,
+                                   MPIR_REDUCE_SHORT_MSG,
+#ifdef _SMP_
+                                   SHMEM_ALLREDUCE_THRESHOLD,
+                                   SHMEM_REDUCE_THRESHOLD
+#endif
+};
+
 int MPI_Init_thread( int *argc, char ***argv, int required, int *provided )
 {
     static const char FCNAME[] = "MPI_Init_thread";
@@ -493,6 +502,22 @@ void MV2_Read_env_vars(void){
 	    if (flag > 0) enable_shmem_collectives = 0;
     }
 
+    if ((value = getenv("MV2_ALLREDUCE_SHORT_MSG")) != NULL){
+	    flag = (int)atoi(value);
+	    if (flag >= 0) coll_param.allreduce_short_msg = flag;
+    }
+    if ((value = getenv("MV2_REDUCE_SHORT_MSG")) != NULL){
+	    flag = (int)atoi(value);
+	    if (flag >= 0) coll_param.reduce_short_msg = flag;
+    }
+    if ((value = getenv("MV2_SHMEM_ALLREDUCE_MSG")) != NULL){
+	    flag = (int)atoi(value);
+	    if (flag >= 0) coll_param.shmem_allreduce_msg = flag;
+    }
+    if ((value = getenv("MV2_SHMEM_REDUCE_MSG")) != NULL){
+	    flag = (int)atoi(value);
+	    if (flag >= 0) coll_param.shmem_reduce_msg = flag;
+    }
     init_thread_reg();
 }
 #endif

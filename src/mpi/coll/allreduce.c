@@ -49,6 +49,7 @@ MPIR_Op_check_dtype_fn *MPIR_Op_check_dtype_table[] = {
     MPIR_LXOR_check_dtype, MPIR_BXOR_check_dtype,
     MPIR_MINLOC_check_dtype, MPIR_MAXLOC_check_dtype, }; 
 
+extern struct coll_runtime coll_param;
 
 /* This is the default implementation of allreduce. The algorithm is:
    
@@ -282,7 +283,7 @@ int MPIR_Allreduce (
            using recursive doubling in that case.) */
 
         if (newrank != -1) {
-            if ((count*type_size <= MPIR_ALLREDUCE_SHORT_MSG) ||
+            if ((count*type_size <= coll_param.allreduce_short_msg) ||
                 (HANDLE_GET_KIND(op) != HANDLE_KIND_BUILTIN) ||  
                 (count < pof2)) { /* use recursive doubling */
                 mask = 0x1;
@@ -608,7 +609,6 @@ Output Parameter:
 #ifdef _SMP_
 extern int enable_shmem_collectives;
 extern int disable_shmem_allreduce;
-#define SHMEM_COLL_ALLREDUCE_THRESHOLD (1<<15)
 #endif
 int MPI_Allreduce ( void *sendbuf, void *recvbuf, int count, 
 		    MPI_Datatype datatype, MPI_Op op, MPI_Comm comm )
@@ -755,7 +755,7 @@ int MPI_Allreduce ( void *sendbuf, void *recvbuf, int count,
                 }
                 MPIR_Nest_decr();
             }
-            if ((comm_ptr->shmem_coll_ok == 1)&&(stride < SHMEM_COLL_ALLREDUCE_THRESHOLD)&&
+            if ((comm_ptr->shmem_coll_ok == 1)&&(stride < coll_param.shmem_allreduce_msg)&&
                     (disable_shmem_allreduce == 0) &&(is_commutative) &&(enable_shmem_collectives) &&(check_comm_registry(comm))){
                 MPIR_Nest_incr();
                 my_rank = comm_ptr->rank;
@@ -769,7 +769,6 @@ int MPI_Allreduce ( void *sendbuf, void *recvbuf, int count,
                 leader_comm = comm_ptr->leader_comm;
                 MPID_Comm_get_ptr(leader_comm, leader_commptr);
                 MPIR_Nest_decr();
-
 
                 if (local_rank == 0){
                     global_rank = leader_commptr->rank;

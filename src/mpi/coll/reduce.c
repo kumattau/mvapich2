@@ -35,6 +35,8 @@
 #undef MPI_Reduce
 #define MPI_Reduce PMPI_Reduce
 
+extern struct coll_runtime coll_param;
+
 /* This is the default implementation of reduce. The algorithm is:
    
    Algorithm: MPI_Reduce
@@ -188,7 +190,7 @@ int MPIR_Reduce (
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
         
-    if ((count*type_size > MPIR_REDUCE_SHORT_MSG) &&
+    if ((count*type_size > coll_param.reduce_short_msg) &&
         (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) && (count >= pof2)) {
         /* do a reduce-scatter followed by gather to root. */
 
@@ -715,7 +717,6 @@ Output Parameter:
 #ifdef _SMP_
 extern int enable_shmem_collectives;
 extern int disable_shmem_reduce;
-#define SHMEM_COLL_REDUCE_THRESHOLD (1<<10)
 #endif
 int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, 
 	       MPI_Op op, int root, MPI_Comm comm)
@@ -897,7 +898,7 @@ int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
                 MPIR_Nest_decr();
             }
 
-            if ((comm_ptr->shmem_coll_ok == 1)&&(stride < SHMEM_COLL_REDUCE_THRESHOLD)&&
+            if ((comm_ptr->shmem_coll_ok == 1)&&(stride < coll_param.shmem_reduce_msg)&&
                     (disable_shmem_reduce == 0) &&(is_commutative==1) &&(enable_shmem_collectives)&&(check_comm_registry(comm))){
                 MPIR_Nest_incr();
                 my_rank = comm_ptr->rank;
