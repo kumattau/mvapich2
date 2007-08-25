@@ -21,7 +21,7 @@
 
 #ifndef _COLL_SHMEM_
 #define _COLL_SHMEM_
-
+#include <pthread.h>
 /*********** Macro defines of local variables ************/
 #define PID_CHAR_LEN 22
 
@@ -99,7 +99,7 @@ typedef struct {
     volatile int barrier_gather[SHMEM_COLL_NUM_COMM][SHMEM_COLL_NUM_PROCS];
     volatile int barrier_bcast[SHMEM_COLL_NUM_COMM][SHMEM_COLL_NUM_PROCS];
     volatile int shmem_comm_count;
-    pthread_mutex_t shmem_coll_lock;
+    pthread_spinlock_t shmem_coll_lock;
 
    /* the collective buffer */
     char shmem_coll_buf;

@@ -143,10 +143,10 @@ void create_2level_comm (MPI_Comm comm, int size, int my_rank){
     MPI_Comm_rank(comm_ptr->shmem_comm, &my_local_id);
 
     if (my_local_id == 0){
-        pthread_mutex_lock(&shmem_coll->shmem_coll_lock);
+        pthread_spin_lock(&shmem_coll->shmem_coll_lock);
         shmem_coll->shmem_comm_count++;
         shmem_comm_count = shmem_coll->shmem_comm_count;
-        pthread_mutex_unlock(&shmem_coll->shmem_coll_lock);
+        pthread_spin_unlock(&shmem_coll->shmem_coll_lock);
     }
 
     MPI_Bcast (&shmem_comm_count, 1, MPI_INT, 0, comm_ptr->shmem_comm);

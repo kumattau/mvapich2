@@ -21,7 +21,7 @@ MPILIBNAME      = @MPILIBNAME@
 PMPILIBNAME     = @PMPILIBNAME@
 
 CC              = @CC@
-CFLAGS          = @CFLAGS@
+CFLAGS          = @CFLAGS@ -D_GNU_SOURCE
 C_COMPILE       = $(CC) $(DEFS) $(INCLUDES) $(CFLAGS) $(CPPFLAGS)
 LIBTOOL         = @LIBTOOL@
 CC_SHL          = @CC_SHL@

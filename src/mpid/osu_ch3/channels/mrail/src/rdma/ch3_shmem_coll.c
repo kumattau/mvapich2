@@ -191,7 +191,7 @@ int MPIDI_CH3I_SHMEM_COLL_Mmap()
                 shmem_coll->root_complete_gather[j][i] = 1;
             }
         }
-        pthread_mutex_init(&shmem_coll->shmem_coll_lock,NULL);
+        pthread_spin_init(&shmem_coll->shmem_coll_lock,0);
     }
     
 fn_exit:
