@@ -89,6 +89,7 @@ inline static int MPIDI_CH3I_Seq(int type)
         case MPIDI_CH3_PKT_PUT_RNDV:
         case MPIDI_CH3_PKT_ACCUMULATE_RNDV:
         case MPIDI_CH3_PKT_GET_RNDV:
+        case MPIDI_CH3_PKT_RMA_RNDV_CLR_TO_SEND:
             return 1;
         default:
             return 0;
