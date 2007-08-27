@@ -71,7 +71,7 @@ do {                                                  \
 #define CHECK_RETURN(ret, s)                            \
 do {                                                    \
     if (ret != DAT_SUCCESS) {                               \
-    fprintf(stderr, "[%s:%d] error(%d): %s\n",          \
+    fprintf(stderr, "[%s:%d] error(%x): %s\n",          \
         __FILE__,__LINE__, ret, s);                     \
     exit(1);                                            \
     }                                                   \
