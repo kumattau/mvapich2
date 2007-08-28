@@ -418,9 +418,17 @@ void MPIDI_CH3_Rendezvous_r3_push(MPIDI_VC_t * vc, MPID_Request * sreq)
                         sreq->dev.iov_count, sreq->ch.iov_offset,
                         sreq->dev.iov[0].MPID_IOV_LEN);
 
-            mpi_errno =
-                MPIDI_CH3I_MRAILI_Eager_send(vc, iov, n_iov, 
-                        sizeof(MPIDI_CH3_Pkt_rndv_r3_data_t), &nb, &buf);
+            {
+                int i = 0, total_len = 0;
+                for (i = 0; i < n_iov; i++) {
+                    total_len += (iov[i].MPID_IOV_LEN);
+                }
+
+                mpi_errno =
+                    MPIDI_CH3I_MRAILI_Eager_send(vc, iov, n_iov, 
+                        total_len, &nb, &buf);
+            }
+
             DEBUG_PRINT("[istartmsgv] mpierr %d, nb %d\n", mpi_errno,
                     nb);
 
