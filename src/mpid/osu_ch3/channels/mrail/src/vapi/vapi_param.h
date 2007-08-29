@@ -90,7 +90,7 @@ extern long rdma_eagersize_1sc;
 #define RDMA_INTEGER_POOL_SIZE			(1024)
 #define MAX_NUM_HCAS                    (1)
 #define MAX_SUBCHANNELS                 (1)
-#define VAPI_NDREG_ENTRIES              (1000)
+#define VAPI_NDREG_ENTRIES              (1100)
 #define VAPI_VBUF_POOL_SIZE             (5000)
 #define VAPI_VBUF_SECONDARY_POOL_SIZE   (500)
 #define VAPI_PREPOST_DEPTH              (80)

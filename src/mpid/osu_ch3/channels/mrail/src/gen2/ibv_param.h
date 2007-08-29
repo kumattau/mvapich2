@@ -124,7 +124,7 @@ extern unsigned long        rdma_spin_count;
                                          MAX_NUM_PORTS* \
                                          MAX_NUM_QP_PER_PORT)
 
-#define RDMA_NDREG_ENTRIES              (1000)
+#define RDMA_NDREG_ENTRIES              (1100)
 #define RDMA_VBUF_POOL_SIZE             (512)
 #define RDMA_VBUF_SECONDARY_POOL_SIZE   (128)
 #define RDMA_PREPOST_DEPTH              (64)

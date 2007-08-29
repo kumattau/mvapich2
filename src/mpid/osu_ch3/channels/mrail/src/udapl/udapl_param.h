@@ -61,7 +61,7 @@ extern int rdma_iba_eager_threshold;
 extern long rdma_eagersize_1sc;
 #endif
 
-#define RDMA_NDREG_ENTRIES              (1000)
+#define RDMA_NDREG_ENTRIES              (1100)
 #define RDMA_PIN_POOL_SIZE         (2*1024*1024)        /* for small size message */
 #define RDMA_DEFAULT_MAX_CQ_SIZE        (6000)
 #define RDMA_DEFAULT_PORT               (1)
