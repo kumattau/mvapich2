@@ -446,7 +446,7 @@ void MPIDI_CH3_Rendezvous_r3_push(MPIDI_VC_t * vc, MPID_Request * sreq)
             finished = MPIDI_CH3I_Request_adjust_iov(sreq, nb);
             DEBUG_PRINT("ajust iov finish: %d, ca %d\n", finished,
                         sreq->dev.ca);
-        } while (!finished && !msg_buffered);
+        } while (!finished/* && !msg_buffered*/);
 
         if (finished && sreq->dev.OnDataAvail ==
 			MPIDI_CH3_ReqHandler_SendReloadIOV) {
@@ -456,14 +456,14 @@ void MPIDI_CH3_Rendezvous_r3_push(MPIDI_VC_t * vc, MPID_Request * sreq)
         } else if (finished) {
             complete = 1;
         }
-    } while (1 != msg_buffered && 0 == complete);
+    } while (/* 1 != msg_buffered && */0 == complete);
 
     DEBUG_PRINT("exit loop with complete %d, msg_buffered %d\n", complete,
                 msg_buffered);
 
-    if (0 == complete && 1 == msg_buffered) {
+    /*if (0 == complete && 1 == msg_buffered) {
         sreq->mrail.nearly_complete = 0;
-    } else if (1 == msg_buffered) {
+    } else */if (1 == msg_buffered) {
         buf->sreq = (void *) sreq;
         sreq->mrail.nearly_complete = 1;
     } else {
