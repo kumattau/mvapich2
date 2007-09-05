@@ -269,6 +269,8 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
 
     rreq->mrail.completion_counter = 0;
 
+    rreq->mrail.num_rdma_read_completions = 0;
+
     if (rreq->mrail.rndv_buf_sz > 0) {
 #ifdef DEBUG
         assert(rreq->mrail.d_entry != NULL);
@@ -333,6 +335,8 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
                     rreq->mrail.rkey[vc->mrail.rails[rail].hca_index],
                     nbytes, rail);
 
+            rreq->mrail.num_rdma_read_completions++;
+
         } else if(!MPIDI_CH3I_RDMA_Process.has_hsam) {
             inc = nbytes / rdma_num_rails;
             
@@ -348,6 +352,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
                         rreq->mrail.rndv_buf_off + rail * inc,
                         rreq->mrail.rkey[vc->mrail.rails[rail].hca_index], 
                         inc, rail);
+                rreq->mrail.num_rdma_read_completions++;
                 /* Send the finish message immediately after the data */  
             }
             v = get_vbuf();
@@ -361,6 +366,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
                     rreq->mrail.rndv_buf_off + inc * (rdma_num_rails - 1),
                     rreq->mrail.rkey[vc->mrail.rails[rail].hca_index], 
                     nbytes - (rdma_num_rails - 1) * inc, rail);
+            rreq->mrail.num_rdma_read_completions++;
 
         } else {
             rail = 0;
@@ -404,6 +410,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
                         rails[mapped[count_rail]].hca_index],
                         inc, mapped[count_rail]);
 
+                rreq->mrail.num_rdma_read_completions++;
                 /* Send the finish message immediately after the data */
                 disp += inc;
             }
@@ -421,7 +428,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
                     rreq->mrail.rkey[vc->mrail.
                     rails[mapped[count_rail]].hca_index],
                     nbytes - disp, mapped[count_rail]);
-
+            rreq->mrail.num_rdma_read_completions++;
 
         }
         /* Send the finish message immediately after the data */  

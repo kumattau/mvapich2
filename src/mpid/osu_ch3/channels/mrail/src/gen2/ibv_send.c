@@ -986,25 +986,19 @@ int MRAILI_Process_send(void *vbuf_addr)
         if(req->mrail.rndv_buf_sz > striping_threshold) {
             if(MPIDI_CH3I_RDMA_Process.has_hsam && 
                     (req->mrail.completion_counter == 
-                     (rdma_num_rails / stripe_factor) * 
-                     (MAX(MPIDI_CH3I_RDMA_Process.maxtransfersize,  
-                          req->mrail.rndv_buf_sz))/
-                     MPIDI_CH3I_RDMA_Process.maxtransfersize )) {
+                     req->mrail.num_rdma_read_completions )) { 
 
                 MRAILI_RDMA_Get_finish(vc, 
                         (MPID_Request *) v->sreq, v->rail);
-                
+
                 adjust_weights(v->vc, req->mrail.stripe_start_time,
                         req->mrail.stripe_finish_time, 
                         req->mrail.initial_weight);                       
 
             } else if (!MPIDI_CH3I_RDMA_Process.has_hsam && 
-                    (req->mrail.completion_counter ==
-                     (rdma_num_rails * 
-                      ((MAX(MPIDI_CH3I_RDMA_Process.maxtransfersize, 
-                            req->mrail.rndv_buf_sz)) / 
-                       MPIDI_CH3I_RDMA_Process.maxtransfersize)))) {
-               
+                    (req->mrail.completion_counter == 
+                       req->mrail.num_rdma_read_completions)) {
+
                 MRAILI_RDMA_Get_finish(vc,
                         (MPID_Request *) v->sreq, v->rail);
             }

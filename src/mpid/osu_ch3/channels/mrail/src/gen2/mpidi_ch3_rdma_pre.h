@@ -93,6 +93,7 @@ struct dreg_entry;
         void     *remote_addr;          \
         uint32_t rkey[MAX_NUM_HCAS];    \
         uint8_t  nearly_complete;       \
+        uint8_t  num_rdma_read_completions;       \
         uint32_t completion_counter;   \
         double  initial_weight[MAX_NUM_SUBRAILS];   \
         double  stripe_start_time;   \
