@@ -1161,6 +1161,10 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank)
 	    }
 	}
     }
+    else {
+        lid_all[0] = MPIDI_CH3I_RDMA_Process.lids[0][0];
+        ud_qpn_all[0] = ud_qpn_self;
+    }
 
     mpi_errno  = MPICM_Connect_UD(ud_qpn_all, lid_all);
     if (mpi_errno) {
