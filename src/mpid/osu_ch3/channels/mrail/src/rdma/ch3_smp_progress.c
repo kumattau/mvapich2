@@ -346,6 +346,7 @@ int MPIDI_CH3I_SMP_write_progress(MPIDI_PG_t *pg)
 			MPIU_ERR_POP(mpi_errno);
 		    }
 		    if (complete) {
+                        req->ch.reqtype = REQUEST_NORMAL;
 			MPIDI_CH3I_SMP_SendQ_dequeue(vc);
 			DEBUG_PRINT("Dequeue request from sendq %p, now head %p\n", 
 				req, vc->smp.sendq_head);
