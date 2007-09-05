@@ -30,7 +30,6 @@ extern int rdma_read_reserve;
 extern float rdma_credit_update_threshold;
 extern int num_rdma_buffer;
 extern int rdma_iba_eager_threshold;
-extern unsigned int udapl_ndreg_entries;
 extern int udapl_vbuf_max;
 extern int udapl_vbuf_pool_size;
 extern int udapl_vbuf_secondary_pool_size;
@@ -79,7 +78,6 @@ extern long rdma_eagersize_1sc;
 
 #define MAX_NUM_HCAS                    (1)
 #define MAX_SUBCHANNELS                 (1)
-#define UDAPL_NDREG_ENTRIES              (1000)
 #define UDAPL_VBUF_POOL_SIZE             (5000)
 #define UDAPL_VBUF_SECONDARY_POOL_SIZE   (500)
 #define UDAPL_PREPOST_DEPTH              (80)

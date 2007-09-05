@@ -45,7 +45,6 @@ int rdma_integer_pool_size = RDMA_INTEGER_POOL_SIZE;
 int num_rdma_buffer = NUM_RDMA_BUFFER;
 #endif
 int rdma_iba_eager_threshold = RDMA_IBA_EAGER_THRESHOLD;
-unsigned int udapl_ndreg_entries = UDAPL_NDREG_ENTRIES;
 char dapl_provider[32] = DAPL_DEFAULT_PROVIDER;
 
 /* max (total) number of vbufs to allocate, after which process
@@ -245,10 +244,6 @@ rdma_init_parameters (MPIDI_CH3I_RDMA_Process_t *proc)
     if ((value = getenv("MV2_NDREG_ENTRIES")) != NULL) {
         rdma_ndreg_entries = (unsigned int)atoi(value);
     }
-    if ((value = (char *) getenv ("MV2_NDREG_ENTRIES")) != NULL)
-      {
-          udapl_ndreg_entries = (unsigned int) atoi (value);
-      }
     if ((value = (char *) getenv ("MV2_VBUF_MAX")) != NULL)
       {
           udapl_vbuf_max = (int) atoi (value);
