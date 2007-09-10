@@ -133,6 +133,11 @@ static inline int GetSeqNumVbuf(vbuf * buf)
         {
             return ((MPIDI_CH3_Pkt_put_t *)(buf->pheader))->seqnum;
         }
+    case MPIDI_CH3_PKT_RMA_RNDV_CLR_TO_SEND:
+	{
+	    return ((MPIDI_CH3_Pkt_rndv_clr_to_send_t *)
+		    (buf->pheader))->seqnum;
+	}
 
     default:
         return PKT_NO_SEQ_NUM;
