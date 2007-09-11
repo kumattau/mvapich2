@@ -1069,9 +1069,6 @@ int register_memory(void * buf, int len, int hca_num, dreg_entry *d)
                          &d->memhandle.hndl, &d->memhandle.lkey,
                          &d->memhandle.rkey, &reg_size, &reg_addr);
 
-#ifndef SOLARIS
-    CHECK_RETURN(ret, "cannot create lmr\n");
-#endif
     DEBUG_PRINT("register return mr %p, buf %p, len %d\n", mr, buf, len);
     return ret;
 }
