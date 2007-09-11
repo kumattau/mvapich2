@@ -138,6 +138,10 @@ static inline int GetSeqNumVbuf(vbuf * buf)
 	    return ((MPIDI_CH3_Pkt_rndv_clr_to_send_t *)
 		    (buf->pheader))->seqnum;
 	}
+    case MPIDI_CH3_PKT_RPUT_FINISH:
+	{
+	    return ((MPIDI_CH3_Pkt_rput_finish_t *)(buf->pheader))->seqnum;
+	}
 
     default:
         return PKT_NO_SEQ_NUM;

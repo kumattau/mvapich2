@@ -200,9 +200,7 @@ typedef struct MPIDI_CH3_Pkt_rput_finish_t
 {
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#ifdef DAPL_DEFAULT_PROVIDER 
     MPID_Seqnum_t seqnum;
-#endif
     MPI_Request receiver_req_id; /* echoed*/
 } MPIDI_CH3_Pkt_rput_finish_t;
 
