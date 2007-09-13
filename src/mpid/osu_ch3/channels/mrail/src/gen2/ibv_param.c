@@ -189,7 +189,9 @@ static inline int get_hca_type(struct ibv_device *dev,
         return HCA_ERROR;
     }
 
-    if(!strncmp(dev_name, "mthca", 5)) {
+    if(!strncmp(dev_name, "mlx4", 4)) {
+	hca_type = MLX_CX_DDR;
+    } else if(!strncmp(dev_name, "mthca", 5)) {
 
         hca_type = MLX_PCI_X;
 
@@ -229,8 +231,11 @@ static inline int get_hca_type(struct ibv_device *dev,
                 }
 
             } else if (10 == rate) {
-
-                hca_type = MLX_PCI_EX_SDR;
+		if(!strncmp(umad_ca.ca_type, "MT254", 5)) {
+                    hca_type = MLX_CX_DDR;
+                } else {
+		    hca_type = MLX_PCI_EX_SDR;
+		}
 
             } else {
 
@@ -504,6 +509,10 @@ int  rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 
     if ((value = getenv("MV2_USE_COALESCE")) != NULL) {
         rdma_use_coalesce = !!atoi(value);
+    }
+
+    if (proc->hca_type == MLX_CX_DDR) {
+	rdma_use_coalesce = 0;
     }
 
     if ((MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND) 
