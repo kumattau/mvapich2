@@ -1044,16 +1044,14 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank)
 	    int hostid;
 	    struct hostent *hostent;
 
-	    if (SMP_INIT) {
-		gethostname(hostname, HOSTNAME_LEN);
-		if (!hostname) {
-		    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-			    "**fail", "**fail %s", "Could not get hostname");
-		}
-		hostent = gethostbyname(hostname);
-		hostid = (int) ((struct in_addr *) hostent->h_addr_list[0])->s_addr;
-		self_info.hostid = hostid;
+	    gethostname(hostname, HOSTNAME_LEN);
+	    if (!hostname) {
+	        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+		    "**fail", "**fail %s", "Could not get hostname");
 	    }
+	    hostent = gethostbyname(hostname);
+	    hostid = (int) ((struct in_addr *) hostent->h_addr_list[0])->s_addr;
+	    self_info.hostid = hostid;
 #endif
 
 	    self_info.lid = MPIDI_CH3I_RDMA_Process.lids[0][0];
@@ -1065,10 +1063,8 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank)
 	    for (i=0;i<pg_size;i++) {
 #ifdef _SMP_
 		MPIDI_VC_t *vc;
-		if (SMP_INIT) {
-		    MPIDI_PG_Get_vcr(pg, i, &vc);
-		    vc->smp.hostid = all_info[i].hostid;
-		}
+		MPIDI_PG_Get_vcr(pg, i, &vc);
+		vc->smp.hostid = all_info[i].hostid;
 #endif
 		ud_qpn_all[i] = all_info[i].qpn;
 		lid_all[i] = all_info[i].lid;
