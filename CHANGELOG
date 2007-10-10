@@ -3,6 +3,11 @@ MVAPICH2 Changelog
 This file briefly describes the latest changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+10/10/2007
+ * Minor patches for fixing (i) NBO for rdma-cm ports and (ii) rank
+   variable usage in DEBUG_PRINT in rdma-cm.c
+   Thanks to Steve Wise for reporting these.
+
 07/25/2007 (Release data of MVAPICH2-1.0-beta)
 
 * Following features are added in this new MVAPICH2-1.0-beta release:

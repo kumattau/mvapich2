@@ -32,9 +32,9 @@ int num_smp_peers = 0;
 #ifdef DEBUG
 #define DEBUG_PRINT(args...)                                      \
 do {                                                              \
-    int pt_rank;                                                  \
-    PMI_Get_rank(&pt_rank);                                       \
-    fprintf(stderr, "[%d][%s:%d] ", pt_rank, __FILE__, __LINE__); \
+    int __rank;                                                   \
+    PMI_Get_rank(&__rank);                                        \
+    fprintf(stderr, "[%d][%s:%d] ", __rank, __FILE__, __LINE__);  \
     fprintf(stderr, args);                                        \
     fflush(stderr);                                               \
 } while (0)
@@ -592,7 +592,7 @@ int get_base_listen_port(int pg_rank)
         rdma_cm_default_port = rand() % (65536 - 1025) + 1024;
     }
 
-    return rdma_cm_default_port;
+    return htons(rdma_cm_default_port);
 }
 
 int rdma_cm_create_qp(int cm_rank, int rail_index, int one_sided)
