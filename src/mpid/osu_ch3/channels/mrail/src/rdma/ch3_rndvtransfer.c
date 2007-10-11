@@ -141,7 +141,7 @@ int MPIDI_CH3_iStartRndvTransfer(MPIDI_VC_t * vc, MPID_Request * rreq)
     MPIDI_CH3I_CR_lock();
 #endif
         
-    if (rreq->dev.iov_count == 1)
+    if (rreq->dev.iov_count == 1 && rreq->dev.OnDataAvail == NULL)
 	cts_pkt->recv_sz = rreq->dev.iov[0].MPID_IOV_LEN;
     else
 	cts_pkt->recv_sz = rreq->dev.segment_size;
