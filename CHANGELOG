@@ -3,6 +3,10 @@ MVAPICH2 Changelog
 This file briefly describes the latest changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+10/18/2007
+* Enhance udapl initializaton, set all ep_attr fields properly.
+  Thanks for Kanoj Sarcar from NetXen for the patch.
+
 10/10/2007
  * Minor patches for fixing (i) NBO for rdma-cm ports and (ii) rank
    variable usage in DEBUG_PRINT in rdma-cm.c
