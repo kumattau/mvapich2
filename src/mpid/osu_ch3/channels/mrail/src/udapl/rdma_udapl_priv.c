@@ -784,6 +784,7 @@ rdma_iba_hca_init (struct MPIDI_CH3I_RDMA_Process_t *proc,
       {
           ep_attr.service_type = DAT_SERVICE_TYPE_RC;
           ep_attr.max_mtu_size = rdma_default_mtu_size;
+          ep_attr.max_message_size = ia_attr.max_message_size;
           ep_attr.max_rdma_size = ia_attr.max_rdma_size;
           ep_attr.qos = DAT_QOS_BEST_EFFORT;
           ep_attr.recv_completion_flags = DAT_COMPLETION_DEFAULT_FLAG;
@@ -805,6 +806,10 @@ rdma_iba_hca_init (struct MPIDI_CH3I_RDMA_Process_t *proc,
           ep_attr.ep_transport_specific = NULL;
           ep_attr.ep_provider_specific_count = 0;
           ep_attr.ep_provider_specific = NULL;
+
+          ep_attr.max_rdma_read_iov = 0;
+          ep_attr.max_rdma_write_iov = 0;
+          ep_attr.srq_soft_hw = 0;
       }
 
     for (i = 0; i < pg_size; i++)
