@@ -54,7 +54,7 @@ if [ "$ENABLE_CKPT" = "yes" ]; then
     if [ ! -z "$BLCR_HOME" ]; then
         BLCR_LIB="-L$BLCR_HOME/lib -lcr"
         BLCR_INC="-I$BLCR_HOME/include"
-        CR_FLAG="-DCKPT"
+        CR_FLAG="-DCKPT -DSYNC_CKPT"
 	SMP_FLAG=""
         export MPIEXEC_CR=mpiexec_cr # to compile mpiexec_cr
         LD_LIBRARY_PATH=$BLCR_HOME/lib:$LD_LIBRARY_PATH
