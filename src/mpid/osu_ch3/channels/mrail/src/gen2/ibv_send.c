@@ -129,8 +129,8 @@ static inline void MRAILI_Ext_sendq_send(MPIDI_VC_t *c, int rail)
     if(NULL != (_vc)->mrail.coalesce_vbuf &&                          \
             (_vc)->mrail.coalesce_vbuf->rail == _rail) {              \
         MRAILI_Ext_sendq_send(_vc, (_vc)->mrail.coalesce_vbuf->rail); \
+        (_vc)->mrail.coalesce_vbuf = NULL;                            \
     }                                                                 \
-    (_vc)->mrail.coalesce_vbuf = NULL;                                \
 }
 
 
@@ -632,8 +632,8 @@ vbuf * MRAILI_Get_Vbuf(MPIDI_VC_t * vc, int pkt_len) {
             DEBUG_PRINT("returning back a coalesce buffer\n");
             return vc->mrail.coalesce_vbuf;
         } else {
-            vc->mrail.coalesce_vbuf = NULL;
             FLUSH_SQUEUE(vc);
+            vc->mrail.coalesce_vbuf = NULL;
             DEBUG_PRINT("Send out the coalesce vbuf\n");
         }
     }
@@ -712,7 +712,7 @@ int MPIDI_CH3I_MRAILI_Eager_send(MPIDI_VC_t * vc,
 
     DEBUG_PRINT("[eager send]vbuf addr %p, buffer: %p\n", v, v->buffer);
     *num_bytes_ptr = MRAILI_Fill_start_buffer(v, iov, n_iov);
-
+   
 #ifdef CKPT
     /* this won't work properly at the moment... 
      *
