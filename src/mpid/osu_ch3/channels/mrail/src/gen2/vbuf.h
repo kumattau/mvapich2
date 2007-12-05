@@ -79,11 +79,11 @@ struct ibv_wr_descriptor {
     union {
         struct ibv_recv_wr rr;
         struct ibv_send_wr sr;
-    };
+    } u;
     union {
         struct ibv_send_wr * bad_sr;
         struct ibv_recv_wr * bad_rr;
-    };
+    } y;
     struct ibv_sge sg_entry;
     void *next;
 };
@@ -152,16 +152,16 @@ static void inline VBUF_SET_RDMA_ADDR_KEY(vbuf * v, int len,
                                           void *remote_addr,
                                           uint32_t rkey)
 {
-    v->desc.sr.next         = NULL;
-    v->desc.sr.opcode       = IBV_WR_RDMA_WRITE;
-    v->desc.sr.send_flags   = IBV_SEND_SIGNALED;
-    v->desc.sr.wr_id        = (uintptr_t) v;
+    v->desc.u.sr.next         = NULL;
+    v->desc.u.sr.opcode       = IBV_WR_RDMA_WRITE;
+    v->desc.u.sr.send_flags   = IBV_SEND_SIGNALED;
+    v->desc.u.sr.wr_id        = (uintptr_t) v;
 
-    v->desc.sr.num_sge      = 1;
-    v->desc.sr.sg_list      = &(v->desc.sg_entry);
+    v->desc.u.sr.num_sge      = 1;
+    v->desc.u.sr.sg_list      = &(v->desc.sg_entry);
 
-    (v)->desc.sr.wr.rdma.remote_addr = (uintptr_t) (remote_addr);
-    (v)->desc.sr.wr.rdma.rkey = (rkey);
+    (v)->desc.u.sr.wr.rdma.remote_addr = (uintptr_t) (remote_addr);
+    (v)->desc.u.sr.wr.rdma.rkey = (rkey);
     (v)->desc.sg_entry.length = (len);
     (v)->desc.sg_entry.lkey = (lkey);
     (v)->desc.sg_entry.addr = (uintptr_t)(local_addr);

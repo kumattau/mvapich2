@@ -371,13 +371,13 @@ void MRAILI_Release_recv_rdma(vbuf *v)
 
 void vbuf_init_rdma_write(vbuf * v)
 {
-    v->desc.sr.next         = NULL;
-    v->desc.sr.opcode       = IBV_WR_RDMA_WRITE;
-    v->desc.sr.send_flags   = IBV_SEND_SIGNALED;
-    v->desc.sr.wr_id        = (uintptr_t) v;
+    v->desc.u.sr.next         = NULL;
+    v->desc.u.sr.opcode       = IBV_WR_RDMA_WRITE;
+    v->desc.u.sr.send_flags   = IBV_SEND_SIGNALED;
+    v->desc.u.sr.wr_id        = (uintptr_t) v;
 
-    v->desc.sr.num_sge      = 1;
-    v->desc.sr.sg_list      = &(v->desc.sg_entry);
+    v->desc.u.sr.num_sge      = 1;
+    v->desc.u.sr.sg_list      = &(v->desc.sg_entry);
     v->padding              = FREE_FLAG;
 }
 
@@ -385,12 +385,12 @@ void vbuf_init_send(vbuf *v, unsigned long len, int rail)
 {
     int hca_num = rail / (rdma_num_rails/rdma_num_hcas);
 
-    v->desc.sr.next         = NULL;
-    v->desc.sr.send_flags   = IBV_SEND_SIGNALED;
-    v->desc.sr.opcode       = IBV_WR_SEND;
-    v->desc.sr.wr_id        = (uintptr_t) v;
-    v->desc.sr.num_sge      = 1;
-    v->desc.sr.sg_list      = &(v->desc.sg_entry);
+    v->desc.u.sr.next         = NULL;
+    v->desc.u.sr.send_flags   = IBV_SEND_SIGNALED;
+    v->desc.u.sr.opcode       = IBV_WR_SEND;
+    v->desc.u.sr.wr_id        = (uintptr_t) v;
+    v->desc.u.sr.num_sge      = 1;
+    v->desc.u.sr.sg_list      = &(v->desc.sg_entry);
     v->desc.sg_entry.length = len;
     v->desc.sg_entry.lkey   = v->region->mem_handle[hca_num]->lkey;
     v->desc.sg_entry.addr   = (uintptr_t)(v->buffer);
@@ -401,10 +401,10 @@ void vbuf_init_recv(vbuf *v, unsigned long len, int rail)
 {
     int hca_num = rail / (rdma_num_rails/rdma_num_hcas);
 
-    v->desc.rr.next         = NULL;
-    v->desc.rr.wr_id        = (uintptr_t) v;
-    v->desc.rr.num_sge      = 1;
-    v->desc.rr.sg_list      = &(v->desc.sg_entry);
+    v->desc.u.rr.next         = NULL;
+    v->desc.u.rr.wr_id        = (uintptr_t) v;
+    v->desc.u.rr.num_sge      = 1;
+    v->desc.u.rr.sg_list      = &(v->desc.sg_entry);
     v->desc.sg_entry.length = len;
     v->desc.sg_entry.lkey   = v->region->mem_handle[hca_num]->lkey;
     v->desc.sg_entry.addr   = (uintptr_t)(v->buffer);
@@ -417,17 +417,17 @@ void vbuf_init_rget(vbuf * v,
                     void *remote_address, uint32_t rkey, int len, 
 		    int rail)
 {
-    v->desc.sr.next         = NULL;
-    v->desc.sr.send_flags   = IBV_SEND_SIGNALED;
-    v->desc.sr.opcode       = IBV_WR_RDMA_READ;
-    v->desc.sr.wr_id        = (uintptr_t) v;
+    v->desc.u.sr.next         = NULL;
+    v->desc.u.sr.send_flags   = IBV_SEND_SIGNALED;
+    v->desc.u.sr.opcode       = IBV_WR_RDMA_READ;
+    v->desc.u.sr.wr_id        = (uintptr_t) v;
 
-    v->desc.sr.num_sge      = 1;
-    v->desc.sr.wr.rdma.remote_addr 
+    v->desc.u.sr.num_sge      = 1;
+    v->desc.u.sr.wr.rdma.remote_addr 
                             = (uintptr_t)(remote_address);
-    v->desc.sr.wr.rdma.rkey = rkey;
+    v->desc.u.sr.wr.rdma.rkey = rkey;
 
-    v->desc.sr.sg_list      = &(v->desc.sg_entry);
+    v->desc.u.sr.sg_list      = &(v->desc.sg_entry);
     v->desc.sg_entry.length = len;
     v->desc.sg_entry.lkey   = lkey;
     v->desc.sg_entry.addr   = (uintptr_t)(local_address);
@@ -442,17 +442,17 @@ void vbuf_init_rput(vbuf * v,
                     void *remote_address, uint32_t rkey, int len, 
 		    int rail)
 {
-    v->desc.sr.next         = NULL;
-    v->desc.sr.send_flags   = IBV_SEND_SIGNALED;
-    v->desc.sr.opcode       = IBV_WR_RDMA_WRITE;
-    v->desc.sr.wr_id        = (uintptr_t) v;
+    v->desc.u.sr.next         = NULL;
+    v->desc.u.sr.send_flags   = IBV_SEND_SIGNALED;
+    v->desc.u.sr.opcode       = IBV_WR_RDMA_WRITE;
+    v->desc.u.sr.wr_id        = (uintptr_t) v;
 
-    v->desc.sr.num_sge      = 1;
-    v->desc.sr.wr.rdma.remote_addr 
+    v->desc.u.sr.num_sge      = 1;
+    v->desc.u.sr.wr.rdma.remote_addr 
                             = (uintptr_t)(remote_address);
-    v->desc.sr.wr.rdma.rkey = rkey;
+    v->desc.u.sr.wr.rdma.rkey = rkey;
 
-    v->desc.sr.sg_list      = &(v->desc.sg_entry);
+    v->desc.u.sr.sg_list      = &(v->desc.sg_entry);
     v->desc.sg_entry.length = len;
     v->desc.sg_entry.lkey   = lkey;
     v->desc.sg_entry.addr   = (uintptr_t)(local_address);

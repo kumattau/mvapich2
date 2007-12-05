@@ -207,7 +207,7 @@ void MRAILI_RDMA_Put_finish(MPIDI_VC_t * vc,
 
     /* mark MPI send complete when VIA send completes */
 
-    DEBUG_PRINT("VBUF ASSOCIATED: %p, %08x\n", buf, buf->desc.sr.wr_id);
+    DEBUG_PRINT("VBUF ASSOCIATED: %p, %08x\n", buf, buf->desc.u.sr.wr_id);
 }
 
 void MRAILI_RDMA_Get_finish(MPIDI_VC_t * vc, 
@@ -238,7 +238,7 @@ void MRAILI_RDMA_Get_finish(MPIDI_VC_t * vc,
 
     buf->sreq = (void *) rreq;
 
-    DEBUG_PRINT("VBUF ASSOCIATED: %p, %08x\n", buf, buf->desc.sr.wr_id);
+    DEBUG_PRINT("VBUF ASSOCIATED: %p, %08x\n", buf, buf->desc.u.sr.wr_id);
 }
 
 void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,

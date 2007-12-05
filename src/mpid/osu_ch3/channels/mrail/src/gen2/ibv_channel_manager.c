@@ -124,7 +124,7 @@ static inline vbuf * VQUEUE_DEQUEUE(MRAILI_Channel_manager *cmanager,
     return v;
 }
 
-inline int PKT_IS_NOOP(void *v)
+static inline int PKT_IS_NOOP(void *v)
 {        
     MPIDI_CH3I_MRAILI_Pkt_comm_header * p = ((vbuf *)v)->pheader; 
     return ((p->type == MPIDI_CH3_PKT_NOOP)? 1 : 0);    

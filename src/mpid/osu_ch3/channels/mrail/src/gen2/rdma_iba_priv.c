@@ -997,7 +997,7 @@ err_reg:
     return ret;
 }
 
-inline int round_left(int current, int size)
+static inline int round_left(int current, int size)
 {
     if (current == 0) {
         return size-1;
@@ -1006,7 +1006,7 @@ inline int round_left(int current, int size)
         return current-1;
 }
 
-inline int is_A_on_left_of_B(int a, int b, int rank, int size)
+static inline int is_A_on_left_of_B(int a, int b, int rank, int size)
 {
     int dist_a = (rank - a + size)%size;
     int dist_b = (rank - b + size)%size;

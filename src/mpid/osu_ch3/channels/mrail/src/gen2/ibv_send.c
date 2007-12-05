@@ -33,7 +33,7 @@ do {                                                          \
 #define DEBUG_PRINT(args...)
 #endif
 
-inline int MRAILI_Coalesce_ok(MPIDI_VC_t * vc, int rail) {
+static inline int MRAILI_Coalesce_ok(MPIDI_VC_t * vc, int rail) {
 
     if(rdma_use_coalesce && 
             (vc->mrail.outstanding_eager_vbufs >= rdma_coalesce_threshold || 
@@ -466,7 +466,7 @@ int viadev_post_srq_buffers(int num_bufs,
                 rdma_num_ports * rdma_num_qp_per_port);
 
         if(ibv_post_srq_recv(MPIDI_CH3I_RDMA_Process.srq_hndl[hca_num],
-                    &v->desc.rr, &bad_wr)) {
+                    &v->desc.u.rr, &bad_wr)) {
             MRAILI_Release_vbuf(v);
             break;
         }

@@ -207,12 +207,12 @@ extern struct rdma_iba_addr_tb   rdma_iba_addr_table;
     {                                                           \
         int __ret;                                              \
         if(((_v)->desc.sg_entry.length <= rdma_max_inline_size) \
-                && ((_v)->desc.sr.opcode != IBV_WR_RDMA_READ)){ \
-           (_v)->desc.sr.send_flags = (enum ibv_send_flags)     \
+                && ((_v)->desc.u.sr.opcode != IBV_WR_RDMA_READ)){ \
+           (_v)->desc.u.sr.send_flags = (enum ibv_send_flags)     \
                                         (IBV_SEND_SIGNALED |    \
                                          IBV_SEND_INLINE);      \
         } else {                                                \
-            (_v)->desc.sr.send_flags = IBV_SEND_SIGNALED ;      \
+            (_v)->desc.u.sr.send_flags = IBV_SEND_SIGNALED ;      \
         }                                                       \
         if ((_rail) != (_v)->rail) { \
                 DEBUG_PRINT(stderr, "[%s:%d] rail %d, vrail %d\n",\
@@ -220,7 +220,7 @@ extern struct rdma_iba_addr_tb   rdma_iba_addr_table;
                 assert((_rail) == (_v)->rail);                  \
         }                                                       \
         __ret = ibv_post_send((_c)->mrail.rails[(_rail)].qp_hndl,\
-                  &((_v)->desc.sr),&((_v)->desc.bad_sr));       \
+                  &((_v)->desc.u.sr),&((_v)->desc.y.bad_sr));       \
         if(__ret) {                                             \
             fprintf(stderr, "failed while avail wqe is %d, "    \
                     "rail %d\n",                                \
@@ -235,8 +235,8 @@ extern struct rdma_iba_addr_tb   rdma_iba_addr_table;
     int __ret;                                                  \
     _vbuf->vc = (void *)_c;                                     \
     __ret = ibv_post_recv(_c->mrail.rails[(_rail)].qp_hndl,     \
-                          &((_vbuf)->desc.rr),                  \
-            &((_vbuf)->desc.bad_rr));                           \
+                          &((_vbuf)->desc.u.rr),                  \
+            &((_vbuf)->desc.y.bad_rr));                           \
     if (__ret) {                                                \
         ibv_error_abort(IBV_RETURN_ERR,                         \
             "ibv_post_recv err with %d",          \
