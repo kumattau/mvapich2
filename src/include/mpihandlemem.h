@@ -94,7 +94,7 @@ typedef enum MPID_Object_kind {
 /* Handle block is between 1 and 1024 *elements* */
 #define HANDLE_BLOCK_SIZE 256
 /* Index size is bewtween 1 and 65536 *elements* */
-#define HANDLE_BLOCK_INDEX_SIZE 1024
+#define HANDLE_BLOCK_INDEX_SIZE 4096
 
 /* For direct, the remainder of the handle is the index into a predefined 
    block */
