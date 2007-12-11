@@ -960,8 +960,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 
 	if (enable_shmem_collectives){
 	    /* Unlinking shared files for collectives*/  
-	    mpi_errno = MPIDI_CH3I_SHMEM_COLL_Unlink();
-	    if(mpi_errno) MPIU_ERR_POP(mpi_errno);
+	    MPIDI_CH3I_SHMEM_COLL_Unlink();
 	}
 
 	pid = getpid();
@@ -2407,7 +2406,7 @@ static int smpi_exchange_info(MPIDI_PG_t *pg)
     if (1 == pg_size) hostnames_j[0] = hostid;
     /* smpi.local_nodes = (unsigned int *) malloc(pg_size * sizeof(int)); */
 
-    smpi_ptr = (unsigned int *) malloc(pg_size * sizeof(int));
+    smpi_ptr = (int *) malloc(pg_size * sizeof(int));
 
     if(smpi_ptr == NULL) {
 	MPIU_ERR_SETFATALANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**nomem",

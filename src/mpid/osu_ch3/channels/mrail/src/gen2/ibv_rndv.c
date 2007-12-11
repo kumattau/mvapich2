@@ -11,6 +11,7 @@
  */
 
 #include "rdma_impl.h"
+#include "ibv_impl.h"
 #include "vbuf.h"
 #include "dreg.h"
 
@@ -26,6 +27,8 @@
 #else
 #define DEBUG_PRINT(args...)
 #endif
+
+void get_sorted_index(MPIDI_VC_t *vc, int *b);
 
 int MPIDI_CH3I_MRAIL_Prepare_rndv(MPIDI_VC_t * vc, MPID_Request * req)
 {
@@ -680,8 +683,7 @@ int MPIDI_CH3I_MRAIL_Finish_request(MPID_Request *rreq)
 }
 
 /* Get the sorted indices for the given array */
-
-get_sorted_index(MPIDI_VC_t *vc, int *b)
+void get_sorted_index(MPIDI_VC_t *vc, int *b)
 {               
     int *taken;
 

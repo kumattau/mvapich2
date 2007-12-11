@@ -781,7 +781,7 @@ int PMI_Spawn_multiple(int count,
     return( 0 );
 }
 
-int PMI_Args_to_keyval(int *argcp, char *((*argvp)[]), PMI_keyval_t **keyvalp, 
+int PMI_Args_to_keyval(int *argcp, char ***argvp, PMI_keyval_t **keyvalp, 
 		       int *size)
 {
     return ( 0 );

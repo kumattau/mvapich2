@@ -182,9 +182,13 @@ int MRAILI_Fill_start_buffer(vbuf *v, MPID_IOV *iov, int n_iov);
 
 int MPIDI_CH3I_MRAILI_Get_next_vbuf_local(MPIDI_VC_t *vc, vbuf ** vbuf_handle);
 
+int MPIDI_CH3I_MRAILI_Get_next_vbuf(MPIDI_VC_t **vc_pptr, vbuf **v_ptr);
+
 int MPIDI_CH3I_MRAILI_Waiting_msg(MPIDI_VC_t * vc, vbuf **, int);
 
 int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **, MPIDI_VC_t *, int, int is_blocking);
+
+void MRAILI_Send_noop(MPIDI_VC_t * c, const MRAILI_Channel_info * channel);
 
 int MRAILI_Send_noop_if_needed(MPIDI_VC_t *vc, 
         const MRAILI_Channel_info *channel);

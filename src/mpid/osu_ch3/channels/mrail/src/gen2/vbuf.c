@@ -194,7 +194,7 @@ static int allocate_vbuf_region(int nvbufs)
         cur->region = reg;
 	cur->head_flag = (VBUF_FLAG_TYPE *) ((char *)(vbuf_dma_buffer) +
                 (i + 1) * rdma_vbuf_total_size - sizeof *cur->head_flag);
-        cur->buffer = (char *) ((char *)(vbuf_dma_buffer) +
+        cur->buffer = (unsigned char *) ((char *)(vbuf_dma_buffer) +
                 (i * rdma_vbuf_total_size));
 
         cur->eager = 0;
@@ -210,7 +210,7 @@ static int allocate_vbuf_region(int nvbufs)
 
     cur->head_flag = (VBUF_FLAG_TYPE *) ((char *)vbuf_dma_buffer +
             (nvbufs * rdma_vbuf_total_size) - sizeof *cur->head_flag);
-    cur->buffer = (char *) ((char *)vbuf_dma_buffer +
+    cur->buffer = (unsigned char *) ((char *)vbuf_dma_buffer +
             ((nvbufs - 1) * rdma_vbuf_total_size));
     cur->eager = 0;
     cur->content_size = 0;

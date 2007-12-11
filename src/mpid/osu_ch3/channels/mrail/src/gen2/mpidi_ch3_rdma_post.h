@@ -216,10 +216,15 @@ int MPIDI_CH3I_MRAILI_Eager_send(   MPIDI_VC_t * vc,
 
 int MPIDI_CH3I_MRAILI_Get_next_vbuf_local(MPIDI_VC_t *vc, 
         vbuf ** vbuf_handle, int is_blocking);
+        
+int MPIDI_CH3I_MRAILI_Get_next_vbuf(MPIDI_VC_t ** vc_ptr, 
+        vbuf ** vbuf_ptr, int is_blocking);
 
 int MPIDI_CH3I_MRAILI_Waiting_msg(MPIDI_VC_t * vc, vbuf **, int blocking);
 
 int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **, MPIDI_VC_t *, int, int);
+
+void MRAILI_Send_noop(MPIDI_VC_t * c, int rail);
 
 int MRAILI_Send_noop_if_needed(MPIDI_VC_t *vc, int rail);
 

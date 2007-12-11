@@ -402,4 +402,13 @@ int cm_qp_move_to_rts(MPIDI_VC_t *vc);
 uint16_t get_pkey_index(uint16_t pkey, int hca_num, int port_num);
 void set_pkey_index(uint16_t * pkey_index, int hca_num, int port_num);
 
+void init_apm_lock();
+
+void MRAILI_RDMA_Get_finish(MPIDI_VC_t * vc, 
+        MPID_Request * rreq, int rail);
+        
+int reload_alternate_path(struct ibv_qp *qp);
+
+int power_two(int x);
+
 #endif                          /* RDMA_IMPL_H */

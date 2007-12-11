@@ -110,7 +110,7 @@ void vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
             v = ((vbuf *)vbuf_ctrl_buf) + i;
             v->head_flag = (VBUF_FLAG_TYPE *) ( (char *)(vbuf_rdma_buf) + (i + 1) *
                           rdma_vbuf_total_size - sizeof *v->head_flag);
-            v->buffer = (char *) ( (char *)(vbuf_rdma_buf) + (i *
+            v->buffer = (unsigned char *) ( (char *)(vbuf_rdma_buf) + (i *
                            rdma_vbuf_total_size) );
             v->vc     = c;
         }

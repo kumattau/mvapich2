@@ -17,6 +17,7 @@
  */
 
 #include "rdma_impl.h"
+#include "ibv_impl.h"
 #include "vbuf.h"
 #include "pmi.h"
 

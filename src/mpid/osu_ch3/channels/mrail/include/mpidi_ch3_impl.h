@@ -427,8 +427,23 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg);
 
 int MPIDI_CH3I_SMP_finalize(void);
 
+int MPIDI_CH3I_SMP_writev_rndv_header(MPIDI_VC_t * vc, const MPID_IOV * iov,
+	const int n, int *num_bytes_ptr);
+	
+int MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, const MPID_IOV * iov,
+	const int n, int *num_bytes_ptr);
+	
+int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, const MPID_IOV * iov,
+	const int n, int *num_bytes_ptr);
+
 int MPIDI_CH3I_SMP_writev(MPIDI_VC_t * vc, const MPID_IOV * iov,
                           const int n, int *num_bytes_ptr);
+                          
+int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
+	const int iovlen, int index, int *num_bytes_ptr);
+	
+int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
+	const int iovlen, int index, int *num_bytes_ptr);
 
 int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
                          const int iovlen, int
@@ -442,6 +457,14 @@ struct shmem_coll_mgmt{
     void *mmap_ptr;
     int fd;
 };
+
+int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t *pg);
+
+int MPIDI_CH3I_SHMEM_COLL_Mmap();
+
+int MPIDI_CH3I_SHMEM_COLL_finalize();
+
+void MPIDI_CH3I_SHMEM_COLL_Unlink();
 
 #endif
 

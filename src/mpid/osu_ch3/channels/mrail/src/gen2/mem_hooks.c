@@ -22,18 +22,15 @@
 
 static void set_real_munmap_ptr()
 {
-    char *dlerror_str;
-    void *ptr_dlsym;
-
-    ptr_dlsym = dlsym(RTLD_NEXT, "munmap");
-    dlerror_str = dlerror();
+    munmap_t munmap = (munmap_t) dlsym(RTLD_NEXT, "munmap");
+    char* dlerror_str = dlerror();
 
     if(NULL != dlerror_str) {
         fprintf(stderr,"Error resolving munmap (%s)\n",
                 dlerror_str);
     }       
 
-    mvapich2_minfo.munmap = ptr_dlsym;
+    mvapich2_minfo.munmap = munmap;
 }
 
 #endif

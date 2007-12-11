@@ -737,7 +737,7 @@ not be used to free this array as there is no requirement that the array be
 allocated with 'malloc()'.
 
 @*/
-int PMI_Args_to_keyval(int *argcp, char *((*argvp)[]), PMI_keyval_t **keyvalp, int *size);
+int PMI_Args_to_keyval(int *argcp, char ***argvp, PMI_keyval_t **keyvalp, int *size);
 
 /*@
 PMI_Free_keyvals - free the keyval structures created by PMI_Args_to_keyval
