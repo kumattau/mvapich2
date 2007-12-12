@@ -451,7 +451,7 @@ int viadev_post_srq_buffers(int num_bufs,
     struct ibv_recv_wr *bad_wr;
 
     if(num_bufs > viadev_srq_size) {
-        ibv_error_abort(GEN_ASSERT_ERR,"Try to post %d to SRQ, max %d\n",
+        ibv_va_error_abort(GEN_ASSERT_ERR,"Try to post %d to SRQ, max %d\n",
                 num_bufs, viadev_srq_size);
     }
 
@@ -1067,7 +1067,7 @@ int MRAILI_Process_send(void *vbuf_addr)
     case MPIDI_CH3_PKT_RPUT_FINISH:
         req = (MPID_Request *) (v->sreq);
         if (req == NULL) {
-            ibv_error_abort(GEN_EXIT_ERR,
+            ibv_va_error_abort(GEN_EXIT_ERR,
                     "s == NULL, s is the send, v is %p "
                     "handler of the rput finish", v);
         }
@@ -1188,7 +1188,7 @@ int MRAILI_Process_send(void *vbuf_addr)
 
     default:
         dump_vbuf("unknown packet (send finished)", v);
-        ibv_error_abort(IBV_STATUS_ERR,
+        ibv_va_error_abort(IBV_STATUS_ERR,
                          "Unknown packet type %d in "
                          "MRAILI_Process_send", p->type);
     }

@@ -166,7 +166,7 @@ extern struct rdma_iba_addr_tb   rdma_iba_addr_table;
 #define IBV_RETURN_ERR   -3     /* gen2 function return error */
 #define IBV_STATUS_ERR   -4     /*  gen2 function status error */
 
-#define ibv_error_abort(code, message, args...)  {              \
+#define ibv_va_error_abort(code, message, args...)  {           \
     int my_rank;                                                \
     PMI_Get_rank(&my_rank);                                     \
     fprintf(stderr, "[%d] Abort: ", my_rank);                   \
@@ -174,6 +174,17 @@ extern struct rdma_iba_addr_tb   rdma_iba_addr_table;
     fprintf(stderr, " at line %d in file %s\n", __LINE__,       \
             __FILE__);                                          \
     exit(code);                                                 \
+}
+
+#define ibv_error_abort(code, message)                          \
+{                                                               \
+	int my_rank;                                                \
+	PMI_Get_rank(&my_rank);                                     \
+	fprintf(stderr, "[%d] Abort: ", my_rank);                   \
+	fprintf(stderr, message);                                   \
+	fprintf(stderr, " at line %d in file %s\n", __LINE__,       \
+	    __FILE__);                                              \
+	exit(code);                                                 \
 }
 
 #define PACKET_SET_RDMA_CREDIT(_p, _c)                          \
@@ -238,7 +249,7 @@ extern struct rdma_iba_addr_tb   rdma_iba_addr_table;
                           &((_vbuf)->desc.u.rr),                  \
             &((_vbuf)->desc.y.bad_rr));                           \
     if (__ret) {                                                \
-        ibv_error_abort(IBV_RETURN_ERR,                         \
+        ibv_va_error_abort(IBV_RETURN_ERR,                      \
             "ibv_post_recv err with %d",          \
                 __ret);                                         \
     }                                                           \

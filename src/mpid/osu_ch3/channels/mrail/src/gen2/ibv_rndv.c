@@ -259,7 +259,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
     double time, myseed;
 
     if (rreq->mrail.rndv_buf_off != 0) {
-        ibv_error_abort(GEN_ASSERT_ERR,
+        ibv_va_error_abort(GEN_ASSERT_ERR,
                 "s->bytes_sent != 0 Rendezvous Push, %d",
                 rreq->mrail.nearly_complete);
     }
@@ -471,7 +471,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
     double time, myseed;
 
     if (sreq->mrail.rndv_buf_off != 0) {
-        ibv_error_abort(GEN_ASSERT_ERR,
+        ibv_va_error_abort(GEN_ASSERT_ERR,
                 "s->bytes_sent != 0 Rendezvous Push, %d",
                 sreq->mrail.nearly_complete);
     }

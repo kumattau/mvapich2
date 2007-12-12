@@ -120,7 +120,7 @@ int ib_cma_event_handler(struct rdma_cm_id *cma_id,
 
 	ret = rdma_resolve_route(cma_id, rdma_cm_arp_timeout);
 	if (ret) {
-	    ibv_error_abort(IBV_RETURN_ERR,
+	    ibv_va_error_abort(IBV_RETURN_ERR,
 			    "rdma_resolve_route error %d\n", ret);
 	}
 
@@ -161,7 +161,7 @@ int ib_cma_event_handler(struct rdma_cm_id *cma_id,
 
 	ret = rdma_connect(cma_id, &conn_param);
 	if (ret) {
-	    ibv_error_abort(IBV_RETURN_ERR,
+	    ibv_va_error_abort(IBV_RETURN_ERR,
 			    "rdma_connect error %d\n", ret);
 	}
 
@@ -198,7 +198,7 @@ int ib_cma_event_handler(struct rdma_cm_id *cma_id,
 		DEBUG_PRINT("Passive size rejecting connect request: Crossing connection requests expected\n");
 		ret = rdma_reject(cma_id, NULL, 0);
 		if (ret){
-		    ibv_error_abort(IBV_RETURN_ERR,
+		    ibv_va_error_abort(IBV_RETURN_ERR,
 				    "rdma_reject error: %d\n", ret);
 		}
 		break;
@@ -233,7 +233,7 @@ int ib_cma_event_handler(struct rdma_cm_id *cma_id,
 	conn_param.rnr_retry_count = rdma_default_rnr_retry;
 	ret = rdma_accept(cma_id, &conn_param);
 	if (ret) {
-	    ibv_error_abort(IBV_RETURN_ERR,
+	    ibv_va_error_abort(IBV_RETURN_ERR,
 			    "rdma_accept error: %d\n", ret);
 	}
 	
@@ -302,16 +302,16 @@ int ib_cma_event_handler(struct rdma_cm_id *cma_id,
 	break;
 
     case RDMA_CM_EVENT_ADDR_ERROR:
-	ibv_error_abort(IBV_RETURN_ERR,
+	ibv_va_error_abort(IBV_RETURN_ERR,
 			"RDMA CM Address error: rdma cma event %d, error %d\n", event->event,
 			event->status);
     case RDMA_CM_EVENT_ROUTE_ERROR:
-	ibv_error_abort(IBV_RETURN_ERR,
+	ibv_va_error_abort(IBV_RETURN_ERR,
 			"RDMA CM Route error: rdma cma event %d, error %d\n", event->event,
 			event->status);
     case RDMA_CM_EVENT_CONNECT_ERROR:
     case RDMA_CM_EVENT_UNREACHABLE:
-	ibv_error_abort(IBV_RETURN_ERR,
+	ibv_va_error_abort(IBV_RETURN_ERR,
 			"rdma cma event %d, error %d\n", event->event,
 			event->status);
 	break;
@@ -345,7 +345,7 @@ void *cm_thread(void *arg)
 	    return NULL;
 	}
 	if (ret) {
-	    ibv_error_abort(IBV_RETURN_ERR,
+	    ibv_va_error_abort(IBV_RETURN_ERR,
 			    "rdma_get_cm_event err %d\n", ret);
 	}
 
@@ -435,7 +435,7 @@ int ib_init_rdma_cm(struct MPIDI_CH3I_RDMA_Process_t *proc,
     /* Create the listen cm_id */
     ret = rdma_create_id(proc->cm_channel, &proc->cm_listen_id, proc, RDMA_PS_TCP);
     if (ret) {
-	ibv_error_abort(IBV_RETURN_ERR,
+	ibv_va_error_abort(IBV_RETURN_ERR,
 			"rdma_create_id error %d: Could not create listen cm_id\n", ret);
     }
 
@@ -507,7 +507,7 @@ int rdma_cm_get_contexts(){
 
 	ret = rdma_create_id(proc->cm_channel, &tmpcmid, proc, RDMA_PS_TCP);
 	if (ret) {
-	    ibv_error_abort(IBV_RETURN_ERR,
+	    ibv_va_error_abort(IBV_RETURN_ERR,
 			    "rdma_create_id error %d\n", ret);
 	}
 
@@ -517,7 +517,7 @@ int rdma_cm_get_contexts(){
 	ret = rdma_resolve_addr(tmpcmid, NULL, (struct sockaddr *) &sin, rdma_cm_arp_timeout);
 
 	if (ret) {
-	    ibv_error_abort(IBV_RETURN_ERR,
+	    ibv_va_error_abort(IBV_RETURN_ERR,
 			    "rdma_resolve_addr error %d\n", ret);
 	}
 
@@ -560,7 +560,7 @@ int bind_listen_port(int pg_rank, int pg_size)
 
     ret = rdma_listen(proc->cm_listen_id, 2 * (pg_size) * rdma_num_rails);
     if (ret) {
-	ibv_error_abort(IBV_RETURN_ERR,
+	ibv_va_error_abort(IBV_RETURN_ERR,
 			"rdma_listen failed: %d\n", ret);
     }
 
@@ -644,7 +644,7 @@ int rdma_cm_create_qp(int cm_rank, int rail_index, int one_sided)
 
     ret = rdma_create_qp(cmid, proc->ptag[hca_index], &init_attr);
     if (ret){
-	ibv_error_abort(IBV_RETURN_ERR,
+	ibv_va_error_abort(IBV_RETURN_ERR,
 			"Error creating qp using rdma_cm.  %d [cmid: %p, pd: %p, cq: %p] \n",
 			ret, cmid, proc->ptag[hca_index], current_cq);
     }
@@ -795,7 +795,7 @@ int rdma_cm_connect_to_server(int rrank, int ipnum, int rail_index, int one_side
 	ret = rdma_create_id(proc->cm_channel, &(vc->mrail.rails[rail_index].cm_ids), proc, RDMA_PS_TCP);
 
     if (ret) {
-        ibv_error_abort(IBV_RETURN_ERR,
+        ibv_va_error_abort(IBV_RETURN_ERR,
                         "rdma_create_id error %d\n", ret);
     }
 
@@ -812,7 +812,7 @@ int rdma_cm_connect_to_server(int rrank, int ipnum, int rail_index, int one_side
     }
 
     if (ret) {
-        ibv_error_abort(IBV_RETURN_ERR,
+        ibv_va_error_abort(IBV_RETURN_ERR,
                         "rdma_resolve_addr error %d\n", ret);
     }
 

@@ -89,7 +89,7 @@ AVL_TREE *vma_tree;
 
 #ifndef DISABLE_PTMALLOC
 static pthread_spinlock_t dreg_lock = 0;
-static pthread_t          th_id_of_lock = -1;
+static pthread_t          th_id_of_lock;
 
 /* Array which stores the memory regions 
  * ptrs which are to be deregistered after 
@@ -565,7 +565,7 @@ void dreg_init()
         MALLOC(sizeof(dreg_entry) * rdma_ndreg_entries);
 
     if (dreg_free_list == NULL) {
-        ibv_error_abort(GEN_EXIT_ERR,
+        ibv_va_error_abort(GEN_EXIT_ERR,
                 "dreg_init: unable to malloc %d bytes",
                 (int) sizeof(dreg_entry) * rdma_ndreg_entries);
     }
@@ -595,7 +595,7 @@ void dreg_init()
                 rdma_ndreg_entries * MAX_NUM_HCAS);
 
     if(NULL == deregister_mr_array) {
-        ibv_error_abort(GEN_EXIT_ERR,
+        ibv_va_error_abort(GEN_EXIT_ERR,
                 "dreg_init: unable to malloc %d bytes",
                 (int) sizeof(struct ibv_mr*) * 
                 rdma_ndreg_entries * MAX_NUM_HCAS);
@@ -791,7 +791,7 @@ void dreg_decr_refcount(dreg_entry * d)
                     if (deregister_memory(d->memhandle[i])) {
 
                         ibv_error_abort(IBV_RETURN_ERR, 
-                                "[%d] deregister fails\n", __LINE__);
+                                "deregister fails\n");
                     }
                 }
                 d->memhandle[i] = NULL;
@@ -861,7 +861,7 @@ int dreg_evict()
 
             if (deregister_memory(d->memhandle[hca_index])) {
                 ibv_error_abort(IBV_RETURN_ERR,
-                        "[%d] Deregister fails\n", __LINE__);
+                        "Deregister fails\n");
             }
         }
     }

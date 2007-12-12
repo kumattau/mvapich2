@@ -99,7 +99,7 @@ void vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
             mem_handle[i] =  register_memory(vbuf_rdma_buf,
                                 rdma_vbuf_total_size * num_rdma_buffer, i);
             if (!mem_handle[i]) {
-                ibv_error_abort(GEN_EXIT_ERR,
+                ibv_va_error_abort(GEN_EXIT_ERR,
                         "fail to register rdma memory, size %d\n",
                         rdma_vbuf_total_size * num_rdma_buffer);
             }

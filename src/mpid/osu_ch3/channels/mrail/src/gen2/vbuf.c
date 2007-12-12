@@ -258,7 +258,7 @@ vbuf *get_vbuf()
         DEBUG_PRINT("Allocating new vbuf region\n");
         allocate_vbuf_region(rdma_vbuf_secondary_pool_size);
         if (NULL ==free_vbuf_head) {
-            ibv_error_abort(GEN_EXIT_ERR,
+            ibv_va_error_abort(GEN_EXIT_ERR,
                     "No free vbufs. Pool size %d",
                        vbuf_n_allocated);
         }

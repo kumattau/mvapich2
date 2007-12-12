@@ -1306,7 +1306,7 @@ static int Consume_signals(MPID_Win * winptr, uint64_t expected)
          if (ne > 0) {
             i++;
             if (wc.status != IBV_WC_SUCCESS) {
-                ibv_error_abort(IBV_STATUS_ERR, "in Consume_signals "
+                ibv_va_error_abort(IBV_STATUS_ERR, "in Consume_signals "
                         "%08u get wrong status %d \n",
                        (uint32_t)expected, wc.status);
                 

@@ -270,7 +270,7 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
         {
             /* Header is corrupted if control has reached here in prototype */
             /* */
-            ibv_error_abort(-1, "Control shouldn't reach here "
+            ibv_va_error_abort(-1, "Control shouldn't reach here "
                     "in prototype, header %d\n",
                     header->type);
         }

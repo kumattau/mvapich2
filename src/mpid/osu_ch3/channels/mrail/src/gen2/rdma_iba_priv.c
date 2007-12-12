@@ -421,7 +421,7 @@ int rdma_iba_hca_init_noqp(struct MPIDI_CH3I_RDMA_Process_t *proc,
                 }
             }
             if (k < rdma_num_ports) {
-                ibv_error_abort(IBV_STATUS_ERR, "Not enough ports are in active state"
+                ibv_va_error_abort(IBV_STATUS_ERR, "Not enough ports are in active state"
                                 "needed active ports %d\n", rdma_num_ports);
             }
         } else {
@@ -430,7 +430,7 @@ int rdma_iba_hca_init_noqp(struct MPIDI_CH3I_RDMA_Process_t *proc,
                 || (!port_attr.lid )
                 || (port_attr.state != IBV_PORT_ACTIVE))
             {
-                ibv_error_abort(IBV_STATUS_ERR, "user specified port %d: fail to"
+                ibv_va_error_abort(IBV_STATUS_ERR, "user specified port %d: fail to"
                                                 "query or not ACTIVE\n",
                                                 rdma_default_port);
             }
@@ -983,7 +983,7 @@ rdma_iba_allocate_memory(struct MPIDI_CH3I_RDMA_Process_t *proc,
                 /* Start the async thread which watches for SRQ limit events */
                 pthread_create(
                         &MPIDI_CH3I_RDMA_Process.async_thread[hca_num], 
-                        NULL, (void *) async_thread, 
+                        NULL, async_thread, 
                         (void *) 
                         MPIDI_CH3I_RDMA_Process.nic_context[hca_num]);
             }
@@ -1158,9 +1158,10 @@ void IB_ring_based_alltoall(void *sbuf, int data_size,
         /* completion related variables */
         struct ibv_wc rc;
 
+        char* rbufProxy = (char*) rbuf;
 
         /* copy self data*/
-        memcpy(rbuf+data_size*pg_rank, sbuf, data_size);
+        memcpy(rbufProxy+data_size*pg_rank, sbuf, data_size);
 
         /* post receive*/
         for(i = 0; i < MPD_WINDOW; i++) {
@@ -1171,7 +1172,7 @@ void IB_ring_based_alltoall(void *sbuf, int data_size,
             rr.sg_list = &(sg_entry_r);
             rr.next    = NULL;
             sg_entry_r.lkey = addr_hndl->lkey;
-            sg_entry_r.addr = (uintptr_t)(rbuf+data_size*recv_post_index);
+            sg_entry_r.addr = (uintptr_t)(rbufProxy+data_size*recv_post_index);
             sg_entry_r.length = data_size;
 
             if(ibv_post_recv(proc->boot_qp_hndl[0], &rr, &bad_wr_r)) {
@@ -1204,7 +1205,7 @@ void IB_ring_based_alltoall(void *sbuf, int data_size,
                 sr.num_sge        = 1;
                 sr.sg_list        = &sg_entry_s;
                 sr.next           = NULL;
-                sg_entry_s.addr   = (uintptr_t)(rbuf+data_size*send_post_index);
+                sg_entry_s.addr   = (uintptr_t)(rbufProxy+data_size*send_post_index);
                 sg_entry_s.length = data_size;
                 sg_entry_s.lkey   = addr_hndl->lkey;
 
@@ -1238,7 +1239,7 @@ void IB_ring_based_alltoall(void *sbuf, int data_size,
                         rr.sg_list = &(sg_entry_r);
                         rr.next    = NULL;
                         sg_entry_r.lkey = addr_hndl->lkey;
-                        sg_entry_r.addr = (uintptr_t)(rbuf+data_size*recv_post_index);
+                        sg_entry_r.addr = (uintptr_t)(rbufProxy+data_size*recv_post_index);
                         sg_entry_r.length = data_size;
 
                         if(ibv_post_recv(proc->boot_qp_hndl[0], &rr, &bad_wr_r)) {
@@ -1632,7 +1633,7 @@ MPI_Ring_Exchange(struct ibv_mr * addr_hndl, void * addr_pool,
         ne = ibv_poll_cq(proc->boot_cq_hndl, 1, &rc);
         if(ne == 1) {
             if (rc.status != IBV_WC_SUCCESS) {
-                ibv_error_abort(GEN_EXIT_ERR,"Error code %d in polled desc!\n",
+                ibv_va_error_abort(GEN_EXIT_ERR,"Error code %d in polled desc!\n",
 			        rc.status);
             }
             last_send_comp = rc.wr_id;

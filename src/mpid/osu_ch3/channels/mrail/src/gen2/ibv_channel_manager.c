@@ -510,7 +510,7 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
                     fprintf(stderr, "recv desc error, %d\n", wc.opcode);
                 }
 
-                ibv_error_abort(IBV_STATUS_ERR,
+                ibv_va_error_abort(IBV_STATUS_ERR,
                         "[] Got completion with error %d, "
                         "vendor code=%x, dest rank=%d\n",
                         wc.status,    
@@ -704,7 +704,7 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
                             MPIDI_CH3I_RDMA_Process.comp_channel[i], 
                             &ev_cq, &ev_ctx);
                     if (ret && errno != EINTR) {
-                        ibv_error_abort(IBV_RETURN_ERR,
+                        ibv_va_error_abort(IBV_RETURN_ERR,
                                 "Failed to get cq event: %d\n", ret);
                     }       
                 } while (ret && errno == EINTR); 
@@ -792,19 +792,17 @@ void async_thread(void *context)
             case IBV_EVENT_QP_FATAL:
             case IBV_EVENT_QP_REQ_ERR:
             case IBV_EVENT_QP_ACCESS_ERR:
-                ibv_error_abort(GEN_EXIT_ERR, "Got FATAL event %d\n",
+                ibv_va_error_abort(GEN_EXIT_ERR, "Got FATAL event %d\n",
                         event.event_type);
                 break;
             case IBV_EVENT_PATH_MIG_ERR:
+#ifdef DEBUG
                 if(MPIDI_CH3I_RDMA_Process.has_apm) {
                     DEBUG_PRINT("Path Migration Failed\n");
-                    ibv_error_abort(GEN_EXIT_ERR, "Got FATAL event %d\n",
-                            event.event_type);
-
-                } else {
-                    ibv_error_abort(GEN_EXIT_ERR, "Got FATAL event %d\n",
-                            event.event_type);
                 }
+#endif /* ifdef DEBUG */
+                ibv_va_error_abort(GEN_EXIT_ERR, "Got FATAL event %d\n",
+                        event.event_type);
                 break;
             case IBV_EVENT_PATH_MIG:
                 if(MPIDI_CH3I_RDMA_Process.has_apm && !apm_tester){
@@ -813,7 +811,7 @@ void async_thread(void *context)
                 }
 
                 if(!MPIDI_CH3I_RDMA_Process.has_apm) {
-                    ibv_error_abort(GEN_EXIT_ERR, "Got FATAL event %d\n",
+                    ibv_va_error_abort(GEN_EXIT_ERR, "Got FATAL event %d\n",
                             event.event_type);
                 }
                 
@@ -821,7 +819,7 @@ void async_thread(void *context)
 
             case IBV_EVENT_DEVICE_FATAL:
             case IBV_EVENT_SRQ_ERR:
-                ibv_error_abort(GEN_EXIT_ERR, "Got FATAL event %d\n",
+                ibv_va_error_abort(GEN_EXIT_ERR, "Got FATAL event %d\n",
                         event.event_type);
                 break;
 
@@ -901,7 +899,7 @@ void async_thread(void *context)
 
                 if (ibv_modify_srq(MPIDI_CH3I_RDMA_Process.srq_hndl[hca_num], 
                             &srq_attr, IBV_SRQ_LIMIT)) {
-                    ibv_error_abort(GEN_EXIT_ERR,
+                    ibv_va_error_abort(GEN_EXIT_ERR,
                             "Couldn't modify SRQ limit (%u) after posting %d\n",
                             viadev_srq_limit, post_new);
                 }
