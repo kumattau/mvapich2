@@ -90,15 +90,6 @@ int MPIDI_CH3I_RMDA_init(MPIDI_PG_t * pg, int pg_rank)
     char tmp_hname[256];
     int mpi_errno = MPI_SUCCESS;
 
-#ifndef DISABLE_PTMALLOC
-    if(mvapich2_minit()) {
-	MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-		"**fail %s", "Error initializing MVAPICH2 malloc library");
-    }
-#else
-    mallopt(M_TRIM_THRESHOLD, -1);
-    mallopt(M_MMAP_MAX, 0);
-#endif
 
     gethostname(tmp_hname, 255);
     cached_pg = pg;
@@ -118,6 +109,20 @@ int MPIDI_CH3I_RMDA_init(MPIDI_PG_t * pg, int pg_rank)
     rdma_set_default_parameters(&MPIDI_CH3I_RDMA_Process);
 
     rdma_get_user_parameters(pg_size, pg_rank);
+
+#ifndef DISABLE_PTMALLOC
+    if(mvapich2_minit()) {
+        MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister = 0;
+    }
+#else
+    mallopt(M_TRIM_THRESHOLD, -1);
+    mallopt(M_MMAP_MAX, 0);
+    MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister = 0;
+#endif
+
+    if(!MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister) {
+        rdma_r3_threshold = rdma_r3_threshold_nocache;
+    }
 
     rdma_num_rails = rdma_num_hcas * rdma_num_ports * rdma_num_qp_per_port;
 

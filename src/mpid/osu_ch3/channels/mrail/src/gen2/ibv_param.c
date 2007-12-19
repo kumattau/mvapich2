@@ -61,6 +61,8 @@ char          rdma_iba_hca[32];
 int           rdma_max_inline_size;
 unsigned int  rdma_ndreg_entries = RDMA_NDREG_ENTRIES;
 int           rdma_rndv_protocol = VAPI_PROTOCOL_RPUT;
+int           rdma_r3_threshold = 4096;
+int           rdma_r3_threshold_nocache = 8192 * 4;
 int           num_rdma_buffer;
 
 /* Whether coalescing of messages should be attempted */
@@ -543,6 +545,20 @@ int  rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
             MPIU_Usage_printf("MV2_RNDV_PROTOCOL "
                     "must be either \"RPUT\", \"RGET\", or \"R3\"");
             rdma_rndv_protocol = VAPI_PROTOCOL_RPUT;
+        }
+    }
+
+    if ((value = getenv("MV2_R3_THRESHOLD")) != NULL) {
+        rdma_r3_threshold = atoi(value);
+        if(rdma_r3_threshold < 0) {
+            rdma_r3_threshold = 0;
+        }
+    }
+
+    if ((value = getenv("MV2_R3_NOCACHE_THRESHOLD")) != NULL) {
+        rdma_r3_threshold_nocache = atoi(value);
+        if(rdma_r3_threshold_nocache < 0) {
+            rdma_r3_threshold_nocache = 0;
         }
     }
 

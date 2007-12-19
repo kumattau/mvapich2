@@ -74,6 +74,11 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv(MPIDI_VC_t * vc, MPID_Request * req)
     }
     req->mrail.rndv_buf_off = 0;
 
+    /* Step 1.5: If use R3 for smaller messages */
+    if(req->mrail.rndv_buf_sz >= rdma_r3_threshold) {
+        req->mrail.protocol = VAPI_PROTOCOL_R3;
+    }
+
     /* Step 2: try register and decide the protocol */
 
     if ( (VAPI_PROTOCOL_RPUT == req->mrail.protocol) ||
