@@ -22,8 +22,7 @@
 #include "pmi.h"
 
 #ifdef _SMP_
-static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t *,
-                                                MPID_Request *);
+static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t *, MPID_Request *);
 #endif
 
 MPIDI_VC_t *flowlist;
