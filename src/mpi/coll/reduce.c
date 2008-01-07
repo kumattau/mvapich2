@@ -729,14 +729,14 @@ int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
     MPI_Comm shmem_comm, leader_comm;
     MPID_Comm *shmem_commptr = 0, *leader_commptr = 0;
     int local_rank = -1, global_rank = -1, local_size=0, my_rank;
-    void* local_buf, *tmpbuf;
+    void* local_buf, *tmpbuf, *tmpbuf1;
     MPI_Aint   true_lb, true_extent, extent;
     MPI_User_function *uop;
     int stride = 0, i, is_commutative, size;
     MPID_Op *op_ptr;
     MPI_Status status;
     int leader_root, total_size, shmem_comm_rank;
-    MPIU_CHKLMEM_DECL(1);
+    MPIU_CHKLMEM_DECL(2);
 #ifdef HAVE_CXX_BINDING
     int is_cxx_uop = 0;
 #endif
@@ -918,6 +918,8 @@ int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
                     global_rank = leader_commptr->rank;
                     MPIU_CHKLMEM_MALLOC(tmpbuf, void *, count*(MPIR_MAX(extent,true_extent)), mpi_errno, "receive buffer");
                     tmpbuf = (void *)((char*)tmpbuf - true_lb);
+                    MPIU_CHKLMEM_MALLOC(tmpbuf1, void *, count*(MPIR_MAX(extent,true_extent)), mpi_errno, "receive buffer");
+                    tmpbuf1 = (void *)((char*)tmpbuf1 - true_lb);
                     MPIR_Nest_incr();
                     mpi_errno = MPIR_Localcopy(sendbuf, count, datatype, tmpbuf,
                             count, datatype);
@@ -953,7 +955,7 @@ int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
                     leader_root = comm_ptr->leader_rank[leader_of_root];
                     if (local_size != total_size){
                         MPIR_Nest_incr();
-                        mpi_errno = MPIR_Reduce(tmpbuf, recvbuf, count, datatype,
+                        mpi_errno = MPIR_Reduce(tmpbuf, tmpbuf1, count, datatype,
                                 op, leader_root, leader_commptr); 
                         MPIR_Nest_decr();
                     }
@@ -975,6 +977,13 @@ int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
                     MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(local_size, local_rank, shmem_comm_rank);
                 }
 
+                if ((local_rank == 0) && (root == my_rank)){
+                    MPIR_Nest_incr();
+                    mpi_errno = MPIR_Localcopy(tmpbuf1, count, datatype, recvbuf,
+                            count, datatype);
+                    MPIR_Nest_decr();
+                    goto fn_exit;
+                }
 
                 /* Copying data from leader to the root incase leader is
                  * not the root */
@@ -988,7 +997,7 @@ int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
                                     MPIR_REDUCE_TAG, comm );
                         }
                         else{
-                            mpi_errno  = MPIC_Send( recvbuf, count, datatype, root, 
+                            mpi_errno  = MPIC_Send( tmpbuf1, count, datatype, root, 
                                     MPIR_REDUCE_TAG, comm );
                         }
                     }
