@@ -55,8 +55,8 @@ char *shmem_file = NULL;
 char hostname[SHMEM_COLL_HOSTNAME_LEN];
 int my_rank;
 
-int 	shmem_coll_blocks = 4;
-int 	shmem_coll_max_msg_size = (1<<20);
+int 	shmem_coll_blocks = 8;
+int 	shmem_coll_max_msg_size = (1<<17);
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_SHMEM_COLL_Init

@@ -83,12 +83,11 @@
 
 #endif
 
-#define SHMEM_COLL_NUM_PROCS 16
+#define SHMEM_COLL_NUM_PROCS 32 
 #define SHMEM_COLL_NUM_COMM  20
 
-#define SHMEM_COLL_MAX_MSG_SIZE (1<<20)
+#define SHMEM_COLL_MAX_MSG_SIZE (1<<17)
 #define SHMEM_COLL_BLOCK_SIZE    ((smpi.num_local_nodes) * shmem_coll_max_msg_size)
-#define SHMEM_COLL_BUF_SIZE (shmem_coll_blocks * SHMEM_COLL_BLOCK_SIZE)
     
 /* the shared area itself */
 typedef struct {
@@ -105,6 +104,7 @@ typedef struct {
     char shmem_coll_buf;
 }shmem_coll_region;
 
+#define SHMEM_COLL_BUF_SIZE (shmem_coll_blocks * SHMEM_COLL_BLOCK_SIZE + sizeof(shmem_coll_region))
 shmem_coll_region *shmem_coll;
 
 #endif
