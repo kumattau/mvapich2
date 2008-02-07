@@ -86,7 +86,7 @@ extern long rdma_eagersize_1sc;
 #define UDAPL_MAX_RDMA_SIZE            (1048576)
 
 #ifndef DAPL_DEFAULT_PROVIDER
-#define DAPL_DEFAULT_PROVIDER           "ib0"
+#define DAPL_DEFAULT_PROVIDER           "OpenIB-cma"
 #endif
 
 #define DAPL_DEFAULT_MIN_EVD_SIZE            (256)
