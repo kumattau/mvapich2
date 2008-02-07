@@ -283,7 +283,7 @@ int MPIDI_CH3I_MRAILI_Get_next_vbuf_local(MPIDI_VC_t *vc,
 }
 
 int MPIDI_CH3I_MRAILI_Get_next_vbuf(MPIDI_VC_t ** vc_ptr, 
-        vbuf ** vbuf_ptr, int is_blocking)
+        vbuf ** vbuf_ptr)
 {
     MPIDI_VC_t *vc;
     int type = T_CHANNEL_NO_ARRIVE;

@@ -98,7 +98,7 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int is_blocki
         }
     }
   } else {
-       type = MPIDI_CH3I_MRAILI_Get_next_vbuf(vc_pptr, v_ptr, is_blocking);
+       type = MPIDI_CH3I_MRAILI_Get_next_vbuf(vc_pptr, v_ptr);
        if (type != T_CHANNEL_NO_ARRIVE) {
            goto fn_exit;
        }
@@ -127,7 +127,7 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int is_blocki
 
 #endif
 #else
-    type = MPIDI_CH3I_MRAILI_Get_next_vbuf(vc_pptr, v_ptr, is_blocking);
+    type = MPIDI_CH3I_MRAILI_Get_next_vbuf(vc_pptr, v_ptr);
     if (type != T_CHANNEL_NO_ARRIVE) {
 	goto fn_exit;
     } 

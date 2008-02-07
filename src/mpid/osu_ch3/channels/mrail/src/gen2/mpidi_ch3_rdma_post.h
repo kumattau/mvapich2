@@ -218,7 +218,7 @@ int MPIDI_CH3I_MRAILI_Get_next_vbuf_local(MPIDI_VC_t *vc,
         vbuf ** vbuf_handle, int is_blocking);
         
 int MPIDI_CH3I_MRAILI_Get_next_vbuf(MPIDI_VC_t ** vc_ptr, 
-        vbuf ** vbuf_ptr, int is_blocking);
+        vbuf ** vbuf_ptr);
 
 int MPIDI_CH3I_MRAILI_Waiting_msg(MPIDI_VC_t * vc, vbuf **, int blocking);
 
