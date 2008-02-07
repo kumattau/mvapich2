@@ -181,8 +181,8 @@ prompt_udapl_provider() {
 	echo "The Solaris recommendation is ibd0."
 	REC_DAPL_PROVIDER=ibd0
     else
-	echo "The Linux recommendation is ib0."
-	REC_DAPL_PROVIDER=ib0
+	echo "The Linux recommendation is OpenIB-cma."
+	REC_DAPL_PROVIDER=OpenIB-cma
     fi
 
     echo
