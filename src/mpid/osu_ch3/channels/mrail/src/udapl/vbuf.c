@@ -152,6 +152,16 @@ allocate_vbuf_region (int nvbufs)
       {
 
           region.for_va = (DAT_PVOID) free_vbuf_head;
+#ifdef _V2_
+          result = dat_lmr_create (nic_save[i],
+                                   DAT_MEM_TYPE_VIRTUAL, region,
+                                   nvbufs * sizeof (vbuf),
+                                   ptag_save[i], DAT_MEM_PRIV_ALL_FLAG,
+				   DAT_VA_TYPE_VA,
+                                   &mem_handle.hndl,
+                                   &mem_handle.lkey,
+                                   &mem_handle.rkey, &reg_size, &reg_addr);
+#else
           result = dat_lmr_create (nic_save[i],
                                    DAT_MEM_TYPE_VIRTUAL, region,
                                    nvbufs * sizeof (vbuf),
@@ -159,6 +169,7 @@ allocate_vbuf_region (int nvbufs)
                                    &mem_handle.hndl,
                                    &mem_handle.lkey,
                                    &mem_handle.rkey, &reg_size, &reg_addr);
+#endif
 
           if (result != DAT_SUCCESS)
               udapl_error_abort (GEN_ASSERT_ERR, "cannot create lmr");
@@ -400,8 +411,13 @@ vbuf_init_rput (vbuf * v, void *local_address,
     v->desc.cookie.as_ptr = (DAT_PVOID) v;
 
     v->desc.remote_iov.segment_length = len;
+#ifdef _V2_
+    v->desc.remote_iov.virtual_address =
+        (DAT_VADDR) (unsigned long) (remote_address);
+#else
     v->desc.remote_iov.target_address =
         (DAT_VADDR) (unsigned long) (remote_address);
+#endif
     v->desc.remote_iov.rmr_context = remote_memhandle.rkey;
 
     v->desc.local_iov.segment_length = len;

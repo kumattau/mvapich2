@@ -15,7 +15,11 @@
 #include "pmi.h"
 #include "udapl_util.h"
 #include "udapl_param.h"
+#ifdef _V2_
+#include <dat2/udat.h>
+#else
 #include <dat/udat.h>
+#endif
 
 #ifndef MAC_OSX
 #include <malloc.h>
@@ -1178,6 +1182,22 @@ rdma_iba_allocate_memory (struct MPIDI_CH3I_RDMA_Process_t *proc,
                 /* initialize unsignal record */
 
                 region.for_va = (DAT_PVOID) vc->mrail.rfp.RDMA_send_buf;
+#ifdef _V2_
+                result = dat_lmr_create (proc->nic[iter_hca],
+                                         DAT_MEM_TYPE_VIRTUAL, region,
+                                         sizeof (struct vbuf) *
+                                         (num_rdma_buffer),
+                                         proc->ptag[iter_hca],
+                                         DAT_MEM_PRIV_ALL_FLAG,
+					 DAT_VA_TYPE_VA,
+                                         &(vc->mrail.rfp.
+                                           RDMA_send_buf_hndl[iter_hca].hndl),
+                                         &(vc->mrail.rfp.
+                                           RDMA_send_buf_hndl[iter_hca].lkey),
+                                         &(vc->mrail.rfp.
+                                           RDMA_send_buf_hndl[iter_hca].rkey),
+                                         &reg_size, &reg_addr);
+#else
                 result = dat_lmr_create (proc->nic[iter_hca],
                                          DAT_MEM_TYPE_VIRTUAL, region,
                                          sizeof (struct vbuf) *
@@ -1191,11 +1211,28 @@ rdma_iba_allocate_memory (struct MPIDI_CH3I_RDMA_Process_t *proc,
                                          &(vc->mrail.rfp.
                                            RDMA_send_buf_hndl[iter_hca].rkey),
                                          &reg_size, &reg_addr);
+#endif
 
                 if (result != DAT_SUCCESS)
                     udapl_error_abort (GEN_ASSERT_ERR, "cannot create lmr");
 
                 region.for_va = (DAT_PVOID) vc->mrail.rfp.RDMA_recv_buf;
+#ifdef _V2_
+                result = dat_lmr_create (proc->nic[iter_hca],
+                                         DAT_MEM_TYPE_VIRTUAL, region,
+                                         sizeof (struct vbuf) *
+                                         (num_rdma_buffer),
+                                         proc->ptag[iter_hca],
+                                         DAT_MEM_PRIV_ALL_FLAG,
+					 DAT_VA_TYPE_VA,
+                                         &(vc->mrail.rfp.
+                                           RDMA_recv_buf_hndl[iter_hca].hndl),
+                                         &(vc->mrail.rfp.
+                                           RDMA_recv_buf_hndl[iter_hca].lkey),
+                                         &(vc->mrail.rfp.
+                                           RDMA_recv_buf_hndl[iter_hca].rkey),
+                                         &reg_size, &reg_addr);
+#else
                 result = dat_lmr_create (proc->nic[iter_hca],
                                          DAT_MEM_TYPE_VIRTUAL, region,
                                          sizeof (struct vbuf) *
@@ -1209,7 +1246,7 @@ rdma_iba_allocate_memory (struct MPIDI_CH3I_RDMA_Process_t *proc,
                                          &(vc->mrail.rfp.
                                            RDMA_recv_buf_hndl[iter_hca].rkey),
                                          &reg_size, &reg_addr);
-
+#endif
                 if (result != DAT_SUCCESS)
                     udapl_error_abort (GEN_ASSERT_ERR, "cannot create lmr");
 
@@ -1566,7 +1603,11 @@ conn_server (int n, int pg_rank, int pg_size)
                           ("Error: connection request mismatch.\n");
                       if (cr_stat.cr_handle)
                         {
+#ifdef _V2_
+                            dat_cr_reject (cr_stat.cr_handle, 0, NULL);
+#else
                             dat_cr_reject (cr_stat.cr_handle);
+#endif
                         }
                       continue;
                   }
@@ -1632,7 +1673,11 @@ conn_server_1sc (int n, int pg_rank, int pg_size)
                           ("Error: connection request mismatch.\n");
                       if (cr_stat.cr_handle)
                         {
+#ifdef _V2_
+                            dat_cr_reject (cr_stat.cr_handle, 0, NULL);
+#else
                             dat_cr_reject (cr_stat.cr_handle);
+#endif
                         }
                       continue;
                   }

@@ -16,7 +16,11 @@
 
 #include "udapl_arch.h"
 #include "mpi.h"
+#ifdef _V2_
+#include <dat2/udat.h>
+#else
 #include <dat/udat.h>
+#endif
 
 extern unsigned long rdma_default_max_cq_size;
 extern int rdma_default_port;

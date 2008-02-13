@@ -445,8 +445,13 @@ MPIDI_CH3I_RDMA_post (MPID_Win * win_ptr, int target_rank)
         segment_length = size;
     tmp_vc->mrail.ddesc1sc[win_ptr->put_get_list_tail].remote_iov.
         rmr_context = r_key;
+#ifdef _V2_
+    tmp_vc->mrail.ddesc1sc[win_ptr->put_get_list_tail].remote_iov.
+        virtual_address = (DAT_VADDR) (unsigned long) remote_address;
+#else
     tmp_vc->mrail.ddesc1sc[win_ptr->put_get_list_tail].remote_iov.
         target_address = (DAT_VADDR) (unsigned long) remote_address;
+#endif
     tmp_vc->mrail.ddesc1sc[win_ptr->put_get_list_tail].remote_iov.
         segment_length = size;
     POST_PUT_PUT_GET_LIST (win_ptr, -1, NULL, tmp_vc,
@@ -891,10 +896,17 @@ Decrease_CC (MPID_Win * win_ptr, int target_rank)
         segment_length = sizeof (long long);
     tmp_vc->mrail.ddesc1sc[win_ptr->put_get_list_tail].remote_iov.
         rmr_context = r_key2;
+#ifdef _V2_
+    tmp_vc->mrail.ddesc1sc[win_ptr->put_get_list_tail].remote_iov.
+        virtual_address =
+        (DAT_VADDR) (unsigned long) (win_ptr->
+                                     all_completion_counter[target_rank]);
+#else
     tmp_vc->mrail.ddesc1sc[win_ptr->put_get_list_tail].remote_iov.
         target_address =
         (DAT_VADDR) (unsigned long) (win_ptr->
                                      all_completion_counter[target_rank]);
+#endif
     tmp_vc->mrail.ddesc1sc[win_ptr->put_get_list_tail].remote_iov.
         segment_length = sizeof (long long);
     POST_PUT_PUT_GET_LIST (win_ptr, -1, NULL, tmp_vc,
@@ -1201,8 +1213,13 @@ IBA_PUT (MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr, int size)
         segment_length = size;
     tmp_vc->mrail.ddesc1sc[win_ptr->put_get_list_tail].remote_iov.
         rmr_context = r_key;
+#ifdef _V2_
+    tmp_vc->mrail.ddesc1sc[win_ptr->put_get_list_tail].remote_iov.
+        virtual_address = (DAT_VADDR) (unsigned long) remote_address;
+#else
     tmp_vc->mrail.ddesc1sc[win_ptr->put_get_list_tail].remote_iov.
         target_address = (DAT_VADDR) (unsigned long) remote_address;
+#endif
     tmp_vc->mrail.ddesc1sc[win_ptr->put_get_list_tail].remote_iov.
         segment_length = size;
     POST_PUT_PUT_GET_LIST (win_ptr, size, tmp_dreg, tmp_vc,
@@ -1265,8 +1282,13 @@ IBA_GET (MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr, int size)
         segment_length = size;
     tmp_vc->mrail.ddesc1sc[win_ptr->put_get_list_tail].remote_iov.
         rmr_context = r_key;
+#ifdef _V2_
+    tmp_vc->mrail.ddesc1sc[win_ptr->put_get_list_tail].remote_iov.
+        virtual_address = (DAT_VADDR) (unsigned long) remote_address;
+#else
     tmp_vc->mrail.ddesc1sc[win_ptr->put_get_list_tail].remote_iov.
         target_address = (DAT_VADDR) (unsigned long) remote_address;
+#endif
     tmp_vc->mrail.ddesc1sc[win_ptr->put_get_list_tail].remote_iov.
         segment_length = size;
     if (size <= rdma_eagersize_1sc)

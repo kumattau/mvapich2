@@ -279,8 +279,13 @@ VBUF_SET_RDMA_ADDR_KEY (vbuf * v, int len,
                         DAT_LMR_CONTEXT lkey,
                         void *remote_addr, DAT_RMR_CONTEXT rkey)
 {
+#ifdef _V2_
+    (v)->desc.remote_iov.virtual_address =
+        (DAT_VADDR) (unsigned long) (remote_addr);
+#else
     (v)->desc.remote_iov.target_address =
         (DAT_VADDR) (unsigned long) (remote_addr);
+#endif
     (v)->desc.remote_iov.segment_length = (DAT_VLEN) (len);
     (v)->desc.remote_iov.rmr_context = (rkey);
 

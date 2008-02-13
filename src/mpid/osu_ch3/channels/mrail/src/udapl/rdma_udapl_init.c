@@ -1779,8 +1779,11 @@ static void *od_conn_server( void * arg )
 
                 } else {
                     /* I'm the client, reject the duplicated request */
-
+#ifdef _V2_
+                    status = dat_cr_reject(cr_stat.cr_handle, 0, NULL);
+#else
                     status = dat_cr_reject(cr_stat.cr_handle);
+#endif
                     if (status != DAT_SUCCESS) {
                         MPIU_Internal_error_printf("Error: fail to reject connection req.\n");
                     } 

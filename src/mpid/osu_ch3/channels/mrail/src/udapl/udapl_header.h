@@ -19,7 +19,11 @@
 #undef OUT
 #include "udapl_param.h"
 #include "udapl_arch.h"
+#ifdef _V2_
+#include <dat2/udat.h>
+#else
 #include <dat/udat.h>
+#endif
 #include <inttypes.h>
 #include <stdlib.h>
 

@@ -63,6 +63,26 @@ fi
 
 export MPI_F90FLAGS=$OPT_FLAG
 
+# DAPL version
+if [ $ARCH = "SOLARIS" ]; then
+    DAPL_VERSION=_V1_
+else
+    DAPL_VERSION=${DAPL_VERSION:-}
+    if [ -z "$DAPL_VERSION" ]; then
+        prompt_dapl_version
+    fi
+
+    if [ $DAPL_VERSION == "_V1_" ]; then
+        if [ ! -d $DAT_INCLUDE/dat ]; then
+            die_setup "$DAT_INCLUDE/dat/ does not exist, please check if you need to use DAPL v2.0."
+        fi
+    else
+        if [ ! -d $DAT_INCLUDE/dat2 ]; then
+            die_setup "$DAT_INCLUDE/dat2/ does not exist, please check if you need to use DAPL v1.2."
+        fi
+    fi
+fi
+
 # Cluster size.
 # Supported: "_SMALL_CLUSTER", "_MEDIUM_CLUSTER", and "_LARGE_CLUSTER"
 VCLUSTER=${VCLUSTER:-}
@@ -133,12 +153,16 @@ if [ $ARCH = "SOLARIS" ]; then
     export LIBS=${LIBS:--L${DAT_LIB} -L/usr/ucblib/amd64 -lsocket -lnsl -lresolv -lpthread -ldat -lrt}
 else
     export MAKE=make
-    export LIBS=${LIBS:--L${DAT_LIB} -lpthread -ldat}
+    if [ $DAPL_VERSION = "_V1_" ]; then
+        export LIBS=${LIBS:--L${DAT_LIB} -lpthread -ldat}
+    else
+        export LIBS=${LIBS:--L${DAT_LIB} -lpthread -ldat2}
+    fi
 fi
 
 export LD_LIBRARY_PATH=${DAT_LIB}:/usr/ucblib/amd64:$LD_LIBRARY_PATH
 export FFLAGS=${FFLAGS:--L${DAT_LIB}}
-export CFLAGS=${CFLAGS:--D${ARCH} -D_SMP_ -DRDMA_FAST_PATH -DUSE_HEADER_CACHING -DLAZY_MEM_UNREGISTER  -DONE_SIDED -DMPIDI_CH3_CHANNEL_RNDV -DMPID_USE_SEQUENCE_NUMBERS -D${VCLUSTER} -D${IO_BUS} -D${LINKS} -DDAPL_DEFAULT_PROVIDER=\"\\\"$DAPL_DEFAULT_PROVIDER\\\"\" -I${DAT_INCLUDE} $OPT_FLAG}
+export CFLAGS=${CFLAGS:--D${ARCH} -D${DAPL_VERSION} -D_SMP_ -DRDMA_FAST_PATH -DUSE_HEADER_CACHING -DLAZY_MEM_UNREGISTER  -DONE_SIDED -DMPIDI_CH3_CHANNEL_RNDV -DMPID_USE_SEQUENCE_NUMBERS -D${VCLUSTER} -D${IO_BUS} -D${LINKS} -DDAPL_DEFAULT_PROVIDER=\"\\\"$DAPL_DEFAULT_PROVIDER\\\"\" -I${DAT_INCLUDE} $OPT_FLAG}
 
 if [ $ARCH = "SOLARIS" ]; then
 	export CFLAGS="${CFLAGS} -DDISABLE_PTMALLOC"   

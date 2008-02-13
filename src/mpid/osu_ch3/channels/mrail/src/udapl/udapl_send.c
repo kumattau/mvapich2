@@ -20,7 +20,11 @@
 #include "udapl_util.h"
 #include "udapl_priv.h"
 #include "vbuf.h"
+#ifdef _V2_
+#include <dat2/udat.h>
+#else
 #include <dat/udat.h>
+#endif
 
 #undef DEBUG_PRINT
 #ifdef DEBUG

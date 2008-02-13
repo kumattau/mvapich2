@@ -1062,12 +1062,22 @@ int register_memory(void * buf, int len, int hca_num, dreg_entry *d)
 
     region.for_va = buf;
     
+#ifdef _V2_
     ret = dat_lmr_create (MPIDI_CH3I_RDMA_Process.nic[hca_num],
                          DAT_MEM_TYPE_VIRTUAL, region, len,
                          MPIDI_CH3I_RDMA_Process.ptag[hca_num], 
                          DAT_MEM_PRIV_ALL_FLAG,
+			 DAT_VA_TYPE_VA,
                          &d->memhandle.hndl, &d->memhandle.lkey,
                          &d->memhandle.rkey, &reg_size, &reg_addr);
+#else
+    ret = dat_lmr_create (MPIDI_CH3I_RDMA_Process.nic[hca_num],
+                         DAT_MEM_TYPE_VIRTUAL, region, len,
+                         MPIDI_CH3I_RDMA_Process.ptag[hca_num],
+                         DAT_MEM_PRIV_ALL_FLAG,
+                         &d->memhandle.hndl, &d->memhandle.lkey,
+                         &d->memhandle.rkey, &reg_size, &reg_addr);
+#endif
 
     DEBUG_PRINT("register return mr %p, buf %p, len %d\n", mr, buf, len);
     return ret;

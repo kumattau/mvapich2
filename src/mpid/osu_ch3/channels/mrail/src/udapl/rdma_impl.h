@@ -25,7 +25,11 @@
 #include "udapl_priv.h"
 #include "mpidi_ch3_rdma_pre.h"
 
+#ifdef _V2_
+#include <dat2/udat.h>
+#else
 #include <dat/udat.h>
+#endif
 #include <pthread.h>
 
 typedef struct MPIDI_CH3I_RDMA_Process_t
