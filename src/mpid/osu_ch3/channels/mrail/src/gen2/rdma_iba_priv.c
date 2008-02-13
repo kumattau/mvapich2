@@ -12,7 +12,6 @@
 
 #include <netdb.h>
 #include <string.h>
-#include <sysfs/libsysfs.h>
 #include "vbuf.h"
 #include "rdma_impl.h"
 #include "pmi.h"
