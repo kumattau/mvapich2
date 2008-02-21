@@ -123,7 +123,14 @@ static inline int get_host_id(char *myhostname, int hostname_len)
 int rdma_iba_bootstrap_cleanup(struct MPIDI_CH3I_RDMA_Process_t *proc)
 {
     int mpi_errno = MPI_SUCCESS;
+    int error;
     int ret;
+
+    error = PMI_Barrier();
+    if (error != 0) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                "**pmi_barrier", "**pmi_barrier %d", error);
+    }
 
     ret = ibv_dereg_mr(proc->boot_mem_hndl);
     free(proc->boot_mem);
