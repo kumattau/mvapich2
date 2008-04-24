@@ -1590,10 +1590,8 @@ MPI_Ring_Exchange(struct ibv_mr * addr_hndl, void * addr_pool,
                             recv_packet->host_id;
 
 #ifdef _SMP_
-                      if (SMP_INIT) {
                         MPIDI_PG_Get_vc(cached_pg, recv_packet->rank, &vc);
                         vc->smp.hostid = recv_packet->host_id;
-                      }
 #endif
                         
                         rdma_iba_addr_table.qp_num_rdma[recv_packet->rank][rail_index] =
