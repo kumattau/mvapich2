@@ -221,6 +221,11 @@ int ib_cma_event_handler(struct rdma_cm_id *cma_id,
 	/* Create qp */
         rdma_cm_create_qp(rank, rail_index, one_sided);
 
+	/* Posting a single buffer to cover for iWARP MPA requirement */
+	if (proc->use_iwarp_mode && !one_sided) {
+	    PREPOST_VBUF_RECV(vc, rail_index);
+	}
+
 	if (rdma_cm_accept_count[rank] == max_count) {
 	    MRAILI_Init_vc(vc, rank);
 	}
