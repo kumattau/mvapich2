@@ -222,7 +222,7 @@ int ib_cma_event_handler(struct rdma_cm_id *cma_id,
         rdma_cm_create_qp(rank, rail_index, one_sided);
 
 	/* Posting a single buffer to cover for iWARP MPA requirement */
-	if (proc->use_iwarp_mode && !one_sided) {
+	if (proc->use_iwarp_mode && !one_sided && !proc->has_srq) {
 	    PREPOST_VBUF_RECV(vc, rail_index);
 	}
 
