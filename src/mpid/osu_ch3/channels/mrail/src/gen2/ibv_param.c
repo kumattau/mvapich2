@@ -244,6 +244,8 @@ static inline int get_hca_type(struct ibv_device *dev,
                 fprintf(stderr,"Unknown Mellanox PCI-Express HCA"
                         " best guess as Mellanox PCI-Express SDR\n");
 
+                fprintf(stderr, "rate: %d\n", rate);
+
                 hca_type = MLX_PCI_EX_SDR;
             }
 

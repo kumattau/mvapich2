@@ -126,6 +126,10 @@ int MPIDI_CH3I_RMDA_init(MPIDI_PG_t * pg, int pg_rank)
 
     rdma_num_rails = rdma_num_hcas * rdma_num_ports * rdma_num_qp_per_port;
 
+    for(i = 0; i < rdma_num_hcas; i++) {
+        pthread_mutex_init(&MPIDI_CH3I_RDMA_Process.async_mutex_lock[i], 0); 
+    }
+
     DEBUG_PRINT("num_qp_per_port %d, num_rails = %d\n", rdma_num_qp_per_port,
 	    rdma_num_rails);
 
@@ -776,9 +780,13 @@ int MPIDI_CH3I_RMDA_finalize()
 	if (MPIDI_CH3I_RDMA_Process.has_srq) {
 	    pthread_cond_destroy(&MPIDI_CH3I_RDMA_Process.srq_post_cond[i]);
 	    pthread_mutex_destroy(&MPIDI_CH3I_RDMA_Process.srq_post_mutex_lock[i]);
+
+	    pthread_mutex_lock(&MPIDI_CH3I_RDMA_Process.async_mutex_lock[i]);
 	    pthread_cancel(MPIDI_CH3I_RDMA_Process.async_thread[i]);
 	    pthread_join(MPIDI_CH3I_RDMA_Process.async_thread[i], NULL);
 	    err = ibv_destroy_srq(MPIDI_CH3I_RDMA_Process.srq_hndl[i]);
+	    pthread_mutex_unlock(&MPIDI_CH3I_RDMA_Process.async_mutex_lock[i]);
+	    pthread_mutex_destroy(&MPIDI_CH3I_RDMA_Process.async_mutex_lock[i]);
 	    if (err)
 		MPIU_Error_printf("Failed to destroy SRQ (%d)\n", err);
 	}

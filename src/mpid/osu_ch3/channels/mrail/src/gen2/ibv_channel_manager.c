@@ -786,6 +786,14 @@ void async_thread(void *context)
             fprintf(stderr, "Error getting event!\n"); 
         }
 
+        for(i = 0; i < rdma_num_hcas; i++) {
+            if(MPIDI_CH3I_RDMA_Process.nic_context[i] == context) {
+                hca_num = i;
+            }
+        }
+
+        pthread_mutex_lock(&MPIDI_CH3I_RDMA_Process.async_mutex_lock[hca_num]);
+
         switch (event.event_type) {
             /* Fatal */
             case IBV_EVENT_CQ_ERR:
@@ -837,11 +845,6 @@ void async_thread(void *context)
 
                 pthread_spin_lock(&MPIDI_CH3I_RDMA_Process.srq_post_spin_lock);
 
-                for(i = 0; i < rdma_num_hcas; i++) {
-                    if(MPIDI_CH3I_RDMA_Process.nic_context[i] == context) {
-                        hca_num = i;
-                    }
-                }
 
                 if(-1 == hca_num) {
                     /* Was not able to find the context,
@@ -914,6 +917,7 @@ void async_thread(void *context)
         }
 
         ibv_ack_async_event(&event);
+        pthread_mutex_unlock(&MPIDI_CH3I_RDMA_Process.async_mutex_lock[hca_num]);
     }
 }
 

@@ -111,6 +111,7 @@ typedef struct MPIDI_CH3I_RDMA_Process_t {
     struct ibv_srq              *srq_hndl[MAX_NUM_HCAS];
     pthread_spinlock_t          srq_post_spin_lock;
     pthread_mutex_t             srq_post_mutex_lock[MAX_NUM_HCAS];
+    pthread_mutex_t             async_mutex_lock[MAX_NUM_HCAS];
     pthread_cond_t              srq_post_cond[MAX_NUM_HCAS];
     uint32_t                    srq_zero_post_counter[MAX_NUM_HCAS];
     pthread_t                   async_thread[MAX_NUM_HCAS];
