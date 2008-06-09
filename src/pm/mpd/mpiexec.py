@@ -841,6 +841,19 @@ def handle_local_argset(argset,machineFileInfo,msgToMPD):
         print 'no cmd specified'
         usage()
 
+    global recvTimeout
+    recvTimeoutMultiplier = 0.05
+    if os.environ.has_key('MV2_MPD_RECVTIMEOUT_MULTIPLIER'):
+        try:
+            recvTimeoutMultiplier = int(os.environ['MV2_MPD_RECVTIMEOUT_MULTIPLIER'])
+        except ValueError:
+            try:
+                recvTimeoutMultiplier = float(os.environ['MV2_MPD_RECVTIMEOUT_MULTIPLIER'])
+            except ValueError:
+                print 'Invalid MV2_MPD_RECVTIMEOUT_MULTIPLIER. Value must be a number.'
+                sys.exit(-1)
+    recvTimeout = nProcs * recvTimeoutMultiplier
+
     argsetLoRange = nextRange
     argsetHiRange = nextRange + nProcs - 1
     loRange = argsetLoRange
