@@ -3,6 +3,9 @@ MVAPICH2 Changelog
 This file briefly describes the latest changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+06/09/2008
+* Configurable MPD mpiexec timeout based on the number of processes.
+
 04/24/2008
 * Fix a startup performance issue when on-demand connection setup is not 
   used.
