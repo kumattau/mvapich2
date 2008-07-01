@@ -83,10 +83,18 @@ int MPIR_Allgather (
     int        mpi_errno = MPI_SUCCESS;
     MPI_Aint   recvtype_extent;
     MPI_Aint recvtype_true_extent, recvbuf_extent, recvtype_true_lb;
+#if defined(_OSU_MVAPICH_)
+    int j, i, src, rem;
+#else /* defined(_OSU_MVAPICH_) */
     int        j, i, pof2, src, rem;
+#endif /* defined(_OSU_MVAPICH_) */
     static const char FCNAME[] = "MPIR_Allgather";
     void *tmp_buf;
+#if defined(_OSU_MVAPICH_)
+    int curr_cnt, dst, type_size, left, right, jnext;
+#else /* defined(_OSU_MVAPICH_) */
     int curr_cnt, dst, type_size, left, right, jnext, comm_size_is_pof2;
+#endif /* defined(_OSU_MVAPICH_) */
     MPI_Comm comm;
     MPI_Status status;
     int mask, dst_tree_root, my_tree_root, is_homogeneous,  
@@ -107,6 +115,7 @@ int MPIR_Allgather (
     MPID_Datatype_get_size_macro( recvtype, type_size );
 
     /* check if comm_size is a power of two */
+#if !defined(_OSU_MVAPICH_)
     pof2 = 1;
     while (pof2 < comm_size)
         pof2 *= 2;
@@ -114,13 +123,17 @@ int MPIR_Allgather (
         comm_size_is_pof2 = 1;
     else
         comm_size_is_pof2 = 0;
-
+#endif /* !defined(_OSU_MVAPICH_) */
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
-    
+#if defined(_OSU_MVAPICH_)
+    if (recvcount * comm_size * type_size < MPIR_ALLGATHER_LONG_MSG
+        && (comm_size & comm_size - 1) == 0)
+    {
+#else /* defined(_OSU_MVAPICH_) */    
     if ((recvcount*comm_size*type_size < MPIR_ALLGATHER_LONG_MSG) &&
         (comm_size_is_pof2 == 1)) {
-
+#endif /* defined(_OSU_MVAPICH_) */
         /* Short or medium size message and power-of-two no. of processes. Use
          * recursive doubling algorithm */   
 
@@ -170,7 +183,8 @@ int MPIR_Allgather (
                                               curr_cnt, recvtype, dst,
                                               MPIR_ALLGATHER_TAG,  
                                               ((char *)recvbuf + recv_offset),
-                                              recvcount*mask, recvtype, dst,
+					      (comm_size-dst_tree_root)*recvcount,
+                                              recvtype, dst,
                                               MPIR_ALLGATHER_TAG, comm, &status);
 		    if (mpi_errno) { 
 			MPIU_ERR_POP(mpi_errno);
@@ -244,7 +258,7 @@ int MPIR_Allgather (
                                  (dst < tree_root + nprocs_completed) &&
                                  (rank >= tree_root + nprocs_completed)) {
                             mpi_errno = MPIC_Recv(((char *)recvbuf + offset),  
-                                                  recvcount*nprocs_completed, 
+						  (comm_size - (my_tree_root + mask))*recvcount,
                                                   recvtype, dst,
                                                   MPIR_ALLGATHER_TAG,
                                                   comm, &status); 
@@ -333,7 +347,8 @@ int MPIR_Allgather (
                                               curr_cnt, MPI_BYTE, dst,
                                               MPIR_ALLGATHER_TAG,  
                                               ((char *)tmp_buf + recv_offset),
-                                              nbytes*mask, MPI_BYTE, dst,
+					      tmp_buf_size - recv_offset,
+                                              MPI_BYTE, dst,
                                               MPIR_ALLGATHER_TAG, comm, &status);
 		    if (mpi_errno) { 
 			MPIU_ERR_POP(mpi_errno);
@@ -400,7 +415,7 @@ int MPIR_Allgather (
                                  (dst < tree_root + nprocs_completed) &&
                                  (rank >= tree_root + nprocs_completed)) {
                             mpi_errno = MPIC_Recv(((char *)tmp_buf + offset),
-                                                  nbytes*nprocs_completed,
+                                                  tmp_buf_size - offset,
                                                   MPI_BYTE, dst,
                                                   MPIR_ALLGATHER_TAG,
                                                   comm, &status); 
@@ -477,7 +492,11 @@ int MPIR_Allgather (
         /* do the first \floor(\lg p) steps */
 
         curr_cnt = recvcount;
+#if defined(_OSU_MVAPICH_)
+        int pof2 = 1;
+#else /* defined(_OSU_MVAPICH_) */
         pof2 = 1;
+#endif /* defined(_OSU_MVAPICH_) */
         while (pof2 <= comm_size/2) {
             src = (rank + pof2) % comm_size;
             dst = (rank - pof2 + comm_size) % comm_size;

@@ -67,6 +67,22 @@
 
 /* begin:nested */
 /* not declared static because it is called in intercomm. allgatherv */
+#if defined(_OSU_MVAPICH_)
+int intra_shmem_Bcast_Large( 
+	void *buffer, 
+	int count, 
+    MPI_Datatype datatype,
+	int nbytes,
+	int root, 
+	MPID_Comm *comm );
+#define SHMEM_BCST_THRESHOLD 1<<20
+extern int enable_shmem_collectives;
+
+int shmem_bcast_threshold = SHMEM_BCST_THRESHOLD;
+int enable_shmem_bcast = 1;
+
+#endif
+
 int MPIR_Bcast ( 
 	void *buffer, 
 	int count, 
@@ -83,7 +99,11 @@ int MPIR_Bcast (
   int type_size, j, k, i, tmp_mask, is_contig, is_homogeneous;
   int relative_dst, dst_tree_root, my_tree_root, send_offset;
   int recv_offset, tree_root, nprocs_completed, offset, position;
+#if defined(_OSU_MVAPICH_)
+  int *recvcnts, *displs, left, right, jnext;
+#else /* defined(_OSU_MVAPICH_) */
   int *recvcnts, *displs, left, right, jnext, pof2, comm_size_is_pof2;
+#endif /* defined(_OSU_MVAPICH_) */
   void *tmp_buf=NULL;
   MPI_Comm comm;
   MPID_Datatype *dtp;
@@ -233,7 +253,12 @@ int MPIR_Bcast (
           mask >>= 1;
       }
   }
-
+#if defined(_OSU_MVAPICH_)
+  else if (enable_shmem_collectives && (comm_ptr->shmem_coll_ok == 1) && (nbytes < shmem_bcast_threshold) 
+          && is_contig && is_homogeneous && enable_shmem_bcast){
+      intra_shmem_Bcast_Large(buffer, count, datatype, nbytes, root, comm_ptr);
+  }
+#endif
   else
   { 
       /* use long message algorithm: binomial tree scatter followed by an allgather */
@@ -330,15 +355,20 @@ int MPIR_Bcast (
       /* Scatter complete. Now do an allgather .  */ 
 
       /* check if comm_size is a power of two */
+#if defined(_OSU_MVAPICH_)
+      if (nbytes < MPIR_BCAST_LONG_MSG
+          && (comm_size & comm_size - 1) == 0)
+#else /* defined(_OSU_MVAPICH_) */
       pof2 = 1;
       while (pof2 < comm_size)
           pof2 *= 2;
-      if (pof2 == comm_size) 
+      if (pof2 == comm_size)
           comm_size_is_pof2 = 1;
       else
           comm_size_is_pof2 = 0;
 
       if ((nbytes < MPIR_BCAST_LONG_MSG) && (comm_size_is_pof2))
+#endif /* defined(_OSU_MVAPICH_) */
       {
           /* medium size allgather and pof2 comm_size. use recurive doubling. */
 
@@ -370,8 +400,8 @@ int MPIR_Bcast (
                   mpi_errno = MPIC_Sendrecv(((char *)tmp_buf + send_offset),
                                             curr_size, MPI_BYTE, dst, MPIR_BCAST_TAG, 
                                             ((char *)tmp_buf + recv_offset),
-                                            scatter_size*mask, MPI_BYTE, dst,
-                                            MPIR_BCAST_TAG, comm, &status);
+                                            (nbytes-recv_offset < 0 ? 0 : nbytes-recv_offset), 
+					    MPI_BYTE, dst, MPIR_BCAST_TAG, comm, &status);
                   if (mpi_errno != MPI_SUCCESS) {
 		      MPIU_ERR_POP(mpi_errno);
 		  }
@@ -456,7 +486,7 @@ int MPIR_Bcast (
                           /* printf("Rank %d waiting to recv from rank %d\n",
                              relative_rank, dst); */
                           mpi_errno = MPIC_Recv(((char *)tmp_buf + offset),
-                                                scatter_size*nprocs_completed, 
+                                                nbytes - offset, 
                                                 MPI_BYTE, dst, MPIR_BCAST_TAG,
                                                 comm, &status); 
                           /* nprocs_completed is also equal to the no. of processes
@@ -790,3 +820,264 @@ int MPI_Bcast( void *buffer, int count, MPI_Datatype datatype, int root,
     goto fn_exit;
     /* --END ERROR HANDLING-- */
 }
+
+
+#if defined(_OSU_MVAPICH_)
+int MPID_SHMEM_BCAST_init(int file_size, int shmem_comm_rank, int my_local_rank, 
+	int* bcast_seg_size, char** bcast_shmem_file, int* fd);
+
+int MPID_SHMEM_BCAST_mmap(void** mmap_ptr, int bcast_seg_size, int fd, 
+	int my_local_rank, char* bcast_shmem_file);
+
+int viadev_use_shmem_ring= 1;
+int intra_shmem_Bcast_Large( 
+	void *buffer, 
+	int count, 
+    MPI_Datatype datatype,
+	int nbytes,
+	int root, 
+	MPID_Comm *comm )
+{
+	MPI_Status status;
+	int        rank, size, src, dst;
+	int        relative_rank, mask;
+	int        mpi_errno = MPI_SUCCESS;
+	int scatter_size, curr_size, recv_size, send_size;
+	int j,i;
+	int recv_offset, offset; 
+	int *recvcnts, *displs, left, right, jnext;
+	void *tmp_buf;
+
+	char* shmem_buf;
+	MPI_Comm shmem_comm, leader_comm;
+	MPID_Comm *comm_ptr = 0,*shmem_commptr = 0;
+	int local_rank = -1, local_size=0, relative_lcomm_rank, relative_lcomm_dst;
+	void* local_buf=NULL, *tmpbuf=NULL;
+	int leader_comm_size, leader_comm_rank;
+	int leader_root, total_size =0, shmem_comm_rank, num_bytes=0, shmem_offset=-1;
+	int index;
+	int file_size = shmem_bcast_threshold;
+
+	/* Get my rank and switch communicators to the hidden collective */
+    rank = comm->rank;
+	comm_ptr = comm;
+	index = comm_ptr->bcast_index;
+
+	/* Obtaining the shared memory communicator information */
+	total_size = size;
+	shmem_comm = comm_ptr->shmem_comm;
+	MPI_Comm_rank(shmem_comm, &local_rank);
+	MPI_Comm_size(shmem_comm, &local_size);
+    MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
+
+	shmem_comm_rank = shmem_commptr->shmem_comm_rank;
+
+	/* Obtaining the Leader Communicator information */
+	if (local_rank == 0){
+		leader_comm = comm_ptr->leader_comm;
+		MPI_Comm_rank(leader_comm, &leader_comm_rank);
+	}
+	leader_comm_size = comm_ptr->leader_group_size;
+
+	/* Initialize the bcast segment for the first time */
+	if (comm_ptr->bcast_mmap_ptr == NULL){
+		MPID_SHMEM_BCAST_init(file_size, shmem_comm_rank, local_rank, &(comm_ptr->bcast_seg_size), 
+					&(comm_ptr->bcast_shmem_file), &(comm_ptr->bcast_fd));
+		MPI_Barrier(shmem_comm);
+		MPID_SHMEM_BCAST_mmap(&(comm_ptr->bcast_mmap_ptr), comm_ptr->bcast_seg_size, 
+					comm_ptr->bcast_fd, local_rank,comm_ptr->bcast_shmem_file);
+		MPI_Barrier(shmem_comm);
+		if (local_rank == 0){
+			unlink(comm_ptr->bcast_shmem_file);
+		}
+	}
+
+	if ((local_rank == 0) || (root == rank)){
+
+		MPID_SHMEM_COLL_GetShmemBcastBuf(&shmem_buf,comm_ptr->bcast_mmap_ptr);
+		/* The collective uses the shared buffer for inter and intra node */
+		tmp_buf = shmem_buf;
+	}
+
+	if (root == rank){
+		mpi_errno = MPI_Sendrecv(buffer, count, datatype, rank,
+				MPIR_BCAST_TAG, shmem_buf, count, datatype, rank, 
+				MPIR_BCAST_TAG, comm_ptr->handle, &status);
+	}
+	
+	MPI_Barrier(shmem_comm);
+
+
+	int leader_of_root = comm_ptr->leader_map[root];		/* The Leader for the given root of the broadcast */
+	int leader_comm_root = comm_ptr->leader_rank[leader_of_root];	/* The rank of the leader process in the Leader communicator*/
+
+	relative_rank = (rank >= root) ? rank - root : rank - root + size;
+
+
+	/* use long message algorithm: binomial tree scatter followed by an allgather */
+
+	/* Scatter algorithm divides the buffer into nprocs pieces and
+	   scatters them among the processes. Root gets the first piece,
+	   root+1 gets the second piece, and so forth. Uses the same binomial
+	   tree algorithm as above. Ceiling division
+	   is used to compute the size of each piece. This means some
+	   processes may not get any data. For example if bufsize = 97 and
+	   nprocs = 16, ranks 15 and 16 will get 0 data. On each process, the
+	   scattered data is stored at the same offset in the buffer as it is
+	   on the root process. */ 
+
+	if (local_rank == 0){
+
+		relative_lcomm_rank = (leader_comm_rank >= leader_comm_root) ? 
+		(leader_comm_rank - leader_comm_root) : (leader_comm_rank - leader_comm_root + leader_comm_size);
+
+		scatter_size = (nbytes + leader_comm_size - 1)/leader_comm_size; /* ceiling division */
+		curr_size = (leader_comm_rank == leader_comm_root) ? nbytes : 0; /* root starts with all the data */
+
+		mask = 0x1;
+		while (mask < leader_comm_size) {
+			if (relative_lcomm_rank & mask) {
+				src = leader_comm_rank - mask; 
+				if (src < 0) src += leader_comm_size;
+				recv_size = nbytes - relative_lcomm_rank*scatter_size;
+				/* recv_size is larger than what might actually be sent by the
+				   sender. We don't need compute the exact value because MPI
+				   allows you to post a larger recv.*/ 
+				if (recv_size <= 0) 
+					curr_size = 0; /* this process doesn't receive any data
+							  because of uneven division */
+				else {
+					mpi_errno = MPI_Recv((void *)((char *)tmp_buf + relative_lcomm_rank*scatter_size),
+							recv_size, MPI_BYTE, src,
+							MPIR_BCAST_TAG, leader_comm, &status);
+					if (mpi_errno) return mpi_errno;
+
+					/* query actual size of data received */
+					MPI_Get_count(&status, MPI_BYTE, &curr_size);
+				}
+				break;
+			}
+			mask <<= 1;
+		}
+
+		/* This process is responsible for all processes that have bits
+		   set from the LSB upto (but not including) mask.  Because of
+		   the "not including", we start by shifting mask back down
+		   one. */
+
+		mask >>= 1;
+		while (mask > 0) {
+			if (relative_lcomm_rank + mask < leader_comm_size) {
+
+				send_size = curr_size - scatter_size * mask; 
+				/* mask is also the size of this process's subtree */
+
+				if (send_size > 0) {
+					dst = leader_comm_rank + mask;
+					if (dst >= leader_comm_size) dst -= leader_comm_size;
+					mpi_errno = MPI_Send (((char *)tmp_buf + scatter_size*(relative_lcomm_rank+mask)),
+							send_size, MPI_BYTE, dst,
+							MPIR_BCAST_TAG, leader_comm);
+					if (mpi_errno) return mpi_errno;
+					curr_size -= send_size;
+				}
+			}
+			mask >>= 1;
+		}
+	}
+
+#if 1
+      /* Scatter complete. Now do an allgather. */
+
+
+      /* use ring algorithm. */ 
+      if (local_rank == 0){
+          recvcnts =  MPIU_Malloc(leader_comm_size*sizeof(int));
+          displs =  MPIU_Malloc(leader_comm_size*sizeof(int));
+
+          for (i=0; i<leader_comm_size; i++) {
+              recvcnts[i] = nbytes - i*scatter_size;
+              if (recvcnts[i] > scatter_size)
+                  recvcnts[i] = scatter_size;
+              if (recvcnts[i] < 0)
+                  recvcnts[i] = 0;
+          }
+
+          displs[0] = 0;
+          for (i=1; i<leader_comm_size; i++)
+              displs[i] = displs[i-1] + recvcnts[i-1];
+
+          left  = (leader_comm_size + leader_comm_rank - 1) % leader_comm_size;
+          right = (leader_comm_rank + 1) % leader_comm_size;
+
+          j     = leader_comm_rank;
+          jnext = left;
+          for (i=1; i<leader_comm_size; i++) {
+              signal_local_processes(i, index, 
+                      (char *)tmp_buf+displs[(j-leader_comm_root+leader_comm_size)%leader_comm_size], 
+                      displs[(j-leader_comm_root+leader_comm_size)%leader_comm_size], 
+                      recvcnts[(j-leader_comm_root+leader_comm_size)%leader_comm_size],
+                      comm_ptr->bcast_mmap_ptr);			
+              mpi_errno = 
+                  MPI_Sendrecv((char *)tmp_buf+displs[(j-leader_comm_root+leader_comm_size)%leader_comm_size],
+                          recvcnts[(j-leader_comm_root+leader_comm_size)%leader_comm_size], MPI_BYTE, right, MPIR_BCAST_TAG,
+                          (char *)tmp_buf + displs[(jnext-leader_comm_root+leader_comm_size)%leader_comm_size],
+                          recvcnts[(jnext-leader_comm_root+leader_comm_size)%leader_comm_size], MPI_BYTE, left, 
+                          MPIR_BCAST_TAG, leader_comm, &status );
+              if (mpi_errno) break;
+              j	    = jnext;
+              jnext = (leader_comm_size + jnext - 1) % leader_comm_size;
+          }
+
+      }
+      else{
+          for (i=1; i<leader_comm_size; i++) {
+              wait_for_signal(i, index, &shmem_buf, &shmem_offset, &num_bytes, comm_ptr->bcast_mmap_ptr);
+
+              /* Copy the data out from shmem buf */
+              mpi_errno = MPI_Sendrecv((void *)shmem_buf,
+                      num_bytes, MPI_BYTE, rank, MPIR_BCAST_TAG, 
+                      (void *)((char *)buffer + shmem_offset),
+                      num_bytes, MPI_BYTE, rank,
+                      MPIR_BCAST_TAG, comm->handle, &status);
+
+          }
+      }
+      /* The leader copies the data only in the end from the shmem buffer */
+      if (local_rank == 0){
+          signal_local_processes(i, index, 
+                  (char *)tmp_buf+displs[(j-leader_comm_root+leader_comm_size)%leader_comm_size], 
+                  displs[(j-leader_comm_root+leader_comm_size)%leader_comm_size], 
+                  recvcnts[(j-leader_comm_root+leader_comm_size)%leader_comm_size],
+                  comm_ptr->bcast_mmap_ptr);			
+          /* Copy the data out from shmem buf */
+          mpi_errno = MPI_Sendrecv((void *)shmem_buf,
+                  nbytes, MPI_BYTE, rank, MPIR_BCAST_TAG, 
+                  (void *)((char *)buffer),
+                  nbytes, MPI_BYTE, rank,
+                  MPIR_BCAST_TAG, comm->handle, &status);
+          MPIU_Free(recvcnts);
+          MPIU_Free(displs);
+      }	
+      else{
+          wait_for_signal(i, index, &shmem_buf, &shmem_offset, &num_bytes, comm_ptr->bcast_mmap_ptr);
+
+          /* Copy the data out from shmem buf */
+          mpi_errno = MPI_Sendrecv((void *)shmem_buf,
+                  num_bytes, MPI_BYTE, rank, MPIR_BCAST_TAG, 
+                  (void *)((char *)buffer + shmem_offset),
+                  num_bytes, MPI_BYTE, rank,
+                  MPIR_BCAST_TAG, comm->handle, &status);
+      }
+
+
+#endif
+      MPI_Barrier(shmem_comm);
+      /* For the bcast signalling flags */
+      index = (index + 1)%3;
+      comm_ptr->bcast_index = index;
+
+      return (mpi_errno);
+}
+
+#endif

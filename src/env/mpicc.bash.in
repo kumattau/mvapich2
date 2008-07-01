@@ -1,4 +1,4 @@
-#! @BASH@
+#! @BASH_SHELL@
 # 
 # (C) 2006 by Argonne National Laboratory.
 #     See COPYRIGHT in top-level directory.
@@ -11,14 +11,12 @@
 #    includedir, libdir - Directories containing an *installed* mpich2
 #    prefix, execprefix - Often used to define includedir and libdir
 #    CC                 - C compiler
-#    MPI_CFLAGS         - Any special flags needed to compile 
-#    MPI_LDFLAGS        - Any special flags needed to link
+#    WRAPPER_CFLAGS        - Any special flags needed to compile 
+#    WRAPPER_LDFLAGS       - Any special flags needed to link
 #    MPILIBNAME         - Name of the MPI library
 #    MPI_OTHERLIBS      - Other libraries needed in order to link 
 #    
 # We assume that (a) the C compiler can both compile and link programs
-# We use MPI_xxx so that the user may continue to use CFLAGS, LIBS, etc
-# to modify the behavior of the compiler and linker.
 #
 # Handling of command-line options:
 #   This is a little tricky because some options may contain blanks.
@@ -41,8 +39,8 @@ libdir=@libdir@
 # configure (e.g., determining whehter -lsocket is needee)
 CC="@CC@"
 C_LINKPATH_SHL="@C_LINKPATH_SHL@"
-MPI_CFLAGS="@MPI_CFLAGS@"
-MPI_LDFLAGS="@MPI_LDFLAGS@"
+WRAPPER_CFLAGS="@WRAPPER_CFLAGS@"
+WRAPPER_LDFLAGS="@WRAPPER_LDFLAGS@"
 MPILIBNAME="@MPILIBNAME@"
 PMPILIBNAME="@PMPILIBNAME@"
 MPI_OTHERLIBS="@LIBS@"
@@ -138,6 +136,10 @@ for arg in "$@" ; do
     -v)
     # Pass this argument to the compiler as well.
     echo "mpicc for $MPIVERSION"
+    # if there is only 1 argument, it must be -v.
+    if [ "$#" -eq "1" ] ; then
+        linking=no
+    fi
     ;;
     -profile=*)
     # Pass the name of a profiling configuration.  As
@@ -165,7 +167,8 @@ for arg in "$@" ; do
     if [ $addarg = no ] ; then
 	unset allargs[$argno]
     fi
-    ((argno++))
+    # Some versions of bash do not accept ((argno++))
+    argno=`expr $argno + 1`
 done
 
 # -----------------------------------------------------------------------
@@ -178,16 +181,24 @@ else
     mpilibs="-l$MPILIBNAME"
 fi
 #
-# Concatenate the user flags with the ones needed by MPI
-CFLAGS="$CFLAGS $MPI_CFLAGS"
-LDFLAGS="$LDFLAGS $MPI_LDFLAGS"
+# Init with the ones needed by MPI
+CFLAGS="$WRAPPER_CFLAGS"
+LDFLAGS="$WRAPPER_LDFLAGS"
 #
 # Handle the case of a profile switch
 if [ -n "$profConf" ] ; then
+    profConffile=
     if [ -s "$libdir/lib$profConf.a" -o -s "$libdir/lib$profConf.so" ] ; then
 	mpilibs="-l$profConf $mpilibs"
     elif [ -s "$sysconfdir/$profConf.conf" ] ; then
-	. $sysconfdir/$profConf.conf
+	profConffile="$sysconfdir/$profConf.conf"
+    elif [ -s "$profConf.conf" ] ; then
+        profConffile="$profConf.conf"
+    else
+        echo "Profiling configuration file $profConf.conf not found in $sysconfdir"
+    fi
+    if [ -n "$profConffile" -a -s "$profConffile" ] ; then
+	. $profConffile
 	if [ -n "$PROFILE_INCPATHS" ] ; then
 	    CFLAGS="$PROFILE_INCPATHS $CFLAGS"
         fi
@@ -197,8 +208,6 @@ if [ -n "$profConf" ] ; then
         if [ -n "$PROFILE_POSTLIB" ] ; then
 	    mpilibs="$mpilibs $PROFILE_POSTLIB"
         fi
-    else
-        echo "Profiling configuration file $profConf.conf not found in $sysconfdir"
     fi
 fi
 
@@ -219,10 +228,10 @@ if [ "$linking" = yes ] ; then
 	# prepend the path for the shared libraries to the library list
 	mpilibs="$C_LINKPATH_SHL$libdir $mpilibs"
     fi
-    $Show $CC -I$includedir $CFLAGS $LDFLAGS "${allargs[@]}" -L$libdir $mpilibs $MPI_OTHERLIBS
+    $Show $CC $CFLAGS $LDFLAGS "${allargs[@]}" -I$includedir -L$libdir $mpilibs $MPI_OTHERLIBS
     rc=$?
 else
-    $Show $CC -I$includedir $CFLAGS "${allargs[@]}" 
+    $Show $CC $CFLAGS "${allargs[@]}" -I$includedir
     rc=$?
 fi
 

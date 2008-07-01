@@ -13,6 +13,12 @@
 #if !defined(MPICH_IS_THREADED)
 #define MPIDI_CH3_Progress_start(state)
 #define MPIDI_CH3_Progress_end(state)
+#else
+#define MPIDI_CH3_Progress_start(progress_state_)                                       \
+{                                                                                       \
+    (progress_state_)->ch.completion_count = MPIDI_CH3I_progress_completion_count;      \
+}
+#define MPIDI_CH3_Progress_end(progress_state_)
 #endif
 
 enum {
@@ -29,11 +35,6 @@ MPID_Request *MPIDI_CH3_Progress_poke_with_matching(int,int,MPID_Comm *comm,int,
 MPID_Request *MPIDI_CH3_Progress_ipoke_with_matching(int,int,MPID_Comm *comm,int,int *,void *,int, MPI_Datatype, MPI_Status *);
 #define MPIDI_CH3_Progress_test() MPIDI_CH3I_Progress(NULL, FALSE)
 #define MPIDI_CH3_Progress_wait(progress_state) MPIDI_CH3I_Progress(progress_state, TRUE)
-#define MPIDI_CH3_Progress_start(progress_state_)                                       \
-{                                                                                       \
-    (progress_state_)->ch.completion_count = MPIDI_CH3I_progress_completion_count;      \
-}
-#define MPIDI_CH3_Progress_end(progress_state_)
 #define MPIDI_CH3_Progress_poke() MPIDI_CH3I_Progress(NULL, FALSE)
 
 int MPIDI_CH3I_Posted_recv_enqueued (MPID_Request *rreq);

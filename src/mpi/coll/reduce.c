@@ -13,7 +13,7 @@
  * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
  *
  * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT_MVAPICH2 in the top level MVAPICH2 directory.
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
  *
  */
 
@@ -35,7 +35,9 @@
 #undef MPI_Reduce
 #define MPI_Reduce PMPI_Reduce
 
+#if defined(_OSU_MVAPICH_)
 extern struct coll_runtime coll_param;
+#endif /* defined(_OSU_MVAPICH_) */
 
 /* This is the default implementation of reduce. The algorithm is:
    
@@ -189,8 +191,11 @@ int MPIR_Reduce (
 
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
-        
+#if defined(_OSU_MVAPICH_)
     if ((count*type_size > coll_param.reduce_short_msg) &&
+#else /* defined(_OSU_MVAPICH_) */
+    if ((count*type_size > MPIR_REDUCE_SHORT_MSG) &&
+#endif /* defined(_OSU_MVAPICH_) */
         (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) && (count >= pof2)) {
         /* do a reduce-scatter followed by gather to root. */
 
@@ -714,35 +719,36 @@ Output Parameter:
 .N MPI_ERR_BUFFER_ALIAS
 
 @*/
-#ifdef _SMP_
+#if defined(_OSU_MVAPICH_)
 extern int enable_shmem_collectives;
 extern int disable_shmem_reduce;
-#endif
+#endif /* defined(_OSU_MVAPICH_) */
+
 int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, 
 	       MPI_Op op, int root, MPI_Comm comm)
 {
     static const char FCNAME[] = "MPI_Reduce";
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL;
-#ifdef _SMP_
-    char* shmem_buf;
+#if defined(_OSU_MVAPICH_)
+    char* shmem_buf = NULL;
     MPI_Comm shmem_comm, leader_comm;
-    MPID_Comm *shmem_commptr = 0, *leader_commptr = 0;
+    MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
     int local_rank = -1, global_rank = -1, local_size=0, my_rank;
-    void* local_buf, *tmpbuf, *tmpbuf1;
+    void* local_buf = NULL, *tmpbuf = NULL, *tmpbuf1 = NULL;
     MPI_Aint   true_lb, true_extent, extent;
-    MPI_User_function *uop;
+    MPI_User_function *uop = NULL;
     int stride = 0, i, is_commutative, size;
-    MPID_Op *op_ptr;
+    MPID_Op *op_ptr = NULL;
     MPI_Status status;
     int leader_root, total_size, shmem_comm_rank;
     MPIU_CHKLMEM_DECL(2);
-#ifdef HAVE_CXX_BINDING
+#if defined(HAVE_CXX_BINDING)
     int is_cxx_uop = 0;
-#endif
+#endif /* defined(HAVE_CXX_BINDING) */
     MPIU_THREADPRIV_DECL;
     MPIU_THREADPRIV_GET;
-#endif
+#endif /* defined(_OSU_MVAPICH_) */
 
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_REDUCE);
 
@@ -861,7 +867,7 @@ int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
     {
         if (comm_ptr->comm_kind == MPID_INTRACOMM) {
             /* intracommunicator */
-#ifdef _SMP_
+#if defined(_OSU_MVAPICH_)
             if (enable_shmem_collectives){
                 MPIR_Nest_incr();
                 mpi_errno = NMPI_Type_get_true_extent(datatype, &true_lb, &true_extent);  
@@ -883,13 +889,13 @@ int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
                     else
                         is_commutative = 1;
 
-#ifdef HAVE_CXX_BINDING            
+#if defined(HAVE_CXX_BINDING)
                     if (op_ptr->language == MPID_LANG_CXX) {
                         uop = (MPI_User_function *) op_ptr->function.c_function;
                         is_cxx_uop = 1;
                     }
                     else
-#endif
+#endif /* defined(HAVE_CXX_BINDING) */
                         if ((op_ptr->language == MPID_LANG_C))
                             uop = (MPI_User_function *) op_ptr->function.c_function;
                         else
@@ -926,6 +932,10 @@ int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
                     MPIR_Nest_decr();
                 }
 
+#if defined(CKPT)
+		MPIDI_CH3I_CR_lock();
+#endif
+
                 if (local_size > 1){
                     MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(local_size, local_rank, shmem_comm_rank, &shmem_buf);
                 }
@@ -939,13 +949,13 @@ int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
                         if (is_commutative){
                             for (i = 1; i < local_size; i++){
                                 local_buf = (char*)shmem_buf + stride*i;
-#ifdef HAVE_CXX_BINDING
+#if defined(HAVE_CXX_BINDING)
                                 if (is_cxx_uop) {
                                     (*MPIR_Process.cxx_call_op_fn)( local_buf, tmpbuf, 
                                                                     count, datatype, uop );
                                 }
                                 else 
-#endif
+#endif /* defined(HAVE_CXX_BINDING) */
                                     (*uop)(local_buf, tmpbuf, &count, &datatype);
                             }
                             MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(local_size, local_rank, shmem_comm_rank);
@@ -964,6 +974,9 @@ int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
                         mpi_errno = MPIR_Localcopy(tmpbuf, count, datatype, recvbuf,
                                 count, datatype);
                         MPIR_Nest_decr();
+#if defined(CKPT)
+			MPIDI_CH3I_CR_unlock();
+#endif
                         goto fn_exit;
                     }
 
@@ -976,6 +989,10 @@ int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
                     MPIR_Nest_decr();
                     MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(local_size, local_rank, shmem_comm_rank);
                 }
+
+#if defined(CKPT)
+		MPIDI_CH3I_CR_unlock();
+#endif
 
                 if ((local_rank == 0) && (root == my_rank)){
                     MPIR_Nest_incr();
@@ -1015,11 +1032,10 @@ int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
                 mpi_errno = MPIR_Reduce(sendbuf, recvbuf, count, datatype,
                         op, root, comm_ptr); 
             }
-#else
-                mpi_errno = MPIR_Reduce(sendbuf, recvbuf, count, datatype,
-                        op, root, comm_ptr); 
-            
-#endif
+#else /* defined(_OSU_MVAPICH_) */
+            mpi_errno = MPIR_Reduce(sendbuf, recvbuf, count, datatype,
+                                    op, root, comm_ptr); 
+#endif /* defined(_OSU_MVAPICH_) */
 	}
         else {
             /* intercommunicator */
@@ -1033,9 +1049,9 @@ int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
     /* ... end of body of routine ... */
     
   fn_exit:
-#ifdef _SMP_
+#if defined(_OSU_MVAPICH_)
     MPIU_CHKLMEM_FREEALL();
-#endif
+#endif /* defined(_OSU_MVAPICH_) */
     MPID_MPI_COLL_FUNC_EXIT(MPID_STATE_MPI_REDUCE);
     MPIU_THREAD_SINGLE_CS_EXIT("coll");
     return mpi_errno;

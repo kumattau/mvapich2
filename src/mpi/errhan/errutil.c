@@ -13,7 +13,7 @@
  * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
  *
  * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT_MVAPICH2 in the top level MVAPICH2 directory.
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
  *
  */
 
@@ -124,9 +124,10 @@ static int checkForUserErrcode( int errcode );
 #endif
 
 /* Preallocated errorhandler objects */
-MPID_Errhandler MPID_Errhandler_builtin[2] = 
+MPID_Errhandler MPID_Errhandler_builtin[3] = 
           { { MPI_ERRORS_ARE_FATAL, 0},
-	    { MPI_ERRORS_RETURN, 0} }; 
+	    { MPI_ERRORS_RETURN, 0},
+	    { MPIR_ERRORS_THROW_EXCEPTIONS, 0 } }; 
 MPID_Errhandler MPID_Errhandler_direct[MPID_ERRHANDLER_PREALLOC] = { {0} };
 MPIU_Object_alloc_t MPID_Errhandler_mem = { 0, 0, 0, 0, MPID_ERRHANDLER, 
 					    sizeof(MPID_Errhandler), 
@@ -243,8 +244,9 @@ int MPIR_Err_return_comm( MPID_Comm  *comm_ptr, const char fcname[],
 
     /* Check for the special case of a user-provided error code */
     errcode = checkForUserErrcode( errcode );
-    
-    if (comm_ptr->errhandler->handle == MPI_ERRORS_RETURN)
+
+    if (comm_ptr->errhandler->handle == MPI_ERRORS_RETURN ||
+	comm_ptr->errhandler->handle == MPIR_ERRORS_THROW_EXCEPTIONS)
     {
 	return errcode;
     }
@@ -276,7 +278,7 @@ int MPIR_Err_return_comm( MPID_Comm  *comm_ptr, const char fcname[],
 	case MPID_LANG_FORTRAN90:
 	case MPID_LANG_FORTRAN:
 	    (*comm_ptr->errhandler->errfn.F77_Handler_function)( 
-		(MPI_Fint *)&comm_ptr->handle, &errcode, 0 );
+		(MPI_Fint *)&comm_ptr->handle, &errcode );
 	    break;
 #endif
 	}
@@ -315,7 +317,8 @@ int MPIR_Err_return_win( MPID_Win  *win_ptr, const char fcname[], int errcode )
     /* Check for the special case of a user-provided error code */
     errcode = checkForUserErrcode( errcode );
     
-    if (win_ptr->errhandler->handle == MPI_ERRORS_RETURN)
+    if (win_ptr->errhandler->handle == MPI_ERRORS_RETURN ||
+	win_ptr->errhandler->handle == MPIR_ERRORS_THROW_EXCEPTIONS)
     {
 	return errcode;
     }
@@ -349,7 +352,7 @@ int MPIR_Err_return_win( MPID_Win  *win_ptr, const char fcname[], int errcode )
 	    case MPID_LANG_FORTRAN90:
 	    case MPID_LANG_FORTRAN:
 		(*win_ptr->errhandler->errfn.F77_Handler_function)( 
-		    (MPI_Fint *)&win_ptr->handle, &errcode, 0 );
+		    (MPI_Fint *)&win_ptr->handle, &errcode );
 		break;
 #endif
 	}
@@ -457,15 +460,21 @@ static void handleFatalError( MPID_Comm *comm_ptr,
 {
     /* Define length of the the maximum error message line (or string with 
        newlines?).  This definition is used only within this routine.  */
+    /* FIXME: This should really be the same as MPI_MAX_ERROR_STRING, or in the
+       worst case, defined in terms of that */
 #define MAX_ERRMSG_STRING 4096
     char error_msg[ MAX_ERRMSG_STRING ];
     int len;
 
     /* FIXME: Not internationalized */
+#if defined(_OSU_MVAPICH_)
     MPIU_Snprintf(error_msg, MAX_ERRMSG_STRING, "Fatal error in %s:\n", fcname);
+#else /* defined(_OSU_MVAPICH_) */
+    MPIU_Snprintf(error_msg, MAX_ERRMSG_STRING, "Fatal error in %s: ", fcname);
+#endif /* defined(_OSU_MVAPICH_) */
     len = (int)strlen(error_msg);
     MPIR_Err_get_string(errcode, &error_msg[len], MAX_ERRMSG_STRING-len, NULL);
-
+#if defined(_OSU_MVAPICH_)
     /*
      * Put newline at end of string
      */
@@ -475,7 +484,7 @@ static void handleFatalError( MPID_Comm *comm_ptr,
 	error_msg[len] = '\n';
 	error_msg[len+1] = '\0';
     }
-
+#endif /* defined(_OSU_MVAPICH_) */
     /* The third argument is a return code, a value of 1 usually indicates
        an error */
     MPID_Abort(comm_ptr, MPI_SUCCESS, 1, error_msg);
@@ -829,6 +838,12 @@ static const char * GetDTypeString(MPI_Datatype d)
     static char default_str[64];
     int num_integers, num_addresses, num_datatypes, combiner = 0;
     char *str;
+
+    if (HANDLE_GET_MPI_KIND(d) != MPID_DATATYPE ||      \
+	(HANDLE_GET_KIND(d) == HANDLE_KIND_INVALID &&   \
+	d != MPI_DATATYPE_NULL))
+        return "INVALID DATATYPE";
+    
 
     if (d == MPI_DATATYPE_NULL)
 	return "MPI_DATATYPE_NULL";
@@ -1226,6 +1241,13 @@ static void MPIR_Err_print_stack_string(int errcode, char *str, int maxlen);
 #define MAX_ERROR_RING ERROR_SPECIFIC_INDEX_SIZE
 #define MAX_LOCATION_LEN 63
 
+/* The maximum error string in this case may be a multi-line message,
+   constructed from multiple entries in the error message ring.  The 
+   individual ring messages should be shorter than MPI_MAX_ERROR_STRING,
+   perhaps as small a 256. We define a separate value for the error lines. 
+ */
+#define MPIR_MAX_ERROR_LINE 256
+
 /* See the description above for the fields in this structure */
 typedef struct MPIR_Err_msg
 {
@@ -1235,7 +1257,7 @@ typedef struct MPIR_Err_msg
     int  user_error_code;
 
     char location[MAX_LOCATION_LEN+1];
-    char msg[MPI_MAX_ERROR_STRING+1];
+    char msg[MPIR_MAX_ERROR_LINE+1];
 }
 MPIR_Err_msg_t;
 
@@ -1398,7 +1420,7 @@ int MPIR_Err_create_code_valist( int lastcode, int fatal, const char fcname[],
     int generic_idx;
     int use_user_error_code = 0;
     int user_error_code = -1;
-    char user_ring_msg[MPI_MAX_ERROR_STRING+1];
+    char user_ring_msg[MPIR_MAX_ERROR_LINE+1];
 
     /* Create the code from the class and the message ring index */
 
@@ -1534,24 +1556,24 @@ int MPIR_Err_create_code_valist( int lastcode, int fatal, const char fcname[],
 		}
 		/* See the code above for handling user errors */
 		if (!use_user_error_code) {
-		    vsnprintf_mpi( ring_msg, MPI_MAX_ERROR_STRING, 
+		    vsnprintf_mpi( ring_msg, MPIR_MAX_ERROR_LINE, 
 				   specific_fmt, Argp );
 		}
 		else {
-		    MPIU_Strncpy( ring_msg, user_ring_msg, MPI_MAX_ERROR_STRING );
+		    MPIU_Strncpy( ring_msg, user_ring_msg, MPIR_MAX_ERROR_LINE );
 		}
 	    }
 	    else if (generic_idx >= 0)
 	    {
 		MPIU_Strncpy( ring_msg,generic_err_msgs[generic_idx].long_name,
-			      MPI_MAX_ERROR_STRING );
+			      MPIR_MAX_ERROR_LINE );
 	    }
 	    else
 	    {
-		MPIU_Strncpy( ring_msg, generic_msg, MPI_MAX_ERROR_STRING );
+		MPIU_Strncpy( ring_msg, generic_msg, MPIR_MAX_ERROR_LINE );
 	    }
 
-	    ring_msg[MPI_MAX_ERROR_STRING] = '\0';
+	    ring_msg[MPIR_MAX_ERROR_LINE] = '\0';
 	
 	    /* Get the ring sequence number and set the ring id */
 	    ErrcodeCreateID( error_class, generic_idx, ring_msg, 

@@ -1,10 +1,49 @@
+# Copyright (c) 2002-2008, The Ohio State University. All rights
+# reserved.
+#
+# This file is part of the MVAPICH2 software package developed by the
+# team members of The Ohio State University's Network-Based Computing
+# Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+#
+# For detailed copyright and licensing information, please refer to the
+# copyright file COPYRIGHT in the top level MVAPICH2 directory.
+#
+
+# <_OSU_MVAPICH_>
+SUBDIRS = mpiname
+smvarSubdir_commonmake = MPILIBNAME = @MPILIBNAME@
+# </_OSU_MVAPICH_>
+
+INCLUDES = -I../include
 doc_sources = mpicc.txt mpif77.txt mpicxx.txt mpif90.txt mpiexec.txt
 DOCDESTDIRS = html:www/www1,man:man/man1,latex:doc/refman
 doc_HTML_SOURCES  = ${doc_sources}
 doc_MAN_SOURCES   = ${doc_sources}
 doc_LATEX_SOURCES = ${doc_sources}
 
-install_BIN = mpicc mpich2version parkill
+# <_OSU_MVAPICH_>
+# mpich2version_SOURCES = mpich2version.c
+# mpich2version_LDADD = ../../lib/lib@MPILIBNAME@.a
+
+# install_BIN = mpicc mpich2version parkill
+install_BIN = mpicc mpiname/mpiname parkill
+# </_OSU_MVAPICH_>
 install_ETC = mpicc.conf
 optinstall_BIN = mpicxx mpif77 mpif90
 optinstall_ETC = mpicxx.conf mpif77.conf mpif90.conf
+
+# <_OSU_MVAPICH_>
+all-postamble:
+	build_prefix=`cd ../.. && pwd` && \
+	for dir in mpiname - ; do \
+            if [ "$$dir" = "-" ] ; then break ; fi ; \
+            cd $$dir && ${MAKE} prefix=$$build_prefix exec_prefix=$$build_prefix bindir=$$build_prefix/bin mvapich-build-install; \
+        done
+
+distclean-local:
+	build_prefix=`cd ../.. && pwd` && \
+	for dir in mpiname - ; do \
+            if [ "$$dir" = "-" ] ; then break ; fi ; \
+            cd $$dir && ${MAKE} prefix=$$build_prefix exec_prefix=$$build_prefix bindir=$$build_prefix/bin mvapich-build-uninstall; \
+        done
+# </_OSU_MVAPICH_>

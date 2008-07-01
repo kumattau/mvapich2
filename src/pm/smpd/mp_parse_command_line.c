@@ -103,6 +103,10 @@ void mp_print_extra_options(void)
     printf("-map drive:\\\\host\\share\n");
     printf("  map a drive on all the nodes\n");
     printf("  this mapping will be removed when the processes exit\n");
+    printf("-mapall\n");
+    printf("  map all of the current network drives\n");
+    printf("  this mapping will be removed when the processes exit\n");
+    printf("  (Available currently only on windows)\n");
     printf("-dir drive:\\my\\working\\directory\n");
     printf("-wdir /my/working/directory\n");
     printf("  launch processes in the specified directory\n");
@@ -577,12 +581,24 @@ int mp_parse_command_args(int *argcp, char **argvp[])
 	return SMPD_FAIL;
     }
 
-    if (*argcp == 3)
+    if (*argcp >= 3)
     {
 	if ((strcmp((*argvp)[1], "-pmiserver") == 0) || (strcmp((*argvp)[1], "-pmi_server") == 0))
 	{
 	    char host[100];
 	    int id;
+
+	    if (smpd_get_opt(argcp, argvp, "-verbose"))
+	    {
+		smpd_process.verbose = SMPD_TRUE;
+		smpd_process.dbg_state |= SMPD_DBG_STATE_ERROUT | SMPD_DBG_STATE_STDOUT | SMPD_DBG_STATE_TRACE;
+	    }
+
+        if(smpd_get_opt(argcp, argvp, "-hide_console")){
+#ifdef HAVE_WINDOWS_H
+            FreeConsole();
+#endif
+        }
 
 	    smpd_process.nproc = atoi((*argvp)[2]);
 	    if (smpd_process.nproc < 1)
@@ -599,6 +615,15 @@ int mp_parse_command_args(int *argcp, char **argvp[])
 		smpd_err_printf("unable to get a id for host %s\n", host);
 		return SMPD_FAIL;
 	    }
+
+        if (*argcp >= 5){
+    	    smpd_process.singleton_client_port = atoi((*argvp)[4]);
+            if(smpd_process.singleton_client_port < 1){
+                smpd_err_printf("Invalid singleton client port = %d\n",
+                                    smpd_process.singleton_client_port);
+                return SMPD_FAIL;
+            }
+        }
 
 	    /* Return without creating any launch_nodes.  This will result in an mpiexec connected to the local smpd
 	     * and no processes launched.
@@ -737,7 +762,7 @@ int mp_parse_command_args(int *argcp, char **argvp[])
      */
 
     /* Get a list of hosts from a file or the registry to be used with the -n,-np options */
-    smpd_get_default_hosts();
+    smpd_get_default_hosts(); 
 
     cur_rank = 0;
     gdrive_map_list = NULL;
@@ -950,7 +975,7 @@ configfile_loop:
 		/* Use localroot to implement localonly */
 		smpd_process.local_root = SMPD_TRUE;
 		/* create a host list of one and set nproc to -1 to be replaced by nproc after parsing the block */
-		host_list = (smpd_host_node_t*)malloc(sizeof(smpd_host_node_t));
+		host_list = (smpd_host_node_t*)MPIU_Malloc(sizeof(smpd_host_node_t));
 		if (host_list == NULL)
 		{
 		    printf("failed to allocate memory for a host node.\n");
@@ -1003,6 +1028,16 @@ configfile_loop:
 		}
 		num_args_to_strip = 2;
 	    }
+        else if (strcmp(&(*argvp)[1][1], "mapall") == 0){
+#ifdef HAVE_WINDOWS_H
+            if(smpd_mapall(&drive_map_list) != SMPD_SUCCESS){
+		    printf("Error: unable to map all network drives");
+		    smpd_exit_fn(FCNAME);
+		    return SMPD_FAIL;
+            }
+#endif
+        num_args_to_strip = 1;
+        }
 	    else if (strcmp(&(*argvp)[1][1], "gmap") == 0)
 	    {
 		if (argc < 3)
@@ -1049,7 +1084,7 @@ configfile_loop:
 		    smpd_exit_fn(FCNAME);
 		    return SMPD_FAIL;
 		}
-		env_node = (smpd_env_node_t*)malloc(sizeof(smpd_env_node_t));
+		env_node = (smpd_env_node_t*)MPIU_Malloc(sizeof(smpd_env_node_t));
 		if (env_node == NULL)
 		{
 		    printf("Error: malloc failed to allocate structure to hold an environment variable.\n");
@@ -1086,6 +1121,46 @@ configfile_loop:
 #endif
 		num_args_to_strip = 3;
 	    }
+	    else if (strcmp(&(*argvp)[1][1], "envlist") == 0){
+            char *str, *token, *value;
+		    if (argc < 4){
+		        printf("Error: no environment variable after -envlist option\n");
+		        smpd_exit_fn(FCNAME);
+		        return SMPD_FAIL;
+		    }
+		    str = MPIU_Strdup((*argvp)[2]);
+		    if (str == NULL){
+		        printf("Error: unable to allocate memory for copying envlist - '%s'\n", (*argvp)[2]);
+		        smpd_exit_fn(FCNAME);
+		        return SMPD_FAIL;
+		    }
+		    token = strtok(str, ",");
+		    while (token){
+		        value = getenv(token);
+		        if (value != NULL){
+			        env_node = (smpd_env_node_t*)MPIU_Malloc(sizeof(smpd_env_node_t));
+			        if (env_node == NULL){
+			            printf("Error: malloc failed to allocate structure to hold an environment variable.\n");
+			            smpd_exit_fn(FCNAME);
+			            return SMPD_FAIL;
+			        }
+			        strncpy(env_node->name, token, SMPD_MAX_NAME_LENGTH);
+			        strncpy(env_node->value, value, SMPD_MAX_VALUE_LENGTH);
+			        env_node->next = env_list;
+			        env_list = env_node;
+		        }
+                else{
+                    printf("Error: Cannot obtain value of env variable : %s\n", token);
+                }
+		        token = strtok(NULL, ",");
+		    }
+		    MPIU_Free(str);
+		    num_args_to_strip = 2;
+        }
+	    else if (strcmp(&(*argvp)[1][1], "envnone") == 0){
+            printf("-envnone option is not implemented\n");
+            num_args_to_strip = 1;
+        }
 	    else if (strcmp(&(*argvp)[1][1], "genv") == 0)
 	    {
 		if (argc < 4)
@@ -1094,7 +1169,7 @@ configfile_loop:
 		    smpd_exit_fn(FCNAME);
 		    return SMPD_FAIL;
 		}
-		env_node = (smpd_env_node_t*)malloc(sizeof(smpd_env_node_t));
+		env_node = (smpd_env_node_t*)MPIU_Malloc(sizeof(smpd_env_node_t));
 		if (env_node == NULL)
 		{
 		    printf("Error: malloc failed to allocate structure to hold an environment variable.\n");
@@ -1126,10 +1201,12 @@ configfile_loop:
 	    else if (strcmp(&(*argvp)[1][1], "genvall") == 0)
 	    {
 		printf("-genvall option not implemented\n");
+        num_args_to_strip = 1;
 	    }
 	    else if (strcmp(&(*argvp)[1][1], "genvnone") == 0)
 	    {
 		printf("-genvnone option not implemented\n");
+        num_args_to_strip = 1;
 	    }
 	    else if (strcmp(&(*argvp)[1][1], "genvlist") == 0)
 	    {
@@ -1140,7 +1217,7 @@ configfile_loop:
 		    smpd_exit_fn(FCNAME);
 		    return SMPD_FAIL;
 		}
-		str = strdup((*argvp)[2]);
+		str = MPIU_Strdup((*argvp)[2]);
 		if (str == NULL)
 		{
 		    printf("Error: unable to allocate memory for a string - '%s'\n", (*argvp)[2]);
@@ -1153,7 +1230,7 @@ configfile_loop:
 		    value = getenv(token);
 		    if (value != NULL)
 		    {
-			env_node = (smpd_env_node_t*)malloc(sizeof(smpd_env_node_t));
+			env_node = (smpd_env_node_t*)MPIU_Malloc(sizeof(smpd_env_node_t));
 			if (env_node == NULL)
 			{
 			    printf("Error: malloc failed to allocate structure to hold an environment variable.\n");
@@ -1167,7 +1244,7 @@ configfile_loop:
 		    }
 		    token = strtok(NULL, ",");
 		}
-		free(str);
+		MPIU_Free(str);
 		num_args_to_strip = 2;
 	    }
 	    else if ( (strcmp(&(*argvp)[1][1], "logon") == 0) || (strcmp(&(*argvp)[1][1], "login") == 0) )
@@ -1264,7 +1341,7 @@ configfile_loop:
 		}
 		/* create a host list of one and set nproc to -1 to be replaced by
 		   nproc after parsing the block */
-		host_list = (smpd_host_node_t*)malloc(sizeof(smpd_host_node_t));
+		host_list = (smpd_host_node_t*)MPIU_Malloc(sizeof(smpd_host_node_t));
 		if (host_list == NULL)
 		{
 		    printf("failed to allocate memory for a host node.\n");
@@ -1298,7 +1375,7 @@ configfile_loop:
 		}
 		/* create a host list of one and set nproc to -1 to be replaced by
 		   nproc after parsing the block */
-		ghost_list = (smpd_host_node_t*)malloc(sizeof(smpd_host_node_t));
+		ghost_list = (smpd_host_node_t*)MPIU_Malloc(sizeof(smpd_host_node_t));
 		if (ghost_list == NULL)
 		{
 		    printf("failed to allocate memory for a host node.\n");
@@ -1353,7 +1430,7 @@ configfile_loop:
 				smpd_exit_fn(FCNAME);
 				return SMPD_FAIL;
 			    }
-			    host_node_ptr = (smpd_host_node_t*)malloc(sizeof(smpd_host_node_t));
+			    host_node_ptr = (smpd_host_node_t*)MPIU_Malloc(sizeof(smpd_host_node_t));
 			    if (host_node_ptr == NULL)
 			    {
 				printf("failed to allocate memory for a host node.\n");
@@ -1649,7 +1726,7 @@ configfile_loop:
 	    else if (strcmp(&(*argvp)[1][1], "log") == 0)
 	    {
 		/* -log is a shortcut to create log files using the mpe wrapper dll */
-		env_node = (smpd_env_node_t*)malloc(sizeof(smpd_env_node_t));
+		env_node = (smpd_env_node_t*)MPIU_Malloc(sizeof(smpd_env_node_t));
 		if (env_node == NULL)
 		{
 		    printf("Error: malloc failed to allocate structure to hold an environment variable.\n");
@@ -1735,7 +1812,7 @@ configfile_loop:
 		    smpd_process.local_root = SMPD_TRUE;
 		    /* create a host list of one and set nproc to -1 to be replaced by 
 		       nproc after parsing the block */
-		    host_list = (smpd_host_node_t*)malloc(sizeof(smpd_host_node_t));
+		    host_list = (smpd_host_node_t*)MPIU_Malloc(sizeof(smpd_host_node_t));
 		    if (host_list == NULL)
 		    {
 			printf("failed to allocate memory for a host node.\n");
@@ -1869,15 +1946,13 @@ configfile_loop:
 	exe[strlen(exe)-1] = '\0';
 	smpd_dbg_printf("handling executable:\n%s\n", exe);
 
-	if (nproc == 0)
-	{
-	    smpd_err_printf("missing num_proc flag: -n, -np, -hosts, or -localonly.\n");
-	    smpd_exit_fn(FCNAME);
-	    return SMPD_FAIL;
+	if (nproc == 0){
+    /* By default assume "mpiexec foo" => "mpiexec -n 1 foo" */
+        nproc = 1;
 	}
 	if (ghost_list != NULL && host_list == NULL && use_machine_file != SMPD_TRUE)
 	{
-	    host_list = (smpd_host_node_t*)malloc(sizeof(smpd_host_node_t));
+	    host_list = (smpd_host_node_t*)MPIU_Malloc(sizeof(smpd_host_node_t));
 	    if (host_list == NULL)
 	    {
 		printf("failed to allocate memory for a host node.\n");
@@ -1918,7 +1993,7 @@ configfile_loop:
 	    */
 	    env_node = env_list;
 	    env_list = env_list->next;
-	    free(env_node);
+	    MPIU_Free(env_node);
 	}
 	/* add the global environment variable list */
 	env_node = genv_list;
@@ -1949,7 +2024,7 @@ configfile_loop:
 		if (map_node->next == NULL)
 		{
 		    /* add a copy of the global node to the end of the list */
-		    map_node->next = (smpd_map_drive_node_t*)malloc(sizeof(smpd_map_drive_node_t));
+		    map_node->next = (smpd_map_drive_node_t*)MPIU_Malloc(sizeof(smpd_map_drive_node_t));
 		    if (map_node->next == NULL)
 		    {
 			printf("Error: malloc failed to allocate map structure.\n");
@@ -1967,7 +2042,7 @@ configfile_loop:
 	    }
 	    if (drive_map_list == NULL)
 	    {
-		map_node = (smpd_map_drive_node_t*)malloc(sizeof(smpd_map_drive_node_t));
+		map_node = (smpd_map_drive_node_t*)MPIU_Malloc(sizeof(smpd_map_drive_node_t));
 		if (map_node == NULL)
 		{
 		    printf("Error: malloc failed to allocate map structure.\n");
@@ -1986,7 +2061,7 @@ configfile_loop:
 	for (i=0; i<nproc; i++)
 	{
 	    /* create a launch_node */
-	    launch_node = (smpd_launch_node_t*)malloc(sizeof(smpd_launch_node_t));
+	    launch_node = (smpd_launch_node_t*)MPIU_Malloc(sizeof(smpd_launch_node_t));
 	    if (launch_node == NULL)
 	    {
 		smpd_err_printf("unable to allocate a launch node structure.\n");
@@ -2089,7 +2164,7 @@ configfile_loop:
 	    {
 		host_node_iter = smpd_process.s_host_list;
 		smpd_process.s_host_list = smpd_process.s_host_list->next;
-		free(host_node_iter);
+		MPIU_Free(host_node_iter);
 	    }
 	}
 

@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: mpitypedefs.h,v 1.8 2005/07/09 19:05:51 ashton Exp $
+/*  $Id: mpitypedefs.h,v 1.9 2007/03/12 20:40:39 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -17,11 +17,29 @@
 #include <sys/bitypes.h>
 #endif
 
+/* */
+/*
+#ifndef HAVE_UINT8_T 
+#ifdef MPIU_UINT8_T
+typedef MPIU_UINT8_T uint8_t;
+#else
+#error 'Configure did not find a 8-bit unsigned integer type'
+#endif
+#endif
+
 #ifndef HAVE_INT16_T 
 #ifdef MPIU_INT16_T
 typedef MPIU_INT16_T int16_t;
 #else
 #error 'Configure did not find a 16-bit integer type'
+#endif
+#endif
+
+#ifndef HAVE_UINT16_T 
+#ifdef MPIU_UINT16_T
+typedef MPIU_UINT16_T uint16_t;
+#else
+#error 'Configure did not find a 16-bit unsigned integer type'
 #endif
 #endif
 
@@ -33,14 +51,38 @@ typedef MPIU_INT32_T int32_t;
 #endif
 #endif
 
+#ifndef HAVE_UINT32_T 
+#ifdef MPIU_UINT32_T
+typedef MPIU_UINT32_T uint32_t;
+#else
+#error 'Configure did not find a 32-bit unsigned integer type'
+#endif
+#endif
+*/
+/*
 #ifndef HAVE_INT64_T
 #ifdef MPIU_INT64_T
 typedef MPIU_INT64_T int64_t;
 #else
+*/
 /* Don't define a 64 bit integer type if we didn't find one, but 
    allow the code to compile as long as we don't need that type */
+/*
 #endif
 #endif
+*/
+/*
+#ifndef HAVE_UINT64_T
+#ifdef MPIU_UINT64_T
+typedef MPIU_UINT64_T uint64_t;
+#else
+*/
+/* Don't define a 64 bit unsigned integer type if we didn't find one, 
+   allow the code to compile as long as we don't need the type */
+/*
+#endif
+#endif
+*/
 
 #ifdef HAVE_WINDOWS_H
 #include <winsock2.h>
@@ -57,7 +99,8 @@ typedef MPIU_INT64_T int64_t;
 #endif
 #endif
 
-/* Use this macro for each parameter to a function that is not referenced in the body of the function */
+/* Use this macro for each parameter to a function that is not referenced in
+   the body of the function */
 #ifdef HAVE_WINDOWS_H
 #define MPIU_UNREFERENCED_ARG(a) a
 #else
@@ -73,7 +116,8 @@ typedef MPIU_SIZE_T MPIU_Size_t;
 
 /* Use the MPIU_PtrToXXX macros to convert pointers to and from integer types */
 
-/* The Microsoft compiler will not allow casting of different sized types without
+/* The Microsoft compiler will not allow casting of different sized types 
+ * without
  * printing a compiler warning.  Using these macros allows compiler specific
  * type casting and avoids the warning output.  These macros should only be used
  * in code that can handle loss of bits.

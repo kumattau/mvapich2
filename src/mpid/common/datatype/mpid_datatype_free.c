@@ -37,13 +37,19 @@ void MPID_Datatype_free(MPID_Datatype *ptr)
 {
     MPIU_DBG_MSG_P(DATATYPE,VERBOSE,"type %x freed.", ptr->handle);
 
+#ifdef MPID_Dev_datatype_destroy_hook
+       MPID_Dev_datatype_destroy_hook(ptr);
+#endif /* MPID_Dev_datatype_destroy_hook */
+
     /* before freeing the contents, check whether the pointer is not
        null because it is null in the case of a datatype shipped to the target
        for RMA ops */  
     if (ptr->contents) {
         MPID_Datatype_free_contents(ptr);
     }
-    MPID_Dataloop_free(&(ptr->dataloop));
+    if (ptr->dataloop) {
+	MPID_Dataloop_free(&(ptr->dataloop));
+    }
 #if defined(MPID_HAS_HETERO) || 1
     if (ptr->hetero_dloop) {
 	MPID_Dataloop_free(&(ptr->hetero_dloop));

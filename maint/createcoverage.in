@@ -1,9 +1,9 @@
 #! /bin/sh
 #
-# Get coverage information for mpich2
+# Get coverage information for MVAPICH2 
 #
 #set -x
-# The default approach is to prepare the coverage for this MPICH2 
+# The default approach is to prepare the coverage for this MVAPICH2 
 # distribution and to place the coverage web pages into a 
 # (mpich2src)/www/coverage
 srcdir=@abs_mpich2srcdir@
@@ -12,17 +12,6 @@ weblocbase=$srcdir/www/coverage
 weblocprefix=""
 blddir=/tmp/$LOGNAME/mpich2-cov
 mpiinstalldir=/tmp/$LOGNAME/mpich2-cinst
-
-# These are the settings used by the MPICH2 group internally to 
-# produce the coverage.  This points the tests at a directory that contains
-# five separate test suites.
-#
-#srcdir=/home/MPI/testing/mpich2/mpich2
-#tsuites=/home/MPI/testing/tsuites
-#weblocbase=/mcs/www/mpi/mpich2/todo/coverage
-#weblocprefix="http://www.mcs.anl.gov/mpi/mpich2/todo/coverage"
-#blddir=/sandbox/$LOGNAME/mpich2-cov
-#mpiinstalldir=/sandbox/$LOGNAME/mpich2-cinst
 
 logfile=""
 # set pm=mpd if mpd is available
@@ -130,7 +119,7 @@ createcoverage [ -srcdir=sourcedir ] [ -blddir=builddir ]
                [ -test=onetest ] [ -notest=skiptest ]
                [ -device=device ] [ -nobuild ] [ -quiet ] [ -pm=pm ]
                [ -[no]updateweb ] [ -webdir=webdir ]
-     sourcedir   - Directory containing the source  for MPICH2.
+     sourcedir   - Directory containing the source  for MVAPICH2.
                    Default is $srcdir
      blddir      - Directory where the coverage tests should be built.
                    Default is $blddir
@@ -257,7 +246,7 @@ fi
 
 # Build with the coverage options
 if [ $build_mpich = yes ] ; then
-    echo "------ Build MPICH2 ------" >&6
+    echo "------ Build MVAPICH2 ------" >&6
     cd $blddir
     # Build without MPE for simplicity
     $srcdir/configure --enable-coverage --with-pm=$pm --enable-romio \
@@ -280,20 +269,20 @@ if [ $build_mpich = yes ] ; then
         echo "Make step failed with return code $rc"
 	exit 1
     fi
-    echo "------ Install MPICH2 ------" >&6
+    echo "------ Install MVAPICH2 ------" >&6
     make install >&6 2>&6
     rc=$?
     if [ "$rc" != 0 ] ; then
 	echo "Make install step failed with return code $rc"
         exit 1
     fi
-    echo "------ End of Install MPICH2 ------" >&6
+    echo "------ End of Install MVAPICH2 ------" >&6
 fi
 #
 # Run the tests
 if [ $test_mpich2 = yes ] ; then
     # The mpich2 tests are easy
-    echo "------ Run MPICH2 Tests ------" >&6
+    echo "------ Run MVAPICH2 Tests ------" >&6
     if [ "$pm" = mpd ] ; then
         # Start by running the mpd demon
         ($mpiinstalldir/bin/mpd -d & ) >&6 2>&6
@@ -304,7 +293,7 @@ if [ $test_mpich2 = yes ] ; then
         # Stop the mpd demon
         ($mpiinstalldir/bin/mpdallexit) >&6 2>&6
     fi
-    echo "------ End Run MPICH2 Tests ------" >&6
+    echo "------ End Run MVAPICH2 Tests ------" >&6
 fi
 
 if [ ! -d $blddir/othertest ] ; then

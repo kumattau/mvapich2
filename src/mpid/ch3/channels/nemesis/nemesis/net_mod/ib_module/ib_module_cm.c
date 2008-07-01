@@ -2,6 +2,7 @@
  *  (C) 2006 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+#include "ib_module_impl.h"
 #include "mpidimpl.h"
 #include "ib_module_cm.h"
 

@@ -3,6 +3,16 @@
 #   (C) 2001 by Argonne National Laboratory.
 #       See COPYRIGHT in top-level directory.
 #
+# Copyright (c) 2003-2008, The Ohio State University. All rights
+# reserved.
+#
+# This file is part of the MVAPICH2 software package developed by the
+# team members of The Ohio State University's Network-Based Computing
+# Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+#
+# For detailed copyright and licensing information, please refer to the
+# copyright file COPYRIGHT in the top level MVAPICH2 directory.
+#
 
 """
 usage:
@@ -49,7 +59,7 @@ Examples:
 from time import ctime
 __author__ = "Ralph Butler and Rusty Lusk"
 __date__ = ctime()
-__version__ = "$Revision: 1.88 $"
+__version__ = "$Revision: 1.90 $"
 __credits__ = ""
 
 import signal
@@ -61,10 +71,16 @@ import sys, os, socket, re
 from  urllib import quote
 from  time   import time
 from  urllib import unquote
+# <_OSU_MVAPICH_>
+#from  mpdlib import mpd_set_my_id, mpd_get_my_username, mpd_version, mpd_print, \
+#                    mpd_uncaught_except_tb, mpd_handle_signal, mpd_which, \
+#
+#                    MPDListenSock, MPDStreamHandler, MPDConClientSock, MPDParmDB
 from  mpdlib import mpd_set_my_id, mpd_get_my_username, mpd_version, mpd_print, \
                     mpd_uncaught_except_tb, mpd_handle_signal, mpd_which, \
                     MPDListenSock, MPDStreamHandler, MPDConClientSock, MPDParmDB, \
                     MPDSock
+# </_OSU_MVAPICH_>
 
 try:
     import pwd
@@ -75,9 +91,11 @@ except:
 global parmdb, nextRange, appnum
 global numDoneWithIO, myExitStatus, sigOccurred, outXmlDoc, outECs
 
+# <_OSU_MVAPICH_>
 #CR_SUPPORT
 global cr_status_vector, cr_succeed_count, cr_nprocs, cr_man_sock, cr_con_sock
 #CR_SUPPORT_END
+# </_OSU_MVAPICH_>
 
 recvTimeout = 20  # const
 
@@ -86,9 +104,11 @@ def mpiexec():
     global parmdb, nextRange, appnum
     global numDoneWithIO, myExitStatus, sigOccurred, outXmlDoc, outECs
 
+# <_OSU_MVAPICH_>
     #CR_SUPPORT
     global cr_status_vector, cr_succeed_count, cr_nprocs, cr_man_sock, cr_con_sock
     #CR_SUPPORT_END
+# </_OSU_MVAPICH_>
 
     import sys  # for sys.excepthook on next line
     sys.excepthook = mpd_uncaught_except_tb
@@ -178,7 +198,7 @@ def mpiexec():
 	        usage()
             configFile = open(sys.argv[2],'r',0)
             configLines = configFile.readlines()
-            configLines = [ x.strip() + ' : '  for x in configLines if x[0] != '#' ]
+            configLines = [ x.strip() + ' : '  for x in configLines if x[0] != '#' and x.strip() != '' ]
             tempargv = []
             for line in configLines:
                 line = 'mpddummyarg ' + line  # gets pitched in shells that can't handle --
@@ -318,6 +338,7 @@ def mpiexec():
     else:
         mshipPid = 0
 
+# <_OSU_MVAPICH_>
     #CR_SUPPORT
     if (os.environ.has_key('MV2_CR_ENABLED') and os.environ['MV2_CR_ENABLED'] == '1'):
         #Get env for FTC
@@ -344,7 +365,8 @@ def mpiexec():
     else:
         cr_enabled = 0
     #CR_SUPPORT_END
-
+# </_OSU_MVAPICH_>
+    
     # make sure to do this after nprocs has its value
     linesPerRank = {}  # keep this a dict instead of a list
     for i in range(parmdb['nprocs']):
@@ -478,6 +500,7 @@ def mpiexec():
         mpd_print(1, 'mpiexec: from man, invalid msg=:%s:' % (msg) )
         sys.exit(-1)
 
+# <_OSU_MVAPICH_>
     #CR_SUPPORT
     if (cr_enabled == 1):
         #Send an additional message to enable FT support for man
@@ -489,6 +512,7 @@ def mpiexec():
         streamHandler.set_handler(crConSock,handle_cr_con_input)
         cr_con_sock = crConSock
     #CR_SUPPORT_END
+# </_OSU_MVAPICH_>
 
     msgToSend = { 'cmd' : 'ringsize', 'ring_ncpus' : currRingNCPUs,
                   'ringsize' : currRingSize }
@@ -597,7 +621,10 @@ def collect_args(args,localArgSets):
     currumask = os.umask(0) ; os.umask(currumask)  # grab it and set it back
     parmdb[('cmdline','-gn')]          = 1
     parmdb[('cmdline','-ghost')]       = '_any_'
-    parmdb[('cmdline','-gpath')]       = os.environ['PATH']
+    if os.environ.has_key('PATH'):
+        parmdb[('cmdline','-gpath')]   = os.environ['PATH']
+    else:
+        parmdb[('cmdline','-gpath')]   =  ''
     parmdb[('cmdline','-gwdir')]       = os.path.abspath(os.getcwd())
     parmdb[('cmdline','-gumask')]      = str(currumask)
     parmdb[('cmdline','-gsoft')]       = 0
@@ -841,6 +868,7 @@ def handle_local_argset(argset,machineFileInfo,msgToMPD):
         print 'no cmd specified'
         usage()
 
+# <_OSU_MVAPICH_>
     global recvTimeout
     recvTimeoutMultiplier = 0.05
     if os.environ.has_key('MV2_MPD_RECVTIMEOUT_MULTIPLIER'):
@@ -853,7 +881,9 @@ def handle_local_argset(argset,machineFileInfo,msgToMPD):
                 print 'Invalid MV2_MPD_RECVTIMEOUT_MULTIPLIER. Value must be a number.'
                 sys.exit(-1)
     recvTimeout = nProcs * recvTimeoutMultiplier
-
+    if recvTimeout < 3.0:
+        recvTimeout = 3.0
+# </_OSU_MVAPICH_>
     argsetLoRange = nextRange
     argsetHiRange = nextRange + nProcs - 1
     loRange = argsetLoRange
@@ -1002,9 +1032,11 @@ def read_machinefile(machineFilename):
     return machineFileInfo
 
 def handle_man_input(sock,streamHandler):
+# <_OSU_MVAPICH_>
     #CR_SUPPORT
     global cr_status_vector, cr_succeed_count, cr_con_sock, cr_nprocs
     #CR_SUPPORT_END
+# </_OSU_MVAPICH_>
     global numDoneWithIO, myExitStatus
     global outXmlDoc, outECs
     msg = sock.recv_dict_msg()
@@ -1074,6 +1106,7 @@ def handle_man_input(sock,streamHandler):
             #       (msg['cli_rank'],exit_status)
         else:
             myExitStatus = 0
+# <_OSU_MVAPICH_>
     #CR_SUPPORT
     elif msg['cmd'] == 'ckpt_rep':
         #mpd_print(1,'receivd ckpt_rep from %d, result = %s ' % (msg['rank'],msg['result']))
@@ -1108,9 +1141,11 @@ def handle_man_input(sock,streamHandler):
     elif msg['cmd'] == 'finalize_ckpt':
         cr_con_sock.send_char_msg('cmd=finalize_ckpt\n')
     #CR_SUPPORT_END
+# </_OSU_MVAPICH_>
     else:
         print 'unrecognized msg from manager :%s:' % msg
 
+# <_OSU_MVAPICH_>
 #CR_SUPPORT
 def parse_char_msg(msg):
     parsed_msg = {}
@@ -1145,6 +1180,7 @@ def handle_cr_con_input(sock):
     else:
         print 'unrecognized msg:%s:' % msg
 #CR_SUPPORT_END
+# </_OSU_MVAPICH_>
 
 def handle_cli_stdout_input(sock,parmdb,streamHandler,linesPerRank):
     global numDoneWithIO

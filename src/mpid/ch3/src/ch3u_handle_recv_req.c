@@ -3,9 +3,35 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2003-2008, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
 
 #include "mpidimpl.h"
 #include "mpidrma.h"
+
+#if defined(_OSU_MVAPICH)
+#undef DEBUG_PRINT
+#if defined (DEBUG)
+#define DEBUG_PRINT(args...)                                      \
+do {                                                              \
+    int rank;                                                     \
+    PMI_Get_rank(&rank);                                          \
+    fprintf(stderr, "[%d][%s:%d] ", rank, __FILE__, __LINE__);    \
+    fprintf(stderr, args);                                        \
+} while (0)
+#else /* defined(DEBUG) */
+#define DEBUG_PRINT(args...)
+#endif /* defined(DEBUG) */
+#endif /* defined(_OSU_MVAPICH) */
 
 static int create_derived_datatype(MPID_Request * rreq, MPID_Datatype ** dtp);
 static int do_accumulate_op(MPID_Request * rreq);
@@ -26,22 +52,48 @@ int MPIDI_CH3U_Handle_recv_req(MPIDI_VC_t * vc, MPID_Request * rreq,
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3U_HANDLE_RECV_REQ);
 
+#if defined(_OSU_MVAPICH)
+    if(in_routine != FALSE) {
+      MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+	  "**fail %s", "in_routine != FALSE");
+    }
+#else /* defined(_OSU_MVAPICH_) */
     MPIU_Assert(in_routine == FALSE);
+#endif /* defined(_OSU_MVAPICH_) */
     in_routine = TRUE;
 
     reqFn = rreq->dev.OnDataAvail;
     if (!reqFn) {
+#if defined(_OSU_MVAPICH_)
+	if(MPIDI_Request_get_type(rreq) != MPIDI_REQUEST_TYPE_RECV) {
+	  MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+	      "**fail %s",
+	      "MPIDI_Request_get_type(rreq) != MPIDI_REQUEST_TYPE_RECV");
+	}
+#else /* defined(_OSU_MVAPICH_) */
 	MPIU_Assert(MPIDI_Request_get_type(rreq) == MPIDI_REQUEST_TYPE_RECV);
+#endif /* defined(_OSU_MVAPICH_) */
+
 	MPIDI_CH3U_Request_complete(rreq);
 	*complete = TRUE;
     }
     else {
         mpi_errno = reqFn( vc, rreq, complete );
     }
+#if defined(_OSU_MVAPICH_)
+fn_exit:
+    if (TRUE == *complete && VAPI_PROTOCOL_R3 == rreq->mrail.protocol)
+	MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(rreq);
+#endif /* defined(_OSU_MVAPICH_) */
 
     in_routine = FALSE;
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3U_HANDLE_RECV_REQ);
     return mpi_errno;
+
+#if defined(_OSU_MVAPICH_)
+fn_fail:
+    goto fn_exit;
+#endif /* defined(_OSU_MVAPICH_) */
 }
 
 /* ----------------------------------------------------------------------- */
@@ -96,6 +148,10 @@ int MPIDI_CH3_ReqHandler_PutAccumRespComplete( MPIDI_VC_t *vc,
     
     MPID_Win_get_ptr(rreq->dev.target_win_handle, win_ptr);
     
+#if defined(_OSU_MVAPICH_)
+    win_ptr->outstanding_rma--;
+#endif /* defined(_OSU_MVAPICH_) */
+   
     /* if passive target RMA, increment counter */
     if (win_ptr->current_lock_type != MPID_LOCK_NONE)
 	win_ptr->my_pt_rma_puts_accs++;
@@ -161,10 +217,12 @@ int MPIDI_CH3_ReqHandler_PutRespDerivedDTComplete( MPIDI_VC_t *vc,
        request is freed. free dtype_info here. */
     MPIU_Free(rreq->dev.dtype_info);
     
+    rreq->dev.segment_ptr = MPID_Segment_alloc( );
+    /* if (!rreq->dev.segment_ptr) { MPIU_ERR_POP(); } */
     MPID_Segment_init(rreq->dev.user_buf,
 		      rreq->dev.user_count,
 		      rreq->dev.datatype,
-		      &rreq->dev.segment, 0);
+		      rreq->dev.segment_ptr, 0);
     rreq->dev.segment_first = 0;
     rreq->dev.segment_size = rreq->dev.recv_data_sz;
     
@@ -176,7 +234,48 @@ int MPIDI_CH3_ReqHandler_PutRespDerivedDTComplete( MPIDI_VC_t *vc,
     if (!rreq->dev.OnDataAvail) 
 	rreq->dev.OnDataAvail = MPIDI_CH3_ReqHandler_PutAccumRespComplete;
     
+#if defined(_OSU_MVAPICH_)
+    if (VAPI_PROTOCOL_EAGER == rreq->mrail.protocol) {
+#endif /* defined(_OSU_MVAPICH_) */
     *complete = FALSE;
+#if defined(_OSU_MVAPICH_)
+    } else if (VAPI_PROTOCOL_RPUT == rreq->mrail.protocol ||
+               VAPI_PROTOCOL_R3 == rreq->mrail.protocol) {
+	MPID_Request *cts_req;
+	MPIDI_CH3_Pkt_t upkt;
+	MPIDI_CH3_Pkt_rndv_clr_to_send_t *cts_pkt =
+	    &upkt.rndv_clr_to_send;
+#if defined(MPID_USE_SEQUENCE_NUMBERS)
+	MPID_Seqnum_t seqnum;
+#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
+	MPIDI_Pkt_init(cts_pkt,
+	               MPIDI_CH3_PKT_RMA_RNDV_CLR_TO_SEND);
+	MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+	MPIDI_Pkt_set_seqnum(cts_pkt, seqnum);
+	
+	cts_pkt->sender_req_id = rreq->dev.sender_req_id;
+	cts_pkt->receiver_req_id = rreq->handle;
+
+	mpi_errno = MPIDI_CH3_Prepare_rndv_cts(vc, cts_pkt, rreq);
+	if (mpi_errno != MPI_SUCCESS) {
+	    MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ch3|rndv");
+	}
+
+	mpi_errno = MPIDI_CH3_iStartMsg(vc, cts_pkt, sizeof(*cts_pkt), &cts_req);
+	/* --BEGIN ERROR HANDLING-- */
+	if (mpi_errno != MPI_SUCCESS) {
+	    MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**ch3|ctspkt");
+	}
+	/* --END ERROR HANDLING-- */
+	if (cts_req != NULL) {
+	    MPID_Request_release(cts_req);
+	}
+	*complete = TRUE;
+    } else {
+        MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|loadrecviov");
+    }
+#endif /* defined(_OSU_MVAPICH_) */
+
  fn_fail:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_REQHANDLER_PUTRESPDERIVEDDTCOMPLETE);
     return mpi_errno;
@@ -237,10 +336,12 @@ int MPIDI_CH3_ReqHandler_AccumRespDerivedDTComplete( MPIDI_VC_t *vc,
        request is freed. free dtype_info here. */
     MPIU_Free(rreq->dev.dtype_info);
     
+    rreq->dev.segment_ptr = MPID_Segment_alloc( );
+    /* if (!rreq->dev.segment_ptr) { MPIU_ERR_POP(); } */
     MPID_Segment_init(rreq->dev.user_buf,
 		      rreq->dev.user_count,
 		      rreq->dev.datatype,
-		      &rreq->dev.segment, 0);
+		      rreq->dev.segment_ptr, 0);
     rreq->dev.segment_first = 0;
     rreq->dev.segment_size = rreq->dev.recv_data_sz;
     
@@ -252,7 +353,49 @@ int MPIDI_CH3_ReqHandler_AccumRespDerivedDTComplete( MPIDI_VC_t *vc,
     if (!rreq->dev.OnDataAvail)
 	rreq->dev.OnDataAvail = MPIDI_CH3_ReqHandler_PutAccumRespComplete;
     
+#if defined(_OSU_MVAPICH_)
+    if (VAPI_PROTOCOL_EAGER == rreq->mrail.protocol) {
+#endif /* defined(_OSU_MVAPICH_) */
     *complete = FALSE;
+#if defined(_OSU_MVAPICH_)
+    } else if (VAPI_PROTOCOL_RPUT == rreq->mrail.protocol ||
+               VAPI_PROTOCOL_R3 == rreq->mrail.protocol) {
+	MPID_Request *cts_req;
+	MPIDI_CH3_Pkt_t upkt;
+	MPIDI_CH3_Pkt_rndv_clr_to_send_t *cts_pkt =
+	    &upkt.rndv_clr_to_send;
+#if defined(MPID_USE_SEQUENCE_NUMBERS)
+	MPID_Seqnum_t seqnum;
+#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
+	MPIDI_Pkt_init(cts_pkt,
+	               MPIDI_CH3_PKT_RMA_RNDV_CLR_TO_SEND);
+	MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+	MPIDI_Pkt_set_seqnum(cts_pkt, seqnum);
+
+	cts_pkt->sender_req_id = rreq->dev.sender_req_id;
+	cts_pkt->receiver_req_id = rreq->handle;
+
+	mpi_errno = MPIDI_CH3_Prepare_rndv_cts(vc, cts_pkt, rreq);
+	if (mpi_errno != MPI_SUCCESS) {
+	    MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|rndv");
+	}
+
+	mpi_errno = MPIDI_CH3_iStartMsg(vc, cts_pkt, sizeof(*cts_pkt), &cts_req);
+	/* --BEGIN ERROR HANDLING-- */
+	if (mpi_errno != MPI_SUCCESS) {
+	    MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|ctspkt");
+	}
+	/* --END ERROR HANDLING-- */
+	if (cts_req != NULL) {
+	    MPID_Request_release(cts_req);
+	}
+
+	*complete = TRUE;
+    } else {
+            MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|loadrecviov");
+    }
+#endif /* defined(_OSU_MVAPICH_) */
+
  fn_fail:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_REQHANDLER_ACCUMRESPDERIVEDDTCOMPLETE);
     return mpi_errno;
@@ -273,6 +416,9 @@ int MPIDI_CH3_ReqHandler_GetRespDerivedDTComplete( MPIDI_VC_t *vc,
     MPID_IOV iov[MPID_IOV_LIMIT];
     MPID_Request * sreq;
     int iov_n;
+#if defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS)
+    MPID_Seqnum_t seqnum;
+#endif /* defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS) */
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_REQHANDLER_GETRESPDERIVEDDTCOMPLETE);
     
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_REQHANDLER_GETRESPDERIVEDDTCOMPLETE);
@@ -297,19 +443,33 @@ int MPIDI_CH3_ReqHandler_GetRespDerivedDTComplete( MPIDI_VC_t *vc,
     sreq->dev.target_win_handle = rreq->dev.target_win_handle;
     sreq->dev.source_win_handle = rreq->dev.source_win_handle;
     
+#if defined(_OSU_MVAPICH_)
+    memcpy((void *)&sreq->mrail, (void *)&rreq->mrail,sizeof(rreq->mrail));
+#endif /* defined(_OSU_MVAPICH_) */
+
     MPIDI_Pkt_init(get_resp_pkt, MPIDI_CH3_PKT_GET_RESP);
     get_resp_pkt->request_handle = rreq->dev.request_handle;
     
     iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) get_resp_pkt;
     iov[0].MPID_IOV_LEN = sizeof(*get_resp_pkt);
     
+    sreq->dev.segment_ptr = MPID_Segment_alloc( );
+    /* if (!sreq->dev.segment_ptr) { MPIU_ERR_POP(); } */
     MPID_Segment_init(sreq->dev.user_buf,
 		      sreq->dev.user_count,
 		      sreq->dev.datatype,
-		      &sreq->dev.segment, 0);
+		      sreq->dev.segment_ptr, 0);
     sreq->dev.segment_first = 0;
     sreq->dev.segment_size = new_dtp->size * sreq->dev.user_count;
     
+#if defined(_OSU_MVAPICH_)
+    MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+    MPIDI_Pkt_set_seqnum(get_resp_pkt, seqnum);
+
+    if (sreq->mrail.protocol == VAPI_PROTOCOL_EAGER)
+    {
+	get_resp_pkt->protocol = VAPI_PROTOCOL_EAGER;
+#endif /* defined(_OSU_MVAPICH_) */
     iov_n = MPID_IOV_LIMIT - 1;
     /* Note that the OnFinal handler was set above */
     mpi_errno = MPIDI_CH3U_Request_load_send_iov(sreq, &iov[1], &iov_n);
@@ -317,7 +477,7 @@ int MPIDI_CH3_ReqHandler_GetRespDerivedDTComplete( MPIDI_VC_t *vc,
     {
 	iov_n += 1;
 		
-	mpi_errno = MPIDI_CH3_iSendv(vc, sreq, iov, iov_n);
+	mpi_errno = MPIU_CALL(MPIDI_CH3,iSendv(vc, sreq, iov, iov_n));
 	/* --BEGIN ERROR HANDLING-- */
 	if (mpi_errno != MPI_SUCCESS)
 	{
@@ -328,7 +488,32 @@ int MPIDI_CH3_ReqHandler_GetRespDerivedDTComplete( MPIDI_VC_t *vc,
 	}
 	/* --END ERROR HANDLING-- */
     }
-    
+#if defined(_OSU_MVAPICH_)
+	else
+        {
+            MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ch3|loadrecviov");
+	}
+    }
+    else if (sreq->mrail.protocol == VAPI_PROTOCOL_RPUT 
+        || sreq->mrail.protocol == VAPI_PROTOCOL_R3)
+    {
+	sreq->dev.iov_count = MPID_IOV_LIMIT;
+	mpi_errno = MPIDI_CH3U_Request_load_send_iov(sreq,sreq->dev.iov,&sreq->dev.iov_count);
+
+	if (mpi_errno == MPI_SUCCESS)
+        {
+	    MPIDI_CH3_Get_rndv_push(vc, get_resp_pkt, sreq);
+	}
+        else
+        {
+	    MPIU_ERR_SETFATALANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|loadsendiov");
+	}
+    }
+    else
+    {
+	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|loadrecviov");
+    }
+#endif /* defined(_OSU_MVAPICH_) */
     /* mark receive data transfer as complete and decrement CC in receive 
        request */
     MPIDI_CH3U_Request_complete(rreq);
@@ -715,14 +900,10 @@ static int do_accumulate_op(MPID_Request *rreq)
     MPIR_Nest_incr();
     mpi_errno = NMPI_Type_get_true_extent(rreq->dev.datatype, &true_lb, &true_extent);
     MPIR_Nest_decr();
-    /* --BEGIN ERROR HANDLING-- */
     if (mpi_errno) 
     {
-	mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", 0);
-	MPIDI_FUNC_EXIT(MPID_STATE_DO_ACCUMULATE_OP);
-	return mpi_errno;
+        MPIU_ERR_POP(mpi_errno);
     }
-    /* --END ERROR HANDLING-- */
     
     MPIU_Free((char *) rreq->dev.user_buf + true_lb);
 
@@ -784,6 +965,25 @@ int MPIDI_CH3I_Release_lock(MPID_Win *win_ptr)
 
 	do { 
 	    if (temp_entered_count != entered_count) temp_entered_count++;
+
+#if defined(_OSU_MVAPICH_)
+	    if (win_ptr->outstanding_rma != 0) {
+		MPID_Progress_state progress_state;
+
+		MPID_Progress_start(&progress_state);
+
+		while (win_ptr->outstanding_rma != 0) {
+		    mpi_errno = MPID_Progress_wait(&progress_state);
+		    /* --BEGIN ERROR HANDLING-- */
+		    if (mpi_errno != MPI_SUCCESS) {
+		        MPID_Progress_end(&progress_state);
+		        return mpi_errno;
+		    }
+		    /* --END ERROR HANDLING-- */
+		}	
+		MPID_Progress_end(&progress_state);
+	    }
+#endif /* defined(_OSU_MVAPICH_) */
 
 	    /* FIXME: MT: The setting of the lock type must be done atomically */
 	    win_ptr->current_lock_type = MPID_LOCK_NONE;
@@ -923,6 +1123,9 @@ int MPIDI_CH3I_Send_pt_rma_done_pkt(MPIDI_VC_t *vc, MPI_Win source_win_handle)
     MPIDI_CH3_Pkt_pt_rma_done_t *pt_rma_done_pkt = &upkt.pt_rma_done;
     MPID_Request *req;
     int mpi_errno=MPI_SUCCESS;
+#if defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS)
+    MPID_Seqnum_t seqnum;
+#endif /* defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS) */
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SEND_PT_RMA_DONE_PKT);
     
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SEND_PT_RMA_DONE_PKT);
@@ -930,8 +1133,13 @@ int MPIDI_CH3I_Send_pt_rma_done_pkt(MPIDI_VC_t *vc, MPI_Win source_win_handle)
     MPIDI_Pkt_init(pt_rma_done_pkt, MPIDI_CH3_PKT_PT_RMA_DONE);
     pt_rma_done_pkt->source_win_handle = source_win_handle;
 
-    mpi_errno = MPIDI_CH3_iStartMsg(vc, pt_rma_done_pkt,
-                                    sizeof(*pt_rma_done_pkt), &req);
+#if defined(_OSU_MVAPICH_)
+    MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+    MPIDI_Pkt_set_seqnum(pt_rma_done_pkt, seqnum);
+#endif /* defined(_OSU_MVAPICH_) */
+
+    mpi_errno = MPIU_CALL(MPIDI_CH3,iStartMsg(vc, pt_rma_done_pkt,
+					      sizeof(*pt_rma_done_pkt), &req));
     if (mpi_errno != MPI_SUCCESS) {
 	MPIU_ERR_SETFATALANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|rmamsg");
     }
@@ -1034,7 +1242,7 @@ static int do_simple_get(MPID_Win *win_ptr, MPIDI_Win_lock_queue *lock_queue)
     MPID_Datatype_get_size_macro(lock_queue->pt_single_op->datatype, type_size);
     iov[1].MPID_IOV_LEN = lock_queue->pt_single_op->count * type_size;
     
-    mpi_errno = MPIDI_CH3_iSendv(lock_queue->vc, req, iov, 2);
+    mpi_errno = MPIU_CALL(MPIDI_CH3,iSendv(lock_queue->vc, req, iov, 2));
     /* --BEGIN ERROR HANDLING-- */
     if (mpi_errno != MPI_SUCCESS)
     {

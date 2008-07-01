@@ -11,9 +11,10 @@ info
 init
 pt2pt
 @rmadir@
-#@spawndir@
+@spawndir@
 topo
-#@iodir@
+perf
+@iodir@
 @f77dir@
 @cxxdir@
 @f90dir@

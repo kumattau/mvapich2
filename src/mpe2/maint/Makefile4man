@@ -1,7 +1,8 @@
 #  Output Directory
 
-MAN_DIR  = ../man/man3
-HTML_DIR = ../html
+EXTNUM   = 4
+MAN_DIR  = ../man/man$(EXTNUM)
+HTML_DIR = ../html/www$(EXTNUM)
 
 #  Input Directory
 
@@ -23,7 +24,7 @@ REAL_SRC = $(API_SRC:%.c=$(SRC_DIR)/%.c)
 REAL_TXT = $(INC_TXT:%.txt=$(SRC_DIR)/%.txt)
 
 #  The utilities property
-DOCTEXT = /home/gropp/bin/linux-rh73/doctext
+DOCTEXT = doctext
 DOC_OPT = -heading MPE
 
 all:	man html
@@ -31,7 +32,7 @@ all:	man html
 man:	FORCE 
 	if [ ! -d $(MAN_DIR) ] ; then \
 		mkdir -p $(MAN_DIR) ; fi
-	$(DOCTEXT) -mpath $(MAN_DIR) $(DOC_OPT) \
+	$(DOCTEXT) -mpath $(MAN_DIR) $(DOC_OPT) -ext $(EXTNUM) \
 	                  $(REAL_TXT) $(REAL_SRC) $(REAL_TPL)
 FORCE:
 
@@ -44,4 +45,4 @@ html:	FORCE
 FORCE:
 
 clean:
-	rm -f $(MAN_DIR)/*.3 $(HTML_DIR)/*.html $(HTML_DIR)/*.cit
+	rm -f $(MAN_DIR)/*.$(EXTNUM) $(HTML_DIR)/*.html $(HTML_DIR)/*.cit

@@ -4,11 +4,11 @@ comm
 ext
 info
 init
-#@iodir@
+@iodir@
 misc
 pt2pt
 datatype
 @rmadir@
-#@spawndir@
+@spawndir@
 timer
 topo

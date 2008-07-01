@@ -432,6 +432,15 @@ MPID_nem_tcp_module_vc_init (MPIDI_VC_t *vc, const char *business_card)
 }
 
 #undef FUNCNAME
+#define FUNCNAME MPID_nem_tcp_module_vc_destroy
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int MPID_nem_tcp_module_vc_destroy(MPIDI_VC_t *vc)
+{
+    return MPI_SUCCESS;
+}
+
+#undef FUNCNAME
 #define FUNCNAME MPID_nem_tcp_module_vc_terminate
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)

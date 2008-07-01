@@ -3,6 +3,17 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2003-2008, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
 
 #include "mpidi_ch3_impl.h"
 #include "mpidrma.h"
@@ -16,8 +27,7 @@
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_Win_create(void *base, MPI_Aint size, int disp_unit, MPID_Info *info,
-		     MPID_Comm *comm_ptr, MPID_Win **win_ptr, 
-		     MPIDI_RMAFns *RMAFns)
+		     MPID_Comm *comm_ptr, MPID_Win **win_ptr )
 {
     int mpi_errno=MPI_SUCCESS, i, comm_size, rank;
     MPI_Aint *tmp_buf;
@@ -30,7 +40,6 @@ int MPIDI_Win_create(void *base, MPI_Aint size, int disp_unit, MPID_Info *info,
 
     /* FIXME: There should be no unreferenced args */
     MPIU_UNREFERENCED_ARG(info);
-    MPIU_UNREFERENCED_ARG(RMAFns);
 
     MPIU_THREADPRIV_GET;
 
@@ -56,7 +65,9 @@ int MPIDI_Win_create(void *base, MPI_Aint size, int disp_unit, MPID_Info *info,
     (*win_ptr)->lock_queue = NULL;
     (*win_ptr)->my_counter = 0;
     (*win_ptr)->my_pt_rma_puts_accs = 0;
-    
+#if defined(_OSU_MVAPICH_)
+    (*win_ptr)->outstanding_rma = 0;
+#endif /* defined(_OSU_MVAPICH_) */
     mpi_errno = NMPI_Comm_dup(comm_ptr->handle, &((*win_ptr)->comm));
     if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
     
@@ -100,6 +111,19 @@ int MPIDI_Win_create(void *base, MPI_Aint size, int disp_unit, MPID_Info *info,
 	(*win_ptr)->all_win_handles[i] = (MPI_Win) tmp_buf[3*i+2];
     }
         
+#if defined(_OSU_MVAPICH_)
+        /* -- OSU-MPI2 uses extended CH3 interface */
+    if (comm_ptr->comm_kind != MPID_INTRACOMM)
+	/* Intercomm is not well supported currently,
+	 * fall back to pt2pt implementation if we use inter
+	 * communicator */
+	(*win_ptr)->fall_back = 1;
+    else {
+	(*win_ptr)->fall_back = 0;
+	MPIDI_CH3I_RDMA_win_create(base, size, comm_size, rank, win_ptr, comm_ptr);
+    }
+#endif /* defined(_OSU_MVAPICH_) */
+    
  fn_exit:
     MPIR_Nest_decr();
     MPIU_CHKLMEM_FREEALL();
@@ -160,14 +184,19 @@ int MPIDI_Win_free(MPID_Win **win_ptr)
 	    if (mpi_errno != MPI_SUCCESS)
 	    {
 		MPID_Progress_end(&progress_state);
-		mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER,
-                                                     "**fail", "**fail %s", "making progress on the rma messages failed");
-		goto fn_exit;
+		MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**winnoprogress");
 	    }
 	    /* --END ERROR HANDLING-- */
 	}
 	MPID_Progress_end(&progress_state);
     }
+
+#if defined(_OSU_MVAPICH_)
+    if ((*win_ptr)->fall_back != 1) {
+	MPIDI_CH3I_RDMA_finish_rma(*win_ptr);
+	MPIDI_CH3I_RDMA_win_free(win_ptr);
+    }
+#endif /* defined(_OSU_MVAPICH_) */
 
     NMPI_Comm_free(&((*win_ptr)->comm));
         
@@ -184,10 +213,9 @@ int MPIDI_Win_free(MPID_Win **win_ptr)
     MPIU_CHKLMEM_FREEALL();
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPIDI_WIN_FREE);
     return mpi_errno;
-    /* --BEGIN ERROR HANDLING-- */
+
  fn_fail:
     goto fn_exit;
-    /* --END ERROR HANDLING-- */
 }
 
 
@@ -247,7 +275,8 @@ int MPIDI_Put(void *origin_addr, int origin_count, MPI_Datatype
 	    prev_ptr = curr_ptr;
 	    curr_ptr = curr_ptr->next;
 	}
-	
+
+	/* FIXME: Where does this memory get freed? */
 	MPIU_CHKPMEM_MALLOC(new_ptr, MPIDI_RMA_ops *, sizeof(MPIDI_RMA_ops), 
 			    mpi_errno, "RMA operation entry");
 	if (prev_ptr != NULL)
@@ -280,6 +309,12 @@ int MPIDI_Put(void *origin_addr, int origin_count, MPI_Datatype
 	    MPID_Datatype_add_ref(dtp);
 	}
     }
+
+#if defined(_OSU_MVAPICH_) && !defined(_SCHEDULE)
+    if (win_ptr->fall_back != 1 && win_ptr->using_lock != 1) {
+        MPIDI_CH3I_RDMA_try_rma(win_ptr, &win_ptr->rma_ops_list, 0);
+    }
+#endif /* defined(_OSU_MVAPICH) && !defined(_SCHEDULE) */
 
   fn_exit:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPIDI_PUT);    
@@ -385,6 +420,12 @@ int MPIDI_Get(void *origin_addr, int origin_count, MPI_Datatype
 	    MPID_Datatype_add_ref(dtp);
 	}
     }
+
+#if defined(_OSU_MVAPICH) && !defined(_SCHEDULE)
+    if (win_ptr->fall_back != 1 && win_ptr->using_lock !=1) {
+        MPIDI_CH3I_RDMA_try_rma(win_ptr, &win_ptr->rma_ops_list, 0);
+    }
+#endif /* defined(_OSU_MVAPICH_) && !defined(_SCHEDULE) */
 
   fn_exit:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPIDI_GET);

@@ -91,7 +91,11 @@ int iPMI_Spawn_multiple(int count,
 int iPMI_Parse_option(int num_args, char *args[], int *num_parsed, PMI_keyval_t **keyvalp, int *size);
 /* parse PMI implementation specific values into an info object that can then be passed to 
    PMI_Spawn_multiple.  Remove PMI implementation specific arguments from argc and argv */
+#if defined(_OSU_MVAPICH_)
+int iPMI_Args_to_keyval(int *argcp, char** const* argvp, PMI_keyval_t **keyvalp, int *size);
+#else /* defined(_OSU_MVAPICH_) */
 int iPMI_Args_to_keyval(int *argcp, char *((*argvp)[]), PMI_keyval_t **keyvalp, int *size);
+#endif /* defined(_OSU_MVAPICH_) */
 /* free the data returned by iPMI_Parse_option or iPMI_Args_to_keyval */
 int iPMI_Free_keyvals(PMI_keyval_t keyvalp[], int size);
 

@@ -16,8 +16,6 @@
  *
  */
 
-#ifdef CKPT
-
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -29,8 +27,7 @@
 #include <arpa/inet.h>
 #include <stdio.h>
 #include <sys/wait.h>
-
-#include "libcr.h"
+#include <libcr.h>
 
 #define MAX_CR_MSG_LEN 256
 #define CRU_MAX_KEY_LEN  64
@@ -58,24 +55,24 @@ static int  CRU_keyval_tab_idx = 0;
 #define MAX_PATH_LEN 512
 #define MPIRUN      "mpiexec.py"
 
-#define CR_ERR_ABORT(args...)  do {\
-    fprintf(stderr, "[mpiexec_cr][%s: line %d]", __FILE__, __LINE__); \
-    fprintf(stderr, args); \
-    if (mpiexec_listen_fd > 0) \
-        close(mpiexec_listen_fd); \
-    if (mpiexec_fd > 0) \
-        close(mpiexec_fd); \
-    exit(-1);\
+#define CR_ERR_ABORT(args...)  do {                                      \
+    fprintf(stderr, "[mpiexec_cr][%s: line %d]", __FILE__, __LINE__);    \
+    fprintf(stderr, args);                                               \
+    if (mpiexec_listen_fd > 0)                                           \
+        close(mpiexec_listen_fd);                                        \
+    if (mpiexec_fd > 0)                                                  \
+        close(mpiexec_fd);                                               \
+    exit(-1);                                                            \
 }while(0)
 
-#ifdef CR_DEBUG
-#define CR_DBG(args...)  do {\
-    fprintf(stderr, "[mpiexec_cr][%s: line %d]", __FILE__, __LINE__); \
-    fprintf(stderr, args); \
+#if defined(CR_DEBUG)
+#define CR_DBG(args...)  do {                                            \
+    fprintf(stderr, "[mpiexec_cr][%s: line %d]", __FILE__, __LINE__);    \
+    fprintf(stderr, args);                                               \
 }while(0)
-#else
+#else /* defined(CR_DEBUG) */
 #define CR_DBG(args...)
-#endif
+#endif /* defined(CR_DEBUG) */
 
 typedef enum {
     CR_INIT,
@@ -123,12 +120,12 @@ int CR_MPDU_parse_keyvals( char *st );
 char* CR_MPDU_getval( const char *keystr, char *valstr, int vallen);
 
 
-#define CR_MUTEX_LOCK do {\
-    pthread_mutex_lock(&cr_lock); \
+#define CR_MUTEX_LOCK do {           \
+    pthread_mutex_lock(&cr_lock);    \
 }while(0)
 
-#define CR_MUTEX_UNLOCK do{ \
-    pthread_mutex_unlock(&cr_lock);\
+#define CR_MUTEX_UNLOCK do{            \
+    pthread_mutex_unlock(&cr_lock);    \
 }while(0)
     
 void Int_handler(int signal)
@@ -387,10 +384,7 @@ int CR_Init()
     mpiexec_pid = 0;
     mpiexec_listen_fd = 0;
     mpiexec_fd = 0;
-
-#ifdef SYNC_CKPT
     enable_sync_ckpt = 1;
-#endif
     
     temp = getenv("MV2_CKPT_FILE");
     if (temp) {
@@ -493,7 +487,7 @@ int main(int argc, char *argv[])
     char cmd[MAX_PATH_LEN];
     char **new_argv;
     char *rchar;
-    int i;
+    int i = 1;
     int length;
 
     if (argc < 2)
@@ -519,7 +513,7 @@ int main(int argc, char *argv[])
 
     new_argv = (char **)malloc(sizeof(char*)*(argc+1));
     new_argv[0]=cmd;
-    for (i=1;i<argc;i++)
+    for (; i < argc; ++i)
     {
         new_argv[i]=argv[i];
     }
@@ -539,11 +533,12 @@ int main(int argc, char *argv[])
 
 int CR_MPDU_readline( int fd, char *buf, int maxlen)
 {
-    int n, rc;
+    int n = 1;
+    int rc;
     char c, *ptr;
 
     ptr = buf;
-    for ( n = 1; n < maxlen; n++ ) {
+    for (; n < maxlen; ++n) {
 again:
         rc = read( fd, &c, 1 );
         if ( rc == 1 ) {
@@ -598,55 +593,73 @@ int CR_MPDU_parse_keyvals( char *st )
 {
     char *p, *keystart, *valstart;
 
-    if ( !st )
-        return( -1 );
+    if (!st)
+    {
+        return -1;
+    }
 
     CRU_keyval_tab_idx = 0;
     p = st;
-    while ( 1 ) {
-        while ( *p == ' ' )
-            p++;
+    while (1)
+    {
+        while (*p == ' ')
+        {
+            ++p;
+        }
+        
         /* got non-blank */
         if ( *p == '=' ) {
             fprintf(stderr, "CRU_parse_keyvals: Error parsing keyvals\n");
-            return( -1 );
+            return -1;
         }
         if ( *p == '\n' || *p == '\0' )
             return( 0 );    /* normal exit */
         /* got normal
          * character */
         keystart = p;       /* remember where key started */
-        while ( *p != ' ' && *p != '=' && *p != '\n' && *p != '\0' )
-            p++;
+        while (*p != ' ' && *p != '=' && *p != '\n' && *p != '\0')
+        {
+            ++p;
+        }
         if ( *p == ' ' || *p == '\n' || *p == '\0' ) {
             fprintf(stderr,
                     "CRU_parse_keyvals: unexpected key delimiter at character %d in %s\n",
                     (int)(p - st), st );
-            return( -1 );
+            return -1;
         }
         strncpy( CRU_keyval_tab[CRU_keyval_tab_idx].key, keystart, CRU_MAX_KEY_LEN );
         CRU_keyval_tab[CRU_keyval_tab_idx].key[p - keystart] = '\0'; /* store key */
 
         valstart = ++p;         /* start of value */
-        while ( *p != ' ' && *p != '\n' && *p != '\0' )
-            p++;
+        while (*p != ' ' && *p != '\n' && *p != '\0')
+        {
+            ++p;
+        }
         strncpy( CRU_keyval_tab[CRU_keyval_tab_idx].value, valstart, CRU_MAX_VAL_LEN );
         CRU_keyval_tab[CRU_keyval_tab_idx].value[p - valstart] = '\0'; /* store value */
-        CRU_keyval_tab_idx++;
-        if ( *p == ' ' )
+        ++CRU_keyval_tab_idx;
+        if (*p == ' ')
+        {
             continue;
-        if ( *p == '\n' || *p == '\0' )
-            return( 0 );    /* value has been set to empty */
+        }
+        if (*p == '\n' || *p == '\0')
+        {
+            return 0;    /* value has been set to empty */
+        }
     }
+    
+    return -1;
 }
     
 char* CR_MPDU_getval( const char *keystr, char *valstr, int vallen)
 {
-    int i;
+    int i = 0;
 
-    for (i = 0; i < CRU_keyval_tab_idx; i++) {
-        if ( strcmp( keystr, CRU_keyval_tab[i].key ) == 0 ) {
-            strncpy( valstr, CRU_keyval_tab[i].value, vallen - 1 );
+    for (; i < CRU_keyval_tab_idx; ++i)
+    {
+        if (strcmp( keystr, CRU_keyval_tab[i].key ) == 0)
+        {
+            strncpy(valstr, CRU_keyval_tab[i].value, vallen - 1);
             valstr[vallen - 1] = '\0';
             return valstr;
         }
@@ -654,5 +667,3 @@ char* CR_MPDU_getval( const char *keystr, char *valstr, int vallen)
     valstr[0] = '\0';
     return NULL;
 }
-
-#endif

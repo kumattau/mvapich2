@@ -37,6 +37,20 @@ static int g_nHosts;
 
 #ifdef HAVE_WINDOWS_H
 #undef FCNAME
+#define FCNAME "mkstemp"
+int mkstemp(char *template)
+{
+    FILE *fout;
+    int fd=-1;
+    if(mktemp(template) != NULL){
+        if((fout = fopen(template, "w")) != NULL){
+            fd = fileno(fout);
+        }
+    }
+    return fd;
+}
+
+#undef FCNAME
 #define FCNAME "ExeToUnc"
 static void ExeToUnc(char *pszExe, int length)
 {
@@ -114,7 +128,7 @@ static HostNode* ParseLineIntoHostNode(char * line)
     /* If there is anything left on the line, consider it a host name */
     if (strlen(pChar) > 0)
     {
-	node = (HostNode*)malloc(sizeof(HostNode));
+	node = (HostNode*)MPIU_Malloc(sizeof(HostNode));
 	node->nSMPProcs = 1;
 	node->next = NULL;
 	node->exe[0] = '\0';
@@ -270,13 +284,13 @@ static void cleanup()
     {
 	map = g_pDriveMapList;
 	g_pDriveMapList = g_pDriveMapList->pNext;
-	free(map);
+	MPIU_Free(map);
     }
     while (g_pHosts)
     {
 	node = g_pHosts;
 	g_pHosts = g_pHosts->next;
-	free(node);
+	MPIU_Free(node);
     }
     smpd_exit_fn(FCNAME);
 }
@@ -286,6 +300,7 @@ static void cleanup()
 int mp_parse_mpich1_configfile(char *filename, char *configfilename, int length)
 {
     FILE *fin, *fout;
+    int fd;
     char buffer[1024] = "";
     char temp_filename[256] = "tmpXXXXXX";
 
@@ -382,7 +397,7 @@ int mp_parse_mpich1_configfile(char *filename, char *configfilename, int length)
 			    pszMap++;
 			if (*pszMap != '\0' && strlen(pszMap) > 6 && pszMap[1] == ':')
 			{
-			    MapDriveNode *pNode = (MapDriveNode*)malloc(sizeof(MapDriveNode));
+			    MapDriveNode *pNode = (MapDriveNode*)MPIU_Malloc(sizeof(MapDriveNode));
 			    pNode->cDrive = pszMap[0];
 			    strcpy(pNode->pszShare, &pszMap[2]);
 			    pNode->pNext = g_pDriveMapList;
@@ -426,14 +441,18 @@ int mp_parse_mpich1_configfile(char *filename, char *configfilename, int length)
 				g_pHosts = dummy.next;
 				
 				fclose(fin);
-				if (mktemp(temp_filename) == NULL)
+				if ((fd = mkstemp(temp_filename)) < 0)
 				{
 				    smpd_exit_fn(FCNAME);
 				    return SMPD_FAIL;
 				}
-				strncpy(configfilename, temp_filename, length);
-				fout = fopen(configfilename, "w");
 				/*printf("printing output to <%s>\n", configfilename);*/
+				strncpy(configfilename, temp_filename, length);
+                if((fout = fdopen(fd, "w")) == NULL)
+                {
+				    smpd_exit_fn(FCNAME);
+				    return SMPD_FAIL;
+                }
 				print_configfile(fout);
 				fclose(fout);
 				cleanup();
@@ -447,14 +466,18 @@ int mp_parse_mpich1_configfile(char *filename, char *configfilename, int length)
 	}
     }
     fclose(fin);
-    if (mktemp(temp_filename) == NULL)
+    if ((fd = mkstemp(temp_filename)) < 0)
     {
 	smpd_exit_fn(FCNAME);
 	return SMPD_FAIL;
     }
-    strncpy(configfilename, temp_filename, length);
     /*printf("printing output to <%s>\n", configfilename);*/
-    fout = fopen(configfilename, "w");
+	strncpy(configfilename, temp_filename, length);
+    if((fout = fdopen(fd, "w")) == NULL)
+    {
+	smpd_exit_fn(FCNAME);
+	return SMPD_FAIL;
+    }
     print_configfile(fout);
     fclose(fout);
     cleanup();

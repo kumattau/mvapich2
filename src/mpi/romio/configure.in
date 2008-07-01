@@ -14,6 +14,13 @@ if test -n "$CONFIGURE_ARGS" ; then
     echo "Configuring with args $CONFIGURE_ARGS"
 fi
 
+if test "$FROM_MPICH2" = "yes" ; then
+    CFLAGS="$MPICH2_INTERNAL_CFLAGS"
+    CXXFLAGS="$MPICH2_INTERNAL_CXXFLAGS"
+    FFLAGS="$MPICH2_INTERNAL_FFLAGS"
+    F90FLAGS="$MPICH2_INTERNAL_F90FLAGS"
+fi
+
 AC_CONFIG_HEADER(adio/include/romioconf.h)
 
 dnl
@@ -93,7 +100,7 @@ MPIO_REQ_REAL_POBJECTS="_iotest.o _iowait.o _iowaitall.o _iowaitany.o _iotestall
 #
 have_aio=no
 #
-known_filesystems="nfs ufs pfs pvfs pvfs2 testfs xfs panfs gridftp"
+known_filesystems="nfs ufs pfs pvfs pvfs2 testfs xfs panfs gridftp lustre bgl bglockless"
 known_mpi_impls="mpich2_mpi mpich_mpi sgi_mpi hp_mpi cray_mpi lam_mpi"
 #
 # Defaults
@@ -136,6 +143,10 @@ if test "$enable_weak_symbols" = "no" ; then
     TRY_WEAK_SYMBOLS=0
 fi
 MPI=$with_mpi
+if test -n "$with_mpi"; then
+       CC=$MPI/bin/mpicc
+fi
+
 FILE_SYSTEM=$with_file_system
 #
 dnl AC_CONFIG_AUX_DIR(../../../confdb)
@@ -159,7 +170,7 @@ if test -z "$ARCH" -a -x $srcdir/util/tarch ; then
     ARCH=`$srcdir/util/tarch | sed s/-/_/g`
     if test -z "$ARCH" ; then
        AC_MSG_RESULT(Unknown!)
-       AC_MSG_ERROR([Error: Couldn\'t guess target architecture, you must 
+       AC_MSG_ERROR([Error: Could not guess target architecture, you must 
 set an architecture type with the environment variable ARCH]) 
     fi 
     eval "arch_$ARCH=1"
@@ -322,7 +333,7 @@ fi
 #
 C_DEBUG_FLAG="-g"
 F77_DEBUG_FLAG="-g"
-C_OPT_FLAG=${CFLAGS:-"-O"}
+# C_OPT_FLAG=${CFLAGS:-"-O"}
 # MPICH1 uses OPTFLAGS and OPTFLAGSC to specify separate optimization
 # flags for the C compiler (this is better that adding it to the
 # undifferentiated CFLAGS, at least on input).
@@ -409,6 +420,7 @@ case $ARCH in
 esac
 
 AC_PROG_CC
+
 if test "$NOF77" != 1 ; then
     # Grrr.   The autoconf test for F77 will abort the configure
     # if no compiler is found.  We'd prefer to simply turn off
@@ -423,7 +435,6 @@ if test $DEBUG = "yes" ; then
 else 
     CFLAGS="$CFLAGS $C_OPT_FLAG"
 fi
-
 # ---------------------------------------------------------------------------
 # Here go the rest of the tests
 # ---------------------------------------------------------------------------
@@ -454,6 +465,7 @@ if test -n "$arch_rs6000"; then
     longlongsize=${longlongsize:-8} 
     MPI_OFFSET_KIND1="      INTEGER MPI_OFFSET_KIND"
     MPI_OFFSET_KIND2="      PARAMETER (MPI_OFFSET_KIND=8)"
+    MPI_OFFSET_KIND_VAL=8
 fi    
 #
 
@@ -499,6 +511,7 @@ if test -n "$arch_SX4" ; then
     fi
     MPI_OFFSET_KIND1="      INTEGER MPI_OFFSET_KIND"
     MPI_OFFSET_KIND2="      PARAMETER (MPI_OFFSET_KIND=8)"
+    MPI_OFFSET_KIND_VAL=8
 fi
 #
 if test -n "$arch_hpux" || test -n "$arch_sppux" ; then
@@ -542,6 +555,7 @@ if test -n "$arch_hpux" || test -n "$arch_sppux" ; then
 
     MPI_OFFSET_KIND1="      INTEGER MPI_OFFSET_KIND"
     MPI_OFFSET_KIND2="      PARAMETER (MPI_OFFSET_KIND=8)"
+    MPI_OFFSET_KIND_VAL=8
     if test "$CC" != "gcc" ; then
         ROMIO_TCFLAGS="-Ae"
     fi
@@ -558,6 +572,7 @@ if test -n "$arch_alpha" || test -n "$arch_ALPHA" ; then
 
     MPI_OFFSET_KIND1="      INTEGER MPI_OFFSET_KIND"
     MPI_OFFSET_KIND2="      PARAMETER (MPI_OFFSET_KIND=8)"
+    MPI_OFFSET_KIND_VAL=8
     ROMIO_LIBLIST="$ROMIO_LIBLIST -laio"
 fi    
 #
@@ -583,6 +598,7 @@ if test -n "$arch_CRAY" ; then
 
     MPI_OFFSET_KIND1="      INTEGER MPI_OFFSET_KIND"
     MPI_OFFSET_KIND2="      PARAMETER (MPI_OFFSET_KIND=8)"
+    MPI_OFFSET_KIND_VAL=8
 fi
 #
 if test -n "$arch_sgi" ; then
@@ -630,7 +646,10 @@ if test -n "$arch_IRIX"; then
 		MPI=mpich2
 		mpi_mpich2=1
             elif test -f "/usr/include/mpi.h" ; then
-                AC_MSG_WARN([assuming that you want to use ROMIO with SGI\'s MPI])
+                # removed use of escaped single quotes in messages
+		# because they confuse Emacs, making it hard to 
+		# read the files (with emacs :) )
+                AC_MSG_WARN([assuming that you want to use ROMIO with the SGI MPI])
                 MPI=sgi
                 mpi_sgi=1
             else 
@@ -671,6 +690,7 @@ if test -n "$arch_IRIX"; then
    AC_DEFINE(IRIX,1,[Define if IRIX])
    MPI_OFFSET_KIND1="      INTEGER MPI_OFFSET_KIND"
    MPI_OFFSET_KIND2="      PARAMETER (MPI_OFFSET_KIND=8)"
+   MPI_OFFSET_KIND_VAL=8
 fi
 
 AC_HAVE_FUNCS(memalign)
@@ -778,6 +798,7 @@ fi
 if test -n "$OFFSET_KIND" -a "A$MPI_OFFSET_KIND1" = "A!" ; then 
   MPI_OFFSET_KIND1="        INTEGER MPI_OFFSET_KIND"
   MPI_OFFSET_KIND2="        PARAMETER (MPI_OFFSET_KIND=$OFFSET_KIND)"
+  MPI_OFFSET_KIND_VAL=$OFFSET_KIND
 else
  if test "$FORTRAN_MPI_OFFSET" = "integer*8" && test "A$MPI_OFFSET_KIND2" = "A!" && test $NOF77 = 0 && test $NOF90 = 0 ; then
    PAC_MPI_OFFSET_KIND
@@ -806,13 +827,13 @@ EOF
     rm -f conftest*
     AC_MSG_RESULT($ac_cv_f77_offset_type_works)
 
-    if test "$ac_cv_f77_offset_type_works" != "yes" ; then
+    if test "$ac_cv_f77_offset_type_works" != "yes" -a -n "$MPI_OFFSET_KIND_VAL"; then
         AC_MSG_CHECKING([whether we can use KIND with the selected F77 compiler $F77])
         ac_cv_f77_allows_offset_kind=no
         rm -f conftest*
         cat >conftest.f <<EOF
         program main
-        integer (kind=$MPI_OFFSET_KIND) j
+        integer (kind=$MPI_OFFSET_KIND_VAL) j
         end
 EOF
         if $F77 -o conftest conftest.f >>config.log 2>&1 && test -x conftest ; then
@@ -821,7 +842,7 @@ EOF
         rm -f conftest*
         AC_MSG_RESULT($ac_cv_f77_allows_offset_kind)
         if test "$ac_cv_f77_allows_offset_kind" ; then
-             FORTRAN_MPI_OFFSET="integer (kind=$MPI_OFFSET_KIND)"
+             FORTRAN_MPI_OFFSET="integer (kind=$MPI_OFFSET_KIND_VAL)"
         else
              AC_MSG_WARN([Could not find a way to declare an integer type corresponding to MPI_Offset in Fortran.])
         fi
@@ -1039,14 +1060,20 @@ FILE_SYSTEM="testfs $FILE_SYSTEM"
 # - if we can find 'pvfs2-config' in our path, we can use it to set CFLAGS,
 #   LIBS, and LDFLAGS accordingly
 # - as a fallback, use CFLAGS, LIBS, and LDFLAGS passed in by the user
+# - don't do any of this if --with-file-system was given and did not include
+#   'pvfs2': i.e. don't surprise the user with pvfs support.
 
-AC_PATH_PROG(PVFS2_CONFIG, pvfs2-config, notfound, [$PATH:${with_pvfs2}/bin])
+AC_PATH_PROG(PVFS2_CONFIG, pvfs2-config, notfound, [${with_pvfs2}/bin:$PATH])
 if test $PVFS2_CONFIG != "notfound" ; then
-	CFLAGS="$CFLAGS $( $PVFS2_CONFIG --cflags)"
-	LIBS="$LIBS $( $PVFS2_CONFIG --libs)"
-	ROMIO_LIBLIST="$ROMIO_LIBLIST $LIBS"
-	FILE_SYSTEM="pvfs2 $FILE_SYSTEM"
-	file_system_pvfs2=1
+	if test -n "${with_pvfs2}" -o -n "${file_system_pvfs2}" ; then
+		# the user either told us where pvfs is or asked for it in
+		# --with-file-system (or both)
+		CFLAGS="$CFLAGS $( $PVFS2_CONFIG --cflags)"
+		LIBS="$LIBS $( $PVFS2_CONFIG --libs)"
+		ROMIO_LIBLIST="$ROMIO_LIBLIST $LIBS"
+		FILE_SYSTEM="pvfs2 $FILE_SYSTEM"
+		file_system_pvfs2=1
+	fi
 fi
 
 if test "$PVFS2_CONFIG" = "notfound" -a -n "$with_pvfs2" ; then
@@ -1073,6 +1100,15 @@ fi
 if test -n "$file_system_ufs"; then
     AC_DEFINE(ROMIO_UFS,1,[Define for ROMIO with UFS])
 fi
+if test -n "$file_system_bgl"; then	
+    AC_DEFINE(ROMIO_BGL,1,[Define for ROMIO with BGL])
+fi
+if test -n "$file_system_bglockless"; then
+    if test x"$file_system_bgl" = x ; then
+	    AC_MSG_ERROR("bglockless requested without bgl")
+    fi
+    AC_DEFINE(ROMIO_BGLOCKLESS,1,[Define for lock-free ROMIO with BGL])
+fi
 if test -n "$file_system_hfs"; then
     AC_DEFINE(ROMIO_HFS,1,[Define for ROMIO with HFS])
 fi
@@ -1087,6 +1123,9 @@ fi
 if test -n "$file_system_testfs"; then
     AC_DEFINE(ROMIO_TESTFS,1,[Define for ROMIO with TESTFS])
 fi
+if test -n "$file_system_lustre"; then
+    AC_DEFINE(ROMIO_LUSTRE,1,[Define for ROMIO with LUSTRE])
+fi
 
 if test -n "$file_system_xfs"; then
     AC_DEFINE(ROMIO_XFS,1,[Define for ROMIO with XFS])
@@ -1097,11 +1136,11 @@ if test -n "$file_system_xfs"; then
     rm -f confmemalignval
     rm -f /tmp/romio_tmp.bin
     AC_TRY_RUN([
-	#include <stdio.h>
-	#include <unistd.h>
-	#include <fcntl.h>
-	#include <stdio.h>
-	main() { 
+#include <stdio.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <stdio.h>
+int main(int argc, char **argv) { 
 	struct dioattr st;
 	int fd = open("/tmp/romio_tmp.bin", O_RDWR | O_CREAT, 0644);
 	FILE *f=fopen("confmemalignval","w");
@@ -1140,7 +1179,7 @@ if test -n "$file_system_pvfs"; then
     # selected)
     AC_MSG_CHECKING([that pvfs.h can be compiled])
     AC_TRY_COMPILE([
-        #include <pvfs.h>
+#include <pvfs.h>
         ],[
         ],pvfs_header_ok=yes,pvfs_header_ok=no
     )
@@ -1150,7 +1189,7 @@ if test -n "$file_system_pvfs"; then
         # Try again, but with int64_t
         AC_TRY_COMPILE([
             typedef long long int int64_t;
-            #include <pvfs.h>
+#include <pvfs.h>
             ],[
             ],
             pvfs_header_ok="yes with int64 definition"
@@ -1182,10 +1221,32 @@ if test -n "$file_system_pvfs2"; then
     )
 fi
 
+# layout change after pvfs-2.6.3:
+if test -n "$file_system_pvfs2"; then
+    AC_COMPILE_IFELSE(
+       [  
+#include <stdlib.h>
+#include "pvfs2.h"
+          int main(int argc, char **argv) { 
+	      PVFS_object_ref ref;
+	      PVFS_sys_attr attr;
+	      PVFS_sys_create(NULL, ref, attr, NULL, NULL, NULL, NULL); 
+	  return 0; }
+       ],
+       , AC_DEFINE(HAVE_PVFS2_CREATE_WITHOUT_LAYOUT, 1, 
+       		[Define if PVFS_sys_create does not have layout parameter])
+       )
+fi
+
+
 if test -n "$file_system_gridftp"; then
 	AC_DEFINE(ROMIO_GRIDFTP, 1, [Define for ROMIO with gridftp])
 fi
 
+if test -n "$file_system_bgl"; then
+    SYSDEP_INC=-I${prefix}/include
+else
+    SYSDEP_INC=
 #
 # Check for presence and characteristics of async. I/O calls if
 # not disabled.
@@ -1263,6 +1324,7 @@ if test "x$disable_aio" = "xno" -a -n "$aio_write_found" ; then
     # We try to compile it, not just read it.
     AC_MSG_CHECKING([if aio.h exists and can be compiled])
     AC_TRY_COMPILE([
+#include <sys/types.h>
 #include <aio.h>],
 [],have_aio_h=yes,have_aio_h=no)
     AC_MSG_RESULT($have_aio_h)
@@ -1272,15 +1334,19 @@ if test "x$disable_aio" = "xno" -a -n "$aio_write_found" ; then
 
     AC_MSG_CHECKING([if sys/aio.h exists and can be compiled])
     AC_TRY_COMPILE([
+#include <sys/types.h>
 #include <sys/aio.h>],
 [],have_sys_aio_h=yes,have_sys_aio_h=no)
     AC_MSG_RESULT($have_sys_aio_h)
     if test "$have_sys_aio_h" = yes ; then
         AC_DEFINE(HAVE_SYS_AIO_H,1,[Define if sys/aio.h exists and can be compiled])
     fi
+    if test "$have_aio_h" = "no" -a "$have_sys_aio_h" = "no" ; then
+    	disable_aio=yes
+    fi
 fi
 
-if test "$have_aio_h" = "yes" -o "$have_sys_aio_h" = "yes" ; then
+if test "$have_aio_h" = "yes" -o "$have_sys_aio_h" = "yes" -o "x$disable_aio" = "xno"; then
 
     # Check that aio is available (many systems appear to have aio
     # either installed improperly or turned off).
@@ -1316,8 +1382,8 @@ if test "$have_aio_h" = "yes" -o "$have_sys_aio_h" = "yes" ; then
 	AC_MSG_RESULT(yes),
 	aio_runs=no
 	AC_MSG_RESULT(no),
-	aio_runs=unknown
-	AC_MSG_RESULT(unknown)
+	aio_runs=no
+	AC_MSG_RESULT(no: aio routines disabled when cross compiling)
     )
     if test "$aio_runs" != "no" ; then
 	AC_DEFINE(ROMIO_HAVE_WORKING_AIO, 1, Define if AIO calls seem to work)
@@ -1357,8 +1423,8 @@ if test "$have_aio_h" = "yes" -o "$have_sys_aio_h" = "yes" ; then
 	AC_MSG_RESULT(yes),
 	aio_two_arg_write=no 
 	AC_MSG_RESULT(no),
-	aio_two_arg_write=unknown
-	AC_MSG_RESULT(unknown)
+	aio_two_arg_write=no
+	AC_MSG_RESULT(no: cannot test when cross-compiling)
     )
 
     if test "$aio_two_arg_write" != "no" -a "$aio_runs" != "yes" ; then
@@ -1389,8 +1455,8 @@ if test "$have_aio_h" = "yes" -o "$have_sys_aio_h" = "yes" ; then
 	AC_MSG_RESULT(yes),
 	aio_two_arg_suspend=no 
 	AC_MSG_RESULT(no),
-	aio_two_arg_suspend=unknown
-	AC_MSG_RESULT(unknown)
+	aio_two_arg_suspend=no
+	AC_MSG_RESULT(no: cannot test when cross compiling)
     )
 
     if test "$aio_two_arg_suspend" != "no" -a "$aio_runs" != "yes" ; then
@@ -1401,15 +1467,18 @@ if test "$have_aio_h" = "yes" -o "$have_sys_aio_h" = "yes" ; then
 
     AC_MSG_CHECKING([for aio_fildes member of aiocb structure])
     AC_TRY_COMPILE([
-	#ifdef HAVE_SIGNAL_H
-	#include <signal.h>
-	#endif
-	#ifdef HAVE_AIO_H
-	#include <aio.h>
-	#endif
-	#ifdef HAVE_SYS_AIO_H
-	#include <sys/aio.h>
-	#endif
+#ifdef HAVE_SIGNAL_H
+#include <signal.h>
+#endif
+#ifdef HAVE_SYS_TYPES_H
+#include <sys/types.h>
+#endif
+#ifdef HAVE_AIO_H
+#include <aio.h>
+#endif
+#ifdef HAVE_SYS_AIO_H
+#include <sys/aio.h>
+#endif
 	],[
 	struct aiocb a;
 	a.aio_fildes = 0;
@@ -1420,17 +1489,20 @@ if test "$have_aio_h" = "yes" -o "$have_sys_aio_h" = "yes" ; then
     )
     AC_MSG_CHECKING(for aio_whence member of aiocb structure)
     AC_TRY_COMPILE([
-	#ifdef HAVE_SIGNAL_H
-	#include <signal.h>
-	#endif
-	#ifdef HAVE_AIO_H
-	#include <aio.h>
-	#endif
-	#ifdef HAVE_SYS_AIO_H
-	#include <sys/aio.h>
-	#endif
-	#include <sys/types.h>
-	#include <unistd.h>
+#ifdef HAVE_SIGNAL_H
+#include <signal.h>
+#endif
+#ifdef HAVE_SYS_TYPES_H
+#include <sys/types.h>
+#endif
+#ifdef HAVE_AIO_H
+#include <aio.h>
+#endif
+#ifdef HAVE_SYS_AIO_H
+#include <sys/aio.h>
+#endif
+#include <sys/types.h>
+#include <unistd.h>
 	],[
 	struct aiocb a;
 	a.aio_whence = SEEK_SET;
@@ -1441,15 +1513,18 @@ if test "$have_aio_h" = "yes" -o "$have_sys_aio_h" = "yes" ; then
     )
     AC_MSG_CHECKING(for aio_handle member of aiocb structure)
     AC_TRY_COMPILE([
-	#ifdef HAVE_SIGNAL_H
-	#include <signal.h>
-	#endif
-	#ifdef HAVE_AIO_H
-	#include <aio.h>
-	#endif
-	#ifdef HAVE_SYS_AIO_H
-	#include <sys/aio.h>
-	#endif
+#ifdef HAVE_SIGNAL_H
+#include <signal.h>
+#endif
+#ifdef HAVE_SYS_TYPES_H
+#include <sys/types.h>
+#endif
+#ifdef HAVE_AIO_H
+#include <aio.h>
+#endif
+#ifdef HAVE_SYS_AIO_H
+#include <sys/aio.h>
+#endif
 	],[
 	struct aiocb a;
 	aio_handle_t h;
@@ -1462,15 +1537,18 @@ if test "$have_aio_h" = "yes" -o "$have_sys_aio_h" = "yes" ; then
     )
     AC_MSG_CHECKING(for aio_reqprio member of aiocb structure)
     AC_TRY_COMPILE([
-	#ifdef HAVE_SIGNAL_H
-	#include <signal.h>
-	#endif
-	#ifdef HAVE_AIO_H
-	#include <aio.h>
-	#endif
-	#ifdef HAVE_SYS_AIO_H
-	#include <sys/aio.h>
-	#endif
+#ifdef HAVE_SIGNAL_H
+#include <signal.h>
+#endif
+#ifdef HAVE_SYS_TYPES_H
+#include <sys/types.h>
+#endif
+#ifdef HAVE_AIO_H
+#include <aio.h>
+#endif
+#ifdef HAVE_SYS_AIO_H
+#include <sys/aio.h>
+#endif
 	],[
 	struct aiocb a;
 
@@ -1482,15 +1560,18 @@ if test "$have_aio_h" = "yes" -o "$have_sys_aio_h" = "yes" ; then
     )	
     AC_MSG_CHECKING(for aio_sigevent member of aiocb structure)
     AC_TRY_COMPILE([
-	#ifdef HAVE_SIGNAL_H
-	#include <signal.h>
-	#endif
-	#ifdef HAVE_AIO_H
-	#include <aio.h>
-	#endif
-	#ifdef HAVE_SYS_AIO_H
-	#include <sys/aio.h>
-	#endif
+#ifdef HAVE_SIGNAL_H
+#include <signal.h>
+#endif
+#ifdef HAVE_SYS_TYPES_H
+#include <sys/types.h>
+#endif
+#ifdef HAVE_AIO_H
+#include <aio.h>
+#endif
+#ifdef HAVE_SYS_AIO_H
+#include <sys/aio.h>
+#endif
 	],[
 	struct aiocb a;
 
@@ -1502,6 +1583,7 @@ if test "$have_aio_h" = "yes" -o "$have_sys_aio_h" = "yes" ; then
     )
 	
 fi
+fi
 # End of aio-related tests
 
 #
@@ -1510,18 +1592,18 @@ fi
 AC_CHECK_HEADERS(sys/vfs.h sys/param.h sys/mount.h sys/statvfs.h)
 AC_MSG_CHECKING([whether struct statfs properly defined])
 AC_TRY_COMPILE([
-    #ifdef HAVE_SYS_VFS_H
-    #include <sys/vfs.h>
-    #endif
-    #ifdef HAVE_SYS_STATVFS_H
-    #include <sys/statvfs.h>
-    #endif
-    #ifdef HAVE_SYS_PARAM_H
-    #include <sys/param.h>
-    #endif
-    #ifdef HAVE_SYS_MOUNT_H
-    #include <sys/mount.h>
-    #endif
+#ifdef HAVE_SYS_VFS_H
+#include <sys/vfs.h>
+#endif
+#ifdef HAVE_SYS_STATVFS_H
+#include <sys/statvfs.h>
+#endif
+#ifdef HAVE_SYS_PARAM_H
+#include <sys/param.h>
+#endif
+#ifdef HAVE_SYS_MOUNT_H
+#include <sys/mount.h>
+#endif
     ],[
     struct statfs f;
     ],
@@ -1538,9 +1620,9 @@ fi
 	  
 AC_MSG_CHECKING([for f_fstypename member of statfs structure])
 AC_TRY_COMPILE([
-    #include <sys/param.h>
-    #include <sys/mount.h>
-    #include <string.h>
+#include <sys/param.h>
+#include <sys/mount.h>
+#include <string.h>
     ],[
     struct statfs f;
     memset(&f, 0, sizeof(f));
@@ -1562,15 +1644,15 @@ AC_CHECK_FUNCS(stat,
     AC_DEFINE(HAVE_STAT, 1, Define if stat function is present)
     AC_MSG_CHECKING([for st_fstype member of stat structure])
     AC_TRY_COMPILE([
-	#ifdef HAVE_SYS_TYPES_H
-	#include <sys/types.h>
-	#endif
-	#ifdef HAVE_SYS_STAT_H
-	#include <sys/stat.h>
-	#endif
-	#ifdef HAVE_UNISTD_H
-	#include <unistd.h>
-	#endif
+#ifdef HAVE_SYS_TYPES_H
+#include <sys/types.h>
+#endif
+#ifdef HAVE_SYS_STAT_H
+#include <sys/stat.h>
+#endif
+#ifdef HAVE_UNISTD_H
+#include <unistd.h>
+#endif
 	],[
 	struct stat s;
 
@@ -1590,20 +1672,20 @@ AC_CHECK_FUNCS(statvfs,
     AC_DEFINE(HAVE_STATVFS, 1, Define if statvfs function is present)
     AC_MSG_CHECKING([for f_basetype member of statvfs structure])
     AC_TRY_COMPILE([
-	#ifdef HAVE_SYS_TYPES_H
-	#include <sys/types.h>
-	#endif
-        #ifdef HAVE_SYS_VFS_H
-        #include <sys/vfs.h>
-        #endif
-	#ifdef HAVE_SYS_STATVFS_H
-	#include <sys/statvfs.h>
-	#endif
-	], [
+#ifdef HAVE_SYS_TYPES_H
+#include <sys/types.h>
+#endif
+#ifdef HAVE_SYS_VFS_H
+#include <sys/vfs.h>
+#endif
+#ifdef HAVE_SYS_STATVFS_H
+#include <sys/statvfs.h>
+#endif
+	], [[
 	struct statvfs foo;
 
-	foo.f_basetype = NULL;
-	],
+	foo.f_basetype[0] = 'a';
+	]],
 	AC_MSG_RESULT(yes)
 	AC_DEFINE(ROMIO_HAVE_STRUCT_STATVFS_WITH_F_BASETYPE, 1, defined if struct statvfs has a f_basetype member),
 	AC_MSG_RESULT(no)
@@ -1621,9 +1703,9 @@ if test "$ac_cv_header_unistd_h" = "yes" ; then
     AC_TRY_COMPILE([
 #include <unistd.h>
         ], [
-        #ifndef _LFS64_LARGEFILE
-        #error no largefile defines
-        #endif
+#ifndef _LFS64_LARGEFILE
+#error no largefile defines
+#endif
         ],ac_cv_has_large_file_defines=yes,ac_cv_has_large_file_defines=no)])
     if test "$ac_cv_has_large_file_defines" = "yes" ; then
         # See if we can use them
@@ -1840,6 +1922,8 @@ elif test $FROM_MPICH2 = yes ; then
    EXTRA_DIRS=""
    AC_DEFINE(HAVE_STATUS_SET_BYTES,1,[Define if status_set_bytes available])
    DEFINE_HAVE_MPI_GREQUEST="#define HAVE_MPI_GREQUEST"
+   # Add the MPICH2_INCLUDE_FLAGS to CPPFLAGS
+   CPPFLAGS="$CPPFLAGS $MPICH2_INCLUDE_FLAGS"
 fi
 #
 #
@@ -1933,6 +2017,23 @@ else
    F77MPIOINC="include 'mpiof.h'"
 fi
 
+AC_CHECK_HEADERS(unistd.h,
+        AC_MSG_CHECKING([for large file defines])
+        AC_TRY_COMPILE([
+                #include <unistd.h>
+                ], [
+                #ifndef _LFS64_LARGEFILE
+                #error no largefile defines
+                #endif
+                ],
+                CFLAGS="${CFLAGS} -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64"
+                AC_MSG_RESULT(yes),
+                AC_MSG_RESULT(none) )
+        )
+
+echo "setting SYSDEP_INC to $SYSDEP_INC"
+AC_SUBST(SYSDEP_INC)
+
 PAC_C_RESTRICT
 PAC_C_GNU_ATTRIBUTE
 
@@ -2023,7 +2124,7 @@ AC_SUBST(CC_SHL)
 AC_SUBST(LIBTOOL)
 # Remove the .a from the library file name (so that we can use .so or
 # other appropriate suffix)
-SHLIBNAME=`echo $LIBNAME | sed 's/\.a//'`
+SHLIBNAME=`echo $LIBNAME | sed 's/\.a$//'`
 AC_SUBST(SHLIBNAME)
 dnl
 if test ! -d adio ; then mkdir adio ; fi
@@ -2045,18 +2146,21 @@ AC_OUTPUT(Makefile localdefs mpi-io/Makefile mpi2-other/info/Makefile \
 		   test/runtests util/romioinstall include/mpio.h \
 		   include/mpiof.h \
 		   adio/ad_nfs/Makefile adio/ad_ufs/Makefile \
+		   adio/ad_bgl/Makefile \
+		   adio/ad_bglockless/Makefile \
 		   adio/ad_panfs/Makefile \
 		   adio/ad_xfs/Makefile \
 		   adio/ad_sfs/Makefile adio/ad_pfs/Makefile \
 		   adio/ad_testfs/Makefile adio/ad_pvfs/Makefile \
 		   adio/ad_pvfs2/Makefile \
 		   adio/ad_gridftp/Makefile \
+  		   adio/ad_lustre/Makefile \
                    mpi-io/fortran/Makefile mpi2-other/info/fortran/Makefile \
                    mpi2-other/array/fortran/Makefile test/fmisc.f \
                    test/fcoll_test.f test/pfcoll_test.f test/fperf.f \
 		   mpi-io/glue/mpich2/Makefile \
 		   mpi-io/glue/mpich1/Makefile \
-		   mpi-io/glue/default/Makefile )
+		   mpi-io/glue/default/Makefile common/dataloop/Makefile )
 #
 rm -f *.o
 

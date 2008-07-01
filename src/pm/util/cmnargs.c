@@ -188,7 +188,7 @@ int MPIE_Args( int argc, char *argv[], ProcessUniverse *pUniv,
 		mpiexec_usage( "Missing argument to -configfile" );
 	    optionCmdline = 1;
 	} 
-/* Here begins the MPICH2 mpiexec extension for singleton init */	
+/* Here begins the MVAPICH2 mpiexec extension for singleton init */	
  	else if ( strncmp( argv[i], "-pmi_args", 8 ) == 0) {
 	    if (i+4 < argc ) {
 		pUniv->fromSingleton   = 1;
@@ -199,10 +199,10 @@ int MPIE_Args( int argc, char *argv[], ProcessUniverse *pUniv,
 		i += 4;
 	    }
 	    else 
-		mpiexec_usage( "Missing argument to -path" );
+		mpiexec_usage( "Missing argument to -pmi_args" );
 	    optionArgs = 1;
 	}
-/* Here begin the MPICH2 mpiexec common extensions for 
+/* Here begin the MVAPICH2 mpiexec common extensions for 
     -usize n   - Universe size
     -l         - label stdout/err
     -maxtime n - set a timelimit of n seconds
@@ -214,6 +214,11 @@ int MPIE_Args( int argc, char *argv[], ProcessUniverse *pUniv,
                  By default, uses the default Unix choice.  Does *not*
 		 control the application; the application may 
 		 also need to control buffering.
+    -channel=name - Pass a name in the environment variable MPICH_CH3CHANNEL
+                 to all processes.  This is a special feature that 
+		 supports the ch3 channel.  In the future, we'll allow 
+		 implementations of the ADI to provide some hooks for their
+		 specific mpiexec. 
 */
 	else if (strcmp( argv[i], "-usize" ) == 0) {
 	    pUniv->size = getInt( i+1, argc, argv );
@@ -241,7 +246,14 @@ int MPIE_Args( int argc, char *argv[], ProcessUniverse *pUniv,
 	    const char *cmd = argv[i] + 11;
 	    MPIE_StdioSetMode( stderr, cmd );
 	}
-/* End of the MPICH2 mpiexec common extentions */
+	else if (strncmp( argv[i], "-channel=", 9 ) == 0) {
+	    const char *channame = argv[i] + 9;
+	    char envstring[256];
+	    MPIU_Snprintf( envstring, sizeof(envstring), "MPICH_CH3CHANNEL=%s",
+			   channame );
+	    MPIE_Putenv( pUniv->worlds, envstring );
+	}
+/* End of the MVAPICH2 mpiexec common extentions */
 
 	else if (argv[i][0] != '-') {
 	    exename = argv[i];

@@ -3,6 +3,17 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2003-2008, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
 
 #include "mpidimpl.h"
 
@@ -47,6 +58,12 @@ int MPIDI_CH3_ReqHandler_GetSendRespComplete( MPIDI_VC_t *vc,
 					      int *complete )
 {
     int mpi_errno = MPI_SUCCESS;
+#if defined(_OSU_MVAPICH_)
+    MPID_Win *win_ptr;
+    MPID_Win_get_ptr(sreq->dev.target_win_handle, win_ptr);
+    win_ptr->outstanding_rma --;
+#endif /* defined(_OSU_MVAPICH_) */
+
 
     /* FIXME: Should this test be an MPIU_Assert? */
     if (sreq->dev.source_win_handle != MPI_WIN_NULL) {

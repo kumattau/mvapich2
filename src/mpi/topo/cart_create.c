@@ -43,6 +43,9 @@ int MPIR_Cart_create( const MPID_Comm *comm_ptr, int ndims, const int dims[],
     MPIR_Topology *cart_ptr = NULL;
     MPIU_CHKPMEM_DECL(4);
     
+    /* Set this as null incase we exit with an error */
+    *comm_cart = MPI_COMM_NULL;
+
     /* Check for invalid arguments */
     newsize = 1;
     for (i=0; i<ndims; i++) 
@@ -214,8 +217,8 @@ int MPI_Cart_create(MPI_Comm comm_old, int ndims, int *dims, int *periods,
 	    MPIR_ERRTEST_ARGNULL( dims, "dims", mpi_errno );
 	    MPIR_ERRTEST_ARGNULL( periods, "periods", mpi_errno );
 	    MPIR_ERRTEST_ARGNULL( comm_cart, "comm_cart", mpi_errno );
-	    if (ndims <= 0) {
-		/* Must have a positive number of dimensions */
+	    if (ndims < 0) {
+		/* Must have a non-negative number of dimensions */
 		mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, 
 			  MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_DIMS,
 						  "**dims",  "**dims %d", 0 );
@@ -245,6 +248,9 @@ int MPI_Cart_create(MPI_Comm comm_old, int ndims, int *dims, int *periods,
 				      (const int*) periods, reorder, 
 				      comm_cart );
     }
+#ifdef HAVE_ERROR_CHECKING
+    if (mpi_errno) goto fn_fail;
+#endif
     /* ... end of body of routine ... */
 
 #ifdef HAVE_ERROR_CHECKING

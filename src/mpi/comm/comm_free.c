@@ -90,6 +90,11 @@ int MPI_Comm_free(MPI_Comm *comm)
     /* Get handles to MPI objects. */
     MPID_Comm_get_ptr( *comm, comm_ptr );
     
+#if defined(_OSU_MVAPICH_)
+    if (comm_ptr->bcast_mmap_ptr){
+        munmap(comm_ptr->bcast_mmap_ptr, comm_ptr->bcast_seg_size);
+    }
+#endif
     /* Validate parameters and objects (post conversion) */
 #   ifdef HAVE_ERROR_CHECKING
     {

@@ -1,4 +1,5 @@
 #EXTRA_DIRS = ../../../common/locks
+
 SUBDIRS = nemesis src 
 
 distclean-local:

@@ -1,0 +1,33 @@
+# Copyright (c) 2003-2008, The Ohio State University. All rights
+# reserved.
+#
+# This file is part of the MVAPICH2 software package developed by the
+# team members of The Ohio State University's Network-Based Computing
+# Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+#
+# For detailed copyright and licensing information, please refer to the
+# copyright file COPYRIGHT in the top level MVAPICH2 directory.
+
+SUBDIRS = .
+CFLAGS = @CFLAGS@ -D_GNU_SOURCE
+INCLUDES= -I${master_top_srcdir}/src/include
+
+lib${MPILIBNAME}_a_SOURCES = \
+ibv_send.c \
+ibv_recv.c \
+rdma_iba_init.c \
+rdma_iba_priv.c \
+dreg.c \
+ibv_param.c \
+vbuf.c \
+ibv_channel_manager.c \
+ibv_rma.c \
+rdma_iba_1sc.c \
+ibv_rndv.c \
+ibv_priv.c \
+avl.c \
+cm.c \
+rdma_cm.c \
+cr.c \
+crc32h.c \
+ring_startup.c

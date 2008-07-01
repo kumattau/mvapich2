@@ -11,16 +11,15 @@ CC_SHL               = @CC_SHL@
 CLINKER              = @CLINKER@
 MPI_CC               = @MPI_CC@
 MPI_CLINKER          = $(MPI_CC)
+MPI_CFLAGS           = @MPI_CFLAGS@
 AR                   = @AR@
 ARFLAGS              = cr
 RANLIB               = @RANLIB@
 MAKE                 = @MAKE@
-MPI_INC              = @MPI_INC@
 MPI_LIBS             = @MPI_LIBS@
-INCLUDE_DIR          = -I.. -I${top_srcdir}/include \
-                       -I${includebuild_dir} \
-                       -I../../.. -I${top_srcdir}/../../include \
-                       $(MPI_INC)
+INCLUDE_DIR          = -I.. -I../../.. \
+                       -I../include -I${top_srcdir}/include \
+                       -I${includebuild_dir} -I${top_srcdir}/../../include
 PROF_LIBNAME         = @PROF_LIBNAME@
 CFLAGS               = @CFLAGS@
 MPE_LIBDIR           = @libbuild_dir@
@@ -34,6 +33,7 @@ MPE_BUILD_FORTRAN2C  = @MPE_BUILD_FORTRAN2C@
 SHELL            = @SHELL@
 RM               = @RM@
 MV               = @MV@
+CP               = @CPRP@
 
 @VPATH@
 
@@ -54,13 +54,21 @@ EXECS            = ${binbuild_dir}/clog2_print@EXEEXT@ \
                    ${binbuild_dir}/clog2_repair@EXEEXT@
 
 # GETNAME_DEFS are needed by mpehname.c
-CC_FLAGS         = $(CFLAGS) $(INCLUDE_DIR) $(MPE_COPTS)
+CC_FLAGS         = $(INCLUDE_DIR) $(CFLAGS) $(MPE_COPTS)
 CC_LDFLAGS       = $(LDFLAGS) $(CFLAGS) $(MPE_LDOPTS)
+# MPE include path, x_INCS, goes in front of MPI include path, MPI_xFLAGS,
+# in case MPI include path is in MPI_xFLAGS containing old MPE include path.
+MPICC_FLAGS      = $(INCLUDE_DIR) $(MPI_CFLAGS) $(MPE_COPTS)
+MPICC_LDFLAGS    = $(LDFLAGS) $(MPI_CFLAGS) $(MPE_LDOPTS)
+
+MPE_ZSOURCES     = mpi_null.c
+MPE_N_ZOBJECTS   = $(MPE_ZSOURCES:.c=.n@OBJEXT@)
 
 MPE_CSOURCES     = clog_util.c clog_timer.c clog_uuid.c clog_commset.c \
                    clog_preamble.c clog_record.c clog_sync.c \
                    clog_block.c clog_buffer.c clog_merger.c \
-                   clog_cache.c clog_joiner.c clog.c mpe_log.c
+                   clog_cache.c clog_joiner.c clog.c \
+                   mpe_log_thread.c mpe_log.c
 MPE_P_COBJECTS   = $(MPE_CSOURCES:.c=.p@OBJEXT@)
 MPE_N_COBJECTS   = $(MPE_CSOURCES:.c=.n@OBJEXT@)
 
@@ -78,7 +86,7 @@ MPE_SHLWOBJECTS  = $(MPE_WOBJECTS:.@OBJEXT@=.lo)
 .SUFFIXES: .c .@OBJEXT@ .p@OBJEXT@ .n@OBJEXT@ .lo .a @EXEEXT@
 
 .c.p@OBJEXT@:
-	$(MPI_CC) $(CC_FLAGS) -c $<
+	$(MPI_CC) $(MPICC_FLAGS) -c $<
 	$(MV) $*.@OBJEXT@ $*.p@OBJEXT@
 
 .c.n@OBJEXT@:
@@ -125,8 +133,8 @@ ${libbuild_dir}/lib$(PROF_LIBNAME).a: $(MPE_P_COBJECTS)
 	 fi
 	$(RANLIB) $@
 
-${libbuild_dir}/lib$(PROF_LIBNAME)_nompi.a: $(MPE_N_COBJECTS)
-	$(AR) $(ARFLAGS) $@ $(MPE_N_COBJECTS)
+${libbuild_dir}/lib$(PROF_LIBNAME)_nompi.a: $(MPE_N_ZOBJECTS) $(MPE_N_COBJECTS)
+	$(AR) $(ARFLAGS) $@ $(MPE_N_ZOBJECTS) $(MPE_N_COBJECTS)
 	@if [ "$(MPE_BUILD_FORTRAN2C)" = "yes" ] ; then \
 	     $(MAKE) $(MPE_N_WOBJECTS) ; \
 	     $(AR) $(ARFLAGS) $@ $(MPE_N_WOBJECTS) ; \
@@ -143,25 +151,33 @@ ${libbuild_dir}/lib$(PROF_LIBNAME)_null.a: $(MPE_P_XOBJECTS)
 	$(RANLIB) $@
 
 # -DCLOG_NOMPI can be used when creating lib$(PROF_LIBNAME)_nompi_null.a
-${libbuild_dir}/lib$(PROF_LIBNAME)_nompi_null.a: $(MPE_N_XOBJECTS)
-	$(AR) $(ARFLAGS) $@ $(MPE_N_XOBJECTS)
+${libbuild_dir}/lib$(PROF_LIBNAME)_nompi_null.a: $(MPE_N_ZOBJECTS) $(MPE_N_XOBJECTS)
+	$(AR) $(ARFLAGS) $@ $(MPE_N_ZOBJECTS) $(MPE_N_XOBJECTS)
 	@if [ "$(MPE_BUILD_FORTRAN2C)" = "yes" ] ; then \
 	     $(MAKE) $(MPE_N_WOBJECTS) ; \
 	     $(AR) $(ARFLAGS) $@ $(MPE_N_WOBJECTS) ; \
 	 fi
 	$(RANLIB) $@
 
+# Link with *.o instead of *.no
+# as NEC SX-8's cross-compiler refuses to link with *.no
 ${binbuild_dir}/clog2_print@EXEEXT@: clog_print.n@OBJEXT@
-	$(CLINKER) $(CC_LDFLAGS) -o $@ clog_print.n@OBJEXT@ \
+	$(CP) -f clog_print.n@OBJEXT@ mpe2tmp.@OBJEXT@
+	$(CLINKER) $(CC_LDFLAGS) -o $@ mpe2tmp.@OBJEXT@ \
 	                         -L${libbuild_dir} -l$(PROF_LIBNAME)_nompi
+	@-$(RM) -f mpe2tmp.@OBJEXT@
 
 ${binbuild_dir}/clog2_join@EXEEXT@: clog_join.n@OBJEXT@
-	$(CLINKER) $(CC_LDFLAGS) -o $@ clog_join.n@OBJEXT@ \
+	$(CP) -f clog_join.n@OBJEXT@ mpe2tmp.@OBJEXT@
+	$(CLINKER) $(CC_LDFLAGS) -o $@ mpe2tmp.@OBJEXT@ \
 	                         -L${libbuild_dir} -l$(PROF_LIBNAME)_nompi
+	@-$(RM) -f mpe2tmp.@OBJEXT@
 
 ${binbuild_dir}/clog2_repair@EXEEXT@: clog_repair.n@OBJEXT@
-	$(CLINKER) $(CC_LDFLAGS) -o $@ clog_repair.n@OBJEXT@ \
+	$(CP) -f clog_repair.n@OBJEXT@ mpe2tmp.@OBJEXT@
+	$(CLINKER) $(CC_LDFLAGS) -o $@ mpe2tmp.@OBJEXT@ \
 	                         -L${libbuild_dir} -l$(PROF_LIBNAME)_nompi
+	@-$(RM) -f mpe2tmp.@OBJEXT@
 
 #
 # Remove the old libraries before rebuilding (in case they came from another

@@ -947,6 +947,7 @@ int MTestGetIntracommGeneral( MPI_Comm *comm, int min_size, int allowSmaller )
     /* The while loop allows us to skip communicators that are too small.
        MPI_COMM_NULL is always considered large enough */
     while (!done) {
+	isBasic = 0;
 	intraCommName = "";
 	switch (intraCommIdx) {
 	case 0:
@@ -1268,6 +1269,10 @@ void MTestPrintErrorMsg( const char msg[], int errcode )
     fflush( stdout );
 }
 /* ------------------------------------------------------------------------ */
+/* 
+ If verbose output is selected and the level is at least that of the
+ value of the verbose flag, then perform printf( format, ... );
+ */
 void MTestPrintfMsg( int level, const char format[], ... )
 {
     va_list list;

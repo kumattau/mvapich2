@@ -130,6 +130,15 @@ int MPIDI_CH3_VC_Init( MPIDI_VC_t *vc )
     return mpi_errno;
 }
 
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3_VC_Destroy
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int MPIDI_CH3_VC_Destroy(MPIDI_VC_t *vc )
+{
+    return MPID_nem_vc_destroy(vc);
+}
+
 /* MPIDI_CH3_Connect_to_root() create a new vc, and connect it to the process listening on port_name */
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Connect_to_root
@@ -194,7 +203,71 @@ const char * MPIDI_CH3_VC_GetStateString( struct MPIDI_VC *vc )
 #endif
 
 /* We don't initialize before calling MPIDI_CH3_VC_Init */
-int MPIDI_CH3_PG_Init (MPIDI_PG_t *pg_p)
+int MPIDI_CH3_PG_Init(MPIDI_PG_t *pg_p)
 {
     return MPI_SUCCESS;
+}
+
+int MPIDI_CH3_PG_Destroy(MPIDI_PG_t *pg_p)
+{
+    return MPI_SUCCESS;
+}
+
+
+typedef struct initcomp_cb
+{
+    int (* callback)(void);
+    struct initcomp_cb *next;
+} initcomp_cb_t;
+
+static struct {initcomp_cb_t *top;} initcomp_cb_stack = {0};
+
+#define INITCOMP_S_TOP() GENERIC_S_TOP(initcomp_cb_stack)
+#define INITCOMP_S_PUSH(ep) GENERIC_S_PUSH(&initcomp_cb_stack, ep, next)
+
+/* register a function to be called when all initialization is finished */
+#undef FUNCNAME
+#define FUNCNAME MPID_nem_register_initcomp_cb
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int MPID_nem_register_initcomp_cb(int (* callback)(void))
+{
+    int mpi_errno = MPI_SUCCESS;
+    initcomp_cb_t *ep;
+    MPIU_CHKPMEM_DECL(1);
+
+    MPIU_CHKPMEM_MALLOC(ep, initcomp_cb_t *, sizeof(*ep), mpi_errno, "initcomp callback element");
+
+    ep->callback = callback;
+    INITCOMP_S_PUSH(ep);
+    
+    MPIU_CHKPMEM_COMMIT();
+ fn_exit:
+    return mpi_errno;
+ fn_fail:
+    MPIU_CHKPMEM_REAP();
+    goto fn_exit;
+}
+
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3_InitCompleted
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int MPIDI_CH3_InitCompleted()
+{
+    int mpi_errno = MPI_SUCCESS;
+    initcomp_cb_t *ep;
+    
+    ep = INITCOMP_S_TOP();
+    while (ep)
+    {
+        mpi_errno = ep->callback();
+        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+        ep = ep->next;
+    }
+    
+ fn_exit:
+    return mpi_errno;
+ fn_fail:
+    goto fn_exit;
 }

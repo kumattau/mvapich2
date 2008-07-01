@@ -18,6 +18,7 @@ int MPID_nem_ckpt_shutdown(void);
 int MPID_nem_barrier_init(MPID_nem_barrier_t *barrier_region);
 int MPID_nem_barrier(int num_processes, int rank);
 int MPID_nem_vc_init(struct MPIDI_VC *vc, const char *business_card);
+int MPID_nem_vc_destroy(struct MPIDI_VC *vc);
 int MPID_nem_get_business_card(int myRank, char *value, int length);
 int MPID_nem_connect_to_root(const char *port_name, struct MPIDI_VC *new_vc);
 int MPID_nem_lmt_shm_progress(void);

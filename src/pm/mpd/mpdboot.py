@@ -46,7 +46,7 @@ usage:  mpdboot --totalnum=<n_to_start> [--file=<hostsfile>]  [--help] \
 from time import ctime
 __author__ = "Ralph Butler and Rusty Lusk"
 __date__ = ctime()
-__version__ = "$Revision: 1.47 $"
+__version__ = "$Revision: 1.49 $"
 __credits__ = ""
 
 import re
@@ -234,14 +234,17 @@ def mpdboot():
             except:
                 print 'unable to obtain IP for host:', oldhost
                 continue
-            keep = 1
+            uips = {}    # unique ips
             for ip in ips:
+                uips[ip] = 1
+            keep = 1
+            for ip in uips.keys():
                 if cachedIPs.has_key(ip):
                     keep = 0
-                else:
-                    cachedIPs[ip] = 1
+                    break
             if keep:
                 hostsAndInfo.append(hostAndInfo)
+                cachedIPs.update(uips)
     if len(hostsAndInfo) < totalnumToStart:    # one is local
         print 'totalnum=%d  numhosts=%d' % (totalnumToStart,len(hostsAndInfo))
         print 'there are not enough hosts on which to start all processes'
@@ -363,7 +366,14 @@ def handle_mpd_output(fd,fd2idx,hostsAndInfo):
     global myHost, fullDirName, rshCmd, user, mpdCmd, debug, verbose
     idx = fd2idx[fd]
     host = hostsAndInfo[idx]['host']
-    port = fd.readline().strip()
+    # port = fd.readline().strip()
+    port = 'no_port'
+    for line in fd.readlines():    # handle output from shells that echo stuff
+        line = line.strip()
+        splitLine = line.split('=')
+        if splitLine[0] == 'mpd_port':
+            port = splitLine[1]
+            break
     if debug:
         print "debug: mpd on %s  on port %s" % (host,port)
     if port.isdigit():

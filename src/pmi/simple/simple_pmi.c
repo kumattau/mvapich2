@@ -3,6 +3,17 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+ /* Copyright (c) 2003-2008, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
 
 /*********************** PMI implementation ********************************/
 /*
@@ -49,7 +60,7 @@
 #include "mpimem.h"
 
 /* Temporary debug definitions */
-#if 1
+#if 0
 #define DBG_PRINTF(args) printf args ; fflush(stdout)
 #else
 #define DBG_PRINTF(args)
@@ -308,18 +319,83 @@ int PMI_Barrier( )
     return err;
 }
 
+/* */
+static int clique_size=-2, *clique_ranks =0;
+
+/* pmiPrivateLocalRanks_<r> gets the local ranks for this process */
 int PMI_Get_clique_size( int *size )
 {
+#if 1
+    char buf[PMIU_MAXLINE];
+    char pmi_kvsname[1024];
+    int i, rc, err;
+
+    /* As the server for the information on the */
+    if (clique_size == -2 && PMI_initialized > SINGLETON_INIT_BUT_NO_PM)  {
+	PMI_KVS_Get_my_name( pmi_kvsname, sizeof(pmi_kvsname) );
+	rc = MPIU_Snprintf( buf, PMIU_MAXLINE, 
+			    "cmd=get kvsname=%s key=pmiPrivateLocalRanks_%d\n", 
+			    pmi_kvsname, PMI_rank );
+	if (rc < 0) return PMI_FAIL;
+
+	err = GetResponse( buf, "get_result", 0 );
+	if (err == PMI_SUCCESS) {
+	    PMIU_getval( "rc", buf, PMIU_MAXLINE );
+	    rc = atoi( buf );
+	    if ( rc == 0 ) {
+		char *p = buf, *p0;
+		/* Allocate clique_ranks and fill it in */
+		PMIU_getval( "value", buf, PMIU_MAXLINE );
+		/* Count the number of ranks and allocate the space for them */
+		clique_size = 1;
+		while (*p) {
+		    if (*p++ == ',') clique_size++;
+		}
+		clique_ranks = (int *)MPIU_Malloc( clique_size * sizeof(int) );
+		DBG_PRINTF( ("Clique_size = %d\n", clique_size) );
+		p0 = p = buf;
+		i  = 0;
+		while (*p) {
+		    while (*p && *p != ',') p++;
+		    if (*p == ',') *p++ = 0;
+		    clique_ranks[i++] = atoi(p0);
+		    p0 = p;
+		}
+	    }
+	    else {
+		/* Default case (PM did not understand request) */
+		clique_size = 1;
+	    }
+	}
+    }
+    if (clique_size < 0) *size = 1;
+    else                 *size = clique_size;
+#else
     *size = 1;
+#endif
     return PMI_SUCCESS;
 }
 
 int PMI_Get_clique_ranks( int ranks[], int length )
 {
+#if 1
+    int i;
+    if (length < 1) 
+	return PMI_ERR_INVALID_ARG;
+
+    if (clique_size > 0 && clique_ranks) {
+	for (i=0; i<length && i<clique_size; i++) 
+	    ranks[i] = clique_ranks[i];
+    }
+    else 
+	ranks[0] = PMI_rank;
+    return PMI_SUCCESS;
+#else
     if ( length < 1 )
 	return PMI_ERR_INVALID_ARG;
     else
 	return PMI_Get_rank( &ranks[0] );
+#endif
 }
 
 /* Inform the process manager that we're in finalize */
@@ -332,14 +408,32 @@ int PMI_Finalize( )
 	shutdown( PMI_fd, SHUT_RDWR );
 	close( PMI_fd );
     }
+    /* Free any memory that we've allocated */
+    if (clique_ranks) MPIU_Free( clique_ranks );
+
     return err;
 }
 
 int PMI_Abort(int exit_code, const char error_msg[])
 {
     PMIU_printf(1, "aborting job:\n%s\n", error_msg);
+#if defined(_OSU_MVAPICH_)
+#if defined(HAVE_WINDOWS_H)
+    /* exit can hang if libc fflushes output while in/out/err buffers are locked.  ExitProcess does not hang. */
+    ExitProcess(exit_code);
+#else /* defined(HAVE_WINDOWS_H) */
     exit(exit_code);
+#endif /* defined(HAVE_WINDOWS_H) */
+#else /* defined(_OSU_MVAPICH_) */
+    MPIU_Exit(exit_code);
+#endif /* defined(_OSU_MVAPICH_) */
+#if defined(_OSU_MVAPICH_) && (defined(__SUNPRO_C) || defined(__SUNPRO_CC))
+#pragma error_messages(off, E_STATEMENT_NOT_REACHED)
+#endif /* defined (_OSU_MVAPICH_) && (defined(__SUNPRO_C) || defined(__SUNPRO_CC)) */   
     return -1;
+#if defined(_OSU_MVAPICH_) && (defined(__SUNPRO_C) || defined(__SUNPRO_CC))
+#pragma error_messages(default, E_STATEMENT_NOT_REACHED)
+#endif /* defined(_OSU_MVAPICH_) && (defined(__SUNPRO_C) || defined(__SUNPRO_CC)) */
 }
 
 /************************************* Keymap functions **********************/
@@ -781,7 +875,11 @@ int PMI_Spawn_multiple(int count,
     return( 0 );
 }
 
-int PMI_Args_to_keyval(int *argcp, char ***argvp, PMI_keyval_t **keyvalp, 
+#if defined(_OSU_MVAPICH_)
+int PMI_Args_to_keyval(int *argcp, char ** const* argvp, PMI_keyval_t **keyvalp, 
+#else /* defined(_OSU_MVAPICH_) */
+int PMI_Args_to_keyval(int *argcp, char *((*argvp)[]), PMI_keyval_t **keyvalp, 
+#endif /* defined(_OSU_MVAPICH_) */
 		       int *size)
 {
     return ( 0 );

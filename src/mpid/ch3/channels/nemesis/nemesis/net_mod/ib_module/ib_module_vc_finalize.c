@@ -16,7 +16,7 @@
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 
-int MPID_nem_ib_module_vc_finalize (MPIDI_VC_t *vc)
+int MPID_nem_ib_module_vc_terminate (MPIDI_VC_t *vc)
 {
     int mpi_errno = MPI_SUCCESS;
 

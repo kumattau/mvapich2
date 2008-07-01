@@ -3,6 +3,17 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2003-2008, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
 
 #include "mpidimpl.h"
 
@@ -17,6 +28,11 @@
 #ifdef USE_MPIU_DBG_PRINT_VC
 char *MPIU_DBG_parent_str = "?";
 #endif
+
+#if defined(_OSU_MVAPICH_) && defined(CKPT)
+pthread_mutex_t MVAPICH2_sync_ckpt_lock;
+pthread_cond_t MVAPICH2_sync_ckpt_cond;
+#endif /* defined(_OSU_MVAPICH_) && defined(CKPT) */
 
 /* FIXME: the PMI init function should ONLY do the PMI operations, not the 
    process group or bc operations.  These should be in a separate routine */
@@ -44,17 +60,25 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     int pg_size;
     MPID_Comm * comm;
     int p;
+#if defined(_OSU_MVAPICH_)
+    char *value;
+    int blocking_val;
+#endif /* defined(_OSU_MVAPICH_) */
     MPIDI_STATE_DECL(MPID_STATE_MPID_INIT);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_INIT);
 
-    /*
-     * Initialize the device's process information structure
-     */
-    MPIDI_Process.lpid_counter = 0;
-
     /* FIXME: This is a good place to check for environment variables
        and command line options that may control the device */
+
+#if 1
+    /* This is a sanity check because we define a generic packet size
+     */
+    if (sizeof(MPIDI_CH3_PktGeneric_t) < sizeof(MPIDI_CH3_Pkt_t)) {
+	fprintf( stderr, "Internal error - packet definition is too small\n" );
+	exit(1);
+    }
+#endif
 
     /*
      * Set global process attributes.  These can be overridden by the channel 
@@ -62,6 +86,13 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
      */
     MPIR_Process.attrs.tag_ub          = MPIDI_TAG_UB;
 
+    /* If the channel requires any setup before making any other 
+       channel calls (including CH3_PG_Init), the channel will define
+       this routine (the dynamically loaded channel uses this) */
+#ifdef HAVE_CH3_PRELOAD
+    mpi_errno = MPIDI_CH3_PreLoad();
+    if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
+#endif
     /*
      * Perform channel-independent PMI initialization
      */
@@ -77,7 +108,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
      * the basic information about the job has been extracted from PMI (e.g.,
      * the size and rank of this process, and the process group id)
      */
-    mpi_errno = MPIDI_CH3_Init(has_parent, pg, pg_rank);
+    mpi_errno = MPIU_CALL(MPIDI_CH3,Init(has_parent, pg, pg_rank));
     if (mpi_errno != MPI_SUCCESS) {
 	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**ch3|ch3_init");
     }
@@ -148,6 +179,45 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     
     MPID_VCR_Dup(&pg->vct[pg_rank], &comm->vcr[0]);
 
+    /* Currently, mpidpre.h always defines MPID_NEEDS_ICOMM_WORLD. */
+#ifdef MPID_NEEDS_ICOMM_WORLD
+    /*
+     * Initialize the MPIR_ICOMM_WORLD object (an internal, private version
+     * of MPI_COMM_WORLD) 
+     */
+    comm = MPIR_Process.icomm_world;
+
+    comm->rank        = pg_rank;
+    comm->remote_size = pg_size;
+    comm->local_size  = pg_size;
+#if 0    
+    mpi_errno = MPID_VCRT_Create(comm->remote_size, &comm->vcrt);
+    if (mpi_errno != MPI_SUCCESS)
+    {
+	MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**dev|vcrt_create", 
+			     "**dev|vcrt_create %s", "MPI_COMM_WORLD");
+    }
+    
+    mpi_errno = MPID_VCRT_Get_ptr(comm->vcrt, &comm->vcr);
+    if (mpi_errno != MPI_SUCCESS)
+    {
+	MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**dev|vcrt_get_ptr", 
+			     "dev|vcrt_get_ptr %s", "MPI_COMM_WORLD");
+    }
+    
+    /* Initialize the connection table on COMM_WORLD from the process group's
+       connection table */
+    for (p = 0; p < pg_size; p++)
+    {
+	MPID_VCR_Dup(&pg->vct[p], &comm->vcr[p]);
+    }
+#endif
+    MPID_VCRT_Add_ref( MPIR_Process.comm_world->vcrt );
+    comm->vcrt = MPIR_Process.comm_world->vcrt;
+    comm->vcr  = MPIR_Process.comm_world->vcr;
+    
+    MPID_Dev_comm_create_hook (comm);
+#endif
     
     /*
      * If this process group was spawned by a MPI application, then
@@ -177,7 +247,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 	   we could allow a few routines to operate with 
 	   predefined parameter choices (e.g., bcast, allreduce)
 	   for the purposes of initialization. */
-	mpi_errno = MPIDI_CH3_Get_parent_port(&parent_port);
+	mpi_errno = MPIDI_CH3_GetParentPort(&parent_port);
 	if (mpi_errno != MPI_SUCCESS) {
 	    MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, 
 				"**ch3|get_parent_port");
@@ -210,7 +280,25 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 	   control of thread level is available */
 	*provided = (MPICH_THREAD_LEVEL < requested) ? 
 	    MPICH_THREAD_LEVEL : requested;
+#if defined(_OSU_MVAPICH_)
+        /* If user has enabled blocking mode progress,
+         * then we cannot support MPI_THREAD_MULTIPLE */
+        if ((value = getenv("MV2_USE_BLOCKING")) != NULL) {
+            blocking_val = !!atoi(value);
+
+            if(blocking_val) {
+                *provided = (MPICH_THREAD_LEVEL < requested) ?
+                    MPICH_THREAD_LEVEL : MPI_THREAD_SERIALIZED;
+            }
+        }
+#endif /* defined(_OSU_MVAPICH_) */
     }
+#if defined(_OSU_MVAPICH_) && defined(CKPT)
+    MPIDI_Process.use_sync_ckpt = 1;
+    /*Initialize conditional variable*/
+    pthread_mutex_init(&MVAPICH2_sync_ckpt_lock, NULL);
+    pthread_cond_init(&MVAPICH2_sync_ckpt_cond, NULL);
+#endif /* defined(_OSU_MVAPICH_) && defined(CKPT) */
 
   fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_INIT);
@@ -220,6 +308,15 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
   fn_fail:
     goto fn_exit;
     /* --END ERROR HANDLING-- */
+}
+
+/* This allows each channel to perform final initialization after the
+ rest of MPI_Init completes.  */
+int MPID_InitCompleted( void )
+{
+    int mpi_errno;
+    mpi_errno = MPIU_CALL(MPIDI_CH3,InitCompleted());
+    return mpi_errno;
 }
 
 /*
@@ -355,6 +452,22 @@ static int InitPG( int *argc, char ***argv,
     if (usePMI) {
 	/* Tell the process group how to get connection information */
 	MPIDI_PG_InitConnKVS( pg );
+
+#if 0
+	/* If we're supporting the debugger, we can save our host and 
+	   pid here.  This publishes the data in the kvs space. 
+	   This allows the MPI processes to access the information 
+	   about the other processes without any PMI changes. */
+#ifdef HAVE_DEBUGGER_SUPPORT
+	{
+	    char key[64];
+	    char myinfo[512];
+	    MPIU_Snprintf( key, sizeof(key), "hpid-%d", pg_rank );
+	    MPIU_Snpritnf( myinfo, sizeof(key), "%s:%d", hostname, getpid() );
+	    PMI_KVS_Put( pg->world->connData, key, myinfo );
+	}
+#endif
+#endif
     }
 
     /* FIXME: Who is this for and where does it belong? */
@@ -448,3 +561,34 @@ static int MPIDI_CH3I_PG_Destroy(MPIDI_PG_t * pg)
     
     return MPI_SUCCESS;
 }
+
+#if defined(_OSU_MVAPICH_) && defined(CKPT)
+/*Synchronous checkpoint interface*/
+int MVAPICH2_Sync_Checkpoint()
+{
+    MPID_Comm * comm_ptr;
+    MPIU_THREADPRIV_DECL;
+    MPIU_THREADPRIV_GET;
+
+    if (MPIDI_Process.use_sync_ckpt == 0) /*Not enabled*/
+        return 0;
+
+    MPID_Comm_get_ptr (MPI_COMM_WORLD, comm_ptr);
+
+    MPIU_THREAD_SINGLE_CS_ENTER("coll");
+    MPIR_Nest_incr();
+    MPIR_Barrier(comm_ptr);
+    MPIR_Nest_decr();
+    MPIU_THREAD_SINGLE_CS_EXIT("coll");
+    
+    if (MPIDI_Process.my_pg_rank == 0)
+    {/*Notify console to take checkpoint*/
+        MPIDI_CH3I_CR_Sync_ckpt_request();
+    }
+
+    /*Now wait for the lower layer to indicate that the checkpoint finished*/
+    pthread_mutex_lock(&MVAPICH2_sync_ckpt_lock);
+    pthread_cond_wait(&MVAPICH2_sync_ckpt_cond,&MVAPICH2_sync_ckpt_lock);
+    pthread_mutex_unlock(&MVAPICH2_sync_ckpt_lock);
+}
+#endif /* defined(_OSU_MVAPICH_) && defined(CKPT) */

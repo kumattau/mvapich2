@@ -80,7 +80,12 @@ void ADIOI_GEN_SetInfo(ADIO_File fd, MPI_Info users_info, int *error_code)
 	MPI_Info_set(info, "romio_ds_write", "automatic"); 
 	fd->hints->ds_write = ADIOI_HINT_AUTO;
 
+	/* still to do: tune this a bit for a variety of file systems. there's
+	 * no good default value so just leave it unset */
+	fd->hints->min_fdomain_size = 0;
+
 	fd->hints->initialized = 1;
+
     }
 
     /* add in user's info if supplied */
@@ -272,7 +277,7 @@ void ADIOI_GEN_SetInfo(ADIO_File fd, MPI_Info users_info, int *error_code)
 		MPI_Comm_size(fd->comm, &nprocs);
 		nprocs_is_valid = 1;
 	    }
-	    if (intval < nprocs) {
+	    if (intval <= nprocs) {
 		MPI_Info_set(info, "cb_nodes", value);
 		fd->hints->cb_nodes = intval;
 	    }
@@ -313,6 +318,12 @@ void ADIOI_GEN_SetInfo(ADIO_File fd, MPI_Info users_info, int *error_code)
 	     * otherwise we would get an error if someone used the same
 	     * info value with a cb_config_list value in it in a couple
 	     * of calls, which would be irritating. */
+	}
+	MPI_Info_get(users_info, "romio_min_fdomain_size", MPI_MAX_INFO_VAL,
+			value, &flag);
+	if ( flag && ((intval = atoi(value)) > 0) ) {
+		MPI_Info_set(info, "romio_min_fdomain_size", value);
+		fd->hints->min_fdomain_size = intval;
 	}
     }
 

@@ -45,8 +45,18 @@
 #if !defined( CLOG_NOMPI )
 #include "mpi.h"
 #else
-#define MPI_Comm                  int
+/*
+    To avoid mpi_null.h from being exposed to the user's include_dir,
+    the definition of MPI_Comm has to match that in mpi_null.h.
+    The "#if !defined( _MPI_NULL_MPI_COMM )" is to avoid duplicated
+    definition of MPI_Comm when both mpi_null.h and this .h are used
+    in the same .c file.
+*/
+#if !defined( _MPI_NULL_MPI_COMM )
+#define _MPI_NULL_MPI_COMM
+typedef int  MPI_Comm;
 #endif
+#endif /* Endof if !defined( CLOG_NOMPI ) */
 
 #include "clog_commset.h"
 
@@ -56,7 +66,7 @@ int MPE_Init_log( void );
 int MPE_Initialized_logging( void );
 
 /* create state with byte info data description lines in MPI_Comm */
-int MPE_Describe_comm_state( MPI_Comm comm, int local_thread,
+int MPE_Describe_comm_state( MPI_Comm comm,
                              int state_startID, int state_finalID,
                              const char *name, const char *color,
                              const char *format );
@@ -77,8 +87,7 @@ int MPE_Describe_state( int state_startID, int state_finalID,
                         const char *name, const char *color );
 
 /* create event with byte info data description lines in MPI_comm */
-int MPE_Describe_comm_event( MPI_Comm comm, int local_thread,
-                             int eventID,
+int MPE_Describe_comm_event( MPI_Comm comm, int eventID,
                              const char *name, const char *color,
                              const char *format );
 
@@ -125,8 +134,7 @@ int MPE_Log_commIDs_intercomm( const CLOG_CommIDs_t *commIDs, int local_thread,
 /* log the sending of a message in MPI_Comm */
 int MPE_Log_commIDs_send( const CLOG_CommIDs_t *commIDs, int local_thread,
                           int receiver, int tag, int size );
-int MPE_Log_comm_send( MPI_Comm comm, int local_thread,
-                       int receiver, int tag, int size );
+int MPE_Log_comm_send( MPI_Comm comm, int receiver, int tag, int size );
 
 /* log the sending of a message in MPI_COMM_WORLD */
 int MPE_Log_send( int receiver, int tag, int size );
@@ -134,8 +142,7 @@ int MPE_Log_send( int receiver, int tag, int size );
 /* log the receiving of a message in MPI_Comm */
 int MPE_Log_commIDs_receive( const CLOG_CommIDs_t *commIDs, int local_thread,
                              int sender, int tag, int size );
-int MPE_Log_comm_receive( MPI_Comm comm, int local_thread,
-                          int sender, int tag, int size );
+int MPE_Log_comm_receive( MPI_Comm comm, int sender, int tag, int size );
 
 /* log the receiving of a message in MPI_COMM_WORLD */
 int MPE_Log_receive( int sender, int tag, int size );
@@ -150,18 +157,17 @@ int MPE_Log_pack( MPE_LOG_BYTES bytebuf, int *position,
 int MPE_Log_commIDs_event( const CLOG_CommIDs_t *commIDs, int local_thread,
                            int event, const char *bytebuf );
 
-/* log a event in MPI_Comm */
-int MPE_Log_comm_event( MPI_Comm comm, int local_thread,
-                        int event, const char *bytebuf );
+/* log an event in MPI_Comm */
+int MPE_Log_comm_event( MPI_Comm comm, int event, const char *bytebuf );
 
 
-/* log a event in MPI_COMM_WORLD */
+/* log an event in MPI_COMM_WORLD */
 int MPE_Log_event( int event, int data, const char *bytebuf );
 
 /* log a bare event in MPI_COMM_WORLD */
 int MPE_Log_bare_event( int event );
 
-/* log a infomational event in MPI_COMM_WORLD */
+/* log an infomational event in MPI_COMM_WORLD */
 int MPE_Log_info_event( int event, const char *bytebuf );
 
 int MPE_Log_sync_clocks( void );

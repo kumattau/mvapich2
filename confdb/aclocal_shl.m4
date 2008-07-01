@@ -1,3 +1,14 @@
+dnl /* Copyright (c) 2003-2008, The Ohio State University. All rights
+dnl  * reserved.
+dnl  *
+dnl  * This file is part of the MVAPICH2 software package developed by the
+dnl  * team members of The Ohio State University's Network-Based Computing
+dnl  * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+dnl  *
+dnl  * For detailed copyright and licensing information, please refer to the
+dnl  * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+dnl  *
+dnl  */
 dnl
 dnl Definitions for creating shared libraries
 dnl
@@ -56,7 +67,7 @@ AC_ARG_ENABLE(sharedlibs,
 [--enable-sharedlibs=kind - Enable shared libraries.  kind may be
     gcc     - Standard gcc and GNU ld options for creating shared libraries
     osx-gcc - Special options for gcc needed only on OS/X
-    solaris-cc - Solaris native (SPARC) compilers for 32 bit systems
+    solaris-cc - Solaris native compilers
     cygwin-gcc - Special options for gcc needed only for cygwin
     none    - same as --disable-sharedlibs
 Only gcc, osx-gcc, and solaris-cc are currently supported],
@@ -90,7 +101,9 @@ case "$enable_sharedlibs" in
     #C_LINK_SHL='${CC} -shared -Wl,-h,<finallibname>'
     # May need -fPIC 
     CC_SHL='${CC} -fpic'
-    C_LINKPATH_SHL="-Wl,-rpath -Wl,"
+    #C_LINKPATH_SHL="-Wl,-rpath -Wl,"
+    # More recent versions allow multiple args, separated by commas
+    C_LINKPATH_SHL="-Wl,-rpath,"
     SHLIB_EXT=so
     # We need to test that this isn't osx.  The following is a 
     # simple hack
@@ -156,9 +169,18 @@ dnl
 dnl Other, such as solaris-cc
     solaris|solaris-cc)
     AC_MSG_RESULT([Creating shared libraries using Solaris])
+dnl <_OSU_MVAPICH_>
+    if test "$build_cpu" = "i386"; then
+        C_LINK_SHL='${CC} -G'
+        CC_SHL='${CC} -KPIC'
+    else
+dnl </_OSU_MVAPICH_>
     # pic32 is appropriate for both 32 and 64 bit Solaris
     C_LINK_SHL='${CC} -G -xcode=pic32'
     CC_SHL='${CC} -xcode=pic32'
+dnl <_OSU_MVAPICH_>
+    fi
+dnl </_OSU_MVAPICH_>
     C_LINKPATH_SHL="-R"
     SHLIB_EXT=so
     enable_sharedlibs="solaris-cc"
@@ -177,7 +199,9 @@ dnl Other, such as solaris-cc
     linuxppc-xlc)
     # This is only the beginning of xlc support, thanks to andy@vpac.org
     CC_SHL='${CC} -qmkshrobj'
-    C_LINKPATH_SHL="-Wl,-rpath -Wl,"
+    # More recent versions allow multiple args, separated by commas
+    C_LINKPATH_SHL="-Wl,-rpath,"
+    #C_LINKPATH_SHL="-Wl,-rpath -Wl,"
     C_LINK_SHL='${CC} -shared -qmkshrobj'
     SHLIB_EXT=so
     # Note that the full line should be more like
@@ -265,6 +289,7 @@ AC_DEFUN(PAC_CC_SUBDIR_SHLIBS,[
         AC_SUBST(C_LINK_SHL)
         AC_SUBST(LIBTOOL)
         AC_SUBST(ENABLE_SHLIB)
+        AC_SUBST(SHLIB_EXT)
 	if test "$ENABLE_SHLIB" = "libtool" ; then
 	    if test -z "$LIBTOOL" ; then
 		AC_MSG_WARN([libtool selected for shared library support but LIBTOOL is not defined])

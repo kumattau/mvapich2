@@ -401,7 +401,7 @@ sub RunTest {
 # Deleted this test because it is no longer a design goal for MPICH
 # that it have no nonconforming global symbols
 
-# Deleted this test because it is no longer a design goal for MPICH2
+# Deleted this test because it is no longer a design goal for MVAPICH2
 # to have a minimum memory and routine footprint.
 
 		# Install the libraries
@@ -877,7 +877,7 @@ sub RunMPICH2TestSuite {
 	return;
     }
 
-    # MPICH2 tests are already built, so no configure step required
+    # MVAPICH2 tests are already built, so no configure step required
     %saveENV = %ENV;
     #
     # Make sure that there a no leftovers
@@ -896,7 +896,7 @@ sub RunMPICH2TestSuite {
     if ($hasDemon) {
 	&$StartDemon;
     }
-    # The MPICH2 test suite has a program for running the tests
+    # The MVAPICH2 test suite has a program for running the tests
     $rc = &RunProgram( "./runtests -mpiexec=$instdir/bin/mpiexec -srcdir=$srcdir/test/mpi -tests=testlist -xmlfile=summary.xml" );
     $test_status = $rc;
     if ($run_status == 0 && $rc != 0) { $run_status = $rc; }
@@ -1106,7 +1106,7 @@ if ($outfile ne "") {
     if ($is_xml) {
 	print $OUTFD "<?xml version='1.0' ?>\n";
 	print $OUTFD "<?xml-stylesheet href=\"build.xsl\" type=\"text/xsl\" ?>\n";
-	print $OUTFD "<MPICH2BUILD>\n";
+	print $OUTFD "<MVAPICH2BUILD>\n";
     }
 }
 else {
@@ -1129,7 +1129,7 @@ for ($test_count = 0;
     &RunTest;
 }
 if ($is_xml) {
-    print $OUTFD "</MPICH2BUILD>\n";
+    print $OUTFD "</MVAPICH2BUILD>\n";
 }
 close $OUTFD;
 

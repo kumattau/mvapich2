@@ -3,6 +3,17 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2003-2008, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
 
 #include "mpidimpl.h"
 
@@ -186,6 +197,8 @@ int MPID_VCRT_Release(MPID_VCRT vcrt, int isDisconnect )
                             "vc=%p: not sending a close to %d, vc in state %s",
 			     vc, i, MPIDI_VC_GetStateString(vc->state)));
 		}
+		mpi_errno = MPIU_CALL(MPIDI_CH3,VC_Destroy(vc));
+		if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
 	    }
 	}
 
@@ -194,13 +207,11 @@ int MPID_VCRT_Release(MPID_VCRT vcrt, int isDisconnect )
 
     /* Commented out blocks that are not needed unless MPIU_ERR_POP is 
        used above */
-    /* fn_exit:     */
+ fn_exit:    
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_VCRT_RELEASE);
     return mpi_errno;
-    /*
  fn_fail:
     goto fn_exit;
-    */
 }
 
 /*@
@@ -573,14 +584,22 @@ static int MPIDI_CH3U_VC_FinishPending( MPIDI_VCRT_t *vcrt )
 	/* printf( "Size = %d\n", size ); fflush(stdout); */
 	for (i=0; i<size; i++) {
 	    if (vc[i]->state != MPIDI_VC_STATE_INACTIVE) {
+		/* FIXME: Printf for debugging */
 		printf ("state for vc[%d] is %d\n",
 			i, vc[i]->state ); fflush(stdout);
 		nPending++;
 	    }
+#if 0
+	    /* FIXME: We shouldn't have any references to the channel-specific
+	       fields in this part of the code.  This case should actually
+	       not be needed; if there is a pending send element, the
+	       top-level state should not be inactive */
 	    if (vc[i]->ch.sendq_head) {
+		/* FIXME: Printf for debugging */
 		printf( "Nonempty sendQ for vc[%d]\n", i ); fflush(stdout);
 		nPending++;
 	    }
+#endif
 	}
 	if (nPending > 0) {
 	    printf( "Panic! %d pending operations!\n", nPending );
@@ -646,8 +665,13 @@ int MPIDI_CH3U_Comm_FinishPending( MPID_Comm *comm_ptr )
 /* ----------------------------------------------------------------------- */
 /* Routines to initialize a VC */
 
-/* FIXME: Should this fully initialize the vc_ entry? */
-/* Make lpid_counter static and local to this routine/file */
+/*
+ * The lpid counter counts new processes that this process knows about.
+ */
+static int lpid_counter = 0;
+
+/* Fully initialize a VC.  This invokes the channel-specific 
+   VC initialization routine MPIDI_CH3_VC_Init . */
 int MPIDI_VC_Init( MPIDI_VC_t *vc, MPIDI_PG_t *pg, int rank )
 {
     vc->state = MPIDI_VC_STATE_INACTIVE;
@@ -655,9 +679,21 @@ int MPIDI_VC_Init( MPIDI_VC_t *vc, MPIDI_PG_t *pg, int rank )
     vc->handle  = MPID_VCONN;
     vc->pg      = pg;
     vc->pg_rank = rank;
-    vc->lpid = MPIDI_Process.lpid_counter++;
+    vc->lpid    = lpid_counter++;
     MPIDI_VC_Init_seqnum_send(vc);
     MPIDI_VC_Init_seqnum_recv(vc);
+    vc->rndvSend_fn           = MPIDI_CH3_RndvSend;
+    vc->rndvRecv_fn           = MPIDI_CH3_RecvRndv;
+#if defined(_OSU_MVAPICH_)
+    vc->rma_issued = 0;
+    /* The eager max message size must be set at the end of SMP
+     * initialization when the status of SMP (SMP_INIT) is known.
+     */
+#else /* defined(_OSU_MVAPICH_) */
+    vc->eager_max_msg_sz      = MPIDI_CH3_EAGER_MAX_MSG_SIZE;
+#endif /* defined(_OSU_MVAPICH_) */
+    vc->sendNoncontig_fn      = MPIDI_CH3_SendNoncontig;
+    MPIU_CALL(MPIDI_CH3,VC_Init( vc ));
     MPIU_DBG_PrintVCState(vc);
 
     return MPI_SUCCESS;

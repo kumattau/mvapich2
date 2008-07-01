@@ -6,6 +6,7 @@
 #define _IB_MODULE_IMPL_H
 
 #define _GNU_SOURCE
+#include "mpid_nem_impl.h"
 #include "ib_utils.h"
 #include <infiniband/verbs.h>
 

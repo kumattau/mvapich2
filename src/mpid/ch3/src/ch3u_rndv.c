@@ -3,6 +3,17 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2003-2008, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
 
 #include "mpidimpl.h"
 
@@ -17,7 +28,7 @@
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 /* MPIDI_CH3_RndvSend - Send a request to perform a rendezvous send */
 int MPIDI_CH3_RndvSend( MPID_Request **sreq_p, const void * buf, int count, 
-			MPI_Datatype datatype, int dt_contig, int data_sz, 
+			MPI_Datatype datatype, int dt_contig, MPIDI_msg_sz_t data_sz, 
 			MPI_Aint dt_true_lb,
 			int rank, 
 			int tag, MPID_Comm * comm, int context_offset )
@@ -30,6 +41,9 @@ int MPIDI_CH3_RndvSend( MPID_Request **sreq_p, const void * buf, int count,
 #endif
     MPID_Request *sreq =*sreq_p;
     int          mpi_errno = MPI_SUCCESS;
+#if defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS)
+    MPID_Seqnum_t seqnum;
+#endif /* defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS) */
 	
     MPIU_DBG_MSG_D(CH3_OTHER,VERBOSE,
 		   "sending rndv RTS, data_sz=" MPIDI_MSG_SZ_FMT, data_sz);
@@ -47,7 +61,9 @@ int MPIDI_CH3_RndvSend( MPID_Request **sreq_p, const void * buf, int count,
     MPIDI_VC_FAI_send_seqnum(vc, seqnum);
     MPIDI_Pkt_set_seqnum(rts_pkt, seqnum);
     MPIDI_Request_set_seqnum(sreq, seqnum);
-    
+
+    MPIU_DBG_MSGPKT(vc,tag,rts_pkt->match.context_id,rank,data_sz,"Rndv");
+
 #ifdef MPIDI_CH3_CHANNEL_RNDV
 
     MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"Rendezvous send using iStartRndvMsg");
@@ -65,8 +81,10 @@ int MPIDI_CH3_RndvSend( MPID_Request **sreq_p, const void * buf, int count,
     }
     else
     {
+	sreq->dev.segment_ptr = MPID_Segment_alloc( );
+	/* if (!sreq->dev.segment_ptr) { MPIU_ERR_POP(); } */
 	MPID_Segment_init(sreq->dev.user_buf, sreq->dev.user_count,
-			  sreq->dev.datatype, &sreq->dev.segment, 0);
+			  sreq->dev.datatype, sreq->dev.segment_ptr, 0);
 	sreq->dev.iov_count = MPID_IOV_LIMIT;
 	sreq->dev.segment_first = 0;
 	sreq->dev.segment_size = data_sz;
@@ -100,7 +118,8 @@ int MPIDI_CH3_RndvSend( MPID_Request **sreq_p, const void * buf, int count,
     /* --END ERROR HANDLING-- */
     
 #else
-    mpi_errno = MPIDI_CH3_iStartMsg(vc, rts_pkt, sizeof(*rts_pkt), &rts_sreq);
+    mpi_errno = MPIU_CALL(MPIDI_CH3,iStartMsg(vc, rts_pkt, sizeof(*rts_pkt), 
+					      &rts_sreq));
     /* --BEGIN ERROR HANDLING-- */
     if (mpi_errno != MPI_SUCCESS)
     {
@@ -155,7 +174,7 @@ int MPIDI_CH3_RndvSend( MPID_Request **sreq_p, const void * buf, int count,
 }
 
 int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
-					MPID_Request **rreqp )
+					MPIDI_msg_sz_t *buflen, MPID_Request **rreqp )
 {
     MPID_Request * rreq;
     int found;
@@ -163,9 +182,12 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     int mpi_errno = MPI_SUCCESS;
     
     MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
- "received rndv RTS pkt, sreq=0x%08x, rank=%d, tag=%d, context=%d, data_sz=%d",
+ "received rndv RTS pkt, sreq=0x%08x, rank=%d, tag=%d, context=%d, data_sz=" MPIDI_MSG_SZ_FMT,
 	      rts_pkt->sender_req_id, rts_pkt->match.rank, rts_pkt->match.tag, 
               rts_pkt->match.context_id, rts_pkt->data_sz));
+    MPIU_DBG_MSGPKT(vc,rts_pkt->match.tag,rts_pkt->match.context_id,
+		    rts_pkt->match.rank,rts_pkt->data_sz,
+		    "ReceivedRndv");
 
     rreq = MPIDI_CH3U_Recvq_FDP_or_AEU(&rts_pkt->match, &found);
     if (rreq == NULL) {
@@ -173,14 +195,46 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     }
     
     set_request_info(rreq, rts_pkt, MPIDI_REQUEST_RNDV_MSG);
+
+    *buflen = sizeof(MPIDI_CH3_Pkt_t);
+#if defined(_OSU_MVAPICH_)
+    MPIDI_CH3_RNDV_SET_REQ_INFO(rreq, rts_pkt);
+#endif /* defined(_OSU_MVAPICH_) */
     
     if (found)
     {
 	MPID_Request * cts_req;
 	MPIDI_CH3_Pkt_t upkt;
 	MPIDI_CH3_Pkt_rndv_clr_to_send_t * cts_pkt = &upkt.rndv_clr_to_send;
+#if defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS)
+        MPID_Seqnum_t seqnum;
+#endif /* defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS) */
 	
 	MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"posted request found");
+	
+#if defined(_OSU_MVAPICH_)
+        if(MPIDI_CH3_RNDV_PROTOCOL_IS_READ(rts_pkt)) {
+
+            mpi_errno = MPIDI_CH3U_Post_data_receive_found(rreq);
+            /* --BEGIN ERROR HANDLING-- */
+            if (mpi_errno != MPI_SUCCESS && rreq != NULL) {
+                MPIU_ERR_SETANDJUMP(mpi_errno,
+                        MPI_ERR_OTHER,"**ch3|loadsendiov");
+            }
+
+            mpi_errno = MPIDI_CH3_Prepare_rndv_get(vc, rreq);
+            if (mpi_errno != MPI_SUCCESS) {
+                MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|rndv");
+            }
+
+            mpi_errno = MPIDI_CH3_Rndv_transfer(vc,
+                    NULL, rreq, NULL, rts_pkt);
+            if (mpi_errno != MPI_SUCCESS && rreq != NULL) {
+                MPIU_ERR_SETANDJUMP(mpi_errno,
+                        MPI_ERR_OTHER,"**ch3|senddata");
+            }
+        } else {
+#endif /* defined(_OSU_MVAPICH_) */
 	
 	/* FIXME: What if the receive user buffer is not big enough to
 	   hold the data about to be cleared for sending? */
@@ -189,7 +243,41 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 	MPIDI_Pkt_init(cts_pkt, MPIDI_CH3_PKT_RNDV_CLR_TO_SEND);
 	cts_pkt->sender_req_id = rts_pkt->sender_req_id;
 	cts_pkt->receiver_req_id = rreq->handle;
-	mpi_errno = MPIDI_CH3_iStartMsg(vc, cts_pkt, sizeof(*cts_pkt), &cts_req);
+#if defined(_OSU_MVAPICH_)
+        MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+        MPIDI_Pkt_set_seqnum(cts_pkt, seqnum);
+        mpi_errno = MPIDI_CH3U_Post_data_receive_found(rreq);
+        /* --BEGIN ERROR HANDLING-- */
+        if (mpi_errno != MPI_SUCCESS && rreq != NULL)
+        {
+            MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|loadsendiov");
+        }
+
+        if (rreq->dev.OnDataAvail == NULL)
+        {
+            cts_pkt->recv_sz = rreq->dev.iov[0].MPID_IOV_LEN;
+                if (rreq->dev.iov_count > 1)
+                {
+                    int k = 1;
+                    for (; k < rreq->dev.iov_count; ++k)
+                    {
+                        cts_pkt->recv_sz += rreq->dev.iov[k].MPID_IOV_LEN;
+                    }
+                }
+        }
+        else
+        {
+            cts_pkt->recv_sz = rreq->dev.segment_size;
+        }
+
+        mpi_errno = MPIDI_CH3_Prepare_rndv_cts(vc, cts_pkt, rreq);
+        if (mpi_errno != MPI_SUCCESS)
+        {
+            MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|rndv");
+        }
+#endif /* defined(_OSU_MVAPICH_) */
+	mpi_errno = MPIU_CALL(MPIDI_CH3,iStartMsg(vc, cts_pkt, 
+						  sizeof(*cts_pkt), &cts_req));
 	if (mpi_errno != MPI_SUCCESS) {
 	    MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,
 				"**ch3|ctspkt");
@@ -198,10 +286,22 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 	    MPID_Request_release(cts_req);
 	}
     }
+#if defined(_OSU_MVAPICH_)
+    }
+#endif /* defined(_OSU_MVAPICH_) */
     else
     {
 	MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"unexpected request allocated");
-	
+#if defined(_OSU_MVAPICH_)
+#if 0 /* FIXME */
+        /* If the request is a read and is unexpected,
+         * we have to buffer the remote information till
+         * this request is matched and then processed */
+        if(MPIDI_CH3_RNDV_PROTOCOL_IS_READ(rts_pkt)) {
+            memcpy(&rreq->ch.pkt, pkt, sizeof(MPIDI_CH3_Pkt_t));
+        }
+#endif /* if 0 */
+#endif /* defined(_OSU_MVAPICH_) */
 	/*
 	 * A MPID_Probe() may be waiting for the request we just 
 	 * inserted, so we need to tell the progress engine to exit.
@@ -222,7 +322,7 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 }
 
 int MPIDI_CH3_PktHandler_RndvClrToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
-					MPID_Request **rreqp )
+					MPIDI_msg_sz_t *buflen, MPID_Request **rreqp )
 {
     MPIDI_CH3_Pkt_rndv_clr_to_send_t * cts_pkt = &pkt->rndv_clr_to_send;
     MPID_Request * sreq;
@@ -233,15 +333,46 @@ int MPIDI_CH3_PktHandler_RndvClrToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     MPI_Aint dt_true_lb;
     MPIDI_msg_sz_t data_sz;
     MPID_Datatype * dt_ptr;
-    MPID_IOV iov[MPID_IOV_LIMIT];
-    int iov_n;
     int mpi_errno = MPI_SUCCESS;
+#if defined(_OSU_MVAPICH_)
+    int recv_size;
+    int i;
+#endif /* defined(_OSU_MVAPICH_) */
     
     MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"received rndv CTS pkt");
     
     MPID_Request_get_ptr(cts_pkt->sender_req_id, sreq);
     MPIU_DBG_PRINTF(("received cts, count=%d\n", sreq->dev.user_count));
     
+#if defined(_OSU_MVAPICH_)
+    if (sreq->mrail.rndv_buf_off != 0 && 
+            sreq->mrail.protocol == VAPI_PROTOCOL_RPUT) {
+        MPIU_Assert(sreq->mrail.rndv_buf_off == 0);
+    }
+
+    if (pkt->type == MPIDI_CH3_PKT_RNDV_CLR_TO_SEND) {
+        recv_size = cts_pkt->recv_sz;
+        for (i = 0; i < sreq->dev.iov_count ; i ++) {
+            if (recv_size < sreq->dev.iov[i].MPID_IOV_LEN) {
+                fprintf(stderr, "Warning! Rndv Receiver is receiving "
+                        "(%d < %d) less than as expected\n", 
+                        recv_size, sreq->dev.iov[i].MPID_IOV_LEN);
+                sreq->dev.iov[i].MPID_IOV_LEN = recv_size;
+                sreq->dev.iov_count = i + 1;
+                break;
+            } else
+                recv_size -= sreq->dev.iov[i].MPID_IOV_LEN;
+        }
+        sreq->mrail.rndv_buf_sz = cts_pkt->recv_sz;
+    }
+
+    mpi_errno = MPIDI_CH3_Rndv_transfer(vc, sreq, NULL,
+            cts_pkt, NULL);
+    if (mpi_errno != MPI_SUCCESS) {
+        MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|senddata");
+    }
+    *rreqp = NULL;
+#else /* defined(_OSU_MVAPICH_) */
     /* Release the RTS request if one exists.  
        MPID_Request_fetch_and_clear_rts_sreq() needs to be atomic to 
        prevent
@@ -254,75 +385,94 @@ int MPIDI_CH3_PktHandler_RndvClrToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     {
 	MPID_Request_release(rts_sreq);
     }
-    
+#endif /* defined(_OSU_MVAPICH_) */
+    *buflen = sizeof(MPIDI_CH3_Pkt_t);
+#if !defined(_OSU_MVAPICH_)
     MPIDI_Pkt_init(rs_pkt, MPIDI_CH3_PKT_RNDV_SEND);
     rs_pkt->receiver_req_id = cts_pkt->receiver_req_id;
-    iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)rs_pkt;
-    iov[0].MPID_IOV_LEN = sizeof(*rs_pkt);
     
     MPIDI_Datatype_get_info(sreq->dev.user_count, sreq->dev.datatype, dt_contig, data_sz, dt_ptr, dt_true_lb);
     
     if (dt_contig) 
     {
+	MPID_IOV iov[MPID_IOV_LIMIT];
+
 	MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
 		    "sending contiguous rndv data, data_sz=" MPIDI_MSG_SZ_FMT, 
 					    data_sz));
 	
 	sreq->dev.OnDataAvail = 0;
 	
+	iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)rs_pkt;
+	iov[0].MPID_IOV_LEN = sizeof(*rs_pkt);
+	
 	iov[1].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)((char *)sreq->dev.user_buf + dt_true_lb);
 	iov[1].MPID_IOV_LEN = data_sz;
-	iov_n = 2;
+
+	mpi_errno = MPIU_CALL(MPIDI_CH3,iSendv(vc, sreq, iov, 2));
+	MPIU_ERR_CHKANDJUMP(mpi_errno, mpi_errno, MPI_ERR_OTHER, "**ch3|senddata");
     }
     else
     {
-	MPID_Segment_init(sreq->dev.user_buf, sreq->dev.user_count, sreq->dev.datatype, &sreq->dev.segment, 0);
-	iov_n = MPID_IOV_LIMIT - 1;
+	sreq->dev.segment_ptr = MPID_Segment_alloc( );
+	/* if (!sreq->dev.segment_ptr) { MPIU_ERR_POP(); } */
+	MPID_Segment_init(sreq->dev.user_buf, sreq->dev.user_count, 
+			  sreq->dev.datatype, sreq->dev.segment_ptr, 0);
 	sreq->dev.segment_first = 0;
 	sreq->dev.segment_size = data_sz;
-	/* One the initial load of a send iov req, set the OnFinal action (null
-	   for point-to-point) */
-	sreq->dev.OnFinal = 0;
-	mpi_errno = MPIDI_CH3U_Request_load_send_iov(sreq, &iov[1], &iov_n);
-	if (mpi_errno != MPI_SUCCESS)  {
-	    MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, 
-				"**ch3|loadsendiov");
-	}
-	iov_n += 1;
-    }
-	    
-    mpi_errno = MPIDI_CH3_iSendv(vc, sreq, iov, iov_n);
-    if (mpi_errno != MPI_SUCCESS) {
-	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**ch3|senddata");
-    }
-    
-    *rreqp = NULL;
 
+	mpi_errno = vc->sendNoncontig_fn(vc, sreq, rs_pkt, sizeof(*rs_pkt));
+	MPIU_ERR_CHKANDJUMP(mpi_errno, mpi_errno, MPI_ERR_OTHER, "**ch3|senddata");
+    }    
+    *rreqp = NULL;
+#endif /* !defined(_OSU_MVAPICH_) */
  fn_fail:
     return mpi_errno;
 }
 
 int MPIDI_CH3_PktHandler_RndvSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, 
-				   MPID_Request **rreqp )
+				   MPIDI_msg_sz_t *buflen, MPID_Request **rreqp )
 {
     MPIDI_CH3_Pkt_rndv_send_t * rs_pkt = &pkt->rndv_send;
     int mpi_errno = MPI_SUCCESS;
+    int complete;
+    char *data_buf;
+    MPIDI_msg_sz_t data_len;
     MPID_Request *req;
     
     MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"received rndv send (data) pkt");
-    MPID_Request_get_ptr(rs_pkt->receiver_req_id, *rreqp);
-    req = *rreqp;
+
+    MPID_Request_get_ptr(rs_pkt->receiver_req_id, req);
+
+    data_len = ((*buflen - sizeof(MPIDI_CH3_Pkt_t) >= req->dev.recv_data_sz)
+                ? req->dev.recv_data_sz : *buflen - sizeof(MPIDI_CH3_Pkt_t));
+    data_buf = (char *)pkt + sizeof(MPIDI_CH3_Pkt_t);
+    
     if (req->dev.recv_data_sz == 0) {
+        *buflen = sizeof(MPIDI_CH3_Pkt_t);
 	MPIDI_CH3U_Request_complete(req);
 	*rreqp = NULL;
     }
     else {
-	mpi_errno = MPIDI_CH3U_Post_data_receive_found(req);
+        mpi_errno = MPIDI_CH3U_Receive_data_found(req, data_buf, &data_len,
+                                                  &complete);
 	if (mpi_errno != MPI_SUCCESS) {
 	    MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**ch3|postrecv",
 			     "**ch3|postrecv %s", "MPIDI_CH3_PKT_RNDV_SEND");
 	}
-    }
+
+        *buflen = sizeof(MPIDI_CH3_Pkt_t) + data_len;
+
+        if (complete) 
+        {
+            MPIDI_CH3U_Request_complete(req);
+            *rreqp = NULL;
+        }
+        else
+        {
+            *rreqp = req;
+        }
+   }
 	
  fn_fail:
     return mpi_errno;
@@ -335,18 +485,31 @@ int MPIDI_CH3_PktHandler_RndvSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 int MPIDI_CH3_RecvRndv( MPIDI_VC_t * vc, MPID_Request *rreq )
 {
     int mpi_errno = MPI_SUCCESS;
-
+#if defined(_OSU_MVAPICH_)
+/* FIXME
+    MPIDI_CH3_Pkt_rndv_req_to_send_t * rts_pkt;
+*/
+#endif /* defined(_OSU_MVAPICH_) */
     /* A rendezvous request-to-send (RTS) message has arrived.  We need
        to send a CTS message to the remote process. */
 #ifdef MPIDI_CH3_CHANNEL_RNDV
     /* The channel will be performing the rendezvous */
     
+#if defined(_OSU_MVAPICH_)
+    if (rreq->dev.recv_data_sz == 0) {
+	MPIDI_CH3U_Request_complete(rreq);
+#else /* defined(_OSU_MVAPICH_) */
     if (req->dev.recv_data_sz == 0) {
 	MPIDI_CH3U_Request_complete(req);
 	*rreqp = NULL;
+#endif /* defined(_OSU_MVAPICH_) */
     }
     else {
+#if defined(_OSU_MVAPICH_)
+	mpi_errno = MPIDI_CH3U_Post_data_receive_found(rreq);
+#else /* defined(_OSU_MVAPICH_) */
 	mpi_errno = MPIDI_CH3U_Post_data_receive_found(req);
+#endif /* defined(_OSU_MVAPICH_) */
 	if (mpi_errno != MPI_SUCCESS) {
 	    MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,
 				 "**ch3|postrecv",
@@ -354,12 +517,38 @@ int MPIDI_CH3_RecvRndv( MPIDI_VC_t * vc, MPID_Request *rreq )
 				 "MPIDI_CH3_PKT_RNDV_REQ_TO_SEND");
 	}
     }
+
+#if defined(_OSU_MVAPICH_)
+/* FIXME
+    if(MPIDI_CH3_RECV_REQ_IS_READ(rreq)) {
+
+        rts_pkt = &(rreq->ch.pkt.rndv_req_to_send);
+
+        mpi_errno = MPIDI_CH3_Prepare_rndv_get(vc, rreq);
+        if (mpi_errno != MPI_SUCCESS) {
+            MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|rndv");
+        }
+
+        mpi_errno = MPIDI_CH3_Rndv_transfer(vc,
+                NULL, rreq, NULL, rts_pkt);
+        if (mpi_errno != MPI_SUCCESS && rreq != NULL) {
+            MPIU_ERR_SETANDJUMP(mpi_errno,
+                    MPI_ERR_OTHER,"**ch3|senddata");
+        }
+    } else {
+*/
+#endif /* defined(_OSU_MVAPICH_) */
     mpi_errno = MPIDI_CH3_iStartRndvTransfer (vc, rreq);
 
     if (mpi_errno != MPI_SUCCESS) {
 	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,
 				"**ch3|ctspkt");
     }
+#if defined(_OSU_MVAPICH_)
+/* FIXME
+    }
+*/
+#endif /* defined(_OSU_MVAPICH_) */
     
 #else
     MPID_Request * cts_req;
@@ -372,7 +561,8 @@ int MPIDI_CH3_RecvRndv( MPIDI_VC_t * vc, MPID_Request *rreq )
     MPIDI_Pkt_init(cts_pkt, MPIDI_CH3_PKT_RNDV_CLR_TO_SEND);
     cts_pkt->sender_req_id = rreq->dev.sender_req_id;
     cts_pkt->receiver_req_id = rreq->handle;
-    mpi_errno = MPIDI_CH3_iStartMsg(vc, cts_pkt, sizeof(*cts_pkt), &cts_req);
+    mpi_errno = MPIU_CALL(MPIDI_CH3,iStartMsg(vc, cts_pkt, 
+					      sizeof(*cts_pkt), &cts_req));
     if (mpi_errno != MPI_SUCCESS) {
 	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**ch3|ctspkt");
     }

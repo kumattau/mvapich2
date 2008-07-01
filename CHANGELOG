@@ -1,32 +1,88 @@
 MVAPICH2 Changelog
 ------------------
-This file briefly describes the latest changes to the MVAPICH2 software
+This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
-06/09/2008
-* Configurable MPD mpiexec timeout based on the number of processes.
+MVAPICH2-1.1.0 (mm/dd/08)
 
-04/24/2008
-* Fix a startup performance issue when on-demand connection setup is not 
-  used.
+Changes contributed by MPICH2:
+* Support for STI Cell Broadband Engine
+* Added datatype free hooks to be used by devices independently.
+* Added device-specific timer support.
+* Enabled -O2 and equivalent compiler optimizations for supported compilers by default (including GNU, Intel, Portland, Sun, Absoft, IBM).
+* make uninstall works cleanly now, except for MPD installations.
+* Updates to the ch3:nemesis channel including preliminary support for thread safety.
+* MPI_Comm_create works for intercommunicators.
+* Performance improvements for derived datatypes (including packing and communication) through in-built loop-unrolling and buffer alignment.
+* Performance improvements for MPI_Gather when non-power-of-two processes are used, and when a non-zero ranked root is performing the gather.
+* Preliminary support for dynamic loading of ch3 channels (sock, ssm, shm).
+* Singleton init now works with the MPD process manager.
+* Fixes in MPD related to MPI-2 connect-accept.
+* Improved support for MPI-2 generalized requests that allows true nonblocking I/O in ROMIO.
+* MPE Changes:
+    - Updated MPE logging API so that it is thread-safe (through global mutex). Updated all related documentation, e.g. man pages.
+    - Added infrastructure to piggyback argument data to MPI states.
+    - Enabled thread-safe MPI logging through global mutex.
+    - Enhanced Jumpshot to be more thread friendly and added simple statistics in the Legend windows.
+    - Added backtrace support to MPE on Solaris and glibc based systems, e.g. Linux.  This improves the output error message from the Collective/Datatype checking library.
+    - Fixed the CLOG2 format so it can be used in serial (non-MPI) logging.
+* PMI Changes:
+    - Added support to use PMI Clique functionality for process managers that support it.
+* ROMIO Changes:
+    - Support to take hints from a config file
+    - More tests and bug fixes for nonblocking I/O
+* SCTP:
+    - Added MPICH_SCTP_NAGLE_ON support.
+* SMPD Changes:
+    - Singleton Init support.
 
-10/18/2007
+
+MVAPICH2-1.0.2 (02/20/08)
+
+* Change the default MV2_DAPL_PROVIDER to OpenIB-cma
+
+* Remove extraneous parameter is_blocking from the gen2 interface for
+  MPIDI_CH3I_MRAILI_Get_next_vbuf
+
+* Explicitly name unions in struct ibv_wr_descriptor and reference the
+  members in the code properly.
+
+* Change "inline" functions to "static inline" properly.
+
+* Increase the maximum number of buffer allocations for communication
+  intensive applications
+
+* Corrections for warnings from the Sun Studio 12 compiler.
+
+* If malloc hook initialization fails, then turn off registration
+  cache
+
+* Add MV_R3_THESHOLD and MV_R3_NOCACHE_THRESHOLD which allows
+  R3 to be used for smaller messages instead of registering the
+  buffer and using a zero-copy protocol.
+
+* Fixed an error in message coalescing.
+
+* Setting application initiated checkpoint as default if CR is turned on.
+
+
+MVAPICH2-1.0.1 (10/29/07)
+
 * Enhance udapl initializaton, set all ep_attr fields properly.
   Thanks for Kanoj Sarcar from NetXen for the patch.
 
-10/15/2007
 * Fixing a bug that miscalculates the receive size in case of complex
-datatype is used.
+  datatype is used.
   Thanks for Patrice Martinez from Bull for reporting this problem.
 
-10/10/2007
  * Minor patches for fixing (i) NBO for rdma-cm ports and (ii) rank
    variable usage in DEBUG_PRINT in rdma-cm.c
    Thanks to Steve Wise for reporting these.
 
-07/25/2007 (Release data of MVAPICH2-1.0-beta)
 
-* Following features are added in this new MVAPICH2-1.0-beta release:
+MVAPICH2-1.0 (09/14/07)
+
+* Following features and bug fixes are added in this new MVAPICH2-1.0 release:
 
 - Message coalescing support to enable reduction of per Queue-pair
   send queues for reduction in memory requirement on large scale
@@ -64,93 +120,166 @@ datatype is used.
 
 - Based on MPICH2 1.0.5p4.
 
-07/25/2007
+
 * Fix for hang while using IMB with -multi option. 
   Thanks to Pasha (Mellanox) for reporting this.
 
-07/20/2007
 * Fix for hang in memory allocations > 2^31 - 1.
   Thanks to Bryan Putnam (Purdue) for reporting this.
 
-07/10/2007
 * Fix for RDMA_CM finalize rdma_destroy_id failure. 
   Added Timeout env variable for RDMA_CM ARP. 
   Thanks to Steve Wise for suggesting these.
 
-03/28/2007
 * Fix for RDMA_CM invalid event in finalize. Thanks to Steve Wise and Sean Hefty.
 
-03/26/2007
 * Fix for shmem memory collectives related memory leaks
-
-03/14/2007
 
 * Updated src/mpi/romio/adio/ad_panfs/Makefile.in include path to find mpi.h.
   Contributed by David Gunter, Los Alamos National Laboratory.
 
-03/13/2007
-
 * Fixed header caching error on handling datatype messages with small vector 
   sizes.
 
-03/08/2007
-
 * Change the finalization protocol for UD connection manager.
-
-03/02/2007
 
 * Fix for the "command line too long" problem. Contributed by Xavier Bru
   <xavier.bru@bull.net> from Bull (http://www.bull.net/)
 
-02/01/2007
-
 * Change the CKPT handling to invalidate all unused registration cache.
 
-01/29/2007
-
 * Added ofed 1.2 interface change patch for iwarp/rdma_cm from Steve Wise.
-
-12/04/2006
 
 * Fix for rdma_cm_get_event err in finalize. Reported by Steve Wise.
 
 * Fix for when MV2_IBA_HCA is used. Contributed by Michael Schwind 
   of Technical Univ. of Chemnitz (Germany).
 
-10/03/2006
 
-* Added on demand connection management.
+MVAPICH2-0.9.8 (11/10/06)
 
-* Enhance shared memory communication support.
+* Following features are added in this new MVAPICH2-0.9.8 release:
 
-* Added ptmalloc memory hook support.
+- BLCR based Checkpoint/Restart support
 
-* Runtime selection for most configuration options.
+- iWARP support: tested with Chelsio and Ammasso adapters and OpenFabrics/Gen2 stack
+
+- RDMA CM connection management support 
+
+- Shared memory optimizations for collective communication operations
+
+- uDAPL support for NetEffect 10GigE adapter.
 
 
-08/30/2006 (Release date of MVAPICH2-0.9.5)
+MVAPICH2-0.9.6 (10/22/06)
 
-* Added multi-rail support for both point to point and direct one side
+* Following features and bug fixes are added in this new MVAPICH2-0.9.6 release:
+
+- Added on demand connection management.
+
+- Enhance shared memory communication support.
+
+- Added ptmalloc memory hook support.
+
+- Runtime selection for most configuration options.
+
+
+MVAPICH2-0.9.5 (08/30/06)
+
+* Following features and bug fixes are added in this new MVAPICH2-0.9.5 release:
+
+- Added multi-rail support for both point to point and direct one side
   operations.
 
-* Added adaptive RDMA fast path.
+- Added adaptive RDMA fast path.
 
-* Added shared receive queue support.
+- Added shared receive queue support.
 
-* Added TotalView debugger support
-
-
-07/25/2006
+- Added TotalView debugger support
 
 * Optimization of SMP startup information exchange for USE_MPD_RING to
   enhance performance for SLURM. Thanks to Don and team members from Bull 
   and folks from LLNL for their feedbacks and comments. 
-
-
-05/25/2006
 
 * Added uDAPL build script functionality to set DAPL_DEFAULT_PROVIDER
   explicitly with default suggestions.
 
 * Thanks to Harvey Richardson from Sun for suggesting this feature.
 
+
+MVAPICH2-0.9.3 (05/20/06)
+
+* Following features are added in this new MVAPICH2-0.9.3 release:
+
+- Multi-threading support
+
+- Integrated with MPICH2 1.0.3 stack
+
+- Advanced AVL tree-based Resource-aware registration cache
+
+- Tuning and Optimization of various collective algorithms 
+
+- Processor affinity for intra-node shared memory communication
+
+- Auto-detection of InfiniBand adapters for Gen2 
+
+
+MVAPICH2-0.9.2 (01/15/06)
+
+* Following features are added in this new MVAPICH2-0.9.2 release:
+
+- InfiniBand support for OpenIB/Gen2
+
+- High-performance and optimized support for many MPI-2
+  functionalities (one-sided, collectives, datatype)
+
+- Support for other MPI-2 functionalities (as provided by MPICH2 1.0.2p1)
+
+- High-performance and optimized support for all MPI-1 functionalities 
+
+
+MVAPICH2-0.9.0 (11/01/05)
+
+* Following features are added in this new MVAPICH2-0.9.0 release:
+
+- Optimized two-sided operations with RDMA support
+
+- Efficient memory registration/de-registration schemes for RDMA operations
+
+- Optimized intra-node shared memory support (bus-based and NUMA)
+
+- Shared library support
+
+- ROMIO support
+
+- Support for multiple compilers (gcc, icc, and pgi)
+
+
+
+MVAPICH2-0.6.5 (07/02/05)
+
+* Following features are added in this new MVAPICH2-0.6.5 release:
+
+- uDAPL support (tested for InfiniBand, Myrinet, and Ammasso GigE)
+
+
+MVAPICH2-0.6.0 (11/04/04)
+
+* Following features are added in this new MVAPICH2-0.6.0 release:
+
+- MPI-2 functionalities (one-sided, collectives, datatype)
+
+- All MPI-1 functionalities
+
+- Optimized one-sided operations (Get, Put, and Accumulate)
+
+- Support for active and passive synchronization
+
+- Optimized two-sided operations
+
+- Scalable job start-up
+
+- Optimized and tuned for the above platforms and different
+  network interfaces (PCI-X and PCI-Express)
+
+- Memory efficient scaling modes for medium and large clusters

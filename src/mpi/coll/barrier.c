@@ -13,7 +13,7 @@
  * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
  *
  * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT_MVAPICH2 in the top level MVAPICH2 directory.
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
  *
  */
 
@@ -338,24 +338,25 @@ communicator have entered the call.
 .N MPI_SUCCESS
 .N MPI_ERR_COMM
 @*/
-#ifdef _SMP_
+#if defined(_OSU_MVAPICH_)
 extern int enable_shmem_collectives;
 extern int disable_shmem_barrier;
-#endif
+#endif /* defined(_OSU_MVAPICH_) */
+
 int MPI_Barrier( MPI_Comm comm )
 {
     static const char FCNAME[] = "MPI_Barrier";
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL;
-#ifdef _SMP_
-    char* shmem_buf;
+#if defined(_OSU_MVAPICH_)
+    char* shmem_buf = NULL;
     MPI_Comm shmem_comm, leader_comm;
-    MPID_Comm *shmem_commptr = 0, *leader_commptr = 0;
+    MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
     int local_rank = -1, global_rank = -1, local_size=0, my_rank;
-    void* local_buf, *tmpbuf;
+    void* local_buf = NULL, *tmpbuf = NULL;
     int stride = 0, i, is_commutative, size;
     int leader_root, total_size, shmem_comm_rank;
-#endif
+#endif /* defined(_OSU_MVAPICH_) */
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_BARRIER);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
@@ -403,11 +404,14 @@ int MPI_Barrier( MPI_Comm comm )
 	MPIU_THREADPRIV_GET;
         MPIR_Nest_incr();
         if (comm_ptr->comm_kind == MPID_INTRACOMM) {
-#ifdef _SMP_
+#if defined(_OSU_MVAPICH_)
             if (enable_shmem_collectives){
                 shmem_comm = comm_ptr->shmem_comm;
                 leader_comm = comm_ptr->leader_comm;
                 if ((disable_shmem_barrier == 0) && (shmem_comm != 0)&&(leader_comm !=0) &&(comm_ptr->shmem_coll_ok == 1 )){
+#if defined(CKPT)
+		    MPIDI_CH3I_CR_lock();
+#endif
                     my_rank = comm_ptr->rank;
                     MPI_Comm_size(comm, &total_size);
                     shmem_comm = comm_ptr->shmem_comm;
@@ -431,17 +435,20 @@ int MPI_Barrier( MPI_Comm comm )
                     if (local_size > 1){
                         MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(local_size, local_rank, shmem_comm_rank);
                     }
+#if defined(CKPT)
+		    MPIDI_CH3I_CR_unlock();
+#endif
                 }
                 else{
-                    mpi_errno = MPIR_Barrier( comm_ptr );
+	            mpi_errno = MPIR_Barrier( comm_ptr );
                 }
             }
             else{
                 mpi_errno = MPIR_Barrier( comm_ptr );
             }
-#else
+#else /* defined(_OSU_MVAPICH_) */
 	    mpi_errno = MPIR_Barrier( comm_ptr );
-#endif
+#endif /* defined(_OSU_MVAPICH_) */
         }
         else {
             /* intercommunicator */ 

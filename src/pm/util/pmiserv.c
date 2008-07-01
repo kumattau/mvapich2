@@ -719,6 +719,8 @@ static int fPMI_Handle_get( PMIProcess *pentry )
     kvs = fPMIKVSFindSpace( kvsname );
     if (kvs) {
 	PMIU_getval( "key", key, PMIU_MAXLINE );
+	/* Here we could intercept internal keys, e.g., 
+	   pmiPrivate keys. */
 	rc = fPMIKVSFindKey( kvs, key, value, sizeof(value) );
 	if (rc == 0) {
 	    rc = 0;
@@ -886,7 +888,7 @@ static int fPMI_Handle_getbyidx( PMIProcess *pentry )
  * set up)
  * After the fork, the child will call
  *      PMISetupInClient( 1, &pmiinfo )
- * This addes the PMI_PORT and PMI_ID values to the enviroment
+ * This adds the PMI_PORT and PMI_ID values to the enviroment
  * The parent also calls
  *      PMISetupFinishInServer( 1, &pmiinfo, pState )
  * ? What should this do, since there is no connection yet?
@@ -1298,7 +1300,8 @@ int PMI_InitSingletonConnection( int fd, PMIProcess *pmiprocess )
     
     MPIU_Snprintf( buf, PMIU_MAXLINE,
 		   "cmd=singinit_info versionok=%s stdio=no kvsname=%s\n",
-		   (rc == 0) ? "yes" : "no",  pmiprocess->group->kvs );
+		   (rc == 0) ? "yes" : "no",  
+		   (char *)(pmiprocess->group->kvs->kvsname) );
     PMIWriteLine( fd, buf );
 
     return 0;
@@ -1428,3 +1431,7 @@ static int PMIUBufferedReadLine( PMIProcess *pentry, char *buf, int maxlen )
     return curlen-1;
 }
 
+pmix_preput( const char *key, const char *val )
+{
+    fPMIKVSAddPair( curPMIGroup->kvs, key, val );
+}

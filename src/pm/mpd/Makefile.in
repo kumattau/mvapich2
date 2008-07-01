@@ -19,16 +19,25 @@ DO_MTV    = @DO_MTV@
 INSTALL   = @INSTALL@
 CFLAGS    = @CFLAGS@
 
-C_COMPILE = ${CC} ${INCLUDES} ${CFLAGS} ${COPTIONS}
+# <_OSU_MVAPICH_>
+#C_COMPILE = ${CC} ${INCLUDES} ${CFLAGS} ${COPTIONS}
+C_COMPILE = ${CC} ${INCLUDES} ${CFLAGS} ${CPPFLAGS} ${COPTIONS}
+# </_OSU_MVAPICH_>
 C_LINK	  = ${CLINKER} ${CFLAGS} ${COPTIONS} ${LDFLAGS}
 
 VPATH     = .:@srcdir@
 
-PROGRAMS  = mpdroot ${MPIEXEC_CR}
+# <_OSU_MVAPICH_>
+#PROGRAMS  = mpdroot
+PROGRAMS  = mpdroot @MPD_OTHERS@
+# </_OSU_MVAPICH_>
 EXAMPLES  = sigcatcher infloop
-
-SOURCES   = ${mpdroot_SOURCES} ${example_SOURCES}
-OBJECTS   = ${mpdroot_OBJECTS} ${example_OBJECTS}
+# <_OSU_MVAPICH_>
+#SOURCES   = ${mpdroot_SOURCES} ${example_SOURCES}
+#OBJECTS   = ${mpdroot_OBJECTS} ${example_OBJECTS}
+SOURCES   = ${mpdroot_SOURCES} ${example_SOURCES} ${mpiexec_cr_SOURCES}
+OBJECTS   = ${mpdroot_OBJECTS} ${example_OBJECTS} ${mpiexec_cr_OBJECTS}
+# </_OSU_MVAPICH_>
 HEADERS   = mpdconf.h mpdroot.h
 
 MPD      = mpd
@@ -45,6 +54,10 @@ example_SOURCES	 = sigcatcher.c infloop.c
 mpdroot_OBJECTS	= ${mpdroot_SOURCES:.c=.o}
 example_OBJECTS	= ${example_SOURCES:.c=.o}
 
+# <_OSU_MVAPICH_>
+mpiexec_cr_SOURCES = mpiexec_cr.c
+mpiexec_cr_OBJECTS = ${mpiexec_cr_SOURCES:.c=.o}
+# </_OSU_MVAPICH_>
 
 all: Makefile ${PROGRAMS}
 	@if [ ! -x ${srcdir}/install.sh ] ; then \
@@ -75,12 +88,13 @@ mpdroot: ${mpdroot_OBJECTS}
 mpdroot.o: ${srcdir}/mpdroot.c ${srcdir}/mpdroot.h mpdconf.h
 	${C_COMPILE} -c  $< 
 
-mpiexec_cr: mpiexec_cr.o
-	$(C_LINK) -o mpiexec_cr mpiexec_cr.o $(LIBS)
+# <_OSU_MVAPICH_>
+mpiexec_cr: ${mpiexec_cr_OBJECTS} 
+	$(C_LINK) -o mpiexec_cr ${mpiexec_cr_OBJECTS} $(LIBS)
 
 mpiexec_cr.o: ${srcdir}/mpiexec_cr.c
 	${C_COMPILE} -c  $<
-
+# </_OSU_MVAPICH_>
 # The following lines provide the right libraries for all example programs
 .c:
 	${C_LINK} -o $* $*.c $(LIBS)
@@ -103,8 +117,11 @@ maintainer-clean: distclean
 	rm -f configure mpdconf.h.in
 	rm -rf autom4te.cache
 
-configure: configure.in
-	./makeconfigure
+${srcdir}/configure: ${srcdir}/configure.in
+	@rm -rf autom4te*.cache
+	(cd ${srcdir} && autoheader -I ../../../confdb && \
+	autoconf -I \
+	../../../confdb )
 
 Makefile: ${srcdir}/Makefile.in config.status
 	./config.status
@@ -115,7 +132,7 @@ Makefile: ${srcdir}/Makefile.in config.status
 # if configured with wrong prefix, use:
 #     make prefix=new_install_dir install
 # Note the conditional test for files in PYTHON_SOURCE; this is to allow
-# us to install Zeroconf if present (it is not part of the MPICH2 release
+# us to install Zeroconf if present (it is not part of the MVAPICH2 release
 # in order to avoid Copyright problems).
 install: all
 	@if [ ! -d $(DESTDIR)${bindir} ] ; then \
@@ -127,10 +144,12 @@ install: all
         else \
 	    ${INSTALL} -m  755 mpdroot $(DESTDIR)${bindir}/mpdroot ;\
 	fi
-	-@if [ ! -z "${MPIEXEC_CR}" ] ; then \
-	   ${INSTALL} -m  755 ${MPIEXEC_CR} $(DESTDIR)${bindir}/${MPIEXEC_CR} ;\
+# <_OSU_MVAPICH_>
+	-@if [ -n "@MPD_OTHERS@" ] ; then \
+	   ${INSTALL} -m  755 mpiexec_cr $(DESTDIR)${bindir}/mpiexec_cr ;\
 	   ${INSTALL} -m  755 mv2_checkpoint $(DESTDIR)${bindir}/mv2_checkpoint ;\
 	fi
+# </_OSU_MVAPICH_>
 	@echo "copying python files/links into " $(DESTDIR)${bindir}
 	-@for cmd in ${PYTHON_SOURCE} ; do \
 	    if [ ! -s $(srcdir)/$$cmd.py ] ; then continue ; fi ; \
@@ -150,20 +169,21 @@ install: all
 	-@( rm -f $(DESTDIR)${bindir}/mpdrun.py >/dev/null 2>&1 || exit 0 )
 	-@( rm -f $(DESTDIR)${bindir}/mpirun >/dev/null 2>&1 || exit 0 )
 	-@( rm -f $(DESTDIR)${bindir}/mpirun.py >/dev/null 2>&1 || exit 0 )
-	-@if [ ! -z "${MPIEXEC_CR}" ] ; then \
+# <_OSU_MVAPICH_>
+#	-@cd $(DESTDIR)${bindir} && @LN_S@ mpiexec mpdrun
+	-@cd $(DESTDIR)${bindir} && @LN_S@ mpiexec.py mpdrun.py
+#	-@cd $(DESTDIR)${bindir} && @LN_S@ mpiexec mpirun
+	-@cd $(DESTDIR)${bindir} && @LN_S@ mpiexec.py mpirun.py
+	-@if [ -n "@MPD_OTHERS@" ] ; then \
 	    cd $(DESTDIR)${bindir} && rm -f mpiexec ;\
             cd $(DESTDIR)${bindir} && @LN_S@ mpiexec_cr mpiexec ;\
             cd $(DESTDIR)${bindir} && @LN_S@ mpiexec_cr mpdrun ;\
-            cd $(DESTDIR)${bindir} && @LN_S@ mpiexec.py mpdrun.py ;\
             cd $(DESTDIR)${bindir} && @LN_S@ mpiexec_cr mpirun ;\
-            cd $(DESTDIR)${bindir} && @LN_S@ mpiexec.py mpirun.py ;\
 	else \
             cd $(DESTDIR)${bindir} && @LN_S@ mpiexec mpdrun ;\
-            cd $(DESTDIR)${bindir} && @LN_S@ mpiexec.py mpdrun.py ;\
             cd $(DESTDIR)${bindir} && @LN_S@ mpiexec mpirun ;\
-            cd $(DESTDIR)${bindir} && @LN_S@ mpiexec.py mpirun.py ;\
 	fi
-
+# </_OSU_MVAPICH_>
 	-@if [ "${DO_MTV}" = "yes" ] ; then \
 	    ${INSTALL} -m 755 mtv.so $(DESTDIR)${bindir}/mtv.so ;\
 	fi
@@ -177,8 +197,48 @@ mpich2-build-install: mpich2-mpdroot install
 	fi
 	rm -f mpich2-mpdroot
 
+uninstall: mpich2-build-uninstall
 mpich2-build-uninstall:
-	rm -f $(DESTDIR)${bindir}/mpdroot
+	-rm -f $(DESTDIR)${bindir}/mpdroot
+	-rm -f $(DESTDIR)${bindir}/Zeroconf.py
+	-rm -f $(DESTDIR)${bindir}/mpd
+	-rm -f $(DESTDIR)${bindir}/mpd.py
+	-rm -f $(DESTDIR)${bindir}/mpdallexit
+	-rm -f $(DESTDIR)${bindir}/mpdallexit.py
+	-rm -f $(DESTDIR)${bindir}/mpdboot
+	-rm -f $(DESTDIR)${bindir}/mpdboot.py
+	-rm -f $(DESTDIR)${bindir}/mpdcheck
+	-rm -f $(DESTDIR)${bindir}/mpdcheck.py
+	-rm -f $(DESTDIR)${bindir}/mpdchkpyver.py
+	-rm -f $(DESTDIR)${bindir}/mpdcleanup
+	-rm -f $(DESTDIR)${bindir}/mpdcleanup.py
+	-rm -f $(DESTDIR)${bindir}/mpdexit
+	-rm -f $(DESTDIR)${bindir}/mpdexit.py
+	-rm -f $(DESTDIR)${bindir}/mpdgdbdrv.py
+	-rm -f $(DESTDIR)${bindir}/mpdhelp
+	-rm -f $(DESTDIR)${bindir}/mpdhelp.py
+	-rm -f $(DESTDIR)${bindir}/mpdkilljob
+	-rm -f $(DESTDIR)${bindir}/mpdkilljob.py
+	-rm -f $(DESTDIR)${bindir}/mpdlib.py
+	-rm -f $(DESTDIR)${bindir}/mpdlib.pyc
+	-rm -f $(DESTDIR)${bindir}/mpdlistjobs
+	-rm -f $(DESTDIR)${bindir}/mpdlistjobs.py
+	-rm -f $(DESTDIR)${bindir}/mpdman.py
+	-rm -f $(DESTDIR)${bindir}/mpdman.pyc
+	-rm -f $(DESTDIR)${bindir}/mpdringtest
+	-rm -f $(DESTDIR)${bindir}/mpdringtest.py
+	-rm -f $(DESTDIR)${bindir}/mpdrun
+	-rm -f $(DESTDIR)${bindir}/mpdrun.py
+	-rm -f $(DESTDIR)${bindir}/mpdsigjob
+	-rm -f $(DESTDIR)${bindir}/mpdsigjob.py
+	-rm -f $(DESTDIR)${bindir}/mpdtrace
+	-rm -f $(DESTDIR)${bindir}/mpdtrace.py
+	-rm -f $(DESTDIR)${bindir}/mpecc.in
+	-rm -f $(DESTDIR)${bindir}/mpefc.in
+	-rm -f $(DESTDIR)${bindir}/mpiexec
+	-rm -f $(DESTDIR)${bindir}/mpiexec.py
+	-rm -f $(DESTDIR)${bindir}/mpirun
+	-rm -f $(DESTDIR)${bindir}/mpirun.py
 
 mpich2-mpdroot: mpich2-mpdroot.o
 	$(C_LINK) -o mpich2-mpdroot mpich2-mpdroot.o $(LIBS)
@@ -190,9 +250,9 @@ mpich2-mpdroot.o: ${srcdir}/mpdroot.c ${srcdir}/mpdroot.h mpdconf.h
 	rm -f mpich2-mpdroot.c
 
 # A special alternate installation target when using multiple process managers
-# MPICH2 expects this, but it only needs to install enough to run mpiexec
+# MVAPICH2 expects this, but it only needs to install enough to run mpiexec
 # The purpose of this target is to allow users to use mpiexec.mpd to run
-# MPICH2 programs using the MPD process manager when they configure MPICH2
+# MVAPICH2 programs using the MPD process manager when they configure MVAPICH2
 # to build multiple process managers.
 install-alt: mpiexec.py
 	@echo "copying python files/links into " $(DESTDIR)${bindir}
@@ -220,13 +280,13 @@ install-alt: mpiexec.py
 	mv -f $(DESTDIR)${bindir}/mpiexec.py $(DESTDIR)${bindir}/mpiexec.mpd
 	cd $(DESTDIR)${bindir} && @LN_S@ mpiexec.mpd mpdrun
 
-# Empty dependencies target (MPICH2 wants this target)
+# Empty dependencies target (MVAPICH2 wants this target)
 dependencies:
-# Empty documentations targets (MPICH2 wants this target)
+# Empty documentations targets (MVAPICH2 wants this target)
 htmldoc:
 latexdoc:
 mandoc:
-# Empty tags targets (MPICH2 wants this target)
+# Empty tags targets (MVAPICH2 wants this target)
 tags: TAGS
 TAGS:
 

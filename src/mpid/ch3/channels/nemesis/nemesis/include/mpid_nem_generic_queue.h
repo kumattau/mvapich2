@@ -30,7 +30,8 @@
             GENERIC_Q_ENQUEUE_EMPTY (qp, ep, next_field);       \
         else                                                    \
         {                                                       \
-            (qp)->tail->next_field = (qp)->tail = ep;           \
+            (qp)->tail->next_field = ep;                        \
+            (qp)->tail = ep;                                    \
             (ep)->next_field = NULL;                            \
         }                                                       \
         PRINT_QUEUE (qp, next_field);                           \

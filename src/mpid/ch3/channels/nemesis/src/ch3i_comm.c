@@ -165,10 +165,7 @@ int MPIDI_CH3I_comm_destroy (MPID_Comm *comm)
     if (comm->ch.external_size)
         MPIU_Free (comm->ch.external_ranks);
     
- fn_exit:
     return mpi_errno;
- fn_fail:
-    goto fn_exit;
 }
 
 #undef FUNCNAME
@@ -197,8 +194,6 @@ static int alloc_barrier_vars (MPID_Comm *comm, MPID_nem_barrier_vars_t **vars)
     
  fn_exit:
     return mpi_errno;
- fn_fail:
-    goto fn_exit;
 }
 
 #undef FUNCNAME
@@ -392,10 +387,7 @@ int MPID_nem_barrier_vars_init (MPID_nem_barrier_vars_t *barrier_region)
             barrier_region[i].sig = 0;
         }
 
- fn_exit:
     return mpi_errno;
- fn_fail:
-    goto fn_exit;
 }
 
 #undef FUNCNAME
@@ -409,8 +401,5 @@ int MPID_nem_coll_barrier_init ()
 /*     mpi_errno = MPIDI_CH3I_comm_create (MPIR_Process.comm_world); */
 /*     if (mpi_errno) MPIU_ERR_POP (mpi_errno); */
     
- fn_exit:
     return mpi_errno;
- fn_fail:
-    goto fn_exit;
 }

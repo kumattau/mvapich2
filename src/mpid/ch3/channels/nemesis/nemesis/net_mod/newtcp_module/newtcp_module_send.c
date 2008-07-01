@@ -445,10 +445,10 @@ int MPID_nem_newtcp_iSendContig(MPIDI_VC_t *vc, MPID_Request *sreq, void *hdr, M
 
 
 #undef FUNCNAME
-#define FUNCNAME MPID_nem_newtcp_SendEagerNoncontig
+#define FUNCNAME MPID_nem_newtcp_SendNoncontig
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPID_nem_newtcp_SendEagerNoncontig(MPIDI_VC_t *vc, MPID_Request *sreq, void *header, MPIDI_msg_sz_t hdr_sz)
+int MPID_nem_newtcp_SendNoncontig(MPIDI_VC_t *vc, MPID_Request *sreq, void *header, MPIDI_msg_sz_t hdr_sz)
 {
     int mpi_errno = MPI_SUCCESS;
     int iov_n;
@@ -457,7 +457,7 @@ int MPID_nem_newtcp_SendEagerNoncontig(MPIDI_VC_t *vc, MPID_Request *sreq, void 
     MPIDI_msg_sz_t offset;
     int complete;
 
-    MPIU_DBG_MSG(CH3_CHANNEL, VERBOSE, "newtcp_SendEagerNoncontig");
+    MPIU_DBG_MSG(CH3_CHANNEL, VERBOSE, "newtcp_SendNoncontig");
     MPIU_Assert(hdr_sz <= sizeof(MPIDI_CH3_PktGeneric_t));
     
     iov[0].MPID_IOV_BUF = header;

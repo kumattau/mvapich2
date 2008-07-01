@@ -11,16 +11,14 @@
 #    includedir, libdir - Directories containing an *installed* mpich2
 #    prefix, execprefix - Often used to define includedir and libdir
 #    FC                 - Fortran 77 compiler
-#    MPI_FFLAGS         - Any special flags needed to compile 
-#    MPI_LDFLAGS        - Any special flags needed to link
+#    WRAPPER_FFLAGS        - Any special flags needed to compile 
+#    WRAPPER_LDFLAGS       - Any special flags needed to link
 #    MPILIBNAME         - Name of the MPI library
 #    MPI_OTHERLIBS      - Other libraries needed in order to link 
 #    F77_OTHER_LIBS     - Yet more libraries, needed just with F77
 #    
 #    
 # We assume that (a) the C compiler can both compile and link programs
-# We use MPI_xxx so that the user may continue to use CFLAGS, LIBS, etc
-# to modify the behavior of the compiler and linker.
 #
 # Handling of command-line options:
 #   This is a little tricky because some options may contain blanks.
@@ -44,8 +42,8 @@ libdir=@libdir@
 FC="@FC@"
 FC_LINKPATH_SHL="@FC_LINKPATH_SHL@"
 F77CPP="@F77CPP@"
-MPI_FFLAGS="@MPI_FFLAGS@"
-MPI_LDFLAGS="@MPI_LDFLAGS@"
+WRAPPER_FFLAGS="@WRAPPER_FFLAGS@"
+WRAPPER_LDFLAGS="@WRAPPER_LDFLAGS@"
 MPILIBNAME="@MPILIBNAME@"
 PMPILIBNAME="@PMPILIBNAME@"
 MPI_OTHERLIBS="@LIBS@ @F77_OTHER_LIBS@"
@@ -148,6 +146,10 @@ for arg in "$@" ; do
     -v)
     # Pass this argument to the compiler as well.
     echo "mpif77 for $MPIVERSION"
+    # if there is only 1 argument, it must be -v.
+    if [ "$#" -eq "1" ] ; then
+        linking=no
+    fi
     ;;
     -profile=*)
     # Pass the name of a profiling configuration.  As
@@ -254,16 +256,24 @@ else
     mpilibs="-l$MPILIBNAME"
 fi
 #
-# Concatenate the user flags with the ones needed by MPI
-FFLAGS="$FFLAGS $MPI_FFLAGS"
-LDFLAGS="$LDFLAGS $MPI_LDFLAGS"
+# Init with the ones needed by MPI
+FFLAGS="$WRAPPER_FFLAGS"
+LDFLAGS="$WRAPPER_LDFLAGS"
 #
 # Handle the case of a profile switch
 if [ -n "$profConf" ] ; then
+    profConffile=
     if [ -s "$libdir/lib$profConf.a" -o -s "$libdir/lib$profConf.so" ] ; then
 	mpilibs="-l$profConf $mpilibs"
     elif [ -s "$sysconfdir/$profConf.conf" ] ; then
-	. $sysconfdir/$profConf.conf
+	profConffile="$sysconfdir/$profConf.conf"
+    elif [ -s "$profConf.conf" ] ; then
+        profConffile="$profConf.conf"
+    else
+        echo "Profiling configuration file $profConf.conf not found in $sysconfdir"
+    fi
+    if [ -n "$profConffile" -a -s "$profConffile" ] ; then
+	. $profConffile
 	if [ -n "$PROFILE_INCPATHS" ] ; then
 	    FFLAGS="$PROFILE_INCPATHS $FFLAGS"
         fi
@@ -273,8 +283,6 @@ if [ -n "$profConf" ] ; then
         if [ -n "$PROFILE_POSTLIB" ] ; then
 	    mpilibs="$mpilibs $PROFILE_POSTLIB"
         fi
-    else
-        echo "Profiling configuration file $profConf.conf not found in $sysconfdir"
     fi
 fi
 #
@@ -288,10 +296,10 @@ if [ "$linking" = yes ] ; then
         # Prepend the path for the shared libraries to the library list
         mpilibs="$FC_LINKPATH_SHL$libdir $mpilibs"
     fi
-    $Show $FC -I$includedir $FFLAGS $LDFLAGS $allargs -L$libdir $mpilibs $MPI_OTHERLIBS
+    $Show $FC $FFLAGS $LDFLAGS $allargs -I$includedir -L$libdir $mpilibs $MPI_OTHERLIBS
     rc=$?
 else
-    $Show $FC -I$includedir $FFLAGS $allargs 
+    $Show $FC $FFLAGS $allargs -I$includedir
     rc=$?
 fi
 if [ -n "$rmfiles" ] ; then

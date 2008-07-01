@@ -69,7 +69,7 @@ done
 # Construct the full outfile name from the dir and file
 outfile="$outdir/$outfile"
 if [ ! -d "$srcdir" ] ; then
-    echo "Could not find MPICH2 source dir"
+    echo "Could not find MVAPICH2 source dir"
     exit 1
 fi
 if [ ! -d $rundir ] ; then 

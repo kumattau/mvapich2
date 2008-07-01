@@ -3,6 +3,17 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2003-2008, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
 
 #include "mpidimpl.h"
 
@@ -102,6 +113,10 @@ int MPID_Cancel_send(MPID_Request * sreq)
                MPIDI_CH3U_Handle_recv_pkt()).  
 	       MPID_Request_fetch_and_clear_rts_sreq() is used to gurantee 
 	       that atomicity. */
+#if defined(_OSU_MVAPICH_)
+	    /* OSU-MPI2 finishes rndv request with extra step */
+	    MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(sreq);
+#endif /* defined(_OSU_MVAPICH_) */
 	    MPIDI_Request_fetch_and_clear_rts_sreq(sreq, &rts_sreq);
 	    if (rts_sreq != NULL) 
 	    {
@@ -154,6 +169,9 @@ int MPID_Cancel_send(MPID_Request * sreq)
 	MPIDI_CH3_Pkt_t upkt;
 	MPIDI_CH3_Pkt_cancel_send_req_t * const csr_pkt = &upkt.cancel_send_req;
 	MPID_Request * csr_sreq;
+#if defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS)
+	MPID_Seqnum_t seqnum;
+#endif /* defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS) */
 	
 	MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
               "sending cancel request to %d for 0x%08x", 
@@ -177,15 +195,16 @@ int MPID_Cancel_send(MPID_Request * sreq)
 	csr_pkt->match.context_id = sreq->dev.match.context_id;
 	csr_pkt->sender_req_id = sreq->handle;
 	
-	mpi_errno = MPIDI_CH3_iStartMsg(vc, csr_pkt, sizeof(*csr_pkt), &csr_sreq);
-	/* --BEGIN ERROR HANDLING-- */
-	if (mpi_errno != MPI_SUCCESS)
-	{
-	    mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER,
-					     "**ch3|cancelreq", 0);
-	    goto fn_exit;
+#if defined(_OSU_MVAPICH_)
+        MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+        MPIDI_Pkt_set_seqnum(csr_pkt, seqnum);
+#endif /* defined(_OSU_MVAPICH_) */
+	
+	mpi_errno = MPIU_CALL(MPIDI_CH3,iStartMsg(vc, csr_pkt, 
+					  sizeof(*csr_pkt), &csr_sreq));
+	if (mpi_errno != MPI_SUCCESS) {
+	    MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|cancelreq");
 	}
-	/* --END ERROR HANDLING-- */
 	if (csr_sreq != NULL)
 	{
 	    MPID_Request_release(csr_sreq);
@@ -200,8 +219,8 @@ int MPID_Cancel_send(MPID_Request * sreq)
        handle. */
     /* FIXME: A timestamp is more than is necessary; a message sequence number
        should be adequate. */
-
-  fn_exit:
+ fn_fail:
+ fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_CANCEL_SEND);
     return mpi_errno;
 }
@@ -211,7 +230,7 @@ int MPID_Cancel_send(MPID_Request * sreq)
  */
 
 int MPIDI_CH3_PktHandler_CancelSendReq( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
-					MPID_Request **rreqp )
+					MPIDI_msg_sz_t *buflen, MPID_Request **rreqp )
 {
     MPIDI_CH3_Pkt_cancel_send_req_t * req_pkt = &pkt->cancel_send_req;
     MPID_Request * rreq;
@@ -220,12 +239,16 @@ int MPIDI_CH3_PktHandler_CancelSendReq( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     MPIDI_CH3_Pkt_cancel_send_resp_t * resp_pkt = &upkt.cancel_send_resp;
     MPID_Request * resp_sreq;
     int mpi_errno = MPI_SUCCESS;
+#if defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS)
+    MPID_Seqnum_t seqnum;
+#endif /* defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS) */
     
     MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
       "received cancel send req pkt, sreq=0x%08x, rank=%d, tag=%d, context=%d",
 		      req_pkt->sender_req_id, req_pkt->match.rank, 
 		      req_pkt->match.tag, req_pkt->match.context_id));
 	    
+    *buflen = sizeof(MPIDI_CH3_Pkt_t);
     rreq = MPIDI_CH3U_Recvq_FDU(req_pkt->sender_req_id, &req_pkt->match);
     if (rreq != NULL)
     {
@@ -234,6 +257,9 @@ int MPIDI_CH3_PktHandler_CancelSendReq( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 	{
 	    MPIU_Free(rreq->dev.tmpbuf);
 	}
+#if defined(_OSU_MVAPICH_)
+	MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(rreq);
+#endif /* defined(_OSU_MVAPICH_) */
 	MPID_Request_release(rreq);
 	ack = TRUE;
     }
@@ -246,7 +272,12 @@ int MPIDI_CH3_PktHandler_CancelSendReq( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     MPIDI_Pkt_init(resp_pkt, MPIDI_CH3_PKT_CANCEL_SEND_RESP);
     resp_pkt->sender_req_id = req_pkt->sender_req_id;
     resp_pkt->ack = ack;
-    mpi_errno = MPIDI_CH3_iStartMsg(vc, resp_pkt, sizeof(*resp_pkt), &resp_sreq);
+#if defined(_OSU_MVAPICH_)
+    MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+    MPIDI_Pkt_set_seqnum(resp_pkt, seqnum);
+#endif /* defined(_OSU_MVAPICH_) */
+    mpi_errno = MPIU_CALL(MPIDI_CH3,iStartMsg(vc, resp_pkt, 
+					      sizeof(*resp_pkt), &resp_sreq));
     if (mpi_errno != MPI_SUCCESS) {
 	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,
 			    "**ch3|cancelresp");
@@ -263,7 +294,7 @@ int MPIDI_CH3_PktHandler_CancelSendReq( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 }
 
 int MPIDI_CH3_PktHandler_CancelSendResp( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
-					 MPID_Request **rreqp )
+					 MPIDI_msg_sz_t *buflen, MPID_Request **rreqp )
 {
     MPIDI_CH3_Pkt_cancel_send_resp_t * resp_pkt = &pkt->cancel_send_resp;
     MPID_Request * sreq;
@@ -272,6 +303,8 @@ int MPIDI_CH3_PktHandler_CancelSendResp( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 			"received cancel send resp pkt, sreq=0x%08x, ack=%d",
 			resp_pkt->sender_req_id, resp_pkt->ack));
 	    
+    *buflen = sizeof(MPIDI_CH3_Pkt_t);
+
     MPID_Request_get_ptr(resp_pkt->sender_req_id, sreq);
     
     if (resp_pkt->ack)

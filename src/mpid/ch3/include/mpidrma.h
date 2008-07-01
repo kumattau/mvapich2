@@ -3,6 +3,18 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2003-2008, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
+
 #if !defined(MPICH_MPIDRMA_H_INCLUDED)
 #define MPICH_MPIDRMA_H_INCLUDED
 
@@ -59,5 +71,16 @@ typedef struct MPIDI_Win_lock_queue {
     MPIDI_VC_t * vc;
     struct MPIDI_PT_single_op *pt_single_op;  /* to store info for lock-put-unlock optimization */
 } MPIDI_Win_lock_queue;
+
+#if defined(_OSU_MVAPICH_)
+void MPIDI_CH3I_RDMA_win_create(void *base, MPI_Aint size, int comm_size,
+                           int rank, MPID_Win ** win_ptr, MPID_Comm * comm_ptr);
+void MPIDI_CH3I_RDMA_win_free(MPID_Win ** win_ptr);
+void MPIDI_CH3I_RDMA_start(MPID_Win * win_ptr, int start_grp_size, int *ranks_in_win_grp);
+void MPIDI_CH3I_RDMA_complete(MPID_Win * win_ptr, int start_grp_size, int *ranks_in_win_grp);
+void MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, MPIDI_RMA_ops ** MPIDI_RMA_ops_list, int passive);
+int MPIDI_CH3I_RDMA_post(MPID_Win * win_ptr, int target_rank);
+int MPIDI_CH3I_RDMA_finish_rma(MPID_Win * win_ptr);
+#endif /* defined(_OSU_MVAPICH_) */
 
 #endif

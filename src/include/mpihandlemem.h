@@ -1,8 +1,18 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: mpihandlemem.h,v 1.9 2006/06/27 17:20:55 gropp Exp $
+/*  $Id: mpihandlemem.h,v 1.10 2007/07/11 16:06:37 robl Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
+ */
+/* Copyright (c) 2003-2008, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
  */
 #ifndef MPIHANDLE_H_INCLUDED
 #define MPIHANDLE_H_INCLUDED
@@ -69,7 +79,8 @@ typedef enum MPID_Object_kind {
   MPID_ATTR       = 0xa,
   MPID_REQUEST    = 0xb,
   MPID_PROCGROUP  = 0xc,               /* These are internal device objects */
-  MPID_VCONN      = 0xd
+  MPID_VCONN      = 0xd,
+  MPID_GREQ_CLASS = 0xf
   } MPID_Object_kind;
 
 #define HANDLE_MPI_KIND_SHIFT 26
@@ -94,8 +105,11 @@ typedef enum MPID_Object_kind {
 /* Handle block is between 1 and 1024 *elements* */
 #define HANDLE_BLOCK_SIZE 256
 /* Index size is bewtween 1 and 65536 *elements* */
+#if defined(_OSU_MVAPICH_)
 #define HANDLE_BLOCK_INDEX_SIZE 4096
-
+#else /* defined(_OSU_MVAPICH_) */
+#define HANDLE_BLOCK_INDEX_SIZE 1024
+#endif /* defined(_OSU_MVAPICH_) */
 /* For direct, the remainder of the handle is the index into a predefined 
    block */
 #define HANDLE_MASK 0x03FFFFFF

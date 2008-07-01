@@ -63,6 +63,10 @@ int MPIR_Alltoallv (
     MPI_Request *reqarray;
     int dst, rank, req_cnt;
     MPI_Comm comm;
+#if defined(_OSU_MVAPICH_)
+    int pof2, src;
+    MPI_Status status;
+#endif
     
     comm = comm_ptr->handle;
     comm_size = comm_ptr->local_size;
@@ -74,6 +78,58 @@ int MPIR_Alltoallv (
     
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
+
+#if defined(_OSU_MVAPICH_)
+    mpi_errno = MPIR_Localcopy(((char *)sendbuf +
+                                sdispls[rank]*send_extent),
+                               sendcnts[rank], sendtype,
+                               ((char *)recvbuf +
+                                rdispls[rank]*recv_extent),
+                               recvcnts[rank], recvtype);
+
+    if (mpi_errno)
+    {
+        mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", 0);
+        return mpi_errno;
+    }
+
+    /* Is comm_size a power-of-two? */
+    i = 1;
+    while (i < comm_size)
+        i *= 2;
+    if (i == comm_size)
+        pof2 = 1;
+    else
+        pof2 = 0;
+
+    /* Do the pairwise exchanges */
+    for (i=1; i<comm_size; i++) {
+        if (pof2 == 1) {
+            /* use exclusive-or algorithm */
+            src = dst = rank ^ i;
+        }
+        else {
+            src = (rank - i + comm_size) % comm_size;
+            dst = (rank + i) % comm_size;
+        }
+
+        mpi_errno = MPIC_Sendrecv(((char *)sendbuf +
+                                   sdispls[dst]*send_extent),
+                                  sendcnts[dst], sendtype, dst,
+                                  MPIR_ALLTOALL_TAG,
+                                  ((char *)recvbuf +
+                                   rdispls[src]*recv_extent),
+                                  recvcnts[src], recvtype, src,
+                                  MPIR_ALLTOALL_TAG, comm, &status);
+
+        if (mpi_errno)
+        {
+            mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", 0);
+            return mpi_errno;
+        }
+
+    }
+#else
 
     starray = (MPI_Status *) MPIU_Malloc(2*comm_size*sizeof(MPI_Status));
     /* --BEGIN ERROR HANDLING-- */
@@ -141,6 +197,7 @@ int MPIR_Alltoallv (
     
     MPIU_Free(reqarray);
     MPIU_Free(starray);
+#endif
     
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );

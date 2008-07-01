@@ -13,7 +13,7 @@
  * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
  *
  * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT_MVAPICH2 in the top level MVAPICH2 directory.
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
  *
  */
 
@@ -141,11 +141,13 @@ int MPI_Send(void *buf, int count, MPI_Datatype datatype, int dest, int tag,
 
     if (request_ptr == NULL)
     {
+#if defined(_OSU_MVAPICH_)
         mpi_errno = MPID_Progress_test();
         if (mpi_errno != MPI_SUCCESS)
         {
             goto fn_fail;
         }
+#endif /* defined(_OSU_MVAPICH_) */
 	goto fn_exit;
     }
 

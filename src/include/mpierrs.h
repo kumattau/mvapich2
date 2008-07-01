@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: mpierrs.h,v 1.37 2006/11/05 16:29:06 gropp Exp $
+/*  $Id: mpierrs.h,v 1.38 2007/01/03 16:43:26 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -13,7 +13,7 @@
  * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
  *
  * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT_MVAPICH2 in the top level MVAPICH2 directory.
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
  *
  */
 
@@ -392,8 +392,16 @@
 
 /* If you add any macros to this list, make sure that you update
  maint/extracterrmsgs to handle the additional macros (see the hash 
- KnownErrRoutines in that script) */
+ KnownErrRoutines in that script) 
+ ERR_SETSIMPLE is like ERR_SET except that it just sets the error, it 
+ doesn't add it to an existing error.  This is appropriate in cases
+ where there can be no pre-existing error, and MPI_SUCCESS is needed for the
+ first argument to MPIR_Err_create_code .
+*/
 #ifdef HAVE_ERROR_CHECKING
+#define MPIU_ERR_SETSIMPLE(err_,class_,msg_)	\
+    err_ = MPIR_Err_create_code( MPI_SUCCESS,MPIR_ERR_RECOVERABLE,FCNAME,\
+           __LINE__, class_, msg_, 0 )
 #define MPIU_ERR_SET(err_,class_,msg_) \
     err_ = MPIR_Err_create_code( err_,MPIR_ERR_RECOVERABLE,FCNAME,\
            __LINE__, class_, msg_, 0 )
@@ -437,7 +445,9 @@
     {(err_) = MPIR_Err_combine_codes((newerr_), (err_));}
 #else
 /* Simply set the class, being careful not to override a previously
-   set class */
+   set class. */
+#define MPIU_ERR_SETSIMPLE(err_,class_,msg_)	\
+    {err_ = class_;}
 #define MPIU_ERR_SET(err_,class_,msg_) \
      {if (!err_){err_=class_;}}
 #define MPIU_ERR_SET1(err_,class_,gmsg_,smsg_,arg1_) \
@@ -499,8 +509,10 @@
 
 #define MPIU_ERR_SETANDJUMP3(err_,class_,gmsg_,smsg_,arg1_,arg2_,arg3_) \
      MPIU_ERR_SETANDSTMT3(err_,class_,goto fn_fail,gmsg_,smsg_,arg1_,arg2_,arg3_)
+#if defined(_OSU_MVAPICH_)
 #define MPIU_ERR_SETFATALANDJUMP3(err_,class_,gmsg_,smsg_,arg1_,arg2_,arg3_) \
      MPIU_ERR_SETFATALANDSTMT3(err_,class_,goto fn_fail,gmsg_,smsg_,arg1_,arg2_,arg3_)
+#endif /* defined(_OSU_MVAPICH_) */
 #define MPIU_ERR_CHKANDSTMT3(cond_,err_,class_,stmt_,gmsg_,smsg_,arg1_,arg2_,arg3_) \
     {if (cond_) { MPIU_ERR_SETANDSTMT3(err_,class_,stmt_,gmsg_,smsg_,arg1_,arg2_,arg3_); }}
 #define MPIU_ERR_CHKANDJUMP3(cond_,err_,class_,gmsg_,smsg_,arg1_,arg2_,arg3_) \
@@ -508,8 +520,10 @@
 
 #define MPIU_ERR_SETANDJUMP4(err_,class_,gmsg_,smsg_,arg1_,arg2_,arg3_,arg4_) \
      MPIU_ERR_SETANDSTMT4(err_,class_,goto fn_fail,gmsg_,smsg_,arg1_,arg2_,arg3_,arg4_)
+#if defined(_OSU_MVAPICH_)
 #define MPIU_ERR_SETFATALANDJUMP4(err_,class_,gmsg_,smsg_,arg1_,arg2_,arg3_,arg4_) \
      MPIU_ERR_SETFATALANDSTMT4(err_,class_,goto fn_fail,gmsg_,smsg_,arg1_,arg2_,arg3_,arg4_)
+#endif /* defined(_OSU_MVAPICH_) */
 #define MPIU_ERR_CHKANDSTMT4(cond_,err_,class_,stmt_,gmsg_,smsg_,arg1_,arg2_,arg3_, arg4_) \
     {if (cond_) { MPIU_ERR_SETANDSTMT4(err_,class_,stmt_,gmsg_,smsg_,arg1_,arg2_,arg3_,arg4_); }}
 #define MPIU_ERR_CHKANDJUMP4(cond_,err_,class_,gmsg_,smsg_,arg1_,arg2_,arg3_,arg4_) \

@@ -3,6 +3,16 @@
 #   (C) 2001 by Argonne National Laboratory.
 #       See COPYRIGHT in top-level directory.
 #
+# Copyright (c) 2003-2008, The Ohio State University. All rights
+# reserved.
+#
+# This file is part of the MVAPICH2 software package developed by the
+# team members of The Ohio State University's Network-Based Computing
+# Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+#
+# For detailed copyright and licensing information, please refer to the
+# copyright file COPYRIGHT in the top level MVAPICH2 directory.
+#
 
 """
 mpdman does NOT run as a standalone console program;
@@ -11,7 +21,7 @@ mpdman does NOT run as a standalone console program;
 from time import ctime
 __author__ = "Ralph Butler and Rusty Lusk"
 __date__ = ctime()
-__version__ = "$Revision: 1.154 $"
+__version__ = "$Revision: 1.160 $"
 __credits__ = ""
 
 
@@ -25,7 +35,7 @@ from urllib   import quote
 from mpdlib   import mpd_set_my_id, mpd_print, mpd_read_nbytes,  \
                      mpd_sockpair, mpd_get_ranks_in_binary_tree, \
                      mpd_get_my_username, mpd_set_cli_app,       \
-                     mpd_dbg_level,                              \
+                     mpd_dbg_level, mpd_handle_signal,           \
                      MPDSock, MPDListenSock, MPDStreamHandler, MPDRing
 
 try:
@@ -148,7 +158,8 @@ class MPDMan(object):
         self.pmiSubversion = 1
         self.KVSs = {}
         if self.singinitPID:
-            self.kvsname_template = 'singinit_kvs_'
+            # self.kvsname_template = 'singinit_kvs_'
+            self.kvsname_template = 'singinit_kvs_' + str(os.getpid())
         else:
             self.kvsname_template = 'kvs_' + self.kvs_template_from_env + '_'
         self.default_kvsname = self.kvsname_template + '0'
@@ -246,7 +257,7 @@ class MPDMan(object):
                 msgToSend = { 'cmd' : 'man_checking_in' }
                 self.conSock.send_dict_msg(msgToSend)
                 msg = self.conSock.recv_dict_msg()
-
+# <_OSU_MVAPICH_>
                 #CR_SUPPORT
                 if (not msg  or  not msg.has_key('cmd')):
                     mpd_print(1,'spawned: bad msg from con; got: %s' % (msg) )
@@ -260,7 +271,7 @@ class MPDMan(object):
                 else:
                     self.cr_enabled = 0
                 #CR_SUPPORT_END
-
+# </_OSU_MVAPICH_>
                 if not msg  or  not msg.has_key('cmd')  or  msg['cmd'] != 'ringsize':
                     mpd_print(1,'invalid msg from con; expected ringsize got: %s' % (msg) )
                     sys.exit(-1)
@@ -268,7 +279,7 @@ class MPDMan(object):
                     self.universeSize = int(self.clientPgmEnv['MPI_UNIVERSE_SIZE'])
                 else:
                     self.universeSize = msg['ring_ncpus']
-
+# <_OSU_MVAPICH_>
                 #CR_SUPPORT
                 #enable CR on all other nodes
                 if self.cr_enabled == 1:
@@ -276,7 +287,7 @@ class MPDMan(object):
                     msg['cr_mpd_base_port'] = self.cr_base_port
                     msg['cr_restart_file'] = self.cr_restart_file
                 #CR_SUPPORT_END
-
+# </_OSU_MVAPICH_>
                 self.ring.rhsSock.send_dict_msg(msg)
             ## NOTE: if you spawn a non-MPI job, it may not send this msg
             ## in which case the pgm will hang; the reason for this is that
@@ -310,6 +321,7 @@ class MPDMan(object):
                 self.universeSize = int(self.clientPgmEnv['MPI_UNIVERSE_SIZE'])
             else:
                 self.universeSize = msg['ring_ncpus']
+# <_OSU_MVAPICH_>
             #CR_SUPPORT
             if (msg.has_key('cr_enabled') and msg['cr_enabled'] == 1):
                 self.cr_enabled = 1
@@ -328,7 +340,7 @@ class MPDMan(object):
             os.environ['MV2_CKPT_MPD_BASE_PORT'] = self.cr_base_port
             print 'cr_restart_file %s' % self.cr_restart_file
         #CR_SUPPORT_END
-
+# </_OSU_MVAPICH_>
         if self.doingBNR:
             (self.pmiSock,self.cliBNRSock) = mpd_sockpair()
             self.streamHandler.set_handler(self.pmiSock,self.handle_pmi_input)
@@ -343,6 +355,11 @@ class MPDMan(object):
             self.pmiSock = MPDSock(name='pmi')
             self.pmiSock.connect((self.myIfhn,self.singinitPORT))
             self.streamHandler.set_handler(self.pmiSock,self.handle_pmi_input)
+            self.pmiSock.send_char_msg('cmd=singinit authtype=none\n')
+            line = self.pmiSock.recv_char_msg()
+            charMsg = 'cmd=singinit_info rc=0 versionok=yes stdio=yes kvsname=%s\n' % (self.default_kvsname)
+            self.pmiSock.send_char_msg(charMsg)
+
             sock_write_cli_stdin = MPDSock(name='write_cli_stdin')
             sock_write_cli_stdin.connect((self.myIfhn,self.singinitPORT))
             self.fd_write_cli_stdin = sock_write_cli_stdin.fileno()
@@ -385,9 +402,12 @@ class MPDMan(object):
                 (self.fd_read_cli_stderr,self.fd_write_cli_stderr) = os.pipe()
                 (self.handshake_sock_man_end,self.handshake_sock_cli_end) = mpd_sockpair()
                 clientPid = self.launch_client_via_fork_exec(cli_env)
-                if clientPid:
+                if clientPid < 0:
+                    print '**** mpdman: launch_client_via_fork_exec failed; exiting'
+                    sys.exit(-1)
+                elif clientPid > 0:
                     self.handshake_sock_cli_end.close()
-                else:
+                else:  # 0
                     self.handshake_sock_man_end.close()
             elif subprocess_module_available:
                 clientPid = self.launch_client_via_subprocess(cli_env)  # may chg self.subproc
@@ -490,7 +510,10 @@ class MPDMan(object):
                                   'cli_rank' : self.myRank }
                     if self.myRank == 0:
                         if self.conSock:
-                            self.conSock.send_dict_msg(msgToSend)
+                            try:
+                                self.conSock.send_dict_msg(msgToSend)
+                            except:
+                                pass
                     else:
                         if self.ring.rhsSock:
                             self.ring.rhsSock.send_dict_msg(msgToSend)
@@ -593,8 +616,9 @@ class MPDMan(object):
                     sleep(0.1)  # minor pause before intr
                     os.kill(clientPid,signal.SIGUSR1)
                 else:
-                    pmiMsgToSend = 'cmd=barrier_out\n'
-                    self.pmiSock.send_char_msg(pmiMsgToSend)
+                    if self.pmiSock:
+                        pmiMsgToSend = 'cmd=barrier_out\n'
+                        self.pmiSock.send_char_msg(pmiMsgToSend)
             else:
                 self.holdingPMIBarrierLoop1 = 1
                 if self.pmiBarrierInRecvd:
@@ -767,7 +791,7 @@ class MPDMan(object):
                 if self.pmiSock:    # should be valid sock if running tv
                     pmiMsgToSend = 'cmd=tv_ready\n'
                     self.pmiSock.send_char_msg(pmiMsgToSend)
-
+# <_OSU_MVAPICH_>
         #CR_SUPPORT
         elif msg['cmd'] == 'ckpt_req':
             if self.myRank != 0:
@@ -785,7 +809,7 @@ class MPDMan(object):
                 if self.ring.rhsSock:
                     self.ring.rhsSock.send_dict_msg(msg)
         #CR_SUPPORT_END
-
+# </_OSU_MVAPICH_>
         else:
             mpd_print(1, 'unexpected msg recvd on lhsSock :%s:' % msg )
 
@@ -946,7 +970,7 @@ class MPDMan(object):
                 self.spawnInProgress = 0
         else:
             mpd_print(1, "unrecognized msg from spawned child :%s:" % msg )
-
+# <_OSU_MVAPICH_>
     #CR_SUPPORT
     def handle_cr_connection(self, sock):
         (self.crSock,tempConnAddr) = self.crListenSock.accept()
@@ -991,7 +1015,7 @@ class MPDMan(object):
         else:
             print 'unrecognized msg:%s:' % msg
     #CR_SUPPORT_END
-
+# </_OSU_MVAPICH_>
     def handle_pmi_connection(self,sock):
         if self.pmiSock:  # already have one
             pmiMsgToSend = 'cmd=you_already_have_an_open_pmi_conn_to_me\n'
@@ -1063,7 +1087,7 @@ class MPDMan(object):
             pmiMsgToSend = 'cmd=unparseable_msg rc=-1\n'
             self.pmiSock.send_char_msg(pmiMsgToSend)
             return
-        # startup_status may sent here from new process BEFORE starting client
+        # startup_status may be sent here from new process BEFORE starting client
         if parsedMsg['cmd'] == 'startup_status':
             msgToSend = { 'cmd' : 'startup_status', 'src' : self.myId, 
                           'rc' : parsedMsg['rc'],
@@ -1432,10 +1456,12 @@ class MPDMan(object):
             if self.pmiSock:    # should be valid sock if running tv
                 pmiMsgToSend = 'cmd=tv_ready\n'
                 self.pmiSock.send_char_msg(pmiMsgToSend)
+# <_OSU_MVAPICH_>
         #CR_SUPPORT
         elif msg['cmd'] == 'ckpt_req':
             self.ring.rhsSock.send_dict_msg(msg)
         #CR_SUPPORT_END
+# </_OSU_MVAPICH_>
         else:
             mpd_print(1, 'unexpected msg recvd on conSock :%s:' % msg )
     def handle_mpd_input(self,sock):
@@ -1491,7 +1517,22 @@ class MPDMan(object):
         else:
             mpd_print(1, 'invalid msg recvd on mpdSock :%s:' % msg )
     def launch_client_via_fork_exec(self,cli_env):
-        cliPid = os.fork()
+        maxTries = 6
+        numTries = 0
+        while numTries < maxTries:
+            try:
+                cliPid = os.fork()
+                errinfo = 0
+            except OSError, errinfo:
+                pass  ## could check for errinfo.errno == 35 (resource unavailable)
+            if errinfo:
+                sleep(1)
+                numTries += 1
+            else:
+                break
+        if numTries >= maxTries:
+            ## print '**** mpdman: fork failed for launching client'
+            return -1
         if cliPid == 0:
             mpd_set_my_id(socket.gethostname() + '_man_before_exec_client_' + `os.getpid()`)
             self.ring.lhsSock.close()
@@ -1516,11 +1557,12 @@ class MPDMan(object):
             os.dup2(self.fd_write_cli_stderr,2)  # closes fd 2 (stderr) if open
             os.close(self.fd_write_cli_stderr)
 
+# <_OSU_MVAPICH_>
             #CR_SUPPORT
             if (self.cr_enabled == 1):
                 self.crListenSock.close()
             #CR_SUPPORT_END
-
+# </_OSU_MVAPICH_>
             msg = self.handshake_sock_cli_end.recv_char_msg()
             if not msg.startswith('go'):
                 mpd_print(1,'%s: invalid go msg from man :%s:' % (self.myId,msg) )
@@ -1528,7 +1570,7 @@ class MPDMan(object):
             self.handshake_sock_cli_end.close()
 
             self.clientPgmArgs = [self.clientPgm] + self.clientPgmArgs
-
+# <_OSU_MVAPICH_>
             #CR_SUPPORT
             if (self.cr_enabled == 1 and self.cr_restart_file!=''):
             #    mpd_print(1,'restart from file %s' % self.cr_restart_file)
@@ -1537,7 +1579,7 @@ class MPDMan(object):
                 self.clientPgmArgs = [self.clientPgm] + [restart_file_local]
                 #In restart case, env set here does not matter
             #CR_SUPPORT_END
-
+# </_OSU_MVAPICH_>
             errmsg = set_limits(self.clientPgmLimits)
             if errmsg:
                 self.pmiSock = MPDSock(name='pmi')
@@ -1709,6 +1751,7 @@ def sigchld_handler(signum,frame):
             if pid == clientPid:
                 clientExited = 1
                 clientExitStatus = status
+                mpd_handle_signal(signum,0)
         except:
             done = 1
 

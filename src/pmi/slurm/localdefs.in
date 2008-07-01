@@ -1,0 +1,9 @@
+#! /bin/sh
+# Add any libraries or paths needed by slurm
+# <_OSU_MVAPICH_>
+export LD_LIBRARY_PATH=@slurm_ld_library_path@:$LD_LIBRARY_PATH
+# </_OSU_MVAPICH_>
+LIBS="@SLURM_LIBS@ $LIBS"
+LDFLAGS="@SLURM_LDFLAGS@ $LDFLAGS"
+CPPFLAGS="@SLURM_CPPFLAGS@ $CPPFLAGS"
+

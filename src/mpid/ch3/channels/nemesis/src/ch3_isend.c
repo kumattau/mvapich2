@@ -41,7 +41,7 @@ int MPIDI_CH3_iSend (MPIDI_VC_t *vc, MPID_Request *sreq, void * hdr, MPIDI_msg_s
     if (MPIDI_CH3I_SendQ_empty (CH3_NORMAL_QUEUE))
         /* MT */
     {
-	MPIU_DBG_MSG_D (CH3_CHANNEL, VERBOSE, "iSend %d", hdr_sz);
+	MPIU_DBG_MSG_D (CH3_CHANNEL, VERBOSE, "iSend %d", (int) hdr_sz);
 	mpi_errno = MPID_nem_mpich2_send_header (hdr, hdr_sz, vc, &again);
         if (mpi_errno) MPIU_ERR_POP (mpi_errno);
 	if (again)

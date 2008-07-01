@@ -3,6 +3,17 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2003-2008, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
 
 #include "mpidimpl.h"
 
@@ -76,7 +87,7 @@ int MPID_Irsend(const void * buf, int count, MPI_Datatype datatype, int rank, in
 	MPIDI_Pkt_set_seqnum(ready_pkt, seqnum);
 	MPIDI_Request_set_seqnum(sreq, seqnum);
 	
-	mpi_errno = MPIDI_CH3_iSend(vc, sreq, ready_pkt, sizeof(*ready_pkt));
+	mpi_errno = MPIU_CALL(MPIDI_CH3,iSend(vc, sreq, ready_pkt, sizeof(*ready_pkt)));
 	/* --BEGIN ERROR HANDLING-- */
 	if (mpi_errno != MPI_SUCCESS)
 	{
@@ -90,6 +101,11 @@ int MPID_Irsend(const void * buf, int count, MPI_Datatype datatype, int rank, in
 	goto fn_exit;
     }
     
+#if defined(_OSU_MVAPICH_)
+    /* OSU-MPI2 use rndv protocol for ready send */
+    if (data_sz + sizeof(MPIDI_CH3_Pkt_eager_send_t) <= vc->eager_max_msg_sz 
+        && ! vc->force_rndv) {
+#endif /* defined(_OSU_MVAPICH_) */
     if (dt_contig) {
 	mpi_errno = MPIDI_CH3_EagerContigIsend( &sreq, 
 						MPIDI_CH3_PKT_READY_SEND,
@@ -100,16 +116,29 @@ int MPID_Irsend(const void * buf, int count, MPI_Datatype datatype, int rank, in
     }
     else {
 	mpi_errno = MPIDI_CH3_EagerNoncontigSend( &sreq, 
-						  MPIDI_CH3_PKT_READY_SEND,
-						  buf, count, datatype,
-						  data_sz, rank, tag, 
-						  comm, context_offset );
+                                                  MPIDI_CH3_PKT_READY_SEND,
+                                                  buf, count, datatype,
+                                                  data_sz, rank, tag, 
+                                                  comm, context_offset );
 	/* If we're not complete, then add a reference to the datatype */
 	if (sreq && sreq->dev.OnDataAvail) {
 	    sreq->dev.datatype_ptr = dt_ptr;
 	    MPID_Datatype_add_ref(dt_ptr);
 	}
     }
+#if defined(_OSU_MVAPICH_)
+    } 
+    else {
+	MPIDI_Request_create_sreq(sreq, mpi_errno, goto fn_exit);
+	MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_RSEND);
+	mpi_errno = MPIDI_CH3_RndvSend( &sreq, buf, count, datatype, dt_contig,
+	                                data_sz, dt_true_lb, rank, tag, comm,
+	                                context_offset );
+	/* Note that we don't increase the ref count on the datatype
+	   because this is a blocking call, and the calling routine
+	   must wait until sreq completes */
+    }
+#endif /* defined(_OSU_MVAPICH_) */
  
   fn_exit:
     *request = sreq;

@@ -2,8 +2,9 @@ coll
 comm
 group
 pt2pt
+topo
 @rmadir@
-#@spawndir@
+@spawndir@
 @iodir@
 @f77dir@
 @cxxdir@

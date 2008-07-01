@@ -56,7 +56,7 @@ from  time    import  ctime
 from  mpdlib  import  mpd_version
 __author__ = "Ralph Butler and Rusty Lusk"
 __date__ = ctime()
-__version__ = "$Revision: 1.157 $"
+__version__ = "$Revision: 1.160 $"
 __version__ += "  " + str(mpd_version())
 __credits__ = ""
 
@@ -138,6 +138,7 @@ class MPD(object):
                                  'MPD_PID_FILENAME'     :  '',
                                  'MPD_ZC'               :  0,
                                  'MPD_LOGFILE_TRUNC_SZ' :  4000000,  # -1 -> don't trunc
+                                 'MPD_PORT_RANGE'       :  0,
                                }
         for (k,v) in self.parmsToOverride.items():
             self.parmdb[('thispgm',k)] = v
@@ -146,6 +147,8 @@ class MPD(object):
         self.parmdb.get_parms_from_env(self.parmsToOverride)
         self.myIfhn = self.parmdb['MPD_MY_IFHN']    # variable for convenience
         self.myPid = os.getpid()
+        if self.parmdb['MPD_PORT_RANGE']:
+            os.environ['MPICH_PORT_RANGE'] = self.parmdb['MPD_PORT_RANGE']
         self.listenSock = MPDListenSock(name='ring_listen_sock',
                                         port=self.parmdb['MPD_LISTEN_PORT'])
         self.parmdb[('thispgm','MPD_LISTEN_PORT')] = self.listenSock.sock.getsockname()[1]
@@ -184,7 +187,8 @@ class MPD(object):
             sys.exit(-1)
         os.close(0)
         if self.parmdb['MPD_ECHO_PORT_FLAG']:    # do this before becoming a daemon
-            print self.parmdb['MPD_LISTEN_PORT']
+            # print self.parmdb['MPD_LISTEN_PORT']
+            print "mpd_port=%d" % self.parmdb['MPD_LISTEN_PORT']
             sys.stdout.flush()
             ##### NEXT 2 for debugging
             ## print >>sys.stderr, self.parmdb['MPD_LISTEN_PORT']
@@ -271,7 +275,7 @@ class MPD(object):
                     break
                 if self.conSock:
                     msgToSend = { 'cmd' : 'restarting_mpd' }
-                    self.conSock,msgToSend.send_dict_msg(msgToSend)
+                    self.conSock.msgToSend.send_dict_msg(msgToSend)
                     self.streamHandler.del_handler(self.conSock)
                     self.conSock.close()
                     self.conSock = 0
@@ -891,6 +895,7 @@ class MPD(object):
                                       'jobid' : jobid,
                                       'username' : self.activeJobs[jobid][manPid]['username'],
                                       'host' : self.myHost,
+                                      'ifhn' : self.myIfhn,
                                       'clipid' : str(self.activeJobs[jobid][manPid]['clipid']),
                                       'sid' : str(manPid),  # may chg to actual sid later
                                       'pgm' : self.activeJobs[jobid][manPid]['pgm'],
@@ -1058,9 +1063,10 @@ class MPD(object):
                 if msg['spawner_mpd'] == self.myId:
                     jobid = msg['jobid']
                     spawnerManPid = msg['spawner_manpid']
-                    spawnerManSock = self.activeJobs[jobid][spawnerManPid]['socktoman']
-                    msgToSend = { 'cmd' : 'spawn_done_by_mpd', 'rc' : 0, 'reason' : '' }
-                    spawnerManSock.send_dict_msg(msgToSend)
+                    if self.activeJobs[jobid].has_key(spawnerManPid):
+                        spawnerManSock = self.activeJobs[jobid][spawnerManPid]['socktoman']
+                        msgToSend = { 'cmd' : 'spawn_done_by_mpd', 'rc' : 0, 'reason' : '' }
+                        spawnerManSock.send_dict_msg(msgToSend)
                 else:
                     self.ring.rhsSock.send_dict_msg(msg)
         else:
@@ -1323,6 +1329,8 @@ class MPD(object):
 	msg['username'] = username
         if hasattr(os,'fork'):
             (manPid,toManSock) = self.launch_mpdman_via_fork(msg,man_env)
+            if not manPid:
+                print '**** mpd: launch_client_via_fork_exec failed; exiting'
         elif subprocess_module_available:
             (manPid,toManSock) = self.launch_mpdman_via_subprocess(msg,man_env)
         else:
@@ -1369,7 +1377,21 @@ class MPD(object):
         msg['entry_host'] = self.myHost
         msg['entry_ifhn'] = self.myIfhn
         msg['entry_port'] = manListenPort
-        manPid = os.fork()
+        maxTries = 6
+        numTries = 0
+        while numTries < maxTries:
+            try:
+                manPid = os.fork()
+                errinfo = 0
+            except OSError, errinfo:
+                pass  ## could check for errinfo.errno == 35 (resource unavailable)
+            if errinfo:
+                sleep(1)
+                numTries += 1
+            else:
+                break
+        if numTries >= maxTries:
+            return (0,0)
         if manPid == 0:
             self.conListenSock = 0    # don't want to clean up console if I am manager
             self.myId = '%s_man_%d' % (self.myHost,self.myPid)

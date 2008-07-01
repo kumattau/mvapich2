@@ -382,8 +382,14 @@ ProcessState *MPIE_FindProcessByPid( pid_t pid )
 		   from within the signal handler */
 		return 0;
 	    }
-	    for (i=0; i<app->nProcess; i++) {
-		if (pState[i].pid == pid) return &pState[i];
+
+	    /* It is possible for pState to be uninitialized if not all apps
+	       have been started yet via MPIE_ForkProcesses and we are called
+	       from handle_sigchild. */
+	    if (pState) {
+		for (i=0; i<app->nProcess; i++) {
+		    if (pState[i].pid == pid) return &pState[i];
+		}
 	    }
 	    app = app->nextApp;
 	}
@@ -489,7 +495,9 @@ static void handle_sigchild( int sig )
     /* Since signals may be coallesced, we process all children that
        have exited */
     while (1) {
-	/* Find out about any children that have exited */
+	/* Find out about any children that have exited.  Note that
+	   we don't check for EINTR because we're within a 
+	   signal handler. */
 	pid = waitpid( (pid_t)(-1), &prog_stat, WNOHANG );
     
 	if (pid <= 0) {
@@ -603,6 +611,9 @@ int MPIE_WaitForProcesses( ProcessUniverse *pUniv, int timeout )
 
     DBG_PRINTF(("Done waiting for processes\n"));
 
+    /* FIXME: Indicate whether all processes have exited.  Then 
+       mpiexec programs can decide (probably based on a debugging flag)
+       what to do if they have not all exited. */
     return 0;
 }
 

@@ -12,7 +12,7 @@
 static char MTEST_Descrip[] = "Test that communicators have reference count semantics";
 
 #define NELM 128
-#define NCOMM 508
+#define NCOMM 1020
 
 int main( int argc, char *argv[] )
 {
@@ -105,6 +105,9 @@ int main( int argc, char *argv[] )
 	for (i=0; i<NCOMM; i++) {
 	    MPI_Comm_free( &tmpComm[i] );
 	}
+    }
+    if (comm != MPI_COMM_NULL) {
+	MPI_Comm_free( &comm );
     }
     
     MTest_Finalize( errs );

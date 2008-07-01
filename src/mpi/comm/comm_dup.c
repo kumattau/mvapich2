@@ -13,7 +13,7 @@
  * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
  *
  * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT_MVAPICH2 in the top level MVAPICH2 directory.
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
  *
  */
 
@@ -86,20 +86,21 @@ Notes:
 .seealso: MPI_Comm_free, MPI_Keyval_create, MPI_Attr_put, MPI_Attr_delete,
  MPI_Comm_create_keyval, MPI_Comm_set_attr, MPI_Comm_delete_attr
 @*/
-#ifdef _SMP_
+#if defined(_OSU_MVAPICH_)
 extern int split_comm;
 extern int enable_shmem_collectives;
-#endif
+#endif /* defined(_OSU_MVAPICH_) */
 
 int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
 {
     static const char FCNAME[] = "MPI_Comm_dup";
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL, *newcomm_ptr;
-#ifdef _SMP_
+    MPID_Attribute *new_attributes = 0;
+#if defined(_OSU_MVAPICH_)
     MPIU_THREADPRIV_DECL;
     MPIU_THREADPRIV_GET;
-#endif
+#endif /* defined(_OSU_MVAPICH_) */
 
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_COMM_DUP);
 
@@ -139,6 +140,28 @@ int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
 #   endif /* HAVE_ERROR_CHECKING */
 
     /* ... body of routine ...  */
+
+    /* Copy attributes, executing the attribute copy functions */
+    /* This accesses the attribute dup function through the perprocess
+       structure to prevent comm_dup from forcing the linking of the
+       attribute functions.  The actual function is (by default)
+       MPIR_Attr_dup_list 
+    */
+    if (MPIR_Process.attr_dup) {
+	mpi_errno = MPIR_Process.attr_dup( comm_ptr->handle, 
+					   comm_ptr->attributes, 
+					   &new_attributes );
+	if (mpi_errno) {
+	    /* Note: The error code returned here should reflect the error code
+	       determined by the user routine called during the
+	       attribute duplication step.  Adding additional text to the 
+	       message associated with the code is allowable; changing the
+	       code is not */
+	    *newcomm = MPI_COMM_NULL;
+	    goto fn_fail;
+	}
+    }
+
     
     /* Generate a new context value and a new communicator structure */ 
     /* We must use the local size, because this is compared to the 
@@ -148,44 +171,18 @@ int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
 				&newcomm_ptr );
     if (mpi_errno) goto fn_fail;
 
-    /* Copy attributes, executing the attribute copy functions */
-    /* This accesses the attribute dup function through the perprocess
-       structure to prevent comm_dup from forcing the linking of the
-       attribute functions.  The actual function is (by default)
-       MPIR_Attr_dup_list 
-    */
-    if (MPIR_Process.attr_dup) {
-	newcomm_ptr->attributes = 0;
-	mpi_errno = MPIR_Process.attr_dup( comm_ptr->handle, 
-					   comm_ptr->attributes, 
-					   &newcomm_ptr->attributes );
-	if (mpi_errno)
-	{
-	    /* FIXME: The error code returned here should reflect the error code
-	       determined by the user routine called during the
-	       attribute duplication step.  Adding additional text to the 
-	       message associated with the code is allowable; changing the
-	       code is not */
-#if 0
-	    mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER,
-		"**mpi_comm_dup", "**mpi_comm_dup %C %p", comm, newcomm);
-#endif
-	    *newcomm = MPI_COMM_NULL;
-	    /* FIXME : free newcomm (better yet, consider running 
-	     attribute dup functions before generating the new communicator) */
-	    goto fn_fail;
-	}
-    }
-
+    newcomm_ptr->attributes = new_attributes;
     *newcomm = newcomm_ptr->handle;
 
-#ifdef _SMP_
-    int flag;
+#if defined(_OSU_MVAPICH_)
     if (enable_shmem_collectives){
         MPIR_Nest_incr();
         if (check_split_comm(pthread_self())){
             if (*newcomm != MPI_COMM_NULL){
+    
+                int flag;
                 MPI_Comm_test_inter(*newcomm, &flag);
+    
                 if (flag == 0){
                     int my_id, size;
                     MPI_Comm_rank(*newcomm, &my_id);
@@ -198,7 +195,7 @@ int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
         }
         MPIR_Nest_decr();
     }
-#endif
+#endif /* defined(_OSU_MVAPICH_) */
     
     /* ... end of body of routine ... */
 

@@ -28,13 +28,16 @@
 **ch3|recvdata %s:failure occurred while attempting to receive message data (%s)
 **ch3|recvdata:failure occurred while attempting to receive message data
 **ch3|rmamsg:failure occurred while attempting to send an RMA message
+# <_OSU_MVAPICH_>
+**ch3|rndv:failure occured while preparing rendezvous transfer
+# </_OSU_MVAPICH_>
 **ch3|rtspkt:failure occurred while attempting to send RTS packet
 **ch3|senddata:failure occurred while attempting to send message data
 **ch3|syncack:failure occurred while attempting to send eager synchronization packet
 **ch3|unknownpkt %d:received unknown packet type (type=%d)
 **ch3|unknownpkt:received unknown packet type
 **ch3|get_parent_port:spawn process group was unable to obtain parent port name from the channel
-**ch3|get_parent_port_err_bcast:an error occurred while broadcasting the error code from MPIDI_CH3_Get_parent_port()
+**ch3|get_parent_port_err_bcast:an error occurred while broadcasting the error code from MPIDI_CH3_GetParentPort()
 **ch3|conn_parent:spawned process group was unable to connect back to the parent
 **ch3|conn_parent %s:spawned process group was unable to connect back to the parent on port <%s>
 **ch3|unhandled_connection_state:encountered an unexpected connection state

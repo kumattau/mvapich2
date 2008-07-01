@@ -10,7 +10,7 @@ dnl bugs in autoconf caching.
 dnl
 dnl This is a large configure script and it is important to keep it
 dnl clearly organized.  In addition, this script must coordinate with 
-dnl the other modules that can be used to construct MPICH2, such as
+dnl the other modules that can be used to construct MVAPICH2, such as
 dnl the communication device and the process manager.  Each of these
 dnl may have special features or limitations that other modules or
 dnl this configure may need to take into account.  To handle this, there
@@ -94,8 +94,8 @@ dnl
 dnl
 dnl Special environment variables
 dnl To let other scripts and in particular the configure in test/mpi
-dnl know that they are being invoked from within the MPICH2 configure,
-dnl the following environment variables are set and exported:
+dnl know that they are being invoked from within an MPICH2 compatible
+dnl configure, the following environment variables are set and exported:
 dnl    FROM_MPICH2
 dnl    MPICH2_ENABLE_F77
 dnl    MPICH2_ENABLE_F90
@@ -111,41 +111,114 @@ dnl
 dnl Note that no executable statements are allowed (and any are silently 
 dnl dropped) before AC_INIT.
 dnl
-dnl AC_INIT requires an explicit version number
-dnl Args are package name, version, bug report, and tar file name
-dnl All must be literals
-dnl Note that AC_PACKAGE_STRING is not a command but must be defined(!)
-dnl Unfortunately, setting the PACKAGE names is not compatible with
-dnl AC_CONFIG_SUBDIRS, since the resulting values in the generated
-dnl conf file will not be consistent.
-dnl define([AC_PACKAGE_STRING],[MPICH2 1.0.5])
-dnl AC_INIT(mpich2,1.0.5,mpich2-maint@mcs.anl.gov,mpich2-1.0.5)
-dnl Use the oldstyle AC_INIT instead
+
 AC_INIT(src/include/mpichconf.h.in)
+
+CONFIGURE_ARGS_CLEAN=`echo $* | tr '"' ' '`
+AC_SUBST(CONFIGURE_ARGS_CLEAN)
+
+# Try to find the release date
+if test -s "$srcdir/maint/ReleaseDate" ; then
+    RELEASE_DATE="`cat $srcdir/maint/ReleaseDate`"
+else
+    RELEASE_DATE="Unknown, built on `date`"
+fi
+AC_SUBST(RELEASE_DATE)
+
 # Try to find the version
 if test -s "$srcdir/maint/Version" ; then
     VERSION="`cat $srcdir/maint/Version`"
 else
-    VERSION="1.0.5"
+    AC_MSG_ERROR([Version information not found. Configuration aborted.])
 fi
-dnl if test "$VERSION" != "$PACKAGE_VERSION" ; then
-dnl     AC_MSG_WARN([PACKAGE_VERSION = $PACKAGE_VERSION but VERSION = $VERSION])
-dnl fi
+
+# Produce a numeric version assuming the following format:
+# Version: [MAJ].[MIN].[REV][EXT][EXT_NUMBER]
+# Example: 1.0.7rc1 has
+#          MAJ = 1
+#          MIN = 0
+#          REV = 7
+#          EXT = rc
+#          EXT_NUMBER = 1
+#
+# Converting to numeric version will convert EXT to a format number:
+#          ALPHA (a) = 0
+#          BETA (b)  = 1
+#          RC (rc)   = 2
+#          PATCH (p) = 3
+# Regular releases are treated as patch 0
+#
+# Numeric version will have 1 digit for MAJ, 2 digits for MIN,
+# 2 digits for REV, 1 digit for EXT and 2 digits for EXT_NUMBER.
+changequote(<<,>>)
+V1=`expr $VERSION : '\([0-9]*\)\.[0-9]*\.[0-9]*[a-zA-Z]*[0-9]*'`
+V2=`expr $VERSION : '[0-9]*\.\([0-9]*\)\.[0-9]*[a-zA-Z]*[0-9]*'`
+V3=`expr $VERSION : '[0-9]*\.[0-9]*\.\([0-9]*\)[a-zA-Z]*[0-9]*'`
+V4=`expr $VERSION : '[0-9]*\.[0-9]*\.[0-9]*\([a-zA-Z]*\)[0-9]*'`
+V5=`expr $VERSION : '[0-9]*\.[0-9]*\.[0-9]*[a-zA-Z]*\([0-9]*\)'`
+changequote([,])
+
+if test "$V2" -le 9 ; then V2=0$V2 ; fi
+if test "$V3" -le 9 ; then V3=0$V3 ; fi
+if test "$V4" = "a" ; then
+    V4=0
+elif test "$V4" = "b" ; then
+    V4=1
+elif test "$V4" = "rc" ; then
+    V4=2
+elif test "$V4" = "" ; then
+    V4=3
+    V5=0
+elif test "$V4" = "p" ; then
+    V4=3
+fi
+if test "$V5" -le 9 ; then V5=0$V5 ; fi
+
+NUMVERSION=$V1$V2$V3$V4$V5
+AC_SUBST(NUMVERSION)
 AC_SUBST(VERSION)
+
+#
+# ABIVERSION is incremented when there are changes in the ABI.  This is 
+# used to let a shared library describe how compatible it is with executables
+# that were linked against it.  In our use, the version number is x:y, where
+#  x changes when the ABI changes
+#  y changes when major behavior of the routines, without changing the ABI;
+#    reset y to one when x changes.  Some systems don't like a 0 subversion,
+#    so we always use one as the smallest version number.
+# The ABIVERSION is not the same as the VERSION. It is used principly in the
+# Makefile.sm to pass the ABIVERSION to the createshlib script.
+# We use libtool-style version numbers (see --version-info in the 
+# libtool manual) 
+ABIVERSION="1:1"
+AC_SUBST(ABIVERSION)
 dnl
 CONFIGURE_ARGUMENTS="$ac_configure_args"
 AC_SUBST(CONFIGURE_ARGUMENTS)
 if test -n "$ac_configure_args" ; then
-    echo "Configuring MPICH2 version $VERSION with $ac_configure_args"
+    echo "Configuring MVAPICH2 $VERSION with $ac_configure_args"
 else 
-    echo "Configuring MPICH2 version $VERSION"
+    echo "Configuring MVAPICH2 $VERSION"
 fi
 # Add the information on the system:
-echo "Running on system: `uname -a`"
+dnl <_OSU_MVAPICH_>
+dnl echo "Running on system: `uname -a`"
+dnl </_OSU_MVAPICH_>
 dnl
 dnl Definitions will be placed in this file rather than in the DEFS variable
 AC_CONFIG_HEADER(src/include/mpichconf.h)
 AH_TOP([/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/* Copyright (c) 2003-2008, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
 /*  
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -159,6 +232,9 @@ dnl
 dnl Set the directory that contains support scripts such as install-sh and
 dnl config.guess
 AC_CONFIG_AUX_DIR(confdb)
+dnl <_OSU_MVAPICH_>
+AC_CANONICAL_BUILD
+dnl </_OSU_MVAPICH_>
 dnl
 dnl Use AC_ARG_ENABLE to look for --enable-feature and AC_ARG_WITH to look for
 dnl --with-capability
@@ -174,6 +250,9 @@ dnl
 AC_ARG_ENABLE(coverage,
 [--enable-coverage - Turn on coverage analysis using gcc and gcov],,
 enable_coverage=no)
+dnl
+AC_ARG_ENABLE(dynamiclibs,
+[--enable-dynamiclibs - Enable the use of dynamic libraries by the devices that support them],,enable_dynamiclibs=no)
 dnl
 AC_ARG_ENABLE(error-checking,
 [--enable-error-checking=level - Control the amount of error checking.  
@@ -202,14 +281,15 @@ The default is none.],,enable_timing=default)
 dnl
 AC_ARG_ENABLE(g,
 [--enable-g=option - Control the level of debugging support in the MPICH
-implementation.  option may be a list of common separated names including
+implementation.  option is a list of comma separated names including
     none     - No debugging
     mem      - Memory usage tracing
     handle   - Trace handle operations
-    dbg      - Add compiler -g flags
+    dbg      - Add compiler flag, -g, to CFLAGS, CXXFLAGS FFLAGS and F90FLAGS.
     log      - Enable debug event logging
     meminit  - Preinitialize memory associated structures and unions to
                eliminate access warnings from programs like valgrind
+    mutex    - Enable error checking on pthread mutexes
     all      - All of the above choices],,enable_g=none)
 dnl
 dnl --enable-sharedlibs=kind is set with the PAC_ARG_SHAREDLIBS macro 
@@ -220,9 +300,23 @@ dnl  Not yet supported])
 dnl
 dnl --enable-fast
 AC_ARG_ENABLE(fast,
-[--enable-fast - pick the appropriate options for fast execution.  This
-                turns off error checking and timing collection],,
-enable_fast=no)
+[--enable-fast=option - Control the level of fast execution in the MVAPICH2
+implementation.   option is a list of comma separated names including 
+    defopt   - Default compiler optimization -O2 for all language bindings.
+               when neither --enable-fast nor --disable-fast is specified.
+    nochkmsg - No error checking and no error messages, i.e.
+               --disable-error-checking and --disable-error-messages.
+    notiming - No timing collection, i.e. --disable-timing.
+    ndebug   - Appends -DNDEBUG to CFLAGS.
+    all|yes  - "defopt", "nochkmsg", "notiming" and "ndebug" are enabled
+               when --enable-fast is specified without any option.
+    O<n>     - Appends default optimization flags, -O<n>, to
+               CFLAGS, FFLAGS, CXXFLAGS, F90FLAGS.
+    none     - None of above options, i.e. --disable-fast.
+],,enable_fast=default)
+dnl <_OSU_MVAPICH_>
+dnl ],,enable_fast=defopt)
+dnl </_OSU_MVAPICH_>
 dnl
 dnl We enable f77 and f90 if we can find compilers for them.
 dnl In addition, we check whether f77 and f90 can work together.
@@ -260,8 +354,8 @@ AC_ARG_WITH(pm, [--with-pm=name - Specify the process manager for MPICH.
       Multiple process managers may be specified as long as they all use
       the same pmi interface by separating them with colons.  The 
       mpiexec for the first named process manager will be installed.
-      Example: --with-pm=forker:mpd:remshell builds the three process 
-      managers forker, mpd, and remshell; only the mpiexec from forker
+      Example: --with-pm=gforker:mpd:remshell builds the three process 
+      managers gforker, mpd, and remshell; only the mpiexec from gforker
       is installed into the bin directory.],,
 with_pm=default)
 dnl
@@ -343,6 +437,23 @@ AC_ARG_WITH(fwrapname,
 routines],[FWRAPNAME=$withval;set_FWRAPNAME="yes"],FWRAPNAME=fmpich)
 AC_SUBST(FWRAPNAME)
 dnl
+#
+# Save a copy of CFLAGS, CXXFLAGS, FFLAGS, F90FLAGS, LDFLAGS as WRAPPER_*
+# before any of these flags are being modified by configure tests.
+#
+# WRAPPER_xFLAGS are used by mpicc and friends.
+# Don't modify WRAPPER_xFLAGS
+WRAPPER_CFLAGS=$CFLAGS
+WRAPPER_CXXFLAGS=$CXXFLAGS
+WRAPPER_FFLAGS=$FFLAGS
+WRAPPER_F90FLAGS=$F90FLAGS
+WRAPPER_LDFLAGS=$LDFLAGS
+export WRAPPER_CFLAGS
+export WRAPPER_CXXFLAGS
+export WRAPPER_FFLAGS
+export WRAPPER_F90FLAGS
+export WRAPPER_LDFLAGS
+
 # -----------------------------------------------------------------------------
 # First check that we have a clean build if we are doing a VPATH build
 PAC_VPATH_CHECK(src/include/mpi.h src/env/mpicc src/env/mpicc.conf,lib)
@@ -430,6 +541,37 @@ esac
 export device_name
 export device_args
 export devicedir
+# Make the device base name and args available to generated files
+DEVICE_NAME=$device_name
+AC_SUBST(DEVICE_NAME)
+DEVICE_ARGS=$device_args
+AC_SUBST(DEVICE_ARGS)
+
+dnl <_OSU_MVAPICH_>
+if test -z "$enable_mvapich"; then
+    if test "$with_device" = "default" -o "$with_device" = "ch3" -o "$with_device" = "ch3:mrail"; then
+        enable_mvapich=yes
+    else
+        enable_mvapich=no
+    fi
+fi
+
+if test "$enable_mvapich" = "yes"; then
+    AC_DEFINE(_OSU_MVAPICH_,1,[Define to enable MVAPICH2 customizations.])
+    AC_DEFINE(MPIDI_CH3_CHANNEL_RNDV,1,[Define to enable channel rendezvous (Required by MVAPICH2).])
+    AC_DEFINE(MPID_USE_SEQUENCE_NUMBERS,1,[Define to enable use of sequence numbers (Required by MVAPICH2).])
+
+    # Enable header caching by default.
+    if test -z "$enable_header_caching"; then
+        enable_header_caching=yes
+        ac_configure_args="${ac_configure_args} --enable-header-caching"
+    fi
+
+    if test "$enable_header_caching" = "yes"; then
+        AC_DEFINE(USE_HEADER_CACHING,1,[Define to enable header caching.])
+    fi
+fi
+dnl </_OSU_MVAPICH_>
 
 #
 # Give the device an opportunity to include a header file in mpi.h.  The
@@ -468,17 +610,38 @@ AC_SUBST(MPICXXLIBNAME)
 # We'll set FORTRAN_BINDING to 1 if we support Fortran 
 FORTRAN_BINDING=0
 
-# ----------------------------------------------------------------------------
-# Process any enable or with values
-# We must do enable-fast first, because it changes the other enable values
-if test "$enable_fast" = "yes" ; then
-    enable_error_checking=no
-    enable_error_messages=no
-    enable_timing=no
-    # Export a variable that will allow the test suite to detect that
-    # MPICH has no error testing
-    MPICH_FAST=yes
-    export MPICH_FAST
+# Set up default compiler optimization
+MPI_DEFAULT_COPTS="-O2"
+MPI_DEFAULT_CXXOPTS="-O2"
+MPI_DEFAULT_FOPTS="-O2"
+MPI_DEFAULT_F90OPTS="-O2"
+
+# enable-fast
+# strip off multiple options, separated by commas
+save_IFS="$IFS"
+IFS=","
+for option in $enable_fast ; do
+    case "$option" in
+dnl <_OSU_MVAPICH_>
+        default)
+        if test "$enable_g" = "no" -o "$enable_g" = "none"; then
+            enable_append_ndebug=yes
+            enable_default_optimize=yes
+        fi
+        ;;
+dnl </_OSU_MVAPICH_>
+        defopt)
+        enable_default_optimize=yes
+        ;;
+        nochkmsg)
+        enable_fast_nochkmsg=yes
+        ;;
+        notiming)
+        enable_timing=no
+        ;;
+        ndebug)
+        enable_append_ndebug=yes
+        ;;
 #
 # [BRT] removed the reseting of enable_g so that --with-enable=dbg,meminit
 # can be specified with -enable-fast.  This change was largely made for the
@@ -486,9 +649,50 @@ if test "$enable_fast" = "yes" ; then
 # overhead, but also wish to use meminit to eliminate initialization
 # warnings from valgrind.
 #
-#   enable_g=no
-#
-    AC_DEFINE(NDEBUG,1,[Define to suppress assertions])
+        all|yes)
+        enable_default_optimize=yes
+        enable_fast_nochkmsg=yes
+        # Disable timing/logging stuffs
+        enable_timing=no
+        enable_append_ndebug=yes
+        ;;
+        O*)
+        # Allows O<n> where <n> can be [0-9] or ' '.
+        opt_flags=`echo $option | sed -e 's%\(O[0-9] \)%\1%g'`
+        if test -n "$opt_flags" ; then
+            enable_default_optimize=yes
+            MPI_DEFAULT_COPTS="-$option"
+            MPI_DEFAULT_CXXOPTS="-$option"
+            MPI_DEFAULT_FOPTS="-$option"
+            MPI_DEFAULT_F90OPTS="-$option"
+        else
+            AC_MSG_WARN([Unknown value $option for --enable-fast])
+        fi
+        ;;
+        none|no)
+        enable_default_optimize=no
+        enable_fast_nochkmsg=no
+        # Reset timing/logging stuffs to when --enable-timing isn't specified.
+        enable_timing=default
+        enable_append_ndebug=no
+        ;;
+        *)
+        AC_MSG_WARN([Unknown value $option for --enable-fast])
+        ;;
+    esac
+done
+IFS="$save_IFS"
+
+# ----------------------------------------------------------------------------
+# Process any enable or with values
+# We must do enable-fast first, because it changes the other enable values
+if test "$enable_fast_nochkmsg" = "yes" ; then
+    enable_error_checking=no
+    enable_error_messages=no
+    # Export a variable that will allow the test suite to detect that
+    # MPICH has no error testing
+    MPICH_FAST=yes
+    export MPICH_FAST
 fi
 
 # error-checking
@@ -634,12 +838,12 @@ if test "$logging_name" != "none" ; then
         logdir=$logging_name
 	# Force the logdir to be absolute
 	logdir=`cd $logdir && pwd`
-	# Switch name to "external" because that is how the MPICH2
+	# Switch name to "external" because that is how the MVAPICH2
 	# code will know it
 	logging_name=external
 	# Add the dir to the include paths
-	CPPFLAGS="$CPPFLAGS -I$logdir"
-	# Add the dir to the external build dirs
+	#CPPFLAGS="$CPPFLAGS -I$logdir"
+	MPICH2_INCLUDE_FLAGS="$MPICH2_INCLUDE_FLAGS -I$logdir"
 	EXTERNAL_SRC_DIRS="$EXTERNAL_SRC_DIRS $logdir"
 	# Add to the list of external modules to setup
 	if test -x $logdir/setup_logging ; then
@@ -719,6 +923,12 @@ if test "$MPID_NO_SPAWN" = yes ; then
     AC_MSG_WARN([The device $with_device does not support MPI dynamic process routines])   
 fi
 
+
+# ----------------------------------------------------------------------------
+# atomic operations
+# ----------------------------------------------------------------------------
+subsystems="$subsystems src/mpid/common/locks"
+
 # ----------------------------------------------------------------------------
 # Threads
 # ----------------------------------------------------------------------------
@@ -789,7 +999,7 @@ case "$enable_threads" in
 	# global_monitor)
 	# ;;
 	*)
-	AC_MSG_ERROR(["$thread_impl" is not a valid multi-thread implementation for MPICH2])     
+	AC_MSG_ERROR(["$thread_impl" is not a valid multi-thread implementation for MVAPICH2])     
 	;;
     esac
     ;;
@@ -800,7 +1010,7 @@ esac
 # Check that the requested thread level is available.
 threadLevelOK=yes
 if test -z "$MPID_MAX_THREAD_LEVEL" ; then
-    if test "$MPICH_THREAD_LEVEL" = "MPI_THREAD_MULTIPLE" ; then
+    if test "$MPICH_THREAD_LEVEL" = "MPI_THREAD_MULTIPLE" -o "$MPICH_THREAD_LEVEL" = "MPI_THREAD_SERIALIZED" ; then
         threadLevelOK=no
     fi
 else
@@ -828,7 +1038,7 @@ else
     esac
 fi
 if test "$threadLevelOK" != yes ; then
-   AC_MSG_ERROR([The device $with_device does not support MPI_THREAD_MULTIPLE])
+   AC_MSG_ERROR([The device $with_device does not support $MPICH_THREAD_LEVEL])
 fi
 
 export MPICH_THREAD_LEVEL
@@ -850,7 +1060,7 @@ IFS=","
 for option in $enable_g ; do
     case "$option" in 
         debug|dbg)
-	CFLAGS="$CFLAGS -g"
+        enable_append_g=yes
 	;;
         no|none)
 	;;
@@ -859,6 +1069,10 @@ for option in $enable_g ; do
 	;;
 	meminit)
 	perform_meminit=yes
+	;;
+	memarena)
+	perform_memarena=yes
+	perform_memtracing=yes
 	;;
 	nesting)
 	perform_nesttesting=yes
@@ -872,12 +1086,16 @@ for option in $enable_g ; do
 	log)
 	perform_dbglog=yes
 	;;
+	mutex)
+	perform_dbgmutex=yes
+	;;
 	all|yes)
 	perform_memtracing=yes
 	perform_nesttesting=yes
 	perform_dbglog=yes
-	CFLAGS="$CFLAGS -g"
+	enable_append_g=yes
 	perform_meminit=yes
+	perform_dbgmutex=yes
 	;;
 	*)
 	AC_MSG_WARN([Unknown value $enable_g for enable-g])
@@ -885,12 +1103,44 @@ for option in $enable_g ; do
     esac
 done
 IFS="$save_IFS"
+
+# MPICH2_EXTRA_xFLAGS contains MPICH2LIB_xFLAGS and 
+# all the extra compiler flags added by MPICH2.
+# Initial all MPICH2_EXTRA_xFLAGS to empty string.
+MPICH2_EXTRA_CFLAGS=""
+MPICH2_EXTRA_CXXFLAGS=""
+MPICH2_EXTRA_FFLAGS=""
+MPICH2_EXTRA_F90FLAGS=""
+
+if test "$enable_append_g" = "yes" ; then
+    CFLAGS="$CFLAGS -g"
+    CXXFLAGS="$CXXFLAGS -g"
+    FFLAGS="$FFLAGS -g"
+    F90FLAGS="$F90FLAGS -g"
+    MPICH2_EXTRA_CFLAGS="$MPICH2_EXTRA_CFLAGS -g"
+    MPICH2_EXTRA_CXXFLAGS="$MPICH2_EXTRA_CXXFLAGS -g"
+    MPICH2_EXTRA_FFLAGS="$MPICH2_EXTRA_FFLAGS -g"
+    MPICH2_EXTRA_F90FLAGS="$MPICH2_EXTRA_F90FLAGS -g"
+fi
+if test "$enable_append_ndebug" = "yes" ; then
+    CFLAGS="$CFLAGS -DNDEBUG"
+    CXXFLAGS="$CXXFLAGS -DNDEBUG"
+    FFLAGS="$FFLAGS -DNDEBUG"
+    F90FLAGS="$F90FLAGS -DNDEBUG"
+    MPICH2_EXTRA_CFLAGS="$MPICH2_EXTRA_CFLAGS -DNDEBUG"
+    MPICH2_EXTRA_CXXFLAGS="$MPICH2_EXTRA_CXXFLAGS -DNDEBUG"
+    MPICH2_EXTRA_FFLAGS="$MPICH2_EXTRA_FFLAGS -DNDEBUG"
+    MPICH2_EXTRA_F90FLAGS="$MPICH2_EXTRA_F90FLAGS -DNDEBUG"
+fi
 if test -n "$perform_meminit" ; then
     AC_DEFINE(MPICH_DEBUG_MEMINIT,1,[Define to enable preinitialization of memory used by structures and unions])
 fi
 if test -n "$perform_memtracing" ; then
     enable_g_mem=yes
     AC_DEFINE(USE_MEMORY_TRACING,1,[Define to enable memory tracing])
+    if test -n "$perform_memarena" ; then
+        AC_DEFINE(MPICH_DEBUG_MEMARENA,1,[Define if each function exit should confirm memory arena correctness])
+    fi
 fi
 if test -n "$perform_nesttesting" ; then
     AC_DEFINE(MPICH_DEBUG_NESTING,1,[Define to check nesting level on exit])
@@ -904,6 +1154,10 @@ if test -n "$perform_dbglog" ; then
    else
        AC_DEFINE(USE_DBG_LOGGING,1,[Define to enable logging macros])
    fi
+fi
+
+if test -n "$perform_dbgmutex" ; then 
+   AC_DEFINE(MPICH_DEBUG_MUTEX,1,[Define to enable mutex debugging])
 fi
 
 if test "$enable_debuginfo" = "yes" ; then
@@ -975,17 +1229,9 @@ if test "$enable_romio" = "yes" ; then
        PAC_HAVE_ROMIO
    else
        AC_MSG_WARN([ROMIO src directory is not available])
-       # Check for local developers
-       if test -d /home/MPI/cvsMaster/romio -o -d /homes/MPI/cvsMaster/romio ; then
-           AC_MSG_WARN([You need to check ROMIO out with 
-          cd $use_top_srcdir/src/mpi
-          cvs -d /home/MPI/cvsMaster checkout romio
-	  followed by
-	  cd ../.. && maint/updatefiles
-          ])
-       fi
    fi
 fi
+
 #
 # FIXME: If an external device, don't necessarily complain (e.g.,
 # if the device is already built)
@@ -1023,7 +1269,10 @@ if test "$with_pmi" = "uni" -a "$with_pm" = "default" ; then
     with_pm="no"
 fi
 if test "$with_pm" = "default" -o "$with_pm" = "yes" ; then
-    with_pm=mpd
+dnl <_OSU_MVAPICH_>
+dnl    with_pm=mpd
+    with_pm=mpirun:mpd
+dnl </_OSU_MVAPICH_>
 fi
 
 # We allow multiple pm names, separated by : or ,
@@ -1266,7 +1515,7 @@ if test -z "$ENABLE_SHLIB" -o "$ENABLE_SHLIB" = "no" ; then
     enable_shared=no
 fi
 # We need the script that is used to create shared libraries if either
-# we are creating shared libraries for MPICH2 or we are creating the
+# we are creating shared libraries for MVAPICH2 or we are creating the
 # dynamically loadable library for the debugger interface
 CREATESHLIB=false
 if test "$ENABLE_SHLIB" != "none" -o "$enable_debuginfo" != "no" ; then
@@ -1279,6 +1528,30 @@ AC_SUBST(CREATESHLIB)
 # Set CFLAGS for enable strict if necessary.  Do this *first* because
 # it may influence the output of the other tests
 PAC_CC_STRICT
+if test -n "$pac_cc_strict_flags" ; then
+    MPICH2_EXTRA_CFLAGS="$MPICH2_EXTRA_CFLAGS $pac_cc_strict_flags"
+fi
+
+# Check if $MPI_DEFAULT_COPTS is valid with $CC
+if test "$enable_default_optimize" = "yes" \
+     -a -n "$MPI_DEFAULT_COPTS" ; then
+    PAC_C_CHECK_COMPILER_OPTION( [$MPI_DEFAULT_COPTS], [
+        CFLAGS="$CFLAGS $MPI_DEFAULT_COPTS"
+        MPICH2_EXTRA_CFLAGS="$MPICH2_EXTRA_CFLAGS $MPI_DEFAULT_COPTS"
+                               ] )
+fi
+# Up till here, MPICH2_EXTRA_CFLAGS contains only flags added by MPICH2.
+# Check with "grep -n MPICH2_EXTRA_CFLAGS configure.in"
+# Remove duplicated flags from MPICH2_EXTRA_CFLAGS.
+PAC_MAKE_UNIQ_STRING([MPICH2_EXTRA_CFLAGS])
+# Check if $MPICH2LIB_CFLAGS is valid with $CC
+if test -n "$MPICH2LIB_CFLAGS" ; then
+    PAC_C_CHECK_COMPILER_OPTION( [$MPICH2LIB_CFLAGS], [
+        CFLAGS="$CFLAGS $MPICH2LIB_CFLAGS"
+        MPICH2_EXTRA_CFLAGS="$MPICH2_EXTRA_CFLAGS $MPICH2LIB_CFLAGS"
+                               ] )
+fi
+
 # Check for support for weak symbols.  If not found, set NO_WEAK_SYM
 # to the Make target name understood by simplemake.
 # Set NEEDSPLIB to yes if link commands need both -l$MPILIBNAME
@@ -1358,6 +1631,29 @@ elif test "$enable_f77" = "yes" ; then
     AC_PROG_F77
     FFLAGS=$saveFFLAGS
 fi
+
+if test "$enable_f77" = yes ; then
+    # Check if $MPI_DEFAULT_FOPTS is valid with $F77
+    if test "$enable_default_optimize" = "yes" \
+         -a -n "$MPI_DEFAULT_FOPTS" ; then
+        PAC_F77_CHECK_COMPILER_OPTION( [$MPI_DEFAULT_FOPTS], [
+            FFLAGS="$FFLAGS $MPI_DEFAULT_FOPTS"
+            MPICH2_EXTRA_FFLAGS="$MPICH2_EXTRA_FFLAGS $MPI_DEFAULT_FOPTS"
+                                     ] )
+    fi
+    # Up till here, MPICH2_EXTRA_FFLAGS contains only flags added by MPICH2.
+    # Check with "grep -n MPICH2_EXTRA_FFLAGS configure.in"
+    # Remove duplicated flags from MPICH2_EXTRA_FFLAGS.
+    PAC_MAKE_UNIQ_STRING([MPICH2_EXTRA_FFLAGS])
+    # Check if $MPICH2LIB_FFLAGS is valid with $F77
+    if test -n "$MPICH2LIB_FFLAGS" ; then
+        PAC_F77_CHECK_COMPILER_OPTION( [$MPICH2LIB_FFLAGS], [
+            FFLAGS="$FFLAGS $MPICH2LIB_FFLAGS"
+            MPICH2_EXTRA_FFLAGS="$MPICH2_EXTRA_FFLAGS $MPICH2LIB_FFLAGS"
+                                     ] )
+    fi
+fi
+
 #
 # We need to know the name mangling for Fortran before testing for F90
 # compatibility (we need this because of the way we decide to generate
@@ -1366,6 +1662,11 @@ if test "$enable_f77" = yes ; then
     FLIBS_save="$FLIBS"
     FLIBS=""
     AC_F77_LIBRARY_LDFLAGS
+    # The autoconf macro for finding FLIBS sometimes makes mistakes
+    # (particularly with the Fujitsu frt compiler).  This next step
+    # first sees if the FLIBS is valid with the Fortran compiler
+    PAC_PROG_F77_FLIBS_VALID
+    # Now see if FLIBS works with the C compiler
     PAC_PROG_F77_CHECK_FLIBS
 
     PAC_PROG_F77_LINKER_WITH_C
@@ -1551,7 +1852,15 @@ EOF
 	 ;;
 
 	 solaris|solaris-cc)
+dnl <_OSU_MVAPICH_>
+         if test "$build_cpu" = "i386"; then
+             FC_SHL="$F77 -G -KPIC"
+         else
+dnl </_OSU_MVAPICH_>
 	 FC_SHL="$F77 -xcode=pic32"
+dnl <_OSU_MVAPICH_>
+         fi
+dnl </_OSU_MVAPICH_>
          FC_LINKPATH_SHL=-R
 	 ;;
 
@@ -1631,6 +1940,12 @@ if test "$has_exclaim" = "yes" ; then
 else
     cp src/binding/f77/mpif.h src/include
 fi
+if test "$has_fort_real8" = "yes" ; then
+    sed -e 's/DOUBLE PRECISION/REAL*8/g' src/include/mpif.h > src/include/mpif.h.new
+    mv src/include/mpif.h.new src/include/mpif.h
+    cp src/include/mpif.h src/binding/f77/mpif.h
+fi
+
 if test ! -d bin  ; then mkdir bin ; fi 
 sed -e 's%includedir=.*%includedir='$includebuild_dir% \
    -e 's%libdir=.*%libdir='$libbuild_dir% src/env/mpif77 > bin/mpif77 ;
@@ -1640,6 +1955,7 @@ else
 fi],
 enable_f77=$enable_f77
 has_exclaim=$has_exclaim
+has_fort_real8=$pac_cv_fort_real8
 includebuild_dir=$includebuild_dir
 libbuild_dir=$libbuild_dir
 bashWorks=$bashWorks)
@@ -1661,6 +1977,7 @@ fi
 MPIMODNAME=mpi
 MPICONSTMODNAME=mpi_constants
 MPISIZEOFMODNAME=mpi_sizeofs
+MPIBASEMODNAME=mpi_base
 if test "$enable_f90" = "yes" ; then
     # Determine characteristics of the Fortran 90 compiler
     # Find a Fortran 90 compiler.  Sets F90
@@ -1695,14 +2012,17 @@ if test "$enable_f90" = "yes" ; then
         MPIMODNAME=MPI
         MPICONSTMODNAME=MPI_CONSTANTS
 	MPISIZEOFMODNAME=MPI_SIZEOFS
+	MPIBASEMODNAME=MPI_BASE
     else
         MPIMODNAME=mpi
         MPICONSTMODNAME=mpi_constants
 	MPISIZEOFMODNAME=mpi_sizeofs
+	MPIBASEMODNAME=mpi_base
     fi
     AC_SUBST(MPIMODNAME)
     AC_SUBST(MPICONSTMODNAME)
     AC_SUBST(MPISIZEOFMODNAME)
+    AC_SUBST(MPIBASEMODNAME)
     if test -z "$modincdir" ; then
         # The default module include dir is the same as the include dir
         modincdir=$includedir
@@ -1720,6 +2040,27 @@ if test "$enable_f90" = "yes" ; then
     PAC_F90_EXT
     F90EXT=$pac_cv_f90_ext
     AC_SUBST(F90EXT)
+
+    # Check if $MPI_DEFAULT_F90OPTS is valid with $F90
+    if test "$enable_default_optimize" = "yes" \
+         -a -n "$MPI_DEFAULT_F90OPTS" ; then
+        PAC_F90_CHECK_COMPILER_OPTION( [$MPI_DEFAULT_F90OPTS], [
+            F90FLAGS="$F90FLAGS $MPI_DEFAULT_F90OPTS"
+            MPICH2_EXTRA_F90FLAGS="$MPICH2_EXTRA_F90FLAGS $MPI_DEFAULT_F90OPTS"
+                                     ] )
+    fi
+    # Up till here, MPICH2_EXTRA_F90FLAGS contains only flags added by MPICH2.
+    # Check with "grep -n MPICH2_EXTRA_F90FLAGS configure.in"
+    # Remove duplicated flags from MPICH2_EXTRA_F90FLAGS.
+    PAC_MAKE_UNIQ_STRING([MPICH2_EXTRA_F90FLAGS])
+    # Check if $MPICH2LIB_F90FLAGS works with $F90
+    if test -n "$MPICH2LIB_F90FLAGS" ; then
+        PAC_F90_CHECK_COMPILER_OPTION( [$MPICH2LIB_F90FLAGS], [
+            F90FLAGS="$F90FLAGS $MPICH2LIB_F90FLAGS"
+            MPICH2_EXTRA_F90FLAGS="$MPICH2_EXTRA_F90FLAGS $MPICH2LIB_F90FLAGS"
+                                     ] )
+    fi
+
     #
     # Most systems allow the Fortran compiler to process .F and .F90 files
     # using the C preprocessor.  However, some systems either do not
@@ -1856,7 +2197,15 @@ EOF
     ;;
     solaris|solaris-cc)
         # Assume the Solaris F90 compiler, in 32-bit mode
+dnl <_OSU_MVAPICH_>
+    if test "$build_cpu" = "i386"; then
+        F90_SHL="$F90 -G -KPIC"
+    else
+dnl </_OSU_MVAPICH_>
         F90_SHL="$F90 -xcode=pic32"
+dnl <_OSU_MVAPICH_>
+    fi
+dnl </_OSU_MVAPICH_>
         F90_LINKPATH_SHL=-R
     ;;
     *)
@@ -1928,6 +2277,31 @@ if test "$enable_cxx" = "yes" ; then
         # that the compiler accepts from optimizations
         CXXFLAGS=$saveCXXFLAGS
     fi
+    # Another bug in autoconf.  The checks for the C++ compiler do not
+    # ensure that you can link a program that is built with the C++ 
+    # compiler.  We've seen this error with gcc and icc, particularly
+    # when those compilers accept C++ language elements but are unable
+    # to link programs that are really C++.  For that reason,
+    # we've added a test to see if the C++ compiler can produce
+    # an executable.
+    AC_CACHE_CHECK([whether the C++ compiler $CXX can build an executable],
+    pac_cv_cxx_builds_exe,[
+ AC_LANG_SAVE
+ AC_LANG_CPLUSPLUS
+ AC_TRY_LINK([
+class mytest { 
+  int a;
+public:
+  mytest(void) : a(1) {}
+  ~mytest(void) {}
+};],[mytest a;],
+ pac_cv_cxx_builds_exe=yes, ac_cv_builds_exe=no)
+ AC_LANG_RESTORE
+])
+    if test "$pac_cv_cxx_builds_exe" != yes; then
+       AC_MSG_ERROR([Aborting because C++ compiler does not work.  If you do not need a C++ compiler, configure with --disable-cxx])
+    fi
+
     AC_LANG_CPLUSPLUS
     AC_CXX_EXCEPTIONS
     AC_CXX_BOOL
@@ -1981,7 +2355,15 @@ if test "$enable_cxx" = "yes" ; then
         CXX_LINKPATH_SHL=""
 	;;
 	solaris|solaris-cc)
+dnl <_OSU_MVAPICH_>
+        if test "$build_cpu" = "i386"; then
+            CXX_SHL="$CXX -G -KPIC"
+        else
+dnl </_OSU_MVAPICH_>
         CXX_SHL="$CXX -xcode=pic32"
+dnl <_OSU_MVAPICH_>
+        fi
+dnl </_OSU_MVAPICH>
         CXX_LINKPATH_SHL=-R
 	;;
 	libtool)
@@ -1994,10 +2376,10 @@ if test "$enable_cxx" = "yes" ; then
     esac
     # GNU changed the calling conventions between minor releases (!!!)
     # This is too hard to detect, but we should be able to detect
-    # the version mismatch
+    # the version mismatch.
     GNU_VERSION=0
     GNU_MINORVERSION=0
-    if test "$ac_compiler_gnu" = "yes" ; then
+    if test "$cross_compiling" = "no" -a "$ac_compiler_gnu" = "yes" ; then
          ac_vals=""
 	 AC_MSG_CHECKING([for GNU g++ version])
          AC_TRY_RUN([#include <stdio.h>
@@ -2053,6 +2435,34 @@ int main() {
     AC_SUBST(MPIR_CXX_LONG_DOUBLE_COMPLEX)
 
 fi
+
+if test "$enable_cxx" = yes; then
+    # Check if $MPI_DEFAULT_CXXOPTS is valid with $CXX
+    if test "$enable_default_optimize" = "yes" \
+         -a -n "$MPI_DEFAULT_CXXOPTS" ; then
+        PAC_CXX_CHECK_COMPILER_OPTION( [$MPI_DEFAULT_CXXOPTS], [
+            CXXFLAGS="$CXXFLAGS $MPI_DEFAULT_CXXOPTS"
+            MPICH2_EXTRA_CXXFLAGS="$MPICH2_EXTRA_CXXFLAGS $MPI_DEFAULT_CXXOPTS"
+                                     ] )
+    fi
+    # Up till here, MPICH2_EXTRA_CXXFLAGS contains only flags added by MPICH2.
+    # Check with "grep -n MPICH2_EXTRA_CXXFLAGS configure.in"
+    # Remove duplicated flags from MPICH2_EXTRA_CXXFLAGS.
+    PAC_MAKE_UNIQ_STRING([MPICH2_EXTRA_CXXFLAGS])
+    # Check if $MPICH2LIB_CXXFLAGS is valid with $CXX
+    if test -n "$MPICH2LIB_CXXFLAGS" ; then
+        PAC_CXX_CHECK_COMPILER_OPTION( [$MPICH2LIB_CXXFLAGS], [
+            CXXFLAGS="$CXXFLAGS $MPICH2LIB_CXXFLAGS"
+            MPICH2_EXTRA_CXXFLAGS="$MPICH2_EXTRA_CXXFLAGS $MPICH2LIB_CXXFLAGS"
+                                     ] )
+    fi
+fi
+
+export MPICH2_EXTRA_CFLAGS
+export MPICH2_EXTRA_CXXFLAGS
+export MPICH2_EXTRA_FFLAGS
+export MPICH2_EXTRA_F90FLAGS
+
 # Copy the mpicxx.h file to the main include directory
 AC_OUTPUT_COMMANDS([if test $enable_cxx = yes ; then 
 if test "$bashWorks" = yes ; then cp -f src/env/mpicxx.bash src/env/mpicxx ; fi
@@ -2095,14 +2505,14 @@ AC_LANG_C
 # Look for perl.  Perl is used *only* in the tests of the commands such as
 # mpiexec, mpicc, etc, in test/commands, and in some of the utility
 # programs for processing log files .  If perl is not found,
-# MPICH2 may still be built and used.
+# MVAPICH2 may still be built and used.
 # We need the full path to perl since we'll use it as the interpreter for
 # a shell script.
 AC_PATH_PROG(PERL,perl)
 # Look for ar.  If we fail, abort
 AC_CHECK_PROGS(AR,ar)
 if test -z "$AR" ; then
-    AC_MSG_ERROR([The program ar is required for building MPICH2.  Make sure that your path includes ar])
+    AC_MSG_ERROR([The program as is required for building MVAPICH2. Make sure that your path includes ar])
 fi
 # Note that we set RANLIB to true if we don't find it (some systems neither
 # need it nor provide it)
@@ -2145,11 +2555,30 @@ AC_SUBST(ETAGSADD)
 export ETAGS
 export ETAGSADD
 
+# Check for the killall program; this can be used in some of the tests
+# in test/commands
+AC_CHECK_PROGS(KILLALL,killall,true)
+
+# Does xargs need the -r option to handle the case where the input 
+# is empty (gnu utils do, Mac OSX does not accept -r)
+xargs_out=`echo "" | xargs ls | wc -l | sed -e 's/ //g'`
+if test "$xargs_out" != "0" ; then
+    XARGS_NODATA_OPT=-r
+fi
+AC_SUBST(XARGS_NODATA_OPT)
+
 # Check for broken handling of common symbols.  There are two fixes:
 # Force ranlib to handle correctly (ranlib -c on some BSD and MAC OS platforms)
 # or force gcc to not generate common symbols if using gcc (-fno-common).
 # This autoconf macro checks for this.
-PAC_PROG_C_BROKEN_COMMON
+
+# Note that if an option is added to CFLAGS, that option MUST NOT appear
+# in WRAPPER_CFLAGS (i.e., the options used in mpicc)
+
+# Also note that it should not be necessary to use this option - it 
+# is almost always possible to avoid "common" symbols, and this approach
+# is gcc-specific (if it needs to choose -fno-common), which we want to avoid.
+dnl PAC_PROG_C_BROKEN_COMMON
 #
 AC_PROG_INSTALL
 PAC_PROG_CHECK_INSTALL_WORKS
@@ -2162,24 +2591,25 @@ PAC_PROG_MAKE
 
 #
 # Check for bash to allow more robust shell scripts
-AC_PATH_PROG(BASH,bash)
+AC_PATH_PROG(BASH_SHELL,bash)
 #
 # Confirm that bash has working arrays.  We can use this to 
 # build more robust versions of the scripts (particularly the 
 # compliation scripts) by taking advantage of the array features in 
 # bash.
 bashWorks=no
-if test -x "$BASH" ; then
+if test -x "$BASH_SHELL" ; then
 changequote(%%,::)dnl
     cat >>conftest <<EOF
-#! /bin/bash
+#! $BASH_SHELL
 A[0]="b"
 A[1]="c"
-if test \${A[1]} != "c" ; then exit 1 ; fi
-exit 0
+rc=1
+if test \${A[1]} != "c" ; then rc=2 ; else rc=0 ; fi
+exit \$rc
 EOF
 changequote([,])dnl
-    AC_MSG_CHECKING([whether $BASH supports arrays])
+    AC_MSG_CHECKING([whether $BASH_SHELL supports arrays])
     chmod +x conftest
     if ./conftest 2>&1 >/dev/null ; then
         bashWorks=yes
@@ -2196,12 +2626,66 @@ fi
 AC_SUBST(BUILD_BASH_SCRIPTS)
 
 # ----------------------------------------------------------------------------
+# Check for the routines and libraries needed for accessing dynamically
+# loaded libraries.
+# This is very approximate for now; it is enough to allow use to experiment
+# with this feature under Linux.
+# ----------------------------------------------------------------------------
+BUILD_DLLS=no
+if test "$enable_dynamiclibs" = "yes" ; then
+    AC_CHECK_HEADERS(dlfcn.h)
+    AC_SEARCH_LIBS(dlopen,dl)
+    AC_CHECK_FUNCS(dlopen dlsym)
+    if test "$ac_cv_func_dlopen" = yes -a \
+            "$ac_cv_func_dlsym"  = yes -a \
+	    "$ac_cv_header_dlfcn_h" = yes ; then
+        AC_DEFINE(USE_DYNAMIC_LIBRARIES,1,[Define if dynamic libraries are available and should be used])
+	if test "$enable_sharedlibs" = no -o "$enable_sharedlibs" = none -o \
+	   -z "$enable_sharedlibs" ; then
+            AC_MSG_ERROR([You must specify --enable-sharedlibs=type when building with dynamic libraries])
+dnl 	    # We still need to determine how to build shared libraries
+dnl   	    AC_MSG_CHECKING([for how to build shared library for dynamically loaded libraries])
+dnl         PAC_CC_SHAREDLIBS(,CC_SHL,C_LINK_SHL)
+dnl 	    PAC_CC_SHLIB_EXT
+dnl 	    if test "$SHLIB_EXT" = "unknown" ; then
+dnl 	        # Guess that the extension is .so
+dnl 	        SHLIB_EXT=so
+dnl 	    fi
+dnl 	    if test "$CC_SHL" = true ; then
+dnl 	        AC_MSG_RESULT([none found])
+dnl                 AC_MSG_WARN([Dynamic library support requires shared libraries])      
+dnl 	    else
+dnl 	        AC_MSG_RESULT($CC_SHL)
+dnl 	        BUILD_DLLS=yes
+dnl         fi
+        fi
+    fi
+    AC_SUBST(BUILD_DLLS)
+
+    # Let the DLL code know where we plan to install the libraries. 
+    # This will make it easier for the user, who may not need 
+    # to set a search path for the library.
+    savePrefix=$prefix
+    saveExecprefix=$exec_prefix
+    test "x$prefix" = xNONE && prefix=$ac_default_prefix
+    test "x$exec_prefix" = xNONE && exec_prefix=$prefix
+    eval MPICH2_LIBDIR=$libdir
+    prefix=$savePrefix
+    exec_prefix=$saveExecprefix
+    MPICH2_LIBDIR='"'$MPICH2_LIBDIR'"'
+    AC_DEFINE_UNQUOTED(MPICH2_LIBDIR,$MPICH2_LIBDIR,[Name of installation directory intended for MVAPICH2])
+fi
+
+# ----------------------------------------------------------------------------
 # Don't setup the shared libraries until we know which compiler we will be
 # using
 PAC_ARG_SHAREDLIBS
 # We allow aliases for enable_sharedlibs, but after ARG_SHAREDLIBS, 
 # enable_sharedlibs contains the cannonical version
 ENABLE_SHLIB="$enable_sharedlibs"
+if test -z "$ENABLE_SHLIB" -o "$ENABLE_SHLIB" = "no" ; then
+    ENABLE_SHLIB=none
+fi
 # Special restrictions for some shared libraries
 # It is difficult to import/export symbols from some shared libraries, so
 # in that case, we require PMPILIBNAME and MPILIBNAME be the same
@@ -2226,6 +2710,7 @@ AC_SUBST(C_LINKPATH_SHL)
 export CC_SHL
 export C_LINK_SHL
 export C_LINKPATH_SHL
+export SHLIB_EXT
 export ENABLE_SHLIB
 export LIBTOOL
 
@@ -2324,7 +2809,7 @@ if test "$with_namepublisher" != no -a "$with_namepublisher" != "none" ; then
     # Note that we always build the Makefile for the file version because
     # this name publisher is really too simple to require a 
     # separate configure, and we might as well include a basic
-    # name publisher with any MPICH2 distribution
+    # name publisher with any MVAPICH2 distribution
     # We DO need to extract the directory name that is used for writing 
     # the files, with the User's home directory as the default
     nameserv_name="file"
@@ -2413,6 +2898,17 @@ Fortran (the Fortran standard requires it).
 You may need to specify an additional argument to your C compiler to 
 force it to allow unaligned accesses.)])
 fi
+# Check for __func__ (defined in C99) or __FUNCTION__ (defined in older GCC)
+AC_CACHE_CHECK([whether $CC supports __func__],pac_cv_cc_has___func__,
+[AC_TRY_COMPILE([],
+ [const char *cp = __func__; ],pac_cv_cc_has___func__=yes,
+pac_cv_cc_has___func__=no)])
+if test "$pac_cv_cc_has___func__" != "yes" ; then
+    AC_CACHE_CHECK([whether $CC supports __FUNCTION__],pac_cv_cc_has___FUNCTION__,
+[AC_TRY_COMPILE([],
+ [const char *cp = __FUNCTION__;],pac_cv_cc_has___FUNCTION__=yes,
+pac_cv_cc_has___FUNCTION__=no)])
+fi
 
 # ----------------------------------------------------------------------------
 # Attempt to support dependency handling
@@ -2458,7 +2954,7 @@ if test "$enable_dependencies" = "default" ; then
     # even if a different compiler (e.g., pgcc) is selected for
     # compiling the code.  This will normally be adequate, even
     # if gcc points to different system header files, we're really
-    # only interested in dependencies on the MPICH2 source files.
+    # only interested in dependencies on the MVAPICH2 source files.
     if test "$enable_dependencies" = "gcc" ; then
         AC_MSG_RESULT([Using gcc to determine dependencies])
     fi
@@ -2547,7 +3043,10 @@ elif test "$pac_cv_c_max_fp_align" = "eight" ; then
 elif test "$pac_cv_c_max_fp_align" = "sixteen" ; then
     pac_cv_c_fp_align_nr=16
 elif test "$pac_cv_c_max_fp_align" = "largest" ; then
-    AC_MSG_ERROR([Configure detected unsupported structure alignment rules.  Please email mpich2-maint@mcs.anl.gov with complete configure output and information on architecture.])
+dnl <_OSU_MVAPICH_>
+dnl    AC_MSG_ERROR([Configure detected unsupported structure alignment rules.  Please email mpich2-maint@mcs.anl.gov with complete configure output and information on architecture.])
+    AC_MSG_ERROR([Configure detected unsupported structure alignment rules.  Please email mvapich-discuss@cse.ohio-state.edu with complete configure output and information on architecture.])
+dnl <_OSU_MVAPICH_>
 fi
 
 if test -n "$pac_cv_c_fp_align_nr" ; then
@@ -2563,7 +3062,7 @@ if test "$pac_cv_have_long_double" = yes ; then
     # we need to do something else in the alignment rule code.
     if test "$pac_cv_c_max_fp_align" != "$pac_cv_c_max_longdouble_fp_align" -o \
             "$pac_cv_c_max_fp_align" != "$pac_cv_c_max_double_fp_align" ; then
-        AC_MSG_WARN([Structures containing long doubles may be aligned differently from structures with floats or longs.  MPICH2 does not handle this case automatically and you should avoid assumed extents for structures containing float types.])
+        AC_MSG_WARN([Structures containing long doubles may be aligned differently from structures with floats or longs.  MVAPICH2 does not handle this case automatically and you should avoid assumed extents for structures containing float types.])
 
 	double_align=-1
 	case $pac_cv_c_max_double_fp_align in 
@@ -2634,10 +3133,15 @@ fi
 # Get the size of the C types for encoding in the basic datatypes and for
 # the specific-sized integers
 AC_CHECK_SIZEOF(char,$CROSS_SIZEOF_CHAR)
+AC_CHECK_SIZEOF(unsigned char,$CROSS_SIZEOF_UCHAR)
 AC_CHECK_SIZEOF(short,$CROSS_SIZEOF_SHORT)
+AC_CHECK_SIZEOF(unsigned short,$CROSS_SIZEOF_USHORT)
 AC_CHECK_SIZEOF(int,$CROSS_SIZEOF_INT)
+AC_CHECK_SIZEOF(unsigned int,$CROSS_SIZEOF_UINT)
 AC_CHECK_SIZEOF(long,$CROSS_SIZEOF_LONG)
+AC_CHECK_SIZEOF(unsigned long,$CROSS_SIZEOF_ULONG)
 AC_CHECK_SIZEOF(long long,$CROSS_SIZEOF_LONG_LONG)
+AC_CHECK_SIZEOF(unsigned long long,$CROSS_SIZEOF_ULONG_LONG)
 AC_CHECK_SIZEOF(float,$CROSS_SIZEOF_FLOAT)
 AC_CHECK_SIZEOF(double,$CROSS_SIZEOF_DOUBLE)
 AC_CHECK_SIZEOF(long double,$CROSS_SIZEOF_LONG_DOUBLE)
@@ -2753,6 +3257,141 @@ if test "$pac_cv_int64_t" = "no" ; then
 else
     AC_DEFINE(HAVE_INT64_T,1,[Define if int64_t is supported by the C compiler])
 fi
+
+# A C99 compliant compiler should have inttypes.h for fixed-size int types
+AC_CHECK_HEADER(inttypes.h)
+
+# Check for availability of uint8_t, uint16_t, uint32_t, uint64_t
+if test "$ac_cv_header_inttypes.h" = "yes" ; then
+	AC_CACHE_CHECK([for uint8_t],pac_cv_uint8_t,[
+	AC_TRY_COMPILE([#include <inttypes.h>],
+	[uint8_t a=0;],
+	pac_cv_uint8_t=yes,pac_cv_uint8_t=no)])
+	AC_CACHE_CHECK([for uint16_t],pac_cv_uint16_t,[
+	AC_TRY_COMPILE([#include <inttypes.h>],
+	[uint16_t a=0;],
+	pac_cv_uint16_t=yes,pac_cv_uint16_t=no)])
+	AC_CACHE_CHECK([for uint32_t],pac_cv_uint32_t,[
+	AC_TRY_COMPILE([#include <inttypes.h>],
+	[uint32_t a=0;],
+	pac_cv_uint32_t=yes,pac_cv_uint32_t=no)])
+	AC_CACHE_CHECK([for uint64_t],pac_cv_uint64_t,[
+	AC_TRY_COMPILE([#include <inttypes.h>],
+	[uint64_t a=0;],
+	pac_cv_uint64_t=yes,pac_cv_uint64_t=no)])
+else
+	AC_CACHE_CHECK([for uint8_t],pac_cv_uint8_t,[
+	AC_TRY_COMPILE([#include <sys/types.h>
+	$use_bitypes
+	],[uint8_t a=0;],
+	pac_cv_uint8_t=yes,pac_cv_uint8_t=no)])
+	AC_CACHE_CHECK([for uint16_t],pac_cv_uint16_t,[
+	AC_TRY_COMPILE([#include <sys/types.h>
+	$use_bitypes
+	],[uint16_t a=0;],
+	pac_cv_uint16_t=yes,pac_cv_uint16_t=no)])
+	AC_CACHE_CHECK([for uint32_t],pac_cv_uint32_t,[
+	AC_TRY_COMPILE([#include <sys/types.h>
+	$use_bitypes
+	],[uint32_t a=0;],
+	pac_cv_uint32_t=yes,pac_cv_uint32_t=no)])
+	AC_CACHE_CHECK([for uint64_t],pac_cv_uint64_t,[
+	AC_TRY_COMPILE([#include <sys/types.h>
+	$use_bitypes
+	],[uint64_t a=0;],
+	pac_cv_uint64_t=yes,pac_cv_uint64_t=no)])
+fi
+
+# Fallback types for uint8_t
+if test "$pac_cv_uint8_t" = "no" ; then
+	# Check if u_int8_t is available
+	AC_CACHE_CHECK([for u_int8_t],pac_cv_u_int8_t,[
+	AC_TRY_COMPILE([#include <sys/types.h>
+	$use_bitypes
+	],[u_int8_t a=0;],
+	pac_cv_u_int8_t=yes,pac_cv_u_int8_t=no)])
+	if test "$pac_cv_u_int8_t" = "yes" ; then
+		UINT8_T="u_int8_t"
+    elif test "$ac_cv_sizeof_unsigned_char" = 1 ; then 
+        UINT8_T="unsigned char"
+    else
+        # No good option - Non-compliant C compilers?
+        UINT8_T="unsigned int"
+    fi
+    AC_SUBST(UINT8_T)
+    AC_DEFINE_UNQUOTED(MPIU_UINT8_T,$UINT8_T,[Define for the 8 bit unsigned integer type])
+else
+    AC_DEFINE(HAVE_UINT8_T,1,[Define if uint8_t is supported by the C compiler])
+fi
+
+# Fallback types for uint16_t
+if test "$pac_cv_uint16_t" = "no" ; then
+# Check if u_int16_t is available
+	AC_CACHE_CHECK([for u_int16_t],pac_cv_u_int16_t,[
+	AC_TRY_COMPILE([#include <sys/types.h>
+	$use_bitypes
+	],[u_int16_t a=0;],
+	pac_cv_u_int16_t=yes,pac_cv_u_int16_t=no)])
+	if test "$pac_cv_u_int16_t" = "yes" ; then
+		UINT16_T="u_int16_t"
+    elif test "$ac_cv_sizeof_unsigned_short" = 2 ; then 
+        UINT16_T="unsigned short"
+    else
+        # No good option
+        UINT16_T="unsigned int"
+    fi
+    AC_SUBST(UINT16_T)
+    AC_DEFINE_UNQUOTED(MPIU_UINT16_T,$UINT16_T,[Define for the 16 bit unsigned integer type])
+else
+    AC_DEFINE(HAVE_UINT16_T,1,[Define if uint16_t is supported by the C compiler])
+fi
+
+# Fallback types for uint32_t
+if test "$pac_cv_uint32_t" = "no" ; then
+# Check if u_int32_t is available
+	AC_CACHE_CHECK([for u_int32_t],pac_cv_u_int32_t,[
+	AC_TRY_COMPILE([#include <sys/types.h>
+	$use_bitypes
+	],[u_int32_t a=0;],
+	pac_cv_u_int32_t=yes,pac_cv_u_int32_t=no)])
+	if test "$pac_cv_u_int32_t" = "yes" ; then
+		UINT32_T="u_int32_t"
+    elif test "$ac_cv_sizeof_unsigned_int" = 4 ; then 
+        UINT32_T="unsigned int"
+    else
+        # No good option
+        UINT32_T="unsigned int"
+    fi
+    AC_SUBST(UINT32_T)
+    AC_DEFINE_UNQUOTED(MPIU_UINT32_T,$UINT32_T,[Define for the 32 bit unsigned integer type])
+else
+    AC_DEFINE(HAVE_UINT32_T,1,[Define if uint32_t is supported by the C compiler])
+fi
+
+# Fallback types for uint64_t
+if test "$pac_cv_uint64_t" = "no" ; then
+# Check if u_int64_t is available
+	AC_CACHE_CHECK([for u_int64_t],pac_cv_u_int64_t,[
+	AC_TRY_COMPILE([#include <sys/types.h>
+	$use_bitypes
+	],[u_int64_t a=0;],
+	pac_cv_u_int64_t=yes,pac_cv_u_int64_t=no)])
+	if test "$pac_cv_u_int64_t" = "yes" ; then
+		UINT64_T="u_int64_t"
+    elif test "$ac_cv_sizeof_unsigned_long" = 8 ; then 
+        UINT64_T="unsigned long"
+    elif test "$ac_cv_sizeof_unsigned_long_long" = 8 ; then 
+        UINT64_T="unsigned long long"
+    else
+        # No good option
+        UINT64_T="unsigned int"
+    fi
+    AC_SUBST(UINT64_T)
+    AC_DEFINE_UNQUOTED(MPIU_UINT64_T,$UINT64_T,[Define for the 64 bit unsigned integer type])
+else
+    AC_DEFINE(HAVE_UINT64_T,1,[Define if uint64_t is supported by the C compiler])
+fi
+
 # Generate a hex version of the size of each type
 for type in short int long long_long float double long_double wchar_t \
     float_int double_int long_int short_int 2_int long_double_int ; do
@@ -3110,10 +3749,12 @@ if test "$enable_f77" = yes ; then
     # Convert to two digit hex
     len=$len_integer
     #
-    # Take len and turn it into two hex digits (there are 8 bits available
-    # in the built-in datatype handle for the length; see
-    # src/mpid/common/datatype/mpid_datatype.h).  This code is taken
-    # from the code in mpich2/configure.in 
+dnl <_OSU_MVAPICH_>
+dnl    # Take len and turn it into two hex digits (there are 8 bits available
+dnl    # in the built-in datatype handle for the length; see
+dnl    # src/mpid/common/datatype/mpid_datatype.h).  This code is taken
+dnl    # from the code in mpich2/configure.in 
+dnl </_OSU_MVAPICH_>
     if test "$len" -gt 255 ; then
         AC_MSG_ERROR([Type sizes greater than 255 bytes are not supported (type INTEGER is $len bytes)]) 
     fi
@@ -3157,10 +3798,12 @@ if test "$enable_f77" = yes ; then
     # Convert to two digit hex
     len=$len_double
     #
-    # Take len and turn it into two hex digits (there are 8 bits available
-    # in the built-in datatype handle for the length; see
-    # src/mpid/common/datatype/mpid_datatype.h).  This code is taken
-    # from the code in mpich2/configure.in 
+dnl <_OSU_MVAPICH_>
+dnl    # Take len and turn it into two hex digits (there are 8 bits available
+dnl    # in the built-in datatype handle for the length; see
+dnl    # src/mpid/common/datatype/mpid_datatype.h).  This code is taken
+dnl    # from the code in mpich2/configure.in 
+dnl </_OSU_MVAPICH_>
     if test "$len" -gt 255 ; then
         AC_MSG_ERROR([Type sizes greater than 255 bytes are not supported (type DOUBLE is $len bytes)]) 
     fi
@@ -3208,10 +3851,12 @@ if test "$enable_f77" = yes ; then
     fi
     len=$len_doublecplx
     #
-    # Take len and turn it into two hex digits (there are 8 bits available
-    # in the built-in datatype handle for the length; see
-    # src/mpid/common/datatype/mpid_datatype.h).  This code is taken
-    # from the code in mpich2/configure.in 
+dnl <_OSU_MVAPICH_>
+dnl    # Take len and turn it into two hex digits (there are 8 bits available
+dnl    # in the built-in datatype handle for the length; see
+dnl    # src/mpid/common/datatype/mpid_datatype.h).  This code is taken
+dnl    # from the code in mpich2/configure.in 
+dnl </_OSU_MVAPICH_>
     if test "$len" -gt 255 ; then
         AC_MSG_ERROR([Type sizes greater than 255 bytes are not supported (type DOUBLE COMPLEX is $len bytes)]) 
     fi
@@ -3492,7 +4137,9 @@ if test "$enable_f77" = yes ; then
     if test "$MPI_FINT" = "int" ; then
         AC_DEFINE(HAVE_FINT_IS_INT,1,[Define if Fortran integer are the same size as C ints])
     elif test "$SIZEOF_F77_INTEGER" != "$ac_cv_sizeof_int" ; then
-        AC_MSG_WARN([Fortran integers and C ints are not the same size.  The current Fortran binding does not support this case])
+        # Make this fatal because we do not want to build a broken fortran
+	# interface
+        AC_MSG_ERROR([Fortran integers and C ints are not the same size.  The current Fortran binding does not support this case.  Either force the Fortran compiler to use integers of $ac_cv_sizeof_int bytes, or use --disable-f77 on the configure line for MVAPICH2.])
     fi
 
     #
@@ -3703,6 +4350,7 @@ EOF
             PAC_PROG_F90_INT_KIND(simpleintkind,${pac_cv_f77_sizeof_integer})
             if test "$simpleintkind" = "-1" ; then
 	        # Wild guess; probably means that Fortran 90 is not available
+		AC_MSG_WARN([Unable to determine Fortran 90 KIND values for either address-sized integers or offset-sized integers.  Using 4 in that case.])
                 simpleintkind=4
             fi
             if test "$ADDRESS_KIND" = "-1" ; then
@@ -3720,6 +4368,20 @@ EOF
     fi
     if test -z "$OFFSET_KIND" ; then
         OFFSET_KIND=0
+    fi
+    # Note, however, that zero value are (in all practical case) invalid 
+    # for Fortran 90, and indicate a failure.  Test and fail if Fortran 90
+    # enabled.
+    if test "$enable_f90" = "yes" ; then
+        if test "$ADDRESS_KIND" -le 0 -o "$OFFSET_KIND" -le 0 ; then
+dnl <_OSU_MVAPICH_>
+dnl	    AC_MSG_ERROR([Unable to determine Fortran integer kinds for MPI types.  If you do not need Fortran 90, add --disable-f90 to the configure options.  If you need Fortran 90, please send the output of configure and the file config.log to mpich2-maint@mcs.anl.gov .])
+            AC_MSG_ERROR([Unable to determine Fortran integer kinds for MPI types.  If you do not need Fortran 90, add --disable-f90 to the configure options.  If you need Fortran 90, please send the output of configure and the file config.log to mvapich-discuss@cse.ohio-state.edu.])
+dnl </_OSU_MVAPICH_>
+	    # If the above is converted to a warning, you need to change 
+	    # enable_f90 and remote f90 from the bindings
+	    enable_f90=no
+        fi
     fi
     AC_SUBST(ADDRESS_KIND)
     AC_SUBST(OFFSET_KIND)
@@ -3745,11 +4407,6 @@ EOF
     AC_SUBST(DLLIMPORT)
 
     # FIXME:
-    # Eventually, need to add 
-    # SIZEOF_F90_INTEGER
-    # SIZEOF_F90_REAL
-    # SIZEOF_F90_CHARACTER
-    # SIZEOF_F90_DOUBLE_PRECISION
     # We also need to include
     # SIZEOF_F90_MPI_OFFSET
     # SIZEOF_F90_MPI_AINT
@@ -3782,6 +4439,36 @@ EOF
     AC_SUBST(SIZEOF_F90_DOUBLE_PRECISION)
     AC_SUBST(SIZEOF_F90_CHARACTER)
 
+    # REQD is short for "real equal double precision" and is set to the
+    # Fortran 90 comment character if true.  This is necessary to
+    # allow the mpi_sizeofs module to be built, since if this part of the
+    # Fortran standard is violated by the compiler (unfortunately common,
+    # as some applications are written to require this non-standard 
+    # version), the double precision versions of the MPI_SIZEOF routine
+    # must be commented out of the module (!).
+    REQD=
+    if test "$SIZEOF_F90_REAL" = "$SIZEOF_F90_DOUBLE_PRECISION" ; then
+        REQD="!"
+    fi
+    AC_SUBST(REQD)
+    # Is integer*1 supported, and is it a different size than integer?
+    REQI1="!"
+    if test "$pac_cv_fort_integer1" = yes -a "$SIZEOF_F90_INTEGER" != 1 ; then
+        REQI1=
+    fi
+    AC_SUBST(REQI1)
+    # Is integer*2 supported, and is it a different size than integer?
+    REQI2="!"
+    if test "$pac_cv_fort_integer2" = yes -a "$SIZEOF_F90_INTEGER" != 2 ; then
+        REQI2=
+    fi
+    AC_SUBST(REQI2)
+    # Is integer*8 supported, and is it a different size than integer?
+    REQI8="!"
+    if test "$pac_cv_fort_integer8" = yes -a "$SIZEOF_F90_INTEGER" != 8 ; then
+        REQI8=
+    fi
+    AC_SUBST(REQI8)
     # 
 
     AC_LANG_C
@@ -4083,12 +4770,14 @@ fi
 if test "$enable_coverage" = "yes" ; then
     if test "$ac_cv_prog_gcc" = "yes" ; then
         CFLAGS="$CFLAGS -fprofile-arcs -ftest-coverage"
+        MPICH2_EXTRA_CFLAGS="$MPICH2_EXTRA_CFLAGS -fprofile-arcs -ftest-coverage"
     else
         AC_MSG_WARN([--enable-coverage only supported for GCC])
     fi
     if test "$enable_cxx" = "yes" ; then
         if test "$ac_cv_cxx_compiler_gnu" = "yes" ; then
             CXXFLAGS="$CXXFLAGS -fprofile-arcs -ftest-coverage"
+            MPICH2_EXTRA_CXXFLAGS="$MPICH2_EXTRA_CXXFLAGS -fprofile-arcs -ftest-coverage"
         else
             AC_MSG_WARN([--enable-coverage only supported for GCC])
         fi
@@ -4098,15 +4787,17 @@ if test "$enable_coverage" = "yes" ; then
     if test "$enable_f77" = yes ; then
         if test "$ac_cv_f77_compiler_gnu" = "yes" ; then
              FFLAGS="$FFLAGS -fprofile-arcs -ftest-coverage"
+             MPICH2_EXTRA_FFLAGS="$MPICH2_EXTRA_FFLAGS -fprofile-arcs -ftest-coverage"
         else
-	     AC_MSG_WARN([--enable-coverage only supported for G77/GFORTRAN])
+            AC_MSG_WARN([--enable-coverage only supported for G77/GFORTRAN])
         fi
     fi
     if test "$enable_f90" = yes ; then
         if test "$ac_cv_f90_compiler_gnu" = "yes" ; then
              F90FLAGS="$F90FLAGS -fprofile-arcs -ftest-coverage"
+             MPICH2_EXTRA_F90FLAGS="$MPICH2_EXTRA_F90FLAGS -fprofile-arcs -ftest-coverage"
         else
-	     AC_MSG_WARN([--enable-coverage only supported for GFORTRAN])
+            AC_MSG_WARN([--enable-coverage only supported for GFORTRAN])
         fi
     fi
     # Test for the routines that we need to use to ensure that the
@@ -4123,7 +4814,7 @@ AC_HEADER_STDC
 # Grrr.  OS/X fails the test for sys/uio.h because uio *requires* sys/types.h
 # to compile.  Thus, we'll make that a separate test
 # stddef.h is sometimes needed for types like wchar_t
-AC_CHECK_HEADERS(stdlib.h stdarg.h sys/types.h inttypes.h limits.h stddef.h errno.h sys/socket.h sys/time.h unistd.h endian.h)
+AC_CHECK_HEADERS(stdlib.h stdarg.h sys/types.h inttypes.h limits.h stddef.h errno.h sys/socket.h sys/time.h unistd.h endian.h assert.h)
 AC_CACHE_CHECK([for sys/uio.h],ac_cv_header_sys_uio_h,[
 AC_TRY_COMPILE([
 #include <sys/types.h>
@@ -4141,7 +4832,9 @@ AC_CHECK_FUNCS(setitimer alarm)
 # These are used for error reporting
 AC_CHECK_FUNCS(vsnprintf vsprintf)
 if test "$ac_cv_func_vsnprintf" = "yes" ; then
-    PAC_FUNC_NEEDS_DECL([#include <stdarg.h>],vsnprintf)
+    # vsnprintf may be declared in stdio.h and may need stdarg.h 
+    PAC_FUNC_NEEDS_DECL([#include <stdio.h>
+#include <stdarg.h>],vsnprintf)
 fi
 # We would like to use strerror in the file namepublisher; it is also used
 # in MPIU_Strerror (whose implementation is broken if strerror is not found)
@@ -4189,6 +4882,7 @@ void foo1( char *fmt, ... ) {
     AC_DEFINE(HAVE___VA_COPY,1,[Define if we have __va_copy])
     fi
 fi
+ 
 dnl
 dnl If internationalization selected, try to find the needed functions
 dnl if test "$enable_internat" = "yes" ; then
@@ -4204,6 +4898,12 @@ dnl     fi
 dnl fi
 # Check for alloca function.  May set HAVE_ALLOCA_H and HAVE_ALLOCA
 AC_FUNC_ALLOCA
+# We don't use alloca unless USE_ALLOCA is also set.
+AC_ARG_ENABLE(alloca,
+[--enable-alloca - Use alloca to allocate temporary memory if available],,enable_alloca=no)
+if test "$enable_alloca" = yes ; then
+    AC_DEFINE(USE_ALLOCA,1,[Define if alloca should be used if available])
+fi
 
 if test "$enable_g_mem" != "yes" ; then
     # Strdup is needed only if memory tracing is not enabled.
@@ -4239,7 +4939,11 @@ fi
 #  --enable-timer-type=name argument and selects the timer based on 
 # both that field and what configure is able to determine is available.
 # The file src/include/mpichtimer.h is also created.
-
+# Note that at least the handling of the "device" option must come *after* 
+# the setup_device script is loaded so that the device can set the appropriate
+# fields.  For now, we've split this so that there is an update to the timer
+# after the setup_device script is loaded, but we should consider moving
+# this entire block.
 # ----------------------------------------------------------------------------
 # Default type for timer stamp.
 MPID_TIMER_TYPE=long
@@ -4265,11 +4969,16 @@ dnl We also allow --enable-timer-type=name to select a timer type
 AC_ARG_ENABLE(timer-type,[--enable-timer-type=name - Select the timer to use
 for MPI_Wtime and internal timestamps.  name may be one of
     gethrtime - Solaris timer (Solaris systems only)
-    clock_gettime   - Posix timer (where available)
+    clock_gettime - Posix timer (where available)
     gettimeofday - Most Unix systems
-    linux86_cycle - Linux x86; returns cycle counts, not time in seconds
-    linuxalpha_cycle - Like linux86_cycle, but for Linux Alpha
-    gcc_ia64_cycle - IPF ar.itc timer
+    linux86_cycle - Linux x86; returns cycle counts, not time in seconds*
+    linuxalpha_cycle - Like linux86_cycle, but for Linux Alpha*
+    gcc_ia64_cycle - IPF ar.itc timer*
+    device - The timer is provided by the device
+       *Note that the cycle timers are intended to be used by MVAPICH2
+        developers for internal low-level timing.  Normal users should
+        not use these as they are not guaranteed to be accurate in
+        certain situations.
     ],timer_type=$enable_timer_type)
 
 if test -z "$timer_type" ; then 
@@ -4397,16 +5106,42 @@ pac_cv_posix_clock_realtime=no)
     ;;
 
     linux86_cycle|linux86_cycle_2)
+    
     AC_CACHE_CHECK([that linux86 cycle counter is available],
-pac_cv_linux86_cycle,[
-    AC_TRY_COMPILE(,[
-    long long var, *var_ptr=&var;
-    __asm__ __volatile__  ( "cpuid ; rdtsc ; mov %%edx,%1 ; mov %%eax,%0" 
-                            : "=m" (*((char *) (var_ptr))), 
-                              "=m" (*(((char *) (var_ptr))+4)) 
-                            :: "eax", "ebx", "ecx", "edx" ); 
-],pac_cv_linux86_cycle=yes,pac_cv_linux86_cycle=no)])
-    if test "$pac_cv_linux86_cycle" != "yes" ; then
+        pac_cv_linux86_cycle,[
+            AC_TRY_COMPILE(,[
+                long long var, *var_ptr=&var;
+		__asm__ __volatile__("rdtscp; shl \$32, %%rdx; or %%rdx, %%rax" : "=a" (*var_ptr) : : "ecx", "rdx");
+            ],pac_cv_linux86_cycle=rdtscp,
+                AC_TRY_COMPILE(,[
+	            long long var, *var_ptr=&var;
+		    __asm__ __volatile__("push %%ebx ; cpuid ; rdtsc ; pop %%ebx" : "=A" (*var_ptr) : : "ecx");
+                ],pac_cv_linux86_cycle=cpuid_rdtsc,
+                    AC_TRY_COMPILE(,[[
+	                long long var, *var_ptr=&var;
+	                __asm__ __volatile__("rdtsc" : "=A" (*var_ptr));
+                    ]],pac_cv_linux86_cycle=rdtsc,
+		    pac_cv_linux86_cycle=no)
+                )
+            )
+    ])
+
+    case "$pac_cv_linux86_cycle" in
+        "rdtscp")
+            AC_DEFINE(LINUX86_CYCLE_RDTSCP,1,[Define which x86 cycle counter to use])
+	    ;;
+        "cpuid_rdtsc")
+            AC_DEFINE(LINUX86_CYCLE_CPUID_RDTSC,1,[Define which x86 cycle counter to use])
+	    ;;
+        "rdtsc")
+            AC_DEFINE(LINUX86_CYCLE_RDTSC,1,[Define which x86 cycle counter to use])
+	    ;;
+        *)
+            cpu_gcc_x86_cycle=no
+	    ;;
+    esac
+
+    if test "$cpu_gcc_x86_cycle" == "no" ; then
         AC_MSG_ERROR([Linux86 cycle counter is not available on this system and or with the $CC compiler])
     fi
     MPID_TIMER_TYPE="long long"
@@ -4443,6 +5178,14 @@ pac_cv_linuxalpha_cycle,[
     MPID_TIMER_TYPE="long"
     ;;
 
+    device)
+    # The device selected should export the datatype for the timer
+    # in MPID_DEVICE_TIMER_TYPE if something other than long is needed
+    if test -n "$MPID_DEVICE_TIMER_TYPE" ; then 
+       MPID_TIMER_TYPE=$MPID_DEVICE_TIMER_TYPE
+    fi
+    ;;
+
     *)
     AC_MSG_ERROR([Invalid timer type $timer_type])
     ;;
@@ -4463,13 +5206,39 @@ for type in int long long_long short ; do
     eval len=\$ac_cv_sizeof_$type
     if test "$len" = "$ac_cv_sizeof_void_p" ; then
         MPI_AINT=`echo $type | sed -e 's/_/ /'`
-	# Make the sizeof AINT available to other configures
-	MPI_SIZEOF_AINT=$len
-	export MPI_SIZEOF_AINT
+        # Make the sizeof AINT available to other configures
+        MPI_SIZEOF_AINT=$len
+        export MPI_SIZEOF_AINT
+        case $type in
+            int)
+                MPI_AINT_FMT_DEC_SPEC="%d"
+                MPI_AINT_FMT_HEX_SPEC="%x"
+                ;;
+            long)
+                MPI_AINT_FMT_DEC_SPEC="%ld"
+                MPI_AINT_FMT_HEX_SPEC="%lx"
+                ;;
+            long_long)
+                MPI_AINT_FMT_DEC_SPEC="%lld"
+                MPI_AINT_FMT_HEX_SPEC="%llx"
+                ;;
+            short)
+                MPI_AINT_FMT_DEC_SPEC="%hd"
+                MPI_AINT_FMT_HEX_SPEC="%hx"
+                ;;
+            *)
+                AC_MSG_WARN([unable to determine format specifiers for MPI_Aint, defaulting to int])
+                MPI_AINT_FMT_DEC_SPEC="%d"
+                MPI_AINT_FMT_HEX_SPEC="%x"
+            ;;
+        esac
+        export MPI_AINT_FMT_DEC_SPEC MPI_AINT_FMT_HEX_SPEC
         break
     fi
 done
 AC_SUBST(MPI_AINT)
+AC_SUBST(MPI_AINT_FMT_DEC_SPEC)
+AC_SUBST(MPI_AINT_FMT_HEX_SPEC)
 
 # If sizeof(mpi_aint) = sizeof(int), set this value
 if test "$ac_cv_sizeof_int" = "$ac_cv_sizeof_void_p" ; then
@@ -4496,6 +5265,11 @@ AC_DEFINE_UNQUOTED(MPIU_SIZE_T,$MPIU_SIZE_T,[Set to a type that can express the 
 #   LIBS - Add libraries needed for linking
 #   LDFLAGS - Add other LD flags (e.g., search paths for libraries)
 #   CPPFLAGS - Add C preprocessor flags, including -Idir
+#   MPICH2_INCLUDE_FLAGS - A preferred alternative to adding 
+#              directories needed for include paths.  This should include
+#              directories that are *not* needed for any configure tests
+#              (e.g., if including the directory would change the result
+#              of a test, then that include flag should go into CPPFLAGS)
 #   DEFS  - Add C preprocessor definitions, e.g., -Dfoo
 # These must be updated, not replaced, so the setup_device script should
 # do, e.g., 
@@ -4512,6 +5286,15 @@ if test -f $devicedir/setup_device ; then
     echo sourcing $devicedir/setup_device
     . $devicedir/setup_device
 fi
+# See if we need to update the timer type
+if test "$timer_type" = "device" ; then
+    # The device selected should export the datatype for the timer
+    # in MPID_DEVICE_TIMER_TYPE if something other than long is needed
+    if test -n "$MPID_DEVICE_TIMER_TYPE" ; then 
+       MPID_TIMER_TYPE=$MPID_DEVICE_TIMER_TYPE
+    fi
+fi
+
 dnl Configure any subdirectories.  Note that config.status will *not* 
 dnl reexecute these!
 dnl Export any important variables first:
@@ -4531,6 +5314,7 @@ export MPILIBNAME
 export PMPILIBNAME
 export CC
 export CPPFLAGS
+export MPICH2_INCLUDE_FLAGS
 export LIBS
 export CXX
 export CXXFLAGS
@@ -4567,6 +5351,7 @@ if test "$with_thread_package" = "yes" ; then
     with_thread_package=posix
 fi
 
+MPICH2_THREAD_PACKAGE=none
 case $with_thread_package in 
     posix|pthreads)
 	with_thread_package=posix
@@ -4611,7 +5396,31 @@ int main() {
             fi
 	fi
 	fi
+	# Check for a routine that specify a routine to call on 
+	# thread exit.  We can use this to release memory that may
+	# be allocated by the MVAPICH2 library in the thread.  
+	# A complication: pthread_cleanup_push may be a macro; in that
+	# case, check_funcs will fail to find it.
+	# Under OSX, pthread_cleanup_push and pop are macros that must
+	# appear together in the same lexical scope, and hence are
+	# really useless in libraries that may allocate data within 
+	# a user-managed thread.
+	AC_CHECK_FUNCS(pthread_cleanup_push)
+	if test "$ac_cv_func_pthread_cleanup_push" = "no" ; then
+            AC_CACHE_CHECK([whether pthread_cleanup_push is available (may be a macro in pthread.h)],pac_cv_func_pthread_cleanup_push,[
+	    AC_TRY_LINK([
+#include <pthread.h>
+void f1(void *a) { return; }],
+[pthread_cleanup_push( f1, (void *)0 );],
+            pac_cv_func_pthread_cleanup_push=yes,
+            pac_cv_func_pthread_cleanup_push=no)])
+            if test "$pac_cv_func_pthread_cleanup_push" = yes ; then
+	        AC_DEFINE(HAVE_PTHREAD_CLEANUP_PUSH_MACRO,1,[Define if pthread_cleanup_push is available, even as a macro])
+            fi
+    
+        fi
 	THR_LIBS="$THR_LIBS -lpthread"
+	MPICH2_THREAD_PACKAGE=pthreads
 	;;
     solaris)
 	AC_CHECK_HEADERS(thread.h)
@@ -4621,6 +5430,7 @@ int main() {
 	   AC_MSG_ERROR([unable to find Solaris threads library])
 	fi
 	# FIXME: need to add -mt if using solaris compilers
+	MPICH2_THREAD_PACKAGE=solaris
 	;;
     no|none)
 	with_thread_package=none
@@ -4630,13 +5440,17 @@ int main() {
 	;;
 esac
 
+# Define and export the selected thread library so that other packages, 
+# such as MPE, will know what's used in MVAPICH2
+export MPICH2_THREAD_PACKAGE
+
 AC_CHECK_FUNCS(sched_yield yield usleep sleep select)
 
 #
-# THR_LDFLAGS are added to the MPI_LDFLAGS (used to link user MPI programs)
+# THR_LDFLAGS are added to the WRAPPER_LDFLAGS (used to link user MPI programs)
 # THR_CFLAGS should be used only to compile the MPI library, not to compile
 # user programs.  We cannot set CFLAGS to THR_CFLAGS because we will
-# use CFLAGS to set MPI_CFLAGS at the end of this configure step.
+# use CFLAGS to set WRAPPER_CFLAGS at the end of this configure step.
 # FIXME: We need to propagate THR_CFLAGS
 if test "$with_thread_package" != "none" ; then
     if $CC -V 2>&1 | grep -i "sun workshop" 2>&1 >/dev/null ; then
@@ -4649,7 +5463,7 @@ if test "$with_thread_package" != "none" ; then
 	THR_LDFLAGS="$THR_LDFLAGS -mt"
     else
 	# FIXME: the reentrant flags belong in DEFS, but DEFS doesn't 
-        # appear to be propagated by MPICH2
+        # appear to be propagated by MVAPICH2
 	# THR_DEFS="$THR_DEFS -D_REENTRANT -D_THREAD_SAFE"
 	THR_CFLAGS="$THR_CFLAGS -D_REENTRANT -D_THREAD_SAFE"
     fi
@@ -4772,26 +5586,7 @@ for subsys in $devsubsystems $subsystems ; do
         ac_sub_configure_args="$ac_sub_configure_args $ac_arg" 
 	;;
 
-dnl
-dnl Don't try this because it can fail for environment variables that
-dnl contain quotes (particularly single quotes).  Rather than try to handle
-dnl all of these cases, we just leave off the cache file
-dnl	changequote(<<,>>)    
-dnl        *=*) 
-dnl        ac_envvar=`expr "x$ac_arg" : 'x\([^=]*\)='`
-dnl	# Recompute the name
-dnl	if test -n "$ac_envvar" ; then
-dnl 	    eval ac_envval=\$"$ac_envvar"
-dnl  	    if test -n "$ac_envval" ; then
-dnl	        ac_narg="$ac_envvar=""'"$ac_envval""'"
-dnl	        ac_sub_configure_args="$ac_sub_configure_args '$ac_narg'"
-dnl            fi
-dnl	else 
-dnl	    ac_sub_configure_args="$ac_sub_configure_args $ac_arg"
-dnl        fi
-dnl    ;;
-dnl
-dnl Here's the problem.  If the user set a few of the special variables
+dnl Here's the problem.  If the user sets a few of the special variables
 dnl such as CPPFLAGS, those original settings will override the
 dnl updated values.  Here's an attempt at a fix
         CPPFLAGS=*)
@@ -4805,24 +5600,17 @@ dnl updated values.  Here's an attempt at a fix
 
 	# add in the correct prefix argument
         ac_sub_configure_args="--prefix=$prefix $ac_sub_configure_args"
-dnl	# If there is a cache file, try to use it
-dnl	if test -n "$cache_file" ; then
-dnl	   case $cache_file in 
-dnl	       [\\/]* | ?:[\\/]* ) ac_sub_cache_file=$cache_file ;;
-dnl	       *) # Relative path.
-dnl	       	ac_sub_cache_file=$ac_top_builddir$cache_file ;;
-dnl	   esac
-dnl	   ac_sub_configure_args="--cache-file=$ac_sub_cache_file $ac_sub_configure_args"
-dnl        elif test -n "$pac_cache_file" ; then
-dnl	    # pac_cache_file is a temporary file
-dnl 	    ac_sub_configure_args="--cache-file=$pac_cache_file $ac_sub_configure_args"
-dnl	fi
-dnl	changequote([,])	
 
 	# Create the directories if necessary
         PAC_MKDIRS($subsys)
 	# We use eval to handle quotes around the arguments added by
 	# autoconf when saving the args
+
+	dnl Copy current CFLAGS, FFLAGS, etc., into
+	dnl MPICH2_INTERNAL_CFLAGS, etc., and export them to the
+	dnl sub-configures. If the sub-configures want, they can replace their
+	dnl CFLAGS with the current CFLAGS through this variable.
+	PAC_MPICH2_INIT()
         if (cd $subsys && eval $use_top_srcdir/$subsys/configure $ac_sub_configure_args ) ; then
 	    :
 	else 
@@ -4997,7 +5785,27 @@ AC_SUBST(FORTRAN_MPI_OFFSET)
 dnl Extra status information, from device subsystem, to be included in the
 dnl declaration of MPI_Status in mpi.h.in
 AC_SUBST(EXTRA_STATUS_DECL)
-
+#
+# See if we can support the type create functions that take 
+# precision and exponent range.  These need are determined by running
+# a configure script in the f90 test directory
+if test "$enable_f77" = yes -a "$enable_f90" = yes ; then
+    # Create the local directory
+    if test ! -d src ; then mkdir src ; fi
+    if test ! -d src/binding ; then mkdir src/binding ; fi
+    if test ! -d src/binding/f90 ; then mkdir src/binding/f90 ; fi
+    export F77
+    export F90
+    echo "Running Configure for F90 Type routines"
+    (cd src/binding/f90 && \
+    $master_top_srcdir/src/binding/f90/configure )
+    rc=$?
+    if test $rc = 0 ; then
+        AC_DEFINE(HAVE_F90_TYPE_ROUTINES,1,[Define if F90 type routines available])
+    else
+        AC_MSG_WARN([Unable to determine F90 type support; defaults used])
+    fi
+fi
 # -----------------------------------------------------------------------------
 # Get the value of MPI_MAX_PROCESSOR_NAME
 if test -z "$MPID_MAX_PROCESSOR_NAME" ; then
@@ -5009,46 +5817,28 @@ else
     MPI_MAX_PROCESSOR_NAME=$MPID_MAX_PROCESSOR_NAME
 fi
 AC_SUBST(MPI_MAX_PROCESSOR_NAME)
-# -----------------------------------------------------------------------------
-# Set the libraries to use in building programs
-if test "$NEEDSPLIB" = "yes" ; then
-    EXAMPLE_LIBS="-l$PMPILIBNAME -l$MPILIBNAME $LIBS"
-else
-    EXAMPLE_LIBS="-l$MPILIBNAME $LIBS"
-fi
-AC_SUBST(EXAMPLE_LIBS)
+
 # default settings for compiler and linker flags 
 # Note:
-#   The MPI_CFLAGS must not contain *all* of the CFLAGS, just the 
+#   The WRAPPER_CFLAGS must not contain *all* of the CFLAGS, just the 
 #   flags needed to compile with the mpi.h header.  Normally, no flags
 #   should be required to compile MPI programs (otherwise, users that choose
 #   not to use the compile scripts will submit bug reports).
-#   For now, we try using no extra Flags.  (Never, ever set MPI_CFLAGS to 
+#   For now, we try using no extra Flags.  (Never, ever set WRAPPER_CFLAGS to 
 #   $CFLAGS)
 #
-# Unlike MPI_CFLAGS, the linker flags will always be needed to ensure that 
+# Unlike WRAPPER_CFLAGS, the linker flags will always be needed to ensure that 
 # all of the required libraries are present.
-MPI_LDFLAGS="$MPI_LDFLAGS $LDFLAGS $THR_LDFLAGS"
-AC_SUBST(MPI_CFLAGS)
-AC_SUBST(MPI_FFLAGS)
-AC_SUBST(MPI_CXXFLAGS)
-AC_SUBST(MPI_F90FLAGS)
-AC_SUBST(MPI_LDFLAGS)
+WRAPPER_LDFLAGS="$WRAPPER_LDFLAGS $LDFLAGS $THR_LDFLAGS"
+AC_SUBST(WRAPPER_CFLAGS)
+AC_SUBST(WRAPPER_CXXFLAGS)
+AC_SUBST(WRAPPER_FFLAGS)
+AC_SUBST(WRAPPER_F90FLAGS)
+AC_SUBST(WRAPPER_LDFLAGS)
 #
 # Add a definition that is used to help support Windows DLLs (used in mpi.h.in)
 MPIU_DLL_SPEC_DEF="#define MPIU_DLL_SPEC"
 AC_SUBST(MPIU_DLL_SPEC_DEF)
-
-# Get the location of the CVS repository, if present
-    # We can use this test (for CVS/Root) for creating maintainer targets
-    # as well, and tests for maintainer-required software, such as 
-    # doctext
-if test -s CVS/Root ; then
-    MPICVSHOME=`cat CVS/Root`
-elif test -s "$srcdir/CVS/Root" ; then
-    MPICVSHOME=`cat $srcdir/CVS/Root`
-fi
-AC_SUBST(MPICVSHOME)
 
 dnl We can include external packages at configure/build time by 
 dnl adding them to EXTERNAL_SRC_DIRS.
@@ -5058,7 +5848,7 @@ dnl We can configure the test directory after the rest of the configure
 dnl steps because it does not depend on them.
 # set and export values that the test/mpi configure will reference to ensure
 # that the correct decisions are made since this configure happens before the
-# MPICH2 library is built. 
+# MVAPICH2 library is built. 
 MPICH2_ENABLE_F77=$enable_f77
 MPICH2_ENABLE_F90=$enable_f90
 MPICH2_ENABLE_CXX=$enable_cxx
@@ -5139,13 +5929,6 @@ includebuild_dir=$includebuild_dir
 libbuild_dir=$libbuild_dir
 bashWorks=$bashWorks)
 
-# move the mpich2version file into the bin directory of the build tree
-AC_OUTPUT_COMMANDS([
-   chmod a+x src/env/mpich2version ;
-   if test ! -d bin  ; then mkdir bin ; fi 
-   cp src/env/mpich2version bin/mpich2version ;
-   chmod a+x bin/mpich2version])
-
 # move the parkill command into the bin directory of the build tree
 AC_OUTPUT_COMMANDS([
    chmod a+x src/env/parkill ;
@@ -5175,7 +5958,7 @@ dnl Note that once dependencies are enabled, we always try to
 dnl update the dependencies (that is usually the desired behavior)
 dnl    find . -type d -exec sh -c '(cd {} && grep MAKE_DEPEND_C Makefile >/dev/null 2>&1 && ( test -d .deps || mkdir .deps ) && touch .deps/alldeps )' \;
 dnl We only apply this to src, as that is the only directory that 
-dnl contains the source files for MPICH2; this avoids running through the
+dnl contains the source files for MVAPICH2; this avoids running through the
 dnl test directories, for example.
 AC_OUTPUT_COMMANDS([if grep 'dependencies:' Makefile >/dev/null 2>&1 ; then
     echo "Updating dependency directories .deps" 
@@ -5200,7 +5983,7 @@ AC_OUTPUT_COMMANDS([chmod a+x test/commands/cmdtests])
 # Set the compiler flags.  There are two components to each of the compiler
 # flags:
 #
-# 1. Flags used to compile MPICH2 but not needed to compile user programs,
+# 1. Flags used to compile MVAPICH2 but not needed to compile user programs,
 #    for example, optimization options.  
 #
 # 2. Flags that change the language accepted by the compiler or the code
@@ -5214,26 +5997,19 @@ AC_OUTPUT_COMMANDS([chmod a+x test/commands/cmdtests])
 # MPICH must be placed in the "usual" places, e.g. CFLAGS (the values
 # are captured during the [AC_INIT] step).
 #
-# Normally, the flags used in 1 and 2 will be the same.  If, for some
-# reason, the user needs different flags in the compilation scripts,
-# they can override the choice in CFLAGS etc. by setting MPI_CFLAGS.
+# Normally, the flags used in 1 and 2 will be the same.  If the user needs
+# different flags in the building MVAPICH2 libraries than those in the
+# compilation scripts, they can set CFLAGS and MPICH2LIB_CFLAGS during
+# configure, where $CFLAGS + $MPICH2LIB_CFLAGS will be used to build
+# MVAPICH2 libraries, only $CFLAGS will be used in the MPI compiler
+# wrapper script.
 #
-if test -z "$MPI_CFLAGS" -a -n "$CFLAGS" ; then
-    MPI_CFLAGS="$CFLAGS"
-fi
-if test -z "$MPI_CXXFLAGS" -a -n "$CXXFLAGS" ; then
-    MPI_CXXFLAGS="$CXXFLAGS"
-fi
-if test -z "$MPI_FFLAGS" -a -n "$FFLAGS" ; then
-    MPI_FFLAGS="$FFLAGS"
-fi
-if test -z "$MPI_F90FLAGS" -a -n "$F90FLAGS" ; then
-    MPI_F90FLAGS="$F90FLAGS"
-fi
-export MPI_CFLAGS
-export MPI_FFLAGS
-export MPI_CXXFLAGS
-export MPI_F90FLAGS
+AC_ARG_VAR( MPICH2LIB_CFLAGS, [extra CFLAGS used in building MVAPICH2 libraries, this flags won't be passed down to the mpicc script(Only standard CFLAGS will be used in the mpicc script).  CFLAGS and MPICH2LIB_CFLAGS are non-overlapping] )
+AC_ARG_VAR( MPICH2LIB_CXXFLAGS, [extra CXXFLAGS used in building MVAPICH2 libraries, this flags won't be passed down to the mpicxx script(Only standard CXXFLAGS will be used in the mpicxx script).  CXXFLAGS and MPICH2LIB_CXXFLAGS are non-overlapping.] )
+AC_ARG_VAR( MPICH2LIB_FFLAGS, [extra FFLAGS used in building MVAPICH2 libraries, this flags won't be passed down to the mpif77 script(Only standard FFLAGS will be used in the mpif77 script).  FFLAGS and MPICH2LIB_FFLAGS are non-overlapping.] )
+AC_ARG_VAR( MPICH2LIB_F90FLAGS, [extra F90FLAGS used in building MVAPICH2 libraries, this flags won't be passed down to the mpif90 script(Only standard F90FLAGS will be used in the mpif90 script).  F90FLAGS and MPICH2LIB_F90FLAGS are non-overlapping.] )
+
+# AC_ARG_VAR( MPICH2LIB_LDFLAGS, [extra LDFLAGS used in building MVAPICH2 libraries, this flags won't be used in any of mpiXXX script.  LDFLAGS and MPICH2LIB_LDFLAGS are non-overlapping.] )
 
 # For the examples, we want to use the scripts to encourage users
 # to use them and to make them work more robustly with shared libraries
@@ -5249,7 +6025,20 @@ AC_SUBST(MPIF90)
 
 AC_DEFINE(HAVE_MPICHCONF,1,[Define so that we can test whether the mpichconf.h file has been included])
 
+# Add the MVAPICH2 include flags to CPPFLAGS.  See the discussion above about
+# which include flags should start in MPICH2_INCLUDE_FLAGS and which in 
+# CPPFLAGS
+CPPFLAGS="$CPPFLAGS $MPICH2_INCLUDE_FLAGS"
+
+dnl Place holder macro for finalize
+PAC_MPICH2_FINALIZE()
+
+dnl
+dnl This includes an experimental pkgconfig file for ch3 in the src/pkgconfig
+dnl directory
 AC_OUTPUT(Makefile src/Makefile src/include/Makefile \
+	  src/include/mpich2info.h \
+	  mvapich2-doxygen \
           src/include/mpichtimer.h \
           src/binding/Makefile \
           src/binding/cxx/Makefile \
@@ -5259,6 +6048,8 @@ AC_OUTPUT(Makefile src/Makefile src/include/Makefile \
 	  src/binding/f77/setbotf.f \
 	  src/binding/f90/Makefile \
 	  src/binding/f90/mpi_sizeofs.f90 \
+	  src/pkgconfig/mpich2-ch3.pc \
+	  src/pkgconfig/Makefile \
           src/env/mpicc \
 	  src/env/mpicc.conf \
 	  src/env/mpicc.bash \
@@ -5271,9 +6062,9 @@ AC_OUTPUT(Makefile src/Makefile src/include/Makefile \
 	  src/env/mpif90 \
 	  src/env/mpif90.conf \
 	  src/env/mpif90.bash \
-          src/env/mpich2version \
 	  src/env/parkill \
 	  src/env/Makefile\
+          src/env/mpiname/Makefile \
 	  src/util/createshlib \
           src/mpi/Makefile \
           src/mpi/attr/Makefile \
@@ -5293,7 +6084,7 @@ AC_OUTPUT(Makefile src/Makefile src/include/Makefile \
           src/mpid/Makefile \
           src/mpid/common/Makefile \
           src/mpid/common/datatype/Makefile \
-          src/mpid/common/locks/Makefile \
+          src/mpid/common/datatype/dataloop/Makefile \
           src/pm/Makefile \
           src/pmi/Makefile \
 	  src/nameserv/Makefile \
@@ -5326,13 +6117,6 @@ AC_OUTPUT(Makefile src/Makefile src/include/Makefile \
           src/util/logging/Makefile \
           src/util/logging/common/Makefile \
 	  doc/Makefile doc/mansrc/Makefile \
-	  doc/mansrc/createhtmlindex \
-	  doc/refman/Makefile \
-	  doc/installguide/Makefile \
-	  doc/userguide/Makefile \
-	  doc/logging/Makefile \
-	  doc/design/Makefile \
-	  doc/smpd/Makefile \
-	  doc/windev/Makefile )
+	  doc/mansrc/createhtmlindex )
 
 echo 'Configuration completed.'

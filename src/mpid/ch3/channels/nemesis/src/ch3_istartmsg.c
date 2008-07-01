@@ -35,7 +35,7 @@ int MPIDI_CH3_iStartMsg (MPIDI_VC_t *vc, void *hdr, MPIDI_msg_sz_t hdr_sz, MPID_
 
     if (((MPIDI_CH3I_VC *)vc->channel_private)->iStartContigMsg)
     {
-        errno = ((MPIDI_CH3I_VC *)vc->channel_private)->iStartContigMsg(vc, hdr, hdr_sz, NULL, 0, sreq_ptr);
+        mpi_errno = ((MPIDI_CH3I_VC *)vc->channel_private)->iStartContigMsg(vc, hdr, hdr_sz, NULL, 0, sreq_ptr);
         goto fn_exit;
     }
 
@@ -50,7 +50,7 @@ int MPIDI_CH3_iStartMsg (MPIDI_VC_t *vc, void *hdr, MPIDI_msg_sz_t hdr_sz, MPID_
     if (MPIDI_CH3I_SendQ_empty (CH3_NORMAL_QUEUE))
        /* MT */
     {
-	MPIU_DBG_MSG_D (CH3_CHANNEL, VERBOSE, "iStartMsg %d", hdr_sz);
+	MPIU_DBG_MSG_D (CH3_CHANNEL, VERBOSE, "iStartMsg %d", (int) hdr_sz);
 	mpi_errno = MPID_nem_mpich2_send_header (hdr, hdr_sz, vc, &again);
         if (mpi_errno) MPIU_ERR_POP (mpi_errno);
 	if (again)

@@ -8,12 +8,16 @@
 #
 # Get the channel from the device_args, and invoke any channel prereq
 echo "Executing mpich2prereq in $devicedir with $device_args"
-if test -z "$device_args" ; then 
-    device_args=sock
+channel_name=`echo ${device_args} | sed -e 's/:.*$//'`
+if test -z "$channel_name" ; then 
+# <_OSU_MVAPICH_>
+#    channel_name=sock
+    channel_name=mrail
+# </_OSU_MVAPICH_>
 fi
-if test -n "$device_args" ; then
-    if test -f "$devicedir/channels/$device_args/mpich2prereq" ; then
-        . $devicedir/channels/$device_args/mpich2prereq
+if test -n "$channel_name" ; then
+    if test -f "$devicedir/channels/$channel_name/mpich2prereq" ; then
+        . $devicedir/channels/$channel_name/mpich2prereq
     fi
 fi
 # Set a value for the maximum processor name.  If necessary, this script

@@ -3,17 +3,66 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2003-2008, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
 
 #ifndef HAVE_MPIDPKT_H
 #define HAVE_MPIDPKT_H
+
+#if defined(_OSU_MVAPICH_)
+/* Enable the use of data within the message packet for small messages. */
+/* TODO: Add support for eager short packet type.
+ * #define USE_EAGER_SHORT
+ * #define MPIDI_EAGER_SHORT_INTS 4
+ * #define MPIDI_EAGER_SHORT_SIZE 16
+ */
+#endif /* defined(_OSU_MVAPICH_) */
+
 /*
  * MPIDI_CH3_Pkt_type_t
  *
+ * Predefined packet types.  This simplifies some of the code.
  */
+/* FIXME: Having predefined names makes it harder to add new message types,
+   such as different RMA types. */
 typedef enum MPIDI_CH3_Pkt_type
 {
     MPIDI_CH3_PKT_EAGER_SEND = 0,
+#if defined(_OSU_MVAPICH_)
+#if defined(USE_HEADER_CACHING)
+    MPIDI_CH3_PKT_FAST_EAGER_SEND,
+    MPIDI_CH3_PKT_FAST_EAGER_SEND_WITH_REQ,
+#endif /* defined(USE_HEADER_CACHING) */
+    MPIDI_CH3_PKT_RPUT_FINISH,
+    MPIDI_CH3_PKT_RGET_FINISH,
+    MPIDI_CH3_PKT_NOOP,
+    MPIDI_CH3_PKT_RMA_RNDV_CLR_TO_SEND,
+    MPIDI_CH3_PKT_PUT_RNDV,
+    MPIDI_CH3_PKT_ACCUMULATE_RNDV,  /*8*/
+    MPIDI_CH3_PKT_GET_RNDV,         /*9*/
+    MPIDI_CH3_PKT_RNDV_READY_REQ_TO_SEND,
+    MPIDI_CH3_PKT_PACKETIZED_SEND_START,
+    MPIDI_CH3_PKT_PACKETIZED_SEND_DATA,
+    MPIDI_CH3_PKT_RNDV_R3_DATA,
+    MPIDI_CH3_PKT_ADDRESS,
+#if defined(CKPT)
+    MPIDI_CH3_PKT_CM_SUSPEND,
+    MPIDI_CH3_PKT_CM_REACTIVATION_DONE,
+    MPIDI_CH3_PKT_CR_REMOTE_UPDATE,
+#endif /* defined(CKPT) */
+#endif /* defined(_OSU_MVAPICH_) */
+#if defined(USE_EAGER_SHORT)
     MPIDI_CH3_PKT_EAGERSHORT_SEND,
+#endif /* defined(USE_EAGER_SHORT) */
     MPIDI_CH3_PKT_EAGER_SYNC_SEND,    /* FIXME: no sync eager */
     MPIDI_CH3_PKT_EAGER_SYNC_ACK,
     MPIDI_CH3_PKT_READY_SEND,
@@ -22,7 +71,7 @@ typedef enum MPIDI_CH3_Pkt_type
     MPIDI_CH3_PKT_RNDV_SEND,          /* FIXME: should be stream put */
     MPIDI_CH3_PKT_CANCEL_SEND_REQ,
     MPIDI_CH3_PKT_CANCEL_SEND_RESP,
-    MPIDI_CH3_PKT_PUT,
+    MPIDI_CH3_PKT_PUT,                /* RMA Packets begin here */
     MPIDI_CH3_PKT_GET,
     MPIDI_CH3_PKT_GET_RESP,
     MPIDI_CH3_PKT_ACCUMULATE,
@@ -32,6 +81,7 @@ typedef enum MPIDI_CH3_Pkt_type
     MPIDI_CH3_PKT_LOCK_PUT_UNLOCK, /* optimization for single puts */
     MPIDI_CH3_PKT_LOCK_GET_UNLOCK, /* optimization for single gets */
     MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK, /* optimization for single accumulates */
+                                     /* RMA Packets end here */
     MPIDI_CH3_PKT_FLOW_CNTL_UPDATE,  /* FIXME: Unused */
     MPIDI_CH3_PKT_CLOSE,
     MPIDI_CH3_PKT_END_CH3
@@ -46,7 +96,12 @@ MPIDI_CH3_Pkt_type_t;
 
 typedef struct MPIDI_CH3_Pkt_send
 {
+#if defined(_OSU_MVAPICH_)
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+#else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;  /* XXX - uint8_t to conserve space ??? */
+#endif /* defined(_OSU_MVAPICH_) */
     MPIDI_Message_match match;
     MPI_Request sender_req_id;	/* needed for ssend and send cancel */
     MPIDI_msg_sz_t data_sz;
@@ -56,18 +111,21 @@ typedef struct MPIDI_CH3_Pkt_send
 }
 MPIDI_CH3_Pkt_send_t;
 
-/* NOTE: Normal and synchronous eager sends, as well as all ready-mode sends, use the same structure but have a different type
-   value. */
+/* NOTE: Normal and synchronous eager sends, as well as all ready-mode sends, 
+   use the same structure but have a different type value. */
 typedef MPIDI_CH3_Pkt_send_t MPIDI_CH3_Pkt_eager_send_t;
 typedef MPIDI_CH3_Pkt_send_t MPIDI_CH3_Pkt_eager_sync_send_t;
 typedef MPIDI_CH3_Pkt_send_t MPIDI_CH3_Pkt_ready_send_t;
-/* Enable the use of data within the message packet for small messages */
-/* #define USE_EAGER_SHORT  */
-#define MPIDI_EAGER_SHORT_INTS 4
-#define MPIDI_EAGER_SHORT_SIZE 16
+
+#if defined(USE_EAGER_SHORT)
 typedef struct MPIDI_CH3_Pkt_eagershort_send
 {
+#if defined(_OSU_MVAPICH_)
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+#else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;  /* XXX - uint8_t to conserve space ??? */
+#endif /* defined(_OSU_MVAPICH_) */
     MPIDI_Message_match match;
     MPIDI_msg_sz_t data_sz;
 #if defined(MPID_USE_SEQUENCE_NUMBERS)
@@ -76,19 +134,56 @@ typedef struct MPIDI_CH3_Pkt_eagershort_send
     int  data[MPIDI_EAGER_SHORT_INTS];    /* FIXME: Experimental for now */
 }
 MPIDI_CH3_Pkt_eagershort_send_t;
+#endif /* defined(USE_EAGER_SHORT) */
 
 typedef struct MPIDI_CH3_Pkt_eager_sync_ack
 {
+#if defined(_OSU_MVAPICH_)
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+#else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
+#endif /* defined(_OSU_MVAPICH_) */
     MPI_Request sender_req_id;
 }
 MPIDI_CH3_Pkt_eager_sync_ack_t;
 
+#if defined(_OSU_MVAPICH_)
+typedef struct MPIDI_CH3_Pkt_rndv_req_to_send
+{
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+    MPIDI_Message_match match;
+    MPI_Request sender_req_id;  /* needed for ssend and send cancel */
+    MPIDI_msg_sz_t data_sz;
+#if defined(MPID_USE_SEQUENCE_NUMBERS)
+    MPID_Seqnum_t seqnum;
+#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
+    MPIDI_CH3I_MRAILI_RNDV_INFO_DECL
+} MPIDI_CH3_Pkt_rndv_req_to_send_t;
+
+typedef struct MPIDI_CH3I_Pkt_address {
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+    MPIDI_CH3I_MRAILI_PKT_ADDRESS_DECL
+} MPIDI_CH3_Pkt_address_t;
+#else /* defined(_OSU_MVAPICH_) */
 typedef MPIDI_CH3_Pkt_send_t MPIDI_CH3_Pkt_rndv_req_to_send_t;
+#endif /* defined(_OSU_MVAPICH_) */
 
 typedef struct MPIDI_CH3_Pkt_rndv_clr_to_send
 {
+#if defined(_OSU_MVAPICH_)
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+#if defined(MPID_USE_SEQUENCE_NUMBERS)
+    MPID_Seqnum_t seqnum;
+#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
+    int recv_sz;
+    MPIDI_CH3I_MRAILI_RNDV_INFO_DECL
+#else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
+#endif /* defined(_OSU_MVAPICH_) */
     MPI_Request sender_req_id;
     MPI_Request receiver_req_id;
 }
@@ -96,14 +191,66 @@ MPIDI_CH3_Pkt_rndv_clr_to_send_t;
 
 typedef struct MPIDI_CH3_Pkt_rndv_send
 {
+#if defined(_OSU_MVAPICH_)
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+#else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
+#endif /* defined(_OSU_MVAPICH_) */
     MPI_Request receiver_req_id;
 }
 MPIDI_CH3_Pkt_rndv_send_t;
 
+#if defined(_OSU_MVAPICH_)
+typedef struct MPIDI_CH3_Pkt_packetized_send_start {
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+#if defined(MPID_USE_SEQUENCE_NUMBERS)
+    MPID_Seqnum_t seqnum;
+#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
+    MPIDI_msg_sz_t origin_head_size;
+} MPIDI_CH3_Pkt_packetized_send_start_t;
+
+typedef struct MPIDI_CH3_Pkt_packetized_send_data {
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+#if defined(MPID_USE_SEQUENCE_NUMBERS)
+    MPID_Seqnum_t seqnum;
+#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
+    MPI_Request receiver_req_id;
+} MPIDI_CH3_Pkt_packetized_send_data_t;
+
+typedef MPIDI_CH3_Pkt_packetized_send_data_t MPIDI_CH3_Pkt_rndv_r3_data_t;
+
+typedef struct MPIDI_CH3_Pkt_rput_finish_t
+{
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+#if defined(MPID_USE_SEQUENCE_NUMBERS)
+    MPID_Seqnum_t seqnum;
+#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
+    MPI_Request receiver_req_id; /* echoed*/
+} MPIDI_CH3_Pkt_rput_finish_t;
+
+typedef struct MPIDI_CH3_Pkt_rget_finish_t
+{
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+    MPI_Request sender_req_id;
+} MPIDI_CH3_Pkt_rget_finish_t;
+#endif /* defined(_OSU_MVAPICH_) */
+
 typedef struct MPIDI_CH3_Pkt_cancel_send_req
 {
+#if defined(_OSU_MVAPICH_)
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+#if defined(MPID_USE_SEQUENCE_NUMBERS)
+    MPID_Seqnum_t seqnum;
+#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
+#else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
+#endif /* defined(_OSU_MVAPICH_) */
     MPIDI_Message_match match;
     MPI_Request sender_req_id;
 }
@@ -111,7 +258,15 @@ MPIDI_CH3_Pkt_cancel_send_req_t;
 
 typedef struct MPIDI_CH3_Pkt_cancel_send_resp
 {
+#if defined(_OSU_MVAPICH_)
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+#if defined(MPID_USE_SEQUENCE_NUMBERS)
+    MPID_Seqnum_t seqnum;
+#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
+#else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
+#endif /* defined(_OSU_MVAPICH_) */
     MPI_Request sender_req_id;
     int ack;
 }
@@ -123,7 +278,16 @@ MPIDI_CH3_PKT_DEFS
 
 typedef struct MPIDI_CH3_Pkt_put
 {
+#if defined(_OSU_MVAPICH_)
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+#if defined(MPID_USE_SEQUENCE_NUMBERS)
+    MPID_Seqnum_t seqnum;
+#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
+    uint32_t rma_issued;
+#else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
+#endif /* defined(_OSU_MVAPICH_) */
     void *addr;
     int count;
     MPI_Datatype datatype;
@@ -138,9 +302,45 @@ typedef struct MPIDI_CH3_Pkt_put
 }
 MPIDI_CH3_Pkt_put_t;
 
+#if defined(_OSU_MVAPICH_)
+typedef struct MPIDI_CH3_Pkt_put_rndv
+{
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+#if defined(MPID_USE_SEQUENCE_NUMBERS)
+    MPID_Seqnum_t seqnum;
+#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
+    uint32_t rma_issued;
+    void *addr;
+    int count;
+    MPI_Datatype datatype;
+    int dataloop_size;   /* for derived datatypes */
+    MPI_Win target_win_handle; /* Used in the last RMA operation in each
+                               * epoch for decrementing rma op counter in
+                               * active target rma and for unlocking window
+                               * in passive target rma. Otherwise set to NULL*/
+    MPI_Win source_win_handle; /* Used in the last RMA operation in an
+                               * epoch in the case of passive target rma
+                               * with shared locks. Otherwise set to NULL*/
+    MPI_Request sender_req_id;
+    int data_sz;
+    MPIDI_CH3I_MRAILI_Rndv_info_t rndv;
+}
+MPIDI_CH3_Pkt_put_rndv_t;
+#endif /* defined(_OSU_MVAPICH_) */
+
 typedef struct MPIDI_CH3_Pkt_get
 {
+#if defined(_OSU_MVAPICH_)
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+#if defined(MPID_USE_SEQUENCE_NUMBERS)
+    MPID_Seqnum_t seqnum;
+#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
+    uint32_t rma_issued;
+#else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
+#endif /* defined(_OSU_MVAPICH_) */
     void *addr;
     int count;
     MPI_Datatype datatype;
@@ -156,16 +356,90 @@ typedef struct MPIDI_CH3_Pkt_get
 }
 MPIDI_CH3_Pkt_get_t;
 
+#if defined(_OSU_MVAPICH_)
+typedef struct MPIDI_CH3_Pkt_get_rndv
+{
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+#if defined(MPID_USE_SEQUENCE_NUMBERS)
+    MPID_Seqnum_t seqnum;
+#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
+    uint32_t rma_issued;
+    void *addr;
+    int count;
+    MPI_Datatype datatype;
+    int dataloop_size;   /* for derived datatypes */
+    MPI_Request request_handle;
+    MPI_Win target_win_handle; /* Used in the last RMA operation in each
+                               * epoch for decrementing rma op counter in
+                               * active target rma and for unlocking window
+                               * in passive target rma. Otherwise set to NULL*/
+    MPI_Win source_win_handle; /* Used in the last RMA operation in an
+                               * epoch in the case of passive target rma
+                               * with shared locks. Otherwise set to NULL*/
+    int data_sz;
+    MPIDI_CH3I_MRAILI_Rndv_info_t rndv;
+}
+MPIDI_CH3_Pkt_get_rndv_t;
+#endif /* defined(_OSU_MVAPICH_) */
+
 typedef struct MPIDI_CH3_Pkt_get_resp
 {
+#if defined(_OSU_MVAPICH_)
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+#if defined(MPID_USE_SEQUENCE_NUMBERS)
+    MPID_Seqnum_t seqnum;
+#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
+    int protocol;
+#else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
+#endif /* defined(_OSU_MVAPICH_) */
     MPI_Request request_handle;
 }
 MPIDI_CH3_Pkt_get_resp_t;
 
+#if defined(_OSU_MVAPICH_)
+typedef struct MPIDI_CH3_Pkt_accum_rndv
+{
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+#if defined(MPID_USE_SEQUENCE_NUMBERS)
+    MPID_Seqnum_t seqnum;
+#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
+    uint32_t rma_issued;
+    void *addr;
+    int count;
+    MPI_Datatype datatype;
+    int dataloop_size;   /* for derived datatypes */
+    MPI_Op op;
+    MPI_Win target_win_handle; /* Used in the last RMA operation in each
+                               * epoch for decrementing rma op counter in
+                               * active target rma and for unlocking window
+                               * in passive target rma. Otherwise set to NULL*/
+    MPI_Win source_win_handle; /* Used in the last RMA operation in an
+                               * epoch in the case of passive target rma
+                               * with shared locks. Otherwise set to NULL*/
+    MPI_Request sender_req_id;
+    int data_sz;
+
+    MPIDI_CH3I_MRAILI_RNDV_INFO_DECL
+}
+MPIDI_CH3_Pkt_accum_rndv_t;
+#endif /* defined(_OSU_MVAPICH_) */
+
 typedef struct MPIDI_CH3_Pkt_accum
 {
+#if defined(_OSU_MVAPICH_)
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+#if defined(MPID_USE_SEQUENCE_NUMBERS)
+    MPID_Seqnum_t seqnum;
+#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
+    uint32_t rma_issued;
+#else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
+#endif /* defined(_OSU_MVAPICH_) */
     void *addr;
     int count;
     MPI_Datatype datatype;
@@ -183,7 +457,15 @@ MPIDI_CH3_Pkt_accum_t;
 
 typedef struct MPIDI_CH3_Pkt_lock
 {
+#if defined(_OSU_MVAPICH_)
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+#if defined(MPID_USE_SEQUENCE_NUMBERS)
+    MPID_Seqnum_t seqnum;
+#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
+#else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
+#endif /* defined(_OSU_MVAPICH_) */
     int lock_type;
     MPI_Win target_win_handle;
     MPI_Win source_win_handle;
@@ -192,7 +474,15 @@ MPIDI_CH3_Pkt_lock_t;
 
 typedef struct MPIDI_CH3_Pkt_lock_granted
 {
+#if defined(_OSU_MVAPICH_)
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+#if defined(MPID_USE_SEQUENCE_NUMBERS)
+    MPID_Seqnum_t seqnum;
+#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
+#else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
+#endif /* defined(_OSU_MVAPICH_) */
     MPI_Win source_win_handle;
 }
 MPIDI_CH3_Pkt_lock_granted_t;
@@ -201,7 +491,16 @@ typedef MPIDI_CH3_Pkt_lock_granted_t MPIDI_CH3_Pkt_pt_rma_done_t;
 
 typedef struct MPIDI_CH3_Pkt_lock_put_unlock
 {
+#if defined(_OSU_MVAPICH_)
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+#if defined(MPID_USE_SEQUENCE_NUMBERS)
+    MPID_Seqnum_t seqnum;
+#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
+    uint32_t rma_issued;
+#else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
+#endif /* defined(_OSU_MVAPICH_) */
     MPI_Win target_win_handle;
     MPI_Win source_win_handle;
     int lock_type;
@@ -213,7 +512,16 @@ MPIDI_CH3_Pkt_lock_put_unlock_t;
 
 typedef struct MPIDI_CH3_Pkt_lock_get_unlock
 {
+#if defined(_OSU_MVAPICH_)
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+#if defined(MPID_USE_SEQUENCE_NUMBERS)
+    MPID_Seqnum_t seqnum;
+#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
+    uint32_t rma_issued;
+#else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
+#endif /* defined(_OSU_MVAPICH_) */
     MPI_Win target_win_handle;
     MPI_Win source_win_handle;
     int lock_type;
@@ -226,7 +534,16 @@ MPIDI_CH3_Pkt_lock_get_unlock_t;
 
 typedef struct MPIDI_CH3_Pkt_lock_accum_unlock
 {
+#if defined(_OSU_MVAPICH_)
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+#if defined(MPID_USE_SEQUENCE_NUMBERS)
+    MPID_Seqnum_t seqnum;
+#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
+    uint32_t rma_issued;
+#else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
+#endif /* defined(_OSU_MVAPICH_) */
     MPI_Win target_win_handle;
     MPI_Win source_win_handle;
     int lock_type;
@@ -240,16 +557,35 @@ MPIDI_CH3_Pkt_lock_accum_unlock_t;
 
 typedef struct MPIDI_CH3_Pkt_close
 {
+#if defined(_OSU_MVAPICH_)
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+#if defined(MPID_USE_SEQUENCE_NUMBERS)
+    MPID_Seqnum_t seqnum;
+#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
+#else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
+#endif /* defined(_OSU_MVAPICH_) */
     int ack;
 }
 MPIDI_CH3_Pkt_close_t;
 
 typedef union MPIDI_CH3_Pkt
 {
+#if defined(_OSU_MVAPICH_)
+    uint8_t type;
+    MPIDI_CH3_Pkt_address_t address;
+    MPIDI_CH3_Pkt_rput_finish_t rput_finish;
+    MPIDI_CH3_Pkt_put_rndv_t put_rndv;
+    MPIDI_CH3_Pkt_get_rndv_t get_rndv;
+    MPIDI_CH3_Pkt_accum_rndv_t accum_rndv;
+#else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
+#endif /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_eager_send_t eager_send;
+#if defined(USE_EAGER_SHORT)
     MPIDI_CH3_Pkt_eagershort_send_t eagershort_send;
+#endif /* defined(USE_EAGER_SHORT) */
     MPIDI_CH3_Pkt_eager_sync_send_t eager_sync_send;
     MPIDI_CH3_Pkt_eager_sync_ack_t eager_sync_ack;
     MPIDI_CH3_Pkt_eager_send_t ready_send;
@@ -274,6 +610,10 @@ typedef union MPIDI_CH3_Pkt
 # endif
 }
 MPIDI_CH3_Pkt_t;
+
+#if defined(_OSU_MVAPICH_)
+extern int MPIDI_CH3_Pkt_size_index[];
+#endif /* defined(_OSU_MVAPICH_) */
 
 #if defined(MPID_USE_SEQUENCE_NUMBERS)
 typedef struct MPIDI_CH3_Pkt_send_container

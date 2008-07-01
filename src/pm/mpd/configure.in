@@ -2,10 +2,30 @@ dnl Process this file with autoconf to produce a configure script.
 # Autoconf initialization:
 AC_INIT(mpdroot.h)
 AC_PREREQ(2.59)
+
+dnl The MVAPICH2 top-level configure adds a bunch of flags to the
+dnl user-defined CFLAGS by processing different configure command-line
+dnl arguments (--enable-g, --enable-default-optimization). These updated
+dnl flags are passed down as a separate flag. Here, we don't care about
+dnl the user-defined flags, but rather this updated flags, so we just
+dnl overwrite CFLAGS with them.
+PAC_SUBCONFIG_INIT()
+
 # Autoconf header:
 rm -f ${srcdir}/mpdconf.h mpdconf.h
 AC_CONFIG_HEADER(mpdconf.h)
 AH_TOP([/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/* Copyright (c) 2003-2008, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
 /*  
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -14,6 +34,10 @@ AH_TOP([/* -*- Mode: C; c-basic-offset:4 ; -*- */
 #define MPDCONF_H_INCLUDED
 ])
 AH_BOTTOM([#endif])
+
+dnl Set the directory that contains support scripts such as install-sh and
+dnl config.guess
+AC_CONFIG_AUX_DIR(../../../confdb)
 
 dnl Process configure arguments
 AC_ARG_ENABLE(echo,
@@ -24,12 +48,6 @@ if test -n "$CONFIGURE_ARGS" ; then
     echo "Configuring with args $CONFIGURE_ARGS"
 fi
 AC_SUBST(COPTIONS)
-dnl add --enable-strict and --enable-g
-
-AC_ARG_ENABLE(g, [--enable-g  - turn on debugging flags ] )
-if test "$enable_g" = "yes" -o "$enable_g" = "all" ; then
-    COPTIONS="${COPTIONS} -g"
-fi
 
 dnl Checks for programs.
 dnl Determine the executable and object file extensions.  These
@@ -52,6 +70,17 @@ if test "$installOk" = "no" ; then
     INSTALL="${srcdir}/install.sh"
 fi
 echo Using INSTALL=$INSTALL
+
+dnl <_OSU_MVAPICH_>
+AC_ARG_WITH(blcr,
+[--with-blcr - Enable support for Berkeley Lab Checkpoint/Restart],,with_blcr=no)
+
+if test "$with_blcr" != "no"; then
+   MPD_OTHERS=mpiexec_cr
+fi
+
+AC_SUBST(MPD_OTHERS)
+dnl </_OSU_MVAPICH_>
 
 AC_ARG_ENABLE(totalview,[--enable-totalview - turn on mpd-totalview support],,
               enable_totalview=default )
@@ -110,15 +139,22 @@ if test -z "$PYTHON" ; then  ## user did not give us a python; find one
             continue
         fi
         
-        if test "$enable_totalview" = "yes" ; then
-            AC_MSG_CHECKING([that $pypgm has development tools for totalview])
-            if test -f /usr/lib/$pypgm/config/Makefile -o -f /usr/lib64/$pypgm/config/Makefile ; then
-                AC_MSG_RESULT(yes)
-            else
-                AC_MSG_RESULT(no)
-                continue
-            fi
-        fi
+dnl        if test "$enable_totalview" = "yes" ; then
+dnl             AC_MSG_CHECKING([that $pypgm has development tools for totalview])
+dnl             has_python_sdk=no
+dnl             for python_homedir in /usr/lib64 /usr/lib32 /usr/lib ; do
+dnl                 if test -f $python_homedir/$pypgm/config/Makefile ; then
+dnl                     has_python_sdk=yes
+dnl                     break
+dnl                 fi
+dnl             done
+dnl             if test "$has_python_sdk" = "yes" ; then
+dnl                 AC_MSG_RESULT(yes)
+dnl             else
+dnl                 AC_MSG_RESULT(no)
+dnl                 continue
+dnl             fi
+dnl        fi
 
         PYTHON="$pypgm"
         break
@@ -166,6 +202,11 @@ dnl Checks for library functions.
 # Checking library functions
 AC_CHECK_FUNCS(putenv socket)
 
+AC_CHECK_FUNCS(snprintf)
+if test "$ac_cv_func_snprintf" = "yes" ; then
+     PAC_FUNC_NEEDS_DECL([#include <stdio.h>],snprintf)
+fi
+
 dnl Output:
 # Starting output
 MPD_HOME=`pwd`
@@ -173,5 +214,9 @@ AC_SUBST(MPD_HOME)
 dnl
 dnl Dependency handling
 AC_SUBST(MAKE_DEPEND_C)
+
+dnl Place holder macro for finalization
+PAC_SUBCONFIG_FINALIZE()
+
 # AC_OUTPUT_COMMANDS(chmod +x startdaemons)
 AC_OUTPUT(Makefile)

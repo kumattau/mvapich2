@@ -372,6 +372,11 @@ sub AddTestCall {
 		print TESTFD "    int i$narg = $narg;\n";
 		$args[$#args+1] = "i$narg";
 	    }
+	    elsif ($type eq "L") 
+	    {
+		print TESTFD "    long long i$narg = $narg;\n";
+		$args[$#args+1] = "i$narg";
+	    }
 	    elsif ($type eq "i")
 	    {
 		print TESTFD "    int i$narg = $narg;\n";
@@ -587,6 +592,7 @@ sub ProcessFile
 	%KnownErrRoutines = ( 'MPIR_Err_create_code'      => '5:3:1:1', 
 			      'MPIO_Err_create_code'      => '5:3:1:0', 
 			      'MPIU_ERR_SET'              => '2:-1:0:1',
+			      'MPIU_ERR_SETSIMPLE'        => '2:-1:0:1',
 			      'MPIU_ERR_SET1'             => '2:-1:1:1',
 			      'MPIU_ERR_SET2'             => '2:-1:2:1',
 			      'MPIU_ERR_SETANDSTMT'       => '3:-1:0:1',
@@ -714,7 +720,7 @@ sub ProcessFile
 		    if ($followchar ne "%") {
 			$nargs ++;
 		    }
-		    if (! ($followchar =~ /[%sditpDCRWOEIGFA]/) ) {
+		    if (! ($followchar =~ /[%sditpDCRWOEIGFAL]/) ) {
 			print STDERR "Warning: Unrecognized format specifier in specific message $specific_msg in $filename\n";
 		    }
 		}
@@ -782,7 +788,7 @@ sub ExpandDir {
     my @files = ();
     opendir DIR, "$dir";
     while ($filename = readdir DIR) {
-	if ($filename =~ /^\./ || $filename eq "CVS") {
+	if ($filename =~ /^\./ || $filename eq ".svn") {
 	    next;
 	}
 	elsif (-d "$dir/$filename") {

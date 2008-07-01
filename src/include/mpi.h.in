@@ -3,6 +3,16 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2003-2008, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ */
 /* @configure_input@ */
 #ifndef MPI_INCLUDED
 #define MPI_INCLUDED
@@ -165,7 +175,7 @@ typedef int MPI_Op;
 
 /* These are only guesses; make sure you change them in mpif.h as well */
 #define MPI_MAX_PROCESSOR_NAME @MPI_MAX_PROCESSOR_NAME@
-#define MPI_MAX_ERROR_STRING   512
+#define MPI_MAX_ERROR_STRING  1024 
 #define MPI_MAX_NAME_STRING     63
 #define MPI_MAX_PORT_NAME      256
 #define MPI_MAX_OBJECT_NAME    128
@@ -210,7 +220,11 @@ typedef void (MPI_Win_errhandler_fn)(MPI_Win *, int *, ...);
    in 22-25), index in the low bits */
 #define MPI_ERRORS_ARE_FATAL ((MPI_Errhandler)0x54000000)
 #define MPI_ERRORS_RETURN    ((MPI_Errhandler)0x54000001)
-      /* #define MPIR_ERRORS_WARN     ((MPI_Errhandler)0x54000002) */
+/* MPIR_ERRORS_THROW_EXCEPTIONS is not part of the MPI standard, it is here to
+   facilitate the c++ binding which has MPI::ERRORS_THROW_EXCEPTIONS. 
+   Using the MPIR prefix preserved the MPI_ names for objects defined by
+   the standard. */
+#define MPIR_ERRORS_THROW_EXCEPTIONS ((MPI_Errhandler)0x54000002)
 typedef int MPI_Errhandler;
 
 /* Make the C names for the dup function mixed case.
@@ -243,9 +257,42 @@ typedef int (MPI_Delete_function) ( MPI_Comm, int, void *, void * );
 
 #define MPI_VERSION    2
 #define MPI_SUBVERSION 0
-#define MPICH_NAME     2
+/* <_OSU_MVAPICH_> */
+/* #define MPICH_NAME     2 */
+/* </_OSU_MVAPICH_> */
 #define MPICH2         1
 #define MPICH_HAS_C2F  1
+
+
+/* MPICH2_VERSION is the version string. MPICH2_NUMVERSION is the
+ * numeric version that can be used in numeric comparisons.
+ *
+ * MPICH2_VERSION uses the following format:
+ * Version: [MAJ].[MIN].[REV][EXT][EXT_NUMBER]
+ * Example: 1.0.7rc1 has
+ *          MAJ = 1
+ *          MIN = 0
+ *          REV = 7
+ *          EXT = rc
+ *          EXT_NUMBER = 1
+ *
+ * MPICH2_NUMVERSION will convert EXT to a format number:
+ *          ALPHA (a) = 0
+ *          BETA (b)  = 1
+ *          RC (rc)   = 2
+ *          PATCH (p) = 3
+ * Regular releases are treated as patch 0
+ *
+ * Numeric version will have 1 digit for MAJ, 2 digits for MIN, 2
+ * digits for REV, 1 digit for EXT and 2 digits for EXT_NUMBER. So,
+ * 1.0.7rc1 will have the numeric version 10007201.
+ */
+/* <_OSU_MVAPICH_> */
+/* #define MPICH2_VERSION "@VERSION@" */
+/* #define MPICH2_NUMVERSION @NUMVERSION@ */
+#define MVAPICH_VERSION "@VERSION@"
+#define MVAPICH @NUMVERSION@
+/* </_OSU_MVAPICH_> */
 
 /* for the datatype decoders */
 enum MPI_COMBINER_ENUM {
@@ -295,6 +342,9 @@ typedef int MPI_Info;
 /* Definitions that are determined by configure. */
 typedef @MPI_AINT@ MPI_Aint;
 typedef @MPI_FINT@ MPI_Fint;
+#define MPI_AINT_FMT_DEC_SPEC "@MPI_AINT_FMT_DEC_SPEC@"
+#define MPI_AINT_FMT_HEX_SPEC "@MPI_AINT_FMT_HEX_SPEC@"
+
 /* Let ROMIO know that MPI_Offset is already defined */
 #define HAVE_MPI_OFFSET
 /* MPI_OFFSET_TYPEDEF is set in configure and is 
@@ -1105,8 +1155,51 @@ int PMPI_Win_set_errhandler(MPI_Win, MPI_Errhandler);
 #endif 
 #endif
 
-#if defined(CKPT) && defined(SYNC_CKPT)
+#if defined(_OSU_MVAPICH_) && defined(CKPT)
 int MVAPICH2_Sync_Checkpoint();
+#endif /* defined(_OSU_MVAPICH_) && defined(CKPT) */
+
+/* BEGIN: non-standard but public extensions to MPI */
+
+/* Generalized requests extensions as proposed in "Extending the MPI-2
+ * Generalized Request Interface" */
+typedef int (MPIX_Grequest_poll_function)(void *, MPI_Status *);
+typedef int (MPIX_Grequest_wait_function)(int, void **, double, MPI_Status *);
+
+typedef int MPIX_Grequest_class;
+int MPIX_Grequest_class_create(MPI_Grequest_query_function *, 
+                       MPI_Grequest_free_function *, 
+                       MPI_Grequest_cancel_function *, 
+		       MPIX_Grequest_poll_function *,
+		       MPIX_Grequest_wait_function *, 
+		       MPIX_Grequest_class *);
+
+int MPIX_Grequest_class_allocate(MPIX_Grequest_class,
+		       void *,
+		       MPI_Request *);
+
+int MPIX_Grequest_start(MPI_Grequest_query_function *, 
+                       MPI_Grequest_free_function *, 
+                       MPI_Grequest_cancel_function *, 
+		       MPIX_Grequest_poll_function *,
+		       MPIX_Grequest_wait_function *, void *, MPI_Request *);
+#if !defined(MPI_BUILD_PROFILING)
+int PMPIX_Grequest_class_create(MPI_Grequest_query_function *, 
+                       MPI_Grequest_free_function *, 
+                       MPI_Grequest_cancel_function *, 
+		       MPIX_Grequest_poll_function *,
+		       MPIX_Grequest_wait_function *, 
+		       MPIX_Grequest_class *);
+
+int PMPIX_Grequest_class_allocate(MPIX_Grequest_class,
+		       void *,
+		       MPI_Request *);
+int PMPIX_Grequest_start(MPI_Grequest_query_function *, 
+                       MPI_Grequest_free_function *, 
+                       MPI_Grequest_cancel_function *, 
+		       MPIX_Grequest_poll_function *,
+		       MPIX_Grequest_wait_function *, void *, MPI_Request *);
 #endif
+/* END: non-standard but public extensions to MPI */
 
 #endif

@@ -116,8 +116,10 @@ MPID_nem_tcp_module_poll_recv( void )
     time.tv_sec  = 0;
     time.tv_usec = 0;
     ret = select (MPID_nem_tcp_internal_vars.max_fd, &read_set, NULL, NULL, &time);
-    MPIU_ERR_CHKANDJUMP1 (ret == -1, mpi_errno, MPI_ERR_OTHER, "**select", "**select %s", strerror (errno));
+    MPIU_ERR_CHKANDJUMP1 (ret == -1 && errno != EINTR, mpi_errno, MPI_ERR_OTHER, "**select", "**select %s", strerror (errno));
 
+    if (ret == -1) goto fn_exit;
+    
 #ifdef TRACE    
     if(ret)
 	fprintf(stderr,
@@ -190,9 +192,9 @@ MPID_nem_tcp_module_poll_recv( void )
                                     else if (errno != EAGAIN)
                                     {
                                         /* read() returned an error */
-                                        printf ("read (fd=%d buf=%p len=%d) grank=\n", nodes[grank].desc, /*DARIUS*/
-                                                (pkt->mpich2.payload + MPID_NEM_OPT_SIZE), /*DARIUS*/
-                                                nodes[grank].left2read, grank); /*DARIUS*/
+/*                                         printf ("read (fd=%d buf=%p len=%d) grank=%d\n", nodes[grank].desc, /\*DARIUS*\/ */
+/*                                                 (pkt->mpich2.payload + MPID_NEM_OPT_SIZE), /\*DARIUS*\/ */
+/*                                                 nodes[grank].left2read, grank); /\*DARIUS*\/ */
                                         MPIU_ERR_SETANDJUMP1 (mpi_errno, MPI_ERR_OTHER, "**read", "**read %s", strerror (errno));
                                     }
                                     continue;

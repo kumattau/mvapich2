@@ -138,7 +138,7 @@ MPID_nem_newtcp_module_check_sock_status(const pollfd_t *const plfd)
 
     if (plfd->revents & POLLERR) 
     {
-	rc = MPID_NEM_NEWTCP_MODULE_SOCK_ERROR_EOF;
+        rc = MPID_NEM_NEWTCP_MODULE_SOCK_ERROR_EOF;
         MPIU_DBG_MSG_FMT(NEM_SOCK_DET, VERBOSE, (MPIU_DBG_FDEST, "POLLERR on socket"));
         goto fn_exit;
     }
@@ -149,12 +149,12 @@ MPID_nem_newtcp_module_check_sock_status(const pollfd_t *const plfd)
 
         n = sizeof(error);
         if (getsockopt(plfd->fd, SOL_SOCKET, SO_ERROR, &error, &n) < 0 || error != 0) 
-	{
+        {
             rc = MPID_NEM_NEWTCP_MODULE_SOCK_ERROR_EOF; /*  (N1) */
             MPIU_DBG_MSG_FMT(NEM_SOCK_DET, VERBOSE, (MPIU_DBG_FDEST, "getsockopt failure. error=%d:%s", error, strerror(error)));
             goto fn_exit;
         }
-	rc = MPID_NEM_NEWTCP_MODULE_SOCK_CONNECTED;
+        rc = MPID_NEM_NEWTCP_MODULE_SOCK_CONNECTED;
     }
  fn_exit:
     return rc;

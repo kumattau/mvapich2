@@ -13,7 +13,7 @@
  * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
  *
  * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT_MVAPICH2 in the top level MVAPICH2 directory.
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
  *
  */
 
@@ -49,7 +49,9 @@ MPIR_Op_check_dtype_fn *MPIR_Op_check_dtype_table[] = {
     MPIR_LXOR_check_dtype, MPIR_BXOR_check_dtype,
     MPIR_MINLOC_check_dtype, MPIR_MAXLOC_check_dtype, }; 
 
+#if defined(_OSU_MVAPICH_)
 extern struct coll_runtime coll_param;
+#endif /* defined(_OSU_MVAPICH_) */
 
 /* This is the default implementation of allreduce. The algorithm is:
    
@@ -283,7 +285,11 @@ int MPIR_Allreduce (
            using recursive doubling in that case.) */
 
         if (newrank != -1) {
+#if defined(_OSU_MVAPICH_)
             if ((count*type_size <= coll_param.allreduce_short_msg) ||
+#else /* defined(_OSU_MVAPICH_) */
+            if ((count*type_size <= MPIR_ALLREDUCE_SHORT_MSG) ||
+#endif /* defined(_OSU_MVAPICH_) */
                 (HANDLE_GET_KIND(op) != HANDLE_KIND_BUILTIN) ||  
                 (count < pof2)) { /* use recursive doubling */
                 mask = 0x1;
@@ -606,36 +612,37 @@ Output Parameter:
 .N MPI_ERR_OP
 .N MPI_ERR_COMM
 @*/
-#ifdef _SMP_
+#if defined(_OSU_MVAPICH_)
 extern int enable_shmem_collectives;
 extern int disable_shmem_allreduce;
-#endif
+#endif /* defined(_OSU_MVAPICH_) */
+
 int MPI_Allreduce ( void *sendbuf, void *recvbuf, int count, 
 		    MPI_Datatype datatype, MPI_Op op, MPI_Comm comm )
 {
     static const char FCNAME[] = "MPI_Allreduce";
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL;
-#ifdef _SMP_
-    char* shmem_buf;
+#if defined(_OSU_MVAPICH_)
+    char* shmem_buf = NULL;
     MPI_Comm shmem_comm, leader_comm;
-    MPID_Comm *shmem_commptr = 0, *leader_commptr = 0;
+    MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
     int local_rank = -1, global_rank = -1, local_size=0, my_rank;
-    void* local_buf, *tmpbuf;
+    void* local_buf = NULL, *tmpbuf = NULL;
     MPI_Aint   true_lb, true_extent, extent;
-    MPI_User_function *uop;
+    MPI_User_function *uop = NULL;
     int stride = 0, i, is_commutative, size;
-    MPID_Op *op_ptr;
+    MPID_Op *op_ptr = NULL;
     MPI_Status status;
     int leader_root, total_size, shmem_comm_rank;
     MPIU_CHKLMEM_DECL(1);
-#ifdef HAVE_CXX_BINDING
+#if defined(HAVE_CXX_BINDING)
     int is_cxx_uop = 0;
-#endif
+#endif /* defined(HAVE_CXX_BINDING) */
 
     MPIU_THREADPRIV_DECL;
     MPIU_THREADPRIV_GET;
-#endif
+#endif /* defined(_OSU_MVAPICH_) */
 
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_ALLREDUCE);
 
@@ -717,9 +724,10 @@ int MPI_Allreduce ( void *sendbuf, void *recvbuf, int count,
     }
     else
     {
-        if (comm_ptr->comm_kind == MPID_INTRACOMM){ 
+        if (comm_ptr->comm_kind == MPID_INTRACOMM) 
             /* intracommunicator */
-#ifdef _SMP_
+#if defined(_OSU_MVAPICH_)
+        {
             if (enable_shmem_collectives){
                 MPIR_Nest_incr();
                 mpi_errno = NMPI_Type_get_true_extent(datatype, &true_lb, &true_extent);  
@@ -741,13 +749,13 @@ int MPI_Allreduce ( void *sendbuf, void *recvbuf, int count,
                     else
                         is_commutative = 1;
 
-#ifdef HAVE_CXX_BINDING            
+#if defined(HAVE_CXX_BINDING)
                     if (op_ptr->language == MPID_LANG_CXX) {
                         uop = (MPI_User_function *) op_ptr->function.c_function;
                         is_cxx_uop = 1;
                     }
                     else
-#endif
+#endif /* defined(HAVE_CXX_BINDING) */
                         if ((op_ptr->language == MPID_LANG_C))
                             uop = (MPI_User_function *) op_ptr->function.c_function;
                         else
@@ -778,6 +786,10 @@ int MPI_Allreduce ( void *sendbuf, void *recvbuf, int count,
                     }
                 }
 
+#if defined(CKPT)
+		MPIDI_CH3I_CR_lock();
+#endif
+
                 if (local_size > 1){
                     MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(local_size, local_rank, shmem_comm_rank, &shmem_buf);
                 }
@@ -788,13 +800,13 @@ int MPI_Allreduce ( void *sendbuf, void *recvbuf, int count,
                     if (local_size > 1){
                         for (i = 1; i < local_size; i++){
                             local_buf = (char*)shmem_buf + stride*i;
-#ifdef HAVE_CXX_BINDING
+#if defined(HAVE_CXX_BINDING)
                             if (is_cxx_uop) {
                                 (*MPIR_Process.cxx_call_op_fn)( local_buf, recvbuf, 
                                                                 count, datatype, uop );
                             }
                             else 
-#endif
+#endif /* defined(HAVE_CXX_BINDING) */
                                 (*uop)(local_buf, recvbuf, &count, &datatype);
                         }
                         MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(local_size, local_rank, shmem_comm_rank);
@@ -818,6 +830,10 @@ int MPI_Allreduce ( void *sendbuf, void *recvbuf, int count,
                     MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(local_size, local_rank, shmem_comm_rank);
                 }
 
+#if defined(CKPT)
+		MPIDI_CH3I_CR_unlock();
+#endif
+
                 /* Broadcasting the mesage from leader to the rest*/
                 if (local_size > 1){
                     MPIR_Nest_incr();
@@ -827,15 +843,13 @@ int MPI_Allreduce ( void *sendbuf, void *recvbuf, int count,
 
             }
             else{
-                mpi_errno = MPIR_Allreduce(sendbuf, recvbuf, count, datatype,
-                        op, comm_ptr); 
-            }
-#else
+#endif /* defined(_OSU_MVAPICH_) */
             mpi_errno = MPIR_Allreduce(sendbuf, recvbuf, count, datatype,
                                        op, comm_ptr); 
-            
-#endif
-    }
+#if defined(_OSU_MVAPICH_)
+            }
+        }
+#endif /* defined(_OSU_MVAPICH_) */
         else {
             /* intercommunicator */
             mpi_errno = MPIR_Allreduce_inter(sendbuf, recvbuf, count,

@@ -178,12 +178,14 @@ int main( int argc, char *argv[], char *envp[] )
     PMIServInit(myspawn,&s);
     s.pmiinfo.pWorld = &pUniv.worlds[0];
     PMISetupNewGroup( pUniv.worlds[0].nProcess, 0 );
+    /* PMISetupNewGroup will create a kvs space */
     MPIE_ForwardCommonSignals();
     MPIE_IgnoreSigPipe();
     
     if (!pUniv.fromSingleton) {
 	MPIE_ForkProcesses( &pUniv.worlds[0], envp, mypreamble, &s,
 			    mypostfork, 0, mypostamble, 0 );
+	MPIE_InitForDebugger( &pUniv.worlds[0] );
     }
     else {
 	int newfd;
@@ -296,6 +298,29 @@ int mypostfork( void *predata, void *data, ProcessState *pState )
 
     IOLabelSetupInClient( &s->labelinfo );
     PMISetupInClient( usePort, &s->pmiinfo );
+
+    /* Add clique information */
+    {
+	int i, size = pState->app->nProcess;
+	char digits[10], ranks[1024];
+	char key[256];
+	
+	/* Create the string of ranks.  These are ranks in comm_world */
+	ranks[0] = 0;
+	for (i=0; i<size; i++) {
+	    MPIU_Snprintf( digits, sizeof(digits), "%d,", i );
+	    MPIU_Strnapp( ranks, digits, sizeof(ranks) );
+	}
+	/* Remove the trailing comma */
+	if (size > 0) 
+	    ranks[strlen(ranks)-1] = 0;
+	/* Add this to the predefined keys */
+	MPIU_Snprintf( key, sizeof(key), "pmiPrivateLocalRanks_%d", 
+		       pState->wRank );
+	/* printf( "%s = %s\n", key, ranks ); */
+	
+	pmix_preput( key, ranks );
+    }
 
     return 0;
 }

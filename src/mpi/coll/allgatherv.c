@@ -61,7 +61,8 @@
 */
 
 /* begin:nested */
-/* not declared static because a machine-specific function may call this one in some cases */
+/* not declared static because a machine-specific function may call this one 
+   in some cases */
 int MPIR_Allgatherv ( 
     void *sendbuf, 
     int sendcount,   
@@ -77,9 +78,15 @@ int MPIR_Allgatherv (
     int        comm_size, rank, j, i, jnext, left, right;
     int        mpi_errno = MPI_SUCCESS;
     MPI_Status status;
-    MPI_Aint recvbuf_extent, recvtype_extent, recvtype_true_extent, recvtype_true_lb;
+    MPI_Aint recvbuf_extent, recvtype_extent, recvtype_true_extent, 
+	recvtype_true_lb;
+#if defined(_OSU_MVAPICH_)
+    int curr_cnt, send_cnt, dst, total_count, recvtype_size, src, rem;
+    int recv_cnt;
+#else /* defined(_OSU_MVAPICH_) */
     int curr_cnt, send_cnt, dst, total_count, recvtype_size, pof2, src, rem; 
     int recv_cnt, comm_size_is_pof2;
+#endif /* defined(_OSU_MVAPICH_) */
     void *tmp_buf;
     int mask, dst_tree_root, my_tree_root, is_homogeneous, position,  
         send_offset, recv_offset, last_recv_cnt, nprocs_completed, k,
@@ -102,6 +109,7 @@ int MPIR_Allgatherv (
     MPID_Datatype_get_size_macro(recvtype, recvtype_size);
     
     /* check if comm_size is a power of two */
+#if !defined(_OSU_MVAPICH_)
     pof2 = 1;
     while (pof2 < comm_size)
         pof2 *= 2;
@@ -109,12 +117,17 @@ int MPIR_Allgatherv (
         comm_size_is_pof2 = 1;
     else
         comm_size_is_pof2 = 0;
-
+#endif /* !defined(_OSU_MVAPICH_) */
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
-
+#if defined(_OSU_MVAPICH_)
+    if (total_count * recvtype_size < MPIR_ALLGATHER_LONG_MSG
+        && (comm_size & comm_size - 1) == 0)
+    {
+#else /* defined(_OSU_MVAPICH_) */
     if ((total_count*recvtype_size < MPIR_ALLGATHER_LONG_MSG) &&
         (comm_size_is_pof2 == 1)) {
+#endif /* defined(_OSU_MVAPICH_) */
         /* Short or medium size message and power-of-two no. of processes. Use
          * recursive doubling algorithm */   
 
@@ -601,7 +614,11 @@ int MPIR_Allgatherv (
         /* do the first \floor(\lg p) steps */
 
         curr_cnt = recvcounts[rank];
+#if defined(_OSU_MVAPICH_)
+        int pof2 = 1;
+#else /* defined(_OSU_MVAPICH_) */
         pof2 = 1;
+#endif /* defined(_OSU_MVAPICH_) */
         while (pof2 <= comm_size/2) {
             src = (rank + pof2) % comm_size;
             dst = (rank - pof2 + comm_size) % comm_size;
@@ -855,7 +872,7 @@ Input Parameters:
 . sendcount - number of elements in send buffer (integer) 
 . sendtype - data type of send buffer elements (handle) 
 . recvcounts - integer array (of length group size) 
-containing the number of elements that are received from each process 
+containing the number of elements that are to be received from each process 
 . displs - integer array (of length group size). Entry 
  'i'  specifies the displacement (relative to recvbuf ) at
 which to place the incoming data from process  'i'  

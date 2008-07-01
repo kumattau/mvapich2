@@ -1,7 +1,10 @@
 SUBDIRS = channels src util . 
 
 distclean-local:
-	-rm -f include/mpidi_ch3_conf.h @MPID_THREAD_DISTCLEAN@
+# <_OSU_MVAPICH_>
+#	-rm -f include/mpidi_ch3_conf.h @MPID_THREAD_DISTCLEAN@
+	@MPID_THREAD_DISTCLEAN@
+# </_OSU_MVAPICH>
 
 maintainer-clean-local:
 	-rm -f include/mpidi_ch3_conf.h.in

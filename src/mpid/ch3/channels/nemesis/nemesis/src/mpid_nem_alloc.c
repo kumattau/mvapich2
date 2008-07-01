@@ -41,7 +41,13 @@ int MPID_nem_seg_create(MPID_nem_seg_ptr_t memory, int size, int num_local, int 
         memory->max_addr     = (char *)(memory->current_addr) + memory->max_size;
         memory->size_left    = memory->max_size;
         memory->symmetrical  = 0 ;   
-        
+
+        /* we still need to calls to barrier */
+	pmi_errno = PMI_Barrier();
+        MPIU_ERR_CHKANDJUMP1 (pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_barrier", "**pmi_barrier %d", pmi_errno);
+	pmi_errno = PMI_Barrier();
+        MPIU_ERR_CHKANDJUMP1 (pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_barrier", "**pmi_barrier %d", pmi_errno);
+
         MPIU_CHKPMEM_COMMIT();
         goto fn_exit;
     }
@@ -142,6 +148,9 @@ int MPID_nem_seg_destroy()
 int MPID_nem_seg_alloc( MPID_nem_seg_ptr_t memory, MPID_nem_seg_info_ptr_t seg, int size)
 {
     int mpi_errno = MPI_SUCCESS;
+    MPIDI_STATE_DECL(MPID_STATE_NEM_SEG_ALLOC);
+
+    MPIDI_FUNC_ENTER(MPID_STATE_NEM_SEG_ALLOC);
     
     MPIU_Assert( memory->size_left >= size );
   
@@ -153,6 +162,7 @@ int MPID_nem_seg_alloc( MPID_nem_seg_ptr_t memory, MPID_nem_seg_info_ptr_t seg, 
    
     MPIU_Assert( (MPI_Aint)(memory->current_addr) <=  (MPI_Aint) (memory->max_addr) );   
 
+    MPIDI_FUNC_EXIT(MPID_STATE_NEM_SEG_ALLOC);
     return mpi_errno;
 }
 

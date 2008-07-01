@@ -1,8 +1,20 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: commutil.c,v 1.76 2006/12/03 11:08:07 gropp Exp $
+/*  $Id: commutil.c,v 1.80 2007/05/04 17:16:15 gropp Exp $
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
+ */
+
+ /* Copyright (c) 2003-2008, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
  */
 
 #include "mpiimpl.h"
@@ -67,7 +79,7 @@ int MPIR_Comm_create( MPID_Comm **newcomm_ptr )
     /* --BEGIN ERROR HANDLING-- */
     if (!newptr) {
 	mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, 
-		   "MPIR_Comm_create", __LINE__, MPI_ERR_OTHER, "**nomem", 0 );
+		   FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0 );
 	goto fn_fail;
     }
     /* --END ERROR HANDLING-- */
@@ -120,7 +132,7 @@ int MPIR_Setup_intercomm_localcomm( MPID_Comm *intercomm_ptr )
     /* --BEGIN ERROR HANDLING-- */
     if (!localcomm_ptr) {
 	mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, 
-                                 "MPIR_Setup_intercomm_localcomm", __LINE__,
+					  FCNAME, __LINE__,
 					  MPI_ERR_OTHER, "**nomem", 0 );
 	goto fn_fail;
     }
@@ -219,8 +231,9 @@ static void MPIR_Init_contextid (void) {
     for (i=1; i<MAX_CONTEXT_MASK; i++) {
 	context_mask[i] = 0xFFFFFFFF;
     }
-    /* the first two values are already used */
-    context_mask[0] = 0xFFFFFFFC; 
+    /* the first three values are already used (comm_world, comm_self,
+       and the internal-only copy of comm_world) */
+    context_mask[0] = 0xFFFFFFF8; 
     initialize_context_mask = 0;
 }
 /* Return the context id corresponding to the first set bit in the mask.
@@ -296,9 +309,9 @@ int MPIR_Get_contextid( MPID_Comm *comm_ptr )
 
     MPIU_THREADPRIV_GET;
     MPIR_Nest_incr();
-#ifdef _SMP_
+#if defined(_OSU_MVAPICH_)
         comm_ptr->shmem_coll_ok = 0;/* To prevent Allreduce taking shmem route*/
-#endif
+#endif /* defined(_OSU_MVAPICH_) */
     /* Comm must be an intracommunicator */
     mpi_errno = NMPI_Allreduce( MPI_IN_PLACE, local_mask, MAX_CONTEXT_MASK, 
 				MPI_INT, MPI_BAND, comm_ptr->handle );
@@ -339,6 +352,8 @@ int MPIR_Get_contextid( MPID_Comm *comm_ptr )
     int          mpi_errno = 0;
     unsigned int local_mask[MAX_CONTEXT_MASK];
     int          own_mask = 0;
+    int          testCount = 10;
+
     MPIU_THREADPRIV_DECL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPIR_GET_CONTEXTID);
 
@@ -359,6 +374,17 @@ int MPIR_Get_contextid( MPID_Comm *comm_ptr )
        using the mask, we take a mask of zero */
     MPIU_DBG_MSG_FMT( COMM, VERBOSE, (MPIU_DBG_FDEST,
          "Entering; shared state is %d:%d", mask_in_use, lowestContextId ) );
+    /* We need a special test in this loop for the case where some process
+     has exhausted its supply of context ids.  In the single threaded case, 
+     this is simple, because the algorithm is deterministic (see above).  In 
+     the multithreaded case, it is more complicated, because we may get a
+     zero for the context mask because some other thread holds the mask.  
+     In addition, we can't check for the case where this process did not
+     select MPI_THREAD_MULTIPLE, because one of the other processes
+     may have selected MPI_THREAD_MULTIPLE.  To handle this case, after a 
+     fixed number of failures, we test to see if some process has exhausted 
+     its supply of context ids.  If so, all processes can invoke the 
+     out-of-context-id error.  That fixed number of tests is in testCount */
     while (context_id == 0) {
 	/* MPIU_THREAD_SINGLE_CS_ENTER("context_id"); */
 	if (initialize_context_mask) {
@@ -382,9 +408,9 @@ int MPIR_Get_contextid( MPID_Comm *comm_ptr )
 	}
 	/* MPIU_THREAD_SINGLE_CS_EXIT("context_id"); */
 	
-#ifdef _SMP_
+#if defined(_OSU_MVAPICH_)
         comm_ptr->shmem_coll_ok = 0;/* To prevent Allreduce taking shmem route*/
-#endif
+#endif /* defined(_OSU_MVAPICH_) */
 	/* Now, try to get a context id */
 	/* Comm must be an intracommunicator */
 	mpi_errno = NMPI_Allreduce( MPI_IN_PLACE, local_mask, MAX_CONTEXT_MASK,
@@ -422,18 +448,36 @@ int MPIR_Get_contextid( MPID_Comm *comm_ptr )
 		   as using a condition variable (if we know for sure that
 		   there is another thread on this process that is waiting).
 		*/
-		MPID_Thread_mutex_unlock(&MPIR_Process.global_mutex);
+		MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
 		MPID_Thread_yield();
-		MPID_Thread_mutex_lock(&MPIR_Process.global_mutex);
+		MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
 	    }
 	    mask_in_use = 0;
 	    /* MPIU_THREAD_SINGLE_CS_EXIT("context_id"); */
 	}
 	else {
 	    /* As above, force this thread to yield */
-	    MPID_Thread_mutex_unlock(&MPIR_Process.global_mutex);
+	    MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
 	    MPID_Thread_yield();
-	    MPID_Thread_mutex_lock(&MPIR_Process.global_mutex);
+	    MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
+	}
+	/* Here is the test for out-of-context ids */
+	if (testCount-- == 0) {
+	    int hasNoId, totalHasNoId;
+	    /* We don't need to lock on this because we're just looking for
+	       zero or nonzero */
+	    hasNoId = MPIR_Find_context_bit( context_mask ) == 0;
+	    NMPI_Allreduce( &hasNoId, &totalHasNoId, 1, MPI_INT, 
+			    MPI_MAX, comm_ptr->handle );
+	    if (totalHasNoId == 1) {
+		/* Failure */
+		context_id = 0;
+		/* Release the masks */
+		if (own_mask) {
+		    mask_in_use = 0;
+		}
+		break;
+	    }
 	}
     }
 
@@ -462,8 +506,7 @@ int MPIR_Get_contextid( MPID_Comm *comm_ptr )
    Even better is to separate the local and remote context ids.  Then
    each group of processes can manage their context ids separately.
 */
-/* FIXME : This approach for intercomm context will not work for MPI-2
- *
+/* 
  * This uses the thread-safe (if necessary) routine to get a context id
  * and does not need its own thread-safe version.
  */
@@ -474,7 +517,7 @@ int MPIR_Get_contextid( MPID_Comm *comm_ptr )
 int MPIR_Get_intercomm_contextid( MPID_Comm *comm_ptr, int *context_id, 
 				  int *recvcontext_id )
 {
-    int mycontext_id, remote_context_id, final_context_id;
+    int mycontext_id, remote_context_id;
     int mpi_errno = MPI_SUCCESS;
     int tag = 31567; /* FIXME  - we need an internal tag or 
 		        communication channel.  Can we use a different
@@ -507,40 +550,17 @@ int MPIR_Get_intercomm_contextid( MPID_Comm *comm_ptr, int *context_id,
 	MPIC_Sendrecv( &mycontext_id, 1, MPI_INT, 0, tag,
 		       &remote_context_id, 1, MPI_INT, 0, tag, 
 		       comm_ptr->handle, MPI_STATUS_IGNORE );
-
-#if 0
-	/* FIXME : We need to do something with the context ids.  For 
-	   MPI1, we can just take the min of the two context ids and
-	   use that value.  For MPI2, we'll need to have separate
-	   send and receive context ids */
-	if (remote_context_id < context_id) 
-	    final_context_id = remote_context_id;
-	else 
-	    final_context_id = context_id;
-#else
-	final_context_id = remote_context_id;
-#endif
     }
 
     /* Make sure that all of the local processes now have this
        id */
     MPIR_Nest_incr();
-    NMPI_Bcast( &final_context_id, 1, MPI_INT, 
+    NMPI_Bcast( &remote_context_id, 1, MPI_INT, 
 		0, comm_ptr->local_comm->handle );
     MPIR_Nest_decr();
-#if 0
-    /* FIXME : If we did not choose this context, free it.  We won't do this
-       once we have MPI2 intercomms (at least, not for intercomms that
-       are not subsets of MPI_COMM_WORLD) */
-    if (final_context_id != context_id) {
-	/* printf( "freeind %d\n", context_id ); */
-	MPIR_Free_contextid( context_id );
-	/* printf( "Done with free\n" ); */
-    }
-#endif
-    /* printf( "intercomm context = %d\n", final_context_id ); */
+    /* printf( "intercomm context = %d\n", remote_context_id ); */
 
-    *context_id = final_context_id;
+    *context_id     = remote_context_id;
     *recvcontext_id = mycontext_id;
  fn_fail:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPIR_GET_INTERCOMM_CONTEXTID);
@@ -593,11 +613,14 @@ void MPIR_Free_contextid( int context_id )
 /*
  * Copy a communicator, including creating a new context and copying the
  * virtual connection tables and clearing the various fields.
- * Does *not* copy attributes.  If size is < the size of the input
- * communicator, copy only the first size elements.  If this process
- * is not a member, return a null pointer in outcomm_ptr.
+ * Does *not* copy attributes.  If size is < the size of the (local group
+ * in the ) input communicator, copy only the first size elements.  
+ * If this process is not a member, return a null pointer in outcomm_ptr.
+ * This is only supported in the case where the communicator is in 
+ * Intracomm (not an Intercomm).  Note that this is all that is required
+ * for cart_create and graph_create.
  *
- * Used by comm_create, cart_create, graph_create, and dup_create 
+ * Used by cart_create, graph_create, and dup_create 
  */
 #undef FUNCNAME
 #define FUNCNAME MPIR_Comm_copy
@@ -629,11 +652,13 @@ int MPIR_Comm_copy( MPID_Comm *comm_ptr, int size, MPID_Comm **outcomm_ptr )
     /* --BEGIN ERROR HANDLING-- */
     if (new_context_id == 0 || mpi_errno != MPI_SUCCESS) {
 	mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE,
-               "MPIR_Comm_copy", __LINE__, MPI_ERR_OTHER, "**toomanycomm", 0 );
+               FCNAME, __LINE__, MPI_ERR_OTHER, "**toomanycomm", 0 );
 	goto fn_fail;
     }
     /* --END ERROR HANDLING-- */
 
+    /* This is the local size, not the remote size, in the case of
+       an intercomm */
     if (comm_ptr->rank >= size) {
 	*outcomm_ptr = 0;
 	goto fn_exit;
@@ -651,11 +676,29 @@ int MPIR_Comm_copy( MPID_Comm *comm_ptr, int size, MPID_Comm **outcomm_ptr )
     /* Save the kind of the communicator */
     newcomm_ptr->comm_kind   = comm_ptr->comm_kind;
     newcomm_ptr->local_comm  = 0;
-    
-    /* Duplicate the VCRT references */
-    MPID_VCRT_Add_ref( comm_ptr->vcrt );
-    newcomm_ptr->vcrt = comm_ptr->vcrt;
-    newcomm_ptr->vcr  = comm_ptr->vcr;
+
+    /* There are two cases here - size is the same as the old communicator,
+       or it is smaller.  If the size is the same, we can just add a reference.
+       Otherwise, we need to create a new VCRT.  Note that this is the
+       test that matches the test on rank above. */
+    if (size == comm_ptr->local_size) {
+	/* Duplicate the VCRT references */
+	MPID_VCRT_Add_ref( comm_ptr->vcrt );
+	newcomm_ptr->vcrt = comm_ptr->vcrt;
+	newcomm_ptr->vcr  = comm_ptr->vcr;
+    }
+    else {
+	int i;
+	/* The "remote" vcr gets the shortened vcrt */
+	MPID_VCRT_Create( size, &newcomm_ptr->vcrt );
+	MPID_VCRT_Get_ptr( newcomm_ptr->vcrt, 
+			   &newcomm_ptr->vcr );
+	for (i=0; i<size; i++) {
+	    /* For rank i in the new communicator, find the corresponding
+	       rank in the input communicator */
+	    MPID_VCR_Dup( comm_ptr->vcr[i], &newcomm_ptr->vcr[i] );
+	}
+    }
 
     /* If it is an intercomm, duplicate the local vcrt references */
     if (comm_ptr->comm_kind == MPID_INTERCOMM) {
@@ -665,9 +708,15 @@ int MPIR_Comm_copy( MPID_Comm *comm_ptr, int size, MPID_Comm **outcomm_ptr )
     }
 
     /* Set the sizes and ranks */
-    newcomm_ptr->remote_size = comm_ptr->remote_size;
     newcomm_ptr->rank        = comm_ptr->rank;
-    newcomm_ptr->local_size  = comm_ptr->local_size;
+    if (comm_ptr->comm_kind == MPID_INTERCOMM) {
+	newcomm_ptr->local_size  = comm_ptr->local_size;
+	newcomm_ptr->remote_size = comm_ptr->remote_size;
+    }
+    else {
+	newcomm_ptr->local_size  = size;
+	newcomm_ptr->remote_size = size;
+    }
 
     /* Inherit the error handler (if any) */
     newcomm_ptr->errhandler = comm_ptr->errhandler;
@@ -713,8 +762,14 @@ int MPIR_Comm_release(MPID_Comm * comm_ptr, int isDisconnect)
 	   This must be done first, because if freeing the attributes
 	   returns an error, the communicator is not freed */
 	if (MPIR_Process.attr_free && comm_ptr->attributes) {
+	    /* Temporarily add a reference to this communicator because 
+               the attr_free code requires a valid communicator */ 
+	    MPIU_Object_add_ref( comm_ptr ); 
 	    mpi_errno = MPIR_Process.attr_free( comm_ptr->handle, 
 						comm_ptr->attributes );
+	    /* Release the temporary reference added before the call to 
+               attr_free */ 
+	    MPIU_Object_release_ref( comm_ptr, &inuse); 
 	}
 
 	if (mpi_errno == MPI_SUCCESS) {

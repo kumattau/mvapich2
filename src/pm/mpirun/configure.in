@@ -1,0 +1,80 @@
+AC_PREREQ(2.59)
+AC_INIT(configure.in)
+
+dnl The MVAPICH2 top-level configure adds a bunch of flags to the
+dnl user-defined CFLAGS by processing different configure command-line
+dnl arguments (--enable-g, --enable-default-optimization). These updated
+dnl flags are passed down as a separate flag. Here, we don't care about
+dnl the user-defined flags, but rather this updated flags, so we just
+dnl overwrite CFLAGS with them.
+PAC_SUBCONFIG_INIT()
+
+AC_CONFIG_HEADER(include/mpirunconf.h)
+AH_TOP([/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/* Copyright (c) 2002-2008, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
+#if !defined(MPIRUNCONF_H_INCLUDED)
+#define MPIRUNCONF_H_INCLUDED
+])
+AH_BOTTOM([#endif /* !defined(MPIRUNCONF_H_INCLUDED) */])
+
+echo "RUNNING CONFIGURE FOR THE MPIRUN PM"
+
+AC_CONFIG_AUX_DIR(../../../confdb)
+AC_CANONICAL_BUILD
+
+AC_ARG_WITH(blcr,
+[--with-blcr - Enable Berkeley Lab Checkpoint/Restart support.],,with_blcr=no)
+AC_ARG_ENABLE(rsh,
+[--enable-rsh - Enable use of rsh for command execution by default.],,enable_rsh=no)
+
+PAC_ARG_CACHING
+PAC_VPATH_CHECK()
+
+AC_PROG_CC
+AC_PROG_INSTALL
+PAC_PROG_CHECK_INSTALL_WORKS
+PAC_PROG_MKDIR_P
+PAC_PROG_MAKE
+
+AC_HEADER_STDC
+
+MPILIBNAME=${MPILIBNAME:-"mpich"}
+AC_SUBST(MPILIBNAME)
+
+AC_SEARCH_LIBS(ceil, m,,[AC_MSG_ERROR([libm not found.])],)
+AC_CHECK_FUNCS(strndup get_current_dir_name)
+
+if test -n "`echo $build_os | grep solaris`"; then
+    AC_SEARCH_LIBS(herror, resolv,,[AC_MSG_ERROR([libresolv not found.])],)
+    AC_SEARCH_LIBS(bind, socket,,[AC_MSG_ERROR([libsocket not found.])],)
+    mpirun_rsh_other_libs="-lresolv -lsocket"
+    mpispawn_other_libs="-lresolv -lsocket -lnsl"
+fi
+
+if test "$with_blcr" != "no"; then
+    AC_MSG_ERROR([BLCR is not supported by mpirun.])
+fi
+
+if test "$enable_rsh" = "yes"; then
+    AC_DEFINE(USE_RSH, 1, [Define to enable use of rsh for command execution by default.])
+fi
+
+CPPFLAGS="$CPPFLAGS $MPICH2_INCLUDE_FLAGS"
+
+AC_SUBST(MAKE_DEPEND_C)
+AC_SUBST(mpirun_rsh_other_libs)
+AC_SUBST(mpispawn_other_libs)
+
+PAC_SUBCONFIG_FINALIZE()
+
+AC_OUTPUT(Makefile mpirun_rsh/Makefile mpispawn/Makefile)
