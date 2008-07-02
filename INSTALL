@@ -22,12 +22,12 @@ I. OVERVIEW
 
 The MVAPICH2 installation process is designed to enable the most widely utilized
 features on the target build OS by default. Supported operating systems include
-Linux and Solaris. The default interface is OpenFabrics IB/iWARP on Linux and uDAPL 
-on Solaris. uDAPL and TCP/IP devices can also be explicitly selected on Linux. 
-The installation section provides generic instructions for building from a Tarball 
-or our latest sources. Please see the subsection for the device you are targeting 
-for specific configuration instructions. If you have questions, please contact us
-at mvapich-discuss@cse.ohio-state.edu.
+Linux and Solaris. The default interface is OpenFabrics IB/iWARP on Linux and
+uDAPL on Solaris. uDAPL and TCP/IP devices can also be explicitly selected on
+Linux.  The installation section provides generic instructions for building from
+a Tarball or our latest sources. Please see the subsection for the device you
+are targeting for specific configuration instructions. If you have questions,
+please contact us at mvapich-discuss@cse.ohio-state.edu.
 
 For more detailed installation instructions, please consult the user guide at:
 
@@ -44,21 +44,22 @@ You'll need the following build tools to compile MVAPICH2:
 
 * autoconf 2.59 or later (not required if building from a tarball) 
 * A C compiler (gcc, icc, etc.)
-* Python 2.2 or later (required only if building the MPD process management system)
+* Python 2.2 or later (required only if building the MPD process management
+  system)
 
-MVAPICH2 also depends on various third-party libraries 
-depending on the configuration being installed:
+MVAPICH2 also depends on various third-party libraries depending on the
+configuration being installed:
 
 OpenFabrics IB/iWARP:
-  These libraries come packaged with the OpenFabrics Enterprise Edition,
-  which can be downloaded from the following location: http://openfabrics.org/
+  These libraries come packaged with the OpenFabrics Enterprise Edition, which
+  can be downloaded from the following location: http://openfabrics.org/
 
   * libibumad (REQUIRED)
   * libibverbs (REQUIRED)
   * librdmacm (REQUIRED for support of RDMA CM) 
 
-  If you are planning to use checkpoint/restart support you must have the
-  BLCR package installed: 
+  If you are planning to use checkpoint/restart support you must have the BLCR
+  package installed: 
        http://ftg.lbl.gov/CheckpointRestart/CheckpointRestart.shtml 
 
   * libcr (REQUIRED for Checkpoint/Restart)
@@ -81,14 +82,15 @@ $ ./configure
 $ make
 $ make install
 
+
 C. Building the Latest Source
 -----------------------------
 
-These instructions assume you have already installed subversion (SVN) and checked 
-out a working copy of MVAPICH2 -- either the latest trunk code or some branch or tag
-(http://mvapich.ohio-state.edu/download/mvapich2/). You also need to have already 
-installed whatever prerequisites that version of MVAPICH2 requires (the ./configure 
-step should complain if you have not.)
+These instructions assume you have already installed subversion (SVN) and
+checked out a working copy of MVAPICH2 -- either the latest trunk code or some
+branch or tag (http://mvapich.ohio-state.edu/download/mvapich2/). You also need
+to have already installed whatever prerequisites that version of MVAPICH2
+requires (the ./configure step should complain if you have not.)
 
 Start the process by updating files in the source tree:
 
@@ -108,11 +110,12 @@ $ ./configure
 $ make
 $ make install
 
+
 D. OpenFabrics IB/iWARP
 -----------------------
 
-OpenFabrics IB/iWARP is the default interface on Linux. It can be explicitly selected 
-by configuring with:
+OpenFabrics IB/iWARP is the default interface on Linux. It can be explicitly
+selected by configuring with:
 
 --with-rdma=gen2
 
@@ -136,11 +139,12 @@ MVAPICH2-IB/iWARP supports many useful features, including:
 
 For more detailed instructions, please consult the user guide.
 
+
 E. uDAPL
 --------
 
-The uDAPL interface is the default on Solaris. It can be explicitly selected on both Solaris
-and Linux by configuring with:
+The uDAPL interface is the default on Solaris. It can be explicitly selected on
+both Solaris and Linux by configuring with:
 
 --with-rdma=udapl
 
@@ -159,7 +163,8 @@ The default configuration includes:
         /etc/dat.conf on Linux
         /etc/dat/dat.conf on Solaris
 
-* DAPL version 1.2. You can specify DAPL 2.0 with: --with-dapl-version=2.0 on Linux
+* DAPL version 1.2.
+  On Linux you can specify DAPL 2.0 with: --with-dapl-version=2.0
 
 * I/O Bus type: PCI Express (PCI_EX)
   Override with: --with-io-bus=type
@@ -182,6 +187,7 @@ MVAPICH2-uDAPL supports many useful features, including:
 * etc.
 
 For more detailed instructions, please consult the user guide.
+
 
 F. TCP/IP
 ---------
