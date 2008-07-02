@@ -121,7 +121,10 @@ AC_SUBST(CONFIGURE_ARGS_CLEAN)
 if test -s "$srcdir/maint/ReleaseDate" ; then
     RELEASE_DATE="`cat $srcdir/maint/ReleaseDate`"
 else
-    RELEASE_DATE="Unknown, built on `date`"
+dnl <_OSU_MVAPICH_>
+dnl    RELEASE_DATE="Unknown, built on `date`"
+    RELEASE_DATE="Unofficial Build"
+dnl </_OSU_MVAPICH_>
 fi
 AC_SUBST(RELEASE_DATE)
 
