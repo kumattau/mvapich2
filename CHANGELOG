@@ -3,7 +3,41 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
-MVAPICH2-1.1.0 (mm/dd/08)
+MVAPICH2-1.2 (07/02/08)
+
+* Following features are added for this new mvapich2-1.2 release: 
+
+  - Based on MPICH2 1.0.7
+
+  - Scalable and robust daemon-less job startup
+
+       -- Enhanced and robust mpirun_rsh framework (non-MPD-based) to
+          provide scalable job launching on multi-thousand core clusters
+
+       -- Available for OpenFabrics (IB and iWARP) and uDAPL interfaces
+          (including Solaris)
+
+  - Adding support for intra-node shared memory communication with Checkpoint-restart
+
+       --  Allows best performance and scalability with fault-tolerance
+           support
+
+  - Enhancement to software installation
+
+       -- Change to full autoconf-based configuration
+       -- Adding an application (mpiname) for querying the MVAPICH2 library
+          version and configuration information
+
+  - Enhanced processor affinity using PLPA for multi-core architectures
+
+  - Allows user-defined flexible processor affinity
+
+  - Enhanced scalability for RDMA-based direct one-sided communication
+    with less communication resource
+
+  - Shared memory optimized MPI_Bcast operations
+
+  - Optimized and tuned MPI_Alltoall
 
 Changes contributed by MPICH2:
 * Support for STI Cell Broadband Engine
