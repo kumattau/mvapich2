@@ -39,38 +39,6 @@ MVAPICH2-1.2 (07/02/08)
 
   - Optimized and tuned MPI_Alltoall
 
-Changes contributed by MPICH2:
-* Support for STI Cell Broadband Engine
-* Added datatype free hooks to be used by devices independently.
-* Added device-specific timer support.
-* Enabled -O2 and equivalent compiler optimizations for supported compilers by default (including GNU, Intel, Portland, Sun, Absoft, IBM).
-* make uninstall works cleanly now, except for MPD installations.
-* Updates to the ch3:nemesis channel including preliminary support for thread safety.
-* MPI_Comm_create works for intercommunicators.
-* Performance improvements for derived datatypes (including packing and communication) through in-built loop-unrolling and buffer alignment.
-* Performance improvements for MPI_Gather when non-power-of-two processes are used, and when a non-zero ranked root is performing the gather.
-* Preliminary support for dynamic loading of ch3 channels (sock, ssm, shm).
-* Singleton init now works with the MPD process manager.
-* Fixes in MPD related to MPI-2 connect-accept.
-* Improved support for MPI-2 generalized requests that allows true nonblocking I/O in ROMIO.
-* MPE Changes:
-    - Updated MPE logging API so that it is thread-safe (through global mutex). Updated all related documentation, e.g. man pages.
-    - Added infrastructure to piggyback argument data to MPI states.
-    - Enabled thread-safe MPI logging through global mutex.
-    - Enhanced Jumpshot to be more thread friendly and added simple statistics in the Legend windows.
-    - Added backtrace support to MPE on Solaris and glibc based systems, e.g. Linux.  This improves the output error message from the Collective/Datatype checking library.
-    - Fixed the CLOG2 format so it can be used in serial (non-MPI) logging.
-* PMI Changes:
-    - Added support to use PMI Clique functionality for process managers that support it.
-* ROMIO Changes:
-    - Support to take hints from a config file
-    - More tests and bug fixes for nonblocking I/O
-* SCTP:
-    - Added MPICH_SCTP_NAGLE_ON support.
-* SMPD Changes:
-    - Singleton Init support.
-
-
 MVAPICH2-1.0.2 (02/20/08)
 
 * Change the default MV2_DAPL_PROVIDER to OpenIB-cma
