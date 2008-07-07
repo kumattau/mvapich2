@@ -411,9 +411,9 @@ void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int size, int rank, int shmem_comm_rank
 int MPID_SHMEM_BCAST_init(int file_size, int shmem_comm_rank, int my_local_rank, int* bcast_seg_size, char** bcast_shmem_file, int* fd)
 {
     int pagesize = getpagesize();
-    int mpi_errno = MPI_SUCCESS;
+    int mpi_errno = 1;
 
-    file_size = file_size + 3*SHMEM_BCAST_FLAGS + 1024*SHMEM_BCAST_METADATA;
+    file_size = file_size + 3*SHMEM_BCAST_FLAGS + SHMEM_BCAST_LEADERS*SHMEM_BCAST_METADATA;
 
     /* add pid for unique file name */
     *bcast_shmem_file = (char *) MPIU_Malloc(sizeof(char) * (SHMEM_COLL_HOSTNAME_LEN + 26 + PID_CHAR_LEN));
@@ -440,7 +440,7 @@ int MPID_SHMEM_BCAST_init(int file_size, int shmem_comm_rank, int my_local_rank,
             unlink(*bcast_shmem_file);
             fprintf(stderr,  "[%d] shmem_coll_init:error in ftruncate to zero "
                              "shared memory file: %d\n", my_rank, errno);
-            return -1;
+            return 0;
         }
 
         /* set file size, without touching pages */
@@ -449,7 +449,7 @@ int MPID_SHMEM_BCAST_init(int file_size, int shmem_comm_rank, int my_local_rank,
             unlink(*bcast_shmem_file);
             fprintf(stderr,  "[%d] shmem_coll_init:error in ftruncate to size "
                              "shared memory file: %d\n", my_rank, errno);
-            return -1;
+            return 0;
         }
 
 /* Ignoring optimal memory allocation for now */
@@ -460,7 +460,7 @@ int MPID_SHMEM_BCAST_init(int file_size, int shmem_comm_rank, int my_local_rank,
             if (write(*fd, buf, *bcast_seg_size) != *bcast_seg_size) {
                 printf("[%d] shmem_coll_init:error in writing " "shared memory file: %d\n", my_rank, errno);
                 MPIU_Free(buf);
-                return -1;
+                return 0;
             }
             MPIU_Free(buf);
         }
@@ -472,7 +472,7 @@ int MPID_SHMEM_BCAST_init(int file_size, int shmem_comm_rank, int my_local_rank,
             fprintf(stderr,  "[%d] shmem_coll_init:error in lseek "
                              "on shared memory file: %d\n",
                              my_rank, errno);
-            return -1;
+            return 0;
         }
 
     }
@@ -507,7 +507,7 @@ int MPID_SHMEM_BCAST_mmap(void** mmap_ptr, int bcast_seg_size, int fd, int my_lo
 void MPID_SHMEM_COLL_GetShmemBcastBuf(void** output_buf, void* buffer){
     char* shmem_coll_buf = (char*)(buffer);
 
-    *output_buf = (char*)shmem_coll_buf + 3*SHMEM_BCAST_FLAGS + 1024*SHMEM_BCAST_METADATA;
+    *output_buf = (char*)shmem_coll_buf + 3*SHMEM_BCAST_FLAGS + SHMEM_BCAST_LEADERS*SHMEM_BCAST_METADATA;
 }
 
 void signal_local_processes(int step, int index, char* send_buf, int offset, int bytes, void* mmap_ptr){
@@ -547,7 +547,7 @@ void wait_for_signal(int step, int index, char** output_buf, int* offset, int* b
     buffer = (addrint_t*)tmp;
     buffer = (int*)(tmp + sizeof(addrint_t));
     *offset = *((int*)buffer);
-    *output_buf = (char*)(mmap_ptr) + 3*SHMEM_BCAST_FLAGS + 1024*SHMEM_BCAST_METADATA + *offset;
+    *output_buf = (char*)(mmap_ptr) + 3*SHMEM_BCAST_FLAGS + SHMEM_BCAST_LEADERS*SHMEM_BCAST_METADATA + *offset;
     buffer = (int*)(tmp + sizeof(addrint_t) + sizeof(int));
     *bytes = *((int*)buffer);
 
