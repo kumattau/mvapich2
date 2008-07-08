@@ -1052,6 +1052,7 @@ void cm_ep_create(MPIDI_VC_t *vc)
       {
           ep_attr.service_type = DAT_SERVICE_TYPE_RC;
           ep_attr.max_mtu_size = rdma_default_mtu_size;
+          ep_attr.max_message_size = ia_attr.max_message_size;
           ep_attr.max_rdma_size = ia_attr.max_rdma_size;
           ep_attr.qos = DAT_QOS_BEST_EFFORT;
           ep_attr.recv_completion_flags = DAT_COMPLETION_DEFAULT_FLAG;
@@ -1066,6 +1067,8 @@ void cm_ep_create(MPIDI_VC_t *vc)
           ep_attr.max_request_iov =
               MIN (rdma_default_max_sg_list,
                    ia_attr.max_iov_segments_per_dto);
+          ep_attr.max_rdma_write_iov = 0;
+          ep_attr.max_rdma_read_iov = 0;
           ep_attr.max_rdma_read_in = DAPL_DEFAULT_MAX_RDMA_IN;
           ep_attr.max_rdma_read_out = DAPL_DEFAULT_MAX_RDMA_OUT;
 
