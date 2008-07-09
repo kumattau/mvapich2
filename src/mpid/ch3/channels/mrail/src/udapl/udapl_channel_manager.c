@@ -463,6 +463,19 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle, MPIDI_VC_t * vc_req,
             {
                 DEBUG_PRINT ("[poll cq]: get complete queue entry\n");
                 MPIU_Assert (event.event_number == DAT_DTO_COMPLETION_EVENT);
+
+                /* Handling fatal error like
+                 * DAT_DTO_ERR_TRANSPORT (occures when network disfunction) 
+                 */
+                if (event.event_data.dto_completion_event_data.status != DAT_DTO_SUCCESS)
+                  {
+                      int rank;
+                      PMI_Get_rank(&rank);
+                      udapl_error_abort(UDAPL_STATUS_ERR, 
+                              "[%d] DAT_EVD_ERROR in Consume_signals %x\n", rank,
+                              event.event_data.dto_completion_event_data.status);
+                  }
+
                 sc = ((struct vbuf *) event.event_data.
                       dto_completion_event_data.user_cookie.as_ptr)->desc;
                 v = (vbuf *) ((aint_t) sc.cookie.as_ptr);
