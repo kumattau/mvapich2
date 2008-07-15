@@ -165,6 +165,18 @@ static inline int log_2(int np)
     return lgN;
 }
 
+static int get_rate(umad_ca_t *umad_ca)
+{
+    int i;
+
+    for (i = 1; i <= umad_ca->numports; i++) {
+        if (IBV_PORT_ACTIVE == umad_ca->ports[i]->state) {
+            return umad_ca->ports[i]->rate;
+        }
+    }
+    return 0;
+}
+
 #undef FUNCNAME
 #define FUNCNAME hcaNameToType
 #undef FCNAME
@@ -174,56 +186,66 @@ int hcaNameToType(char *dev_name, int* hca_type)
     MPIDI_STATE_DECL(MPID_STATE_HCANAMETOTYPE);
     MPIDI_FUNC_ENTER(MPID_STATE_HCANAMETOTYPE);
     int mpi_errno = MPI_SUCCESS;
+    int rate;
 
-    if (!strncmp(dev_name, "mlx4", 4))
-    {
-        *hca_type = MLX_CX_DDR;
-    }
-    else if (!strncmp(dev_name, "mthca", 5))
-    {
-        *hca_type = MLX_PCI_X;
+    *hca_type = UNKNOWN_HCA;
+
+    if (!strncmp(dev_name, "mlx4", 4) || !strncmp(dev_name, "mthca", 5)) {
         umad_ca_t umad_ca;
-        memset(&umad_ca, 0, sizeof(umad_ca_t));
 
-        if (umad_init() < 0)
-        {
+        *hca_type = MLX_PCI_X;
+
+        if (umad_init() < 0) {
             MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**umadinit");
         }
 
+        memset(&umad_ca, 0, sizeof(umad_ca_t));
         if (umad_get_ca(dev_name, &umad_ca) < 0) {
             MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**umadgetca");
         }
 
-        int rate = 0;
+        rate = get_rate(&umad_ca);
+        if (!rate) {
+            umad_release_ca(&umad_ca);
+            umad_done();
+            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**umadgetrate");
+        }
 
-        if (!strncmp(umad_ca.ca_type, "MT25", 4))
-        {
-            int i = 1;
+        if (!strncmp(dev_name, "mthca", 5)) {
+            *hca_type = MLX_PCI_X;
 
-            for (; i <= umad_ca.numports; i++)
-            {
-                if (IBV_PORT_ACTIVE == umad_ca.ports[i]->state) {
-                    rate = umad_ca.ports[i]->rate;
-                    break;
-                }
-            }
-
-            switch (rate)
-            {
+            if (!strncmp(umad_ca.ca_type, "MT25", 4)) {
+                switch (rate) {
                 case 20:
-                        *hca_type = !strncmp(umad_ca.ca_type, "MT254", 5) ? MLX_CX_DDR : MLX_PCI_EX_DDR;
+                    *hca_type = MLX_PCI_EX_DDR;
                     break;
                 case 10:
-                        *hca_type = !strncmp(umad_ca.ca_type, "MT254", 5) ? MLX_CX_DDR : MLX_PCI_EX_SDR;
+                    *hca_type = MLX_PCI_EX_SDR;
                     break;
                 default:
-                        *hca_type = MLX_PCI_EX_SDR;
+                    *hca_type = MLX_PCI_EX_SDR;
                     break;
+                }
+            } else if (!strncmp(umad_ca.ca_type, "MT23", 4)) {
+                *hca_type = MLX_PCI_X;
+            } else {
+                *hca_type = MLX_PCI_EX_SDR; 
             }
-        } else if (!strncmp(umad_ca.ca_type, "MT23", 4)) {
-            *hca_type = MLX_PCI_X;
-        } else {
-            *hca_type = MLX_PCI_EX_SDR; 
+        } else { /* mlx4 */ 
+            switch(rate) {
+            case 40:
+                *hca_type = MLX_CX_QDR;
+                break;
+            case 20:
+                *hca_type = MLX_CX_DDR;
+                break;
+            case 10:
+                *hca_type = MLX_CX_SDR;
+                break;
+            default:
+                *hca_type = MLX_CX_SDR;
+                break;
+            }
         }
 
         umad_release_ca(&umad_ca);
@@ -544,7 +566,9 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
         rdma_use_coalesce = !!atoi(value);
     }
 
-    if (proc->hca_type == MLX_CX_DDR) {
+    if (proc->hca_type == MLX_CX_DDR ||
+        proc->hca_type == MLX_CX_SDR ||
+        proc->hca_type == MLX_CX_QDR) {
 	rdma_use_coalesce = 0;
     }
 
@@ -626,6 +650,8 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
                     rdma_vbuf_total_size = 12*1024;
                     break;
                 case MLX_CX_DDR:
+                case MLX_CX_SDR:
+                case MLX_CX_QDR:
                     rdma_vbuf_total_size = 9 * 1024;
                     break;
 	        case CHELSIO_T3:
@@ -695,6 +721,8 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
         case MLX_PCI_EX_SDR:
         case MLX_PCI_EX_DDR:
         case MLX_CX_DDR:
+        case MLX_CX_SDR:
+        case MLX_CX_QDR:
         case PATH_HT:
         default:
             switch(proc->cluster_size) {

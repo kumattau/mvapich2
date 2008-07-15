@@ -9,4 +9,5 @@
 **rdmacmportrange:Invalid port range.
 **rdmacmportrange %d %d:Invalid port range of %d. The required range is %d.
 **umadgetca:Unable to get InfiniBand device port attributes.
+**umadgetrate:Unable to get InfiniBand device Rate.
 **umadinit:UMAD initialization failed.
