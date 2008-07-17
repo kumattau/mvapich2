@@ -17,6 +17,7 @@
 #include "mem_hooks.h"
 #include "dreg.h"
 #include <stdio.h>
+#include <unistd.h>
 
 #if !defined(DISABLE_MUNMAP_HOOK)
 #include <dlfcn.h>
