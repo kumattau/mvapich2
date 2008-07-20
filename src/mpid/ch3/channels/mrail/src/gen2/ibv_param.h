@@ -73,6 +73,7 @@ extern uint32_t             viadev_max_r3_oust_send;
 extern int                  rdma_polling_set_threshold;
 extern int                  rdma_polling_set_limit;
 extern int		    rdma_eager_limit;
+extern int                  rdma_rndv_ext_sendq_size;
 
 extern int                  rdma_pin_pool_size;
 extern int                  rdma_put_fallback_threshold;

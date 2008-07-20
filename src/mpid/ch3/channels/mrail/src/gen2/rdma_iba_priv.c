@@ -863,6 +863,7 @@ void MRAILI_Init_vc(MPIDI_VC_t * vc, int pg_rank)
         vc->mrail.rails[i].send_wqes_avail    = rdma_default_max_wqe;
         vc->mrail.rails[i].ext_sendq_head     = NULL;
         vc->mrail.rails[i].ext_sendq_tail     = NULL;
+        vc->mrail.rails[i].ext_sendq_size     = 0;
     }
 
     vc->mrail.next_packet_expected  = 0;

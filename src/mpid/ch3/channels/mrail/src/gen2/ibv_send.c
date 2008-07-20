@@ -77,7 +77,11 @@ static inline void MRAILI_Ext_sendq_enqueue(MPIDI_VC_t *c,
     DEBUG_PRINT("[ibv_send] enqueue, head %p, tail %p\n", 
             c->mrail.rails[rail].ext_sendq_head, 
             c->mrail.rails[rail].ext_sendq_tail); 
-    c->force_rndv = 1;
+
+    ++ c->mrail.rails[rail].ext_sendq_size;
+    if (c->mrail.rails[rail].ext_sendq_size > rdma_rndv_ext_sendq_size) {
+        c->force_rndv = 1;
+    }
 
     MPIDI_FUNC_EXIT(MPID_STATE_MRAILI_EXT_SENDQ_ENQUEUE);
 }
@@ -104,7 +108,8 @@ static inline void MRAILI_Ext_sendq_send(MPIDI_VC_t *c, int rail)
             c->mrail.rails[rail].ext_sendq_tail = NULL;
         }
         v->desc.next = NULL;
-        --c->mrail.rails[rail].send_wqes_avail;                
+        -- c->mrail.rails[rail].send_wqes_avail;                
+        -- c->mrail.rails[rail].ext_sendq_size;
 
         if(1 == v->coalesce) {
             DEBUG_PRINT("Sending coalesce vbuf %p\n", v);
@@ -122,7 +127,7 @@ static inline void MRAILI_Ext_sendq_send(MPIDI_VC_t *c, int rail)
         c->mrail.rails[rail].ext_sendq_head,
         c->mrail.rails[rail].ext_sendq_tail);
 
-    if (c->mrail.rails[rail].send_wqes_avail > 0) {
+    if (c->mrail.rails[rail].ext_sendq_size <= rdma_rndv_ext_sendq_size) {
         c->force_rndv = 0;
     }
 

@@ -215,21 +215,22 @@ typedef struct MPIDI_CH3I_MRAILI_SR_VC
 } MPIDI_CH3I_MRAILI_SR_VC;
 
 struct mrail_rail {
-	struct ibv_context *nic_context;
-	int    hca_index;
-	int    port;
-	int    lid;
-    int    s_weight;
-	struct ibv_cq	*cq_hndl;
-	struct ibv_qp 	*qp_hndl;
+        struct ibv_context *nic_context;
+        int    hca_index;
+        int    port;
+        int    lid;
+        int    s_weight;
+        struct ibv_cq	*cq_hndl;
+        struct ibv_qp 	*qp_hndl;
 #ifdef RDMA_CM
-	struct rdma_cm_id 	*cm_ids;
+        struct rdma_cm_id 	*cm_ids;
 #endif
-	int		send_wqes_avail;
-	struct vbuf 	*ext_sendq_head;
-	struct vbuf	*ext_sendq_tail;
-	struct  ibv_qp * qp_hndl_1sc;
-	int     postsend_times_1sc;
+        int		send_wqes_avail;
+        struct vbuf 	*ext_sendq_head;
+        struct vbuf	*ext_sendq_tail;
+        int             ext_sendq_size;
+        struct  ibv_qp * qp_hndl_1sc;
+        int     postsend_times_1sc;
 };
 
 #ifdef CKPT

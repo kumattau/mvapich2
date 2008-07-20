@@ -67,6 +67,8 @@ int           rdma_r3_threshold_nocache = 8192 * 4;
 int           num_rdma_buffer;
 int           USE_SMP = 1;
 
+/* Force to use rendezvous if extended sendq size exceeds this value */
+int           rdma_rndv_ext_sendq_size = 5;
 /* Whether coalescing of messages should be attempted */
 int           rdma_use_coalesce = 1;
 
@@ -553,6 +555,14 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
     proc->has_one_sided = (value = getenv("MV2_USE_RDMA_ONE_SIDED")) != NULL ? !!atoi(value) : 1; 
 
 #endif /* defined(CKPT) */
+
+    if ((value = getenv("MV2_RNDV_EXT_SENDQ_SIZE")) != NULL) {
+        rdma_rndv_ext_sendq_size = atoi(value);
+        if (rdma_rndv_ext_sendq_size <= 1) {
+            MPIU_Usage_printf("Setting MV2_RNDV_EXT_SENDQ_SIZE smaller than 1 "
+                              "will severely limit the MPI bandwidth.\n");
+        }
+    }
 
     if ((value = getenv("MV2_COALESCE_THRESHOLD")) != NULL) {
         rdma_coalesce_threshold = atoi(value);
