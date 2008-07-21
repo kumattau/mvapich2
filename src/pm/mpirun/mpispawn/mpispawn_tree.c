@@ -22,7 +22,7 @@
 #include <errno.h>
 #include <stdio.h>
 
-#ifndef NDEBUG
+#ifdef MPISPAWN_DEBUG
 #include <stdio.h>
 #define debug(...) fprintf(stderr, __VA_ARGS__)
 #else

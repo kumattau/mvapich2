@@ -47,15 +47,15 @@ void mpispawn_abort (int code);
 int mtpmi_init (void);
 int mtpmi_processops (void);
 
-#if !defined(NDEBUG)
+#if defined(MPISPAWN_DEBUG)
 #define MT_ASSERT(cond) do { \
     if (!(cond)) { \
         fprintf (stderr, "\n%s:%d Assert failed (%s)\n", __FILE__, \
                 __LINE__, #cond); \
     }\
 } while (0); 
-#else /* !defined(NDEBUG) */
+#else /* defined(MPISPAWN_DEBUG) */
 #define MT_ASSERT(cond)
-#endif /* !defined(NDEBUG) */
+#endif /* defined(MPISPAWN_DEBUG) */
 
 #endif
