@@ -509,10 +509,6 @@
 
 #define MPIU_ERR_SETANDJUMP3(err_,class_,gmsg_,smsg_,arg1_,arg2_,arg3_) \
      MPIU_ERR_SETANDSTMT3(err_,class_,goto fn_fail,gmsg_,smsg_,arg1_,arg2_,arg3_)
-#if defined(_OSU_MVAPICH_)
-#define MPIU_ERR_SETFATALANDJUMP3(err_,class_,gmsg_,smsg_,arg1_,arg2_,arg3_) \
-     MPIU_ERR_SETFATALANDSTMT3(err_,class_,goto fn_fail,gmsg_,smsg_,arg1_,arg2_,arg3_)
-#endif /* defined(_OSU_MVAPICH_) */
 #define MPIU_ERR_CHKANDSTMT3(cond_,err_,class_,stmt_,gmsg_,smsg_,arg1_,arg2_,arg3_) \
     {if (cond_) { MPIU_ERR_SETANDSTMT3(err_,class_,stmt_,gmsg_,smsg_,arg1_,arg2_,arg3_); }}
 #define MPIU_ERR_CHKANDJUMP3(cond_,err_,class_,gmsg_,smsg_,arg1_,arg2_,arg3_) \
@@ -520,10 +516,6 @@
 
 #define MPIU_ERR_SETANDJUMP4(err_,class_,gmsg_,smsg_,arg1_,arg2_,arg3_,arg4_) \
      MPIU_ERR_SETANDSTMT4(err_,class_,goto fn_fail,gmsg_,smsg_,arg1_,arg2_,arg3_,arg4_)
-#if defined(_OSU_MVAPICH_)
-#define MPIU_ERR_SETFATALANDJUMP4(err_,class_,gmsg_,smsg_,arg1_,arg2_,arg3_,arg4_) \
-     MPIU_ERR_SETFATALANDSTMT4(err_,class_,goto fn_fail,gmsg_,smsg_,arg1_,arg2_,arg3_,arg4_)
-#endif /* defined(_OSU_MVAPICH_) */
 #define MPIU_ERR_CHKANDSTMT4(cond_,err_,class_,stmt_,gmsg_,smsg_,arg1_,arg2_,arg3_, arg4_) \
     {if (cond_) { MPIU_ERR_SETANDSTMT4(err_,class_,stmt_,gmsg_,smsg_,arg1_,arg2_,arg3_,arg4_); }}
 #define MPIU_ERR_CHKANDJUMP4(cond_,err_,class_,gmsg_,smsg_,arg1_,arg2_,arg3_,arg4_) \

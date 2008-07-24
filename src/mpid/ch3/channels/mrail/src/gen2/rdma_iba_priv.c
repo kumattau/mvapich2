@@ -428,9 +428,7 @@ int rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                 }
             }
             if (k < rdma_num_ports) {
-		MPIU_ERR_SETFATALANDJUMP3(mpi_errno, MPI_ERR_OTHER, "**fail",
-			"%s%d%s", "Not enough ports in active state, needed ",
-			rdma_num_ports, " active ports");
+                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**activeports", "**activeports %d", rdma_num_ports);
             }
         } else {
             if(ibv_query_port(MPIDI_CH3I_RDMA_Process.nic_context[i],
@@ -438,9 +436,7 @@ int rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                 || (!port_attr.lid )
                 || (port_attr.state != IBV_PORT_ACTIVE))
             {
-		MPIU_ERR_SETFATALANDJUMP3(mpi_errno, MPI_ERR_OTHER, "**fail",
-			"%s%d%s", "user specified port ", rdma_default_port,
-			": failed to query or not ACTIVE");
+                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**portquery", "**portquery %d", rdma_default_port);
             }
 
             ports[i][0] = rdma_default_port;
