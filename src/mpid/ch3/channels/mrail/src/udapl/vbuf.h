@@ -268,11 +268,11 @@ VBUF_SET_RDMA_ADDR_KEY (vbuf * v, int len,
                         void *remote_addr, DAT_RMR_CONTEXT rkey)
 {
     (v)->desc.remote_iov.
-#if DAPL_VERSION < 200
+#if DAT_VERSION_MAJOR < 2
         target_address
-#elif DAPL_VERSION >= 200
+#elif DAT_VERSION_MAJOR < 2
         virtual_address
-#endif /* DAPL_VERSION */
+#endif /* if DAT_VERSION_MAJOR < 2 */
             = (DAT_VADDR) (unsigned long) (remote_addr);
     (v)->desc.remote_iov.segment_length = (DAT_VLEN) (len);
     (v)->desc.remote_iov.rmr_context = (rkey);
