@@ -270,7 +270,7 @@ VBUF_SET_RDMA_ADDR_KEY (vbuf * v, int len,
     (v)->desc.remote_iov.
 #if DAT_VERSION_MAJOR < 2
         target_address
-#elif DAT_VERSION_MAJOR < 2
+#else /* if DAT_VERSION_MAJOR < 2 */
         virtual_address
 #endif /* if DAT_VERSION_MAJOR < 2 */
             = (DAT_VADDR) (unsigned long) (remote_addr);
