@@ -3,16 +3,6 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
- * reserved.
- *
- * This file is part of the MVAPICH2 software package developed by the
- * team members of The Ohio State University's Network-Based Computing
- * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
- *
- * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT in the top level MVAPICH2 directory.
- */
 
 #ifndef PMI_H_INCLUDED
 #define PMI_H_INCLUDED
@@ -747,11 +737,7 @@ not be used to free this array as there is no requirement that the array be
 allocated with 'malloc()'.
 
 @*/
-#if defined(_OSU_MVAPICH_)
-int PMI_Args_to_keyval(int *argcp, char** const* argvp, PMI_keyval_t **keyvalp, int *size);
-#else /* defined(_OSU_MVAPICH_) */
 int PMI_Args_to_keyval(int *argcp, char *((*argvp)[]), PMI_keyval_t **keyvalp, int *size);
-#endif /* defined(_OSU_MVAPICH_) */
 
 /*@
 PMI_Free_keyvals - free the keyval structures created by PMI_Args_to_keyval
