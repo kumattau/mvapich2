@@ -875,7 +875,11 @@ int PMI_Spawn_multiple(int count,
     return( 0 );
 }
 
+#if defined(_OSU_MVAPICH_)
+int PMI_Args_to_keyval(int *argcp, char ** const* argvp, PMI_keyval_t **keyvalp, 
+#else /* defined(_OSU_MVAPICH_) */
 int PMI_Args_to_keyval(int *argcp, char *((*argvp)[]), PMI_keyval_t **keyvalp, 
+#endif /* defined(_OSU_MVAPICH_) */
 		       int *size)
 {
     return ( 0 );
