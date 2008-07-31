@@ -54,7 +54,8 @@ int mvapich2_munmap(void *buf, size_t len);
 #ifndef DISABLE_TRAP_SBRK
 void *mvapich2_sbrk(int delta);
 #endif /* DISABLE_TRAP_SBRK */
-
+#else /* DISABLE_PTMALLOC */
+#include <malloc.h>
 #endif /* DISABLE_PTMALLOC */
 
 #endif /* _MEM_HOOKS_H */
