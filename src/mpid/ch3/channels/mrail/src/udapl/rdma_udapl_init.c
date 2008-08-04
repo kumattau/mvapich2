@@ -41,6 +41,8 @@ int cached_pg_rank;
 pthread_mutex_t cm_conn_state_lock;
 pthread_mutex_t cm_conn_state_lock_udapl;
 
+int od_server_thread = 0;
+
 extern DAT_EP_HANDLE temp_ep_handle;
 extern void
 MPIDI_CH3I_RDMA_util_atos (char *str, DAT_SOCK_ADDR * addr);
@@ -720,7 +722,8 @@ MPIDI_CH3I_RDMA_finalize ()
           return error;
       }
 
-    if (MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND) {
+    if (MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND &&
+	od_server_thread) {
         ret = pthread_cancel(MPIDI_CH3I_RDMA_Process.server_thread);
         CHECK_RETURN (ret, "could not cancel server thread");
   
@@ -1522,6 +1525,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank)
 
     /* Start this thread after the EPs have been created and before any connection request has been made */
     pthread_create(&MPIDI_CH3I_RDMA_Process.server_thread, NULL, od_conn_server, (void*)pg);
+    od_server_thread = 1;
     error = PMI_Barrier ();
 
     pthread_mutex_init(&cm_conn_state_lock, NULL);
@@ -1612,6 +1616,7 @@ static void *od_conn_server( void * arg )
                         MRAILI_Init_vc (vc, cached_pg_rank);
                         vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
                         MPIDI_CH3I_Process.new_conn_complete = 1;
+			MPIDI_CH3I_Process.num_conn++;
 
                     } else {
                     /* someone just accepted my other request */
@@ -1619,6 +1624,7 @@ static void *od_conn_server( void * arg )
                         MRAILI_Init_vc (peer_vc, cached_pg_rank);
                         peer_vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
                         MPIDI_CH3I_Process.new_conn_complete = 1;
+			MPIDI_CH3I_Process.num_conn++;
                     }
                 } while (peer != i);
 #else
@@ -1639,6 +1645,7 @@ static void *od_conn_server( void * arg )
                         MRAILI_Init_vc (vc, cached_pg_rank);
                         vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
                         MPIDI_CH3I_Process.new_conn_complete = 1;
+			MPIDI_CH3I_Process.num_conn++;
 
                     } else {
                     /* someone just accepted my other request */
@@ -1647,6 +1654,7 @@ static void *od_conn_server( void * arg )
                         MRAILI_Init_vc (peer_vc, cached_pg_rank);
                         peer_vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
                         MPIDI_CH3I_Process.new_conn_complete = 1;
+			MPIDI_CH3I_Process.num_conn++;
                     }                    
                 } while (size != 0);
 #endif
@@ -1716,6 +1724,7 @@ static void *od_conn_server( void * arg )
                             MRAILI_Init_vc (vc, cached_pg_rank);
                             vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
                             MPIDI_CH3I_Process.new_conn_complete = 1;
+			    MPIDI_CH3I_Process.num_conn++;
 
                         } else {
                         /* someone just accepted my request */
@@ -1723,6 +1732,7 @@ static void *od_conn_server( void * arg )
                             MRAILI_Init_vc (peer_vc, cached_pg_rank);
                             peer_vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
                             MPIDI_CH3I_Process.new_conn_complete = 1;
+			    MPIDI_CH3I_Process.num_conn++;
                         }
                     } while (peer != i);
 #else
@@ -1743,6 +1753,7 @@ static void *od_conn_server( void * arg )
                             MRAILI_Init_vc (vc, cached_pg_rank);
                             vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
                             MPIDI_CH3I_Process.new_conn_complete = 1;
+			    MPIDI_CH3I_Process.num_conn++;
 
                         } else {
                         /* someone just accepted my request */
@@ -1751,6 +1762,7 @@ static void *od_conn_server( void * arg )
                             MRAILI_Init_vc (peer_vc, cached_pg_rank);
                             peer_vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
                             MPIDI_CH3I_Process.new_conn_complete = 1;
+			    MPIDI_CH3I_Process.num_conn++;
                         }
                     } while (size != 0);
 #endif
@@ -1852,6 +1864,7 @@ int MPIDI_CH3I_CM_Connect(MPIDI_VC_t * vc)
                 MRAILI_Init_vc (vc, cached_pg_rank);
                 vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
                 MPIDI_CH3I_Process.new_conn_complete = 1;
+		MPIDI_CH3I_Process.num_conn++;
 
             } else {
                 ret = dat_ep_reset (vc->mrail.qp_hndl[0]);

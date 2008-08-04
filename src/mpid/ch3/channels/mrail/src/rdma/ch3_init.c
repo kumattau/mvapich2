@@ -51,6 +51,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     if (pg_size > threshold)
     {
         MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_ON_DEMAND;
+	MPIDI_CH3I_Process.num_conn = 0;
 
 #if defined(DISABLE_PTMALLOC) && !defined(SOLARIS)
         MPIU_Error_printf("Error: On-demand connection management does "

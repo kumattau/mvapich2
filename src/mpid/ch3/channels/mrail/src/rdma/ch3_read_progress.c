@@ -23,6 +23,9 @@
 #ifdef DAPL_DEFAULT_PROVIDER
 #include "rdma_impl.h"
 extern MPIDI_CH3I_RDMA_Process_t MPIDI_CH3I_RDMA_Process;
+extern struct smpi_var g_smpi;
+extern int od_server_thread;
+extern int cached_pg_size;
 #endif
 
 #ifdef DEBUG
@@ -51,6 +54,20 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int is_blocki
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_READ_PROGRESS);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_READ_PROGRESS);
+
+#ifdef DAPL_DEFAULT_PROVIDER
+    if (od_server_thread &&
+        MPIDI_CH3I_Process.num_conn >= cached_pg_size - g_smpi.num_local_nodes) {
+	int ret;
+        ret = pthread_cancel(MPIDI_CH3I_RDMA_Process.server_thread);
+	MPIU_Assert(ret == 0);
+
+        ret = pthread_join(MPIDI_CH3I_RDMA_Process.server_thread, NULL);
+	MPIU_Assert(ret == 0);
+
+        od_server_thread = 0;
+    }
+#endif
 
     *vc_pptr = NULL;
     *v_ptr = NULL;

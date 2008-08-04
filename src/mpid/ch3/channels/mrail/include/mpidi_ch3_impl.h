@@ -56,6 +56,7 @@ typedef struct MPIDI_CH3I_Process_s
     MPIDI_CH3I_CM_type_t cm_type;
     /*a flag to indicate whether new connection been established*/
     volatile int new_conn_complete;
+    int num_conn;
 #ifdef CKPT
     /*a flag to indicate some reactivation has finished*/
     volatile int reactivation_complete;
