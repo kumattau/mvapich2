@@ -181,7 +181,7 @@ if test "$with_rdma" = "gen2"; then
     AC_CHECK_HEADER([infiniband/verbs.h],,[AC_MSG_ERROR(['infiniband/verbs.h not found. Did you specify --with-ib-include=?'])])
     mrail_libs="-libverbs -libumad $mrail_libs"
 
-    AC_MSG_CHECKING([for path to BLCR])
+    AC_MSG_CHECKING([for path to BLCR library])
 
     if test "$with_blcr" != "no"; then
         if test "$enable_rdma_cm" = "default"; then
@@ -194,10 +194,10 @@ if test "$with_rdma" = "gen2"; then
             AC_MSG_ERROR([Registration caching is required for BLCR support.])
         fi
 
-        mrail_ld_library_path=${with_blcr}/lib:$mrail_ld_library_path
-        mrail_fflags="-L${with_blcr}/lib $mrail_fflags"
-        mrail_ldflags="-L${with_blcr}/lib $mrail_ldflags"
-        LDFLAGS="-L${with_blcr}/lib $LDFLAGS"
+        mrail_ld_library_path=${with_blcr}:$mrail_ld_library_path
+        mrail_fflags="-L${with_blcr} $mrail_fflags"
+        mrail_ldflags="-L${with_blcr} $mrail_ldflags"
+        LDFLAGS="-L${with_blcr} $LDFLAGS"
         AC_SEARCH_LIBS(cr_init, cr,,[AC_MSG_ERROR(['libcr not found.'])],)
         AC_CHECK_HEADER([libcr.h],,[AC_MSG_ERROR(['libcr.h not found.'])])
         mrail_libs="-lcr $mrail_libs"
