@@ -201,8 +201,8 @@ if test "$with_rdma" = "gen2"; then
 
         AC_MSG_CHECKING([for the BLCR includes path])
 
-        if test -n "$with_ib_include"; then
-            AC_MSG_RESULT($with_ib_include)
+        if test -n "$with_blcr_include"; then
+            AC_MSG_RESULT($with_blcr_include)
         else
             AC_MSG_RESULT([default])
         fi
