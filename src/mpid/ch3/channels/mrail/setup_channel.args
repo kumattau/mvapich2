@@ -22,7 +22,7 @@ case $with_rdma in
                     with_blcr_include=`echo $arg | sed -e 's/--with-blcr-include=//' -e "s/'//g"`
 
                     if test -n "$with_blcr_include"; then
-                        CPPFLAGS="-I${with_blcr_include}/include $CPPFLAGS"
+                        CPPFLAGS="-I${with_blcr_include} $CPPFLAGS"
                     fi
                 ;;
                 \'--with-ib-include=*)
