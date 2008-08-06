@@ -48,8 +48,12 @@ AC_CHECK_HEADERS(                       \
     pthread.h                           \
 )
 
-AC_ARG_WITH(blcr,
-[--with-blcr=path - Enable Berkeley Lab Checkpoint/Restart support.],,with_blcr=no)
+AC_ARG_ENABLE(blcr,
+[--enable-blcr - Enable Berkeley Lab Checkpoint/Restart support.],,enable_blcr=no)
+AC_ARG_WITH(blcr-include,
+[--with-blcr-include=path - Specify the path to the BLCR header files.],,)
+AC_ARG_WITH(blcr-libpath,
+[--with-blcr-libpath=path - Specify the path to the BLCR library.],,with_blcr_libpath=default)
 AC_ARG_WITH(cluster-size,
 [--with-cluster-size=level - Specify the cluster size.],,with_cluster_size=small)
 AC_ARG_WITH(dapl-include,
@@ -181,9 +185,10 @@ if test "$with_rdma" = "gen2"; then
     AC_CHECK_HEADER([infiniband/verbs.h],,[AC_MSG_ERROR(['infiniband/verbs.h not found. Did you specify --with-ib-include=?'])])
     mrail_libs="-libverbs -libumad $mrail_libs"
 
-    AC_MSG_CHECKING([for path to BLCR library])
+    AC_MSG_CHECKING([whether to enable support for BLCR])
+    AC_MSG_RESULT($enable_blcr)
 
-    if test "$with_blcr" != "no"; then
+    if test "$enable_blcr" = "yes"; then
         if test "$enable_rdma_cm" = "default"; then
             enable_rdma_cm=no
         elif test "$enable_rdma_cm" = "yes"; then
@@ -194,17 +199,34 @@ if test "$with_rdma" = "gen2"; then
             AC_MSG_ERROR([Registration caching is required for BLCR support.])
         fi
 
-        mrail_ld_library_path=${with_blcr}:$mrail_ld_library_path
-        mrail_fflags="-L${with_blcr} $mrail_fflags"
-        mrail_ldflags="-L${with_blcr} $mrail_ldflags"
-        LDFLAGS="-L${with_blcr} $LDFLAGS"
+        AC_MSG_CHECKING([for the BLCR includes path])
+
+        if test -n "$with_ib_include"; then
+            AC_MSG_RESULT($with_ib_include)
+        else
+            AC_MSG_RESULT([default])
+        fi
+
+        AC_MSG_CHECKING([for the BLCR library path])
+
+        if test "$with_blcr_libpath" != "default"; then
+            if test ! -d $with_blcr_libpath; then
+                AC_MSG_ERROR([The specified BLCR library path is invalid.])
+            fi
+
+            mrail_ld_library_path=${with_blcr_libpath}:$mrail_ld_library_path
+            mrail_fflags="-L${with_blcr_libpath} $mrail_fflags"
+            mrail_ldflags="-L${with_blcr_libpath} $mrail_ldflags"
+            LDFLAGS="-L${with_blcr_libpath} $LDFLAGS"
+        fi
+
+        AC_MSG_RESULT($with_blcr_libpath)
+
         AC_SEARCH_LIBS(cr_init, cr,,[AC_MSG_ERROR(['libcr not found.'])],)
         AC_CHECK_HEADER([libcr.h],,[AC_MSG_ERROR(['libcr.h not found.'])])
         mrail_libs="-lcr $mrail_libs"
         AC_DEFINE(CKPT, 1, [Define to enable Berkeley Lab Checkpoint-Restart support.])
     fi
-
-    AC_MSG_RESULT($with_blcr)
 
     AC_MSG_CHECKING([whether to enable support for RDMA CM])
 

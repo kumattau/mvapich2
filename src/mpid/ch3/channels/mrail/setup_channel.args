@@ -18,9 +18,12 @@ case $with_rdma in
     gen2)
         for arg in $ac_configure_args; do
             case $arg in
-                \'--with-blcr=*)
-                    with_blcr=`echo $arg | sed -e 's/--with-blcr=//' -e "s/'//g"`
-                    CPPFLAGS="-I${with_blcr}/include $CPPFLAGS"
+                \'--with-blcr-include=*)
+                    with_blcr_include=`echo $arg | sed -e 's/--with-blcr-include=//' -e "s/'//g"`
+
+                    if test -n "$with_blcr_include"; then
+                        CPPFLAGS="-I${with_blcr_include}/include $CPPFLAGS"
+                    fi
                 ;;
                 \'--with-ib-include=*)
                     with_ib_include=`echo $arg | sed -e 's/--with-ib-include=//' -e "s/'//g"`

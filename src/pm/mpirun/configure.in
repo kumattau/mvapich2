@@ -32,8 +32,8 @@ echo "RUNNING CONFIGURE FOR THE MPIRUN PM"
 AC_CONFIG_AUX_DIR(../../../confdb)
 AC_CANONICAL_BUILD
 
-AC_ARG_WITH(blcr,
-[--with-blcr - Enable Berkeley Lab Checkpoint/Restart support.],,with_blcr=no)
+AC_ARG_ENABLE(blcr,
+[--enable-blcr - Enable Berkeley Lab Checkpoint/Restart support.],,enable_blcr=no)
 AC_ARG_ENABLE(rsh,
 [--enable-rsh - Enable use of rsh for command execution by default.],,enable_rsh=no)
 
@@ -61,7 +61,7 @@ if test -n "`echo $build_os | grep solaris`"; then
     mpispawn_other_libs="-lresolv -lsocket -lnsl"
 fi
 
-if test "$with_blcr" != "no"; then
+if test "$enable_blcr" = "yes"; then
     AC_MSG_ERROR([BLCR is not supported by mpirun.])
 fi
 

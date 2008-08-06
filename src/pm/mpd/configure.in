@@ -72,10 +72,10 @@ fi
 echo Using INSTALL=$INSTALL
 
 dnl <_OSU_MVAPICH_>
-AC_ARG_WITH(blcr,
-[--with-blcr - Enable support for Berkeley Lab Checkpoint/Restart],,with_blcr=no)
+AC_ARG_ENABLE(blcr,
+[--enable-blcr - Enable support for Berkeley Lab Checkpoint/Restart],,enable_blcr=no)
 
-if test "$with_blcr" != "no"; then
+if test "$enable_blcr" = "yes"; then
    MPD_OTHERS=mpiexec_cr
 fi
 
