@@ -832,7 +832,7 @@ int CR_IBU_Release_network()
 	/*
 	 * Don't try to destroy the QP when SMP is used.
 	 */
-	if (!SMP_INIT) {
+	if (!(SMP_INIT && (vc->smp.local_nodes >= 0))) {
 	    for (rail_index = 0; rail_index < vc->mrail.num_rails; ++rail_index)
 	    {
 		ibv_destroy_qp(vc->mrail.rails[rail_index].qp_hndl);
