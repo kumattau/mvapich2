@@ -45,6 +45,11 @@
 
 typedef struct dreg_entry dreg_entry;
 
+typedef struct {
+    void *buf; 
+    size_t len;
+} dreg_region;
+
 struct dreg_entry {
     unsigned long pagenum;
     VIP_MEM_HANDLE memhandle;
