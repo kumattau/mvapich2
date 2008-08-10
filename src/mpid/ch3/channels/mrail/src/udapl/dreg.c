@@ -33,6 +33,7 @@
 #include <stdlib.h>
 
 #include "dreg.h"
+#include "mem_hooks.h"
 #include "avl.h"
 #include "rdma_impl.h"
 #include "udapl_util.h"
@@ -101,14 +102,6 @@ static pthread_t          th_id_of_lock = -1;
  * free hook pulls them out of the reg cache
  */
 static dreg_region *deregister_mr_array;
-
-/* Number of pending deregistration
- * operations 
- * Note: This number can never exceed
- * the total number of reg. cache
- * entries
- */
-static int n_dereg_mr;
 
 /* Keep free list of VMA data structs
  * and entries */
@@ -611,7 +604,7 @@ void dreg_init()
             rdma_ndreg_entries *
             MAX_NUM_HCAS);
 
-    n_dereg_mr = 0;
+    mvapich2_minfo.n_dereg_mr = 0;
 
     INIT_FREE_LIST(&vma_free_list);
 
@@ -668,7 +661,7 @@ static void flush_dereg_mrs()
      * it is registered or not. This is fine, since
      * we register only at a page granularity */
 
-    for(j = 0; j < n_dereg_mr; j++) {
+    for(j = 0; j < mvapich2_minfo.n_dereg_mr; j++) {
         void *buf;
         size_t len;
 
@@ -719,8 +712,14 @@ static void flush_dereg_mrs()
         }
     }
 
-    n_dereg_mr = 0;
+    mvapich2_minfo.n_dereg_mr = 0;
     unlock_dereg();
+}
+
+void flush_dereg_mrs_lock() {
+    lock_dreg();
+    flush_dereg_mrs();
+    unlock_dreg();
 }
 #endif
 
@@ -1025,10 +1024,10 @@ void find_and_free_dregs_inside(void *buf, size_t len)
     }
 
     lock_dereg();
-    deregister_mr_array[n_dereg_mr].buf = buf;
-    deregister_mr_array[n_dereg_mr].len = len;
+    deregister_mr_array[mvapich2_minfo.n_dereg_mr].buf = buf;
+    deregister_mr_array[mvapich2_minfo.n_dereg_mr].len = len;
 
-    n_dereg_mr++;
+    mvapich2_minfo.n_dereg_mr++;
     unlock_dereg();
 }
 #endif

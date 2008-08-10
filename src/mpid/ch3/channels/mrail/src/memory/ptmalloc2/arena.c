@@ -19,7 +19,7 @@
 
 #define HEAP_MIN_SIZE (32*1024)
 #ifndef HEAP_MAX_SIZE
-#define HEAP_MAX_SIZE (4*1024*1024) /* must be a power of two */
+#define HEAP_MAX_SIZE (1024*1024) /* must be a power of two */
 #endif
 
 /* HEAP_MIN_SIZE and HEAP_MAX_SIZE limit the size of mmap()ed heaps

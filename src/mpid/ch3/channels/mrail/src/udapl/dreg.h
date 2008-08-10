@@ -250,6 +250,7 @@ int deregister_memory(VIP_MEM_HANDLE * mr);
 
 #ifndef DISABLE_PTMALLOC
 void find_and_free_dregs_inside(void *buf, size_t len);
+void flush_dereg_mrs_lock();
 #endif
 
 #ifdef CKPT
