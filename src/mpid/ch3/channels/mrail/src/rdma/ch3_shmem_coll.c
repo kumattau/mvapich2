@@ -101,7 +101,7 @@ int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t *pg)
     sprintf(shmem_file, "/tmp/ib_shmem_coll-%s-%s-%d.tmp",
             pg->ch.kvs_name, hostname, getuid());
 
-    sprintf(bcast_file,"/tmp/ib_shmem_bcast_coll-%d-%s-%d",
+    sprintf(bcast_file,"/tmp/ib_shmem_bcast_coll-%s-%s-%d",
             pg->ch.kvs_name, hostname, getuid());
 
     /* open the shared memory file */
@@ -458,7 +458,7 @@ int MPID_SHMEM_BCAST_init(int file_size, int shmem_comm_rank, int my_local_rank,
             char *buf;
             buf = (char *) calloc(*bcast_seg_size + 1, sizeof(char));
             if (write(*fd, buf, *bcast_seg_size) != *bcast_seg_size) {
-                printf("[%d] shmem_coll_init:error in writing " "shared memory file: %d\n", my_rank, errno);
+                fprintf(stderr, "[%d] shmem_coll_init:error in writing " "shared memory file: %d\n", my_rank, errno);
                 MPIU_Free(buf);
                 return 0;
             }
