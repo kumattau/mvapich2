@@ -264,9 +264,14 @@ int MPIR_Bcast (
       }
   }
 #if defined(_OSU_MVAPICH_)
-  else if (enable_shmem_collectives && (comm_ptr->shmem_coll_ok == 1) && (nbytes < shmem_bcast_threshold) 
-          && is_contig && is_homogeneous && enable_shmem_bcast){
-      mpi_errno = intra_shmem_Bcast_Large(buffer, count, datatype, nbytes, root, comm_ptr);
+  else if (enable_shmem_collectives && (comm_ptr->shmem_coll_ok == 1) && (nbytes < shmem_bcast_threshold) && enable_shmem_bcast) {
+
+      if( !is_contig || !is_homogeneous) {
+          mpi_errno = intra_shmem_Bcast_Large(tmp_buf, nbytes, MPI_BYTE, nbytes, root, comm_ptr);
+      } else {
+          mpi_errno = intra_shmem_Bcast_Large(buffer, count, datatype, nbytes, root, comm_ptr);
+      }
+
       if(mpi_errno == -1) {
           /* use long message algorithm: binomial tree scatter followed by an 
              allgather */
