@@ -36,11 +36,6 @@ static void set_real_munmap_ptr()
 }
 #endif /* !defined(DISABLE_MUNMAP_HOOK) */
 
-void mvapich2_mem_flush()
-{
-    flush_dereg_mrs_lock();
-}
-
 void mvapich2_mem_unhook(void *ptr, size_t size)
 {
     if((size > 0) && 

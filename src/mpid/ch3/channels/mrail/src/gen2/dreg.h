@@ -44,11 +44,6 @@
 
 typedef struct dreg_entry dreg_entry;
 
-typedef struct {
-    void *buf; 
-    size_t len;
-} dreg_region;
-
 struct dreg_entry {
     unsigned long pagenum;
     struct ibv_mr *memhandle[MAX_NUM_HCAS];
@@ -245,7 +240,6 @@ dreg_entry *dreg_new_entry(void *buf, int len);
 
 #ifndef DISABLE_PTMALLOC
 void find_and_free_dregs_inside(void *buf, size_t len);
-void flush_dereg_mrs_lock();
 #endif
 
 #ifdef CKPT

@@ -28,7 +28,6 @@ typedef int (*munmap_t)(void*, size_t);
 #endif /* ifndef DISABLE_MUNMAP_HOOK */
 
 typedef struct {
-    int         n_dereg_mr;
     int         is_our_malloc;
     int         is_our_free;
     int         is_our_calloc;
@@ -45,7 +44,6 @@ typedef struct {
 mvapich2_malloc_info_t mvapich2_minfo;
 
 void mvapich2_mem_unhook(void *mem, size_t size);
-void mvapich2_mem_flush();
 int  mvapich2_minit(void);
 void mvapich2_mfin(void);
 

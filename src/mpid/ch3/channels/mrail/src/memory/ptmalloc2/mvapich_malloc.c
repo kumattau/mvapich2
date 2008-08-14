@@ -218,11 +218,6 @@
 /* <_OSU_MVAPICH_> */
 #include "mpidi_ch3i_rdma_conf.h"
 #if !defined(DISABLE_PTMALLOC)
-#define FLUSH_DREG() {                              \
-    if (mvapich2_minfo.n_dereg_mr > 20) {           \
-        mvapich2_mem_flush();                       \
-    }                                               \
-}
 /* </_OSU_MVAPICH_> */
 
 /*
@@ -3420,7 +3415,6 @@ public_mALLOc(size_t bytes)
 
 /* <_OSU_MVAPICH_> */
   mvapich2_minfo.is_our_malloc = 1;
-  FLUSH_DREG();
 /* </_OSU_MVAPICH_> */
 
   return victim;
@@ -3444,7 +3438,6 @@ public_fREe(Void_t* mem)
 
 /* <_OSU_MVAPICH_> */
   mvapich2_minfo.is_our_free = 1;
-  FLUSH_DREG();
 
 #if defined(DISABLE_TRAP_SBRK)
   if (!mvapich2_minfo.is_inside_free)
@@ -3505,7 +3498,6 @@ public_rEALLOc(Void_t* oldmem, size_t bytes)
     return (*hook)(oldmem, bytes, RETURN_ADDRESS (0));
 /* <_OSU_MVAPICH_> */
   mvapich2_minfo.is_our_realloc = 1;
-  FLUSH_DREG();
 /* </_OSU_MVAPICH_> */
 
 #if REALLOC_ZERO_BYTES_FREES
@@ -3530,7 +3522,6 @@ public_rEALLOc(Void_t* oldmem, size_t bytes)
     if(newp)
 /* <_OSU_MVAPICH_> */
     {
-        FLUSH_DREG();
         mvapich2_minfo.is_our_realloc = 1;
 /* </_OSU_MVAPICH_> */
              return chunk2mem(newp);
@@ -3542,7 +3533,6 @@ public_rEALLOc(Void_t* oldmem, size_t bytes)
     if(oldsize - SIZE_SZ >= nb)
 /* <_OSU_MVAPICH_> */
     {
-        FLUSH_DREG();
         mvapich2_minfo.is_our_realloc = 1;
 /* </_OSU_MVAPICH_> */
                                 return oldmem; /* do nothing */
@@ -3556,7 +3546,6 @@ public_rEALLOc(Void_t* oldmem, size_t bytes)
     munmap_chunk(oldp);
 /* <_OSU_MVAPICH_> */
     mvapich2_minfo.is_our_realloc = 1;
-    FLUSH_DREG();
 /* </_OSU_MVAPICH_> */
     return newmem;
   }
@@ -3586,7 +3575,6 @@ public_rEALLOc(Void_t* oldmem, size_t bytes)
 	 ar_ptr == arena_for_chunk(mem2chunk(newp)));
 /* <_OSU_MVAPICH_> */
   mvapich2_minfo.is_our_realloc = 1;
-  FLUSH_DREG();
 /* </_OSU_MVAPICH_> */
   return newp;
 }
@@ -3638,7 +3626,6 @@ public_mEMALIGn(size_t alignment, size_t bytes)
 	 ar_ptr == arena_for_chunk(mem2chunk(p)));
 /* <_OSU_MVAPICH_> */
   mvapich2_minfo.is_our_memalign = 1;
-  FLUSH_DREG();
 /* </_OSU_MVAPICH_> */
   return p;
 }
@@ -3661,7 +3648,6 @@ public_vALLOc(size_t bytes)
   (void)mutex_unlock(&ar_ptr->mutex);
 /* <_OSU_MVAPICH_> */
   mvapich2_minfo.is_our_valloc = 1;
-  FLUSH_DREG();
 /* </_OSU_MVAPICH_> */
   return p;
 }
@@ -3679,7 +3665,6 @@ public_pVALLOc(size_t bytes)
   (void)mutex_unlock(&ar_ptr->mutex);
 /* <_OSU_MVAPICH_> */
   mvapich2_minfo.is_our_valloc = 1;
-  FLUSH_DREG();
 /* </_OSU_MVAPICH_> */
   return p;
 }
@@ -3719,7 +3704,6 @@ public_cALLOc(size_t n, size_t elem_size)
     while(sz > 0) ((char*)mem)[--sz] = 0; /* rather inefficient */
 /* <_OSU_MVAPICH_> */
     mvapich2_minfo.is_our_calloc = 1;
-    FLUSH_DREG();
 /* </_OSU_MVAPICH_> */
     return mem;
 #endif
@@ -3782,7 +3766,6 @@ public_cALLOc(size_t n, size_t elem_size)
   if (chunk_is_mmapped(p))
 /* <_OSU_MVAPICH_> */
   {
-      FLUSH_DREG();
       mvapich2_minfo.is_our_calloc = 1;
 /* </_OSU_MVAPICH_> */
     return mem;
@@ -3831,7 +3814,6 @@ public_cALLOc(size_t n, size_t elem_size)
 
 /* <_OSU_MVAPICH_> */
   mvapich2_minfo.is_our_calloc = 1;
-  FLUSH_DREG();
 /* </_OSU_MVAPICH_> */
   return mem;
 }
@@ -3850,7 +3832,6 @@ public_iCALLOc(size_t n, size_t elem_size, Void_t** chunks)
   (void)mutex_unlock(&ar_ptr->mutex);
 /* <_OSU_MVAPICH_> */
   mvapich2_minfo.is_our_calloc = 1;
-  FLUSH_DREG();
 /* </_OSU_MVAPICH_> */
   return m;
 }
