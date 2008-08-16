@@ -254,10 +254,12 @@ static int CR_callback(void *arg)
 
 int CR_connect_mpd(int port)
 {
+    int i = 1;
     struct sockaddr_in sa;
     mpiexec_listen_fd = socket(AF_INET, SOCK_STREAM, 0);
     if (mpiexec_listen_fd < 0)
         CR_ERR_ABORT("socket failed\n");
+    setsockopt(mpiexec_listen_fd, SOL_SOCKET, SO_REUSEADDR, (int *) &i, sizeof(i));
     sa.sin_family = AF_INET;
     sa.sin_port = htons(port);
     CR_DBG("Listen port %d\n",port);
