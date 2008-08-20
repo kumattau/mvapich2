@@ -3,7 +3,30 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
-MVAPICH2-1.2 (07/02/08)
+MVAPICH2-1.2-RC2 (08/20/2008)
+
+* Following bugs are fixed in RC2
+
+  - Properly handle the scenario in shared memory broadcast code when the 
+    datatypes of different processes taking part in broadcast are different. 
+
+  - Fix a bug in Checkpoint-Restart code to determine whether a connection is a
+    shared memory connection or a network connection.
+
+  - Support non-standard path for BLCR header files.
+
+  - Increase the maximum heap size to avoid race condition in realloc().
+
+  - Use int32_t for rank for larger jobs with 32k processes or more.
+
+  - Improve mvapich2-1.2 bandwidth to the same level of mvapich2-1.0.3.
+
+  - An error handling patch for uDAPL interface. Thanks for Nilesh Awate for the patch.
+
+  - Explicitly set some of the EP attributes when on demand connection is used
+    in uDAPL interface.
+
+MVAPICH2-1.2-RC1 (07/02/08)
 
 * Following features are added for this new mvapich2-1.2 release: 
 
