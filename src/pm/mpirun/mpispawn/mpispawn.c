@@ -49,8 +49,6 @@ static inline char * env2str(char * env_ptr) {
 void mpispawn_abort (int abort_code)
 {
     int sock, id=env2int ("MPISPAWN_ID");
-    fprintf (stderr, "MPISPAWN_ABORT %d\n", abort_code);
-    fflush (stderr);
     sock = socket (AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (sock < 0) {
         /* Oops! */
@@ -78,7 +76,7 @@ void mpispawn_abort (int abort_code)
         write_socket (sock, &id, sizeof (int));
         close (sock);
     }
-    while (1);
+    cleanup ();
 }
 
 lvalues get_lvalues(int i) {
@@ -276,7 +274,7 @@ void cleanup(void) {
 
 void cleanup_handler(int sig) {
     printf("Signal %d received.\n", sig);
-    cleanup();
+	mpispawn_abort (MPISPAWN_PROCESS_ABORT);
 }
 
 void child_handler(int signal) {
@@ -298,7 +296,7 @@ void child_handler(int signal) {
 
 	else {
         fprintf (stderr, "MPI process terminated unexpectedly\n");
-	    cleanup();
+	    mpispawn_abort (MPISPAWN_PROCESS_ABORT);
 	}
     }
 }

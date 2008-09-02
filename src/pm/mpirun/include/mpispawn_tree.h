@@ -25,6 +25,7 @@
 #define MPISPAWN_PMGR_ABORT -2
 #define MPISPAWN_RANK_ERROR -3
 #define MPISPAWN_MT_ERROR   -4
+#define MPISPAWN_PROCESS_ABORT  -5
 
 #define MAX_HOST_LEN    256
 #define MAX_PORT_LEN    8
