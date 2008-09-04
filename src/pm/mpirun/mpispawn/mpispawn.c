@@ -38,6 +38,8 @@ int ROOT_FD;
 static in_port_t c_port;
 child_t *children;
 
+void cleanup(void);
+
 static inline int env2int(char * env_ptr) {
     return (env_ptr = getenv(env_ptr)) ? atoi(env_ptr) : 0;
 }
