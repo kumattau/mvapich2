@@ -1549,6 +1549,10 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env) {
 		exit(EXIT_SUCCESS);
 	    }
 
+	    if(strcmp(pglist->data[i].hostname, plist[0].hostname)) {
+		close(STDIN_FILENO);
+	    }
+
 	    execv(argv[0], (char* const*) argv);
 	    perror("execv");
 
