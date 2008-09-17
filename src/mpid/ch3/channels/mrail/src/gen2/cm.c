@@ -1574,12 +1574,15 @@ int MPIDI_CH3I_CM_Suspend(MPIDI_VC_t ** vc_vector)
                 continue;
             }
 
+            pthread_mutex_lock(&cm_automic_op_lock);
             if (NULL!=vc_vector[i] 
                 && vc_vector[i]->ch.state != MPIDI_CH3I_VC_STATE_SUSPENDED)
             {
+                pthread_mutex_unlock(&cm_automic_op_lock);
                 flag = 1;
                 break;
             }
+            pthread_mutex_unlock(&cm_automic_op_lock);
         }
         if (flag == 0)
         {
@@ -1681,10 +1684,13 @@ int MPIDI_CH3I_CM_Reactivate(MPIDI_VC_t ** vc_vector)
 
 		/* Handle the reactivation of the SMP channel */
 		if (SMP_INIT && (vc->smp.local_nodes >= 0)) {
+                    pthread_mutex_lock(&cm_automic_op_lock);
 		    if (vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE) {
+                        pthread_mutex_unlock(&cm_automic_op_lock);
 			flag = 1;
 			break;
 		    }
+                    pthread_mutex_unlock(&cm_automic_op_lock);
 		    continue;
 		}
 
