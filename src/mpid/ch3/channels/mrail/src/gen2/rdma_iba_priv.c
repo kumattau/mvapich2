@@ -216,9 +216,7 @@ int rdma_open_hca(struct MPIDI_CH3I_RDMA_Process_t *proc)
             /* User hasn't specified any HCA name
              * We will use the first available HCA */
 
-            if(dev_list[i]) {
-                ib_dev = dev_list[i];
-            }
+            ib_dev = dev_list[i];
 
         } else {
 
