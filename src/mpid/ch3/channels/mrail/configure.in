@@ -107,7 +107,7 @@ if test -n "`echo $build_os | grep linux`"; then
             AC_DEFINE(_EM64T_, 1, [Define to specify the build CPU type.])
         fi
     else
-        AC_MSG_ERROR([The build CPU type is not supported.])
+        AC_MSG_WARN([The build CPU type may not be supported.])
     fi
 
     if test "$with_pmi" != "slurm"; then
@@ -172,6 +172,7 @@ if test "$with_rdma" = "gen2"; then
     fi
 
     if test "$with_ib_libpath" != "default"; then
+        mrail_ld_library_path=${with_ib_libpath}:$mrail_ld_library_path
         mrail_fflags="-L${with_ib_libpath} $mrail_fflags"
         mrail_ldflags="-L${with_ib_libpath} $mrail_ldflags"
         LDFLAGS="-L${with_ib_libpath} $LDFLAGS"

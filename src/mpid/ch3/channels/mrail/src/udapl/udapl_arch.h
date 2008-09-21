@@ -41,50 +41,22 @@
  * 
  */
 
-#if !defined(SOLARIS) && !defined(_IA32_) && !defined(_IA64_) && !defined(_X86_64_)      \
-&& !defined(_EM64T_) && !defined(MAC_OSX)
-
-#error Either _IA32_ or _IA64_ or _X86_64_ or _EM64T_ or MAC_OSX must be defined
-#endif
-
-#if defined(_IA32_) && defined(_IA64_)
-#error Only one of IA32 and IA64 can be defined
-#endif
-
-#if defined(_IA32_) && defined(_X86_64_)
-#error Only one of _IA32_ and _X86_64_ can be defined
-#endif
-
-#if defined(_IA32_) && defined(_EM64T_)
-#error Only one of _IA32_ and _EM64T_ can be defined
-#endif
-
-#if defined(_IA64_) && defined(_X86_64_)
-#error Only one of _IA64_ and _X86_64_ can be defined
-#endif
-
-#if defined(_IA64_) && defined(_EM64T_)
-#error Only one of _IA64_ and _EM64T_ can be defined
-#endif
-
-#if defined(_X86_64_) && defined(_EM64T_)
-#error Only one of _X86_64_ and _EM64T_ can be defined
-#endif
-
-#if defined(MAC_OSX) && defined(_IA64_)
-#error Only one of MAC_OSX and _IA64_ can be defined
-#endif
-
-#if defined(MAC_OSX) && defined(_X86_64_)
-#error Only one of MAC_OSX and _X86_64_ can be defined
-#endif
-
-#if defined(MAC_OSX) && defined(_EM64T_)
-#error Only one of MAC_OSX  and _EM64T_ can be defined
-#endif
-
-#if defined(MAC_OSX) && defined(_IA32_)
-#error Only one of _IA32_ and MAC_OSX can be defined
+#if defined(SOLARIS)
+#   if defined(_IA32_) || defined(_IA64_) || defined(_X86_64_) || defined(_EM64T_)
+#       error Multiple build cpu settings defined.
+#   endif
+#elif defined(_IA32_)
+#   if defined(_IA64_) || defined(_X86_64_) || defined(_EM64T_)
+#       error Multiple build cpu settings defined.
+#   endif
+#elif defined(_IA64_)
+#   if defined(_X86_64_) || defined(_EM64T_)
+#       error Multiple build cpu settings defined.
+#   endif
+#elif defined(_X86_64_)
+#   if defined(_EM64T_)
+#       error Multiple build cpu settings defined.
+#   endif
 #endif
 
 #if defined(_DDR_) && defined(_SDR_)
@@ -107,15 +79,7 @@
 #error The platform is Solaris. Please choose IBTL instead of GEN2.
 #endif
 
-#if (defined(_IA64_) || defined(_X86_64_) || defined(_EM64T_) \
-    || defined(MAC_OSX))
-
-typedef unsigned long aint_t;
-#define AINT_FORMAT "%lx"
-
-#define UINT32_FORMAT "%u"
-
-#elif defined(_IA32_)
+#if defined(_IA32_)
 
 /*
  * note that aint_t could be unsigned long for x86. 
@@ -125,18 +89,21 @@ typedef unsigned long aint_t;
  */
 typedef unsigned int aint_t;
 #define AINT_FORMAT "%x"
-
 #define UINT32_FORMAT "%u"
 
 #elif defined(SOLARIS)
+
 typedef unsigned long aint_t;
 typedef uint32_t u_int32_t;
 typedef uint16_t u_int16_t;
 typedef uint8_t u_int8_t;
 
-#else
+#else /* _IA64_ || _X86_64_ || _EM64T_ || MAC_OSX || Something else */
 
-#error Either _IA32_ or _IA64_ or _X86_64_ or _EM64T_ or MAC_OSX must be defined.
+typedef unsigned long aint_t;
+#define AINT_FORMAT "%lx"
+#define UINT32_FORMAT "%u"
+
 #endif
 
 #endif /* _VIA64_H */

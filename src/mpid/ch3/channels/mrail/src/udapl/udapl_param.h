@@ -420,6 +420,24 @@ extern long rdma_eagersize_1sc;
       #define RDMA_PUT_FALLBACK_THRESHOLD     (8 * 1024)
       #define RDMA_GET_FALLBACK_THRESHOLD     (16 * 1024)
 
+  #else
+
+    #ifdef _LARGE_CLUSTER
+        #define NUM_RDMA_BUFFER                 (16)
+        #define RDMA_IBA_EAGER_THRESHOLD        (12*1024)
+    #elif defined(_MEDIUM_CLUSTER)
+        #define NUM_RDMA_BUFFER                 (16)
+        #define RDMA_IBA_EAGER_THRESHOLD        (12*1024)
+    #else
+        #define NUM_RDMA_BUFFER                 (32)
+        #define RDMA_IBA_EAGER_THRESHOLD        (VBUF_BUFFER_SIZE)
+    #endif
+
+    #define RDMA_EAGERSIZE_1SC              (4 * 1024)
+    #define RDMA_PUT_FALLBACK_THRESHOLD     (8 * 1024)
+    #define RDMA_GET_FALLBACK_THRESHOLD     (394 * 1024)
+
+
   #endif
 #endif
 
