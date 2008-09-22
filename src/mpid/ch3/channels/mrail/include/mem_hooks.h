@@ -52,7 +52,7 @@ int mvapich2_munmap(void *buf, size_t len);
 #endif
 
 #ifndef DISABLE_TRAP_SBRK
-void *mvapich2_sbrk(int delta);
+void *mvapich2_sbrk(intptr_t delta);
 #endif /* DISABLE_TRAP_SBRK */
 #else /* DISABLE_PTMALLOC */
 #include <malloc.h>

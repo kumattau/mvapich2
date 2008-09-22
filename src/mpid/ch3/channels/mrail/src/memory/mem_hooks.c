@@ -113,7 +113,7 @@ int munmap(void *buf, size_t len)
 #endif /* !defined(DISABLE_MUNMAP_HOOK) */
 
 #if !defined(DISABLE_TRAP_SBRK)
-void *mvapich2_sbrk(int delta)
+void *mvapich2_sbrk(intptr_t delta)
 {
     if (delta < 0) {
 

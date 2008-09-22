@@ -18,10 +18,10 @@
 #include <stdlib.h>
 #endif
 
-#define MALLOC(a)    malloc((unsigned)(a))
+#define MALLOC(a)    malloc((size_t)(a))
 #define FREE(a)      free((char *)(a))
-#define CALLOC(a,b)    calloc((unsigned)(a),(unsigned)(b))
-#define REALLOC(a,b)   realloc(a,(unsigned)(b))
+#define CALLOC(a,b)    calloc((size_t)(a),(size_t)(b))
+#define REALLOC(a,b)   realloc(a,(size_t)(b))
 
 #define NEW(a)    (a *)MALLOC(sizeof(a))
 
