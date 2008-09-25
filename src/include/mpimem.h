@@ -157,7 +157,7 @@ int MPIU_Str_get_string(char **str_ptr, char *val, int maxlen);
   Utility
   M*/
 
-#define MPIU_Malloc(a)    MPIU_trmalloc((unsigned)(a),__LINE__,__FILE__)
+#define MPIU_Malloc(a)    MPIU_trmalloc((size_t)(a),__LINE__,__FILE__)
 /*M
   MPIU_Calloc - Allocate memory that is initialized to zero.
 
@@ -178,7 +178,7 @@ int MPIU_Str_get_string(char **str_ptr, char *val, int maxlen);
   Utility
   M*/
 #define MPIU_Calloc(a,b)  \
-    MPIU_trcalloc((unsigned)(a),(unsigned)(b),__LINE__,__FILE__)
+    MPIU_trcalloc((size_t)(a),(size_t)(b),__LINE__,__FILE__)
 
 /*M
   MPIU_Free - Free memory
@@ -233,7 +233,7 @@ int MPIU_Str_get_string(char **str_ptr, char *val, int maxlen);
    src/util/mem/trmem.c package, and are no longer used.  Also, 
    it may be preferable to use trmem.h instead of these definitions */
 void MPIU_trinit ( int );
-void *MPIU_trmalloc ( unsigned int, int, const char * );
+void *MPIU_trmalloc ( size_t, int, const char * );
 void MPIU_trfree ( void *, int, const char * );
 int MPIU_trvalid ( const char * );
 void MPIU_trspace ( int *, int * );
@@ -243,8 +243,8 @@ void MPIU_trpush ( int );
 void MPIU_trpop (void);
 void MPIU_trDebugLevel ( int );
 void *MPIU_trstrdup( const char *, int, const char * );
-void *MPIU_trcalloc ( unsigned, unsigned, int, const char * );
-void *MPIU_trrealloc ( void *, int, int, const char * );
+void *MPIU_trcalloc ( size_t, size_t, int, const char * );
+void *MPIU_trrealloc ( void *, size_t, int, const char * );
 void MPIU_TrSetMaxMem ( int );
 
 #ifndef MPIU_MEM_NOSTDIO

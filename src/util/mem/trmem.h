@@ -8,15 +8,15 @@
 #define _TRMEM_H_INCLUDED
 
 void MPIU_trinit( int );
-void *MPIU_trmalloc( unsigned int, int, const char [] );
+void *MPIU_trmalloc( size_t, int, const char [] );
 void MPIU_trfree( void *, int, const char [] );
 int MPIU_trvalid( const char [] );
 void MPIU_trspace( int *, int * );
 void MPIU_trid( int );
 void MPIU_trlevel( int );
 void MPIU_trDebugLevel( int );
-void *MPIU_trcalloc( unsigned int, unsigned int, int, const char [] );
-void *MPIU_trrealloc( void *, int, int, const char[] );
+void *MPIU_trcalloc( size_t, size_t, int, const char [] );
+void *MPIU_trrealloc( void *, size_t, int, const char[] );
 void *MPIU_trstrdup( const char *, int, const char[] );
 void MPIU_TrSetMaxMem( int );
 

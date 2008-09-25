@@ -191,7 +191,7 @@ void MPIU_trinit( int rank )
     double aligned pointer to requested storage, or null if not
     available.
  +*/
-void *MPIU_trmalloc( unsigned int a, int lineno, const char fname[] )
+void *MPIU_trmalloc( size_t a, int lineno, const char fname[] )
 {
     TRSPACE          *head;
     char             *new;
@@ -219,7 +219,7 @@ void *MPIU_trmalloc( unsigned int a, int lineno, const char fname[] )
 	return 0;
     }
 
-    new = malloc( (unsigned)( nsize + sizeof(TrSPACE) + sizeof(unsigned long) ) );
+    new = malloc( (size_t)( nsize + sizeof(TrSPACE) + sizeof(unsigned long) ) );
     if (!new) return 0;
 
     memset( new, TRDefaultByte, 
@@ -649,12 +649,12 @@ void MPIU_trDebugLevel( int level )
     Double aligned pointer to requested storage, or null if not
     available.
  +*/
-void *MPIU_trcalloc( unsigned int nelem, unsigned int elsize, int lineno, 
+void *MPIU_trcalloc( size_t nelem, size_t elsize, int lineno, 
 		     const char fname[] )
 {
     void *p;
     
-    p = MPIU_trmalloc( (unsigned)(nelem*elsize), lineno, fname );
+    p = MPIU_trmalloc( (size_t)(nelem*elsize), lineno, fname );
     if (p) {
 	memset(p,0,nelem*elsize);
     }
@@ -675,7 +675,7 @@ void *MPIU_trcalloc( unsigned int nelem, unsigned int elsize, int lineno,
     available.  This implementation ALWAYS allocates new space and copies 
     the contents into the new space.
  +*/
-void *MPIU_trrealloc( void *p, int size, int lineno, const char fname[] )
+void *MPIU_trrealloc( void *p, size_t size, int lineno, const char fname[] )
 {
     void    *pnew;
     char    *pa;
@@ -697,7 +697,7 @@ may be block not allocated with MPIU_trmalloc or MALLOC\n",
 	    return 0;
 	}
     }
-    pnew = MPIU_trmalloc( (unsigned)size, lineno, fname );
+    pnew = MPIU_trmalloc( (size_t)size, lineno, fname );
     if (!pnew) return p;
 
     if (p) {
