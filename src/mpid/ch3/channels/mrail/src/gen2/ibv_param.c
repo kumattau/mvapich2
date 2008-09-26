@@ -891,6 +891,9 @@ void rdma_get_user_parameters(int num_proc, int me)
     if ((value = getenv("MV2_PIN_POOL_SIZE")) != NULL) {
         rdma_pin_pool_size = (int)atoi(value);
     }
+    if ((value = getenv("MV2_MAX_INLINE_SIZE")) != NULL) {
+        rdma_max_inline_size = (int)atoi(value);
+    }
     if ((value = getenv("MV2_DEFAULT_MAX_CQ_SIZE")) != NULL) {
         rdma_default_max_cq_size = (int)atoi(value);
     }

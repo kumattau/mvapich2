@@ -102,7 +102,7 @@ extern int                  USE_SMP;
 #define RDMA_DEFAULT_MAX_CQ_SIZE        (40000)
 #define RDMA_DEFAULT_PORT               (-1)
 #define RDMA_DEFAULT_MAX_PORTS          (2)
-#define RDMA_DEFAULT_MAX_WQE            (200)
+#define RDMA_DEFAULT_MAX_WQE            (64)
 #define RDMA_READ_RESERVE               (10)
 #define RDMA_DEFAULT_MAX_SG_LIST        (1)
 #define RDMA_DEFAULT_PKEY_IX            (0)
