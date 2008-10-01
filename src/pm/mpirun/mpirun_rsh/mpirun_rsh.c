@@ -1549,9 +1549,10 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env) {
 		exit(EXIT_SUCCESS);
 	    }
 
-	    if(strcmp(pglist->data[i].hostname, plist[0].hostname)) {
-		close(STDIN_FILENO);
-	    }
+            if(strcmp(pglist->data[i].hostname, plist[0].hostname)) {
+                int fd = open("/dev/null", O_RDWR, 0);
+                dup2(fd, STDIN_FILENO);
+            }
 
 	    execv(argv[0], (char* const*) argv);
 	    perror("execv");
@@ -1747,4 +1748,4 @@ void mpispawn_checkin(int s, struct sockaddr *sockaddr, unsigned int
     close(sock);
 }
 
-/* vi:set sw=4 sts=4 tw=80: */
+/* vi:set sw=4 sts=4 tw=76 expandtab: */
