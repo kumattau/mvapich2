@@ -1184,22 +1184,22 @@ int intra_shmem_Bcast_Large(
 	int local_rank = -1, local_size=0, relative_lcomm_rank, relative_lcomm_dst;
 	void* local_buf=NULL, *tmpbuf=NULL;
 	int leader_comm_size, leader_comm_rank;
-	int leader_root, total_size =0, shmem_comm_rank, num_bytes=0, shmem_offset=-1;
+	int leader_root, shmem_comm_rank, num_bytes=0, shmem_offset=-1;
 	int index;
 	int file_size = shmem_bcast_threshold;
         int ret_val = 0, flag = 0;
 
 	/* Get my rank and switch communicators to the hidden collective */
-    rank = comm->rank;
+        rank = comm->rank;
 	comm_ptr = comm;
+        size = comm_ptr->local_size;
 	index = comm_ptr->bcast_index;
 
 	/* Obtaining the shared memory communicator information */
-	total_size = size;
 	shmem_comm = comm_ptr->shmem_comm;
 	MPI_Comm_rank(shmem_comm, &local_rank);
 	MPI_Comm_size(shmem_comm, &local_size);
-    MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
+        MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
 
 	shmem_comm_rank = shmem_commptr->shmem_comm_rank;
 
