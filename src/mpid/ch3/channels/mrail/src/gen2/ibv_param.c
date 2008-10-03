@@ -102,13 +102,6 @@ int rdma_prepost_noop_extra     = 6;
 int rdma_credit_preserve;
 int rdma_initial_credits        = 0; 
 
-/* Max number of entries on the Send Q of QPs per connection.
- * Should be about (prepost_depth + extra).
- * Must be within NIC MaxQpEntries limit.
- * Size will be adjusted below.
- */
-int rdma_sq_size                = 200;
-
 /* Max number of entries on the RecvQ of QPs per connection.
  * computed to be:
  * prepost_depth + rdma_prepost_rendezvous_extra + viadev_prepost_noop_extra
@@ -893,7 +886,10 @@ void rdma_get_user_parameters(int num_proc, int me)
     }
     if ((value = getenv("MV2_MAX_INLINE_SIZE")) != NULL) {
         rdma_max_inline_size = (int)atoi(value);
+    } else if(num_proc > 256) {
+        rdma_max_inline_size = 0;
     }
+
     if ((value = getenv("MV2_DEFAULT_MAX_CQ_SIZE")) != NULL) {
         rdma_default_max_cq_size = (int)atoi(value);
     }
@@ -1014,7 +1010,10 @@ void rdma_get_user_parameters(int num_proc, int me)
     }
     if ((value = getenv("MV2_DEFAULT_MAX_WQE")) != NULL) {
         rdma_default_max_wqe = atol(value);
+    } else if(num_proc > 256) {
+        rdma_default_max_wqe = 16;
     }
+
     if ((value = getenv("MV2_NDREG_ENTRIES")) != NULL) {
         rdma_ndreg_entries = (unsigned int)atoi(value);
     }
