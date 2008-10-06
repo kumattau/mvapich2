@@ -628,14 +628,16 @@ int MPI_Allreduce ( void *sendbuf, void *recvbuf, int count,
     MPI_Comm shmem_comm, leader_comm;
     MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
     int local_rank = -1, global_rank = -1, local_size=0, my_rank;
-    void* local_buf = NULL, *tmpbuf = NULL;
+    void* local_buf = NULL;
     MPI_Aint   true_lb, true_extent, extent;
     MPI_User_function *uop = NULL;
-    int stride = 0, i, is_commutative, size;
+    int stride = 0, i, is_commutative = 0;
     MPID_Op *op_ptr = NULL;
-    MPI_Status status;
-    int leader_root, total_size, shmem_comm_rank;
+    int total_size, shmem_comm_rank;
     MPIU_CHKLMEM_DECL(1);
+    extern int check_comm_registry(MPI_Comm);
+    extern int MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int, int, int, void**);
+    extern void MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(int, int, int);
 #if defined(HAVE_CXX_BINDING)
     int is_cxx_uop = 0;
 #endif /* defined(HAVE_CXX_BINDING) */

@@ -349,13 +349,12 @@ int MPI_Barrier( MPI_Comm comm )
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL;
 #if defined(_OSU_MVAPICH_)
-    char* shmem_buf = NULL;
     MPI_Comm shmem_comm, leader_comm;
     MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
-    int local_rank = -1, global_rank = -1, local_size=0, my_rank;
-    void* local_buf = NULL, *tmpbuf = NULL;
-    int stride = 0, i, is_commutative, size;
-    int leader_root, total_size, shmem_comm_rank;
+    int local_rank = -1, local_size=0, my_rank;
+    int total_size, shmem_comm_rank;
+    extern void MPIDI_CH3I_SHMEM_COLL_Barrier_gather(int, int, int);
+    extern void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int, int, int);
 #endif /* defined(_OSU_MVAPICH_) */
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_BARRIER);
 

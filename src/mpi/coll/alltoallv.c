@@ -69,13 +69,15 @@ int MPIR_Alltoallv (
     int        comm_size, i;
     MPI_Aint   send_extent, recv_extent;
     int        mpi_errno = MPI_SUCCESS;
-    MPI_Status *starray;
-    MPI_Request *reqarray;
-    int dst, rank, req_cnt;
+    int dst, rank;
     MPI_Comm comm;
 #if defined(_OSU_MVAPICH_)
     int pof2, src;
     MPI_Status status;
+#else
+    MPI_Status *starray;
+    MPI_Request *reqarray;
+    int req_cnt;
 #endif
     
     comm = comm_ptr->handle;

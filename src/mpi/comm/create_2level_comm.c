@@ -27,7 +27,6 @@ unsigned int comm_count = 0;
 
 int shmem_comm_count = 0;
 extern shmem_coll_region *shmem_coll;
-static pthread_mutex_t shmem_coll_lock  = PTHREAD_MUTEX_INITIALIZER;
 static pthread_mutex_t comm_lock  = PTHREAD_MUTEX_INITIALIZER;
 extern int g_shmem_coll_blocks;
 
@@ -50,7 +49,8 @@ void free_2level_comm (MPID_Comm* comm_ptr)
     clear_2level_comm(comm_ptr);
 }
 
-void create_2level_comm (MPI_Comm comm, int size, int my_rank){
+void create_2level_comm (MPI_Comm comm, int size, int my_rank)
+{
 
     MPID_Comm* comm_ptr;
     MPID_Comm* comm_world_ptr;
@@ -69,7 +69,7 @@ void create_2level_comm (MPI_Comm comm, int size, int my_rank){
 
     /* Creating local shmem group */
     int i = 0;
-    int local_rank;
+    int local_rank = 0;
     int grp_index = 0;
     MPIDI_VC_t* vc = NULL;
     for (; i < size ; ++i){
@@ -83,8 +83,6 @@ void create_2level_comm (MPI_Comm comm, int size, int my_rank){
        }  
     } 
 
-    int shmem_grp_size = grp_index;
-    
     /* Creating leader group */
     int leader = 0;
     leader = shmem_group[0];
@@ -129,7 +127,7 @@ void create_2level_comm (MPI_Comm comm, int size, int my_rank){
     leader_group_size = grp_index;
     comm_ptr->leader_group_size = leader_group_size;
 
-    MPI_Group MPI_GROUP_WORLD, subgroup1, comm_group;
+    MPI_Group subgroup1, comm_group;
     
     MPI_Comm_group(comm, &comm_group);
 
@@ -146,7 +144,7 @@ void create_2level_comm (MPI_Comm comm, int size, int my_rank){
     MPID_Comm_get_ptr(comm_ptr->shmem_comm, shmem_ptr);
 
 
-    int shmem_collective = 0, my_local_id, input_flag =0, output_flag=0;
+    int my_local_id, input_flag =0, output_flag=0;
     MPI_Comm_rank(comm_ptr->shmem_comm, &my_local_id);
 
     if (my_local_id == 0){

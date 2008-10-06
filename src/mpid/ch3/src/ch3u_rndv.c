@@ -199,6 +199,9 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     *buflen = sizeof(MPIDI_CH3_Pkt_t);
 #if defined(_OSU_MVAPICH_)
     MPIDI_CH3_RNDV_SET_REQ_INFO(rreq, rts_pkt);
+    extern int MPIDI_CH3_Rndv_transfer(MPIDI_VC_t *, MPID_Request *, MPID_Request *,
+                                       MPIDI_CH3_Pkt_rndv_clr_to_send_t *,
+                                       MPIDI_CH3_Pkt_rndv_req_to_send_t *);
 #endif /* defined(_OSU_MVAPICH_) */
     
     if (found)
@@ -326,17 +329,21 @@ int MPIDI_CH3_PktHandler_RndvClrToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 {
     MPIDI_CH3_Pkt_rndv_clr_to_send_t * cts_pkt = &pkt->rndv_clr_to_send;
     MPID_Request * sreq;
-    MPID_Request * rts_sreq;
+    int mpi_errno = MPI_SUCCESS;
+#if defined(_OSU_MVAPICH_)
+    int recv_size;
+    int i;
+    extern int MPIDI_CH3_Rndv_transfer(MPIDI_VC_t *, MPID_Request *, MPID_Request *,
+                                       MPIDI_CH3_Pkt_rndv_clr_to_send_t *,
+                                       MPIDI_CH3_Pkt_rndv_req_to_send_t *);
+#else
     MPIDI_CH3_Pkt_t upkt;
+    MPID_Request * rts_sreq;
     MPIDI_CH3_Pkt_rndv_send_t * rs_pkt = &upkt.rndv_send;
     int dt_contig;
     MPI_Aint dt_true_lb;
     MPIDI_msg_sz_t data_sz;
     MPID_Datatype * dt_ptr;
-    int mpi_errno = MPI_SUCCESS;
-#if defined(_OSU_MVAPICH_)
-    int recv_size;
-    int i;
 #endif /* defined(_OSU_MVAPICH_) */
     
     MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"received rndv CTS pkt");
@@ -356,7 +363,7 @@ int MPIDI_CH3_PktHandler_RndvClrToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
             if (recv_size < sreq->dev.iov[i].MPID_IOV_LEN) {
                 fprintf(stderr, "Warning! Rndv Receiver is receiving "
                         "(%d < %d) less than as expected\n", 
-                        recv_size, sreq->dev.iov[i].MPID_IOV_LEN);
+                        recv_size, (int) sreq->dev.iov[i].MPID_IOV_LEN);
                 sreq->dev.iov[i].MPID_IOV_LEN = recv_size;
                 sreq->dev.iov_count = i + 1;
                 break;

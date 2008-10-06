@@ -16,6 +16,7 @@
  */
 
 #include "mpiimpl.h"
+#include <unistd.h>
 
 /* -- Begin Profiling Symbol Block for routine MPI_Bcast */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -370,7 +371,7 @@ int MPIR_Bcast (
           /* check if comm_size is a power of two */
     #if defined(_OSU_MVAPICH_)
           if (nbytes < MPIR_BCAST_LONG_MSG
-              && (comm_size & comm_size - 1) == 0)
+              && (comm_size & (comm_size - 1)) == 0)
     #else /* defined(_OSU_MVAPICH_) */
           pof2 = 1;
           while (pof2 < comm_size)
@@ -687,7 +688,7 @@ int MPIR_Bcast (
       /* check if comm_size is a power of two */
 #if defined(_OSU_MVAPICH_)
       if (nbytes < MPIR_BCAST_LONG_MSG
-          && (comm_size & comm_size - 1) == 0)
+          && (comm_size & (comm_size - 1)) == 0)
 #else /* defined(_OSU_MVAPICH_) */
       pof2 = 1;
       while (pof2 < comm_size)
@@ -1159,6 +1160,10 @@ int MPID_SHMEM_BCAST_init(int file_size, int shmem_comm_rank, int my_local_rank,
 int MPID_SHMEM_BCAST_mmap(void** mmap_ptr, int bcast_seg_size, int fd, 
 	int my_local_rank, char* bcast_shmem_file);
 
+extern void MPID_SHMEM_COLL_GetShmemBcastBuf(void**, void*);
+extern void signal_local_processes(int, int, char*, int, int, void*);
+extern void wait_for_signal(int, int, char**, int*, int*, void*);
+
 int viadev_use_shmem_ring= 1;
 int intra_shmem_Bcast_Large( 
 	void *buffer, 
@@ -1173,18 +1178,16 @@ int intra_shmem_Bcast_Large(
 	int        relative_rank, mask;
 	int        mpi_errno = MPI_SUCCESS;
 	int scatter_size, curr_size, recv_size, send_size;
-	int j,i;
-	int recv_offset, offset; 
-	int *recvcnts, *displs, left, right, jnext;
-	void *tmp_buf;
+	int j=0, i;
+	int *recvcnts = NULL, *displs = NULL, left, right, jnext;
+	void *tmp_buf = NULL;
 
 	char* shmem_buf;
-	MPI_Comm shmem_comm, leader_comm;
+	MPI_Comm shmem_comm, leader_comm = 0;
 	MPID_Comm *comm_ptr = 0,*shmem_commptr = 0;
-	int local_rank = -1, local_size=0, relative_lcomm_rank, relative_lcomm_dst;
-	void* local_buf=NULL, *tmpbuf=NULL;
+	int local_rank = -1, local_size=0, relative_lcomm_rank;
 	int leader_comm_size, leader_comm_rank;
-	int leader_root, shmem_comm_rank, num_bytes=0, shmem_offset=-1;
+	int shmem_comm_rank, num_bytes=0, shmem_offset=-1;
 	int index;
 	int file_size = shmem_bcast_threshold;
         int ret_val = 0, flag = 0;

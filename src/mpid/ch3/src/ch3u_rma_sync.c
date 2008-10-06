@@ -82,6 +82,7 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
     int num_wait_completions;
     int need_dummy = 0, j;
     MPIDI_VC_t* vc = NULL;
+    extern void MPIDI_CH3I_RDMA_complete_rma(MPID_Win *, int , int *, int);
 #endif /* defined(_OSU_MVAPICH_) */
     MPIU_CHKLMEM_DECL(7);
     MPIU_THREADPRIV_DECL;
@@ -1394,6 +1395,7 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
     int start_grp_size, *ranks_in_start_grp, *ranks_in_win_grp, rank;
 #if defined(_OSU_MVAPICH_)
     int need_dummy = 0;
+    extern void MPIDI_CH3I_RDMA_complete_rma(MPID_Win *, int, int *, int);
 #endif /* defined(_OSU_MVAPICH_) */
     MPIU_CHKLMEM_DECL(7);
     MPIU_THREADPRIV_DECL;
@@ -1736,7 +1738,6 @@ int MPIDI_Win_wait(MPID_Win *win_ptr)
 #if defined(_OSU_MVAPICH_)
     int newly_finished, num_wait_completions, index;
     int i,j;
-    int num = 0;
 #endif /* defined(_OSU_MVAPICH_) */
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_WIN_WAIT);
 
@@ -1799,7 +1800,6 @@ int MPIDI_Win_wait(MPID_Win *win_ptr)
 fn_fail:
 #endif /* defined(_OSU_MVAPICH_) */
 
- fn_exit:
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPIDI_WIN_WAIT);
     return mpi_errno;
 }
@@ -3938,11 +3938,13 @@ int MPIDI_CH3_PktHandler_GetResp( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
         /* return the number of bytes processed in this function */
         *buflen = data_len + sizeof(MPIDI_CH3_Pkt_t);
     }
- fn_exit:
+
+#ifndef _OSU_MVAPICH_
+fn_fail:
+#endif
+
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_PKTHANDLER_GETRESP);
     return mpi_errno;
- fn_fail:
-    goto fn_exit;
 }
 
 #undef FUNCNAME

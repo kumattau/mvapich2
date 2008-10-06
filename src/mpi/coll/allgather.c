@@ -138,7 +138,7 @@ int MPIR_Allgather (
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
 #if defined(_OSU_MVAPICH_)
     if (recvcount * comm_size * type_size < MPIR_ALLGATHER_LONG_MSG
-        && (comm_size & comm_size - 1) == 0)
+        && (comm_size & (comm_size - 1)) == 0)
     {
 #else /* defined(_OSU_MVAPICH_) */    
     if ((recvcount*comm_size*type_size < MPIR_ALLGATHER_LONG_MSG) &&

@@ -17,6 +17,7 @@
 
 #include "mpiimpl.h"
 #include "mpicomm.h"
+#include <sys/mman.h>
 
 /* -- Begin Profiling Symbol Block for routine MPI_Comm_free */
 #if defined(HAVE_PRAGMA_WEAK)

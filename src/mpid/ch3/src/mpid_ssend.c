@@ -24,9 +24,6 @@ int MPID_Ssend(const void * buf, int count, MPI_Datatype datatype, int rank, int
     MPID_Datatype * dt_ptr;
     MPID_Request * sreq = NULL;
     MPIDI_VC_t * vc;
-#if defined(MPID_USE_SEQUENCE_NUMBERS)
-    MPID_Seqnum_t seqnum;
-#endif    
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_MPID_SSEND);
 

@@ -108,6 +108,10 @@ Algorithm:
 #if defined(_OSU_MVAPICH_)
 extern int split_comm;
 extern int enable_shmem_collectives;
+extern int check_split_comm(pthread_t);
+extern int disable_split_comm(pthread_t);
+extern void create_2level_comm (MPI_Comm, int, int);
+extern int enable_split_comm(pthread_t);
 #endif /* defined(_OSU_MVAPICH_) */
 
 int MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm)
