@@ -940,7 +940,7 @@ int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
 #endif
 
                 if (local_size > 1){
-                    MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(local_size, local_rank, shmem_comm_rank, &shmem_buf);
+                    MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(local_size, local_rank, shmem_comm_rank, (void *)&shmem_buf);
                 }
 
 

@@ -52,8 +52,6 @@ volatile unsigned int MPIDI_CH3I_progress_completion_count = 0;
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
     volatile int MPIDI_CH3I_progress_blocked = FALSE;
     volatile int MPIDI_CH3I_progress_wakeup_signalled = FALSE;
-    static int MPIDI_CH3I_Progress_delay(unsigned int completion_count);
-    static int MPIDI_CH3I_Progress_continue(unsigned int completion_count);
     MPID_Thread_cond_t MPIDI_CH3I_progress_completion_cond;
 #endif
 
@@ -430,29 +428,6 @@ fn_exit:
     DEBUG_PRINT("Exiting ch3 progress test\n");
     return mpi_errno;
 }
-
-
-#if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
-
-#undef FUNCNAME
-#define FUNCNAME MPIDI_CH3I_Progress_delay
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-static int MPIDI_CH3I_Progress_delay(unsigned int completion_count)
-{
-    return MPI_SUCCESS;
-}
-
-#undef FUNCNAME
-#define FUNCNAME MPIDI_CH3I_Progress_continue
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-static int MPIDI_CH3I_Progress_continue(unsigned int completion_count)
-{
-    return MPI_SUCCESS;
-}
-
-#endif /* MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE */
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Progress_end

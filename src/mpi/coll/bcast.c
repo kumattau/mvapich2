@@ -1230,7 +1230,7 @@ int intra_shmem_Bcast_Large(
 
 	if ((local_rank == 0) || (root == rank)){
 
-		MPID_SHMEM_COLL_GetShmemBcastBuf(&shmem_buf,comm_ptr->bcast_mmap_ptr);
+		MPID_SHMEM_COLL_GetShmemBcastBuf((void *)&shmem_buf,comm_ptr->bcast_mmap_ptr);
 		/* The collective uses the shared buffer for inter and intra node */
 		tmp_buf = shmem_buf;
 	}
