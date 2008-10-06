@@ -274,7 +274,9 @@ fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_SMP_ISTARTMSG);
     return mpi_errno;
 
+#ifndef _OSU_MVAPICH_
 fn_fail:
+#endif
     goto fn_exit;
 }
 

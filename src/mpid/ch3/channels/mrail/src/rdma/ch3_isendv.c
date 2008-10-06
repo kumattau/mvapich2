@@ -55,7 +55,9 @@ fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_UPDATE_REQUEST);
     return mpi_errno;
 
+#ifndef _OSU_MVAPICH_
 fn_fail:
+#endif
     goto fn_exit;
 }
 

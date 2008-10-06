@@ -1323,7 +1323,9 @@ int MRAILI_Handle_one_sided_completions(vbuf * v)
         list_win_ptr->pinnedpool_1sc_index = 0;
         list_win_ptr->poll_flag = 0;
      }
+#ifndef _OSU_MVAPICH_
 fn_fail:
+#endif
     return mpi_errno;
 }
 
