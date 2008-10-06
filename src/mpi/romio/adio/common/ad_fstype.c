@@ -9,6 +9,7 @@
  */
 
 #include "adio.h"
+#include "mpiimpl.h"
 
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>

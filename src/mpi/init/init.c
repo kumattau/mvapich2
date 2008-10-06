@@ -80,6 +80,11 @@ The Fortran binding for 'MPI_Init' has only the error return
 #if defined(_OSU_MVAPICH_)
 extern int split_comm;
 extern int enable_shmem_collectives;
+extern void MV2_Read_env_vars();
+extern int check_split_comm(pthread_t);
+extern int disable_split_comm(pthread_t);
+extern void create_2level_comm (MPI_Comm, int, int);
+extern int enable_split_comm(pthread_t);
 #endif /* defined(_OSU_MVAPICH_) */
 int MPI_Init( int *argc, char ***argv )
 {
@@ -88,7 +93,6 @@ int MPI_Init( int *argc, char ***argv )
     MPID_MPI_INIT_STATE_DECL(MPID_STATE_MPI_INIT);
 
 #if defined(_OSU_MVAPICH_)
-    char* value = NULL;
     MPIU_THREADPRIV_DECL;
     MPIU_THREADPRIV_GET;
 #endif /* defined(_OSU_MVAPICH_) */

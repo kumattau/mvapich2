@@ -123,6 +123,8 @@ static char cached_singinit_key[PMIU_MAXLINE];
 static char cached_singinit_val[PMIU_MAXLINE];
 static char singinit_kvsname[256];
 
+extern void MPIU_Exit(int);
+
 /******************************** Group functions *************************/
 
 int PMI_Init( int *spawned )

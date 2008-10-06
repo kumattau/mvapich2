@@ -17,6 +17,7 @@
 #include <errno.h>
 #include <pthread.h>
 #include <wait.h>
+#include <string.h>
 #include "mpirun_util.h"
 #include "mpispawn_tree.h"
 

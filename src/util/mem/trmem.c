@@ -254,7 +254,7 @@ void *MPIU_trmalloc( size_t a, int lineno, const char fname[] )
 	/* Note that %08p (what we'd like to use) isn't accepted by
 	   all compilers */
 	MPIU_Error_printf( "[%d] Allocating %d bytes at %8p in %s:%d\n", 
-		     world_rank, a, new, fname, lineno );
+		     world_rank, (int)a, new, fname, lineno );
     }
     return (void *)new;
 }

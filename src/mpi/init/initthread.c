@@ -422,6 +422,11 @@ extern int enable_shmem_bcast;
 void MV2_Read_env_vars(void);
 void init_thread_reg();
 
+extern int check_split_comm(pthread_t);
+extern int disable_split_comm(pthread_t);
+extern void create_2level_comm (MPI_Comm, int, int);
+extern int enable_split_comm(pthread_t);
+
 struct coll_runtime coll_param = { MPIR_ALLREDUCE_SHORT_MSG,
                                    MPIR_REDUCE_SHORT_MSG,
                                    SHMEM_ALLREDUCE_THRESHOLD,

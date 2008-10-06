@@ -26,7 +26,7 @@
 
 #ifdef USE_MPID_RMA_TABLE
 /* This is the home of the RMA function table */
-MPIRI_RMAFns MPIR_RMA_Fns = {1,0};
+MPIRI_RMAFns MPIR_RMA_Fns = {(void *)1, (void *)0};
 #endif
 
 #endif

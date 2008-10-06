@@ -401,17 +401,17 @@ void MPE_Req_wait_test( MPI_Request, MPI_Status *, char *, MPE_State *,
 #else
 
 #define MPE_LOG_STATE_DECL \
-    register       MPE_State       *state; \
-    register const CLOG_CommIDs_t  *commIDs; \
+    register       MPE_State       *state = 0; \
+    register const CLOG_CommIDs_t  *commIDs = 0; \
     MPE_LOG_SWITCH_DECL
 #define MPE_LOG_COMM_DECL \
-    register       MPE_Event       *solo_event; \
-    register const CLOG_CommIDs_t  *new_commIDs;
+    register       MPE_Event       *solo_event = 0; \
+    register const CLOG_CommIDs_t  *new_commIDs = 0;
 #define MPE_LOG_SOLO_EVENT_DECL \
-    register       MPE_Event       *solo_event;
+    register       MPE_Event       *solo_event = 0;
 #define MPE_LOG_BYTEBUF_DECL \
-                   MPE_LOG_BYTES    bytebuf;  \
-                   int              bytebuf_pos;
+                   MPE_LOG_BYTES    bytebuf = {0};  \
+                   int              bytebuf_pos = 0;
 
 #endif
 

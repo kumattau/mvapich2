@@ -72,8 +72,6 @@ void usage ()
 int main (int argc, char* argv[])
 {
     int c;
-    int printCompilers = 0;
-    int printOptions = 0;
 
     while ((c = getopt(argc, argv, "acdhnorv")) != -1)
     {
