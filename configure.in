@@ -1272,10 +1272,7 @@ if test "$with_pmi" = "uni" -a "$with_pm" = "default" ; then
     with_pm="no"
 fi
 if test "$with_pm" = "default" -o "$with_pm" = "yes" ; then
-dnl <_OSU_MVAPICH_>
-dnl    with_pm=mpd
-    with_pm=mpirun:mpd
-dnl </_OSU_MVAPICH_>
+    with_pm=mpd
 fi
 
 # We allow multiple pm names, separated by : or ,
@@ -5874,7 +5871,7 @@ MPI_NO_SPAWN=$MPID_NO_SPAWN
 export MPI_NO_SPAWN
 MPI_NO_RMA=$MPID_NO_RMA
 export MPI_NO_RMA
-AC_CONFIG_SUBDIRS(test/mpi)
+AC_CONFIG_SUBDIRS(test/mpi src/pm/mpirun)
 dnl
 dnl Generate the Makefiles from Makefile.in
 dnl Also generate mpi.h from mpi.h.in so that we can eliminate all ifdefs

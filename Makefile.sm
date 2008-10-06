@@ -203,6 +203,7 @@ install-preamble:
 #   The "other" process managers when more that one are built
 install_local_DIR = libdir
 install-local:
+	-(cd src/pm/mpirun && $(MAKE) install)
 	-if [ "@BUILD_TVDLL@" = "yes" ] ; then \
 	    $(INSTALL_DATA) src/mpi/debugger/libtvmpich2.@SHLIB_EXT@ \
 			${DESTDIR}${libdir}/libtvmpich2.@SHLIB_EXT@ ; fi

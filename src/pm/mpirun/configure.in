@@ -62,7 +62,7 @@ if test -n "`echo $build_os | grep solaris`"; then
 fi
 
 if test "$enable_blcr" = "yes"; then
-    AC_MSG_ERROR([BLCR is not supported by mpirun.])
+    AC_MSG_WARN([BLCR is not supported by mpirun_rsh.])
 fi
 
 if test "$enable_rsh" = "yes"; then
