@@ -153,6 +153,8 @@ int stripe_factor = 1;
 int apm_tester = 0;
 int apm_count;
 
+static int check_hsam_parameters();
+
 static inline int log_2(int np)
 {
     int lgN, t;
@@ -1062,7 +1064,7 @@ void rdma_get_user_parameters(int num_proc, int me)
 /* This function is specifically written to make sure that HSAM
  * parameters are configured correctly */
 
-int check_hsam_parameters()
+static int check_hsam_parameters()
 {
     char *value;
     int size;

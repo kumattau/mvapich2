@@ -896,8 +896,6 @@ int MPIDI_CH3_Get_rndv_push(MPIDI_VC_t * vc,
                             MPIDI_CH3_Pkt_get_resp_t * get_resp_pkt,
                             MPID_Request * req)
 {
-    int mpi_errno = MPI_SUCCESS;
-    vbuf *v;
 
 #ifdef CKPT
     MPIDI_CH3I_CR_lock();
@@ -911,8 +909,6 @@ int MPIDI_CH3_Get_rndv_push(MPIDI_VC_t * vc,
         PUSH_FLOWLIST(vc);
     } else {
         MPID_IOV iov;
-        int n_iov = 1;
-        int nb;
         MPIDI_CH3I_MRAILI_Rndv_info_t rndv;
 
         iov.MPID_IOV_BUF = (void*) get_resp_pkt;

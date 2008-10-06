@@ -699,6 +699,7 @@ static int DLOOP_Segment_vector_mpi_flatten(DLOOP_Offset *blocks_p,
     return 0;
 }
 
+#if 0
 static int DLOOP_Segment_blkidx_mpi_flatten(DLOOP_Offset *blocks_p,
                                             DLOOP_Count count,
                                             DLOOP_Count blksz,
@@ -776,7 +777,9 @@ static int DLOOP_Segment_blkidx_mpi_flatten(DLOOP_Offset *blocks_p,
     DLOOP_Assert(blocks_left == 0);
     return 0;
 }
+#endif 
 
+#if 0
 static int DLOOP_Segment_index_mpi_flatten(DLOOP_Offset *blocks_p,
 					   DLOOP_Count count,
 					   DLOOP_Count *blockarray,
@@ -854,6 +857,7 @@ static int DLOOP_Segment_index_mpi_flatten(DLOOP_Offset *blocks_p,
     DLOOP_Assert(blocks_left == 0);
     return 0;
 }
+#endif
 
 /* MPID_Segment_mpi_flatten - flatten a type into a representation
  *                            appropriate for passing to hindexed create.

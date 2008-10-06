@@ -46,11 +46,13 @@ do {                                                          \
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int is_blocking)
 {
-    static int 		local_vc_index = 0;
     static MPIDI_VC_t 	*pending_vc = NULL;
-    int 	i, type;
+    int 	type;
     MPIDI_PG_t 	*pg;
     MPIDI_VC_t 	*recv_vc_ptr;
+#ifdef DAPL_DEFAULT_PROVIDER
+    static int 		local_vc_index = 0;
+#endif
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_READ_PROGRESS);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_READ_PROGRESS);
@@ -94,6 +96,7 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int is_blocki
     }
 
 #ifdef DAPL_DEFAULT_PROVIDER
+  int i;
   if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
     for (i = 0; i < pg->size; i++) {
         MPIDI_PG_Get_vc(MPIDI_Process.my_pg, local_vc_index,

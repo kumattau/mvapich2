@@ -35,7 +35,7 @@ void get_sorted_index(MPIDI_VC_t *vc, int *b);
 
 int MPIDI_CH3I_MRAIL_Prepare_rndv(MPIDI_VC_t * vc, MPID_Request * req)
 {
-    dreg_entry *reg_entry;
+    dreg_entry *reg_entry = NULL;
     DEBUG_PRINT ("[prepare cts] rput protocol, recv size %d, segsize %d, io count %d\n",
         req->dev.recv_data_sz, req->dev.segment_size, req->dev.iov_count);
 
@@ -255,10 +255,10 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
 
     int count_rail;
 
-    int mapped[MAX_NUM_SUBRAILS], i;
+    int mapped[MAX_NUM_SUBRAILS];
     int actual_index[MAX_NUM_SUBRAILS];
 
-    double time, myseed;
+    double time;
 
     if (rreq->mrail.rndv_buf_off != 0) {
         ibv_va_error_abort(GEN_ASSERT_ERR,
@@ -465,10 +465,10 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
 
     int count_rail;
 
-    int mapped[MAX_NUM_SUBRAILS], i;
+    int mapped[MAX_NUM_SUBRAILS];
     int actual_index[MAX_NUM_SUBRAILS];
 
-    double time, myseed;
+    double time;
 
     if (sreq->mrail.rndv_buf_off != 0) {
         ibv_va_error_abort(GEN_ASSERT_ERR,
@@ -766,7 +766,7 @@ void adjust_weights(MPIDI_VC_t *vc, double start_time,
 }
 
 /* User defined function for wall-time */
-int get_wall_time(double *t)
+void get_wall_time(double *t)
 {
     struct timeval tv;
     static int initialized = 0;

@@ -293,7 +293,6 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
 
 fn_completion:
 fn_fail:
-fn_exit:
 #ifdef CKPT
     MPIDI_CH3I_CR_unlock();
 #endif
@@ -596,7 +595,6 @@ static int cm_send_pending_msg(MPIDI_VC_t * vc)
     MPIU_Assert(vc->ch.state==MPIDI_CH3I_VC_STATE_IDLE);
 
     while (!MPIDI_CH3I_CM_SendQ_empty(vc)) {
-        int i;
         struct MPID_Request * sreq;
         MPID_IOV * iov;
         int n_iov;
@@ -809,7 +807,6 @@ static int cm_handle_pending_send()
     }
 
 fn_fail:
-fn_exit:
     return mpi_errno;
 }
 
@@ -898,7 +895,7 @@ static int handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* header_type
 
     DEBUG_PRINT("[handle read] pheader: %p\n", buffer->pheader);
 
-    MPIDI_CH3I_MRAIL_Parse_header(vc, buffer, (void **)&header, &header_size);
+    MPIDI_CH3I_MRAIL_Parse_header(vc, buffer, (void *)(&header), &header_size);
 
 #if defined(MPIDI_MRAILI_COALESCE_ENABLED)
     buffer->content_consumed = header_size;

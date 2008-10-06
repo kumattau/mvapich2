@@ -354,7 +354,7 @@ static inline int MPIDU_Compare_swap( void **dest, void *new_val, void *compare_
     return 0;
 }
 /* <_OSU_MVAPICH_>
- * #endif /* 0 for compareSwap */
+ * #endif         #comment: 0 for compareSwap 
  * </_OSU_MVAPICH_>
  */
 #endif /* defined(_OSU_MVAPICH_) && defined(USE_PROCESS_LOCKS) */

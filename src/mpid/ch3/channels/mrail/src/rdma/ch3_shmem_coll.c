@@ -294,7 +294,7 @@ void MPIDI_CH3I_SHMEM_COLL_Unlink()
 #define FUNCNAME MPIDI_CH3I_SHMEM_COLL_Gather
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int size, int rank, int shmem_comm_rank, void** output_buf)
+void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int size, int rank, int shmem_comm_rank, void** output_buf)
 {
     int i = 1;
     char* shmem_coll_buf = (char*)(&(shmem_coll->shmem_coll_buf));
@@ -486,7 +486,6 @@ fn_fail:
 
 int MPID_SHMEM_BCAST_mmap(void** mmap_ptr, int bcast_seg_size, int fd, int my_local_rank, char* bcast_shmem_file)
 {
-    int i = 0, j = 0;
     *mmap_ptr = mmap(0, bcast_seg_size,
                          (PROT_READ | PROT_WRITE), (MAP_SHARED), fd, 0);
     if (*mmap_ptr == (void *) -1) {
@@ -538,7 +537,6 @@ void wait_for_signal(int step, int index, char** output_buf, int* offset, int* b
     char* shmem_coll_buf = (char*)(mmap_ptr);
     volatile char* bcast_flags;
     bcast_flags = (char*)shmem_coll_buf +  index*SHMEM_BCAST_FLAGS;
-    int metadata_offset = 3*SHMEM_BCAST_FLAGS;
     char* tmp = (char*)shmem_coll_buf + 3*SHMEM_BCAST_FLAGS + step*SHMEM_BCAST_METADATA;
     void* buffer;
     while (bcast_flags[step] == 0){

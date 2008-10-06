@@ -28,8 +28,8 @@
 #define IBA_PMI_VALLEN  (4096)
 
 struct init_addr_inf {
-    uint16_t    lid;
-    uint32_t    qp_num[2];
+    int    lid;
+    int    qp_num[2];
 };
 
 struct host_addr_inf {

@@ -5,7 +5,7 @@ void adjust_weights(MPIDI_VC_t *vc, double start_time,
     double *finish_time,
     double *init_weight);
 
-int get_wall_time(double *t);
+void get_wall_time(double *t);
 
 int perform_manual_apm(struct ibv_qp* qp);
 

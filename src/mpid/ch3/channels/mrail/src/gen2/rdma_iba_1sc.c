@@ -51,7 +51,6 @@ static int Post_Put_Put_Get_List(MPID_Win *, int,  dreg_entry *,
         MPIDI_VC_t *, void *local_buf[], void *remote_buf[], int length,
         uint32_t lkeys[], uint32_t rkeys[],int use_multi );
 
-static int Consume_signals(MPID_Win *, uint64_t);
 static int iba_put(MPIDI_RMA_ops *, MPID_Win *, int);
 static int iba_get(MPIDI_RMA_ops *, MPID_Win *, int);
 static int Get_Pinned_Buf(MPID_Win * win_ptr, char **origin, int size);
@@ -1073,7 +1072,7 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
                             uint32_t lkeys[], uint32_t rkeys[],
                             int use_multi)
 {
-    int ret,i,mpi_errno = MPI_SUCCESS;
+    int i,mpi_errno = MPI_SUCCESS;
     int hca_index;
     int rail;
     int index = winptr->put_get_list_tail;
@@ -1191,7 +1190,7 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
                             uint32_t lkeys[], uint32_t rkeys[],
                             int use_multi)
 {
-     int ret, i, mpi_errno = MPI_SUCCESS;
+     int i, mpi_errno = MPI_SUCCESS;
      int hca_index;
      int index = winptr->put_get_list_tail;
      vbuf *v;
@@ -1263,7 +1262,7 @@ fn_fail:
 int MRAILI_Handle_one_sided_completions(vbuf * v)                            
 {
     dreg_entry      	          *dreg_tmp;
-    int                           i = 0,j, size;
+    int                           size;
     int                           mpi_errno = MPI_SUCCESS;
     void                          *target_addr, *origin_addr;
     MPIDI_CH3I_RDMA_put_get_list  *list_entry=NULL;
@@ -1324,7 +1323,6 @@ int MRAILI_Handle_one_sided_completions(vbuf * v)
         list_win_ptr->pinnedpool_1sc_index = 0;
         list_win_ptr->poll_flag = 0;
      }
-
 fn_fail:
     return mpi_errno;
 }

@@ -1203,7 +1203,6 @@ int MPICM_Finalize_UD()
         struct ibv_sge list;
         struct ibv_send_wr wr;
         struct ibv_send_wr *bad_wr;
-        struct ibv_wc wc;
         msg.msg_type = CM_MSG_TYPE_FIN_SELF;
         memcpy((char*)cm_ud_send_buf + 40, &msg, sizeof(cm_msg));
         memset(&list, 0, sizeof(struct ibv_sge));

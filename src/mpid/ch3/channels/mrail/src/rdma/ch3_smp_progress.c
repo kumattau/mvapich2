@@ -565,7 +565,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     char *value;
     struct shared_mem *shmem;
     int blocking_val;
-    SEND_BUF_T *send_buf;
+    SEND_BUF_T *send_buf = NULL;
 #if defined(_X86_64_)
     volatile char tmpchar;
 #endif /* defined(_X86_64_) */
@@ -2399,8 +2399,8 @@ static void smpi_setaffinity ()
 
                 if (j == g_smpi.my_local_id)
                 {
-                    int ret = PLPA_NAME(setaffinity)(tp_str, getpid());
-                    // TODO: Evaluate return value.
+                    PLPA_NAME(setaffinity)(tp_str, getpid());
+                    /* TODO: Evaluate return value of PLPA_NAME */
                     break;
                 }
 

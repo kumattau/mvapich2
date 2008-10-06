@@ -651,7 +651,7 @@ int rdma_cm_connect_all(int *hosts, int pg_rank, int pg_size)
 }
 
 int rdma_cm_get_contexts(){
-    int i, ret, count = 0, pg_rank;
+    int i, ret;
     struct sockaddr_in sin;
     MPIDI_CH3I_RDMA_Process_t *proc = &MPIDI_CH3I_RDMA_Process;
 
@@ -747,9 +747,8 @@ int rdma_cm_create_qp(int cm_rank, int rail_index)
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int *rdma_cm_get_hostnames(int pg_rank, int pg_size)
 {
-	int ret = 0;
     int *hosts;
-    int error, i, j;
+    int error, i;
     int length = 64;
     char rank[16];
     char buffer[length];
@@ -901,7 +900,6 @@ int rdma_cm_connect_to_server(int rrank, int ipnum, int rail_index){
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int rdma_cm_init_pd_cq()
 {
-    int ret = 0;
     MPIDI_CH3I_RDMA_Process_t* proc = &MPIDI_CH3I_RDMA_Process;
     int i = 0;
     int pg_rank;
@@ -973,7 +971,6 @@ int get_remote_rank(struct rdma_cm_id *cmid)
 {
     int pg_size, pg_rank, i, rail_index = 0;
     MPIDI_VC_t  *vc;
-    MPIDI_CH3I_RDMA_Process_t *proc = &MPIDI_CH3I_RDMA_Process;
 
     PMI_Get_size(&pg_size);
     PMI_Get_rank(&pg_rank);
@@ -994,7 +991,6 @@ int get_remote_rail(struct rdma_cm_id *cmid)
 {
     int pg_size, pg_rank, i, rail_index = 0;
     MPIDI_VC_t  *vc;
-    MPIDI_CH3I_RDMA_Process_t *proc = &MPIDI_CH3I_RDMA_Process;
 
     PMI_Get_size(&pg_size);
     PMI_Get_rank(&pg_rank);

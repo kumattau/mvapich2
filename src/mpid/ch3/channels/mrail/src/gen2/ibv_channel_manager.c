@@ -261,7 +261,6 @@ int MPIDI_CH3I_MRAILI_Register_channels(MPIDI_VC_t *vc, int num, vbuf *(*func[])
 
 int MPIDI_CH3I_MRAILI_Get_next_vbuf_local(MPIDI_VC_t* vc, vbuf** vbuf_handle, int is_blocking)
 {
-    int seq_expected = vc->seqnum_recv;
     int type = T_CHANNEL_NO_ARRIVE;
     int i = 0;
     *vbuf_handle = NULL;

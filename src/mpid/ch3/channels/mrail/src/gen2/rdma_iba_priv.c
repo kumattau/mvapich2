@@ -34,8 +34,6 @@ do {                                                          \
 #define DEBUG_PRINT(args...)
 #endif
 
-static uint32_t dst_qp;
-
 #define MPD_WINDOW 10
 #define ADDR_PKT_SIZE (sizeof(struct addr_packet) + ((pg_size - 1) * sizeof(struct host_addr_inf)))
 #define ADDR_INDEX(_p, _i) ((struct addr_packet *)(_p + (_i * ADDR_PKT_SIZE)))
@@ -346,9 +344,11 @@ int rdma_iba_hca_init_noqp(struct MPIDI_CH3I_RDMA_Process_t *proc,
             }
         }
 
-	if (proc->has_srq)
+	if (proc->has_srq) {
 	        proc->srq_hndl[i] = create_srq(proc, i);
-
+            if((proc->srq_hndl[i]) == NULL)
+                goto err_cq;
+        }
     }
 
     /*Port for all mgmt*/
@@ -636,7 +636,6 @@ rdma_iba_allocate_memory(struct MPIDI_CH3I_RDMA_Process_t *proc,
 {
     int ret = 0;
     int i = 0;
-    int j;
     MPIDI_VC_t * vc;
 
     /* First allocate space for RDMA_FAST_PATH for every connection */
@@ -711,7 +710,7 @@ rdma_iba_allocate_memory(struct MPIDI_CH3I_RDMA_Process_t *proc,
                 pthread_create(
                     &MPIDI_CH3I_RDMA_Process.async_thread[hca_num], 
                     NULL,
-                    async_thread, 
+                    (void *) async_thread, 
                     (void *) MPIDI_CH3I_RDMA_Process.nic_context[hca_num]);
             }
         }

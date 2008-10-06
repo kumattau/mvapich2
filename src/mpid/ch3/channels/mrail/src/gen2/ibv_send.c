@@ -946,7 +946,7 @@ int MRAILI_Process_send(void *vbuf_addr)
     MPIDI_VC_t      *vc;
     MPID_Request    *req;
     double          time_taken;
-    int             complete, rail;
+    int             complete;
 
     if (v->padding == RDMA_ONE_SIDED) {
         vc  = v->vc;

@@ -895,8 +895,6 @@ int dreg_evict()
 
     DREG_REMOVE_FROM_UNUSED_LIST(d);
     MPIU_Assert(d->refcount == 0);
-    unsigned long bufint = d->pagenum << DREG_PAGEBITS;
-    void* buf = (void*)bufint;
 
     for (; hca_index < rdma_num_hcas; ++hca_index)
     {          

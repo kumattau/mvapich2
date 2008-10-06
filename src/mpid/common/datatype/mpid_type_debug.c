@@ -24,7 +24,9 @@
 void MPIDI_Datatype_dot_printf(MPI_Datatype type, int depth, int header);
 void MPIDI_Dataloop_dot_printf(MPID_Dataloop *loop_p, int depth, int header);
 void MPIDI_Datatype_contents_printf(MPI_Datatype type, int depth, int acount);
+#ifdef USE_DBG_LOGGING
 static char *MPIDI_Datatype_depth_spacing(int depth);
+#endif
 
 /* note: this isn't really "error handling" per se, but leave these comments
  * because Bill uses them for coverage analysis.
@@ -476,6 +478,7 @@ void MPIDU_Datatype_debug(MPI_Datatype type,
     MPIDI_Datatype_dot_printf(type, 0, 1);
 }
 
+#ifdef USE_DBG_LOGGING
 static char *MPIDI_Datatype_depth_spacing(int depth)
 {
     static char d0[] = "";
@@ -494,6 +497,7 @@ static char *MPIDI_Datatype_depth_spacing(int depth)
 	default: return d5;
     }
 }
+#endif
 
 void MPIDI_Datatype_contents_printf(MPI_Datatype type,
 				    int depth,
