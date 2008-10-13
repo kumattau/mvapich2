@@ -58,7 +58,7 @@ int MPID_Abort( struct MPID_Comm *comm, int mpi_errno, int exit_code, const char
 #else
 #   define MPIU_Assert(a_)
 /* Empty decls not allowed in C */
-#   define MPIU_AssertDecl(a_) a_
+#   define MPIU_AssertDecl(a_) 
 #endif
 
 /*

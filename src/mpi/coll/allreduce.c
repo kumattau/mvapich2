@@ -634,7 +634,6 @@ int MPI_Allreduce ( void *sendbuf, void *recvbuf, int count,
     int stride = 0, i, is_commutative = 0;
     MPID_Op *op_ptr = NULL;
     int total_size, shmem_comm_rank;
-    MPIU_CHKLMEM_DECL(1);
     extern int check_comm_registry(MPI_Comm);
     extern int MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int, int, int, void**);
     extern void MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(int, int, int);
