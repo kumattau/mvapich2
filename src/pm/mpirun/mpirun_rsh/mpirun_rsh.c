@@ -1210,10 +1210,47 @@ void rkill_linear(void) {
     }
 }
 
+int file_exists (char *filename) 
+{
+    FILE *fp = fopen (filename, "r");
+    if (fp) {
+        fclose (fp);
+        return 1;
+    }
+    return 0;
+}
+
+int getpath(char *buf, int buf_len)
+{
+    char link[32];
+    pid_t pid;
+    unsigned len;
+    pid = getpid();
+    snprintf(&link[0], sizeof(link), "/proc/%i/exe", pid);
+
+    if ((len = readlink(&link[0], buf, buf_len)) == -1) {
+        buf[0] = 0;
+        return 0;
+    }
+    else
+    {
+        buf[len] = 0;
+        while (len && buf[--len] != '/');
+        if (buf[len] == '/') buf[len] = 0;
+        return len;
+    }
+}
+
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
+
 void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env) {
     char * mpispawn_env, * tmp, * ld_library_path;
     char * name, * value;
     int i, n;
+    char pathbuf[PATH_MAX];
+    int pathlen;
 
     if((ld_library_path = getenv("LD_LIBRARY_PATH"))) {
 	mpispawn_env = mkstr("LD_LIBRARY_PATH=%s:%s",
@@ -1523,13 +1560,19 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env) {
 		argv[arg_offset++] = SSH_CMD;
 		argv[arg_offset++] = SSH_ARG;
 	    }
+        
+        if (getpath(pathbuf, PATH_MAX) && file_exists (pathbuf)) {
+    	    command = mkstr("cd %s; %s %s %s %s/mpispawn", wd, ENV_CMD,
+    		    mpispawn_env, env, pathbuf);
        
         if (use_dirname) 
     	    command = mkstr("cd %s; %s %s %s %s/mpispawn", wd, ENV_CMD,
     		    mpispawn_env, env, binary_dirname);
-        else 
+        }
+        else {
     	    command = mkstr("cd %s; %s %s %s mpispawn", wd, ENV_CMD,
     	        mpispawn_env, env);
+        }
 
 	    if(!command) {
 		fprintf(stderr, "Couldn't allocate string for remote command!\n");
