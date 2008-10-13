@@ -1564,8 +1564,8 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env) {
         if (getpath(pathbuf, PATH_MAX) && file_exists (pathbuf)) {
     	    command = mkstr("cd %s; %s %s %s %s/mpispawn", wd, ENV_CMD,
     		    mpispawn_env, env, pathbuf);
-       
-        if (use_dirname) 
+        } 
+        else if (use_dirname) 
     	    command = mkstr("cd %s; %s %s %s %s/mpispawn", wd, ENV_CMD,
     		    mpispawn_env, env, binary_dirname);
         }
