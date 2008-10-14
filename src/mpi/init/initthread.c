@@ -47,6 +47,10 @@ MPICH_PerProcess_t MPIR_Process = { MPICH_PRE_INIT };
      /* all other fields in MPIR_Process are irrelevant */
 MPICH_ThreadInfo_t MPIR_ThreadInfo = { 0 };
 
+#if defined(_OSU_MVAPICH_)
+#define DEFAULT_SHMEM_BCAST_LEADERS    1024
+#endif /* _OSU_MVAPICH_ */
+
 /* These are initialized as null (avoids making these into common symbols).
    If the Fortran binding is supported, these can be initialized to 
    their Fortran values (MPI only requires that they be valid between
@@ -415,6 +419,7 @@ int enable_shmem_collectives = 1;
 int disable_shmem_allreduce=0;
 int disable_shmem_reduce=0;
 int disable_shmem_barrier=0;
+int g_shmem_bcast_leaders = DEFAULT_SHMEM_BCAST_LEADERS;
 extern int g_shmem_coll_blocks;
 extern int g_shmem_coll_max_msg_size;
 extern int shmem_bcast_threshold;
@@ -560,6 +565,12 @@ void MV2_Read_env_vars(void){
     if ((value = getenv("MV2_SHMEM_COLL_MAX_MSG_SIZE")) != NULL){
 	    flag = (int)atoi(value);
 	    if (flag > 0) g_shmem_coll_max_msg_size = flag;
+    }
+    if ((value = getenv("MV2_SHMEM_BCAST_LEADERS")) != NULL){
+        if ((atoi(value) > 0)) {
+           /* We only accept positive values */
+           g_shmem_bcast_leaders = (int)atoi(value);
+        }
     }
     if ((value = getenv("MV2_USE_SHARED_MEM")) != NULL){
 	    flag = (int)atoi(value);

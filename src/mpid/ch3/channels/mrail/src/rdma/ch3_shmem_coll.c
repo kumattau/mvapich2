@@ -53,6 +53,7 @@ char *bcast_file = NULL;
 char hostname[SHMEM_COLL_HOSTNAME_LEN];
 int my_rank;
 
+extern int g_shmem_bcast_leaders;
 int g_shmem_coll_blocks = 8;
 int g_shmem_coll_max_msg_size = (1 << 17); 
 
@@ -413,7 +414,7 @@ int MPID_SHMEM_BCAST_init(int file_size, int shmem_comm_rank, int my_local_rank,
     int pagesize = getpagesize();
     int mpi_errno = 1;
 
-    file_size = file_size + 3*SHMEM_BCAST_FLAGS + SHMEM_BCAST_LEADERS*SHMEM_BCAST_METADATA;
+    file_size = file_size + 3*SHMEM_BCAST_FLAGS + g_shmem_bcast_leaders*SHMEM_BCAST_METADATA;
 
     /* add pid for unique file name */
     *bcast_shmem_file = (char *) MPIU_Malloc(sizeof(char) * (SHMEM_COLL_HOSTNAME_LEN + 26 + PID_CHAR_LEN));
@@ -506,7 +507,7 @@ int MPID_SHMEM_BCAST_mmap(void** mmap_ptr, int bcast_seg_size, int fd, int my_lo
 void MPID_SHMEM_COLL_GetShmemBcastBuf(void** output_buf, void* buffer){
     char* shmem_coll_buf = (char*)(buffer);
 
-    *output_buf = (char*)shmem_coll_buf + 3*SHMEM_BCAST_FLAGS + SHMEM_BCAST_LEADERS*SHMEM_BCAST_METADATA;
+    *output_buf = (char*)shmem_coll_buf + 3*SHMEM_BCAST_FLAGS + g_shmem_bcast_leaders*SHMEM_BCAST_METADATA;
 }
 
 void signal_local_processes(int step, int index, char* send_buf, int offset, int bytes, void* mmap_ptr){
@@ -545,7 +546,7 @@ void wait_for_signal(int step, int index, char** output_buf, int* offset, int* b
     buffer = (addrint_t*)tmp;
     buffer = (int*)(tmp + sizeof(addrint_t));
     *offset = *((int*)buffer);
-    *output_buf = (char*)(mmap_ptr) + 3*SHMEM_BCAST_FLAGS + SHMEM_BCAST_LEADERS*SHMEM_BCAST_METADATA + *offset;
+    *output_buf = (char*)(mmap_ptr) + 3*SHMEM_BCAST_FLAGS + g_shmem_bcast_leaders*SHMEM_BCAST_METADATA + *offset;
     buffer = (int*)(tmp + sizeof(addrint_t) + sizeof(int));
     *bytes = *((int*)buffer);
 

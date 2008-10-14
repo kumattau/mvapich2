@@ -113,6 +113,9 @@ shmem_coll_region *shmem_coll;
 
 #define BCAST_LEN 20
 #define SHMEM_BCAST_FLAGS	1024
-#define SHMEM_BCAST_LEADERS     1024
+/*
+ * We're converting this into a environment variable
+ *#define SHMEM_BCAST_LEADERS 1024
+ */
 #define SHMEM_BCAST_METADATA	(sizeof(addrint_t) + 2*sizeof(int))       /* METADATA: buffer address, offset, num_bytes */ 
 #endif
