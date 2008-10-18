@@ -63,6 +63,7 @@
 #include <stdint.h>
 #include <math.h>
 #include "mpispawn_tree.h"
+#include "mpirun_util.h"
 
 #if defined(_NSIG)
 #define NSIG _NSIG
@@ -130,6 +131,7 @@ static struct option option_table[] = {
     {"v", no_argument, 0, 0},
     {"tv", no_argument, 0, 0},
     {"legacy", no_argument, 0, 0},
+    {"startedByTv", no_argument, 0, 0},
     {0, 0, 0, 0}
 };
 
@@ -205,7 +207,6 @@ int debug_on = 0, xterm_on = 0, show_on = 0;
 int param_debug = 0;
 int use_totalview = 0;
 int server_socket;
-char * mpirun_processes;
 char display[200];
 char * binary_dirname;
 int use_dirname = 1;
@@ -225,6 +226,27 @@ static void get_display_str()
 	sprintf(display,"DISPLAY=%s",str); 	
     }
 }
+
+/* Start mpirun_rsh totalview integration */
+
+#define MPIR_DEBUG_SPAWNED                1
+#define MPIR_DEBUG_ABORTING               2
+
+struct MPIR_PROCDESC *MPIR_proctable    = 0;
+int MPIR_proctable_size                 = 0;
+int MPIR_i_am_starter                   = 1;
+int MPIR_debug_state                    = 0;
+char *MPIR_dll_name                     = "MVAPICH2";
+/* Totalview intercepts MPIR_Breakpoint */
+int MPIR_Breakpoint (void)
+{
+    printf ("here %d\n", MPIR_debug_state) ;
+    fflush (stdout);
+
+    return 0;
+}
+
+/* End mpirun_rsh totalview integration */
 
 int main(int argc, char *argv[])
 {
@@ -254,10 +276,6 @@ int main(int argc, char *argv[])
     /* mpirun [-debug] [-xterm] -np N [-hostfile hfile | h1 h2 h3 ... hN] a.out [args] */
 
     atexit(free_memory);
-    binary_dirname = strdup(dirname(argv[0]));
-    if (strlen (binary_dirname) == 1 && argv[0][0] != '.') {
-        use_dirname = 0;
-    }
 
     do {
         c = getopt_long_only(argc, argv, "+", option_table, &option_index);
@@ -311,34 +329,57 @@ int main(int argc, char *argv[])
                 usage();
                 exit(EXIT_SUCCESS);
                 break;
- 	    case 10:
- 		use_totalview = 1;
-		debug_on = 1;
-		legacy_startup = 1;
-
- 		tv_env = getenv("TOTALVIEW");
- 		if(tv_env != NULL) {
-		    strcpy(totalview_cmd,tv_env);	
- 		} else {
-		    fprintf(stderr,
-			    "TOTALVIEW env is NULL, use default: %s\n", 
-			    TOTALVIEW_CMD);
-		    sprintf(totalview_cmd, "%s", TOTALVIEW_CMD);
- 		}	
-  		break;
-	    case 11:
-		legacy_startup = 1;
-		break;
-	    case 14:
-		usage();
-		exit(EXIT_SUCCESS);
-		break;
-	    default:
-		fprintf(stderr, "Unknown option\n");
-                usage();
-		exit(EXIT_FAILURE);
-		break;
-	    }
+            case 10: 
+                {
+                    /* -tv */
+                    int count, idx;
+                    char **new_argv;
+ 		            tv_env = getenv("TOTALVIEW");
+ 		            if (tv_env != NULL) {
+		                strcpy (totalview_cmd,tv_env);	
+ 		            } 
+                    else {
+		                fprintf (stderr,
+			                    "TOTALVIEW env is NULL, use default: %s\n", 
+			                    TOTALVIEW_CMD);
+		                sprintf (totalview_cmd, "%s", TOTALVIEW_CMD);
+ 		            }
+                    new_argv = (char **) malloc (sizeof (char **) * argc + 3);
+                    new_argv[0] = totalview_cmd;
+                    new_argv[1] = argv[0];
+                    new_argv[2] = "-a";
+                    new_argv[3] = "-startedByTv";
+                    idx = 4;
+                    for (count = 1; count < argc; count ++) {
+                        if (strcmp (argv[count], "-tv"))
+                            new_argv[idx++] = argv [count];
+                    }
+                    new_argv[idx] = NULL;
+                    if (execv (new_argv[0], new_argv)) {
+                        perror ("execv");
+                        exit (EXIT_FAILURE);
+                    }
+                    
+                }
+  		        break;
+ 	        case 12:
+                /* -startedByTv */
+ 		        use_totalview = 1;
+		        debug_on = 1;
+                break;
+	        case 11:
+		        legacy_startup = 1;
+		        break;
+	        case 15:
+		        usage();
+		        exit(EXIT_SUCCESS);
+		        break;
+	        default:
+		        fprintf(stderr, "Unknown option\n");
+                         usage();
+		        exit(EXIT_FAILURE);
+		        break;
+	        }
             break;
         default:
             fprintf(stderr, "Unreachable statement!\n");
@@ -351,6 +392,11 @@ int main(int argc, char *argv[])
     if(!nprocs) {
 	usage();
 	exit(EXIT_FAILURE);
+    }
+    
+    binary_dirname = strdup(dirname(argv[0]));
+    if (strlen (binary_dirname) == 1 && argv[0][0] != '.') {
+        use_dirname = 0;
     }
 
     if (!hostfile_on) {
@@ -411,25 +457,13 @@ int main(int argc, char *argv[])
     }
 
     if(use_totalview) { 
-        mpirun_processes = (char*) malloc(sizeof(char) 
-                * nprocs * (hostname_len + 4));
-        
-        if (!mpirun_processes) {
-            perror("malloc");
-            exit(EXIT_FAILURE);
-        } else { 
-            memset(mpirun_processes, 0, nprocs * (hostname_len + 4));
-        }
+        MPIR_proctable = (struct MPIR_PROCDESC *) malloc 
+                (MPIR_PROCDESC_s * nprocs);
+        MPIR_proctable_size = nprocs;
 
         for (i = 0; i < nprocs; ++i) {
-            strcat(mpirun_processes, plist[i].hostname);
-            strcat(mpirun_processes, ":");
+            MPIR_proctable[i].host_name = plist[i].hostname;
         }
-    } else {
-        /* If we are not using Totalview, then we
-         * need not do much */
-        mpirun_processes = (char *) malloc(sizeof(char));
-        mpirun_processes[0] = '\0';
     }
    
     wd = get_current_dir_name();
@@ -1018,7 +1052,8 @@ void cleanup(void)
     if (use_totalview) {
 	fprintf(stderr, "Cleaning up all processes ...");
     }
-
+    if (use_totalview)
+        MPIR_debug_state = MPIR_DEBUG_ABORTING;
     for (i = 0; i < NSIG; i++) {
         signal(i, SIG_DFL);
     }
@@ -1245,6 +1280,14 @@ int getpath(char *buf, int buf_len)
 #define PATH_MAX 4096
 #endif
 
+#define CHECK_ALLOC() do { \
+    if (tmp) { \
+        free (mpispawn_env); \
+        mpispawn_env = tmp; \
+    } \
+    else goto allocation_error; \
+} while (0);
+
 void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env) {
     char * mpispawn_env, * tmp, * ld_library_path;
     char * name, * value;
@@ -1264,94 +1307,27 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env) {
     if(!mpispawn_env) goto allocation_error;
 
     tmp = mkstr("%s MPISPAWN_MPIRUN_MPD=0", mpispawn_env);
-
-    if(tmp) {
-	free(mpispawn_env);
-	mpispawn_env = tmp;
-    }
-
-    else {
-	goto allocation_error;
-    }
+    CHECK_ALLOC ();
 
     tmp = mkstr("%s MPISPAWN_MPIRUN_HOST=%s", mpispawn_env, mpirun_host);
-
-    if(tmp) {
-	free(mpispawn_env);
-	mpispawn_env = tmp;
-    }
-
-    else {
-	goto allocation_error;
-    }
+    CHECK_ALLOC ();
 
     tmp = mkstr("%s MPISPAWN_CHECKIN_PORT=%d", mpispawn_env, port);
-
-    if(tmp) {
-	free(mpispawn_env);
-	mpispawn_env = tmp;
-    }
-
-    else {
-	goto allocation_error;
-    }
+    CHECK_ALLOC ();
     
     tmp = mkstr("%s MPISPAWN_MPIRUN_PORT=%d", mpispawn_env, port);
-
-    if(tmp) {
-	free(mpispawn_env);
-	mpispawn_env = tmp;
-    }
-
-    else {
-	goto allocation_error;
-    }
+    CHECK_ALLOC ();
 
     tmp = mkstr("%s MPISPAWN_GLOBAL_NPROCS=%d", mpispawn_env, nprocs);
-
-    if(tmp) {
-	free(mpispawn_env);
-	mpispawn_env = tmp;
-    }
-
-    else {
-	goto allocation_error;
-    }
+    CHECK_ALLOC ();
 
     tmp = mkstr("%s MPISPAWN_MPIRUN_ID=%d", mpispawn_env, getpid());
-
-    if(tmp) {
-	free(mpispawn_env);
-	mpispawn_env = tmp;
-    }
-
-    else {
-	goto allocation_error;
-    }
+    CHECK_ALLOC ();
 
     if(use_totalview) {
-	tmp = mkstr("%s MPISPAWN_USE_TOTALVIEW=1", mpispawn_env);
+        tmp = mkstr("%s MPISPAWN_USE_TOTALVIEW=1", mpispawn_env);
+        CHECK_ALLOC ();
 
-	if(tmp) {
-	    free(mpispawn_env);
-	    mpispawn_env = tmp;
-	}
-
-	else {
-	    goto allocation_error;
-	}
-
-	tmp = mkstr("%s MPISPAWN_MPIRUN_PROCESSES='%s'", mpispawn_env,
-		mpirun_processes);
-
-	if(tmp) {
-	    free(mpispawn_env);
-	    mpispawn_env = tmp;
-	}
-
-	else {
-	    goto allocation_error;
-	}
     }
 
     /* 
@@ -1392,61 +1368,30 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env) {
     }
 
     i = argc - aout_index;
-    if(debug_on) i++;
-    if(use_totalview) i++;
+    if(debug_on && !use_totalview) i++;
 
-    tmp = mkstr("%s MPISPAWN_ARGC=%d", mpispawn_env, argc - aout_index);
-
-    if(tmp) {
-	free(mpispawn_env);
-	mpispawn_env = tmp;
-    }
-
-    else {
-	goto allocation_error;
-    }
-
+    tmp = mkstr("%s MPISPAWN_ARGC=%d", mpispawn_env, i);
+    CHECK_ALLOC ();
+    
     i = 0;
 
-    if(debug_on) {
-	tmp = mkstr("%s MPISPAWN_ARGV_%d=%s", mpispawn_env, i++, (use_totalview
-		    ?  totalview_cmd : DEBUGGER));
+    if (debug_on && !use_totalview) {
+	tmp = mkstr("%s MPISPAWN_ARGV_%d=%s", mpispawn_env, i++, DEBUGGER);
 
-	if(tmp) {
-	    free(mpispawn_env);
-	    mpispawn_env = tmp;
-	}
-
-	else {
-	    goto allocation_error;
-	}
+    CHECK_ALLOC ();
     }
-
+    
     if(use_totalview) {
-    	tmp = mkstr("%s MPISPAWN_ARGV_%d=%s", mpispawn_env, i++, "-mpichtv");
-
-	if(tmp) {
-	    free(mpispawn_env);
-	    mpispawn_env = tmp;
-	}
-
-	else {
-	    goto allocation_error;
-	}
+        int j;
+        for (j = 0; j < MPIR_proctable_size; j++) {
+            MPIR_proctable[j].executable_name = argv[aout_index];
+        }
     }
 
     while(aout_index < argc) {
-	tmp = mkstr("%s MPISPAWN_ARGV_%d=%s", mpispawn_env, i++,
-		argv[aout_index++]);
-
-	if(tmp) {
-	    free(mpispawn_env);
-	    mpispawn_env = tmp;
-	}
-
-	else {
-	    goto allocation_error;
-	}
+        tmp = mkstr("%s MPISPAWN_ARGV_%d=%s", mpispawn_env, i++,
+            argv[aout_index++]);
+        CHECK_ALLOC ();
     }
 
     if(mpispawn_param_env) {
@@ -1472,79 +1417,31 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env) {
 	    char *command;
 
 	    tmp = mkstr("%s MPISPAWN_ID=%d", mpispawn_env, i);
-
-	    if(tmp) {
-		free(mpispawn_env);
-		mpispawn_env = tmp;
-	    }
-
-	    else {
-		goto allocation_error;
-	    }
+        CHECK_ALLOC ();
 
 	    tmp = mkstr("%s MPISPAWN_LOCAL_NPROCS=%d", mpispawn_env,
 		    pglist->data[i].npids);
-
-	    if(tmp) {
-		free(mpispawn_env);
-		mpispawn_env = tmp;
-	    }
-
-	    else {
-		goto allocation_error;
-	    }
+        CHECK_ALLOC ();
 
 	    tmp = mkstr("%s MPISPAWN_WORKING_DIR=%s", mpispawn_env, wd);
-
-	    if(tmp) {
-		free(mpispawn_env);
-		mpispawn_env = tmp;
-	    }
-
-	    else {
-		goto allocation_error;
-	    }
+        CHECK_ALLOC ();
 
 	    for(n = 0; n < pglist->data[i].npids; n++) {
 		tmp = mkstr("%s MPISPAWN_MPIRUN_RANK_%d=%d", mpispawn_env, n,
 			pglist->data[i].plist_indices[n]);
-
-		if(tmp) {
-		    free(mpispawn_env);
-		    mpispawn_env = tmp;
-		}
-
-		else {
-		    goto allocation_error;
-		}
+        CHECK_ALLOC ();
 
 		if(plist[pglist->data[i].plist_indices[n]].device != NULL) {
 		    tmp = mkstr("%s MPISPAWN_VIADEV_DEVICE_%d=%s", mpispawn_env,
 			    n,
 			    plist[pglist->data[i].plist_indices[n]].device);
-
-		    if(tmp) {
-			free(mpispawn_env);
-			mpispawn_env = tmp;
-		    }
-
-		    else {
-			goto allocation_error;
-		    }
+            CHECK_ALLOC ();
 		}
 
 		tmp = mkstr("%s MPISPAWN_VIADEV_DEFAULT_PORT_%d=%d",
 			mpispawn_env, n,
 			plist[pglist->data[i].plist_indices[n]].port);
-
-		if(tmp) {
-		    free(mpispawn_env);
-		    mpispawn_env = tmp;
-		}
-
-		else {
-		    goto allocation_error;
-		}
+        CHECK_ALLOC ();
 	    }
 
 	    if(xterm_on) {
@@ -1621,6 +1518,8 @@ allocation_error:
 
     exit(EXIT_FAILURE);
 }
+
+#undef CHECK_ALLOC
 
 void make_command_strings(int argc, char *argv[], char *totalview_cmd, char * command_name, char * command_name_tv) 
 {
@@ -1718,7 +1617,7 @@ void child_handler(int signal)
 void mpispawn_checkin(int s, struct sockaddr *sockaddr, unsigned int
 	sockaddr_len)
 {
-    int sock, id, i, n;
+    int sock, id, i, n, mpispawn_root;
     in_port_t port;
     socklen_t addrlen;
     struct sockaddr_storage addr, address[pglist->npgs];
@@ -1757,7 +1656,10 @@ void mpispawn_checkin(int s, struct sockaddr *sockaddr, unsigned int
 	    address[id] = addr;
 	    ((struct sockaddr_in *)&address[id])->sin_port = port;
 
-	    close(sock);
+	    if (!(id == 0 && use_totalview))
+            close(sock);
+        else 
+            mpispawn_root = sock;
 
 	    for (n = 0; n < pglist->data[id].npids; n++) {
 	        plist[pglist->data[id].plist_indices[n]].state = P_STARTED;
@@ -1789,6 +1691,25 @@ void mpispawn_checkin(int s, struct sockaddr *sockaddr, unsigned int
     }
 
     close(sock);
+
+    if (use_totalview) {
+        int id, j; 
+        process_info_t *pinfo = (process_info_t *) malloc 
+                (process_info_s * nprocs);
+        read_socket (mpispawn_root, pinfo, process_info_s * nprocs);
+        for (j = 0; j < nprocs; j++) {
+            MPIR_proctable[pinfo[j].rank].pid = pinfo[j].pid; 
+        }
+        free (pinfo);
+        /* We're ready for totalview */
+        MPIR_debug_state = MPIR_DEBUG_SPAWNED;
+        MPIR_Breakpoint ();
+
+        /* MPI processes can proceed now */
+        id = 0;
+        write_socket (mpispawn_root, &id, sizeof (int));
+        close (mpispawn_root);
+    }
 }
 
 /* vi:set sw=4 sts=4 tw=76 expandtab: */

@@ -27,7 +27,7 @@ typedef struct {
     char * mpirun_rank;
 } lvalues;
 
-pid_t * pids = NULL;
+process_info_t *local_processes;
 size_t npids = 0;
 
 int N;
@@ -53,14 +53,16 @@ void mpispawn_abort (int abort_code)
 {
     int sock, id=env2int ("MPISPAWN_ID");
     sock = socket (AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    int connect_attempt = 0, max_connect_attempts = 5;
+    struct sockaddr_in sockaddr;
+    struct hostent *mpirun_hostent;
+    int i = 0;
     if (sock < 0) {
         /* Oops! */
         perror ("socket");
         exit (EXIT_FAILURE);
     }
     
-    struct sockaddr_in sockaddr;
-    struct hostent *mpirun_hostent;
     mpirun_hostent = gethostbyname(env2str("MPISPAWN_MPIRUN_HOST"));
     if (NULL == mpirun_hostent) {
         /* Oops! */
@@ -73,7 +75,12 @@ void mpispawn_abort (int abort_code)
     sockaddr.sin_port = htons(env2int("MPISPAWN_CHECKIN_PORT"));
     
     while (connect(sock, (struct sockaddr *) &sockaddr,
-		    sizeof(sockaddr)) < 0);
+            sizeof(sockaddr)) < 0) {
+        if(++connect_attempt > max_connect_attempts) {
+            perror("connect");
+            exit(EXIT_FAILURE);
+        }
+    }
     if (sock) {
         write_socket (sock, &abort_code, sizeof (int));
         write_socket (sock, &id, sizeof (int));
@@ -133,11 +140,10 @@ void setup_global_environment() {
     setenv ("PMI_PORT", my_host_name, 2);
 
     if(env2int("MPISPAWN_USE_TOTALVIEW")) {
-	setenv("MPIRUN_PROCESSES", getenv("MPISPAWN_MPIRUN_PROCESSES"), 1);
+        setenv ("USE_TOTALVIEW", "1", 1);
     }
-
     else {
-	setenv("NOT_USE_TOTALVIEW", "1", 1);
+        setenv("USE_TOTALVIEW", "0", 1);
     }
 
     while(i--) {
@@ -188,21 +194,22 @@ void setup_local_environment(lvalues lv) {
     setenv("PMI_ID", lv.mpirun_rank, 1);
 }
 
-void spawn_processes(int n) {
+void spawn_processes (int n) 
+{
     int i, j;
     npids = n;
-    pids = malloc(sizeof(pid_t) * n);
+    local_processes = (process_info_t *) malloc (process_info_s * n);
 
-    if(!pids) {
+    if(!local_processes) {
 	perror("malloc");
 	exit(EXIT_FAILURE);
     }
 
-    for(i = 0; i < n; i++) {
-	pids[i] = fork();
-
-	if(pids[i] == 0) {
-	    int argc, nwritten, tv_offset = 0;
+    for (i = 0; i < n; i++) {
+	local_processes[i].pid = fork();
+        
+	if(local_processes[i].pid == 0) {
+	    int argc, nwritten;
 	    char ** argv, buffer[80];
 	    lvalues lv = get_lvalues(i);
 
@@ -210,18 +217,15 @@ void spawn_processes(int n) {
 
 	    argc = env2int("MPISPAWN_ARGC");
 
-	    if(lv.mpirun_rank == 0 && env2int("MPISPAWN_USE_TOTALVIEW")) {
-		tv_offset = 1;
-	    }
 
-	    argv = malloc(sizeof(char *) * (argc + tv_offset + 1));
+	    argv = malloc(sizeof(char *) * (argc + 1));
 	    if(!argv) {
             fprintf (stderr, "%s:%d Insufficient memory\n", __FILE__, __LINE__);
             exit(EXIT_FAILURE);
         }
 
-	    argv[argc + tv_offset] = NULL;
-	    j = argc + tv_offset;
+	    argv[argc] = NULL;
+	    j = argc;
 
 	    while(argc--) {
 		nwritten = snprintf(buffer, 80, "MPISPAWN_ARGV_%d", argc);
@@ -230,12 +234,7 @@ void spawn_processes(int n) {
             exit(EXIT_FAILURE);
         }
 
-		argv[argc + tv_offset] = env2str(buffer);
-	    }
-
-	    if(tv_offset) {
-		argv[0] = argv[1];
-		argv[1] = strdup("-a");
+		argv[argc] = env2str(buffer);
 	    }
 
             execv(argv[0], argv);
@@ -249,28 +248,39 @@ void spawn_processes(int n) {
 
 	    exit(EXIT_FAILURE);
 	}
+    else {
+        char *buffer;
+        buffer = mkstr("MPISPAWN_MPIRUN_RANK_%d", i);
+        if(!buffer) {
+            fprintf (stderr, "%s:%d Insufficient memory\n", __FILE__,
+                __LINE__);
+            exit(EXIT_FAILURE);
+        }
+        local_processes[i].rank = env2int(buffer);
+        free (buffer);
+    }
     }
 }
 
 void cleanup(void) {
     int i;
     for (i = 0; i < npids; i++) {
-	kill(pids[i], SIGINT);
+        kill(local_processes[i].pid, SIGINT);
     }
 
     sleep(1);
 
     for (i = 0; i < npids; i++) {
-	kill(pids[i], SIGTERM);
+        kill(local_processes[i].pid, SIGTERM);
     }
 
     sleep(1);
 
     for (i = 0; i < npids; i++) {
-	kill(pids[i], SIGKILL);
+        kill(local_processes[i].pid, SIGKILL);
     }
 
-    free(pids);
+    free(local_processes);
     free (children);
     exit(EXIT_FAILURE);
 }
@@ -290,7 +300,7 @@ void child_handler(int signal) {
 
 	if(pid != -1 && WIFEXITED(status) && WEXITSTATUS(status) == 0) {
 	    if(++num_exited == npids) {
-		free(pids);
+		free(local_processes);
         free (children);
 
 		exit(WEXITSTATUS(status));
@@ -303,10 +313,10 @@ void child_handler(int signal) {
 	}
     }
 }
-
+int mpirun_socket;
 void mpispawn_checkin(int id, in_port_t l_port) 
 {
-    int mpirun_socket, connect_attempt = 0, max_connect_attempts = 5;
+    int connect_attempt = 0, max_connect_attempts = 5;
     struct hostent *mpirun_hostent;
     struct sockaddr_in sockaddr;
     pid_t pid = getpid();
@@ -354,7 +364,8 @@ void mpispawn_checkin(int id, in_port_t l_port)
 	exit(EXIT_FAILURE);
     }
 
-    close(mpirun_socket);
+    if (!(id == 0 && env2int ("MPISPAWN_USE_TOTALVIEW")))
+        close(mpirun_socket);
 }
 
 in_port_t init_listening_socket(int *mc_socket) {

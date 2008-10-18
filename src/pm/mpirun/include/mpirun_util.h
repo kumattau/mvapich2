@@ -24,4 +24,19 @@ char * append_str(char *, char * const);
 int read_socket(int, void *, size_t);
 int write_socket(int, void *, size_t);
 
+typedef struct _process_info {
+    pid_t       pid;
+    int         rank;
+} process_info_t;
+
+struct MPIR_PROCDESC
+{
+    char        *host_name;
+    char        *executable_name;
+    long        pid;
+};
+
+#define MPIR_PROCDESC_s (sizeof (struct MPIR_PROCDESC))
+#define process_info_s (sizeof (process_info_t))
+
 #endif

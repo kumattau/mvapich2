@@ -11,15 +11,19 @@
  */
 #include "pmi_tree.h"
 #include "mpispawn_tree.h"
+#include "mpirun_util.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h> 
 #include <errno.h>
 #include <pthread.h>
+#include <netdb.h>
+
 
 
 int mt_id;
 
+extern process_info_t *local_processes;
 extern fd_set child_socks;
 extern child_t *children;
 extern int NCHILD;
@@ -43,6 +47,10 @@ static int npending_puts;
 
 static inline int env2int(char * env_ptr) {
     return (env_ptr = getenv(env_ptr)) ? atoi(env_ptr) : 0;
+}
+
+static inline char * env2str(char * env_ptr) {
+    return (env_ptr = getenv(env_ptr)) ? strdup(env_ptr) : NULL;
 }
 
 int get_req_dest (int req_rank, char **key) 
@@ -661,18 +669,69 @@ int handle_mt_peer (int fd, msg_hdr_t *phdr)
     free (buf);
     return rv;
 }
-
+extern int mpirun_socket;
 int mtpmi_init (void)
 {
     int i, nchild_subtree = 0, tmp;
+    int *children_subtree = (int *) malloc (sizeof (int) * MPISPAWN_NCHILD);
+    mt_id = env2int ("MPISPAWN_ID");
+    
     for (i = 0; i < MPISPAWN_NCHILD; i++) {
         read (MPISPAWN_CHILD_FDS[i], &tmp, sizeof (int));
+        children_subtree[i] = tmp;
         nchild_subtree += tmp;
     }
     NCHILD_INCL = nchild_subtree;
     nchild_subtree += NCHILD;
     if (MPISPAWN_HAS_PARENT)
         write (MPISPAWN_PARENT_FD, &nchild_subtree, sizeof (int));
+    
+    if(env2int("MPISPAWN_USE_TOTALVIEW") == 1) {
+        process_info_t *all_pinfo;
+        int iter = 0;
+        if (MPISPAWN_NCHILD) {
+            all_pinfo = (process_info_t *) malloc 
+                    (process_info_s * nchild_subtree);
+            if (!all_pinfo) {
+                mpispawn_abort (ERR_MEM);
+            }
+            /* Read pid table from child MPISPAWNs */
+            for (i = 0; i < MPISPAWN_NCHILD; i++) {
+                read_socket (MPISPAWN_CHILD_FDS[i], &all_pinfo[iter], 
+                        children_subtree [i] * process_info_s);
+                iter += children_subtree [i];
+            }
+            for (i = 0; i < NCHILD; i++, iter++) {
+                all_pinfo[iter].rank = local_processes[i].rank;
+                all_pinfo[iter].pid = local_processes[i].pid;
+            }
+        }
+        else {
+            all_pinfo = local_processes;
+        }
+
+        if (MPISPAWN_HAS_PARENT) {
+            write_socket (MPISPAWN_PARENT_FD, all_pinfo, 
+                    nchild_subtree * process_info_s);
+        } 
+        else if (mt_id == 0) {
+            /* Send to mpirun_rsh */
+            write_socket (mpirun_socket, all_pinfo, 
+                    nchild_subtree * process_info_s);
+            /* Wait for Totalview to be ready */
+            read_socket (mpirun_socket, &tmp, sizeof (int));
+            close (mpirun_socket);
+        }
+        /* Barrier */
+        if (MPISPAWN_HAS_PARENT) {
+            read_socket (MPISPAWN_PARENT_FD, &tmp, sizeof (int));
+        }
+        if (MPISPAWN_NCHILD) {
+            for (i = 0; i < MPISPAWN_NCHILD; i++) {
+                write_socket (MPISPAWN_CHILD_FDS[i], &tmp, sizeof (int));
+            }
+        }
+    }
     return 0;
 }
 
@@ -681,7 +740,6 @@ int mtpmi_processops (void)
     int ready, i, rv = 0;
     char buf[MAXLINE];
     msg_hdr_t hdr;
-    mt_id = env2int ("MPISPAWN_ID");
 
     while (rv == 0) {
         if (MPISPAWN_HAS_PARENT)
