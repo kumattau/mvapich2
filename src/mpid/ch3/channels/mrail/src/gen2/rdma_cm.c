@@ -708,7 +708,7 @@ int rdma_cm_create_qp(int cm_rank, int rail_index)
 	init_attr.cap.max_send_sge = rdma_default_max_sg_list;
 	init_attr.cap.max_inline_data = rdma_max_inline_size;
 	
-	init_attr.cap.max_send_wr = rdma_default_max_wqe;
+	init_attr.cap.max_send_wr = rdma_default_max_send_wqe;
 	init_attr.send_cq = current_cq;
 	init_attr.recv_cq = current_cq;
 	init_attr.qp_type = IBV_QPT_RC;
@@ -717,17 +717,17 @@ int rdma_cm_create_qp(int cm_rank, int rail_index)
 
     /* SRQ based? */
     if (proc->has_srq) {
-	init_attr.cap.max_recv_wr = 0;
-	init_attr.srq = proc->srq_hndl[hca_index];
+        init_attr.cap.max_recv_wr = 0;
+        init_attr.srq = proc->srq_hndl[hca_index];
     } else {
-	init_attr.cap.max_recv_wr = rdma_default_max_wqe;
+        init_attr.cap.max_recv_wr = rdma_default_max_recv_wqe;
     }
 
     ret = rdma_create_qp(cmid, proc->ptag[hca_index], &init_attr);
     if (ret){
-	ibv_va_error_abort(IBV_RETURN_ERR,
-			"Error creating qp using rdma_cm.  %d [cmid: %p, pd: %p, cq: %p] \n",
-			ret, cmid, proc->ptag[hca_index], current_cq);
+        ibv_va_error_abort(IBV_RETURN_ERR,
+                "Error creating qp using rdma_cm.  %d [cmid: %p, pd: %p, cq: %p] \n",
+                ret, cmid, proc->ptag[hca_index], current_cq);
     }
 
     /* Save required handles */

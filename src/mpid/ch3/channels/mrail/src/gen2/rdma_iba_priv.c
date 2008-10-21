@@ -174,10 +174,10 @@ static int check_attrs( struct ibv_port_attr *port_attr, struct ibv_device_attr 
             ret = 1;
         }
 
-        if(dev_attr->max_qp_wr < rdma_default_max_wqe) {
+        if(dev_attr->max_qp_wr < rdma_default_max_send_wqe) {
             fprintf(stderr,
-                    "Max MV2_DEFAULT_MAX_WQE is %d, set to %d\n",
-                    dev_attr->max_qp_wr, (int) rdma_default_max_wqe);
+                    "Max MV2_DEFAULT_MAX_SEND_WQE is %d, set to %d\n",
+                    dev_attr->max_qp_wr, (int) rdma_default_max_send_wqe);
             ret = 1;
         }
     }
@@ -534,13 +534,13 @@ int rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
 	    port_index = (rail_index / (vc->mrail.num_rails / (rdma_num_hcas *
                     rdma_num_ports))) % rdma_num_ports;
 	    memset(&attr, 0, sizeof attr);
-	    attr.cap.max_send_wr = rdma_default_max_wqe;
+	    attr.cap.max_send_wr = rdma_default_max_send_wqe;
 
             if (proc->has_srq) {
                 attr.cap.max_recv_wr = 0;
                 attr.srq = proc->srq_hndl[hca_index];
             } else {
-                attr.cap.max_recv_wr = rdma_default_max_wqe;
+                attr.cap.max_recv_wr = rdma_default_max_recv_wqe;
             }
 
 	    attr.cap.max_send_sge = rdma_default_max_sg_list;
@@ -853,7 +853,7 @@ void MRAILI_Init_vc(MPIDI_VC_t * vc, int pg_rank)
 
     /* Now we will need to */
     for (i = 0; i < rdma_num_rails; i++) {
-        vc->mrail.rails[i].send_wqes_avail    = rdma_default_max_wqe;
+        vc->mrail.rails[i].send_wqes_avail    = rdma_default_max_send_wqe;
         vc->mrail.rails[i].ext_sendq_head     = NULL;
         vc->mrail.rails[i].ext_sendq_tail     = NULL;
         vc->mrail.rails[i].ext_sendq_size     = 0;
@@ -998,13 +998,13 @@ int cm_qp_create(MPIDI_VC_t *vc)
         port_index = (rail_index / (vc->mrail.num_rails / (rdma_num_hcas *
                     rdma_num_ports))) % rdma_num_ports;
         memset(&attr, 0, sizeof attr);
-        attr.cap.max_send_wr = rdma_default_max_wqe;
+        attr.cap.max_send_wr = rdma_default_max_send_wqe;
 
         if (MPIDI_CH3I_RDMA_Process.has_srq) {
             attr.cap.max_recv_wr = 0;
             attr.srq = MPIDI_CH3I_RDMA_Process.srq_hndl[hca_index];
         } else {
-            attr.cap.max_recv_wr = rdma_default_max_wqe;
+            attr.cap.max_recv_wr = rdma_default_max_recv_wqe;
         }
 
         attr.cap.max_send_sge = rdma_default_max_sg_list;
@@ -1208,7 +1208,7 @@ void MRAILI_Init_vc_network(MPIDI_VC_t * vc)
 #endif
 
     for (i = 0; i < rdma_num_rails; i++) {
-        vc->mrail.rails[i].send_wqes_avail    = rdma_default_max_wqe;
+        vc->mrail.rails[i].send_wqes_avail    = rdma_default_max_recv_wqe;
         vc->mrail.rails[i].ext_sendq_head     = NULL;
         vc->mrail.rails[i].ext_sendq_tail     = NULL;
     }

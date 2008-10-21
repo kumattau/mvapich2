@@ -669,7 +669,7 @@ int MPIDI_CH3I_RDMA_finalize()
 
 	for (rail_index = 0; rail_index < vc->mrail.num_rails;
 		rail_index++) {
-	    while((rdma_default_max_wqe) != 
+	    while((rdma_default_max_send_wqe) != 
 		    vc->mrail.rails[rail_index].send_wqes_avail) {
 		MPIDI_CH3I_Progress_test();
 	    } 

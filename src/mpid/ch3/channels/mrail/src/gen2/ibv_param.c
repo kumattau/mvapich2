@@ -33,7 +33,8 @@ int           rdma_num_rails;
 int           rdma_pin_pool_size = RDMA_PIN_POOL_SIZE;
 unsigned long rdma_default_max_cq_size = RDMA_DEFAULT_MAX_CQ_SIZE;
 int           rdma_default_port = RDMA_DEFAULT_PORT;
-unsigned long rdma_default_max_wqe = RDMA_DEFAULT_MAX_WQE;
+unsigned long rdma_default_max_send_wqe = RDMA_DEFAULT_MAX_SEND_WQE;
+unsigned long rdma_default_max_recv_wqe = RDMA_DEFAULT_MAX_RECV_WQE;
 uint32_t      rdma_default_max_sg_list = RDMA_DEFAULT_MAX_SG_LIST;
 uint16_t      rdma_default_pkey_ix = RDMA_DEFAULT_PKEY_IX;
 uint16_t      rdma_default_pkey = RDMA_DEFAULT_PKEY;
@@ -1010,12 +1011,14 @@ void rdma_get_user_parameters(int num_proc, int me)
     if ((value = getenv("MV2_DEFAULT_MAX_SG_LIST")) != NULL) {
         rdma_default_max_sg_list = (uint32_t)atol(value);
     }
-    if ((value = getenv("MV2_DEFAULT_MAX_WQE")) != NULL) {
-        rdma_default_max_wqe = atol(value);
+    if ((value = getenv("MV2_DEFAULT_MAX_SEND_WQE")) != NULL) {
+        rdma_default_max_send_wqe = atol(value);
     } else if(num_proc > 256) {
-        rdma_default_max_wqe = 16;
+        rdma_default_max_send_wqe = 16;
     }
-
+    if ((value = getenv("MV2_DEFAULT_MAX_RECV_WQE")) != NULL) {
+        rdma_default_max_recv_wqe = atol(value);
+    } 
     if ((value = getenv("MV2_NDREG_ENTRIES")) != NULL) {
         rdma_ndreg_entries = (unsigned int)atoi(value);
     }

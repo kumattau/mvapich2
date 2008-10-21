@@ -189,8 +189,8 @@ static struct ibv_qp *create_qp(struct ibv_pd *pd,
     struct ibv_qp_init_attr boot_attr;
 
     memset(&boot_attr, 0, sizeof boot_attr);
-    boot_attr.cap.max_send_wr   = rdma_default_max_wqe;
-    boot_attr.cap.max_recv_wr   = rdma_default_max_wqe;
+    boot_attr.cap.max_send_wr   = 128;
+    boot_attr.cap.max_recv_wr   = 128;
     boot_attr.cap.max_send_sge  = rdma_default_max_sg_list;
     boot_attr.cap.max_recv_sge  = rdma_default_max_sg_list;
     boot_attr.cap.max_inline_data = rdma_max_inline_size;

@@ -24,7 +24,8 @@ extern int                  rdma_num_rails;
 
 extern unsigned long        rdma_default_max_cq_size;
 extern int                  rdma_default_port;
-extern unsigned long        rdma_default_max_wqe;
+extern unsigned long        rdma_default_max_send_wqe;
+extern unsigned long        rdma_default_max_recv_wqe;
 extern uint32_t             rdma_default_max_sg_list;
 extern uint16_t             rdma_default_pkey_ix;
 extern uint16_t             rdma_default_pkey;
@@ -102,7 +103,8 @@ extern int                  USE_SMP;
 #define RDMA_DEFAULT_MAX_CQ_SIZE        (40000)
 #define RDMA_DEFAULT_PORT               (-1)
 #define RDMA_DEFAULT_MAX_PORTS          (2)
-#define RDMA_DEFAULT_MAX_WQE            (64)
+#define RDMA_DEFAULT_MAX_SEND_WQE       (64)
+#define RDMA_DEFAULT_MAX_RECV_WQE       (128)
 #define RDMA_READ_RESERVE               (10)
 #define RDMA_DEFAULT_MAX_SG_LIST        (1)
 #define RDMA_DEFAULT_PKEY_IX            (0)
