@@ -746,8 +746,8 @@ rdma_iba_hca_init (struct MPIDI_CH3I_RDMA_Process_t *proc,
           ep_attr = param.ep_attr;
           ep_attr.max_rdma_read_iov = 1;
           ep_attr.max_rdma_write_iov = 4;
-          ep_attr.max_recv_dtos = rdma_default_max_wqe;
-          ep_attr.max_request_dtos = rdma_default_max_wqe;
+          ep_attr.max_recv_dtos = rdma_default_max_recv_wqe;
+          ep_attr.max_request_dtos = rdma_default_max_send_wqe;
       }
     else if (strcmp (dapl_provider, "ib0") == 0)
       {
@@ -758,8 +758,8 @@ rdma_iba_hca_init (struct MPIDI_CH3I_RDMA_Process_t *proc,
           ep_attr.qos = DAT_QOS_BEST_EFFORT;
           ep_attr.recv_completion_flags = DAT_COMPLETION_DEFAULT_FLAG;
           ep_attr.request_completion_flags = DAT_COMPLETION_UNSIGNALLED_FLAG;
-          ep_attr.max_recv_dtos = rdma_default_max_wqe;
-          ep_attr.max_request_dtos = rdma_default_max_wqe;
+          ep_attr.max_recv_dtos = rdma_default_max_recv_wqe;
+          ep_attr.max_request_dtos = rdma_default_max_send_wqe;
           ep_attr.max_recv_iov = 4;
           ep_attr.max_request_iov = 4;
           ep_attr.max_rdma_read_in = DAPL_DEFAULT_MAX_RDMA_IN;
@@ -784,9 +784,9 @@ rdma_iba_hca_init (struct MPIDI_CH3I_RDMA_Process_t *proc,
           ep_attr.recv_completion_flags = DAT_COMPLETION_DEFAULT_FLAG;
           ep_attr.request_completion_flags = DAT_COMPLETION_UNSIGNALLED_FLAG;
           ep_attr.max_recv_dtos =
-              MIN (rdma_default_max_wqe, ia_attr.max_dto_per_ep);
+              MIN (rdma_default_max_recv_wqe, ia_attr.max_dto_per_ep);
           ep_attr.max_request_dtos =
-              MIN (rdma_default_max_wqe, ia_attr.max_dto_per_ep);
+              MIN (rdma_default_max_send_wqe, ia_attr.max_dto_per_ep);
           ep_attr.max_recv_iov =
               MIN (rdma_default_max_sg_list,
                    ia_attr.max_iov_segments_per_dto);
@@ -1021,8 +1021,8 @@ void cm_ep_create(MPIDI_VC_t *vc)
           ep_attr = param.ep_attr;
           ep_attr.max_rdma_read_iov = 1;
           ep_attr.max_rdma_write_iov = 4;
-          ep_attr.max_recv_dtos = rdma_default_max_wqe;
-          ep_attr.max_request_dtos = rdma_default_max_wqe;
+          ep_attr.max_recv_dtos = rdma_default_max_recv_wqe;
+          ep_attr.max_request_dtos = rdma_default_max_send_wqe;
       }
     else if (strcmp (dapl_provider, "ib0") == 0)
       {
@@ -1033,8 +1033,8 @@ void cm_ep_create(MPIDI_VC_t *vc)
           ep_attr.qos = DAT_QOS_BEST_EFFORT;
           ep_attr.recv_completion_flags = DAT_COMPLETION_DEFAULT_FLAG;
           ep_attr.request_completion_flags = DAT_COMPLETION_UNSIGNALLED_FLAG;
-          ep_attr.max_recv_dtos = rdma_default_max_wqe;
-          ep_attr.max_request_dtos = rdma_default_max_wqe;
+          ep_attr.max_recv_dtos = rdma_default_max_recv_wqe;
+          ep_attr.max_request_dtos = rdma_default_max_send_wqe;
           ep_attr.max_recv_iov = 4;
           ep_attr.max_request_iov = 4;
           ep_attr.max_rdma_read_in = DAPL_DEFAULT_MAX_RDMA_IN;
@@ -1058,9 +1058,9 @@ void cm_ep_create(MPIDI_VC_t *vc)
           ep_attr.recv_completion_flags = DAT_COMPLETION_DEFAULT_FLAG;
           ep_attr.request_completion_flags = DAT_COMPLETION_UNSIGNALLED_FLAG;
           ep_attr.max_recv_dtos =
-              MIN (rdma_default_max_wqe, ia_attr.max_dto_per_ep);
+              MIN (rdma_default_max_recv_wqe, ia_attr.max_dto_per_ep);
           ep_attr.max_request_dtos =
-              MIN (rdma_default_max_wqe, ia_attr.max_dto_per_ep);
+              MIN (rdma_default_max_send_wqe, ia_attr.max_dto_per_ep);
           ep_attr.max_recv_iov =
               MIN (rdma_default_max_sg_list,
                    ia_attr.max_iov_segments_per_dto);
@@ -1377,9 +1377,9 @@ MRAILI_Init_vc (MPIDI_VC_t * vc, int pg_rank)
     /* Now we will need to */
     for (i = 0; i < channels; i++)
       {
-          vc->mrail.send_wqes_avail[i] = rdma_default_max_wqe;
+          vc->mrail.send_wqes_avail[i] = rdma_default_max_send_wqe;
           DEBUG_PRINT ("set send_wqe_avail as %d\n",
-                       rdma_default_max_wqe);
+                       rdma_default_max_send_wqe);
           vc->mrail.ext_sendq_head[i] = NULL;
           vc->mrail.ext_sendq_tail[i] = NULL;
       }

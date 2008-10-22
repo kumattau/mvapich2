@@ -18,7 +18,8 @@
 
 extern unsigned long rdma_default_max_cq_size;
 extern int rdma_default_port;
-extern unsigned long rdma_default_max_wqe;
+extern unsigned long        rdma_default_max_send_wqe;
+extern unsigned long        rdma_default_max_recv_wqe;
 extern u_int32_t rdma_default_max_sg_list;
 extern u_int8_t rdma_default_qp_ous_rd_atom;
 extern u_int8_t rdma_default_max_rdma_dst_ops;
@@ -59,7 +60,8 @@ extern long rdma_eagersize_1sc;
 #define RDMA_PIN_POOL_SIZE         (2*1024*1024)        /* for small size message */
 #define RDMA_DEFAULT_MAX_CQ_SIZE        (6000)
 #define RDMA_DEFAULT_PORT               (1)
-#define RDMA_DEFAULT_MAX_WQE            (300)
+#define RDMA_DEFAULT_MAX_SEND_WQE       (64)
+#define RDMA_DEFAULT_MAX_RECV_WQE       (128)
 #define RDMA_READ_RESERVE  				(10)
 #define RDMA_DEFAULT_MAX_SG_LIST        (20)
 #define RDMA_DEFAULT_QP_OUS_RD_ATOM     (8)

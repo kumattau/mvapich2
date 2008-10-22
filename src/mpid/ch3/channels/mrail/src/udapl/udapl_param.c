@@ -32,7 +32,8 @@ u_int8_t rdma_default_src_path_bits = RDMA_DEFAULT_SRC_PATH_BITS;
 
 unsigned long rdma_default_max_cq_size = RDMA_DEFAULT_MAX_CQ_SIZE;
 int rdma_default_port = RDMA_DEFAULT_PORT;
-unsigned long rdma_default_max_wqe = RDMA_DEFAULT_MAX_WQE;
+unsigned long rdma_default_max_send_wqe = RDMA_DEFAULT_MAX_SEND_WQE;
+unsigned long rdma_default_max_recv_wqe = RDMA_DEFAULT_MAX_RECV_WQE;
 DAT_VLEN rdma_default_mtu_size = RDMA_DEFAULT_MTU_SIZE;
 int rdma_default_put_get_list_size = RDMA_DEFAULT_PUT_GET_LIST_SIZE;
 int rdma_read_reserve = RDMA_READ_RESERVE;
@@ -119,12 +120,10 @@ rdma_init_parameters (MPIDI_CH3I_RDMA_Process_t *proc)
 
     if (strcmp (dapl_provider, "ib0") == 0)
       {
-          rdma_default_max_wqe = RDMA_DEFAULT_MAX_WQE_IBA;
           rdma_default_mtu_size = RDMA_DEFAULT_MTU_SIZE_IBA;
       }
     else if (strcmp (dapl_provider, "ccil") == 0)
       {
-          rdma_default_max_wqe = RDMA_DEFAULT_MAX_WQE_CCIL;
           rdma_default_mtu_size = RDMA_DEFAULT_MTU_SIZE_CCIL;
           rdma_get_fallback_threshold = 131072;
           rdma_put_fallback_threshold = 32768;
@@ -133,16 +132,22 @@ rdma_init_parameters (MPIDI_CH3I_RDMA_Process_t *proc)
       }
     else if (strcmp (dapl_provider, "gmg2") == 0)
       {
-          rdma_default_max_wqe = RDMA_DEFAULT_MAX_WQE_GM;
           rdma_default_mtu_size = RDMA_DEFAULT_MTU_SIZE_GM;
           rdma_read_reserve = RDMA_READ_RESERVE_GM;
           rdma_put_fallback_threshold = 16384;
       }
     else if (strcmp (dapl_provider, "ibd0") == 0)
       {
-          rdma_default_max_wqe = RDMA_DEFAULT_MAX_WQE_SOLARIS;
           rdma_default_mtu_size = RDMA_DEFAULT_MTU_SIZE_SOLARIS;
       }
+
+    if ((value = getenv("MV2_DEFAULT_MAX_SEND_WQE")) != NULL) {
+        rdma_default_max_send_wqe = atol(value);
+    }
+
+    if ((value = getenv("MV2_DEFAULT_MAX_RECV_WQE")) != NULL) {
+        rdma_default_max_recv_wqe = atol(value);
+    }
 
     if ((value = (char *) getenv ("MV2_DEFAULT_MTU")) != NULL)
       {
@@ -229,10 +234,6 @@ rdma_init_parameters (MPIDI_CH3I_RDMA_Process_t *proc)
     if ((value = (char *) getenv ("MV2_DEFAULT_MAX_SG_LIST")) != NULL)
       {
           rdma_default_max_sg_list = (u_int32_t) atol (value);
-      }
-    if ((value = (char *) getenv ("MV2_DEFAULT_MAX_WQE")) != NULL)
-      {
-          rdma_default_max_wqe = (long) atol (value);
       }
     if ((value = getenv("MV2_NDREG_ENTRIES")) != NULL) {
         rdma_ndreg_entries = (unsigned int)atoi(value);

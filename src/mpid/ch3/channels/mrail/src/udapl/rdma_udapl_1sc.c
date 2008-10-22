@@ -940,7 +940,7 @@ POST_PUT_PUT_GET_LIST (MPID_Win * winptr,
     CHECK_RETURN (ret, "Fail in posting RDMA_Write");
 
     if (winptr->put_get_list_size == rdma_default_put_get_list_size
-        || vc_ptr->mrail.postsend_times_1sc == rdma_default_max_wqe - 1)
+        || vc_ptr->mrail.postsend_times_1sc == rdma_default_max_send_wqe - 1)
       {
           Consume_signals (winptr, 0);
       }
@@ -999,7 +999,7 @@ POST_GET_PUT_GET_LIST (MPID_Win * winptr,
     else
       {
           if (winptr->put_get_list_size == rdma_default_put_get_list_size
-              || vc_ptr->mrail.postsend_times_1sc == rdma_default_max_wqe - 1)
+              || vc_ptr->mrail.postsend_times_1sc == rdma_default_max_send_wqe - 1)
               /* the get queue is full */
               Consume_signals (winptr, 0);
       }
