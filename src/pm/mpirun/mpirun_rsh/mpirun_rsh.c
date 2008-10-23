@@ -240,9 +240,6 @@ char *MPIR_dll_name                     = "MVAPICH2";
 /* Totalview intercepts MPIR_Breakpoint */
 int MPIR_Breakpoint (void)
 {
-    printf ("here %d\n", MPIR_debug_state) ;
-    fflush (stdout);
-
     return 0;
 }
 
