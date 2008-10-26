@@ -696,15 +696,27 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 		"**nomem %s", "pool_file");
     }
 
+#if defined(SOLARIS)
     /* unique shared file name */
     sprintf(shmem_file, "/tmp/ib_shmem-%s-%s-%d.tmp",
-	    pg->ch.kvs_name, s_hostname, getuid());
+            pg->ch.kvs_name, s_hostname, getuid());
 
     DEBUG_PRINT("shemfile %s\n", shmem_file);
 
     sprintf (pool_file, "/tmp/ib_pool-%s-%s-%d.tmp", pg->ch.kvs_name,
-	    s_hostname, getuid ());
+            s_hostname, getuid ());
     DEBUG_PRINT("shemfile %s\n", pool_file);
+#else
+    /* unique shared file name */
+    sprintf(shmem_file, "/dev/shm/ib_shmem-%s-%s-%d.tmp",
+            pg->ch.kvs_name, s_hostname, getuid());
+
+    DEBUG_PRINT("shemfile %s\n", shmem_file);
+
+    sprintf (pool_file, "/dev/shm/ib_pool-%s-%s-%d.tmp", pg->ch.kvs_name,
+            s_hostname, getuid ());
+    DEBUG_PRINT("shemfile %s\n", pool_file);
+#endif
 
     /* open the shared memory file */
     g_smpi.fd =

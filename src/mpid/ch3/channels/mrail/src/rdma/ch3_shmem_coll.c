@@ -98,12 +98,21 @@ int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t *pg)
 		"**nomem %s", "shmem_file");
     }
 
+#if defined(SOLARIS)
     /* unique shared file name */
     sprintf(shmem_file, "/tmp/ib_shmem_coll-%s-%s-%d.tmp",
             pg->ch.kvs_name, hostname, getuid());
 
     sprintf(bcast_file,"/tmp/ib_shmem_bcast_coll-%s-%s-%d",
             pg->ch.kvs_name, hostname, getuid());
+#else
+    /* unique shared file name */
+    sprintf(shmem_file, "/dev/shm/ib_shmem_coll-%s-%s-%d.tmp",
+            pg->ch.kvs_name, hostname, getuid());
+
+    sprintf(bcast_file,"/dev/shm/ib_shmem_bcast_coll-%s-%s-%d",
+            pg->ch.kvs_name, hostname, getuid());
+#endif
 
     /* open the shared memory file */
     shmem_coll_obj.fd = open(shmem_file, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
