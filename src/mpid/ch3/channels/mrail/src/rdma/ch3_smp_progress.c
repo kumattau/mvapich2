@@ -722,8 +722,22 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     g_smpi.fd =
 	open(shmem_file, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
     if (g_smpi.fd < 0) {
-	MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
-		"%s: %s", "open", strerror(errno));
+        /* fallback */
+        sprintf(shmem_file, "/tmp/ib_shmem-%s-%s-%d.tmp",
+                pg->ch.kvs_name, s_hostname, getuid());
+
+        DEBUG_PRINT("shemfile %s\n", shmem_file);
+
+        sprintf (pool_file, "/tmp/ib_pool-%s-%s-%d.tmp", pg->ch.kvs_name,
+                s_hostname, getuid ());
+        DEBUG_PRINT("shemfile %s\n", pool_file);
+
+        g_smpi.fd =
+            open(shmem_file, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
+        if (g_smpi.fd < 0) {
+            MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
+                    "%s: %s", "open", strerror(errno));
+	}
     }
 
     g_smpi.fd_pool =
