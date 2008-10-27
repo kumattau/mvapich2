@@ -119,8 +119,19 @@ int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t *pg)
     
     if (shmem_coll_obj.fd < 0)
     {
-	MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail", "%s: %s",
-		"open", strerror(errno));
+        /* Fallback */
+        sprintf(shmem_file, "/tmp/ib_shmem_coll-%s-%s-%d.tmp",
+                pg->ch.kvs_name, hostname, getuid());
+
+        sprintf(bcast_file,"/tmp/ib_shmem_bcast_coll-%s-%s-%d",
+                pg->ch.kvs_name, hostname, getuid());
+
+        shmem_coll_obj.fd = open(shmem_file, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
+        if (shmem_coll_obj.fd < 0)
+        {
+	    MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail", "%s: %s",
+	    	"open", strerror(errno));
+        }
     }
 
     shmem_coll_size = SMPI_ALIGN (SHMEM_COLL_BUF_SIZE + getpagesize()) + SMPI_CACHE_LINE_SIZE;
