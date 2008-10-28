@@ -192,9 +192,13 @@ void MRAILI_RDMA_Put_finish(MPIDI_VC_t * vc,
     int n_iov = 1;
     int nb;
     vbuf *buf;
+    MPID_Seqnum_t seqnum;
 
-    rput_pkt.type = MPIDI_CH3_PKT_RPUT_FINISH;
+    MPIDI_Pkt_init(&rput_pkt, MPIDI_CH3_PKT_RPUT_FINISH);
     rput_pkt.receiver_req_id = sreq->mrail.partner_id;
+    MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+    MPIDI_Pkt_set_seqnum(&rput_pkt, seqnum); 
+
     iov.MPID_IOV_BUF = &rput_pkt;
     iov.MPID_IOV_LEN = sizeof(MPIDI_CH3_Pkt_rput_finish_t);
 
@@ -223,11 +227,15 @@ void MRAILI_RDMA_Get_finish(MPIDI_VC_t * vc,
     int n_iov = 1;
     int nb;
     int mpi_errno = MPI_SUCCESS;
+    MPID_Seqnum_t seqnum;
 
     vbuf *buf;
 
-    rget_pkt.type = MPIDI_CH3_PKT_RGET_FINISH;
+    MPIDI_Pkt_init(&rget_pkt, MPIDI_CH3_PKT_RGET_FINISH);
     rget_pkt.sender_req_id = rreq->dev.sender_req_id;
+    MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+    MPIDI_Pkt_set_seqnum(&rget_pkt, seqnum); 
+
     iov.MPID_IOV_BUF = &rget_pkt;
     iov.MPID_IOV_LEN = sizeof(MPIDI_CH3_Pkt_rget_finish_t);
 

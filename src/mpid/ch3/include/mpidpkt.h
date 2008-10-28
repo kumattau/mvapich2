@@ -236,6 +236,9 @@ typedef struct MPIDI_CH3_Pkt_rget_finish_t
 {
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+#if defined(MPID_USE_SEQUENCE_NUMBERS)
+    MPID_Seqnum_t seqnum;
+#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
     MPI_Request sender_req_id;
 } MPIDI_CH3_Pkt_rget_finish_t;
 #endif /* defined(_OSU_MVAPICH_) */

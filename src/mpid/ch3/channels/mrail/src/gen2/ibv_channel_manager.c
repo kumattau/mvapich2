@@ -199,6 +199,14 @@ static inline int GetSeqNumVbuf(vbuf * buf)
 	    {
 		return ((MPIDI_CH3_Pkt_close_t *)(buf->pheader))->seqnum;
 	    }
+	case MPIDI_CH3_PKT_RGET_FINISH:
+	    {
+		return ((MPIDI_CH3_Pkt_rget_finish_t *)(buf->pheader))->seqnum;
+	    }
+	case MPIDI_CH3_PKT_RPUT_FINISH:
+	    {
+		return ((MPIDI_CH3_Pkt_rput_finish_t *)(buf->pheader))->seqnum;
+	    }
 	case MPIDI_CH3_PKT_RMA_RNDV_CLR_TO_SEND:
 	    {
 		return ((MPIDI_CH3_Pkt_rndv_clr_to_send_t *)
