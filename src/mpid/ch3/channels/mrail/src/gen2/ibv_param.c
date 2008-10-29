@@ -982,9 +982,7 @@ void rdma_get_user_parameters(int num_proc, int me)
     }
 
     if ((value = getenv("MV2_DEFAULT_PKEY")) != NULL) {
-        rdma_default_pkey = (uint16_t)strtol(value, (char **) NULL,0); 
-    } else if((value = getenv("MV2_DEFAULT_PKEY_IX")) != NULL) {
-        rdma_default_pkey_ix = (uint16_t)atoi(value);
+        rdma_default_pkey = (uint16_t)strtol(value, (char **) NULL,0) & PKEY_MASK; 
     }
 
     if ((value = getenv("MV2_DEFAULT_MIN_RNR_TIMER")) != NULL) {

@@ -99,6 +99,7 @@ extern int                  rdma_use_blocking;
 extern unsigned long        rdma_spin_count;
 extern int                  USE_SMP;
 
+#define PKEY_MASK 0x7fff /* the last bit is reserved */
 #define RDMA_PIN_POOL_SIZE              (2*1024*1024)
 #define RDMA_DEFAULT_MAX_CQ_SIZE        (40000)
 #define RDMA_DEFAULT_PORT               (-1)
