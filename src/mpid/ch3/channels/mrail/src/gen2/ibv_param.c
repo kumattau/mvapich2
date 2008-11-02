@@ -771,6 +771,8 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 
     if (proc->hca_type == MLX_PCI_EX_DDR) {
         rdma_default_mtu = IBV_MTU_2048;
+    } else if(proc->hca_type == MLX_CX_QDR) {
+        rdma_default_mtu = IBV_MTU_2048;
     } else {
         rdma_default_mtu = IBV_MTU_1024;
     }
