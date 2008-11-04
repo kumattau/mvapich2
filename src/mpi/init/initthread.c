@@ -48,7 +48,7 @@ MPICH_PerProcess_t MPIR_Process = { MPICH_PRE_INIT };
 MPICH_ThreadInfo_t MPIR_ThreadInfo = { 0 };
 
 #if defined(_OSU_MVAPICH_)
-#define DEFAULT_SHMEM_BCAST_LEADERS    1024
+#define DEFAULT_SHMEM_BCAST_LEADERS    4096
 #endif /* _OSU_MVAPICH_ */
 
 /* These are initialized as null (avoids making these into common symbols).
