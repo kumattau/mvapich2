@@ -3,6 +3,24 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2-1.2 (11/06/2008)
+
+* Ignore the last bit of the pkey and remove the pkey_ix option since the index 
+  can be different on different machines. Thanks for Pasha@Mellanox for the patch.
+
+* Use /dev/shm on Linux as the default temporary file path for shared memory
+  communication. Thanks for Doug Johnson@OSC for the patch.
+
+* MV2_DEFAULT_MAX_WQE has been replaced with MV2_DEFAULT_MAX_SEND_WQE and 
+  MV2_DEFAULT_MAX_RECV_WQE for send and recv wqes, respectively.
+
+* Fix compilation warnings.
+
+* Fix data types for memory allocations. Thanks for Dr. Bill Barth from TACC 
+  for the patches.
+
+* Fix a bug when MV2_NUM_HCAS is larger than the number of active HCAs.
+
 MVAPICH2-1.2-RC2 (08/20/2008)
 
 * Following bugs are fixed in RC2
