@@ -333,6 +333,7 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
         MPID_Request_release(send_req);
     }
  
+    vc->smp.send_current_pkt_type = SMP_RNDV_MSG;
 
     DEBUG_PRINT("r3 sent req is %p\n", sreq);
     if (MPIDI_CH3I_SMP_SendQ_empty(vc)) {
@@ -341,10 +342,18 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
                         sreq->dev.iov_count, sreq->dev.iov_offset,
                         sreq->dev.iov[0].MPID_IOV_LEN);
 
-            mpi_errno = MPIDI_CH3I_SMP_writev_rndv_data(vc, 
+            if (vc->smp.send_current_pkt_type == SMP_RNDV_MSG) {
+                mpi_errno = MPIDI_CH3I_SMP_writev_rndv_data(vc, 
                                 &sreq->dev.iov[sreq->dev.iov_offset], 
                                 sreq->dev.iov_count - sreq->dev.iov_offset,
                                 &nb);
+            } else {
+                MPIU_Assert(vc->smp.send_current_pkt_type == SMP_RNDV_MSG_CONT);
+                MPIDI_CH3I_SMP_writev_rndv_data_cont(vc,
+                                &sreq->dev.iov[sreq->dev.iov_offset],
+                                sreq->dev.iov_count - sreq->dev.iov_offset,
+                                &nb);
+            }
 
             if (MPI_SUCCESS != mpi_errno) {
                 vc->ch.state = MPIDI_CH3I_VC_STATE_FAILED;
