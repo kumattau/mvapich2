@@ -3,6 +3,12 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2-1.2p1 (11/11/2008)
+
+* Changes since MVAPICH2-1.2
+
+  - Fix shared-memory communication issue for AMD Barcelona systems.
+
 MVAPICH2-1.2 (11/06/2008)
 
 * Bugs fixed since MVAPICH2-1.2-rc2
