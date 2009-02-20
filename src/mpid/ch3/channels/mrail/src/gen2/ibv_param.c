@@ -141,8 +141,10 @@ unsigned long rdma_spin_count = 5000;
 int rdma_vbuf_total_size; 
 
 /* Small message scheduling policy
- * currently optimized for minimal QP cache misses */
-int sm_scheduling = USE_FIRST;
+ * Was earlier set to USE_FIRST, optimized for minimal QP cache misses
+ * Now setting it to ROUND_ROBIN as we get better performance.
+ */
+int sm_scheduling = ROUND_ROBIN;
 
 /* This value should increase with the increase in number
  * of rails */
@@ -426,6 +428,14 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 
     if ((value = getenv("MV2_IBA_HCA")) != NULL) {
         strncpy(rdma_iba_hca, value, 32);
+    }
+
+    if ((value = getenv("MV2_STRIPING_THRESHOLD")) != NULL) {
+        striping_threshold = atoi(value);
+        if (striping_threshold <= 0) {
+            /* Invalid value - set to default value */
+            striping_threshold = STRIPING_THRESHOLD;
+        }
     }
 
 #if defined(RDMA_CM)
