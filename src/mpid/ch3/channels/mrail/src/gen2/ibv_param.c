@@ -430,14 +430,6 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
         strncpy(rdma_iba_hca, value, 32);
     }
 
-    if ((value = getenv("MV2_STRIPING_THRESHOLD")) != NULL) {
-        striping_threshold = atoi(value);
-        if (striping_threshold <= 0) {
-            /* Invalid value - set to default value */
-            striping_threshold = STRIPING_THRESHOLD;
-        }
-    }
-
 #if defined(RDMA_CM)
     if ((value = getenv("MV2_USE_IWARP_MODE")) != NULL) {
             proc->use_rdma_cm = !!atoi(value);
@@ -949,6 +941,14 @@ void rdma_get_user_parameters(int num_proc, int me)
     striping_threshold = rdma_vbuf_total_size * rdma_num_ports *
         rdma_num_qp_per_port * rdma_num_hcas;
        
+    if ((value = getenv("MV2_STRIPING_THRESHOLD")) != NULL) {
+        striping_threshold = atoi(value);
+        if (striping_threshold <= 0) {
+            /* Invalid value - set to default value */
+            striping_threshold = STRIPING_THRESHOLD;
+        }
+    }
+
     if ((value = getenv("MV2_SRQ_SIZE")) != NULL) {
         viadev_srq_size = (uint32_t) atoi(value);
     }
