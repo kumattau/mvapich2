@@ -66,7 +66,7 @@ int udapl_prepost_depth = UDAPL_PREPOST_DEPTH;
 int udapl_initial_prepost_depth = UDAPL_INITIAL_PREPOST_DEPTH;
 
 /* allow some extra buffers for non-credited packets (eg. NOOP) */
-int udapl_prepost_noop_extra = 5;
+int udapl_prepost_noop_extra = 8;
 
 int udapl_credit_preserve = 5;
 
