@@ -803,7 +803,7 @@ int *rdma_cm_get_hostnames(int pg_rank, int pg_size)
     }
 
     for (i = 0; i < pg_size; i++){
-	sprintf(rank, "ip%d ", i);
+	sprintf(rank, "ip%d", i);
 	MPIU_Strncpy(key, rank, 16);
 	error = PMI_KVS_Get(g_cached_pg->ch.kvs_name, key, val, val_max_sz);
         if (error != 0) {
