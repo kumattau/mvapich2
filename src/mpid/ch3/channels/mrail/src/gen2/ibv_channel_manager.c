@@ -65,6 +65,10 @@ static void unlock_apm()
     return;
 }
 
+const char *MPIDI_CH3_VC_GetStateString(MPIDI_VC_t *vc)
+{
+    return NULL;
+}
 
 MRAILI_Channel_manager *arriving_head = NULL;
 MRAILI_Channel_manager *arriving_tail = NULL;

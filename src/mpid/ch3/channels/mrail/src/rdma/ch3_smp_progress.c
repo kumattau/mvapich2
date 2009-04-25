@@ -812,7 +812,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 #if !defined(_X86_64_)
 	{
 	    char *buf;
-	    buf = (char *) calloc(g_size_shmem + 1, sizeof(char));
+	    buf = (char *) MPIU_Calloc(g_size_shmem + 1, sizeof(char));
 	    if (write(g_smpi.fd, buf, g_size_shmem) != g_size_shmem) {
 		int write_errno = errno;
 
@@ -825,7 +825,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 
 	{
 	    char *buf;
-	    buf = (char *) calloc (g_size_pool + 1, sizeof (char));
+	    buf = (char *) MPIU_Calloc (g_size_pool + 1, sizeof (char));
 	    if (write (g_smpi.fd_pool, buf, g_size_pool) != g_size_pool) {
 		int write_errno = errno;
 

@@ -202,7 +202,7 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
 #if defined(_OSU_MVAPICH_)
 	if (win_ptr->fall_back != 1) {
 	    int i;
-	    int *ranks_in_win_grp = (int *) malloc((comm_size - 1) * sizeof(int));
+	    int *ranks_in_win_grp = (int *) MPIU_Malloc((comm_size - 1) * sizeof(int));
 
 	    for (i = 0; i < comm_size; i++) {
 		if (i < win_ptr->my_id)
@@ -230,7 +230,7 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
 	    if (win_ptr->rma_issued != 0 && need_dummy == 1) {
 	        MPIDI_CH3I_RDMA_finish_rma(win_ptr);
 	    }
-	    free(ranks_in_win_grp);
+	    MPIU_Free(ranks_in_win_grp);
 	}                       /* else */
 #endif /* defined(_OSU_MVAPICH_) */
 

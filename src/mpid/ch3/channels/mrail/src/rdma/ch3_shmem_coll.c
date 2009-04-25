@@ -162,7 +162,7 @@ int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t *pg)
 /* Ignoring optimal memory allocation for now */
 #if !defined(_X86_64_)
         {
-            char *buf = (char *) calloc(shmem_coll_size + 1, sizeof(char));
+            char *buf = (char *) MPIU_Calloc(shmem_coll_size + 1, sizeof(char));
             
             if (write(shmem_coll_obj.fd, buf, shmem_coll_size) != shmem_coll_size)
             {
@@ -477,7 +477,7 @@ int MPID_SHMEM_BCAST_init(int file_size, int shmem_comm_rank, int my_local_rank,
 #ifndef _X86_64_
         {
             char *buf;
-            buf = (char *) calloc(*bcast_seg_size + 1, sizeof(char));
+            buf = (char *) MPIU_Calloc(*bcast_seg_size + 1, sizeof(char));
             if (write(*fd, buf, *bcast_seg_size) != *bcast_seg_size) {
                 fprintf(stderr, "[%d] shmem_coll_init:error in writing " "shared memory file: %d\n", my_rank, errno);
                 MPIU_Free(buf);
