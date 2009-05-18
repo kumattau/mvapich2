@@ -97,13 +97,15 @@ AVL_TREE* vma_tree;
 
 #if !defined(DISABLE_PTMALLOC)
 static pthread_spinlock_t dreg_lock = 0;
+static pthread_spinlock_t dereg_lock = 0;
 static pthread_t th_id_of_lock;
+static pthread_t th_id_of_dereg_lock = -1;
 
 /* Array which stores the memory regions 
  * ptrs which are to be deregistered after 
  * free hook pulls them out of the reg cache
  */
-static struct ibv_mr** deregister_mr_array;
+static dreg_region *deregister_mr_array;
 
 /* Number of pending deregistration
  * operations 
@@ -638,18 +640,21 @@ void dreg_init()
 
 #if !defined(DISABLE_PTMALLOC)
     pthread_spin_init(&dreg_lock, 0);
+    pthread_spin_init(&dereg_lock, 0);
+    deregister_mr_array = (dreg_region *)
+        malloc(sizeof(dreg_region) * rdma_ndreg_entries);
 
-    deregister_mr_array = (struct ibv_mr**) MPIU_Malloc(sizeof(struct ibv_mr*) * rdma_ndreg_entries * MAX_NUM_HCAS);
 
-    if (NULL == deregister_mr_array)
-    {
+    if (NULL == deregister_mr_array) {
         ibv_va_error_abort(
             GEN_EXIT_ERR,
             "dreg_init: unable to malloc %d bytes",
-            (int) sizeof(struct ibv_mr*) * rdma_ndreg_entries * MAX_NUM_HCAS);
+            (int) sizeof(dreg_region) * rdma_ndreg_entries);
     }
 
-    memset(deregister_mr_array, 0, sizeof(struct ibv_mr*) * rdma_ndreg_entries * MAX_NUM_HCAS);
+    memset(deregister_mr_array, 0,
+            sizeof(dreg_region) * rdma_ndreg_entries);
+
     n_dereg_mr = 0;
 
     INIT_FREE_LIST(&vma_free_list);
@@ -658,6 +663,27 @@ void dreg_init()
 }
 
 #if !defined(DISABLE_PTMALLOC)
+
+static int have_dereg() 
+{
+    return pthread_equal(th_id_of_dereg_lock, pthread_self());
+}
+
+static void lock_dereg()
+{
+    pthread_spin_lock(&dereg_lock);
+    th_id_of_dereg_lock = pthread_self();
+}
+
+static void unlock_dereg()
+{
+    th_id_of_dereg_lock = -1;
+    pthread_spin_unlock(&dereg_lock);
+}
+
+static int have_dreg() {
+    return pthread_equal(th_id_of_lock, pthread_self());
+}
 
 static void lock_dreg()
 {
@@ -671,33 +697,105 @@ static void unlock_dreg()
     pthread_spin_unlock(&dreg_lock);
 }
 
+
 /* 
  * Check if we have to deregister some memory regions
  * which were previously marked invalid by free hook 
- *
- * Note: this function should be called only with the
- * dreg lock acquired.
  */
 
-static void flush_dereg_mrs()
+void flush_dereg_mrs_external()
 {
-    int i = 0;
+    unsigned long i, j, k;
+    unsigned long pagenum_low, pagenum_high;
+    unsigned long  npages, begin, end;
+    unsigned long user_low_a, user_high_a;
+    unsigned long pagebase_low_a, pagebase_high_a;
+    struct dreg_entry *d;
+    void *addr;
 
-    for (; i < n_dereg_mr; ++i)
-    {
-        if (deregister_mr_array[i])
-        {
-            if (ibv_dereg_mr(deregister_mr_array[i]))
-            {
-                ibv_error_abort(IBV_RETURN_ERR, "deregistration failed\n");
+    if(n_dereg_mr == 0 || have_dreg() || have_dereg()) {
+        return;
+    }
+
+    lock_dreg();
+    lock_dereg();
+
+    for(j = 0; j < n_dereg_mr; j++) {
+        void *buf;
+        size_t len;
+
+        buf = deregister_mr_array[j].buf;
+        len = deregister_mr_array[j].len;
+
+        /* calculate base page address for registration */
+        user_low_a = (unsigned long) buf;
+        user_high_a = user_low_a + (unsigned long) len - 1;
+
+        pagebase_low_a = user_low_a & ~DREG_PAGEMASK;
+        pagebase_high_a = user_high_a & ~DREG_PAGEMASK;
+
+        /* info to store in hash table */
+        pagenum_low = pagebase_low_a >> DREG_PAGEBITS;
+        pagenum_high = pagebase_high_a >> DREG_PAGEBITS;
+        npages = 1 + (pagenum_high - pagenum_low);
+
+        /* For every page in this buffer find out whether
+         * it is registered or not. This is fine, since
+         * we register only at a page granularity */
+
+        for(i = 0; i < npages; i++) {
+            addr = (void *) ((uintptr_t) pagebase_low_a + i * DREG_PAGESIZE);
+
+            begin = ((unsigned long)addr) >> DREG_PAGEBITS;
+
+            end = ((unsigned long)(((char*)addr) +
+                        DREG_PAGESIZE - 1)) >> DREG_PAGEBITS;
+
+            while( (d = dreg_lookup (begin, end)) != NULL) {
+                if((d->refcount != 0) || (d->is_valid == 0)) {
+                    /* This memory area is still being referenced
+                     * by other pending MPI operations, which are
+                     * expected to call dreg_unregister and thus
+                     * unpin the buffer. We cannot deregister this
+                     * page, since other ops are pending from here. */
+
+                    /* OR: This memory region is in the process of
+                     * being deregistered. Leave it alone! */
+                    continue;
+                }
+
+                d->is_valid = 0;
+
+                for (k = 0; k < rdma_num_hcas; k++) {
+                    if(d->memhandle[k]) {
+                        if (deregister_memory(d->memhandle[k]))
+                            ibv_error_abort(IBV_RETURN_ERR, 
+                                    "deregistration failed\n");
+                        d->memhandle[k] = NULL;
+                    }
+                }
+
+                if(d->refcount == 0) {
+                    if(MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister) {
+                        DREG_REMOVE_FROM_UNUSED_LIST(d);
+                    }
+                } else {
+                    d->refcount--;
+                }
+
+                dreg_remove (d);
+                DREG_ADD_TO_FREE_LIST(d);
             }
         }
 
-        deregister_mr_array[i] = NULL;
     }
 
     n_dereg_mr = 0;
+    unlock_dereg();
+    unlock_dreg();
 }
+
+
 #endif /* !defined(DISABLE_PTMALLOC) */
 
 /* will return a NULL pointer if registration fails */
@@ -707,7 +805,6 @@ dreg_entry *dreg_register(void* buf, int len)
 
 #if !defined(DISABLE_PTMALLOC)
     lock_dreg();
-    flush_dereg_mrs();
 #endif /* !defined(DISABLE_PTMALLOC) */
 
     struct dreg_entry* d = dreg_find(buf, len);
@@ -761,7 +858,6 @@ void dreg_unregister(dreg_entry* d)
     dreg_decr_refcount(d);
 
 #if !defined(DISABLE_PTMALLOC)
-    flush_dereg_mrs();
     unlock_dreg();
 #endif /* !defined(DISABLE_PTMALLOC) */
 }
@@ -880,10 +976,6 @@ void dreg_incr_refcount(dreg_entry* d)
 int dreg_evict()
 {
     int hca_index = 0;
-
-#if !defined(DISABLE_PTMALLOC)
-    flush_dereg_mrs();
-#endif /* !defined(DISABLE_PTMALLOC) */
 
     dreg_entry* d = dreg_unused_tail;
 
@@ -1004,106 +1096,21 @@ dreg_entry* dreg_new_entry(void* buf, int len)
 #if !defined(DISABLE_PTMALLOC)
 void find_and_free_dregs_inside(void* buf, size_t len)
 {
-    unsigned long i = 0;
-    unsigned long begin;
-    unsigned long end;
-
-    /* Calculate base page address for registration. */
-    unsigned long user_low_a = (unsigned long) buf;
-    unsigned long user_high_a = user_low_a + (unsigned long) len - 1;
-    unsigned long pagebase_low_a = user_low_a & ~DREG_PAGEMASK;
-    unsigned long pagebase_high_a = user_high_a & ~DREG_PAGEMASK;
-
-    /* Info to store in hash table. */
-    unsigned long pagenum_low = pagebase_low_a >> DREG_PAGEBITS;
-    unsigned long pagenum_high = pagebase_high_a >> DREG_PAGEBITS;
-    unsigned long npages = 1 + (pagenum_high - pagenum_low);
-
-    struct dreg_entry* d = NULL;
-    void* addr = NULL;
-
-    /* For every page in this buffer find out whether
-     * it is registered or not. This is fine, since
-     * we register only at a page granularity */
-
-    if (!g_is_dreg_initialized
-        || !MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister)
-    {
+    if(!g_is_dreg_initialized ||
+            !MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister) {
         return;
     }
 
-    if (pthread_self() == th_id_of_lock)
-    {
-        /*
-         * This comparison is necessary to distinguish
-         * between recursive and multi-threaded calls to
-         * the registration cache.
-         *
-         * The recursive calls are possible since
-         * ibv_dereg_mr calls free after de-registering
-         * memory regions. However, this free should be
-         * for a smaller memory region, which is not
-         * handled by the MPI cache. We shouldn't
-         * try to do anything more in this routine.
-         */   
+    if(have_dereg() || have_dreg()) {
         return;
     }
 
-    lock_dreg();
+    lock_dereg();
+    deregister_mr_array[n_dereg_mr].buf = buf;
+    deregister_mr_array[n_dereg_mr].len = len;
 
-    for (; i < npages; ++i)
-    {
-        addr = (void *) ((uintptr_t) pagebase_low_a + i * DREG_PAGESIZE);
-        begin = ((unsigned long)addr) >> DREG_PAGEBITS;
-        end = (unsigned long)((char*)addr + DREG_PAGESIZE - 1) >> DREG_PAGEBITS;
-
-        while ((d = dreg_lookup(begin, end)) != NULL)
-        {
-            if (d->refcount != 0 || d->is_valid == 0)
-            {
-                /* This memory area is still being referenced
-                 * by other pending MPI operations, which are
-                 * expected to call dreg_unregister and thus
-                 * unpin the buffer. We cannot deregister this
-                 * page, since other ops are pending from here. */
-
-                /* OR: This memory region is in the process of
-                 * being deregistered. Leave it alone! */
-                continue;
-            }
-
-            for (i = 0; i < rdma_num_hcas; ++i)
-            {
-                d->is_valid = 0;
-
-                if (d->memhandle[i])
-                {
-                    MPIU_Assert(n_dereg_mr < (rdma_ndreg_entries * MAX_NUM_HCAS));
-                    deregister_mr_array[n_dereg_mr] = d->memhandle[i];
-                    ++n_dereg_mr;
-                }
-
-                d->memhandle[i] = NULL;
-            }
-
-            if (d->refcount == 0)
-            {
-                if (MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister)
-                {
-                    DREG_REMOVE_FROM_UNUSED_LIST(d);
-                }
-            }
-            else
-            {
-                --d->refcount;
-            }
-
-            dreg_remove(d);
-            DREG_ADD_TO_FREE_LIST(d);
-        }
-    }
-
-    unlock_dreg();
+    n_dereg_mr++;
+    unlock_dereg();
 }
 #endif /* !defined(DISABLE_PTMALLOC) */
 
@@ -1113,10 +1120,6 @@ void dreg_deregister_all()
     int i = 0;
     int j;
     dreg_entry* d = NULL;
-
-#if !defined(DISABLE_PTMALLOC)
-    flush_dereg_mrs();
-#endif /* !defined(DISABLE_PTMALLOC) */
 
     for (; i < (int) rdma_ndreg_entries; ++i)
     {

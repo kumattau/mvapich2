@@ -45,6 +45,12 @@
 
 typedef struct dreg_entry dreg_entry;
 
+typedef struct {
+    void *buf; 
+    size_t len;
+} dreg_region;
+
+
 struct dreg_entry {
     unsigned long pagenum;
     VIP_MEM_HANDLE memhandle;
@@ -242,6 +248,8 @@ dreg_entry *dreg_new_entry(void *buf, int len);
 int register_memory(void *buf, int len, int hca_num, dreg_entry *d);
 
 int deregister_memory(VIP_MEM_HANDLE * mr);
+
+void flush_dereg_mrs_external();
 
 #ifndef DISABLE_PTMALLOC
 void find_and_free_dregs_inside(void *buf, size_t len);

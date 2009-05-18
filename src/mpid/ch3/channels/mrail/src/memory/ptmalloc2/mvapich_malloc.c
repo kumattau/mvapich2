@@ -3210,8 +3210,16 @@ static Void_t* sYSMALLOc(nb, av) INTERNAL_SIZE_T nb; mstate av;
     set_head(p, nb | PREV_INUSE | (av != &main_arena ? NON_MAIN_ARENA : 0));
     set_head(remainder, remainder_size | PREV_INUSE);
     check_malloced_chunk(av, p, nb);
+
+    /* OSU */
+    flush_dereg_mrs_external();
+
     return chunk2mem(p);
   }
+
+  /* OSU */
+  flush_dereg_mrs_external();
+
 
   /* catch all failure paths */
   MALLOC_FAILURE_ACTION;
@@ -3458,6 +3466,8 @@ public_fREe(Void_t* mem)
   if (chunk_is_mmapped(p))                       /* release mmapped memory. */
   {
     munmap_chunk(p);
+    /* OSU */
+    flush_dereg_mrs_external();
     return;
   }
 #endif
@@ -3475,6 +3485,10 @@ public_fREe(Void_t* mem)
 #endif
   _int_free(ar_ptr, mem);
   (void)mutex_unlock(&ar_ptr->mutex);
+
+  /* OSU */
+  flush_dereg_mrs_external();
+
 }
 #ifdef libc_hidden_def
 libc_hidden_def (public_fREe)
@@ -3546,6 +3560,7 @@ public_rEALLOc(Void_t* oldmem, size_t bytes)
     munmap_chunk(oldp);
 /* <_OSU_MVAPICH_> */
     mvapich2_minfo.is_our_realloc = 1;
+    flush_dereg_mrs_external();
 /* </_OSU_MVAPICH_> */
     return newmem;
   }
@@ -3575,6 +3590,7 @@ public_rEALLOc(Void_t* oldmem, size_t bytes)
 	 ar_ptr == arena_for_chunk(mem2chunk(newp)));
 /* <_OSU_MVAPICH_> */
   mvapich2_minfo.is_our_realloc = 1;
+  flush_dereg_mrs_external();
 /* </_OSU_MVAPICH_> */
   return newp;
 }
@@ -3626,6 +3642,7 @@ public_mEMALIGn(size_t alignment, size_t bytes)
 	 ar_ptr == arena_for_chunk(mem2chunk(p)));
 /* <_OSU_MVAPICH_> */
   mvapich2_minfo.is_our_memalign = 1;
+  flush_dereg_mrs_external();
 /* </_OSU_MVAPICH_> */
   return p;
 }
@@ -3869,6 +3886,10 @@ public_mTRIm(size_t s)
   (void)mutex_lock(&main_arena.mutex);
   result = mTRIm(s);
   (void)mutex_unlock(&main_arena.mutex);
+
+  /* OSU */
+  flush_dereg_mrs_external();
+
   return result;
 }
 
@@ -4702,6 +4723,7 @@ _int_realloc(mstate av, Void_t* oldmem, size_t bytes)
 
           _int_free(av, oldmem);
           check_inuse_chunk(av, newp);
+
           return chunk2mem(newp);
         }
       }
@@ -4725,6 +4747,7 @@ _int_realloc(mstate av, Void_t* oldmem, size_t bytes)
       /* Mark remainder as inuse so free() won't complain */
       set_inuse_bit_at_offset(remainder, remainder_size);
       _int_free(av, chunk2mem(remainder));
+
     }
 
     check_inuse_chunk(av, newp);
@@ -4898,6 +4921,7 @@ _int_memalign(mstate av, size_t alignment, size_t bytes)
   }
 
   check_inuse_chunk(av, p);
+
   return chunk2mem(p);
 }
 
@@ -5139,9 +5163,15 @@ _int_valloc(mstate av, size_t bytes)
 _int_valloc(av, bytes) mstate av; size_t bytes;
 #endif
 {
+    Void_t * p;
   /* Ensure initialization/consolidation */
   if (have_fastchunks(av)) malloc_consolidate(av);
-  return _int_memalign(av, mp_.pagesize, bytes);
+  p = _int_memalign(av, mp_.pagesize, bytes);
+
+  /* OSU */
+  flush_dereg_mrs_external();
+
+  return p;
 }
 
 /*
@@ -5157,11 +5187,17 @@ _int_pvalloc(av, bytes) mstate av, size_t bytes;
 #endif
 {
   size_t pagesz;
+  Void_t * p;
 
   /* Ensure initialization/consolidation */
   if (have_fastchunks(av)) malloc_consolidate(av);
   pagesz = mp_.pagesize;
-  return _int_memalign(av, pagesz, (bytes + pagesz - 1) & ~(pagesz - 1));
+  p = _int_memalign(av, pagesz, (bytes + pagesz - 1) & ~(pagesz - 1));
+
+  /* OSU */
+  flush_dereg_mrs_external();
+
+  return p;
 }
 
 
