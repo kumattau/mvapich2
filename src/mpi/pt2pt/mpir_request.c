@@ -497,7 +497,10 @@ int MPIR_Grequest_free(MPID_Request * request_ptr)
  * Invokes poll_fn for each request in request_ptrs.  Waits for completion of
  * multiple requests if possible (all outstanding generalized requests are of
  * same greq class) */
-
+#undef FUNCNAME
+#define FUNCNAME MPIR_Grequest_progress_poke
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIR_Grequest_progress_poke(int count, 
 		MPID_Request **request_ptrs, 
 		MPI_Status array_of_statuses[] )
@@ -505,12 +508,10 @@ int MPIR_Grequest_progress_poke(int count,
     MPIX_Grequest_wait_function *wait_fn = NULL;
     void ** state_ptrs;
     int i, j, n_classes, n_native, n_greq;
-    int mpi_error = MPI_SUCCESS;
+    int mpi_errno = MPI_SUCCESS;
+    MPIU_CHKLMEM_DECL(1);
 
-    state_ptrs = MPIU_Malloc(sizeof(void*)*count);
-
-    if (state_ptrs == NULL)
-	    goto fn_exit;
+    MPIU_CHKLMEM_MALLOC(state_ptrs, void **, sizeof(void*) * count, mpi_errno, "state_ptrs");
 
     /* This somewhat messy for-loop computes how many requests are native
      * requests and how many are generalized requests, and how many generalized
@@ -536,26 +537,30 @@ int MPIR_Grequest_progress_poke(int count,
     }
 
     if (j > 0 && n_classes == 1 && wait_fn != NULL) {
-        mpi_error = (wait_fn)(j, state_ptrs, 0, NULL);
+        mpi_errno = (wait_fn)(j, state_ptrs, 0, NULL);
     } else {
 	for (i = 0; i< count; i++ )
 	{
 	    if (request_ptrs[i] != NULL && 
-			request_ptrs[i]->kind == MPID_UREQUEST && 
-			*request_ptrs[i]->cc_ptr != 0) {
-		mpi_error = (request_ptrs[i]->poll_fn)(request_ptrs[i]->grequest_extra_state, &(array_of_statuses[i]));
+                request_ptrs[i]->kind == MPID_UREQUEST && 
+                *request_ptrs[i]->cc_ptr != 0 &&
+                request_ptrs[i]->poll_fn != NULL)
+            {
+		mpi_errno = (request_ptrs[i]->poll_fn)(request_ptrs[i]->grequest_extra_state, &(array_of_statuses[i]));
+                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 	    }
 	}
     }
 fn_exit:
-    if (state_ptrs != NULL) MPIU_Free(state_ptrs);
-    return mpi_error;
+    MPIU_CHKLMEM_FREEALL();
+    return mpi_errno;
+fn_fail:
+    goto fn_exit;
 }
 
 /* MPIR_Grequest_wait: Waits until all generalized requests have
    completed.  This routine groups grequests by class and calls the
    wait_fn on the whole class. */
-
 #undef FUNCNAME
 #define FUNCNAME MPIR_Grequest_waitall
 #undef FCNAME

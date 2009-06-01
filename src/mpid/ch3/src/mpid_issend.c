@@ -3,6 +3,17 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
 
 #include "mpidimpl.h"
 
@@ -35,9 +46,16 @@ int MPID_Issend(const void * buf, int count, MPI_Datatype datatype, int rank, in
     
     if (rank == comm->rank && comm->comm_kind != MPID_INTERCOMM)
     {
+#if defined (_OSU_PSM_)
+    goto skip_self_send;
+#endif    
 	mpi_errno = MPIDI_Isend_self(buf, count, datatype, rank, tag, comm, context_offset, MPIDI_REQUEST_TYPE_SSEND, &sreq);
 	goto fn_exit;
     }
+
+#if defined (_OSU_PSM_)
+skip_self_send:
+#endif
     
     MPIDI_Request_create_sreq(sreq, mpi_errno, goto fn_exit);
     MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_SSEND);
@@ -55,11 +73,30 @@ int MPID_Issend(const void * buf, int count, MPI_Datatype datatype, int rank, in
     
     if (data_sz == 0)
     {
+#if defined (_OSU_PSM_)
+    goto psm_issend;
+#endif
 	mpi_errno = MPIDI_CH3_EagerSyncZero( &sreq, rank, tag, comm, 
 					     context_offset );
 	goto fn_exit;
     }
    
+#if defined (_OSU_PSM_)
+psm_issend:
+    sreq->psm_flags |= PSM_SYNC_SEND;
+    if(dt_contig) {
+        mpi_errno = MPIDI_CH3_EagerContigIsend(&sreq, MPIDI_CH3_PKT_EAGER_SEND,
+                        (char *)buf + dt_true_lb, data_sz, rank, tag, comm,
+                        context_offset);
+    } else {
+        sreq->psm_flags |= PSM_NON_BLOCKING_SEND;
+        mpi_errno = MPIDI_CH3_EagerNoncontigSend(&sreq,
+                        MPIDI_CH3_PKT_EAGER_SEND, buf, count, datatype, data_sz,
+                        rank, tag, comm, context_offset);
+    }
+    goto fn_exit;
+#endif
+
 #if defined(_OSU_MVAPICH_) 
     if (data_sz + sizeof(MPIDI_CH3_Pkt_eager_sync_send_t) <= vc->eager_max_msg_sz
         && ! vc->force_rndv)

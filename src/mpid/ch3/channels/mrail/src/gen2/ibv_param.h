@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -15,6 +15,7 @@
 
 #include "mpidi_ch3i_rdma_conf.h"
 #include <infiniband/verbs.h>
+#include "../rdma/coll_shmem.h"
 
 /* Support multiple QPs/port, multiple ports, multiple HCAs and combinations */
 extern int                  rdma_num_hcas;
@@ -99,9 +100,12 @@ extern int                  rdma_use_blocking;
 extern unsigned long        rdma_spin_count;
 extern int                  USE_SMP;
 
+
+
 #define PKEY_MASK 0x7fff /* the last bit is reserved */
 #define RDMA_PIN_POOL_SIZE              (2*1024*1024)
 #define RDMA_DEFAULT_MAX_CQ_SIZE        (40000)
+#define RDMA_DEFAULT_IWARP_CQ_SIZE      (8192)
 #define RDMA_DEFAULT_PORT               (-1)
 #define RDMA_DEFAULT_MAX_PORTS          (2)
 #define RDMA_DEFAULT_MAX_SEND_WQE       (64)
@@ -164,6 +168,6 @@ extern int                  USE_SMP;
 
 #define DYNAMIC_TOTAL_WEIGHT            (3* 1024)
 
-                               
+#define CHELSIO_RNIC                    "cxgb3"                       
                                
 #endif /* _RDMA_PARAM_H */

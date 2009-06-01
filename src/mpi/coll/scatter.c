@@ -72,19 +72,22 @@ int MPIR_Scatter (
     rank = comm_ptr->rank;
 
     if ( ((rank == root) && (sendcnt == 0)) ||
-         ((rank != root) && (recvcnt == 0)) )
+         ((rank != root) && (recvcnt == 0)) ) { 
         return MPI_SUCCESS;
+    } 
 
     is_homogeneous = 1;
 #ifdef MPID_HAS_HETERO
-    if (comm_ptr->is_hetero)
+    if (comm_ptr->is_hetero) { 
         is_homogeneous = 0;
+    } 
 #endif
 
 /* Use binomial tree algorithm */
     
-    if (rank == root) 
+    if (rank == root)  { 
         MPID_Datatype_get_extent_macro(sendtype, extent);
+    } 
     
     relative_rank = (rank >= root) ? rank - root : rank - root + comm_size;
     
@@ -99,8 +102,7 @@ int MPIR_Scatter (
                recvcnt and recvtype are not valid */
             MPID_Datatype_get_size_macro(sendtype, sendtype_size);
             nbytes = sendtype_size * sendcnt;
-        }
-        else {
+        } else {
             MPID_Datatype_get_size_macro(recvtype, recvtype_size);
             nbytes = recvtype_size * recvcnt;
         }
@@ -137,15 +139,16 @@ int MPIR_Scatter (
 
                 position = 0;
 
-                if (recvbuf != MPI_IN_PLACE)
+                if (recvbuf != MPI_IN_PLACE) { 
                     mpi_errno = MPIR_Localcopy(((char *) sendbuf + extent*sendcnt*rank),
                                    sendcnt*(comm_size-rank), sendtype, tmp_buf,
                                    nbytes*(comm_size-rank), MPI_BYTE);
-                else
+                } else { 
                     mpi_errno = MPIR_Localcopy(((char *) sendbuf + extent*sendcnt*(rank+1)),
                                    sendcnt*(comm_size-rank-1),
                                    sendtype, (char *)tmp_buf + nbytes, 
                                    nbytes*(comm_size-rank-1), MPI_BYTE);
+                } 
 		/* --BEGIN ERROR HANDLING-- */
                 if (mpi_errno)
 		{
@@ -166,9 +169,9 @@ int MPIR_Scatter (
 		/* --END ERROR HANDLING-- */
 
                 curr_cnt = nbytes*comm_size;
-            } 
-            else 
-                curr_cnt = sendcnt*comm_size;
+            } else { 
+                curr_cnt = sendcnt*comm_size; 
+            }
         }
         
         /* root has all the data; others have zero so far */
@@ -193,8 +196,7 @@ int MPIR_Scatter (
 			return mpi_errno;
 		    }
 		    /* --END ERROR HANDLING-- */
-                }
-                else {
+                } else {
                     mpi_errno = MPIC_Recv(tmp_buf, tmp_buf_size, MPI_BYTE, src,
                                           MPIR_SCATTER_TAG, comm, &status);
 		    /* --BEGIN ERROR HANDLING-- */
@@ -234,9 +236,7 @@ int MPIR_Scatter (
                                            send_subtree_cnt,
                                            sendtype, dst, 
                                            MPIR_SCATTER_TAG, comm);
-                }
-                else
-		{
+                } else {
                     /* non-zero root and others */
                     send_subtree_cnt = curr_cnt - nbytes*mask; 
                     /* mask is also the size of this process's subtree */
@@ -268,8 +268,7 @@ int MPIR_Scatter (
 		return mpi_errno;
 	    }
 	    /* --END ERROR HANDLING-- */
-        }
-        else if (!(relative_rank % 2) && (recvbuf != MPI_IN_PLACE)) {
+        } else if (!(relative_rank % 2) && (recvbuf != MPI_IN_PLACE)) {
             /* for non-zero root and non-leaf nodes, copy from tmp_buf
                into recvbuf */ 
             mpi_errno = MPIR_Localcopy ( tmp_buf, nbytes, MPI_BYTE, 
@@ -320,22 +319,19 @@ int MPIR_Scatter (
                     position = 0;
                     NMPI_Pack(sendbuf, sendcnt*comm_size, sendtype, tmp_buf,
                               tmp_buf_size, &position, comm);
-                }
-                else {
+                } else {
                     position = nbytes;
                     NMPI_Pack(((char *) sendbuf + extent*sendcnt), 
                               sendcnt*(comm_size-1), sendtype, tmp_buf,
                               tmp_buf_size, &position, comm);
                 }
-            }
-            else {
+            } else {
                 if (recvbuf != MPI_IN_PLACE) {
                     position = 0;
                     NMPI_Pack(((char *) sendbuf + extent*sendcnt*rank),
                               sendcnt*(comm_size-rank), sendtype, tmp_buf,
                               tmp_buf_size, &position, comm); 
-                }
-                else {
+                } else {
                     position = nbytes;
                     NMPI_Pack(((char *) sendbuf + extent*sendcnt*(rank+1)),
                               sendcnt*(comm_size-rank-1), sendtype, tmp_buf,
@@ -344,8 +340,7 @@ int MPIR_Scatter (
                 NMPI_Pack(sendbuf, sendcnt*rank, sendtype, tmp_buf,
                           tmp_buf_size, &position, comm); 
             }
-        }
-        else {
+        } else {
             NMPI_Pack_size(recvcnt*(comm_size/2), recvtype, comm, &tmp_buf_size);
             tmp_buf = MPIU_Malloc(tmp_buf_size);
 	    /* --BEGIN ERROR HANDLING-- */
@@ -473,8 +468,7 @@ int MPIR_Scatter_inter (
     if (root == MPI_ROOT) {
         MPID_Datatype_get_size_macro(sendtype, sendtype_size);
         nbytes = sendtype_size * sendcnt * remote_size;
-    }
-    else {
+    } else {
         /* remote side */
         MPID_Datatype_get_size_macro(recvtype, recvtype_size);
         nbytes = recvtype_size * recvcnt * local_size;
@@ -488,8 +482,7 @@ int MPIR_Scatter_inter (
                                   sendtype, 0, MPIR_SCATTER_TAG, comm); 
             MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
             return mpi_errno;
-        }
-        else {
+        } else {
             /* remote group. rank 0 receives data from root. need to
                allocate temporary buffer to store this data. */
             
@@ -545,8 +538,7 @@ int MPIR_Scatter_inter (
             if (rank == 0) 
                 MPIU_Free(((char*)tmp_buf+true_lb));
         }
-    }
-    else {
+    } else {
         /* long message. use linear algorithm. */
         MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
         if (root == MPI_ROOT) {
@@ -563,8 +555,7 @@ int MPIR_Scatter_inter (
 		}
 		/* --END ERROR HANDLING-- */
             }
-        }
-        else {
+        } else {
             mpi_errno = MPIC_Recv(recvbuf,recvcnt,recvtype,root,
                                   MPIR_SCATTER_TAG,comm,&status);
         }
@@ -720,19 +711,17 @@ int MPI_Scatter(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
 	mpi_errno = comm_ptr->coll_fns->Scatter(sendbuf, sendcnt,
                                                 sendtype, recvbuf, recvcnt,
                                                 recvtype, root, comm_ptr);
-    }
-    else
-    {
+    } else {
 	MPIU_THREADPRIV_DECL;
 	MPIU_THREADPRIV_GET;
 
 	MPIR_Nest_incr();
-        if (comm_ptr->comm_kind == MPID_INTRACOMM) 
+        if (comm_ptr->comm_kind == MPID_INTRACOMM)  { 
             /* intracommunicator */
             mpi_errno = MPIR_Scatter(sendbuf, sendcnt, sendtype,
                                      recvbuf, recvcnt, recvtype, root,
                                      comm_ptr); 
-        else {
+        } else {
             /* intercommunicator */ 
             mpi_errno = MPIR_Scatter_inter(sendbuf, sendcnt, sendtype,
                                            recvbuf, recvcnt, recvtype, root,
@@ -741,7 +730,9 @@ int MPI_Scatter(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
 	MPIR_Nest_decr();
     }
     
-    if (mpi_errno != MPI_SUCCESS) goto fn_fail;
+    if (mpi_errno != MPI_SUCCESS) { 
+       goto fn_fail;
+     }
 
     /* ... end of body of routine ... */
     

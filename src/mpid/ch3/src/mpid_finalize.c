@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -16,6 +16,9 @@
  */
 
 #include "mpidimpl.h"
+#ifdef _ENABLE_XRC_
+#include "rdma_impl.h"
+#endif
 
 /* FIXME: This routine needs to be factored into finalize actions per module,
    In addition, we should consider registering callbacks for those actions
@@ -97,6 +100,18 @@ int MPID_Finalize(void)
      * Barrier or an independent communicator that is not used by any
      * other (user) routine.
      */
+
+#ifdef _ENABLE_XRC_
+    MPIDI_CH3_Flush();
+    MPIDI_CH3I_RDMA_Process.xrc_rdmafp = 0;
+    if (USE_XRC) {
+        XRC_MSG ("PMI_Barrier START");
+        if (PMI_Barrier ())
+            ibv_error_abort (GEN_EXIT_ERR, "PMI_Barrier failed");
+        XRC_MSG ("PMI_Barrier END");
+    }
+#endif 
+
 #ifdef MPID_NEEDS_ICOMM_WORLD
     MPIU_THREADPRIV_GET;
     MPIR_Nest_incr();
@@ -137,12 +152,17 @@ int MPID_Finalize(void)
 #if 1
     /* FIXME: The close actions should use the same code as the other
        connection close code */
+#if !defined (_OSU_PSM_)
     MPIDI_PG_Close_VCs();
     /*
      * Wait for all VCs to finish the close protocol
      */
     mpi_errno = MPIDI_CH3U_VC_WaitForClose();
     if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
+#endif
+#ifdef _ENABLE_XRC_
+    XRC_MSG("ALLCLOSE");
+#endif
 #endif
 
     /* Note that the CH3I_Progress_finalize call has been removed; the

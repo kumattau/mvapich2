@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -18,6 +18,22 @@
 #include "mpicomm.h"
 #include "../../mpid/ch3/channels/mrail/src/rdma/coll_shmem.h"
 #include <pthread.h>
+#ifndef GEN_EXIT_ERR
+#define GEN_EXIT_ERR    -1
+#endif
+#ifndef ibv_error_abort
+#define ibv_error_abort(code, message) do {                     \
+	int my_rank;                                                \
+	PMI_Get_rank(&my_rank);                                     \
+	fprintf(stderr, "[%d] Abort: ", my_rank);                   \
+	fprintf(stderr, message);                                   \
+	fprintf(stderr, " at line %d in file %s\n", __LINE__,       \
+	    __FILE__);                                              \
+    fflush (stderr);                                            \
+	exit(code);                                                 \
+} while (0)
+#endif
+
 #define MAX_SHMEM_COMM  4
 #define MAX_NUM_COMM    10000
 #define MAX_ALLOWED_COMM   250
@@ -42,16 +58,25 @@ void clear_2level_comm (MPID_Comm* comm_ptr)
 
 void free_2level_comm (MPID_Comm* comm_ptr)
 {
-    if (comm_ptr->leader_map)  { MPIU_Free(comm_ptr->leader_map);  }
-    if (comm_ptr->leader_rank) { MPIU_Free(comm_ptr->leader_rank); }
-    if (comm_ptr->leader_comm) { MPI_Comm_free(&(comm_ptr->leader_comm));}
-    if (comm_ptr->shmem_comm)  { MPI_Comm_free(&(comm_ptr->shmem_comm));}
+    if (comm_ptr->leader_map)  { 
+        MPIU_Free(comm_ptr->leader_map);  
+     }
+    if (comm_ptr->leader_rank) { 
+        MPIU_Free(comm_ptr->leader_rank); 
+     }
+    if (comm_ptr->leader_comm) { 
+        PMPI_Comm_free(&(comm_ptr->leader_comm));
+     }
+    if (comm_ptr->shmem_comm)  { 
+        PMPI_Comm_free(&(comm_ptr->shmem_comm));
+     }
     clear_2level_comm(comm_ptr);
 }
 
-void create_2level_comm (MPI_Comm comm, int size, int my_rank)
+int create_2level_comm (MPI_Comm comm, int size, int my_rank)
 {
-
+    static const char FCNAME[] = "create_2level_comm";
+    int mpi_errno = MPI_SUCCESS;
     MPID_Comm* comm_ptr;
     MPID_Comm* comm_world_ptr;
     MPIU_THREADPRIV_DECL;
@@ -64,7 +89,7 @@ void create_2level_comm (MPI_Comm comm, int size, int my_rank)
     int* shmem_group = MPIU_Malloc(sizeof(int) * size);
     if (NULL == shmem_group){
         printf("Couldn't malloc shmem_group\n");
-        exit(0);
+        ibv_error_abort (GEN_EXIT_ERR, "create_2level_com");
     }
 
     /* Creating local shmem group */
@@ -93,16 +118,20 @@ void create_2level_comm (MPI_Comm comm, int size, int my_rank)
     comm_ptr->leader_map = MPIU_Malloc(sizeof(int) * size);
     if (NULL == comm_ptr->leader_map){
         printf("Couldn't malloc group\n");
-        exit(0);
+        ibv_error_abort (GEN_EXIT_ERR, "create_2level_com");
     }
 
-    MPI_Allgather (&leader, 1, MPI_INT , comm_ptr->leader_map, 1, MPI_INT, comm);
+    mpi_errno = MPIR_Allgather (&leader, 1, MPI_INT , comm_ptr->leader_map, 1, MPI_INT, comm_ptr);
+    if(mpi_errno) {
+       MPIU_ERR_POP(mpi_errno);
+    }
+
 
     int leader_group_size=0;
     int* leader_group = MPIU_Malloc(sizeof(int) * size);
     if (NULL == leader_group){
         printf("Couldn't malloc leader_group\n");
-        exit(0);
+        ibv_error_abort (GEN_EXIT_ERR, "create_2level_com");
     }
 
     /* Gives the mapping from leader's rank in comm to 
@@ -110,7 +139,7 @@ void create_2level_comm (MPI_Comm comm, int size, int my_rank)
     comm_ptr->leader_rank = MPIU_Malloc(sizeof(int) * size);
     if (NULL == comm_ptr->leader_rank){
         printf("Couldn't malloc marker\n");
-        exit(0);
+        ibv_error_abort (GEN_EXIT_ERR, "create_2level_com");
     }
 
     for (i=0; i < size ; ++i){
@@ -122,30 +151,48 @@ void create_2level_comm (MPI_Comm comm, int size, int my_rank)
         if (comm_ptr->leader_rank[(group[i])] == -1){
             comm_ptr->leader_rank[(group[i])] = grp_index;
             leader_group[grp_index++] = group[i];
+           
         }
     }
+
     leader_group_size = grp_index;
     comm_ptr->leader_group_size = leader_group_size;
 
     MPI_Group subgroup1, comm_group;
     
-    MPI_Comm_group(comm, &comm_group);
+    mpi_errno = PMPI_Comm_group(comm, &comm_group);
+    if(mpi_errno) {
+       MPIU_ERR_POP(mpi_errno);
+    }
 
+    mpi_errno = PMPI_Group_incl(comm_group, leader_group_size, leader_group, &subgroup1);
+     if(mpi_errno) {
+       MPIU_ERR_POP(mpi_errno);
+    }
 
-    MPI_Group_incl(comm_group, leader_group_size, leader_group, &subgroup1);
-    MPI_Comm_create(comm, subgroup1, &(comm_ptr->leader_comm));
-
+    mpi_errno = PMPI_Comm_create(comm, subgroup1, &(comm_ptr->leader_comm));
+     if(mpi_errno) {
+       MPIU_ERR_POP(mpi_errno);
+    }
     MPIU_Free(leader_group);
     MPID_Comm *leader_ptr;
     MPID_Comm_get_ptr( comm_ptr->leader_comm, leader_ptr );
-    
-    MPI_Comm_split(comm, leader, local_rank, &(comm_ptr->shmem_comm));
+       
+    mpi_errno = PMPI_Comm_split(comm, leader, local_rank, &(comm_ptr->shmem_comm));
+    if(mpi_errno) {
+       MPIU_ERR_POP(mpi_errno);
+    }
+
     MPID_Comm *shmem_ptr;
     MPID_Comm_get_ptr(comm_ptr->shmem_comm, shmem_ptr);
 
 
     int my_local_id, input_flag =0, output_flag=0;
-    MPI_Comm_rank(comm_ptr->shmem_comm, &my_local_id);
+    mpi_errno = PMPI_Comm_rank(comm_ptr->shmem_comm, &my_local_id);
+     if(mpi_errno) {
+       MPIU_ERR_POP(mpi_errno);
+    }
+
 
     if (my_local_id == 0){
         pthread_spin_lock(&shmem_coll->shmem_coll_lock);
@@ -154,27 +201,42 @@ void create_2level_comm (MPI_Comm comm, int size, int my_rank)
         pthread_spin_unlock(&shmem_coll->shmem_coll_lock);
     }
 
-    MPI_Bcast (&shmem_comm_count, 1, MPI_INT, 0, comm_ptr->shmem_comm);
+    shmem_ptr->shmem_coll_ok = 0; 
+    /* To prevent Bcast taking the knomial_2level_bcast route */
+    mpi_errno = MPIR_Bcast (&shmem_comm_count, 1, MPI_INT, 0, shmem_ptr);
+     if(mpi_errno) {
+       MPIU_ERR_POP(mpi_errno);
+    }
+
 
     if (shmem_comm_count <= g_shmem_coll_blocks){
         shmem_ptr->shmem_comm_rank = shmem_comm_count-1;
         input_flag = 1;
-    }
-    else{
+    } else{
         input_flag = 0;
     }
     comm_ptr->shmem_coll_ok = 0;/* To prevent Allreduce taking shmem route*/
-    MPI_Allreduce(&input_flag, &output_flag, 1, MPI_INT, MPI_LAND, comm);
+    mpi_errno = MPIR_Allreduce(&input_flag, &output_flag, 1, MPI_INT, MPI_LAND, comm_ptr);
+     if(mpi_errno) {
+       MPIU_ERR_POP(mpi_errno);
+    }
+
 
     if (output_flag == 1){
         comm_ptr->shmem_coll_ok = 1;
         comm_registry[comm_registered++] = comm_ptr->context_id;
-    }
-    else{
+    } else{
         comm_ptr->shmem_coll_ok = 0;
         free_2level_comm(comm_ptr);
-        MPI_Group_free(&subgroup1);
-        MPI_Group_free(&comm_group);
+        mpi_errno = PMPI_Group_free(&subgroup1);
+         if(mpi_errno) {
+           MPIU_ERR_POP(mpi_errno);
+        }
+        mpi_errno =PMPI_Group_free(&comm_group);
+         if(mpi_errno) {
+           MPIU_ERR_POP(mpi_errno);
+        }
+
     
     }
     ++comm_count;
@@ -185,6 +247,13 @@ void create_2level_comm (MPI_Comm comm, int size, int my_rank)
     comm_ptr->bcast_index = 0;
 
     MPIR_Nest_decr();
+   
+    fn_fail: 
+       MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
+    
+    return (mpi_errno);
+
+
 }
 
 int init_thread_reg(void)
@@ -238,7 +307,7 @@ int disable_split_comm(pthread_t my_id)
     if (found == 0)
     {
         printf("Error:max number of threads reached\n");
-        exit(0);
+        ibv_error_abort (GEN_EXIT_ERR, "create_2level_com");
     }
 
     return 1;
@@ -266,7 +335,7 @@ int enable_split_comm(pthread_t my_id)
     if (found == 0)
     {
         printf("Error: Could not locate thread id\n");
-        exit(0);
+        ibv_error_abort (GEN_EXIT_ERR, "create_2level_com");
     }
 
     return 1;
@@ -282,8 +351,8 @@ int check_comm_registry(MPI_Comm comm)
     context_id = comm_ptr->context_id;
 
     MPIR_Nest_incr();
-    MPI_Comm_rank(comm, &my_rank);
-    MPI_Comm_size(comm, &size);
+    PMPI_Comm_rank(comm, &my_rank);
+    PMPI_Comm_size(comm, &size);
     MPIR_Nest_decr();
 
     for (i = 0; i < comm_registered; i++){

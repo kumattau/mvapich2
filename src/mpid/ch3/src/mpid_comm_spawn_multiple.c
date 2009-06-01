@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -63,9 +63,6 @@ int MPID_Comm_spawn_multiple(int count, char *array_of_commands[],
 					  array_of_info_ptrs,
 					  root, comm_ptr, intercomm, 
 					  array_of_errcodes);
-    if (mpi_errno != MPI_SUCCESS) {
-	MPIU_ERR_SET(mpi_errno,MPI_ERR_OTHER, "**fail");
-    }
 #   else
     MPIU_ERR_SET1(mpi_errno,MPI_ERR_OTHER, "**notimpl",
 		  "**notimpl %s", FCNAME);

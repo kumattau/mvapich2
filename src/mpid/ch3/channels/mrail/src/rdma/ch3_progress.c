@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -19,6 +19,7 @@
 #include "mpidi_ch3_impl.h"
 #include "mpidu_process_locks.h"        /* for MPIDU_Yield */
 #include "mpiutil.h"
+#include "rdma_impl.h"
 
 #ifdef DEBUG
 #include "pmi.h"
@@ -105,15 +106,6 @@ void MPIDI_CH3I_Progress_wakeup(void)
 #endif
 
 #undef FUNCNAME
-#define FUNCNAME MPIDI_CH3_Get_business_card
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_CH3_Get_business_card(int myRank, char *value, int length)
-{
-    return MPI_SUCCESS;
-}
-
-#undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Connection_terminate
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
@@ -182,12 +174,14 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
 
         if (SMP_INIT)
             MPIDI_CH3I_SMP_read_progress(MPIDI_Process.my_pg);
+
         if (!SMP_ONLY) {
 
         /*CM code*/
         if (MPIDI_CH3I_Process.new_conn_complete) {
             /*New connection has been established*/
             MPIDI_CH3I_Process.new_conn_complete = 0;
+            XRC_MSG ("new conn!");
             cm_handle_pending_send();
         }
 
@@ -215,14 +209,8 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
 	    {
                 spin_count = 0;
                 MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
-#ifdef CKPT
-                MPIDI_CH3I_CR_unlock();
-#endif                
                 MPIDU_Yield();
                 MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
-#ifdef CKPT
-                MPIDI_CH3I_CR_lock();
-#endif
             }
             MPIU_THREAD_CHECK_END
 #endif
@@ -233,13 +221,20 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
             MPIDI_Sleep_yield_count = 0;
 #endif
             /*CM code*/
-            if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_SRV) {
+            if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_SRV 
+#ifdef _ENABLE_XRC_
+                    || VC_XST_ISSET (vc_ptr, XF_NEW_RECV)
+#endif
+                    ) {
                 /*newly established connection on server side*/
                 MPIDI_CH3I_CM_Establish(vc_ptr);
-                cm_handle_pending_send();
+#ifdef _ENABLE_XRC_
+                if (!USE_XRC)
+#endif
+                    cm_handle_pending_send();
             }
 #ifdef CKPT
-            if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_REACTIVATING_SRV) {
+            else if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_REACTIVATING_SRV) {
                 MPIDI_CH3I_CM_Establish(vc_ptr);
                 MPIDI_CH3I_CM_Send_logged_msg(vc_ptr);
                 if (vc_ptr->mrail.sreq_head) /*has rndv*/
@@ -262,14 +257,8 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
                 if(spin_count > 10) {
                     spin_count = 0;
                     MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
-#ifdef CKPT
-                    MPIDI_CH3I_CR_unlock();
-#endif
                     MPIDU_Yield();
                     MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
-#ifdef CKPT
-                    MPIDI_CH3I_CR_lock();
-#endif
                 }
                 MPIU_THREAD_CHECK_END
 #endif
@@ -354,6 +343,7 @@ int MPIDI_CH3I_Progress_test()
         if (MPIDI_CH3I_Process.new_conn_complete)
         {
             /*New connection has been established*/
+            XRC_MSG ("new conn!");
             MPIDI_CH3I_Process.new_conn_complete = 0;
             cm_handle_pending_send();
         }
@@ -379,15 +369,21 @@ int MPIDI_CH3I_Progress_test()
         if (vc_ptr != NULL)
         {
             /*CM code*/
-            if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_SRV)
-            {
+            if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_SRV 
+#ifdef _ENABLE_XRC_
+                    || VC_XST_ISSET (vc_ptr, XF_NEW_RECV)
+#endif
+               ) {
                 /*newly established connection on server side*/
                 MPIDI_CH3I_CM_Establish(vc_ptr);
-                cm_handle_pending_send();
+#ifdef _ENABLE_XRC_
+                if (!USE_XRC)
+#endif
+                    cm_handle_pending_send();
             }
 
 #if defined(CKPT)
-            if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_REACTIVATING_SRV)
+            else if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_REACTIVATING_SRV)
             {
                 MPIDI_CH3I_CM_Establish(vc_ptr);
                 MPIDI_CH3I_CM_Send_logged_msg(vc_ptr);
@@ -428,6 +424,7 @@ fn_exit:
     DEBUG_PRINT("Exiting ch3 progress test\n");
     return mpi_errno;
 }
+
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Progress_end
@@ -561,13 +558,20 @@ static int cm_handle_reactivation_complete()
 #define FUNCNAME cm_send_pending_msg
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FCNAME)
-static int cm_send_pending_msg(MPIDI_VC_t * vc)
+int cm_send_pending_msg(MPIDI_VC_t * vc)
 {
     MPIDI_STATE_DECL(MPID_STATE_CM_SENDING_PENDING_MSG);
     MPIDI_FUNC_ENTER(MPID_STATE_CM_SENDING_PENDING_MSG);
     int mpi_errno = MPI_SUCCESS;
 
-    MPIU_Assert(vc->ch.state==MPIDI_CH3I_VC_STATE_IDLE);
+    XRC_MSG ("cm_send_pending_msg %d 0x%08x %d\n", vc->pg_rank, 
+            vc->ch.xrc_flags, vc->ch.state);
+#ifdef _ENABLE_XRC_
+    MPIU_Assert (vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE 
+            || VC_XST_ISSET (vc, XF_SEND_IDLE));
+#else
+    MPIU_Assert (vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE);
+#endif
 
     while (!MPIDI_CH3I_CM_SendQ_empty(vc)) {
         struct MPID_Request * sreq;
@@ -762,27 +766,60 @@ fn_fail:
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 static int cm_handle_pending_send()
 {
-    int i = 0;
     int mpi_errno = MPI_SUCCESS;
     MPIDI_VC_t* vc = NULL;
-    MPIDI_PG_t* pg = MPIDI_Process.my_pg;
+    MPIDI_PG_t* pg;
+    int i;
 
-    for (; i < MPIDI_PG_Get_size(pg); ++i)
-    {
-	MPIDI_PG_Get_vc(pg, i, &vc);
+    MPIDI_PG_Iterate_reset();
+    MPIDI_PG_Get_next(&pg);
 
-	if (vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE
-            && !MPIDI_CH3I_CM_SendQ_empty(vc))
-        {
-	    if ((mpi_errno = cm_send_pending_msg(vc)) != MPI_SUCCESS)
-	    {
-                MPIU_ERR_POP(mpi_errno);
+    while (pg) {
+        for (i = 0; i < MPIDI_PG_Get_size(pg); ++i) {
+	    MPIDI_PG_Get_vc(pg, i, &vc);
+
+            if ((vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE
+#ifdef _ENABLE_XRC_
+                    || (USE_XRC && VC_XST_ISSET (vc, XF_SEND_IDLE))
+#endif
+                ) && !MPIDI_CH3I_CM_SendQ_empty(vc)) {
+                if ((mpi_errno = cm_send_pending_msg(vc)) != MPI_SUCCESS) {
+                    MPIU_ERR_POP(mpi_errno);
+                }
             }
-	}
+#ifdef _ENABLE_XRC_
+            if (USE_XRC && MPIDI_CH3I_RDMA_Process.xrc_rdmafp && 
+                    VC_XSTS_ISSET (vc, (XF_START_RDMAFP | XF_SEND_IDLE))
+                    && VC_XST_ISUNSET (vc, XF_CONN_CLOSING)) {
+                XRC_MSG ("FP to %d\n", vc->pg_rank);
+                vbuf_fast_rdma_alloc (vc, 1);
+                vbuf_address_send (vc);
+                VC_XST_CLR (vc, XF_START_RDMAFP);
+            } 
+#endif
+        }
+        MPIDI_PG_Get_next(&pg);
     }
 
 fn_fail:
     return mpi_errno;
+}
+
+#undef FUNCNAME
+#define FUNCNAME cm_accept_new_vc
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+static int cm_accept_new_vc(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_cm_establish_t *header)
+{
+    XRC_MSG ("cm_accept_new_vc");
+    MPIU_Assert((uintptr_t)vc == header->vc_addr);
+    MPIU_Assert(vc->pg == NULL);
+#if 0
+    MPIDI_CH3I_CM_Establish(vc);
+#endif
+    MPIDI_CH3I_Acceptq_enqueue(vc, header->port_name_tag);
+
+    return MPI_SUCCESS;
 }
 
 #undef FUNCNAME
@@ -870,8 +907,10 @@ static int handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* header_type
 
     DEBUG_PRINT("[handle read] pheader: %p\n", buffer->pheader);
 
-    MPIDI_CH3I_MRAIL_Parse_header(vc, buffer, (void *)(&header), &header_size);
-
+    mpi_errno = MPIDI_CH3I_MRAIL_Parse_header(vc, buffer, (void *)(&header), &header_size);
+    if(mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
 #if defined(MPIDI_MRAILI_COALESCE_ENABLED)
     buffer->content_consumed = header_size;
 #endif /* defined(MPIDI_MRAILI_COALESCE_ENABLED) */
@@ -938,6 +977,11 @@ static int handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* header_type
     case MPIDI_CH3_PKT_RGET_FINISH:
             DEBUG_PRINT("RGET finish received\n");
             MPIDI_CH3_Rendezvous_rget_send_finish(vc, (void*) header);
+        goto fn_exit;
+    case MPIDI_CH3_PKT_CM_ESTABLISH:
+        mpi_errno = cm_accept_new_vc(vc, (void *)header);
+        if (mpi_errno)
+            MPIU_ERR_POP(mpi_errno);
         goto fn_exit;
     case MPIDI_CH3_PKT_PACKETIZED_SEND_START:
             packetized_recv = 1;

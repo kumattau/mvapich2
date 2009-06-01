@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2003-2008, The Ohio State University. All rights
+# Copyright (c) 2003-2009, The Ohio State University. All rights
 # reserved.
 #
 # This file is part of the MVAPICH2 software package developed by the
@@ -13,7 +13,7 @@
 #   (C) 2001 by Argonne National Laboratory.
 #       See COPYRIGHT in top-level directory.
 #
-# Copyright (c) 2003-2008, The Ohio State University. All rights
+# Copyright (c) 2003-2009, The Ohio State University. All rights
 # reserved.
 #
 # This file is part of the MVAPICH2 software package developed by the
@@ -332,15 +332,15 @@ class MPDMan(object):
             else:
                 self.universeSize = msg['ring_ncpus']
 # <_OSU_MVAPICH_>
-            #CR_SUPPORT
-            if (msg.has_key('cr_enabled') and msg['cr_enabled'] == 1):
-                self.cr_enabled = 1
-                mpd_print(1, 'cr_enabled')
-                self.cr_base_port = msg['cr_mpd_base_port'] #Actual listen port will be base port + rank
-                self.cr_restart_file = msg['cr_restart_file']
-            else:
-                self.cr_enabled = 0
-            #CR_SUPPORT_END
+        #CR_SUPPORT
+        if (msg.has_key('cr_enabled') and msg['cr_enabled'] == 1):
+            self.cr_enabled = 1
+            mpd_print(1, 'cr_enabled')
+            self.cr_base_port = msg['cr_mpd_base_port'] #Actual listen port will be base port + rank
+            self.cr_restart_file = msg['cr_restart_file']
+        else:
+            self.cr_enabled = 0
+        #CR_SUPPORT_END
         #CR_SUPPORT
         #listen to CR_Port
         if self.cr_enabled == 1:

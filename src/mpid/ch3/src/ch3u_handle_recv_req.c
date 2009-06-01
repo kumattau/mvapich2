@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -18,7 +18,7 @@
 #include "mpidimpl.h"
 #include "mpidrma.h"
 
-#if defined(_OSU_MVAPICH)
+#if defined(_OSU_MVAPICH_)
 #undef DEBUG_PRINT
 #if defined (DEBUG)
 #define DEBUG_PRINT(args...)                                      \
@@ -33,10 +33,25 @@ do {                                                              \
 #endif /* defined(DEBUG) */
 #endif /* defined(_OSU_MVAPICH) */
 
+//#define PSM_DEBUG
+#ifdef PSM_DEBUG
+#define PSM_PRINT(args...)                                      \
+do {                                                              \
+    int rank;                                                     \
+    PMI_Get_rank(&rank);                                          \
+    fprintf(stderr, "[%d][%s:%d] ", rank, __FILE__, __LINE__);    \
+    fprintf(stderr, args);                                        \
+} while (0)
+#else /* defined(DEBUG) */
+#define PSM_PRINT(args...)
+#endif /* defined(DEBUG) */
+#
 static int create_derived_datatype(MPID_Request * rreq, MPID_Datatype ** dtp);
 static int do_accumulate_op(MPID_Request * rreq);
 static int do_simple_accumulate(MPIDI_PT_single_op *single_op);
 static int do_simple_get(MPID_Win *win_ptr, MPIDI_Win_lock_queue *lock_queue);
+
+#define PARTIAL_COMPLETION 4
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3U_Handle_recv_req
@@ -82,8 +97,12 @@ int MPIDI_CH3U_Handle_recv_req(MPIDI_VC_t * vc, MPID_Request * rreq,
     }
 #if defined(_OSU_MVAPICH_)
 fn_exit:
-    if (TRUE == *complete && VAPI_PROTOCOL_R3 == rreq->mrail.protocol)
-	MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(rreq);
+    if (TRUE == *complete && VAPI_PROTOCOL_R3 == rreq->mrail.protocol) {
+        MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(rreq);
+    }
+    else if (PARTIAL_COMPLETION == *complete) {
+        *complete = 1;
+    }
 #endif /* defined(_OSU_MVAPICH_) */
 
     in_routine = FALSE;
@@ -218,7 +237,8 @@ int MPIDI_CH3_ReqHandler_PutRespDerivedDTComplete( MPIDI_VC_t *vc,
     MPIU_Free(rreq->dev.dtype_info);
     
     rreq->dev.segment_ptr = MPID_Segment_alloc( );
-    /* if (!rreq->dev.segment_ptr) { MPIU_ERR_POP(); } */
+    MPIU_ERR_CHKANDJUMP1((rreq->dev.segment_ptr == NULL), mpi_errno, MPI_ERR_OTHER, "**nomem", "**nomem %s", "MPID_Segment_alloc");
+
     MPID_Segment_init(rreq->dev.user_buf,
 		      rreq->dev.user_count,
 		      rreq->dev.datatype,
@@ -256,6 +276,7 @@ int MPIDI_CH3_ReqHandler_PutRespDerivedDTComplete( MPIDI_VC_t *vc,
 	cts_pkt->sender_req_id = rreq->dev.sender_req_id;
 	cts_pkt->receiver_req_id = rreq->handle;
 
+
 	mpi_errno = MPIDI_CH3_Prepare_rndv_cts(vc, cts_pkt, rreq);
 	if (mpi_errno != MPI_SUCCESS) {
 	    MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ch3|rndv");
@@ -270,7 +291,7 @@ int MPIDI_CH3_ReqHandler_PutRespDerivedDTComplete( MPIDI_VC_t *vc,
 	if (cts_req != NULL) {
 	    MPID_Request_release(cts_req);
 	}
-	*complete = TRUE;
+	*complete = PARTIAL_COMPLETION;
     } else {
         MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|loadrecviov");
     }
@@ -337,7 +358,8 @@ int MPIDI_CH3_ReqHandler_AccumRespDerivedDTComplete( MPIDI_VC_t *vc,
     MPIU_Free(rreq->dev.dtype_info);
     
     rreq->dev.segment_ptr = MPID_Segment_alloc( );
-    /* if (!rreq->dev.segment_ptr) { MPIU_ERR_POP(); } */
+    MPIU_ERR_CHKANDJUMP1((rreq->dev.segment_ptr == NULL), mpi_errno, MPI_ERR_OTHER, "**nomem", "**nomem %s", "MPID_Segment_alloc");
+
     MPID_Segment_init(rreq->dev.user_buf,
 		      rreq->dev.user_count,
 		      rreq->dev.datatype,
@@ -390,7 +412,7 @@ int MPIDI_CH3_ReqHandler_AccumRespDerivedDTComplete( MPIDI_VC_t *vc,
 	    MPID_Request_release(cts_req);
 	}
 
-	*complete = TRUE;
+	*complete = PARTIAL_COMPLETION;
     } else {
             MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|loadrecviov");
     }
@@ -452,9 +474,51 @@ int MPIDI_CH3_ReqHandler_GetRespDerivedDTComplete( MPIDI_VC_t *vc,
     
     iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) get_resp_pkt;
     iov[0].MPID_IOV_LEN = sizeof(*get_resp_pkt);
+
+#if defined (_OSU_PSM_)
+    {
+    /* GET_RESP packet. send packet & data. Pack if needed */
+        MPIDI_CH3_Pkt_get_t *get_pkt = vc->ch.pkt_active;
+
+        get_resp_pkt->target_rank = get_pkt->source_rank;
+        get_resp_pkt->source_rank = get_pkt->target_rank;
+        get_resp_pkt->source_win_handle = get_pkt->source_win_handle;
+        get_resp_pkt->target_win_handle = get_pkt->target_win_handle;
+        get_resp_pkt->rndv_mode = get_pkt->rndv_mode;
+        get_resp_pkt->rndv_tag = get_pkt->rndv_tag;
+        get_resp_pkt->rndv_len = get_pkt->rndv_len;
+        get_resp_pkt->mapped_srank = get_pkt->mapped_trank;
+        get_resp_pkt->mapped_trank = get_pkt->mapped_srank;
+
+        if(new_dtp->is_contig) {
+            PSM_PRINT("GET_RESP: contiguous packet\n");
+            iov[1].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) get_pkt->addr;
+            iov[1].MPID_IOV_LEN = new_dtp->size * sreq->dev.user_count;
+        } else {
+            MPID_Request tmp;
+            psm_do_pack(sreq->dev.user_count, new_dtp->handle, NULL, &tmp, 
+                    get_pkt->addr, SEGMENT_IGNORE_LAST);
+            iov[1].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) tmp.pkbuf;
+            iov[1].MPID_IOV_LEN = tmp.pksz;
+            PSM_PRINT("GET_RESP: segment did pack\n");
+        }
+        if(get_pkt->rndv_mode) {
+            assert(get_pkt->rndv_len == iov[1].MPID_IOV_LEN);
+        }
+        mpi_errno = MPIU_CALL(MPIDI_CH3,iStartMsgv(vc, iov, 2, &sreq));
+        if(mpi_errno != MPI_SUCCESS) {
+            MPIU_Object_set_ref(sreq, 0);
+            MPIDI_CH3_Request_destroy(sreq);
+            sreq = NULL;
+            MPIU_ERR_SETFATALANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|rmamsg"); 
+        }
+        goto fn_exit;
+    }
+#endif
     
     sreq->dev.segment_ptr = MPID_Segment_alloc( );
-    /* if (!sreq->dev.segment_ptr) { MPIU_ERR_POP(); } */
+    MPIU_ERR_CHKANDJUMP1((sreq->dev.segment_ptr == NULL), mpi_errno, MPI_ERR_OTHER, "**nomem", "**nomem %s", "MPID_Segment_alloc");
+
     MPID_Segment_init(sreq->dev.user_buf,
 		      sreq->dev.user_count,
 		      sreq->dev.datatype,
@@ -516,6 +580,7 @@ int MPIDI_CH3_ReqHandler_GetRespDerivedDTComplete( MPIDI_VC_t *vc,
 #endif /* defined(_OSU_MVAPICH_) */
     /* mark receive data transfer as complete and decrement CC in receive 
        request */
+fn_exit:
     MPIDI_CH3U_Request_complete(rreq);
     *complete = TRUE;
     
@@ -900,9 +965,8 @@ static int do_accumulate_op(MPID_Request *rreq)
     MPIR_Nest_incr();
     mpi_errno = NMPI_Type_get_true_extent(rreq->dev.datatype, &true_lb, &true_extent);
     MPIR_Nest_decr();
-    if (mpi_errno) 
-    {
-        MPIU_ERR_POP(mpi_errno);
+    if (mpi_errno) {
+	MPIU_ERR_POP(mpi_errno);
     }
     
     MPIU_Free((char *) rreq->dev.user_buf + true_lb);
@@ -1137,6 +1201,15 @@ int MPIDI_CH3I_Send_pt_rma_done_pkt(MPIDI_VC_t *vc, MPI_Win source_win_handle)
     MPIDI_VC_FAI_send_seqnum(vc, seqnum);
     MPIDI_Pkt_set_seqnum(pt_rma_done_pkt, seqnum);
 #endif /* defined(_OSU_MVAPICH_) */
+
+#if defined (_OSU_PSM_)
+    MPID_Win *win_ptr;
+
+    MPID_Win_get_ptr(source_win_handle, win_ptr);
+    pt_rma_done_pkt->source_rank = win_ptr->my_rank;
+    pt_rma_done_pkt->target_rank = vc->pg_rank;
+    pt_rma_done_pkt->target_win_handle = win_ptr->all_win_handles[vc->pg_rank];
+#endif /* _OSU_PSM_ */
 
     mpi_errno = MPIU_CALL(MPIDI_CH3,iStartMsg(vc, pt_rma_done_pkt,
 					      sizeof(*pt_rma_done_pkt), &req));

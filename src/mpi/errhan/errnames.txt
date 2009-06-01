@@ -42,6 +42,7 @@ also the value at index %d
 **topotoolarge:Topology size is greater than communicator size
 **topotoolarge %d %d:Topology size %d is larger than communicator size (%d)
 **notcarttopo:No Cartesian topology associated with this communicator
+**dimszero:Communicator associated with zero-dimensional cartesian topology
 **notgraphtopo:No Graph topology associated with this communicator
 **notopology:No topology associated with this communicator
 **dimsmany:Number of dimensions is too large 
@@ -465,6 +466,8 @@ be in the range 0 to %d
 **winunlockrank:Invalid rank argument
 **winunlockrank %d %d:Invalid rank argument %d, should be %d
 **nomemreq:failure occurred while allocating memory for a request object
+**nomemuereq %d:Failed to allocate memory for an unexpected message. %d \
+unexpected messages queued.
 **notcstatignore:MPI_STATUS_IGNORE cannot be passed to MPI_Status_c2f()
 **notfstatignore:MPI_STATUS_IGNORE cannot be passed to MPI_Status_f2c()
 **user:user defined function returned an error code
@@ -934,6 +937,7 @@ be in the range 0 to %d
 **psm_ep_connect %s:psm_ep_connect failed (%s)
 **psm_ep_open:psm_ep_open failed
 **psm_ep_open %s:psm_ep_open failed (%s)
+**psmsendcancel: psm does not support send cancel. Aborting program.
 **psm_finalize:psm_finalize failed
 **psm_finalize %s:psm_finalize failed (%s)
 **psm_init:psm_init failed
@@ -950,6 +954,17 @@ be in the range 0 to %d
 **psm_test %s:psm_test failed (%s)
 **psm_wait:psm_wait failed
 **psm_wait %s:psm_wait failed (%s)
+**psmepopen:psm_ep_open failed
+**epid_getfailed: kvs get of epid failed
+**epid_putcommit: kvs commit of epid failed
+**epid_putfailed: kvs put of epid failed
+**pmicommituuid: uuid kvs commit failed
+**pmigetuuid: uuid kvs get failed
+**pmiputuuid: uuid kvs put failed
+**psm_mqinitfailed: mq initialization failed
+**psmconnectfailed: psm connect function failed
+**psminit: psm init function failed
+**psmnomem: psm out of memory error
 
 
 #

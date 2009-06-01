@@ -3,8 +3,24 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
 
 #include "mpidi_ch3_impl.h"
+#ifdef _ENABLE_XRC_
+#include "rdma_impl.h"
+#else
+#define XRC_MSG(s...)
+#endif
 
 /*
  * This file replaces ch3u_comm_connect.c and ch3u_comm_accept.c .  These
@@ -33,7 +49,7 @@ typedef struct pg_node {
 			      (see pg_translation) */
     char *pg_id;
     char *str;             /* String describing connection info for pg */
-    int   lenStr;          /* Length of this string */
+    int   lenStr;          /* Length of this string (including the null terminator(s)) */
     struct pg_node *next;
 } pg_node;
 
@@ -209,6 +225,9 @@ static int MPIDI_Create_inter_root_communicator_accept(const char *port_name,
     *comm_pptr = tmp_comm;
     *vc_pptr = new_vc;
 
+    MPIU_DBG_MSG_FMT(CH3_CONNECT,VERBOSE,(MPIU_DBG_FDEST,
+		  "new_vc=%p", new_vc));
+
 fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CREATE_INTER_ROOT_COMMUNICATOR_ACCEPT);
     return mpi_errno;
@@ -368,6 +387,9 @@ int MPIDI_Comm_connect(const char *port_name, MPID_Info *info, int root,
 	if (mpi_errno != MPI_SUCCESS) {
 	    MPIU_ERR_POP(mpi_errno);
 	}
+#if defined (_OSU_MVAPICH_)
+    new_vc->tmp_dpmvc = 1;
+#endif
 
 	/* Make an array to translate local ranks to process group index 
 	   and rank */
@@ -507,7 +529,7 @@ int MPIDI_Comm_connect(const char *port_name, MPID_Info *info, int root,
 
     /* Free new_vc. It was explicitly allocated in MPIDI_CH3_Connect_to_root.*/
     if (rank == root) {
-	FreeNewVC( new_vc );
+	    FreeNewVC( new_vc );
     }
 
  fn_exit: 
@@ -772,7 +794,7 @@ int MPID_PG_BCast( MPID_Comm *peercomm_p, MPID_Comm *comm_p, int root )
 	    }
 	    
 	    pg_str  = pg_list->str;
-	    len     = pg_list->lenStr + 1;
+	    len     = pg_list->lenStr;
 	    pg_list = pg_list->next;
 	}
 	NMPI_Bcast( &len, 1, MPI_INT, root, comm_p->handle );
@@ -834,7 +856,7 @@ static int SendPGtoPeerAndFree( MPID_Comm *tmp_comm, int *sendtag_p,
 
     while (pg_list != NULL) {
 	pg_iter = pg_list;
-	i = pg_iter->lenStr + 1;
+	i = pg_iter->lenStr;
 	/*printf("connect:sending 1 int: %d\n", i);fflush(stdout);*/
 	mpi_errno = MPIC_Send(&i, 1, MPI_INT, 0, sendtag++, tmp_comm->handle);
 	*sendtag_p = sendtag;
@@ -925,7 +947,9 @@ int MPIDI_Comm_accept(const char *port_name, MPID_Info *info, int root,
 	if (mpi_errno != MPI_SUCCESS) {
 	    MPIU_ERR_POP(mpi_errno);
 	}
-
+#if defined (_OSU_MVAPICH_)
+    new_vc->tmp_dpmvc = 1;
+#endif
 	/* Make an array to translate local ranks to process group index and 
 	   rank */
 	MPIU_CHKLMEM_MALLOC(local_translation,pg_translation*,
@@ -1057,7 +1081,7 @@ int MPIDI_Comm_accept(const char *port_name, MPID_Info *info, int root,
        allocated in ch3_progress.c and returned by 
        MPIDI_CH3I_Acceptq_dequeue. */
     if (rank == root) {
-	FreeNewVC( new_vc );
+	    FreeNewVC( new_vc );
     }
 
 fn_exit:
@@ -1160,12 +1184,14 @@ static int FreeNewVC( MPIDI_VC_t *new_vc )
 {
     MPID_Progress_state progress_state;
     int mpi_errno = MPI_SUCCESS;
-    
+   
+    XRC_MSG ("FreeNew VC 0x%08x", new_vc->ch.xrc_flags);
     if (new_vc->state != MPIDI_VC_STATE_INACTIVE) {
 	/* If the new_vc isn't done, run the progress engine until
 	   the state of the new vc is complete */
 	MPID_Progress_start(&progress_state);
 	while (new_vc->state != MPIDI_VC_STATE_INACTIVE) {
+        XRC_MSG ("FN: State %d", new_vc->state);
 	    mpi_errno = MPID_Progress_wait(&progress_state);
 	    /* --BEGIN ERROR HANDLING-- */
 	    if (mpi_errno != MPI_SUCCESS)
@@ -1177,14 +1203,23 @@ static int FreeNewVC( MPIDI_VC_t *new_vc )
 	}
 	MPID_Progress_end(&progress_state);
     }
-
+    XRC_MSG ("FreeNew Done");
+#if defined (_OSU_MVAPICH_)
+    MPIDI_CH3I_Cleanup_after_connection(new_vc);
+#endif
     /* FIXME: remove this ifdef - method on connection? */
 #ifdef MPIDI_CH3_HAS_CONN_ACCEPT_HOOK
     mpi_errno = MPIDI_CH3_Cleanup_after_connection( new_vc );
 #endif
 
+#if defined (_OSU_MVAPICH_)
+    if(!MPIDI_CH3I_Check_pending_send(new_vc)) {
+        memset(new_vc, 0, sizeof(MPIDI_VC_t));
+        MPIU_Free(new_vc);
+    }
+#else
     MPIU_Free(new_vc);
-
+#endif
  fn_fail:
     return mpi_errno;
 }

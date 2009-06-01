@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -104,6 +104,13 @@ int udapl_prepost_threshold = 5;
 int rdma_num_rails = 1;
 
 int rdma_num_hcas = 1;
+
+int enable_knomial_2level_bcast=1;
+int inter_node_knomial_factor=4;
+int intra_node_knomial_factor=4;
+int knomial_2level_bcast_threshold=0;
+
+
 
 unsigned int  rdma_ndreg_entries = RDMA_NDREG_ENTRIES;
 unsigned long rdma_dreg_cache_limit = 0;
@@ -258,4 +265,36 @@ rdma_init_parameters (MPIDI_CH3I_RDMA_Process_t *proc)
     udapl_rq_size =
         udapl_prepost_depth + udapl_prepost_rendezvous_extra +
         udapl_prepost_noop_extra;
+
+    if( (value = getenv("MV2_USE_KNOMIAL_2LEVEL_BCAST")) != NULL) {
+            enable_knomial_2level_bcast=!!(int)atoi(value);
+        if(enable_knomial_2level_bcast <= 0)  {
+                enable_knomial_2level_bcast = 0;
+         }
+     }
+
+    if( (value = getenv("MV2_KNOMIAL_INTRA_NODE_FACTOR")) != NULL) {
+            intra_node_knomial_factor=(int)atoi(value);
+        if(intra_node_knomial_factor < INTRA_NODE_KNOMIAL_FACTOR_MIN) {
+                intra_node_knomial_factor = INTRA_NODE_KNOMIAL_FACTOR_MIN;
+        }
+        if(intra_node_knomial_factor > INTRA_NODE_KNOMIAL_FACTOR_MAX) {
+                intra_node_knomial_factor = INTRA_NODE_KNOMIAL_FACTOR_MAX;
+        }
+     }
+    if( (value = getenv("MV2_KNOMIAL_INTER_NODE_FACTOR")) != NULL) {
+            inter_node_knomial_factor=(int)atoi(value);
+        if(inter_node_knomial_factor < INTER_NODE_KNOMIAL_FACTOR_MIN) {
+                inter_node_knomial_factor = INTER_NODE_KNOMIAL_FACTOR_MIN;
+        }
+        if(inter_node_knomial_factor > INTER_NODE_KNOMIAL_FACTOR_MAX) {
+                inter_node_knomial_factor = INTER_NODE_KNOMIAL_FACTOR_MAX;
+        }
+     }
+    if( (value = getenv("MV2_KNOMIAL_2LEVEL_BCAST_THRESHOLD")) != NULL) {
+            knomial_2level_bcast_threshold=(int)atoi(value);
+     }
+
+
+
 }

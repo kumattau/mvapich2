@@ -5,8 +5,6 @@
  */
 
 #include "mpid_nem_impl.h"
-#include <sched.h>
-#define BUSY_WAIT() sched_yield()
 
 #define NULL_CONTEXT_ID -1
 
@@ -224,7 +222,6 @@ static int msg_barrier (MPID_Comm *comm_ptr, int rank, int size, int *rank_array
 }
 
 
-
 #undef FUNCNAME
 #define FUNCNAME barrier
 #undef FCNAME
@@ -307,7 +304,7 @@ static int barrier (MPID_Comm *comm_ptr)
         else
         {
             while (barrier_vars->sig == sense)
-                BUSY_WAIT();
+                MPIDU_Yield();
         }
 
         goto fn_exit;
@@ -324,7 +321,7 @@ static int barrier (MPID_Comm *comm_ptr)
         /* wait for local procs to reach barrier */
         if (local_size > 1)
             while (barrier_vars->sig0 == 0)
-                BUSY_WAIT();
+                MPIDU_Yield();
 
         /* now do a barrier with external processes */
         mpi_errno = msg_barrier (comm_ptr, external_rank, external_size, external_ranks);
@@ -357,7 +354,7 @@ static int barrier (MPID_Comm *comm_ptr)
 	}
 
         while (barrier_vars->sig == sense)
-            BUSY_WAIT();
+            MPIDU_Yield();
     }
 
  fn_exit:

@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -16,7 +16,6 @@
  */
 
 #include "mpidimpl.h"
-#include "mpidrma.h"
 
 /*
  * This file contains the dispatch routine called by the ch3 progress 
@@ -76,6 +75,7 @@ int MPIDI_CH3_Pkt_size_index[] = {
     sizeof(MPIDI_CH3_Pkt_packetized_send_data_t),
     sizeof(MPIDI_CH3_Pkt_rndv_r3_data_t),
     sizeof(MPIDI_CH3_Pkt_address_t),
+    sizeof(MPIDI_CH3_Pkt_cm_establish_t),
 #if defined(CKPT)
     /* These contrl packet has no packet header,
      * use noop packet as the packet header size*/
@@ -83,6 +83,9 @@ int MPIDI_CH3_Pkt_size_index[] = {
     sizeof(MPIDI_CH3I_MRAILI_Pkt_noop),
     sizeof(MPIDI_CH3I_MRAILI_Pkt_noop),
 #endif /* defined(CKPT) */
+#if defined(_SMP_LIMIC_)
+    sizeof(MPIDI_CH3_Pkt_limic_comp_t),
+#endif
 #if defined(USE_EAGER_SHORT)
     sizeof(MPIDI_CH3_Pkt_eagershort_send_t),
 #endif /* defined(USE_EAGER_SHORT) */
@@ -201,6 +204,8 @@ int MPIDI_CH3U_Handle_ordered_recv_pkt(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
 #else /* defined(_OSU_MVAPICH_) */
     MPIU_Assert(pkt->type  >= 0 && pkt->type <= MPIDI_CH3_PKT_END_CH3);
 #endif /* defined(_OSU_MVAPICH_) */
+    if (pktArray[pkt->type] == NULL)
+        fprintf(stderr, "Warning! Unmatched type %d\n", pkt->type);
     mpi_errno = pktArray[pkt->type](vc, pkt, buflen, rreqp);
 
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3U_HANDLE_ORDERED_RECV_PKT);
@@ -297,7 +302,8 @@ int MPIDI_CH3U_Receive_data_found(MPID_Request *rreq, char *buf, MPIDI_msg_sz_t 
 	   the entire message */
         
 	rreq->dev.segment_ptr = MPID_Segment_alloc( );
-	/* if (!rreq->dev.segment_ptr) { MPIU_ERR_POP(); } */
+        MPIU_ERR_CHKANDJUMP1((rreq->dev.segment_ptr == NULL), mpi_errno, MPI_ERR_OTHER, "**nomem", "**nomem %s", "MPID_Segment_alloc");
+
  	MPID_Segment_init(rreq->dev.user_buf, rreq->dev.user_count, 
 			  rreq->dev.datatype, rreq->dev.segment_ptr, 0);
 	rreq->dev.segment_first = 0;
@@ -462,11 +468,10 @@ int MPIDI_CH3U_Post_data_receive_found(MPID_Request * rreq)
     else {
 	/* user buffer is not contiguous or is too small to hold
 	   the entire message */
-	int mpi_errno;
 	
 	MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"IOV loaded for non-contiguous read");
 	rreq->dev.segment_ptr = MPID_Segment_alloc( );
-	/* if (!rreq->dev.segment_ptr) { MPIU_ERR_POP(); } */
+        MPIU_ERR_CHKANDJUMP1((rreq->dev.segment_ptr == NULL), mpi_errno, MPI_ERR_OTHER, "**nomem", "**nomem %s", "MPID_Segment_alloc");
 	MPID_Segment_init(rreq->dev.user_buf, rreq->dev.user_count, 
 			  rreq->dev.datatype, rreq->dev.segment_ptr, 0);
 	rreq->dev.segment_first = 0;
@@ -573,6 +578,7 @@ int MPIDI_CH3I_Try_acquire_win_lock(MPID_Win *win_ptr, int requested_lock)
 }
 
 
+
 /* ------------------------------------------------------------------------ */
 /* Here are the functions that implement the packet actions.  They'll be moved
  * to more modular places where it will be easier to replace subsets of the
@@ -591,7 +597,11 @@ int MPIDI_CH3I_Try_acquire_win_lock(MPID_Win *win_ptr, int requested_lock)
  *                                                                          */
 /* ------------------------------------------------------------------------ */
 
+
 /* FIXME: we still need to implement flow control */
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3_PktHandler_FlowCntlUpdate
+#undef FCNAME
 int MPIDI_CH3_PktHandler_FlowCntlUpdate( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 					 MPIDI_msg_sz_t *buflen, MPID_Request **rreqp)
 {
@@ -676,7 +686,7 @@ int MPIDI_CH3_PktHandler_Init( MPIDI_CH3_PktHandler_Fcn *pktArray[],
 
     /* Connection Management */
     pktArray[MPIDI_CH3_PKT_CLOSE] =
-        MPIDI_CH3_PktHandler_Close;
+	MPIDI_CH3_PktHandler_Close;
 
     /* Provision for flow control */
     pktArray[MPIDI_CH3_PKT_FLOW_CNTL_UPDATE] = 0;

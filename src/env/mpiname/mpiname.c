@@ -1,4 +1,4 @@
-/* Copyright (c) 2002-2008, The Ohio State University. All rights
+/* Copyright (c) 2002-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -14,7 +14,6 @@
 #include <unistd.h>
 #include <stdio.h>
 
-#if defined(MVAPICH)
 extern const char MPIR_Version_string[];
 extern const char MPIR_Version_date[];
 extern const char MPIR_Version_configure[];
@@ -32,9 +31,6 @@ extern const char MPIR_Version_F90[];
 #define MPINAME_F77 MPIR_Version_F77
 #define MPINAME_F90 MPIR_Version_F90
 #define MPINAME_NAME "MVAPICH2"
-#else /* defined(MVAPICH) */
-#error "Unable to identify the MPI library." 
-#endif /* defined(MVAPICH) */
 
 #define PRINT_DEVICE 8
 #define PRINT_NAME 1

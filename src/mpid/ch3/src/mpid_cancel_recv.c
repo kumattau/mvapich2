@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -29,6 +29,15 @@ int MPID_Cancel_recv(MPID_Request * rreq)
     
     MPIU_Assert(rreq->kind == MPID_REQUEST_RECV);
 
+#if defined (_OSU_PSM_)
+    rreq->psm_flags |= PSM_RECV_CANCEL;
+    if(psm_do_cancel(rreq) == MPI_SUCCESS) {
+        *(rreq->cc_ptr) = 0;
+        // MPID_Request_release(rreq);
+    }
+    goto fn_exit;
+#endif
+
 #if defined(_OSU_MVAPICH_)
     /* OSU-MPI2 requires extra step to finish rndv request */ 
     MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(rreq);
@@ -49,6 +58,7 @@ int MPID_Cancel_recv(MPID_Request * rreq)
 	    "request 0x%08x already matched, unable to cancel", rreq->handle);
     }
 
+fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_CANCEL_RECV);
     return MPI_SUCCESS;
 }

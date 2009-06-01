@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -68,9 +68,24 @@ int MPIDI_Win_create(void *base, MPI_Aint size, int disp_unit, MPID_Info *info,
 #if defined(_OSU_MVAPICH_)
     (*win_ptr)->outstanding_rma = 0;
 #endif /* defined(_OSU_MVAPICH_) */
+#if defined (_OSU_PSM_)
+    /* my_rank is rank within this communicator. For psm-messaging
+       we need actual COMM_WORLD rank. This is comm_rank */
+    (*win_ptr)->comm_ptr = comm_ptr;
+    (*win_ptr)->my_rank = rank;
+#endif
+
     mpi_errno = NMPI_Comm_dup(comm_ptr->handle, &((*win_ptr)->comm));
     if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
-    
+   
+#if defined (_OSU_PSM_)
+    (*win_ptr)->rank_mapping = MPIU_Malloc(comm_size * sizeof(uint32_t));
+    if((*win_ptr)->rank_mapping == NULL) {
+        MPIU_ERR_SET(mpi_errno, MPI_ERR_NO_MEM, "**nomem");
+        goto fn_fail;
+    }
+#endif /* _OSU_PSM_ */
+
     /* allocate memory for the base addresses, disp_units, and
        completion counters of all processes */ 
     MPIU_CHKPMEM_MALLOC((*win_ptr)->base_addrs, void **,
@@ -110,6 +125,14 @@ int MPIDI_Win_create(void *base, MPI_Aint size, int disp_unit, MPID_Info *info,
 	(*win_ptr)->disp_units[i] = (int) tmp_buf[3*i+1];
 	(*win_ptr)->all_win_handles[i] = (MPI_Win) tmp_buf[3*i+2];
     }
+
+#if defined (_OSU_PSM_)
+    /* tell everyone, what is my COMM_WORLD rank */
+    (*win_ptr)->rank_mapping[rank] = MPIDI_Process.my_pg_rank;
+    NMPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL,
+           (*win_ptr)->rank_mapping, sizeof(uint32_t), MPI_BYTE,
+          comm_ptr->handle);
+#endif /* _OSU_PSM_ */
         
 #if defined(_OSU_MVAPICH_)
         /* -- OSU-MPI2 uses extended CH3 interface */
@@ -123,6 +146,12 @@ int MPIDI_Win_create(void *base, MPI_Aint size, int disp_unit, MPID_Info *info,
 	MPIDI_CH3I_RDMA_win_create(base, size, comm_size, rank, win_ptr, comm_ptr);
     }
 #endif /* defined(_OSU_MVAPICH_) */
+
+#if defined (_OSU_PSM_)
+    /* call psm to pre-post receive buffers for Puts */
+    psm_prepost_1sc();
+    NMPI_Barrier((*win_ptr)->comm);
+#endif
     
  fn_exit:
     MPIR_Nest_decr();
@@ -198,8 +227,12 @@ int MPIDI_Win_free(MPID_Win **win_ptr)
     }
 #endif /* defined(_OSU_MVAPICH_) */
 
+#if defined (_OSU_PSM_)
+    MPIU_Free((*win_ptr)->rank_mapping);
+#endif /* _OSU_PSM_ */    
+
     NMPI_Comm_free(&((*win_ptr)->comm));
-        
+
     MPIU_Free((*win_ptr)->base_addrs);
     MPIU_Free((*win_ptr)->disp_units);
     MPIU_Free((*win_ptr)->all_win_handles);
@@ -412,13 +445,25 @@ int MPIDI_Get(void *origin_addr, int origin_count, MPI_Datatype
 	{
 	    MPID_Datatype_get_ptr(origin_datatype, dtp);
 	    MPID_Datatype_add_ref(dtp);
+#if 0
+        if(dtp->is_contig) 
+            printf("ORIGIN derived but contigous\n");
+        else
+            printf("ORIGIN derived and NOT contig\n");
+#endif
 	}
 	MPIDI_CH3I_DATATYPE_IS_PREDEFINED(target_datatype, predefined);
 	if (!predefined)
 	{
 	    MPID_Datatype_get_ptr(target_datatype, dtp);
 	    MPID_Datatype_add_ref(dtp);
-	}
+#if 0
+        if(dtp->is_contig) 
+            printf("TARGET derived but contiguous\n");
+        else
+            printf("TARGET derived and NOT contig\n");
+#endif
+    }
     }
 
 #if defined(_OSU_MVAPICH) && !defined(_SCHEDULE)
@@ -546,36 +591,45 @@ int MPIDI_Accumulate(void *origin_addr, int origin_count, MPI_Datatype
 					   target_count, target_datatype);  
 		if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
 	    }
-	    
-	    segp = MPID_Segment_alloc();
-	    MPIU_ERR_CHKANDJUMP((!segp), mpi_errno, MPI_ERR_OTHER, "**nomem"); 
-	    MPID_Segment_init(NULL, target_count, target_datatype, segp, 0);
-	    first = 0;
-	    last  = SEGMENT_IGNORE_LAST;
-	    
-	    MPID_Datatype_get_ptr(target_datatype, dtp);
-	    vec_len = dtp->n_contig_blocks * target_count + 1; 
-	    /* +1 needed because Rob says so */
-	    MPIU_CHKLMEM_MALLOC(dloop_vec, DLOOP_VECTOR *, 
-				vec_len * sizeof(DLOOP_VECTOR), 
-				mpi_errno, "dloop vector");
-	    
-	    MPID_Segment_pack_vector(segp, first, &last, dloop_vec, &vec_len);
-	    
-	    source_buf = (tmp_buf != NULL) ? tmp_buf : origin_addr;
-	    target_buf = (char *) win_ptr->base + 
-		win_ptr->disp_unit * target_disp;
-	    type = dtp->eltype;
-	    type_size = MPID_Datatype_get_basic_size(type);
-	    for (i=0; i<vec_len; i++)
-	    {
-		count = (dloop_vec[i].DLOOP_VECTOR_LEN)/type_size;
-		(*uop)((char *)source_buf + MPIU_PtrToAint(dloop_vec[i].DLOOP_VECTOR_BUF),
-		       (char *)target_buf + MPIU_PtrToAint(dloop_vec[i].DLOOP_VECTOR_BUF),
-		       &count, &type);
+
+	    if (target_predefined) { 
+		/* target predefined type, origin derived datatype */
+
+		(*uop)(tmp_buf, (char *) win_ptr->base + win_ptr->disp_unit *
+		   target_disp, &target_count, &target_datatype);
 	    }
+	    else {
 	    
-	    MPID_Segment_free(segp);
+		segp = MPID_Segment_alloc();
+		MPIU_ERR_CHKANDJUMP((!segp), mpi_errno, MPI_ERR_OTHER, "**nomem"); 
+		MPID_Segment_init(NULL, target_count, target_datatype, segp, 0);
+		first = 0;
+		last  = SEGMENT_IGNORE_LAST;
+		
+		MPID_Datatype_get_ptr(target_datatype, dtp);
+		vec_len = dtp->n_contig_blocks * target_count + 1; 
+		/* +1 needed because Rob says so */
+		MPIU_CHKLMEM_MALLOC(dloop_vec, DLOOP_VECTOR *, 
+				    vec_len * sizeof(DLOOP_VECTOR), 
+				    mpi_errno, "dloop vector");
+		
+		MPID_Segment_pack_vector(segp, first, &last, dloop_vec, &vec_len);
+		
+		source_buf = (tmp_buf != NULL) ? tmp_buf : origin_addr;
+		target_buf = (char *) win_ptr->base + 
+		    win_ptr->disp_unit * target_disp;
+		type = dtp->eltype;
+		type_size = MPID_Datatype_get_basic_size(type);
+		for (i=0; i<vec_len; i++)
+		{
+		    count = (dloop_vec[i].DLOOP_VECTOR_LEN)/type_size;
+		    (*uop)((char *)source_buf + MPIU_PtrToAint(dloop_vec[i].DLOOP_VECTOR_BUF),
+			   (char *)target_buf + MPIU_PtrToAint(dloop_vec[i].DLOOP_VECTOR_BUF),
+			   &count, &type);
+		}
+		
+		MPID_Segment_free(segp);
+	    }
 	}
     }
     else

@@ -1,4 +1,4 @@
-/* Copyright (c) 2002-2008, The Ohio State University. All rights
+/* Copyright (c) 2002-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -70,6 +70,7 @@ void vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
     void *vbuf_ctrl_buf = NULL;
     void *vbuf_rdma_buf = NULL;
 
+    XRC_MSG ("vbuf_fast_rdma_alloc %d", c->pg_rank);
     /* initialize revelant fields */
     c->mrail.rfp.rdma_credit = 0;
 

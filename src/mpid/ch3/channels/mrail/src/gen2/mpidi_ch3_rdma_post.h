@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2002-2008, The Ohio State University. All rights
+/* Copyright (c) 2002-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -194,7 +194,7 @@ int MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(struct MPIDI_VC * vc,
 
 int MPIDI_CH3I_RDMA_cq_poll();
 
-void MRAILI_Init_vc(struct MPIDI_VC* vc, int pg_rank);
+void MRAILI_Init_vc(struct MPIDI_VC* vc);
 
 int MPIDI_CH3I_MRAILI_Eager_send(   struct MPIDI_VC* vc,
                                     MPID_IOV * iov,

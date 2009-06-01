@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2002-2008, The Ohio State University. All rights
+/* Copyright (c) 2002-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -223,7 +223,7 @@ extern struct dreg_entry *dreg_unused_tail;
     dreg_free_list = d;                                             \
 }
 
-void dreg_init(void);
+int dreg_init(void);
 
 dreg_entry *dreg_register(void *buf, int len);
 

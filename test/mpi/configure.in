@@ -12,7 +12,7 @@ dnl The file name here refers to a file in the source being configured
 AC_INIT(include/mpitest.h)
 AC_CONFIG_HEADER(include/mpitestconf.h)
 AH_TOP([/* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -954,7 +954,9 @@ AC_OUTPUT(maint/testmerge \
 	  threads/pt2pt/Makefile \
 	  threads/util/Makefile \
 	  threads/comm/Makefile \
+	  threads/spawn/Makefile \
 	  errors/Makefile \
+	  errors/attr/Makefile \
 	  errors/coll/Makefile \
 	  errors/comm/Makefile \
 	  errors/group/Makefile \

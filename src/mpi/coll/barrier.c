@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -412,12 +412,16 @@ int MPI_Barrier( MPI_Comm comm )
 		    MPIDI_CH3I_CR_lock();
 #endif
                     my_rank = comm_ptr->rank;
-                    MPI_Comm_size(comm, &total_size);
+                    /* MPI_Comm_size(comm, &total_size); */
+                    total_size = comm_ptr->local_size;
                     shmem_comm = comm_ptr->shmem_comm;
 
-                    MPI_Comm_rank(shmem_comm, &local_rank);
-                    MPI_Comm_size(shmem_comm, &local_size);
+                   /*  MPI_Comm_rank(shmem_comm, &local_rank);
+                      MPI_Comm_size(shmem_comm, &local_size); */
+                   
                     MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
+                    local_rank = shmem_commptr->rank;
+                    local_size = shmem_commptr->local_size;
                     shmem_comm_rank = shmem_commptr->shmem_comm_rank;
 
                     leader_comm = comm_ptr->leader_comm;

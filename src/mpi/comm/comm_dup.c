@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -91,7 +91,7 @@ extern int split_comm;
 extern int enable_shmem_collectives;
 extern int check_split_comm(pthread_t);
 extern int disable_split_comm(pthread_t);
-extern void create_2level_comm (MPI_Comm, int, int);
+extern int create_2level_comm (MPI_Comm, int, int);
 extern int enable_split_comm(pthread_t);
 #endif /* defined(_OSU_MVAPICH_) */
 
@@ -189,10 +189,19 @@ int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
     
                 if (flag == 0){
                     int my_id, size;
-                    MPI_Comm_rank(*newcomm, &my_id);
-                    MPI_Comm_size(*newcomm, &size);
+                    mpi_errno = PMPI_Comm_rank(*newcomm, &my_id);
+                     if(mpi_errno) {
+                        MPIU_ERR_POP(mpi_errno);
+                    }
+                    mpi_errno = PMPI_Comm_size(*newcomm, &size);
+                     if(mpi_errno) {
+                        MPIU_ERR_POP(mpi_errno);
+                    }
                     disable_split_comm(pthread_self());
-                    create_2level_comm(*newcomm, size, my_id);
+                    mpi_errno = create_2level_comm(*newcomm, size, my_id);
+                     if(mpi_errno) {
+                        MPIU_ERR_POP(mpi_errno);
+                    }
                     enable_split_comm(pthread_self());
                 }
             }

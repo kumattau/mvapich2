@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2002-2008, The Ohio State University. All rights
+/* Copyright (c) 2002-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -45,6 +45,10 @@ do {                                                          \
 } while (0)
 #else
 #define DEBUG_PRINT(args...)
+#endif
+
+#ifndef ERROR
+#define ERROR   -1
 #endif
 
 /* HCA type */
@@ -112,7 +116,6 @@ typedef struct MPIDI_CH3I_RDMA_Process_t {
     uint32_t                    srq_zero_post_counter[MAX_NUM_HCAS];
     pthread_t                   async_thread[MAX_NUM_HCAS];
     uint32_t                    posted_bufs[MAX_NUM_HCAS];
-    MPIDI_VC_t                  **vc_mapping;
 
     /* data structure for ring based startup */
     struct ibv_cq               *boot_cq_hndl;
@@ -131,7 +134,20 @@ typedef struct MPIDI_CH3I_RDMA_Process_t {
     uint8_t                     use_iwarp_mode;
     uint8_t                     use_rdma_cm_on_demand;
 #endif /* defined(RDMA_CM) */
+
+#ifdef _ENABLE_XRC_
+    /* XRC parameters specific to a process */
+    uint32_t                    xrc_srqn[MAX_NUM_HCAS];
+    int                         xrc_fd[MAX_NUM_HCAS];
+    struct ibv_xrc_domain       *xrc_domain[MAX_NUM_HCAS];
+    uint8_t                     has_xrc;
+    uint8_t                     xrc_rdmafp;
+#endif /* _ENABLE_XRC_ */
 } MPIDI_CH3I_RDMA_Process_t;
+
+#ifdef _ENABLE_XRC_
+#define USE_XRC (MPIDI_CH3I_RDMA_Process.has_xrc)
+#endif  /* _ENABLE_XRC_ */
 
 struct process_init_info {
     int         **hostid;
@@ -139,6 +155,7 @@ struct process_init_info {
     uint32_t    **qp_num_rdma;
     /* TODO: haven't consider one sided queue pair yet */
     uint32_t    **qp_num_onesided;
+    uint64_t    *vc_addr;
     uint32_t    *hca_type;
 };
 
@@ -151,7 +168,6 @@ typedef struct ud_addr_info {
 struct MPIDI_PG;
 
 MPIDI_CH3I_RDMA_Process_t MPIDI_CH3I_RDMA_Process;
-extern struct MPIDI_PG* g_cached_pg;
 
 #define GEN_EXIT_ERR     -1     /* general error which forces us to abort */
 #define GEN_ASSERT_ERR   -2     /* general assert error */
@@ -165,6 +181,7 @@ extern struct MPIDI_PG* g_cached_pg;
     fprintf(stderr, message, ##args);                           \
     fprintf(stderr, " at line %d in file %s\n", __LINE__,       \
             __FILE__);                                          \
+    fflush (stderr);                                            \
     exit(code);                                                 \
 }
 
@@ -176,6 +193,7 @@ extern struct MPIDI_PG* g_cached_pg;
 	fprintf(stderr, message);                                   \
 	fprintf(stderr, " at line %d in file %s\n", __LINE__,       \
 	    __FILE__);                                              \
+    fflush (stderr);                                            \
 	exit(code);                                                 \
 }
 
@@ -206,6 +224,65 @@ extern struct MPIDI_PG* g_cached_pg;
     (_c)->mrail.srp.credits[(_subrail)].preposts++;             \
 }
 
+#ifdef _ENABLE_XRC_
+#define  XRC_FILL_SRQN_FIX_CONN(_v, _vc, _rail)\
+do {                                                                    \
+    if (USE_XRC && VC_XST_ISUNSET ((_vc), XF_DPM_INI)) {                \
+        int hca_index = _rail / (rdma_num_ports                         \
+                * rdma_num_qp_per_port);                                \
+        MPIDI_PG_t *pg = (_vc)->pg;                                     \
+        (_v)->desc.u.sr.xrc_remote_srq_num =                            \
+                (_vc)->ch.xrc_srqn[hca_index];                          \
+        XRC_MSG ("Msg for %d. Fixed SRQN: %d (WQE: %d) (%s:%d)\n",      \
+                (_vc)->pg_rank,                                         \
+                (_v)->desc.u.sr.xrc_remote_srq_num,                     \
+                (_vc)->mrail.rails[(_rail)].send_wqes_avail,            \
+                __FILE__, __LINE__);                                    \
+        if (VC_XST_ISSET ((_vc), XF_INDIRECT_CONN)) {                   \
+            XRC_MSG ("Switched vc from %d to %d\n",                     \
+                    (_vc)->pg_rank,                                     \
+                    (_vc)->ch.orig_vc->pg_rank);                        \
+            (_vc) = (_vc)->ch.orig_vc;                                  \
+        }                                                               \
+    }                                                                   \
+} while (0);
+#define  IBV_POST_SR(_v, _c, _rail, err_string) {                           \
+    {                                                                       \
+        XRC_MSG ("POST_SR: to %d (qpn: %d) (state: %d %d %d) (%s:%d)\n",    \
+                (_c)->pg_rank, (_c)->mrail.rails[(_rail)].qp_hndl->qp_num,  \
+                (_c)->mrail.rails[(_rail)].qp_hndl->state, (_c)->ch.state,  \
+                (_c)->state, __FILE__, __LINE__);                           \
+        MPIU_Assert ((_c)->mrail.rails[(_rail)].send_wqes_avail >= 0);      \
+        MPIU_Assert (!USE_XRC || VC_XST_ISUNSET ((_c), XF_INDIRECT_CONN));  \
+        int __ret;                                                          \
+        if(((_v)->desc.sg_entry.length <= rdma_max_inline_size)       \
+                && ((_v)->desc.u.sr.opcode != IBV_WR_RDMA_READ))      \
+        {                                                             \
+           (_v)->desc.u.sr.send_flags = (enum ibv_send_flags)         \
+                                        (IBV_SEND_SIGNALED |          \
+                                         IBV_SEND_INLINE);            \
+        } else {                                                      \
+            (_v)->desc.u.sr.send_flags = IBV_SEND_SIGNALED ;          \
+        }                                                             \
+        if ((_rail) != (_v)->rail)                                    \
+        {                                                             \
+                DEBUG_PRINT(stderr, "[%s:%d] rail %d, vrail %d\n",    \
+                        __FILE__, __LINE__,(_rail), (_v)->rail);      \
+                MPIU_Assert((_rail) == (_v)->rail);                   \
+        }                                                             \
+        __ret = ibv_post_send((_c)->mrail.rails[(_rail)].qp_hndl,     \
+                  &((_v)->desc.u.sr),&((_v)->desc.y.bad_sr));         \
+        if(__ret) {                                                   \
+            fprintf(stderr, "failed while avail wqe is %d, "          \
+                    "rail %d\n",                                      \
+                    (_c)->mrail.rails[(_rail)].send_wqes_avail,       \
+                    (_rail));                                         \
+            ibv_error_abort(-1, err_string);                          \
+        }                                                             \
+    }                                                                 \
+}
+#else
+#define  XRC_FILL_SRQN_FIX_CONN(_v, _vc, _rail)
 #define  IBV_POST_SR(_v, _c, _rail, err_string) {                     \
     {                                                                 \
         int __ret;                                                    \
@@ -235,6 +312,7 @@ extern struct MPIDI_PG* g_cached_pg;
         }                                                             \
     }                                                                 \
 }
+#endif /* _ENABLE_XRC_ */
 
 #define IBV_POST_RR(_c,_vbuf,_rail) {                           \
     int __ret;                                                  \
@@ -327,11 +405,11 @@ void MRAILI_Init_vc_network(MPIDI_VC_t * vc);
 #define SIGNAL_FOR_DECR_CC    (4)
 
 /* Prototype for ring based startup */
-void rdma_ring_boot_exchange(struct MPIDI_CH3I_RDMA_Process_t *proc,
-                        int pg_rank, int pg_size, struct process_init_info *);
+int rdma_ring_boot_exchange(struct MPIDI_CH3I_RDMA_Process_t *proc,
+                        MPIDI_PG_t *pg, int pg_size, struct process_init_info *);
 int rdma_setup_startup_ring(struct MPIDI_CH3I_RDMA_Process_t *, int pg_rank, int pg_size);
 int rdma_cleanup_startup_ring(struct MPIDI_CH3I_RDMA_Process_t *proc);
-void rdma_ring_based_allgather(void *sbuf, int data_size,
+int rdma_ring_based_allgather(void *sbuf, int data_size,
         int proc_rank, void *rbuf, int job_size,
         struct MPIDI_CH3I_RDMA_Process_t *proc);
 
@@ -342,17 +420,18 @@ struct ibv_mr * register_memory(void *, int len, int hca_num);
 int deregister_memory(struct ibv_mr * mr);
 int MRAILI_Backlog_send(MPIDI_VC_t * vc, int subrail);
 int rdma_open_hca(struct MPIDI_CH3I_RDMA_Process_t *proc);
+int rdma_find_active_port(struct ibv_context *context, struct ibv_device *ib_dev);
 int  rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc);
 void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc);
 void rdma_get_user_parameters(int num_proc, int me);
 int rdma_iba_hca_init_noqp(struct MPIDI_CH3I_RDMA_Process_t *proc,
               int pg_rank, int pg_size);
 int rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
-              int pg_rank, int pg_size, struct process_init_info *);
+              int pg_rank, MPIDI_PG_t *pg, struct process_init_info *);
 int rdma_iba_allocate_memory(struct MPIDI_CH3I_RDMA_Process_t *proc,
                  int pg_rank, int pg_size);
 int rdma_iba_enable_connections(struct MPIDI_CH3I_RDMA_Process_t *proc,
-                int pg_rank, int pg_size, struct process_init_info *);
+                int pg_rank, MPIDI_PG_t *pg, struct process_init_info *);
 void rdma_param_handle_heterogenity(uint32_t hca_type[], int pg_size);
 int MRAILI_Process_send(void *vbuf_addr);
 int post_send(MPIDI_VC_t *vc, vbuf *v, int rail);
@@ -382,10 +461,11 @@ struct ibv_srq *create_srq(struct MPIDI_CH3I_RDMA_Process_t *proc,
 				  int hca_num);
 
 /*function to create qps for the connection and move them to INIT state*/
-int cm_qp_create(MPIDI_VC_t *vc);
+int cm_qp_create(MPIDI_VC_t *vc, int force, int qptype);
 
 /*function to move qps to rtr and prepost buffers*/
-int cm_qp_move_to_rtr(MPIDI_VC_t *vc, uint16_t *lids, uint32_t *qpns);
+int cm_qp_move_to_rtr(MPIDI_VC_t *vc, uint16_t *lids, uint32_t *qpns, 
+        int flag, uint32_t * rqpn, int is_dpm);
 
 /*function to move qps to rts and mark the connection available*/
 int cm_qp_move_to_rts(MPIDI_VC_t *vc);

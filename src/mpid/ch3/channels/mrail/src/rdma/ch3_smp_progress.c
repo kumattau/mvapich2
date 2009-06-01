@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -32,6 +32,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 #include <string.h>
+#include <assert.h>
 #include "pmi.h"
 #include "smp_smpi.h"
 #include "mpiutil.h"
@@ -97,6 +98,16 @@ static int s_smp_num_send_buffer;
 static int s_smp_batch_size;
 static char* s_cpu_mapping = NULL;
 static int s_cpu_mapping_line_max = _POSIX2_LINE_MAX;
+
+#if defined(_SMP_LIMIC_)
+int limic_fd;
+int g_smp_use_limic2 = 1;
+static inline void adjust_lu_info(struct limic_user *lu, int old_len);
+void MPIDI_CH3I_SMP_send_limic_comp(struct limic_header *l_header,
+                                    MPIDI_VC_t* vc, int nb);
+extern MPID_Request * create_request(void * hdr, MPIDI_msg_sz_t hdr_sz,
+                                            MPIU_Size_t nb);
+#endif
 
 extern int enable_shmem_collectives;
 
@@ -228,28 +239,76 @@ static inline void smpi_complete_recv(unsigned int from_grank,
 #define FUNCNAME MPIDI_CH3I_SMP_process_header
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
+#if defined(_SMP_LIMIC_)
+static inline int MPIDI_CH3I_SMP_Process_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t* pkt, int* index, 
+                  struct limic_header *l_header, int *use_limic)
+#else
 static inline int MPIDI_CH3I_SMP_Process_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t* pkt, int* index)
+#endif
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SMP_PROGRESS_HEADER);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SMP_PROGRESS_HEADER);
     int mpi_errno = MPI_SUCCESS;
 
+#if defined(_SMP_LIMIC_)
+    if (MPIDI_CH3_PKT_LIMIC_COMP == pkt->type)
+    {
+        /* convert to MPIDI_CH3_Pkt_limic_comp_t */
+        MPIDI_CH3_Pkt_limic_comp_t *lc_pkt = (MPIDI_CH3_Pkt_limic_comp_t *)pkt;
+        MPID_Request *sreq = (MPID_Request *)(lc_pkt->mrail.send_req_id);
+        
+        int nb = lc_pkt->nb;
+        int complete = 0;
+
+        if (MPIDI_CH3I_Request_adjust_iov(sreq, nb)) {
+            MPIDI_CH3U_Handle_send_req(vc, sreq, &complete);
+        }
+        MPIU_Assert(complete);
+   
+        return mpi_errno;
+    }
+#endif
+
     if (MPIDI_CH3_PKT_RNDV_R3_DATA == pkt->type)
     {
         MPIDI_CH3_Pkt_send_t* pkt_header = (MPIDI_CH3_Pkt_send_t*) pkt;
 
-        if ((*index = pkt_header->mrail.smp_index) == -1)
-        {
-            MPIU_ERR_SETFATALANDJUMP1(
-                mpi_errno,
-                MPI_ERR_OTHER,
-                "**fail",
-                "**fail %s",
-                "*index == -1"
-            );
-	}
+#if defined(_SMP_LIMIC_)
+        /* This is transferred through limic2, retrieve related info */
+        if (pkt_header->mrail.send_req_id) {
+            *use_limic = 1;
+            memcpy(&(l_header->lu), s_current_ptr[vc->smp.local_nodes], sizeof(limic_user));
+         
+            s_current_ptr[vc->smp.local_nodes] = (void*)(
+                (unsigned long) s_current_ptr[vc->smp.local_nodes]
+                + sizeof(limic_user));
 
+            l_header->total_bytes = *((int *)s_current_ptr[vc->smp.local_nodes]);
+            l_header->send_req_id = (MPID_Request *)(pkt_header->mrail.send_req_id);
+
+            s_current_ptr[vc->smp.local_nodes] = (void*)(
+                (unsigned long) s_current_ptr[vc->smp.local_nodes]
+                + sizeof(int));
+
+            s_current_bytes[vc->smp.local_nodes] = s_current_bytes[vc->smp.local_nodes] -
+                sizeof(struct limic_user) - sizeof(int);
+        } else {
+#endif
+            if ((*index = pkt_header->mrail.src.smp_index) == -1)
+            {
+                MPIU_ERR_SETFATALANDJUMP1(
+                    mpi_errno,
+                    MPI_ERR_OTHER,
+                    "**fail",
+                    "**fail %s",
+                    "*index == -1"
+                );
+            }
+#if defined(_SMP_LIMIC_)
+        }
+#endif
 	vc->smp.recv_current_pkt_type = SMP_RNDV_MSG;
+
 	MPID_Request* rreq = NULL;
         MPID_Request_get_ptr(((MPIDI_CH3_Pkt_rndv_r3_data_t*) pkt)->receiver_req_id, rreq);
 	DEBUG_PRINT("R3 data received, don't need to proceed\n");
@@ -328,6 +387,9 @@ int MPIDI_CH3I_SMP_write_progress(MPIDI_PG_t *pg)
 #endif /* defined(CKPT) */
 
 	vc->smp.send_current_pkt_type = SMP_RNDV_MSG_CONT;
+/*
+        if (vc->smp.send_active)
+*/
 	while (vc->smp.send_active != NULL) {
 	    MPID_Request *req = vc->smp.send_active;
 
@@ -453,6 +515,10 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
     int complete = 0;
     int i = 0;
     int index = -1;
+#if defined(_SMP_LIMIC_)
+    struct limic_header l_header;
+    int use_limic = 0;
+#endif
 
     for (; i < g_smpi.num_local_nodes; ++i)
     {
@@ -469,7 +535,11 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
 
             if (pkt_head)
             {
+#if defined(_SMP_LIMIC_)
+                if ((mpi_errno = MPIDI_CH3I_SMP_Process_header(vc, pkt_head, &index, &l_header, &use_limic)))
+#else
                 if ((mpi_errno = MPIDI_CH3I_SMP_Process_header(vc, pkt_head, &index)))
+#endif
                 {
                     MPIU_ERR_POP(mpi_errno);
                 }
@@ -481,6 +551,16 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
             switch(vc->smp.recv_current_pkt_type)
             {
             case SMP_RNDV_MSG:
+#if defined(_SMP_LIMIC_)
+                    mpi_errno = MPIDI_CH3I_SMP_readv_rndv(
+                        vc,
+                        &vc->smp.recv_active->dev.iov[vc->smp.recv_active->dev.iov_offset],
+                        vc->smp.recv_active->dev.iov_count - vc->smp.recv_active->dev.iov_offset,
+                        index,
+                        &l_header,
+                        &nb, use_limic
+                    );
+#else
                     mpi_errno = MPIDI_CH3I_SMP_readv_rndv(
                         vc,
                         &vc->smp.recv_active->dev.iov[vc->smp.recv_active->dev.iov_offset],
@@ -488,12 +568,21 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
                         index,
                         &nb
                     );
+#endif
                 break;
             case SMP_RNDV_MSG_CONT:
-		mpi_errno = MPIDI_CH3I_SMP_readv_rndv_cont(vc,
-			&vc->smp.recv_active->dev.iov[vc->smp.recv_active->dev.iov_offset],
-			vc->smp.recv_active->dev.iov_count -
-			vc->smp.recv_active->dev.iov_offset, index, &nb);
+#if defined(_SMP_LIMIC_)
+                mpi_errno = MPIDI_CH3I_SMP_readv_rndv_cont(vc,
+                        &vc->smp.recv_active->dev.iov[vc->smp.recv_active->dev.iov_offset],
+                        vc->smp.recv_active->dev.iov_count -
+                        vc->smp.recv_active->dev.iov_offset, index, &vc->smp.current_l_header,
+                        &nb, vc->smp.use_limic);
+#else
+                mpi_errno = MPIDI_CH3I_SMP_readv_rndv_cont(vc,
+                        &vc->smp.recv_active->dev.iov[vc->smp.recv_active->dev.iov_offset],
+                        vc->smp.recv_active->dev.iov_count -
+                        vc->smp.recv_active->dev.iov_offset, index, &nb);
+#endif
                 break;
             default:
 		mpi_errno = MPIDI_CH3I_SMP_readv(vc,
@@ -523,15 +612,48 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
 		    if(mpi_errno) MPIU_ERR_POP(mpi_errno);
 
 		    if (complete) {
-			vc->smp.recv_active = NULL;
-			/* assert: s_current_bytes[vc->smp.local_nodes] == 0 */
+#if defined(_SMP_LIMIC_)
+                        /* send completion message with sender's send request
+                         * and number of bytes received.
+                         * header type is MPIDI_CH3_PKT_LIMIC_COMP
+                         */
+                        if(vc->smp.recv_current_pkt_type == SMP_RNDV_MSG && use_limic) {
+                            MPIDI_CH3I_SMP_send_limic_comp(&l_header, vc, nb);
+                        } else if (vc->smp.recv_current_pkt_type == SMP_RNDV_MSG_CONT &&
+                                   vc->smp.use_limic) {
+                            vc->smp.current_nb += nb;
+                            MPIDI_CH3I_SMP_send_limic_comp(&vc->smp.current_l_header, vc, vc->smp.current_nb);
+                        }
+#endif
+                        vc->smp.recv_active = NULL;
 		    } else {
-			if(vc->smp.recv_current_pkt_type == SMP_RNDV_MSG) 
-			    vc->smp.recv_current_pkt_type = SMP_RNDV_MSG_CONT;
-		    }
+                        if(vc->smp.recv_current_pkt_type == SMP_RNDV_MSG) {
+                            vc->smp.recv_current_pkt_type = SMP_RNDV_MSG_CONT;
+#if defined(_SMP_LIMIC_)
+                            if (use_limic) {
+                                vc->smp.current_l_header = l_header;
+                                vc->smp.current_nb = nb;
+                                vc->smp.use_limic = 1;
+                            } else {
+                                vc->smp.use_limic = 0;
+                            }
+#endif
+                        }
+#if defined(_SMP_LIMIC_)
+                        else {
+                            if (vc->smp.use_limic) {
+                                vc->smp.current_nb += nb;
+                            }
+                        }
+#endif
+                    }
 		} else {
+#if defined(_SMP_LIMIC_)
+                    MPIU_Assert(vc->smp.recv_current_pkt_type != SMP_RNDV_MSG ||
+                        !use_limic);
+#endif
 		    if(vc->smp.recv_current_pkt_type == SMP_RNDV_MSG)
-			vc->smp.recv_current_pkt_type = SMP_RNDV_MSG_CONT;
+		        vc->smp.recv_current_pkt_type = SMP_RNDV_MSG_CONT;
 		}
 	    }
 	} 
@@ -566,6 +688,13 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     struct shared_mem *shmem;
     int blocking_val;
     SEND_BUF_T *send_buf = NULL;
+#if defined(SOLARIS)
+    char *setdir="/tmp";
+#else
+    char *setdir="/dev/shm";
+#endif
+    char *shmem_dir, *shmdir;
+    size_t pathlen;
 #if defined(_X86_64_)
     volatile char tmpchar;
 #endif /* defined(_X86_64_) */
@@ -589,6 +718,10 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
         }
     }
 
+    if(MPIDI_CH3I_Process.has_dpm) {
+        return MPI_SUCCESS;
+    }
+
     /*
      * Do the initializations here. These will be needed on restart
      * after a checkpoint has been taken.
@@ -610,6 +743,17 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     if ((value = getenv("SMP_BATCH_SIZE")) != NULL ) {
         s_smp_batch_size = atoi(value);
     }
+    if ((shmdir = getenv("MV2_SHMEM_DIR")) != NULL) {
+        shmem_dir = shmdir;
+    } else {
+        shmem_dir = setdir;
+    }
+    pathlen = strlen(shmem_dir);
+#if defined(_SMP_LIMIC_)
+    if ((value = getenv("MV2_SMP_USE_LIMIC2")) != NULL) {
+        g_smp_use_limic2 = atoi(value);
+    }
+#endif
 
 #if defined(USE_PROCESSOR_AFFINITY)
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
@@ -677,11 +821,11 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     }
 
     g_smpi.available_queue_length =
-	(s_smpi_length_queue - g_smp_eagersize - sizeof(int));
+        (s_smpi_length_queue - g_smp_eagersize - sizeof(int));
 
     /* add pid for unique file name */
     shmem_file =
-	(char *) MPIU_Malloc(sizeof(char) * (HOSTNAME_LEN + 26 + PID_CHAR_LEN));
+        (char *) MPIU_Malloc(sizeof(char) * (pathlen + HOSTNAME_LEN + 26 + PID_CHAR_LEN));
 
     if(!shmem_file) {
 	MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
@@ -689,38 +833,27 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     }
 
     pool_file =
-	(char *) MPIU_Malloc (sizeof (char) * (HOSTNAME_LEN + 26 + PID_CHAR_LEN));
+        (char *) MPIU_Malloc (sizeof (char) * (pathlen + HOSTNAME_LEN + 26 + PID_CHAR_LEN));
 
     if(!pool_file) {
 	MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
 		"**nomem %s", "pool_file");
     }
 
-#if defined(SOLARIS)
     /* unique shared file name */
-    sprintf(shmem_file, "/tmp/ib_shmem-%s-%s-%d.tmp",
-            pg->ch.kvs_name, s_hostname, getuid());
+    sprintf(shmem_file, "%s/ib_shmem-%s-%s-%d.tmp",
+	    shmem_dir, pg->ch.kvs_name, s_hostname, getuid());
 
     DEBUG_PRINT("shemfile %s\n", shmem_file);
 
-    sprintf (pool_file, "/tmp/ib_pool-%s-%s-%d.tmp", pg->ch.kvs_name,
-            s_hostname, getuid ());
+    sprintf (pool_file, "%s/ib_pool-%s-%s-%d.tmp", shmem_dir, pg->ch.kvs_name,
+	    s_hostname, getuid ());
     DEBUG_PRINT("shemfile %s\n", pool_file);
-#else
-    /* unique shared file name */
-    sprintf(shmem_file, "/dev/shm/ib_shmem-%s-%s-%d.tmp",
-            pg->ch.kvs_name, s_hostname, getuid());
-
-    DEBUG_PRINT("shemfile %s\n", shmem_file);
-
-    sprintf (pool_file, "/dev/shm/ib_pool-%s-%s-%d.tmp", pg->ch.kvs_name,
-            s_hostname, getuid ());
-    DEBUG_PRINT("shemfile %s\n", pool_file);
-#endif
 
     /* open the shared memory file */
     g_smpi.fd =
 	open(shmem_file, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
+
     if (g_smpi.fd < 0) {
         /* fallback */
         sprintf(shmem_file, "/tmp/ib_shmem-%s-%s-%d.tmp",
@@ -737,7 +870,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
         if (g_smpi.fd < 0) {
             MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
                     "%s: %s", "open", strerror(errno));
-	}
+        }
     }
 
     g_smpi.fd_pool =
@@ -820,7 +953,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 		MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
 			"%s: %s", "write", strerror(write_errno));
 	    }
-	    MPIU_Free(buf);
+            MPIU_Free(buf);
 	}
 
 	{
@@ -833,7 +966,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 		MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
 			"%s: %s", "write", strerror(write_errno));
 	    }
-	    MPIU_Free (buf);
+	    MPIU_Free(buf);
 	}
 #endif /* !defined(_X86_64_) */
 
@@ -990,11 +1123,11 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     g_smpi_shmem->pid = (int *) shmem;
 
     g_smpi_shmem->rqueues_params =
-	(smpi_params **) MPIU_Malloc(sizeof(smpi_params *)*g_smpi.num_local_nodes);
+        (smpi_params **) MPIU_Malloc(sizeof(smpi_params *)*g_smpi.num_local_nodes);
     g_smpi_shmem->rqueues_flow_out =
-	(smpi_rqueues **) MPIU_Malloc(sizeof(smpi_rqueues *)*g_smpi.num_local_nodes);
+        (smpi_rqueues **) MPIU_Malloc(sizeof(smpi_rqueues *)*g_smpi.num_local_nodes);
     g_smpi_shmem->rqueues_limits =
-	(smpi_rq_limit **) MPIU_Malloc(sizeof(smpi_rq_limit *)*g_smpi.num_local_nodes);
+        (smpi_rq_limit **) MPIU_Malloc(sizeof(smpi_rq_limit *)*g_smpi.num_local_nodes);
 
     if (g_smpi_shmem->rqueues_params == NULL ||
 	    g_smpi_shmem->rqueues_flow_out == NULL ||
@@ -1157,6 +1290,18 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 	s_total_bytes[i] = 0;
     }
 
+#ifdef _SMP_LIMIC_
+    if (g_smp_use_limic2) {
+        limic_fd = limic_open();
+    
+        if (limic_fd == -1) {
+            MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
+                        "%s: %s", "LiMIC2 device does not exist", 
+                        strerror(errno));
+        }
+    }
+#endif
+
     SMP_INIT = 1;
 
 fn_exit:
@@ -1184,7 +1329,7 @@ int MPIDI_CH3I_SMP_finalize()
     close(g_smpi.fd_pool);
 
     if(s_buffer_head) {
-	MPIU_Free(s_buffer_head);
+        MPIU_Free(s_buffer_head);
     }
 
     if (g_smpi.l2g_rank) { 
@@ -1220,6 +1365,10 @@ int MPIDI_CH3I_SMP_finalize()
 	MPIDI_CH3I_SHMEM_COLL_finalize();
     }
 
+#ifdef _SMP_LIMIC_
+    limic_close(limic_fd);
+#endif
+
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SMP_FINALIZE);
     return MPI_SUCCESS;
 }
@@ -1237,6 +1386,12 @@ void MPIDI_CH3I_SMP_writev_rndv_header(MPIDI_VC_t * vc, const MPID_IOV * iov,
     void *ptr_head, *ptr;
     int i, offset = 0;
     MPIDI_CH3_Pkt_send_t *pkt_header;
+#if defined(_SMP_LIMIC_)
+    int err;
+    int total_bytes = 0;
+    MPID_Request *sreq = NULL;
+    limic_user lu;
+#endif
 
     pkt_avail = smpi_get_avail_length(vc->smp.local_nodes);
 
@@ -1253,6 +1408,61 @@ void MPIDI_CH3I_SMP_writev_rndv_header(MPIDI_VC_t * vc, const MPID_IOV * iov,
     pkt_avail = (pkt_avail > g_smp_eagersize) ? g_smp_eagersize : pkt_avail;
     pkt_avail -= sizeof(int);
 
+#if defined(_SMP_LIMIC_) 
+    if (g_smp_use_limic2) {
+        /* iov[0] is the header pkt */
+        pkt_header = (MPIDI_CH3_Pkt_send_t *)(iov[0].MPID_IOV_BUF);
+    
+        /* sreq is the send request handle for the data */
+        sreq = pkt_header->mrail.send_req_id;
+        assert(sreq->dev.iov_count == 1);
+        /* The last sizeof(int) is the total num of data bytes */
+        pkt_len = iov[0].MPID_IOV_LEN + sizeof(limic_user) * sreq->dev.iov_count + sizeof(int); 
+             
+        if (pkt_avail < pkt_len) {
+            *num_bytes_ptr = 0;
+            goto fn_exit;
+        }
+
+        /* number of bytes */
+        ptr = (void *) ((unsigned long) ptr + sizeof(int));
+
+        /* header format: 
+         * normal header | lu | total_num_bytes 
+         */
+        memcpy(ptr, iov[0].MPID_IOV_BUF, iov[0].MPID_IOV_LEN);
+        ptr = (void *) ((unsigned long) ptr +
+                  iov[0].MPID_IOV_LEN);
+ 
+        for(i = 0; i < sreq->dev.iov_count; ++i) {
+            err = limic_tx_init( limic_fd, sreq->dev.iov[i].MPID_IOV_BUF, 
+                      sreq->dev.iov[i].MPID_IOV_LEN, &lu);
+            if (err != sreq->dev.iov[i].MPID_IOV_LEN)
+                MPIU_ERR_SETFATALANDJUMP1(err, MPI_ERR_OTHER,
+                    "**fail", "**fail %s",
+                    "LiMIC: (MPIDI_CH3I_SMP_writev_rndv_header) limic_tx_init fail");
+
+            total_bytes += sreq->dev.iov[i].MPID_IOV_LEN;
+
+            /* copy the limic_user information to the shared memory
+               and move the shared memory pointer properly 
+             */
+            memcpy(ptr, &lu, sizeof(limic_user));
+            ptr = (void *) ((unsigned long) ptr + sizeof(limic_user));
+        }
+
+        *((int *) ptr) = total_bytes;
+        ptr = (void *) ((unsigned long) ptr + sizeof(int));
+
+        /* the first element will be pkt_len (header len) */    
+        *((int *) ptr_head) = pkt_len;
+        *num_bytes_ptr = iov[0].MPID_IOV_LEN;
+
+        smpi_complete_send(g_smpi.my_local_id, vc->smp.local_nodes,
+            pkt_len + sizeof(int));
+    } else {
+#endif /* _SMP_LIMIC */
+
     if (pkt_avail < SMPI_SMALLEST_SIZE) {
 	*num_bytes_ptr = 0;
 	goto fn_exit;
@@ -1266,7 +1476,7 @@ void MPIDI_CH3I_SMP_writev_rndv_header(MPIDI_VC_t * vc, const MPID_IOV * iov,
     }
 
     pkt_header = (MPIDI_CH3_Pkt_send_t *)(iov[0].MPID_IOV_BUF);
-    pkt_header->mrail.smp_index = s_sh_buf_pool.free_head;
+    pkt_header->mrail.src.smp_index = s_sh_buf_pool.free_head;
 
     ptr = (void *) ((unsigned long) ptr + sizeof(int));
 
@@ -1326,8 +1536,16 @@ void MPIDI_CH3I_SMP_writev_rndv_header(MPIDI_VC_t * vc, const MPID_IOV * iov,
 
 	DEBUG_PRINT("new pkt avail %d\n", pkt_avail);
     } while (pkt_avail > 0);
+#if defined(_SMP_LIMIC_)
+    }
+#endif /* _SMP_LIMIC_ */
+
 fn_exit:
     DEBUG_PRINT("writev_rndv_header returns bytes %d\n", *num_bytes_ptr);
+    return;
+
+fn_fail:
+    goto fn_exit;
 }
 
 #undef FUNCNAME
@@ -1691,8 +1909,14 @@ fn_exit:
 #define FUNCNAME MPIDI_CH3I_SMP_readv_rndv_cont
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
+#if defined(_SMP_LIMIC_)
 int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
-	const int iovlen, int index, int *num_bytes_ptr)
+        const int iovlen, int index, struct limic_header *l_header,
+        int *num_bytes_ptr, int use_limic)
+#else
+int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
+        const int iovlen, int index, int *num_bytes_ptr)
+#endif
 {
     int mpi_errno = MPI_SUCCESS;
     int iov_off = 0, buf_off = 0;
@@ -1703,10 +1927,76 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
     int msglen, iov_len;
     void *current_buf;
     SEND_BUF_T *recv_buf;
+#if defined(_SMP_LIMIC_)
+    int i, err, old_len;
+    int total_bytes = l_header->total_bytes;
+#endif
     /* all variable must be declared before the state declarations */
 
     *num_bytes_ptr = 0;
 
+#if defined(_SMP_LIMIC_)
+    if (use_limic) {
+        /* copy the message from the send buffer to the receive buffer */
+        msglen = total_bytes;
+        iov_len = iov[0].MPID_IOV_LEN;
+
+        for (i = 0; total_bytes > 0 && iov_off < iovlen; ) {
+            if (msglen == iov_len) {
+                err = limic_rx_comp(limic_fd,
+                      (void *) ((unsigned long)iov[iov_off].MPID_IOV_BUF + buf_off),
+                      msglen, &(l_header->lu));
+                if( !err ) {
+                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                        "**fail", "**fail %s",
+                        "LiMIC: (MPIDI_CH3I_SMP_readv_rndv) limic_rx_comp fail");
+		}
+
+                received_bytes += msglen;
+                total_bytes -= msglen;
+
+                assert(total_bytes == 0 && ++iov_off >= iovlen);
+
+            } else if (msglen > iov_len) {
+                old_len = l_header->lu.length;
+                err = limic_rx_comp(limic_fd,
+                      (void *) ((unsigned long)iov[iov_off].MPID_IOV_BUF + buf_off),
+                      iov_len, &(l_header->lu));
+                if( !err ) {
+                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                        "**fail", "**fail %s",
+                        "LiMIC: (MPIDI_CH3I_SMP_readv_rndv) limic_rx_comp fail");
+		}
+
+                received_bytes += iov_len;
+                total_bytes -= iov_len;
+
+                adjust_lu_info(&(l_header->lu), old_len);
+
+                if (++iov_off >= iovlen)
+                    break;
+                buf_off = 0;
+                iov_len = iov[iov_off].MPID_IOV_LEN;
+
+            }  else if (msglen > 0) {
+                err = limic_rx_comp(limic_fd,
+                      (void *) ((unsigned long)iov[iov_off].MPID_IOV_BUF + buf_off),
+                      msglen, &(l_header->lu));
+                if( !err ) {
+                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                        "**fail", "**fail %s",
+                        "LiMIC: (MPIDI_CH3I_SMP_readv_rndv) limic_rx_comp fail");
+		}
+
+                received_bytes += msglen;
+                total_bytes -= msglen;
+            }
+        }
+
+        *num_bytes_ptr = received_bytes;
+        l_header->total_bytes -= received_bytes;
+    } else {
+#endif /* _SMP_LIMIC_ */
     if (s_current_bytes[recv_vc_ptr->smp.local_nodes] == 0) {
 	if(s_total_bytes[recv_vc_ptr->smp.local_nodes] != 0) {
 	    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
@@ -1898,6 +2188,9 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
 	    goto fn_exit;
 	}
     }
+#if defined(_SMP_LIMIC_)
+    }
+#endif
 
 fn_exit:
     DEBUG_PRINT("return with nb %d\n", *num_bytes_ptr);
@@ -1911,18 +2204,27 @@ fn_fail:
 #define FUNCNAME MPIDI_CH3I_SMP_readv_rndv
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
+#if defined(_SMP_LIMIC_)
+int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
+        const int iovlen, int index, struct limic_header *l_header, int *num_bytes_ptr, int use_limic)
+#else
 int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
 	const int iovlen, int index, int *num_bytes_ptr)
+#endif
 {
     int mpi_errno = MPI_SUCCESS;
     int iov_off = 0, buf_off = 0;
     int received_bytes = 0;
+    int msglen, iov_len;
+    /* all variable must be declared before the state declarations */
+#if defined(_SMP_LIMIC_)
+    int i, err, old_len;
+    int total_bytes = l_header->total_bytes;
+#endif
     int destination = recv_vc_ptr->smp.local_nodes;
     int current_index = index;
-    int msglen, iov_len;
     void *current_buf;
     SEND_BUF_T *recv_buf;
-    /* all variable must be declared before the state declarations */
 
     *num_bytes_ptr = 0;
 
@@ -1948,6 +2250,65 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
 	s_total_bytes[recv_vc_ptr->smp.local_nodes] = 0;
     }
 
+#if defined(_SMP_LIMIC_)
+    if (use_limic) {
+        /* copy the message from the send buffer to the receive buffer */
+        msglen = total_bytes;
+        iov_len = iov[0].MPID_IOV_LEN;
+
+        for (i = 0; total_bytes > 0 && iov_off < iovlen; ) {
+            if (msglen == iov_len) {
+                err = limic_rx_comp(limic_fd,
+                      (void *) ((unsigned long)iov[iov_off].MPID_IOV_BUF + buf_off),
+                      msglen, &(l_header->lu));
+                if( !err ) 
+                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                        "**fail", "**fail %s",
+                        "LiMIC: (MPIDI_CH3I_SMP_readv_rndv) limic_rx_comp fail");
+
+                received_bytes += msglen;
+                total_bytes -= msglen;
+  
+                assert(total_bytes == 0 && ++iov_off >= iovlen);
+
+            } else if (msglen > iov_len) {
+                old_len = l_header->lu.length;
+                err = limic_rx_comp(limic_fd,
+                      (void *) ((unsigned long)iov[iov_off].MPID_IOV_BUF + buf_off),
+                      iov_len, &(l_header->lu));
+                if( !err )
+                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                        "**fail", "**fail %s",
+                        "LiMIC: (MPIDI_CH3I_SMP_readv_rndv) limic_rx_comp fail");
+
+                received_bytes += iov_len;
+                total_bytes -= iov_len;
+
+                adjust_lu_info(&(l_header->lu), old_len);
+
+                if (++iov_off >= iovlen)
+                    break;
+                buf_off = 0;
+                iov_len = iov[iov_off].MPID_IOV_LEN;
+            
+            } else if (msglen > 0) {
+                err = limic_rx_comp(limic_fd,
+                      (void *) ((unsigned long)iov[iov_off].MPID_IOV_BUF + buf_off),
+                      msglen, &(l_header->lu));
+                if( !err )
+                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                        "**fail", "**fail %s",
+                        "LiMIC: (MPIDI_CH3I_SMP_readv_rndv) limic_rx_comp fail");
+
+                received_bytes += msglen;
+                total_bytes -= msglen;
+            }   
+        }
+
+        *num_bytes_ptr = received_bytes;
+        l_header->total_bytes -= received_bytes;
+    } else {
+#endif /* _SMP_LIMIC_ */
     while (SMPI_TOTALIN(recv_vc_ptr->smp.local_nodes, g_smpi.my_local_id) ==
 	    SMPI_TOTALOUT(recv_vc_ptr->smp.local_nodes, g_smpi.my_local_id)); 
 
@@ -2129,6 +2490,9 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
 	    goto fn_exit;
 	}
     }
+#if defined(_SMP_LIMIC_)
+    }
+#endif
 
 fn_exit:
     DEBUG_PRINT("return with nb %d\n", *num_bytes_ptr);
@@ -2356,7 +2720,7 @@ int MPIDI_CH3I_SMP_pull_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t** pkt_head)
 
         READBAR();
         s_current_ptr[vc->smp.local_nodes] = (void*)(g_smpi_shmem->pool +
-SMPI_CURRENT(vc->smp.local_nodes, g_smpi.my_local_id));
+            SMPI_CURRENT(vc->smp.local_nodes, g_smpi.my_local_id));
         WRITEBAR();
         s_total_bytes[vc->smp.local_nodes] = *((int*) s_current_ptr[vc->smp.local_nodes]);
         WRITEBAR();
@@ -2655,6 +3019,9 @@ static int smpi_exchange_info(MPIDI_PG_t *pg)
 	}
     }
 
+    if (MPIDI_CH3I_Process.has_dpm)
+        SMP_ONLY = 0;
+
     DEBUG_PRINT("num local nodes %d, my local id %d\n",
 	    g_smpi.num_local_nodes, g_smpi.my_local_id);
 
@@ -2756,5 +3123,89 @@ link_buf_to_send_queue (int dest, int index)
     s_my_buffer_head[(s_sh_buf_pool.tail[dest])].next = index;
     s_sh_buf_pool.tail[dest] = index;
 }
+
+#if defined(_SMP_LIMIC_)
+#undef FUNCNAME
+#define FUNCNAME adjust_lu_info
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+static inline void adjust_lu_info(struct limic_user *lu, int old_len)
+{
+    unsigned long va = lu->va + lu->length;
+    int pgcount, len = old_len - lu->length;
+    int pagesize = getpagesize();
+
+    MPIDI_STATE_DECL(MPID_STATE_ADJUST_LU_INFO);
+    MPIDI_FUNC_ENTER(MPID_STATE_ADJUST_LU_INFO);
+
+    pgcount = (va + len + pagesize - 1)/pagesize - va/pagesize;
+    MPIU_Assert(pgcount);
+
+    lu->va = va;
+    lu->nr_pages = pgcount;
+    lu->offset = va & (pagesize-1);
+    lu->length = len;
+
+    MPIDI_FUNC_EXIT(MPID_STATE_ADJUST_LU_INFO);
+}
+
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_SMP_send_limic_comp
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+/* l_header contains send_req_id from the sender,
+ * nb is the number bytes received
+ */
+void MPIDI_CH3I_SMP_send_limic_comp(struct limic_header *l_header,
+                                    MPIDI_VC_t* vc, int nb)
+{
+    MPIDI_CH3_Pkt_limic_comp_t pkt;
+    int pkt_sz = sizeof(MPIDI_CH3_Pkt_limic_comp_t);
+    int pkt_avail;
+    volatile void *ptr_volatile;
+    void *ptr_head, *ptr;
+    MPID_Request *sreq = NULL;
+
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SMP_SEND_LIMIC_COMP);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SMP_SEND_LIMIC_COMP);
+
+    pkt.type = MPIDI_CH3_PKT_LIMIC_COMP;
+    pkt.mrail.send_req_id = l_header->send_req_id;
+    pkt.nb = nb;
+    
+    /*make sure the complete message not sent between other unfinished message */
+    if (MPIDI_CH3I_SMP_SendQ_head(vc)) {
+        sreq = create_request(&pkt, pkt_sz, 0);
+        MPIDI_CH3I_SMP_SendQ_enqueue(vc, sreq);
+        return;
+    }
+
+    pkt_avail = smpi_get_avail_length(vc->smp.local_nodes);
+    if (pkt_avail < pkt_sz+sizeof(int)) {
+        /* queue the message */
+        sreq = create_request(&pkt, pkt_sz, 0);
+        MPIDI_CH3I_SMP_SendQ_enqueue(vc, sreq);
+        return;
+    }
+
+    ptr_volatile = (void *) ((g_smpi_shmem->pool)
+            + SMPI_NEXT(g_smpi.my_local_id,
+                vc->smp.local_nodes));
+    ptr_head = ptr = (void *) ptr_volatile;
+
+    ptr = (void *) ((unsigned long) ptr + sizeof(int));
+    memcpy(ptr, &pkt, pkt_sz);
+
+    ptr = (void *) ((unsigned long) ptr + pkt_sz);
+    *((int *) ptr_head) = pkt_sz;
+
+    smpi_complete_send(g_smpi.my_local_id, vc->smp.local_nodes,
+        pkt_sz + sizeof(int));
+
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SMP_SEND_LIMIC_COMP);
+    return;
+}
+
+#endif /* _SMP_LIMIC_ */
 
 /* vi:set sw=4 */

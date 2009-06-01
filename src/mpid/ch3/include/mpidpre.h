@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -29,7 +29,9 @@ struct MPID_Request;
 #include <sys/types.h>
 #endif
 
-typedef MPI_Aint MPIDI_msg_sz_t;
+/* The maximum message size is the size of a pointer; this allows MPI_Aint 
+   to be larger than a pointer */
+typedef MPIR_Pint MPIDI_msg_sz_t;
 
 #include "mpid_dataloop.h"
 #if 0
@@ -79,8 +81,15 @@ MPIDI_Message_match;
 */
 typedef struct MPIDI_CH3_PktGeneric { int32_t kind; int32_t *pktptrs[1]; int32_t pktwords[6];
 #if defined(_OSU_MVAPICH_)
-                                      int32_t osu_pktwords[18];
+#if defined(_SMP_LIMIC_)
+                                      int32_t osu_pktwords[20];
+#else
+				      int32_t osu_pktwords[18];
+#endif
 #endif /* defined(_OSU_MVAPICH_) */
+#if defined (_OSU_PSM_)
+    int32_t osu_psm_pktbytes[8];
+#endif
                                                                                               }
     MPIDI_CH3_PktGeneric_t;
 
@@ -145,12 +154,19 @@ typedef struct MPIDI_VC * MPID_VCR;
 #   define MPIDI_REQUEST_SEQNUM
 #endif
 
+#if defined (_OSU_PSM_)
+#define MPIDI_CH3_WIN_DECL      \
+    int my_rank;                \
+    MPID_Comm *comm_ptr;        \
+    int *rank_mapping;
+#endif
+
 #if defined(_OSU_MVAPICH_)
 #define MPIDI_CH3_WIN_DECL                                                       \
     int  fall_back;                                                              \
     int  using_lock;                                                             \
     long long cc_for_test;                                                       \
-    long long * completion_counter;                                              \
+    volatile long long * completion_counter;                                              \
     long long ** all_completion_counter;                                         \
     uint32_t  *r_key2;        /* rkey for complete couters on remote nodes */    \
     long long *actlock;  /* for active accumulate exclusive acess lock */        \

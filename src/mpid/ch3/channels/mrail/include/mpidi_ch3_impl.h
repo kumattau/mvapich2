@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -35,14 +35,19 @@
 #include <sys/stat.h>
 #endif
 
+#if defined(_SMP_LIMIC_)
+#include "smp_smpi.h"
+#endif
+
 #define MPIDI_CH3I_SPIN_COUNT_DEFAULT   100
 #define MPIDI_CH3I_YIELD_COUNT_DEFAULT  5000
 
 #define MPIDI_CH3I_READ_STATE_IDLE    0
 #define MPIDI_CH3I_READ_STATE_READING 1
 
-#define MPIDI_CH3I_CM_DEFAULT_ON_DEMAND_THRESHOLD   64
-#define MPIDI_CH3I_RDMA_CM_DEFAULT_BASE_LISTEN_PORT 12000
+#define MPIDI_CH3I_CM_DEFAULT_ON_DEMAND_THRESHOLD           64
+#define MPIDI_CH3I_CM_DEFAULT_IWARP_ON_DEMAND_THRESHOLD     16
+#define MPIDI_CH3I_RDMA_CM_DEFAULT_BASE_LISTEN_PORT         12000
 
 typedef enum {
     MPIDI_CH3I_CM_BASIC_ALL2ALL,
@@ -61,6 +66,7 @@ typedef struct MPIDI_CH3I_Process_s
     /*a flag to indicate some reactivation has finished*/
     volatile int reactivation_complete;
 #endif
+    int has_dpm;
 }
 MPIDI_CH3I_Process_t;
 
@@ -112,10 +118,21 @@ extern MPIDI_CH3I_Process_t MPIDI_CH3I_Process;
 
 #define MPIDI_CH3I_SendQ_empty(vc) (vc->ch.sendq_head == NULL)
 
+//#define XRC_DEBUG
+
+#if defined(_ENABLE_XRC_) && defined(XRC_DEBUG)
+#define XRC_MSG(fmt, ...) do { \
+    printf ("<%08x:%03d>  " #fmt "\n", MPIDI_Process.my_pg->id, MPIDI_Process.my_pg_rank, ##__VA_ARGS__);\
+    fflush (stdout); \
+} while (0);
+#else
+#define XRC_MSG(args...)
+#endif
 
 #define MPIDI_CH3I_CM_SendQ_enqueue(vc, req)                                \
 {                                                                           \
     /* MT - not thread safe! */						    \
+    XRC_MSG ("enque %d %s:%d\n", vc->pg_rank, __FILE__, __LINE__);   \
     MPIDI_DBG_PRINTF((50, FCNAME, "CM_SendQ_enqueue vc=%08p req=0x%08x",    \
 	              vc, req->handle));		                    \
     req->dev.next = NULL;						    \
@@ -133,6 +150,7 @@ extern MPIDI_CH3I_Process_t MPIDI_CH3I_Process;
 #define MPIDI_CH3I_CM_SendQ_dequeue(vc)                                     \
 {                                                                           \
     /* MT - not thread safe! */						    \
+    XRC_MSG ("deque %d\n", vc->pg_rank);   \
     MPIDI_DBG_PRINTF((50, FCNAME, "CM_SendQ_dequeue vc=%08p req=0x%08x",    \
 	              vc, vc->ch.sendq_head));		                    \
     vc->ch.cm_sendq_head = vc->ch.cm_sendq_head->dev.next;		    \
@@ -204,6 +222,10 @@ int MPIDI_CH3I_RDMA_read_datav(MPIDI_VC_t *vc,
         MPID_IOV *iov, int n, int *num_bytes_ptr);
 
 /********** Added interface for OSU-MPI2 ************/
+int MPIDI_CH3I_MRAIL_PG_Init(MPIDI_PG_t *pg);
+
+int MPIDI_CH3I_MRAIL_PG_Destroy(MPIDI_PG_t *pg);
+
 int MPIDI_CH3_Rendezvous_rput_finish(MPIDI_VC_t *, 
         MPIDI_CH3_Pkt_rput_finish_t *);
 
@@ -245,11 +267,16 @@ int MPIDI_CH3I_MRAIL_Finish_request(MPID_Request *);
 
 /* MPIDI_CH3I_CM_Init should replace MPIDI_CH3I_RDMA_init if dynamic
  * connection is enabled. */
-int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank);
+int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **str);
 
 /* MPIDI_CH3I_CM_Finalize should be used if MPIDI_CH3I_CM_Init is used
  * in initialization */
 int MPIDI_CH3I_CM_Finalize();
+
+/* MPIDI_CH3I_CM_Get_port_info gets the connection information in ifname */
+int MPIDI_CH3I_CM_Get_port_info(char *ifname, int max_len);
+
+int MPIDI_CH3I_CM_Connect_raw_vc(MPIDI_VC_t *vc, char *ifname);
 
 /* Let the lower layer flush out anything from the ext_sendq
  * and reclaim all WQEs
@@ -263,6 +290,7 @@ int MPIDI_CH3I_CM_Connect(MPIDI_VC_t * vc);
 /* MPIDI_CH3I_CM_Establish should be called when detecting the first message
  * from a VC */
 int MPIDI_CH3I_CM_Establish(MPIDI_VC_t * vc);
+void MPIDI_CH3I_Cleanup_after_connection(MPIDI_VC_t *vc);
 
 #ifdef CKPT
 
@@ -429,11 +457,22 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, const MPID_IOV * iov,
 void MPIDI_CH3I_SMP_writev(MPIDI_VC_t * vc, const MPID_IOV * iov,
                           const int n, int *num_bytes_ptr);
                           
+#if defined(_SMP_LIMIC_)
+int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
+        const int iovlen, int index, struct limic_header *l_header,
+        int *num_bytes_ptr, int use_limic);
+#else
 int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
 	const int iovlen, int index, int *num_bytes_ptr);
+#endif
 	
+#if defined(_SMP_LIMIC_)
+int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
+        const int iovlen, int index, struct limic_header *l_header, int *num_bytes_ptr, int use_limic);
+#else
 int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
 	const int iovlen, int index, int *num_bytes_ptr);
+#endif
 
 int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
                          const int iovlen, int

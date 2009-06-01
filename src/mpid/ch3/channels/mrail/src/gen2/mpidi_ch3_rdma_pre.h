@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2002-2008, The Ohio State University. All rights
+/* Copyright (c) 2002-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -37,11 +37,16 @@ typedef struct MPIDI_CH3I_MRAILI_IBA_Pkt {
     uint8_t  vbuf_credit;      
     uint8_t  remote_credit;    
     uint8_t  rdma_credit;
-    int      smp_index;
-    uint32_t src_rank;
     uint8_t  rail;
+    union {
+        uint32_t smp_index;
+        uint64_t vc_addr;
+    } src; 
 #ifdef CRC_CHECK
     unsigned long crc;
+#endif
+#if defined(_SMP_LIMIC_)
+    void *send_req_id;
 #endif
 } MPIDI_CH3I_MRAILI_Iba_pkt_t;
 
@@ -231,6 +236,9 @@ struct mrail_rail {
         int             ext_sendq_size;
         struct  ibv_qp * qp_hndl_1sc;
         int     postsend_times_1sc;
+#ifdef _ENABLE_XRC_
+        uint32_t        rqp_hndl;      /* Receive only QP */
+#endif
 };
 
 #ifdef CKPT
@@ -297,6 +305,8 @@ typedef struct MPIDI_CH3I_MRAIL_VC_t
      * process teardown.
      *
      int barrier_id; */
+
+    uint64_t remote_vc_addr; /* Used to find vc at remote side */
 #ifdef CKPT
     /*Record the number of suspended rails*/
     int suspended_rails_send;
@@ -314,6 +324,17 @@ typedef struct MPIDI_CH3I_MRAIL_VC_t
 
 /* add this structure to the implemenation specific macro */
 #define MPIDI_CH3I_VC_RDMA_DECL MPIDI_CH3I_MRAIL_VC mrail;
+
+typedef struct MPIDI_CH3I_MRAIL_PG {
+    struct ibv_ah   **cm_ah;        /*Array of address handles of peers */
+    uint32_t        *cm_ud_qpn;     /*Array of ud pqn of peers */
+    uint16_t        *cm_lid;        /*Array of lid of all procs */
+#ifdef _ENABLE_XRC_
+    uint32_t        *xrc_hostid;
+#endif
+} MPIDI_CH3I_MRAIL_PG_t;
+
+#define MPIDI_CH3I_RDMA_PG_DECL MPIDI_CH3I_MRAIL_PG_t mrail;
 
 /* structure MPIDI_CH3I_RDMA_Ops_list is the queue pool to record every
  * issued signaled RDMA write and RDMA read operation. The address of

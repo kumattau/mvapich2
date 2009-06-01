@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -41,6 +41,14 @@ int MPID_Irsend(const void * buf, int count, MPI_Datatype datatype, int rank, in
     MPID_Seqnum_t seqnum;
 #endif    
     int mpi_errno = MPI_SUCCESS;    
+
+#if defined (_OSU_PSM_)
+    /* implement rsend as a regular send. this switch should happen 
+       before any of the macro's are invoked below */
+    return (MPID_Isend(buf, count, datatype, rank, tag, comm,
+            context_offset, request));
+#endif
+
     MPIDI_STATE_DECL(MPID_STATE_MPID_IRSEND);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_IRSEND);

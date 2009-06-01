@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -17,6 +17,7 @@
  */
 
 #include "mpidi_ch3_impl.h"
+#include "rdma_impl.h"
 
 #undef DEBUG_PRINT
 #define DEBUG_PRINT(args...)                                  \
@@ -141,14 +142,20 @@ int MPIDI_CH3_iStartMsgv(MPIDI_VC_t * vc, MPID_IOV * iov, int n_iov,
     }
 
     /*CM code*/
-    if (vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE 
-    || !MPIDI_CH3I_CM_SendQ_empty(vc)) {
+    if ((vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE 
+#ifdef _ENABLE_XRC_
+            || (USE_XRC && VC_XST_ISUNSET (vc, XF_SEND_IDLE))
+#endif
+            ) || !MPIDI_CH3I_CM_SendQ_empty(vc)) {
         /*Request need to be queued*/
         MPIDI_DBG_PRINTF((55, FCNAME, "not connected, enqueuing"));
         sreq = create_request(iov, n_iov, 0, 0);
         MPIDI_CH3I_CM_SendQ_enqueue(vc, sreq);
         if (vc->ch.state == MPIDI_CH3I_VC_STATE_UNCONNECTED)  {
-            MPIDI_CH3I_CM_Connect(vc);
+            mpi_errno = MPIDI_CH3I_CM_Connect(vc);
+            if (mpi_errno) {
+                MPIU_ERR_POP(mpi_errno);
+            }
         }
         goto fn_exit;
     }
@@ -201,7 +208,6 @@ int MPIDI_CH3_iStartMsgv(MPIDI_VC_t * vc, MPID_IOV * iov, int n_iov,
     }
     sreq = create_request(iov, n_iov, 0, 0);
     MPIDI_CH3I_SendQ_enqueue(vc, sreq);
-
 fn_exit:
     *sreq_ptr = sreq;
 #ifdef CKPT

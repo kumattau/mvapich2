@@ -1,5 +1,5 @@
 #!/usr/bin/env perl
-# Copyright (c) 2003-2008, The Ohio State University. All rights
+# Copyright (c) 2003-2009, The Ohio State University. All rights
 # reserved.
 #
 # This file is part of the MVAPICH2 software package developed by the
@@ -103,7 +103,7 @@ sub create_mvapich2
 #    chdir("${root}/mpich2-${version}/src/mpid/ch3/channels/nemesis/nemesis/net_mod");
     chdir("${root}/${version}/src/mpid/ch3/channels/nemesis/nemesis/net_mod");
 # </_OSU_MVAPICH_>
-    my @nem_modules = qw(newtcp sctp ib psm);
+    my @nem_modules = qw(elan mx newgm newtcp sctp ib psm);
     run_cmd("rm -rf ".join(' ', map({$_ . "_module/*"} @nem_modules)));
     for my $module (@nem_modules) {
 	# system to avoid problems with shell redirect in run_cmd
@@ -116,8 +116,9 @@ sub create_mvapich2
 # <_OSU_MVAPICH_>
 #    chdir("${root}/mpich2-${version}");
     chdir("${root}/${version}");
-# </_OSU_MVAPICH_>
+#    run_cmd("./maint/updatefiles --with-autoconf=/homes/chan/autoconf/2.62/bin");
     run_cmd("./maint/updatefiles");
+# </_OSU_MVAPICH_>
     debug("done\n");
 
     # Remove unnecessary files
@@ -142,11 +143,10 @@ sub create_mvapich2
     debug("===> Configuring and making the secondary package... ");
 # <_OSU_MVAPICH_>
 #    chdir("${root}/mpich2-${version}-tmp");
+#    run_cmd("./maint/updatefiles --with-autoconf=/homes/chan/autoconf/2.62/bin");
+#    run_cmd("./configure --without-mpe --disable-f90 --disable-f77 --disable-cxx");
     chdir("${root}/${version}-tmp");
-# </_OSU_MVAPICH_>
     run_cmd("./maint/updatefiles");
-# <_OSU_MVAPICH_>
-#    run_cmd("./configure --disable-mpe --disable-f90 --disable-f77 --disable-cxx");
     run_cmd("./configure --disable-f90 --disable-f77 --disable-cxx");
 # </_OSU_MVAPICH_>
     run_cmd("(make mandoc && make htmldoc && make latexdoc)");
@@ -201,62 +201,59 @@ sub create_mvapich2
     debug("done\n\n");
 }
 
-# <_OSU_MVAPICH_>
-#sub create_romio
-#{
-#    # Check out the appropriate source
-#    debug("===> Checking out romio SVN source... ");
-#    run_cmd("rm -rf romio-${version} romio");
-#    run_cmd("svn export -q ${source}/src/mpi/romio");
-#    debug("done\n");
-#
-#    debug("===> Creating configure... ");
-#    chdir("${root}/romio");
-#    run_cmd("autoreconf");
-#    debug("done\n");
-#
-#    debug("===> Creating ROMIO docs... ");
-#    chdir("${root}");
-#    create_docs("romio");
-#    debug("done\n");
-#
-#    # Create the tarball
-#    debug("===> Creating the final romio tarball... ");
-#    chdir("${root}");
-#    run_cmd("mv romio romio-${version}");
-#    run_cmd("tar -czvf romio-${version}.tgz romio-${version}");
-#    run_cmd("rm -rf romio-${version}");
-#    debug("done\n\n");
-#}
-#
-#sub create_mpe
-#{
-#    # Check out the appropriate source
-#    debug("===> Checking out mpe2 SVN source... ");
-#    run_cmd("rm -rf mpe2-${version} mpe2");
-#    run_cmd("svn export -q ${source}/src/mpe2");
-#    debug("done\n");
-#
-#    debug("===> Creating configure... ");
-#    chdir("${root}/mpe2");
-#    run_cmd("./maint/updatefiles");
-#    debug("done\n");
-#
-#    debug("===> Creating MPE docs... ");
-#    chdir("${root}");
-#    create_docs("mpe");
-#    debug("done\n");
-#
-#    # Create the tarball
-#    debug("===> Creating the final mpe2 tarball... ");
-#    chdir("${root}");
-#    run_cmd("mv mpe2 mpe2-${version}");
-#    run_cmd("tar -czvf mpe2-${version}.tgz mpe2-${version}");
-#    run_cmd("rm -rf mpe2-${version}");
-#    debug("done\n\n");
-#}
-#
-# </_OSU_MVAPICH_>
+sub create_romio
+{
+    # Check out the appropriate source
+    debug("===> Checking out romio SVN source... ");
+    run_cmd("rm -rf romio-${version} romio");
+    run_cmd("svn export -q ${source}/src/mpi/romio");
+    debug("done\n");
+
+    debug("===> Creating configure... ");
+    chdir("${root}/romio");
+    run_cmd("autoreconf");
+    debug("done\n");
+
+    debug("===> Creating ROMIO docs... ");
+    chdir("${root}");
+    create_docs("romio");
+    debug("done\n");
+
+    # Create the tarball
+    debug("===> Creating the final romio tarball... ");
+    chdir("${root}");
+    run_cmd("mv romio romio-${version}");
+    run_cmd("tar -czvf romio-${version}.tar.gz romio-${version}");
+    run_cmd("rm -rf romio-${version}");
+    debug("done\n\n");
+}
+
+sub create_mpe
+{
+    # Check out the appropriate source
+    debug("===> Checking out mpe2 SVN source... ");
+    run_cmd("rm -rf mpe2-${version} mpe2");
+    run_cmd("svn export -q ${source}/src/mpe2");
+    debug("done\n");
+
+    debug("===> Creating configure... ");
+    chdir("${root}/mpe2");
+    run_cmd("./maint/updatefiles --with-autoconf=/homes/chan/autoconf/2.62/bin");
+    debug("done\n");
+
+    debug("===> Creating MPE docs... ");
+    chdir("${root}");
+    create_docs("mpe");
+    debug("done\n");
+
+    # Create the tarball
+    debug("===> Creating the final mpe2 tarball... ");
+    chdir("${root}");
+    run_cmd("mv mpe2 mpe2-${version}");
+    run_cmd("tar -czvf mpe2-${version}.tar.gz mpe2-${version}");
+    run_cmd("rm -rf mpe2-${version}");
+    debug("done\n\n");
+}
 
 GetOptions(
     "source=s" => \$source,

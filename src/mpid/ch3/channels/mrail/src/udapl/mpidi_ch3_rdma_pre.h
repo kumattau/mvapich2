@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -42,7 +42,10 @@ typedef struct MPIDI_CH3I_MRAILI_IBA_Pkt
     unsigned int vbuf_credit;   /* piggybacked vbuf credit   */
     unsigned int remote_credit; /* our current credit count */
     unsigned int rdma_credit;
-    int smp_index;
+    union {
+        int smp_index;
+        uint64_t vc_addr;
+    } src;
 } MPIDI_CH3I_MRAILI_Iba_pkt_t;
 
 #define MPIDI_CH3I_MRAILI_IBA_PKT_DECL \
@@ -291,6 +294,7 @@ typedef struct MPIDI_CH3I_MRAIL_VC_t
      * process teardown.
      *
      int barrier_id; */
+     uint64_t remote_vc_addr; /* Used to find vc at remote side */
 } MPIDI_CH3I_MRAIL_VC;
 
 /* add this structure to the implemenation specific macro */

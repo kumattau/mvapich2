@@ -1,5 +1,5 @@
 
-/* Copyright (c) 2002-2008, The Ohio State University. All rights
+/* Copyright (c) 2002-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH software package developed by the
@@ -26,6 +26,7 @@
 #define MPISPAWN_RANK_ERROR -3
 #define MPISPAWN_MT_ERROR   -4
 #define MPISPAWN_PROCESS_ABORT  -5
+#define MPISPAWN_DPM_REQ    10
 
 #define MAX_HOST_LEN    256
 #define MAX_PORT_LEN    8
@@ -35,15 +36,15 @@
 #define MT_MAX_DEGREE   64
 
 typedef struct {
-    int rank;
-    int fd;
-    int c_barrier;
+	int rank;
+	int fd;
+	int c_barrier;
 #define c_finalize c_barrier
 } child_t;
 #define child_s sizeof (child_t)
 
-int mpispawn_tree_init(size_t me, int req_socket);
-int * mpispawn_tree_connect(size_t root, size_t degree);
+int mpispawn_tree_init (size_t me, int req_socket);
+int *mpispawn_tree_connect (size_t root, size_t degree);
 void mpispawn_abort (int code);
 int mtpmi_init (void);
 int mtpmi_processops (void);
@@ -54,7 +55,7 @@ int mtpmi_processops (void);
         fprintf (stderr, "\n%s:%d Assert failed (%s)\n", __FILE__, \
                 __LINE__, #cond); \
     }\
-} while (0); 
+} while (0);
 #else /* defined(MPISPAWN_DEBUG) */
 #define MT_ASSERT(cond)
 #endif /* defined(MPISPAWN_DEBUG) */

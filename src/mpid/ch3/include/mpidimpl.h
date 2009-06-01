@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -310,6 +310,7 @@ extern MPIDI_Process_t MPIDI_Process;
     (sreq_)->dev.datatype = datatype;				\
     (sreq_)->dev.datatype_ptr	   = NULL;                      \
     (sreq_)->dev.segment_ptr	   = NULL;                      \
+    MPIDI_CH3_REQUEST_INIT(sreq_);                          \
 }
 
 /* This is the receive request version of MPIDI_Request_create_sreq */
@@ -435,7 +436,7 @@ extern MPIDI_Process_t MPIDI_Process;
    alreay within a critical section when needed.  If/when we move to
    a finer-grain model, we'll need to examine whether this requires
    a separate lock. */
-#if defined(MPID_USE_SEQUENCE_NUMBERS)
+#if defined(MPID_USE_SEQUENCE_NUMBERS) || defined(_OSU_MVAPICH_)
 #   define MPIDI_Request_set_seqnum(req_, seqnum_)	\
     {							\
     	(req_)->dev.seqnum = (seqnum_);			\
@@ -640,6 +641,9 @@ typedef struct MPIDI_VC
 
     /* Local process ID */
     int lpid;
+
+    /* port name tag */ 
+    int port_name_tag; /* added to handle dynamic process mgmt */
     
 #if defined(MPID_USE_SEQUENCE_NUMBERS)
     /* Sequence number of the next packet to be sent */
@@ -675,8 +679,13 @@ typedef struct MPIDI_VC
     int eager_max_msg_sz;
 #if defined(_OSU_MVAPICH_)
     int force_rndv;
+    unsigned char tmp_dpmvc;
+    unsigned char free_vc;
 #endif
-    
+#if defined (_OSU_PSM_)
+    int force_eager;
+#endif
+   
     /* noncontiguous send function pointer.  Called to send a
        noncontiguous message.  Caller must initialize
        sreq->dev.segment, _first and _size.  Contiguous messages are
@@ -714,16 +723,20 @@ typedef struct MPIDI_VC * MPID_VCR;
 /* Initialize a new VC */
 int MPIDI_VC_Init( MPIDI_VC_t *, MPIDI_PG_t *, int );
 
-#if defined(MPIDI_CH3_MSGS_UNORDERED)
+#if defined(MPIDI_CH3_MSGS_UNORDERED) 
 #   define MPIDI_VC_Init_seqnum_recv(vc_);	\
     {						\
     	(vc_)->seqnum_recv = 0;			\
     	(vc_)->msg_reorder_queue = NULL;	\
     }
+#elif defined(_OSU_MVAPICH_)
+#   define MPIDI_VC_Init_seqnum_recv(vc_);  \
+    {                                       \
+        (vc_)->seqnum_recv = 0;             \
+    }
 #else
 #   define MPIDI_VC_Init_seqnum_recv(vc_);
 #endif
-
 
 
 #define MPIDI_VC_add_ref( _vc )                                 \
@@ -853,11 +866,12 @@ int MPIDI_PrintConnStrToFile( FILE *fd, const char *file, int line,
    msg.
 
 */
-#define MPIU_DBG_VCSTATECHANGE(_vc,_newstate) \
+#define MPIU_DBG_VCSTATECHANGE(_vc,_newstate) do { \
      MPIU_DBG_MSG_FMT(CH3_CONNECT,TYPICAL,(MPIU_DBG_FDEST, \
      "vc=%p: Setting state (vc) from %s to %s, vcchstate is %s", \
                  _vc, MPIDI_VC_GetStateString((_vc)->state), \
-                 #_newstate, MPIU_CALL(MPIDI_CH3,VC_GetStateString( (_vc) ))) )
+                 #_newstate, MPIU_CALL(MPIDI_CH3,VC_GetStateString( (_vc) ))) );\
+} while (0)
 
 #define MPIU_DBG_VCCHSTATECHANGE(_vc,_newstate) \
      MPIU_DBG_MSG_FMT(CH3_CONNECT,TYPICAL,(MPIU_DBG_FDEST, \
@@ -1409,9 +1423,9 @@ int MPIDI_CH3U_Recvq_FU(int, int, int, MPI_Status * );
 MPID_Request * MPIDI_CH3U_Recvq_FDU(MPI_Request, MPIDI_Message_match *);
 MPID_Request * MPIDI_CH3U_Recvq_FDU_or_AEP(int, int, int, int * found);
 int MPIDI_CH3U_Recvq_DP(MPID_Request * rreq);
-MPID_Request * MPIDI_CH3U_Recvq_FDP(MPIDI_Message_match * match);
 MPID_Request * MPIDI_CH3U_Recvq_FDP_or_AEU(MPIDI_Message_match * match, 
 					   int * found);
+int MPIDI_CH3U_Recvq_count_unexp(void);
 
 #if 0
 /* FIXME: These are macros! Why do they have prototypes */
@@ -1676,13 +1690,6 @@ int MPIDI_CH3_InitCompleted( void );
 /* Routine to return the tag associated with a port */
 int MPIDI_GetTagFromPort( const char *, int * );
 
-/* Implement the send side of a rendevous send */
-int MPIDI_CH3_RndvSend( MPID_Request **sreq_p, const void * buf, int count, 
-			MPI_Datatype datatype, int dt_contig, MPIDI_msg_sz_t data_sz, 
-			MPI_Aint dt_true_lb,
-			int rank, 
-			int tag, MPID_Comm * comm, int context_offset );
-
 /* Here are the packet handlers */
 int MPIDI_CH3_PktHandler_EagerSend( MPIDI_VC_t *, MPIDI_CH3_Pkt_t *, 
 				   MPIDI_msg_sz_t *, MPID_Request ** );
@@ -1732,11 +1739,6 @@ int MPIDI_CH3_PktHandler_Close( MPIDI_VC_t *, MPIDI_CH3_Pkt_t *,
 				MPIDI_msg_sz_t *, MPID_Request ** );
 int MPIDI_CH3_PktHandler_EndCH3( MPIDI_VC_t *, MPIDI_CH3_Pkt_t *,
 				 MPIDI_msg_sz_t *, MPID_Request ** );
-
-int MPIDI_CH3_PktHandler_CancelSendReq( MPIDI_VC_t *, MPIDI_CH3_Pkt_t *, 
-					MPIDI_msg_sz_t *, MPID_Request ** );
-int MPIDI_CH3_PktHandler_CancelSendResp( MPIDI_VC_t *, MPIDI_CH3_Pkt_t *, 
-					 MPIDI_msg_sz_t *, MPID_Request ** );
 
 /* PktHandler function:
    vc  (INPUT) -- vc on which the packet was received
@@ -1858,6 +1860,17 @@ int MPIDI_CH3_Get_rndv_recv(MPIDI_VC_t * vc, MPID_Request * req);
     }                                              \
 }
 #endif /* if defined(_OSU_MVAPICH_) */
+
+#if defined (_OSU_PSM_)
+//    #define PSM_CH3_DBG
+    #ifdef PSM_CH3_DBG
+        #define PSMSG(_stmt_) _stmt_;   \
+        fflush(stderr);                 \
+        fflush(stdout);                 
+    #else
+        #define PSMSG(_stmt_) 
+    #endif
+#endif
 
 #endif /* !defined(MPICH_MPIDIMPL_H_INCLUDED) */
 

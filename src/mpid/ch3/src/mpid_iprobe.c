@@ -3,6 +3,17 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
 
 #include "mpidimpl.h"
 
@@ -16,6 +27,8 @@ int MPID_Iprobe(int source, int tag, MPID_Comm *comm, int context_offset,
     const int context = comm->recvcontext_id + context_offset;
     int found = 0;
     int mpi_errno = MPI_SUCCESS;
+    int complete = FALSE; 
+
     MPIDI_STATE_DECL(MPID_STATE_MPID_IPROBE);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_IPROBE);
@@ -28,6 +41,15 @@ int MPID_Iprobe(int source, int tag, MPID_Comm *comm, int context_offset,
 	*flag = TRUE;
 	goto fn_exit;
     }
+
+#if defined (_OSU_PSM_) 
+        MPID_Progress_poke();
+        mpi_errno = MPIDI_CH3_Probe(source, tag, context, status,
+                                    &complete, PSM_NONBLOCKING);
+        if(mpi_errno)   MPIU_ERR_POP(mpi_errno);
+        *flag = complete;
+        goto fn_exit;
+#endif
 
     /* FIXME: The routine CH3U_Recvq_FU is used only by the probe functions;
        it should atomically return the flag and status rather than create 
@@ -48,6 +70,7 @@ int MPID_Iprobe(int source, int tag, MPID_Comm *comm, int context_offset,
 	
     *flag = found;
 
+ fn_fail:   
  fn_exit:    
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_IPROBE);
     return mpi_errno;

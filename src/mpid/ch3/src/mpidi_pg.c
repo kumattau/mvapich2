@@ -3,9 +3,25 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
 
 #include "mpidimpl.h"
 #include "pmi.h"
+#ifdef _ENABLE_XRC_
+#include "rdma_impl.h"
+#else
+#define XRC_MSG(args...)
+#endif
 
 /* FIXME: These routines need a description.  What is their purpose?  Who
    calls them and why?  What does each one do?
@@ -177,8 +193,7 @@ int MPIDI_PG_Create(int vct_sz, void * pg_id, MPIDI_PG_t ** pg_ptr)
 			mpi_errno,"pg->vct");
 
     if (verbose) {
-	fprintf( stdout, "Creating a process group of size %d\n", vct_sz );
-	fflush(stdout);
+        MPIU_dbg_printf("Creating a process group of size %d\n", vct_sz );
     }
 
     pg->handle = 0;
@@ -196,7 +211,7 @@ int MPIDI_PG_Create(int vct_sz, void * pg_id, MPIDI_PG_t ** pg_ptr)
     pg->connInfoToString   = 0;
     pg->connInfoFromString = 0;
     pg->freeConnInfo       = 0;
-    
+
     for (p = 0; p < vct_sz; p++)
     {
 	/* Initialize device fields in the VC object */
@@ -250,11 +265,14 @@ int MPIDI_PG_Create(int vct_sz, void * pg_id, MPIDI_PG_t ** pg_ptr)
 #define FUNCNAME MPIDI_PG_Destroy
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
+
 int MPIDI_PG_Destroy(MPIDI_PG_t * pg)
 {
     MPIDI_PG_t * pg_prev;
     MPIDI_PG_t * pg_cur;
     int mpi_errno = MPI_SUCCESS;
+    int i;
+    
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_PG_DESTROY);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_PG_DESTROY);
@@ -278,10 +296,24 @@ int MPIDI_PG_Destroy(MPIDI_PG_t * pg)
 	    /* FIXME: This is a temp debugging print (and should use
 	       one of the standard debug macros instead */
 	    if (verbose) {
-		fprintf( stdout, "Destroying process group %s\n", 
-			 (char *)pg->id ); fflush(stdout);
+            MPIU_dbg_printf("Destroying process group %s\n", (char *)pg->id );
 	    }
+
+            for (i = 0; i < pg->size; ++i) {
+                /* This used to be handled in MPID_VCRT_Release, but that was
+                   not the right place to do this.  The VC should only be freed
+                   when the PG that it belongs to is freed, not just when the
+                   VC's refcount drops to zero. [goodell@ 2008-06-13] */
+                mpi_errno = MPIU_CALL(MPIDI_CH3,VC_Destroy(&(pg->vct[i])));
+                if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
+            }
+
 	    MPIDI_PG_Destroy_fn(pg);
+#if defined (_OSU_MVAPICH_)
+        for(i = 0; i < pg->size; i++) {
+            MPIDI_CH3I_Cleanup_after_connection(&pg->vct[i]);
+        }
+#endif      
 	    MPIU_Free(pg->vct);
 	    if (pg->connData) {
 		if (pg->freeConnInfo) {
@@ -308,6 +340,8 @@ int MPIDI_PG_Destroy(MPIDI_PG_t * pg)
   fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_PG_DESTROY);
     return mpi_errno;
+  fn_fail:
+    goto fn_exit;
 }
 
 #undef FUNCNAME
@@ -439,7 +473,7 @@ int MPIDI_PG_Create_from_string(const char * str, MPIDI_PG_t ** pg_pptr,
       fflush(stdout); */
     /* The pg_id is at the beginning of the string, so we can just pass
        it to the find routine */
-    /* printf( "Looking for pg with id %s\n", str );fflush(stdout); */
+    /* fprintf(stderr, "Looking for pg with id %s\n", str ); */
     mpi_errno = MPIDI_PG_Find((void *)str, &existing_pg);
     if (mpi_errno != PMI_SUCCESS) {
 	MPIU_ERR_POP(mpi_errno);
@@ -466,7 +500,8 @@ int MPIDI_PG_Create_from_string(const char * str, MPIDI_PG_t ** pg_pptr,
     
     pg_ptr = *pg_pptr;
     pg_ptr->id = MPIU_Strdup( str );
-    
+    MPIU_dbg_printf("pg created with id %s (%p)\n", pg_ptr->id, pg_ptr); 
+   
     /* Set up the functions to use strings to manage connection information */
     MPIDI_PG_InitConnString( pg_ptr );
     (*pg_ptr->connInfoFromString)( str, pg_ptr );
@@ -517,6 +552,17 @@ void MPIDI_PG_IdToNum( MPIDI_PG_t *pg, int *id )
 void MPIDI_PG_IdToNum( MPIDI_PG_t *pg, int *id )
 {
     *id = 0;
+}
+
+int MPIDI_PG_To_string(MPIDI_PG_t *pg_ptr, char **str_ptr, int *lenStr)
+{
+    return 0;
+}
+
+int MPIDI_PG_Create_from_string(const char * str, MPIDI_PG_t ** pg_pptr, 
+				int *flag)
+{
+    return 0;
 }
 #endif
 
@@ -621,6 +667,8 @@ static int getConnInfoKVS( int rank, char *buf, int bufsize, MPIDI_PG_t *pg )
     goto fn_exit;
 }
 
+/* *slen is the length of the string, including the null terminator.  So if the
+   resulting string is |foo\0bar\0|, then *slen == 8. */
 static int connToStringKVS( char **buf_p, int *slen, MPIDI_PG_t *pg )
 {
     char *string = 0;
@@ -642,7 +690,7 @@ static int connToStringKVS( char **buf_p, int *slen, MPIDI_PG_t *pg )
     string[len++] = 0;
     
     /* Add the size of the pg */
-    MPIU_Snprintf( &string[len], curSlen, "%d", pg->size );
+    MPIU_Snprintf( &string[len], curSlen - len, "%d", pg->size );
     while (string[len]) len++;
     len++;
 
@@ -677,8 +725,8 @@ static int connToStringKVS( char **buf_p, int *slen, MPIDI_PG_t *pg )
 	/* Check that this will fix in the remaining space */
 	if (len + vallen + 1 >= curSlen) {
 	    char *nstring = 0;
-	    nstring = MPIU_Realloc( string, 
-				   curSlen + (pg->size - i) * (vallen + 1 ));
+            curSlen += (pg->size - i) * (vallen + 1 );
+	    nstring = MPIU_Realloc( string, curSlen);
 	    if (!nstring) {
 		MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**nomem");
 	    }
@@ -689,6 +737,8 @@ static int connToStringKVS( char **buf_p, int *slen, MPIDI_PG_t *pg )
 	    string[len++] = buf[j];
 	}
     }
+
+    MPIU_Assert(len <= curSlen);
 
     *buf_p = string;
     *slen  = len;
@@ -791,14 +841,17 @@ static int getConnInfo( int rank, char *buf, int bufsize, MPIDI_PG_t *pg )
 }
 static int connToString( char **buf_p, int *slen, MPIDI_PG_t *pg )
 {
-    char *string = 0, *str, *pg_id;
+    char *str = NULL, *pg_id;
     int  i, len=0;
     
     MPIDI_ConnInfo *connInfo = (MPIDI_ConnInfo *)pg->connData;
 
     /* Create this from the string array */
-    string = (char *)MPIU_Malloc( connInfo->toStringLen );
-    str = string;
+    str = (char *)MPIU_Malloc( connInfo->toStringLen );
+
+#if defined(MPICH_DEBUG_MEMINIT)
+    memset(str, 0, connInfo->toStringLen);
+#endif
 
     pg_id = pg->id;
     /* FIXME: This is a hack, and it doesn't even work */
@@ -806,6 +859,7 @@ static int connToString( char **buf_p, int *slen, MPIDI_PG_t *pg )
 	  "connToString: pg id is", (char *)pg_id );*/
     /* This is intended to cause a process to transition from a singleton
        to a non-singleton. */
+    /* XXX DJG TODO figure out what this little bit is all about. */
     if (strstr( pg_id, "singinit_kvs" ) == pg_id) {
 	PMI_Get_id( pg->id, 256 );
     }
@@ -830,7 +884,7 @@ static int connToString( char **buf_p, int *slen, MPIDI_PG_t *pg )
 			    __LINE__, MPI_ERR_INTERN, "**intern", NULL);
     }
 
-    *buf_p = string;
+    *buf_p = str;
     *slen = len;
 
     return MPI_SUCCESS;
@@ -1029,12 +1083,14 @@ int MPIDI_PG_Close_VCs( void )
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_PG_CLOSE_VCS);
 
+    XRC_MSG ("MPIDI_PG_Close_VCs");
     while (pg) {
 	int i, inuse;
 
 	MPIU_DBG_MSG_S(CH3_DISCONNECT,VERBOSE,"Closing vcs for pg %s",
 		       (char *)pg->id );
 
+    XRC_MSG ("closing vcs for pg %s", (char *) pg->id);
 
 	for (i = 0; i < pg->size; i++)
 	{
@@ -1046,7 +1102,32 @@ int MPIDI_PG_Close_VCs( void )
                 }
 		continue;
 	    }
+        XRC_MSG ("closing %d xf: 0x%08x st", vc->pg_rank, vc->ch.xrc_flags, 
+                vc->state);
+#ifdef _ENABLE_XRC_
+        VC_XST_SET (vc, XF_CONN_CLOSING);
+#endif
 
+#ifdef _ENABLE_XRC_
+        if ((!USE_XRC || VC_XST_ISSET (vc, XF_SMP_VC | XF_DPM_INI)) ? 
+                (vc->state == MPIDI_VC_STATE_ACTIVE || 
+                vc->state == MPIDI_VC_STATE_REMOTE_CLOSE
+#if defined(MPIDI_CH3_USES_SSHM) && 0
+		/* FIXME: Remove this IFDEF */
+		/* sshm queues are uni-directional.  A VC that is connected 
+		 * in the read direction is marked MPIDI_VC_STATE_INACTIVE
+		 * so that a connection will be formed on the first write.  
+		 * Since the other side is marked MPIDI_VC_STATE_ACTIVE for 
+		 * writing 
+		 * we need to initiate the close protocol on the read side 
+		 * even if the write state is MPIDI_VC_STATE_INACTIVE. */
+		|| ((vc->state == MPIDI_VC_STATE_INACTIVE) && 
+		    ((MPIDI_CH3I_VC *)(vc->channel_private))->shm_read_connected)
+#endif
+            ):(VC_XST_ISUNSET (vc, XF_TERMINATED) &&
+            VC_XST_ISSET (vc, (XF_SEND_IDLE | XF_SEND_CONNECTING))))
+    
+#else
 	    if (vc->state == MPIDI_VC_STATE_ACTIVE || 
 		vc->state == MPIDI_VC_STATE_REMOTE_CLOSE
 #if defined(MPIDI_CH3_USES_SSHM) && 0
@@ -1062,7 +1143,10 @@ int MPIDI_PG_Close_VCs( void )
 		    ((MPIDI_CH3I_VC *)(vc->channel_private))->shm_read_connected)
 #endif
 		)
+#endif
 	    {
+        XRC_MSG ("SendClose %d 0x%08x %d\n", vc->pg_rank, vc->ch.xrc_flags, 
+                vc->ch.state);
 		MPIDI_CH3U_VC_SendClose( vc, i );
 	    }
 	    else

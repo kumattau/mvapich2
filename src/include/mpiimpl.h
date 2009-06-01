@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -107,17 +107,19 @@
 /* FIXME: ... to do ... */
 #include "mpitypedefs.h"
 
+/* Include definitions from the device which must exist before items in this
+   file (mpiimpl.h) can be defined. mpidpre.h must be included before any
+   files that allow the device to override or extend any terms; this includes
+   mpiimplthread.h and mpiutil.h */
+/* ------------------------------------------------------------------------- */
+#include "mpidpre.h"
+/* ------------------------------------------------------------------------- */
+
 #include "mpiimplthread.h"
-#include "mpiatomic.h"
 /* #include "mpiu_monitors.h" */
 
 #include "mpiutil.h"
 
-/* Include definitions from the device which must exist before items in this
-   file (mpiimpl.h) can be defined. */
-/* ------------------------------------------------------------------------- */
-#include "mpidpre.h"
-/* ------------------------------------------------------------------------- */
 
 
 /* ------------------------------------------------------------------------- */
@@ -197,8 +199,6 @@ void MPIU_dump_dbg_memlog(FILE * fp);
 /* The follow is temporarily provided for backward compatibility.  Any code
    using dbg_printf should be updated to use MPIU_DBG_PRINTF. */
 #define dbg_printf MPIU_dbg_printf
-
-void MPIU_Exit(int);
 
 /* MPIR_IDebug withdrawn because the MPIU_DBG_MSG interface provides 
    a more flexible, integrated, and documented mechanism */
@@ -1316,6 +1316,11 @@ extern MPID_Comm MPID_Comm_direct[];
 #define MPID_CONTEXT_INTER_COLLA 2
 #define MPID_CONTEXT_INTER_COLLB 3
 
+#if defined (_OSU_PSM_)
+    #define MPID_CONTEXT_PSMCTRL    4
+    #define MPID_CONTEXT_RNDVPSM    5
+#endif
+
 /* Utility routines.  Where possible, these are kept in the source directory
    with the other comm routines (src/mpi/comm, in mpicomm.h).  However,
    to create a new communicator after a spawn or connect-accept operation, 
@@ -1399,6 +1404,10 @@ typedef struct MPID_Request {
 #ifdef MPID_DEV_REQUEST_DECL
     MPID_DEV_REQUEST_DECL
 #endif
+#if defined _OSU_PSM_    
+    MPID_DEV_PSM_REQUEST_DECL
+#endif
+#
 } MPID_Request;
 extern MPIU_Object_alloc_t MPID_Request_mem;
 /* Preallocated request objects */
@@ -1420,6 +1429,7 @@ extern MPID_Request MPID_Request_direct[];
 */
 #ifdef HAVE_DEBUGGER_SUPPORT
 void MPIR_WaitForDebugger( void );
+void MPIR_DebuggerSetAborting( const char * );
 void MPIR_Sendq_remember(MPID_Request *, int, int, int );
 void MPIR_Sendq_forget(MPID_Request *);
 void MPIR_CommL_remember( MPID_Comm * );
@@ -1631,11 +1641,6 @@ void *MPID_Alloc_mem( size_t size, MPID_Info *info );
   Win
   @*/
 int MPID_Free_mem( void *ptr );
-
-/* brad : added as means to cleanup.  default implementation does nothing.  sshm
- *         uses this within finalize (and potentially abort?)
- */
-void MPID_Cleanup_mem( void );
 
 /*@
   MPID_Mem_was_alloced - Return true if this memory was allocated with 
@@ -2067,7 +2072,7 @@ extern MPICH_PerProcess_t MPIR_Process;
    macros to track the nesting level; otherwise, allow the timing module the
    opportunity to define the macros */
 #if defined(MPICH_DEBUG_FINE_GRAIN_NESTING)
-#   include "mpidu_func_nesting.h"
+#   include "mpiu_func_nesting.h"
 #elif defined(MPICH_DEBUG_MEMARENA)
 #   include "mpifuncmem.h"
 #elif defined(USE_DBG_LOGGING)
@@ -3609,6 +3614,8 @@ int MPIR_Bcast_inter(void *buffer, int count, MPI_Datatype datatype,
 		     int root, MPID_Comm *comm_ptr);
 int MPIR_Bcast (void *buffer, int count, MPI_Datatype datatype, int
                 root, MPID_Comm *comm_ptr);
+int knomial_2level_Bcast (void *buffer, int count, MPI_Datatype datatype, int
+                           nbytes,int root, MPID_Comm *comm_ptr);
 int MPIR_Exscan(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
                 MPI_Op op, MPID_Comm *comm_ptr );
 int MPIR_Gather (void *sendbuf, int sendcnt, MPI_Datatype sendtype,

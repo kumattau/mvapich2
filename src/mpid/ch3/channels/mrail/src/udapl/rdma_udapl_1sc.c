@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -39,6 +39,23 @@ do {                                                          \
 #else /* defined(DEBUG) */
 #define DEBUG_PRINT(args...)
 #endif /* defined(DEBUG) */ 
+
+#ifndef GEN_EXIT_ERR
+#define GEN_EXIT_ERR    -1
+#endif
+#ifndef ibv_error_abort
+#define ibv_error_abort(code, message) do                       \
+{                                                               \
+	int my_rank;                                                \
+	PMI_Get_rank(&my_rank);                                     \
+	fprintf(stderr, "[%d] Abort: ", my_rank);                   \
+	fprintf(stderr, message);                                   \
+	fprintf(stderr, " at line %d in file %s\n", __LINE__,       \
+	    __FILE__);                                              \
+    fflush (stderr);                                            \
+	exit(code);                                                 \
+} while (0)
+#endif
 
 extern int number_of_op;
 
@@ -385,7 +402,7 @@ MPIDI_CH3I_RDMA_try_rma (MPID_Win * win_ptr,
                       }
                   default:
                       printf ("Unknown ONE SIDED OP\n");
-                      exit (0);
+                      ibv_error_abort (GEN_EXIT_ERR, "rdma_udapl_1sc");
                       break;
                   }
             }
@@ -502,7 +519,7 @@ MPIDI_CH3I_RDMA_win_create (void *base,
           if (ret != MPI_SUCCESS)
             {
                 printf ("Error allreduce while creating windows\n");
-                exit (0);
+                ibv_error_abort (GEN_EXIT_ERR, "rdma_udapl_1sc");
             }
 
           if (recvbuf != 0)
@@ -536,7 +553,7 @@ MPIDI_CH3I_RDMA_win_create (void *base,
           if (ret != MPI_SUCCESS)
             {
                 printf ("Error allreduce while creating windows\n");
-                exit (0);
+                ibv_error_abort (GEN_EXIT_ERR, "rdma_udapl_1sc");
             }
 
           if (recvbuf != 0)
@@ -597,7 +614,7 @@ MPIDI_CH3I_RDMA_win_create (void *base,
     if (!tmp)
       {
           printf ("Error malloc tmp when creating windows\n");
-          exit (0);
+          ibv_error_abort (GEN_EXIT_ERR, "rdma_udapl_1sc");
       }
     tmp[7 * rank] = (uint32_t) r_key;
     tmp[7 * rank + 1] = (uint32_t) r_key2;
@@ -613,28 +630,28 @@ MPIDI_CH3I_RDMA_win_create (void *base,
     if (ret != MPI_SUCCESS)
       {
           printf ("Error gather rkey  when creating windows\n");
-          exit (0);
+          ibv_error_abort (GEN_EXIT_ERR, "rdma_udapl_1sc");
       }
     (*win_ptr)->r_key =
         (uint32_t *) MPIU_Malloc (comm_size * sizeof (uint32_t));
     if (!(*win_ptr)->r_key)
       {
           printf ("Error malloc win->r_key when creating windows\n");
-          exit (0);
+          ibv_error_abort (GEN_EXIT_ERR, "rdma_udapl_1sc");
       }
     (*win_ptr)->r_key2 =
         (uint32_t *) MPIU_Malloc (comm_size * sizeof (uint32_t));
     if (!(*win_ptr)->r_key2)
       {
           printf ("Error malloc win->r_key2 when creating windows\n");
-          exit (0);
+          ibv_error_abort (GEN_EXIT_ERR, "rdma_udapl_1sc");
       }
     (*win_ptr)->r_key3 =
         (uint32_t *) MPIU_Malloc (comm_size * sizeof (uint32_t));
     if (!(*win_ptr)->r_key3)
       {
           printf ("error malloc win->r_key3 when creating windows\n");
-          exit (0);
+          ibv_error_abort (GEN_EXIT_ERR, "rdma_udapl_1sc");
       }
     (*win_ptr)->all_actlock_addr =
         (long long **) MPIU_Malloc (comm_size * sizeof (long long *));
@@ -642,7 +659,7 @@ MPIDI_CH3I_RDMA_win_create (void *base,
       {
           printf
               ("error malloc win->all_actlock_addr when creating windows\n");
-          exit (0);
+          ibv_error_abort (GEN_EXIT_ERR, "rdma_udapl_1sc");
       }
     (*win_ptr)->all_completion_counter =
         (long long **) MPIU_Malloc (comm_size * sizeof (long long *));
@@ -650,14 +667,14 @@ MPIDI_CH3I_RDMA_win_create (void *base,
       {
           printf
               ("error malloc win->all_completion_counter when creating windows\n");
-          exit (0);
+          ibv_error_abort (GEN_EXIT_ERR, "rdma_udapl_1sc");
       }
     (*win_ptr)->r_key5 =
         (uint32_t *) MPIU_Malloc (comm_size * sizeof (uint32_t));
     if (!(*win_ptr)->r_key5)
       {
           printf ("error malloc win->all_wins when creating windows\n");
-          exit (0);
+          ibv_error_abort (GEN_EXIT_ERR, "rdma_udapl_1sc");
       }
 
     (*win_ptr)->all_assist_thr_acks =
@@ -665,7 +682,7 @@ MPIDI_CH3I_RDMA_win_create (void *base,
     if (!(*win_ptr)->all_assist_thr_acks)
       {
           printf ("error malloc win->all_wins when creating windows\n");
-          exit (0);
+          ibv_error_abort (GEN_EXIT_ERR, "rdma_udapl_1sc");
       }
 
 
@@ -685,25 +702,25 @@ MPIDI_CH3I_RDMA_win_create (void *base,
     if (!tmp1)
       {
           printf ("Error malloc tmp when creating windows\n");
-          exit (0);
+          ibv_error_abort (GEN_EXIT_ERR, "rdma_udapl_1sc");
       }
     tmp2 = (uintptr_t *) MPIU_Malloc (comm_size * sizeof (uintptr_t));
     if (!tmp2)
       {
           printf ("Error malloc tmp when creating windows\n");
-          exit (0);
+          ibv_error_abort (GEN_EXIT_ERR, "rdma_udapl_1sc");
       }
     tmp3 = (uintptr_t *) MPIU_Malloc (comm_size * sizeof (uintptr_t));
     if (!tmp3)
       {
           printf ("Error malloc tmp when creating windows\n");
-          exit (0);
+          ibv_error_abort (GEN_EXIT_ERR, "rdma_udapl_1sc");
       }
     tmp4 = (uintptr_t *) MPIU_Malloc (comm_size * sizeof (uintptr_t));
     if (!tmp4)
       {
           printf ("Error malloc tmp when creating windows\n");
-          exit (0);
+          ibv_error_abort (GEN_EXIT_ERR, "rdma_udapl_1sc");
       }
     /* use all to all to exchange rkey and address for post flag */
     for (i = 0; i < comm_size; i++)
@@ -721,7 +738,7 @@ MPIDI_CH3I_RDMA_win_create (void *base,
     if (ret != MPI_SUCCESS)
       {
           printf ("Error gather rkey  when creating windows\n");
-          exit (0);
+          ibv_error_abort (GEN_EXIT_ERR, "rdma_udapl_1sc");
       }
     ret =
         NMPI_Alltoall (tmp2, 1, MPI_LONG, tmp4, 1, MPI_LONG,
@@ -729,14 +746,14 @@ MPIDI_CH3I_RDMA_win_create (void *base,
     if (ret != MPI_SUCCESS)
       {
           printf ("Error gather rkey  when creating windows\n");
-          exit (0);
+          ibv_error_abort (GEN_EXIT_ERR, "rdma_udapl_1sc");
       }
     (*win_ptr)->r_key4 =
         (uint32_t *) MPIU_Malloc (comm_size * sizeof (uint32_t));
     if (!(*win_ptr)->r_key4)
       {
           printf ("error malloc win->r_key3 when creating windows\n");
-          exit (0);
+          ibv_error_abort (GEN_EXIT_ERR, "rdma_udapl_1sc");
       }
     (*win_ptr)->remote_post_flags =
         (long **) MPIU_Malloc (comm_size * sizeof (long *));
@@ -744,7 +761,7 @@ MPIDI_CH3I_RDMA_win_create (void *base,
       {
           printf
               ("error malloc win->remote_post_flags when creating windows\n");
-          exit (0);
+          ibv_error_abort (GEN_EXIT_ERR, "rdma_udapl_1sc");
       }
     for (i = 0; i < comm_size; i++)
       {
@@ -772,7 +789,7 @@ MPIDI_CH3I_RDMA_win_create (void *base,
     if (!(*win_ptr)->put_get_list)
       {
           printf ("Fail to malloc space for window put get list\n");
-          exit (0);
+          ibv_error_abort (GEN_EXIT_ERR, "rdma_udapl_1sc");
       }
     /* Preregister buffer */
     /* prepin some buffer for one-sided communication */
@@ -1033,7 +1050,7 @@ Consume_signals (MPID_Win * winptr, aint_t expected)
                       printf ("in Consume_signals %d  \n",
                               winptr->pinnedpool_1sc_index);
                       printf ("\n DAT_EVD_ERROR inside Consume_signals\n");
-                      exit (0);
+                      ibv_error_abort (GEN_EXIT_ERR, "rdma_udapl_1sc");
 
                   }
                 MPIU_Assert (event.event_data.dto_completion_event_data.status ==
@@ -1093,7 +1110,7 @@ Consume_signals (MPID_Win * winptr, aint_t expected)
                       fprintf (stderr, "Error! rank %d, Undefined op_type, op type %d, \
                 list id %u, expecting id %u\n",
                                winptr->my_id, list_entry->op_type, list_entry, expected);
-                      exit (0);
+                      ibv_error_abort (GEN_EXIT_ERR, "rdma_udapl_1sc");
                   }
             }
 

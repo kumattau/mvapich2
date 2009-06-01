@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -50,6 +50,7 @@ MPICH_ThreadInfo_t MPIR_ThreadInfo = { 0 };
 #if defined(_OSU_MVAPICH_)
 #define DEFAULT_SHMEM_BCAST_LEADERS    4096
 #endif /* _OSU_MVAPICH_ */
+
 
 /* These are initialized as null (avoids making these into common symbols).
    If the Fortran binding is supported, these can be initialized to 
@@ -568,8 +569,8 @@ void MV2_Read_env_vars(void){
     }
     if ((value = getenv("MV2_SHMEM_BCAST_LEADERS")) != NULL){
         if ((atoi(value) > 0)) {
-           /* We only accept positive values */
-           g_shmem_bcast_leaders = (int)atoi(value);
+            /* We only accept positive values */
+	        g_shmem_bcast_leaders = (int)atoi(value);
         }
     }
     if ((value = getenv("MV2_USE_SHARED_MEM")) != NULL){

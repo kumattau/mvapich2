@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -85,7 +85,7 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int is_blocki
             }
             MPIU_Assert((void *) pending_vc == (*v_ptr)->vc);
             *vc_pptr = pending_vc;
-        } else {                /* must be T_CHANNEL_EXACT_ARRIVE */
+        } else if(type == T_CHANNEL_EXACT_ARRIVE) {
             *vc_pptr = pending_vc;
             pending_vc = NULL;
             DEBUG_PRINT("will return seqnum %d\n",

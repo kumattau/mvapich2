@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -43,6 +43,14 @@ int MPID_Rsend(const void * buf, int count, MPI_Datatype datatype, int rank, int
     MPID_Seqnum_t seqnum;
 #endif    
     int mpi_errno = MPI_SUCCESS;    
+
+#if defined (_OSU_PSM_)
+    /* implement Rsend as a send */
+    return(MPID_Send(buf, count, datatype, rank, tag, comm, 
+                     context_offset, request));
+#endif    
+
+
     MPIDI_STATE_DECL(MPID_STATE_MPID_RSEND);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_RSEND);
@@ -53,7 +61,7 @@ int MPID_Rsend(const void * buf, int count, MPI_Datatype datatype, int rank, int
     
     if (rank == comm->rank && comm->comm_kind != MPID_INTERCOMM)
     {
-	mpi_errno = MPIDI_Isend_self(buf, count, datatype, rank, tag, comm, context_offset, MPIDI_REQUEST_TYPE_RSEND, request);
+	mpi_errno = MPIDI_Isend_self(buf, count, datatype, rank, tag, comm, context_offset, MPIDI_REQUEST_TYPE_RSEND, &sreq);
 	goto fn_exit;
     }
 

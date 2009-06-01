@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -21,8 +21,6 @@
 #include "ibv_param.h"
 
 #define MPD_WINDOW 10
-#define ADDR_PKT_SIZE (sizeof(struct addr_packet) + ((pg_size - 1) * sizeof(struct host_addr_inf)))
-#define ADDR_INDEX(_p, _i) ((struct addr_packet *)(_p + (_i * ADDR_PKT_SIZE)))
 
 #define IBA_PMI_ATTRLEN (16)
 #define IBA_PMI_VALLEN  (4096)
@@ -34,7 +32,7 @@ struct init_addr_inf {
 
 struct host_addr_inf {
     uint32_t    sr_qp_num;
-    uint32_t    osc_qp_num;
+    uint64_t    vc_addr;
 };
 
 struct addr_packet {
@@ -43,8 +41,19 @@ struct addr_packet {
     int         lid;
     int         rail;
     uint32_t    hca_type;
-    struct host_addr_inf val[1];
+    struct host_addr_inf val[0];
 };
+
+static inline int addr_packet_size(int pg_size)
+{
+    return (sizeof(struct addr_packet) + 
+            pg_size * sizeof(struct host_addr_inf));
+}
+
+static void *addr_packet_buffer(void *start, int index, int pg_size)
+{
+    return (void *)((uintptr_t)start + index * addr_packet_size(pg_size));
+}
 
 struct ring_packet {
     int     type;
@@ -376,6 +385,7 @@ int rdma_setup_startup_ring(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
            &neighbor_addr[1].qp_num[1]);
 
     mpi_errno = _setup_ib_boot_ring(neighbor_addr, proc, port);
+    PMI_Barrier();
 
 out:
     return mpi_errno;
@@ -418,19 +428,23 @@ fn_fail:
 #define FUNCNAME rdma_ring_based_allgather
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-void rdma_ring_based_allgather(void *sbuf, int data_size,
+int rdma_ring_based_allgather(void *sbuf, int data_size,
         int pg_rank, void *rbuf, int pg_size,
         struct MPIDI_CH3I_RDMA_Process_t *proc)
 {
     struct ibv_mr * addr_hndl;
-    int i;
-
+    int i; 
+    int mpi_errno = MPI_SUCCESS;
     addr_hndl = ibv_reg_mr(proc->ptag[0],
             rbuf, data_size*pg_size,
             IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
 
     if(addr_hndl == NULL) {
-        ibv_error_abort(GEN_EXIT_ERR,"ibv_reg_mr failed for addr_hndl\n");
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+                MPI_ERR_INTERN,
+                "**fail",
+                "**fail %s",
+                "ibv_reg_mr failed for addr_hndl\n");
     }
 
     DEBUG_PRINT("val of addr_pool is: %p, handle: %08x\n",
@@ -473,7 +487,11 @@ void rdma_ring_based_allgather(void *sbuf, int data_size,
             sg_entry_r.length = data_size;
 
             if(ibv_post_recv(proc->boot_qp_hndl[0], &rr, &bad_wr_r)) {
-                ibv_error_abort(GEN_EXIT_ERR,"Error posting recv!\n");
+                MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+                        MPI_ERR_INTERN,
+                        "**fail",
+                        "**fail %s",
+                        "Error posting recv!\n");
             }
             recv_post_index = round_left(recv_post_index,pg_size);
         }
@@ -507,7 +525,11 @@ void rdma_ring_based_allgather(void *sbuf, int data_size,
                 sg_entry_s.lkey   = addr_hndl->lkey;
 
                 if (ibv_post_send(proc->boot_qp_hndl[1], &sr, &bad_wr_s)) {
-                    ibv_error_abort(GEN_EXIT_ERR, "Error posting send!\n");
+                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+                            MPI_ERR_INTERN,
+                            "**fail",
+                            "**fail %s",
+                            "Error posting send!\n");
                 }
 
                 send_post_index=round_left(send_post_index,pg_size);
@@ -516,15 +538,27 @@ void rdma_ring_based_allgather(void *sbuf, int data_size,
 
             ne = ibv_poll_cq(proc->boot_cq_hndl, 1, &rc);
             if (ne < 0) {
-                ibv_error_abort(GEN_EXIT_ERR, "Poll CQ failed!\n");
+                MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+                        MPI_ERR_INTERN,
+                        "**fail",
+                        "**fail %s",
+                        "Poll CQ failed!\n");
             } else if (ne > 1) {
-                ibv_error_abort(GEN_EXIT_ERR, "Got more than one\n");
+                MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+                        MPI_ERR_INTERN,
+                        "**fail",
+                        "**fail %s",
+                        "Got more than one\n");
             } else if (ne == 1) {
                 if (rc.status != IBV_WC_SUCCESS) {
                     if(rc.status == IBV_WC_RETRY_EXC_ERR) {
                         DEBUG_PRINT("Got IBV_WC_RETRY_EXC_ERR\n");
                     }
-                    ibv_error_abort(GEN_EXIT_ERR,"Error code in polled desc!\n");
+                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+                            MPI_ERR_INTERN,
+                            "**fail",
+                            "**fail %s",
+                            "Error code in polled desc!\n");
                 }
                 if (rc.wr_id < pg_size) {
                     /*recv completion*/
@@ -540,7 +574,11 @@ void rdma_ring_based_allgather(void *sbuf, int data_size,
                         sg_entry_r.length = data_size;
 
                         if(ibv_post_recv(proc->boot_qp_hndl[0], &rr, &bad_wr_r)) {
-                            ibv_error_abort(GEN_EXIT_ERR,"Error posting recv!\n");
+                            MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+                                    MPI_ERR_INTERN,
+                                    "**fail",
+                                    "**fail %s",
+                                    "Error posting recv!\n");
                         }
 
                         recv_post_index = round_left(recv_post_index,pg_size);
@@ -558,16 +596,25 @@ void rdma_ring_based_allgather(void *sbuf, int data_size,
     }
 
     ibv_dereg_mr(addr_hndl);
-}
+fn_exit:
+    return mpi_errno;
 
-static void _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
-        struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank, int pg_size,
+fn_fail:
+    goto fn_exit;
+
+}
+#undef FUNCNAME
+#define FUNCNAME _ring_boot_exchange
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
+        struct MPIDI_CH3I_RDMA_Process_t *proc, MPIDI_PG_t *pg, int pg_rank,
         struct process_init_info *info)
 {
-    int i, ne, index_to_send, rail_index;
+    int i, ne, index_to_send, rail_index, pg_size;
     int hostid;
     char hostname[HOSTNAME_LEN + 1];
-
+    int mpi_errno = MPI_SUCCESS;
     uint64_t last_send = 0;
     uint64_t last_send_comp = 0;
 
@@ -593,18 +640,24 @@ static void _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
 
     DEBUG_PRINT("Posting recvs\n");
     char* addr_poolProxy = (char*) addr_pool;
-
+    pg_size = MPIDI_PG_Get_size(pg);
+    
     for(i = 1; i < MPD_WINDOW; i++) {
         rr.wr_id   = i;
         rr.num_sge = 1;
         rr.sg_list = &(sg_entry_r);
         rr.next    = NULL;
         sg_entry_r.lkey = addr_hndl->lkey;
-        sg_entry_r.addr = (uintptr_t) ADDR_INDEX(addr_poolProxy, i);
-        sg_entry_r.length = ADDR_PKT_SIZE;
+        sg_entry_r.addr = 
+                (uintptr_t)addr_packet_buffer(addr_poolProxy, i, pg_size);
+        sg_entry_r.length = addr_packet_size(pg_size);
 
         if(ibv_post_recv(proc->boot_qp_hndl[0], &rr, &bad_wr_r)) {
-            ibv_error_abort(GEN_EXIT_ERR,"Error posting recv!\n");
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+                    MPI_ERR_INTERN,
+                    "**fail",
+                    "**fail %s",
+                    "Error posting recv!\n");
         }
     }
 
@@ -616,7 +669,7 @@ static void _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
 
     gethostname(hostname, HOSTNAME_LEN);
     if (!hostname) {
-        fprintf(stderr, "Could not get hostname\n");
+        MPIU_Error_printf(stderr, "Could not get hostname\n");
         exit(1);
     }
     hostid = get_host_id(hostname, HOSTNAME_LEN);
@@ -631,7 +684,8 @@ static void _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
 
         DEBUG_PRINT("doing rail %d\n", rail_index);
 
-        send_packet          = ADDR_INDEX(addr_poolProxy, index_to_send);
+        send_packet          = addr_packet_buffer(addr_poolProxy, index_to_send,
+                                                  pg_size);
         send_packet->rank    = pg_rank;
         send_packet->rail    = rail_index;
         send_packet->host_id = hostid;
@@ -639,18 +693,14 @@ static void _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
         for(i = 0; i < pg_size; i++) {
             if(i == pg_rank) {
                 send_packet->val[i].sr_qp_num = -1;
-
-                if (proc->has_one_sided)
-                {
-                    send_packet->val[i].osc_qp_num = -1;
-                }
                 info->hca_type[i] = MPIDI_CH3I_RDMA_Process.hca_type;
             } else {
-                MPIDI_PG_Get_vc(g_cached_pg, i, &vc);
+                MPIDI_PG_Get_vc(pg, i, &vc); 
 
                 send_packet->lid     = vc->mrail.rails[rail_index].lid;
                 send_packet->val[i].sr_qp_num =
                     vc->mrail.rails[rail_index].qp_hndl->qp_num;
+                send_packet->val[i].vc_addr  = (uintptr_t)vc;
                 send_packet->hca_type = MPIDI_CH3I_RDMA_Process.hca_type;
             }
         }
@@ -664,16 +714,21 @@ static void _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
             sr.num_sge        = 1;
             sr.sg_list        = &sg_entry_s;
             sr.next           = NULL;
-            sg_entry_s.addr   = (uintptr_t)
-                ADDR_INDEX(addr_poolProxy, index_to_send);
-            sg_entry_s.length = ADDR_PKT_SIZE;
+            sg_entry_s.addr   = (uintptr_t)addr_packet_buffer(addr_poolProxy, 
+                                                              index_to_send, 
+                                                              pg_size);
+            sg_entry_s.length = addr_packet_size(pg_size);
             sg_entry_s.lkey   = addr_hndl->lkey;
 
             /* keep track of the last send... */
             last_send         = sr.wr_id;
 
             if (ibv_post_send(proc->boot_qp_hndl[1], &sr, &bad_wr_s)) {
-                ibv_error_abort(GEN_EXIT_ERR, "Error posting send!\n");
+                MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+                        MPI_ERR_INTERN,
+                        "**fail",
+                        "**fail %s",
+                        "Error posting send!\n");
             }
 
             /* flag that keeps track if we are waiting
@@ -683,22 +738,35 @@ static void _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
             while(1) {
                 ne = ibv_poll_cq(proc->boot_cq_hndl, 1, &rc);
                 if (ne < 0) {
-                    ibv_error_abort(GEN_EXIT_ERR, "Poll CQ failed!\n");
+                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+                            MPI_ERR_INTERN,
+                            "**fail",
+                            "**fail %s",
+                            "Poll CQ failed!\n");
                 } else if (ne > 1) {
-                    ibv_error_abort(GEN_EXIT_ERR, "Got more than one\n");
+                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+                            MPI_ERR_INTERN,
+                            "**fail",
+                            "**fail %s",
+                            "Got more than one\n");
                 } else if (ne == 1) {
                     if (rc.status != IBV_WC_SUCCESS) {
                         if(rc.status == IBV_WC_RETRY_EXC_ERR) {
                             DEBUG_PRINT("Got IBV_WC_RETRY_EXC_ERR\n");
                         }
-                        ibv_error_abort(GEN_EXIT_ERR,"Error code in polled desc!\n");
+
+                        MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+                                MPI_ERR_INTERN,
+                                "**fail",
+                                "**fail %s",
+                                "Error code in polled desc!\n");
                     }
 
                     if (rc.wr_id < MPD_WINDOW) {
                         /* completion of recv */
 
-                        recv_packet = ADDR_INDEX(addr_poolProxy, rc.wr_id);
-
+                        recv_packet = addr_packet_buffer(addr_poolProxy,
+                                                         rc.wr_id, pg_size);
 
                         info->lid[recv_packet->rank][rail_index] =
                             recv_packet->lid;
@@ -706,17 +774,14 @@ static void _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
                             recv_packet->host_id;
                         info->hca_type[recv_packet->rank] =
                             recv_packet->hca_type;
+                        info->vc_addr[recv_packet->rank] =
+                                recv_packet->val[pg_rank].vc_addr;
 
-                        MPIDI_PG_Get_vc(g_cached_pg, recv_packet->rank, &vc);
+                        MPIDI_PG_Get_vc(pg, recv_packet->rank, &vc);
                         vc->smp.hostid = recv_packet->host_id;
 
                         info->qp_num_rdma[recv_packet->rank][rail_index] =
                             recv_packet->val[pg_rank].sr_qp_num;
-
-                        if (proc->has_one_sided)
-                        {
-                            info->qp_num_onesided[recv_packet->rank][rail_index] = recv_packet->val[pg_rank].osc_qp_num;
-                        }
 
                         /* queue this for sending to the next
                          * hop in the ring
@@ -735,10 +800,13 @@ static void _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
                         rr.next    = NULL;
                         sg_entry_r.lkey = addr_hndl->lkey;
                         sg_entry_r.addr = (uintptr_t)
-                            ADDR_INDEX(addr_poolProxy, rr.wr_id);
-                        sg_entry_r.length = ADDR_PKT_SIZE;
+                            addr_packet_buffer(addr_poolProxy, rr.wr_id, pg_size);
+                        sg_entry_r.length = addr_packet_size(pg_size);
                         if(ibv_post_recv(proc->boot_qp_hndl[0], &rr, &bad_wr_r)) {
-                            ibv_error_abort(GEN_EXIT_ERR,
+                            MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+                                    MPI_ERR_INTERN,
+                                    "**fail",
+                                    "**fail %s",
                                     "Error posting recv!\n");
                         }
                     }
@@ -754,37 +822,62 @@ static void _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
         ne = ibv_poll_cq(proc->boot_cq_hndl, 1, &rc);
         if(ne == 1) {
             if (rc.status != IBV_WC_SUCCESS) {
-                ibv_va_error_abort(GEN_EXIT_ERR,"Error code %d in polled desc!\n",
-                                rc.status);
+                MPIU_ERR_SETFATALANDJUMP2(mpi_errno,
+                        MPI_ERR_INTERN,
+                        "**fail",
+                        "**fail %s %d",
+                        "Error code %d in polled desc!\n",
+                        rc.status);
             }
             last_send_comp = rc.wr_id;
         }
     }
+
+fn_exit:
+    return mpi_errno;
+
+fn_fail:
+    goto fn_exit;
+
 }
 
 #undef FUNCNAME
 #define FUNCNAME rdma_ring_boot_exchange
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-void rdma_ring_boot_exchange(struct MPIDI_CH3I_RDMA_Process_t *proc,
-                      int pg_rank, int pg_size, struct process_init_info *info)
+int rdma_ring_boot_exchange(struct MPIDI_CH3I_RDMA_Process_t *proc,
+                      MPIDI_PG_t *pg, int pg_rank, struct process_init_info *info)
 {
     struct ibv_mr * addr_hndl;
     void * addr_pool;
-
-    addr_pool = MPIU_Malloc(MPD_WINDOW * ADDR_PKT_SIZE);
+    int pg_size = MPIDI_PG_Get_size(pg);
+    int mpi_errno = MPI_SUCCESS;
+    addr_pool = MPIU_Malloc(MPD_WINDOW * addr_packet_size(pg_size));
     addr_hndl = ibv_reg_mr(proc->ptag[0],
-            addr_pool, MPD_WINDOW * ADDR_PKT_SIZE,
+            addr_pool, MPD_WINDOW * addr_packet_size(pg_size),
             IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
 
     if(addr_hndl == NULL) {
-        ibv_error_abort(GEN_EXIT_ERR,"ibv_reg_mr failed for addr_hndl\n");
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+                MPI_ERR_INTERN,
+                "**fail",
+                "**fail %s",
+                "ibv_reg_mr failed for addr_hndl\n");
     }
 
-    _ring_boot_exchange(addr_hndl, addr_pool, proc, pg_rank, pg_size, info);
-
+    mpi_errno = _ring_boot_exchange(addr_hndl, addr_pool, proc, pg, pg_rank, info);
+    if(mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
     ibv_dereg_mr(addr_hndl);
     MPIU_Free(addr_pool);
+
+fn_exit:
+    return mpi_errno;
+
+fn_fail:
+    goto fn_exit;
+
 }
 
 

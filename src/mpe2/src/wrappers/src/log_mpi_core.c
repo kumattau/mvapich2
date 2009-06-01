@@ -1825,7 +1825,6 @@ MPI_Comm comm;
     MPI_Bcast - prototyping replacement for MPI_Bcast
     Log the beginning and ending of the time spent in MPI_Bcast calls.
 */
-
   MPE_LOG_THREADSTM_GET
   MPE_LOG_THREAD_LOCK
   MPE_LOG_STATE_BEGIN(comm,MPE_BCAST_ID)
@@ -1844,7 +1843,6 @@ MPI_Comm comm;
   MPE_LOG_THREAD_LOCK
   MPE_LOG_STATE_END(comm,NULL)
   MPE_LOG_THREAD_UNLOCK
-
   return returnVal;
 }
 

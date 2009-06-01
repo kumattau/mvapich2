@@ -1,4 +1,4 @@
-/* Copyright (c) 2002-2008, The Ohio State University. All rights
+/* Copyright (c) 2002-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -50,7 +50,7 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
 #ifdef CRC_CHECK
     unsigned long crc;
 #endif
-
+    int mpi_errno = MPI_SUCCESS;
     DEBUG_PRINT("[parse header] vbuf address %p\n", v);
     vstart = v->pheader;
     header = vstart;
@@ -63,12 +63,14 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
                      v->content_size - sizeof *header);
     if (crc != header->mrail.crc) {
 	int rank; PMI_Get_rank(&rank);
-	fprintf(stderr, "CRC mismatch, get %lx, should be %lx "
+	MPIU_Error_printf(stderr, "CRC mismatch, get %lx, should be %lx "
 		"type %d, ocntent size %d\n", 
 		crc, header->mrail.crc, header->type, v->content_size);
 	MPIU_Assert(0);
     }
 #endif
+    XRC_MSG ("Recd %d from %d\n", header->type,
+            vc->pg_rank);
     switch (header->type) {
 #ifdef USE_HEADER_CACHING
     case (MPIDI_CH3_PKT_FAST_EAGER_SEND):
@@ -147,6 +149,12 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
 	    MPIDI_CH3I_MRAILI_Recv_addr(vc, vstart);
 	    break;
 	}
+    case MPIDI_CH3_PKT_CM_ESTABLISH:
+        {
+            *pkt = vstart;
+            *header_size = sizeof(MPIDI_CH3_Pkt_cm_establish_t);
+            break;
+        }
     case MPIDI_CH3_PKT_PACKETIZED_SEND_START:
         {
             *pkt = vstart;
@@ -271,7 +279,11 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
         {
             /* Header is corrupted if control has reached here in prototype */
             /* */
-            ibv_va_error_abort(-1, "Control shouldn't reach here "
+            MPIU_ERR_SETFATALANDJUMP2(mpi_errno,
+                    MPI_ERR_OTHER,
+                    "**fail",
+                    "**fail %s %d", 
+                    "Control shouldn't reach here "
                     "in prototype, header %d\n",
                     header->type);
         }
@@ -305,12 +317,38 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
             vc->mrail.rfp.eager_start_cnt++;
             if (rdma_polling_set_threshold < 
                     vc->mrail.rfp.eager_start_cnt) {
-                vbuf_fast_rdma_alloc(vc, 1);
-                vbuf_address_send(vc);
+#ifdef _ENABLE_XRC_
+                if (MPIDI_CH3I_RDMA_Process.xrc_rdmafp &&
+                        USE_XRC && VC_XST_ISUNSET (vc, XF_SEND_IDLE)) {
+                    if (VC_XSTS_ISUNSET (vc, XF_START_RDMAFP | 
+                                XF_CONN_CLOSING | XF_DPM_INI)) {
+                        XRC_MSG ("Trying to FP to %d st: %d xr: 0x%08x", 
+                                vc->pg_rank, vc->ch.state, vc->ch.xrc_flags);
+                        VC_XST_SET (vc, XF_START_RDMAFP);
+                        MPIDI_CH3I_CM_Connect (vc);
+                    }
+                }
+                else if (!USE_XRC || 
+                        (MPIDI_CH3I_RDMA_Process.xrc_rdmafp && 
+                        VC_XSTS_ISUNSET(vc, 
+                            XF_DPM_INI | XF_CONN_CLOSING | XF_START_RDMAFP)
+                        && header->type != MPIDI_CH3_PKT_ADDRESS))
+#endif
+                {
+                    XRC_MSG ("FP to %d (IDLE)\n", vc->pg_rank);
+                    vbuf_fast_rdma_alloc(vc, 1);
+                    vbuf_address_send(vc);
+                }
             }
         }
     }
-    return MPI_SUCCESS;
+
+fn_exit:
+    return mpi_errno;
+
+fn_fail:
+    goto fn_exit;
+
 }
 
 #undef FUNCNAME
@@ -375,6 +413,11 @@ int MPIDI_CH3I_MRAILI_Recv_addr(MPIDI_VC_t * vc, void *vstart)
 {
     MPIDI_CH3_Pkt_address_t *pkt = vstart;
     int i;
+#ifdef _ENABLE_XRC_
+    if (USE_XRC && (0 == MPIDI_CH3I_RDMA_Process.xrc_rdmafp || 
+            VC_XST_ISSET (vc, XF_CONN_CLOSING)))
+        return 1;
+#endif
 
     DEBUG_PRINT("set rdma address, dma address %p\n",
             (void *)pkt->addr.rdma_address);

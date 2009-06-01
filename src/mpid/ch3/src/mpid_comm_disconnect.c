@@ -6,7 +6,11 @@
  */
 
 #include "mpidimpl.h"
-
+#ifdef _ENABLE_XRC_
+#include "rdma_impl.h"
+#else
+#define XRC_MSG(s...)
+#endif
 /*@
    MPID_Comm_disconnect - Disconnect a communicator 
 
@@ -49,11 +53,15 @@ int MPID_Comm_disconnect(MPID_Comm *comm_ptr)
     /* it's more than a comm_release, but ok for now */
     /* FIXME: Describe what more might be required */
     /* MPIU_PG_Printall( stdout ); */
+    /* fprintf(stderr, "#### In MPID_Comm_disconnect\n"); */
     mpi_errno = MPIR_Comm_release(comm_ptr,1);
     /* If any of the VCs were released by this Comm_release, wait
      for those close operations to complete */
+    /* fprintf(stderr, "#### In MPID_Comm_disconnect, calling MPIDI_CH3U_VC_WaitForClose\n"); */
+    XRC_MSG ("disconnect: WaitForClose");
     MPIDI_CH3U_VC_WaitForClose();
     /* MPIU_PG_Printall( stdout ); */
+    /* fprintf(stderr, "#### In MPID_Comm_disconnect, done MPIDI_CH3U_VC_WaitForClose\n"); */
 
 
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_COMM_DISCONNECT);

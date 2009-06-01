@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -173,6 +173,10 @@ int MPIDI_CH3_RndvSend( MPID_Request **sreq_p, const void * buf, int count,
     MPIDI_Request_set_msg_type((rreq_), (msg_type_));		\
 }
 
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3_PktHandler_RndvReqToSend
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 					MPIDI_msg_sz_t *buflen, MPID_Request **rreqp )
 {
@@ -190,9 +194,7 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 		    "ReceivedRndv");
 
     rreq = MPIDI_CH3U_Recvq_FDP_or_AEU(&rts_pkt->match, &found);
-    if (rreq == NULL) {
-	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**nomemreq");
-    }
+    MPIU_ERR_CHKANDJUMP1(!rreq, mpi_errno,MPI_ERR_OTHER, "**nomemreq", "**nomemuereq %d", MPIDI_CH3U_Recvq_count_unexp());
     
     set_request_info(rreq, rts_pkt, MPIDI_REQUEST_RNDV_MSG);
 
@@ -296,7 +298,7 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     {
 	MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"unexpected request allocated");
 #if defined(_OSU_MVAPICH_)
-#if 0 /* FIXME */
+#if 1 /* FIXME */
         /* If the request is a read and is unexpected,
          * we have to buffer the remote information till
          * this request is matched and then processed */
@@ -324,6 +326,10 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     return mpi_errno;
 }
 
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3_PktHandler_RndvClrToSend
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3_PktHandler_RndvClrToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 					MPIDI_msg_sz_t *buflen, MPID_Request **rreqp )
 {
@@ -422,7 +428,7 @@ int MPIDI_CH3_PktHandler_RndvClrToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     else
     {
 	sreq->dev.segment_ptr = MPID_Segment_alloc( );
-	/* if (!sreq->dev.segment_ptr) { MPIU_ERR_POP(); } */
+        MPIU_ERR_CHKANDJUMP1((sreq->dev.segment_ptr == NULL), mpi_errno, MPI_ERR_OTHER, "**nomem", "**nomem %s", "MPID_Segment_alloc");
 	MPID_Segment_init(sreq->dev.user_buf, sreq->dev.user_count, 
 			  sreq->dev.datatype, sreq->dev.segment_ptr, 0);
 	sreq->dev.segment_first = 0;
@@ -437,6 +443,10 @@ int MPIDI_CH3_PktHandler_RndvClrToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     return mpi_errno;
 }
 
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3_PktHandler_RndvSend
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3_PktHandler_RndvSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, 
 				   MPIDI_msg_sz_t *buflen, MPID_Request **rreqp )
 {
@@ -489,13 +499,15 @@ int MPIDI_CH3_PktHandler_RndvSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
  * This routine processes a rendezvous message once the message is matched.
  * It is used in mpid_recv and mpid_irecv.
  */
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3_RecvRndv
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3_RecvRndv( MPIDI_VC_t * vc, MPID_Request *rreq )
 {
     int mpi_errno = MPI_SUCCESS;
 #if defined(_OSU_MVAPICH_)
-/* FIXME
     MPIDI_CH3_Pkt_rndv_req_to_send_t * rts_pkt;
-*/
 #endif /* defined(_OSU_MVAPICH_) */
     /* A rendezvous request-to-send (RTS) message has arrived.  We need
        to send a CTS message to the remote process. */
@@ -525,11 +537,13 @@ int MPIDI_CH3_RecvRndv( MPIDI_VC_t * vc, MPID_Request *rreq )
 	}
     }
 
-#if defined(_OSU_MVAPICH_)
-/* FIXME
     if(MPIDI_CH3_RECV_REQ_IS_READ(rreq)) {
+        MPIDI_CH3_Pkt_t * tmp_pkt = (MPIDI_CH3_Pkt_t *) &(rreq->ch.pkt);
+        rts_pkt = &(tmp_pkt->rndv_req_to_send);
 
-        rts_pkt = &(rreq->ch.pkt.rndv_req_to_send);
+        /*
+           rts_pkt = &(rreq->ch.pkt.rndv_req_to_send);
+           */
 
         mpi_errno = MPIDI_CH3_Prepare_rndv_get(vc, rreq);
         if (mpi_errno != MPI_SUCCESS) {
@@ -543,19 +557,13 @@ int MPIDI_CH3_RecvRndv( MPIDI_VC_t * vc, MPID_Request *rreq )
                     MPI_ERR_OTHER,"**ch3|senddata");
         }
     } else {
-*/
-#endif /* defined(_OSU_MVAPICH_) */
-    mpi_errno = MPIDI_CH3_iStartRndvTransfer (vc, rreq);
+        mpi_errno = MPIDI_CH3_iStartRndvTransfer (vc, rreq);
 
-    if (mpi_errno != MPI_SUCCESS) {
-	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,
-				"**ch3|ctspkt");
+        if (mpi_errno != MPI_SUCCESS) {
+            MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,
+                    "**ch3|ctspkt");
+        }
     }
-#if defined(_OSU_MVAPICH_)
-/* FIXME
-    }
-*/
-#endif /* defined(_OSU_MVAPICH_) */
     
 #else
     MPID_Request * cts_req;

@@ -266,7 +266,7 @@ int MPI_Intercomm_merge(MPI_Comm intercomm, int high, MPI_Comm *newintracomm)
 
     /* Notify the device of this new communicator */
     MPID_Dev_comm_create_hook( newcomm_ptr );
-
+    
     *newintracomm = newcomm_ptr->handle;
 
     /* ... end of body of routine ... */

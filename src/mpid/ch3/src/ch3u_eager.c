@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -121,11 +121,28 @@ int MPIDI_CH3_EagerNoncontigSend( MPID_Request **sreq_p,
     MPIDI_Pkt_set_seqnum(eager_pkt, seqnum);
     MPIDI_Request_set_seqnum(sreq, seqnum);
 
+#if defined (_OSU_PSM_)
+        mpi_errno = psm_do_pack(count, datatype, comm, sreq, buf, data_sz);
+        if(mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+        mpi_errno = psm_send_noncontig(vc, sreq, eager_pkt->match);
+        if(mpi_errno) MPIU_ERR_POP(mpi_errno);
+        PSMSG(fprintf(stderr, "PSM Noncontig fn done\n"));
+
+        /* free buffer if blocking send */
+        if(!(sreq->psm_flags & PSM_NON_BLOCKING_SEND)) {
+            MPIU_Free(sreq->pkbuf);
+            sreq->pkbuf = NULL;
+        }
+        goto fn_exit;
+#endif /* _OSU_PSM_ */
+
     MPIU_DBG_MSGPKT(vc,tag,eager_pkt->match.context_id,rank,data_sz,
                     "Eager");
 	    
     sreq->dev.segment_ptr = MPID_Segment_alloc( );
-    /* if (!sreq->dev.segment_ptr) { MPIU_ERR_POP(); } */
+    MPIU_ERR_CHKANDJUMP1((sreq->dev.segment_ptr == NULL), mpi_errno, MPI_ERR_OTHER, "**nomem", "**nomem %s", "MPID_Segment_alloc");
+
     MPID_Segment_init(buf, count, datatype, sreq->dev.segment_ptr, 0);
     sreq->dev.segment_first = 0;
     sreq->dev.segment_size = data_sz;
@@ -306,9 +323,7 @@ int MPIDI_CH3_PktHandler_EagerShortSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 		    eagershort_pkt->match.rank,eagershort_pkt->data_sz,
 		    "ReceivedEagerShort");
     rreq = MPIDI_CH3U_Recvq_FDP_or_AEU(&eagershort_pkt->match, &found);
-    if (rreq == NULL) {
-	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**nomemreq");
-    }
+    MPIU_ERR_CHKANDJUMP1(!rreq, mpi_errno,MPI_ERR_OTHER, "**nomemreq", "**nomemuereq %d", MPIDI_CH3U_Recvq_count_unexp());
 
     (rreq)->status.MPI_SOURCE = (eagershort_pkt)->match.rank;
     (rreq)->status.MPI_TAG    = (eagershort_pkt)->match.tag;
@@ -396,7 +411,8 @@ int MPIDI_CH3_PktHandler_EagerShortSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 		/* FIXME: The MVAPICH2 tests do not exercise this branch */
 		/* printf( "Surprise!\n" ); fflush(stdout);*/
 		rreq->dev.segment_ptr = MPID_Segment_alloc( );
-		/* if (!rreq->dev.segment_ptr) { MPIU_ERR_POP(); } */
+                MPIU_ERR_CHKANDJUMP1((rreq->dev.segment_ptr == NULL), mpi_errno, MPI_ERR_OTHER, "**nomem", "**nomem %s", "MPID_Segment_alloc");
+
 		MPID_Segment_init(rreq->dev.user_buf, rreq->dev.user_count, 
 				  rreq->dev.datatype, rreq->dev.segment_ptr, 0);
 
@@ -564,6 +580,10 @@ int MPIDI_CH3_EagerContigIsend( MPID_Request **sreq_p,
 /* FIXME: This is not optimized for short messages, which 
    should have the data in the same packet when the data is
    particularly short (e.g., one 8 byte long word) */
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3_PktHandler_EagerSend
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3_PktHandler_EagerSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, 
 				    MPIDI_msg_sz_t *buflen, MPID_Request **rreqp )
 {
@@ -584,9 +604,7 @@ int MPIDI_CH3_PktHandler_EagerSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 		    "ReceivedEager");
 	    
     rreq = MPIDI_CH3U_Recvq_FDP_or_AEU(&eager_pkt->match, &found);
-    if (rreq == NULL) {
-	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**nomemreq");
-    }
+    MPIU_ERR_CHKANDJUMP1(!rreq, mpi_errno,MPI_ERR_OTHER, "**nomemreq", "**nomemuereq %d", MPIDI_CH3U_Recvq_count_unexp());
     
     set_request_info(rreq, eager_pkt, MPIDI_REQUEST_EAGER_MSG);
     
@@ -634,6 +652,10 @@ int MPIDI_CH3_PktHandler_EagerSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 }
 
 
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3_PktHandler_ReadySend
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3_PktHandler_ReadySend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 				    MPIDI_msg_sz_t *buflen, MPID_Request **rreqp )
 {
@@ -654,9 +676,7 @@ int MPIDI_CH3_PktHandler_ReadySend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 		    "ReceivedReady");
 	    
     rreq = MPIDI_CH3U_Recvq_FDP_or_AEU(&ready_pkt->match, &found);
-    if (rreq == NULL) {
-	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**nomemreq");
-    }
+    MPIU_ERR_CHKANDJUMP1(!rreq, mpi_errno,MPI_ERR_OTHER, "**nomemreq", "**nomemuereq %d", MPIDI_CH3U_Recvq_count_unexp());
     
     set_request_info(rreq, ready_pkt, MPIDI_REQUEST_EAGER_MSG);
     
@@ -797,3 +817,41 @@ int MPIDI_CH3_PktPrint_ReadySend( FILE *fp, MPIDI_CH3_Pkt_t *pkt )
 }
 
 #endif /* MPICH_DBG_OUTPUT */
+
+#if defined (_OSU_PSM_)
+int psm_do_pack(int count, MPI_Datatype datatype, MPID_Comm *comm, MPID_Request
+                *sreq, void *buf, int data_sz)
+{
+    int pksz;
+    MPID_Segment *segp;
+    MPI_Aint first = 0, last = data_sz;
+
+    if(count == 0) {
+        sreq->pkbuf = MPIU_Malloc(0);
+        sreq->pksz = 0;
+        return MPI_SUCCESS;
+    }
+
+    if(comm)
+        MPI_Pack_size(count, datatype, comm->handle, &pksz);
+    else 
+        MPI_Pack_size(count, datatype, MPI_COMM_SELF, &pksz);
+    sreq->pksz = pksz;    
+
+    sreq->pkbuf = MPIU_Malloc(pksz);
+    if(!sreq->pkbuf)
+        return MPI_ERR_NO_MEM;
+
+    segp = MPID_Segment_alloc();
+    if(segp == NULL) 
+        return MPI_ERR_NO_MEM;
+    if((MPID_Segment_init(buf, count, datatype, segp, 0)) != MPI_SUCCESS) {
+        MPID_Segment_free(segp);
+        return MPI_ERR_INTERN;
+    }
+
+    MPID_Segment_pack(segp, first, &last, sreq->pkbuf);
+    MPID_Segment_free(segp);
+    return MPI_SUCCESS;
+}
+#endif

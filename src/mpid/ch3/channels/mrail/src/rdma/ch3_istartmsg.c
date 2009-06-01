@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -17,6 +17,8 @@
  */
 
 #include "mpidi_ch3_impl.h"
+#include "rdma_impl.h"
+
 #ifdef MPICH_DBG_OUTPUT
 #ifdef HAVE_ERRNO_H
 #include <errno.h>
@@ -41,7 +43,7 @@ do {                                                          \
 #define FUNCNAME create_request
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-static inline MPID_Request * create_request(void * hdr, MPIDI_msg_sz_t hdr_sz,
+MPID_Request * create_request(void * hdr, MPIDI_msg_sz_t hdr_sz,
 					    MPIU_Size_t nb)
 {
     MPIDI_STATE_DECL(MPID_STATE_CREATE_REQUEST);
@@ -128,8 +130,11 @@ int MPIDI_CH3_iStartMsg(MPIDI_VC_t * vc, void *pkt, MPIDI_msg_sz_t pkt_sz,
 #endif
 
     /*CM code*/
-    if (vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE 
-    || !MPIDI_CH3I_CM_SendQ_empty(vc)) {
+    if ((vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE 
+#ifdef _ENABLE_XRC_
+            || (USE_XRC && VC_XST_ISUNSET (vc, XF_SEND_IDLE))
+#endif
+            ) || !MPIDI_CH3I_CM_SendQ_empty(vc)) {
         /*Request need to be queued*/
         MPIDI_DBG_PRINTF((55, FCNAME, "not connected, enqueuing"));
         sreq = create_request(pkt, pkt_sz, 0);

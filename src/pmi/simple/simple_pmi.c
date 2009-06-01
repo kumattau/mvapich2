@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
- /* Copyright (c) 2003-2008, The Ohio State University. All rights
+ /* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -55,6 +55,8 @@
 #if defined(HAVE_SYS_SOCKET_H)
 #include <sys/socket.h>
 #endif
+
+#include "mpibase.h"            /* Get ATTRIBUTE, some base functions */
 /* mpimem includes the definitions for MPIU_Snprintf, MPIU_Malloc, and 
    MPIU_Free */
 #include "mpimem.h"
@@ -69,7 +71,7 @@
 #include "pmi.h"
 #include "simple_pmiutil.h"
 #include "mpi.h"		/* to get MPI_MAX_PORT_NAME */
-
+#include <stdint.h>
 /* 
    These are global variable used *ONLY* in this file, and are hence
    declared static.
@@ -570,7 +572,7 @@ int PMI_KVS_Put( const char kvsname[], const char key[], const char value[] )
     return err;
 }
 
-int PMI_KVS_Commit( const char kvsname[] )
+int PMI_KVS_Commit( const char kvsname[] ATTRIBUTE((unused)))
 {
     /* no-op in this implementation */
     return( 0 );
@@ -734,14 +736,36 @@ int PMI_Spawn_multiple(int count,
                        const PMI_keyval_t preput_keyval_vector[],
                        int errors[])
 {
-    int  i,rc,argcnt,spawncnt;
-    char buf[PMIU_MAXLINE], tempbuf[PMIU_MAXLINE], cmd[PMIU_MAXLINE];
+    int  i,rc,argcnt,spawncnt,total_num_processes,num_errcodes_found;
+    char buf[PMIU_MAXLINE], tempbuf[PMIU_MAXLINE], cmd[PMIU_MAXLINE],
+         small[PMIU_MAXLINE];
+    char *lead, *lag, *val;
+    int mpirun = 0, sz;
 
     /* Connect to the PM if we haven't already */
     if (PMIi_InitIfSingleton() != 0) return -1;
 
+    total_num_processes = 0;
+
+    val = getenv("MPIRUN_RSH_LAUNCH");
+    if(val && (atoi(val) == 1)) {
+        mpirun = 1;
+    }
+
+    if(mpirun) {
+        sprintf(small, "mcmd=spawn\n");
+        write(PMI_fd, small, PMIU_MAXLINE);
+        write(PMI_fd, &count, sizeof(uint32_t));
+        sz = 0;
+        for(spawncnt=0; spawncnt < count; spawncnt++) 
+            sz += maxprocs[spawncnt];
+        write(PMI_fd, &sz, sizeof(uint32_t));
+    }
+
     for (spawncnt=0; spawncnt < count; spawncnt++)
     {
+        total_num_processes += maxprocs[spawncnt];
+
         rc = MPIU_Snprintf(buf, PMIU_MAXLINE, 
 			   "mcmd=spawn\nnprocs=%d\nexecname=%s\n",
 			   maxprocs[spawncnt], cmds[spawncnt] );
@@ -752,6 +776,7 @@ int PMI_Spawn_multiple(int count,
 	rc = MPIU_Snprintf(tempbuf, PMIU_MAXLINE,
 			   "totspawns=%d\nspawnssofar=%d\n",
 			   count, spawncnt+1);
+
 	if (rc < 0) { 
 	    return PMI_FAIL;
 	}
@@ -794,6 +819,7 @@ int PMI_Spawn_multiple(int count,
 	if (rc < 0) {
 	    return PMI_FAIL;
 	}
+
         rc = MPIU_Strnapp(buf,tempbuf,PMIU_MAXLINE);
 	if (rc != 0) {
 	    return PMI_FAIL;
@@ -853,6 +879,10 @@ int PMI_Spawn_multiple(int count,
 	if (rc != 0) {
 	    return PMI_FAIL;
 	}
+        if(mpirun) {
+            sz = strlen(buf);
+            write(PMI_fd, &sz, sizeof(uint32_t));
+        }
         PMIU_writeline( PMI_fd, buf );
     }
 
@@ -874,15 +904,35 @@ int PMI_Spawn_multiple(int count,
 	    return( -1 );
 	}
     }
+    
+    PMIU_Assert(errors != NULL);
+    if (PMIU_getval( "errcodes", tempbuf, PMIU_MAXLINE )) {
+        num_errcodes_found = 0;
+        lag = &tempbuf[0];
+        do {
+            lead = strchr(lag, ',');
+            if (lead) *lead = '\0';
+            errors[num_errcodes_found++] = atoi(lag);
+            lag = lead + 1; /* move past the null char */
+            PMIU_Assert(num_errcodes_found <= total_num_processes);
+        } while (lead != NULL);
+        PMIU_Assert(num_errcodes_found == total_num_processes);
+    }
+    else {
+        /* gforker doesn't return errcodes, so we'll just pretend that means
+           that it was going to send all `0's. */
+        for (i = 0; i < total_num_processes; ++i) {
+            errors[i] = 0;
+        }
+    }
+
     return( 0 );
 }
 
-#if defined(_OSU_MVAPICH_)
-int PMI_Args_to_keyval(int *argcp, char ** const* argvp, PMI_keyval_t **keyvalp, 
-#else /* defined(_OSU_MVAPICH_) */
-int PMI_Args_to_keyval(int *argcp, char *((*argvp)[]), PMI_keyval_t **keyvalp, 
-#endif /* defined(_OSU_MVAPICH_) */
-		       int *size)
+int PMI_Args_to_keyval(int *argcp ATTRIBUTE((unused)), 
+		       char *((*argvp)[]) ATTRIBUTE((unused)), 
+		       PMI_keyval_t **keyvalp ATTRIBUTE((unused)), 
+		       int *size ATTRIBUTE((unused)) )
 {
     return ( 0 );
 }
@@ -948,8 +998,8 @@ static int PMII_iter( const char *kvsname, const int idx, int *next_idx,
 	if ( rc == 0 ) {
 	    PMIU_getval( "nextidx", buf, PMIU_MAXLINE );
 	    *next_idx = atoi( buf );
-	    PMIU_getval( "key", key, PMI_keylen_max );
-	    PMIU_getval( "val", val, PMI_vallen_max );
+	    PMIU_getval( "key", key, key_len );
+	    PMIU_getval( "val", val, val_len );
 	    return( PMI_SUCCESS );
 	}
 	else {

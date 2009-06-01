@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -23,10 +23,8 @@
    and configure information without requiring the user to run an MPI
    program 
 */
-/* <_OSU_MVAPICH_> */
-/* const char MPIR_Version_string[]       = MPICH2_VERSION; */
-const char MPIR_Version_string[] = MVAPICH_VERSION;
-/* </_OSU_MVAPICH_> */
+#ifndef _OSU_MVAPICH_
+const char MPIR_Version_string[]       = MPICH2_VERSION;
 const char MPIR_Version_date[]         = MPICH2_VERSION_DATE;
 const char MPIR_Version_configure[]    = MPICH2_CONFIGURE_ARGS_CLEAN;
 const char MPIR_Version_device[]       = MPICH2_DEVICE;
@@ -34,3 +32,13 @@ const char MPIR_Version_CC[]           = MPICH2_COMPILER_CC;
 const char MPIR_Version_CXX[]          = MPICH2_COMPILER_CXX;
 const char MPIR_Version_F77[]          = MPICH2_COMPILER_F77;
 const char MPIR_Version_F90[]          = MPICH2_COMPILER_F90;
+#else
+const char MPIR_Version_string[]       = MVAPICH2_VERSION;
+const char MPIR_Version_date[]         = MVAPICH2_VERSION_DATE;
+const char MPIR_Version_configure[]    = MVAPICH2_CONFIGURE_ARGS_CLEAN;
+const char MPIR_Version_device[]       = MVAPICH2_DEVICE;
+const char MPIR_Version_CC[]           = MVAPICH2_COMPILER_CC;
+const char MPIR_Version_CXX[]          = MVAPICH2_COMPILER_CXX;
+const char MPIR_Version_F77[]          = MVAPICH2_COMPILER_F77;
+const char MPIR_Version_F90[]          = MVAPICH2_COMPILER_F90;
+#endif _OSU_MVAPICH_

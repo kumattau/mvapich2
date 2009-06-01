@@ -1,4 +1,4 @@
-/* Copyright (c) 2002-2008, The Ohio State University. All rights
+/* Copyright (c) 2002-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH software package developed by the
@@ -25,6 +25,7 @@
 #include <unistd.h>
 #include <pthread.h>
 #include <sys/time.h>
+#include <sys/syscall.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
@@ -118,10 +119,11 @@ inline int MPIDI_SMC_CR_Finalize()
     pthread_cond_destroy(&MPICR_SMC_cond);
     pthread_mutex_destroy(&MPICR_SMC_lock);
     g_cr_in_progress = 0;
+    return(0);
 }
 
 volatile MPICR_cr_state MPICR_state = MPICR_STATE_ERROR;
-static pthread_mutex_t MPICR_cs_lock;
+static pthread_rwlock_t MPICR_cs_lock;
 
 #define CR_ERR_ABORT(args...)  do {                                                             \
     fprintf(stderr, "[Rank %d][%s: line %d]", MPIDI_Process.my_pg_rank ,__FILE__, __LINE__);    \
@@ -162,6 +164,8 @@ int CR_MPDU_connect_MPD()
 {
     int optval = 1;
     struct sockaddr_in sa;
+    int fd, val;
+    char session_file[32];
 
     MPICR_MPD_fd = socket(AF_INET, SOCK_STREAM, 0);
 
@@ -174,7 +178,27 @@ int CR_MPDU_connect_MPD()
     bzero((void*) &sa, sizeof(sa));
     bcopy((void*) hp->h_addr, (void*) &sa.sin_addr, hp->h_length);
     sa.sin_family = AF_INET;
-    sa.sin_port = htons(MPICR_MPD_port + MPICR_pg_rank + restart_count * CR_RSRT_PORT_CHANGE);
+
+    char *str = getenv("MPIRUN_RSH_LAUNCH");
+    if ( str && (atoi(str) == 1) ) {
+        snprintf(session_file, 32, "/tmp/cr.session.%s", getenv("MV2_CKPT_SESSIONID"));
+        fd = open(session_file, O_RDWR);
+        if (fd < 0) {
+            perror("open");
+            CR_ERR_ABORT("Could not get the Session Id\n");
+        }
+        if (read(fd, &val, sizeof(val)) < 0) {
+            perror("read");
+            close(fd);
+            CR_ERR_ABORT("Could not read the Spawn Port\n");
+        }
+        close(fd);
+        sa.sin_port = htons(val);
+    }
+    else {
+        /* Legacy Mode */
+        sa.sin_port = htons(MPICR_MPD_port + MPICR_pg_rank + restart_count * CR_RSRT_PORT_CHANGE);
+    }
 
     if (setsockopt(MPICR_MPD_fd, IPPROTO_TCP, TCP_NODELAY, (char*) &optval, sizeof(optval)))
     {
@@ -183,7 +207,7 @@ int CR_MPDU_connect_MPD()
 
     if (connect(MPICR_MPD_fd, (struct sockaddr*) &sa, sizeof(sa)) < 0)
     {
-        CR_ERR_ABORT("connect %d failed\n", MPICR_MPD_port + MPICR_pg_rank + restart_count);
+        CR_ERR_ABORT("connect %d failed\n", MPICR_MPD_port + MPICR_pg_rank + restart_count * CR_RSRT_PORT_CHANGE);
     }
 
     return 0;
@@ -246,21 +270,25 @@ CR lock to protect upper layers from accessing communication channel
 */
 inline void MPIDI_CH3I_CR_lock()
 {
-/*
-    pthread_t current_thread = pthread_self();
-    printf("%d:%d Lock Req\n", MPICR_pg_rank, current_thread);
-*/
-    pthread_mutex_lock(&MPICR_cs_lock);
-    /* printf("%d:%d Lock Acq\n", MPICR_pg_rank, current_thread); */
+    /*
+     * If the current thread has already acquired the wrlock,
+     * don't bother acquiring the rdlock.
+     */
+    if (MPICR_cs_lock.__data.__writer == syscall(SYS_gettid))
+        return;
+    pthread_rwlock_rdlock(&MPICR_cs_lock);
 }
 
 inline void MPIDI_CH3I_CR_unlock()
 {
-/*
-    pthread_t current_thread = pthread_self();
-    printf("%d:%d Unlock\n", MPICR_pg_rank, current_thread);
-*/
-    pthread_mutex_unlock(&MPICR_cs_lock);
+    /*
+     * If the current thread has already acquired the wrlock,
+     * you did not acquire the reader lock. So don't bother to
+     * release the rdlock.
+     */
+    if (MPICR_cs_lock.__data.__writer == syscall(SYS_gettid))
+        return;
+    pthread_rwlock_unlock(&MPICR_cs_lock);
 }
 
 MPICR_cr_state MPIDI_CH3I_CR_Get_state()
@@ -279,14 +307,6 @@ int CR_Set_state(MPICR_cr_state state)
             CR_DBG("MPICR_STATE_ERROR\n");
         break;
     case MPICR_STATE_POST_COORDINATION:
-/*
-            if (MPICR_is_restarting)
-            {
-            }
-            else
-            {
-            }
-*/
             CR_DBG("MPICR_STATE_POST_COORDINATION\n");
         break;
     case MPICR_STATE_PRE_COORDINATION:
@@ -300,17 +320,6 @@ int CR_Set_state(MPICR_cr_state state)
             MPICR_is_restarting = 1;
         break;
     case MPICR_STATE_RUNNING:
-/*
-            if (MPICR_STATE_ERROR != state)
-            {
-                if (MPICR_is_restarting)
-                {
-                }
-                else
-                {
-                }
-            }
-*/
             CR_DBG("MPICR_STATE_RUNNING\n");
         break;
     default:
@@ -328,6 +337,9 @@ int CR_Thread_loop()
     char cr_msg_buf[MAX_CR_MSG_LEN];
     fd_set set;
     char valstr[CRU_MAX_VAL_LEN];
+
+    cr_checkpoint_handle_t cr_handle;
+    cr_checkpoint_args_t   cr_args;
 
     while (1)
     {
@@ -365,8 +377,7 @@ int CR_Thread_loop()
 		MPIDI_CH3I_SMC_lock();
 
             CR_DBG("locking CR\n");
-
-            MPIDI_CH3I_CR_lock();
+            pthread_rwlock_wrlock(&MPICR_cs_lock);
 
             CR_DBG("locking CM\n");
 
@@ -393,7 +404,15 @@ int CR_Thread_loop()
             }
 
             MPICR_callback_fin = 0;
-            cr_request_fd(cr_file_fd);
+            cr_initialize_checkpoint_args_t(&cr_args);
+            cr_args.cr_scope   = CR_SCOPE_PROC;
+            cr_args.cr_target  = getpid();
+            cr_args.cr_fd      = cr_file_fd;
+            cr_args.cr_signal  = 0;
+            cr_args.cr_timeout = 0;
+            cr_args.cr_flags   &= ~CR_CHKPT_DUMP_ALL; // Save None
+            cr_request_checkpoint(&cr_args, &cr_handle);
+            cr_poll_checkpoint(&cr_handle, NULL);
 
             CR_DBG("cr_request_fd\n");
 
@@ -413,7 +432,6 @@ int CR_Thread_loop()
                 CR_DBG("fsync done\n");
             }
 
-            close(cr_file_fd);
             CR_Set_state(MPICR_STATE_POST_COORDINATION);
 
             if (CR_IBU_Reactivate_channels())
@@ -448,7 +466,8 @@ int CR_Thread_loop()
                 }
             }
 
-            MPIDI_CH3I_CR_unlock();
+            CR_DBG("unlocking CR\n");
+            pthread_rwlock_unlock(&MPICR_cs_lock);
 
 	    /*
 	     * Let the shared memory collectives know that the checkpoint
@@ -642,11 +661,10 @@ int MPIDI_CH3I_CR_Init(MPIDI_PG_t* pg, int rank, int size)
     MPICR_pg_size = size;
     int mpi_errno = MPI_SUCCESS;
 
-    pthread_mutexattr_t attr;
-    pthread_mutexattr_init(&attr);
-    pthread_mutexattr_settype(&attr,PTHREAD_MUTEX_RECURSIVE);
+    pthread_rwlockattr_t attr;
+    pthread_rwlockattr_init(&attr);
 
-    if (pthread_mutex_init(&MPICR_cs_lock, &attr))
+    if (pthread_rwlock_init(&MPICR_cs_lock, &attr))
     {
         MPIU_ERR_SETFATALANDJUMP2(
             mpi_errno,
@@ -658,7 +676,7 @@ int MPIDI_CH3I_CR_Init(MPIDI_PG_t* pg, int rank, int size)
         );    
     }
 
-    pthread_mutexattr_destroy(&attr);
+    pthread_rwlockattr_destroy(&attr);
     
     CR_DBG("Creating a new thread for running cr controller\n");
 
@@ -693,7 +711,7 @@ int MPIDI_CH3I_CR_Finalize()
 
     pthread_cancel(MPICR_child_thread);
     pthread_join(MPICR_child_thread, NULL);
-    pthread_mutex_destroy(&MPICR_cs_lock);
+    pthread_rwlock_destroy(&MPICR_cs_lock);
 
     if (!MPICR_pg_rank)
     {
@@ -929,11 +947,6 @@ int CR_IBU_Rebuild_network()
 
     init_vbuf_lock();
 
-    if (MPIDI_CH3I_RDMA_Process.has_srq)
-    {
-        MPIDI_CH3I_RDMA_Process.vc_mapping = (MPIDI_VC_t**) MPIU_Malloc(sizeof(MPIDI_VC_t) * pg_size);
-    }
-
     MPIDI_VC_t* vc = NULL;
     int i = 0;
 
@@ -942,24 +955,19 @@ int CR_IBU_Rebuild_network()
     {
         MPIDI_PG_Get_vc(pg, i, &vc);
         vc->mrail.num_rails = rdma_num_rails;
-
-        if (MPIDI_CH3I_RDMA_Process.has_srq)
-        {
-            MPIDI_CH3I_RDMA_Process.vc_mapping[vc->pg_rank] = vc;
-        }
     }
     
     /* Open the device and create cq and qp's */
     if (rdma_open_hca(&MPIDI_CH3I_RDMA_Process))
     {
-        fprintf(stderr, "rdma_open_hca failed\n");
+        MPIU_Error_printf(stderr, "rdma_open_hca failed\n");
         return -1;
     }
 
-    if (rdma_iba_hca_init_noqp(&MPIDI_CH3I_RDMA_Process, pg_rank, pg_size))
-    {
-        fprintf(stderr, "Failed to Initialize HCA type\n");
-        return -1;
+    mpi_errno = rdma_iba_hca_init_noqp(&MPIDI_CH3I_RDMA_Process, pg_rank, pg_size);
+    if(mpi_errno) {
+        MPIU_Error_printf("Failed to Initialize HCA type\n");
+        MPIU_ERR_POP(mpi_errno);
     }
 
     dreg_reregister_all();
@@ -1039,14 +1047,16 @@ int CR_IBU_Rebuild_network()
             /*will be freed in rdma_iba_bootstrap_cleanup*/
             rdma_setup_startup_ring(&MPIDI_CH3I_RDMA_Process, pg_rank, pg_size);
 
-            rdma_ring_based_allgather(&self_info, sizeof(self_info), pg_rank, all_info, pg_size, &MPIDI_CH3I_RDMA_Process);
-
+            mpi_errno = rdma_ring_based_allgather(&self_info, sizeof(self_info), pg_rank, all_info, pg_size, &MPIDI_CH3I_RDMA_Process);
+            if(mpi_errno) {
+                MPIU_ERR_POP(mpi_errno);
+            }
             for (i = 0; i < pg_size; ++i)
             {
-		/* Use the recalculated hostids on restart */
-		MPIDI_VC_t *vc;
-		MPIDI_PG_Get_vc(pg, i, &vc);
-		vc->smp.hostid = all_info[i].hostid;
+                /* Use the recalculated hostids on restart */
+                MPIDI_VC_t *vc;
+                MPIDI_PG_Get_vc(pg, i, &vc);
+                vc->smp.hostid = all_info[i].hostid;
 
                 ud_qpn_all[i] = all_info[i].qpn;
                 lid_all[i] = all_info[i].lid;
@@ -1139,7 +1149,8 @@ int CR_IBU_Rebuild_network()
 
     CR_DBG("Exchanging parameters done\n");
 
-    mpi_errno = MPICM_Connect_UD(ud_qpn_all, lid_all);
+    mpi_errno = MPICM_Init_UD_struct(MPICR_pg, ud_qpn_all, lid_all); 
+    MPICM_Create_UD_threads();
 
     if (mpi_errno)
     {

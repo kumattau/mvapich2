@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -46,6 +46,71 @@ static int MPIDI_CH3I_PG_Destroy(MPIDI_PG_t * pg );
 MPIDI_Process_t MPIDI_Process = { NULL };
 MPIDI_CH3U_SRBuf_element_t * MPIDI_CH3U_SRBuf_pool = NULL;
 
+#if defined(_OSU_MVAPICH_)
+
+char *MPIDI_CH3_Pkt_type_to_string[MPIDI_CH3_PKT_END_ALL+1] = {
+    [MPIDI_CH3_PKT_EAGER_SEND] = "MPIDI_CH3_PKT_EAGER_SEND",
+#if defined(_OSU_MVAPICH_)
+#if defined(USE_HEADER_CACHING)
+    [MPIDI_CH3_PKT_FAST_EAGER_SEND] = "MPIDI_CH3_PKT_FAST_EAGER_SEND",
+    [MPIDI_CH3_PKT_FAST_EAGER_SEND_WITH_REQ] =
+        "MPIDI_CH3_PKT_FAST_EAGER_SEND_WITH_REQ",
+#endif /* defined(USE_HEADER_CACHING) */
+    [MPIDI_CH3_PKT_RPUT_FINISH] = "MPIDI_CH3_PKT_RPUT_FINISH",
+    [MPIDI_CH3_PKT_RGET_FINISH] = "MPIDI_CH3_PKT_RGET_FINISH",
+    [MPIDI_CH3_PKT_NOOP] = "MPIDI_CH3_PKT_NOOP",
+    [MPIDI_CH3_PKT_RMA_RNDV_CLR_TO_SEND] = "MPIDI_CH3_PKT_NOOP",
+    [MPIDI_CH3_PKT_PUT_RNDV] = "MPIDI_CH3_PKT_PUT_RNDV",
+    [MPIDI_CH3_PKT_ACCUMULATE_RNDV] = "MPIDI_CH3_PKT_PUT_RNDV",
+    [MPIDI_CH3_PKT_GET_RNDV] = "MPIDI_CH3_PKT_GET_RNDV",
+    [MPIDI_CH3_PKT_RNDV_READY_REQ_TO_SEND] =
+        "MPIDI_CH3_PKT_RNDV_READY_REQ_TO_SEND",
+    [MPIDI_CH3_PKT_PACKETIZED_SEND_START] =
+        "MPIDI_CH3_PKT_PACKETIZED_SEND_START",
+    [MPIDI_CH3_PKT_PACKETIZED_SEND_DATA] = "MPIDI_CH3_PKT_PACKETIZED_SEND_DATA",
+    [MPIDI_CH3_PKT_RNDV_R3_DATA] = "MPIDI_CH3_PKT_RNDV_R3_DATA",
+    [MPIDI_CH3_PKT_ADDRESS] = "MPIDI_CH3_PKT_ADDRESS",
+    [MPIDI_CH3_PKT_CM_ESTABLISH] = "MPIDI_CH3_PKT_CM_ESTABLISH",
+#if defined(CKPT)
+    [MPIDI_CH3_PKT_CM_SUSPEND] = "MPIDI_CH3_PKT_CM_SUSPEND",
+    [MPIDI_CH3_PKT_CM_REACTIVATION_DONE] = "MPIDI_CH3_PKT_CM_REACTIVATION_DONE",
+    [MPIDI_CH3_PKT_CR_REMOTE_UPDATE] = "MPIDI_CH3_PKT_CR_REMOTE_UPDATE",
+#endif /* defined(CKPT) */
+#endif /* defined(_OSU_MVAPICH_) */
+#if defined(USE_EAGER_SHORT)
+    [MPIDI_CH3_PKT_EAGERSHORT_SEND] = "MPIDI_CH3_PKT_EAGERSHORT_SEND",
+#endif /* defined(USE_EAGER_SHORT) */
+    [MPIDI_CH3_PKT_EAGER_SYNC_SEND] = "MPIDI_CH3_PKT_EAGER_SYNC_SEND",
+    [MPIDI_CH3_PKT_EAGER_SYNC_ACK] = "MPIDI_CH3_PKT_EAGER_SYNC_ACK",
+    [MPIDI_CH3_PKT_READY_SEND] = "MPIDI_CH3_PKT_READY_SEND",
+    [MPIDI_CH3_PKT_RNDV_REQ_TO_SEND] = "MPIDI_CH3_PKT_RNDV_REQ_TO_SEND",
+    [MPIDI_CH3_PKT_RNDV_CLR_TO_SEND] = "MPIDI_CH3_PKT_RNDV_CLR_TO_SEND",
+    [MPIDI_CH3_PKT_RNDV_SEND] = "MPIDI_CH3_PKT_RNDV_SEND",
+    [MPIDI_CH3_PKT_CANCEL_SEND_REQ] = "MPIDI_CH3_PKT_CANCEL_SEND_REQ",
+    [MPIDI_CH3_PKT_CANCEL_SEND_RESP] = "MPIDI_CH3_PKT_CANCEL_SEND_RESP",
+    [MPIDI_CH3_PKT_PUT] = "MPIDI_CH3_PKT_PUT",
+    [MPIDI_CH3_PKT_GET] = "MPIDI_CH3_PKT_GET",
+    [MPIDI_CH3_PKT_GET_RESP] = "MPIDI_CH3_PKT_GET_RESP",
+    [MPIDI_CH3_PKT_ACCUMULATE] = "MPIDI_CH3_PKT_ACCUMULATE",
+    [MPIDI_CH3_PKT_LOCK] = "MPIDI_CH3_PKT_LOCK",
+    [MPIDI_CH3_PKT_LOCK_GRANTED] = "MPIDI_CH3_PKT_LOCK_GRANTED",
+    [MPIDI_CH3_PKT_PT_RMA_DONE] = "MPIDI_CH3_PKT_PT_RMA_DONE",
+    [MPIDI_CH3_PKT_LOCK_PUT_UNLOCK] = "MPIDI_CH3_PKT_LOCK_PUT_UNLOCK",
+    [MPIDI_CH3_PKT_LOCK_GET_UNLOCK] = "MPIDI_CH3_PKT_LOCK_GET_UNLOCK",
+    [MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK] = "MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK",
+    [MPIDI_CH3_PKT_FLOW_CNTL_UPDATE] = "MPIDI_CH3_PKT_FLOW_CNTL_UPDATE",
+    [MPIDI_CH3_PKT_CLOSE] = "MPIDI_CH3_PKT_CLOSE",
+    [MPIDI_CH3_PKT_END_CH3] = "MPIDI_CH3_PKT_END_CH3"
+    /* The channel can define additional types by defining the value
+       MPIDI_CH3_PKT_ENUM */
+# if defined(MPIDI_CH3_PKT_ENUM)
+    , [MPIDI_CH3_PKT_ENUM] = "MPIDI_CH3_PKT_ENUM"
+# endif
+    , [MPIDI_CH3_PKT_END_ALL] = "MPIDI_CH3_PKT_END_ALL"
+};
+
+#endif
+
 #undef FUNCNAME
 #define FUNCNAME MPID_Init
 #undef FCNAME
@@ -75,7 +140,8 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     /* This is a sanity check because we define a generic packet size
      */
     if (sizeof(MPIDI_CH3_PktGeneric_t) < sizeof(MPIDI_CH3_Pkt_t)) {
-	fprintf( stderr, "Internal error - packet definition is too small\n" );
+	fprintf( stderr, "Internal error - packet definition is too small.  Generic is %d bytes, MPIDI_CH3_Pkt_t is %d\n", sizeof(MPIDI_CH3_PktGeneric_t),
+		 sizeof(MPIDI_CH3_Pkt_t) );
 	exit(1);
     }
 #endif
@@ -102,6 +168,18 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**ch3|ch3_init");
     }
 
+#if defined(_OSU_MVAPICH_)
+    if(has_parent) {
+        putenv("MV2_SUPPORT_DPM=1");
+    }
+
+    MPIDI_Process.my_pg = pg;  /* brad : this is rework for shared memories
+                                * because they need this set earlier
+                                * for getting the business card
+                                */
+    MPIDI_Process.my_pg_rank = pg_rank;
+
+#endif
     /*
      * Let the channel perform any necessary initialization
      * The channel init should assume that PMI_Init has been called and that
@@ -115,11 +193,13 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 
     /* FIXME: Why are pg_size and pg_rank handled differently? */
     pg_size = MPIDI_PG_Get_size(pg);
+#if !defined(_OSU_MVAPICH_)
     MPIDI_Process.my_pg = pg;  /* brad : this is rework for shared memories 
 				* because they need this set earlier
                                 * for getting the business card
                                 */
     MPIDI_Process.my_pg_rank = pg_rank;
+#endif
     /* FIXME: Why do we add a ref to pg here? */
     MPIDI_PG_add_ref(pg);
 
@@ -286,7 +366,20 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
         if ((value = getenv("MV2_USE_BLOCKING")) != NULL) {
             blocking_val = !!atoi(value);
 
-            if(blocking_val) {
+            if (blocking_val) {
+                int thread_warning = 1;
+
+                if ((value = getenv("MV2_USE_THREAD_WARNING")) != NULL) {
+                    thread_warning = !!atoi(value);
+                }
+                
+                if (0 == pg_rank && MPI_THREAD_MULTIPLE == requested 
+                        && thread_warning) {
+                    fprintf(stderr, "WARNING: Requested MPI_THREAD_MULTIPLE, \n"
+                            "  but MV2_USE_BLOCKING=1 only supports MPI_THREAD_SERIALIZED.\n"
+                            "  Use MV2_USE_THREAD_WARNING=0 to suppress this error message\n");
+                }
+
                 *provided = (MPICH_THREAD_LEVEL < requested) ?
                     MPICH_THREAD_LEVEL : MPI_THREAD_SERIALIZED;
             }

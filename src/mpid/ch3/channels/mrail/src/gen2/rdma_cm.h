@@ -1,4 +1,4 @@
-/* Copyright (c) 2002-2008, The Ohio State University. All rights
+/* Copyright (c) 2002-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -31,20 +31,20 @@ extern int g_num_smp_peers;
 extern int *rdma_cm_host_list;
 
 /* Initiate all active connect requests */
-int rdma_cm_connect_all(int *hosts, int pg_rank, int pg_size);
+int rdma_cm_connect_all(int *hosts, int pg_rank, MPIDI_PG_t *pg);
 
 /* Initiate single active connect request */
-int rdma_cm_connect_to_server(int rank, int ipnum, int rail_index);
+int rdma_cm_connect_to_server(MPIDI_VC_t *vc, int ipnum, int rail_index);
 
 /* Exchange the ip information with all the processes */
-int *rdma_cm_get_hostnames(int pg_rank, int pg_size);
+int *rdma_cm_get_hostnames(int pg_rank, MPIDI_PG_t *pg);
 
 /* Initialize rdma_cm resources + cm_ids + bind port + connection thrd */
 int ib_init_rdma_cm(struct MPIDI_CH3I_RDMA_Process_t *proc,
 		     int pg_rank, int pg_size);
 
 /* Finalize rdma_cm specific resources */
-void ib_finalize_rdma_cm(int pg_rank, int pg_size);
+void ib_finalize_rdma_cm(int pg_rank, MPIDI_PG_t *pg);
 
 #endif /* defined(RDMA_CM) */
 

@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
- /* Copyright (c) 2003-2008, The Ohio State University. All rights
+ /* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -180,7 +180,14 @@ int MPIR_Setup_intercomm_localcomm( MPID_Comm *intercomm_ptr )
 
     /* We do *not* inherit any name */
     localcomm_ptr->name[0] = 0;
-
+    /* To prevent Bcast from taking the knomial route */
+#if defined(_OSU_MVAPICH_)
+    localcomm_ptr->shmem_coll_ok = 0;
+    localcomm_ptr->shmem_comm = 0;
+    localcomm_ptr->leader_comm = 0;
+#endif
+    
+    
     localcomm_ptr->attributes = 0;
 
     intercomm_ptr->local_comm = localcomm_ptr;
@@ -710,8 +717,9 @@ int MPIR_Comm_copy( MPID_Comm *comm_ptr, int size, MPID_Comm **outcomm_ptr )
     /* Set the sizes and ranks */
     newcomm_ptr->rank        = comm_ptr->rank;
     if (comm_ptr->comm_kind == MPID_INTERCOMM) {
-	newcomm_ptr->local_size  = comm_ptr->local_size;
-	newcomm_ptr->remote_size = comm_ptr->remote_size;
+	newcomm_ptr->local_size   = comm_ptr->local_size;
+	newcomm_ptr->remote_size  = comm_ptr->remote_size;
+	newcomm_ptr->is_low_group = comm_ptr->is_low_group;
     }
     else {
 	newcomm_ptr->local_size  = size;

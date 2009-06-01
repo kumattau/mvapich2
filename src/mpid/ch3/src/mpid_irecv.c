@@ -3,6 +3,17 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
 
 #include "mpidimpl.h"
 
@@ -41,6 +52,52 @@ int MPID_Irecv(void * buf, int count, MPI_Datatype datatype, int rank, int tag,
 	}
 	goto fn_exit;
     }
+
+#if defined (_OSU_PSM_) /* psm: post request to psm library and return request
+                           to MPI_Recv. */
+    MPI_Aint dt_true_lb;
+    MPID_Datatype *dt_ptr;
+    MPIDI_msg_sz_t data_sz;
+    int dt_contig, pksz;
+    void *pkbuf;
+
+    MPIDI_Datatype_get_info(count, datatype, dt_contig, data_sz, dt_ptr, dt_true_lb);
+	rreq = MPID_Request_create();
+    MPIU_Object_set_ref(rreq, 2);
+	rreq->kind = MPID_REQUEST_RECV;
+    MPIR_Comm_add_ref(comm);
+    rreq->comm = comm;
+    rreq->dev.user_buf	 = (char *)buf ;//+ dt_true_lb;
+    rreq->dev.user_count = count;
+    rreq->dev.datatype	 = datatype;
+	rreq->dev.match.tag	   = tag;
+	rreq->dev.match.rank	   = rank;
+	rreq->dev.match.context_id = comm->recvcontext_id + context_offset;
+    if (HANDLE_GET_KIND(datatype) != HANDLE_KIND_BUILTIN) {
+        MPID_Datatype_get_ptr(datatype, rreq->dev.datatype_ptr);
+		MPID_Datatype_add_ref(rreq->dev.datatype_ptr);
+        rreq->psm_flags |= PSM_NEED_DTYPE_RELEASE;
+    }
+ 
+    if(dt_contig) {
+        mpi_errno = MPIDI_CH3_iRecv(rank, tag, comm->recvcontext_id + context_offset,
+                (char *)buf + dt_true_lb, data_sz, rreq);
+    } else {
+        PSMSG(fprintf(stderr, "non-contig I-recv for psm\n"));
+        MPI_Pack_size(count, datatype, comm->handle, &pksz);
+        pkbuf = MPIU_Malloc(pksz);
+        if(!pkbuf) {
+        	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_NO_MEM, "**nomem");
+        }
+        rreq->pksz = pksz;
+        rreq->pkbuf = pkbuf;
+        rreq->psm_flags |= PSM_NON_CONTIG_REQ;
+        mpi_errno = MPIDI_CH3_iRecv(rank, tag, comm->recvcontext_id + context_offset,
+                pkbuf, pksz, rreq);
+        if(mpi_errno) MPIU_ERR_POP(mpi_errno);
+    }
+    goto fn_exit;
+#endif /* _OSU_PSM_ */
 
     rreq = MPIDI_CH3U_Recvq_FDU_or_AEP(
 	rank, tag, comm->recvcontext_id + context_offset, &found);
@@ -111,7 +168,11 @@ int MPID_Irecv(void * buf, int count, MPI_Datatype datatype, int rank, int tag,
 	{
 	    MPIDI_Comm_get_vc(comm, rreq->dev.match.rank, &vc);
 	
+#if defined(_OSU_MVAPICH_)
+        mpi_errno = MPIDI_CH3_RecvRndv( vc, rreq );
+#else
 	    mpi_errno = vc->rndvRecv_fn( vc, rreq );
+#endif
 	    if (mpi_errno) MPIU_ERR_POP( mpi_errno );
 	    if (HANDLE_GET_KIND(datatype) != HANDLE_KIND_BUILTIN)
 	    {

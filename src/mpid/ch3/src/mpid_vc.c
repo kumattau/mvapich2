@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -16,6 +16,12 @@
  */
 
 #include "mpidimpl.h"
+#ifdef _ENABLE_XRC_
+#include "rdma_impl.h"
+#else 
+#define XRC_MSG(s...)
+#endif
+
 
 /*S
  * MPIDI_VCRT - virtual connection reference table
@@ -156,12 +162,10 @@ int MPID_VCRT_Release(MPID_VCRT vcrt, int isDisconnect )
 	    MPIDI_VC_t * const vc = vcrt->vcr_table[i];
 	    
 	    MPIDI_VC_release_ref(vc, &in_use);
-	    /* The rule for disconnect that we use is that if
-	       MPI_Comm_disconnect removes the last reference to this
-	       VC, we fully remove the VC.  This is not quite what the
-	       MPI standard says, but this is sufficient to give the 
-	       expected behavior for most user programs that
-	       use MPI_Comm_disconnect */
+
+            /* Dynamic connections start with a refcount of 2 instead of 1.
+             * That way we can distinguish between an MPI_Free and an
+             * MPI_Comm_disconnect. */
 	    if (isDisconnect && vc->ref_count == 1) {
 		MPIDI_VC_release_ref(vc, &in_use);
 	    }
@@ -179,10 +183,30 @@ int MPID_VCRT_Release(MPID_VCRT vcrt, int isDisconnect )
                     }
 		    continue;
 		}
+
+#ifdef _ENABLE_XRC_
+        VC_XST_SET (vc, XF_CONN_CLOSING);
+        XRC_MSG ("CONNCLOSING2");
+        XRC_MSG ("SC %d 0x%08x %d\n", vc->pg_rank, vc->ch.xrc_flags, 
+                vc->state);
+#endif
 		
 		/* FIXME: the correct test is ACTIVE or REMOTE_CLOSE */
-		if (vc->state != MPIDI_VC_STATE_INACTIVE) {
-		    /* printf( "Sending close to vc[%d]\n", i ); */
+		/*if (vc->state != MPIDI_VC_STATE_INACTIVE) { */
+#ifdef _ENABLE_XRC_
+        if ((!USE_XRC || VC_XST_ISSET (vc, (XF_SMP_VC | XF_DPM_INI)))?
+                (vc->state == MPIDI_VC_STATE_ACTIVE || 
+                vc->state == MPIDI_VC_STATE_REMOTE_CLOSE) : 
+                (VC_XST_ISUNSET (vc, XF_TERMINATED) && 
+                 VC_XST_ISSET (vc, (XF_SEND_IDLE 
+                                    | XF_SEND_CONNECTING))))
+#else
+		if (vc->state == MPIDI_VC_STATE_ACTIVE ||
+		    vc->state == MPIDI_VC_STATE_REMOTE_CLOSE)
+#endif
+		{
+        XRC_MSG ("SendClose2 %d 0x%08x %d\n", vc->pg_rank, vc->ch.xrc_flags, 
+                vc->ch.state);
 		    MPIDI_CH3U_VC_SendClose( vc, i );
 		}
 		else
@@ -197,16 +221,18 @@ int MPID_VCRT_Release(MPID_VCRT vcrt, int isDisconnect )
                             "vc=%p: not sending a close to %d, vc in state %s",
 			     vc, i, MPIDI_VC_GetStateString(vc->state)));
 		}
-		mpi_errno = MPIU_CALL(MPIDI_CH3,VC_Destroy(vc));
-		if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
+
+                /* NOTE: we used to * MPIU_CALL(MPIDI_CH3,VC_Destroy(&(pg->vct[i])))
+                   here but that is incorrect.  According to the standard, it's
+                   entirely possible (likely even) that this VC might still be
+                   connected.  VCs are now destroyed when the PG that "owns"
+                   them is destroyed (see MPIDI_PG_Destroy). [goodell@ 2008-06-13] */
 	    }
 	}
 
 	MPIU_Free(vcrt);
     }
 
-    /* Commented out blocks that are not needed unless MPIU_ERR_POP is 
-       used above */
  fn_exit:    
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_VCRT_RELEASE);
     return mpi_errno;
@@ -265,11 +291,12 @@ int MPID_VCR_Dup(MPID_VCR orig_vcr, MPID_VCR * new_vcr)
      as part of the initial connect/accept action, so in that case,
      ignore the pg ref count update */
     if (orig_vcr->ref_count == 0 && orig_vcr->pg) {
-	MPIU_Object_set_ref( orig_vcr, 2 );
+	MPIDI_VC_add_ref( orig_vcr );
+	MPIDI_VC_add_ref( orig_vcr );
 	MPIDI_PG_add_ref( orig_vcr->pg );
     }
     else {
-	MPIU_Object_add_ref(orig_vcr);
+	MPIDI_VC_add_ref(orig_vcr);
     }
     MPIU_DBG_MSG_FMT(REFCOUNT,TYPICAL,(MPIU_DBG_FDEST,\
          "Incr VCR %p ref count to %d",orig_vcr,orig_vcr->ref_count));
@@ -308,10 +335,16 @@ int MPID_VCR_Get_lpid(MPID_VCR vcr, int * lpid_ptr)
 int MPID_GPID_GetAllInComm( MPID_Comm *comm_ptr, int local_size, 
 			    int local_gpids[], int *singlePG )
 {
+    int mpi_errno = MPI_SUCCESS;
     int i;
     int *gpid = local_gpids;
     int lastPGID = -1, pgid;
     MPID_VCR vc;
+    MPIDI_STATE_DECL(MPID_STATE_MPID_GPID_GETALLINCOMM);
+
+    MPIDI_FUNC_ENTER(MPID_STATE_MPID_GPID_GETALLINCOMM);
+
+    MPIU_Assert(comm_ptr->local_size == local_size);
     
     *singlePG = 1;
     for (i=0; i<comm_ptr->local_size; i++) {
@@ -327,14 +360,14 @@ int MPID_GPID_GetAllInComm( MPID_Comm *comm_ptr, int local_size,
 	    lastPGID = pgid;
 	}
 	*gpid++ = vc->pg_rank;
-	if (vc->pg_rank != vc->lpid) {
-	    return 1;
-/*	    printf( "Unexpected results %d != %d\n",
-	    vc->pg_rank, vc->lpid ); */
-	}
+
+        MPIU_DBG_MSG_FMT(COMM,VERBOSE, (MPIU_DBG_FDEST,
+                         "pgid=%d vc->pg_rank=%d",
+                         pgid, vc->pg_rank));
     }
     
-    return 0;
+    MPIDI_FUNC_EXIT(MPID_STATE_MPID_GPID_GETALLINCOMM);
+    return mpi_errno;
 }
 
 #undef FUNCNAME
@@ -685,12 +718,18 @@ int MPIDI_VC_Init( MPIDI_VC_t *vc, MPIDI_PG_t *pg, int rank )
     vc->rndvSend_fn           = MPIDI_CH3_RndvSend;
     vc->rndvRecv_fn           = MPIDI_CH3_RecvRndv;
 #if defined(_OSU_MVAPICH_)
+    vc->free_vc = 0;
+    vc->tmp_dpmvc = 0;
     vc->rma_issued = 0;
     /* The eager max message size must be set at the end of SMP
      * initialization when the status of SMP (SMP_INIT) is known.
      */
 #else /* defined(_OSU_MVAPICH_) */
-    vc->eager_max_msg_sz      = MPIDI_CH3_EAGER_MAX_MSG_SIZE;
+    #if !defined (_OSU_PSM_)
+        vc->eager_max_msg_sz      = MPIDI_CH3_EAGER_MAX_MSG_SIZE;
+    #else
+        vc->eager_max_msg_sz      = -1;
+    #endif
 #endif /* defined(_OSU_MVAPICH_) */
     vc->sendNoncontig_fn      = MPIDI_CH3_SendNoncontig;
     MPIU_CALL(MPIDI_CH3,VC_Init( vc ));

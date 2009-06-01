@@ -3,6 +3,17 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
 
 #include "mpidimpl.h"
 
@@ -139,6 +150,36 @@ void MPIDI_CH3_Request_destroy(MPID_Request * req)
     }
 #endif
 
+#if defined (_OSU_PSM_)
+    PSMSG(fprintf(stderr, "req release time\n"));
+    if(req->psm_flags & PSM_NON_CONTIG_REQ) {
+        psm_do_ncrecv_complete(req);
+        req->psm_flags &= ~PSM_NON_CONTIG_REQ;
+        PSMSG(fprintf(stderr, "psm NC recombine done\n"));
+    }
+
+    if(req->psm_flags & PSM_NON_BLOCKING_SEND) {
+        if(req->psm_flags & PSM_PACK_BUF_FREE) {
+            MPIU_Free(req->pkbuf);
+            req->pkbuf = NULL;
+        }
+        PSMSG(fprintf(stderr, "psm NB send done\n"));
+    }
+
+    if(req->psm_flags & (PSM_1SIDED_PUTREQ | PSM_CONTROL_PKTREQ)) {
+        psm_release_vbuf(req->vbufptr);
+    }
+
+    if(req->psm_flags & PSM_COMPQ_PENDING) {
+        psm_dequeue_compreq(req);
+    }
+
+    if(req->psm_flags & PSM_NEED_DTYPE_RELEASE) {
+        PSMSG("Needs release: CH3 will do it later\n");
+    }
+    req->psm_flags = 0;
+#endif
+
     /* FIXME: We need a better way to handle these so that we
        do not always need to initialize these fields and check them
        when we destroy a request */
@@ -149,7 +190,7 @@ void MPIDI_CH3_Request_destroy(MPID_Request * req)
     }
 
     if (req->dev.datatype_ptr != NULL) {
-	MPID_Datatype_release(req->dev.datatype_ptr);
+	    MPID_Datatype_release(req->dev.datatype_ptr);
     }
 
     if (req->dev.segment_ptr != NULL) {
@@ -642,3 +683,16 @@ void MPID_Request_set_completed( MPID_Request *req )
 {
     MPID_REQUEST_SET_COMPLETED(req);
 }
+
+#if defined (_OSU_PSM_)
+int psm_do_ncrecv_complete(MPID_Request *req)
+{
+    /* pkbuf is UB for packing, we should stop after unpacking byte count
+       received: status.count */
+
+    psm_do_unpack(req->dev.user_count, req->dev.datatype, req->comm, 
+                  req->pkbuf, req->pksz, req->dev.user_buf, req->status.count);
+    MPIU_Free(req->pkbuf);
+    req->pkbuf = NULL; 
+}
+#endif

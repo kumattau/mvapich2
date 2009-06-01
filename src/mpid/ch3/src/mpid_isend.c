@@ -3,6 +3,17 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
 
 #include "mpidimpl.h"
 
@@ -51,11 +62,18 @@ int MPID_Isend(const void * buf, int count, MPI_Datatype datatype, int rank,
     
     if (rank == comm->rank && comm->comm_kind != MPID_INTERCOMM)
     {
+#if defined (_OSU_PSM_)
+        goto skip_self_send; /* psm will internally do self-send, no special
+                                handling is needed here */
+#endif /* _OSU_PSM_ */          
 	mpi_errno = MPIDI_Isend_self(buf, count, datatype, rank, tag, comm, 
 			    context_offset, MPIDI_REQUEST_TYPE_SEND, &sreq);
 	goto fn_exit;
     }
-    
+#if defined (_OSU_PSM_)
+skip_self_send:
+#endif
+
     MPIDI_Request_create_sreq(sreq, mpi_errno, goto fn_exit);
     MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_SEND);
     
@@ -73,6 +91,9 @@ int MPID_Isend(const void * buf, int count, MPI_Datatype datatype, int rank,
     
     if (data_sz == 0)
     {
+#if defined (_OSU_PSM_)
+        goto eager_send;
+#endif /* _OSU_PSM_ */
 	MPIDI_CH3_Pkt_t upkt;
 	MPIDI_CH3_Pkt_eager_send_t * const eager_pkt = &upkt.eager_send;
 
@@ -107,7 +128,17 @@ int MPID_Isend(const void * buf, int count, MPI_Datatype datatype, int rank,
 
 	goto fn_exit;
     }
-    
+
+#if defined (_OSU_PSM_)
+    if(HANDLE_GET_KIND(datatype) != HANDLE_KIND_BUILTIN) {
+        sreq->dev.datatype_ptr = dt_ptr;
+        MPID_Datatype_add_ref(dt_ptr);
+        sreq->psm_flags |= PSM_NEED_DTYPE_RELEASE;
+    }
+    if(vc->force_eager)
+        goto eager_send;
+#endif /* _OSU_PSM_ */
+
     /* FIXME: flow control: limit number of outstanding eager messsages 
        containing data and need to be buffered by the receiver */
 #if defined(_OSU_MVAPICH_)
@@ -116,28 +147,35 @@ int MPID_Isend(const void * buf, int count, MPI_Datatype datatype, int rank,
 #else /* defined(_OSU_MVAPICH_) */
     if (data_sz + sizeof(MPIDI_CH3_Pkt_eager_send_t) <=	vc->eager_max_msg_sz)
 #endif /* defined(_OSU_MVAPICH_) */
+
+#if defined (_OSU_PSM_)
+eager_send:
+#endif /* _OSU_PSM */
     {
-	if (dt_contig)
-	{
-	    mpi_errno = MPIDI_CH3_EagerContigIsend( &sreq, 
-						    MPIDI_CH3_PKT_EAGER_SEND,
-						    (char*)buf + dt_true_lb, 
-						    data_sz, rank, tag, 
-						    comm, context_offset );
-	}
-	else
-	{
-	    mpi_errno = MPIDI_CH3_EagerNoncontigSend( &sreq, 
-                                                      MPIDI_CH3_PKT_EAGER_SEND,
-                                                      buf, count, datatype,
-                                                      data_sz, rank, tag, 
-                                                      comm, context_offset );
-	    /* If we're not complete, then add a reference to the datatype */
-	    if (sreq && sreq->dev.OnDataAvail) {
-		sreq->dev.datatype_ptr = dt_ptr;
-		MPID_Datatype_add_ref(dt_ptr);
-	    }
-	}
+        if (dt_contig) {
+            mpi_errno = MPIDI_CH3_EagerContigIsend( &sreq, 
+                                MPIDI_CH3_PKT_EAGER_SEND,
+                                (char*)buf + dt_true_lb, 
+                                data_sz, rank, tag, 
+                                comm, context_offset );
+        } else {
+#if defined (_OSU_PSM_)
+            sreq->psm_flags |= PSM_NON_BLOCKING_SEND;
+#endif
+            mpi_errno = MPIDI_CH3_EagerNoncontigSend( &sreq, 
+                                                          MPIDI_CH3_PKT_EAGER_SEND,
+                                                          buf, count, datatype,
+                                                          data_sz, rank, tag, 
+                                                          comm, context_offset );
+#if defined (_OSU_PSM_)
+            goto fn_exit;
+#endif            
+            /* If we're not complete, then add a reference to the datatype */
+            if (sreq && sreq->dev.OnDataAvail) {
+                sreq->dev.datatype_ptr = dt_ptr;
+                MPID_Datatype_add_ref(dt_ptr);
+            }
+        }
     }
     else
     {

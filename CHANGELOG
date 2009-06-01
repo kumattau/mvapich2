@@ -3,6 +3,42 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2-1.4-RC1
+
+* Bugs fixed since MVAPICH2-1.2p1
+
+  - Changed parameters for iWARP for increased scalability
+
+  - Fix error with derived datatypes and Put and Accumulate operations
+      Request was being marked complete before data transfer
+      had actually taken place when MV_RNDV_PROTOCOL=R3 was used
+
+  - Unregister stale memory registrations earlier to prevent
+    malloc failures
+
+  - Fix for compilation issues with --enable-g=mem and --enable-g=all
+
+  - Change dapl_prepost_noop_extra value from 5 to 8 to prevent
+    credit flow issues.
+
+  - Re-enable RGET (RDMA Read) functionality
+
+  - Fix SRQ Finalize error
+    Make sure that finalize does not hang when the srq_post_cond is
+    being waited on.
+
+  - Fix a multi-rail one-sided error when multiple QPs are used
+  
+  - PMI Lookup name failure with SLURM
+
+  - Port auto-detection failure when the 1st HCA did 
+    not have an active failure
+
+  - Change default small message scheduling for multirail
+    for higher performance
+ 
+  - MPE support for shared memory collectives now available
+
 MVAPICH2-1.2p1 (11/11/2008)
 
 * Changes since MVAPICH2-1.2

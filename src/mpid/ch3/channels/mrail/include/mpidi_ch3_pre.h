@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -21,6 +21,7 @@
 
 #include "mpidi_ch3i_rdma_conf.h"
 #include "mpidi_ch3_rdma_pre.h"
+#include "smp_smpi.h"
 
 /*#define MPICH_DBG_OUTPUT*/
 
@@ -87,7 +88,9 @@ typedef struct MPIDI_CH3I_RDMA_Unex_read_s
     int src;
     struct MPIDI_CH3I_RDMA_Unex_read_s *next;
 } MPIDI_CH3I_RDMA_Unex_read_t;
-
+#ifdef _ENABLE_XRC_
+struct _xrc_pending_conn;
+#endif
 typedef struct MPIDI_CH3I_VC
 {
     struct MPID_Request * sendq_head;
@@ -105,8 +108,47 @@ typedef struct MPIDI_CH3I_VC
 #ifdef CKPT
     volatile int rput_stop; /*Stop rput message and wait for rkey update*/
 #endif
+#ifdef _ENABLE_XRC_
+    uint32_t                    xrc_flags;
+    struct MPIDI_VC             *orig_vc;
+    struct _xrc_pending_conn    *xrc_conn_queue;
+    uint32_t                    xrc_srqn[MAX_NUM_HCAS];
+    uint32_t                    xrc_rqpn[MAX_NUM_SUBRAILS];
+    uint32_t                    xrc_my_rqpn[MAX_NUM_SUBRAILS];
+#endif
 } MPIDI_CH3I_VC;
 
+#ifdef _ENABLE_XRC_
+typedef struct _xrc_pending_conn {
+    struct _xrc_pending_conn    *next;
+    struct MPIDI_VC             *vc;
+} xrc_pending_conn_t;
+#define xrc_pending_conn_s (sizeof (xrc_pending_conn_t))
+
+#define VC_XST_ISSET(vc, st)      ((vc)->ch.xrc_flags & (st))
+#define VC_XST_ISUNSET(vc, st)    (!((vc)->ch.xrc_flags & (st)))
+#define VC_XSTS_ISSET(vc, sts)    (((vc)->ch.xrc_flags & (sts)) == (sts))
+#define VC_XSTS_ISUNSET(vc, sts)  (((vc)->ch.xrc_flags & (sts)) == 0)
+
+#define VC_XST_SET(vc, st) vc->ch.xrc_flags |= (st);
+#define VC_XST_CLR(vc, st) vc->ch.xrc_flags &= ~(st);
+
+#define     XF_NONE             0x00000000 
+#define     XF_START_RDMAFP     0x00000001
+#define     XF_DIRECT_CONN      0x00000002
+#define     XF_INDIRECT_CONN    0x00000004 
+#define     XF_NEW_QP           0x00000008
+#define     XF_SEND_IDLE        0x00000010
+#define     XF_RECV_IDLE        0x00000020
+#define     XF_NEW_RECV         0x00000040
+#define     XF_CONN_CLOSING     0x00000080
+#define     XF_INIT_DONE        0x00000100
+#define     XF_SEND_CONNECTING  0x00000200
+#define     XF_REUSE_WAIT       0x00000400
+#define     XF_SMP_VC           0x00000800
+#define     XF_DPM_INI          0x00001000
+#define     XF_TERMINATED       0x00002000
+#endif
 /* SMP Channel is added by OSU-MPI2 */
 typedef enum SMP_pkt_type
 {
@@ -127,6 +169,11 @@ typedef struct MPIDI_CH3I_SMP_VC
     int hostid;
     int read_index;
     int read_off;
+#if defined(_SMP_LIMIC_)
+    struct limic_header current_l_header;
+    int current_nb;
+    int use_limic;
+#endif
 } MPIDI_CH3I_SMP_VC;
 
 #ifndef MPIDI_CH3I_VC_RDMA_DECL
@@ -163,6 +210,7 @@ struct MPIDI_CH3I_Request						\
 {									\
     /*  pkt is used to temporarily store a packet header associated	\
        with this request */						\
+    MPIDI_CH3_PktGeneric_t pkt;                        \
     enum REQ_TYPE   reqtype;						\
     /* For CKPT, hard to put in ifdef because it's in macro define*/    \
     struct MPID_Request *cr_queue_next;                                 \

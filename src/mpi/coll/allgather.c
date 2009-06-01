@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -114,8 +114,9 @@ int MPIR_Allgather (
     int position, tmp_buf_size, nbytes;
 #endif
 
-    if (((sendcount == 0) && (sendbuf != MPI_IN_PLACE)) || (recvcount == 0))
+    if (((sendcount == 0) && (sendbuf != MPI_IN_PLACE)) || (recvcount == 0)) { 
         return MPI_SUCCESS;
+    } 
     
     comm = comm_ptr->handle;
     comm_size = comm_ptr->local_size;
@@ -129,10 +130,11 @@ int MPIR_Allgather (
     pof2 = 1;
     while (pof2 < comm_size)
         pof2 *= 2;
-    if (pof2 == comm_size) 
+    if (pof2 == comm_size) { 
         comm_size_is_pof2 = 1;
-    else
+    } else { 
         comm_size_is_pof2 = 0;
+   }
 #endif /* !defined(_OSU_MVAPICH_) */
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
@@ -149,8 +151,9 @@ int MPIR_Allgather (
 
     is_homogeneous = 1;
 #ifdef MPID_HAS_HETERO
-    if (comm_ptr->is_hetero)
+    if (comm_ptr->is_hetero) { 
         is_homogeneous = 0;
+    } 
 #endif
     
         if (is_homogeneous) {
@@ -323,8 +326,7 @@ int MPIR_Allgather (
             if (sendbuf != MPI_IN_PLACE) {
                 NMPI_Pack(sendbuf, sendcount, sendtype, tmp_buf, tmp_buf_size,
                           &position, comm);
-            }
-            else {
+            } else {
                 /* if in_place specified, local data is found in recvbuf */
                 NMPI_Pack(((char *)recvbuf + recvtype_extent*rank), recvcount,
                           recvtype, tmp_buf, tmp_buf_size, 
@@ -452,9 +454,7 @@ int MPIR_Allgather (
             MPIU_Free(tmp_buf);
         }
 #endif /* MPID_HAS_HETERO */
-    }
-
-    else if (recvcount*comm_size*type_size < MPIR_ALLGATHER_SHORT_MSG) {
+    } else if (recvcount*comm_size*type_size < MPIR_ALLGATHER_SHORT_MSG) {
         /* Short message and non-power-of-two no. of processes. Use
          * Bruck algorithm (see description above). */
 
@@ -488,8 +488,7 @@ int MPIR_Allgather (
 	    if (mpi_errno) { 
 		MPIU_ERR_POP(mpi_errno);
 	    }
-        }
-        else {
+        } else {
             mpi_errno = MPIR_Localcopy (((char *)recvbuf +
                                          rank * recvcount * recvtype_extent), 
                                         recvcount, recvtype, tmp_buf, 
@@ -564,9 +563,7 @@ int MPIR_Allgather (
         }
 
         MPIU_Free((char*)tmp_buf + recvtype_true_lb);
-    }
-
-    else {  /* long message or medium-size message and non-power-of-two
+    } else {  /* long message or medium-size message and non-power-of-two
              * no. of processes. use ring algorithm. */
       
         /* First, load the "local" version in the recvbuf. */
@@ -698,8 +695,7 @@ int MPIR_Allgather_inter (
 		MPIU_ERR_POP(mpi_errno);
 	    }
         }
-    }
-    else {
+    } else {
         /* receive bcast from left */
         if (recvcount != 0) {
             root = 0;
@@ -717,10 +713,9 @@ int MPIR_Allgather_inter (
                                          sendtype, root, comm_ptr);
 	    if (mpi_errno) { 
 		MPIU_ERR_POP(mpi_errno);
-	    }
+           }
         }
     }
-    
  fn_fail:
     if ((rank == 0) && (sendcount != 0) && tmp_buf)
         MPIU_Free((char*)tmp_buf+true_lb);
@@ -861,12 +856,12 @@ int MPI_Allgather(void *sendbuf, int sendcount, MPI_Datatype sendtype,
 	MPIU_THREADPRIV_GET;
 
 	MPIR_Nest_incr();
-        if (comm_ptr->comm_kind == MPID_INTRACOMM) 
-            /* intracommunicator */
+        if (comm_ptr->comm_kind == MPID_INTRACOMM) { 
+            /* intracommunicator */ 
             mpi_errno = MPIR_Allgather(sendbuf, sendcount, sendtype,
                                        recvbuf, recvcount, recvtype,
                                        comm_ptr);
-        else {
+        } else {
             /* intercommunicator */
             mpi_errno = MPIR_Allgather_inter(sendbuf, sendcount, sendtype,
                                              recvbuf, recvcount, recvtype,
@@ -875,7 +870,10 @@ int MPI_Allgather(void *sendbuf, int sendcount, MPI_Datatype sendtype,
 	MPIR_Nest_decr();
     }
 
-    if (mpi_errno != MPI_SUCCESS) goto fn_fail;
+    if (mpi_errno != MPI_SUCCESS) { 
+         goto fn_fail;
+     }
+
 
     /* ... end of body of routine ... */
     

@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -465,13 +465,13 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle, MPIDI_VC_t * vc_req,
                 MPIU_Assert (event.event_number == DAT_DTO_COMPLETION_EVENT);
 
                 /* Handling fatal error like
-                 * DAT_DTO_ERR_TRANSPORT (occures when network disfunction) 
+                 * DAT_DTO_ERR_TRANSPORT (occures when network disfunction)
                  */
                 if (event.event_data.dto_completion_event_data.status != DAT_DTO_SUCCESS)
                   {
                       int rank;
                       PMI_Get_rank(&rank);
-                      udapl_error_abort(UDAPL_STATUS_ERR, 
+                      udapl_error_abort(UDAPL_STATUS_ERR,
                               "[%d] DAT_EVD_ERROR in Consume_signals %x\n", rank,
                               event.event_data.dto_completion_event_data.status);
                   }
@@ -621,4 +621,16 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle, MPIDI_VC_t * vc_req,
   fn_exit:
 
     return type;
+}
+
+void
+MPIDI_CH3I_Cleanup_after_connection(MPIDI_VC_t *vc)
+{
+    /* nothing to be cleaned up in udapl */  
+}
+
+void
+MPIDI_CH3I_Check_pending_send(MPIDI_VC_t *vc) 
+{
+    return;
 }

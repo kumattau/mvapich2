@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -432,7 +432,7 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr,
             }
             default:
                 DEBUG_PRINT("Unknown ONE SIDED OP\n");
-                exit(0);
+                ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
                 break;
             }
         }
@@ -524,7 +524,7 @@ MPIDI_CH3I_RDMA_win_create(void *base,
     if (!tmp)
     {
         DEBUG_PRINT("Error malloc tmp when creating windows\n");
-        exit(0);
+        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
     }
     
     tmp_new = MPIU_Malloc(comm_size * sizeof(unsigned long) * rdma_num_rails);
@@ -532,7 +532,7 @@ MPIDI_CH3I_RDMA_win_create(void *base,
     if (!tmp_new)
     {
         DEBUG_PRINT("Error malloc tmp_new when creating windows\n");
-        exit(0);
+        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
     }
 
     (*win_ptr)->fall_back = 0;
@@ -703,7 +703,7 @@ MPIDI_CH3I_RDMA_win_create(void *base,
 
     if (ret != MPI_SUCCESS) {
         DEBUG_PRINT("Error gather rkey  when creating windows\n");
-        exit(0);
+        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
     }
 
     /* check if any peers fail */
@@ -755,7 +755,7 @@ MPIDI_CH3I_RDMA_win_create(void *base,
                                                  * rdma_num_hcas);
     if (!(*win_ptr)->r_key) {
         DEBUG_PRINT("Error malloc win->r_key when creating windows\n");
-        exit(0);
+        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
     }
 
     /* Now allocate the rkey2 array for all other processes */
@@ -764,7 +764,7 @@ MPIDI_CH3I_RDMA_win_create(void *base,
                                                   * rdma_num_hcas);
     if (!(*win_ptr)->r_key2) {
         DEBUG_PRINT("Error malloc win->r_key2 when creating windows\n");
-        exit(0);
+        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
     }
 
     /* Now allocate the rkey3 array for all other processes */
@@ -773,7 +773,7 @@ MPIDI_CH3I_RDMA_win_create(void *base,
                                                   * rdma_num_hcas);
     if (!(*win_ptr)->r_key3) {
         DEBUG_PRINT("error malloc win->r_key3 when creating windows\n");
-        exit(0);
+        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
     }
 
     (*win_ptr)->all_actlock_addr = (long long **) MPIU_Malloc(comm_size 
@@ -783,7 +783,7 @@ MPIDI_CH3I_RDMA_win_create(void *base,
     if (!(*win_ptr)->all_actlock_addr) {
         DEBUG_PRINT
             ("error malloc win->all_actlock_addr when creating windows\n");
-        exit(0);
+        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
     }
     
     /* Now allocate the completion counter array for all other processes */
@@ -793,7 +793,7 @@ MPIDI_CH3I_RDMA_win_create(void *base,
     if (!(*win_ptr)->all_completion_counter) {
         DEBUG_PRINT
             ("error malloc win->all_completion_counter when creating windows\n");
-        exit(0);
+        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
     }
 
     int compIndex;
@@ -824,25 +824,25 @@ MPIDI_CH3I_RDMA_win_create(void *base,
             sizeof(unsigned long)*rdma_num_hcas );
     if (!tmp1) {
         DEBUG_PRINT("Error malloc tmp1 when creating windows\n");
-        exit(0);
+        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
     }
     tmp2 = (unsigned long *) MPIU_Malloc(comm_size * 
             sizeof(unsigned long) );
     if (!tmp2) {
         DEBUG_PRINT("Error malloc tmp2 when creating windows\n");
-        exit(0);
+        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
     }
     tmp3 = (unsigned long *) MPIU_Malloc(comm_size * 
             sizeof(unsigned long)*rdma_num_hcas );
     if (!tmp3) {
         DEBUG_PRINT("Error malloc tmp3 when creating windows\n");
-        exit(0);
+        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
     }
     tmp4 = (unsigned long *) MPIU_Malloc(comm_size * 
             sizeof(unsigned long) );
     if (!tmp4) {
         DEBUG_PRINT("Error malloc tmp4 when creating windows\n");
-        exit(0);
+        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
     }
 
     /* use all to all to exchange rkey and address for post flag */
@@ -863,7 +863,7 @@ MPIDI_CH3I_RDMA_win_create(void *base,
                       comm_ptr->handle);
     if (ret != MPI_SUCCESS) {
         DEBUG_PRINT("Error gather rkey  when creating windows\n");
-        exit(0);
+        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
     }
 
     /* use all to all to exchange the address of post flag */
@@ -871,14 +871,14 @@ MPIDI_CH3I_RDMA_win_create(void *base,
                       comm_ptr->handle);
     if (ret != MPI_SUCCESS) {
         DEBUG_PRINT("Error gather rkey  when creating windows\n");
-        exit(0);
+        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
     }
 
     (*win_ptr)->r_key4 = (uint32_t *) MPIU_Malloc(comm_size * 
                                                   sizeof(uint32_t)*rdma_num_hcas);
     if (!(*win_ptr)->r_key4) {
         DEBUG_PRINT("error malloc win->r_key3 when creating windows\n");
-        exit(0);
+        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
     }
     
     (*win_ptr)->remote_post_flags =
@@ -886,7 +886,7 @@ MPIDI_CH3I_RDMA_win_create(void *base,
     if (!(*win_ptr)->remote_post_flags) {
         DEBUG_PRINT
             ("error malloc win->remote_post_flags when creating windows\n");
-        exit(0);
+        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
     }
 
     for (i = 0; i < comm_size; ++i) {
@@ -921,7 +921,7 @@ MPIDI_CH3I_RDMA_win_create(void *base,
 
     if (!(*win_ptr)->put_get_list) {
         DEBUG_PRINT("Fail to malloc space for window put get list\n");
-        exit(0);
+        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
     }
 
 
@@ -971,7 +971,7 @@ fn_exit:
                        MPI_LONG, comm_ptr->handle);
     if (ret != MPI_SUCCESS) {
         DEBUG_PRINT("Error gather rkey  when creating windows\n");
-        exit(0);
+        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
     }
     
     return;
@@ -1033,7 +1033,7 @@ static int Decrease_CC(MPID_Win * win_ptr, int target_rank)
 {
     int                 i;
     int                 mpi_errno = MPI_SUCCESS;
-    uint32_t            r_key2[MAX_NUM_HCAS], l_key2[MAX_NUM_HCAS];
+    uint32_t            r_key2[MAX_NUM_SUBRAILS], l_key2[MAX_NUM_SUBRAILS];
     long long           *cc;
     int hca_index;
     void * remote_addr[MAX_NUM_SUBRAILS], *local_addr[MAX_NUM_SUBRAILS];
@@ -1077,6 +1077,7 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
     int rail;
     int index = winptr->put_get_list_tail;
     vbuf *v;
+    MPIDI_VC_t *save_vc = vc_ptr;
 
     winptr->put_get_list[index].op_type     = SIGNAL_FOR_PUT;
     winptr->put_get_list[index].mem_entry   = dreg_tmp;
@@ -1117,10 +1118,12 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
             vbuf_init_rma_put(v, local_address, lkeys[i], remote_address,
                               rkeys[i], posting_length, i);
 
+            XRC_FILL_SRQN_FIX_CONN (v, vc_ptr, i);
             if (MRAILI_Flush_wqe(vc_ptr,v,i) != -1) { /* message not enqueued */
                 -- vc_ptr->mrail.rails[i].send_wqes_avail;
                 IBV_POST_SR(v, vc_ptr, i, "Failed to post rma put");
             }
+            vc_ptr = save_vc;
         }
     } else if (use_multi == 0) { /* send on a single rail */
         rail = 0;
@@ -1138,6 +1141,7 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
         v->list = (void *)(&(winptr->put_get_list[index]));
         v->vc = (void *)vc_ptr;
 
+        XRC_FILL_SRQN_FIX_CONN (v, vc_ptr, rail);
         if (MRAILI_Flush_wqe(vc_ptr, v, rail) != -1) {
             --(vc_ptr->mrail.rails[rail].send_wqes_avail);
             IBV_POST_SR(v, vc_ptr, rail, "Failed to post rma put");
@@ -1160,10 +1164,12 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
             v->list = (void *)(&(winptr->put_get_list[index]));
             v->vc = (void *)vc_ptr;
 
+            XRC_FILL_SRQN_FIX_CONN (v, vc_ptr, i);
             if (MRAILI_Flush_wqe(vc_ptr, v ,i) != -1) {
                 --(vc_ptr->mrail.rails[i].send_wqes_avail);
                 IBV_POST_SR(v, vc_ptr, i, "Failed to post rma put");                     
        	    } 
+            vc_ptr = save_vc;
         }
     }   
  
@@ -1194,6 +1200,7 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
      int hca_index;
      int index = winptr->put_get_list_tail;
      vbuf *v;
+     MPIDI_VC_t *save_vc = vc_ptr;
 
      if(size <= rdma_eagersize_1sc){    
          winptr->put_get_list[index].origin_addr = remote_buf[0];
@@ -1240,10 +1247,12 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
             ++(vc_ptr->mrail.rails[hca_index].postsend_times_1sc);
             ++(winptr->put_get_list_size);
 
+            XRC_FILL_SRQN_FIX_CONN (v, vc_ptr, i);
             if (MRAILI_Flush_wqe(vc_ptr,v,i) != -1) {
                 --(vc_ptr->mrail.rails[i].send_wqes_avail);
                 IBV_POST_SR(v, vc_ptr, i, "Failed to post rma get");
             }
+            vc_ptr = save_vc;
      	} 
     }
 
@@ -1334,9 +1343,9 @@ static int iba_put(MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr, int size)
     char                *remote_address;
     int                 mpi_errno = MPI_SUCCESS;
     int                 hca_index;
-    uint32_t            r_key[MAX_NUM_HCAS],
-                        l_key1[MAX_NUM_HCAS], 
-                        l_key[MAX_NUM_HCAS];
+    uint32_t            r_key[MAX_NUM_SUBRAILS],
+                        l_key1[MAX_NUM_SUBRAILS], 
+                        l_key[MAX_NUM_SUBRAILS];
     int                 i;
     dreg_entry          *tmp_dreg = NULL;
     char                *origin_addr;
@@ -1392,9 +1401,9 @@ int iba_get(MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr, int size)
     char                *remote_address;
     int                 mpi_errno = MPI_SUCCESS;
     int                 hca_index;
-    uint32_t            r_key[MAX_NUM_HCAS], 
-                        l_key1[MAX_NUM_HCAS], 
-                        l_key[MAX_NUM_HCAS];
+    uint32_t            r_key[MAX_NUM_SUBRAILS], 
+                        l_key1[MAX_NUM_SUBRAILS], 
+                        l_key[MAX_NUM_SUBRAILS];
     dreg_entry          *tmp_dreg = NULL;
     char                *origin_addr;
     int                 i;

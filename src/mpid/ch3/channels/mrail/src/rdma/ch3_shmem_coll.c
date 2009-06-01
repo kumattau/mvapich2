@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -72,6 +72,20 @@ int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t *pg)
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_INIT);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_INIT);
     int mpi_errno = MPI_SUCCESS;
+#if defined(SOLARIS)
+    char *setdir="/tmp";
+#else
+    char *setdir="/dev/shm";
+#endif
+    char *shmem_dir, *shmdir;
+    size_t pathlen;
+
+    if ((shmdir = getenv("MV2_SHMEM_DIR")) != NULL) {
+        shmem_dir = shmdir;
+    } else {
+        shmem_dir = setdir;
+    }
+    pathlen = strlen(shmem_dir);
 
     if (gethostname(hostname, sizeof(char) * SHMEM_COLL_HOSTNAME_LEN) < 0)
     {
@@ -82,12 +96,12 @@ int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t *pg)
     PMI_Get_rank(&my_rank);
 
     /* add pid for unique file name */
-    if ((shmem_file = (char *) MPIU_Malloc(sizeof(char) * (SHMEM_COLL_HOSTNAME_LEN + 26 + PID_CHAR_LEN))) == NULL)
+    if ((shmem_file = (char *) MPIU_Malloc(pathlen + sizeof(char) * (SHMEM_COLL_HOSTNAME_LEN + 26 + PID_CHAR_LEN))) == NULL)
     {
         MPIU_CHKMEM_SETERR(mpi_errno, sizeof(char) * (SHMEM_COLL_HOSTNAME_LEN + 26 + PID_CHAR_LEN), "shared memory filename");
     }
 
-    if ((bcast_file = (char *) MPIU_Malloc(sizeof(char) * (SHMEM_COLL_HOSTNAME_LEN + 26 + PID_CHAR_LEN + BCAST_LEN))) == NULL)
+    if ((bcast_file = (char *) MPIU_Malloc(pathlen + sizeof(char) * (SHMEM_COLL_HOSTNAME_LEN + 26 + PID_CHAR_LEN + BCAST_LEN))) == NULL)
     {
         MPIU_CHKMEM_SETERR(mpi_errno, sizeof(char) * (SHMEM_COLL_HOSTNAME_LEN + 26 + PID_CHAR_LEN + BCAST_LEN), "shared memory broadcast filename"); 
     }
@@ -98,21 +112,12 @@ int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t *pg)
 		"**nomem %s", "shmem_file");
     }
 
-#if defined(SOLARIS)
     /* unique shared file name */
-    sprintf(shmem_file, "/tmp/ib_shmem_coll-%s-%s-%d.tmp",
-            pg->ch.kvs_name, hostname, getuid());
+    sprintf(shmem_file, "%s/ib_shmem_coll-%s-%s-%d.tmp",
+            shmem_dir, pg->ch.kvs_name, hostname, getuid());
 
-    sprintf(bcast_file,"/tmp/ib_shmem_bcast_coll-%s-%s-%d",
-            pg->ch.kvs_name, hostname, getuid());
-#else
-    /* unique shared file name */
-    sprintf(shmem_file, "/dev/shm/ib_shmem_coll-%s-%s-%d.tmp",
-            pg->ch.kvs_name, hostname, getuid());
-
-    sprintf(bcast_file,"/dev/shm/ib_shmem_bcast_coll-%s-%s-%d",
-            pg->ch.kvs_name, hostname, getuid());
-#endif
+    sprintf(bcast_file,"%s/ib_shmem_bcast_coll-%s-%s-%d",
+            shmem_dir, pg->ch.kvs_name, hostname, getuid());
 
     /* open the shared memory file */
     shmem_coll_obj.fd = open(shmem_file, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
@@ -129,8 +134,8 @@ int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t *pg)
         shmem_coll_obj.fd = open(shmem_file, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
         if (shmem_coll_obj.fd < 0)
         {
-	    MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail", "%s: %s",
-	    	"open", strerror(errno));
+            MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail", "%s: %s",
+                "open", strerror(errno));
         }
     }
 
@@ -317,19 +322,37 @@ void MPIDI_CH3I_SHMEM_COLL_Unlink()
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int size, int rank, int shmem_comm_rank, void** output_buf)
 {
-    int i = 1;
+    int i = 1, cnt;
     char* shmem_coll_buf = (char*)(&(shmem_coll->shmem_coll_buf));
 
     if (rank == 0)
     {
         for (; i < size; ++i)
         { 
+            cnt = 0;
             while (shmem_coll->child_complete_gather[shmem_comm_rank][i] == 0)
             {
 #if defined(CKPT)
 		Wait_for_CR_Completion();
 #endif
                 MPIDI_CH3I_Progress_test();
+
+                /* Yield once in a while */
+                MPIU_THREAD_CHECK_BEGIN
+                ++cnt;
+                if (cnt >= 20) {
+                    cnt = 0;
+#if defined(CKPT)
+                    MPIDI_CH3I_CR_unlock();
+#endif
+                    MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
+                    sched_yield();
+                    MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
+#if defined(CKPT)
+                    MPIDI_CH3I_CR_lock();
+#endif
+                }
+                MPIU_THREAD_CHECK_END
             }
         }
         /* Set the completion flags back to zero */
@@ -342,12 +365,30 @@ void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int size, int rank, int shmem_comm_rank, 
     }
     else
     {
+        cnt = 0;
         while (shmem_coll->root_complete_gather[shmem_comm_rank][rank] == 0)
         {
 #if defined(CKPT)
 	    Wait_for_CR_Completion();
 #endif
             MPIDI_CH3I_Progress_test(); 
+
+            /* Yield once in a while */
+            MPIU_THREAD_CHECK_BEGIN
+            ++cnt;
+            if (cnt >= 20) {
+                cnt = 0;
+#if defined(CKPT)
+                MPIDI_CH3I_CR_unlock();
+#endif
+                MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
+                sched_yield();
+                MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
+#if defined(CKPT)
+                MPIDI_CH3I_CR_lock();
+#endif
+            }
+            MPIU_THREAD_CHECK_END
         }
 
         shmem_coll->root_complete_gather[shmem_comm_rank][rank] = 0;
@@ -376,7 +417,7 @@ void MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(int size, int rank, int shmem_comm_
 
 void MPIDI_CH3I_SHMEM_COLL_Barrier_gather(int size, int rank, int shmem_comm_rank)
 {
-    int i = 1;
+    int i = 1, cnt = 0;
 
     if (rank == 0)
     {
@@ -388,6 +429,23 @@ void MPIDI_CH3I_SHMEM_COLL_Barrier_gather(int size, int rank, int shmem_comm_ran
 		Wait_for_CR_Completion();
 #endif
                 MPIDI_CH3I_Progress_test();
+
+                /* Yield once in a while */
+                MPIU_THREAD_CHECK_BEGIN
+                ++cnt;
+                if (cnt >= 20) {
+                    cnt = 0;
+#if defined(CKPT)
+                    MPIDI_CH3I_CR_unlock();
+#endif
+                    MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
+                    sched_yield();
+                    MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
+#if defined(CKPT)
+                    MPIDI_CH3I_CR_lock();
+#endif
+                }
+                MPIU_THREAD_CHECK_END
             }
         }
         for (i = 1; i < size; ++i)
@@ -404,7 +462,7 @@ void MPIDI_CH3I_SHMEM_COLL_Barrier_gather(int size, int rank, int shmem_comm_ran
 
 void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int size, int rank, int shmem_comm_rank)
 {
-    int i = 1;
+    int i = 1, cnt = 0;
 
     if (rank == 0)
     {
@@ -421,6 +479,23 @@ void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int size, int rank, int shmem_comm_rank
 	    Wait_for_CR_Completion();
 #endif
             MPIDI_CH3I_Progress_test();
+
+            /* Yield once in a while */
+            MPIU_THREAD_CHECK_BEGIN
+            ++cnt;
+            if (cnt >= 20) {
+                cnt = 0;
+#if defined(CKPT)
+                MPIDI_CH3I_CR_unlock();
+#endif
+                MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
+                sched_yield();
+                MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
+#if defined(CKPT)
+                MPIDI_CH3I_CR_lock();
+#endif
+            }
+            MPIU_THREAD_CHECK_END
         }
 
         shmem_coll->barrier_bcast[shmem_comm_rank][rank] = 0;

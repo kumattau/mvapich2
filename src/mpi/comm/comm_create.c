@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -69,7 +69,7 @@ int split_comm = 1;
 extern int enable_shmem_collectives;
 extern int check_split_comm(pthread_t);
 extern int disable_split_comm(pthread_t);
-extern void create_2level_comm (MPI_Comm, int, int);
+extern int create_2level_comm (MPI_Comm, int, int);
 extern int enable_split_comm(pthread_t);
 #endif /* defined(_OSU_MVAPICH_) */
 
@@ -337,15 +337,15 @@ int MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm)
 
 	/* Dummy to complete collective ops in the intercomm case */
 	if (comm_ptr->comm_kind == MPID_INTERCOMM) {
-	    int rinfo[2], remote_size, *remote_mapping = 0;
+	    int rinfo[2], ic_remote_size, *ic_remote_mapping = 0;
             MPIR_Nest_incr();
 	    NMPI_Bcast( rinfo, 2, MPI_INT, 0, 
 			comm_ptr->local_comm->handle );
-	    remote_size                 = rinfo[1];
-	    MPIU_CHKLMEM_MALLOC(remote_mapping,int*,
-				remote_size*sizeof(int),
-				mpi_errno,"remote_mapping");
-	    NMPI_Bcast( remote_mapping, remote_size, MPI_INT, 0, 
+	    ic_remote_size = rinfo[1];
+	    MPIU_CHKLMEM_MALLOC(ic_remote_mapping,int*,
+				ic_remote_size*sizeof(int),
+				mpi_errno,"ic_remote_mapping");
+	    NMPI_Bcast( ic_remote_mapping, ic_remote_size, MPI_INT, 0, 
 			comm_ptr->local_comm->handle );
             MPIR_Nest_decr();
 	}
@@ -367,11 +367,17 @@ int MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm)
 
                 if (flag == 0){
                     int my_id, size;
-                    MPI_Comm_rank(*newcomm, &my_id);
-                    MPI_Comm_size(*newcomm, &size);
-                    disable_split_comm(pthread_self());
-                    create_2level_comm(*newcomm, size, my_id);
-                    enable_split_comm(pthread_self());
+                    mpi_errno = PMPI_Comm_rank(*newcomm, &my_id);
+                     if(mpi_errno) {
+                        MPIU_ERR_POP(mpi_errno);
+                    }
+                    mpi_errno = PMPI_Comm_size(*newcomm, &size);
+                     disable_split_comm(pthread_self());
+                    mpi_errno =  create_2level_comm(*newcomm, size, my_id);
+                     if(mpi_errno) {
+                        MPIU_ERR_POP(mpi_errno);
+                    }
+                     enable_split_comm(pthread_self());
                 }
 
                 MPIR_Nest_decr();

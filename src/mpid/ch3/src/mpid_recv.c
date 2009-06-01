@@ -3,6 +3,18 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
+
 
 #include "mpidimpl.h"
 
@@ -32,10 +44,56 @@ int MPID_Recv(void * buf, int count, MPI_Datatype datatype, int rank, int tag,
 	goto fn_exit;
     }
 
-    rreq = MPIDI_CH3U_Recvq_FDU_or_AEP(
-	rank, tag, comm->recvcontext_id + context_offset, &found);
+    /* psm buffers unexpected messages internally, so we don't need the ch3
+       unexpected queue. If data is contig just call the blocking MPIDI_CH3_Recv
+       If data is non-contig,... */
+
+#if defined(_OSU_PSM_)
+    MPI_Aint dt_true_lb;
+    MPID_Datatype *dt_ptr;
+    MPIDI_msg_sz_t data_sz;
+    int dt_contig;
+    int pksz;
+    void *pkbuf;
+
+    MPIDI_Datatype_get_info(count, datatype, dt_contig, data_sz, dt_ptr, dt_true_lb);
+    if(dt_contig) {
+        mpi_errno = MPIDI_CH3_Recv(rank, tag, comm->recvcontext_id + context_offset,
+                (char *)buf + dt_true_lb, data_sz, status, request);
+        rreq = *request;
+    } else {
+        PSMSG(fprintf(stderr, "non-contig recv for psm\n"));
+        MPI_Pack_size(count, datatype, comm->handle, &pksz);
+        if(count == 0) {
+            pksz = 0;
+        }
+        pkbuf = MPIU_Malloc(pksz);
+        if(!pkbuf) {
+        	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_NO_MEM, "**nomem");
+        }
+        mpi_errno = MPIDI_CH3_Recv(rank, tag, comm->recvcontext_id + context_offset,
+                pkbuf, pksz, status, request);
+        rreq = *request;
+        if(rreq && (rreq->psm_flags & PSM_NON_BLOCKING_RECV)) {
+            rreq->psm_flags |= PSM_NON_CONTIG_REQ;
+            rreq->pkbuf = pkbuf;
+            rreq->pksz = pksz;
+            rreq->dev.user_buf = (char *)buf;// + dt_true_lb;
+            rreq->dev.user_count = count;
+            rreq->dev.datatype = datatype;
+        } else {
+            mpi_errno = psm_do_unpack(count, datatype, comm, pkbuf, pksz, 
+                        (char *)buf/* + dt_true_lb*/ , data_sz);
+            MPIU_Free(pkbuf);
+        }
+    }
+    goto fn_exit;
+#endif
+
+
+    rreq = MPIDI_CH3U_Recvq_FDU_or_AEP(rank, tag, comm->recvcontext_id + context_offset, &found);
     if (rreq == NULL) {
-	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_NO_MEM, "**nomem");
+    	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_NO_MEM, "**nomem");
     }
 
     /* FIXME: in the common case, we want to simply complete the message
@@ -118,7 +176,11 @@ int MPID_Recv(void * buf, int count, MPI_Datatype datatype, int rank, int tag,
 	else if (MPIDI_Request_get_msg_type(rreq) == MPIDI_REQUEST_RNDV_MSG)
 	{
 	    MPIDI_Comm_get_vc(comm, rreq->dev.match.rank, &vc);
-	    mpi_errno = vc->rndvRecv_fn( vc, rreq );
+#if defined(_OSU_MVAPICH_)
+        mpi_errno = MPIDI_CH3_RecvRndv( vc, rreq );
+#else
+        mpi_errno = vc->rndvRecv_fn( vc, rreq );
+#endif
 	    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 	    if (HANDLE_GET_KIND(datatype) != HANDLE_KIND_BUILTIN)
 	    {
@@ -184,3 +246,23 @@ int MPID_Recv(void * buf, int count, MPI_Datatype datatype, int rank, int tag,
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_RECV);
     return mpi_errno;
 }
+
+#if defined (_OSU_PSM_)
+int psm_do_unpack(int count, MPI_Datatype datatype, MPID_Comm *comm, 
+                  void *pkbuf, int pksz, void *inbuf, int data_sz)
+{
+    MPI_Aint first = 0, last = data_sz;
+    MPID_Segment *segp;
+
+    segp = MPID_Segment_alloc();
+    if(segp == NULL) {
+        return MPI_ERR_NO_MEM;
+    }
+
+    MPID_Segment_init(inbuf, count, datatype, segp, 0);
+    MPID_Segment_unpack(segp, first, &last, pkbuf);
+    MPID_Segment_free(segp);
+    PSMSG(fprintf(stderr, "PSM Unpack done\n"));
+    return MPI_SUCCESS;
+}
+#endif

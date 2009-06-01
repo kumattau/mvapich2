@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -976,7 +976,7 @@ MPIDI_CH3I_PG_Destroy (MPIDI_PG_t * pg, void *id)
     return MPI_SUCCESS;
 }
 
-int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank)
+int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **str)
 {
     int ret;
     MPIDI_VC_t *vc;
@@ -1010,6 +1010,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank)
     char tmp[512];
     char tmp_hname[256];
 
+    *str = NULL; /* We do not support dynamic process management */
 #ifndef DISABLE_PTMALLOC
     if(mvapich2_minit()) {
         fprintf(stderr,
@@ -1895,3 +1896,22 @@ int MPIDI_CH3I_CM_Establish(MPIDI_VC_t * vc)
     return MPI_SUCCESS;
 }
 
+int MPIDI_CH3I_MRAIL_PG_Destroy(MPIDI_PG_t *pg)
+{
+    return MPI_SUCCESS;   
+}
+
+int MPIDI_CH3I_MRAIL_PG_Init(MPIDI_PG_t *pg)
+{
+    return MPI_SUCCESS;
+}
+
+int MPIDI_CH3I_CM_Get_port_info(char *ifname, int max_len)
+{
+    return MPI_ERR_SPAWN;
+}
+
+int MPIDI_CH3I_CM_Connect_raw_vc(MPIDI_VC_t *vc, char *ifname)
+{
+    return MPI_ERR_SPAWN;
+}

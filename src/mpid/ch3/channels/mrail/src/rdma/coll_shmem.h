@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -115,7 +115,22 @@ shmem_coll_region *shmem_coll;
 #define SHMEM_BCAST_FLAGS	1024
 /*
  * We're converting this into a environment variable
- *#define SHMEM_BCAST_LEADERS 1024
+ * #define SHMEM_BCAST_LEADERS     1024
  */
 #define SHMEM_BCAST_METADATA	(sizeof(addrint_t) + 2*sizeof(int))       /* METADATA: buffer address, offset, num_bytes */ 
+
+
+extern int                  enable_knomial_2level_bcast;
+extern int                  inter_node_knomial_factor;
+extern int                  knomial_2level_bcast_threshold;
+#define INTER_NODE_KNOMIAL_FACTOR_MAX 8
+#define INTER_NODE_KNOMIAL_FACTOR_MIN 2
+extern int                  intra_node_knomial_factor;
+#define INTRA_NODE_KNOMIAL_FACTOR_MAX 8
+#define INTRA_NODE_KNOMIAL_FACTOR_MIN 2
+
+
+
+
+ 
 #endif

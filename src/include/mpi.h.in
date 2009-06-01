@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -176,7 +176,6 @@ typedef int MPI_Op;
 /* These are only guesses; make sure you change them in mpif.h as well */
 #define MPI_MAX_PROCESSOR_NAME @MPI_MAX_PROCESSOR_NAME@
 #define MPI_MAX_ERROR_STRING  1024 
-#define MPI_MAX_NAME_STRING     63
 #define MPI_MAX_PORT_NAME      256
 #define MPI_MAX_OBJECT_NAME    128
 
@@ -256,10 +255,8 @@ typedef int (MPI_Copy_function) ( MPI_Comm, int, void *, void *, void *, int * )
 typedef int (MPI_Delete_function) ( MPI_Comm, int, void *, void * );
 
 #define MPI_VERSION    2
-#define MPI_SUBVERSION 0
-/* <_OSU_MVAPICH_> */
-/* #define MPICH_NAME     2 */
-/* </_OSU_MVAPICH_> */
+#define MPI_SUBVERSION 1
+#define MPICH_NAME     2
 #define MPICH2         1
 #define MPICH_HAS_C2F  1
 
@@ -287,12 +284,29 @@ typedef int (MPI_Delete_function) ( MPI_Comm, int, void *, void * );
  * digits for REV, 1 digit for EXT and 2 digits for EXT_NUMBER. So,
  * 1.0.7rc1 will have the numeric version 10007201.
  */
-/* <_OSU_MVAPICH_> */
-/* #define MPICH2_VERSION "@VERSION@" */
-/* #define MPICH2_NUMVERSION @NUMVERSION@ */
-#define MVAPICH_VERSION "@VERSION@"
-#define MVAPICH @NUMVERSION@
-/* </_OSU_MVAPICH_> */
+#define MPICH2_VERSION "@VERSION@"
+#define MPICH2_NUMVERSION @NUMVERSION@
+
+#define MPICH2_RELEASE_TYPE_ALPHA  0
+#define MPICH2_RELEASE_TYPE_BETA   1
+#define MPICH2_RELEASE_TYPE_RC     2
+#define MPICH2_RELEASE_TYPE_PATCH  3
+
+#define MPICH2_CALC_VERSION(MAJOR, MINOR, REVISION, TYPE, PATCH) \
+    (((MAJOR) * 10000000) + ((MINOR) * 100000) + ((REVISION) * 1000) + ((TYPE) * 100) + (PATCH))
+
+#ifdef _OSU_MVAPICH_
+#   define MVAPICH2_VERSION "@VERSION@"
+#   define MVAPICH2_NUMVERSION @NUMVERSION@
+
+#   define MVAPICH2_RELEASE_TYPE_ALPHA  0
+#   define MVAPICH2_RELEASE_TYPE_BETA   1
+#   define MVAPICH2_RELEASE_TYPE_RC     2
+#   define MVAPICH2_RELEASE_TYPE_PATCH  3
+
+#   define MVAPICH2_CALC_VERSION(MAJOR, MINOR, REVISION, TYPE, PATCH) \
+        (((MAJOR) * 10000000) + ((MINOR) * 100000) + ((REVISION) * 1000) + ((TYPE) * 100) + (PATCH))
+#endif
 
 /* for the datatype decoders */
 enum MPI_COMBINER_ENUM {
@@ -969,8 +983,6 @@ int PMPI_Errhandler_get(MPI_Comm, MPI_Errhandler *);
 int PMPI_Errhandler_free(MPI_Errhandler *);
 int PMPI_Error_string(int, char *, int *);
 int PMPI_Error_class(int, int *);
-
-int PMPI_Type_get_envelope(MPI_Datatype, int *, int *, int *, int *); 
 
 /* Wtime done above */
 int PMPI_Init(int *, char ***);

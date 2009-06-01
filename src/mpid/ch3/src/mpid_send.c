@@ -3,6 +3,17 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
 
 #include "mpidimpl.h"
 
@@ -39,13 +50,17 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
 
     if (rank == comm->rank && comm->comm_kind != MPID_INTERCOMM)
     {
-	mpi_errno = MPIDI_Isend_self(buf, count, datatype, rank, tag, comm, 
-				     context_offset, MPIDI_REQUEST_TYPE_SEND, 
-				     &sreq);
+#if defined (_OSU_PSM_)
+        goto skip_self_send;    /* psm internally has a self-send mode no
+                                   special handling needed here. */
+#endif /*_OSU_PSM_*/
+        mpi_errno = MPIDI_Isend_self(buf, count, datatype, rank, tag, comm, 
+                         context_offset, MPIDI_REQUEST_TYPE_SEND, 
+                         &sreq);
 
-	/* In the single threaded case, sending to yourself will cause 
-	   deadlock.  Note that in the runtime-thread case, this check
-	   will not be made (long-term FIXME) */
+        /* In the single threaded case, sending to yourself will cause 
+           deadlock.  Note that in the runtime-thread case, this check
+           will not be made (long-term FIXME) */
 #       ifndef MPICH_IS_THREADED
 	{
 	    if (sreq != NULL && sreq->cc != 0) {
@@ -57,6 +72,9 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
 	if (mpi_errno != MPI_SUCCESS) { MPIU_ERR_POP(mpi_errno); }
 	goto fn_exit;
     }
+#if defined (_OSU_PSM_)    
+skip_self_send:
+#endif  /*_OSU_PSM_*/
 
     if (rank == MPI_PROC_NULL)
     {
@@ -70,8 +88,11 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
     
     if (data_sz == 0)
     {
-	MPIDI_CH3_Pkt_t upkt;
-	MPIDI_CH3_Pkt_eager_send_t * const eager_pkt = &upkt.eager_send;
+#if defined (_OSU_PSM_)  /* zero length send, let PSM handle it */
+        goto eager_send;
+#endif
+        MPIDI_CH3_Pkt_t upkt;
+        MPIDI_CH3_Pkt_eager_send_t * const eager_pkt = &upkt.eager_send;
 
 	MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"sending zero length message");
 	MPIDI_Pkt_init(eager_pkt, MPIDI_CH3_PKT_EAGER_SEND);
@@ -120,6 +141,10 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
     }
     else
 #endif
+#if defined(_OSU_PSM_)
+    if(vc->force_eager)
+        goto eager_send;
+#endif
 
 #if defined(_OSU_MVAPICH_)
     if (data_sz + sizeof(MPIDI_CH3_Pkt_eager_send_t) <=	
@@ -128,22 +153,27 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
     if (data_sz + sizeof(MPIDI_CH3_Pkt_eager_send_t) <=
         vc->eager_max_msg_sz) {
 #endif /* defined(_OSU_MVAPICH_) */
-	if (dt_contig) {
- 	    mpi_errno = MPIDI_CH3_EagerContigSend( &sreq, 
-						   MPIDI_CH3_PKT_EAGER_SEND,
-						   (char *)buf + dt_true_lb,
-						   data_sz, rank, tag, comm, 
-						   context_offset );
-	}
-	else {
-	    MPIDI_Request_create_sreq(sreq, mpi_errno, goto fn_exit);
-	    MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_SEND);
-	    mpi_errno = MPIDI_CH3_EagerNoncontigSend( &sreq, 
-                                                      MPIDI_CH3_PKT_EAGER_SEND,
-                                                      buf, count, datatype,
-                                                      data_sz, rank, tag, 
-                                                      comm, context_offset );
-	}
+
+#if defined(_OSU_PSM_)
+eager_send:
+#endif
+        if (dt_contig) {
+            mpi_errno = MPIDI_CH3_EagerContigSend( &sreq, 
+                               MPIDI_CH3_PKT_EAGER_SEND,
+                               (char *)buf + dt_true_lb,
+                               data_sz, rank, tag, comm, 
+                               context_offset );
+        }
+        else {
+            MPIDI_Request_create_sreq(sreq, mpi_errno, goto fn_exit);
+            MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_SEND);
+            mpi_errno = MPIDI_CH3_EagerNoncontigSend( &sreq, 
+                                                          MPIDI_CH3_PKT_EAGER_SEND,
+                                                          buf, count, datatype,
+                                                          data_sz, rank, tag, 
+                                                          comm, context_offset );
+        }
+        goto fn_exit;
     }
     else {
 	MPIDI_Request_create_sreq(sreq, mpi_errno, goto fn_exit);

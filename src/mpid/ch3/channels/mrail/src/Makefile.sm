@@ -1,4 +1,4 @@
-# Copyright (c) 2003-2008, The Ohio State University. All rights
+# Copyright (c) 2003-2009, The Ohio State University. All rights
 # reserved.
 #
 # This file is part of the MVAPICH2 software package developed by the
@@ -9,5 +9,5 @@
 # copyright file COPYRIGHT in the top level MVAPICH2 directory.
 #
 
-SUBDIRS_other_subdirs = gen2 plpa udapl
+SUBDIRS_other_subdirs = gen2 plpa udapl limic
 SUBDIRS = memory rdma @other_subdirs@

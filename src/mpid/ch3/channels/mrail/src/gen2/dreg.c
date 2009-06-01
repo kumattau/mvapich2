@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2002-2008, The Ohio State University. All rights
+/* Copyright (c) 2002-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -601,23 +601,26 @@ void vma_db_init (void)
     vma_list.list_count = 0;
 }
 
-/*
- * TODO add error handling
- */
-void dreg_init()
+#undef FUNCNAME
+#define FUNCNAME dreg_init
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int dreg_init()
 {
     int i = 0;
+    int mpi_errno = MPI_SUCCESS;
     g_pinned_pages_count = 0;
 
     vma_db_init ();
     dreg_free_list = (dreg_entry*) MPIU_Malloc((unsigned)(sizeof(dreg_entry) * rdma_ndreg_entries));
 
-    if (dreg_free_list == NULL)
-    {
-        ibv_va_error_abort(
-            GEN_EXIT_ERR,
-            "dreg_init: unable to malloc %d bytes",
-            (int) sizeof(dreg_entry) * rdma_ndreg_entries);
+    if (dreg_free_list == NULL) {
+        MPIU_ERR_SETFATALANDJUMP2(mpi_errno,
+                MPI_ERR_INTERN,
+                "**fail",
+                "**fail %s %d",
+                "dreg_init: unable to malloc %d bytes",
+                (int) sizeof(dreg_entry) * rdma_ndreg_entries);
     }
 
     memset(dreg_free_list, 0, sizeof(dreg_entry) * rdma_ndreg_entries);
@@ -626,8 +629,7 @@ void dreg_init()
     dreg_all_list = dreg_free_list;
 #endif /* defined(CKPT) */
 
-    for (; i < (int) rdma_ndreg_entries - 1; ++i)
-    {
+    for (; i < (int) rdma_ndreg_entries - 1; ++i) {
         dreg_free_list[i].next = &dreg_free_list[i + 1];
     }
 
@@ -641,25 +643,30 @@ void dreg_init()
 #if !defined(DISABLE_PTMALLOC)
     pthread_spin_init(&dreg_lock, 0);
     pthread_spin_init(&dereg_lock, 0);
-    deregister_mr_array = (dreg_region *)
-        malloc(sizeof(dreg_region) * rdma_ndreg_entries);
 
+    deregister_mr_array = (dreg_region *) 
+        MPIU_Malloc(sizeof(dreg_region) * rdma_ndreg_entries);
 
     if (NULL == deregister_mr_array) {
-        ibv_va_error_abort(
-            GEN_EXIT_ERR,
-            "dreg_init: unable to malloc %d bytes",
-            (int) sizeof(dreg_region) * rdma_ndreg_entries);
+        MPIU_ERR_SETFATALANDJUMP2(mpi_errno,
+                MPI_ERR_INTERN,
+                "**fail",
+                "**fail %s %d",
+                "dreg_init: unable to malloc %d bytes",
+                (int) sizeof(struct ibv_mr*) * rdma_ndreg_entries * MAX_NUM_HCAS);
     }
 
-    memset(deregister_mr_array, 0,
-            sizeof(dreg_region) * rdma_ndreg_entries);
-
+    memset(deregister_mr_array, 0, sizeof(dreg_region) * rdma_ndreg_entries);
     n_dereg_mr = 0;
 
     INIT_FREE_LIST(&vma_free_list);
     INIT_FREE_LIST(&entry_free_list);
 #endif /* !defined(DISABLE_PTMALLOC) */
+
+fn_exit:
+    return mpi_errno;
+fn_fail:
+    goto fn_exit;
 }
 
 #if !defined(DISABLE_PTMALLOC)

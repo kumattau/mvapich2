@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -15,6 +15,7 @@
 
 #include "mpidi_ch3i_rdma_conf.h"
 #include "udapl_arch.h"
+#include "../rdma/coll_shmem.h"
 
 extern unsigned long rdma_default_max_cq_size;
 extern int rdma_default_port;
@@ -55,6 +56,9 @@ extern int rdma_get_fallback_threshold;
 extern int rdma_integer_pool_size;
 extern int rdma_iba_eager_threshold;
 extern long rdma_eagersize_1sc;
+
+
+
 
 #define RDMA_NDREG_ENTRIES              (1100)
 #define RDMA_PIN_POOL_SIZE         (2*1024*1024)        /* for small size message */

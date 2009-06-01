@@ -11,7 +11,7 @@ PAC_SUBCONFIG_INIT()
 
 AC_CONFIG_HEADER(include/mpirunconf.h)
 AH_TOP([/* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2002-2008, The Ohio State University. All rights
+/* Copyright (c) 2002-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -34,6 +34,10 @@ AC_CANONICAL_BUILD
 
 AC_ARG_ENABLE(blcr,
 [--enable-blcr - Enable Berkeley Lab Checkpoint/Restart support.],,enable_blcr=no)
+AC_ARG_WITH(blcr-include,
+[--with-blcr-include=path - Specify the path to the BLCR header files.],,)
+AC_ARG_WITH(blcr-libpath,
+[--with-blcr-libpath=path - Specify the path to the BLCR library.],,)
 AC_ARG_ENABLE(rsh,
 [--enable-rsh - Enable use of rsh for command execution by default.],,enable_rsh=no)
 
@@ -57,13 +61,21 @@ AC_CHECK_FUNCS(strndup get_current_dir_name)
 if test -n "`echo $build_os | grep solaris`"; then
     AC_SEARCH_LIBS(herror, resolv,,[AC_MSG_ERROR([libresolv not found.])],)
     AC_SEARCH_LIBS(bind, socket,,[AC_MSG_ERROR([libsocket not found.])],)
+    AC_SEARCH_LIBS(sendfile, sendfile,,[AC_MSG_ERROR([libsendfile not found.])],)
     mpirun_rsh_other_libs="-lresolv -lsocket"
-    mpispawn_other_libs="-lresolv -lsocket -lnsl"
+    mpispawn_other_libs="-lresolv -lsocket -lnsl -lsendfile"
 fi
 
 if test "$enable_blcr" = "yes"; then
-    AC_MSG_WARN([BLCR is not supported by mpirun_rsh.])
+    AC_CHECK_HEADER([libcr.h],,[AC_MSG_ERROR(['libcr.h not found. Please specify --with-blcr-include'])])
+    blcr_include="-I${blcr-include}"
+    AC_SEARCH_LIBS(cr_init, cr,,[AC_MSG_ERROR([libcr not found.])],)
+    blcr_lib="-lcr"
+    BLCR_LIBPATH="-L${blcr-libpath}"
+    AC_DEFINE(CKPT, 1, [Define to enable Checkpoint/Restart support.])
 fi
+AC_SUBST(blcr_lib)
+AC_SUBST(blcr_include)
 
 if test "$enable_rsh" = "yes"; then
     AC_DEFINE(USE_RSH, 1, [Define to enable use of rsh for command execution by default.])
@@ -77,4 +89,4 @@ AC_SUBST(mpispawn_other_libs)
 
 PAC_SUBCONFIG_FINALIZE()
 
-AC_OUTPUT(Makefile mpirun_rsh/Makefile mpispawn/Makefile)
+AC_OUTPUT(Makefile)

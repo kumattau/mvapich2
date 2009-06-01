@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -67,7 +67,10 @@ int           rdma_r3_threshold = 4096;
 int           rdma_r3_threshold_nocache = 8192 * 4;
 int           num_rdma_buffer;
 int           USE_SMP = 1;
-
+int           enable_knomial_2level_bcast=1;
+int           inter_node_knomial_factor=4;
+int           intra_node_knomial_factor=4;
+int           knomial_2level_bcast_threshold=0;
 /* Force to use rendezvous if extended sendq size exceeds this value */
 int           rdma_rndv_ext_sendq_size = 5;
 /* Whether coalescing of messages should be attempted */
@@ -144,7 +147,7 @@ int rdma_vbuf_total_size;
  * Was earlier set to USE_FIRST, optimized for minimal QP cache misses
  * Now setting it to ROUND_ROBIN as we get better performance.
  */
-int sm_scheduling = ROUND_ROBIN;
+int sm_scheduling = USE_FIRST;
 
 /* This value should increase with the increase in number
  * of rails */
@@ -308,6 +311,22 @@ fn_fail:
     return mpi_errno;
 }
 
+/*
+ * Function: rdma_cm_get_hca_type
+ *
+ * Description:
+ *      Finds out the type of the HCA on the system.
+ *
+ * Input:
+ *      use_iwarp_mode  - Command line input specifying whether we need to use
+ *                        iWARP mode.
+ * Output:
+ *      hca_type        - The type of HCA we are going to use.
+ *
+ * Return:
+ *      Success:    MPI_SUCCESS.
+ *      Failure:    ERROR (-1).
+ */
 #if defined(RDMA_CM)
 #undef FUNCNAME
 #define FUNCNAME rdma_cm_get_hca_type
@@ -326,17 +345,14 @@ int rdma_cm_get_hca_type (int use_iwarp_mode, int* hca_type)
     *hca_type = UNKNOWN_HCA;
     struct ibv_context** ctx = rdma_get_devices(&numdevices);
 
-    for (; i < numdevices; ++i)
-    {
+    for (; i < numdevices; ++i) {
         dev_name = (char*) ibv_get_device_name(ctx[i]->device);
 
-        if (!dev_name)
-        {
+        if (!dev_name) {
             MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ibv_get_device_name");
         }
  
-        if ((ret = ibv_query_device(ctx[i], &dev_attr)))
-        {
+        if ((ret = ibv_query_device(ctx[i], &dev_attr))) {
             MPIU_ERR_SETANDJUMP1(
                 mpi_errno,
                 MPI_ERR_OTHER,
@@ -346,19 +362,25 @@ int rdma_cm_get_hca_type (int use_iwarp_mode, int* hca_type)
             );
         }
 
-        if ((mpi_errno = hcaNameToType(dev_name, hca_type)) != MPI_SUCCESS)
-        {
+        if (ERROR == rdma_find_active_port(ctx[i], ctx[i]->device)) {
+            /* Trac #376 The device has no active ports, continue to next device */
+            continue;
+        }
+
+        if ((mpi_errno = hcaNameToType(dev_name, hca_type)) != MPI_SUCCESS) {
             MPIU_ERR_POP(mpi_errno); 
         }
 
-        if (*hca_type != UNKNOWN_HCA)
-        {
+        if (!use_iwarp_mode && *hca_type != UNKNOWN_HCA) {
+            break;
+        } else if (use_iwarp_mode && *hca_type == CHELSIO_T3) {
+            /* Trac #376 recognize chelsio nic even if it's not the first */
+            strncpy(rdma_iba_hca, CHELSIO_RNIC, 32);
             break;
         }
     }
 
-    if (use_iwarp_mode && *hca_type != CHELSIO_T3)
-    {
+    if (use_iwarp_mode && *hca_type != CHELSIO_T3) {
         /* iWARP RNIC not found. Assuming a generic Adapter. */
         *hca_type = UNKNOWN_HCA;
     }
@@ -446,9 +468,22 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 	    }
     }
 
-    if (proc->use_rdma_cm){
-	    int threshold = MPIDI_CH3I_CM_DEFAULT_ON_DEMAND_THRESHOLD;
-	    int pg_size, rank;
+    if ((value = getenv("MV2_SUPPORT_DPM")) && !!atoi(value)) {
+        proc->use_rdma_cm = 0;
+        proc->use_iwarp_mode = 0;
+    }
+
+    if (proc->use_rdma_cm) {
+        int rank = ERROR;
+	    int pg_size = ERROR;
+	    int threshold = ERROR;
+
+        if (proc->use_iwarp_mode) {
+            /* Trac #423 */
+	        threshold = MPIDI_CH3I_CM_DEFAULT_IWARP_ON_DEMAND_THRESHOLD;
+        } else {
+	        threshold = MPIDI_CH3I_CM_DEFAULT_ON_DEMAND_THRESHOLD;
+        }
 
 	    PMI_Get_size(&pg_size);
 	    PMI_Get_rank(&rank);                                      
@@ -462,8 +497,7 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
     }
 #endif
 
-    if ((mpi_errno = rdma_open_hca(proc)) != MPI_SUCCESS)
-    {
+    if ((mpi_errno = rdma_open_hca(proc)) != MPI_SUCCESS) {
         MPIU_ERR_POP(mpi_errno);
     }
     
@@ -504,6 +538,15 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
     }
 
     proc->has_srq = (value = getenv("MV2_USE_SRQ")) != NULL ? !!atoi(value) : 1;
+#ifdef _ENABLE_XRC_
+    if (USE_XRC) {
+        proc->has_srq = 1;
+        MPIU_Assert (MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND);
+        MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_ON_DEMAND;
+        rdma_use_coalesce = 0;
+        rdma_use_blocking = 0;
+    }
+#endif /* _ENABLE_XRC_ */
     
     if (proc->has_srq
         && proc->hca_type != PATH_HT
@@ -583,7 +626,9 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
     if ((value = getenv("MV2_USE_SHARED_MEM")) != NULL) {
         USE_SMP = !!atoi(value);
     }
-
+#ifdef _ENABLE_XRC_
+    if (!USE_XRC) {
+#endif
     if ((value = getenv("MV2_USE_BLOCKING")) != NULL) {
         rdma_use_blocking = !!atoi(value);
 
@@ -593,6 +638,9 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
             proc->has_adaptive_fast_path = 0;
         }
     }
+#ifdef _ENABLE_XRC_
+    }
+#endif
 
     if ((value = getenv("MV2_SPIN_COUNT")) != NULL) {
         rdma_spin_count = atol(value);
@@ -601,13 +649,26 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
     if ((value = getenv("MV2_RNDV_PROTOCOL")) != NULL) {
         if (strncmp(value,"RPUT", 4) == 0) {
             rdma_rndv_protocol = VAPI_PROTOCOL_RPUT;
-        } else if (strncmp(value,"RGET", 4) == 0) {
+        } else if (strncmp(value,"RGET", 4) == 0
+#ifdef _ENABLE_XRC_
+                && !USE_XRC
+#endif
+                ) {
+#if defined(CKPT)
+            MPIU_Usage_printf("MV2_RNDV_PROTOCOL "
+                    "must be either \"RPUT\" or \"R3\" when checkpoint is enabled\n");
+            rdma_rndv_protocol = VAPI_PROTOCOL_RPUT;
+#else /* defined(CKPT) */
             rdma_rndv_protocol = VAPI_PROTOCOL_RGET;
+#endif /* defined(CKPT) */
         } else if (strncmp(value,"R3", 2) == 0) {
             rdma_rndv_protocol = VAPI_PROTOCOL_R3;
         } else {
+#ifdef _ENABLE_XRC_
+            if(!USE_XRC)
+#endif
             MPIU_Usage_printf("MV2_RNDV_PROTOCOL "
-                    "must be either \"RPUT\", \"RGET\", or \"R3\"");
+                    "must be either \"RPUT\", \"RGET\", or \"R3\"\n");
             rdma_rndv_protocol = VAPI_PROTOCOL_RPUT;
         }
     }
@@ -780,8 +841,9 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
     }
 
     if (proc->hca_type == CHELSIO_T3) {
-	rdma_default_max_cq_size = 5000;
-	rdma_prepost_noop_extra = 8;
+        /* Trac #423 */
+        rdma_default_max_cq_size = RDMA_DEFAULT_IWARP_CQ_SIZE;
+        rdma_prepost_noop_extra = 8;
     }
 
     if (proc->has_srq) {
@@ -864,6 +926,38 @@ void rdma_get_user_parameters(int num_proc, int me)
         }
     }
 
+
+     if( (value = getenv("MV2_USE_KNOMIAL_2LEVEL_BCAST")) != NULL) { 
+            enable_knomial_2level_bcast=!!(int)atoi(value);
+        if(enable_knomial_2level_bcast <= 0)  { 
+                enable_knomial_2level_bcast = 0;
+         } 
+     }     
+
+    if( (value = getenv("MV2_KNOMIAL_INTRA_NODE_FACTOR")) != NULL) {
+            intra_node_knomial_factor=(int)atoi(value);
+        if(intra_node_knomial_factor < INTRA_NODE_KNOMIAL_FACTOR_MIN) { 
+                intra_node_knomial_factor = INTRA_NODE_KNOMIAL_FACTOR_MIN;
+        } 
+        if(intra_node_knomial_factor > INTRA_NODE_KNOMIAL_FACTOR_MAX) { 
+                intra_node_knomial_factor = INTRA_NODE_KNOMIAL_FACTOR_MAX;
+        } 
+     }     
+    if( (value = getenv("MV2_KNOMIAL_INTER_NODE_FACTOR")) != NULL) {
+            inter_node_knomial_factor=(int)atoi(value);
+        if(inter_node_knomial_factor < INTER_NODE_KNOMIAL_FACTOR_MIN) { 
+                inter_node_knomial_factor = INTER_NODE_KNOMIAL_FACTOR_MIN;
+        } 
+        if(inter_node_knomial_factor > INTER_NODE_KNOMIAL_FACTOR_MAX) { 
+                inter_node_knomial_factor = INTER_NODE_KNOMIAL_FACTOR_MAX;
+        } 
+     }     
+    if( (value = getenv("MV2_KNOMIAL_2LEVEL_BCAST_THRESHOLD")) != NULL) {
+            knomial_2level_bcast_threshold=(int)atoi(value);
+     }
+
+
+
     /* Get number of ports/HCA used by a process */
     if ((value = getenv("MV2_NUM_PORTS")) != NULL) {
         rdma_num_ports = (int)atoi(value);
@@ -941,14 +1035,6 @@ void rdma_get_user_parameters(int num_proc, int me)
     striping_threshold = rdma_vbuf_total_size * rdma_num_ports *
         rdma_num_qp_per_port * rdma_num_hcas;
        
-    if ((value = getenv("MV2_STRIPING_THRESHOLD")) != NULL) {
-        striping_threshold = atoi(value);
-        if (striping_threshold <= 0) {
-            /* Invalid value - set to default value */
-            striping_threshold = STRIPING_THRESHOLD;
-        }
-    }
-
     if ((value = getenv("MV2_SRQ_SIZE")) != NULL) {
         viadev_srq_size = (uint32_t) atoi(value);
     }
@@ -963,6 +1049,21 @@ void rdma_get_user_parameters(int num_proc, int me)
 
     if ((value = getenv("MV2_IBA_EAGER_THRESHOLD")) != NULL) {
         rdma_iba_eager_threshold = (int)atoi(value);
+    }
+
+    if ((value = getenv("MV2_STRIPING_THRESHOLD")) != NULL) {
+        striping_threshold = atoi(value);
+        if (striping_threshold <= 0) {
+            /* Invalid value - set to computed value */
+            striping_threshold = rdma_vbuf_total_size * rdma_num_ports *
+                                    rdma_num_qp_per_port * rdma_num_hcas;
+        }
+        if (striping_threshold < rdma_iba_eager_threshold) {
+            /* checking to make sure that the striping threshold is not less
+             * than the RNDV threshold since it won't work as expected.
+             */
+            striping_threshold = rdma_iba_eager_threshold;
+        }
     }
 
     if ((value = getenv("MV2_INTEGER_POOL_SIZE")) != NULL) {

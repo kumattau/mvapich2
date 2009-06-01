@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -20,6 +20,14 @@
 #include "vbuf.h"
 #include "pmi.h"
 #include "mpiutil.h"
+#ifdef _ENABLE_XRC_
+#include "rdma_impl.h"
+#endif
+
+
+#if defined(_SMP_LIMIC_)
+extern int g_smp_use_limic2;
+#endif
 
 static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t *, MPID_Request *);
 
@@ -313,10 +321,25 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
     MPIDI_VC_FAI_send_seqnum(vc, seqnum);
     MPIDI_Pkt_set_seqnum(&pkt_head, seqnum);
     MPIDI_Request_set_seqnum(sreq, seqnum);
+#if defined(_SMP_LIMIC_)
+    /* Use limic2 for contiguous data 
+     * Use shared memory for non-contiguous data
+     */
+    if (!g_smp_use_limic2 ||
+        sreq->dev.OnDataAvail == MPIDI_CH3_ReqHandler_SendReloadIOV ||
+        sreq->dev.iov_count > 1) {
+        g_smp_use_limic2 = 0;
+        pkt_head.mrail.send_req_id = NULL;
+    } else {
+        g_smp_use_limic2 = 1;
+        pkt_head.mrail.send_req_id = sreq;
+    }
+#endif
 
     mpi_errno = MPIDI_CH3_iStartMsg(vc, &pkt_head,
                                     sizeof(MPIDI_CH3_Pkt_rndv_r3_data_t),
                                     &send_req);
+
     if (mpi_errno != MPI_SUCCESS) {
          MPIU_Object_set_ref(sreq, 0);
          MPIDI_CH3_Request_destroy(sreq);
@@ -333,6 +356,13 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
         MPID_Request_release(send_req);
     }
  
+#if defined(_SMP_LIMIC_)
+    if (g_smp_use_limic2) {
+        sreq->mrail.nearly_complete = 1;
+        return MPI_SUCCESS;
+    }
+#endif
+
     vc->smp.send_current_pkt_type = SMP_RNDV_MSG;
 
     DEBUG_PRINT("r3 sent req is %p\n", sreq);
@@ -511,6 +541,16 @@ void MPIDI_CH3I_MRAILI_Process_rndv()
         /*If vc is suspended, ignore this flow and move on*/
         if (flowlist->ch.state != MPIDI_CH3I_VC_STATE_IDLE) {
             POP_FLOWLIST();/*VC will be push back when state becomes MPIDI_CH3I_VC_STATE_IDLE*/
+            continue;
+        }
+#endif
+
+#ifdef _ENABLE_XRC_
+        if (USE_XRC && VC_XSTS_ISUNSET (flowlist, XF_SMP_VC | 
+                    XF_DPM_INI | XF_SEND_IDLE)) {
+            XRC_MSG ("No conn for RNDV! 0x%08x", flowlist->ch.xrc_flags);
+            MPIDI_CH3I_CM_Connect(flowlist);
+            POP_FLOWLIST();
             continue;
         }
 #endif
@@ -912,7 +952,9 @@ int MPIDI_CH3_Get_rndv_push(MPIDI_VC_t * vc,
 
     if (VAPI_PROTOCOL_R3 == req->mrail.protocol) {
         req->mrail.partner_id = get_resp_pkt->request_handle;
-	MPIDI_VC_revoke_seqnum_send(vc, get_resp_pkt->seqnum);
+        if (vc->smp.local_nodes < 0) {
+	    MPIDI_VC_revoke_seqnum_send(vc, get_resp_pkt->seqnum);
+        }
         RENDEZVOUS_IN_PROGRESS(vc, req);
         req->mrail.nearly_complete = 0;
         PUSH_FLOWLIST(vc);
@@ -929,7 +971,9 @@ int MPIDI_CH3_Get_rndv_push(MPIDI_VC_t * vc,
 
         if (VAPI_PROTOCOL_R3 == req->mrail.protocol) {
             req->mrail.partner_id = get_resp_pkt->request_handle;
-	    MPIDI_VC_revoke_seqnum_send(vc, get_resp_pkt->seqnum);
+            if (vc->smp.local_nodes < 0) {
+	        MPIDI_VC_revoke_seqnum_send(vc, get_resp_pkt->seqnum);
+            }
             RENDEZVOUS_IN_PROGRESS(vc, req);
             req->mrail.nearly_complete = 0;
             PUSH_FLOWLIST(vc);

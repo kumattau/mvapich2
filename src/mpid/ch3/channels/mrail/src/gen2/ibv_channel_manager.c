@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2002-2008, The Ohio State University. All rights
+/* Copyright (c) 2002-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -182,6 +182,10 @@ static inline int GetSeqNumVbuf(vbuf * buf)
         case MPIDI_CH3_PKT_CANCEL_SEND_RESP:
             {
                 return ((MPIDI_CH3_Pkt_cancel_send_resp_t *)(buf->pheader))->seqnum;
+            }
+        case MPIDI_CH3_PKT_CM_ESTABLISH:
+            {
+                return ((MPIDI_CH3_Pkt_cm_establish_t *)(buf->pheader))->seqnum;
             }
         case MPIDI_CH3_PKT_PUT:
         case MPIDI_CH3_PKT_GET:
@@ -368,6 +372,7 @@ int MPIDI_CH3I_MRAILI_Get_next_vbuf(MPIDI_VC_t** vc_ptr, vbuf** vbuf_ptr)
                 else
                 {
                     DEBUG_PRINT("Get one out of order seq: %d, expecting %d\n", seq, vc->seqnum_recv);
+                    XRC_MSG ("VQ_EQ %d\n", vc->pg_rank);
                     VQUEUE_ENQUEUE(&vc->mrail.cmanager, INDEX_LOCAL(&vc->mrail.cmanager, 0), v);
                     continue;
                 }
@@ -494,7 +499,7 @@ fn_exit:
     return type;
 }
 
-#ifdef DEBUG
+#if 1
 unsigned long debug = 0;
 MPIDI_VC_t *debug_vc;
 #define LONG_WAIT (40000000)
@@ -508,13 +513,12 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
         MPIDI_VC_t * vc_req, int receiving, int is_blocking)
 {
     int ne, ret;
-    MPIDI_VC_t *vc;
+    MPIDI_VC_t *vc = NULL;
     struct ibv_wc wc;
     vbuf *v;
     int i = 0;
     int needed;
-    int is_completion;
-    int src_rank;
+    int is_send_completion;
     int type = T_CHANNEL_NO_ARRIVE;
     static unsigned long nspin = 0;
     struct ibv_cq *ev_cq; 
@@ -535,7 +539,6 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
         if (ne < 0 ) {
             ibv_error_abort(IBV_RETURN_ERR, "Fail to poll cq\n");
         } else if (ne) {
-            DEBUG_PRINT("[poll cq]: get complete queue entry, ne %d\n", ne);
             v = (vbuf *) ((uintptr_t) wc.wr_id);
 
             vc = (MPIDI_VC_t *) (v->vc);
@@ -557,24 +560,24 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
                         );
             }
 
-            is_completion = (wc.opcode == IBV_WC_SEND
+            is_send_completion = (wc.opcode == IBV_WC_SEND
                 || wc.opcode == IBV_WC_RDMA_WRITE
                 || wc.opcode == IBV_WC_RDMA_READ);
 
-            if(!is_completion && MPIDI_CH3I_RDMA_Process.has_srq) {
-                src_rank = ((MPIDI_CH3I_MRAILI_Pkt_comm_header *)
-                        ((vbuf *)v)->pheader)->mrail.src_rank;
-
-                DEBUG_PRINT("src rank is %d\n", src_rank);
-
-                vc = (MPIDI_VC_t *) MPIDI_CH3I_RDMA_Process.vc_mapping[src_rank];
+            if (!is_send_completion) {
+                int rank; PMI_Get_rank(&rank);
+            }
+            if(!is_send_completion && MPIDI_CH3I_RDMA_Process.has_srq) {
+                vc = (void *)(unsigned long)
+                     (((MPIDI_CH3I_MRAILI_Pkt_comm_header *)
+                      ((vbuf *)v)->pheader)->mrail.src.vc_addr);
                 v->vc = vc;
                 v->rail = ((MPIDI_CH3I_MRAILI_Pkt_comm_header *)
                         ((vbuf*)v)->pheader)->mrail.rail;
             } 
             
             /* get the VC and increase its wqe */
-            if (is_completion) {
+            if (is_send_completion) {
                 DEBUG_PRINT("[device_Check] process send, v %p\n", v);
                 MRAILI_Process_send(v);
                 type = T_CHANNEL_NO_ARRIVE;
@@ -672,6 +675,9 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
                     goto fn_exit;
                 }
             } else {
+                /* Commenting out the assert - possible coding error
+                 * MPIU_Assert(0);
+                 */
                 /* Now since this is not the packet we want, we have to enqueue it */
                 type = T_CHANNEL_OUT_OF_ORDER_ARRIVE;
                 *vbuf_handle = NULL;
@@ -768,13 +774,14 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
         }
     }
 fn_exit:
-#ifdef DEBUG
+#if 1
     if (type == T_CHANNEL_NO_ARRIVE) {
         int rank;
         ++debug;
         PMI_Get_rank(&rank);
         if (debug % LONG_WAIT == 0) {
-	    if (vc_req)
+        MPIU_dbg_printf("polling\n");
+/*	    if (vc_req)
 		debug_vc = vc_req;
             fprintf(stderr, "[%d] waiting %lu rounds but get nothing, arriving "
 		    "head %p, vc req %p, receiving %d\n", rank, debug,
@@ -802,6 +809,7 @@ fn_exit:
                     debug_vc->mrail.rails[0].ext_sendq_head,
                     debug_vc->mrail.rails[1].ext_sendq_head
                    );
+*/
         }
     } else {
         debug = 0;
@@ -816,6 +824,7 @@ void async_thread(void *context)
     struct ibv_async_event event;
     struct ibv_srq_attr srq_attr;
     int post_new, i, hca_num = -1;
+    int xrc_event = 0;
 
     pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
     pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
@@ -832,6 +841,12 @@ void async_thread(void *context)
         }
 
         pthread_mutex_lock(&MPIDI_CH3I_RDMA_Process.async_mutex_lock[hca_num]);
+#ifdef _ENABLE_XRC_        
+        if (event.event_type & IBV_XRC_QP_EVENT_FLAG) {
+            event.event_type ^= IBV_XRC_QP_EVENT_FLAG;
+            xrc_event = 1;
+        }
+#endif
 
         switch (event.event_type) {
             /* Fatal */
@@ -953,6 +968,12 @@ void async_thread(void *context)
                         "Got unknown event %d ... continuing ...\n",
                         event.event_type);
         }
+#ifdef _ENABLE_XRC_
+        if (xrc_event) {
+            event.event_type |= IBV_XRC_QP_EVENT_FLAG;
+            xrc_event = 0;
+        }
+#endif
 
         ibv_ack_async_event(&event);
         pthread_mutex_unlock(&MPIDI_CH3I_RDMA_Process.async_mutex_lock[hca_num]);
@@ -1078,5 +1099,41 @@ int perform_manual_apm(struct ibv_qp* qp)
     }
     
     unlock_apm(); 
+    return 0;
+}
+
+void
+MPIDI_CH3I_Cleanup_after_connection(MPIDI_VC_t *vc)
+{
+    int i;
+#define pset        MPIDI_CH3I_RDMA_Process.polling_set
+#define pgrsz       MPIDI_CH3I_RDMA_Process.polling_group_size
+
+    if(0 == pgrsz)
+        return;
+
+    for(i = 0; i < pgrsz; i++) {
+        if(vc == pset[i]) {
+            pset[i] = pset[pgrsz - 1];
+            pgrsz -= 1;
+            DEBUG_PRINT("VC removed from polling set\n");
+            return;
+        }
+    }
+#undef pgrsz
+#undef pset
+}
+
+int
+MPIDI_CH3I_Check_pending_send(MPIDI_VC_t *vc)
+{
+    int i;
+    for(i = 0; i < rdma_num_rails; i++) {
+        if(vc->mrail.rails[i].send_wqes_avail != rdma_default_max_send_wqe) {
+            vc->free_vc = 1;
+            return 1;
+        }
+    }
+
     return 0;
 }

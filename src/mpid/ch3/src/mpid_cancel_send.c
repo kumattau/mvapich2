@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2008, The Ohio State University. All rights
+/* Copyright (c) 2003-2009, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -42,6 +42,14 @@ int MPID_Cancel_send(MPID_Request * sreq)
     {
 	goto fn_exit;
     }
+
+#if defined (_OSU_PSM_)
+    /* PSM can't do send cancel, this code is just for completion */
+    sreq->psm_flags |= PSM_SEND_CANCEL;
+    mpi_errno = psm_do_cancel(sreq);
+    if(mpi_errno) MPIU_ERR_POP(mpi_errno);
+    goto fn_exit;
+#endif
 
     /*
      * FIXME: user requests returned by MPI_Ibsend() have a NULL comm pointer
