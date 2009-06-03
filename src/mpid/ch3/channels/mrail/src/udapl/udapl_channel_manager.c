@@ -41,6 +41,10 @@ CMANAGER_SOLVE_GLOBAL (MRAILI_Channel_manager * cmanager, int global_index)
     return (global_index + cmanager->num_local_pollings);
 }
 
+const char *MPIDI_CH3_VC_GetStateString(MPIDI_VC_t *vc)
+{
+	return NULL;
+}
 static inline void
 VQUEUE_ENQUEUE (MRAILI_Channel_manager * cmanager, int index, vbuf * v)
 {
