@@ -2918,10 +2918,7 @@ static int smpi_exchange_info(MPIDI_PG_t *pg)
 			"**nomem %s", "pmi key");
 	    }
 
-	    for (i = 0; i < pg_size; ++i) {
-		if (i == pg_rank)
-		    continue;
-		sprintf(rdmakey, "%08d-%08d", pg_rank, i);
+		sprintf(rdmakey, "%08d", pg_rank);
 		sprintf(rdmavalue, "%08d", hostid);
 
 		DEBUG_PRINT("put hostid %p\n", hostid);
@@ -2939,7 +2936,6 @@ static int smpi_exchange_info(MPIDI_PG_t *pg)
 			    "**pmi_kvs_commit", "**pmi_kvs_commit %d",
 			    mpi_errno);
 		}
-	    }
 
 	    if(PMI_Barrier() != PMI_SUCCESS) {
 		MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
@@ -2954,7 +2950,7 @@ static int smpi_exchange_info(MPIDI_PG_t *pg)
 		}
 
 		/* generate the key */
-		sprintf(rdmakey, "%08d-%08d", i, pg_rank);
+		sprintf(rdmakey, "%08d", i);
 		MPIU_Strncpy(key, rdmakey, key_max_sz);
 
 		if(PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz) !=
