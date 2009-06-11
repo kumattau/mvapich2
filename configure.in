@@ -113,6 +113,7 @@ dnl dropped) before AC_INIT.
 dnl
 
 AC_INIT(src/include/mpichconf.h.in)
+AC_USE_SYSTEM_EXTENSIONS
 
 CONFIGURE_ARGS_CLEAN=`echo $* | tr '"' ' '`
 AC_SUBST(CONFIGURE_ARGS_CLEAN)

@@ -7,6 +7,7 @@ AC_PREREQ(2.59)
 
 # if this blows up, it's because you forgot to run autoheader
 AC_INIT(adio/include/romioconf.h.in)
+AC_USE_SYSTEM_EXTENSIONS
 # VERSION=1.2.6
 # AC_MSG_RESULT([Configuring ROMIO Version $VERSION])
 CONFIGURE_ARGS="$*"

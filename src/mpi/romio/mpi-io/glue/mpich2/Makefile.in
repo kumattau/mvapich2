@@ -7,7 +7,7 @@ CC_SHL      = @CC_SHL@
 SHLIBNAME   = @SHLIBNAME@
 
 INCLUDE_DIR = -I@MPI_INCLUDE_DIR@ -I../../../include -I${srcdir}/../../../mpi-io -I${srcdir}/../../../adio/include -I../../../adio/include -I${srcdir}/../../../../../../src/include  -I../../../../../../src/include 
-CFLAGS      = -DHAVE_MPI_INFO_SRC @CPPFLAGS@ @CFLAGS@ $(MPIOPROFILE) $(INCLUDE_DIR)
+CFLAGS      = -DHAVE_MPI_INFO_SRC @CPPFLAGS@ @CFLAGS@ -D_XOPEN_SOURCE=600 $(MPIOPROFILE) $(INCLUDE_DIR)
 
 top_builddir  = @master_topbuild_dir@
 LIBTOOL       = @LIBTOOL@

@@ -19,6 +19,7 @@
 #include <signal.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/select.h>
 #include <errno.h>
 #include <stdio.h>
 #include <fcntl.h>
