@@ -35,7 +35,7 @@
 #endif
 
 #define BASE_ENV_LEN	    17
-#define COMMAND_LEN	    2000
+#define COMMAND_LEN	    20000
 
 #define ENV_CMD		    "/usr/bin/env"
 #define RSH_CMD		    "/usr/bin/rsh"
@@ -118,7 +118,6 @@ typedef struct {
 
 /* other information: a.out and rank are implicit. */
 
-#define COMMAND_LEN 2000
 #define SEPARATOR ':'
 
 #ifndef PARAM_GLOBAL

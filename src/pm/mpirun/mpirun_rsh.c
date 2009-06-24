@@ -2774,7 +2774,7 @@ void create_paramfile()
 }
 #endif
 
-#define ENVLEN 2048
+#define ENVLEN 20480
 void dpm_add_env(char *buf, char *optval)
 {
     int len;
