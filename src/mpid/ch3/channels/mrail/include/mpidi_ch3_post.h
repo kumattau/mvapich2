@@ -58,7 +58,13 @@ extern int g_smp_eagersize;
 
 #define MPIDI_CH3_Progress_test() (MPIDI_CH3I_Progress_test());
 
+#ifdef CKPT
+int _MPIDI_CH3I_Progress(int blocking, MPID_Progress_state *state, int lockcr);
+#define MPIDI_CH3I_Progress(__is_blocking, __state) \
+    _MPIDI_CH3I_Progress(__is_blocking, __state, 1)
+#else
 int MPIDI_CH3I_Progress(int blocking, MPID_Progress_state *state);
+#endif
 int MPIDI_CH3I_Progress_test(void);
 
 #define MPIDI_CH3_Progress_wait(state) MPIDI_CH3I_Progress(TRUE, state)

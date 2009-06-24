@@ -132,11 +132,23 @@ void MPIDI_CH3_Progress_start(MPID_Progress_state * state)
 }
 #endif
 
+#ifdef CKPT
+
+#undef FUNCNAME
+#define FUNCNAME _MPIDI_CH3I_Progress
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int _MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state, int lockcr)
+
+#else /* !CKPT */
+
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_Progress
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
+
+#endif /* CKPT */
 {
     MPIDI_VC_t *vc_ptr = NULL;
     int mpi_errno = MPI_SUCCESS;
@@ -157,7 +169,8 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
     DEBUG_PRINT("Entering ch3 progress\n");
 
 #ifdef CKPT
-    MPIDI_CH3I_CR_lock();
+    if (lockcr)
+        MPIDI_CH3I_CR_lock();
 #endif
 
     do
@@ -281,7 +294,8 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
 fn_completion:
 fn_fail:
 #ifdef CKPT
-    MPIDI_CH3I_CR_unlock();
+    if (lockcr)
+        MPIDI_CH3I_CR_unlock();
 #endif
     MPIDI_DBG_PRINTF((50, FCNAME, "exiting, count=%d",
                       MPIDI_CH3I_progress_completion_count - completions));

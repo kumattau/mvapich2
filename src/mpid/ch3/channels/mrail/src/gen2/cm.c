@@ -2624,7 +2624,7 @@ int MPIDI_CH3I_CM_Suspend(MPIDI_VC_t ** vc_vector)
             break;
         }
 
-        MPIDI_CH3I_Progress(FALSE, NULL);
+        _MPIDI_CH3I_Progress(FALSE, NULL, 0);
     }
     while (flag);
 
@@ -2737,7 +2737,7 @@ int MPIDI_CH3I_CM_Reactivate(MPIDI_VC_t ** vc_vector)
             break;
         }
 
-        MPIDI_CH3I_Progress(FALSE, NULL);
+        _MPIDI_CH3I_Progress(FALSE, NULL, 0);
     }
     while (flag);
 

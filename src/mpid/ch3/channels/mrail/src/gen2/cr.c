@@ -270,24 +270,11 @@ CR lock to protect upper layers from accessing communication channel
 */
 inline void MPIDI_CH3I_CR_lock()
 {
-    /*
-     * If the current thread has already acquired the wrlock,
-     * don't bother acquiring the rdlock.
-     */
-    if (MPICR_cs_lock.__data.__writer == syscall(SYS_gettid))
-        return;
     pthread_rwlock_rdlock(&MPICR_cs_lock);
 }
 
 inline void MPIDI_CH3I_CR_unlock()
 {
-    /*
-     * If the current thread has already acquired the wrlock,
-     * you did not acquire the reader lock. So don't bother to
-     * release the rdlock.
-     */
-    if (MPICR_cs_lock.__data.__writer == syscall(SYS_gettid))
-        return;
     pthread_rwlock_unlock(&MPICR_cs_lock);
 }
 
