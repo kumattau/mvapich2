@@ -721,9 +721,9 @@ cont:
 	fastssh_threshold = env2int ("MV2_FASTSSH_THRESHOLD");
 
     if (!fastssh_threshold) 
-        fastssh_threshold = 1 << 16;
+        fastssh_threshold = 1 << 8;
 
-    if (pglist->npgs >= fastssh_threshold) {
+    if (pglist->npgs < fastssh_threshold) {
         USE_LINEAR_SSH = 1;
     }
 
