@@ -4443,8 +4443,8 @@ int psm_dt_1scop(MPID_Request *req, char *buf, int len)
     MPIDI_CH3I_DATATYPE_IS_PREDEFINED(req->dev.datatype, predefined);
     if(predefined) {
         memcpy(req->dev.user_buf, buf, len);
-    } else if(req->dev.datatype_ptr->is_contig) {
-        memcpy(req->dev.user_buf, buf, len);
+    /* } else if(req->dev.datatype_ptr->is_contig) {
+        memcpy(req->dev.user_buf, buf, len); */
     } else {
         PSM_PRINT("small unpack\n");
         MPID_Datatype_get_size_macro(req->dev.datatype, size);
