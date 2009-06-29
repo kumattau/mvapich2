@@ -9,7 +9,7 @@
 # copyright file COPYRIGHT in the top level MVAPICH2 directory.
 #
 
-INCLUDES = -I${abs_srcdir}/include @blcr_include@
+INCLUDES = -I${abs_srcdir}/include @blcr_include@ @ftb_include@
 
 install_BIN = mpirun_rsh mpispawn 
 
@@ -18,7 +18,7 @@ install_BIN = mpirun_rsh mpispawn
 mpich2-build-install: install
 mpich2-build-uninstall: uninstall
 
-mpirun_rsh_LIBS = -lm @mpirun_rsh_other_libs@ @blcr_lib@
+mpirun_rsh_LIBS = -lm @mpirun_rsh_other_libs@ @blcr_lib@ @ftb_lib@
 mpirun_rsh_SOURCES = mpirun_rsh.c mpirun_util.c
 
 mpispawn_LIBS = -lm -lpthread @mpispawn_other_libs@ 

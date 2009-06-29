@@ -41,6 +41,66 @@
 #include "mem_hooks.h"
 #include "mpiutil.h"
 
+#ifdef CR_FTB
+
+#include <libftb.h>
+
+#define FTB_MAX_SUBSCRIPTION_STR 128
+
+#define CR_FTB_EVENT_INFO {               \
+        {"CR_FTB_CKPT_DONE",     "info"}, \
+        {"CR_FTB_CKPT_FAIL",     "info"}, \
+        {"CR_FTB_RSRT_DONE",     "info"}, \
+        {"CR_FTB_RSRT_FAIL",     "info"}, \
+        {"CR_FTB_APP_CKPT_REQ",  "info"}, \
+        {"CR_FTB_CKPT_FINALIZE", "info"}, \
+        {"CR_FTB_CHECKPOINT",    "info"}  \
+}
+
+/* Index into the Event Info Table */
+#define CR_FTB_CKPT_DONE     0
+#define CR_FTB_CKPT_FAIL     1
+#define CR_FTB_RSRT_DONE     2
+#define CR_FTB_RSRT_FAIL     3
+#define CR_FTB_APP_CKPT_REQ  4
+#define CR_FTB_CKPT_FINALIZE 5
+#define CR_FTB_EVENTS_MAX    6 /* HACK */
+
+#define CR_FTB_CHECKPOINT    6
+
+/* Type of event to throw */
+#define FTB_EVENT_NORMAL   1
+#define FTB_EVENT_RESPONSE 2
+
+/* Macro to initialize the event property structure */
+#define SET_EVENT(_eProp, _etype, _payload...)             \
+do {                                                       \
+    _eProp.event_type = _etype;                            \
+    snprintf(_eProp.event_payload, FTB_MAX_PAYLOAD_DATA,   \
+                _payload);                                 \
+} while(0)
+
+/* Macro to pick an CR_FTB event */
+#define EVENT(n) (cr_ftb_events[n].event_name)
+
+static FTB_client_t        ftb_cinfo;
+static FTB_client_handle_t ftb_handle;
+static FTB_event_info_t    cr_ftb_events[] = CR_FTB_EVENT_INFO;
+static FTB_subscribe_handle_t shandle;
+static int ftb_init_done;
+
+static pthread_cond_t  cr_ftb_cond  = PTHREAD_COND_INITIALIZER;
+static pthread_mutex_t cr_ftb_mutex = PTHREAD_MUTEX_INITIALIZER;
+static int cr_ftb_ckpt_req;
+static int cr_ftb_ckpt_finalize;
+
+static int  CR_FTB_Init(int, char *);
+static void CR_FTB_Finalize();
+static int  CR_FTB_Callback(FTB_receive_event_t *, void *);
+#define CRU_MAX_VAL_LEN 64
+
+#else
+
 /*Connection info to MPD*/
 #define CR_RSRT_PORT_CHANGE 16
 #define MAX_CR_MSG_LEN 256
@@ -55,6 +115,9 @@ struct CRU_keyval_pairs {
 static struct CRU_keyval_pairs CRU_keyval_tab[64] = { { {0} } };
 static int  CRU_keyval_tab_idx = 0;
 static int MPICR_MPD_fd = -1;
+
+#endif /* CR_FTB */
+
 static int MPICR_MPD_port;
 
 static cr_callback_id_t MPICR_callback_id;
@@ -155,6 +218,7 @@ typedef struct MPICR_remote_update_msg
 int CR_IBU_Reactivate_channels();
 int CR_IBU_Suspend_channels();
 
+#ifndef CR_FTB
 int CR_MPDU_readline (int fd, char* buf, int maxlen);
 int CR_MPDU_writeline (int fd, char* buf);
 int CR_MPDU_parse_keyvals (char* st );
@@ -213,33 +277,77 @@ int CR_MPDU_connect_MPD()
     return 0;
 }
 
+#endif /* !CR_FTB */
+
 void CR_MPDU_Ckpt_succeed()
 {
+#ifdef CR_FTB
+    int ret;
+    FTB_event_properties_t eprop;
+    FTB_event_handle_t     ehandle;
+    SET_EVENT(eprop, FTB_EVENT_NORMAL, "");
+    ret = FTB_Publish(ftb_handle, EVENT(CR_FTB_CKPT_DONE), &eprop, &ehandle);
+    if (ret != FTB_SUCCESS)
+        fprintf(stdout, "CR_MPDU_Ckpt_succeed() failed\n");
+#else
     char cr_msg_buf[MAX_CR_MSG_LEN];
     sprintf(cr_msg_buf, "cmd=ckpt_rep result=succeed\n");
     CR_MPDU_writeline(MPICR_MPD_fd, cr_msg_buf);
+#endif
 }
 
 void CR_MPDU_Ckpt_fail()
 {
+#ifdef CR_FTB
+    int ret;
+    FTB_event_properties_t eprop;
+    FTB_event_handle_t     ehandle;
+    SET_EVENT(eprop, FTB_EVENT_NORMAL, "");
+    ret = FTB_Publish(ftb_handle, EVENT(CR_FTB_CKPT_FAIL), &eprop, &ehandle);
+    if (ret != FTB_SUCCESS)
+        fprintf(stdout, "CR_MPDU_Ckpt_fail() failed\n");
+#else
     char cr_msg_buf[MAX_CR_MSG_LEN];
     sprintf(cr_msg_buf, "cmd=ckpt_rep result=fail\n");
     CR_MPDU_writeline(MPICR_MPD_fd, cr_msg_buf);
+#endif
 }
 
 void CR_MPDU_Rsrt_succeed()
 {
+#ifdef CR_FTB
+    int ret;
+    FTB_event_properties_t eprop;
+    FTB_event_handle_t     ehandle;
+    SET_EVENT(eprop, FTB_EVENT_NORMAL, "");
+    ret = FTB_Publish(ftb_handle, EVENT(CR_FTB_RSRT_DONE), &eprop, &ehandle);
+    if (ret != FTB_SUCCESS)
+        fprintf(stdout, "CR_MPDU_Rsrt_succeed() failed\n");
+#else
     char cr_msg_buf[MAX_CR_MSG_LEN];
     sprintf(cr_msg_buf, "cmd=rsrt_rep result=succeed\n");
     CR_MPDU_writeline(MPICR_MPD_fd,cr_msg_buf);
+#endif
 }
 
 void CR_MPDU_Rsrt_fail()
 {
+#ifdef CR_FTB
+    int ret;
+    FTB_event_properties_t eprop;
+    FTB_event_handle_t     ehandle;
+    SET_EVENT(eprop, FTB_EVENT_NORMAL, "");
+    ret = FTB_Publish(ftb_handle, EVENT(CR_FTB_RSRT_FAIL), &eprop, &ehandle);
+    if (ret != FTB_SUCCESS)
+        fprintf(stdout, "CR_MPDU_Rsrt_fail() failed\n");
+#else
     char cr_msg_buf[MAX_CR_MSG_LEN];
     sprintf(cr_msg_buf, "cmd=rsrt_rep result=fail\n");
     CR_MPDU_writeline(MPICR_MPD_fd, cr_msg_buf);
+#endif
 }
+
+#ifndef CR_FTB
 
 int CR_MPDU_Reset_PMI_port()
 {
@@ -263,6 +371,8 @@ int CR_MPDU_Reset_PMI_port()
     setenv("PMI_PORT", value_str, 1);
     return 0;
 }
+
+#endif /* CR_FTB */
 
 
 /*
@@ -321,8 +431,10 @@ int CR_Set_state(MPICR_cr_state state)
 
 int CR_Thread_loop()
 {
+#ifndef CR_FTB
     char cr_msg_buf[MAX_CR_MSG_LEN];
     fd_set set;
+#endif
     char valstr[CRU_MAX_VAL_LEN];
 
     cr_checkpoint_handle_t cr_handle;
@@ -330,6 +442,18 @@ int CR_Thread_loop()
 
     while (1)
     {
+
+#ifdef CR_FTB
+        pthread_mutex_lock(&cr_ftb_mutex);
+        cr_ftb_ckpt_req = 0;
+        pthread_cond_wait(&cr_ftb_cond, &cr_ftb_mutex);
+        pthread_mutex_unlock(&cr_ftb_mutex);
+
+        if (cr_ftb_ckpt_finalize) return;
+
+        /* The FTB Callback thread will set cr_ftb_ckpt_req */
+        if (cr_ftb_ckpt_req)
+#else
         FD_ZERO(&set);
         FD_SET(MPICR_MPD_fd, &set);
 
@@ -344,13 +468,19 @@ int CR_Thread_loop()
         CR_MPDU_getval("cmd",valstr, CRU_MAX_VAL_LEN);
 
         if (strcmp(valstr,"ckpt_req") == 0)
+#endif /* CR_FTB */
+
         {
             char cr_file[CRU_MAX_VAL_LEN];
             int cr_file_fd;
 
             ++checkpoint_count;
 
+#ifdef CR_FTB
+            strcpy(valstr, getenv("MV2_CKPT_FILE"));
+#else
             CR_MPDU_getval("file",valstr,CRU_MAX_VAL_LEN);
+#endif
             CR_DBG("Got checkpoint request %s\n",valstr);
 
             sprintf(cr_file,"%s.%d.%d",valstr,checkpoint_count,MPICR_pg_rank);
@@ -539,7 +669,17 @@ int CR_Reset_proc_info()
 static int CR_Callback (void* arg)
 {
     CR_DBG("In CR_Callback\n");
+
+#ifdef CR_FTB
+    CR_FTB_Finalize();
+#endif
+
     int rc = cr_checkpoint(0);
+
+#ifdef CR_FTB
+        if (CR_FTB_Init(MPICR_pg_rank, getenv("MV2_CKPT_SESSIONID")) != 0)
+            fprintf(stdout, "CR_FTB_Init() Failed\n");
+#endif
 
     if (rc < 0)
     {
@@ -547,11 +687,12 @@ static int CR_Callback (void* arg)
         CR_ERR_ABORT("cr_checkpoint failed\n");
     }
     else if (rc)
-    { 
+    {
         /*Build the pipe between mpdman and app procs*/
         CR_Set_state(MPICR_STATE_RESTARTING);
         ++restart_count;
 
+#ifndef CR_FTB
         if (CR_MPDU_connect_MPD())
         {
             CR_ERR_ABORT("CR_MPDU_connect_MPD failed\n");
@@ -566,6 +707,7 @@ static int CR_Callback (void* arg)
         }
 
         CR_DBG("PMI_port reset\n");
+#endif /* !CR_FTB */
 
         if (CR_Reset_proc_info())
         {
@@ -619,20 +761,22 @@ void* CR_Thread_entry(void* arg)
         MPICR_max_save_ckpts = 0;
     }
 
+#ifdef CR_FTB
+    if (CR_FTB_Init(MPICR_pg_rank, getenv("MV2_CKPT_SESSIONID")) != 0)
+        fprintf(stdout, "CR_FTB_Init() Failed\n");
+#else
     CR_DBG("Connecting to MPD\n");
 
     if (CR_MPDU_connect_MPD())
     {
         CR_ERR_ABORT("CR_MPDU_connect_MPD failed\n");
     }
+#endif /* CR_FTB */
 
     CR_Set_state(MPICR_STATE_RUNNING);
     CR_DBG("Finish initialization, going to CR_Thread_loop\n");
 
-    if (CR_Thread_loop())
-    {
-        printf("cr_loop terminated\n");
-    }
+    CR_Thread_loop();
 
     return NULL;
 }
@@ -679,7 +823,7 @@ int MPIDI_CH3I_CR_Init(MPIDI_PG_t* pg, int rank, int size)
         );
     }
 
-    /* Initialize the shaed memory collectives lock */
+    /* Initialize the shared memory collectives lock */
     MPIDI_SMC_CR_Init();
 
 fn_exit:
@@ -696,10 +840,32 @@ int MPIDI_CH3I_CR_Finalize()
         return 0;
     }
 
+#ifdef CR_FTB
+    cr_ftb_ckpt_finalize = 1;
+    pthread_cond_signal(&cr_ftb_cond);
+#endif
+
     pthread_cancel(MPICR_child_thread);
     pthread_join(MPICR_child_thread, NULL);
     pthread_rwlock_destroy(&MPICR_cs_lock);
 
+#ifdef CR_FTB
+    int ret;
+    FTB_event_properties_t eprop;
+    FTB_event_handle_t     ehandle;
+
+    if (ftb_init_done) {
+        ftb_init_done = 0;
+
+        SET_EVENT(eprop, FTB_EVENT_NORMAL, "");
+        ret = FTB_Publish(ftb_handle, EVENT(CR_FTB_CKPT_FINALIZE),
+                          &eprop, &ehandle);
+        if (ret != FTB_SUCCESS)
+            fprintf(stdout, "MPIDI_CH3I_CR_Finalize() failed\n", ret);
+
+        FTB_Disconnect(ftb_handle);
+    }
+#else
     if (!MPICR_pg_rank)
     {
         char cr_msg_buf[MAX_CR_MSG_LEN];
@@ -712,6 +878,7 @@ int MPIDI_CH3I_CR_Finalize()
     {
         close(MPICR_MPD_fd);
     }
+#endif
 
     MPICR_is_initialized = 0;
 
@@ -729,11 +896,21 @@ void MPIDI_CH3I_CR_Sync_ckpt_request()
         return;
     }
 
+#ifdef CR_FTB
+    int ret;
+    FTB_event_properties_t eprop;
+    FTB_event_handle_t     ehandle;
+    SET_EVENT(eprop, FTB_EVENT_NORMAL, "");
+    ret = FTB_Publish(ftb_handle, EVENT(CR_FTB_APP_CKPT_REQ), &eprop, &ehandle);
+    if (ret != FTB_SUCCESS)
+        fprintf(stdout, "MPIDI_CH3I_CR_Sync_ckpt_request() failed\n");
+#else
     CR_DBG("Send ckpt request to MPD\n");
 
     char cr_msg_buf[MAX_CR_MSG_LEN];
     sprintf(cr_msg_buf, "cmd=app_ckpt_req\n");
     CR_MPDU_writeline(MPICR_MPD_fd, cr_msg_buf);
+#endif
 }
 
 /* CR message handler in progress engine */
@@ -1483,6 +1660,123 @@ void MPIDI_CH3I_CR_req_dequeue(struct MPID_Request* req)
     }
 }
 
+#ifdef CR_FTB
+
+static int CR_FTB_Init(int rank, char *sessionid)
+{
+    int ret, fd;
+    char *str;
+    char session_file[64];
+
+    memset(&ftb_cinfo, 0, sizeof(ftb_cinfo));
+    strcpy(ftb_cinfo.client_schema_ver, "0.5");
+    strcpy(ftb_cinfo.event_space, "FTB.MPI.MVAPICH2");
+    snprintf(ftb_cinfo.client_name, FTB_MAX_CLIENT_NAME, "MVAPICH2.%d", rank);
+
+    snprintf(ftb_cinfo.client_jobid, FTB_MAX_CLIENT_JOBID, "%s", sessionid);
+
+    strcpy(ftb_cinfo.client_subscription_style, "FTB_SUBSCRIPTION_BOTH");
+    ftb_cinfo.client_polling_queue_len = 4;
+
+    ret = FTB_Connect(&ftb_cinfo, &ftb_handle);
+    if (ret != FTB_SUCCESS) goto err_connect;
+
+    ret = FTB_Declare_publishable_events(ftb_handle, NULL,
+                                         cr_ftb_events, CR_FTB_EVENTS_MAX);
+    if (ret != FTB_SUCCESS) goto err_declare_events;
+
+    str = malloc(sizeof(char) * FTB_MAX_SUBSCRIPTION_STR);
+    if (!str) goto err_malloc;
+
+    snprintf(str, FTB_MAX_SUBSCRIPTION_STR,
+             "event_space=FTB.STARTUP.MV2_MPIRUN , jobid=%s", sessionid);
+
+    ret = FTB_Subscribe(&shandle, ftb_handle, str, CR_FTB_Callback, NULL);
+    if (ret != FTB_SUCCESS) goto err_subscribe;
+
+    /* Set PMI_PORT */
+    snprintf(session_file, 64, "/tmp/cr.session.%s", getenv("MV2_CKPT_SESSIONID"));
+    fd = open(session_file, O_RDWR);
+    if (fd < 0) goto err_open;
+
+    ret = read(fd, str, sizeof(char)*FTB_MAX_SUBSCRIPTION_STR);
+    str[ret] = '\0';
+    close(fd);
+    if (ret < 0) goto err_read;
+
+    setenv("PMI_PORT", str, 1);
+
+    free(str);
+    ftb_init_done = 1;
+    return(0);
+
+err_connect:
+    fprintf(stdout, "FTB_Connect() failed with %d for rank %d\n", ret, rank);
+    ret = -1;
+    goto exit_connect;
+
+err_declare_events:
+    fprintf(stdout, "FTB_Declare_publishable_events() failed with %d"
+                    " for rank %d\n", ret, rank);
+    ret = -2;
+    goto exit_declare_events;
+
+err_malloc:
+    fprintf(stdout, "Failed to malloc() subscription_str for rank %d\n", rank);
+    ret = -3;
+    goto exit_malloc;
+
+err_subscribe:
+    fprintf(stdout, "FTB_Subscribe() failed with %d for rank %d\n", ret, rank);
+    ret = -4;
+    goto exit_subscribe;
+
+err_open:
+    perror("open");
+    fprintf(stdout, "Rank %d cannot open %s\n", rank, session_file);
+    ret = -5;
+    goto exit_open;
+
+err_read:
+    perror("read");
+    fprintf(stdout, "Could not read the Spawn Port for rank %d\n", rank);
+    ret = -6;
+    goto exit_read;
+
+exit_read:
+exit_open:
+exit_subscribe:
+exit_malloc:
+exit_declare_events:
+    FTB_Disconnect(ftb_handle);
+
+exit_connect:
+    return(ret);
+    
+}
+
+static void CR_FTB_Finalize()
+{
+    if (ftb_init_done) {
+        FTB_Disconnect(ftb_handle);
+        ftb_init_done = 0;
+    }
+}
+
+static int CR_FTB_Callback(FTB_receive_event_t *revent, void *arg)
+{
+    // fprintf(stdout, "Got event %s from %s\n",
+    //        revent->event_name, revent->client_name);
+    /* TODO: Do some sanity checking */
+    pthread_mutex_lock(&cr_ftb_mutex);
+    cr_ftb_ckpt_req = 1;
+    pthread_cond_signal(&cr_ftb_cond);
+    pthread_mutex_unlock(&cr_ftb_mutex);
+    return(0);
+}
+
+#else
+
 /*===========================*/
 /*  MPD messaging functions  */
 /*===========================*/
@@ -1661,5 +1955,7 @@ char* CR_MPDU_getval(const char* keystr, char* valstr, int vallen)
     valstr[0] = '\0';
     return NULL;
 }
+
+#endif /* CR_FTB */
 
 #endif /* ifdef CKPT */

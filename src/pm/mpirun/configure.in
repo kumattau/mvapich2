@@ -38,6 +38,12 @@ AC_ARG_WITH(blcr-include,
 [--with-blcr-include=path - Specify the path to the BLCR header files.],,)
 AC_ARG_WITH(blcr-libpath,
 [--with-blcr-libpath=path - Specify the path to the BLCR library.],,)
+AC_ARG_ENABLE(ftb-cr,
+[--with-ftb-cr - Enable Fault Back Tolerant Checkpoint Restart],,enable_ftb_cr=no)
+AC_ARG_WITH(ftb-include,
+[--with-ftb-include=path - Specify the path to the FTB-CR header files.],,)
+AC_ARG_WITH(ftb-libpath,
+[--with-ftb-libpath=path - Specify the path to the FTB-CR library.],,)
 AC_ARG_ENABLE(rsh,
 [--enable-rsh - Enable use of rsh for command execution by default.],,enable_rsh=no)
 
@@ -66,16 +72,67 @@ if test -n "`echo $build_os | grep solaris`"; then
     mpispawn_other_libs="-lresolv -lsocket -lnsl -lsendfile"
 fi
 
+AC_MSG_CHECKING([whether to enable support for BLCR])
+AC_MSG_RESULT($enable_blcr)
+
 if test "$enable_blcr" = "yes"; then
+
+    AC_MSG_CHECKING([for the BLCR includes path])
+    if test -n "$with_blcr_include"; then
+        AC_MSG_RESULT($with_blcr_include)
+        CPPFLAGS="$CPPFLAGS -I$with_blcr_include"
+    else
+        AC_MSG_RESULT([default])
+    fi
     AC_CHECK_HEADER([libcr.h],,[AC_MSG_ERROR(['libcr.h not found. Please specify --with-blcr-include'])])
     blcr_include="-I${blcr-include}"
+
+    AC_MSG_CHECKING([for the BLCR library path])
+    if test -n "$with_blcr_libpath"; then
+        AC_MSG_RESULT($with_blcr_libpath)
+        LDFLAGS="$LDFLAGS -L$with_blcr_libpath"
+    else
+        AC_MSG_RESULT([default])
+    fi
     AC_SEARCH_LIBS(cr_init, cr,,[AC_MSG_ERROR([libcr not found.])],)
     blcr_lib="-lcr"
     BLCR_LIBPATH="-L${blcr-libpath}"
+
     AC_DEFINE(CKPT, 1, [Define to enable Checkpoint/Restart support.])
+    
+    AC_MSG_CHECKING([whether to enable support for FTB-CR])
+    AC_MSG_RESULT($enable_ftb_cr)
+
+    if test "$enable_ftb_cr" = "yes"; then
+
+        AC_MSG_CHECKING([for the FTB includes path])
+        if test -n "$with_ftb_include"; then
+            AC_MSG_RESULT($with_ftb_include)
+            CPPFLAGS="$CPPFLAGS -I$with_ftb_include"
+        else
+            AC_MSG_RESULT([default])
+        fi
+        AC_CHECK_HEADER([libftb.h],,[AC_MSG_ERROR(['libftb.h not found. Please specify --with-ftb-include'])])
+        ftb_include="-I${with_ftb_include}"
+
+        AC_MSG_CHECKING([for the FTB library path])
+        if test -n "$with_ftb_libpath"; then
+            AC_MSG_RESULT($with_ftb_libpath)
+            LDFLAGS="$LDFLAGS -L$with_ftb_libpath"
+        else
+            AC_MSG_RESULT([default])
+        fi
+        AC_SEARCH_LIBS(FTB_Connect, ftb,,[AC_MSG_ERROR([libftb not found.])],)
+        ftb_lib="-lftb"
+        FTB_LIBPATH="-L${with_ftb_libpath}"
+
+        AC_DEFINE(CR_FTB, 1, [Define to enable FTB-CR support.])
+    fi
 fi
 AC_SUBST(blcr_lib)
 AC_SUBST(blcr_include)
+AC_SUBST(ftb_lib)
+AC_SUBST(ftb_include)
 
 if test "$enable_rsh" = "yes"; then
     AC_DEFINE(USE_RSH, 1, [Define to enable use of rsh for command execution by default.])

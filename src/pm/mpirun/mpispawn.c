@@ -38,14 +38,14 @@
 #define DEFAULT_CHECKPOINT_FILENAME "/tmp/ckpt"
 #define CR_MAX_FILENAME     128
 
-static int g_nProcs;
-
+#ifndef CR_FTB
 static volatile int cr_cond = 0;
 static pthread_t worker_tid;
 
 static int *mpispawn_fd;
 static int mpirun_fd;
 static int mpispawn_port;
+#endif
 
 static int restart_context;
 static int checkpoint_count;
@@ -56,6 +56,7 @@ static char session_file[CR_MAX_FILENAME];
 static char ckpt_filename[CR_MAX_FILENAME];
 
 static int   CR_Init(int);
+#ifndef CR_FTB
 static void* CR_Worker(void *);
 static int   Connect_MPI_Procs(int);
 
@@ -63,6 +64,7 @@ extern char* CR_MPDU_getval(const char *, char *, int);
 extern int   CR_MPDU_parse_keyvals(char *);
 extern int   CR_MPDU_readline(int , char *, int);
 extern int   CR_MPDU_writeline(int , char *);
+#endif
 
 #endif /* CKPT */
 
@@ -357,8 +359,12 @@ void cleanup (void)
 {
 
 #ifdef CKPT
+#ifdef CR_FTB
+	/* Nothing to be done */
+#else
 	pthread_kill(worker_tid, SIGTERM);
 	pthread_join(worker_tid, NULL);
+#endif
 	unlink(session_file);
 #endif
 
@@ -643,10 +649,6 @@ int main (int argc, char *argv[])
 
 	sigaction (SIGCHLD, &signal_handler, NULL);
 
-#ifdef CKPT
-        CR_Init(NCHILD);
-#endif
-
     /* Create listening socket for ranks */
 	/* Doesn't need to be TCP as we're all on local node */
 	c_socket = socket (AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -669,7 +671,11 @@ int main (int argc, char *argv[])
 	}
 	listen (c_socket, NCHILD);
 	c_port = (int) ntohs (c_sockaddr.sin_port);
-    
+
+#ifdef CKPT
+        CR_Init(NCHILD);
+#endif
+
     n = atoi (argv[1]);
 
     if (!USE_LINEAR_SSH) {
@@ -878,6 +884,32 @@ static int CR_Init(int nProcs)
         exit(EXIT_FAILURE);
     }
 
+#ifdef CR_FTB
+
+    char pmi_port[MAX_HOST_LEN+MAX_PORT_LEN];
+    char hostname[MAX_HOST_LEN];
+    FILE *fp;
+
+    /* Get PMI Port information */
+    gethostname(hostname, MAX_HOST_LEN);
+    sprintf(pmi_port, "%s:%d", hostname, c_port);
+
+    /* Create the session file with PMI Port information */
+    fp = fopen(session_file, "w+");
+    if (!fp) {
+        fprintf(stderr, "[CR_Init] Cannot create Session File\n");
+        fflush(stderr);
+        exit(EXIT_FAILURE);
+    }
+    if (fwrite(pmi_port, sizeof(pmi_port), 1, fp) == 0) {
+        fprintf(stderr, "[CR_Init] Cannot write PMI Port number\n");
+        fflush(stderr);
+        exit(EXIT_FAILURE);
+    }
+    fclose(fp);
+
+#else
+
     strncpy(ckpt_filename, DEFAULT_CHECKPOINT_FILENAME, CR_MAX_FILENAME);
 
     /* Connect to mpirun_rsh */
@@ -909,8 +941,6 @@ static int CR_Init(int nProcs)
         exit(EXIT_FAILURE);
     }
 
-    g_nProcs = nProcs;
-
     /* Spawn CR Worker Thread */
     if (pthread_create(&worker_tid, NULL, CR_Worker, (void *)(uintptr_t) nProcs)) {
         perror("[CR_Init] pthread_create()");
@@ -920,8 +950,13 @@ static int CR_Init(int nProcs)
     /* Wait for Connect_MPI_Procs() to start listening */
     while(!cr_cond);
 
+#endif /* CR_FTB */
+
     return(0);
 }
+
+#ifndef CR_FTB
+/* To be used only when not relying on FTB */
 
 static int Connect_MPI_Procs(int nProcs)
 {
@@ -1038,7 +1073,8 @@ static void *CR_Worker(void *arg)
 
             /* Received a PMI Port Query */
             if (strstr(cr_msg_buf, "query_pmi_port")) {
-                snprintf(cr_msg_buf, MAX_CR_MSG_LEN, "cmd=reply_pmi_port val=%s\n", getenv("PMI_PORT"));
+                snprintf(cr_msg_buf, MAX_CR_MSG_LEN,
+                         "cmd=reply_pmi_port val=%s\n", getenv("PMI_PORT"));
                 CR_MPDU_writeline(mpispawn_fd[i], cr_msg_buf);
                 continue;
             }
@@ -1055,6 +1091,8 @@ static void *CR_Worker(void *arg)
     } /* while(1) */
 
 }
+
+#endif /* not CR_FTB */
 
 #endif /* CKPT */
 
