@@ -790,6 +790,7 @@ static int cm_handle_pending_send()
 
     while (pg) {
         for (i = 0; i < MPIDI_PG_Get_size(pg); ++i) {
+        MPICM_lock();
 	    MPIDI_PG_Get_vc(pg, i, &vc);
 
             if ((vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE
@@ -797,20 +798,25 @@ static int cm_handle_pending_send()
                     || (USE_XRC && VC_XST_ISSET (vc, XF_SEND_IDLE))
 #endif
                 ) && !MPIDI_CH3I_CM_SendQ_empty(vc)) {
+                MPICM_unlock();
                 if ((mpi_errno = cm_send_pending_msg(vc)) != MPI_SUCCESS) {
                     MPIU_ERR_POP(mpi_errno);
                 }
+                MPICM_lock();
             }
 #ifdef _ENABLE_XRC_
             if (USE_XRC && MPIDI_CH3I_RDMA_Process.xrc_rdmafp && 
                     VC_XSTS_ISSET (vc, (XF_START_RDMAFP | XF_SEND_IDLE))
                     && VC_XST_ISUNSET (vc, XF_CONN_CLOSING)) {
                 XRC_MSG ("FP to %d\n", vc->pg_rank);
+                MPICM_unlock();
                 vbuf_fast_rdma_alloc (vc, 1);
                 vbuf_address_send (vc);
+                MPICM_lock();
                 VC_XST_CLR (vc, XF_START_RDMAFP);
             } 
 #endif
+        MPICM_unlock();
         }
         MPIDI_PG_Get_next(&pg);
     }

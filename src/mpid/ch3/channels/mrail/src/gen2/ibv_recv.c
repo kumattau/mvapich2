@@ -317,6 +317,7 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
             vc->mrail.rfp.eager_start_cnt++;
             if (rdma_polling_set_threshold < 
                     vc->mrail.rfp.eager_start_cnt) {
+                MPICM_lock();
 #ifdef _ENABLE_XRC_
                 if (MPIDI_CH3I_RDMA_Process.xrc_rdmafp &&
                         USE_XRC && VC_XST_ISUNSET (vc, XF_SEND_IDLE)) {
@@ -325,7 +326,9 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
                         XRC_MSG ("Trying to FP to %d st: %d xr: 0x%08x", 
                                 vc->pg_rank, vc->ch.state, vc->ch.xrc_flags);
                         VC_XST_SET (vc, XF_START_RDMAFP);
+                        MPICM_unlock();
                         MPIDI_CH3I_CM_Connect (vc);
+                        goto fn_exit;
                     }
                 }
                 else if (!USE_XRC || 
@@ -336,9 +339,12 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
 #endif
                 {
                     XRC_MSG ("FP to %d (IDLE)\n", vc->pg_rank);
+                    MPICM_unlock();
                     vbuf_fast_rdma_alloc(vc, 1);
                     vbuf_address_send(vc);
+                    goto fn_exit;
                 }
+                MPICM_unlock();
             }
         }
     }
