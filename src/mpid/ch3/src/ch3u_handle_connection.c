@@ -82,9 +82,11 @@ int MPIDI_CH3U_Handle_connection(MPIDI_VC_t * vc, MPIDI_VC_Event_t event)
 		{
             XRC_MSG ("%d cls STATE: %d\n", vc->pg_rank, vc->state);
 #ifdef _ENABLE_XRC_
+            MPICM_lock();
             if (USE_XRC) {
                 VC_XST_SET (vc, XF_TERMINATED);
             }
+            MPICM_unlock();
 #endif
 		    MPIU_DBG_VCSTATECHANGE(vc,VC_STATE_INACTIVE);
             XRC_CM_LOCK ();
@@ -194,11 +196,13 @@ int MPIDI_CH3U_VC_SendClose( MPIDI_VC_t *vc, int rank )
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3U_VC_SENDCLOSE);
 
 #ifdef _ENABLE_XRC_
+    MPICM_lock();
     XRC_MSG ("ST: %d XST: 0x%08x", vc->state, vc->ch.xrc_flags);
     MPIU_Assert (!USE_XRC || 
             VC_XST_ISSET (vc, (XF_SMP_VC | XF_DPM_INI)) ||
             VC_XST_ISSET (vc, (XF_SEND_IDLE | XF_SEND_CONNECTING)));
     VC_XST_SET (vc, XF_CONN_CLOSING);
+    MPICM_unlock();
 #endif
 
     /* FIXME: Remove this IFDEF */
@@ -300,7 +304,9 @@ int MPIDI_CH3_PktHandler_Close( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 #endif /* defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS) */
 
 #ifdef _ENABLE_XRC_
+    MPICM_lock();
     VC_XST_SET (vc, XF_CONN_CLOSING);
+    MPICM_unlock();
 #endif 
    
     XRC_MSG ("Recd close (%s) from %d s:%d x:0x%08x\n", 

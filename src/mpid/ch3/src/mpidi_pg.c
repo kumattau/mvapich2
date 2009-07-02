@@ -1105,7 +1105,9 @@ int MPIDI_PG_Close_VCs( void )
         XRC_MSG ("closing %d xf: 0x%08x st", vc->pg_rank, vc->ch.xrc_flags, 
                 vc->state);
 #ifdef _ENABLE_XRC_
+        MPICM_lock();
         VC_XST_SET (vc, XF_CONN_CLOSING);
+        MPICM_unlock();
 #endif
 
 #ifdef _ENABLE_XRC_

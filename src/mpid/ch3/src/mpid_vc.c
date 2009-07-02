@@ -185,10 +185,12 @@ int MPID_VCRT_Release(MPID_VCRT vcrt, int isDisconnect )
 		}
 
 #ifdef _ENABLE_XRC_
+        MPICM_lock();
         VC_XST_SET (vc, XF_CONN_CLOSING);
         XRC_MSG ("CONNCLOSING2");
         XRC_MSG ("SC %d 0x%08x %d\n", vc->pg_rank, vc->ch.xrc_flags, 
                 vc->state);
+        MPICM_unlock();
 #endif
 		
 		/* FIXME: the correct test is ACTIVE or REMOTE_CLOSE */
