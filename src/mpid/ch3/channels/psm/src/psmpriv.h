@@ -109,6 +109,9 @@ int psm_recv(int rank, int tag, int context_id, void *buf, int buflen,
              MPI_Status *stat, MPID_Request **req);
 int psm_send_noncontig(MPIDI_VC_t *vc, MPID_Request *sreq, 
                        MPIDI_Message_match match);
+int MPIDI_CH3_iRecv(int rank, int tag, int cid, void *buf, int buflen, MPID_Request *req);
+int MPIDI_CH3_Recv(int rank, int tag, int cid, void *buf, int buflen, MPI_Status *stat, MPID_Request **req);
+
 void psm_pe_yield();
 MPID_Request *psm_create_req();
 void psm_update_mpistatus(MPI_Status *, psm_mq_status_t);
