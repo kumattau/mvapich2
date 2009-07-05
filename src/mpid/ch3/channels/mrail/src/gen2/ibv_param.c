@@ -524,7 +524,11 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
     int size;
     PMI_Get_size(&size); 
 
-    if (size <= 64)
+    if (size <= 32)
+    {
+        proc->cluster_size = VERY_SMALL_CLUSTER;
+    }
+    else if (size <= 64)
     {
         proc->cluster_size = SMALL_CLUSTER;
     }
@@ -712,6 +716,7 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
             rdma_vbuf_total_size = 4*1024;
             break;
         case SMALL_CLUSTER:
+        case VERY_SMALL_CLUSTER:
         default:
             switch(proc->hca_type) {
                 case MLX_PCI_X:
@@ -754,6 +759,7 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
                     rdma_iba_eager_threshold    = 6 * 1024;
                     break;
                 case SMALL_CLUSTER:
+                case VERY_SMALL_CLUSTER:
                 default:
                     num_rdma_buffer         = 32;
                     rdma_iba_eager_threshold    = rdma_vbuf_total_size - 
@@ -777,6 +783,7 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 
 			break;
                 case SMALL_CLUSTER:
+                case VERY_SMALL_CLUSTER:
                 default:
 			num_rdma_buffer         = 16;
 			rdma_iba_eager_threshold = rdma_vbuf_total_size -
@@ -804,6 +811,7 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
                     rdma_iba_eager_threshold    = 4 * 1024;
                     break;
                 case SMALL_CLUSTER:
+                case VERY_SMALL_CLUSTER:
                 default:
                     num_rdma_buffer         = 16;
                     rdma_iba_eager_threshold = rdma_vbuf_total_size -

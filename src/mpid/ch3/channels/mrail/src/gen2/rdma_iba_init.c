@@ -821,6 +821,20 @@ int MPIDI_CH3I_RDMA_finalize()
 	if (err)
 	    MPIU_Error_printf("Failed to destroy CQ (%d)\n", err);
 
+    if (MPIDI_CH3I_RDMA_Process.send_cq_hndl[i]) {
+	    err = ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.send_cq_hndl[i]);
+	    if (err) {
+	        MPIU_Error_printf("Failed to destroy CQ (%d)\n", err);
+        }
+    }
+
+    if (MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i]) {
+	    err = ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i]);
+	    if (err) {
+	        MPIU_Error_printf("Failed to destroy CQ (%d)\n", err);
+        }
+    }
+
 	if(rdma_use_blocking) {
 	    err = ibv_destroy_comp_channel(MPIDI_CH3I_RDMA_Process.comp_channel[i]);
 	    if(err)

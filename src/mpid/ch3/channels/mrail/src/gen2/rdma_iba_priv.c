@@ -1024,6 +1024,8 @@ void MRAILI_Init_vc(MPIDI_VC_t * vc)
         vc->mrail.rails[i].ext_sendq_head     = NULL;
         vc->mrail.rails[i].ext_sendq_tail     = NULL;
         vc->mrail.rails[i].ext_sendq_size     = 0;
+        vc->mrail.rails[i].used_send_cq       = 0;
+        vc->mrail.rails[i].used_recv_cq       = 0;
 #ifdef _ENABLE_XRC_
         vc->mrail.rails[i].hca_index = i / (rdma_num_rails / rdma_num_hcas);
 #endif

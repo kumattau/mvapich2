@@ -225,7 +225,11 @@ struct mrail_rail {
         int    port;
         int    lid;
         int    s_weight;
+        int    used_send_cq; 
+        int    used_recv_cq; 
         struct ibv_cq	*cq_hndl;
+        struct ibv_cq	*send_cq_hndl;
+        struct ibv_cq	*recv_cq_hndl;
         struct ibv_qp 	*qp_hndl;
 #ifdef RDMA_CM
         struct rdma_cm_id 	*cm_ids;

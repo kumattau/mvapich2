@@ -66,7 +66,7 @@ enum {
 };
 
 /* cluster size */
-enum {SMALL_CLUSTER, MEDIUM_CLUSTER, LARGE_CLUSTER};
+enum {VERY_SMALL_CLUSTER, SMALL_CLUSTER, MEDIUM_CLUSTER, LARGE_CLUSTER};
 
 typedef struct MPIDI_CH3I_RDMA_Process_t {
     /* keep all rdma implementation specific global variable in a
@@ -87,6 +87,8 @@ typedef struct MPIDI_CH3I_RDMA_Process_t {
     struct ibv_device           *ib_dev[MAX_NUM_HCAS];
     struct ibv_pd               *ptag[MAX_NUM_HCAS];
     struct ibv_cq               *cq_hndl[MAX_NUM_HCAS];
+    struct ibv_cq               *send_cq_hndl[MAX_NUM_HCAS];
+    struct ibv_cq               *recv_cq_hndl[MAX_NUM_HCAS];
     struct ibv_comp_channel     *comp_channel[MAX_NUM_HCAS];
 
     /*record lid and port information for connection establish later*/
@@ -270,6 +272,7 @@ do {                                                                    \
                         __FILE__, __LINE__,(_rail), (_v)->rail);      \
                 MPIU_Assert((_rail) == (_v)->rail);                   \
         }                                                             \
+        (_c)->mrail.rails[(_rail)].used_send_cq++;                    \
         __ret = ibv_post_send((_c)->mrail.rails[(_rail)].qp_hndl,     \
                   &((_v)->desc.u.sr),&((_v)->desc.y.bad_sr));         \
         if(__ret) {                                                   \
@@ -301,6 +304,7 @@ do {                                                                    \
                         __FILE__, __LINE__,(_rail), (_v)->rail);      \
                 MPIU_Assert((_rail) == (_v)->rail);                   \
         }                                                             \
+        (_c)->mrail.rails[(_rail)].used_send_cq++;                    \
         __ret = ibv_post_send((_c)->mrail.rails[(_rail)].qp_hndl,     \
                   &((_v)->desc.u.sr),&((_v)->desc.y.bad_sr));         \
         if(__ret) {                                                   \
@@ -317,6 +321,7 @@ do {                                                                    \
 #define IBV_POST_RR(_c,_vbuf,_rail) {                           \
     int __ret;                                                  \
     _vbuf->vc = (void *)_c;                                     \
+    (_c)->mrail.rails[(_rail)].used_recv_cq++;                  \
     __ret = ibv_post_recv(_c->mrail.rails[(_rail)].qp_hndl,     \
                           &((_vbuf)->desc.u.rr),                  \
             &((_vbuf)->desc.y.bad_rr));                           \

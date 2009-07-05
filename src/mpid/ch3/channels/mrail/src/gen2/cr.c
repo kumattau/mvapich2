@@ -1049,7 +1049,14 @@ int CR_IBU_Release_network()
     
     for (i = 0; i < rdma_num_hcas; ++i)
     {
-        ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.cq_hndl[i]);
+        if ((proc->hca_type == CHELSIO_T3) &&
+            (proc->cluster_size != VERY_SMALL_CLUSTER)) {
+            /* Trac #423 */
+            ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.send_cq_hndl[i]);
+            ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i]);
+        } else {
+            ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.cq_hndl[i]);
+        }
         deallocate_vbufs(i);
         ibv_dealloc_pd(MPIDI_CH3I_RDMA_Process.ptag[i]);
         ibv_close_device(MPIDI_CH3I_RDMA_Process.nic_context[i]);

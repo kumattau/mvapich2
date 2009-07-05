@@ -604,6 +604,8 @@ int ib_init_rdma_cm(struct MPIDI_CH3I_RDMA_Process_t *proc,
     for (i = 0; i < rdma_num_hcas; i++){
 	proc->ptag[i] = NULL;
 	proc->cq_hndl[i] = NULL;
+	proc->send_cq_hndl[i] = NULL;
+	proc->recv_cq_hndl[i] = NULL;
     }
 
     if ((value = getenv("MV2_RDMA_CM_ARP_TIMEOUT")) != NULL) {
@@ -731,14 +733,11 @@ int rdma_cm_create_qp(MPIDI_VC_t *vc, int rail_index)
     int hca_index, ret;
     MPIDI_CH3I_RDMA_Process_t *proc = &MPIDI_CH3I_RDMA_Process;
     struct rdma_cm_id *cmid;
-    struct ibv_cq *current_cq;
 
     hca_index = rail_index / (rdma_num_ports * rdma_num_qp_per_port);
 
     /* Create CM_ID */
     cmid = vc->mrail.rails[rail_index].cm_ids;
-
-    current_cq = proc->cq_hndl[hca_index];
 
     {
 	memset(&init_attr, 0, sizeof(init_attr));
@@ -747,8 +746,14 @@ int rdma_cm_create_qp(MPIDI_VC_t *vc, int rail_index)
 	init_attr.cap.max_inline_data = rdma_max_inline_size;
 	
 	init_attr.cap.max_send_wr = rdma_default_max_send_wqe;
-	init_attr.send_cq = current_cq;
-	init_attr.recv_cq = current_cq;
+    if ((proc->hca_type == CHELSIO_T3) &&
+        (proc->cluster_size != VERY_SMALL_CLUSTER)) {
+	    init_attr.send_cq = proc->send_cq_hndl[hca_index];
+	    init_attr.recv_cq = proc->recv_cq_hndl[hca_index];
+    } else {
+	    init_attr.send_cq = proc->cq_hndl[hca_index];
+	    init_attr.recv_cq = proc->cq_hndl[hca_index];
+    }
 	init_attr.qp_type = IBV_QPT_RC;
 	init_attr.sq_sig_all = 0;
     }
@@ -764,13 +769,22 @@ int rdma_cm_create_qp(MPIDI_VC_t *vc, int rail_index)
     ret = rdma_create_qp(cmid, proc->ptag[hca_index], &init_attr);
     if (ret){
         ibv_va_error_abort(IBV_RETURN_ERR,
-                "Error creating qp using rdma_cm.  %d [cmid: %p, pd: %p, cq: %p] \n",
-                ret, cmid, proc->ptag[hca_index], current_cq);
+                "Error creating qp using rdma_cm.  %d [cmid: %p, pd: %p,"
+                "send_cq: %p, recv_cq: %p] \n",
+                ret, cmid, proc->ptag[hca_index],
+                proc->send_cq_hndl[hca_index],
+                proc->recv_cq_hndl[hca_index]);
     }
 
     /* Save required handles */
     vc->mrail.rails[rail_index].qp_hndl = cmid->qp;
-    vc->mrail.rails[rail_index].cq_hndl = current_cq;
+    if ((proc->hca_type == CHELSIO_T3) &&
+        (proc->cluster_size != VERY_SMALL_CLUSTER)) {
+       vc->mrail.rails[rail_index].send_cq_hndl = proc->send_cq_hndl[hca_index];
+       vc->mrail.rails[rail_index].recv_cq_hndl = proc->recv_cq_hndl[hca_index];
+    } else {
+       vc->mrail.rails[rail_index].cq_hndl = proc->cq_hndl[hca_index];
+    }
 
     vc->mrail.rails[rail_index].nic_context = cmid->verbs;
     vc->mrail.rails[rail_index].hca_index = hca_index;
@@ -962,33 +976,97 @@ int rdma_cm_init_pd_cq()
 		        ibv_error_abort(GEN_EXIT_ERR, "Create comp channel failed\n");
             }
 
-            proc->cq_hndl[i] = ibv_create_cq(
-                proc->nic_context[i],
-                rdma_default_max_cq_size,
-                NULL,
-                proc->comp_channel[i],
-                0);
+            if ((proc->hca_type == CHELSIO_T3) &&
+                (proc->cluster_size != VERY_SMALL_CLUSTER)) {
+	            /* Allocate the completion queue handle for the HCA */
+                /* Trac #423 */
+	            proc->send_cq_hndl[i] = ibv_create_cq(
+	                proc->nic_context[i],
+	                rdma_default_max_cq_size,
+	                NULL,
+	                NULL,
+	                0);
+	
+	            if (!proc->send_cq_hndl[i]) {
+			        ibv_error_abort(GEN_EXIT_ERR, "Error allocating CQ");
+	            }
+	
+	            if (ibv_req_notify_cq(proc->send_cq_hndl[i], 0)) {
+	                ibv_error_abort(GEN_EXIT_ERR,
+                                     "Request notify for CQ failed\n");
+	            }
 
-            if (!proc->cq_hndl[i]) {
-		        ibv_error_abort(GEN_EXIT_ERR, "Error allocating CQ");
-            }
+	            proc->recv_cq_hndl[i] = ibv_create_cq(
+	                proc->nic_context[i],
+	                rdma_default_max_cq_size,
+	                NULL,
+	                NULL,
+	                0);
+	
+	            if (!proc->recv_cq_hndl[i]) {
+			        ibv_error_abort(GEN_EXIT_ERR, "Error allocating CQ");
+	            }
 
-            if (ibv_req_notify_cq(proc->cq_hndl[i], 0)) {
-                ibv_error_abort(GEN_EXIT_ERR, "Request notify for CQ failed\n");
+	            if (ibv_req_notify_cq(proc->recv_cq_hndl[i], 0)) {
+	                ibv_error_abort(GEN_EXIT_ERR,
+                                     "Request notify for CQ failed\n");
+	            }
+            } else {
+	            proc->cq_hndl[i] = ibv_create_cq(
+	                proc->nic_context[i],
+	                rdma_default_max_cq_size,
+	                NULL,
+	                proc->comp_channel[i],
+	                0);
+	
+	            if (!proc->cq_hndl[i]) {
+			        ibv_error_abort(GEN_EXIT_ERR, "Error allocating CQ");
+	            }
+	
+	            if (ibv_req_notify_cq(proc->cq_hndl[i], 0)) {
+	                ibv_error_abort(GEN_EXIT_ERR,
+                                     "Request notify for CQ failed\n");
+	            }
             }
         }
         else
         {
-            /* Allocate the completion queue handle for the HCA */
-            proc->cq_hndl[i] = ibv_create_cq(
-                proc->nic_context[i],
-                rdma_default_max_cq_size,
-                NULL,
-                NULL,
-                0);
-
-            if (!proc->cq_hndl[i]) {
-		        ibv_error_abort(GEN_EXIT_ERR, "Error allocating CQ");
+            if ((proc->hca_type == CHELSIO_T3) &&
+                (proc->cluster_size != VERY_SMALL_CLUSTER)) {
+	            /* Allocate the completion queue handle for the HCA */
+                /* Trac #423*/
+	            proc->send_cq_hndl[i] = ibv_create_cq(
+	                proc->nic_context[i],
+	                rdma_default_max_cq_size,
+	                NULL,
+	                NULL,
+	                0);
+	
+	            if (!proc->send_cq_hndl[i]) {
+			        ibv_error_abort(GEN_EXIT_ERR, "Error allocating CQ");
+	            }
+	
+	            proc->recv_cq_hndl[i] = ibv_create_cq(
+	                proc->nic_context[i],
+	                rdma_default_max_cq_size,
+	                NULL,
+	                NULL,
+	                0);
+	
+	            if (!proc->recv_cq_hndl[i]) {
+			        ibv_error_abort(GEN_EXIT_ERR, "Error allocating CQ");
+	            }
+            } else {
+	            proc->cq_hndl[i] = ibv_create_cq(
+	                proc->nic_context[i],
+	                rdma_default_max_cq_size,
+	                NULL,
+	                NULL,
+	                0);
+	
+	            if (!proc->cq_hndl[i]) {
+			        ibv_error_abort(GEN_EXIT_ERR, "Error allocating CQ");
+	            }
             }
         }
 
@@ -1060,6 +1138,14 @@ void ib_finalize_rdma_cm(int pg_rank, MPIDI_PG_t *pg)
 	for (i = 0; i < rdma_num_hcas; i++) {
 	    if (MPIDI_CH3I_RDMA_Process.cq_hndl[i])
 		ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.cq_hndl[i]);
+
+	    if (MPIDI_CH3I_RDMA_Process.send_cq_hndl[i]) {
+		    ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.send_cq_hndl[i]);
+        }
+
+	    if (MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i]) {
+		    ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i]);
+        }
 
 	    if (MPIDI_CH3I_RDMA_Process.has_srq) {
 		if (!MPIDI_CH3I_RDMA_Process.srq_hndl[i]){
