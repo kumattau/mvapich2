@@ -546,10 +546,10 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
 
     for (; i < rdma_num_hcas; ++i) {
         for (cq_choice = 0; cq_choice < num_cqs; ++cq_choice) {
-            if (num_cqs == 1) {
+            if (1 == num_cqs) {
 	            chosen_cq = MPIDI_CH3I_RDMA_Process.cq_hndl[i];
 	        } else {
-	            if (cq_choice == 0) {
+	            if (0 == cq_choice) {
 	                chosen_cq = MPIDI_CH3I_RDMA_Process.send_cq_hndl[i];
                 } else {
 	                chosen_cq = MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i];
@@ -580,21 +580,25 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
 	                        );
 	            }
 	
-	            if (cq_choice == 0) {
-	                if (vc->mrail.rails[v->rail].used_send_cq) {
-	                    vc->mrail.rails[v->rail].used_send_cq--;
-	                } else {
-	                    ibv_va_error_abort(IBV_STATUS_ERR, "trying to decrement"
-	                                        "send cq count already at 0");
-	                }
-	            } else {
-	                if (vc->mrail.rails[v->rail].used_recv_cq) {
-	                    vc->mrail.rails[v->rail].used_recv_cq--;
-	                } else {
-	                    ibv_va_error_abort(IBV_STATUS_ERR, "trying to decrement"
-	                                        "recv cq count already at 0");
-	                }
-	            }
+                if (2 == num_cqs) {
+    	            if (0 == cq_choice) {
+    	                if (vc->mrail.rails[v->rail].used_send_cq) {
+    	                    vc->mrail.rails[v->rail].used_send_cq--;
+    	                } else {
+    	                    ibv_va_error_abort(IBV_STATUS_ERR,
+                                                "trying to decrement send cq"
+                                                " count already at 0");
+    	                }
+    	            } else {
+    	                if (vc->mrail.rails[v->rail].used_recv_cq) {
+    	                    vc->mrail.rails[v->rail].used_recv_cq--;
+    	                } else {
+    	                    ibv_va_error_abort(IBV_STATUS_ERR,
+                                                "trying to decrement recv cq"
+                                                " count already at 0");
+    	                }
+    	            }
+                }
 	            is_send_completion = (wc.opcode == IBV_WC_SEND
 	                || wc.opcode == IBV_WC_RDMA_WRITE
 	                || wc.opcode == IBV_WC_RDMA_READ);
