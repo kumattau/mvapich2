@@ -463,6 +463,8 @@ int rdma_iba_hca_init_noqp(struct MPIDI_CH3I_RDMA_Process_t *proc,
 
             proc->cq_hndl[i] = ibv_create_cq(proc->nic_context[i],
                     rdma_default_max_cq_size, NULL, proc->comp_channel[i], 0);
+            proc->send_cq_hndl[i] = NULL;
+            proc->recv_cq_hndl[i] = NULL;
 
             if (!proc->cq_hndl[i]) {
                 fprintf(stderr, "cannot create cq\n");
@@ -473,6 +475,8 @@ int rdma_iba_hca_init_noqp(struct MPIDI_CH3I_RDMA_Process_t *proc,
             /* Allocate the completion queue handle for the HCA */
             proc->cq_hndl[i] = ibv_create_cq(proc->nic_context[i],
                     rdma_default_max_cq_size, NULL, NULL, 0);
+            proc->send_cq_hndl[i] = NULL;
+            proc->recv_cq_hndl[i] = NULL;
 
             if (!proc->cq_hndl[i]) {
                 fprintf(stderr, "cannot create cq\n");
@@ -606,6 +610,8 @@ int rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
 
             proc->cq_hndl[i] = ibv_create_cq(proc->nic_context[i],
                     rdma_default_max_cq_size, NULL, proc->comp_channel[i], 0);
+            proc->send_cq_hndl[i] = NULL;
+            proc->recv_cq_hndl[i] = NULL;
 
             if (!proc->cq_hndl[i]) {
 		MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto err,
@@ -623,6 +629,8 @@ int rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
             /* Allocate the completion queue handle for the HCA */
             proc->cq_hndl[i] = ibv_create_cq(proc->nic_context[i],
                     rdma_default_max_cq_size, NULL, NULL, 0);
+            proc->send_cq_hndl[i] = NULL;
+            proc->recv_cq_hndl[i] = NULL;
 
             if (!proc->cq_hndl[i]) {
 		MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto err,
@@ -709,6 +717,8 @@ int rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
 	    vc->mrail.rails[rail_index].port	= ports[hca_index][port_index];
 	    vc->mrail.rails[rail_index].lid         = lids[hca_index][port_index];
 	    vc->mrail.rails[rail_index].cq_hndl	= proc->cq_hndl[hca_index];
+	    vc->mrail.rails[rail_index].send_cq_hndl	= NULL;
+	    vc->mrail.rails[rail_index].recv_cq_hndl	= NULL;
 
             if (info) {
                 info->lid[i][rail_index] = lids[hca_index][port_index];
@@ -1169,6 +1179,8 @@ int cm_qp_reuse (MPIDI_VC_t *vc, MPIDI_VC_t *orig)
             MPIDI_CH3I_RDMA_Process.lids[hca_index][port_index];
         vc->mrail.rails[rail_index].cq_hndl	= 
             MPIDI_CH3I_RDMA_Process.cq_hndl[hca_index];
+	    vc->mrail.rails[rail_index].send_cq_hndl	= NULL;
+	    vc->mrail.rails[rail_index].recv_cq_hndl	= NULL;
     }
     
     cm_send_xrc_cm_msg (vc, orig);
@@ -1267,6 +1279,8 @@ static inline int cm_qp_conn_create(MPIDI_VC_t *vc, int qptype)
             MPIDI_CH3I_RDMA_Process.lids[hca_index][port_index];
         vc->mrail.rails[rail_index].cq_hndl	= 
             MPIDI_CH3I_RDMA_Process.cq_hndl[hca_index];
+	    vc->mrail.rails[rail_index].send_cq_hndl	= NULL;
+	    vc->mrail.rails[rail_index].recv_cq_hndl	= NULL;
 
         qp_attr.qp_state        = IBV_QPS_INIT;
         qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE | 

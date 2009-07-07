@@ -780,10 +780,13 @@ int rdma_cm_create_qp(MPIDI_VC_t *vc, int rail_index)
     vc->mrail.rails[rail_index].qp_hndl = cmid->qp;
     if ((proc->hca_type == CHELSIO_T3) &&
         (proc->cluster_size != VERY_SMALL_CLUSTER)) {
+       vc->mrail.rails[rail_index].cq_hndl = NULL;
        vc->mrail.rails[rail_index].send_cq_hndl = proc->send_cq_hndl[hca_index];
        vc->mrail.rails[rail_index].recv_cq_hndl = proc->recv_cq_hndl[hca_index];
     } else {
        vc->mrail.rails[rail_index].cq_hndl = proc->cq_hndl[hca_index];
+       vc->mrail.rails[rail_index].send_cq_hndl = NULL;
+       vc->mrail.rails[rail_index].recv_cq_hndl = NULL;
     }
 
     vc->mrail.rails[rail_index].nic_context = cmid->verbs;
