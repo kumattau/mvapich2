@@ -100,11 +100,18 @@ static inline void MRAILI_Ext_sendq_send(MPIDI_VC_t *c, int rail)
     MPIDI_FUNC_ENTER(MPID_STATE_MRAILI_EXT_SENDQ_SEND);
 
     vbuf *v;
+    char no_cq_overflow = 1;
 #ifdef _ENABLE_XRC_
     MPIU_Assert (!USE_XRC || VC_XST_ISUNSET (c, XF_INDIRECT_CONN));
 #endif 
+    if ((NULL != c->mrail.rails[rail].send_cq_hndl) &&
+        (c->mrail.rails[rail].used_send_cq >= rdma_default_max_cq_size)) {
+        /* We are monitoring CQ's and there is CQ overflow */
+        no_cq_overflow = 0;
+    }
+
     while (c->mrail.rails[rail].send_wqes_avail
-            && (c->mrail.rails[rail].used_send_cq < rdma_default_max_cq_size)
+            && no_cq_overflow
             && c->mrail.rails[rail].ext_sendq_head) {
         v = c->mrail.rails[rail].ext_sendq_head;
         c->mrail.rails[rail].ext_sendq_head = v->desc.next;
@@ -362,6 +369,7 @@ int MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(MPIDI_VC_t * vc,
     MPIDI_CH3I_MRAILI_Pkt_comm_header *p;
     int rail;
     int  align_len;
+    char cq_overflow = 0;
     vbuf *v =
         &(vc->mrail.rfp.RDMA_send_buf[vc->mrail.rfp.phead_RDMA_send]);
     char *rstart;
@@ -411,8 +419,13 @@ int MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(MPIDI_VC_t * vc,
     p->mrail.crc = update_crc(1, (void *)((uintptr_t)p+sizeof *p),
                               *v->head_flag - sizeof *p);
 #endif
-    if (!vc->mrail.rails[rail].send_wqes_avail
-        || (vc->mrail.rails[rail].used_send_cq >= rdma_default_max_cq_size)) {
+    if ((NULL != vc->mrail.rails[rail].send_cq_hndl) &&
+        (vc->mrail.rails[rail].used_send_cq >= rdma_default_max_cq_size)) {
+        /* We are monitoring CQ's and there is CQ overflow */
+        cq_overflow = 1;
+    }
+
+    if (!vc->mrail.rails[rail].send_wqes_avail || cq_overflow) {
         DEBUG_PRINT("[send: rdma_send] Warning! no send wqe or send cq available\n");
         MRAILI_Ext_sendq_enqueue(vc, rail, v);
         *vbuf_handle = v;
@@ -513,6 +526,7 @@ int post_srq_send(MPIDI_VC_t* vc, vbuf* v, int rail)
     MPIDI_STATE_DECL(MPID_STATE_POST_SRQ_SEND);
     MPIDI_FUNC_ENTER(MPID_STATE_POST_SRQ_SEND);
     int hca_num = rail / (rdma_num_ports * rdma_num_qp_per_port);
+    char cq_overflow = 0;
     MPIDI_CH3I_MRAILI_Pkt_comm_header *p = v->pheader;
     PACKET_SET_CREDIT(p, vc, rail);
 
@@ -524,8 +538,13 @@ int post_srq_send(MPIDI_VC_t* vc, vbuf* v, int rail)
 
     FLUSH_RAIL(vc, rail);
 
-    if (!vc->mrail.rails[rail].send_wqes_avail
-        || (vc->mrail.rails[rail].used_send_cq >= rdma_default_max_cq_size)) {
+    if ((NULL != vc->mrail.rails[rail].send_cq_hndl) &&
+        (vc->mrail.rails[rail].used_send_cq >= rdma_default_max_cq_size)) {
+        /* We are monitoring CQ's and there is CQ overflow */
+        cq_overflow = 1;
+    }
+
+    if (!vc->mrail.rails[rail].send_wqes_avail || cq_overflow) {
         MRAILI_Ext_sendq_enqueue(vc, rail, v);
         MPIDI_FUNC_EXIT(MPID_STATE_POST_SRQ_SEND);
         return MPI_MRAIL_MSG_QUEUED;
@@ -560,6 +579,8 @@ int post_send(MPIDI_VC_t * vc, vbuf * v, int rail)
     MPIDI_STATE_DECL(MPID_STATE_POST_SEND);
     MPIDI_FUNC_ENTER(MPID_STATE_POST_SEND);
 
+    char cq_overflow = 0;
+
     MPIDI_CH3I_MRAILI_Pkt_comm_header *p = v->pheader;
     DEBUG_PRINT(
                 "[post send] credit %d,type noop %d, "
@@ -588,8 +609,14 @@ int post_send(MPIDI_VC_t * vc, vbuf * v, int rail)
         XRC_FILL_SRQN_FIX_CONN (v, vc, rail);
         FLUSH_RAIL(vc, rail);
 
-        if (!vc->mrail.rails[rail].send_wqes_avail ||
-            (vc->mrail.rails[rail].used_send_cq >= rdma_default_max_cq_size))
+        if ((NULL != vc->mrail.rails[rail].send_cq_hndl) &&
+            (vc->mrail.rails[rail].used_send_cq >= rdma_default_max_cq_size)) {
+            /* We are monitoring CQ's and there is CQ overflow */
+            cq_overflow = 1;
+        }
+
+        if (!vc->mrail.rails[rail].send_wqes_avail || cq_overflow)
+            
         {
             MRAILI_Ext_sendq_enqueue(vc, rail, v);
             MPIDI_FUNC_EXIT(MPID_STATE_POST_SEND);
@@ -874,6 +901,7 @@ int MRAILI_Backlog_send(MPIDI_VC_t * vc, int rail)
     MPIDI_FUNC_ENTER(MPID_STATE_MRAILI_BACKLOG_SEND);
 
     ibv_backlog_queue_t *q = &vc->mrail.srp.credits[rail].backlog;
+    char cq_overflow = 0;
 
 #ifdef CKPT
     if (MPIDI_CH3I_RDMA_Process.has_srq) {
@@ -909,8 +937,13 @@ int MRAILI_Backlog_send(MPIDI_VC_t * vc, int rail)
         XRC_FILL_SRQN_FIX_CONN (v, vc, rail);
         FLUSH_RAIL(vc, rail);
 
-        if (!vc->mrail.rails[rail].send_wqes_avail ||
+        if ((NULL != vc->mrail.rails[rail].send_cq_hndl) &&
             (vc->mrail.rails[rail].used_send_cq >= rdma_default_max_cq_size)) {
+            /* We are monitoring CQ's and there is CQ overflow */
+            cq_overflow = 1;
+        }
+
+        if (!vc->mrail.rails[rail].send_wqes_avail || cq_overflow) {
             MRAILI_Ext_sendq_enqueue(vc, rail, v);
             continue;
         }
@@ -1355,6 +1388,8 @@ void MRAILI_RDMA_Get(   MPIDI_VC_t * vc, vbuf *v,
     MPIDI_STATE_DECL(MPID_STATE_MRAILI_RDMA_GET);
     MPIDI_FUNC_ENTER(MPID_STATE_MRAILI_RDMA_GET);
 
+    char cq_overflow = 0;
+
     DEBUG_PRINT("MRAILI_RDMA_Get: RDMA Read, "
             "remote addr %p, rkey %p, nbytes %d, hca %d\n",
             remote_addr, rkey, nbytes, vc->mrail.rails[rail].hca_index);
@@ -1365,8 +1400,13 @@ void MRAILI_RDMA_Get(   MPIDI_VC_t * vc, vbuf *v,
     v->vc = (void *)vc;
 
     XRC_FILL_SRQN_FIX_CONN (v, vc, rail);
-    if (!vc->mrail.rails[rail].send_wqes_avail ||
+    if ((NULL != vc->mrail.rails[rail].send_cq_hndl) &&
         (vc->mrail.rails[rail].used_send_cq >= rdma_default_max_cq_size)) {
+        /* We are monitoring CQ's and there is CQ overflow */
+        cq_overflow = 1;
+    }
+
+    if (!vc->mrail.rails[rail].send_wqes_avail || cq_overflow) {
         MRAILI_Ext_sendq_enqueue(vc,rail, v);
         return;
     }
@@ -1389,6 +1429,8 @@ void MRAILI_RDMA_Put(   MPIDI_VC_t * vc, vbuf *v,
     MPIDI_STATE_DECL(MPID_STATE_MRAILI_RDMA_PUT);
     MPIDI_FUNC_ENTER(MPID_STATE_MRAILI_RDMA_PUT);
 
+    char cq_overflow = 0;
+
     DEBUG_PRINT("MRAILI_RDMA_Put: RDMA write, "
             "remote addr %p, rkey %p, nbytes %d, hca %d\n",
             remote_addr, rkey, nbytes, vc->mrail.rails[rail].hca_index);
@@ -1399,8 +1441,14 @@ void MRAILI_RDMA_Put(   MPIDI_VC_t * vc, vbuf *v,
     v->vc = (void *)vc;
     XRC_FILL_SRQN_FIX_CONN (v, vc, rail);
 
-    if (!vc->mrail.rails[rail].send_wqes_avail ||
+    if ((NULL != vc->mrail.rails[rail].send_cq_hndl) &&
         (vc->mrail.rails[rail].used_send_cq >= rdma_default_max_cq_size)) {
+        /* We are monitoring CQ's and there is CQ overflow */
+        cq_overflow = 1;
+    }
+
+    if (!vc->mrail.rails[rail].send_wqes_avail || cq_overflow) {
+        
         MRAILI_Ext_sendq_enqueue(vc,rail, v);
         return;
     }
