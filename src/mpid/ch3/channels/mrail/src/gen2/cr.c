@@ -1049,8 +1049,8 @@ int CR_IBU_Release_network()
     
     for (i = 0; i < rdma_num_hcas; ++i)
     {
-        if ((proc->hca_type == CHELSIO_T3) &&
-            (proc->cluster_size != VERY_SMALL_CLUSTER)) {
+        if ((MPIDI_CH3I_RDMA_Process.hca_type == CHELSIO_T3) &&
+            (MPIDI_CH3I_RDMA_Process.cluster_size != VERY_SMALL_CLUSTER)) {
             /* Trac #423 */
             ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.send_cq_hndl[i]);
             ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i]);
