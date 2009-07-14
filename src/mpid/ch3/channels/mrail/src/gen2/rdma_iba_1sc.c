@@ -1087,7 +1087,7 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
     winptr->put_get_list_tail = (winptr->put_get_list_tail + 1) %
                     rdma_default_put_get_list_size;
     winptr->put_get_list[index].completion = 0;
- 
+
     if (use_multi == 1) { /* stripe the message across rails */
         int posting_length;
         void *local_address, *remote_address;
@@ -1100,9 +1100,12 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
 
             v->list = (void *)(&(winptr->put_get_list[index]));
             v->vc = (void *)vc_ptr;
+#if 0
+Trac #426
             hca_index = vc_ptr->mrail.rails[i].hca_index;
-            ++(winptr->put_get_list[index].completion);
             ++(vc_ptr->mrail.rails[hca_index].postsend_times_1sc);
+#endif
+            ++(winptr->put_get_list[index].completion);
             ++(winptr->put_get_list_size);
 
             local_address = (void *)((char*)local_buf[0] +
@@ -1118,12 +1121,23 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
             vbuf_init_rma_put(v, local_address, lkeys[i], remote_address,
                               rkeys[i], posting_length, i);
 
-            XRC_FILL_SRQN_FIX_CONN (v, vc_ptr, i);
-            if (MRAILI_Flush_wqe(vc_ptr,v,i) != -1) { /* message not enqueued */
-                -- vc_ptr->mrail.rails[i].send_wqes_avail;
-                IBV_POST_SR(v, vc_ptr, i, "Failed to post rma put");
+            if (vc_ptr->ch.state != MPIDI_CH3I_VC_STATE_IDLE
+                || !MPIDI_CH3I_CM_One_Sided_SendQ_empty(vc_ptr)) {
+                /* VC is not ready to be used. Wait till it is ready and send */
+                MPIDI_CH3I_CM_One_Sided_SendQ_enqueue(vc_ptr, v);
+
+                if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_UNCONNECTED) {
+                    /* VC is not connected, initiate connection */
+                    MPIDI_CH3I_CM_Connect(vc_ptr);
+                }
+            } else {
+                XRC_FILL_SRQN_FIX_CONN (v, vc_ptr, i);
+                if (MRAILI_Flush_wqe(vc_ptr,v,i) != -1) { /* message not enqueued */
+                    -- vc_ptr->mrail.rails[i].send_wqes_avail;
+                    IBV_POST_SR(v, vc_ptr, i, "Failed to post rma put");
+                }
+                vc_ptr = save_vc;
             }
-            vc_ptr = save_vc;
         }
     } else if (use_multi == 0) { /* send on a single rail */
         rail = 0;
@@ -1134,17 +1148,31 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
 
         winptr->put_get_list[index].completion = 1;
         ++(winptr->put_get_list_size);
+#if 0
+Trac #426
         ++(vc_ptr->mrail.rails[rail].postsend_times_1sc);
+#endif
 
         vbuf_init_rma_put(v, local_buf[rail], lkeys[rail], remote_buf[rail],
                           rkeys[rail], length, rail);
         v->list = (void *)(&(winptr->put_get_list[index]));
         v->vc = (void *)vc_ptr;
 
-        XRC_FILL_SRQN_FIX_CONN (v, vc_ptr, rail);
-        if (MRAILI_Flush_wqe(vc_ptr, v, rail) != -1) {
-            --(vc_ptr->mrail.rails[rail].send_wqes_avail);
-            IBV_POST_SR(v, vc_ptr, rail, "Failed to post rma put");
+        if (vc_ptr->ch.state != MPIDI_CH3I_VC_STATE_IDLE 
+	    || !MPIDI_CH3I_CM_One_Sided_SendQ_empty(vc_ptr)) {
+            /* VC is not ready to be used. Wait till it is ready and send */
+            MPIDI_CH3I_CM_One_Sided_SendQ_enqueue(vc_ptr, v);
+
+            if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_UNCONNECTED) {
+                /* VC is not connected, initiate connection */
+                MPIDI_CH3I_CM_Connect(vc_ptr);
+            }
+        } else {
+            XRC_FILL_SRQN_FIX_CONN (v, vc_ptr, rail);
+            if (MRAILI_Flush_wqe(vc_ptr, v, rail) != -1) {
+                --(vc_ptr->mrail.rails[rail].send_wqes_avail);
+                IBV_POST_SR(v, vc_ptr, rail, "Failed to post rma put");
+            }
         }
     } else if (use_multi == 2) { /* send on all rails */
         for (i = 0; i < rdma_num_rails; ++i) {
@@ -1154,24 +1182,38 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
                 MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
             }
 
+#if 0
+Trac #426
             hca_index = vc_ptr->mrail.rails[i].hca_index;
-            ++(winptr->put_get_list[index].completion);
             ++(vc_ptr->mrail.rails[hca_index].postsend_times_1sc);
+#endif
+            ++(winptr->put_get_list[index].completion);
             ++(winptr->put_get_list_size);
 
             vbuf_init_rma_put(v, local_buf[i], lkeys[i], remote_buf[i],
                               rkeys[i], length, i);
             v->list = (void *)(&(winptr->put_get_list[index]));
             v->vc = (void *)vc_ptr;
+ 
+            if (vc_ptr->ch.state != MPIDI_CH3I_VC_STATE_IDLE
+                || !MPIDI_CH3I_CM_One_Sided_SendQ_empty(vc_ptr)) {
+                /* VC is not ready to be used. Wait till it is ready and send */
+                MPIDI_CH3I_CM_One_Sided_SendQ_enqueue(vc_ptr, v);
 
-            XRC_FILL_SRQN_FIX_CONN (v, vc_ptr, i);
-            if (MRAILI_Flush_wqe(vc_ptr, v ,i) != -1) {
-                --(vc_ptr->mrail.rails[i].send_wqes_avail);
-                IBV_POST_SR(v, vc_ptr, i, "Failed to post rma put");                     
-       	    } 
-            vc_ptr = save_vc;
+                if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_UNCONNECTED) {
+                    /* VC is not connected, initiate connection */
+                    MPIDI_CH3I_CM_Connect(vc_ptr);
+                }
+            } else {
+                XRC_FILL_SRQN_FIX_CONN (v, vc_ptr, i);
+                if (MRAILI_Flush_wqe(vc_ptr, v ,i) != -1) {
+                    --(vc_ptr->mrail.rails[i].send_wqes_avail);
+                    IBV_POST_SR(v, vc_ptr, i, "Failed to post rma put");                     
+       	        } 
+                vc_ptr = save_vc;
+       	    }
         }
-    }   
+    }
  
     while (winptr->put_get_list_size >= rdma_default_put_get_list_size)
     {
@@ -1247,12 +1289,22 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
             ++(vc_ptr->mrail.rails[hca_index].postsend_times_1sc);
             ++(winptr->put_get_list_size);
 
-            XRC_FILL_SRQN_FIX_CONN (v, vc_ptr, i);
-            if (MRAILI_Flush_wqe(vc_ptr,v,i) != -1) {
-                --(vc_ptr->mrail.rails[i].send_wqes_avail);
-                IBV_POST_SR(v, vc_ptr, i, "Failed to post rma get");
+            if (vc_ptr->ch.state != MPIDI_CH3I_VC_STATE_IDLE) {
+                /* VC is not ready to be used. Wait till it is ready and send */
+                MPIDI_CH3I_CM_One_Sided_SendQ_enqueue(vc_ptr, v);
+
+                if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_UNCONNECTED) {
+                    /* VC is not connected, initiate connection */
+                    MPIDI_CH3I_CM_Connect(vc_ptr);
+                }
+            } else {
+                XRC_FILL_SRQN_FIX_CONN (v, vc_ptr, i);
+                if (MRAILI_Flush_wqe(vc_ptr,v,i) != -1) {
+                    --(vc_ptr->mrail.rails[i].send_wqes_avail);
+                    IBV_POST_SR(v, vc_ptr, i, "Failed to post rma get");
+                }
+                vc_ptr = save_vc;
             }
-            vc_ptr = save_vc;
      	} 
     }
 

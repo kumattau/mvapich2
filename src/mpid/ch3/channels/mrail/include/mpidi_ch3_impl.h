@@ -164,6 +164,42 @@ extern MPIDI_CH3I_Process_t MPIDI_CH3I_Process;
 
 #define MPIDI_CH3I_CM_SendQ_empty(vc) (vc->ch.cm_sendq_head == NULL)
 
+/* One sidedd sendq */
+
+#define MPIDI_CH3I_CM_One_Sided_SendQ_enqueue(vc, v)                                \
+{                                                                           \
+    /* MT - not thread safe! */						    \
+    XRC_MSG ("enque %d %s:%d\n", vc->pg_rank, __FILE__, __LINE__);   \
+    MPIDI_DBG_PRINTF((50, FCNAME, "CM_SendQ_enqueue vc=%08p vbuf=0x%08x",    \
+	              vc, v));		                    \
+    v->desc.next = NULL;						    \
+    if (vc->ch.cm_1sc_sendq_head != NULL)					    \
+    {									    \
+	vc->ch.cm_1sc_sendq_tail->desc.next = v;				    \
+    }									    \
+    else								    \
+    {									    \
+	vc->ch.cm_1sc_sendq_head = v;					    \
+    }									    \
+    vc->ch.cm_1sc_sendq_tail = v;						    \
+}
+
+#define MPIDI_CH3I_CM_One_Sided_SendQ_dequeue(vc)                                     \
+{                                                                           \
+    /* MT - not thread safe! */						    \
+    XRC_MSG ("deque %d\n", vc->pg_rank);   \
+    MPIDI_DBG_PRINTF((50, FCNAME, "CM_SendQ_dequeue vc=%08p", vc));	\
+    vc->ch.cm_1sc_sendq_head = vc->ch.cm_1sc_sendq_head->desc.next;		    \
+    if (vc->ch.cm_1sc_sendq_head == NULL)					    \
+    {									    \
+	vc->ch.cm_1sc_sendq_tail = NULL;					    \
+    }									    \
+}
+
+#define MPIDI_CH3I_CM_One_Sided_SendQ_head(vc) (vc->ch.cm_1sc_sendq_head)
+
+#define MPIDI_CH3I_CM_One_Sided_SendQ_empty(vc) (vc->ch.cm_1sc_sendq_head == NULL)
+
 /* RDMA channel interface */
 
 int MPIDI_CH3I_Progress_init(void);

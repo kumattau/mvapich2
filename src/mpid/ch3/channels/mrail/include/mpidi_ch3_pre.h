@@ -105,6 +105,8 @@ typedef struct MPIDI_CH3I_VC
     /* Connection management */
     struct MPID_Request * cm_sendq_head;
     struct MPID_Request * cm_sendq_tail;
+    struct vbuf         * cm_1sc_sendq_head;
+    struct vbuf         * cm_1sc_sendq_tail;
 #ifdef CKPT
     volatile int rput_stop; /*Stop rput message and wait for rkey update*/
 #endif

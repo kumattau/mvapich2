@@ -68,6 +68,7 @@ typedef struct cm_msg {
     char     ifname[128];
 } cm_msg;
 
+
 #define DEFAULT_CM_MSG_RECV_BUFFER_SIZE   1024
 #define DEFAULT_CM_SEND_DEPTH             10
 #define DEFAULT_CM_MAX_SPIN_COUNT         5000   
@@ -1594,8 +1595,9 @@ void *cm_timeout_handler(void *arg)
                 if (delay > cm_timeout_usec)
                 {       /*Timer expired */
                     p->packet->timestamp = now;
-                    if (p->has_pg)
+                    if (p->has_pg){
                         ret = cm_post_ud_packet(p->pg.pg, &(p->packet->payload));
+                    }
                     else 
                         ret = __cm_post_ud_packet(&(p->packet->payload),
                                                   p->nopg.ah, p->nopg.qpn);
@@ -2357,6 +2359,7 @@ remove_pending:
 #endif
     {
         cm_qp_move_to_rts(vc);
+
         XRC_MSG ("RTS2");
         vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
 #ifdef _ENABLE_XRC_

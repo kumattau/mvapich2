@@ -35,6 +35,7 @@ do {                                                          \
 #define DEBUG_PRINT(args...)
 #endif
 
+
 static int handle_read(MPIDI_VC_t * vc, vbuf * v);
 static int handle_read_individual(MPIDI_VC_t * vc, 
         vbuf * buffer, int *header_type);
@@ -47,6 +48,7 @@ extern volatile int *rdma_cm_connect_count;
 #ifdef CKPT
 static int cm_handle_reactivation_complete();
 static int cm_send_pending_msg(MPIDI_VC_t * vc);
+static int cm_send_pending_1sc_msg(MPIDI_VC_t * vc);
 #endif
 
 volatile unsigned int MPIDI_CH3I_progress_completion_count = 0;
@@ -252,11 +254,15 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
                 MPIDI_CH3I_CM_Send_logged_msg(vc_ptr);
                 if (vc_ptr->mrail.sreq_head) /*has rndv*/
                     PUSH_FLOWLIST(vc_ptr);
+                /* Handle pending two-sided sends */
                 if (!MPIDI_CH3I_CM_SendQ_empty(vc_ptr))
                     cm_send_pending_msg(vc_ptr);
+                /* Handle pending one-sided sends */
+                if (!MPIDI_CH3I_CM_One_Sided_SendQ_empty(vc_ptr)) {
+                    cm_send_pending_1sc_msg(vc_ptr);
+                }
             }
 #endif
-
             if ((mpi_errno = handle_read(vc_ptr, buffer)) != MPI_SUCCESS)
             {
                 MPIU_ERR_POP(mpi_errno);
@@ -380,6 +386,7 @@ int MPIDI_CH3I_Progress_test()
             MPIU_ERR_POP(mpi_errno);
         }
 
+
         if (vc_ptr != NULL)
         {
             /*CM code*/
@@ -408,9 +415,15 @@ int MPIDI_CH3I_Progress_test()
                     PUSH_FLOWLIST(vc_ptr);
                 }
 
+                /* Handle pending two-sided sends */
                 if (!MPIDI_CH3I_CM_SendQ_empty(vc_ptr))
                 {
                     cm_send_pending_msg(vc_ptr);
+                }
+                /* Handle pending one-sided sends */
+                if (!MPIDI_CH3I_CM_One_Sided_SendQ_empty(vc_ptr))
+                {
+                    cm_send_pending_1sc_msg(vc_ptr);
                 }
             }
 #endif /* defined(CKPT) */
@@ -557,9 +570,15 @@ static int cm_handle_reactivation_complete()
                 PUSH_FLOWLIST(vc);
             }
 
+            /* Handle pending two-sided sends */
             if (!MPIDI_CH3I_CM_SendQ_empty(vc))
             {
                 cm_send_pending_msg(vc);
+            }
+            /* Handle pending one-sided sends */
+            if (!MPIDI_CH3I_CM_One_Sided_SendQ_empty(vc))
+            {
+                cm_send_pending_1sc_msg(vc);
             }
         }
     }
@@ -775,6 +794,61 @@ fn_fail:
 }
 
 #undef FUNCNAME
+#define FUNCNAME cm_send_pending_1sc_msg
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FCNAME)
+int cm_send_pending_1sc_msg(MPIDI_VC_t * vc)
+{
+    MPIDI_STATE_DECL(MPID_STATE_CM_SENDING_PENDING_1SC_MSG);
+    MPIDI_FUNC_ENTER(MPID_STATE_CM_SENDING_PENDING_1SC_MSG);
+
+    vbuf    *v    = NULL;
+    int mpi_errno = MPI_SUCCESS;
+
+    XRC_MSG ("cm_send_pending_1sc_msg %d 0x%08x %d\n", vc->pg_rank, 
+            vc->ch.xrc_flags, vc->ch.state);
+#ifdef _ENABLE_XRC_
+    MPIU_Assert (vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE 
+            || VC_XST_ISSET (vc, XF_SEND_IDLE));
+#else
+    MPIU_Assert (vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE);
+#endif
+
+    while (!MPIDI_CH3I_CM_One_Sided_SendQ_empty(vc)) {
+        
+        /* Get the queued message */
+        v = MPIDI_CH3I_CM_One_Sided_SendQ_head(vc);
+
+
+	v->desc.next = NULL;
+
+        /* Fill the SRQ number. We wouldn't have done this while queueing the
+         * message as the connection was not established then
+         */
+        XRC_FILL_SRQN_FIX_CONN (v, vc, v->rail);
+        if (MRAILI_Flush_wqe(vc, v, v->rail) != -1) {
+            --(vc->mrail.rails[v->rail].send_wqes_avail);
+            /* send noop to generate a completion event at server, so that
+             * server will establish the connection finally 
+             */
+            MRAILI_Send_noop(vc, v->rail);
+        }
+
+         if (MRAILI_Flush_wqe(vc, v, v->rail) != -1) {
+	    --(vc->mrail.rails[v->rail].send_wqes_avail);  
+            IBV_POST_SR(v, vc, v->rail, "Failed to post rma put");
+        }
+
+        /* Dequeue the message */
+        MPIDI_CH3I_CM_One_Sided_SendQ_dequeue(vc);
+
+    }
+
+    MPIDI_FUNC_EXIT(MPID_STATE_CM_SENDING_PENDING_1SC_MSG);
+    return mpi_errno;
+}
+
+#undef FUNCNAME
 #define FUNCNAME cm_handle_pending_send
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
@@ -792,6 +866,7 @@ static int cm_handle_pending_send()
         for (i = 0; i < MPIDI_PG_Get_size(pg); ++i) {
 	    MPIDI_PG_Get_vc(pg, i, &vc);
 
+            /* Handle pending two-sided sends */
             if ((vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE
 #ifdef _ENABLE_XRC_
                     || (USE_XRC && VC_XST_ISSET (vc, XF_SEND_IDLE))
@@ -801,6 +876,17 @@ static int cm_handle_pending_send()
                     MPIU_ERR_POP(mpi_errno);
                 }
             }
+            /* Handle pending one-sided sends */
+            if ((vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE
+#ifdef _ENABLE_XRC_
+                    || (USE_XRC && VC_XST_ISSET (vc, XF_SEND_IDLE))
+#endif
+                ) && !MPIDI_CH3I_CM_One_Sided_SendQ_empty(vc)) {
+                if ((mpi_errno = cm_send_pending_1sc_msg(vc)) != MPI_SUCCESS) {
+                    MPIU_ERR_POP(mpi_errno);
+                }
+            }
+
 #ifdef _ENABLE_XRC_
             MPICM_lock();
             if (USE_XRC && MPIDI_CH3I_RDMA_Process.xrc_rdmafp && 

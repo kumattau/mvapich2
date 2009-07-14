@@ -34,7 +34,6 @@
 #define DEBUG_PRINT(args...)
 #endif
 
-
 static pthread_spinlock_t g_apm_lock;
 
 /*
@@ -526,6 +525,7 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
     struct ibv_cq *ev_cq; 
     struct ibv_cq *chosen_cq; 
     void *ev_ctx;
+
 
     *vbuf_handle = NULL;
     needed = 0;
