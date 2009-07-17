@@ -797,6 +797,8 @@ fn_fail:
 #define FUNCNAME cm_send_pending_1sc_msg
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FCNAME)
+
+#ifndef DAPL_DEFAULT_PROVIDER
 int cm_send_pending_1sc_msg(MPIDI_VC_t * vc)
 {
     MPIDI_STATE_DECL(MPID_STATE_CM_SENDING_PENDING_1SC_MSG);
@@ -820,7 +822,7 @@ int cm_send_pending_1sc_msg(MPIDI_VC_t * vc)
         v = MPIDI_CH3I_CM_One_Sided_SendQ_head(vc);
 
 
-	v->desc.next = NULL;
+        v->desc.next = NULL;
 
         /* Fill the SRQ number. We wouldn't have done this while queueing the
          * message as the connection was not established then
@@ -834,8 +836,8 @@ int cm_send_pending_1sc_msg(MPIDI_VC_t * vc)
             MRAILI_Send_noop(vc, v->rail);
         }
 
-         if (MRAILI_Flush_wqe(vc, v, v->rail) != -1) {
-	    --(vc->mrail.rails[v->rail].send_wqes_avail);  
+        if (MRAILI_Flush_wqe(vc, v, v->rail) != -1) {
+	        --(vc->mrail.rails[v->rail].send_wqes_avail);  
             IBV_POST_SR(v, vc, v->rail, "Failed to post rma put");
         }
 
@@ -847,6 +849,13 @@ int cm_send_pending_1sc_msg(MPIDI_VC_t * vc)
     MPIDI_FUNC_EXIT(MPID_STATE_CM_SENDING_PENDING_1SC_MSG);
     return mpi_errno;
 }
+#else
+/* We do not do this for the uDAPL channel */
+int cm_send_pending_1sc_msg(MPIDI_VC_t * vc)
+{
+    return 0;
+}
+#endif
 
 #undef FUNCNAME
 #define FUNCNAME cm_handle_pending_send
