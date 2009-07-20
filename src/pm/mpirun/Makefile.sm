@@ -9,7 +9,7 @@
 # copyright file COPYRIGHT in the top level MVAPICH2 directory.
 #
 
-INCLUDES = -I${abs_srcdir}/include @blcr_include@ @ftb_include@
+INCLUDES = -I${abs_srcdir}/include -I${abs_builddir}/include @blcr_include@ @ftb_include@
 
 install_BIN = mpirun_rsh mpispawn 
 
