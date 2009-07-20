@@ -499,7 +499,7 @@ fn_exit:
 }
 
 #if 1
-unsigned long debug = 0;
+static unsigned long debug = 0;
 MPIDI_VC_t *debug_vc;
 #define LONG_WAIT (40000000)
 #endif
