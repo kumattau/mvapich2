@@ -57,6 +57,7 @@ typedef struct cm_msg {
     uint8_t  msg_type;
     uint8_t  nrails;
     uint16_t lids[MAX_NUM_SUBRAILS];
+    union ibv_gid gids[MAX_NUM_SUBRAILS];
     uint32_t qpns[MAX_NUM_SUBRAILS];
     uint64_t vc_addr;
     uint64_t vc_addr_bounce; /* for dpm, bounce vc_addr back */
@@ -774,7 +775,7 @@ static int cm_accept(MPIDI_PG_t *pg, cm_msg * msg)
 #ifdef _ENABLE_XRC_
     if (USE_XRC) {
         cm_rcv_qp_create (vc, msg_send.xrc_rqpn);
-        cm_qp_move_to_rtr(vc, msg->lids, msg->qpns, 1, msg_send.xrc_rqpn, 0);
+        cm_qp_move_to_rtr(vc, msg->lids, msg->gids, msg->qpns, 1, msg_send.xrc_rqpn, 0);
         for (i = 0; i < msg_send.nrails; ++i)
         {
             msg_send.lids[i] = vc->mrail.rails[i].lid;
@@ -790,7 +791,7 @@ static int cm_accept(MPIDI_PG_t *pg, cm_msg * msg)
 #endif
     {
         cm_qp_create(vc, 1, MV2_QPT_XRC);
-        cm_qp_move_to_rtr(vc, msg->lids, msg->qpns, 0, NULL, 0);
+        cm_qp_move_to_rtr(vc, msg->lids, msg->gids, msg->qpns, 0, NULL, 0);
 
         for (i = 0; i < msg_send.nrails; ++i)
         {
@@ -864,7 +865,7 @@ static int cm_accept_and_cancel(MPIDI_PG_t *pg, cm_msg * msg)
     MPIDI_PG_Get_vc(pg, msg->client_rank, &vc);
     vc->mrail.num_rails = msg->nrails;
    
-    cm_qp_move_to_rtr(vc, msg->lids, msg->qpns, 0, NULL, 0);
+    cm_qp_move_to_rtr(vc, msg->lids, msg->gids, msg->qpns, 0, NULL, 0);
 
     /*Prepare rep msg */
     memcpy(&msg_send, msg, sizeof(cm_msg));
@@ -948,7 +949,7 @@ static int cm_accept_nopg(MPIDI_VC_t *vc, cm_msg * msg)
 #endif
 
     cm_qp_create(vc, 1, MV2_QPT_RC);
-    cm_qp_move_to_rtr(vc, msg->lids, msg->qpns, 0, NULL, 1);
+    cm_qp_move_to_rtr(vc, msg->lids, msg->gids, msg->qpns, 0, NULL, 1);
 
     /*Prepare rep msg */
     memcpy(&msg_send, msg, sizeof(cm_msg));
@@ -1039,12 +1040,12 @@ static int cm_enable(MPIDI_PG_t *pg, cm_msg * msg)
         for (i = 0; i < rdma_num_hcas; i++) {
             vc->ch.xrc_srqn[i] = msg->xrc_srqn[i];
         }
-        cm_qp_move_to_rtr(vc, msg->lids, msg->qpns, 0, msg->xrc_rqpn, 0);
+        cm_qp_move_to_rtr(vc, msg->lids, msg->gids, msg->qpns, 0, msg->xrc_rqpn, 0);
     }
     else
 #endif
     {
-        cm_qp_move_to_rtr(vc, msg->lids, msg->qpns, 0, NULL, 0);
+        cm_qp_move_to_rtr(vc, msg->lids, msg->gids, msg->qpns, 0, NULL, 0);
     }
 
 #if defined(CKPT)
@@ -1113,7 +1114,7 @@ static int cm_enable_nopg(MPIDI_VC_t *vc, cm_msg * msg)
     VC_XST_SET (vc, XF_DPM_INI);
 #endif
 
-    cm_qp_move_to_rtr(vc, msg->lids, msg->qpns, 0, NULL, 1);
+    cm_qp_move_to_rtr(vc, msg->lids, msg->gids, msg->qpns, 0, NULL, 1);
 
     MRAILI_Init_vc(vc);
 

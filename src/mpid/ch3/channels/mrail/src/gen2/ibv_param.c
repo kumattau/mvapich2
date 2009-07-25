@@ -153,6 +153,9 @@ int sm_scheduling = USE_FIRST;
  * of rails */
 int striping_threshold = STRIPING_THRESHOLD;
 
+/* Used IBoEth mode */
+int use_iboeth = 0;
+
 /* Linear update factor for HSAM */
 int alpha = 0.9;
 int stripe_factor = 1;
@@ -402,6 +405,9 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
     MPIDI_FUNC_ENTER(MPID_STATE_RDMA_GET_CONTROL_PARAMETERS);
     char* value = NULL;
     int mpi_errno = MPI_SUCCESS;
+    int my_rank = -1;
+
+    PMI_Get_rank(&my_rank);
 
     if ((value = getenv("MV2_NUM_HCAS")) != NULL) {
         rdma_num_hcas = (int)atoi(value);
@@ -630,6 +636,27 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
     if ((value = getenv("MV2_USE_SHARED_MEM")) != NULL) {
         USE_SMP = !!atoi(value);
     }
+
+    if ((value = getenv("MV2_USE_IBOETH")) != NULL) {
+        use_iboeth = !!atoi(value);
+        if (1 == proc->has_ring_startup) {
+            if (0 == my_rank) {
+                MPIU_Usage_printf("Ring start up cannot be used in IBoEth mode."
+                                "Falling back to PMI exchange.\r\n"
+                                "You can also set MV2_USE_RING_STARTUP=0.\r\n");
+            }
+            proc->has_ring_startup = 0;
+        }
+        if (!USE_SMP) {
+            if (0 == my_rank) {
+                MPIU_Usage_printf("IBoEth mode cannot function without SHMEM."
+                                "Falling back to use SHMEM.\r\n"
+                                "Please do NOT set MV2_USE_SHARED_MEM=0.\r\n");
+            }
+            USE_SMP = 1;
+        }
+    }
+
 #ifdef _ENABLE_XRC_
     if (!USE_XRC) {
 #endif

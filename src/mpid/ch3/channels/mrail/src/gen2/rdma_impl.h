@@ -94,6 +94,7 @@ typedef struct MPIDI_CH3I_RDMA_Process_t {
     /*record lid and port information for connection establish later*/
     int ports[MAX_NUM_HCAS][MAX_NUM_PORTS];
     int lids[MAX_NUM_HCAS][MAX_NUM_PORTS];
+    union ibv_gid gids[MAX_NUM_HCAS][MAX_NUM_PORTS];
 
     int    (*post_send)(MPIDI_VC_t * vc, vbuf * v, int rail);
 
@@ -155,6 +156,7 @@ struct process_init_info {
     int         **hostid;
     uint16_t    **lid;
     uint32_t    **qp_num_rdma;
+    union ibv_gid    **gid;
     /* TODO: haven't consider one sided queue pair yet */
     uint32_t    **qp_num_onesided;
     uint64_t    *vc_addr;
@@ -165,6 +167,7 @@ typedef struct ud_addr_info {
     int hostid;
     uint16_t lid;
     uint32_t qpn;
+    union ibv_gid gid;
 }ud_addr_info_t;
 
 struct MPIDI_PG;
@@ -469,8 +472,8 @@ struct ibv_srq *create_srq(struct MPIDI_CH3I_RDMA_Process_t *proc,
 int cm_qp_create(MPIDI_VC_t *vc, int force, int qptype);
 
 /*function to move qps to rtr and prepost buffers*/
-int cm_qp_move_to_rtr(MPIDI_VC_t *vc, uint16_t *lids, uint32_t *qpns, 
-        int flag, uint32_t * rqpn, int is_dpm);
+int cm_qp_move_to_rtr(MPIDI_VC_t *vc, uint16_t *lids, union ibv_gid *gids, 
+                        uint32_t *qpns, int flag, uint32_t * rqpn, int is_dpm);
 
 /*function to move qps to rts and mark the connection available*/
 int cm_qp_move_to_rts(MPIDI_VC_t *vc);

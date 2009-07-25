@@ -58,12 +58,14 @@ struct process_init_info *alloc_process_init_info(int pg_size, int rails)
     }
 
     info->lid = (uint16_t **) MPIU_Malloc(pg_size * sizeof(uint16_t *));
+    info->gid = (union ibv_gid **) MPIU_Malloc(pg_size * sizeof(union ibv_gid *));
     info->hostid = (int **) MPIU_Malloc(pg_size * sizeof(int *));
     info->qp_num_rdma = (uint32_t **) MPIU_Malloc(pg_size * sizeof(uint32_t *));
     info->qp_num_onesided = (uint32_t **) MPIU_Malloc(pg_size * sizeof(uint32_t *));
     info->hca_type = (uint32_t *) MPIU_Malloc(pg_size * sizeof(uint32_t));
     info->vc_addr  = (uint64_t *)malloc(pg_size * sizeof(uint64_t));
     if (!info->lid
+        || !info->gid 
         || !info->hostid 
         || !info->qp_num_rdma
         || !info->qp_num_onesided 
@@ -76,10 +78,13 @@ struct process_init_info *alloc_process_init_info(int pg_size, int rails)
     {
         info->qp_num_rdma[i] = (uint32_t *) MPIU_Malloc(rails * sizeof(uint32_t));
         info->lid[i] = (uint16_t *) MPIU_Malloc(rails * sizeof(uint16_t));
+        info->gid[i] = (union ibv_gid *)
+                         MPIU_Malloc(pg_size * sizeof(union ibv_gid));
         info->hostid[i] = (int *) MPIU_Malloc(rails * sizeof(int));
         info->qp_num_onesided[i] = (uint32_t *) MPIU_Malloc(rails * sizeof(uint32_t));
 
         if (!info->lid[i]
+                || !info->gid[i]
                 || !info->hostid[i]
                 || !info->qp_num_rdma[i]
                 || !info->qp_num_onesided[i]) {
@@ -100,11 +105,13 @@ void free_process_init_info(struct process_init_info *info, int pg_size)
     for (i = 0; i < pg_size; ++ i) {
         MPIU_Free(info->qp_num_rdma[i]);
         MPIU_Free(info->lid[i]);
+        MPIU_Free(info->gid[i]);
         MPIU_Free(info->hostid[i]);
         MPIU_Free(info->qp_num_onesided[i]);
     }
 
     MPIU_Free(info->lid);
+    MPIU_Free(info->gid);
     MPIU_Free(info->hostid);
     MPIU_Free(info->qp_num_rdma);
     MPIU_Free(info->qp_num_onesided);
@@ -381,12 +388,14 @@ int rdma_iba_hca_init_noqp(struct MPIDI_CH3I_RDMA_Process_t *proc,
 {
     struct ibv_port_attr    port_attr;
     struct ibv_device_attr  dev_attr;
+    union ibv_gid gid;
     int mpi_errno = MPI_SUCCESS;
     int i, j, k;
 
     /* step 1: open hca, create ptags  and create cqs */
     for (i = 0; i < rdma_num_hcas; i++) {
 
+        memset(&gid, 0, sizeof(gid));
         if(ibv_query_device(proc->nic_context[i], &dev_attr)) {
             MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
                     MPI_ERR_INTERN,
@@ -402,8 +411,19 @@ int rdma_iba_hca_init_noqp(struct MPIDI_CH3I_RDMA_Process_t *proc,
                 if ((! ibv_query_port(MPIDI_CH3I_RDMA_Process.nic_context[i],
                                         j, &port_attr)) &&
                         port_attr.state == IBV_PORT_ACTIVE &&
-                        port_attr.lid) {
-                    MPIDI_CH3I_RDMA_Process.lids[i][k]    = port_attr.lid;
+                        (port_attr.lid || (!port_attr.lid && use_iboeth))) {
+
+                    if (use_iboeth) {
+                       if (ibv_query_gid(MPIDI_CH3I_RDMA_Process.nic_context[i],
+                                        j, 0, &gid)) {
+                            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                              "%s%d", "Fail to retrieve gid on rank ", pg_rank);
+                        }
+                        MPIDI_CH3I_RDMA_Process.gids[i][k] = gid;
+                    } else {
+                        MPIDI_CH3I_RDMA_Process.lids[i][k]    = port_attr.lid;
+                    }
+
                     MPIDI_CH3I_RDMA_Process.ports[i][k++] = j;
 
                     if (check_attrs(&port_attr, &dev_attr)) {
@@ -438,8 +458,18 @@ int rdma_iba_hca_init_noqp(struct MPIDI_CH3I_RDMA_Process_t *proc,
                         "query or not ACTIVE\n",
                         rdma_default_port);
             }
+            if (use_iboeth) {
+               if (ibv_query_gid(MPIDI_CH3I_RDMA_Process.nic_context[i],
+                                rdma_default_port, 0, &gid)) {
+                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                        "%s%d", "Fail to retrieve gid on rank ", pg_rank);
+                }
+                MPIDI_CH3I_RDMA_Process.gids[i][0] = gid;
+            } else {
+                MPIDI_CH3I_RDMA_Process.lids[i][0]    = port_attr.lid;
+            }
+
             MPIDI_CH3I_RDMA_Process.ports[i][0] = rdma_default_port;
-            MPIDI_CH3I_RDMA_Process.lids[i][0]  = port_attr.lid;
 
             if (check_attrs(&port_attr, &dev_attr)) {
                 MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
@@ -543,8 +573,11 @@ int rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
     int rail_index = 0;
     int ports[MAX_NUM_HCAS][MAX_NUM_PORTS];
     int lids[MAX_NUM_HCAS][MAX_NUM_PORTS];
+    union ibv_gid gids[MAX_NUM_HCAS][MAX_NUM_PORTS];
     int mpi_errno = MPI_SUCCESS;
     int pg_size = MPIDI_PG_Get_size(pg);
+
+    memset(&gids, 0, sizeof(gids));
 
 #ifdef RDMA_CM
   if (!proc->use_rdma_cm)
@@ -552,9 +585,9 @@ int rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
 #endif
     /* step 1: open hca, create ptags  and create cqs */
     for (i = 0; i < rdma_num_hcas; i++) {
-        if(ibv_query_device(proc->nic_context[i], &dev_attr)) {
-	    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-		    "**fail %s", "Error getting HCA attributes");
+        if (ibv_query_device(proc->nic_context[i], &dev_attr)) {
+	        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+		        "**fail %s", "Error getting HCA attributes");
         }
 
         /* detecting active ports */
@@ -564,48 +597,70 @@ int rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                 if ((! ibv_query_port(MPIDI_CH3I_RDMA_Process.nic_context[i],
                                         j, &port_attr)) &&
                         port_attr.state == IBV_PORT_ACTIVE &&
-                        port_attr.lid) {
-                    lids[i][k]    = port_attr.lid;
+                        (port_attr.lid || (!port_attr.lid && use_iboeth))) {
+
+                    if (use_iboeth) {
+                       if (ibv_query_gid(MPIDI_CH3I_RDMA_Process.nic_context[i],
+                                            j, 0, &gids[i][k])) {
+                            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                              "%s%d", "Fail to retrieve gid on rank ", pg_rank);
+                        }
+                        DEBUG_PRINT("[%d] %s(%d): Getting gid[%d][%d] for"
+                                " port %d subnet_prefix = %llx,"
+                                " intf_id = %llx\r\n",
+                                pg_rank, __FUNCTION__, __LINE__, i, k, k,
+                                gids[i][k].global.subnet_prefix,
+                                gids[i][k].global.interface_id);
+                    } else {
+                        lids[i][k]    = port_attr.lid;
+                    }
                     ports[i][k++] = j;
 
                     if (check_attrs(&port_attr, &dev_attr)) {
-			MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-				"**fail", "**fail %s",
-				"Attributes failed sanity check");
+			            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+				            "**fail", "**fail %s",
+				            "Attributes failed sanity check");
                     }
-
                 }
             }
             if (k < rdma_num_ports) {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**activeports", "**activeports %d", rdma_num_ports);
+                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                     "**activeports", "**activeports %d", rdma_num_ports);
             }
         } else {
             if(ibv_query_port(MPIDI_CH3I_RDMA_Process.nic_context[i],
                                 rdma_default_port, &port_attr)
-                || (!port_attr.lid )
-                || (port_attr.state != IBV_PORT_ACTIVE))
-            {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**portquery", "**portquery %d", rdma_default_port);
+                || (!port_attr.lid && !use_iboeth)
+                || (port_attr.state != IBV_PORT_ACTIVE)) {
+                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                     "**portquery", "**portquery %d", rdma_default_port);
             }
 
             ports[i][0] = rdma_default_port;
-            lids[i][0]  = port_attr.lid;
 
-            if (check_attrs(&port_attr, &dev_attr)) {
-		MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-			"**fail %s", "Attributes failed sanity check");
+            if (use_iboeth) {
+                if (ibv_query_gid(MPIDI_CH3I_RDMA_Process.nic_context[i], 0,
+                                    0, &gids[i][0])) {
+                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                        "%s%d", "Fail to retrieve gid on rank ", pg_rank);
+                }
+
+                if (check_attrs(&port_attr, &dev_attr)) {
+		            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                       "**fail", "**fail %s", "Attributes failed sanity check");
+                }
+            } else {
+                lids[i][0]  = port_attr.lid;
             }
-
         }
-        
-        if(rdma_use_blocking) {
+
+        if (rdma_use_blocking) {
             proc->comp_channel[i] = 
                 ibv_create_comp_channel(proc->nic_context[i]);
 
-            if(!proc->comp_channel[i]) {
-		MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto err,
-			"**fail", "**fail %s",
-			"cannot create completion channel");
+            if (!proc->comp_channel[i]) {
+		        MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto err,
+			        "**fail", "**fail %s", "cannot create completion channel");
             }
 
             proc->cq_hndl[i] = ibv_create_cq(proc->nic_context[i],
@@ -614,33 +669,30 @@ int rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
             proc->recv_cq_hndl[i] = NULL;
 
             if (!proc->cq_hndl[i]) {
-		MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto err,
-			"**fail", "**fail %s", "cannot create cq");
+		        MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto err,
+			        "**fail", "**fail %s", "cannot create cq");
             }
 
             if (ibv_req_notify_cq(proc->cq_hndl[i], 0)) {
-		MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto err,
-			"**fail", "**fail %s",
-			"cannot request cq notification");
+		        MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto err,
+			        "**fail", "**fail %s", "cannot request cq notification");
             }
-            
         } else {
-
             /* Allocate the completion queue handle for the HCA */
             proc->cq_hndl[i] = ibv_create_cq(proc->nic_context[i],
-                    rdma_default_max_cq_size, NULL, NULL, 0);
+                                    rdma_default_max_cq_size, NULL, NULL, 0);
             proc->send_cq_hndl[i] = NULL;
             proc->recv_cq_hndl[i] = NULL;
 
             if (!proc->cq_hndl[i]) {
-		MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto err,
-			"**fail", "**fail %s", "cannot create cq");
+		        MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto err,
+			        "**fail", "**fail %s", "cannot create cq");
             }
         }
 
-	if (proc->has_srq)
+	    if (proc->has_srq) {
 	        proc->srq_hndl[i] = create_srq(proc, i);
-
+        }
     }
 #ifdef RDMA_CM
   }
@@ -660,20 +712,20 @@ int rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
             (sizeof *vc->mrail.rails * vc->mrail.num_rails);
 
         if (!vc->mrail.rails) {
-	    MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto err_cq,
-		    "**fail", "**fail %s", "Failed to allocate resources for "
-		    "multirails");
+	        MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto err_cq,
+		        "**fail", "**fail %s", "Failed to allocate resources for "
+		        "multirails");
         }
 
-	vc->mrail.srp.credits = MPIU_Malloc
-        (sizeof *vc->mrail.srp.credits * vc->mrail.num_rails);
-	if (!vc->mrail.srp.credits) {
-	    MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto err_cq,
-		    "**fail", "**fail %s", "Failed to allocate resources for "
-		    "credits array");
-	}
-	memset(vc->mrail.srp.credits, 0,
-	       (sizeof *vc->mrail.srp.credits * vc->mrail.num_rails));
+	    vc->mrail.srp.credits = MPIU_Malloc
+                        (sizeof *vc->mrail.srp.credits * vc->mrail.num_rails);
+	    if (!vc->mrail.srp.credits) {
+	        MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto err_cq,
+		        "**fail", "**fail %s", "Failed to allocate resources for "
+		        "credits array");
+	    }
+	    memset(vc->mrail.srp.credits, 0,
+	            (sizeof *vc->mrail.srp.credits * vc->mrail.num_rails));
 
         if (i == pg_rank)
             continue;
@@ -685,18 +737,18 @@ int rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
         	rail_index < vc->mrail.num_rails;
         	rail_index++) 
 	{
-            hca_index  = rail_index / (vc->mrail.num_rails / rdma_num_hcas);
+        hca_index  = rail_index / (vc->mrail.num_rails / rdma_num_hcas);
 	    port_index = (rail_index / (vc->mrail.num_rails / (rdma_num_hcas *
                     rdma_num_ports))) % rdma_num_ports;
 	    memset(&attr, 0, sizeof attr);
 	    attr.cap.max_send_wr = rdma_default_max_send_wqe;
 
-            if (proc->has_srq) {
-                attr.cap.max_recv_wr = 0;
-                attr.srq = proc->srq_hndl[hca_index];
-            } else {
-                attr.cap.max_recv_wr = rdma_default_max_recv_wqe;
-            }
+        if (proc->has_srq) {
+            attr.cap.max_recv_wr = 0;
+            attr.srq = proc->srq_hndl[hca_index];
+        } else {
+            attr.cap.max_recv_wr = rdma_default_max_recv_wqe;
+        }
 
 	    attr.cap.max_send_sge = rdma_default_max_sg_list;
 	    attr.cap.max_recv_sge = rdma_default_max_sg_list;
@@ -708,27 +760,31 @@ int rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
           
 	    vc->mrail.rails[rail_index].qp_hndl = 
 	        ibv_create_qp(proc->ptag[hca_index], &attr);
+
 	    if (!vc->mrail.rails[rail_index].qp_hndl) {
-		MPIU_ERR_SETFATALANDSTMT2(mpi_errno, MPI_ERR_OTHER, goto err_cq,
-			"**fail", "%s%d", "Failed to create qp for rank ", i);
+		    MPIU_ERR_SETFATALANDSTMT2(mpi_errno, MPI_ERR_OTHER, goto err_cq,
+			    "**fail", "%s%d", "Failed to create qp for rank ", i);
 	    }
+
 	    vc->mrail.rails[rail_index].nic_context = proc->nic_context[hca_index];
 	    vc->mrail.rails[rail_index].hca_index   = hca_index;
-	    vc->mrail.rails[rail_index].port	= ports[hca_index][port_index];
+	    vc->mrail.rails[rail_index].port	    = ports[hca_index][port_index];
 	    vc->mrail.rails[rail_index].lid         = lids[hca_index][port_index];
-	    vc->mrail.rails[rail_index].cq_hndl	= proc->cq_hndl[hca_index];
+	    vc->mrail.rails[rail_index].gid         = gids[hca_index][port_index];
+	    vc->mrail.rails[rail_index].cq_hndl     = proc->cq_hndl[hca_index];
 	    vc->mrail.rails[rail_index].send_cq_hndl	= NULL;
 	    vc->mrail.rails[rail_index].recv_cq_hndl	= NULL;
 
-            if (info) {
-                info->lid[i][rail_index] = lids[hca_index][port_index];
-                info->hca_type[i] = proc->hca_type;
-	        info->qp_num_rdma[i][rail_index] =
-        	        vc->mrail.rails[rail_index].qp_hndl->qp_num;
-                info->vc_addr[i] = (uintptr_t)vc;
-                DEBUG_PRINT("[%d->%d from %d] vc %p\n", i, pg_rank, pg_rank, vc);
-                DEBUG_PRINT("Setting hca type %d\n", info->hca_type[i]);
-            }
+        if (info) {
+            info->lid[i][rail_index] = lids[hca_index][port_index];
+            info->gid[i][rail_index] = gids[hca_index][port_index];
+            info->hca_type[i] = proc->hca_type;
+            info->qp_num_rdma[i][rail_index] =
+    	        vc->mrail.rails[rail_index].qp_hndl->qp_num;
+            info->vc_addr[i] = (uintptr_t)vc;
+            DEBUG_PRINT("[%d->%d from %d] vc %p\n", i, pg_rank, pg_rank, vc);
+            DEBUG_PRINT("Setting hca type %d\n", info->hca_type[i]);
+        }
 
 	    qp_attr.qp_state        = IBV_QPS_INIT;
 	    qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE | 
@@ -743,9 +799,9 @@ int rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                     IBV_QP_PKEY_INDEX         |
                     IBV_QP_PORT               |
                     IBV_QP_ACCESS_FLAGS)) {
-		MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto err_cq,
-			"**fail", "**fail %s", "Failed to modify QP to INIT");
-            }
+		    MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto err_cq,
+			    "**fail", "**fail %s", "Failed to modify QP to INIT");
+        }
 	}
     }
 
@@ -897,14 +953,27 @@ rdma_iba_enable_connections(struct MPIDI_CH3I_RDMA_Process_t *proc,
     /**********************  INIT --> RTR  ************************/
     memset(&qp_attr, 0, sizeof qp_attr);
     qp_attr.qp_state    =   IBV_QPS_RTR;
-    qp_attr.path_mtu    =   rdma_default_mtu;
     qp_attr.rq_psn      =   rdma_default_psn;
     qp_attr.max_dest_rd_atomic  =   rdma_default_max_rdma_dst_ops;
     qp_attr.min_rnr_timer       =   rdma_default_min_rnr_timer;
-    qp_attr.ah_attr.is_global   =   0;
     qp_attr.ah_attr.sl          =   rdma_default_service_level;
     qp_attr.ah_attr.static_rate =   rdma_default_static_rate;
     qp_attr.ah_attr.src_path_bits   =   rdma_default_src_path_bits;
+
+    if (use_iboeth) {
+        qp_attr.ah_attr.grh.dgid.global.subnet_prefix = 0;
+        qp_attr.ah_attr.grh.dgid.global.interface_id = 0;
+        qp_attr.ah_attr.grh.flow_label = 0;
+        qp_attr.ah_attr.grh.sgid_index = 0;
+        qp_attr.ah_attr.grh.hop_limit = 1;
+        qp_attr.ah_attr.grh.traffic_class = 0;
+        qp_attr.ah_attr.is_global      = 1;
+        qp_attr.ah_attr.dlid           = 0;
+        qp_attr.path_mtu            = IBV_MTU_1024;
+    } else {
+        qp_attr.ah_attr.is_global   =   0;
+        qp_attr.path_mtu    =   rdma_default_mtu;
+    }
 
     qp_attr_mask        |=  IBV_QP_STATE; 
     qp_attr_mask        |=  IBV_QP_PATH_MTU;
@@ -923,28 +992,30 @@ rdma_iba_enable_connections(struct MPIDI_CH3I_RDMA_Process_t *proc,
         DEBUG_PRINT("[%d->%d] from %d received vc %08llx\n",
                 pg_rank, i, pg_rank, info->vc_addr[i]);
 
-	for (rail_index = 0; rail_index < rdma_num_rails; rail_index ++) {
-        qp_attr.dest_qp_num = info->qp_num_rdma[i][rail_index];
-        qp_attr.ah_attr.dlid = info->lid[i][rail_index];
-        qp_attr.ah_attr.port_num = vc->mrail.rails[rail_index].port;
+	    for (rail_index = 0; rail_index < rdma_num_rails; rail_index ++) {
+            qp_attr.dest_qp_num = info->qp_num_rdma[i][rail_index];
+            qp_attr.ah_attr.port_num = vc->mrail.rails[rail_index].port;
+            if (use_iboeth) {
+                qp_attr.ah_attr.grh.dgid = info->gid[i][rail_index];
+            } else {
+                qp_attr.ah_attr.dlid = info->lid[i][rail_index];
+            }
 
-        /* If HSAM is enabled, include the source path bits and change
-         * the destination LID accordingly */
+            /* If HSAM is enabled, include the source path bits and change
+            * the destination LID accordingly */
 
-        /* Both source and destination should have the same value of the
-         * bits */
+            /* Both source and destination should have the same value of the
+            * bits */
 
-        if(MPIDI_CH3I_RDMA_Process.has_hsam) {
-            qp_attr.ah_attr.src_path_bits = rail_index %
-                power_two(MPIDI_CH3I_RDMA_Process.lmc);
-            qp_attr.ah_attr.dlid = info->lid[i][rail_index]
-                + rail_index % power_two(MPIDI_CH3I_RDMA_Process.lmc);
-        }
-        qp_attr_mask    |=  IBV_QP_DEST_QPN;
+            if (MPIDI_CH3I_RDMA_Process.has_hsam) {
+                qp_attr.ah_attr.src_path_bits = rail_index %
+                                    power_two(MPIDI_CH3I_RDMA_Process.lmc);
+                qp_attr.ah_attr.dlid = info->lid[i][rail_index]
+                        + rail_index % power_two(MPIDI_CH3I_RDMA_Process.lmc);
+            }
+            qp_attr_mask    |=  IBV_QP_DEST_QPN;
 
-            DEBUG_PRINT("!!!Modify qp %d with qpnum %08x, dlid %x\n", rail_index,
-                qp_attr.dest_qp_num, qp_attr.ah_attr.dlid);
-            if (ibv_modify_qp( vc->mrail.rails[rail_index].qp_hndl,
+            if (ibv_modify_qp(vc->mrail.rails[rail_index].qp_hndl,
                                &qp_attr, qp_attr_mask)) {
                 fprintf(stderr, "[%s:%d] Could not modify qp" 
                         "to RTR\n",__FILE__, __LINE__); 
@@ -989,8 +1060,8 @@ rdma_iba_enable_connections(struct MPIDI_CH3I_RDMA_Process_t *proc,
         if (i == pg_rank)
             continue;
         for (rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
-            if (ibv_modify_qp(  vc->mrail.rails[rail_index].qp_hndl, &qp_attr,
-                        qp_attr_mask)) {
+            if (ibv_modify_qp(vc->mrail.rails[rail_index].qp_hndl, &qp_attr,
+                                qp_attr_mask)) {
                 fprintf(stderr, "[%s:%d] Could not modify rdma qp to RTS\n",
                         __FILE__, __LINE__);
                 return 1;
@@ -1175,8 +1246,13 @@ int cm_qp_reuse (MPIDI_VC_t *vc, MPIDI_VC_t *orig)
         vc->mrail.rails[rail_index].hca_index   = hca_index;
         vc->mrail.rails[rail_index].port	= 
             MPIDI_CH3I_RDMA_Process.ports[hca_index][port_index];
-        vc->mrail.rails[rail_index].lid     = 
-            MPIDI_CH3I_RDMA_Process.lids[hca_index][port_index];
+        if (use_iboeth) {
+            vc->mrail.rails[rail_index].gid     = 
+                MPIDI_CH3I_RDMA_Process.gids[hca_index][port_index];
+        } else {
+            vc->mrail.rails[rail_index].lid     = 
+                MPIDI_CH3I_RDMA_Process.lids[hca_index][port_index];
+        }
         vc->mrail.rails[rail_index].cq_hndl	= 
             MPIDI_CH3I_RDMA_Process.cq_hndl[hca_index];
 	    vc->mrail.rails[rail_index].send_cq_hndl	= NULL;
@@ -1275,8 +1351,13 @@ static inline int cm_qp_conn_create(MPIDI_VC_t *vc, int qptype)
         vc->mrail.rails[rail_index].hca_index   = hca_index;
         vc->mrail.rails[rail_index].port	= 
             MPIDI_CH3I_RDMA_Process.ports[hca_index][port_index];
-        vc->mrail.rails[rail_index].lid     = 
-            MPIDI_CH3I_RDMA_Process.lids[hca_index][port_index];
+        if (use_iboeth) {
+            vc->mrail.rails[rail_index].gid     = 
+                MPIDI_CH3I_RDMA_Process.gids[hca_index][port_index];
+        } else {
+            vc->mrail.rails[rail_index].lid     = 
+                MPIDI_CH3I_RDMA_Process.lids[hca_index][port_index];
+        }
         vc->mrail.rails[rail_index].cq_hndl	= 
             MPIDI_CH3I_RDMA_Process.cq_hndl[hca_index];
 	    vc->mrail.rails[rail_index].send_cq_hndl	= NULL;
@@ -1358,7 +1439,8 @@ int cm_qp_create(MPIDI_VC_t *vc, int force, int qptype)
 
 
 /*function to move qps to rtr and prepost buffers*/
-int cm_qp_move_to_rtr(MPIDI_VC_t *vc, uint16_t *lids, uint32_t *qpns, 
+int cm_qp_move_to_rtr(MPIDI_VC_t *vc, uint16_t *lids, union ibv_gid *gids,
+                         uint32_t *qpns, 
         int is_rqp, uint32_t *rqpn, int is_dpm)
 {
     struct ibv_qp_attr  qp_attr;
@@ -1369,16 +1451,31 @@ int cm_qp_move_to_rtr(MPIDI_VC_t *vc, uint16_t *lids, uint32_t *qpns,
         hca_index  = rail_index / (vc->mrail.num_rails / rdma_num_hcas);
         memset(&qp_attr, 0, sizeof qp_attr);
         qp_attr.qp_state    =   IBV_QPS_RTR;
-        qp_attr.path_mtu    =   rdma_default_mtu;
         qp_attr.rq_psn      =   rdma_default_psn;
         qp_attr.max_dest_rd_atomic  =   rdma_default_max_rdma_dst_ops;
         qp_attr.min_rnr_timer       =   rdma_default_min_rnr_timer;
-        qp_attr.ah_attr.is_global   =   0;
         qp_attr.ah_attr.sl          =   rdma_default_service_level;
         qp_attr.ah_attr.static_rate =   rdma_default_static_rate;
         qp_attr.ah_attr.src_path_bits   =   rdma_default_src_path_bits;
-        qp_attr.ah_attr.dlid = lids[rail_index];
         qp_attr.ah_attr.port_num = vc->mrail.rails[rail_index].port;
+
+        if (use_iboeth) {
+            qp_attr.ah_attr.grh.dgid.global.subnet_prefix = 0;
+            qp_attr.ah_attr.grh.dgid.global.interface_id = 0;
+            qp_attr.ah_attr.grh.flow_label = 0;
+            qp_attr.ah_attr.grh.sgid_index = 0;
+            qp_attr.ah_attr.grh.hop_limit = 1;
+            qp_attr.ah_attr.grh.traffic_class = 0;
+            qp_attr.ah_attr.is_global      = 1;
+            qp_attr.ah_attr.dlid           = 0;
+            qp_attr.path_mtu            = IBV_MTU_1024;
+            qp_attr.ah_attr.grh.dgid    = gids[rail_index];
+        } else {
+            qp_attr.ah_attr.dlid = lids[rail_index];
+            qp_attr.ah_attr.is_global   =   0;
+            qp_attr.path_mtu    =   rdma_default_mtu;
+        }
+
 #if _ENABLE_XRC_
         if (USE_XRC && !is_rqp && !is_dpm) {
             /* Move send qp to RTR */

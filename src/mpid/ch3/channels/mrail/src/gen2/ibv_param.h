@@ -99,6 +99,7 @@ extern int                  rdma_use_coalesce;
 extern int                  rdma_use_blocking;
 extern unsigned long        rdma_spin_count;
 extern int                  USE_SMP;
+extern int                  use_iboeth;
 
 
 

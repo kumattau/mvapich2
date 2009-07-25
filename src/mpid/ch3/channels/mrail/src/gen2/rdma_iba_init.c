@@ -163,7 +163,7 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
 
     rdma_num_rails = rdma_num_hcas * rdma_num_ports * rdma_num_qp_per_port;
     DEBUG_PRINT("num_qp_per_port %d, num_rails = %d\n", rdma_num_qp_per_port,
-	    rdma_num_rails);
+	            rdma_num_rails);
 
     init_info = alloc_process_init_info(pg_size, rdma_num_rails);
     if (!init_info) {
@@ -171,30 +171,35 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
                         "**nomem %s", "init_info");
     }
 
-    if (pg_size > 1) {
-        /* Check heterogenity */
-        mpi_errno = rdma_setup_startup_ring(&MPIDI_CH3I_RDMA_Process, pg_rank, pg_size);
+    if ((pg_size > 1) && (!use_iboeth)) {
+        /* IBoEth mode does not support loop back connections as of now. Ring
+         * based connection setup uses QP's to exchange info between all
+         * processes, whether they're on the same node or different nodes.
+         */
+        mpi_errno = rdma_setup_startup_ring(&MPIDI_CH3I_RDMA_Process, pg_rank,
+                                             pg_size);
         if (mpi_errno) {
             MPIU_ERR_POP(mpi_errno);
         }
 
         my_hca_type = MPIDI_CH3I_RDMA_Process.hca_type;
-        mpi_errno = rdma_ring_based_allgather(&my_hca_type, sizeof my_hca_type, pg_rank,
-                                  init_info->hca_type, pg_size, 
-                                  &MPIDI_CH3I_RDMA_Process);
-	if(mpi_errno){
-	MPIU_ERR_POP(mpi_errno);
-	}	
+        mpi_errno = rdma_ring_based_allgather(&my_hca_type, sizeof my_hca_type,
+                                        pg_rank, init_info->hca_type, pg_size, 
+                                        &MPIDI_CH3I_RDMA_Process);
+	    if (mpi_errno) {
+	        MPIU_ERR_POP(mpi_errno);
+	    }
+        /* Check heterogenity */
         rdma_param_handle_heterogenity(init_info->hca_type, pg_size);
     }
 
-    if(MPIDI_CH3I_RDMA_Process.has_apm) {
+    if (MPIDI_CH3I_RDMA_Process.has_apm) {
         init_apm_lock(); 
     }
 
     if (MPIDI_CH3I_RDMA_Process.has_srq) {
-	mpi_errno = init_vbuf_lock();
-	if(mpi_errno) {
+	    mpi_errno = init_vbuf_lock();
+	    if(mpi_errno) {
             MPIU_ERR_POP(mpi_errno);
         }
     }
@@ -203,11 +208,11 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
 
     for (i = 0; i < pg_size; ++i) {
 
-	MPIDI_PG_Get_vc(pg, i, &vc);
-	memset(&(vc->mrail), 0, sizeof(vc->mrail));
+	    MPIDI_PG_Get_vc(pg, i, &vc);
+	    memset(&(vc->mrail), 0, sizeof(vc->mrail));
 
-	/* This assmuption will soon be done with */
-	vc->mrail.num_rails = rdma_num_rails;
+	    /* This assmuption will soon be done with */
+	    vc->mrail.num_rails = rdma_num_rails;
     }
 
     /* Open the device and create cq and qp's */
@@ -224,162 +229,188 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
 
     if (pg_size > 1) {
 
+	/* Exchange the information about HCA_lid / HCA_gid and qp_num */
 	if (!MPIDI_CH3I_RDMA_Process.has_ring_startup) {
-	    /*Exchange the information about HCA_lid and qp_num */
 	    /* Allocate space for pmi keys and values */
 	    error = PMI_KVS_Get_key_length_max(&key_max_sz);
-	    if(error != PMI_SUCCESS) {
-		MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-			"**fail %s", "Error getting max key length");
+	    if (error != PMI_SUCCESS) {
+		    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+			    "**fail %s", "Error getting max key length");
 	    }
 
 	    ++key_max_sz;
 	    key = MPIU_Malloc(key_max_sz);
 
 	    if (key == NULL) {
-		MPIU_ERR_SETFATALANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**nomem",
-			"**nomem %s", "pmi key");
+		    MPIU_ERR_SETFATALANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**nomem",
+			    "**nomem %s", "pmi key");
 	    }
 
 	    error = PMI_KVS_Get_value_length_max(&val_max_sz);
-	    if(error != PMI_SUCCESS) {
-		MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-			"**fail %s", "Error getting max value length");
+	    if (error != PMI_SUCCESS) {
+		    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+			    "**fail %s", "Error getting max value length");
 	    }
 
 	    ++val_max_sz;
 	    val = MPIU_Malloc(val_max_sz);
 
 	    if (val == NULL) {
-		MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,"**nomem",
-			"**nomem %s", "pmi value");
+		    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,"**nomem",
+			    "**nomem %s", "pmi value");
 	    }
 
 	    /* For now, here exchange the information of each LID separately */
-	    for (i = 0; i < pg_size; i++)
-            {
-		if (pg_rank == i)
-                {
-		    continue;
-		}
+	    for (i = 0; i < pg_size; i++) {
+        if (pg_rank == i) {
+            continue;
+        }
+	    /* Generate the key and value pair */
+	    MPIU_Snprintf(rdmakey, 512, "%08x-%08x", pg_rank, i);
+	    buf = rdmavalue;
 
-		/* generate the key and value pair for each connection */
-		MPIU_Snprintf(rdmakey, 512, "%08x-%08x", pg_rank, i);
-		buf = rdmavalue;
-
-		for (rail_index = 0; rail_index < rdma_num_rails;
-			rail_index++) {
-		    sprintf(buf, "%08x", init_info->lid[i][rail_index]);
-		    DEBUG_PRINT("put my hca %d lid %d\n", rail_index,
-			        init_info->lid[i][rail_index]);
-		    buf += 8;
-		}
-
-                sprintf(buf, "%08x", init_info->hca_type[i]);
-                buf += 8;
-                sprintf(buf, "%016llx", init_info->vc_addr[i]);
-                buf += 16;
-                fprintf(stderr, "Put hca type %d, vc addr %llx, max val%d\n", 
-                        init_info->hca_type[i], init_info->vc_addr[i],
-                        val_max_sz);
-
-		/* put the kvs into PMI */
-		MPIU_Strncpy(key, rdmakey, key_max_sz);
-		MPIU_Strncpy(val, rdmavalue, val_max_sz);
-                fprintf(stderr, "rdmavalue %s\n", val);
-
-		error = PMI_KVS_Put(pg->ch.kvs_name, key, val);
-		if (error != PMI_SUCCESS) {
-		    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-			    "**pmi_kvs_put", "**pmi_kvs_put %d", error);
-		}
-
-		DEBUG_PRINT("after put, before barrier\n");
-
-		error = PMI_KVS_Commit(pg->ch.kvs_name);
-
-		if (error != PMI_SUCCESS) {
-		    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-			    "**pmi_kvs_commit", "**pmi_kvs_commit %d", error);
-		}
-
+	    for (rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
+            if (use_iboeth) {
+	            sprintf(buf, "%016llx",
+                      init_info->gid[i][rail_index].global.subnet_prefix);
+	            buf += 16;
+	            sprintf(buf, "%016llx",
+                       init_info->gid[i][rail_index].global.interface_id);
+	            buf += 16;
+	            DEBUG_PRINT("[%d] put subnet prefix = %llx,"
+                            " interface id = %llx\r\n", pg_rank,
+                            init_info->gid[i][rail_index].global.subnet_prefix,
+                            init_info->gid[i][rail_index].global.interface_id);
+            } else {
+	            sprintf(buf, "%08x", init_info->lid[i][rail_index]);
+	            DEBUG_PRINT("put my hca %d lid %d\n", rail_index,
+		                init_info->lid[i][rail_index]);
+	            buf += 8;
+            }
 	    }
+
+        sprintf(buf, "%08x", init_info->hca_type[i]);
+        buf += 8;
+        sprintf(buf, "%016llx", init_info->vc_addr[i]);
+        buf += 16;
+        DEBUG_PRINT(stderr, "Put hca type %d, vc addr %llx, max val%d\n", 
+                init_info->hca_type[i], init_info->vc_addr[i],
+                val_max_sz);
+
+	    /* put the kvs into PMI */
+	    MPIU_Strncpy(key, rdmakey, key_max_sz);
+	    MPIU_Strncpy(val, rdmavalue, val_max_sz);
+        DEBUG_PRINT(stderr, "rdmavalue %s\n", val);
+
+	    error = PMI_KVS_Put(pg->ch.kvs_name, key, val);
+	    if (error != PMI_SUCCESS) {
+	        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+		        "**pmi_kvs_put", "**pmi_kvs_put %d", error);
+	    }
+
+	    DEBUG_PRINT("after put, before barrier\n");
+
+	    error = PMI_KVS_Commit(pg->ch.kvs_name);
+
+	    if (error != PMI_SUCCESS) {
+	        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+		        "**pmi_kvs_commit", "**pmi_kvs_commit %d", error);
+	    }
+        }
+
 	    error = PMI_Barrier();
 	    if (error != PMI_SUCCESS) {
-		MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-			"**pmi_barrier", "**pmi_barrier %d", error);
+		    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+			    "**pmi_barrier", "**pmi_barrier %d", error);
 	    }
-
 
 	    /* Here, all the key and value pairs are put, now we can get them */
-	    for (i = 0; i < pg_size; i++)
-            {
-		if (pg_rank == i) {
-		    init_info->lid[i][0] =
-			get_local_lid(MPIDI_CH3I_RDMA_Process.
-				nic_context[0], rdma_default_port);
+	    for (i = 0; i < pg_size; i++) {
+            rail_index = 0;
+		    if (pg_rank == i) {
+                if (!use_iboeth) {
+		            init_info->lid[i][0] =
+			               get_local_lid(MPIDI_CH3I_RDMA_Process.nic_context[0],
+                                            rdma_default_port);
                     init_info->hca_type[i] = MPIDI_CH3I_RDMA_Process.hca_type;
-		    continue;
-		}
+                }
+	            DEBUG_PRINT("[%d] get subnet prefix = %llx, interface id = %llx"
+                       " from proc %d \n", pg_rank,
+                       init_info->gid[i][rail_index].global.subnet_prefix,
+                       init_info->gid[i][rail_index].global.interface_id, i);
+		        continue;
+		    }
 
-		/* generate the key */
-		MPIU_Snprintf(rdmakey, 512, "%08x-%08x", i, pg_rank);
-		MPIU_Strncpy(key, rdmakey, key_max_sz);
-		error = PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz);
-		if (error != PMI_SUCCESS) {
-		    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-			    "**pmi_kvs_get", "**pmi_kvs_get %d", error);
-		}
+		    /* Generate the key */
+		    MPIU_Snprintf(rdmakey, 512, "%08x-%08x", i, pg_rank);
+		    MPIU_Strncpy(key, rdmakey, key_max_sz);
 
-		MPIU_Strncpy(rdmavalue, val, val_max_sz);
-		buf = rdmavalue;
+		    error = PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz);
+		    if (error != PMI_SUCCESS) {
+		        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+			        "**pmi_kvs_get", "**pmi_kvs_get %d", error);
+		    }
 
-		for (rail_index = 0; rail_index < rdma_num_rails;
-			rail_index++) {
-		    sscanf(buf, "%08x", 
-                           (unsigned int *)&init_info->lid[i][rail_index]);
-		    buf += 8;
-		    DEBUG_PRINT("get rail %d, lid %08d\n", rail_index,
-			    (int)init_info->lid[i][rail_index]);
-		}
+		    MPIU_Strncpy(rdmavalue, val, val_max_sz);
+		    buf = rdmavalue;
 
-                sscanf(buf, "%08x", &init_info->hca_type[i]);
-                buf += 8;
-                sscanf(buf, "%016llx", &init_info->vc_addr[i]);
-                buf += 16;
-                fprintf(stderr, "Get vc addr %llx\n", init_info->vc_addr[i]);
+		    for (rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
+                if (use_iboeth) {
+	                sscanf(buf, "%016llx", (uint64_t*)
+                           &init_info->gid[i][rail_index].global.subnet_prefix);
+	                buf += 16;
+	                sscanf(buf, "%016llx", (uint64_t*)
+                           &init_info->gid[i][rail_index].global.interface_id);
+	                buf += 16;
+	                DEBUG_PRINT("[%d] get subnet prefix = %llx,"
+                            "interface id = %llx from proc %d\n", pg_rank,
+                        init_info->gid[i][rail_index].global.subnet_prefix,
+                        init_info->gid[i][rail_index].global.interface_id, i);
+                } else {
+		            sscanf(buf, "%08x", 
+                            (unsigned int *)&init_info->lid[i][rail_index]);
+		            buf += 8;
+		            DEBUG_PRINT("get rail %d, lid %08d\n", rail_index,
+			                    (int)init_info->lid[i][rail_index]);
+                }
+		    }
+
+            sscanf(buf, "%08x", &init_info->hca_type[i]);
+            buf += 8;
+            sscanf(buf, "%016llx", &init_info->vc_addr[i]);
+            buf += 16;
+            DEBUG_PRINT(stderr, "Get vc addr %llx\n", init_info->vc_addr[i]);
 	    }
 
-	    /* this barrier is to prevent some process from
-	       overwriting values that has not been get yet */
+	    /* This barrier is to prevent some process from
+	     * overwriting values that has not been get yet
+         */
 	    error = PMI_Barrier();
 	    if (error != PMI_SUCCESS) {
-		MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-			"**pmi_barrier", "**pmi_barrier %d", error);
+		    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+			    "**pmi_barrier", "**pmi_barrier %d", error);
 	    }
 
 	    /* STEP 2: Exchange qp_num and vc addr */
-	    for (i = 0; i < pg_size; i++)
-            {
-		if (pg_rank == i)
-                {
-		    continue;
-		}
-
-		/* generate the key and value pair for each connection */
-		MPIU_Snprintf(rdmakey, 512, "%08x-%08x", pg_rank, i);
+	    for (i = 0; i < pg_size; i++) {
+        if (pg_rank == i) {
+            continue;
+        }
+	    /* Generate the key and value pair */
+	    MPIU_Snprintf(rdmakey, 512, "1-%08x-%08x", pg_rank, i);
 		buf = rdmavalue;
 
-		for (rail_index = 0; rail_index < rdma_num_rails;
-			rail_index++) {
+		for (rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
 		    sprintf(buf, "%08X", init_info->qp_num_rdma[i][rail_index]);
 		    buf += 8;
 		    DEBUG_PRINT("target %d, put qp %d, num %08X \n", i,
 			    rail_index, init_info->qp_num_rdma[i][rail_index]);
+		    DEBUG_PRINT("[%d] %s(%d) put qp %08X \n", pg_rank, __FUNCTION__,
+                         __LINE__, init_info->qp_num_rdma[i][rail_index]);
 		}
 
 		DEBUG_PRINT("put rdma value %s\n", rdmavalue);
-		/* put the kvs into PMI */
+		/* Put the kvs into PMI */
 		MPIU_Strncpy(key, rdmakey, key_max_sz);
 		MPIU_Strncpy(val, rdmavalue, val_max_sz);
 
@@ -394,72 +425,67 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
 		    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
 			    "**pmi_kvs_commit", "**pmi_kvs_commit %d", error);
 		}
-	    }
+        }
 
 	    error = PMI_Barrier();
 	    if (error != PMI_SUCCESS) {
-		MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-			"**pmi_barrier", "**pmi_barrier %d", error);
+		    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+			    "**pmi_barrier", "**pmi_barrier %d", error);
 	    }
 
 	    /* Here, all the key and value pairs are put, now we can get them */
-	    for (i = 0; i < pg_size; i++)
-            {
-		if (pg_rank == i)
-                {
-		    continue;
-		}
+	    for (i = 0; i < pg_size; i++) {
+		    if (pg_rank == i) {
+		        continue;
+		    }
 
-		/* generate the key */
-		MPIU_Snprintf(rdmakey, 512, "%08x-%08x", i, pg_rank);
-		MPIU_Strncpy(key, rdmakey, key_max_sz);
-		error = PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz);
+		    /* Generate the key */
+		    MPIU_Snprintf(rdmakey, 512, "1-%08x-%08x", i, pg_rank);
+		    MPIU_Strncpy(key, rdmakey, key_max_sz);
+		    error = PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz);
 
-		if (error != PMI_SUCCESS) {
-		    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-			    "**pmi_kvs_get", "**pmi_kvs_get %d", error);
-		}
-		MPIU_Strncpy(rdmavalue, val, val_max_sz);
+		    if (error != PMI_SUCCESS) {
+		        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+			        "**pmi_kvs_get", "**pmi_kvs_get %d", error);
+		    }
+		    MPIU_Strncpy(rdmavalue, val, val_max_sz);
 
-		buf = rdmavalue;
-		DEBUG_PRINT("get rdmavalue %s\n", rdmavalue);
-		for (rail_index = 0; rail_index < rdma_num_rails;
-			rail_index++) {
-		    sscanf(buf, "%08X", &init_info->qp_num_rdma[i][rail_index]);
-		    buf += 8;
-		    DEBUG_PRINT("get qp %d,  num %08X \n", i,
-                                init_info->qp_num_rdma[i][rail_index]);
-		}
+		    buf = rdmavalue;
+		    DEBUG_PRINT("get rdmavalue %s\n", rdmavalue);
+		    for (rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
+		        sscanf(buf, "%08X", &init_info->qp_num_rdma[i][rail_index]);
+		        buf += 8;
+		        DEBUG_PRINT("[%d] %s(%d) get qp %08X from %d\n", pg_rank,
+                             __FUNCTION__, __LINE__,
+			                init_info->qp_num_rdma[i][rail_index], i);
+		    }
 	    }
 
 	    error = PMI_Barrier();
 	    if (error != PMI_SUCCESS) {
-		MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-			"**pmi_barrier", "**pmi_barrier %d", error);
+		    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+			    "**pmi_barrier", "**pmi_barrier %d", error);
 	    }
+
 	    DEBUG_PRINT("After barrier\n");
 
 	    if (MPIDI_CH3I_RDMA_Process.has_one_sided) {
-		/* Exchange qp_num */
-		for (i = 0; i < pg_size; i++)
-                {
-		    if (pg_rank == i)
-                    {
-			continue;
-		    }
-
-		    /* generate the key and value pair for each connection */
-		    MPIU_Snprintf(rdmakey, 512, "%08x-%08x", pg_rank, i);
+		    /* Exchange qp_num */
+	        for (i = 0; i < pg_size; i++) {
+            if (pg_rank == i) {
+                continue;
+            }
+		    /* Generate the key and value pair */
+		    MPIU_Snprintf(rdmakey, 512, "2-%08x-%08x", pg_rank, i);
 		    buf = rdmavalue;
 
-		    for (rail_index = 0; rail_index < rdma_num_rails;
-			 rail_index++) {
-			sprintf(buf, "%08X", 
-                                init_info->qp_num_onesided[i][rail_index]);
-			buf += 8;
-			DEBUG_PRINT("Put key %s, onesided qp %d, num %08X\n",
-			            rdmakey, i,
-                                    init_info->qp_num_onesided[i][rail_index]);
+		    for (rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
+			    sprintf(buf, "%08X", 
+                        init_info->qp_num_onesided[i][rail_index]);
+			    buf += 8;
+			    DEBUG_PRINT("Put key %s, onesided qp %d, num %08X\n",
+			                rdmakey, i,
+                            init_info->qp_num_onesided[i][rail_index]);
 		    }
 
 		    /* put the kvs into PMI */
@@ -469,74 +495,71 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
 
 		    error = PMI_KVS_Put(pg->ch.kvs_name, key, val);
 		    if (error != PMI_SUCCESS) {
-			MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-				"**pmi_kvs_put", "**pmi_kvs_put %d", error);
+			    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+				    "**pmi_kvs_put", "**pmi_kvs_put %d", error);
 		    }
 
 		    error = PMI_KVS_Commit(pg->ch.kvs_name);
 		    if (error != PMI_SUCCESS) {
-			MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-				"**pmi_kvs_commit", "**pmi_kvs_commit %d", error);
+			    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+				    "**pmi_kvs_commit", "**pmi_kvs_commit %d", error);
 		    }
-		}
+            }
 
-		error = PMI_Barrier();
-		if (error != PMI_SUCCESS) {
-		    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-			    "**pmi_barrier", "**pmi_barrier %d", error);
-		}
-
-		/*
-		 * Here, all the key and value pairs are put, now we can get
-		 * them
-		 */
-		for (i = 0; i < pg_size; i++)
-                {
-		    if (pg_rank == i)
-                    {
-			continue;
-		    }
-
-		    /* generate the key */
-		    MPIU_Snprintf(rdmakey, 512, "%08x-%08x", i, pg_rank);
-		    MPIU_Strncpy(key, rdmakey, key_max_sz);
-		    error =
-			PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz);
+		    error = PMI_Barrier();
 		    if (error != PMI_SUCCESS) {
-			MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-				"**pmi_kvs_get", "**pmi_kvs_get %d", error);
+		        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+			        "**pmi_barrier", "**pmi_barrier %d", error);
 		    }
 
-		    MPIU_Strncpy(rdmavalue, val, val_max_sz);
-		    DEBUG_PRINT("Get a string %s\n", rdmavalue);
-		    buf = rdmavalue;
+		    /* Here, all the key and value pairs are put, now we can get them */
+		    for (i = 0; i < pg_size; i++) {
+		        if (pg_rank == i) {
+			        continue;
+		        }
 
-		    for (rail_index = 0; rail_index < rdma_num_rails;
-			    rail_index++) {
-			sscanf(buf, "%08X", 
-                               &init_info->qp_num_onesided[i][rail_index]);
-			buf += 8;
-			DEBUG_PRINT("Get key %s, onesided qp %d, num %08X\n",
-			            rdmakey, i,
-			            init_info->qp_num_onesided[i][rail_index]);
+		        /* Generate the key */
+		        MPIU_Snprintf(rdmakey, 512, "2-%08x-%08x", i, pg_rank);
+		        MPIU_Strncpy(key, rdmakey, key_max_sz);
+
+		        error = PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz);
+
+		        if (error != PMI_SUCCESS) {
+			        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+				        "**pmi_kvs_get", "**pmi_kvs_get %d", error);
+		        }
+
+		        MPIU_Strncpy(rdmavalue, val, val_max_sz);
+		        DEBUG_PRINT("Get a string %s\n", rdmavalue);
+		        buf = rdmavalue;
+
+		        for (rail_index = 0; rail_index < rdma_num_rails;
+			            rail_index++) {
+			        sscanf(buf, "%08X", 
+                            &init_info->qp_num_onesided[i][rail_index]);
+			        buf += 8;
+			        DEBUG_PRINT("Get key %s, onesided qp %d, num %08X\n",
+			                    rdmakey, i,
+			                    init_info->qp_num_onesided[i][rail_index]);
+		        }
 		    }
-		}
 
-		error = PMI_Barrier();
-		if (error != PMI_SUCCESS) {
-		    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-			    "**pmi_barrier", "**pmi_barrier %d", error);
-		}
+		    error = PMI_Barrier();
+		    if (error != PMI_SUCCESS) {
+		        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+			        "**pmi_barrier", "**pmi_barrier %d", error);
+		    }
 
-		MPIU_Free(val);
-		MPIU_Free(key);
+		    MPIU_Free(val);
+		    MPIU_Free(key);
 	    }
 	} else {
 	    /* Exchange the information about HCA_lid, qp_num, and memory,
 	     * With the ring-based queue pair */
-            mpi_errno = rdma_ring_boot_exchange(&MPIDI_CH3I_RDMA_Process, pg, pg_rank, init_info);
-            if(mpi_errno) {
-        MPIU_ERR_POP(mpi_errno)
+        mpi_errno = rdma_ring_boot_exchange(&MPIDI_CH3I_RDMA_Process, pg,
+                                             pg_rank, init_info);
+        if(mpi_errno) {
+            MPIU_ERR_POP(mpi_errno)
        }
 	}
     }
@@ -559,10 +582,9 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
     }
 
     /* Enable all the queue pair connections */
-    DEBUG_PRINT
-	("Address exchange finished, proceed to enabling connection\n");
+    DEBUG_PRINT ("Address exchange finished, proceed to enabling connection\n");
     rdma_iba_enable_connections(&MPIDI_CH3I_RDMA_Process, pg_rank,
-	                        pg, init_info);
+	                            pg, init_info);
     DEBUG_PRINT("Finishing enabling connection\n");
 
     /*barrier to make sure queues are initialized before continuing */
@@ -571,34 +593,32 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
     error = PMI_Barrier();
 
     if (error != PMI_SUCCESS) {
-	MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-		"**pmi_barrier", "**pmi_barrier %d", error);
+	    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+		    "**pmi_barrier", "**pmi_barrier %d", error);
     }
 
     /* Prefill post descriptors */
-    for (i = 0; i < pg_size; i++)
-    {
-	if (i == pg_rank)
-        {
-	    continue;
-	}
+    for (i = 0; i < pg_size; i++) {
+	    if (i == pg_rank) {
+	        continue;
+	    }
 
-	MPIDI_PG_Get_vc(pg, i, &vc);
-	vc->state = MPIDI_VC_STATE_ACTIVE;
-	MRAILI_Init_vc(vc);
+	    MPIDI_PG_Get_vc(pg, i, &vc);
+	    vc->state = MPIDI_VC_STATE_ACTIVE;
+	    MRAILI_Init_vc(vc);
     }
 
     error = PMI_Barrier();
 
     if (error != PMI_SUCCESS) {
-	MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-		"**pmi_barrier", "**pmi_barrier %d", error);
+	    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+		    "**pmi_barrier", "**pmi_barrier %d", error);
     }
 
-    if (pg_size > 1) {
-	/* clean up the bootstrap qps and free memory */
-        if ((mpi_errno = rdma_cleanup_startup_ring(&MPIDI_CH3I_RDMA_Process)) != MPI_SUCCESS)
-        {
+    if ((pg_size > 1) && (!use_iboeth)) {
+        /* clean up the bootstrap qps and free memory */
+        if ((mpi_errno = rdma_cleanup_startup_ring(&MPIDI_CH3I_RDMA_Process))
+             != MPI_SUCCESS) {
             MPIU_ERR_POP(mpi_errno);
         }
     }
@@ -950,6 +970,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
     uint32_t *ud_qpn_all;
     uint32_t ud_qpn_self;
     uint16_t *lid_all;
+    union ibv_gid *gid_all;
     uint32_t *hca_type_all;
     uint32_t my_hca_type;
     char tmp_hname[256];
@@ -984,6 +1005,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
      */
     ud_qpn_all = (uint32_t *) MPIU_Malloc(pg_size * sizeof(uint32_t));
     lid_all = (uint16_t *) MPIU_Malloc(pg_size * sizeof(uint16_t));
+    gid_all = (union ibv_gid *) MPIU_Malloc(pg_size * sizeof(union ibv_gid));
     hca_type_all = (uint32_t *) MPIU_Malloc(pg_size * sizeof(uint32_t));
     if (!ud_qpn_all || !lid_all || !hca_type_all) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
@@ -1001,9 +1023,10 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
     ) {
         rdma_setup_startup_ring(&MPIDI_CH3I_RDMA_Process, pg_rank, pg_size);
         my_hca_type = MPIDI_CH3I_RDMA_Process.hca_type;
-        mpi_errno = rdma_ring_based_allgather(&my_hca_type, sizeof my_hca_type, pg_rank,
-                hca_type_all, pg_size,
-                &MPIDI_CH3I_RDMA_Process);
+
+        mpi_errno = rdma_ring_based_allgather(&my_hca_type, sizeof my_hca_type,
+                                                pg_rank, hca_type_all, pg_size,
+                                                &MPIDI_CH3I_RDMA_Process);
         if(mpi_errno){
             MPIU_ERR_POP(mpi_errno);
         }
@@ -1152,6 +1175,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
 	    hostid = (int) ((struct in_addr *) hostent->h_addr_list[0])->s_addr;
 	    self_info.hostid = hostid;
 	    self_info.lid = MPIDI_CH3I_RDMA_Process.lids[0][0];
+	    self_info.gid = MPIDI_CH3I_RDMA_Process.gids[0][0];
 	    self_info.qpn = ud_qpn_self;
 	    all_info = (ud_addr_info_t *) MPIU_Malloc(sizeof(ud_addr_info_t)*pg_size); 
 	    /*will be freed in rdma_cleanup_startup_ring */

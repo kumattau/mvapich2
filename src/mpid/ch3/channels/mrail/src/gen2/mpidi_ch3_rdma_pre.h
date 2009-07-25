@@ -227,6 +227,7 @@ struct mrail_rail {
         int    s_weight;
         int    used_send_cq; 
         int    used_recv_cq; 
+        union  ibv_gid  gid;
         struct ibv_cq	*cq_hndl;
         struct ibv_cq	*send_cq_hndl;
         struct ibv_cq	*recv_cq_hndl;
