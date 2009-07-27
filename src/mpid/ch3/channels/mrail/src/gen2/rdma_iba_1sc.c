@@ -1122,6 +1122,9 @@ Trac #426
                               rkeys[i], posting_length, i);
 
             if (vc_ptr->ch.state != MPIDI_CH3I_VC_STATE_IDLE
+#ifdef _ENABLE_XRC_
+                || (USE_XRC && VC_XST_ISUNSET (vc_ptr, XF_SEND_IDLE))
+#endif
                 || !MPIDI_CH3I_CM_One_Sided_SendQ_empty(vc_ptr)) {
                 /* VC is not ready to be used. Wait till it is ready and send */
                 MPIDI_CH3I_CM_One_Sided_SendQ_enqueue(vc_ptr, v);
@@ -1159,6 +1162,9 @@ Trac #426
         v->vc = (void *)vc_ptr;
 
         if (vc_ptr->ch.state != MPIDI_CH3I_VC_STATE_IDLE 
+#ifdef _ENABLE_XRC_
+                || (USE_XRC && VC_XST_ISUNSET (vc_ptr, XF_SEND_IDLE))
+#endif
 	    || !MPIDI_CH3I_CM_One_Sided_SendQ_empty(vc_ptr)) {
             /* VC is not ready to be used. Wait till it is ready and send */
             MPIDI_CH3I_CM_One_Sided_SendQ_enqueue(vc_ptr, v);
@@ -1196,6 +1202,9 @@ Trac #426
             v->vc = (void *)vc_ptr;
  
             if (vc_ptr->ch.state != MPIDI_CH3I_VC_STATE_IDLE
+#ifdef _ENABLE_XRC_
+                || (USE_XRC && VC_XST_ISUNSET (vc_ptr, XF_SEND_IDLE))
+#endif
                 || !MPIDI_CH3I_CM_One_Sided_SendQ_empty(vc_ptr)) {
                 /* VC is not ready to be used. Wait till it is ready and send */
                 MPIDI_CH3I_CM_One_Sided_SendQ_enqueue(vc_ptr, v);
@@ -1290,6 +1299,9 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
             ++(winptr->put_get_list_size);
 
             if (vc_ptr->ch.state != MPIDI_CH3I_VC_STATE_IDLE) {
+#ifdef _ENABLE_XRC_
+                || (USE_XRC && VC_XST_ISUNSET (vc_ptr, XF_SEND_IDLE))
+#endif
                 /* VC is not ready to be used. Wait till it is ready and send */
                 MPIDI_CH3I_CM_One_Sided_SendQ_enqueue(vc_ptr, v);
 

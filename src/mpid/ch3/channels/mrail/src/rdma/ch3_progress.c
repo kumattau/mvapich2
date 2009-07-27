@@ -806,6 +806,7 @@ int cm_send_pending_1sc_msg(MPIDI_VC_t * vc)
 
     vbuf    *v    = NULL;
     int mpi_errno = MPI_SUCCESS;
+    MPIDI_VC_t *save_vc = vc;
 
     XRC_MSG ("cm_send_pending_1sc_msg %d 0x%08x %d\n", vc->pg_rank, 
             vc->ch.xrc_flags, vc->ch.state);
@@ -824,6 +825,7 @@ int cm_send_pending_1sc_msg(MPIDI_VC_t * vc)
 
         v->desc.next = NULL;
 
+
         /* Fill the SRQ number. We wouldn't have done this while queueing the
          * message as the connection was not established then
          */
@@ -841,6 +843,7 @@ int cm_send_pending_1sc_msg(MPIDI_VC_t * vc)
             IBV_POST_SR(v, vc, v->rail, "Failed to post rma put");
         }
 
+        vc = save_vc;
         /* Dequeue the message */
         MPIDI_CH3I_CM_One_Sided_SendQ_dequeue(vc);
 
