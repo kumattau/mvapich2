@@ -95,7 +95,6 @@ static CR_state_t cr_state;
 static unsigned long starting_time;
 static unsigned long last_ckpt;
 
-static int enable_sync_ckpt;
 static int checkpoint_count;
 static char sessionid[CR_SESSION_MAX];
 static int checkpoint_interval;
@@ -2984,8 +2983,6 @@ static void *CR_Loop(void *arg)
 #ifdef CR_FTB
                     cr_ftb_app_ckpt_req = 0;
 #endif
-                    if (enable_sync_ckpt == 0)
-                        continue;
                     CR_MUTEX_LOCK;
                     sprintf(buf,"%s.%d.sync", ckpt_filename, checkpoint_count+1);
                     cr_initialize_checkpoint_args_t(&cr_file_args);
