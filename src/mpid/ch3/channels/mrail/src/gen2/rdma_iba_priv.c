@@ -417,7 +417,7 @@ int rdma_iba_hca_init_noqp(struct MPIDI_CH3I_RDMA_Process_t *proc,
                        if (ibv_query_gid(MPIDI_CH3I_RDMA_Process.nic_context[i],
                                         j, 0, &gid)) {
                             MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                              "%s%d", "Fail to retrieve gid on rank ", pg_rank);
+                              "**fail", "Failed to retrieve gid on rank %d", pg_rank);
                         }
                         MPIDI_CH3I_RDMA_Process.gids[i][k] = gid;
                     } else {
@@ -462,7 +462,7 @@ int rdma_iba_hca_init_noqp(struct MPIDI_CH3I_RDMA_Process_t *proc,
                if (ibv_query_gid(MPIDI_CH3I_RDMA_Process.nic_context[i],
                                 rdma_default_port, 0, &gid)) {
                     MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                        "%s%d", "Fail to retrieve gid on rank ", pg_rank);
+                        "**fail", "Failed to retrieve gid on rank %d", pg_rank);
                 }
                 MPIDI_CH3I_RDMA_Process.gids[i][0] = gid;
             } else {
@@ -603,7 +603,7 @@ int rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                        if (ibv_query_gid(MPIDI_CH3I_RDMA_Process.nic_context[i],
                                             j, 0, &gids[i][k])) {
                             MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                              "%s%d", "Fail to retrieve gid on rank ", pg_rank);
+                              "**fail", "Failed to retrieve gid on rank %d", pg_rank);
                         }
                         DEBUG_PRINT("[%d] %s(%d): Getting gid[%d][%d] for"
                                 " port %d subnet_prefix = %llx,"
@@ -642,7 +642,7 @@ int rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                 if (ibv_query_gid(MPIDI_CH3I_RDMA_Process.nic_context[i], 0,
                                     0, &gids[i][0])) {
                     MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                        "%s%d", "Fail to retrieve gid on rank ", pg_rank);
+                        "**fail", "Failed to retrieve gid on rank %d", pg_rank);
                 }
 
                 if (check_attrs(&port_attr, &dev_attr)) {
