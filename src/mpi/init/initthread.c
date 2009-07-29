@@ -421,6 +421,7 @@ int disable_shmem_allreduce=0;
 int disable_shmem_reduce=0;
 int disable_shmem_barrier=0;
 int g_shmem_bcast_leaders = DEFAULT_SHMEM_BCAST_LEADERS;
+int g_shmem_bcast_flags = DEFAULT_SHMEM_BCAST_LEADERS;
 extern int g_shmem_coll_blocks;
 extern int g_shmem_coll_max_msg_size;
 extern int shmem_bcast_threshold;
@@ -568,9 +569,10 @@ void MV2_Read_env_vars(void){
 	    if (flag > 0) g_shmem_coll_max_msg_size = flag;
     }
     if ((value = getenv("MV2_SHMEM_BCAST_LEADERS")) != NULL){
-        if ((atoi(value) > 0)) {
+        if ((atoi(value) > DEFAULT_SHMEM_BCAST_LEADERS )) {
             /* We only accept positive values */
 	        g_shmem_bcast_leaders = (int)atoi(value);
+	        g_shmem_bcast_flags = (int)atoi(value);
         }
     }
     if ((value = getenv("MV2_USE_SHARED_MEM")) != NULL){
