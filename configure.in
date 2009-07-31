@@ -6174,7 +6174,12 @@ MPI_NO_SPAWN=$MPID_NO_SPAWN
 export MPI_NO_SPAWN
 MPI_NO_RMA=$MPID_NO_RMA
 export MPI_NO_RMA
-AC_CONFIG_SUBDIRS(test/mpi src/pm/mpirun)
+AC_CONFIG_SUBDIRS(test/mpi)
+
+dnl <_OSU_MVAPICH_>
+AC_CONFIG_SUBDIRS(src/pm/mpirun)
+dnl </_OSU_MVAPICH_>
+
 dnl
 dnl Generate the Makefiles from Makefile.in
 dnl Also generate mpi.h from mpi.h.in so that we can eliminate all ifdefs
