@@ -10,19 +10,17 @@
  *          Konkuk University
  *
  * History: Jul 15 2007 Launch
+ *
+ *          Feb 27 2009
+ *            Modified by Karthik Gopalakrishnan (gopalakk@cse.ohio-state.edu)
  */
 
-#ifndef _LIMIC_INCLUDED_
-#define _LIMIC_INCLUDED_
-
-/* /dev file name */
-#define DEV_NAME "limic"
-
-#define LIMIC_TX   0x1c01
-#define LIMIC_RX   0x1c02
+#ifndef _LIMIC_H_INCLUDED_
+#define _LIMIC_H_INCLUDED_
 
 #define LIMIC_TX_DONE    1
 #define LIMIC_RX_DONE    2
+#define LIMIC_VERSION_OK 3
 
 typedef struct limic_user{
     int nr_pages;   /* pages actually referenced */
@@ -34,11 +32,10 @@ typedef struct limic_user{
     void *tsk;       /* struct task_struct * */
 }limic_user;
 
-typedef struct limic_request{
-    void *buf;       /* user buffer */
-    int len;         /* buffer length */
-    limic_user *lu;  /* shandle or rhandle */
-}limic_request;
+extern int limic_open( void );
+extern void limic_close( int fd );
+extern int limic_tx_init( int fd, void *buf, int len, limic_user *lu );
+extern int limic_rx_comp( int fd, void *buf, int len, limic_user *lu );
 
 #endif
 

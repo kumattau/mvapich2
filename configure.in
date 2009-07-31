@@ -448,6 +448,69 @@ AC_ARG_WITH(fwrapname,
 [--with-fwrapname=name  - Specify name of library containing Fortran interface
 routines],[FWRAPNAME=$withval;set_FWRAPNAME="yes"],FWRAPNAME=fmpich)
 AC_SUBST(FWRAPNAME)
+
+dnl <_OSU_MVAPICH_>
+AC_ARG_WITH([limic2],
+    [AS_HELP_STRING([--with-limic2=@<:@LiMIC2 installation path@:>@],
+                    [Enable use of LiMIC2 for intra-node communication])
+    ],
+    [case $with_limic2 in
+         yes|no) ;;
+         *) with_limic2_include="$with_limic2/include" ;
+            with_limic2_libpath="$with_limic2/lib" ;;
+     esac
+    ],
+    [with_limic2=no])
+
+AC_ARG_WITH([limic2-include],
+    [AS_HELP_STRING([--with-limic2-include=@<:@LiMIC2 include path@:>@],
+                       [Specify path to LiMIC2 header files])
+    ], [
+        case $with_limic2_include in
+            yes|no) AC_MSG_FAILURE([must specify path!]);;
+        esac
+        test "x$with_limic2" != "xno" || with_limic2="yes"
+    ])
+
+AC_ARG_WITH([limic2-libpath],
+    [AS_HELP_STRING([--with-limic2-libpath=@<:@LiMIC2 library path@:>@],
+                       [Specify path to LiMIC2 library])
+    ], [
+        case $with_limic2_libpath in
+            yes|no) AC_MSG_FAILURE([must specify path!]);;
+        esac
+        test "x$with_limic2" != "xno" || with_limic2="yes"
+    ])
+
+if test "x$with_limic2" != "xno"; then
+    limic2_path_set="$with_limic2_include$with_limic2_libpath"
+
+    test -n "$with_limic2_include" &&\
+    CPPFLAGS="$CPPFLAGS -I$with_limic2_include"
+    test -n "$with_limic2_libpath" &&\
+    LDFLAGS="$LDFLAGS -L$with_limic2_libpath"
+
+    AC_CHECK_HEADERS([limic.h], [limic_h_found=yes])
+
+    if test -n "$limic2_path_set" -a "x$limic_h_found" != "xyes"; then
+        AC_MSG_ERROR([could not find limic.h with given include path!])
+    fi
+
+    AC_CHECK_LIB([limic2], [limic_open], [
+            LIBS="-llimic2 $LIBS"
+            limic2_lib_found=yes
+        ])
+
+    if test -n "$limic2_path_set" -a "x$limic2_lib_found" != "xyes"; then
+        AC_MSG_ERROR([could not find LiMIC2 library with given libpath!])
+    fi
+
+    if test "x$limic_h_found$limic2_lib_found" != "xyesyes"; then
+        AC_MSG_ERROR([cannot find LiMIC2, please install and retry.])
+    fi
+fi
+dnl </_OSU_MVAPICH_>
+
 dnl
 #
 # Save a copy of CFLAGS, CXXFLAGS, FFLAGS, F90FLAGS, LDFLAGS as WRAPPER_*

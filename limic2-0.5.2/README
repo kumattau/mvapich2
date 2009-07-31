@@ -4,7 +4,7 @@ LiMIC2: Linux kernel module for MPI Intra-node Communication
 [Table of Contents]
 1. Introduction
 2. References
-3. How to Use
+3. Installation
 4. Contact
 
 
@@ -77,13 +77,12 @@ of CAC 2005, April 2005.
 
 [3. Installation]
 
-3.1 Software Dowload
+3.1 Software Download
 	http://sslab.konkuk.ac.kr for LiMIC2 only
 	http://mvapich.cse.ohio-state.edu for MVAPICH2+LiMIC2 package
 
-3.2 Compiling LiMIC2 Kernel Module
-	tar -xzvf limic.tar.gz
-	cd limic
+3.2 Compiling LiMIC2 Library + Kernel Module
+	./configure --enable-module
 	make 
 
 3.3 Installation
@@ -91,6 +90,14 @@ of CAC 2005, April 2005.
 
 3.4 Uninstall
 	make uninstall
+
+3.5 Package specific options
+  --enable-module         Build Limic2 kernel module.
+  --with-kernel=RELEASE   Specify kernel release to use for building LiMIC2
+                          kernel module. Defaults to currently running kernel.
+  --with-kernel-mod=DIR   Path to install LiMIC2 kernel module. Defaults to
+                          external module location for the kernel the module
+                          is built against.
 
 
 [4. Contact]

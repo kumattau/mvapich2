@@ -25,9 +25,6 @@
  * #define MPIDI_EAGER_SHORT_INTS 4
  * #define MPIDI_EAGER_SHORT_SIZE 16
  */
-#if defined(_SMP_LIMIC_)
-#include "../../../../limic/limic_lib.h"
-#endif
 #endif /* defined(_OSU_MVAPICH_) */
 
 /*

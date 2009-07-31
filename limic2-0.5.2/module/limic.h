@@ -1,5 +1,5 @@
 /* 
- * limic_internal.h
+ * limic.h
  *  
  * LiMIC2:  Linux Kernel Module for High-Performance MPI Intra-Node 
  *          Communication
@@ -10,11 +10,24 @@
  *          Konkuk University
  *
  * History: Jul 15 2007 Launch
+ *
+ *          Feb 27 2009 Modified by Karthik Gopalakrishnan (gopalakk@cse.ohio-state.edu)
+ *                                  Jonathan Perkins       (perkinjo@cse.ohio-state.edu)
+ *            - Automatically create /dev/limic
+ *            - Add versioning to the Kernel Module
  */
 
-#ifndef _LIMIC_INTERNAL_INCLUDED_
-#define _LIMIC_INTERNAL_INCLUDED_
+#ifndef _LIMIC_INCLUDED_
+#define _LIMIC_INCLUDED_
 
+#include <linux/init.h>
+#include <linux/module.h> 
+#include <linux/cdev.h>
+#include <linux/types.h>
+#include <linux/kdev_t.h>
+#include <linux/fs.h>
+#include <linux/device.h>
+#include <linux/version.h>
 #include <linux/highmem.h>
 #include <linux/slab.h>
 #include <linux/kernel.h>
@@ -23,13 +36,64 @@
 #include <linux/mm.h>
 #include <linux/pagemap.h>
 #include <asm/pgtable.h>
-#include "limic.h"
 
+#define LIMIC_MODULE_MAJOR 0
+#define LIMIC_MODULE_MINOR 5
 
-typedef enum{
+/*
+ * Account for changes in device_create and device_destroy
+ */
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,13)
+#   define CREATE_LIMIC_DEVICE
+#   if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,15)
+#       define device_create(cls, parent, devt, device, ...) \
+            class_device_create(cls, devt, device, __VA_ARGS__)
+#   elif LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18)
+#       define device_create(cls, parent, devt, device, ...) \
+            class_device_create(cls, parent, devt, device, __VA_ARGS__)
+#   elif LINUX_VERSION_CODE < KERNEL_VERSION(2,6,26)
+#       define device_create(cls, parent, devt, device, ...) \
+            device_create(cls, parent, devt, __VA_ARGS__)
+#   elif LINUX_VERSION_CODE < KERNEL_VERSION(2,6,27)
+#       define device_create            device_create_drvdata
+#   endif
+#   if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,18)
+#       define device_destroy   class_device_destroy
+#   endif
+#endif
+
+/* /dev file name */
+#define DEV_NAME "limic"
+#define DEV_CLASS "limic"
+
+#define LIMIC_TX      0x1c01
+#define LIMIC_RX      0x1c02
+#define LIMIC_VERSION 0x1c03
+
+#define LIMIC_TX_DONE    1
+#define LIMIC_RX_DONE    2
+#define LIMIC_VERSION_OK 3
+
+typedef struct limic_user {
+    int nr_pages;   /* pages actually referenced */
+    int offset;     /* offset to start of valid data */
+    int length;     /* number of valid bytes of data */
+
+    unsigned long va;
+    void *mm;        /* struct mm_struct * */
+    void *tsk;       /* struct task_struct * */
+} limic_user;
+
+typedef struct limic_request {
+    void *buf;       /* user buffer */
+    int len;         /* buffer length */
+    limic_user *lu;  /* shandle or rhandle */
+} limic_request;
+
+typedef enum {
     CPY_TX,
     CPY_RX
-}limic_copy_flag;
+} limic_copy_flag;
 
 
 int limic_map_and_copy( limic_request *req, 

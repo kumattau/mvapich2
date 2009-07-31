@@ -1,5 +1,5 @@
 /*
- * limic_lib.h
+ * limic.c
  *
  * LiMIC2:  Linux Kernel Module for High-Performance MPI Intra-Node
  *          Communication
@@ -10,37 +10,51 @@
  *          Konkuk University
  *
  * History: Jul 15 2007 Launch
+ *
+ *          Feb 27 2009 Modified by Karthik Gopalakrishnan (gopalakk@cse.ohio-state.edu)
+ *                                  Jonathan Perkins       (perkinjo@cse.ohio-state.edu)
+ *            - Add versioning data to the User Space Library
  */
 
-#ifndef _LIMIC_LIB_INCLUDED_
-#define _LIMIC_LIB_INCLUDED_
-
-
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
 #include "limic.h"
+#include "limic_internal.h"
 
 
-static int limic_open( void )
+int limic_open( void )
 {
-    int fd;
+    int fd, ret;
+    uint32_t vinfo = ( (LIMIC_LIBRARY_MAJOR<<16) | LIMIC_LIBRARY_MINOR );
 
     fd = open("/dev/limic", O_RDONLY);
-    if(fd == -1)
+    if(fd == -1) {
         printf("LiMIC: (limic_open) file open fail\n");
+        ret = -1;
+        goto err_open;
+    }
+
+    ret = ioctl(fd, LIMIC_VERSION, &vinfo);
+    if (ret != LIMIC_VERSION_OK) {
+        printf("LiMIC: (limic_open) mismatch between module & library version\n");
+        goto err_ioctl;
+    }
     
     return fd;
+
+err_ioctl:
+    close(fd);
+
+err_open:
+    return ret;
 }
 
 
-static void limic_close( int fd )
+void limic_close( int fd )
 {
     close( fd );
 }
 
 
-static int limic_tx_init( int fd, void *buf, int len, limic_user *lu )
+int limic_tx_init( int fd, void *buf, int len, limic_user *lu )
 {
     int ret;
     limic_request sreq;
@@ -59,7 +73,7 @@ static int limic_tx_init( int fd, void *buf, int len, limic_user *lu )
 }
 
 
-static int limic_rx_comp( int fd, void *buf, int len, limic_user *lu )
+int limic_rx_comp( int fd, void *buf, int len, limic_user *lu )
 {
     int ret;
     limic_request rreq;
@@ -77,4 +91,3 @@ static int limic_rx_comp( int fd, void *buf, int len, limic_user *lu )
     return lu->length;
 }
 
-#endif

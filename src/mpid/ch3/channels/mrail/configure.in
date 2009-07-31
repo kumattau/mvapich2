@@ -89,8 +89,6 @@ AC_ARG_ENABLE(rdma-cm,
 [--enable-rdma-cm - Enable support for RDMA CM.],,enable_rdma_cm=default)
 AC_ARG_ENABLE(registration-cache,
 [--enable-registration-cache - Enable registration caching on Linux.],,enable_registration_cache=default)
-AC_ARG_ENABLE(limic2,
-[--enable-limic2 - Enable LiMIC2 for intra-node communication.],,enable_limic2=no)
 AC_ARG_ENABLE(xrc,
 [--enable-xrc - Compile MVAPICH2 with XRC.],,enable_xrc=no)
 
@@ -277,13 +275,6 @@ if test "$with_rdma" = "gen2"; then
         AC_CHECK_HEADER([libcr.h],,[AC_MSG_ERROR(['libcr.h not found.'])])
         mrail_libs="-lcr $mrail_libs"
         AC_DEFINE(CKPT, 1, [Define to enable Berkeley Lab Checkpoint-Restart support.])
-    fi
-
-    AC_MSG_CHECKING([whether to enable support for LiMIC2])
-    AC_MSG_RESULT($enable_limic2)
-
-    if test "$enable_limic2" = "yes"; then
-        AC_DEFINE(_SMP_LIMIC_, 1, [Define to use LiMIC2])
     fi
 
     AC_MSG_CHECKING([whether to enable support for XRC])

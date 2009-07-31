@@ -21,8 +21,9 @@
 #ifndef _SMPI_SMP_
 #define _SMPI_SMP_
 
-#if defined(_SMP_LIMIC_)
-#include "../../../../../../limic/limic.h"
+#ifdef HAVE_LIMIC_H
+#   define _SMP_LIMIC_
+#   include <limic.h>
 #endif
 
 /*********** Macro defines of local variables ************/
