@@ -9,5 +9,5 @@
 # copyright file COPYRIGHT in the top level MVAPICH2 directory.
 #
 
-SUBDIRS_other_subdirs = gen2 plpa udapl limic
+SUBDIRS_other_subdirs = gen2 plpa udapl
 SUBDIRS = memory rdma @other_subdirs@
