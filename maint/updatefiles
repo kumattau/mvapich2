@@ -486,6 +486,9 @@ if [ $do_makefiles = yes ] ; then
         exit 1
     fi
 fi
+
+autoreconf=`find \( -name '.autoreconf' \) -printf '-wholename "%h" -prune -o '`
+
 #
 # Create the configure files and run autoheader
 # Eventually, make this a test for find available.  Perhaps
@@ -503,14 +506,14 @@ if [ $do_build_configure = yes ] ; then
 	# check)
 	if [ ! -s maint/conftimestamp ] ; then
 	    echo "Rebuilding all configure script because of missing confdbtimestamp"
-	    find . -name configure -print | grep -v maint/configure | xargs rm -f
+	    eval find . $autoreconf -name configure -print | grep -v maint/configure | xargs rm -f
 	    # If we don't delete the autom4te.cache files, bugs in 
 	    # autoconf may fail to correctly update configure
 	    # Gah. Some xargs don't accept -r, other break if there is no
 	    # input.  To avoid that, we do this in two steps: first the
 	    # find, then the rm (if there are any files)
 	    rm -f .atmp
-	    find . -name autom4te.cache > .atmp 2>/dev/null
+	    eval find . $autoreconf -name autom4te.cache -print > .atmp 2>/dev/null
 	    if [ -s .atmp ] ; then xargs rm -f < .atmp ; fi
 	    rm -f .atmp
 	    date > maint/conftimestamp
@@ -520,13 +523,21 @@ if [ $do_build_configure = yes ] ; then
 	    files=`find confdb -newer  maint/conftimestamp 2>&1` 
 	    if [ -n "$files" ] ; then
 		echo "Rebuilding all configure script because of changes in confdb"
- 	        find . -name configure -print | grep -v maint/configure | xargs rm -f
+ 	        eval find . $autoreconf -name configure -print | grep -v maint/configure | xargs rm -f
 	        date > maint/conftimestamp
 	    fi
 	fi
 	#
+
+        for dir in `find . -name '.autoreconf' -printf '%h'`; do
+            echo "Processing $dir with 'autoreconf --install'" && \
+            autoreconf --install $dir
+        done
+
         for dir in `find . -name 'configure.in' -print` ; do
             dir=`dirname $dir`
+            test -f $dir/.autoreconf && continue
+
   	    allowFailure=no
 	    builtConfigure=no
   	    #echo $dir
