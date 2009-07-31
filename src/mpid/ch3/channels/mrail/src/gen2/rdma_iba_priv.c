@@ -79,7 +79,7 @@ struct process_init_info *alloc_process_init_info(int pg_size, int rails)
         info->qp_num_rdma[i] = (uint32_t *) MPIU_Malloc(rails * sizeof(uint32_t));
         info->lid[i] = (uint16_t *) MPIU_Malloc(rails * sizeof(uint16_t));
         info->gid[i] = (union ibv_gid *)
-                         MPIU_Malloc(pg_size * sizeof(union ibv_gid));
+                         MPIU_Malloc(rails * sizeof(union ibv_gid));
         info->hostid[i] = (int *) MPIU_Malloc(rails * sizeof(int));
         info->qp_num_onesided[i] = (uint32_t *) MPIU_Malloc(rails * sizeof(uint32_t));
 
