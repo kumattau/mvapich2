@@ -21,8 +21,7 @@
 #ifndef _SMPI_SMP_
 #define _SMPI_SMP_
 
-#ifdef HAVE_LIMIC_H
-#   define _SMP_LIMIC_
+#ifdef _SMP_LIMIC_
 #   include <limic.h>
 #endif
 

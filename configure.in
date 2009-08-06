@@ -490,7 +490,10 @@ if test "x$with_limic2" != "xno"; then
     test -n "$with_limic2_libpath" &&\
     LDFLAGS="$LDFLAGS -L$with_limic2_libpath"
 
-    AC_CHECK_HEADERS([limic.h], [limic_h_found=yes])
+    AC_CHECK_HEADER([limic.h], [
+                         limic_h_found=yes
+                         AC_DEFINE([_SMP_LIMIC_], 1, [Define when using LiMIC2])
+                     ])
 
     if test -n "$limic2_path_set" -a "x$limic_h_found" != "xyes"; then
         AC_MSG_ERROR([could not find limic.h with given include path!])
