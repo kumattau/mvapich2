@@ -1590,7 +1590,7 @@ int get_pkey_index(uint16_t pkey, int hca_num, int port_num, uint16_t* index)
         uint16_t curr_pkey;
         ibv_query_pkey(MPIDI_CH3I_RDMA_Process.nic_context[hca_num], 
                 (uint8_t)port_num, (int)i ,&curr_pkey);
-        if (pkey == ntohs(curr_pkey) & PKEY_MASK) {
+        if (pkey == (ntohs(curr_pkey) & PKEY_MASK)) {
             *index = i;
             return 1;
         }
