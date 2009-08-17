@@ -1161,7 +1161,7 @@ int read_param_file (char *paramfile, char **env)
 		if (param_debug) {
 			printf ("Scanning: %s\n", p);
 		}
-		if ((num = sscanf (p, "%64[A-Z_] = %192s", name, value)) != 2) {
+                if ((num = sscanf (p, "%64[A-Z_0-9] = %192s", name, value)) != 2) {
 			/* debug */
 			if (param_debug) {
 				printf ("FAILED: matched = %d, name = %s, "
