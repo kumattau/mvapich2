@@ -58,12 +58,15 @@ struct process_init_info *alloc_process_init_info(int pg_size, int rails)
     }
 
     info->lid = (uint16_t **) MPIU_Malloc(pg_size * sizeof(uint16_t *));
-    info->gid = (union ibv_gid **) MPIU_Malloc(pg_size * sizeof(union ibv_gid *));
+    info->gid = (union ibv_gid **)
+                    MPIU_Malloc(pg_size * sizeof(union ibv_gid *));
     info->hostid = (int **) MPIU_Malloc(pg_size * sizeof(int *));
-    info->qp_num_rdma = (uint32_t **) MPIU_Malloc(pg_size * sizeof(uint32_t *));
-    info->qp_num_onesided = (uint32_t **) MPIU_Malloc(pg_size * sizeof(uint32_t *));
+    info->qp_num_rdma = (uint32_t **)
+                            MPIU_Malloc(pg_size * sizeof(uint32_t *));
+    info->qp_num_onesided = (uint32_t **)
+                                MPIU_Malloc(pg_size * sizeof(uint32_t *));
     info->hca_type = (uint32_t *) MPIU_Malloc(pg_size * sizeof(uint32_t));
-    info->vc_addr  = (uint64_t *)malloc(pg_size * sizeof(uint64_t));
+    info->vc_addr  = (uint64_t *) malloc(pg_size * sizeof(uint64_t));
     if (!info->lid
         || !info->gid 
         || !info->hostid 
@@ -74,14 +77,15 @@ struct process_init_info *alloc_process_init_info(int pg_size, int rails)
         return NULL;
     }
 
-    for (i = 0; i < pg_size; ++i)
-    {
-        info->qp_num_rdma[i] = (uint32_t *) MPIU_Malloc(rails * sizeof(uint32_t));
+    for (i = 0; i < pg_size; ++i) {
+        info->qp_num_rdma[i] = (uint32_t *)
+                                    MPIU_Malloc(rails * sizeof(uint32_t));
         info->lid[i] = (uint16_t *) MPIU_Malloc(rails * sizeof(uint16_t));
         info->gid[i] = (union ibv_gid *)
                          MPIU_Malloc(rails * sizeof(union ibv_gid));
         info->hostid[i] = (int *) MPIU_Malloc(rails * sizeof(int));
-        info->qp_num_onesided[i] = (uint32_t *) MPIU_Malloc(rails * sizeof(uint32_t));
+        info->qp_num_onesided[i] = (uint32_t *)
+                                    MPIU_Malloc(rails * sizeof(uint32_t));
 
         if (!info->lid[i]
                 || !info->gid[i]
@@ -115,7 +119,7 @@ void free_process_init_info(struct process_init_info *info, int pg_size)
     MPIU_Free(info->hostid);
     MPIU_Free(info->qp_num_rdma);
     MPIU_Free(info->qp_num_onesided);
-    free(info->hca_type);
+    MPIU_Free(info->hca_type);
     free(info->vc_addr);
 }
 
