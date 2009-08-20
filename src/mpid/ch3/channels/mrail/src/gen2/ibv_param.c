@@ -779,11 +779,11 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
             switch(proc->cluster_size) {
                 case LARGE_CLUSTER:
                     num_rdma_buffer         = 4;
-                    rdma_iba_eager_threshold    = 6 * 1024;
+                    rdma_iba_eager_threshold    = 6 * 1024 -sizeof(VBUF_FLAG_TYPE);
                     break;
                 case MEDIUM_CLUSTER:
                     num_rdma_buffer         = 16;
-                    rdma_iba_eager_threshold    = 6 * 1024;
+                    rdma_iba_eager_threshold    = 6 * 1024 -sizeof(VBUF_FLAG_TYPE);
                     break;
                 case SMALL_CLUSTER:
                 case VERY_SMALL_CLUSTER:
@@ -802,11 +802,11 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 	    switch(proc->cluster_size) {
 		case LARGE_CLUSTER:
 			num_rdma_buffer         = 4;
-			rdma_iba_eager_threshold    = 2 * 1024;
+			rdma_iba_eager_threshold    = 2 * 1024 -sizeof(VBUF_FLAG_TYPE);
 			break;
                 case MEDIUM_CLUSTER:
 			num_rdma_buffer         = 8;
-			rdma_iba_eager_threshold = 4 * 1024;
+			rdma_iba_eager_threshold = 4 * 1024 -sizeof(VBUF_FLAG_TYPE);
 
 			break;
                 case SMALL_CLUSTER:
@@ -831,11 +831,11 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
             switch(proc->cluster_size) {
                 case LARGE_CLUSTER:
                     num_rdma_buffer         = 4;
-                    rdma_iba_eager_threshold    = 2 * 1024;
+                    rdma_iba_eager_threshold    = 2 * 1024- sizeof(VBUF_FLAG_TYPE);
                     break;
                 case MEDIUM_CLUSTER:
                     num_rdma_buffer         = 8;
-                    rdma_iba_eager_threshold    = 4 * 1024;
+                    rdma_iba_eager_threshold    = 4 * 1024 -sizeof(VBUF_FLAG_TYPE);
                     break;
                 case SMALL_CLUSTER:
                 case VERY_SMALL_CLUSTER:
