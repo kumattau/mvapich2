@@ -124,6 +124,8 @@ int MPIDI_CH3_Packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
                     sreq->dev.iov_offset) * sizeof(MPID_IOV));
             n_iov = sreq->dev.iov_count - sreq->dev.iov_offset + 1;
 
+            Calculate_IOV_len(iov, n_iov, pkt_len);
+
             mpi_errno =
                 MPIDI_CH3I_MRAILI_Eager_send(vc, iov, n_iov, pkt_len, &nb,
                         &buf);
