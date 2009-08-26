@@ -15,4 +15,3 @@ lib${MPILIBNAME}_a_SOURCES = \
 HEADERS = dataloop.h dataloop_parts.h dataloop_create.h ../mpid_dataloop.h  typesize_support.h
 # INCLUDES = -I${srcdir} -I${srcdir}/.. -I../../../include -I${master_top_srcdir}/src/include
 INCLUDES = -I${srcdir}/.. -I${top_builddir}/src/include -I${master_top_srcdir}/src/include
-CFLAGS = @CFLAGS@ -D_XOPEN_SOURCE=600

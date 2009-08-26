@@ -25,4 +25,3 @@ HEADERS = dataloop/dataloop_parts.h dataloop/dataloop_create.h mpid_dataloop.h m
 	mpid_ext32_segment.h segment_states.h
 INCLUDES = -I${srcdir} -I${top_builddir}/src/include -I${master_top_srcdir}/src/include
 SUBDIRS = dataloop .
-CFLAGS = @CFLAGS@ -D_XOPEN_SOURCE=600

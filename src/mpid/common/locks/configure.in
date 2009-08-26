@@ -1,8 +1,6 @@
 AC_PREREQ(2.59)
 AC_INIT(configure.in)
 
-AC_USE_SYSTEM_EXTENSIONS
-
 dnl The MPICH2 top-level configure adds a bunch of flags to the
 dnl user-defined CFLAGS by processing different configure command-line
 dnl arguments (--enable-g, --enable-default-optimization). These updated

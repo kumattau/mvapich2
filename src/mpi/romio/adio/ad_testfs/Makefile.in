@@ -8,7 +8,7 @@ CC_SHL      = @CC_SHL@
 SHLIBNAME   = @SHLIBNAME@
 
 INCLUDE_DIR = -I@MPI_INCLUDE_DIR@ -I${srcdir}/../include -I../include -I../../include  -I${srcdir}/../../../../include -I../../../../include
-CFLAGS      = @CPPFLAGS@ @CFLAGS@ -D_XOPEN_SOURCE=600 $(INCLUDE_DIR)
+CFLAGS      = @CPPFLAGS@ @CFLAGS@ $(INCLUDE_DIR)
 
 top_builddir  = @master_topbuild_dir@
 LIBTOOL       = @LIBTOOL@

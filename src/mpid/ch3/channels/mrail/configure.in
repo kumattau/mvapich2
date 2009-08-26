@@ -1,6 +1,5 @@
 AC_PREREQ(2.59)
 AC_INIT(configure.in)
-AC_USE_SYSTEM_EXTENSIONS
 
 dnl The MVAPICH2 top-level configure adds a bunch of flags to the
 dnl user-defined CFLAGS by processing different configure command-line

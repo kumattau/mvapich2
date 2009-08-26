@@ -29,13 +29,13 @@
    devices if necessary).  That's still not great, but better than all of 
    mpidimpl.h, which should not be used outside of the device code. 
    WDG - 8/8/08 */
-#include "mpid_locksconf.h"
 #include "mpidimpl.h"
 
 /* FIXME: Including mpidimpl.h includes mpiimpl.h, which is a superset of 
    mpishared.h.  mpishared.h should only be included when the regular mpiimpl.h
    headers are not used. */
 /* #include "mpishared.h" */
+#include "mpid_locksconf.h"
 
 /* XXX DJG TODO eliminate any atomic operations assembly in here and convert it
    to using the MPIDU_Atomic_* functions. */

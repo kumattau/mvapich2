@@ -4,8 +4,8 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-#include "mpidu_process_locks.h"
 #include "mpiatomic.h"
+#include "mpidu_process_locks.h"
 
 /* initialized to keep it from becoming a common symbol */
 MPIDU_Process_lock_t *emulation_lock = NULL;
