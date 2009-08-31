@@ -3,7 +3,40 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
-MVAPICH2-1.4-RC1
+MVAPICH2-1.4-rc2
+
+* Enhancements since mvapich2-1.4rc1
+    - Added Feature: Check-point Restart with Fault-Tolerant Backplane Support
+      (FTB_CR)
+    - Added Feature: Multiple CQ-based design for Chelsio iWARP
+    - Distribute LiMIC2-0.5.2 with MVAPICH2. Added flexibility for selecting
+      and using a pre-existing installation of LiMIC2
+    - Increase the amount of command line that mpirun_rsh can handle (Thanks
+      for the suggestion by Bill Barth @ TACC)
+
+* Bug fixes since mvapich2-1.4rc1
+    - Fix for hang with packetized send using RDMA Fast path
+    - Fix for allowing to use user specified P_Key's (Thanks to Mike Heinz @
+      QLogic)
+    - Fix for allowing mpirun_rsh to accept parameters through the
+      parmeters file (Thanks to Mike Heinz @ QLogic)
+    - Modify the default value of shmem_bcast_leaders to 4K
+    - Fix for one-sided with XRC support
+    - Fix hang with XRC
+    - Fix to always enabling MVAPICH2_Sync_Checkpoint functionality
+    - Fix build error on RHEL 4 systems (Reported by Nathan Baca and Jonathan
+      Atencio)
+    - Fix issue with PGI compilation for PSM interface
+    - Fix for one-sided accumulate function with user-defined continguous
+      datatypes
+    - Fix linear/hierarchical switching logic and reduce threshold for the
+      enhanced mpirun_rsh framework.
+    - Clean up intra-node connection management code for iWARP
+    - Fix --enable-g=all issue with uDAPL interface
+    - Fix one sided operation with on demand CM.
+    - Fix VPATH build
+
+MVAPICH2-1.4-rc1
 
 * Bugs fixed since MVAPICH2-1.2p1
 
