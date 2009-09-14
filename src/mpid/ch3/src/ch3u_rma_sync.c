@@ -2768,6 +2768,7 @@ static int MPIDI_CH3I_Send_lock_get(MPID_Win *win_ptr)
     rreq->dev.datatype = rma_op->origin_datatype;
     rreq->dev.target_win_handle = MPI_WIN_NULL;
     rreq->dev.source_win_handle = win_ptr->handle;
+    rreq->mrail.protocol = VAPI_PROTOCOL_RENDEZVOUS_UNSPECIFIED;
 
     MPIDI_CH3I_DATATYPE_IS_PREDEFINED(rreq->dev.datatype, predefined);
     if (!predefined)
