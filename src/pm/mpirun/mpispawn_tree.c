@@ -191,7 +191,7 @@ extern int mpispawn_tree_init (size_t me, int req_socket)
 		tv.tv_usec = 0;
 		FD_ZERO(&set);
 		FD_SET(l_socket, &set);
-		if (select(l_socket+1, &set, NULL, NULL, &tv) <= 0) {
+		if (select(l_socket+1, &set, NULL, NULL, &tv) < 0) {
 			return(-1);
 		}
 	}
