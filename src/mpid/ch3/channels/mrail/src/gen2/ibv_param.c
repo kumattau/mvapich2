@@ -71,6 +71,9 @@ int           enable_knomial_2level_bcast=1;
 int           inter_node_knomial_factor=4;
 int           intra_node_knomial_factor=4;
 int           knomial_2level_bcast_threshold=0;
+/* Threshold of job size beyond which we want to use 2-cq approach */
+int           rdma_iwarp_multiple_cq_threshold = RDMA_IWARP_DEFAULT_MULTIPLE_CQ_THRESHOLD;
+int           rdma_iwarp_use_multiple_cq = 1;
 /* Force to use rendezvous if extended sendq size exceeds this value */
 int           rdma_rndv_ext_sendq_size = 5;
 /* Whether coalescing of messages should be attempted */
@@ -548,6 +551,17 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
     }
 
     proc->has_srq = (value = getenv("MV2_USE_SRQ")) != NULL ? !!atoi(value) : 1;
+
+    if ((value = getenv("MV2_IWARP_MULTIPLE_CQ_THRESHOLD")) != NULL) {
+        rdma_iwarp_multiple_cq_threshold = (int)atoi(value);
+        if (rdma_iwarp_multiple_cq_threshold < 0) {
+            rdma_iwarp_multiple_cq_threshold =
+                                    RDMA_IWARP_DEFAULT_MULTIPLE_CQ_THRESHOLD;
+        }
+        if (rdma_iwarp_multiple_cq_threshold > size) {
+            rdma_iwarp_use_multiple_cq = 0;
+        }
+    }
 #ifdef _ENABLE_XRC_
     if (USE_XRC) {
         proc->has_srq = 1;

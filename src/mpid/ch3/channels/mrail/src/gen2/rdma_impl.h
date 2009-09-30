@@ -81,6 +81,8 @@ typedef struct MPIDI_CH3I_RDMA_Process_t {
     uint8_t                     has_lazy_mem_unregister;
     uint8_t                     has_one_sided;
     int                         maxtransfersize;
+    int                         global_used_send_cq;
+    int                         global_used_recv_cq;
     uint8_t                     lmc;
 
     struct ibv_context          *nic_context[MAX_NUM_HCAS];
@@ -275,7 +277,7 @@ do {                                                                    \
                         __FILE__, __LINE__,(_rail), (_v)->rail);      \
                 MPIU_Assert((_rail) == (_v)->rail);                   \
         }                                                             \
-        (_c)->mrail.rails[(_rail)].used_send_cq++;                    \
+        MPIDI_CH3I_RDMA_Process.global_used_send_cq++;                \
         __ret = ibv_post_send((_c)->mrail.rails[(_rail)].qp_hndl,     \
                   &((_v)->desc.u.sr),&((_v)->desc.y.bad_sr));         \
         if(__ret) {                                                   \
@@ -307,7 +309,7 @@ do {                                                                    \
                         __FILE__, __LINE__,(_rail), (_v)->rail);      \
                 MPIU_Assert((_rail) == (_v)->rail);                   \
         }                                                             \
-        (_c)->mrail.rails[(_rail)].used_send_cq++;                    \
+        MPIDI_CH3I_RDMA_Process.global_used_send_cq++;                \
         __ret = ibv_post_send((_c)->mrail.rails[(_rail)].qp_hndl,     \
                   &((_v)->desc.u.sr),&((_v)->desc.y.bad_sr));         \
         if(__ret) {                                                   \
@@ -324,7 +326,7 @@ do {                                                                    \
 #define IBV_POST_RR(_c,_vbuf,_rail) {                           \
     int __ret;                                                  \
     _vbuf->vc = (void *)_c;                                     \
-    (_c)->mrail.rails[(_rail)].used_recv_cq++;                  \
+    MPIDI_CH3I_RDMA_Process.global_used_recv_cq++;              \
     __ret = ibv_post_recv(_c->mrail.rails[(_rail)].qp_hndl,     \
                           &((_vbuf)->desc.u.rr),                  \
             &((_vbuf)->desc.y.bad_rr));                           \

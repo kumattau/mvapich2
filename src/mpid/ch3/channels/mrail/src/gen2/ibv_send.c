@@ -105,7 +105,7 @@ static inline void MRAILI_Ext_sendq_send(MPIDI_VC_t *c, int rail)
     MPIU_Assert (!USE_XRC || VC_XST_ISUNSET (c, XF_INDIRECT_CONN));
 #endif 
     if ((NULL != c->mrail.rails[rail].send_cq_hndl) &&
-        (c->mrail.rails[rail].used_send_cq >= rdma_default_max_cq_size)) {
+        (MPIDI_CH3I_RDMA_Process.global_used_send_cq >= rdma_default_max_cq_size)) {
         /* We are monitoring CQ's and there is CQ overflow */
         no_cq_overflow = 0;
     }
@@ -420,7 +420,7 @@ int MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(MPIDI_VC_t * vc,
                               *v->head_flag - sizeof *p);
 #endif
     if ((NULL != vc->mrail.rails[rail].send_cq_hndl) &&
-        (vc->mrail.rails[rail].used_send_cq >= rdma_default_max_cq_size)) {
+        (MPIDI_CH3I_RDMA_Process.global_used_send_cq >= rdma_default_max_cq_size)) {
         /* We are monitoring CQ's and there is CQ overflow */
         cq_overflow = 1;
     }
@@ -539,7 +539,7 @@ int post_srq_send(MPIDI_VC_t* vc, vbuf* v, int rail)
     FLUSH_RAIL(vc, rail);
 
     if ((NULL != vc->mrail.rails[rail].send_cq_hndl) &&
-        (vc->mrail.rails[rail].used_send_cq >= rdma_default_max_cq_size)) {
+        (MPIDI_CH3I_RDMA_Process.global_used_send_cq >= rdma_default_max_cq_size)) {
         /* We are monitoring CQ's and there is CQ overflow */
         cq_overflow = 1;
     }
@@ -610,7 +610,7 @@ int post_send(MPIDI_VC_t * vc, vbuf * v, int rail)
         FLUSH_RAIL(vc, rail);
 
         if ((NULL != vc->mrail.rails[rail].send_cq_hndl) &&
-            (vc->mrail.rails[rail].used_send_cq >= rdma_default_max_cq_size)) {
+            (MPIDI_CH3I_RDMA_Process.global_used_send_cq >= rdma_default_max_cq_size)) {
             /* We are monitoring CQ's and there is CQ overflow */
             cq_overflow = 1;
         }
@@ -938,7 +938,7 @@ int MRAILI_Backlog_send(MPIDI_VC_t * vc, int rail)
         FLUSH_RAIL(vc, rail);
 
         if ((NULL != vc->mrail.rails[rail].send_cq_hndl) &&
-            (vc->mrail.rails[rail].used_send_cq >= rdma_default_max_cq_size)) {
+            (MPIDI_CH3I_RDMA_Process.global_used_send_cq >= rdma_default_max_cq_size)) {
             /* We are monitoring CQ's and there is CQ overflow */
             cq_overflow = 1;
         }
@@ -1401,7 +1401,7 @@ void MRAILI_RDMA_Get(   MPIDI_VC_t * vc, vbuf *v,
 
     XRC_FILL_SRQN_FIX_CONN (v, vc, rail);
     if ((NULL != vc->mrail.rails[rail].send_cq_hndl) &&
-        (vc->mrail.rails[rail].used_send_cq >= rdma_default_max_cq_size)) {
+        (MPIDI_CH3I_RDMA_Process.global_used_send_cq >= rdma_default_max_cq_size)) {
         /* We are monitoring CQ's and there is CQ overflow */
         cq_overflow = 1;
     }
@@ -1442,7 +1442,7 @@ void MRAILI_RDMA_Put(   MPIDI_VC_t * vc, vbuf *v,
     XRC_FILL_SRQN_FIX_CONN (v, vc, rail);
 
     if ((NULL != vc->mrail.rails[rail].send_cq_hndl) &&
-        (vc->mrail.rails[rail].used_send_cq >= rdma_default_max_cq_size)) {
+        (MPIDI_CH3I_RDMA_Process.global_used_send_cq >= rdma_default_max_cq_size)) {
         /* We are monitoring CQ's and there is CQ overflow */
         cq_overflow = 1;
     }

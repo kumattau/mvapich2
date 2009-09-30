@@ -537,7 +537,8 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
             goto fn_exit;
     }
 
-    if ((MPIDI_CH3I_RDMA_Process.hca_type == CHELSIO_T3) &&
+    if (rdma_iwarp_use_multiple_cq &&
+        (MPIDI_CH3I_RDMA_Process.hca_type == CHELSIO_T3) &&
         (MPIDI_CH3I_RDMA_Process.cluster_size != VERY_SMALL_CLUSTER)) {
         num_cqs = 2;
     } else {
@@ -582,16 +583,16 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
 	
                 if (2 == num_cqs) {
     	            if (0 == cq_choice) {
-    	                if (vc->mrail.rails[v->rail].used_send_cq) {
-    	                    vc->mrail.rails[v->rail].used_send_cq--;
+    	                if (MPIDI_CH3I_RDMA_Process.global_used_send_cq) {
+    	                    MPIDI_CH3I_RDMA_Process.global_used_send_cq--;
     	                } else {
     	                    ibv_va_error_abort(IBV_STATUS_ERR,
                                                 "trying to decrement send cq"
                                                 " count already at 0");
     	                }
     	            } else {
-    	                if (vc->mrail.rails[v->rail].used_recv_cq) {
-    	                    vc->mrail.rails[v->rail].used_recv_cq--;
+    	                if (MPIDI_CH3I_RDMA_Process.global_used_recv_cq) {
+    	                    MPIDI_CH3I_RDMA_Process.global_used_recv_cq--;
     	                } else {
     	                    ibv_va_error_abort(IBV_STATUS_ERR,
                                                 "trying to decrement recv cq"

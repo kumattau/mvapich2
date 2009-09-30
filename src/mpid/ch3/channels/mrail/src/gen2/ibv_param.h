@@ -74,7 +74,7 @@ extern uint32_t             viadev_max_r3_oust_send;
 
 extern int                  rdma_polling_set_threshold;
 extern int                  rdma_polling_set_limit;
-extern int		    rdma_eager_limit;
+extern int		            rdma_eager_limit;
 extern int                  rdma_rndv_ext_sendq_size;
 
 extern int                  rdma_pin_pool_size;
@@ -100,7 +100,8 @@ extern int                  rdma_use_blocking;
 extern unsigned long        rdma_spin_count;
 extern int                  USE_SMP;
 extern int                  use_iboeth;
-
+extern int                  rdma_iwarp_multiple_cq_threshold;
+extern int                  rdma_iwarp_use_multiple_cq;
 
 
 #define PKEY_MASK 0x7fff /* the last bit is reserved */
@@ -143,6 +144,8 @@ extern int                  use_iboeth;
 #define RDMA_INITIAL_PREPOST_DEPTH      (10)
 #define RDMA_LOW_WQE_THRESHOLD          (10)
 #define RDMA_MAX_RDMA_SIZE              (4194304)
+
+#define RDMA_IWARP_DEFAULT_MULTIPLE_CQ_THRESHOLD  (32)
 
 /* Inline not supported for PPC */
 #define HOSTNAME_LEN                    (255)

@@ -746,7 +746,7 @@ int rdma_cm_create_qp(MPIDI_VC_t *vc, int rail_index)
 	init_attr.cap.max_inline_data = rdma_max_inline_size;
 	
 	init_attr.cap.max_send_wr = rdma_default_max_send_wqe;
-    if ((proc->hca_type == CHELSIO_T3) &&
+    if (rdma_iwarp_use_multiple_cq && (proc->hca_type == CHELSIO_T3) &&
         (proc->cluster_size != VERY_SMALL_CLUSTER)) {
 	    init_attr.send_cq = proc->send_cq_hndl[hca_index];
 	    init_attr.recv_cq = proc->recv_cq_hndl[hca_index];
@@ -778,7 +778,7 @@ int rdma_cm_create_qp(MPIDI_VC_t *vc, int rail_index)
 
     /* Save required handles */
     vc->mrail.rails[rail_index].qp_hndl = cmid->qp;
-    if ((proc->hca_type == CHELSIO_T3) &&
+    if (rdma_iwarp_use_multiple_cq && (proc->hca_type == CHELSIO_T3) &&
         (proc->cluster_size != VERY_SMALL_CLUSTER)) {
        vc->mrail.rails[rail_index].cq_hndl = NULL;
        vc->mrail.rails[rail_index].send_cq_hndl = proc->send_cq_hndl[hca_index];
@@ -979,7 +979,7 @@ int rdma_cm_init_pd_cq()
 		        ibv_error_abort(GEN_EXIT_ERR, "Create comp channel failed\n");
             }
 
-            if ((proc->hca_type == CHELSIO_T3) &&
+            if (rdma_iwarp_use_multiple_cq && (proc->hca_type == CHELSIO_T3) &&
                 (proc->cluster_size != VERY_SMALL_CLUSTER)) {
 	            /* Allocate the completion queue handle for the HCA */
                 /* Trac #423 */
@@ -1034,7 +1034,7 @@ int rdma_cm_init_pd_cq()
         }
         else
         {
-            if ((proc->hca_type == CHELSIO_T3) &&
+            if (rdma_iwarp_use_multiple_cq && (proc->hca_type == CHELSIO_T3) &&
                 (proc->cluster_size != VERY_SMALL_CLUSTER)) {
 	            /* Allocate the completion queue handle for the HCA */
                 /* Trac #423*/
