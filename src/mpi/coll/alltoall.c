@@ -6,6 +6,8 @@
  */
 
 #include "mpiimpl.h"
+#include "dreg.h"
+#include "rdma_impl.h"
 
 /* -- Begin Profiling Symbol Block for routine MPI_Alltoall */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -108,6 +110,15 @@ int MPIR_Alltoall(
     
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
+
+    lock_dereg();
+    lock_dreg();
+ 
+    MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister=0;
+
+    unlock_dereg();
+    unlock_dreg();
+ 
     
     if ((nbytes <= MPIR_ALLTOALL_SHORT_MSG) && (comm_size >= 8)) {
 
@@ -508,6 +519,15 @@ int MPIR_Alltoall(
 	    if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
         }
     }
+
+    lock_dereg();
+    lock_dreg();
+
+    MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister=1;
+
+    unlock_dereg();
+    unlock_dreg();
+
 
  fn_fail:    
     /* check if multiple threads are calling this collective function */

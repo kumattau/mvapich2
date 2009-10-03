@@ -96,10 +96,12 @@ vma_t vma_list;
 AVL_TREE* vma_tree;
 
 #if !defined(DISABLE_PTMALLOC)
+/* 
 static pthread_spinlock_t dreg_lock = 0;
 static pthread_spinlock_t dereg_lock = 0;
 static pthread_t th_id_of_lock;
 static pthread_t th_id_of_dereg_lock = -1;
+*/
 
 /* Array which stores the memory regions 
  * ptrs which are to be deregistered after 
@@ -671,34 +673,35 @@ fn_fail:
 
 #if !defined(DISABLE_PTMALLOC)
 
-static int have_dereg() 
+
+int have_dereg() 
 {
     return pthread_equal(th_id_of_dereg_lock, pthread_self());
 }
 
-static void lock_dereg()
+void lock_dereg()
 {
     pthread_spin_lock(&dereg_lock);
     th_id_of_dereg_lock = pthread_self();
 }
 
-static void unlock_dereg()
+void unlock_dereg()
 {
     th_id_of_dereg_lock = -1;
     pthread_spin_unlock(&dereg_lock);
 }
 
-static int have_dreg() {
+int have_dreg() {
     return pthread_equal(th_id_of_lock, pthread_self());
 }
 
-static void lock_dreg()
+void lock_dreg()
 {
     pthread_spin_lock(&dreg_lock);
     th_id_of_lock = pthread_self();
 }
 
-static void unlock_dreg()
+void unlock_dreg()
 {
     th_id_of_lock = -1;
     pthread_spin_unlock(&dreg_lock);
