@@ -1062,8 +1062,8 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
             MPIU_ERR_POP(mpi_errno);
         }
 
-	hosts = rdma_cm_get_hostnames(pg_rank, pg);
-	if (!hosts) {
+	    hosts = rdma_cm_get_hostnames(pg_rank, pg);
+	    if (!hosts) {
             MPIU_Error_printf("Error obtaining hostnames\n");
         }
 
@@ -1096,9 +1096,9 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
 #ifdef _ENABLE_XRC_
         if (USE_XRC) {
             mpi_errno = mv2_xrc_init ();
-        if (mpi_errno) {
-            MPIU_ERR_POP(mpi_errno);
-        }
+            if (mpi_errno) {
+                MPIU_ERR_POP(mpi_errno);
+            }
         }
 #endif /* _ENABLE_XRC_ */
         if ((mpi_errno = rdma_iba_hca_init_noqp(

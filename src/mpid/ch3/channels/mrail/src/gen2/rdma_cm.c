@@ -45,7 +45,7 @@ do {                                                              \
 
 int *rdma_base_listen_port;
 int *rdma_cm_host_list;
-int rdma_cm_local_ips[MAX_NUM_HCAS];
+int *rdma_cm_local_ips;
 int *rdma_cm_accept_count;
 volatile int *rdma_cm_connect_count;
 volatile int *rdma_cm_iwarp_msg_count;
@@ -659,6 +659,7 @@ int rdma_cm_connect_all(int *hosts, int pg_rank, MPIDI_PG_t *pg)
     int i, j, k, ret, rail_index, pg_size;
     MPIDI_VC_t  *vc;
     MPIDI_CH3I_RDMA_Process_t *proc = &MPIDI_CH3I_RDMA_Process;
+    int max_num_ips = rdma_num_hcas * rdma_num_ports;
 
     if (!proc->use_rdma_cm_on_demand){
 	/* Initiate non-smp active connect requests */
@@ -670,10 +671,10 @@ int rdma_cm_connect_all(int *hosts, int pg_rank, MPIDI_PG_t *pg)
 		vc->ch.state = MPIDI_CH3I_VC_STATE_CONNECTING_CLI;
 
 		/* Initiate all needed qp connections */
-		for (j = 0; j < rdma_num_hcas; j++){
+		for (j = 0; j < max_num_ips; j++){
 		    for (k = 0; k < rdma_num_ports * rdma_num_qp_per_port; k++){
 			rail_index = j * rdma_num_ports * rdma_num_qp_per_port + k;
-            ret = rdma_cm_connect_to_server(vc, hosts[i*rdma_num_hcas + j], rail_index);
+            ret = rdma_cm_connect_to_server(vc, hosts[i*max_num_ips + j], rail_index);
 		    }
 		}
 	    }
@@ -698,7 +699,7 @@ int rdma_cm_get_contexts(){
     struct sockaddr_in sin;
     MPIDI_CH3I_RDMA_Process_t *proc = &MPIDI_CH3I_RDMA_Process;
 
-    for (i = 0; i < rdma_num_hcas; i++){
+    for (i = 0; i < (rdma_num_hcas * rdma_num_ports); i++){
 
 	ret = rdma_create_id(proc->cm_channel, &tmpcmid, proc, RDMA_PS_TCP);
 	if (ret) {
@@ -803,91 +804,144 @@ int rdma_cm_create_qp(MPIDI_VC_t *vc, int rail_index)
 int *rdma_cm_get_hostnames(int pg_rank, MPIDI_PG_t *pg)
 {
     int *hosts;
-    int error, i;
-    int length = 64;
+    int error, i, j;
+    int length = 16;
     char rank[16];
-    char buffer[length];
+    char temp[16];
+    char buffer[16];
     int key_max_sz;
     int val_max_sz;
     char *key;
     char *val;
     int pg_size = MPIDI_PG_Get_size(pg);
+    int max_num_ips = rdma_num_hcas * rdma_num_ports;
 
-    hosts = (int *) MPIU_Malloc (pg_size * MAX_NUM_HCAS * sizeof(int));
+    /* Allocate enough space for all the IP addresses that a system can have.
+     * = Number of processes * Numbmer of HCAs * Number of ports per HCA.
+     */ 
+    hosts = (int *) MPIU_Malloc (pg_size * max_num_ips * sizeof(int));
     if (!hosts){
-	ibv_error_abort(IBV_RETURN_ERR,
-			"Memory allocation error\n");
+	    ibv_error_abort(IBV_RETURN_ERR, "Memory allocation error\n");
     }
     rdma_cm_host_list = hosts;
     
-    sprintf(rank, "ip%d", pg_rank);
-    sprintf(buffer, "%d-%d-%d-%d-%d ", 
-	    rdma_base_listen_port[pg_rank],
-	    rdma_cm_local_ips[0], rdma_cm_local_ips[1],
-	    rdma_cm_local_ips[2], rdma_cm_local_ips[3]);
-    DEBUG_PRINT("[%d] message to be sent: %s\n", pg_rank, buffer);
-
     error = PMI_KVS_Get_key_length_max(&key_max_sz);
     key = MPIU_Malloc(key_max_sz+1);
     PMI_KVS_Get_value_length_max(&val_max_sz);
     val = MPIU_Malloc(val_max_sz+1);
 
+    DEBUG_PRINT("val_max_sz = %d, key_max_sz = %d\r\n", val_max_sz, key_max_sz);
     if (key == NULL || val == NULL) {
 	   ibv_error_abort(GEN_EXIT_ERR, "Error allocating memory\n");
     }
 
+    /* Put the port info into PMI Cache */
+    sprintf(rank, "%d-port", pg_rank);
+    sprintf(buffer, "%d", rdma_base_listen_port[pg_rank]);
+    DEBUG_PRINT("\r\n[%d]: listen port = %d\r\n", pg_rank,
+            rdma_base_listen_port[pg_rank]);
+
     MPIU_Strncpy(key, rank, 16);
     MPIU_Strncpy(val, buffer, length);
+    DEBUG_PRINT("[%d] message to be sent: %s\r\n", pg_rank, val);
     error = PMI_KVS_Put(pg->ch.kvs_name, key, val);
     if (error != 0) {
-	ibv_error_abort(IBV_RETURN_ERR,
-			"PMI put failed\n");
+	    ibv_error_abort(IBV_RETURN_ERR, "PMI put failed\n");
     }
 
-    error = PMI_KVS_Commit(pg->ch.kvs_name);\
+    /* Put the IP info into PMI Cache */
+    for (i = 0; i < max_num_ips; ++i) {
+        memset(rank, 0, sizeof(rank));
+        sprintf(rank, "%d-ip-%d", pg_rank, i);
+
+        memset(buffer, 0, sizeof(buffer));
+        sprintf(buffer, "%d", rdma_cm_local_ips[i]);
+
+        MPIU_Strncpy(key, rank, length);
+        MPIU_Strncpy(val, buffer, length);
+        DEBUG_PRINT("[%d] message to be sent: %s\r\n", pg_rank, val);
+
+        error = PMI_KVS_Put(pg->ch.kvs_name, key, val);
+        if (error != 0) {
+	        ibv_error_abort(IBV_RETURN_ERR, "PMI put failed\n");
+        }
+
+        rdma_cm_host_list[pg_rank*max_num_ips + i] = rdma_cm_local_ips[i];
+        DEBUG_PRINT("[%d]: ip [%d] = %d, key = %s\r\n", pg_rank, i,
+                    rdma_cm_local_ips[i], key);
+    }
+
+    error = PMI_KVS_Commit(pg->ch.kvs_name);
     if (error != 0) {
-        ibv_error_abort(IBV_RETURN_ERR,
-                        "PMI put failed\n");
+        ibv_error_abort(IBV_RETURN_ERR, "PMI put failed\n");
     }
 
     {
 	error = PMI_Barrier();
 	if (error != 0) {
-            ibv_error_abort(IBV_RETURN_ERR,
-                            "PMI Barrier failed\n");
+        ibv_error_abort(IBV_RETURN_ERR, "PMI Barrier failed\n");
 	}
     }
 
-    for (i = 0; i < pg_size; i++){
-	sprintf(rank, "ip%d", i);
-	MPIU_Strncpy(key, rank, 16);
-    error = PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz);
-        if (error != 0) {
-            ibv_error_abort(IBV_RETURN_ERR,
-                            "PMI Lookup name failed\n");
-        }
-	MPIU_Strncpy(buffer, val, length);
+    for (i = 0; i < pg_size; i++) {
+        if (i != pg_rank) {
+	        sprintf(rank, "%d-port", i);
+	        MPIU_Strncpy(key, rank, 16);
+            error = PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz);
+            if (error != 0) {
+                ibv_error_abort(IBV_RETURN_ERR, "PMI Lookup name failed\n");
+            }
+	        MPIU_Strncpy(buffer, val, length);
+            DEBUG_PRINT("\r\n[%d - %d] message rcvd: %s, key: %s\r\n", pg_rank,
+                         i, buffer, key);
 
-	sscanf(buffer, "%d-%d-%d-%d-%d ", 
-		&rdma_base_listen_port[i],
-		&rdma_cm_host_list[i*rdma_num_hcas], &rdma_cm_host_list[i*rdma_num_hcas + 1],
-		&rdma_cm_host_list[i*rdma_num_hcas + 2], &rdma_cm_host_list[i*rdma_num_hcas + 3]);
+	        sscanf(buffer, "%d", &rdma_base_listen_port[i]);
+            DEBUG_PRINT("[%d - %d]: listen port = %d\r\n", pg_rank, i,
+                    rdma_base_listen_port[i]);
+
+            for (j = 0; j < max_num_ips; ++j) {
+                memset(rank, 0, sizeof(rank));
+                memset(buffer, 0, sizeof(buffer));
+
+    	        sprintf(rank, "%d-ip-%d", i, j);
+    	        MPIU_Strncpy(key, rank, 16);
+                error = PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz);
+                if (error != 0) {
+                    ibv_error_abort(IBV_RETURN_ERR, "PMI Lookup name failed\n");
+                }
+    	        MPIU_Strncpy(buffer, val, length);
+                DEBUG_PRINT("\r\n[%d - %d] message rcvd: %s, key: %s\r\n",
+                            pg_rank, i, buffer, key);
+
+	            sscanf(buffer, "%d", &rdma_cm_host_list[i*max_num_ips + j]);
+                DEBUG_PRINT("[%d - %d]: ip[%d] = %d\r\n", pg_rank, i, j,
+                        rdma_cm_host_list[i*max_num_ips + j]);
+            }
+        }
     }
 
     /* Find smp processes */
     if (USE_SMP) {
-       for (i = 0; i < pg_size; i++){
-	   if (pg_rank == i)
-	       continue;
-   	   if (hosts[i * rdma_num_hcas] == hosts[pg_rank * rdma_num_hcas])
-	       ++g_num_smp_peers;
+        for (i = 0; i < pg_size; i++){
+            if (pg_rank == i) {
+                continue;
+            }
+            if (hosts[i * max_num_ips] == hosts[pg_rank * max_num_ips]) {
+                ++g_num_smp_peers;
+            }
        }
     }
-    DEBUG_PRINT("Number of SMP peers for %d is %d\n", pg_rank, 
-		g_num_smp_peers);
+    DEBUG_PRINT("Number of SMP peers for %d is %d\n", pg_rank, g_num_smp_peers);
 
+    MPIU_Free(buffer);
     MPIU_Free(val);
     MPIU_Free(key);
+
+#if 0
+    for (i = 0; i < pg_size*max_num_ips; ++i) {
+        printf("[%d]: hosts[%d] = %d\r\n", pg_rank, i, hosts[i]);
+    }
+#endif
 
     return hosts;
 }
@@ -910,9 +964,11 @@ int rdma_cm_get_local_ip(){
 			"Error opening file \"/etc/mv2.conf\". Local rdma_cm address required in this file.\n");
     }
 
+    rdma_cm_local_ips = malloc(rdma_num_hcas * rdma_num_ports * sizeof(int));
+
     while ((fscanf(fp_port, "%s\n", ip)) != EOF){
-	rdma_cm_local_ips[i] = inet_addr(ip);
-	i++;
+	    rdma_cm_local_ips[i] = inet_addr(ip);
+	    i++;
     }
     fclose(fp_port);
 
