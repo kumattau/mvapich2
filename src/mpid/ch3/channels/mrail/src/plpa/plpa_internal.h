@@ -69,7 +69,7 @@ int token_parse(PLPA_NAME(cpu_set_t) *cpu_set);
 /*
  *  * Main flex parser
  *   */
-int yylex(void);
+int mvapich_yylex(void);
 
 #endif /* PLPA_INTERNAL_H */
 

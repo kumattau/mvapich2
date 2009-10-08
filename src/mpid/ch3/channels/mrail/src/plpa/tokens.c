@@ -113,7 +113,7 @@ typedef enum {
  * Global functions
  */
 int token_parse(PLPA_NAME(cpu_set_t) *cpu_set);
-void yyerror(char const *s);
+void mvapich_yyerror(char const *s);
 
 /*
  * Local functions
@@ -495,7 +495,7 @@ static const unsigned char yystos[] =
 #define YYERROR		goto yyerrorlab
 
 
-/* Like YYERROR except do call yyerror.  This remains here temporarily
+/* Like YYERROR except do call mvapich_yyerror.  This remains here temporarily
    to ease the transition to the new meaning of YYERROR, for GCC.
    Once GCC version 2 has supplanted version 1, this can go.  */
 
@@ -515,7 +515,7 @@ do								\
     }								\
   else								\
     { 								\
-      yyerror ("syntax error: cannot back up");\
+      mvapich_yyerror ("syntax error: cannot back up");\
       YYERROR;							\
     }								\
 while (0)
@@ -534,12 +534,12 @@ while (0)
     (Current).last_column  = (Rhs)[N].last_column)
 #endif
 
-/* YYLEX -- calling `yylex' with the right arguments.  */
+/* YYLEX -- calling `mvapich_yylex' with the right arguments.  */
 
 #ifdef YYLEX_PARAM
-# define YYLEX yylex (YYLEX_PARAM)
+# define YYLEX mvapich_yylex (YYLEX_PARAM)
 #else
-# define YYLEX yylex ()
+# define YYLEX mvapich_yylex ()
 #endif
 
 /* Enable debugging if requested.  */
@@ -787,15 +787,15 @@ yydestruct (yytype, yyvaluep)
 
 #ifdef YYPARSE_PARAM
 # if defined (__STDC__) || defined (__cplusplus)
-int yyparse (void *YYPARSE_PARAM);
+int mvapich_yyparse (void *YYPARSE_PARAM);
 # else
-int yyparse ();
+int mvapich_yyparse ();
 # endif
 #else /* ! YYPARSE_PARAM */
 #if defined (__STDC__) || defined (__cplusplus)
-int yyparse (void);
+int mvapich_yyparse (void);
 #else
-int yyparse ();
+int mvapich_yyparse ();
 #endif
 #endif /* ! YYPARSE_PARAM */
 
@@ -813,23 +813,23 @@ int yynerrs;
 
 
 /*----------.
-| yyparse.  |
+| mvapich_yyparse.  |
 `----------*/
 
 #ifdef YYPARSE_PARAM
 # if defined (__STDC__) || defined (__cplusplus)
-int yyparse (void *YYPARSE_PARAM)
+int mvapich_yyparse (void *YYPARSE_PARAM)
 # else
-int yyparse (YYPARSE_PARAM)
+int mvapich_yyparse (YYPARSE_PARAM)
   void *YYPARSE_PARAM;
 # endif
 #else /* ! YYPARSE_PARAM */
 #if defined (__STDC__) || defined (__cplusplus)
 int
-yyparse (void)
+mvapich_yyparse (void)
 #else
 int
-yyparse ()
+mvapich_yyparse ()
 
 #endif
 #endif
@@ -1305,15 +1305,15 @@ yyerrlab:
 			yyprefix = " or ";
 		      }
 		}
-	      yyerror (yymsg);
+	      mvapich_yyerror (yymsg);
 	      YYSTACK_FREE (yymsg);
 	    }
 	  else
-	    yyerror ("syntax error; also virtual memory exhausted");
+	    mvapich_yyerror ("syntax error; also virtual memory exhausted");
 	}
       else
 #endif /* YYERROR_VERBOSE */
-	yyerror ("syntax error");
+	mvapich_yyerror ("syntax error");
     }
 
 
@@ -1431,7 +1431,7 @@ yyabortlab:
 | yyoverflowlab -- parser overflow comes here.  |
 `----------------------------------------------*/
 yyoverflowlab:
-  yyerror ("parser stack overflow");
+  mvapich_yyerror ("parser stack overflow");
   yyresult = 2;
   /* Fall through.  */
 #endif
@@ -1454,14 +1454,14 @@ int token_parse(PLPA_NAME(cpu_set_t) *cpu_set)
 
     PLPA_CPU_ZERO(cpu_set);
     return_value = cpu_set;
-    ret = yyparse();
+    ret = mvapich_yyparse();
     if (0 != ret) {
         return ret;
     }
     return 0;
 }
 
-void yyerror (char const *s)
+void mvapich_yyerror (char const *s)
 {
     fprintf(stderr, "ERROR: %s\n", s);
 }

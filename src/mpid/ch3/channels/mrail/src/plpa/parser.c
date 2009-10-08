@@ -551,7 +551,7 @@ YY_MALLOC_DECL
  * easily add parameters.
  */
 #ifndef YY_DECL
-#define YY_DECL int yylex YY_PROTO(( void ))
+#define YY_DECL int mvapich_yylex YY_PROTO(( void ))
 #endif
 
 /* Code executed at the beginning of each rule, after yytext and yyleng
@@ -714,7 +714,7 @@ case YY_STATE_EOF(INITIAL):
 			/* We're scanning a new file or input source.  It's
 			 * possible that this happened because the user
 			 * just pointed yyin at a new source and called
-			 * yylex().  If so, then we have to assure
+			 * mvapich_yylex().  If so, then we have to assure
 			 * consistency between yy_current_buffer and our
 			 * globals.  Here is the right place to do so, because
 			 * this is the first action (other than possibly a
@@ -827,7 +827,7 @@ case YY_STATE_EOF(INITIAL):
 			"fatal flex scanner internal error--no action found" );
 	} /* end of action switch */
 		} /* end of scanning one token */
-	} /* end of yylex */
+	} /* end of mvapich_yylex */
 
 
 /* yy_get_next_buffer - try to read in a new buffer
@@ -1574,7 +1574,7 @@ void *ptr;
 #if YY_MAIN
 int main()
 	{
-	yylex();
+	mvapich_yylex();
 	return 0;
 	}
 #endif
