@@ -68,6 +68,8 @@ static char cr_errmsg[CR_ERRMSG_SZ];
 #define CR_MAX_FILENAME 128
 #define CR_SESSION_MAX  16
 
+
+
 static int restart_context;
 static int cached_restart_context;
 
@@ -175,7 +177,7 @@ int mpirun_port;
 
 #endif /* CKPT */
 
-void spawn_one (int argc, char *argv[], char *totalview_cmd, char *env);
+void spawn_one (int argc, char *argv[], char *totalview_cmd, char *env, int fastssh_nprocs_thres);
 
 process_groups *pglist = NULL;
 process *plist = NULL;
@@ -396,6 +398,27 @@ int MPIR_Breakpoint (void)
 
 /* End mpirun_rsh totalview integration */
 
+
+//Define the max len of a pid
+#define MAX_PID_LEN 22
+/* The name of the file where to write the host_list. Used when the number
+ * of processes is beyond NPROCS_THRES */
+char *host_list_file = NULL;
+
+/* This function is called at exit and remove the temporary file with the
+ * host_list information*/
+void remove_host_list_file() {
+
+        if ( host_list_file ) {
+                if ( unlink ( host_list_file ) < 0 )
+                        fprintf ( stderr, "ERROR removing the %s\n",host_list_file );
+
+                free ( host_list_file );
+    }
+
+}
+
+
 int main (int argc, char *argv[])
 {
 	int i, s, c, option_index;
@@ -413,7 +436,7 @@ int main (int argc, char *argv[])
 	char *tv_env;
 
 	int timeout, fastssh_threshold;
-
+        atexit ( remove_host_list_file );
 	atexit (free_memory);
 
 #ifdef CKPT
@@ -794,14 +817,23 @@ cont:
     if (!fastssh_threshold) 
         fastssh_threshold = 1 << 8;
 
-    if (pglist->npgs < fastssh_threshold) {
-        USE_LINEAR_SSH = 1;
+    //Another way to activate hiearachical ssh is having a number of nodes
+    //beyond a threshold        
+    if (pglist->npgs >= fastssh_threshold) {
+        #ifndef CKPT
+            USE_LINEAR_SSH = 0;
+        #endif
     }
-
+        
     USE_LINEAR_SSH = dpm ? 1 : USE_LINEAR_SSH;
-
+    
+    
     if (USE_LINEAR_SSH) {
+        
         NSPAWNS = pglist->npgs;
+        DBG(fprintf(stderr,"USE_LINEAR = %d \n",USE_LINEAR_SSH));
+
+
 
 #ifdef CKPT
 
@@ -887,7 +919,12 @@ cont:
     }
     else {
         NSPAWNS = 1;
-        spawn_one (argc, argv, totalview_cmd, env);
+        //Search if the number of processes is set up as a environment
+        int fastssh_nprocs_thres = env2int( "MV2_NPROCS_THRESHOLD");
+        if ( !fastssh_nprocs_thres)
+                fastssh_nprocs_thres = 1 << 13;
+
+        spawn_one (argc, argv, totalview_cmd, env, fastssh_nprocs_thres);
     }
 
 	if (show_on)
@@ -2190,15 +2227,15 @@ void spawn_fast (int argc, char *argv[], char *totalview_cmd, char *env)
 	exit (EXIT_FAILURE);
 }
 
-void spawn_one (int argc, char *argv[], char *totalview_cmd, char *env)
+void spawn_one (int argc, char *argv[], char *totalview_cmd, char *env, int fastssh_nprocs_thres)
 {
 	char *mpispawn_env, *tmp, *ld_library_path;
 	char *name, *value;
-	int j, i, n, tmp_i;
-	FILE *fp;
-	char pathbuf[PATH_MAX];
-    char *host_list = NULL;
-    int k;
+	int j, i, n, tmp_i, numBytes=0;
+        FILE *fp, *host_list_file_fp;
+        char pathbuf[PATH_MAX];
+        char *host_list = NULL;
+        int k;
 
 	if ((ld_library_path = getenv ("LD_LIBRARY_PATH"))) {
 		mpispawn_env = mkstr ("LD_LIBRARY_PATH=%s:%s",
@@ -2255,9 +2292,45 @@ void spawn_one (int argc, char *argv[], char *totalview_cmd, char *env)
         }
     }
 
-    tmp = mkstr ("%s MPISPAWN_HOSTLIST=%s", mpispawn_env, host_list);
-    CHECK_ALLOC ();
+    //If we have a number of processes >= PROCS_THRES we use the file approach
+    //Write the hostlist in a file and send the filename and the number of
+    //bytes to the other procs
+    if ( nprocs >= fastssh_nprocs_thres ) {
+
+        int pathlen = strlen(wd);
+        host_list_file = (char *) malloc( sizeof( char )*( pathlen + strlen("host_list_file.tmp") + MAX_PID_LEN+1 ) );
+        sprintf( host_list_file, "%s/host_list_file%d.tmp", wd, getpid() );
+
+        /* open the host list file and write the host_list in it*/
+        DBG( fprintf(stderr, "OPEN FILE %s\n", host_list_file) );
+        host_list_file_fp = fopen( host_list_file, "w" );
+
+        if ( host_list_file_fp == NULL ) {
+                fprintf ( stderr, "host list temp file could not be created\n" );
+                goto allocation_error;
+        }
+
+        fprintf( host_list_file_fp, "%s", host_list );
+        fclose( host_list_file_fp );
+
+        tmp = mkstr ("%s HOST_LIST_FILE=%s", mpispawn_env, host_list_file);
+        CHECK_ALLOC ();
+
+        numBytes = ( strlen( host_list )+1 ) * sizeof( char );
+        DBG( fprintf(stderr, "WRITTEN %d bytes\n",numBytes) );
+
+        tmp = mkstr ( "%s HOST_LIST_NBYTES=%d", mpispawn_env, numBytes );
+        CHECK_ALLOC ();
+
+    }
+    else {
+        
+        /*This is the standard approach used when the number of processes < PROCS_THRES*/
+        tmp = mkstr ("%s MPISPAWN_HOSTLIST=%s", mpispawn_env, host_list);
+        CHECK_ALLOC ();
     
+    }
+     
     tmp = mkstr ("%s MPISPAWN_NNODES=%d", mpispawn_env, pglist->npgs);
     CHECK_ALLOC ();
 	

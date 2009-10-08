@@ -594,6 +594,35 @@ void wait_for_errors (int s, struct sockaddr *sockaddr, unsigned int
 	goto WFE;
 }
 
+
+/*Obtain the host_ist from a file. This function is used when the number of
+ * processes is beyond the threshold. */
+char*  obtain_host_list_from_file( ) {
+
+        //Obtain id of the host file and number of byte to read
+        //Number of bytes sent when it is used the file approach to exachange
+        //the host_list
+        int num_bytes;
+        FILE *fp;
+        char *host_list_file = NULL,*host_list=NULL;
+
+        host_list_file = env2str("HOST_LIST_FILE");
+        num_bytes = env2int("HOST_LIST_NBYTES");
+
+        fp = fopen (host_list_file, "r");
+        if ( fp == NULL ) {
+               
+	     fprintf ( stderr, "host list temp file could not be read\n");
+        }
+
+        host_list = malloc(num_bytes);
+        fscanf(fp, "%s",host_list);
+        fclose(fp);
+        return host_list;
+}
+
+
+
 fd_set child_socks;
 #define MPISPAWN_PARENT_FD mpispawn_fds[0]
 #define MPISPAWN_CHILD_FDS (&mpispawn_fds[MPISPAWN_HAS_PARENT])
@@ -701,7 +730,11 @@ int main (int argc, char *argv[])
 	    
         nargc = env2int ("MPISPAWN_NARGC");
         host_list = env2str ("MPISPAWN_HOSTLIST");
-  
+	//If the number of processes is beyond or equal the PROCS_THRES it
+	//receives the host list in a file
+        if (host_list == NULL) {
+            host_list = obtain_host_list_from_file( );
+	}	
         for (i = 0; i < nargc; i++) {
             char buf[20];
             sprintf (buf, "MPISPAWN_NARGV_%d", i);
