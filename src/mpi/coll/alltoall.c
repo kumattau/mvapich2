@@ -65,6 +65,11 @@
 
    End Algorithm: MPI_Alltoall
 */
+#if defined(_OSU_MVAPICH_)
+extern int alltoall_dreg_disable_threshold;
+extern int alltoall_dreg_disable;
+#endif /* defined(_OSU_MVAPICH_) */
+
 
 /* begin:nested */
 /* not declared static because a machine-specific function may call this one in some cases */
@@ -111,15 +116,24 @@ int MPIR_Alltoall(
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
 
-    lock_dereg();
-    lock_dreg();
+#if defined(_OSU_MVAPICH_)
+    if( comm_size >= alltoall_dreg_disable_threshold || alltoall_dreg_disable == 1) { 
+       if(g_is_dreg_initialized == 1) { 
+            if( ! have_dereg()) { 
+               lock_dereg();
+            } 
+            if( ! have_dreg())  {
+               lock_dreg();
+            }
  
-    MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister=0;
+            MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister=0;
 
-    unlock_dereg();
-    unlock_dreg();
- 
-    
+            unlock_dereg();
+            unlock_dreg();
+       } 
+    } 
+#endif
+      
     if ((nbytes <= MPIR_ALLTOALL_SHORT_MSG) && (comm_size >= 8)) {
 
         /* use the indexing algorithm by Jehoshua Bruck et al,
@@ -519,15 +533,24 @@ int MPIR_Alltoall(
 	    if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
         }
     }
+ 
+#if defined(_OSU_MVAPICH_)
+    if( comm_size >= alltoall_dreg_disable_threshold || alltoall_dreg_disable == 1) {
+       if(g_is_dreg_initialized == 1) {
+            if( ! have_dereg()) {
+               lock_dereg();
+            }
+            if( ! have_dreg())  {
+               lock_dreg();
+            }
 
-    lock_dereg();
-    lock_dreg();
+            MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister=1;
 
-    MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister=1;
-
-    unlock_dereg();
-    unlock_dreg();
-
+            unlock_dereg();
+            unlock_dreg();
+       }
+    }
+#endif
 
  fn_fail:    
     /* check if multiple threads are calling this collective function */

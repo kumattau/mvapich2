@@ -55,8 +55,8 @@
  * dreg.c: everything having to do with dynamic memory registration. 
  */
 
-unsigned long dreg_stat_cache_hit;
-unsigned long dreg_stat_cache_miss;
+unsigned long dreg_stat_cache_hit=0;
+unsigned long dreg_stat_cache_miss=0;
 unsigned long dreg_stat_evicted;
 static unsigned long g_pinned_pages_count;
 
@@ -64,7 +64,7 @@ struct dreg_entry* dreg_free_list;
 struct dreg_entry* dreg_unused_list;
 struct dreg_entry* dreg_unused_tail;
 
-static int g_is_dreg_initialized = 0;
+int g_is_dreg_initialized = 0;
 
 #if defined(CKPT)
 struct dreg_entry *dreg_all_list;

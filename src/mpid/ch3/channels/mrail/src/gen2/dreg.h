@@ -66,6 +66,9 @@ typedef struct {
     size_t len;
 } dreg_region;
 
+extern int g_is_dreg_initialized; 
+extern unsigned long dreg_stat_cache_hit;
+extern unsigned long dreg_stat_cache_miss;
 struct dreg_entry {
     unsigned long pagenum;
     struct ibv_mr *memhandle[MAX_NUM_HCAS];
