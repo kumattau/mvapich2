@@ -96,12 +96,6 @@ vma_t vma_list;
 AVL_TREE* vma_tree;
 
 #if !defined(DISABLE_PTMALLOC)
-/* 
-static pthread_spinlock_t dreg_lock = 0;
-static pthread_spinlock_t dereg_lock = 0;
-static pthread_t th_id_of_lock;
-static pthread_t th_id_of_dereg_lock = -1;
-*/
 
 /* Array which stores the memory regions 
  * ptrs which are to be deregistered after 

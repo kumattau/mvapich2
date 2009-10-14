@@ -65,9 +65,10 @@
 
    End Algorithm: MPI_Alltoall
 */
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) 
 extern int alltoall_dreg_disable_threshold;
 extern int alltoall_dreg_disable;
+extern int g_is_dreg_initialized;
 #endif /* defined(_OSU_MVAPICH_) */
 
 
@@ -118,6 +119,7 @@ int MPIR_Alltoall(
 
 #if defined(_OSU_MVAPICH_)
     if( comm_size >= alltoall_dreg_disable_threshold || alltoall_dreg_disable == 1) { 
+#if !defined(DISABLE_PTMALLOC)
        if(g_is_dreg_initialized == 1) { 
             if( ! have_dereg()) { 
                lock_dereg();
@@ -131,6 +133,7 @@ int MPIR_Alltoall(
             unlock_dereg();
             unlock_dreg();
        } 
+#endif
     } 
 #endif
       
@@ -536,6 +539,7 @@ int MPIR_Alltoall(
  
 #if defined(_OSU_MVAPICH_)
     if( comm_size >= alltoall_dreg_disable_threshold || alltoall_dreg_disable == 1) {
+#if !defined(DISABLE_PTMALLOC)
        if(g_is_dreg_initialized == 1) {
             if( ! have_dereg()) {
                lock_dereg();
@@ -549,6 +553,7 @@ int MPIR_Alltoall(
             unlock_dereg();
             unlock_dreg();
        }
+#endif
     }
 #endif
 

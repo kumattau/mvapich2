@@ -70,6 +70,21 @@ struct dreg_entry {
     int is_valid;
 };
 
+#if !defined(DISABLE_PTMALLOC)
+static pthread_spinlock_t dreg_lock = 0;
+static pthread_spinlock_t dereg_lock = 0;
+static pthread_t          th_id_of_lock = -1;
+static pthread_t th_id_of_dereg_lock = -1;
+
+int have_dereg();
+void lock_dereg();
+void unlock_dereg();
+int have_dreg();
+void lock_dreg();
+void unlock_dreg();
+#endif
+
+extern int g_is_dreg_initialized;
 
 /*
  * When an application needs to register memory, it

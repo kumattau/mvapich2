@@ -57,14 +57,16 @@
 
 
 /* statistic */
-unsigned long dreg_stat_cache_hit, dreg_stat_cache_miss, dreg_stat_evicted;
+unsigned long dreg_stat_cache_hit=0;
+unsigned long dreg_stat_cache_miss=0;
+unsigned long dreg_stat_evicted=0;
 static unsigned long pinned_pages_count;
 
 struct dreg_entry *dreg_free_list;
 struct dreg_entry *dreg_unused_list;
 struct dreg_entry *dreg_unused_tail;
 
-static int is_dreg_initialized = 0;
+int g_is_dreg_initialized = 0;
 #ifdef CKPT
 struct dreg_entry *dreg_all_list;
 #endif
@@ -92,10 +94,6 @@ vma_t vma_list;
 AVL_TREE *vma_tree;
 
 #ifndef DISABLE_PTMALLOC
-static pthread_spinlock_t dreg_lock = 0;
-static pthread_spinlock_t dereg_lock = 0;
-static pthread_t          th_id_of_lock = -1;
-static pthread_t th_id_of_dereg_lock = -1;
 
 /* Array which stores the memory regions 
  * ptrs which are to be deregistered after 
@@ -590,7 +588,7 @@ void dreg_init()
     dreg_unused_tail = NULL;
     /* cache hit and miss time stat variables initisalization */
 
-    is_dreg_initialized = 1;
+    g_is_dreg_initialized = 1;
 
 #ifndef DISABLE_PTMALLOC
     pthread_spin_init(&dreg_lock, 0);
@@ -618,37 +616,37 @@ void dreg_init()
 
 #ifndef DISABLE_PTMALLOC
 
-static int have_dereg() 
+int have_dereg() 
 {
     return pthread_equal(th_id_of_dereg_lock, pthread_self());
 }
 
-static void lock_dereg()
+void lock_dereg()
 {
     pthread_spin_lock(&dereg_lock);
     th_id_of_dereg_lock = pthread_self();
 }
 
-static void unlock_dereg()
+void unlock_dereg()
 {
     th_id_of_dereg_lock = -1;
     pthread_spin_unlock(&dereg_lock);
 }
 
-static int have_dreg() {
+int have_dreg() {
     return pthread_equal(th_id_of_lock, pthread_self());
 }
 
 
-static void lock_dreg()
+void lock_dreg()
 {
     pthread_spin_lock(&dreg_lock);
     th_id_of_lock = pthread_self();
 }
 
-static void unlock_dreg()
+void unlock_dreg()
 {
-    th_id_of_lock = -1;
+   th_id_of_lock = -1;
     pthread_spin_unlock(&dreg_lock);
 }
 
@@ -814,7 +812,7 @@ dreg_entry *dreg_find(void *buf, int len)
     unsigned long begin = ((unsigned long)buf) >> DREG_PAGEBITS;
     unsigned long end = ((unsigned long)(((char*)buf) + len - 1)) >> DREG_PAGEBITS;
 
-    if(is_dreg_initialized) {
+    if(g_is_dreg_initialized) {
         return dreg_lookup (begin, end);
     } else {
         return NULL;
@@ -1034,7 +1032,7 @@ dreg_entry *dreg_new_entry(void *buf, int len)
 #ifndef DISABLE_PTMALLOC
 void find_and_free_dregs_inside(void *buf, size_t len)
 {
-    if(!is_dreg_initialized ||
+    if(!g_is_dreg_initialized ||
            !MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister) {
         return;
     }
