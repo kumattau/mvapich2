@@ -6,8 +6,11 @@
  */
 
 #include "mpiimpl.h"
+#if defined(_OSU_MVAPICH_)
 #include "dreg.h"
 #include "rdma_impl.h"
+#endif
+
 
 /* -- Begin Profiling Symbol Block for routine MPI_Alltoall */
 #if defined(HAVE_PRAGMA_WEAK)
