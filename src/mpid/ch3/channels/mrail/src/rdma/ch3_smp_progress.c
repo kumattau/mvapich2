@@ -41,8 +41,33 @@
 #include <netinet/in.h>
 #endif /* defined(MAC_OSX) */
 
+/* CPU Mapping related definitions */
 #if defined(USE_PROCESSOR_AFFINITY)
 #include "plpa.h"
+#define CONFIG_FILE "/proc/cpuinfo"
+#define MAX_LINE_LENGTH 512
+#define MAX_NAME_LENGTH 64
+
+extern multi_core_arch_type_t arch_type;
+
+typedef enum{
+    CPU_FAMILY_NONE=0,
+    CPU_FAMILY_INTEL,
+    CPU_FAMILY_AMD,
+} cpu_type_t;
+
+int CLOVERTOWN_MODEL=15;
+int HARPERTOWN_MODEL=23;
+
+int INTEL_CLOVERTOWN_MAPPING[] = {0,0,1,1,0,0,1,1};
+int INTEL_NEHALEM_MAPPING[] =    {0,1,0,1,0,1,0,1};
+int AMD_BARCELONA_MAPPING[] =    {0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3};
+int INTEL_HARPERTOWN_MAPPING[] = {0,0,1,1,0,0,1,1};
+int INTEL_XEON_DUAL_MAPPING[] =  {0,1,0,1};
+int AMD_OPTERON_DUAL_MAPPING[] = {0,0,1,1};
+
+extern int num_cpus;
+extern int use_optimal_cpu_binding;
 unsigned int viadev_enable_affinity = 1;
 #endif /* defined(USE_PROCESSOR_AFFINITY) */
 
@@ -97,7 +122,10 @@ static int s_smpi_length_queue;
 static int s_smp_num_send_buffer;
 static int s_smp_batch_size;
 static char* s_cpu_mapping = NULL;
+static char* custom_cpu_mapping = NULL;
 static int s_cpu_mapping_line_max = _POSIX2_LINE_MAX;
+static int custom_cpu_mapping_line_max = _POSIX2_LINE_MAX;
+char *cpu_mapping = NULL;
 
 #if defined(_SMP_LIMIC_)
 int limic_fd;
@@ -2749,6 +2777,107 @@ int MPIDI_CH3I_SMP_pull_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t** pkt_head)
 }
 
 #if defined(USE_PROCESSOR_AFFINITY)
+int get_cpu_mapping(long N_CPUs_online)
+{
+    char line[MAX_LINE_LENGTH];
+    char input[MAX_NAME_LENGTH];
+    char bogus1[MAX_NAME_LENGTH];
+    char bogus2[MAX_NAME_LENGTH];
+    char bogus3[MAX_NAME_LENGTH];
+    int physical_id; //return value
+    int core_mapping[num_cpus];
+    int core_index = 0;
+    cpu_type_t cpu_type;
+    int i;
+    int model;
+    int vendor_set=0, model_set=0;
+    int mpi_errno = MPI_SUCCESS;
+
+    FILE* fp=fopen(CONFIG_FILE,"r");
+    if (fp == NULL){
+        printf("can not open cpuinfo file \n");
+        return 0;
+    }
+
+    memset(core_mapping, 0, sizeof(core_mapping));
+    custom_cpu_mapping = (char *) MPIU_Malloc(sizeof(char)*N_CPUs_online*2);
+    if(custom_cpu_mapping == NULL) { 
+          return 0;
+    } 
+
+    while(!feof(fp)){
+        memset(line,0,MAX_LINE_LENGTH);
+        fgets(line, MAX_LINE_LENGTH, fp);
+
+        memset(input, 0, MAX_NAME_LENGTH);
+        sscanf(line, "%s", input);
+
+        if (!vendor_set) {
+            if (strcmp(input, "vendor_id") == 0) {
+              memset(input, 0, MAX_NAME_LENGTH);
+              sscanf(line,"%s%s%s",bogus1, bogus2, input);
+
+              if (strcmp(input, "AuthenticAMD") == 0) {
+                cpu_type = CPU_FAMILY_AMD;
+              } else {
+                cpu_type = CPU_FAMILY_INTEL;
+              }
+          vendor_set = 1;
+            }
+        }
+
+    if (!model_set){
+            if (strcmp(input, "model") == 0) {
+            sscanf(line, "%s%s%d", bogus1, bogus2, &model);
+        model_set = 1;
+        }
+    }
+
+    if (strcmp(input, "physical") == 0) {
+            sscanf(line, "%s%s%s%d", bogus1, bogus2, bogus3, &physical_id);
+            core_mapping[core_index++] = physical_id;
+        }
+    }
+
+    num_cpus = core_index;
+    if (num_cpus == 4) {
+       if((memcmp(INTEL_XEON_DUAL_MAPPING,core_mapping, sizeof(int)*num_cpus) == 0) 
+            && (cpu_type==CPU_FAMILY_INTEL)){ 
+               arch_type =  MULTI_CORE_ARCH_XEON_DUAL;
+               strcpy(custom_cpu_mapping , "0:2:1:3");
+       } else if((memcmp(AMD_OPTERON_DUAL_MAPPING,core_mapping,sizeof(int)*num_cpus) == 0)
+            && (cpu_type==CPU_FAMILY_AMD)){ 
+               arch_type =  MULTI_CORE_ARCH_OPTERON_DUAL;
+               strcpy(custom_cpu_mapping , "0:1:2:3");
+       }
+    } else if (num_cpus == 8) {
+	if((memcmp(INTEL_CLOVERTOWN_MAPPING,core_mapping,sizeof(int)*num_cpus) == 0) 
+             && (cpu_type==CPU_FAMILY_INTEL) && (model==CLOVERTOWN_MODEL)) { 
+               arch_type =  MULTI_CORE_ARCH_CLOVERTOWN;
+               strcpy(custom_cpu_mapping,"0:1:4:5:2:3:6:7");
+	} else if((memcmp(INTEL_NEHALEM_MAPPING,core_mapping,sizeof(int)*num_cpus) == 0) 
+           && (cpu_type==CPU_FAMILY_INTEL)) {
+               arch_type =  MULTI_CORE_ARCH_NEHALEM;
+               strcpy(custom_cpu_mapping, "0:2:4:6:1:3:5:7");
+       } else if((memcmp(INTEL_HARPERTOWN_MAPPING,core_mapping,sizeof(int)*num_cpus) == 0)
+            && (cpu_type==CPU_FAMILY_INTEL) && (model==HARPERTOWN_MODEL)){ 
+               arch_type =  MULTI_CORE_ARCH_HARPERTOWN;
+               strcpy(custom_cpu_mapping , "0:1:4:5:2:3:6:7");
+       }
+    } else if (num_cpus == 16) {
+        if((memcmp(AMD_BARCELONA_MAPPING,core_mapping, sizeof(int)*num_cpus) == 0) 
+        && (cpu_type==CPU_FAMILY_AMD)) { 
+               arch_type =  MULTI_CORE_ARCH_BARCELONA;
+               strcpy(custom_cpu_mapping ,"0:1:2:3:4:5:6:7:8:9:10:11:12:13:14:15");
+       } 
+    }
+
+    fclose(fp);
+
+return MPI_SUCCESS;
+}
+
+
 static void smpi_setaffinity ()
 {
     int mpi_errno = MPI_SUCCESS;
@@ -2766,7 +2895,7 @@ static void smpi_setaffinity ()
         {
             /* If the user has specified how to map the processes,
              * use the mapping specified by the user
-             */
+            */
             char* tp = s_cpu_mapping;
             char* cp = NULL;
             int j = 0;
@@ -2809,7 +2938,8 @@ static void smpi_setaffinity ()
         else
         {
             /* The user has not specified how to map the processes,
-             * use the default scheme
+             * use the data available in /proc/cpuinfo file to decide 
+             * on the best cpu mapping pattern
              */
             long N_CPUs_online = sysconf(_SC_NPROCESSORS_ONLN);
 
@@ -2825,14 +2955,75 @@ static void smpi_setaffinity ()
                 );
             }
 
-            PLPA_NAME(cpu_set_t) cpuset;
-            PLPA_CPU_ZERO(&cpuset);
-            PLPA_CPU_SET(g_smpi.my_local_id % N_CPUs_online, &cpuset);
+            /* Call the cpu_mapping function to find out about how the
+             * processors are numbered on the different sockets. 
+             */
+            mpi_errno = get_cpu_mapping(N_CPUs_online);
+            
+            if(mpi_errno != MPI_SUCCESS || use_optimal_cpu_binding == 0 
+                   || arch_type == 0) { 
+                /* For some reason, we were not able to retrieve the cpu mapping
+                * information. We are falling back on the linear mapping. 
+                * This may not deliver the best performace 
+                */
+                PLPA_NAME(cpu_set_t) cpuset;
+                PLPA_CPU_ZERO(&cpuset);
+                PLPA_CPU_SET(g_smpi.my_local_id % N_CPUs_online, &cpuset);
 
-            if (PLPA_NAME(sched_setaffinity) (0, sizeof(cpuset), &cpuset))
-            {
-                MPIU_Error_printf("sched_setaffinity: %s\n", strerror(errno));
-            }
+                if (PLPA_NAME(sched_setaffinity) (0, sizeof(cpuset), &cpuset))
+                {
+                    MPIU_Error_printf("sched_setaffinity: %s\n", strerror(errno));
+                }
+            } 
+            else { 
+             /* We have all the information that we need. We will bind the processes
+              * to the cpu's now
+              */
+                int linelen = strlen(custom_cpu_mapping);
+
+                if (linelen < custom_cpu_mapping_line_max)
+                {
+                  custom_cpu_mapping_line_max = linelen;
+                }
+
+                char* tp = custom_cpu_mapping;
+                char* cp = NULL;
+                int j = 0;
+                int i;
+                char tp_str[custom_cpu_mapping_line_max + 1];
+               
+                while (*tp != '\0')
+                {
+                    i = 0;
+                    cp = tp;
+
+                    while (*cp != '\0' && *cp != ':' && i < custom_cpu_mapping_line_max)
+                    {
+                        ++cp;
+                        ++i;
+                    }   
+    
+                    strncpy(tp_str, tp, i);
+                    tp_str[i] = '\0';
+    
+                    if (j == g_smpi.my_local_id)
+                    {
+                        PLPA_NAME(setaffinity)(tp_str, getpid());
+                        /* TODO: Evaluate return value of PLPA_NAME */
+                        break;
+                    }
+
+                    if (*cp == '\0')
+                    {
+                        break;
+                    }
+
+                    tp = cp;
+                    ++tp;
+                    ++j;
+                }
+                MPIU_Free(custom_cpu_mapping);
+            } 
         }
     }
 
