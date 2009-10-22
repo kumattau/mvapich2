@@ -726,6 +726,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 #if defined(_X86_64_)
     volatile char tmpchar;
 #endif /* defined(_X86_64_) */
+    int default_eager_size = 1;
 
     if ((value = getenv("MV2_USE_BLOCKING")) != NULL) {
         blocking_val = !!atoi(value);
@@ -761,6 +762,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 
     if ((value = getenv("SMP_EAGERSIZE")) != NULL) {
         g_smp_eagersize = atoi(value);
+	default_eager_size = 0;
     }
     if ((value = getenv("SMPI_LENGTH_QUEUE")) != NULL) {
         s_smpi_length_queue = atoi(value);
@@ -825,6 +827,12 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     }
 
     DEBUG_PRINT("finished exchange info\n");
+
+#ifdef _SMP_LIMIC_
+    if(default_eager_size && arch_type == MULTI_CORE_ARCH_NEHALEM) {
+	g_smp_eagersize = 32;
+     }
+#endif /* _SMP_LIMIC_ */
 
     /* Convert to bytes */
     g_smp_eagersize = g_smp_eagersize * 1024 + 1;
