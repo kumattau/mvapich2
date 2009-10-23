@@ -115,6 +115,11 @@ int knomial_2level_bcast_threshold=0;
 unsigned int  rdma_ndreg_entries = RDMA_NDREG_ENTRIES;
 unsigned long rdma_dreg_cache_limit = 0;
 
+/* Optimal CPU Bingind parameters */
+int use_optimal_cpu_binding = 1;
+int num_cpus = 32;
+
+
 void
 rdma_init_parameters (MPIDI_CH3I_RDMA_Process_t *proc)
 {
@@ -294,6 +299,16 @@ rdma_init_parameters (MPIDI_CH3I_RDMA_Process_t *proc)
     if( (value = getenv("MV2_KNOMIAL_2LEVEL_BCAST_THRESHOLD")) != NULL) {
             knomial_2level_bcast_threshold=(int)atoi(value);
      }
+
+    if ((value = getenv("MV2_USE_OPTIMAL_CPU_BINDING")) != NULL) {
+        use_optimal_cpu_binding = atoi(value);
+    }
+
+    if ((value = getenv("MV2_USE_CPU_BINDING_ARRAY_SIZE")) != NULL) {
+        if(atoi(value) > 32) {
+            num_cpus = atoi(value);
+        }
+    }
 
 
 

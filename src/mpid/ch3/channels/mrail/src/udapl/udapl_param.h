@@ -57,6 +57,8 @@ extern int rdma_integer_pool_size;
 extern int rdma_iba_eager_threshold;
 extern long rdma_eagersize_1sc;
 
+extern int  num_cpus;
+extern int  use_optimal_cpu_binding;
 
 
 
