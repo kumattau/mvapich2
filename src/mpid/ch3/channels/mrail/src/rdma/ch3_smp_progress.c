@@ -830,7 +830,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 
 #ifdef _SMP_LIMIC_
     if(default_eager_size && arch_type == MULTI_CORE_ARCH_NEHALEM) {
-	g_smp_eagersize = 32;
+	g_smp_eagersize = 64;
      }
 #endif /* _SMP_LIMIC_ */
 
