@@ -108,7 +108,8 @@ int rdma_num_hcas = 1;
 int enable_knomial_2level_bcast=1;
 int inter_node_knomial_factor=4;
 int intra_node_knomial_factor=4;
-int knomial_2level_bcast_threshold=0;
+int knomial_2level_bcast_message_size_threshold=2048;
+int knomial_2level_bcast_system_size_threshold=32;
 
 
 
@@ -296,8 +297,11 @@ rdma_init_parameters (MPIDI_CH3I_RDMA_Process_t *proc)
                 inter_node_knomial_factor = INTER_NODE_KNOMIAL_FACTOR_MAX;
         }
      }
-    if( (value = getenv("MV2_KNOMIAL_2LEVEL_BCAST_THRESHOLD")) != NULL) {
-            knomial_2level_bcast_threshold=(int)atoi(value);
+    if( (value = getenv("MV2_KNOMIAL_2LEVEL_BCAST_MESSAGE_SIZE_THRESHOLD")) != NULL) {
+            knomial_2level_bcast_message_size_threshold=(int)atoi(value);
+     }
+    if( (value = getenv("MV2_KNOMIAL_2LEVEL_BCAST_SYSTEM_SIZE_THRESHOLD")) != NULL) {
+            knomial_2level_bcast_system_size_threshold=(int)atoi(value);
      }
 
     if ((value = getenv("MV2_USE_OPTIMAL_CPU_BINDING")) != NULL) {

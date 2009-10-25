@@ -3453,7 +3453,7 @@ int MPID_VCR_Get_lpid(MPID_VCR vcr, int * lpid_ptr);
 /* FIXME: Should there be a way to (a) update/compute these at configure time
    and (b) provide runtime control?  Should these be MPIR_xxx_DEFAULT 
    instead? */
-#define MPIR_BCAST_SHORT_MSG          12288
+#define MPIR_BCAST_SHORT_MSG          12288 
 #define MPIR_BCAST_LONG_MSG           524288
 #define MPIR_BCAST_MIN_PROCS          8
 #if defined(_OSU_MVAPICH_)

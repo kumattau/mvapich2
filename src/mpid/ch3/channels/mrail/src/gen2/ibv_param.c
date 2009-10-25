@@ -70,7 +70,9 @@ int           USE_SMP = 1;
 int           enable_knomial_2level_bcast=1;
 int           inter_node_knomial_factor=4;
 int           intra_node_knomial_factor=4;
-int           knomial_2level_bcast_threshold=0;
+int           knomial_2level_bcast_message_size_threshold=2048;
+int           knomial_2level_bcast_system_size_threshold=32;
+
 /* Threshold of job size beyond which we want to use 2-cq approach */
 int           rdma_iwarp_multiple_cq_threshold = RDMA_IWARP_DEFAULT_MULTIPLE_CQ_THRESHOLD;
 int           rdma_iwarp_use_multiple_cq = 1;
@@ -1005,8 +1007,11 @@ void rdma_get_user_parameters(int num_proc, int me)
                 inter_node_knomial_factor = INTER_NODE_KNOMIAL_FACTOR_MAX;
         } 
      }     
-    if( (value = getenv("MV2_KNOMIAL_2LEVEL_BCAST_THRESHOLD")) != NULL) {
-            knomial_2level_bcast_threshold=(int)atoi(value);
+    if( (value = getenv("MV2_KNOMIAL_2LEVEL_BCAST_MESSAGE_SIZE_THRESHOLD")) != NULL) {
+            knomial_2level_bcast_message_size_threshold=(int)atoi(value);
+     }
+    if( (value = getenv("MV2_KNOMIAL_2LEVEL_BCAST_SYSTEM_SIZE_THRESHOLD")) != NULL) {
+            knomial_2level_bcast_system_size_threshold=(int)atoi(value);
      }
 
 

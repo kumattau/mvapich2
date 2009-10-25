@@ -87,6 +87,8 @@ int intra_shmem_Bcast_Large(
 	MPID_Comm *comm );
 #define SHMEM_BCST_THRESHOLD 1<<20
 extern int enable_shmem_collectives;
+extern int  knomial_2level_bcast_system_size_threshold;
+extern int  knomial_2level_bcast_message_size_threshold;
 
 int shmem_bcast_threshold = SHMEM_BCST_THRESHOLD;
 int enable_shmem_bcast = 1;
@@ -184,12 +186,13 @@ int MPIR_Bcast (
 
   /* check if multiple threads are calling this collective function */
   MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
-  if ((nbytes < MPIR_BCAST_SHORT_MSG) || (comm_size < MPIR_BCAST_MIN_PROCS)) {
+  if ((nbytes <= MPIR_BCAST_SHORT_MSG) || (comm_size < MPIR_BCAST_MIN_PROCS)) {
 #if defined(_OSU_MVAPICH_)
      if(enable_knomial_2level_bcast &&  enable_shmem_collectives  &&  
              comm_ptr->shmem_coll_ok == 1 && 
              comm_ptr->leader_comm != 0 && comm_ptr->shmem_comm != 0 &&
-              nbytes > knomial_2level_bcast_threshold) {   
+             comm_size > knomial_2level_bcast_system_size_threshold &&
+             nbytes <= knomial_2level_bcast_message_size_threshold) {   
            if ( !is_contig || !is_homogeneous) {
                 mpi_errno = knomial_2level_Bcast(tmp_buf, nbytes,
                                            MPI_BYTE,nbytes,root,comm_ptr);
