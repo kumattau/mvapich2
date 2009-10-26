@@ -71,7 +71,7 @@ int           enable_knomial_2level_bcast=1;
 int           inter_node_knomial_factor=4;
 int           intra_node_knomial_factor=4;
 int           knomial_2level_bcast_message_size_threshold=2048;
-int           knomial_2level_bcast_system_size_threshold=32;
+int           knomial_2level_bcast_system_size_threshold=64;
 
 /* Threshold of job size beyond which we want to use 2-cq approach */
 int           rdma_iwarp_multiple_cq_threshold = RDMA_IWARP_DEFAULT_MULTIPLE_CQ_THRESHOLD;
