@@ -168,7 +168,7 @@ int apm_tester = 0;
 int apm_count;
 
 
-/* Optimal CPU Bingind parameters */
+/* Optimal CPU Binding parameters */
 int use_optimal_cpu_binding = 1;
 int num_cpus = 32;
 static int check_hsam_parameters();
