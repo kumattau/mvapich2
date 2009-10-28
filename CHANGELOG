@@ -3,6 +3,26 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2-1.4
+
+* Enhancements since mvapich2-1.4rc2
+    - Optimal runtime CPU binding
+    - Add an environment variable for controlling the use of multiple cq's for
+      iWARP interface.
+    - Add environmental variables to disable registration cache for All-to-All
+      on large systems.
+    - Performance tune for pt-to-pt Intra-node communication with LiMIC2
+    - Performance tune for MPI_Broadcast
+
+* Bug fixes since mvapich2-1.4rc2
+    - Fix the reading error in lock_get_response by adding
+      initialization to req->mrail.protocol
+    - Fix mpirun_rsh scalability issue with hierarchical ssh scheme
+      when launching greater than 8K processes.
+    - Add mvapich_ prefix to yacc functions. This can avoid some namespace
+      issues when linking with other libraries.  Thanks to Manhui Wang
+      <wangm9@cardiff.ac.uk> for contributing the patch.
+
 MVAPICH2-1.4-rc2
 
 * Enhancements since mvapich2-1.4rc1
