@@ -219,11 +219,13 @@ int hcaNameToType(char *dev_name, int* hca_type)
             MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**umadgetca");
         }
 
-        rate = get_rate(&umad_ca);
-        if (!rate) {
-            umad_release_ca(&umad_ca);
-            umad_done();
-            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**umadgetrate");
+        if (!getenv("MV2_USE_RDMAOE")) {
+            rate = get_rate(&umad_ca);
+            if (!rate) {
+                umad_release_ca(&umad_ca);
+                umad_done();
+                MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**umadgetrate");
+            }
         }
 
         if (!strncmp(dev_name, "mthca", 5)) {
