@@ -1986,7 +1986,7 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
                     MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                         "**fail", "**fail %s",
                         "LiMIC: (MPIDI_CH3I_SMP_readv_rndv) limic_rx_comp fail");
-		        }
+         		}
 
                 received_bytes += msglen;
                 total_bytes -= msglen;
@@ -2002,7 +2002,7 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
                     MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                         "**fail", "**fail %s",
                         "LiMIC: (MPIDI_CH3I_SMP_readv_rndv) limic_rx_comp fail");
-		        }
+         		}
 
                 received_bytes += iov_len;
                 total_bytes -= iov_len;
@@ -2909,6 +2909,28 @@ static void smpi_setaffinity ()
             int j = 0;
             int i;
             char tp_str[s_cpu_mapping_line_max + 1];
+            long N_CPUs_online = sysconf(_SC_NPROCESSORS_ONLN);
+
+            if (N_CPUs_online < 1)
+            {
+                MPIU_ERR_SETFATALANDJUMP2(
+                    mpi_errno,
+                    MPI_ERR_OTHER,
+                    "**fail",
+                    "%s: %s",
+                    "sysconf",
+                    strerror(errno)
+                );
+            }
+
+            /* Call the cpu_mapping function to find out about how the
+             * processors are numbered on the different sockets.
+             * The hardware information gathered from this function 
+             * is required to determine the best set of intra-node thresholds. 
+             * However, since the user has specified a mapping pattern, 
+             * we are not going to use any of our proposed binding patterns
+             */
+            mpi_errno = get_cpu_mapping(N_CPUs_online);
 
             while (*tp != '\0')
             {
