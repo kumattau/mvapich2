@@ -512,7 +512,7 @@ extern MPIDI_Process_t MPIDI_Process;
 #else
 #   define MPIDI_Pkt_init(pkt_, type_)				\
     {								\
-	memset((void *) (pkt_), 0xfc, sizeof(MPIDI_CH3_Pkt_t));	\
+	memset((void *) (pkt_), 0xfc, sizeof(*pkt_));	\
 	(pkt_)->type = (type_);					\
     }
 #endif

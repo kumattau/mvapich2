@@ -146,12 +146,12 @@ int MPIDI_CH3_iStartRndvTransfer(MPIDI_VC_t * vc, MPID_Request * rreq)
     MPIDI_CH3I_CR_lock();
 #endif
         
+    MPIDI_Pkt_init(cts_pkt, MPIDI_CH3_PKT_RNDV_CLR_TO_SEND);
     if (rreq->dev.iov_count == 1 && rreq->dev.OnDataAvail == NULL)
 	cts_pkt->recv_sz = rreq->dev.iov[0].MPID_IOV_LEN;
     else
 	cts_pkt->recv_sz = rreq->dev.segment_size;
     
-    MPIDI_Pkt_init(cts_pkt, MPIDI_CH3_PKT_RNDV_CLR_TO_SEND);
     cts_pkt->sender_req_id = rreq->dev.sender_req_id;
     cts_pkt->receiver_req_id = rreq->handle;
     MPIDI_VC_FAI_send_seqnum(vc, seqnum);
