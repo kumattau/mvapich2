@@ -300,6 +300,12 @@ static struct option option_table[] = {
 	{0, 0, 0, 0}
 };
 
+#define MVAPICH2_VERSION "1.4.1"
+static void show_version(void)
+{
+    fprintf(stderr,"OSU MVAPICH2 VERSION %s\n", MVAPICH2_VERSION);
+}
+
 #if !defined(HAVE_GET_CURRENT_DIR_NAME)
 char *get_current_dir_name ()
 {
@@ -573,6 +579,10 @@ restart_from_ckpt:
 				usage ();
 				exit (EXIT_SUCCESS);
 				break;
+            case 9:
+                show_version();
+                exit (EXIT_SUCCESS);
+                break;
 			case 10:
 				{
 					/* -tv */
