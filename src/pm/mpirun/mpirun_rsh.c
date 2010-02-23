@@ -32,6 +32,7 @@
 #include <math.h>
 #include "mpispawn_tree.h"
 #include "mpirun_util.h"
+#include "mpmd.h"
 
 #if defined(_NSIG)
 #define NSIG _NSIG
@@ -294,6 +295,8 @@ static struct option option_table[] = {
 	{"spawnfile", required_argument, 0, 0},
 	{"dpm", no_argument, 0, 0},
     {"fastssh", no_argument, 0, 0},
+    //This option is to activate the mpmd, it requires the configuration file as argument
+    {"config", required_argument, 0, 0},
 	{0, 0, 0, 0}
 };
 
@@ -624,7 +627,14 @@ restart_from_ckpt:
                 USE_LINEAR_SSH = 0;
 #endif /* CKPT */
                 break;
-			case 16:
+                //With this option the user want to activate the mpmd
+            case 16:
+                configfile_on = 1;
+                strncpy (configfile, optarg, CONFILE_LEN);
+                if (strlen (optarg) >= CONFILE_LEN - 1)
+                    configfile[CONFILE_LEN] = '\0';
+                break;
+            case 17:
 				usage ();
 				exit (EXIT_SUCCESS);
 				break;
@@ -643,7 +653,7 @@ restart_from_ckpt:
 		}
 	} while (c != EOF);
 
-	if (!nprocs) {
+	if (!nprocs && !configfile_on) {
 		usage ();
 		exit (EXIT_FAILURE);
 	}
@@ -656,6 +666,17 @@ restart_from_ckpt:
 	binary_dirname = dirname (strdup (argv[0]));
 	if (strlen (binary_dirname) == 1 && argv[0][0] != '.') {
 		use_dirname = 0;
+	}
+
+	//If the mpmd is active we need to parse the configuration file
+	if (configfile_on)
+	{
+	    /*TODO In the future the user can add the nprocs on the command line. Now the
+	     * number of processes is defined in the configfile */
+	    nprocs = 0;
+	    plist = parse_config(configfile, &nprocs);
+	    DBG(fprintf(stderr,"PARSED CONFIG FILE\n"));
+
 	}
 
 	if (!hostfile_on) {
@@ -697,20 +718,23 @@ cont:
 		 */
 		num_of_params += read_param_file (paramfile, &env);
 	}
+    if (!configfile_on)
+    {
+        plist = malloc (nprocs * sizeof (process));
+        if (plist == NULL) {
+            perror ("malloc");
+            exit (EXIT_FAILURE);
+        }
 
-	plist = malloc (nprocs * sizeof (process));
-	if (plist == NULL) {
-		perror ("malloc");
-		exit (EXIT_FAILURE);
-	}
+        for (i = 0; i < nprocs; i++) {
+            plist[i].state = P_NOTSTARTED;
+            plist[i].device = NULL;
+            plist[i].port = -1;
+            plist[i].remote_pid = 0;
+            //TODO ADD EXECNAME AND ARGS
 
-	for (i = 0; i < nprocs; i++) {
-		plist[i].state = P_NOTSTARTED;
-		plist[i].device = NULL;
-		plist[i].port = -1;
-		plist[i].remote_pid = 0;
-	}
-
+        }
+    }
 	/* grab hosts from command line or file */
 
 	if (hostfile_on) {
@@ -1014,7 +1038,7 @@ void usage (void)
 	fprintf (stderr, "usage: mpirun_rsh [-v] [-rsh|-ssh] "
 			 "[-paramfile=pfile] "
 			 "[-debug] -[tv] [-xterm] [-show] [-legacy] -np N"
-			 "(-hostfile hfile | h1 h2 ... hN) a.out args\n");
+	        "(-hostfile hfile | h1 h2 ... hN) a.out args | -config configfile (-hostfile hfile | h1 h2 ... hN)]\n");
 	fprintf (stderr, "Where:\n");
 	fprintf (stderr, "\trsh        => " "to use rsh for connecting\n");
 	fprintf (stderr, "\tssh        => " "to use ssh for connecting\n");
@@ -1038,6 +1062,7 @@ void usage (void)
 			 "name of file contining hosts, one per line\n");
 	fprintf (stderr, "\ta.out      => " "name of MPI binary\n");
 	fprintf (stderr, "\targs       => " "arguments for MPI binary\n");
+	fprintf (stderr, "\tconfig     => " "name of file containing the exe information: each line has the form -n numProc : exe args\n");
 	fprintf (stderr, "\n");
 }
 
@@ -1371,6 +1396,25 @@ void pglist_insert (const char *const hostname, const int plist_index)
 		index = (top + bottom) / 2;
 	}
 
+	//We need to add another control (we need to understand if the exe is different from the others inserted)
+	if (configfile_on && strcmp_result == 0)
+	{
+	    /* Check if the previous name of exexutable and args in the pglist are equal.
+	     * If they are different we need to add this exe to another group.*/
+	    int index_previous = pglist->index[index]->plist_indices[0];
+	    if ((strcmp_result = strcmp (plist[plist_index].executable_name,plist[index_previous].executable_name)) == 0)
+	    {
+	        //If both the args are different from NULL we need to compare these
+	        if (plist[plist_index].executable_args!=NULL && plist[index_previous].executable_args!=NULL)
+	                strcmp_result = strcmp (plist[plist_index].executable_args,plist[index_previous].executable_args);
+	        //If both are null they are the same
+	        else if (plist[plist_index].executable_args == NULL && plist[index_previous].executable_args == NULL)
+	                strcmp_result = 0;
+	        //If one is null and the other one is not null they are different
+	        else
+	           strcmp_result = 1;
+	     }
+	}
 	if (!dpm && !strcmp_result)
 		goto insert_pid;
 
@@ -1790,6 +1834,9 @@ int getpath (char *buf, int buf_len)
     else goto allocation_error; \
 } while (0);
 
+/**
+* Spawn the processes using a linear method.
+*/
 void spawn_fast (int argc, char *argv[], char *totalview_cmd, char *env)
 {
 	char *mpispawn_env, *tmp, *ld_library_path, *template, *template2;
@@ -1919,17 +1966,20 @@ void spawn_fast (int argc, char *argv[], char *totalview_cmd, char *env)
             goto allocation_error;
     }
 
-	if (!dpm && aout_index == argc) {
-		fprintf (stderr, "Incorrect number of arguments.\n");
-		usage ();
-		exit (EXIT_FAILURE);
-	}
+    if (!configfile_on)
+    {
+        if (!dpm && aout_index == argc) {
+            fprintf (stderr, "Incorrect number of arguments.\n");
+            usage ();
+            exit (EXIT_FAILURE);
+        }
+    }
 
 	i = argc - aout_index;
 	if (debug_on && !use_totalview)
 		i++;
 
-	if (dpm == 0) {
+	if (dpm == 0  && !configfile_on) {
 		tmp =
 			mkstr ("%s MPISPAWN_ARGC=%d", mpispawn_env, argc - aout_index);
 		CHECK_ALLOC ();
@@ -1946,8 +1996,18 @@ void spawn_fast (int argc, char *argv[], char *totalview_cmd, char *env)
 
 	if (use_totalview) {
 		int j;
-		for (j = 0; j < MPIR_proctable_size; j++) {
-			MPIR_proctable[j].executable_name = argv[aout_index];
+		if (!configfile_on)
+		{
+            for (j = 0; j < MPIR_proctable_size; j++) {
+                MPIR_proctable[j].executable_name = argv[aout_index];
+            }
+		}
+		else
+		{
+		    for (j = 0; j < MPIR_proctable_size; j++) {
+		        MPIR_proctable[j].executable_name = plist[j].executable_name;
+		    }
+
 		}
 	}
 
@@ -2098,14 +2158,29 @@ void spawn_fast (int argc, char *argv[], char *totalview_cmd, char *env)
 				tmp = mkstr ("%s %s", mpispawn_env, spinf.buf);
 				CHECK_ALLOC ();
 			}
+			//If the config option is activated, the executable information are taken from the pglist.
+			if (configfile_on)
+			{
+			    int index_plist = pglist->data[i].plist_indices[0];
+			    /* When the config option is activated we need to put in the mpispawn the number of argument of the exe.*/
+			    tmp = mkstr ("%s MPISPAWN_ARGC=%d", mpispawn_env, plist[index_plist].argc);
+			    CHECK_ALLOC();
+			    /*Add the executable name and args in the list of arguments from the pglist. */
+			    tmp = add_argv( mpispawn_env, plist[index_plist].executable_name, plist[index_plist].executable_args, tmp_i );
+			    CHECK_ALLOC();
 
-			if (!dpm) {
-				while (aout_index < argc) {
-					tmp =
-						mkstr ("%s MPISPAWN_ARGV_%d=%s", mpispawn_env,
-							   tmp_i++, argv[aout_index++]);
-					CHECK_ALLOC ();
-				}
+			}
+			else
+			{
+
+                if (!dpm) {
+                    while (aout_index < argc) {
+                        tmp =
+                            mkstr ("%s MPISPAWN_ARGV_%d=%s", mpispawn_env,
+                                   tmp_i++, argv[aout_index++]);
+                        CHECK_ALLOC ();
+                    }
+                }
 			}
 
 			if (mpispawn_param_env) {
@@ -2247,15 +2322,18 @@ void spawn_fast (int argc, char *argv[], char *totalview_cmd, char *env)
 	exit (EXIT_FAILURE);
 }
 
+/*
+ * Spawn the processes using the hierarchical way.
+ */
 void spawn_one (int argc, char *argv[], char *totalview_cmd, char *env, int fastssh_nprocs_thres)
 {
 	char *mpispawn_env, *tmp, *ld_library_path;
 	char *name, *value;
 	int j, i, n, tmp_i, numBytes=0;
-        FILE *fp, *host_list_file_fp;
-        char pathbuf[PATH_MAX];
-        char *host_list = NULL;
-        int k;
+	FILE *fp, *host_list_file_fp;
+	char pathbuf[PATH_MAX];
+	char *host_list = NULL;
+	int k;
 
 	if ((ld_library_path = getenv ("LD_LIBRARY_PATH"))) {
 		mpispawn_env = mkstr ("LD_LIBRARY_PATH=%s:%s",
@@ -2292,24 +2370,34 @@ void spawn_one (int argc, char *argv[], char *totalview_cmd, char *env, int fast
 
 	tmp = mkstr ("%s MPISPAWN_MPIRUN_ID=%d", mpispawn_env, getpid ());
 	CHECK_ALLOC ();
-			
-    for (k = 0; k < pglist->npgs; k++) {
-        /* Make a list of hosts and the number of processes on each host */
-        /* NOTE: RFCs do not allow : or ; in hostnames */
-        if (host_list)
-            host_list = mkstr ("%s:%s:%d", host_list, 
-                    pglist->data[k].hostname, pglist->data[k].npids );
-        else 
-            host_list = mkstr ("%s:%d", pglist->data[k].hostname, 
-                    pglist->data[k].npids );
-        if (!host_list) 
-            goto allocation_error; 
-        for (n = 0; n < pglist->data[k].npids; n++) {
-            host_list = mkstr ("%s:%d", host_list, 
-                    pglist->data[k].plist_indices[n]);
+    if (!configfile_on)
+    {
+        for (k = 0; k < pglist->npgs; k++) {
+            /* Make a list of hosts and the number of processes on each host */
+            /* NOTE: RFCs do not allow : or ; in hostnames */
+            if (host_list)
+                host_list = mkstr ("%s:%s:%d", host_list,
+                        pglist->data[k].hostname, pglist->data[k].npids );
+            else
+                host_list = mkstr ("%s:%d", pglist->data[k].hostname,
+                        pglist->data[k].npids );
             if (!host_list) 
                 goto allocation_error; 
+            for (n = 0; n < pglist->data[k].npids; n++) {
+                host_list = mkstr ("%s:%d", host_list,
+                        pglist->data[k].plist_indices[n]);
+                if (!host_list)
+                    goto allocation_error;
+            }
         }
+    }
+    else
+    {
+        /*In case of mpmd activated we need to pass to mpispawn the different names and arguments of executables*/
+        host_list = create_host_list_mpmd ( pglist, plist );
+        tmp = mkstr ("%s MPISPAWN_MPMD=%d", mpispawn_env, 1);
+        CHECK_ALLOC ();
+
     }
 
     //If we have a number of processes >= PROCS_THRES we use the file approach
@@ -2401,19 +2489,22 @@ void spawn_one (int argc, char *argv[], char *totalview_cmd, char *env, int fast
     else 
         goto allocation_error;
 
-	if (aout_index == argc) {
-		fprintf (stderr, "Incorrect number of arguments.\n");
-		usage ();
-		exit (EXIT_FAILURE);
-	}
+    if (!configfile_on)
+    {
+        if (aout_index == argc) {
+            fprintf (stderr, "Incorrect number of arguments.\n");
+            usage ();
+            exit (EXIT_FAILURE);
+        }
 
-	i = argc - aout_index;
-	if (debug_on && !use_totalview)
-		i++;
 
-	tmp = mkstr ("%s MPISPAWN_ARGC=%d", mpispawn_env, argc - aout_index);
-    CHECK_ALLOC ();
+        i = argc - aout_index;
+        if (debug_on && !use_totalview)
+            i++;
 
+        tmp = mkstr ("%s MPISPAWN_ARGC=%d", mpispawn_env, argc - aout_index);
+        CHECK_ALLOC ();
+    }
 	i = 0;
 
 	if (debug_on && !use_totalview) {
@@ -2425,8 +2516,17 @@ void spawn_one (int argc, char *argv[], char *totalview_cmd, char *env, int fast
 
 	if (use_totalview) {
 		int j;
-		for (j = 0; j < MPIR_proctable_size; j++) {
-			MPIR_proctable[j].executable_name = argv[aout_index];
+		if (!configfile_on)
+		{
+            for (j = 0; j < MPIR_proctable_size; j++) {
+                MPIR_proctable[j].executable_name = argv[aout_index];
+            }
+		}
+		else
+		{
+		    for (j = 0; j < MPIR_proctable_size; j++) {
+		                    MPIR_proctable[j].executable_name = plist[j].executable_name;
+		    }
 		}
 	}
 
@@ -2438,12 +2538,28 @@ void spawn_one (int argc, char *argv[], char *totalview_cmd, char *env, int fast
 			size_t arg_offset = 0;
 			const char *nargv[7];
 			char *command;
+            //If the config option is activated, the executable information are taken from the pglist.
+            if (configfile_on)
+            {
+                int index_plist = pglist->data[i].plist_indices[0];
 
-			while (aout_index < argc) {
-				tmp = mkstr ("%s MPISPAWN_ARGV_%d=%s", mpispawn_env, tmp_i++, 
-                        argv[aout_index++]);
-				CHECK_ALLOC ();
-			}
+                /* When the config option is activated we need to put in the mpispawn the number of argument of the exe.*/
+                tmp = mkstr ("%s MPISPAWN_ARGC=%d", mpispawn_env, plist[index_plist].argc);
+                CHECK_ALLOC();
+                /*Add the executable name and args in the list of arguments from the pglist. */
+                tmp = add_argv( mpispawn_env, plist[index_plist].executable_name, plist[index_plist].executable_args, tmp_i );
+                CHECK_ALLOC();
+
+
+            }
+            else
+            {
+                while (aout_index < argc) {
+                    tmp = mkstr ("%s MPISPAWN_ARGV_%d=%s", mpispawn_env, tmp_i++,
+                            argv[aout_index++]);
+                    CHECK_ALLOC ();
+                }
+            }
 
 			if (mpispawn_param_env) {
 				tmp =

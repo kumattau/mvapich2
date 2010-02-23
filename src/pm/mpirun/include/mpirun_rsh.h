@@ -77,6 +77,8 @@
 #include <libgen.h>
 #include "mpirun_util.h"
 
+
+
 #define PMGR_VERSION PMGR_COLLECTIVE
 
 typedef enum {
@@ -97,6 +99,10 @@ typedef struct {
     int port;
     int control_socket;
     process_state state;
+    //These information are about the mpmd (multi process multiple data) option
+    char *executable_name;
+    char *executable_args;
+    int argc;
 } process;
 
 typedef struct {
