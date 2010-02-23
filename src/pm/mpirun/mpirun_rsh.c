@@ -1079,7 +1079,6 @@ static int read_hostfile (char *hostfile_name)
     if(dpm)
     {
         start = env2int("TOTALPROCS");
-        printf("total procs %d \n", start);
         while(fgets (temp, 100, hf) != NULL)
             count++;
         rewind(hf);
