@@ -41,4 +41,4 @@ const char MPIR_Version_CC[]           = MVAPICH2_COMPILER_CC;
 const char MPIR_Version_CXX[]          = MVAPICH2_COMPILER_CXX;
 const char MPIR_Version_F77[]          = MVAPICH2_COMPILER_F77;
 const char MPIR_Version_F90[]          = MVAPICH2_COMPILER_F90;
-#endif _OSU_MVAPICH_
+#endif /* _OSU_MVAPICH_ */
