@@ -37,7 +37,7 @@ static psm_uuid_t       psm_uuid;
 static int  psm_bcast_uuid(int pg_size, int pg_rank);
 static int  psm_allgather_epid(psm_epid_t *list, int pg_size, int pg_rank);
 static void psm_other_init(MPIDI_PG_t *pg);
-static void psm_quirks();
+static void psm_preinit();
 static int  decode(unsigned s_len, char *src, unsigned d_len, char *dst);
 static int  encode(unsigned s_len, char *src, unsigned d_len, char *dst);
 
@@ -64,7 +64,7 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
         goto fn_fail;
     }
 
-    psm_quirks();
+    psm_preinit(pg_size);
     psm_error_register_handler(NULL, PSM_ERRHANDLER_NO_HANDLER);
 
     err = psm_init(&verno_major, &verno_minor);
@@ -131,19 +131,28 @@ static int filter(const struct dirent *ent)
 }
     
 /*  handle special psm init. PSM_DEVICES init, version test for setting
-    MPI_LOCALRANKS, MPI_LOCALRANKID */
-static void psm_quirks()
+ *  MPI_LOCALRANKS, MPI_LOCALRANKID 
+ *  Updated on Fed 2 2010 based on patch provided by Ben Truscott. Refer to 
+ *  TRAC Ticket #457 */
+static void psm_preinit(int pg_size)
 {
     FILE *fp;
     struct dirent **fls;
-    int n, id = 0, i;
+    int n, id = 0, i, universesize;
 
-    /* shared ctx needed, if more processes than hw contexts */
-    putenv("PSM_SHAREDCONTEXTS=1");
-    putenv("PSM_SHAREDCONTEXTS_MAX=16");
+    if(pg_size > 0)
+        universesize = pg_size;
+    else
+        universesize = 1; /*May be started without mpiexec.*/
 
-    /* for 2.0 psm version, hints are needed for context sharing */
-    if(PSM_VERNO == 0x0105) {
+    /* We should not override user settings for these parameters. 
+     * This might cause problems with the new greedy context acquisition 
+     * when multiple jobs share the same node. Refer to TRAC Ticket #457
+     * putenv("PSM_SHAREDCONTEXTS=1");
+     * putenv("PSM_SHAREDCONTEXTS_MAX=16");*/
+
+    /* for psm versions 2.0 or later, hints are needed for context sharing */
+    if(PSM_VERNO >= 0x0105) {
         sprintf(scratch, "/dev/shm/mpi_%s_%d", kvsid, getpid());
         fp = fopen(scratch, "w");
         if(fp == NULL) {
@@ -166,17 +175,49 @@ static void psm_quirks()
         putenv(scratch);
         sprintf(scratch, "MPI_LOCALRANKID=%d", id);
         putenv(scratch);
-        if(n > 1) {
-            putenv("PSM_DEVICES=self,shm,ipath");
-        } else {
-            putenv("PSM_DEVICES=self,ipath");
+
+        /* Should not override user settings. Updating to handle all 
+         * possible scenarios. Refer to TRAC Ticket #457 */
+        if ( getenv("PSM_DEVICES") == NULL ) {
+            if (universesize > n && n > 1) {
+                /* There are both local and remote ranks present;
+                 * we require both the shm and ipath devices in
+                 * this case. */
+                putenv("PSM_DEVICES=self,shm,ipath");
+            }
+            else if (universesize > n && n == 1) {
+                /* There are only remote ranks; we do not require
+                 * the shm device. */
+                putenv("PSM_DEVICES=self,ipath");
+            }
+            else if (universesize == n && n > 1) {
+                /* There are only local ranks; we do not require the
+                 * ipath device. */
+                putenv("PSM_DEVICES=self,shm");
+            }
+            else if (universesize == 1 && n == 1) {
+                /* This is the only rank; we do not need either the
+                   shm or the ipath device. */
+                putenv("PSM_DEVICES=self");
+            }
+            else {
+                /* Impossible situation? Leave PSM_DEVICES as it
+                 * previously was. */
+            }
         }
+
         sprintf(scratch, "/dev/shm/mpi_%s_%d", kvsid, getpid());
         unlink(scratch);
         fclose(fp);
     } else {
 skip:
-        putenv("PSM_DEVICES=self,shm,ipath");
+        /* If we cannot not open the memory-mapped file for writing (shm) 
+         * or if we are unsure of the version of PSM, let PSM_DEVICES
+         * to be the default (usually "self,ipath") or what the user 
+         * has set. Refer to TRAC Ticket #457
+         * putenv("PSM_DEVICES=self,shm,ipath"); */
+         DBG("Memory-mapped file creation failed or unknown PSM version. \
+              Leaving PSM_DEVICES to default or user's settings. \n");
     }
 }
 
