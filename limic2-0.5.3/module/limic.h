@@ -15,6 +15,10 @@
  *                                  Jonathan Perkins       (perkinjo@cse.ohio-state.edu)
  *            - Automatically create /dev/limic
  *            - Add versioning to the Kernel Module
+ *
+ *          Oct 10 2009 Modified by Hyun-Wook Jin
+ *            - Fragmented memory mapping & data copy
+ *
  */
 
 #ifndef _LIMIC_INCLUDED_
@@ -73,6 +77,8 @@
 #define LIMIC_TX_DONE    1
 #define LIMIC_RX_DONE    2
 #define LIMIC_VERSION_OK 3
+
+#define NR_PAGES_4_FRAG (16 * 1024)
 
 typedef struct limic_user {
     int nr_pages;   /* pages actually referenced */
@@ -170,12 +176,11 @@ void limic_release_pages(struct page **maplist, int pgcount)
 }
 
 
-struct page **limic_get_pages(limic_request *req, int rw) 
+struct page **limic_get_pages(limic_user *lu, int rw)
 {
     int err, pgcount;
     struct mm_struct *mm;
     struct page **maplist;
-    limic_user *lu = req->lu;
 
     mm = lu->mm;
     pgcount = lu->nr_pages;
@@ -218,7 +223,7 @@ int limic_get_info(void *buf, int len, limic_user *lu)
     limic_u.mm = (void *)current->mm;
     limic_u.tsk = (void *)current;
 
-    pgcount = (va + len + PAGE_SIZE - 1)/PAGE_SIZE - va/PAGE_SIZE;
+    pgcount = (va + len + PAGE_SIZE - 1)/PAGE_SIZE - va/PAGE_SIZE; 
     if( !pgcount ){
         printk("LiMIC: (limic_get_info) number of pages is 0\n");
         return -EINVAL; 
