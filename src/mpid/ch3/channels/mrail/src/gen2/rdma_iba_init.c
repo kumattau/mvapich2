@@ -20,6 +20,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include "rdma_impl.h"
+#include "mpidi_ch3i_rdma_conf.h"
 #include "mem_hooks.h"
 #include "pmi.h"
 #include "vbuf.h"
