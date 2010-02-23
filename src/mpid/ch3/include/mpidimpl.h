@@ -681,6 +681,8 @@ typedef struct MPIDI_VC
     int force_rndv;
     unsigned char tmp_dpmvc;
     unsigned char free_vc;
+    unsigned char disconnect;
+    int pending_close_ops;
 #endif
 #if defined (_OSU_PSM_)
     int force_eager;

@@ -314,39 +314,6 @@ int MPIDI_PG_Destroy(MPIDI_PG_t * pg)
             MPIDI_CH3I_Cleanup_after_connection(&pg->vct[i]);
         }
 #endif  
-#if !defined (_OSU_PSM_)
-        for(i=0 ; i< pg->size; i++) { 
-           if(pg->vct[i].smp.sendq_head != NULL) { 
-               MPIU_Free(pg->vct[i].smp.sendq_head);
-           } 
-           if(pg->vct[i].smp.sendq_tail != NULL) { 
-               MPIU_Free(pg->vct[i].smp.sendq_tail);
-           } 
-           if(pg->vct[i].smp.recv_active != NULL) { 
-               MPIU_Free(pg->vct[i].smp.recv_active);
-           } 
-           if(pg->vct[i].smp.send_active != NULL) { 
-               MPIU_Free(pg->vct[i].smp.send_active);
-           } 
-           if(pg->vct[i].smp.send_active != NULL) { 
-               MPIU_Free(pg->vct[i].smp.send_active);
-           } 
-           if(pg->vct[i].ch.req != NULL) { 
-               MPIU_Free(pg->vct[i].ch.req);
-           } 
-#ifndef DAPL_DEFAULT_PROVIDER
-           if(pg->vct[i].mrail.cmanager.msg_channels != NULL) { 
-               MPIU_Free(pg->vct[i].mrail.cmanager.msg_channels);
-           } 
-           if(pg->vct[i].mrail.srp.credits != NULL) { 
-               MPIU_Free(pg->vct[i].mrail.srp.credits);
-           } 
-           if(pg->vct[i].mrail.rails != NULL) { 
-               MPIU_Free(pg->vct[i].mrail.rails);
-           }
-#endif /* #ifndef DAPL_DEFAULT_PROVIDER */
-        } 
-#endif /* #if !defined (_OSU_PSM_) */
 	    MPIU_Free(pg->vct);
 	    if (pg->connData) {
 		if (pg->freeConnInfo) {

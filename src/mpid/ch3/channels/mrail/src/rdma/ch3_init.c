@@ -482,6 +482,35 @@ int MPIDI_CH3_VC_Destroy(struct MPIDI_VC* vc)
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_VC_DESTROY);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_VC_DESTROY);
 
+#if !defined (_OSU_PSM_)
+    if(vc->smp.sendq_head != NULL) {
+        MPIU_Free(vc->smp.sendq_head);
+    }
+    if(vc->smp.sendq_tail != NULL) {
+        MPIU_Free(vc->smp.sendq_tail);
+    }
+    if(vc->smp.recv_active != NULL) {
+        MPIU_Free(vc->smp.recv_active);
+    }
+    if(vc->smp.send_active != NULL) {
+        MPIU_Free(vc->smp.send_active);
+    }
+    if(vc->ch.req != NULL) {
+        MPIU_Free(vc->ch.req);
+    }
+#ifndef DAPL_DEFAULT_PROVIDER
+    if(vc->mrail.cmanager.msg_channels != NULL) {
+        MPIU_Free(vc->mrail.cmanager.msg_channels);
+    }
+    if(vc->mrail.srp.credits != NULL) {
+        MPIU_Free(vc->mrail.srp.credits);
+    }
+    if(vc->mrail.rails != NULL) {
+        MPIU_Free(vc->mrail.rails);
+    }
+#endif /* #ifndef DAPL_DEFAULT_PROVIDER */
+#endif /* #if !defined (_OSU_PSM_) */
+
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_VC_DESTROY);
     return MPI_SUCCESS;
 }
