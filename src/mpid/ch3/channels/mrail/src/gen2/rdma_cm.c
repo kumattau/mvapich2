@@ -351,6 +351,11 @@ int ib_cma_event_handler(struct rdma_cm_id *cma_id,
             "rdma cma event %d, error %d\n", event->event, 
 			event->status);
 	break;
+#if 0
+        /*
+         * These events don't really need a case since they are currently no
+         * ops.
+         */
     case RDMA_CM_EVENT_REJECTED:
 	DEBUG_PRINT("RDMA CM Reject Event %d, error %d\n", event->event, event->status);
 	break;
@@ -363,11 +368,12 @@ int ib_cma_event_handler(struct rdma_cm_id *cma_id,
     break;
 
     case RDMA_CM_EVENT_DEVICE_REMOVAL:
+#endif
 
     default:
-	ibv_error_abort(IBV_RETURN_ERR,
-			"bad event type\n");
-	break;
+        DEBUG_PRINT("%s: Caught unhandled rdma cm event - %s\n",
+                __FUNCTION__, rdma_event_str(event->event));
+        break;
     }
     return ret;
 }
