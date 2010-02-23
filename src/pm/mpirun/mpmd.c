@@ -267,6 +267,7 @@ process *save_plist(config_spec_t *cfg_list, int nprocs)
  */
 char * add_argv( char *mpispawn_env, char *exe, char *args, int tmp_i)
 {
+
 	char *cq, *cp, c;
 	char *tmp = mkstr ("%s MPISPAWN_ARGV_%d=%s", mpispawn_env, tmp_i++, exe);
 	//free(mpispawn_env);
@@ -292,6 +293,7 @@ char * add_argv( char *mpispawn_env, char *exe, char *args, int tmp_i)
 			for (; *cp && isspace((int)*cp); cp++) ;
 		 }
 	}
+
 
 	return tmp;
 }
@@ -365,12 +367,15 @@ char * create_host_list_mpmd( process_groups *pglist, process *plist )
 
 		host_list = mkstr ("%s:%s:%d", host_list,plist[plist_index].executable_name, argc );
 		//Now we put in the host_list for each exe the arguments
+
 		if ( plist[plist_index].executable_args != NULL)
 		{
+
 			char **tokenized = tokenize( plist[plist_index].executable_args, " " );
 			for (n=0; n<argc-1; n++)
 				host_list = mkstr ("%s:%s", host_list, tokenized[n]);
 		}
+
 
 	}
 	return host_list;
@@ -383,8 +388,9 @@ char * create_host_list_mpmd( process_groups *pglist, process *plist )
 char ** tokenize( char *line, char *delim )
 {
 	int argc = 0;
+	char * tmp = strdup(line);
 	char **argv = (char **)calloc(++argc, sizeof(char *));
-	argv[argc - 1] = strtok(line, delim);
+	argv[argc - 1] = strtok(tmp, delim);
     argv = (char **)realloc(argv, ++argc * sizeof(char *));
     while ((argv[argc - 1] = strtok(NULL, delim)) != NULL)
     	argv = (char **)realloc(argv, ++argc * sizeof(char *));

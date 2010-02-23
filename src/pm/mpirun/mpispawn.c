@@ -811,7 +811,7 @@ int main (int argc, char *argv[])
         ranks = (int **) malloc (mt_nnodes * sizeof (int *));
         /* These three variables are used to collect information on name, args and number of args in case of mpmd*/
         char **exe = (char **) malloc (mt_nnodes * sizeof (char*));
-        char ***args_exe = (char ***) malloc (mt_nnodes * sizeof (char *)* sizeof (char *));
+        char **args_exe = (char **) malloc (mt_nnodes * sizeof (char *));
         int *num_args = (int *) malloc (mt_nnodes * sizeof (int));
 
         i = mt_nnodes;
@@ -836,11 +836,18 @@ int main (int argc, char *argv[])
 				if ( num_args[j] >1 )
 				{
 					k = 0;
+					char * arg_tmp = NULL;
 					while ( k < num_args[j]-1 )
 					{
-						args_exe[j][k] = strtok (NULL, ":");
+					    if ( k == 0 )
+					        arg_tmp = strtok (NULL, ":");
+					    else
+					        arg_tmp = mkstr("%s:%s",arg_tmp, strtok (NULL, ":") );
+
 						k++;
+
 					}
+					args_exe[j] = strdup(arg_tmp);
 				}
 			}
 
@@ -853,6 +860,7 @@ int main (int argc, char *argv[])
 
         while (n > 1) 
         {
+
             target = mt_id + ceil (n / 2.0);
             /*If mpmd is selected we need to add the MPISPAWN_ARGC and MPISPAWN_ARGV to the mpispwan
              * environment using the information we have read in the host_list.*/
@@ -861,9 +869,13 @@ int main (int argc, char *argv[])
             	//We need to add MPISPAWN_ARGV
             	mpispawn_env = mkstr ("%s MPISPAWN_ARGC=%d", mpispawn_env, num_args[target]);
             	mpispawn_env = mkstr ("%s MPISPAWN_ARGV_0=%s", mpispawn_env, exe[target]);
-            	for(i=1; i<num_args[target]; i++)
+            	char **tmp_arg = tokenize(args_exe[target],":");
+
+            	for(i=0; i<num_args[target]-1; i++)
+
             	{
-            		mpispawn_env = mkstr ("%s MPISPAWN_ARGV_%d=%s", mpispawn_env, i, args_exe[target][i-1]);
+            	    mpispawn_env = mkstr ("%s MPISPAWN_ARGV_%d=%s", mpispawn_env, i+1, tmp_arg[i]);
+
             	}
             }
 
@@ -884,6 +896,7 @@ int main (int argc, char *argv[])
             else 
                 n = ceil (n / 2.0);
         }
+
     } /* if (!USE_LINEAR_SSH) */
 
 	setup_global_environment ();
