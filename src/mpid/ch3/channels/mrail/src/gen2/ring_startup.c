@@ -401,7 +401,6 @@ int rdma_setup_startup_ring(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                 proc->boot_qp_hndl[1]->qp_num
                 );
     } else {
-        printf("Not using RDMAOE\r\n");
         sprintf(ring_qp_out, "%08x:%08x:%08x:",
                  get_local_lid(MPIDI_CH3I_RDMA_Process.nic_context[0],
                                port),

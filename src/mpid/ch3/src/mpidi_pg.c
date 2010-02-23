@@ -314,6 +314,7 @@ int MPIDI_PG_Destroy(MPIDI_PG_t * pg)
             MPIDI_CH3I_Cleanup_after_connection(&pg->vct[i]);
         }
 #endif  
+#if !defined (_OSU_PSM_)
         for(i=0 ; i< pg->size; i++) { 
            if(pg->vct[i].smp.sendq_head != NULL) { 
                MPIU_Free(pg->vct[i].smp.sendq_head);
@@ -342,8 +343,8 @@ int MPIDI_PG_Destroy(MPIDI_PG_t * pg)
            if(pg->vct[i].mrail.rails != NULL) { 
                MPIU_Free(pg->vct[i].mrail.rails);
            } 
-           
         } 
+#endif
 	    MPIU_Free(pg->vct);
 	    if (pg->connData) {
 		if (pg->freeConnInfo) {
