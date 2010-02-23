@@ -922,7 +922,19 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 
     if (proc->hca_type == CHELSIO_T3) {
         /* Trac #423 */
-        rdma_default_max_cq_size = RDMA_DEFAULT_IWARP_CQ_SIZE;
+        struct ibv_device_attr dev_attr;
+        int mpi_errno = MPI_SUCCESS;
+
+        /*quering device for cq depth*/
+        mpi_errno = ibv_query_device(proc->nic_context[0], &dev_attr);
+
+        if(!mpi_errno) {
+          if(dev_attr.max_cqe < rdma_default_max_cq_size)
+               rdma_default_max_cq_size = dev_attr.max_cqe;
+        } else {
+          rdma_default_max_cq_size = RDMA_DEFAULT_IWARP_CQ_SIZE;
+        } 
+
         rdma_prepost_noop_extra = 8;
     }
 
