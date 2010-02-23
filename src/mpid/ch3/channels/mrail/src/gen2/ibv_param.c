@@ -790,6 +790,7 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 
                     break;
             }
+            break;
         case VERY_SMALL_CLUSTER:
         default:
             switch(proc->hca_type) {
