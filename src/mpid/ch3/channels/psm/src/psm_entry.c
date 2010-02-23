@@ -37,7 +37,7 @@ static psm_uuid_t       psm_uuid;
 static int  psm_bcast_uuid(int pg_size, int pg_rank);
 static int  psm_allgather_epid(psm_epid_t *list, int pg_size, int pg_rank);
 static void psm_other_init(MPIDI_PG_t *pg);
-static void psm_preinit();
+static void psm_preinit(int pg_size);
 static int  decode(unsigned s_len, char *src, unsigned d_len, char *dst);
 static int  encode(unsigned s_len, char *src, unsigned d_len, char *dst);
 
