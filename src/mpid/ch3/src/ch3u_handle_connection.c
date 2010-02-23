@@ -240,7 +240,9 @@ int MPIDI_CH3U_VC_SendClose( MPIDI_VC_t *vc, int rank )
 #if defined(_OSU_MVAPICH_)
     MPIDI_VC_FAI_send_seqnum(vc, seqnum);
     MPIDI_Pkt_set_seqnum(close_pkt, seqnum);
-    vc->pending_close_ops += 1;
+    if(vc->smp.local_nodes == -1) {
+       vc->pending_close_ops += 1;
+    }
 #endif /* defined(_OSU_MVAPICH_) */
 
     /* MT: this is not thread safe */
@@ -328,7 +330,9 @@ int MPIDI_CH3_PktHandler_Close( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 #if defined(_OSU_MVAPICH_)
         MPIDI_VC_FAI_send_seqnum(vc, seqnum);
         MPIDI_Pkt_set_seqnum(resp_pkt, seqnum);
-        vc->pending_close_ops += 1;
+        if(vc->smp.local_nodes == -1) {
+            vc->pending_close_ops += 1;
+        }
 #endif /* defined(_OSU_MVAPICH_) */
 
 	mpi_errno = MPIU_CALL(MPIDI_CH3,iStartMsg(vc, resp_pkt, 
