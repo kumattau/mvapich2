@@ -1013,7 +1013,21 @@ int rdma_cm_init_pd_cq()
 	                0);
 	
 	            if (!proc->send_cq_hndl[i]) {
-			        ibv_error_abort(GEN_EXIT_ERR, "Error allocating CQ");
+                   /*Falling back to smaller cq size if creation failed*/ 
+                   if(rdma_default_max_cq_size > RDMA_DEFAULT_IWARP_CQ_SIZE) {
+                      rdma_default_max_cq_size = RDMA_DEFAULT_IWARP_CQ_SIZE;
+                      proc->send_cq_hndl[i] = ibv_create_cq(
+                                proc->nic_context[i],
+                                rdma_default_max_cq_size,
+                                NULL,
+                                NULL,
+                                0);
+                      if (!proc->send_cq_hndl[i]) {
+                          ibv_error_abort(GEN_EXIT_ERR, "Error allocating CQ");
+                      }
+                   } else {
+			          ibv_error_abort(GEN_EXIT_ERR, "Error allocating CQ");
+                   }
 	            }
 	
 	            if (ibv_req_notify_cq(proc->send_cq_hndl[i], 0)) {
@@ -1045,7 +1059,22 @@ int rdma_cm_init_pd_cq()
 	                0);
 	
 	            if (!proc->cq_hndl[i]) {
-			        ibv_error_abort(GEN_EXIT_ERR, "Error allocating CQ");
+                   /*Falling back to smaller cq size if creation failed*/
+                   if((rdma_default_max_cq_size > RDMA_DEFAULT_IWARP_CQ_SIZE) 
+                            && (proc->hca_type == CHELSIO_T3)) {
+                      rdma_default_max_cq_size = RDMA_DEFAULT_IWARP_CQ_SIZE;
+                      proc->send_cq_hndl[i] = ibv_create_cq(
+                                proc->nic_context[i],
+                                rdma_default_max_cq_size,
+                                NULL,
+                                NULL,
+                                0);
+                      if (!proc->send_cq_hndl[i]) {
+                          ibv_error_abort(GEN_EXIT_ERR, "Error allocating CQ");
+                      }
+                   } else {
+                      ibv_error_abort(GEN_EXIT_ERR, "Error allocating CQ");
+                   }
 	            }
 	
 	            if (ibv_req_notify_cq(proc->cq_hndl[i], 0)) {
@@ -1068,7 +1097,21 @@ int rdma_cm_init_pd_cq()
 	                0);
 	
 	            if (!proc->send_cq_hndl[i]) {
-			        ibv_error_abort(GEN_EXIT_ERR, "Error allocating CQ");
+                   /*Falling back to smaller cq size if creation failed*/
+                   if(rdma_default_max_cq_size > RDMA_DEFAULT_IWARP_CQ_SIZE) {
+                      rdma_default_max_cq_size = RDMA_DEFAULT_IWARP_CQ_SIZE;
+                      proc->send_cq_hndl[i] = ibv_create_cq(
+                                proc->nic_context[i],
+                                rdma_default_max_cq_size,
+                                NULL,
+                                NULL,
+                                0);
+                      if (!proc->send_cq_hndl[i]) {
+                          ibv_error_abort(GEN_EXIT_ERR, "Error allocating CQ");
+                      }
+                   } else {
+                      ibv_error_abort(GEN_EXIT_ERR, "Error allocating CQ");
+                   }
 	            }
 	
 	            proc->recv_cq_hndl[i] = ibv_create_cq(
@@ -1090,7 +1133,22 @@ int rdma_cm_init_pd_cq()
 	                0);
 	
 	            if (!proc->cq_hndl[i]) {
-			        ibv_error_abort(GEN_EXIT_ERR, "Error allocating CQ");
+                   /*Falling back to smaller cq size if creation failed*/
+                   if((rdma_default_max_cq_size > RDMA_DEFAULT_IWARP_CQ_SIZE)
+                            && (proc->hca_type == CHELSIO_T3)) {
+                      rdma_default_max_cq_size = RDMA_DEFAULT_IWARP_CQ_SIZE;
+                      proc->send_cq_hndl[i] = ibv_create_cq(
+                                proc->nic_context[i],
+                                rdma_default_max_cq_size,
+                                NULL,
+                                NULL,
+                                0);
+                      if (!proc->send_cq_hndl[i]) {
+                          ibv_error_abort(GEN_EXIT_ERR, "Error allocating CQ");
+                      }
+                   } else {
+                      ibv_error_abort(GEN_EXIT_ERR, "Error allocating CQ");
+                   }
 	            }
             }
         }
