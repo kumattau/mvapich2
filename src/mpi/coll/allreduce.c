@@ -777,12 +777,11 @@ int MPI_Allreduce ( void *sendbuf, void *recvbuf, int count,
             if ((comm_ptr->shmem_coll_ok == 1)&&(stride < coll_param.shmem_allreduce_msg)&&
                     (disable_shmem_allreduce == 0) &&(is_commutative) &&(enable_shmem_collectives) &&(check_comm_registry(comm))){
                 MPIR_Nest_incr();
+
                 my_rank = comm_ptr->rank;
-/*            MPI_Comm_size(comm, &total_size);         */
                 total_size = comm_ptr->local_size;
+                
                 shmem_comm = comm_ptr->shmem_comm;
-/*                MPI_Comm_rank(shmem_comm, &local_rank);
-                MPI_Comm_size(shmem_comm, &local_size); */
                 MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
                 local_rank = shmem_commptr->rank;
                 local_size = shmem_commptr->local_size;

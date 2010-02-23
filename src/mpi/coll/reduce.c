@@ -949,8 +949,13 @@ int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
                     MPIU_CHKLMEM_MALLOC(tmpbuf1, void *, count*(MPIR_MAX(extent,true_extent)), mpi_errno, "receive buffer");
                     tmpbuf1 = (void *)((char*)tmpbuf1 - true_lb);
                     MPIR_Nest_incr();
-                    mpi_errno = MPIR_Localcopy(sendbuf, count, datatype, tmpbuf,
+                    if( sendbuf == MPI_IN_PLACE ) { 
+                        mpi_errno = MPIR_Localcopy(recvbuf, count, datatype, tmpbuf,
                             count, datatype);
+                    } else { 
+                        mpi_errno = MPIR_Localcopy(sendbuf, count, datatype, tmpbuf,
+                            count, datatype);
+                    }
                     MPIR_Nest_decr();
                 }
 
