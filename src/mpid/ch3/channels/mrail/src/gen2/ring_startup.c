@@ -737,7 +737,7 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
 
     gethostname(hostname, HOSTNAME_LEN);
     if (!hostname) {
-        MPIU_Error_printf(stderr, "Could not get hostname\n");
+        MPIU_Error_printf("Could not get hostname\n");
         exit(1);
     }
     hostid = get_host_id(hostname, HOSTNAME_LEN);

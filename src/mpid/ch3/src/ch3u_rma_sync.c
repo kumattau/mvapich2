@@ -147,7 +147,7 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
 	    /*MPI_Win_start */
 	    win_ptr->using_start = 1;
 	    /*MPI_Win_post */
-	    memset(win_ptr->completion_counter, 0,
+	    memset((void *) win_ptr->completion_counter, 0,
 		   sizeof(long long) * comm_size*rdma_num_rails);
 	    win_ptr->my_counter = (long long) comm_size - 1;
 	    for (dst = 0; dst < comm_size; dst++) {
@@ -188,7 +188,7 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
 	    /*MPI_Win_start */
 	    win_ptr->using_start = 1;
 	    /*MPI_Win_post */
-	    memset(win_ptr->completion_counter, 0,
+	    memset((void *) win_ptr->completion_counter, 0,
 		   sizeof(long long) * comm_size * rdma_num_rails);
 	    win_ptr->my_counter = (long long) comm_size - 1;
 
@@ -1404,7 +1404,7 @@ int MPIDI_Win_post(MPID_Group *group_ptr, int assert, MPID_Win *win_ptr)
 #if defined(_OSU_MVAPICH_)
     win_ptr->my_counter = post_grp_size; /*MRAIL */
     if (win_ptr->fall_back != 1) {
-	memset(win_ptr->completion_counter, 0,
+	memset((void *) win_ptr->completion_counter, 0,
 	      sizeof(long long) * win_ptr->comm_size * rdma_num_rails);
     }
 #endif /* defined(_OSU_MVAPICH_) */

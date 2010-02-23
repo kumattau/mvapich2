@@ -570,7 +570,7 @@ MPIDI_CH3I_RDMA_win_create(void *base,
     }
 
     memset(
-        (*win_ptr)->completion_counter,
+        (void *) (*win_ptr)->completion_counter,
         0, 
         sizeof(long long) * comm_size * rdma_num_rails
     ); 

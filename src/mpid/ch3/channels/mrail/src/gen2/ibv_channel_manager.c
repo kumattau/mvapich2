@@ -589,7 +589,7 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
     	                if (MPIDI_CH3I_RDMA_Process.global_used_send_cq) {
                              MPIDI_CH3I_RDMA_Process.global_used_send_cq--;
     	                } else {
-                            DEBUG_PRINT("[%d] Possibly received a duplicate \ 
+                            DEBUG_PRINT("[%d] Possibly received a duplicate \
                                        send completion event \n", 
                                        MPIDI_Process.my_pg_rank);
     	                }

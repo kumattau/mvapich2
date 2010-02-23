@@ -155,8 +155,6 @@ extern int                  use_hwloc_cpu_binding;
 #define MAX_WIN_NUM                     (16)
 #define RDMA_MAX_REGISTERED_PAGES       (0)
 
-#define MIN(a,b) ((a)<(b)?(a):(b))
-
 #define NUM_BOOTSTRAP_BARRIERS  2
 
 /* Statistically sending a stripe below this may not lead
