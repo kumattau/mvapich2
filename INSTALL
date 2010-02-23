@@ -42,7 +42,7 @@ A. Dependencies
 
 You'll need the following build tools to compile MVAPICH2:
 
-* autoconf 2.59 or later (not required if building from a tarball) 
+* autoconf 2.62 or later (not required if building from a tarball) 
 * A C compiler (gcc, icc, etc.)
 * Python 2.2 or later (required only if building the MPD process management
   system)
