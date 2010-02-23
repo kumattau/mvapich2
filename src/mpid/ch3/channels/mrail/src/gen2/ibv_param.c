@@ -661,14 +661,6 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 
     if ((value = getenv("MV2_USE_RDMAOE")) != NULL) {
         use_iboeth = !!atoi(value);
-        if (1 == proc->has_ring_startup) {
-            if (0 == my_rank) {
-                MPIU_Usage_printf("Ring start up cannot be used in RDMAoE mode."
-                                "Falling back to PMI exchange.\r\n"
-                                "You can also set MV2_USE_RING_STARTUP=0.\r\n");
-            }
-            proc->has_ring_startup = 0;
-        }
         if (!USE_SMP) {
             if (0 == my_rank) {
                 MPIU_Usage_printf("RDMAoE mode cannot function without SHMEM."

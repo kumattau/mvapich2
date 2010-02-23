@@ -28,6 +28,7 @@
 struct init_addr_inf {
     int    lid;
     int    qp_num[2];
+    union  ibv_gid gid;
 };
 
 struct host_addr_inf {
@@ -41,6 +42,7 @@ struct addr_packet {
     int         lid;
     int         rail;
     uint32_t    hca_type;
+    union  ibv_gid gid;
     struct host_addr_inf val[0];
 };
 
@@ -76,6 +78,16 @@ static inline int get_host_id(char *myhostname, int hostname_len)
     host_id = (int) ((struct in_addr *) hostent->h_addr_list[0])->s_addr;
 
     return host_id;
+}
+
+static union ibv_gid get_local_gid(struct ibv_context * ctx, int port)
+{
+    union ibv_gid gid;
+    struct ibv_port_attr attr;
+
+    ibv_query_gid(ctx, port, 0, &gid);
+
+    return gid;
 }
 
 static uint16_t get_local_lid(struct ibv_context * ctx, int port)
@@ -220,7 +232,7 @@ static int _find_active_port(struct ibv_context *context)
     for (j = 1; j <= RDMA_DEFAULT_MAX_PORTS; ++ j) {
         if ((! ibv_query_port(context, j, &port_attr)) &&
              port_attr.state == IBV_PORT_ACTIVE &&
-             port_attr.lid) {
+             (port_attr.lid || (!port_attr.lid && use_iboeth))) {
             return j;
         }
     }
@@ -260,15 +272,28 @@ static int _setup_ib_boot_ring(struct init_addr_inf * neighbor_addr,
     /**********************  INIT --> RTR  ************************/
     memset(&qp_attr, 0, sizeof qp_attr);
     qp_attr.qp_state    =   IBV_QPS_RTR;
-    qp_attr.path_mtu    =   rdma_default_mtu;
     qp_attr.rq_psn      =   rdma_default_psn;
     qp_attr.max_dest_rd_atomic  =   rdma_default_max_rdma_dst_ops;
     qp_attr.min_rnr_timer       =   rdma_default_min_rnr_timer;
-    qp_attr.ah_attr.is_global   =   0;
     qp_attr.ah_attr.sl          =   rdma_default_service_level;
     qp_attr.ah_attr.static_rate =   rdma_default_static_rate;
     qp_attr.ah_attr.src_path_bits   =   rdma_default_src_path_bits;
     qp_attr.ah_attr.port_num    =   port;
+
+    if (use_iboeth) {
+        qp_attr.ah_attr.grh.dgid.global.subnet_prefix = 0;
+        qp_attr.ah_attr.grh.dgid.global.interface_id = 0;
+        qp_attr.ah_attr.grh.flow_label = 0;
+        qp_attr.ah_attr.grh.sgid_index = 0;
+        qp_attr.ah_attr.grh.hop_limit = 1;
+        qp_attr.ah_attr.grh.traffic_class = 0;
+        qp_attr.ah_attr.is_global      = 1;
+        qp_attr.ah_attr.dlid           = 0;
+        qp_attr.path_mtu            = IBV_MTU_1024;
+    } else {
+        qp_attr.ah_attr.is_global   =   0;
+        qp_attr.path_mtu    =   rdma_default_mtu;
+    }
 
     qp_attr_mask        |=  IBV_QP_STATE;
     qp_attr_mask        |=  IBV_QP_PATH_MTU;
@@ -280,7 +305,11 @@ static int _setup_ib_boot_ring(struct init_addr_inf * neighbor_addr,
     /* lhs */
     for (i = 0; i < 2; i++) {
         qp_attr.dest_qp_num     = neighbor_addr[i].qp_num[1 - i];
-        qp_attr.ah_attr.dlid    = neighbor_addr[i].lid;
+        if (use_iboeth) {
+           qp_attr.ah_attr.grh.dgid = neighbor_addr[i].gid;
+        } else {
+           qp_attr.ah_attr.dlid    = neighbor_addr[i].lid;
+        }
         qp_attr_mask            |=  IBV_QP_DEST_QPN;
 
         ret = ibv_modify_qp(proc->boot_qp_hndl[i],&qp_attr, qp_attr_mask);
@@ -323,9 +352,10 @@ int rdma_setup_startup_ring(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                         int pg_size)
 {
     struct init_addr_inf neighbor_addr[2];
-    char ring_qp_out[64];
-    char ring_qp_in[128];
+    char ring_qp_out[128];
+    char ring_qp_in[256];
     int bootstrap_len;
+    union ibv_gid gid;
     int mpi_errno = MPI_SUCCESS;
     int port;
 
@@ -357,32 +387,71 @@ int rdma_setup_startup_ring(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                 "**fail", "%s%d", "Fail to create qp on rank ", pg_rank);
     }
 
-    sprintf(ring_qp_out, "%08x:%08x:%08x:",
-             get_local_lid(MPIDI_CH3I_RDMA_Process.nic_context[0],
-                           port),
-             proc->boot_qp_hndl[0]->qp_num,
-             proc->boot_qp_hndl[1]->qp_num
-           );
-
-    DEBUG_PRINT("After setting LID: %d, qp0: %x, qp1: %x\n",
-            get_local_lid(MPIDI_CH3I_RDMA_Process.nic_context[0],
-                          port),
-            proc->boot_qp_hndl[0]->qp_num,
-            proc->boot_qp_hndl[1]->qp_num
-            );
+    if (use_iboeth) {
+        gid = get_local_gid(MPIDI_CH3I_RDMA_Process.nic_context[0], port);
+        sprintf(ring_qp_out, "%016llx:%016llx:%08x:%08x:",
+                 gid.global.subnet_prefix, gid.global.interface_id,
+                 proc->boot_qp_hndl[0]->qp_num,
+                 proc->boot_qp_hndl[1]->qp_num
+               );
+    
+        DEBUG_PRINT("After setting GID: %llx:%llx, qp0: %x, qp1: %x\n",
+                gid.global.subnet_prefix, gid.global.interface_id,
+                proc->boot_qp_hndl[0]->qp_num,
+                proc->boot_qp_hndl[1]->qp_num
+                );
+    } else {
+        printf("Not using RDMAOE\r\n");
+        sprintf(ring_qp_out, "%08x:%08x:%08x:",
+                 get_local_lid(MPIDI_CH3I_RDMA_Process.nic_context[0],
+                               port),
+                 proc->boot_qp_hndl[0]->qp_num,
+                 proc->boot_qp_hndl[1]->qp_num
+               );
+    
+        DEBUG_PRINT("After setting LID: %d, qp0: %x, qp1: %x\n",
+                get_local_lid(MPIDI_CH3I_RDMA_Process.nic_context[0],
+                              port),
+                proc->boot_qp_hndl[0]->qp_num,
+                proc->boot_qp_hndl[1]->qp_num
+                );
+    }
 
     bootstrap_len = strlen(ring_qp_out);
     _rdma_pmi_exchange_addresses(pg_rank, pg_size, ring_qp_out,
             bootstrap_len, ring_qp_in);
 
-    sscanf(&ring_qp_in[0], "%08x:%08x:%08x:", 
-           &neighbor_addr[0].lid, 
-           &neighbor_addr[0].qp_num[0],
-           &neighbor_addr[0].qp_num[1]);
-    sscanf(&ring_qp_in[27], "%08x:%08x:%08x:",
-           &neighbor_addr[1].lid, 
-           &neighbor_addr[1].qp_num[0],
-           &neighbor_addr[1].qp_num[1]);
+    if (use_iboeth) {
+        sscanf(&ring_qp_in[0], "%016llx:%016llx:%08x:%08x:", 
+               &neighbor_addr[0].gid.global.subnet_prefix,
+               &neighbor_addr[0].gid.global.interface_id,
+               &neighbor_addr[0].qp_num[0],
+               &neighbor_addr[0].qp_num[1]);
+        sscanf(&ring_qp_in[53], "%016llx:%016llx:%08x:%08x:",
+               &neighbor_addr[1].gid.global.subnet_prefix,
+               &neighbor_addr[1].gid.global.interface_id,
+               &neighbor_addr[1].qp_num[0],
+               &neighbor_addr[1].qp_num[1]);
+        DEBUG_PRINT("After retrieving GID: %llx:%llx, qp0: %x, qp1: %x\n",
+               neighbor_addr[0].gid.global.subnet_prefix,
+               neighbor_addr[0].gid.global.interface_id,
+               neighbor_addr[0].qp_num[0],
+               neighbor_addr[0].qp_num[1]);
+        DEBUG_PRINT("After retrieving GID: %llx:%llx, qp0: %x, qp1: %x\n",
+               neighbor_addr[1].gid.global.subnet_prefix,
+               neighbor_addr[1].gid.global.interface_id,
+               neighbor_addr[1].qp_num[0],
+               neighbor_addr[1].qp_num[1]);
+    } else {
+        sscanf(&ring_qp_in[0], "%08x:%08x:%08x:", 
+               &neighbor_addr[0].lid, 
+               &neighbor_addr[0].qp_num[0],
+               &neighbor_addr[0].qp_num[1]);
+        sscanf(&ring_qp_in[27], "%08x:%08x:%08x:",
+               &neighbor_addr[1].lid, 
+               &neighbor_addr[1].qp_num[0],
+               &neighbor_addr[1].qp_num[1]);
+    }
 
     mpi_errno = _setup_ib_boot_ring(neighbor_addr, proc, port);
     PMI_Barrier();
@@ -698,6 +767,7 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
                 MPIDI_PG_Get_vc(pg, i, &vc); 
 
                 send_packet->lid     = vc->mrail.rails[rail_index].lid;
+                send_packet->gid     = vc->mrail.rails[rail_index].gid;
                 send_packet->val[i].sr_qp_num =
                     vc->mrail.rails[rail_index].qp_hndl->qp_num;
                 send_packet->val[i].vc_addr  = (uintptr_t)vc;
@@ -770,6 +840,8 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
 
                         info->lid[recv_packet->rank][rail_index] =
                             recv_packet->lid;
+                        info->gid[recv_packet->rank][rail_index] =
+                            recv_packet->gid;
                         info->hostid[recv_packet->rank][rail_index] =
                             recv_packet->host_id;
                         info->hca_type[recv_packet->rank] =

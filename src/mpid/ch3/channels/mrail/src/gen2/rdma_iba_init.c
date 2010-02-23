@@ -171,7 +171,7 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
                         "**nomem %s", "init_info");
     }
 
-    if ((pg_size > 1) && (!use_iboeth)) {
+    if (pg_size > 1) {
         /* IBoEth mode does not support loop back connections as of now. Ring
          * based connection setup uses QP's to exchange info between all
          * processes, whether they're on the same node or different nodes.
@@ -1016,7 +1016,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
     lid_all = (uint16_t *) MPIU_Malloc(pg_size * sizeof(uint16_t));
     gid_all = (union ibv_gid *) MPIU_Malloc(pg_size * sizeof(union ibv_gid));
     hca_type_all = (uint32_t *) MPIU_Malloc(pg_size * sizeof(uint32_t));
-    if (!ud_qpn_all || !lid_all || !hca_type_all) {
+    if (!ud_qpn_all || !lid_all || !hca_type_all || !gid_all) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
                 "**nomem %s", "structure to exchange information");
     }
@@ -1212,6 +1212,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
 #endif
 		ud_qpn_all[i] = all_info[i].qpn;
 		lid_all[i] = all_info[i].lid;
+        gid_all[i] = all_info[i].gid;
 	    }
 	}
 	else {
