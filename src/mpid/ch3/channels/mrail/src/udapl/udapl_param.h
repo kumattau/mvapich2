@@ -58,7 +58,6 @@ extern int rdma_iba_eager_threshold;
 extern long rdma_eagersize_1sc;
 
 extern int  num_cpus;
-extern int  use_efficient_cpu_binding;
 extern int  use_hwloc_cpu_binding;
 
 

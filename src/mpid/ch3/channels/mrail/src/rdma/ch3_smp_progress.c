@@ -76,7 +76,6 @@ int AMD_OPTERON_DUAL_MAPPING[]     = {0,0,1,1};
 int AMD_BARCELONA_MAPPING[]        = {0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3};
 
 extern int num_cpus;
-extern int use_efficient_cpu_binding;
 extern int use_hwloc_cpu_binding;
 unsigned int viadev_enable_affinity = 1;
 #endif /* defined(USE_PROCESSOR_AFFINITY) */
@@ -3237,20 +3236,17 @@ static void smpi_setaffinity ()
             /* Call the cpu_mapping function to find out about how the
              * processors are numbered on the different sockets. 
              */
-            if(use_efficient_cpu_binding == 1) { 
 #if defined(HAVE_LIBHWLOC)
-                if(use_hwloc_cpu_binding == 1) { 
-                    mpi_errno = get_cpu_mapping_hwloc(N_CPUs_online);
-                 } else { 
+            if(use_hwloc_cpu_binding == 1) { 
+                 mpi_errno = get_cpu_mapping_hwloc(N_CPUs_online);
+             } else { 
 #endif
                  mpi_errno = get_cpu_mapping(N_CPUs_online);
 #if defined(HAVE_LIBHWLOC)
-                 }
+             }
 #endif
-            }
-            
-            if(mpi_errno != MPI_SUCCESS || use_efficient_cpu_binding == 0 
-                   || arch_type == 0) { 
+             
+            if(mpi_errno != MPI_SUCCESS || arch_type == 0 || custom_cpu_mapping == NULL) { 
                 /* For some reason, we were not able to retrieve the cpu mapping
                 * information. We are falling back on the linear mapping. 
                 * This may not deliver the best performace 

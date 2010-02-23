@@ -104,7 +104,6 @@ extern int                  rdma_iwarp_multiple_cq_threshold;
 extern int                  rdma_iwarp_use_multiple_cq;
 
 extern int                  num_cpus;
-extern int                  use_efficient_cpu_binding;
 extern int                  use_hwloc_cpu_binding; 
 
 #define PKEY_MASK 0x7fff /* the last bit is reserved */
