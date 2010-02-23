@@ -329,7 +329,7 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr,
 #ifdef _SCHEDULE
                     if (curr_put != 1 || force_to_progress == 1)
                     { 
-                        /* Nearest issued rma is not a put. */
+                      /* Nearest issued rma is not a put. */
 #endif
                         ++win_ptr->rma_issued;
                         iba_put(curr_ptr, win_ptr, size);
@@ -359,16 +359,17 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr,
                             prev_ptr = curr_ptr;
                             curr_ptr = curr_ptr->next;
                         }
+                    }
 #endif
-                    }
-                    else
-                    {
-                        prev_ptr = curr_ptr;
-                        curr_ptr = curr_ptr->next;
-                    }
+                 }                 
+                 else
+                 {
+                     prev_ptr = curr_ptr;
+                     curr_ptr = curr_ptr->next;
+                 }
 
-                    break;
-                }
+                 break;
+              }
             case MPIDI_RMA_ACCUMULATE:
                 prev_ptr = curr_ptr;
                 curr_ptr = curr_ptr->next;
@@ -499,6 +500,7 @@ MPIDI_CH3I_RDMA_win_create(void *base,
                            int rank,
                            MPID_Win ** win_ptr, MPID_Comm * comm_ptr)
 {
+ 
     int ret, i,j, index, arr_index;
     unsigned long   *tmp, *tmp_new;
     uint32_t        r_key[MAX_NUM_HCAS], r_key2[MAX_NUM_HCAS];
@@ -965,16 +967,15 @@ fn_exit:
     dreg_unregister(MPIDI_CH3I_RDMA_Process.
             RDMA_local_win_dreg_entry[index]);
   err_base_register:
-    tmp[7 * rank + 6] = (*win_ptr)->fall_back;
+    tmp[7 * rank + 5] = (*win_ptr)->fall_back;
 
-    ret = NMPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, tmp, 7,
-                       MPI_LONG, comm_ptr->handle);
+    ret = NMPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, tmp, rdma_num_hcas*7, MPI_LONG, comm_ptr->handle);
     if (ret != MPI_SUCCESS) {
         DEBUG_PRINT("Error gather rkey  when creating windows\n");
         ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
     }
-    
-    return;
+    goto fn_exit;
+     
 }
 
 void MPIDI_CH3I_RDMA_win_free(MPID_Win** win_ptr)
