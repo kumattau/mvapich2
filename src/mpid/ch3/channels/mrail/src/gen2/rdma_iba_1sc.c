@@ -967,7 +967,7 @@ fn_exit:
     dreg_unregister(MPIDI_CH3I_RDMA_Process.
             RDMA_local_win_dreg_entry[index]);
   err_base_register:
-    tmp[7 * rank + 5] = (*win_ptr)->fall_back;
+    tmp[7 * rdma_num_hcas * rank + 5] = (*win_ptr)->fall_back;
 
     ret = NMPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, tmp, rdma_num_hcas*7, MPI_LONG, comm_ptr->handle);
     if (ret != MPI_SUCCESS) {
