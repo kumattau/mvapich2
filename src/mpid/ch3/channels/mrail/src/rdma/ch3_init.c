@@ -236,10 +236,10 @@ int MPIDI_CH3_VC_Init (MPIDI_VC_t* vc)
     vc->smp.recv_active = NULL; 
     vc->smp.send_active = NULL; 
     vc->smp.local_nodes = -1;
-#ifdef _ENABLE_XRC_
+
     vc->mrail.rails = NULL;
     vc->mrail.srp.credits = NULL;
-#endif
+    vc->mrail.cmanager.msg_channels = NULL;
 
     vc->ch.sendq_head = NULL; 
     vc->ch.sendq_tail = NULL; 
