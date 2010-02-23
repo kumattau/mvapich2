@@ -155,11 +155,6 @@ int MPI_Finalize( void )
     MPIR_DebuggerSetAborting( (char *)0 );
 #endif
 
-    mpi_errno = MPID_Finalize();
-    if (mpi_errno) {
-	MPIU_ERR_POP(mpi_errno);
-    }
-
 #if defined(_OSU_MVAPICH_)
     /* Check to see if shmem_collectives were enabled. If yes, the
     specific entries need to be freed. */
@@ -169,6 +164,11 @@ int MPI_Finalize( void )
         MPIU_THREAD_SINGLE_CS_ENTER("init");
     }
 #endif
+
+    mpi_errno = MPID_Finalize();
+    if (mpi_errno) {
+	MPIU_ERR_POP(mpi_errno);
+    }
 
     /* delete local and remote groups on comm_world and comm_self if
        they had been created (should we use a function pointer here
