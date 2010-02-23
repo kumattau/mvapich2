@@ -1275,9 +1275,6 @@ void rdma_get_user_parameters(int num_proc, int me)
     
     if ((value = getenv("MV2_USE_HWLOC_CPU_BINDING")) != NULL) {
         use_hwloc_cpu_binding = atoi(value);
-        if(use_hwloc_cpu_binding == 1) { 
-            use_optimal_cpu_binding = 0;
-        }
     }
 
     if ((value = getenv("MV2_USE_CPU_BINDING_ARRAY_SIZE")) != NULL) {

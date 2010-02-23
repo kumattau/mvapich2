@@ -2925,8 +2925,6 @@ int get_cpu_mapping_hwloc(long N_CPUs_online)
        custom_cpu_mapping[i-1] = '\0';
     }
 
-    printf("custom_cpu_mapping = %s \n",custom_cpu_mapping);
-
     /* Parse /proc/cpuinfo for additional useful things */
     if(fp = fopen(CONFIG_FILE, "r")) {
 
@@ -3181,16 +3179,7 @@ static void smpi_setaffinity ()
              * However, since the user has specified a mapping pattern, 
              * we are not going to use any of our proposed binding patterns
              */
-#if defined(HAVE_LIBHWLOC)
-            if(use_hwloc_cpu_binding == 1) { 
-                mpi_errno = get_cpu_mapping_hwloc(N_CPUs_online);
-            } else { 
-#endif
-                mpi_errno = get_cpu_mapping(N_CPUs_online);
-#if defined(HAVE_LIBHWLOC)
-            }
-#endif
-       
+            mpi_errno = get_cpu_mapping(N_CPUs_online);
 
             while (*tp != '\0')
             {
@@ -3248,15 +3237,17 @@ static void smpi_setaffinity ()
             /* Call the cpu_mapping function to find out about how the
              * processors are numbered on the different sockets. 
              */
+            if(use_optimal_cpu_binding == 1) { 
 #if defined(HAVE_LIBHWLOC)
-            if(use_hwloc_cpu_binding == 1) { 
-                mpi_errno = get_cpu_mapping_hwloc(N_CPUs_online);
-            } else { 
+                if(use_hwloc_cpu_binding == 1) { 
+                    mpi_errno = get_cpu_mapping_hwloc(N_CPUs_online);
+                 } else { 
 #endif
-                mpi_errno = get_cpu_mapping(N_CPUs_online);
+                 mpi_errno = get_cpu_mapping(N_CPUs_online);
 #if defined(HAVE_LIBHWLOC)
-            } 
+                 }
 #endif
+            }
             
             if(mpi_errno != MPI_SUCCESS || use_optimal_cpu_binding == 0 
                    || arch_type == 0) { 
