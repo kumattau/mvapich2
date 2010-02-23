@@ -863,7 +863,7 @@ int MPIDI_CH3I_RDMA_finalize()
 
 	deallocate_vbufs(i);
 
-    err = dreg_finalize();
+	while (dreg_evict());
 
 	err = ibv_dealloc_pd(MPIDI_CH3I_RDMA_Process.ptag[i]);
 
@@ -880,6 +880,11 @@ int MPIDI_CH3I_RDMA_finalize()
 	}
 
     }
+
+	/* De-allocate vbuf region */
+	deallocate_vbuf_region();
+
+    err = dreg_finalize();
 
     if(MPIDI_CH3I_RDMA_Process.polling_set != NULL) {
       MPIU_Free(MPIDI_CH3I_RDMA_Process.polling_set);
