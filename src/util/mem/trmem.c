@@ -378,9 +378,6 @@ called in %s at line %d\n", world_rank, (long)a + sizeof(TrSPACE),
     if (nset > 0) 
 	memset( ahead + 2 * sizeof(int), TRDefaultByte, nset );
     free( a );
-
-    /* Set pointer to be freed to NULL */
-    a_ptr = NULL;
 }
 
 /*+C
