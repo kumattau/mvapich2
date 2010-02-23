@@ -60,7 +60,7 @@ int CLOVERTOWN_MODEL=15;
 int HARPERTOWN_MODEL=23;
 int NEHALEM_MODEL=26;
 
-#if defined(_SMP_HWLOC_)
+#if defined(HAVE_LIBHWLOC)
 #include <hwloc.h>
 int ip            = 0;
 int *core_mapping = NULL;
@@ -2813,7 +2813,7 @@ int MPIDI_CH3I_SMP_pull_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t** pkt_head)
 
 #if defined(USE_PROCESSOR_AFFINITY)
 
-#if defined(_SMP_HWLOC_)
+#if defined(HAVE_LIBHWLOC)
 
 /*
  * Find next processor in obj_tree, history stored in obj_tree.
@@ -3007,7 +3007,7 @@ int get_cpu_mapping_hwloc(long N_CPUs_online)
 return rc;
 }
 
-#endif /* _SMP_HWLOC_ */
+#endif /* HAVE_LIBHWLOC */
 
 int get_cpu_mapping(long N_CPUs_online)
 {
@@ -3181,13 +3181,13 @@ static void smpi_setaffinity ()
              * However, since the user has specified a mapping pattern, 
              * we are not going to use any of our proposed binding patterns
              */
-#if defined(_SMP_HWLOC_)
+#if defined(HAVE_LIBHWLOC)
             if(use_hwloc_cpu_binding == 1) { 
                 mpi_errno = get_cpu_mapping_hwloc(N_CPUs_online);
             } else { 
 #endif
                 mpi_errno = get_cpu_mapping(N_CPUs_online);
-#if defined(_SMP_HWLOC_)
+#if defined(HAVE_LIBHWLOC)
             }
 #endif
        
@@ -3248,13 +3248,13 @@ static void smpi_setaffinity ()
             /* Call the cpu_mapping function to find out about how the
              * processors are numbered on the different sockets. 
              */
-#if defined(_SMP_HWLOC_)
+#if defined(HAVE_LIBHWLOC)
             if(use_hwloc_cpu_binding == 1) { 
                 mpi_errno = get_cpu_mapping_hwloc(N_CPUs_online);
             } else { 
 #endif
                 mpi_errno = get_cpu_mapping(N_CPUs_online);
-#if defined(_SMP_HWLOC_)
+#if defined(HAVE_LIBHWLOC)
             } 
 #endif
             

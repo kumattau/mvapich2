@@ -449,6 +449,20 @@ routines],[FWRAPNAME=$withval;set_FWRAPNAME="yes"],FWRAPNAME=fmpich)
 AC_SUBST(FWRAPNAME)
 
 dnl <_OSU_MVAPICH_>
+AC_ARG_WITH([hwloc],
+            [AS_HELP_STRING([--with-hwloc],
+                            [use hwloc for process binding])
+            ],
+            [],
+            [with_hwloc=no])
+
+AS_IF([test "x$with_hwloc" != xno],
+      [AC_CHECKING([hwloc])
+       AC_CHECK_LIB([hwloc], [hwloc_topology_init], [],
+                    [AC_MSG_FAILURE([can't link with libhwloc])])
+       AC_CHECK_HEADER([hwloc.h], [],
+                       [AC_MSG_FAILURE([can't include hwloc.h])])])
+
 AC_ARG_WITH([limic2],
     [AS_HELP_STRING([--with-limic2=@<:@LiMIC2 installation path@:>@],
                     [Enable use of LiMIC2 for intra-node communication])
