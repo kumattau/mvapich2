@@ -16,16 +16,13 @@
  *
  */
 
-#include "mpidi_ch3i_rdma_conf.h"
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <fcntl.h>
-#include <mpimem.h>
-#include "mem_hooks.h"
 #include "rdma_impl.h"
+#include "pmi.h"
 #include "vbuf.h"
-#include "cm.h"
+#include "ibv_param.h"
 #include "rdma_cm.h"
+#include "mpiutil.h"
+#include "cm.h"
 
 /* global rdma structure for the local process */
 MPIDI_CH3I_RDMA_Process_t MPIDI_CH3I_RDMA_Process;

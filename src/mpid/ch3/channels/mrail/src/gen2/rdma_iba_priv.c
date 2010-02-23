@@ -10,13 +10,9 @@
  *
  */
 
-#include "mpidi_ch3i_rdma_conf.h"
-#include <mpimem.h>
-#include <netdb.h>
-#include <string.h>
-#include "vbuf.h"
 #include "rdma_impl.h"
 #include "pmi.h"
+#include "vbuf.h"
 #include "ibv_param.h"
 #include "rdma_cm.h"
 #include "mpiutil.h"
