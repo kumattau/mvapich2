@@ -61,3 +61,6 @@ testing:
 
 clean-local:
 	rm -f .iotest.txt.*
+
+smvarSubdir_do_dependencies=no
+smvar_dependenciesDummy=yes

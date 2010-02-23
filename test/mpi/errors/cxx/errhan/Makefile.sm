@@ -6,3 +6,6 @@ errgetx_SOURCES   = errgetx.cxx
 errsetx_SOURCES   = errsetx.cxx
 throwtest_SOURCES = throwtest.cxx
 
+
+smvarSubdir_do_dependencies=no
+smvar_dependenciesDummy=yes

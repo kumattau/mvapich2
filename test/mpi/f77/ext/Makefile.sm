@@ -16,3 +16,6 @@ c2fmult_SOURCES = c2fmult.c
 
 ../util/mtestf.o: 
 	(cd ../util && $(MAKE) mtestf.o)
+
+smvarSubdir_do_dependencies=no
+smvar_dependenciesDummy=yes

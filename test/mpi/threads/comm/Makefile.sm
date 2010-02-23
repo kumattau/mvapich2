@@ -13,3 +13,6 @@ ctxdup_SOURCES  = ctxdup.c
 	(cd ../../util && $(MAKE) mtest.o)
 ../util/mtestthread.o:
 	(cd ../util && $(MAKE) mtestthread.o)
+
+smvarSubdir_do_dependencies=no
+smvar_dependenciesDummy=yes

@@ -109,3 +109,6 @@ testing:
 
 clean-local:
 	-rm -f summary.xml
+
+smvarSubdir_do_dependencies=no
+smvar_dependenciesDummy=yes

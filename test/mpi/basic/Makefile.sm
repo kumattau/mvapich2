@@ -15,3 +15,6 @@ netpipe_SOURCES = netmpi.c GetOpt.c
 patterns_SOURCES = patterns.c
 adapt_SOURCES = adapt.c GetOpt.c
 allmpi_SOURCES = allmpi.c
+
+smvarSubdir_do_dependencies=no
+smvar_dependenciesDummy=yes

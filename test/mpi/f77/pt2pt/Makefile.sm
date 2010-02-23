@@ -12,3 +12,6 @@ testing:
 		   	-xmlfile=summary.xml
 ../util/mtestf.o: 
 	(cd ../util && $(MAKE) mtestf.o)
+
+smvarSubdir_do_dependencies=no
+smvar_dependenciesDummy=yes

@@ -10,3 +10,6 @@ getcnterr_SOURCES    = getcnterr.c
 
 ../../util/mtest.o:
 	(cd ../../util && $(MAKE) mtest.o)
+
+smvarSubdir_do_dependencies=no
+smvar_dependenciesDummy=yes
