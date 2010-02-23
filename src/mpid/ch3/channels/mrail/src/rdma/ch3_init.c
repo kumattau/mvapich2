@@ -230,17 +230,19 @@ int MPIDI_CH3_VC_Init (MPIDI_VC_t* vc)
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_VC_INIT);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_VC_INIT);
     int mpi_errno = MPI_SUCCESS;
-
+    vc->smp.local_nodes = -1;
+#if !defined (_OSU_PSM_)
     vc->smp.sendq_head = NULL; 
     vc->smp.sendq_tail = NULL; 
     vc->smp.recv_active = NULL; 
     vc->smp.send_active = NULL; 
-    vc->smp.local_nodes = -1;
-
+    vc->smp.ch.req = -1;
+#ifndef DAPL_DEFAULT_PROVIDER
     vc->mrail.rails = NULL;
     vc->mrail.srp.credits = NULL;
     vc->mrail.cmanager.msg_channels = NULL;
-
+#endif /* ifndef DAPL_DEFAULT_PROVIDER */
+#endif /* if !defined (_OSU_PSM_) */
     vc->ch.sendq_head = NULL; 
     vc->ch.sendq_tail = NULL; 
     vc->ch.req = (MPID_Request *) MPIU_Malloc(sizeof(MPID_Request));
