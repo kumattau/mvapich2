@@ -358,6 +358,10 @@ int ib_cma_event_handler(struct rdma_cm_id *cma_id,
     case RDMA_CM_EVENT_DISCONNECTED:
 	break;
 
+    case RDMA_CM_EVENT_TIMEWAIT_EXIT:
+    DEBUG_PRINT("caught RDMA_CM_EVENT_TIMEWAIT_EXIT \n");
+    break;
+
     case RDMA_CM_EVENT_DEVICE_REMOVAL:
 
     default:
