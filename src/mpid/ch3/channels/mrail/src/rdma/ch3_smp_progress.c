@@ -58,16 +58,26 @@ typedef enum{
 
 int CLOVERTOWN_MODEL=15;
 int HARPERTOWN_MODEL=23;
+int NEHALEM_MODEL=26;
 
-int INTEL_CLOVERTOWN_MAPPING[] = {0,0,1,1,0,0,1,1};
-int INTEL_NEHALEM_MAPPING[] =    {0,1,0,1,0,1,0,1};
-int AMD_BARCELONA_MAPPING[] =    {0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3};
-int INTEL_HARPERTOWN_MAPPING[] = {0,0,1,1,0,0,1,1};
-int INTEL_XEON_DUAL_MAPPING[] =  {0,1,0,1};
-int AMD_OPTERON_DUAL_MAPPING[] = {0,0,1,1};
+#if defined(_SMP_HWLOC_)
+#include <hwloc.h>
+int ip            = 0;
+int *core_mapping = NULL;
+int *obj_tree     = NULL;
+#endif
+int INTEL_XEON_DUAL_MAPPING[]      = {0,1,0,1};
+int INTEL_CLOVERTOWN_MAPPING[]     = {0,0,1,1,0,0,1,1};                  /*        ((0,1),(4,5))((2,3),(6,7))             */
+int INTEL_HARPERTOWN_LEG_MAPPING[] = {0,1,0,1,0,1,0,1};                  /* legacy ((0,2),(4,6))((1,3),(5,7))             */
+int INTEL_HARPERTOWN_COM_MAPPING[] = {0,0,0,0,1,1,1,1};                  /* common ((0,1),(2,3))((4,5),(6,7))             */
+int INTEL_NEHALEM_LEG_MAPPING[]    = {0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1};  /* legacy (0,2,4,6)(1,3,5,7) with hyperthreading */
+int INTEL_NEHALEM_COM_MAPPING[]    = {0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,1};  /* common (0,1,2,3)(4,5,6,7) with hyperthreading */
+int AMD_OPTERON_DUAL_MAPPING[]     = {0,0,1,1};
+int AMD_BARCELONA_MAPPING[]        = {0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3};
 
 extern int num_cpus;
 extern int use_optimal_cpu_binding;
+extern int use_hwloc_cpu_binding;
 unsigned int viadev_enable_affinity = 1;
 #endif /* defined(USE_PROCESSOR_AFFINITY) */
 
@@ -2802,6 +2812,203 @@ int MPIDI_CH3I_SMP_pull_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t** pkt_head)
 }
 
 #if defined(USE_PROCESSOR_AFFINITY)
+
+#if defined(_SMP_HWLOC_)
+
+/*
+ * Find next processor in obj_tree, history stored in obj_tree.
+ * Yields "scatter" affinity scenario in core_mapping.
+ */
+
+void map_scatter(hwloc_obj_t obj, int depth)
+{
+    int i = depth * num_cpus + obj->logical_index;
+
+    if(obj->type == HWLOC_OBJ_PROC) {                                    /* found a processor */
+      core_mapping[ip++] = obj->os_index;
+    } else if((obj_tree[i] == -1) || (obj_tree[i] == obj->arity - 1)) {  /* init tree or restart */
+      obj_tree[i] = 0;
+      map_scatter(obj->children[0], depth + 1);
+    } else {                                                             /* next child */
+      obj_tree[i]++;
+      map_scatter(obj->children[obj_tree[i]], depth + 1);    
+    }
+return; 
+}
+
+int get_cpu_mapping_hwloc(long N_CPUs_online)
+{
+    hwloc_topology_t topology = NULL;
+    hwloc_obj_t      sysobj;
+    unsigned         topodepth = -1, depth = -1;
+    int              num_sockets = 0, cpu_model = 0, rc = 0, i;
+    char             line[MAX_LINE_LENGTH], input[MAX_NAME_LENGTH], *s, *key;
+    FILE            *fp;
+    cpu_type_t       cpu_type = CPU_FAMILY_NONE;
+    
+    /* Init topology object */
+    if(hwloc_topology_init(&topology) != 0) {
+        fprintf(stderr, "Warning: %s: Failed to init CPU topology.\n", __func__);
+        goto error_free;
+    }
+
+    /*
+    * Load topology object.
+    * If socket count is wanted, the full topology has to be loaded.
+    * If socket count is not wanted, remove the comment below.
+    */
+    
+    /* hwloc_topology_ignore_all_keep_structure(topology); */
+    if(hwloc_topology_load(topology) != 0) {
+      fprintf(stderr, "Warning: %s: Failed to detect topology.\n", __func__);
+      goto error_free;
+    }
+
+    /* Determine topology depth */
+    topodepth = hwloc_topology_get_depth(topology);
+    if(topodepth == HWLOC_TYPE_DEPTH_UNKNOWN) {
+      fprintf(stderr, "Warning: %s: Failed to determine topology depth.\n", __func__);
+      goto error_free;
+    }
+
+    /* Count number of (logical) processors */
+    depth = hwloc_get_type_depth(topology, HWLOC_OBJ_PROC);
+    if(depth == HWLOC_TYPE_DEPTH_UNKNOWN) {
+      fprintf(stderr, "Warning: %s: Failed to determine number of processors.\n", __func__);
+      goto error_free;
+    }
+    if(! (num_cpus = hwloc_get_nbobjs_by_depth(topology, depth))) {
+      fprintf(stderr, "Warning: %s: Failed to determine number of processors.\n", __func__);
+      goto error_free;
+    }
+
+    /* Count number of sockets */
+    depth = hwloc_get_type_depth(topology, HWLOC_OBJ_SOCKET);
+    if(depth == HWLOC_TYPE_DEPTH_UNKNOWN) {
+      fprintf(stderr, "Warning: %s: Failed to determine number of sockets.\n", __func__);
+    } else {
+      num_sockets = hwloc_get_nbobjs_by_depth(topology, depth);
+    }
+
+    /* Init maps */
+    if(! (custom_cpu_mapping = (char *) MPIU_Malloc(sizeof(char) * num_cpus*2))) { 
+      goto error_free;
+    } 
+    memset(custom_cpu_mapping, 0, sizeof(char) * num_cpus*2);
+    if(! (core_mapping = (int *) MPIU_Malloc(num_cpus * sizeof(*core_mapping)))) { 
+      goto error_free;
+    } 
+    for(i = 0; i < num_cpus; i++) { 
+      core_mapping[i] = -1;
+    } 
+    if(! (obj_tree = (int *) MPIU_Malloc(num_cpus * topodepth * sizeof(*obj_tree)))) { 
+      goto error_free;
+    } 
+    for(i = 0; i < num_cpus * topodepth; i++) { 
+      obj_tree[i] = -1;
+    } 
+    /* Scatter */
+    ip = 0;
+    sysobj = hwloc_get_system_obj(topology);
+    for(i = 0; i < num_cpus; i++) { 
+      map_scatter(sysobj, 0);
+    } 
+
+    /* Assemble custom_cpu_mapping string */
+    s = custom_cpu_mapping;
+    for(i = 0; i < num_cpus; i++) {
+       sprintf(s, "%d:", core_mapping[i]);
+       s = custom_cpu_mapping + strlen(custom_cpu_mapping);
+    }
+    i = strlen(custom_cpu_mapping);
+    if(i) { 
+       custom_cpu_mapping[i-1] = '\0';
+    }
+
+    printf("custom_cpu_mapping = %s \n",custom_cpu_mapping);
+
+    /* Parse /proc/cpuinfo for additional useful things */
+    if(fp = fopen(CONFIG_FILE, "r")) {
+
+      while(! feof(fp)) {
+        memset(line, 0, MAX_LINE_LENGTH);
+        fgets(line, MAX_LINE_LENGTH - 1, fp);
+
+        if(! (key = strtok(line, "\t:"))) { 
+          continue;
+        } 
+
+        if(cpu_type == CPU_FAMILY_NONE) {
+          if(! strcmp(key, "vendor_id")) {
+            strtok(NULL, " ");
+            s = strtok(NULL, " ");
+            if (! strcmp(s, "AuthenticAMD")) { 
+               cpu_type = CPU_FAMILY_AMD;
+            } else { 
+               cpu_type = CPU_FAMILY_INTEL;
+            } 
+            continue;
+          }
+        }
+
+        if(! cpu_model) {
+          if(! strcmp(key, "model")) {
+             strtok(NULL, " ");
+             s = strtok(NULL, " ");
+             sscanf(s, "%d", &cpu_model);
+             continue;
+          }
+        }
+      }
+
+      fclose(fp);
+
+      /* Very crude guesses, should be extended to AMD and other Intel CPUs, if necessary */
+
+      if(cpu_type == CPU_FAMILY_INTEL) {
+         if(num_sockets == 2) {
+              if(num_cpus == 4) {  
+                    arch_type = MULTI_CORE_ARCH_XEON_DUAL;
+              }
+              if(num_cpus == 8) {
+                  if(cpu_model == CLOVERTOWN_MODEL) { 
+                      arch_type = MULTI_CORE_ARCH_CLOVERTOWN;
+                  }
+                  if(cpu_model == HARPERTOWN_MODEL) {
+                      arch_type = MULTI_CORE_ARCH_HARPERTOWN;
+                  }
+                  if(cpu_model == NEHALEM_MODEL) { 
+                      arch_type = MULTI_CORE_ARCH_NEHALEM;
+                  }
+              }
+              if(num_cpus == 16) {
+                  if(cpu_model == NEHALEM_MODEL) {  /* nehalem with smt on */
+                      arch_type = MULTI_CORE_ARCH_NEHALEM;
+                   }
+              }	
+         }
+      }
+    } else {
+             fprintf(stderr, "Warning: %s: Failed to open \"%s\".\n", __func__, CONFIG_FILE);
+    }
+
+    /* Done */
+    rc = MPI_SUCCESS;
+
+    error_free:
+
+    if(obj_tree)     MPIU_Free(obj_tree);
+    if(core_mapping) MPIU_Free(core_mapping);
+    if(topology)     hwloc_topology_destroy(topology);
+    
+    MPIU_DBG_MSG_FMT(OTHER,TYPICAL,(MPIU_DBG_FDEST,"num_cpus=%d, num_sockets=%d, custom_cpu_mapping=\"%s\"",
+                   num_cpus, num_sockets, custom_cpu_mapping));
+
+return rc;
+}
+
+#endif /* _SMP_HWLOC_ */
+
 int get_cpu_mapping(long N_CPUs_online)
 {
     char line[MAX_LINE_LENGTH];
@@ -2823,12 +3030,13 @@ int get_cpu_mapping(long N_CPUs_online)
         printf("can not open cpuinfo file \n");
         return 0;
     }
-
+  
     memset(core_mapping, 0, sizeof(core_mapping));
     custom_cpu_mapping = (char *) MPIU_Malloc(sizeof(char)*N_CPUs_online*2);
     if(custom_cpu_mapping == NULL) { 
           return 0;
     } 
+    memset(custom_cpu_mapping, 0, sizeof(char)*N_CPUs_online*2);
 
     while(!feof(fp)){
         memset(line,0,MAX_LINE_LENGTH);
@@ -2876,32 +3084,58 @@ int get_cpu_mapping(long N_CPUs_online)
                strcpy(custom_cpu_mapping , "0:1:2:3");
        }
     } else if (num_cpus == 8) {
-	if((memcmp(INTEL_CLOVERTOWN_MAPPING,core_mapping,sizeof(int)*num_cpus) == 0) 
-             && (cpu_type==CPU_FAMILY_INTEL) && (model==CLOVERTOWN_MODEL)) { 
-               arch_type =  MULTI_CORE_ARCH_CLOVERTOWN;
-               strcpy(custom_cpu_mapping,"0:1:4:5:2:3:6:7");
-	} else if((memcmp(INTEL_NEHALEM_MAPPING,core_mapping,sizeof(int)*num_cpus) == 0) 
-           && (cpu_type==CPU_FAMILY_INTEL)) {
-               arch_type =  MULTI_CORE_ARCH_NEHALEM;
-               strcpy(custom_cpu_mapping, "0:2:4:6:1:3:5:7");
-       } else if((memcmp(INTEL_HARPERTOWN_MAPPING,core_mapping,sizeof(int)*num_cpus) == 0)
-            && (cpu_type==CPU_FAMILY_INTEL) && (model==HARPERTOWN_MODEL)){ 
-               arch_type =  MULTI_CORE_ARCH_HARPERTOWN;
-               strcpy(custom_cpu_mapping , "0:1:4:5:2:3:6:7");
-       }
+        if(cpu_type == CPU_FAMILY_INTEL) {
+     	   if(model == CLOVERTOWN_MODEL) {
+	            arch_type = MULTI_CORE_ARCH_CLOVERTOWN;
+    	        if(memcmp(INTEL_CLOVERTOWN_MAPPING,core_mapping,sizeof(int)*num_cpus) == 0) { 
+     	        strcpy(custom_cpu_mapping,"0:1:4:5:2:3:6:7");
+                } 
+	        }
+        	else if(model == HARPERTOWN_MODEL) {
+	            arch_type = MULTI_CORE_ARCH_HARPERTOWN;
+      	        if(memcmp(INTEL_HARPERTOWN_LEG_MAPPING,core_mapping,sizeof(int)*num_cpus) == 0) { 
+         	        strcpy(custom_cpu_mapping,"0:1:4:5:2:3:6:7");
+                } 
+            	else if(memcmp(INTEL_HARPERTOWN_COM_MAPPING,core_mapping,sizeof(int)*num_cpus) == 0) { 
+             	    strcpy(custom_cpu_mapping,"0:4:2:6:1:5:3:7");
+                } 
+	        }
+         	else if(model == NEHALEM_MODEL) {
+	            arch_type = MULTI_CORE_ARCH_NEHALEM;
+     	        if(memcmp(INTEL_NEHALEM_LEG_MAPPING,core_mapping,sizeof(int)*num_cpus) == 0) { 
+	                strcpy(custom_cpu_mapping, "0:2:4:6:1:3:5:7");
+                }
+             	else if(memcmp(INTEL_NEHALEM_COM_MAPPING,core_mapping,sizeof(int)*num_cpus) == 0) { 
+             	    strcpy(custom_cpu_mapping, "0:4:1:5:2:6:3:7");
+                }
+	        }
+        }
     } else if (num_cpus == 16) {
-        if((memcmp(AMD_BARCELONA_MAPPING,core_mapping, sizeof(int)*num_cpus) == 0) 
-        && (cpu_type==CPU_FAMILY_AMD)) { 
-               arch_type =  MULTI_CORE_ARCH_BARCELONA;
-               strcpy(custom_cpu_mapping ,"0:1:2:3:4:5:6:7:8:9:10:11:12:13:14:15");
-       } 
+        if(cpu_type == CPU_FAMILY_INTEL) {
+	        if(model == NEHALEM_MODEL) {
+      	        arch_type = MULTI_CORE_ARCH_NEHALEM;
+            	if(memcmp(INTEL_NEHALEM_LEG_MAPPING,core_mapping,sizeof(int)*num_cpus) == 0) { 
+             	    strcpy(custom_cpu_mapping,"0:2:4:6:1:3:5:7:8:10:12:14:9:11:13:15");
+                }
+            	else if(memcmp(INTEL_NEHALEM_COM_MAPPING,core_mapping,sizeof(int)*num_cpus) == 0) { 
+             	    strcpy(custom_cpu_mapping, "0:4:1:5:2:6:3:7:8:12:9:13:10:14:11:15");
+                }
+      	     }
+         }
+         else if(cpu_type == CPU_FAMILY_AMD) {
+         	if(memcmp(AMD_BARCELONA_MAPPING,core_mapping, sizeof(int)*num_cpus) == 0) {
+       	        arch_type = MULTI_CORE_ARCH_BARCELONA;
+        	    strcpy(custom_cpu_mapping, "0:1:2:3:4:5:6:7:8:9:10:11:12:13:14:15");
+	        }
+         }
     }
 
     fclose(fp);
 
+    MPIU_DBG_MSG_FMT(OTHER,TYPICAL,(MPIU_DBG_FDEST,"num_cpus=%d, custom_cpu_mapping=\"%s\"", num_cpus, custom_cpu_mapping));
+
 return MPI_SUCCESS;
 }
-
 
 static void smpi_setaffinity ()
 {
@@ -2947,7 +3181,16 @@ static void smpi_setaffinity ()
              * However, since the user has specified a mapping pattern, 
              * we are not going to use any of our proposed binding patterns
              */
-            mpi_errno = get_cpu_mapping(N_CPUs_online);
+#if defined(_SMP_HWLOC_)
+            if(use_hwloc_cpu_binding == 1) { 
+                mpi_errno = get_cpu_mapping_hwloc(N_CPUs_online);
+            } else { 
+#endif
+                mpi_errno = get_cpu_mapping(N_CPUs_online);
+#if defined(_SMP_HWLOC_)
+            }
+#endif
+       
 
             while (*tp != '\0')
             {
@@ -3005,7 +3248,15 @@ static void smpi_setaffinity ()
             /* Call the cpu_mapping function to find out about how the
              * processors are numbered on the different sockets. 
              */
-            mpi_errno = get_cpu_mapping(N_CPUs_online);
+#if defined(_SMP_HWLOC_)
+            if(use_hwloc_cpu_binding == 1) { 
+                mpi_errno = get_cpu_mapping_hwloc(N_CPUs_online);
+            } else { 
+#endif
+                mpi_errno = get_cpu_mapping(N_CPUs_online);
+#if defined(_SMP_HWLOC_)
+            } 
+#endif
             
             if(mpi_errno != MPI_SUCCESS || use_optimal_cpu_binding == 0 
                    || arch_type == 0) { 

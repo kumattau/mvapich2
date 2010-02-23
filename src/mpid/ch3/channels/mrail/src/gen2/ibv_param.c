@@ -170,6 +170,7 @@ int apm_count;
 
 /* Optimal CPU Binding parameters */
 int use_optimal_cpu_binding = 1;
+int use_hwloc_cpu_binding=0;
 int num_cpus = 32;
 static int check_hsam_parameters();
 
@@ -1254,6 +1255,13 @@ void rdma_get_user_parameters(int num_proc, int me)
     
     if ((value = getenv("MV2_USE_OPTIMAL_CPU_BINDING")) != NULL) {
         use_optimal_cpu_binding = atoi(value);
+    }
+    
+    if ((value = getenv("MV2_USE_HWLOC_CPU_BINDING")) != NULL) {
+        use_hwloc_cpu_binding = atoi(value);
+        if(use_hwloc_cpu_binding == 1) { 
+            use_optimal_cpu_binding = 0;
+        }
     }
 
     if ((value = getenv("MV2_USE_CPU_BINDING_ARRAY_SIZE")) != NULL) {
