@@ -192,7 +192,7 @@ int MPIDI_Comm_spawn_multiple(int count, char **commands,
                                        pmi_errcodes);
 
         MPIU_dbg_printf("[MPIDI_Comm_spawn_multiple] called PMI spawn\n");
-        if (mpi_errno != PMI_SUCCESS) {
+        if (pmi_errno != PMI_SUCCESS) {
 	    MPIU_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER,
 		 "**pmi_spawn_multiple", "**pmi_spawn_multiple %d", pmi_errno);
         }
