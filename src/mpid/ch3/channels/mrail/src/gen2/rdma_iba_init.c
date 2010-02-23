@@ -1076,6 +1076,22 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
             MPIU_Error_printf("Error obtaining hostnames\n");
         }
 
+    if (CHELSIO_T3 == MPIDI_CH3I_RDMA_Process.hca_type) {
+         /* TRAC Ticket #455 */
+         if(g_num_smp_peers + 1 < pg_size) {
+           int avail_cq_entries = 0;
+           avail_cq_entries = rdma_default_max_cq_size /
+                   ((pg_size - g_num_smp_peers - 1)*rdma_num_rails);
+           avail_cq_entries = avail_cq_entries - rdma_initial_prepost_depth - 1;
+           if(avail_cq_entries < rdma_prepost_depth) {  
+               rdma_prepost_depth = avail_cq_entries;
+           }
+           MPIDI_CH3I_RDMA_Process.global_used_recv_cq = 
+                (rdma_prepost_depth + rdma_initial_prepost_depth + 1)
+                *(pg_size - g_num_smp_peers - 1);
+         } 
+        }
+
         if (g_num_smp_peers + 1 < pg_size) {
             /* Initialize the registration cache. */
             mpi_errno = dreg_init();

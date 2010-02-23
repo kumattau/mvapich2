@@ -326,10 +326,9 @@ do {                                                                    \
 #define IBV_POST_RR(_c,_vbuf,_rail) {                           \
     int __ret;                                                  \
     _vbuf->vc = (void *)_c;                                     \
-    MPIDI_CH3I_RDMA_Process.global_used_recv_cq++;              \
     __ret = ibv_post_recv(_c->mrail.rails[(_rail)].qp_hndl,     \
-                          &((_vbuf)->desc.u.rr),                  \
-            &((_vbuf)->desc.y.bad_rr));                           \
+                          &((_vbuf)->desc.u.rr),                \
+            &((_vbuf)->desc.y.bad_rr));                         \
     if (__ret) {                                                \
         ibv_va_error_abort(IBV_RETURN_ERR,                      \
             "ibv_post_recv err with %d",          \

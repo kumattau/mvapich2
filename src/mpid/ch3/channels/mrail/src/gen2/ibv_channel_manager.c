@@ -526,7 +526,6 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
     struct ibv_cq *chosen_cq; 
     void *ev_ctx;
 
-
     *vbuf_handle = NULL;
     needed = 0;
 
@@ -559,7 +558,7 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
 	        ne = ibv_poll_cq(chosen_cq, 1, &wc);
 	        if (ne < 0 ) {
 	            ibv_error_abort(IBV_RETURN_ERR, "Fail to poll cq\n");
-	        } else if (ne) {
+	        } else if (ne) {         
 	            v = (vbuf *) ((uintptr_t) wc.wr_id);
 	
 	            vc = (MPIDI_VC_t *) (v->vc);
@@ -580,30 +579,32 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
 	                        ((MPIDI_VC_t *)v->vc)->pg_rank
 	                        );
 	            }
+
+                is_send_completion = (wc.opcode == IBV_WC_SEND
+                    || wc.opcode == IBV_WC_RDMA_WRITE
+                    || wc.opcode == IBV_WC_RDMA_READ);
 	
                 if (2 == num_cqs) {
     	            if (0 == cq_choice) {
     	                if (MPIDI_CH3I_RDMA_Process.global_used_send_cq) {
-    	                    MPIDI_CH3I_RDMA_Process.global_used_send_cq--;
+                             MPIDI_CH3I_RDMA_Process.global_used_send_cq--;
     	                } else {
-    	                    ibv_va_error_abort(IBV_STATUS_ERR,
-                                                "trying to decrement send cq"
-                                                " count already at 0");
+                            DEBUG_PRINT("[%d] Possibly received a duplicate \ 
+                                       send completion event \n", 
+                                       MPIDI_Process.my_pg_rank);
     	                }
-    	            } else {
-    	                if (MPIDI_CH3I_RDMA_Process.global_used_recv_cq) {
-    	                    MPIDI_CH3I_RDMA_Process.global_used_recv_cq--;
-    	                } else {
-    	                    ibv_va_error_abort(IBV_STATUS_ERR,
-                                                "trying to decrement recv cq"
-                                                " count already at 0");
-    	                }
-    	            }
+    	            } 
+                } else {
+                       if(is_send_completion && 
+                              (MPIDI_CH3I_RDMA_Process.global_used_send_cq > 0)) {
+                             MPIDI_CH3I_RDMA_Process.global_used_send_cq--;
+                       } else {
+                            DEBUG_PRINT("[%d] Possibly received a duplicate \
+                                       send completion event \n",
+                                       MPIDI_Process.my_pg_rank);
+                       }     
                 }
-	            is_send_completion = (wc.opcode == IBV_WC_SEND
-	                || wc.opcode == IBV_WC_RDMA_WRITE
-	                || wc.opcode == IBV_WC_RDMA_READ);
-	
+ 
 	            if (!is_send_completion) {
 	                int rank; PMI_Get_rank(&rank);
 	            }
@@ -691,19 +692,23 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
 	                }
 	
 	                if (!MPIDI_CH3I_RDMA_Process.has_srq) {
+                          
 	                    if (PKT_IS_NOOP(v)) {
 	                        PREPOST_VBUF_RECV(vc, v->rail);
 	                        /* noops don't count for credits */
 	                        --vc->mrail.srp.credits[v->rail].local_credit;
 	                    } 
-	                    else if (vc->mrail.srp.credits[v->rail].preposts < rdma_rq_size &&
-	                             vc->mrail.srp.credits[v->rail].preposts + 
-	                             rdma_prepost_threshold < needed)
+	                    else if ((vc->mrail.srp.credits[v->rail].preposts 
+                                 < rdma_rq_size) &&
+	                             (vc->mrail.srp.credits[v->rail].preposts + 
+	                             rdma_prepost_threshold < needed))
 	                    {
 	                        do {
 	                            PREPOST_VBUF_RECV(vc, v->rail);
-	                        } while (vc->mrail.srp.credits[v->rail].preposts < rdma_rq_size &&
-	                                 vc->mrail.srp.credits[v->rail].preposts < needed);
+	                        } while (vc->mrail.srp.credits[v->rail].preposts 
+                                     < rdma_rq_size &&
+	                                 vc->mrail.srp.credits[v->rail].preposts 
+                                     < needed);
 	                    }
 	
 	                    MRAILI_Send_noop_if_needed(vc, v->rail);
@@ -718,7 +723,8 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
 	                /* Commenting out the assert - possible coding error
 	                 * MPIU_Assert(0);
 	                 */
-	                /* Now since this is not the packet we want, we have to enqueue it */
+	                /* Now since this is not the packet we want, we have to 
+                     * enqueue it */
 	                type = T_CHANNEL_OUT_OF_ORDER_ARRIVE;
 	                *vbuf_handle = NULL;
 	                v->content_size = wc.byte_len;
@@ -751,21 +757,21 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
 	                             + MIN(rdma_prepost_rendezvous_extra,
 	                                   vc->mrail.srp.credits[v->rail].
 	                                   rendezvous_packets_expected);
-	
+
 	                    if (PKT_IS_NOOP(v)) {
 	                        PREPOST_VBUF_RECV(vc, v->rail);
 	                        --vc->mrail.srp.credits[v->rail].local_credit;
 	                    }
-	                    else if (vc->mrail.srp.credits[v->rail].preposts < 
-	                            rdma_rq_size &&
-	                            vc->mrail.srp.credits[v->rail].preposts + 
-	                            rdma_prepost_threshold < needed) {
+	                    else if ((vc->mrail.srp.credits[v->rail].preposts 
+                                 < rdma_rq_size) &&
+	                             (vc->mrail.srp.credits[v->rail].preposts + 
+	                              rdma_prepost_threshold < needed)) {
 	                        do {
 	                            PREPOST_VBUF_RECV(vc, v->rail);
 	                        } while (vc->mrail.srp.credits[v->rail].preposts 
-	                                 < rdma_rq_size && 
-	                                 vc->mrail.srp.credits[v->rail].preposts < 
-	                                 needed);
+                                     < rdma_rq_size && 
+	                                 vc->mrail.srp.credits[v->rail].preposts 
+                                     < needed);
 	                    }
 	                    MRAILI_Send_noop_if_needed(vc, v->rail);
 	                }
@@ -776,7 +782,7 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
 	            ++nspin;
 	
 	            /* Blocking mode progress */
-	            if(rdma_use_blocking && is_blocking && nspin >= rdma_spin_count) {
+	            if(rdma_use_blocking && is_blocking && nspin >= rdma_spin_count){
 	                /* Okay ... spun long enough, now time to go to sleep! */
 	
 	#if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)

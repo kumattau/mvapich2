@@ -1170,9 +1170,10 @@ void MRAILI_Init_vc(MPIDI_VC_t * vc)
         int k;
         if (!MPIDI_CH3I_RDMA_Process.has_srq) {
             for (k = 0; k < rdma_initial_prepost_depth; k++) {
-                PREPOST_VBUF_RECV(vc, i);
-            }
+                 PREPOST_VBUF_RECV(vc, i);
+            } 
         }
+
         vc->mrail.srp.credits[i].remote_credit     = rdma_initial_credits;
         vc->mrail.srp.credits[i].remote_cc         = rdma_initial_credits;
         vc->mrail.srp.credits[i].local_credit      = 0;
