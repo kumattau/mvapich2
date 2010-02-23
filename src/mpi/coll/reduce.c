@@ -823,6 +823,10 @@ int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
                 if (rank == root) {
                     MPIR_ERRTEST_RECVBUF_INPLACE(recvbuf, count, mpi_errno);
                     MPIR_ERRTEST_USERBUFFER(recvbuf,count,datatype,mpi_errno);
+                    if (count != 0 && sendbuf != MPI_IN_PLACE) {
+                        MPIR_ERRTEST_ALIAS_COLL(sendbuf, recvbuf, mpi_errno);
+                    }
+
                 } else
                     MPIR_ERRTEST_SENDBUF_INPLACE(sendbuf, count, mpi_errno);
             }
@@ -868,12 +872,6 @@ int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
                goto fn_fail;
             }
         }
-
-	MPIR_ERRTEST_ALIAS_COLL(sendbuf, recvbuf, mpi_errno);
-	if (mpi_errno != MPI_SUCCESS) { 
-           goto fn_fail;
-        }
-
         MPID_END_ERROR_CHECKS;
     }
 #   endif /* HAVE_ERROR_CHECKING */
