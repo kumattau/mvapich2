@@ -1,4 +1,6 @@
 #OTHER_DIRS = f77 f90 cxx
+smvarSubdir_do_dependencies=no
+smvar_dependenciesDummy=yes
 # We want to replace the compilation and linking rule used by simplement
 MPICHDIR=..
 CC       = $(MPICHDIR)/bin/mpicc

@@ -19,6 +19,8 @@ SUBDIRS = @pm_name@ @other_pm_names@ mpirun .
 # Remove PMPILIBNAME from the common make variables for the mpid
 # directories
 smvarSubdir_commonmake=MPILIBNAME      = @MPILIBNAME@
+smvarSubdir_do_dependencies=no
+smvar_dependenciesDummy=yes
 OTHER_DIRS = util mpirun
 NOTSIMPLEMAKE_SUBDIRS = mpd
 
