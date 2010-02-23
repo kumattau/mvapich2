@@ -334,6 +334,7 @@ int MPIDI_PG_Destroy(MPIDI_PG_t * pg)
            if(pg->vct[i].ch.req != NULL) { 
                MPIU_Free(pg->vct[i].ch.req);
            } 
+#ifndef DAPL_DEFAULT_PROVIDER
            if(pg->vct[i].mrail.cmanager.msg_channels != NULL) { 
                MPIU_Free(pg->vct[i].mrail.cmanager.msg_channels);
            } 
@@ -342,9 +343,10 @@ int MPIDI_PG_Destroy(MPIDI_PG_t * pg)
            } 
            if(pg->vct[i].mrail.rails != NULL) { 
                MPIU_Free(pg->vct[i].mrail.rails);
-           } 
+           }
+#endif /* #ifndef DAPL_DEFAULT_PROVIDER */
         } 
-#endif
+#endif /* #if !defined (_OSU_PSM_) */
 	    MPIU_Free(pg->vct);
 	    if (pg->connData) {
 		if (pg->freeConnInfo) {
