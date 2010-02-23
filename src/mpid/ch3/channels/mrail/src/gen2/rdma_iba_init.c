@@ -16,7 +16,11 @@
  *
  */
 
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 #include "rdma_impl.h"
+#include "mem_hooks.h"
 #include "pmi.h"
 #include "vbuf.h"
 #include "ibv_param.h"
