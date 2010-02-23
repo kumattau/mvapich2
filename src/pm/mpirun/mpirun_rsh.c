@@ -182,6 +182,8 @@ void spawn_one (int argc, char *argv[], char *totalview_cmd, char *env, int fast
 process_groups *pglist = NULL;
 process *plist = NULL;
 int nprocs = 0;
+int totalprocs = 0;
+char *TOTALPROCS;
 int aout_index, port;
 char *wd;						/* working directory of current process */
 char *custpath, *custwd;
@@ -1063,7 +1065,8 @@ char *skip_white (char *s)
 static int read_hostfile (char *hostfile_name)
 {
 	size_t j, hostname_len = 0;
-	int i;
+    int i,start,count;
+    char temp[100];
 	FILE *hf = fopen (hostfile_name, "r");
 
 	if (hf == NULL) {
@@ -1072,6 +1075,17 @@ static int read_hostfile (char *hostfile_name)
 		exit (EXIT_FAILURE);
 	}
 
+    start = 0;
+    if(dpm)
+    {
+        start = env2int("TOTALPROCS");
+        printf("total procs %d \n", start);
+        while(fgets (temp, 100, hf) != NULL)
+            count++;
+        rewind(hf);
+        start = start%count;
+    }
+
 	for (i = 0; i < nprocs; i++) {
 		char line[100];
 		char *trimmed_line;
@@ -1079,6 +1093,13 @@ static int read_hostfile (char *hostfile_name)
 
 	  reread_host:
 		if (fgets (line, 100, hf) != NULL) {
+
+            if(dpm){
+            if(start > 0){
+                start--;
+                goto reread_host;
+            }}
+
 			size_t len = strlen (line);
 
 			if (line[len - 1] == '\n') {
@@ -2830,8 +2851,15 @@ void handle_spawn_req (int readsock)
 	fsync (fileno (fp));
 	fclose (fp);
 	free (hdptr);
-	launch_newmpirun (spcnt);
-	return;
+
+    if(totalprocs == 0)
+        totalprocs = nprocs;
+    TOTALPROCS = mkstr("TOTALPROCS=%d", totalprocs); 
+    putenv(TOTALPROCS);
+    totalprocs = totalprocs + spcnt;
+
+    launch_newmpirun (spcnt);
+    return;
 
 	DBG (perror ("Fatal error:"));
 	return;
