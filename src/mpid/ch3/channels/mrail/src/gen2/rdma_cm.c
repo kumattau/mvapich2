@@ -930,7 +930,7 @@ int rdma_cm_get_local_ip(){
 			"Error opening file \"/etc/mv2.conf\". Local rdma_cm address required in this file.\n");
     }
 
-    rdma_cm_local_ips = malloc(rdma_num_hcas*rdma_num_ports*sizeof(int));
+    rdma_cm_local_ips = MPIU_Malloc(rdma_num_hcas*rdma_num_ports*sizeof(int));
 
     while ((fscanf(fp_port, "%s\n", ip)) != EOF){
   	 rdma_cm_local_ips[i] = inet_addr(ip);
@@ -1139,6 +1139,7 @@ void ib_finalize_rdma_cm(int pg_rank, MPIDI_PG_t *pg)
 
     MPIU_Free(rdma_base_listen_port);
     MPIU_Free(rdma_cm_accept_count); 
+    MPIU_Free(rdma_cm_local_ips);
     pg_size = MPIDI_PG_Get_size(pg);
 
     if ((g_num_smp_peers + 1) < pg_size){
