@@ -457,8 +457,9 @@ int CR_Thread_loop()
         FD_ZERO(&set);
         FD_SET(MPICR_MPD_fd, &set);
 
-        if (select(MPICR_MPD_fd + 1, &set, NULL, NULL, NULL) < 0)
-        {
+        if (select(MPICR_MPD_fd + 1, &set, NULL, NULL, NULL) < 0 && errno != EINTR)
+        {   
+            perror("select()");
             CR_ERR_ABORT("select failed\n");
         }
 

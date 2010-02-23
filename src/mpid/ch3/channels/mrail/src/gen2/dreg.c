@@ -1192,23 +1192,27 @@ void dreg_deregister_all()
     int i = 0;
     int j;
     dreg_entry* d = NULL;
+    dreg_entry* curr = dreg_all_list;
 
     for (; i < (int) rdma_ndreg_entries; ++i)
-    {
-        d = &(dreg_all_list[i]);
+    { 
+        if(curr != NULL) { 
+            d = curr;
 
-        if (d->is_valid)
-        {
-            for (j = 0; j < rdma_num_hcas; ++j)
+            if (d != NULL && d->is_valid)
             {
-                if (deregister_memory(d->memhandle[j]))
+                for (j = 0; j < rdma_num_hcas; ++j)
                 {
-                    ibv_error_abort(IBV_RETURN_ERR, "deregister fails\n");
-                }
+                    if (deregister_memory(d->memhandle[j]))
+                    {
+                        ibv_error_abort(IBV_RETURN_ERR, "deregister fails\n");
+                    }
 
-                d->memhandle[j] = NULL;
+                    d->memhandle[j] = NULL;
+                }
             }
-        }
+            curr  = curr->next;
+       }
     }
 }
 
@@ -1217,31 +1221,35 @@ void dreg_reregister_all()
     int i = 0;
     int j;
     dreg_entry* d = NULL;
+    dreg_entry* curr = dreg_all_list;
     void* pagebase_low_p = NULL;
     unsigned long register_nbytes;
 
     for (; i < (int) rdma_ndreg_entries; ++i)
     {
-        d = &(dreg_all_list[i]);
-        if (d->is_valid)
-        {
-            pagebase_low_p = (void *)(d->pagenum << DREG_PAGEBITS);
-            register_nbytes = d->npages * DREG_PAGESIZE;
-            for (j = 0; j < rdma_num_hcas; ++j)
+       if(curr != NULL) { 
+            d = curr;
+            if (d != NULL && d->is_valid)
             {
-                d->memhandle[j] = register_memory(pagebase_low_p, register_nbytes, j);
-                if (!d->memhandle[j])
+                pagebase_low_p = (void *)(d->pagenum << DREG_PAGEBITS);
+                register_nbytes = d->npages * DREG_PAGESIZE;
+                for (j = 0; j < rdma_num_hcas; ++j)
                 {
-                    printf(
-                        "%d: reregister dentry %p, addr %p pagebase_low_p, %lu register_nbytes\n",
-                        MPIDI_Process.my_pg_rank,
-                        d,
-                        pagebase_low_p,
-                        register_nbytes);
-                    ibv_error_abort(IBV_RETURN_ERR, "reregister fails\n");
+                    d->memhandle[j] = register_memory(pagebase_low_p, register_nbytes, j);
+                    if (!d->memhandle[j])
+                    {
+                        printf(
+                            "%d: reregister dentry %p, addr %p pagebase_low_p, %lu register_nbytes\n",
+                            MPIDI_Process.my_pg_rank,
+                            d,
+                            pagebase_low_p,
+                            register_nbytes);
+                        ibv_error_abort(IBV_RETURN_ERR, "reregister fails\n");
+                    }
                 }
             }
-        }
+            curr = curr->next;
+       }
     }
 }
 #endif /* defined(CKPT) */
