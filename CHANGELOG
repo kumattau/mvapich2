@@ -6,7 +6,7 @@ package.  The logs are arranged in the "most recent first" order.
 MVAPICH2-1.4
 
 * Enhancements since mvapich2-1.4rc2
-    - Efficient runtime CPU binding
+    - Optimal runtime CPU binding
     - Add an environment variable for controlling the use of multiple cq's for
       iWARP interface.
     - Add environmental variables to disable registration cache for All-to-All

@@ -1986,7 +1986,7 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
                     MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                         "**fail", "**fail %s",
                         "LiMIC: (MPIDI_CH3I_SMP_readv_rndv) limic_rx_comp fail");
-		        }
+		}
 
                 received_bytes += msglen;
                 total_bytes -= msglen;
@@ -2002,7 +2002,7 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
                     MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                         "**fail", "**fail %s",
                         "LiMIC: (MPIDI_CH3I_SMP_readv_rndv) limic_rx_comp fail");
-		        }
+		}
 
                 received_bytes += iov_len;
                 total_bytes -= iov_len;
