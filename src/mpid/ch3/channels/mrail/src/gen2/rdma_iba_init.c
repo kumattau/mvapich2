@@ -38,21 +38,21 @@ int MPIDI_CH3I_MRAIL_PG_Init(MPIDI_PG_t *pg)
 {
     int mpi_errno = MPI_SUCCESS;
 
-    pg->ch.mrail.cm_ah = malloc(pg->size * sizeof(struct ibv_ah *));
+    pg->ch.mrail.cm_ah = MPIU_Malloc(pg->size * sizeof(struct ibv_ah *));
     if (!pg->ch.mrail.cm_ah) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**nomem",
                                   "**nomem %s", "cm_ah");
     }
     memset(pg->ch.mrail.cm_ah, 0, pg->size * sizeof(struct ibv_ah *));
 
-    pg->ch.mrail.cm_ud_qpn = malloc(pg->size * sizeof(uint32_t));
+    pg->ch.mrail.cm_ud_qpn = MPIU_Malloc(pg->size * sizeof(uint32_t));
     if (!pg->ch.mrail.cm_ud_qpn) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**nomem",
                                   "**nomem %s", "cm_ud_qpn");
     }
     memset(pg->ch.mrail.cm_ud_qpn, 0, pg->size * sizeof(uint32_t));
 
-    pg->ch.mrail.cm_lid = malloc(pg->size * sizeof(uint16_t));
+    pg->ch.mrail.cm_lid = MPIU_Malloc(pg->size * sizeof(uint16_t));
     if (!pg->ch.mrail.cm_lid) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**nomem",
                                   "**nomem %s", "cm_lid");
@@ -79,11 +79,11 @@ fn_fail:
 int MPIDI_CH3I_MRAIL_PG_Destroy(MPIDI_PG_t *pg)
 {
     if (pg->ch.mrail.cm_ah)
-        free(pg->ch.mrail.cm_ah);
+        MPIU_Free(pg->ch.mrail.cm_ah);
     if (pg->ch.mrail.cm_ud_qpn)
-        free(pg->ch.mrail.cm_ud_qpn);
+        MPIU_Free(pg->ch.mrail.cm_ud_qpn);
     if (pg->ch.mrail.cm_lid)
-        free(pg->ch.mrail.cm_lid);
+        MPIU_Free(pg->ch.mrail.cm_lid);
 #ifdef _ENABLE_XRC_
     if (pg->ch.mrail.xrc_hostid)
         MPIU_Free (pg->ch.mrail.xrc_hostid);
@@ -863,7 +863,7 @@ int MPIDI_CH3I_RDMA_finalize()
 
 	deallocate_vbufs(i);
 
-	while (dreg_evict());
+    err = dreg_finalize();
 
 	err = ibv_dealloc_pd(MPIDI_CH3I_RDMA_Process.ptag[i]);
 
@@ -879,6 +879,10 @@ int MPIDI_CH3I_RDMA_finalize()
 		    pg_rank, strerror(errno));
 	}
 
+    }
+
+    if(MPIDI_CH3I_RDMA_Process.polling_set != NULL) {
+      MPIU_Free(MPIDI_CH3I_RDMA_Process.polling_set);
     }
 
 fn_exit:
@@ -979,7 +983,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
 #ifndef DISABLE_PTMALLOC
     if(mvapich2_minit()) {
 	MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-		"**fail %s", "Error initializing MVAPICH2 malloc library");
+		"**fail %s", "Error initializing MVAPICH2 MPIU_Malloc library");
     }
 #else
     mallopt(M_TRIM_THRESHOLD, -1);
@@ -1602,6 +1606,9 @@ int MPIDI_CH3I_CM_Finalize()
     }
 #endif /* defined(RDMA_CM) */
 
+    if(MPIDI_CH3I_RDMA_Process.polling_set != NULL) { 
+      MPIU_Free(MPIDI_CH3I_RDMA_Process.polling_set);
+    } 
 fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_CM_FINALIZE);
     return mpi_errno;

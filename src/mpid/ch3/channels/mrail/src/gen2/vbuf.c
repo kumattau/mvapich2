@@ -105,6 +105,7 @@ int init_vbuf_lock()
 void deallocate_vbufs(int hca_num)
 {
     vbuf_region *r = vbuf_region_head;
+    vbuf_region *prev;
 
 #if !defined(CKPT)
     if (MPIDI_CH3I_RDMA_Process.has_srq
@@ -126,7 +127,9 @@ void deallocate_vbufs(int hca_num)
         }
 
         DEBUG_PRINT("deregister vbufs\n");
+        prev = r;
         r = r->next;
+        MPIU_Free(prev);
     }
 
 #if !defined(CKPT)

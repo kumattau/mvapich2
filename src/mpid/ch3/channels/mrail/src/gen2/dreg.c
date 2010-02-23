@@ -61,10 +61,12 @@ unsigned long dreg_stat_evicted;
 static unsigned long g_pinned_pages_count;
 
 struct dreg_entry* dreg_free_list;
+struct dreg_entry* dreg_free_list_tail;
 struct dreg_entry* dreg_unused_list;
 struct dreg_entry* dreg_unused_tail;
 
 int g_is_dreg_initialized = 0;
+int g_is_dreg_finalize    = 0;
 
 #if defined(CKPT)
 struct dreg_entry *dreg_all_list;
@@ -209,9 +211,11 @@ static inline vma_t *vma_new (unsigned long start, unsigned long end)
 
     if(NULL == vma) {
         vma = MPIU_Malloc(sizeof (vma_t));
+        memset(vma, 0x0, sizeof(vma_t));
     }
 #else /* !defined(DISABLE_PTMALLOC) */
     vma = MPIU_Malloc (sizeof (vma_t));
+    memset(vma, 0x0, sizeof(vma_t));
 #endif /* !defined(DISABLE_PTMALLOC) */
 
     if (vma == NULL)
@@ -246,16 +250,24 @@ static inline void vma_destroy (vma_t* vma)
         t = e;
         e = e->next;
 #if !defined(DISABLE_PTMALLOC)
-        ADD_FREE_LIST(&entry_free_list, t);
+        if(g_is_dreg_finalize == 1) { 
+           MPIU_Free(t);
+        } else { 
+           ADD_FREE_LIST(&entry_free_list, t);
+        }
 #else /* !defined(DISABLE_PTMALLOC) */
         MPIU_Free(t);
 #endif /* !defined(DISABLE_PTMALLOC) */
     }
 
 #if !defined(DISABLE_PTMALLOC)
-    ADD_FREE_LIST(&vma_free_list, vma);
+     if(g_is_dreg_finalize == 1) {
+        MPIU_Free(vma);
+     } else { 
+        ADD_FREE_LIST(&vma_free_list, vma);
+     } 
 #else /* !defined(DISABLE_PTMALLOC) */
-    MPIU_Free(vma);
+     MPIU_Free(vma);
 #endif /* !defined(DISABLE_PTMALLOC) */
 }
 
@@ -282,9 +294,11 @@ static inline void add_entry (vma_t* vma, dreg_entry* r)
     if (NULL == e)
     {
         e = MPIU_Malloc(sizeof(entry_t));
+        memset(e, 0x0, sizeof(entry_t));
     }
 #else /* !defined(DISABLE_PTMALLOC) */
     e = MPIU_Malloc (sizeof (entry_t));
+    memset(e, 0x0, sizeof(entry_t));
 #endif /* !defined(DISABLE_PTMALLOC) */
 
     if (e == NULL)
@@ -304,7 +318,7 @@ static inline void add_entry (vma_t* vma, dreg_entry* r)
 static inline void remove_entry (vma_t* vma, dreg_entry* r)
 {
     entry_t** i = &vma->list;
-
+   
     for (; *i != NULL && (*i)->reg != r; i = &(*i)->next);
 
     if (*i)
@@ -312,7 +326,11 @@ static inline void remove_entry (vma_t* vma, dreg_entry* r)
         entry_t* e = *i;
         *i = (*i)->next;
 #if !defined(DISABLE_PTMALLOC)
-        ADD_FREE_LIST(&entry_free_list, e);
+         if(g_is_dreg_finalize == 1) {
+            MPIU_Free(e);
+         } else { 
+            ADD_FREE_LIST(&entry_free_list, e);
+         }
 #else /* defined(DISABLE_PTMALLOC) */
         MPIU_Free(e);
 #endif /* defined(DISABLE_PTMALLOC) */
@@ -334,9 +352,11 @@ static inline void copy_list (vma_t* to, vma_t* from)
         if (NULL == e)
         {
             e = MPIU_Malloc(sizeof(entry_t));
+            memset(e, 0x0, sizeof(entry_t));
         }
 #else /* !defined(DISABLE_PTMALLOC) */
         e = MPIU_Malloc (sizeof (entry_t));
+        memset(e, 0x0, sizeof(entry_t));
 #endif /* !defined(DISABLE_PTMALLOC) */
 
         e->reg = f->reg;
@@ -606,9 +626,11 @@ int dreg_init()
     int i = 0;
     int mpi_errno = MPI_SUCCESS;
     g_pinned_pages_count = 0;
+    struct dreg_entry* dreg_entry_new=NULL;
 
     vma_db_init ();
-    dreg_free_list = (dreg_entry*) MPIU_Malloc((unsigned)(sizeof(dreg_entry) * rdma_ndreg_entries));
+    dreg_free_list      = MPIU_Malloc(sizeof(dreg_entry));
+    dreg_free_list_tail = dreg_free_list;
 
     if (dreg_free_list == NULL) {
         MPIU_ERR_SETFATALANDJUMP2(mpi_errno,
@@ -619,17 +641,20 @@ int dreg_init()
                 (int) sizeof(dreg_entry) * rdma_ndreg_entries);
     }
 
-    memset(dreg_free_list, 0, sizeof(dreg_entry) * rdma_ndreg_entries);
+    memset(dreg_free_list, 0x0, sizeof(dreg_entry));
 
 #if defined(CKPT)
     dreg_all_list = dreg_free_list;
 #endif /* defined(CKPT) */
 
     for (; i < (int) rdma_ndreg_entries - 1; ++i) {
-        dreg_free_list[i].next = &dreg_free_list[i + 1];
+        dreg_entry_new            = MPIU_Malloc(sizeof(dreg_entry));
+        memset(dreg_entry_new, 0x0, sizeof(dreg_entry));
+        dreg_free_list_tail->next = dreg_entry_new;
+        dreg_free_list_tail       = dreg_entry_new;
     }
 
-    dreg_free_list[rdma_ndreg_entries - 1].next = NULL;
+    dreg_free_list_tail->next = NULL;
     dreg_unused_list = NULL;
     dreg_unused_tail = NULL;
 
@@ -640,7 +665,7 @@ int dreg_init()
     pthread_spin_init(&dreg_lock, 0);
     pthread_spin_init(&dereg_lock, 0);
 
-    deregister_mr_array = (dreg_region *) 
+    deregister_mr_array = (dreg_region *)
         MPIU_Malloc(sizeof(dreg_region) * rdma_ndreg_entries);
 
     if (NULL == deregister_mr_array) {
@@ -649,10 +674,10 @@ int dreg_init()
                 "**fail",
                 "**fail %s %d",
                 "dreg_init: unable to malloc %d bytes",
-                (int) sizeof(struct ibv_mr*) * rdma_ndreg_entries * MAX_NUM_HCAS);
+                (int) sizeof(struct ibv_mr*) * rdma_ndreg_entries *MAX_NUM_HCAS);
     }
 
-    memset(deregister_mr_array, 0, sizeof(dreg_region) * rdma_ndreg_entries);
+    memset(deregister_mr_array, 0x0, sizeof(dreg_region) * rdma_ndreg_entries);
     n_dereg_mr = 0;
 
     INIT_FREE_LIST(&vma_free_list);
@@ -664,6 +689,49 @@ fn_exit:
 fn_fail:
     goto fn_exit;
 }
+
+int dreg_finalize()
+{
+   lock_dreg();
+   g_is_dreg_finalize = 1;
+ 
+   dreg_entry *dreg_temp;
+   dreg_entry *dreg_head;
+   vma_t *vma_free_list_temp;
+   vma_t *vma_free_list_head;
+
+   entry_t *entry_free_list_temp;
+   entry_t *entry_free_list_head;
+   
+   while(dreg_evict()); 
+
+   /* free each element that is still present
+    * in the free list
+    */
+   dreg_head = dreg_free_list;
+   vma_free_list_head  = &(vma_free_list);
+   entry_free_list_head= &(entry_free_list);
+    
+   while(dreg_head != NULL) {
+      dreg_temp = dreg_head;
+      dreg_head = dreg_head->next;
+      dreg_remove(dreg_temp);
+      MPIU_Free(dreg_temp); 
+   }
+
+   if(deregister_mr_array != NULL) {
+      MPIU_Free(deregister_mr_array);
+   }
+ 
+   avldispose(vma_tree, free, LEFT_TO_RIGHT);
+   unlock_dreg();
+
+   return MPI_SUCCESS;
+}
+
+
+
+
 
 #if !defined(DISABLE_PTMALLOC)
 

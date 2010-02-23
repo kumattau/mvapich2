@@ -1373,7 +1373,18 @@ int MPIDI_CH3I_SMP_finalize()
     } 
 
     if(g_smpi_shmem) {
-	MPIU_Free(g_smpi_shmem);
+       if(g_smpi_shmem->rqueues_params != NULL) { 
+          MPIU_Free(g_smpi_shmem->rqueues_params);
+       } 
+       if(g_smpi_shmem->rqueues_flow_out != NULL) { 
+          MPIU_Free(g_smpi_shmem->rqueues_flow_out);
+       } 
+       if(g_smpi_shmem->rqueues_limits != NULL) { 
+          MPIU_Free(g_smpi_shmem->rqueues_limits);
+       }
+       if(g_smpi_shmem != NULL) { 
+          MPIU_Free(g_smpi_shmem);
+       }
     }
 
     if(s_current_ptr) {
@@ -1400,6 +1411,10 @@ int MPIDI_CH3I_SMP_finalize()
 	/* Freeing up shared memory collective resources*/
 	MPIDI_CH3I_SHMEM_COLL_finalize();
     }
+
+#if defined(USE_PROCESSOR_AFFINITY)
+    PLPA_NAME(finalize)();
+#endif
 
 #ifdef _SMP_LIMIC_
     limic_close(limic_fd);
@@ -3054,9 +3069,9 @@ static void smpi_setaffinity ()
                     ++tp;
                     ++j;
                 }
-                MPIU_Free(custom_cpu_mapping);
             } 
         }
+        MPIU_Free(custom_cpu_mapping);
     }
 
 fn_exit:

@@ -321,7 +321,7 @@ void *MPIU_Handle_obj_alloc(MPIU_Object_alloc_t *objmem)
        0xda as the byte in the memset)
     */
     if (ptr) {
-	memset( (void*)&ptr->ref_count, 0xef, objmem->size-sizeof(int));
+	memset( (void*)&ptr->ref_count, 0x0, objmem->size-sizeof(int));
     }
 #endif
 

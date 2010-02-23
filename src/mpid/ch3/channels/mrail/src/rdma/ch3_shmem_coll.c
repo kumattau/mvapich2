@@ -306,6 +306,7 @@ int MPIDI_CH3I_SHMEM_COLL_finalize()
     munmap(shmem_coll_obj.mmap_ptr, shmem_coll_size);
     close(shmem_coll_obj.fd);
     MPIU_Free(shmem_file);
+    MPIU_Free(bcast_file);
     return MPI_SUCCESS;
 }
 

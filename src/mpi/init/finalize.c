@@ -159,7 +159,15 @@ int MPI_Finalize( void )
     if (mpi_errno) {
 	MPIU_ERR_POP(mpi_errno);
     }
-    
+
+#if defined(_OSU_MVAPICH_)
+    /* Check to see if shmem_collectives were enabled. If yes, the
+    specific entries need to be freed. */
+    if( MPIR_Process.comm_world->shmem_coll_ok == 1) {
+        free_2level_comm(MPIR_Process.comm_world);
+    }
+#endif
+
     /* delete local and remote groups on comm_world and comm_self if
        they had been created (should we use a function pointer here
        as well to avoid loading the group code?) */

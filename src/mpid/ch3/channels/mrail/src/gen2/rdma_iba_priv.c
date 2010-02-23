@@ -66,7 +66,7 @@ struct process_init_info *alloc_process_init_info(int pg_size, int rails)
     info->qp_num_onesided = (uint32_t **)
                                 MPIU_Malloc(pg_size * sizeof(uint32_t *));
     info->hca_type = (uint32_t *) MPIU_Malloc(pg_size * sizeof(uint32_t));
-    info->vc_addr  = (uint64_t *) malloc(pg_size * sizeof(uint64_t));
+    info->vc_addr  = (uint64_t *) MPIU_Malloc(pg_size * sizeof(uint64_t));
     if (!info->lid
         || !info->gid 
         || !info->hostid 
@@ -120,7 +120,8 @@ void free_process_init_info(struct process_init_info *info, int pg_size)
     MPIU_Free(info->qp_num_rdma);
     MPIU_Free(info->qp_num_onesided);
     MPIU_Free(info->hca_type);
-    free(info->vc_addr);
+    MPIU_Free(info->vc_addr);
+    MPIU_Free(info);
 }
 
 struct ibv_srq *create_srq(struct MPIDI_CH3I_RDMA_Process_t *proc,

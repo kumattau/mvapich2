@@ -58,18 +58,27 @@ void clear_2level_comm (MPID_Comm* comm_ptr)
 
 void free_2level_comm (MPID_Comm* comm_ptr)
 {
+    int local_rank=0;
     if (comm_ptr->leader_map)  { 
         MPIU_Free(comm_ptr->leader_map);  
      }
     if (comm_ptr->leader_rank) { 
         MPIU_Free(comm_ptr->leader_rank); 
      }
-    if (comm_ptr->leader_comm) { 
+
+    PMPI_Comm_rank(comm_ptr->shmem_comm, &local_rank);
+
+    if (comm_ptr->leader_comm && local_rank == 0) { 
         PMPI_Comm_free(&(comm_ptr->leader_comm));
      }
     if (comm_ptr->shmem_comm)  { 
         PMPI_Comm_free(&(comm_ptr->shmem_comm));
      }
+
+    if(comm_ptr->bcast_shmem_file != NULL) { 
+        MPIU_Free(comm_ptr->bcast_shmem_file);
+    } 
+
     clear_2level_comm(comm_ptr);
 }
 
@@ -96,6 +105,9 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     int i = 0;
     int local_rank = 0;
     int grp_index = 0;
+    comm_ptr->leader_comm=0;
+    comm_ptr->shmem_comm=0;
+
     MPIDI_VC_t* vc = NULL;
     for (; i < size ; ++i){
        MPIDI_Comm_get_vc(comm_ptr, i, &vc);
@@ -174,10 +186,14 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
      if(mpi_errno) {
        MPIU_ERR_POP(mpi_errno);
     }
-    MPIU_Free(leader_group);
+
     MPID_Comm *leader_ptr;
     MPID_Comm_get_ptr( comm_ptr->leader_comm, leader_ptr );
        
+    MPIU_Free(leader_group);
+    PMPI_Group_free(&subgroup1);
+    PMPI_Group_free(&comm_group);
+
     mpi_errno = PMPI_Comm_split(comm, leader, local_rank, &(comm_ptr->shmem_comm));
     if(mpi_errno) {
        MPIU_ERR_POP(mpi_errno);
@@ -200,7 +216,7 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
         shmem_comm_count = shmem_coll->shmem_comm_count;
         pthread_spin_unlock(&shmem_coll->shmem_coll_lock);
     }
-
+    
     shmem_ptr->shmem_coll_ok = 0; 
     /* To prevent Bcast taking the knomial_2level_bcast route */
     mpi_errno = MPIR_Bcast (&shmem_comm_count, 1, MPI_INT, 0, shmem_ptr);
@@ -248,6 +264,7 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
 
     MPIR_Nest_decr();
    
+
     fn_fail: 
        MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
     

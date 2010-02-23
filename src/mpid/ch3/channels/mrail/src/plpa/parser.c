@@ -1558,7 +1558,7 @@ yy_size_t size;
 	 * any pointer type to void*, and deal with argument conversions
 	 * as though doing an assignment.
 	 */
-	return (void *) realloc( (char *) ptr, size );
+	return (void *) MPIU_Realloc( (char *) ptr, size );
 	}
 
 #ifdef YY_USE_PROTOS

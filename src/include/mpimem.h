@@ -248,6 +248,7 @@ void *MPIU_trrealloc ( void *, size_t, int, const char * );
 void MPIU_TrSetMaxMem ( int );
 
 #ifndef MPIU_MEM_NOSTDIO
+#include <stdio.h>
 void MPIU_trdump ( FILE *, int );
 void MPIU_trSummary ( FILE *, int );
 void MPIU_trdumpGrouped ( FILE *, int );
