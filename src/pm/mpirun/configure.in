@@ -143,6 +143,7 @@ CPPFLAGS="$CPPFLAGS $MPICH2_INCLUDE_FLAGS"
 AC_SUBST(MAKE_DEPEND_C)
 AC_SUBST(mpirun_rsh_other_libs)
 AC_SUBST(mpispawn_other_libs)
+AC_SUBST(master_top_srcdir)
 
 PAC_SUBCONFIG_FINALIZE()
 

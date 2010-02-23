@@ -864,6 +864,7 @@ dnl of the MPI implementation.  This is used only in runtests to include
 dnl the location of the source of the MPI implementation into the XML
 dnl summary file
 AC_SUBST(MPI_SOURCE)
+AC_SUBST(master_top_srcdir)
 
 dnl
 dnl Etags
