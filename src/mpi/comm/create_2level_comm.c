@@ -88,6 +88,9 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm* comm_ptr;
     MPID_Comm* comm_world_ptr;
+    MPI_Group subgroup1, comm_group;
+    MPID_Group *group_ptr=NULL;
+
     MPIU_THREADPRIV_DECL;
     MPIU_THREADPRIV_GET;
     MPID_Comm_get_ptr( comm, comm_ptr );
@@ -170,8 +173,6 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     leader_group_size = grp_index;
     comm_ptr->leader_group_size = leader_group_size;
 
-    MPI_Group subgroup1, comm_group;
-    
     mpi_errno = PMPI_Comm_group(comm, &comm_group);
     if(mpi_errno) {
        MPIU_ERR_POP(mpi_errno);
@@ -191,8 +192,20 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     MPID_Comm_get_ptr( comm_ptr->leader_comm, leader_ptr );
        
     MPIU_Free(leader_group);
-    PMPI_Group_free(&subgroup1);
-    PMPI_Group_free(&comm_group);
+    MPID_Group_get_ptr( subgroup1, group_ptr );
+    if(group_ptr != NULL) { 
+       mpi_errno = PMPI_Group_free(&subgroup1);
+       if(mpi_errno) {
+               MPIU_ERR_POP(mpi_errno);
+       }
+    } 
+    MPID_Group_get_ptr( comm_group, group_ptr );
+    if(group_ptr != NULL){ 
+       mpi_errno=PMPI_Group_free(&comm_group);
+       if(mpi_errno) {
+               MPIU_ERR_POP(mpi_errno);
+       }
+    } 
 
     mpi_errno = PMPI_Comm_split(comm, leader, local_rank, &(comm_ptr->shmem_comm));
     if(mpi_errno) {
@@ -243,17 +256,21 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
         comm_registry[comm_registered++] = comm_ptr->context_id;
     } else{
         comm_ptr->shmem_coll_ok = 0;
+        MPID_Group_get_ptr( subgroup1, group_ptr );
+        if(group_ptr != NULL) { 
+             mpi_errno = PMPI_Group_free(&subgroup1);
+             if(mpi_errno) {
+               MPIU_ERR_POP(mpi_errno);
+             }
+        }
+        MPID_Group_get_ptr( comm_group, group_ptr );
+        if(group_ptr != NULL) { 
+             mpi_errno = PMPI_Group_free(&comm_group);
+             if(mpi_errno) {
+               MPIU_ERR_POP(mpi_errno);
+             }
+        }
         free_2level_comm(comm_ptr);
-        mpi_errno = PMPI_Group_free(&subgroup1);
-         if(mpi_errno) {
-           MPIU_ERR_POP(mpi_errno);
-        }
-        mpi_errno =PMPI_Group_free(&comm_group);
-         if(mpi_errno) {
-           MPIU_ERR_POP(mpi_errno);
-        }
-
-    
     }
     ++comm_count;
 
