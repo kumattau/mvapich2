@@ -164,7 +164,9 @@ int MPI_Finalize( void )
     /* Check to see if shmem_collectives were enabled. If yes, the
     specific entries need to be freed. */
     if( MPIR_Process.comm_world->shmem_coll_ok == 1) {
+        MPIU_THREAD_SINGLE_CS_EXIT("init");
         free_2level_comm(MPIR_Process.comm_world);
+        MPIU_THREAD_SINGLE_CS_ENTER("init");
     }
 #endif
 

@@ -58,11 +58,12 @@ void clear_2level_comm (MPID_Comm* comm_ptr)
 
 void free_2level_comm (MPID_Comm* comm_ptr)
 {
+    pthread_mutex_lock(&comm_lock);
     int local_rank=0;
-    if (comm_ptr->leader_map)  { 
+    if (comm_ptr->leader_map != NULL)  { 
         MPIU_Free(comm_ptr->leader_map);  
      }
-    if (comm_ptr->leader_rank) { 
+    if (comm_ptr->leader_rank != NULL) { 
         MPIU_Free(comm_ptr->leader_rank); 
      }
 
@@ -80,6 +81,7 @@ void free_2level_comm (MPID_Comm* comm_ptr)
     } 
 
     clear_2level_comm(comm_ptr);
+    pthread_mutex_unlock(&comm_lock);
 }
 
 int create_2level_comm (MPI_Comm comm, int size, int my_rank)
