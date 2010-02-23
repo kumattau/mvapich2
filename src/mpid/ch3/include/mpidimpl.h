@@ -456,7 +456,7 @@ extern MPIDI_Process_t MPIDI_Process;
 #if defined(_OSU_MVAPICH_)
 #define MPIDI_VC_revoke_seqnum_send(vc_, seqnum_)    \
 {                                                    \
-    MPIU_Assert((seqnum_) + 1 == (vc_)->seqnum_send);     \
+    MPIU_Assert((((seqnum_) + 1)%(UINT16_MAX+1)) == (vc_)->seqnum_send); \
     (vc_)->seqnum_send--;                            \
 }
 #endif /* if defined(_OSU_MVAPICH_) */
