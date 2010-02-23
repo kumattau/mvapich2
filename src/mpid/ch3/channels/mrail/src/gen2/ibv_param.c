@@ -765,6 +765,31 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
             rdma_vbuf_total_size = 4*1024;
             break;
         case SMALL_CLUSTER:
+            switch(proc->hca_type) {
+                case MLX_PCI_X:
+                case IBM_EHCA:
+                    rdma_vbuf_total_size = 12*1024;
+                    break;
+                case MLX_CX_DDR:
+                case MLX_CX_SDR:
+                case MLX_CX_QDR:
+                    rdma_vbuf_total_size = 9 * 1024;
+                    break;
+                case CHELSIO_T3:
+                    rdma_vbuf_total_size = 9 * 1024;
+                    break;
+                case MLX_PCI_EX_SDR:
+                case MLX_PCI_EX_DDR:
+                case PATH_HT:
+                default:
+#ifdef _X86_64_
+                    rdma_vbuf_total_size = 9 * 1024;
+#else
+                    rdma_vbuf_total_size = 6 * 1024;
+#endif
+
+                    break;
+            }
         case VERY_SMALL_CLUSTER:
         default:
             switch(proc->hca_type) {
@@ -777,9 +802,9 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
                 case MLX_CX_QDR:
                     rdma_vbuf_total_size = 9 * 1024;
                     break;
-	        case CHELSIO_T3:
-		    rdma_vbuf_total_size = 9 * 1024;
-		    break;
+	            case CHELSIO_T3:
+         		    rdma_vbuf_total_size = 33 * 1024;
+		            break;
                 case MLX_PCI_EX_SDR:
                 case MLX_PCI_EX_DDR:
                 case PATH_HT:
