@@ -236,7 +236,7 @@ int MPIDI_CH3_VC_Init (MPIDI_VC_t* vc)
     vc->smp.sendq_tail = NULL; 
     vc->smp.recv_active = NULL; 
     vc->smp.send_active = NULL; 
-    vc->smp.ch.req = -1;
+    vc->ch.req = NULL;
 #ifndef DAPL_DEFAULT_PROVIDER
     vc->mrail.rails = NULL;
     vc->mrail.srp.credits = NULL;
