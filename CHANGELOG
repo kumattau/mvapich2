@@ -12,6 +12,7 @@ MVAPICH2-1.4.1-rc1
     - Added support for ring based startup for RDMAoE
 
 * Bug fixes since mvapich2-1.4
+    - Fixes for MPE and other profiling tools, as suggested by Anthony Chan (chan@mcs.anl.gov)
     - Fixes for finalization issue with dynamic process management
     - Fixing the error check for buffer aliasing in MPI_Reduce as
       suggested by Dr. Rajeev Thakur (thakur@mcs.anl.gov)
