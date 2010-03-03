@@ -188,7 +188,7 @@ int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
     if (enable_shmem_collectives){
        if(newcomm_ptr != NULL && *newcomm != MPI_COMM_NULL) { 
           int flag;
-          MPI_Comm_test_inter(*newcomm, &flag);
+          PMPI_Comm_test_inter(*newcomm, &flag);
 
           if(flag == 0) { 
                newcomm_ptr->leader_comm       = comm_ptr->leader_comm;

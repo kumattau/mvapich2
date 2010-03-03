@@ -363,7 +363,7 @@ int MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm)
                 MPIR_Nest_incr();
                 int flag;
 
-                MPI_Comm_test_inter(*newcomm, &flag);
+                PMPI_Comm_test_inter(*newcomm, &flag);
 
                 if (flag == 0){
                     int my_id, size;

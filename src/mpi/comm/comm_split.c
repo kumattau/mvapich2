@@ -418,7 +418,7 @@ int MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm)
                 MPIR_Nest_incr();
 
                 int flag;
-                MPI_Comm_test_inter(*newcomm, &flag);
+                PMPI_Comm_test_inter(*newcomm, &flag);
                 
                 if (flag == 0){
                     int my_id, size;

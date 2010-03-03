@@ -140,8 +140,8 @@ int MPI_Init( int *argc, char ***argv )
         if (check_split_comm(pthread_self())){
             MPIR_Nest_incr();
             int my_id, size;
-            MPI_Comm_rank(MPI_COMM_WORLD, &my_id);
-            MPI_Comm_size(MPI_COMM_WORLD, &size);
+            PMPI_Comm_rank(MPI_COMM_WORLD, &my_id);
+            PMPI_Comm_size(MPI_COMM_WORLD, &size);
             disable_split_comm(pthread_self());
             create_2level_comm(MPI_COMM_WORLD, size, my_id);
             enable_split_comm(pthread_self());
