@@ -494,6 +494,9 @@ AC_ARG_WITH([limic2-libpath],
         esac
         test "x$with_limic2" != "xno" || with_limic2="yes"
     ])
+AC_CHECK_TYPE(pthread_spinlock_t, [],
+              [CFLAGS="$CFLAGS -D_XOPEN_SOURCE=600"],
+              [[#include <pthread.h>]])
 dnl </_OSU_MVAPICH_>
 
 dnl
