@@ -3,7 +3,7 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
-MVAPICH2-1.4.1-rc1
+MVAPICH2-1.4.1
 
 * Enhancements since mvapich2-1.4
     - Added MPMD launch capability to mpirun_rsh
@@ -13,6 +13,8 @@ MVAPICH2-1.4.1-rc1
 
 * Bug fixes since mvapich2-1.4
     - Fixes for MPE and other profiling tools, as suggested by Anthony Chan (chan@mcs.anl.gov)
+    - Removed overrides to PSM_SHAREDCONTEXT, PSM_SHAREDCONTEXTS_MAX variables. 
+      Suggested by Ben Truscott <b.s.truscott@bristol.ac.uk>. 
     - Fixes for finalization issue with dynamic process management
     - Fixing the error check for buffer aliasing in MPI_Reduce as
       suggested by Dr. Rajeev Thakur (thakur@mcs.anl.gov)
