@@ -6,36 +6,38 @@ package.  The logs are arranged in the "most recent first" order.
 MVAPICH2-1.4.1
 
 * Enhancements since mvapich2-1.4
-    - Added MPMD launch capability to mpirun_rsh
-    - Added hwloc patch suggested by Dr. Bernd Kallies (kallies@zib.de)
-    - Multi-port support for iWARP and scaling to higher process counts
-    - Added support for ring based startup for RDMAoE
+   - MPMD launch capability to mpirun_rsh
+   - Portable Hardware Locality (hwloc) support,
+     patch suggested by Dr. Bernd Kallies <kallies@zib.de>
+   - Multi-port support for iWARP
+   - Enhanced iWARP design for scalability to higher process count
+   - Ring based startup support for RDMAoE
 
 * Bug fixes since mvapich2-1.4
-    - Fixes for MPE and other profiling tools, as suggested by Anthony Chan (chan@mcs.anl.gov)
-    - Removed overrides to PSM_SHAREDCONTEXT, PSM_SHAREDCONTEXTS_MAX variables. 
-      Suggested by Ben Truscott <b.s.truscott@bristol.ac.uk>. 
-    - Fixes for finalization issue with dynamic process management
-    - Fixing the error check for buffer aliasing in MPI_Reduce as
-      suggested by Dr. Rajeev Thakur (thakur@mcs.anl.gov)
-    - Fix Totalview integration for RHEL5
-    - Update simplemake to handle build timestamp issues
-    - Fixes for --enable-g={mem, meminit}
-    - Improved logic to control the receive and send requests to handle the
-      limitation of CQ Depth on iWARP
-    - Fixing assertion failures with IMB-EXT tests
-    - VBUF size for very small iWARP clusters bumped up to 33K
-    - Replace internal mallocs with MPIU_Malloc uniformly for correct
-      tracing with --enable-g=mem
-    - Fixing multi-port for iWARP
-    - Fix memory leaks
-    - Shared-memory reduce fixes for MPI_Reduce invoked with MPI_IN_PLACE
-    - Handling RDMA_CM_EVENT_TIMEWAIT_EXIT event
-    - Fix for threaded-ctxdup mpich2 test
-    - Detecting spawn errors patch contributed by Dr. Bernd Kallies (kallies@zib.de)
-    - IMB-EXT fixes reported by Yutaka from Cray Japan
-    - Fix alltoall assertion error when limic is used
-
+   - Fixes for MPE and other profiling tools, as suggested by Anthony
+     Chan (chan@mcs.anl.gov)
+   - Fixes for finalization issue with dynamic process management
+   - Removed overrides to PSM_SHAREDCONTEXT, PSM_SHAREDCONTEXTS_MAX variables. 
+     Suggested by Ben Truscott <b.s.truscott@bristol.ac.uk>. 
+   - Fixing the error check for buffer aliasing in MPI_Reduce as
+     suggested by Dr. Rajeev Thakur <thakur@mcs.anl.gov>
+   - Fix Totalview integration for RHEL5
+   - Update simplemake to handle build timestamp issues
+   - Fixes for --enable-g={mem, meminit}
+   - Improved logic to control the receive and send requests to handle the
+     limitation of CQ Depth on iWARP
+   - Fixing assertion failures with IMB-EXT tests
+   - VBUF size for very small iWARP clusters bumped up to 33K
+   - Replace internal mallocs with MPIU_Malloc uniformly for correct
+     tracing with --enable-g=mem
+   - Fixing multi-port for iWARP
+   - Fix memory leaks
+   - Shared-memory reduce fixes for MPI_Reduce invoked with MPI_IN_PLACE
+   - Handling RDMA_CM_EVENT_TIMEWAIT_EXIT event
+   - Fix for threaded-ctxdup mpich2 test
+   - Detecting spawn errors patch contributed by Dr. Bernd Kallies <kallies@zib.de>
+   - IMB-EXT fixes reported by Yutaka from Cray Japan
+   - Fix alltoall assertion error when limic is used
 
 MVAPICH2-1.4
 
