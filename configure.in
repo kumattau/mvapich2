@@ -1034,6 +1034,7 @@ case "$enable_threads" in
     thread_pkg_required=no
     thread_impl=none
     MPICH_THREAD_LEVEL=MPI_THREAD_FUNNELED
+    LIBS="$LIBS -lpthread -pthread"
     ;;
     serialized)
     # FIXME: Why does serialized require a thread package?

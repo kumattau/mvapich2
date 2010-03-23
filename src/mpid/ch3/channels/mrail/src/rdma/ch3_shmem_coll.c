@@ -347,9 +347,17 @@ void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int size, int rank, int shmem_comm_rank, 
 #if defined(CKPT)
                     MPIDI_CH3I_CR_unlock();
 #endif
+#if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
+                    MPIU_THREAD_CHECK_BEGIN
                     MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
+                    MPIU_THREAD_CHECK_END
+#endif
                     sched_yield();
+#if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
+                    MPIU_THREAD_CHECK_BEGIN
                     MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
+                    MPIU_THREAD_CHECK_END
+#endif
 #if defined(CKPT)
                     MPIDI_CH3I_CR_lock();
 #endif
@@ -383,9 +391,17 @@ void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int size, int rank, int shmem_comm_rank, 
 #if defined(CKPT)
                 MPIDI_CH3I_CR_unlock();
 #endif
+#if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
+                MPIU_THREAD_CHECK_BEGIN
                 MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
+                MPIU_THREAD_CHECK_END
+#endif
                 sched_yield();
+#if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
+                MPIU_THREAD_CHECK_BEGIN
                 MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
+                MPIU_THREAD_CHECK_END
+#endif
 #if defined(CKPT)
                 MPIDI_CH3I_CR_lock();
 #endif
@@ -440,9 +456,17 @@ void MPIDI_CH3I_SHMEM_COLL_Barrier_gather(int size, int rank, int shmem_comm_ran
 #if defined(CKPT)
                     MPIDI_CH3I_CR_unlock();
 #endif
+#if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
+                    MPIU_THREAD_CHECK_BEGIN
                     MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
+                    MPIU_THREAD_CHECK_END
+#endif
                     sched_yield();
+#if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
+                    MPIU_THREAD_CHECK_BEGIN
                     MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
+                    MPIU_THREAD_CHECK_END
+#endif
 #if defined(CKPT)
                     MPIDI_CH3I_CR_lock();
 #endif
@@ -490,9 +514,17 @@ void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int size, int rank, int shmem_comm_rank
 #if defined(CKPT)
                 MPIDI_CH3I_CR_unlock();
 #endif
+#if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
+                MPIU_THREAD_CHECK_BEGIN
                 MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
+                MPIU_THREAD_CHECK_END
+#endif
                 sched_yield();
+#if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
+                MPIU_THREAD_CHECK_BEGIN
                 MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
+                MPIU_THREAD_CHECK_END
+#endif
 #if defined(CKPT)
                 MPIDI_CH3I_CR_lock();
 #endif
