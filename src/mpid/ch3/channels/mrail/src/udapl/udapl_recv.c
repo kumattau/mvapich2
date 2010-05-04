@@ -111,7 +111,7 @@ MPIDI_CH3I_MRAIL_Parse_header (MPIDI_VC_t * vc,
                     /* Only cache header if the packet is from RdMA path 
                      * XXXX: what is R3_FLAG? 
                      */
-                    memcpy ((vc->mrail.rfp.cached_incoming), vstart,
+                   MPIU_Memcpy ((vc->mrail.rfp.cached_incoming), vstart,
                             sizeof (MPIDI_CH3_Pkt_eager_send_t));
                 }
 #endif
@@ -318,14 +318,14 @@ MPIDI_CH3I_MRAIL_Fill_Request (MPID_Request * req, vbuf * v,
           if (len_avail >= (int) iov[i].MPID_IOV_LEN
               && iov[i].MPID_IOV_LEN != 0)
             {
-                memcpy (iov[i].MPID_IOV_BUF, data_buf, iov[i].MPID_IOV_LEN);
+            MPIU_Memcpy (iov[i].MPID_IOV_BUF, data_buf, iov[i].MPID_IOV_LEN);
                 data_buf = (void *) ((aint_t) data_buf + iov[i].MPID_IOV_LEN);
                 len_avail -= iov[i].MPID_IOV_LEN;
                 *nb += iov[i].MPID_IOV_LEN;
             }
           else if (len_avail > 0)
             {
-                memcpy (iov[i].MPID_IOV_BUF, data_buf, len_avail);
+            MPIU_Memcpy (iov[i].MPID_IOV_BUF, data_buf, len_avail);
                 *nb += len_avail;
                 break;
             }

@@ -51,11 +51,12 @@ int MPI_Win_free(MPI_Win *win)
     static const char FCNAME[] = "MPI_Win_free";
     int mpi_errno = MPI_SUCCESS;
     MPID_Win *win_ptr = NULL;
+    MPIU_THREADPRIV_DECL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_WIN_FREE);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPIU_THREAD_SINGLE_CS_ENTER("rma");
+    MPIU_THREAD_CS_ENTER(ALLFUNC,);
     MPID_MPI_RMA_FUNC_ENTER(MPID_STATE_MPI_WIN_FREE);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -93,7 +94,7 @@ int MPI_Win_free(MPI_Win *win)
     if (MPIR_Process.attr_free && win_ptr->attributes)
     {
 	mpi_errno = MPIR_Process.attr_free( win_ptr->handle, 
-					    win_ptr->attributes );
+					    &win_ptr->attributes );
     }
     /*
      * If the user attribute free function returns an error, 
@@ -101,6 +102,16 @@ int MPI_Win_free(MPI_Win *win)
      */
     if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 
+    /* We need to release the error handler */
+    if (win_ptr->errhandler && 
+	! (HANDLE_GET_KIND(win_ptr->errhandler->handle) == 
+	   HANDLE_KIND_BUILTIN) ) {
+	int in_use;
+	MPIR_Errhandler_release_ref( win_ptr->errhandler,&in_use);
+	if (!in_use) {
+	    MPIU_Handle_obj_free( &MPID_Errhandler_mem, win_ptr->errhandler );
+	}
+    }
     
     mpi_errno = MPIU_RMA_CALL(win_ptr,Win_free(&win_ptr));
     *win = MPI_WIN_NULL;
@@ -109,7 +120,7 @@ int MPI_Win_free(MPI_Win *win)
 
   fn_exit:
     MPID_MPI_RMA_FUNC_EXIT(MPID_STATE_MPI_WIN_FREE);
-    MPIU_THREAD_SINGLE_CS_EXIT("rma");
+    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return mpi_errno;
 
   fn_fail:

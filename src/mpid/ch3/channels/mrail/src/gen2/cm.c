@@ -261,7 +261,7 @@ static inline struct ibv_ah *cm_create_ah(struct ibv_pd *pd, uint32_t lid,
 {
     struct ibv_ah_attr ah_attr;
 
-    memset(&ah_attr, 0, sizeof(ah_attr));
+    MPIU_Memset(&ah_attr, 0, sizeof(ah_attr));
     ah_attr.is_global = 0;
     ah_attr.dlid = lid;
     ah_attr.sl = 0;
@@ -277,7 +277,7 @@ static inline struct ibv_ah *cm_create_ah(struct ibv_pd *pd, uint32_t lid,
 static cm_pending *cm_pending_create()
 {
     cm_pending *temp = (cm_pending *) MPIU_Malloc(sizeof(cm_pending));
-    memset(temp, 0, sizeof(cm_pending));
+    MPIU_Memset(temp, 0, sizeof(cm_pending));
     return temp;
 }
 
@@ -329,7 +329,7 @@ static int cm_pending_init(cm_pending * pending, MPIDI_PG_t *pg, cm_msg * msg,
     }
 
     pending->packet = (cm_packet *) MPIU_Malloc(sizeof(cm_packet));
-    memcpy(&(pending->packet->payload), msg, sizeof(cm_msg));
+    MPIU_Memcpy(&(pending->packet->payload), msg, sizeof(cm_msg));
 #ifdef _ENABLE_XRC_
     pending->attempts = 0;
 #endif
@@ -434,11 +434,11 @@ static inline int cm_post_ud_recv(void *buf, int size)
     struct ibv_recv_wr wr;
     struct ibv_recv_wr *bad_wr;
 
-    memset(&list, 0, sizeof(struct ibv_sge));
+    MPIU_Memset(&list, 0, sizeof(struct ibv_sge));
     list.addr = (uintptr_t) buf;
     list.length = size + 40;
     list.lkey = cm_ud_mr->lkey;
-    memset(&wr, 0, sizeof(struct ibv_recv_wr));
+    MPIU_Memset(&wr, 0, sizeof(struct ibv_recv_wr));
     wr.next = NULL;
     wr.wr_id = CM_UD_RECV_WR_ID;
     wr.sg_list = &list;
@@ -458,13 +458,13 @@ static int __cm_post_ud_packet(cm_msg * msg, struct ibv_ah *ah, uint32_t qpn)
 
     CM_DBG("cm_post_ud_packet, post message type %d", msg->msg_type);
 
-    memcpy((char*)cm_ud_send_buf + 40, msg, sizeof(cm_msg));
-    memset(&list, 0, sizeof(struct ibv_sge));
+    MPIU_Memcpy((char*)cm_ud_send_buf + 40, msg, sizeof(cm_msg));
+    MPIU_Memset(&list, 0, sizeof(struct ibv_sge));
     list.addr = (uintptr_t) cm_ud_send_buf + 40;
     list.length = sizeof(cm_msg);
     list.lkey = cm_ud_mr->lkey;
 
-    memset(&wr, 0, sizeof(struct ibv_send_wr));
+    MPIU_Memset(&wr, 0, sizeof(struct ibv_send_wr));
     wr.wr_id = CM_UD_SEND_WR_ID;
     wr.sg_list = &list;
     wr.num_sge = 1;
@@ -770,7 +770,7 @@ static int cm_accept(MPIDI_PG_t *pg, cm_msg * msg)
     vc->mrail.num_rails = msg->nrails;
 
     /*Prepare rep msg */
-    memcpy(&msg_send, msg, sizeof(cm_msg));
+    MPIU_Memcpy(&msg_send, msg, sizeof(cm_msg));
 
 #ifdef _ENABLE_XRC_
     if (USE_XRC) {
@@ -868,7 +868,7 @@ static int cm_accept_and_cancel(MPIDI_PG_t *pg, cm_msg * msg)
     cm_qp_move_to_rtr(vc, msg->lids, msg->gids, msg->qpns, 0, NULL, 0);
 
     /*Prepare rep msg */
-    memcpy(&msg_send, msg, sizeof(cm_msg));
+    MPIU_Memcpy(&msg_send, msg, sizeof(cm_msg));
     for (; i < msg_send.nrails; ++i)
     {
         msg_send.lids[i] = vc->mrail.rails[i].lid;
@@ -940,7 +940,7 @@ static int cm_accept_nopg(MPIDI_VC_t *vc, cm_msg * msg)
 #ifdef _ENABLE_XRC_
     uint32_t hostid;
 #endif
-    int i = 0;
+    int i;
     CM_DBG("cm_accpet_nopg Enter");
     
     XRC_MSG ("cm_accept_nopg");
@@ -952,8 +952,8 @@ static int cm_accept_nopg(MPIDI_VC_t *vc, cm_msg * msg)
     cm_qp_move_to_rtr(vc, msg->lids, msg->gids, msg->qpns, 0, NULL, 1);
 
     /*Prepare rep msg */
-    memcpy(&msg_send, msg, sizeof(cm_msg));
-    for (; i < msg_send.nrails; ++i)
+    MPIU_Memcpy(&msg_send, msg, sizeof(cm_msg));
+    for (i=0; i < msg_send.nrails; ++i)
     {
         msg_send.lids[i] = vc->mrail.rails[i].lid;
         msg_send.qpns[i] = vc->mrail.rails[i].qp_hndl->qp_num;
@@ -1171,7 +1171,7 @@ int cm_handle_msg(cm_msg * msg)
                 VC_XST_SET (vc, XF_RECV_IDLE);
                 VC_SET_ACTIVE (vc);
                 
-                memcpy (&rep, msg, sizeof(cm_msg));
+                MPIU_Memcpy (&rep, msg, sizeof(cm_msg));
                 rep.vc_addr = (uintptr_t) vc;
                 MPIU_Strncpy (rep.pg_id, MPIDI_Process.my_pg->id, 
                         MAX_PG_ID_SIZE);
@@ -1724,6 +1724,7 @@ int MPICM_Init_UD(uint32_t * ud_qpn)
     int i = 0;
     char *value;
     int mpi_errno = MPI_SUCCESS;
+    int result;
 
     cm_is_finalizing = 0;
     cm_req_id_global = 0;
@@ -1797,15 +1798,15 @@ int MPICM_Init_UD(uint32_t * ud_qpn)
     cm_timeout.tv_sec = cm_timeout_usec/1000000;
     cm_timeout.tv_nsec = (cm_timeout_usec-cm_timeout.tv_sec*1000000)*1000;
 
-    cm_ud_buf = memalign(page_size,
+    result = posix_memalign(&cm_ud_buf, page_size,
                  (sizeof(cm_msg) + 40) * (cm_recv_buffer_size + 1));
-    if (!cm_ud_buf)
+    if ((result!=0) || (cm_ud_buf==NULL))
     {
 	MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
 		"**nomem %s", "cm_ud_buf");
     }
     
-    memset(cm_ud_buf, 0,
+    MPIU_Memset(cm_ud_buf, 0,
            (sizeof(cm_msg) + 40) * (cm_recv_buffer_size + 1));
     cm_ud_send_buf = cm_ud_buf;
     cm_ud_recv_buf = (char*)cm_ud_buf + sizeof(cm_msg) + 40;
@@ -1847,7 +1848,7 @@ int MPICM_Init_UD(uint32_t * ud_qpn)
 
     {
         struct ibv_qp_init_attr attr;
-        memset(&attr, 0, sizeof(struct ibv_qp_init_attr));
+        MPIU_Memset(&attr, 0, sizeof(struct ibv_qp_init_attr));
         attr.send_cq = cm_ud_send_cq;
         attr.recv_cq = cm_ud_recv_cq;
         attr.cap.max_send_wr = cm_send_depth;
@@ -1867,7 +1868,7 @@ int MPICM_Init_UD(uint32_t * ud_qpn)
     *ud_qpn = cm_ud_qp->qp_num;
     {
         struct ibv_qp_attr attr;
-        memset(&attr, 0, sizeof(struct ibv_qp_attr));
+        MPIU_Memset(&attr, 0, sizeof(struct ibv_qp_attr));
 
         attr.qp_state = IBV_QPS_INIT;
         attr.pkey_index = 0;
@@ -1885,7 +1886,7 @@ int MPICM_Init_UD(uint32_t * ud_qpn)
     }
     {
         struct ibv_qp_attr attr;
-        memset(&attr, 0, sizeof(struct ibv_qp_attr));
+        MPIU_Memset(&attr, 0, sizeof(struct ibv_qp_attr));
 
         attr.qp_state = IBV_QPS_RTR;
         if (ibv_modify_qp(cm_ud_qp, &attr, IBV_QP_STATE))
@@ -1897,7 +1898,7 @@ int MPICM_Init_UD(uint32_t * ud_qpn)
 
     {
         struct ibv_qp_attr attr;
-        memset(&attr, 0, sizeof(struct ibv_qp_attr));
+        MPIU_Memset(&attr, 0, sizeof(struct ibv_qp_attr));
 
         attr.qp_state = IBV_QPS_RTS;
         attr.sq_psn = cm_ud_psn;
@@ -1908,7 +1909,7 @@ int MPICM_Init_UD(uint32_t * ud_qpn)
         }
     }
 
-    for (; i < cm_recv_buffer_size; ++i)
+    for (i=0; i < cm_recv_buffer_size; ++i)
     {
         if (cm_post_ud_recv(
             (char*)cm_ud_recv_buf + (sizeof(cm_msg) + 40) * i,
@@ -1941,16 +1942,16 @@ fn_fail:
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPICM_Init_UD_struct(MPIDI_PG_t *pg, uint32_t * qpns, uint16_t * lids)
 {
-    int i = 0;
+    int i;
     int mpi_errno = MPI_SUCCESS;
     int rank; PMI_Get_rank(&rank);
     
     /*Copy qpns and lids */
-    memcpy(pg->ch.mrail.cm_ud_qpn, qpns, pg->size * sizeof(uint32_t));
-    memcpy(pg->ch.mrail.cm_lid, lids, pg->size * sizeof(uint16_t));
+    MPIU_Memcpy(pg->ch.mrail.cm_ud_qpn, qpns, pg->size * sizeof(uint32_t));
+    MPIU_Memcpy(pg->ch.mrail.cm_lid, lids, pg->size * sizeof(uint16_t));
 
     /*Create address handles */
-    for (; i < pg->size; ++i)
+    for (i=0; i < pg->size; ++i)
     {
         pg->ch.mrail.cm_ah[i] = cm_create_ah(MPIDI_CH3I_RDMA_Process.ptag[0], 
                                              pg->ch.mrail.cm_lid[i],
@@ -2021,13 +2022,13 @@ int MPICM_Finalize_UD()
 
     /*Cancel cm thread */
     msg.msg_type = CM_MSG_TYPE_FIN_SELF;
-    memcpy((char*)cm_ud_send_buf + 40, &msg, sizeof(cm_msg));
-    memset(&list, 0, sizeof(struct ibv_sge));
+    MPIU_Memcpy((char*)cm_ud_send_buf + 40, &msg, sizeof(cm_msg));
+    MPIU_Memset(&list, 0, sizeof(struct ibv_sge));
     list.addr = (uintptr_t) cm_ud_send_buf + 40;
     list.length = sizeof(cm_msg);
     list.lkey = cm_ud_mr->lkey;
 
-    memset(&wr, 0, sizeof(struct ibv_send_wr));
+    MPIU_Memset(&wr, 0, sizeof(struct ibv_send_wr));
     wr.wr_id = CM_UD_SEND_WR_ID;
     wr.sg_list = &list;
     wr.num_sge = 1;
@@ -2336,7 +2337,9 @@ int MPIDI_CH3I_CM_Establish(MPIDI_VC_t * vc)
         MPICM_unlock();
         return MPI_SUCCESS;
     }
+#ifdef _ENABLE_XRC_
 remove_pending:
+#endif
     pending = cm_pending_search_peer(vc->pg, vc->pg_rank, CM_PENDING_SERVER, 
             vc);
     if (NULL == pending)
@@ -2462,7 +2465,7 @@ int MPIDI_CH3I_CM_Send_logged_msg(MPIDI_VC_t *vc)
         
         /* Only use rail 0 to send logged message. */
         DEBUG_PRINT("[eager send] len %d, selected rail hca %d, rail %d\n",
-                    entry->len, vc->mrail.rails[rail].hca_index, 0);
+                    entry->len, vc->mrail.rails[0].hca_index, 0);
 
         vbuf_init_send(v, entry->len, 0);
         MPIDI_CH3I_RDMA_Process.post_send(vc, v, 0);

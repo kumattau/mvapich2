@@ -6,8 +6,6 @@ rtest_SOURCES     = rtest.c
 rtestf_SOURCES    = rtestf.f
 rtestx_SOURCES    = rtestx.cxx
 testout_SOURCES   = testout.c
-smvarSubdir_do_dependencies=no
-smvar_dependenciesDummy=yes
 
 C_LINK = $(bindir)/mpicc
 MPICC = $(bindir)/mpicc

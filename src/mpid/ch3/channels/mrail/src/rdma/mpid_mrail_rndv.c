@@ -51,9 +51,9 @@ int MPID_MRAIL_RndvSend (
     sreq->partner_request = NULL;
 	
     MPIDI_Pkt_init(rts_pkt, MPIDI_CH3_PKT_RNDV_REQ_TO_SEND);
-    rts_pkt->match.rank	      = comm->rank;
-    rts_pkt->match.tag	      = tag;
-    rts_pkt->match.context_id = comm->context_id + context_offset;
+    rts_pkt->match.parts.rank	      = comm->rank;
+    rts_pkt->match.parts.tag	      = tag;
+    rts_pkt->match.parts.context_id = comm->context_id + context_offset;
     rts_pkt->sender_req_id    = sreq->handle;
     rts_pkt->data_sz	      = data_sz;
 
@@ -62,7 +62,7 @@ int MPID_MRAIL_RndvSend (
     MPIDI_Pkt_set_seqnum(rts_pkt, seqnum);
     MPIDI_Request_set_seqnum(sreq, seqnum);
 
-    MPIU_DBG_MSGPKT(vc,tag,rts_pkt->match.context_id,rank,data_sz,"Rndv");
+    MPIU_DBG_MSGPKT(vc,tag,rts_pkt->match.parts.context_id,rank,data_sz,"Rndv");
 
     if (dt_contig) 
     {

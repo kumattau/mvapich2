@@ -1,3 +1,14 @@
+/* Copyright (c) 2003-2010, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
 #ifndef MPIDI_CH3_PRE_H
 #define MPIDI_CH3_PRE_H
 
@@ -5,6 +16,10 @@
 #include <stdint.h>
 #include <psm.h>
 #include <psm_mq.h>
+
+/* FIXME: These should be removed */
+#define MPIDI_DEV_IMPLEMENTS_KVS
+
 
 typedef struct MPIDI_CH3I_VC
 {

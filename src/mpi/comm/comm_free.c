@@ -79,11 +79,12 @@ int MPI_Comm_free(MPI_Comm *comm)
     static const char FCNAME[] = "MPI_Comm_free";
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL;
+    MPIU_THREADPRIV_DECL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_COMM_FREE);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPIU_THREAD_SINGLE_CS_ENTER("comm");
+    MPIU_THREAD_CS_ENTER(ALLFUNC,);
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_COMM_FREE);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -139,7 +140,7 @@ int MPI_Comm_free(MPI_Comm *comm)
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_COMM_FREE);
-    MPIU_THREAD_SINGLE_CS_EXIT("comm");
+    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return mpi_errno;
 
   fn_fail:

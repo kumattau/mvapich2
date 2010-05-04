@@ -7,6 +7,8 @@
 
 #include "mpiimpl.h"
 
+#if !defined(_OSU_COLLECTIVES_)
+
 /* -- Begin Profiling Symbol Block for routine MPI_Gather */
 #if defined(HAVE_PRAGMA_WEAK)
 #pragma weak MPI_Gather = PMPI_Gather
@@ -26,12 +28,15 @@
    
    Algorithm: MPI_Gather
 
-   We use a binomial tree algorithm for both short and
-   long messages. At nodes other than leaf nodes we need to allocate
-   a temporary buffer to store the incoming message. If the root is
-   not rank 0, we receive data in a temporary buffer on the root and
-   then reorder it into the right order. In the heterogeneous case
-   we first pack the buffers by using MPI_Pack and then do the gather. 
+   We use a binomial tree algorithm for both short and long
+   messages. At nodes other than leaf nodes we need to allocate a
+   temporary buffer to store the incoming message. If the root is not
+   rank 0, for very small messages, we pack it into a temporary
+   contiguous buffer and reorder it to be placed in the right
+   order. For small (but not very small) messages, we use a derived
+   datatype to unpack the incoming data into non-contiguous buffers in
+   the right order. In the heterogeneous case we first pack the
+   buffers by using MPI_Pack and then do the gather.
 
    Cost = lgp.alpha + n.((p-1)/p).beta
    where n is the total size of the data gathered at the root.
@@ -79,15 +84,13 @@ int MPIR_Gather (
     rank = comm_ptr->rank;
 
     if ( ((rank == root) && (recvcnt == 0)) ||
-         ((rank != root) && (sendcnt == 0)) ) { 
+         ((rank != root) && (sendcnt == 0)) )
         return MPI_SUCCESS;
-    }
 
     is_homogeneous = 1;
 #ifdef MPID_HAS_HETERO
-    if (comm_ptr->is_hetero) { 
+    if (comm_ptr->is_hetero)
         is_homogeneous = 0;
-    }
 #endif
 
     /* check if multiple threads are calling this collective function */
@@ -97,8 +100,11 @@ int MPIR_Gather (
     
     relative_rank = (rank >= root) ? rank - root : rank - root + comm_size;
 
-    if (rank == root) {
+    if (rank == root) 
+    {
         MPID_Datatype_get_extent_macro(recvtype, extent);
+        MPID_Ensure_Aint_fits_in_pointer(MPI_VOID_PTR_CAST_TO_MPI_AINT recvbuf+
+					 (extent*recvcnt*comm_size));
     }
 
     if (is_homogeneous)
@@ -128,16 +134,13 @@ int MPIR_Gather (
 
 	/* If the message is smaller than the threshold, we will copy
 	 * our message in there too */
-	if (nbytes < MPIR_GATHER_VSMALL_MSG) { 
-           tmp_buf_size++;
-        }
+	if (nbytes < MPIR_GATHER_VSMALL_MSG) tmp_buf_size++;
 
 	tmp_buf_size *= nbytes;
 
 	/* For zero-ranked root, we don't need any temporary buffer */
-	if ((rank == root) && (!root || (nbytes >= MPIR_GATHER_VSMALL_MSG))) { 
+	if ((rank == root) && (!root || (nbytes >= MPIR_GATHER_VSMALL_MSG)))
 	    tmp_buf_size = 0;
-        }
 
 	if (tmp_buf_size) {
 	    tmp_buf = MPIU_Malloc(tmp_buf_size);
@@ -225,16 +228,13 @@ int MPIR_Gather (
 			/* Estimate the amount of data that is going to come in */
 			recvblks = mask;
 			relative_src = ((src - root) < 0) ? (src - root + comm_size) : (src - root);
-			if (relative_src + mask > comm_size) {
+			if (relative_src + mask > comm_size)
 			    recvblks -= (relative_src + mask - comm_size);
-                        }
 
-			if (nbytes < MPIR_GATHER_VSMALL_MSG) {
+			if (nbytes < MPIR_GATHER_VSMALL_MSG)
 			    offset = mask * nbytes;
-                        }
-			else {
+			else
 			    offset = (mask - 1) * nbytes;
-                        }
 			mpi_errno = MPIC_Recv(((char *)tmp_buf + offset),
 					      recvblks * nbytes, MPI_BYTE, src,
 					      MPIR_GATHER_TAG, comm,
@@ -261,10 +261,10 @@ int MPIR_Gather (
 		}
 		else {
 		    blocks[0] = sendcnt;
-		    struct_displs[0] = (MPI_Aint) sendbuf;
+		    struct_displs[0] = MPI_VOID_PTR_CAST_TO_MPI_AINT sendbuf;
 		    types[0] = sendtype;
 		    blocks[1] = curr_cnt - nbytes;
-		    struct_displs[1] = (MPI_Aint) tmp_buf;
+		    struct_displs[1] = MPI_VOID_PTR_CAST_TO_MPI_AINT tmp_buf;
 		    types[1] = MPI_BYTE;
 
 		    NMPI_Type_create_struct(2, blocks, struct_displs, types, &tmp_type);
@@ -295,22 +295,18 @@ int MPIR_Gather (
 			   recvcnt * (copy_blks - comm_size + copy_offset), recvtype);
         }
 
-	if (tmp_buf) {
-            MPIU_Free(tmp_buf);
-        }
+	if (tmp_buf) MPIU_Free(tmp_buf);
     }
     
 #ifdef MPID_HAS_HETERO
     else
     { /* communicator is heterogeneous. pack data into tmp_buf. */
-        if (rank == root) {
+        if (rank == root)
             NMPI_Pack_size(recvcnt*comm_size, recvtype, comm,
                            &tmp_buf_size); 
-        }
-        else {
+        else
             NMPI_Pack_size(sendcnt*(comm_size/2), sendtype, comm,
                            &tmp_buf_size);
-        }
 
         tmp_buf = MPIU_Malloc(tmp_buf_size);
 	/* --BEGIN ERROR HANDLING-- */
@@ -505,6 +501,8 @@ int MPIR_Gather_inter (
 		/* --END ERROR HANDLING-- */
                 MPID_Datatype_get_extent_macro(sendtype, extent);
  
+		MPID_Ensure_Aint_fits_in_pointer(sendcnt*local_size*
+						 (MPIR_MAX(extent, true_extent)));
                 tmp_buf =
                     MPIU_Malloc(sendcnt*local_size*(MPIR_MAX(extent,true_extent)));  
 		/* --BEGIN ERROR HANDLING-- */
@@ -519,9 +517,8 @@ int MPIR_Gather_inter (
             }
             
             /* all processes in remote group form new intracommunicator */
-            if (!comm_ptr->local_comm) {
+            if (!comm_ptr->local_comm)
                 MPIR_Setup_intercomm_localcomm( comm_ptr );
-            }
 
             newcomm_ptr = comm_ptr->local_comm;
 
@@ -554,6 +551,9 @@ int MPIR_Gather_inter (
         if (root == MPI_ROOT)
 	{
             MPID_Datatype_get_extent_macro(recvtype, extent);
+            MPID_Ensure_Aint_fits_in_pointer(MPI_VOID_PTR_CAST_TO_MPI_AINT recvbuf +
+					     (recvcnt*remote_size*extent));
+
             for (i=0; i<remote_size; i++)
 	    {
                 mpi_errno = MPIC_Recv(((char *)recvbuf+recvcnt*i*extent), 
@@ -620,11 +620,12 @@ int MPI_Gather(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
     static const char FCNAME[] = "MPI_Gather";
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL;
+    MPIU_THREADPRIV_DECL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_GATHER);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPIU_THREAD_SINGLE_CS_ENTER("coll");
+    MPIU_THREAD_CS_ENTER(ALLFUNC,);
     MPID_MPI_COLL_FUNC_ENTER(MPID_STATE_MPI_GATHER);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -727,16 +728,14 @@ int MPI_Gather(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
     }
     else
     {
-	MPIU_THREADPRIV_DECL;
 	MPIU_THREADPRIV_GET;
 
 	MPIR_Nest_incr();
-        if (comm_ptr->comm_kind == MPID_INTRACOMM)  {
+        if (comm_ptr->comm_kind == MPID_INTRACOMM) 
             /* intracommunicator */
             mpi_errno = MPIR_Gather(sendbuf, sendcnt, sendtype,
                                     recvbuf, recvcnt, recvtype, root,
                                     comm_ptr);  
-        }
         else
 	{
             /* intercommunicator */ 
@@ -747,15 +746,13 @@ int MPI_Gather(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
 	MPIR_Nest_decr();
     }
 
-    if (mpi_errno != MPI_SUCCESS) { 
-        goto fn_fail;
-    }
+    if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 
     /* ... end of body of routine ... */
     
   fn_exit:
     MPID_MPI_COLL_FUNC_EXIT(MPID_STATE_MPI_GATHER);
-    MPIU_THREAD_SINGLE_CS_EXIT("coll");
+    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return mpi_errno;
 
   fn_fail:
@@ -771,3 +768,5 @@ int MPI_Gather(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
     goto fn_exit;
     /* --END ERROR HANDLING-- */
 }
+
+#endif /* !defined(_OSU_COLLECTIVES_) */

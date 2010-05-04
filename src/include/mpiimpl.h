@@ -31,24 +31,21 @@
 /* Include nested mpi (NMPI) definitions */
 #include "nmpi.h"
 
-/* There are a few definitions that must be made *before* the mpichconf.h 
-   file is included.  These include the definitions of the error levels */
-#define MPICH_ERROR_MSG_NONE 0
-#define MPICH_ERROR_MSG_CLASS 1
-#define MPICH_ERROR_MSG_GENERIC 2
-#define MPICH_ERROR_MSG_ALL 8
+/* There are a few definitions that must be made *before* the mpichconf.h
+   file is included.  These include the definitions of the error levels and some
+   thread granularity constants */
+#include "mpichconfconst.h"
 
 /* Data computed by configure.  This is included *after* mpi.h because we
    do not want mpi.h to depend on any other files or configure flags */
 #include "mpichconf.h"
 
+#include <stdio.h>
 #ifdef STDC_HEADERS
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
-#include <stdio.h>
 #else
-#include <stdio.h>
 #ifdef HAVE_STDLIB_H
 #include <stdlib.h>
 #endif
@@ -63,6 +60,21 @@
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
+
+/* for MAXHOSTNAMELEN under Linux and OSX */
+#ifdef HAVE_SYS_PARAM_H
+#include <sys/param.h>
+#endif
+
+#if (!defined MAXHOSTNAMELEN) && (!defined MAX_HOSTNAME_LEN)
+#define MAX_HOSTNAME_LEN 256
+#elif !defined MAX_HOSTNAME_LEN
+#define MAX_HOSTNAME_LEN MAXHOSTNAMELEN
+#endif
+
+/* Default PMI version to use */
+#define MPIU_DEFAULT_PMI_VERSION 1
+#define MPIU_DEFAULT_PMI_SUBVERSION 1
 
 /* This allows us to keep names local to a single file when we can use
    weak symbols */
@@ -85,19 +97,12 @@
 /* Include some basic (and easily shared) definitions */
 #include "mpibase.h"
 
-/*
- * Basic utility macros
- */
-#define MPIU_QUOTE(A) MPIU_QUOTE2(A)
-#define MPIU_QUOTE2(A) #A
-
 /* FIXME: The code base should not define two of these */
 /* This is used to quote a name in a definition (see FUNCNAME/FCNAME below) */
 #ifndef MPIDI_QUOTE
 #define MPIDI_QUOTE(A) MPIDI_QUOTE2(A)
 #define MPIDI_QUOTE2(A) #A
 #endif
-
 
 /* 
    Include the implementation definitions (e.g., error reporting, thread
@@ -107,6 +112,29 @@
 /* FIXME: ... to do ... */
 #include "mpitypedefs.h"
 
+/* This is the default implementation of MPIU_Memcpy.  We define this
+   before including mpidpre.h so that it can be used when a device or
+   channel can use it if it's overriding MPIU_Memcpy.  */
+MPIU_DBG_ATTRIBUTE_NOINLINE
+ATTRIBUTE((unused))
+static MPIU_DBG_INLINE_KEYWORD void MPIUI_Memcpy(void * dst, const void * src, size_t len)
+{
+    memcpy(dst, src, len);
+}
+
+/* #if defined(_OSU_MVAPICH_) */
+/* This is the default implementation of MPIU_Memset.  We define this
+   before including mpidpre.h so that it can be used when a device or
+   channel can use it if it's overriding MPIU_Memset.  */
+MPIU_DBG_ATTRIBUTE_NOINLINE
+ATTRIBUTE((unused))
+static MPIU_DBG_INLINE_KEYWORD void MPIUI_Memset(void *s, int c, size_t n)
+{
+    memset(s, c, n);
+}
+/* #endif / * defined(_OSU_MVAPICH_) */
+
+
 /* Include definitions from the device which must exist before items in this
    file (mpiimpl.h) can be defined. mpidpre.h must be included before any
    files that allow the device to override or extend any terms; this includes
@@ -115,12 +143,45 @@
 #include "mpidpre.h"
 /* ------------------------------------------------------------------------- */
 
+/* Overriding memcpy:
+   Devices and channels can override the default implementation of
+   MPIU_Memcpy by defining the MPIU_Memcpy macro.  The implementation
+   can call MPIUI_Memcpy for the default memcpy implementation.   
+   Note that MPIU_Memcpy and MPIUI_Memcpy return void rather than a
+   pointer to the destination buffer.  This is different from C89
+   memcpy.
+*/
+#ifndef MPIU_Memcpy
+#define MPIU_Memcpy(dst, src, len)                \
+    do {                                          \
+        MPIU_MEM_CHECK_MEMCPY((dst),(src),(len)); \
+        MPIUI_Memcpy((dst), (src), (len));        \
+    } while (0)
+#endif
+
+/* #if defined(_OSU_MVAPICH_) */
+/* Overriding memset:
+   Devices and channels can override the default implementation of
+   MPIU_Memset by defining the MPIU_Memset macro.  The implementation
+   can call MPIUI_Memset for the default memset implementation.
+   Note that MPIU_Memset and MPIUI_Memset return void rather than a
+   pointer to the destination buffer.  This is different from C89
+   memset.
+*/
+#ifndef MPIU_Memset
+#define MPIU_Memset(dst, c, len)              \
+    {                                         \
+      MPIU_MEM_CHECK_MEMSET((dst),(c),(len)); \
+      MPIUI_Memset((dst), (c), (len));        \
+    }
+#endif /* #ifndef MPIU_Memset */
+
+/* #endif / * defined(_OSU_MVAPICH_) */ 
+
 #include "mpiimplthread.h"
 /* #include "mpiu_monitors.h" */
 
 #include "mpiutil.h"
-
-
 
 /* ------------------------------------------------------------------------- */
 /* mpidebug.h */
@@ -142,24 +203,10 @@
 */
 #include "mpidbg.h"
 
-typedef enum MPIU_dbg_state_t
-{
-    MPIU_DBG_STATE_NONE = 0,
-    MPIU_DBG_STATE_UNINIT = 1,
-    MPIU_DBG_STATE_STDOUT = 2,
-    MPIU_DBG_STATE_MEMLOG = 4,
-    MPIU_DBG_STATE_FILE = 8
-}
-MPIU_dbg_state_t;
-int MPIU_dbg_init(int rank);
-int MPIU_dbg_printf(const char *str, ...) ATTRIBUTE((format(printf,1,2)));
-int MPIU_dbglog_printf(const char *str, ...) ATTRIBUTE((format(printf,1,2)));
-int MPIU_dbglog_vprintf(const char *str, va_list ap);
-
 #if defined(MPICH_DBG_OUTPUT)
 #define MPIU_DBG_PRINTF(e)			\
 {						\
-    if (MPIUI_dbg_state != MPIU_DBG_STATE_NONE)	\
+    if (MPIU_dbg_state != MPIU_DBG_STATE_NONE)	\
     {						\
 	MPIU_dbg_printf e;			\
     }						\
@@ -184,18 +231,8 @@ void MPIU_DBG_PrintVCState(MPIDI_VC_t *vc);
 #define MPIU_DBG_PrintVCState2(vc, new_state)
 #define MPIU_DBG_PrintVCState(vc)
 #endif
-extern MPIU_dbg_state_t MPIUI_dbg_state;
-extern FILE * MPIUI_dbg_fp;
-#define MPIU_dbglog_flush()				\
-{							\
-    if (MPIUI_dbg_state & MPIU_DBG_STATE_STDOUT)	\
-    {							\
-	fflush(stdout);					\
-    }							\
-}
-void MPIU_dump_dbg_memlog_to_stdout(void);
-void MPIU_dump_dbg_memlog_to_file(const char *filename);
-void MPIU_dump_dbg_memlog(FILE * fp);
+
+
 /* The follow is temporarily provided for backward compatibility.  Any code
    using dbg_printf should be updated to use MPIU_DBG_PRINTF. */
 #define dbg_printf MPIU_dbg_printf
@@ -326,6 +363,10 @@ void MPIU_dump_dbg_memlog(FILE * fp);
   
  T*/
 
+/* mpi_lang.h - Prototypes for language specific routines. Currently used to
+ * set keyval attribute callbacks
+ */
+#include "mpi_lang.h"
 /* Known language bindings */
 /*E
   MPID_Lang_t - Known language bindings for MPI
@@ -352,166 +393,9 @@ typedef enum MPID_Lang_t { MPID_LANG_C
    MPI_Datatype) */
 #include "mpihandlemem.h"
 
-/* ------------------------------------------------------------------------- */
-/* mpiobjref.h */
-/* ------------------------------------------------------------------------- */
-/* This isn't quite right, since we need to distinguish between multiple 
-   user threads and multiple implementation threads.
- */
-
-
-/* If we're debugging the handles (including reference counts), 
-   add an additional test.  The check on a max refcount helps to 
-   detect objects whose refcounts are not decremented as many times
-   as they are incremented */
-#ifdef MPICH_DEBUG_HANDLES
-#define MPICH_DEBUG_MAX_REFCOUNT 64
-#define MPIU_HANDLE_CHECK_REFCOUNT(_objptr,_op)           \
-  if (((MPIU_Handle_head*)(_objptr))->ref_count > MPICH_DEBUG_MAX_REFCOUNT){\
-        MPIU_DBG_MSG_FMT(HANDLE,TYPICAL,(MPIU_DBG_FDEST,  \
-         "Invalid refcount in %p (0x%08x) %s",            \
-         (_objptr), (_objptr)->handle, _op)); }	
-#else
-#define MPIU_HANDLE_CHECK_REFCOUNT(_objptr,_op)
-#endif
-
-
-/*M
-   MPIU_Object_add_ref - Increment the reference count for an MPI object
-
-   Synopsis:
-.vb
-    MPIU_Object_add_ref( MPIU_Object *ptr )
-.ve   
-
-   Input Parameter:
-.  ptr - Pointer to the object.
-
-   Notes:
-   In an unthreaded implementation, this function will usually be implemented
-   as a single-statement macro.  In an 'MPI_THREAD_MULTIPLE' implementation,
-   this routine must implement an atomic increment operation, using, for 
-   example, a lock on datatypes or special assembly code such as 
-.vb
-   try-again:
-      load-link          refcount-address to r2
-      add                1 to r2
-      store-conditional  r2 to refcount-address
-      if failed branch to try-again:
-.ve
-   on RISC architectures or
-.vb
-   lock
-   inc                   refcount-address or
-.ve
-   on IA32; "lock" is a special opcode prefix that forces atomicity.  This 
-   is not a separate instruction; however, the GNU assembler expects opcode
-   prefixes on a separate line.
-
-   Module: 
-   MPID_CORE
-
-   Question:
-   This accesses the 'ref_count' member of all MPID objects.  Currently,
-   that member is typed as 'volatile int'.  However, for a purely polling,
-   thread-funnelled application, the 'volatile' is unnecessary.  Should
-   MPID objects use a 'typedef' for the 'ref_count' that can be defined
-   as 'volatile' only when needed?  For now, the answer is no; there isn''t
-   enough to be gained in that case.
-M*/
-
-/*M
-   MPIU_Object_release_ref - Decrement the reference count for an MPI object
-
-   Synopsis:
-.vb
-   MPIU_Object_release_ref( MPIU_Object *ptr, int *inuse_ptr )
-.ve
-
-   Input Parameter:
-.  objptr - Pointer to the object.
-
-   Output Parameter:
-.  inuse_ptr - Pointer to the value of the reference count after decrementing.
-   This value is either zero or non-zero. See below for details.
-   
-   Notes:
-   In an unthreaded implementation, this function will usually be implemented
-   as a single-statement macro.  In an 'MPI_THREAD_MULTIPLE' implementation,
-   this routine must implement an atomic decrement operation, using, for 
-   example, a lock on datatypes or special assembly code such as 
-.vb
-   try-again:
-      load-link          refcount-address to r2
-      sub                1 to r2
-      store-conditional  r2 to refcount-address
-      if failed branch to try-again:
-      store              r2 to newval_ptr
-.ve
-   on RISC architectures or
-.vb
-      lock
-      dec                   refcount-address 
-      if zf store 0 to newval_ptr else store 1 to newval_ptr
-.ve
-   on IA32; "lock" is a special opcode prefix that forces atomicity.  This 
-   is not a separate instruction; however, the GNU assembler expects opcode
-   prefixes on a separate line.  'zf' is the zero flag; this is set if the
-   result of the operation is zero.  Implementing a full decrement-and-fetch
-   would require more code and the compare and swap instruction.
-
-   Once the reference count is decremented to zero, it is an error to 
-   change it.  A correct MPI program will never do that, but an incorrect one 
-   (particularly a multithreaded program with a race condition) might.  
-
-   The following code is `invalid`\:
-.vb
-   MPID_Object_release_ref( datatype_ptr );
-   if (datatype_ptr->ref_count == 0) MPID_Datatype_free( datatype_ptr );
-.ve
-   In a multi-threaded implementation, the value of 'datatype_ptr->ref_count'
-   may have been changed by another thread, resulting in both threads calling
-   'MPID_Datatype_free'.  Instead, use
-.vb
-   MPID_Object_release_ref( datatype_ptr, &inUse );
-   if (!inuse) 
-       MPID_Datatype_free( datatype_ptr );
-.ve
-
-   Module: 
-   MPID_CORE
-  M*/
-
-/* The MPIU_DBG... statements are macros that vanish unless
-   --enable-g=log is selected.  MPIU_HANDLE_CHECK_REFCOUNT is 
-   defined above, and adds an additional sanity check for the refcounts
-*/
-#define MPIU_Object_set_ref(objptr,val)                \
-    {((MPIU_Handle_head*)(objptr))->ref_count = val;   \
-    MPIU_DBG_MSG_FMT(HANDLE,TYPICAL,(MPIU_DBG_FDEST,   \
-            "set %p (0x%08x) refcount to %d",          \
-       (objptr), (objptr)->handle, val));              \
-    }
-#define MPIU_Object_add_ref(objptr)                    \
-    {((MPIU_Handle_head*)(objptr))->ref_count++;       \
-    MPIU_DBG_MSG_FMT(HANDLE,TYPICAL,(MPIU_DBG_FDEST,   \
-      "incr %p (0x%08x) refcount to %d",	       \
-     (objptr), (objptr)->handle, (objptr)->ref_count));\
-    MPIU_HANDLE_CHECK_REFCOUNT(objptr,"incr");         \
-    }
-#define MPIU_Object_release_ref(objptr,inuse_ptr)             \
-    {*(inuse_ptr)=--((MPIU_Handle_head*)(objptr))->ref_count; \
-	MPIU_DBG_MSG_FMT(HANDLE,TYPICAL,(MPIU_DBG_FDEST,      \
-        "decr %p (0x%08x) refcount to %d",                    \
-        (objptr), (objptr)->handle, (objptr)->ref_count));    \
-    MPIU_HANDLE_CHECK_REFCOUNT(objptr,"decr");                \
-    }
-
-
-
-/* ------------------------------------------------------------------------- */
-/* mpiobjref.h */
-/* ------------------------------------------------------------------------- */
+/* This routine is used to install an attribute free routine for datatypes
+   at finalize-time */
+void MPIR_DatatypeAttrFinalize( void );
 
 /* ------------------------------------------------------------------------- */
 /* Should the following be moved into mpihandlemem.h ?*/
@@ -524,8 +408,6 @@ void *MPIU_Handle_indirect_init( void *(**)[], int *, int, int, int, int );
 int MPIU_Handle_free( void *((*)[]), int );
 */
 /* Convert Handles to objects for MPI types that have predefined objects */
-/* Question.  Should this do ptr=0 first, particularly if doing --enable-strict
-   complication? */
 #define MPID_Getb_ptr(kind,a,bmsk,ptr)                                  \
 {                                                                       \
    switch (HANDLE_GET_KIND(a)) {                                        \
@@ -548,8 +430,6 @@ int MPIU_Handle_free( void *((*)[]), int );
 
 /* Convert handles to objects for MPI types that do _not_ have any predefined
    objects */
-/* Question.  Should this do ptr=0 first, particularly if doing --enable-strict
-   complication? */
 #define MPID_Get_ptr(kind,a,ptr)					\
 {									\
    switch (HANDLE_GET_KIND(a)) {					\
@@ -619,10 +499,13 @@ int MPIU_Handle_free( void *((*)[]), int );
 /* Check not only for a null pointer but for an invalid communicator,
    such as one that has been freed.  Let's try the ref_count as the test
    for now */
-#define MPID_Comm_valid_ptr(ptr,err) {                      \
-     MPID_Valid_ptr_class(Comm,ptr,MPI_ERR_COMM,err);       \
-     if ((ptr) && (ptr)->ref_count == 0) {                      \
-        err = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_COMM,"**comm", 0);ptr=0;}}
+#define MPID_Comm_valid_ptr(ptr,err) {                \
+     MPID_Valid_ptr_class(Comm,ptr,MPI_ERR_COMM,err); \
+     if ((ptr) && MPIU_Object_get_ref(ptr) == 0) {    \
+         MPIU_ERR_SET(err,MPI_ERR_COMM,"**comm");     \
+         ptr = 0;                                     \
+     }                                                \
+}
 #define MPID_Group_valid_ptr(ptr,err) MPID_Valid_ptr_class(Group,ptr,MPI_ERR_GROUP,err)
 #define MPID_Win_valid_ptr(ptr,err) MPID_Valid_ptr_class(Win,ptr,MPI_ERR_WIN,err)
 #define MPID_Op_valid_ptr(ptr,err) MPID_Valid_ptr_class(Op,ptr,MPI_ERR_OP,err)
@@ -656,34 +539,7 @@ int MPIU_Handle_free( void *((*)[]), int );
 /* end of code that should the following be moved into mpihandlemem.h ?*/
 /* ------------------------------------------------------------------------- */
 
-/* ------------------------------------------------------------------------- */
-/* mpiparam.h*/
-/* ------------------------------------------------------------------------- */
-
-/* Parameter handling.  These functions have not been implemented yet.
-   See src/util/param.[ch] */
-typedef enum MPIU_Param_result_t { 
-    MPIU_PARAM_FOUND = 0, 
-    MPIU_PARAM_OK = 1, 
-    MPIU_PARAM_ERROR = 2 
-} MPIU_Param_result_t;
-int MPIU_Param_init( int *, char *[], const char [] );
-int MPIU_Param_bcast( void );
-int MPIU_Param_register( const char [], const char [], const char [] );
-int MPIU_Param_get_int( const char [], int, int * );
-int MPIU_Param_get_string( const char [], const char *, char ** );
-int MPIU_Param_get_range( const char name[], int *lowPtr, int *highPtr );
-void MPIU_Param_finalize( void );
-
-/* Prototypes for the functions to provide uniform access to the environment */
-int MPIU_GetEnvInt( const char *envName, int *val );
-int MPIU_GetEnvRange( const char *envName, int *lowPtr, int *highPtr );
-int MPIU_GetEnvBool( const char *envName, int *val );
-
-/* See mpishared.h as well */
-/* ------------------------------------------------------------------------- */
-/* end of mpiparam.h*/
-/* ------------------------------------------------------------------------- */
+#include "mpiparam.h"
 
 /* ------------------------------------------------------------------------- */
 /* Info */
@@ -759,12 +615,7 @@ int MPIU_GetEnvBool( const char *envName, int *val );
   Info-DS
   S*/
 typedef struct MPID_Info {
-    int                handle;
-    volatile int       ref_count;  /* FIXME: ref_count isn't needed by Info 
-				      objects, but MPIU_Info_free does not 
-				      work correctly unless MPID_Info and 
-				      MPIU_Handle_common have the next 
-				      pointer in the same location */
+    MPIU_OBJECT_HEADER; /* adds handle and ref_count fields */
     struct MPID_Info   *next;
     char               *key;
     char               *value;
@@ -824,8 +675,7 @@ typedef union MPID_Errhandler_fn {
   ErrHand-DS
   S*/
 typedef struct MPID_Errhandler {
-  int                handle;
-  volatile int       ref_count;
+  MPIU_OBJECT_HEADER; /* adds handle and ref_count fields */
   MPID_Lang_t        language;
   MPID_Object_kind   kind;
   MPID_Errhandler_fn errfn;
@@ -839,14 +689,26 @@ extern MPIU_Object_alloc_t MPID_Errhandler_mem;
 extern MPID_Errhandler MPID_Errhandler_builtin[];
 extern MPID_Errhandler MPID_Errhandler_direct[];
 
-#define MPIR_Errhandler_add_ref( _errhand ) \
-    { MPIU_Object_add_ref( _errhand );      \
-      MPIU_DBG_MSG_FMT(REFCOUNT,TYPICAL,(MPIU_DBG_FDEST,\
-         "Incr errhandler %p ref count to %d",_errhand,_errhand->ref_count));}
-#define MPIR_Errhandler_release_ref( _errhand, _inuse ) \
-     { MPIU_Object_release_ref( _errhand, _inuse ); \
-       MPIU_DBG_MSG_FMT(REFCOUNT,TYPICAL,(MPIU_DBG_FDEST,\
-         "Decr errhandler %p ref count to %d",_errhand,_errhand->ref_count));}
+/* We never reference count the builtin error handler objects, regardless of how
+ * we decide to reference count the other predefined objects.  If we get to the
+ * point where we never reference count *any* of the builtin objects then we
+ * should probably remove these checks and let them fall through to the checks
+ * for BUILTIN down in the MPIU_Object_* routines. */
+#define MPIR_Errhandler_add_ref( _errhand )                               \
+    do {                                                                  \
+        if (HANDLE_GET_KIND((_errhand)->handle) != HANDLE_KIND_BUILTIN) { \
+            MPIU_Object_add_ref( _errhand );                              \
+        }                                                                 \
+    } while (0)
+#define MPIR_Errhandler_release_ref( _errhand, _inuse )                   \
+    do {                                                                  \
+        if (HANDLE_GET_KIND((_errhand)->handle) != HANDLE_KIND_BUILTIN) { \
+            MPIU_Object_release_ref( (_errhand), (_inuse) );              \
+        }                                                                 \
+        else {                                                            \
+            *(_inuse) = 1;                                                \
+        }                                                                 \
+    } while (0)
 /* ------------------------------------------------------------------------- */
 
 /* ------------------------------------------------------------------------- */
@@ -921,6 +783,10 @@ extern MPID_Errhandler MPID_Errhandler_direct[];
  *
  T*/
 
+/* Include the attribute access routines that permit access to the 
+   attribute or its pointer, needed for cross-language access to attributes */
+#include "mpi_attr.h"
+
 /* Because Comm, Datatype, and File handles are all ints, and because
    attributes are otherwise identical between the three types, we
    only store generic copy and delete functions.  This allows us to use
@@ -944,12 +810,30 @@ extern MPID_Errhandler MPID_Errhandler_direct[];
   Attribute-DS
 
   E*/
-typedef union MPID_Copy_function {
+int
+MPIR_Attr_copy_c_proxy(
+    MPI_Comm_copy_attr_function* user_function,
+    int handle,
+    int keyval,
+    void* extra_state,
+    MPIR_AttrType attrib_type,
+    void* attrib,
+    void** attrib_copy,
+    int* flag
+    );
+
+typedef struct MPID_Copy_function {
   int  (*C_CopyFunction)( int, int, void *, void *, void *, int * );
   void (*F77_CopyFunction)  ( MPI_Fint *, MPI_Fint *, MPI_Fint *, MPI_Fint *, 
                               MPI_Fint *, MPI_Fint *, MPI_Fint * );
   void (*F90_CopyFunction)  ( MPI_Fint *, MPI_Fint *, MPI_Aint *, MPI_Aint *,
                               MPI_Aint *, MPI_Fint *, MPI_Fint * );
+  /* The generic lang-independent user_function and proxy will
+   * replace the lang dependent copy funcs above
+   * Currently the lang-indpendent funcs are used only for keyvals
+   */
+  MPI_Comm_copy_attr_function *user_function;
+  MPID_Attr_copy_proxy *proxy;
   /* The C++ function is the same as the C function */
 } MPID_Copy_function;
 
@@ -972,12 +856,28 @@ typedef union MPID_Copy_function {
   Attribute-DS
 
   E*/
-typedef union MPID_Delete_function {
+int
+MPIR_Attr_delete_c_proxy(
+    MPI_Comm_delete_attr_function* user_function,
+    int handle,
+    int keyval,
+    MPIR_AttrType attrib_type,
+    void* attrib,
+    void* extra_state
+    );
+
+typedef struct MPID_Delete_function {
   int  (*C_DeleteFunction)  ( int, int, void *, void * );
   void (*F77_DeleteFunction)( MPI_Fint *, MPI_Fint *, MPI_Fint *, MPI_Fint *, 
                               MPI_Fint * );
   void (*F90_DeleteFunction)( MPI_Fint *, MPI_Fint *, MPI_Aint *, MPI_Aint *, 
                               MPI_Fint * );
+  /* The generic lang-independent user_function and proxy will
+   * replace the lang dependent copy funcs above
+   * Currently the lang-indpendent funcs are used only for keyvals
+   */
+  MPI_Comm_delete_attr_function *user_function;
+  MPID_Attr_delete_proxy *proxy;
 } MPID_Delete_function;
 
 /*S
@@ -988,10 +888,9 @@ typedef union MPID_Delete_function {
 
   S*/
 typedef struct MPID_Keyval {
-    int                  handle;
-    volatile int         ref_count;
-    MPID_Lang_t          language;
+    MPIU_OBJECT_HEADER; /* adds handle and ref_count fields */
     MPID_Object_kind     kind;
+    int                  was_freed;
     void                 *extra_state;
     MPID_Copy_function   copyfn;
     MPID_Delete_function delfn;
@@ -1001,15 +900,27 @@ typedef struct MPID_Keyval {
 #endif
 } MPID_Keyval;
 
-#define MPIR_Keyval_add_ref( _keyval ) \
-    { MPIU_Object_add_ref( _keyval );                   \
-      MPIU_DBG_MSG_FMT(REFCOUNT,TYPICAL,(MPIU_DBG_FDEST,\
-         "Incr keyval %p ref count to %d",_keyval,_keyval->ref_count));}
+#define MPIR_Keyval_add_ref( _keyval )                                  \
+    do {                                                                \
+        MPIU_Object_add_ref( _keyval );                                 \
+    } while(0)
 
-#define MPIR_Keyval_release_ref( _keyval, _inuse ) \
-    { MPIU_Object_release_ref( _keyval, _inuse );        \
-       MPIU_DBG_MSG_FMT(REFCOUNT,TYPICAL,(MPIU_DBG_FDEST,\
-         "Decr keyval %p ref count to %d",_keyval,_keyval->ref_count));}
+#define MPIR_Keyval_release_ref( _keyval, _inuse )                      \
+    do {                                                                \
+        MPIU_Object_release_ref( _keyval, _inuse );                     \
+    } while(0)
+
+
+/* Attribute values in C/C++ are void * and in Fortran are ADDRESS_SIZED
+   integers.  Normally, these are the same size, but in at least one 
+   case, the address-sized integers was selected as longer than void *
+   to work with the datatype code used in the I/O library.  While this
+   is really a limitation in the current Datatype implementation. */
+#ifdef USE_AINT_FOR_ATTRVAL
+typedef MPI_Aint MPID_AttrVal_t;
+#else
+typedef void * MPID_AttrVal_t;
+#endif
 
 /* Attributes need no ref count or handle, but since we want to use the
    common block allocator for them, we must provide those elements 
@@ -1037,19 +948,32 @@ typedef struct MPID_Keyval {
   For the Fortran 77 routines in the case where 'sizeof(MPI_Fint)' < 
   'sizeof(void*)', the high end of the 'void *' value is used.  That is,
   we cast it to 'MPI_Fint *' and use that value.
+
+  MPI defines three kinds of attributes (see MPI 2.1, Section 16.3, pages 
+  487-488 (the standard says two, but there are really three, as discussed
+  below).  These are pointer-valued attributes and two types of integer-valued
+  attributes.  
+  Pointer-valued attributes are used in C.
+  Integer-valued attributes are used in Fortran.  These are of type either
+  INTEGER or INTEGER(KIND=MPI_ADDRESS_KIND).
+
+  The predefined attributes are a combination of INTEGER and pointers.
  
   Module:
   Attribute-DS
 
  S*/
 typedef struct MPID_Attribute {
-    int          handle;
-    volatile int ref_count;
+    MPIU_OBJECT_HEADER; /* adds handle and ref_count fields */
     MPID_Keyval  *keyval;           /* Keyval structure for this attribute */
+
     struct MPID_Attribute *next;    /* Pointer to next in the list */
+    MPIR_AttrType attrType;         /* Type of the attribute */
     long        pre_sentinal;       /* Used to detect user errors in accessing
 				       the value */
-    void *      value;              /* Stored value */
+    MPID_AttrVal_t value;           /* Stored value. An Aint must be at least
+				       as large as an address - some builds
+				       may make an Aint larger than a void * */
     long        post_sentinal;      /* Like pre_sentinal */
     /* other, device-specific information */
 #ifdef MPID_DEV_ATTR_DECL
@@ -1106,8 +1030,7 @@ typedef struct MPID_Group_pmap_t {
 
  S*/
 typedef struct MPID_Group {
-    int          handle;
-    volatile int ref_count;
+    MPIU_OBJECT_HEADER; /* adds handle and ref_count fields */
     int          size;           /* Size of a group */
     int          rank;           /* rank of this process relative to this 
 				    group */
@@ -1128,14 +1051,13 @@ extern MPID_Group MPID_Group_builtin[MPID_GROUP_N_BUILTIN];
 extern MPID_Group MPID_Group_direct[];
 
 #define MPIR_Group_add_ref( _group ) \
-    { MPIU_Object_add_ref( _group );                    \
-      MPIU_DBG_MSG_FMT(REFCOUNT,TYPICAL,(MPIU_DBG_FDEST,\
-         "Incr group %p ref count to %d",_group,_group->ref_count));}
+    do { MPIU_Object_add_ref( _group ); } while (0)
 
 #define MPIR_Group_release_ref( _group, _inuse ) \
-     { MPIU_Object_release_ref( _group, _inuse ); \
-       MPIU_DBG_MSG_FMT(REFCOUNT,TYPICAL,(MPIU_DBG_FDEST,\
-         "Decr group %p ref count to %d",_group,_group->ref_count));}
+     do { MPIU_Object_release_ref( _group, _inuse ); } while (0)
+
+void MPIR_Group_setup_lpid_list( MPID_Group * );
+int MPIR_GroupCheckVCRSubset( MPID_Group *group_ptr, int vsize, MPID_VCR *vcr, int *idx );
 
 /* ------------------------------------------------------------------------- */
 
@@ -1195,6 +1117,11 @@ typedef enum MPID_Comm_kind_t {
   byte orderings).  If the device does need to define this value, it should
   be defined in the file 'mpidpre.h'. 
 
+  Please note that the local_size and remote_size fields can be confusing.  For
+  intracommunicators both fields are always equal to the size of the
+  communicator.  For intercommunicators local_size is equal to the size of
+  local_group while remote_size is equal to the size of remote_group.
+
   Module:
   Communicator-DS
 
@@ -1203,11 +1130,10 @@ typedef enum MPID_Comm_kind_t {
   health?  For example, ok, failure detected, all (live) members of failed 
   communicator have acked.
   S*/
-typedef struct MPID_Comm { 
-    int           handle;        /* value of MPI_Comm for this structure */
-    volatile int  ref_count;
-    int16_t       context_id;    /* Send context id.  See notes */
-    int16_t       recvcontext_id;/* Assigned context id */
+typedef struct MPID_Comm {
+    MPIU_OBJECT_HEADER; /* adds handle and ref_count fields */
+    MPIR_Context_id_t context_id; /* Send context id.  See notes */
+    MPIR_Context_id_t recvcontext_id; /* Send context id.  See notes */
     int           remote_size;   /* Value of MPI_Comm_(remote)_size */
     int           rank;          /* Value of MPI_Comm_rank */
     MPID_VCRT     vcrt;          /* virtual connecton reference table */
@@ -1226,6 +1152,18 @@ typedef struct MPID_Comm {
     MPID_Errhandler *errhandler; /* Pointer to the error handler structure */
     struct MPID_Comm    *local_comm; /* Defined only for intercomms, holds
 				        an intracomm for the local group */
+    int is_node_aware;           /* true if node topology info is available,
+                                    such as node_comm and node_roots_comm */
+    struct MPID_Comm *node_comm; /* Comm of processes in this comm that are on
+                                    the same node as this process. */
+    struct MPID_Comm *node_roots_comm; /* Comm of root processes for other nodes. */
+    int *intranode_table;        /* intranode_table[i] gives the rank in
+                                    node_comm of rank i in this comm or -1 if i
+                                    is not in this process' node_comm.
+                                    It is of size 'local_size'. */
+    int *internode_table;        /* internode_table[i] gives the rank in
+                                    node_roots_comm of rank i in this comm.
+                                    It is of size 'local_size'. */
     int           is_low_group;  /* For intercomms only, this boolean is
 				    set for all members of one of the 
 				    two groups of processes and clear for 
@@ -1271,21 +1209,15 @@ extern MPIU_Object_alloc_t MPID_Comm_mem;
 /* MPIR_Comm_release is a helper routine that releases references to a comm.
    The second arg is false unless this is called as part of 
    MPI_Comm_disconnect .
-
-   Question: Should this only be called if the ref count on the 
-   comm is zero, thus avoiding a function call in the typical case?
 */
 int MPIR_Comm_release(MPID_Comm *, int );
+int MPIR_Comm_release_always(MPID_Comm *comm_ptr, int isDisconnect);
 
 #define MPIR_Comm_add_ref(_comm) \
-    { MPIU_Object_add_ref((_comm));                     \
-      MPIU_DBG_MSG_FMT(REFCOUNT,TYPICAL,(MPIU_DBG_FDEST,\
-         "Incr comm %p ref count to %d",_comm,_comm->ref_count));}
+    do { MPIU_Object_add_ref((_comm)); } while (0)
 
 #define MPIR_Comm_release_ref( _comm, _inuse ) \
-     { MPIU_Object_release_ref( _comm, _inuse );         \
-       MPIU_DBG_MSG_FMT(REFCOUNT,TYPICAL,(MPIU_DBG_FDEST,\
-         "Decr comm %p ref count to %d",_comm,_comm->ref_count));}
+    do { MPIU_Object_release_ref( _comm, _inuse ); } while (0)
 
 /* Preallocated comm objects.  There are 3: comm_world, comm_self, and 
    a private (non-user accessible) dup of comm world that is provided 
@@ -1298,23 +1230,83 @@ extern MPID_Comm MPID_Comm_direct[];
    of the handle is 3-1 (e.g., the index in the builtin array) */
 #define MPIR_ICOMM_WORLD  ((MPI_Comm)0x44000002)
 
-/*
- * The order of the context offsets is important.  The collective routines
- * in the case of intercommunicator operations use offsets 2 and 3 for
- * the local intracommunicator; thus it is vital that the offsets used 
- * for communication between processes in the intercommunicator in a
- * collective operation (MPID_CONTEXT_INTER_COLL) be distinct from the 
- * offsets uses for communication on the local intracommunicator (2+
- * MPID_CONTEXT_INTRA_COLL)
+/* The following preprocessor macros provide bitfield access information for
+ * context ID values.  They follow a uniform naming pattern:
+ *
+ * MPID_CONTEXT_foo_WIDTH - the width in bits of the field
+ * MPID_CONTEXT_foo_MASK  - A valid bit mask for bit-wise AND and OR operations
+ *                          with exactly all of the bits in the field set.
+ * MPID_CONTEXT_foo_SHIFT - The number of bits that the field should be shifted
+ *                          rightwards to place it in the least significant bits
+ *                          of the ID.  There may still be higher order bits
+ *                          from other fields, so the _MASK should be used first
+ *                          if you want to reliably retrieve the exact value of
+ *                          the field.
  */
-#define MPID_CONTEXT_INTRA_PT2PT 0
-#define MPID_CONTEXT_INTRA_COLL  1
-#define MPID_CONTEXT_INTRA_FILE  2
-#define MPID_CONTEXT_INTRA_WIN   3
-#define MPID_CONTEXT_INTER_PT2PT 0
-#define MPID_CONTEXT_INTER_COLL  1
-#define MPID_CONTEXT_INTER_COLLA 2
-#define MPID_CONTEXT_INTER_COLLB 3
+
+/* yields an rvalue that is the value of the field_name_ in the least significant bits */
+#define MPID_CONTEXT_READ_FIELD(field_name_,id_) \
+    (((id_) & MPID_CONTEXT_##field_name_##_MASK) >> MPID_CONTEXT_##field_name_##_SHIFT)
+/* yields an rvalue that is the old_id_ with field_name_ set to field_val_ */
+#define MPID_CONTEXT_SET_FIELD(field_name_,old_id_,field_val_) \
+    ((old_id_ & ~MPID_CONTEXT_##field_name_##_MASK) | ((field_val_) << MPID_CONTEXT_##field_name_##_SHIFT))
+
+/* Context suffixes for separating pt2pt and collective communication */
+#define MPID_CONTEXT_SUFFIX_WIDTH (1)
+#define MPID_CONTEXT_SUFFIX_SHIFT (0)
+#define MPID_CONTEXT_SUFFIX_MASK ((1 << MPID_CONTEXT_SUFFIX_WIDTH) - 1)
+#define MPID_CONTEXT_INTRA_PT2PT (0)
+#define MPID_CONTEXT_INTRA_COLL  (1)
+#define MPID_CONTEXT_INTER_PT2PT (0)
+#define MPID_CONTEXT_INTER_COLL  (1)
+
+/* Used to derive context IDs for sub-communicators from a parent communicator's
+   context ID value.  This field comes after the one bit suffix.
+   values are shifted left by 1. */
+#define MPID_CONTEXT_SUBCOMM_WIDTH (2)
+#define MPID_CONTEXT_SUBCOMM_SHIFT (MPID_CONTEXT_SUFFIX_WIDTH + MPID_CONTEXT_SUFFIX_SHIFT)
+#define MPID_CONTEXT_SUBCOMM_MASK      (((1 << MPID_CONTEXT_SUBCOMM_WIDTH) - 1) << MPID_CONTEXT_SUBCOMM_SHIFT)
+
+/* these values may be added/subtracted directly to/from an existing context ID
+ * in order to determine the context ID of the child/parent */
+#define MPID_CONTEXT_PARENT_OFFSET    (0 << MPID_CONTEXT_SUBCOMM_SHIFT)
+#define MPID_CONTEXT_INTRANODE_OFFSET (1 << MPID_CONTEXT_SUBCOMM_SHIFT)
+#define MPID_CONTEXT_INTERNODE_OFFSET (2 << MPID_CONTEXT_SUBCOMM_SHIFT)
+
+/* this field (IS_LOCALCOM) is used to derive a context ID for local
+ * communicators of intercommunicators without communication */
+#define MPID_CONTEXT_IS_LOCALCOMM_WIDTH (1)
+#define MPID_CONTEXT_IS_LOCALCOMM_SHIFT (MPID_CONTEXT_SUBCOMM_SHIFT + MPID_CONTEXT_SUBCOMM_WIDTH)
+#define MPID_CONTEXT_IS_LOCALCOMM_MASK (((1 << MPID_CONTEXT_IS_LOCALCOMM_WIDTH) - 1) << MPID_CONTEXT_IS_LOCALCOMM_SHIFT)
+
+/* MPIR_MAX_CONTEXT_MASK is the number of ints that make up the bit vector that
+ * describes the context ID prefix space.
+ *
+ * The following must hold:
+ * (num_bits_in_vector) <= (maximum_context_id_prefix)
+ *   which is the following in concrete terms:
+ * MPIR_MAX_CONTEXT_MASK*MPIR_CONTEXT_INT_BITS <= 2**(MPIR_CONTEXT_ID_BITS - (MPID_CONTEXT_PREFIX_SHIFT + MPID_CONTEXT_DYNAMIC_PROC_WIDTH))
+ *
+ * We currently always assume MPIR_CONTEXT_INT_BITS is 32, regardless of the
+ * value of sizeof(int)*CHAR_BITS.  We also make the assumption that CHAR_BITS==8.
+ *
+ * For a 16-bit context id field and CHAR_BITS==8, this implies MPIR_MAX_CONTEXT_MASK <= 256
+ */
+
+/* number of bits to shift right by in order to obtain the context ID prefix */
+#define MPID_CONTEXT_PREFIX_SHIFT (MPID_CONTEXT_IS_LOCALCOMM_SHIFT + MPID_CONTEXT_IS_LOCALCOMM_WIDTH)
+#define MPID_CONTEXT_PREFIX_WIDTH (MPIR_CONTEXT_ID_BITS - (MPID_CONTEXT_PREFIX_SHIFT + MPID_CONTEXT_DYNAMIC_PROC_WIDTH))
+#define MPID_CONTEXT_PREFIX_MASK (((1 << MPID_CONTEXT_PREFIX_WIDTH) - 1) << MPID_CONTEXT_PREFIX_SHIFT)
+
+#define MPID_CONTEXT_DYNAMIC_PROC_WIDTH (1) /* the upper half is reserved for dynamic procs */
+#define MPID_CONTEXT_DYNAMIC_PROC_SHIFT (MPIR_CONTEXT_ID_BITS - MPID_CONTEXT_DYNAMIC_PROC_WIDTH) /* the upper half is reserved for dynamic procs */
+#define MPID_CONTEXT_DYNAMIC_PROC_MASK (((1 << MPID_CONTEXT_DYNAMIC_PROC_WIDTH) - 1) << MPID_CONTEXT_DYNAMIC_PROC_SHIFT)
+
+/* should probably be (sizeof(int)*CHAR_BITS) once we make the code CHAR_BITS-clean */
+#define MPIR_CONTEXT_INT_BITS (32)
+#define MPIR_CONTEXT_ID_BITS (sizeof(MPIR_Context_id_t)*8) /* 8 --> CHAR_BITS eventually */
+#define MPIR_MAX_CONTEXT_MASK \
+    ((1 << (MPIR_CONTEXT_ID_BITS - (MPID_CONTEXT_PREFIX_SHIFT + MPID_CONTEXT_DYNAMIC_PROC_WIDTH))) / MPIR_CONTEXT_INT_BITS)
 
 #if defined (_OSU_PSM_)
     #define MPID_CONTEXT_PSMCTRL    4
@@ -1325,7 +1317,7 @@ extern MPID_Comm MPID_Comm_direct[];
    with the other comm routines (src/mpi/comm, in mpicomm.h).  However,
    to create a new communicator after a spawn or connect-accept operation, 
    the device may need to create a new contextid */
-int MPIR_Get_contextid( MPID_Comm * );
+int MPIR_Get_contextid( MPID_Comm *, MPIR_Context_id_t *context_id );
 
 /* ------------------------------------------------------------------------- */
 
@@ -1373,8 +1365,7 @@ typedef void (MPIR_Grequest_f77_query_function)(void *, MPI_Status *, int *);
   
   S*/
 typedef struct MPID_Request {
-    int          handle;
-    volatile int ref_count;
+    MPIU_OBJECT_HEADER; /* adds handle and ref_count fields */
     MPID_Request_kind_t kind;
     /* completion counter */
     volatile int cc;
@@ -1409,19 +1400,16 @@ typedef struct MPID_Request {
 #endif
 #
 } MPID_Request;
+
 extern MPIU_Object_alloc_t MPID_Request_mem;
 /* Preallocated request objects */
 extern MPID_Request MPID_Request_direct[];
 
 #define MPIR_Request_add_ref( _req ) \
-    { MPIU_Object_add_ref( _req );                      \
-      MPIU_DBG_MSG_FMT(REFCOUNT,TYPICAL,(MPIU_DBG_FDEST,\
-         "Incr request %p ref count to %d",_req,_req->ref_count));}
+    do { MPIU_Object_add_ref( _req ); } while (0)
 
 #define MPIR_Request_release_ref( _req, _inuse ) \
-     { MPIU_Object_release_ref( _req, _inuse );          \
-       MPIU_DBG_MSG_FMT(REFCOUNT,TYPICAL,(MPIU_DBG_FDEST,\
-         "Decr request %p ref count to %d",_req,_req->ref_count));}
+    do { MPIU_Object_release_ref( _req, _inuse ); } while (0)
 
 /* These macros allow us to implement a sendq when debugger support is
    selected.  As there is extra overhead for this, we only do this
@@ -1448,7 +1436,13 @@ void MPIR_CommL_forget( MPID_Comm * );
 
 
 /* ------------------------------------------------------------------------- */
-
+/* Prototypes and definitions for the node ID code.  This is used to support
+   hierarchical collectives in a (mostly) device-independent way. */
+#if defined(MPID_USE_NODE_IDS)
+/* MPID_Node_id_t is a signed integer type defined by the device in mpidpre.h. */
+int MPID_Get_node_id(MPID_Comm *comm, int rank, MPID_Node_id_t *id_p);
+int MPID_Get_max_node_id(MPID_Comm *comm, MPID_Node_id_t *max_id_p);
+#endif
 
 /* ------------------------------------------------------------------------- */
 /*S
@@ -1537,8 +1531,7 @@ typedef struct MPIRI_RMA_Ops {
 
   S*/
 typedef struct MPID_Win {
-    int           handle;             /* value of MPI_Win for this structure */
-    volatile int  ref_count;
+    MPIU_OBJECT_HEADER; /* adds handle and ref_count fields */
     int fence_cnt;     /* 0 = no fence has been called; 
                           1 = fence has been called */ 
     MPID_Errhandler *errhandler;  /* Pointer to the error handler structure */
@@ -1752,8 +1745,7 @@ typedef union MPID_User_function {
   Collective-DS
   S*/
 typedef struct MPID_Op {
-     int                handle;      /* value of MPI_Op for this structure */
-     volatile int       ref_count;
+     MPIU_OBJECT_HEADER; /* adds handle and ref_count fields */
      MPID_Op_kind       kind;
      MPID_Lang_t        language;
      MPID_User_function function;
@@ -1764,14 +1756,12 @@ extern MPID_Op MPID_Op_direct[];
 extern MPIU_Object_alloc_t MPID_Op_mem;
 
 #define MPIR_Op_release_ref( _op, _inuse ) \
-    { MPIU_Object_release_ref( _op, _inuse ); \
-       MPIU_DBG_MSG_FMT(REFCOUNT,TYPICAL,(MPIU_DBG_FDEST,\
-         "Decr MPI_Op %p ref count to %d",_op,_op->ref_count));}
+    do { MPIU_Object_release_ref( _op, _inuse ); } while (0)
 
 /* ------------------------------------------------------------------------- */
 
 /* ------------------------------------------------------------------------- */
-/* mpicoll.h (in src/mpi/coll? */
+/* mpicoll.h (in src/mpi/coll?) */
 /* ------------------------------------------------------------------------- */
 
 /* Collective operations */
@@ -1990,7 +1980,7 @@ typedef struct MPICH_PerProcess_t {
 
     /* Attribute dup functions.  Here for lazy initialization */
     int (*attr_dup)( int, MPID_Attribute *, MPID_Attribute ** );
-    int (*attr_free)( int, MPID_Attribute * );
+    int (*attr_free)( int, MPID_Attribute ** );
     /* There is no win_attr_dup function because there can be no MPI_Win_dup
        function */
     /* Routine to get the messages corresponding to dynamically created
@@ -2001,12 +1991,6 @@ typedef struct MPICH_PerProcess_t {
        MPI reduction and attribute routines */
     void (*cxx_call_op_fn)( void *, void *, int, MPI_Datatype, 
 			    MPI_User_function * );
-    /* Attribute functions.  We use a single "call" function for Comm, Datatype,
-       and File, since all are ints (and we can cast in the call) */
-    int  (*cxx_call_delfn)( int, int, int, void *, void *, 
-			    void (*)(void) );
-    int  (*cxx_call_copyfn)( int, int, int, void *, void *, void *, int *, 
-			    void (*)(void) );
     /* Error handling functions.  As for the attribute functions,
        we pass the integer file/comm/win, the address of the error code, 
        and the C function to call (itself a function defined by the
@@ -2139,6 +2123,7 @@ void MPIR_Err_print_stack(FILE *, int);
 
 
 /* ------------------------------------------------------------------------- */
+/* XXX DJG FIXME delete this? */
 /* FIXME: Merge these with the object refcount update routines (perhaps as
    part of a general "atomic update" file */
 /*
@@ -2253,6 +2238,8 @@ Notes:
 void MPIR_Add_finalize( int (*routine)( void * ), void *extra, int priority );
 
 #define MPIR_FINALIZE_CALLBACK_PRIO 5
+#define MPIR_FINALIZE_CALLBACK_HANDLE_CHECK_PRIO 1
+#define MPIR_FINALIZE_CALLBACK_DEFAULT_PRIO 0
 #define MPIR_FINALIZE_CALLBACK_MAX_PRIO 10
 
 /* For no error checking, we could define MPIR_Nest_incr/decr as empty */
@@ -2262,6 +2249,11 @@ void MPIR_Nest_incr_export(void);
 void MPIR_Nest_decr_export(void);
 
 #ifdef MPICH_DEBUG_NESTING
+/* These two routines export the versions of the nest macros that
+   provide the file/line where the nest value changes, also for use in ROMIO */
+void MPIR_Nest_incr_export_dbg(const char *, int);
+void MPIR_Nest_decr_export_dbg(const char *, int);
+
 /* FIXME: We should move the initialization and error reporting into
    routines that can be called when necessary */
 #define MPIR_Nest_init() {\
@@ -2278,10 +2270,15 @@ void MPIR_Nest_decr_export(void);
                   MPICH_MAX_NESTFILENAME);\
      MPIU_THREADPRIV_FIELD(nestinfo)[MPIU_THREADPRIV_FIELD(nest_count)].line=__LINE__;}\
      MPIU_THREADPRIV_FIELD(nest_count)++; }
-#define MPIR_Nest_decr() {MPIU_THREADPRIV_FIELD(nest_count)--; \
+/* Set the line for the current entry to - the old line - this can help
+   identify increments that did not set the fields */
+#define MPIR_Nest_decr() {\
+    if (MPIU_THREADPRIV_FIELD(nest_count) >= 0) {\
+	MPIU_THREADPRIV_FIELD(nestinfo)[MPIU_THREADPRIV_FIELD(nest_count)].line=-__LINE__;} \
+     MPIU_THREADPRIV_FIELD(nest_count)--; \
      if (MPIU_THREADPRIV_FIELD(nest_count) < MPICH_MAX_NESTINFO && \
     strcmp(MPIU_THREADPRIV_FIELD(nestinfo)[MPIU_THREADPRIV_FIELD(nest_count)].file,__FILE__) != 0) {\
-         MPIU_Msg_printf( "Decremented nest count int file %s:%d but incremented in different file (%s:%d)\n",\
+         MPIU_Msg_printf( "Decremented nest count in file %s:%d but incremented in different file (%s:%d)\n",\
                           __FILE__,__LINE__,\
                           MPIU_THREADPRIV_FIELD(nestinfo)[MPIU_THREADPRIV_FIELD(nest_count)].file,\
                           MPIU_THREADPRIV_FIELD(nestinfo)[MPIU_THREADPRIV_FIELD(nest_count)].line);\
@@ -2598,7 +2595,10 @@ int MPID_Finalize(void);
 
 /* FIXME: the 4th argument isn't part of the original design and isn't documented */
 
+# if 0
 int MPID_Abort( MPID_Comm *comm, int mpi_errno, int exit_code, const char *error_msg );
+#endif
+/* FIXME: Should we turn off this flag and only declare MPID_Abort in mpiutil.h? */
 /* We want to also declare MPID_Abort in mpiutil.h if mpiimpl.h is not used */
 #define HAS_MPID_ABORT_DECL
 
@@ -3218,14 +3218,13 @@ void MPID_Request_set_completed(MPID_Request *);
 void MPID_Request_release(MPID_Request *);
 
 typedef struct MPID_Grequest_class {
-     int                handle;      /* value of MPIX_Grequest_class for 
-					this structure */
-     volatile int       ref_count;
+     MPIU_OBJECT_HEADER; /* adds handle and ref_count fields */
      MPI_Grequest_query_function *query_fn;
      MPI_Grequest_free_function *free_fn;
      MPI_Grequest_cancel_function *cancel_fn;
      MPIX_Grequest_poll_function *poll_fn;
      MPIX_Grequest_wait_function *wait_fn;
+     struct MPID_Grequest_class *next;
 } MPID_Grequest_class;
 
 
@@ -3456,6 +3455,7 @@ int MPID_VCR_Get_lpid(MPID_VCR vcr, int * lpid_ptr);
 #define MPIR_BCAST_SHORT_MSG          12288 
 #define MPIR_BCAST_LONG_MSG           524288
 #define MPIR_BCAST_MIN_PROCS          8
+
 #if defined(_OSU_MVAPICH_)
 #define MPIR_ALLTOALL_SHORT_MSG       8192
 #define MPIR_ALLTOALL_MEDIUM_MSG      8192
@@ -3463,6 +3463,10 @@ int MPID_VCR_Get_lpid(MPID_VCR vcr, int * lpid_ptr);
 #define MPIR_ALLTOALL_SHORT_MSG       256
 #define MPIR_ALLTOALL_MEDIUM_MSG      32768
 #endif
+
+#define MPIR_ALLTOALL_THROTTLE        4  /* max no. of irecvs/isends posted at a 
+time in some alltoall algorithms. Setting it to 0 causes all irecvs/isends to be 
+posted at once. */
 #define MPIR_REDSCAT_COMMUTATIVE_LONG_MSG 524288
 #define MPIR_REDSCAT_NONCOMMUTATIVE_SHORT_MSG 512
 #define MPIR_ALLGATHER_SHORT_MSG      81920
@@ -3472,6 +3476,10 @@ int MPID_VCR_Get_lpid(MPID_VCR vcr, int * lpid_ptr);
 #define MPIR_GATHER_VSMALL_MSG        1024
 #define MPIR_SCATTER_SHORT_MSG        2048  /* for intercommunicator scatter */
 #define MPIR_GATHER_SHORT_MSG         2048  /* for intercommunicator scatter */
+#define MPIR_GATHERV_MIN_PROCS        32
+
+/* For pipelined collectives */
+#define MPIR_ALLGATHERV_PIPELINE_MSGSIZE   32768
 
 /* Tags for point to point operations which implement collective operations */
 #define MPIR_BARRIER_TAG               1
@@ -3499,6 +3507,8 @@ int MPID_VCR_Get_lpid(MPID_VCR vcr, int * lpid_ptr);
 #define MPIR_LOCALCOPY_TAG            23
 #define MPIR_EXSCAN_TAG               24
 #define MPIR_ALLTOALLW_TAG            25
+#define MPIR_TOPO_A_TAG               26
+#define MPIR_TOPO_B_TAG               27
 
 #if defined(_OSU_MVAPICH_)
 #define SHMEM_ALLREDUCE_THRESHOLD (1<<15)
@@ -3521,10 +3531,16 @@ int MPIC_Send(void *buf, int count, MPI_Datatype datatype, int dest, int tag,
               MPI_Comm comm);
 int MPIC_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
               MPI_Comm comm, MPI_Status *status);
+int MPIC_Ssend(void *buf, int count, MPI_Datatype datatype, int dest, int tag,
+               MPI_Comm comm);
 int MPIC_Sendrecv(void *sendbuf, int sendcount, MPI_Datatype sendtype,
                   int dest, int sendtag, void *recvbuf, int recvcount,
                   MPI_Datatype recvtype, int source, int recvtag,
                   MPI_Comm comm, MPI_Status *status);
+int MPIC_Sendrecv_replace(void *buf, int count, MPI_Datatype type,
+                          int dest, int sendtag,
+                          int source, int recvtag,
+                          MPI_Comm comm, MPI_Status *status);
 int MPIR_Localcopy(void *sendbuf, int sendcount, MPI_Datatype sendtype,
                    void *recvbuf, int recvcount, MPI_Datatype recvtype);
 int MPIC_Irecv(void *buf, int count, MPI_Datatype datatype, int
@@ -3566,12 +3582,13 @@ extern MPI_User_function *MPIR_Op_table[];
 typedef int (MPIR_Op_check_dtype_fn) ( MPI_Datatype ); 
 extern MPIR_Op_check_dtype_fn *MPIR_Op_check_dtype_table[];
 
-#ifndef MPIR_MIN
+#if !defined MPIR_MIN
 #define MPIR_MIN(a,b) (((a)>(b))?(b):(a))
-#endif
-#ifndef MPIR_MAX
+#endif /* MPIR_MIN */
+
+#if !defined MPIR_MAX
 #define MPIR_MAX(a,b) (((b)>(a))?(b):(a))
-#endif
+#endif /* MPIR_MAX */
 
 int MPIR_Allgather(void *sendbuf, int sendcount, MPI_Datatype sendtype,
                    void *recvbuf, int recvcount, MPI_Datatype recvtype, 
@@ -3614,8 +3631,10 @@ int MPIR_Bcast_inter(void *buffer, int count, MPI_Datatype datatype,
 		     int root, MPID_Comm *comm_ptr);
 int MPIR_Bcast (void *buffer, int count, MPI_Datatype datatype, int
                 root, MPID_Comm *comm_ptr);
-int knomial_2level_Bcast (void *buffer, int count, MPI_Datatype datatype, int
-                           nbytes,int root, MPID_Comm *comm_ptr);
+
+int MPIR_Bcast_or_coll_fn (void *buffer, int count, MPI_Datatype datatype, int
+                root, MPID_Comm *comm_ptr);
+
 int MPIR_Exscan(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
                 MPI_Op op, MPID_Comm *comm_ptr );
 int MPIR_Gather (void *sendbuf, int sendcnt, MPI_Datatype sendtype,
@@ -3633,6 +3652,8 @@ int MPIR_Reduce_scatter_inter(void *sendbuf, void *recvbuf, int *recvcnts,
                               MPI_Datatype datatype, MPI_Op op, 
                               MPID_Comm *comm_ptr);
 int MPIR_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
+                MPI_Op op, int root, MPID_Comm *comm_ptr );
+int MPIR_Reduce_or_coll_fn(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
                 MPI_Op op, int root, MPID_Comm *comm_ptr );
 int MPIR_Reduce_inter (void *sendbuf, void *recvbuf, int count, MPI_Datatype
                  datatype, MPI_Op op, int root, MPID_Comm *comm_ptr); 
@@ -3654,6 +3675,12 @@ int MPIR_Setup_intercomm_localcomm( MPID_Comm * );
 
 int MPIR_Comm_create( MPID_Comm ** );
 
+int MPIR_Comm_commit( MPID_Comm * );
+
+int MPIR_Comm_is_node_aware( MPID_Comm * );
+
+int MPIR_Comm_is_node_consecutive( MPID_Comm *);
+
 void MPIR_Free_err_dyncodes( void );
 
 
@@ -3670,5 +3697,12 @@ void MPIU_SetTimeout( int );
 int vsnprintf(char *str, size_t size, const char *format, va_list ap);
 # endif
 
+/* Routines for determining local and remote processes */
+
+int MPIU_Find_local_and_external(struct MPID_Comm *comm, int *local_size_p, int *local_rank_p, int **local_ranks_p,
+                                 int *external_size_p, int *external_rank_p, int **external_ranks_p,
+                                 int **intranode_table, int **internode_table_p);
+int MPIU_Get_internode_rank(MPID_Comm *comm_ptr, int r);
+int MPIU_Get_intranode_rank(MPID_Comm *comm_ptr, int r);
 
 #endif /* MPIIMPL_INCLUDED */

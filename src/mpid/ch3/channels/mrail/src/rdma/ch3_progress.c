@@ -134,22 +134,18 @@ void MPIDI_CH3_Progress_start(MPID_Progress_state * state)
 }
 #endif
 
-#ifdef CKPT
+
+
 
 #undef FUNCNAME
 #define FUNCNAME _MPIDI_CH3I_Progress
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int _MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state, int lockcr)
 
+#ifdef CKPT
+  int _MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state, int lockcr)
 #else /* !CKPT */
-
-#undef FUNCNAME
-#define FUNCNAME MPIDI_CH3I_Progress
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
-
+  int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
 #endif /* CKPT */
 {
     MPIDI_VC_t *vc_ptr = NULL;
@@ -158,13 +154,13 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
     unsigned completions = MPIDI_CH3I_progress_completion_count;
     vbuf *buffer = NULL;
 
-    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_PROGRESS);
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_MRAIL_PROGRESS);
     MPIDI_STATE_DECL(MPID_STATE_MPIDU_YIELD);
 #ifdef USE_SLEEP_YIELD
     MPIDI_STATE_DECL(MPID_STATE_MPIDU_SLEEP_YIELD);
 #endif
 
-    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_PROGRESS);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_MRAIL_PROGRESS);
 
     MPIDI_DBG_PRINTF((50, FCNAME, "entering, blocking=%s",
                       is_blocking ? "true" : "false"));
@@ -192,84 +188,91 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
 
         if (!SMP_ONLY) {
 
-        /*CM code*/
-        if (MPIDI_CH3I_Process.new_conn_complete) {
-            /*New connection has been established*/
-            MPIDI_CH3I_Process.new_conn_complete = 0;
-            XRC_MSG ("new conn!");
-            cm_handle_pending_send();
-        }
-
-#ifdef CKPT
-        if (MPIDI_CH3I_Process.reactivation_complete) {
-            /*Some channel has been reactivated*/
-            MPIDI_CH3I_Process.reactivation_complete = 0;
-            cm_handle_reactivation_complete();
-        }
-#endif
-
-        if((mpi_errno = MPIDI_CH3I_read_progress(&vc_ptr, &buffer, is_blocking)) != MPI_SUCCESS)
-        {
-            MPIU_ERR_POP(mpi_errno);
-        }
-
-        if (vc_ptr == NULL) {
-#if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
-            MPIU_THREAD_CHECK_BEGIN
-#ifdef SOLARIS
-            if(spin_count > 100)
-#else
-            if(spin_count > 5)
-#endif
-	    {
-                spin_count = 0;
-                MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
-                MPIDU_Yield();
-                MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
-            }
-            MPIU_THREAD_CHECK_END
-#endif
-            ++spin_count;
-        } else {
-            spin_count = 1;
-#ifdef USE_SLEEP_YIELD
-            MPIDI_Sleep_yield_count = 0;
-#endif
             /*CM code*/
-            if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_SRV 
-#ifdef _ENABLE_XRC_
-                    || VC_XST_ISSET (vc_ptr, XF_NEW_RECV)
-#endif
-                    ) {
-                /*newly established connection on server side*/
-                MPIDI_CH3I_CM_Establish(vc_ptr);
-#ifdef _ENABLE_XRC_
-                if (!USE_XRC)
-#endif
-                    cm_handle_pending_send();
+            if (MPIDI_CH3I_Process.new_conn_complete) {
+                /*New connection has been established*/
+                MPIDI_CH3I_Process.new_conn_complete = 0;
+                XRC_MSG ("new conn!");
+                cm_handle_pending_send();
             }
+
 #ifdef CKPT
-            else if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_REACTIVATING_SRV) {
-                MPIDI_CH3I_CM_Establish(vc_ptr);
-                MPIDI_CH3I_CM_Send_logged_msg(vc_ptr);
-                if (vc_ptr->mrail.sreq_head) /*has rndv*/
-                    PUSH_FLOWLIST(vc_ptr);
-                /* Handle pending two-sided sends */
-                if (!MPIDI_CH3I_CM_SendQ_empty(vc_ptr))
-                    cm_send_pending_msg(vc_ptr);
-                /* Handle pending one-sided sends */
-                if (!MPIDI_CH3I_CM_One_Sided_SendQ_empty(vc_ptr)) {
-                    cm_send_pending_1sc_msg(vc_ptr);
-                }
+            if (MPIDI_CH3I_Process.reactivation_complete) {
+                /*Some channel has been reactivated*/
+                MPIDI_CH3I_Process.reactivation_complete = 0;
+                cm_handle_reactivation_complete();
             }
 #endif
-            if ((mpi_errno = handle_read(vc_ptr, buffer)) != MPI_SUCCESS)
+
+            mpi_errno = MPIDI_CH3I_read_progress(&vc_ptr, &buffer, is_blocking);
+            if (mpi_errno != MPI_SUCCESS)
             {
                 MPIU_ERR_POP(mpi_errno);
             }
-        }
+
+            if (vc_ptr == NULL) {
+#if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
+                MPIU_THREAD_CHECK_BEGIN
+#ifdef SOLARIS
+                if(spin_count > 100)
+#else
+                if(spin_count > 5)
+#endif
+                {
+                    spin_count = 0;
+                    MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
+                    MPIDU_Yield();
+                    MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
+                }
+                MPIU_THREAD_CHECK_END
+#endif
+                ++spin_count;
+            } else {
+                spin_count = 1;
+#ifdef USE_SLEEP_YIELD
+                MPIDI_Sleep_yield_count = 0;
+#endif
+                /*CM code*/
+#ifdef _ENABLE_XRC_
+                if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_SRV || VC_XST_ISSET (vc_ptr, XF_NEW_RECV))
+                {
+                    MPIDI_CH3I_CM_Establish(vc_ptr);
+                    if (!USE_XRC)
+                        cm_handle_pending_send();
+                }
+#else /* _ENABLE_XRC_ */
+                if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_SRV)
+                {
+                    /*newly established connection on server side*/
+                    MPIDI_CH3I_CM_Establish(vc_ptr);
+                    cm_handle_pending_send();
+                }
+#endif /* _ENABLE_XRC_ */
+
+#ifdef CKPT
+                else if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_REACTIVATING_SRV) {
+                    MPIDI_CH3I_CM_Establish(vc_ptr);
+                    MPIDI_CH3I_CM_Send_logged_msg(vc_ptr);
+                    if (vc_ptr->mrail.sreq_head) /*has rndv*/
+                        PUSH_FLOWLIST(vc_ptr);
+                    /* Handle pending two-sided sends */
+                    if (!MPIDI_CH3I_CM_SendQ_empty(vc_ptr))
+                        cm_send_pending_msg(vc_ptr);
+                    /* Handle pending one-sided sends */
+                    if (!MPIDI_CH3I_CM_One_Sided_SendQ_empty(vc_ptr)) {
+                        cm_send_pending_1sc_msg(vc_ptr);
+                    }
+                }
+#endif /* CKPT */
+                mpi_errno = handle_read(vc_ptr, buffer); 
+                if (mpi_errno != MPI_SUCCESS)
+                {
+                    MPIU_ERR_POP(mpi_errno);
+                }
+            }
         } else {
-            if (SMP_INIT) {
+            if (SMP_INIT) 
+            {
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
                 MPIU_THREAD_CHECK_BEGIN
                 ++spin_count;
@@ -305,7 +308,7 @@ fn_fail:
 #endif
     MPIDI_DBG_PRINTF((50, FCNAME, "exiting, count=%d",
                       MPIDI_CH3I_progress_completion_count - completions));
-    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_PROGRESS);
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_MRAIL_PROGRESS);
     DEBUG_PRINT("Exiting ch3 progress\n");
     return mpi_errno;
 }
@@ -318,10 +321,10 @@ int MPIDI_CH3I_Progress_test()
 {
     int mpi_errno = MPI_SUCCESS;
 
-    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_PROGRESS_TEST);
+    MPIDI_STATE_DECL(MPID_CH3I_PROGRESS_TEST);
     MPIDI_STATE_DECL(MPID_STATE_MPIDU_YIELD);
 
-    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_PROGRESS_TEST);
+    MPIDI_FUNC_ENTER(MPID_CH3I_PROGRESS_TEST);
 
 #if defined(CKPT)
     MPIDI_CH3I_CR_lock();
@@ -338,20 +341,22 @@ int MPIDI_CH3I_Progress_test()
     /*needed if early send complete doesnot occur */
     if (SMP_INIT)
     {
-	if ((mpi_errno = MPIDI_CH3I_SMP_write_progress(MPIDI_Process.my_pg)) != MPI_SUCCESS)
+    	mpi_errno = MPIDI_CH3I_SMP_write_progress(MPIDI_Process.my_pg);
+	    if (mpi_errno != MPI_SUCCESS)
         {
             MPIU_ERR_POP(mpi_errno);
-	}
+	    }
 
         int completion_count = MPIDI_CH3I_progress_completion_count;
 
-	/* check if we made any progress */
-	if (completion_count != MPIDI_CH3I_progress_completion_count)
+	    /* check if we made any progress */
+	    if (completion_count != MPIDI_CH3I_progress_completion_count)
         {
-	    goto fn_exit;
-	}
+	       goto fn_exit;
+	    }
 
-	if ((mpi_errno = MPIDI_CH3I_SMP_read_progress(MPIDI_Process.my_pg)) != MPI_SUCCESS)
+	    mpi_errno = MPIDI_CH3I_SMP_read_progress(MPIDI_Process.my_pg);
+        if (mpi_errno != MPI_SUCCESS)
         {
             MPIU_ERR_POP(mpi_errno);
         }
@@ -390,18 +395,22 @@ int MPIDI_CH3I_Progress_test()
         if (vc_ptr != NULL)
         {
             /*CM code*/
-            if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_SRV 
 #ifdef _ENABLE_XRC_
-                    || VC_XST_ISSET (vc_ptr, XF_NEW_RECV)
-#endif
-               ) {
+            if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_SRV || VC_XST_ISSET (vc_ptr, XF_NEW_RECV) )
+            {
                 /*newly established connection on server side*/
                 MPIDI_CH3I_CM_Establish(vc_ptr);
-#ifdef _ENABLE_XRC_
                 if (!USE_XRC)
-#endif
                     cm_handle_pending_send();
             }
+#else /* _ENABLE_XRC_ */
+            if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_SRV)
+            {
+                /*newly established connection on server side*/
+                MPIDI_CH3I_CM_Establish(vc_ptr);
+                cm_handle_pending_send();
+            }
+#endif /* _ENABLE_XRC_ */
 
 #if defined(CKPT)
             else if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_REACTIVATING_SRV)
@@ -428,7 +437,8 @@ int MPIDI_CH3I_Progress_test()
             }
 #endif /* defined(CKPT) */
 
-            if ((mpi_errno = handle_read(vc_ptr, buffer)) != MPI_SUCCESS)
+            mpi_errno = handle_read(vc_ptr, buffer);
+            if (mpi_errno != MPI_SUCCESS)
             {
                 MPIU_ERR_POP(mpi_errno);
             }
@@ -447,7 +457,7 @@ fn_exit:
     MPIDI_CH3I_CR_unlock();
 #endif /* defined(CKPT) */
 
-    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_PROGRESS_TEST);
+    MPIDI_FUNC_EXIT(MPID_CH3I_PROGRESS_TEST);
     DEBUG_PRINT("Exiting ch3 progress test\n");
     return mpi_errno;
 }
@@ -629,7 +639,7 @@ int cm_send_pending_msg(MPIDI_VC_t * vc)
 
             if (pkt_len > MRAIL_MAX_EAGER_SIZE)
             {
-                memcpy(sreq->dev.iov, iov, n_iov * sizeof(MPID_IOV));
+              MPIU_Memcpy(sreq->dev.iov, iov, n_iov * sizeof(MPID_IOV));
                 sreq->dev.iov_count = n_iov;
 
                 switch ((mpi_errno = MPIDI_CH3_Packetized_send(vc, sreq)))
@@ -663,7 +673,7 @@ int cm_send_pending_msg(MPIDI_VC_t * vc)
                 /* First copy whatever has already been in iov set */
                 for (; iter_iov < n_iov; ++iter_iov)
                 {
-                    memcpy(tmpbuf, iov[iter_iov].MPID_IOV_BUF,
+                  MPIU_Memcpy(tmpbuf, iov[iter_iov].MPID_IOV_BUF,
                             iov[iter_iov].MPID_IOV_LEN);
                     tmpbuf = (void *) ((unsigned long) tmpbuf +
                             iov[iter_iov].MPID_IOV_LEN);
@@ -687,7 +697,7 @@ int cm_send_pending_msg(MPIDI_VC_t * vc)
 
                     for (iter_iov = 0; iter_iov < sreq->dev.iov_count; ++iter_iov)
                     {
-                        memcpy(tmpbuf, sreq->dev.iov[iter_iov].MPID_IOV_BUF,
+                      MPIU_Memcpy(tmpbuf, sreq->dev.iov[iter_iov].MPID_IOV_BUF,
                                 sreq->dev.iov[iter_iov].MPID_IOV_LEN);
                         tmpbuf =
                             (void *) ((unsigned long) tmpbuf +
@@ -704,7 +714,7 @@ int cm_send_pending_msg(MPIDI_VC_t * vc)
 
             if (pkt_len > MRAIL_MAX_EAGER_SIZE)
             {
-                memcpy(sreq->dev.iov, iov, n_iov * sizeof(MPID_IOV));
+              MPIU_Memcpy(sreq->dev.iov, iov, n_iov * sizeof(MPID_IOV));
                 sreq->dev.iov_count = n_iov;
 
                 switch ((mpi_errno = MPIDI_CH3_Packetized_send(vc, sreq)))
@@ -867,16 +877,18 @@ int cm_send_pending_1sc_msg(MPIDI_VC_t * vc)
 static int cm_handle_pending_send()
 {
     int mpi_errno = MPI_SUCCESS;
-    MPIDI_VC_t* vc = NULL;
-    MPIDI_PG_t* pg;
-    int i;
+    MPIDI_PG_iterator iter;
 
-    MPIDI_PG_Iterate_reset();
-    MPIDI_PG_Get_next(&pg);
+    /* MPIDI_PG_Iterate_reset(); */
+    MPIDI_PG_Get_iterator(&iter);
 
-    while (pg) {
+    while (MPIDI_PG_Has_next(&iter)) {
+        int i;
+        MPIDI_PG_t* pg;
+        MPIDI_PG_Get_next(&iter, &pg);
         for (i = 0; i < MPIDI_PG_Get_size(pg); ++i) {
-	    MPIDI_PG_Get_vc(pg, i, &vc);
+            MPIDI_VC_t* vc = NULL;
+            MPIDI_PG_Get_vc(pg, i, &vc);
 
             /* Handle pending two-sided sends */
             if ((vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE
@@ -914,7 +926,7 @@ static int cm_handle_pending_send()
             MPICM_unlock();
 #endif
         }
-        MPIDI_PG_Get_next(&pg);
+        /* MPIDI_PG_Get_next(&iter, &pg); */
     }
 
 fn_fail:

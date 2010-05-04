@@ -1,4 +1,4 @@
-# Copyright (c) 2002-2009, The Ohio State University. All rights
+# Copyright (c) 2002-2010, The Ohio State University. All rights
 # reserved.
 #
 # This file is part of the MVAPICH2 software package developed by the
@@ -28,8 +28,9 @@ doc_LATEX_SOURCES = ${doc_sources}
 # install_BIN = mpicc mpich2version parkill
 install_BIN = mpicc mpiname/mpiname parkill
 # </_OSU_MVAPICH_>
+#install_SCRIPT = mpicc parkill
 install_ETC = mpixxx_opts.conf mpicc.conf
-optinstall_BIN = mpicxx mpif77 mpif90
+optinstall_SCRIPT = mpicxx mpif77 mpif90 mpihostreport
 optinstall_ETC = mpicxx.conf mpif77.conf mpif90.conf
 
 # <_OSU_MVAPICH_>
@@ -47,3 +48,4 @@ distclean-local:
             cd $$dir && ${MAKE} prefix=$$build_prefix exec_prefix=$$build_prefix bindir=$$build_prefix/bin mvapich-build-uninstall; \
         done
 # </_OSU_MVAPICH_>
+

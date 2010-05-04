@@ -153,7 +153,7 @@ typedef struct vbuf_region
     struct vbuf_region* next;   /* thread vbuf regions        */
 } vbuf_region;
 
-static void inline VBUF_SET_RDMA_ADDR_KEY(
+static inline void VBUF_SET_RDMA_ADDR_KEY(
     vbuf* v, 
     int len,
     void* local_addr,

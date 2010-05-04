@@ -53,11 +53,12 @@ int MPI_Comm_disconnect(MPI_Comm * comm)
     static const char FCNAME[] = "MPI_Comm_disconnect";
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL;
+    MPIU_THREADPRIV_DECL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_COMM_DISCONNECT);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPIU_THREAD_SINGLE_CS_ENTER("spawn");
+    MPIU_THREAD_CS_ENTER(ALLFUNC,);
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_COMM_DISCONNECT);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -102,12 +103,13 @@ int MPI_Comm_disconnect(MPI_Comm * comm)
      * only for pending communication operations (and decremented when
      * those complete).
      */
-    if (comm_ptr->ref_count > 1)
+    /* FIXME-MT should we be checking this? */
+    if (MPIU_Object_get_ref(comm_ptr) > 1)
     {
 	MPID_Progress_state progress_state;
 	
 	MPID_Progress_start(&progress_state);
-	while (comm_ptr->ref_count > 1)
+	while (MPIU_Object_get_ref(comm_ptr) > 1)
 	{
 	    mpi_errno = MPID_Progress_wait(&progress_state);
 	    /* --BEGIN ERROR HANDLING-- */
@@ -130,7 +132,7 @@ int MPI_Comm_disconnect(MPI_Comm * comm)
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_COMM_DISCONNECT);
-    MPIU_THREAD_SINGLE_CS_EXIT("spawn");
+    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return mpi_errno;
 
   fn_fail:

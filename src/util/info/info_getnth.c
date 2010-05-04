@@ -1,6 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: info_getnth.c,v 1.22 2006/05/08 15:55:47 toonen Exp $
- *
+/*
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
@@ -53,11 +52,12 @@ int MPI_Info_get_nthkey( MPI_Info info, int n, char *key )
     int       nkeys;
     static const char FCNAME[] = "MPI_Info_get_nthkey";
     int mpi_errno = MPI_SUCCESS;
+    MPIU_THREADPRIV_DECL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_INFO_GET_NTHKEY);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPIU_THREAD_SINGLE_CS_ENTER("info");
+    MPIU_THREAD_CS_ENTER(ALLFUNC,);
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_INFO_GET_NTHKEY);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -100,7 +100,7 @@ int MPI_Info_get_nthkey( MPI_Info info, int n, char *key )
 	nkeys++;
     }
 
-    /* very that n is valid */
+    /* verify that n is valid */
     MPIU_ERR_CHKANDJUMP2((!curr_ptr), mpi_errno, MPI_ERR_ARG, "**infonkey", "**infonkey %d %d", n, nkeys);
 
     MPIU_Strncpy( key, curr_ptr->key, MPI_MAX_INFO_KEY+1 );
@@ -111,7 +111,7 @@ int MPI_Info_get_nthkey( MPI_Info info, int n, char *key )
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_INFO_GET_NTHKEY);
-    MPIU_THREAD_SINGLE_CS_EXIT("info");
+    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return mpi_errno;
     
   fn_fail:

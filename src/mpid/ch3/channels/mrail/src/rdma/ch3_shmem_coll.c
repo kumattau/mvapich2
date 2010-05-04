@@ -228,7 +228,7 @@ int MPIDI_CH3I_SHMEM_COLL_Mmap()
 
 #if defined(CKPT)
     if (smc_store_set) {
-	memcpy(shmem_coll_obj.mmap_ptr, smc_store, shmem_coll_size);
+        MPIU_Memcpy(shmem_coll_obj.mmap_ptr, smc_store, shmem_coll_size);
 	MPIU_Free(smc_store);
 	smc_store_set = 0;
     }
@@ -238,9 +238,9 @@ int MPIDI_CH3I_SHMEM_COLL_Mmap()
 
     if (g_smpi.my_local_id == 0)
     {
-        memset(shmem_coll_obj.mmap_ptr, 0, shmem_coll_size);
+      MPIU_Memset(shmem_coll_obj.mmap_ptr, 0, shmem_coll_size);
 
-        for (; j < SHMEM_COLL_NUM_COMM; ++j)
+        for (j=0; j < SHMEM_COLL_NUM_COMM; ++j)
         {
             for (i = 0; i < SHMEM_COLL_NUM_PROCS; ++i)
             {
@@ -295,7 +295,7 @@ int MPIDI_CH3I_SHMEM_COLL_finalize()
 
 	if (g_smpi.my_local_id == 0) {
 	    smc_store = MPIU_Malloc(shmem_coll_size);
-	    memcpy(smc_store, shmem_coll_obj.mmap_ptr, shmem_coll_size);
+	    MPIU_Memcpy(smc_store, shmem_coll_obj.mmap_ptr, shmem_coll_size);
 	    smc_store_set = 1;
 	}
     }
@@ -306,7 +306,6 @@ int MPIDI_CH3I_SHMEM_COLL_finalize()
     munmap(shmem_coll_obj.mmap_ptr, shmem_coll_size);
     close(shmem_coll_obj.fd);
     MPIU_Free(shmem_file);
-    MPIU_Free(bcast_file);
     return MPI_SUCCESS;
 }
 
@@ -627,7 +626,7 @@ int MPID_SHMEM_BCAST_mmap(void** mmap_ptr, int bcast_seg_size, int fd, int my_lo
     }
 
     if (my_local_rank == 0){
-        memset(*mmap_ptr, 0, bcast_seg_size);
+      MPIU_Memset(*mmap_ptr, 0, bcast_seg_size);
     }
     
     return MPI_SUCCESS;
@@ -659,7 +658,7 @@ void signal_local_processes(int step, int index, char* send_buf, int offset, int
     
     /* Clear the bcast flags for the next Bcast */
     tmp = (char*)shmem_coll_buf + ((index + 1)%3)*g_shmem_bcast_flags;
-    memset((void*) tmp,0, g_shmem_bcast_flags);
+    MPIU_Memset((void*) tmp,0, g_shmem_bcast_flags);
 }
 
 void wait_for_signal(int step, int index, char** output_buf, int* offset, int* bytes, void* mmap_ptr){

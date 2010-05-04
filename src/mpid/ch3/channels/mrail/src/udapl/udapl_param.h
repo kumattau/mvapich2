@@ -449,6 +449,8 @@ extern int  use_hwloc_cpu_binding;
   #endif
 #endif
 
+#ifndef MIN
 #define MIN(a,b) ((a)<(b)?(a):(b))
+#endif
 
 #endif /* _UDAPL_PARAM_H */

@@ -19,7 +19,6 @@ int MPIDI_CH3_iSend (MPIDI_VC_t *vc, MPID_Request *sreq, void * hdr, MPIDI_msg_s
 {
     int mpi_errno = MPI_SUCCESS;
     int again = 0;
-    
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_ISEND);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_ISEND);
@@ -27,6 +26,7 @@ int MPIDI_CH3_iSend (MPIDI_VC_t *vc, MPID_Request *sreq, void * hdr, MPIDI_msg_s
     if (((MPIDI_CH3I_VC *)vc->channel_private)->iSendContig)
     {
         mpi_errno = ((MPIDI_CH3I_VC *)vc->channel_private)->iSendContig(vc, sreq, hdr, hdr_sz, NULL, 0);
+        if(mpi_errno != MPI_SUCCESS) { MPIU_ERR_POP(mpi_errno); }
         goto fn_exit;
     }
 
@@ -51,7 +51,7 @@ int MPIDI_CH3_iSend (MPIDI_VC_t *vc, MPID_Request *sreq, void * hdr, MPIDI_msg_s
 	else
 	{
             int (*reqFn)(MPIDI_VC_t *, MPID_Request *, int *);
-            
+
             reqFn = sreq->dev.OnDataAvail;
             if (!reqFn)
             {
@@ -88,7 +88,16 @@ int MPIDI_CH3_iSend (MPIDI_VC_t *vc, MPID_Request *sreq, void * hdr, MPIDI_msg_s
     sreq->dev.iov_offset = 0;
     sreq->ch.noncontig = FALSE;
     sreq->ch.vc = vc;
-    MPIDI_CH3I_SendQ_enqueue (sreq, CH3_NORMAL_QUEUE);
+    
+    if (MPIDI_CH3I_SendQ_empty(CH3_NORMAL_QUEUE)) {
+        MPIDI_CH3I_SendQ_enqueue(sreq, CH3_NORMAL_QUEUE);
+    } else {
+        /* this is not the first send on the queue, enqueue it then
+           check to see if we can send any now */
+        MPIDI_CH3I_SendQ_enqueue(sreq, CH3_NORMAL_QUEUE);
+        mpi_errno = MPIDI_CH3_Progress_test();
+        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    }
     
     goto fn_exit;
 }

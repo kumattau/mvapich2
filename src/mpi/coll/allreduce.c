@@ -1,23 +1,21 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: allreduce.c,v 1.68 2006/12/09 16:42:23 gropp Exp $
- *
+/*
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
- * reserved.
- *
- * This file is part of the MVAPICH2 software package developed by the
- * team members of The Ohio State University's Network-Based Computing
- * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
- *
- * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT in the top level MVAPICH2 directory.
- *
- */
-
 #include "mpiimpl.h"
+
+#if defined(_OSU_COLLECTIVES_)
+
+/************************************************
+ * Using OSU collectives implementation         *
+ ************************************************/
+
+#else 
+/************************************************
+ * Using MPICH2 collectives implementation      *
+ ************************************************
 
 /* -- Begin Profiling Symbol Block for routine MPI_Allreduce */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -49,9 +47,6 @@ MPIR_Op_check_dtype_fn *MPIR_Op_check_dtype_table[] = {
     MPIR_LXOR_check_dtype, MPIR_BXOR_check_dtype,
     MPIR_MINLOC_check_dtype, MPIR_MAXLOC_check_dtype, }; 
 
-#if defined(_OSU_MVAPICH_)
-extern struct coll_runtime coll_param;
-#endif /* defined(_OSU_MVAPICH_) */
 
 /* This is the default implementation of allreduce. The algorithm is:
    
@@ -135,9 +130,7 @@ int MPIR_Allreduce (
 #endif
     MPIU_CHKLMEM_DECL(3);
     
-    if (count == 0) { 
-      return MPI_SUCCESS;
-    }
+    if (count == 0) return MPI_SUCCESS;
     comm = comm_ptr->handle;
 
     MPIU_THREADPRIV_GET;
@@ -145,9 +138,8 @@ int MPIR_Allreduce (
     
     is_homogeneous = 1;
 #ifdef MPID_HAS_HETERO
-    if (comm_ptr->is_hetero) { 
+    if (comm_ptr->is_hetero)
         is_homogeneous = 0;
-    }
 #endif
     
 #ifdef MPID_HAS_HETERO
@@ -166,7 +158,8 @@ int MPIR_Allreduce (
             rc = NMPI_Bcast  ( recvbuf, count, datatype, 0, comm );
             if (rc) mpi_errno = rc;
         }
-    } else 
+    }
+    else 
 #endif /* MPID_HAS_HETERO */
     {
         /* homogeneous */
@@ -181,24 +174,24 @@ int MPIR_Allreduce (
             is_commutative = 1;
             /* get the function by indexing into the op table */
             uop = MPIR_Op_table[op%16 - 1];
-        } else {
+        }
+        else {
             MPID_Op_get_ptr(op, op_ptr);
-            if (op_ptr->kind == MPID_OP_USER_NONCOMMUTE) { 
+            if (op_ptr->kind == MPID_OP_USER_NONCOMMUTE)
                 is_commutative = 0;
-            } else { 
+            else
                 is_commutative = 1;
-            }
 #ifdef HAVE_CXX_BINDING            
             if (op_ptr->language == MPID_LANG_CXX) {
                 uop = (MPI_User_function *) op_ptr->function.c_function;
 		is_cxx_uop = 1;
-	    } else
+	    }
+	    else
 #endif
-            if ((op_ptr->language == MPID_LANG_C)) { 
+            if ((op_ptr->language == MPID_LANG_C))
                 uop = (MPI_User_function *) op_ptr->function.c_function;
-            }  else { 
+            else
                 uop = (MPI_User_function *) op_ptr->function.f77_function;
-            }
         }
         
         /* need to allocate temporary buffer to store incoming data*/
@@ -207,6 +200,7 @@ int MPIR_Allreduce (
 	MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER, "**fail");
         MPID_Datatype_get_extent_macro(datatype, extent);
 
+        MPID_Ensure_Aint_fits_in_pointer(count * MPIR_MAX(extent, true_extent));
         MPIU_CHKLMEM_MALLOC(tmp_buf, void *, count*(MPIR_MAX(extent,true_extent)), mpi_errno, "temporary buffer");
 	
         /* adjust for potential negative lower bound in datatype */
@@ -248,7 +242,8 @@ int MPIR_Allreduce (
                    process does not pariticipate in recursive
                    doubling */
                 newrank = -1; 
-            } else { /* odd */
+            }
+            else { /* odd */
                 mpi_errno = MPIC_Recv(tmp_buf, count, 
                                       datatype, rank-1,
                                       MPIR_ALLREDUCE_TAG, comm,
@@ -264,16 +259,17 @@ int MPIR_Allreduce (
                                                     count,
                                                     datatype,
                                                     uop ); 
-                } else 
+                }
+                else 
 #endif
                     (*uop)(tmp_buf, recvbuf, &count, &datatype);
                 
                 /* change the rank */
                 newrank = rank / 2;
             }
-        } else  /* rank >= 2*rem */ { 
+        }
+        else  /* rank >= 2*rem */
             newrank = rank - rem;
-       } 
         
         /* If op is user-defined or count is less than pof2, use
            recursive doubling algorithm. Otherwise do a reduce-scatter
@@ -285,11 +281,7 @@ int MPIR_Allreduce (
            using recursive doubling in that case.) */
 
         if (newrank != -1) {
-#if defined(_OSU_MVAPICH_)
-            if ((count*type_size <= coll_param.allreduce_short_msg) ||
-#else /* defined(_OSU_MVAPICH_) */
             if ((count*type_size <= MPIR_ALLREDUCE_SHORT_MSG) ||
-#endif /* defined(_OSU_MVAPICH_) */
                 (HANDLE_GET_KIND(op) != HANDLE_KIND_BUILTIN) ||  
                 (count < pof2)) { /* use recursive doubling */
                 mask = 0x1;
@@ -318,10 +310,12 @@ int MPIR_Allreduce (
                                                             count,
                                                             datatype,
                                                             uop ); 
-                        } else 
+                        }
+                        else 
 #endif
                             (*uop)(tmp_buf, recvbuf, &count, &datatype);
-                    } else {
+                    }
+                    else {
                         /* op is noncommutative and the order is not right */
 #ifdef HAVE_CXX_BINDING
                         if (is_cxx_uop) {
@@ -329,7 +323,8 @@ int MPIR_Allreduce (
                                                             count,
                                                             datatype,
                                                             uop ); 
-                        } else 
+                        }
+                        else 
 #endif
                             (*uop)(recvbuf, tmp_buf, &count, &datatype);
                         
@@ -340,7 +335,9 @@ int MPIR_Allreduce (
                     }
                     mask <<= 1;
                 }
-            } else {
+            }
+
+            else {
 
                 /* do a reduce-scatter followed by allgather */
 
@@ -351,15 +348,13 @@ int MPIR_Allreduce (
 		MPIU_CHKLMEM_MALLOC(cnts, int *, pof2*sizeof(int), mpi_errno, "counts");
 		MPIU_CHKLMEM_MALLOC(disps, int *, pof2*sizeof(int), mpi_errno, "displacements");
 
-                for (i=0; i<(pof2-1); i++)  { 
+                for (i=0; i<(pof2-1); i++) 
                     cnts[i] = count/pof2;
-                } 
                 cnts[pof2-1] = count - (count/pof2)*(pof2-1);
 
                 disps[0] = 0;
-                for (i=1; i<pof2; i++) { 
+                for (i=1; i<pof2; i++)
                     disps[i] = disps[i-1] + cnts[i-1];
-                } 
 
                 mask = 0x1;
                 send_idx = recv_idx = 0;
@@ -376,7 +371,8 @@ int MPIR_Allreduce (
                             send_cnt += cnts[i];
                         for (i=recv_idx; i<send_idx; i++)
                             recv_cnt += cnts[i];
-                    } else {
+                    }
+                    else {
                         recv_idx = send_idx + pof2/(mask*2);
                         for (i=send_idx; i<recv_idx; i++)
                             send_cnt += cnts[i];
@@ -431,25 +427,21 @@ int MPIR_Allreduce (
                     send_cnt = recv_cnt = 0;
                     if (newrank < newdst) {
                         /* update last_idx except on first iteration */
-                        if (mask != pof2/2) { 
+                        if (mask != pof2/2)
                             last_idx = last_idx + pof2/(mask*2);
-                        }
 
                         recv_idx = send_idx + pof2/(mask*2);
-                        for (i=send_idx; i<recv_idx; i++) { 
+                        for (i=send_idx; i<recv_idx; i++)
                             send_cnt += cnts[i];
-                        } 
-                        for (i=recv_idx; i<last_idx; i++) { 
+                        for (i=recv_idx; i<last_idx; i++)
                             recv_cnt += cnts[i];
-                        }
-                    } else {
+                    }
+                    else {
                         recv_idx = send_idx - pof2/(mask*2);
-                        for (i=send_idx; i<last_idx; i++) { 
+                        for (i=send_idx; i<last_idx; i++)
                             send_cnt += cnts[i];
-                        } 
-                        for (i=recv_idx; i<send_idx; i++) { 
+                        for (i=recv_idx; i<send_idx; i++)
                             recv_cnt += cnts[i];
-                        } 
                     }
 
                     mpi_errno = MPIC_Sendrecv((char *) recvbuf +
@@ -463,9 +455,7 @@ int MPIR_Allreduce (
                                               MPI_STATUS_IGNORE);
 		    MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER, "**fail");
 
-                    if (newrank > newdst) { 
-                       send_idx = recv_idx;
-                    }
+                    if (newrank > newdst) send_idx = recv_idx;
 
                     mask >>= 1;
                 }
@@ -476,25 +466,23 @@ int MPIR_Allreduce (
            processes of rank < 2*rem send the result to
            (rank-1), the ranks who didn't participate above. */
         if (rank < 2*rem) {
-            if (rank % 2)  /* odd */ { 
+            if (rank % 2)  /* odd */
                 mpi_errno = MPIC_Send(recvbuf, count, 
                                       datatype, rank-1,
                                       MPIR_ALLREDUCE_TAG, comm);
-            } else  /* even */ { 
+            else  /* even */
                 mpi_errno = MPIC_Recv(recvbuf, count,
                                       datatype, rank+1,
                                       MPIR_ALLREDUCE_TAG, comm,
                                       MPI_STATUS_IGNORE); 
-            } 
             MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER, "**fail");
         }
 
         /* check if multiple threads are calling this collective function */
         MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
 
-        if (MPIU_THREADPRIV_FIELD(op_errno)) { 
+        if (MPIU_THREADPRIV_FIELD(op_errno)) 
 	    mpi_errno = MPIU_THREADPRIV_FIELD(op_errno);
-        } 
     }
 
   fn_exit:
@@ -551,7 +539,8 @@ int MPIR_Allreduce_inter (
         mpi_errno = MPIR_Reduce_inter(sendbuf, recvbuf, count, datatype, op,
 				      root, comm_ptr);
 	MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER, "**fail");
-    } else {
+    }
+    else {
         /* reduce to rank 0 of left group */
         root = 0;
         mpi_errno = MPIR_Reduce_inter(sendbuf, recvbuf, count, datatype, op,
@@ -615,44 +604,18 @@ Output Parameter:
 .N MPI_ERR_OP
 .N MPI_ERR_COMM
 @*/
-#if defined(_OSU_MVAPICH_)
-extern int enable_shmem_collectives;
-extern int disable_shmem_allreduce;
-#endif /* defined(_OSU_MVAPICH_) */
-
-
 int MPI_Allreduce ( void *sendbuf, void *recvbuf, int count, 
 		    MPI_Datatype datatype, MPI_Op op, MPI_Comm comm )
 {
     static const char FCNAME[] = "MPI_Allreduce";
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL;
-#if defined(_OSU_MVAPICH_)
-    char* shmem_buf = NULL;
-    MPI_Comm shmem_comm, leader_comm;
-    MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
-    int local_rank = -1, global_rank = -1, local_size=0, my_rank;
-    void* local_buf = NULL;
-    MPI_Aint   true_lb, true_extent, extent;
-    MPI_User_function *uop = NULL;
-    int stride = 0, i, is_commutative = 0;
-    MPID_Op *op_ptr = NULL;
-    int total_size, shmem_comm_rank;
-    extern int check_comm_registry(MPI_Comm);
-    extern int MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int, int, int, void**);
-    extern void MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(int, int, int);
-#if defined(HAVE_CXX_BINDING)
-    int is_cxx_uop = 0;
-#endif /* defined(HAVE_CXX_BINDING) */
-
     MPIU_THREADPRIV_DECL;
-    MPIU_THREADPRIV_GET;
-#endif /* defined(_OSU_MVAPICH_) */
-
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_ALLREDUCE);
+
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPIU_THREAD_SINGLE_CS_ENTER("coll");
+    MPIU_THREAD_CS_ENTER(ALLFUNC,);
     MPID_MPI_COLL_FUNC_ENTER(MPID_STATE_MPI_ALLREDUCE);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -690,20 +653,16 @@ int MPI_Allreduce ( void *sendbuf, void *recvbuf, int count,
                 MPID_Datatype_committed_ptr( datatype_ptr, mpi_errno );
             }
 
-	    if (comm_ptr->comm_kind == MPID_INTERCOMM) { 
-                MPIR_ERRTEST_SENDBUF_INPLACE(sendbuf, count, mpi_errno); 
-            }
+	    if (comm_ptr->comm_kind == MPID_INTERCOMM)
+                MPIR_ERRTEST_SENDBUF_INPLACE(sendbuf, count, mpi_errno);
             
-            if (sendbuf != MPI_IN_PLACE)  { 
+            if (sendbuf != MPI_IN_PLACE) 
                 MPIR_ERRTEST_USERBUFFER(sendbuf,count,datatype,mpi_errno);
-            } 
 
             MPIR_ERRTEST_RECVBUF_INPLACE(recvbuf, count, mpi_errno);
 	    MPIR_ERRTEST_USERBUFFER(recvbuf,count,datatype,mpi_errno);
 
-	    if (mpi_errno != MPI_SUCCESS) { 
-               goto fn_fail;
-            }
+	    if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 
             if (HANDLE_GET_KIND(op) != HANDLE_KIND_BUILTIN) {
                 MPID_Op_get_ptr(op, op_ptr);
@@ -713,16 +672,11 @@ int MPI_Allreduce ( void *sendbuf, void *recvbuf, int count,
                 mpi_errno = 
                     ( * MPIR_Op_check_dtype_table[op%16 - 1] )(datatype); 
             }
-	    if (mpi_errno != MPI_SUCCESS)  { 
-                goto fn_fail;
-            }
-        }
-
-	MPIR_ERRTEST_ALIAS_COLL(sendbuf, recvbuf, mpi_errno);
-	if (mpi_errno != MPI_SUCCESS) { 
-            goto fn_fail;
-        }
-
+	    if (count != 0) {
+		MPIR_ERRTEST_ALIAS_COLL(sendbuf, recvbuf, mpi_errno);
+	    }
+	    if (mpi_errno != MPI_SUCCESS) goto fn_fail;
+	}
         MPID_END_ERROR_CHECKS;
     }
 #   endif /* HAVE_ERROR_CHECKING */
@@ -733,132 +687,79 @@ int MPI_Allreduce ( void *sendbuf, void *recvbuf, int count,
     {
 	mpi_errno = comm_ptr->coll_fns->Allreduce(sendbuf, recvbuf, count,
                                               datatype, op, comm_ptr);
-    } else
+    }
+    else
     {
-        if (comm_ptr->comm_kind == MPID_INTRACOMM) 
+        if (comm_ptr->comm_kind == MPID_INTRACOMM) {
             /* intracommunicator */
-#if defined(_OSU_MVAPICH_)
-        {
-            if (enable_shmem_collectives){
-                MPIR_Nest_incr();
-                mpi_errno = NMPI_Type_get_true_extent(datatype, &true_lb, &true_extent);  
-                MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER, "**fail");
-                MPID_Datatype_get_extent_macro(datatype, extent);
-                stride = count*MPIR_MAX(extent,true_extent);
+#if defined(USE_SMP_COLLECTIVES)
+	    MPID_Op *op_ptr;
+	    int is_commutative; 
 
-                /* Get the operator and check whether it is commutative or not
-                 * */
-                if (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) {
-                    is_commutative = 1;
-                    /* get the function by indexing into the op table */
-                    uop = MPIR_Op_table[op%16 - 1];
-                } else {
-                    MPID_Op_get_ptr(op, op_ptr);
-                    if (op_ptr->kind == MPID_OP_USER_NONCOMMUTE) { 
-                        is_commutative = 0;
-                    } else { 
-                        is_commutative = 1;
-                   } 
+	    /* is the op commutative? We do SMP optimizations only if it is. */ 
+	    if (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN)
+		is_commutative = 1;
+	    else {
+		MPID_Op_get_ptr(op, op_ptr);
+		is_commutative = (op_ptr->kind == MPID_OP_USER_NONCOMMUTE) ? 0 : 1;
+	    }
 
-#if defined(HAVE_CXX_BINDING)
-                    if (op_ptr->language == MPID_LANG_CXX) {
-                        uop = (MPI_User_function *) op_ptr->function.c_function;
-                        is_cxx_uop = 1;
-                    } else 
-#endif /* defined(HAVE_CXX_BINDING) */
-                        if ((op_ptr->language == MPID_LANG_C)) { 
-                            uop = (MPI_User_function *) op_ptr->function.c_function;
-                        } else { 
-                            uop = (MPI_User_function *) op_ptr->function.f77_function;
-                        }
+            if (MPIR_Comm_is_node_aware(comm_ptr) && is_commutative) {
+		/* on each node, do a reduce to the local root */ 
+                if (comm_ptr->node_comm != NULL)
+                {
+		    /* take care of the MPI_IN_PLACE case. For reduce, 
+		        MPI_IN_PLACE is specified only on the root; 
+                        for allreduce it is specified on all processes. */
+
+		    if ((sendbuf == MPI_IN_PLACE) && (comm_ptr->node_comm->rank != 0)) {
+			/* IN_PLACE and not root of reduce. Data supplied to this
+			allreduce is in recvbuf. Pass that as the sendbuf to reduce. */
+			
+			mpi_errno = MPIR_Reduce_or_coll_fn(recvbuf, NULL, count, datatype,
+						op, 0, comm_ptr->node_comm);
+		    }
+		    else {
+			mpi_errno = MPIR_Reduce_or_coll_fn(sendbuf, recvbuf, count, datatype,
+						op, 0, comm_ptr->node_comm);
+		    }
+		    if (mpi_errno) goto fn_fail;
                 }
-                MPIR_Nest_decr();
+		else { 
+		    /* only one process on the node. copy sendbuf to recvbuf */
+		    if (sendbuf != MPI_IN_PLACE) {
+			mpi_errno = MPIR_Localcopy(sendbuf, count, datatype, 
+						   recvbuf, count, datatype);
+			if (mpi_errno) goto fn_fail;
+		    }
+		}
+
+                /* now do an IN_PLACE allreduce among the local roots of all nodes */
+                if (comm_ptr->node_roots_comm != NULL) {
+                    mpi_errno = MPIR_Allreduce(MPI_IN_PLACE, recvbuf, count, datatype,
+					       op, comm_ptr->node_roots_comm);
+                    if (mpi_errno) goto fn_fail;
+                }
+
+		/* now broadcast the result among local processes */
+                if (comm_ptr->node_comm != NULL) {
+		    MPIU_THREADPRIV_GET;
+		    
+		    MPIR_Nest_incr();
+                    mpi_errno = MPIR_Bcast_or_coll_fn(recvbuf, count, datatype, 
+						      0, comm_ptr->node_comm);
+		    MPIR_Nest_decr();
+		}
             }
-            if ((comm_ptr->shmem_coll_ok == 1)&&(stride < coll_param.shmem_allreduce_msg)&&
-                    (disable_shmem_allreduce == 0) &&(is_commutative) &&(enable_shmem_collectives) &&(check_comm_registry(comm))){
-                MPIR_Nest_incr();
-
-                my_rank = comm_ptr->rank;
-                total_size = comm_ptr->local_size;
-                
-                shmem_comm = comm_ptr->shmem_comm;
-                MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
-                local_rank = shmem_commptr->rank;
-                local_size = shmem_commptr->local_size;
-                shmem_comm_rank = shmem_commptr->shmem_comm_rank;
-
-                leader_comm = comm_ptr->leader_comm;
-                MPID_Comm_get_ptr(leader_comm, leader_commptr);
-                MPIR_Nest_decr();
-
-                if (local_rank == 0){
-                    global_rank = leader_commptr->rank;
-                    if (sendbuf != MPI_IN_PLACE){
-                        mpi_errno = MPIR_Localcopy(sendbuf, count, datatype, recvbuf,
-                                count, datatype);
-                    }
-                }
-
-#if defined(CKPT)
-		MPIDI_CH3I_CR_lock();
-#endif
-
-                if (local_size > 1){
-                    MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(local_size, local_rank, shmem_comm_rank, (void *)&shmem_buf);
-                }
-
-
-                /* Doing the shared memory gather and reduction by the leader */
-                if (local_rank == 0){
-                    if (local_size > 1){
-                        for (i = 1; i < local_size; i++){
-                            local_buf = (char*)shmem_buf + stride*i;
-#if defined(HAVE_CXX_BINDING)
-                            if (is_cxx_uop) {
-                                (*MPIR_Process.cxx_call_op_fn)( local_buf, recvbuf, 
-                                                                count, datatype, uop );
-                            } else 
-#endif /* defined(HAVE_CXX_BINDING) */
-                                (*uop)(local_buf, recvbuf, &count, &datatype);
-                        }
-                        MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(local_size, local_rank, shmem_comm_rank);
-                    }
-
-                    if (local_size != total_size){
-                        mpi_errno = MPIR_Allreduce(MPI_IN_PLACE, recvbuf, count, datatype,
-                                op, leader_commptr); 
-                    }
-                } else{
-                    local_buf = (char*)shmem_buf + stride*local_rank;
-                    if (sendbuf != MPI_IN_PLACE){
-                        mpi_errno = MPIR_Localcopy(sendbuf, count, datatype, local_buf,
-                                count, datatype);
-                    } else{
-                        mpi_errno = MPIR_Localcopy(recvbuf, count, datatype, local_buf,
-                                count, datatype);
-                    }
-                    MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(local_size, local_rank, shmem_comm_rank);
-                }
-
-#if defined(CKPT)
-		MPIDI_CH3I_CR_unlock();
-#endif
-
-                /* Broadcasting the mesage from leader to the rest*/
-                if (local_size > 1){
-                    MPIR_Nest_incr();
-                    MPIR_Bcast(recvbuf, count, datatype, 0, shmem_commptr);
-                    MPIR_Nest_decr();
-                }
-
-            } else{
-#endif /* defined(_OSU_MVAPICH_) */
+            else {
+                mpi_errno = MPIR_Allreduce(sendbuf, recvbuf, count, datatype,
+                                       op, comm_ptr);
+            }
+#else
             mpi_errno = MPIR_Allreduce(sendbuf, recvbuf, count, datatype,
                                        op, comm_ptr); 
-#if defined(_OSU_MVAPICH_)
-            }
-        }
-#endif /* defined(_OSU_MVAPICH_) */
+#endif
+	}
         else {
             /* intercommunicator */
             mpi_errno = MPIR_Allreduce_inter(sendbuf, recvbuf, count,
@@ -866,15 +767,13 @@ int MPI_Allreduce ( void *sendbuf, void *recvbuf, int count,
         }
     }
 
-    if (mpi_errno != MPI_SUCCESS) { 
-         goto fn_fail;
-    }
+    if (mpi_errno != MPI_SUCCESS) goto fn_fail;
 
     /* ... end of body of routine ... */
     
   fn_exit:
     MPID_MPI_COLL_FUNC_EXIT(MPID_STATE_MPI_ALLREDUCE);
-    MPIU_THREAD_SINGLE_CS_EXIT("coll");
+    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return mpi_errno;
 
   fn_fail:
@@ -890,3 +789,5 @@ int MPI_Allreduce ( void *sendbuf, void *recvbuf, int count,
     goto fn_exit;
     /* --END ERROR HANDLING-- */
 }
+
+#endif /* !defined(_OSU_COLLECTIVES_) */

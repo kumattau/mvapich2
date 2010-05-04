@@ -166,7 +166,7 @@ MPIDI_CH3I_MRAIL_Prepare_rndv_transfer (MPID_Request * sreq,    /* contains loca
                 buf = (aint_t) sreq->mrail.rndv_buf;
                 for (i = 0; i < sreq->dev.iov_count; i++)
                   {
-                      memcpy ((void *) buf, sreq->dev.iov[i].MPID_IOV_BUF,
+                  MPIU_Memcpy ((void *) buf, sreq->dev.iov[i].MPID_IOV_BUF,
                               sreq->dev.iov[i].MPID_IOV_LEN);
                       buf += sreq->dev.iov[i].MPID_IOV_LEN;
                   }
@@ -189,7 +189,7 @@ MPIDI_CH3I_MRAIL_Prepare_rndv_transfer (MPID_Request * sreq,    /* contains loca
                         }
                       for (i = 0; i < sreq->dev.iov_count; i++)
                         {
-                            memcpy ((void *) buf,
+                        MPIU_Memcpy ((void *) buf,
                                     sreq->dev.iov[i].MPID_IOV_BUF,
                                     sreq->dev.iov[i].MPID_IOV_LEN);
                             buf += sreq->dev.iov[i].MPID_IOV_LEN;

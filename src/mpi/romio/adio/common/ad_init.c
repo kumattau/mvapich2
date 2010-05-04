@@ -60,6 +60,7 @@ void ADIO_Init(int *argc, char ***argv, int *error_code)
 
     /* Assume system-wide hints won't change between runs: move hint processing
      * from ADIO_Open to here */
+    /* FIXME should be checking error code from MPI_Info_create here */
     MPI_Info_create(&ADIOI_syshints);
     ADIOI_process_system_hints(ADIOI_syshints);
 
@@ -77,6 +78,9 @@ void ADIO_Init(int *argc, char ***argv, int *error_code)
         MPE_Log_get_state_eventIDs( &ADIOI_MPE_unlock_a, &ADIOI_MPE_unlock_b );
         MPE_Log_get_state_eventIDs( &ADIOI_MPE_postwrite_a,
                                     &ADIOI_MPE_postwrite_b );
+	MPE_Log_get_state_eventIDs( &ADIOI_MPE_openinternal_a, 
+			&ADIOI_MPE_openinternal_b);
+	MPE_Log_get_state_eventIDs( &ADIOI_MPE_stat_a, &ADIOI_MPE_stat_b);
 
         int  comm_world_rank;
         MPI_Comm_rank( MPI_COMM_WORLD, &comm_world_rank );
@@ -100,6 +104,8 @@ void ADIO_Init(int *argc, char ***argv, int *error_code)
                                 "unlock", "purple" );
             MPE_Describe_state( ADIOI_MPE_postwrite_a, ADIOI_MPE_postwrite_b,
                                 "postwrite", "ivory" );
+	    MPE_Describe_state( ADIOI_MPE_openinternal_a, ADIOI_MPE_openinternal_b, "open system", "blue");
+	    MPE_Describe_state( ADIOI_MPE_stat_a, ADIOI_MPE_stat_b, "stat", "purple");
         }
     }
 #endif

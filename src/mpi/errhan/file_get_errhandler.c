@@ -54,13 +54,16 @@ int MPI_File_get_errhandler(MPI_File file, MPI_Errhandler *errhandler)
     static const char FCNAME[] = "MPI_File_get_errhandler";
 #endif
     int mpi_errno = MPI_SUCCESS;
+#ifdef MPI_MODE_RDONLY
     MPI_Errhandler eh;
     MPID_Errhandler *e;
+#endif
+    MPIU_THREADPRIV_DECL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_FILE_GET_ERRHANDLER);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPIU_THREAD_SINGLE_CS_ENTER("errhan");
+    MPIU_THREAD_CS_ENTER(ALLFUNC,);
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_FILE_GET_ERRHANDLER);
 
 #ifdef MPI_MODE_RDONLY
@@ -94,6 +97,9 @@ int MPI_File_get_errhandler(MPI_File file, MPI_Errhandler *errhandler)
 #else
     /* Dummy in case ROMIO is not defined */
     mpi_errno = MPI_ERR_INTERN;
+#ifdef HAVE_ERROR_CHECKING
+    if (0) goto fn_fail; /* quiet compiler warning about unused label */
+#endif
 #endif    
     /* ... end of body of routine ... */
 
@@ -101,7 +107,7 @@ int MPI_File_get_errhandler(MPI_File file, MPI_Errhandler *errhandler)
   fn_exit:
 #endif
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_FILE_GET_ERRHANDLER);
-    MPIU_THREAD_SINGLE_CS_EXIT("errhan");
+    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return mpi_errno;
 
     /* --BEGIN ERROR HANDLING-- */

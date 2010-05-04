@@ -568,7 +568,7 @@ MPIDI_CH3I_RDMA_win_create (void *base,
     /*Register buffer for completion counter */
     (*win_ptr)->completion_counter =
         MPIU_Malloc (sizeof (long long) * comm_size);
-    memset ((*win_ptr)->completion_counter, 0,
+    MPIU_Memset ((*win_ptr)->completion_counter, 0,
             sizeof (long long) * comm_size);
     MPIDI_CH3I_RDMA_Process.RDMA_local_wincc_dreg_entry[index] =
         dreg_register ((void *) (*win_ptr)->completion_counter,
@@ -1100,7 +1100,7 @@ Consume_signals (MPID_Win * winptr, aint_t expected)
                         {
                             MPIU_Assert(size <= rdma_eagersize_1sc);
                             MPIU_Assert(target_addr != NULL);
-                            memcpy (target_addr, origin_addr, size);
+                            MPIU_Memcpy (target_addr, origin_addr, size);
                         }
                       list_win_ptr->put_get_list_size--;
                       list_vc_ptr->mrail.postsend_times_1sc--;
@@ -1186,7 +1186,7 @@ IBA_PUT (MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr, int size)
           char *tmp = rma_op->origin_addr;
 
           Get_Pinned_Buf (win_ptr, &origin_addr, size);
-          memcpy (origin_addr, tmp, size);
+          MPIU_Memcpy (origin_addr, tmp, size);
           l_key = win_ptr->pinnedpool_1sc_dentry->memhandle.lkey;
       }
     else
@@ -1239,7 +1239,7 @@ IBA_GET (MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr, int size)
     char *remote_address;
     int mpi_errno = MPI_SUCCESS;
     uint32_t r_key, l_key;
-    int ret = 0;
+    /* int ret = 0; */
     DAT_EP_HANDLE qp_hndl;
     int index;
     dreg_entry *tmp_dreg;
@@ -1288,11 +1288,12 @@ IBA_GET (MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr, int size)
         rmr_context = r_key;
     tmp_vc->mrail.ddesc1sc[win_ptr->put_get_list_tail].remote_iov.
 #if DAT_VERSION_MAJOR < 2
-        target_address
+        target_address = (DAT_VADDR) (unsigned long) remote_address;
 #else /* if DAT_VERSION_MAJOR < 2 */
-        virtual_address
+        virtual_address = (DAT_VADDR) (unsigned long) remote_address;
 #endif /* DAT_VERSION_MAJOR < 2 */
-            = (DAT_VADDR) (unsigned long) remote_address;
+    /*        = (DAT_VADDR) (unsigned long) remote_address; */
+
     tmp_vc->mrail.ddesc1sc[win_ptr->put_get_list_tail].remote_iov.
         segment_length = size;
     if (size <= rdma_eagersize_1sc)

@@ -60,13 +60,18 @@ unsigned long dreg_stat_cache_miss=0;
 unsigned long dreg_stat_evicted;
 static unsigned long g_pinned_pages_count;
 
+#if !defined(DISABLE_PTMALLOC)
+static pthread_spinlock_t dreg_lock = 0;
+static pthread_spinlock_t dereg_lock = 0;
+static pthread_t th_id_of_lock;
+static pthread_t th_id_of_dereg_lock = -1;
+#endif
+
 struct dreg_entry* dreg_free_list;
-struct dreg_entry* dreg_free_list_tail;
 struct dreg_entry* dreg_unused_list;
 struct dreg_entry* dreg_unused_tail;
 
 int g_is_dreg_initialized = 0;
-int g_is_dreg_finalize    = 0;
 
 #if defined(CKPT)
 struct dreg_entry *dreg_all_list;
@@ -211,11 +216,9 @@ static inline vma_t *vma_new (unsigned long start, unsigned long end)
 
     if(NULL == vma) {
         vma = MPIU_Malloc(sizeof (vma_t));
-        memset(vma, 0x0, sizeof(vma_t));
     }
 #else /* !defined(DISABLE_PTMALLOC) */
     vma = MPIU_Malloc (sizeof (vma_t));
-    memset(vma, 0x0, sizeof(vma_t));
 #endif /* !defined(DISABLE_PTMALLOC) */
 
     if (vma == NULL)
@@ -250,24 +253,16 @@ static inline void vma_destroy (vma_t* vma)
         t = e;
         e = e->next;
 #if !defined(DISABLE_PTMALLOC)
-        if(g_is_dreg_finalize == 1) { 
-           MPIU_Free(t);
-        } else { 
-           ADD_FREE_LIST(&entry_free_list, t);
-        }
+        ADD_FREE_LIST(&entry_free_list, t);
 #else /* !defined(DISABLE_PTMALLOC) */
         MPIU_Free(t);
 #endif /* !defined(DISABLE_PTMALLOC) */
     }
 
 #if !defined(DISABLE_PTMALLOC)
-     if(g_is_dreg_finalize == 1) {
-        MPIU_Free(vma);
-     } else { 
-        ADD_FREE_LIST(&vma_free_list, vma);
-     } 
+    ADD_FREE_LIST(&vma_free_list, vma);
 #else /* !defined(DISABLE_PTMALLOC) */
-     MPIU_Free(vma);
+    MPIU_Free(vma);
 #endif /* !defined(DISABLE_PTMALLOC) */
 }
 
@@ -294,11 +289,9 @@ static inline void add_entry (vma_t* vma, dreg_entry* r)
     if (NULL == e)
     {
         e = MPIU_Malloc(sizeof(entry_t));
-        memset(e, 0x0, sizeof(entry_t));
     }
 #else /* !defined(DISABLE_PTMALLOC) */
     e = MPIU_Malloc (sizeof (entry_t));
-    memset(e, 0x0, sizeof(entry_t));
 #endif /* !defined(DISABLE_PTMALLOC) */
 
     if (e == NULL)
@@ -318,7 +311,7 @@ static inline void add_entry (vma_t* vma, dreg_entry* r)
 static inline void remove_entry (vma_t* vma, dreg_entry* r)
 {
     entry_t** i = &vma->list;
-   
+
     for (; *i != NULL && (*i)->reg != r; i = &(*i)->next);
 
     if (*i)
@@ -326,11 +319,7 @@ static inline void remove_entry (vma_t* vma, dreg_entry* r)
         entry_t* e = *i;
         *i = (*i)->next;
 #if !defined(DISABLE_PTMALLOC)
-         if(g_is_dreg_finalize == 1) {
-            MPIU_Free(e);
-         } else { 
-            ADD_FREE_LIST(&entry_free_list, e);
-         }
+        ADD_FREE_LIST(&entry_free_list, e);
 #else /* defined(DISABLE_PTMALLOC) */
         MPIU_Free(e);
 #endif /* defined(DISABLE_PTMALLOC) */
@@ -352,11 +341,9 @@ static inline void copy_list (vma_t* to, vma_t* from)
         if (NULL == e)
         {
             e = MPIU_Malloc(sizeof(entry_t));
-            memset(e, 0x0, sizeof(entry_t));
         }
 #else /* !defined(DISABLE_PTMALLOC) */
         e = MPIU_Malloc (sizeof (entry_t));
-        memset(e, 0x0, sizeof(entry_t));
 #endif /* !defined(DISABLE_PTMALLOC) */
 
         e->reg = f->reg;
@@ -626,11 +613,9 @@ int dreg_init()
     int i = 0;
     int mpi_errno = MPI_SUCCESS;
     g_pinned_pages_count = 0;
-    struct dreg_entry* dreg_entry_new=NULL;
 
     vma_db_init ();
-    dreg_free_list      = MPIU_Malloc(sizeof(dreg_entry));
-    dreg_free_list_tail = dreg_free_list;
+    dreg_free_list = (dreg_entry*) MPIU_Malloc((unsigned)(sizeof(dreg_entry) * rdma_ndreg_entries));
 
     if (dreg_free_list == NULL) {
         MPIU_ERR_SETFATALANDJUMP2(mpi_errno,
@@ -641,20 +626,17 @@ int dreg_init()
                 (int) sizeof(dreg_entry) * rdma_ndreg_entries);
     }
 
-    memset(dreg_free_list, 0x0, sizeof(dreg_entry));
+    MPIU_Memset(dreg_free_list, 0, sizeof(dreg_entry) * rdma_ndreg_entries);
 
 #if defined(CKPT)
     dreg_all_list = dreg_free_list;
 #endif /* defined(CKPT) */
 
     for (; i < (int) rdma_ndreg_entries - 1; ++i) {
-        dreg_entry_new            = MPIU_Malloc(sizeof(dreg_entry));
-        memset(dreg_entry_new, 0x0, sizeof(dreg_entry));
-        dreg_free_list_tail->next = dreg_entry_new;
-        dreg_free_list_tail       = dreg_entry_new;
+        dreg_free_list[i].next = &dreg_free_list[i + 1];
     }
 
-    dreg_free_list_tail->next = NULL;
+    dreg_free_list[rdma_ndreg_entries - 1].next = NULL;
     dreg_unused_list = NULL;
     dreg_unused_tail = NULL;
 
@@ -665,7 +647,7 @@ int dreg_init()
     pthread_spin_init(&dreg_lock, 0);
     pthread_spin_init(&dereg_lock, 0);
 
-    deregister_mr_array = (dreg_region *)
+    deregister_mr_array = (dreg_region *) 
         MPIU_Malloc(sizeof(dreg_region) * rdma_ndreg_entries);
 
     if (NULL == deregister_mr_array) {
@@ -674,10 +656,10 @@ int dreg_init()
                 "**fail",
                 "**fail %s %d",
                 "dreg_init: unable to malloc %d bytes",
-                (int) sizeof(struct ibv_mr*) * rdma_ndreg_entries *MAX_NUM_HCAS);
+                (int) sizeof(struct ibv_mr*) * rdma_ndreg_entries * MAX_NUM_HCAS);
     }
 
-    memset(deregister_mr_array, 0x0, sizeof(dreg_region) * rdma_ndreg_entries);
+    MPIU_Memset(deregister_mr_array, 0, sizeof(dreg_region) * rdma_ndreg_entries);
     n_dereg_mr = 0;
 
     INIT_FREE_LIST(&vma_free_list);
@@ -690,49 +672,6 @@ fn_fail:
     goto fn_exit;
 }
 
-int dreg_finalize()
-{
-   lock_dreg();
-   g_is_dreg_finalize = 1;
- 
-   dreg_entry *dreg_temp;
-   dreg_entry *dreg_head;
-   vma_t *vma_free_list_temp;
-   vma_t *vma_free_list_head;
-
-   entry_t *entry_free_list_temp;
-   entry_t *entry_free_list_head;
-   
-   while(dreg_evict()); 
-
-   /* free each element that is still present
-    * in the free list
-    */
-   dreg_head = dreg_free_list;
-   vma_free_list_head  = &(vma_free_list);
-   entry_free_list_head= &(entry_free_list);
-    
-   while(dreg_head != NULL) {
-      dreg_temp = dreg_head;
-      dreg_head = dreg_head->next;
-      dreg_remove(dreg_temp);
-      MPIU_Free(dreg_temp); 
-   }
-
-   if(deregister_mr_array != NULL) {
-      MPIU_Free(deregister_mr_array);
-   }
- 
-   avldispose(vma_tree, free, LEFT_TO_RIGHT);
-   unlock_dreg();
-
-   return MPI_SUCCESS;
-}
-
-
-
-
-
 #if !defined(DISABLE_PTMALLOC)
 
 
@@ -743,7 +682,14 @@ int have_dereg()
 
 void lock_dereg()
 {
-    pthread_spin_lock(&dereg_lock);
+    int ret, count=0;
+    while( (ret = pthread_spin_trylock(&dereg_lock)) != 0) { 
+       count++;
+       if(count > 50)  { 
+          count = 0;
+          sched_yield();
+       } 
+    } 
     th_id_of_dereg_lock = pthread_self();
 }
 
@@ -759,7 +705,17 @@ int have_dreg() {
 
 void lock_dreg()
 {
-    pthread_spin_lock(&dreg_lock);
+    int ret, count=0;
+    /* Instead of blocking while trying to acquire this lock, we "try" it. If the
+     * lock is being held by another thread, we yield the CPU after looping for a
+     * while */
+    while( (ret = pthread_spin_trylock(&dreg_lock)) != 0 ) { 
+       count++;
+       if(count > 50)  { 
+          count = 0;
+          sched_yield();
+       } 
+    } 
     th_id_of_lock = pthread_self();
 }
 
@@ -1192,27 +1148,23 @@ void dreg_deregister_all()
     int i = 0;
     int j;
     dreg_entry* d = NULL;
-    dreg_entry* curr = dreg_all_list;
 
     for (; i < (int) rdma_ndreg_entries; ++i)
-    { 
-        if(curr != NULL) { 
-            d = curr;
+    {
+        d = &(dreg_all_list[i]);
 
-            if (d != NULL && d->is_valid)
+        if (d->is_valid)
+        {
+            for (j = 0; j < rdma_num_hcas; ++j)
             {
-                for (j = 0; j < rdma_num_hcas; ++j)
+                if (deregister_memory(d->memhandle[j]))
                 {
-                    if (deregister_memory(d->memhandle[j]))
-                    {
-                        ibv_error_abort(IBV_RETURN_ERR, "deregister fails\n");
-                    }
-
-                    d->memhandle[j] = NULL;
+                    ibv_error_abort(IBV_RETURN_ERR, "deregister fails\n");
                 }
+
+                d->memhandle[j] = NULL;
             }
-            curr  = curr->next;
-       }
+        }
     }
 }
 
@@ -1221,35 +1173,31 @@ void dreg_reregister_all()
     int i = 0;
     int j;
     dreg_entry* d = NULL;
-    dreg_entry* curr = dreg_all_list;
     void* pagebase_low_p = NULL;
     unsigned long register_nbytes;
 
     for (; i < (int) rdma_ndreg_entries; ++i)
     {
-       if(curr != NULL) { 
-            d = curr;
-            if (d != NULL && d->is_valid)
+        d = &(dreg_all_list[i]);
+        if (d->is_valid)
+        {
+            pagebase_low_p = (void *)(d->pagenum << DREG_PAGEBITS);
+            register_nbytes = d->npages * DREG_PAGESIZE;
+            for (j = 0; j < rdma_num_hcas; ++j)
             {
-                pagebase_low_p = (void *)(d->pagenum << DREG_PAGEBITS);
-                register_nbytes = d->npages * DREG_PAGESIZE;
-                for (j = 0; j < rdma_num_hcas; ++j)
+                d->memhandle[j] = register_memory(pagebase_low_p, register_nbytes, j);
+                if (!d->memhandle[j])
                 {
-                    d->memhandle[j] = register_memory(pagebase_low_p, register_nbytes, j);
-                    if (!d->memhandle[j])
-                    {
-                        printf(
-                            "%d: reregister dentry %p, addr %p pagebase_low_p, %lu register_nbytes\n",
-                            MPIDI_Process.my_pg_rank,
-                            d,
-                            pagebase_low_p,
-                            register_nbytes);
-                        ibv_error_abort(IBV_RETURN_ERR, "reregister fails\n");
-                    }
+                    printf(
+                        "%d: reregister dentry %p, addr %p pagebase_low_p, %lu register_nbytes\n",
+                        MPIDI_Process.my_pg_rank,
+                        d,
+                        pagebase_low_p,
+                        register_nbytes);
+                    ibv_error_abort(IBV_RETURN_ERR, "reregister fails\n");
                 }
             }
-            curr = curr->next;
-       }
+        }
     }
 }
 #endif /* defined(CKPT) */

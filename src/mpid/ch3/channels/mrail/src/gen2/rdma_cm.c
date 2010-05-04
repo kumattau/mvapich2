@@ -146,7 +146,7 @@ int ib_cma_event_handler(struct rdma_cm_id *cma_id,
 	rdma_cm_create_qp(vc, rail_index);
 
 	/* Connect to remote node */
-	memset(&conn_param, 0, sizeof conn_param);
+	MPIU_Memset(&conn_param, 0, sizeof conn_param);
 	conn_param.responder_resources = 1;
 	conn_param.initiator_depth = 1;
 	conn_param.retry_count = rdma_default_rnr_retry;
@@ -256,7 +256,7 @@ int ib_cma_event_handler(struct rdma_cm_id *cma_id,
         }
 
 	/* Accept remote connection - passive connect */
-	memset(&conn_param, 0, sizeof conn_param);
+        MPIU_Memset(&conn_param, 0, sizeof conn_param);
 	conn_param.responder_resources = 1;
 	conn_param.initiator_depth = 1;
 	conn_param.retry_count = rdma_default_rnr_retry;
@@ -365,7 +365,7 @@ int ib_cma_event_handler(struct rdma_cm_id *cma_id,
 
     case RDMA_CM_EVENT_TIMEWAIT_EXIT:
     DEBUG_PRINT("caught RDMA_CM_EVENT_TIMEWAIT_EXIT \n");
-    break;
+    break;  
 
     case RDMA_CM_EVENT_DEVICE_REMOVAL:
 #endif
@@ -525,7 +525,7 @@ static int bind_listen_port(int pg_rank, int pg_size)
         MPIU_ERR_POP(mpi_errno);
     }
 
-    memset(&sin, 0, sizeof(sin));
+    MPIU_Memset(&sin, 0, sizeof(sin));
     sin.sin_family = AF_INET;
     sin.sin_addr.s_addr = 0;
     sin.sin_port = rdma_base_listen_port[pg_rank];
@@ -717,7 +717,7 @@ int rdma_cm_get_contexts(){
 			    "rdma_create_id error %d\n", ret);
 	}
 
-	memset(&sin, 0, sizeof(sin));
+	MPIU_Memset(&sin, 0, sizeof(sin));
 	sin.sin_family = AF_INET;
 	sin.sin_addr.s_addr = rdma_cm_local_ips[i];
 	ret = rdma_resolve_addr(tmpcmid, NULL, (struct sockaddr *) &sin, rdma_cm_arp_timeout);
@@ -751,7 +751,7 @@ int rdma_cm_create_qp(MPIDI_VC_t *vc, int rail_index)
     cmid = vc->mrail.rails[rail_index].cm_ids;
 
     {
-	memset(&init_attr, 0, sizeof(init_attr));
+      MPIU_Memset(&init_attr, 0, sizeof(init_attr));
 	init_attr.cap.max_recv_sge = rdma_default_max_sg_list;
 	init_attr.cap.max_send_sge = rdma_default_max_sg_list;
 	init_attr.cap.max_inline_data = rdma_max_inline_size;
@@ -954,7 +954,7 @@ int rdma_cm_connect_to_server(MPIDI_VC_t *vc, int ipnum, int rail_index){
     }
 
     /* Resolve addr */
-    memset(&sin, 0, sizeof(sin));
+    MPIU_Memset(&sin, 0, sizeof(sin));
     sin.sin_family = AF_INET;
     sin.sin_addr.s_addr = ipnum;
     sin.sin_port = rdma_base_listen_port[vc->pg_rank];

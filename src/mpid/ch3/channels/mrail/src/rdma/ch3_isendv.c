@@ -224,7 +224,7 @@ int MPIDI_CH3_iSendv(MPIDI_VC_t * vc, MPID_Request * sreq, MPID_IOV * iov,
         Calculate_IOV_len(iov, n_iov, pkt_len);
 
         if (pkt_len > MRAIL_MAX_EAGER_SIZE) {
-            memcpy(sreq->dev.iov, iov, n_iov * sizeof(MPID_IOV));
+          MPIU_Memcpy(sreq->dev.iov, iov, n_iov * sizeof(MPID_IOV));
             sreq->dev.iov_count = n_iov;
             mpi_errno = MPIDI_CH3_Packetized_send(vc, sreq);
             if (MPI_MRAIL_MSG_QUEUED == mpi_errno) {
@@ -243,7 +243,7 @@ int MPIDI_CH3_iSendv(MPIDI_VC_t * vc, MPID_Request * sreq, MPID_IOV * iov,
             pkt_len = 0;
             /* First copy whatever has already been in iov set */
             for (iter_iov = 0; iter_iov < n_iov; iter_iov++) {
-                memcpy(tmpbuf, iov[iter_iov].MPID_IOV_BUF,
+              MPIU_Memcpy(tmpbuf, iov[iter_iov].MPID_IOV_BUF,
                        iov[iter_iov].MPID_IOV_LEN);
                 tmpbuf = (void *) ((unsigned long) tmpbuf +
                                    iov[iter_iov].MPID_IOV_LEN);
@@ -263,7 +263,7 @@ int MPIDI_CH3_iSendv(MPIDI_VC_t * vc, MPID_Request * sreq, MPID_IOV * iov,
                 }
                 for (iter_iov = 0; iter_iov < sreq->dev.iov_count;
                      iter_iov++) {
-                    memcpy(tmpbuf, sreq->dev.iov[iter_iov].MPID_IOV_BUF,
+                  MPIU_Memcpy(tmpbuf, sreq->dev.iov[iter_iov].MPID_IOV_BUF,
                            sreq->dev.iov[iter_iov].MPID_IOV_LEN);
                     tmpbuf =
                         (void *) ((unsigned long) tmpbuf +
@@ -277,7 +277,7 @@ int MPIDI_CH3_iSendv(MPIDI_VC_t * vc, MPID_Request * sreq, MPID_IOV * iov,
         }
 
         if (pkt_len > MRAIL_MAX_EAGER_SIZE) {
-            memcpy(sreq->dev.iov, iov, n_iov * sizeof(MPID_IOV));
+          MPIU_Memcpy(sreq->dev.iov, iov, n_iov * sizeof(MPID_IOV));
             sreq->dev.iov_count = n_iov;
             mpi_errno = MPIDI_CH3_Packetized_send(vc, sreq);
             if (MPI_MRAIL_MSG_QUEUED == mpi_errno) {

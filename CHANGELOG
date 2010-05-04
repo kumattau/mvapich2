@@ -3,24 +3,41 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2-1.5rc1
+
+* Enhancements since 1.4.1
+    - MPI 2.2 compliant (based on mpich2-1.2p1 release).
+    - Infiniband netmod designed to take advantage of the new Nemesis channel.
+    - More flexible process manager support (both mpirun_rsh and hydra work
+      with all interfaces).
+    - MPIEXEC_TIMEOUT is honored by mpirun_rsh.
+
+* Bug fixes since 1.4.1
+    - Fix compilation error when configured with `--enable-thread-funneled'.
+    - Fix MPE functionality, thanks to Anthony Chan <chan@mcs.anl.gov> for
+      reporting and providing the resolving patch.
+    - Cleanup after a failure in the init phase is handled better by mpirun_rsh.
+    - Path determination is correctly handled by mpirun_rsh when DPM is used.
+    - Shared libraries are correctly built (again)
+
 MVAPICH2-1.4.1
 
 * Enhancements since mvapich2-1.4
    - MPMD launch capability to mpirun_rsh
-   - Portable Hardware Locality (hwloc) support,
-   		- Patch suggested by Dr. Bernd Kallies <kallies@zib.de>
+   - Portable Hardware Locality (hwloc) support, patch suggested by
+     Dr. Bernd Kallies <kallies@zib.de>
    - Multi-port support for iWARP
    - Enhanced iWARP design for scalability to higher process count
    - Ring based startup support for RDMAoE
 
 * Bug fixes since mvapich2-1.4
    - Fixes for MPE and other profiling tools
-		- As suggested by Anthony Chan (chan@mcs.anl.gov)
+     as suggested by Anthony Chan (chan@mcs.anl.gov)
    - Fixes for finalization issue with dynamic process management
    - Removed overrides to PSM_SHAREDCONTEXT, PSM_SHAREDCONTEXTS_MAX variables. 
-     	- Suggested by Ben Truscott <b.s.truscott@bristol.ac.uk>. 
+     Suggested by Ben Truscott <b.s.truscott@bristol.ac.uk>. 
    - Fixing the error check for buffer aliasing in MPI_Reduce as
-     	- Suggested by Dr. Rajeev Thakur <thakur@mcs.anl.gov>
+     suggested by Dr. Rajeev Thakur <thakur@mcs.anl.gov>
    - Fix Totalview integration for RHEL5
    - Update simplemake to handle build timestamp issues
    - Fixes for --enable-g={mem, meminit}
@@ -35,8 +52,8 @@ MVAPICH2-1.4.1
    - Shared-memory reduce fixes for MPI_Reduce invoked with MPI_IN_PLACE
    - Handling RDMA_CM_EVENT_TIMEWAIT_EXIT event
    - Fix for threaded-ctxdup mpich2 test
-   - Detecting spawn errors
-		- Patch contributed by Dr. Bernd Kallies <kallies@zib.de>
+   - Detecting spawn errors, patch contributed by
+     Dr. Bernd Kallies <kallies@zib.de>
    - IMB-EXT fixes reported by Yutaka from Cray Japan
    - Fix alltoall assertion error when limic is used
 

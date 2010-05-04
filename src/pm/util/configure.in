@@ -1,4 +1,3 @@
-AC_PREREQ(2.59)
 dnl Process this file with autoconf to produce a configure script.
 dnl
 dnl aclocal_cache.m4, included by sowing/confdb/aclocal.m4, fixes 
@@ -18,7 +17,7 @@ PAC_SUBCONFIG_INIT()
 dnl Definitions will be placed in this file rather than in the DEFS variable
 AC_CONFIG_HEADER(pmutilconf.h)
 AH_TOP([/* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2003-2009, The Ohio State University. All rights
+/* Copyright (c) 2003-2010, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -98,11 +97,11 @@ ENABLE_SHLIB=none
 AC_SUBST(ENABLE_SHLIB)
 dnl
 dnl     check for compiler characteristics
-dnl Set CFLAGS for enable strict if necessary
-PAC_CC_STRICT
+
+PAC_ARG_STRICT
 AC_C_CONST
-PAC_C_VOLATILE
-PAC_C_RESTRICT
+AC_C_VOLATILE
+AC_C_RESTRICT
 AC_C_INLINE
 PAC_C_GNU_ATTRIBUTE
 dnl
@@ -278,6 +277,20 @@ if test "$ac_cv_func_strdup" = "yes" ; then
     # Do we need to declare strdup?
     PAC_FUNC_NEEDS_DECL([#include <string.h>],strdup)
 fi
+
+# putenv() sets environment variable
+AC_HAVE_FUNCS(putenv)
+if test "$ac_cv_func_putenv" = "yes" ; then
+    PAC_FUNC_NEEDS_DECL([#include <stdlib.h>],putenv)
+fi
+# gethostname() returns host name
+AC_CHECK_FUNCS(gethostname)
+if test "$ac_cv_func_gethostname" = "yes" ; then
+    # Do we need to declare gethostname?
+    PAC_FUNC_NEEDS_DECL([#include <unistd.h>],gethostname)
+fi
+
+
 #
 # Check for select and working FD_ZERO 
 AC_CHECK_FUNCS(select)
@@ -299,6 +312,45 @@ else
         if test "$pac_cv_fdzero_works" != yes ; then
             AC_MSG_ERROR([Programs with FD_ZERO cannot be linked (check your system includes)])
 	fi
+    fi
+fi
+#
+# Check for the Linux functions for controlling processor affinity.
+# 
+# LINUX: sched_setaffinity
+# AIX:   bindprocessor
+# OSX (Leopard): thread_policy_set
+AC_CHECK_FUNCS(sched_setaffinity sched_getaffinity bindprocessor thread_policy_set)
+if test "$ac_cv_func_sched_setaffinity" = "yes" ; then
+    # Test for the cpu process set type
+    AC_CACHE_CHECK([whether cpu_set_t available],pac_cv_have_cpu_set_t,[
+    AC_TRY_COMPILE( [
+#include <sched.h>],[ cpu_set_t t; ],pac_cv_have_cpu_set_t=yes,pac_cv_have_cpu_set_t=no)])
+    if test "$pac_cv_have_cpu_set_t" = yes ; then
+        AC_DEFINE(HAVE_CPU_SET_T,1,[Define if cpu_set_t is defined in sched.h])
+
+	AC_CACHE_CHECK([whether the CPU_SET and CPU_ZERO macros are defined],
+	pac_cv_cpu_set_defined,[
+        AC_TRY_LINK( [
+#include <sched.h>],[ cpu_set_t t; CPU_ZERO(&t); CPU_SET(1,&t); ],
+        pac_cv_cpu_set_defined=yes,pac_cv_cpu_set_defined=no)])
+	if test "$pac_cv_cpu_set_defined" = "yes" ; then
+	    AC_DEFINE(HAVE_CPU_SET_MACROS,1,[Define if CPU_SET and CPU_ZERO defined])
+        fi
+	# FIXME: Some versions of sched_setaffinity return ENOSYS (!), 
+	# so we should test for the unfriendly and useless behavior
+    fi
+fi
+if test "$ac_cv_func_thread_policy_set" = yes ; then
+    AC_CACHE_CHECK([whether thread affinity macros defined],
+    pac_cv_have_thread_affinity_policy,[
+    AC_TRY_COMPILE([#include <mach/thread_policy.h>],[
+#if !defined(THREAD_AFFINITY_POLICY) || !defined(THREAD_AFFINITY_TAG_NULL)
+    :'thread macros not defined
+],pac_cv_have_thread_affinity_policy=yes,
+  pac_cv_have_thread_affinity_policy=no)])
+    if test "$pac_cv_have_thread_affinity_policy" = yes ; then
+        AC_DEFINE(HAVE_OSX_THREAD_AFFINITY,1,[Define is the OSX thread affinity policy macros defined])
     fi
 fi
 
@@ -335,14 +387,7 @@ AC_SUBST(master_top_srcdir)
 dnl
 dnl Dependency handling
 AC_SUBST(MAKE_DEPEND_C)
-dnl
-dnl Etags
-AC_CHECK_PROGS(ETAGS,etags,true)
-AC_SUBST(ETAGS)
-AC_SUBST(ETAGSADD)
-export ETAGS
-export ETAGSADD
-dnl
+
 dnl We don't want the library in this directory to be shared, but we
 dnl do want to avoid unsubstituted autoconf variables.
 AC_SUBST(LIBTOOL)

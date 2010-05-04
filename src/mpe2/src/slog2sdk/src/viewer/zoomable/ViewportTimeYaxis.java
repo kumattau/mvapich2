@@ -12,15 +12,18 @@ package viewer.zoomable;
 import java.awt.*;
 import java.awt.event.*;
 import javax.swing.*;
-import javax.swing.event.*;
+// import javax.swing.event.*;
 
 import base.drawable.Drawable;
 import viewer.common.Dialogs;
 import viewer.common.Parameters;
+import viewer.common.Routines;
 
 public class ViewportTimeYaxis extends ViewportTime
                                implements AdjustmentListener
 {
+    private static final long     serialVersionUID        = 4300L;
+
     private static final Color    SEARCH_LINE_COLOR       = Color.yellow;
     private static final int      SEARCH_ARROW_HALF_ANGLE = 15;          // deg
     private static final double   SEARCH_ARROW_ANGLE      = Math.PI/6.0; // rad
@@ -115,7 +118,6 @@ public class ViewportTimeYaxis extends ViewportTime
 
     private void drawMarkerForSearchedDrawable( Graphics g )
     {
-        Stroke     orig_stroke;
         Rectangle  dobj_rect;
         Color      dobj_color, dobj_brighter_color, dobj_darker_color;
         int        vport_width, vport_height;
@@ -389,7 +391,7 @@ public class ViewportTimeYaxis extends ViewportTime
             Point  vport_click;
 
             super.mouseClicked( mouse_evt );
-            if ( SwingUtilities.isLeftMouseButton( mouse_evt ) ) {
+            if ( Routines.isLeftMouseButton( mouse_evt ) ) {
                 if ( ! super.isLeftMouseClick4Zoom ) {  // Hand Mode
                     vport_click    = mouse_evt.getPoint();
                     searching_time = super.coord_xform.convertPixelToTime(
@@ -414,7 +416,7 @@ public class ViewportTimeYaxis extends ViewportTime
             Point  vport_click;
 
             super.mousePressed( mouse_evt );
-            if ( SwingUtilities.isLeftMouseButton( mouse_evt ) ) {
+            if ( Routines.isLeftMouseButton( mouse_evt ) ) {
                 if ( ! super.isLeftMouseClick4Zoom ) {  // Hand Mode
                     vport_click          = mouse_evt.getPoint();
                     mouse_last_Yloc      = vport_click.y;
@@ -430,7 +432,7 @@ public class ViewportTimeYaxis extends ViewportTime
             int    y_change, sb_change;
 
             super.mouseDragged( mouse_evt );
-            if ( SwingUtilities.isLeftMouseButton( mouse_evt ) ) {
+            if ( Routines.isLeftMouseButton( mouse_evt ) ) {
                 if ( ! super.isLeftMouseClick4Zoom ) {  // Hand Mode
                     vport_click = mouse_evt.getPoint();
                     y_change    = mouse_last_Yloc - vport_click.y; 
@@ -449,7 +451,7 @@ public class ViewportTimeYaxis extends ViewportTime
             int    y_change, sb_change;
 
             super.mouseReleased( mouse_evt );
-            if ( SwingUtilities.isLeftMouseButton( mouse_evt ) ) {
+            if ( Routines.isLeftMouseButton( mouse_evt ) ) {
                 if ( ! super.isLeftMouseClick4Zoom ) {
                     vport_click = mouse_evt.getPoint();
                     y_change  = mouse_last_Yloc - vport_click.y; 

@@ -87,13 +87,13 @@ SMPD_BOOL smpd_command_to_string(char **str_pptr, int *len_ptr, int indent, smpd
     if (*len_ptr < 1) { smpd_exit_fn(FCNAME); return SMPD_FALSE; }
     smpd_snprintf_update(str_pptr, len_ptr, "%sfreed: %d\n", indent_str, cmd_ptr->freed);
     if (*len_ptr < 1) { smpd_exit_fn(FCNAME); return SMPD_FALSE; }
-    smpd_snprintf_update(str_pptr, len_ptr, "%siov[0].buf: %p\n", indent_str, cmd_ptr->iov[0].MPID_IOV_BUF);
+    smpd_snprintf_update(str_pptr, len_ptr, "%siov[0].buf: %p\n", indent_str, cmd_ptr->iov[0].SMPD_IOV_BUF);
     if (*len_ptr < 1) { smpd_exit_fn(FCNAME); return SMPD_FALSE; }
-    smpd_snprintf_update(str_pptr, len_ptr, "%siov[0].len: %d\n", indent_str, cmd_ptr->iov[0].MPID_IOV_LEN);
+    smpd_snprintf_update(str_pptr, len_ptr, "%siov[0].len: %d\n", indent_str, cmd_ptr->iov[0].SMPD_IOV_LEN);
     if (*len_ptr < 1) { smpd_exit_fn(FCNAME); return SMPD_FALSE; }
-    smpd_snprintf_update(str_pptr, len_ptr, "%siov[1].buf: %p\n", indent_str, cmd_ptr->iov[1].MPID_IOV_BUF);
+    smpd_snprintf_update(str_pptr, len_ptr, "%siov[1].buf: %p\n", indent_str, cmd_ptr->iov[1].SMPD_IOV_BUF);
     if (*len_ptr < 1) { smpd_exit_fn(FCNAME); return SMPD_FALSE; }
-    smpd_snprintf_update(str_pptr, len_ptr, "%siov[1].len: %d\n", indent_str, cmd_ptr->iov[1].MPID_IOV_LEN);
+    smpd_snprintf_update(str_pptr, len_ptr, "%siov[1].len: %d\n", indent_str, cmd_ptr->iov[1].SMPD_IOV_LEN);
     if (*len_ptr < 1) { smpd_exit_fn(FCNAME); return SMPD_FALSE; }
     smpd_snprintf_update(str_pptr, len_ptr, "%sstdin_read_offset: %d\n", indent_str, cmd_ptr->stdin_read_offset);
     if (*len_ptr < 1) { smpd_exit_fn(FCNAME); return SMPD_FALSE; }
@@ -404,7 +404,7 @@ int smpd_free_command(smpd_command_t *cmd_ptr)
 
 #undef FCNAME
 #define FCNAME "smpd_create_context"
-int smpd_create_context(smpd_context_type_t type, MPIDU_Sock_set_t set, MPIDU_Sock_t sock, int id, smpd_context_t **context_pptr)
+int smpd_create_context(smpd_context_type_t type, SMPDU_Sock_set_t set, SMPDU_Sock_t sock, int id, smpd_context_t **context_pptr)
 {
     int result;
     smpd_context_t *context;
@@ -535,7 +535,7 @@ int smpd_free_context(smpd_context_t *context)
 	/* erase the contents to help track down use of freed structures */
 	/* This doesn't work because free clobbers the memory instead of leaving it alone */
 	memset(context, 0, sizeof(smpd_context_t));
-	smpd_init_context(context, SMPD_CONTEXT_FREED, MPIDU_SOCK_INVALID_SET, MPIDU_SOCK_INVALID_SOCK, -1);
+	smpd_init_context(context, SMPD_CONTEXT_FREED, SMPDU_SOCK_INVALID_SET, SMPDU_SOCK_INVALID_SOCK, -1);
 
 #ifdef DEBUG_SMPD_FREE_CONTEXT
 	/* add to debugging free list */
@@ -555,8 +555,8 @@ int smpd_free_context(smpd_context_t *context)
 #define FCNAME "smpd_add_command_arg"
 int smpd_add_command_arg(smpd_command_t *cmd_ptr, char *param, char *value)
 {
-    char *str;
-    int len;
+    char *str=NULL, *tmp_value=NULL;
+    int len, value_len;
     int result;
     int cmd_length;
 
@@ -590,13 +590,35 @@ int smpd_add_command_arg(smpd_command_t *cmd_ptr, char *param, char *value)
 	}
     }
 
+    /* Check if we have a escape character at the end of the
+     * value string
+     * If we do, add a separator character to value string
+     */
+    value_len = (int )strlen(value);
+    tmp_value = NULL;
+    if(value[value_len - 1] == MPIU_STR_ESCAPE_CHAR){
+        tmp_value = (char *)MPIU_Malloc(value_len + 2);
+        if(tmp_value == NULL){
+            smpd_err_printf("Unable to allocate memory for tmp value string\n");
+            smpd_exit_fn(FCNAME);
+            return SMPD_FAIL;
+        }
+        MPIU_Strncpy(tmp_value, value, value_len + 2);
+        tmp_value[value_len] = MPIU_STR_SEPAR_CHAR;
+        tmp_value[value_len + 1] = '\0';
+        value = tmp_value;
+    }
+
     result = MPIU_Str_add_string_arg(&str, &len, param, value);
     if (result != MPIU_STR_SUCCESS)
     {
-	smpd_err_printf("unable to add the command parameter: %s=%s\n", param, value);
-	smpd_exit_fn(FCNAME);
-	return SMPD_FAIL;
+        smpd_err_printf("unable to add the command parameter: %s=%s\n", param, value);
+        if(tmp_value) MPIU_Free(tmp_value);
+        smpd_exit_fn(FCNAME);
+        return SMPD_FAIL;
     }
+
+    if(tmp_value) MPIU_Free(tmp_value);
     smpd_exit_fn(FCNAME);
     return SMPD_SUCCESS;
 }
@@ -741,11 +763,11 @@ int smpd_post_read_command(smpd_context_t *context)
     smpd_enter_fn(FCNAME);
 
     /* post a read for the next command header */
-    smpd_dbg_printf("posting a read for a command header on the %s context, sock %d\n", smpd_get_context_str(context), MPIDU_Sock_get_sock_id(context->sock));
+    smpd_dbg_printf("posting a read for a command header on the %s context, sock %d\n", smpd_get_context_str(context), SMPDU_Sock_get_sock_id(context->sock));
     context->read_state = SMPD_READING_CMD_HEADER;
     context->read_cmd.state = SMPD_CMD_READING_HDR;
-    result = MPIDU_Sock_post_read(context->sock, context->read_cmd.cmd_hdr_str, SMPD_CMD_HDR_LENGTH, SMPD_CMD_HDR_LENGTH, NULL);
-    if (result != MPI_SUCCESS)
+    result = SMPDU_Sock_post_read(context->sock, context->read_cmd.cmd_hdr_str, SMPD_CMD_HDR_LENGTH, SMPD_CMD_HDR_LENGTH, NULL);
+    if (result != SMPD_SUCCESS)
     {
 	smpd_err_printf("unable to post a read for the next command header,\nsock error: %s\n", get_sock_error_string(result));
 	smpd_exit_fn(FCNAME);
@@ -793,17 +815,17 @@ int smpd_post_write_command(smpd_context_t *context, smpd_command_t *cmd)
 	return SMPD_SUCCESS;
     }
 
-    cmd->iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)cmd->cmd_hdr_str;
-    cmd->iov[0].MPID_IOV_LEN = SMPD_CMD_HDR_LENGTH;
-    cmd->iov[1].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)cmd->cmd;
-    cmd->iov[1].MPID_IOV_LEN = cmd->length;
+    cmd->iov[0].SMPD_IOV_BUF = (SMPD_IOV_BUF_CAST)cmd->cmd_hdr_str;
+    cmd->iov[0].SMPD_IOV_LEN = SMPD_CMD_HDR_LENGTH;
+    cmd->iov[1].SMPD_IOV_BUF = (SMPD_IOV_BUF_CAST)cmd->cmd;
+    cmd->iov[1].SMPD_IOV_LEN = cmd->length;
     /*smpd_dbg_printf("command at this moment: \"%s\"\n", cmd->cmd);*/
     smpd_dbg_printf("smpd_post_write_command on the %s context sock %d: %d bytes for command: \"%s\"\n",
-	smpd_get_context_str(context), MPIDU_Sock_get_sock_id(context->sock),
-	cmd->iov[0].MPID_IOV_LEN + cmd->iov[1].MPID_IOV_LEN,
+	smpd_get_context_str(context), SMPDU_Sock_get_sock_id(context->sock),
+	cmd->iov[0].SMPD_IOV_LEN + cmd->iov[1].SMPD_IOV_LEN,
 	cmd->cmd);
-    result = MPIDU_Sock_post_writev(context->sock, cmd->iov, 2, NULL);
-    if (result != MPI_SUCCESS)
+    result = SMPDU_Sock_post_writev(context->sock, cmd->iov, 2, NULL);
+    if (result != SMPD_SUCCESS)
     {
 	smpd_err_printf("unable to post a write for the next command,\nsock error: %s\n", get_sock_error_string(result));
 	smpd_exit_fn(FCNAME);

@@ -32,8 +32,9 @@ int MPIO_Testany(int count, MPIO_Request requests[], int *index,
 		 int *flag, MPI_Status *status)
 {
     int i, err; 
+    MPIU_THREADPRIV_DECL;
 
-    MPIU_THREAD_SINGLE_CS_ENTER("io");
+    MPIU_THREAD_CS_ENTER(ALLFUNC,);
 
     if (count == 1) {
         MPIR_Nest_incr();
@@ -79,6 +80,6 @@ int MPIO_Testany(int count, MPIO_Request requests[], int *index,
 
 
 fn_exit:
-    MPIU_THREAD_SINGLE_CS_EXIT("io");
+    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return err;
 }

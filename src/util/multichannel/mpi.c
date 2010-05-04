@@ -6,6 +6,8 @@
  */
 
 #include "mpi.h"
+#include "mpi_attr.h"
+#include "mpi_lang.h"
 #include <winsock2.h>
 #include <windows.h>
 #include "mpichconf.h"
@@ -29,8 +31,7 @@
  * This way mpiexec or the user can choose the best channel to use at run-time.
  *
  * For example, mpiexec may choose the shm channel for up to 8 processes on a single node
- * and sshm for more than 8 processes on a single node and the sock channel for multi-node
- * jobs.
+ * and the sock channel for larger and multi-node jobs.
  * Example 2: A user has an infiniband cluster and wants the ib channel to be the default.
  * So the user sets the mpiexec option to use the ib channel as the default and then all
  * jobs run on the cluster use the ib channel without modification or re-linking.
@@ -204,10 +205,13 @@ static struct fn_table
     int (*MPI_Alltoall)(void* , int, MPI_Datatype, void*, int, MPI_Datatype, MPI_Comm);
     int (*MPI_Alltoallv)(void* , int *, int *, MPI_Datatype, void*, int *, int *, MPI_Datatype, MPI_Comm);
     int (*MPI_Reduce)(void* , void*, int, MPI_Datatype, MPI_Op, int, MPI_Comm);
+    int (*MPI_Reduce_local) (void *, void *, int, MPI_Datatype, MPI_Op);
     int (*MPI_Op_create)(MPI_User_function *, int, MPI_Op *);
     int (*MPI_Op_free)( MPI_Op *);
+    int (*MPI_Op_commutative)(MPI_Op , int *);
     int (*MPI_Allreduce)(void* , void*, int, MPI_Datatype, MPI_Op, MPI_Comm);
     int (*MPI_Reduce_scatter)(void* , void*, int *, MPI_Datatype, MPI_Op, MPI_Comm);
+    int (*MPI_Reduce_scatter_block)(void *, void *, int, MPI_Datatype, MPI_Op, MPI_Comm);
     int (*MPI_Scan)(void* , void*, int, MPI_Datatype, MPI_Op, MPI_Comm );
     int (*MPI_Group_size)(MPI_Group, int *);
     int (*MPI_Group_rank)(MPI_Group, int *);
@@ -243,6 +247,10 @@ static struct fn_table
     int (*MPI_Cart_create)(MPI_Comm, int, int *, int *, int, MPI_Comm *);
     int (*MPI_Dims_create)(int, int, int *);
     int (*MPI_Graph_create)(MPI_Comm, int, int *, int *, int, MPI_Comm *);
+    int (*MPI_Dist_graph_create)(MPI_Comm, int, int [], int [], int [], int [],
+                            MPI_Info, int, MPI_Comm *);
+    int (*MPI_Dist_graph_create_adjacent)(MPI_Comm, int, int [], int [], int ,
+                            int [], int [], MPI_Info, int, MPI_Comm *);
     int (*MPI_Graphdims_get)(MPI_Comm, int *, int *);
     int (*MPI_Graph_get)(MPI_Comm, int, int, int *, int *);
     int (*MPI_Cartdim_get)(MPI_Comm, int *);
@@ -251,6 +259,9 @@ static struct fn_table
     int (*MPI_Cart_coords)(MPI_Comm, int, int, int *);
     int (*MPI_Graph_neighbors_count)(MPI_Comm, int, int *);
     int (*MPI_Graph_neighbors)(MPI_Comm, int, int, int *);
+    int (*MPI_Dist_graph_neighbors)(MPI_Comm, int, int [], int [],
+                             int, int [], int []);
+    int (*MPI_Dist_graph_neighbors_count)(MPI_Comm, int *, int *, int *);
     int (*MPI_Cart_shift)(MPI_Comm, int, int, int *, int *);
     int (*MPI_Cart_sub)(MPI_Comm, int *, MPI_Comm *);
     int (*MPI_Cart_map)(MPI_Comm, int, int *, int *, int *);
@@ -338,10 +349,10 @@ static struct fn_table
     int (*MPI_Win_set_attr)(MPI_Win, int, void *);
     int (*MPI_Win_set_name)(MPI_Win, char *);
     int (*MPI_Alloc_mem)(MPI_Aint, MPI_Info info, void *baseptr);
-    int (*MPI_Comm_create_errhandler)(MPI_Comm_errhandler_fn *, MPI_Errhandler *);
+    int (*MPI_Comm_create_errhandler)(MPI_Comm_errhandler_function *, MPI_Errhandler *);
     int (*MPI_Comm_get_errhandler)(MPI_Comm, MPI_Errhandler *);
     int (*MPI_Comm_set_errhandler)(MPI_Comm, MPI_Errhandler);
-    int (*MPI_File_create_errhandler)(MPI_File_errhandler_fn *, MPI_Errhandler *);
+    int (*MPI_File_create_errhandler)(MPI_File_errhandler_function *, MPI_Errhandler *);
     int (*MPI_File_get_errhandler)(MPI_File, MPI_Errhandler *);
     int (*MPI_File_set_errhandler)(MPI_File, MPI_Errhandler);
     int (*MPI_Finalized)(int *);
@@ -371,7 +382,7 @@ static struct fn_table
     int (*MPI_Type_get_extent)(MPI_Datatype, MPI_Aint *, MPI_Aint *);
     int (*MPI_Type_get_true_extent)(MPI_Datatype, MPI_Aint *, MPI_Aint *);
     int (*MPI_Unpack_external)(char *, void *, MPI_Aint, MPI_Aint *, void *, int, MPI_Datatype); 
-    int (*MPI_Win_create_errhandler)(MPI_Win_errhandler_fn *, MPI_Errhandler *);
+    int (*MPI_Win_create_errhandler)(MPI_Win_errhandler_function *, MPI_Errhandler *);
     int (*MPI_Win_get_errhandler)(MPI_Win, MPI_Errhandler *);
     int (*MPI_Win_set_errhandler)(MPI_Win, MPI_Errhandler);
     int (*MPI_Type_create_f90_integer)( int, MPI_Datatype * );
@@ -509,10 +520,13 @@ static struct fn_table
     int (*PMPI_Alltoall)(void* , int, MPI_Datatype, void*, int, MPI_Datatype, MPI_Comm);
     int (*PMPI_Alltoallv)(void* , int *, int *, MPI_Datatype, void*, int *, int *, MPI_Datatype, MPI_Comm);
     int (*PMPI_Reduce)(void* , void*, int, MPI_Datatype, MPI_Op, int, MPI_Comm);
+    int (*PMPI_Reduce_local) (void *, void *, int, MPI_Datatype, MPI_Op);
     int (*PMPI_Op_create)(MPI_User_function *, int, MPI_Op *);
     int (*PMPI_Op_free)( MPI_Op *);
+    int (*PMPI_Op_commutative)(MPI_Op, int *);
     int (*PMPI_Allreduce)(void* , void*, int, MPI_Datatype, MPI_Op, MPI_Comm);
     int (*PMPI_Reduce_scatter)(void* , void*, int *, MPI_Datatype, MPI_Op, MPI_Comm);
+    int (*PMPI_Reduce_scatter_block)(void *, void *, int, MPI_Datatype, MPI_Op, MPI_Comm);
     int (*PMPI_Scan)(void* , void*, int, MPI_Datatype, MPI_Op, MPI_Comm );
     int (*PMPI_Group_size)(MPI_Group, int *);
     int (*PMPI_Group_rank)(MPI_Group, int *);
@@ -548,6 +562,10 @@ static struct fn_table
     int (*PMPI_Cart_create)(MPI_Comm, int, int *, int *, int, MPI_Comm *);
     int (*PMPI_Dims_create)(int, int, int *);
     int (*PMPI_Graph_create)(MPI_Comm, int, int *, int *, int, MPI_Comm *);
+    int (*PMPI_Dist_graph_create)(MPI_Comm, int, int [], int [], int [], int [],
+                            MPI_Info, int, MPI_Comm *);
+    int (*PMPI_Dist_graph_create_adjacent)(MPI_Comm, int, int [], int [], int ,
+                            int [], int [], MPI_Info, int, MPI_Comm *);
     int (*PMPI_Graphdims_get)(MPI_Comm, int *, int *);
     int (*PMPI_Graph_get)(MPI_Comm, int, int, int *, int *);
     int (*PMPI_Cartdim_get)(MPI_Comm, int *);
@@ -556,6 +574,9 @@ static struct fn_table
     int (*PMPI_Cart_coords)(MPI_Comm, int, int, int *);
     int (*PMPI_Graph_neighbors_count)(MPI_Comm, int, int *);
     int (*PMPI_Graph_neighbors)(MPI_Comm, int, int, int *);
+    int (*PMPI_Dist_graph_neighbors)(MPI_Comm, int, int [], int [],
+                             int, int [], int []);
+    int (*PMPI_Dist_graph_neighbors_count)(MPI_Comm, int *, int *, int *);
     int (*PMPI_Cart_shift)(MPI_Comm, int, int, int *, int *);
     int (*PMPI_Cart_sub)(MPI_Comm, int *, MPI_Comm *);
     int (*PMPI_Cart_map)(MPI_Comm, int, int *, int *, int *);
@@ -643,10 +664,10 @@ static struct fn_table
     int (*PMPI_Type_create_f90_real)( int, int, MPI_Datatype * );
     int (*PMPI_Type_create_f90_complex)( int, int, MPI_Datatype * );
     int (*PMPI_Alloc_mem)(MPI_Aint, MPI_Info info, void *baseptr);
-    int (*PMPI_Comm_create_errhandler)(MPI_Comm_errhandler_fn *, MPI_Errhandler *);
+    int (*PMPI_Comm_create_errhandler)(MPI_Comm_errhandler_function *, MPI_Errhandler *);
     int (*PMPI_Comm_get_errhandler)(MPI_Comm, MPI_Errhandler *);
     int (*PMPI_Comm_set_errhandler)(MPI_Comm, MPI_Errhandler);
-    int (*PMPI_File_create_errhandler)(MPI_File_errhandler_fn *, MPI_Errhandler *);
+    int (*PMPI_File_create_errhandler)(MPI_File_errhandler_function *, MPI_Errhandler *);
     int (*PMPI_File_get_errhandler)(MPI_File, MPI_Errhandler *);
     int (*PMPI_File_set_errhandler)(MPI_File, MPI_Errhandler);
     int (*PMPI_Finalized)(int *);
@@ -676,13 +697,14 @@ static struct fn_table
     int (*PMPI_Type_get_extent)(MPI_Datatype, MPI_Aint *, MPI_Aint *);
     int (*PMPI_Type_get_true_extent)(MPI_Datatype, MPI_Aint *, MPI_Aint *);
     int (*PMPI_Unpack_external)(char *, void *, MPI_Aint, MPI_Aint *, void *, int, MPI_Datatype); 
-    int (*PMPI_Win_create_errhandler)(MPI_Win_errhandler_fn *, MPI_Errhandler *);
+    int (*PMPI_Win_create_errhandler)(MPI_Win_errhandler_function *, MPI_Errhandler *);
     int (*PMPI_Win_get_errhandler)(MPI_Win, MPI_Errhandler *);
     int (*PMPI_Win_set_errhandler)(MPI_Win, MPI_Errhandler);
     double (*PMPI_Wtime)(void);
     double (*PMPI_Wtick)(void);
 
     /* Extra exported internal symbols */
+    void (*MPIR_Keyval_set_proxy)(int ,MPID_Attr_copy_proxy ,MPID_Attr_delete_proxy );
     void (*MPIR_Keyval_set_fortran)(int);
     void (*MPIR_Keyval_set_fortran90)(int);
     void (*MPIR_Grequest_set_lang_f77)(MPI_Request);
@@ -694,6 +716,13 @@ static struct fn_table
     /*int (*MPIR_Dup_fn)(MPI_Comm, int, void *, void *, void *, int *);*/
     int (*MPIR_Err_create_code)(int , int , const char [], int , int , const char [], const char [], ...);
     int (*MPIR_Err_return_comm)(struct MPID_Comm *, const char [], int);
+    
+    int (*MPIR_CommGetAttr)( MPI_Comm , int , void *, int *, MPIR_AttrType );
+    int (*MPIR_CommSetAttr)( MPI_Comm , int , void *, MPIR_AttrType );
+    int (*MPIR_TypeGetAttr)( MPI_Datatype , int , void *,int *, MPIR_AttrType );
+    int (*MPIR_TypeSetAttr)(MPI_Datatype , int , void *,MPIR_AttrType );
+    int (*MPIR_WinSetAttr)( MPI_Win , int , void *, MPIR_AttrType );
+    int (*MPIR_WinGetAttr)( MPI_Win , int , void *, int *, MPIR_AttrType );
 
     /* global variables */
     MPI_Fint **MPI_F_STATUS_IGNORE;
@@ -994,14 +1023,20 @@ static BOOL LoadFunctions(const char *dll_name, const char *wrapper_dll_name)
     if (fn.MPI_Alltoallv == NULL) fn.MPI_Alltoallv = (int (*)(void* , int *, int *, MPI_Datatype, void*, int *, int *, MPI_Datatype, MPI_Comm))GetProcAddress(hPMPIModule, "MPI_Alltoallv");
     fn.MPI_Reduce = (int (*)(void* , void*, int, MPI_Datatype, MPI_Op, int, MPI_Comm))GetProcAddress(hMPIModule, "MPI_Reduce");
     if (fn.MPI_Reduce == NULL) fn.MPI_Reduce = (int (*)(void* , void*, int, MPI_Datatype, MPI_Op, int, MPI_Comm))GetProcAddress(hPMPIModule, "MPI_Reduce");
+    fn.MPI_Reduce_local = (int (*)(void *, void *, int , MPI_Datatype , MPI_Op))GetProcAddress(hMPIModule, "MPI_Reduce_local");
+    if (fn.MPI_Reduce_local == NULL) fn.MPI_Reduce_local = (int (*)(void *, void *, int , MPI_Datatype , MPI_Op))GetProcAddress(hPMPIModule, "MPI_Reduce_local");
     fn.MPI_Op_create = (int (*)(MPI_User_function *, int, MPI_Op *))GetProcAddress(hMPIModule, "MPI_Op_create");
     if (fn.MPI_Op_create == NULL) fn.MPI_Op_create = (int (*)(MPI_User_function *, int, MPI_Op *))GetProcAddress(hPMPIModule, "MPI_Op_create");
     fn.MPI_Op_free = (int (*)( MPI_Op *))GetProcAddress(hMPIModule, "MPI_Op_free");
     if (fn.MPI_Op_free == NULL) fn.MPI_Op_free = (int (*)( MPI_Op *))GetProcAddress(hPMPIModule, "MPI_Op_free");
+    fn.MPI_Op_commutative = (int (*) (MPI_Op , int *))GetProcAddress(hMPIModule, "MPI_Op_commutative");
+    if (fn.MPI_Op_commutative == NULL) (int (*) (MPI_Op , int *))GetProcAddress(hPMPIModule, "MPI_Op_commutative");
     fn.MPI_Allreduce = (int (*)(void* , void*, int, MPI_Datatype, MPI_Op, MPI_Comm))GetProcAddress(hMPIModule, "MPI_Allreduce");
     if (fn.MPI_Allreduce == NULL) fn.MPI_Allreduce = (int (*)(void* , void*, int, MPI_Datatype, MPI_Op, MPI_Comm))GetProcAddress(hPMPIModule, "MPI_Allreduce");
     fn.MPI_Reduce_scatter = (int (*)(void* , void*, int *, MPI_Datatype, MPI_Op, MPI_Comm))GetProcAddress(hMPIModule, "MPI_Reduce_scatter");
     if (fn.MPI_Reduce_scatter == NULL) fn.MPI_Reduce_scatter = (int (*)(void* , void*, int *, MPI_Datatype, MPI_Op, MPI_Comm))GetProcAddress(hPMPIModule, "MPI_Reduce_scatter");
+    fn.MPI_Reduce_scatter_block = (int (*)(void *, void *, int, MPI_Datatype, MPI_Op, MPI_Comm)) GetProcAddress(hMPIModule, "MPI_Reduce_scatter_block");
+    if (fn.MPI_Reduce_scatter_block == NULL) fn.MPI_Reduce_scatter_block = (int (*)(void *, void *, int, MPI_Datatype, MPI_Op, MPI_Comm)) GetProcAddress(hPMPIModule, "MPI_Reduce_scatter_block");
     fn.MPI_Scan = (int (*)(void* , void*, int, MPI_Datatype, MPI_Op, MPI_Comm ))GetProcAddress(hMPIModule, "MPI_Scan");
     if (fn.MPI_Scan == NULL) fn.MPI_Scan = (int (*)(void* , void*, int, MPI_Datatype, MPI_Op, MPI_Comm ))GetProcAddress(hPMPIModule, "MPI_Scan");
     fn.MPI_Group_size = (int (*)(MPI_Group, int *))GetProcAddress(hMPIModule, "MPI_Group_size");
@@ -1072,6 +1107,10 @@ static BOOL LoadFunctions(const char *dll_name, const char *wrapper_dll_name)
     if (fn.MPI_Dims_create == NULL) fn.MPI_Dims_create = (int (*)(int, int, int *))GetProcAddress(hPMPIModule, "MPI_Dims_create");
     fn.MPI_Graph_create = (int (*)(MPI_Comm, int, int *, int *, int, MPI_Comm *))GetProcAddress(hMPIModule, "MPI_Graph_create");
     if (fn.MPI_Graph_create == NULL) fn.MPI_Graph_create = (int (*)(MPI_Comm, int, int *, int *, int, MPI_Comm *))GetProcAddress(hPMPIModule, "MPI_Graph_create");
+    fn.MPI_Dist_graph_create = (int (*)(MPI_Comm, int, int [], int [], int [], int [], MPI_Info, int, MPI_Comm *))GetProcAddress(hMPIModule, "MPI_Dist_graph_create");
+    if(fn.MPI_Dist_graph_create == NULL) fn.MPI_Dist_graph_create = (int (*)(MPI_Comm, int, int [], int [], int [], int [], MPI_Info, int, MPI_Comm *))GetProcAddress(hPMPIModule, "MPI_Dist_graph_create");
+    fn.MPI_Dist_graph_create_adjacent = (int (*)(MPI_Comm, int, int [], int [], int, int [], int [], MPI_Info, int, MPI_Comm *))GetProcAddress(hMPIModule, "MPI_Dist_graph_create_adjacent");
+    if(fn.MPI_Dist_graph_create_adjacent == NULL) fn.MPI_Dist_graph_create_adjacent = (int (*)(MPI_Comm, int, int [], int [], int, int [], int [], MPI_Info, int, MPI_Comm *))GetProcAddress(hPMPIModule, "MPI_Dist_graph_create_adjacent");
     fn.MPI_Graphdims_get = (int (*)(MPI_Comm, int *, int *))GetProcAddress(hMPIModule, "MPI_Graphdims_get");
     if (fn.MPI_Graphdims_get == NULL) fn.MPI_Graphdims_get = (int (*)(MPI_Comm, int *, int *))GetProcAddress(hPMPIModule, "MPI_Graphdims_get");
     fn.MPI_Graph_get = (int (*)(MPI_Comm, int, int, int *, int *))GetProcAddress(hMPIModule, "MPI_Graph_get");
@@ -1088,6 +1127,10 @@ static BOOL LoadFunctions(const char *dll_name, const char *wrapper_dll_name)
     if (fn.MPI_Graph_neighbors_count == NULL) fn.MPI_Graph_neighbors_count = (int (*)(MPI_Comm, int, int *))GetProcAddress(hPMPIModule, "MPI_Graph_neighbors_count");
     fn.MPI_Graph_neighbors = (int (*)(MPI_Comm, int, int, int *))GetProcAddress(hMPIModule, "MPI_Graph_neighbors");
     if (fn.MPI_Graph_neighbors == NULL) fn.MPI_Graph_neighbors = (int (*)(MPI_Comm, int, int, int *))GetProcAddress(hPMPIModule, "MPI_Graph_neighbors");
+    fn.MPI_Dist_graph_neighbors = (int (*)(MPI_Comm, int, int [], int [],int, int [], int []))GetProcAddress(hMPIModule, "MPI_Dist_graph_neighbors");
+    if(fn.MPI_Dist_graph_neighbors == NULL) fn.MPI_Dist_graph_neighbors = (int (*)(MPI_Comm, int, int [], int [],int, int [], int []))GetProcAddress(hPMPIModule, "MPI_Dist_graph_neighbors");
+    fn.MPI_Dist_graph_neighbors_count = (int (*)(MPI_Comm, int *, int *, int *))GetProcAddress(hMPIModule, "MPI_Dist_graph_neighbors_count");
+    if(fn.MPI_Dist_graph_neighbors_count == NULL) fn.MPI_Dist_graph_neighbors_count = (int (*)(MPI_Comm, int *, int *, int *))GetProcAddress(hPMPIModule, "MPI_Dist_graph_neighbors_count");
     fn.MPI_Cart_shift = (int (*)(MPI_Comm, int, int, int *, int *))GetProcAddress(hMPIModule, "MPI_Cart_shift");
     if (fn.MPI_Cart_shift == NULL) fn.MPI_Cart_shift = (int (*)(MPI_Comm, int, int, int *, int *))GetProcAddress(hPMPIModule, "MPI_Cart_shift");
     fn.MPI_Cart_sub = (int (*)(MPI_Comm, int *, MPI_Comm *))GetProcAddress(hMPIModule, "MPI_Cart_sub");
@@ -1263,14 +1306,14 @@ static BOOL LoadFunctions(const char *dll_name, const char *wrapper_dll_name)
     if (fn.MPI_Win_set_name == NULL) fn.MPI_Win_set_name = (int (*)(MPI_Win, char *))GetProcAddress(hPMPIModule, "MPI_Win_set_name");
     fn.MPI_Alloc_mem = (int (*)(MPI_Aint, MPI_Info info, void *baseptr))GetProcAddress(hMPIModule, "MPI_Alloc_mem");
     if (fn.MPI_Alloc_mem == NULL) fn.MPI_Alloc_mem = (int (*)(MPI_Aint, MPI_Info info, void *baseptr))GetProcAddress(hPMPIModule, "MPI_Alloc_mem");
-    fn.MPI_Comm_create_errhandler = (int (*)(MPI_Comm_errhandler_fn *, MPI_Errhandler *))GetProcAddress(hMPIModule, "MPI_Comm_create_errhandler");
-    if (fn.MPI_Comm_create_errhandler == NULL) fn.MPI_Comm_create_errhandler = (int (*)(MPI_Comm_errhandler_fn *, MPI_Errhandler *))GetProcAddress(hPMPIModule, "MPI_Comm_create_errhandler");
+    fn.MPI_Comm_create_errhandler = (int (*)(MPI_Comm_errhandler_function *, MPI_Errhandler *))GetProcAddress(hMPIModule, "MPI_Comm_create_errhandler");
+    if (fn.MPI_Comm_create_errhandler == NULL) fn.MPI_Comm_create_errhandler = (int (*)(MPI_Comm_errhandler_function *, MPI_Errhandler *))GetProcAddress(hPMPIModule, "MPI_Comm_create_errhandler");
     fn.MPI_Comm_get_errhandler = (int (*)(MPI_Comm, MPI_Errhandler *))GetProcAddress(hMPIModule, "MPI_Comm_get_errhandler");
     if (fn.MPI_Comm_get_errhandler == NULL) fn.MPI_Comm_get_errhandler = (int (*)(MPI_Comm, MPI_Errhandler *))GetProcAddress(hPMPIModule, "MPI_Comm_get_errhandler");
     fn.MPI_Comm_set_errhandler = (int (*)(MPI_Comm, MPI_Errhandler))GetProcAddress(hMPIModule, "MPI_Comm_set_errhandler");
     if (fn.MPI_Comm_set_errhandler == NULL) fn.MPI_Comm_set_errhandler = (int (*)(MPI_Comm, MPI_Errhandler))GetProcAddress(hPMPIModule, "MPI_Comm_set_errhandler");
-    fn.MPI_File_create_errhandler = (int (*)(MPI_File_errhandler_fn *, MPI_Errhandler *))GetProcAddress(hMPIModule, "MPI_File_create_errhandler");
-    if (fn.MPI_File_create_errhandler == NULL) fn.MPI_File_create_errhandler = (int (*)(MPI_File_errhandler_fn *, MPI_Errhandler *))GetProcAddress(hPMPIModule, "MPI_File_create_errhandler");
+    fn.MPI_File_create_errhandler = (int (*)(MPI_File_errhandler_function *, MPI_Errhandler *))GetProcAddress(hMPIModule, "MPI_File_create_errhandler");
+    if (fn.MPI_File_create_errhandler == NULL) fn.MPI_File_create_errhandler = (int (*)(MPI_File_errhandler_function *, MPI_Errhandler *))GetProcAddress(hPMPIModule, "MPI_File_create_errhandler");
     fn.MPI_File_get_errhandler = (int (*)(MPI_File, MPI_Errhandler *))GetProcAddress(hMPIModule, "MPI_File_get_errhandler");
     if (fn.MPI_File_get_errhandler == NULL) fn.MPI_File_get_errhandler = (int (*)(MPI_File, MPI_Errhandler *))GetProcAddress(hPMPIModule, "MPI_File_get_errhandler");
     fn.MPI_File_set_errhandler = (int (*)(MPI_File, MPI_Errhandler))GetProcAddress(hMPIModule, "MPI_File_set_errhandler");
@@ -1329,8 +1372,8 @@ static BOOL LoadFunctions(const char *dll_name, const char *wrapper_dll_name)
     if (fn.MPI_Type_get_true_extent == NULL) fn.MPI_Type_get_true_extent = (int (*)(MPI_Datatype, MPI_Aint *, MPI_Aint *))GetProcAddress(hPMPIModule, "MPI_Type_get_true_extent");
     fn.MPI_Unpack_external = (int (*)(char *, void *, MPI_Aint, MPI_Aint *, void *, int, MPI_Datatype))GetProcAddress(hMPIModule, "MPI_Unpack_external"); 
     if (fn.MPI_Unpack_external == NULL) fn.MPI_Unpack_external = (int (*)(char *, void *, MPI_Aint, MPI_Aint *, void *, int, MPI_Datatype))GetProcAddress(hPMPIModule, "MPI_Unpack_external"); 
-    fn.MPI_Win_create_errhandler = (int (*)(MPI_Win_errhandler_fn *, MPI_Errhandler *))GetProcAddress(hMPIModule, "MPI_Win_create_errhandler");
-    if (fn.MPI_Win_create_errhandler == NULL) fn.MPI_Win_create_errhandler = (int (*)(MPI_Win_errhandler_fn *, MPI_Errhandler *))GetProcAddress(hPMPIModule, "MPI_Win_create_errhandler");
+    fn.MPI_Win_create_errhandler = (int (*)(MPI_Win_errhandler_function *, MPI_Errhandler *))GetProcAddress(hMPIModule, "MPI_Win_create_errhandler");
+    if (fn.MPI_Win_create_errhandler == NULL) fn.MPI_Win_create_errhandler = (int (*)(MPI_Win_errhandler_function *, MPI_Errhandler *))GetProcAddress(hPMPIModule, "MPI_Win_create_errhandler");
     fn.MPI_Win_get_errhandler = (int (*)(MPI_Win, MPI_Errhandler *))GetProcAddress(hMPIModule, "MPI_Win_get_errhandler");
     if (fn.MPI_Win_get_errhandler == NULL) fn.MPI_Win_get_errhandler = (int (*)(MPI_Win, MPI_Errhandler *))GetProcAddress(hPMPIModule, "MPI_Win_get_errhandler");
     fn.MPI_Win_set_errhandler = (int (*)(MPI_Win, MPI_Errhandler))GetProcAddress(hMPIModule, "MPI_Win_set_errhandler");
@@ -1473,10 +1516,13 @@ static BOOL LoadFunctions(const char *dll_name, const char *wrapper_dll_name)
     fn.PMPI_Alltoall = (int (*)(void* , int, MPI_Datatype, void*, int, MPI_Datatype, MPI_Comm))GetProcAddress(hPMPIModule, "PMPI_Alltoall");
     fn.PMPI_Alltoallv = (int (*)(void* , int *, int *, MPI_Datatype, void*, int *, int *, MPI_Datatype, MPI_Comm))GetProcAddress(hPMPIModule, "PMPI_Alltoallv");
     fn.PMPI_Reduce = (int (*)(void* , void*, int, MPI_Datatype, MPI_Op, int, MPI_Comm))GetProcAddress(hPMPIModule, "PMPI_Reduce");
+    fn.PMPI_Reduce_local = (int (*)(void *, void *, int , MPI_Datatype , MPI_Op))GetProcAddress(hPMPIModule, "PMPI_Reduce_local");
     fn.PMPI_Op_create = (int (*)(MPI_User_function *, int, MPI_Op *))GetProcAddress(hPMPIModule, "PMPI_Op_create");
+    fn.PMPI_Op_commutative = (int (*) (MPI_Op , int *))GetProcAddress(hPMPIModule, "PMPI_Op_commutative");
     fn.PMPI_Op_free = (int (*)( MPI_Op *))GetProcAddress(hPMPIModule, "PMPI_Op_free");
     fn.PMPI_Allreduce = (int (*)(void* , void*, int, MPI_Datatype, MPI_Op, MPI_Comm))GetProcAddress(hPMPIModule, "PMPI_Allreduce");
     fn.PMPI_Reduce_scatter = (int (*)(void* , void*, int *, MPI_Datatype, MPI_Op, MPI_Comm))GetProcAddress(hPMPIModule, "PMPI_Reduce_scatter");
+    fn.PMPI_Reduce_scatter_block = (int (*)(void *, void *, int, MPI_Datatype, MPI_Op, MPI_Comm)) GetProcAddress(hPMPIModule, "PMPI_Reduce_scatter_block");
     fn.PMPI_Scan = (int (*)(void* , void*, int, MPI_Datatype, MPI_Op, MPI_Comm ))GetProcAddress(hPMPIModule, "PMPI_Scan");
     fn.PMPI_Group_size = (int (*)(MPI_Group, int *))GetProcAddress(hPMPIModule, "PMPI_Group_size");
     fn.PMPI_Group_rank = (int (*)(MPI_Group, int *))GetProcAddress(hPMPIModule, "PMPI_Group_rank");
@@ -1512,6 +1558,8 @@ static BOOL LoadFunctions(const char *dll_name, const char *wrapper_dll_name)
     fn.PMPI_Cart_create = (int (*)(MPI_Comm, int, int *, int *, int, MPI_Comm *))GetProcAddress(hPMPIModule, "PMPI_Cart_create");
     fn.PMPI_Dims_create = (int (*)(int, int, int *))GetProcAddress(hPMPIModule, "PMPI_Dims_create");
     fn.PMPI_Graph_create = (int (*)(MPI_Comm, int, int *, int *, int, MPI_Comm *))GetProcAddress(hPMPIModule, "PMPI_Graph_create");
+    fn.PMPI_Dist_graph_create = (int (*)(MPI_Comm, int, int [], int [], int [], int [], MPI_Info, int, MPI_Comm *))GetProcAddress(hPMPIModule, "PMPI_Dist_graph_create");
+    fn.PMPI_Dist_graph_create_adjacent = (int (*)(MPI_Comm, int, int [], int [], int, int [], int [], MPI_Info, int, MPI_Comm *))GetProcAddress(hPMPIModule, "PMPI_Dist_graph_create_adjacent");
     fn.PMPI_Graphdims_get = (int (*)(MPI_Comm, int *, int *))GetProcAddress(hPMPIModule, "PMPI_Graphdims_get");
     fn.PMPI_Graph_get = (int (*)(MPI_Comm, int, int, int *, int *))GetProcAddress(hPMPIModule, "PMPI_Graph_get");
     fn.PMPI_Cartdim_get = (int (*)(MPI_Comm, int *))GetProcAddress(hPMPIModule, "PMPI_Cartdim_get");
@@ -1520,6 +1568,8 @@ static BOOL LoadFunctions(const char *dll_name, const char *wrapper_dll_name)
     fn.PMPI_Cart_coords = (int (*)(MPI_Comm, int, int, int *))GetProcAddress(hPMPIModule, "PMPI_Cart_coords");
     fn.PMPI_Graph_neighbors_count = (int (*)(MPI_Comm, int, int *))GetProcAddress(hPMPIModule, "PMPI_Graph_neighbors_count");
     fn.PMPI_Graph_neighbors = (int (*)(MPI_Comm, int, int, int *))GetProcAddress(hPMPIModule, "PMPI_Graph_neighbors");
+    fn.PMPI_Dist_graph_neighbors = (int (*)(MPI_Comm, int, int [], int [],int, int [], int []))GetProcAddress(hPMPIModule, "PMPI_Dist_graph_neighbors");
+    fn.PMPI_Dist_graph_neighbors_count = (int (*)(MPI_Comm, int *, int *, int *))GetProcAddress(hPMPIModule, "PMPI_Dist_graph_neighbors_count");
     fn.PMPI_Cart_shift = (int (*)(MPI_Comm, int, int, int *, int *))GetProcAddress(hPMPIModule, "PMPI_Cart_shift");
     fn.PMPI_Cart_sub = (int (*)(MPI_Comm, int *, MPI_Comm *))GetProcAddress(hPMPIModule, "PMPI_Cart_sub");
     fn.PMPI_Cart_map = (int (*)(MPI_Comm, int, int *, int *, int *))GetProcAddress(hPMPIModule, "PMPI_Cart_map");
@@ -1606,10 +1656,10 @@ static BOOL LoadFunctions(const char *dll_name, const char *wrapper_dll_name)
     fn.PMPI_Win_set_attr = (int (*)(MPI_Win, int, void *))GetProcAddress(hPMPIModule, "PMPI_Win_set_attr");
     fn.PMPI_Win_set_name = (int (*)(MPI_Win, char *))GetProcAddress(hPMPIModule, "PMPI_Win_set_name");
     fn.PMPI_Alloc_mem = (int (*)(MPI_Aint, MPI_Info info, void *baseptr))GetProcAddress(hPMPIModule, "PMPI_Alloc_mem");
-    fn.PMPI_Comm_create_errhandler = (int (*)(MPI_Comm_errhandler_fn *, MPI_Errhandler *))GetProcAddress(hPMPIModule, "PMPI_Comm_create_errhandler");
+    fn.PMPI_Comm_create_errhandler = (int (*)(MPI_Comm_errhandler_function *, MPI_Errhandler *))GetProcAddress(hPMPIModule, "PMPI_Comm_create_errhandler");
     fn.PMPI_Comm_get_errhandler = (int (*)(MPI_Comm, MPI_Errhandler *))GetProcAddress(hPMPIModule, "PMPI_Comm_get_errhandler");
     fn.PMPI_Comm_set_errhandler = (int (*)(MPI_Comm, MPI_Errhandler))GetProcAddress(hPMPIModule, "PMPI_Comm_set_errhandler");
-    fn.PMPI_File_create_errhandler = (int (*)(MPI_File_errhandler_fn *, MPI_Errhandler *))GetProcAddress(hPMPIModule, "PMPI_File_create_errhandler");
+    fn.PMPI_File_create_errhandler = (int (*)(MPI_File_errhandler_function *, MPI_Errhandler *))GetProcAddress(hPMPIModule, "PMPI_File_create_errhandler");
     fn.PMPI_File_get_errhandler = (int (*)(MPI_File, MPI_Errhandler *))GetProcAddress(hPMPIModule, "PMPI_File_get_errhandler");
     fn.PMPI_File_set_errhandler = (int (*)(MPI_File, MPI_Errhandler))GetProcAddress(hPMPIModule, "PMPI_File_set_errhandler");
     fn.PMPI_Finalized = (int (*)(int *))GetProcAddress(hPMPIModule, "PMPI_Finalized");
@@ -1639,7 +1689,7 @@ static BOOL LoadFunctions(const char *dll_name, const char *wrapper_dll_name)
     fn.PMPI_Type_get_extent = (int (*)(MPI_Datatype, MPI_Aint *, MPI_Aint *))GetProcAddress(hPMPIModule, "PMPI_Type_get_extent");
     fn.PMPI_Type_get_true_extent = (int (*)(MPI_Datatype, MPI_Aint *, MPI_Aint *))GetProcAddress(hPMPIModule, "PMPI_Type_get_true_extent");
     fn.PMPI_Unpack_external = (int (*)(char *, void *, MPI_Aint, MPI_Aint *, void *, int, MPI_Datatype))GetProcAddress(hPMPIModule, "PMPI_Unpack_external"); 
-    fn.PMPI_Win_create_errhandler = (int (*)(MPI_Win_errhandler_fn *, MPI_Errhandler *))GetProcAddress(hPMPIModule, "PMPI_Win_create_errhandler");
+    fn.PMPI_Win_create_errhandler = (int (*)(MPI_Win_errhandler_function *, MPI_Errhandler *))GetProcAddress(hPMPIModule, "PMPI_Win_create_errhandler");
     fn.PMPI_Win_get_errhandler = (int (*)(MPI_Win, MPI_Errhandler *))GetProcAddress(hPMPIModule, "PMPI_Win_get_errhandler");
     fn.PMPI_Win_set_errhandler = (int (*)(MPI_Win, MPI_Errhandler))GetProcAddress(hPMPIModule, "PMPI_Win_set_errhandler");
     fn.PMPI_Type_create_f90_integer = (int (*)( int, MPI_Datatype * ))GetProcAddress(hPMPIModule, "PMPI_Type_create_f90_integer");
@@ -1647,6 +1697,7 @@ static BOOL LoadFunctions(const char *dll_name, const char *wrapper_dll_name)
     fn.PMPI_Type_create_f90_complex = (int (*)( int, int, MPI_Datatype * ))GetProcAddress(hPMPIModule, "PMPI_Type_create_f90_complex");
 
     /* Extra exported internal symbols */
+    fn.MPIR_Keyval_set_proxy = (void (*)(int ,MPID_Attr_copy_proxy ,MPID_Attr_delete_proxy ))GetProcAddress(hPMPIModule, "MPIR_Keyval_set_proxy");
     fn.MPIR_Keyval_set_fortran = (void (*)(int))GetProcAddress(hPMPIModule, "MPIR_Keyval_set_fortran");
     fn.MPIR_Keyval_set_fortran90 = (void (*)(int))GetProcAddress(hPMPIModule, "MPIR_Keyval_set_fortran90");
     fn.MPIR_Grequest_set_lang_f77 = (void (*)(MPI_Request))GetProcAddress(hPMPIModule, "MPIR_Grequest_set_lang_f77");
@@ -1658,6 +1709,13 @@ static BOOL LoadFunctions(const char *dll_name, const char *wrapper_dll_name)
     /*fn.MPIR_Dup_fn = (int (*)(MPI_Comm, int, void *, void *, void *, int *))GetProcAddress(hPMPIModule, "MPIR_Dup_fn");*/
     fn.MPIR_Err_create_code = (int (*)(int , int , const char [], int , int , const char [], const char [], ...))GetProcAddress(hPMPIModule, "MPIR_Err_create_code");
     fn.MPIR_Err_return_comm = (int (*)(struct MPID_Comm *, const char [], int ))GetProcAddress(hPMPIModule, "MPIR_Err_return_comm");
+
+    fn.MPIR_CommGetAttr = (int (*)( MPI_Comm , int , void *, int *, MPIR_AttrType ))GetProcAddress(hPMPIModule, "MPIR_CommGetAttr");
+    fn.MPIR_CommSetAttr = (int (*)( MPI_Comm , int , void *, MPIR_AttrType ))GetProcAddress(hPMPIModule, "MPIR_CommSetAttr");
+    fn.MPIR_TypeGetAttr = (int (*)( MPI_Datatype , int , void *,int *, MPIR_AttrType ))GetProcAddress(hPMPIModule, "MPIR_TypeGetAttr");
+    fn.MPIR_TypeSetAttr = (int (*)(MPI_Datatype , int , void *,MPIR_AttrType ))GetProcAddress(hPMPIModule, "MPIR_TypeSetAttr");
+    fn.MPIR_WinSetAttr = (int (*)( MPI_Win , int , void *, MPIR_AttrType ))GetProcAddress(hPMPIModule, "MPIR_WinSetAttr");
+    fn.MPIR_WinGetAttr = (int (*)( MPI_Win , int , void *, int *, MPIR_AttrType ))GetProcAddress(hPMPIModule, "MPIR_WinGetAttr");
 
     /* global variables */
     fn.MPI_F_STATUS_IGNORE = (MPI_Fint**)GetProcAddress(hPMPIModule, "MPI_F_STATUS_IGNORE");
@@ -1754,6 +1812,54 @@ int MPIR_Err_create_code(int lastcode, int fatal, const char fcname[], int line,
 }
 
 #undef FCNAME
+#define FCNAME MPIR_CommGetAttr
+int MPIR_CommGetAttr( MPI_Comm comm, int comm_keyval, void *attribute_val, int *flag, MPIR_AttrType outAttrType )
+{
+    MPICH_CHECK_INIT(MPIR_CommGetAttr);
+    return fn.MPIR_CommGetAttr(comm, comm_keyval, attribute_val, flag, outAttrType);
+}
+
+#undef FCNAME
+#define FCNAME MPIR_CommSetAttr
+int MPIR_CommSetAttr( MPI_Comm comm, int comm_keyval, void *attribute_val, MPIR_AttrType attrType )
+{
+    MPICH_CHECK_INIT(MPIR_CommSetAttr);
+    return fn.MPIR_CommSetAttr(comm, comm_keyval, attribute_val, attrType);
+}
+
+#undef FCNAME
+#define FCNAME MPIR_TypeGetAttr
+int MPIR_TypeGetAttr( MPI_Datatype type, int type_keyval, void *attribute_val, int *flag, MPIR_AttrType outAttrType )
+{
+    MPICH_CHECK_INIT(MPIR_TypeGetAttr);
+    return fn.MPIR_TypeGetAttr(type, type_keyval, attribute_val, flag, outAttrType );
+}
+
+#undef FCNAME
+#define FCNAME MPIR_TypeSetAttr
+int MPIR_TypeSetAttr(MPI_Datatype type, int type_keyval, void *attribute_val, MPIR_AttrType attrType )
+{
+    MPICH_CHECK_INIT(MPIR_TypeSetAttr);
+    return fn.MPIR_TypeSetAttr(type, type_keyval, attribute_val, attrType );
+}
+
+#undef FCNAME
+#define FCNAME MPIR_WinSetAttr
+int MPIR_WinSetAttr( MPI_Win win, int win_keyval, void *attribute_val, MPIR_AttrType attrType )
+{
+    MPICH_CHECK_INIT(MPIR_WinSetAttr);
+    return fn.MPIR_WinSetAttr( win, win_keyval, attribute_val, attrType );
+}
+
+#undef FCNAME
+#define FCNAME MPIR_WinGetAttr
+int MPIR_WinGetAttr( MPI_Win win, int win_keyval, void *attribute_val, int *flag, MPIR_AttrType outAttrType )
+{
+    MPICH_CHECK_INIT(MPIR_WinGetAttr);
+    return fn.MPIR_WinGetAttr( win, win_keyval, attribute_val, flag, outAttrType );
+}
+
+#undef FCNAME
 #define FCNAME MPIR_Err_return_comm
 int MPIR_Err_return_comm(struct MPID_Comm *comm_ptr, const char fcname[], int errcode)
 {
@@ -1767,6 +1873,15 @@ int MPIR_Dup_fn(MPI_Comm comm, int keyval, void *extra_state, void *attr_in, voi
 {
     MPICH_CHECK_INIT(FCNAME);
     return fn.MPIR_Dup_fn(comm, keyval, extra_state, attr_in, attr_out, flag);
+}
+
+#undef FCNAME
+#define FCNAME MPIR_Keyval_set_proxy
+void MPIR_Keyval_set_proxy(int keyval, MPID_Attr_copy_proxy copy_proxy,
+        MPID_Attr_delete_proxy delete_proxy)
+{
+    MPICH_CHECK_INIT_VOID(FCNAME);
+    fn.MPIR_Keyval_set_proxy(keyval, copy_proxy, delete_proxy);
 }
 
 #undef FCNAME
@@ -2165,6 +2280,14 @@ int MPI_Op_free(MPI_Op *op)
 }
 
 #undef FCNAME
+#define FCNAME MPI_Op_commutative
+int MPI_Op_commutative(MPI_Op op, int *commute)
+{
+    MPICH_CHECK_INIT(FCNAME);
+    return fn.MPI_Op_commutative(op, commute);
+}
+
+#undef FCNAME
 #define FCNAME MPI_Reduce
 int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, 
 	       MPI_Op op, int root, MPI_Comm comm)
@@ -2174,12 +2297,30 @@ int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
 }
 
 #undef FCNAME
+#define FCNAME MPI_Reduce_local
+int MPI_Reduce_local(void *inbuf, void *inoutbuf, int count,
+                     MPI_Datatype datatype, MPI_Op op)
+{
+    MPICH_CHECK_INIT(FCNAME);
+    return fn.MPI_Reduce_local(inbuf, inoutbuf, count, datatype, op);
+}
+
+#undef FCNAME
 #define FCNAME MPI_Reduce_scatter
 int MPI_Reduce_scatter(void *sendbuf, void *recvbuf, int *recvcnts, 
 		       MPI_Datatype datatype, MPI_Op op, MPI_Comm comm)
 {
     MPICH_CHECK_INIT(FCNAME);
     return fn.MPI_Reduce_scatter(sendbuf, recvbuf, recvcnts, datatype, op, comm);
+}
+
+#undef FCNAME
+#define FCNAME MPI_Reduce_scatter_block
+int MPI_Reduce_scatter_block(void *sendbuf, void *recvbuf, int recvcount,
+                             MPI_Datatype datatype, MPI_Op op, MPI_Comm comm)
+{
+    MPICH_CHECK_INIT(FCNAME);
+    return fn.MPI_Reduce_scatter_block(sendbuf, recvbuf, recvcount, datatype, op, comm);
 }
 
 #undef FCNAME
@@ -2782,7 +2923,7 @@ int MPI_Comm_call_errhandler(MPI_Comm comm, int errorcode)
 
 #undef FCNAME
 #define FCNAME MPI_Comm_create_errhandler
-int MPI_Comm_create_errhandler(MPI_Comm_errhandler_fn *function, 
+int MPI_Comm_create_errhandler(MPI_Comm_errhandler_function *function,
                                MPI_Errhandler *errhandler)
 {
     MPICH_CHECK_INIT(FCNAME);
@@ -2864,7 +3005,7 @@ int MPI_File_call_errhandler(MPI_File fh, int errorcode)
 
 #undef FCNAME
 #define FCNAME MPI_File_create_errhandler
-int MPI_File_create_errhandler(MPI_File_errhandler_fn *function, 
+int MPI_File_create_errhandler(MPI_File_errhandler_function *function,
                                MPI_Errhandler *errhandler)
 {
     MPICH_CHECK_INIT(FCNAME);
@@ -2897,7 +3038,7 @@ int MPI_Win_call_errhandler(MPI_Win win, int errorcode)
 
 #undef FCNAME
 #define FCNAME MPI_Win_create_errhandler
-int MPI_Win_create_errhandler(MPI_Win_errhandler_fn *function, 
+int MPI_Win_create_errhandler(MPI_Win_errhandler_function *function,
 			      MPI_Errhandler *errhandler)
 {
     MPICH_CHECK_INIT(FCNAME);
@@ -4307,6 +4448,27 @@ int MPI_Graph_create(MPI_Comm comm_old, int nnodes, int *index, int *edges,
 }
 
 #undef FCNAME
+#define FCNAME MPI_Dist_graph_create
+int MPI_Dist_graph_create(MPI_Comm comm_old, int n, int sources[],
+                          int degrees[], int destinations[], int weights[],
+                          MPI_Info info, int reorder, MPI_Comm *comm_dist_graph)
+{
+    MPICH_CHECK_INIT(FCNAME);
+    return fn.MPI_Dist_graph_create(comm_old, n, sources, degrees, destinations, weights, info, reorder, comm_dist_graph);
+}
+
+#undef FCNAME
+#define FCNAME MPI_Dist_graph_create_adjacent
+int MPI_Dist_graph_create_adjacent(MPI_Comm comm_old,
+                                   int indegree, int sources[], int sourceweights[],
+                                   int outdegree, int destinations[], int destweights[],
+                                   MPI_Info info, int reorder, MPI_Comm *comm_dist_graph)
+{
+    MPICH_CHECK_INIT(FCNAME);
+    return fn.MPI_Dist_graph_create_adjacent(comm_old, indegree, sources, sourceweights, outdegree, destinations, destweights, info, reorder, comm_dist_graph);
+}
+
+#undef FCNAME
 #define FCNAME MPI_Graphdims_get
 int MPI_Graphdims_get(MPI_Comm comm, int *nnodes, int *nedges)
 {
@@ -4350,6 +4512,24 @@ int MPI_Graph_neighbors(MPI_Comm comm, int rank, int maxneighbors,
 }
 
 #undef FCNAME
+#define FCNAME MPI_Dist_graph_neighbors
+int MPI_Dist_graph_neighbors(MPI_Comm comm,
+                             int maxindegree, int sources[], int sourceweights[],
+                             int maxoutdegree, int destinations[], int destweights[])
+{
+    MPICH_CHECK_INIT(FCNAME);
+    return fn.MPI_Dist_graph_neighbors(comm, maxindegree, sources, sourceweights, maxoutdegree, destinations, destweights);
+}
+
+#undef FCNAME
+#define FCNAME MPI_Dist_graph_neighbors_count
+int MPI_Dist_graph_neighbors_count(MPI_Comm comm, int *indegree, int *outdegree, int *weighted)
+{
+    MPICH_CHECK_INIT(FCNAME);
+    return fn.MPI_Dist_graph_neighbors_count(comm, indegree, outdegree, weighted);
+}
+
+#undef FCNAME
 #define FCNAME MPI_Topo_test
 int MPI_Topo_test(MPI_Comm comm, int *topo_type)
 {
@@ -4371,6 +4551,30 @@ double MPI_Wtick()
 {
     /*MPICH_CHECK_INIT_VOID(FCNAME);*/ /* No checking for performance */
     return fn.MPI_Wtick();
+}
+
+#undef FCNAME
+#define FCNAME MPI_Type_create_f90_integer
+int MPI_Type_create_f90_integer(int r, MPI_Datatype *newtype)
+{
+    MPICH_CHECK_INIT(FCNAME);
+    return fn.MPI_Type_create_f90_integer(r, newtype);
+}
+
+#undef FCNAME
+#define FCNAME MPI_Type_create_f90_real
+int MPI_Type_create_f90_real(int p, int r, MPI_Datatype *newtype)
+{
+    MPICH_CHECK_INIT(FCNAME);
+    return fn.MPI_Type_create_f90_real(p, r, newtype);
+}
+
+#undef FCNAME
+#define FCNAME MPI_Type_create_f90_complex
+int MPI_Type_create_f90_complex(int p, int r, MPI_Datatype *newtype)
+{
+    MPICH_CHECK_INIT(FCNAME);
+    return fn.MPI_Type_create_f90_complex(p, r, newtype);
 }
 
 /* PMPI versions */
@@ -4705,6 +4909,14 @@ int PMPI_Op_free(MPI_Op *op)
 }
 
 #undef FCNAME
+#define FCNAME PMPI_Op_commutative
+int PMPI_Op_commutative(MPI_Op op, int *commute)
+{
+    MPICH_CHECK_INIT(FCNAME);
+    return fn.PMPI_Op_commutative(op, commute);
+}
+
+#undef FCNAME
 #define FCNAME PMPI_Reduce
 int PMPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype, 
 	       MPI_Op op, int root, MPI_Comm comm)
@@ -4714,12 +4926,30 @@ int PMPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
 }
 
 #undef FCNAME
+#define FCNAME PMPI_Reduce_local
+int PMPI_Reduce_local(void *inbuf, void *inoutbuf, int count,
+                     MPI_Datatype datatype, MPI_Op op)
+{
+    MPICH_CHECK_INIT(FCNAME);
+    return fn.PMPI_Reduce_local(inbuf, inoutbuf, count, datatype, op);
+}
+
+#undef FCNAME
 #define FCNAME PMPI_Reduce_scatter
 int PMPI_Reduce_scatter(void *sendbuf, void *recvbuf, int *recvcnts, 
 		       MPI_Datatype datatype, MPI_Op op, MPI_Comm comm)
 {
     MPICH_CHECK_INIT(FCNAME);
     return fn.PMPI_Reduce_scatter(sendbuf, recvbuf, recvcnts, datatype, op, comm);
+}
+
+#undef FCNAME
+#define FCNAME PMPI_Reduce_scatter_block
+int PMPI_Reduce_scatter_block(void *sendbuf, void *recvbuf, int recvcount,
+                             MPI_Datatype datatype, MPI_Op op, MPI_Comm comm)
+{
+    MPICH_CHECK_INIT(FCNAME);
+    return fn.PMPI_Reduce_scatter_block(sendbuf, recvbuf, recvcount, datatype, op, comm);
 }
 
 #undef FCNAME
@@ -5322,7 +5552,7 @@ int PMPI_Comm_call_errhandler(MPI_Comm comm, int errorcode)
 
 #undef FCNAME
 #define FCNAME PMPI_Comm_create_errhandler
-int PMPI_Comm_create_errhandler(MPI_Comm_errhandler_fn *function, 
+int PMPI_Comm_create_errhandler(MPI_Comm_errhandler_function *function,
                                MPI_Errhandler *errhandler)
 {
     MPICH_CHECK_INIT(FCNAME);
@@ -5404,7 +5634,7 @@ int PMPI_File_call_errhandler(MPI_File fh, int errorcode)
 
 #undef FCNAME
 #define FCNAME PMPI_File_create_errhandler
-int PMPI_File_create_errhandler(MPI_File_errhandler_fn *function, 
+int PMPI_File_create_errhandler(MPI_File_errhandler_function *function,
                                MPI_Errhandler *errhandler)
 {
     MPICH_CHECK_INIT(FCNAME);
@@ -5437,7 +5667,7 @@ int PMPI_Win_call_errhandler(MPI_Win win, int errorcode)
 
 #undef FCNAME
 #define FCNAME PMPI_Win_create_errhandler
-int PMPI_Win_create_errhandler(MPI_Win_errhandler_fn *function, 
+int PMPI_Win_create_errhandler(MPI_Win_errhandler_function *function,
 			      MPI_Errhandler *errhandler)
 {
     MPICH_CHECK_INIT(FCNAME);
@@ -6847,6 +7077,27 @@ int PMPI_Graph_create(MPI_Comm comm_old, int nnodes, int *index, int *edges,
 }
 
 #undef FCNAME
+#define FCNAME PMPI_Dist_graph_create
+int PMPI_Dist_graph_create(MPI_Comm comm_old, int n, int sources[],
+                          int degrees[], int destinations[], int weights[],
+                          MPI_Info info, int reorder, MPI_Comm *comm_dist_graph)
+{
+    MPICH_CHECK_INIT(FCNAME);
+    return fn.PMPI_Dist_graph_create(comm_old, n, sources, degrees, destinations, weights, info, reorder, comm_dist_graph);
+}
+
+#undef FCNAME
+#define FCNAME PMPI_Dist_graph_create_adjacent
+int PMPI_Dist_graph_create_adjacent(MPI_Comm comm_old,
+                                   int indegree, int sources[], int sourceweights[],
+                                   int outdegree, int destinations[], int destweights[],
+                                   MPI_Info info, int reorder, MPI_Comm *comm_dist_graph)
+{
+    MPICH_CHECK_INIT(FCNAME);
+    return fn.PMPI_Dist_graph_create_adjacent(comm_old, indegree, sources, sourceweights, outdegree, destinations, destweights, info, reorder, comm_dist_graph);
+}
+
+#undef FCNAME
 #define FCNAME PMPI_Graphdims_get
 int PMPI_Graphdims_get(MPI_Comm comm, int *nnodes, int *nedges)
 {
@@ -6890,6 +7141,24 @@ int PMPI_Graph_neighbors(MPI_Comm comm, int rank, int maxneighbors,
 }
 
 #undef FCNAME
+#define FCNAME PMPI_Dist_graph_neighbors
+int PMPI_Dist_graph_neighbors(MPI_Comm comm,
+                             int maxindegree, int sources[], int sourceweights[],
+                             int maxoutdegree, int destinations[], int destweights[])
+{
+    MPICH_CHECK_INIT(FCNAME);
+    return fn.PMPI_Dist_graph_neighbors(comm, maxindegree, sources, sourceweights, maxoutdegree, destinations, destweights);
+}
+
+#undef FCNAME
+#define FCNAME PMPI_Dist_graph_neighbors_count
+int PMPI_Dist_graph_neighbors_count(MPI_Comm comm, int *indegree, int *outdegree, int *weighted)
+{
+    MPICH_CHECK_INIT(FCNAME);
+    return fn.PMPI_Dist_graph_neighbors_count(comm, indegree, outdegree, weighted);
+}
+
+#undef FCNAME
 #define FCNAME PMPI_Topo_test
 int PMPI_Topo_test(MPI_Comm comm, int *topo_type)
 {
@@ -6911,4 +7180,28 @@ double PMPI_Wtick()
 {
     /*MPICH_CHECK_INIT_VOID(PMPI_Wtick);*/ /* No checking for performance */
     return fn.PMPI_Wtick();
+}
+
+#undef FCNAME
+#define FCNAME PMPI_Type_create_f90_integer
+int PMPI_Type_create_f90_integer(int r, MPI_Datatype *newtype)
+{
+    MPICH_CHECK_INIT(FCNAME);
+    return fn.PMPI_Type_create_f90_integer(r, newtype);
+}
+
+#undef FCNAME
+#define FCNAME PMPI_Type_create_f90_real
+int PMPI_Type_create_f90_real(int p, int r, MPI_Datatype *newtype)
+{
+    MPICH_CHECK_INIT(FCNAME);
+    return fn.PMPI_Type_create_f90_real(p, r, newtype);
+}
+
+#undef FCNAME
+#define FCNAME PMPI_Type_create_f90_complex
+int PMPI_Type_create_f90_complex(int p, int r, MPI_Datatype *newtype)
+{
+    MPICH_CHECK_INIT(FCNAME);
+    return fn.PMPI_Type_create_f90_complex(p, r, newtype);
 }

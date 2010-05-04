@@ -212,7 +212,7 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t *pg, int pg_rank)
     for (i = 0; i < pg_size; ++i)
       {
           MPIDI_PG_Get_vc (pg, i, &vc);
-          memset (&(vc->mrail), 0, sizeof (vc->mrail));
+          MPIU_Memset (&(vc->mrail), 0, sizeof (vc->mrail));
           vc->mrail.num_total_subrails = 1;
           vc->mrail.subrail_per_hca = 1;
       }
@@ -1081,7 +1081,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **str)
     for (i = 0; i < pg_size; ++i)
       {
           MPIDI_PG_Get_vc (pg, i, &vc);
-          memset (&(vc->mrail), 0, sizeof (vc->mrail));
+          MPIU_Memset (&(vc->mrail), 0, sizeof (vc->mrail));
           vc->mrail.num_total_subrails = 1;
           vc->mrail.subrail_per_hca = 1;
       }

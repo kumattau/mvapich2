@@ -25,7 +25,7 @@
 /* NOTE - The completion action associated with a request created by CH3_iStartMsgv() is alway null (onDataAvail = 0).  This
    implies that CH3_iStartMsgv() can only be used when the entire message can be described by a single iovec of size
    MPID_IOV_LIMIT. */
-    
+
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_iStartMsgv
 #undef FCNAME
@@ -60,10 +60,6 @@ int MPIDI_CH3_iStartMsgv (MPIDI_VC_t *vc, MPID_IOV *iov, int n_iov, MPID_Request
         goto fn_exit;
     }
 
-#if 0
-    //MPIU_Assert(((MPIDI_CH3I_VC *)vc->channel_private)->is_local);
-    //    MPIU_Assert(n_iov <= 2); /* now used only for contiguous data possibly with header */ DARIUS
-#endif
     MPIU_Assert (n_iov <= MPID_IOV_LIMIT);
     MPIU_Assert (iov[0].MPID_IOV_LEN <= sizeof(MPIDI_CH3_Pkt_t));
 
@@ -84,7 +80,7 @@ int MPIDI_CH3_iStartMsgv (MPIDI_VC_t *vc, MPID_IOV *iov, int n_iov, MPID_Request
                 int i;
                 for (i = 0; i < n_iov; ++i)
                     total += iov[i].MPID_IOV_LEN;
-                    
+
                 MPIU_DBG_MSG_D (CH3_CHANNEL, VERBOSE, "   + len=%d ", total);
             });
 	mpi_errno = MPID_nem_mpich2_sendv_header (&remaining_iov, &remaining_n_iov, vc, &again);
@@ -165,11 +161,20 @@ int MPIDI_CH3_iStartMsgv (MPIDI_VC_t *vc, MPID_IOV *iov, int n_iov, MPID_Request
 	sreq->dev.OnDataAvail = 0;
         sreq->ch.noncontig = FALSE;
 	sreq->ch.vc = vc;
-	MPIDI_CH3I_SendQ_enqueue (sreq, CH3_NORMAL_QUEUE);
+
+        if (MPIDI_CH3I_SendQ_empty(CH3_NORMAL_QUEUE)) {  
+            MPIDI_CH3I_SendQ_enqueue(sreq, CH3_NORMAL_QUEUE);
+        } else {
+            /* this is not the first send on the queue, enqueue it then
+               check to see if we can send any now */
+            MPIDI_CH3I_SendQ_enqueue(sreq, CH3_NORMAL_QUEUE);
+            mpi_errno = MPIDI_CH3_Progress_test();
+            if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+        }
     }
-    
+
     *sreq_ptr = sreq;
-    
+
  fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_ISTARTMSGV);
     return mpi_errno;

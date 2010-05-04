@@ -1,15 +1,4 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
- * reserved.
- *
- * This file is part of the MVAPICH2 software package developed by the
- * team members of The Ohio State University's Network-Based Computing
- * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
- *
- * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT in the top level MVAPICH2 directory.
- *
- */
 /*
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -19,7 +8,11 @@
 
 /* FIXME: Who uses/sets MPIDI_DEV_IMPLEMENTS_ABORT? */
 #ifdef MPIDI_DEV_IMPLEMENTS_ABORT
+#ifdef USE_PMI2_API
+#include "pmi2.h"
+#else
 #include "pmi.h"
+#endif
 static int MPIDI_CH3I_PMI_Abort(int exit_code, const char *error_msg);
 #endif
 
@@ -86,9 +79,12 @@ int MPID_Abort(MPID_Comm * comm, int mpi_errno, int exit_code,
 	    MPIU_Snprintf(error_str, sizeof(error_str), "internal ABORT - process %d", rank);
 	}
     }
+    
+    MPIDU_Ftb_publish(MPIDU_FTB_EV_ABORT, error_str);
+    MPIDU_Ftb_finalize();
 
 #ifdef HAVE_DEBUGGER_SUPPORT
-    MPIR_DebuggerSetAborting( error_str );
+    MPIR_DebuggerSetAborting( error_msg );
 #endif
 
     /* FIXME: This should not use an ifelse chain. Either define the function
@@ -98,29 +94,16 @@ int MPID_Abort(MPID_Comm * comm, int mpi_errno, int exit_code,
 #elif defined(MPIDI_DEV_IMPLEMENTS_ABORT)
     MPIDI_CH3I_PMI_Abort(exit_code, error_msg);
 #else
-    MPIU_Error_printf("%s", error_msg);
+    MPIU_Error_printf("%s\n", error_msg);
     fflush(stderr);
 #endif
 
-    /* ch3_abort should not return but if it does, exit here */
-#if defined(_OSU_MVAPICH_)
-#if defined(HAVE_WINDOWS_H)
-    /* exit can hang if libc fflushes output while in/out/err buffers are locked.  ExitProcess does not hang. */
-    ExitProcess(exit_code);
-#else /* defined(HAVE_WINDOWS_H) */
-    exit(exit_code);
-#endif /* defined(HAVE_WINDOWS_H) */
-#else /* defined(_OSU_MVAPICH_) */
-    MPIU_Exit(exit_code);
-#endif /* defined(_OSU_MVAPICH_) */
-#if defined(_OSU_MVAPICH_) && (defined(__SUNPRO_C) || defined(__SUNPRO_CC))
-#pragma error_messages(off, E_STATEMENT_NOT_REACHED)
-#endif /* defined(_OSU_MVAPICH_) && (defined(__SUNPRO_C) || defined(__SUNPRO_CC)) */    
+    /* ch3_abort should not return but if it does, exit here.  If it does,
+       add the function exit code before calling the final exit.  */
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_ABORT);
+    MPIU_Exit(exit_code);
+    
     return MPI_ERR_INTERN;
-#if defined(_OSU_MVAPICH_) && (defined(__SUNPRO_C) || defined(__SUNPRO_CC))
-#pragma error_messages(default, E_STATEMENT_NOT_REACHED)
-#endif /* defined(_OSU_MVAPICH) && (defined(__SUNPRO_C) || defined(__SUNPRO_CC)) */
 }
 
 #ifdef MPIDI_DEV_IMPLEMENTS_ABORT
@@ -134,14 +117,14 @@ static int MPIDI_CH3I_PMI_Abort(int exit_code, const char *error_msg)
     
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_PMI_ABORT);
 
-    /* Dumping the error message in MVAPICH2 and passing the same
+    /* Dumping the error message in MPICH2 and passing the same
      * message to the PM as well. This might cause duplicate messages,
      * but it is better to have two messages than none. Note that the
      * PM is in a better position to throw the message (e.g., in case
-     * where the stdout/stderr pipes from MVAPICH2 to the PM are
+     * where the stdout/stderr pipes from MPICH2 to the PM are
      * broken), but not all PMs might display respect the message
      * (this problem was noticed with SLURM). */
-    MPIU_Error_printf("%s", error_msg);
+    MPIU_Error_printf("%s\n", error_msg);
     fflush(stderr);
 
     /* FIXME: What is the scope for PMI_Abort?  Shouldn't it be one or more
@@ -149,7 +132,11 @@ static int MPIDI_CH3I_PMI_Abort(int exit_code, const char *error_msg)
        process groups of the communicator or only the current process?
        Should PMI_Abort have a parameter for which of these two cases to
        perform? */
+#ifdef USE_PMI2_API
+    PMI2_Abort(TRUE, error_msg);
+#else
     PMI_Abort(exit_code, error_msg);
+#endif
 
     /* if abort returns for some reason, exit here */
     exit(exit_code);

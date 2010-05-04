@@ -25,17 +25,19 @@
  */
 
 #include "mpidi_ch3i_rdma_conf.h"
+#include <mpiimpl.h>
 #include <mpimem.h>
 #include <stdio.h>
 #include "avl.h"	/* public types for avl trees */ 
 #include "avl_typs.h"  /* private types for avl trees */
-#include "dreg.h"
  
      /* some common #defines used throughout most of my files */
 #define  PUBLIC   /* default */
 #define  PRIVATE  static
+/*
 #define  FALSE    0
 #define  TRUE     !FALSE
+*/
 
 #define  NEXTERN   /* dont include "extern" declarations from header files */
 
@@ -123,7 +125,7 @@ new_node(data, size)
    root = (AVLtree) ckalloc(sizeof (AVLnode));
    root->data = (void *) ckalloc(size);
 #endif /* !defined(DISABLE_PTMALLOC) */
-   memcpy(root->data, data, size);
+   MPIU_Memcpy(root->data, data, size);
    root->bal = BALANCED;
    root->subtree[LEFT]  = root->subtree[RIGHT] = NULL_TREE;
 
@@ -140,12 +142,7 @@ free_node(rootp)
    AVLtree  *rootp;
 {
 #if !defined(DISABLE_PTMALLOC)
-   if(g_is_dreg_finalize == 1) {
-     MPIU_Free((*rootp)->data);
-     MPIU_Free((void *) *rootp);
-   } else { 
-      ADD_AVL_FREE_LIST(&avl_free_list, *rootp);
-   }
+   ADD_AVL_FREE_LIST(&avl_free_list, *rootp);
 #else /* !defined(DISABLE_PTMALLOC) */
    MPIU_Free((*rootp)->data);
    MPIU_Free((void *) *rootp);
@@ -579,7 +576,7 @@ avl_delete(data, rootp, compar)
           * OK for us, since our data size is max 8 bytes
           * long.
           */
-         memcpy(scratch_space, successor_data, sizeof(void *));
+         MPIU_Memcpy(scratch_space, successor_data, sizeof(void *));
 
          decrease = avl_delete(&((*rootp)->data),
                                &((*rootp)->subtree[RIGHT]),
@@ -591,7 +588,7 @@ avl_delete(data, rootp, compar)
 
          /* Restore the data in the pointer from what
           * was freed */
-         memcpy((*rootp)->data, scratch_space, sizeof(void *));
+         MPIU_Memcpy((*rootp)->data, scratch_space, sizeof(void *));
 
       default:
          break;
@@ -738,7 +735,7 @@ avl_free(rootp, action, sibling_order, level)
          (*action)((*rootp)->data, POSTORDER, node, level);
       }
 
-      free_node(rootp);
+      MPIU_Free(*rootp);
    }/* if non-empty tree */
 }/* avl_free */
 
@@ -808,9 +805,6 @@ avldispose(treeptr, action, sibling_order)
    AVLdescriptor  *avl_desc;
 
    avl_desc = (AVLdescriptor *) *treeptr;
-   if(&(avl_desc->root) == NULL) {
-      return;
-   } 
    avl_free(&(avl_desc->root), action, sibling_order, 1);
    *treeptr = (AVL_TREE) NULL;
 }/* avldispose */

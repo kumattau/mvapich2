@@ -569,8 +569,8 @@ MPIDI_CH3I_RDMA_win_create(void *base,
         goto err_cc_buf;
     }
 
-    memset(
-        (void *) (*win_ptr)->completion_counter,
+    MPIU_Memset(
+        (void *)(*win_ptr)->completion_counter,
         0, 
         sizeof(long long) * comm_size * rdma_num_rails
     ); 
@@ -967,9 +967,10 @@ fn_exit:
     dreg_unregister(MPIDI_CH3I_RDMA_Process.
             RDMA_local_win_dreg_entry[index]);
   err_base_register:
-    tmp[7 * rdma_num_hcas * rank + 5] = (*win_ptr)->fall_back;
+    tmp[7 * rank * rdma_num_hcas + 5] = (*win_ptr)->fall_back;
 
-    ret = NMPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, tmp, rdma_num_hcas*7, MPI_LONG, comm_ptr->handle);
+    ret = NMPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, tmp, 
+                      rdma_num_hcas*7, MPI_LONG, comm_ptr->handle);
     if (ret != MPI_SUCCESS) {
         DEBUG_PRINT("Error gather rkey  when creating windows\n");
         ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
@@ -1074,7 +1075,7 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
                             int use_multi)
 {
     int i,mpi_errno = MPI_SUCCESS;
-    int hca_index;
+    /* int hca_index; */
     int rail;
     int index = winptr->put_get_list_tail;
     vbuf *v;
@@ -1379,7 +1380,7 @@ int MRAILI_Handle_one_sided_completions(vbuf * v)
             } else {
                 MPIU_Assert(size <= rdma_eagersize_1sc);
                 MPIU_Assert(target_addr != NULL);
-                memcpy(target_addr, origin_addr, size);
+                MPIU_Memcpy(target_addr, origin_addr, size);
             }
             --(list_win_ptr->put_get_list_size);
             --(list_vc_ptr->mrail.rails[rail].postsend_times_1sc);
@@ -1429,7 +1430,7 @@ static int iba_put(MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr, int size)
         char *tmp = rma_op->origin_addr;
 
         Get_Pinned_Buf(win_ptr, &origin_addr, size);
-        memcpy(origin_addr, tmp, size);
+        MPIU_Memcpy(origin_addr, tmp, size);
 
         for(i = 0; i < rdma_num_hcas; ++i) {
             l_key[i] = win_ptr->pinnedpool_1sc_dentry->memhandle[i]->lkey;

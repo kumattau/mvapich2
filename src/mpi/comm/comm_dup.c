@@ -41,6 +41,15 @@
 #undef FUNCNAME
 #define FUNCNAME MPI_Comm_dup
 
+#if defined(_OSU_MVAPICH_)
+extern int split_comm;
+extern int enable_shmem_collectives;
+extern int check_split_comm(pthread_t);
+extern int disable_split_comm(pthread_t);
+extern int create_2level_comm (MPI_Comm, int, int);
+extern int enable_split_comm(pthread_t);
+#endif /* defined(_OSU_MVAPICH_) */
+
 /*@
 
 MPI_Comm_dup - Duplicates an existing communicator with all its cached
@@ -86,31 +95,24 @@ Notes:
 .seealso: MPI_Comm_free, MPI_Keyval_create, MPI_Attr_put, MPI_Attr_delete,
  MPI_Comm_create_keyval, MPI_Comm_set_attr, MPI_Comm_delete_attr
 @*/
-#if defined(_OSU_MVAPICH_)
-extern int split_comm;
-extern int enable_shmem_collectives;
-extern int check_split_comm(pthread_t);
-extern int disable_split_comm(pthread_t);
-extern int create_2level_comm (MPI_Comm, int, int);
-extern int enable_split_comm(pthread_t);
-#endif /* defined(_OSU_MVAPICH_) */
-
 int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
 {
     static const char FCNAME[] = "MPI_Comm_dup";
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL, *newcomm_ptr;
     MPID_Attribute *new_attributes = 0;
-#if defined(_OSU_MVAPICH_)
+
     MPIU_THREADPRIV_DECL;
+    MPID_MPI_STATE_DECL(MPID_STATE_MPI_COMM_DUP);
+
+#if defined(_OSU_MVAPICH_)
     MPIU_THREADPRIV_GET;
 #endif /* defined(_OSU_MVAPICH_) */
 
-    MPID_MPI_STATE_DECL(MPID_STATE_MPI_COMM_DUP);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPIU_THREAD_SINGLE_CS_ENTER("comm");
+    MPIU_THREAD_CS_ENTER(ALLFUNC,);
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_COMM_DUP);
     
     /* Validate parameters, especially handles needing to be converted */
@@ -118,9 +120,9 @@ int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
     {
         MPID_BEGIN_ERROR_CHECKS;
         {
-	    MPIR_ERRTEST_COMM(comm, mpi_errno);
+            MPIR_ERRTEST_COMM(comm, mpi_errno);
             if (mpi_errno != MPI_SUCCESS) goto fn_fail;
-	}
+        }
         MPID_END_ERROR_CHECKS;
     }
 #   endif /* HAVE_ERROR_CHECKING */
@@ -135,7 +137,7 @@ int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
         {
             /* Validate comm_ptr */
             MPID_Comm_valid_ptr( comm_ptr, mpi_errno );
-	    /* If comm_ptr is not valid, it will be reset to null */
+        /* If comm_ptr is not valid, it will be reset to null */
             MPIR_ERRTEST_ARGNULL(newcomm, "newcomm", mpi_errno);
             if (mpi_errno) goto fn_fail;
         }
@@ -151,19 +153,20 @@ int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
        attribute functions.  The actual function is (by default)
        MPIR_Attr_dup_list 
     */
-    if (MPIR_Process.attr_dup) {
-	mpi_errno = MPIR_Process.attr_dup( comm_ptr->handle, 
-					   comm_ptr->attributes, 
-					   &new_attributes );
-	if (mpi_errno) {
-	    /* Note: The error code returned here should reflect the error code
-	       determined by the user routine called during the
-	       attribute duplication step.  Adding additional text to the 
-	       message associated with the code is allowable; changing the
-	       code is not */
-	    *newcomm = MPI_COMM_NULL;
-	    goto fn_fail;
-	}
+    if (MPIR_Process.attr_dup) 
+    {
+        mpi_errno = MPIR_Process.attr_dup( comm_ptr->handle, 
+                       comm_ptr->attributes, 
+                       &new_attributes );
+        if (mpi_errno) {
+            /* Note: The error code returned here should reflect the error code
+               determined by the user routine called during the
+               attribute duplication step.  Adding additional text to the 
+               message associated with the code is allowable; changing the
+               code is not */
+            *newcomm = MPI_COMM_NULL;
+            goto fn_fail;
+        }
     }
 
     
@@ -172,7 +175,7 @@ int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
        rank of the process in the communicator.  For intercomms, 
        this must be the local size */
     mpi_errno = MPIR_Comm_copy( comm_ptr, comm_ptr->local_size, 
-				&newcomm_ptr );
+                &newcomm_ptr );
     if (mpi_errno) goto fn_fail;
 
     newcomm_ptr->attributes = new_attributes;
@@ -181,18 +184,19 @@ int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
 #if defined(_OSU_MVAPICH_)
     /* We also need to replicate the leader_comm and the shmem_comm
      * communicators in the newly created communicator. We have all the 
-     * information available locally. We can just use this information instead of 
+     * information available locally. We can just use this information instead
+     * of 
      * going through the create_2level_comm function. We can also save 
      * on memory this way, instead of allocating new memory buffers. 
-     */ 
+     */
     if (enable_shmem_collectives){
-       if(newcomm_ptr != NULL && *newcomm != MPI_COMM_NULL) { 
+       if(newcomm_ptr != NULL && *newcomm != MPI_COMM_NULL) {
           int flag;
           PMPI_Comm_test_inter(*newcomm, &flag);
 
-          if(flag == 0) { 
+          if(flag == 0) {
                newcomm_ptr->leader_comm       = comm_ptr->leader_comm;
-               newcomm_ptr->shmem_comm        = comm_ptr->shmem_comm; 
+               newcomm_ptr->shmem_comm        = comm_ptr->shmem_comm;
                newcomm_ptr->leader_map        = comm_ptr->leader_map;
                newcomm_ptr->leader_rank       = comm_ptr->leader_rank;
                newcomm_ptr->shmem_comm_rank   = comm_ptr->shmem_comm_rank;
@@ -204,7 +208,7 @@ int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
                newcomm_ptr->bcast_shmem_file  = comm_ptr->bcast_shmem_file;
                newcomm_ptr->bcast_seg_size    = comm_ptr->bcast_seg_size;
            }
-        } 
+        }
     }      
 #endif /* defined(_OSU_MVAPICH_) */
     
@@ -212,16 +216,16 @@ int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_COMM_DUP);
-    MPIU_THREAD_SINGLE_CS_EXIT("comm");
+    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return mpi_errno;
     
   fn_fail:
     /* --BEGIN ERROR HANDLING-- */
 #   ifdef HAVE_ERROR_CHECKING
     {
-	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_comm_dup",
-	    "**mpi_comm_dup %C %p", comm, newcomm);
+    mpi_errno = MPIR_Err_create_code(
+        mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**mpi_comm_dup",
+        "**mpi_comm_dup %C %p", comm, newcomm);
     }
 #   endif
     mpi_errno = MPIR_Err_return_comm( comm_ptr, FCNAME, mpi_errno );

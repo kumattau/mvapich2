@@ -51,8 +51,9 @@ int MPI_File_iread_shared(MPI_File mpi_fh, void *buf, int count,
     MPI_Status status;
     ADIO_Offset off, shared_fp;
     MPI_Offset nbytes=0;
+    MPIU_THREADPRIV_DECL;
 
-    MPIU_THREAD_SINGLE_CS_ENTER("io");
+    MPIU_THREAD_CS_ENTER(ALLFUNC,);
     MPIR_Nest_incr();
 
     fh = MPIO_File_resolve(mpi_fh);
@@ -68,6 +69,7 @@ int MPI_File_iread_shared(MPI_File mpi_fh, void *buf, int count,
     /* --BEGIN ERROR HANDLING-- */
     MPIO_CHECK_INTEGRAL_ETYPE(fh, count, datatype_size, myname, error_code);
     MPIO_CHECK_FS_SUPPORTS_SHARED(fh, myname, error_code);
+    MPIO_CHECK_COUNT_SIZE(fh, count, datatype_size, myname, error_code);
     /* --END ERROR HANDLING-- */
 
     ADIOI_Datatype_iscontig(datatype, &buftype_is_contig);
@@ -132,7 +134,7 @@ int MPI_File_iread_shared(MPI_File mpi_fh, void *buf, int count,
 
 fn_exit:
     MPIR_Nest_decr();
-    MPIU_THREAD_SINGLE_CS_EXIT("io");
+    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return error_code;
 }
 #endif

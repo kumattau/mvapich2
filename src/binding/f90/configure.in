@@ -2,7 +2,6 @@ dnl
 dnl This configure is used ONLY to determine the Fortran 90 features
 dnl that are needed to implement the create_type_xxx routines.
 AC_INIT(Makefile.in)
-AC_PREREQ(2.59)
 
 dnl The MVAPICH2 top-level configure adds a bunch of flags to the
 dnl user-defined CFLAGS by processing different configure command-line
@@ -64,8 +63,8 @@ AC_SUBST(master_top_builddir)
 
 # Get the C compiler (needed for type_create_f90_xxx functions)
 PAC_PROG_CC
-dnl Set CFLAGS for enable strict if necessary
-PAC_CC_STRICT
+
+PAC_ARG_STRICT
 AC_C_CONST
 
 # Find a Fortran 90 compiler.  Sets F90

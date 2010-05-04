@@ -46,6 +46,7 @@ int MPIO_Wait(MPIO_Request *request, MPI_Status *status)
 {
     int error_code;
     static char myname[] = "MPIO_WAIT";
+    MPIU_THREADPRIV_DECL;
 
 #ifdef MPI_hpux
     int fl_xmpi;
@@ -55,7 +56,7 @@ int MPIO_Wait(MPIO_Request *request, MPI_Status *status)
     }
 #endif /* MPI_hpux */
 
-    MPIU_THREAD_SINGLE_CS_ENTER("io");
+    MPIU_THREAD_CS_ENTER(ALLFUNC,);
     MPIR_Nest_incr();
 
     if (*request == MPIO_REQUEST_NULL) {
@@ -91,7 +92,7 @@ int MPIO_Wait(MPIO_Request *request, MPI_Status *status)
 
 fn_exit:
     MPIR_Nest_decr();
-    MPIU_THREAD_SINGLE_CS_EXIT("io");
+    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return error_code;
 }
 #endif

@@ -90,8 +90,8 @@ int smpd_parse_command_args(int *argcp, char **argvp[])
 #ifdef HAVE_WINDOWS_H
     char str[20], read_handle_str[20], write_handle_str[20];
     int port;
-    MPIDU_Sock_t listener;
-    MPIDU_Sock_set_t set;
+    SMPDU_Sock_t listener;
+    SMPDU_Sock_set_t set;
     HANDLE hWrite, hRead;
     DWORD num_written, num_read;
 #endif
@@ -360,7 +360,7 @@ int smpd_parse_command_args(int *argcp, char **argvp[])
 	smpd_get_opt(argcp, argvp, "/install") ||
 	smpd_get_opt(argcp, argvp, "/RegServer"))
     {
-	char phrase[SMPD_PASSPHRASE_MAX_LENGTH]="", port_str[12]="";
+	char phrase[SMPD_PASSPHRASE_MAX_LENGTH]="", port_str[SMPD_MAX_PORT_STR_LENGTH]="";
 
 	if (smpd_remove_service(SMPD_FALSE) == SMPD_FALSE)
 	{
@@ -379,10 +379,12 @@ int smpd_parse_command_args(int *argcp, char **argvp[])
 	    smpd_get_password(phrase);
 	    smpd_set_smpd_data("phrase", phrase);
 	}
-	if (smpd_get_opt_string(argcp, argvp, "-port", port_str, 10))
+	if (smpd_process.port != SMPD_LISTENER_PORT)
 	{
+        snprintf(port_str, SMPD_MAX_PORT_STR_LENGTH, "%d", smpd_process.port);
 	    smpd_set_smpd_data("port", port_str);
 	}
+
 	smpd_install_service(SMPD_FALSE, SMPD_TRUE, smpd_get_opt(argcp, argvp, "-delegation"));
 	smpd_set_smpd_data("version", SMPD_VERSION);
 	ExitProcess(0);
@@ -442,6 +444,15 @@ int smpd_parse_command_args(int *argcp, char **argvp[])
 	    result = GetLastError();
 	    smpd_dbg_printf("unable to set the ctrl handler for the smpd manager, error %d.\n", result);
 	}
+#ifdef HAVE_WINDOWS_H
+    {
+        BOOL ret;
+        ret = smpd_init_affinity_table();
+        if(!ret){
+            smpd_dbg_printf("Initializing smpd affinity table failed\n");
+        }
+    }
+#endif
 
 	smpd_process.bService = SMPD_FALSE;
 	if (!smpd_get_opt_string(argcp, argvp, "-read", read_handle_str, 20))
@@ -461,20 +472,20 @@ int smpd_parse_command_args(int *argcp, char **argvp[])
 
 	smpd_dbg_printf("manager creating listener and session sets.\n");
 
-	result = MPIDU_Sock_create_set(&set);
-	if (result != MPI_SUCCESS)
+	result = SMPDU_Sock_create_set(&set);
+	if (result != SMPD_SUCCESS)
 	{
-	    smpd_err_printf("MPIDU_Sock_create_set(listener) failed,\nsock error: %s\n", get_sock_error_string(result));
+	    smpd_err_printf("SMPDU_Sock_create_set(listener) failed,\nsock error: %s\n", get_sock_error_string(result));
 	    smpd_exit_fn(FCNAME);
 	    return SMPD_FAIL;
 	}
 	smpd_process.set = set;
-	smpd_dbg_printf("created set for manager listener, %d\n", MPIDU_Sock_get_sock_set_id(set));
+	smpd_dbg_printf("created set for manager listener, %d\n", SMPDU_Sock_get_sock_set_id(set));
 	port = 0;
-	result = MPIDU_Sock_listen(set, NULL, &port, &listener); 
-	if (result != MPI_SUCCESS)
+	result = SMPDU_Sock_listen(set, NULL, &port, &listener); 
+	if (result != SMPD_SUCCESS)
 	{
-	    smpd_err_printf("MPIDU_Sock_listen failed,\nsock error: %s\n", get_sock_error_string(result));
+	    smpd_err_printf("SMPDU_Sock_listen failed,\nsock error: %s\n", get_sock_error_string(result));
 	    smpd_exit_fn(FCNAME);
 	    return SMPD_FAIL;
 	}
@@ -487,10 +498,10 @@ int smpd_parse_command_args(int *argcp, char **argvp[])
 	    smpd_exit_fn(FCNAME);
 	    return result;
 	}
-	result = MPIDU_Sock_set_user_ptr(listener, smpd_process.listener_context);
-	if (result != MPI_SUCCESS)
+	result = SMPDU_Sock_set_user_ptr(listener, smpd_process.listener_context);
+	if (result != SMPD_SUCCESS)
 	{
-	    smpd_err_printf("MPIDU_Sock_set_user_ptr failed,\nsock error: %s\n", get_sock_error_string(result));
+	    smpd_err_printf("SMPDU_Sock_set_user_ptr failed,\nsock error: %s\n", get_sock_error_string(result));
 	    smpd_exit_fn(FCNAME);
 	    return result;
 	}
@@ -558,10 +569,10 @@ int smpd_parse_command_args(int *argcp, char **argvp[])
 	}
 
 	/*
-	result = MPIDU_Sock_finalize();
-	if (result != MPI_SUCCESS)
+	result = SMPDU_Sock_finalize();
+	if (result != SMPD_SUCCESS)
 	{
-	    smpd_err_printf("MPIDU_Sock_finalize failed,\nsock error: %s\n", get_sock_error_string(result));
+	    smpd_err_printf("SMPDU_Sock_finalize failed,\nsock error: %s\n", get_sock_error_string(result));
 	}
 	*/
 	smpd_exit(0);

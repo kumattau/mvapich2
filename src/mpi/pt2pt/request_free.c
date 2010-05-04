@@ -66,11 +66,12 @@ int MPI_Request_free(MPI_Request *request)
     static const char FCNAME[] = "MPI_Request_free";
     int mpi_errno = MPI_SUCCESS;
     MPID_Request *request_ptr = NULL;
+    MPIU_THREADPRIV_DECL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_REQUEST_FREE);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPIU_THREAD_SINGLE_CS_ENTER("pt2pt");
+    MPIU_THREAD_CS_ENTER(ALLFUNC,);
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_REQUEST_FREE);
     
     /* Validate handle parameters needing to be converted */
@@ -111,6 +112,10 @@ int MPI_Request_free(MPI_Request *request)
     switch (request_ptr->kind)
     {
 	case MPID_REQUEST_SEND:
+	{
+	    MPIR_SENDQ_FORGET(request_ptr);
+	    break;
+	}
 	case MPID_REQUEST_RECV:
 	{
 	    break;
@@ -171,7 +176,7 @@ int MPI_Request_free(MPI_Request *request)
     
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_REQUEST_FREE);
-    MPIU_THREAD_SINGLE_CS_EXIT("pt2pt");
+    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return mpi_errno;
 
   fn_fail:

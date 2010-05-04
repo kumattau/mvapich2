@@ -11,7 +11,7 @@ PAC_SUBCONFIG_INIT()
 
 AC_CONFIG_HEADER(include/mpirunconf.h)
 AH_TOP([/* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2002-2009, The Ohio State University. All rights
+/* Copyright (c) 2002-2010, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -143,8 +143,15 @@ CPPFLAGS="$CPPFLAGS $MPICH2_INCLUDE_FLAGS"
 AC_SUBST(MAKE_DEPEND_C)
 AC_SUBST(mpirun_rsh_other_libs)
 AC_SUBST(mpispawn_other_libs)
-AC_SUBST(master_top_srcdir)
 
 PAC_SUBCONFIG_FINALIZE()
+
+dnl Add a step to create the dependencies directory if it is not present
+AC_OUTPUT_COMMANDS([if grep 'dependencies:' Makefile >/dev/null 2>&1 ; then
+    if test ! -s ./.deps/alldeps ; then 
+    echo "Updating dependency directories .deps" 
+    find . -type d -print | sed -e 's%\(.*\)%(cd \1 \&\& grep MAKE_DEPEND_C Makefile >/dev/null 2>\&1 \&\& ( test -d .deps || mkdir .deps) \&\& touch .deps/alldeps)%g' | sh
+fi; fi])
+
 
 AC_OUTPUT(Makefile)

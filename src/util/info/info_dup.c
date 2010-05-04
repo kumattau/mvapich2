@@ -1,6 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: info_dup.c,v 1.25 2006/05/08 15:55:47 toonen Exp $
- *
+/*
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
@@ -52,11 +51,12 @@ int MPI_Info_dup( MPI_Info info, MPI_Info *newinfo )
     MPID_Info *info_ptr=0, *curr_old, *curr_new;
     static const char FCNAME[] = "MPI_Info_dup";
     int mpi_errno = MPI_SUCCESS;
+    MPIU_THREADPRIV_DECL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_INFO_DUP);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPIU_THREAD_SINGLE_CS_ENTER("info");
+    MPIU_THREAD_CS_ENTER(ALLFUNC,);
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_INFO_DUP);
     
     /* Validate parameters, especially handles needing to be converted */
@@ -96,23 +96,20 @@ int MPI_Info_dup( MPI_Info info, MPI_Info *newinfo )
        may want to add an "allocate n elements" routine and execute this
        it two steps: count and then allocate */
     /* FIXME : multithreaded */
-    curr_new        = (MPID_Info *)MPIU_Handle_obj_alloc( &MPID_Info_mem );
-    curr_new->key   = 0;
-    curr_new->value = 0;
-    curr_new->next  = 0;
+    mpi_errno = MPIU_Info_alloc(&curr_new);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     *newinfo = curr_new->handle;
 
-    curr_old        = info_ptr->next;
+    curr_old = info_ptr->next;
     while (curr_old)
     {
-	curr_new->next = (MPID_Info *)MPIU_Handle_obj_alloc( &MPID_Info_mem );
-	MPIU_ERR_CHKANDJUMP1((!curr_new->next), mpi_errno, MPI_ERR_OTHER, "**nomem", "**nomem %s", "MPI_Info");
+        mpi_errno = MPIU_Info_alloc(&curr_new->next);
+        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
 	curr_new	 = curr_new->next;
 	curr_new->key	 = MPIU_Strdup(curr_old->key);
 	curr_new->value	 = MPIU_Strdup(curr_old->value);
-	curr_new->next	 = 0;
-	
+
 	curr_old	 = curr_old->next;
     }
     
@@ -120,7 +117,7 @@ int MPI_Info_dup( MPI_Info info, MPI_Info *newinfo )
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_INFO_DUP);
-    MPIU_THREAD_SINGLE_CS_EXIT("info");
+    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return mpi_errno;
     
   fn_fail:

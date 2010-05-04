@@ -71,11 +71,12 @@ struct dreg_entry {
 };
 
 #if !defined(DISABLE_PTMALLOC)
+/*
 static pthread_spinlock_t dreg_lock = 0;
 static pthread_spinlock_t dereg_lock = 0;
 static pthread_t          th_id_of_lock = -1;
 static pthread_t th_id_of_dereg_lock = -1;
-
+*/
 int have_dereg();
 void lock_dereg();
 void unlock_dereg();

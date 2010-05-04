@@ -30,6 +30,11 @@ static mpi_names_t mpi_names[] = {
     { MPI_UNSIGNED_LONG, "MPI_UNSIGNED_LONG" },
     { MPI_FLOAT, "MPI_FLOAT" },
     { MPI_DOUBLE, "MPI_DOUBLE" },
+#if MTEST_HAVE_MIN_MPI_VERSION(2,2)
+    /* these two types were added in MPI-2.2 */
+    { MPI_AINT, "MPI_AINT" },
+    { MPI_OFFSET, "MPI_OFFSET" },
+#endif
 
     { MPI_PACKED, "MPI_PACKED" },
     { MPI_LB, "MPI_LB" },
@@ -49,14 +54,37 @@ static mpi_names_t mpi_names[] = {
     { MPI_INTEGER, "MPI_INTEGER" },
     { MPI_2INTEGER, "MPI_2INTEGER" },
     { MPI_2COMPLEX, "MPI_2COMPLEX" },
+#ifdef HAVE_MPI_2DOUBLE_COMPLEX
+    /* MPI_2DOUBLE_COMPLEX is an extension - it is not part of MPI 2.1 */
     { MPI_2DOUBLE_COMPLEX, "MPI_2DOUBLE_COMPLEX" },
+#endif
     { MPI_2REAL, "MPI_2REAL" },
     { MPI_2DOUBLE_PRECISION, "MPI_2DOUBLE_PRECISION" },
     { MPI_CHARACTER, "MPI_CHARACTER" },
 #endif
+#if MTEST_HAVE_MIN_MPI_VERSION(2,2)
+    /* these C99 types were added in MPI-2.2 */
+    { MPI_INT8_T,   "MPI_INT8_T"   },
+    { MPI_INT16_T,  "MPI_INT16_T"  },
+    { MPI_INT32_T,  "MPI_INT32_T"  },
+    { MPI_INT64_T,  "MPI_INT64_T"  },
+    { MPI_UINT8_T,  "MPI_UINT8_T"  },
+    { MPI_UINT16_T, "MPI_UINT16_T" },
+    { MPI_UINT32_T, "MPI_UINT32_T" },
+    { MPI_UINT64_T, "MPI_UINT64_T" },
+    { MPI_C_BOOL, "MPI_C_BOOL" },
+    { MPI_C_FLOAT_COMPLEX,  "MPI_C_FLOAT_COMPLEX"  },
+    { MPI_C_DOUBLE_COMPLEX, "MPI_C_DOUBLE_COMPLEX" },
+    { MPI_AINT, "MPI_AINT" },
+    { MPI_OFFSET, "MPI_OFFSET" },
+#endif
     /* Size-specific types */
     /* Do not move MPI_REAL4 - this is used to indicate the very first 
-       optional type */
+       optional type.  In addition, you must not add any required types
+       after this type */
+    /* See MPI 2.1, Section 16.2.  These are required, predefined types. 
+       If the type is not available (e.g., *only* because the Fortran
+       compiler does not support it), the value may be MPI_DATATYPE_NULL */
     { MPI_REAL4, "MPI_REAL4" },
     { MPI_REAL8, "MPI_REAL8" },
     { MPI_REAL16, "MPI_REAL16" },
@@ -67,14 +95,23 @@ static mpi_names_t mpi_names[] = {
     { MPI_INTEGER2, "MPI_INTEGER2" },
     { MPI_INTEGER4, "MPI_INTEGER4" },
     { MPI_INTEGER8, "MPI_INTEGER8" },
+#ifdef HAVE_MPI_INTEGER16
+    /* MPI_INTEGER16 is not included in most of the tables in MPI 2.1,
+       and some implementations omit it.  An error will be reported, but
+       this ifdef allows the test to be built and run. */
     { MPI_INTEGER16, "MPI_INTEGER16" },
+#endif
     /* Semi-optional types - if the compiler doesn't support long double
-       of long long, these might be MPI_DATATYPE_NULL */
+       or long long, these might be MPI_DATATYPE_NULL */
     { MPI_LONG_DOUBLE, "MPI_LONG_DOUBLE" },
     { MPI_LONG_LONG_INT, "MPI_LONG_LONG_INT" }, 
     { MPI_LONG_LONG, "MPI_LONG_LONG" },
     { MPI_UNSIGNED_LONG_LONG, "MPI_UNSIGNED_LONG_LONG" }, 
     { MPI_LONG_DOUBLE_INT, "MPI_LONG_DOUBLE_INT" },
+#if MTEST_HAVE_MIN_MPI_VERSION(2,2)
+    /* added in MPI-2.2 */
+    { MPI_C_LONG_DOUBLE_COMPLEX, "MPI_C_LONG_DOUBLE_COMPLEX" },
+#endif
     { 0, (char *)0 },  /* Sentinal used to indicate the last element */
 };
 
@@ -117,6 +154,7 @@ int main( int argc, char **argv )
 		     mpi_names[i].name );
 	    continue;
 	}
+	MTestPrintfMsg( 10, "Checking type %s\n", mpi_names[i].name );
 	name[0] = 0;
 	MPI_Type_get_name( mpi_names[i].dtype, name, &namelen );
 	if (strncmp( name, mpi_names[i].name, namelen )) {
@@ -135,6 +173,10 @@ int main( int argc, char **argv )
 	fprintf( stderr, "Expected int but got :%s:\n", name );
     }
 
+#ifndef HAVE_MPI_INTEGER16
+    errs++;
+    fprintf( stderr, "MPI_INTEGER16 is not available\n" );
+#endif
 
     MTest_Finalize( errs );
     MPI_Finalize();

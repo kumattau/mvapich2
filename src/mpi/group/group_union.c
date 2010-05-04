@@ -59,11 +59,12 @@ int MPI_Group_union(MPI_Group group1, MPI_Group group2, MPI_Group *newgroup)
     MPID_Group *group_ptr2 = NULL;
     MPID_Group *new_group_ptr;
     int g1_idx, g2_idx, nnew, i, k, size1, size2, mylpid;
+    MPIU_THREADPRIV_DECL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_GROUP_UNION);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPIU_THREAD_SINGLE_CS_ENTER("group"); 
+    MPIU_THREAD_CS_ENTER(ALLFUNC,); 
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_GROUP_UNION);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -197,7 +198,7 @@ int MPI_Group_union(MPI_Group group1, MPI_Group group2, MPI_Group *newgroup)
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_GROUP_UNION);
-    MPIU_THREAD_SINGLE_CS_EXIT("group");
+    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return mpi_errno;
 
   fn_fail:

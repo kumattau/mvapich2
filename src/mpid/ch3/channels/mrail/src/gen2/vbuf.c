@@ -141,18 +141,6 @@ void deallocate_vbufs(int hca_num)
     }
 }
 
-void deallocate_vbuf_region()
-{
-    vbuf_region *curr = vbuf_region_head;
-    vbuf_region *next = NULL;
-
-	while (curr) {
-		next = curr->next;
-		MPIU_Free(curr);
-		curr = next;
-	}
-}
-
 static int allocate_vbuf_region(int nvbufs)
 {
     DEBUG_PRINT("Allocating a new vbuf region.\n");
@@ -164,6 +152,7 @@ static int allocate_vbuf_region(int nvbufs)
     void *vbuf_dma_buffer = NULL;
     int alignment_vbuf = 64;
     int alignment_dma = getpagesize();
+    int result;
 
     if (free_vbuf_head != NULL)
     {
@@ -199,15 +188,15 @@ static int allocate_vbuf_region(int nvbufs)
         return -1;
     }
    
-    vbuf_dma_buffer = (void *) memalign(alignment_dma, nvbufs * rdma_vbuf_total_size);
+    result = posix_memalign(&vbuf_dma_buffer, alignment_dma, nvbufs * rdma_vbuf_total_size);
 
-    if (NULL == vbuf_dma_buffer)
+    if ((result!=0) || (NULL == vbuf_dma_buffer))
     {
        ibv_error_abort(GEN_EXIT_ERR, "unable to malloc vbufs DMA buffer");
     }
 
-    memset(mem, 0, nvbufs * sizeof(vbuf));
-    memset(vbuf_dma_buffer, 0, nvbufs * rdma_vbuf_total_size);
+    MPIU_Memset(mem, 0, nvbufs * sizeof(vbuf));
+    MPIU_Memset(vbuf_dma_buffer, 0, nvbufs * rdma_vbuf_total_size);
 
     vbuf_n_allocated += nvbufs;
     num_free_vbuf += nvbufs;

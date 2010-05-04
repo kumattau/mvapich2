@@ -55,15 +55,20 @@ int MPID_Comm_disconnect(MPID_Comm *comm_ptr)
     /* MPIU_PG_Printall( stdout ); */
     /* fprintf(stderr, "#### In MPID_Comm_disconnect\n"); */
     mpi_errno = MPIR_Comm_release(comm_ptr,1);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     /* If any of the VCs were released by this Comm_release, wait
      for those close operations to complete */
     /* fprintf(stderr, "#### In MPID_Comm_disconnect, calling MPIDI_CH3U_VC_WaitForClose\n"); */
     XRC_MSG ("disconnect: WaitForClose");
-    MPIDI_CH3U_VC_WaitForClose();
+    mpi_errno = MPIDI_CH3U_VC_WaitForClose();
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     /* MPIU_PG_Printall( stdout ); */
     /* fprintf(stderr, "#### In MPID_Comm_disconnect, done MPIDI_CH3U_VC_WaitForClose\n"); */
 
 
+fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_COMM_DISCONNECT);
     return mpi_errno;
+fn_fail:
+    goto fn_exit;
 }

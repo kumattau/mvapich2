@@ -3212,13 +3212,18 @@ static Void_t* sYSMALLOc(nb, av) INTERNAL_SIZE_T nb; mstate av;
     check_malloced_chunk(av, p, nb);
 
     /* OSU */
-    flush_dereg_mrs_external();
+    /* We should not be calling flush_dereg_() function from here. If the CM
+     * thread is trying to setup a new connection and if the main thread is
+     * already inside the flush_dereg_() function, we can run into a deadlock,
+     * because the CM thread has the memory lock and the main thread has the dereg_lock. 
+     */ 
+    /* flush_dereg_mrs_external(); */
 
     return chunk2mem(p);
   }
 
   /* OSU */
-  flush_dereg_mrs_external();
+  /* flush_dereg_mrs_external(); */
 
 
   /* catch all failure paths */
@@ -3467,6 +3472,8 @@ public_fREe(Void_t* mem)
   {
     munmap_chunk(p);
     /* OSU */
+    /* It is ok to call flush_dereg_ from here. We do not have the memory lock,
+     * yet */
     flush_dereg_mrs_external();
     return;
   }
@@ -3487,6 +3494,7 @@ public_fREe(Void_t* mem)
   (void)mutex_unlock(&ar_ptr->mutex);
 
   /* OSU */
+  /* It is ok to call flush_dereg_ from here. We just released the memory lock */
   flush_dereg_mrs_external();
 
 }
@@ -3665,6 +3673,7 @@ public_vALLOc(size_t bytes)
   (void)mutex_unlock(&ar_ptr->mutex);
 /* <_OSU_MVAPICH_> */
   mvapich2_minfo.is_our_valloc = 1;
+  flush_dereg_mrs_external(); 
 /* </_OSU_MVAPICH_> */
   return p;
 }
@@ -3682,6 +3691,7 @@ public_pVALLOc(size_t bytes)
   (void)mutex_unlock(&ar_ptr->mutex);
 /* <_OSU_MVAPICH_> */
   mvapich2_minfo.is_our_valloc = 1;
+  flush_dereg_mrs_external(); 
 /* </_OSU_MVAPICH_> */
   return p;
 }
@@ -5169,7 +5179,9 @@ _int_valloc(av, bytes) mstate av; size_t bytes;
   p = _int_memalign(av, mp_.pagesize, bytes);
 
   /* OSU */
-  flush_dereg_mrs_external();
+  /* This thread is currently holding on to the memory lock. We should not be
+   * calling flush_dereg_ from here */ 
+  /* flush_dereg_mrs_external(); */ 
 
   return p;
 }
@@ -5195,7 +5207,7 @@ _int_pvalloc(av, bytes) mstate av, size_t bytes;
   p = _int_memalign(av, pagesz, (bytes + pagesz - 1) & ~(pagesz - 1));
 
   /* OSU */
-  flush_dereg_mrs_external();
+  /* flush_dereg_mrs_external(); */
 
   return p;
 }

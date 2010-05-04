@@ -132,7 +132,7 @@ allocate_vbuf_region (int nvbufs)
           udapl_error_abort (GEN_EXIT_ERR, "unable to malloc vbufs");
       }
 
-    memset (mem, 0, nvbufs * sizeof (vbuf) + (alignment - 1));
+    MPIU_Memset (mem, 0, nvbufs * sizeof (vbuf) + (alignment - 1));
 
     vbuf_n_allocated += nvbufs;
     num_free_vbuf += nvbufs;

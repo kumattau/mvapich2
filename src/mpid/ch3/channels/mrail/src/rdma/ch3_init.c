@@ -230,19 +230,17 @@ int MPIDI_CH3_VC_Init (MPIDI_VC_t* vc)
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_VC_INIT);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_VC_INIT);
     int mpi_errno = MPI_SUCCESS;
-    vc->smp.local_nodes = -1;
-#if !defined (_OSU_PSM_)
+
     vc->smp.sendq_head = NULL; 
     vc->smp.sendq_tail = NULL; 
     vc->smp.recv_active = NULL; 
     vc->smp.send_active = NULL; 
-    vc->ch.req = NULL;
-#ifndef DAPL_DEFAULT_PROVIDER
+    vc->smp.local_nodes = -1;
+#ifdef _ENABLE_XRC_
     vc->mrail.rails = NULL;
     vc->mrail.srp.credits = NULL;
-    vc->mrail.cmanager.msg_channels = NULL;
-#endif /* ifndef DAPL_DEFAULT_PROVIDER */
-#endif /* if !defined (_OSU_PSM_) */
+#endif
+
     vc->ch.sendq_head = NULL; 
     vc->ch.sendq_tail = NULL; 
     vc->ch.req = (MPID_Request *) MPIU_Malloc(sizeof(MPID_Request));
@@ -295,8 +293,8 @@ int MPIDI_CH3_VC_Init (MPIDI_VC_t* vc)
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3_PortFnsInit (MPIDI_PortFns* portFns)
 {
-    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_PORTFNSINIT);
-    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_PORTFNSINIT);
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_RDMA_PORTFNSINIT);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_RDMA_PORTFNSINIT);
 
     if (!MPIDI_CH3I_Process.has_dpm) {
         portFns->OpenPort    = 0;    
@@ -306,7 +304,7 @@ int MPIDI_CH3_PortFnsInit (MPIDI_PortFns* portFns)
     } else 
         MPIU_UNREFERENCED_ARG(portFns);
 
-    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_PORTFNSINIT);
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_RDMA_PORTFNSINIT);
     return MPI_SUCCESS;
 }
 
@@ -316,10 +314,10 @@ int MPIDI_CH3_PortFnsInit (MPIDI_PortFns* portFns)
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3_RMAFnsInit(MPIDI_RMAFns* RMAFns)
 {
-    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_RMAFNSINIT);
-    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_RMAFNSINIT);
+    MPIDI_STATE_DECL(MPIDI_CH3_RMAFNSINIT);
+    MPIDI_FUNC_ENTER(MPIDI_CH3_RMAFNSINIT);
 
-    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_RMAFNSINIT);
+    MPIDI_FUNC_EXIT(MPIDI_CH3_RMAFNSINIT);
     return MPI_SUCCESS;
 } 
 
@@ -483,35 +481,6 @@ int MPIDI_CH3_VC_Destroy(struct MPIDI_VC* vc)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_VC_DESTROY);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_VC_DESTROY);
-
-#if !defined (_OSU_PSM_)
-    if(vc->smp.sendq_head != NULL) {
-        MPIU_Free(vc->smp.sendq_head);
-    }
-    if(vc->smp.sendq_tail != NULL) {
-        MPIU_Free(vc->smp.sendq_tail);
-    }
-    if(vc->smp.recv_active != NULL) {
-        MPIU_Free(vc->smp.recv_active);
-    }
-    if(vc->smp.send_active != NULL) {
-        MPIU_Free(vc->smp.send_active);
-    }
-    if(vc->ch.req != NULL) {
-        MPIU_Free(vc->ch.req);
-    }
-#ifndef DAPL_DEFAULT_PROVIDER
-    if(vc->mrail.cmanager.msg_channels != NULL) {
-        MPIU_Free(vc->mrail.cmanager.msg_channels);
-    }
-    if(vc->mrail.srp.credits != NULL) {
-        MPIU_Free(vc->mrail.srp.credits);
-    }
-    if(vc->mrail.rails != NULL) {
-        MPIU_Free(vc->mrail.rails);
-    }
-#endif /* #ifndef DAPL_DEFAULT_PROVIDER */
-#endif /* #if !defined (_OSU_PSM_) */
 
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_VC_DESTROY);
     return MPI_SUCCESS;

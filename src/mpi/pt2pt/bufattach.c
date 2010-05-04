@@ -76,11 +76,12 @@ int MPI_Buffer_attach(void *buffer, int size)
 {
     static const char FCNAME[] = "MPI_Buffer_attach";
     int mpi_errno = MPI_SUCCESS;
+    MPIU_THREADPRIV_DECL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_BUFFER_ATTACH);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPIU_THREAD_SINGLE_CS_ENTER("pt2pt");
+    MPIU_THREAD_CS_ENTER(ALLFUNC,);
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_BUFFER_ATTACH);
     
 #   ifdef HAVE_ERROR_CHECKING
@@ -103,7 +104,7 @@ int MPI_Buffer_attach(void *buffer, int size)
     
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_BUFFER_ATTACH);
-    MPIU_THREAD_SINGLE_CS_EXIT("pt2pt");
+    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return mpi_errno;
 
   fn_fail:

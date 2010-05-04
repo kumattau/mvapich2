@@ -327,8 +327,9 @@ int check_pending_puts (void)
 	char *buf, *pbuf;
 	int i;
 
-	if (npending_puts != NCHILD + NCHILD_INCL)
-		return 0;
+    if (npending_puts != NCHILD + NCHILD_INCL) {
+        return 0;
+    }
 
 #define REC_SIZE (KVS_MAX_KEY + KVS_MAX_VAL + 2)
 	hdr.msg_len = REC_SIZE * npending_puts + 1;
@@ -551,7 +552,7 @@ int parse_str (int rank, int fd, char *msg, int msg_len, int src)
 			hdr.msg_rank = rank;
 			hdr.msg_len = msg_len;
 			child_fd = get_req_dest (rank, &pkey);
-			add_kvc (pkey, val, 0);
+                        add_kvc (pkey, val, 0);
 			free (pkey);
 			for (i = 0; i < MPISPAWN_NCHILD; i++) {
 				if (child_fd == MPISPAWN_CHILD_FDS[i]) {

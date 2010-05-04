@@ -57,11 +57,12 @@ int MPI_Test(MPI_Request *request, int *flag, MPI_Status *status)
     MPID_Request *request_ptr = NULL;
     int active_flag;
     int mpi_errno = MPI_SUCCESS;
+    MPIU_THREADPRIV_DECL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_TEST);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPIU_THREAD_SINGLE_CS_ENTER("pt2pt");
+    MPIU_THREAD_CS_ENTER(ALLFUNC,);
     MPID_MPI_PT2PT_FUNC_ENTER(MPID_STATE_MPI_TEST);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -141,7 +142,7 @@ int MPI_Test(MPI_Request *request, int *flag, MPI_Status *status)
     
   fn_exit:
 	MPID_MPI_PT2PT_FUNC_EXIT(MPID_STATE_MPI_TEST);
-	MPIU_THREAD_SINGLE_CS_EXIT("pt2pt");
+	MPIU_THREAD_CS_EXIT(ALLFUNC,);
 	return mpi_errno;
     
   fn_fail:

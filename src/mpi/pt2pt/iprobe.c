@@ -58,11 +58,12 @@ int MPI_Iprobe(int source, int tag, MPI_Comm comm, int *flag,
     static const char FCNAME[] = "MPI_Iprobe";
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL;
+    MPIU_THREADPRIV_DECL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_IPROBE);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPIU_THREAD_SINGLE_CS_ENTER("pt2pt");
+    MPIU_THREAD_CS_ENTER(ALLFUNC,);
     MPID_MPI_PT2PT_FUNC_ENTER(MPID_STATE_MPI_IPROBE);
     
     /* Validate handle parameters needing to be converted */
@@ -110,7 +111,7 @@ int MPI_Iprobe(int source, int tag, MPI_Comm comm, int *flag,
     
   fn_exit:
     MPID_MPI_PT2PT_FUNC_EXIT(MPID_STATE_MPI_IPROBE);
-    MPIU_THREAD_SINGLE_CS_EXIT("pt2pt");
+    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return mpi_errno;
 
   fn_fail:

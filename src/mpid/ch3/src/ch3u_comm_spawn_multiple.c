@@ -16,7 +16,11 @@
  */
    
 
+#ifdef USE_PMI2_API
+#include "pmi2.h"
+#else
 #include "pmi.h"
+#endif
 
 /* Define the name of the kvs key used to provide the port name to the
    children */
@@ -63,7 +67,7 @@ static int  mpi_to_pmi_keyvals( MPID_Info *info_ptr, PMI_keyval_t **kv_ptr,
 	mpi_errno = NMPI_Info_get( info_ptr->handle, key, vallen+1,
 				   kv[i].val, &flag );
 	if (!flag || mpi_errno) { MPIU_ERR_POP(mpi_errno); }
-    /* MPIU_dbg_printf(("key: <%s>, value: <%s>\n", kv[i].key, kv[i].val)); */
+	MPIU_DBG_PRINTF(("key: <%s>, value: <%s>\n", kv[i].key, kv[i].val));
     }
 
  fn_fail:
@@ -82,7 +86,7 @@ static void free_pmi_keyvals(PMI_keyval_t **kv, int size, int *counts)
 	for (j=0; j<counts[i]; j++)
 	{
 	    if (kv[i][j].key != NULL)
-		MPIU_Free(kv[i][j].key);
+		MPIU_Free((char *)kv[i][j].key);
 	    if (kv[i][j].val != NULL)
 		MPIU_Free(kv[i][j].val);
 	}
@@ -119,7 +123,6 @@ int MPIDI_Comm_spawn_multiple(int count, char **commands,
 
     MPIU_THREADPRIV_GET;
     MPIR_Nest_incr();
-    MPIU_dbg_printf("[MPIDI_Comm_spawn_multiple] in spawn multiple\n");
 
     if (comm_ptr->rank == root) {
 	/* FIXME: This is *really* awkward.  We should either
@@ -164,14 +167,11 @@ int MPIDI_Comm_spawn_multiple(int count, char **commands,
 	for (i=0; i<total_num_processes; i++)
 	    pmi_errcodes[i] = 0;
 
-        MPIU_dbg_printf("[MPIDI_Comm_spawn_multiple] planning open port\n");
 	/* Open a port for the spawned processes to connect to */
 	/* FIXME: info may be needed for port name */
         mpi_errno = MPID_Open_port(NULL, port_name);
-        MPIU_dbg_printf("[MPIDI_Comm_spawn_multiple] opened port %s\n",
-                port_name);
 	/* --BEGIN ERROR HANDLING-- */
-        if (mpi_errno != MPI_SUCCESS)
+        if (mpi_errno != MPI_SUCCESS) 
 	{
 	    MPIU_ERR_POP(mpi_errno);
 	}
@@ -181,7 +181,10 @@ int MPIDI_Comm_spawn_multiple(int count, char **commands,
         preput_keyval_vector.val = port_name;
 
 	/* Spawn the processes */
-        MPIU_dbg_printf("[MPIDI_Comm_spawn_multiple] calling PMI_Spawn\n");
+	MPIU_THREAD_CS_ENTER(PMI,);
+#ifdef USE_PMI2_API
+        MPIU_Assert(0); /* FIX for pmi2 DARIUS */
+#else
         pmi_errno = PMI_Spawn_multiple(count, (const char **)
                                        commands, 
                                        (const char ***) argvs,
@@ -190,12 +193,13 @@ int MPIDI_Comm_spawn_multiple(int count, char **commands,
                                        info_keyval_vectors, 1, 
                                        &preput_keyval_vector,
                                        pmi_errcodes);
-
-        MPIU_dbg_printf("[MPIDI_Comm_spawn_multiple] called PMI spawn\n");
+	MPIU_THREAD_CS_EXIT(PMI,);
         if (pmi_errno != PMI_SUCCESS) {
 	    MPIU_ERR_SETANDJUMP1(mpi_errno, MPI_ERR_OTHER,
 		 "**pmi_spawn_multiple", "**pmi_spawn_multiple %d", pmi_errno);
         }
+#endif
+
 	if (errcodes != MPI_ERRCODES_IGNORE) {
 	    for (i=0; i<total_num_processes; i++) {
 		/* FIXME: translate the pmi error codes here */
@@ -227,6 +231,17 @@ int MPIDI_Comm_spawn_multiple(int count, char **commands,
     }
     else {
         MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**pmi_spawn_multiple");
+    }
+
+    if (comm_ptr->rank == root) {
+	/* Close the port opened for the spawned processes to connect to */
+	mpi_errno = MPID_Close_port(port_name);
+	/* --BEGIN ERROR HANDLING-- */
+	if (mpi_errno != MPI_SUCCESS)
+	{
+	    MPIU_ERR_POP(mpi_errno);
+	}
+	/* --END ERROR HANDLING-- */
     }
 
  fn_exit:
@@ -270,6 +285,7 @@ static char *parent_port_name = 0;    /* Name of parent port if this
 int MPIDI_CH3_GetParentPort(char ** parent_port)
 {
     int mpi_errno = MPI_SUCCESS;
+    int pmi_errno;
     char val[MPIDI_MAX_KVS_VALUE_LEN];
 
     if (parent_port_name == NULL)
@@ -277,14 +293,26 @@ int MPIDI_CH3_GetParentPort(char ** parent_port)
 	char *kvsname = NULL;
 	/* We can always use PMI_KVS_Get on our own process group */
 	MPIDI_PG_GetConnKVSname( &kvsname );
-	mpi_errno = PMI_KVS_Get( kvsname, PARENT_PORT_KVSKEY, val, sizeof(val));
-	if (mpi_errno != MPI_SUCCESS) {
-	    MPIU_ERR_POP(mpi_errno);
+#ifdef USE_PMI2_API
+        {
+            int vallen = 0;
+            MPIU_THREAD_CS_ENTER(PMI,);
+            mpi_errno = PMI2_KVS_Get(kvsname, PMI2_ID_NULL, PARENT_PORT_KVSKEY, val, sizeof(val), &vallen);
+            MPIU_THREAD_CS_EXIT(PMI,);
+            if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+        }
+#else
+	MPIU_THREAD_CS_ENTER(PMI,);
+	pmi_errno = PMI_KVS_Get( kvsname, PARENT_PORT_KVSKEY, val, sizeof(val));
+	MPIU_THREAD_CS_EXIT(PMI,);
+	if (pmi_errno) {
+            mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**pmi_kvs_get", "**pmi_kvs_get %d", pmi_errno);
+            goto fn_exit;
 	}
-
+#endif
 	parent_port_name = MPIU_Strdup(val);
 	if (parent_port_name == NULL) {
-	    MPIU_ERR_POP(mpi_errno);
+	    MPIU_ERR_POP(mpi_errno); /* FIXME DARIUS */
 	}
     }
 

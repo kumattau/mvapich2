@@ -8,7 +8,7 @@
 # This script knows the default flags and libraries, and can handle
 # alternative C compilers and the associated flags and libraries.
 # The important terms are:
-#    includedir, libdir - Directories containing an *installed* mpich2
+#    includedir, libdir, opalibdir - Directories containing an *installed* mpich2
 #    prefix, execprefix - Often used to define includedir and libdir
 #    CC                 - C compiler
 #    WRAPPER_CFLAGS        - Any special flags needed to compile 
@@ -33,6 +33,7 @@ exec_prefix=@exec_prefix@
 sysconfdir=@sysconfdir@
 includedir=@includedir@
 libdir=@libdir@
+opalibdir=@libdir@
 #
 # Default settings for compiler, flags, and libraries.
 # Determined by a combination of environment variables and tests within
@@ -45,8 +46,8 @@ MPILIBNAME="@MPILIBNAME@"
 PMPILIBNAME="@PMPILIBNAME@"
 MPI_OTHERLIBS="@LIBS@"
 NEEDSPLIB="@NEEDSPLIB@"
-# MPIVERSION is the version of the MPICH2 library that mpicc is intended for
-MPIVERSION="@VERSION@"
+# MPICH2_VERSION is the version of the MPICH2 library that mpicc is intended for
+MPICH2_VERSION="@MPICH2_VERSION@"
 #
 # Internal variables
 # Show is set to echo to cause the compilation command to be echoed instead 
@@ -135,7 +136,7 @@ for arg in "$@" ; do
     ;;
     -v)
     # Pass this argument to the compiler as well.
-    echo "mpicc for $MPIVERSION"
+    echo "mpicc for MPICH2 version $MPICH2_VERSION"
     # if there is only 1 argument, it must be -v.
     if [ "$#" -eq "1" ] ; then
         linking=no
@@ -192,9 +193,9 @@ fi
 # default, environment, configuration file (if any) and command-line
 # options (if any)
 if [ "$NEEDSPLIB" = yes ] ; then
-    mpilibs="-l$PMPILIBNAME -l$MPILIBNAME"
+    mpilibs="-l$PMPILIBNAME -l$MPILIBNAME -lopa"
 else
-    mpilibs="-l$MPILIBNAME"
+    mpilibs="-l$MPILIBNAME -lopa"
 fi
 #
 # Init with the ones needed by MPI
@@ -244,10 +245,10 @@ if [ "$linking" = yes ] ; then
 	# prepend the path for the shared libraries to the library list
 	mpilibs="$C_LINKPATH_SHL$libdir $mpilibs"
     fi
-    $Show $CC $CFLAGS $LDFLAGS "${allargs[@]}" -I$includedir -L$libdir $mpilibs $MPI_OTHERLIBS
+    $Show $CC $MPICH2_MPICC_FLAGS $CFLAGS $LDFLAGS "${allargs[@]}" -I$includedir -L$libdir -L$opalibdir $MPICH2_LDFLAGS $mpilibs $MPI_OTHERLIBS
     rc=$?
 else
-    $Show $CC $CFLAGS "${allargs[@]}" -I$includedir
+    $Show $CC $MPICH2_MPICC_FLAGS $CFLAGS "${allargs[@]}" -I$includedir
     rc=$?
 fi
 

@@ -1,14 +1,4 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
- * reserved.
- *
- * This file is part of the MVAPICH2 software package developed by the
- * team members of The Ohio State University's Network-Based Computing
- * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
- *
- * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT in the top level MVAPICH2 directory.
- */
 /*
  *
  *  (C) 2001 by Argonne National Laboratory.
@@ -16,6 +6,8 @@
  */
 
 #include "mpiimpl.h"
+
+#if !defined(_OSU_COLLECTIVES_)
 
 /* -- Begin Profiling Symbol Block for routine MPI_Allgatherv */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -85,18 +77,13 @@ int MPIR_Allgatherv (
 {
     static const char FCNAME[] = "MPIR_Allgatherv";
     MPI_Comm comm;
-    int        comm_size, rank, j, i, jnext, left, right;
+    int        comm_size, rank, j, i, left, right;
     int        mpi_errno = MPI_SUCCESS;
     MPI_Status status;
     MPI_Aint recvbuf_extent, recvtype_extent, recvtype_true_extent, 
 	recvtype_true_lb;
-#if defined(_OSU_MVAPICH_)
-    int curr_cnt, send_cnt, dst, total_count, recvtype_size, src, rem;
-    int recv_cnt;
-#else /* defined(_OSU_MVAPICH_) */
     int curr_cnt, send_cnt, dst, total_count, recvtype_size, pof2, src, rem; 
     int recv_cnt, comm_size_is_pof2;
-#endif /* defined(_OSU_MVAPICH_) */
     void *tmp_buf;
     int mask, dst_tree_root, my_tree_root, is_homogeneous, position,  
         send_offset, recv_offset, last_recv_cnt, nprocs_completed, k,
@@ -119,7 +106,6 @@ int MPIR_Allgatherv (
     MPID_Datatype_get_size_macro(recvtype, recvtype_size);
     
     /* check if comm_size is a power of two */
-#if !defined(_OSU_MVAPICH_)
     pof2 = 1;
     while (pof2 < comm_size)
         pof2 *= 2;
@@ -127,17 +113,12 @@ int MPIR_Allgatherv (
         comm_size_is_pof2 = 1;
     else
         comm_size_is_pof2 = 0;
-#endif /* !defined(_OSU_MVAPICH_) */
+
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
-#if defined(_OSU_MVAPICH_)
-    if (total_count * recvtype_size < MPIR_ALLGATHER_LONG_MSG
-        && (comm_size & (comm_size - 1)) == 0)
-    {
-#else /* defined(_OSU_MVAPICH_) */
+
     if ((total_count*recvtype_size < MPIR_ALLGATHER_LONG_MSG) &&
         (comm_size_is_pof2 == 1)) {
-#endif /* defined(_OSU_MVAPICH_) */
         /* Short or medium size message and power-of-two no. of processes. Use
          * recursive doubling algorithm */   
 
@@ -161,6 +142,8 @@ int MPIR_Allgatherv (
 	    }
             /* --END ERROR HANDLING-- */
 
+            MPID_Ensure_Aint_fits_in_pointer(total_count *
+                           (MPIR_MAX(recvtype_true_extent, recvtype_extent)));
             tmp_buf = MPIU_Malloc(total_count*(MPIR_MAX(recvtype_true_extent,recvtype_extent)));
 	    /* --BEGIN ERROR HANDLING-- */
             if (!tmp_buf)
@@ -581,6 +564,8 @@ int MPIR_Allgatherv (
 	}
         /* --END ERROR HANDLING-- */
             
+        MPID_Ensure_Aint_fits_in_pointer(total_count *
+                        MPIR_MAX(recvtype_true_extent, recvtype_extent));
         recvbuf_extent = total_count *
             (MPIR_MAX(recvtype_true_extent, recvtype_extent));
 
@@ -624,11 +609,7 @@ int MPIR_Allgatherv (
         /* do the first \floor(\lg p) steps */
 
         curr_cnt = recvcounts[rank];
-#if defined(_OSU_MVAPICH_)
-        int pof2 = 1;
-#else /* defined(_OSU_MVAPICH_) */
         pof2 = 1;
-#endif /* defined(_OSU_MVAPICH_) */
         while (pof2 <= comm_size/2) {
             src = (rank + pof2) % comm_size;
             dst = (rank - pof2 + comm_size) % comm_size;
@@ -715,14 +696,19 @@ int MPIR_Allgatherv (
 
         MPIU_Free((char*)tmp_buf + recvtype_true_lb);
     }
-
-    else {  /* long message or medium-size message and non-power-of-two
-             * no. of processes. Use ring algorithm. */
+    else {
+	/* long message or medium-size message and non-power-of-two
+	 * no. of processes. Use ring algorithm. */
+	char * sbuf = NULL, * rbuf = NULL;
+        int soffset, roffset;
+	int torecv, tosend, min;
+	int sendnow, recvnow;
+	int sindex, rindex;
 
         if (sendbuf != MPI_IN_PLACE) {
             /* First, load the "local" version in the recvbuf. */
             mpi_errno = MPIR_Localcopy(sendbuf, sendcount, sendtype, 
-                              ((char *)recvbuf + displs[rank]*recvtype_extent),
+				       ((char *)recvbuf + displs[rank]*recvtype_extent),
                                        recvcounts[rank], recvtype);
 	    /* --BEGIN ERROR HANDLING-- */
             if (mpi_errno)
@@ -735,25 +721,89 @@ int MPIR_Allgatherv (
 
         left  = (comm_size + rank - 1) % comm_size;
         right = (rank + 1) % comm_size;
-  
-        j     = rank;
-        jnext = left;
-        for (i=1; i<comm_size; i++) {
-            mpi_errno = MPIC_Sendrecv(((char *)recvbuf+displs[j]*recvtype_extent),
-                                      recvcounts[j], recvtype, right,
-                                      MPIR_ALLGATHERV_TAG, 
-                                 ((char *)recvbuf + displs[jnext]*recvtype_extent),
-                                      recvcounts[jnext], recvtype, left, 
-                                      MPIR_ALLGATHERV_TAG, comm, &status );
-	    /* --BEGIN ERROR HANDLING-- */
-            if (mpi_errno)
-	    {
-		mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", 0);
-		return mpi_errno;
+
+	torecv = total_count - recvcounts[rank];
+	tosend = total_count - recvcounts[right];
+
+	min = recvcounts[0];
+	for (i = 1; i < comm_size; i++)
+	    if (min > recvcounts[i])
+                min = recvcounts[i];
+	if (min * recvtype_extent < MPIR_ALLGATHERV_PIPELINE_MSGSIZE)
+	    min = MPIR_ALLGATHERV_PIPELINE_MSGSIZE / recvtype_extent;
+        /* Handle the case where the datatype extent is larger than
+         * the pipeline size. */
+        if (!min)
+            min = 1;
+
+        sindex = rank;
+        rindex = left;
+        soffset = 0;
+        roffset = 0;
+        while (tosend || torecv) { /* While we have data to send or receive */
+            sendnow = ((recvcounts[sindex] - soffset) > min) ? min : (recvcounts[sindex] - soffset);
+            recvnow = ((recvcounts[rindex] - roffset) > min) ? min : (recvcounts[rindex] - roffset);
+            sbuf = (char *)recvbuf + ((displs[sindex] + soffset) * recvtype_extent);
+            rbuf = (char *)recvbuf + ((displs[rindex] + roffset) * recvtype_extent);
+
+            /* Protect against wrap-around of indices */
+            if (!tosend)
+                sendnow = 0;
+            if (!torecv)
+                recvnow = 0;
+
+	    /* Communicate */
+	    if (!sendnow && !recvnow) {
+		/* Don't do anything. This case is possible if two
+		 * consecutive processes contribute 0 bytes each. */
 	    }
-	    /* --END ERROR HANDLING-- */
-            j	    = jnext;
-            jnext = (comm_size + jnext - 1) % comm_size;
+	    else if (!sendnow) { /* If there's no data to send, just do a recv call */
+		mpi_errno = MPIC_Recv(rbuf, recvnow, recvtype, left, MPIR_ALLGATHERV_TAG, comm, &status);
+		/* --BEGIN ERROR HANDLING-- */
+		if (mpi_errno)
+		{
+		    mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", 0);
+		    return mpi_errno;
+		}
+		/* --END ERROR HANDLING-- */
+		torecv -= recvnow;
+	    }
+	    else if (!recvnow) { /* If there's no data to receive, just do a send call */
+		mpi_errno = MPIC_Send(sbuf, sendnow, recvtype, right, MPIR_ALLGATHERV_TAG, comm);
+		/* --BEGIN ERROR HANDLING-- */
+		if (mpi_errno)
+		{
+		    mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", 0);
+		    return mpi_errno;
+		}
+		/* --END ERROR HANDLING-- */
+		tosend -= sendnow;
+	    }
+	    else { /* There's data to be sent and received */
+		mpi_errno = MPIC_Sendrecv(sbuf, sendnow, recvtype, right, MPIR_ALLGATHERV_TAG, 
+					  rbuf, recvnow, recvtype, left, MPIR_ALLGATHERV_TAG,
+					  comm, &status);
+		/* --BEGIN ERROR HANDLING-- */
+		if (mpi_errno)
+		{
+		    mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", 0);
+		    return mpi_errno;
+		}
+		/* --END ERROR HANDLING-- */
+		tosend -= sendnow;
+		torecv -= recvnow;
+	    }
+
+            soffset += sendnow;
+            roffset += recvnow;
+            if (soffset == recvcounts[sindex]) {
+                soffset = 0;
+                sindex = (sindex + comm_size - 1) % comm_size;
+            }
+            if (roffset == recvcounts[rindex]) {
+                roffset = 0;
+                rindex = (rindex + comm_size - 1) % comm_size;
+            }
         }
     }
 
@@ -927,11 +977,12 @@ int MPI_Allgatherv(void *sendbuf, int sendcount, MPI_Datatype sendtype,
     static const char FCNAME[] = "MPI_Allgatherv";
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL;
+    MPIU_THREADPRIV_DECL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_ALLGATHERV);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPIU_THREAD_SINGLE_CS_ENTER("coll");
+    MPIU_THREAD_CS_ENTER(ALLFUNC,);
     MPID_MPI_COLL_FUNC_ENTER(MPID_STATE_MPI_ALLGATHERV);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -1013,7 +1064,6 @@ int MPI_Allgatherv(void *sendbuf, int sendcount, MPI_Datatype sendtype,
     }
     else
     {
-	MPIU_THREADPRIV_DECL;
 	MPIU_THREADPRIV_GET;
 
 	MPIR_Nest_incr();
@@ -1039,7 +1089,7 @@ int MPI_Allgatherv(void *sendbuf, int sendcount, MPI_Datatype sendtype,
 
   fn_exit:
     MPID_MPI_COLL_FUNC_EXIT(MPID_STATE_MPI_ALLGATHERV);
-    MPIU_THREAD_SINGLE_CS_EXIT("coll");
+    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return mpi_errno;
 
   fn_fail:
@@ -1055,3 +1105,5 @@ int MPI_Allgatherv(void *sendbuf, int sendcount, MPI_Datatype sendtype,
     goto fn_exit;
     /* --END ERROR HANDLING-- */
 }
+
+#endif /* !defined(_OSU_COLLECTIVES_)*/

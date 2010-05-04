@@ -565,7 +565,7 @@ rdma_pmi_exchange_addresses (int pg_rank, int pg_size,
     MPIU_Assert (len_local <= val_max_sz);
 
     /* Be sure to use different keys for different processes */
-    memset (attr_buff, 0, IBA_PMI_ATTRLEN * sizeof (char));
+    MPIU_Memset (attr_buff, 0, IBA_PMI_ATTRLEN * sizeof (char));
     snprintf (attr_buff, IBA_PMI_ATTRLEN, "MVAPICH2_%04d", pg_rank);
 
     /* put the kvs into PMI */
@@ -598,8 +598,8 @@ rdma_pmi_exchange_addresses (int pg_rank, int pg_size,
 #endif
 
           /* Use the key to extract the value */
-          memset (attr_buff, 0, IBA_PMI_ATTRLEN * sizeof (char));
-          memset (val_buff, 0, IBA_PMI_VALLEN * sizeof (char));
+          MPIU_Memset (attr_buff, 0, IBA_PMI_ATTRLEN * sizeof (char));
+          MPIU_Memset (val_buff, 0, IBA_PMI_VALLEN * sizeof (char));
           snprintf (attr_buff, IBA_PMI_ATTRLEN, "MVAPICH2_%04d", j);
           MPIU_Strncpy (key, attr_buff, key_max_sz);
 
@@ -1143,9 +1143,9 @@ rdma_iba_allocate_memory (struct MPIDI_CH3I_RDMA_Process_t *proc,
             }
 
           /* zero buffers */
-          memset (vc->mrail.rfp.RDMA_send_buf, 0,
+          MPIU_Memset (vc->mrail.rfp.RDMA_send_buf, 0,
                  sizeof (struct vbuf) * (num_rdma_buffer));
-          memset (vc->mrail.rfp.RDMA_recv_buf, 0,
+          MPIU_Memset (vc->mrail.rfp.RDMA_recv_buf, 0,
                  sizeof (struct vbuf) * (num_rdma_buffer));
 
           DEBUG_PRINT ("sizeof vbuf %d, numrdma %d\n", sizeof (struct vbuf),
@@ -1405,8 +1405,8 @@ MRAILI_Init_vc (MPIDI_VC_t * vc, int pg_rank)
     vc->mrail.rfp.cached_hit = 0;
     vc->mrail.rfp.cached_incoming = MPIU_Malloc (sizeof (MPIDI_CH3_Pkt_send_t));
     vc->mrail.rfp.cached_outgoing = MPIU_Malloc (sizeof (MPIDI_CH3_Pkt_send_t));
-    memset (vc->mrail.rfp.cached_outgoing, 0, sizeof (MPIDI_CH3_Pkt_send_t));
-    memset (vc->mrail.rfp.cached_incoming, 0, sizeof (MPIDI_CH3_Pkt_send_t));
+    MPIU_Memset (vc->mrail.rfp.cached_outgoing, 0, sizeof (MPIDI_CH3_Pkt_send_t));
+    MPIU_Memset (vc->mrail.rfp.cached_incoming, 0, sizeof (MPIDI_CH3_Pkt_send_t));
 #endif
     vc->mrail.cmanager.total_subrails = 2;
     vc->mrail.cmanager.num_local_pollings = 1;
@@ -1478,7 +1478,7 @@ MPIDI_CH3I_RDMA_util_get_ia_addr (DAT_SOCK_ADDR * ia_addr,
     char *p;
     static char hostname[255];
 
-    memcpy (ret_addr, ia_addr, sizeof (DAT_SOCK_ADDR));
+    MPIU_Memcpy (ret_addr, ia_addr, sizeof (DAT_SOCK_ADDR));
 
 }
 

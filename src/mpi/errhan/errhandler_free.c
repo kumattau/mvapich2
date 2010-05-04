@@ -51,11 +51,12 @@ int MPI_Errhandler_free(MPI_Errhandler *errhandler)
     int mpi_errno = MPI_SUCCESS;
     MPID_Errhandler *errhan_ptr = NULL;
     int in_use;
+    MPIU_THREADPRIV_DECL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_ERRHANDLER_FREE);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPIU_THREAD_SINGLE_CS_ENTER("errhan");
+    MPIU_THREAD_CS_ENTER(ALLFUNC,);
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_ERRHANDLER_FREE);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -101,7 +102,7 @@ int MPI_Errhandler_free(MPI_Errhandler *errhandler)
   fn_exit:
 #endif
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_ERRHANDLER_FREE);
-    MPIU_THREAD_SINGLE_CS_EXIT("errhan");
+    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return mpi_errno;
 
     /* --BEGIN ERROR HANDLING-- */

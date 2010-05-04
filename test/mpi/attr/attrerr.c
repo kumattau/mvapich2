@@ -115,13 +115,17 @@ int test_communicators( void )
 	errs++;
 	printf( "copy function return code was MPI_SUCCESS in dup\n" );
     }
+#ifndef USE_STRICT_MPI
+    /* Another interpretation is to leave d2 unchanged on error */
     if (err && d2 != MPI_COMM_NULL) {
 	errs++;
 	printf( "dup did not return MPI_COMM_NULL on error\n" );
     }
+#endif
 
     delete_flag = 1;
     MPI_Comm_free( &dup_comm_world );
+    MPI_Keyval_free( &key_1 );
 
     return errs;
 }

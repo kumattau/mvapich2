@@ -18,6 +18,7 @@
 #include "ibv_param.h"
 #include "vbuf.h"
 #include "rdma_impl.h"
+#include "sysreport.h"
 
 /*
  * ==============================================================
@@ -218,7 +219,7 @@ int hcaNameToType(char *dev_name, int* hca_type)
             MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**umadinit");
         }
 
-        memset(&umad_ca, 0, sizeof(umad_ca_t));
+        MPIU_Memset(&umad_ca, 0, sizeof(umad_ca_t));
         if (umad_get_ca(dev_name, &umad_ca) < 0) {
             MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**umadgetca");
         }
@@ -297,7 +298,7 @@ static inline int get_hca_type (struct ibv_device* dev, struct ibv_context* ctx,
     int mpi_errno = MPI_SUCCESS;
     struct ibv_device_attr dev_attr;
 
-    memset(&dev_attr, 0, sizeof(struct ibv_device_attr));
+    MPIU_Memset(&dev_attr, 0, sizeof(struct ibv_device_attr));
 
     char* dev_name = (char*) ibv_get_device_name(dev);
 
@@ -1003,6 +1004,15 @@ void rdma_param_handle_heterogenity(uint32_t hca_type[], int pg_size)
 void rdma_get_user_parameters(int num_proc, int me)
 {
     char *value;
+
+
+    /* Check for a system report. See sysreport.h and sysreport.c */
+    value = getenv( SYSREPORT_ENABLE_PARAM_NAME );
+    if (value != NULL)
+    {
+        enable_sysreport = atoi(value);
+    }
+
 
     if ((value = getenv("MV2_DEFAULT_MTU")) != NULL) {
 

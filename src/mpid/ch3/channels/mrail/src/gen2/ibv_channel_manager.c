@@ -899,7 +899,9 @@ void async_thread(void *context)
     struct ibv_async_event event;
     struct ibv_srq_attr srq_attr;
     int post_new, i, hca_num = -1;
-    int xrc_event = 0;
+#ifdef _ENABLE_XRC_
+    int xrc_event = 0; 
+#endif
 
     pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
     pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
@@ -1094,8 +1096,8 @@ int reload_alternate_path(struct ibv_qp *qp)
     lock_apm();
 
     /* For Sanity */
-    memset(&attr, 0, sizeof attr);
-    memset(&init_attr, 0, sizeof init_attr);
+    MPIU_Memset(&attr, 0, sizeof attr);
+    MPIU_Memset(&init_attr, 0, sizeof init_attr);
 
     attr_mask = 0;
 
@@ -1158,8 +1160,8 @@ int perform_manual_apm(struct ibv_qp* qp)
     }
     
     /* For Sanity */    
-    memset(&attr, 0, sizeof attr); 
-    memset(&init_attr, 0, sizeof init_attr); 
+    MPIU_Memset(&attr, 0, sizeof attr);
+    MPIU_Memset(&init_attr, 0, sizeof init_attr);
     attr_mask = 0;
     lock_apm();
     ibv_query_qp(qp, &attr,

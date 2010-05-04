@@ -40,10 +40,11 @@ int MPI_File_write_ordered_end(MPI_File mpi_fh, void *buf, MPI_Status *status)
     int error_code;
     static char myname[] = "MPI_FILE_WRITE_ORDERED_END";
     ADIO_File fh;
+    MPIU_THREADPRIV_DECL;
 
     MPIU_UNREFERENCED_ARG(buf);
 
-    MPIU_THREAD_SINGLE_CS_ENTER("io");
+    MPIU_THREAD_CS_ENTER(ALLFUNC,);
 
     fh = MPIO_File_resolve(mpi_fh);
 
@@ -68,6 +69,6 @@ int MPI_File_write_ordered_end(MPI_File mpi_fh, void *buf, MPI_Status *status)
 
 
 fn_exit:
-    MPIU_THREAD_SINGLE_CS_EXIT("io");
+    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return MPI_SUCCESS;
 }

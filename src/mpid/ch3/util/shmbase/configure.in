@@ -1,4 +1,3 @@
-AC_PREREQ(2.59)
 AC_INIT(configure.in)
 
 dnl
@@ -20,7 +19,7 @@ dnl Definitions will be placed in this file rather than in the DEFS variable
 dnl
 AC_CONFIG_HEADER(mpidi_ch3shmbase_conf.h)
 AH_TOP([/* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2003-2009, The Ohio State University. All rights
+/* Copyright (c) 2003-2010, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -136,10 +135,10 @@ if test "$pac_cv_have_struct_ifconf" = "yes" -o \
 fi
 #
 # We need to know whether to use %d or %ld for writing out MPI_Aint values
-AC_CHECK_SIZEOF(int,$CROSS_SIZEOF_INT)
-AC_CHECK_SIZEOF(long,$CROSS_SIZEOF_LONG)
-AC_CHECK_SIZEOF(long long,$CROSS_SIZEOF_LONG)
-AC_CHECK_SIZEOF(void *,$CROSS_SIZEOF_VOID_P)
+AC_CHECK_SIZEOF(int)
+AC_CHECK_SIZEOF(long)
+AC_CHECK_SIZEOF(long long)
+AC_CHECK_SIZEOF(void *)
 if test "$ac_cv_sizeof_int" = "$ac_cv_sizeof_void_p" ; then
     :
 elif test "$ac_cv_sizeof_long" = "$ac_cv_sizeof_void_p" ; then
@@ -162,12 +161,6 @@ AC_SUBST(master_top_builddir)
 export master_top_builddir
 dnl Dependency handling
 AC_SUBST(MAKE_DEPEND_C)
-dnl Etags
-AC_CHECK_PROGS(ETAGS,etags,true)
-AC_SUBST(ETAGS)
-AC_SUBST(ETAGSADD)
-export ETAGS
-export ETAGSADD
 
 AC_SUBST(EXTRA_LIBS)
 

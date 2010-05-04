@@ -72,15 +72,15 @@ int MPIDI_CH3_Packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
     int pkt_len;
     int seqnum;
 
-    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_ISENDV);
-    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_ISENDV);
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_SENDV);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_SENDV);
     MPIU_DBG_PRINTF(("ch3_isendv\n"));
     MPIDI_DBG_PRINTF((50, FCNAME, "entering"));
 
     MPIDI_Pkt_init(&send_start, MPIDI_CH3_PKT_PACKETIZED_SEND_START);
     iov[0].MPID_IOV_LEN = sizeof(MPIDI_CH3_Pkt_packetized_send_start_t);
     iov[0].MPID_IOV_BUF = (void*) &send_start;
-    memcpy(&iov[1], sreq->dev.iov, sreq->dev.iov_count * sizeof(MPID_IOV));
+    MPIU_Memcpy(&iov[1], sreq->dev.iov, sreq->dev.iov_count * sizeof(MPID_IOV));
     n_iov = 1 + sreq->dev.iov_count;
 
     GET_SEQ_NUM(sreq->dev.iov[0].MPID_IOV_BUF, seqnum);
@@ -118,7 +118,7 @@ int MPIDI_CH3_Packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
             MPIDI_Pkt_set_seqnum(&pkt_head, seqnum);
             MPIDI_Request_set_seqnum(sreq, seqnum);
 
-            memcpy((void *) &iov[1],
+            MPIU_Memcpy((void *) &iov[1],
                    &sreq->dev.iov[sreq->dev.iov_offset],
                    (sreq->dev.iov_count -
                     sreq->dev.iov_offset) * sizeof(MPID_IOV));
@@ -163,7 +163,7 @@ int MPIDI_CH3_Packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
 
   fn_exit:
     MPIDI_DBG_PRINTF((50, FCNAME, "exiting"));
-    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_ISENDV);
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_SENDV);
     return mpi_errno;
 
 }

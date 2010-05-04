@@ -103,11 +103,12 @@ int MPI_Type_struct(int count,
     static const char FCNAME[] = "MPI_Type_struct";
     int mpi_errno = MPI_SUCCESS;
     MPIU_CHKLMEM_DECL(1);
+    MPIU_THREADPRIV_DECL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_TYPE_STRUCT);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPIU_THREAD_SINGLE_CS_ENTER("datatype");
+    MPIU_THREAD_CS_ENTER(ALLFUNC,);
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_TYPE_STRUCT);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -181,7 +182,7 @@ int MPI_Type_struct(int count,
   fn_exit:
     MPIU_CHKLMEM_FREEALL();
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_TYPE_STRUCT);
-    MPIU_THREAD_SINGLE_CS_EXIT("datatype");
+    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return mpi_errno;
 
   fn_fail:

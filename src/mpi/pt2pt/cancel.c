@@ -64,11 +64,12 @@ int MPI_Cancel(MPI_Request *request)
     static const char FCNAME[] = "MPI_Cancel";
     int mpi_errno = MPI_SUCCESS;
     MPID_Request * request_ptr;
+    MPIU_THREADPRIV_DECL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_CANCEL);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPIU_THREAD_SINGLE_CS_ENTER("pt2pt");
+    MPIU_THREAD_CS_ENTER(ALLFUNC,);
     MPID_MPI_PT2PT_FUNC_ENTER(MPID_STATE_MPI_CANCEL);
     
     /* Convert MPI object handles to object pointers */
@@ -117,7 +118,6 @@ int MPI_Cancel(MPI_Request *request)
 		else
 		{
 		    /* This is needed for persistent Bsend requests */
-		    MPIU_THREADPRIV_DECL;
 		    MPIU_THREADPRIV_GET;
 		    MPIR_Nest_incr();
 		    {
@@ -155,7 +155,6 @@ int MPI_Cancel(MPI_Request *request)
 
 	case MPID_UREQUEST:
 	{
-	    MPIU_THREADPRIV_DECL;
 	    MPIU_THREADPRIV_GET;
 	    MPIR_Nest_incr();
 	    {
@@ -181,7 +180,7 @@ int MPI_Cancel(MPI_Request *request)
     
   fn_exit:
     MPID_MPI_PT2PT_FUNC_EXIT(MPID_STATE_MPI_CANCEL);
-    MPIU_THREAD_SINGLE_CS_EXIT("pt2pt");
+    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return mpi_errno;
 
   fn_fail:

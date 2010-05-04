@@ -44,12 +44,6 @@
 
 
 #if !defined(DISABLE_PTMALLOC)
-static pthread_spinlock_t dreg_lock = 0;
-static pthread_spinlock_t dereg_lock = 0;
-static pthread_t th_id_of_lock;
-static pthread_t th_id_of_dereg_lock = -1;
-
-
 int have_dereg();
 void lock_dereg();
 void unlock_dereg();
@@ -67,7 +61,6 @@ typedef struct {
 } dreg_region;
 
 extern int g_is_dreg_initialized; 
-extern int g_is_dreg_finalize;
 extern unsigned long dreg_stat_cache_hit;
 extern unsigned long dreg_stat_cache_miss;
 struct dreg_entry {
@@ -245,8 +238,6 @@ extern struct dreg_entry *dreg_unused_tail;
 }
 
 int dreg_init(void);
-
-int dreg_finalize(void);
 
 dreg_entry *dreg_register(void *buf, int len);
 

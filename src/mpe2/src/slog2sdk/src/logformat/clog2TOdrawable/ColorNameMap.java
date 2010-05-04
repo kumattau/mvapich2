@@ -13,7 +13,7 @@ import java.util.Map;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.StringTokenizer;
-import java.net.URL;
+// import java.net.URL;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.BufferedReader;
@@ -76,10 +76,14 @@ public class ColorNameMap
         else
             colorname = in_colorname;
         color = (ColorAlpha) colormap.get( colorname );
-        if ( color == null )
-            System.err.println( "ColorNameMap: Could NOT locate colorname "
-                              + colorname + " in default rgb.txt, i.e. "
-                              + "jumpshot.colors" ); 
+        if ( color == null ) {
+            // System.err.println( "ColorNameMap: Could NOT locate colorname "
+            //                   + colorname + " in default rgb.txt, i.e. "
+            //                  + "jumpshot.colors" ); 
+            System.err.println( "ColorNameMap: " + colorname + " not found."
+                              + "Assign Default MPE Colors!" );
+            return ColorAlpha.getNextDefaultColor();
+        }
         return color;
     }
 

@@ -51,6 +51,8 @@ int MPIDI_Win_create(void *base, MPI_Aint size, int disp_unit, MPID_Info *info,
     *win_ptr = (MPID_Win *)MPIU_Handle_obj_alloc( &MPID_Win_mem );
     MPIU_ERR_CHKANDJUMP(!(*win_ptr),mpi_errno,MPI_ERR_OTHER,"**nomem");
 
+    MPIU_Object_set_ref(*win_ptr, 1);
+
     (*win_ptr)->fence_cnt = 0;
     (*win_ptr)->base = base;
     (*win_ptr)->size = size;
@@ -176,6 +178,7 @@ int MPIDI_Win_free(MPID_Win **win_ptr)
 {
     int mpi_errno=MPI_SUCCESS, total_pt_rma_puts_accs, i, *recvcnts, comm_size;
     MPID_Comm *comm_ptr;
+    int in_use;
     MPIU_CHKLMEM_DECL(1);
     MPIU_THREADPRIV_DECL;
     
@@ -237,10 +240,12 @@ int MPIDI_Win_free(MPID_Win **win_ptr)
     MPIU_Free((*win_ptr)->disp_units);
     MPIU_Free((*win_ptr)->all_win_handles);
     MPIU_Free((*win_ptr)->pt_rma_puts_accs);
-        
-    /* check whether refcount needs to be decremented here as in group_free */
+
+    MPIU_Object_release_ref(*win_ptr, &in_use);
+    /* MPI windows don't have reference count semantics, so this should always be true */
+    MPIU_Assert(!in_use);
     MPIU_Handle_obj_free( &MPID_Win_mem, *win_ptr );
-        
+
  fn_exit:
     MPIR_Nest_decr();
     MPIU_CHKLMEM_FREEALL();
@@ -445,24 +450,12 @@ int MPIDI_Get(void *origin_addr, int origin_count, MPI_Datatype
 	{
 	    MPID_Datatype_get_ptr(origin_datatype, dtp);
 	    MPID_Datatype_add_ref(dtp);
-#if 0
-        if(dtp->is_contig) 
-            printf("ORIGIN derived but contigous\n");
-        else
-            printf("ORIGIN derived and NOT contig\n");
-#endif
 	}
 	MPIDI_CH3I_DATATYPE_IS_PREDEFINED(target_datatype, predefined);
 	if (!predefined)
 	{
 	    MPID_Datatype_get_ptr(target_datatype, dtp);
 	    MPID_Datatype_add_ref(dtp);
-#if 0
-        if(dtp->is_contig) 
-            printf("TARGET derived but contiguous\n");
-        else
-            printf("TARGET derived and NOT contig\n");
-#endif
     }
     }
 
@@ -564,7 +557,6 @@ int MPIDI_Accumulate(void *origin_addr, int origin_count, MPI_Datatype
 	    MPI_Aint first, last;
 	    int vec_len, i, type_size, count;
 	    MPI_Datatype type;
-	    MPID_Datatype *dtp;
 	    MPI_Aint true_lb, true_extent, extent;
 	    void *tmp_buf=NULL, *source_buf, *target_buf;
 	    
@@ -607,7 +599,7 @@ int MPIDI_Accumulate(void *origin_addr, int origin_count, MPI_Datatype
 		last  = SEGMENT_IGNORE_LAST;
 		
 		MPID_Datatype_get_ptr(target_datatype, dtp);
-		vec_len = dtp->n_contig_blocks * target_count + 1; 
+		vec_len = dtp->max_contig_blocks * target_count + 1; 
 		/* +1 needed because Rob says so */
 		MPIU_CHKLMEM_MALLOC(dloop_vec, DLOOP_VECTOR *, 
 				    vec_len * sizeof(DLOOP_VECTOR), 

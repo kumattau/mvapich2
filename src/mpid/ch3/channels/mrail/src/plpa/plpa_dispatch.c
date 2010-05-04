@@ -23,6 +23,7 @@
  * $HEADER$
  */
 
+#include "mpiimpl.h"
 #include "plpa.h"
 #include "plpa_internal.h"
 
@@ -155,7 +156,7 @@ int PLPA_NAME(sched_setaffinity)(pid_t pid, size_t cpusetsize,
            right size.  Just for clarity of code, copy the user's
            buffer into the temporary and use that. */
         else {
-            memcpy(&tmp, cpuset, cpusetsize);
+            MPIU_Memcpy(&tmp, cpuset, cpusetsize);
         }
 
         /* Now do the syscall:

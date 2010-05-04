@@ -33,15 +33,15 @@ psm_error_t psm_send_pkt(MPID_Request **rptr, MPIDI_Message_match m,
     MPID_Request *req = *rptr;
     uint8_t blocking = 1;
 
-    MAKE_PSM_SELECTOR(stag, m.context_id, m.tag, m.rank);
+    MAKE_PSM_SELECTOR(stag, m.parts.context_id, m.parts.tag, m.parts.rank);
     if(req && req->psm_flags & PSM_SYNC_SEND) {
         DBG("sync send psm\n");
         flags = PSM_MQ_FLAG_SENDSYNC;
         blocking = 0;
     }
 
-    DBG("psm_mq_send: ctx = %d tag = %d\n", m.context_id, m.tag);
-    DBG("psm_mq_send: dst = %d src = %d\n", dest, m.rank);
+    DBG("psm_mq_send: ctx = %d tag = %d\n", m.parts.context_id, m.parts.tag);
+    DBG("psm_mq_send: dst = %d src = %d\n", dest, m.partsrank);
 
     if(blocking && !CAN_BLK_PSM(buflen)) 
         blocking = 0;
@@ -88,7 +88,7 @@ psm_error_t psm_isend_pkt(MPID_Request *req, MPIDI_Message_match m,
     uint32_t flags = MQ_FLAGS_NONE;
     psm_error_t psmerr;
     
-    MAKE_PSM_SELECTOR(stag, m.context_id, m.tag, m.rank);
+    MAKE_PSM_SELECTOR(stag, m.parts.context_id, m.parts.tag, m.parts.rank);
     assert(req);
     if(req->psm_flags & PSM_SYNC_SEND) {
         DBG("sync Isend psm\n");

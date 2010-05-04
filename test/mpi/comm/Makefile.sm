@@ -3,18 +3,19 @@ LDADD = ../util/mtest.o
 DEPADD = @MPILIBLOC@ ../util/mtest.o
 smvar_do_sharedlibs = 0
 
-dup_SOURCES      = dup.c
-dupic_SOURCES    = dupic.c
-ic1_SOURCES      = ic1.c
-commname_SOURCES = commname.c
-ctxalloc_SOURCES = ctxalloc.c
-ctxsplit_SOURCES = ctxsplit.c
-icgroup_SOURCES  = icgroup.c
-icsplit_SOURCES  = icsplit.c
-iccreate_SOURCES = iccreate.c
-cmfree_SOURCES   = cmfree.c
-icm_SOURCES      = icm.c
-cmsplit_SOURCES  = cmsplit.c
+commcreate1_SOURCES = commcreate1.c		    
+dup_SOURCES         = dup.c
+dupic_SOURCES       = dupic.c
+ic1_SOURCES         = ic1.c
+commname_SOURCES    = commname.c
+ctxalloc_SOURCES    = ctxalloc.c
+ctxsplit_SOURCES    = ctxsplit.c
+icgroup_SOURCES     = icgroup.c
+icsplit_SOURCES     = icsplit.c
+iccreate_SOURCES    = iccreate.c
+cmfree_SOURCES      = cmfree.c
+icm_SOURCES         = icm.c
+cmsplit_SOURCES     = cmsplit.c
 probe-intercomm_SOURCES = probe-intercomm.c
 
 ../util/mtest.o:
@@ -23,7 +24,7 @@ probe-intercomm_SOURCES = probe-intercomm.c
 # A special testing target to simplify running just the comm tests
 testing:
 	../runtests -srcdir=$(srcdir) -tests=testlist \
-		   -mpiexec=$(bindir)/mpiexec \
+		   -mpiexec=@MPIEXEC@ \
 		   -xmlfile=summary.xml
 clean-local:
 	-rm -f summary.xml

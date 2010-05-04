@@ -3,24 +3,8 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
- * reserved.
- *
- * This file is part of the MVAPICH2 software package developed by the
- * team members of The Ohio State University's Network-Based Computing
- * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
- *
- * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT in the top level MVAPICH2 directory.
- *
- */
 
 #include "mpidi_ch3_impl.h"
-#ifdef _ENABLE_XRC_
-#include "rdma_impl.h"
-#else
-#define XRC_MSG(s...)
-#endif
 
 /*
  * This file replaces ch3u_comm_connect.c and ch3u_comm_accept.c .  These
@@ -65,7 +49,7 @@ static int SetupNewIntercomm( MPID_Comm *comm_ptr, int remote_comm_size,
 			      MPIDI_PG_t **remote_pg, 
 			      MPID_Comm *intercomm );
 static int MPIDI_CH3I_Initialize_tmp_comm(MPID_Comm **comm_pptr, 
-					  MPIDI_VC_t *vc_ptr, int is_low_group);
+					  MPIDI_VC_t *vc_ptr, int is_low_group, int context_id_offset);
 /* ------------------------------------------------------------------------- */
 /*
  * Structure of this file and the connect/accept algorithm:
@@ -136,6 +120,7 @@ static int MPIDI_Create_inter_root_communicator_connect(const char *port_name,
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *tmp_comm;
     MPIDI_VC_t *connect_vc = NULL;
+    int port_name_tag;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CREATE_INTER_ROOT_COMMUNICATOR_CONNECT);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CREATE_INTER_ROOT_COMMUNICATOR_CONNECT);
@@ -149,7 +134,13 @@ static int MPIDI_Create_inter_root_communicator_connect(const char *port_name,
 	MPIU_ERR_POP(mpi_errno);
     }
 
-    mpi_errno = MPIDI_CH3I_Initialize_tmp_comm(&tmp_comm, connect_vc, 1);
+    /* extract the tag from the port_name */
+    mpi_errno = MPIDI_GetTagFromPort( port_name, &port_name_tag);
+    if (mpi_errno != MPIU_STR_SUCCESS) {
+	MPIU_ERR_POP(mpi_errno);
+    }
+
+    mpi_errno = MPIDI_CH3I_Initialize_tmp_comm(&tmp_comm, connect_vc, 1, port_name_tag);
     if (mpi_errno != MPI_SUCCESS) {
 	MPIU_ERR_POP(mpi_errno);
     }
@@ -217,7 +208,7 @@ static int MPIDI_Create_inter_root_communicator_accept(const char *port_name,
     }
     MPID_Progress_end(&progress_state);
 
-    mpi_errno = MPIDI_CH3I_Initialize_tmp_comm(&tmp_comm, new_vc, 0);
+    mpi_errno = MPIDI_CH3I_Initialize_tmp_comm(&tmp_comm, new_vc, 0, port_name_tag);
     if (mpi_errno != MPI_SUCCESS) {
 	MPIU_ERR_POP(mpi_errno);
     }
@@ -244,7 +235,7 @@ fn_fail:
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 static int MPIDI_CH3I_Initialize_tmp_comm(MPID_Comm **comm_pptr, 
-					  MPIDI_VC_t *vc_ptr, int is_low_group)
+					  MPIDI_VC_t *vc_ptr, int is_low_group, int context_id_offset)
 {
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *tmp_comm, *commself_ptr;
@@ -261,17 +252,17 @@ static int MPIDI_CH3I_Initialize_tmp_comm(MPID_Comm **comm_pptr,
     }
     /* fill in all the fields of tmp_comm. */
 
-    /* FIXME: Should we allocate a new context id each time ? If
-       so, how do we make sure that each process in this tmp_comm
-       has the same context id? 
-       We can make sure by sending the context id using non-MPI
-       communication (e.g., with the initial connection packet)
-       before switching to MPI communication.
-    */
-    tmp_comm->context_id     = 4095;  
+    /* We use the second half of the context ID bits for dynamic
+     * processes. This assumes that the context ID mask array is made
+     * up of uint32_t's. */
+    /* FIXME: This code is still broken for the following case:
+     * If the same process opens connections to the multiple
+     * processes, this context ID might get out of sync.
+     */
+    tmp_comm->context_id     = MPID_CONTEXT_SET_FIELD(DYNAMIC_PROC, context_id_offset, 1);
     tmp_comm->recvcontext_id = tmp_comm->context_id;
 
-        /* FIXME - we probably need a unique context_id. */
+    /* FIXME - we probably need a unique context_id. */
     tmp_comm->remote_size = 1;
 
     /* Fill in new intercomm */
@@ -365,14 +356,14 @@ int MPIDI_Comm_connect(const char *port_name, MPID_Info *info, int root,
 
     /* Create the new intercommunicator here. We need to send the
        context id to the other side. */
+    /* FIXME: If we fail to connect, someone needs to free this newcomm */
     mpi_errno = MPIR_Comm_create(newcomm);
     if (mpi_errno) {
 	MPIU_ERR_POP(mpi_errno);
     }
-    (*newcomm)->recvcontext_id = MPIR_Get_contextid( comm_ptr );
-    if ((*newcomm)->recvcontext_id == 0) {
-	MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**toomanycomm" );
-    }
+    mpi_errno = MPIR_Get_contextid( comm_ptr, &(*newcomm)->recvcontext_id );
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    /* FIXME why is this commented out? */
     /* (*newcomm)->context_id = (*newcomm)->recvcontext_id; */
 
     rank = comm_ptr->rank;
@@ -387,9 +378,6 @@ int MPIDI_Comm_connect(const char *port_name, MPID_Info *info, int root,
 	if (mpi_errno != MPI_SUCCESS) {
 	    MPIU_ERR_POP(mpi_errno);
 	}
-#if defined (_OSU_MVAPICH_)
-    new_vc->tmp_dpmvc = 1;
-#endif
 
 	/* Make an array to translate local ranks to process group index 
 	   and rank */
@@ -529,7 +517,7 @@ int MPIDI_Comm_connect(const char *port_name, MPID_Info *info, int root,
 
     /* Free new_vc. It was explicitly allocated in MPIDI_CH3_Connect_to_root.*/
     if (rank == root) {
-	    FreeNewVC( new_vc );
+	FreeNewVC( new_vc );
     }
 
  fn_exit: 
@@ -587,7 +575,8 @@ static int ExtractLocalPGInfo( MPID_Comm *comm_p,
     pg_list->pg_id = MPIU_Strdup(comm_p->vcr[0]->pg->id);
     pg_list->index = cur_index++;
     pg_list->next = NULL;
-    MPIU_Assert( comm_p->vcr[0]->pg->ref_count);
+    /* XXX DJG FIXME-MT should we be checking this?  the add/release macros already check this */
+    MPIU_Assert( MPIU_Object_get_ref(comm_p->vcr[0]->pg));
     mpi_errno = MPIDI_PG_To_string(comm_p->vcr[0]->pg, &pg_list->str, 
 				   &pg_list->lenStr );
     if (mpi_errno != MPI_SUCCESS) {
@@ -602,7 +591,8 @@ static int ExtractLocalPGInfo( MPID_Comm *comm_p,
 	pg_trailer = pg_list;
 	while (pg_iter != NULL) {
 	    /* Check to ensure pg is (probably) valid */
-	    MPIU_Assert(comm_p->vcr[i]->pg->ref_count != 0);
+            /* XXX DJG FIXME-MT should we be checking this?  the add/release macros already check this */
+	    MPIU_Assert(MPIU_Object_get_ref(comm_p->vcr[i]->pg) != 0);
 	    if (MPIDI_PG_Id_compare(comm_p->vcr[i]->pg->id, pg_iter->pg_id)) {
 		local_translation[i].pg_index = pg_iter->index;
 		local_translation[i].pg_rank  = comm_p->vcr[i]->pg_rank;
@@ -929,10 +919,9 @@ int MPIDI_Comm_accept(const char *port_name, MPID_Info *info, int root,
     if (mpi_errno != MPI_SUCCESS) {
 	MPIU_ERR_POP(mpi_errno);
     }
-    (*newcomm)->recvcontext_id = MPIR_Get_contextid( comm_ptr );
-    if ((*newcomm)->recvcontext_id == 0) {
-	MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**toomanycomm" );
-    }
+    mpi_errno = MPIR_Get_contextid( comm_ptr, &(*newcomm)->recvcontext_id );
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    /* FIXME why is this commented out? */
     /*    (*newcomm)->context_id = (*newcomm)->recvcontext_id; */
     
     rank = comm_ptr->rank;
@@ -947,9 +936,7 @@ int MPIDI_Comm_accept(const char *port_name, MPID_Info *info, int root,
 	if (mpi_errno != MPI_SUCCESS) {
 	    MPIU_ERR_POP(mpi_errno);
 	}
-#if defined (_OSU_MVAPICH_)
-    new_vc->tmp_dpmvc = 1;
-#endif
+
 	/* Make an array to translate local ranks to process group index and 
 	   rank */
 	MPIU_CHKLMEM_MALLOC(local_translation,pg_translation*,
@@ -1081,7 +1068,7 @@ int MPIDI_Comm_accept(const char *port_name, MPID_Info *info, int root,
        allocated in ch3_progress.c and returned by 
        MPIDI_CH3I_Acceptq_dequeue. */
     if (rank == root) {
-	    FreeNewVC( new_vc );
+	FreeNewVC( new_vc );
     }
 
 fn_exit:
@@ -1184,14 +1171,12 @@ static int FreeNewVC( MPIDI_VC_t *new_vc )
 {
     MPID_Progress_state progress_state;
     int mpi_errno = MPI_SUCCESS;
-   
-    XRC_MSG ("FreeNew VC 0x%08x", new_vc->ch.xrc_flags);
+    
     if (new_vc->state != MPIDI_VC_STATE_INACTIVE) {
 	/* If the new_vc isn't done, run the progress engine until
 	   the state of the new vc is complete */
 	MPID_Progress_start(&progress_state);
 	while (new_vc->state != MPIDI_VC_STATE_INACTIVE) {
-        XRC_MSG ("FN: State %d", new_vc->state);
 	    mpi_errno = MPID_Progress_wait(&progress_state);
 	    /* --BEGIN ERROR HANDLING-- */
 	    if (mpi_errno != MPI_SUCCESS)
@@ -1203,12 +1188,12 @@ static int FreeNewVC( MPIDI_VC_t *new_vc )
 	}
 	MPID_Progress_end(&progress_state);
     }
-    XRC_MSG ("FreeNew Done");
 #if defined (_OSU_MVAPICH_)
     MPIDI_CH3I_Cleanup_after_connection(new_vc);
 #endif
     /* FIXME: remove this ifdef - method on connection? */
 #ifdef MPIDI_CH3_HAS_CONN_ACCEPT_HOOK
+    /* FIXME should this be an MPIU_CALL macro? */
     mpi_errno = MPIDI_CH3_Cleanup_after_connection( new_vc );
 #endif
 
@@ -1220,6 +1205,7 @@ static int FreeNewVC( MPIDI_VC_t *new_vc )
 #else
     MPIU_Free(new_vc);
 #endif
+
  fn_fail:
     return mpi_errno;
 }

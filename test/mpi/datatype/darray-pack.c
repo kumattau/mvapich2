@@ -7,8 +7,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include "mpitest.h"
 
-static int verbose = 0;
+/* 
+   The default behavior of the test routines should be to briefly indicate
+   the cause of any errors - in this test, that means that verbose needs
+   to be set. Verbose should turn on output that is independent of error
+   levels.
+*/
+static int verbose = 1;
 
 /* tests */
 int darray_2d_c_test1(void);
@@ -25,7 +32,7 @@ int main(int argc, char **argv)
 {
     int err, errs = 0;
 
-    MPI_Init(&argc, &argv); /* MPI-1.2 doesn't allow for MPI_Init(0,0) */
+    MTest_Init( &argc, &argv );
     parse_args(argc, argv);
 
     /* To improve reporting of problems about operations, we
@@ -44,12 +51,11 @@ int main(int argc, char **argv)
     errs += err;
 
     /* print message and exit */
-    if (errs) {
-	fprintf(stderr, "Found %d errors\n", errs);
-    }
-    else {
-	printf(" No Errors\n");
-    }
+    /* Allow the use of more than one process - some MPI implementations
+       (including IBM's) check that the number of processes given to 
+       Type_create_darray is no larger than MPI_COMM_WORLD */
+
+    MTest_Finalize( errs );
     MPI_Finalize();
     return 0;
 }
@@ -98,6 +104,7 @@ int darray_2d_c_test1(void)
 			"error in MPI_Type_create_darray call; aborting after %d errors\n",
 			errs);
 	    }
+	    MTestPrintError( err );
 	    return errs;
 	}
 	
@@ -177,6 +184,7 @@ int darray_4d_c_test1(void)
 			"error in MPI_Type_create_darray call; aborting after %d errors\n",
 			errs);
 	    }
+	    MTestPrintError( err );
 	    return errs;
 	}
 
@@ -255,6 +263,7 @@ static int pack_and_unpack(char *typebuf,
 		    "error in MPI_Type_size call; aborting after %d errors\n",
 		    errs);
 	}
+	MTestPrintError( err );
 	return errs;
     }
 
@@ -268,6 +277,7 @@ static int pack_and_unpack(char *typebuf,
 		    "error in MPI_Pack_size call; aborting after %d errors\n",
 		    errs);
 	}
+	MTestPrintError( err );
 	return errs;
     }
     packbuf = (char *) malloc(pack_size);
@@ -312,6 +322,7 @@ static int pack_and_unpack(char *typebuf,
 		    "error in MPI_Unpack call; aborting after %d errors\n",
 		    errs);
 	}
+	MTestPrintError( err );
 	return errs;
     }
     free(packbuf);

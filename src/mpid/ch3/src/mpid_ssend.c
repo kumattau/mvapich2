@@ -77,12 +77,22 @@ skip_self_send:
 	goto fn_exit;
     }
 
+    MPIDI_Comm_get_vc_set_active(comm, rank, &vc);
+
+#ifdef ENABLE_COMM_OVERRIDES
+    if (vc->comm_ops && vc->comm_ops->ssend)
+    {
+	mpi_errno = vc->comm_ops->ssend( vc, buf, count, datatype, rank, tag, comm, context_offset, &sreq);
+	goto fn_exit;
+    }
+#endif
+
+    
     MPIDI_Datatype_get_info(count, datatype, dt_contig, data_sz, dt_ptr, dt_true_lb);
-    MPIDI_Comm_get_vc(comm, rank, &vc);
 
     MPIDI_Request_create_sreq(sreq, mpi_errno, goto fn_exit);
     MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_SSEND);
-    
+
     if (data_sz == 0)
     {
 #if defined (_OSU_PSM_)

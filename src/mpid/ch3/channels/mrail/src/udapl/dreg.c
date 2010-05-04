@@ -55,6 +55,12 @@
  * dreg.c: everything having to do with dynamic memory registration. 
  */
 
+#if !defined(DISABLE_PTMALLOC)
+static pthread_spinlock_t dreg_lock = 0;
+static pthread_spinlock_t dereg_lock = 0;
+static pthread_t          th_id_of_lock = -1;
+static pthread_t th_id_of_dereg_lock = -1;
+#endif
 
 /* statistic */
 unsigned long dreg_stat_cache_hit=0;
@@ -573,7 +579,7 @@ void dreg_init()
                 (int) sizeof(dreg_entry) * rdma_ndreg_entries);
     }
 
-    memset(dreg_free_list, 0, sizeof(dreg_entry) * rdma_ndreg_entries);
+    MPIU_Memset(dreg_free_list, 0, sizeof(dreg_entry) * rdma_ndreg_entries);
 
 #ifdef CKPT
     dreg_all_list = dreg_free_list;
@@ -602,7 +608,7 @@ void dreg_init()
                 (int) sizeof(dreg_region) * rdma_ndreg_entries);
     }
 
-    memset(deregister_mr_array, 0, 
+    MPIU_Memset(deregister_mr_array, 0,
             sizeof(dreg_region) * rdma_ndreg_entries);
 
     n_dereg_mr = 0;

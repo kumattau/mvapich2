@@ -6,6 +6,7 @@ smvar_do_sharedlibs = 0
 # Use extra programs to list programs that should not be built by default.
 EXTRA_PROGRAMS       = 
 
+anyall_SOURCES       = anyall.c
 bottom_SOURCES       = bottom.c
 bsend1_SOURCES       = bsend1.c
 bsend2_SOURCES       = bsend2.c
@@ -46,7 +47,7 @@ sendall_SOURCES      = sendall.c
 # A special testing target to simplify running just the pt2pt tests
 testing:
 	../runtests -srcdir=$(srcdir) -tests=testlist \
-		   -mpiexec=$(bindir)/mpiexec \
+		   -mpiexec=@MPIEXEC@ \
 		   -xmlfile=summary.xml
 clean-local:
 	-rm -f summary.xml

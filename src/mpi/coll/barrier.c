@@ -5,19 +5,9 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
- * reserved.
- *
- * This file is part of the MVAPICH2 software package developed by the
- * team members of The Ohio State University's Network-Based Computing
- * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
- *
- * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT in the top level MVAPICH2 directory.
- *
- */
-
 #include "mpiimpl.h"
+
+#if !defined(_OSU_COLLECTIVES_)
 
 /* -- Begin Profiling Symbol Block for routine MPI_Barrier */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -28,6 +18,8 @@
 #pragma _CRI duplicate MPI_Barrier as PMPI_Barrier
 #endif
 /* -- End Profiling Symbol Block */
+
+PMPI_LOCAL int MPIR_Barrier_or_coll_fn(MPID_Comm *comm_ptr );
 
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */
@@ -58,9 +50,12 @@
 */
 
 /* not declared static because it is called in ch3_comm_connect/accept */
+#undef FUNCNAME
+#define FUNCNAME MPIR_Barrier
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIR_Barrier( MPID_Comm *comm_ptr )
 {
-    static const char FCNAME[] = "MPIR_Barrier";
     int size, rank, src, dst, mask, mpi_errno=MPI_SUCCESS;
     MPI_Comm comm;
 
@@ -229,11 +224,40 @@ int MPIR_Barrier( MPID_Comm *comm_ptr )
 #endif
 
 
+/* A simple utility function to that calls the comm_ptr->coll_fns->Barrier
+override if it exists or else it calls MPIR_Barrier with the same arguments. */
+/* Note that this function must *not* be inline - if weak symbols are not 
+   available, this function must be a global symbol. */
+#undef FUNCNAME
+#define FUNCNAME MPIR_Barrier_or_coll_fn
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+PMPI_LOCAL int MPIR_Barrier_or_coll_fn(MPID_Comm *comm_ptr )
+{
+    int mpi_errno = MPI_SUCCESS;
+
+    if (comm_ptr->coll_fns != NULL && comm_ptr->coll_fns->Barrier != NULL)
+    {
+        /* --BEGIN USEREXTENSION-- */
+        mpi_errno = comm_ptr->node_roots_comm->coll_fns->Barrier(comm_ptr);
+        /* --END USEREXTENSION-- */
+    }
+    else {
+        mpi_errno = MPIR_Barrier(comm_ptr);
+    }
+
+    return mpi_errno;
+}
+
+
 /* not declared static because a machine-specific function may call this one 
    in some cases */
+#undef FUNCNAME
+#define FUNCNAME MPIR_Barrier_inter
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIR_Barrier_inter( MPID_Comm *comm_ptr )
 {
-    static const char FCNAME[] = "MPIR_Barrier_inter";
     int rank, mpi_errno, i, root;
     MPID_Comm *newcomm_ptr = NULL;
 
@@ -310,12 +334,13 @@ int MPIR_Barrier_inter( MPID_Comm *comm_ptr )
     return mpi_errno;
 }
 
-
-
 #endif
+
 
 #undef FUNCNAME
 #define FUNCNAME MPI_Barrier
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 
 /*@
 
@@ -338,29 +363,16 @@ communicator have entered the call.
 .N MPI_SUCCESS
 .N MPI_ERR_COMM
 @*/
-#if defined(_OSU_MVAPICH_)
-extern int enable_shmem_collectives;
-extern int disable_shmem_barrier;
-#endif /* defined(_OSU_MVAPICH_) */
-
 int MPI_Barrier( MPI_Comm comm )
 {
-    static const char FCNAME[] = "MPI_Barrier";
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL;
-#if defined(_OSU_MVAPICH_)
-    MPI_Comm shmem_comm, leader_comm;
-    MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
-    int local_rank = -1, local_size=0, my_rank;
-    int total_size, shmem_comm_rank;
-    extern void MPIDI_CH3I_SHMEM_COLL_Barrier_gather(int, int, int);
-    extern void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int, int, int);
-#endif /* defined(_OSU_MVAPICH_) */
+    MPIU_THREADPRIV_DECL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_BARRIER);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPIU_THREAD_SINGLE_CS_ENTER("coll");
+    MPIU_THREAD_CS_ENTER(ALLFUNC,);
     MPID_MPI_COLL_FUNC_ENTER(MPID_STATE_MPI_BARRIER);
     
     /* Validate parameters, especially handles needing to be converted */
@@ -399,59 +411,46 @@ int MPI_Barrier( MPI_Comm comm )
     }
     else
     {
-	MPIU_THREADPRIV_DECL;
 	MPIU_THREADPRIV_GET;
         MPIR_Nest_incr();
         if (comm_ptr->comm_kind == MPID_INTRACOMM) {
-#if defined(_OSU_MVAPICH_)
-            if (enable_shmem_collectives){
-                shmem_comm = comm_ptr->shmem_comm;
-                leader_comm = comm_ptr->leader_comm;
-                if ((disable_shmem_barrier == 0) && (shmem_comm != 0)&&(leader_comm !=0) &&(comm_ptr->shmem_coll_ok == 1 )){
-#if defined(CKPT)
-		    MPIDI_CH3I_CR_lock();
-#endif
-                    my_rank = comm_ptr->rank;
-                    /* MPI_Comm_size(comm, &total_size); */
-                    total_size = comm_ptr->local_size;
-                    shmem_comm = comm_ptr->shmem_comm;
+#if defined(USE_SMP_COLLECTIVES)
+            if (MPIR_Comm_is_node_aware(comm_ptr)) {
 
-                   /*  MPI_Comm_rank(shmem_comm, &local_rank);
-                      MPI_Comm_size(shmem_comm, &local_size); */
-                   
-                    MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
-                    local_rank = shmem_commptr->rank;
-                    local_size = shmem_commptr->local_size;
-                    shmem_comm_rank = shmem_commptr->shmem_comm_rank;
-
-                    leader_comm = comm_ptr->leader_comm;
-                    MPID_Comm_get_ptr(leader_comm, leader_commptr);
-
-                    if (local_size > 1){
-                        MPIDI_CH3I_SHMEM_COLL_Barrier_gather(local_size, local_rank, shmem_comm_rank);
+                /* do the intranode barrier on all nodes */
+                if (comm_ptr->node_comm != NULL)
+                {
+                    mpi_errno = MPIR_Barrier_or_coll_fn(comm_ptr->node_comm);
+                    if (mpi_errno) {
+                        MPIR_Nest_decr();
+                        goto fn_fail;
                     }
-
-                    if ((local_rank == 0) && (local_size != total_size)){
-                        mpi_errno = MPIR_Barrier( leader_commptr );
-                    }
-
-                    if (local_size > 1){
-                        MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(local_size, local_rank, shmem_comm_rank);
-                    }
-#if defined(CKPT)
-		    MPIDI_CH3I_CR_unlock();
-#endif
                 }
-                else{
-	            mpi_errno = MPIR_Barrier( comm_ptr );
+
+                /* do the barrier across roots of all nodes */
+                if (comm_ptr->node_roots_comm != NULL) {
+                    mpi_errno = MPIR_Barrier_or_coll_fn(comm_ptr->node_roots_comm);
+                    if (mpi_errno) {
+                        MPIR_Nest_decr();
+                        goto fn_fail;
+                    }
+                }
+
+                /* release the local processes on each node with a 1-byte broadcast
+                   (0-byte broadcast just returns without doing anything) */
+                if (comm_ptr->node_comm != NULL)
+                {  
+		    int i=0;
+                    mpi_errno = MPIR_Bcast_or_coll_fn(&i, 1, MPI_BYTE, 0, 
+						      comm_ptr->node_comm);
                 }
             }
-            else{
+            else {
                 mpi_errno = MPIR_Barrier( comm_ptr );
             }
-#else /* defined(_OSU_MVAPICH_) */
-	    mpi_errno = MPIR_Barrier( comm_ptr );
-#endif /* defined(_OSU_MVAPICH_) */
+#else
+            mpi_errno = MPIR_Barrier( comm_ptr );
+#endif
         }
         else {
             /* intercommunicator */ 
@@ -468,7 +467,7 @@ int MPI_Barrier( MPI_Comm comm )
 
   fn_exit:
     MPID_MPI_COLL_FUNC_EXIT(MPID_STATE_MPI_BARRIER);
-    MPIU_THREAD_SINGLE_CS_EXIT("coll");
+    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return mpi_errno;
 
   fn_fail:
@@ -484,3 +483,5 @@ int MPI_Barrier( MPI_Comm comm )
     goto fn_exit;
     /* --END ERROR HANDLING-- */
 }
+
+#endif /* !defined(_OSU_COLLECTIVES_) */

@@ -1,8 +1,3 @@
-/* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*
- *  (C) 2001 by Argonne National Laboratory.
- *      See COPYRIGHT in top-level directory.
- */
 /* Copyright (c) 2003-2010, The Ohio State University. All rights
  * reserved.
  *
@@ -14,8 +9,15 @@
  * copyright file COPYRIGHT in the top level MVAPICH2 directory.
  *
  */
+/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/*
+ *  (C) 2001 by Argonne National Laboratory.
+ *      See COPYRIGHT in top-level directory.
+ */
 
 #include "mpidimpl.h"
+
+#define MAX_JOBID_LEN 1024
 
 #if defined(HAVE_LIMITS_H)
 #include <limits.h>
@@ -29,14 +31,22 @@
 char *MPIU_DBG_parent_str = "?";
 #endif
 
+/* FIXME: the PMI init function should ONLY do the PMI operations, not the 
+   process group or bc operations.  These should be in a separate routine */
+#ifdef USE_PMI2_API
+#include "pmi2.h"
+#else
+#include "pmi.h"
+#endif
+
+int MPIDI_Use_pmi2_api = 0;
+
 #if defined(_OSU_MVAPICH_) && defined(CKPT)
 pthread_mutex_t MVAPICH2_sync_ckpt_lock;
 pthread_cond_t MVAPICH2_sync_ckpt_cond;
 #endif /* defined(_OSU_MVAPICH_) && defined(CKPT) */
 
-/* FIXME: the PMI init function should ONLY do the PMI operations, not the 
-   process group or bc operations.  These should be in a separate routine */
-#include "pmi.h"
+
 static int InitPG( int *argc_p, char ***argv_p,
 		   int *has_args, int *has_env, int *has_parent, 
 		   int *pg_rank_p, MPIDI_PG_t **pg_p );
@@ -45,71 +55,6 @@ static int MPIDI_CH3I_PG_Destroy(MPIDI_PG_t * pg );
 
 MPIDI_Process_t MPIDI_Process = { NULL };
 MPIDI_CH3U_SRBuf_element_t * MPIDI_CH3U_SRBuf_pool = NULL;
-
-#if defined(_OSU_MVAPICH_)
-
-char *MPIDI_CH3_Pkt_type_to_string[MPIDI_CH3_PKT_END_ALL+1] = {
-    [MPIDI_CH3_PKT_EAGER_SEND] = "MPIDI_CH3_PKT_EAGER_SEND",
-#if defined(_OSU_MVAPICH_)
-#if defined(USE_HEADER_CACHING)
-    [MPIDI_CH3_PKT_FAST_EAGER_SEND] = "MPIDI_CH3_PKT_FAST_EAGER_SEND",
-    [MPIDI_CH3_PKT_FAST_EAGER_SEND_WITH_REQ] =
-        "MPIDI_CH3_PKT_FAST_EAGER_SEND_WITH_REQ",
-#endif /* defined(USE_HEADER_CACHING) */
-    [MPIDI_CH3_PKT_RPUT_FINISH] = "MPIDI_CH3_PKT_RPUT_FINISH",
-    [MPIDI_CH3_PKT_RGET_FINISH] = "MPIDI_CH3_PKT_RGET_FINISH",
-    [MPIDI_CH3_PKT_NOOP] = "MPIDI_CH3_PKT_NOOP",
-    [MPIDI_CH3_PKT_RMA_RNDV_CLR_TO_SEND] = "MPIDI_CH3_PKT_NOOP",
-    [MPIDI_CH3_PKT_PUT_RNDV] = "MPIDI_CH3_PKT_PUT_RNDV",
-    [MPIDI_CH3_PKT_ACCUMULATE_RNDV] = "MPIDI_CH3_PKT_PUT_RNDV",
-    [MPIDI_CH3_PKT_GET_RNDV] = "MPIDI_CH3_PKT_GET_RNDV",
-    [MPIDI_CH3_PKT_RNDV_READY_REQ_TO_SEND] =
-        "MPIDI_CH3_PKT_RNDV_READY_REQ_TO_SEND",
-    [MPIDI_CH3_PKT_PACKETIZED_SEND_START] =
-        "MPIDI_CH3_PKT_PACKETIZED_SEND_START",
-    [MPIDI_CH3_PKT_PACKETIZED_SEND_DATA] = "MPIDI_CH3_PKT_PACKETIZED_SEND_DATA",
-    [MPIDI_CH3_PKT_RNDV_R3_DATA] = "MPIDI_CH3_PKT_RNDV_R3_DATA",
-    [MPIDI_CH3_PKT_ADDRESS] = "MPIDI_CH3_PKT_ADDRESS",
-    [MPIDI_CH3_PKT_CM_ESTABLISH] = "MPIDI_CH3_PKT_CM_ESTABLISH",
-#if defined(CKPT)
-    [MPIDI_CH3_PKT_CM_SUSPEND] = "MPIDI_CH3_PKT_CM_SUSPEND",
-    [MPIDI_CH3_PKT_CM_REACTIVATION_DONE] = "MPIDI_CH3_PKT_CM_REACTIVATION_DONE",
-    [MPIDI_CH3_PKT_CR_REMOTE_UPDATE] = "MPIDI_CH3_PKT_CR_REMOTE_UPDATE",
-#endif /* defined(CKPT) */
-#endif /* defined(_OSU_MVAPICH_) */
-#if defined(USE_EAGER_SHORT)
-    [MPIDI_CH3_PKT_EAGERSHORT_SEND] = "MPIDI_CH3_PKT_EAGERSHORT_SEND",
-#endif /* defined(USE_EAGER_SHORT) */
-    [MPIDI_CH3_PKT_EAGER_SYNC_SEND] = "MPIDI_CH3_PKT_EAGER_SYNC_SEND",
-    [MPIDI_CH3_PKT_EAGER_SYNC_ACK] = "MPIDI_CH3_PKT_EAGER_SYNC_ACK",
-    [MPIDI_CH3_PKT_READY_SEND] = "MPIDI_CH3_PKT_READY_SEND",
-    [MPIDI_CH3_PKT_RNDV_REQ_TO_SEND] = "MPIDI_CH3_PKT_RNDV_REQ_TO_SEND",
-    [MPIDI_CH3_PKT_RNDV_CLR_TO_SEND] = "MPIDI_CH3_PKT_RNDV_CLR_TO_SEND",
-    [MPIDI_CH3_PKT_RNDV_SEND] = "MPIDI_CH3_PKT_RNDV_SEND",
-    [MPIDI_CH3_PKT_CANCEL_SEND_REQ] = "MPIDI_CH3_PKT_CANCEL_SEND_REQ",
-    [MPIDI_CH3_PKT_CANCEL_SEND_RESP] = "MPIDI_CH3_PKT_CANCEL_SEND_RESP",
-    [MPIDI_CH3_PKT_PUT] = "MPIDI_CH3_PKT_PUT",
-    [MPIDI_CH3_PKT_GET] = "MPIDI_CH3_PKT_GET",
-    [MPIDI_CH3_PKT_GET_RESP] = "MPIDI_CH3_PKT_GET_RESP",
-    [MPIDI_CH3_PKT_ACCUMULATE] = "MPIDI_CH3_PKT_ACCUMULATE",
-    [MPIDI_CH3_PKT_LOCK] = "MPIDI_CH3_PKT_LOCK",
-    [MPIDI_CH3_PKT_LOCK_GRANTED] = "MPIDI_CH3_PKT_LOCK_GRANTED",
-    [MPIDI_CH3_PKT_PT_RMA_DONE] = "MPIDI_CH3_PKT_PT_RMA_DONE",
-    [MPIDI_CH3_PKT_LOCK_PUT_UNLOCK] = "MPIDI_CH3_PKT_LOCK_PUT_UNLOCK",
-    [MPIDI_CH3_PKT_LOCK_GET_UNLOCK] = "MPIDI_CH3_PKT_LOCK_GET_UNLOCK",
-    [MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK] = "MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK",
-    [MPIDI_CH3_PKT_FLOW_CNTL_UPDATE] = "MPIDI_CH3_PKT_FLOW_CNTL_UPDATE",
-    [MPIDI_CH3_PKT_CLOSE] = "MPIDI_CH3_PKT_CLOSE",
-    [MPIDI_CH3_PKT_END_CH3] = "MPIDI_CH3_PKT_END_CH3"
-    /* The channel can define additional types by defining the value
-       MPIDI_CH3_PKT_ENUM */
-# if defined(MPIDI_CH3_PKT_ENUM)
-    , [MPIDI_CH3_PKT_ENUM] = "MPIDI_CH3_PKT_ENUM"
-# endif
-    , [MPIDI_CH3_PKT_END_ALL] = "MPIDI_CH3_PKT_END_ALL"
-};
-
-#endif
 
 #undef FUNCNAME
 #define FUNCNAME MPID_Init
@@ -129,19 +74,31 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     char *value;
     int blocking_val;
 #endif /* defined(_OSU_MVAPICH_) */
+
     MPIDI_STATE_DECL(MPID_STATE_MPID_INIT);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_INIT);
 
     /* FIXME: This is a good place to check for environment variables
        and command line options that may control the device */
-
+    MPIDI_Use_pmi2_api = FALSE;
+#ifdef USE_PMI2_API
+    MPIDI_Use_pmi2_api = TRUE;
+#else
+    {
+        int ret, val;
+        ret = MPIU_GetEnvBool("MPICH_USE_PMI2_API", &val);
+        if (ret == 1 && val)
+            MPIDI_Use_pmi2_api = TRUE;
+    }
+#endif
+    
 #if 1
     /* This is a sanity check because we define a generic packet size
      */
     if (sizeof(MPIDI_CH3_PktGeneric_t) < sizeof(MPIDI_CH3_Pkt_t)) {
-	fprintf( stderr, "Internal error - packet definition is too small.  Generic is %d bytes, MPIDI_CH3_Pkt_t is %d\n", sizeof(MPIDI_CH3_PktGeneric_t),
-		 sizeof(MPIDI_CH3_Pkt_t) );
+	fprintf( stderr, "Internal error - packet definition is too small.  Generic is %ld bytes, MPIDI_CH3_Pkt_t is %ld\n", (long int)sizeof(MPIDI_CH3_PktGeneric_t),
+		 (long int)sizeof(MPIDI_CH3_Pkt_t) );
 	exit(1);
     }
 #endif
@@ -172,14 +129,30 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     if(has_parent) {
         putenv("MV2_SUPPORT_DPM=1");
     }
+#endif
 
-    MPIDI_Process.my_pg = pg;  /* brad : this is rework for shared memories
-                                * because they need this set earlier
+    
+    /* FIXME: Why are pg_size and pg_rank handled differently? */
+    pg_size = MPIDI_PG_Get_size(pg);
+    MPIDI_Process.my_pg = pg;  /* brad : this is rework for shared memories 
+				* because they need this set earlier
                                 * for getting the business card
                                 */
     MPIDI_Process.my_pg_rank = pg_rank;
+    /* FIXME: Why do we add a ref to pg here? */
+    MPIDI_PG_add_ref(pg);
 
-#endif
+    /* We intentionally call this before the channel init so that the channel
+       can use the node_id info. */
+    /* Ideally this wouldn't be needed.  Once we have PMIv2 support for node
+       information we should probably eliminate this function. */
+    mpi_errno = MPIDI_Populate_vc_node_ids(pg, pg_rank);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+    /* Initialize FTB after PMI init */
+    mpi_errno = MPIDU_Ftb_init();
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    
     /*
      * Let the channel perform any necessary initialization
      * The channel init should assume that PMI_Init has been called and that
@@ -190,18 +163,6 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     if (mpi_errno != MPI_SUCCESS) {
 	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**ch3|ch3_init");
     }
-
-    /* FIXME: Why are pg_size and pg_rank handled differently? */
-    pg_size = MPIDI_PG_Get_size(pg);
-#if !defined(_OSU_MVAPICH_)
-    MPIDI_Process.my_pg = pg;  /* brad : this is rework for shared memories 
-				* because they need this set earlier
-                                * for getting the business card
-                                */
-    MPIDI_Process.my_pg_rank = pg_rank;
-#endif
-    /* FIXME: Why do we add a ref to pg here? */
-    MPIDI_PG_add_ref(pg);
 
     /*
      * Initialize the MPI_COMM_WORLD object
@@ -234,6 +195,8 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     }
 
     MPID_Dev_comm_create_hook (comm);
+    mpi_errno = MPIR_Comm_commit(comm);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
     /*
      * Initialize the MPI_COMM_SELF object
@@ -297,6 +260,8 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     comm->vcr  = MPIR_Process.comm_world->vcr;
     
     MPID_Dev_comm_create_hook (comm);
+    mpi_errno = MPIR_Comm_commit(comm);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 #endif
     
     /*
@@ -372,8 +337,8 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
                 if ((value = getenv("MV2_USE_THREAD_WARNING")) != NULL) {
                     thread_warning = !!atoi(value);
                 }
-                
-                if (0 == pg_rank && MPI_THREAD_MULTIPLE == requested 
+
+                if (0 == pg_rank && MPI_THREAD_MULTIPLE == requested
                         && thread_warning) {
                     fprintf(stderr, "WARNING: Requested MPI_THREAD_MULTIPLE, \n"
                             "  but MV2_USE_BLOCKING=1 only supports MPI_THREAD_SERIALIZED.\n"
@@ -385,6 +350,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
             }
         }
 #endif /* defined(_OSU_MVAPICH_) */
+
     }
 #if defined(_OSU_MVAPICH_) && defined(CKPT)
     MPIDI_Process.use_sync_ckpt = 1;
@@ -392,6 +358,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     pthread_mutex_init(&MVAPICH2_sync_ckpt_lock, NULL);
     pthread_cond_init(&MVAPICH2_sync_ckpt_cond, NULL);
 #endif /* defined(_OSU_MVAPICH_) && defined(CKPT) */
+
 
   fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_INIT);
@@ -458,6 +425,11 @@ static int InitPG( int *argc, char ***argv,
 	 * Initialize the process manangement interface (PMI), 
 	 * and get rank and size information about our process group
 	 */
+
+#ifdef USE_PMI2_API
+        mpi_errno = PMI2_Init(has_parent, &pg_size, &pg_rank, &appnum);
+        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+#else
 	pmi_errno = PMI_Init(has_parent);
 	if (pmi_errno != PMI_SUCCESS) {
 	    MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**pmi_init",
@@ -481,13 +453,26 @@ static int InitPG( int *argc, char ***argv,
 	    MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**pmi_get_appnum",
 				 "**pmi_get_appnum %d", pmi_errno);
 	}
-
+#endif
 	/* Note that if pmi is not availble, the value of MPI_APPNUM is 
 	   not set */
 	if (appnum != -1) {
 	    MPIR_Process.attrs.appnum = appnum;
 	}
-	
+
+#ifdef USE_PMI2_API
+        
+        /* This memory will be freed by the PG_Destroy if there is an error */
+	pg_id = MPIU_Malloc(MAX_JOBID_LEN);
+	if (pg_id == NULL) {
+	    MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**nomem");
+	}
+
+        mpi_errno = PMI2_Job_GetId(pg_id, MAX_JOBID_LEN);
+        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+        
+
+#else
 	/* Now, initialize the process group information with PMI calls */
 	/*
 	 * Get the process group id
@@ -513,6 +498,7 @@ static int InitPG( int *argc, char ***argv,
 	    MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**pmi_get_id",
 				 "**pmi_get_id %d", pmi_errno);
 	}
+#endif
     }
     else {
 	/* Create a default pg id */
@@ -544,23 +530,8 @@ static int InitPG( int *argc, char ***argv,
        connection information by passing the pg to the channel init routine */
     if (usePMI) {
 	/* Tell the process group how to get connection information */
-	MPIDI_PG_InitConnKVS( pg );
-
-#if 0
-	/* If we're supporting the debugger, we can save our host and 
-	   pid here.  This publishes the data in the kvs space. 
-	   This allows the MPI processes to access the information 
-	   about the other processes without any PMI changes. */
-#ifdef HAVE_DEBUGGER_SUPPORT
-	{
-	    char key[64];
-	    char myinfo[512];
-	    MPIU_Snprintf( key, sizeof(key), "hpid-%d", pg_rank );
-	    MPIU_Snpritnf( myinfo, sizeof(key), "%s:%d", hostname, getpid() );
-	    PMI_KVS_Put( pg->world->connData, key, myinfo );
-	}
-#endif
-#endif
+        mpi_errno = MPIDI_PG_InitConnKVS( pg );
+        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
 
     /* FIXME: Who is this for and where does it belong? */
@@ -600,15 +571,17 @@ int MPIDI_CH3I_BCInit( char **bc_val_p, int *val_max_sz_p )
 {
     int pmi_errno;
     int mpi_errno = MPI_SUCCESS;
-
+#ifdef USE_PMI2_API
+    *val_max_sz_p = PMI2_MAX_VALLEN;
+#else
     pmi_errno = PMI_KVS_Get_value_length_max(val_max_sz_p);
     if (pmi_errno != PMI_SUCCESS)
     {
-	MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, 
-			     "**pmi_kvs_get_value_length_max",
-			     "**pmi_kvs_get_value_length_max %d", pmi_errno);
+        MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,
+                             "**pmi_kvs_get_value_length_max",
+                             "**pmi_kvs_get_value_length_max %d", pmi_errno);
     }
-
+#endif
     /* This memroy is returned by this routine */
     *bc_val_p = MPIU_Malloc(*val_max_sz_p);
     if (*bc_val_p == NULL) {
@@ -668,12 +641,14 @@ int MVAPICH2_Sync_Checkpoint()
 
     MPID_Comm_get_ptr (MPI_COMM_WORLD, comm_ptr);
 
-    MPIU_THREAD_SINGLE_CS_ENTER("coll");
+    /*MPIU_THREAD_SINGLE_CS_ENTER("coll");*/
+    MPIU_THREAD_CS_ENTER(ALLFUNC,);
     MPIR_Nest_incr();
     MPIR_Barrier(comm_ptr);
     MPIR_Nest_decr();
-    MPIU_THREAD_SINGLE_CS_EXIT("coll");
-    
+    MPIU_THREAD_CS_EXIT(ALLFUNC,);
+    /*MPIU_THREAD_SINGLE_CS_EXIT("coll");*/
+
     if (MPIDI_Process.my_pg_rank == 0)
     {/*Notify console to take checkpoint*/
         MPIDI_CH3I_CR_Sync_ckpt_request();
@@ -685,3 +660,5 @@ int MVAPICH2_Sync_Checkpoint()
     pthread_mutex_unlock(&MVAPICH2_sync_ckpt_lock);
 }
 #endif /* defined(_OSU_MVAPICH_) && defined(CKPT) */
+
+

@@ -8,11 +8,19 @@ smvar_do_sharedlibs = 0
 EXTRA_PROGRAMS       = 
 
 ctxdup_SOURCES  = ctxdup.c
+dup_leak_test_SOURCES  = dup_leak_test.c
 
 ../../util/mtest.o:
 	(cd ../../util && $(MAKE) mtest.o)
 ../util/mtestthread.o:
 	(cd ../util && $(MAKE) mtestthread.o)
 
+# A special testing target to simplify running just the thread comm tests
+testing:
+	../../runtests -srcdir=$(srcdir) -tests=testlist \
+		   -mpiexec=$(bindir)/mpiexec \
+		   -xmlfile=summary.xml
+
 smvarSubdir_do_dependencies=no
 smvar_dependenciesDummy=yes
+

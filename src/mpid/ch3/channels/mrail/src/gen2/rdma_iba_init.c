@@ -29,6 +29,9 @@
 #include "mpiutil.h"
 #include "cm.h"
 
+/* For mv2_system_report */
+#include "sysreport.h"
+
 /* global rdma structure for the local process */
 MPIDI_CH3I_RDMA_Process_t MPIDI_CH3I_RDMA_Process;
 
@@ -45,21 +48,21 @@ int MPIDI_CH3I_MRAIL_PG_Init(MPIDI_PG_t *pg)
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**nomem",
                                   "**nomem %s", "cm_ah");
     }
-    memset(pg->ch.mrail.cm_ah, 0, pg->size * sizeof(struct ibv_ah *));
+    MPIU_Memset(pg->ch.mrail.cm_ah, 0, pg->size * sizeof(struct ibv_ah *));
 
     pg->ch.mrail.cm_ud_qpn = MPIU_Malloc(pg->size * sizeof(uint32_t));
     if (!pg->ch.mrail.cm_ud_qpn) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**nomem",
                                   "**nomem %s", "cm_ud_qpn");
     }
-    memset(pg->ch.mrail.cm_ud_qpn, 0, pg->size * sizeof(uint32_t));
+    MPIU_Memset(pg->ch.mrail.cm_ud_qpn, 0, pg->size * sizeof(uint32_t));
 
     pg->ch.mrail.cm_lid = MPIU_Malloc(pg->size * sizeof(uint16_t));
     if (!pg->ch.mrail.cm_lid) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**nomem",
                                   "**nomem %s", "cm_lid");
     }
-    memset(pg->ch.mrail.cm_lid, 0, pg->size * sizeof(uint16_t));
+    MPIU_Memset(pg->ch.mrail.cm_lid, 0, pg->size * sizeof(uint16_t));
 
 #ifdef _ENABLE_XRC_
     pg->ch.mrail.xrc_hostid = MPIU_Malloc (pg->size * sizeof(uint32_t));
@@ -211,7 +214,7 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
     for (i = 0; i < pg_size; ++i) {
 
 	    MPIDI_PG_Get_vc(pg, i, &vc);
-	    memset(&(vc->mrail), 0, sizeof(vc->mrail));
+	    MPIU_Memset(&(vc->mrail), 0, sizeof(vc->mrail));
 
 	    /* This assmuption will soon be done with */
 	    vc->mrail.num_rails = rdma_num_rails;
@@ -625,6 +628,12 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
         }
     }
 
+    /* If requested produces a report on the system.  See sysreport.h and sysreport.c */
+    if (enable_sysreport) {
+        mv2_system_report();
+    }
+
+
     DEBUG_PRINT("Finished MPIDI_CH3I_RDMA_init()\n");
 
 fn_exit:
@@ -883,15 +892,6 @@ int MPIDI_CH3I_RDMA_finalize()
 
     }
 
-	/* De-allocate vbuf region */
-	deallocate_vbuf_region();
-
-    err = dreg_finalize();
-
-    if(MPIDI_CH3I_RDMA_Process.polling_set != NULL) {
-      MPIU_Free(MPIDI_CH3I_RDMA_Process.polling_set);
-    }
-
 fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_RDMA_FINALIZE);
     return mpi_errno;
@@ -912,6 +912,8 @@ static int mv2_xrc_init (void)
     XRC_MSG ("Init XRC Start\n");
     MPIDI_CH3I_RDMA_Process.xrc_rdmafp = 1;
     MPIDI_CH3I_RDMA_Process_t *proc = &MPIDI_CH3I_RDMA_Process;
+    MPIDI_STATE_DECL(MPID_STATE_CH3I_MV2_XRC_INIT);
+    MPIDI_FUNC_ENTER(MPID_STATE_CH3I_MV2_XRC_INIT);
 
     ufile = getenv ("MV2_XRC_FILE");
     if (ufile == NULL) {
@@ -951,7 +953,7 @@ static int mv2_xrc_init (void)
 
     XRC_MSG ("Init XRC DONE\n");
 fn_exit:
-    MPIDI_FUNC_EXIT(MPID_STATE_CH3I_CM_INIT);
+    MPIDI_FUNC_EXIT(MPID_STATE_CH3I_MV2_XRC_INIT);
     return mpi_errno;
 
 fn_fail:
@@ -990,7 +992,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
 #ifndef DISABLE_PTMALLOC
     if(mvapich2_minit()) {
 	MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-		"**fail %s", "Error initializing MVAPICH2 MPIU_Malloc library");
+		"**fail %s", "Error initializing MVAPICH2 malloc library");
     }
 #else
     mallopt(M_TRIM_THRESHOLD, -1);
@@ -1056,7 +1058,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
     /* the vc structure has to be initialized */
     for (i = 0; i < pg_size; i++) {
 	MPIDI_PG_Get_vc(pg, i, &vc);
-	memset(&(vc->mrail), 0, sizeof(vc->mrail));
+	MPIU_Memset(&(vc->mrail), 0, sizeof(vc->mrail));
 	/* This assmuption will soon be done with */
 	vc->mrail.num_rails = rdma_num_rails;
     }
@@ -1184,10 +1186,11 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
 	    char hostname[HOSTNAME_LEN + 1];
 	    int hostid;
 	    struct hostent *hostent;
+            int result;
 
-	    gethostname(hostname, HOSTNAME_LEN);
+	    result = gethostname(hostname, HOSTNAME_LEN);
 
-	    if (!hostname)
+	    if (result!=0)
             {
 	        MPIU_ERR_SETFATALANDJUMP1(
                     mpi_errno,
@@ -1392,7 +1395,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                 "**nomem %s", "conn_info_str");
     }
-    memset(*conn_info_ptr, 0, 128);
+    MPIU_Memset(*conn_info_ptr, 0, 128);
 
     MPIDI_CH3I_CM_Get_port_info(*conn_info_ptr, 128);
     //fprintf(stderr, "CM_Init, conn_info %s\n", *conn_info_ptr);
@@ -1630,9 +1633,6 @@ int MPIDI_CH3I_CM_Finalize()
     }
 #endif /* defined(RDMA_CM) */
 
-    if(MPIDI_CH3I_RDMA_Process.polling_set != NULL) { 
-      MPIU_Free(MPIDI_CH3I_RDMA_Process.polling_set);
-    } 
 fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_CM_FINALIZE);
     return mpi_errno;

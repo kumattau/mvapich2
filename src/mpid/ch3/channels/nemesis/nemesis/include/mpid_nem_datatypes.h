@@ -8,48 +8,41 @@
 #define MPID_NEM_DATATYPES_H
 
 #include "mpid_nem_debug.h"
+#include "mpid_nem_atomics.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/types.h>
-#include <sys/mman.h>
+#ifdef HAVE_SYS_MMAN_H
+    #include <sys/mman.h>
+#endif
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <fcntl.h>
-#include <unistd.h>
+#ifdef HAVE_UNISTD_H
+    #include <unistd.h>
+#endif
 #include <string.h>
 #include <limits.h>
-#include <sched.h>
+#ifdef HAVE_SCHED_H
+    #include <sched.h>
+#endif
+#include "mpichconf.h"
+
+/* FIXME We are using this as an interprocess lock in the queue code, although
+   it's not strictly guaranteed to work for this scenario.  These should really
+   use the "process locks" code, but it's in such terrible shape that it doesn't
+   really work for us right now.  Also, because it has some inline assembly it's
+   not really a fair comparison for studying the impact of atomic instructions.
+   [goodell@ 2009-01-16] */
+
+#if !defined(MPID_NEM_USE_LOCK_FREE_QUEUES)
+ #include "mpid_thread.h" 
+#endif
 
 #define MPID_NEM_OFFSETOF(struc, field) ((int)(&((struc *)0)->field))
 #define MPID_NEM_CACHE_LINE_LEN 64
-#if (MPID_NEM_NET_MODULE == MPID_NEM_IB_MODULE)
-#define MPID_NEM_NUM_CELLS      128
-#else
-#define MPID_NEM_NUM_CELLS      64 
-#endif
-
-#ifndef MPID_NEM_NET_MODULE
-#error MPID_NEM_NET_MODULE undefined
-#endif
-#ifndef MPID_NEM_DEFS_H
-#error mpid_nem_defs.h must be included with this file
-#endif
-
-#if  !defined (MPID_NEM_NO_MODULE)
-#error MPID_NEM_*_MODULEs are not defined!  Check for loop in include dependencies.
-#endif
-
-#if(MPID_NEM_NET_MODULE == MPID_NEM_ERROR_MODULE)
-#error Error in definition of MPID_NEM_*_MODULE macros
-#elif (MPID_NEM_NET_MODULE == MPID_NEM_MX_MODULE)
-#define MPID_NEM_CELL_LEN           (32*1024)
-#elif (MPID_NEM_NET_MODULE == MPID_NEM_ELAN_MODULE)
-#define MPID_NEM_CELL_LEN            (2*1024)
-#elif (MPID_NEM_NET_MODULE == MPID_NEM_IB_MODULE)
-#define MPID_NEM_CELL_LEN            (6*1024)
-#else
-#define MPID_NEM_CELL_LEN           (64*1024)
-#endif 
+#define MPID_NEM_NUM_CELLS      64
+#define MPID_NEM_CELL_LEN       (64*1024)
 
 /*
    The layout of the cell looks like this:
@@ -66,9 +59,6 @@
    | |                  | |
    | -------------------- |
    ------------------------
-
-   There's also a ckpt packet in addition to the mpich2 pkt, but we
-   can ignore this for this discussion.
 
    For optimization, we want the cell to start at a cacheline boundary
    and the cell length to be a multiple of cacheline size.  This will
@@ -126,7 +116,7 @@
    
 */
 
-#define MPID_NEM_CELL_HEAD_LEN sizeof(double)
+#define MPID_NEM_CELL_HEAD_LEN    8 /* We use this to keep elements 64-bit aligned */
 #define MPID_NEM_CELL_PAYLOAD_LEN (MPID_NEM_CELL_LEN - MPID_NEM_CELL_HEAD_LEN)
 
 #define MPID_NEM_CALC_CELL_LEN(cellp) (MPID_NEM_CELL_HEAD_LEN + MPID_NEM_MPICH2_HEAD_LEN + MPID_NEM_CELL_DLEN (cell))
@@ -165,22 +155,10 @@ typedef struct MPID_nem_pkt_mpich2
     char payload[MPID_NEM_MPICH2_DATA_LEN];
 } MPID_nem_pkt_mpich2_t;
 
-#ifdef ENABLED_CHECKPOINTING
-/* checkpoint marker */
-typedef struct MPID_nem_pkt_ckpt
-{
-    MPID_NEM_PKT_HEADER_FIELDS;
-    unsigned short wave;
-} MPID_nem_pkt_ckpt_t;
-#endif
-
 typedef union
-{    
+{
     MPID_nem_pkt_header_t      header;
     MPID_nem_pkt_mpich2_t      mpich2;
-#ifdef ENABLED_CHECKPOINTING
-    MPID_nem_pkt_ckpt_t        ckpt;
-#endif
 } MPID_nem_pkt_t;
 
 /* Nemesis cells which are to be used in shared memory need to use
@@ -191,9 +169,10 @@ typedef union
  * catch errors.  Use MPID_NEM_REL_TO_ABS and MPID_NEM_ABS_TO_REL to
  * convert between relative and absolute pointers. */
 
+/* This should always be exactly the size of a pointer */
 typedef struct MPID_nem_cell_rel_ptr
 {
-    char *p;
+    OPA_ptr_t p;
 }
 MPID_nem_cell_rel_ptr_t;
 
@@ -206,15 +185,19 @@ MPID_nem_cell_rel_ptr_t;
 typedef struct MPID_nem_cell
 {
     MPID_nem_cell_rel_ptr_t next;
+#if (MPID_NEM_CELL_HEAD_LEN > SIZEOF_OPA_PTR_T)
     char padding[MPID_NEM_CELL_HEAD_LEN - sizeof(MPID_nem_cell_rel_ptr_t)];
-    MPID_nem_pkt_t pkt;
+#endif
+    volatile MPID_nem_pkt_t pkt;
 } MPID_nem_cell_t;
-typedef volatile MPID_nem_cell_t *MPID_nem_cell_ptr_t;
+typedef MPID_nem_cell_t *MPID_nem_cell_ptr_t;
 
 typedef struct MPID_nem_abs_cell
 {
     struct MPID_nem_abs_cell *next;
+#if (MPID_NEM_CELL_HEAD_LEN > SIZEOF_VOID_P)
     char padding[MPID_NEM_CELL_HEAD_LEN - sizeof(struct MPID_nem_abs_cell*)];
+#endif
     volatile MPID_nem_pkt_t pkt;
 } MPID_nem_abs_cell_t;
 typedef MPID_nem_abs_cell_t *MPID_nem_abs_cell_ptr_t;
@@ -237,18 +220,30 @@ typedef MPID_nem_abs_cell_t *MPID_nem_abs_cell_ptr_t;
 
 typedef struct MPID_nem_queue
 {
-    volatile MPID_nem_cell_rel_ptr_t head;
-    volatile MPID_nem_cell_rel_ptr_t tail;
+    MPID_nem_cell_rel_ptr_t head;
+    MPID_nem_cell_rel_ptr_t tail;
+#if (MPID_NEM_CACHE_LINE_LEN > (2 * SIZEOF_OPA_PTR_T))
     char padding1[MPID_NEM_CACHE_LINE_LEN - 2 * sizeof(MPID_nem_cell_rel_ptr_t)];
+#endif
     MPID_nem_cell_rel_ptr_t my_head;
+#if (MPID_NEM_CACHE_LINE_LEN > SIZEOF_OPA_PTR_T)
     char padding2[MPID_NEM_CACHE_LINE_LEN - sizeof(MPID_nem_cell_rel_ptr_t)];
+#endif
+#if !defined(MPID_NEM_USE_LOCK_FREE_QUEUES)
+    /* see FIXME in mpid_nem_queue.h */
+#define MPID_nem_queue_mutex_t MPID_Thread_mutex_t
+    MPID_nem_queue_mutex_t lock;
+    char padding3[MPID_NEM_CACHE_LINE_LEN - sizeof(MPID_Thread_mutex_t)];
+#endif
 } MPID_nem_queue_t, *MPID_nem_queue_ptr_t;
 
 /* Fast Boxes*/ 
 typedef union
 {
     volatile int value;
+#if MPID_NEM_CACHE_LINE_LEN != 0
     char padding[MPID_NEM_CACHE_LINE_LEN];
+#endif
 }
 MPID_nem_opt_volint_t;
 

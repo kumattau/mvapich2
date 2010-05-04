@@ -36,13 +36,14 @@ int MPI_File_close(MPI_File *mpi_fh)
     int error_code;
     ADIO_File fh;
     static char myname[] = "MPI_FILE_CLOSE";
+    MPIU_THREADPRIV_DECL;
 #ifdef MPI_hpux
     int fl_xmpi;
 
     HPMP_IO_WSTART(fl_xmpi, BLKMPIFILECLOSE, TRDTBLOCK, *fh);
 #endif /* MPI_hpux */
 
-    MPIU_THREAD_SINGLE_CS_ENTER("io");
+    MPIU_THREAD_CS_ENTER(ALLFUNC,);
     MPIR_Nest_incr();
 
     fh = MPIO_File_resolve(*mpi_fh);
@@ -51,15 +52,15 @@ int MPI_File_close(MPI_File *mpi_fh)
     MPIO_CHECK_FILE_HANDLE(fh, myname, error_code);
     /* --END ERROR HANDLING-- */
 
-    if (((fh)->file_system != ADIO_PIOFS) &&
-	((fh)->file_system != ADIO_PVFS) &&
-	((fh)->file_system != ADIO_PVFS2) &&
-	((fh)->file_system != ADIO_GRIDFTP))
+    if (ADIO_Feature(fh, ADIO_SHARED_FP)) 
     {
 	ADIOI_Free((fh)->shared_fp_fname);
         /* need a barrier because the file containing the shared file
         pointer is opened with COMM_SELF. We don't want it to be
 	deleted while others are still accessing it. */ 
+	/* FIXME: It is wrong to use MPI_Barrier; the user could choose to
+	   re-implement MPI_Barrier in an unexpected way.  Either use 
+	   NMPI_Barrier as in MPICH2 or PMPI_Barrier */
         MPI_Barrier((fh)->comm);
 	if ((fh)->shared_fp_fd != ADIO_FILE_NULL) {
 	    MPI_File *mpi_fh_shared = &(fh->shared_fp_fd);
@@ -71,6 +72,14 @@ int MPI_File_close(MPI_File *mpi_fh)
 	}
     }
 
+    /* Because ROMIO expects the MPI library to provide error handler management
+     * routines but it doesn't ever participate in MPI_File_close, we have to
+     * somehow inform the MPI library that we no longer hold a reference to any
+     * user defined error handler.  We do this by setting the errhandler at this
+     * point to MPI_ERRORS_RETURN. */
+    error_code = PMPI_File_set_errhandler(*mpi_fh, MPI_ERRORS_RETURN);
+    if (error_code != MPI_SUCCESS) goto fn_fail;
+
     ADIO_Close(fh, &error_code);
     MPIO_File_free(mpi_fh);
     /* --BEGIN ERROR HANDLING-- */
@@ -81,13 +90,12 @@ int MPI_File_close(MPI_File *mpi_fh)
     HPMP_IO_WEND(fl_xmpi);
 #endif /* MPI_hpux */
 
-    MPIR_Nest_decr();
 fn_exit:
-    MPIU_THREAD_SINGLE_CS_EXIT("io");
+    MPIR_Nest_decr();
+    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return error_code;
 fn_fail:
     /* --BEGIN ERROR HANDLING-- */
-    MPIR_Nest_decr();
     error_code = MPIO_Err_return_file(fh, error_code);
     goto fn_exit;
     /* --END ERROR HANDLING-- */

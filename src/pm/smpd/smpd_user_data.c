@@ -163,7 +163,7 @@ static smpd_data_t * smpd_parse_smpd_file()
 		    }
 		    equal_str[0] = '\0';
 		    result = MPIU_Str_get_string(&iter, equal_str, SMPD_MAX_NAME_LENGTH);
-		    while (iter && equal_str[0] != MPIU_STR_DELIM_CHAR)
+		    while (iter && equal_str[0] != SMPD_DELIM_CHAR)
 		    {
 			strcpy(name, equal_str);
 			result = MPIU_Str_get_string(&iter, equal_str, SMPD_MAX_NAME_LENGTH);
@@ -741,6 +741,12 @@ int smpd_get_smpd_data_default(const char *key, char *value, int value_len)
 	value[value_len-1] = '\0';
 	smpd_exit_fn(FCNAME);
 	return SMPD_SUCCESS;
+    }
+    if(strcmp(key, "port") == 0)
+    {
+    snprintf(value, value_len, "%d", SMPD_LISTENER_PORT);
+    smpd_exit_fn(FCNAME);
+    return SMPD_SUCCESS;
     }
 #endif
     if (strcmp(key, "log") == 0)

@@ -59,7 +59,7 @@
         int lmpi_errno = MPI_SUCCESS;					    \
 	if (MPIR_Process.attr_free && datatype_ptr->attributes) {	    \
 	    lmpi_errno = MPIR_Process.attr_free( datatype_ptr->handle,	    \
-						datatype_ptr->attributes ); \
+						 &datatype_ptr->attributes ); \
 	}								    \
  	/* LEAVE THIS COMMENTED OUT UNTIL WE HAVE SOME USE FOR THE FREE_FN  \
 	if (datatype_ptr->free_fn) {					    \
@@ -355,8 +355,7 @@ typedef struct MPID_Datatype_contents {
   S*/
 typedef struct MPID_Datatype { 
     /* handle and ref_count are filled in by MPIU_Handle_obj_alloc() */
-    int          handle; /* value of MPI_Datatype for structure */
-    volatile int ref_count;
+    MPIU_OBJECT_HEADER; /* adds handle and ref_count fields */
 
     /* basic parameters for datatype, accessible via MPI calls */
     int      size;
@@ -381,7 +380,11 @@ typedef struct MPID_Datatype {
      * contiguous.
      */
     int is_contig;
-    int n_contig_blocks; /* # of contig blocks in one instance */
+    /* Upper bound on the number of contig blocks for one instance.
+     * It is not trivial to calculate the *real* number of contig 
+     * blocks in the case where old datatype is non-contiguous
+     */
+    int max_contig_blocks;
 
     /* pointer to contents and envelope data for the datatype */
     MPID_Datatype_contents *contents;
@@ -418,9 +421,13 @@ typedef struct MPID_Datatype {
 extern MPIU_Object_alloc_t MPID_Datatype_mem;
 
 /* Preallocated datatype objects */
-/* The C++ types BOOL, COMPLEX, DOUBLE_COMPLEX, and LONG_DOUBLE_COMPLEX 
-   added a few more builtin types */
-#define MPID_DATATYPE_N_BUILTIN 55
+/* This value should be set to greatest value used as the type index suffix in
+ * the predefined handles.  That is, look at the last two hex digits of all
+ * predefined datatype handles, take the greatest one, and convert it to decimal
+ * here. */
+/* FIXME calculating this value this way is foolish, we should make this more
+ * automatic and less error prone */
+#define MPID_DATATYPE_N_BUILTIN 68
 extern MPID_Datatype MPID_Datatype_builtin[MPID_DATATYPE_N_BUILTIN + 1];
 extern MPID_Datatype MPID_Datatype_direct[];
 

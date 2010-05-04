@@ -1,4 +1,3 @@
-AC_PREREQ(2.59)
 dnl Process this file with autoconf to produce a configure script.
 dnl
 dnl The file name here refers to a file in the source being configured
@@ -15,7 +14,7 @@ PAC_SUBCONFIG_INIT()
 dnl Definitions will be placed in this file rather than in the DEFS variable
 AC_CONFIG_HEADER(rlogconf.h)
 AH_TOP([/* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2003-2009, The Ohio State University. All rights
+/* Copyright (c) 2003-2010, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -34,6 +33,8 @@ AH_TOP([/* -*- Mode: C; c-basic-offset:4 ; -*- */
 #define FORKERCONF_H_INCLUDED
 ])
 AH_BOTTOM([#endif])
+dnl
+AC_CONFIG_AUX_DIR(../../../../confdb)
 dnl
 echo "RUNNING CONFIGURE FOR RLOG"
 dnl
@@ -81,14 +82,20 @@ AC_PATH_PROG(AR,ar)
 AC_CHECK_PROGS(RANLIB,ranlib,true)
 dnl
 dnl AC_PROG_MAKE_SET
+AC_PROG_INSTALL
+PAC_PROG_CHECK_INSTALL_WORKS
+dnl On Mac OS/X, install breaks libraries unless used with the -p switch
+PAC_PROG_INSTALL_BREAKS_LIBS
+dnl We also need mkdir -p.
+PAC_PROG_MKDIR_P
 PAC_PROG_MAKE
 dnl
 AC_PATH_PROG(PERL,perl)
 dnl     check for compiler characteristics
 dnl PAC_PROG_C_WEAK_SYMBOLS
 AC_C_CONST
-PAC_C_VOLATILE
-PAC_C_RESTRICT
+AC_C_VOLATILE
+AC_C_RESTRICT
 AC_C_INLINE
 dnl PAC_C_STRUCT_ALIGNMENT
 dnl

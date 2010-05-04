@@ -32,8 +32,9 @@ int MPIO_Waitsome(int count, MPIO_Request requests[], int *outcount,
 		  int indices[], MPI_Status *statuses)
 {
     int i, flag, err; 
+    MPIU_THREADPRIV_DECL;
 
-    MPIU_THREAD_SINGLE_CS_ENTER("io");
+    MPIU_THREAD_CS_ENTER(ALLFUNC,);
 
     if (count == 1) {
     	MPIR_Nest_incr();
@@ -77,6 +78,6 @@ int MPIO_Waitsome(int count, MPIO_Request requests[], int *outcount,
     } while (*outcount == 0);
 
 fn_exit:
-    MPIU_THREAD_SINGLE_CS_EXIT("io");
+    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return err;
 }

@@ -46,17 +46,18 @@
 .N MPI_ERR_COMM
 .N MPI_ERR_OTHER
 @*/
-int MPI_Comm_create_errhandler(MPI_Comm_errhandler_fn *function, 
+int MPI_Comm_create_errhandler(MPI_Comm_errhandler_function *function, 
                                MPI_Errhandler *errhandler)
 {
     static const char FCNAME[] = "MPI_Comm_create_errhandler";
     int mpi_errno = MPI_SUCCESS;
     MPID_Errhandler *errhan_ptr;
+    MPIU_THREADPRIV_DECL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_COMM_CREATE_ERRHANDLER);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
     
-    MPIU_THREAD_SINGLE_CS_ENTER("errhan");
+    MPIU_THREAD_CS_ENTER(ALLFUNC,);
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPI_COMM_CREATE_ERRHANDLER);
 
     /* Validate parameters, especially handles needing to be converted */
@@ -87,7 +88,7 @@ int MPI_Comm_create_errhandler(MPI_Comm_errhandler_fn *function,
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_COMM_CREATE_ERRHANDLER);
-    MPIU_THREAD_SINGLE_CS_EXIT("errhan");
+    MPIU_THREAD_CS_EXIT(ALLFUNC,);
     return mpi_errno;
 
   fn_fail:

@@ -5,7 +5,11 @@
  */
 
 #include "mpidi_ch3_impl.h"
+#ifdef USE_PMI2_API
+#include "pmi2.h"
+#else
 #include "pmi.h"
+#endif
 
 #include "mpidu_sock.h"
 
@@ -86,6 +90,10 @@ static MPIDI_CH3I_Connection_t * MPIDI_CH3I_listener_conn = NULL;
 /* Required for (socket version) upcall to Connect_to_root (see FIXME) */
 extern MPIDU_Sock_set_t MPIDI_CH3I_sock_set;
 
+#undef FUNCNAME
+#define FUNCNAME MPIDU_CH3I_SetupListener
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDU_CH3I_SetupListener( MPIDU_Sock_set_t sock_set )
 {
     int mpi_errno = MPI_SUCCESS;
@@ -116,6 +124,10 @@ int MPIDU_CH3I_SetupListener( MPIDU_Sock_set_t sock_set )
     return mpi_errno;
 }
 
+#undef FUNCNAME
+#define FUNCNAME MPIDU_CH3I_ShutdownListener
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDU_CH3I_ShutdownListener( void )
 {
     int mpi_errno;
@@ -152,6 +164,7 @@ int MPIDI_CH3I_Connection_alloc(MPIDI_CH3I_Connection_t ** connp)
     int mpi_errno = MPI_SUCCESS;
     MPIDI_CH3I_Connection_t * conn = NULL;
     int id_sz;
+    int pmi_errno;
     MPIU_CHKPMEM_DECL(2);
     MPIDI_STATE_DECL(MPID_STATE_CONNECTION_ALLOC);
 
@@ -163,12 +176,14 @@ int MPIDI_CH3I_Connection_alloc(MPIDI_CH3I_Connection_t ** connp)
     /* FIXME: This size is unchanging, so get it only once (at most); 
        we might prefer for connections to simply point at the single process
        group to which the remote process belong */
-    mpi_errno = PMI_Get_id_length_max(&id_sz);
-    if (mpi_errno != PMI_SUCCESS) {
-	MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, 
+#ifdef USE_PMI2_API
+    id_sz = MPID_MAX_JOBID_LEN;
+#else
+    pmi_errno = PMI_Get_id_length_max(&id_sz);
+    MPIU_ERR_CHKANDJUMP1(pmi_errno, mpi_errno,MPI_ERR_OTHER, 
 			     "**pmi_get_id_length_max",
-			     "**pmi_get_id_length_max %d", mpi_errno);
-    }
+			     "**pmi_get_id_length_max %d", pmi_errno);
+#endif
     MPIU_CHKPMEM_MALLOC(conn->pg_id,char*,id_sz + 1,mpi_errno,"conn->pg_id");
     conn->pg_id[0] = 0;           /* Be careful about pg_id in case a later 
 				     error */
@@ -419,13 +434,13 @@ int MPIDI_CH3U_Get_business_card_sock(int myRank,
 {
     int mpi_errno = MPI_SUCCESS;
     MPIDU_Sock_ifaddr_t ifaddr;
-    char ifname[MAX_HOST_DESCRIPTION_LEN];
+    char ifnamestr[MAX_HOST_DESCRIPTION_LEN];
     char *bc_orig = *bc_val_p;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3U_GET_BUSINESS_CARD_SOCK);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3U_GET_BUSINESS_CARD_SOCK);
 
-    MPIDU_CH3U_GetSockInterfaceAddr( myRank, ifname, sizeof(ifname), &ifaddr );
+    MPIDU_CH3U_GetSockInterfaceAddr( myRank, ifnamestr, sizeof(ifnamestr), &ifaddr );
 
     mpi_errno = MPIU_Str_add_int_arg(bc_val_p, val_max_sz_p, 
 			     MPIDI_CH3I_PORT_KEY, MPIDI_CH3I_listener_port);
@@ -442,7 +457,7 @@ int MPIDI_CH3U_Get_business_card_sock(int myRank,
     /* --END ERROR HANDLING-- */
     
     mpi_errno = MPIU_Str_add_string_arg(bc_val_p, val_max_sz_p, 
-			   MPIDI_CH3I_HOST_DESCRIPTION_KEY, ifname );
+			   MPIDI_CH3I_HOST_DESCRIPTION_KEY, ifnamestr );
     /* --BEGIN ERROR HANDLING-- */
     if (mpi_errno != MPIU_STR_SUCCESS)
     {
@@ -521,11 +536,8 @@ int MPIDI_CH3U_Get_business_card_sock(int myRank,
 	    }
 	}
     }
-    
-    if (0) {
-	fprintf( stdout, "business card is %s\n", bc_orig );
-	fflush(stdout);
-    }
+
+    MPIU_DBG_MSG_S(CH3_CONNECT,TYPICAL,"business card is %s\n", bc_orig );
 
  fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3U_GET_BUSINESS_CARD_SOCK);
@@ -889,7 +901,7 @@ int MPIDI_CH3_Sockconn_handle_connopen_event( MPIDI_CH3I_Connection_t * conn )
     
     /* We require that the packet be the open_req type */
     pg_rank = openpkt->pg_rank;
-    MPIDI_PG_Get_vc(pg, pg_rank, &vc);
+    MPIDI_PG_Get_vc_set_active(pg, pg_rank, &vc);
     MPIU_Assert(vc->pg_rank == pg_rank);
     
     vcch = (MPIDI_CH3I_VC *)vc->channel_private;

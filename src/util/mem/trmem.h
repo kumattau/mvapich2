@@ -1,12 +1,15 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: trmem.h,v 1.3 2005/08/10 21:20:17 gropp Exp $
- *
+/*
  *  (C) 2003 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
 #ifndef _TRMEM_H_INCLUDED
 #define _TRMEM_H_INCLUDED
 
+/* FIXME: Consider an option of specifying __attribute__((malloc)) for 
+   gcc - this lets gcc-style compilers know that the returned pointer 
+   does not alias any pointer prior to the call.
+ */
 void MPIU_trinit( int );
 void *MPIU_trmalloc( size_t, int, const char [] );
 void MPIU_trfree( void *, int, const char [] );

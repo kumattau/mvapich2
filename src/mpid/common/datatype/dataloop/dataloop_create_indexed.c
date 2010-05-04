@@ -302,7 +302,7 @@ static void DLOOP_Type_indexed_array_copy(DLOOP_Count count,
     for (first = 0; first < count; ++first)
         if ((DLOOP_Count) in_blklen_array[first])
             break;
-
+    
     out_blklen_array[0] = (DLOOP_Count) in_blklen_array[first];
 
     if (!dispinbytes)
@@ -388,21 +388,25 @@ DLOOP_Count PREPEND_PREFIX(Type_indexed_count_contig)(DLOOP_Count count,
         for (first = 0; first < count; ++first)
             if ((DLOOP_Count) blocklength_array[first])
                 break;
-        
+
+        if (first == count) { /* avoid invalid reads later on */
+            contig_count = 0;
+            return contig_count;
+        }
+
         cur_blklen = (DLOOP_Count) blocklength_array[first];
-	
         if (!dispinbytes)
         {
             DLOOP_Offset cur_tdisp =
                 (DLOOP_Offset) ((int *) displacement_array)[first];
-            
+	
             for (i = first+1; i < count; ++i)
             {
                 if (blocklength_array[i] == 0)
                 {
                     continue;
                 }
-                else if (cur_tdisp + cur_blklen ==
+                else if (cur_tdisp + (DLOOP_Offset) cur_blklen ==
                          (DLOOP_Offset) ((int *) displacement_array)[i])
                 {
                     /* adjacent to current block; add to block */
@@ -427,7 +431,7 @@ DLOOP_Count PREPEND_PREFIX(Type_indexed_count_contig)(DLOOP_Count count,
                 {
                     continue;
                 }
-                else if (cur_bdisp + cur_blklen * old_extent ==
+                else if (cur_bdisp + (DLOOP_Offset) cur_blklen * old_extent ==
                          (DLOOP_Offset) ((MPI_Aint *) displacement_array)[i])
                 {
                     /* adjacent to current block; add to block */

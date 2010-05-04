@@ -455,7 +455,7 @@ void MPIDI_CH3_Rendezvous_r3_push(MPIDI_VC_t * vc, MPID_Request * sreq)
             MPIDI_Pkt_set_seqnum(&pkt_head, seqnum);
             MPIDI_Request_set_seqnum(sreq, seqnum);
 
-            memcpy((void *) &iov[1],
+            MPIU_Memcpy((void *) &iov[1],
                    &sreq->dev.iov[sreq->dev.iov_offset],
                    (sreq->dev.iov_count -
                     sreq->dev.iov_offset) * sizeof(MPID_IOV));
@@ -754,7 +754,7 @@ int MPIDI_CH3_Rendezvous_rget_recv_finish(MPIDI_VC_t * vc,
 
         for (; iter < rreq->dev.iov_count; ++iter)
         {
-            memcpy(rreq->dev.iov[iter].MPID_IOV_BUF,
+          MPIU_Memcpy(rreq->dev.iov[iter].MPID_IOV_BUF,
                    (void *) buf, rreq->dev.iov[iter].MPID_IOV_LEN);
             buf += rreq->dev.iov[iter].MPID_IOV_LEN;
             copied += rreq->dev.iov[iter].MPID_IOV_LEN;
@@ -786,7 +786,7 @@ int MPIDI_CH3_Rendezvous_rget_recv_finish(MPIDI_VC_t * vc,
 
             for (iter = 0; iter < rreq->dev.iov_count; ++iter)
             {
-                memcpy(rreq->dev.iov[iter].MPID_IOV_BUF,
+              MPIU_Memcpy(rreq->dev.iov[iter].MPID_IOV_BUF,
                        (void *) buf, rreq->dev.iov[iter].MPID_IOV_LEN);
                 buf += rreq->dev.iov[iter].MPID_IOV_LEN;
                 copied += rreq->dev.iov[iter].MPID_IOV_LEN;
@@ -857,9 +857,9 @@ int MPIDI_CH3_Rendezvous_rput_finish(MPIDI_VC_t * vc,
         int copied = 0;
         uintptr_t buf = (uintptr_t) rreq->mrail.rndv_buf;
 
-        for (; iter < rreq->dev.iov_count; ++iter)
+        for (iter=0; iter < rreq->dev.iov_count; ++iter)
         {
-            memcpy(rreq->dev.iov[iter].MPID_IOV_BUF,
+          MPIU_Memcpy(rreq->dev.iov[iter].MPID_IOV_BUF,
                    (void *) buf, rreq->dev.iov[iter].MPID_IOV_LEN);
             buf += rreq->dev.iov[iter].MPID_IOV_LEN;
             copied += rreq->dev.iov[iter].MPID_IOV_LEN;
@@ -891,7 +891,7 @@ int MPIDI_CH3_Rendezvous_rput_finish(MPIDI_VC_t * vc,
 
             for (iter = 0; iter < rreq->dev.iov_count; ++iter)
             {
-                memcpy(rreq->dev.iov[iter].MPID_IOV_BUF,
+              MPIU_Memcpy(rreq->dev.iov[iter].MPID_IOV_BUF,
                        (void *) buf, rreq->dev.iov[iter].MPID_IOV_LEN);
                 buf += rreq->dev.iov[iter].MPID_IOV_LEN;
                 copied += rreq->dev.iov[iter].MPID_IOV_LEN;
@@ -1007,9 +1007,9 @@ int MPIDI_CH3_Get_rndv_recv(MPIDI_VC_t * vc, MPID_Request * req)
         int iter = 0;
         uintptr_t buf = (uintptr_t) req->mrail.rndv_buf;
 
-        for (; iter < req->dev.iov_count; ++iter)
+        for (iter=0; iter < req->dev.iov_count; ++iter)
         {
-            memcpy(req->dev.iov[iter].MPID_IOV_BUF,
+          MPIU_Memcpy(req->dev.iov[iter].MPID_IOV_BUF,
                    (void *) buf, req->dev.iov[iter].MPID_IOV_LEN);
             buf += req->dev.iov[iter].MPID_IOV_LEN;
         }
@@ -1027,7 +1027,7 @@ int MPIDI_CH3_Get_rndv_recv(MPIDI_VC_t * vc, MPID_Request * req)
 
             for (iter = 0; iter < req->dev.iov_count; ++iter)
             {
-                memcpy(req->dev.iov[iter].MPID_IOV_BUF,
+              MPIU_Memcpy(req->dev.iov[iter].MPID_IOV_BUF,
                        (void *) buf, req->dev.iov[iter].MPID_IOV_LEN);
                 buf += req->dev.iov[iter].MPID_IOV_LEN;
             }

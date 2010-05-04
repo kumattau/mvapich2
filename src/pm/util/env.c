@@ -16,6 +16,9 @@
 #ifdef HAVE_STRING_H
 #include <string.h>
 #endif
+#if defined( HAVE_PUTENV ) && defined( NEEDS_PUTENV_DECL )
+extern int putenv(char *string);
+#endif
 
 #include "mpimem.h"
 #include "process.h"
@@ -278,7 +281,7 @@ int MPIE_EnvInitData( EnvData *elist, int getValue )
 /*
  * Add an enviroinment variable to the global list of variables
  */
-int MPIE_Putenv( ProcessWorld *pWorld, char *env_string )
+int MPIE_Putenv( ProcessWorld *pWorld, const char *env_string )
 {
     EnvInfo *genv;
     EnvData *p;

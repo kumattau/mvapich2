@@ -247,14 +247,14 @@ static int MRAILI_Fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
     *num_bytes_ptr = 0;
 
     DEBUG_PRINT("Header info, tag %d, rank %d, context_id %d\n", 
-            header->match.tag, header->match.rank, header->match.context_id);
+            header->match.parts.tag, header->match.parts.rank, header->match.parts.context_id);
 #ifdef USE_HEADER_CACHING
 
     if ((header->type == MPIDI_CH3_PKT_EAGER_SEND) &&
         (len - sizeof(MPIDI_CH3_Pkt_eager_send_t) <= MAX_SIZE_WITH_HEADER_CACHING) &&
-        (header->match.tag == cached->match.tag) &&
-        (header->match.rank == cached->match.rank) &&
-        (header->match.context_id == cached->match.context_id) &&
+        (header->match.parts.tag == cached->match.parts.tag) &&
+        (header->match.parts.rank == cached->match.parts.rank) &&
+        (header->match.parts.context_id == cached->match.parts.context_id) &&
         (header->mrail.vbuf_credit == cached->mrail.vbuf_credit) &&
         (header->mrail.remote_credit == cached->mrail.remote_credit) &&
         (header->mrail.rdma_credit == cached->mrail.rdma_credit)) {
@@ -283,7 +283,7 @@ static int MRAILI_Fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
                                  sizeof(MPIDI_CH3I_MRAILI_Pkt_fast_eager));
    
 	    if (iov[0].MPID_IOV_LEN - sizeof(MPIDI_CH3_Pkt_eager_send_t)) 
-		    memcpy(data_buf, (void *)((uintptr_t)iov[0].MPID_IOV_BUF +
+	      MPIU_Memcpy(data_buf, (void *)((uintptr_t)iov[0].MPID_IOV_BUF +
 			   sizeof(MPIDI_CH3_Pkt_eager_send_t)), 
 			   iov[0].MPID_IOV_LEN - sizeof(MPIDI_CH3_Pkt_eager_send_t));
 
@@ -314,7 +314,7 @@ static int MRAILI_Fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
                 (void *) ((unsigned long) vstart +
                           sizeof(MPIDI_CH3I_MRAILI_Pkt_fast_eager_with_req));
 	    if (iov[0].MPID_IOV_LEN - sizeof(MPIDI_CH3_Pkt_eager_send_t)) 
-		    memcpy(data_buf, (void *)((uintptr_t)iov[0].MPID_IOV_BUF +
+	      MPIU_Memcpy(data_buf, (void *)((uintptr_t)iov[0].MPID_IOV_BUF +
 			   sizeof(MPIDI_CH3_Pkt_eager_send_t)), 
 			   iov[0].MPID_IOV_LEN - sizeof(MPIDI_CH3_Pkt_eager_send_t));
 
@@ -331,10 +331,10 @@ static int MRAILI_Fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
         DEBUG_PRINT
             ("[send: fill buf], head not cached, v %p, vstart %p, length %d, header size %d\n",
              v, vstart, len, iov[0].MPID_IOV_LEN);
-        memcpy(vstart, header, iov[0].MPID_IOV_LEN);
+        MPIU_Memcpy(vstart, header, iov[0].MPID_IOV_LEN);
 #ifdef USE_HEADER_CACHING
         if (header->type == MPIDI_CH3_PKT_EAGER_SEND)
-            memcpy(cached, header, sizeof(MPIDI_CH3_Pkt_eager_send_t));
+          MPIU_Memcpy(cached, header, sizeof(MPIDI_CH3_Pkt_eager_send_t));
         ++vc->mrail.rfp.cached_miss;
 #endif
         data_buf = (void *) ((unsigned long) vstart + iov[0].MPID_IOV_LEN);
@@ -347,12 +347,12 @@ static int MRAILI_Fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
     /* We have filled the header, it is time to fit in the actual data */
     for (i = 1; i < n_iov; i++) {
         if (avail >= iov[i].MPID_IOV_LEN) {
-            memcpy(data_buf, iov[i].MPID_IOV_BUF, iov[i].MPID_IOV_LEN);
+          MPIU_Memcpy(data_buf, iov[i].MPID_IOV_BUF, iov[i].MPID_IOV_LEN);
             data_buf = (void *) ((unsigned long) data_buf + iov[i].MPID_IOV_LEN);
             *num_bytes_ptr += iov[i].MPID_IOV_LEN;
             avail -= iov[i].MPID_IOV_LEN;
         } else if (avail > 0) {
-            memcpy(data_buf, iov[i].MPID_IOV_BUF, avail);
+          MPIU_Memcpy(data_buf, iov[i].MPID_IOV_BUF, avail);
             data_buf = (void *) ((unsigned long) data_buf + avail);
             *num_bytes_ptr += avail;
             avail = 0;
@@ -708,13 +708,13 @@ int MRAILI_Fill_start_buffer(vbuf * v,
                     iov[i].MPID_IOV_LEN);
         if (avail >= iov[i].MPID_IOV_LEN) {
             DEBUG_PRINT("[fill buf] cpy ptr %p\n", ptr);
-            memcpy(ptr, iov[i].MPID_IOV_BUF,
+            MPIU_Memcpy(ptr, iov[i].MPID_IOV_BUF,
                    (iov[i].MPID_IOV_LEN));
             len += (iov[i].MPID_IOV_LEN);
             avail -= (iov[i].MPID_IOV_LEN);
             ptr = (void *) ((unsigned long) ptr + iov[i].MPID_IOV_LEN);
         } else {
-            memcpy(ptr, iov[i].MPID_IOV_BUF, avail);
+          MPIU_Memcpy(ptr, iov[i].MPID_IOV_BUF, avail);
             len += avail;
             avail = 0;
             break;
@@ -977,7 +977,7 @@ int MRAILI_Backlog_send(MPIDI_VC_t * vc, int rail)
         }
 
      	v->vc = vc;
-	    v->rail = rail;
+        v->rail = rail;
 
         XRC_FILL_SRQN_FIX_CONN (v, vc, rail);
         FLUSH_RAIL(vc, rail);
@@ -1013,10 +1013,12 @@ int MRAILI_Backlog_send(MPIDI_VC_t * vc, int rail)
     return 0;
 }
 
+/*
 int MAX(int a, int b)
 {
     return a > b ? a : b;
 }
+*/
 
 #undef FUNCNAME
 #define FUNCNAME MRAILI_Flush_wqe
@@ -1089,8 +1091,14 @@ int MRAILI_Process_send(void *vbuf_addr)
     if(vc->free_vc) {
         XRC_MSG ("freevc\n");
         if(vc->mrail.rails[v->rail].send_wqes_avail == rdma_default_max_send_wqe) {
-            MRAILI_Release_vbuf(v);
-            memset(vc, 0, sizeof(MPIDI_VC_t));
+            if (v->padding == NORMAL_VBUF_FLAG) {
+                DEBUG_PRINT("[process send] normal flag, free vbuf\n");
+                MRAILI_Release_vbuf(v);
+            } else {
+                v->padding = FREE_FLAG;
+            }
+
+            MPIU_Memset(vc, 0, sizeof(MPIDI_VC_t));
             MPIU_Free(vc); 
             mpi_errno = MPI_SUCCESS;
             goto fn_exit;
@@ -1352,30 +1360,14 @@ int MRAILI_Process_send(void *vbuf_addr)
     case MPIDI_CH3_PKT_LOCK_GET_UNLOCK: /* optimization for single gets */
     case MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK: /* optimization for single accumulates */
     case MPIDI_CH3_PKT_FLOW_CNTL_UPDATE:
+    case MPIDI_CH3_PKT_CLOSE:  /*24*/
         DEBUG_PRINT("[process send] get %d\n", p->type);
         if (v->padding == NORMAL_VBUF_FLAG) {
             MRAILI_Release_vbuf(v);
         }
         else v->padding = FREE_FLAG;
         break;
-    case MPIDI_CH3_PKT_CLOSE:  /*24*/
-        DEBUG_PRINT("[process send] get %d\n", p->type);
-        vc->pending_close_ops -= 1;
-        if (vc->disconnect == 1 && vc->pending_close_ops == 0)
-        {
-            if(mpi_errno = MPIU_CALL(MPIDI_CH3,Connection_terminate(vc)))
-            {
-              MPIU_ERR_POP(mpi_errno);
-            }
-        }
 
-        if (v->padding == NORMAL_VBUF_FLAG) {
-            MRAILI_Release_vbuf(v);
-        }
-        else { 
-            v->padding = FREE_FLAG;
-        }
-        break;
     default:
         dump_vbuf("unknown packet (send finished)", v);
         ibv_va_error_abort(IBV_STATUS_ERR,

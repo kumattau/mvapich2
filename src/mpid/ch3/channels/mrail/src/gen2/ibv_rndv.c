@@ -150,7 +150,7 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv_transfer(MPID_Request * sreq,
 
             buf = (uintptr_t) sreq->mrail.rndv_buf;
             for (i = 0; i < sreq->dev.iov_count; i++) {
-                memcpy((void *) buf, sreq->dev.iov[i].MPID_IOV_BUF,
+                MPIU_Memcpy((void *) buf, sreq->dev.iov[i].MPID_IOV_BUF,
                         sreq->dev.iov[i].MPID_IOV_LEN);
                 buf += sreq->dev.iov[i].MPID_IOV_LEN;
             }
@@ -174,7 +174,7 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv_transfer(MPID_Request * sreq,
                     ibv_error_abort(IBV_STATUS_ERR, "Reload iov error");
                 }
                 for (i = 0; i < sreq->dev.iov_count; i++) {
-                    memcpy((void *) buf, sreq->dev.iov[i].MPID_IOV_BUF,
+                   MPIU_Memcpy((void *) buf, sreq->dev.iov[i].MPID_IOV_BUF,
                             sreq->dev.iov[i].MPID_IOV_LEN);
                     buf += sreq->dev.iov[i].MPID_IOV_LEN;
                 }
@@ -295,8 +295,8 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
     if(MPIDI_CH3I_RDMA_Process.has_hsam && 
             (rreq->mrail.rndv_buf_sz > striping_threshold)) {
 
-        memset(mapped, 0, rdma_num_rails * sizeof(int));
-        memset(actual_index, 0, rdma_num_rails * sizeof(int));
+      MPIU_Memset(mapped, 0, rdma_num_rails * sizeof(int));
+      MPIU_Memset(actual_index, 0, rdma_num_rails * sizeof(int));
 
         get_sorted_index(vc, actual_index);
     
@@ -503,8 +503,8 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
     if(MPIDI_CH3I_RDMA_Process.has_hsam && 
             (sreq->mrail.rndv_buf_sz > striping_threshold)) {
 
-        memset(mapped, 0, rdma_num_rails * sizeof(int));
-        memset(actual_index, 0, rdma_num_rails * sizeof(int));
+      MPIU_Memset(mapped, 0, rdma_num_rails * sizeof(int));
+      MPIU_Memset(actual_index, 0, rdma_num_rails * sizeof(int));
 
         get_sorted_index(vc, actual_index);
     
@@ -697,7 +697,7 @@ void get_sorted_index(MPIDI_VC_t *vc, int *b)
     taken = (int *) MPIU_Malloc(sizeof(int) * rdma_num_rails);
 
     /* Sanity */ 
-    memset(taken, 0, sizeof(int) * rdma_num_rails);
+    MPIU_Memset(taken, 0, sizeof(int) * rdma_num_rails);
     
     /* Sort the array */
     for(i = 0; i < rdma_num_rails; i++) {
@@ -737,7 +737,7 @@ void adjust_weights(MPIDI_VC_t *vc, double start_time,
     int count_rails_used = 0;
     int rail_used[MAX_NUM_SUBRAILS];
 
-    memset(rail_used, 0, sizeof(int) * MAX_NUM_SUBRAILS);
+    MPIU_Memset(rail_used, 0, sizeof(int) * MAX_NUM_SUBRAILS);
 
     for (i = 0; i < rdma_num_rails; i++) {
 

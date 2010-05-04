@@ -34,7 +34,10 @@ int MPID_Issend(const void * buf, int count, MPI_Datatype datatype, int rank, in
     MPI_Aint dt_true_lb;
     MPID_Datatype * dt_ptr;
     MPID_Request * sreq;
-    MPIDI_VC_t * vc;
+    MPIDI_VC_t * vc=0;
+#if defined(MPID_USE_SEQUENCE_NUMBERS)
+    MPID_Seqnum_t seqnum;
+#endif    
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_MPID_ISSEND);
 
@@ -57,6 +60,20 @@ int MPID_Issend(const void * buf, int count, MPI_Datatype datatype, int rank, in
 skip_self_send:
 #endif
     
+    if (rank != MPI_PROC_NULL)
+    {
+       MPIDI_Comm_get_vc_set_active(comm, rank, &vc);
+        /* this needs to come before the sreq is created, since the override */
+        /* function is responsible for creating its own request */       
+#ifdef ENABLE_COMM_OVERRIDES
+       if (vc->comm_ops && vc->comm_ops->issend)
+       {
+	  mpi_errno = vc->comm_ops->issend( vc, buf, count, datatype, rank, tag, comm, context_offset, &sreq);
+	  goto fn_exit;
+       }
+#endif
+    }   
+   
     MPIDI_Request_create_sreq(sreq, mpi_errno, goto fn_exit);
     MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_SSEND);
     
@@ -66,23 +83,20 @@ skip_self_send:
 	sreq->cc = 0;
 	goto fn_exit;
     }
-
+    
     MPIDI_Datatype_get_info(count, datatype, dt_contig, data_sz, dt_ptr, dt_true_lb);
     
-    MPIDI_Comm_get_vc(comm, rank, &vc);
-    
+#if !defined (_OSU_PSM_)
     if (data_sz == 0)
     {
-#if defined (_OSU_PSM_)
-    goto psm_issend;
-#endif
 	mpi_errno = MPIDI_CH3_EagerSyncZero( &sreq, rank, tag, comm, 
 					     context_offset );
 	goto fn_exit;
     }
-   
+#endif
+
 #if defined (_OSU_PSM_)
-psm_issend:
+
     sreq->psm_flags |= PSM_SYNC_SEND;
     if(dt_contig) {
         mpi_errno = MPIDI_CH3_EagerContigIsend(&sreq, MPIDI_CH3_PKT_EAGER_SEND,

@@ -1,6 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  $Id: mpidtime.c,v 1.38 2006/03/18 18:23:54 gropp Exp $
- *
+/*
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
@@ -140,7 +139,7 @@ double MPID_Wtick(void)
 {
     return MPID_Seconds_per_tick;
 }
-void MPID_Wtime_init()
+int MPID_Wtime_init(void)
 {
     unsigned long long t1, t2;
     struct timeval tv1, tv2;
@@ -156,6 +155,7 @@ void MPID_Wtime_init()
     td2 = tv2.tv_sec + tv2.tv_usec / 1000000.0;
 
     MPID_Seconds_per_tick = (td2 - td1) / (double)(t2 - t1);
+    return 0;
 }
 /* Time stamps created by a macro */
 void MPID_Wtime_diff( MPID_Time_t *t1, MPID_Time_t *t2, double *diff )
@@ -183,7 +183,7 @@ double MPID_Wtick(void)
 {
     return MPID_Seconds_per_tick;
 }
-void MPID_Wtime_init()
+int MPID_Wtime_init(void)
 {
     unsigned long long t1, t2;
     struct timeval tv1, tv2;
@@ -199,6 +199,7 @@ void MPID_Wtime_init()
     td2 = tv2.tv_sec + tv2.tv_usec / 1000000.0;
 
     MPID_Seconds_per_tick = (td2 - td1) / (double)(t2 - t1);
+    return 0;
 }
 /* Time stamps created by a macro */
 void MPID_Wtime_diff( MPID_Time_t *t1, MPID_Time_t *t2, double *diff )
@@ -217,34 +218,9 @@ void MPID_Wtime_acc( MPID_Time_t *t1,MPID_Time_t *t2, MPID_Time_t *t3 )
     *t3 += (*t2 - *t1);
 }
 
-
-
-
 #elif MPICH_TIMER_KIND == USE_LINUXALPHA_CYCLE
-/* Code from LinuxJournal #42 (Oct-97), p50; 
-   thanks to Dave Covey dnc@gi.alaska.edu
-   Untested
- */
-#error "LinuxAlpha cycle counter not supported"
-/*
-    unsigned long cc;
-    asm volatile( "rpcc %0" : "=r"(cc) : : "memory" );
- */
-    /* Convert to time.  Scale cc by 1024 incase it would overflow a double;
-       consider using long double as well */
-void MPID_Wtime_diff( MPID_Time_t *t1, MPID_Time_t *t2, double *diff )
-    *diff = 1024.0 * ((double)(cc/1024) / (double)CLOCK_FREQ_HZ);
-void MPID_Wtime_todouble( MPID_Time_t *t, double *val )
-{
-}
-void MPID_Wtime_acc( MPID_Time_t *t1, MPID_Time_t *t2, MPID_Time_t *t3 )
-{
-}
-double MPID_Wtick( void ) 
-{
-    return 1.0;
-}
 
+#error "LinuxAlpha cycle counter not supported"
 
 #elif (MPICH_TIMER_KIND == USE_WIN86_CYCLE) || (MPICH_TIMER_KIND == USE_WIN64_CYCLE)
 double MPID_Seconds_per_tick = 0.0;
@@ -260,7 +236,7 @@ void MPID_Wtime_diff( MPID_Time_t *t1, MPID_Time_t *t2, double *diff)
 {
     *diff = (double)((__int64)( *t2 - *t1 )) * MPID_Seconds_per_tick;
 }
-void MPID_Wtime_init()
+int MPID_Wtime_init( void )
 {
     MPID_Time_t t1, t2;
     DWORD s1, s2;
@@ -288,6 +264,7 @@ void MPID_Wtime_init()
     printf("t2-t1 %10d\nsystime diff %d\nfrequency %g\n CPU MHz %g\n", 
 	(int)(t2-t1), (int)(s2 - s1), MPID_Seconds_per_tick, MPID_Seconds_per_tick * 1.0e6);
     */
+    return 0;
 }
 /*
 void TIMER_INIT()
@@ -303,11 +280,9 @@ void TIMER_INIT()
     GET_TIME(&t1);
     GET_TIME(&t1);
 
-    //GetSystemTimeAsFileTime(&ft1);
     GetSystemTime(&st1);
     GET_TIME(&t1);
     Sleep(500);
-    //GetSystemTimeAsFileTime(&ft2);
     GetSystemTime(&st2);
     GET_TIME(&t2);
 
@@ -333,11 +308,12 @@ void TIMER_INIT()
 
 #elif MPICH_TIMER_KIND == USE_QUERYPERFORMANCECOUNTER
 double MPID_Seconds_per_tick=0.0;  /* High performance counter frequency */
-void MPID_Wtime_init(void)
+int MPID_Wtime_init(void)
 {
     LARGE_INTEGER n;
     QueryPerformanceFrequency(&n);
     MPID_Seconds_per_tick = 1.0 / (double)n.QuadPart;
+    return 0;
 }
 double MPID_Wtick(void)
 {
@@ -370,6 +346,10 @@ void MPID_Wtime_acc( MPID_Time_t *t1, MPID_Time_t *t2, MPID_Time_t *t3 )
  * Note that this uses a thread-safe initialization procedure in the
  * event that multiple threads invoke this routine
  */
+#undef FUNCNAME
+#define FUNCNAME MPID_Wtick
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 double MPID_Wtick( void )
 {
     MPIU_THREADSAFE_INIT_DECL(initTick);

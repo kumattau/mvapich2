@@ -46,7 +46,7 @@ static inline void MPIDI_CH3_Prepare_rndv(MPIDI_VC_t *vc, MPID_Request *sreq)
 }
 
 #undef FUNCNAME
-#define FUNCNAME MPIDI_CH3_iSendv
+#define FUNCNAME MPIDI_CH3_iStartRndvMsg
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3_iStartRndvMsg(MPIDI_VC_t * vc,
@@ -143,11 +143,12 @@ int MPIDI_CH3_iStartRmaRndv(MPIDI_VC_t * vc,
 
     DEBUG_PRINT("sreq before adjust iov0.len %d\n",
                 sreq->dev.iov[control_cnt].MPID_IOV_LEN);
-    memcpy((void *) iov, (void *) sreq->dev.iov,
+    MPIU_Memcpy((void *) iov, (void *) sreq->dev.iov,
            sizeof(MPID_IOV) * control_cnt);
     /* we adjust iov because the rndv process assume the data starts from the first
      * vector of iov array */
-    memcpy((void *) sreq->dev.iov,
+    /* We can't use MPIU_Memcpy due to the overlapping check when using the debug flags.*/
+    memmove((void *) sreq->dev.iov,
            (void *) &sreq->dev.iov[control_cnt],
            sizeof(MPID_IOV) * (sreq->dev.iov_count - control_cnt));
 
@@ -224,7 +225,7 @@ int MPIDI_CH3_iStartGetRndv(MPIDI_VC_t * vc,
     int n_iov = num_control + 1;
     iov[0].MPID_IOV_BUF = (void *) get_rndv;
     iov[0].MPID_IOV_LEN = sizeof(MPIDI_CH3_Pkt_get_rndv_t);
-    memcpy((void *) &iov[1], (void *) control_iov,
+    MPIU_Memcpy((void *) &iov[1], (void *) control_iov,
            sizeof(MPID_IOV) * num_control);
 
     MPIDI_CH3_Prepare_rndv(vc, sreq);

@@ -152,7 +152,7 @@ static int _rdma_pmi_exchange_addresses(int pg_rank, int pg_size,
     CHECK_UNEXP((len_local > val_max_sz), "local address length is larger then string length");
 
     /* Be sure to use different keys for different processes */
-    memset(attr_buff, 0, IBA_PMI_ATTRLEN * sizeof(char));
+    MPIU_Memset(attr_buff, 0, IBA_PMI_ATTRLEN * sizeof(char));
     snprintf(attr_buff, IBA_PMI_ATTRLEN, "MVAPICH2_%04d", pg_rank);
 
     /* put the kvs into PMI */
@@ -176,8 +176,8 @@ static int _rdma_pmi_exchange_addresses(int pg_rank, int pg_size,
         /* get lhs and rhs processes' data */
         j = (i == 0) ? lhs : rhs;
         /* Use the key to extract the value */
-        memset(attr_buff, 0, IBA_PMI_ATTRLEN * sizeof(char));
-        memset(val_buff, 0, IBA_PMI_VALLEN * sizeof(char));
+        MPIU_Memset(attr_buff, 0, IBA_PMI_ATTRLEN * sizeof(char));
+        MPIU_Memset(val_buff, 0, IBA_PMI_VALLEN * sizeof(char));
         snprintf(attr_buff, IBA_PMI_ATTRLEN, "MVAPICH2_%04d", j);
         MPIU_Strncpy(key, attr_buff, key_max_sz);
 
@@ -209,7 +209,7 @@ static struct ibv_qp *create_qp(struct ibv_pd *pd,
 {
     struct ibv_qp_init_attr boot_attr;
 
-    memset(&boot_attr, 0, sizeof boot_attr);
+    MPIU_Memset(&boot_attr, 0, sizeof boot_attr);
     boot_attr.cap.max_send_wr   = 128;
     boot_attr.cap.max_recv_wr   = 128;
     boot_attr.cap.max_send_sge  = rdma_default_max_sg_list;
@@ -231,8 +231,7 @@ static int _find_active_port(struct ibv_context *context)
 
     for (j = 1; j <= RDMA_DEFAULT_MAX_PORTS; ++ j) {
         if ((! ibv_query_port(context, j, &port_attr)) &&
-             port_attr.state == IBV_PORT_ACTIVE &&
-             (port_attr.lid || (!port_attr.lid && use_iboeth))) {
+             port_attr.state == IBV_PORT_ACTIVE) {
             return j;
         }
     }
@@ -270,7 +269,7 @@ static int _setup_ib_boot_ring(struct init_addr_inf * neighbor_addr,
     CHECK_RETURN(ret, "Could not modify boot qp to INIT");
 
     /**********************  INIT --> RTR  ************************/
-    memset(&qp_attr, 0, sizeof qp_attr);
+    MPIU_Memset(&qp_attr, 0, sizeof qp_attr);
     qp_attr.qp_state    =   IBV_QPS_RTR;
     qp_attr.rq_psn      =   rdma_default_psn;
     qp_attr.max_dest_rd_atomic  =   rdma_default_max_rdma_dst_ops;
@@ -319,7 +318,7 @@ static int _setup_ib_boot_ring(struct init_addr_inf * neighbor_addr,
     }
 
     /************** RTS *******************/
-    memset(&qp_attr, 0, sizeof qp_attr);
+    MPIU_Memset(&qp_attr, 0, sizeof qp_attr);
     qp_attr.qp_state        = IBV_QPS_RTS;
     qp_attr.sq_psn          = rdma_default_psn;
     qp_attr.timeout         = rdma_default_time_out;
@@ -401,6 +400,7 @@ int rdma_setup_startup_ring(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                 proc->boot_qp_hndl[1]->qp_num
                 );
     } else {
+        /* printf("Not using RDMAOE\r\n"); */
         sprintf(ring_qp_out, "%08x:%08x:%08x:",
                  get_local_lid(MPIDI_CH3I_RDMA_Process.nic_context[0],
                                port),
@@ -540,7 +540,7 @@ int rdma_ring_based_allgather(void *sbuf, int data_size,
         char* rbufProxy = (char*) rbuf;
 
         /* copy self data*/
-        memcpy(rbufProxy+data_size*pg_rank, sbuf, data_size);
+        MPIU_Memcpy(rbufProxy+data_size*pg_rank, sbuf, data_size);
 
         /* post receive*/
         for(i = 0; i < MPD_WINDOW; i++) {
@@ -701,6 +701,8 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
     struct ibv_wc rc;
     MPIDI_VC_t * vc;
 
+    int result;
+
     /* Post the window of recvs: The first entry
      * is not posted since it is used for the
      * initial send
@@ -735,8 +737,8 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
 
     /* get hostname stuff */
 
-    gethostname(hostname, HOSTNAME_LEN);
-    if (!hostname) {
+    result = gethostname(hostname, HOSTNAME_LEN);
+    if (result!=0) {
         MPIU_Error_printf("Could not get hostname\n");
         exit(1);
     }

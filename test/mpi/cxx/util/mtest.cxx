@@ -23,6 +23,9 @@ using namespace std;
 static int dbgflag = 0;         /* Flag used for debugging */
 static int wrank = -1;          /* World rank */
 static int verbose = 0;         /* Message level (0 is none) */
+
+static void MTestRMACleanup( void );
+
 /* 
  * Initialize and Finalize MTest
  */
@@ -95,6 +98,9 @@ void MTest_Finalize( int errs )
 	}
 	cout.flush();
     }
+
+    // Clean up any persistent objects that we allocated
+    MTestRMACleanup();
 }
 
 /*
@@ -412,13 +418,14 @@ int MTestCheckRecv( MPI::Status &status, MTestDatatype *recvtype )
     int count;
     int errs = 0;
 
-    if (status) {
-	count = status.Get_count( recvtype->datatype );
-	
-	/* Check count against expected count */
-	if (count != recvtype->count) {
-	    errs ++;
-	}
+    /* Note that status may not be MPI_STATUS_IGNORE; C++ doesn't include 
+       MPI_STATUS_IGNORE, instead using different function prototypes that
+       do not include the status argument */
+    count = status.Get_count( recvtype->datatype );
+    
+    /* Check count against expected count */
+    if (count != recvtype->count) {
+	errs ++;
     }
 
     /* Check received data */
@@ -514,10 +521,10 @@ int MTestGetIntracommGeneral( MPI::Intracomm &comm, int min_size,
 	    
 	    if (allowSmaller && newsize >= min_size) {
 		rank = MPI::COMM_WORLD.Get_rank();
-		*comm = MPI::COMM_WORLD.Split( rank < newsize, rank );
+		comm = MPI::COMM_WORLD.Split( rank < newsize, rank );
 		if (rank >= newsize) {
 		    comm.Free();
-		    *comm = MPI::COMM_NULL;
+		    comm = MPI::COMM_NULL;
 		}
 	    }
 	    else {
@@ -586,6 +593,10 @@ int MTestGetIntercomm( MPI::Intercomm &comm, int &isLeftGroup, int min_size )
        MPI::COMM_NULL is always considered large enough.  The size is
        the sum of the sizes of the local and remote groups */
     while (!done) {
+	comm          = MPI::COMM_NULL;
+	isLeftGroup   = 0;
+	interCommName = "MPI_COMM_NULL";
+
 	switch (interCommIdx) {
 	case 0:
 	    /* Split comm world in half */
@@ -679,7 +690,14 @@ int MTestGetIntercomm( MPI::Intercomm &comm, int &isLeftGroup, int min_size )
 	    done = true;
     }
 
+    /* we are only done if all processes are done */
+    MPI::COMM_WORLD.Allreduce(MPI_IN_PLACE, &done, 1, MPI::INT, MPI::LAND);
+
     interCommIdx++;
+
+    if (!done && comm != MPI::COMM_NULL) {
+	comm.Free();
+    }
     return interCommIdx;
 }
 /* Return the name of an intercommunicator */
@@ -880,4 +898,12 @@ void MTestFreeWin( MPI::Win &win )
     }
     win.Free();
 }
+static void MTestRMACleanup( void )
+{
+    if (mem_keyval != MPI::KEYVAL_INVALID) {
+	MPI::Win::Free_keyval( mem_keyval );
+    }
+}
+#else 
+static void MTestRMACleanup( void ) {}
 #endif

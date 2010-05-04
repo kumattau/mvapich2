@@ -432,7 +432,7 @@ int MPIDI_CH3I_Progress_handle_sctp_event(MPIDU_Sctp_event_t * event)
 		}
 
                 /* get VC from an existing PG */
-		MPIDI_PG_Get_vc(pg, pkt->sc_open_req.pg_rank, &vc);
+		MPIDI_PG_Get_vc_set_active(pg, pkt->sc_open_req.pg_rank, &vc);
 		MPIU_Assert(vc->pg_rank == pkt->sc_open_req.pg_rank);
 		result->vc = vc;
                 vc->ch.sinfo_assoc_id = result->assoc_id;
@@ -622,6 +622,9 @@ int MPIDI_CH3I_Progress_handle_sctp_event(MPIDU_Sctp_event_t * event)
             } else {
                 /* not a temporary VC */
 
+                /* FIXME why would the vc ref_count be zero w/o being destroyed yet?
+                 * A check against zero like this is usually not
+                 * thread-safe...*/
                 if(vc->ref_count == 0 && vc->pg != NULL  && vc->pg->ref_count == 1 ) {
                     /* MPIDI_PG_Destroy will be called in the upcall below, so do the
                      *  necessary steps since this VC will be destroyed.
@@ -1265,9 +1268,10 @@ int MPIDU_Sctp_wait(int fd, int timeout, MPIDU_Sctp_event_t * event)
 	/* WRITE LOOP ends */
 
 	/* can't spin forever */
-	if(!SPIN(timeout))
+	if(!SPIN(timeout)) {
+            MPIDU_Sctp_event_dequeue(event);
 	    break;
-
+        }
     } 
 
 

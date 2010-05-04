@@ -14,7 +14,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-
+#include "mpidimpl.h"
 #include "mpidi_ch3i_rdma_conf.h"
 
 #if defined(CKPT)
@@ -457,9 +457,8 @@ int CR_Thread_loop()
         FD_ZERO(&set);
         FD_SET(MPICR_MPD_fd, &set);
 
-        if (select(MPICR_MPD_fd + 1, &set, NULL, NULL, NULL) < 0 && errno != EINTR)
-        {   
-            perror("select()");
+        if (select(MPICR_MPD_fd + 1, &set, NULL, NULL, NULL) < 0)
+        {
             CR_ERR_ABORT("select failed\n");
         }
 
@@ -939,7 +938,7 @@ void MPIDI_CH3I_CR_Handle_recv(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_type_t msg_type, vb
                     CR_DBG("Found a address match req: %p\n", sreq);
 
                     /*FIXME: Is address match enough? */
-                    memcpy(sreq->mrail.rkey, msg->recv_buf_rkey, sizeof(uint32_t) * MAX_NUM_HCAS);
+                    MPIU_Memcpy(sreq->mrail.rkey, msg->recv_buf_rkey, sizeof(uint32_t) * MAX_NUM_HCAS);
                     CR_DBG("rkey updated hca0:%x\n", sreq->mrail.rkey[0]);
                 }
 
@@ -1417,7 +1416,7 @@ int CR_IBU_Prep_remote_update()
                 if (cts_header->rndv.buf_addr == temp->mrail.rndv_buf)
                 {
                     CR_DBG("Found a match in local pending cts\n");
-                    memcpy(cts_header->rndv.rkey, rkey, sizeof(uint32_t) * MAX_NUM_HCAS);
+                    MPIU_Memcpy(cts_header->rndv.rkey, rkey, sizeof(uint32_t) * MAX_NUM_HCAS);
                 }
             }
 
@@ -1450,7 +1449,7 @@ int CR_IBU_Prep_remote_update()
                     if (cts_header->rndv.buf_addr == temp->mrail.rndv_buf)
                     {
                         CR_DBG("Found a match in local cm queue\n");
-                        memcpy(cts_header->rndv.rkey, rkey, sizeof(uint32_t) * MAX_NUM_HCAS);
+                        MPIU_Memcpy(cts_header->rndv.rkey, rkey, sizeof(uint32_t) * MAX_NUM_HCAS);
                     }
                 }
 
@@ -1462,7 +1461,7 @@ int CR_IBU_Prep_remote_update()
 
         /* Prepare remote update packet. */
         msg.recv_mem_addr = temp->mrail.rndv_buf;
-        memcpy(msg.recv_buf_rkey, rkey, sizeof(uint32_t) * MAX_NUM_HCAS);
+        MPIU_Memcpy(msg.recv_buf_rkey, rkey, sizeof(uint32_t) * MAX_NUM_HCAS);
         
         /*FIXME: use recv_mem_addr as only identifier*/ 
         CR_DBG("recv_mem_addr %p, rkey0 %x\n", msg.recv_mem_addr, msg.recv_buf_rkey[0]);
@@ -1470,7 +1469,7 @@ int CR_IBU_Prep_remote_update()
         v = get_vbuf();
         p = (MPIDI_CH3I_MRAILI_Pkt_comm_header*) v->pheader;
         p->type = MPIDI_CH3_PKT_CR_REMOTE_UPDATE;
-        memcpy(v->buffer + sizeof(MPIDI_CH3I_MRAILI_Pkt_comm_header), &msg, sizeof(msg));
+        MPIU_Memcpy(v->buffer + sizeof(MPIDI_CH3I_MRAILI_Pkt_comm_header), &msg, sizeof(msg));
 
         /* Push update packet to message log queue. */
         entry = (MPIDI_CH3I_CR_msg_log_queue_entry_t*) MPIU_Malloc(sizeof(MPIDI_CH3I_CR_msg_log_queue_entry_t));
@@ -1694,7 +1693,7 @@ static int CR_FTB_Init(int rank, char *sessionid)
                                          cr_ftb_events, CR_FTB_EVENTS_MAX);
     if (ret != FTB_SUCCESS) goto err_declare_events;
 
-    str = malloc(sizeof(char) * FTB_MAX_SUBSCRIPTION_STR);
+    str = MPIU_Malloc(sizeof(char) * FTB_MAX_SUBSCRIPTION_STR);
     if (!str) goto err_malloc;
 
     snprintf(str, FTB_MAX_SUBSCRIPTION_STR,
@@ -1715,7 +1714,7 @@ static int CR_FTB_Init(int rank, char *sessionid)
 
     setenv("PMI_PORT", str, 1);
 
-    free(str);
+    MPIU_Free(str);
     ftb_init_done = 1;
     return(0);
 
@@ -1797,7 +1796,7 @@ int CR_MPDU_readline(int fd, char *buf, int maxlen)
     char c;
     char* ptr = buf;
 
-    for (; n < maxlen; ++n)
+    for (n=1; n < maxlen; ++n)
     {
 again:
         rc = read(fd, &c, 1);
