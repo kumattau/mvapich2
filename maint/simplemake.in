@@ -1,6 +1,18 @@
 #! @PERL@ -w
 # -*- Mode: perl; -*-
 $abs_mpich2srcdir = "@abs_mpich2srcdir@";
+# Copyright (c) 2003-2010, The Ohio State University. All rights
+# reserved.
+#
+# This file is part of the MVAPICH2 software package developed by the
+# team members of The Ohio State University's Network-Based Computing
+# Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+#
+# For detailed copyright and licensing information, please refer to the
+# copyright file COPYRIGHT in the top level MVAPICH2 directory.
+#
+
+#
 # 
 # (C) 2006 by Argonne National Laboratory.
 #     See COPYRIGHT in top-level directory.
@@ -406,7 +418,7 @@ $top_builddir_name =         "top_builddir    = \@master_top_builddir\@";
 # Sigh.  ginstall (!!!) doesn't support the -p switch.
 # This means that there is no way to install a library under Darwin
 # without defining INSTALL_DATA as install -p, which configure 
-# does not figure out(!).  The MPICH2 configure does check for 
+# does not figure out(!).  The MVAPICH2 configure does check for 
 # whether install works with or without -p.
 #
 # CREATESHLIB is a special script for shared libraries
@@ -1068,6 +1080,21 @@ sub ReadMfile {
 	elsif (/^DEPADD\s*=\s*(.*)\s*$/) {
 	    $depadd_all = $1;
 	}
+# <_OSU_MVAPICH_>
+# TODO: to remove from codebase
+#        elsif (/^lib([@\${}\(\)\w-]*)_a_LIBADD\s*=\s*(.*)\s*$/) {
+#	    # This mimics the automake LIBADD target - objects in the 
+#	    # named libraries will be added to the target library
+#	    # in the library build target
+#	    $lib_addobjects{$1} = $2;
+#	}
+#        elsif (/^lib([@\${}\(\)\w-]*)_la_LIBADD\s*=\s*(.*)\s*$/) {
+#	    # This mimics the automake LIBADD target - objects in the 
+	    # named libraries will be added to the target library
+	    # in the library build target
+#	    $libla_addobjects{$1} = $2;
+#	}
+# </_OSU_MVAPICH_>
 	elsif (/^([\w-]+)\s*=\s*(.*)\s*$/) {
 	    $other_vars .= "$origline";
 	    # Save all variable names
@@ -1282,6 +1309,10 @@ sub DefaultVariables {
 	    # Add the definition of libtool in case we're using
 	    # libtool to provide the shared library.
 	    printMakeVariable( FD, "LIBTOOL", "\@LIBTOOL\@" );
+            # <_OSU_MVAPICH_>
+            printMakeVariable(FD, "LDFLAGS", "\@LDFLAGS\@");
+            printMakeVariable(FD, "LIBS", "\@LIBS\@");
+            # </_OSU_MVAPICH_>
 	    printMakeVariable( FD, "CREATESHLIB", "\@CREATESHLIB\@" );
 	    printMakeVariable( FD, "ABIVERSION", "\@ABIVERSION\@" );
 	    printMakeVariable( FD, "LIBS", "\@LIBS\@" );
@@ -1293,6 +1324,10 @@ sub DefaultVariables {
 	    # Add the definition of libtool incase we're using
 	    # libtool to provide the shared library.
 	    printMakeVariable( FD, "LIBTOOL", "\@LIBTOOL\@" );
+            # <_OSU_MVAPICH_>
+            printMakeVariable(FD, "LDFLAGS", "\@LDFLAGS\@");
+            printMakeVariable(FD, "LIBS", "\@LIBS\@");
+            # </_OSU_MVAPICH_>
 	    printMakeVariable( FD, "CREATESHLIB", "\@CREATESHLIB\@" );
 	    printMakeVariable( FD, "LIBS", "\@LIBS\@" );
 	    printMakeVariable( FD, "LDFLAGS", "\@LDFLAGS\@" );
@@ -1935,6 +1970,8 @@ sub ClearVars {
     %programs = ();
     %pgm_ldadd = ();
     $ldadd_all = "";
+    %lib_addobjects = ();
+    %libla_addobjects = ();
     %pgm_depadd = ();
     $depadd_all = "";
     %altCompile = ();
@@ -2893,9 +2930,17 @@ sub TargetClean {
 	# this target needs to remove entries that have dependencies
 	# (e.g., the Makefile : Makefile.in : Makefile.sm dependency)
 	&TargetInit( "maintainer-clean" );
+# <_OSU_MVAPICH_>
+	print FD "clean";
+# </_OSU_MVAPICH_>
 	if (defined($usertargets{"maintainer-clean-local"})) {
 	    print FD " maintainer-clean-local";
 	}
+# <_OSU_MVAPICH_> 
+	if (defined($usertargets{"distclean-local"})) {
+	    print FD " distclean-local";
+	}
+# </_OSU_MVAPICH_>
 	print FD " distclean-xxx remove-genmakefiles";
 	&TargetPostamble( "maintainer-clean" );
 	print FD "$newline";
@@ -2918,13 +2963,16 @@ sub TargetClean {
 	# since some headers may be created by hand.  We'll ignore
 	# this for now, since we uniformly use autoheader (and
 	# simplemake runs autoheader if it finds AC_CONFIG_HEADER)
-	if ($configure_has_config_headers ne "no") {
-	    print FD "\t-rm -f ";
-	    foreach $file (split(/\s+/,$configure_has_config_headers)) {
-		print FD "$file.in ";
-	    }
-	    print FD "$newline";
-	}
+# <_OSU_MVAPICH_>
+# distclean should only remove files created by configure or make. 
+#	if ($configure_has_config_headers ne "no") {
+#	    print FD "\t-rm -f ";
+#	    foreach $file (split(/\s+/,$configure_has_config_headers)) {
+#		print FD "$file.in ";
+#	    }
+#	    print FD "$newline";
+#	}
+# </_OSU_MVAPICH_>
 	# We also need to remove configure and autom4ate/ if present
     }
     &TargetRmMakefiles( $otherMakefiles );
@@ -3046,6 +3094,43 @@ sub TargetLibraries {
 	&LibraryTimestampFix( $lib, $libloc )
     }
 }
+
+# <_OSU_MVAPICH_>
+# TODO: to remove from codebase
+#
+# Add objects from a given library.  This version just handles standard
+# libraries (.a), not libtool libraries (.la).
+#sub LibraryAddObjects {
+#    my ($lib, $libloc) = @_;
+#
+#    print FD "\tmkdir .libtmp$newline";
+#    print FD "\trm -f .libtmp/*$newline";
+#    foreach $objlib (split(/\s+/,$lib_addobjects{$lib})) {
+	# If the added library is not an absolute path and is local,
+	# add ../
+#	if ($objlib =~ /^lib/) { $objlib = "../$objlib"; }
+#	print FD "\t(cd .libtmp \&\& \${AR} x $objlib)$newline";
+#    }
+#    print FD "\t\${AR} cru lib${lib}.a .libtmp/*$newline";
+#    print FD "\trm -rf .libtmp$newline";
+#}
+
+# This is a stub for supporting libtool archives
+#sub LibraryLAAddObjects {
+#    my ($lib, $libloc) = @_;
+
+#    print FD "\tmkdir .libtmp$newline";
+#    print FD "\trm -f .libtmp/*$newline";
+#    foreach $objlib (split(/\s+/,$libla_addobjects{$lib})) {
+	# If the added library is not an absolute path and is local,
+	# add ../
+#	if ($objlib =~ /^lib/) { $objlib = "../$objlib"; }
+#	print FD "\t(cd .libtmp \&\& \${LIBTOOL} \${AR} x $objlib)$newline";
+#    }
+#    print FD "\t\${LIBTOOL} \${AR} cru lib${lib}.a .libtmp/*$newline";
+#    print FD "\trm -rf .libtmp$newline";
+#}
+# </_OSU_MVAPICH_>
 
 #
 # Fix for problems with timestamps.  If the file is not local (not

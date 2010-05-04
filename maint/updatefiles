@@ -1,6 +1,8 @@
-#! /bin/sh
+#! /bin/sh 
+#! /bin/sh -x
+#export PS4='$LINENO '
 #
-# Copyright (c) 2003-2009, The Ohio State University. All rights
+# Copyright (c) 2003-2010, The Ohio State University. All rights
 # reserved.
 #
 # This file is part of the MVAPICH2 software package developed by the
@@ -49,15 +51,26 @@ do_smpdversion=yes
 # Allow MAKE to be set from the environment
 MAKE=${MAKE-make}
 
+# ltdirs are the directories that make use of libtool and 
+# require libtoolize 
+# externals are the directories for external packages that we have 
+# included into MPICH2
+externals="src/pm/hydra/tools/bind/hwloc/hwloc"
+ltdirs="src/pm/hydra"
 
+# amdirs are the directories that make use of autoreconf
+amdirs="src/openpa src/pm/hydra src/mpl"
 # List of steps that we will consider
 # (We do not include depend because the values for depend are not just yes/no)
 AllSteps="geterrmsgs bindings f77 f77tof90 build_configure genstates makefiles smpdversion getparms"
 stepsCleared=no
 
-# Options for some steps
-autoconfdir=""
-#
+# Extract defaults from the environment
+autoconfdir=$MPICH2_AUTOCONF_DIR
+automakedir=$MPICH2_AUTOMAKE_DIR
+libtooldir=$MPICH2_LIBTOOL_DIR
+autotoolsdir=$MPICH2_AUTOTOOLS_DIR
+
 # Extract the arguments intended for updatefiles.  Any others are
 # given to simplemake.  
 temp_args=""
@@ -67,8 +80,8 @@ for arg in "$@" ; do
 	set -x
 	;;
 	
-    -do=*)
-    opt=`echo A$arg | sed -e 's/A-do=//'`
+    -do=*|--do=*)
+    opt=`echo A$arg | sed -e 's/^A--*do=//'`
     # Handle some synonyms
     case $opt in 
 	build-configure|configure) opt=build_configure ;;
@@ -125,6 +138,15 @@ for arg in "$@" ; do
     # Select a location for a different autoconf
     autoconfdir=`echo "A$arg" | sed -e 's/.*=//'`
     ;;
+    -with-automake=*|--with-automake=*)
+    automakedir=`echo "A$arg" | sed -e 's/.*=//'`
+    ;;
+    -with-libtool=*|--with-libtool=*)
+    libtooldir=`echo "A$arg" | sed -e 's/.*=//'`
+    ;;
+    -with-autotools=*|--with-autotools=*)
+    autotoolsdir=`echo "A$arg" | sed -e 's/.*=//'`
+    ;;
 
     -distrib)
     do_depend=no
@@ -134,20 +156,28 @@ for arg in "$@" ; do
 
     -help|--help|-usage|--usage)
     cat <<EOF
-    updatefiles [ --with-autoconf=dir ] [ -do=stepname ]
-                [ args for simplemake ] 
-    Update the files in the MVAPICH2 build tree.  This file builds the 
+    updatefiles [ --with-autoconf=dir ] [ --with-automake=dir ] \\
+                [ --with-libtool=dir ] [ --with-autotools=dir ] \\
+                [ --do=stepname ] [ args for simplemake ]
+    Update the files in the MPICH2 build tree.  This file builds the 
     configure files, creates the Makefile.in files (using the simplemake
     program), extracts the error messages.
 
-    You can use --with-autoconf=dir to specify a directory that contains
-    an alternate autoconf and autoheader.  
+    You can use --with-autoconf=dir to specify a directory that
+    contains an alternate autoconf and autoheader.  Similarly
+    --with-automake can be used to specify the location of automake
+    and aclocal and --with-libtool to specify the location of
+    libtoolize. If all the autotools are installed in the same
+    location, they can be specified by the --with-autotools option.
 
-    Use -do=stepname to update only a single step.  For example, 
-    -do=build_configure only updates the configure scripts.  The available
-    steps are
-    $AllSteps
+    Use --do=stepname to update only a single step.  For example, 
+    --do=build_configure only updates the configure scripts.  The available
+    steps are:
 EOF
+    for step in $AllSteps
+    do
+       echo "        $step"
+    done
     exit
     ;;
     *)
@@ -155,6 +185,29 @@ EOF
     ;;
     esac
 done
+
+if [ -n "$autotoolsdir" ] ; then
+    if [ -n "$autoconfdir" -o -n "$automakedir" -o -n "$libtooldir" ] ; then
+        # Don't permit --with-autotools together with --with-autoconf,
+        # --with-automake or --with-libtool because which argument
+        # takes precedence is not obvious without immediate
+        # explanation.  --with-autotools is really only present to
+        # make life a little easier for those who preferred the old
+        # behavior where --with-autoconf was used to specify the
+        # location of both autoconf and automake.
+        cat <<EOT
+Error: --with-autotools was specified together with --with-autoconf,
+--with-automake or --with-libtool.  --with-autotools is incompatible
+with the other options.  Please specify only one set or the other.
+EOT
+        exit 1
+    else
+        autoconfdir=$autotoolsdir
+        automakedir=$autotoolsdir
+	libtooldir=$autotoolsdir
+    fi
+fi
+
 # Reset the arguments.  Note that this doesn't handle arguments that contain
 # blanks.  I hope that we don't need those.
 set -- $temp_args
@@ -163,6 +216,25 @@ if [ $at_top = "no" ] ; then
     echo "Must execute at top level directory for now"
     exit 1
 fi
+# 
+# On some systems (including Solaris), using -nt in a test statement causes
+# the shell script to abort.  We test for this here to make updatefiles more
+# robust in this case.  We use conftest as the name of the test program
+# because autoconf also uses this name, so we know that it will be ok.
+testNTfails=yes
+rm -rf conftest
+cat <<EOF >>conftest
+#! /bin/sh
+test a -nt b
+exit 2
+EOF
+chmod +x conftest
+./conftest 1>/dev/null 2>&1 >/dev/null
+st=$?
+if [ "$st" = 2 ] ; then
+    testNTfails=no
+fi
+rm -rf conftest
 #
 # Determine the autoconf to use.  If --with-autoconf was set, use 
 # autoconf and autoheader from that directory
@@ -171,12 +243,18 @@ if [ -n "$autoconfdir" ] ; then
     if [ -x $autoconfdir/autoconf -a -x $autoconfdir/autoheader ] ; then
         autoconf=$autoconfdir/autoconf
         autoheader=$autoconfdir/autoheader
+        autoreconf=$autoconfdir/autoreconf
+        autom4te=$autoconfdir/autom4te
 	# Simplemake looks in environment variables for the autoconf
 	# and autoheader to use
 	AUTOCONF=$autoconf
 	AUTOHEADER=$autoheader
+        AUTORECONF=$autoreconf
+        AUTOM4TE=$autom4te
 	export AUTOCONF
 	export AUTOHEADER
+        export AUTORECONF
+        export AUTOM4TE
     else
         echo "Could not find executable autoconf and autoheader in $autoconfdir"
 	exit 1
@@ -184,7 +262,43 @@ if [ -n "$autoconfdir" ] ; then
 else
     autoconf=${AUTOCONF:-autoconf}
     autoheader=${AUTOHEADER:-autoheader}
+    autoreconf=${AUTORECONF:-autoreconf}
+    autom4te=${AUTOM4TE:-autom4te}
 fi
+if [ -n "$automakedir" ] ; then
+    if [ -x "$automakedir/aclocal" -a -x "$automakedir/automake" ] ; then
+        # OpenPA uses autoreconf (and consequently aclocal and automake)
+        # but autoreconf uses whatever aclocal/automake is in your path,
+        # not the one from the same autoconf installation as the
+        # autoreconf you are invoking.  So we export ACLOCAL (etc...) so
+        # that it uses the right tools when specifying --with-automake.
+        automake=$automakedir/automake
+        aclocal=$automakedir/aclocal
+        AUTOMAKE=$automake
+        ACLOCAL=$aclocal
+        export AUTOMAKE
+        export ACLOCAL
+    else
+        echo "could not find executable aclocal and automake in $automakedir"
+        exit 1
+    fi
+else
+    automake=${AUTOMAKE:-automake}
+    aclocal=${ACLOCAL:-aclocal}
+fi
+if [ -n "$libtooldir" ] ; then
+    if [ -x "$libtooldir/libtoolize" ] ; then
+        libtoolize=$libtooldir/libtoolize
+        LIBTOOLIZE=$libtoolize
+        export LIBTOOLIZE
+    else
+        echo "could not find executable libtoolize in $libtooldir"
+        exit 1
+    fi
+else
+    libtoolize=${LIBTOOLIZE:-libtoolize}
+fi
+
 #
 # Check that you have a working autoconf.  Autoconf 2.57 is not compatible with
 # previous versions of autoconf (!!), even 2.52 (!!!).  
@@ -195,7 +309,8 @@ if [ ! -d .tmp ] ; then
     mkdir .tmp 2>&1 >/dev/null
 fi
 # As of autoconf 2.59, the command line arguments changed (again)
-# We now require 2.59 everywhere, so we just double check
+# We now require 2.59 most places, and 2.62 in several (including the 
+# top-level), so we just double check
 # Somewhere between 2.12 and 2.58, -l changed to -B
 # Argh.  In autoconf 2.59, -B doesn't work.  You must use -I instead of -B (!!)
 # Find the configure version
@@ -203,7 +318,9 @@ fi
 # -1 is used for unknown
 acSubversion=-1
 acIncDirFlag=-I
-for ver in 62 61 60 59 ; do
+# Try to keep at least one version ahead of autoconf (e.g., if current is
+# 2.64, include a test for 2.65)
+for ver in 65 64 63 62 61 60 59 ; do
     rm -f .tmp/configure.in .tmp/configure
     cat >.tmp/configure.in <<EOF
 AC_PREREQ(2.$ver)
@@ -216,7 +333,17 @@ done
 rm -f .tmp/configure.in .tmp/configure
 if [ "$acSubversion" -gt 0 ] ; then
     acVersion="2.$acSubversion"
-    echo "You have autoconf version $acVersion."
+    echo "You have autoconf version $acVersion or greater."
+    # this used to be a check for >=63, but we only work with exactly 2.63 right now
+    if [ "$acSubversion" -ne 63 ] ; then
+       cat <<EOF
+autoconf version 2.63 (exactly) is required
+EOF
+       if [ "$do_build_configure" = yes ] ; then 
+            echo "Exiting updatefiles...."
+            exit 1
+       fi
+    fi
 else
     cat <<EOF
 You either do not have autoconf in your path or updatefiles was unable to 
@@ -487,9 +614,6 @@ if [ $do_makefiles = yes ] ; then
     fi
 fi
 
-autoreconf=`find \( -name '.autoreconf' \) -printf '-wholename "%h" -prune -o '`
-
-#
 # Create the configure files and run autoheader
 # Eventually, make this a test for find available.  Perhaps
 # find . -name configure.in > /dev/null 2>&1
@@ -506,37 +630,42 @@ if [ $do_build_configure = yes ] ; then
 	# check)
 	if [ ! -s maint/conftimestamp ] ; then
 	    echo "Rebuilding all configure script because of missing confdbtimestamp"
-	    eval find . $autoreconf -name configure -print | grep -v maint/configure | xargs rm -f
+	    find . -name configure -print | grep -v maint/configure | xargs rm -f
 	    # If we don't delete the autom4te.cache files, bugs in 
 	    # autoconf may fail to correctly update configure
 	    # Gah. Some xargs don't accept -r, other break if there is no
 	    # input.  To avoid that, we do this in two steps: first the
 	    # find, then the rm (if there are any files)
 	    rm -f .atmp
-	    eval find . $autoreconf -name autom4te.cache -print > .atmp 2>/dev/null
+	    find . -name autom4te.cache > .atmp 2>/dev/null
 	    if [ -s .atmp ] ; then xargs rm -f < .atmp ; fi
 	    rm -f .atmp
 	    date > maint/conftimestamp
 	else
-	    # We can't us a status check here because find will always
+	    # We can't use a status check here because find will always
 	    # report success, even if there are no newer files in confdb
 	    files=`find confdb -newer  maint/conftimestamp 2>&1` 
 	    if [ -n "$files" ] ; then
 		echo "Rebuilding all configure script because of changes in confdb"
- 	        eval find . $autoreconf -name configure -print | grep -v maint/configure | xargs rm -f
+ 	        find . -name configure -print | grep -v maint/configure | xargs rm -f
 	        date > maint/conftimestamp
 	    fi
 	fi
 	#
-
-        for dir in `find . -name '.autoreconf' -printf '%h'`; do
-            echo "Processing $dir with 'autoreconf --install'" && \
-            autoreconf --install $dir
-        done
+# <_OSU_MVAPICH_>    
+# TODO: Remove from codebase this code
+#        for dir in `find . -name '.autoreconf' -printf '%h'`; do
+#            echo "Processing $dir with 'autoreconf --install'" && \
+#            autoreconf -v --install $dir
+#        done
+# </_OSU_MVAPICH_>    
 
         for dir in `find . -name 'configure.in' -print` ; do
             dir=`dirname $dir`
-            test -f $dir/.autoreconf && continue
+# <_OSU_MVAPICH_>    
+# TODO: Remove from codebase  this code
+#            test -f $dir/.autoreconf && continue
+# </_OSU_MVAPICH_>    
 
   	    allowFailure=no
 	    builtConfigure=no
@@ -548,6 +677,27 @@ if [ $do_build_configure = yes ] ; then
 	        # be used instead of this one.
 	        continue
             fi
+	    qtestmaint=`echo $dir | sed -e 's%.*test/mpi/maint.*%FOUNDTESTMAINT%'`
+	    if [ "$qtestmaint" = "FOUNDTESTMAINT" ] ; then
+	        # echo "Found test/maint directory; skipping"
+	        # test/maint has its own updatefiles script, which should 
+	        # be used instead of this one when building that configure
+	        continue
+            fi
+
+	    found=0
+	    for amdir in $amdirs ; do
+		foo=`echo $dir | sed -e 's%.*'"$amdir"'.*%FOUNDFOO%'`
+		if [ "$foo" = "FOUNDFOO" ] ; then
+		    # We'll use autoreconf later in this script for these directories
+		    found=1
+		    break
+		fi
+	    done
+	    if [ "$found" = "1" ] ; then
+		continue
+	    fi
+
 	    if [ -s $dir/Makefile.in ] ; then 
                 #echo "Found $dir/configure.in"
 	        #
@@ -563,13 +713,13 @@ if [ $do_build_configure = yes ] ; then
 		    fi
 		    (cd $dir && \
 			$autoconf $acIncDirFlag . && rm -rf autom4te*.cache )
-	            if grep 'mpi2-other/info/Makefile \\' $dir/configure 2>&1 >/dev/null ; then 
+                    if grep 'mpi2-other/info/Makefile \\^M' $dir/configure 2>&1 >/dev/null ; then
 		        fixBackWhackCtrlMBug=yes
                     fi
 	            # Add other tests here (sigh) as necessary
 	            if [ "$fixBackWhackCtrlMBug" = yes ] ; then
 		        rm -f c.tmp 
-		        sed -e '/"\\/d' -e 's/\\//g' $dir/configure > c.tmp
+                        sed -e '/"\\^M/d' -e 's/\\^M//g' $dir/configure > c.tmp
 		        rm -f $dir/configure
 		        mv c.tmp $dir/configure
 		        chmod a+x $dir/configure
@@ -592,6 +742,10 @@ if [ $do_build_configure = yes ] ; then
 	        if grep 'configure:' $dir/Makefile.in >/dev/null 2>&1 ; then
  	            # The make -q checks whether the target is upto date first;
 	            # if it isn't, we remake it.
+		    # The make target should be for ${srcdir}/configure,
+		    # so in the make line, the target needs to be ./configure
+		    # Using just "configure" is incorrect and will fail with
+		    # some makes.
 		    rm -f $dir/mf.out 
 		    rm -f $dir/mf.newer
 		    date > $dir/mf.newer
@@ -600,10 +754,13 @@ if [ $do_build_configure = yes ] ; then
 		        -e "s%@srcdir@%.%g" \
 		        -e '/include .*alldeps/d' \
 		        -e '/@SET_MAKE@/d' Makefile.in > mf.tmp ;\
-		        if ${MAKE} -q -f mf.tmp configure >mf.out 2>&1 ; then \
+		        if ${MAKE} -q -f mf.tmp ./configure >mf.out 2>&1 ; then \
                     : ; else \
 	            echo "Found $dir/configure.in; executing make configure target" ; \
-	            ${MAKE} -f mf.tmp configure ; fi ; rm -f mf.tmp  \
+	            ${MAKE} -f mf.tmp ./configure ; fi ; \
+			if [ -s configure ] ; then rm -f mf.tmp ; \
+			else echo "See `pwd`/mf.tmp for Makefile that failed" ;\
+                        fi ;\
 	            )
 		    # Newer versions of test support -nt, which is
 		    # filea newer-than fileb.  If this doesn't 
@@ -615,19 +772,21 @@ if [ $do_build_configure = yes ] ; then
                     # <_OSU_MVAPICH_>
                     # test -nt is not supported under sh on Solaris.
 		    
-                    #rm -f .foo
-		    #test $dir/configure -nt $dir/mf.newer 2>.foo
-		    # If .foo is empty, there was no error in test with -nt
-		    #if [ ! -s ".foo" ] ; then
-		    #    if [ $dir/configure -nt $dir/mf.newer ] ; then
-                    #        builtConfigure=yes
-		    #    fi
-                    #fi
-		    #rm -f .foo
+#		    if [ "$testNTfails" = "no" ] ; then
+#		        rm -f .foo
+#		        test $dir/configure -nt $dir/mf.newer 2>.foo
+#		        # If .foo is empty, there was no error in test with -nt
+#		        if [ ! -s ".foo" ] ; then
+#		            if [ $dir/configure -nt $dir/mf.newer ] ; then
+#			        builtConfigure=yes
+#		            fi
+#                        fi
+#		        rm -f .foo
+#                    fi
 
                     if [ -n "$(find $dir/configure -prune -newer $dir/mf.newer)" ]; then
                         builtConfigure=yes
-                    fi
+		    fi
                     # </_OSU_MVAPICH_>
 
 		    #
@@ -700,7 +859,7 @@ if [ $do_build_configure = yes ] ; then
 	        #
                 # Under cygwin, sometimes (?) configure ends up containing \^M
 	        # (that's <ctrl>-M).  We may need to add this sed step
-	        # sed -e '/"\"/d' -e 's/\//g'
+	        # sed -e '/"\"/d' -e 's/\//g'
 	        # (the first removes case statements on \^M, the second
 	        # removes the \^M from the ac_config_files statement
 	        fixBackWhackCtrlMBug=no
@@ -709,23 +868,23 @@ if [ $do_build_configure = yes ] ; then
 		    echo "In directory $dir"
 		    exit 1
 	        elif [ -s $dir/configure ] ; then
-	            if grep 'src/Makefile \\ src' $dir/configure 2>&1 >/dev/null ; then 
-		        fixBackWhackCtrlMBug=yes
-	            elif grep 'src/Makefile \\ src' $dir/configure 2>&1 >/dev/null ; then 
-		        fixBackWhackCtrlMBug=yes
-	            elif grep 'attr/Makefile \\ util' $dir/configure 2>&1 >/dev/null ; then 
-		        fixBackWhackCtrlMBug=yes
-	            elif grep 'attr/Makefile \\' $dir/configure 2>&1 >/dev/null ; then 
-		        fixBackWhackCtrlMBug=yes
-	            elif grep 'mpi2-other/info/Makefile \\' $dir/configure 2>&1 >/dev/null ; then 
-		        fixBackWhackCtrlMBug=yes
-	            elif grep 'maint/testmerge \\' $dir/configure 2>&1 >/dev/null ; then 
-		        fixBackWhackCtrlMBug=yes
+                    if grep 'src/Makefile \\ src' $dir/configure 2>&1 >/dev/null ; then
+                        fixBackWhackCtrlMBug=yes
+                    elif grep 'src/Makefile \\^M src' $dir/configure 2>&1 >/dev/null ; then
+                        fixBackWhackCtrlMBug=yes
+                    elif grep 'attr/Makefile \\ util' $dir/configure 2>&1 >/dev/null ; then
+                        fixBackWhackCtrlMBug=yes
+                    elif grep 'attr/Makefile \\^M' $dir/configure 2>&1 >/dev/null ; then
+                        fixBackWhackCtrlMBug=yes
+                    elif grep 'mpi2-other/info/Makefile \\^M' $dir/configure 2>&1 >/dev/null ; then
+                        fixBackWhackCtrlMBug=yes
+                    elif grep 'maint/testmerge \\^M' $dir/configure 2>&1 >/dev/null ; then
+                        fixBackWhackCtrlMBug=yes
                     fi
  	            # Add other tests here (sigh) as necessary
 	            if [ "$fixBackWhackCtrlMBug" = yes ] ; then
 		        rm -f c.tmp 
-  	  	        sed -e '/"\\/d' -e 's/\\//g' $dir/configure > c.tmp
+                        sed -e '/"\\^M/d' -e 's/\\^M//g' $dir/configure > c.tmp
 		        rm -f $dir/configure
 		        mv c.tmp $dir/configure
 		        chmod a+x $dir/configure
@@ -755,6 +914,33 @@ if [ $do_build_configure = yes ] ; then
     fi
 fi
 
+if [ "$do_build_configure" = "yes" -o "$do_makefiles" = "yes" ] ; then
+    # must come after the above autoreconf-like logic because the above
+    # logic will delete the results of this actual autoreconf
+
+    for external in $externals ; do
+       if [ -d "$external" -o -L "$external" ] ; then
+           echo "running third-party initialization"
+           #(cd $external && ./autogen.sh) 
+           (cd $external && ./autogen.sh) || exit 1
+       fi
+    done
+
+    for ltdir in $ltdirs ; do
+	if [ -d "$ltdir" -o -L "$ltdir" ] ; then
+	    echo "running $libtoolize in $ltdir"
+	    (cd $ltdir && $libtoolize) || exit 1
+	fi
+    done
+
+    for amdir in $amdirs ; do
+	if [ -d "$amdir" -o -L "$amdir" ] ; then
+	    echo "running $autoreconf in $amdir"
+	    (cd $amdir && $autoreconf -vif) || exit 1
+	fi
+    done
+fi
+
 if [ -f src/mpe2/maint/updatefiles -a "$do_build_configure" = "yes" ] ; then
     # If we have the mpe2 updatefiles, execute it from the mpe directory
     (cd src/mpe2 && chmod a+x maint/updatefiles && maint/updatefiles )
@@ -764,7 +950,7 @@ if [ $rm_prepost = yes ] ; then
 fi
 if [ "$do_smpdversion" = yes ] ; then
     echo "Creating src/pm/smpd/smpd_version.h"
-    smpdVersion=`cat maint/Version`
+    smpdVersion=`cat maint/Version | grep ^MPICH2_VERSION | cut -f2 -d' '`
     cat >src/pm/smpd/smpd_version.h <<EOF
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
 /*  
@@ -777,14 +963,19 @@ fi
 
 VERSION=`cat maint/Version`
 # <_OSU_MVAPICH_>
-# sed -e "s/%VERSION%/${VERSION}/g" README.vin > README
+#if [ -f README.vin ] ; then
+#    echo "Updating README's version ID."
+#    sed -e "s/%VERSION%/${VERSION}/g" README.vin > README
+#else
+#    echo 'README.vin file not present, unable to update README version number (perhaps we are running in a release tarball source tree?)'
+#fi
 # </_OSU_MVAPICH_>
 
-#
 # The following must be the last statements executed
 if [ -n "$error_summary" ] ; then
     echo " "
     echo "Problems encountered while running updatefiles."
+    echo "These may cause problems when configuring or building MPICH2."
     echo "$error_summary"
 fi
 case $finalStatus in 

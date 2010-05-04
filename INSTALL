@@ -99,7 +99,7 @@ $ maint/updatefiles
 This script will generate all of the source and configuration files you need to
 build MVAPICH2.
 
-Note: If the command "autoconf" on your machine does not run autoconf 2.59 or
+Note: If the command "autoconf" on your machine does not run autoconf 2.62 or
 later, but you do have a new enough autoconf available, then you can specify the
 correct one with the AUTOCONF variable (the AUTOHEADER variable is similar).
 

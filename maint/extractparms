@@ -1,7 +1,10 @@
-#! /usr/bin/perl -w
+#! /usr/bin/env perl
 # (Tested with -w; 2/23/07)
 # 
 # Find the parse.sub routine.
+
+use warnings;
+
 my $maintdir = "maint";
 my $rootdir  = ".";
 if ( ! -s "maint/parse.sub" ) {
@@ -194,7 +197,7 @@ sub OutputWebpage {
     }
     &OutputWebbody;
     if ($wwwFullpage) {
-	print $OUTFD "<\body>\n<\html>\r\n";
+	print $OUTFD "</body>\n</html>\r\n";
     }
 }
 
