@@ -16,7 +16,7 @@ MVAPICH2-1.5-RC1 (05/04/10)
           MPICH2 Nemesis modular design 
         - Support for high-performance intra-node shared memory 
           communication provided by the Nemesis design 
-        - Adaptive RDMA Fastpath with Polling Set for high-performace 
+        - Adaptive RDMA Fastpath with Polling Set for high-performance 
           inter-node communication 
         - Shared Receive Queue (SRQ) support with flow control, 
           uses significantly less memory for MPI library 
@@ -40,7 +40,7 @@ MVAPICH2-1.5-RC1 (05/04/10)
           TCP/IP-CH3 and TCP/IP-Nemesis 
         - Hydra process manager to work with any of the eight interfaces 
           (CH3 and Nemesis channel-based) including OFA-IB-CH3, 
-          OFA-IWARP-CH3, OFA-ROCE-CH3 and TCP/IP-CH3 
+          OFA-iWARP-CH3, OFA-RoCE-CH3 and TCP/IP-CH3 
 
     - MPIEXEC_TIMEOUT is honored by mpirun_rsh
 
