@@ -3,21 +3,56 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
-MVAPICH2-1.5rc1
+MVAPICH2-1.5-RC1 (05/04/10)
 
-* Enhancements since 1.4.1
-    - MPI 2.2 compliant (based on mpich2-1.2p1 release).
-    - Infiniband netmod designed to take advantage of the new Nemesis channel.
-    - More flexible process manager support (both mpirun_rsh and hydra work
-      with all interfaces).
-    - MPIEXEC_TIMEOUT is honored by mpirun_rsh.
+* Features and Enhancements 
+
+    - MPI 2.2 compliant 
+
+    - Based on MPICH2-1.2.1p1 
+
+    - OFA-IB-Nemesis interface design 
+        - OpenFabrics InfiniBand network module support for 
+          MPICH2 Nemesis modular design 
+        - Support for high-performance intra-node shared memory 
+          communication provided by the Nemesis design 
+        - Adaptive RDMA Fastpath with Polling Set for high-performace 
+          inter-node communication 
+        - Shared Receive Queue (SRQ) support with flow control, 
+          uses significantly less memory for MPI library 
+        - Header caching 
+        - Advanced AVL tree-based Resource-aware registration cache 
+        - Memory Hook Support provided by integration with ptmalloc2 
+          library. This provides safe release of memory to the 
+          Operating System and is expected to benefit the memory 
+          usage of applications that heavily use malloc and free
+		  operations. 
+        - Support for TotalView debugger 
+        - Shared Library Support for existing binary MPI application 
+          programs to run ROMIO Support for MPI-IO
+        - Support for additional features (such as hwloc, 
+          hierarchical collectives, one-sided, multithreading, etc.), 
+          as included in the MPICH2 1.2.1p1 Nemesis channel 
+
+    - Flexible process manager support 
+        - mpirun_rsh to work with any of the eight interfaces 
+          (CH3 and Nemesis channel-based) including OFA-IB-Nemesis, 
+          TCP/IP-CH3 and TCP/IP-Nemesis 
+        - Hydra process manager to work with any of the eight interfaces 
+          (CH3 and Nemesis channel-based) including OFA-IB-CH3, 
+          OFA-IWARP-CH3, OFA-ROCE-CH3 and TCP/IP-CH3 
+
+    - MPIEXEC_TIMEOUT is honored by mpirun_rsh
 
 * Bug fixes since 1.4.1
-    - Fix compilation error when configured with `--enable-thread-funneled'.
-    - Fix MPE functionality, thanks to Anthony Chan <chan@mcs.anl.gov> for
-      reporting and providing the resolving patch.
-    - Cleanup after a failure in the init phase is handled better by mpirun_rsh.
-    - Path determination is correctly handled by mpirun_rsh when DPM is used.
+    - Fix compilation error when configured with
+      `--enable-thread-funneled'
+    - Fix MPE functionality, thanks to Anthony Chan  for
+      reporting and providing the resolving patch
+    - Cleanup after a failure in the init phase is handled better by
+      mpirun_rsh
+    - Path determination is correctly handled by mpirun_rsh when DPM is
+      used
     - Shared libraries are correctly built (again)
 
 MVAPICH2-1.4.1
