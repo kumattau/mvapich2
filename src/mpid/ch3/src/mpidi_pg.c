@@ -3,12 +3,28 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2003-2010, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
 
 #include "mpidimpl.h"
 #ifdef USE_PMI2_API
 #include "pmi2.h"
 #else
 #include "pmi.h"
+#endif
+#ifdef _ENABLE_XRC_
+#include "rdma_impl.h"
+#else
+#define XRC_MSG(args...)
 #endif
 
 #define MAX_JOBID_LEN 1024
@@ -324,6 +340,11 @@ int MPIDI_PG_Destroy(MPIDI_PG_t * pg)
             }
 
 	    MPIDI_PG_Destroy_fn(pg);
+#if defined (_OSU_MVAPICH_)
+        for(i = 0; i < pg->size; i++) {
+            MPIDI_CH3I_Cleanup_after_connection(&pg->vct[i]);
+        }
+#endif  
 	    MPIU_Free(pg->vct);
 	    if (pg->connData) {
 		if (pg->freeConnInfo) {
@@ -1166,12 +1187,14 @@ int MPIDI_PG_Close_VCs( void )
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_PG_CLOSE_VCS);
 
+    XRC_MSG ("MPIDI_PG_Close_VCs");
     while (pg) {
 	int i, inuse;
 
 	MPIU_DBG_MSG_S(CH3_DISCONNECT,VERBOSE,"Closing vcs for pg %s",
 		       (char *)pg->id );
 
+    XRC_MSG ("closing vcs for pg %s", (char *) pg->id);
 
 	for (i = 0; i < pg->size; i++)
 	{
@@ -1184,6 +1207,22 @@ int MPIDI_PG_Close_VCs( void )
                 }
 		continue;
 	    }
+        XRC_MSG ("closing %d xf: 0x%08x st", vc->pg_rank, vc->ch.xrc_flags, 
+                vc->state);
+#ifdef _ENABLE_XRC_
+        MPICM_lock();
+        VC_XST_SET (vc, XF_CONN_CLOSING);
+        MPICM_unlock();
+#endif
+
+#ifdef _ENABLE_XRC_
+        if ((!USE_XRC || VC_XST_ISSET (vc, XF_SMP_VC | XF_DPM_INI)) ? 
+                (vc->state == MPIDI_VC_STATE_ACTIVE || 
+                vc->state == MPIDI_VC_STATE_REMOTE_CLOSE
+            ):(VC_XST_ISUNSET (vc, XF_TERMINATED) &&
+            VC_XST_ISSET (vc, (XF_SEND_IDLE | XF_SEND_CONNECTING))))
+    
+#else
 
 	    if (vc->state == MPIDI_VC_STATE_ACTIVE || 
 		vc->state == MPIDI_VC_STATE_REMOTE_CLOSE
@@ -1200,7 +1239,10 @@ int MPIDI_PG_Close_VCs( void )
 		    ((MPIDI_CH3I_VC *)(vc->channel_private))->shm_read_connected)
 #endif
 		)
+#endif
 	    {
+        XRC_MSG ("SendClose %d 0x%08x %d\n", vc->pg_rank, vc->ch.xrc_flags, 
+                vc->ch.state);
 		MPIDI_CH3U_VC_SendClose( vc, i );
 	    }
 	    else

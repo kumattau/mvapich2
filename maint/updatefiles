@@ -55,11 +55,11 @@ MAKE=${MAKE-make}
 # require libtoolize 
 # externals are the directories for external packages that we have 
 # included into MPICH2
-externals="src/pm/hydra/tools/bind/hwloc/hwloc"
+externals="src/pm/hydra/tools/bind/hwloc/hwloc src/mpid/ch3/channels/mrail/src/hwloc"
 ltdirs="src/pm/hydra"
 
 # amdirs are the directories that make use of autoreconf
-amdirs="src/openpa src/pm/hydra src/mpl"
+amdirs="src/openpa src/pm/hydra src/mpl limic2-0.5.3"
 # List of steps that we will consider
 # (We do not include depend because the values for depend are not just yes/no)
 AllSteps="geterrmsgs bindings f77 f77tof90 build_configure genstates makefiles smpdversion getparms"
@@ -651,22 +651,8 @@ if [ $do_build_configure = yes ] ; then
 	        date > maint/conftimestamp
 	    fi
 	fi
-	#
-# <_OSU_MVAPICH_>    
-# TODO: Remove from codebase this code
-#        for dir in `find . -name '.autoreconf' -printf '%h'`; do
-#            echo "Processing $dir with 'autoreconf --install'" && \
-#            autoreconf -v --install $dir
-#        done
-# </_OSU_MVAPICH_>    
-
         for dir in `find . -name 'configure.in' -print` ; do
             dir=`dirname $dir`
-# <_OSU_MVAPICH_>    
-# TODO: Remove from codebase  this code
-#            test -f $dir/.autoreconf && continue
-# </_OSU_MVAPICH_>    
-
   	    allowFailure=no
 	    builtConfigure=no
   	    #echo $dir

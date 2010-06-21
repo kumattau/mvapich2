@@ -82,7 +82,8 @@ int MPID_nem_ib_lmt_done_recv(struct MPIDI_VC *VC, struct MPID_Request *rreq);
 #define FUNCNAME MPID_nem_ib_lmt_start_recv
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPID_nem_ib_lmt_start_recv(struct MPIDI_VC *VC, struct MPID_Request *rreq, MPID_IOV s_cookie){
+int MPID_nem_ib_lmt_start_recv(struct MPIDI_VC *VC, struct MPID_Request *rreq, MPID_IOV s_cookie)
+{
     int mpi_errno = MPI_SUCCESS;
     MPID_nem_ib_lmt_cookie *rndv_info, *r_cookie_buf;
     int r_cookie_len;
@@ -132,9 +133,11 @@ int MPID_nem_ib_lmt_start_recv(struct MPIDI_VC *VC, struct MPID_Request *rreq, M
         
         r_cookie_len = sizeof(MPID_nem_ib_lmt_cookie);
         MPID_nem_lmt_send_CTS(VC, rreq, r_cookie_buf, r_cookie_len);
+        
     }
     
  fn_exit:
+    MPIU_Free(r_cookie_buf);
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_NEM_IB_LMT_START_RECV);
     return mpi_errno;
  fn_fail:

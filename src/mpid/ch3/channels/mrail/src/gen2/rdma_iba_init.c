@@ -232,6 +232,52 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
 
     MPIDI_CH3I_RDMA_Process.maxtransfersize = RDMA_MAX_RDMA_SIZE;
 
+    if(MPIDI_CH3I_RDMA_Process.has_one_sided) { 
+
+        MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry = (dreg_entry**)
+                   MPIU_Malloc(max_num_win * sizeof(dreg_entry*));
+        if (!MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry) {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                "**fail %s", "Failed allocating memory for win_dreg_entry");
+        }
+
+        MPIDI_CH3I_RDMA_Process.RDMA_local_wincc_dreg_entry = (dreg_entry**)
+                   MPIU_Malloc(max_num_win * sizeof(dreg_entry*));
+        if (!MPIDI_CH3I_RDMA_Process.RDMA_local_wincc_dreg_entry) {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                "**fail %s", "Failed allocating memory for wincc_dreg_entry");
+        }
+
+        MPIDI_CH3I_RDMA_Process.RDMA_local_actlock_dreg_entry = (dreg_entry**)
+                   MPIU_Malloc(max_num_win * sizeof(dreg_entry*));
+        if (!MPIDI_CH3I_RDMA_Process.RDMA_local_actlock_dreg_entry) {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                "**fail %s", "Failed allocating memory for actlock_dreg_entry");
+        }
+
+        MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry = (dreg_entry**)
+                   MPIU_Malloc(max_num_win * sizeof(dreg_entry*));
+        if (!MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry) {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                "**fail %s", "Failed allocating memory for flag_dreg_entry");
+        }
+        MPIDI_CH3I_RDMA_Process.RDMA_assist_thr_ack_entry = (dreg_entry**)
+                   MPIU_Malloc(max_num_win * sizeof(dreg_entry*));
+        if (!MPIDI_CH3I_RDMA_Process.RDMA_assist_thr_ack_entry) {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                "**fail %s", "Failed allocating memory for assist_thr_ack_entry");
+        }
+
+        MPIDI_CH3I_RDMA_Process.win_index2address =
+                   (long *) MPIU_Malloc(max_num_win * sizeof(long));
+        if (!MPIDI_CH3I_RDMA_Process.win_index2address) {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                "**fail %s", "Failed allocating memory for win_index2address");
+        }
+        MPIU_Memset(MPIDI_CH3I_RDMA_Process.win_index2address, 0, 
+                   max_num_win * sizeof(long));
+    }
+
     if (pg_size > 1) {
 
 	/* Exchange the information about HCA_lid / HCA_gid and qp_num */
@@ -870,26 +916,38 @@ int MPIDI_CH3I_RDMA_finalize()
 	    err = ibv_destroy_comp_channel(MPIDI_CH3I_RDMA_Process.comp_channel[i]);
 	    if(err)
 		MPIU_Error_printf("Failed to destroy CQ channel (%d)\n", err);
-	}
+	    }
 
 	deallocate_vbufs(i);
+    } 
 
-	while (dreg_evict());
+    deallocate_vbuf_region();
+    dreg_finalize();
 
-	err = ibv_dealloc_pd(MPIDI_CH3I_RDMA_Process.ptag[i]);
+    for (i = 0; i < rdma_num_hcas; i++) {
+        err = ibv_dealloc_pd(MPIDI_CH3I_RDMA_Process.ptag[i]);
+        if (err)  {
+            MPIU_Error_printf("[%d] Failed to dealloc pd (%s)\n", 
+                pg_rank, strerror(errno));
+        }
+        err = ibv_close_device(MPIDI_CH3I_RDMA_Process.nic_context[i]);
+        if (err) {
+            MPIU_Error_printf("[%d] Failed to close ib device (%s)\n", 
+                pg_rank, strerror(errno));
+        }
+    }
 
-	if (err)  {
-	    MPIU_Error_printf("[%d] Failed to dealloc pd (%s)\n", 
-		    pg_rank, strerror(errno));
-	}
+    if(MPIDI_CH3I_RDMA_Process.polling_set != NULL) {
+      MPIU_Free(MPIDI_CH3I_RDMA_Process.polling_set);
+    }
 
-	err = ibv_close_device(MPIDI_CH3I_RDMA_Process.nic_context[i]);
-
-	if (err) {
-	    MPIU_Error_printf("[%d] Failed to close ib device (%s)\n", 
-		    pg_rank, strerror(errno));
-	}
-
+    if(MPIDI_CH3I_RDMA_Process.has_one_sided) { 
+      MPIU_Free(MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry);
+      MPIU_Free(MPIDI_CH3I_RDMA_Process.RDMA_local_wincc_dreg_entry);   
+      MPIU_Free(MPIDI_CH3I_RDMA_Process.RDMA_local_actlock_dreg_entry);
+      MPIU_Free(MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry);
+      MPIU_Free(MPIDI_CH3I_RDMA_Process.RDMA_assist_thr_ack_entry);
+      MPIU_Free(MPIDI_CH3I_RDMA_Process.win_index2address); 
     }
 
 fn_exit:
@@ -992,7 +1050,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
 #ifndef DISABLE_PTMALLOC
     if(mvapich2_minit()) {
 	MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-		"**fail %s", "Error initializing MVAPICH2 malloc library");
+		"**fail %s", "Error initializing MVAPICH2 MPIU_Malloc library");
     }
 #else
     mallopt(M_TRIM_THRESHOLD, -1);
@@ -1115,6 +1173,52 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
         }
     }
 #endif
+
+    if(MPIDI_CH3I_RDMA_Process.has_one_sided) {
+
+        MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry = (dreg_entry**)
+                   MPIU_Malloc(max_num_win * sizeof(dreg_entry*));
+        if (!MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry) {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                "**fail %s", "Failed allocating memory for win_dreg_entry");
+        }
+
+        MPIDI_CH3I_RDMA_Process.RDMA_local_wincc_dreg_entry = (dreg_entry**)
+                   MPIU_Malloc(max_num_win * sizeof(dreg_entry*));
+        if (!MPIDI_CH3I_RDMA_Process.RDMA_local_wincc_dreg_entry) {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                "**fail %s", "Failed allocating memory for wincc_dreg_entry");
+        }
+
+        MPIDI_CH3I_RDMA_Process.RDMA_local_actlock_dreg_entry = (dreg_entry**)
+                   MPIU_Malloc(max_num_win * sizeof(dreg_entry*));
+        if (!MPIDI_CH3I_RDMA_Process.RDMA_local_actlock_dreg_entry) {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                "**fail %s", "Failed allocating memory for actlock_dreg_entry");
+        }
+
+        MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry = (dreg_entry**)
+                   MPIU_Malloc(max_num_win * sizeof(dreg_entry*));
+        if (!MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry) {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                "**fail %s", "Failed allocating memory for flag_dreg_entry");
+        }
+        MPIDI_CH3I_RDMA_Process.RDMA_assist_thr_ack_entry = (dreg_entry**)
+                   MPIU_Malloc(max_num_win * sizeof(dreg_entry*));
+        if (!MPIDI_CH3I_RDMA_Process.RDMA_assist_thr_ack_entry) {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                "**fail %s", "Failed allocating memory for assist_thr_ack_entry");
+        }
+
+        MPIDI_CH3I_RDMA_Process.win_index2address =
+                   (long *) MPIU_Malloc(max_num_win * sizeof(long));
+        if (!MPIDI_CH3I_RDMA_Process.win_index2address) {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                "**fail %s", "Failed allocating memory for win_index2address");
+        }
+        MPIU_Memset(MPIDI_CH3I_RDMA_Process.win_index2address, 0, 
+                   max_num_win * sizeof(long));
+    }
 
     /* Open the device and create cq and qp's */
 #if defined(RDMA_CM)
@@ -1615,10 +1719,16 @@ int MPIDI_CH3I_CM_Finalize()
 	    }
 
 	    deallocate_vbufs(i);
-	    while (dreg_evict());
+	  }
+
+      deallocate_vbuf_region();
+      dreg_finalize();
+      
+      for (i = 0; i < rdma_num_hcas; ++i)
+      {
 	    ibv_dealloc_pd(MPIDI_CH3I_RDMA_Process.ptag[i]);
 	    ibv_close_device(MPIDI_CH3I_RDMA_Process.nic_context[i]);
-	}
+      } 
 #ifdef _ENABLE_XRC_
     if (USE_XRC) {
         clear_xrc_hash ();
@@ -1633,6 +1743,19 @@ int MPIDI_CH3I_CM_Finalize()
     }
 #endif /* defined(RDMA_CM) */
 
+    if(MPIDI_CH3I_RDMA_Process.polling_set != NULL) { 
+      MPIU_Free(MPIDI_CH3I_RDMA_Process.polling_set);
+    }
+
+    if(MPIDI_CH3I_RDMA_Process.has_one_sided) {
+      MPIU_Free(MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry);
+      MPIU_Free(MPIDI_CH3I_RDMA_Process.RDMA_local_wincc_dreg_entry);
+      MPIU_Free(MPIDI_CH3I_RDMA_Process.RDMA_local_actlock_dreg_entry);
+      MPIU_Free(MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry);
+      MPIU_Free(MPIDI_CH3I_RDMA_Process.RDMA_assist_thr_ack_entry);
+      MPIU_Free(MPIDI_CH3I_RDMA_Process.win_index2address);
+    }
+ 
 fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_CM_FINALIZE);
     return mpi_errno;

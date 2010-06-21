@@ -84,6 +84,7 @@ extern int                  rdma_integer_pool_size;
 extern int                  rdma_iba_eager_threshold;
 extern long                 rdma_eagersize_1sc;
 
+extern int                  max_num_win;
 /* HSAM Definitions */
 
 extern  int                 striping_threshold;
@@ -151,7 +152,7 @@ extern int                  use_hwloc_cpu_binding;
 
 /* Inline not supported for PPC */
 #define HOSTNAME_LEN                    (255)
-#define MAX_WIN_NUM                     (16)
+#define MAX_NUM_WIN                     (64)
 #define RDMA_MAX_REGISTERED_PAGES       (0)
 
 /* #define MIN(a,b) ((a)<(b)?(a):(b)) */
@@ -175,5 +176,6 @@ extern int                  use_hwloc_cpu_binding;
 #define DYNAMIC_TOTAL_WEIGHT            (3* 1024)
 
 #define CHELSIO_RNIC                    "cxgb3"                       
+#define INTEL_NE020_RNIC                "nes0"                       
                                
 #endif /* _RDMA_PARAM_H */

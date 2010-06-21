@@ -61,7 +61,7 @@ int MRAILI_Handle_one_sided_completions(vbuf * v);
 static inline int Find_Avail_Index()
 {
     int i, index = -1;
-    for (i = 0; i < MAX_WIN_NUM; ++i) {
+    for (i = 0; i < max_num_win; ++i) {
         if (MPIDI_CH3I_RDMA_Process.win_index2address[i] == 0) {
             index = i;
             break;
@@ -73,7 +73,7 @@ static inline int Find_Avail_Index()
 static inline int Find_Win_Index(MPID_Win * win_ptr)
 {
     int i, index = -1;
-    for (i = 0; i < MAX_WIN_NUM; ++i) {
+    for (i = 0; i < max_num_win; ++i) {
         if (MPIDI_CH3I_RDMA_Process.win_index2address[i] == (long) win_ptr) {
             index = i;
             break;
@@ -217,17 +217,23 @@ MPIDI_CH3I_RDMA_complete_rma(MPID_Win * win_ptr,
         if (nops_to_proc[target] == 0 && send_complete == 1 
             && vc->smp.local_nodes == -1)
         {
-            Decrease_CC(win_ptr, target);
+            /* We ensure local completion of all the pending operations on 
+             * the current window and then set the complete flag on the remote
+             * side. We do not wait for the completion of this operation as this
+             * would unnecessarily wait on completion of all operations on this
+             * RC connection.
+             */ 
             if (win_ptr->wait_for_complete == 1) {
                 MPIDI_CH3I_RDMA_finish_rma(win_ptr);
             }
+            Decrease_CC(win_ptr, target);
         }
       } else if (nops_to_proc[target] == 0 && send_complete == 1)  
         {
-            Decrease_CC(win_ptr, target);
             if (win_ptr->wait_for_complete == 1) {
                 MPIDI_CH3I_RDMA_finish_rma(win_ptr);
             }
+            Decrease_CC(win_ptr, target);
         }
     }
   fn_exit:
@@ -517,7 +523,7 @@ MPIDI_CH3I_RDMA_win_create(void *base,
     /*There may be more than one windows existing at the same time */
    
     ++MPIDI_CH3I_RDMA_Process.current_win_num;
-    MPIU_Assert(MPIDI_CH3I_RDMA_Process.current_win_num <= MAX_WIN_NUM);
+    MPIU_Assert(MPIDI_CH3I_RDMA_Process.current_win_num <= max_num_win);
     index = Find_Avail_Index();
     MPIU_Assert(index != -1);
 

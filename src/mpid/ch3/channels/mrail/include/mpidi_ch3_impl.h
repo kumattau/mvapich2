@@ -408,7 +408,10 @@ void MPIDI_CH3I_CR_Sync_ckpt_request();
         vc->smp.sendq_head = req;                                        \
     }                                                                    \
     vc->smp.sendq_tail = req;                                            \
-}
+    if (vc->smp.send_active == NULL) {                                   \
+          vc->smp.send_active =  vc->smp.sendq_head;                     \
+    }                                                                    \
+}                                                                        
 
 #define MPIDI_CH3I_SMP_SendQ_enqueue_head(vc, req)                            \
 {                                                                             \

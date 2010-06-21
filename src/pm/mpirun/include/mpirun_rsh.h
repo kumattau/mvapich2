@@ -43,7 +43,8 @@
 #define XTERM		    "/usr/bin/xterm"
 #define SSH_ARG		    "-q"
 #define RSH_ARG		    "NOPARAM"
-
+#define BASH_CMD	    "/bin/bash"
+#define BASH_ARG	    "-c"
 #ifndef LD_LIBRARY_PATH_MPI
 #define LD_LIBRARY_PATH_MPI "/usr/mvapich/lib/shared"
 #endif
@@ -76,7 +77,6 @@
 #include <assert.h>
 #include <libgen.h>
 #include "mpirun_util.h"
-
 
 
 #define PMGR_VERSION PMGR_COLLECTIVE
@@ -117,6 +117,29 @@ typedef struct {
     process_group ** index;
     size_t npgs, npgs_allocated;
 } process_groups;
+
+#define MAXLINE 1024
+typedef struct {
+    int totspawns;
+    int spawnsdone;
+    int dpmtot;
+    int dpmindex;
+    int launch_num;
+    char buf[MAXLINE];
+    char linebuf[MAXLINE];
+    char runbuf[MAXLINE];
+    char argbuf[MAXLINE];
+    char *spawnfile;
+}spawn_info_t;
+
+
+/*This list is used for dpm to take care of the mpirun_rsh started.*/
+typedef struct list_pid_mpirun {
+   pid_t pid;
+   struct list_pid_mpirun * next;
+} list_pid_mpirun_t;
+
+extern int NSPAWNS;
 
 #define RUNNING(i) ((plist[i].state == P_STARTED ||                 \
             plist[i].state == P_CONNECTED ||                        \

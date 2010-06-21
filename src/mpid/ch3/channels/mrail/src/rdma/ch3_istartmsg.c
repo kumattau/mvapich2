@@ -245,7 +245,15 @@ int MPIDI_CH3_SMP_iStartMsg(MPIDI_VC_t * vc, void *pkt,
         {
             MPIDI_CH3I_SMP_writev(vc, iov, 1, &nb);
         }
-
+#ifdef CKPT
+		MPIDI_CH3I_MRAILI_Pkt_comm_header* p = (MPIDI_CH3I_MRAILI_Pkt_comm_header*)pkt;
+		if( p->type >= MPIDI_CH3_PKT_CM_SUSPEND && 
+			p->type<= MPIDI_CH3_PKT_CR_REMOTE_UPDATE ) {
+			DEBUG_PRINT("%s [%d => %d]: imm-write pkt %s(%d), ret nb=%d,pkt-size=%d\n", __func__, 
+			MPIDI_Process.my_pg_rank, vc->pg_rank,  MPIDI_CH3_Pkt_type_to_string[p->type],
+			p->type, nb, pkt_sz );
+		}
+#endif  // CKPT
         if (nb != pkt_sz) 
         {
             DEBUG_PRINT("send delayed, request enqueued\n");
@@ -271,7 +279,18 @@ int MPIDI_CH3_SMP_iStartMsg(MPIDI_VC_t * vc, void *pkt,
         sreq = create_request(pkt, pkt_sz, 0);
         if(pkt_header->type == MPIDI_CH3_PKT_RNDV_R3_DATA)
             sreq->ch.reqtype = REQUEST_RNDV_R3_HEADER; 
+
         MPIDI_CH3I_SMP_SendQ_enqueue(vc, sreq);
+#ifdef CKPT  
+		MPIDI_CH3I_MRAILI_Pkt_comm_header* p = (MPIDI_CH3I_MRAILI_Pkt_comm_header*)pkt;
+		if( p->type >= MPIDI_CH3_PKT_CM_SUSPEND && 
+			p->type<= MPIDI_CH3_PKT_CR_REMOTE_UPDATE ) 
+		{
+			DEBUG_PRINT("%s [%d => %d]: Enqueue:  pkt %s(%d), pkt-size=%d\n", __func__, 
+				MPIDI_Process.my_pg_rank, vc->pg_rank,  MPIDI_CH3_Pkt_type_to_string[p->type],
+				p->type, pkt_sz );
+		} 
+#endif   // end of CKPT
     }
 
 fn_exit:

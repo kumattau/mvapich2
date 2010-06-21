@@ -272,6 +272,7 @@ void *MPIU_trrealloc ( void *, size_t, int, const char * );
 void MPIU_TrSetMaxMem ( int );
 
 #ifndef MPIU_MEM_NOSTDIO
+#include <stdio.h>
 void MPIU_trdump ( FILE *, int );
 void MPIU_trSummary ( FILE *, int );
 void MPIU_trdumpGrouped ( FILE *, int );
@@ -328,7 +329,7 @@ extern char *strdup( const char * );
 #define MPIU_CHKLMEM_FREEALL()
 #define MPIU_CHKLMEM_MALLOC_ORSTMT(pointer_,type_,nbytes_,rc_,name_,stmt_) \
 {pointer_ = (type_)alloca(nbytes_); \
-    if (!(pointer_) && (nbytes > 0)) {	   \
+    if (!(pointer_) && (nbytes_ > 0)) {	   \
     MPIU_CHKMEM_SETERR(rc_,nbytes_,name_); \
     stmt_;\
 }}

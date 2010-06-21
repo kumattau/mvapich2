@@ -3,8 +3,24 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2003-2010, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
 
 #include "mpidi_ch3_impl.h"
+#ifdef _ENABLE_XRC_
+#include "rdma_impl.h"
+#else
+#define XRC_MSG(s...)
+#endif
 
 /*
  * This file replaces ch3u_comm_connect.c and ch3u_comm_accept.c .  These
@@ -378,6 +394,9 @@ int MPIDI_Comm_connect(const char *port_name, MPID_Info *info, int root,
 	if (mpi_errno != MPI_SUCCESS) {
 	    MPIU_ERR_POP(mpi_errno);
 	}
+#if defined (_OSU_MVAPICH_)
+    new_vc->tmp_dpmvc = 1;
+#endif
 
 	/* Make an array to translate local ranks to process group index 
 	   and rank */
@@ -936,6 +955,9 @@ int MPIDI_Comm_accept(const char *port_name, MPID_Info *info, int root,
 	if (mpi_errno != MPI_SUCCESS) {
 	    MPIU_ERR_POP(mpi_errno);
 	}
+#if defined (_OSU_MVAPICH_)
+    new_vc->tmp_dpmvc = 1;
+#endif
 
 	/* Make an array to translate local ranks to process group index and 
 	   rank */
@@ -1177,6 +1199,7 @@ static int FreeNewVC( MPIDI_VC_t *new_vc )
 	   the state of the new vc is complete */
 	MPID_Progress_start(&progress_state);
 	while (new_vc->state != MPIDI_VC_STATE_INACTIVE) {
+        XRC_MSG ("FN: State %d", new_vc->state);
 	    mpi_errno = MPID_Progress_wait(&progress_state);
 	    /* --BEGIN ERROR HANDLING-- */
 	    if (mpi_errno != MPI_SUCCESS)
@@ -1188,6 +1211,7 @@ static int FreeNewVC( MPIDI_VC_t *new_vc )
 	}
 	MPID_Progress_end(&progress_state);
     }
+    XRC_MSG ("FreeNew Done");
 #if defined (_OSU_MVAPICH_)
     MPIDI_CH3I_Cleanup_after_connection(new_vc);
 #endif

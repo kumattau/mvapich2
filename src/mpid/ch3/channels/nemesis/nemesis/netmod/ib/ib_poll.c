@@ -569,12 +569,14 @@ int MPIDI_nem_ib_cq_poll(vbuf **vbuf_handle,
     vbuf* v;
     MPIDI_VC_t *vc = NULL;
     int i = 0;
-    int needed = 0;
+    int needed;
     int type = T_CHANNEL_NO_ARRIVE;
     struct ibv_cq *ev_cq;
     struct ibv_cq *chosen_cq;
     static unsigned long nspin = 0;
     void *ev_ctx;
+
+    needed = 0;
 
     if (!receiving && !vc_req) {
         type = MPIDI_nem_ib_test_pkt(vbuf_handle);

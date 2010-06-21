@@ -141,6 +141,19 @@ void deallocate_vbufs(int hca_num)
     }
 }
 
+void deallocate_vbuf_region()
+{
+    vbuf_region *curr = vbuf_region_head;
+    vbuf_region *next = NULL;
+
+    while (curr) {
+        next = curr->next;
+        MPIU_Free(curr);
+        curr = next;
+    }
+}
+
+
 static int allocate_vbuf_region(int nvbufs)
 {
     DEBUG_PRINT("Allocating a new vbuf region.\n");

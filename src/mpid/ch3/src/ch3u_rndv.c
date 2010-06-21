@@ -377,9 +377,9 @@ int MPIDI_CH3_PktHandler_RndvClrToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
         recv_size = cts_pkt->recv_sz;
         for (i = 0; i < sreq->dev.iov_count ; i ++) {
             if (recv_size < sreq->dev.iov[i].MPID_IOV_LEN) {
-                fprintf(stderr, "Warning! Rndv Receiver is receiving "
-                        "(%d < %d) less than as expected\n", 
-                        recv_size, (int) sreq->dev.iov[i].MPID_IOV_LEN);
+                fprintf(stderr, "Warning! Rndv Receiver is expecting %d Bytes "
+                        "But, is receiving %d Bytes \n", 
+                        (int) sreq->dev.iov[i].MPID_IOV_LEN, recv_size);
                 sreq->dev.iov[i].MPID_IOV_LEN = recv_size;
                 sreq->dev.iov_count = i + 1;
                 break;

@@ -53,22 +53,30 @@ void vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
 
     if (num_rdma_buffer) {
 
+#ifdef USE_MEMORY_TRACING
+        vbuf_ctrl_buf = MPIU_Malloc(sizeof(struct vbuf) * num_rdma_buffer);
+#else
     /* allocate vbuf struct buffers */
         if(posix_memalign((void **) &vbuf_ctrl_buf, vbuf_alignment,
             sizeof(struct vbuf) * num_rdma_buffer)) {
             ibv_error_abort(GEN_EXIT_ERR,
                     "malloc: vbuf in vbuf_fast_rdma_alloc");
         }
+#endif /* USE_MEMORY_TRACING */
 
         memset(vbuf_ctrl_buf, 0,
                 sizeof(struct vbuf) * num_rdma_buffer);
 
+#ifdef USE_MEMORY_TRACING
+         vbuf_rdma_buf = MPIU_Malloc(rdma_vbuf_total_size * num_rdma_buffer);
+#else
         /* allocate vbuf RDMA buffers */
         if(posix_memalign((void **)&vbuf_rdma_buf, pagesize,
             rdma_vbuf_total_size * num_rdma_buffer)) {
             ibv_error_abort(GEN_EXIT_ERR,
                 "malloc: vbuf DMA in vbuf_fast_rdma_alloc");
         }
+#endif /* USE_MEMORY_TRACING */
 
         memset(vbuf_rdma_buf, 0, rdma_vbuf_total_size * num_rdma_buffer);
 

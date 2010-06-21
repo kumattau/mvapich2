@@ -3,6 +3,43 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+
+MVAPICH2-1.5-RC2 (06/21/10)
+
+* Features and Enhancements (since 1.5-RC1)
+    - Support for hwloc library (1.0.1) for defining CPU affinity
+    - Deprecating the PLPA support for defining CPU affinity
+    - Efficient CPU affinity policies (bunch and scatter) to
+      specify CPU affinity per job for modern multi-core platforms
+    - New flag in mpirun_rsh to execute tasks with different group IDs
+    - Enhancement to the design of Win_complete for RMA operations
+    - Flexibility to support variable number of RMA windows
+    - Support for Intel iWARP NE020 adapter
+
+* Bug fixes (since 1.5-RC1)
+    - Compilation issue with the ROMIO adio-lustre driver, thanks
+      to Adam Moody of LLNL for reporting the issue
+    - Allowing checkpoint-restart for large-scale systems
+    - Correcting a bug in clear_kvc function. Thanks to T J (Chris) Ward,
+      IBM Research, for reporting and providing the resolving patch
+    - Shared lock operations with RMA with scatter process distribution.
+      Thanks to Pavan Balaji of Argonne for reporting this issue
+    - Fix a bug during window creation in uDAPL
+    - Compilation issue with --enable-alloca, Thanks to E. Borisch,
+      for reporting and providing the patch
+    - Improved error message for ibv_poll_cq failures
+    - Fix an issue that prevents mpirun_rsh to execute programs without
+      specifying the path from directories in PATH
+    - Fix an issue of mpirun_rsh with Dynamic Process Migration (DPM)
+    - Fix for memory leaks (both CH3 and Nemesis interfaces)
+    - Updatefiles correctly update LiMIC2
+    - Several fixes to the registration cache
+      (CH3, Nemesis and uDAPL interfaces)
+    - Fix to multi-rail communication
+    - Fix to Shared Memory communication Progress Engine
+    - Fix to all-to-all collective for large number of processes
+
+
 MVAPICH2-1.5-RC1 (05/04/10)
 
 * Features and Enhancements 
@@ -54,6 +91,7 @@ MVAPICH2-1.5-RC1 (05/04/10)
     - Path determination is correctly handled by mpirun_rsh when DPM is
       used
     - Shared libraries are correctly built (again)
+
 
 MVAPICH2-1.4.1
 

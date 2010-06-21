@@ -75,9 +75,8 @@ struct dreg_entry* dreg_unused_list;
 struct dreg_entry* dreg_unused_tail;
 
 int g_is_dreg_initialized = 0;
-#if defined(CKPT)
+int g_is_dreg_finalize = 0;
 struct dreg_entry *dreg_all_list;
-#endif /* defined(CKPT) */
 
 #define DREG_BEGIN(R) ((R)->pagenum)
 #define DREG_END(R) ((R)->pagenum + (R)->npages - 1)
@@ -218,9 +217,11 @@ static inline vma_t *vma_new (unsigned long start, unsigned long end)
 
     if(NULL == vma) {
         vma = MPIU_Malloc(sizeof (vma_t));
+        MPIU_Memset(vma, 0x0, sizeof(vma_t));
     }
 #else /* !defined(DISABLE_PTMALLOC) */
     vma = MPIU_Malloc (sizeof (vma_t));
+    MPIU_Memset(vma, 0x0, sizeof(vma_t));
 #endif /* !defined(DISABLE_PTMALLOC) */
 
     if (vma == NULL)
@@ -255,16 +256,24 @@ static inline void vma_destroy (vma_t* vma)
         t = e;
         e = e->next;
 #if !defined(DISABLE_PTMALLOC)
-        ADD_FREE_LIST(&entry_free_list, t);
+        if(g_is_dreg_finalize == 1) {
+           MPIU_Free(t);
+        } else {
+           ADD_FREE_LIST(&entry_free_list, t);
+        }
 #else /* !defined(DISABLE_PTMALLOC) */
         MPIU_Free(t);
 #endif /* !defined(DISABLE_PTMALLOC) */
-    }
+     }
 
 #if !defined(DISABLE_PTMALLOC)
-    ADD_FREE_LIST(&vma_free_list, vma);
+     if(g_is_dreg_finalize == 1) {
+        MPIU_Free(vma);
+     } else {
+        ADD_FREE_LIST(&vma_free_list, vma);
+     }
 #else /* !defined(DISABLE_PTMALLOC) */
-    MPIU_Free(vma);
+     MPIU_Free(vma);
 #endif /* !defined(DISABLE_PTMALLOC) */
 }
 
@@ -291,9 +300,11 @@ static inline void add_entry (vma_t* vma, dreg_entry* r)
     if (NULL == e)
     {
         e = MPIU_Malloc(sizeof(entry_t));
+        MPIU_Memset(e, 0x0, sizeof(entry_t));
     }
 #else /* !defined(DISABLE_PTMALLOC) */
     e = MPIU_Malloc (sizeof (entry_t));
+    MPIU_Memset(e, 0x0, sizeof(entry_t));
 #endif /* !defined(DISABLE_PTMALLOC) */
 
     if (e == NULL)
@@ -321,7 +332,11 @@ static inline void remove_entry (vma_t* vma, dreg_entry* r)
         entry_t* e = *i;
         *i = (*i)->next;
 #if !defined(DISABLE_PTMALLOC)
-        ADD_FREE_LIST(&entry_free_list, e);
+         if(g_is_dreg_finalize == 1) {
+            MPIU_Free(e);
+         } else {
+            ADD_FREE_LIST(&entry_free_list, e);
+         }
 #else /* defined(DISABLE_PTMALLOC) */
         MPIU_Free(e);
 #endif /* defined(DISABLE_PTMALLOC) */
@@ -343,9 +358,11 @@ static inline void copy_list (vma_t* to, vma_t* from)
         if (NULL == e)
         {
             e = MPIU_Malloc(sizeof(entry_t));
+            MPIU_Memset(e, 0x0, sizeof(entry_t));
         }
 #else /* !defined(DISABLE_PTMALLOC) */
         e = MPIU_Malloc (sizeof (entry_t));
+        MPIU_Memset(e, 0x0, sizeof(entry_t));
 #endif /* !defined(DISABLE_PTMALLOC) */
 
         e->reg = f->reg;
@@ -617,7 +634,7 @@ int dreg_init()
     g_pinned_pages_count = 0;
 
     vma_db_init ();
-    dreg_free_list = (dreg_entry*) MPIU_Malloc((unsigned)(sizeof(dreg_entry) * rdma_ndreg_entries));
+    dreg_free_list =  MPIU_Malloc((unsigned)(sizeof(dreg_entry) * rdma_ndreg_entries));
 
     if (dreg_free_list == NULL) {
         MPIU_ERR_SETFATALANDJUMP2(mpi_errno,
@@ -628,11 +645,9 @@ int dreg_init()
                 (int) sizeof(dreg_entry) * rdma_ndreg_entries);
     }
 
-    memset(dreg_free_list, 0, sizeof(dreg_entry) * rdma_ndreg_entries);
+    MPIU_Memset(dreg_free_list, 0, sizeof(dreg_entry) * rdma_ndreg_entries);
 
-#if defined(CKPT)
     dreg_all_list = dreg_free_list;
-#endif /* defined(CKPT) */
 
     for (i=0; i < (int) rdma_ndreg_entries - 1; ++i) {
         dreg_free_list[i].next = &dreg_free_list[i + 1];
@@ -661,7 +676,7 @@ int dreg_init()
                 (int) sizeof(struct ibv_mr*) * rdma_ndreg_entries * MAX_NUM_HCAS);
     }
 
-    memset(deregister_mr_array, 0, sizeof(dreg_region) * rdma_ndreg_entries);
+    MPIU_Memset(deregister_mr_array, 0, sizeof(dreg_region) * rdma_ndreg_entries);
     n_dereg_mr = 0;
 
     INIT_FREE_LIST(&vma_free_list);
@@ -674,9 +689,34 @@ fn_fail:
     goto fn_exit;
 }
 
+int dreg_finalize()
+{
+   g_is_dreg_finalize = 1;
 #if !defined(DISABLE_PTMALLOC)
+   lock_dreg();
 
+   while(dreg_evict());
+#endif  /* #if !defined(DISABLE_PTMALLOC) */
 
+   /* free each element that is still present
+    * in the free list
+    */
+   if(dreg_all_list != NULL)
+      MPIU_Free(dreg_all_list);
+
+#if !defined(DISABLE_PTMALLOC)
+   if(deregister_mr_array != NULL) {
+      MPIU_Free(deregister_mr_array);
+   }
+
+   avldispose(vma_tree, free, LEFT_TO_RIGHT);
+   unlock_dreg();
+#endif /* #if !defined(DISABLE_PTMALLOC) */
+
+   return MPI_SUCCESS;
+}
+
+#if !defined(DISABLE_PTMALLOC)
 int have_dereg() 
 {
     return pthread_equal(th_id_of_dereg_lock, pthread_self());
@@ -774,7 +814,7 @@ void flush_dereg_mrs_external()
 
                     /* OR: This memory region is in the process of
                      * being deregistered. Leave it alone! */
-                    continue;
+                    break;
                 }
 
                 d->is_valid = 0;

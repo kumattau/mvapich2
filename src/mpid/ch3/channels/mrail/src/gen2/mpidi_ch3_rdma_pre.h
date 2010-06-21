@@ -324,6 +324,13 @@ typedef struct MPIDI_CH3I_MRAIL_VC_t
     /*For reactivation*/
     int reactivation_done_send;
     int reactivation_done_recv;
+    /* num of active-rndvs in sreq_list. For sender side only.   */
+    /* Inc before a Ckpt, and dec when updating rkeys by REMOTE_UPDATE msg */
+    int sreq_to_update;
+    pthread_spinlock_t      cr_lock;
+    int react_send_ready; // At resume: can we enqueu the REACT_DONE msg for send?
+    MPIDI_CH3I_CR_msg_log_queue_entry_t*    react_entry; 
+    // if react_send_ready=0, store the REACT_DONE msg here 
 #endif
 } MPIDI_CH3I_MRAIL_VC;
 

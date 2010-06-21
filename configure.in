@@ -533,14 +533,14 @@ AC_ARG_WITH([hwloc],
                             [use hwloc for process binding])
             ],
             [],
-            [with_hwloc=no])
+            [with_hwloc=yes])
 
 AS_IF([test "x$with_hwloc" != xno],
-      [AC_CHECKING([hwloc])
-       AC_CHECK_LIB([hwloc], [hwloc_topology_init], [],
-                    [AC_MSG_FAILURE([can't link with libhwloc])])
-       AC_CHECK_HEADER([hwloc.h], [],
-                       [AC_MSG_FAILURE([can't include hwloc.h])])])
+      [AC_CHECKING([for any hwloc installation])
+       AC_CHECK_LIB([hwloc], [hwloc_topology_set_pid],
+                    [AC_CHECK_HEADER([hwloc.h], [LIBS="-lhwloc $LIBS"], [])],
+                    [])
+      ])
 
 AC_ARG_WITH([limic2],
     [AS_HELP_STRING([--with-limic2=@<:@LiMIC2 installation path@:>@],

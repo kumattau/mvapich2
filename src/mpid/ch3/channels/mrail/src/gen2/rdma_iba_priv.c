@@ -118,6 +118,7 @@ void free_process_init_info(struct process_init_info *info, int pg_size)
     MPIU_Free(info->qp_num_onesided);
     MPIU_Free(info->hca_type);
     MPIU_Free(info->vc_addr);
+    MPIU_Free(info); 
 }
 
 struct ibv_srq *create_srq(struct MPIDI_CH3I_RDMA_Process_t *proc,
@@ -1640,7 +1641,7 @@ void MRAILI_Init_vc_network(MPIDI_VC_t * vc)
 #endif
 
     for (i = 0; i < rdma_num_rails; i++) {
-        vc->mrail.rails[i].send_wqes_avail    = rdma_default_max_recv_wqe;
+        vc->mrail.rails[i].send_wqes_avail    = rdma_default_max_send_wqe;
         vc->mrail.rails[i].ext_sendq_head     = NULL;
         vc->mrail.rails[i].ext_sendq_tail     = NULL;
     }

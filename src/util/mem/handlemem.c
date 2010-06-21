@@ -396,6 +396,16 @@ void *MPIU_Handle_obj_alloc_unsafe(MPIU_Object_alloc_t *objmem)
                                          "Allocating object ptr %p (handle val 0x%08x)",
                                          ptr, ptr->handle));
     }
+#ifdef USE_MEMORY_TRACING
+    /* We set the object to an invalid pattern.  This is similar to 
+       what is done by MPIU_trmalloc by default (except that trmalloc uses
+       0xda as the byte in the memset)
+    */
+    if (ptr) {
+    memset( (void*)&ptr->ref_count, 0x0, objmem->size-sizeof(int));
+    }
+#endif
+
 
     return ptr;
 }

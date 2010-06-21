@@ -61,6 +61,7 @@ typedef struct {
 } dreg_region;
 
 extern int g_is_dreg_initialized; 
+extern int g_is_dreg_finalize;
 extern unsigned long dreg_stat_cache_hit;
 extern unsigned long dreg_stat_cache_miss;
 struct dreg_entry {
@@ -238,6 +239,8 @@ extern struct dreg_entry *dreg_unused_tail;
 }
 
 int dreg_init(void);
+
+int dreg_finalize(void);
 
 dreg_entry *dreg_register(void *buf, int len);
 

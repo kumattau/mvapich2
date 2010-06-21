@@ -264,6 +264,23 @@ fn_fail:
  */
 int MPID_nem_ib_free_conn_info(int size) {
     int mpi_errno = MPI_SUCCESS;
+    int i;
+
+    for(i=0;i<size;i++){
+        MPIU_Free(conn_info.init_info->qp_num_rdma[i]);
+        MPIU_Free(conn_info.init_info->lid[i]);
+        MPIU_Free(conn_info.init_info->gid[i]);
+        MPIU_Free(conn_info.init_info->hostid[i]);
+        MPIU_Free(conn_info.init_info->qp_num_onesided[i]);
+    }
+    MPIU_Free(conn_info.init_info->lid);
+    MPIU_Free(conn_info.init_info->gid);
+    MPIU_Free(conn_info.init_info->hostid);
+    MPIU_Free(conn_info.init_info->qp_num_rdma);
+    MPIU_Free(conn_info.init_info->qp_num_onesided);
+    MPIU_Free(conn_info.init_info->hca_type);
+    MPIU_Free(conn_info.init_info->vc_addr);
+
     MPIU_Free( conn_info.init_info );
     conn_info.init_info = NULL;
 

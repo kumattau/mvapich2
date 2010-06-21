@@ -526,6 +526,9 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
     struct ibv_cq *chosen_cq; 
     void *ev_ctx;
 
+    int myrank;
+    myrank = PMI_Get_rank(&myrank);
+
     *vbuf_handle = NULL;
     needed = 0;
 
@@ -565,15 +568,19 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
 	
 	            if (wc.status != IBV_WC_SUCCESS) {
 	                if (wc.opcode == IBV_WC_SEND ||
-	                        wc.opcode == IBV_WC_RDMA_WRITE ) {
-	                    fprintf(stderr, "send desc error\n");
+	                    wc.opcode == IBV_WC_RDMA_WRITE ) {
+			    		fprintf(stderr, "[%d->%d] send desc error, wc_opcode=%d\n",myrank, vc->pg_rank, wc.opcode );
 	                } else {
-	                    fprintf(stderr, "recv desc error, %d\n", wc.opcode);
-	                }
+			    		fprintf(stderr, "[%d<-%d] recv desc error, wc_opcode=%d\n",myrank, vc->pg_rank, wc.opcode);
+					}
+                    fprintf(stderr, "[%d->%d] wc.status=%d, wc.wr_id=%p, wc.opcode=%d, vbuf->phead->type=%d = %s\n", 
+                           myrank, vc->pg_rank, wc.status, v, 
+			               wc.opcode,((MPIDI_CH3I_MRAILI_Pkt_comm_header*)v->pheader)->type, 
+           			MPIDI_CH3_Pkt_type_to_string[((MPIDI_CH3I_MRAILI_Pkt_comm_header*)v->pheader)->type] );
 	
 	                ibv_va_error_abort(IBV_STATUS_ERR,
 	                        "[] Got completion with error %d, "
-	                        "vendor code=%x, dest rank=%d\n",
+	                        "vendor code=0x%x, dest rank=%d\n",
 	                        wc.status,    
 	                        wc.vendor_err, 
 	                        ((MPIDI_VC_t *)v->vc)->pg_rank

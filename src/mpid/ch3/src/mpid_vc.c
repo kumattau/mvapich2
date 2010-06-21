@@ -764,6 +764,8 @@ int MPIDI_VC_Init( MPIDI_VC_t *vc, MPIDI_PG_t *pg, int rank )
     vc->free_vc = 0;
     vc->tmp_dpmvc = 0;
     vc->rma_issued = 0;
+    vc->disconnect = 0;
+    vc->pending_close_ops = 0; 
     /* The eager max message size must be set at the end of SMP
      * initialization when the status of SMP (SMP_INIT) is known.
      */

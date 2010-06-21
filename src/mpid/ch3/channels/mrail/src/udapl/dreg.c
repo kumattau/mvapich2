@@ -720,7 +720,7 @@ void flush_dereg_mrs_external()
 
                     /* OR: This memory region is in the process of
                      * being deregistered. Leave it alone! */
-                    continue;
+                    break;
                 }
 
                 d->is_valid = 0;

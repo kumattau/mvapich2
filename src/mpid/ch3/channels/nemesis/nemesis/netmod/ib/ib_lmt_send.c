@@ -170,6 +170,7 @@ int MPID_nem_lmt_ib_initiate_lmt(struct MPIDI_VC *vc, struct MPID_nem_pkt_lmt_rt
    MPID_nem_lmt_send_RTS(vc, rts_pkt, cookie, sizeof(MPID_nem_ib_lmt_cookie));
  fn_exit:
  fn_fail:
+    MPIU_Free(cookie);
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_NEM_LMT_IB_INITIATE_LMT);
     return mpi_errno;
 }

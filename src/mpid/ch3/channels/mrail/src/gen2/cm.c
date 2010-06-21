@@ -253,6 +253,39 @@ void add_vc_xrc_hash (MPIDI_VC_t *vc)
     iter->next = node;
 }
 #endif /* _ENABLE_XRC_ */
+
+
+#ifdef CKPT
+// At resume phase, each vc sends out REM_UPDATE(if any), followed by REACT_DONE. 
+// This func is to guarantee that, 
+//REACT_DONE is behind REM_UPDATE in the msg_log_q for each vc. 
+// NOTE: "entry" is REACT_DONE 
+static inline int cm_enq_react_done(MPIDI_VC_t* vc,
+	MPIDI_CH3I_CR_msg_log_queue_entry_t* entry )
+{
+       int ret;
+       pthread_spin_lock( &vc->mrail.cr_lock);
+       if( vc->mrail.react_send_ready )
+       {       //can safely enq the msg
+	       MSG_LOG_ENQUEUE(vc, entry);
+           vc->mrail.react_entry = NULL;
+           ret = 0;
+           CM_DBG("%s: [%d => %d]: enq REACT_DONE\n", __func__,
+                 MPIDI_Process.my_pg_rank, vc->pg_rank );
+       }
+       else
+       {       // may need to enq some local REM_UPDATE msg before this 
+               // REACT_DONE, so store it temporarily
+           vc->mrail.react_entry = entry;
+           ret = 1;
+           CM_DBG("%s: [%d => %d]: save REACT_DONE to be enq later...\n",__func__,
+                MPIDI_Process.my_pg_rank, vc->pg_rank );
+       }
+       pthread_spin_unlock( &vc->mrail.cr_lock);
+       return ret;
+}
+#endif
+
 /*
  * TODO add error checking
  */
@@ -819,7 +852,8 @@ static int cm_accept(MPIDI_PG_t *pg, cm_msg * msg)
             otherwise every rail needs to have one message*/
             entry->buf = v;
             entry->len = sizeof(MPIDI_CH3I_MRAILI_Pkt_comm_header);
-            MSG_LOG_ENQUEUE(vc, entry);
+            // MSG_LOG_ENQUEUE(vc, entry);
+	        cm_enq_react_done(vc, entry);
         }
         vc->ch.state = MPIDI_CH3I_VC_STATE_REACTIVATING_SRV;
     }
@@ -894,7 +928,8 @@ static int cm_accept_and_cancel(MPIDI_PG_t *pg, cm_msg * msg)
             otherwise every rail needs to have one message*/
             entry->buf = v;
             entry->len = sizeof(MPIDI_CH3I_MRAILI_Pkt_comm_header);
-            MSG_LOG_ENQUEUE(vc, entry);
+            // MSG_LOG_ENQUEUE(vc, entry);
+            cm_enq_react_done(vc, entry);
         }
         vc->ch.state = MPIDI_CH3I_VC_STATE_REACTIVATING_SRV;
     }
@@ -1064,7 +1099,8 @@ static int cm_enable(MPIDI_PG_t *pg, cm_msg * msg)
             otherwise every rail needs to have one message*/
             entry->buf = v;
             entry->len = sizeof(MPIDI_CH3I_MRAILI_Pkt_comm_header);
-            MSG_LOG_ENQUEUE(vc, entry);
+            // MSG_LOG_ENQUEUE(vc, entry);
+	        cm_enq_react_done(vc, entry);
         }
     }
     else 
@@ -1488,7 +1524,7 @@ int cm_handle_msg(cm_msg * msg)
                     cm_accept_and_cancel(pg, msg); 
                 }
             }
-            else
+            else // still be "SUSPENDED", I will become srv
             {
                 cm_accept(pg, msg);
             }
@@ -2483,7 +2519,7 @@ int cm_send_suspend_msg(MPIDI_VC_t* vc)
 
     if (SMP_INIT && (vc->smp.local_nodes >= 0)) {
         /* Use the shared memory channel to send Suspend message for SMP VCs */
-        MPID_Request *sreq;
+        MPID_Request *sreq = NULL;
         extern int MPIDI_CH3_SMP_iStartMsg(MPIDI_VC_t *, void *, MPIDI_msg_sz_t, MPID_Request **);
         v = get_vbuf();
         p = (MPIDI_CH3I_MRAILI_Pkt_comm_header*)v->pheader;
@@ -2491,6 +2527,17 @@ int cm_send_suspend_msg(MPIDI_VC_t* vc)
         MPIDI_CH3_SMP_iStartMsg(vc, p, sizeof(MPIDI_CH3I_MRAILI_Pkt_comm_header), &sreq);
         vc->ch.state = MPIDI_CH3I_VC_STATE_SUSPENDING;
         vc->ch.rput_stop = 1;
+
+		if(!sreq )// if sreq == NULL, the msg has been sent out 
+			vc->mrail.suspended_rails_send++;
+		if( vc->mrail.suspended_rails_send > 0 &&
+			vc->mrail.suspended_rails_recv > 0 ){
+			vc->ch.state = MPIDI_CH3I_VC_STATE_SUSPENDED;
+			vc->mrail.suspended_rails_send = 0;
+			vc->mrail.suspended_rails_recv = 0;
+			CM_DBG("%s [%d <= %d]: turn to SUSPENDED\n", __func__, 
+				MPIDI_Process.my_pg_rank, vc->pg_rank );
+		}
         return(0);
     }
 
@@ -2631,7 +2678,7 @@ int MPIDI_CH3I_CM_Suspend(MPIDI_VC_t ** vc_vector)
             break;
         }
 
-        _MPIDI_CH3I_Progress(FALSE, NULL, 0);
+		MPIDI_CH3I_Progress(FALSE, NULL);
     }
     while (flag);
 
@@ -2718,37 +2765,41 @@ int MPIDI_CH3I_CM_Reactivate(MPIDI_VC_t ** vc_vector)
             {
                 vc = vc_vector[i];
 
-		/* Handle the reactivation of the SMP channel */
-		if (SMP_INIT && (vc->smp.local_nodes >= 0)) {
-                    pthread_mutex_lock(&cm_automic_op_lock);
-		    if (vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE) {
-                        pthread_mutex_unlock(&cm_automic_op_lock);
-			flag = 1;
-			break;
-		    }
-                    pthread_mutex_unlock(&cm_automic_op_lock);
-		    continue;
-		}
-
-                if (!vc->mrail.reactivation_done_send
-                    || !vc->mrail.reactivation_done_recv)
+				/* Handle the reactivation of the SMP channel */
+				if (SMP_INIT && (vc->smp.local_nodes >= 0)) 
                 {
-                    flag = 1;
-                    break;
+                      pthread_mutex_lock(&cm_automic_op_lock);
+                      if (vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE) {
+                          pthread_mutex_unlock(&cm_automic_op_lock);
+                          flag = 1;
+                          break;
+                     }
+                     pthread_mutex_unlock(&cm_automic_op_lock);
+                     continue;
                 }
-            }
-        }
+				///
+                MPIU_Assert( vc->mrail.sreq_to_update >= 0 );
+                if (!vc->mrail.reactivation_done_send 
+					|| !vc->mrail.reactivation_done_recv )
+                //|| vc->mrail.sreq_to_update>0 )//some rndv(sender) haven't been updated yet
+                {
+                       flag = 1;
+                       break;
+                }
+             }
+		}
 
         if (flag == 0)
         {
             break;
         }
 
-        _MPIDI_CH3I_Progress(FALSE, NULL, 0);
+		MPIDI_CH3I_Progress(FALSE, NULL);
     }
     while (flag);
 
     /*put down flags*/
+    MPIDI_CH3I_Process.reactivation_complete = 0;
     for (i = 0; i < MPIDI_Process.my_pg->size; ++i)
     {
         if (i == MPIDI_Process.my_pg_rank)
@@ -2761,6 +2812,14 @@ int MPIDI_CH3I_CM_Reactivate(MPIDI_VC_t ** vc_vector)
             vc=vc_vector[i];
             vc->mrail.reactivation_done_send = 0;
             vc->mrail.reactivation_done_recv = 0;
+	    	///clear CR related fields 
+            vc->ch.rput_stop = 0;
+            vc->mrail.react_entry = NULL;
+            vc->mrail.react_send_ready = 0; 
+            pthread_spin_destroy( &vc->mrail.cr_lock);
+            if (vc->mrail.sreq_head){
+               PUSH_FLOWLIST(vc);      
+            }
         }
     }
 
@@ -2770,11 +2829,14 @@ int MPIDI_CH3I_CM_Reactivate(MPIDI_VC_t ** vc_vector)
 /*CM message handler for RC message in progress engine*/
 void MPIDI_CH3I_CM_Handle_recv(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t msg_type, vbuf * v)
 {
+	CM_DBG("%s: [%d <= %d]: got msg: %s(%d)\n", __func__, MPIDI_Process.my_pg_rank, 
+		vc->pg_rank, MPIDI_CH3_Pkt_type_to_string[msg_type], msg_type  );
+
     /*Only count the total number, specific rail matching is not needed*/
     if (msg_type == MPIDI_CH3_PKT_CM_SUSPEND)
     {
-        CM_DBG("handle recv CM_SUSPEND, peer rank %d, rails_send %d, rails_recv %d, ch.state %d",
-                vc->pg_rank, vc->mrail.suspended_rails_send, vc->mrail.suspended_rails_recv, vc->ch.state);
+        CM_DBG("[%d]: handle recv CM_SUSPEND, peer rank %d, rails_send %d, rails_recv %d, ch.state %d",
+           MPIDI_Process.my_pg_rank,  vc->pg_rank, vc->mrail.suspended_rails_send, vc->mrail.suspended_rails_recv, vc->ch.state);
         pthread_mutex_lock(&cm_automic_op_lock);
 
         /*Note no need to lock in ibv_send, because this function is called in 
@@ -2806,8 +2868,9 @@ void MPIDI_CH3I_CM_Handle_recv(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t msg_type, v
         CM_DBG("handle recv MPIDI_CH3_PKT_CM_REACTIVATION_DONE peer rank %d, done_recv %d",
                 vc->pg_rank,vc->mrail.reactivation_done_recv);
         vc->mrail.reactivation_done_recv = 1;
-        vc->ch.rput_stop = 0;
-
+        //vc->ch.rput_stop = 0;
+        // if(vc->mrail.sreq_to_update==0 )
+        //    vc->ch.rput_stop = 0;
         if (vc->mrail.sreq_head)
         {
             PUSH_FLOWLIST(vc);

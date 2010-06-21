@@ -261,7 +261,7 @@ int MPIDI_CH3I_SHMEM_COLL_Mmap()
 	 * it. So, it should actually be PTHREAD_PROCESS_SHARED. However, the
 	 * "shmem_coll_lock" above sets this to 0. Hence, I am doing the same.
 	 */
-	pthread_spin_init(&shmem_coll->cr_smc_spinlock, 0);
+	pthread_spin_init(&shmem_coll->cr_smc_spinlock, PTHREAD_PROCESS_SHARED);
 	shmem_coll->cr_smc_cnt = 0;
 #endif
     }
@@ -306,6 +306,7 @@ int MPIDI_CH3I_SHMEM_COLL_finalize()
     munmap(shmem_coll_obj.mmap_ptr, shmem_coll_size);
     close(shmem_coll_obj.fd);
     MPIU_Free(shmem_file);
+    MPIU_Free(bcast_file);
     return MPI_SUCCESS;
 }
 

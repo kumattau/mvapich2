@@ -62,8 +62,6 @@ MPID_nem_queue_ptr_t MPID_nem_module_ib_free_queue = 0;
 struct ibv_mr *proc_elements_mr = NULL;
 struct ibv_mr *module_elements_mr = NULL;
 
-MPID_nem_ib_queue_ptr_t MPID_nem_ib_vc_queue = 0;
-
 MPID_nem_ib_dev_param_t *MPID_nem_ib_dev_param_ptr = 0;
 
 
@@ -313,7 +311,7 @@ int MPID_nem_ib_init (MPID_nem_queue_ptr_t proc_recv_queue,
     mpi_errno = MPID_nem_ib_init_process_info(pg_rank, pg_p);
     if (mpi_errno != MPI_SUCCESS) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**fail",
-                                    "**fail %s", "Failed to init conn info");
+                                    "**fail %s", "Failed to init process info");
     }
 
 
@@ -456,14 +454,6 @@ int MPID_nem_ib_init (MPID_nem_queue_ptr_t proc_recv_queue,
     if (mpi_errno != MPI_SUCCESS) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**fail",
                                     "**fail %s", "Failed to init conn info");
-    }
-
-
-    /* Initialize the queue of virtual channels */
-    mpi_errno = MPID_nem_ib_queue_init(&MPID_nem_ib_vc_queue);
-    if (mpi_errno != MPI_SUCCESS) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**fail",
-                                    "**fail %s", "Failed to init virtual channels queue");
     }
 
 

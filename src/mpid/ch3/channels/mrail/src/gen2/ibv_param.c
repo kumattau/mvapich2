@@ -73,6 +73,7 @@ int           inter_node_knomial_factor=4;
 int           intra_node_knomial_factor=4;
 int           knomial_2level_bcast_message_size_threshold=2048;
 int           knomial_2level_bcast_system_size_threshold=64;
+int           max_num_win = MAX_NUM_WIN;
 
 /* Threshold of job size beyond which we want to use 2-cq approach */
 int           rdma_iwarp_multiple_cq_threshold = RDMA_IWARP_DEFAULT_MULTIPLE_CQ_THRESHOLD;
@@ -278,6 +279,8 @@ int hcaNameToType(char *dev_name, int* hca_type)
         *hca_type = IBM_EHCA;
     } else if (!strncmp(dev_name, "cxgb3", 5)) {
         *hca_type = CHELSIO_T3;
+    } else if (!strncmp(dev_name, "nes0", 4)) {
+        *hca_type = INTEL_NE020;
     } else {
         *hca_type = UNKNOWN_HCA;
     }
@@ -396,10 +399,13 @@ int rdma_cm_get_hca_type (int use_iwarp_mode, int* hca_type)
             /* Trac #376 recognize chelsio nic even if it's not the first */
             strncpy(rdma_iba_hca, CHELSIO_RNIC, 32);
             break;
+        } else if (use_iwarp_mode && *hca_type == INTEL_NE020) {
+            strncpy(rdma_iba_hca, INTEL_NE020_RNIC, 32);
+            break;
         }
     }
 
-    if (use_iwarp_mode && *hca_type != CHELSIO_T3) {
+    if (use_iwarp_mode && *hca_type != CHELSIO_T3 && *hca_type != INTEL_NE020) {
         /* iWARP RNIC not found. Assuming a generic Adapter. */
         *hca_type = UNKNOWN_HCA;
     }
@@ -534,7 +540,7 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 		    MPIU_ERR_POP(mpi_errno);
 	    }
 
-	    if (proc->hca_type == CHELSIO_T3)
+	    if (proc->hca_type == CHELSIO_T3 || proc->hca_type == INTEL_NE020)
 	    {
 		    proc->use_iwarp_mode = 1;
 	    }
@@ -636,6 +642,12 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 #else /* defined(CKPT) */
     proc->has_one_sided = (value = getenv("MV2_USE_RDMA_ONE_SIDED")) != NULL ? !!atoi(value) : 1; 
 
+    if ((value = getenv("MV2_MAX_NUM_WIN")) != NULL) {
+        max_num_win = atoi(value);
+        if(max_num_win <= 0) {
+             proc->has_one_sided = 0;
+        }
+    }
 #endif /* defined(CKPT) */
 
     if ((value = getenv("MV2_RNDV_EXT_SENDQ_SIZE")) != NULL) {
@@ -779,6 +791,9 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
                 case CHELSIO_T3:
                     rdma_vbuf_total_size = 9 * 1024;
                     break;
+		 case INTEL_NE020:
+                    rdma_vbuf_total_size = 9 * 1024;
+                    break;
                 case MLX_PCI_EX_SDR:
                 case MLX_PCI_EX_DDR:
                 case PATH_HT:
@@ -870,6 +885,29 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 	    rdma_put_fallback_threshold = 8 * 1024;
 	    rdma_get_fallback_threshold = 394 * 1024;
 	    break;
+        case INTEL_NE020:
+	    switch(proc->cluster_size) {
+		case LARGE_CLUSTER:
+			num_rdma_buffer         = 4;
+			rdma_iba_eager_threshold    = 2 * 1024 -sizeof(VBUF_FLAG_TYPE);
+			break;
+                case MEDIUM_CLUSTER:
+			num_rdma_buffer         = 8;
+			rdma_iba_eager_threshold = 4 * 1024 -sizeof(VBUF_FLAG_TYPE);
+
+			break;
+                case SMALL_CLUSTER:
+                case VERY_SMALL_CLUSTER:
+                default:
+			num_rdma_buffer         = 16;
+			rdma_iba_eager_threshold = rdma_vbuf_total_size -
+				sizeof(VBUF_FLAG_TYPE);
+			break;
+		}
+	    rdma_eagersize_1sc      = 4 * 1024;
+	    rdma_put_fallback_threshold = 8 * 1024;
+	    rdma_get_fallback_threshold = 394 * 1024;
+	    break;
         case MLX_PCI_EX_SDR:
         case MLX_PCI_EX_DDR:
         case MLX_CX_DDR:
@@ -912,6 +950,8 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
         rdma_max_inline_size = -1;
     } else if (proc->hca_type == CHELSIO_T3) {
 	rdma_max_inline_size = 64;
+    } else if (proc->hca_type == INTEL_NE020) {
+        rdma_max_inline_size = 64;
     } else {
         rdma_max_inline_size = 128;
     }
@@ -939,6 +979,11 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
           rdma_default_max_cq_size = RDMA_DEFAULT_IWARP_CQ_SIZE;
         } 
 
+        rdma_prepost_noop_extra = 8;
+    }
+
+    if (proc->hca_type == INTEL_NE020) {
+        rdma_default_max_cq_size = 32766;
         rdma_prepost_noop_extra = 8;
     }
 

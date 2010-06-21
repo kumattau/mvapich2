@@ -69,6 +69,7 @@ struct ADIOI_Hints_struct {
                     int co_ratio;
                     int coll_threshold;
                     int ds_in_coll;
+                    int ignore_locks;
             } lustre;
     } fs_hints;
 

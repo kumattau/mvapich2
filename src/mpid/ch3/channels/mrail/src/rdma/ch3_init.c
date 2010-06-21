@@ -81,16 +81,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
             )
     {
         MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_ON_DEMAND;
-	MPIDI_CH3I_Process.num_conn = 0;
-
-#if defined(DISABLE_PTMALLOC) && !defined(SOLARIS)
-        MPIU_Error_printf("Error: On-demand connection management does "
-            "not work without registration caching.\nPlease ensure "
-            "this is enabled when configuring and compiling MVAPICH2 "
-            "or set MV2_ON_DEMAND_THRESHOLD to a value greater than the "
-            "number of processes to use all-to-all connections.\n");
-        MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**fail");
-#endif /* defined (DISABLE_PTMALLOC) && !defined(SOLARIS) */ 
+	    MPIDI_CH3I_Process.num_conn = 0;
     }
     else
     {
@@ -230,17 +221,19 @@ int MPIDI_CH3_VC_Init (MPIDI_VC_t* vc)
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_VC_INIT);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_VC_INIT);
     int mpi_errno = MPI_SUCCESS;
-
+    vc->smp.local_nodes = -1;
+#if !defined (_OSU_PSM_)
     vc->smp.sendq_head = NULL; 
     vc->smp.sendq_tail = NULL; 
     vc->smp.recv_active = NULL; 
     vc->smp.send_active = NULL; 
-    vc->smp.local_nodes = -1;
-#ifdef _ENABLE_XRC_
+    vc->ch.req = NULL; 
+#ifndef DAPL_DEFAULT_PROVIDER
     vc->mrail.rails = NULL;
     vc->mrail.srp.credits = NULL;
-#endif
-
+    vc->mrail.cmanager.msg_channels = NULL;
+#endif /* #ifndef DAPL_DEFAULT_PROVIDER */ 
+#endif /* #if !defined (_OSU_PSM_) */ 
     vc->ch.sendq_head = NULL; 
     vc->ch.sendq_tail = NULL; 
     vc->ch.req = (MPID_Request *) MPIU_Malloc(sizeof(MPID_Request));
@@ -481,6 +474,36 @@ int MPIDI_CH3_VC_Destroy(struct MPIDI_VC* vc)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_VC_DESTROY);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_VC_DESTROY);
+
+#if !defined (_OSU_PSM_)
+    if(vc->smp.sendq_head != NULL) {
+        MPIU_Free(vc->smp.sendq_head);
+    }
+    if(vc->smp.sendq_tail != NULL) {
+        MPIU_Free(vc->smp.sendq_tail);
+    }
+    if(vc->smp.recv_active != NULL) {
+        MPIU_Free(vc->smp.recv_active);
+    }
+    if(vc->smp.send_active != NULL) {
+        MPIU_Free(vc->smp.send_active);
+    }
+    if(vc->ch.req != NULL) {
+        MPIU_Free(vc->ch.req);
+    }
+#ifndef DAPL_DEFAULT_PROVIDER
+    if(vc->mrail.cmanager.msg_channels != NULL) {
+        MPIU_Free(vc->mrail.cmanager.msg_channels);
+    }
+    if(vc->mrail.srp.credits != NULL) {
+        MPIU_Free(vc->mrail.srp.credits);
+    }
+    if(vc->mrail.rails != NULL) {
+        MPIU_Free(vc->mrail.rails);
+    }
+#endif /* #ifndef DAPL_DEFAULT_PROVIDER */
+#endif /* #if !defined (_OSU_PSM_) */
+
 
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_VC_DESTROY);
     return MPI_SUCCESS;

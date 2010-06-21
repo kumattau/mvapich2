@@ -8,7 +8,6 @@
 #include "mpiimpl.h"
 
 #if defined(_OSU_MVAPICH_)
-#include "dreg.h"
 #include "rdma_impl.h"
 #endif
 
@@ -123,25 +122,6 @@ int MPIR_Alltoall(
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
 
-#if defined(_OSU_MVAPICH_)
-    if( comm_size >= alltoall_dreg_disable_threshold || alltoall_dreg_disable == 1) { 
-#if !defined(DISABLE_PTMALLOC)
-       if(g_is_dreg_initialized == 1) { 
-            if( ! have_dereg()) { 
-               lock_dereg();
-            } 
-            if( ! have_dreg())  {
-               lock_dreg();
-            }
- 
-            MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister=0;
-
-            unlock_dereg();
-            unlock_dreg();
-       } 
-#endif /* DISABLE_PTMALLOC */
-    }  
-#endif /* OSU_MVAPICH */
     if (sendbuf == MPI_IN_PLACE) {
         /* We use pair-wise sendrecv_replace in order to conserve memory usage,
          * which is keeping with the spirit of the MPI-2.2 Standard.  But
@@ -576,25 +556,6 @@ int MPIR_Alltoall(
         }
     }
  
-#if defined(_OSU_MVAPICH_)
-    if( comm_size >= alltoall_dreg_disable_threshold || alltoall_dreg_disable == 1) {
-#if !defined(DISABLE_PTMALLOC)
-       if(g_is_dreg_initialized == 1) {
-            if( ! have_dereg()) {
-               lock_dereg();
-            }
-            if( ! have_dreg())  {
-               lock_dreg();
-            }
-
-            MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister=1;
-
-            unlock_dereg();
-            unlock_dreg();
-       }
-#endif /* DISABLE_PTMALLOC */
-    }
-#endif /* OSU_MVAPICH */
 
  fn_fail:    
     /* check if multiple threads are calling this collective function */

@@ -249,16 +249,31 @@ int MPID_nem_ib_finalize (void)
             MPIU_Free(VC_FIELD(vc, connection)->rfp.RDMA_send_buf);
         if (VC_FIELD(vc, connection)->rfp.RDMA_recv_buf)
             MPIU_Free(VC_FIELD(vc, connection)->rfp.RDMA_recv_buf);
+
+#ifdef USE_HEADER_CACHING
+        if( NULL != VC_FIELD(vc, connection)) {
+        MPIU_Free(VC_FIELD(vc, connection)->rfp.cached_incoming);
+        MPIU_Free(VC_FIELD(vc, connection)->rfp.cached_outgoing);
+        MPIU_Free(VC_FIELD(vc, connection)->rfp.cached_incoming_iheader);
+        MPIU_Free(VC_FIELD(vc, connection)->rfp.cached_outgoing_iheader);
+        }
+#endif
+
+        if (VC_FIELD(vc, cmanager)->msg_channels)
+            MPIU_Free(VC_FIELD(vc, cmanager)->msg_channels);
+
+        if (VC_FIELD(vc, connection)->srp.credits)
+            MPIU_Free(VC_FIELD(vc, connection)->srp.credits);
+
     }
 
 
     /* STEP 2: destroy all the qps, tears down all connections */
     for (i = 0; i < pg_size; i++) {
-        MPIDI_PG_Get_vc_set_active(pg, i, &vc);
-
         if (pg_rank == i) {
             continue;
         }
+
 
         for (rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
             err = ibv_destroy_qp(conn_info.connections[i].rails[rail_index].qp_hndl);
@@ -266,12 +281,7 @@ int MPID_nem_ib_finalize (void)
             MPIU_Error_printf("Failed to destroy QP (%d)\n", err);
         }
 
-#ifdef USE_HEADER_CACHING
-        if( NULL != VC_FIELD(vc, connection)) {
-        MPIU_Free(VC_FIELD(vc, connection)->rfp.cached_incoming);
-        MPIU_Free(VC_FIELD(vc, connection)->rfp.cached_outgoing);
-        }
-#endif
+        MPIU_Free(conn_info.connections[i].rails);
     }
 
 
@@ -323,9 +333,8 @@ int MPID_nem_ib_finalize (void)
         }
 
         deallocate_vbufs(i);
-
-        /* dreg */
-        while (dreg_evict());
+        deallocate_vbuf_region();
+        err = dreg_finalize();
 
         err = ibv_dealloc_pd(hca_list[i].ptag);
 
@@ -341,6 +350,19 @@ int MPID_nem_ib_finalize (void)
                 pg_rank, strerror(errno));
         }
 
+    }
+
+    if(process_info.polling_set != NULL) {
+      MPIU_Free(process_info.polling_set);
+    }
+
+    if(cmanagers != NULL) {
+        MPIU_Free(cmanagers);
+    }
+
+
+    if(conn_info.connections != NULL) {
+        MPIU_Free(conn_info.connections);
     }
 
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_NEM_IB_FINALIZE);

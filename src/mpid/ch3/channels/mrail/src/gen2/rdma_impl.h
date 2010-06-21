@@ -62,7 +62,8 @@ enum {
     PATH_HT, 
     MLX_PCI_X, 
     IBM_EHCA,
-    CHELSIO_T3
+    CHELSIO_T3,
+    INTEL_NE020
 };
 
 /* cluster size */
@@ -101,15 +102,15 @@ typedef struct MPIDI_CH3I_RDMA_Process_t {
     int    (*post_send)(MPIDI_VC_t * vc, vbuf * v, int rail);
 
     /*information for management of windows */
-    struct dreg_entry           *RDMA_local_win_dreg_entry[MAX_WIN_NUM];
-    struct dreg_entry           *RDMA_local_wincc_dreg_entry[MAX_WIN_NUM];
-    struct dreg_entry           *RDMA_local_actlock_dreg_entry[MAX_WIN_NUM];
-    struct dreg_entry           *RDMA_post_flag_dreg_entry[MAX_WIN_NUM];
-    struct dreg_entry           *RDMA_assist_thr_ack_entry[MAX_WIN_NUM];
+    struct dreg_entry           **RDMA_local_win_dreg_entry;
+    struct dreg_entry           **RDMA_local_wincc_dreg_entry;
+    struct dreg_entry           **RDMA_local_actlock_dreg_entry;
+    struct dreg_entry           **RDMA_post_flag_dreg_entry;
+    struct dreg_entry           **RDMA_assist_thr_ack_entry;
 
     /* there two variables are used to help keep track of different windows
      * */
-    long                        win_index2address[MAX_WIN_NUM];
+    long                        *win_index2address;
     int                         current_win_num;
 
     uint32_t                    pending_r3_sends[MAX_NUM_SUBRAILS];
@@ -291,6 +292,40 @@ do {                                                                    \
 }
 #else
 #define  XRC_FILL_SRQN_FIX_CONN(_v, _vc, _rail)
+//////////
+inline static void print_info(vbuf* v, char* title, int err)
+{
+    if( !err )   return;
+	
+    static int cnt = 0;
+    MPIDI_VC_t* vc = v->vc;
+    struct ibv_wr_descriptor *desc = &(v->desc);
+    int myrank = MPIDI_Process.my_pg_rank;
+    char* msg;
+    if( err) msg = "Error!!";
+    else  msg = "";
+
+    printf("[%d -> %d] %s:%s: sr.opcode=%d, phead_type=%d(%s), loc:%p:%x:len=%d, rmt:%p:%x\n", 
+            myrank, vc->pg_rank, title, msg, 
+            desc->u.sr.opcode, ((MPIDI_CH3I_MRAILI_Pkt_comm_header *)v->pheader)->type,
+                       MPIDI_CH3_Pkt_type_to_string[((MPIDI_CH3I_MRAILI_Pkt_comm_header*)v->pheader)->type],
+            desc->sg_entry.addr, desc->sg_entry.lkey, desc->sg_entry.length,
+            desc->u.sr.wr.rdma.remote_addr, desc->u.sr.wr.rdma.rkey);
+	if(err){
+		struct ibv_qp_attr attr;
+		struct ibv_qp_init_attr init_attr;
+		enum ibv_qp_attr_mask attr_mask = 0;
+		memset(&attr, 0, sizeof(attr));
+		memset(&init_attr, 0, sizeof(init_attr) );
+	
+		int rv = ibv_query_qp( vc->mrail.rails[0].qp_hndl, &attr,
+			0xffffffff, &init_attr ); 
+		/* sleep(1000000); */
+	}
+    cnt++;
+}
+/////////////////////
+
 #define  IBV_POST_SR(_v, _c, _rail, err_string) {                     \
     {                                                                 \
         int __ret;                                                    \
@@ -313,12 +348,14 @@ do {                                                                    \
         __ret = ibv_post_send((_c)->mrail.rails[(_rail)].qp_hndl,     \
                   &((_v)->desc.u.sr),&((_v)->desc.y.bad_sr));         \
         if(__ret) {                                                   \
-            fprintf(stderr, "failed while avail wqe is %d, "          \
-                    "rail %d\n",                                      \
-                    (_c)->mrail.rails[(_rail)].send_wqes_avail,       \
-                    (_rail));                                         \
+		printf("[%d => %d]: %s(%s): ret=%d, errno=%d: failed while avail wqe is %d, "  \
+                    "rail %d\n",  MPIDI_Process.my_pg_rank, _c->pg_rank, \
+                                       __func__, err_string, __ret, errno,    \
+                     (_c)->mrail.rails[(_rail)].send_wqes_avail,      \
+                     (_rail));                                        \
+                       perror("IBV_POST_SR err::  "); 		          \
             ibv_error_abort(-1, err_string);                          \
-        }                                                             \
+        }							     \
     }                                                                 \
 }
 #endif /* _ENABLE_XRC_ */

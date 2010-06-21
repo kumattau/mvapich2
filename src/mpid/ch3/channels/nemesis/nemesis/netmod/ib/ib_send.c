@@ -458,7 +458,7 @@ int MPIDI_nem_ib_post_send(MPIDI_VC_t * vc, vbuf * v, int rail)
                 p->type,
                 VC_FIELD( vc, connection)->srp.credits[0].backlog.len,
                 VC_FIELD( vc, connection)->rails[rail].send_wqes_avail,
-                v->desc.sg_entry.length, seqnum);
+                v->desc.sg_entry.length, p->seqnum);
 
 
 
@@ -933,8 +933,14 @@ int MRAILI_Process_send(void *vbuf_addr)
 
     if(VC_FIELD(vc, free_vc)) {
         if(VC_FIELD(vc, connection)->rails[v->rail].send_wqes_avail == rdma_default_max_send_wqe) {
-            MRAILI_Release_vbuf(v);
-            memset(vc, 0, sizeof(MPIDI_VC_t));
+            if (v->padding == NORMAL_VBUF_FLAG) {
+                DEBUG_PRINT("[process send] normal flag, free vbuf\n");
+                MRAILI_Release_vbuf(v);
+            } else {
+                v->padding = FREE_FLAG;
+            }
+
+            MPIU_Memset(vc, 0, sizeof(MPIDI_VC_t));
             MPIU_Free(vc);
             mpi_errno = MPI_SUCCESS;
             goto fn_exit;
@@ -987,8 +993,8 @@ int MRAILI_Process_send(void *vbuf_addr)
     case MPIDI_CH3_PKT_ACCUMULATE:
         req = v->sreq;
         v->sreq = NULL;
-        DEBUG_PRINT("[process send type: %d] complete for eager msg, req %p\n",
-                    p->type, req);
+        DEBUG_PRINT("[process send type: %d] complete for eager msg, req %p, seqnum = %d\n",
+                    p->type, req, p->seqnum);
         if (req != NULL) {
             MPIDI_CH3U_Handle_send_req(vc, req, &complete);
 

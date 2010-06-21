@@ -9,5 +9,11 @@
 # copyright file COPYRIGHT in the top level MVAPICH2 directory.
 #
 
-SUBDIRS_other_subdirs = gen2 plpa udapl
+SUBDIRS_other_subdirs = hwloc gen2 udapl
 SUBDIRS = memory rdma @other_subdirs@
+NOTSIMPLEMAKE_SUBDIRS = hwloc
+
+all-postamble:
+	test "x@use_internal_hwloc@" = "xno" ||\
+            { cd hwloc/src/.libs &&\
+            ar xv libhwloc.a && ar crv @master_top_builddir@/lib/lib${MPILIBNAME}.a *.o; }

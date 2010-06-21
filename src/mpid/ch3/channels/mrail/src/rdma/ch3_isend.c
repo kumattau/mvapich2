@@ -198,7 +198,7 @@ static void MPIDI_CH3_SMP_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void *pkt,
             }
             else
             {
-                vc->smp.send_active = MPIDI_CH3I_SendQ_head(vc);
+                vc->smp.send_active = MPIDI_CH3I_SMP_SendQ_head(vc);
             }
         }
         else

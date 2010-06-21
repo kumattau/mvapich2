@@ -30,6 +30,7 @@
 #include <stdio.h>
 #include "avl.h"	/* public types for avl trees */ 
 #include "avl_typs.h"  /* private types for avl trees */
+#include "dreg.h"
  
      /* some common #defines used throughout most of my files */
 #define  PUBLIC   /* default */
@@ -142,7 +143,12 @@ free_node(rootp)
    AVLtree  *rootp;
 {
 #if !defined(DISABLE_PTMALLOC)
-   ADD_AVL_FREE_LIST(&avl_free_list, *rootp);
+   if(g_is_dreg_finalize == 1) {
+     MPIU_Free((*rootp)->data);
+     MPIU_Free((void *) *rootp);
+   } else { 
+      ADD_AVL_FREE_LIST(&avl_free_list, *rootp);
+   }
 #else /* !defined(DISABLE_PTMALLOC) */
    MPIU_Free((*rootp)->data);
    MPIU_Free((void *) *rootp);
@@ -735,7 +741,7 @@ avl_free(rootp, action, sibling_order, level)
          (*action)((*rootp)->data, POSTORDER, node, level);
       }
 
-      MPIU_Free(*rootp);
+      free_node(rootp);
    }/* if non-empty tree */
 }/* avl_free */
 
@@ -805,6 +811,9 @@ avldispose(treeptr, action, sibling_order)
    AVLdescriptor  *avl_desc;
 
    avl_desc = (AVLdescriptor *) *treeptr;
+   if(&(avl_desc->root) == NULL) {
+      return;
+   } 
    avl_free(&(avl_desc->root), action, sibling_order, 1);
    *treeptr = (AVL_TREE) NULL;
 }/* avldispose */

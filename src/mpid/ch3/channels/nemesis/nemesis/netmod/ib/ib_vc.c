@@ -63,6 +63,7 @@ int MPID_nem_ib_vc_init (MPIDI_VC_t *vc )
 
 
     VC_FIELD(vc, qp) = NULL;
+    VC_FIELD(vc, free_vc) = 0;
     VC_FIELD(vc, in_queue) = 0;
     VC_FIELD(vc, seqnum_recv) = 0;
     VC_FIELD(vc, seqnum_send) = 0;
@@ -148,6 +149,8 @@ int MPID_nem_ib_vc_init (MPIDI_VC_t *vc )
         VC_FIELD(vc, connection)->srp.credits[i].backlog.len       = 0;
         VC_FIELD(vc, connection)->srp.credits[i].backlog.vbuf_head = NULL;
         VC_FIELD(vc, connection)->srp.credits[i].backlog.vbuf_tail = NULL;
+    
+        VC_FIELD(vc, connection)->srp.credits[i].rendezvous_packets_expected = 0;
 
         VC_FIELD(vc, connection)->rails[i].s_weight =
                 DYNAMIC_TOTAL_WEIGHT / rdma_num_rails;
@@ -183,10 +186,7 @@ int MPID_nem_ib_vc_init (MPIDI_VC_t *vc )
 int MPID_nem_ib_vc_destroy(MPIDI_VC_t *vc)
 {
     int mpi_errno = MPI_SUCCESS;
-
     VC_FIELD(vc, connection) = NULL;
-
-
        return mpi_errno;
 }
 

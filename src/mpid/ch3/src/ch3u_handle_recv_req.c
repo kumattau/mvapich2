@@ -1051,7 +1051,8 @@ int MPIDI_CH3I_Release_lock(MPID_Win *win_ptr)
 #endif /* defined(_OSU_MVAPICH_) */
 
         /* FIXME: MT: The setting of the lock type must be done atomically */
-        win_ptr->current_lock_type = MPID_LOCK_NONE;
+        if (win_ptr->shared_lock_ref_cnt == 0)
+            win_ptr->current_lock_type = MPID_LOCK_NONE;
 
         /* If there is a lock queue, try to satisfy as many lock requests as
            possible. If the first one is a shared lock, grant it and grant all

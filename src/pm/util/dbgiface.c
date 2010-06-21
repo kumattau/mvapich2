@@ -42,8 +42,12 @@ int MPIR_partial_attach_ok = 0;
    1) finding out the state of the program
    2) informing the process that it has been attached to
 */
+extern volatile int MPIR_debug_state;
+extern char *MPIR_debug_abort_string;
+/*
 volatile int MPIR_debug_state = 0;
 char *MPIR_debug_abort_string = 0;
+*/
 
 int MPIE_InitForDebugger( ProcessWorld *pWorld )
 {

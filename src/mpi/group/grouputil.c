@@ -24,7 +24,6 @@ int MPIR_Group_release(MPID_Group *group_ptr)
 {
     int mpi_errno = MPI_SUCCESS;
     int inuse;
-
     MPIR_Group_release_ref(group_ptr, &inuse);
     if (!inuse) {
         /* Only if refcount is 0 do we actually free. */

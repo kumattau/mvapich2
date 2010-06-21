@@ -142,11 +142,7 @@ void MPIDI_CH3_Progress_start(MPID_Progress_state * state)
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 
-#ifdef CKPT
-  int _MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state, int lockcr)
-#else /* !CKPT */
-  int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
-#endif /* CKPT */
+int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
 {
     MPIDI_VC_t *vc_ptr = NULL;
     int mpi_errno = MPI_SUCCESS;
@@ -167,7 +163,6 @@ void MPIDI_CH3_Progress_start(MPID_Progress_state * state)
     DEBUG_PRINT("Entering ch3 progress\n");
 
 #ifdef CKPT
-    if (lockcr)
         MPIDI_CH3I_CR_lock();
 #endif
 
@@ -199,7 +194,7 @@ void MPIDI_CH3_Progress_start(MPID_Progress_state * state)
 #ifdef CKPT
             if (MPIDI_CH3I_Process.reactivation_complete) {
                 /*Some channel has been reactivated*/
-                MPIDI_CH3I_Process.reactivation_complete = 0;
+                //MPIDI_CH3I_Process.reactivation_complete = 0;
                 cm_handle_reactivation_complete();
             }
 #endif
@@ -303,7 +298,6 @@ void MPIDI_CH3_Progress_start(MPID_Progress_state * state)
 fn_completion:
 fn_fail:
 #ifdef CKPT
-    if (lockcr)
         MPIDI_CH3I_CR_unlock();
 #endif
     MPIDI_DBG_PRINTF((50, FCNAME, "exiting, count=%d",
@@ -377,7 +371,6 @@ int MPIDI_CH3I_Progress_test()
         if (MPIDI_CH3I_Process.reactivation_complete)
         {
             /*Some channel has been reactivated*/
-            MPIDI_CH3I_Process.reactivation_complete = 0;
             cm_handle_reactivation_complete();
         }
 #endif /* defined(CKPT) */

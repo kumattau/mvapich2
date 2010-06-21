@@ -767,21 +767,21 @@ int PMI_Spawn_multiple(int count,
         rc = MPIU_Snprintf(buf, PMIU_MAXLINE, 
 			   "mcmd=spawn\nnprocs=%d\nexecname=%s\n",
 			   maxprocs[spawncnt], cmds[spawncnt] );
-	if (rc < 0) {
-	    return PMI_FAIL;
-	}
+        if (rc < 0) {
+            return PMI_FAIL;
+        }
 
-	rc = MPIU_Snprintf(tempbuf, PMIU_MAXLINE,
-			   "totspawns=%d\nspawnssofar=%d\n",
-			   count, spawncnt+1);
+        rc = MPIU_Snprintf(tempbuf, PMIU_MAXLINE,
+                   "totspawns=%d\nspawnssofar=%d\n",
+                   count, spawncnt+1);
 
-	if (rc < 0) { 
-	    return PMI_FAIL;
-	}
-	rc = MPIU_Strnapp(buf,tempbuf,PMIU_MAXLINE);
-	if (rc != 0) {
-	    return PMI_FAIL;
-	}
+        if (rc < 0) {
+            return PMI_FAIL;
+        }
+        rc = MPIU_Strnapp(buf,tempbuf,PMIU_MAXLINE);
+        if (rc != 0) {
+            return PMI_FAIL;
+        }
 
         argcnt = 0;
         if ((argvs != NULL) && (argvs[spawncnt] != NULL)) {
@@ -799,18 +799,23 @@ int PMI_Spawn_multiple(int count,
 		   argn=<any nonnewline><newline> */
                 rc = MPIU_Snprintf(tempbuf,PMIU_MAXLINE,"arg%d=%s\n",
 				   i+1,argvs[spawncnt][i]);
-		if (rc < 0) {
-		    return PMI_FAIL;
-		}
-                rc = MPIU_Strnapp(buf,tempbuf,PMIU_MAXLINE);
-		if (rc != 0) {
-		    return PMI_FAIL;
-		}
-                argcnt++;
-		//rc = PMIU_writeline( PMI_fd, buf );
-		//buf[0] = 0;
+                if (rc < 0) {
+                    return PMI_FAIL;
+                }
+                        rc = MPIU_Strnapp(buf,tempbuf,PMIU_MAXLINE);
+                if (rc != 0) {
+                    return PMI_FAIL;
+                }
+                        argcnt++;
 
-            }
+               if(mpirun) {
+                   sz = strlen(buf);
+                   write(PMI_fd, &sz, sizeof(uint32_t));
+                }
+                rc = PMIU_writeline( PMI_fd, buf );
+                buf[0] = 0;
+
+              }
         }
         rc = MPIU_Snprintf(tempbuf,PMIU_MAXLINE,"argcnt=%d\n",argcnt);
 	if (rc < 0) {
@@ -891,6 +896,7 @@ int PMI_Spawn_multiple(int count,
             write(PMI_fd, &sz, sizeof(uint32_t));
         }
         PMIU_writeline( PMI_fd, buf );
+
     }
 
     PMIU_readline( PMI_fd, buf, PMIU_MAXLINE );

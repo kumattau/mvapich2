@@ -138,6 +138,13 @@ static pthread_mutex_t MPICR_SMC_lock;
 static pthread_cond_t MPICR_SMC_cond = PTHREAD_COND_INITIALIZER;
 int g_cr_in_progress;
 
+
+///////////////////////////for test only
+int CR_done = 0;
+int CR_show_print = 0;
+///////////////////////////////
+
+
 inline void MPIDI_CH3I_SMC_lock()
 {
     pthread_mutex_lock(&MPICR_SMC_lock);
@@ -380,11 +387,26 @@ CR lock to protect upper layers from accessing communication channel
 */
 inline void MPIDI_CH3I_CR_lock()
 {
+  /*
+  * If the current thread has already acquired the wrlock,
+  * don't bother acquiring the rdlock.
+  */
+    if (MPICR_cs_lock.__data.__writer == syscall(SYS_gettid))
+        return;
+
     pthread_rwlock_rdlock(&MPICR_cs_lock);
 }
 
 inline void MPIDI_CH3I_CR_unlock()
 {
+    /*
+     * If the current thread has already acquired the wrlock,
+     * you did not acquire the reader lock. So don't bother to
+     * release the rdlock.
+   */
+    if (MPICR_cs_lock.__data.__writer == syscall(SYS_gettid))
+        return;
+
     pthread_rwlock_unlock(&MPICR_cs_lock);
 }
 
@@ -511,6 +533,8 @@ int CR_Thread_loop()
                 CR_ERR_ABORT("CR_IBU_Suspend_channels failed\n");
             }
 
+			if(MPICR_pg_rank==0) printf("[%d]: begin checkpoint...\n", MPICR_pg_rank);
+
             CR_Set_state(MPICR_STATE_CHECKPOINTING);
             cr_file_fd = open(cr_file, O_CREAT | O_WRONLY | O_TRUNC , 0666);
 
@@ -544,12 +568,15 @@ int CR_Thread_loop()
 
             if (getenv("MV2_CKPT_NO_SYNC") == NULL)
             {
+				if(MPICR_pg_rank==0) printf("[%d]: fsync...\n", MPICR_pg_rank);
                 CR_DBG("fsync\n");
                 fsync(cr_file_fd);
                 CR_DBG("fsync done\n");
             }
 
             CR_Set_state(MPICR_STATE_POST_COORDINATION);
+
+			if(MPICR_pg_rank==0) printf("[%d]: Reactivate channels...\n", MPICR_pg_rank);
 
             if (CR_IBU_Reactivate_channels())
             {
@@ -565,7 +592,7 @@ int CR_Thread_loop()
                 CR_ERR_ABORT("CR_IBU_Reactivate_channels failed\n");
             }
 
-            CR_Set_state(MPICR_STATE_RUNNING);
+            //CR_Set_state(MPICR_STATE_RUNNING);
 
             if (MPICR_is_restarting)
             {
@@ -590,17 +617,22 @@ int CR_Thread_loop()
 	     * Let the shared memory collectives know that the checkpoint
 	     * request has completed
 	     */
-	    if (enable_shmem_collectives)
-		MPIDI_CH3I_SMC_unlock();
+		    if (enable_shmem_collectives)
+				MPIDI_CH3I_SMC_unlock();
+
+            CR_Set_state(MPICR_STATE_RUNNING);
 
             if (MPIDI_Process.use_sync_ckpt)
             {
-		pthread_mutex_lock(&MVAPICH2_sync_ckpt_lock);
+				pthread_mutex_lock(&MVAPICH2_sync_ckpt_lock);
                 pthread_cond_signal(&MVAPICH2_sync_ckpt_cond);
-		pthread_mutex_unlock(&MVAPICH2_sync_ckpt_lock);
+				pthread_mutex_unlock(&MVAPICH2_sync_ckpt_lock);
             }
 
             MPICR_is_restarting = 0;
+			if( MPICR_pg_rank==0 || MPICR_pg_rank == MPICR_pg_size-1 )
+				printf("[%d]:  CR completed...\n", MPICR_pg_rank );
+
         }
         else
         {
@@ -918,7 +950,9 @@ void MPIDI_CH3I_CR_Handle_recv(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_type_t msg_type, vb
 {
     MPICR_remote_update_msg* msg = NULL;
     struct MPID_Request* sreq = NULL;
-
+    int found = 0;
+	CR_DBG("%s: [%d <= %d]: got msg: %s(%d)\n", __func__, MPIDI_Process.my_pg_rank, 
+			vc->pg_rank, MPIDI_CH3_Pkt_type_to_string[msg_type], msg_type  );
     switch (msg_type)
     {
     case MPIDI_CH3_PKT_CR_REMOTE_UPDATE:
@@ -928,6 +962,7 @@ void MPIDI_CH3I_CR_Handle_recv(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_type_t msg_type, vb
             sreq = (struct MPID_Request*) vc->mrail.sreq_head;
 
             CR_DBG("Looking for address match %p\n", msg->recv_mem_addr);
+	    	found = 0;
 
             while (sreq)
             {
@@ -939,12 +974,27 @@ void MPIDI_CH3I_CR_Handle_recv(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_type_t msg_type, vb
 
                     /*FIXME: Is address match enough? */
                     MPIU_Memcpy(sreq->mrail.rkey, msg->recv_buf_rkey, sizeof(uint32_t) * MAX_NUM_HCAS);
-                    CR_DBG("rkey updated hca0:%x\n", sreq->mrail.rkey[0]);
+                    found++;
+                    if( vc->mrail.sreq_to_update <= 0 ){
+                         CR_DBG("[%d <== %d]: %s: Warn: REM_UPDATE: sreq-to-up=%d...\n", 
+                             MPICR_pg_rank, vc->pg_rank, __func__,vc->mrail.sreq_to_update );
+                         //MPIU_Assert( vc->mrail.sreq_to_update > 0 );
+                    }
+                    else //( vc->mrail.sreq_to_update > 0 )
+                    	vc->mrail.sreq_to_update--; // has updated one sender' rndv(sreq)
+					if( vc->mrail.sreq_to_update == 0 ){
+                           //vc->ch.rput_stop = 0; // all pending sender rndv have been updated
+                    }
+                    
+	            	CR_DBG("rkey updated hca0:%x\n", sreq->mrail.rkey[0]);
                 }
 
                 sreq = sreq->mrail.next_inflow;
             }
-
+            if( !found ){
+                 CR_DBG("[%d <== %d]: %s: Warn: REM_UPDATE: no match found...\n", 
+                 	MPICR_pg_rank,  vc->pg_rank, __func__  );
+			}
 #if defined(MPIDI_MRAILI_COALESCE_ENABLED)
             v->content_consumed += sizeof(MPICR_remote_update_msg);
 #endif /* defined(MPIDI_MRAILI_COALESCE_ENABLED) */
@@ -1476,11 +1526,82 @@ int CR_IBU_Prep_remote_update()
         entry->len = sizeof(MPIDI_CH3I_MRAILI_Pkt_comm_header) + sizeof(msg);
         entry->buf = v;
         MSG_LOG_ENQUEUE(vc, entry);
+		CR_DBG("%s: [%d => %d]: enq REM_UPDATE...\n",__func__, MPICR_pg_rank, vc->pg_rank );
+
         temp = temp->ch.cr_queue_next;
     }
 
     return 0;
 }
+
+
+/**
+Before ckpt, record the num of active rndv for each vc(as sender), so that
+we know how many rndvs need to be updated with their rkey during restart
+**/
+void CR_record_rndv(MPIDI_VC_t** vc_vector)
+{
+    struct MPID_Request* sreq = NULL;
+    MPIDI_VC_t *vc=NULL;
+
+    int i,n;
+
+    for(i=0; i<MPICR_pg_size; i++)
+    {
+        if( i== MPICR_pg_rank ) continue;
+
+        vc = vc_vector[i];
+        if( vc==NULL){
+            continue;
+        }
+
+        n = 0;
+        sreq = (struct MPID_Request*)vc->mrail.sreq_head;
+        while (sreq) // record: num of rndvs as sender
+        {
+            n++;
+            sreq = sreq->mrail.next_inflow;
+        }
+        // this many rndv need to be updated with new rkey at restart
+        vc->mrail.sreq_to_update = n;
+        if( n>0 || vc->ch.sendq_head || vc->ch.cm_sendq_head || vc->mrail.msg_log_queue_head ){
+    	    CR_DBG("%s: [%d vc_%d]: has  %d  rndv-send to update, ch.sendq_head = %p, ch.cm_sendq_head=%p, vc.mrail.msg_log_q_head=%p\n",
+                        __func__, MPICR_pg_rank, vc->pg_rank, n,
+                       vc->ch.sendq_head, vc->ch.cm_sendq_head, vc->mrail.msg_log_queue_head );
+		}
+
+    }// end of for( each vc )
+    
+}
+
+void CR_record_flowlist(char* title)
+{
+       extern MPIDI_VC_t *flowlist;
+
+       MPIDI_VC_t *vc = flowlist;
+
+       int n=0;
+       while( vc ){
+               n++;
+               MPIU_Assert(vc->mrail.inflow==1);
+               //CR_DBG("[%d -> %d]: flowlist_%d: ...\n", MPICR_pg_rank, vc->pg_rank, n );
+               vc = vc->mrail.nextflow;
+       }
+
+       // cnt pending CTS at recv-side
+       struct MPID_Request* temp = MPICR_req_list_head;
+       int cts=0;
+       while( temp ){
+               cts++;
+               temp = temp->ch.cr_queue_next;
+       }
+       if( n>0 || cts>0 )      
+       CR_DBG("[%d]: %s:  flowlist = %d, CTS = %d\n", MPICR_pg_rank, title, n, cts );
+
+}
+   
+
+
 
 int CR_IBU_Suspend_channels()
 {
@@ -1488,6 +1609,7 @@ int CR_IBU_Suspend_channels()
     MPIDI_VC_t** vc_vector = (MPIDI_VC_t**) MPIU_Malloc(sizeof(MPIDI_VC_t*) * MPICR_pg_size);
     MPIDI_VC_t* vc = NULL;
 
+    MPIU_Assert( vc_vector );
     for (; i < MPICR_pg_size; ++i)
     {
         if ( i == MPICR_pg_rank)
@@ -1504,6 +1626,12 @@ int CR_IBU_Suspend_channels()
         MPIU_Assert(vc->ch.state != MPIDI_CH3I_VC_STATE_REACTIVATING_CLI_2);
         MPIU_Assert(vc->ch.state != MPIDI_CH3I_VC_STATE_REACTIVATING_SRV);
 #endif /* !defined(NDEBUG) */
+        ///////  init the fields to be used at resume
+        if( vc ){
+              pthread_spin_init( &vc->mrail.cr_lock, 0 );
+              vc->mrail.react_send_ready = 0;
+              vc->mrail.react_entry = NULL;
+        }
 
         if (vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE
             ||  vc->ch.state == MPIDI_CH3I_VC_STATE_SUSPENDING)
@@ -1527,6 +1655,10 @@ int CR_IBU_Suspend_channels()
     {
         return retval;
     }
+    /// record num of rndvs(sender) to update at restart
+    CR_record_rndv( vc_vector );
+    //CR_record_flowlist("after susp-chan");
+    //MPIU_Free(vc_vector);
 
     return retval;
 }
@@ -1570,7 +1702,7 @@ int CR_IBU_Reactivate_channels()
 
         MPIDI_PG_Get_vc(MPICR_pg, i, &vc);
 
-#if !defined(NDEBUG)
+//#if !defined(NDEBUG)
         /* Now all calling can only be small rank reactivate to big rank. */
         MPIU_Assert(vc->ch.state != MPIDI_CH3I_VC_STATE_CONNECTING_CLI);
         MPIU_Assert(vc->ch.state != MPIDI_CH3I_VC_STATE_CONNECTING_SRV);
@@ -1578,12 +1710,22 @@ int CR_IBU_Reactivate_channels()
         MPIU_Assert(vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE);
         MPIU_Assert(vc->ch.state != MPIDI_CH3I_VC_STATE_REACTIVATING_CLI_1);
         MPIU_Assert(vc->ch.state != MPIDI_CH3I_VC_STATE_REACTIVATING_CLI_2);
-#endif /* !defined(NDEBUG) */
+//#endif /* !defined(NDEBUG) */
 
         if (vc->ch.state == MPIDI_CH3I_VC_STATE_SUSPENDED
             || vc->ch.state == MPIDI_CH3I_VC_STATE_REACTIVATING_SRV)
         {
             vc_vector[i] = vc;
+			///////////// make sure: REACT_DONE are behind REM_UPDATE(if any)
+            pthread_spin_lock( &vc->mrail.cr_lock);
+            vc->mrail.react_send_ready = 1;
+            if( vc->mrail.react_entry ) // cm_thread has gotten REACT_DONE from peer:
+            { //  enquue the REACT_DONE to be sent to peer
+              //CR_DBG("%s: [%d => %d]: REACT_DONE came earlier, enq now...\n",
+             //      __func__, MPICR_pg_rank, vc->pg_rank );
+                 MSG_LOG_ENQUEUE(vc, vc->mrail.react_entry);                     
+            }
+            pthread_spin_unlock( &vc->mrail.cr_lock);
         }
         else
         {

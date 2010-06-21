@@ -206,6 +206,16 @@ int MPI_Finalize( void )
     MPIR_DebuggerSetAborting( (char *)0 );
 #endif
 
+#if defined(_OSU_MVAPICH_)
+    /* Check to see if shmem_collectives were enabled. If yes, the
+    specific entries need to be freed. */
+    if( MPIR_Process.comm_world->shmem_coll_ok == 1) {
+        MPIU_THREAD_CS_EXIT(ALLFUNC,);
+        free_2level_comm(MPIR_Process.comm_world);
+        MPIU_THREAD_CS_ENTER(ALLFUNC,);
+    }
+#endif
+
     mpi_errno = MPID_Finalize();
     if (mpi_errno) {
 	MPIU_ERR_POP(mpi_errno);
