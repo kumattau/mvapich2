@@ -271,7 +271,7 @@ int MPID_nem_ib_get_control_params_after_hcainit()
 
     int size;
     PMI_Get_size(&size);
-    process_info.has_srq = (value = getenv("MV2_USE_SRQ")) != NULL ? !!atoi(value) : 0;
+    process_info.has_srq = (value = getenv("MV2_USE_SRQ")) != NULL ? !!atoi(value) : 1;
 #ifdef _ENABLE_XRC_
     if (USE_XRC) {
         process_info.has_srq = 1;
