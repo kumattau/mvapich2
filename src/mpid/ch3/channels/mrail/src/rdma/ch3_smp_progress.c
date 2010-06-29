@@ -3471,6 +3471,8 @@ int get_cpu_mapping_hwloc(long N_CPUs_online, hwloc_topology_t topology)
     struct dirent **namelist;
     pid_t pid;
     obj_attribute_type *tree = NULL;
+    char *value;
+    int mv2_enable_leastload = 0;
     
     /* Determine topology depth */
     topodepth = hwloc_topology_get_depth(topology);
@@ -3529,55 +3531,76 @@ int get_cpu_mapping_hwloc(long N_CPUs_online, hwloc_topology_t topology)
         tree[i].load = 0;
         CPU_ZERO(&(tree[i].cpuset));
       }
-
-      /*
-       * Get all processes' pid and cpuset.
-       * Get numanode, socket, and core current load according to processes running on it.
-       */
-
-      num_processes = scandir("/proc", &namelist, pid_filter, alphasort);
-      if (num_processes < 0) {
-          fprintf(stderr, "Warning: %s: Failed to scandir /proc.\n", __func__);
-      return -1;
-      } else {
-          int status;
-          cpu_set_t pid_cpuset = {0};
-          CPU_ZERO(&pid_cpuset);
-
-          /* Get cpuset for each running process. */
-          for(i = 0; i < num_processes; i++) {
-            pid = atol(namelist[i]->d_name);
-            status = sched_getaffinity(pid, sizeof(pid_cpuset), &pid_cpuset);
-            /* Process completed. */
-            if (status < 0) {
-               continue;
-            }
-            cac_load(tree, pid_cpuset);
-          }
-          while(num_processes--) {
-            free(namelist[num_processes]);
-          }
-          free(namelist);
+    
+      if(! (obj_tree = (int *) MPIU_Malloc(num_cpus * topodepth *sizeof(*obj_tree)))) {
+        goto error_free;
+      }
+      for(i = 0; i < num_cpus * topodepth; i++) {
+        obj_tree[i] = -1;
       }
 
       ip = 0;
       sysobj = hwloc_get_root_obj(topology);
 
-      if (policy == POLICY_SCATTER) {
-      /* Scatter */
-      /*  for(i = 0; i < num_cpus; i++) {
-                  map_scatter(sysobj, 0);
-          }
-       */
-      map_scatter_load(tree);
-      } else if (policy == POLICY_BUNCH) {
-      /* Bunch */
-      /*  map_bunch(sysobj, 0);   */
-      map_bunch_load(tree);
-      } else {
-          goto error_free;
+      /* MV2_ENABLE_LEASTLOAD: map_bunch/scatter or map_bunch/scatter_load */
+      if ((value = getenv("MV2_ENABLE_LEASTLOAD")) != NULL) {
+        mv2_enable_leastload = atoi(value);
+        if (mv2_enable_leastload != 1) {
+            mv2_enable_leastload = 0;
+        }
       }
-      
+
+      /* MV2_ENABLE_LEASTLOAD=1, map_bunch_load or map_scatter_load is used */
+      if (mv2_enable_leastload == 1) {
+        /*
+         * Get all processes' pid and cpuset.
+         * Get numanode, socket, and core current load according to processes running on it.
+         */
+        num_processes = scandir("/proc", &namelist, pid_filter, alphasort);
+        if (num_processes < 0) {
+            fprintf(stderr, "Warning: %s: Failed to scandir /proc.\n", __func__);
+            return -1;
+        } else {
+            int status;
+            cpu_set_t pid_cpuset = {0};
+            CPU_ZERO(&pid_cpuset);
+
+            /* Get cpuset for each running process. */
+            for(i = 0; i < num_processes; i++) {
+                pid = atol(namelist[i]->d_name);
+                status = sched_getaffinity(pid, sizeof(pid_cpuset), &pid_cpuset);
+                /* Process completed. */
+                if (status < 0) {
+                    continue;
+                }
+                cac_load(tree, pid_cpuset);
+            }
+            while(num_processes--) {
+                free(namelist[num_processes]);
+            }
+            free(namelist);
+        }
+        if (policy == POLICY_SCATTER) {
+            map_scatter_load(tree);
+        } else if (policy == POLICY_BUNCH) {
+            map_bunch_load(tree);
+        } else {
+            goto error_free;
+        }
+      } else {
+        /* MV2_ENABLE_LEASTLOAD != 1 or MV2_ENABLE_LEASTLOAD == NULL, map_bunch or map_scatter is used */
+        if (policy == POLICY_SCATTER) {
+            /* Scatter */
+            for(i = 0; i < num_cpus; i++) {
+                map_scatter(sysobj, 0);
+            }
+        } else if (policy == POLICY_BUNCH) {
+            /* Bunch */
+            map_bunch(sysobj, 0);
+        } else {
+            goto error_free;
+        }
+      }
 
       /* Assemble custom_cpu_mapping string */
       s = custom_cpu_mapping;
@@ -3673,10 +3696,13 @@ int get_cpu_mapping_hwloc(long N_CPUs_online, hwloc_topology_t topology)
 
     error_free:
     if(core_mapping != NULL) { 
-         MPIU_Free(core_mapping);
+        MPIU_Free(core_mapping);
     }
     if(tree != NULL) {
-	 MPIU_Free(tree);
+        MPIU_Free(tree);
+    }
+    if(obj_tree) {
+        MPIU_Free(obj_tree);
     }
     
     MPIU_DBG_MSG_FMT(OTHER,TYPICAL,(MPIU_DBG_FDEST,"num_cpus=%d, num_sockets=%d, custom_cpu_mapping=\"%s\"",
