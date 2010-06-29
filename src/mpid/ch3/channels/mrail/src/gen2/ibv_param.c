@@ -769,145 +769,89 @@ fn_fail:
 
 void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 {
-    switch(proc->cluster_size) {
-
-        case LARGE_CLUSTER:
-            rdma_vbuf_total_size = 2*1024;
-            break;
-        case MEDIUM_CLUSTER:
-            rdma_vbuf_total_size = 4*1024;
-            break;
-        case SMALL_CLUSTER:
-            switch(proc->hca_type) {
-                case MLX_PCI_X:
-                case IBM_EHCA:
-                    rdma_vbuf_total_size = 12*1024;
-                    break;
-                case MLX_CX_DDR:
-                case MLX_CX_SDR:
-                case MLX_CX_QDR:
-                    rdma_vbuf_total_size = 9 * 1024;
-                    break;
-                case CHELSIO_T3:
-                    rdma_vbuf_total_size = 9 * 1024;
-                    break;
-		 case INTEL_NE020:
-                    rdma_vbuf_total_size = 9 * 1024;
-                    break;
-                case MLX_PCI_EX_SDR:
-                case MLX_PCI_EX_DDR:
-                case PATH_HT:
-                default:
-#ifdef _X86_64_
-                    rdma_vbuf_total_size = 9 * 1024;
-#else
-                    rdma_vbuf_total_size = 6 * 1024;
-#endif
-
-                    break;
-            }
-            break;
-        case VERY_SMALL_CLUSTER:
-        default:
-            switch(proc->hca_type) {
-                case MLX_PCI_X:
-                case IBM_EHCA:
-                    rdma_vbuf_total_size = 12*1024;
-                    break;
-                case MLX_CX_DDR:
-                case MLX_CX_SDR:
-                case MLX_CX_QDR:
-                    rdma_vbuf_total_size = 9 * 1024;
-                    break;
-	            case CHELSIO_T3:
-         		    rdma_vbuf_total_size = 33 * 1024;
-		            break;
-                case MLX_PCI_EX_SDR:
-                case MLX_PCI_EX_DDR:
-                case PATH_HT:
-                default:
-#ifdef _X86_64_
-                    rdma_vbuf_total_size = 9 * 1024;
-#else
-                    rdma_vbuf_total_size = 6 * 1024;
-#endif
-                    
-                    break;
-            }
-            break;
-    }
-
     switch(proc->hca_type) {
         case MLX_PCI_X:
         case IBM_EHCA:
             switch(proc->cluster_size) {
-                case LARGE_CLUSTER:
-                    num_rdma_buffer         = 4;
-                    rdma_iba_eager_threshold    = 6 * 1024 -sizeof(VBUF_FLAG_TYPE);
-                    break;
-                case MEDIUM_CLUSTER:
-                    num_rdma_buffer         = 16;
-                    rdma_iba_eager_threshold    = 6 * 1024 -sizeof(VBUF_FLAG_TYPE);
-                    break;
-                case SMALL_CLUSTER:
-                case VERY_SMALL_CLUSTER:
-                default:
-                    num_rdma_buffer         = 32;
-                    rdma_iba_eager_threshold    = rdma_vbuf_total_size - 
-                        sizeof(VBUF_FLAG_TYPE);
-                    break;
+            case LARGE_CLUSTER:
+                rdma_vbuf_total_size     = 2*1024;
+                num_rdma_buffer          = 4;
+                rdma_iba_eager_threshold = 6 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                break;
+            case MEDIUM_CLUSTER:
+                rdma_vbuf_total_size     = 4*1024;
+                num_rdma_buffer          = 16;
+                rdma_iba_eager_threshold = 6 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                break;
+            case SMALL_CLUSTER:
+            case VERY_SMALL_CLUSTER:
+            default:
+                rdma_vbuf_total_size     = 12*1024;
+                num_rdma_buffer          = 32;
+                rdma_iba_eager_threshold = rdma_vbuf_total_size - 
+                                              sizeof(VBUF_FLAG_TYPE);
+                break;
             }
-
-            rdma_eagersize_1sc      = 4 * 1024;
-            rdma_put_fallback_threshold = 8 * 1024;
-            rdma_get_fallback_threshold = 394 * 1024;
+            rdma_eagersize_1sc           = 4 * 1024;
+            rdma_put_fallback_threshold  = 8 * 1024;
+            rdma_get_fallback_threshold  = 394 * 1024;
             break;
         case CHELSIO_T3:
-	    switch(proc->cluster_size) {
-		case LARGE_CLUSTER:
-			num_rdma_buffer         = 4;
-			rdma_iba_eager_threshold    = 2 * 1024 -sizeof(VBUF_FLAG_TYPE);
-			break;
-                case MEDIUM_CLUSTER:
-			num_rdma_buffer         = 8;
-			rdma_iba_eager_threshold = 4 * 1024 -sizeof(VBUF_FLAG_TYPE);
-
-			break;
-                case SMALL_CLUSTER:
-                case VERY_SMALL_CLUSTER:
-                default:
-			num_rdma_buffer         = 16;
-			rdma_iba_eager_threshold = rdma_vbuf_total_size -
-				sizeof(VBUF_FLAG_TYPE);
-			break;
-		}
-	    rdma_eagersize_1sc      = 4 * 1024;
-	    rdma_put_fallback_threshold = 8 * 1024;
-	    rdma_get_fallback_threshold = 394 * 1024;
-	    break;
+    	    switch(proc->cluster_size) {
+    		case LARGE_CLUSTER:
+                rdma_vbuf_total_size     = 2*1024;
+    			num_rdma_buffer          = 4;
+    			rdma_iba_eager_threshold = 2 * 1024 - sizeof(VBUF_FLAG_TYPE);
+    			break;
+            case MEDIUM_CLUSTER:
+                rdma_vbuf_total_size     = 4*1024;
+    			num_rdma_buffer          = 8;
+    			rdma_iba_eager_threshold = 4 * 1024 - sizeof(VBUF_FLAG_TYPE);
+    			break;
+            case SMALL_CLUSTER:
+                rdma_vbuf_total_size     = 9 * 1024;
+    			num_rdma_buffer          = 16;
+    			rdma_iba_eager_threshold = rdma_vbuf_total_size -
+    				                        sizeof(VBUF_FLAG_TYPE);
+    			break;
+            case VERY_SMALL_CLUSTER:
+            default:
+                rdma_vbuf_total_size     = 33 * 1024;
+    			num_rdma_buffer          = 16;
+    			rdma_iba_eager_threshold = rdma_vbuf_total_size -
+    				                        sizeof(VBUF_FLAG_TYPE);
+    			break;
+    		}
+    	    rdma_eagersize_1sc           = 4 * 1024;
+    	    rdma_put_fallback_threshold  = 8 * 1024;
+    	    rdma_get_fallback_threshold  = 394 * 1024;
+    	    break;
         case INTEL_NE020:
-	    switch(proc->cluster_size) {
-		case LARGE_CLUSTER:
-			num_rdma_buffer         = 4;
-			rdma_iba_eager_threshold    = 2 * 1024 -sizeof(VBUF_FLAG_TYPE);
-			break;
-                case MEDIUM_CLUSTER:
-			num_rdma_buffer         = 8;
-			rdma_iba_eager_threshold = 4 * 1024 -sizeof(VBUF_FLAG_TYPE);
+    	    switch(proc->cluster_size) {
+    		case LARGE_CLUSTER:
+                rdma_vbuf_total_size     = 2*1024;
+    			num_rdma_buffer          = 4;
+    			rdma_iba_eager_threshold = 2 * 1024 - sizeof(VBUF_FLAG_TYPE);
+    			break;
+            case MEDIUM_CLUSTER:
+                rdma_vbuf_total_size     = 4*1024;
+    			num_rdma_buffer          = 8;
+    			rdma_iba_eager_threshold = 4 * 1024 - sizeof(VBUF_FLAG_TYPE);
+    			break;
+            case SMALL_CLUSTER:
+            case VERY_SMALL_CLUSTER:
+            default:
+                rdma_vbuf_total_size     = 9 * 1024;
+    			num_rdma_buffer          = 16;
+    			rdma_iba_eager_threshold = rdma_vbuf_total_size -
+    				                         sizeof(VBUF_FLAG_TYPE);
+    			break;
+    		}
+    	    rdma_eagersize_1sc           = 4 * 1024;
+    	    rdma_put_fallback_threshold  = 8 * 1024;
+    	    rdma_get_fallback_threshold  = 394 * 1024;
 
-			break;
-                case SMALL_CLUSTER:
-                case VERY_SMALL_CLUSTER:
-                default:
-			num_rdma_buffer         = 16;
-			rdma_iba_eager_threshold = rdma_vbuf_total_size -
-				sizeof(VBUF_FLAG_TYPE);
-			break;
-		}
-	    rdma_eagersize_1sc      = 4 * 1024;
-	    rdma_put_fallback_threshold = 8 * 1024;
-	    rdma_get_fallback_threshold = 394 * 1024;
-	    break;
+    	    break;
         case MLX_PCI_EX_SDR:
         case MLX_PCI_EX_DDR:
         case MLX_CX_DDR:
@@ -917,26 +861,19 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
         default:
             switch(proc->cluster_size) {
                 case LARGE_CLUSTER:
-                    num_rdma_buffer         = 4;
-                    rdma_iba_eager_threshold    = 2 * 1024- sizeof(VBUF_FLAG_TYPE);
-                    break;
                 case MEDIUM_CLUSTER:
-                    num_rdma_buffer         = 8;
-                    rdma_iba_eager_threshold    = 4 * 1024 -sizeof(VBUF_FLAG_TYPE);
-                    break;
                 case SMALL_CLUSTER:
                 case VERY_SMALL_CLUSTER:
                 default:
-                    num_rdma_buffer         = 16;
+                    rdma_vbuf_total_size     = 9 * 1024;
+                    num_rdma_buffer          = 16;
                     rdma_iba_eager_threshold = rdma_vbuf_total_size -
-                        sizeof(VBUF_FLAG_TYPE);
+                                                 sizeof(VBUF_FLAG_TYPE);
                     break;
             }
-
-            rdma_eagersize_1sc      = 4 * 1024;
-            rdma_put_fallback_threshold = 2 * 1024;
-            rdma_get_fallback_threshold = 192 * 1024;
-
+            rdma_eagersize_1sc               = 4 * 1024;
+            rdma_put_fallback_threshold      = 2 * 1024;
+            rdma_get_fallback_threshold      = 192 * 1024;
             break;
     }
 
