@@ -259,12 +259,6 @@ int MPID_nem_ib_finalize (void)
         }
 #endif
 
-        if (VC_FIELD(vc, cmanager)->msg_channels)
-            MPIU_Free(VC_FIELD(vc, cmanager)->msg_channels);
-
-        if (VC_FIELD(vc, connection)->srp.credits)
-            MPIU_Free(VC_FIELD(vc, connection)->srp.credits);
-
     }
 
 
@@ -282,6 +276,8 @@ int MPID_nem_ib_finalize (void)
         }
 
         MPIU_Free(conn_info.connections[i].rails);
+        MPIU_Free(cmanagers[i].msg_channels);
+        MPIU_Free(conn_info.connections[i].srp.credits);
     }
 
 

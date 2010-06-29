@@ -162,7 +162,7 @@ int MPID_nem_ib_vc_init (MPIDI_VC_t *vc )
             (DYNAMIC_TOTAL_WEIGHT / rdma_num_rails) *
             (rdma_num_rails - 1);
 
-    vc->eager_max_msg_sz = 9212;
+    vc->eager_max_msg_sz = rdma_iba_eager_threshold;
     vc_ch->lmt_initiate_lmt  = MPID_nem_lmt_ib_initiate_lmt;  
     vc_ch->lmt_start_recv    = MPID_nem_ib_lmt_start_recv;
     vc_ch->lmt_start_send    = MPID_nem_lmt_ib_start_send;

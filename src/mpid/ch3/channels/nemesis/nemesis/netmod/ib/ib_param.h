@@ -137,8 +137,8 @@ extern int                  use_iboeth;
                                          MAX_NUM_QP_PER_PORT)
 
 #define RDMA_NDREG_ENTRIES              (1100)
-#define RDMA_VBUF_POOL_SIZE             (512)
-#define RDMA_VBUF_SECONDARY_POOL_SIZE   (128)
+#define RDMA_VBUF_POOL_SIZE             (2048)
+#define RDMA_VBUF_SECONDARY_POOL_SIZE   (256)
 #define RDMA_PREPOST_DEPTH              (64)
 #define RDMA_INITIAL_PREPOST_DEPTH      (10)
 #define RDMA_LOW_WQE_THRESHOLD          (10)
