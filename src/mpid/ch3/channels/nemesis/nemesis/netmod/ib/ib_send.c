@@ -1027,6 +1027,14 @@ int MRAILI_Process_send(void *vbuf_addr)
             }
  
             dreg_unregister(REQ_FIELD(orig_req, d_entry)); 
+            int dt_contig;
+            MPIDI_msg_sz_t data_sz;
+            MPI_Aint dt_true_lb;
+            MPID_Datatype * dt_ptr;
+            MPIDI_Datatype_get_info(orig_req->dev.user_count, orig_req->dev.datatype, dt_contig, data_sz, dt_ptr, dt_true_lb);
+            if(!dt_contig)
+            if(REQ_FIELD(orig_req, rndv_buf) != NULL)
+                MPIU_Free(REQ_FIELD(orig_req, rndv_buf));
             MPIDI_CH3U_Handle_send_req(vc, orig_req, &complete);
             if (complete != TRUE) {
                 ibv_error_abort(IBV_STATUS_ERR, "Get incomplete eager send request\n");
