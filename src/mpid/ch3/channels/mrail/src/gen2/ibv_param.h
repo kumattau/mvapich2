@@ -106,6 +106,8 @@ extern int                  rdma_iwarp_use_multiple_cq;
 
 extern int                  num_cpus;
 extern int                  use_hwloc_cpu_binding; 
+extern int                  max_rdma_connect_attempts;
+extern int                  rdma_cm_connect_retry_interval;
 
 #define PKEY_MASK 0x7fff /* the last bit is reserved */
 #define RDMA_PIN_POOL_SIZE              (2*1024*1024)
@@ -147,6 +149,8 @@ extern int                  use_hwloc_cpu_binding;
 #define RDMA_INITIAL_PREPOST_DEPTH      (10)
 #define RDMA_LOW_WQE_THRESHOLD          (10)
 #define RDMA_MAX_RDMA_SIZE              (4194304)
+#define DEFAULT_RDMA_CONNECT_ATTEMPTS   (10)
+#define RDMA_DEFAULT_CONNECT_INTERVAL   (100)
 
 #define RDMA_IWARP_DEFAULT_MULTIPLE_CQ_THRESHOLD  (32)
 

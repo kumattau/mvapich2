@@ -74,6 +74,8 @@ int           intra_node_knomial_factor=4;
 int           knomial_2level_bcast_message_size_threshold=2048;
 int           knomial_2level_bcast_system_size_threshold=64;
 int           max_num_win = MAX_NUM_WIN;
+int           max_rdma_connect_attempts = DEFAULT_RDMA_CONNECT_ATTEMPTS;
+int           rdma_cm_connect_retry_interval = RDMA_DEFAULT_CONNECT_INTERVAL;
 
 /* Threshold of job size beyond which we want to use 2-cq approach */
 int           rdma_iwarp_multiple_cq_threshold = RDMA_IWARP_DEFAULT_MULTIPLE_CQ_THRESHOLD;
@@ -433,6 +435,20 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
     proc->global_used_recv_cq = 0;
 
     PMI_Get_rank(&my_rank);
+
+    if ((value = getenv("MV2_MAX_RDMA_CONNECT_ATTEMPTS")) != NULL) {
+        max_rdma_connect_attempts = (int)atoi(value);
+        if (max_rdma_connect_attempts <= 0) {
+            max_rdma_connect_attempts = DEFAULT_RDMA_CONNECT_ATTEMPTS;
+        }
+    }
+
+    if ((value = getenv("MV2_RDMA_CM_CONNECT_RETRY_INTERVAL")) != NULL) {
+        rdma_cm_connect_retry_interval = (int)atoi(value);
+        if (rdma_cm_connect_retry_interval <= 0) {
+            rdma_cm_connect_retry_interval = RDMA_DEFAULT_CONNECT_INTERVAL;
+        }
+    }
 
     if ((value = getenv("MV2_NUM_HCAS")) != NULL) {
         rdma_num_hcas = (int)atoi(value);

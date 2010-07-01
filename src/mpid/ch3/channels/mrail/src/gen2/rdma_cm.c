@@ -100,6 +100,8 @@ int ib_cma_event_handler(struct rdma_cm_id *cma_id,
 			  struct rdma_cm_event *event)
 {
     int ret = 0, rank, rail_index = 0;
+    int connect_attempts = 0;
+    int exp_factor = 1;
     int pg_size, pg_rank, tmplen;
     MPIDI_CH3I_RDMA_Process_t *proc = &MPIDI_CH3I_RDMA_Process;
     MPIDI_VC_t  *vc, *gotvc;
@@ -164,23 +166,35 @@ int ib_cma_event_handler(struct rdma_cm_id *cma_id,
         ibv_error_abort(GEN_EXIT_ERR, "Error allocating memory\n");
     }
 	
-    conn_param.private_data_len = tmplen;
-    ((uint64_t *) conn_param.private_data)[0] = pg_rank;
-    ((uint64_t *) conn_param.private_data)[1] = rail_index;
-    ((uint64_t *) conn_param.private_data)[2] = (uint64_t) vc;
-    pg_id = (char *) conn_param.private_data + 3*sizeof(uint64_t);
+    do {
+        conn_param.private_data_len = tmplen;
+        ((uint64_t *) conn_param.private_data)[0] = pg_rank;
+        ((uint64_t *) conn_param.private_data)[1] = rail_index;
+        ((uint64_t *) conn_param.private_data)[2] = (uint64_t) vc;
+        pg_id = (char *) conn_param.private_data + 3*sizeof(uint64_t);
 
-    MPIU_Strncpy(pg_id, MPIDI_Process.my_pg->id, MAX_PG_ID_SIZE);
-    DEBUG_PRINT("Sending connection request to [rank = %d], [rail = %d] [vc = %x] [pg = %s]\n", 
+        MPIU_Strncpy(pg_id, MPIDI_Process.my_pg->id, MAX_PG_ID_SIZE);
+        DEBUG_PRINT("Sending connection request to [rank = %d], [rail = %d]"
+            " [vc = %x] [pg = %s]\n", 
             ((uint64_t *) conn_param.private_data)[0],
             ((uint64_t *) conn_param.private_data)[1],
             ((uint64_t *) conn_param.private_data)[2],
             pg_id);
 
-	ret = rdma_connect(cma_id, &conn_param);
+	    ret = rdma_connect(cma_id, &conn_param);
+        connect_attempts++;
+        if (ret) {
+            usleep(rdma_cm_connect_retry_interval*exp_factor);
+            exp_factor *= 2;
+        }
+        DEBUG_PRINT("connect_attempts = %d, exp_factor=%d, ret = %d,"
+                    "wait_time = %d\n",
+                    connect_attempts, exp_factor, ret,
+                    (rdma_cm_connect_retry_interval*exp_factor));
+    } while (ret && (connect_attempts < max_rdma_connect_attempts));
+
     if (ret) {
-        ibv_va_error_abort(IBV_RETURN_ERR, 
-            "rdma_connect error %d\n", ret);
+        ibv_va_error_abort(IBV_RETURN_ERR, "rdma_connect error %d\n", ret);
     }
 
 	break;
