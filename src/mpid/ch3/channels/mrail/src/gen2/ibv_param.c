@@ -682,14 +682,14 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
         }
     }
 
-    if ((value = getenv("MV2_USE_COALESCE")) != NULL) {
-        rdma_use_coalesce = !!atoi(value);
-    }
-
     if (proc->hca_type == MLX_CX_DDR ||
         proc->hca_type == MLX_CX_SDR ||
         proc->hca_type == MLX_CX_QDR) {
-	rdma_use_coalesce = 0;
+        rdma_use_coalesce = 0;
+    }
+
+    if ((value = getenv("MV2_USE_COALESCE")) != NULL) {
+        rdma_use_coalesce = !!atoi(value);
     }
 
     if ((value = getenv("MV2_USE_SHARED_MEM")) != NULL) {
