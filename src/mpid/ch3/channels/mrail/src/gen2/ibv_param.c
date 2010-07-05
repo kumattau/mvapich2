@@ -857,7 +857,7 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
             case SMALL_CLUSTER:
             case VERY_SMALL_CLUSTER:
             default:
-                rdma_vbuf_total_size     = 9 * 1024;
+                rdma_vbuf_total_size     = 33 * 1024;
     			num_rdma_buffer          = 16;
     			rdma_iba_eager_threshold = rdma_vbuf_total_size -
     				                         sizeof(VBUF_FLAG_TYPE);
