@@ -682,9 +682,15 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
         }
     }
 
-    if ((value = getenv("MV2_USE_COALESCE")) != NULL) {
-        rdma_use_coalesce = !!atoi(value);
+#ifdef _ENABLE_XRC_
+    if (!USE_XRC) {
+#endif
+        if ((value = getenv("MV2_USE_COALESCE")) != NULL) {
+            rdma_use_coalesce = !!atoi(value);
+        }
+#ifdef _ENABLE_XRC_
     }
+#endif
     
     if (proc->hca_type == MLX_CX_DDR ||
         proc->hca_type == MLX_CX_SDR ||

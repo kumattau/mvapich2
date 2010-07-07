@@ -517,7 +517,7 @@ int MPID_nem_ib_set_default_params()
             break;
         case CHELSIO_T3:
 			num_rdma_buffer          = 4;
-			rdma_iba_eager_threshold = rdma_vbuf_total_size -sizeof(VBUF_FLAG_TYPE);
+			rdma_iba_eager_threshold = rdma_vbuf_total_size -sizeof(VBUF_FLAG_TYPE); 
 			rdma_eagersize_1sc      = 4 * 1024;
 			rdma_put_fallback_threshold = 8 * 1024;
 			rdma_get_fallback_threshold = 394 * 1024;
