@@ -40,6 +40,7 @@
 #include <linux/mm.h>
 #include <linux/pagemap.h>
 #include <asm/pgtable.h>
+#include <linux/sched.h>
 
 #define LIMIC_MODULE_MAJOR 0
 #define LIMIC_MODULE_MINOR 5
