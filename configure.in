@@ -332,9 +332,9 @@ dnl --enable-fast
 AC_ARG_ENABLE(fast,
 [--enable-fast=option - Control the level of fast execution in the MVAPICH2
 implementation.   option is a list of comma separated names including 
-    defopt   - Default compiler optimization -O2 for all language bindings,
+    defopt   - Standard compiler optimization -O2 for all language bindings,
                i.e. --enable-fast=O2, when neither --enable-fast
-               nor --disable-fast is specified. (default)
+               nor --disable-fast is specified.
     O<n>     - Appends default optimization flags, -O<n>, to all internal
                compiler flags, i.e. MPICH2LIB_CFLAGS, MPICH2LIB_CXXFLAGS,
                MPICH2LIB_FFLAGS, and MPICH2LIB_F90FLAGS.
@@ -342,11 +342,11 @@ implementation.   option is a list of comma separated names including
     notiming - No timing collection, i.e. --disable-timing.
     ndebug   - Appends -DNDEBUG to MPICH2LIB_CFLAGS.
     all|yes  - "defopt", "nochkmsg", "notiming" and "ndebug" are enabled
-               when --enable-fast is specified without any option.
+               when --enable-fast is specified without any option. (default)
     none     - None of above options, i.e. --disable-fast.  Note that 
     	       --enable-strict will add the -O2 option even if
 	       --enable-fast=none is given.
-],,enable_fast=defopt)
+],,enable_fast=all)
 
 AC_ARG_ENABLE(check-compiler-flags,
 [--enable-check-compiler-flags -- enable the checks for all compiler
@@ -816,14 +816,6 @@ save_IFS="$IFS"
 IFS=","
 for option in $enable_fast ; do
     case "$option" in
-dnl <_OSU_MVAPICH_>
-        default)
-        if test "$enable_g" = "no" -o "$enable_g" = "none"; then
-            enable_append_ndebug=yes
-            enable_default_optimize=yes
-        fi
-        ;;
-dnl </_OSU_MVAPICH_>
         defopt)
         enable_default_optimize=yes
         ;;
