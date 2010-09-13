@@ -21,7 +21,6 @@
 
 #include "mpidi_ch3i_rdma_conf.h"
 #include "vbuf.h"
-#include "dreg.h"
 
 /* Use this header to add implementation specific structures
    that cannot be defined until after the mpich2 header files
@@ -192,7 +191,7 @@ int MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(struct MPIDI_VC * vc,
                                               int * nb, 
                                               vbuf ** v);
 
-int MPIDI_CH3I_RDMA_cq_poll();
+int MPIDI_CH3I_RDMA_cq_poll(void);
 
 void MRAILI_Init_vc(struct MPIDI_VC* vc);
 
@@ -239,6 +238,6 @@ extern struct MPIDI_VC* flowlist;
 int viadev_post_srq_buffers(int, int);
 void async_thread(void *ctx);
 
-int MPIDI_CH3I_MRAILI_Flush();
+int MPIDI_CH3I_MRAILI_Flush(void);
 
 #endif /* MPIDI_CH3_RDMA_POST_H */

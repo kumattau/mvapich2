@@ -203,7 +203,7 @@ fn_fail:
 	goto fn_exit;
 }
 
-#endif // EPM_ENABLE_PMI_INIT
+#endif /* EPM_ENABLE_PMI_INIT */
 /* --------------------------------------------------------------------*/
 
 #undef FUNCNAME

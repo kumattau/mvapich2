@@ -18,6 +18,7 @@
 #include "rdma_cm.h"
 #include "mpiutil.h"
 #include "cm.h"
+#include "dreg.h"
 
 #undef DEBUG_PRINT
 #ifdef DEBUG
@@ -281,33 +282,27 @@ int rdma_find_active_port(struct ibv_context *context,struct ibv_device *ib_dev)
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int rdma_open_hca(struct MPIDI_CH3I_RDMA_Process_t *proc)
 {
-    struct ibv_device       *ib_dev = NULL;
-    struct ibv_device **dev_list;
-    int i, j;
+    int i = 0, j = 0;
     int num_devices = 0;
     int mpi_errno = MPI_SUCCESS;
+    struct ibv_device *ib_dev = NULL;
+    struct ibv_device **dev_list = NULL;
 #ifdef CRC_CHECK
     gen_crc_table();
 #endif
     dev_list = ibv_get_device_list(&num_devices);
 
     for (i = 0; i < rdma_num_hcas; i ++) {
-
-        if(!strncmp(rdma_iba_hca, RDMA_IBA_NULL_HCA, 32) || 
-                rdma_num_hcas > 1) {
-
+        if (!strncmp(rdma_iba_hcas[0], RDMA_IBA_NULL_HCA, 32)) {
             /* User hasn't specified any HCA name
-             * We will use the first available HCA */
-
+             * We will use the first available HCA(s) */
             ib_dev = dev_list[i];
-
         } else {
-
-            /* User specified a HCA, try to look for it */
+            /* User specified HCA(s), try to look for it */
             j = 0;
-            while(dev_list[j]) {
-                if(!strncmp(ibv_get_device_name(dev_list[j]),
-                            rdma_iba_hca, 32)) {
+            while (dev_list[j]) {
+                if (!strncmp(ibv_get_device_name(dev_list[j]),
+                            rdma_iba_hcas[i], 32)) {
                     ib_dev = dev_list[j];
                     break;
                 }
@@ -322,8 +317,9 @@ int rdma_open_hca(struct MPIDI_CH3I_RDMA_Process_t *proc)
 		            "**fail %s", "No IB device found");
         }
 
-        proc->nic_context[i] = ibv_open_device(ib_dev);
         proc->ib_dev[i] = ib_dev;
+
+        proc->nic_context[i] = ibv_open_device(ib_dev);
         if (!proc->nic_context[i]) {
             /* Clean up before exit */
             ibv_free_device_list(dev_list);
@@ -340,7 +336,7 @@ int rdma_open_hca(struct MPIDI_CH3I_RDMA_Process_t *proc)
         }
     }
 
-    if (!strncmp(rdma_iba_hca, RDMA_IBA_NULL_HCA, 32) &&
+    if (!strncmp(rdma_iba_hcas[0], RDMA_IBA_NULL_HCA, 32) &&
         (1 == rdma_num_hcas) && (num_devices > 1) &&
         (ERROR == rdma_find_active_port(proc->nic_context[0], proc->ib_dev[0]))) {
         /* Trac #376 - There are multiple rdma capable devices (num_devices) in
@@ -923,18 +919,31 @@ rdma_iba_allocate_memory(struct MPIDI_CH3I_RDMA_Process_t *proc,
                 }
 
                 /* Start the async thread which watches for SRQ limit events */
-                pthread_create(
-                    &MPIDI_CH3I_RDMA_Process.async_thread[hca_num], 
-                    NULL,
-                    (void *) async_thread, 
-                    (void *) MPIDI_CH3I_RDMA_Process.nic_context[hca_num]);
+                {
+                    pthread_attr_t attr;
+                    int ret;
+                    if (pthread_attr_init(&attr))
+                    {
+                        ibv_error_abort(IBV_RETURN_ERR, "Couldn't init pthread_attr\n");
+                    }
+                    ret = pthread_attr_setstacksize(&attr, 
+                            rdma_default_async_thread_stack_size);
+                    if (ret && ret != EINVAL) {
+                        ibv_error_abort(IBV_RETURN_ERR, "Couldn't set pthread stack size\n");
+                    }
+                    pthread_create(
+                            &MPIDI_CH3I_RDMA_Process.async_thread[hca_num], 
+                            &attr,
+                            (void *) async_thread, 
+                            (void *) MPIDI_CH3I_RDMA_Process.nic_context[hca_num]);
+                }
             }
         }
 
         pthread_spin_unlock(&MPIDI_CH3I_RDMA_Process.srq_post_spin_lock);
     }
-    
-    return MPI_SUCCESS;
+
+	return ret;
 }
 
 /*

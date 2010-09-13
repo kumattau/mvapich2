@@ -450,7 +450,7 @@ void usage(void)
 	    "\txterm      => " "run remote processes under xterm\n");
     fprintf(stderr,
 	    "\tshow       => "
-	    "show command for remote execution but dont run it\n");
+	    "show command for remote execution but don't run it\n");
     fprintf(stderr,
 	    "\tlegacy     => " "use old startup method (1 ssh/process)\n");
     fprintf(stderr,
@@ -460,7 +460,7 @@ void usage(void)
 	    "names of hosts where processes should run\n");
     fprintf(stderr,
 	    "or\thostfile   => "
-	    "name of file contining hosts, one per line\n");
+	    "name of file containing hosts, one per line\n");
     fprintf(stderr, "\ta.out      => " "name of MPI binary\n");
     fprintf(stderr, "\targs       => " "arguments for MPI binary\n");
     fprintf(stderr,

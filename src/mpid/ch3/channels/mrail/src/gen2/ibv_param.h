@@ -13,9 +13,7 @@
 #ifndef _IBV_PARAM_H
 #define _IBV_PARAM_H
 
-#include "mpidi_ch3i_rdma_conf.h"
 #include <infiniband/verbs.h>
-#include "../rdma/coll_shmem.h"
 
 /* Support multiple QPs/port, multiple ports, multiple HCAs and combinations */
 extern int                  rdma_num_hcas;
@@ -46,7 +44,6 @@ extern int                  rdma_read_reserve;
 extern float                rdma_credit_update_threshold;   
 extern int                  num_rdma_buffer;
 extern int                  rdma_iba_eager_threshold;
-extern char                 rdma_iba_hca[32];
 extern unsigned int         rdma_ndreg_entries;
 extern int                  rdma_vbuf_max;
 extern int                  rdma_vbuf_pool_size;
@@ -99,7 +96,7 @@ extern int                  rdma_use_coalesce;
 
 extern int                  rdma_use_blocking;
 extern unsigned long        rdma_spin_count;
-extern int                  USE_SMP;
+extern int                  rdma_use_smp;
 extern int                  use_iboeth;
 extern int                  rdma_iwarp_multiple_cq_threshold;
 extern int                  rdma_iwarp_use_multiple_cq;
@@ -108,6 +105,22 @@ extern int                  num_cpus;
 extern int                  use_hwloc_cpu_binding; 
 extern int                  max_rdma_connect_attempts;
 extern int                  rdma_cm_connect_retry_interval;
+
+/* Shared memory collective parameters */ 
+extern int                  enable_knomial_2level_bcast;
+extern int                  inter_node_knomial_factor;
+extern int                  knomial_2level_bcast_system_size_threshold;
+extern int                  knomial_2level_bcast_mesage_size_threshold;
+extern int                  intra_node_knomial_factor;
+
+int user_val_to_bytes(char* value,char* param);
+
+#define INTER_NODE_KNOMIAL_FACTOR_MAX 8
+#define INTER_NODE_KNOMIAL_FACTOR_MIN 2
+#define INTRA_NODE_KNOMIAL_FACTOR_MAX 8
+#define INTRA_NODE_KNOMIAL_FACTOR_MIN 2
+
+extern int                  rdma_default_async_thread_stack_size;
 
 #define PKEY_MASK 0x7fff /* the last bit is reserved */
 #define RDMA_PIN_POOL_SIZE              (2*1024*1024)
@@ -133,6 +146,7 @@ extern int                  rdma_cm_connect_retry_interval;
 #define RDMA_DEFAULT_PUT_GET_LIST_SIZE  (200)
 #define RDMA_INTEGER_POOL_SIZE          (1024)
 #define RDMA_IBA_NULL_HCA               "nohca"
+#define RDMA_DEFAULT_POLLING_SET_LIMIT  (64)
 #define MAX_NUM_HCAS                    (4)
 #define MAX_NUM_PORTS                   (2)
 #define MAX_NUM_QP_PER_PORT             (4)
@@ -144,6 +158,7 @@ extern int                  rdma_cm_connect_retry_interval;
 
 #define RDMA_NDREG_ENTRIES              (1100)
 #define RDMA_VBUF_POOL_SIZE             (2048)
+#define RDMA_MIN_VBUF_POOL_SIZE         (512)
 #define RDMA_VBUF_SECONDARY_POOL_SIZE   (256)
 #define RDMA_PREPOST_DEPTH              (64)
 #define RDMA_INITIAL_PREPOST_DEPTH      (10)
@@ -153,6 +168,7 @@ extern int                  rdma_cm_connect_retry_interval;
 #define RDMA_DEFAULT_CONNECT_INTERVAL   (100)
 
 #define RDMA_IWARP_DEFAULT_MULTIPLE_CQ_THRESHOLD  (32)
+#define RDMA_DEFAULT_ASYNC_THREAD_STACK_SIZE  (1<<20)
 
 /* Inline not supported for PPC */
 #define HOSTNAME_LEN                    (255)
@@ -166,14 +182,17 @@ extern int                  rdma_cm_connect_retry_interval;
 /* Statistically sending a stripe below this may not lead
  * to benefit */                               
 #define STRIPING_THRESHOLD              8 * 1024
+extern char                 rdma_iba_hcas[MAX_NUM_HCAS][32];
                                
-#define ROUND_ROBIN                     0                               
-#define USE_FIRST                       1
-#define EVEN_STRIPING                   2
-#define ADAPTIVE_STRIPING               3
-#define PROCESS_BINDING                 4
-#define PARTIAL_ADAPTIVE                5 
-#define BEST_ADAPTIVE                   6
+typedef enum _mv2_multirail_policies {
+    ROUND_ROBIN = 0,
+    USE_FIRST,
+    EVEN_STRIPING,
+    ADAPTIVE_STRIPING,
+    PROCESS_BINDING,
+    PARTIAL_ADAPTIVE,
+    BEST_ADAPTIVE,
+} mv2_multirail_policies;
 
 #define APM_COUNT                       2
 

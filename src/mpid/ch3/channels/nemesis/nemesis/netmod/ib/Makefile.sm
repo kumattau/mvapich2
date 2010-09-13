@@ -1,5 +1,6 @@
-INCLUDES = -I. -I../../include -I${master_top_srcdir}/src/ch3/channels/nemesis/nemesis/include -I${master_top_srcdir}/src/include \
-           -I${top_builddir}/src/include
+INCLUDES = -I. -I../../include -I../../../../../../../include -I@master_top_srcdir@/src/ch3/channels/nemesis/nemesis/include -I@master_top_srcdir@/src/include -I@top_builddir@/src/include -I@master_top_srcdir@/src/mpid/ch3/channels/common/include -I@master_top_srcdir@/src/mpid/ch3/channels/mrail/src/gen2
+VPATH = .:@srcdir@:@master_top_srcdir@/src/mpid/ch3/channels/common/src/reg_cache:@master_top_srcdir@/src/mpid/ch3/channels/common/src/memory:@master_top_srcdir@/src/mpid/ch3/channels/common/src/memory/ptmalloc2
+DEFS = -DHAVE_CONFIG_H -I. -I@srcdir@ -DNEMESIS_BUILD
 lib${MPILIBNAME}_a_SOURCES = \
   ib_init.c ib_ckpt_shutdown.c ib_connect_to_root.c ib_finalize.c ib_init.c \
   ib_poll.c ib_vc.c ib_send.c ib_param.c ib_cm.c ib_cell.c \

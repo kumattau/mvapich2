@@ -119,19 +119,4 @@ shmem_coll_region *shmem_coll;
  */
 #define SHMEM_BCAST_METADATA	(sizeof(addrint_t) + 2*sizeof(int))       /* METADATA: buffer address, offset, num_bytes */ 
 
-
-extern int                  enable_knomial_2level_bcast;
-extern int                  inter_node_knomial_factor;
-extern int                  knomial_2level_bcast_system_size_threshold;
-extern int                  knomial_2level_bcast_mesage_size_threshold;
-#define INTER_NODE_KNOMIAL_FACTOR_MAX 8
-#define INTER_NODE_KNOMIAL_FACTOR_MIN 2
-extern int                  intra_node_knomial_factor;
-#define INTRA_NODE_KNOMIAL_FACTOR_MAX 8
-#define INTRA_NODE_KNOMIAL_FACTOR_MIN 2
-
-
-
-
- 
-#endif
+#endif  /* _COLL_SHMEM_ */

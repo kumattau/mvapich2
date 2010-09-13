@@ -10,7 +10,7 @@
 
 #include <private/config.h>
 
-#ifdef HWLOC_DEBUG
+#if HWLOC_DEBUG
 #define hwloc_debug(s, ...) fprintf(stderr, s, ##__VA_ARGS__)
 #define hwloc_debug_cpuset(fmt, cpuset) do { \
   char *s= hwloc_cpuset_printf_value(cpuset); \

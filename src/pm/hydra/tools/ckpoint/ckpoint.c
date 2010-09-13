@@ -13,17 +13,35 @@
 
 struct HYDT_ckpoint_info HYDT_ckpoint_info;
 
-HYD_status HYDT_ckpoint_init(char *ckpointlib, char *ckpoint_prefix)
+HYD_status HYDT_ckpoint_init(char *user_ckpointlib, char *user_ckpoint_prefix)
 {
     HYD_status status = HYD_SUCCESS;
+    int ret;
+    struct stat st;
 
     HYDU_FUNC_ENTER();
 
-    HYDT_ckpoint_info.ckpointlib = ckpointlib;
-    HYDT_ckpoint_info.ckpoint_prefix = ckpoint_prefix;
+    if (user_ckpointlib)
+        HYDT_ckpoint_info.ckpointlib = user_ckpointlib;
+    else
+        HYD_GET_ENV_STR_VAL(HYDT_ckpoint_info.ckpointlib, "HYDRA_CKPOINTLIB",
+                            HYDRA_DEFAULT_CKPOINTLIB);
+
+    if (user_ckpoint_prefix)
+        HYDT_ckpoint_info.ckpoint_prefix = user_ckpoint_prefix;
+    else
+        HYD_GET_ENV_STR_VAL(HYDT_ckpoint_info.ckpoint_prefix, "HYDRA_CKPOINT_PREFIX", NULL);
 
     if (HYDT_ckpoint_info.ckpoint_prefix == NULL)
         goto fn_exit;
+
+    ret = stat(HYDT_ckpoint_info.ckpoint_prefix, &st);
+    HYDU_ERR_CHKANDJUMP(status, ret, HYD_FAILURE,
+                        "Failed to stat checkpoint prefix \"%s\": %s\n",
+                        HYDT_ckpoint_info.ckpoint_prefix, strerror(errno));
+    HYDU_ERR_CHKANDJUMP(status, !S_ISDIR(st.st_mode), HYD_FAILURE,
+                        "checkpoint prefix \"%s\" is not a directory.\n",
+                        HYDT_ckpoint_info.ckpoint_prefix);
 
 #if defined HAVE_BLCR
     if (!strcmp(HYDT_ckpoint_info.ckpointlib, "blcr")) {
@@ -40,7 +58,7 @@ HYD_status HYDT_ckpoint_init(char *ckpointlib, char *ckpoint_prefix)
     goto fn_exit;
 }
 
-HYD_status HYDT_ckpoint_suspend(void)
+HYD_status HYDT_ckpoint_suspend(int pgid, int id)
 {
     HYD_status status = HYD_SUCCESS;
 
@@ -51,7 +69,7 @@ HYD_status HYDT_ckpoint_suspend(void)
 
 #if defined HAVE_BLCR
     if (!strcmp(HYDT_ckpoint_info.ckpointlib, "blcr")) {
-        status = HYDT_ckpoint_blcr_suspend(HYDT_ckpoint_info.ckpoint_prefix);
+        status = HYDT_ckpoint_blcr_suspend(HYDT_ckpoint_info.ckpoint_prefix, pgid, id);
         HYDU_ERR_POP(status, "blcr checkpoint returned error\n");
     }
 #endif /* HAVE_BLCR */
@@ -64,8 +82,8 @@ HYD_status HYDT_ckpoint_suspend(void)
     goto fn_exit;
 }
 
-HYD_status HYDT_ckpoint_restart(HYD_env_t * envlist, int num_ranks, int ranks[], int *in,
-                                int *out, int *err)
+HYD_status HYDT_ckpoint_restart(int pgid, int id, struct HYD_env *envlist, int num_ranks,
+                                int ranks[], int *in, int *out, int *err)
 {
     HYD_status status = HYD_SUCCESS;
 
@@ -77,8 +95,8 @@ HYD_status HYDT_ckpoint_restart(HYD_env_t * envlist, int num_ranks, int ranks[],
 #if defined HAVE_BLCR
     if (!strcmp(HYDT_ckpoint_info.ckpointlib, "blcr")) {
         status =
-            HYDT_ckpoint_blcr_restart(HYDT_ckpoint_info.ckpoint_prefix, envlist, num_ranks,
-                                      ranks, in, out, err);
+            HYDT_ckpoint_blcr_restart(HYDT_ckpoint_info.ckpoint_prefix, pgid, id, envlist,
+                                      num_ranks, ranks, in, out, err);
         HYDU_ERR_POP(status, "blcr checkpoint returned error\n");
     }
 #endif /* HAVE_BLCR */

@@ -123,7 +123,8 @@ int MPID_nem_ib_lmt_start_recv(struct MPIDI_VC *VC, struct MPID_Request *rreq, M
                      MPI_ERR_OTHER,"**ch3|senddata");
          }
 */
-        MPIU_Assert(0);
+        MPIU_Error_printf("Function not implemented");
+        exit( EXIT_FAILURE );
     } else {
         mpi_errno = MPIDI_NEM_Prepare_ib_lmt_r_cookie(VC, r_cookie_buf, rreq);
         if (mpi_errno != MPI_SUCCESS)
@@ -289,7 +290,7 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv(MPIDI_VC_t * vc, MPID_Request * req)
                 REQ_FIELD(req, rndv_buf) = NULL;
             }
             REQ_FIELD(req, rndv_buf_alloc) = 0;
-//            MPIU_Assert(0);
+            /* MPIU_Assert(0); */
             /*MRAILI_Prepost_R3(); */
         }
         DEBUG_PRINT("[prepare cts] register success\n");
@@ -419,7 +420,8 @@ int MPIDI_NEM_Prepare_ib_lmt_r_cookie(MPIDI_VC_t * vc,
             fprintf(stderr, "[%d][%s:%d] ", rank, __FILE__, __LINE__);
             fprintf(stderr, "RGET preparing CTS?\n");
             mpi_errno = -1;
-            MPIU_Assert(0);
+            exit(EXIT_FAILURE);
+
             break;
         }
     default:
@@ -431,11 +433,13 @@ int MPIDI_NEM_Prepare_ib_lmt_r_cookie(MPIDI_VC_t * vc,
                     "Unknown protocol %d type from rndv req to send\n",
                     REQ_FIELD(rreq, protocol));
             mpi_errno = -1;
-            MPIU_Assert(0);
+            exit(EXIT_FAILURE);
+
             break;
         }
     }
 
+fn_fail:
     return mpi_errno;
 }
 

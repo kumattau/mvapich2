@@ -52,6 +52,9 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
     unsigned long crc;
 #endif
     int mpi_errno = MPI_SUCCESS;
+    MPIDI_STATE_DECL(MPIDI_STATE_CH3I_MRAIL_PARSE_HEADER);
+    MPIDI_FUNC_ENTER(MPIDI_STATE_CH3I_MRAIL_PARSE_HEADER);
+
     DEBUG_PRINT("[parse header] vbuf address %p\n", v);
     vstart = v->pheader;
     header = vstart;
@@ -67,7 +70,7 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
 	MPIU_Error_printf(stderr, "CRC mismatch, get %lx, should be %lx "
 		"type %d, ocntent size %d\n", 
 		crc, header->mrail.crc, header->type, v->content_size);
-	MPIU_Assert(0);
+        exit(EXIT_FAILURE);
     }
 #endif
     XRC_MSG ("Recd %d from %d\n", header->type,
@@ -351,6 +354,7 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
     }
 
 fn_exit:
+    MPIDI_FUNC_EXIT(MPIDI_STATE_CH3I_MRAIL_PARSE_HEADER);
     return mpi_errno;
 
 fn_fail:
@@ -370,6 +374,8 @@ int MPIDI_CH3I_MRAIL_Fill_Request(MPID_Request * req, vbuf * v,
     int         len_avail;
     void        *data_buf;
     int         i;
+    MPIDI_STATE_DECL(MPIDI_STATE_CH3I_MRAIL_FILL_REQUEST);
+    MPIDI_FUNC_ENTER(MPIDI_STATE_CH3I_MRAIL_FILL_REQUEST);
 
     len_avail 	= v->content_size - header_size;
     iov 	= (req == NULL) ? NULL : req->dev.iov;
@@ -399,6 +405,7 @@ int MPIDI_CH3I_MRAIL_Fill_Request(MPID_Request * req, vbuf * v,
 
     DEBUG_PRINT
         ("[recv:fill request] about to return form request, nb %d\n", *nb);
+    MPIDI_FUNC_EXIT(MPIDI_STATE_CH3I_MRAIL_FILL_REQUEST);
     return MPI_SUCCESS;
 }
 
@@ -423,7 +430,7 @@ int MPIDI_CH3I_MRAILI_Recv_addr(MPIDI_VC_t * vc, void *vstart)
 #ifdef _ENABLE_XRC_
     if (USE_XRC && (0 == MPIDI_CH3I_RDMA_Process.xrc_rdmafp || 
             VC_XST_ISSET (vc, XF_CONN_CLOSING)))
-        return 1;
+        return MPI_ERR_INTERN;
 #endif
 
     DEBUG_PRINT("set rdma address, dma address %p\n",

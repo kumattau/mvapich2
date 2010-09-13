@@ -44,6 +44,8 @@ int MPID_MRAIL_RndvSend (
 #if defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
 #endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
+    MPIDI_STATE_DECL(MPID_STATE_MRAIL_RNDVSEND);
+    MPIDI_FUNC_ENTER(MPID_STATE_MRAIL_RNDVSEND);
 	
     MPIU_DBG_MSG_D(CH3_OTHER,VERBOSE,
 		   "sending rndv RTS, data_sz=" MPIDI_MSG_SZ_FMT, data_sz);
@@ -115,6 +117,7 @@ int MPID_MRAIL_RndvSend (
     
  fn_exit:
 
+    MPIDI_FUNC_EXIT(MPID_STATE_MRAIL_RNDVSEND);
     return mpi_errno;
 }
 
@@ -122,9 +125,15 @@ int MPID_MRAIL_RndvSend (
  * This routine processes a rendezvous message once the message is matched.
  * It is used in mpid_recv and mpid_irecv.
  */
+#undef FUNCNAME
+#define FUNCNAME MPID_MRAIL_RndvRecv
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPID_MRAIL_RndvRecv (MPIDI_VC_t* vc, MPID_Request* rreq)
 {
     int mpi_errno = MPI_SUCCESS;
+    MPIDI_STATE_DECL(MPID_STATE_MRAIL_RNDVRECV);
+    MPIDI_FUNC_ENTER(MPID_STATE_MRAIL_RNDVRECV);
     /* A rendezvous request-to-send (RTS) message has arrived.  We need
        to send a CTS message to the remote process. */
     
@@ -149,6 +158,6 @@ int MPID_MRAIL_RndvRecv (MPIDI_VC_t* vc, MPID_Request* rreq)
     }
 
  fn_fail:    
+    MPIDI_FUNC_EXIT(MPID_STATE_MRAIL_RNDVRECV);
     return mpi_errno;
 }
-

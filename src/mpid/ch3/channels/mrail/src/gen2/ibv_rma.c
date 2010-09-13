@@ -28,6 +28,10 @@ do {                                                          \
 #define DEBUG_PRINT(args...)
 #endif
 
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_MRAILI_Get_rndv_rput
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3I_MRAILI_Get_rndv_rput(MPIDI_VC_t *vc, 
                                     MPID_Request * req,
                                     MPIDI_CH3I_MRAILI_Rndv_info_t * rndv,
@@ -39,6 +43,8 @@ int MPIDI_CH3I_MRAILI_Get_rndv_rput(MPIDI_VC_t *vc,
     int nbytes;
     int rail;
     vbuf *v;
+    MPIDI_STATE_DECL(MPIDI_STATE_GEN2_RNDV_RPUT);
+    MPIDI_FUNC_ENTER(MPIDI_STATE_GEN2_RNDV_RPUT);
 
     MPIDI_CH3I_MRAIL_Prepare_rndv(vc, req);
 
@@ -82,5 +88,6 @@ int MPIDI_CH3I_MRAILI_Get_rndv_rput(MPIDI_VC_t *vc,
         v->sreq = req;
     }
 
-    return 0;
+    MPIDI_FUNC_EXIT(MPIDI_STATE_GEN2_RNDV_RPUT);
+    return MPI_SUCCESS;
 }

@@ -21,14 +21,17 @@
 #include "pmi.h"
 
 #undef FUNCNAME
-#define FUNCNAME MPIDI_CH3_Finalize
+#define FUNCNAME MPIDI_CH3_Flush
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3_Flush() 
 {
+  MPIDI_STATE_DECL(MPIDI_CH3_FLUSH);
+  MPIDI_FUNC_ENTER(MPIDI_CH3_FLUSH);
 #ifdef MPIDI_CH3I_MRAILI_FLUSH
     MPIDI_CH3I_MRAILI_Flush();
 #endif
+    MPIDI_FUNC_EXIT(MPIDI_CH3_FLUSH);
     return MPI_SUCCESS;
 }
 
@@ -39,6 +42,8 @@ int MPIDI_CH3_Flush()
 int MPIDI_CH3_Finalize()
 {
     int mpi_errno = MPI_SUCCESS;
+    MPIDI_STATE_DECL(MPIDI_CH3_FINALIZE);
+    MPIDI_FUNC_ENTER(MPIDI_CH3_FINALIZE);
 
     MPIDI_DBG_PRINTF((50, FCNAME, "entering"));
 
@@ -76,6 +81,7 @@ int MPIDI_CH3_Finalize()
 
 fn_exit:
     MPIDI_DBG_PRINTF((50, FCNAME, "exiting"));
+    MPIDI_FUNC_EXIT(MPIDI_CH3_FINALIZE);
     return mpi_errno;
 
 fn_fail:

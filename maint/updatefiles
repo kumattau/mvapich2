@@ -55,11 +55,11 @@ MAKE=${MAKE-make}
 # require libtoolize 
 # externals are the directories for external packages that we have 
 # included into MPICH2
-externals="src/pm/hydra/tools/bind/hwloc/hwloc src/mpid/ch3/channels/mrail/src/hwloc"
+externals="src/pm/hydra src/mpid/ch3/channels/mrail/src/hwloc"
 ltdirs="src/pm/hydra"
 
 # amdirs are the directories that make use of autoreconf
-amdirs="src/openpa src/pm/hydra src/mpl limic2-0.5.3"
+amdirs="src/openpa src/pm/hydra limic2-0.5.3 osu_benchmarks"
 # List of steps that we will consider
 # (We do not include depend because the values for depend are not just yes/no)
 AllSteps="geterrmsgs bindings f77 f77tof90 build_configure genstates makefiles smpdversion getparms"

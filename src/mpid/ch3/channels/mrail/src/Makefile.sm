@@ -10,10 +10,10 @@
 #
 
 SUBDIRS_other_subdirs = hwloc gen2 udapl
-SUBDIRS = memory rdma @other_subdirs@
+SUBDIRS = rdma @other_subdirs@
 NOTSIMPLEMAKE_SUBDIRS = hwloc
 
 all-postamble:
 	test "x@use_internal_hwloc@" = "xno" ||\
             { cd hwloc/src/.libs &&\
-            ar xv libhwloc.a && ar crv @master_top_builddir@/lib/lib${MPILIBNAME}.a *.o; }
+            ar xv libhwloc.a && ar crv @master_top_builddir@/lib/lib${MPILIBNAME}.a *.o && ar crv @master_top_builddir@/lib/lib${MPILIBNAME}.la *.o; }

@@ -325,14 +325,41 @@ int send_parent(int src, char *msg, int msg_len)
 }
 */
 
+/**
+ * Some message is not sent by all local nodes, in those cases the aggregation fails.
+ * Some other message may need to be delivered soon. 
+ * We check for those messages and we send them without aggregating.
+ */
+static char *flushing_messages[] = {
+  "sharedFilename",
+  "MV2BUF",
+  NULL
+};
+
 int check_pending_puts(void)
 {
     kv_cache_t *iter, *tmp;
     msg_hdr_t hdr = { -1, -1, MT_MSG_BPUTS };
     char *buf, *pbuf;
     int i;
+    int msg_flush = 0;
 
-    if (npending_puts != NCHILD + NCHILD_INCL) {
+    /* Check if one of the messages in the pending list is listed in flushing_messages.
+       If so, we send them now */
+    iter = kv_pending_puts;
+    while (iter && !msg_flush) {
+      i=0;
+      while ((flushing_messages[i]!=NULL) && (!msg_flush)) {
+        if (strncmp( iter->kvc_key, flushing_messages[i], strlen(flushing_messages[i]))==0) {
+           msg_flush = 1;
+        }
+
+        i++;
+      }
+      iter = iter->kvc_list_next;
+    }
+
+    if ((!msg_flush) && (npending_puts != NCHILD + NCHILD_INCL)) {
 	return 0;
     }
 #define REC_SIZE (KVS_MAX_KEY + KVS_MAX_VAL + 2)
@@ -581,7 +608,8 @@ int parse_str(int rank, int fd, char *msg, int msg_len, int src)
 		}
 		writeline(fd, resp, hdr.msg_len);
 	    } else {
-		MT_ASSERT(0);
+                fprintf(stderr, "mpirun_rsh: PMI key '%s' not found.", key);
+                exit(1);
 		/* add pending req */
 		save_pending_req(rank, key, fd);
 		/* send req to parent */

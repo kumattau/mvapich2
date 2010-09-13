@@ -69,9 +69,7 @@ typedef struct MPIDI_CH3I_RDMA_Process_t
     /*information for management of windows */
     dreg_entry *RDMA_local_win_dreg_entry[MAX_WIN_NUM];
     dreg_entry *RDMA_local_wincc_dreg_entry[MAX_WIN_NUM];
-    dreg_entry *RDMA_local_actlock_dreg_entry[MAX_WIN_NUM];
     dreg_entry *RDMA_post_flag_dreg_entry[MAX_WIN_NUM];
-    dreg_entry *RDMA_assist_thr_ack_entry[MAX_WIN_NUM];
 
     /* there two variables are used to help keep track of different windows
      * */

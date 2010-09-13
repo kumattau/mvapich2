@@ -1433,7 +1433,6 @@ int rdma_setup_startup_ring(int pg_rank, int pg_size)
     char ring_qp_out[128];
     char ring_qp_in[256];               
     int bootstrap_len;                  
-//    union ibv_gid gid; 
     int mpi_errno = MPI_SUCCESS;
     int port;
         

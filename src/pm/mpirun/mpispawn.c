@@ -164,6 +164,7 @@ void setup_global_environment()
     setenv("MPIRUN_MPD", "0", 1);
     setenv("MPIRUN_NPROCS", getenv("MPISPAWN_GLOBAL_NPROCS"), 1);
     setenv("MPIRUN_ID", getenv("MPISPAWN_MPIRUN_ID"), 1);
+    setenv("MV2_NUM_NODES_IN_JOB", getenv("MPISPAWN_NNODES"), 1);
 
     /* Ranks now connect to mpispawn */
     gethostname(my_host_name, MAX_HOST_LEN);

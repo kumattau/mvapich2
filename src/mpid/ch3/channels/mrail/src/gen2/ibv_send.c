@@ -179,15 +179,17 @@ static inline void MRAILI_Ext_sendq_send(MPIDI_VC_t *c, int rail)
 int MPIDI_CH3I_RDMA_put_datav(MPIDI_VC_t * vc, MPID_IOV * iov, int n,
                               int *num_bytes_ptr)
 {
+    int mpi_errno;
     /* all variable must be declared before the state declarations */
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_PUT_DATAV);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_PUT_DATAV);
 
     /* Insert implementation here */
-    MPIU_Assert(0);
+    fprintf( stderr, "Function not implemented\n" );
+    exit(EXIT_FAILURE);
 
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_PUT_DATAV);
-    return MPI_SUCCESS;
+    return mpi_errno;
 }
 
 #undef FUNCNAME
@@ -198,14 +200,19 @@ int MPIDI_CH3I_RDMA_read_datav(MPIDI_VC_t * recv_vc_ptr, MPID_IOV * iov,
                                int iovlen, int
                                *num_bytes_ptr)
 {
+    int mpi_errno;
     /* all variable must be declared before the state declarations */
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_RDMA_READ_DATAV);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_RDMA_READ_DATAV);
 
     /* Insert implementation here */
-    MPIU_Assert(0);
+    fprintf( stderr, "Function not implemented\n" );
+    exit(EXIT_FAILURE);
+
+
+fn_fail:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_RDMA_READ_DATAV);
-    return MPI_SUCCESS;
+    return mpi_errno;
 }
 
 #undef FUNCNAME
@@ -502,12 +509,17 @@ int MPIDI_CH3I_MRAILI_Fast_rdma_ok(MPIDI_VC_t * vc, int len)
     return 1;
 } 
 
-int viadev_post_srq_buffers(int num_bufs, 
-        int hca_num)
+#undef FUNCNAME
+#define FUNCNAME viadev_post_srq_buffers
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int viadev_post_srq_buffers(int num_bufs, int hca_num)
 {
     int i = 0;
     vbuf* v = NULL;
     struct ibv_recv_wr* bad_wr = NULL;
+    MPIDI_STATE_DECL(MPID_STATE_POST_SRQ_BUFFERS);
+    MPIDI_FUNC_ENTER(MPID_STATE_POST_SRQ_BUFFERS);
 
     if (num_bufs > viadev_srq_size)
     {
@@ -537,6 +549,7 @@ int viadev_post_srq_buffers(int num_bufs,
         }
     }
 
+    MPIDI_FUNC_EXIT(MPID_STATE_POST_SRQ_BUFFERS);
     return i;
 }
 
@@ -891,6 +904,7 @@ int MPIDI_CH3I_MRAILI_rget_finish(MPIDI_VC_t * vc,
                                  int *num_bytes_ptr, vbuf ** buf_handle, 
                                  int rail)
 {
+    int mpi_errno;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_MRAILI_RGET_FINISH);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_MRAILI_RGET_FINISH);
     MPIDI_CH3I_MRAILI_Pkt_comm_header *pheader;
@@ -903,8 +917,9 @@ int MPIDI_CH3I_MRAILI_rget_finish(MPIDI_VC_t * vc,
 
     vbuf_init_send(v, *num_bytes_ptr, rail);
 
+    mpi_errno = MPIDI_CH3I_RDMA_Process.post_send(vc, v, rail);
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_MRAILI_RGET_FINISH); 
-    return MPIDI_CH3I_RDMA_Process.post_send(vc, v, rail);
+    return mpi_errno;
 }
 
 #undef FUNCNAME
@@ -917,6 +932,7 @@ int MPIDI_CH3I_MRAILI_rput_complete(MPIDI_VC_t * vc,
                                  int *num_bytes_ptr, vbuf ** buf_handle, 
                                  int rail)
 {
+    int mpi_errno;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_MRAILI_RPUT_COMPLETE);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_MRAILI_RPUT_COMPLETE);
 
@@ -932,8 +948,9 @@ int MPIDI_CH3I_MRAILI_rput_complete(MPIDI_VC_t * vc,
 
     vbuf_init_send(v, *num_bytes_ptr, rail);
 
+    mpi_errno = MPIDI_CH3I_RDMA_Process.post_send(vc, v, rail);
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_MRAILI_RPUT_COMPLETE);
-    return MPIDI_CH3I_RDMA_Process.post_send(vc, v, rail);
+    return mpi_errno;
 }
 
 #undef FUNCNAME
@@ -950,7 +967,8 @@ int MRAILI_Backlog_send(MPIDI_VC_t * vc, int rail)
 
 #ifdef CKPT
     if (MPIDI_CH3I_RDMA_Process.has_srq) {
-        MPIU_Assert(0);
+        fprintf( stderr, "{%s, %d] CKPT has_srq error\n", __FILE__, __LINE__  );
+        exit(EXIT_FAILURE);
     }
 #endif
 
@@ -1013,12 +1031,6 @@ int MRAILI_Backlog_send(MPIDI_VC_t * vc, int rail)
     return 0;
 }
 
-/*
-int MAX(int a, int b)
-{
-    return a > b ? a : b;
-}
-*/
 
 #undef FUNCNAME
 #define FUNCNAME MRAILI_Flush_wqe
@@ -1371,7 +1383,8 @@ int MRAILI_Process_send(void *vbuf_addr)
         vc->pending_close_ops -= 1;
         if (vc->disconnect == 1 && vc->pending_close_ops == 0)
         {
-            if(mpi_errno = MPIU_CALL(MPIDI_CH3,Connection_terminate(vc)))
+            mpi_errno = MPIU_CALL(MPIDI_CH3,Connection_terminate(vc));
+            if(mpi_errno)
             {
               MPIU_ERR_POP(mpi_errno);
             }

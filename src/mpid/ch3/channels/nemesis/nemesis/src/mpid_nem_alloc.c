@@ -353,18 +353,7 @@ int MPIDI_CH3I_Seg_commit(MPID_nem_seg_ptr_t memory, int num_local, int local_ra
             MPIU_ERR_CHKANDJUMP1 (pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_barrier", "**pmi_barrier %d", pmi_errno);
         }
         else
-        { 
-            /* Making all other processes do a dummy PMI_KVS_Put to work with
-             * MPIRUN_RSH*/
-            char *str = getenv("MPIRUN_RSH_LAUNCH");
-            if (str != NULL && (atoi(str) == 1))
-            {
-               char dummy[32];
-               int grank;
-               PMI_Get_rank(&grank);
-               sprintf(dummy, "dummy_%d", grank);
-               pmi_errno = PMI_KVS_Put (kvs_name, dummy, dummy);
-            }
+        {
 
             pmi_errno = PMI_Barrier();
             MPIU_ERR_CHKANDJUMP1 (pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_barrier", "**pmi_barrier %d", pmi_errno);

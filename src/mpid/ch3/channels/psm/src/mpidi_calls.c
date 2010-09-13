@@ -122,17 +122,12 @@ int MPIDI_CH3_PG_Destroy(MPIDI_PG_t *pg)
 
 int MPIDI_CH3_InitCompleted()
 {
-    extern uint32_t ipath_spinlimit;
-    extern uint32_t ipath_nocomplete_limit;
+    
     if(MPIR_ThreadInfo.thread_provided == MPI_THREAD_MULTIPLE) {
         psm_lock_fn = pthread_spin_lock;
         psm_unlock_fn = pthread_spin_unlock;
-        ipath_spinlimit = 100;
-        ipath_nocomplete_limit = 10;
     } else {
         psm_lock_fn = psm_unlock_fn = psm_no_lock;
-        ipath_spinlimit = 5000;
-        ipath_nocomplete_limit = 1000;
     }
     return MPI_SUCCESS;
 }
@@ -184,7 +179,9 @@ int MPIDI_CH3_VC_Init(MPIDI_VC_t *vc)
 
 inline void MPIDI_CH3_Progress_start(MPID_Progress_state *pstate)
 {
-    psm_progress_start(pstate);
+  _psm_enter_;
+  psm_poll(psmdev_cw.ep);
+  _psm_exit_;
 }
 
 #undef FUNCNAME
@@ -214,7 +211,7 @@ void MPIDI_CH3I_Progress_wakeup(void)
 
 inline int MPIDI_CH3_Progress_wait(MPID_Progress_state *state)
 {
-    return(psm_progress_wait());
+    return(psm_progress_wait(TRUE));
 }
 
 #undef FUNCNAME
@@ -234,7 +231,7 @@ inline int MPIDI_CH3_Finalize(void)
 
 inline int MPIDI_CH3_Progress_test(void)
 {
-    return (psm_progress_wait());
+    return (psm_progress_wait(FALSE));
 }
 
 #undef FUNCNAME
@@ -289,7 +286,8 @@ int MPIDI_CH3_Probe(int source, int tag, int context, MPI_Status *stat,
 {
     int mpi_errno = MPI_SUCCESS, i;
     psm_error_t psmerr;
-    extern uint32_t ipath_spinlimit;
+    uint32_t ipath_spinlimit = 
+      (MPIR_ThreadInfo.thread_provided == MPI_THREAD_MULTIPLE) ? 100 : 1000;
    
     /* if not blocking, do probe once */
     if(blk == PSM_NONBLOCKING) {

@@ -9,18 +9,10 @@ AM_CPPFLAGS += -I$(top_srcdir)/tools/bootstrap/include -I$(top_builddir)/tools/b
 include tools/bootstrap/src/Makefile.mk
 include tools/bootstrap/utils/Makefile.mk
 
-if hydra_bss_ssh
-include tools/bootstrap/ssh/Makefile.mk
+if hydra_bss_external
+include tools/bootstrap/external/Makefile.mk
 endif
 
-if hydra_bss_rsh
-include tools/bootstrap/rsh/Makefile.mk
-endif
-
-if hydra_bss_fork
-include tools/bootstrap/fork/Makefile.mk
-endif
-
-if hydra_bss_slurm
-include tools/bootstrap/slurm/Makefile.mk
+if hydra_bss_persist
+include tools/bootstrap/persist/Makefile.mk
 endif

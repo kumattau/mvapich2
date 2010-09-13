@@ -24,7 +24,6 @@
  *
  */
 
-//#include "mpidi_ch3i_rdma_conf.h"
 
 #include <errno.h>
 #include <string.h>
@@ -116,7 +115,7 @@ void deallocate_vbufs(int hca_num)
 #if defined(RDMA_CM)
         || process_info.use_rdma_cm_on_demand
 #endif /* defined(RDMA_CM) */
-        //|| MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND
+        /*|| MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND*/
 #endif /* !defined(CKPT) */
         )
     {
@@ -140,7 +139,7 @@ void deallocate_vbufs(int hca_num)
 #if defined(RDMA_CM)
         || process_info.use_rdma_cm_on_demand
 #endif /* defined(RDMA_CM) */
-        //|| MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
+        /*|| MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)*/
 #endif /* !defined(CKPT) */
         )
     {
@@ -320,7 +319,7 @@ vbuf* get_vbuf()
 #if defined(RDMA_CM)
         || process_info.use_rdma_cm_on_demand
 #endif /* defined(RDMA_CM) */
-        //|| MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
+        /*|| MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)*/
 #endif /* !defined(CKPT) */
         )
     {
@@ -372,7 +371,7 @@ vbuf* get_vbuf()
 #if defined(RDMA_CM)
         || process_info.use_rdma_cm_on_demand
 #endif /* defined(RDMA_CM) */
-        //|| MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
+        /*|| MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND) */
 #endif /* !defined(CKPT) */
         )
     {
@@ -390,7 +389,7 @@ void MRAILI_Release_vbuf(vbuf* v)
 #if defined(RDMA_CM)
         || process_info.use_rdma_cm_on_demand
 #endif /* defined(RDMA_CM) */
-        //|| MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
+        /*|| MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)*/
 #endif /* !defined(CKPT) */
         )
     {
@@ -425,7 +424,7 @@ void MRAILI_Release_vbuf(vbuf* v)
 #if defined(RDMA_CM)
         || process_info.use_rdma_cm_on_demand
 #endif /* defined(RDMA_CM) */
-        //|| MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
+        /*|| MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)*/
 #endif /* !defined(CKPT) */
         )
     {

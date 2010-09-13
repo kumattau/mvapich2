@@ -38,6 +38,14 @@ do {                                                          \
 #define DEBUG_PRINT(args...)
 #endif
 
+typedef struct {
+  uintptr_t win_ptr;
+  uint32_t win_rkeys[MAX_NUM_HCAS];
+  uint32_t completion_counter_rkeys[MAX_NUM_HCAS];
+  uint32_t post_flag_rkeys[MAX_NUM_HCAS];
+  uint32_t fall_back;
+} win_info;
+
 extern int number_of_op;
 static int Decrease_CC(MPID_Win *, int);
 static int Post_Get_Put_Get_List(MPID_Win *, 
@@ -478,7 +486,7 @@ int MPIDI_CH3I_RDMA_post(MPID_Win * win_ptr, int target_rank)
 
     int hca_index = 0;
     uint32_t l_key = win_ptr->pinnedpool_1sc_dentry->memhandle[hca_index]->lkey;
-    uint32_t r_key = win_ptr->r_key4[target_rank * rdma_num_hcas + hca_index];
+    uint32_t r_key = win_ptr->post_flag_rkeys[target_rank * rdma_num_hcas + hca_index];
 
     Post_Put_Put_Get_List(win_ptr, -1, NULL, 
             tmp_vc, (void *)&origin_addr, 
@@ -503,15 +511,14 @@ void
 MPIDI_CH3I_RDMA_win_create(void *base,
                            MPI_Aint size,
                            int comm_size,
-                           int rank,
+                           int my_rank,
                            MPID_Win ** win_ptr, MPID_Comm * comm_ptr)
 {
  
-    int ret, i,j, index, arr_index;
-    unsigned long   *tmp, *tmp_new;
-    uint32_t        r_key[MAX_NUM_HCAS], r_key2[MAX_NUM_HCAS];
-    uint32_t        r_key3[MAX_NUM_HCAS], postflag_rkey[MAX_NUM_HCAS];
-    unsigned long   *tmp1, *tmp2, *tmp3, *tmp4;
+    int             ret, i,j, index, arrIndex;
+    win_info        *win_info_exchange;
+    uintptr_t       *cc_ptrs_exchange;
+    uintptr_t       *post_flag_ptr_send, *post_flag_ptr_recv;
     int             fallback_trigger = 0;
 
     if (!MPIDI_CH3I_RDMA_Process.has_one_sided)
@@ -521,129 +528,98 @@ MPIDI_CH3I_RDMA_win_create(void *base,
     }
     
     /*There may be more than one windows existing at the same time */
-   
     ++MPIDI_CH3I_RDMA_Process.current_win_num;
     MPIU_Assert(MPIDI_CH3I_RDMA_Process.current_win_num <= max_num_win);
+
+    /*Finding a free index in the window list */
     index = Find_Avail_Index();
     MPIU_Assert(index != -1);
 
-    tmp = MPIU_Malloc(comm_size * sizeof(unsigned long) * 7 * rdma_num_hcas); 
-
-    if (!tmp)
+    /*Allocate structure for window information exchange*/
+    win_info_exchange = MPIU_Malloc(comm_size * sizeof(win_info)); 
+    if (!win_info_exchange)
     {
-        DEBUG_PRINT("Error malloc tmp when creating windows\n");
+        DEBUG_PRINT("Error malloc win_info_exchange when creating windows\n");
+        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
+    }
+
+    /*Allocate memory for completion counter pointers exchange*/
+    cc_ptrs_exchange =  MPIU_Malloc(comm_size * sizeof(uintptr_t) * rdma_num_rails); 
+    if (!cc_ptrs_exchange)
+    {
+        DEBUG_PRINT("Error malloc cc_ptrs_exchangee when creating windows\n");
         ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
     }
     
-    tmp_new = MPIU_Malloc(comm_size * sizeof(unsigned long) * rdma_num_rails);
-   
-    if (!tmp_new)
-    {
-        DEBUG_PRINT("Error malloc tmp_new when creating windows\n");
-        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
-    }
-
     (*win_ptr)->fall_back = 0;
-
-    /*Register the exposed buffer in this window */
+    /*Register the exposed buffer for this window */
     if (base != NULL && size > 0) {
-        MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry[index] =
-            /* Register the entire window with all HCAs */
-            dreg_register(base, size);
+
+        MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry[index] = dreg_register(base, size);
         if (NULL == MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry[index]) {
             (*win_ptr)->fall_back = 1;
             goto err_base_register;
         }
         for (i=0; i < rdma_num_hcas; ++i) {
-             r_key[i] = MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry
-                 [index]->memhandle[i]->rkey;
+            win_info_exchange[my_rank].win_rkeys[i] = 
+                 (uint32_t) MPIDI_CH3I_RDMA_Process.
+                        RDMA_local_win_dreg_entry[index]->memhandle[i]->rkey;
         }
     } else {
-        /* Self */
         MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry[index] = NULL;
         for (i = 0; i < rdma_num_hcas; ++i) {
-             r_key[i] = 0;
+             win_info_exchange[my_rank].win_rkeys[i] = 0;
         }
     }
 
     /*Register buffer for completion counter */
-    (*win_ptr)->completion_counter = MPIU_Malloc(sizeof(long long) * comm_size * rdma_num_rails);
-
-    /* Fallback case */
-    if (!(*win_ptr)->completion_counter) {
+    (*win_ptr)->completion_counter = MPIU_Malloc(sizeof(long long) * comm_size 
+                * rdma_num_rails);
+    if (NULL == (*win_ptr)->completion_counter) {
+        /* FallBack case */
         (*win_ptr)->fall_back = 1;
         goto err_cc_buf;
     }
 
-    MPIU_Memset(
-        (void *)(*win_ptr)->completion_counter,
-        0, 
-        sizeof(long long) * comm_size * rdma_num_rails
-    ); 
+    MPIU_Memset((void *) (*win_ptr)->completion_counter, 0, sizeof(long long)   
+            * comm_size * rdma_num_rails);
 
     MPIDI_CH3I_RDMA_Process.RDMA_local_wincc_dreg_entry[index] = dreg_register(
-        (void*)(*win_ptr)->completion_counter,
-        sizeof(long long) * comm_size * rdma_num_rails
-    );
-
+        (void*)(*win_ptr)->completion_counter, sizeof(long long) * comm_size 
+               * rdma_num_rails);
     if (NULL == MPIDI_CH3I_RDMA_Process.RDMA_local_wincc_dreg_entry[index]) {
         /* FallBack case */
         (*win_ptr)->fall_back = 1;
         goto err_cc_register;
     }
 
-    for (i = 0; i < rdma_num_hcas; ++i)
-    {
-        r_key2[i] = MPIDI_CH3I_RDMA_Process.RDMA_local_wincc_dreg_entry[index]->memhandle[i]->rkey;
+    for (i = 0; i < rdma_num_rails; ++i){
+        cc_ptrs_exchange[my_rank * rdma_num_rails + i] =
+               (uintptr_t) ((*win_ptr)->completion_counter + i);
     }
 
-    /*Register buffer for accumulation exclusive access lock */
-
-    (*win_ptr)->actlock = (long long *) MPIU_Malloc(sizeof(long long));
-    if (!(*win_ptr)->actlock) {
-        (*win_ptr)->fall_back = 1;
-        goto err_actlock_buf;
+    for (i = 0; i < rdma_num_hcas; ++i){
+        win_info_exchange[my_rank].completion_counter_rkeys[i] =
+               (uint32_t) MPIDI_CH3I_RDMA_Process.
+                        RDMA_local_wincc_dreg_entry[index]->memhandle[i]->rkey;
     }
-
-    MPIDI_CH3I_RDMA_Process.RDMA_local_actlock_dreg_entry[index] = dreg_register(
-        (void*)(*win_ptr)->actlock,
-        sizeof(long long)
-    );
-
-    if (NULL == MPIDI_CH3I_RDMA_Process.RDMA_local_actlock_dreg_entry[index]) {
-        (*win_ptr)->fall_back = 1;
-        goto err_actlock_register;
-    }
-    
-    for (i=0; i<rdma_num_hcas; ++i) {
-        r_key3[i] = MPIDI_CH3I_RDMA_Process.RDMA_local_actlock_dreg_entry[index]->memhandle[i]->rkey;
-        DEBUG_PRINT("the rkey3 is %x\n", r_key3[i]);
-    }
-
-    *((long long*)((*win_ptr)->actlock)) = 0;
 
     /*Register buffer for post flags : from target to origin */
-    
     (*win_ptr)->post_flag = (int *) MPIU_Malloc(comm_size * sizeof(int)); 
-    
     if (!(*win_ptr)->post_flag) {
         (*win_ptr)->fall_back = 1;
         goto err_postflag_buf;
     }
-
     DEBUG_PRINT(
         "rank[%d] : post flag start before exchange is %p\n",
-        rank,
+        my_rank,
         (*win_ptr)->post_flag
     ); 
   
     /* Register the post flag */
-
-    MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry[index] = dreg_register(
-        (void*)(*win_ptr)->post_flag,
-        sizeof(int) * comm_size
-    );
-    
+    MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry[index] = 
+                dreg_register((void*)(*win_ptr)->post_flag, 
+                               sizeof(int)*comm_size);
     if (NULL == MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry[index]) {
         /* Fallback case */
         (*win_ptr)->fall_back = 1;
@@ -652,11 +628,13 @@ MPIDI_CH3I_RDMA_win_create(void *base,
 
     for (i = 0; i < rdma_num_hcas; ++i)
     {
-        postflag_rkey[i] = MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry[index]->memhandle[i]->rkey;
+        win_info_exchange[my_rank].post_flag_rkeys[i] = 
+              (uint32_t)(MPIDI_CH3I_RDMA_Process. 
+                     RDMA_post_flag_dreg_entry[index]->memhandle[i]->rkey);
         DEBUG_PRINT(
-            "the rank [%d] postflag_rkey before exchange is %x\n", 
-            rank,
-            postflag_rkey[i]
+            "the rank [%d] post_flag rkey before exchange is %x\n", 
+            my_rank,
+            win_info_exchange[my_rank].post_flag_rkeys[i]
         );
     }
 
@@ -668,76 +646,47 @@ MPIDI_CH3I_RDMA_win_create(void *base,
     }
     
     (*win_ptr)->pinnedpool_1sc_dentry = dreg_register(
-        (*win_ptr)->pinnedpool_1sc_buf,
-        rdma_pin_pool_size
+                        (*win_ptr)->pinnedpool_1sc_buf,
+                        rdma_pin_pool_size
     );
-          
     if (NULL == (*win_ptr)->pinnedpool_1sc_dentry) {
         /* FallBack case */
         (*win_ptr)->fall_back = 1;
         goto err_pinnedpool_register;
     }
-     
+
     (*win_ptr)->pinnedpool_1sc_index = 0;
 
+    win_info_exchange[my_rank].fall_back = (*win_ptr)->fall_back;    
+
     /*Exchange the information about rkeys and addresses */
-
-    int calcIndex; 
-
-    for (i = 0; i < rdma_num_hcas; ++i)
-    {
-        calcIndex = (rank * rdma_num_hcas + i) * 7;
-        tmp[calcIndex] = r_key[i];
-        tmp[calcIndex + 1] = r_key2[i];
-        tmp[calcIndex + 2] = r_key3[i];
-        tmp[calcIndex + 3] = (uintptr_t)((*win_ptr)->actlock); 
-        tmp[calcIndex + 4] = (uintptr_t)((*win_ptr)->completion_counter + comm_size * i);
-        tmp[calcIndex + 5] = (*win_ptr)->fall_back;
-    }
-
     /* All processes will exchange the setup keys *
      * since each process has the same data for all other
      * processes, use allgather */
 
-    ret = NMPI_Allgather(
-        MPI_IN_PLACE,
-        0,
-        MPI_DATATYPE_NULL,
-        tmp,
-        rdma_num_hcas * 7,
-        MPI_LONG,
-        comm_ptr->handle
-    );
-
+    ret = NMPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, win_info_exchange,
+               sizeof(win_info), MPI_BYTE, comm_ptr->handle);
     if (ret != MPI_SUCCESS) {
-        DEBUG_PRINT("Error gather rkey  when creating windows\n");
+        DEBUG_PRINT("Error gather win_info  when creating windows\n");
         ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
     }
 
     /* check if any peers fail */
     for (i = 0; i < comm_size; ++i)
     {
-        for (j = 0; j < rdma_num_hcas; ++j)
-        {
-            calcIndex = (rdma_num_hcas * i + j) * 7 + 5;
-
-            if (tmp[calcIndex] != 0)
+            if (win_info_exchange[i].fall_back != 0)
             {
                 fallback_trigger = 1;
             }
-        }
     } 
     
     if (fallback_trigger) {
-        MPIU_Free(tmp);
+        MPIU_Free(win_info_exchange);
         dreg_unregister((*win_ptr)->pinnedpool_1sc_dentry);
         MPIU_Free((*win_ptr)->pinnedpool_1sc_buf);
         dreg_unregister(MPIDI_CH3I_RDMA_Process.
                         RDMA_post_flag_dreg_entry[index]);
         MPIU_Free((*win_ptr)->post_flag);
-        dreg_unregister(MPIDI_CH3I_RDMA_Process.
-                        RDMA_local_actlock_dreg_entry[index]);
-        MPIU_Free((*win_ptr)->actlock);
         dreg_unregister(MPIDI_CH3I_RDMA_Process.
                         RDMA_local_wincc_dreg_entry[index]);
         MPIU_Free((*win_ptr)->completion_counter);
@@ -747,202 +696,148 @@ MPIDI_CH3I_RDMA_win_create(void *base,
         goto fn_exit;
     }
 
-    for (i = 0; i < rdma_num_rails; ++i){
-         tmp_new[rank * rdma_num_rails + i] = 
-             (uintptr_t) ((*win_ptr)->completion_counter + i);
-    }    
-
-    ret = 
-        NMPI_Allgather(MPI_IN_PLACE, 0 , MPI_DATATYPE_NULL, tmp_new,
-                rdma_num_rails,
-                MPI_LONG, comm_ptr->handle);
+    ret = NMPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, cc_ptrs_exchange,
+             rdma_num_rails*sizeof(uintptr_t), MPI_BYTE, comm_ptr->handle);
+    if (ret != MPI_SUCCESS) {
+        DEBUG_PRINT("Error cc pointer  when creating windows\n");
+        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
+    }
 
     /* Now allocate the rkey array for all other processes */
-    (*win_ptr)->r_key = (uint32_t *) MPIU_Malloc(comm_size * 
-                                              sizeof(uint32_t) 
-                                                 * rdma_num_hcas);
-    if (!(*win_ptr)->r_key) {
-        DEBUG_PRINT("Error malloc win->r_key when creating windows\n");
+    (*win_ptr)->win_rkeys = (uint32_t *) MPIU_Malloc(comm_size * sizeof(uint32_t) 
+                             * rdma_num_hcas);
+    if (!(*win_ptr)->win_rkeys) {
+        DEBUG_PRINT("Error malloc win->win_rkeys when creating windows\n");
         ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
     }
 
     /* Now allocate the rkey2 array for all other processes */
-    (*win_ptr)->r_key2 = (uint32_t *) MPIU_Malloc(comm_size * 
-                                                  sizeof(uint32_t)
-                                                  * rdma_num_hcas);
-    if (!(*win_ptr)->r_key2) {
-        DEBUG_PRINT("Error malloc win->r_key2 when creating windows\n");
+    (*win_ptr)->completion_counter_rkeys = (uint32_t *) MPIU_Malloc(comm_size * 
+                             sizeof(uint32_t) * rdma_num_hcas); 
+    if (!(*win_ptr)->completion_counter_rkeys) {
+        DEBUG_PRINT("Error malloc win->completion_counter_rkeys when creating windows\n");
         ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
     }
 
-    /* Now allocate the rkey3 array for all other processes */
-    (*win_ptr)->r_key3 = (uint32_t *) MPIU_Malloc(comm_size * 
-                                                  sizeof(uint32_t)
-                                                  * rdma_num_hcas);
-    if (!(*win_ptr)->r_key3) {
-        DEBUG_PRINT("error malloc win->r_key3 when creating windows\n");
-        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
-    }
-
-    (*win_ptr)->all_actlock_addr = (long long **) MPIU_Malloc(comm_size 
-                                                              * sizeof(long long *) 
-                                                              * rdma_num_hcas);
-    /* Now allocate the passive communication array for all other processes */
-    if (!(*win_ptr)->all_actlock_addr) {
-        DEBUG_PRINT
-            ("error malloc win->all_actlock_addr when creating windows\n");
-        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
-    }
-    
     /* Now allocate the completion counter array for all other processes */
-    (*win_ptr)->all_completion_counter =
-        (long long **) MPIU_Malloc(comm_size * sizeof(long long *) * rdma_num_rails);
-
+    (*win_ptr)->all_completion_counter = (long long **) MPIU_Malloc(comm_size * 
+                             sizeof(long long *) * rdma_num_rails);
     if (!(*win_ptr)->all_completion_counter) {
         DEBUG_PRINT
             ("error malloc win->all_completion_counter when creating windows\n");
         ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
     }
 
-    int compIndex;
-
-    for (i = 0; i < comm_size; ++i)
-    {
-        for (j = 0; j < rdma_num_hcas; ++j) 
-        {
-            compIndex = rdma_num_hcas * i + j;
-            calcIndex = (rdma_num_hcas * i + j) * 7;
-            (*win_ptr)->r_key[compIndex] = tmp[calcIndex];
-            (*win_ptr)->r_key2[compIndex] = tmp[calcIndex + 1];
-            (*win_ptr)->r_key3[compIndex] = tmp[calcIndex + 2];
-            (*win_ptr)->all_actlock_addr[compIndex] = (void *)tmp[calcIndex + 3]; 
-        }
-    }
-
-    for (i = 0; i < comm_size; ++i){
-        for (j = 0; j < rdma_num_rails; ++j){
-            arr_index = rdma_num_rails * i + j;     
-            (*win_ptr)->all_completion_counter[arr_index] =
-                (long long *) (tmp_new[arr_index] + sizeof(long long)*rank * rdma_num_rails); 
-        }    
-        
-    }
-       
-    tmp1 = (unsigned long *) MPIU_Malloc(comm_size * 
-            sizeof(unsigned long)*rdma_num_hcas );
-    if (!tmp1) {
-        DEBUG_PRINT("Error malloc tmp1 when creating windows\n");
-        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
-    }
-    tmp2 = (unsigned long *) MPIU_Malloc(comm_size * 
-            sizeof(unsigned long) );
-    if (!tmp2) {
-        DEBUG_PRINT("Error malloc tmp2 when creating windows\n");
-        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
-    }
-    tmp3 = (unsigned long *) MPIU_Malloc(comm_size * 
-            sizeof(unsigned long)*rdma_num_hcas );
-    if (!tmp3) {
-        DEBUG_PRINT("Error malloc tmp3 when creating windows\n");
-        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
-    }
-    tmp4 = (unsigned long *) MPIU_Malloc(comm_size * 
-            sizeof(unsigned long) );
-    if (!tmp4) {
-        DEBUG_PRINT("Error malloc tmp4 when creating windows\n");
+    /* Now allocate the post flag rkey array for all other processes */
+    (*win_ptr)->post_flag_rkeys = (uint32_t *) MPIU_Malloc(comm_size *
+                                                  sizeof(uint32_t) * rdma_num_hcas);
+    if (!(*win_ptr)->post_flag_rkeys) {
+        DEBUG_PRINT("error malloc win->post_flag_rkeys when creating windows\n");
         ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
     }
 
-    /* use all to all to exchange rkey and address for post flag */
-    for (i = 0; i < comm_size; ++i)
-    {
-        (*win_ptr)->post_flag[i] = i != rank ? 0 : 1;
-
-        for (j = 0; j < rdma_num_hcas; ++j)
-        {
-            tmp1[i * rdma_num_hcas + j] = postflag_rkey[j];
-        }
-
-        tmp2[i] = (uintptr_t) &((*win_ptr)->post_flag[i]);
-    }
-
-    /* use all to all to exchange rkey of post flag */ 
-    ret = NMPI_Alltoall(tmp1, rdma_num_hcas, MPI_LONG, tmp3, rdma_num_hcas, MPI_LONG,
-                      comm_ptr->handle);
-    if (ret != MPI_SUCCESS) {
-        DEBUG_PRINT("Error gather rkey  when creating windows\n");
-        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
-    }
-
-    /* use all to all to exchange the address of post flag */
-    ret = NMPI_Alltoall(tmp2, 1, MPI_LONG, tmp4, 1, MPI_LONG,
-                      comm_ptr->handle);
-    if (ret != MPI_SUCCESS) {
-        DEBUG_PRINT("Error gather rkey  when creating windows\n");
-        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
-    }
-
-    (*win_ptr)->r_key4 = (uint32_t *) MPIU_Malloc(comm_size * 
-                                                  sizeof(uint32_t)*rdma_num_hcas);
-    if (!(*win_ptr)->r_key4) {
-        DEBUG_PRINT("error malloc win->r_key3 when creating windows\n");
-        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
-    }
-    
+    /* Now allocate the post flag ptr array for all other processes */
     (*win_ptr)->remote_post_flags =
-        (long **) MPIU_Malloc(comm_size * sizeof(long *));
+        (int **) MPIU_Malloc(comm_size * sizeof(int *));
     if (!(*win_ptr)->remote_post_flags) {
         DEBUG_PRINT
             ("error malloc win->remote_post_flags when creating windows\n");
         ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
     }
 
-    for (i = 0; i < comm_size; ++i) {
-        for (j = 0; j < rdma_num_hcas; ++j){
-            calcIndex = rdma_num_hcas * i + j; 
-            (*win_ptr)->r_key4[calcIndex] = tmp3[calcIndex];
-            DEBUG_PRINT("AFTER ALLTOALL the rank[%d] post_flag_key[%x]\n",
-                    rank, (*win_ptr)->r_key4[calcIndex]);
+    for (i = 0; i < comm_size; ++i)
+    {
+        for (j = 0; j < rdma_num_hcas; ++j) 
+        {
+            arrIndex = rdma_num_hcas * i + j;
+            (*win_ptr)->win_rkeys[arrIndex] = 
+                    win_info_exchange[i].win_rkeys[j];
+            (*win_ptr)->completion_counter_rkeys[arrIndex] = 
+                    win_info_exchange[i].completion_counter_rkeys[j];
+            (*win_ptr)->post_flag_rkeys[arrIndex] = 
+                    win_info_exchange[i].post_flag_rkeys[j];
         }
-        (*win_ptr)->remote_post_flags[i] = (long *) tmp4[i];
-        DEBUG_PRINT(" rank is %d remote rank %d,  post flag addr is %p\n",
-                rank, i, (*win_ptr)->remote_post_flags[i]);
     }
 
-    MPIU_Free(tmp);
-    MPIU_Free(tmp1);
-    MPIU_Free(tmp2);
-    MPIU_Free(tmp3);
-    MPIU_Free(tmp4);
+    for (i = 0; i < comm_size; ++i)
+    {
+        for (j = 0; j < rdma_num_rails; ++j)
+        {
+            arrIndex = rdma_num_rails * i + j;
+            (*win_ptr)->all_completion_counter[arrIndex] = (long long *)
+                    ((size_t)(cc_ptrs_exchange[arrIndex])
+                    + sizeof(long long) * my_rank * rdma_num_rails);
+        }
+    }
+
+    post_flag_ptr_send = (uintptr_t *) MPIU_Malloc(comm_size * 
+            sizeof(uintptr_t));
+    if (!post_flag_ptr_send) {
+        DEBUG_PRINT("Error malloc post_flag_ptr_send when creating windows\n");
+        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
+    }
+
+    post_flag_ptr_recv = (uintptr_t *) MPIU_Malloc(comm_size * 
+            sizeof(uintptr_t));
+    if (!post_flag_ptr_recv) {
+        DEBUG_PRINT("Error malloc post_flag_ptr_recv when creating windows\n");
+        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
+    }
+
+    /* use all to all to exchange rkey and address for post flag */
+    for (i = 0; i < comm_size; ++i)
+    {
+        (*win_ptr)->post_flag[i] = i != my_rank ? 0 : 1;
+        post_flag_ptr_send[i] = (uintptr_t) &((*win_ptr)->post_flag[i]);
+    }
+
+    /* use all to all to exchange the address of post flag */
+    ret = NMPI_Alltoall(post_flag_ptr_send, sizeof(uintptr_t), MPI_BYTE, 
+            post_flag_ptr_recv, sizeof(uintptr_t), MPI_BYTE, comm_ptr->handle);
+    if (ret != MPI_SUCCESS) {
+        DEBUG_PRINT("Error gather post flag ptr  when creating windows\n");
+        ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
+    }
+
+    for (i = 0; i < comm_size; ++i) {
+        (*win_ptr)->remote_post_flags[i] = (int *) post_flag_ptr_recv[i];
+        DEBUG_PRINT(" rank is %d remote rank %d,  post flag addr is %p\n",
+                my_rank, i, (*win_ptr)->remote_post_flags[i]);
+    }
+
+    MPIU_Free(win_info_exchange);
+    MPIU_Free(cc_ptrs_exchange);
+    MPIU_Free(post_flag_ptr_send);
+    MPIU_Free(post_flag_ptr_recv);
     (*win_ptr)->using_lock = 0;
     (*win_ptr)->using_start = 0;
-    (*win_ptr)->my_id = rank;
+    (*win_ptr)->my_id = my_rank;
     (*win_ptr)->comm_size = comm_size;
     /* Initialize put/get queue */
     (*win_ptr)->put_get_list_size = 0;
     (*win_ptr)->put_get_list_tail = 0;
-    (*win_ptr)->put_get_list = 
-        MPIU_Malloc( rdma_default_put_get_list_size *
-            sizeof(MPIDI_CH3I_RDMA_put_get_list)); 
     (*win_ptr)->wait_for_complete = 0;
     (*win_ptr)->rma_issued = 0;
 
+    (*win_ptr)->put_get_list =
+        MPIU_Malloc( rdma_default_put_get_list_size *
+            sizeof(MPIDI_CH3I_RDMA_put_get_list));
     if (!(*win_ptr)->put_get_list) {
         DEBUG_PRINT("Fail to malloc space for window put get list\n");
         ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
     }
 
-
     MPIDI_CH3I_RDMA_Process.win_index2address[index] = (long) *win_ptr;
     DEBUG_PRINT("done win_create\n");
 
 fn_exit:
+    
     if (1 == (*win_ptr)->fall_back) {
         MPIDI_CH3I_RDMA_Process.win_index2address[index] = 0;
         --MPIDI_CH3I_RDMA_Process.current_win_num;
         (*win_ptr)->using_lock = 0;
         (*win_ptr)->using_start = 0;
-        (*win_ptr)->my_id = rank;
+        (*win_ptr)->my_id = my_rank;
 
         (*win_ptr)->comm_size = comm_size;
         /* Initialize put/get queue */
@@ -961,26 +856,23 @@ fn_exit:
     MPIU_Free((*win_ptr)->post_flag);
   err_postflag_buf:
     dreg_unregister(MPIDI_CH3I_RDMA_Process.
-                        RDMA_local_actlock_dreg_entry[index]);
-  err_actlock_register:
-    MPIU_Free((*win_ptr)->actlock);
-  err_actlock_buf:
-    dreg_unregister(MPIDI_CH3I_RDMA_Process.
                         RDMA_local_wincc_dreg_entry[index]);
   err_cc_register:
     MPIU_Free((*win_ptr)->completion_counter);
   err_cc_buf:
-    dreg_unregister(MPIDI_CH3I_RDMA_Process.
-            RDMA_local_win_dreg_entry[index]);
+    dreg_unregister(MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry[index]);
   err_base_register:
-    tmp[7 * rank * rdma_num_hcas + 5] = (*win_ptr)->fall_back;
+    win_info_exchange[my_rank].fall_back = (*win_ptr)->fall_back;
 
-    ret = NMPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, tmp, 
-                      rdma_num_hcas*7, MPI_LONG, comm_ptr->handle);
+    ret = NMPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, win_info_exchange, 
+                      sizeof(win_info), MPI_BYTE, comm_ptr->handle);
     if (ret != MPI_SUCCESS) {
-        DEBUG_PRINT("Error gather rkey  when creating windows\n");
+        DEBUG_PRINT("Error gather window information when creating windows\n");
         ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
     }
+ 
+    MPIU_Free(win_info_exchange);
+    MPIU_Free(cc_ptrs_exchange);
     goto fn_exit;
      
 }
@@ -1003,11 +895,9 @@ void MPIDI_CH3I_RDMA_win_free(MPID_Win** win_ptr)
                             RDMA_local_win_dreg_entry[index]);
     }
 
-    MPIU_Free((*win_ptr)->r_key);
-    MPIU_Free((*win_ptr)->r_key2);
-    MPIU_Free((*win_ptr)->r_key3);
-    MPIU_Free((*win_ptr)->all_actlock_addr);
-    MPIU_Free((*win_ptr)->r_key4);
+    MPIU_Free((*win_ptr)->win_rkeys);
+    MPIU_Free((*win_ptr)->completion_counter_rkeys);
+    MPIU_Free((*win_ptr)->post_flag_rkeys);
     MPIU_Free((*win_ptr)->remote_post_flags);
     MPIU_Free((*win_ptr)->put_get_list);
 
@@ -1021,18 +911,11 @@ void MPIDI_CH3I_RDMA_win_free(MPID_Win** win_ptr)
                             RDMA_local_wincc_dreg_entry[index]);
     }
 
-    if (MPIDI_CH3I_RDMA_Process.RDMA_local_actlock_dreg_entry[index] != NULL)
-    {
-        dreg_unregister(MPIDI_CH3I_RDMA_Process.
-                            RDMA_local_actlock_dreg_entry[index]);
-    }
-
     if (MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry[index] != NULL) {
         dreg_unregister(MPIDI_CH3I_RDMA_Process.
                             RDMA_post_flag_dreg_entry[index]);
     }
 
-    MPIU_Free((*win_ptr)->actlock);
     MPIU_Free((*win_ptr)->completion_counter);
     MPIU_Free((*win_ptr)->all_completion_counter);
 }
@@ -1062,7 +945,7 @@ static int Decrease_CC(MPID_Win * win_ptr, int target_rank)
 	    *((long long *) cc) = 1;
             local_addr[i]     = (void *)cc;
             l_key2[i] = win_ptr->pinnedpool_1sc_dentry->memhandle[hca_index]->lkey;
-            r_key2[i] = win_ptr->r_key2[target_rank*rdma_num_hcas + hca_index];
+            r_key2[i] = win_ptr->completion_counter_rkeys[target_rank*rdma_num_hcas + hca_index];
     }
  
     Post_Put_Put_Get_List(win_ptr, -1, NULL, tmp_vc, 
@@ -1457,7 +1340,7 @@ static int iba_put(MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr, int size)
 
     for (i=0; i<rdma_num_rails; ++i) {
         hca_index = tmp_vc->mrail.rails[i].hca_index;
-        r_key[i] = win_ptr->r_key[rma_op->target_rank*rdma_num_hcas + hca_index];
+        r_key[i] = win_ptr->win_rkeys[rma_op->target_rank*rdma_num_hcas + hca_index];
         l_key1[i] = l_key[hca_index];
     }
 
@@ -1508,7 +1391,7 @@ int iba_get(MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr, int size)
    for (i=0; i<rdma_num_rails; ++i)
    {
        hca_index = tmp_vc->mrail.rails[i].hca_index;
-       r_key[i] = win_ptr->r_key[rma_op->target_rank*rdma_num_hcas + hca_index];
+       r_key[i] = win_ptr->win_rkeys[rma_op->target_rank*rdma_num_hcas + hca_index];
        l_key1[i] = l_key[hca_index];
    }
 

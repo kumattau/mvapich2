@@ -280,6 +280,7 @@ int psm_send_noncontig(MPIDI_VC_t *vc, MPID_Request *sreq,
     int mpi_errno, inuse;
 
     if(sreq->psm_flags & PSM_NON_BLOCKING_SEND) {
+	sreq->psm_flags |= PSM_PACK_BUF_FREE;
         mpi_errno = psm_isend(vc, match, sreq);
         if(unlikely(mpi_errno != MPI_SUCCESS)) {
             MPIU_ERR_POP(mpi_errno);

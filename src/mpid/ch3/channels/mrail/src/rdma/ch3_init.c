@@ -91,9 +91,10 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 #if defined(RDMA_CM)
     if (((value = getenv("MV2_USE_RDMA_CM")) != NULL
         || (value = getenv("MV2_USE_IWARP_MODE")) != NULL)
-        && atoi(value) && ! dpm)
-    {
+        && atoi(value) && ! dpm) {
         MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_RDMA_CM;
+    } else {
+        rdma_cm_get_hca_type(&MPIDI_CH3I_RDMA_Process);
     }
 #endif /* defined(RDMA_CM) */
 
@@ -165,7 +166,11 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 
     /* set connection info for dynamic process management */
     if (conn_info) {
-        MPIDI_PG_SetConnInfo(pg_rank, (const char *)conn_info);
+        mpi_errno = MPIDI_PG_SetConnInfo(pg_rank, (const char *)conn_info);
+        if (mpi_errno != MPI_SUCCESS)
+        {
+            MPIU_ERR_POP(mpi_errno);
+        }
         MPIU_Free(conn_info);
     }
 
@@ -420,6 +425,8 @@ int MPIDI_CH3_Get_business_card(int myRank, char *value, int length)
 {
     char ifname[MAX_HOST_DESCRIPTION_LEN];
     int mpi_errno;
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_GET_BUSINESS_CARD);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_GET_BUSINESS_CARD);
 
     mpi_errno = MPIDI_CH3I_CM_Get_port_info(ifname, MAX_HOST_DESCRIPTION_LEN);
     if (mpi_errno) {
@@ -439,6 +446,7 @@ int MPIDI_CH3_Get_business_card(int myRank, char *value, int length)
     }
 
 fn_fail:
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_GET_BUSINESS_CARD);
     return mpi_errno;
 }
 

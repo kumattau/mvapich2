@@ -10,7 +10,8 @@
 
 SUBDIRS = .
 CFLAGS = @CFLAGS@ -D_GNU_SOURCE
-INCLUDES= -I${master_top_srcdir}/src/include
+INCLUDES= -I${master_top_srcdir}/src/include -I${master_top_srcdir}/src/mpid/ch3/channels/common/include -I${master_top_srcdir}/src/mpid/ch3/channels/mrail/src/gen2
+VPATH= ${master_top_srcdir}/src/mpid/ch3/channels/common/src/detect/arch ${master_top_srcdir}/src/mpid/ch3/channels/common/src/memory ${master_top_srcdir}/src/mpid/ch3/channels/common/src/memory/ptmalloc2
 
 lib${MPILIBNAME}_a_SOURCES = \
 udapl_send.c \
@@ -24,4 +25,7 @@ udapl_channel_manager.c \
 udapl_rma.c \
 rdma_udapl_1sc.c \
 udapl_rndv.c \
-avl.c
+mv2_arch_detect.c \
+mem_hooks.c \
+avl.c \
+mvapich_malloc.c

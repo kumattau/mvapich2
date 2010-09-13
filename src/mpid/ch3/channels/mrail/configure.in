@@ -61,7 +61,7 @@ AC_ARG_WITH(blcr-include,
 AC_ARG_WITH(blcr-libpath,
 [--with-blcr-libpath=path - Specify the path to the BLCR library.],,with_blcr_libpath=default)
 AC_ARG_ENABLE(ftb-cr,
-[--with-ftb-cr - Enable Fault Back Tolerant Checkpoint Restart],,enable_ftb-cr=no)
+[--with-ftb-cr - Enable Fault Back Tolerant Checkpoint Restart],,enable_ftb_cr=no)
 AC_ARG_WITH(ftb-include,
 [--with-ftb-include=path - Specify the path to the FTB-CR header files.],,)
 AC_ARG_WITH(ftb-libpath,
@@ -134,6 +134,7 @@ dnl This should only be executed if hwloc isn't explicitly disabled and no
 dnl suitable version is already installed on the system.
 AS_IF([test "$use_internal_hwloc" = "yes"],
       [AC_MSG_NOTICE([No suitable hwloc installed, using internal version])
+       AC_DEFINE([HAVE_LIBHWLOC], [], [Define if hwloc library is available])
        other_subdirs="hwloc $other_subdirs"
        CPPFLAGS="-I$PWD/$srcdir/src/hwloc/include $CPPFLAGS"
        AC_CONFIG_SUBDIRS(src/hwloc)])
@@ -219,6 +220,8 @@ if test "$with_rdma" = "gen2"; then
 
     AC_MSG_RESULT($with_ib_libpath)
 
+    AC_SEARCH_LIBS(dlopen, dl,,[AC_MSG_ERROR(['libdl not found'])])
+    mrail_libs="-ldl $mrail_libs"
     AC_SEARCH_LIBS(umad_init, ibumad,,[AC_MSG_ERROR(['libibumad not found. Did you specify --with-ib-libpath=?'])],)
     AC_SEARCH_LIBS(ibv_open_device, ibverbs,,[AC_MSG_ERROR(['libibverbs not found. Did you specify --with-ib-libpath=?'])],)
     AC_CHECK_HEADER([infiniband/umad.h],,[AC_MSG_ERROR(['infiniband/umad.h not found. Did you specify --with-ib-include=?'])])
@@ -314,16 +317,28 @@ if test "$with_rdma" = "gen2"; then
         AC_DEFINE(_ENABLE_XRC_, 1, [Define to use XRC])
     fi
 
-    AC_MSG_CHECKING([whether to enable support for RDMA CM])
-
-    if test "$enable_rdma_cm" = "default" -o "$enable_rdma_cm" = "yes"; then
-        AC_MSG_RESULT([yes])
+    if test "$enable_rdma_cm" = "yes"; then
+        AC_CHECKING([for RDMA CM support])
         AC_SEARCH_LIBS(rdma_create_event_channel, rdmacm,,[AC_MSG_ERROR(['librdmacm not found. Did you specify --with-ib-libpath=?'])],)
         AC_CHECK_HEADER([rdma/rdma_cma.h],,[AC_MSG_ERROR(['rdma/rdma_cma.h not found. Did you specify --with-ib-include=?'])])
         AC_DEFINE(RDMA_CM, 1, [Define to enable support from RDMA CM.])
         mrail_libs="-lrdmacm $mrail_libs"
-    else
-        AC_MSG_RESULT([no])
+        AC_MSG_NOTICE([RDMA CM support enabled])
+    elif test "$enable_rdma_cm" = "default"; then
+        AC_CHECKING([for RDMA CM support])
+        AC_SEARCH_LIBS(rdma_create_event_channel, rdmacm,enable_rdma_cm="yes",enable_rdma_cm="no",)
+        if test $enable_rdma_cm = "yes"; then
+            AC_CHECK_HEADER([rdma/rdma_cma.h],,enable_rdma_cm="no")
+            if test $enable_rdma_cm = "yes"; then
+                AC_DEFINE(RDMA_CM, 1, [Define to enable support from RDMA CM.])
+                mrail_libs="-lrdmacm $mrail_libs"
+                AC_MSG_NOTICE([RDMA CM support enabled])
+            else
+                AC_MSG_NOTICE([RDMA CM support disabled])
+            fi
+        else
+            AC_MSG_NOTICE([RDMA CM support disabled])
+        fi
     fi
 
 elif test "$with_rdma" = "udapl"; then
@@ -502,7 +517,5 @@ PAC_SUBCONFIG_FINALIZE()
 AC_OUTPUT(Makefile \
     src/Makefile \
     src/rdma/Makefile \
-    src/memory/Makefile \
-    src/memory/ptmalloc2/Makefile \
     src/${with_rdma}/Makefile \
     localdefs)

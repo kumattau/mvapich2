@@ -102,10 +102,6 @@ EOF])
     AS_IF([test "$hwloc_debug" = ""],
           [hwloc_debug=0
            hwloc_debug_msg="disabled"])
-    # Grr; we use #ifndef for HWLOC_DEBUG!  :-(
-    AH_TEMPLATE(HWLOC_DEBUG, [Whether we are in debugging mode or not])
-    AS_IF([test "$hwloc_debug" = "1"], [AC_DEFINE([HWLOC_DEBUG])])
-    AC_MSG_RESULT([$hwloc_debug_msg])
 
     # We need to set a path for header, etc files depending on whether
     # we're standalone or embedded. this is taken care of by HWLOC_EMBEDDED.

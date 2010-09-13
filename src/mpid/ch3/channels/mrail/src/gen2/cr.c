@@ -15,6 +15,8 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+#include "ibv_param.h"
+#include "dreg.h"
 #include "mpidimpl.h"
 #include "mpidi_ch3i_rdma_conf.h"
 
@@ -593,7 +595,6 @@ int CR_Thread_loop()
                 CR_ERR_ABORT("CR_IBU_Reactivate_channels failed\n");
             }
 
-            //CR_Set_state(MPICR_STATE_RUNNING);
 
             if (MPICR_is_restarting)
             {
@@ -979,11 +980,13 @@ void MPIDI_CH3I_CR_Handle_recv(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_type_t msg_type, vb
                     if( vc->mrail.sreq_to_update <= 0 ){
                          CR_DBG("[%d <== %d]: %s: Warn: REM_UPDATE: sreq-to-up=%d...\n", 
                              MPICR_pg_rank, vc->pg_rank, __func__,vc->mrail.sreq_to_update );
-                         //MPIU_Assert( vc->mrail.sreq_to_update > 0 );
+						/// a spurious REM_UPDATE msg, not a real bug...
+                         //MPIU_Assert( vc->mrail.sreq_to_update > 0 );// don't need to crash the prog
                     }
-                    else //( vc->mrail.sreq_to_update > 0 )
+                    else
                     	vc->mrail.sreq_to_update--; // has updated one sender' rndv(sreq)
 					if( vc->mrail.sreq_to_update == 0 ){
+						//reset rput_stop at ibv_chann_man
                            //vc->ch.rput_stop = 0; // all pending sender rndv have been updated
                     }
                     
@@ -1101,7 +1104,11 @@ int CR_IBU_Release_network()
     for (i = 0; i < rdma_num_hcas; ++i)
     {
         if (rdma_iwarp_use_multiple_cq &&
-            (MPIDI_CH3I_RDMA_Process.hca_type == CHELSIO_T3) &&
+#ifdef MV_ARCH_OLD_CODE
+            (MPIDI_CH3I_RDMA_Process.hca_type == CHELSIO_T3 ) &&
+#else
+            (MV2_HCA_CHELSIO_T3 == MPIDI_CH3I_RDMA_Process.hca_type ) &&
+#endif
             (MPIDI_CH3I_RDMA_Process.cluster_size != VERY_SMALL_CLUSTER)) {
             /* Trac #423 */
             ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.send_cq_hndl[i]);
@@ -1659,7 +1666,7 @@ int CR_IBU_Suspend_channels()
     /// record num of rndvs(sender) to update at restart
     CR_record_rndv( vc_vector );
     //CR_record_flowlist("after susp-chan");
-    //MPIU_Free(vc_vector);
+    MPIU_Free(vc_vector);
 
     return retval;
 }
@@ -1722,8 +1729,8 @@ int CR_IBU_Reactivate_channels()
             vc->mrail.react_send_ready = 1;
             if( vc->mrail.react_entry ) // cm_thread has gotten REACT_DONE from peer:
             { //  enquue the REACT_DONE to be sent to peer
-              //CR_DBG("%s: [%d => %d]: REACT_DONE came earlier, enq now...\n",
-             //      __func__, MPICR_pg_rank, vc->pg_rank );
+              CR_DBG("%s: [%d => %d]: REACT_DONE came earlier, enq now...\n",
+                   __func__, MPICR_pg_rank, vc->pg_rank );
                  MSG_LOG_ENQUEUE(vc, vc->mrail.react_entry);                     
             }
             pthread_spin_unlock( &vc->mrail.cr_lock);

@@ -156,8 +156,6 @@ static void get_display_str()
     p = getenv("DISPLAY");
     if (p != NULL) {
 	/* For X11 programs */
-	/* strcpy (str, p);
-	   sprintf (display, "DISPLAY=%s", str); */
 	assert(DISPLAY_STR_LEN > strlen("DISPLAY=") + strlen(p));
         snprintf( display, DISPLAY_STR_LEN, "DISPLAY=%s", p );
     }
@@ -748,7 +746,7 @@ void cleanup(void)
 #endif				/* CKPT */
 
     if (use_totalview) {
-        fprintf(stderr, "Cleaning up all processes ...");
+        fprintf(stderr, "Cleaning up all processes ...\n");
     }
     if (use_totalview) {
         MPIR_debug_state = MPIR_DEBUG_ABORTING;
@@ -1058,6 +1056,14 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env)
     }
 
 
+    tmp = mkstr("%s MPISPAWN_NNODES=%d", mpispawn_env, pglist->npgs);
+    if (tmp) {
+    free(mpispawn_env);
+    mpispawn_env = tmp;
+    } else {
+    goto allocation_error;
+    }
+ 
     tmp = mkstr("%s MPISPAWN_GLOBAL_NPROCS=%d", mpispawn_env, nprocs);
     if (tmp) {
 	free(mpispawn_env);

@@ -32,7 +32,7 @@
 #include "ib_param.h"
 #include "ib_hca.h"
 
-#define IB_PKT_HEADER_LENGTH (16)
+#define IB_PKT_HEADER_LENGTH (sizeof(MPIDI_nem_ib_pkt_comm_header))
 
 #define CREDIT_VBUF_FLAG (111)
 #define NORMAL_VBUF_FLAG (222)
@@ -91,7 +91,7 @@ struct ibv_wr_descriptor
 
 #define VBUF_BUFFER_SIZE (rdma_vbuf_total_size - sizeof(VBUF_FLAG_TYPE))
 
-#define MRAIL_MAX_EAGER_SIZE VBUF_BUFFER_SIZE
+#define MRAIL_MAX_EAGER_SIZE (VBUF_BUFFER_SIZE - sizeof(IB_PKT_HEADER_LENGTH))
 
 typedef struct vbuf
 {
@@ -136,6 +136,7 @@ typedef struct vbuf
 
 /* one for head and one for tail */
 #define VBUF_FAST_RDMA_EXTRA_BYTES (sizeof(VBUF_FLAG_TYPE))
+#define VBUF_IB_NETMOD_OFFSET (sizeof(VBUF_FLAG_TYPE) + sizeof(MPIDI_CH3_Pkt_t))
 
 #define FAST_RDMA_ALT_TAG 0x8000
 #define FAST_RDMA_SIZE_MASK 0x7fff
@@ -192,7 +193,6 @@ static void inline VBUF_SET_RDMA_ADDR_KEY(
     (v)->desc.sg_entry.addr = (uintptr_t)(local_addr);
 }
 
-//int allocate_vbufs(struct ibv_pd* ptag[], int nvbufs);
 int allocate_vbufs(int nvbufs);
 
 void deallocate_vbufs(int);

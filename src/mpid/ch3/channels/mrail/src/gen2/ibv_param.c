@@ -19,6 +19,7 @@
 #include "vbuf.h"
 #include "rdma_impl.h"
 #include "sysreport.h"
+#include "smp_smpi.h"
 
 /*
  * ==============================================================
@@ -58,16 +59,17 @@ int           rdma_get_fallback_threshold;
 int           rdma_integer_pool_size = RDMA_INTEGER_POOL_SIZE;
 int           rdma_polling_set_limit = -1;
 int           rdma_polling_set_threshold = 10;
-int	      rdma_eager_limit = 32;
+int           rdma_eager_limit = 32;
 int           rdma_iba_eager_threshold;
-char          rdma_iba_hca[32];
+char          rdma_iba_hcas[MAX_NUM_HCAS][32];
 int           rdma_max_inline_size;
 unsigned int  rdma_ndreg_entries = RDMA_NDREG_ENTRIES;
 int           rdma_rndv_protocol = VAPI_PROTOCOL_RPUT;
 int           rdma_r3_threshold = 4096;
 int           rdma_r3_threshold_nocache = 8192 * 4;
 int           num_rdma_buffer;
-int           USE_SMP = 1;
+int           rdma_use_smp = 1;
+MPID_Node_id_t rdma_num_nodes_in_job = 0;
 int           enable_knomial_2level_bcast=1;
 int           inter_node_knomial_factor=4;
 int           intra_node_knomial_factor=4;
@@ -76,6 +78,7 @@ int           knomial_2level_bcast_system_size_threshold=64;
 int           max_num_win = MAX_NUM_WIN;
 int           max_rdma_connect_attempts = DEFAULT_RDMA_CONNECT_ATTEMPTS;
 int           rdma_cm_connect_retry_interval = RDMA_DEFAULT_CONNECT_INTERVAL;
+int           rdma_default_async_thread_stack_size = RDMA_DEFAULT_ASYNC_THREAD_STACK_SIZE;
 
 /* Threshold of job size beyond which we want to use 2-cq approach */
 int           rdma_iwarp_multiple_cq_threshold = RDMA_IWARP_DEFAULT_MULTIPLE_CQ_THRESHOLD;
@@ -181,6 +184,55 @@ int use_hwloc_cpu_binding=0;
 int num_cpus = 32;
 static int check_hsam_parameters();
 
+int user_val_to_bytes(char* value,char* param)
+{
+
+    int factor=1;
+    int length=0;
+    int rank=-1;
+    char lastChar='\0';
+
+    PMI_Get_rank(&rank);
+    length=strlen(value);
+    lastChar=value[length-1];
+    char *str=alloca(length);
+
+    if (isalpha(lastChar)) {
+
+        strncpy(str,value,length-1);
+        switch(lastChar) {
+
+            case 'k':
+            case 'K':
+                factor = 1<<10;
+                break;
+            case 'm':
+            case 'M':
+                factor = 1<<20;
+                break;
+            case 'g':
+            case 'G':
+                factor = 1<<30;
+                break;
+            default:
+
+                if (rank==0) {
+
+                    fprintf(stderr,"\nIllegal value in %s environment variable!\n"
+                                   "Argument should be numeric. \n"
+                                   "Suffixes such as 'K' (for kilobyte), 'M' (for megabyte) and 'G' (for gigabyte) can be used.\n\n",param);	
+                }
+
+        }
+    } else {
+
+        str=value;
+        factor = 1;
+    }
+    return atoi(str) * factor;
+
+}
+
 static inline int log_2(int np)
 {
     int lgN, t;
@@ -188,6 +240,7 @@ static inline int log_2(int np)
     return lgN;
 }
 
+#ifdef MV_ARCH_OLD_CODE
 static int get_rate(umad_ca_t *umad_ca)
 {
     int i;
@@ -208,8 +261,9 @@ int hcaNameToType(char *dev_name, int* hca_type)
 {
     MPIDI_STATE_DECL(MPID_STATE_HCANAMETOTYPE);
     MPIDI_FUNC_ENTER(MPID_STATE_HCANAMETOTYPE);
-    int mpi_errno = MPI_SUCCESS;
+
     int rate;
+    int mpi_errno = MPI_SUCCESS;
 
     *hca_type = UNKNOWN_HCA;
 
@@ -292,46 +346,74 @@ fn_fail:
     return mpi_errno;
 }
 
+#endif
+
 #undef FUNCNAME
 #define FUNCNAME get_hca_type
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-static inline int get_hca_type (struct ibv_device* dev, struct ibv_context* ctx, int* hca_type)
+static inline int get_hca_type (struct MPIDI_CH3I_RDMA_Process_t *proc)
 {
     MPIDI_STATE_DECL(MPID_STATE_GET_HCA_TYPE);
     MPIDI_FUNC_ENTER(MPID_STATE_GET_HCA_TYPE);
+
+    int i = 0;
+    int ret = 0;
+    char* dev_name = NULL;
     int mpi_errno = MPI_SUCCESS;
+    int num_devices = 0;
     struct ibv_device_attr dev_attr;
+    struct ibv_device **dev_list = NULL;
+
+    dev_list = ibv_get_device_list(&num_devices);
 
     MPIU_Memset(&dev_attr, 0, sizeof(struct ibv_device_attr));
 
-    char* dev_name = (char*) ibv_get_device_name(dev);
+    for (i = 0; i < num_devices; ++i) {
 
-    if (!dev_name)
-    {
-        MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ibv_get_device_name");
-    }
+        dev_name = (char*) ibv_get_device_name(proc->ib_dev[i]);
+    
+        if (!dev_name) {
+            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER,
+                                "**ibv_get_device_name");
+        }
+    
+        ret = ibv_query_device(proc->nic_context[i], &dev_attr);
+    
+        if (ret) {
+            MPIU_ERR_SETANDJUMP1(
+                mpi_errno,
+                MPI_ERR_OTHER,
+                "**ibv_query_device",
+                "**ibv_query_device %s",
+                dev_name
+            );
+        }
 
-    int ret = ibv_query_device(ctx, &dev_attr);
+#ifdef MV_ARCH_OLD_CODE    
+        if ((mpi_errno = hcaNameToType(dev_name, &proc->hca_type))
+                         != MPI_SUCCESS) {
+            MPIU_ERR_POP(mpi_errno);
+        }
+        if (proc->hca_type != UNKNOWN_HCA) {
+            /* We've found the HCA */
+            break;
+        }
+#else
+        proc->hca_type = mv2_get_hca_type( dev_list[i] );
+        proc->arch_hca_type = mv2_get_arch_hca_type( dev_list[i] );
+        if ( MV2_HCA_UNKWN != proc->hca_type ) {
+            /* We've found the HCA */
+            break;
+        }
+#endif
 
-    if (ret)
-    {
-        MPIU_ERR_SETANDJUMP1(
-            mpi_errno,
-            MPI_ERR_OTHER,
-            "**ibv_query_device",
-            "**ibv_query_device %s",
-            dev_name
-        );
-    }
-
-    if ((mpi_errno = hcaNameToType(dev_name, hca_type)) != MPI_SUCCESS)
-    {
-        MPIU_ERR_POP(mpi_errno);
     }
 
 fn_fail:
+    ibv_free_device_list(dev_list);
     MPIDI_FUNC_EXIT(MPID_STATE_GET_HCA_TYPE);
+
     return mpi_errno;
 }
 
@@ -356,24 +438,27 @@ fn_fail:
 #define FUNCNAME rdma_cm_get_hca_type
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int rdma_cm_get_hca_type (int use_iwarp_mode, int* hca_type)
+#ifdef MV_ARCH_OLD_CODE
+int rdma_cm_get_hca_type (struct MPIDI_CH3I_RDMA_Process_t *proc)
 {
     MPIDI_STATE_DECL(MPID_STATE_RDMA_CM_GET_HCA_TYPE);
     MPIDI_FUNC_ENTER(MPID_STATE_RDMA_CM_GET_HCA_TYPE);
+
+    int i = 0;
+    int ret = 0;
     int mpi_errno = MPI_SUCCESS;
     int numdevices = 0;
-    int i = 0;
-    int ret;
     struct ibv_device_attr dev_attr;
-    char* dev_name;
-    *hca_type = UNKNOWN_HCA;
+    char* dev_name = NULL;
     struct ibv_context** ctx = rdma_get_devices(&numdevices);
 
-    for (; i < numdevices; ++i) {
+    for (i = 0; i < numdevices; ++i) {
+        proc->hca_type = UNKNOWN_HCA;
         dev_name = (char*) ibv_get_device_name(ctx[i]->device);
 
         if (!dev_name) {
-            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ibv_get_device_name");
+            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER,
+                "**ibv_get_device_name");
         }
  
         if ((ret = ibv_query_device(ctx[i], &dev_attr))) {
@@ -387,29 +472,32 @@ int rdma_cm_get_hca_type (int use_iwarp_mode, int* hca_type)
         }
 
         if (ERROR == rdma_find_active_port(ctx[i], ctx[i]->device)) {
-            /* Trac #376 The device has no active ports, continue to next device */
+        /* Trac #376 The device has no active ports, continue to next device */
             continue;
         }
 
-        if ((mpi_errno = hcaNameToType(dev_name, hca_type)) != MPI_SUCCESS) {
-            MPIU_ERR_POP(mpi_errno); 
+        if ((mpi_errno = hcaNameToType(dev_name, &proc->hca_type))
+                         != MPI_SUCCESS) {
+            MPIU_ERR_POP(mpi_errno);
         }
 
-        if (!use_iwarp_mode && *hca_type != UNKNOWN_HCA) {
-            break;
-        } else if (use_iwarp_mode && *hca_type == CHELSIO_T3) {
-            /* Trac #376 recognize chelsio nic even if it's not the first */
-            strncpy(rdma_iba_hca, CHELSIO_RNIC, 32);
-            break;
-        } else if (use_iwarp_mode && *hca_type == INTEL_NE020) {
-            strncpy(rdma_iba_hca, INTEL_NE020_RNIC, 32);
+        if (proc->hca_type == CHELSIO_T3) {
+        /* Trac #376 recognize chelsio nic even if it's not the first */
+		    proc->use_rdma_cm = 1;
+		    proc->use_iwarp_mode = 1;
+            MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_RDMA_CM;
+            strncpy(rdma_iba_hcas[0], CHELSIO_RNIC, 32);
+        } else if (proc->hca_type == INTEL_NE020) {
+		    proc->use_rdma_cm = 1;
+		    proc->use_iwarp_mode = 1;
+            MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_RDMA_CM;
+            strncpy(rdma_iba_hcas[0], INTEL_NE020_RNIC, 32);
+        }
+
+        if (proc->hca_type != UNKNOWN_HCA) {
+            /* We've found the HCA */
             break;
         }
-    }
-
-    if (use_iwarp_mode && *hca_type != CHELSIO_T3 && *hca_type != INTEL_NE020) {
-        /* iWARP RNIC not found. Assuming a generic Adapter. */
-        *hca_type = UNKNOWN_HCA;
     }
 
 fn_fail:
@@ -417,6 +505,73 @@ fn_fail:
     MPIDI_FUNC_EXIT(MPID_STATE_RDMA_CM_GET_HCA_TYPE);
     return mpi_errno;
 }
+#else
+int rdma_cm_get_hca_type (struct MPIDI_CH3I_RDMA_Process_t *proc)
+{
+    MPIDI_STATE_DECL(MPID_STATE_RDMA_CM_GET_HCA_TYPE);
+    MPIDI_FUNC_ENTER(MPID_STATE_RDMA_CM_GET_HCA_TYPE);
+
+    int i = 0;
+    int ret = 0;
+    int mpi_errno = MPI_SUCCESS;
+    int numdevices = 0;
+    struct ibv_device_attr dev_attr;
+    char* dev_name = NULL;
+    struct ibv_context** ctx = rdma_get_devices(&numdevices);
+
+    for (i = 0; i < numdevices; ++i) {
+        proc->hca_type = MV2_HCA_UNKWN;
+        dev_name = (char*) ibv_get_device_name(ctx[i]->device);
+
+        if (!dev_name) {
+            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER,
+                "**ibv_get_device_name");
+        }
+ 
+        if ((ret = ibv_query_device(ctx[i], &dev_attr))) {
+            MPIU_ERR_SETANDJUMP1(
+                mpi_errno,
+                MPI_ERR_OTHER,
+                "**ibv_query_device",
+                "**ibv_query_device %s",
+                dev_name
+            );
+        }
+
+        if (ERROR == rdma_find_active_port(ctx[i], ctx[i]->device)) {
+        /* Trac #376 The device has no active ports, continue to next device */
+            continue;
+        }
+
+        proc->hca_type = mv2_get_hca_type( ctx[i]->device );
+        proc->arch_hca_type = mv2_get_arch_hca_type( ctx[i]->device );
+
+        if ( MV2_HCA_CHELSIO_T3 == proc->hca_type ) {
+        /* Trac #376 recognize chelsio nic even if it's not the first */
+		    proc->use_rdma_cm = 1;
+		    proc->use_iwarp_mode = 1;
+            MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_RDMA_CM;
+            strncpy(rdma_iba_hcas[0], CHELSIO_RNIC, 32);
+        } else if ( MV2_HCA_INTEL_NE020 == proc->hca_type ) {
+		    proc->use_rdma_cm = 1;
+		    proc->use_iwarp_mode = 1;
+            MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_RDMA_CM;
+            strncpy(rdma_iba_hcas[0], INTEL_NE020_RNIC, 32);
+        }
+
+        if ( MV2_HCA_UNKWN != proc->hca_type ) {
+            /* We've found the HCA */
+            break;
+        }
+    }
+
+fn_fail:
+    rdma_free_devices(ctx);
+    MPIDI_FUNC_EXIT(MPID_STATE_RDMA_CM_GET_HCA_TYPE);
+    return mpi_errno;
+}
+#endif /* #ifdef MV_ARCH_OLD_CODE */
+
 #endif /* defined(RDMA_CM) */
 
 #undef FUNCNAME
@@ -427,44 +582,56 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 {
     MPIDI_STATE_DECL(MPID_STATE_RDMA_GET_CONTROL_PARAMETERS);
     MPIDI_FUNC_ENTER(MPID_STATE_RDMA_GET_CONTROL_PARAMETERS);
+
+    int i = 0;
+    int size = -1;
+    int my_rank = -1;
     char* value = NULL;
     int mpi_errno = MPI_SUCCESS;
-    int my_rank = -1;
 
     proc->global_used_send_cq = 0; 
     proc->global_used_recv_cq = 0;
 
     PMI_Get_rank(&my_rank);
 
+    if ((value = getenv("MV2_NUM_NODES_IN_JOB")) != NULL) {
+        rdma_num_nodes_in_job = atoi(value);
+    } else {
+        MPID_Get_max_node_id(NULL, &rdma_num_nodes_in_job);
+        /* For some reason, MPID_Get_max_node_id does a '--' before
+         * returning the num_nodes, hence incrementing it by 1 */
+        rdma_num_nodes_in_job++;
+    }
+
     if ((value = getenv("MV2_MAX_RDMA_CONNECT_ATTEMPTS")) != NULL) {
-        max_rdma_connect_attempts = (int)atoi(value);
+        max_rdma_connect_attempts = atoi(value);
         if (max_rdma_connect_attempts <= 0) {
             max_rdma_connect_attempts = DEFAULT_RDMA_CONNECT_ATTEMPTS;
         }
     }
 
     if ((value = getenv("MV2_RDMA_CM_CONNECT_RETRY_INTERVAL")) != NULL) {
-        rdma_cm_connect_retry_interval = (int)atoi(value);
+        rdma_cm_connect_retry_interval = atoi(value);
         if (rdma_cm_connect_retry_interval <= 0) {
             rdma_cm_connect_retry_interval = RDMA_DEFAULT_CONNECT_INTERVAL;
         }
     }
 
     if ((value = getenv("MV2_NUM_HCAS")) != NULL) {
-        rdma_num_hcas = (int)atoi(value);
+        rdma_num_hcas = atoi(value);
 
         if (rdma_num_hcas > MAX_NUM_HCAS) {
             rdma_num_hcas = MAX_NUM_HCAS;
 
-	    MPIU_Msg_printf("Warning, max hca is %d, change %s in ibv_param.h "
-		    "to overide the option\n", MAX_NUM_HCAS, "MAX_NUM_HCAS");
+	        MPIU_Msg_printf("Warning, max hca is %d, change %s in ibv_param.h "
+		        "to overide the option\n", MAX_NUM_HCAS, "MAX_NUM_HCAS");
         }
     }
 
     /* Start HSAM Parameters */
     if ((value = getenv("MV2_USE_HSAM")) != NULL) {
-        proc->has_hsam = (int)atoi(value);
-        if(proc->has_hsam) {
+        proc->has_hsam = atoi(value);
+        if (proc->has_hsam) {
             check_hsam_parameters();
         }
     } else {
@@ -474,12 +641,15 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
         proc->has_hsam = 0;
     }
 
-    proc->has_apm = (value = getenv("MV2_USE_APM")) != NULL ? (int) atoi(value) : 0;
-    apm_tester = (value = getenv("MV2_USE_APM_TEST")) != NULL ? (int) atoi(value) : 0;
-    apm_count = (value = getenv("MV2_APM_COUNT")) != NULL ? (int) atoi(value) : APM_COUNT;
+    proc->has_apm = (value = getenv("MV2_USE_APM")) != NULL ?
+                                               (int) atoi(value) : 0;
+    apm_tester = (value = getenv("MV2_USE_APM_TEST")) != NULL ?
+                                               (int) atoi(value) : 0;
+    apm_count = (value = getenv("MV2_APM_COUNT")) != NULL ?
+                                               (int) atoi(value) : APM_COUNT;
 
     /* Scheduling Parameters */
-    if ( (value = getenv("MV2_SM_SCHEDULING")) != NULL) {
+    if ((value = getenv("MV2_SM_SCHEDULING")) != NULL) {
         if (!strcmp(value, "USE_FIRST")) {
             sm_scheduling = USE_FIRST;
         } else if (!strcmp(value, "ROUND_ROBIN")) {
@@ -493,23 +663,37 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 
     /* End : HSAM Parameters */
 
-    strncpy(rdma_iba_hca, RDMA_IBA_NULL_HCA, 32);
+    strncpy(rdma_iba_hcas[0], RDMA_IBA_NULL_HCA, 32);
 
     if ((value = getenv("MV2_IBA_HCA")) != NULL) {
-        strncpy(rdma_iba_hca, value, 32);
+        for (i = 1; i < MAX_NUM_HCAS; ++i) {
+            strncpy(rdma_iba_hcas[i], RDMA_IBA_NULL_HCA, 32);
+        }
+        rdma_num_hcas = 0;
+        char *tok = NULL;
+        char *inp = value;
+
+        tok = strtok(inp, ":");
+        inp = NULL;
+        while (tok != NULL) {
+            strncpy(rdma_iba_hcas[rdma_num_hcas], tok, 32);
+            tok = strtok(inp, ":");
+            DEBUG_PRINT("tok = %s, hca name = %s, hca num = %d\n", tok,
+                           rdma_iba_hcas[rdma_num_hcas], rdma_num_hcas);
+            rdma_num_hcas++;
+        }
     }
 
 #if defined(RDMA_CM)
     if ((value = getenv("MV2_USE_IWARP_MODE")) != NULL) {
-            proc->use_rdma_cm = !!atoi(value);
-            proc->use_iwarp_mode = !!atoi(value);
+        proc->use_rdma_cm = !!atoi(value);
+        proc->use_iwarp_mode = !!atoi(value);
     }
     
     if (!proc->use_rdma_cm){
 	    if ((value = getenv("MV2_USE_RDMA_CM")) != NULL) {
 		    proc->use_rdma_cm = !!atoi(value);
-	    }
-	    else {
+	    } else {
 		    proc->use_rdma_cm = 0;
 		    proc->use_iwarp_mode = 0;
 	    }
@@ -550,55 +734,45 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
     
     /* Set default parameter acc. to the first hca */
 #if defined(RDMA_CM)
-    if (proc->use_iwarp_mode) {
-	    if ((mpi_errno = rdma_cm_get_hca_type(proc->use_iwarp_mode, &proc->hca_type)) != MPI_SUCCESS)
-	    {
+    if (proc->use_rdma_cm) {
+	    if ((mpi_errno = rdma_cm_get_hca_type(proc)) != MPI_SUCCESS) {
 		    MPIU_ERR_POP(mpi_errno);
-	    }
-
-	    if (proc->hca_type == CHELSIO_T3 || proc->hca_type == INTEL_NE020)
-	    {
-		    proc->use_iwarp_mode = 1;
 	    }
     }
     else 
 #endif /* defined(RDMA_CM) */
-    if ((mpi_errno = get_hca_type(proc->ib_dev[0], proc->nic_context[0], &proc->hca_type)) != MPI_SUCCESS)
-    {
+    if ((mpi_errno = get_hca_type(proc)) != MPI_SUCCESS) {
         MPIU_ERR_POP(mpi_errno);
     }
 
-    int size;
-    PMI_Get_size(&size); 
+    if (rdma_num_nodes_in_job == 0) {
+        PMI_Get_size(&size); 
+    } else {
+        size = rdma_num_nodes_in_job;
+    }
 
-    if (size <= 32)
-    {
+    if (size <= 8) {
         proc->cluster_size = VERY_SMALL_CLUSTER;
-    }
-    else if (size <= 64)
-    {
+    } else if (size <= 32) {
         proc->cluster_size = SMALL_CLUSTER;
-    }
-    else if (size < 256)
-    {
+    } else if (size < 128) {
         proc->cluster_size = MEDIUM_CLUSTER;
-    }
-    else
-    {
+    } else {
         proc->cluster_size = LARGE_CLUSTER;
     }
 
     proc->has_srq = (value = getenv("MV2_USE_SRQ")) != NULL ? !!atoi(value) : 1;
 
     if ((value = getenv("MV2_IWARP_MULTIPLE_CQ_THRESHOLD")) != NULL) {
-        rdma_iwarp_multiple_cq_threshold = (int)atoi(value);
+        rdma_iwarp_multiple_cq_threshold = atoi(value);
         if (rdma_iwarp_multiple_cq_threshold < 0) {
             rdma_iwarp_multiple_cq_threshold =
                                     RDMA_IWARP_DEFAULT_MULTIPLE_CQ_THRESHOLD;
         }
     }
+
     if (size > rdma_iwarp_multiple_cq_threshold) {
-          rdma_iwarp_use_multiple_cq = 1;
+        rdma_iwarp_use_multiple_cq = 1;
     }
 
 #ifdef _ENABLE_XRC_
@@ -610,11 +784,18 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
         rdma_use_blocking = 0;
     }
 #endif /* _ENABLE_XRC_ */
-    
+   
+#ifdef MV_ARCH_OLD_CODE 
     if (proc->has_srq
         && proc->hca_type != PATH_HT
         && proc->hca_type != MLX_PCI_X
         && proc->hca_type != IBM_EHCA
+#else
+    if (proc->has_srq
+        && proc->hca_type != MV2_HCA_PATH_HT
+        && proc->hca_type != MV2_HCA_MLX_PCI_X
+        && proc->hca_type != MV2_HCA_IBM_EHCA
+#endif
 #if defined(RDMA_CM)
         && !proc->use_iwarp_mode
 #endif /* defined(RDMA_CM) */
@@ -632,17 +813,13 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
     proc->has_adaptive_fast_path = 0;
     rdma_polling_set_limit = 0; 
 #else /* defined(CKPT) */
-    if ((value = getenv("MV2_USE_RDMA_FAST_PATH")) != NULL)
-    {
+    if ((value = getenv("MV2_USE_RDMA_FAST_PATH")) != NULL) {
         proc->has_adaptive_fast_path = !!atoi(value);
 
-	if (!proc->has_adaptive_fast_path)
-        {
-	    rdma_polling_set_limit = 0;
+	    if (!proc->has_adaptive_fast_path) {
+	        rdma_polling_set_limit = 0;
         }
-    }
-    else
-    {
+    } else {
         proc->has_adaptive_fast_path = 1;
     }
 #endif /* defined(CKPT) */
@@ -660,7 +837,7 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 
     if ((value = getenv("MV2_MAX_NUM_WIN")) != NULL) {
         max_num_win = atoi(value);
-        if(max_num_win <= 0) {
+        if (max_num_win <= 0) {
              proc->has_one_sided = 0;
         }
     }
@@ -676,7 +853,7 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 
     if ((value = getenv("MV2_COALESCE_THRESHOLD")) != NULL) {
         rdma_coalesce_threshold = atoi(value);
-        if(rdma_coalesce_threshold < 1) {
+        if (rdma_coalesce_threshold < 1) {
             MPIU_Usage_printf("MV2_COALESCE_THRESHOLD must be >= 1\n");
             rdma_coalesce_threshold = 1;
         }
@@ -691,26 +868,32 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 #ifdef _ENABLE_XRC_
     }
 #endif
-    
+
+#ifdef MV_ARCH_OLD_CODE
     if (proc->hca_type == MLX_CX_DDR ||
         proc->hca_type == MLX_CX_SDR ||
         proc->hca_type == MLX_CX_QDR) {
+#else
+    if (proc->hca_type == MV2_HCA_MLX_CX_DDR ||
+        proc->hca_type == MV2_HCA_MLX_CX_SDR ||
+        proc->hca_type == MV2_HCA_MLX_CX_QDR) {
+#endif
         rdma_use_coalesce = 0;
     }
 
     if ((value = getenv("MV2_USE_SHARED_MEM")) != NULL) {
-        USE_SMP = !!atoi(value);
+        rdma_use_smp = !!atoi(value);
     }
 
     if ((value = getenv("MV2_USE_RDMAOE")) != NULL) {
         use_iboeth = !!atoi(value);
-        if (!USE_SMP) {
+        if (!rdma_use_smp) {
             if (0 == my_rank) {
                 MPIU_Usage_printf("RDMAoE mode cannot function without SHMEM."
                                 "Falling back to use SHMEM.\r\n"
                                 "Please do NOT set MV2_USE_SHARED_MEM=0.\r\n");
             }
-            USE_SMP = 1;
+            rdma_use_smp = 1;
         }
     }
 
@@ -722,7 +905,7 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 
         /* Automatically turn off RDMA fast path */
         if(rdma_use_blocking) {
-            USE_SMP = 0;
+            rdma_use_smp = 0;
             proc->has_adaptive_fast_path = 0;
         }
     }
@@ -762,15 +945,15 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
     }
 
     if ((value = getenv("MV2_R3_THRESHOLD")) != NULL) {
-        rdma_r3_threshold = atoi(value);
-        if(rdma_r3_threshold < 0) {
+        rdma_r3_threshold = user_val_to_bytes(value,"MV2_R3_THRESHOLD");
+        if (rdma_r3_threshold < 0) {
             rdma_r3_threshold = 0;
         }
     }
 
     if ((value = getenv("MV2_R3_NOCACHE_THRESHOLD")) != NULL) {
-        rdma_r3_threshold_nocache = atoi(value);
-        if(rdma_r3_threshold_nocache < 0) {
+        rdma_r3_threshold_nocache = user_val_to_bytes(value,"MV2_R3_NOCACHE_THRESHOLD");
+        if (rdma_r3_threshold_nocache < 0) {
             rdma_r3_threshold_nocache = 0;
         }
     }
@@ -780,6 +963,29 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 	    proc->use_iwarp_mode = 1;
     }
 #endif /* defined(RDMA_CM) */
+
+/* Reading SMP user parameters */
+
+    g_smp_eagersize = SMP_EAGERSIZE;
+    s_smpi_length_queue = SMPI_LENGTH_QUEUE;
+    s_smp_num_send_buffer = SMP_NUM_SEND_BUFFER;
+    s_smp_batch_size = SMP_BATCH_SIZE;
+
+    if ((value = getenv("SMP_EAGERSIZE")) != NULL) {
+        g_smp_eagersize = user_val_to_bytes(value,"SMP_EAGERSIZE");
+        default_eager_size = 0;
+    }
+
+    if ((value = getenv("SMPI_LENGTH_QUEUE")) != NULL) {
+        s_smpi_length_queue = user_val_to_bytes(value,"SMPI_LENGTH_QUEUE");
+    }
+
+    if ((value = getenv("SMP_NUM_SEND_BUFFER")) != NULL ) {
+        s_smp_num_send_buffer = atoi(value);
+    }
+    if ((value = getenv("SMP_BATCH_SIZE")) != NULL ) {
+       s_smp_batch_size = atoi(value);
+    }
 
 fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_RDMA_GET_CONTROL_PARAMETERS);
@@ -791,144 +997,1054 @@ fn_fail:
 
 void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 {
-    switch(proc->hca_type) {
-        case MLX_PCI_X:
-        case IBM_EHCA:
-            switch(proc->cluster_size) {
-            case LARGE_CLUSTER:
-                rdma_vbuf_total_size     = 2*1024;
-                num_rdma_buffer          = 4;
-                rdma_iba_eager_threshold = 6 * 1024 - sizeof(VBUF_FLAG_TYPE);
-                break;
-            case MEDIUM_CLUSTER:
-                rdma_vbuf_total_size     = 4*1024;
-                num_rdma_buffer          = 16;
-                rdma_iba_eager_threshold = 6 * 1024 - sizeof(VBUF_FLAG_TYPE);
-                break;
-            case SMALL_CLUSTER:
-            case VERY_SMALL_CLUSTER:
-            default:
-                rdma_vbuf_total_size     = 12*1024;
-                num_rdma_buffer          = 32;
-                rdma_iba_eager_threshold = rdma_vbuf_total_size - 
-                                              sizeof(VBUF_FLAG_TYPE);
-                break;
-            }
-            rdma_eagersize_1sc           = 4 * 1024;
-            rdma_put_fallback_threshold  = 8 * 1024;
-            rdma_get_fallback_threshold  = 394 * 1024;
-            break;
-        case CHELSIO_T3:
-    	    switch(proc->cluster_size) {
-    		case LARGE_CLUSTER:
-                rdma_vbuf_total_size     = 2*1024;
-    			num_rdma_buffer          = 4;
-    			rdma_iba_eager_threshold = 2 * 1024 - sizeof(VBUF_FLAG_TYPE);
-    			break;
-            case MEDIUM_CLUSTER:
-                rdma_vbuf_total_size     = 4*1024;
-    			num_rdma_buffer          = 8;
-    			rdma_iba_eager_threshold = 4 * 1024 - sizeof(VBUF_FLAG_TYPE);
-    			break;
-            case SMALL_CLUSTER:
-                rdma_vbuf_total_size     = 9 * 1024;
-    			num_rdma_buffer          = 16;
-    			rdma_iba_eager_threshold = rdma_vbuf_total_size -
-    				                        sizeof(VBUF_FLAG_TYPE);
-    			break;
-            case VERY_SMALL_CLUSTER:
-            default:
-                rdma_vbuf_total_size     = 33 * 1024;
-    			num_rdma_buffer          = 16;
-    			rdma_iba_eager_threshold = rdma_vbuf_total_size -
-    				                        sizeof(VBUF_FLAG_TYPE);
-    			break;
-    		}
-    	    rdma_eagersize_1sc           = 4 * 1024;
-    	    rdma_put_fallback_threshold  = 8 * 1024;
-    	    rdma_get_fallback_threshold  = 394 * 1024;
-    	    break;
-        case INTEL_NE020:
-    	    switch(proc->cluster_size) {
-    		case LARGE_CLUSTER:
-                rdma_vbuf_total_size     = 2*1024;
-    			num_rdma_buffer          = 4;
-    			rdma_iba_eager_threshold = 2 * 1024 - sizeof(VBUF_FLAG_TYPE);
-    			break;
-            case MEDIUM_CLUSTER:
-                rdma_vbuf_total_size     = 4*1024;
-    			num_rdma_buffer          = 8;
-    			rdma_iba_eager_threshold = 4 * 1024 - sizeof(VBUF_FLAG_TYPE);
-    			break;
-            case SMALL_CLUSTER:
-                rdma_vbuf_total_size     = 9 * 1024;
-    			num_rdma_buffer          = 16;
-    			rdma_iba_eager_threshold = rdma_vbuf_total_size -
-    				                        sizeof(VBUF_FLAG_TYPE);
-    			break;
-            case VERY_SMALL_CLUSTER:
-            default:
-                rdma_vbuf_total_size     = 33 * 1024;
-    			num_rdma_buffer          = 16;
-    			rdma_iba_eager_threshold = rdma_vbuf_total_size -
-    				                         sizeof(VBUF_FLAG_TYPE);
-    			break;
-    		}
-    	    rdma_eagersize_1sc           = 4 * 1024;
-    	    rdma_put_fallback_threshold  = 8 * 1024;
-    	    rdma_get_fallback_threshold  = 394 * 1024;
+    mv2_multirail_info_type multirail_info = mv2_get_multirail_info();
 
-    	    break;
-        case MLX_PCI_EX_SDR:
-        case MLX_PCI_EX_DDR:
-        case MLX_CX_DDR:
-        case MLX_CX_SDR:
-        case MLX_CX_QDR:
-        case PATH_HT:
-        default:
-            switch(proc->cluster_size) {
-                case LARGE_CLUSTER:
-                case MEDIUM_CLUSTER:
-                case SMALL_CLUSTER:
-                case VERY_SMALL_CLUSTER:
+    if ((LARGE_CLUSTER == proc->cluster_size) ||
+            (MEDIUM_CLUSTER == proc->cluster_size)) {
+        rdma_default_max_send_wqe = 16;
+        rdma_max_inline_size = 0;
+    }
+
+    /* Setting the default values; these values are fine-tuned for specific platforms 
+       in the following code */
+    rdma_vbuf_total_size = 12 * 1024;
+    num_rdma_buffer = 16;
+    rdma_iba_eager_threshold = rdma_vbuf_total_size - sizeof(VBUF_FLAG_TYPE);
+
+    rdma_eagersize_1sc = 4 * 1024;
+    rdma_put_fallback_threshold = 2 * 1024;
+    rdma_get_fallback_threshold = 192 * 1024;
+
+    switch ( multirail_info ) {
+        case mv2_num_rail_4:
+
+            switch(proc->arch_hca_type) {
+                
+                case MV2_ARCH_AMD_BRCLNA_16_HCA_MLX_CX_QDR:
+                case MV2_ARCH_AMD_BRCLNA_16_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_AMD_MGNYCRS_24_HCA_MLX_CX_QDR:
+                case MV2_ARCH_AMD_MGNYCRS_24_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_INTEL_CLVRTWN_8_HCA_MLX_CX_QDR:
+                case MV2_ARCH_INTEL_CLVRTWN_8_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_INTEL_NEHLM_8_HCA_MLX_CX_QDR:
+                case MV2_ARCH_INTEL_NEHLM_8_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_INTEL_NEHLM_16_HCA_MLX_CX_QDR:
+                case MV2_ARCH_INTEL_NEHLM_16_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_INTEL_HRPRTWN_8_HCA_MLX_CX_QDR:
+                case MV2_ARCH_INTEL_HRPRTWN_8_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_MLX_CX_QDR:
+                case MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_INTEL_HCA_MLX_CX_QDR:
+                case MV2_ARCH_INTEL_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_AMD_HCA_MLX_CX_QDR:
+                case MV2_ARCH_AMD_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_IBM_PPC_HCA_MLX_CX_QDR:
+                case MV2_ARCH_IBM_PPC_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_INTEL_XEON_E5630_8_HCA_MLX_CX_QDR:
+                case MV2_ARCH_INTEL_XEON_E5630_8_HCA_MLX_CX_DDR:
+
+                    rdma_vbuf_total_size = 16 * 1024;
+                    rdma_iba_eager_threshold = rdma_vbuf_total_size - sizeof(VBUF_FLAG_TYPE);
+                    break;
+
+                case MV2_ARHC_UNKWN_HCA_MLX_PCI_X:
+                case MV2_ARHC_UNKWN_HCA_IBM_EHCA:
+
+                case MV2_ARCH_AMD_BRCLNA_16_HCA_MLX_PCI_X:
+                case MV2_ARCH_AMD_BRCLNA_16_HCA_IBM_EHCA:
+
+                case MV2_ARCH_AMD_MGNYCRS_24_HCA_MLX_PCI_X:
+                case MV2_ARCH_AMD_MGNYCRS_24_HCA_IBM_EHCA:
+
+                case MV2_ARCH_INTEL_CLVRTWN_8_HCA_MLX_PCI_X:
+                case MV2_ARCH_INTEL_CLVRTWN_8_HCA_IBM_EHCA:
+
+                case MV2_ARCH_INTEL_NEHLM_8_HCA_MLX_PCI_X:
+                case MV2_ARCH_INTEL_NEHLM_8_HCA_IBM_EHCA:
+
+                case MV2_ARCH_INTEL_NEHLM_16_HCA_MLX_PCI_X:
+                case MV2_ARCH_INTEL_NEHLM_16_HCA_IBM_EHCA:
+
+                case MV2_ARCH_INTEL_HRPRTWN_8_HCA_MLX_PCI_X:
+                case MV2_ARCH_INTEL_HRPRTWN_8_HCA_IBM_EHCA:
+
+                case MV2_ARCH_INTEL_XEON_DUAL_4_HCA_MLX_PCI_X:
+                case MV2_ARCH_INTEL_XEON_DUAL_4_HCA_IBM_EHCA:
+
+                case MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_MLX_PCI_X:
+                case MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_IBM_EHCA:
+
+                case MV2_ARCH_INTEL_HCA_MLX_PCI_X:
+                case MV2_ARCH_INTEL_HCA_IBM_EHCA:
+
+                case MV2_ARCH_AMD_HCA_MLX_PCI_X:
+                case MV2_ARCH_AMD_HCA_IBM_EHCA:
+
+                case MV2_ARCH_IBM_PPC_HCA_MLX_PCI_X:
+                case MV2_ARCH_IBM_PPC_HCA_IBM_EHCA:
+
+                    switch(proc->cluster_size) {
+                        case LARGE_CLUSTER:
+                            rdma_vbuf_total_size     = 2*1024;
+                            num_rdma_buffer          = 4;
+                            rdma_iba_eager_threshold = 6 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case MEDIUM_CLUSTER:
+                            rdma_vbuf_total_size     = 4*1024;
+                            num_rdma_buffer          = 16;
+                            rdma_iba_eager_threshold = 6 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case SMALL_CLUSTER:
+                        case VERY_SMALL_CLUSTER:
+                        default:
+                            rdma_vbuf_total_size     = 12*1024;
+                            num_rdma_buffer          = 32;
+                            rdma_iba_eager_threshold = rdma_vbuf_total_size - 
+                                sizeof(VBUF_FLAG_TYPE);
+                            break;
+                    }
+                    rdma_eagersize_1sc           = 4 * 1024;
+                    rdma_put_fallback_threshold  = 8 * 1024;
+                    rdma_get_fallback_threshold  = 394 * 1024;
+                    break;
+
+                case MV2_ARHC_UNKWN_HCA_CHELSIO_T3:
+                case MV2_ARCH_AMD_BRCLNA_16_HCA_CHELSIO_T3:
+                case MV2_ARCH_AMD_MGNYCRS_24_HCA_CHELSIO_T3:
+                case MV2_ARCH_INTEL_CLVRTWN_8_HCA_CHELSIO_T3:
+                case MV2_ARCH_INTEL_NEHLM_8_HCA_CHELSIO_T3:
+                case MV2_ARCH_INTEL_NEHLM_16_HCA_CHELSIO_T3:
+                case MV2_ARCH_INTEL_HRPRTWN_8_HCA_CHELSIO_T3:
+                case MV2_ARCH_INTEL_XEON_DUAL_4_HCA_CHELSIO_T3:
+                case MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_CHELSIO_T3:
+                case MV2_ARCH_INTEL_HCA_CHELSIO_T3:
+                case MV2_ARCH_AMD_HCA_CHELSIO_T3:
+                case MV2_ARCH_IBM_PPC_HCA_CHELSIO_T3:
+
+                    switch(proc->cluster_size) {
+                        case LARGE_CLUSTER:
+                            rdma_vbuf_total_size     = 2*1024;
+                            num_rdma_buffer          = 4;
+                            rdma_iba_eager_threshold = 2 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case MEDIUM_CLUSTER:
+                            rdma_vbuf_total_size     = 4*1024;
+                            num_rdma_buffer          = 8;
+                            rdma_iba_eager_threshold = 4 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case SMALL_CLUSTER:
+                            rdma_vbuf_total_size     = 9 * 1024;
+                            num_rdma_buffer          = 16;
+                            rdma_iba_eager_threshold = rdma_vbuf_total_size -
+                                sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case VERY_SMALL_CLUSTER:
+                        default:
+                            rdma_vbuf_total_size     = 33 * 1024;
+                            num_rdma_buffer          = 16;
+                            rdma_iba_eager_threshold = rdma_vbuf_total_size -
+                                sizeof(VBUF_FLAG_TYPE);
+                            break;
+                    }
+                    rdma_eagersize_1sc           = 4 * 1024;
+                    rdma_put_fallback_threshold  = 8 * 1024;
+                    rdma_get_fallback_threshold  = 394 * 1024;
+                    break;
+
+                case MV2_ARHC_UNKWN_HCA_INTEL_NE020:
+                case MV2_ARCH_AMD_BRCLNA_16_HCA_INTEL_NE020:
+                case MV2_ARCH_AMD_MGNYCRS_24_HCA_INTEL_NE020:
+                case MV2_ARCH_INTEL_CLVRTWN_8_HCA_INTEL_NE020:
+                case MV2_ARCH_INTEL_NEHLM_8_HCA_INTEL_NE020:
+                case MV2_ARCH_INTEL_NEHLM_16_HCA_INTEL_NE020:
+                case MV2_ARCH_INTEL_HRPRTWN_8_HCA_INTEL_NE020:
+                case MV2_ARCH_INTEL_XEON_DUAL_4_HCA_INTEL_NE020:
+                case MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_INTEL_NE020:
+                case MV2_ARCH_INTEL_HCA_INTEL_NE020:
+                case MV2_ARCH_AMD_HCA_INTEL_NE020:
+                case MV2_ARCH_IBM_PPC_HCA_INTEL_NE020:
+
+                    switch(proc->cluster_size) {
+                        case LARGE_CLUSTER:
+                            rdma_vbuf_total_size     = 2*1024;
+                            num_rdma_buffer          = 4;
+                            rdma_iba_eager_threshold = 2 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case MEDIUM_CLUSTER:
+                            rdma_vbuf_total_size     = 4*1024;
+                            num_rdma_buffer          = 8;
+                            rdma_iba_eager_threshold = 4 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case SMALL_CLUSTER:
+                            rdma_vbuf_total_size     = 9 * 1024;
+                            num_rdma_buffer          = 16;
+                            rdma_iba_eager_threshold = rdma_vbuf_total_size -
+                                sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case VERY_SMALL_CLUSTER:
+                        default:
+                            rdma_vbuf_total_size     = 33 * 1024;
+                            num_rdma_buffer          = 16;
+                            rdma_iba_eager_threshold = rdma_vbuf_total_size -
+                                sizeof(VBUF_FLAG_TYPE);
+                            break;
+                    }
+                    rdma_eagersize_1sc           = 4 * 1024;
+                    rdma_put_fallback_threshold  = 8 * 1024;
+                    rdma_get_fallback_threshold  = 394 * 1024;
+
+                    break;
+
                 default:
-                    rdma_vbuf_total_size     = 12 * 1024;
-                    num_rdma_buffer          = 16;
-                    rdma_iba_eager_threshold = rdma_vbuf_total_size -
-                                                 sizeof(VBUF_FLAG_TYPE);
+                    switch(proc->cluster_size) {
+                        case LARGE_CLUSTER:
+                        case MEDIUM_CLUSTER:
+                        case SMALL_CLUSTER:
+                        case VERY_SMALL_CLUSTER:
+                        default:
+                            rdma_vbuf_total_size     = 16 * 1024;
+                            num_rdma_buffer          = 16;
+                            rdma_iba_eager_threshold = rdma_vbuf_total_size -
+                                sizeof(VBUF_FLAG_TYPE);
+                            break;
+                    }
+                    rdma_eagersize_1sc               = 4 * 1024;
+                    rdma_put_fallback_threshold      = 2 * 1024;
+                    rdma_get_fallback_threshold      = 192 * 1024;
                     break;
             }
-            rdma_eagersize_1sc               = 4 * 1024;
-            rdma_put_fallback_threshold      = 2 * 1024;
-            rdma_get_fallback_threshold      = 192 * 1024;
+            break;
+        case mv2_num_rail_3:
+            switch(proc->arch_hca_type) {
+
+                case MV2_ARCH_AMD_BRCLNA_16_HCA_MLX_CX_QDR:
+                case MV2_ARCH_AMD_BRCLNA_16_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_AMD_MGNYCRS_24_HCA_MLX_CX_QDR:
+                case MV2_ARCH_AMD_MGNYCRS_24_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_INTEL_CLVRTWN_8_HCA_MLX_CX_QDR:
+                case MV2_ARCH_INTEL_CLVRTWN_8_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_INTEL_NEHLM_8_HCA_MLX_CX_QDR:
+                case MV2_ARCH_INTEL_NEHLM_8_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_INTEL_NEHLM_16_HCA_MLX_CX_QDR:
+                case MV2_ARCH_INTEL_NEHLM_16_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_INTEL_HRPRTWN_8_HCA_MLX_CX_QDR:
+                case MV2_ARCH_INTEL_HRPRTWN_8_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_MLX_CX_QDR:
+                case MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_INTEL_HCA_MLX_CX_QDR:
+                case MV2_ARCH_INTEL_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_AMD_HCA_MLX_CX_QDR:
+                case MV2_ARCH_AMD_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_IBM_PPC_HCA_MLX_CX_QDR:
+                case MV2_ARCH_IBM_PPC_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_INTEL_XEON_E5630_8_HCA_MLX_CX_QDR:
+                case MV2_ARCH_INTEL_XEON_E5630_8_HCA_MLX_CX_DDR:
+
+                    rdma_vbuf_total_size = 16 * 1024;
+                    rdma_iba_eager_threshold = rdma_vbuf_total_size - sizeof(VBUF_FLAG_TYPE);
+                    break;
+
+                case MV2_ARHC_UNKWN_HCA_MLX_PCI_X:
+                case MV2_ARHC_UNKWN_HCA_IBM_EHCA:
+
+                case MV2_ARCH_AMD_BRCLNA_16_HCA_MLX_PCI_X:
+                case MV2_ARCH_AMD_BRCLNA_16_HCA_IBM_EHCA:
+
+                case MV2_ARCH_AMD_MGNYCRS_24_HCA_MLX_PCI_X:
+                case MV2_ARCH_AMD_MGNYCRS_24_HCA_IBM_EHCA:
+
+                case MV2_ARCH_INTEL_CLVRTWN_8_HCA_MLX_PCI_X:
+                case MV2_ARCH_INTEL_CLVRTWN_8_HCA_IBM_EHCA:
+
+                case MV2_ARCH_INTEL_NEHLM_8_HCA_MLX_PCI_X:
+                case MV2_ARCH_INTEL_NEHLM_8_HCA_IBM_EHCA:
+
+                case MV2_ARCH_INTEL_NEHLM_16_HCA_MLX_PCI_X:
+                case MV2_ARCH_INTEL_NEHLM_16_HCA_IBM_EHCA:
+
+                case MV2_ARCH_INTEL_HRPRTWN_8_HCA_MLX_PCI_X:
+                case MV2_ARCH_INTEL_HRPRTWN_8_HCA_IBM_EHCA:
+
+                case MV2_ARCH_INTEL_XEON_DUAL_4_HCA_MLX_PCI_X:
+                case MV2_ARCH_INTEL_XEON_DUAL_4_HCA_IBM_EHCA:
+
+                case MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_MLX_PCI_X:
+                case MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_IBM_EHCA:
+
+                case MV2_ARCH_INTEL_HCA_MLX_PCI_X:
+                case MV2_ARCH_INTEL_HCA_IBM_EHCA:
+
+                case MV2_ARCH_AMD_HCA_MLX_PCI_X:
+                case MV2_ARCH_AMD_HCA_IBM_EHCA:
+
+                case MV2_ARCH_IBM_PPC_HCA_MLX_PCI_X:
+                case MV2_ARCH_IBM_PPC_HCA_IBM_EHCA:
+
+                    switch(proc->cluster_size) {
+                        case LARGE_CLUSTER:
+                            rdma_vbuf_total_size     = 2*1024;
+                            num_rdma_buffer          = 4;
+                            rdma_iba_eager_threshold = 6 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case MEDIUM_CLUSTER:
+                            rdma_vbuf_total_size     = 4*1024;
+                            num_rdma_buffer          = 16;
+                            rdma_iba_eager_threshold = 6 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case SMALL_CLUSTER:
+                        case VERY_SMALL_CLUSTER:
+                        default:
+                            rdma_vbuf_total_size     = 12*1024;
+                            num_rdma_buffer          = 32;
+                            rdma_iba_eager_threshold = rdma_vbuf_total_size - 
+                                sizeof(VBUF_FLAG_TYPE);
+                            break;
+                    }
+                    rdma_eagersize_1sc           = 4 * 1024;
+                    rdma_put_fallback_threshold  = 8 * 1024;
+                    rdma_get_fallback_threshold  = 394 * 1024;
+                    break;
+
+                case MV2_ARHC_UNKWN_HCA_CHELSIO_T3:
+                case MV2_ARCH_AMD_BRCLNA_16_HCA_CHELSIO_T3:
+                case MV2_ARCH_AMD_MGNYCRS_24_HCA_CHELSIO_T3:
+                case MV2_ARCH_INTEL_CLVRTWN_8_HCA_CHELSIO_T3:
+                case MV2_ARCH_INTEL_NEHLM_8_HCA_CHELSIO_T3:
+                case MV2_ARCH_INTEL_NEHLM_16_HCA_CHELSIO_T3:
+                case MV2_ARCH_INTEL_HRPRTWN_8_HCA_CHELSIO_T3:
+                case MV2_ARCH_INTEL_XEON_DUAL_4_HCA_CHELSIO_T3:
+                case MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_CHELSIO_T3:
+                case MV2_ARCH_INTEL_HCA_CHELSIO_T3:
+                case MV2_ARCH_AMD_HCA_CHELSIO_T3:
+                case MV2_ARCH_IBM_PPC_HCA_CHELSIO_T3:
+
+                    switch(proc->cluster_size) {
+                        case LARGE_CLUSTER:
+                            rdma_vbuf_total_size     = 2*1024;
+                            num_rdma_buffer          = 4;
+                            rdma_iba_eager_threshold = 2 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case MEDIUM_CLUSTER:
+                            rdma_vbuf_total_size     = 4*1024;
+                            num_rdma_buffer          = 8;
+                            rdma_iba_eager_threshold = 4 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case SMALL_CLUSTER:
+                            rdma_vbuf_total_size     = 9 * 1024;
+                            num_rdma_buffer          = 16;
+                            rdma_iba_eager_threshold = rdma_vbuf_total_size -
+                                sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case VERY_SMALL_CLUSTER:
+                        default:
+                            rdma_vbuf_total_size     = 33 * 1024;
+                            num_rdma_buffer          = 16;
+                            rdma_iba_eager_threshold = rdma_vbuf_total_size -
+                                sizeof(VBUF_FLAG_TYPE);
+                            break;
+                    }
+                    rdma_eagersize_1sc           = 4 * 1024;
+                    rdma_put_fallback_threshold  = 8 * 1024;
+                    rdma_get_fallback_threshold  = 394 * 1024;
+                    break;
+
+                case MV2_ARHC_UNKWN_HCA_INTEL_NE020:
+                case MV2_ARCH_AMD_BRCLNA_16_HCA_INTEL_NE020:
+                case MV2_ARCH_AMD_MGNYCRS_24_HCA_INTEL_NE020:
+                case MV2_ARCH_INTEL_CLVRTWN_8_HCA_INTEL_NE020:
+                case MV2_ARCH_INTEL_NEHLM_8_HCA_INTEL_NE020:
+                case MV2_ARCH_INTEL_NEHLM_16_HCA_INTEL_NE020:
+                case MV2_ARCH_INTEL_HRPRTWN_8_HCA_INTEL_NE020:
+                case MV2_ARCH_INTEL_XEON_DUAL_4_HCA_INTEL_NE020:
+                case MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_INTEL_NE020:
+                case MV2_ARCH_INTEL_HCA_INTEL_NE020:
+                case MV2_ARCH_AMD_HCA_INTEL_NE020:
+                case MV2_ARCH_IBM_PPC_HCA_INTEL_NE020:
+
+                    switch(proc->cluster_size) {
+                        case LARGE_CLUSTER:
+                            rdma_vbuf_total_size     = 2*1024;
+                            num_rdma_buffer          = 4;
+                            rdma_iba_eager_threshold = 2 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case MEDIUM_CLUSTER:
+                            rdma_vbuf_total_size     = 4*1024;
+                            num_rdma_buffer          = 8;
+                            rdma_iba_eager_threshold = 4 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case SMALL_CLUSTER:
+                            rdma_vbuf_total_size     = 9 * 1024;
+                            num_rdma_buffer          = 16;
+                            rdma_iba_eager_threshold = rdma_vbuf_total_size -
+                                sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case VERY_SMALL_CLUSTER:
+                        default:
+                            rdma_vbuf_total_size     = 33 * 1024;
+                            num_rdma_buffer          = 16;
+                            rdma_iba_eager_threshold = rdma_vbuf_total_size -
+                                sizeof(VBUF_FLAG_TYPE);
+                            break;
+                    }
+                    rdma_eagersize_1sc           = 4 * 1024;
+                    rdma_put_fallback_threshold  = 8 * 1024;
+                    rdma_get_fallback_threshold  = 394 * 1024;
+
+                    break;
+
+                default:
+                    switch(proc->cluster_size) {
+                        case LARGE_CLUSTER:
+                        case MEDIUM_CLUSTER:
+                        case SMALL_CLUSTER:
+                        case VERY_SMALL_CLUSTER:
+                        default:
+                            rdma_vbuf_total_size     = 16 * 1024;
+                            num_rdma_buffer          = 16;
+                            rdma_iba_eager_threshold = rdma_vbuf_total_size -
+                                sizeof(VBUF_FLAG_TYPE);
+                            break;
+                    }
+                    rdma_eagersize_1sc               = 4 * 1024;
+                    rdma_put_fallback_threshold      = 2 * 1024;
+                    rdma_get_fallback_threshold      = 192 * 1024;
+                    break;
+            }
+            break;
+        case mv2_num_rail_2:
+            switch(proc->arch_hca_type) {
+
+                case MV2_ARCH_AMD_BRCLNA_16_HCA_MLX_CX_QDR:
+                case MV2_ARCH_AMD_BRCLNA_16_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_AMD_MGNYCRS_24_HCA_MLX_CX_QDR:
+                case MV2_ARCH_AMD_MGNYCRS_24_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_INTEL_CLVRTWN_8_HCA_MLX_CX_QDR:
+                case MV2_ARCH_INTEL_CLVRTWN_8_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_INTEL_NEHLM_8_HCA_MLX_CX_QDR:
+                case MV2_ARCH_INTEL_NEHLM_8_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_INTEL_NEHLM_16_HCA_MLX_CX_QDR:
+                case MV2_ARCH_INTEL_NEHLM_16_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_INTEL_HRPRTWN_8_HCA_MLX_CX_QDR:
+                case MV2_ARCH_INTEL_HRPRTWN_8_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_MLX_CX_QDR:
+                case MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_INTEL_HCA_MLX_CX_QDR:
+                case MV2_ARCH_INTEL_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_AMD_HCA_MLX_CX_QDR:
+                case MV2_ARCH_AMD_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_IBM_PPC_HCA_MLX_CX_QDR:
+                case MV2_ARCH_IBM_PPC_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_INTEL_XEON_E5630_8_HCA_MLX_CX_QDR:
+                case MV2_ARCH_INTEL_XEON_E5630_8_HCA_MLX_CX_DDR:
+
+                    rdma_vbuf_total_size = 16 * 1024;
+                    rdma_iba_eager_threshold = rdma_vbuf_total_size - sizeof(VBUF_FLAG_TYPE);
+                    break;
+
+                case MV2_ARHC_UNKWN_HCA_MLX_PCI_X:
+                case MV2_ARHC_UNKWN_HCA_IBM_EHCA:
+
+                case MV2_ARCH_AMD_BRCLNA_16_HCA_MLX_PCI_X:
+                case MV2_ARCH_AMD_BRCLNA_16_HCA_IBM_EHCA:
+
+                case MV2_ARCH_AMD_MGNYCRS_24_HCA_MLX_PCI_X:
+                case MV2_ARCH_AMD_MGNYCRS_24_HCA_IBM_EHCA:
+
+                case MV2_ARCH_INTEL_CLVRTWN_8_HCA_MLX_PCI_X:
+                case MV2_ARCH_INTEL_CLVRTWN_8_HCA_IBM_EHCA:
+
+                case MV2_ARCH_INTEL_NEHLM_8_HCA_MLX_PCI_X:
+                case MV2_ARCH_INTEL_NEHLM_8_HCA_IBM_EHCA:
+
+                case MV2_ARCH_INTEL_NEHLM_16_HCA_MLX_PCI_X:
+                case MV2_ARCH_INTEL_NEHLM_16_HCA_IBM_EHCA:
+
+                case MV2_ARCH_INTEL_HRPRTWN_8_HCA_MLX_PCI_X:
+                case MV2_ARCH_INTEL_HRPRTWN_8_HCA_IBM_EHCA:
+
+                case MV2_ARCH_INTEL_XEON_DUAL_4_HCA_MLX_PCI_X:
+                case MV2_ARCH_INTEL_XEON_DUAL_4_HCA_IBM_EHCA:
+
+                case MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_MLX_PCI_X:
+                case MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_IBM_EHCA:
+
+                case MV2_ARCH_INTEL_HCA_MLX_PCI_X:
+                case MV2_ARCH_INTEL_HCA_IBM_EHCA:
+
+                case MV2_ARCH_AMD_HCA_MLX_PCI_X:
+                case MV2_ARCH_AMD_HCA_IBM_EHCA:
+
+                case MV2_ARCH_IBM_PPC_HCA_MLX_PCI_X:
+                case MV2_ARCH_IBM_PPC_HCA_IBM_EHCA:
+
+                    switch(proc->cluster_size) {
+                        case LARGE_CLUSTER:
+                            rdma_vbuf_total_size     = 2*1024;
+                            num_rdma_buffer          = 4;
+                            rdma_iba_eager_threshold = 6 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case MEDIUM_CLUSTER:
+                            rdma_vbuf_total_size     = 4*1024;
+                            num_rdma_buffer          = 16;
+                            rdma_iba_eager_threshold = 6 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case SMALL_CLUSTER:
+                        case VERY_SMALL_CLUSTER:
+                        default:
+                            rdma_vbuf_total_size     = 12*1024;
+                            num_rdma_buffer          = 32;
+                            rdma_iba_eager_threshold = rdma_vbuf_total_size - 
+                                sizeof(VBUF_FLAG_TYPE);
+                            break;
+                    }
+                    rdma_eagersize_1sc           = 4 * 1024;
+                    rdma_put_fallback_threshold  = 8 * 1024;
+                    rdma_get_fallback_threshold  = 394 * 1024;
+                    break;
+
+                case MV2_ARHC_UNKWN_HCA_CHELSIO_T3:
+                case MV2_ARCH_AMD_BRCLNA_16_HCA_CHELSIO_T3:
+                case MV2_ARCH_AMD_MGNYCRS_24_HCA_CHELSIO_T3:
+                case MV2_ARCH_INTEL_CLVRTWN_8_HCA_CHELSIO_T3:
+                case MV2_ARCH_INTEL_NEHLM_8_HCA_CHELSIO_T3:
+                case MV2_ARCH_INTEL_NEHLM_16_HCA_CHELSIO_T3:
+                case MV2_ARCH_INTEL_HRPRTWN_8_HCA_CHELSIO_T3:
+                case MV2_ARCH_INTEL_XEON_DUAL_4_HCA_CHELSIO_T3:
+                case MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_CHELSIO_T3:
+                case MV2_ARCH_INTEL_HCA_CHELSIO_T3:
+                case MV2_ARCH_AMD_HCA_CHELSIO_T3:
+                case MV2_ARCH_IBM_PPC_HCA_CHELSIO_T3:
+
+                    switch(proc->cluster_size) {
+                        case LARGE_CLUSTER:
+                            rdma_vbuf_total_size     = 2*1024;
+                            num_rdma_buffer          = 4;
+                            rdma_iba_eager_threshold = 2 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case MEDIUM_CLUSTER:
+                            rdma_vbuf_total_size     = 4*1024;
+                            num_rdma_buffer          = 8;
+                            rdma_iba_eager_threshold = 4 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case SMALL_CLUSTER:
+                            rdma_vbuf_total_size     = 9 * 1024;
+                            num_rdma_buffer          = 16;
+                            rdma_iba_eager_threshold = rdma_vbuf_total_size -
+                                sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case VERY_SMALL_CLUSTER:
+                        default:
+                            rdma_vbuf_total_size     = 33 * 1024;
+                            num_rdma_buffer          = 16;
+                            rdma_iba_eager_threshold = rdma_vbuf_total_size -
+                                sizeof(VBUF_FLAG_TYPE);
+                            break;
+                    }
+                    rdma_eagersize_1sc           = 4 * 1024;
+                    rdma_put_fallback_threshold  = 8 * 1024;
+                    rdma_get_fallback_threshold  = 394 * 1024;
+                    break;
+
+                case MV2_ARHC_UNKWN_HCA_INTEL_NE020:
+                case MV2_ARCH_AMD_BRCLNA_16_HCA_INTEL_NE020:
+                case MV2_ARCH_AMD_MGNYCRS_24_HCA_INTEL_NE020:
+                case MV2_ARCH_INTEL_CLVRTWN_8_HCA_INTEL_NE020:
+                case MV2_ARCH_INTEL_NEHLM_8_HCA_INTEL_NE020:
+                case MV2_ARCH_INTEL_NEHLM_16_HCA_INTEL_NE020:
+                case MV2_ARCH_INTEL_HRPRTWN_8_HCA_INTEL_NE020:
+                case MV2_ARCH_INTEL_XEON_DUAL_4_HCA_INTEL_NE020:
+                case MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_INTEL_NE020:
+                case MV2_ARCH_INTEL_HCA_INTEL_NE020:
+                case MV2_ARCH_AMD_HCA_INTEL_NE020:
+                case MV2_ARCH_IBM_PPC_HCA_INTEL_NE020:
+
+                    switch(proc->cluster_size) {
+                        case LARGE_CLUSTER:
+                            rdma_vbuf_total_size     = 2*1024;
+                            num_rdma_buffer          = 4;
+                            rdma_iba_eager_threshold = 2 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case MEDIUM_CLUSTER:
+                            rdma_vbuf_total_size     = 4*1024;
+                            num_rdma_buffer          = 8;
+                            rdma_iba_eager_threshold = 4 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case SMALL_CLUSTER:
+                            rdma_vbuf_total_size     = 9 * 1024;
+                            num_rdma_buffer          = 16;
+                            rdma_iba_eager_threshold = rdma_vbuf_total_size -
+                                sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case VERY_SMALL_CLUSTER:
+                        default:
+                            rdma_vbuf_total_size     = 33 * 1024;
+                            num_rdma_buffer          = 16;
+                            rdma_iba_eager_threshold = rdma_vbuf_total_size -
+                                sizeof(VBUF_FLAG_TYPE);
+                            break;
+                    }
+                    rdma_eagersize_1sc           = 4 * 1024;
+                    rdma_put_fallback_threshold  = 8 * 1024;
+                    rdma_get_fallback_threshold  = 394 * 1024;
+
+                    break;
+
+                default:
+                    switch(proc->cluster_size) {
+                        case LARGE_CLUSTER:
+                        case MEDIUM_CLUSTER:
+                        case SMALL_CLUSTER:
+                        case VERY_SMALL_CLUSTER:
+                        default:
+                            rdma_vbuf_total_size     = 16 * 1024;
+                            num_rdma_buffer          = 16;
+                            rdma_iba_eager_threshold = rdma_vbuf_total_size -
+                                sizeof(VBUF_FLAG_TYPE);
+                            break;
+                    }
+                    rdma_eagersize_1sc               = 4 * 1024;
+                    rdma_put_fallback_threshold      = 2 * 1024;
+                    rdma_get_fallback_threshold      = 192 * 1024;
+                    break;
+            }
+            break;
+
+        case mv2_num_rail_1:
+            switch(proc->arch_hca_type) {
+                
+                case MV2_ARCH_AMD_BRCLNA_16_HCA_MLX_CX_QDR:
+                case MV2_ARCH_AMD_BRCLNA_16_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_AMD_MGNYCRS_24_HCA_MLX_CX_QDR:
+                case MV2_ARCH_AMD_MGNYCRS_24_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_INTEL_CLVRTWN_8_HCA_MLX_CX_QDR:
+                case MV2_ARCH_INTEL_CLVRTWN_8_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_INTEL_NEHLM_8_HCA_MLX_CX_QDR:
+                case MV2_ARCH_INTEL_NEHLM_8_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_INTEL_NEHLM_16_HCA_MLX_CX_QDR:
+                case MV2_ARCH_INTEL_NEHLM_16_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_INTEL_HRPRTWN_8_HCA_MLX_CX_QDR:
+                case MV2_ARCH_INTEL_HRPRTWN_8_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_MLX_CX_QDR:
+                case MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_INTEL_HCA_MLX_CX_QDR:
+                case MV2_ARCH_INTEL_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_AMD_HCA_MLX_CX_QDR:
+                case MV2_ARCH_AMD_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_IBM_PPC_HCA_MLX_CX_QDR:
+                case MV2_ARCH_IBM_PPC_HCA_MLX_CX_DDR:
+
+                case MV2_ARCH_INTEL_XEON_E5630_8_HCA_MLX_CX_QDR:
+                case MV2_ARCH_INTEL_XEON_E5630_8_HCA_MLX_CX_DDR:
+                    
+                    rdma_vbuf_total_size = 16 * 1024;
+                    rdma_iba_eager_threshold = rdma_vbuf_total_size - sizeof(VBUF_FLAG_TYPE);
+                    break;
+
+                case MV2_ARHC_UNKWN_HCA_MLX_PCI_X:
+                case MV2_ARHC_UNKWN_HCA_IBM_EHCA:
+
+                case MV2_ARCH_AMD_BRCLNA_16_HCA_MLX_PCI_X:
+                case MV2_ARCH_AMD_BRCLNA_16_HCA_IBM_EHCA:
+
+                case MV2_ARCH_AMD_MGNYCRS_24_HCA_MLX_PCI_X:
+                case MV2_ARCH_AMD_MGNYCRS_24_HCA_IBM_EHCA:
+
+                case MV2_ARCH_INTEL_CLVRTWN_8_HCA_MLX_PCI_X:
+                case MV2_ARCH_INTEL_CLVRTWN_8_HCA_IBM_EHCA:
+
+                case MV2_ARCH_INTEL_NEHLM_8_HCA_MLX_PCI_X:
+                case MV2_ARCH_INTEL_NEHLM_8_HCA_IBM_EHCA:
+
+                case MV2_ARCH_INTEL_NEHLM_16_HCA_MLX_PCI_X:
+                case MV2_ARCH_INTEL_NEHLM_16_HCA_IBM_EHCA:
+
+                case MV2_ARCH_INTEL_HRPRTWN_8_HCA_MLX_PCI_X:
+                case MV2_ARCH_INTEL_HRPRTWN_8_HCA_IBM_EHCA:
+
+                case MV2_ARCH_INTEL_XEON_DUAL_4_HCA_MLX_PCI_X:
+                case MV2_ARCH_INTEL_XEON_DUAL_4_HCA_IBM_EHCA:
+
+                case MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_MLX_PCI_X:
+                case MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_IBM_EHCA:
+
+                case MV2_ARCH_INTEL_HCA_MLX_PCI_X:
+                case MV2_ARCH_INTEL_HCA_IBM_EHCA:
+
+                case MV2_ARCH_AMD_HCA_MLX_PCI_X:
+                case MV2_ARCH_AMD_HCA_IBM_EHCA:
+
+                case MV2_ARCH_IBM_PPC_HCA_MLX_PCI_X:
+                case MV2_ARCH_IBM_PPC_HCA_IBM_EHCA:
+
+                    switch(proc->cluster_size) {
+                        case LARGE_CLUSTER:
+                            rdma_vbuf_total_size     = 2*1024;
+                            num_rdma_buffer          = 4;
+                            rdma_iba_eager_threshold = 6 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case MEDIUM_CLUSTER:
+                            rdma_vbuf_total_size     = 4*1024;
+                            num_rdma_buffer          = 16;
+                            rdma_iba_eager_threshold = 6 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case SMALL_CLUSTER:
+                        case VERY_SMALL_CLUSTER:
+                        default:
+                            rdma_vbuf_total_size     = 12*1024;
+                            num_rdma_buffer          = 32;
+                            rdma_iba_eager_threshold = rdma_vbuf_total_size - 
+                                sizeof(VBUF_FLAG_TYPE);
+                            break;
+                    }
+                    rdma_eagersize_1sc           = 4 * 1024;
+                    rdma_put_fallback_threshold  = 8 * 1024;
+                    rdma_get_fallback_threshold  = 394 * 1024;
+                    break;
+
+                case MV2_ARHC_UNKWN_HCA_CHELSIO_T3:
+                case MV2_ARCH_AMD_BRCLNA_16_HCA_CHELSIO_T3:
+                case MV2_ARCH_AMD_MGNYCRS_24_HCA_CHELSIO_T3:
+                case MV2_ARCH_INTEL_CLVRTWN_8_HCA_CHELSIO_T3:
+                case MV2_ARCH_INTEL_NEHLM_8_HCA_CHELSIO_T3:
+                case MV2_ARCH_INTEL_NEHLM_16_HCA_CHELSIO_T3:
+                case MV2_ARCH_INTEL_HRPRTWN_8_HCA_CHELSIO_T3:
+                case MV2_ARCH_INTEL_XEON_DUAL_4_HCA_CHELSIO_T3:
+                case MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_CHELSIO_T3:
+                case MV2_ARCH_INTEL_HCA_CHELSIO_T3:
+                case MV2_ARCH_AMD_HCA_CHELSIO_T3:
+                case MV2_ARCH_IBM_PPC_HCA_CHELSIO_T3:
+
+                    switch(proc->cluster_size) {
+                        case LARGE_CLUSTER:
+                            rdma_vbuf_total_size     = 2*1024;
+                            num_rdma_buffer          = 4;
+                            rdma_iba_eager_threshold = 2 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case MEDIUM_CLUSTER:
+                            rdma_vbuf_total_size     = 4*1024;
+                            num_rdma_buffer          = 8;
+                            rdma_iba_eager_threshold = 4 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case SMALL_CLUSTER:
+                            rdma_vbuf_total_size     = 9 * 1024;
+                            num_rdma_buffer          = 16;
+                            rdma_iba_eager_threshold = rdma_vbuf_total_size -
+                                sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case VERY_SMALL_CLUSTER:
+                        default:
+                            rdma_vbuf_total_size     = 33 * 1024;
+                            num_rdma_buffer          = 16;
+                            rdma_iba_eager_threshold = rdma_vbuf_total_size -
+                                sizeof(VBUF_FLAG_TYPE);
+                            break;
+                    }
+                    rdma_eagersize_1sc           = 4 * 1024;
+                    rdma_put_fallback_threshold  = 8 * 1024;
+                    rdma_get_fallback_threshold  = 394 * 1024;
+                    break;
+
+                case MV2_ARHC_UNKWN_HCA_INTEL_NE020:
+                case MV2_ARCH_AMD_BRCLNA_16_HCA_INTEL_NE020:
+                case MV2_ARCH_AMD_MGNYCRS_24_HCA_INTEL_NE020:
+                case MV2_ARCH_INTEL_CLVRTWN_8_HCA_INTEL_NE020:
+                case MV2_ARCH_INTEL_NEHLM_8_HCA_INTEL_NE020:
+                case MV2_ARCH_INTEL_NEHLM_16_HCA_INTEL_NE020:
+                case MV2_ARCH_INTEL_HRPRTWN_8_HCA_INTEL_NE020:
+                case MV2_ARCH_INTEL_XEON_DUAL_4_HCA_INTEL_NE020:
+                case MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_INTEL_NE020:
+                case MV2_ARCH_INTEL_HCA_INTEL_NE020:
+                case MV2_ARCH_AMD_HCA_INTEL_NE020:
+                case MV2_ARCH_IBM_PPC_HCA_INTEL_NE020:
+
+                    switch(proc->cluster_size) {
+                        case LARGE_CLUSTER:
+                            rdma_vbuf_total_size     = 2*1024;
+                            num_rdma_buffer          = 4;
+                            rdma_iba_eager_threshold = 2 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case MEDIUM_CLUSTER:
+                            rdma_vbuf_total_size     = 4*1024;
+                            num_rdma_buffer          = 8;
+                            rdma_iba_eager_threshold = 4 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case SMALL_CLUSTER:
+                            rdma_vbuf_total_size     = 9 * 1024;
+                            num_rdma_buffer          = 16;
+                            rdma_iba_eager_threshold = rdma_vbuf_total_size -
+                                sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case VERY_SMALL_CLUSTER:
+                        default:
+                            rdma_vbuf_total_size     = 33 * 1024;
+                            num_rdma_buffer          = 16;
+                            rdma_iba_eager_threshold = rdma_vbuf_total_size -
+                                sizeof(VBUF_FLAG_TYPE);
+                            break;
+                    }
+                    rdma_eagersize_1sc           = 4 * 1024;
+                    rdma_put_fallback_threshold  = 8 * 1024;
+                    rdma_get_fallback_threshold  = 394 * 1024;
+
+                    break;
+
+                default:
+                    switch(proc->cluster_size) {
+                        case LARGE_CLUSTER:
+                        case MEDIUM_CLUSTER:
+                        case SMALL_CLUSTER:
+                        case VERY_SMALL_CLUSTER:
+                        default:
+                            rdma_vbuf_total_size     = 16 * 1024;
+                            num_rdma_buffer          = 16;
+                            rdma_iba_eager_threshold = rdma_vbuf_total_size -
+                                sizeof(VBUF_FLAG_TYPE);
+                            break;
+                    }
+                    rdma_eagersize_1sc               = 4 * 1024;
+                    rdma_put_fallback_threshold      = 2 * 1024;
+                    rdma_get_fallback_threshold      = 192 * 1024;
+                    break;
+            }
+            break;
+
+            /* mv2_num_rail_unknwon */
+        default:
+            switch(proc->arch_hca_type) {
+
+                case MV2_ARHC_UNKWN_HCA_MLX_PCI_X:
+                case MV2_ARHC_UNKWN_HCA_IBM_EHCA:
+
+                case MV2_ARCH_AMD_BRCLNA_16_HCA_MLX_PCI_X:
+                case MV2_ARCH_AMD_BRCLNA_16_HCA_IBM_EHCA:
+
+                case MV2_ARCH_AMD_MGNYCRS_24_HCA_MLX_PCI_X:
+                case MV2_ARCH_AMD_MGNYCRS_24_HCA_IBM_EHCA:
+
+                case MV2_ARCH_INTEL_CLVRTWN_8_HCA_MLX_PCI_X:
+                case MV2_ARCH_INTEL_CLVRTWN_8_HCA_IBM_EHCA:
+
+                case MV2_ARCH_INTEL_NEHLM_8_HCA_MLX_PCI_X:
+                case MV2_ARCH_INTEL_NEHLM_8_HCA_IBM_EHCA:
+
+                case MV2_ARCH_INTEL_NEHLM_16_HCA_MLX_PCI_X:
+                case MV2_ARCH_INTEL_NEHLM_16_HCA_IBM_EHCA:
+
+                case MV2_ARCH_INTEL_HRPRTWN_8_HCA_MLX_PCI_X:
+                case MV2_ARCH_INTEL_HRPRTWN_8_HCA_IBM_EHCA:
+
+                case MV2_ARCH_INTEL_XEON_DUAL_4_HCA_MLX_PCI_X:
+                case MV2_ARCH_INTEL_XEON_DUAL_4_HCA_IBM_EHCA:
+
+                case MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_MLX_PCI_X:
+                case MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_IBM_EHCA:
+
+                case MV2_ARCH_INTEL_HCA_MLX_PCI_X:
+                case MV2_ARCH_INTEL_HCA_IBM_EHCA:
+
+                case MV2_ARCH_AMD_HCA_MLX_PCI_X:
+                case MV2_ARCH_AMD_HCA_IBM_EHCA:
+
+                case MV2_ARCH_IBM_PPC_HCA_MLX_PCI_X:
+                case MV2_ARCH_IBM_PPC_HCA_IBM_EHCA:
+
+                    switch(proc->cluster_size) {
+                        case LARGE_CLUSTER:
+                            rdma_vbuf_total_size     = 2*1024;
+                            num_rdma_buffer          = 4;
+                            rdma_iba_eager_threshold = 6 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case MEDIUM_CLUSTER:
+                            rdma_vbuf_total_size     = 4*1024;
+                            num_rdma_buffer          = 16;
+                            rdma_iba_eager_threshold = 6 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case SMALL_CLUSTER:
+                        case VERY_SMALL_CLUSTER:
+                        default:
+                            rdma_vbuf_total_size     = 12*1024;
+                            num_rdma_buffer          = 32;
+                            rdma_iba_eager_threshold = rdma_vbuf_total_size - 
+                                sizeof(VBUF_FLAG_TYPE);
+                            break;
+                    }
+                    rdma_eagersize_1sc           = 4 * 1024;
+                    rdma_put_fallback_threshold  = 8 * 1024;
+                    rdma_get_fallback_threshold  = 394 * 1024;
+                    break;
+
+                case MV2_ARHC_UNKWN_HCA_CHELSIO_T3:
+                case MV2_ARCH_AMD_BRCLNA_16_HCA_CHELSIO_T3:
+                case MV2_ARCH_AMD_MGNYCRS_24_HCA_CHELSIO_T3:
+                case MV2_ARCH_INTEL_CLVRTWN_8_HCA_CHELSIO_T3:
+                case MV2_ARCH_INTEL_NEHLM_8_HCA_CHELSIO_T3:
+                case MV2_ARCH_INTEL_NEHLM_16_HCA_CHELSIO_T3:
+                case MV2_ARCH_INTEL_HRPRTWN_8_HCA_CHELSIO_T3:
+                case MV2_ARCH_INTEL_XEON_DUAL_4_HCA_CHELSIO_T3:
+                case MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_CHELSIO_T3:
+                case MV2_ARCH_INTEL_HCA_CHELSIO_T3:
+                case MV2_ARCH_AMD_HCA_CHELSIO_T3:
+                case MV2_ARCH_IBM_PPC_HCA_CHELSIO_T3:
+
+                    switch(proc->cluster_size) {
+                        case LARGE_CLUSTER:
+                            rdma_vbuf_total_size     = 2*1024;
+                            num_rdma_buffer          = 4;
+                            rdma_iba_eager_threshold = 2 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case MEDIUM_CLUSTER:
+                            rdma_vbuf_total_size     = 4*1024;
+                            num_rdma_buffer          = 8;
+                            rdma_iba_eager_threshold = 4 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case SMALL_CLUSTER:
+                            rdma_vbuf_total_size     = 9 * 1024;
+                            num_rdma_buffer          = 16;
+                            rdma_iba_eager_threshold = rdma_vbuf_total_size -
+                                sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case VERY_SMALL_CLUSTER:
+                        default:
+                            rdma_vbuf_total_size     = 33 * 1024;
+                            num_rdma_buffer          = 16;
+                            rdma_iba_eager_threshold = rdma_vbuf_total_size -
+                                sizeof(VBUF_FLAG_TYPE);
+                            break;
+                    }
+                    rdma_eagersize_1sc           = 4 * 1024;
+                    rdma_put_fallback_threshold  = 8 * 1024;
+                    rdma_get_fallback_threshold  = 394 * 1024;
+                    break;
+
+                case MV2_ARHC_UNKWN_HCA_INTEL_NE020:
+                case MV2_ARCH_AMD_BRCLNA_16_HCA_INTEL_NE020:
+                case MV2_ARCH_AMD_MGNYCRS_24_HCA_INTEL_NE020:
+                case MV2_ARCH_INTEL_CLVRTWN_8_HCA_INTEL_NE020:
+                case MV2_ARCH_INTEL_NEHLM_8_HCA_INTEL_NE020:
+                case MV2_ARCH_INTEL_NEHLM_16_HCA_INTEL_NE020:
+                case MV2_ARCH_INTEL_HRPRTWN_8_HCA_INTEL_NE020:
+                case MV2_ARCH_INTEL_XEON_DUAL_4_HCA_INTEL_NE020:
+                case MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_INTEL_NE020:
+                case MV2_ARCH_INTEL_HCA_INTEL_NE020:
+                case MV2_ARCH_AMD_HCA_INTEL_NE020:
+                case MV2_ARCH_IBM_PPC_HCA_INTEL_NE020:
+
+                    switch(proc->cluster_size) {
+                        case LARGE_CLUSTER:
+                            rdma_vbuf_total_size     = 2*1024;
+                            num_rdma_buffer          = 4;
+                            rdma_iba_eager_threshold = 2 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case MEDIUM_CLUSTER:
+                            rdma_vbuf_total_size     = 4*1024;
+                            num_rdma_buffer          = 8;
+                            rdma_iba_eager_threshold = 4 * 1024 - sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case SMALL_CLUSTER:
+                            rdma_vbuf_total_size     = 9 * 1024;
+                            num_rdma_buffer          = 16;
+                            rdma_iba_eager_threshold = rdma_vbuf_total_size -
+                                sizeof(VBUF_FLAG_TYPE);
+                            break;
+                        case VERY_SMALL_CLUSTER:
+                        default:
+                            rdma_vbuf_total_size     = 33 * 1024;
+                            num_rdma_buffer          = 16;
+                            rdma_iba_eager_threshold = rdma_vbuf_total_size -
+                                sizeof(VBUF_FLAG_TYPE);
+                            break;
+                    }
+                    rdma_eagersize_1sc           = 4 * 1024;
+                    rdma_put_fallback_threshold  = 8 * 1024;
+                    rdma_get_fallback_threshold  = 394 * 1024;
+
+                    break;
+
+                default:
+                    switch(proc->cluster_size) {
+                        case LARGE_CLUSTER:
+                        case MEDIUM_CLUSTER:
+                        case SMALL_CLUSTER:
+                        case VERY_SMALL_CLUSTER:
+                        default:
+                            rdma_vbuf_total_size     = 16 * 1024;
+                            num_rdma_buffer          = 16;
+                            rdma_iba_eager_threshold = rdma_vbuf_total_size -
+                                sizeof(VBUF_FLAG_TYPE);
+                            break;
+                    }
+                    rdma_eagersize_1sc               = 4 * 1024;
+                    rdma_put_fallback_threshold      = 2 * 1024;
+                    rdma_get_fallback_threshold      = 192 * 1024;
+                    break;
+            }
             break;
     }
 
-    if (proc->hca_type == PATH_HT) {
+    if ( MV2_HCA_PATH_HT == proc->hca_type ) {
         rdma_default_qp_ous_rd_atom = 1;
     } else {
         rdma_default_qp_ous_rd_atom = 4;
     }
 
-    if (proc->hca_type == IBM_EHCA) {
+    if ( MV2_HCA_IBM_EHCA  == proc->hca_type ) {
         rdma_max_inline_size = -1;
-    } else if (proc->hca_type == CHELSIO_T3) {
-	rdma_max_inline_size = 64;
-    } else if (proc->hca_type == INTEL_NE020) {
+    } else if ( MV2_HCA_CHELSIO_T3 == proc->hca_type ) {
+        rdma_max_inline_size = 64;
+    } else if ( MV2_HCA_INTEL_NE020 == proc->hca_type ) {
         rdma_max_inline_size = 64;
     } else {
         rdma_max_inline_size = 128;
     }
 
-    if (proc->hca_type == MLX_PCI_EX_DDR) {
+    if ( MV2_HCA_MLX_PCI_EX_DDR == proc->hca_type ) {
         rdma_default_mtu = IBV_MTU_2048;
-    } else if(proc->hca_type == MLX_CX_QDR) {
+    } else if( MV2_HCA_MLX_CX_QDR == proc->hca_type ) {
         rdma_default_mtu = IBV_MTU_2048;
     } else {
         rdma_default_mtu = IBV_MTU_1024;
     }
 
-    if (proc->hca_type == CHELSIO_T3) {
+    if ( MV2_HCA_CHELSIO_T3 == proc->hca_type ) {
         /* Trac #423 */
         struct ibv_device_attr dev_attr;
         int mpi_errno = MPI_SUCCESS;
@@ -936,17 +2052,17 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
         /*quering device for cq depth*/
         mpi_errno = ibv_query_device(proc->nic_context[0], &dev_attr);
 
-        if(!mpi_errno) {
-          if(dev_attr.max_cqe < rdma_default_max_cq_size)
-               rdma_default_max_cq_size = dev_attr.max_cqe;
+        if (!mpi_errno) {
+            if (dev_attr.max_cqe < rdma_default_max_cq_size) {
+                rdma_default_max_cq_size = dev_attr.max_cqe;
+            }
         } else {
-          rdma_default_max_cq_size = RDMA_DEFAULT_IWARP_CQ_SIZE;
-        } 
-
+            rdma_default_max_cq_size = RDMA_DEFAULT_IWARP_CQ_SIZE;
+        }
         rdma_prepost_noop_extra = 8;
     }
 
-    if (proc->hca_type == INTEL_NE020) {
+    if ( MV2_HCA_INTEL_NE020 == proc->hca_type ) {
         rdma_default_max_cq_size = 32766;
         rdma_prepost_noop_extra = 8;
     }
@@ -956,6 +2072,8 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
     } else {
         rdma_credit_preserve = 3;
     }
+
+    return;
 }
 
 /* rdma_param_handle_heterogenity resets control parameters given the hca_type 
@@ -978,6 +2096,7 @@ void rdma_param_handle_heterogenity(uint32_t hca_type[], int pg_size)
     int i;
 
     type = hca_type[0];
+#ifdef MV_ARCH_OLD_CODE
     for (i = 0; i < pg_size; ++ i) {
         if (hca_type[i] == PATH_HT ||
             hca_type[i] == MLX_PCI_X ||
@@ -989,9 +2108,26 @@ void rdma_param_handle_heterogenity(uint32_t hca_type[], int pg_size)
 
         if (hca_type[i] == IBM_EHCA)
             rdma_max_inline_size = -1;                
-
+        
         if (hca_type[i] == PATH_HT)
             rdma_default_qp_ous_rd_atom = 1;
+#else
+    for (i = 0; i < pg_size; ++ i) {
+        if (hca_type[i] == MV2_HCA_PATH_HT ||
+            hca_type[i] == MV2_HCA_MLX_PCI_X ||
+            hca_type[i] == MV2_HCA_IBM_EHCA ) {
+            MPIDI_CH3I_RDMA_Process.has_srq = 0;
+            MPIDI_CH3I_RDMA_Process.post_send = post_send;
+            rdma_credit_preserve = 3;
+        }
+
+        if ( MV2_HCA_IBM_EHCA == hca_type[i] )
+            rdma_max_inline_size = -1;                
+        
+        if ( MV2_HCA_PATH_HT == hca_type[i] )
+            rdma_default_qp_ous_rd_atom = 1;
+#endif
+
 
         if (hca_type[i] != type)
             heterogenous = 1;
@@ -1013,7 +2149,6 @@ void rdma_param_handle_heterogenity(uint32_t hca_type[], int pg_size)
 void rdma_get_user_parameters(int num_proc, int me)
 {
     char *value;
-
 
     /* Check for a system report. See sysreport.h and sysreport.c */
     value = getenv( SYSREPORT_ENABLE_PARAM_NAME );
@@ -1041,46 +2176,49 @@ void rdma_get_user_parameters(int num_proc, int me)
     }
 
 
-     if( (value = getenv("MV2_USE_KNOMIAL_2LEVEL_BCAST")) != NULL) { 
-            enable_knomial_2level_bcast=!!(int)atoi(value);
-        if(enable_knomial_2level_bcast <= 0)  { 
-                enable_knomial_2level_bcast = 0;
-         } 
-     }     
+    if ((value = getenv("MV2_USE_KNOMIAL_2LEVEL_BCAST")) != NULL) { 
+        enable_knomial_2level_bcast=!!atoi(value);
+        if (enable_knomial_2level_bcast <= 0)  { 
+            enable_knomial_2level_bcast = 0;
+        } 
+    }     
 
-    if( (value = getenv("MV2_KNOMIAL_INTRA_NODE_FACTOR")) != NULL) {
-            intra_node_knomial_factor=(int)atoi(value);
-        if(intra_node_knomial_factor < INTRA_NODE_KNOMIAL_FACTOR_MIN) { 
-                intra_node_knomial_factor = INTRA_NODE_KNOMIAL_FACTOR_MIN;
+    if ((value = getenv("MV2_KNOMIAL_INTRA_NODE_FACTOR")) != NULL) {
+        intra_node_knomial_factor=atoi(value);
+        if (intra_node_knomial_factor < INTRA_NODE_KNOMIAL_FACTOR_MIN) { 
+            intra_node_knomial_factor = INTRA_NODE_KNOMIAL_FACTOR_MIN;
         } 
-        if(intra_node_knomial_factor > INTRA_NODE_KNOMIAL_FACTOR_MAX) { 
-                intra_node_knomial_factor = INTRA_NODE_KNOMIAL_FACTOR_MAX;
+        if (intra_node_knomial_factor > INTRA_NODE_KNOMIAL_FACTOR_MAX) { 
+            intra_node_knomial_factor = INTRA_NODE_KNOMIAL_FACTOR_MAX;
         } 
-     }     
-    if( (value = getenv("MV2_KNOMIAL_INTER_NODE_FACTOR")) != NULL) {
-            inter_node_knomial_factor=(int)atoi(value);
-        if(inter_node_knomial_factor < INTER_NODE_KNOMIAL_FACTOR_MIN) { 
-                inter_node_knomial_factor = INTER_NODE_KNOMIAL_FACTOR_MIN;
-        } 
-        if(inter_node_knomial_factor > INTER_NODE_KNOMIAL_FACTOR_MAX) { 
-                inter_node_knomial_factor = INTER_NODE_KNOMIAL_FACTOR_MAX;
-        } 
-     }     
-    if( (value = getenv("MV2_KNOMIAL_2LEVEL_BCAST_MESSAGE_SIZE_THRESHOLD")) != NULL) {
-            knomial_2level_bcast_message_size_threshold=(int)atoi(value);
-     }
-    if( (value = getenv("MV2_KNOMIAL_2LEVEL_BCAST_SYSTEM_SIZE_THRESHOLD")) != NULL) {
-            knomial_2level_bcast_system_size_threshold=(int)atoi(value);
-     }
+    }     
 
+    if ((value = getenv("MV2_KNOMIAL_INTER_NODE_FACTOR")) != NULL) {
+        inter_node_knomial_factor=atoi(value);
+        if (inter_node_knomial_factor < INTER_NODE_KNOMIAL_FACTOR_MIN) { 
+            inter_node_knomial_factor = INTER_NODE_KNOMIAL_FACTOR_MIN;
+        } 
+        if (inter_node_knomial_factor > INTER_NODE_KNOMIAL_FACTOR_MAX) { 
+            inter_node_knomial_factor = INTER_NODE_KNOMIAL_FACTOR_MAX;
+        } 
+    }     
 
+    if ((value = getenv("MV2_KNOMIAL_2LEVEL_BCAST_MESSAGE_SIZE_THRESHOLD"))
+        != NULL) {
+        knomial_2level_bcast_message_size_threshold=atoi(value);
+    }
+
+    if ((value = getenv("MV2_KNOMIAL_2LEVEL_BCAST_SYSTEM_SIZE_THRESHOLD"))
+        != NULL) {
+        knomial_2level_bcast_system_size_threshold=atoi(value);
+    }
 
     /* Get number of ports/HCA used by a process */
     if ((value = getenv("MV2_NUM_PORTS")) != NULL) {
-        rdma_num_ports = (int)atoi(value);
+        rdma_num_ports = atoi(value);
         if (rdma_num_ports > MAX_NUM_PORTS) {
             rdma_num_ports = MAX_NUM_PORTS;
-	    MPIU_Usage_printf("Warning, max ports per hca is %d, change %s in "
+	        MPIU_Usage_printf("Warning, max ports per hca is %d, change %s in "
 		    "ibv_param.h to overide the option\n", MAX_NUM_PORTS,
 		    "MAX_NUM_PORTS");
         }
@@ -1089,7 +2227,7 @@ void rdma_get_user_parameters(int num_proc, int me)
     /* Get number of qps/port used by a process */
     if ((value = getenv("MV2_NUM_QP_PER_PORT")) != NULL) {
 
-        rdma_num_qp_per_port = (int)atoi(value);
+        rdma_num_qp_per_port = atoi(value);
 
         if (rdma_num_qp_per_port > MAX_NUM_QP_PER_PORT) {
             rdma_num_qp_per_port = MAX_NUM_QP_PER_PORT;
@@ -1100,22 +2238,19 @@ void rdma_get_user_parameters(int num_proc, int me)
     }
 
     if ((value = getenv("MV2_PIN_POOL_SIZE")) != NULL) {
-        rdma_pin_pool_size = (int)atoi(value);
+        rdma_pin_pool_size = atoi(value);
     }
     if ((value = getenv("MV2_MAX_INLINE_SIZE")) != NULL) {
-        rdma_max_inline_size = (int)atoi(value);
-    } else if(num_proc > 256) {
-        rdma_max_inline_size = 0;
+        rdma_max_inline_size = atoi(value);
     }
-
     if ((value = getenv("MV2_DEFAULT_MAX_CQ_SIZE")) != NULL) {
-        rdma_default_max_cq_size = (int)atoi(value);
+        rdma_default_max_cq_size = atoi(value);
     }
     if ((value = getenv("MV2_READ_RESERVE")) != NULL) {
-        rdma_read_reserve = (int)atoi(value);
+        rdma_read_reserve = atoi(value);
     }
     if ((value = getenv("MV2_NUM_RDMA_BUFFER")) != NULL) { 
-        num_rdma_buffer = (int)atoi(value);
+        num_rdma_buffer = atoi(value);
     }
     if ((value = getenv("MV2_POLLING_SET_THRESHOLD")) != NULL
         && MPIDI_CH3I_RDMA_Process.has_adaptive_fast_path) {
@@ -1124,8 +2259,9 @@ void rdma_get_user_parameters(int num_proc, int me)
     if ((value = getenv("MV2_RDMA_EAGER_LIMIT")) != NULL
         && MPIDI_CH3I_RDMA_Process.has_adaptive_fast_path) {
         rdma_eager_limit = atoi(value);
-	if (rdma_eager_limit < 0)
-	    rdma_eager_limit = 0;
+	    if (rdma_eager_limit < 0) {
+	        rdma_eager_limit = 0;
+        }
     }
     if ((value = getenv("MV2_POLLING_SET_LIMIT")) != NULL
         && MPIDI_CH3I_RDMA_Process.has_adaptive_fast_path) {
@@ -1134,12 +2270,18 @@ void rdma_get_user_parameters(int num_proc, int me)
             rdma_polling_set_limit = log_2(num_proc);
         }
     } else if (MPIDI_CH3I_RDMA_Process.has_adaptive_fast_path) {
-        rdma_polling_set_limit = num_proc;
+        rdma_polling_set_limit = RDMA_DEFAULT_POLLING_SET_LIMIT;
     }
     if ((value = getenv("MV2_VBUF_TOTAL_SIZE")) != NULL) {
-        rdma_vbuf_total_size= atoi(value);
-        if (rdma_vbuf_total_size <= 2 * sizeof(int))
-            rdma_vbuf_total_size = 2 * sizeof(int);
+        if (RDMA_MIN_VBUF_POOL_SIZE < user_val_to_bytes(value,"MV2_VBUF_TOTAL_SIZE")) {
+            rdma_vbuf_total_size = user_val_to_bytes(value,"MV2_VBUF_TOTAL_SIZE");
+        } else {
+            /* We do not accept vbuf size < RDMA_MIN_VBUF_POOL_SIZE */
+	        MPIU_Usage_printf("Warning, it is inefficient to use a value for"
+                "VBUF which is less than %d. Retaining the system default"
+                " value of %d\n", RDMA_MIN_VBUF_POOL_SIZE,
+                rdma_vbuf_total_size);
+        }
     }
 
     /* We have read the value of the rendezvous threshold, and the number of
@@ -1150,7 +2292,7 @@ void rdma_get_user_parameters(int num_proc, int me)
      * not be striped */
 
     striping_threshold = rdma_vbuf_total_size * rdma_num_ports *
-        rdma_num_qp_per_port * rdma_num_hcas;
+                         rdma_num_qp_per_port * rdma_num_hcas;
        
     if ((value = getenv("MV2_SRQ_SIZE")) != NULL) {
         viadev_srq_size = (uint32_t) atoi(value);
@@ -1159,17 +2301,17 @@ void rdma_get_user_parameters(int num_proc, int me)
     if ((value = getenv("MV2_SRQ_LIMIT")) != NULL) {
         viadev_srq_limit = (uint32_t) atoi(value);
 
-        if(viadev_srq_limit > viadev_srq_size) {
-	    MPIU_Usage_printf("SRQ limit shouldn't be greater than SRQ size\n");
+        if (viadev_srq_limit > viadev_srq_size) {
+	        MPIU_Usage_printf("SRQ limit shouldn't be greater than SRQ size\n");
         }
     }
 
     if ((value = getenv("MV2_IBA_EAGER_THRESHOLD")) != NULL) {
-        rdma_iba_eager_threshold = (int)atoi(value);
+        rdma_iba_eager_threshold = user_val_to_bytes(value,"MV2_IBA_EAGER_THRESHOLD");
     }
 
     if ((value = getenv("MV2_STRIPING_THRESHOLD")) != NULL) {
-        striping_threshold = atoi(value);
+        striping_threshold = user_val_to_bytes(value,"MV2_STRIPING_THRESHOLD");
         if (striping_threshold <= 0) {
             /* Invalid value - set to computed value */
             striping_threshold = rdma_vbuf_total_size * rdma_num_ports *
@@ -1184,22 +2326,22 @@ void rdma_get_user_parameters(int num_proc, int me)
     }
 
     if ((value = getenv("MV2_INTEGER_POOL_SIZE")) != NULL) {
-        rdma_integer_pool_size = (int)atoi(value);
+        rdma_integer_pool_size = atoi(value);
     }
     if ((value = getenv("MV2_DEFAULT_PUT_GET_LIST_SIZE")) != NULL) {
-        rdma_default_put_get_list_size = (int)atoi(value);
+        rdma_default_put_get_list_size = atoi(value);
     }
     if ((value = getenv("MV2_EAGERSIZE_1SC")) != NULL) {
-        rdma_eagersize_1sc = (int)atoi(value);
+        rdma_eagersize_1sc = atoi(value);
     }
     if ((value = getenv("MV2_PUT_FALLBACK_THRESHOLD")) != NULL) {
-        rdma_put_fallback_threshold = (int)atoi(value);
+        rdma_put_fallback_threshold = atoi(value);
     }
     if ((value = getenv("MV2_GET_FALLBACK_THRESHOLD")) != NULL) {
-        rdma_get_fallback_threshold = (int)atoi(value);
+        rdma_get_fallback_threshold = user_val_to_bytes(value,"MV2_GET_FALLBACK_THRESHOLD");
     }
     if ((value = getenv("MV2_DEFAULT_PORT")) != NULL) {
-        rdma_default_port = (int)atoi(value);
+        rdma_default_port = atoi(value);
     }
     if ((value = getenv("MV2_DEFAULT_QP_OUS_RD_ATOM")) != NULL) {
         rdma_default_qp_ous_rd_atom = (uint8_t)atoi(value);
@@ -1212,7 +2354,7 @@ void rdma_get_user_parameters(int num_proc, int me)
     }
 
     if ((value = getenv("MV2_DEFAULT_PKEY")) != NULL) {
-        rdma_default_pkey = (uint16_t)strtol(value, (char **) NULL,0) & PKEY_MASK; 
+        rdma_default_pkey = (uint16_t)strtol(value, (char **) NULL,0)&PKEY_MASK;
     }
 
     if ((value = getenv("MV2_DEFAULT_MIN_RNR_TIMER")) != NULL) {
@@ -1241,8 +2383,6 @@ void rdma_get_user_parameters(int num_proc, int me)
     }
     if ((value = getenv("MV2_DEFAULT_MAX_SEND_WQE")) != NULL) {
         rdma_default_max_send_wqe = atol(value);
-    } else if(num_proc > 256) {
-        rdma_default_max_send_wqe = 16;
     }
     if ((value = getenv("MV2_DEFAULT_MAX_RECV_WQE")) != NULL) {
         rdma_default_max_recv_wqe = atol(value);
@@ -1269,17 +2409,18 @@ void rdma_get_user_parameters(int num_proc, int me)
         rdma_dreg_cache_limit = atol(value);
     }
     if (rdma_vbuf_pool_size <= 10) {
-        rdma_vbuf_pool_size = 10;
+        rdma_vbuf_pool_size = RDMA_VBUF_POOL_SIZE;
         MPIU_Usage_printf("Warning! Too small vbuf pool size (%d).  "
-		"Reset to %d\n", rdma_vbuf_pool_size, 10);
+		"Reset to %d\n", rdma_vbuf_pool_size, RDMA_VBUF_POOL_SIZE);
     }
     if ((value = getenv("MV2_VBUF_SECONDARY_POOL_SIZE")) != NULL) {
         rdma_vbuf_secondary_pool_size = atoi(value);
     }
     if (rdma_vbuf_secondary_pool_size <= 0) {
-        rdma_vbuf_secondary_pool_size = 1;
+        rdma_vbuf_secondary_pool_size = RDMA_VBUF_SECONDARY_POOL_SIZE;
         MPIU_Usage_printf("Warning! Too small secondary vbuf pool size (%d).  "
-                "Reset to %d\n", rdma_vbuf_secondary_pool_size, 1);
+                "Reset to %d\n", rdma_vbuf_secondary_pool_size,
+                RDMA_VBUF_SECONDARY_POOL_SIZE);
     }
     if (rdma_initial_prepost_depth <= rdma_prepost_noop_extra) {
         rdma_initial_credits = rdma_initial_prepost_depth;
@@ -1288,8 +2429,8 @@ void rdma_get_user_parameters(int num_proc, int me)
             rdma_initial_prepost_depth - rdma_prepost_noop_extra;
     }
 
-    rdma_rq_size = rdma_prepost_depth + 
-        rdma_prepost_rendezvous_extra + rdma_prepost_noop_extra;
+    rdma_rq_size = rdma_prepost_depth + rdma_prepost_rendezvous_extra +
+                   rdma_prepost_noop_extra;
     
     if ((value = getenv("MV2_USE_HWLOC_CPU_BINDING")) != NULL) {
         use_hwloc_cpu_binding = atoi(value);
@@ -1301,7 +2442,15 @@ void rdma_get_user_parameters(int num_proc, int me)
         } 
     }
 
-
+    if ((value = getenv("MV2_ASYNC_THREAD_STACK_SIZE")) != NULL) {
+        rdma_default_async_thread_stack_size = atoi(value);
+        if(rdma_default_async_thread_stack_size < 1<<10) {
+            MPIU_Usage_printf("Warning! Too small stack size for async thread (%d).  "
+                    "Reset to %d\n", rdma_vbuf_secondary_pool_size, 
+                    RDMA_DEFAULT_ASYNC_THREAD_STACK_SIZE);
+            rdma_default_async_thread_stack_size = RDMA_DEFAULT_ASYNC_THREAD_STACK_SIZE;
+        }
+    }
 }
 
 /* This function is specifically written to make sure that HSAM

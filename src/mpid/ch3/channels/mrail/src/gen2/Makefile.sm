@@ -10,7 +10,8 @@
 
 SUBDIRS = .
 CFLAGS = @CFLAGS@ -D_GNU_SOURCE
-INCLUDES= -I${master_top_srcdir}/src/include -I../../../../../../include
+INCLUDES= -I@master_top_srcdir@/src/include -I../../../../../../include -I@master_top_srcdir@/src/mpid/ch3/channels/mrail/include/memory -I@master_top_srcdir@/src/mpid/ch3/channels/common/include
+VPATH = .:@srcdir@:@master_top_srcdir@/src/mpid/ch3/channels/common/src/memory:@master_top_srcdir@/src/mpid/ch3/channels/common/src/reg_cache:@master_top_srcdir@/src/mpid/ch3/channels/common/src/rdma_cm:@master_top_srcdir@/src/mpid/ch3/channels/common/src/detect/hca:@master_top_srcdir@/src/mpid/ch3/channels/common/src/detect/arch:@master_top_srcdir@/src/mpid/ch3/channels/common/src/memory/ptmalloc2
 
 lib${MPILIBNAME}_a_SOURCES = \
 ibv_send.c \
@@ -31,4 +32,8 @@ rdma_cm.c \
 cr.c \
 crc32h.c \
 ring_startup.c \
-sysreport.c
+sysreport.c \
+mv2_arch_detect.c \
+mv2_hca_detect.c \
+mem_hooks.c \
+mvapich_malloc.c

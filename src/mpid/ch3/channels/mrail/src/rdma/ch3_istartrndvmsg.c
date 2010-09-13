@@ -17,6 +17,7 @@
  */
 
 #include "mpidi_ch3_impl.h"
+#include "dreg.h"
 
 #ifdef DEBUG
 #define DEBUG_PRINT(args...)                                  \
@@ -34,8 +35,14 @@ do {                                                          \
 int rts_send = 0;
 int cts_recv = 0;
 
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3_Prepare_rndv
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 static inline void MPIDI_CH3_Prepare_rndv(MPIDI_VC_t *vc, MPID_Request *sreq)
 {
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_PREPARE_RNDV);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_PREPARE_RNDV);
     if (SMP_INIT && vc->smp.local_nodes >= 0 &&
         vc->smp.local_nodes != g_smpi.my_local_id) {
         sreq->mrail.protocol = VAPI_PROTOCOL_R3;
@@ -43,6 +50,7 @@ static inline void MPIDI_CH3_Prepare_rndv(MPIDI_VC_t *vc, MPID_Request *sreq)
     {
         MPIDI_CH3I_MRAIL_Prepare_rndv(vc, sreq);
     }
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_PREPARE_RNDV);
 }
 
 #undef FUNCNAME

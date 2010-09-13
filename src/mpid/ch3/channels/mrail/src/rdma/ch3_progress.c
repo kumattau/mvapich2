@@ -113,6 +113,8 @@ void MPIDI_CH3I_Progress_wakeup(void)
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3_Connection_terminate(MPIDI_VC_t * vc)
 {
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_MRAIL_CONNECTION_TERMINATE);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_MRAIL_CONNECTION_TERMINATE);
     /* There is no post_close for shm connections so 
      * handle them as closed immediately. */
     int mpi_errno = MPIDI_CH3U_Handle_connection(vc, MPIDI_VC_EVENT_TERMINATED);
@@ -123,6 +125,7 @@ int MPIDI_CH3_Connection_terminate(MPIDI_VC_t * vc)
     }
 
 fn_fail:
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_MRAIL_CONNECTION_TERMINATE);
     return mpi_errno;
 }
 
@@ -552,6 +555,8 @@ static int cm_handle_reactivation_complete()
     int i = 0;
     MPIDI_VC_t* vc = NULL;
     MPIDI_PG_t* pg = MPIDI_Process.my_pg;
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_CM_HANDLE_REACTIVATION_COMPLETE);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_CM_HANDLE_REACTIVATION_COMPLETE);
 
     for (; i < MPIDI_PG_Get_size(pg); ++i)
     {
@@ -586,6 +591,7 @@ static int cm_handle_reactivation_complete()
         }
     }
 
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_CM_HANDLE_REACTIVATION_COMPLETE);
     return MPI_SUCCESS;
 }
 #endif /* defined(CKPT) */
@@ -871,6 +877,8 @@ static int cm_handle_pending_send()
 {
     int mpi_errno = MPI_SUCCESS;
     MPIDI_PG_iterator iter;
+    MPIDI_STATE_DECL(MPID_STATE_CM_HANDLE_PENDING_SEND);
+    MPIDI_FUNC_ENTER(MPID_STATE_CM_HANDLE_PENDING_SEND);
 
     /* MPIDI_PG_Iterate_reset(); */
     MPIDI_PG_Get_iterator(&iter);
@@ -923,6 +931,7 @@ static int cm_handle_pending_send()
     }
 
 fn_fail:
+    MPIDI_FUNC_EXIT(MPID_STATE_CM_HANDLE_PENDING_SEND);
     return mpi_errno;
 }
 
@@ -932,6 +941,8 @@ fn_fail:
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 static int cm_accept_new_vc(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_cm_establish_t *header)
 {
+    MPIDI_STATE_DECL(MPID_STATE_CM_ACCEPT_NEW_VC);
+    MPIDI_FUNC_ENTER(MPID_STATE_CM_ACCEPT_NEW_VC);
     XRC_MSG ("cm_accept_new_vc");
     MPIU_Assert((uintptr_t)vc == header->vc_addr);
     MPIU_Assert(vc->pg == NULL);
@@ -940,6 +951,7 @@ static int cm_accept_new_vc(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_cm_establish_t *header
 #endif
     MPIDI_CH3I_Acceptq_enqueue(vc, header->port_name_tag);
 
+    MPIDI_FUNC_EXIT(MPID_STATE_CM_ACCEPT_NEW_VC);
     return MPI_SUCCESS;
 }
 
@@ -951,6 +963,8 @@ static int handle_read(MPIDI_VC_t * vc, vbuf * buffer)
 {
     int mpi_errno = MPI_SUCCESS;
     int header_type;
+    MPIDI_STATE_DECL(MPID_STATE_HANDLE_READ);
+    MPIDI_FUNC_ENTER(MPID_STATE_HANDLE_READ);
 
 #if defined(MPIDI_MRAILI_COALESCE_ENABLED)
     /* we don't know how many packets may be combined, so
@@ -1008,6 +1022,7 @@ fn_fail:
     /* by this point we can always free the vbuf */
     MPIDI_CH3I_MRAIL_Release_vbuf(buffer);
 
+    MPIDI_FUNC_EXIT(MPID_STATE_HANDLE_READ);
     return mpi_errno;
 }
 
@@ -1021,6 +1036,8 @@ static int handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* header_type
     int header_size = 0;
     MPIDI_CH3_Pkt_send_t* header = NULL;
     int packetized_recv = 0;
+    MPIDI_STATE_DECL(MPID_STATE_HANDLE_READ_INDIVIDUAL);
+    MPIDI_FUNC_ENTER(MPID_STATE_HANDLE_READ_INDIVIDUAL);
 
     /* Step one, ask lower level to provide header */
     /*  save header at req->dev.pending_pkt, and return the header size */
@@ -1244,6 +1261,7 @@ static int handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* header_type
 fn_fail:
 fn_exit:
     DEBUG_PRINT("exiting handle read\n");
+    MPIDI_FUNC_EXIT(MPID_STATE_HANDLE_READ_INDIVIDUAL);
     return mpi_errno;
 }
 

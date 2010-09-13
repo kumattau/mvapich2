@@ -24,6 +24,7 @@
 #include <limits.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <ctype.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
@@ -36,60 +37,13 @@
 #include "pmi.h"
 #include "smp_smpi.h"
 #include "mpiutil.h"
+#include "ch3_hwloc_bind.h"
+#include "mv2_arch_hca_detect.h"
 
 #if defined(MAC_OSX)
 #include <netinet/in.h>
 #endif /* defined(MAC_OSX) */
 
-/* CPU Mapping related definitions */
-#if defined(HAVE_LIBHWLOC)
-#include <hwloc.h>
-#include <dirent.h>
-#define CONFIG_FILE "/proc/cpuinfo"
-#define MAX_LINE_LENGTH 512
-#define MAX_NAME_LENGTH 64
-
-extern multi_core_arch_type_t arch_type;
-
-typedef enum{
-    CPU_FAMILY_NONE=0,
-    CPU_FAMILY_INTEL,
-    CPU_FAMILY_AMD,
-} cpu_type_t;
-
-int CLOVERTOWN_MODEL=15;
-int HARPERTOWN_MODEL=23;
-int NEHALEM_MODEL=26;
-
-int ip            = 0;
-int *core_mapping = NULL;
-int *obj_tree     = NULL;
-typedef enum{
-        POLICY_BUNCH,
-        POLICY_SCATTER,
-} policy_type_t;
-policy_type_t policy;
-hwloc_topology_t topology;
-
-typedef struct {
-        hwloc_obj_t obj;
-        cpu_set_t cpuset;
-        float load;
-} obj_attribute_type;
-
-int INTEL_XEON_DUAL_MAPPING[]      = {0,1,0,1};
-int INTEL_CLOVERTOWN_MAPPING[]     = {0,0,1,1,0,0,1,1};                  /*        ((0,1),(4,5))((2,3),(6,7))             */
-int INTEL_HARPERTOWN_LEG_MAPPING[] = {0,1,0,1,0,1,0,1};                  /* legacy ((0,2),(4,6))((1,3),(5,7))             */
-int INTEL_HARPERTOWN_COM_MAPPING[] = {0,0,0,0,1,1,1,1};                  /* common ((0,1),(2,3))((4,5),(6,7))             */
-int INTEL_NEHALEM_LEG_MAPPING[]    = {0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1};  /* legacy (0,2,4,6)(1,3,5,7) with hyperthreading */
-int INTEL_NEHALEM_COM_MAPPING[]    = {0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,1};  /* common (0,1,2,3)(4,5,6,7) with hyperthreading */
-int AMD_OPTERON_DUAL_MAPPING[]     = {0,0,1,1};
-int AMD_BARCELONA_MAPPING[]        = {0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3};
-
-extern int num_cpus;
-extern int use_hwloc_cpu_binding;
-#endif /* defined(HAVE_LIBHWLOC) */
-unsigned int mv2_enable_affinity=1; 
 
 #if defined(DEBUG)
 #define DEBUG_PRINT(args...) \
@@ -137,15 +91,13 @@ static int* s_total_bytes = NULL;
 int g_size_shmem = 0;
 int g_size_pool = 0; 
 
+/* SMP user parameters */
+ 
 int g_smp_eagersize;
-static int s_smpi_length_queue;
-static int s_smp_num_send_buffer;
-static int s_smp_batch_size;
-static char* s_cpu_mapping = NULL;
-static char* custom_cpu_mapping = NULL;
-static int s_cpu_mapping_line_max = _POSIX2_LINE_MAX;
-static int custom_cpu_mapping_line_max = _POSIX2_LINE_MAX;
-char *cpu_mapping = NULL;
+int s_smpi_length_queue;
+int s_smp_num_send_buffer;
+int s_smp_batch_size;
+int default_eager_size = 1;
 
 #if defined(_SMP_LIMIC_)
 int limic_fd;
@@ -190,7 +142,6 @@ extern void __iospace_sync(void);
 #define READBAR()
 #endif /* defined(MAC_OSX) || defined(_PPC64_) */
 
-static void smpi_setaffinity();
 static int smpi_exchange_info(MPIDI_PG_t *pg);
 static inline SEND_BUF_T *get_buf_from_pool (void);
 static inline void send_buf_reclaim (void);
@@ -209,11 +160,11 @@ static inline void smpi_malloc_assert(void *ptr, char *fct, char *msg)
 {
     int rank;
 
-    PMI_Get_rank(&rank);
     if (NULL == ptr) {
-    MPIU_Error_printf("Cannot Allocate Memory: [%d] in function %s, context: %s\n",
-        rank, fct, msg);
-    exit(-1);
+        PMI_Get_rank(&rank);
+        MPIU_Error_printf("Cannot Allocate Memory: [%d] in function %s, context: %s\n",
+                     rank, fct, msg);
+        exit(-1);
     }
 }
 
@@ -748,8 +699,19 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
                     MPIU_Assert(vc->smp.recv_current_pkt_type != SMP_RNDV_MSG ||
                         !use_limic);
 #endif
-            if(vc->smp.recv_current_pkt_type == SMP_RNDV_MSG)
+            if(vc->smp.recv_current_pkt_type == SMP_RNDV_MSG) {
                 vc->smp.recv_current_pkt_type = SMP_RNDV_MSG_CONT;
+
+#if defined(_SMP_LIMIC_)
+                if (use_limic) {
+                    vc->smp.use_limic = 1;
+                    vc->smp.current_l_header = l_header;
+                    vc->smp.current_nb = nb;
+                } else {
+                    vc->smp.use_limic = 0;
+                }
+#endif
+            }
         }
         }
     }
@@ -796,8 +758,6 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 #if defined(_X86_64_)
     volatile char tmpchar;
 #endif /* defined(_X86_64_) */
-    int default_eager_size = 1;
-
     if ((value = getenv("MV2_USE_BLOCKING")) != NULL) {
         blocking_val = !!atoi(value);
         if(blocking_val) {
@@ -825,24 +785,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
      * Do the initializations here. These will be needed on restart
      * after a checkpoint has been taken.
      */
-    g_smp_eagersize = SMP_EAGERSIZE;
-    s_smpi_length_queue = SMPI_LENGTH_QUEUE;
-    s_smp_num_send_buffer = SMP_NUM_SEND_BUFFER;
-    s_smp_batch_size = SMP_BATCH_SIZE;
 
-    if ((value = getenv("SMP_EAGERSIZE")) != NULL) {
-        g_smp_eagersize = atoi(value);
-    default_eager_size = 0;
-    }
-    if ((value = getenv("SMPI_LENGTH_QUEUE")) != NULL) {
-        s_smpi_length_queue = atoi(value);
-    }
-    if ((value = getenv("SMP_NUM_SEND_BUFFER")) != NULL ) {
-        s_smp_num_send_buffer = atoi(value);
-    }
-    if ((value = getenv("SMP_BATCH_SIZE")) != NULL ) {
-        s_smp_batch_size = atoi(value);
-    }
     if ((shmdir = getenv("MV2_SHMEM_DIR")) != NULL) {
         shmem_dir = shmdir;
     } else {
@@ -900,10 +843,6 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
             policy = POLICY_BUNCH;
          }
     } 
-#else  /* defined(HAVE_LIBHWLOC) */
-    /* MVAPICH2 has not been built with HWLOC. We cannnot do
-     * any binding. So, set affinity off */
-    mv2_enable_affinity = 0;
 #endif  /* defined(HAVE_LIBHWLOC) */
 
 
@@ -921,15 +860,22 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 
     DEBUG_PRINT("finished exchange info\n");
 
+    {
 #ifdef _SMP_LIMIC_
-    if(default_eager_size && arch_type == MULTI_CORE_ARCH_NEHALEM) {
-    g_smp_eagersize = 64;
-     }
+#ifdef MV_ARCH_OLD_CODE
+        if(default_eager_size && arch_type == MULTI_CORE_ARCH_NEHALEM) {
+#else
+        mv2_arch_type arch_type = mv2_get_arch_type();
+        if(default_eager_size && ( MV2_ARCH_INTEL_NEHALEM_8 == arch_type ||
+                    MV2_ARCH_INTEL_NEHALEM_16 == arch_type ) ){
+#endif
+            g_smp_eagersize = 65536;
+        }
 #endif /* _SMP_LIMIC_ */
+    }
 
     /* Convert to bytes */
-    g_smp_eagersize = g_smp_eagersize * 1024 + 1;
-    s_smpi_length_queue = s_smpi_length_queue * 1024;
+    g_smp_eagersize = g_smp_eagersize + 1;
 
 #if defined(DEBUG)
     int my_rank;
@@ -937,8 +883,8 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 
     if (my_rank == 0)
     {
-    DEBUG_PRINT("smp eager size %d, smp queue length %d\n",
-        g_smp_eagersize, s_smpi_length_queue);
+        DEBUG_PRINT("smp eager size %d\n, smp queue length %d\n",
+            g_smp_eagersize, s_smpi_length_queue);
     }
 #endif /* defined(DEBUG) */
 
@@ -1542,6 +1488,8 @@ void MPIDI_CH3I_SMP_writev_rndv_header(MPIDI_VC_t * vc, const MPID_IOV * iov,
     MPID_Request *sreq = NULL;
     limic_user lu;
 #endif
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_WRITEV_RNDV_HEADER);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_WRITEV_RNDV_HEADER);
 
     pkt_avail = smpi_get_avail_length(vc->smp.local_nodes);
 
@@ -1558,13 +1506,17 @@ void MPIDI_CH3I_SMP_writev_rndv_header(MPIDI_VC_t * vc, const MPID_IOV * iov,
     pkt_avail = (pkt_avail > g_smp_eagersize) ? g_smp_eagersize : pkt_avail;
     pkt_avail -= sizeof(int);
 
-#if defined(_SMP_LIMIC_)
-    if (g_smp_use_limic2) {
-        /* iov[0] is the header pkt */
-        pkt_header = (MPIDI_CH3_Pkt_send_t *)(iov[0].MPID_IOV_BUF);
+    /* iov[0] is the header pkt */
+    pkt_header = (MPIDI_CH3_Pkt_send_t *)(iov[0].MPID_IOV_BUF);
 
-        /* sreq is the send request handle for the data */
-        sreq = pkt_header->mrail.send_req_id;
+#if defined(_SMP_LIMIC_)
+    /* sreq is the send request handle for the data */
+    sreq = pkt_header->mrail.send_req_id;
+
+    /* sreq_req_id is set to NULL for non-contig data, then fall back to shared memory
+     * instead of using limic; or else, continue data transfer by limic */
+    if (g_smp_use_limic2 && sreq) {
+
         assert(sreq->dev.iov_count == 1);
         /* The last sizeof(int) is the total num of data bytes */
         pkt_len = iov[0].MPID_IOV_LEN + sizeof(limic_user) * sreq->dev.iov_count + sizeof(int);
@@ -1625,7 +1577,6 @@ void MPIDI_CH3I_SMP_writev_rndv_header(MPIDI_VC_t * vc, const MPID_IOV * iov,
     goto fn_exit;
     }
 
-    pkt_header = (MPIDI_CH3_Pkt_send_t *)(iov[0].MPID_IOV_BUF);
     pkt_header->mrail.src.smp_index = s_sh_buf_pool.free_head;
 
     ptr = (void *) ((unsigned long) ptr + sizeof(int));
@@ -1692,6 +1643,7 @@ void MPIDI_CH3I_SMP_writev_rndv_header(MPIDI_VC_t * vc, const MPID_IOV * iov,
 
 fn_exit:
     DEBUG_PRINT("writev_rndv_header returns bytes %d\n", *num_bytes_ptr);
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_WRITEV_RNDV_HEADER);
     return;
 
 fn_fail:
@@ -1715,6 +1667,8 @@ void MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, const MPID_IOV * iov,
     SEND_BUF_T *send_buf = NULL;
     SEND_BUF_T *tmp_buf = NULL;
     int has_sent = 0;
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_WRITEV_RNDV_DATA_CONT);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_WRITEV_RNDV_DATA_CONT);
 
     pkt_avail = smpi_get_avail_length(vc->smp.local_nodes);
 
@@ -1827,6 +1781,7 @@ void MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, const MPID_IOV * iov,
 
 fn_exit:
     DEBUG_PRINT("writev_rndv_data_cont returns bytes %d\n", *num_bytes_ptr);
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_WRITEV_RNDV_DATA_CONT);
 }
 
 #undef FUNCNAME
@@ -1846,6 +1801,8 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, const MPID_IOV * iov,
     SEND_BUF_T *tmp_buf = NULL;
     int has_sent=0;
     int mpi_errno = MPI_SUCCESS;
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_WRITE_RNDV_DATA);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_WRITE_RNDV_DATA);
 
     pkt_avail = SMP_SEND_BUF_SIZE;
 
@@ -1943,6 +1900,7 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, const MPID_IOV * iov,
 
 fn_exit:
     DEBUG_PRINT("writev_rndv_data returns bytes %d\n", *num_bytes_ptr);
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_WRITE_RNDV_DATA);
     return mpi_errno;
 
 fn_fail:
@@ -1961,6 +1919,8 @@ void MPIDI_CH3I_SMP_writev(MPIDI_VC_t * vc, const MPID_IOV * iov,
     volatile void *ptr_volatile;
     void *ptr_head, *ptr;
     int i, offset = 0;
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SMP_WRITEV);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SMP_WRITEV);
 
     pkt_avail = smpi_get_avail_length(vc->smp.local_nodes);
 
@@ -2053,6 +2013,7 @@ void MPIDI_CH3I_SMP_writev(MPIDI_VC_t * vc, const MPID_IOV * iov,
     } while (pkt_avail > 0);
 fn_exit:
     DEBUG_PRINT("writev returns bytes %d\n", *num_bytes_ptr);
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SMP_WRITEV);
 }
 
 #undef FUNCNAME
@@ -2082,6 +2043,8 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
     int total_bytes = l_header->total_bytes;
 #endif
     /* all variable must be declared before the state declarations */
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_READV_RNDV_CONT);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_READV_RNDV_CONT);
 
     *num_bytes_ptr = 0;
 
@@ -2345,6 +2308,7 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
 
 fn_exit:
     DEBUG_PRINT("return with nb %d\n", *num_bytes_ptr);
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_READV_RNDV_CONT);
     return mpi_errno;
 
 fn_fail:
@@ -2376,6 +2340,8 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
     int current_index = index;
     void *current_buf;
     SEND_BUF_T *recv_buf;
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SMP_READ_RNDV);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SMP_READ_RNDV);
 
     *num_bytes_ptr = 0;
 
@@ -2648,6 +2614,7 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
 
 fn_exit:
     DEBUG_PRINT("return with nb %d\n", *num_bytes_ptr);
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SMP_READ_RNDV);
     return mpi_errno;
 
 fn_fail:
@@ -2662,9 +2629,13 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
     const int iovlen, int
     *num_bytes_ptr)
 {
+    int mpi_errno = MPI_SUCCESS;
+
     int iov_off = 0, buf_off = 0;
     int received_bytes = 0;
     /* all variable must be declared before the state declarations */
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SMP_READV);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SMP_READV);
 
     *num_bytes_ptr = 0;
 
@@ -2824,7 +2795,8 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
     }
 fn_exit:
     DEBUG_PRINT("return with nb %d\n", *num_bytes_ptr);
-    return MPI_SUCCESS;
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SMP_READV);
+    return mpi_errno;
 }
 
 #undef FUNCNAME
@@ -2833,6 +2805,8 @@ fn_exit:
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3I_SMP_pull_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t** pkt_head)
 {
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SMP_PULL_HEADER);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SMP_PULL_HEADER);
     if (s_current_bytes[vc->smp.local_nodes] != 0)
     {
         MPIU_Error_printf(
@@ -2897,1140 +2871,10 @@ int MPIDI_CH3I_SMP_pull_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t** pkt_head)
         *pkt_head = NULL;
     }
 
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SMP_PULL_HEADER);
     return MPI_SUCCESS;
 }
 
-#if defined(HAVE_LIBHWLOC)
-
-int pid_filter(const struct dirent *dir_obj)
-{
-        int i;
-        int length = strlen(dir_obj->d_name);
-
-        for (i = 0; i < length; i++) {
-                if (!isdigit(dir_obj->d_name[i])) {
-                return 0;
-                }
-        }
-        return 1;
-}
-
-void find_parent(hwloc_obj_t obj, hwloc_obj_type_t type, hwloc_obj_t * parent)
-{
-        if ((type == HWLOC_OBJ_CORE) || (type == HWLOC_OBJ_SOCKET)
-                || (type == HWLOC_OBJ_NODE)) {
-                if (obj->parent->type == type) {
-                        *parent = obj->parent;
-                        return;
-                } else {
-                        find_parent(obj->parent, type, parent);
-                }
-        } else {
-                return;
-        }
-}
-
-void find_leastload_node(obj_attribute_type *tree, hwloc_obj_t original, hwloc_obj_t *result)
-{
-        int i, j, k, per, index, depth_nodes, num_nodes, depth_sockets, num_sockets;
-        hwloc_obj_t obj, tmp;
-
-        depth_nodes = hwloc_get_type_depth(topology, HWLOC_OBJ_NODE);
-        num_nodes = hwloc_get_nbobjs_by_depth(topology, depth_nodes);
-
-        /* One socket includes multi numanodes. */
-        if ((original->type == HWLOC_OBJ_SOCKET)) {
-                depth_sockets = hwloc_get_type_depth(topology, HWLOC_OBJ_SOCKET);
-                num_sockets = hwloc_get_nbobjs_by_depth(topology, depth_sockets);
-                per = num_nodes / num_sockets;
-                index = (original->logical_index) * per;
-                if (per == 1) {
-                        *result = tree[depth_nodes * num_nodes + index].obj;
-                } else {
-                        i = depth_nodes * num_nodes + index;
-                        for (k = 0; k < (per - 1); k++){
-                                j = i + k + 1;
-                                i = (tree[i].load > tree[j].load) ? j : i;
-                        }
-                        *result = tree[i].obj;
-                }
-        } else if (original->type == HWLOC_OBJ_MACHINE) {
-                tmp = NULL;
-                for (k = 0; k < num_nodes; k++) {
-                        obj = hwloc_get_obj_by_depth(topology, depth_nodes, k);
-                        if (tmp == NULL) {
-                                tmp = obj;
-                        } else {
-                                i = depth_nodes * num_nodes + tmp->logical_index;
-                                j = depth_nodes * num_nodes + obj->logical_index;
-                                if (tree[i].load > tree[j].load) tmp = obj;
-                        }
-                }
-                *result = tmp;
-        } else {
-                *result = NULL;
-        }
-        return;
-}
-
-void find_leastload_socket(obj_attribute_type *tree, hwloc_obj_t original, hwloc_obj_t *result)
-{
-        int i, j, k, per, index, depth_sockets, num_sockets, depth_nodes, num_nodes;
-        hwloc_obj_t obj, tmp;
-
-        depth_sockets = hwloc_get_type_depth(topology, HWLOC_OBJ_SOCKET);
-        num_sockets = hwloc_get_nbobjs_by_depth(topology, depth_sockets);
-
-        /* One numanode includes multi sockets. */
-        if ((original->type == HWLOC_OBJ_NODE)) {
-                depth_nodes = hwloc_get_type_depth(topology, HWLOC_OBJ_NODE);
-                num_nodes = hwloc_get_nbobjs_by_depth(topology, depth_nodes);
-                per = num_sockets / num_nodes;
-                index = (original->logical_index) * per;
-                if (per == 1) {
-                        *result = tree[depth_sockets * num_sockets + index].obj;
-                } else {
-                        i = depth_sockets * num_sockets + index;
-                        for (k = 0; k < (per - 1); k++){
-                                j = i + k + 1;
-                                i = (tree[i].load > tree[j].load) ? j : i;
-                        }
-                        *result = tree[i].obj;
-                }
-        } else if (original->type == HWLOC_OBJ_MACHINE) {
-                tmp = NULL;
-                for (k = 0; k < num_sockets; k++) {
-                        obj = hwloc_get_obj_by_depth(topology, depth_sockets, k);
-                        if (tmp == NULL) {
-                                tmp = obj;
-                        } else {
-                                i = depth_sockets * num_sockets + tmp->logical_index;
-                                j = depth_sockets * num_sockets + obj->logical_index;
-                                if (tree[i].load > tree[j].load) tmp = obj;
-                        }
-                }
-                *result = tmp;
-        } else {
-                *result = NULL;
-        }
-        return;
-}
-
-void find_leastload_core(obj_attribute_type *tree, hwloc_obj_t original, hwloc_obj_t *result)
-{
-        int i, j, k, per, index;
-        int depth_cores, num_cores, depth_sockets, num_sockets, depth_nodes, num_nodes;
-        hwloc_obj_t obj, tmp;
-
-        depth_cores = hwloc_get_type_depth(topology, HWLOC_OBJ_CORE);
-        num_cores = hwloc_get_nbobjs_by_depth(topology, depth_cores);
-
-        /* Core may have Socket or Numanode as direct parent. */
-        if ((original->type == HWLOC_OBJ_NODE)) {
-                depth_nodes = hwloc_get_type_depth(topology, HWLOC_OBJ_NODE);
-                num_nodes = hwloc_get_nbobjs_by_depth(topology, depth_nodes);
-                per = num_cores / num_nodes;
-                index = (original->logical_index) * per;
-                if (per == 1) {
-                        *result = tree[depth_cores * num_cores + index].obj;
-                } else {
-                        i = depth_cores * num_cores + index;
-                        for (k = 0; k < (per - 1); k++){
-                                j = i + k + 1;
-                                i = (tree[i].load > tree[j].load) ? j : i;
-                        }
-                        *result = tree[i].obj;
-                }
-        } else if (original->type == HWLOC_OBJ_SOCKET) {
-                depth_sockets = hwloc_get_type_depth(topology, HWLOC_OBJ_SOCKET);
-                num_sockets = hwloc_get_nbobjs_by_depth(topology, depth_sockets);
-                per = num_cores / num_sockets;
-                index = (original->logical_index) * per;
-                if (per == 1) {
-                        *result = tree[depth_cores * num_cores + index].obj;
-                } else {
-                        i = depth_cores * num_cores + index;
-                        for (k = 0; k < (per - 1); k++){
-                                j = i + k + 1;
-                                i = (tree[i].load > tree[j].load) ? j : i;
-                        }
-                        *result = tree[i].obj;
-                }
-        } else {
-                *result = NULL;
-        }
-        return;
-}
-
-void find_leastload_pu(obj_attribute_type *tree, hwloc_obj_t original, hwloc_obj_t *result)
-{
-        int i, j, k, per, index, depth_pus, num_pus, depth_cores, num_cores;
-        hwloc_obj_t obj, tmp;
-
-        depth_pus = hwloc_get_type_depth(topology, HWLOC_OBJ_PU);
-        num_pus = hwloc_get_nbobjs_by_depth(topology, depth_pus);
-
-        /* Assume: pu only has core as direct parent. */
-        if ((original->type == HWLOC_OBJ_CORE)) {
-                depth_cores = hwloc_get_type_depth(topology, HWLOC_OBJ_CORE);
-                num_cores = hwloc_get_nbobjs_by_depth(topology, depth_cores);
-                per = num_pus / num_cores;
-                index = (original->logical_index) * per;
-                if (per == 1) {
-                        *result = tree[depth_pus * num_pus + index].obj;
-                } else {
-                        i = depth_pus * num_pus + index;
-                        for (k = 0; k < (per - 1); k++){
-                                j = i + k + 1;
-                                i = (tree[i].load > tree[j].load) ? j : i;
-                        }
-                        *result = tree[i].obj;
-                }
-        } else {
-                *result = NULL;
-        }
-        return;
-}
-
-void update_obj_attribute(obj_attribute_type *tree, int index, hwloc_obj_t obj, int cpuset, float load)
-{
-        tree[index].obj = obj;
-        if (!(cpuset < 0)) {
-                CPU_SET(cpuset, &(tree[index].cpuset));
-        }
-        tree[index].load += load;
-}
-
-void insert_load(obj_attribute_type *tree, hwloc_obj_t pu, int cpuset, float load)
-{
-        int i, j, k, depth_pus, num_pus;
-        int depth_cores, num_cores, depth_sockets, num_sockets, depth_nodes, num_nodes;
-        hwloc_obj_t parent;
-
-        depth_pus = hwloc_get_type_or_below_depth(topology, HWLOC_OBJ_PU);
-        num_pus = hwloc_get_nbobjs_by_depth(topology, depth_pus);
-
-        depth_nodes = hwloc_get_type_depth(topology, HWLOC_OBJ_NODE);
-        if(depth_nodes != HWLOC_TYPE_DEPTH_UNKNOWN) {
-                num_nodes = hwloc_get_nbobjs_by_depth(topology, depth_nodes);
-        }
-        depth_sockets = hwloc_get_type_depth(topology, HWLOC_OBJ_SOCKET);
-        if(depth_sockets != HWLOC_TYPE_DEPTH_UNKNOWN) {
-                num_sockets = hwloc_get_nbobjs_by_depth(topology, depth_sockets);
-        }
-        depth_cores = hwloc_get_type_depth(topology, HWLOC_OBJ_CORE);
-        if(depth_cores != HWLOC_TYPE_DEPTH_UNKNOWN) {
-                num_cores = hwloc_get_nbobjs_by_depth(topology, depth_cores);
-        }
-
-        /* Add obj, cpuset and load for HWLOC_OBJ_PU */
-        k = depth_pus * num_pus + pu->logical_index;
-        update_obj_attribute(tree, k, pu, cpuset, load);
-        /* Add cpuset and load for HWLOC_OBJ_CORE */
-        if (depth_cores != HWLOC_TYPE_DEPTH_UNKNOWN) {
-                find_parent(pu, HWLOC_OBJ_CORE, &parent);
-                k = depth_cores * num_cores + parent->logical_index;
-                update_obj_attribute(tree, k, parent, cpuset, load);
-        }
-        /* Add cpuset and load for HWLOC_OBJ_SOCKET */
-        if (depth_sockets != HWLOC_TYPE_DEPTH_UNKNOWN) {
-                find_parent(pu, HWLOC_OBJ_SOCKET, &parent);
-                k = depth_sockets * num_sockets + parent->logical_index;
-                update_obj_attribute(tree, k, parent, cpuset, load);
-        }
-        /* Add cpuset and load for HWLOC_OBJ_NODE */
-        if (depth_nodes != HWLOC_TYPE_DEPTH_UNKNOWN) {
-                find_parent(pu, HWLOC_OBJ_NODE, &parent);
-                k = depth_nodes * num_nodes + parent->logical_index;
-                update_obj_attribute(tree, k, parent, cpuset, load);
-        }
-        return;
-}
-
-void cac_load(obj_attribute_type *tree, cpu_set_t cpuset)
-{
-        int i, j, k, depth_pus, num_pus;
-        float proc_load;
-        int num_processes = 0;
-        int depth_cores, num_cores, depth_sockets, num_sockets, depth_nodes, num_nodes;
-        hwloc_obj_t obj, root, parent;
-
-        depth_pus = hwloc_get_type_or_below_depth(topology, HWLOC_OBJ_PU);
-        num_pus = hwloc_get_nbobjs_by_depth(topology, depth_pus);
-
-        for (i = 0; i < num_pus; i++) {
-                if (CPU_ISSET(i, &cpuset)) {
-                        num_processes++;
-                }
-        }
-
-        /* Process is running on num_processes cores; for each core, the load is proc_load. */
-        proc_load = 1 / num_processes;
-
-        /*
-         * num_objs is HWLOC_OBJ_PU number, and system CPU number;
-         * also HWLOC_OBJ_CORE number when HT disabled or without HT.
-         */
-
-        root = hwloc_get_root_obj(topology);
-        depth_nodes = hwloc_get_type_depth(topology, HWLOC_OBJ_NODE);
-        if(depth_nodes != HWLOC_TYPE_DEPTH_UNKNOWN) {
-                num_nodes = hwloc_get_nbobjs_by_depth(topology, depth_nodes);
-        }
-        depth_sockets = hwloc_get_type_depth(topology, HWLOC_OBJ_SOCKET);
-        if(depth_sockets != HWLOC_TYPE_DEPTH_UNKNOWN) {
-                num_sockets = hwloc_get_nbobjs_by_depth(topology, depth_sockets);
-        }
-        depth_cores = hwloc_get_type_depth(topology, HWLOC_OBJ_CORE);
-        if(depth_cores != HWLOC_TYPE_DEPTH_UNKNOWN) {
-                num_cores = hwloc_get_nbobjs_by_depth(topology, depth_cores);
-        }
-
-        for (i = 0; i < num_pus; i++) {
-                if (CPU_ISSET(i, &cpuset)) {
-                        for (j = 0; j < num_pus; j++) {
-                                obj = hwloc_get_obj_by_depth(topology, depth_pus, j);
-                                if (obj->os_index == i) {
-                                        insert_load(tree, obj, i, proc_load);
-                                }
-                        }
-                }
-        }
-        return;
-}
-
-void insert_core_mapping(int index, hwloc_obj_t pu, obj_attribute_type * tree)
-{
-        core_mapping[index] = pu->os_index;
-        /* This process will be binding to one pu/core.
-         * The load for this pu/core is 1; and not update cpuset.
-         */
-        insert_load(tree, pu, -1, 1);
-        return;
-}
-
-void map_scatter_load(obj_attribute_type *tree)
-{
-        int i, j, k, depth_pus, num_pus;
-        int depth_cores, num_cores, depth_sockets, num_sockets, depth_nodes, num_nodes;
-        hwloc_obj_t root, node, socket, core_parent, core, result;
-
-        root =  hwloc_get_root_obj(topology);
-
-        depth_nodes = hwloc_get_type_depth(topology, HWLOC_OBJ_NODE);
-        if(depth_nodes != HWLOC_TYPE_DEPTH_UNKNOWN) {
-                num_nodes = hwloc_get_nbobjs_by_depth(topology, depth_nodes);
-        }
-
-        depth_sockets = hwloc_get_type_depth(topology, HWLOC_OBJ_SOCKET);
-        if(depth_sockets != HWLOC_TYPE_DEPTH_UNKNOWN) {
-                num_sockets = hwloc_get_nbobjs_by_depth(topology, depth_sockets);
-        }
-
-        depth_cores = hwloc_get_type_depth(topology, HWLOC_OBJ_CORE);
-        if(depth_cores != HWLOC_TYPE_DEPTH_UNKNOWN) {
-                num_cores = hwloc_get_nbobjs_by_depth(topology, depth_cores);
-        }
-
-        k = 0;
-        /*Assume: there is always existing SOCKET, but not always existing NUMANODE(like Clovertown).*/
-        while (k < num_cores) {
-                if (depth_nodes == HWLOC_TYPE_DEPTH_UNKNOWN) {
-                        find_leastload_socket(tree, root, &result);
-                } else {
-                        if((depth_nodes) < (depth_sockets)){
-                                find_leastload_node(tree, root, &result);
-                                node = result;
-                                find_leastload_socket(tree, node, &result);
-                        } else {
-                                find_leastload_socket(tree, root, &result);
-                                socket = result;
-                                find_leastload_node(tree, socket, &result);
-                        }
-                }
-                core_parent = result;
-                find_leastload_core(tree, core_parent, &result);
-                core = result;
-                find_leastload_pu(tree, core, &result);
-                insert_core_mapping(k, result, tree);
-                k++;
-        }
-}
-
-void map_bunch_load(obj_attribute_type *tree)
-{
-        int i, j, k, per, per_socket_node, depth_pus, num_pus, core_parent_num;
-        float current_socketornode_load, current_core_load;
-        int depth_cores, num_cores, depth_sockets, num_sockets, depth_nodes, num_nodes;
-        hwloc_obj_t root, node, socket, core_parent, core, pu, result, tmp;
-
-        root =  hwloc_get_root_obj(topology);
-
-        depth_nodes = hwloc_get_type_depth(topology, HWLOC_OBJ_NODE);
-        if(depth_nodes != HWLOC_TYPE_DEPTH_UNKNOWN) {
-                num_nodes = hwloc_get_nbobjs_by_depth(topology, depth_nodes);
-        }
-
-        depth_sockets = hwloc_get_type_depth(topology, HWLOC_OBJ_SOCKET);
-        if(depth_sockets != HWLOC_TYPE_DEPTH_UNKNOWN) {
-                num_sockets = hwloc_get_nbobjs_by_depth(topology, depth_sockets);
-        }
-
-        depth_cores = hwloc_get_type_depth(topology, HWLOC_OBJ_CORE);
-        if(depth_cores != HWLOC_TYPE_DEPTH_UNKNOWN) {
-                num_cores = hwloc_get_nbobjs_by_depth(topology, depth_cores);
-        }
-
-        depth_pus = hwloc_get_type_depth(topology, HWLOC_OBJ_PU);
-        if(depth_pus != HWLOC_TYPE_DEPTH_UNKNOWN) {
-                num_pus = hwloc_get_nbobjs_by_depth(topology, depth_pus);
-        }
-
-        k = 0;
-        /*Assume: there is always existing SOCKET, but not always existing NUMANODE(like Clovertown).*/
-        while (k < num_cores) {
-                if (depth_nodes == HWLOC_TYPE_DEPTH_UNKNOWN) {
-                        find_leastload_socket(tree, root, &result);
-                        core_parent_num = num_sockets;
-                        core_parent = result;
-			per = num_cores / num_sockets;
-                        for (i = 0; (i < per) && (k < num_cores); i++) {
-                                find_leastload_core(tree, core_parent, &result);
-                                core = result;
-                                find_leastload_pu(tree, core, &result);
-                                pu = result;
-                                if (i == 0) {
-                                        current_core_load = tree[depth_pus * num_pus + pu->logical_index].load;
-                                        insert_core_mapping(k, pu, tree);
-                                        k++;
-                                } else {
-                                        if (tree[depth_pus * num_pus + pu->logical_index].load == current_core_load) {
-                                                insert_core_mapping(k, pu, tree);
-                                                k++;
-                                        }
-                                }
-                        }
-                } else {
-                        if((depth_nodes) < (depth_sockets)) {
-                                find_leastload_node(tree, root, &result);
-                                node = result;
-                                per_socket_node = num_sockets / num_nodes;
-                                for (j = 0; (j < per_socket_node) && (k < num_cores); j++) {
-                                        find_leastload_socket(tree, node, &result);
-                                        socket = result;
-                                        if (j == 0) {
-                                                current_socketornode_load =
-                                                        tree[depth_sockets * num_sockets + socket->logical_index].load;
-                                                per = num_cores / num_sockets;
-                                                for (i = 0; (i < per) && (k < num_cores); i++) {
-                                                        find_leastload_core(tree, socket, &result);
-                                                        core = result;
-                                                        find_leastload_pu(tree, core, &result);
-                                                        pu = result;
-                                                        if (i == 0) {
-                                                                current_core_load = tree[depth_pus * num_pus + pu->logical_index].load;
-                                                                insert_core_mapping(k, pu, tree);
-                                                                k++;
-                                                        } else {
-                                                                if (tree[depth_pus * num_pus + pu->logical_index].load == current_core_load) {
-                                                                        insert_core_mapping(k, pu, tree);
-                                                                        k++;
-                                                                }
-                                                        }
-                                                }
-                                        } else {
-                                                if (tree[depth_sockets * num_sockets + socket->logical_index]. load == current_socketornode_load) {
-                                                        for (i = 0; (i < per) && (k < num_cores); i++) {
-                                                                find_leastload_core(tree, socket, &result);
-                                                                core = result;
-                                                                find_leastload_pu(tree, core, &result);
-                                                                pu = result;
-                                                                if (i == 0) {
-                                                                        current_core_load = tree[depth_pus * num_pus + pu->logical_index].load;
-                                                                        insert_core_mapping(k, pu, tree);
-                                                                        k++;
-                                                                } else {
-                                                                        if (tree[depth_pus * num_pus + pu->logical_index].load == current_core_load) {
-                                                                                insert_core_mapping(k, pu, tree);
-                                                                                k++;
-                                                                        }
-                                                                }
-                                                        }
-
-                                                }
-                                        }
-                                }
-                        } else { // depth_nodes > depth_sockets
-                                find_leastload_socket(tree, root, &result);
-                                socket = result;
-                                per_socket_node = num_nodes / num_sockets;
-                                for (j = 0; (j < per_socket_node) && (k < num_cores); j++) {
-                                        find_leastload_node(tree, socket, &result);
-                                        node = result;
-                                        if (j == 0) {
-                                                current_socketornode_load =
-                                                        tree[depth_nodes * num_nodes + node->logical_index].load;
-                                                per = num_cores / num_sockets;
-                                                for (i = 0; (i < per) && (k < num_cores); i++) {
-                                                        find_leastload_core(tree, node, &result);
-                                                        core = result;
-                                                        find_leastload_pu(tree, core, &result);
-                                                        pu = result;
-                                                        if (i == 0) {
-                                                                current_core_load = tree[depth_pus * num_pus + pu->logical_index].load;
-                                                                insert_core_mapping(k, pu, tree);
-                                                                k++;
-                                                        } else {
-                                                                if (tree[depth_pus * num_pus + pu->logical_index].load == current_core_load) {
-                                                                        insert_core_mapping(k, pu, tree);
-                                                                        k++;
-                                                                }
-                                                        }
-                                                }
-                                        } else {
-                                                if (tree[depth_nodes * num_nodes + node->logical_index]. load == current_socketornode_load) {
-                                                        for (i = 0; (i < per) && (k < num_cores); i++) {
-                                                                find_leastload_core(tree, node, &result);
-                                                                core = result;
-                                                                find_leastload_pu(tree, core, &result);
-                                                                pu = result;
-                                                                if (i == 0) {
-                                                                        current_core_load = tree[depth_pus * num_pus + pu->logical_index].load;
-                                                                        insert_core_mapping(k, pu, tree);
-                                                                        k++;
-                                                                } else {
-                                                                        if (tree[depth_pus * num_pus + pu->logical_index].load == current_core_load) {
-                                                                                insert_core_mapping(k, pu, tree);
-                                                                                k++;
-                                                                        }
-                                                                }
-                                                        }
-                                                }
-                                        }
-                                }
-                        } /* depth_nodes > depth_sockets */
-                }
-        } /* while */
-}
-
-/*
- * Find next processor in obj_tree, history stored in obj_tree.
- * Yields "scatter" affinity scenario in core_mapping.
- */
-void map_scatter(hwloc_obj_t obj, int depth)
-{
-    int i = depth * num_cpus + obj->logical_index;
-
-    if(obj->type == HWLOC_OBJ_PU) {                                    /* found a processor */
-      core_mapping[ip++] = obj->os_index;
-    } else if((obj_tree[i] == -1) || (obj_tree[i] == obj->arity - 1)) {  /* init tree or restart */
-      obj_tree[i] = 0;
-      map_scatter(obj->children[0], depth + 1);
-    } else {                                                             /* next child */
-      obj_tree[i]++;
-      map_scatter(obj->children[obj_tree[i]], depth + 1);    
-    }
-return; 
-}
-
-/*
- * Yields "bunch" affinity scenario in core_mapping.
- */
-
-void map_bunch(hwloc_obj_t obj, int depth)
-{
-    int index;
-
-    if(obj->type == HWLOC_OBJ_PU) {                                    /* found a processor */
-      core_mapping[ip++] = obj->os_index;
-    } else {
-      for (index = 0; index < obj->arity; index++)
-          map_bunch(obj->children[index], depth + 1);
-    }
-return;
-}
-
-int num_digits(int num_cpus)
-{
-    int n_digits = 1;
-    while(num_cpus > 0) { 
-       n_digits++; 
-       num_cpus /= 10; 
-    } 
-return n_digits;
-}
-
-int get_cpu_mapping_hwloc(long N_CPUs_online, hwloc_topology_t topology)
-{
-    hwloc_obj_t  sysobj;
-    unsigned topodepth = -1, depth = -1;
-    int num_sockets = 0, num_processes = 0, cpu_model = 0, rc = 0, i;
-    char line[MAX_LINE_LENGTH], input[MAX_NAME_LENGTH], *s, *key;
-    FILE *fp;
-    cpu_type_t cpu_type = CPU_FAMILY_NONE;
-    struct dirent **namelist;
-    pid_t pid;
-    obj_attribute_type *tree = NULL;
-    char *value;
-    int mv2_enable_leastload = 0;
-    
-    /* Determine topology depth */
-    topodepth = hwloc_topology_get_depth(topology);
-    if(topodepth == HWLOC_TYPE_DEPTH_UNKNOWN) {
-      fprintf(stderr, "Warning: %s: Failed to determine topology depth.\n", __func__);
-      return (topodepth); 
-    }
-
-    /* Count number of (logical) processors */
-    depth = hwloc_get_type_depth(topology, HWLOC_OBJ_PU);
-    
-    if(depth == HWLOC_TYPE_DEPTH_UNKNOWN) {
-      fprintf(stderr, "Warning: %s: Failed to determine number of processors.\n", __func__);
-      return (depth);
-    }
-    if(! (num_cpus = hwloc_get_nbobjs_by_depth(topology, depth))) {
-      fprintf(stderr, "Warning: %s: Failed to determine number of processors.\n", __func__);
-      return -1; 
-    }
-
-    /* Count number of sockets */
-    depth = hwloc_get_type_depth(topology, HWLOC_OBJ_SOCKET);
-    if(depth == HWLOC_TYPE_DEPTH_UNKNOWN) {
-      fprintf(stderr, "Warning: %s: Failed to determine number of sockets.\n", __func__);
-      return (depth); 
-    } else {
-      num_sockets = hwloc_get_nbobjs_by_depth(topology, depth);
-    }
-
-    if(s_cpu_mapping == NULL) { 
-      /* We need to do allocate memory for the custom_cpu_mapping array 
-       * and determine the current load on the different cpu's only 
-       * when the user has not specified a mapping string. If the user 
-       * has provided a mapping string, it overrides everything. 
-       */ 
-      custom_cpu_mapping = MPIU_Malloc(sizeof(char) * num_cpus* (num_digits(num_cpus)) + 1); 
-      if(custom_cpu_mapping == NULL) { 
-        goto error_free;
-      } 
-      MPIU_Memset(custom_cpu_mapping, 0, sizeof(char) * num_cpus* (num_digits(num_cpus)) + 1);
-      
-      core_mapping =  MPIU_Malloc(num_cpus * sizeof(int)); 
-      if(core_mapping == NULL) { 
-        goto error_free;
-      } 
-      for(i = 0; i < num_cpus; i++) { 
-        core_mapping[i] = -1;
-      } 
-
-      tree = MPIU_Malloc(num_cpus * topodepth * sizeof(obj_attribute_type));
-      if(tree == NULL) {
-        goto error_free;
-      }
-      for(i = 0; i < num_cpus * topodepth; i++) {
-        tree[i].obj = NULL;
-        tree[i].load = 0;
-        CPU_ZERO(&(tree[i].cpuset));
-      }
-    
-      if(! (obj_tree = (int *) MPIU_Malloc(num_cpus * topodepth *sizeof(*obj_tree)))) {
-        goto error_free;
-      }
-      for(i = 0; i < num_cpus * topodepth; i++) {
-        obj_tree[i] = -1;
-      }
-
-      ip = 0;
-      sysobj = hwloc_get_root_obj(topology);
-
-      /* MV2_ENABLE_LEASTLOAD: map_bunch/scatter or map_bunch/scatter_load */
-      if ((value = getenv("MV2_ENABLE_LEASTLOAD")) != NULL) {
-        mv2_enable_leastload = atoi(value);
-        if (mv2_enable_leastload != 1) {
-            mv2_enable_leastload = 0;
-        }
-      }
-
-      /* MV2_ENABLE_LEASTLOAD=1, map_bunch_load or map_scatter_load is used */
-      if (mv2_enable_leastload == 1) {
-        /*
-         * Get all processes' pid and cpuset.
-         * Get numanode, socket, and core current load according to processes running on it.
-         */
-        num_processes = scandir("/proc", &namelist, pid_filter, alphasort);
-        if (num_processes < 0) {
-            fprintf(stderr, "Warning: %s: Failed to scandir /proc.\n", __func__);
-            return -1;
-        } else {
-            int status;
-            cpu_set_t pid_cpuset = {0};
-            CPU_ZERO(&pid_cpuset);
-
-            /* Get cpuset for each running process. */
-            for(i = 0; i < num_processes; i++) {
-                pid = atol(namelist[i]->d_name);
-                status = sched_getaffinity(pid, sizeof(pid_cpuset), &pid_cpuset);
-                /* Process completed. */
-                if (status < 0) {
-                    continue;
-                }
-                cac_load(tree, pid_cpuset);
-            }
-            while(num_processes--) {
-                free(namelist[num_processes]);
-            }
-            free(namelist);
-        }
-        if (policy == POLICY_SCATTER) {
-            map_scatter_load(tree);
-        } else if (policy == POLICY_BUNCH) {
-            map_bunch_load(tree);
-        } else {
-            goto error_free;
-        }
-      } else {
-        /* MV2_ENABLE_LEASTLOAD != 1 or MV2_ENABLE_LEASTLOAD == NULL, map_bunch or map_scatter is used */
-        if (policy == POLICY_SCATTER) {
-            /* Scatter */
-            for(i = 0; i < num_cpus; i++) {
-                map_scatter(sysobj, 0);
-            }
-        } else if (policy == POLICY_BUNCH) {
-            /* Bunch */
-            map_bunch(sysobj, 0);
-        } else {
-            goto error_free;
-        }
-      }
-
-      /* Assemble custom_cpu_mapping string */
-      s = custom_cpu_mapping;
-      for(i = 0; i < num_cpus; i++) {
-         sprintf(s, "%d:", core_mapping[i]);
-         s = custom_cpu_mapping + strlen(custom_cpu_mapping);
-      }
-      i = strlen(custom_cpu_mapping);
-      if(i) { 
-         custom_cpu_mapping[i-1] = '\0';
-      }
-   }  
-    /* Parse /proc/cpuinfo for additional useful things */
-    if(fp = fopen(CONFIG_FILE, "r")) {
-
-      while(! feof(fp)) {
-        memset(line, 0, MAX_LINE_LENGTH);
-        fgets(line, MAX_LINE_LENGTH - 1, fp);
-
-        if(! (key = strtok(line, "\t:"))) { 
-          continue;
-        } 
-
-        if(cpu_type == CPU_FAMILY_NONE) {
-          if(! strcmp(key, "vendor_id")) {
-            strtok(NULL, " ");
-            s = strtok(NULL, " ");
-            if (! strncmp(s, "AuthenticAMD", strlen("AuthenticAMD"))) { 
-               cpu_type = CPU_FAMILY_AMD;
-            } else { 
-               cpu_type = CPU_FAMILY_INTEL;
-            } 
-            continue;
-          }
-        }
-
-        if(! cpu_model) {
-          if(! strcmp(key, "model")) {
-             strtok(NULL, " ");
-             s = strtok(NULL, " ");
-             sscanf(s, "%d", &cpu_model);
-             continue;
-          }
-        }
-      }
-
-      fclose(fp);
-
-      if(cpu_type == CPU_FAMILY_INTEL) {
-         if(num_sockets == 2) {
-              if(num_cpus == 4) {  
-                    arch_type = MULTI_CORE_ARCH_XEON_DUAL;
-              }
-              if(num_cpus == 8) {
-                  if(cpu_model == CLOVERTOWN_MODEL) { 
-                      arch_type = MULTI_CORE_ARCH_CLOVERTOWN;
-                  }
-                  if(cpu_model == HARPERTOWN_MODEL) {
-                      arch_type = MULTI_CORE_ARCH_HARPERTOWN;
-                  }
-                  if(cpu_model == NEHALEM_MODEL) { 
-                      arch_type = MULTI_CORE_ARCH_NEHALEM;
-                  }
-              }
-              if(num_cpus == 16) {
-                  if(cpu_model == NEHALEM_MODEL) {  /* nehalem with smt on */
-                      arch_type = MULTI_CORE_ARCH_NEHALEM;
-                   }
-              }	
-         }
-      }
-      if(cpu_type == CPU_FAMILY_AMD) { 
-           if(num_sockets == 2) { 
-               if(num_cpus == 4) { 
-                     arch_type = MULTI_CORE_ARCH_OPTERON_DUAL;
-               } 
-               if(num_cpus == 24) { 
-                     arch_type =  MULTI_CORE_ARCH_MAGNY_COURS; 
-               } 
-           } 
-           if(num_sockets == 4) { 
-               if(num_cpus == 16) { 
-                     arch_type =  MULTI_CORE_ARCH_BARCELONA; 
-               } 
-           } 
-       }
-    } else {
-             fprintf(stderr, "Warning: %s: Failed to open \"%s\".\n", __func__, CONFIG_FILE);
-    }
-
-    /* Done */
-    rc = MPI_SUCCESS;
-
-    error_free:
-    if(core_mapping != NULL) { 
-        MPIU_Free(core_mapping);
-    }
-    if(tree != NULL) {
-        MPIU_Free(tree);
-    }
-    if(obj_tree) {
-        MPIU_Free(obj_tree);
-    }
-    
-    MPIU_DBG_MSG_FMT(OTHER,TYPICAL,(MPIU_DBG_FDEST,"num_cpus=%d, num_sockets=%d, custom_cpu_mapping=\"%s\"",
-                   num_cpus, num_sockets, custom_cpu_mapping));
-
-return rc;
-}
-
-
-int get_cpu_mapping(long N_CPUs_online)
-{
-    char line[MAX_LINE_LENGTH];
-    char input[MAX_NAME_LENGTH];
-    char bogus1[MAX_NAME_LENGTH];
-    char bogus2[MAX_NAME_LENGTH];
-    char bogus3[MAX_NAME_LENGTH];
-    int physical_id; //return value
-    int core_mapping[num_cpus];
-    int core_index = 0;
-    cpu_type_t cpu_type;
-    int model;
-    int vendor_set=0, model_set=0;
-    int mpi_errno = MPI_SUCCESS;
-
-    FILE* fp=fopen(CONFIG_FILE,"r");
-    if (fp == NULL){
-        printf("can not open cpuinfo file \n");
-        return 0;
-    }
-
-    MPIU_Memset(core_mapping, 0, sizeof(core_mapping));
-    custom_cpu_mapping = (char *) MPIU_Malloc(sizeof(char)*N_CPUs_online*2);
-    if(custom_cpu_mapping == NULL) { 
-          return 0;
-    } 
-    MPIU_Memset(custom_cpu_mapping, 0, sizeof(char)*N_CPUs_online*2);
-
-    while(!feof(fp)){
-      MPIU_Memset(line,0,MAX_LINE_LENGTH);
-        fgets(line, MAX_LINE_LENGTH, fp);
-
-        MPIU_Memset(input, 0, MAX_NAME_LENGTH);
-        sscanf(line, "%s", input);
-
-        if (!vendor_set) {
-            if (strcmp(input, "vendor_id") == 0) {
-              MPIU_Memset(input, 0, MAX_NAME_LENGTH);
-              sscanf(line,"%s%s%s",bogus1, bogus2, input);
-
-              if (strcmp(input, "AuthenticAMD") == 0) {
-                cpu_type = CPU_FAMILY_AMD;
-              } else {
-                cpu_type = CPU_FAMILY_INTEL;
-              }
-          vendor_set = 1;
-            }
-        }
-
-    if (!model_set){
-            if (strcmp(input, "model") == 0) {
-            sscanf(line, "%s%s%d", bogus1, bogus2, &model);
-        model_set = 1;
-        }
-    }
-
-    if (strcmp(input, "physical") == 0) {
-            sscanf(line, "%s%s%s%d", bogus1, bogus2, bogus3, &physical_id);
-            core_mapping[core_index++] = physical_id;
-        }
-    }
-
-    num_cpus = core_index;
-    if (num_cpus == 4) {
-       if((memcmp(INTEL_XEON_DUAL_MAPPING,core_mapping, sizeof(int)*num_cpus) == 0) 
-            && (cpu_type==CPU_FAMILY_INTEL)){ 
-               arch_type =  MULTI_CORE_ARCH_XEON_DUAL;
-               strcpy(custom_cpu_mapping , "0:2:1:3");
-       } else if((memcmp(AMD_OPTERON_DUAL_MAPPING,core_mapping,sizeof(int)*num_cpus) == 0)
-            && (cpu_type==CPU_FAMILY_AMD)){ 
-               arch_type =  MULTI_CORE_ARCH_OPTERON_DUAL;
-               strcpy(custom_cpu_mapping , "0:1:2:3");
-       }
-    } else if (num_cpus == 8) {
-        if(cpu_type == CPU_FAMILY_INTEL) {
-           if(model == CLOVERTOWN_MODEL) {
-                arch_type = MULTI_CORE_ARCH_CLOVERTOWN;
-                if(memcmp(INTEL_CLOVERTOWN_MAPPING,core_mapping,sizeof(int)*num_cpus) == 0) {
-                strcpy(custom_cpu_mapping,"0:1:4:5:2:3:6:7");
-                }
-            }
-            else if(model == HARPERTOWN_MODEL) {
-                arch_type = MULTI_CORE_ARCH_HARPERTOWN;
-                if(memcmp(INTEL_HARPERTOWN_LEG_MAPPING,core_mapping,sizeof(int)*num_cpus) == 0) {
-                    strcpy(custom_cpu_mapping,"0:1:4:5:2:3:6:7");
-                } 
-                else if(memcmp(INTEL_HARPERTOWN_COM_MAPPING,core_mapping,sizeof(int)*num_cpus) == 0) {
-                    strcpy(custom_cpu_mapping,"0:4:2:6:1:5:3:7");
-                }
-            }
-            else if(model == NEHALEM_MODEL) {
-                arch_type = MULTI_CORE_ARCH_NEHALEM;
-                if(memcmp(INTEL_NEHALEM_LEG_MAPPING,core_mapping,sizeof(int)*num_cpus) == 0) {
-                    strcpy(custom_cpu_mapping, "0:2:4:6:1:3:5:7");
-                }
-                else if(memcmp(INTEL_NEHALEM_COM_MAPPING,core_mapping,sizeof(int)*num_cpus) == 0) {
-                    strcpy(custom_cpu_mapping, "0:4:1:5:2:6:3:7");
-                }
-            }
-        }
-    } else if (num_cpus == 16) {
-        if(cpu_type == CPU_FAMILY_INTEL) {
-              if(model == NEHALEM_MODEL) {
-                arch_type = MULTI_CORE_ARCH_NEHALEM;
-                if(memcmp(INTEL_NEHALEM_LEG_MAPPING,core_mapping,sizeof(int)*num_cpus) == 0) {
-                    strcpy(custom_cpu_mapping,"0:2:4:6:1:3:5:7:8:10:12:14:9:11:13:15");
-                }
-                else if(memcmp(INTEL_NEHALEM_COM_MAPPING,core_mapping,sizeof(int)*num_cpus) == 0) {
-                    strcpy(custom_cpu_mapping, "0:4:1:5:2:6:3:7:8:12:9:13:10:14:11:15");
-                }
-             }
-         }
-         else if(cpu_type == CPU_FAMILY_AMD) {
-            if(memcmp(AMD_BARCELONA_MAPPING,core_mapping, sizeof(int)*num_cpus) == 0) {
-                arch_type = MULTI_CORE_ARCH_BARCELONA;
-                strcpy(custom_cpu_mapping, "0:1:2:3:4:5:6:7:8:9:10:11:12:13:14:15");
-            }
-         }
-    }
-    fclose(fp);
-
-    return MPI_SUCCESS;
-}
-
-
-static void smpi_setaffinity ()
-{
-    int mpi_errno = MPI_SUCCESS;
-
-    hwloc_cpuset_t cpuset;
-    hwloc_obj_t obj;
-
-    mpi_errno = hwloc_topology_init(&topology);
-    if(mpi_errno != 0)  { 
-         mv2_enable_affinity = 0;
-    } 
-
-    if (mv2_enable_affinity > 0)
-    {
-        hwloc_topology_load(topology);
-        cpuset = hwloc_cpuset_alloc();
-        if (s_cpu_mapping)
-        {
-            /* If the user has specified how to map the processes,
-             * use it */
-            char* tp = s_cpu_mapping;
-            char* cp = NULL;
-            int j = 0;
-            int i;
-            char tp_str[s_cpu_mapping_line_max + 1];
-            long N_CPUs_online = sysconf(_SC_NPROCESSORS_ONLN);
-
-            if (N_CPUs_online < 1)
-            {
-                MPIU_ERR_SETFATALANDJUMP2(
-                    mpi_errno,
-                    MPI_ERR_OTHER,
-                    "**fail",
-                    "%s: %s",
-                    "sysconf",
-                    strerror(errno)
-                );
-            }
-
-            /* Call the cpu_mapping function to find out about how the
-             * processors are numbered on the different sockets.
-             * The hardware information gathered from this function 
-             * is required to determine the best set of intra-node thresholds. 
-             * However, since the user has specified a mapping pattern, 
-             * we are not going to use any of our proposed binding patterns
-             */
-
-            mpi_errno = get_cpu_mapping_hwloc(N_CPUs_online,topology); 
-
-            while (*tp != '\0')
-            {
-                i = 0;
-                cp = tp;
-
-                while (*cp != '\0' && *cp != ':' && i < s_cpu_mapping_line_max)
-                {
-                    ++cp;
-                    ++i;
-                }
-
-                strncpy(tp_str, tp, i);
-                if(atoi(tp) < 0 || atoi(tp) >= N_CPUs_online) { 
-                    fprintf(stderr, "Warning! : Core id %d does not exist on this architecture! \n",atoi(tp)); 
-                    fprintf(stderr, "CPU Affinity is undefined \n"); 
-                    mv2_enable_affinity = 0;
-                    MPIU_Free(s_cpu_mapping);
-                    goto fn_fail; 
-                } 
-                tp_str[i] = '\0';
-		
-                if (j == g_smpi.my_local_id)
-                {
-                    hwloc_cpuset_cpu(cpuset, atoi(tp_str));
-                    hwloc_set_cpubind(topology, cpuset, 0);
-                    break;
-                }
-
-                if (*cp == '\0')
-                {
-                    break; 
-                }
-
-                tp = cp;
-                ++tp;
-                ++j;
-            }
-
-            MPIU_Free(s_cpu_mapping);
-            s_cpu_mapping = NULL;
-        }
-        else
-        {
-            /* The user has not specified how to map the processes,
-             * use the data available in /proc/cpuinfo file to decide 
-             * on the best cpu mapping pattern
-             */
-            long N_CPUs_online = sysconf(_SC_NPROCESSORS_ONLN);
-
-            if (N_CPUs_online < 1)
-            {
-                MPIU_ERR_SETFATALANDJUMP2(
-                    mpi_errno,
-                    MPI_ERR_OTHER,
-                    "**fail",
-                    "%s: %s",
-                    "sysconf",
-                    strerror(errno)
-                );
-            }
-
-            /* Call the cpu_mapping function to find out about how the
-             * processors are numbered on the different sockets. 
-             */
-             mpi_errno = get_cpu_mapping_hwloc(N_CPUs_online, topology);
-             if(mpi_errno != MPI_SUCCESS)  {
-                 /* In case, we get an error from the hwloc mapping function */
-                 mpi_errno = get_cpu_mapping(N_CPUs_online);
-             }
-	     
-	        /*
-    	     * If get_cpu_mapping_hwloc() is called, before hwloc_set_cpubind()
-	         * called to do CPU binding, all rank processes need the synchronization.
-             */
-     	     if(PMI_Barrier() != PMI_SUCCESS) {
-                 MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                 "**pmi_barrier", "**pmi_barrier %d", mpi_errno);
-             }
-             
-            if(mpi_errno != MPI_SUCCESS || custom_cpu_mapping == NULL) {
-                /* For some reason, we were not able to retrieve the cpu mapping
-                * information. We are falling back on the linear mapping. 
-                * This may not deliver the best performace 
-                */
-                hwloc_cpuset_cpu(cpuset, g_smpi.my_local_id % N_CPUs_online) ; 
-                hwloc_set_cpubind(topology, cpuset, 0); 
-            } 
-            else { 
-             /* We have all the information that we need. We will bind the processes
-              * to the cpu's now
-              */
-                int linelen = strlen(custom_cpu_mapping);
-                
-                if (linelen < custom_cpu_mapping_line_max)
-                {
-                  custom_cpu_mapping_line_max = linelen;
-                }
-                char* tp = custom_cpu_mapping;
-                char* cp = NULL;
-                int j = 0;
-                int i;
-                char tp_str[custom_cpu_mapping_line_max + 1];
-               
-                while (*tp != '\0')
-                {
-                    i = 0;
-                    cp = tp;
-
-                    while (*cp != '\0' && *cp != ':' && i < custom_cpu_mapping_line_max)
-                    {
-                        ++cp;
-                        ++i;
-                    }   
-    
-                    strncpy(tp_str, tp, i);
-                    tp_str[i] = '\0';
-    
-                    if (j == g_smpi.my_local_id)
-                    {
-                        hwloc_cpuset_cpu(cpuset, atoi(tp_str));
-                        hwloc_set_cpubind(topology, cpuset, 0); 
-                        break;
-                    }
-
-                    if (*cp == '\0')
-                    {
-                        break;
-                    }
-
-                    tp = cp;
-                    ++tp;
-                    ++j;
-                }
-            } 
-            MPIU_Free(custom_cpu_mapping);
-        }
-    }
-
-fn_exit:
-    return;
-
-fn_fail:
-    goto fn_exit;
-}
-#endif /* defined(HAVE_LIBHWLOC) */
 
 static int smpi_exchange_info(MPIDI_PG_t *pg)
 {
@@ -4051,6 +2895,8 @@ static int smpi_exchange_info(MPIDI_PG_t *pg)
     char rdmavalue[512];
 
     MPIDI_VC_t* vc = NULL;
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SMPI_EXCHANGE_INFO);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SMPI_EXCHANGE_INFO);
 
     PMI_Get_rank(&pg_rank);
     PMI_Get_size(&pg_size);
@@ -4186,7 +3032,9 @@ static int smpi_exchange_info(MPIDI_PG_t *pg)
 #if defined(HAVE_LIBHWLOC)
                 if (mv2_enable_affinity)
                 {
-                    smpi_setaffinity();
+                    mpi_errno = smpi_setaffinity();
+                    if (mpi_errno != MPI_SUCCESS) MPIU_ERR_POP(mpi_errno);
+
                 }
 #endif /* defined(HAVE_LIBHWLOC) */
             }
@@ -4231,6 +3079,7 @@ static int smpi_exchange_info(MPIDI_PG_t *pg)
     MPIU_Free(hostnames_j);
 
 fn_exit:
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SMPI_EXCHANGE_INFO);
     return mpi_errno;
 
 fn_fail:
@@ -4255,8 +3104,7 @@ get_buf_from_pool ()
     return ptr;
 }
 
-    static inline void
-send_buf_reclaim ()
+static inline void send_buf_reclaim ()
 {
     int i, index, last_index;
     SEND_BUF_T *ptr;

@@ -46,6 +46,9 @@ typedef struct MPIDI_CH3I_MRAILI_IBA_Pkt
         int smp_index;
         uint64_t vc_addr;
     } src;
+#if defined(_SMP_LIMIC_)
+    void *send_req_id;
+#endif
 } MPIDI_CH3I_MRAILI_Iba_pkt_t;
 
 #define MPIDI_CH3I_MRAILI_IBA_PKT_DECL \

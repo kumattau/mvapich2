@@ -19,8 +19,9 @@
 #include "ib_vbuf.h"
 /* add mpidimpl.h to pass MPIDI_PG_t *pg to MPID_nem_ib_setup_conn(); */
 #include "mpidimpl.h"
-
+#ifndef USE_HEADER_CACHING
 #define USE_HEADER_CACHING
+#endif
 typedef enum {
      MPID_NEM_IB_CONN_NONE        = 1,
      MPID_NEM_IB_CONN_IN_PROGRESS = 2,

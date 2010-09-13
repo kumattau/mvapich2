@@ -18,10 +18,6 @@
 
 #include "mpiimpl.h"
 
-#if defined(_OSU_MVAPICH_)
-#include "rdma_impl.h"
-#endif
-
 #if defined(_OSU_COLLECTIVES_)
 
 

@@ -433,7 +433,8 @@ int MPID_nem_lmt_ib_start_send(struct MPIDI_VC *vc, struct MPID_Request *sreq,
             break;
        case MV2_LMT_PROTOCOL_RGET:
             /*we should not get a CTS for RGET protocol*/
-            MPIU_Assert(0);
+            MPIU_Error_printf( "CTS for RGET protocol" );
+            exit( EXIT_FAILURE );
             break;
        default:
             mpi_errno = MPIR_Err_create_code(
@@ -445,7 +446,7 @@ int MPID_nem_lmt_ib_start_send(struct MPIDI_VC *vc, struct MPID_Request *sreq,
                 "**fail",
                 "**fail %s",
                 "unknown protocol");
-                return mpi_errno;
+            goto fn_fail;
    }
 
    /*RENDEZVOUS_IN_PROGRESS(vc, req);   

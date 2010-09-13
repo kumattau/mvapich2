@@ -491,6 +491,7 @@ if test "$enable_strict_done" != "yes" ; then
     # the embedded newlines in this string are safe because we evaluate each
     # argument in the for-loop below and append them to the CFLAGS with a space
     # as the separator instead
+    # <OSU_MVAPICH>
     pac_common_strict_flags="
         -Wall
         -Wextra
@@ -520,10 +521,11 @@ if test "$enable_strict_done" != "yes" ; then
         -Winvalid-pch
         -Wno-pointer-sign
         -Wvariadic-macros
-        -std=c89
+        -std=c99
         -Wno-format-zero-length
 	-Wno-type-limits
     "
+    #</OSU_MVAPICH>
     pac_cc_strict_flags=""
     case "$1" in 
         yes|all|posix)

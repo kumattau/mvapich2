@@ -212,6 +212,8 @@ int MPIDI_CH3I_SHMEM_COLL_Mmap()
     int i = 0;
     int j = 0;
     int mpi_errno = MPI_SUCCESS;
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHMEM_COLLMMAP);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SHMEM_COLLMMAP);
 
     shmem_coll_obj.mmap_ptr = mmap(0, shmem_coll_size,
                          (PROT_READ | PROT_WRITE), (MAP_SHARED), shmem_coll_obj.fd,
@@ -267,6 +269,7 @@ int MPIDI_CH3I_SHMEM_COLL_Mmap()
     }
     
 fn_exit:
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SHMEM_COLLMMAP);
     return mpi_errno;
 
 fn_fail:
@@ -280,6 +283,8 @@ fn_fail:
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3I_SHMEM_COLL_finalize()
 {
+  MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_FINALIZE);
+  MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_FINALIZE);
 
 #if defined(CKPT)
 
@@ -307,6 +312,7 @@ int MPIDI_CH3I_SHMEM_COLL_finalize()
     close(shmem_coll_obj.fd);
     MPIU_Free(shmem_file);
     MPIU_Free(bcast_file);
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_FINALIZE);
     return MPI_SUCCESS;
 }
 
@@ -319,13 +325,15 @@ void MPIDI_CH3I_SHMEM_COLL_Unlink()
 
 /* Shared memory gather: rank zero is the root always*/
 #undef FUNCNAME
-#define FUNCNAME MPIDI_CH3I_SHMEM_COLL_Gather
+#define FUNCNAME MPIDI_CH3I_SHMEM_COLL_GetShmemBuf
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int size, int rank, int shmem_comm_rank, void** output_buf)
 {
     int i = 1, cnt;
     char* shmem_coll_buf = (char*)(&(shmem_coll->shmem_coll_buf));
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_GETSHMEMBUF);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_GETSHMEMBUF);
 
     if (rank == 0)
     {
@@ -412,12 +420,19 @@ void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int size, int rank, int shmem_comm_rank, 
         shmem_coll->root_complete_gather[shmem_comm_rank][rank] = 0;
         *output_buf = (char*)shmem_coll_buf + shmem_comm_rank * SHMEM_COLL_BLOCK_SIZE;
     }
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_GETSHMEMBUF);
 }
 
 
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_SHMEM_COLL_SetGatherComplete
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 void MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(int size, int rank, int shmem_comm_rank)
 {
     int i = 1;
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_SETGATHERCOMPLETE);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_SETGATHERCOMPLETE);
 
     if (rank == 0)
     {
@@ -430,12 +445,19 @@ void MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(int size, int rank, int shmem_comm_
     {
         shmem_coll->child_complete_gather[shmem_comm_rank][rank] = 1;
     }
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_SETGATHERCOMPLETE);
 }
 
 
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_SHMEM_COLL_Barrier_gather
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 void MPIDI_CH3I_SHMEM_COLL_Barrier_gather(int size, int rank, int shmem_comm_rank)
 {
     int i = 1, cnt = 0;
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_BARRIER_GATHER);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_BARRIER_GATHER);
 
     if (rank == 0)
     {
@@ -483,12 +505,20 @@ void MPIDI_CH3I_SHMEM_COLL_Barrier_gather(int size, int rank, int shmem_comm_ran
     {
         shmem_coll->barrier_gather[shmem_comm_rank][rank] = 1;
     }
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_BARRIER_GATHER);
 }
 
 
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_SHMEM_COLL_Barrier_bcast
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int size, int rank, int shmem_comm_rank)
 {
     int i = 1, cnt = 0;
+
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_BARRIER_BCAST);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_BARRIER_BCAST);
 
     if (rank == 0)
     {
@@ -536,12 +566,19 @@ void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int size, int rank, int shmem_comm_rank
     }
 
     MPIDI_CH3I_Progress_test();
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_BARRIER_BCAST);
 }
 
+#undef FUNCNAME
+#define FUNCNAME MPID_SHMEM_BCAST_init
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPID_SHMEM_BCAST_init(int file_size, int shmem_comm_rank, int my_local_rank, int* bcast_seg_size, char** bcast_shmem_file, int* fd)
 {
     int pagesize = getpagesize();
     int mpi_errno = 1;
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHMEM_BCAST_INIT);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SHMEM_BCAST_INIT);
 
     file_size = file_size + 3*g_shmem_bcast_flags + g_shmem_bcast_leaders*SHMEM_BCAST_METADATA;
 
@@ -608,14 +645,21 @@ int MPID_SHMEM_BCAST_init(int file_size, int shmem_comm_rank, int my_local_rank,
     }
 
 fn_exit:
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SHMEM_BCAST_INIT);
     return mpi_errno;
 
 fn_fail:
     goto fn_exit;
 }
 
+#undef FUNCNAME
+#define FUNCNAME MPID_SHMEM_BCAST_mmap
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPID_SHMEM_BCAST_mmap(void** mmap_ptr, int bcast_seg_size, int fd, int my_local_rank, char* bcast_shmem_file)
 {
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_BCAST_MMAP);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_BCAST_MMAP);
     *mmap_ptr = mmap(0, bcast_seg_size,
                          (PROT_READ | PROT_WRITE), (MAP_SHARED), fd, 0);
     if (*mmap_ptr == (void *) -1) {
@@ -630,15 +674,24 @@ int MPID_SHMEM_BCAST_mmap(void** mmap_ptr, int bcast_seg_size, int fd, int my_lo
       MPIU_Memset(*mmap_ptr, 0, bcast_seg_size);
     }
     
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_BCAST_MMAP);
     return MPI_SUCCESS;
 }
 
+#undef FUNCNAME
+#define FUNCNAME MPID_SHMEM_COLL_GetShmemBcastBuf
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 void MPID_SHMEM_COLL_GetShmemBcastBuf(void** output_buf, void* buffer){
     char* shmem_coll_buf = (char*)(buffer);
 
     *output_buf = (char*)shmem_coll_buf + 3*g_shmem_bcast_flags + g_shmem_bcast_leaders*SHMEM_BCAST_METADATA;
 }
 
+#undef FUNCNAME
+#define FUNCNAME signal_local_processes
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 void signal_local_processes(int step, int index, char* send_buf, int offset, int bytes, void* mmap_ptr){
 
     void* buffer;
@@ -662,6 +715,10 @@ void signal_local_processes(int step, int index, char* send_buf, int offset, int
     MPIU_Memset((void*) tmp,0, g_shmem_bcast_flags);
 }
 
+#undef FUNCNAME
+#define FUNCNAME wait_for_signal
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 void wait_for_signal(int step, int index, char** output_buf, int* offset, int* bytes, void* mmap_ptr){
 
     char* shmem_coll_buf = (char*)(mmap_ptr);

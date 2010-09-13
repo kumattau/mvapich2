@@ -25,6 +25,14 @@
 #   include <limic.h>
 #endif
 
+/* SMP user parameters*/
+
+extern int                  g_smp_eagersize;
+extern int                  default_eager_size;
+extern int                  s_smpi_length_queue;
+extern int                  s_smp_num_send_buffer;
+extern int                  s_smp_batch_size;
+
 /*********** Macro defines of local variables ************/
 #define PID_CHAR_LEN 22
 
@@ -34,8 +42,8 @@
 
 #if defined(_IA32_)
 
-#define SMP_EAGERSIZE	    (8)
-#define SMPI_LENGTH_QUEUE   (32) /* 32 Kbytes */
+#define SMP_EAGERSIZE	    (8192)
+#define SMPI_LENGTH_QUEUE   (32768)
 #define SMP_BATCH_SIZE 8
 #define SMP_SEND_BUF_SIZE 8192
 #define SMP_NUM_SEND_BUFFER 128
@@ -49,8 +57,8 @@
                                                                                                                                                
 #elif defined(_IA64_)
 
-#define SMP_EAGERSIZE       (8)
-#define SMPI_LENGTH_QUEUE   (32) /* 32 Kbytes */
+#define SMP_EAGERSIZE       (8192)
+#define SMPI_LENGTH_QUEUE   (32768)
 #define SMP_BATCH_SIZE 8
 #define SMP_SEND_BUF_SIZE 8192
 #define SMP_NUM_SEND_BUFFER 128
@@ -63,11 +71,11 @@
 
 #elif defined(_X86_64_) && defined(_AMD_QUAD_CORE_)
 #if defined(_SMP_LIMIC_)
-#define SMP_EAGERSIZE       (4)
+#define SMP_EAGERSIZE       (4096)
 #else
-#define SMP_EAGERSIZE       (32)
+#define SMP_EAGERSIZE       (32768)
 #endif
-#define SMPI_LENGTH_QUEUE   (128) /* 128 Kbytes */
+#define SMPI_LENGTH_QUEUE   (131072)
 #define SMP_BATCH_SIZE 32
 #define SMP_SEND_BUF_SIZE 8192
 #define SMP_NUM_SEND_BUFFER 128
@@ -80,8 +88,8 @@
 
 #elif defined(_X86_64_)
 
-#define SMP_EAGERSIZE	    (4)
-#define SMPI_LENGTH_QUEUE   (64) /* 64 Kbytes */
+#define SMP_EAGERSIZE	    (4096)
+#define SMPI_LENGTH_QUEUE   (65536)
 #define SMP_BATCH_SIZE 8
 #define SMP_SEND_BUF_SIZE 8192
 #define SMP_NUM_SEND_BUFFER 32
@@ -94,11 +102,11 @@
 
 #elif defined(_EM64T_)
 #if defined(_SMP_LIMIC_)
-#define SMP_EAGERSIZE       (8)
+#define SMP_EAGERSIZE       (8192)
 #else
-#define SMP_EAGERSIZE       (64)
+#define SMP_EAGERSIZE       (65536)
 #endif
-#define SMPI_LENGTH_QUEUE   (256) /* 256 Kbytes */
+#define SMPI_LENGTH_QUEUE   (262144)
 #define SMP_BATCH_SIZE 8
 #define SMP_SEND_BUF_SIZE 8192 
 #define SMP_NUM_SEND_BUFFER 256 
@@ -111,8 +119,8 @@
 
 #elif defined(MAC_OSX)
 
-#define SMP_EAGERSIZE	    (8)
-#define SMPI_LENGTH_QUEUE   (32) /* 32 Kbytes */
+#define SMP_EAGERSIZE	    (8192)
+#define SMPI_LENGTH_QUEUE   (32768)
 #define SMP_BATCH_SIZE 8
 #define SMP_SEND_BUF_SIZE 8192
 #define SMP_NUM_SEND_BUFFER 128
@@ -125,8 +133,8 @@
 
 #else
                                                                                                                                                
-#define SMP_EAGERSIZE	    (16)
-#define SMPI_LENGTH_QUEUE   (64) /* 32 Kbytes */
+#define SMP_EAGERSIZE	    (16384)
+#define SMPI_LENGTH_QUEUE   (65536)
 #define SMP_BATCH_SIZE 8
 #define SMP_SEND_BUF_SIZE 8192 
 #define SMP_NUM_SEND_BUFFER 128
@@ -199,6 +207,7 @@ struct limic_header {
 extern struct smpi_var g_smpi;
 extern struct shared_mem *g_smpi_shmem;
 
+#ifdef MV_ARCH_OLD_CODE
 typedef enum {
     MULTI_CORE_ARCH_NONE = 0,
     MULTI_CORE_ARCH_BARCELONA,
@@ -210,6 +219,7 @@ typedef enum {
     MULTI_CORE_ARCH_OPTERON_DUAL,
 } multi_core_arch_type_t;
 multi_core_arch_type_t arch_type;
+#endif
 
 
 #endif

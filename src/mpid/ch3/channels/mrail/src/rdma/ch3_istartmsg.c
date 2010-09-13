@@ -168,8 +168,8 @@ int MPIDI_CH3_iStartMsg(MPIDI_VC_t * vc, void *pkt, MPIDI_msg_sz_t pkt_sz,
             goto fn_exit;
         } else if (MPI_MRAIL_MSG_QUEUED == mpi_errno) {
             /* fast rdma ok but cannot send: there is no send wqe available */
-            sreq = create_request(pkt, pkt_sz, 0);
-            buf->sreq = (void *) sreq;
+            /* sreq = create_request(pkt, pkt_sz, 0);
+            buf->sreq = (void *) sreq;   */ 
             mpi_errno = MPI_SUCCESS;
             goto fn_exit;
         } else {

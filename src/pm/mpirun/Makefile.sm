@@ -11,7 +11,7 @@
 
 INCLUDES = -I${abs_srcdir}/include -I${abs_builddir}/include @blcr_include@ @ftb_include@
 
-install_BIN = mpirun_rsh mpispawn 
+install_BIN = mpirun_rsh mpispawn mpiexec_osu 
 
 # Use the mpich2-build-install target to include binaries in the build bin
 # directory (all pm's require these targets)
@@ -20,6 +20,9 @@ mpich2-build-uninstall: uninstall
 
 mpirun_rsh_LIBS = -lm @mpirun_rsh_other_libs@ @blcr_lib@ @ftb_lib@
 mpirun_rsh_SOURCES = mpirun_rsh.c mpirun_util.c mpmd.c mpirun_dbg.c mpirun_ckpt.c mpirun_params.c
+
+mpiexec_osu_LIBS = -lm @mpirun_rsh_other_libs@ @blcr_lib@ @ftb_lib@
+mpiexec_osu_SOURCES = mpirun_rsh.c mpirun_util.c mpmd.c mpirun_dbg.c mpirun_ckpt.c mpirun_params_comp.c
 
 mpispawn_LIBS = -lm -lpthread @mpispawn_other_libs@ 
 mpispawn_SOURCES = mpispawn.c mpirun_util.c mpispawn_tree.c pmi_tree.c mpmd.c

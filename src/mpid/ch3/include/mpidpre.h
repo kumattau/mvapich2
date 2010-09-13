@@ -195,24 +195,16 @@ typedef struct MPIDI_VC * MPID_VCR;
     int  fall_back;                                                              \
     int  using_lock;                                                             \
     long long cc_for_test;                                                       \
-    volatile long long * completion_counter;                                              \
+    volatile long long * completion_counter;                                     \
     long long ** all_completion_counter;                                         \
-    uint32_t  *r_key2;        /* rkey for complete couters on remote nodes */    \
-    long long *actlock;  /* for active accumulate exclusive acess lock */        \
-    long long **all_actlock_addr;     /* storing the addresses of active         \
-                                         acculuation locks on other nodes */     \
-    uint32_t *r_key3;                /* for lock */                              \
-    uint32_t *r_key;                 /* exposed buffer addresses on remote       \
+    uint32_t  *completion_counter_rkeys; /* rkey for complete couters on         \
+                                            remote nodes */                      \
+    uint32_t *win_rkeys;          /* exposed buffer addresses on remote          \
                                     windows */                                   \
-    volatile int* post_flag;     /* flag from post to complete, one flag for     \
+    volatile int *post_flag;     /* flag from post to complete, one flag for     \
                                     each target, updated by RDMA */              \
-    uint32_t *r_key4;                                                            \
-    long ** remote_post_flags;                                                   \
-                                                                                 \
-    int ** all_assist_thr_acks;                                                  \
-    uint32_t *r_key5;                                                            \
-    int *assist_thr_ack;                                                         \
-    long assist_thr_ack_rkey;                                                    \
+    uint32_t *post_flag_rkeys;                                                   \
+    int ** remote_post_flags;                                                    \
                                                                                  \
     int using_start;                                                             \
     /*for get/put queue*/                                                        \

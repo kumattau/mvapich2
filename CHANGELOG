@@ -3,6 +3,80 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+- MVAPICH2-1.5.1 (09/14/10)
+
+* Features and Enhancements
+    - Significantly reduce memory footprint on some systems by changing the
+      stack size setting for multi-rail configurations
+    - Optimization to the number of RDMA Fast Path connections
+    - Performance improvements in Scatterv and Gatherv collectives for CH3
+      interface (Thanks to Dan Kokran and Max Suarez of NASA for identifying
+      the issue)
+    - Tuning of Broadcast Collective
+    - Support for tuning of eager thresholds based on both adapter and platform
+      type
+    - Environment variables can now be specified by users with various suffixes
+      (kilobytes, megabytes and gigabytes)
+    - Environment variables for message sizes can now be expressed in short
+      form K=kilobytes and M=megabytes (e.g.  MV2_IBA_EAGER_THRESHOLD=12K)
+    - Ability to selectively use some or all HCAs using colon separated lists.
+      e.g. MV2_IBA_HCA=mlx4_0:mlx4_1
+    - Improved Bunch/Scatter mapping for process binding with HWLOC and SMT
+      support (Thanks to Dr. Bernd Kallies of ZIB for ideas and suggestions)
+    - Update to Hydra code from MPICH2-1.3b1
+    - Auto-detection of various iWARP adapters
+    - Specifying MV2_USE_IWARP=1 is no longer needed when using iWARP
+    - Changing atuomatic eager threshold selection and tuning for iWARP
+      adapters based on number of nodes in the system instead of the number of
+      processes
+    - PSM progress loop optimization for QLogic Adapters (Thanks to Dr.
+      Avneesh Pant of QLogic for the patch)
+
+* Bug fixes
+    - Fix memory leak in registration cache with --enable-g=all
+    - Fix memory leak in operations using datatype modules
+    - Fix for rdma_cross_connect issue for RDMA CM. The server is prevented
+      from initiating a connection.
+    - Don't fail during build if RDMA CM is unavailable
+    - Various mpirun_rsh bug fixes for CH3, Nemesis and uDAPL interfaces
+    - ROMIO panfs build fix
+    - Update panfs for not-so-new ADIO file function pointers
+    - Shared libraries can be generated with unknown compilers
+    - Explicitly link against DL library to prevent build error due to DSO link
+      change in Fedora 13 (introduced with gcc-4.4.3-5.fc13)
+    - Fix regression that prevents the proper use of our internal HWLOC
+      component
+    - Remove spurious debug flags when certain options are selected at build
+      time
+    - Error code added for situation when received eager SMP message is larger
+      than receive buffer
+    - Fix for Gather and GatherV back-to-back hang problem with LiMIC2
+    - Fix for packetized send in Nemesis
+    - Fix related to eager threshold in nemesis ib-netmod
+    - Fix initialization parameter for Nemesis based on adapter type
+    - Fix for uDAPL one sided operations (Thanks to Jakub Fedoruk from Intel
+      for reporting this)
+    - Fix an issue with out-of-order message handling for iWARP
+    - Fixes for memory leak and Shared context Handling in PSM for QLogic
+      Adapters (Thanks to Dr. Avneesh Pant of QLogic for the patch)
+
+
+MVAPICH2-1.5 (07/09/10)
+
+* Features and Enhancements (since 1.5-RC2)
+    - SRQ turned on by default for Nemesis interface
+    - Performance tuning - adjusted eager thresholds for
+      variety of architectures, vbuf size based on adapter
+      types and vbuf pool sizes
+    - Tuning for Intel iWARP NE020 adapter, thanks to Harry
+      Cropper of Intel
+    - Introduction of a retry mechanism for RDMA_CM connection
+      establishment
+
+* Bug fixes (since 1.5-RC2)
+    - Fix in build process with hwloc (for some Distros)
+    - Fix for memory leak (Nemesis interface)
+
 
 MVAPICH2-1.5-RC2 (06/21/10)
 
@@ -43,11 +117,8 @@ MVAPICH2-1.5-RC2 (06/21/10)
 MVAPICH2-1.5-RC1 (05/04/10)
 
 * Features and Enhancements 
-
     - MPI 2.2 compliant 
-
     - Based on MPICH2-1.2.1p1 
-
     - OFA-IB-Nemesis interface design 
         - OpenFabrics InfiniBand network module support for 
           MPICH2 Nemesis modular design 
@@ -70,7 +141,6 @@ MVAPICH2-1.5-RC1 (05/04/10)
         - Support for additional features (such as hwloc, 
           hierarchical collectives, one-sided, multithreading, etc.), 
           as included in the MPICH2 1.2.1p1 Nemesis channel 
-
     - Flexible process manager support 
         - mpirun_rsh to work with any of the eight interfaces 
           (CH3 and Nemesis channel-based) including OFA-IB-Nemesis, 
@@ -78,7 +148,6 @@ MVAPICH2-1.5-RC1 (05/04/10)
         - Hydra process manager to work with any of the eight interfaces 
           (CH3 and Nemesis channel-based) including OFA-IB-CH3, 
           OFA-iWARP-CH3, OFA-RoCE-CH3 and TCP/IP-CH3 
-
     - MPIEXEC_TIMEOUT is honored by mpirun_rsh
 
 * Bug fixes since 1.4.1

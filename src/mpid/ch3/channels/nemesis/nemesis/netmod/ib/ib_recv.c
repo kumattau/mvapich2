@@ -101,7 +101,7 @@ int MPIDI_CH3I_nem_ib_parse_header(MPIDI_VC_t * vc,
         MPIU_Error_printf(stderr, "CRC mismatch, get %lx, should be %lx "
                 "type %d, ocntent size %d\n",
                 crc, header->mrail.crc, header->type, v->content_size);
-        MPIU_Assert(0);
+        exit( EXIT_FAILURE );
     }
 #endif
     switch (header->type) {

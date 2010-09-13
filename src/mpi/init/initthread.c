@@ -521,13 +521,12 @@ int enable_shmem_collectives = 1;
 int disable_shmem_allreduce=0;
 int disable_shmem_reduce=0;
 int disable_shmem_barrier=0;
-int alltoall_dreg_disable_threshold=1024;
-int alltoall_dreg_disable=0;
 int g_shmem_bcast_leaders = DEFAULT_SHMEM_BCAST_LEADERS;
 int g_shmem_bcast_flags = DEFAULT_SHMEM_BCAST_LEADERS;
 extern int g_shmem_coll_blocks;
 extern int g_shmem_coll_max_msg_size;
 extern int shmem_bcast_threshold;
+extern int bcast_short_msg_threshold; 
 extern int enable_shmem_bcast;
 void MV2_Read_env_vars(void);
 void init_thread_reg();
@@ -742,18 +741,9 @@ void MV2_Read_env_vars(void){
         flag = (int)atoi(value);
         if (flag > 0) shmem_bcast_threshold = flag;
     }
-    if ((value = getenv("MV2_ALLTOALL_DREG_DISABLE_THRESHOLD")) != NULL){
-	    flag = (int)atoi(value);
-	    if (flag >= 0) alltoall_dreg_disable_threshold = flag;
-    }
-    if ((value = getenv("MV2_ALLTOALL_DREG_DISABLE")) != NULL){
-	    flag = (int)atoi(value);
-	    if (flag >= 1) { 
-          alltoall_dreg_disable = 1;
-        } 
-	    if (flag <= 0) { 
-          alltoall_dreg_disable = 0;
-        } 
+    if ((value = getenv("MV2_BCAST_SHORT_MSG")) != NULL) {
+        flag = (int)atoi(value);
+        if (flag > 0) bcast_short_msg_threshold = flag;
     }
     
 

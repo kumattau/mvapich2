@@ -16,10 +16,17 @@
 
 #include <hwloc.h>
 #include <hwloc/helper.h>
+#include <assert.h>
 
 #if !defined _GNU_SOURCE || !defined _SCHED_H
 #error sched.h must be included with _GNU_SOURCE defined
 #endif
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 
 #ifdef HWLOC_HAVE_CPU_SET
 
@@ -36,8 +43,8 @@
  *
  * \p schedsetsize should be sizeof(cpu_set_t) unless \p schedset was dynamically allocated with CPU_ALLOC
  */
-static __inline void
-hwloc_cpuset_to_glibc_sched_affinity(hwloc_topology_t topology, hwloc_cpuset_t hwlocset,
+static __hwloc_inline int
+hwloc_cpuset_to_glibc_sched_affinity(hwloc_topology_t topology __hwloc_attribute_unused, hwloc_const_cpuset_t hwlocset,
 				    cpu_set_t *schedset, size_t schedsetsize)
 {
 #ifdef CPU_ZERO_S
@@ -54,6 +61,7 @@ hwloc_cpuset_to_glibc_sched_affinity(hwloc_topology_t topology, hwloc_cpuset_t h
     CPU_SET(cpu, schedset);
   hwloc_cpuset_foreach_end();
 #endif /* !CPU_ZERO_S */
+  return 0;
 }
 
 /** \brief Convert glibc sched affinity CPU set \p schedset into hwloc CPU set
@@ -63,11 +71,11 @@ hwloc_cpuset_to_glibc_sched_affinity(hwloc_topology_t topology, hwloc_cpuset_t h
  *
  * \p schedsetsize should be sizeof(cpu_set_t) unless \p schedset was dynamically allocated with CPU_ALLOC
  */
-static __inline hwloc_cpuset_t
-hwloc_cpuset_from_glibc_sched_affinity(hwloc_topology_t topology,
-				      const cpu_set_t *schedset, size_t schedsetsize)
+static __hwloc_inline int
+hwloc_cpuset_from_glibc_sched_affinity(hwloc_topology_t topology __hwloc_attribute_unused, hwloc_cpuset_t hwlocset,
+                                       const cpu_set_t *schedset, size_t schedsetsize)
 {
-  hwloc_cpuset_t hwlocset = hwloc_cpuset_alloc();
+  hwloc_cpuset_zero(hwlocset);
 #ifdef CPU_ZERO_S
   int cpu, count;
   count = CPU_COUNT_S(schedsetsize, schedset);
@@ -91,12 +99,18 @@ hwloc_cpuset_from_glibc_sched_affinity(hwloc_topology_t topology,
     if (CPU_ISSET(cpu, schedset))
       hwloc_cpuset_set(hwlocset, cpu);
 #endif /* !CPU_ZERO_S */
-  return hwlocset;
+  return 0;
 }
 
 /** @} */
 
 
 #endif /* CPU_SET */
+
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
+
 
 #endif /* HWLOC_GLIBC_SCHED_H */

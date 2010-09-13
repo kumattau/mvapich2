@@ -26,7 +26,8 @@ int read_socket (int, void *, size_t);
 int write_socket (int, void *, size_t);
 
 typedef struct _process_info {
-	pid_t pid;
+	/* pid_t pid; */
+	long pid;
 	int rank;
 } process_info_t;
 

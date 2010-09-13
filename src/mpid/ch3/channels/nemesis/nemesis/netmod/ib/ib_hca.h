@@ -51,7 +51,8 @@ typedef enum {
     PATH_HT,
     MLX_PCI_X,
     IBM_EHCA,
-    CHELSIO_T3
+    CHELSIO_T3,
+    INTEL_NE020
 } HCA_Type;
 
 /*

@@ -76,8 +76,7 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int is_blocki
     pg = MPIDI_Process.my_pg;
 
     if (pending_vc != NULL) {
-        type =
-            MPIDI_CH3I_MRAILI_Waiting_msg(pending_vc, v_ptr, is_blocking);
+        type = MPIDI_CH3I_MRAILI_Waiting_msg(pending_vc, v_ptr, 1);
         if (type == T_CHANNEL_CONTROL_MSG_ARRIVE) {
             if((void *) pending_vc != (*v_ptr)->vc) {
                 fprintf(stderr, "mismatch %p %p\n", pending_vc,
@@ -91,6 +90,10 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int is_blocki
             DEBUG_PRINT("will return seqnum %d\n",
                         ((MPIDI_CH3_Pkt_rndv_req_to_send_t *) (*v_ptr)->
                          pheader)->seqnum);
+        } else if (type == T_CHANNEL_OUT_OF_ORDER_ARRIVE) {
+            /* Reqd pkt has not arrived yet. Poll CQ for it */
+        } else {
+            /* T_CHANNEL_NO_ARRIVE - no packets left  in queue */
         }
         goto fn_exit;
     }

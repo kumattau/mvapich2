@@ -538,57 +538,6 @@ AC_ARG_WITH(fwrapname,
     ,[FWRAPNAME=$withval;set_FWRAPNAME="yes"],FWRAPNAME=fmpich)
 AC_SUBST(FWRAPNAME)
 
-dnl <_OSU_MVAPICH_>
-AC_ARG_WITH([hwloc],
-            [AS_HELP_STRING([--with-hwloc],
-                            [use hwloc for process binding])
-            ],
-            [],
-            [with_hwloc=yes])
-
-AS_IF([test "x$with_hwloc" != xno],
-      [AC_CHECKING([for any hwloc installation])
-       AC_CHECK_LIB([hwloc], [hwloc_topology_set_pid],
-                    [AC_CHECK_HEADER([hwloc.h], [LIBS="-lhwloc $LIBS"], [])],
-                    [])
-      ])
-
-AC_ARG_WITH([limic2],
-    [AS_HELP_STRING([--with-limic2=@<:@LiMIC2 installation path@:>@],
-                    [Enable use of LiMIC2 for intra-node communication])
-    ],
-    [case $with_limic2 in
-         yes|no) ;;
-         *) with_limic2_include="$with_limic2/include" ;
-            with_limic2_libpath="$with_limic2/lib" ;;
-     esac
-    ],
-    [with_limic2=no])
-
-AC_ARG_WITH([limic2-include],
-    [AS_HELP_STRING([--with-limic2-include=@<:@LiMIC2 include path@:>@],
-                       [Specify path to LiMIC2 header files])
-    ], [
-        case $with_limic2_include in
-            yes|no) AC_MSG_FAILURE([must specify path!]);;
-        esac
-        test "x$with_limic2" != "xno" || with_limic2="yes"
-    ])
-
-AC_ARG_WITH([limic2-libpath],
-    [AS_HELP_STRING([--with-limic2-libpath=@<:@LiMIC2 library path@:>@],
-                       [Specify path to LiMIC2 library])
-    ], [
-        case $with_limic2_libpath in
-            yes|no) AC_MSG_FAILURE([must specify path!]);;
-        esac
-        test "x$with_limic2" != "xno" || with_limic2="yes"
-    ])
-
-AC_CHECK_TYPE(pthread_spinlock_t, [],
-              [CFLAGS="$CFLAGS -D_XOPEN_SOURCE=600"],
-              [[#include <pthread.h>]])
-dnl </_OSU_MVAPICH_>
 
 dnl
 #
@@ -1775,6 +1724,54 @@ if test "$ENABLE_SHLIB" != "none" -o "$enable_debuginfo" != "no" ; then
    CREATESHLIB=`pwd`/src/util/createshlib
 fi
 AC_SUBST(CREATESHLIB)
+dnl <_OSU_MVAPICH_>
+AC_ARG_WITH([hwloc],
+            [AS_HELP_STRING([--with-hwloc],
+                            [use hwloc for process binding])
+            ],
+            [],
+            [with_hwloc=yes])
+
+AS_IF([test "x$with_hwloc" != xno],
+      [AC_CHECKING([for any hwloc installation])
+       AC_CHECK_LIB([hwloc], [hwloc_topology_set_pid],
+                    [AC_CHECK_HEADER([hwloc.h], [LIBS="-lhwloc $LIBS"], [])],
+                    [])
+      ])
+
+AC_ARG_WITH([limic2],
+    [AS_HELP_STRING([--with-limic2=@<:@LiMIC2 installation path@:>@],
+                    [Enable use of LiMIC2 for intra-node communication])
+    ],
+    [case $with_limic2 in
+         yes|no) ;;
+         *) with_limic2_include="$with_limic2/include" ;
+            with_limic2_libpath="$with_limic2/lib" ;;
+     esac
+    ],
+    [with_limic2=no])
+
+AC_ARG_WITH([limic2-include],
+    [AS_HELP_STRING([--with-limic2-include=@<:@LiMIC2 include path@:>@],
+                       [Specify path to LiMIC2 header files])
+    ], [
+        case $with_limic2_include in
+            yes|no) AC_MSG_FAILURE([must specify path!]);;
+        esac
+        test "x$with_limic2" != "xno" || with_limic2="yes"
+    ])
+
+AC_ARG_WITH([limic2-libpath],
+    [AS_HELP_STRING([--with-limic2-libpath=@<:@LiMIC2 library path@:>@],
+                       [Specify path to LiMIC2 library])
+    ], [
+        case $with_limic2_libpath in
+            yes|no) AC_MSG_FAILURE([must specify path!]);;
+        esac
+        test "x$with_limic2" != "xno" || with_limic2="yes"
+    ])
+
+dnl </_OSU_MVAPICH_>
 # ---------------------------------------------------------------------------
 # Basic properties of the C compiler; some are needed for the language 
 # bindings tests.
@@ -2133,33 +2130,32 @@ dnl    fi
 	 # if the compiler allows it (e.g., building with gcc but
 	 # a different Fortran compiler. Another option is to
 	 # *require* g77.
-	 AC_MSG_CHECKING([whether $F77 allows -shared -fpic])
 	 rm -f conftest.f
 	 cat > conftest.f <<EOF
        program main
        end
 EOF
-         if $F77 -shared -fpic -o conftest conftest.f >/dev/null 2>&1 ; then
-	     FC_SHL="$F77 -shared -fpic"
-             AC_MSG_RESULT(yes)
-         else
-             AC_MSG_RESULT(no)
-             AC_MSG_CHECKING([whether $F77 allows -fpic])
-             if $F77 -fpic -o conftest conftest.f >/dev/null 2>&1 ; then
-	         FC_SHL="$F77 -fpic"
+         FC_SHL=false 
+         for sh_arg in "-shared -fPIC" "-fPIC" "-shared -fpic" "-fpic" ; do 
+             AC_MSG_CHECKING([whether $F77 allows $sh_arg]) 
+             if $F77 $sh_arg -o conftest conftest.f >/dev/null 2>&1 ; then 
+                 FC_SHL="$F77 $sh_arg" 
                  AC_MSG_RESULT(yes)
+                 break
              else
-	         FC_SHL=false
                  AC_MSG_RESULT(no)
-		 AC_MSG_WARN([Cannot build shared libraries for Fortran with this compiler])
              fi
+         done 
+         if test "$FC_SHL" = "false" ; then 
+             AC_MSG_WARN([Cannot build shared libraries for Fortran with this compiler]) 
          fi
+
 	 # This is needed for Mac OSX 10.5
 	 rm -rf conftest.dSYM
          rm -f conftest*
-
 	 FC_LINKPATH_SHL="-Wl,-rpath -Wl,"
 	 ;;
+
 	 cygwin|cygwin-gcc)
 	 FC_SHL="$F77 -shared"
 	 FC_LINKPATH_SHL=""
@@ -2498,24 +2494,24 @@ EOF
          gcc)
          if test "$pac_cv_f90_vendor" = gnu -o "$F90" = "g95" ; then
             # If we have the GNU Fortran 95 compiler (untested)
-            F90_SHL="$F90 -shared -fpic"
+            F90_SHL="$F90 -shared -fPIC"
             F90_LINKPATH_SHL="-Wl,-rpath -Wl,"
          else
             case "$pac_cv_f90_vendor" in 
 	        absoft)
-	        F90_SHL="$F90 -fpic"
+	        F90_SHL="$F90 -fPIC"
                 F90_LINKPATH_SHL="-X -rpath -X "
 	        ;;
 
 	        intel)
 	        # Intel implements the GNU options
-	        F90_SHL="$F90 -shared -fpic"
+	        F90_SHL="$F90 -shared -fPIC"
                 F90_LINKPATH_SHL="-Wl,-rpath -Wl,"
 	        ;;
 
 	        pgi)
 	        # Portland Group implements the GNU options
-	        F90_SHL="$F90 -shared -fpic"
+	        F90_SHL="$F90 -shared -fPIC"
                 F90_LINKPATH_SHL="-Wl,-rpath -Wl,"
 	        ;;
 
@@ -2709,7 +2705,7 @@ public:
 	;;
 	gcc)
         # Assume that the compiler is g++ if gcc style shared libraries chosen
-        CXX_SHL="$CXX -shared -fpic"
+        CXX_SHL="$CXX -shared -fPIC"
         CXX_LINKPATH_SHL="-Wl,-rpath -Wl,"
 	;;
 	cygwin|cygwin-gcc)

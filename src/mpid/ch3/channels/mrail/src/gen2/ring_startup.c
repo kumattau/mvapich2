@@ -500,14 +500,14 @@ int rdma_ring_based_allgather(void *sbuf, int data_size,
         int pg_rank, void *rbuf, int pg_size,
         struct MPIDI_CH3I_RDMA_Process_t *proc)
 {
-    struct ibv_mr * addr_hndl;
     int i; 
+    struct ibv_mr *addr_hndl = NULL;
     int mpi_errno = MPI_SUCCESS;
-    addr_hndl = ibv_reg_mr(proc->ptag[0],
-            rbuf, data_size*pg_size,
-            IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
 
-    if(addr_hndl == NULL) {
+    addr_hndl = ibv_reg_mr(proc->ptag[0], rbuf, data_size*pg_size,
+                           IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+
+    if (addr_hndl == NULL) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
                 MPI_ERR_INTERN,
                 "**fail",
@@ -543,7 +543,7 @@ int rdma_ring_based_allgather(void *sbuf, int data_size,
         MPIU_Memcpy(rbufProxy+data_size*pg_rank, sbuf, data_size);
 
         /* post receive*/
-        for(i = 0; i < MPD_WINDOW; i++) {
+        for (i = 0; i < MPD_WINDOW; i++) {
             if (recv_post_index == pg_rank)
                 continue;
             rr.wr_id   = recv_post_index;
@@ -554,7 +554,7 @@ int rdma_ring_based_allgather(void *sbuf, int data_size,
             sg_entry_r.addr = (uintptr_t)(rbufProxy+data_size*recv_post_index);
             sg_entry_r.length = data_size;
 
-            if(ibv_post_recv(proc->boot_qp_hndl[0], &rr, &bad_wr_r)) {
+            if (ibv_post_recv(proc->boot_qp_hndl[0], &rr, &bad_wr_r)) {
                 MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
                         MPI_ERR_INTERN,
                         "**fail",
@@ -567,19 +567,17 @@ int rdma_ring_based_allgather(void *sbuf, int data_size,
         PMI_Barrier();
 
         /* sending and receiving*/
-        while (recv_comp_index !=
-                (pg_rank+1)%pg_size ||
-                send_comp_index !=
-                (pg_rank+2)%pg_size+pg_size) {
+        while ((recv_comp_index != (pg_rank+1)%pg_size) ||
+               (send_comp_index != (pg_rank+2)%pg_size+pg_size)) {
             int ne;
             /* Three conditions
              * 1: not complete sending
              * 2: has received the data
              * 3: has enough credit
              */
-            if (send_post_index != (pg_rank+1)%pg_size &&
-                    (recv_comp_index == send_post_index ||
-                 is_A_on_left_of_B(recv_comp_index,
+            if ((send_post_index != (pg_rank+1)%pg_size) &&
+                ((recv_comp_index == send_post_index) ||
+                is_A_on_left_of_B(recv_comp_index,
                      send_post_index,pg_rank,pg_size)) && credit > 0) {
 
                 sr.opcode         = IBV_WR_SEND;
@@ -588,7 +586,8 @@ int rdma_ring_based_allgather(void *sbuf, int data_size,
                 sr.num_sge        = 1;
                 sr.sg_list        = &sg_entry_s;
                 sr.next           = NULL;
-                sg_entry_s.addr   = (uintptr_t)(rbufProxy+data_size*send_post_index);
+                sg_entry_s.addr   = (uintptr_t)
+                                    (rbufProxy+data_size*send_post_index);
                 sg_entry_s.length = data_size;
                 sg_entry_s.lkey   = addr_hndl->lkey;
 
@@ -619,7 +618,7 @@ int rdma_ring_based_allgather(void *sbuf, int data_size,
                         "Got more than one\n");
             } else if (ne == 1) {
                 if (rc.status != IBV_WC_SUCCESS) {
-                    if(rc.status == IBV_WC_RETRY_EXC_ERR) {
+                    if (rc.status == IBV_WC_RETRY_EXC_ERR) {
                         DEBUG_PRINT("Got IBV_WC_RETRY_EXC_ERR\n");
                     }
                     MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
@@ -638,7 +637,8 @@ int rdma_ring_based_allgather(void *sbuf, int data_size,
                         rr.sg_list = &(sg_entry_r);
                         rr.next    = NULL;
                         sg_entry_r.lkey = addr_hndl->lkey;
-                        sg_entry_r.addr = (uintptr_t)(rbufProxy+data_size*recv_post_index);
+                        sg_entry_r.addr = (uintptr_t)
+                                          (rbufProxy+data_size*recv_post_index);
                         sg_entry_r.length = data_size;
 
                         if(ibv_post_recv(proc->boot_qp_hndl[0], &rr, &bad_wr_r)) {
@@ -651,15 +651,13 @@ int rdma_ring_based_allgather(void *sbuf, int data_size,
 
                         recv_post_index = round_left(recv_post_index,pg_size);
                     }
-                }
-                else {
+                } else {
                     /*send completion*/
                     credit++;
                     send_comp_index = rc.wr_id;
                 }
             }
         }
-
         /*Now all send and recv finished*/
     }
 
@@ -669,8 +667,8 @@ fn_exit:
 
 fn_fail:
     goto fn_exit;
-
 }
+
 #undef FUNCNAME
 #define FUNCNAME _ring_boot_exchange
 #undef FCNAME

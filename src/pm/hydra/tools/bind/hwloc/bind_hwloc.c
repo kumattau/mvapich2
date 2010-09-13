@@ -8,8 +8,6 @@
 #include "bind.h"
 #include "bind_hwloc.h"
 
-struct HYDT_bind_info HYDT_bind_info;
-
 static hwloc_topology_t topology;
 static int topo_initialized = 0;
 
@@ -34,14 +32,14 @@ HYD_status HYDT_bind_hwloc_init(HYDT_bind_support_level_t * support_level)
     topo_initialized = 1;
 
     /* Get the max number of processing elements */
-    HYDT_bind_info.total_proc_units = hwloc_get_nbobjs_by_type(topology, HWLOC_OBJ_PROC);
+    HYDT_bind_info.total_proc_units = hwloc_get_nbobjs_by_type(topology, HWLOC_OBJ_PU);
 
     /* We have qualified for basic binding support level */
     *support_level = HYDT_BIND_BASIC;
 
     /* Setup the machine level */
     /* get the System object */
-    obj_sys = hwloc_get_system_obj(topology);
+    obj_sys = hwloc_get_root_obj(topology);
     /* init Hydra structure */
     HYDT_bind_info.machine.type = HYDT_TOPO_MACHINE;
     HYDT_bind_info.machine.os_index = -1;       /* This is a set, not a single unit */
@@ -51,7 +49,7 @@ HYD_status HYDT_bind_hwloc_init(HYDT_bind_support_level_t * support_level)
     if (!HYDT_bind_info.machine.num_children)
         HYDT_bind_info.machine.num_children = 1;
     HYDU_MALLOC(HYDT_bind_info.machine.children, struct HYDT_topo_obj *,
-                sizeof(struct HYDT_topo_obj), status);
+                sizeof(struct HYDT_topo_obj) * HYDT_bind_info.machine.num_children, status);
     HYDT_bind_info.machine.shared_memory_depth = NULL;
 
     /* Setup the nodes levels */
@@ -62,23 +60,21 @@ HYD_status HYDT_bind_hwloc_init(HYDT_bind_support_level_t * support_level)
         obj_node =
             hwloc_get_obj_inside_cpuset_by_type(topology, obj_sys->cpuset, HWLOC_OBJ_NODE,
                                                 node);
-
         if (!obj_node)
             obj_node = obj_sys;
         node_ptr->os_index = obj_node->os_index;;
         node_ptr->num_children =
             hwloc_get_nbobjs_inside_cpuset_by_type(topology, obj_node->cpuset,
                                                    HWLOC_OBJ_SOCKET);
-
         /* In case there is no socket! */
         if (!node_ptr->num_children)
             node_ptr->num_children = 1;
 
         HYDU_MALLOC(node_ptr->children, struct HYDT_topo_obj *,
                     sizeof(struct HYDT_topo_obj) * node_ptr->num_children, status);
-       /* GM: Fix me! */
-       /*  node_ptr->shared_memory_depth = NULL; */
-       
+
+        node_ptr->shared_memory_depth = NULL;
+
         /* Setup the socket level */
         for (sock = 0; sock < node_ptr->num_children; sock++) {
             sock_ptr = &node_ptr->children[sock];
@@ -119,7 +115,7 @@ HYD_status HYDT_bind_hwloc_init(HYDT_bind_support_level_t * support_level)
                 core_ptr->os_index = obj_core->os_index;
                 core_ptr->num_children =
                     hwloc_get_nbobjs_inside_cpuset_by_type(topology, obj_core->cpuset,
-                                                           HWLOC_OBJ_PROC);
+                                                           HWLOC_OBJ_PU);
 
                 HYDU_MALLOC(core_ptr->children, struct HYDT_topo_obj *,
                             sizeof(struct HYDT_topo_obj) * core_ptr->num_children, status);
@@ -129,7 +125,7 @@ HYD_status HYDT_bind_hwloc_init(HYDT_bind_support_level_t * support_level)
                 for (thread = 0; thread < core_ptr->num_children; thread++) {
                     obj_proc =
                         hwloc_get_obj_inside_cpuset_by_type(topology, obj_core->cpuset,
-                                                            HWLOC_OBJ_PROC, thread);
+                                                            HWLOC_OBJ_PU, thread);
                     thread_ptr = &core_ptr->children[thread];
                     thread_ptr->type = HYDT_TOPO_THREAD;
                     thread_ptr->os_index = obj_proc->os_index;
@@ -171,6 +167,7 @@ HYD_status HYDT_bind_hwloc_process(int core)
     if (core < 0)
         goto fn_exit;
 
+    /* For now, I suppose that the "core" is the physical index (os index) */
     hwloc_cpuset_set(cpuset, core);
     if (!topo_initialized) {
         hwloc_topology_init(&topology);

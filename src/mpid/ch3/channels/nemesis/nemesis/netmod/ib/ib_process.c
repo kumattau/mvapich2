@@ -45,7 +45,6 @@ int MPID_nem_ib_init_process_info(int pg_rank, MPIDI_PG_t * pg_p)
      * Set the process information.*
      * --------------------------- */
     memset(&process_info, 0, sizeof( MPID_nem_ib_process_info_t ));
-    //process_info.connections = NULL;
     process_info.rank        = pg_rank;
     process_info.pg          = pg_p;
     process_info.rails       = 1;

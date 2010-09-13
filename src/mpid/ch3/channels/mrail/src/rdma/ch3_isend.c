@@ -38,7 +38,7 @@ static void isend_update_request(MPID_Request* sreq, void* pkt, int pkt_sz, int 
 
 #define DEBUG_PRINT(args...)
 
-static void  MPIDI_CH3_SMP_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void *pkt,
+static int MPIDI_CH3_SMP_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void *pkt,
                         MPIDI_msg_sz_t pkt_sz);
 
 #undef FUNCNAME
@@ -64,8 +64,8 @@ int MPIDI_CH3_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void *pkt,
     if (SMP_INIT && vc->smp.local_nodes >= 0 &&
         vc->smp.local_nodes != g_smpi.my_local_id)
     {
-        MPIDI_CH3_SMP_iSend(vc, sreq, pkt, pkt_sz);
-        MPIDI_DBG_PRINTF((50, FCNAME, "exiting"));
+        mpi_errno = MPIDI_CH3_SMP_iSend(vc, sreq, pkt, pkt_sz);
+        if (mpi_errno != MPI_SUCCESS) MPIU_ERR_POP(mpi_errno);
         goto fn_exit;
     }
 
@@ -158,15 +158,18 @@ fn_exit:
     MPIDI_DBG_PRINTF((50, FCNAME, "exiting"));
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_ISEND);
     return mpi_errno;
+fn_fail:
+    goto fn_exit;
 }
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_iSend
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-static void MPIDI_CH3_SMP_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void *pkt,
+static int MPIDI_CH3_SMP_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void *pkt,
                         MPIDI_msg_sz_t pkt_sz)
 {
+    int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_SMP_ISEND);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_SMP_ISEND);
 
@@ -185,7 +188,8 @@ static void MPIDI_CH3_SMP_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void *pkt,
         {
             int complete;
             DEBUG_PRINT("write complete, calling MPIDI_CH3U_Handle_send_req()\n");
-            MPIDI_CH3U_Handle_send_req(vc, sreq, &complete);
+            mpi_errno = MPIDI_CH3U_Handle_send_req(vc, sreq, &complete);
+            if (mpi_errno != MPI_SUCCESS) MPIU_ERR_POP(mpi_errno);
 
             if (!complete)
             {
@@ -215,4 +219,10 @@ static void MPIDI_CH3_SMP_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void *pkt,
         isend_update_request(sreq, pkt, pkt_sz, 0);
         MPIDI_CH3I_SMP_SendQ_enqueue(vc, sreq);
     }
+
+fn_exit:
+   MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_SMP_ISEND);
+   return mpi_errno;
+fn_fail:
+   goto fn_exit;
 }

@@ -61,12 +61,12 @@ int MPICM_Create_UD_threads(void);
 MPICM_Finalize_UD
 Cleanup ud related data structures
 */
-int MPICM_Finalize_UD();
+int MPICM_Finalize_UD(void);
 
 /*Interface to lock/unlock connection manager*/
-void MPICM_lock();
+void MPICM_lock(void);
 
-void MPICM_unlock();
+void MPICM_unlock(void);
 
 #ifdef _ENABLE_XRC_
 typedef struct _xrc_hash {

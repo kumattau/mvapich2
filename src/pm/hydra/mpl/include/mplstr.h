@@ -25,7 +25,7 @@ extern int snprintf(char *, size_t, const char *, ...) ATTRIBUTE((format(printf,
 int MPL_snprintf(char *, size_t, const char *, ...);
 #endif /* MPL_HAVE_SNPRINTF */
 
-#if defined MPL_NEEDS_STRDUP_DECL
+#if defined MPL_NEEDS_STRDUP_DECL && !defined strdup
 extern char *strdup(const char *);
 #endif /* MPL_NEEDS_STRDUP_DECL */
 
@@ -34,6 +34,18 @@ extern char *strdup(const char *);
 #else
 char *MPL_strdup(const char *str);
 #endif /* MPL_HAVE_STRDUP */
+
+int MPL_strncpy(char *dest, const char *src, size_t n);
+
+#if defined MPL_NEEDS_STRNCMP_DECL
+extern int strncmp(const char *s1, const char *s2, size_t n);
+#endif
+
+#if defined MPL_HAVE_STRNCMP
+#define MPL_strncmp strncmp
+#else
+#error "strncmp is required"
+#endif /* MPL_HAVE_STRNCMP */
 
 /* *INDENT-ON* */
 #if defined(__cplusplus)

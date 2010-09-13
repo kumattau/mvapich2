@@ -16,6 +16,7 @@
 #include "udapl_header.h"
 #include "vbuf.h"
 #include "rdma_impl.h"
+#include "smp_smpi.h"
 #include <string.h>
 #include DAT_HEADER
 
@@ -124,12 +125,34 @@ int use_hwloc_cpu_binding=0;
 #endif
 int num_cpus = 32;
 
-
-
 void
 rdma_init_parameters (MPIDI_CH3I_RDMA_Process_t *proc)
 {
+
     char* value = NULL;
+
+/* Reading SMP user parameters */
+
+    g_smp_eagersize = SMP_EAGERSIZE;
+    s_smpi_length_queue = SMPI_LENGTH_QUEUE;
+    s_smp_num_send_buffer = SMP_NUM_SEND_BUFFER;
+    s_smp_batch_size = SMP_BATCH_SIZE;
+
+    if ((value = getenv("SMP_EAGERSIZE")) != NULL) {
+        g_smp_eagersize = atoi(value);
+        default_eager_size = 0;
+    }
+
+    if ((value = getenv("SMPI_LENGTH_QUEUE")) != NULL) {
+        s_smpi_length_queue = atoi(value);
+    }
+
+    if ((value = getenv("SMP_NUM_SEND_BUFFER")) != NULL ) {
+        s_smp_num_send_buffer = atoi(value);
+    }
+    if ((value = getenv("SMP_BATCH_SIZE")) != NULL ) {
+       s_smp_batch_size = atoi(value);
+    }
 
     if ((value = (char *) getenv ("MV2_DAPL_PROVIDER")) != NULL)
       {

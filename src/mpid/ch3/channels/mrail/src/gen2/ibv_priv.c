@@ -59,7 +59,11 @@ int MRAILI_Send_select_rail(MPIDI_VC_t * vc)
     }
 }
 
-void vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
+#undef FUNCNAME
+#define FUNCNAME vbuf_fast_rdma_alloc
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
 {
     vbuf * v;
     int vbuf_alignment = 64;
@@ -69,6 +73,9 @@ void vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
 
     void *vbuf_ctrl_buf = NULL;
     void *vbuf_rdma_buf = NULL;
+    int mpi_errno = MPI_SUCCESS;
+    MPIDI_STATE_DECL(MPID_GEN2_VBUF_FAST_RDMA_ALLOC);
+    MPIDI_FUNC_ENTER(MPID_GEN2_VBUF_FAST_RDMA_ALLOC);
 
     XRC_MSG ("vbuf_fast_rdma_alloc %d", c->pg_rank);
     /* initialize revelant fields */
@@ -165,5 +172,7 @@ void vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
         }
 
     }
+    MPIDI_FUNC_EXIT(MPID_GEN2_VBUF_FAST_RDMA_ALLOC);
+    return mpi_errno;
 }
 

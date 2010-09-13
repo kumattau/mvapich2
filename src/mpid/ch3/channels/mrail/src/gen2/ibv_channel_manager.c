@@ -136,6 +136,10 @@ static inline int PKT_IS_NOOP(void* v)
     return ((MPIDI_CH3I_MRAILI_Pkt_comm_header*) ((vbuf*) v)->pheader)->type == MPIDI_CH3_PKT_NOOP;
 }
 
+#undef FUNCNAME
+#define FUNCNAME GetSeqNumVbuf
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 /*FIXME: Ideally this functionality should be provided by higher levels*/
 static inline int GetSeqNumVbuf(vbuf * buf)
 {
@@ -297,11 +301,19 @@ int MPIDI_CH3I_MRAILI_Get_next_vbuf_local(MPIDI_VC_t* vc, vbuf** vbuf_handle, in
     return type;
 }
 
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_MRAILI_Get_next_vbuf
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3I_MRAILI_Get_next_vbuf(MPIDI_VC_t** vc_ptr, vbuf** vbuf_ptr) 
 {
     *vc_ptr = NULL;
     *vbuf_ptr = NULL;
-    int type = MPIDI_CH3I_MRAILI_Test_pkt(vbuf_ptr);
+    int type;
+    MPIDI_STATE_DECL(MPID_GEN2_MPIDI_CH3I_MRAILI_GET_NEXT_VBUF);
+    MPIDI_FUNC_ENTER(MPID_GEN2_MPIDI_CH3I_MRAILI_GET_NEXT_VBUF);
+
+    type = MPIDI_CH3I_MRAILI_Test_pkt(vbuf_ptr);
 
     switch(type)
     { 
@@ -400,9 +412,14 @@ int MPIDI_CH3I_MRAILI_Get_next_vbuf(MPIDI_VC_t** vc_ptr, vbuf** vbuf_ptr)
     }
 
 fn_exit:
+    MPIDI_FUNC_EXIT(MPID_GEN2_MPIDI_CH3I_MRAILI_GET_NEXT_VBUF);
     return type;
 }
 
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_MRAILI_Waiting_msg
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3I_MRAILI_Waiting_msg(MPIDI_VC_t * vc, vbuf ** vbuf_handle, int blocking) 
 {
     MRAILI_Channel_manager * cmanager = &vc->mrail.cmanager;
@@ -410,6 +427,8 @@ int MPIDI_CH3I_MRAILI_Waiting_msg(MPIDI_VC_t * vc, vbuf ** vbuf_handle, int bloc
     int seq;
     int seq_expected = vc->seqnum_recv;
     int type = T_CHANNEL_NO_ARRIVE;
+    MPIDI_STATE_DECL(MPID_GEN2_MPIDI_CH3I_MRAILIWAITING_MSG);
+    MPIDI_FUNC_ENTER(MPID_GEN2_MPIDI_CH3I_MRAILIWAITING_MSG);
 
     *vbuf_handle = NULL;
 
@@ -495,6 +514,7 @@ fn_exit:
         DEBUG_PRINT("{return} solve_out_of_order, type %d, next expected %d\n", 
                 type, vc->seqnum_recv);
     }
+    MPIDI_FUNC_EXIT(MPID_GEN2_MPIDI_CH3I_MRAILIWAITING_MSG);
     return type;
 }
 
@@ -527,6 +547,8 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
     void *ev_ctx;
 
     int myrank;
+    MPIDI_STATE_DECL(MPID_GEN2_MRAILI_CQ_POLL);
+    MPIDI_FUNC_ENTER(MPID_GEN2_MRAILI_CQ_POLL);
     myrank = PMI_Get_rank(&myrank);
 
     *vbuf_handle = NULL;
@@ -540,7 +562,11 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
     }
 
     if (rdma_iwarp_use_multiple_cq &&
+#ifdef MV_ARCH_OLD_CODE
         (MPIDI_CH3I_RDMA_Process.hca_type == CHELSIO_T3) &&
+#else
+        (MPIDI_CH3I_RDMA_Process.hca_type == MV2_HCA_CHELSIO_T3) &&
+#endif
         (MPIDI_CH3I_RDMA_Process.cluster_size != VERY_SMALL_CLUSTER)) {
         num_cqs = 2;
     } else {
@@ -898,6 +924,7 @@ fn_exit:
         debug_vc = vc;
     }
 #endif
+    MPIDI_FUNC_EXIT(MPID_GEN2_MRAILI_CQ_POLL);
     return type;
 }
 

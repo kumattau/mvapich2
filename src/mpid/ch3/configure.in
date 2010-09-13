@@ -322,6 +322,8 @@ CPPFLAGS="$CPPFLAGS $MPICH2_INCLUDE_FLAGS"
 dnl Place holder macro for finalization
 PAC_SUBCONFIG_FINALIZE()
 
-AC_OUTPUT(Makefile src/Makefile util/Makefile util/shm/Makefile util/shmbase/Makefile channels/Makefile util/ftb/Makefile localdefs $MPID_THREAD_OUTPUT_FILES)
+AC_OUTPUT(Makefile src/Makefile util/Makefile util/shm/Makefile
+        util/shmbase/Makefile channels/Makefile util/ftb/Makefile localdefs
+        $MPID_THREAD_OUTPUT_FILES)
 
 PAC_SUBDIR_CACHE_CLEANUP

@@ -169,12 +169,11 @@ static void psm_preinit(int pg_size)
         MPIU_Free(fls);
 
         PMI_Barrier();
-        sprintf(scratch, "/dev/shm/mpi_%s_%d", kvsid, getpid());
         DBG("localid %d localranks %d\n", id, n);
-        sprintf(scratch, "MPI_LOCALRANKS=%d", n);
-        putenv(scratch);
-        sprintf(scratch, "MPI_LOCALRANKID=%d", id);
-        putenv(scratch);
+        snprintf(scratch, sizeof(scratch), "%d", n);
+	setenv("MPI_LOCALNRANKS", scratch, 0);
+        snprintf(scratch, sizeof(scratch), "%d", id);
+	setenv("MPI_LOCALRANKID", scratch, 0);
 
         /* Should not override user settings. Updating to handle all 
          * possible scenarios. Refer to TRAC Ticket #457 */

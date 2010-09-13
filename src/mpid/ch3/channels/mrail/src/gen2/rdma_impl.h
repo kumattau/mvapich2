@@ -25,6 +25,7 @@
 
 #include <infiniband/verbs.h>
 #include "ibv_param.h"
+#include "mv2_arch_hca_detect.h"
 
 #ifdef RDMA_CM
 #include <rdma/rdma_cma.h>
@@ -51,6 +52,7 @@ do {                                                          \
 #define ERROR   -1
 #endif
 
+#ifdef MV_ARCH_OLD_CODE
 /* HCA type */
 enum {
     UNKNOWN_HCA, 
@@ -65,6 +67,7 @@ enum {
     CHELSIO_T3,
     INTEL_NE020
 };
+#endif
 
 /* cluster size */
 enum {VERY_SMALL_CLUSTER, SMALL_CLUSTER, MEDIUM_CLUSTER, LARGE_CLUSTER};
@@ -72,7 +75,12 @@ enum {VERY_SMALL_CLUSTER, SMALL_CLUSTER, MEDIUM_CLUSTER, LARGE_CLUSTER};
 typedef struct MPIDI_CH3I_RDMA_Process_t {
     /* keep all rdma implementation specific global variable in a
        structure like this to avoid name collisions */
+#ifdef MV_ARCH_OLD_CODE
     int                         hca_type;
+#else
+    mv2_hca_type                 hca_type;
+    mv2_arch_hca_type            arch_hca_type;
+#endif
     int                         cluster_size;
     uint8_t                     has_srq;
     uint8_t                     has_hsam;
@@ -104,9 +112,7 @@ typedef struct MPIDI_CH3I_RDMA_Process_t {
     /*information for management of windows */
     struct dreg_entry           **RDMA_local_win_dreg_entry;
     struct dreg_entry           **RDMA_local_wincc_dreg_entry;
-    struct dreg_entry           **RDMA_local_actlock_dreg_entry;
     struct dreg_entry           **RDMA_post_flag_dreg_entry;
-    struct dreg_entry           **RDMA_assist_thr_ack_entry;
 
     /* there two variables are used to help keep track of different windows
      * */
@@ -292,7 +298,8 @@ do {                                                                    \
 }
 #else
 #define  XRC_FILL_SRQN_FIX_CONN(_v, _vc, _rail)
-//////////
+
+#if 0
 inline static void print_info(vbuf* v, char* title, int err)
 {
     if( !err )   return;
@@ -324,7 +331,7 @@ inline static void print_info(vbuf* v, char* title, int err)
 	}
     cnt++;
 }
-/////////////////////
+#endif
 
 #define  IBV_POST_SR(_v, _c, _rail, err_string) {                     \
     {                                                                 \
@@ -494,7 +501,7 @@ void MRAILI_RDMA_Get(MPIDI_VC_t * vc, vbuf *v,
                      int nbytes, int subrail);
 int MRAILI_Send_select_rail(MPIDI_VC_t * vc);
 void vbuf_address_send(MPIDI_VC_t *vc);
-void vbuf_fast_rdma_alloc (struct MPIDI_VC *, int dir);
+int vbuf_fast_rdma_alloc (struct MPIDI_VC *, int dir);
 int MPIDI_CH3I_MRAILI_rput_complete(MPIDI_VC_t *, MPID_IOV *,
                                     int, int *num_bytes_ptr, 
                                     vbuf **, int rail);
@@ -519,7 +526,7 @@ int cm_qp_move_to_rts(MPIDI_VC_t *vc);
 int get_pkey_index(uint16_t pkey, int hca_num, int port_num, uint16_t* index);
 void set_pkey_index(uint16_t * pkey_index, int hca_num, int port_num);
 
-void init_apm_lock();
+void init_apm_lock(void);
 
 void MRAILI_RDMA_Get_finish(MPIDI_VC_t * vc, 
         MPID_Request * rreq, int rail);

@@ -118,7 +118,7 @@ extern MPIDI_CH3I_Process_t MPIDI_CH3I_Process;
 
 #define MPIDI_CH3I_SendQ_empty(vc) (vc->ch.sendq_head == NULL)
 
-//#define XRC_DEBUG
+/* #define XRC_DEBUG */
 
 #if defined(_ENABLE_XRC_) && defined(XRC_DEBUG)
 #define XRC_MSG(fmt, ...) do { \
@@ -232,10 +232,11 @@ each other and performs all other global initialization.  After this
 function is called all the processes must be connected.  The ch channel
 assumes a fully connected network.
 */
-int MPIDI_CH3I_RDMA_init();
+/* int MPIDI_CH3I_RDMA_init(void); */
+int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank);
 
 /* finalize releases the RDMA memory and any other cleanup */
-int MPIDI_CH3I_RDMA_finalize();
+int MPIDI_CH3I_RDMA_finalize(void);
 
 /*
 MPIDI_CH3I_RDMA_put_datav puts data into the ch memory of the remote process
@@ -307,7 +308,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **str);
 
 /* MPIDI_CH3I_CM_Finalize should be used if MPIDI_CH3I_CM_Init is used
  * in initialization */
-int MPIDI_CH3I_CM_Finalize();
+int MPIDI_CH3I_CM_Finalize(void);
 
 /* MPIDI_CH3I_CM_Get_port_info gets the connection information in ifname */
 int MPIDI_CH3I_CM_Get_port_info(char *ifname, int max_len);
@@ -317,7 +318,7 @@ int MPIDI_CH3I_CM_Connect_raw_vc(MPIDI_VC_t *vc, char *ifname);
 /* Let the lower layer flush out anything from the ext_sendq
  * and reclaim all WQEs
  */
-int MPIDI_CH3_Flush();
+int MPIDI_CH3_Flush(void);
 
 /* MPIDI_CH3I_CM_Connect should be called before using a VC to do
  * communication */
@@ -451,8 +452,6 @@ enum {
     MRAIL_SMP_RNDV_NOT_START
 };
 
-extern int g_smp_eagersize;
-
 /* management informations */
 struct smpi_var {
     void *mmap_ptr;
@@ -528,11 +527,11 @@ struct shmem_coll_mgmt{
 
 int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t *pg);
 
-int MPIDI_CH3I_SHMEM_COLL_Mmap();
+int MPIDI_CH3I_SHMEM_COLL_Mmap(void);
 
-int MPIDI_CH3I_SHMEM_COLL_finalize();
+int MPIDI_CH3I_SHMEM_COLL_finalize(void);
 
-void MPIDI_CH3I_SHMEM_COLL_Unlink();
+void MPIDI_CH3I_SHMEM_COLL_Unlink(void);
 
 /********* End of OSU-MPI2 *************************/
 

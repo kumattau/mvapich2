@@ -38,11 +38,6 @@
 #include "udapl_param.h"
 #include "udapl_header.h"
 
-#if !defined(DISABLE_PTMALLOC)
-#include <ptmalloc2/malloc.h>
-#include <ptmalloc2/sysdeps/pthread/malloc-machine.h>
-#endif /* !defined(DISABLE_PTMALLOC) */
-
 typedef struct dreg_entry dreg_entry;
 
 typedef struct {

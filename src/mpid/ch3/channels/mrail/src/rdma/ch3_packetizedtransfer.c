@@ -55,7 +55,7 @@ do {                                                          \
 static MPID_IOV iov[MPID_IOV_LIMIT + 1];
 
 #undef FUNCNAME
-#define FUNCNAME MPIDI_CH3_PACKETIZED_SEND
+#define FUNCNAME MPIDI_CH3_Packetized_send
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3_Packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
@@ -169,12 +169,14 @@ int MPIDI_CH3_Packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
 }
 
 #undef FUNCNAME
-#define FUNCNAME MPIDI_CH3_PACKETIZED_RECV_REQ
+#define FUNCNAME MPIDI_CH3_Packetized_recv_req
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3_Packetized_recv_req(MPIDI_VC_t * vc, MPID_Request * rreq)
 {
     int mpi_errno = MPI_SUCCESS;
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_PACKETIZED_RECV_REQ);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_PACKETIZED_RECV_REQ);
     if (NULL == vc->mrail.packetized_recv) {
         vc->mrail.packetized_recv = (void *) rreq;
     } else {
@@ -185,11 +187,12 @@ int MPIDI_CH3_Packetized_recv_req(MPIDI_VC_t * vc, MPID_Request * rreq)
                                  "**fail", 0);
     }
     DEBUG_PRINT("Add rreq %p to packetized recv\n", rreq);
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_PACKETIZED_RECV_REQ);
     return mpi_errno;
 }
 
 #undef FUNCNAME
-#define FUNCNAME MPIDI_CH3_PACKETIZED_RECV_DATA
+#define FUNCNAME MPIDI_CH3_Packetized_recv_data
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3_Packetized_recv_data(MPIDI_VC_t * vc, vbuf *v)
@@ -198,6 +201,8 @@ int MPIDI_CH3_Packetized_recv_data(MPIDI_VC_t * vc, vbuf *v)
     int skipsize = sizeof(MPIDI_CH3_Pkt_packetized_send_data_t);
     int nb, complete;
     MPID_Request *rreq = vc->mrail.packetized_recv;
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_PACKETIZED_RECV_DATA);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_PACKETIZED_RECV_DATA);
 
     if (NULL == vc->mrail.packetized_recv) {
         mpi_errno =
@@ -265,5 +270,6 @@ int MPIDI_CH3_Packetized_recv_data(MPIDI_VC_t * vc, vbuf *v)
         }
     }
   fn_exit:
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_PACKETIZED_RECV_DATA);
     return mpi_errno;
 }

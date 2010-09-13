@@ -27,6 +27,7 @@
 #include "ib_hca.h"
 #include "ib_send.h"
 #include "ib_lmt.h"
+#include "ib_vbuf.h"
 
 /* Global variables */
 int           rdma_num_qp_per_port = 1;
@@ -67,7 +68,7 @@ int           rdma_rndv_protocol = MV2_LMT_PROTOCOL_RPUT;
 int           rdma_r3_threshold = 4096;
 int           rdma_r3_threshold_nocache = 8192 * 4;
 int           num_rdma_buffer;
-int           USE_SMP = 1;
+int           rdma_use_smp = 1;
 int           enable_knomial_2level_bcast=1;
 int           inter_node_knomial_factor=4;
 int           intra_node_knomial_factor=4;
@@ -359,7 +360,7 @@ int MPID_nem_ib_get_control_params_after_hcainit()
     }
 
     if ((value = getenv("MV2_USE_SHARED_MEM")) != NULL) {
-        USE_SMP = !!atoi(value);
+        rdma_use_smp = !!atoi(value);
     }
 
     if ((value = getenv("MV2_USE_IBOETH")) != NULL) {
@@ -372,13 +373,13 @@ int MPID_nem_ib_get_control_params_after_hcainit()
             }
             process_info.has_ring_startup = 0;
         }
-        if (!USE_SMP) {
+        if (!rdma_use_smp) {
             if (0 == my_rank) {
                 MPIU_Usage_printf("IBoEth mode cannot function without SHMEM."
                                 "Falling back to use SHMEM.\r\n"
                                 "Please do NOT set MV2_USE_SHARED_MEM=0.\r\n");
             }
-            USE_SMP = 1;
+            rdma_use_smp = 1;
         }
     }
 
@@ -390,7 +391,7 @@ int MPID_nem_ib_get_control_params_after_hcainit()
 
         /* Automatically turn off RDMA fast path */
         if(rdma_use_blocking) {
-            USE_SMP = 0;
+            rdma_use_smp = 0;
             process_info.has_adaptive_fast_path = 0;
         }
     }
@@ -484,58 +485,48 @@ int MPID_nem_ib_set_default_params()
 	switch(hca_list[0].hca_type) {
 		case MLX_PCI_X:
 		case IBM_EHCA:
-			rdma_vbuf_total_size = 12*1024;
+            rdma_vbuf_total_size     = 12*1024;
+            num_rdma_buffer          = 32;
+            rdma_iba_eager_threshold = rdma_vbuf_total_size -
+                                          sizeof(VBUF_FLAG_TYPE);
+            rdma_eagersize_1sc           = 4 * 1024;
+            rdma_put_fallback_threshold  = 8 * 1024;
+            rdma_get_fallback_threshold  = 394 * 1024;
 			break;
+        case CHELSIO_T3:
+            rdma_vbuf_total_size     = 9 * 1024;
+            num_rdma_buffer          = 16;
+            rdma_iba_eager_threshold = rdma_vbuf_total_size -
+                                        sizeof(VBUF_FLAG_TYPE);
+            rdma_eagersize_1sc           = 4 * 1024;
+            rdma_put_fallback_threshold  = 8 * 1024;
+            rdma_get_fallback_threshold  = 394 * 1024;
+            break;
+        case INTEL_NE020:
+            rdma_vbuf_total_size     = 9 * 1024;
+            num_rdma_buffer          = 16;
+            rdma_iba_eager_threshold = rdma_vbuf_total_size -
+                                        sizeof(VBUF_FLAG_TYPE);
+            rdma_eagersize_1sc           = 4 * 1024;
+            rdma_put_fallback_threshold  = 8 * 1024;
+            rdma_get_fallback_threshold  = 394 * 1024;
+            break;
+        case MLX_PCI_EX_SDR:
+        case MLX_PCI_EX_DDR:
 		case MLX_CX_DDR:
 		case MLX_CX_SDR:
 		case MLX_CX_QDR:
-			rdma_vbuf_total_size = 9 * 1024;
-			break;
-		case CHELSIO_T3:
-			rdma_vbuf_total_size = 9 * 1024;
-			break;
-		case MLX_PCI_EX_SDR:
-		case MLX_PCI_EX_DDR:
 		case PATH_HT:
 		default:
-#ifdef _X86_64_
-			rdma_vbuf_total_size = 9 * 1024;
-#else
-			rdma_vbuf_total_size = 6 * 1024;
-#endif
+            rdma_vbuf_total_size     = 12 * 1024;
+            num_rdma_buffer          = 16;
+            rdma_iba_eager_threshold = rdma_vbuf_total_size -
+                                         sizeof(VBUF_FLAG_TYPE);
+            rdma_eagersize_1sc               = 4 * 1024;
+            rdma_put_fallback_threshold      = 2 * 1024;
+            rdma_get_fallback_threshold      = 192 * 1024;
+            break;
 	}
-
-
-    switch(hca_list[0].hca_type) {
-        case MLX_PCI_X:
-        case IBM_EHCA:
-			num_rdma_buffer             = 32;
-			rdma_iba_eager_threshold    = rdma_vbuf_total_size - sizeof(VBUF_FLAG_TYPE);
-            rdma_eagersize_1sc          = 4 * 1024;
-            rdma_put_fallback_threshold = 8 * 1024;
-            rdma_get_fallback_threshold = 394 * 1024;
-            break;
-        case CHELSIO_T3:
-			num_rdma_buffer          = 4;
-			rdma_iba_eager_threshold = rdma_vbuf_total_size -sizeof(VBUF_FLAG_TYPE); 
-			rdma_eagersize_1sc      = 4 * 1024;
-			rdma_put_fallback_threshold = 8 * 1024;
-			rdma_get_fallback_threshold = 394 * 1024;
-			break;
-        case MLX_PCI_EX_SDR:
-        case MLX_PCI_EX_DDR:
-        case MLX_CX_DDR:
-        case MLX_CX_SDR:
-        case MLX_CX_QDR:
-        case PATH_HT:
-        default:
-			num_rdma_buffer         = 16;
-			rdma_iba_eager_threshold = rdma_vbuf_total_size - sizeof(VBUF_FLAG_TYPE);
-            rdma_eagersize_1sc      = 4 * 1024;
-            rdma_put_fallback_threshold = 2 * 1024;
-            rdma_get_fallback_threshold = 192 * 1024;
-            break;
-    }
 
     if (hca_list[0].hca_type == PATH_HT) {
         rdma_default_qp_ous_rd_atom = 1;

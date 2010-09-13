@@ -20,8 +20,6 @@
 MPID_Request psmcomphead;
 pthread_spinlock_t reqlock;
 pthread_spinlock_t psmlock;
-uint32_t ipath_spinlimit;
-uint32_t ipath_nocomplete_limit;
 
 static void psm_dump_debug();
 
@@ -72,17 +70,6 @@ void psm_complete_req(MPID_Request *req, psm_mq_status_t psmstat)
     *(req->cc_ptr) = 0;         //TODO: should i set to 0 or decrement ?
     MPID_Request_release(req);
 //    MPIU_Object_release_ref(req, &inuse);
-}
-
-#undef FUNCNAME
-#define FUNCNAME psm_progress_start
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-void psm_progress_start(MPID_Progress_state *state)
-{
-    _psm_enter_;
-    psm_poll(psmdev_cw.ep);
-    _psm_exit_;
 }
 
 #undef FUNCNAME
@@ -185,18 +172,18 @@ fn_fail:
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int psm_try_complete(MPID_Request *req)
 {
-    int mpi_errno;
-    while(*(req->cc_ptr) != 0) {
-        psm_progress_start(NULL);
-        mpi_errno = psm_progress_wait();
-    }
+    int mpi_errno = MPI_SUCCESS;
+
+    while(*(req->cc_ptr) != 0)
+      mpi_errno = psm_progress_wait(TRUE);
+
     return mpi_errno;
 }
 
 /* progress engine:
         peek into PSM. If no completion for 10 spins, get out.
             if MT yield CPU and release global lock
-        if we got completion, do mq_wait, release PSM lock,
+        if we got completion, do mq_test, release PSM lock,
         run completion handler, re-acquire PSM lock and
         back into ipeek.
 */    
@@ -205,48 +192,47 @@ int psm_try_complete(MPID_Request *req)
 #define FUNCNAME psm_progress_wait
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int psm_progress_wait()
+int psm_progress_wait(int blocking)
 {
     psm_error_t psmerr;
     psm_mq_status_t gblstatus;
     psm_mq_req_t gblpsmreq;
     register MPID_Request *req;
-    int i = ipath_spinlimit, increp = 0;
     int mpi_errno = MPI_SUCCESS;
-    
-    _psm_enter_;
-    while(--i) {
-        psm_poll(psmdev_cw.ep);
-        psmerr = psm_mq_ipeek(psmdev_cw.mq, &gblpsmreq, NULL);
+    int yield_count = 3;
 
-        if(psmerr == PSM_OK) {
-            psmerr = psm_mq_wait(&gblpsmreq, &gblstatus);
-            _psm_exit_;
-            req = (MPID_Request *) gblstatus.context;
-            increp = 0;
-            DBG("got bytes from %d\n", (gblstatus.msg_tag & SRC_RANK_MASK));
-            mpi_errno = psm_process_completion(req, gblstatus);
-            if(mpi_errno != MPI_SUCCESS) {
-                MPIU_ERR_POP(mpi_errno);
-            }
-            goto out_2;
-        } else if(psmerr == PSM_MQ_INCOMPLETE) {
-            ++increp;
-            if(increp > ipath_nocomplete_limit)
-                goto out;
-        }
-    }
-out:
+    _psm_enter_;
+    do {
+      psmerr = psm_mq_ipeek(psmdev_cw.mq, &gblpsmreq, NULL);
+    
+      if(psmerr == PSM_OK) {
+	psmerr = psm_mq_test(&gblpsmreq, &gblstatus);
+	_psm_exit_;
+	req = (MPID_Request *) gblstatus.context;
+	DBG("got bytes from %d\n", (gblstatus.msg_tag & SRC_RANK_MASK));
+	mpi_errno = psm_process_completion(req, gblstatus);
+	if(mpi_errno != MPI_SUCCESS) {
+	  MPIU_ERR_POP(mpi_errno);
+	}
+	goto out_2;
+      }
+      else if ((MPIR_ThreadInfo.thread_provided == MPI_THREAD_MULTIPLE) &&
+	       (--yield_count == 0))
+	goto out;
+    } while (blocking);
+    
+ out:
     _psm_exit_;
     if(unlikely(ipath_debug_enable)) {
-        psm_dump_debug();
-    }
-    if(MPIR_ThreadInfo.thread_provided == MPI_THREAD_MULTIPLE) {
-        psm_pe_yield();
+      psm_dump_debug();
     }
 
-out_2:    
-fn_fail:    
+    if (MPIR_ThreadInfo.thread_provided == MPI_THREAD_MULTIPLE) {
+      psm_pe_yield();
+    }
+
+ out_2:
+ fn_fail:
     return mpi_errno;
 }
 

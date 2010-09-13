@@ -650,10 +650,9 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
         sreq->mrail.rndv_buf_off += nbytes; 
     }
     if( sreq->mrail.rndv_buf_off != sreq->mrail.rndv_buf_sz ){
-          printf("%s: [%d -> %d]: rndv_buf_off %d != rndv_buf_sz %d...,hang...\n", __func__, 
+          DEBUG_PRINT("%s: [%d -> %d]: rndv_buf_off %d != rndv_buf_sz %d...,hang...\n", __func__, 
           MPIDI_Process.my_pg_rank, vc->pg_rank, 
           sreq->mrail.rndv_buf_off, sreq->mrail.rndv_buf_sz  );
-         sleep(1000000);
     }
 
     MPIU_Assert(sreq->mrail.rndv_buf_off == sreq->mrail.rndv_buf_sz);

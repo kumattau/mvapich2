@@ -130,7 +130,7 @@ void dump_vbuf(char* msg, vbuf* v);
 #define dump_vbuf(msg, v)
 #endif /* defined(DEBUG) */
 
-int init_vbuf_lock();
+int init_vbuf_lock(void);
 
 /*
  * Vbufs are allocated in blocks and threaded on a single free list.
@@ -180,7 +180,7 @@ int allocate_vbufs(struct ibv_pd* ptag[], int nvbufs);
 
 void deallocate_vbufs(int);
 
-vbuf* get_vbuf();
+vbuf* get_vbuf(void);
 
 void MRAILI_Release_vbuf(vbuf* v);
 

@@ -28,6 +28,7 @@
 #include "rdma_cm.h"
 #include "mpiutil.h"
 #include "cm.h"
+#include "dreg.h"
 
 /* For mv2_system_report */
 #include "sysreport.h"
@@ -115,8 +116,6 @@ static inline uint16_t get_local_lid(struct ibv_context *ctx, int port)
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
 {
-    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_RDMA_INIT);
-    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_RDMA_INIT);
 
     /* Initialize the rdma implemenation. */
     /* This function is called after the RDMA channel has initialized its 
@@ -138,9 +137,12 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
     int mpi_errno = MPI_SUCCESS;
     struct process_init_info *init_info = NULL;
     uint32_t my_hca_type;
+    int pg_size;
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_RDMA_INIT);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_RDMA_INIT);
 
     gethostname(tmp_hname, 255);
-    int pg_size = MPIDI_PG_Get_size(pg);
+    pg_size = MPIDI_PG_Get_size(pg);
 
     /* Reading the values from user first and 
      * then allocating the memory */
@@ -248,24 +250,11 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
                 "**fail %s", "Failed allocating memory for wincc_dreg_entry");
         }
 
-        MPIDI_CH3I_RDMA_Process.RDMA_local_actlock_dreg_entry = (dreg_entry**)
-                   MPIU_Malloc(max_num_win * sizeof(dreg_entry*));
-        if (!MPIDI_CH3I_RDMA_Process.RDMA_local_actlock_dreg_entry) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                "**fail %s", "Failed allocating memory for actlock_dreg_entry");
-        }
-
         MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry = (dreg_entry**)
                    MPIU_Malloc(max_num_win * sizeof(dreg_entry*));
         if (!MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry) {
             MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                 "**fail %s", "Failed allocating memory for flag_dreg_entry");
-        }
-        MPIDI_CH3I_RDMA_Process.RDMA_assist_thr_ack_entry = (dreg_entry**)
-                   MPIU_Malloc(max_num_win * sizeof(dreg_entry*));
-        if (!MPIDI_CH3I_RDMA_Process.RDMA_assist_thr_ack_entry) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                "**fail %s", "Failed allocating memory for assist_thr_ack_entry");
         }
 
         MPIDI_CH3I_RDMA_Process.win_index2address =
@@ -699,14 +688,14 @@ fn_fail:
 #define FUNCNAME MPIDI_CH3I_MRAILI_Flush
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_CH3I_MRAILI_Flush()
+int MPIDI_CH3I_MRAILI_Flush(void)
 {
-    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_MRAILI_FLUSH);
-    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_MRAILI_FLUSH);
     MPIDI_PG_t *pg;
     MPIDI_VC_t *vc;
     int i, pg_rank, pg_size, rail;
     int mpi_errno = MPI_SUCCESS;
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_MRAILI_FLUSH);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_MRAILI_FLUSH);
 
     pg = MPIDI_Process.my_pg;
     pg_rank = MPIDI_Process.my_pg_rank;
@@ -766,11 +755,8 @@ fn_fail:
 #define FUNCNAME MPIDI_CH3I_RDMA_finalize
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_CH3I_RDMA_finalize()
+int MPIDI_CH3I_RDMA_finalize(void)
 {
-    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_RDMA_FINALIZE);
-    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_RDMA_FINALIZE);
-
     /* Finalize the rdma implementation */
     /* No rdma functions will be called after this function */
     int error;
@@ -784,6 +770,8 @@ int MPIDI_CH3I_RDMA_finalize()
     MPIDI_VC_t *vc;
     int err;
     int mpi_errno = MPI_SUCCESS;
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_RDMA_FINALIZE);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_RDMA_FINALIZE);
 
     /* Insert implementation here */
     pg = MPIDI_Process.my_pg;
@@ -944,9 +932,7 @@ int MPIDI_CH3I_RDMA_finalize()
     if(MPIDI_CH3I_RDMA_Process.has_one_sided) { 
       MPIU_Free(MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry);
       MPIU_Free(MPIDI_CH3I_RDMA_Process.RDMA_local_wincc_dreg_entry);   
-      MPIU_Free(MPIDI_CH3I_RDMA_Process.RDMA_local_actlock_dreg_entry);
       MPIU_Free(MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry);
-      MPIU_Free(MPIDI_CH3I_RDMA_Process.RDMA_assist_thr_ack_entry);
       MPIU_Free(MPIDI_CH3I_RDMA_Process.win_index2address); 
     }
 
@@ -1026,9 +1012,6 @@ fn_fail:
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
 {
-    MPIDI_STATE_DECL(MPID_STATE_CH3I_CM_INIT);
-    MPIDI_FUNC_ENTER(MPID_STATE_CH3I_CM_INIT);
-
     /* Initialize the rdma implemenation. */
     /* This function is called after the RDMA channel has initialized its 
        structures - like the vc_table. */
@@ -1046,11 +1029,13 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
     uint32_t my_hca_type;
     char tmp_hname[256];
     int mpi_errno = MPI_SUCCESS;
+    MPIDI_STATE_DECL(MPID_STATE_CH3I_CM_INIT);
+    MPIDI_FUNC_ENTER(MPID_STATE_CH3I_CM_INIT);
 
 #ifndef DISABLE_PTMALLOC
-    if(mvapich2_minit()) {
-	MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-		"**fail %s", "Error initializing MVAPICH2 MPIU_Malloc library");
+    if (mvapich2_minit()) {
+	    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+		    "**fail %s", "Error initializing MVAPICH2 ptmalloc2 library");
     }
 #else
     mallopt(M_TRIM_THRESHOLD, -1);
@@ -1064,8 +1049,8 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
      * then allocating the memory */
     mpi_errno = rdma_get_control_parameters(&MPIDI_CH3I_RDMA_Process);
     if (mpi_errno) {
-	MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-		"**fail %s", "rdma_get_control_parameters");
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+            "**fail %s", "rdma_get_control_parameters");
     }
 
     rdma_set_default_parameters(&MPIDI_CH3I_RDMA_Process);
@@ -1074,16 +1059,18 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
     /*
      * TODO Local Memory, must free if error occurs
      */
-    ud_qpn_all = (uint32_t *) MPIU_Malloc(pg_size * sizeof(uint32_t));
-    lid_all = (uint16_t *) MPIU_Malloc(pg_size * sizeof(uint16_t));
-    gid_all = (union ibv_gid *) MPIU_Malloc(pg_size * sizeof(union ibv_gid));
-    hca_type_all = (uint32_t *) MPIU_Malloc(pg_size * sizeof(uint32_t));
+    lid_all        = (uint16_t *) MPIU_Malloc(pg_size * sizeof(uint16_t));
+    gid_all        = (union ibv_gid *)
+                     MPIU_Malloc(pg_size * sizeof(union ibv_gid));
+    ud_qpn_all     = (uint32_t *) MPIU_Malloc(pg_size * sizeof(uint32_t));
+    hca_type_all   = (uint32_t *) MPIU_Malloc(pg_size * sizeof(uint32_t));
+
     if (!ud_qpn_all || !lid_all || !hca_type_all || !gid_all) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
                 "**nomem %s", "structure to exchange information");
     }
 
-    for(i = 0; i < rdma_num_hcas; i++) {
+    for (i = 0; i < rdma_num_hcas; i++) {
         pthread_mutex_init(&MPIDI_CH3I_RDMA_Process.async_mutex_lock[i], 0); 
     }
 
@@ -1098,10 +1085,9 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
         mpi_errno = rdma_ring_based_allgather(&my_hca_type, sizeof my_hca_type,
                                                 pg_rank, hca_type_all, pg_size,
                                                 &MPIDI_CH3I_RDMA_Process);
-        if(mpi_errno){
+        if (mpi_errno) {
             MPIU_ERR_POP(mpi_errno);
         }
-
         rdma_param_handle_heterogenity(hca_type_all, pg_size);
     }
 
@@ -1138,7 +1124,11 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
             MPIU_Error_printf("Error obtaining hostnames\n");
         }
 
+#ifdef MV_ARCH_OLD_CODE
     if (CHELSIO_T3 == MPIDI_CH3I_RDMA_Process.hca_type) {
+#else
+    if (MV2_HCA_CHELSIO_T3 == MPIDI_CH3I_RDMA_Process.hca_type) {
+#endif
          /* TRAC Ticket #455 */
          if(g_num_smp_peers + 1 < pg_size) {
            int avail_cq_entries = 0;
@@ -1190,24 +1180,11 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
                 "**fail %s", "Failed allocating memory for wincc_dreg_entry");
         }
 
-        MPIDI_CH3I_RDMA_Process.RDMA_local_actlock_dreg_entry = (dreg_entry**)
-                   MPIU_Malloc(max_num_win * sizeof(dreg_entry*));
-        if (!MPIDI_CH3I_RDMA_Process.RDMA_local_actlock_dreg_entry) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                "**fail %s", "Failed allocating memory for actlock_dreg_entry");
-        }
-
         MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry = (dreg_entry**)
                    MPIU_Malloc(max_num_win * sizeof(dreg_entry*));
         if (!MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry) {
             MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                 "**fail %s", "Failed allocating memory for flag_dreg_entry");
-        }
-        MPIDI_CH3I_RDMA_Process.RDMA_assist_thr_ack_entry = (dreg_entry**)
-                   MPIU_Malloc(max_num_win * sizeof(dreg_entry*));
-        if (!MPIDI_CH3I_RDMA_Process.RDMA_assist_thr_ack_entry) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                "**fail %s", "Failed allocating memory for assist_thr_ack_entry");
         }
 
         MPIDI_CH3I_RDMA_Process.win_index2address =
@@ -1502,7 +1479,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
     MPIU_Memset(*conn_info_ptr, 0, 128);
 
     MPIDI_CH3I_CM_Get_port_info(*conn_info_ptr, 128);
-    //fprintf(stderr, "CM_Init, conn_info %s\n", *conn_info_ptr);
+    /* fprintf(stderr, "CM_Init, conn_info %s\n", *conn_info_ptr); */
 
     /*
      * Freeing local memory
@@ -1750,9 +1727,7 @@ int MPIDI_CH3I_CM_Finalize()
     if(MPIDI_CH3I_RDMA_Process.has_one_sided) {
       MPIU_Free(MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry);
       MPIU_Free(MPIDI_CH3I_RDMA_Process.RDMA_local_wincc_dreg_entry);
-      MPIU_Free(MPIDI_CH3I_RDMA_Process.RDMA_local_actlock_dreg_entry);
       MPIU_Free(MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry);
-      MPIU_Free(MPIDI_CH3I_RDMA_Process.RDMA_assist_thr_ack_entry);
       MPIU_Free(MPIDI_CH3I_RDMA_Process.win_index2address);
     }
  

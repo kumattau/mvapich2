@@ -60,6 +60,10 @@ extern long rdma_eagersize_1sc;
 extern int  num_cpus;
 extern int  use_hwloc_cpu_binding;
 
+#define INTER_NODE_KNOMIAL_FACTOR_MAX 8
+#define INTER_NODE_KNOMIAL_FACTOR_MIN 2
+#define INTRA_NODE_KNOMIAL_FACTOR_MAX 8
+#define INTRA_NODE_KNOMIAL_FACTOR_MIN 2
 
 
 #define RDMA_NDREG_ENTRIES              (1100)

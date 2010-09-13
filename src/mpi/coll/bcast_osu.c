@@ -24,7 +24,7 @@
 int intra_shmem_Bcast_Large(
 	void *buffer,
 	int count,
-    MPI_Datatype datatype,
+        MPI_Datatype datatype,
 	int nbytes,
 	int root,
 	MPID_Comm *comm );
@@ -34,9 +34,57 @@ int intra_shmem_Bcast_Large(
 extern int enable_shmem_collectives;
 extern int  knomial_2level_bcast_system_size_threshold;
 extern int  knomial_2level_bcast_message_size_threshold;
+extern int  enable_knomial_2level_bcast;
+extern int  inter_node_knomial_factor;
+extern int  intra_node_knomial_factor;
+extern int  bcast_short_msg_threshold; 
 
 int shmem_bcast_threshold = SHMEM_BCST_THRESHOLD;
+int bcast_short_msg_threshold = -1;
 int enable_shmem_bcast = 1;
+
+int bcast_tuning(int nbytes, MPID_Comm *comm_ptr) 
+{ 
+   int bcast_short_msg; 
+   int node_size, comm_size, num_nodes; 
+   MPI_Comm comm, shmem_comm; 
+
+   if(bcast_short_msg_threshold != -1)  {
+             /* User has set the run-time parameter "MV2_BCAST_SHORT_MSG".
+              * Just use that value */
+              return bcast_short_msg_threshold;
+   } else { 
+       /* User has not used the run-time parameter for 
+        * setting the short message bcast threshold. 
+  	* Lets try to determine the number of nodes and
+        * choose an appropriate threshold */ 
+       if(comm_ptr->shmem_coll_ok != 1 || enable_knomial_2level_bcast == 0
+          || enable_shmem_collectives == 0 || comm_ptr->shmem_comm == 0) { 
+            /*Either shared-memory collectives, or knomial-2level 
+            *Bcast was disabled. Or this already is an internal 
+            *communicator that does not have a valid shmem-comm
+            *structure. Either way, we have nothing left to do. 
+            *Set the bcast_short_msg to the existing 
+            *"MPIR_BCAST_SHORT_MSG" value and return */ 
+            return MPIR_BCAST_SHORT_MSG; 
+        } else { 
+            comm = comm_ptr->handle; 
+            shmem_comm = comm_ptr->shmem_comm; 
+            PMPI_Comm_size(comm, &comm_size); 
+            PMPI_Comm_size(shmem_comm, &node_size); 
+            /* This is currently based on large scale experiments on the 
+             * TACC Ranger (16 cores/node AMD Barcelona, InfiniBand SDR)
+             * In the near future, we will be making this function robust 
+             * to consider various network speeds. */
+            num_nodes = comm_size/node_size; 
+            if(num_nodes <= 64) { 
+                   return MPIR_BCAST_SHORT_MSG; 
+            } else if(num_nodes > 64) { 
+                   return (64*1024);
+            } 
+        } 
+   }
+} 
 
 #endif
 
@@ -123,6 +171,7 @@ int MPIR_Bcast (
   int recv_offset, tree_root, nprocs_completed, offset, position;
 #if defined(_OSU_MVAPICH_)
   int *recvcnts, *displs, left, right, jnext;
+  int bcast_short_msg; 
 #else /* defined(_OSU_MVAPICH_) */
   int *recvcnts, *displs, left, right, jnext, pof2, comm_size_is_pof2;
 #endif /* defined(_OSU_MVAPICH_) */
@@ -178,8 +227,9 @@ int MPIR_Bcast (
       tmp_buf = MPIU_Malloc(nbytes);
       /* --BEGIN ERROR HANDLING-- */
       if (!tmp_buf) {
-          mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem",
-					    "**nomem %d", type_size );
+          mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, 
+                                            FCNAME, __LINE__, MPI_ERR_OTHER, 
+                                            "**nomem", "**nomem %d", type_size );
           return mpi_errno;
       }
       /* --END ERROR HANDLING-- */
@@ -196,13 +246,13 @@ int MPIR_Bcast (
 
   /* check if multiple threads are calling this collective function */
   MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
-  if ((nbytes <= MPIR_BCAST_SHORT_MSG) || (comm_size < MPIR_BCAST_MIN_PROCS)) {
+
+  if ((nbytes <= bcast_tuning(nbytes, comm_ptr)) || (comm_size < MPIR_BCAST_MIN_PROCS)) {
 #if defined(_OSU_MVAPICH_)
      if(enable_knomial_2level_bcast &&  enable_shmem_collectives  &&
              comm_ptr->shmem_coll_ok == 1 &&
              comm_ptr->leader_comm != 0 && comm_ptr->shmem_comm != 0 &&
-             comm_size > knomial_2level_bcast_system_size_threshold &&
-             nbytes <= knomial_2level_bcast_message_size_threshold) {
+             comm_size > knomial_2level_bcast_system_size_threshold) {
            if ( !is_contig || !is_homogeneous) {
                 mpi_errno = knomial_2level_Bcast(tmp_buf, nbytes,
                                            MPI_BYTE,nbytes,root,comm_ptr);
@@ -237,6 +287,7 @@ int MPIR_Bcast (
 
          Note that the process that is the tree root is handled automatically
          by this code, since it has no bits set.  */
+             
 
       mask = 0x1;
       while (mask < comm_size)
@@ -296,7 +347,8 @@ int MPIR_Bcast (
 #endif
   }
 #if defined(_OSU_MVAPICH_)
-  else if (enable_shmem_collectives && (comm_ptr->shmem_coll_ok == 1) && (nbytes < shmem_bcast_threshold) && enable_shmem_bcast) {
+  else if (enable_shmem_collectives && (comm_ptr->shmem_coll_ok == 1) && 
+                      (nbytes < shmem_bcast_threshold) && enable_shmem_bcast) {
       if ( !is_contig || !is_homogeneous) {
           mpi_errno = intra_shmem_Bcast_Large(tmp_buf, nbytes, MPI_BYTE, nbytes, root, comm_ptr);
       } else {
@@ -502,8 +554,6 @@ int MPIR_Bcast (
                               (relative_rank < tree_root + nprocs_completed)
                               && (relative_dst >= tree_root + nprocs_completed)) {
 
-                              /* printf("Rank %d, send to %d, offset %d, size %d\n", rank, dst, offset, recv_size);
-                                 fflush(stdout); */
                               mpi_errno = MPIC_Send(((char *)tmp_buf + offset),
                                                     recv_size, MPI_BYTE, dst,
                                                     MPIR_BCAST_TAG, comm);
@@ -529,8 +579,6 @@ int MPIR_Bcast (
     			      }
                               NMPI_Get_count(&status, MPI_BYTE, &recv_size);
                               curr_size += recv_size;
-                              /* printf("Rank %d, recv from %d, offset %d, size %d\n", rank, dst, offset, recv_size);
-                                 fflush(stdout);*/
                            }
                            tmp_mask >>= 1;
                            k--;
@@ -547,16 +595,20 @@ int MPIR_Bcast (
               recvcnts = MPIU_Malloc(comm_size*sizeof(int));
     	      /* --BEGIN ERROR HANDLING-- */
               if (!recvcnts) {
-                  mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem",
-    						"**nomem %d", comm_size * sizeof(int));
+                  mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, 
+                                                    FCNAME, __LINE__, MPI_ERR_OTHER, 
+                                                   "**nomem", "**nomem %d", 
+                                                    comm_size * sizeof(int));
                   return mpi_errno;
               }
     	      /* --END ERROR HANDLING-- */
               displs = MPIU_Malloc(comm_size*sizeof(int));
     	      /* --BEGIN ERROR HANDLING-- */
               if (!displs) {
-                  mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem",
-    						"**nomem %d", comm_size * sizeof(int));
+                  mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, 
+                                                    FCNAME, __LINE__, MPI_ERR_OTHER, 
+                                                    "**nomem", "**nomem %d", 
+                                                    comm_size * sizeof(int));
                   return mpi_errno;
               }
     	      /* --END ERROR HANDLING-- */
@@ -849,7 +901,8 @@ int MPIR_Bcast (
           recvcnts = MPIU_Malloc(comm_size*sizeof(int));
 	  /* --BEGIN ERROR HANDLING-- */
           if (!recvcnts) {
-              mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem",
+              mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, 
+                                                FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem",
 						"**nomem %d", comm_size * sizeof(int));
               return mpi_errno;
           }
@@ -857,7 +910,8 @@ int MPIR_Bcast (
           displs = MPIU_Malloc(comm_size*sizeof(int));
 	  /* --BEGIN ERROR HANDLING-- */
           if (!displs) {
-              mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem",
+              mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, 
+                                                FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem",
 						"**nomem %d", comm_size * sizeof(int));
               return mpi_errno;
           }
@@ -998,7 +1052,9 @@ int MPIR_Bcast_inter (
 
 	/* --BEGIN ERROR HANDLING-- */
 	if (mpi_errno != MPI_SUCCESS) {
-	    mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", 0);
+	    mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL, 
+                                             FCNAME, __LINE__, MPI_ERR_OTHER, 
+                                             "**fail", 0);
 	}
 	/* --END ERROR HANDLING-- */
     }
@@ -1228,7 +1284,8 @@ int knomial_2level_Bcast(
         mask = 0x1;
         while (mask < comm_size) {
            if (relative_rank % (inter_node_knomial_factor*mask)) {
-              src = relative_rank/(inter_node_knomial_factor*mask) * (inter_node_knomial_factor*mask) + root;
+              src = relative_rank/(inter_node_knomial_factor*mask) * 
+                           (inter_node_knomial_factor*mask) + root;
               if (src >= comm_size) { 
                src -= comm_size;
               }
@@ -1272,7 +1329,8 @@ int knomial_2level_Bcast(
       mask = 0x1;
       while (mask < comm_size) {
          if (relative_rank % (intra_node_knomial_factor*mask)) {
-            src = relative_rank/(intra_node_knomial_factor*mask)*(intra_node_knomial_factor*mask)+root;
+            src = relative_rank/(intra_node_knomial_factor*mask)*
+                             (intra_node_knomial_factor*mask)+root;
             if (src >= comm_size) {
                src -= comm_size;
             }
@@ -1372,15 +1430,18 @@ int intra_shmem_Bcast_Large(
 
 	/* Initialize the bcast segment for the first time */
 	if (comm_ptr->bcast_mmap_ptr == NULL) {
-		ret_val = MPID_SHMEM_BCAST_init(file_size, shmem_comm_rank, local_rank, &(comm_ptr->bcast_seg_size), 
-					&(comm_ptr->bcast_shmem_file), &(comm_ptr->bcast_fd));
+		ret_val = MPID_SHMEM_BCAST_init(file_size, shmem_comm_rank, 
+                                                local_rank, &(comm_ptr->bcast_seg_size), 
+         					&(comm_ptr->bcast_shmem_file), 
+                                                &(comm_ptr->bcast_fd));
                 MPIR_Allreduce(&ret_val, &flag, 1, MPI_INT, MPI_LAND, comm_ptr);
                 if (flag == 0) {
                    return -1;
                 }
 		MPIR_Barrier(shmem_commptr);
 		MPID_SHMEM_BCAST_mmap(&(comm_ptr->bcast_mmap_ptr), comm_ptr->bcast_seg_size, 
-					comm_ptr->bcast_fd, local_rank,comm_ptr->bcast_shmem_file);
+				      comm_ptr->bcast_fd, local_rank,
+                                      comm_ptr->bcast_shmem_file);
 		MPIR_Barrier(shmem_commptr);
 		if (local_rank == 0) {
 			unlink(comm_ptr->bcast_shmem_file);
@@ -1403,8 +1464,10 @@ int intra_shmem_Bcast_Large(
 	MPIR_Barrier(shmem_commptr);
 
 
-	int leader_of_root = comm_ptr->leader_map[root];		/* The Leader for the given root of the broadcast */
-	int leader_comm_root = comm_ptr->leader_rank[leader_of_root];	/* The rank of the leader process in the Leader communicator*/
+	/* The Leader for the given root of the broadcast */
+	int leader_of_root = comm_ptr->leader_map[root];
+        /* The rank of the leader process in the Leader communicator*/
+	int leader_comm_root = comm_ptr->leader_rank[leader_of_root];	
 
 	relative_rank = (rank >= root) ? rank - root : rank - root + size;
 

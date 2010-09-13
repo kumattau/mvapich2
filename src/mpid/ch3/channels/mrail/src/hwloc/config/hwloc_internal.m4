@@ -54,7 +54,7 @@ AC_DEFUN([HWLOC_DEFINE_ARGS],[
     # XML?
     AC_ARG_ENABLE([xml],
                   AS_HELP_STRING([--disable-xml], 
-		                 [Disable the XML back-end of hwloc's lstopo command]))
+		                 [Disable the XML back-end of hwloc's lstopo command]),,enable_xml=no)
 ])dnl
 
 #-----------------------------------------------------------------------

@@ -1191,6 +1191,7 @@ int MPIDI_nem_ib_fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
     /*PACKET_SET_RDMA_CREDIT delayed. need to get iheader position first*/
     /* it's also need to be added in USE_HEADER_CACHING situation*/
     *num_bytes_ptr = 0;
+    v->sreq = NULL;
 
     DEBUG_PRINT("Header info, tag %d, rank %d, context_id %d\n", 
             header->match.tag, header->match.rank, header->match.context_id);
