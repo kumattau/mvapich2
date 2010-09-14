@@ -10,7 +10,7 @@
 
 CFLAGS=@CFLAGS@ -D_GNU_SOURCE
 
-INCLUDES= -I@master_top_srcdir@/src/include -I../../../../../../include -I@master_top_srcdir@/src/mpid/ch3/channels/common/include
+INCLUDES= -I@master_top_srcdir@/src/include -I../../../../../../include -I@master_top_srcdir@/src/mpid/ch3/channels/common/include -I../hwloc/include
 
 lib${MPILIBNAME}_a_SOURCES = \
 mpid_mrail_rndv.c \

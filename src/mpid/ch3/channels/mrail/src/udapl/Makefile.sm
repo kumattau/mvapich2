@@ -10,7 +10,7 @@
 
 SUBDIRS = .
 CFLAGS = @CFLAGS@ -D_GNU_SOURCE
-INCLUDES= -I${master_top_srcdir}/src/include -I${master_top_srcdir}/src/mpid/ch3/channels/common/include -I${master_top_srcdir}/src/mpid/ch3/channels/mrail/src/gen2
+INCLUDES= -I${master_top_srcdir}/src/include -I${master_top_srcdir}/src/mpid/ch3/channels/common/include -I${master_top_srcdir}/src/mpid/ch3/channels/mrail/src/gen2 -I../hwloc/include
 VPATH= ${master_top_srcdir}/src/mpid/ch3/channels/common/src/detect/arch ${master_top_srcdir}/src/mpid/ch3/channels/common/src/memory ${master_top_srcdir}/src/mpid/ch3/channels/common/src/memory/ptmalloc2
 
 lib${MPILIBNAME}_a_SOURCES = \

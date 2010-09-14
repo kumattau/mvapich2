@@ -136,7 +136,7 @@ AS_IF([test "$use_internal_hwloc" = "yes"],
       [AC_MSG_NOTICE([No suitable hwloc installed, using internal version])
        AC_DEFINE([HAVE_LIBHWLOC], [], [Define if hwloc library is available])
        other_subdirs="hwloc $other_subdirs"
-       CPPFLAGS="-I$PWD/$srcdir/src/hwloc/include $CPPFLAGS"
+       CPPFLAGS="-I$srcdir/src/hwloc/include -I$abs_top_builddir/src/hwloc/include $CPPFLAGS"
        AC_CONFIG_SUBDIRS(src/hwloc)])
 
 if test -n "`echo $build_os | grep linux`"; then
