@@ -15,10 +15,8 @@ package.  The logs are arranged in the "most recent first" order.
     - Tuning of Broadcast Collective
     - Support for tuning of eager thresholds based on both adapter and platform
       type
-    - Environment variables can now be specified by users with various suffixes
-      (kilobytes, megabytes and gigabytes)
     - Environment variables for message sizes can now be expressed in short
-      form K=kilobytes and M=megabytes (e.g.  MV2_IBA_EAGER_THRESHOLD=12K)
+      form K=Kilobytes and M=Megabytes (e.g.  MV2_IBA_EAGER_THRESHOLD=12K)
     - Ability to selectively use some or all HCAs using colon separated lists.
       e.g. MV2_IBA_HCA=mlx4_0:mlx4_1
     - Improved Bunch/Scatter mapping for process binding with HWLOC and SMT
