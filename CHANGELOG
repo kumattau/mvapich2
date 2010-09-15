@@ -24,7 +24,7 @@ package.  The logs are arranged in the "most recent first" order.
     - Update to Hydra code from MPICH2-1.3b1
     - Auto-detection of various iWARP adapters
     - Specifying MV2_USE_IWARP=1 is no longer needed when using iWARP
-    - Changing atuomatic eager threshold selection and tuning for iWARP
+    - Changing automatic eager threshold selection and tuning for iWARP
       adapters based on number of nodes in the system instead of the number of
       processes
     - PSM progress loop optimization for QLogic Adapters (Thanks to Dr.
