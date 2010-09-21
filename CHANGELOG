@@ -3,6 +3,12 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+- MVAPICH2-1.5.1p1 (09/18/10)
+
+* Bug fixes
+    - Use correct hwloc object files to create shared libraries
+
+
 - MVAPICH2-1.5.1 (09/14/10)
 
 * Features and Enhancements
