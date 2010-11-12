@@ -97,6 +97,11 @@ typedef struct MPIDI_CH3I_Progress_state
 }
 MPIDI_CH3I_Progress_state;
 
+#define HAVE_DEV_COMM_HOOK
+#define MPID_Dev_comm_create_hook( a ) 
+#define MPID_Dev_comm_destroy_hook( a ) 
+
+
 #define MPIDI_CH3_PROGRESS_STATE_DECL MPIDI_CH3I_Progress_state ch;
 
 #endif /* !defined(MPICH_MPIDI_CH3_PRE_H_INCLUDED) */
