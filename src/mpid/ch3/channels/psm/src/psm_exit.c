@@ -41,6 +41,8 @@ int psm_dofinalize()
     }
     MPIU_Free(psmdev_cw.epaddrs);
 
+    psm_deallocate_vbuf();
+
     mpi_errno = MPI_SUCCESS;
 fn_fail:
     return mpi_errno;

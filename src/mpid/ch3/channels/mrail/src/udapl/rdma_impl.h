@@ -65,16 +65,6 @@ typedef struct MPIDI_CH3I_RDMA_Process_t
     DAT_EVD_HANDLE creq_cq_hndl_1sc;
 
     int inline_size_1sc;
-
-    /*information for management of windows */
-    dreg_entry *RDMA_local_win_dreg_entry[MAX_WIN_NUM];
-    dreg_entry *RDMA_local_wincc_dreg_entry[MAX_WIN_NUM];
-    dreg_entry *RDMA_post_flag_dreg_entry[MAX_WIN_NUM];
-
-    /* there two variables are used to help keep track of different windows
-     * */
-    long win_index2address[MAX_WIN_NUM];
-    int current_win_num;
 } MPIDI_CH3I_RDMA_Process_t;
 
 int MRAILI_Backlog_send(MPIDI_VC_t * vc,

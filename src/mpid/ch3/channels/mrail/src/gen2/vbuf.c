@@ -81,7 +81,7 @@ void dump_vbuf(char* msg, vbuf* v)
 }
 #endif /* defined(DEBUG) */
 
-int init_vbuf_lock()
+int init_vbuf_lock(void)
 {
     int mpi_errno = MPI_SUCCESS;
 
@@ -141,13 +141,15 @@ void deallocate_vbufs(int hca_num)
     }
 }
 
-void deallocate_vbuf_region()
+void deallocate_vbuf_region(void)
 {
     vbuf_region *curr = vbuf_region_head;
     vbuf_region *next = NULL;
 
     while (curr) {
         next = curr->next;
+        free(curr->malloc_start);
+        free(curr->malloc_buf_start);
         MPIU_Free(curr);
         curr = next;
     }
@@ -156,7 +158,6 @@ void deallocate_vbuf_region()
 
 static int allocate_vbuf_region(int nvbufs)
 {
-    DEBUG_PRINT("Allocating a new vbuf region.\n");
 
     struct vbuf_region *reg = NULL;
     void *mem = NULL;
@@ -166,6 +167,8 @@ static int allocate_vbuf_region(int nvbufs)
     int alignment_vbuf = 64;
     int alignment_dma = getpagesize();
     int result;
+
+    DEBUG_PRINT("Allocating a new vbuf region.\n");
 
     if (free_vbuf_head != NULL)
     {
@@ -298,7 +301,7 @@ int allocate_vbufs(struct ibv_pd* ptag[], int nvbufs)
     return allocate_vbuf_region(nvbufs);
 }
 
-vbuf* get_vbuf()
+vbuf* get_vbuf(void)
 {
     vbuf* v = NULL;
 
@@ -518,11 +521,12 @@ void vbuf_init_send(vbuf* v, unsigned long len, int rail)
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 void vbuf_init_recv(vbuf* v, unsigned long len, int rail)
 {
-    MPIU_Assert(v != NULL);
     int hca_num = rail / (rdma_num_rails / rdma_num_hcas);
 
     MPIDI_STATE_DECL(MPID_STATE_VBUF_INIT_RECV);
     MPIDI_FUNC_ENTER(MPID_STATE_VBUF_INIT_RECV);
+
+    MPIU_Assert(v != NULL);
 
     v->desc.u.rr.next = NULL;
     v->desc.u.rr.wr_id = (uintptr_t) v;

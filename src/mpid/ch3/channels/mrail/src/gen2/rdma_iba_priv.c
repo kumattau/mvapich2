@@ -264,6 +264,100 @@ int rdma_find_active_port(struct ibv_context *context,struct ibv_device *ib_dev)
 }
 
 /*
+ * Function: rdma_find_network_type
+ *
+ * Description:
+ *      On a multi-rail network, retrieve the network to use
+ *
+ * Input:
+ *      dev_list        -  List of HCAs on the system.
+ *      num_devices     -  Number of HCAs on the system.
+ *      num_usable_hcas -  Number of usable HCAs on the system.
+ *
+ * Return:
+ *      Success:    MPI_SUCCESS.
+ *      Failure:    ERROR (-1).
+ */
+#undef FUNCNAME
+#define FUNCNAME rdma_find_network_type
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int rdma_find_network_type(struct ibv_device **dev_list, int num_devices,
+                           int *num_usable_hcas)
+{
+    int i = 0;
+    int hca_type = 0;
+    int network_type = 0;
+    int num_ib_cards = 0;
+    int num_iwarp_cards = 0;
+    int num_unknwn_cards = 0;
+
+    dev_list = ibv_get_device_list(&num_devices);
+
+    for (i = 0; i < num_devices; ++i) {
+        hca_type = mv2_get_hca_type(dev_list[i]);
+        if ((hca_type > MV2_IB_HCA_START) && (hca_type < MV2_IB_HCA_END)) {
+            num_ib_cards++;
+        } else if ((hca_type > MV2_IWARP_HCA_START) &&
+                   (hca_type < MV2_IWARP_HCA_END)) {
+            num_iwarp_cards++;
+        } else {
+            num_unknwn_cards++;
+        }
+    }
+
+    if (num_ib_cards >= num_iwarp_cards) {
+        network_type = MV2_NETWORK_CLASS_IB;
+        *num_usable_hcas = num_ib_cards;
+    } else {
+        network_type = MV2_NETWORK_CLASS_IWARP;
+        *num_usable_hcas = num_iwarp_cards;
+    }
+
+    return network_type;
+}
+
+/*
+ * Function: rdma_skip_network_card
+ *
+ * Description:
+ *      On a multi-rail network, skip the HCA that does not match with the
+ *      network type
+ *
+ * Input:
+ *      network_type -   Type of underlying network.
+ *      ib_dev       -   Pointer to HCA data structure.
+ *
+ * Return:
+ *      Success:    MPI_SUCCESS.
+ *      Failure:    ERROR (-1).
+ */
+#undef FUNCNAME
+#define FUNCNAME rdma_skip_network_card
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int rdma_skip_network_card(mv2_iba_network_classes network_type,
+                           struct ibv_device *ib_dev)
+{
+    int skip = 0;
+    int hca_type = 0;
+
+    hca_type = mv2_get_hca_type(ib_dev);
+
+    if ((network_type == MV2_NETWORK_CLASS_IB) &&
+        ((hca_type > MV2_IWARP_HCA_START) && (hca_type < MV2_IWARP_HCA_END))) {
+       skip = 1;
+    } else if ((network_type == MV2_NETWORK_CLASS_IWARP) &&
+        ((hca_type > MV2_IB_HCA_START) && (hca_type < MV2_IB_HCA_END))) {
+       skip = 1;
+    } else {
+       skip = 0;
+    }
+
+    return skip;
+}
+
+/*
  * Function: rdma_open_hca
  *
  * Description:
@@ -283,17 +377,37 @@ int rdma_find_active_port(struct ibv_context *context,struct ibv_device *ib_dev)
 int rdma_open_hca(struct MPIDI_CH3I_RDMA_Process_t *proc)
 {
     int i = 0, j = 0;
+    int hca_type = 0;
     int num_devices = 0;
+    int network_type = 0;
+    int num_usable_hcas = 0;
     int mpi_errno = MPI_SUCCESS;
     struct ibv_device *ib_dev = NULL;
     struct ibv_device **dev_list = NULL;
 #ifdef CRC_CHECK
     gen_crc_table();
 #endif
-    dev_list = ibv_get_device_list(&num_devices);
 
-    for (i = 0; i < rdma_num_hcas; i ++) {
-        if (!strncmp(rdma_iba_hcas[0], RDMA_IBA_NULL_HCA, 32)) {
+    rdma_num_hcas = 0;
+
+    dev_list = ibv_get_device_list(&num_devices);
+    
+    network_type = rdma_find_network_type(dev_list, num_devices,
+                                          &num_usable_hcas);
+
+    for (i = 0; i < num_devices; i ++) {
+        if (rdma_skip_network_card(network_type, dev_list[i])) {
+            /* Skip HCA's that don't match with network type */
+            continue;
+        }
+
+        if (rdma_multirail_usage_policy == MV2_MRAIL_BINDING) {
+            /* Bind a process to a HCA */
+            if (mrail_use_default_mapping) {
+               mrail_user_defined_p2r_mapping = rdma_local_id % num_usable_hcas;
+            }
+            ib_dev = dev_list[mrail_user_defined_p2r_mapping];
+        } else if (!strncmp(rdma_iba_hcas[0], RDMA_IBA_NULL_HCA, 32)) {
             /* User hasn't specified any HCA name
              * We will use the first available HCA(s) */
             ib_dev = dev_list[i];
@@ -302,7 +416,7 @@ int rdma_open_hca(struct MPIDI_CH3I_RDMA_Process_t *proc)
             j = 0;
             while (dev_list[j]) {
                 if (!strncmp(ibv_get_device_name(dev_list[j]),
-                            rdma_iba_hcas[i], 32)) {
+                            rdma_iba_hcas[rdma_num_hcas], 32)) {
                     ib_dev = dev_list[j];
                     break;
                 }
@@ -317,22 +431,30 @@ int rdma_open_hca(struct MPIDI_CH3I_RDMA_Process_t *proc)
 		            "**fail %s", "No IB device found");
         }
 
-        proc->ib_dev[i] = ib_dev;
+        proc->ib_dev[rdma_num_hcas] = ib_dev;
 
-        proc->nic_context[i] = ibv_open_device(ib_dev);
-        if (!proc->nic_context[i]) {
+        proc->nic_context[rdma_num_hcas] = ibv_open_device(ib_dev);
+        if (!proc->nic_context[rdma_num_hcas]) {
             /* Clean up before exit */
             ibv_free_device_list(dev_list);
 	        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
-		            "%s %d", "Failed to open HCA number", i);
+		            "%s %d", "Failed to open HCA number", rdma_num_hcas);
         }
 
-        proc->ptag[i] = ibv_alloc_pd(proc->nic_context[i]);
-        if (!proc->ptag[i]) {
+        proc->ptag[rdma_num_hcas] = ibv_alloc_pd(proc->nic_context[rdma_num_hcas]);
+        if (!proc->ptag[rdma_num_hcas]) {
             /* Clean up before exit */
             ibv_free_device_list(dev_list);
             MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, 
-                    "**fail", "%s%d", "Failed to alloc pd number ", i);
+                "**fail", "%s%d", "Failed to alloc pd number ", rdma_num_hcas);
+        }
+
+        rdma_num_hcas++;
+        if ((rdma_multirail_usage_policy == MV2_MRAIL_BINDING) ||
+            (rdma_num_req_hcas == 1)) {
+            /* If usage policy is binding, or user has not asked for multiple
+             * HCAs then we only need one HCA */
+            break;
         }
     }
 
@@ -921,14 +1043,14 @@ rdma_iba_allocate_memory(struct MPIDI_CH3I_RDMA_Process_t *proc,
                 /* Start the async thread which watches for SRQ limit events */
                 {
                     pthread_attr_t attr;
-                    int ret;
+                    int stacksz_ret;
                     if (pthread_attr_init(&attr))
                     {
                         ibv_error_abort(IBV_RETURN_ERR, "Couldn't init pthread_attr\n");
                     }
-                    ret = pthread_attr_setstacksize(&attr, 
+                    stacksz_ret = pthread_attr_setstacksize(&attr, 
                             rdma_default_async_thread_stack_size);
-                    if (ret && ret != EINVAL) {
+                    if (stacksz_ret && stacksz_ret != EINVAL) {
                         ibv_error_abort(IBV_RETURN_ERR, "Couldn't set pthread stack size\n");
                     }
                     pthread_create(
@@ -959,6 +1081,7 @@ rdma_iba_enable_connections(struct MPIDI_CH3I_RDMA_Process_t *proc,
     uint32_t            qp_attr_mask = 0;
     int                 i, j;
     int                 rail_index, pg_size;
+    static int          rdma_qos_sl = 0;
     MPIDI_VC_t * vc;
 
     /**********************  INIT --> RTR  ************************/
@@ -967,7 +1090,12 @@ rdma_iba_enable_connections(struct MPIDI_CH3I_RDMA_Process_t *proc,
     qp_attr.rq_psn      =   rdma_default_psn;
     qp_attr.max_dest_rd_atomic  =   rdma_default_max_rdma_dst_ops;
     qp_attr.min_rnr_timer       =   rdma_default_min_rnr_timer;
-    qp_attr.ah_attr.sl          =   rdma_default_service_level;
+    if (rdma_use_qos) {
+        qp_attr.ah_attr.sl          =   rdma_qos_sl;
+        rdma_qos_sl = (rdma_qos_sl + 1) % rdma_qos_num_sls;
+    } else {
+        qp_attr.ah_attr.sl          =   rdma_default_service_level;
+    }
     qp_attr.ah_attr.static_rate =   rdma_default_static_rate;
     qp_attr.ah_attr.src_path_bits   =   rdma_default_src_path_bits;
 
@@ -1130,7 +1258,7 @@ void MRAILI_Init_vc(MPIDI_VC_t * vc)
     vc->mrail.coalesce_vbuf = NULL;
 
     vc->mrail.rfp.rdma_credit = 0;
-#ifdef USE_HEADER_CACHING
+#ifndef MV2_DISABLE_HEADER_CACHING 
     vc->mrail.rfp.cached_miss   = 0;
     vc->mrail.rfp.cached_hit    = 0;
     vc->mrail.rfp.cached_incoming = MPIU_Malloc (sizeof(MPIDI_CH3_Pkt_send_t));
@@ -1459,6 +1587,7 @@ int cm_qp_move_to_rtr(MPIDI_VC_t *vc, uint16_t *lids, union ibv_gid *gids,
     struct ibv_qp_attr  qp_attr;
     uint32_t            qp_attr_mask = 0;
     int                 rail_index, hca_index;
+    static int          rdma_qos_sl = 0;
 
     for (rail_index = 0; rail_index < rdma_num_rails; rail_index ++) {
         hca_index  = rail_index / (vc->mrail.num_rails / rdma_num_hcas);
@@ -1467,7 +1596,12 @@ int cm_qp_move_to_rtr(MPIDI_VC_t *vc, uint16_t *lids, union ibv_gid *gids,
         qp_attr.rq_psn      =   rdma_default_psn;
         qp_attr.max_dest_rd_atomic  =   rdma_default_max_rdma_dst_ops;
         qp_attr.min_rnr_timer       =   rdma_default_min_rnr_timer;
-        qp_attr.ah_attr.sl          =   rdma_default_service_level;
+        if (rdma_use_qos) {
+            qp_attr.ah_attr.sl          =   rdma_qos_sl;
+            rdma_qos_sl = (rdma_qos_sl + 1) % rdma_qos_num_sls;
+        } else {
+            qp_attr.ah_attr.sl          =   rdma_default_service_level;
+        }
         qp_attr.ah_attr.static_rate =   rdma_default_static_rate;
         qp_attr.ah_attr.src_path_bits   =   rdma_default_src_path_bits;
         qp_attr.ah_attr.port_num = vc->mrail.rails[rail_index].port;
@@ -1489,7 +1623,7 @@ int cm_qp_move_to_rtr(MPIDI_VC_t *vc, uint16_t *lids, union ibv_gid *gids,
             qp_attr.path_mtu    =   rdma_default_mtu;
         }
 
-#if _ENABLE_XRC_
+#ifdef _ENABLE_XRC_
         if (USE_XRC && !is_rqp && !is_dpm) {
             /* Move send qp to RTR */
             MPIDI_PG_t *pg = vc->pg;
@@ -1586,7 +1720,7 @@ int cm_qp_move_to_rts(MPIDI_VC_t *vc)
     return 0;
 }
 
-int get_pkey_index(uint16_t pkey, int hca_num, int port_num, uint16_t* index)
+int get_pkey_index(uint16_t pkey, int hca_num, int port_num, uint16_t* ix)
 {
     uint16_t i = 0;
     struct ibv_device_attr dev_attr;
@@ -1604,7 +1738,7 @@ int get_pkey_index(uint16_t pkey, int hca_num, int port_num, uint16_t* index)
         ibv_query_pkey(MPIDI_CH3I_RDMA_Process.nic_context[hca_num], 
                 (uint8_t)port_num, (int)i ,&curr_pkey);
         if (pkey == (ntohs(curr_pkey) & PKEY_MASK)) {
-            *index = i;
+            *ix = i;
             return 1;
         }
     }
@@ -1640,7 +1774,7 @@ void MRAILI_Init_vc_network(MPIDI_VC_t * vc)
      *      fast path*/
     int i;
 
-#ifdef USE_HEADER_CACHING
+#ifndef MV2_DISABLE_HEADER_CACHING 
     vc->mrail.rfp.cached_miss   = 0;
     vc->mrail.rfp.cached_hit    = 0;
     vc->mrail.rfp.cached_incoming = MPIU_Malloc (sizeof(MPIDI_CH3_Pkt_send_t));

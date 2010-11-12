@@ -25,7 +25,7 @@
 
 MODULE_AUTHOR("Hyun-Wook Jin <jinh@konkuk.ac.kr>");
 MODULE_DESCRIPTION("LiMIC2: Linux Kernel Module for High-Performance MPI Intra-Node Communication");
-MODULE_VERSION("0.5.3");
+MODULE_VERSION("0.5.4");
 MODULE_LICENSE("Dual BSD/GPL"); /* BSD only */
 
 #ifdef HAVE_UNLOCKED_IOCTL
@@ -70,6 +70,7 @@ static int limic_ioctl(LiMIC2_IOCTL_IGNORED_ARGS,
     struct page **maplist;
     limic_user *lu, frag_lu;
     uint32_t vinfo;
+    int pgcount;
 
     switch (op_code) {
         case LIMIC_VERSION:
@@ -103,22 +104,31 @@ static int limic_ioctl(LiMIC2_IOCTL_IGNORED_ARGS,
                 return -EFAULT;
 
             lu = req.lu;
-
+            
             /* init for the first mapping fragment */
+            if(((lu->va & (PAGE_SIZE-1)) < lu->offset) || req.len < lu->length ){
+                frag_lu.va = lu->va + (lu->offset - (lu->va & (PAGE_SIZE-1)));
+                frag_lu.offset = (lu->offset)%PAGE_SIZE; 
+                pgcount = (frag_lu.va + req.len + PAGE_SIZE - 1)/PAGE_SIZE - frag_lu.va/PAGE_SIZE;
+            } else {
+                frag_lu.va = lu->va;
+                frag_lu.offset = lu->offset;
+                pgcount = lu->nr_pages;
+            }
+       
             frag_lu.mm = lu->mm;
             frag_lu.tsk = lu->tsk;
-            frag_lu.nr_pages = (lu->nr_pages < NR_PAGES_4_FRAG) ? lu->nr_pages : NR_PAGES_4_FRAG;
-            frag_lu.offset = lu->offset;
+            frag_lu.nr_pages = (pgcount < NR_PAGES_4_FRAG) ? pgcount : NR_PAGES_4_FRAG;
             frag_lu.length = frag_lu.nr_pages * PAGE_SIZE - frag_lu.offset;
             if(frag_lu.length > lu->length)
                 frag_lu.length = lu->length;
-            frag_lu.va = lu->va;
+            if(frag_lu.length > req.len)
+                frag_lu.length = req.len;
             frag_req.lu = &frag_lu;
             len_left = (req.len < lu->length) ? req.len : lu->length;
             len_copied = 0;
 
-            while (len_left > 0){ 
-
+            while (len_left > 0) { 
                 /* setup for the destination buffer of this fragment */
                 frag_req.buf = req.buf + len_copied;
                 frag_req.len = req.len - len_copied;
@@ -140,11 +150,68 @@ static int limic_ioctl(LiMIC2_IOCTL_IGNORED_ARGS,
                 len_copied += frag_lu.length;
                 frag_lu.length = (len_left < NR_PAGES_4_FRAG * PAGE_SIZE) ? len_left : NR_PAGES_4_FRAG * PAGE_SIZE;
                 frag_lu.nr_pages = (frag_lu.length + PAGE_SIZE - 1)/PAGE_SIZE;
-
             } /* end of while */
 
             lu->length = len_copied;
             return LIMIC_RX_DONE;
+        case LIMIC_TXW:
+            if(copy_from_user((void *)&req, arg, sizeof(limic_request)))
+                return -EFAULT;
+
+            lu = req.lu;
+
+            /* init for the first mapping fragment */
+            if(((lu->va & (PAGE_SIZE-1)) < lu->offset) || req.len < lu->length ){
+                frag_lu.va = lu->va + (lu->offset - (lu->va & (PAGE_SIZE-1)));
+                frag_lu.offset = (lu->offset)%PAGE_SIZE;
+                pgcount = (frag_lu.va + req.len + PAGE_SIZE - 1)/PAGE_SIZE - frag_lu.va/PAGE_SIZE;
+            } else {
+                frag_lu.va = lu->va;
+                frag_lu.offset = lu->offset;
+                pgcount = lu->nr_pages;
+            }
+
+            frag_lu.mm = lu->mm;
+            frag_lu.tsk = lu->tsk;
+            frag_lu.nr_pages = (pgcount < NR_PAGES_4_FRAG) ? pgcount : NR_PAGES_4_FRAG;
+            frag_lu.length = frag_lu.nr_pages * PAGE_SIZE - frag_lu.offset;
+            if(frag_lu.length > lu->length)
+                frag_lu.length = lu->length;
+            if(frag_lu.length > req.len)
+                frag_lu.length = req.len;
+            frag_req.lu = &frag_lu;
+            len_left = (req.len < lu->length) ? req.len : lu->length;
+            len_copied = 0;
+
+            while (len_left > 0){
+
+                /* setup for the destination buffer of this fragment */
+                frag_req.buf = req.buf + len_copied;
+                frag_req.len = req.len - len_copied;
+
+                maplist = limic_get_pages(&frag_lu, READ);
+                if(!maplist) return -EINVAL;
+
+                if((err = limic_map_and_txcopy(&frag_req, maplist))) {
+                    limic_release_pages(maplist, frag_lu.nr_pages);
+                    return err;
+                }
+
+                limic_release_pages(maplist, frag_lu.nr_pages);
+
+                /* setup for next mapping fragment */
+                frag_lu.offset = 0;
+                frag_lu.va += frag_lu.length;
+                len_left -= frag_lu.length;
+                len_copied += frag_lu.length;
+                frag_lu.length = (len_left < NR_PAGES_4_FRAG * PAGE_SIZE) ? len_left : NR_PAGES_4_FRAG * PAGE_SIZE;
+                frag_lu.nr_pages = (frag_lu.length + PAGE_SIZE - 1)/PAGE_SIZE;
+
+            } /* end of while */
+
+            lu->length = len_copied;
+            return LIMIC_TXW_DONE;
+
 #if 0
         case OCK_RESET:
             while(module_refcount(THIS_MODULE) )

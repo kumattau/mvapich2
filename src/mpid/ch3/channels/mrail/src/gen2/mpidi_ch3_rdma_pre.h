@@ -107,7 +107,7 @@ struct dreg_entry;
         struct MPID_Request *next_inflow;  \
     } mrail;
 
-#ifdef USE_HEADER_CACHING
+#ifndef MV2_DISABLE_HEADER_CACHING 
 #define MAX_SIZE_WITH_HEADER_CACHING 255
 
 typedef struct MPIDI_CH3I_MRAILI_Pkt_fast_eager_t {
@@ -187,7 +187,7 @@ typedef struct MPIDI_CH3I_MRAILI_RDMAPATH_VC
     int 	eager_start_cnt;
     int 	in_polling_set;
 
-#ifdef USE_HEADER_CACHING
+#ifndef MV2_DISABLE_HEADER_CACHING 
     void    	*cached_outgoing;
     void    	*cached_incoming; 
     int     	cached_hit;

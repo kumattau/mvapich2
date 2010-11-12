@@ -452,8 +452,8 @@ fi
 
 AC_MSG_CHECKING([whether to enable header caching])
 
-if test "$enable_header_caching" = "yes"; then
-    AC_DEFINE(USE_HEADER_CACHING,1,[Define to enable header caching.])
+if test "$enable_header_caching" != "yes"; then
+    AC_DEFINE(MV2_DISABLE_HEADER_CACHING,1,[Define to disable header caching.])
 fi
 
 AC_MSG_RESULT($enable_header_caching)

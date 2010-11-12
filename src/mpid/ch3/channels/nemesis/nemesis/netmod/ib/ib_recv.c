@@ -24,10 +24,10 @@
 /** We maintain an index table to get the header size ******/
 int MPIDI_CH3_Pkt_size_index[] = {
     sizeof(MPIDI_CH3_Pkt_eager_send_t),        /* 0 */
-#if defined(USE_HEADER_CACHING)
+#ifndef MV2_DISABLE_HEADER_CACHING
     sizeof(MPIDI_nem_ib_pkt_fast_eager),
     sizeof(MPIDI_nem_ib_pkt_fast_eager_with_req),
-#endif /* defined(USE_HEADER_CACHING) */
+#endif /* !MV2_DISABLE_HEADER_CACHING */
     sizeof(MPIDI_nem_ib_pkt_noop),
     sizeof(MPIDI_CH3_Pkt_rndv_clr_to_send_t),
     sizeof(MPIDI_CH3_Pkt_rndv_req_to_send_t),
@@ -106,7 +106,7 @@ int MPIDI_CH3I_nem_ib_parse_header(MPIDI_VC_t * vc,
 #endif
     switch (header->type) {
 /*header caching codes */
-#ifdef USE_HEADER_CACHING
+#ifndef MV2_DISABLE_HEADER_CACHING 
     case (MPIDI_CH3_PKT_FAST_EAGER_SEND):
     case (MPIDI_CH3_PKT_FAST_EAGER_SEND_WITH_REQ):
         {
@@ -151,7 +151,7 @@ int MPIDI_CH3I_nem_ib_parse_header(MPIDI_VC_t * vc,
         {
             DEBUG_PRINT("[recv: parse header] pkt eager send\n");
 /* header caching codes */
-#ifdef USE_HEADER_CACHING
+#ifndef MV2_DISABLE_HEADER_CACHING 
             if (v->padding != NORMAL_VBUF_FLAG) {
                 /* Only cache header if the packet is from RdMA path
                  * XXXX: what is R3_FLAG?

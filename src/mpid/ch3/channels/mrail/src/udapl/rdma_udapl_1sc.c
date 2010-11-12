@@ -65,8 +65,6 @@ int POST_PUT_PUT_GET_LIST (MPID_Win *, int, dreg_entry *,
 int POST_GET_PUT_GET_LIST (MPID_Win *, int, void *, void *,
                            dreg_entry *, MPIDI_VC_t *, UDAPL_DESCRIPTOR *);
 int Consume_signals (MPID_Win *, aint_t);
-int Find_Avail_Index (void);
-int Find_Win_Index (MPID_Win *);
 int IBA_PUT (MPIDI_RMA_ops *, MPID_Win *, int);
 int IBA_GET (MPIDI_RMA_ops *, MPID_Win *, int);
 int IBA_ACCUMULATE (MPIDI_RMA_ops *, MPID_Win *, int);
@@ -484,7 +482,7 @@ MPIDI_CH3I_RDMA_win_create (void *base,
                             int my_rank,
                             MPID_Win ** win_ptr, MPID_Comm * comm_ptr)
 {
-    int ret, i, index, fall_back;
+    int ret, i, fall_back;
     win_info *win_info_exchange;
     uintptr_t *post_flag_ptr_send, *post_flag_ptr_recv;
 
@@ -498,13 +496,6 @@ MPIDI_CH3I_RDMA_win_create (void *base,
         return;
     }
 
-    /*There may be more than one windows existing at the same time */
-    MPIDI_CH3I_RDMA_Process.current_win_num++;
-    MPIU_Assert(MPIDI_CH3I_RDMA_Process.current_win_num <= MAX_WIN_NUM);
-
-    index = Find_Avail_Index ();
-    MPIU_Assert(index != -1);
-
     /*Exchagne the information about rkeys and addresses */
     win_info_exchange = MPIU_Malloc (comm_size * sizeof (win_info));
     if (!win_info_exchange)
@@ -517,20 +508,17 @@ MPIDI_CH3I_RDMA_win_create (void *base,
     /*Register the exposed buffer in this window */
     if (base != NULL && size > 0)
     {
-          MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry[index] =
-              dreg_register (base, size);
-          if (NULL ==
-              MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry[index]) {
+          (*win_ptr)->win_dreg_entry = dreg_register (base, size);
+          if (NULL == (*win_ptr)->win_dreg_entry) {
               (*win_ptr)->fall_back = 1;
           } else {
               win_info_exchange[my_rank].win_rkey =
-                 (uint32_t) (MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry[index]->
-                 memhandle.rkey);
+                 (uint32_t) ((*win_ptr)->win_dreg_entry->memhandle.rkey);
           }
 
     } else {
 
-          MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry[index] = NULL;
+          (*win_ptr)->win_dreg_entry = NULL;
           win_info_exchange[my_rank].win_rkey = -1;
 
     }
@@ -555,10 +543,10 @@ MPIDI_CH3I_RDMA_win_create (void *base,
         MPIU_Malloc (sizeof (long long) * comm_size);
     MPIU_Memset ((void *)((*win_ptr)->completion_counter), 0,
             sizeof (long long) * comm_size);
-    MPIDI_CH3I_RDMA_Process.RDMA_local_wincc_dreg_entry[index] =
+    (*win_ptr)->completion_counter_dreg_entry =
         dreg_register ((void *) (*win_ptr)->completion_counter,
                        sizeof (long long) * comm_size);
-    if (NULL == MPIDI_CH3I_RDMA_Process.RDMA_local_wincc_dreg_entry[index])
+    if (NULL == (*win_ptr)->completion_counter_dreg_entry)
     {
           (*win_ptr)->fall_back = 1;
           goto win_unregister;
@@ -567,25 +555,24 @@ MPIDI_CH3I_RDMA_win_create (void *base,
     win_info_exchange[my_rank].completion_counter_ptr = 
         (uintptr_t) ((*win_ptr)->completion_counter); 
     win_info_exchange[my_rank].completion_counter_rkey =
-        (uint32_t) (MPIDI_CH3I_RDMA_Process.RDMA_local_wincc_dreg_entry[index]->
+        (uint32_t) ((*win_ptr)->completion_counter_dreg_entry->
         memhandle.rkey);
 
     /*Register buffer for post flags : from target to origin */
     (*win_ptr)->post_flag = (int *) MPIU_Malloc (comm_size * sizeof (int));
     MPIU_Memset ((void *)((*win_ptr)->post_flag), 0,
             sizeof (int) * comm_size);
-    MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry[index] =
+    (*win_ptr)->post_flag_dreg_entry =
         dreg_register ((void *) (*win_ptr)->post_flag,
                        sizeof (int) * comm_size);
-    if (NULL == MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry[index])
+    if (NULL == (*win_ptr)->post_flag_dreg_entry)
     {
         (*win_ptr)->fall_back = 1;
         goto cc_unregister;
     }
 
     win_info_exchange[my_rank].post_flag_rkey  =
-        (uint32_t) (MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry[index]->
-                    memhandle.rkey);
+        (uint32_t) (*win_ptr)->post_flag_dreg_entry->memhandle.rkey;
 
     /* Preregister buffer*/
     (*win_ptr)->pinnedpool_1sc_buf = MPIU_Malloc (rdma_pin_pool_size);
@@ -617,14 +604,11 @@ MPIDI_CH3I_RDMA_win_create (void *base,
                (*win_ptr)->fall_back = 1;
                dreg_unregister((*win_ptr)->pinnedpool_1sc_dentry);
                MPIU_Free((*win_ptr)->pinnedpool_1sc_buf);
-               dreg_unregister(MPIDI_CH3I_RDMA_Process.
-                      RDMA_post_flag_dreg_entry[index]);
+               dreg_unregister((*win_ptr)->post_flag_dreg_entry);
                MPIU_Free((*win_ptr)->post_flag);
-               dreg_unregister(MPIDI_CH3I_RDMA_Process.
-                      RDMA_local_wincc_dreg_entry[index]);
+               dreg_unregister((*win_ptr)->completion_counter_dreg_entry);
                MPIU_Free((*win_ptr)->completion_counter);
-               dreg_unregister(MPIDI_CH3I_RDMA_Process.
-                      RDMA_local_win_dreg_entry[index]);
+               dreg_unregister((*win_ptr)->win_dreg_entry); 
                MPIU_Free(win_info_exchange);
                goto fn_exit;
             }
@@ -746,13 +730,9 @@ MPIDI_CH3I_RDMA_win_create (void *base,
           ibv_error_abort (GEN_EXIT_ERR, "rdma_udapl_1sc");
     }
 
-    MPIDI_CH3I_RDMA_Process.win_index2address[index] = (uintptr_t) * win_ptr;
-
   fn_exit:
     if (1 == (*win_ptr)->fall_back)
     {
-          MPIDI_CH3I_RDMA_Process.win_index2address[index] = 0;
-          MPIDI_CH3I_RDMA_Process.current_win_num--;
           (*win_ptr)->using_lock = 0;
           (*win_ptr)->using_start = 0;
           (*win_ptr)->my_id = my_rank;
@@ -766,24 +746,21 @@ MPIDI_CH3I_RDMA_win_create (void *base,
     }
     return;
   post_unregister:
-    if(MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry[index])
+    if((*win_ptr)->post_flag_dreg_entry)
     {
-          dreg_unregister(MPIDI_CH3I_RDMA_Process.
-                      RDMA_post_flag_dreg_entry[index]);
+          dreg_unregister((*win_ptr)->post_flag_dreg_entry);
           MPIU_Free((*win_ptr)->post_flag);
     }
   cc_unregister:
-    if(MPIDI_CH3I_RDMA_Process.RDMA_local_wincc_dreg_entry[index])
+    if((*win_ptr)->completion_counter_dreg_entry)
     {
-          dreg_unregister(MPIDI_CH3I_RDMA_Process.
-                      RDMA_local_wincc_dreg_entry[index]);
+          dreg_unregister((*win_ptr)->completion_counter_dreg_entry);
           MPIU_Free((*win_ptr)->completion_counter);
     }
   win_unregister:
-    if(MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry[index]) 
+    if((*win_ptr)->win_dreg_entry) 
     {
-          dreg_unregister(MPIDI_CH3I_RDMA_Process.
-                      RDMA_local_win_dreg_entry[index]);
+          dreg_unregister((*win_ptr)->win_dreg_entry);
     }
 
     win_info_exchange[my_rank].fall_back = (uint32_t) (*win_ptr)->fall_back;
@@ -804,21 +781,9 @@ MPIDI_CH3I_RDMA_win_create (void *base,
 void
 MPIDI_CH3I_RDMA_win_free (MPID_Win ** win_ptr)
 {
-    int index;
-    index = Find_Win_Index (*win_ptr);
-    if (index == -1)
+    if ((*win_ptr)->win_dreg_entry != NULL)
       {
-          printf ("dont know win_ptr %p %d \n", *win_ptr,
-                  MPIDI_CH3I_RDMA_Process.current_win_num);
-      }
-    MPIU_Assert (index != -1);
-    MPIDI_CH3I_RDMA_Process.win_index2address[index] = 0;
-    MPIDI_CH3I_RDMA_Process.current_win_num--;
-    MPIU_Assert (MPIDI_CH3I_RDMA_Process.current_win_num >= 0);
-    if (MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry[index] != NULL)
-      {
-          dreg_unregister (MPIDI_CH3I_RDMA_Process.
-                           RDMA_local_win_dreg_entry[index]);
+          dreg_unregister ((*win_ptr)->win_dreg_entry);
       }
     MPIU_Free ((*win_ptr)->win_rkeys);
     MPIU_Free ((*win_ptr)->completion_counter_rkeys);
@@ -827,15 +792,13 @@ MPIDI_CH3I_RDMA_win_free (MPID_Win ** win_ptr)
     MPIU_Free ((*win_ptr)->put_get_list);
     dreg_unregister ((*win_ptr)->pinnedpool_1sc_dentry);
     MPIU_Free ((*win_ptr)->pinnedpool_1sc_buf);
-    if (MPIDI_CH3I_RDMA_Process.RDMA_local_wincc_dreg_entry[index] != NULL)
+    if ((*win_ptr)->completion_counter_dreg_entry != NULL)
       {
-          dreg_unregister (MPIDI_CH3I_RDMA_Process.
-                           RDMA_local_wincc_dreg_entry[index]);
+          dreg_unregister ((*win_ptr)->completion_counter_dreg_entry );
       }
-    if (MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry[index] != NULL)
+    if ((*win_ptr)->post_flag_dreg_entry  != NULL)
       {
-          dreg_unregister (MPIDI_CH3I_RDMA_Process.
-                           RDMA_post_flag_dreg_entry[index]);
+          dreg_unregister ((*win_ptr)->post_flag_dreg_entry);
       }
     MPIU_Free ((*win_ptr)->completion_counter);
     MPIU_Free ((*win_ptr)->all_completion_counter);
@@ -1098,36 +1061,6 @@ Consume_signals (MPID_Win * winptr, aint_t expected)
             expected || expected == 0);
 
     return 0;
-}
-
-int
-Find_Avail_Index ()
-{
-    int i, index = -1;
-    for (i = 0; i < MAX_WIN_NUM; i++)
-      {
-          if (MPIDI_CH3I_RDMA_Process.win_index2address[i] == 0)
-            {
-                index = i;
-                break;
-            }
-      }
-    return index;
-}
-
-int
-Find_Win_Index (MPID_Win * win_ptr)
-{
-    int i, index = -1;
-    for (i = 0; i < MAX_WIN_NUM; i++)
-      {
-          if (MPIDI_CH3I_RDMA_Process.win_index2address[i] == (long) win_ptr)
-            {
-                index = i;
-                break;
-            }
-      }
-    return index;
 }
 
 int

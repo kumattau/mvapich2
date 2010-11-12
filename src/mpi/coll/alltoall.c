@@ -17,8 +17,6 @@
 
 #include "mpiimpl.h"
 
-#if !defined(_OSU_COLLECTIVES_)
-
 /* -- Begin Profiling Symbol Block for routine MPI_Alltoall */
 #if defined(HAVE_PRAGMA_WEAK)
 #pragma weak MPI_Alltoall = PMPI_Alltoall
@@ -734,13 +732,33 @@ int MPI_Alltoall(void *sendbuf, int sendcount, MPI_Datatype sendtype,
     /* ... body of routine ...  */
 
     if (comm_ptr->coll_fns != NULL && comm_ptr->coll_fns->Alltoall != NULL)
-    {
-	mpi_errno = comm_ptr->coll_fns->Alltoall(sendbuf, sendcount,
+	{
+#if defined(_OSU_MVAPICH_)
+        MPIU_THREADPRIV_GET;
+	    MPIR_Nest_incr();
+#endif
+        if (comm_ptr->comm_kind == MPID_INTRACOMM)
+		{
+	        /* intracommunicator */
+            mpi_errno = comm_ptr->coll_fns->Alltoall(sendbuf, sendcount,
                                                  sendtype, recvbuf, recvcount,
                                                  recvtype, comm_ptr);
-    }
-    else
-    {
+        } 
+		else 
+		{
+		    /* intercommunicator */
+			mpi_errno = comm_ptr->coll_fns->Alltoall_inter(sendbuf, sendcount,
+		                                             sendtype, recvbuf,
+		                                             recvcount, recvtype,
+		                                             comm_ptr);
+        }
+
+#if defined(_OSU_MVAPICH_)
+        MPIR_Nest_decr();
+ #endif
+	} 
+	else 
+	{
 	MPIU_THREADPRIV_GET;
 
 	MPIR_Nest_incr();
@@ -781,4 +799,3 @@ int MPI_Alltoall(void *sendbuf, int sendcount, MPI_Datatype sendtype,
     /* --END ERROR HANDLING-- */
 }
 
-#endif /* !defined(_OSU_COLLECTIVES_) */

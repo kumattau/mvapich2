@@ -43,15 +43,21 @@ int deregister_memory(struct ibv_mr * mr)
     return ret;
 }
 
-/* Rail selection policy:
- * For small messages, use USE_FIRST to avoid QP cache misses */
-
+/* Rail selection policy */
 int MRAILI_Send_select_rail(MPIDI_VC_t * vc)
 {
     static int i = 0;
-    
-    if(ROUND_ROBIN == sm_scheduling) {
+
+    if (ROUND_ROBIN == sm_scheduling) {
         i = (i + 1) % rdma_num_rails;
+        return i;
+    } else if (PROCESS_BINDING == sm_scheduling) {
+        i = ((i + 1) % rdma_num_rails_per_hca) +
+             rdma_process_binding_rail_offset;
+        return i;
+    } else if (USER_DEFINED == sm_scheduling) {
+        i = ((i + 1) % rdma_num_rails_per_hca) +
+             rdma_process_binding_rail_offset;
         return i;
     } else {
         /* Currently the best scenario for latency */

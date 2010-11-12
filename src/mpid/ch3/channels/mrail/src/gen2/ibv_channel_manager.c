@@ -171,7 +171,7 @@ static inline int GetSeqNumVbuf(vbuf * buf)
             {
                 return ((MPIDI_CH3_Pkt_rndv_r3_data_t *)(buf->pheader))->seqnum;
             }
-#ifdef USE_HEADER_CACHING
+#ifndef MV2_DISABLE_HEADER_CACHING 
         case MPIDI_CH3_PKT_FAST_EAGER_SEND:
         case MPIDI_CH3_PKT_FAST_EAGER_SEND_WITH_REQ:
             {
@@ -562,11 +562,7 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
     }
 
     if (rdma_iwarp_use_multiple_cq &&
-#ifdef MV_ARCH_OLD_CODE
-        (MPIDI_CH3I_RDMA_Process.hca_type == CHELSIO_T3) &&
-#else
         (MPIDI_CH3I_RDMA_Process.hca_type == MV2_HCA_CHELSIO_T3) &&
-#endif
         (MPIDI_CH3I_RDMA_Process.cluster_size != VERY_SMALL_CLUSTER)) {
         num_cqs = 2;
     } else {
@@ -815,7 +811,7 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
 	            ++nspin;
 	
 	            /* Blocking mode progress */
-	            if(rdma_use_blocking && is_blocking && nspin >= rdma_spin_count){
+	            if(rdma_use_blocking && is_blocking && nspin >= rdma_blocking_spin_count_threshold){
 	                /* Okay ... spun long enough, now time to go to sleep! */
 	
 	#if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)

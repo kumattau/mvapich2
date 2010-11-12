@@ -17,6 +17,7 @@
 
 /* Support multiple QPs/port, multiple ports, multiple HCAs and combinations */
 extern int                  rdma_num_hcas;
+extern int                  rdma_num_req_hcas;
 extern int                  rdma_num_ports;
 extern int                  rdma_num_qp_per_port;
 extern int                  rdma_num_rails;
@@ -64,6 +65,8 @@ extern int                  rdma_r3_threshold;
 extern int                  rdma_r3_threshold_nocache;
 extern int                  rdma_vbuf_total_size;
 extern int                  rdma_max_inline_size;
+extern int                  rdma_local_id;
+extern int                  rdma_num_local_procs; 
 
 extern uint32_t             viadev_srq_size;
 extern uint32_t             viadev_srq_limit;
@@ -80,6 +83,14 @@ extern int                  rdma_get_fallback_threshold;
 extern int                  rdma_integer_pool_size;
 extern int                  rdma_iba_eager_threshold;
 extern long                 rdma_eagersize_1sc;
+extern int                  rdma_qos_num_sls;
+extern int                  rdma_use_qos;
+extern int                  rdma_multirail_usage_policy;
+extern int                  rdma_small_msg_rail_sharing_policy;
+extern int                  rdma_med_msg_rail_sharing_policy;
+extern int                  rdma_med_msg_rail_sharing_threshold;
+extern int                  rdma_large_msg_rail_sharing_threshold;
+
 
 extern int                  max_num_win;
 /* HSAM Definitions */
@@ -95,16 +106,19 @@ extern int                  rdma_coalesce_threshold;
 extern int                  rdma_use_coalesce;
 
 extern int                  rdma_use_blocking;
-extern unsigned long        rdma_spin_count;
+extern unsigned long        rdma_blocking_spin_count_threshold;
+extern unsigned long        rdma_polling_spin_count_threshold;
+extern int                  use_thread_yield; 
 extern int                  rdma_use_smp;
 extern int                  use_iboeth;
 extern int                  rdma_iwarp_multiple_cq_threshold;
 extern int                  rdma_iwarp_use_multiple_cq;
 
-extern int                  num_cpus;
 extern int                  use_hwloc_cpu_binding; 
 extern int                  max_rdma_connect_attempts;
 extern int                  rdma_cm_connect_retry_interval;
+extern int                  rdma_num_rails_per_hca;
+extern int                  rdma_process_binding_rail_offset;
 
 /* Shared memory collective parameters */ 
 extern int                  enable_knomial_2level_bcast;
@@ -112,8 +126,12 @@ extern int                  inter_node_knomial_factor;
 extern int                  knomial_2level_bcast_system_size_threshold;
 extern int                  knomial_2level_bcast_mesage_size_threshold;
 extern int                  intra_node_knomial_factor;
+extern int                  use_osu_collectives; 
+extern int                  use_anl_collectives;
 
-int user_val_to_bytes(char* value,char* param);
+/* Use of LIMIC of RMA Communication */
+extern int                  limic_put_threshold;
+extern int                  limic_get_threshold;
 
 #define INTER_NODE_KNOMIAL_FACTOR_MAX 8
 #define INTER_NODE_KNOMIAL_FACTOR_MIN 2
@@ -150,6 +168,10 @@ extern int                  rdma_default_async_thread_stack_size;
 #define MAX_NUM_HCAS                    (4)
 #define MAX_NUM_PORTS                   (2)
 #define MAX_NUM_QP_PER_PORT             (4)
+#define RDMA_QOS_MAX_NUM_SLS	        (15)
+#define RDMA_QOS_DEFAULT_NUM_SLS	    (8)
+#define RDMA_DEFAULT_MED_MSG_RAIL_SHARING_THRESHOLD (2048)
+#define RDMA_DEFAULT_LARGE_MSG_RAIL_SHARING_THRESHOLD (16384)
 
 /* This is a overprovision of resource, do not use in critical structures */
 #define MAX_NUM_SUBRAILS                (MAX_NUM_HCAS*  \
@@ -184,15 +206,39 @@ extern int                  rdma_default_async_thread_stack_size;
 #define STRIPING_THRESHOLD              8 * 1024
 extern char                 rdma_iba_hcas[MAX_NUM_HCAS][32];
                                
+typedef enum _mv2_iba_network_classes {
+    MV2_NETWORK_CLASS_UNKNOWN = 0,
+    MV2_NETWORK_CLASS_IB = 1,
+    MV2_NETWORK_CLASS_IWARP,
+} mv2_iba_network_classes;
+
+/* Below ROUND_ROBIN refers to the rails where the rails are alternately
+ * given to any process asking for it. Where as PROCESS_BINDING refers
+ * to a scheduling policy where processes are bound to rails in a round
+ * robin manner. So once a process is bound to a rail it will use only 
+ * that rail to send out messages */
+
 typedef enum _mv2_multirail_policies {
+    MV2_MRAIL_BINDING = 0,
+    MV2_MRAIL_SHARING,
+} mv2_multirail_policies;
+
+typedef enum _mv2_sm_scheduling_policies {
     ROUND_ROBIN = 0,
     USE_FIRST,
     EVEN_STRIPING,
     ADAPTIVE_STRIPING,
     PROCESS_BINDING,
     PARTIAL_ADAPTIVE,
+    USER_DEFINED,
     BEST_ADAPTIVE,
-} mv2_multirail_policies;
+} mv2_sm_scheduling_policies;
+
+/* This is to allow users to specify rail mapping at run time */
+extern int                  mrail_use_default_mapping;
+extern int                  mrail_user_defined_p2r_mapping;
+extern char*                mrail_p2r_string;
+extern int                  mrail_p2r_length;
 
 #define APM_COUNT                       2
 

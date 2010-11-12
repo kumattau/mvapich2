@@ -17,8 +17,6 @@
 
 #include "mpiimpl.h"
 
-#if !defined(_OSU_COLLECTIVES_)
-
 /* -- Begin Profiling Symbol Block for routine MPI_Gather */
 #if defined(HAVE_PRAGMA_WEAK)
 #pragma weak MPI_Gather = PMPI_Gather
@@ -732,10 +730,27 @@ int MPI_Gather(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
 
     if (comm_ptr->coll_fns != NULL && comm_ptr->coll_fns->Gather != NULL)
     {
-	mpi_errno = comm_ptr->coll_fns->Gather(sendbuf, sendcnt,
+#if defined(_OSU_MVAPICH_)
+     	MPIU_THREADPRIV_GET;
+        MPIR_Nest_incr();
+#endif
+    	if (comm_ptr->comm_kind == MPID_INTRACOMM)
+		{
+		    /* intracommunicator */
+		    mpi_errno = comm_ptr->coll_fns->Gather(sendbuf, sendcnt,
                                                sendtype, recvbuf, recvcnt,
                                                recvtype, root, comm_ptr);
-    }
+        } else {
+		    /* intercommunicator */
+			mpi_errno = comm_ptr->coll_fns->Gather_inter(sendbuf, sendcnt, sendtype, 
+		                                           recvbuf, recvcnt, recvtype, root,
+		                                           comm_ptr);
+
+		}
+#if defined(_OSU_MVAPICH_)
+        MPIR_Nest_decr();
+#endif
+    } 
     else
     {
 	MPIU_THREADPRIV_GET;
@@ -747,7 +762,7 @@ int MPI_Gather(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
                                     recvbuf, recvcnt, recvtype, root,
                                     comm_ptr);  
         else
-	{
+	    {
             /* intercommunicator */ 
             mpi_errno = MPIR_Gather_inter(sendbuf, sendcnt, sendtype,
                                           recvbuf, recvcnt, recvtype, root,
@@ -779,4 +794,3 @@ int MPI_Gather(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
     /* --END ERROR HANDLING-- */
 }
 
-#endif /* !defined(_OSU_COLLECTIVES_) */

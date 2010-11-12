@@ -154,6 +154,8 @@ void deallocate_vbuf_region()
 
     while (curr) {
         next = curr->next;
+        free(curr->malloc_start);
+        free(curr->malloc_buf_start);
         MPIU_Free(curr);
         curr = next;
     }

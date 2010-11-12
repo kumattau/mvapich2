@@ -52,22 +52,7 @@ do {                                                          \
 #define ERROR   -1
 #endif
 
-#ifdef MV_ARCH_OLD_CODE
-/* HCA type */
-enum {
-    UNKNOWN_HCA, 
-    MLX_PCI_EX_SDR, 
-    MLX_PCI_EX_DDR, 
-    MLX_CX_SDR,
-    MLX_CX_DDR,
-    MLX_CX_QDR,
-    PATH_HT, 
-    MLX_PCI_X, 
-    IBM_EHCA,
-    CHELSIO_T3,
-    INTEL_NE020
-};
-#endif
+#define ERROR_EPSILON (0.00000001)
 
 /* cluster size */
 enum {VERY_SMALL_CLUSTER, SMALL_CLUSTER, MEDIUM_CLUSTER, LARGE_CLUSTER};
@@ -75,12 +60,9 @@ enum {VERY_SMALL_CLUSTER, SMALL_CLUSTER, MEDIUM_CLUSTER, LARGE_CLUSTER};
 typedef struct MPIDI_CH3I_RDMA_Process_t {
     /* keep all rdma implementation specific global variable in a
        structure like this to avoid name collisions */
-#ifdef MV_ARCH_OLD_CODE
-    int                         hca_type;
-#else
     mv2_hca_type                 hca_type;
+    mv2_arch_type                arch_type;
     mv2_arch_hca_type            arch_hca_type;
-#endif
     int                         cluster_size;
     uint8_t                     has_srq;
     uint8_t                     has_hsam;
@@ -89,6 +71,7 @@ typedef struct MPIDI_CH3I_RDMA_Process_t {
     uint8_t                     has_ring_startup;
     uint8_t                     has_lazy_mem_unregister;
     uint8_t                     has_one_sided;
+    uint8_t                     has_limic_one_sided;
     int                         maxtransfersize;
     int                         global_used_send_cq;
     int                         global_used_recv_cq;
@@ -108,16 +91,6 @@ typedef struct MPIDI_CH3I_RDMA_Process_t {
     union ibv_gid gids[MAX_NUM_HCAS][MAX_NUM_PORTS];
 
     int    (*post_send)(MPIDI_VC_t * vc, vbuf * v, int rail);
-
-    /*information for management of windows */
-    struct dreg_entry           **RDMA_local_win_dreg_entry;
-    struct dreg_entry           **RDMA_local_wincc_dreg_entry;
-    struct dreg_entry           **RDMA_post_flag_dreg_entry;
-
-    /* there two variables are used to help keep track of different windows
-     * */
-    long                        *win_index2address;
-    int                         current_win_num;
 
     uint32_t                    pending_r3_sends[MAX_NUM_SUBRAILS];
     struct ibv_srq              *srq_hndl[MAX_NUM_HCAS];
@@ -474,6 +447,7 @@ int deregister_memory(struct ibv_mr * mr);
 int MRAILI_Backlog_send(MPIDI_VC_t * vc, int subrail);
 int rdma_open_hca(struct MPIDI_CH3I_RDMA_Process_t *proc);
 int rdma_find_active_port(struct ibv_context *context, struct ibv_device *ib_dev);
+int rdma_get_process_to_rail_mapping(int mrail_user_defined_p2r_type);
 int  rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc);
 void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc);
 void rdma_get_user_parameters(int num_proc, int me);

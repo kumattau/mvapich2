@@ -16,7 +16,6 @@
  */
 
 #include "mpiimpl.h"
-#if !defined(_OSU_COLLECTIVES_)
 
 /* -- Begin Profiling Symbol Block for routine MPI_Scatterv */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -323,10 +322,17 @@ int MPI_Scatterv( void *sendbuf, int *sendcnts, int *displs,
 
     if (comm_ptr->coll_fns != NULL && comm_ptr->coll_fns->Scatter != NULL)
     {
-	mpi_errno = comm_ptr->coll_fns->Scatterv(sendbuf, sendcnts, displs,
+#if defined(_OSU_MVAPICH_)
+		MPIU_THREADPRIV_GET;
+		MPIR_Nest_incr();
+#endif
+			mpi_errno = comm_ptr->coll_fns->Scatterv(sendbuf, sendcnts, displs,
                                                 sendtype, recvbuf, recvcnt,
                                                 recvtype, root, comm_ptr);
-    }
+#if defined(_OSU_MVAPICH_)
+		MPIR_Nest_decr();
+#endif
+	}
     else
     {
 	MPIU_THREADPRIV_GET;
@@ -361,4 +367,3 @@ int MPI_Scatterv( void *sendbuf, int *sendcnts, int *displs,
     goto fn_exit;
     /* --END ERROR HANDLING-- */
 }
-#endif /* #if !defined(_OSU_COLLECTIVES_) */

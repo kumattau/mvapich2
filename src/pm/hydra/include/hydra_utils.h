@@ -157,8 +157,10 @@ HYD_status HYDU_putenv_list(struct HYD_env *env_list, HYD_env_overwrite_t overwr
 HYD_status HYDU_comma_list_to_env_list(char *str, struct HYD_env **env_list);
 
 /* launch */
+struct HYDT_bind_cpuset_t;
 HYD_status HYDU_create_process(char **client_arg, struct HYD_env *env_list,
-                               int *in, int *out, int *err, int *pid, int os_index);
+                               int *in, int *out, int *err, int *pid,
+                               struct HYDT_bind_cpuset_t cpuset);
 
 /* others */
 int HYDU_local_to_global_id(int local_id, int start_pid, int core_count,
@@ -262,6 +264,16 @@ HYD_status HYDU_sock_cloexec(int fd);
             (i) = 1;                                                    \
         }                                                               \
     }
+
+#define HYD_GET_ENV_STR_VAL(lvalue_, env_var_name_, default_val_)       \
+    do {                                                       \
+        if (lvalue_ == NULL) {                                 \
+            const char *tmp_ = (default_val_);                 \
+            MPL_env2str(env_var_name_, (const char **) &tmp_); \
+            if (tmp_)                                          \
+                lvalue_ = HYDU_strdup(tmp_);                   \
+        }                                                      \
+    } while (0)
 
 HYD_status HYDU_list_append_strlist(char **exec, char **client_arg);
 HYD_status HYDU_print_strlist(char **args);

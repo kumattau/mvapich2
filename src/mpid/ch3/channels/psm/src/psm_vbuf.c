@@ -71,13 +71,17 @@ int psm_init_vbuf_lock()
 void psm_deallocate_vbuf()
 {
     vbuf_region *r = vbuf_region_head;
+    vbuf_region *next = NULL;
 
     pthread_spin_lock(&vbuf_lock);
     while (r)
     {
-        r = r->next;
+        next = r->next;
+        free(r->malloc_start);
+        free(r->malloc_buf_start);
+        MPIU_Free(r);
+        r = next;
     }
-
     pthread_spin_unlock(&vbuf_lock);
 }
 

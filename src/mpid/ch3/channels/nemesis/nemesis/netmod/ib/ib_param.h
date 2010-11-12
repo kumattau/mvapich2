@@ -100,7 +100,7 @@ extern int                  rdma_coalesce_threshold;
 extern int                  rdma_use_coalesce;
 
 extern int                  rdma_use_blocking;
-extern unsigned long        rdma_spin_count;
+extern unsigned long        rdma_blocking_spin_count_threshold;
 extern int                  rdma_use_smp;
 extern int                  use_iboeth;
 

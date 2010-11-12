@@ -44,6 +44,7 @@ struct MPIDI_CH3I_Request
     struct MPID_Request *lmt_req;        /* pointer to original send/recv request */
     MPIDI_msg_sz_t       lmt_data_sz;    /* data size to be transferred, after checking for truncation */
     MPID_IOV             lmt_tmp_cookie; /* temporary storage for received cookie */
+    void                *s_cookie;       /* temporary storage for the cookie data in case the packet can't be sent immediately */
 
     struct
     {
@@ -99,7 +100,11 @@ typedef struct MPIDI_CH3I_comm
 }
 MPIDI_CH3I_comm_t;
 
-#ifdef ENABLED_SHM_COLLECTIVES
+#ifndef ENABLED_SHM_COLLECTIVES
+#define HAVE_DEV_COMM_HOOK
+#define MPID_Dev_comm_create_hook( a ) 
+#define MPID_Dev_comm_destroy_hook( a ) 
+#else /* #ifndef ENABLED_SHM_COLLECTIVES */
 #define HAVE_DEV_COMM_HOOK
 #define MPID_Dev_comm_create_hook(comm_) do {           \
         int _mpi_errno;                                 \
@@ -113,8 +118,9 @@ MPIDI_CH3I_comm_t;
         _mpi_errno = MPIDI_CH3I_comm_destroy (comm_);   \
         if (_mpi_errno) MPIU_ERR_POP (_mpi_errno);      \
     } while(0)
+#endif /* #ifndef ENABLED_SHM_COLLECTIVES */ 
 
-#endif
+
 #define MPID_DEV_COMM_DECL MPIDI_CH3I_comm_t ch;
 
 /*

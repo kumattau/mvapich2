@@ -140,7 +140,7 @@ unsigned long rdma_dreg_cache_limit = 0;
 
 /* Blocking mode progress */
 int rdma_use_blocking = 0;
-unsigned long rdma_spin_count = 5000;
+unsigned long rdma_blocking_spin_count_threshold = 5000;
 
 /* The total size of each vbuf. Used to be the eager threshold, but
  * it can be smaller, so that each eager message will span over few
@@ -400,7 +400,7 @@ int MPID_nem_ib_get_control_params_after_hcainit()
 #endif
 
     if ((value = getenv("MV2_SPIN_COUNT")) != NULL) {
-        rdma_spin_count = atol(value);
+        rdma_blocking_spin_count_threshold = atol(value);
     }
 
     if ((value = getenv("MV2_RNDV_PROTOCOL")) != NULL) {

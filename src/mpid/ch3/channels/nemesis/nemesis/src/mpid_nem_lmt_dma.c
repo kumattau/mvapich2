@@ -3,9 +3,6 @@
 
 MPIU_SUPPRESS_OSX_HAS_NO_SYMBOLS_WARNING;
 
-/* TODO there might be a better way to do this, the current system will lead to
-   an unresolved symbols link error if dma is chosen and knem_io.h can't be
-   found. */
 #if defined(HAVE_KNEM_IO_H)
 
 #include "knem_io.h"
@@ -18,6 +15,7 @@ static volatile knem_status_t *knem_status = MAP_FAILED;
 #define KNEM_STATUS_NR 4096 /* FIXME: randomly chosen */
 
 static size_t dma_threshold = 2048*1024;
+#define MPICH_NEW_KNEM_ABI_VERSION (0x0000000c) 
 
 /* These are for maintaining a linked-list of outstanding requests on which we
    can make progress. */
@@ -50,7 +48,11 @@ static void free_status_index(int index)
 
 /* Opens the knem device and sets knem_fd accordingly.  Uses mpich2 errhandling
    conventions. */
-static int open_knem_dev()
+#undef FUNCNAME
+#define FUNCNAME open_knem_dev
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+static int open_knem_dev(void)
 {
     int mpi_errno = MPI_SUCCESS;
     int err;
@@ -87,12 +89,20 @@ fn_fail:
 
 /* Sends as much data from the request as possible via the knem ioctl.
    s_cookiep is an output parameter */
+#undef FUNCNAME
+#define FUNCNAME do_dma_send
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 static int do_dma_send(MPIDI_VC_t *vc,  MPID_Request *sreq, int send_iov_n,
                        MPID_IOV send_iov[], knem_cookie_t *s_cookiep)
 {
     int mpi_errno = MPI_SUCCESS;
     int i, err;
+#if KNEM_ABI_VERSION < MPICH_NEW_KNEM_ABI_VERSION
     struct knem_cmd_init_send_param sendcmd = {0};
+#else
+    struct knem_cmd_create_region cr;
+#endif
     struct knem_cmd_param_iovec knem_iov[MPID_IOV_LIMIT];
 
     /* FIXME The knem module iovec is potentially different from the system
@@ -104,25 +114,46 @@ static int do_dma_send(MPIDI_VC_t *vc,  MPID_Request *sreq, int send_iov_n,
         knem_iov[i].len  = send_iov[i] .MPID_IOV_LEN;
     }
 
+#if KNEM_ABI_VERSION < MPICH_NEW_KNEM_ABI_VERSION
     sendcmd.send_iovec_array = (uintptr_t) &knem_iov[0];
     sendcmd.send_iovec_nr = send_iov_n;
     sendcmd.flags = 0;
     err = ioctl(knem_fd, KNEM_CMD_INIT_SEND, &sendcmd);
+#else
+    cr.iovec_array = (uintptr_t) &knem_iov[0];
+    cr.iovec_nr = send_iov_n;
+    cr.flags = KNEM_FLAG_SINGLEUSE;
+    cr.protection = PROT_READ;
+    err = ioctl(knem_fd, KNEM_CMD_CREATE_REGION, &cr);
+#endif
     MPIU_ERR_CHKANDJUMP2(err < 0, mpi_errno, MPI_ERR_OTHER, "**ioctl",
                          "**ioctl %d %s", errno, MPIU_Strerror(errno));
+#if KNEM_ABI_VERSION < MPICH_NEW_KNEM_ABI_VERSION
     *s_cookiep = sendcmd.send_cookie;
+#else
+    *s_cookiep = cr.cookie;
+#endif
 
 fn_fail:
 fn_exit:
     return mpi_errno;
 }
 
+#undef FUNCNAME
+#define FUNCNAME do_dma_recv
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 /* s_cookie is an input parameter */
-static int do_dma_recv(int iov_n, MPID_IOV iov[], knem_cookie_t s_cookie, int nodma, volatile knem_status_t **status_p_p)
+static int do_dma_recv(int iov_n, MPID_IOV iov[], knem_cookie_t s_cookie, int nodma, volatile knem_status_t **status_p_p, knem_status_t *current_status_p)
 {
     int mpi_errno = MPI_SUCCESS;
     int i, err;
+
+#if KNEM_ABI_VERSION < MPICH_NEW_KNEM_ABI_VERSION
     struct knem_cmd_init_async_recv_param recvcmd = {0};
+#else
+    struct knem_cmd_inline_copy icopy;
+#endif
     struct knem_cmd_param_iovec knem_iov[MPID_IOV_LIMIT];
 
     /* FIXME The knem module iovec is potentially different from the system
@@ -134,16 +165,33 @@ static int do_dma_recv(int iov_n, MPID_IOV iov[], knem_cookie_t s_cookie, int no
         knem_iov[i].len  = iov[i] .MPID_IOV_LEN;
     }
 
+#if KNEM_ABI_VERSION < MPICH_NEW_KNEM_ABI_VERSION
     recvcmd.recv_iovec_array = (uintptr_t) &knem_iov[0];
     recvcmd.recv_iovec_nr = iov_n;
     recvcmd.status_index = alloc_status_index();
     recvcmd.send_cookie = s_cookie;
     recvcmd.flags = nodma ? 0 : KNEM_FLAG_DMA | KNEM_FLAG_ASYNCDMACOMPLETE;
     err = ioctl(knem_fd, KNEM_CMD_INIT_ASYNC_RECV, &recvcmd);
+#else
+    icopy.local_iovec_array = (uintptr_t) &knem_iov[0];
+    icopy.local_iovec_nr = iov_n;
+    icopy.remote_cookie = s_cookie;
+    icopy.remote_offset = 0;
+    icopy.write = 0;
+    icopy.async_status_index = alloc_status_index();
+    icopy.flags = nodma ? 0 : KNEM_FLAG_DMA | KNEM_FLAG_ASYNCDMACOMPLETE;
+    err = ioctl(knem_fd, KNEM_CMD_INLINE_COPY, &icopy);
+#endif
     MPIU_ERR_CHKANDJUMP2(err < 0, mpi_errno, MPI_ERR_OTHER, "**ioctl",
                          "**ioctl %d %s", errno, MPIU_Strerror(errno));
 
+#if KNEM_ABI_VERSION < MPICH_NEW_KNEM_ABI_VERSION
     *status_p_p = &knem_status[recvcmd.status_index];
+    *current_status_p = KNEM_STATUS_PENDING;
+#else
+    *status_p_p = &knem_status[icopy.async_status_index];
+    *current_status_p = icopy.current_status;
+#endif
 
 fn_exit:
     return mpi_errno;
@@ -156,6 +204,10 @@ fn_fail:
    the request in a single shot as possible.
    
    s_cookiep is an output parameter. */
+#undef FUNCNAME
+#define FUNCNAME send_sreq_data
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 static int send_sreq_data(MPIDI_VC_t *vc, MPID_Request *sreq, knem_cookie_t *s_cookiep)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -217,6 +269,10 @@ fn_fail:
     goto fn_exit;
 }
 
+#undef FUNCNAME
+#define FUNCNAME check_req_complete
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 static inline int check_req_complete(MPIDI_VC_t *vc, MPID_Request *req, int *complete)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -245,19 +301,24 @@ int MPID_nem_lmt_dma_initiate_lmt(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, MPID_Req
 {
     int mpi_errno = MPI_SUCCESS;
     MPID_nem_pkt_lmt_rts_t * const rts_pkt = (MPID_nem_pkt_lmt_rts_t *)pkt;
-    knem_cookie_t s_cookie;
+    MPIU_CHKPMEM_DECL(1);
     MPIDI_STATE_DECL(MPID_STATE_MPID_NEM_LMT_DMA_INITIATE_LMT);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_NEM_LMT_DMA_INITIATE_LMT);
 
-    mpi_errno = send_sreq_data(vc, sreq, &s_cookie);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-    MPID_nem_lmt_send_RTS(vc, rts_pkt, &s_cookie, sizeof(s_cookie));
+    MPIU_CHKPMEM_MALLOC(sreq->ch.s_cookie, knem_cookie_t *, sizeof(knem_cookie_t), mpi_errno, "s_cookie");
 
-fn_fail:
+    mpi_errno = send_sreq_data(vc, sreq, sreq->ch.s_cookie);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    MPID_nem_lmt_send_RTS(vc, rts_pkt, sreq->ch.s_cookie, sizeof(knem_cookie_t));
+
 fn_exit:
+    MPIU_CHKPMEM_COMMIT();
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_NEM_LMT_DMA_INITIATE_LMT);
     return mpi_errno;
+fn_fail:
+    MPIU_CHKPMEM_REAP();
+    goto fn_exit;
 }
 
 /* This function is called initially when an RTS message comes in, but may also
@@ -271,12 +332,12 @@ int MPID_nem_lmt_dma_start_recv(MPIDI_VC_t *vc, MPID_Request *rreq, MPID_IOV s_c
 {
     int mpi_errno = MPI_SUCCESS;
     int nodma;
-    int i, err;
     int dt_contig;
     MPI_Aint dt_true_lb;
     MPIDI_msg_sz_t data_sz;
     MPID_Datatype * dt_ptr;
     volatile knem_status_t *status;
+    knem_status_t current_status;
     struct lmt_dma_node *node = NULL;
     MPIDI_STATE_DECL(MPID_STATE_MPID_NEM_LMT_DMA_START_RECV);
 
@@ -326,8 +387,37 @@ int MPID_nem_lmt_dma_start_recv(MPIDI_VC_t *vc, MPID_Request *rreq, MPID_IOV s_c
     MPIU_Assert(s_cookie.MPID_IOV_BUF != NULL);
     mpi_errno = do_dma_recv(rreq->dev.iov_count, rreq->dev.iov,
                             *((knem_cookie_t *)s_cookie.MPID_IOV_BUF), nodma,
-                            &status);
+                            &status, &current_status);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+    /* TODO refactor this block and MPID_nem_lmt_dma_progress (and anywhere
+     * else) to share a common function.  This advancement/completion code is
+     * duplication. */
+    if (current_status != KNEM_STATUS_PENDING) {
+        /* complete the request if all data has been sent, remove it from the list */
+        int complete = 0;
+
+        MPIU_ERR_CHKANDJUMP1(current_status == KNEM_STATUS_FAILED, mpi_errno, MPI_ERR_OTHER,
+                             "**recv_status", "**recv_status %d", current_status);
+
+        mpi_errno = check_req_complete(vc, rreq, &complete);
+        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+        free_status_index(status - knem_status);
+
+        if (complete) {
+            /* request was completed by the OnDataAvail fn */
+            MPID_nem_lmt_send_DONE(vc, rreq); /* tell the other side to complete its request */
+            MPIU_DBG_MSG(CH3_CHANNEL, VERBOSE, ".... complete");
+
+        }
+        else {
+            /* There is more data to send.  We must inform the sender that we have
+               completely received the current batch and that the next batch should
+               be sent. */
+            MPID_nem_lmt_send_COOKIE(vc, rreq, NULL, 0);
+        }
+    }
 
     /* XXX DJG FIXME this looks like it always pushes! */
     /* push request if not complete for progress checks later */
@@ -358,6 +448,9 @@ int MPID_nem_lmt_dma_done_send(MPIDI_VC_t *vc, MPID_Request *sreq)
     MPIDI_STATE_DECL(MPID_STATE_MPID_NEM_LMT_DMA_DONE_SEND);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_NEM_LMT_DMA_DONE_SEND);
+
+    /* free cookie from RTS packet */
+    MPIU_Free(sreq->ch.s_cookie);
 
     /* We shouldn't ever need to handle the more IOVs case here.  The DONE
        message should only be sent when all of the data is truly transferred.
@@ -435,6 +528,10 @@ fn_fail:
     return MPI_SUCCESS;
 }
 
+#undef FUNCNAME
+#define FUNCNAME MPID_nem_lmt_dma_progress
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPID_nem_lmt_dma_progress(void)
 {
     int mpi_errno = MPI_SUCCESS;

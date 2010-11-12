@@ -137,15 +137,29 @@ int MPIDI_Win_create(void *base, MPI_Aint size, int disp_unit, MPID_Info *info,
 #endif /* _OSU_PSM_ */
         
 #if defined(_OSU_MVAPICH_)
-        /* -- OSU-MPI2 uses extended CH3 interface */
+    (*win_ptr)->my_id = rank;
+    (*win_ptr)->comm_size = comm_size;
+    /* -- OSU-MPI2 uses extended CH3 interface */
     if (comm_ptr->comm_kind != MPID_INTRACOMM)
+    {
 	/* Intercomm is not well supported currently,
 	 * fall back to pt2pt implementation if we use inter
 	 * communicator */
 	(*win_ptr)->fall_back = 1;
-    else {
+#if defined (_SMP_LIMIC_) && !defined (DAPL_DEFAULT_PROVIDER)
+	(*win_ptr)->limic_fallback = 1;
+#endif /* _SMP_LIMIC_ && !DAPL_DEFAULT_PROVIDER */
+    }
+    else 
+    {
 	(*win_ptr)->fall_back = 0;
-	MPIDI_CH3I_RDMA_win_create(base, size, comm_size, rank, win_ptr, comm_ptr);
+	MPIDI_CH3I_RDMA_win_create(base, size, comm_size, 
+                        rank, win_ptr, comm_ptr);
+#if defined (_SMP_LIMIC_) && !defined (DAPL_DEFAULT_PROVIDER)
+        (*win_ptr)->limic_fallback = 0;
+        MPIDI_CH3I_LIMIC_win_create(base, size, comm_size, 
+                        rank, win_ptr, comm_ptr);
+#endif /* _SMP_LIMIC_ && !DAPL_DEFAULT_PROVIDER */
     }
 #endif /* defined(_OSU_MVAPICH_) */
 
@@ -228,6 +242,12 @@ int MPIDI_Win_free(MPID_Win **win_ptr)
 	MPIDI_CH3I_RDMA_finish_rma(*win_ptr);
 	MPIDI_CH3I_RDMA_win_free(win_ptr);
     }
+#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
+    if (!(*win_ptr)->limic_fallback)
+    {
+        MPIDI_CH3I_LIMIC_win_free(win_ptr);
+    }
+#endif /* _SMP_LIMIC_ && !_DAPL_DEFAULT_PROVIDER */
 #endif /* defined(_OSU_MVAPICH_) */
 
 #if defined (_OSU_PSM_)

@@ -293,7 +293,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
 
     /* Use the HSAM Functionality */
     if(MPIDI_CH3I_RDMA_Process.has_hsam && 
-            (rreq->mrail.rndv_buf_sz > striping_threshold)) {
+            (rreq->mrail.rndv_buf_sz > rdma_large_msg_rail_sharing_threshold)) {
 
       MPIU_Memset(mapped, 0, rdma_num_rails * sizeof(int));
       MPIU_Memset(actual_index, 0, rdma_num_rails * sizeof(int));
@@ -332,7 +332,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
                 ((char *) rreq->mrail.rndv_buf)[2],
                 rreq->mrail.rndv_buf_off, rreq->mrail.remote_addr);
         
-        if (nbytes <= striping_threshold) {
+        if (nbytes <= rdma_large_msg_rail_sharing_threshold) {
             v = get_vbuf();
             v->sreq = rreq;
 
@@ -501,7 +501,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
 
     /* Use the HSAM Functionality */
     if(MPIDI_CH3I_RDMA_Process.has_hsam && 
-            (sreq->mrail.rndv_buf_sz > striping_threshold)) {
+            (sreq->mrail.rndv_buf_sz > rdma_large_msg_rail_sharing_threshold)) {
 
       MPIU_Memset(mapped, 0, rdma_num_rails * sizeof(int));
       MPIU_Memset(actual_index, 0, rdma_num_rails * sizeof(int));
@@ -538,7 +538,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
                 ((char *) sreq->mrail.rndv_buf)[2],
                 sreq->mrail.rndv_buf_off, sreq->mrail.remote_addr);
         
-        if (nbytes <= striping_threshold) {
+        if (nbytes <= rdma_large_msg_rail_sharing_threshold) {
             v = get_vbuf();
             v->sreq = sreq;
 

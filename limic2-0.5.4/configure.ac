@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.63])
-AC_INIT([LiMIC2], [0.5.3], [jinh@konkuk.ac.kr])
+AC_INIT([LiMIC2], [0.5.4], [jinh@konkuk.ac.kr])
 AC_CONFIG_SRCDIR([src/limic.h])
 AM_INIT_AUTOMAKE([foreign])
  

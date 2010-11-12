@@ -207,19 +207,5 @@ struct limic_header {
 extern struct smpi_var g_smpi;
 extern struct shared_mem *g_smpi_shmem;
 
-#ifdef MV_ARCH_OLD_CODE
-typedef enum {
-    MULTI_CORE_ARCH_NONE = 0,
-    MULTI_CORE_ARCH_BARCELONA,
-    MULTI_CORE_ARCH_MAGNY_COURS,
-    MULTI_CORE_ARCH_CLOVERTOWN,
-    MULTI_CORE_ARCH_NEHALEM,
-    MULTI_CORE_ARCH_HARPERTOWN,
-    MULTI_CORE_ARCH_XEON_DUAL,
-    MULTI_CORE_ARCH_OPTERON_DUAL,
-} multi_core_arch_type_t;
-multi_core_arch_type_t arch_type;
-#endif
-
 
 #endif

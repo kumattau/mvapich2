@@ -17,7 +17,6 @@
 
 #include "mpiimpl.h"
 
-#if !defined(_OSU_COLLECTIVES_)
 
 /* -- Begin Profiling Symbol Block for routine MPI_Bcast */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -534,18 +533,12 @@ static int MPIR_Bcast_scatter_doubling_allgather(
                 /* send only if this proc has data and destination
                    doesn't have data. */
 
-                /* if (rank == 3) { 
-                   printf("rank %d, dst %d, root %d, nprocs_completed %d\n", relative_rank, relative_dst, tree_root, nprocs_completed);
-                   fflush(stdout);
-                   }*/
 
                 if ((relative_dst > relative_rank) && 
                     (relative_rank < tree_root + nprocs_completed)
                     && (relative_dst >= tree_root + nprocs_completed))
                 {
 
-                    /* printf("Rank %d, send to %d, offset %d, size %d\n", rank, dst, offset, recv_size);
-                       fflush(stdout); */
                     mpi_errno = MPIC_Send(((char *)tmp_buf + offset),
                                           recv_size, MPI_BYTE, dst,
                                           MPIR_BCAST_TAG, comm); 
@@ -560,8 +553,6 @@ static int MPIR_Bcast_scatter_doubling_allgather(
                          (relative_dst < tree_root + nprocs_completed) &&
                          (relative_rank >= tree_root + nprocs_completed))
                 {
-                    /* printf("Rank %d waiting to recv from rank %d\n",
-                       relative_rank, dst); */
                     mpi_errno = MPIC_Recv(((char *)tmp_buf + offset),
                                           nbytes - offset, 
                                           MPI_BYTE, dst, MPIR_BCAST_TAG,
@@ -572,8 +563,6 @@ static int MPIR_Bcast_scatter_doubling_allgather(
 
                     NMPI_Get_count(&status, MPI_BYTE, &recv_size);
                     curr_size += recv_size;
-                    /* printf("Rank %d, recv from %d, offset %d, size %d\n", rank, dst, offset, recv_size);
-                       fflush(stdout);*/
                 }
                 tmp_mask >>= 1;
                 k--;
@@ -1001,7 +990,6 @@ int MPIR_Bcast (
 
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
-
     if (count == 0) goto fn_exit;
 
 #if defined(USE_SMP_COLLECTIVES)
@@ -1278,10 +1266,21 @@ int MPI_Bcast( void *buffer, int count, MPI_Datatype datatype, int root,
 
     if (comm_ptr->coll_fns != NULL && comm_ptr->coll_fns->Bcast != NULL)
     {
-	/* --BEGIN USEREXTENSION-- */
-	mpi_errno = comm_ptr->coll_fns->Bcast(buffer, count,
+#if defined(_OSU_MVAPICH_)
+	    MPIU_THREADPRIV_GET;
+		MPIR_Nest_incr();
+#endif
+        if (comm_ptr->comm_kind == MPID_INTRACOMM) { 
+             	mpi_errno = comm_ptr->coll_fns->Bcast(buffer, count,
                                               datatype, root, comm_ptr);
-	/* --END USEREXTENSION-- */
+        } else { 
+               	mpi_errno = comm_ptr->coll_fns->Bcast_inter(buffer, 
+                                              count, datatype, root, 
+                                              comm_ptr);
+        } 
+#if defined(_OSU_MVAPICH_)
+	MPIR_Nest_decr();
+#endif
     }
     else
     {
@@ -1321,4 +1320,3 @@ int MPI_Bcast( void *buffer, int count, MPI_Datatype datatype, int root,
     /* --END ERROR HANDLING-- */
 }
 
-#endif /* !defined(_OSU_COLLECTIVES_) */

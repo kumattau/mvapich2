@@ -16,7 +16,6 @@
  */
 
 #include "mpiimpl.h"
-#if !defined(_OSU_COLLECTIVES_)
 
 /* -- Begin Profiling Symbol Block for routine MPI_Reduce_scatter */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -518,9 +517,6 @@ int MPIR_Reduce_scatter (
                         recv_cnt += newcnts[i];
                 }
                 
-/*                    printf("Rank %d, send_idx %d, recv_idx %d, send_cnt %d, recv_cnt %d, last_idx %d\n", newrank, send_idx, recv_idx,
-                      send_cnt, recv_cnt, last_idx);
-*/
                 /* Send data from tmp_results. Recv into tmp_recvbuf */ 
                 if ((send_cnt != 0) && (recv_cnt != 0)) 
                     mpi_errno = MPIC_Sendrecv((char *) tmp_results +
@@ -1253,9 +1249,29 @@ int MPI_Reduce_scatter(void *sendbuf, void *recvbuf, int *recvcnts,
 
     if (comm_ptr->coll_fns != NULL && comm_ptr->coll_fns->Reduce_scatter != NULL)
     {
-	mpi_errno = comm_ptr->coll_fns->Reduce_scatter(sendbuf, recvbuf,
-                                                       recvcnts, datatype, 
-                                                       op, comm_ptr);
+#if defined(_OSU_MVAPICH_)
+        MPIU_THREADPRIV_GET;
+        MPIR_Nest_incr();
+#endif
+
+        if (comm_ptr->comm_kind == MPID_INTRACOMM)
+		{
+			/* intracommunicator */
+            mpi_errno = comm_ptr->coll_fns->Reduce_scatter(sendbuf, recvbuf,
+                                             recvcnts, datatype,
+											 op, comm_ptr);
+		}
+		else 
+		{
+            /* intercommunicator */
+            mpi_errno = comm_ptr->coll_fns->Reduce_scatter_inter(sendbuf, recvbuf,
+                                                   recvcnts, datatype,
+                                                   op, comm_ptr);
+        }
+#if defined(_OSU_MVAPICH_)
+        MPIR_Nest_decr();
+#endif
+
     }
     else
     {
@@ -1298,4 +1314,3 @@ int MPI_Reduce_scatter(void *sendbuf, void *recvbuf, int *recvcnts,
     goto fn_exit;
     /* --END ERROR HANDLING-- */
 }
-#endif /* #if !defined(_OSU_COLLECTIVES_) */

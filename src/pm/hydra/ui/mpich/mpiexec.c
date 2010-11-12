@@ -87,6 +87,7 @@ static void usage(void)
     printf("  Checkpoint/Restart options:\n");
     printf("    -ckpoint-interval                checkpoint interval\n");
     printf("    -ckpoint-prefix                  checkpoint file prefix\n");
+    printf("    -ckpoint-num                     checkpoint number to restart\n");
     printf("    -ckpointlib                      checkpointing library (%s)\n",
            !strcmp(HYDRA_CKPOINTLIB_NAMES, "") ? "none" : HYDRA_CKPOINTLIB_NAMES);
 
@@ -258,7 +259,7 @@ int main(int argc, char **argv)
         MPL_env2str("MPICH_PORT_RANGE", (const char **) &HYD_handle.port_range))
         HYD_handle.port_range = HYDU_strdup(HYD_handle.port_range);
 
-    HYD_handle.interface_env_name = HYDU_strdup("MPICH_INTERFACE_NAME");
+    HYD_handle.interface_env_name = HYDU_strdup("MPICH_INTERFACE_HOSTNAME");
 
     if (HYD_handle.print_rank_map) {
         for (proxy = HYD_handle.pg_list.proxy_list; proxy; proxy = proxy->next) {

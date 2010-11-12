@@ -17,8 +17,6 @@
 
 #include "mpiimpl.h"
 
-#if !defined(_OSU_COLLECTIVES_)
-
 /* -- Begin Profiling Symbol Block for routine MPI_Allgather */
 #if defined(HAVE_PRAGMA_WEAK)
 #pragma weak MPI_Allgather = PMPI_Allgather
@@ -833,9 +831,25 @@ int MPI_Allgather(void *sendbuf, int sendcount, MPI_Datatype sendtype,
 
     if (comm_ptr->coll_fns != NULL && comm_ptr->coll_fns->Allgather != NULL)
     {
-	mpi_errno = comm_ptr->coll_fns->Allgather(sendbuf, sendcount,
+#if defined(_OSU_MVAPICH_)
+     	MPIU_THREADPRIV_GET;
+        MPIR_Nest_incr();
+#endif
+	    if (comm_ptr->comm_kind == MPID_INTRACOMM){
+                /* intracommunicator */
+         		mpi_errno = comm_ptr->coll_fns->Allgather(sendbuf, sendcount,
                                                   sendtype, recvbuf, recvcount,
                                                   recvtype, comm_ptr);
+	    } else {
+                /* intercommunicator */
+                mpi_errno = comm_ptr->coll_fns->Allgather_inter(sendbuf, sendcount, 
+                                                      sendtype, recvbuf, 
+                                                      recvcount, recvtype, 
+		                                              comm_ptr);
+	    }
+#if defined(_OSU_MVAPICH_)
+        MPIR_Nest_decr();
+#endif
     }
     else
     {
@@ -879,4 +893,3 @@ int MPI_Allgather(void *sendbuf, int sendcount, MPI_Datatype sendtype,
     /* --END ERROR HANDLING-- */
 }
 
-#endif /* !defined(_OSU_COLLECTIVES_) */

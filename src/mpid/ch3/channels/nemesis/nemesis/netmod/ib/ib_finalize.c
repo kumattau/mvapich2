@@ -250,7 +250,7 @@ int MPID_nem_ib_finalize (void)
         if (VC_FIELD(vc, connection)->rfp.RDMA_recv_buf)
             MPIU_Free(VC_FIELD(vc, connection)->rfp.RDMA_recv_buf);
 
-#ifdef USE_HEADER_CACHING
+#ifndef MV2_DISABLE_HEADER_CACHING 
         if( NULL != VC_FIELD(vc, connection)) {
         MPIU_Free(VC_FIELD(vc, connection)->rfp.cached_incoming);
         MPIU_Free(VC_FIELD(vc, connection)->rfp.cached_outgoing);

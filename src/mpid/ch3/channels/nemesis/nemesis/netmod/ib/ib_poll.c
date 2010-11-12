@@ -518,7 +518,7 @@ static inline int GetSeqNumVbuf(vbuf * buf)
             {
                 return ((MPIDI_nem_ib_pkt_comm_header *)(buf->iheader))->seqnum;
             }
-#ifdef USE_HEADER_CACHING
+#ifndef MV2_DISABLE_HEADER_CACHING 
         case MPIDI_CH3_PKT_FAST_EAGER_SEND:
         case MPIDI_CH3_PKT_FAST_EAGER_SEND_WITH_REQ:
             {
@@ -837,7 +837,7 @@ int MPIDI_nem_ib_cq_poll(vbuf **vbuf_handle,
                     nspin++;
 
                     /* Blocking mode progress */
-                    if(rdma_use_blocking && is_blocking && nspin >= rdma_spin_count) {
+                    if(rdma_use_blocking && is_blocking && nspin >= rdma_blocking_spin_count_threshold) {
                         /* Okay ... spun long enough, now time to go to sleep! */
 
         #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)

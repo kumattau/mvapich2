@@ -1,5 +1,5 @@
 Name:           limic2
-Version:        0.5.3
+Version:        0.5.4
 Release:        1%{?dist}
 Summary:        Linux kernel module for MPI Intra-node Communication
 
@@ -113,6 +113,9 @@ fi
 
 
 %changelog
+* Wed Oct 13 2010 Jonathan Perkins <perkinjo@cse.ohio-state.edu>
+- Updated version number
+
 * Tue May 18 2010 Jonathan Perkins <perkinjo@cse.ohio-state.edu>
 - Updated version number
 

@@ -39,6 +39,10 @@ typedef MPIR_Pint MPIDI_msg_sz_t;
    file (mpidpre.h) or the file it includes (mpiimpl.h) can be defined. */
 #include "mpidi_ch3_pre.h"
 
+#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
+#   include <limic.h>
+#endif
+
 /* FIXME: Who defines this name */
 /* As of 8/1/06, no-one defined MSGS_UNORDERED.  We should consider 
    moving support for unordered messages to a different part of the code
@@ -190,17 +194,38 @@ typedef struct MPIDI_VC * MPID_VCR;
     int *rank_mapping;
 #endif
 
+#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
+    #define RMA_LIMIC_DECL                                                      \
+        limic_user *peer_lu;                                                    \
+        int limic_fallback;                                                     \
+        int l_ranks;                                                            \
+        int *l2g_rank;                                                          \
+        int post_shmid;                                                         \
+        int cmpl_shmid;                                                         \
+        long long *limic_cmpl_counter_buf;                                      \
+        long long *limic_cmpl_counter_me;                                       \
+        long long **limic_cmpl_counter_all;                                     \
+        int *limic_post_flag_buf;                                               \
+        int *limic_post_flag_me;                                                \
+        int **limic_post_flag_all;                                                 
+#else
+    #define RMA_LIMIC_DECL
+#endif
+
 #if defined(_OSU_MVAPICH_)
 #define MPIDI_CH3_WIN_DECL                                                       \
     int  fall_back;                                                              \
     int  using_lock;                                                             \
     long long cc_for_test;                                                       \
+    struct dreg_entry* completion_counter_dreg_entry;                            \
     volatile long long * completion_counter;                                     \
     long long ** all_completion_counter;                                         \
     uint32_t  *completion_counter_rkeys; /* rkey for complete couters on         \
                                             remote nodes */                      \
+    struct dreg_entry* win_dreg_entry;                                           \
     uint32_t *win_rkeys;          /* exposed buffer addresses on remote          \
                                     windows */                                   \
+    struct dreg_entry* post_flag_dreg_entry;                                     \
     volatile int *post_flag;     /* flag from post to complete, one flag for     \
                                     each target, updated by RDMA */              \
     uint32_t *post_flag_rkeys;                                                   \
@@ -221,7 +246,8 @@ typedef struct MPIDI_VC * MPID_VCR;
     int my_id;                                                                   \
     int comm_size;                                                               \
     int16_t outstanding_rma;                                                     \
-    volatile int poll_flag; /* flag to indicate if polling for one sided completions is needed */
+    volatile int poll_flag; /* flag to indicate if polling for one sided completions is needed */ \
+    RMA_LIMIC_DECL
 #endif /* defined(_OSU_MVAPICH_) */
 
 #define MPIDI_DEV_WIN_DECL                                               \

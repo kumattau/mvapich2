@@ -25,7 +25,7 @@
 #include <fcntl.h>
 
 #define LIMIC_LIBRARY_MAJOR 0
-#define LIMIC_LIBRARY_MINOR 5
+#define LIMIC_LIBRARY_MINOR 6
 
 /* /dev file name */
 #define DEV_NAME  "limic"
@@ -34,6 +34,7 @@
 #define LIMIC_TX      0x1c01
 #define LIMIC_RX      0x1c02
 #define LIMIC_VERSION 0x1c03
+#define LIMIC_TXW     0x1c04
 
 typedef struct limic_request {
     void *buf;       /* user buffer */

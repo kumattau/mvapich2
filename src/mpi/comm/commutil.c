@@ -124,6 +124,13 @@ int MPIR_Comm_create( MPID_Comm **newcomm_ptr )
     newptr->node_roots_comm = NULL;
     newptr->intranode_table = NULL;
     newptr->internode_table = NULL;
+#if defined(_OSU_MVAPICH_)
+    newptr->shmem_coll_ok = 0;
+    /* We are yet to call create_2level_comm on this new intra-communicator
+     * We should make sure that shared-mem collectives do not get used
+     * with this communicator */ 
+#endif /* defined(_OSU_MVAPICH_) */
+
 
     /* Fields not set include context_id, remote and local size, and 
        kind, since different communicator construction routines need 
@@ -193,22 +200,20 @@ int MPIR_Setup_intercomm_localcomm( MPID_Comm *intercomm_ptr )
     /* We do *not* inherit any name */
     localcomm_ptr->name[0] = 0;
     /* To prevent Bcast from taking the knomial route */
-#if defined(_OSU_MVAPICH_)
-    localcomm_ptr->shmem_coll_ok = 0;
-    localcomm_ptr->shmem_comm = 0;
-    localcomm_ptr->leader_comm = 0;
-#endif
-    
-    
     localcomm_ptr->attributes = 0;
-
     intercomm_ptr->local_comm = localcomm_ptr;
-
     localcomm_ptr->is_node_aware   = 0;
     localcomm_ptr->node_comm       = NULL;
     localcomm_ptr->node_roots_comm = NULL;
     localcomm_ptr->intranode_table = NULL;
     localcomm_ptr->internode_table = NULL;
+
+#if defined(_OSU_MVAPICH_)
+    localcomm_ptr->shmem_coll_ok = 0;
+    localcomm_ptr->shmem_comm = 0;
+    localcomm_ptr->leader_comm = 0;
+    MPID_Dev_comm_create_hook( localcomm_ptr );
+#endif
 
     /* sets up the SMP-aware sub-communicators and tables */
     mpi_errno = MPIR_Comm_commit(localcomm_ptr);
@@ -555,9 +560,7 @@ int MPIR_Get_contextid( MPID_Comm *comm_ptr, MPIR_Context_id_t *context_id )
     /* Note that this is the unthreaded version */
     MPIU_THREADPRIV_GET;
     MPIR_Nest_incr();
-#if defined(_OSU_MVAPICH_)
-        comm_ptr->shmem_coll_ok = 0;/* To prevent Allreduce taking shmem route*/
-#endif /* defined(_OSU_MVAPICH_) */
+
     /* Comm must be an intracommunicator */
     mpi_errno = NMPI_Allreduce( MPI_IN_PLACE, local_mask, MPIR_MAX_CONTEXT_MASK, 
 				MPI_INT, MPI_BAND, comm_ptr->handle );
@@ -649,10 +652,7 @@ int MPIR_Get_contextid( MPID_Comm *comm_ptr, MPIR_Context_id_t *context_id )
 	    MPIU_DBG_MSG( COMM, VERBOSE, "Copied local_mask" );
 	}
 	MPIU_THREAD_CS_EXIT(CONTEXTID,);
-	
-#if defined(_OSU_MVAPICH_)
-        comm_ptr->shmem_coll_ok = 0;/* To prevent Allreduce taking shmem route*/
-#endif /* defined(_OSU_MVAPICH_) */
+
 	/* Now, try to get a context id */
         MPIU_Assert(comm_ptr->comm_kind == MPID_INTRACOMM);
 	/* In the global and brief-global cases, note that this routine will

@@ -76,7 +76,7 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
     XRC_MSG ("Recd %d from %d\n", header->type,
             vc->pg_rank);
     switch (header->type) {
-#ifdef USE_HEADER_CACHING
+#ifndef MV2_DISABLE_HEADER_CACHING 
     case (MPIDI_CH3_PKT_FAST_EAGER_SEND):
     case (MPIDI_CH3_PKT_FAST_EAGER_SEND_WITH_REQ):
         {
@@ -111,7 +111,7 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
     case (MPIDI_CH3_PKT_EAGER_SEND):
         {
             DEBUG_PRINT("[recv: parse header] pkt eager send\n");
-#ifdef USE_HEADER_CACHING
+#ifndef MV2_DISABLE_HEADER_CACHING 
             if (v->padding != NORMAL_VBUF_FLAG) {
                 /* Only cache header if the packet is from RdMA path 
                  * XXXX: what is R3_FLAG? 

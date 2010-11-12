@@ -58,8 +58,9 @@ int bcast_tuning(int nbytes, MPID_Comm *comm_ptr)
         * setting the short message bcast threshold. 
   	* Lets try to determine the number of nodes and
         * choose an appropriate threshold */ 
-       if(comm_ptr->shmem_coll_ok != 1 || enable_knomial_2level_bcast == 0
-          || enable_shmem_collectives == 0 || comm_ptr->shmem_comm == 0) { 
+       if(use_osu_collectives == 0 || comm_ptr->shmem_coll_ok != 1 || 
+          enable_knomial_2level_bcast == 0 || 
+          enable_shmem_collectives == 0 || comm_ptr->shmem_comm == 0) { 
             /*Either shared-memory collectives, or knomial-2level 
             *Bcast was disabled. Or this already is an internal 
             *communicator that does not have a valid shmem-comm
@@ -85,29 +86,10 @@ int bcast_tuning(int nbytes, MPID_Comm *comm_ptr)
         } 
    }
 } 
+#endif /* #if defined(_OSU_MVAPICH_) */
 
-#endif
-
-
-
-#if defined(_OSU_COLLECTIVES_)
 
 #include <unistd.h>
-/* -- Begin Profiling Symbol Block for routine MPI_Bcast */
-#if defined(HAVE_PRAGMA_WEAK)
-#pragma weak MPI_Bcast = PMPI_Bcast
-#elif defined(HAVE_PRAGMA_HP_SEC_DEF)
-#pragma _HP_SECONDARY_DEF PMPI_Bcast  MPI_Bcast
-#elif defined(HAVE_PRAGMA_CRI_DUP)
-#pragma _CRI duplicate MPI_Bcast as PMPI_Bcast
-#endif
-/* -- End Profiling Symbol Block */
-
-/* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
-   the MPI routines */
-#ifndef MPICH_MPI_FROM_PMPI
-#undef MPI_Bcast
-#define MPI_Bcast PMPI_Bcast
 
 /* This is the default implementation of broadcast. The algorithm is:
    
@@ -153,14 +135,14 @@ int bcast_tuning(int nbytes, MPID_Comm *comm_ptr)
 
 /* begin:nested */
 /* not declared static because it is called in intercomm. allgatherv */
-int MPIR_Bcast ( 
+int MPIR_Bcast_OSU ( 
 	void *buffer,
 	int count,
 	MPI_Datatype datatype,
 	int root,
 	MPID_Comm *comm_ptr )
 {
-  static const char FCNAME[] = "MPIR_Bcast";
+  static const char FCNAME[] = "MPIR_Bcast_OSU";
   MPI_Status status;
   int        rank, comm_size, src, dst;
   int        relative_rank, mask;
@@ -183,7 +165,6 @@ int MPIR_Bcast (
   if (count == 0) {
      return MPI_SUCCESS;
   }
-
   comm = comm_ptr->handle;
   comm_size = comm_ptr->local_size;
   rank = comm_ptr->rank;
@@ -199,7 +180,7 @@ int MPIR_Bcast (
       MPID_Datatype_get_ptr(datatype, dtp);
       is_contig = dtp->is_contig;
   }
-
+  
   is_homogeneous = 1;
 #ifdef MPID_HAS_HETERO
   if (comm_ptr->is_hetero) {
@@ -247,8 +228,11 @@ int MPIR_Bcast (
   /* check if multiple threads are calling this collective function */
   MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
 
+#if !defined(_OSU_MVAPICH_)
+  if ((nbytes <= MPIR_BCAST_SHORT_MSG) || (comm_size < MPIR_BCAST_MIN_PROCS)) {
+#else 
   if ((nbytes <= bcast_tuning(nbytes, comm_ptr)) || (comm_size < MPIR_BCAST_MIN_PROCS)) {
-#if defined(_OSU_MVAPICH_)
+
      if(enable_knomial_2level_bcast &&  enable_shmem_collectives  &&
              comm_ptr->shmem_coll_ok == 1 &&
              comm_ptr->leader_comm != 0 && comm_ptr->shmem_comm != 0 &&
@@ -262,7 +246,7 @@ int MPIR_Bcast (
            }
         }
      else {
-#endif
+#endif /* #if defined(_OSU_MVAPICH_) */ 
       /* Use short message algorithm, namely, binomial tree */
 
       /* Algorithm:
@@ -659,7 +643,7 @@ int MPIR_Bcast (
          return mpi_errno;
       }
   }
-#endif
+#endif /* #if defined(_OSU_MVAPICH_) */
   else {
       /* use long message algorithm: binomial tree scatter followed by an allgather */
       /* The scatter algorithm divides the buffer into nprocs pieces and
@@ -985,7 +969,7 @@ int MPIR_Bcast (
 
 /* begin:nested */
 /* Not PMPI_LOCAL because it is called in intercomm allgather */
-int MPIR_Bcast_inter ( 
+int MPIR_Bcast_inter_OSU ( 
     void *buffer, 
     int count, 
     MPI_Datatype datatype, 
@@ -996,7 +980,7 @@ int MPIR_Bcast_inter (
     Root sends to rank 0 in remote group. Remote group does local
     intracommunicator broadcast.
 */
-    static const char FCNAME[] = "MPIR_Bcast_inter";
+    static const char FCNAME[] = "MPIR_Bcast_inter_OSU";
     int rank, mpi_errno;
     MPI_Status status;
     MPID_Comm *newcomm_ptr = NULL;
@@ -1048,7 +1032,7 @@ int MPIR_Bcast_inter (
 
         /* now do the usual broadcast on this intracommunicator
            with rank 0 as root. */
-        mpi_errno = MPIR_Bcast(buffer, count, datatype, 0, newcomm_ptr);
+        mpi_errno = MPIR_Bcast_OSU(buffer, count, datatype, 0, newcomm_ptr);
 
 	/* --BEGIN ERROR HANDLING-- */
 	if (mpi_errno != MPI_SUCCESS) {
@@ -1062,150 +1046,6 @@ int MPIR_Bcast_inter (
     return mpi_errno;
 }
 /* end:nested */
-#endif
-
-#undef FUNCNAME
-#define FUNCNAME MPI_Bcast
-
-/*@
-MPI_Bcast - Broadcasts a message from the process with rank "root" to
-            all other processes of the communicator
-
-Input/Output Parameter:
-. buffer - starting address of buffer (choice) 
-
-Input Parameters:
-+ count - number of entries in buffer (integer) 
-. datatype - data type of buffer (handle) 
-. root - rank of broadcast root (integer) 
-- comm - communicator (handle) 
-
-.N ThreadSafe
-
-.N Fortran
-
-.N Errors
-.N MPI_SUCCESS
-.N MPI_ERR_COMM
-.N MPI_ERR_COUNT
-.N MPI_ERR_TYPE
-.N MPI_ERR_BUFFER
-.N MPI_ERR_ROOT
-@*/
-int MPI_Bcast( void *buffer, int count, MPI_Datatype datatype, int root, 
-               MPI_Comm comm )
-{
-    static const char FCNAME[] = "MPI_Bcast";
-    int mpi_errno = MPI_SUCCESS;
-    MPID_Comm *comm_ptr = NULL;
-    MPIU_THREADPRIV_DECL;
-    MPID_MPI_STATE_DECL(MPID_STATE_MPI_BCAST);
-
-    MPIR_ERRTEST_INITIALIZED_ORDIE();
-    
-    MPIU_THREAD_CS_ENTER(ALLFUNC,);
-    
-    MPID_MPI_COLL_FUNC_ENTER(MPID_STATE_MPI_BCAST);
-
-    /* Validate parameters, especially handles needing to be converted */
-#   ifdef HAVE_ERROR_CHECKING
-    {
-        MPID_BEGIN_ERROR_CHECKS;
-        {
-	    MPIR_ERRTEST_COMM(comm, mpi_errno);
-            if (mpi_errno != MPI_SUCCESS) {
-               goto fn_fail;
-            }
-	}
-        MPID_END_ERROR_CHECKS;
-    }
-#   endif /* HAVE_ERROR_CHECKING */
-
-    /* Convert MPI object handles to object pointers */
-    MPID_Comm_get_ptr( comm, comm_ptr );
-    /* Validate parameters and objects (post conversion) */
-#   ifdef HAVE_ERROR_CHECKING
-    {
-        MPID_BEGIN_ERROR_CHECKS;
-        {
-            MPID_Datatype *datatype_ptr = NULL;
-	    
-            MPID_Comm_valid_ptr( comm_ptr, mpi_errno );
-            if (mpi_errno != MPI_SUCCESS) {
-               goto fn_fail;
-            }
-	    MPIR_ERRTEST_COUNT(count, mpi_errno);
-	    MPIR_ERRTEST_DATATYPE(datatype, "datatype", mpi_errno);
-	    if (comm_ptr->comm_kind == MPID_INTRACOMM) {
-		MPIR_ERRTEST_INTRA_ROOT(comm_ptr, root, mpi_errno);
-	    } else {
-		MPIR_ERRTEST_INTER_ROOT(comm_ptr, root, mpi_errno);
-	    }
-	    
-            if (HANDLE_GET_KIND(datatype) != HANDLE_KIND_BUILTIN) {
-                MPID_Datatype_get_ptr(datatype, datatype_ptr);
-                MPID_Datatype_valid_ptr( datatype_ptr, mpi_errno );
-                MPID_Datatype_committed_ptr( datatype_ptr, mpi_errno );
-            }
-
-            MPIR_ERRTEST_BUF_INPLACE(buffer, count, mpi_errno);
-            MPIR_ERRTEST_USERBUFFER(buffer,count,datatype,mpi_errno);
-            
-            if (mpi_errno != MPI_SUCCESS) {
-               goto fn_fail;
-            }
-        }
-        MPID_END_ERROR_CHECKS;
-    }
-#   endif /* HAVE_ERROR_CHECKING */
-
-    /* ... body of routine ...  */
-
-    if (comm_ptr->coll_fns != NULL && comm_ptr->coll_fns->Bcast != NULL) {
-	mpi_errno = comm_ptr->coll_fns->Bcast(buffer, count,
-                                              datatype, root, comm_ptr);
-    } else {
-	MPIU_THREADPRIV_DECL;
-	MPIU_THREADPRIV_GET;
-
-	MPIR_Nest_incr();
-        if (comm_ptr->comm_kind == MPID_INTRACOMM) {
-            /* intracommunicator */
-            mpi_errno = MPIR_Bcast( buffer, count, datatype, root, comm_ptr );
-	} else {
-            /* intercommunicator */
-            mpi_errno = MPIR_Bcast_inter( buffer, count, datatype,
-	      root, comm_ptr );
-        }
-	MPIR_Nest_decr();
-    }
-
-    if (mpi_errno != MPI_SUCCESS) {
-       goto fn_fail;
-    }
-
-    /* ... end of body of routine ... */
-    
-  fn_exit:
-    MPID_MPI_COLL_FUNC_EXIT(MPID_STATE_MPI_BCAST);
-    MPIU_THREAD_CS_EXIT(ALLFUNC,);
-    return mpi_errno;
-
-  fn_fail:
-    /* --BEGIN ERROR HANDLING-- */
-#   ifdef HAVE_ERROR_CHECKING
-    {
-	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, 
-	    "**mpi_bcast",
-	    "**mpi_bcast %p %d %D %d %C", buffer, count, datatype, root, comm);
-    }
-#   endif
-    mpi_errno = MPIR_Err_return_comm( comm_ptr, FCNAME, mpi_errno );
-    goto fn_exit;
-    /* --END ERROR HANDLING-- */
-}
-
 
 #if defined(_OSU_MVAPICH_)
 int knomial_2level_Bcast(
@@ -1552,10 +1392,7 @@ int intra_shmem_Bcast_Large(
 		}
 	}
 
-#if 1
       /* Scatter complete. Now do an allgather. */
-
-
       /* use ring algorithm. */ 
       if (local_rank == 0) {
           recvcnts =  MPIU_Malloc(leader_comm_size*sizeof(int));
@@ -1639,8 +1476,6 @@ int intra_shmem_Bcast_Large(
                   MPIR_BCAST_TAG, comm->handle, &status);
       }
 
-
-#endif
       MPIR_Barrier(shmem_commptr);
       /* For the bcast signalling flags */
       index = (index + 1)%3;
@@ -1649,44 +1484,4 @@ int intra_shmem_Bcast_Large(
       return (mpi_errno);
 }
 
-#endif
-
-/* A simple utility function to that calls the comm_ptr->coll_fns->Bcast
-   override if it exists or else it calls MPIR_Bcast with the same arguments.
-   This function just makes the high-level broadcast logic easier to read while
-   still accomodating coll_fns-style overrides.  It also reduces future errors
-   by eliminating the duplication of Bcast arguments.
-
-   This routine is used in other files as well (barrier.c, allreduce.c)
-
-   TODO This function should be deprecated in favor of a direct call to
-   MPIR_Bcast now that we handle SMP-awareness inside of MPIR_Bcast instead
-   of MPI_Bcast.
-*/
-#undef FUNCNAME
-#define FUNCNAME MPIR_Bcast_or_coll_fn
-#undef FCNAME
-#define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Bcast_or_coll_fn(void *buffer,
-              int count,
-              MPI_Datatype datatype,
-              int root,
-              MPID_Comm *comm_ptr)
-{
-    int mpi_errno = MPI_SUCCESS;
-
-    if (comm_ptr->coll_fns != NULL && comm_ptr->coll_fns->Bcast != NULL)
-    {
-        /* --BEGIN USEREXTENSION-- */
-        mpi_errno = comm_ptr->node_roots_comm->coll_fns->Bcast(buffer, count,
-                                                               datatype, root, comm_ptr);
-        /* --END USEREXTENSION-- */
-    }
-    else {
-        mpi_errno = MPIR_Bcast(buffer, count, datatype, root, comm_ptr);
-    }
-
-    return mpi_errno;
-}
-
-#endif /* defined(_OSU_COLLECTIVES_) */
+#endif /* #if defined(_OSU_MVAPICH_) */ 

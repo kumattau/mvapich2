@@ -49,6 +49,14 @@ void mpispawn_abort (int code);
 int mtpmi_init (void);
 int mtpmi_processops (void);
 
+#if defined(CKPT) && defined(CR_FTB)
+extern volatile int cr_mig_tgt;
+#endif
+/*struct spawn_info_s {
+    char spawnhost[32];
+    int  sparenode;
+};*/
+
 #if defined(MPISPAWN_DEBUG)
 #define MT_ASSERT(cond) do { \
     if (!(cond)) { \

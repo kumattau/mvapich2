@@ -91,3 +91,20 @@ int limic_rx_comp( int fd, void *buf, int len, limic_user *lu )
     return lu->length;
 }
 
+int limic_tx_comp( int fd, void *buf, int len, limic_user *lu )
+{
+    int ret;
+    limic_request rreq;
+
+    rreq.buf = buf;
+    rreq.len = len;
+    rreq.lu = lu;
+
+    ret = ioctl(fd, LIMIC_TXW, &rreq);
+    if( ret != LIMIC_TXW_DONE ){
+        printf("LiMIC: (limic_tx_comp) LIMIC_TXW fail\n");
+        return 0;
+    }
+
+    return lu->length;
+}

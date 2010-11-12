@@ -90,7 +90,7 @@ int MPID_nem_ib_vc_init (MPIDI_VC_t *vc )
     VC_FIELD(vc, connection)->coalesce_vbuf         = NULL;
     
     VC_FIELD(vc, connection)->rfp.rdma_credit = 0;
-#ifdef USE_HEADER_CACHING
+#ifndef MV2_DISABLE_HEADER_CACHING 
     VC_FIELD(vc, connection)->rfp.cached_miss   = 0;
     VC_FIELD(vc, connection)->rfp.cached_hit    = 0;
     VC_FIELD(vc, connection)->rfp.cached_incoming = MPIU_Malloc (sizeof(MPIDI_CH3_Pkt_send_t));

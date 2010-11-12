@@ -29,6 +29,7 @@ static int fcnt;
 static char cr_errmsg[CR_ERRMSG_SZ];
 */
 pthread_t cr_tid = 0;
+static int cr_work_can_exit=0;
 cr_client_id_t cr_id = 0;
 pthread_mutex_t cr_lock;
 
@@ -120,7 +121,7 @@ char ckpt_filename[CR_MAX_FILENAME];
 
 //#define FTB_MAX_SUBSCRIPTION_STR 64
 
-#define CR_FTB_EVENT_INFO {               \
+/*#define CR_FTB_EVENT_INFO {               \
   {"CR_FTB_CHECKPOINT", "info"}, \
   {"CR_FTB_CKPT_DONE", "info"},  \
   {"CR_FTB_CKPT_FAIL", "info"},  \
@@ -128,7 +129,7 @@ char ckpt_filename[CR_MAX_FILENAME];
   {"CR_FTB_RSRT_FAIL", "info"},  \
   {"CR_FTB_APP_CKPT_REQ", "info"}, \
   {"CR_FTB_CKPT_FINALIZE", "info"} \
-}
+}   */
 
 /* Index into the Event Info Table */
 //#define CR_FTB_CHECKPOINT    0
@@ -153,6 +154,15 @@ do {\
 
 /* Macro to pick an CR_FTB event */
 //#define EVENT(n) (cr_ftb_events[n].event_name)
+
+/*struct spawn_info_s {
+    char spawnhost[32];
+    int  sparenode;
+}; */
+
+char * current_spare_host;
+
+struct spawn_info_s *spawninfo;
 
 /*static FTB_client_t        ftb_cinfo;
 static FTB_client_handle_t ftb_handle;
@@ -183,12 +193,29 @@ pthread_mutex_t cr_ftb_ckpt_req_mutex = PTHREAD_MUTEX_INITIALIZER;
 int cr_ftb_ckpt_req;
 int cr_ftb_app_ckpt_req;
 int cr_ftb_finalize_ckpt;
+pthread_cond_t cr_mig_req_cond = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t cr_mig_req_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 //static int  cr_ftb_init(int, char *);
 //int  cr_ftb_init(int nprocs);
 static void cr_ftb_finalize();
 static int cr_ftb_callback(FTB_receive_event_t *, void *);
 static int cr_ftb_wait_for_resp(int);
+
+/* Start - CR_MIG */
+//#define HOSTFILE_LEN 256
+int  sparehosts_on;
+char sparehostfile[HOSTFILE_LEN+1];
+char **sparehosts;
+int  nsparehosts;
+static int  sparehosts_idx;
+
+static char cr_mig_src_host[32];
+static char cr_mig_tgt_host[32];
+
+//static int read_sparehosts(char *, char ***, int *);
+static int get_src_tgt(char *, char *, char *);
+/* End - CR_MIG */
 
 #else
 
@@ -201,6 +228,15 @@ int *mpirun_fd;
 int mpirun_port;
 
 #endif				/* CR_FTB */
+
+#if defined(CKPT) && defined(CR_AGGRE)
+extern int use_aggre; // by default we use CR-aggregation
+extern int use_aggre_mig; // by default, enable aggre-mig
+#endif
+
+//#define dbg(fmt, args...)   do{ \
+//        fprintf(stderr,"%s [mpirun_rsh]: "fmt, __func__, ##args); fflush(stderr); }while(0)
+#define dbg(fmt, args...)
 
 static int mpirun_listen_fd = 0;
 
@@ -233,7 +269,7 @@ int ckptInit()
     }
 
     if (pthread_mutex_init(&cr_lock, NULL)) {
-        DBG(perror("[mpirun_rsh:main] pthread_mutex_init(cr_lock)"));
+	perror("[mpirun_rsh:main] pthread_mutex_init(cr_lock)");
         return (-3);
     }
 
@@ -241,13 +277,13 @@ int ckptInit()
 
     tm = time(NULL);
     if ((time_t) tm == -1) {
-        DBG(fprintf(stderr, "[mpirun_rsh:main] time() failed\n"));
+	fprintf(stderr, "[mpirun_rsh:main] time() failed\n");
         return (-4);
     }
 
     stm = localtime(&tm);
     if (!stm) {
-        DBG(fprintf(stderr, "[mpirun_rsh:main] localtime() failed\n"));
+	fprintf(stderr, "[mpirun_rsh:main] localtime() failed\n");
         return (-5);
     }
 
@@ -412,6 +448,7 @@ void restart_from_ckpt()
     cr_state = CR_INIT;
     CR_MUTEX_UNLOCK;
 
+    cr_work_can_exit = 0;
     if (pthread_create(&cr_tid, NULL, CR_Loop, NULL) < 0) {
         fprintf(stderr, "CR Timer Thread creation failed.\n");
         fflush(stderr);
@@ -439,7 +476,8 @@ void free_locks()
 void cr_cleanup()
 {
     if (cr_tid) {
-	pthread_kill(cr_tid, SIGTERM);
+    cr_work_can_exit = 1;
+	//pthread_kill(cr_tid, SIGTERM);
 	cr_tid = 0;
     }
 }
@@ -478,6 +516,7 @@ static void *CR_Loop(void *arg)
 	if (restart_context)
 	    break;
 
+    if(cr_work_can_exit)    break;
 	tv.tv_sec = 1;
 	tv.tv_usec = 0;
 
@@ -636,19 +675,23 @@ void save_ckpt_vars(char *name, char *value)
 
 static int CR_Callback(void *arg)
 {
-    int ret;
-    struct timeval now;
 
-#ifndef CR_FTB
-    int i, Progressing, nfd = 0;
+    DBG(fprintf(stderr, "mpirun_rsh- [CR_Callback] -->v\n"));
+    int ret,i;
+    struct timeval now;
     char buf[MAX_CR_MSG_LEN];
+
+#ifdef CR_FTB
+    FILE *fp;
+#else
+    int Progressing, nfd = 0;
     char val[CRU_MAX_VAL_LEN];
     fd_set set;
 #endif
 
     if (cr_state != CR_READY) {
 	cr_checkpoint(CR_CHECKPOINT_TEMP_FAILURE);
-	fprintf(stderr, "[CR_Callback] CR Subsystem not ready\n");
+	fprintf(stderr, "mpirun_rsh [CR_Callback] CR Subsystem not ready\n");
 	return (0);
     }
 
@@ -658,30 +701,95 @@ static int CR_Callback(void *arg)
     checkpoint_count++;
     cr_state = CR_CHECKPOINT;
 
+    dbg("mpirun_rsh [CR_Callback](v) cr_checkpoint_count=%d\n",checkpoint_count);
+
 #ifdef CR_FTB
     FTB_event_properties_t eprop;
     FTB_event_handle_t ehandle;
 
-    SET_EVENT(eprop, FTB_EVENT_NORMAL, "");
-    ret =
-	FTB_Publish(ftb_handle, EVENT(CR_FTB_CHECKPOINT), &eprop,
-		    &ehandle);
-    if (ret != FTB_SUCCESS) {
-	fprintf(stderr, "[CR_Callback] FTB_Publish() failed with %d\n",
-		ret);
-	cr_checkpoint(CR_CHECKPOINT_TEMP_FAILURE);
-	return (-1);
+	//if (sparehosts_on)
+    if(0)
+    {
+		dbg( "OPEN MIGRATION FILE \n");
+		char *cr_mig_dat;
+		cr_mig_dat = malloc (sizeof(getenv("HOME")) + 12);
+		cr_mig_dat = getenv("HOME");
+
+        strcat(cr_mig_dat,"/cr_mig.dat");
+        fp = fopen(cr_mig_dat, "r");
+        if (!fp)
+        {
+            fprintf(stderr, "[Migration] cr_mig.dat not found\n");
+            goto no_mig_req;
+        }
+
+        if (sparehosts_idx == 2 * nsparehosts)
+        {
+            fprintf(stderr, "\n\n mpirun_rsh [Migration] Out of Spares\n");
+            cr_checkpoint(CR_CHECKPOINT_OMIT);
+            return(0);
+        }
+   	    // migrate src
+		fgets(buf, MAX_CR_MSG_LEN, fp);
+        i = strlen(buf);
+        if (buf[i-1] == '\n') buf[i-1] = '\0';
+
+        current_spare_host = strdup(buf); // mig-src will become spare node
+        //current_spare_host = strdup(sparehosts[sparehosts_idx]);
+		strncat(buf, " ", MAX_CR_MSG_LEN);
+        //migrate tgt
+        if(checkpoint_count == 2)
+        {
+			printf("checkpoint_count == 2 \n");
+            strncat(buf, "wci11", MAX_CR_MSG_LEN);
+            fprintf(stderr, "buffer =%s:\n",buf);
+        }
+        else
+        {
+          strncat(buf, sparehosts[sparehosts_idx++], MAX_CR_MSG_LEN);
+        }
+
+        dbg("*** FTB_Publish(CR_FTB_MIGRATE): %s \n",buf);
+        SET_EVENT(eprop, FTB_EVENT_NORMAL, buf);
+        ret = FTB_Publish(ftb_handle, EVENT(CR_FTB_MIGRATE), &eprop, &ehandle);
+        if (ret != FTB_SUCCESS)
+        {
+            fprintf(stderr, "[CR_Callback] FTB_Publish(CR_FTB_MIGRATE) "
+                                          "failed with %d\n", ret);
+        }
+        dbg( "***  Sent CR_FTB_MIGRATE:%s: count=%d\n", buf, checkpoint_count);
+       
+        /////////////   
+ 		cr_checkpoint(CR_CHECKPOINT_OMIT); //CR_CHECKPOINT_TEMP_FAILURE ??
+		//cr_checkpoint(CR_CHECKPOINT_TEMP_FAILURE); //
+        return(0);
+        /////////////////
+    }
+    else
+    {
+    //cr_checkpoint(CR_CHECKPOINT_OMIT);
+    //return(0);
+no_mig_req:
+        SET_EVENT(eprop, FTB_EVENT_NORMAL, "");
+        ret = FTB_Publish(ftb_handle, EVENT(CR_FTB_CHECKPOINT), &eprop, &ehandle);
+        if (ret != FTB_SUCCESS) {
+            fprintf(stderr, "[CR_Callback] FTB_Publish() failed with %d\n", ret);
+            cr_checkpoint(CR_CHECKPOINT_TEMP_FAILURE);
+            return(-1);
+        }
+
+        //ret = cr_ftb_wait_for_resp(nprocs);
+        ret = cr_ftb_wait_for_resp(num_procs);
+        if (ret) {
+            fprintf(stderr, "[CR_Callback] Error in getting a response\n");
+            cr_checkpoint(CR_CHECKPOINT_TEMP_FAILURE);
+            return(-2);
+        }
+
+        dbg("===  mpirun_rsh: have published CKPT event and get resp...\n");
+        cr_ftb_finalize();
     }
 
-
-    ret = cr_ftb_wait_for_resp(num_procs);
-    if (ret) {
-	fprintf(stderr, "[CR_Callback] Error in getting a response\n");
-	cr_checkpoint(CR_CHECKPOINT_TEMP_FAILURE);
-	return (-2);
-    }
-
-    cr_ftb_finalize();
 #else
 
     sprintf(buf, "cmd=ckpt_req file=%s\n", ckpt_filename);
@@ -746,17 +854,27 @@ static int CR_Callback(void *arg)
 
 #endif				/* CR_FTB */
 
-    ret = cr_checkpoint(CR_CHECKPOINT_READY);
+   ret = cr_checkpoint(CR_CHECKPOINT_READY);
+   dbg("%s:%d: [CR_Callback] cr_checkpoint done\n",__FILE__,__LINE__);
 
-    if (ret < 0) {
+    if (ret < 0)
+    {
 	fprintf(stderr, "[CR_Callback] Checkpoint of Console Failed\n");
 	fflush(stderr);
 	cr_state = CR_READY;
 	return (-4);
-    } else if (ret == 0) {
+    }
+    else if (ret == 0) 
+    {
+#if defined(CKPT) && defined(CR_FTB)
+        cr_ftb_init(num_procs);
+#endif
+	dbg("%s:%d: [CR_Callback] CR_READY\n",__FILE__,__LINE__);
 	cr_state = CR_READY;
-    } else if (ret) {
-
+    }
+    else if (ret) 
+    {
+        dbg("****  is restart...\n");
 	restart_context = 1;
 	cr_state = CR_RESTART;
 
@@ -772,6 +890,8 @@ int cr_ftb_init(int nprocs)
 {
     int ret;
     char *subscription_str;
+    if( ftb_init_done )  return 0;
+    ftb_init_done = 1;
 
     memset(&ftb_cinfo, 0, sizeof(ftb_cinfo));
     strcpy(ftb_cinfo.client_schema_ver, "0.5");
@@ -783,7 +903,7 @@ int cr_ftb_init(int nprocs)
 	     sessionid);
 
     strcpy(ftb_cinfo.client_subscription_style, "FTB_SUBSCRIPTION_BOTH");
-    ftb_cinfo.client_polling_queue_len = nprocs;
+    ftb_cinfo.client_polling_queue_len = 64; //nprocs;
 
     ret = FTB_Connect(&ftb_cinfo, &ftb_handle);
     if (ret != FTB_SUCCESS)
@@ -800,9 +920,20 @@ int cr_ftb_init(int nprocs)
 
     snprintf(subscription_str, FTB_MAX_SUBSCRIPTION_STR,
 	     "event_space=FTB.MPI.MVAPICH2 , jobid=%s", sessionid);
+    ret = FTB_Subscribe(&shandle, ftb_handle, subscription_str,
+                        cr_ftb_callback, NULL);
 
+    snprintf(subscription_str, FTB_MAX_SUBSCRIPTION_STR,
+             "event_space=FTB.STARTUP.MV2_MPISPAWN , jobid=%s", sessionid);
+             //"event_space=FTB.STARTUP.MV2_MPISPAWN" );
     ret = FTB_Subscribe(&shandle, ftb_handle, subscription_str,
 			cr_ftb_callback, NULL);
+
+    /// subscribe to migration trigger
+    snprintf(subscription_str, FTB_MAX_SUBSCRIPTION_STR, "event_space=FTB.MPI.MIG_TRIGGER");
+    ret = FTB_Subscribe(&shandle, ftb_handle, subscription_str,
+			cr_ftb_callback, NULL);
+
     free(subscription_str);
     if (ret != FTB_SUCCESS)
 	goto err_subscribe;
@@ -843,48 +974,109 @@ int cr_ftb_init(int nprocs)
 
 static void cr_ftb_finalize()
 {
-    if (ftb_init_done)
-	FTB_Disconnect(ftb_handle);
+    int ret=0;
+    if (ftb_init_done){
+        ftb_init_done = 0;
+        ret = FTB_Unsubscribe(&shandle);
+        usleep(20000);
+	    ret = FTB_Disconnect(ftb_handle);
+    }
+    dbg("Has close FTB: ftb_init_done=%d, ftb-disconnect ret %d\n", ftb_init_done, ret ); 
 }
 
 static int cr_ftb_wait_for_resp(int nprocs)
 {
     pthread_mutex_lock(&cr_ftb_ckpt_req_mutex);
-    DBG(fprintf(stderr,"nprocs %d \n", nprocs));
-    cr_ftb_ckpt_req = nprocs;
+    dbg("wait for nprocs %d \n", nprocs);
+    cr_ftb_ckpt_req += nprocs;
     pthread_cond_wait(&cr_ftb_ckpt_req_cond, &cr_ftb_ckpt_req_mutex);
 
     if (cr_ftb_ckpt_req == 0) {
         return (0);
     } else {
-        fprintf(stderr, "cr_ftb_wait_for_resp() returned %d\n",
-		cr_ftb_ckpt_req);
-	return (-1);
+    	DBG(fprintf(stderr, "cr_ftb_wait_for_resp() returned %d\n", cr_ftb_ckpt_req));
+   	return (-1);
     }
 }
 
+#ifdef CR_AGGRE
+static int cr_ftb_aggre_based_mig(char* src)
+{
+    FTB_event_properties_t eprop;
+    FTB_event_handle_t     ehandle;
+    char buf[MAX_CR_MSG_LEN];
+    char tmpbuf[16];
+    int i, ret;
+    int isrc, itgt;
+    char *tgt;
+ 
+    tgt = sparehosts[sparehosts_idx];
+
+    dbg("enter: src=%s, tgt=%s, tgt-idx=%d\n", src, tgt, sparehosts_idx );
+    
+    //// find src and tgt node idx
+    for(i=0; i<pglist->npgs; i++){
+        if (strcmp(pglist->data[i].hostname, src) == 0)
+            isrc = i;
+        if (strcmp(pglist->data[i].hostname, tgt) == 0)
+            itgt = i;
+    }
+
+    snprintf(buf, MAX_CR_MSG_LEN, "%s %s %d ", src, tgt, pglist->data[isrc].npids);
+
+    /// find all proc-ranks to be migrated
+    for (i=0; i<pglist->data[isrc].npids; i++)
+    {
+        sprintf(tmpbuf, "%d ", pglist->data[isrc].plist_indices[i]);
+        strncat(buf, tmpbuf, MAX_CR_MSG_LEN);
+    }
+    dbg("[Aggre-Based Mig]: init a mig: \"%s\"\n", buf);
+
+    sparehosts_idx++;
+
+    SET_EVENT(eprop, FTB_EVENT_NORMAL, buf);
+    ret = FTB_Publish(ftb_handle, EVENT(CR_FTB_MIGRATE), &eprop, &ehandle);
+    if (ret != FTB_SUCCESS) {
+        fprintf(stderr, "%s: FTB_Publish failed with %d\n", ret);
+        return -1;
+    }
+    return 0; 
+}
+#endif
+
 static int cr_ftb_callback(FTB_receive_event_t * revent, void *arg)
 {
-     //fprintf(stdout, "Got event %s from %s\n",
-     //        revent->event_name, revent->client_name);
+    FTB_event_properties_t eprop;
+    FTB_event_handle_t     ehandle;
+    char buf[MAX_CR_MSG_LEN];
+    int ret, isrc, itgt, i;
+    char cnum[16];
+    process_group tmp_pg;
+    dbg("Got event %s from %s: payload=\"%s\"\n",
+             revent->event_name, revent->client_name, revent->event_payload);
 
     /* TODO: Do some sanity checking to see if this is the intended target */
 
-    if (!strcmp(revent->event_name, EVENT(CR_FTB_CKPT_DONE))) {
-	if (cr_ftb_ckpt_req <= 0) {
-	    fprintf(stderr, "Got CR_FTB_CKPT_DONE but "
-		    "cr_ftb_ckpt_req not set\n");
-	    cr_ftb_ckpt_req = -1;
-	    pthread_cond_signal(&cr_ftb_ckpt_req_cond);
-	    return (0);
-	}
-	pthread_mutex_lock(&cr_ftb_ckpt_req_mutex);
-	--cr_ftb_ckpt_req;
-	pthread_mutex_unlock(&cr_ftb_ckpt_req_mutex);
-	if (!cr_ftb_ckpt_req) {
-	    pthread_cond_signal(&cr_ftb_ckpt_req_cond);
-	    return (0);
-	}
+    if (!strcmp(revent->event_name, EVENT(MPI_PROCS_CKPTED))) {
+    	if (cr_ftb_ckpt_req <= 0) {
+	        fprintf(stderr, "Got CR_FTB_CKPT_DONE but "
+		        "cr_ftb_ckpt_req not set\n");
+    	    cr_ftb_ckpt_req = -1;
+    	    pthread_cond_signal(&cr_ftb_ckpt_req_cond);
+    	    return (0);
+    	}
+    	pthread_mutex_lock(&cr_ftb_ckpt_req_mutex);
+    	--cr_ftb_ckpt_req;
+    	pthread_mutex_unlock(&cr_ftb_ckpt_req_mutex);
+    	if (!cr_ftb_ckpt_req) {
+    	    pthread_cond_signal(&cr_ftb_ckpt_req_cond);
+    	    return (0);
+    	}
+    }
+
+    if( !strcmp(revent->event_name, EVENT(CR_FTB_RSRT_DONE)) ){
+        dbg("a proc has been migrated/restarted...\n");        
+        return 0; 
     }
 
     if (!strcmp(revent->event_name, EVENT(CR_FTB_CKPT_FAIL))) {
@@ -903,6 +1095,250 @@ static int cr_ftb_callback(FTB_receive_event_t * revent, void *arg)
         cr_ftb_finalize_ckpt = 1;
         return (0);
     }
+
+    if (!strcmp(revent->event_name, EVENT(CR_FTB_RTM))) 
+    {
+        if (sparehosts_on) 
+        {
+            if (sparehosts_idx >= nsparehosts) {
+                fprintf(stderr, "[Migration] Out of Spares\n");
+                return(0);
+            }
+    #ifdef CR_AGGRE
+            if( use_aggre>0 && use_aggre_mig>0 ){
+                ret = cr_ftb_aggre_based_mig(revent->event_payload);
+                if( ret!= 0 ){
+                    dbg("Err!!:: Aggre-mig mig failed...\n");
+                }
+                return 0;
+            }
+    #endif
+            snprintf(buf, MAX_CR_MSG_LEN, "%s %s",
+                     revent->event_payload, sparehosts[sparehosts_idx++]);
+
+            dbg("[Migration]: init a mig: \"%s\"\n", buf);
+            SET_EVENT(eprop, FTB_EVENT_NORMAL, buf);
+            ret = FTB_Publish(ftb_handle, EVENT(CR_FTB_MIGRATE), &eprop, &ehandle);
+            if (ret != FTB_SUCCESS) {
+                fprintf(stderr, "FTB_Publish(CR_FTB_MIGRATE) failed with %d\n", ret);
+            }
+        }
+        else 
+        {
+            fprintf(stderr, "[Migration] Don't know about spare nodes\n");
+        }
+
+        return(0);
+    }
+
+    if (!strcmp(revent->event_name, EVENT(CR_FTB_MIGRATE_PIC)))
+    {
+
+        /* Find Source & Target in the pglist */
+        get_src_tgt(revent->event_payload, cr_mig_src_host, cr_mig_tgt_host);
+
+        dbg(" src_tgt payload=%s, src=%s:tgt=%s\n", revent->event_payload,
+                       cr_mig_src_host,cr_mig_tgt_host);
+
+        for (i=0; i<pglist->npgs; i++)
+        {
+            if (strcmp(pglist->data[i].hostname, cr_mig_src_host) == 0)
+                isrc = i;
+            if (strcmp(pglist->data[i].hostname, cr_mig_tgt_host) == 0)
+                itgt = i;
+        }
+
+        /* Get the list of ranks */
+        buf[0] = '\0';
+        for (i=0; i<pglist->data[isrc].npids; i++)
+        {
+            sprintf(cnum, "%d ", pglist->data[isrc].plist_indices[i]);
+            strncat(buf, cnum, MAX_CR_MSG_LEN);
+        }
+        i = strlen(buf);
+        if (buf[i-1] == ' ') buf[i-1] = '\0';
+
+        dbg("list of procs to migrate: %s\n", buf);
+#ifdef SPAWN_DEBUG
+        pglist_print();
+#endif
+        /* Fixup the pglist */
+        // swap
+        const char *src_hostname = pglist->data[isrc].hostname;
+        const char *tgt_hostname = pglist->data[itgt].hostname;
+        pid_t src_pid =  pglist->data[isrc].pid;
+        pid_t tgt_pid =  pglist->data[itgt].pid;
+        pid_t   local_src = pglist->data[isrc].local_pid;
+        pid_t   local_tgt = pglist->data[itgt].local_pid;
+
+        memcpy(&tmp_pg, &pglist->data[isrc], sizeof(process_group));
+        memcpy(&pglist->data[isrc], &pglist->data[itgt], sizeof(process_group));
+        memcpy(&pglist->data[itgt], &tmp_pg, sizeof(process_group));
+
+        pglist->data[isrc].hostname = src_hostname;
+        pglist->data[itgt].hostname = tgt_hostname;
+        pglist->data[isrc].pid = src_pid;
+        pglist->data[itgt].pid = tgt_pid;
+        pglist->data[isrc].local_pid = local_src;
+        pglist->data[itgt].local_pid = local_tgt;
+        //I need to change also the plist_indice[itgt].hostname
+        int index;
+        for (index = 0; index < pglist->data[itgt].npids; index++)
+        {
+            plist[pglist->data[itgt].plist_indices[index]].hostname = (char *)strdup(tgt_hostname);
+        }
+
+        dbg("mpirun_rsh: will do migrate...\n");
+//#ifdef SPAWN_DEBUG
+        pglist_print();
+        dump_pgrps();
+//#endif
+        /* Copy checkpointed image */
+        char syscmd[256];
+        //sprintf(syscmd, "scp %s:%s.0* %s:/tmp/", cr_mig_src_host, ckpt_filename, cr_mig_tgt_host);
+        char    ckptdir[256], *tp;
+        strncpy(ckptdir, ckpt_filename, 256);
+        ckptdir[255]=0;
+        tp = ckptdir + strlen(ckptdir) - 1;
+        while(*tp != '/' && tp>=ckptdir )   tp--;
+        if( tp>=ckptdir )  *(tp+1)=0;
+        sprintf(syscmd, "scp %s:%s.0* %s:%s", 
+                cr_mig_src_host, ckpt_filename, cr_mig_tgt_host, ckptdir);
+        dbg("  syscmd=%s\n", syscmd);
+        system(syscmd);
+
+        /* Initiate Phase II */
+        dbg("move ckpt img complete...started phase II: send: \"%s\"\n", buf);
+        SET_EVENT(eprop, FTB_EVENT_NORMAL, buf);
+               //sleep(1); //sleep(100000);
+        ret = FTB_Publish(ftb_handle, EVENT(CR_FTB_MIGRATE_PIIC),
+                          &eprop, &ehandle);
+        if (ret != FTB_SUCCESS) {
+            fprintf(stderr, "[CR_Callback] FTB_Publish(CR_FTB_MIGRATE_PIIC) "
+                                          "failed with %d\n", ret);
+        }
+
+        return(0);
+    }
+
+}
+
+int read_sparehosts(char *hostfile, char ***hostarr, int *nhosts)
+{
+
+    FILE *fp;
+    char line[HOSTFILE_LEN+1];
+    int i, ret, line_len, n=0;
+    char **hosts;
+
+    if (!hostfile || !hostarr || !nhosts) {
+        fprintf(stderr, "[read_sparehosts] Invalid Parameters\n");
+        return(-1);
+    }
+
+    fp = fopen(hostfile, "r");
+    if (!fp) goto err_fopen;
+
+    /* Figure out the number of hosts */
+    while(fgets(line, HOSTFILE_LEN, fp) != NULL) {
+
+        line_len = strlen(line);
+        if (line[line_len-1] == '\n')
+            line[line_len-1] =  '\0';
+
+        line_len = strlen(line);
+        if (line_len == 0)  continue; /* Blank Lines */
+        if (line[0] == '#') continue; /* Comments    */
+
+        ++n;
+    }
+
+    *nhosts = n;
+
+    hosts = (char **) malloc(n * sizeof(char *));
+    if (!hosts) goto err_malloc_hosts;
+
+    /* Reset File Pointer */
+    rewind(fp);
+    /* Store the list of hosts */
+    n = 0;
+    while(fgets(line, HOSTFILE_LEN, fp) != NULL) {
+
+        line_len = strlen(line);
+        if (line[line_len-1] == '\n')
+            line[line_len-1] =  '\0';
+
+        line_len = strlen(line);
+        if (line_len == 0)  continue; /* Blank Lines */
+        if (line[0] == '#') continue; /* Comments    */
+
+        hosts[n] = (char *) malloc((line_len+1)*sizeof(char));
+        if (!hosts[n]) goto err_malloc_hostn;
+
+        strncpy(hosts[n], line, line_len+1);
+        ++n;
+    }
+
+    *hostarr = hosts;
+
+    ret = 0;
+
+exit_malloc_hostn:
+exit_malloc_hosts:
+    fclose(fp);
+
+exit_fopen:
+    return(ret);
+
+err_malloc_hostn:
+    fprintf(stderr, "[read_sparehosts] Error allocating host[%d]\n", n);
+    while (n > 0) {
+        --n;
+        free(hosts[n]);
+    }
+    free(hosts);
+    ret = -4;
+    goto exit_malloc_hostn;
+
+err_malloc_hosts:
+    fprintf(stderr, "[read_sparehosts] Error allocating hosts array\n");
+    ret = -3;
+    goto exit_malloc_hosts;
+
+err_fopen:
+    perror("[read_sparehosts] Error opening hostfile");
+    ret = -2;
+    goto exit_fopen;
+}
+
+/* FIXME: Need to fix possible overrun flaw */
+static int get_src_tgt(char *str, char *src, char *tgt)
+{
+    int i, j, tgt_start;
+
+    if (!str || !src || !tgt) return(-1);
+
+    i = j = tgt_start = 0;
+
+    while (str[i]) {
+
+        if (str[i] == ' ') {
+            tgt_start = 1;
+            src[j] = '\0';
+            j = 0;
+            ++i;
+            continue;
+        }
+
+        if (tgt_start)
+            tgt[j++] = str[i++];
+        else
+            src[j++] = str[i++];
+    }
+
+    tgt[j] = '\0';
+
+    return(0);
 }
 #endif				/* CR_FTB */
 
@@ -912,6 +1348,7 @@ void finalize_ckpt()
 
 	/* Wait for previous instance of CR_Loop to exit */
 	if (cr_tid) {
+        cr_work_can_exit = 1;
 	    pthread_join(cr_tid, NULL);
 	    cr_tid = 0;
 	}

@@ -93,4 +93,8 @@ typedef struct MPIDI_CH3I_VC
         __p->pkbuf = 0;              \
         __p->pksz = 0                \
 
+#define HAVE_DEV_COMM_HOOK
+#define MPID_Dev_comm_create_hook( a ) 
+#define MPID_Dev_comm_destroy_hook( a ) 
+
 #endif

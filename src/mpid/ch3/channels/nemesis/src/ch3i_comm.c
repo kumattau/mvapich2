@@ -42,12 +42,16 @@ int MPIDI_CH3I_comm_create (MPID_Comm *comm)
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_COMM_CREATE);
     comm->ch.barrier_vars = NULL;
-
-    mpi_errno = MPIU_Find_local_and_external(comm, &comm->ch.local_size, &comm->ch.local_rank,
-					     &comm->ch.local_ranks, &comm->ch.external_size,
-					     &comm->ch.external_rank, &comm->ch.external_ranks,
-                                             &comm->ch.intranode_table, &comm->ch.internode_table);
-    if (mpi_errno) MPIU_ERR_POP (mpi_errno);
+    if (comm->comm_kind == MPID_INTRACOMM) {
+        mpi_errno = MPIU_Find_local_and_external(comm,&comm->ch.local_size, 
+                         &comm->ch.local_rank, &comm->ch.local_ranks, 
+                         &comm->ch.external_size, &comm->ch.external_rank, 
+                         &comm->ch.external_ranks,&comm->ch.intranode_table, 
+                         &comm->ch.internode_table);
+        if (mpi_errno) { 
+              MPIU_ERR_POP (mpi_errno);
+        } 
+    } 
 
     comm->coll_fns = &collective_functions;
 

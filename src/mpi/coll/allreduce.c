@@ -16,17 +16,6 @@
 
 #include "mpiimpl.h"
 
-#if defined(_OSU_COLLECTIVES_)
-
-/************************************************
- * Using OSU collectives implementation         *
- ************************************************/
-
-#else 
-/************************************************
- * Using MPICH2 collectives implementation      *
- ************************************************
-
 /* -- Begin Profiling Symbol Block for routine MPI_Allreduce */
 #if defined(HAVE_PRAGMA_WEAK)
 #pragma weak MPI_Allreduce = PMPI_Allreduce
@@ -390,9 +379,6 @@ int MPIR_Allreduce (
                             recv_cnt += cnts[i];
                     }
 
-/*                    printf("Rank %d, send_idx %d, recv_idx %d, send_cnt %d, recv_cnt %d, last_idx %d\n", newrank, send_idx, recv_idx,
-                           send_cnt, recv_cnt, last_idx);
-                           */
                     /* Send data from recvbuf. Recv into tmp_buf */ 
                     mpi_errno = MPIC_Sendrecv((char *) recvbuf +
                                               disps[send_idx]*extent,
@@ -695,9 +681,22 @@ int MPI_Allreduce ( void *sendbuf, void *recvbuf, int count,
 
     if (comm_ptr->coll_fns != NULL && comm_ptr->coll_fns->Allreduce != NULL)
     {
-	mpi_errno = comm_ptr->coll_fns->Allreduce(sendbuf, recvbuf, count,
-                                              datatype, op, comm_ptr);
-    }
+#if defined(_OSU_MVAPICH_)                                                                                             
+	MPIU_THREADPRIV_GET;
+	MPIR_Nest_incr();
+#endif
+	    if (comm_ptr->comm_kind == MPID_INTRACOMM) 
+		{	
+		    mpi_errno = comm_ptr->coll_fns->Allreduce(sendbuf, recvbuf, count, datatype, op, comm_ptr);
+		} 
+		else 
+		{ 
+		    mpi_errno = comm_ptr->coll_fns->Allreduce_inter(sendbuf, recvbuf, count, datatype, op, comm_ptr);
+	    }
+#if defined(_OSU_MVAPICH_)
+	MPIR_Nest_decr();
+#endif
+	}
     else
     {
         if (comm_ptr->comm_kind == MPID_INTRACOMM) {
@@ -800,4 +799,3 @@ int MPI_Allreduce ( void *sendbuf, void *recvbuf, int count,
     /* --END ERROR HANDLING-- */
 }
 
-#endif /* !defined(_OSU_COLLECTIVES_) */

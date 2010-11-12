@@ -164,9 +164,9 @@ static void psm_preinit(int pg_size)
         for(i = 0; i < n; i++) {
             if(0 == strcmp(scratch, fls[i]->d_name))
                 id = i;
-            MPIU_Free(fls[i]);
+            free(fls[i]);
         }   
-        MPIU_Free(fls);
+        free(fls);
 
         PMI_Barrier();
         DBG("localid %d localranks %d\n", id, n);

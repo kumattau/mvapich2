@@ -24,6 +24,7 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include "mpirunconf.h"
 
 #ifdef MPISPAWN_DEBUG
 #include <stdio.h>
@@ -32,9 +33,23 @@
 #define debug(...) ((void)0)
 #endif
 
+//#define dbg(fmt, args...)   printf("%s: "fmt, __func__, ##args)
+#define dbg(fmt, args...) 
+
 typedef struct {
     size_t num_parents, num_children;
 } family_size;
+
+#if defined(CKPT) && defined(CR_FTB)
+/*struct spawn_info_s {
+    char spawnhost[32];
+    int  sparenode;
+}; */
+
+extern struct spawn_info_s *spawninfo;
+extern int exclude_spare = 0;
+#endif
+
 
 static size_t id;
 static size_t node_count;
@@ -234,6 +249,27 @@ extern int mpispawn_tree_init(size_t me, int req_socket)
 	return -1;
     }
 
+#if defined(CKPT) && defined(CR_FTB)
+
+	spawninfo = (struct spawn_info_s *) calloc(sizeof(struct spawn_info_s), node_count);
+	if (!spawninfo) {
+		perror("[CR_MIG] calloc(spawninfo)");
+		return(-1);
+	}
+
+	if (read_socket(p_socket, spawninfo, sizeof(struct spawn_info_s)*node_count)) {
+		perror("[CR_MIG] read_socket(spawninfo)");
+		return(-1);
+	}
+
+	for (i=0; i<node_count; i++)
+	{
+		debug( "***** %s:%d[mpispawn:spawninfo:%d] %s - %d\n",__FILE__,__LINE__,i, spawninfo[i].spawnhost, spawninfo[i].sparenode);
+		fflush(stdout);
+	}
+
+#endif
+
     fs = find_family(0, degree, &parent, child);
 
     for (i = 0; i < fs.num_children; ++i) {
@@ -249,7 +285,12 @@ extern int mpispawn_tree_init(size_t me, int req_socket)
 	    || write_socket(c_socket, node_addr, sizeof(struct
 							sockaddr_storage)
 			    * node_count)
-	    || write_socket(c_socket, &mt_degree, sizeof(int))) {
+            || write_socket(c_socket, &mt_degree, sizeof (int))
+#if defined(CKPT) && defined(CR_FTB)
+            || write_socket (c_socket, spawninfo, sizeof(struct spawn_info_s)*node_count)
+#endif
+										) {
+
 	    return -1;
 	}
 
@@ -276,6 +317,34 @@ extern int *mpispawn_tree_connect(size_t root, size_t degree)
 	   (fs.num_parents + fs.num_children) * sizeof(int));
     MPISPAWN_NCHILD = fs.num_children;
     MPISPAWN_HAS_PARENT = fs.num_parents;
+
+#if defined(CKPT) && defined(CR_FTB)
+	int i;
+	int index_spawninfo = 0;
+	static char my_host_name[MAX_HOST_LEN];
+	gethostname (my_host_name, MAX_HOST_LEN);
+    debug( "===== id= %d -- num_parents %d -- NUMCHILDREN %d %s \n",id, fs.num_parents,fs.num_children,my_host_name);
+	debug("id= %d -- MPISPAWN_HAS_PARENT %d\n",id, MPISPAWN_HAS_PARENT);
+	debug("id= %d -- PARENT %d\n",id, parent);
+	debug("id= %d -- DEGREE %d\n",id, degree);
+	debug("id= %d -- NUMCHILDREN %d\n",id, fs.num_children);
+	for (i=0; i<fs.num_children; i++)
+	{
+
+		//index_spawninfo = (((MPISPAWN_HAS_PARENT)?parent:0)*degree)+i;
+		index_spawninfo = (((MPISPAWN_HAS_PARENT)?id:0)*degree)+i;
+		debug("%s:%d[mpispawn_tree_connect:%d] %d Child(%d) =%d\n",__FILE__,__LINE__,
+			((MPISPAWN_HAS_PARENT)?parent:0), id, i,
+			index_spawninfo);
+
+		fflush(stdout);
+		if (spawninfo[index_spawninfo+1].sparenode)
+			++exclude_spare;
+	}
+	dbg("[%d on %s] exclude_spare::%d\n",id,my_host_name, exclude_spare);
+	dbg("%s:%d:mpispawn_id::%d exclude_spare::%d\n",__FILE__,__LINE__, id, exclude_spare);
+	//fflush(stdout);
+#endif
 
     if (!socket_array) {
 	perror("calloc");

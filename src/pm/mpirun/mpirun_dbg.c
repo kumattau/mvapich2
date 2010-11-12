@@ -19,7 +19,6 @@ int MPIR_proctable_size = 0;
 int MPIR_i_am_starter = 1;
 int MPIR_debug_state = 0;
 char *MPIR_dll_name = "MVAPICH2";
-char *MV2_XRC_FILE;
 
 /* End mpirun_rsh totalview integration */
 

@@ -70,7 +70,7 @@ inline static int MPIDI_CH3I_Seq(int type)
         case MPIDI_CH3_PKT_PACKETIZED_SEND_START:
         case MPIDI_CH3_PKT_PACKETIZED_SEND_DATA:
         case MPIDI_CH3_PKT_RNDV_R3_DATA:
-#ifdef USE_HEADER_CACHING
+#ifndef MV2_DISABLE_HEADER_CACHING 
         case MPIDI_CH3_PKT_FAST_EAGER_SEND:
         case MPIDI_CH3_PKT_FAST_EAGER_SEND_WITH_REQ:
 #endif
@@ -149,7 +149,7 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
 {
     MPIDI_VC_t *vc_ptr = NULL;
     int mpi_errno = MPI_SUCCESS;
-    int spin_count = 1;
+    int spin_count = 0;
     unsigned completions = MPIDI_CH3I_progress_completion_count;
     vbuf *buffer = NULL;
 
@@ -172,8 +172,7 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
     do
     {
         /*needed if early send complete does not occur */
-        if (SMP_INIT && (mpi_errno = MPIDI_CH3I_SMP_write_progress(MPIDI_Process.my_pg)) != MPI_SUCCESS)
-        {
+        if (SMP_INIT && (mpi_errno = MPIDI_CH3I_SMP_write_progress(MPIDI_Process.my_pg)) != MPI_SUCCESS) {
             MPIU_ERR_POP(mpi_errno);
         }
 
@@ -181,8 +180,9 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
             goto fn_completion;
         }
 
-        if (SMP_INIT)
+        if (SMP_INIT) { 
             MPIDI_CH3I_SMP_read_progress(MPIDI_Process.my_pg);
+        } 
 
         if (!SMP_ONLY) {
 
@@ -203,44 +203,24 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
 #endif
 
             mpi_errno = MPIDI_CH3I_read_progress(&vc_ptr, &buffer, is_blocking);
-            if (mpi_errno != MPI_SUCCESS)
-            {
+            if (mpi_errno != MPI_SUCCESS) {
                 MPIU_ERR_POP(mpi_errno);
             }
 
-            if (vc_ptr == NULL) {
-#if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
-                MPIU_THREAD_CHECK_BEGIN
-#ifdef SOLARIS
-                if(spin_count > 100)
-#else
-                if(spin_count > 5)
-#endif
-                {
-                    spin_count = 0;
-                    MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
-                    MPIDU_Yield();
-                    MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
-                }
-                MPIU_THREAD_CHECK_END
-#endif
-                ++spin_count;
-            } else {
-                spin_count = 1;
-#ifdef USE_SLEEP_YIELD
-                MPIDI_Sleep_yield_count = 0;
-#endif
+            if (vc_ptr != NULL) {
+                /* We have picked up a packet, re-set the spin_count */ 
+                spin_count = 0;
                 /*CM code*/
 #ifdef _ENABLE_XRC_
-                if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_SRV || VC_XST_ISSET (vc_ptr, XF_NEW_RECV))
-                {
-                    MPIDI_CH3I_CM_Establish(vc_ptr);
-                    if (!USE_XRC)
+                if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_SRV || 
+                    VC_XST_ISSET (vc_ptr, XF_NEW_RECV)) {
+                        MPIDI_CH3I_CM_Establish(vc_ptr);
+                    if (!USE_XRC) { 
                         cm_handle_pending_send();
+                    } 
                 }
 #else /* _ENABLE_XRC_ */
-                if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_SRV)
-                {
+                if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_SRV) {
                     /*newly established connection on server side*/
                     MPIDI_CH3I_CM_Establish(vc_ptr);
                     cm_handle_pending_send();
@@ -254,46 +234,57 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
                     if (vc_ptr->mrail.sreq_head) /*has rndv*/
                         PUSH_FLOWLIST(vc_ptr);
                     /* Handle pending two-sided sends */
-                    if (!MPIDI_CH3I_CM_SendQ_empty(vc_ptr))
+                    if (!MPIDI_CH3I_CM_SendQ_empty(vc_ptr)) { 
                         cm_send_pending_msg(vc_ptr);
-                    /* Handle pending one-sided sends */
+                        /* Handle pending one-sided sends */
+                    } 
                     if (!MPIDI_CH3I_CM_One_Sided_SendQ_empty(vc_ptr)) {
                         cm_send_pending_1sc_msg(vc_ptr);
                     }
                 }
 #endif /* CKPT */
                 mpi_errno = handle_read(vc_ptr, buffer); 
-                if (mpi_errno != MPI_SUCCESS)
-                {
+                if (mpi_errno != MPI_SUCCESS) {
                     MPIU_ERR_POP(mpi_errno);
                 }
             }
-        } else {
-            if (SMP_INIT) 
-            {
-#if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
-                MPIU_THREAD_CHECK_BEGIN
-                ++spin_count;
-                if(spin_count > 10) {
-                    spin_count = 0;
-                    MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
-                    MPIDU_Yield();
-                    MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
-                }
-                MPIU_THREAD_CHECK_END
-#endif
-            }
-        }
+        } 
 
-        if (flowlist)
+        if (flowlist) { 
             MPIDI_CH3I_MRAILI_Process_rndv();
+        } 
 #ifdef CKPT
-        if (MPIDI_CH3I_CR_Get_state()==MPICR_STATE_REQUESTED)
-        {
+        if (MPIDI_CH3I_CR_Get_state()==MPICR_STATE_REQUESTED) {
             /*Release the lock if it is about to checkpoint*/
             break;
         }
 #endif
+#if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
+        if (completions == MPIDI_CH3I_progress_completion_count) { 
+                /* We are yet to get all the completions, increment the spin_count */ 
+                MPIU_THREAD_CHECK_BEGIN
+                spin_count++; 
+                if(spin_count > rdma_polling_spin_count_threshold) {
+                    /* We have reached the polling_spin_count_threshold. So, we
+                     * are now going to release the lock. */ 
+                    spin_count = 0;
+                    MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
+                    if( use_thread_yield == 1) { 
+                         /* User has requested this thread to yield the CPU */
+                         MPIDU_Yield();
+                    } else { 
+                         /* After releasing the lock, lets just wait for a 
+                          * short time before trying to acquire the lock
+                          * again. */ 
+                         do { 
+                         } while(0); 
+                    } 
+                    MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
+                }
+                MPIU_THREAD_CHECK_END
+         } 
+#endif
+
     }
     while (completions == MPIDI_CH3I_progress_completion_count
            && is_blocking);

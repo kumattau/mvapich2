@@ -16,7 +16,7 @@
 #include <mpimem.h>
 #include "mpidimpl.h"
 #include "mpicomm.h"
-#include "../../mpid/ch3/channels/mrail/src/rdma/coll_shmem.h"
+#include "coll_shmem.h"
 #include <pthread.h>
 #ifndef GEN_EXIT_ERR
 #define GEN_EXIT_ERR    -1

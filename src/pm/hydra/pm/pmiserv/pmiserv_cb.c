@@ -182,6 +182,23 @@ static HYD_status handle_exit_status(int fd, struct HYD_proxy *proxy)
     goto fn_exit;
 }
 
+static HYD_status handle_abort(int fd, struct HYD_proxy *proxy)
+{
+    HYD_status status = HYD_SUCCESS;
+
+    HYDU_FUNC_ENTER();
+
+    status = HYD_pmcd_pmiserv_cleanup();
+    HYDU_ERR_POP(status, "unable to cleanup processes\n");
+
+  fn_exit:
+    HYDU_FUNC_EXIT();
+    return status;
+
+  fn_fail:
+    goto fn_exit;
+}
+
 static HYD_status control_cb(int fd, HYD_event_t events, void *userp)
 {
     int count, closed;
@@ -216,6 +233,10 @@ static HYD_status control_cb(int fd, HYD_event_t events, void *userp)
     }
     else if (cmd == EXIT_STATUS) {
         status = handle_exit_status(fd, proxy);
+        HYDU_ERR_POP(status, "unable to receive exit status\n");
+    }
+    else if (cmd == ABORT) {
+        status = handle_abort(fd, proxy);
         HYDU_ERR_POP(status, "unable to receive exit status\n");
     }
     else if (cmd == PMI_CMD) {
@@ -391,7 +412,7 @@ HYD_status HYD_pmcd_pmiserv_cleanup(void)
 
         for (proxy = pg->proxy_list; proxy; proxy = proxy->next) {
             /* The proxy has not been setup yet */
-            if (proxy->control_fd == HYD_FD_UNSET)
+            if (proxy->control_fd == HYD_FD_UNSET || proxy->control_fd == HYD_FD_CLOSED)
                 continue;
 
             status = HYDT_dmx_deregister_fd(proxy->control_fd);

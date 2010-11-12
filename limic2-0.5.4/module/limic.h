@@ -43,7 +43,7 @@
 #include <linux/sched.h>
 
 #define LIMIC_MODULE_MAJOR 0
-#define LIMIC_MODULE_MINOR 5
+#define LIMIC_MODULE_MINOR 6
 
 /*
  * Account for changes in device_create and device_destroy
@@ -74,10 +74,12 @@
 #define LIMIC_TX      0x1c01
 #define LIMIC_RX      0x1c02
 #define LIMIC_VERSION 0x1c03
+#define LIMIC_TXW     0x1c04
 
 #define LIMIC_TX_DONE    1
 #define LIMIC_RX_DONE    2
 #define LIMIC_VERSION_OK 3
+#define LIMIC_TXW_DONE   4
 
 #define NR_PAGES_4_FRAG (16 * 1024)
 

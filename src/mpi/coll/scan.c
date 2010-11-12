@@ -600,7 +600,6 @@ int MPI_Scan(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
 	MPIU_THREADPRIV_GET;
 	MPIR_Nest_incr();
 #if defined(USE_SMP_COLLECTIVES)
-
         /* The current algorithm assume the ranks of processes in the 
            same node are consecutive. for example, node 1 contains rank
            1, 2, 3; while node 2 has 4, 5, 6 and node 3 with 7, 8, 9 */

@@ -111,6 +111,10 @@ int inter_node_knomial_factor=4;
 int intra_node_knomial_factor=4;
 int knomial_2level_bcast_message_size_threshold=2048;
 int knomial_2level_bcast_system_size_threshold=32;
+int use_osu_collectives = 1; 
+int use_anl_collectives = 0; 
+unsigned long rdma_polling_spin_count_threshold=5;
+int use_thread_yield = 0; 
 
 
 
@@ -123,7 +127,6 @@ int use_hwloc_cpu_binding=1;
 #else
 int use_hwloc_cpu_binding=0;
 #endif
-int num_cpus = 32;
 
 void
 rdma_init_parameters (MPIDI_CH3I_RDMA_Process_t *proc)
@@ -335,12 +338,20 @@ rdma_init_parameters (MPIDI_CH3I_RDMA_Process_t *proc)
     if ((value = getenv("MV2_USE_HWLOC_CPU_BINDING")) != NULL) {
         use_hwloc_cpu_binding = atoi(value);
     }
-    if ((value = getenv("MV2_USE_CPU_BINDING_ARRAY_SIZE")) != NULL) {
-        if(atoi(value) > 32) {
-            num_cpus = atoi(value);
+    if ((value = getenv("MV2_USE_OSU_COLLECTIVES")) != NULL) {
+        if( atoi(value) == 1) {
+              use_osu_collectives = 1;
+        }
+        else {
+              use_osu_collectives = 0;
+              use_anl_collectives = 1;
         }
     }
-
-
+    if ((value = getenv("MV2_THREAD_YIELD_SPIN_THRESHOLD")) != NULL) {
+         rdma_polling_spin_count_threshold = atol(value);
+    }
+    if ((value = getenv("MV2_USE_THREAD_YIELD")) != NULL) {
+         use_thread_yield = atoi(value);
+    }
 
 }

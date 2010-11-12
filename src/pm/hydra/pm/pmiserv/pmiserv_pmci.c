@@ -9,6 +9,7 @@
 #include "pmci.h"
 #include "pmiserv_pmi.h"
 #include "bsci.h"
+#include "bind.h"
 #include "pmiserv.h"
 #include "pmiserv_utils.h"
 
@@ -36,6 +37,9 @@ static HYD_status cleanup_procs(void)
     else {
         HYDU_dump_noprefix(stdout, "Ctrl-C caught... forcing cleanup\n");
 
+        /* Something has gone really wrong! Ask the bootstrap server
+         * to forcefully cleanup the proxies, but this may leave some
+         * of the application processes still running. */
         status = HYDT_bsci_cleanup_procs();
         HYDU_ERR_POP(status, "error cleaning up processes\n");
     }
@@ -107,57 +111,104 @@ static HYD_status ui_cmd_cb(int fd, HYD_event_t events, void *userp)
     goto fn_exit;
 }
 
-static HYD_status stdout_cb(void *buf, int buflen)
+static HYD_status outerr(void *buf, int buflen, char **storage, int *storage_len,
+                         HYD_status(*cb) (void *buf, int buflen))
 {
     struct HYD_pmcd_stdio_hdr *hdr;
-    static char *storage = NULL;
-    static int storage_len = 0;
-    char *rbuf, *tmp, str[HYD_TMPBUF_SIZE];
-    int rlen;
+    char *rbuf, *tbuf, *tmp, str[HYD_TMPBUF_SIZE];
+    int rlen, tcnt, restart, i;
     HYD_status status = HYD_SUCCESS;
 
     HYDU_FUNC_ENTER();
 
     if (!HYD_handle.user_global.prepend_rank) {
-        status = HYD_handle.stdout_cb(buf, buflen);
-        HYDU_ERR_POP(status, "error in the UI defined stdout callback\n");
+        status = cb(buf, buflen);
+        HYDU_ERR_POP(status, "error in the UI defined callback\n");
         goto fn_exit;
     }
 
-    rbuf = buf;
-    rlen = buflen;
+    if (*storage_len)
+        hdr = (struct HYD_pmcd_stdio_hdr *) *storage;
+    else
+        hdr = (struct HYD_pmcd_stdio_hdr *) buf;
+
+    if (*storage_len || (buflen < sizeof(struct HYD_pmcd_stdio_hdr) + hdr->buflen)) {
+        HYDU_MALLOC(tmp, char *, *storage_len + buflen, status);
+        memcpy(tmp, *storage, *storage_len);
+        memcpy(tmp + *storage_len, buf, buflen);
+        HYDU_FREE(*storage);
+        *storage = tmp;
+        *storage_len += buflen;
+        tmp = NULL;
+
+        rbuf = *storage;
+        rlen = *storage_len;
+    }
+    else {
+        rbuf = buf;
+        rlen = buflen;
+    }
 
     while (1) {
         hdr = (struct HYD_pmcd_stdio_hdr *) rbuf;
 
-        if (rlen < sizeof(struct HYD_pmcd_stdio_hdr) + hdr->buflen) {
-            /* We don't have the entire data; store it and wait for
-             * the next event */
-            HYDU_MALLOC(tmp, char *, rlen + storage_len, status);
-            if (storage_len)
-                memcpy(tmp, storage, storage_len);
-            memcpy(tmp + storage_len, buf, rlen);
-            if (storage)
-                HYDU_FREE(storage);
-            storage = tmp;
-
+        if (rlen < sizeof(struct HYD_pmcd_stdio_hdr) + hdr->buflen)
             break;
-        }
-        else {
-            rbuf += sizeof(struct HYD_pmcd_stdio_hdr);
-            rlen -= sizeof(struct HYD_pmcd_stdio_hdr);
+
+        rbuf += sizeof(struct HYD_pmcd_stdio_hdr);
+        rlen -= sizeof(struct HYD_pmcd_stdio_hdr);
+
+        tbuf = rbuf;
+        tcnt = hdr->buflen;
+        do {
+            if (tcnt == 0)
+                break;
 
             HYDU_snprintf(str, HYD_TMPBUF_SIZE, "[%d] ", hdr->rank);
-            status = HYD_handle.stdout_cb(str, strlen(str));
-            HYDU_ERR_POP(status, "error in the UI defined stdout callback\n");
+            status = cb(str, strlen(str));
+            HYDU_ERR_POP(status, "error in the UI defined callback\n");
 
-            status = HYD_handle.stdout_cb(rbuf, hdr->buflen);
-            HYDU_ERR_POP(status, "error in the UI defined stdout callback\n");
+            restart = 0;
+            for (i = 0; i < tcnt; i++) {
+                if (tbuf[i] == '\n') {
+                    status = cb(tbuf, i + 1);
+                    HYDU_ERR_POP(status, "error in the UI defined callback\n");
 
-            rbuf += hdr->buflen;
-            rlen -= hdr->buflen;
-        }
+                    tbuf += i + 1;
+                    tcnt -= i + 1;
+
+                    restart = 1;
+                    break;
+                }
+            }
+            if (restart)
+                continue;
+
+            status = cb(tbuf, tcnt);
+            HYDU_ERR_POP(status, "error in the UI defined callback\n");
+            break;
+        } while (1);
+
+        rbuf += hdr->buflen;
+        rlen -= hdr->buflen;
+
+        if (!rlen)
+            break;
     }
+
+    if (rlen) { /* left overs */
+        HYDU_MALLOC(tmp, char *, rlen, status);
+        memcpy(tmp, rbuf, rlen);
+        if (*storage)
+            HYDU_FREE(*storage);
+        *storage = tmp;
+    }
+    else {
+        if (*storage)
+            HYDU_FREE(*storage);
+        *storage = NULL;
+    }
+    *storage_len = rlen;
 
   fn_exit:
     return status;
@@ -166,63 +217,20 @@ static HYD_status stdout_cb(void *buf, int buflen)
     goto fn_exit;
 }
 
-static HYD_status stderr_cb(void *buf, int buflen)
+static HYD_status stdout_cb(void *buf, int buflen)
 {
-    struct HYD_pmcd_stdio_hdr *hdr;
     static char *storage = NULL;
     static int storage_len = 0;
-    char *rbuf, *tmp, str[HYD_TMPBUF_SIZE];
-    int rlen;
-    HYD_status status = HYD_SUCCESS;
 
-    HYDU_FUNC_ENTER();
+    return outerr(buf, buflen, &storage, &storage_len, HYD_handle.stdout_cb);
+}
 
-    if (!HYD_handle.user_global.prepend_rank) {
-        status = HYD_handle.stderr_cb(buf, buflen);
-        HYDU_ERR_POP(status, "error in the UI defined stdout callback\n");
-        goto fn_exit;
-    }
+static HYD_status stderr_cb(void *buf, int buflen)
+{
+    static char *storage = NULL;
+    static int storage_len = 0;
 
-    rbuf = buf;
-    rlen = buflen;
-
-    while (1) {
-        hdr = (struct HYD_pmcd_stdio_hdr *) rbuf;
-
-        if (rlen < sizeof(struct HYD_pmcd_stdio_hdr) + hdr->buflen) {
-            /* We don't have the entire data; store it and wait for
-             * the next event */
-            HYDU_MALLOC(tmp, char *, rlen + storage_len, status);
-            if (storage_len)
-                memcpy(tmp, storage, storage_len);
-            memcpy(tmp + storage_len, buf, rlen);
-            if (storage)
-                HYDU_FREE(storage);
-            storage = tmp;
-
-            break;
-        }
-        else {
-            rbuf += sizeof(struct HYD_pmcd_stdio_hdr);
-            rlen -= sizeof(struct HYD_pmcd_stdio_hdr);
-
-            HYDU_snprintf(str, HYD_TMPBUF_SIZE, "[%d] ", hdr->rank);
-            status = HYD_handle.stdout_cb(str, strlen(str));
-            HYDU_ERR_POP(status, "error in the UI defined stdout callback\n");
-
-            status = HYD_handle.stderr_cb(rbuf, hdr->buflen);
-            HYDU_ERR_POP(status, "error in the UI defined stderr callback\n");
-
-            rbuf += hdr->buflen;
-            rlen -= hdr->buflen;
-        }
-    }
-
-  fn_exit:
-    return status;
-
-  fn_fail:
-    goto fn_exit;
+    return outerr(buf, buflen, &storage, &storage_len, HYD_handle.stderr_cb);
 }
 
 HYD_status HYD_pmci_launch_procs(void)
@@ -282,6 +290,9 @@ HYD_status HYD_pmci_launch_procs(void)
     for (i = 0; i < node_count; i++)
         control_fd[i] = HYD_FD_UNSET;
 
+    status = HYDT_bind_init(HYD_handle.user_global.binding, HYD_handle.user_global.bindlib);
+    HYDU_ERR_POP(status, "unable to initializing binding library");
+
     status = HYDT_bsci_launch_procs(proxy_args, node_list, control_fd, enable_stdin, stdout_cb,
                                     stderr_cb);
     HYDU_ERR_POP(status, "bootstrap server cannot launch processes\n");
@@ -317,30 +328,28 @@ HYD_status HYD_pmci_wait_for_completion(int timeout)
 
     HYDU_FUNC_ENTER();
 
-    status = HYDT_bsci_wait_for_completion(timeout);
-    if (status == HYD_TIMED_OUT) {
-        status = HYD_pmcd_pmiserv_cleanup();
-        HYDU_ERR_POP(status, "cleanup of processes failed\n");
-    }
-    HYDU_ERR_POP(status, "bootstrap server returned error waiting for completion\n");
-
-    /* Wait for the processes to terminate */
-    status = HYDT_bsci_wait_for_completion(-1);
-    HYDU_ERR_POP(status, "bootstrap server returned error waiting for completion\n");
-
-    /* If we didn't get a user abort signal yet, wait for the exit
-     * status'es */
+    /* We first wait for the exit statuses to arrive till the timeout
+     * period */
     for (pg = &HYD_handle.pg_list; pg; pg = pg->next) {
         pg_scratch = (struct HYD_pmcd_pmi_pg_scratch *) pg->pg_scratch;
 
         while (pg_scratch->control_listen_fd != HYD_FD_CLOSED) {
-            status = HYDT_dmx_wait_for_event(-1);
+            status = HYDT_dmx_wait_for_event(timeout);
+            if (status == HYD_TIMED_OUT) {
+                status = HYD_pmcd_pmiserv_cleanup();
+                HYDU_ERR_POP(status, "cleanup of processes failed\n");
+            }
             HYDU_ERR_POP(status, "error waiting for event\n");
         }
 
         status = HYD_pmcd_pmi_free_pg_scratch(pg);
         HYDU_ERR_POP(status, "error freeing PG scratch space\n");
     }
+
+    /* Either all application processes exited or we have timed
+     * out. We now wait for all the proxies to terminate. */
+    status = HYDT_bsci_wait_for_completion(-1);
+    HYDU_ERR_POP(status, "bootstrap server returned error waiting for completion\n");
 
   fn_exit:
     HYDU_FUNC_EXIT();

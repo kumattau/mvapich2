@@ -38,7 +38,6 @@ extern int MPIR_proctable_size;
 extern int MPIR_i_am_starter;
 extern int MPIR_debug_state;
 extern char *MPIR_dll_name;
-extern char *MV2_XRC_FILE;
 
 extern int use_totalview;
 

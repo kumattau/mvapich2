@@ -162,6 +162,7 @@ int MPID_nem_lmt_shm_start_recv(MPIDI_VC_t *vc, MPID_Request *req, MPID_IOV s_co
     int queue_initially_empty;
     MPIDI_CH3I_VC *vc_ch = (MPIDI_CH3I_VC *)vc->channel_private;
     char *ser_lmt_copy_buf_handle=NULL;
+    static char ser_buf_handle[MPIU_SHMW_GHND_SZ];
     MPIDI_STATE_DECL(MPID_STATE_MPID_NEM_LMT_SHM_START_RECV);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_NEM_LMT_SHM_START_RECV);
@@ -186,8 +187,10 @@ int MPID_nem_lmt_shm_start_recv(MPIDI_VC_t *vc, MPID_Request *req, MPID_IOV s_co
     /* send CTS with handle for copy buffer */
     mpi_errno = MPIU_SHMW_Hnd_get_serialized_by_ref((vc_ch->lmt_copy_buf_handle), &ser_lmt_copy_buf_handle);
     if(mpi_errno != MPI_SUCCESS) { MPIU_ERR_POP(mpi_errno); }
-    
-    MPID_nem_lmt_send_CTS(vc, req, ser_lmt_copy_buf_handle, (int)strlen(ser_lmt_copy_buf_handle) + 1);
+
+    strcpy( ser_buf_handle, ser_lmt_copy_buf_handle );
+    ser_buf_handle[strlen( ser_buf_handle )] = '\0';
+    MPID_nem_lmt_send_CTS(vc, req, ser_buf_handle, (int)strlen( ser_buf_handle ) + 1);
 
     queue_initially_empty = LMT_SHM_Q_EMPTY(vc_ch->lmt_queue) && vc_ch->lmt_active_lmt == NULL;
 

@@ -980,7 +980,7 @@ int MRAILI_Process_send(void *vbuf_addr)
     }
     switch (p->type) {
     /*header caching codes */
-#ifdef USE_HEADER_CACHING
+#ifndef MV2_DISABLE_HEADER_CACHING 
     case MPIDI_CH3_PKT_FAST_EAGER_SEND:
     case MPIDI_CH3_PKT_FAST_EAGER_SEND_WITH_REQ:
 #endif
@@ -1168,7 +1168,7 @@ int MPIDI_nem_ib_fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_NEM_IB_FAST_RDMA_FILL_START_BUF);
 
     /* FIXME: Here we assume that iov holds a packet header */
-#ifdef USE_HEADER_CACHING
+#ifndef MV2_DISABLE_HEADER_CACHING
     MPIDI_CH3_Pkt_send_t *cached =  VC_FIELD(vc, connection)->rfp.cached_outgoing;
     MPIDI_nem_ib_pkt_comm_header *cached_iheader = VC_FIELD(vc, connection)->rfp.cached_outgoing_iheader;
 #endif
@@ -1189,13 +1189,13 @@ int MPIDI_nem_ib_fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
     }
     avail   = len;
     /*PACKET_SET_RDMA_CREDIT delayed. need to get iheader position first*/
-    /* it's also need to be added in USE_HEADER_CACHING situation*/
+    /* it's also need to be added in !MV2_DISABLE_HEADER_CACHING situation*/
     *num_bytes_ptr = 0;
     v->sreq = NULL;
 
     DEBUG_PRINT("Header info, tag %d, rank %d, context_id %d\n", 
             header->match.tag, header->match.rank, header->match.context_id);
-#ifdef USE_HEADER_CACHING
+#ifndef MV2_DISABLE_HEADER_CACHING
     if ((header->type == MPIDI_CH3_PKT_EAGER_SEND) &&
         (len - sizeof(MPIDI_CH3_Pkt_t) <= MAX_SIZE_WITH_HEADER_CACHING) &&
         (header->match.parts.tag == cached->match.parts.tag) &&
@@ -1280,7 +1280,7 @@ int MPIDI_nem_ib_fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
         vstart = (void *) ((unsigned long) vstart + IB_PKT_HEADER_LENGTH);
         p->type = header->type;
         MPIU_Memcpy(vstart, header, iov[0].MPID_IOV_LEN);
-#ifdef USE_HEADER_CACHING
+#ifndef MV2_DISABLE_HEADER_CACHING
         if (header->type == MPIDI_CH3_PKT_EAGER_SEND) {
           MPIU_Memcpy(cached, header, sizeof(MPIDI_CH3_Pkt_eager_send_t));
           MPIU_Memcpy(cached_iheader, p, sizeof(MPIDI_nem_ib_pkt_comm_header));

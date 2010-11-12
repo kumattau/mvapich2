@@ -30,6 +30,8 @@ typedef struct MPIDI_CH3I_Process_group_s
     char * kvs_name;
     struct MPIDI_VC * unex_finished_list;
     int nEagerLimit;
+    int local_process_id;
+    int num_local_processes;
     int nRDMAWaitSpinCount;
     int nRDMAWaitYieldCount;
 # if defined(MPIDI_CH3I_RDMA_PG_DECL)
@@ -166,6 +168,7 @@ typedef struct MPIDI_CH3I_SMP_VC
     struct MPID_Request * send_active;
     struct MPID_Request * recv_active;
     int local_nodes;
+    int local_rank;
     SMP_pkt_type_t send_current_pkt_type;
     SMP_pkt_type_t recv_current_pkt_type;
     int hostid;
@@ -226,5 +229,21 @@ typedef struct MPIDI_CH3I_Progress_state
 MPIDI_CH3I_Progress_state;
 
 #define MPIDI_CH3_PROGRESS_STATE_DECL MPIDI_CH3I_Progress_state ch;
+
+#define HAVE_DEV_COMM_HOOK
+#define MPID_Dev_comm_create_hook(comm_) do {           \
+        int _mpi_errno;                                 \
+        _mpi_errno = MPIDI_CH3I_comm_create (comm_);    \
+        if (_mpi_errno) MPIU_ERR_POP (_mpi_errno);      \
+    } while(0)
+
+
+#define MPID_Dev_comm_destroy_hook(comm_) do {          \
+        int _mpi_errno;                                 \
+        _mpi_errno = MPIDI_CH3I_comm_destroy (comm_);   \
+        if (_mpi_errno) MPIU_ERR_POP (_mpi_errno);      \
+    } while(0)
+
+
 
 #endif /* !defined(MPICH_MPIDI_CH3_PRE_H_INCLUDED) */

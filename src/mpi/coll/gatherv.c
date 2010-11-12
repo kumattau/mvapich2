@@ -6,7 +6,6 @@
  */
 
 #include "mpiimpl.h"
-#if !defined(_OSU_COLLECTIVES_)
 
 /* -- Begin Profiling Symbol Block for routine MPI_Gatherv */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -331,10 +330,17 @@ int MPI_Gatherv(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
 
     if (comm_ptr->coll_fns != NULL && comm_ptr->coll_fns->Gatherv != NULL)
     {
-	mpi_errno = comm_ptr->coll_fns->Gatherv(sendbuf, sendcnt,
+#if defined(_OSU_MVAPICH_)
+     	MPIU_THREADPRIV_GET;
+        MPIR_Nest_incr();
+#endif
+	    mpi_errno = comm_ptr->coll_fns->Gatherv(sendbuf, sendcnt,
                                                 sendtype, recvbuf, recvcnts,
                                                 displs, recvtype, root,
                                                 comm_ptr);  
+#if defined(_OSU_MVAPICH_)
+        MPIR_Nest_decr();
+#endif
     }
     else
     {
@@ -370,4 +376,4 @@ int MPI_Gatherv(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
     goto fn_exit;
     /* --END ERROR HANDLING-- */
 }
-#endif /* #if !defined(_OSU_COLLECTIVES_) */
+

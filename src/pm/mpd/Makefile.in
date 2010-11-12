@@ -155,7 +155,7 @@ install: all
 # <_OSU_MVAPICH_>
 	-@if [ -n "@MPD_OTHERS@" ] ; then \
 	   ${INSTALL} -m  755 mpiexec_cr $(DESTDIR)${bindir}/mpiexec_cr ;\
-	   ${INSTALL} -m  755 mv2_checkpoint $(DESTDIR)${bindir}/mv2_checkpoint ;\
+	   ${INSTALL} -m  755 $(srcdir)/mv2_checkpoint $(DESTDIR)${bindir}/mv2_checkpoint ;\
 	fi
 # </_OSU_MVAPICH_>
 	@echo "copying python files/links into " $(DESTDIR)${bindir}

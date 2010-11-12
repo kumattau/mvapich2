@@ -177,7 +177,7 @@ MRAILI_Fast_rdma_fill_start_buf (MPIDI_VC_t * vc,
 
     /* Here we assume that iov holds a packet header, 
        ATTN!: it is a must!! */
-#ifdef USE_HEADER_CACHING
+#ifndef MV2_DISABLE_HEADER_CACHING 
   if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
     cached =
         (NULL == vc) ? NULL : vc->mrail.rfp.cached_outgoing;
@@ -216,7 +216,7 @@ MRAILI_Fast_rdma_fill_start_buf (MPIDI_VC_t * vc,
 
     *num_bytes_ptr = 0;
 
-#ifdef USE_HEADER_CACHING
+#ifndef MV2_DISABLE_HEADER_CACHING 
   if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
     if ((header->type == MPIDI_CH3_PKT_EAGER_SEND) &&
 	(len - sizeof(MPIDI_CH3_Pkt_eager_send_t) <= MAX_SIZE_WITH_HEADER_CACHING) &&
@@ -323,7 +323,7 @@ MRAILI_Fast_rdma_fill_start_buf (MPIDI_VC_t * vc,
               ("[send: fill buf], head not cached, v %p, vstart %p, length %d, header size %d\n",
                v, vstart, len, iov[0].MPID_IOV_LEN);
           MPIU_Memcpy (vstart, header, iov[0].MPID_IOV_LEN);
-#ifdef USE_HEADER_CACHING
+#ifndef MV2_DISABLE_HEADER_CACHING 
           if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
               if (header->type == MPIDI_CH3_PKT_EAGER_SEND)
                 MPIU_Memcpy (cached, header, sizeof (MPIDI_CH3_Pkt_eager_send_t));
@@ -745,7 +745,7 @@ int MRAILI_Process_send (void *vbuf_addr)
 
     switch (p->type)
       {
-#ifdef USE_HEADER_CACHING
+#ifndef MV2_DISABLE_HEADER_CACHING 
       case MPIDI_CH3_PKT_FAST_EAGER_SEND:
       case MPIDI_CH3_PKT_FAST_EAGER_SEND_WITH_REQ:
 #endif

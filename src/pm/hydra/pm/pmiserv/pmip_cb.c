@@ -31,7 +31,7 @@ static HYD_status stdio_cb(int fd, HYD_event_t events, void *userp)
     stdfd = (int) (size_t) userp;
 
     if (stdfd == STDIN_FILENO) {
-        status = HYDU_sock_forward_stdio(fd, HYD_pmcd_pmip.downstream.in, &closed);
+        status = HYDU_sock_forward_stdio(stdfd, HYD_pmcd_pmip.downstream.in, &closed);
         HYDU_ERR_POP(status, "stdin forwarding error\n");
 
         if (closed) {
@@ -49,25 +49,6 @@ static HYD_status stdio_cb(int fd, HYD_event_t events, void *userp)
 
     status = HYDU_sock_read(fd, buf, HYD_TMPBUF_SIZE, &recvd, &closed, 0);
     HYDU_ERR_POP(status, "sock read error\n");
-
-    if (closed) {
-        /* The connection has closed */
-        status = HYDT_dmx_deregister_fd(fd);
-        HYDU_ERR_POP(status, "unable to deregister fd\n");
-
-        if (stdfd == STDOUT_FILENO) {
-            for (i = 0; i < HYD_pmcd_pmip.local.proxy_process_count; i++)
-                if (HYD_pmcd_pmip.downstream.out[i] == fd)
-                    HYD_pmcd_pmip.downstream.out[i] = HYD_FD_CLOSED;
-        }
-        else {
-            for (i = 0; i < HYD_pmcd_pmip.local.proxy_process_count; i++)
-                if (HYD_pmcd_pmip.downstream.err[i] == fd)
-                    HYD_pmcd_pmip.downstream.err[i] = HYD_FD_CLOSED;
-        }
-
-        close(fd);
-    }
 
     if (recvd) {
         if (stdfd == STDOUT_FILENO) {
@@ -95,6 +76,25 @@ static HYD_status stdio_cb(int fd, HYD_event_t events, void *userp)
         status = HYDU_sock_write(stdfd, buf, recvd, &sent, &closed);
         HYDU_ERR_POP(status, "sock write error\n");
         HYDU_ASSERT(!closed, status);
+    }
+
+    if (closed) {
+        /* The connection has closed */
+        status = HYDT_dmx_deregister_fd(fd);
+        HYDU_ERR_POP(status, "unable to deregister fd\n");
+
+        if (stdfd == STDOUT_FILENO) {
+            for (i = 0; i < HYD_pmcd_pmip.local.proxy_process_count; i++)
+                if (HYD_pmcd_pmip.downstream.out[i] == fd)
+                    HYD_pmcd_pmip.downstream.out[i] = HYD_FD_CLOSED;
+        }
+        else {
+            for (i = 0; i < HYD_pmcd_pmip.local.proxy_process_count; i++)
+                if (HYD_pmcd_pmip.downstream.err[i] == fd)
+                    HYD_pmcd_pmip.downstream.err[i] = HYD_FD_CLOSED;
+        }
+
+        close(fd);
     }
 
   fn_exit:
@@ -280,8 +280,17 @@ static HYD_status pmi_cb(int fd, HYD_event_t events, void *userp)
          * applications, this is harder to identify, so we just let
          * the user cleanup the processes on a failure. */
         if (using_pmi_port || HYD_pmcd_pmip.downstream.pmi_fd_active[i]) {
-            if (HYD_pmcd_pmip.user_global.auto_cleanup)
+            if (HYD_pmcd_pmip.user_global.auto_cleanup) {
                 HYD_pmcd_pmip_killjob();
+
+                /* Need to send an abort notification to the user */
+                cmd = ABORT;
+                status = HYDU_sock_write(HYD_pmcd_pmip.upstream.control,
+                                         &cmd, sizeof(cmd), &sent, &closed);
+                HYDU_ERR_POP(status, "unable to send EXIT_STATUS command upstream\n");
+                if (closed)
+                    goto fn_fail;
+            }
             else {
                 /* If the user doesn't want to automatically cleanup,
                  * just deregister the FD and ignore this error */
@@ -438,7 +447,7 @@ static HYD_status pmi_listen_cb(int fd, HYD_event_t events, void *userp)
 
 static HYD_status launch_procs(void)
 {
-    int i, j, arg, stdin_fd, process_id, os_index, pmi_rank;
+    int i, j, arg, stdin_fd, process_id, pmi_rank;
     char *str, *envstr, *list, *pmi_port;
     char *client_args[HYD_NUM_TMP_STRINGS];
     struct HYD_env *env, *force_env = NULL;
@@ -446,6 +455,7 @@ static HYD_status launch_procs(void)
     enum HYD_pmcd_pmi_cmd cmd;
     int *pmi_ranks;
     int sent, closed, pmi_fds[2] = { HYD_FD_UNSET, HYD_FD_UNSET };
+    struct HYDT_bind_cpuset_t cpuset;
     HYD_status status = HYD_SUCCESS;
 
     HYDU_FUNC_ENTER();
@@ -496,7 +506,8 @@ static HYD_status launch_procs(void)
     HYDU_ERR_POP(status, "unable to initialize process binding\n");
 
     status = HYDT_ckpoint_init(HYD_pmcd_pmip.user_global.ckpointlib,
-                               HYD_pmcd_pmip.user_global.ckpoint_prefix);
+                               HYD_pmcd_pmip.user_global.ckpoint_prefix,
+                               HYD_pmcd_pmip.user_global.ckpoint_num);
     HYDU_ERR_POP(status, "unable to initialize checkpointing\n");
 
     if (HYD_pmcd_pmip.system_global.pmi_port || HYD_pmcd_pmip.user_global.ckpoint_prefix) {
@@ -522,7 +533,8 @@ static HYD_status launch_procs(void)
                                       HYD_pmcd_pmip.system_global.enable_stdin ?
                                       &HYD_pmcd_pmip.downstream.in : NULL,
                                       HYD_pmcd_pmip.downstream.out,
-                                      HYD_pmcd_pmip.downstream.err);
+                                      HYD_pmcd_pmip.downstream.err,
+                                      HYD_pmcd_pmip.downstream.pid);
         HYDU_ERR_POP(status, "checkpoint restart failure\n");
         goto fn_spawn_complete;
     }
@@ -681,7 +693,7 @@ static HYD_status launch_procs(void)
                 client_args[arg++] = HYDU_strdup(exec->exec[j]);
             client_args[arg++] = NULL;
 
-            os_index = HYDT_bind_get_os_index(process_id);
+            HYDT_bind_pid_to_cpuset(process_id, &cpuset);
             if (pmi_rank == 0) {
                 status = HYDU_create_process(client_args, force_env,
                                              HYD_pmcd_pmip.system_global.enable_stdin ?
@@ -689,12 +701,13 @@ static HYD_status launch_procs(void)
                                              &HYD_pmcd_pmip.downstream.out[process_id],
                                              &HYD_pmcd_pmip.downstream.err[process_id],
                                              &HYD_pmcd_pmip.downstream.pid[process_id],
-                                             os_index);
+                                             cpuset);
                 HYDU_ERR_POP(status, "create process returned error\n");
 
                 if (HYD_pmcd_pmip.system_global.enable_stdin) {
                     stdin_fd = STDIN_FILENO;
-                    status = HYDT_dmx_register_fd(1, &stdin_fd, HYD_POLLIN, NULL, stdio_cb);
+                    status = HYDT_dmx_register_fd(1, &stdin_fd, HYD_POLLIN,
+                                                  (void *) (size_t) STDIN_FILENO, stdio_cb);
                     HYDU_ERR_POP(status, "unable to register fd\n");
                 }
             }
@@ -703,7 +716,7 @@ static HYD_status launch_procs(void)
                                              &HYD_pmcd_pmip.downstream.out[process_id],
                                              &HYD_pmcd_pmip.downstream.err[process_id],
                                              &HYD_pmcd_pmip.downstream.pid[process_id],
-                                             os_index);
+                                             cpuset);
                 HYDU_ERR_POP(status, "create process returned error\n");
             }
 

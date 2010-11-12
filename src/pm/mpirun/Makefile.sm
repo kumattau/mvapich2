@@ -11,7 +11,7 @@
 
 INCLUDES = -I${abs_srcdir}/include -I${abs_builddir}/include @blcr_include@ @ftb_include@
 
-install_BIN = mpirun_rsh mpispawn mpiexec_osu 
+install_BIN = mpirun_rsh mpispawn mpiexec_osu mv2_trigger
 
 # Use the mpich2-build-install target to include binaries in the build bin
 # directory (all pm's require these targets)
@@ -25,4 +25,7 @@ mpiexec_osu_LIBS = -lm @mpirun_rsh_other_libs@ @blcr_lib@ @ftb_lib@
 mpiexec_osu_SOURCES = mpirun_rsh.c mpirun_util.c mpmd.c mpirun_dbg.c mpirun_ckpt.c mpirun_params_comp.c
 
 mpispawn_LIBS = -lm -lpthread @mpispawn_other_libs@ 
-mpispawn_SOURCES = mpispawn.c mpirun_util.c mpispawn_tree.c pmi_tree.c mpmd.c
+mpispawn_SOURCES = mpispawn.c mpirun_util.c mpispawn_tree.c pmi_tree.c mpmd.c opt.c crfs.c log.c crfs_ib.c ib_buf.c ib_comm.c thread_pool.c ibutil.c bitmap.c  work_queue.c openhash.c ckpt_file.c genhash.c crfs_wa.c
+
+mv2_trigger_LIBS = @ftb_lib@ -lpthread
+mv2_trigger_SOURCES = mv2_trigger.c 

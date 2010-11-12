@@ -1103,6 +1103,156 @@ fn_fail:
     goto fn_exit;
 }
 
+#ifdef _OSU_MVAPICH_
+static int publish_host_id(MPIDI_PG_t *pg, int our_pg_rank)
+{
+    int mpi_errno = MPI_SUCCESS;
+    int pmi_errno;
+    int ret;
+    char *key;
+    int key_max_sz;
+    char *kvs_name;
+    long host_id = 0;
+    char val[512];
+    MPIU_CHKLMEM_DECL(1);
+
+    host_id = gethostid();
+    sprintf(val, "%08ld", host_id);
+
+    /* Allocate space for pmi key */
+    pmi_errno = PMI_KVS_Get_key_length_max(&key_max_sz);
+    MPIU_ERR_CHKANDJUMP1(pmi_errno, mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %d", pmi_errno);
+
+    MPIU_CHKLMEM_MALLOC(key, char *, key_max_sz, mpi_errno, "key");
+
+    mpi_errno = MPIDI_PG_GetConnKVSname(&kvs_name);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+    /* Put my hostname id */
+    if (pg->size > 1)
+    {
+        memset(key, 0, key_max_sz);
+        MPIU_Snprintf(key, key_max_sz, "hostname[%d]", our_pg_rank);
+
+        pmi_errno = PMI_KVS_Put(kvs_name, key, val);
+        MPIU_ERR_CHKANDJUMP1(pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_put", "**pmi_kvs_put %d", pmi_errno);
+
+        pmi_errno = PMI_KVS_Commit(kvs_name);
+        MPIU_ERR_CHKANDJUMP1(pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_commit", "**pmi_kvs_commit %d", pmi_errno);
+
+        pmi_errno = PMI_Barrier();
+        MPIU_ERR_CHKANDJUMP1(pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_barrier", "**pmi_barrier %d", pmi_errno);
+    }
+    
+fn_exit:
+    MPIU_CHKLMEM_FREEALL();
+    return mpi_errno;
+fn_fail:
+    goto fn_exit;
+}
+
+int MPIDI_Get_local_process_id(MPIDI_PG_t *pg)
+{
+    return pg->ch.local_process_id;
+}
+
+int MPIDI_Num_local_processes(MPIDI_PG_t *pg)
+{
+    return pg->ch.num_local_processes;
+}
+
+int MPIDI_Get_local_host(MPIDI_PG_t *pg, int our_pg_rank)
+{
+    int i = 0, j = 0;
+    char *key;
+    char *val;
+    char *kvs_name;
+    long my_host_id = 0;
+    long *host_ids = NULL;
+    long *unique_host_ids = NULL;
+    int pmi_errno;
+    int mpi_errno = MPI_SUCCESS;
+    int val_max_sz;
+    int key_max_sz;
+    MPIDI_VC_t* vc = NULL;
+
+    pg->ch.local_process_id = 0;
+    pg->ch.num_local_processes = 0;
+
+    mpi_errno = publish_host_id(pg, our_pg_rank);
+    if (mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+
+    my_host_id = gethostid();
+
+    host_ids = (long *) MPIU_Malloc(pg->size * sizeof(long));
+    unique_host_ids = (long *) MPIU_Malloc(pg->size * sizeof(long));
+
+    pmi_errno = PMI_KVS_Get_key_length_max(&key_max_sz);
+    MPIU_ERR_CHKANDJUMP1(pmi_errno, mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %d", pmi_errno);
+
+    pmi_errno = PMI_KVS_Get_value_length_max(&val_max_sz);
+    MPIU_ERR_CHKANDJUMP1(pmi_errno, mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %d", pmi_errno);
+
+    val = (char *) MPIU_Malloc(val_max_sz);
+    key = (char *) MPIU_Malloc(key_max_sz);
+
+    mpi_errno = MPIDI_PG_GetConnKVSname(&kvs_name);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+
+    /* Exchange host info through PMI */
+    for (i = 0; i < pg->size; ++i) {
+        memset(key, 0, key_max_sz);
+        MPIU_Snprintf(key, key_max_sz, "hostname[%d]", i);
+
+        if (i == our_pg_rank) {
+            host_ids[i] = my_host_id;
+        } else {
+            pmi_errno = PMI_KVS_Get(kvs_name, key, val, key_max_sz);
+            MPIU_ERR_CHKANDJUMP1(pmi_errno != PMI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**pmi_kvs_get", "**pmi_kvs_get %d", pmi_errno);
+
+            host_ids[i] = atol(val);
+		}
+    }
+
+    for (i = 0; i < pg->size; ++i) {
+        MPIDI_PG_Get_vc(pg, i, &vc);
+        if (host_ids[i] == my_host_id) {
+           vc->smp.local_rank = pg->ch.num_local_processes++;
+           if (i == our_pg_rank) {
+               pg->ch.local_process_id = vc->smp.local_rank;
+           }
+        } else {
+           vc->smp.local_rank = -1;
+        }
+    }
+
+    for (i = 0; i < pg->size; ++i) {
+        for (j = 0; j < g_num_nodes; ++j) {
+            if (host_ids[i] == unique_host_ids[j]) {
+                break;
+            }
+        }
+
+        if (j == g_num_nodes) {
+            unique_host_ids[g_num_nodes] = host_ids[i];
+            ++g_num_nodes;
+        }
+
+        host_ids[i] = -1;
+        pg->vct[i].node_id = g_num_nodes - 1;
+    }
+
+fn_fail:
+    MPIU_Free(key);
+    MPIU_Free(host_ids);
+    MPIU_Free(unique_host_ids);
+
+    return mpi_errno;
+}
+#endif
 /* Fills in the node_id info from PMI info.  Adapted from MPIU_Get_local_procs.
    This function is collective over the entire PG because PMI_Barrier is called.
 
@@ -1149,6 +1299,11 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
 
     if (pg->size == 1) {
         pg->vct[0].node_id = g_num_nodes++;
+#ifdef _OSU_MVAPICH_ 
+        pg->ch.local_process_id = 0;
+        pg->ch.num_local_processes = 1;
+        pg->vct[0].smp.local_rank = 0;
+#endif
         goto fn_exit;
     }
 
@@ -1179,6 +1334,13 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
         }
         goto fn_exit;
     }
+
+#ifdef _OSU_MVAPICH_ 
+    mpi_errno = MPIDI_Get_local_host(pg, our_pg_rank);
+    if (mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+#endif /* ifdef _OSU_MVAPICH_ */
 
 #ifdef USE_PMI2_API
 #if 0 /* use nodeid list */
@@ -1277,6 +1439,7 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
 
     }
 
+#ifndef _OSU_MVAPICH_
     mpi_errno = publish_node_id(pg, our_pg_rank);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
@@ -1321,7 +1484,7 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
             node_names[g_num_nodes][0] = '\0';
         pg->vct[i].node_id = j;
     }
-
+#endif /* ifdef _OSU_MVAPICH_ */
     if (odd_even_cliques)
     {
         /* Create new processes for all odd numbered processes. This
@@ -1333,6 +1496,7 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
         g_num_nodes *= 2;
     }
 #endif
+
 
 fn_exit:
     MPIU_CHKLMEM_FREEALL();

@@ -123,7 +123,7 @@ GetSeqNumVbuf (vbuf * buf)
               return ((MPIDI_CH3_Pkt_rndv_r3_data_t *) (buf->pheader))->
                   seqnum;
           }
-#ifdef USE_HEADER_CACHING
+#ifndef MV2_DISABLE_HEADER_CACHING 
       case MPIDI_CH3_PKT_FAST_EAGER_SEND:
       case MPIDI_CH3_PKT_FAST_EAGER_SEND_WITH_REQ:
           {

@@ -726,7 +726,6 @@ fn_fail:
 }
 
 
-
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_SMP_Init
 #undef FCNAME
@@ -773,6 +772,11 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
         use_smp= atoi(value);
 
         if (!use_smp) {
+#if defined(HAVE_LIBHWLOC)
+            /* Shared Memory is turned off. We cannot do 
+             * any CPU Affinity in this case */ 
+            mv2_enable_affinity = 0;
+#endif
             return MPI_SUCCESS;
         }
     }
@@ -862,13 +866,9 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 
     {
 #ifdef _SMP_LIMIC_
-#ifdef MV_ARCH_OLD_CODE
-        if(default_eager_size && arch_type == MULTI_CORE_ARCH_NEHALEM) {
-#else
         mv2_arch_type arch_type = mv2_get_arch_type();
         if(default_eager_size && ( MV2_ARCH_INTEL_NEHALEM_8 == arch_type ||
                     MV2_ARCH_INTEL_NEHALEM_16 == arch_type ) ){
-#endif
             g_smp_eagersize = 65536;
         }
 #endif /* _SMP_LIMIC_ */
@@ -2901,155 +2901,32 @@ static int smpi_exchange_info(MPIDI_PG_t *pg)
     PMI_Get_rank(&pg_rank);
     PMI_Get_size(&pg_size);
 
-    hostid = get_host_id(s_hostname, HOSTNAME_LEN);
-
-    hostnames_j = (int *) MPIU_Malloc(pg_size * sizeof(int));
-
-    if (hostnames_j == NULL) {
-    MPIU_ERR_SETFATALANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**nomem",
-        "**nomem %s", "host names");
-    }
-
-    /** exchange address hostid using PMI interface **/
-    if (pg_size > 1) {
-    int need_exchange = 0;
-
-    for (; i < pg_size; ++i) {
-        MPIDI_PG_Get_vc(pg, i, &vc);
-        if(i == pg_rank) {
-        hostnames_j[i] = hostid;
-        } else {
-        if (vc->smp.hostid == -1) {
-            need_exchange = 1;
-            break;
-        }
-        hostnames_j[i] = vc->smp.hostid;
-        }
-    }
-
-    if (need_exchange) {
-        char *key;
-        char *val;
-
-        if(PMI_KVS_Get_key_length_max(&key_max_sz) != PMI_SUCCESS) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-            "**fail %s", "Error getting max key length");
-        }
-
-        if(PMI_KVS_Get_value_length_max(&val_max_sz) != PMI_SUCCESS) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-            "**fail %s", "Error getting max value length");
-        }
-
-        ++key_max_sz;
-        ++val_max_sz;
-
-        key = MPIU_Malloc(key_max_sz);
-        val = MPIU_Malloc(val_max_sz);
-
-        if (key == NULL || val == NULL) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**nomem",
-            "**nomem %s", "pmi key");
-        }
-
-        sprintf(rdmakey, "%08d", pg_rank);
-        sprintf(rdmavalue, "%08d", hostid);
-
-        DEBUG_PRINT("put hostid %p\n", hostid);
-
-        MPIU_Strncpy(key, rdmakey, key_max_sz);
-        MPIU_Strncpy(val, rdmavalue, val_max_sz);
-
-        if(PMI_KVS_Put(pg->ch.kvs_name, key, val) != PMI_SUCCESS) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                "**pmi_kvs_put", "**pmi_kvs_put %d", mpi_errno);
-        }
-
-        if(PMI_KVS_Commit(pg->ch.kvs_name) != PMI_SUCCESS) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                "**pmi_kvs_commit", "**pmi_kvs_commit %d",
-                mpi_errno);
-        }
-
-        if(PMI_Barrier() != PMI_SUCCESS) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-            "**pmi_barrier", "**pmi_barrier %d", mpi_errno);
-        }
-
-        /* Here, all the key and value pairs are put, now we can get them */
-        for (i = 0; i < pg_size; ++i) {
-        if (pg_rank == i) {
-            hostnames_j[i] = hostid;
-            continue;
-        }
-
-        /* generate the key */
-        sprintf(rdmakey, "%08d", i);
-        MPIU_Strncpy(key, rdmakey, key_max_sz);
-
-        if(PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz) !=
-            PMI_SUCCESS) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                "**pmi_kvs_get", "**pmi_kvs_get %d", mpi_errno);
-        }
-
-        MPIU_Strncpy(rdmavalue, val, val_max_sz);
-        hostnames_j[i] = atoi(rdmavalue);
-        DEBUG_PRINT("get dest rank %d, hostname %p \n", i,
-            hostnames_j[i]);
-        }
-
-        if(PMI_Barrier() != PMI_SUCCESS) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-            "**pmi_barrier", "**pmi_barrier %d", mpi_errno);
-        }
-    }
-    }
-    /** end of exchange address **/
-
-    if (1 == pg_size) hostnames_j[0] = hostid;
-    /* g_smpi.local_nodes = (unsigned int *) MPIU_Malloc(pg_size * sizeof(int)); */
-
-    smpi_ptr = (int *) MPIU_Malloc(pg_size * sizeof(int));
-
-    if(smpi_ptr == NULL) {
-    MPIU_ERR_SETFATALANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**nomem",
-        "**nomem %s", "smpi_ptr");
-    }
-
     g_smpi.only_one_device = 1;
     SMP_ONLY = 1;
-    g_smpi.num_local_nodes = 0;
-    for (j = 0; j < pg_size; ++j)
-    {
-        MPIDI_PG_Get_vc(pg, j, &vc);
+    g_smpi.num_local_nodes = MPIDI_Num_local_processes(pg);
 
-        if (hostnames_j[pg_rank] == hostnames_j[j])
-        {
-            if (j == pg_rank)
-            {
-                g_smpi.my_local_id = g_smpi.num_local_nodes;
-#if defined(HAVE_LIBHWLOC)
-                if (mv2_enable_affinity)
-                {
-                    mpi_errno = smpi_setaffinity();
-                    if (mpi_errno != MPI_SUCCESS) MPIU_ERR_POP(mpi_errno);
-
-                }
-#endif /* defined(HAVE_LIBHWLOC) */
-            }
-
-        vc->smp.local_nodes = g_smpi.num_local_nodes;
-        smpi_ptr[g_smpi.num_local_nodes] = j;
-        ++g_smpi.num_local_nodes;
-    }
-        else
-        {
+    if (g_smpi.num_local_nodes < pg_size) {
         g_smpi.only_one_device = 0;
         SMP_ONLY = 0;
-        vc->smp.local_nodes = -1;
     }
+
+    for (i = 0; i < pg->size; ++i) {
+        MPIDI_PG_Get_vc(pg, i, &vc);
+        vc->smp.local_nodes = vc->smp.local_rank;
     }
+
+    /* Get my VC */
+    MPIDI_PG_Get_vc(pg, pg_rank, &vc);
+    g_smpi.my_local_id = vc->smp.local_nodes;
+
+#if defined(HAVE_LIBHWLOC)
+    if (mv2_enable_affinity) {
+        mpi_errno = smpi_setaffinity();
+        if (mpi_errno != MPI_SUCCESS) {
+            MPIU_ERR_POP(mpi_errno);
+        }
+    }
+#endif /* defined(HAVE_LIBHWLOC) */
 
     if (MPIDI_CH3I_Process.has_dpm)
         SMP_ONLY = 0;
@@ -3071,12 +2948,14 @@ static int smpi_exchange_info(MPIDI_PG_t *pg)
 #endif /* defined(__SUNPRO_C) || defined(__SUNPRO_CC) */
     }
 
-    for (j = 0; j < g_smpi.num_local_nodes; ++j) {
-    g_smpi.l2g_rank[j] = smpi_ptr[j];
-    }
-    MPIU_Free(smpi_ptr);
+    for (i = 0, j = 0; j < pg_size; ++j) {
+        MPIDI_PG_Get_vc(pg, j, &vc);
 
-    MPIU_Free(hostnames_j);
+        if (vc->smp.local_nodes != -1) {
+            g_smpi.l2g_rank[i] = j;
+            i++;
+    	}
+    }
 
 fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SMPI_EXCHANGE_INFO);

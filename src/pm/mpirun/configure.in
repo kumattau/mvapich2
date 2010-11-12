@@ -47,6 +47,31 @@ AC_ARG_WITH(ftb-libpath,
 AC_ARG_ENABLE(rsh,
 [--enable-rsh - Enable use of rsh for command execution by default.],,enable_rsh=no)
 
+AC_ARG_WITH([fuse],
+            [AS_HELP_STRING([--with-fuse@[:@=path@:]@],
+                            [enable checkpoint aggregation @<:@default=check@:>@])
+            ],
+            [],
+            [with_fuse=check])
+
+AC_ARG_WITH([fuse-include],
+            [AS_HELP_STRING([--with-fuse-include=@<:@path@:>@],
+                            [specify the path to the fuse header files])
+            ],
+            [AS_CASE([$with_fuse_include],
+                     [yes|no], [AC_MSG_ERROR([arg to --with-fuse-include must be a path])])
+            ],
+            [])
+
+AC_ARG_WITH([fuse-libpath],
+            [AS_HELP_STRING([--with-fuse-libpath=@<:@path@:>@],
+                            [specify the path to the fuse library])
+            ],
+            [AS_CASE([$with_fuse_libpath],
+                     [yes|no], [AC_MSG_ERROR([arg to --with-fuse-libpath must be a path])])
+            ],
+            [])
+
 PAC_ARG_CACHING
 PAC_VPATH_CHECK()
 
@@ -71,6 +96,22 @@ if test -n "`echo $build_os | grep solaris`"; then
     mpirun_rsh_other_libs="-lresolv -lsocket"
     mpispawn_other_libs="-lresolv -lsocket -lnsl -lsendfile"
 fi
+
+AS_CASE([$with_fuse],
+        [yes|no|check], [],
+        [with_fuse_include="$with_fuse/include"
+         with_fuse_libpath="$with_fuse/lib"
+         with_fuse=yes])
+
+AS_IF([test -n "$with_fuse_include"],
+      [CPPFLAGS="$CPPFLAGS -I$with_fuse_include"
+       with_fuse=yes])
+
+AS_IF([test -n "$with_fuse_libpath"],
+      [LDFLAGS="$LDFLAGS -L$with_fuse_libpath -Wl,-rpath,$with_fuse_libpath"
+       with_fuse=yes])
+
+AS_IF([test "$with_fuse" = yes], [enable_blcr=yes])
 
 AC_MSG_CHECKING([whether to enable support for BLCR])
 AC_MSG_RESULT($enable_blcr)
@@ -99,6 +140,60 @@ if test "$enable_blcr" = "yes"; then
     BLCR_LIBPATH="-L${blcr-libpath}"
 
     AC_DEFINE(CKPT, 1, [Define to enable Checkpoint/Restart support.])
+
+    AS_IF([test "$with_fuse" = yes], [
+           AC_SEARCH_LIBS([fuse_new],
+                          [fuse],
+                          [],
+                          [AC_MSG_ERROR([checkpoint aggregation requires fuse library])])
+           AC_SEARCH_LIBS([dlopen],
+                          [dl],
+                          [],
+                          [AC_MSG_ERROR([checkpoint aggregation requires dl library])])
+           AC_SEARCH_LIBS([pthread_create],
+                          [pthread],
+                          [],
+                          [AC_MSG_ERROR([checkpoint aggregation requires pthread library])])
+           AC_SEARCH_LIBS([aio_read],
+                          [rt],
+                          [],
+                          [AC_MSG_ERROR([checkpoint aggregation requires rt library])])
+          ],
+          [test "$with_fuse" = check], [
+           AC_MSG_NOTICE([checking whether to enable checkpoint aggregation])
+           SAVE_LIBS="$LIBS"
+           AC_SEARCH_LIBS([fuse_new],
+                          [fuse],
+                          [],
+                          [AC_MSG_WARN([checkpoint aggregation requires fuse library])
+                          with_fuse=no])
+           AC_SEARCH_LIBS([dlopen],
+                          [dl],
+                          [],
+                          [AC_MSG_WARN([checkpoint aggregation requires dl library])
+                          with_fuse=no])
+           AC_SEARCH_LIBS([pthread_create],
+                          [pthread],
+                          [],
+                          [AC_MSG_WARN([checkpoint aggregation requires pthread library])
+                          with_fuse=no])
+           AC_SEARCH_LIBS([aio_read],
+                          [rt],
+                          [],
+                          [AC_MSG_WARN([checkpoint aggregation requires rt library])
+                          with_fuse=no])
+           AS_IF([test "$with_fuse" = no], [LIBS="$SAVE_LIBS"],
+                 [with_fuse=yes])
+          ])
+
+    AS_IF([test "$with_fuse" = yes], [
+           AC_DEFINE([CR_AGGRE], [1],
+                     [Define when using checkpoint aggregation])
+           AC_DEFINE([_FILE_OFFSET_BITS], [64],
+                     [Define to set the number of file offset bits])
+           AC_MSG_NOTICE([checkpoint aggregation enabled])
+          ],
+          [AC_MSG_NOTICE([checkpoint aggregation disabled])])
     
     AC_MSG_CHECKING([whether to enable support for FTB-CR])
     AC_MSG_RESULT($enable_ftb_cr)
@@ -140,6 +235,10 @@ fi
 
 CPPFLAGS="$CPPFLAGS $MPICH2_INCLUDE_FLAGS"
 
+# MPICH2_VERSION is exported from the top level configure
+AC_DEFINE_UNQUOTED([MVAPICH2_VERSION], ["$MPICH2_VERSION"], [Set to current version of mvapich2 package])
+
+AC_SUBST(MVAPICH2_VERSION)
 AC_SUBST(MAKE_DEPEND_C)
 AC_SUBST(mpirun_rsh_other_libs)
 AC_SUBST(mpispawn_other_libs)

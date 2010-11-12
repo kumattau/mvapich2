@@ -838,7 +838,7 @@ MPIDI_CH3I_RDMA_finalize ()
     }                           /* disconnect event block */
   }
 
-#ifdef USE_HEADER_CACHING
+#ifndef MV2_DISABLE_HEADER_CACHING 
   if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
     for (i = 0; i < pg_size; ++i)
       {

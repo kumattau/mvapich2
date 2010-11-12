@@ -8,7 +8,7 @@
  * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
  *
  * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT_MVAPICH in the top level MPICH directory.
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
  *
  */
 
@@ -37,6 +37,10 @@ struct MPIR_PROCDESC {
 	long pid;
 };
 
+struct spawn_info_s {
+    char spawnhost[32];
+    int  sparenode;
+};
 #define MPIR_PROCDESC_s (sizeof (struct MPIR_PROCDESC))
 #define process_info_s (sizeof (process_info_t))
 

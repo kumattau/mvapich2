@@ -2112,6 +2112,9 @@ int MPIDI_CH3_Get_rndv_push(MPIDI_VC_t * vc,
                             MPID_Request * req);
 int MPIDI_CH3_Get_rndv_recv(MPIDI_VC_t * vc, MPID_Request * req);
 
+int MPIDI_Num_local_processes(MPIDI_PG_t *pg);
+int MPIDI_Get_local_process_id(MPIDI_PG_t *pg);
+
 #define MPIDI_CH3U_PKT_SIZE(_pkt) \
     (MPIDI_CH3_Pkt_size_index[((MPIDI_CH3_Pkt_t *)(_pkt))->type])
 

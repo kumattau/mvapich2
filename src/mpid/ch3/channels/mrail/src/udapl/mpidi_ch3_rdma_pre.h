@@ -95,7 +95,7 @@ struct MPIDI_CH3I_MRAILI_Request {  \
     struct MPID_Request *next_inflow;  \
 } mrail;
 
-#ifdef USE_HEADER_CACHING
+#ifndef MV2_DISABLE_HEADER_CACHING 
 
 #define MAX_SIZE_WITH_HEADER_CACHING 255
 typedef struct MPIDI_CH3I_MRAILI_Pkt_fast_eager_t
@@ -175,7 +175,7 @@ typedef struct MPIDI_CH3I_MRAILI_RDMAPATH_VC
      * the newest progress */
 
     /* cache part of the packet header to reduce eager message size */
-#ifdef USE_HEADER_CACHING
+#ifndef MV2_DISABLE_HEADER_CACHING
     void *cached_outgoing;
     void *cached_incoming;
     int cached_hit;

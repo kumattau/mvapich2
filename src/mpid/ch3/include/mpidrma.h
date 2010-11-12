@@ -81,6 +81,14 @@ void MPIDI_CH3I_RDMA_complete(MPID_Win * win_ptr, int start_grp_size, int *ranks
 void MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, MPIDI_RMA_ops ** MPIDI_RMA_ops_list, int passive);
 int MPIDI_CH3I_RDMA_post(MPID_Win * win_ptr, int target_rank);
 int MPIDI_CH3I_RDMA_finish_rma(MPID_Win * win_ptr);
+#if defined(_SMP_LIMIC_) && !defined(_DAPL_DEFAULT_PROVIDER_)
+void MPIDI_CH3I_LIMIC_win_create(void *base, MPI_Aint size, int comm_size,
+                           int rank, MPID_Win ** win_ptr, MPID_Comm * comm_ptr);
+void MPIDI_CH3I_LIMIC_start(MPID_Win * win_ptr, int start_grp_size, int *ranks_in_win_grp);
+int MPIDI_CH3I_LIMIC_try_rma(MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr,
+                                   MPI_Win source_win_handle, MPID_Comm *comm_ptr,
+                                   int isPut);
+#endif /* _SMP_LIMIC_  && !_DAPL_DEFAULT_PROVIDER_ */
 #endif /* defined(_OSU_MVAPICH_) */
 
 #endif

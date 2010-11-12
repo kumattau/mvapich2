@@ -59,10 +59,10 @@ do {                                                              \
 /** We maintain an index table to get the header size ******/
 int MPIDI_CH3_Pkt_size_index[] = {
     sizeof(MPIDI_CH3_Pkt_eager_send_t),        /* 0 */
-#if defined(USE_HEADER_CACHING)
+#ifndef MV2_DISABLE_HEADER_CACHING 
     sizeof(MPIDI_CH3I_MRAILI_Pkt_fast_eager),
     sizeof(MPIDI_CH3I_MRAILI_Pkt_fast_eager_with_req),
-#endif /* defined(USE_HEADER_CACHING) */
+#endif /* !MV2_DISABLE_HEADER_CACHING */
     sizeof(MPIDI_CH3_Pkt_rput_finish_t),
     sizeof(MPIDI_CH3_Pkt_rget_finish_t),
     sizeof(MPIDI_CH3I_MRAILI_Pkt_noop),

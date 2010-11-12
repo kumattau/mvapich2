@@ -723,6 +723,17 @@ static HYD_status ckpoint_prefix_fn(char *arg, char ***argv)
     return HYDU_set_str_and_incr(arg, argv, &HYD_handle.user_global.ckpoint_prefix);
 }
 
+static void ckpoint_num_help_fn(void)
+{
+    printf("\n");
+    printf("-ckpoint-num: Which checkpoint number to restart from.\n\n");
+}
+
+static HYD_status ckpoint_num_fn(char *arg, char ***argv)
+{
+    return HYDU_set_int_and_incr(arg, argv, &HYD_handle.user_global.ckpoint_num);
+}
+
 static void ckpointlib_help_fn(void)
 {
     printf("\n");
@@ -918,6 +929,7 @@ static struct HYD_arg_match_table match_table[] = {
     /* Checkpoint/restart options */
     {"ckpoint-interval", ckpoint_interval_fn, ckpoint_interval_help_fn},
     {"ckpoint-prefix", ckpoint_prefix_fn, ckpoint_prefix_help_fn},
+    {"ckpoint-num", ckpoint_num_fn, ckpoint_num_help_fn},
     {"ckpointlib", ckpointlib_fn, ckpointlib_help_fn},
 
     /* Demux engine options */
@@ -988,6 +1000,11 @@ static HYD_status set_default_values(void)
 
     if (HYD_handle.user_global.auto_cleanup == -1)
         HYD_handle.user_global.auto_cleanup = 1;
+
+    /* Make sure this is either a restart or there is an executable to
+     * launch */
+    if (HYD_uii_mpx_exec_list == NULL && HYD_handle.user_global.ckpoint_prefix == NULL)
+        HYDU_ERR_SETANDJUMP(status, HYD_INTERNAL_ERROR, "no executable provided\n");
 
   fn_exit:
     return status;

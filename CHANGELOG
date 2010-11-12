@@ -3,11 +3,54 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
-- MVAPICH2-1.5.1p1 (09/18/10)
+MVAPICH2-1.6 (11/12/2010)
 
+* Features and Enhancements
+    - Using LiMIC2 for efficient intra-node RMA transfer to avoid extra 
+      memory copies
+    - Upgraded to LiMIC2 version 0.5.4
+    - Removing the limitation on number of concurrent windows in RMA
+      operations
+    - Support for InfiniBand Quality of Service (QoS) with multiple lanes
+    - Enhanced support for multi-threaded applications
+    - Fast Checkpoint-Restart support with aggregation scheme
+    - Job Pause-Migration-Restart Framework for Pro-active Fault-Tolerance
+    - Support for new standardized Fault Tolerant Backplane (FTB) Events
+      for Checkpoint-Restart and Job Pause-Migration-Restart Framework
+    - Dynamic detection of multiple InfiniBand adapters and using these
+      by default in multi-rail configurations (OLA-IB-CH3, OFA-iWARP-CH3 and
+      OFA-RoCE-CH3 interfaces)
+    - Support for process-to-rail binding policy (bunch, scatter and
+      user-defined) in multi-rail configurations (OFA-IB-CH3, OFA-iWARP-CH3 and
+      OFA-RoCE-CH3 interfaces)
+    - Enhanced and optimized algorithms for MPI_Reduce and MPI_AllReduce
+      operations for small and medium message sizes.
+    - XRC support with Hydra Process Manager
+    - Improved usability of process to CPU mapping with support of
+      delimiters (',' , '-') in CPU listing
+	- Thanks to Gilles Civario for the initial patch
+    - Use of gfortran as the default F77 compiler
+    - Support of Shared-Memory-Nemesis interface on multi-core platforms
+      requiring intra-node communication only (SMP-only systems, laptops, etc. )
+    
 * Bug fixes
-    - Use correct hwloc object files to create shared libraries
-
+    - Fix for memory leak in one-sided code with --enable-g=all
+       --enable-error-messages=all
+    - Fix for memory leak in getting the context of intra-communicator
+    - Fix for shmat() return code check
+    - Fix for issues with inter-communicator collectives in Nemesis
+    - KNEM patch for osu_bibw issue with KNEM version 0.9.2
+    - Fix for osu_bibw error with Shared-memory-Nemesis interface
+    - Fix for Win_test error for one-sided RDMA
+    - Fix for a hang in collective when thread level is set to multiple
+    - Fix for intel test errors with rsend, bsend and ssend operations in Nemesis
+    - Fix for memory free issue when it allocated by scandir
+    - Fix for a hang in Finalize
+    - Fix for issue with MPIU_Find_local_and_external when it is called
+      from MPIDI_CH3I_comm_create
+    - Fix for handling CPPFLGS values with spaces
+    - Dynamic Process Management to work with XRC support
+    - Fix related to disabling CPU affinity when shared memory is turned off at run time
 
 - MVAPICH2-1.5.1 (09/14/10)
 

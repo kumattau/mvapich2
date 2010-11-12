@@ -19,25 +19,6 @@
 
 #include "mpiimpl.h"
 
-#if defined(_OSU_COLLECTIVES_)
-
-/* -- Begin Profiling Symbol Block for routine MPI_Barrier */
-#if defined(HAVE_PRAGMA_WEAK)
-#pragma weak MPI_Barrier = PMPI_Barrier
-#elif defined(HAVE_PRAGMA_HP_SEC_DEF)
-#pragma _HP_SECONDARY_DEF PMPI_Barrier  MPI_Barrier
-#elif defined(HAVE_PRAGMA_CRI_DUP)
-#pragma _CRI duplicate MPI_Barrier as PMPI_Barrier
-#endif
-/* -- End Profiling Symbol Block */
-
-/* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
-   the MPI routines */
-#ifndef MPICH_MPI_FROM_PMPI
-#undef MPI_Barrier
-#define MPI_Barrier PMPI_Barrier
-
-
 /* This is the default implementation of the barrier operation.  The
    algorithm is:
    
@@ -58,15 +39,28 @@
 
    This is an intracommunicator barrier only!
 */
+#if defined(_OSU_MVAPICH_)
+extern int enable_shmem_collectives;
+extern int disable_shmem_barrier;
+#endif /*#if defined(_OSU_MVAPICH_)*/
 
 /* not declared static because it is called in ch3_comm_connect/accept */
-int MPIR_Barrier( MPID_Comm *comm_ptr )
+int MPIR_Barrier_OSU( MPID_Comm *comm_ptr )
 {
-    static const char FCNAME[] = "MPIR_Barrier";
+    static const char FCNAME[] = "MPIR_Barrier_OSU";
     int size, rank, src, dst, mask, mpi_errno=MPI_SUCCESS;
     MPI_Comm comm;
 
-    size = comm_ptr->local_size;
+	/* begin shmem_comm delaration */
+	MPI_Comm shmem_comm, leader_comm;
+    MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
+    int local_rank = -1, local_size=0, my_rank;
+    int total_size, shmem_comm_rank;
+    extern void MPIDI_CH3I_SHMEM_COLL_Barrier_gather(int, int, int);
+    extern void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int, int, int);
+    /* end shmem_comm declaration */
+
+	size = comm_ptr->local_size;
     /* Trivial barriers return immediately */
     if (size == 1) return MPI_SUCCESS;
 
@@ -77,26 +71,85 @@ int MPIR_Barrier( MPID_Comm *comm_ptr )
        time */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
 
-    mask = 0x1;
-    while (mask < size) {
-        dst = (rank + mask) % size;
-        src = (rank - mask + size) % size;
-        mpi_errno = MPIC_Sendrecv(NULL, 0, MPI_BYTE, dst,
-                                  MPIR_BARRIER_TAG, NULL, 0, MPI_BYTE,
-                                  src, MPIR_BARRIER_TAG, comm,
-                                  MPI_STATUS_IGNORE);
-	/* --BEGIN ERROR HANDLING-- */
-        if (mpi_errno)
+#if defined(_OSU_MVAPICH_)
+    if (enable_shmem_collectives)
 	{
-	    mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", 0);
-	    return mpi_errno;
-	}
-	/* --END ERROR HANDLING-- */
-        mask <<= 1;
+        shmem_comm = comm_ptr->shmem_comm;                                              
+        leader_comm = comm_ptr->leader_comm;
+	    
+		if ((disable_shmem_barrier == 0) && (shmem_comm != 0)&&(leader_comm !=0) &&(comm_ptr->shmem_coll_ok == 1 ))
+	    {
+
+#if defined(CKPT)
+            MPIDI_CH3I_CR_lock();
+#endif
+            my_rank = comm_ptr->rank;
+	        /* MPI_Comm_size(comm, &total_size); */
+		    total_size = comm_ptr->local_size;
+		    shmem_comm = comm_ptr->shmem_comm;
+        
+		    /*  MPI_Comm_rank(shmem_comm, &local_rank);
+		    MPI_Comm_size(shmem_comm, &local_size); */
+
+            MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
+            local_rank = shmem_commptr->rank;
+            local_size = shmem_commptr->local_size;
+            shmem_comm_rank = shmem_commptr->shmem_comm_rank;
+            leader_comm = comm_ptr->leader_comm;
+            MPID_Comm_get_ptr(leader_comm, leader_commptr);
+		 
+            if (local_size > 1)
+		    {
+                MPIDI_CH3I_SHMEM_COLL_Barrier_gather(local_size, local_rank, shmem_comm_rank);
+            }
+		
+	        if ((local_rank == 0) && (local_size != total_size))
+		    {
+                mpi_errno = MPIR_Barrier( leader_commptr );
+		    }
+
+            if (local_size > 1)
+		    {
+                MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(local_size, local_rank, shmem_comm_rank);
+            }
+#if defined(CKPT)
+            MPIDI_CH3I_CR_unlock();
+#endif
+        }
+		else
+		{
+            mpi_errno = MPIR_Barrier( comm_ptr );
+        }
+    }   
+	else
+	{
+#endif /*#if defined(_OSU_MVAPICH_)*/
+        mask = 0x1;
+        while (mask < size) 
+		{
+            dst = (rank + mask) % size;
+            src = (rank - mask + size) % size;
+            mpi_errno = MPIC_Sendrecv(NULL, 0, MPI_BYTE, dst,
+                                  MPIR_BARRIER_TAG, NULL, 0, MPI_BYTE,
+                                  src, MPIR_BARRIER_TAG, comm,                          
+                                  MPI_STATUS_IGNORE);
+        
+	        /* --BEGIN ERROR HANDLING-- */
+            if (mpi_errno)
+	        {
+	            mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", 0);
+	            return mpi_errno;
+	        }
+	        /* --END ERROR HANDLING-- */
+            mask <<= 1;
+        }
+
+#if defined(_OSU_MVAPICH_)
     }
-
+#endif /* #if defined(_OSU_MVAPICH_) */
+    
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
-
+    
     return mpi_errno;
 }
 
@@ -233,7 +286,7 @@ int MPIR_Barrier( MPID_Comm *comm_ptr )
 
 /* not declared static because a machine-specific function may call this one 
    in some cases */
-int MPIR_Barrier_inter( MPID_Comm *comm_ptr )
+int MPIR_Barrier_inter_OSU( MPID_Comm *comm_ptr )
 {
     static const char FCNAME[] = "MPIR_Barrier_inter";
     int rank, mpi_errno, i, root;
@@ -311,181 +364,3 @@ int MPIR_Barrier_inter( MPID_Comm *comm_ptr )
 
     return mpi_errno;
 }
-
-
-
-#endif
-
-#undef FUNCNAME
-#define FUNCNAME MPI_Barrier
-
-/*@
-
-MPI_Barrier - Blocks until all processes in the communicator have
-reached this routine.  
-
-Input Parameter:
-. comm - communicator (handle) 
-
-Notes:
-Blocks the caller until all processes in the communicator have called it; 
-that is, the call returns at any process only after all members of the
-communicator have entered the call.
-
-.N ThreadSafe
-
-.N Fortran
-
-.N Errors
-.N MPI_SUCCESS
-.N MPI_ERR_COMM
-@*/
-#if defined(_OSU_MVAPICH_)
-extern int enable_shmem_collectives;
-extern int disable_shmem_barrier;
-#endif /* defined(_OSU_MVAPICH_) */
-
-int MPI_Barrier( MPI_Comm comm )
-{
-    static const char FCNAME[] = "MPI_Barrier";
-    int mpi_errno = MPI_SUCCESS;
-    MPID_Comm *comm_ptr = NULL;
-#if defined(_OSU_MVAPICH_)
-    MPI_Comm shmem_comm, leader_comm;
-    MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
-    int local_rank = -1, local_size=0, my_rank;
-    int total_size, shmem_comm_rank;
-    extern void MPIDI_CH3I_SHMEM_COLL_Barrier_gather(int, int, int);
-    extern void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int, int, int);
-#endif /* defined(_OSU_MVAPICH_) */
-    MPIU_THREADPRIV_DECL;
-    MPID_MPI_STATE_DECL(MPID_STATE_MPI_BARRIER);
-
-    MPIR_ERRTEST_INITIALIZED_ORDIE();
-    
-    MPIU_THREAD_CS_ENTER(ALLFUNC,);
-    MPID_MPI_COLL_FUNC_ENTER(MPID_STATE_MPI_BARRIER);
-    
-    /* Validate parameters, especially handles needing to be converted */
-#   ifdef HAVE_ERROR_CHECKING
-    {
-        MPID_BEGIN_ERROR_CHECKS;
-        {
-	    MPIR_ERRTEST_COMM(comm, mpi_errno);
-            if (mpi_errno != MPI_SUCCESS) goto fn_fail;
-	}
-        MPID_END_ERROR_CHECKS;
-    }
-#   endif /* HAVE_ERROR_CHECKING */
-
-    /* Convert MPI object handles to object pointers */
-    MPID_Comm_get_ptr( comm, comm_ptr );
-    
-    /* Validate parameters and objects (post conversion) */
-#   ifdef HAVE_ERROR_CHECKING
-    {
-        MPID_BEGIN_ERROR_CHECKS;
-        {
-	    /* Validate communicator */
-            MPID_Comm_valid_ptr( comm_ptr, mpi_errno );
-            if (mpi_errno) goto fn_fail;
-        }
-        MPID_END_ERROR_CHECKS;
-    }
-#   endif /* HAVE_ERROR_CHECKING */
-
-    /* ... body of routine ...  */
-
-    if (comm_ptr->coll_fns != NULL && comm_ptr->coll_fns->Barrier != NULL)
-    {
-	mpi_errno = comm_ptr->coll_fns->Barrier(comm_ptr);
-    }
-    else
-    {
-	MPIU_THREADPRIV_DECL;
-	MPIU_THREADPRIV_GET;
-        MPIR_Nest_incr();
-        if (comm_ptr->comm_kind == MPID_INTRACOMM) {
-#if defined(_OSU_MVAPICH_)
-            if (enable_shmem_collectives){
-                shmem_comm = comm_ptr->shmem_comm;
-                leader_comm = comm_ptr->leader_comm;
-                if ((disable_shmem_barrier == 0) && (shmem_comm != 0)&&(leader_comm !=0) &&(comm_ptr->shmem_coll_ok == 1 )){
-#if defined(CKPT)
-		    MPIDI_CH3I_CR_lock();
-#endif
-                    my_rank = comm_ptr->rank;
-                    /* MPI_Comm_size(comm, &total_size); */
-                    total_size = comm_ptr->local_size;
-                    shmem_comm = comm_ptr->shmem_comm;
-
-                   /*  MPI_Comm_rank(shmem_comm, &local_rank);
-                      MPI_Comm_size(shmem_comm, &local_size); */
-                   
-                    MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
-                    local_rank = shmem_commptr->rank;
-                    local_size = shmem_commptr->local_size;
-                    shmem_comm_rank = shmem_commptr->shmem_comm_rank;
-
-                    leader_comm = comm_ptr->leader_comm;
-                    MPID_Comm_get_ptr(leader_comm, leader_commptr);
-
-                    if (local_size > 1){
-                        MPIDI_CH3I_SHMEM_COLL_Barrier_gather(local_size, local_rank, shmem_comm_rank);
-                    }
-
-                    if ((local_rank == 0) && (local_size != total_size)){
-                        mpi_errno = MPIR_Barrier( leader_commptr );
-                    }
-
-                    if (local_size > 1){
-                        MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(local_size, local_rank, shmem_comm_rank);
-                    }
-#if defined(CKPT)
-		    MPIDI_CH3I_CR_unlock();
-#endif
-                }
-                else{
-	            mpi_errno = MPIR_Barrier( comm_ptr );
-                }
-            }
-            else{
-                mpi_errno = MPIR_Barrier( comm_ptr );
-            }
-#else /* defined(_OSU_MVAPICH_) */
-	    mpi_errno = MPIR_Barrier( comm_ptr );
-#endif /* defined(_OSU_MVAPICH_) */
-        }
-        else {
-            /* intercommunicator */ 
-            mpi_errno = MPIR_Barrier_inter( comm_ptr );
-	}
-        MPIR_Nest_decr();
-    }
-
-    /* --BEGIN ERROR HANDLING-- */
-    if (mpi_errno != MPI_SUCCESS) goto fn_fail;
-    /* --END ERROR HANDLING-- */
-
-    /* ... end of body of routine ... */
-
-  fn_exit:
-    MPID_MPI_COLL_FUNC_EXIT(MPID_STATE_MPI_BARRIER);
-    MPIU_THREAD_CS_EXIT(ALLFUNC,);
-    return mpi_errno;
-
-  fn_fail:
-    /* --BEGIN ERROR HANDLING-- */
-#   ifdef HAVE_ERROR_CHECKING
-    {
-	mpi_errno = MPIR_Err_create_code(
-	    mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, 
-	    "**mpi_barrier", "**mpi_barrier %C", comm);
-    }
-#   endif
-    mpi_errno = MPIR_Err_return_comm( comm_ptr, FCNAME, mpi_errno );
-    goto fn_exit;
-    /* --END ERROR HANDLING-- */
-}
-
-#endif /* defined(_OSU_COLLECTIVES_) */

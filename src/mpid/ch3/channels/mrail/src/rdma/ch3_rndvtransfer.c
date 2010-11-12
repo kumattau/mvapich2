@@ -723,7 +723,7 @@ int MPIDI_CH3_Rendezvous_rget_send_finish(MPIDI_VC_t * vc,
 
 #if 0
     if(MPIDI_CH3I_RDMA_Process.has_hsam && 
-            ((req->mrail.rndv_buf_sz > striping_threshold))) {
+            ((req->mrail.rndv_buf_sz > rdma_large_msg_rail_sharing_threshold))) {
 
         /* Adjust the weights of different paths according to the
          * timings obtained for the stripes */

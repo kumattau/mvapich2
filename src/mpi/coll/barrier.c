@@ -17,7 +17,6 @@
 
 #include "mpiimpl.h"
 
-#if !defined(_OSU_COLLECTIVES_)
 
 /* -- Begin Profiling Symbol Block for routine MPI_Barrier */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -415,12 +414,20 @@ int MPI_Barrier( MPI_Comm comm )
 
     /* ... body of routine ...  */
 
-    if (comm_ptr->coll_fns != NULL && comm_ptr->coll_fns->Barrier != NULL)
-    {
-	mpi_errno = comm_ptr->coll_fns->Barrier(comm_ptr);
-    }
-    else
-    {
+    if (comm_ptr->coll_fns != NULL && comm_ptr->coll_fns->Barrier != NULL) {
+#if defined(_OSU_MVAPICH_)
+        MPIU_THREADPRIV_GET;
+        MPIR_Nest_incr();
+#endif
+        if (comm_ptr->comm_kind == MPID_INTRACOMM) {
+                mpi_errno = comm_ptr->coll_fns->Barrier(comm_ptr);
+        } else {
+                mpi_errno = comm_ptr->coll_fns->Barrier_inter(comm_ptr);
+        }
+#if defined(_OSU_MVAPICH_)
+        MPIR_Nest_decr();
+#endif
+    } else {
 	MPIU_THREADPRIV_GET;
         MPIR_Nest_incr();
         if (comm_ptr->comm_kind == MPID_INTRACOMM) {
@@ -494,4 +501,3 @@ int MPI_Barrier( MPI_Comm comm )
     /* --END ERROR HANDLING-- */
 }
 
-#endif /* !defined(_OSU_COLLECTIVES_) */

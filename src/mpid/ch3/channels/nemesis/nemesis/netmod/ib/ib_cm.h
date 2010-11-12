@@ -19,9 +19,6 @@
 #include "ib_vbuf.h"
 /* add mpidimpl.h to pass MPIDI_PG_t *pg to MPID_nem_ib_setup_conn(); */
 #include "mpidimpl.h"
-#ifndef USE_HEADER_CACHING
-#define USE_HEADER_CACHING
-#endif
 typedef enum {
      MPID_NEM_IB_CONN_NONE        = 1,
      MPID_NEM_IB_CONN_IN_PROGRESS = 2,
@@ -90,7 +87,7 @@ typedef struct MPIDI_CH3I_MRAILI_RDMAPATH_VC
     int     eager_start_cnt;
     int     in_polling_set;
 
-#ifdef USE_HEADER_CACHING
+#ifndef MV2_DISABLE_HEADER_CACHING 
     void        *cached_outgoing;
     void        *cached_outgoing_iheader;
     void        *cached_incoming;

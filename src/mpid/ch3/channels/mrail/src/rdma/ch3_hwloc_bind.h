@@ -29,6 +29,12 @@ typedef struct {
     hwloc_obj_t ancestor;
 } ancestor_type;
 
+typedef struct {
+        hwloc_obj_t obj;
+        cpu_set_t cpuset;
+        float load;
+} obj_attribute_type;
+
 extern policy_type_t policy;
 extern hwloc_topology_t topology;
 extern unsigned int mv2_enable_affinity;
@@ -36,7 +42,13 @@ extern unsigned int mv2_enable_affinity;
 extern int s_cpu_mapping_line_max;
 extern char* s_cpu_mapping;
 
-int smpi_setaffinity ();
+void map_scatter_load (obj_attribute_type * tree);
+void map_bunch_load (obj_attribute_type * tree);
+void map_scatter (int num_cpus);
+void map_bunch (int num_cpus);
+int get_cpu_mapping_hwloc (long N_CPUs_online, hwloc_topology_t topology);
+int get_cpu_mapping (long N_CPUs_online);
+int smpi_setaffinity (void);
 
 #endif
 

@@ -35,4 +35,5 @@ ch3_rndvtransfer.c \
 ch3_smp_progress.c \
 ch3_get_business_card.c \
 ch3_shmem_coll.c \
-ch3_hwloc_bind.c
+ch3_hwloc_bind.c \
+ch3i_comm.c

@@ -537,7 +537,9 @@ extern void create_2level_comm (MPI_Comm, int, int);
 extern int enable_split_comm(pthread_t);
 
 struct coll_runtime coll_param = { MPIR_ALLREDUCE_SHORT_MSG,
+                                   MPIR_ALLREDUCE_2LEVEL_THRESHOLD,
                                    MPIR_REDUCE_SHORT_MSG,
+                                   MPIR_REDUCE_2LEVEL_THRESHOLD,
                                    SHMEM_ALLREDUCE_THRESHOLD,
                                    SHMEM_REDUCE_THRESHOLD
 };
@@ -550,7 +552,7 @@ int MPI_Init_thread( int *argc, char ***argv, int required, int *provided )
     int rc, reqd = required;
     MPIU_THREADPRIV_DECL;
     MPID_MPI_INIT_STATE_DECL(MPID_STATE_MPI_INIT_THREAD);
-
+                                          
 #if defined(_OSU_MVAPICH_)
     MPIU_THREADPRIV_GET;
 #endif /* defined(_OSU_MVAPICH_) */
@@ -720,6 +722,12 @@ void MV2_Read_env_vars(void){
 	    flag = (int)atoi(value);
 	    if (flag >= 0) coll_param.allreduce_short_msg = flag;
     }
+    if ((value = getenv("MV2_ALLREDUCE_2LEVEL_MSG")) != NULL){
+        flag = (int)atoi(value);
+        if (flag >= 0) { 
+            coll_param.allreduce_2level_threshold = flag;
+        }
+    }
     if ((value = getenv("MV2_REDUCE_SHORT_MSG")) != NULL){
 	    flag = (int)atoi(value);
 	    if (flag >= 0) coll_param.reduce_short_msg = flag;
@@ -727,6 +735,12 @@ void MV2_Read_env_vars(void){
     if ((value = getenv("MV2_SHMEM_ALLREDUCE_MSG")) != NULL){
 	    flag = (int)atoi(value);
 	    if (flag >= 0) coll_param.shmem_allreduce_msg = flag;
+    }
+    if ((value = getenv("MV2_REDUCE_2LEVEL_MSG")) != NULL){
+	    flag = (int)atoi(value);
+	    if (flag >= 0) { 
+                  coll_param.reduce_2level_threshold = flag;
+            } 
     }
     if ((value = getenv("MV2_SHMEM_REDUCE_MSG")) != NULL){
 	    flag = (int)atoi(value);

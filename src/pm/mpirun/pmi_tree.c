@@ -22,7 +22,7 @@
 #include <sys/time.h>
 #include <sys/stat.h>
 #include <sys/sendfile.h>
-
+#include "mpirunconf.h"
 
 extern int mt_id;
 extern process_info_t *local_processes;
@@ -34,6 +34,23 @@ extern int N;
 extern int MPISPAWN_HAS_PARENT;
 extern int MPISPAWN_NCHILD;
 extern int *mpispawn_fds;
+
+ #ifdef CR_DEBUG
+ #define CR_DBG(args...)  do {\
+  fprintf(stderr, "\t [mtid %d][%s: line %d]", mt_id,__FILE__, __LINE__);    \
+  fprintf(stderr, args);\
+ }while(0)
+ #else
+ #define CR_DBG(args...)
+ #endif
+
+//#define dbg(fmt, args...)  do{ \
+//    fprintf(stderr,"%s: [mt_id %d]: "fmt, __func__, mt_id, ##args);fflush(stderr);} while(0)
+#define dbg(fmt, args...)
+
+#if defined(CKPT) && defined(CR_FTB)
+extern int exclude_spare;
+#endif
 
 /* list of pending requests that we've sent elsewhere. Change to a hash table 
  * when needed */
@@ -404,6 +421,7 @@ static char *resbuf = "cmd=spawn_result rc=0\n";
 
 int parse_str(int rank, int fd, char *msg, int msg_len, int src)
 {
+    dbg(": rank=%d,fd=%d, msg:%s:msg_len=%d, src=%d\n", rank,fd,msg,msg_len, src);
     static int barrier_count;
     int rv = 0, i;
     char *p = msg, *start = NULL, *end = NULL;
@@ -594,7 +612,7 @@ int parse_str(int rank, int fd, char *msg, int msg_len, int src)
 	    p++;
     }
 
-
+    CR_DBG(">parse_str(v): command:%s:\n",command);
     switch (strlen(command)) {
     case 3:			/* get, put */
 	if (0 == strcmp(command, "get")) {
@@ -602,13 +620,14 @@ int parse_str(int rank, int fd, char *msg, int msg_len, int src)
 	    hdr.msg_rank = rank;
 	    if (kvc_val) {
 		sprintf(resp, "cmd=get_result rc=0 value=%s\n", kvc_val);
+        dbg(" cmd=get, key=%s, find val=%s\n", key, kvc_val );
 		hdr.msg_len = strlen(resp);
 		if (src == MT_CHILD) {
 		    write(fd, &hdr, msg_hdr_s);
 		}
 		writeline(fd, resp, hdr.msg_len);
 	    } else {
-                fprintf(stderr, "mpirun_rsh: PMI key '%s' not found.", key);
+                dbg(" ****  ERROR:: PMI key '%s' not found.\n", key);
                 exit(1);
 		/* add pending req */
 		save_pending_req(rank, key, fd);
@@ -656,6 +675,8 @@ int parse_str(int rank, int fd, char *msg, int msg_len, int src)
 	break;
     case 7:			/* initack */
 	if (0 == strcmp(command, "initack")) {
+	    CR_DBG("> parse_str()command = initack\n");
+        dbg("*** initack: NCHILD=%d\n", NCHILD);
 	    for (i = 0; i < NCHILD; i++) {
 		if (children[i].fd == fd) {
 		    children[i].rank = atoi(pmiid);
@@ -664,6 +685,7 @@ int parse_str(int rank, int fd, char *msg, int msg_len, int src)
 		}
 	    }
 	    if (i == NCHILD) {
+        dbg("*********** Error::  got initack for child-%d of %d, no match\n", i, NCHILD );
 		rv = ERR_DEF;
 		goto exit_err;
 	    }
@@ -671,16 +693,28 @@ int parse_str(int rank, int fd, char *msg, int msg_len, int src)
 	    sprintf(resp, "cmd=initack rc=0\ncmd=set size=%d\n"
 		    "cmd=set rank=%d\ncmd=set debug=0\n", N,
 		    children[i].rank);
+        dbg(" reply initack: to fd=%d, with: %s\n", fd, resp );
 	    writeline(fd, resp, strlen(resp));
 	}
 	break;
     case 8:			/* finalize */
 	if (0 == strcmp(command, "finalize")) {
 	    barrier_count++;
-	    if (barrier_count == (NCHILD + MPISPAWN_NCHILD)) {
+#if defined(CKPT) && defined(CR_FTB)
+        dbg("\n[%d] -- barrier_count%d --NCHILD %d - MPISPAWN_NCHILD %d --exclude_spare %d \n",mt_id,barrier_count,NCHILD,MPISPAWN_NCHILD,exclude_spare);
+       if (barrier_count == (NCHILD + MPISPAWN_NCHILD - exclude_spare))
+#else
+       if (barrier_count == (NCHILD + MPISPAWN_NCHILD))
+#endif
+       {
 		if (MPISPAWN_HAS_PARENT)
+		{
 		    send_parent(rank, msg, msg_len);
-		else {
+		    CR_DBG("[%d] send_parent rank %d \n",mt_id, rank);
+		}
+		else
+		{
+		    CR_DBG("[%d] goto finalize_ack \n",mt_id);
 		    goto finalize_ack;
 		}
 	    }
@@ -723,14 +757,33 @@ int parse_str(int rank, int fd, char *msg, int msg_len, int src)
 	    writeline(fd, resp, strlen(resp));
 	} else if (0 == strcmp(command, "barrier_in")) {
 	    barrier_count++;
-	    if (barrier_count == (NCHILD + MPISPAWN_NCHILD)) {
-		if (MPISPAWN_HAS_PARENT) {
-		    /* msg_type */
-		    send_parent(rank, msg, msg_len);
-		} else {
-		    goto barrier_out;
+#if defined(CKPT) && defined(CR_FTB)
+        char my_hostname[256];
+        gethostname(my_hostname, 255);
+        dbg(" on %s: rank=%d MPISPAWN_HAS_PARENT %d, barrier_count=%d, NCHILD=%d, "
+            "MPISPAWN_NCHILD=%d, exclude_spare=%d,  can out: %d\n",
+			my_hostname,rank,MPISPAWN_HAS_PARENT,barrier_count, NCHILD, 
+            MPISPAWN_NCHILD, exclude_spare, (NCHILD + MPISPAWN_NCHILD - exclude_spare));
+        if (barrier_count == (NCHILD + MPISPAWN_NCHILD - exclude_spare))
+#else
+        if (barrier_count == (NCHILD + MPISPAWN_NCHILD))
+#endif
+        {
+            CR_DBG("[mt_id %d on %s] rank=%d MPIASPAWN_HAS_PARENT %d\n",
+				mt_id,my_hostname,rank,MPISPAWN_HAS_PARENT);
+
+		    if (MPISPAWN_HAS_PARENT)
+		    {
+	    	/* msg_type */
+				CR_DBG("[mt_id %d on %s] ***rank %d SSEND TO PARENT \n",mt_id,my_hostname,rank);
+				send_parent(rank, msg, msg_len);
+		    }
+	    	else 
+		    {
+				CR_DBG("[mt_id %d on %s] ***rank %d GOTO barrier_out \n",mt_id,my_hostname,rank);
+				goto barrier_out;
+		    }
 		}
-	    }
 	} else
 	    goto invalid_cmd;
 	break;
@@ -738,11 +791,13 @@ int parse_str(int rank, int fd, char *msg, int msg_len, int src)
 	if (0 == strcmp(command, "barrier_out")) {
 	  barrier_out:
 	    {
+		CR_DBG("[mt_id %d] ***rank %d barrier_out \n",mt_id,rank);
 		sprintf(resp, "cmd=barrier_out\n");
 		hdr.msg_rank = -1;
 		hdr.msg_len = strlen(resp);
 		hdr.msg_type = MT_MSG_BOUT;
 		for (i = 0; i < MPISPAWN_NCHILD; i++) {
+		    CR_DBG("[mt_id %d] ***rank %d barrier_out write %d\n",mt_id,rank,MPISPAWN_CHILD_FDS[i]);
 		    write(MPISPAWN_CHILD_FDS[i], &hdr, msg_hdr_s);
 		    writeline(MPISPAWN_CHILD_FDS[i], resp, hdr.msg_len);
 		}
@@ -787,11 +842,13 @@ int parse_str(int rank, int fd, char *msg, int msg_len, int src)
 	    close(MPISPAWN_PARENT_FD);
 	  finalize_ack:
 	    {
+		CR_DBG( "[mt_id %d] ***rank %d finalize_ack write \n",mt_id,rank);
 		hdr.msg_rank = -1;
 		hdr.msg_type = MT_MSG_FACK;
 		sprintf(resp, "cmd=finalize_ack\n");
 		hdr.msg_len = strlen(resp);
 		for (i = 0; i < MPISPAWN_NCHILD; i++) {
+		    CR_DBG( "[mt_id %d] ***rank %d finalize_ack write %d\n",mt_id,rank,MPISPAWN_CHILD_FDS[i]);
 		    write(MPISPAWN_CHILD_FDS[i], &hdr, msg_hdr_s);
 		    writeline(MPISPAWN_CHILD_FDS[i], resp, hdr.msg_len);
 		    close(MPISPAWN_CHILD_FDS[i]);
@@ -935,12 +992,14 @@ int handle_mt_peer(int fd, msg_hdr_t * phdr)
 		for (i = 0; i < MPISPAWN_NCHILD; i++) {
 		    write(MPISPAWN_CHILD_FDS[i], phdr, msg_hdr_s);
 		    write_size(MPISPAWN_CHILD_FDS[i], buf, phdr->msg_len);
+            dbg("xxx  BPUTS: write to child_%d: buf=%s\n", i, buf);
 		}
 	    }
 	    n = (phdr->msg_len - 1) / REC_SIZE;
 	    for (i = 0; i < n; i++) {
 		pkey = buf + i * REC_SIZE;
 		pval = pkey + KVS_MAX_KEY + 1;
+        dbg("xxxx BPUTS: add-kvc: buf=%s, key=%s, val=%s\n", buf, pkey, pval );
 		add_kvc(pkey, pval,
 			(MPISPAWN_HAS_PARENT && fd == MPISPAWN_PARENT_FD));
 	    }
@@ -949,7 +1008,14 @@ int handle_mt_peer(int fd, msg_hdr_t * phdr)
 #undef REC_SIZE
 	check_pending_puts();
     } else if (read_size(fd, buf, phdr->msg_len) > 0)
+	//CR_DBG(">handle_mt_peer(v) parse_str()\n");
 	rv = parse_str(phdr->msg_rank, fd, buf, phdr->msg_len, MT_CHILD);
+    else{
+        perror("handle_mt_peer: fail to read...");
+        fflush(stderr); fflush(stdout);
+        dbg("-------------- fd=%d, errno=%d, read_size %d failed, ret=%d\n", 
+            fd, errno, phdr->msg_len, rv );
+    }
     free(buf);
     return rv;
 }
@@ -1023,11 +1089,15 @@ int mtpmi_init(void)
 
 int mtpmi_processops(void)
 {
+    CR_DBG("mtpmi_process(-->v) \n");
     int ready, i, rv = 0;
     char buf[MAXLINE];
     msg_hdr_t hdr;
+    int cleanup=1;
 
-    while (rv == 0) {
+    while (rv == 0) 
+	{
+        FD_ZERO( &child_socks );
         if (MPISPAWN_HAS_PARENT)
             FD_SET(MPISPAWN_PARENT_FD, &child_socks);
         for (i = 0; i < MPISPAWN_NCHILD; i++) {
@@ -1037,22 +1107,109 @@ int mtpmi_processops(void)
             FD_SET(children[i].fd, &child_socks);
         }
 
+#if defined(CKPT) && defined(CR_FTB)
+        extern volatile int cr_mig_tgt;
+        extern volatile int cr_mig_src;
+		struct timeval tv;
+        tv.tv_sec = 0;
+        tv.tv_usec = 50000;
+        //dbg("before select, has-par=%d, spawn-nchild=%d, nchild=%d\n", 
+        //    MPISPAWN_HAS_PARENT, MPISPAWN_NCHILD, NCHILD );
+        ready = select (FD_SETSIZE, &child_socks, NULL, NULL, &tv);
+        if( ready>0 )
+        dbg("select() ret ready=%d, cleanup=%d, cr_mig_tgt=%d, mig-src=%d\n", 
+            ready, cleanup,cr_mig_tgt, cr_mig_src );
+        if (ready == 0) 
+		{
+			if (cr_mig_tgt)
+            	return(0);
+            /*else if( cr_mig_src ){
+                close(MPISPAWN_PARENT_FD); 
+                return 0;
+            }*/
+			else
+            	continue;
+        }
+#if 1
+        else  if(cleanup == 1 && ready > 1 )
+        {
+           
+			int cleanup1 = 0;
+             int cleanup2 = 0;
+             static  int cleanup3 = 0;
+ 			 CR_DBG("***   mtpmi_process(v) cleanup ready=%d\n",ready);
+             if (MPISPAWN_HAS_PARENT && FD_ISSET (MPISPAWN_PARENT_FD, &child_socks)) 
+             { 
+                  cleanup1 = 1;
+                  ready--;
+                  read (MPISPAWN_PARENT_FD, &hdr, msg_hdr_s);
+                  //read_size (MPISPAWN_PARENT_FD, buf, hdr.msg_len);
+				  dbg("*****   mtpmi_process(v) 1: cleanup1 buf=%s ready=%d\n\n", buf, ready);
+                rv = handle_mt_peer(MPISPAWN_PARENT_FD, &hdr);
+             }
+                   
+             for (i = 0;  i < MPISPAWN_NCHILD; i++) 
+ 			 {
+            	if (FD_ISSET (MPISPAWN_CHILD_FDS[i], &child_socks)) 
+            	{
+                	cleanup2 = 1;
+                    ready--;
+                    read (MPISPAWN_CHILD_FDS[i], &hdr, msg_hdr_s);
+                    //read_size (MPISPAWN_CHILD_FDS[i], buf, hdr.msg_len);
+ 					dbg("**** mtpmi_process(v) : cleanup2 buf=%s ready=%d\n\n",buf, ready);
+                rv = handle_mt_peer(MPISPAWN_CHILD_FDS[i], &hdr);
+            	}
+            }
+
+            for (i = 0; 0 == rv && ready > 0 && i < NCHILD; i++) 
+            {
+           		if (FD_ISSET (children[i].fd, &child_socks)) 
+	            {
+                	ready--;
+	                cleanup3 = 1;
+					dbg("***** mtpmi_process(v): cleanup3 buf=%s ready=%d\n\n",buf, ready);
+                    cleanup=0;
+                    //goto handle_child;
+	            }
+            } 
+         
+            dbg("cleanup1=%d, cleanup2=%d, cleanup3=%d\n", cleanup1, cleanup2, cleanup3 ); 
+            if(!cleanup1 && !cleanup2 && cleanup3)
+            {
+            	cleanup = 0;
+            }
+            continue;
+        }
+         
+#endif
+        cleanup = 0;
+      
+#else
+
 	ready = select(FD_SETSIZE, &child_socks, NULL, NULL, NULL);
+#endif
 
 	if (ready < 0) {
 	    perror("select");
 	    mpispawn_abort(ERR_DEF);
 	}
+	else
+	{
+	    CR_DBG("mtpmi_process(v) ready=%d\n", ready);
+	}
 	if (MPISPAWN_HAS_PARENT
 	    && FD_ISSET(MPISPAWN_PARENT_FD, &child_socks)) {
 	    ready--;
 	    read(MPISPAWN_PARENT_FD, &hdr, msg_hdr_s);
+	    dbg(">mtpmi_process(v) handle_mt_PARENT:ready=%d\n\n",ready);
 	    rv = handle_mt_peer(MPISPAWN_PARENT_FD, &hdr);
 	}
 	for (i = 0; rv == 0 && ready > 0 && i < MPISPAWN_NCHILD; i++) {
 	    if (FD_ISSET(MPISPAWN_CHILD_FDS[i], &child_socks)) {
 		ready--;
 		read(MPISPAWN_CHILD_FDS[i], &hdr, msg_hdr_s);
+		dbg(">mtpmi_process(v) MT_CHILD (%d of %d): msg-len=%d, ready=%d\n\n",
+                i, MPISPAWN_NCHILD, hdr.msg_len, ready);
 		rv = handle_mt_peer(MPISPAWN_CHILD_FDS[i], &hdr);
 	    }
 	}
@@ -1060,13 +1217,19 @@ int mtpmi_processops(void)
 	    if (FD_ISSET(children[i].fd, &child_socks)) {
 		ready--;
 		if (readline(children[i].fd, buf, MAXLINE) > 0)
+		{
+		    dbg(">mtpmi readline() NCHILD (%d of %d), readline:%s:ready=%d\n\n",
+                i, NCHILD, buf, ready);
 		    rv = parse_str(children[i].rank, children[i].fd, buf,
 				   strlen(buf), MT_RANK);
+		}
 		else
 		    rv = -1;
 	    }
 	}
+    //CR_DBG(">mtpmi_process(v) while-:ready=%d\n",ready);
     }
+    dbg("%s: ret.. rv=%d\n",__func__, rv);
     return 0;
 }
 

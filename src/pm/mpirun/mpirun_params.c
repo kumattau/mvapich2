@@ -1,4 +1,3 @@
-
 /*RAM
  * Copyright (C) 1999-2001 The Regents of the University of California
  * (through E.O. Lawrence Berkeley National Laboratory), subject to
@@ -83,27 +82,30 @@ char *change_group = NULL;
 
 
 static struct option option_table[] = {
-    {"np", required_argument, 0, 0},
+    {"np", required_argument, 0, 0}, // 0
     {"debug", no_argument, 0, 0},
     {"xterm", no_argument, 0, 0},
     {"hostfile", required_argument, 0, 0},
     {"paramfile", required_argument, 0, 0},
-    {"show", no_argument, 0, 0},
+    {"show", no_argument, 0, 0},    // 5
     {"rsh", no_argument, 0, 0},
     {"ssh", no_argument, 0, 0},
     {"help", no_argument, 0, 0},
     {"v", no_argument, 0, 0},
-    {"tv", no_argument, 0, 0},
+    {"tv", no_argument, 0, 0},      // 10
     {"legacy", no_argument, 0, 0},
     {"startedByTv", no_argument, 0, 0},
     {"spawnfile", required_argument, 0, 0},
     {"dpm", no_argument, 0, 0},
-    {"fastssh", no_argument, 0, 0},
+    {"fastssh", no_argument, 0, 0}, // 15
     //This option is to activate the mpmd, it requires the configuration file as argument
     {"config", required_argument, 0, 0},
     {"dpmspawn", required_argument, 0, 0},
     // This option enables the group selection for mpispawns
     {"sg", required_argument, 0, 0},
+#if defined(CKPT) && defined(CR_FTB)
+    {"sparehosts", required_argument, 0, 0}, // 19
+#endif
     {0, 0, 0, 0}
 };
 
@@ -240,6 +242,10 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
 		usage();
 		exit(EXIT_SUCCESS);
 		break;
+            case 9:
+                PRINT_MVAPICH2_VERSION();
+                exit(EXIT_SUCCESS);
+                break;
 	    case 10:
 		{
 		    /* -tv */
@@ -304,15 +310,22 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
 	    case 17:
                 spinf.totspawns = atoi(optarg);
                 break;
-            case 18:
+        case 18:
                 /* sg: change the active group */
                 change_group = optarg;
                 DBG(printf("Group change requested: '%s'\n", change_group));
                 break;
-            case 19:
-		usage();
-		exit(EXIT_SUCCESS);
-		break;
+        case 19:
+#if defined(CKPT) && defined(CR_FTB)
+            sparehosts_on = 1;
+            strncpy(sparehostfile, optarg, HOSTFILE_LEN);
+            if (strlen(optarg) >= HOSTFILE_LEN-1)
+                sparehostfile[HOSTFILE_LEN] = 0; 
+#else
+		    usage();
+    		exit(EXIT_SUCCESS);
+#endif
+	    	break;
 	    default:
 		fprintf(stderr, "Unknown option\n");
 		usage();
@@ -427,7 +440,6 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
     }
 
 }
-
 
 void usage(void)
 {

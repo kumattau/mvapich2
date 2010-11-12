@@ -15,7 +15,6 @@
 
 #include "mpidi_ch3i_rdma_conf.h"
 #include "udapl_arch.h"
-#include "../rdma/coll_shmem.h"
 
 extern unsigned long rdma_default_max_cq_size;
 extern int rdma_default_port;
@@ -57,8 +56,11 @@ extern int rdma_integer_pool_size;
 extern int rdma_iba_eager_threshold;
 extern long rdma_eagersize_1sc;
 
-extern int  num_cpus;
 extern int  use_hwloc_cpu_binding;
+extern int  use_osu_collectives; 
+extern int  use_anl_collectives;
+extern unsigned long rdma_polling_spin_count_threshold;
+extern int use_thread_yield; 
 
 #define INTER_NODE_KNOMIAL_FACTOR_MAX 8
 #define INTER_NODE_KNOMIAL_FACTOR_MIN 2

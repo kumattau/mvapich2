@@ -17,8 +17,6 @@
 
 #include "mpiimpl.h"
 
-#if !defined(_OSU_COLLECTIVES_)
-
 /* -- Begin Profiling Symbol Block for routine MPI_Reduce */
 #if defined(HAVE_PRAGMA_WEAK)
 #pragma weak MPI_Reduce = PMPI_Reduce
@@ -481,9 +479,6 @@ static int MPIR_Reduce_redscat_gather (
                     recv_cnt += cnts[i];
             }
             
-/*                    printf("Rank %d, send_idx %d, recv_idx %d, send_cnt %d, recv_cnt %d, last_idx %d\n", newrank, send_idx, recv_idx,
-                  send_cnt, recv_cnt, last_idx);
-*/
             /* Send data from recvbuf. Recv into tmp_buf */ 
             mpi_errno = MPIC_Sendrecv((char *) recvbuf +
                                       disps[send_idx]*extent,
@@ -615,8 +610,6 @@ static int MPIR_Reduce_redscat_gather (
             
             if (newdst_tree_root == newroot_tree_root) {
                 /* send and exit */
-                /* printf("Rank %d, send_idx %d, send_cnt %d, last_idx %d\n", newrank, send_idx, send_cnt, last_idx);
-                   fflush(stdout); */
                 /* Send data from recvbuf. Recv into tmp_buf */ 
                 mpi_errno = MPIC_Send((char *) recvbuf +
                                       disps[send_idx]*extent,
@@ -628,8 +621,6 @@ static int MPIR_Reduce_redscat_gather (
             }
             else {
                 /* recv and continue */
-                /* printf("Rank %d, recv_idx %d, recv_cnt %d, last_idx %d\n", newrank, recv_idx, recv_cnt, last_idx);
-                   fflush(stdout); */
                 mpi_errno = MPIC_Recv((char *) recvbuf +
                                       disps[recv_idx]*extent,
                                       recv_cnt, datatype, dst,
@@ -1078,8 +1069,25 @@ int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
 
     if (comm_ptr->coll_fns != NULL && comm_ptr->coll_fns->Reduce != NULL)
     {
-	mpi_errno = comm_ptr->coll_fns->Reduce(sendbuf, recvbuf, count,
+#if defined(_OSU_MVAPICH_)
+		MPIU_THREADPRIV_GET;
+		MPIR_Nest_incr();
+#endif
+		if (comm_ptr->comm_kind == MPID_INTRACOMM) 
+		{
+		    mpi_errno = comm_ptr->coll_fns->Reduce(sendbuf, recvbuf, count,
                                                datatype, op, root, comm_ptr);
+		} 
+		else 
+		{
+			mpi_errno = comm_ptr->coll_fns->Reduce_inter(sendbuf, recvbuf, count,
+                                             datatype, op, root, comm_ptr);
+		}
+
+#if defined(_OSU_MVAPICH_)
+        MPIR_Nest_decr();
+#endif
+
     }
     else
     {
@@ -1217,4 +1225,3 @@ int MPI_Reduce(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
     /* --END ERROR HANDLING-- */
 }
 
-#endif /* !defined(_OSU_COLLECTIVES_) */

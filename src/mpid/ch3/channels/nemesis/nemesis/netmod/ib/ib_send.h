@@ -51,7 +51,7 @@ typedef struct MPIDI_nem_ib_pkt_address_t {
     uint32_t rdma_hndl[MAX_NUM_HCAS];
 } MPIDI_nem_ib_pkt_address;
 
-#ifdef USE_HEADER_CACHING
+#ifndef MV2_DISABLE_HEADER_CACHING
 #define MAX_SIZE_WITH_HEADER_CACHING 255
 
 typedef struct MPIDI_nem_ib_pkt_fast_eager_t {

@@ -17,8 +17,6 @@
 
 #include "mpiimpl.h"
 
-#if !defined(_OSU_COLLECTIVES_)
-
 /* -- Begin Profiling Symbol Block for routine MPI_Scatter */
 #if defined(HAVE_PRAGMA_WEAK)
 #pragma weak MPI_Scatter = PMPI_Scatter
@@ -738,9 +736,27 @@ int MPI_Scatter(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
 
     if (comm_ptr->coll_fns != NULL && comm_ptr->coll_fns->Scatter != NULL)
     {
-	mpi_errno = comm_ptr->coll_fns->Scatter(sendbuf, sendcnt,
+#if defined(_OSU_MVAPICH_)
+		 MPIU_THREADPRIV_GET;
+		 MPIR_Nest_incr();
+#endif
+	    if (comm_ptr->comm_kind == MPID_INTRACOMM)
+		{
+	        /* intracommunicator */
+			mpi_errno = comm_ptr->coll_fns->Scatter(sendbuf, sendcnt,
                                                 sendtype, recvbuf, recvcnt,
                                                 recvtype, root, comm_ptr);
+		}
+		else
+		{
+		    /* intercommunicator */
+			 mpi_errno = comm_ptr->coll_fns->Scatter_inter(sendbuf, sendcnt, sendtype,
+			                                            recvbuf, recvcnt, recvtype, root,
+			                                            comm_ptr);
+		}
+#if defined(_OSU_MVAPICH_)
+		MPIR_Nest_decr();
+#endif
     }
     else
     {
@@ -784,4 +800,3 @@ int MPI_Scatter(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
     /* --END ERROR HANDLING-- */
 }
 
-#endif /* !defined(_OSU_COLLECTIVES_) */

@@ -45,9 +45,6 @@
 #define RSH_ARG		    "NOPARAM"
 #define BASH_CMD	    "/bin/bash"
 #define BASH_ARG	    "-c"
-#ifndef LD_LIBRARY_PATH_MPI
-#define LD_LIBRARY_PATH_MPI "/usr/mvapich/lib/shared"
-#endif
 
 #ifdef USE_DDD
 #define DEBUGGER	    "/usr/bin/ddd"
@@ -77,7 +74,9 @@
 #include <assert.h>
 #include <libgen.h>
 #include "mpirun_util.h"
+#include <mpirunconf.h>
 
+#define PRINT_MVAPICH2_VERSION() printf("Version: mvapich2-" MVAPICH2_VERSION "\n")
 
 #define PMGR_VERSION PMGR_COLLECTIVE
 
@@ -110,6 +109,8 @@ typedef struct {
     pid_t pid;
     int * plist_indices;
     size_t npids, npids_allocated;
+    
+    pid_t   local_pid; //the local forked() proc pid
 } process_group;
 
 typedef struct {
@@ -140,6 +141,9 @@ typedef struct list_pid_mpirun {
 } list_pid_mpirun_t;
 
 extern int NSPAWNS;
+
+extern process *plist;
+extern process_groups *pglist;
 
 #define RUNNING(i) ((plist[i].state == P_STARTED ||                 \
             plist[i].state == P_CONNECTED ||                        \

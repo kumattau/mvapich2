@@ -83,27 +83,53 @@ extern char ckpt_filename[CR_MAX_FILENAME];
 
 #include <libftb.h>
 
-#define FTB_MAX_SUBSCRIPTION_STR 64
-
+#define FTB_MAX_SUBSCRIPTION_STR 128
+/////////////////////////////////////////////////////////
+    // max-event-name-len=32,  max-severity-len=16
 #define CR_FTB_EVENT_INFO {               \
         {"CR_FTB_CHECKPOINT",    "info"}, \
+        {"CR_FTB_MIGRATE",       "info"}, \
+        {"CR_FTB_MIGRATE_PIIC",  "info"}, \
         {"CR_FTB_CKPT_DONE",     "info"}, \
         {"CR_FTB_CKPT_FAIL",     "info"}, \
         {"CR_FTB_RSRT_DONE",     "info"}, \
         {"CR_FTB_RSRT_FAIL",     "info"}, \
         {"CR_FTB_APP_CKPT_REQ",  "info"}, \
-        {"CR_FTB_CKPT_FINALIZE", "info"}  \
+        {"CR_FTB_CKPT_FINALIZE", "info"}, \
+        {"CR_FTB_MIGRATE_PIC",   "info"}, \
+        {"CR_FTB_RTM",           "info"},  \
+        {"MPI_PROCS_CKPTED", "info"},       \
+        {"MPI_PROCS_CKPT_FAIL", "info"},    \
+        {"MPI_PROCS_RESTARTED", "info"},    \
+        {"MPI_PROCS_RESTART_FAIL", "info"}, \
+        {"MPI_PROCS_MIGRATED", "info"},     \
+        {"MPI_PROCS_MIGRATE_FAIL", "info"} \
 }
 
-/* Index into the Event Info Table */
+    // Index into the Event Info Table
 #define CR_FTB_CHECKPOINT    0
-#define CR_FTB_EVENTS_MAX    1 /* HACK */
-#define CR_FTB_CKPT_DONE     1
-#define CR_FTB_CKPT_FAIL     2
-#define CR_FTB_RSRT_DONE     3
-#define CR_FTB_RSRT_FAIL     4
-#define CR_FTB_APP_CKPT_REQ  5
-#define CR_FTB_CKPT_FINALIZE 6
+#define CR_FTB_MIGRATE       1
+#define CR_FTB_MIGRATE_PIIC  2
+#define CR_FTB_CKPT_DONE     3
+#define CR_FTB_CKPT_FAIL     4
+#define CR_FTB_RSRT_DONE     5
+#define CR_FTB_RSRT_FAIL     6
+#define CR_FTB_APP_CKPT_REQ  7
+#define CR_FTB_CKPT_FINALIZE 8
+#define CR_FTB_MIGRATE_PIC   9
+#define CR_FTB_RTM           10
+    // start of standard FTB MPI events
+#define MPI_PROCS_CKPTED        11
+#define MPI_PROCS_CKPT_FAIL     12
+#define MPI_PROCS_RESTARTED     13
+#define MPI_PROCS_RESTART_FAIL  14
+#define MPI_PROCS_MIGRATED      15
+#define MPI_PROCS_MIGRATE_FAIL 16
+
+#define CR_FTB_EVENTS_MAX    17
+////////////////////////////////////////////////////
+
+
 
 /* Type of event to throw */
 #define FTB_EVENT_NORMAL   1
@@ -142,6 +168,21 @@ extern int cr_ftb_ckpt_req;
 extern int cr_ftb_app_ckpt_req;
 extern int cr_ftb_finalize_ckpt;
 
+
+/*struct spawn_info_s { 
+    char spawnhost[32];
+    int  sparenode;
+};*/
+
+#define HOSTFILE_LEN 256 
+extern int  nsparehosts;
+extern int  sparehosts_on;
+extern char sparehostfile[HOSTFILE_LEN+1];
+extern char **sparehosts;
+
+extern char * current_spare_host;
+extern struct spawn_info_s *spawninfo;
+
 //int  cr_ftb_init(int, char *);
 int  cr_ftb_init( int );
 //extern void cr_ftb_finalize();
@@ -163,4 +204,8 @@ extern int mpirun_port;
 void restart_from_ckpt();
 void finalize_ckpt();
 #endif
+
+int read_sparehosts(char *hostfile, char ***hostarr, int *nhosts);
+
+
 #endif

@@ -35,6 +35,7 @@
 
 /* global rdma structure for the local process */
 MPIDI_CH3I_RDMA_Process_t MPIDI_CH3I_RDMA_Process;
+char ufile[512];
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_MRAIL_PG_Init
@@ -144,6 +145,9 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
     gethostname(tmp_hname, 255);
     pg_size = MPIDI_PG_Get_size(pg);
 
+    rdma_local_id = MPIDI_Get_local_process_id(pg);
+    rdma_num_local_procs = MPIDI_Num_local_processes(pg);
+
     /* Reading the values from user first and 
      * then allocating the memory */
     if ((mpi_errno = rdma_get_control_parameters(&MPIDI_CH3I_RDMA_Process)) != MPI_SUCCESS)
@@ -169,8 +173,21 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
     }
 
     rdma_num_rails = rdma_num_hcas * rdma_num_ports * rdma_num_qp_per_port;
-    DEBUG_PRINT("num_qp_per_port %d, num_rails = %d\n", rdma_num_qp_per_port,
-	            rdma_num_rails);
+    rdma_num_rails_per_hca = rdma_num_ports * rdma_num_qp_per_port;
+
+    if (PROCESS_BINDING == sm_scheduling) {
+        rdma_process_binding_rail_offset = rdma_num_rails_per_hca*
+                                            (rdma_local_id % rdma_num_hcas);
+    } else if (USER_DEFINED == sm_scheduling) {
+        rdma_process_binding_rail_offset = rdma_num_rails_per_hca *
+                                            mrail_user_defined_p2r_mapping;
+    }
+
+    DEBUG_PRINT("num_qp_per_port %d, num_rails = %d, "
+                "rdma_num_rails_per_hca = %d, "
+                "rdma_process_binding_rail_offset = %d\n", rdma_num_qp_per_port,
+	            rdma_num_rails, rdma_num_rails_per_hca,
+                rdma_process_binding_rail_offset);
 
     init_info = alloc_process_init_info(pg_size, rdma_num_rails);
     if (!init_info) {
@@ -233,39 +250,6 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
     }
 
     MPIDI_CH3I_RDMA_Process.maxtransfersize = RDMA_MAX_RDMA_SIZE;
-
-    if(MPIDI_CH3I_RDMA_Process.has_one_sided) { 
-
-        MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry = (dreg_entry**)
-                   MPIU_Malloc(max_num_win * sizeof(dreg_entry*));
-        if (!MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                "**fail %s", "Failed allocating memory for win_dreg_entry");
-        }
-
-        MPIDI_CH3I_RDMA_Process.RDMA_local_wincc_dreg_entry = (dreg_entry**)
-                   MPIU_Malloc(max_num_win * sizeof(dreg_entry*));
-        if (!MPIDI_CH3I_RDMA_Process.RDMA_local_wincc_dreg_entry) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                "**fail %s", "Failed allocating memory for wincc_dreg_entry");
-        }
-
-        MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry = (dreg_entry**)
-                   MPIU_Malloc(max_num_win * sizeof(dreg_entry*));
-        if (!MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                "**fail %s", "Failed allocating memory for flag_dreg_entry");
-        }
-
-        MPIDI_CH3I_RDMA_Process.win_index2address =
-                   (long *) MPIU_Malloc(max_num_win * sizeof(long));
-        if (!MPIDI_CH3I_RDMA_Process.win_index2address) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                "**fail %s", "Failed allocating memory for win_index2address");
-        }
-        MPIU_Memset(MPIDI_CH3I_RDMA_Process.win_index2address, 0, 
-                   max_num_win * sizeof(long));
-    }
 
     if (pg_size > 1) {
 
@@ -854,7 +838,7 @@ int MPIDI_CH3I_RDMA_finalize(void)
 
 	}
 
-#ifdef USE_HEADER_CACHING
+#ifndef MV2_DISABLE_HEADER_CACHING
 	MPIU_Free(vc->mrail.rfp.cached_incoming);
 	MPIU_Free(vc->mrail.rfp.cached_outgoing);
 #endif
@@ -929,13 +913,6 @@ int MPIDI_CH3I_RDMA_finalize(void)
       MPIU_Free(MPIDI_CH3I_RDMA_Process.polling_set);
     }
 
-    if(MPIDI_CH3I_RDMA_Process.has_one_sided) { 
-      MPIU_Free(MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry);
-      MPIU_Free(MPIDI_CH3I_RDMA_Process.RDMA_local_wincc_dreg_entry);   
-      MPIU_Free(MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry);
-      MPIU_Free(MPIDI_CH3I_RDMA_Process.win_index2address); 
-    }
-
 fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_RDMA_FINALIZE);
     return mpi_errno;
@@ -949,23 +926,32 @@ fn_fail:
 #define FUNCNAME mv2_xrc_init
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-static int mv2_xrc_init (void) 
+static int mv2_xrc_init (MPIDI_PG_t * pg) 
 {
     int i, pg_size, mpi_errno = MPI_SUCCESS;
-    char xrc_file[512], *ufile;
+    char xrc_file[512];
     XRC_MSG ("Init XRC Start\n");
     MPIDI_CH3I_RDMA_Process.xrc_rdmafp = 1;
     MPIDI_CH3I_RDMA_Process_t *proc = &MPIDI_CH3I_RDMA_Process;
     MPIDI_STATE_DECL(MPID_STATE_CH3I_MV2_XRC_INIT);
     MPIDI_FUNC_ENTER(MPID_STATE_CH3I_MV2_XRC_INIT);
 
-    ufile = getenv ("MV2_XRC_FILE");
+    if (!MPIDI_CH3I_Process.has_dpm) {
+        memset(ufile, 0, sizeof(ufile));
+        sprintf(ufile, "mv2_xrc_%s_%d", pg->ch.kvs_name, getuid());
+    }
+
     if (ufile == NULL) {
         ibv_error_abort (GEN_EXIT_ERR, "Can't get unique filename");
     }
 
     for(i = 0; i < rdma_num_hcas; i++) {
-        sprintf (xrc_file, "/dev/shm/%s-%d", ufile, i);
+        if (mrail_user_defined_p2r_mapping != -1) {
+            sprintf (xrc_file, "/dev/shm/%s-%d", ufile,
+                     mrail_user_defined_p2r_mapping);
+        } else {
+            sprintf (xrc_file, "/dev/shm/%s-%d", ufile, i);
+        }
         XRC_MSG ("Opening file: %s", xrc_file);
         proc->xrc_fd[i] = open (xrc_file, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
         if (proc->xrc_fd[i] < 0) {
@@ -1045,6 +1031,9 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
     gethostname(tmp_hname, 255);
     pg_size = MPIDI_PG_Get_size(pg);
 
+    rdma_local_id = MPIDI_Get_local_process_id(pg);
+    rdma_num_local_procs = MPIDI_Num_local_processes(pg);
+
     /* Reading the values from user first and 
      * then allocating the memory */
     mpi_errno = rdma_get_control_parameters(&MPIDI_CH3I_RDMA_Process);
@@ -1092,6 +1081,22 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
     }
 
     rdma_num_rails = rdma_num_hcas * rdma_num_ports * rdma_num_qp_per_port;
+    rdma_num_rails_per_hca = rdma_num_ports * rdma_num_qp_per_port;
+
+    if (PROCESS_BINDING == sm_scheduling) {
+        rdma_process_binding_rail_offset = rdma_num_rails_per_hca*
+                                            (rdma_local_id % rdma_num_hcas);
+    } else if (USER_DEFINED == sm_scheduling) {
+        rdma_process_binding_rail_offset = rdma_num_rails_per_hca *
+                                             mrail_user_defined_p2r_mapping;
+    }
+
+    DEBUG_PRINT("num_qp_per_port %d, num_rails = %d, "
+                "rdma_num_rails_per_hca = %d, "
+                "rdma_process_binding_rail_offset = %d\n", rdma_num_qp_per_port,
+	            rdma_num_rails, rdma_num_rails_per_hca,
+                rdma_process_binding_rail_offset);
+
     if(MPIDI_CH3I_RDMA_Process.has_apm) {
         init_apm_lock();
     }
@@ -1124,11 +1129,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
             MPIU_Error_printf("Error obtaining hostnames\n");
         }
 
-#ifdef MV_ARCH_OLD_CODE
-    if (CHELSIO_T3 == MPIDI_CH3I_RDMA_Process.hca_type) {
-#else
     if (MV2_HCA_CHELSIO_T3 == MPIDI_CH3I_RDMA_Process.hca_type) {
-#endif
          /* TRAC Ticket #455 */
          if(g_num_smp_peers + 1 < pg_size) {
            int avail_cq_entries = 0;
@@ -1164,39 +1165,6 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
     }
 #endif
 
-    if(MPIDI_CH3I_RDMA_Process.has_one_sided) {
-
-        MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry = (dreg_entry**)
-                   MPIU_Malloc(max_num_win * sizeof(dreg_entry*));
-        if (!MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                "**fail %s", "Failed allocating memory for win_dreg_entry");
-        }
-
-        MPIDI_CH3I_RDMA_Process.RDMA_local_wincc_dreg_entry = (dreg_entry**)
-                   MPIU_Malloc(max_num_win * sizeof(dreg_entry*));
-        if (!MPIDI_CH3I_RDMA_Process.RDMA_local_wincc_dreg_entry) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                "**fail %s", "Failed allocating memory for wincc_dreg_entry");
-        }
-
-        MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry = (dreg_entry**)
-                   MPIU_Malloc(max_num_win * sizeof(dreg_entry*));
-        if (!MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                "**fail %s", "Failed allocating memory for flag_dreg_entry");
-        }
-
-        MPIDI_CH3I_RDMA_Process.win_index2address =
-                   (long *) MPIU_Malloc(max_num_win * sizeof(long));
-        if (!MPIDI_CH3I_RDMA_Process.win_index2address) {
-            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                "**fail %s", "Failed allocating memory for win_index2address");
-        }
-        MPIU_Memset(MPIDI_CH3I_RDMA_Process.win_index2address, 0, 
-                   max_num_win * sizeof(long));
-    }
-
     /* Open the device and create cq and qp's */
 #if defined(RDMA_CM)
     if (!MPIDI_CH3I_RDMA_Process.use_rdma_cm)
@@ -1205,7 +1173,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
 
 #ifdef _ENABLE_XRC_
         if (USE_XRC) {
-            mpi_errno = mv2_xrc_init ();
+            mpi_errno = mv2_xrc_init (pg);
         if (mpi_errno) {
             MPIU_ERR_POP(mpi_errno);
         }
@@ -1267,7 +1235,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
 	    char hostname[HOSTNAME_LEN + 1];
 	    int hostid;
 	    struct hostent *hostent;
-            int result;
+        int result;
 
 	    result = gethostname(hostname, HOSTNAME_LEN);
 
@@ -1302,7 +1270,6 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
                 MPIU_ERR_POP(mpi_errno);
             }
 
-            MPIDI_VC_t* vc = NULL;
 
 	    for (i = 0; i < pg_size; ++i)
             {
@@ -1510,11 +1477,8 @@ fn_fail:
 #define FUNCNAME MPIDI_CH3I_CM_Finalize
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_CH3I_CM_Finalize()
+int MPIDI_CH3I_CM_Finalize(void)
 {
-    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_CM_FINALIZE);
-    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_CM_FINALIZE);
-
     /* Finalize the rdma implementation */
     /* No rdma functions will be called after this function */
     int retval;
@@ -1529,6 +1493,9 @@ int MPIDI_CH3I_CM_Finalize()
     MPIDI_PG_t* pg = MPIDI_Process.my_pg;
     int pg_rank = MPIDI_Process.my_pg_rank;
     int pg_size = MPIDI_PG_Get_size(pg);
+
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_CM_FINALIZE);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_CM_FINALIZE);
 
 #ifndef DISABLE_PTMALLOC
     mvapich2_mfin();
@@ -1626,10 +1593,10 @@ int MPIDI_CH3I_CM_Finalize()
 	}
 
     
-#if defined(USE_HEADER_CACHING)
+#ifndef MV2_DISABLE_HEADER_CACHING
         MPIU_Free(vc->mrail.rfp.cached_incoming);
         MPIU_Free(vc->mrail.rfp.cached_outgoing);
-#endif /* defined(USE_HEADER_CACHING) */
+#endif /* !MV2_DISABLE_HEADER_CACHING */
 
         if (vc->mrail.rfp.RDMA_send_buf_DMA)
         {
@@ -1675,9 +1642,9 @@ int MPIDI_CH3I_CM_Finalize()
                     char xrc_file[512]; 
                     hca_index = i / (rdma_num_ports * 
                             rdma_num_qp_per_port);
-                    MPIU_Assert (getenv ("MV2_XRC_FILE"));
+                    MPIU_Assert (ufile);
                     sprintf (xrc_file, "/dev/shm/%s-%d", 
-                            getenv ("MV2_XRC_FILE"), hca_index);
+                            ufile, hca_index);
                     unlink (xrc_file);
                 }
                 ibv_close_xrc_domain (
@@ -1724,13 +1691,6 @@ int MPIDI_CH3I_CM_Finalize()
       MPIU_Free(MPIDI_CH3I_RDMA_Process.polling_set);
     }
 
-    if(MPIDI_CH3I_RDMA_Process.has_one_sided) {
-      MPIU_Free(MPIDI_CH3I_RDMA_Process.RDMA_local_win_dreg_entry);
-      MPIU_Free(MPIDI_CH3I_RDMA_Process.RDMA_local_wincc_dreg_entry);
-      MPIU_Free(MPIDI_CH3I_RDMA_Process.RDMA_post_flag_dreg_entry);
-      MPIU_Free(MPIDI_CH3I_RDMA_Process.win_index2address);
-    }
- 
 fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_CM_FINALIZE);
     return mpi_errno;

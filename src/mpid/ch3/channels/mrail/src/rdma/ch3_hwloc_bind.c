@@ -37,9 +37,6 @@
 #define MAX_LINE_LENGTH 512
 #define MAX_NAME_LENGTH 64
 
-#ifdef MV_ARCH_OLD_CODE
-extern multi_core_arch_type_t arch_type;
-#endif
 
 unsigned int mv2_enable_affinity=1;
 
@@ -60,12 +57,6 @@ int *obj_tree     = NULL;
 policy_type_t policy;
 hwloc_topology_t topology;
 
-typedef struct {
-        hwloc_obj_t obj;
-        cpu_set_t cpuset;
-        float load;
-} obj_attribute_type;
-
 static int INTEL_XEON_DUAL_MAPPING[]      = {0,1,0,1};
 static int INTEL_CLOVERTOWN_MAPPING[]     = {0,0,1,1,0,0,1,1};                  /*        ((0,1),(4,5))((2,3),(6,7))             */
 static int INTEL_HARPERTOWN_LEG_MAPPING[] = {0,1,0,1,0,1,0,1};                  /* legacy ((0,2),(4,6))((1,3),(5,7))             */
@@ -75,9 +66,7 @@ static int INTEL_NEHALEM_COM_MAPPING[]    = {0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,1};  
 static int AMD_OPTERON_DUAL_MAPPING[]     = {0,0,1,1};
 static int AMD_BARCELONA_MAPPING[]        = {0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3};
 
-extern int num_cpus;
 extern int use_hwloc_cpu_binding;
-
 
 char* s_cpu_mapping = NULL;
 static char* custom_cpu_mapping = NULL;
@@ -85,9 +74,23 @@ int s_cpu_mapping_line_max = _POSIX2_LINE_MAX;
 static int custom_cpu_mapping_line_max = _POSIX2_LINE_MAX;
 char *cpu_mapping = NULL;
 
+static int first_num_from_str(char **str)
+{
+    int val = atoi(*str);
+    while (isdigit(**str)) (*str)++;
+    return val;
+}
 
+static inline int compare_float(const float a, const float b)
+{
+    const float precision = 0.00001;
+    if((a - precision) < b && (a + precision) > b)
+         return 1;
+    else
+	 return 0;
+}
 
-int pid_filter(const struct dirent *dir_obj)
+static int pid_filter(const struct dirent *dir_obj)
 {
         int i;
         int length = strlen(dir_obj->d_name);
@@ -100,7 +103,7 @@ int pid_filter(const struct dirent *dir_obj)
         return 1;
 }
 
-void find_parent(hwloc_obj_t obj, hwloc_obj_type_t type, hwloc_obj_t * parent)
+static void find_parent(hwloc_obj_t obj, hwloc_obj_type_t type, hwloc_obj_t * parent)
 {
         if ((type == HWLOC_OBJ_CORE) || (type == HWLOC_OBJ_SOCKET)
                 || (type == HWLOC_OBJ_NODE)) {
@@ -115,9 +118,9 @@ void find_parent(hwloc_obj_t obj, hwloc_obj_type_t type, hwloc_obj_t * parent)
         }
 }
 
-void find_leastload_node(obj_attribute_type *tree, hwloc_obj_t original, hwloc_obj_t *result)
+static void find_leastload_node(obj_attribute_type *tree, hwloc_obj_t original, hwloc_obj_t *result)
 {
-        int i, j, k, per, index, depth_nodes, num_nodes, depth_sockets, num_sockets;
+        int i, j, k, per, ix, depth_nodes, num_nodes, depth_sockets, num_sockets;
         hwloc_obj_t obj, tmp;
 
         depth_nodes = hwloc_get_type_depth(topology, HWLOC_OBJ_NODE);
@@ -128,11 +131,11 @@ void find_leastload_node(obj_attribute_type *tree, hwloc_obj_t original, hwloc_o
                 depth_sockets = hwloc_get_type_depth(topology, HWLOC_OBJ_SOCKET);
                 num_sockets = hwloc_get_nbobjs_by_depth(topology, depth_sockets);
                 per = num_nodes / num_sockets;
-                index = (original->logical_index) * per;
+                ix = (original->logical_index) * per;
                 if (per == 1) {
-                        *result = tree[depth_nodes * num_nodes + index].obj;
+                        *result = tree[depth_nodes * num_nodes + ix].obj;
                 } else {
-                        i = depth_nodes * num_nodes + index;
+                        i = depth_nodes * num_nodes + ix;
                         for (k = 0; k < (per - 1); k++){
                                 j = i + k + 1;
                                 i = (tree[i].load > tree[j].load) ? j : i;
@@ -158,9 +161,9 @@ void find_leastload_node(obj_attribute_type *tree, hwloc_obj_t original, hwloc_o
         return;
 }
 
-void find_leastload_socket(obj_attribute_type *tree, hwloc_obj_t original, hwloc_obj_t *result)
+static void find_leastload_socket(obj_attribute_type *tree, hwloc_obj_t original, hwloc_obj_t *result)
 {
-        int i, j, k, per, index, depth_sockets, num_sockets, depth_nodes, num_nodes;
+        int i, j, k, per, ix, depth_sockets, num_sockets, depth_nodes, num_nodes;
         hwloc_obj_t obj, tmp;
 
         depth_sockets = hwloc_get_type_depth(topology, HWLOC_OBJ_SOCKET);
@@ -171,11 +174,11 @@ void find_leastload_socket(obj_attribute_type *tree, hwloc_obj_t original, hwloc
                 depth_nodes = hwloc_get_type_depth(topology, HWLOC_OBJ_NODE);
                 num_nodes = hwloc_get_nbobjs_by_depth(topology, depth_nodes);
                 per = num_sockets / num_nodes;
-                index = (original->logical_index) * per;
+                ix = (original->logical_index) * per;
                 if (per == 1) {
-                        *result = tree[depth_sockets * num_sockets + index].obj;
+                        *result = tree[depth_sockets * num_sockets + ix].obj;
                 } else {
-                        i = depth_sockets * num_sockets + index;
+                        i = depth_sockets * num_sockets + ix;
                         for (k = 0; k < (per - 1); k++){
                                 j = i + k + 1;
                                 i = (tree[i].load > tree[j].load) ? j : i;
@@ -201,9 +204,9 @@ void find_leastload_socket(obj_attribute_type *tree, hwloc_obj_t original, hwloc
         return;
 }
 
-void find_leastload_core(obj_attribute_type *tree, hwloc_obj_t original, hwloc_obj_t *result)
+static void find_leastload_core(obj_attribute_type *tree, hwloc_obj_t original, hwloc_obj_t *result)
 {
-        int i, j, k, per, index;
+        int i, j, k, per, ix;
         int depth_cores, num_cores, depth_sockets, num_sockets, depth_nodes, num_nodes;
 
         depth_cores = hwloc_get_type_depth(topology, HWLOC_OBJ_CORE);
@@ -214,11 +217,11 @@ void find_leastload_core(obj_attribute_type *tree, hwloc_obj_t original, hwloc_o
                 depth_nodes = hwloc_get_type_depth(topology, HWLOC_OBJ_NODE);
                 num_nodes = hwloc_get_nbobjs_by_depth(topology, depth_nodes);
                 per = num_cores / num_nodes;
-                index = (original->logical_index) * per;
+                ix = (original->logical_index) * per;
                 if (per == 1) {
-                        *result = tree[depth_cores * num_cores + index].obj;
+                        *result = tree[depth_cores * num_cores + ix].obj;
                 } else {
-                        i = depth_cores * num_cores + index;
+                        i = depth_cores * num_cores + ix;
                         for (k = 0; k < (per - 1); k++){
                                 j = i + k + 1;
                                 i = (tree[i].load > tree[j].load) ? j : i;
@@ -229,11 +232,11 @@ void find_leastload_core(obj_attribute_type *tree, hwloc_obj_t original, hwloc_o
                 depth_sockets = hwloc_get_type_depth(topology, HWLOC_OBJ_SOCKET);
                 num_sockets = hwloc_get_nbobjs_by_depth(topology, depth_sockets);
                 per = num_cores / num_sockets;
-                index = (original->logical_index) * per;
+                ix = (original->logical_index) * per;
                 if (per == 1) {
-                        *result = tree[depth_cores * num_cores + index].obj;
+                        *result = tree[depth_cores * num_cores + ix].obj;
                 } else {
-                        i = depth_cores * num_cores + index;
+                        i = depth_cores * num_cores + ix;
                         for (k = 0; k < (per - 1); k++){
                                 j = i + k + 1;
                                 i = (tree[i].load > tree[j].load) ? j : i;
@@ -246,9 +249,9 @@ void find_leastload_core(obj_attribute_type *tree, hwloc_obj_t original, hwloc_o
         return;
 }
 
-void find_leastload_pu(obj_attribute_type *tree, hwloc_obj_t original, hwloc_obj_t *result)
+static void find_leastload_pu(obj_attribute_type *tree, hwloc_obj_t original, hwloc_obj_t *result)
 {
-        int i, j, k, per, index, depth_pus, num_pus, depth_cores, num_cores;
+        int i, j, k, per, ix, depth_pus, num_pus, depth_cores, num_cores;
 
         depth_pus = hwloc_get_type_depth(topology, HWLOC_OBJ_PU);
         num_pus = hwloc_get_nbobjs_by_depth(topology, depth_pus);
@@ -258,11 +261,11 @@ void find_leastload_pu(obj_attribute_type *tree, hwloc_obj_t original, hwloc_obj
                 depth_cores = hwloc_get_type_depth(topology, HWLOC_OBJ_CORE);
                 num_cores = hwloc_get_nbobjs_by_depth(topology, depth_cores);
                 per = num_pus / num_cores;
-                index = (original->logical_index) * per;
+                ix = (original->logical_index) * per;
                 if (per == 1) {
-                        *result = tree[depth_pus * num_pus + index].obj;
+                        *result = tree[depth_pus * num_pus + ix].obj;
                 } else {
-                        i = depth_pus * num_pus + index;
+                        i = depth_pus * num_pus + ix;
                         for (k = 0; k < (per - 1); k++){
                                 j = i + k + 1;
                                 i = (tree[i].load > tree[j].load) ? j : i;
@@ -275,19 +278,20 @@ void find_leastload_pu(obj_attribute_type *tree, hwloc_obj_t original, hwloc_obj
         return;
 }
 
-void update_obj_attribute(obj_attribute_type *tree, int index, hwloc_obj_t obj, int cpuset, float load)
+
+static void update_obj_attribute(obj_attribute_type *tree, int ix, hwloc_obj_t obj, int cpuset, float load)
 {
-        tree[index].obj = obj;
+        tree[ix].obj = obj;
         if (!(cpuset < 0)) {
-                CPU_SET(cpuset, &(tree[index].cpuset));
+                CPU_SET(cpuset, &(tree[ix].cpuset));
         }
-        tree[index].load += load;
+        tree[ix].load += load;
 }
 
-void insert_load(obj_attribute_type *tree, hwloc_obj_t pu, int cpuset, float load)
+static void insert_load(obj_attribute_type *tree, hwloc_obj_t pu, int cpuset, float load)
 {
-        int k, depth_pus, num_pus;
-        int depth_cores, num_cores, depth_sockets, num_sockets, depth_nodes, num_nodes;
+        int k, depth_pus, num_pus = 0;
+        int depth_cores, depth_sockets, depth_nodes, num_cores = 0, num_sockets = 0, num_nodes = 0;
         hwloc_obj_t parent;
 
         depth_pus = hwloc_get_type_or_below_depth(topology, HWLOC_OBJ_PU);
@@ -330,7 +334,7 @@ void insert_load(obj_attribute_type *tree, hwloc_obj_t pu, int cpuset, float loa
         return;
 }
 
-void cac_load(obj_attribute_type *tree, cpu_set_t cpuset)
+static void cac_load(obj_attribute_type *tree, cpu_set_t cpuset)
 {
         int i, j, depth_pus, num_pus;
         float proc_load;
@@ -382,9 +386,9 @@ void cac_load(obj_attribute_type *tree, cpu_set_t cpuset)
         return;
 }
 
-void insert_core_mapping(int index, hwloc_obj_t pu, obj_attribute_type * tree)
+static void insert_core_mapping(int ix, hwloc_obj_t pu, obj_attribute_type * tree)
 {
-        core_mapping[index] = pu->os_index;
+        core_mapping[ix] = pu->os_index;
         /* This process will be binding to one pu/core.
          * The load for this pu/core is 1; and not update cpuset.
          */
@@ -394,9 +398,9 @@ void insert_core_mapping(int index, hwloc_obj_t pu, obj_attribute_type * tree)
 
 void map_scatter_load(obj_attribute_type *tree)
 {
-        int i, j, k, depth_pus, num_pus;
-        int depth_cores, num_cores, depth_sockets, num_sockets, depth_nodes, num_nodes;
-        hwloc_obj_t root, node, socket, core_parent, core, result;
+        int k;
+        int depth_cores, depth_sockets, depth_nodes, num_cores = 0, num_sockets = 0, num_nodes = 0;
+        hwloc_obj_t root, node, sockets, core_parent, core, result;
 
         root =  hwloc_get_root_obj(topology);
 
@@ -427,8 +431,8 @@ void map_scatter_load(obj_attribute_type *tree)
                                 find_leastload_socket(tree, node, &result);
                         } else {
                                 find_leastload_socket(tree, root, &result);
-                                socket = result;
-                                find_leastload_node(tree, socket, &result);
+                                sockets = result;
+                                find_leastload_node(tree, sockets, &result);
                         }
                 }
                 core_parent = result;
@@ -442,10 +446,11 @@ void map_scatter_load(obj_attribute_type *tree)
 
 void map_bunch_load(obj_attribute_type *tree)
 {
-        int i, j, k, per, per_socket_node, depth_pus, num_pus, core_parent_num;
-        float current_socketornode_load, current_core_load;
-        int depth_cores, num_cores, depth_sockets, num_sockets, depth_nodes, num_nodes;
-        hwloc_obj_t root, node, socket, core_parent, core, pu, result, tmp;
+        int i, j, k, per = 0;
+	int per_socket_node, core_parent_num, depth_pus, num_pus = 0;
+        float current_socketornode_load = 0, current_core_load = 0;
+        int depth_cores, depth_sockets, depth_nodes, num_cores = 0, num_sockets = 0, num_nodes = 0;
+        hwloc_obj_t root, node, sockets, core_parent, core, pu, result;
 
         root =  hwloc_get_root_obj(topology);
 
@@ -476,7 +481,7 @@ void map_bunch_load(obj_attribute_type *tree)
                         find_leastload_socket(tree, root, &result);
                         core_parent_num = num_sockets;
                         core_parent = result;
-            per = num_cores / num_sockets;
+            		per = num_cores / num_sockets;
                         for (i = 0; (i < per) && (k < num_cores); i++) {
                                 find_leastload_core(tree, core_parent, &result);
                                 core = result;
@@ -487,7 +492,7 @@ void map_bunch_load(obj_attribute_type *tree)
                                         insert_core_mapping(k, pu, tree);
                                         k++;
                                 } else {
-                                        if (tree[depth_pus * num_pus + pu->logical_index].load == current_core_load) {
+                                        if (compare_float(tree[depth_pus * num_pus + pu->logical_index].load, current_core_load)) {
                                                 insert_core_mapping(k, pu, tree);
                                                 k++;
                                         }
@@ -500,13 +505,13 @@ void map_bunch_load(obj_attribute_type *tree)
                                 per_socket_node = num_sockets / num_nodes;
                                 for (j = 0; (j < per_socket_node) && (k < num_cores); j++) {
                                         find_leastload_socket(tree, node, &result);
-                                        socket = result;
+                                        sockets = result;
                                         if (j == 0) {
                                                 current_socketornode_load =
-                                                        tree[depth_sockets * num_sockets + socket->logical_index].load;
+                                                        tree[depth_sockets * num_sockets + sockets->logical_index].load;
                                                 per = num_cores / num_sockets;
                                                 for (i = 0; (i < per) && (k < num_cores); i++) {
-                                                        find_leastload_core(tree, socket, &result);
+                                                        find_leastload_core(tree, sockets, &result);
                                                         core = result;
                                                         find_leastload_pu(tree, core, &result);
                                                         pu = result;
@@ -515,16 +520,16 @@ void map_bunch_load(obj_attribute_type *tree)
                                                                 insert_core_mapping(k, pu, tree);
                                                                 k++;
                                                         } else {
-                                                                if (tree[depth_pus * num_pus + pu->logical_index].load == current_core_load) {
+                                                                if (compare_float(tree[depth_pus * num_pus + pu->logical_index].load, current_core_load)) {
                                                                         insert_core_mapping(k, pu, tree);
                                                                         k++;
                                                                 }
                                                         }
                                                 }
                                         } else {
-                                                if (tree[depth_sockets * num_sockets + socket->logical_index]. load == current_socketornode_load) {
+                                                if (compare_float(tree[depth_sockets * num_sockets + sockets->logical_index]. load, current_socketornode_load)) {
                                                         for (i = 0; (i < per) && (k < num_cores); i++) {
-                                                                find_leastload_core(tree, socket, &result);
+                                                                find_leastload_core(tree, sockets, &result);
                                                                 core = result;
                                                                 find_leastload_pu(tree, core, &result);
                                                                 pu = result;
@@ -533,7 +538,7 @@ void map_bunch_load(obj_attribute_type *tree)
                                                                         insert_core_mapping(k, pu, tree);
                                                                         k++;
                                                                 } else {
-                                                                        if (tree[depth_pus * num_pus + pu->logical_index].load == current_core_load) {
+                                                                        if (compare_float(tree[depth_pus * num_pus + pu->logical_index].load, current_core_load)) {
                                                                                 insert_core_mapping(k, pu, tree);
                                                                                 k++;
                                                                         }
@@ -545,10 +550,10 @@ void map_bunch_load(obj_attribute_type *tree)
                                 }
                         } else { // depth_nodes > depth_sockets
                                 find_leastload_socket(tree, root, &result);
-                                socket = result;
+                                sockets = result;
                                 per_socket_node = num_nodes / num_sockets;
                                 for (j = 0; (j < per_socket_node) && (k < num_cores); j++) {
-                                        find_leastload_node(tree, socket, &result);
+                                        find_leastload_node(tree, sockets, &result);
                                         node = result;
                                         if (j == 0) {
                                                 current_socketornode_load =
@@ -564,14 +569,14 @@ void map_bunch_load(obj_attribute_type *tree)
                                                                 insert_core_mapping(k, pu, tree);
                                                                 k++;
                                                         } else {
-                                                                if (tree[depth_pus * num_pus + pu->logical_index].load == current_core_load) {
+                                                                if (compare_float(tree[depth_pus * num_pus + pu->logical_index].load, current_core_load)) {
                                                                         insert_core_mapping(k, pu, tree);
                                                                         k++;
                                                                 }
                                                         }
                                                 }
                                         } else {
-                                                if (tree[depth_nodes * num_nodes + node->logical_index]. load == current_socketornode_load) {
+                                                if (compare_float(tree[depth_nodes * num_nodes + node->logical_index]. load, current_socketornode_load)) {
                                                         for (i = 0; (i < per) && (k < num_cores); i++) {
                                                                 find_leastload_core(tree, node, &result);
                                                                 core = result;
@@ -582,7 +587,7 @@ void map_bunch_load(obj_attribute_type *tree)
                                                                         insert_core_mapping(k, pu, tree);
                                                                         k++;
                                                                 } else {
-                                                                        if (tree[depth_pus * num_pus + pu->logical_index].load == current_core_load) {
+                                                                        if (compare_float(tree[depth_pus * num_pus + pu->logical_index].load, current_core_load)) {
                                                                                 insert_core_mapping(k, pu, tree);
                                                                                 k++;
                                                                         }
@@ -630,7 +635,7 @@ static int cmparity_smt(const void *a, const void *b) {
 }
 
 static void get_first_obj_bunch(hwloc_obj_t *result) {
-  hwloc_obj_t obj, *objs;
+  hwloc_obj_t *objs;
   ancestor_type *array;
   int i, j, k, num_objs, num_ancestors;
 
@@ -682,10 +687,10 @@ static void get_first_obj_bunch(hwloc_obj_t *result) {
 /*
  * Yields "scatter" affinity scenario in core_mapping.
  */
-void map_scatter(void) {
+void map_scatter(int num_cpus) {
   hwloc_obj_t *objs, obj, a;
   unsigned    *pdist, maxd;
-  int         i, j, ip, jp, d, s;
+  int         i, j, ix, jp, d, s;
 
   /* Init and load HWLOC_OBJ_PU objects */
   if((objs = (hwloc_obj_t *)MPIU_Malloc(num_cpus * sizeof(hwloc_obj_t *))) == NULL)
@@ -709,14 +714,14 @@ void map_scatter(void) {
     return;
   }
 
-  /* Loop over objects, ip is index in objs where sorted objects start */
-  ip = num_cpus;
+  /* Loop over objects, ix is index in objs where sorted objects start */
+  ix = num_cpus;
   s  = -1;
-  while(ip > 0) {
+  while(ix > 0) {
     /* If new group of SMT processors starts, zero distances */
     if(s != objs[0]->sibling_rank) {
       s = objs[0]->sibling_rank;
-      for(j = 0; j < ip; j++)
+      for(j = 0; j < ix; j++)
         pdist[j] = 0;
     }
     /*
@@ -725,7 +730,7 @@ void map_scatter(void) {
      */
     maxd = 0;
     jp   = 0;
-    for(j = 0; j < ip; j++) {
+    for(j = 0; j < ix; j++) {
       if((j) && (objs[j-1]->sibling_rank != objs[j]->sibling_rank))
         break;
       if(pdist[j] > maxd) {
@@ -741,14 +746,14 @@ void map_scatter(void) {
       pdist[j] = pdist[j+1];
     }
     objs[j] = obj;
-    ip--;
+    ix--;
 
     /*
      * Update cumulative distances of all remaining objects with new stored one.
      * If two HWLOC_OBJ_PU objects don't share a common ancestor, the topology is broken.
      * Our scheme cannot be used in this case.
      */
-    for(j = 0; j < ip; j++) {
+    for(j = 0; j < ix; j++) {
       if((a = hwloc_get_common_ancestor_obj(topology, obj, objs[j])) == NULL) {
         MPIU_Free(pdist);
         MPIU_Free(objs);
@@ -772,10 +777,10 @@ void map_scatter(void) {
  /*
   * Yields "bunch" affinity scenario in core_mapping.
   */
-void map_bunch(void) {
+void map_bunch(int num_cpus) {
   hwloc_obj_t *objs, obj, a;
   unsigned    *pdist, mind;
-  int         i, j, ip, jp, d, s, num_cores, num_pus;
+  int         i, j, ix, jp, d, s, num_cores, num_pus;
 
   /* Init and load HWLOC_OBJ_PU objects */
   if((objs = (hwloc_obj_t *)MPIU_Malloc(num_cpus * sizeof(hwloc_obj_t *))) == NULL)
@@ -843,14 +848,14 @@ void map_bunch(void) {
     return;
   }
 
-  /* Loop over objects, ip is index in objs where sorted objects start */
-  ip = num_cpus;
+  /* Loop over objects, ix is index in objs where sorted objects start */
+  ix = num_cpus;
   s  = -1;
-  while(ip > 0) {
+  while(ix > 0) {
     /* If new group of SMT processors starts, zero distances */
     if(s != objs[0]->sibling_rank) {
       s = objs[0]->sibling_rank;
-      for(j = 0; j < ip; j++)
+      for(j = 0; j < ix; j++)
         pdist[j] = UINT_MAX;
     }
     /*
@@ -859,7 +864,7 @@ void map_bunch(void) {
      */
     mind = UINT_MAX;
     jp   = 0;
-    for(j = 0; j < ip; j++) {
+    for(j = 0; j < ix; j++) {
       if((j) && (objs[j-1]->sibling_rank != objs[j]->sibling_rank))
         break;
       if(pdist[j] < mind) {
@@ -875,14 +880,14 @@ void map_bunch(void) {
       pdist[j] = pdist[j+1];
     }
     objs[j] = obj;
-    ip--;
+    ix--;
 
     /*
      * Update cumulative distances of all remaining objects with new stored one.
      * If two HWLOC_OBJ_PU objects don't share a common ancestor, the topology is broken.
      * Our scheme cannot be used in this case.
      */
-    for(j = 0; j < ip; j++) {
+    for(j = 0; j < ix; j++) {
       if((a = hwloc_get_common_ancestor_obj(topology, obj, objs[j])) == NULL) {
         MPIU_Free(pdist);
         MPIU_Free(objs);
@@ -903,24 +908,23 @@ void map_bunch(void) {
   return;
 }
 
-int num_digits(int num_cpus)
+static int num_digits(int numcpus)
 {
     int n_digits = 1;
-    while(num_cpus > 0) {
+    while(numcpus > 0) {
        n_digits++;
-       num_cpus /= 10;
+       numcpus /= 10;
     }
-return n_digits;
+    return n_digits;
 }
 
-int get_cpu_mapping_hwloc(long N_CPUs_online, hwloc_topology_t topology)
+int get_cpu_mapping_hwloc(long N_CPUs_online, hwloc_topology_t tp)
 {
     hwloc_obj_t  sysobj;
     unsigned topodepth = -1, depth = -1;
-    int num_sockets = 0, num_processes = 0, cpu_model = 0, rc = 0, i;
-    char line[MAX_LINE_LENGTH], input[MAX_NAME_LENGTH], *s, *key;
-    FILE *fp;
-    cpu_type_t cpu_type = CPU_FAMILY_NONE;
+    int num_sockets = 0, num_processes = 0, rc = 0, i;
+    int num_cpus=0; 
+    char *s;
     struct dirent **namelist;
     pid_t pid;
     obj_attribute_type *tree = NULL;
@@ -928,31 +932,31 @@ int get_cpu_mapping_hwloc(long N_CPUs_online, hwloc_topology_t topology)
     int mv2_enable_leastload = 0;
 
     /* Determine topology depth */
-    topodepth = hwloc_topology_get_depth(topology);
+    topodepth = hwloc_topology_get_depth(tp);
     if(topodepth == HWLOC_TYPE_DEPTH_UNKNOWN) {
       fprintf(stderr, "Warning: %s: Failed to determine topology depth.\n", __func__);
       return (topodepth);
     }
 
     /* Count number of (logical) processors */
-    depth = hwloc_get_type_depth(topology, HWLOC_OBJ_PU);
+    depth = hwloc_get_type_depth(tp, HWLOC_OBJ_PU);
 
     if(depth == HWLOC_TYPE_DEPTH_UNKNOWN) {
       fprintf(stderr, "Warning: %s: Failed to determine number of processors.\n", __func__);
       return (depth);
     }
-    if((num_cpus = hwloc_get_nbobjs_by_type(topology, HWLOC_OBJ_PU)) <= 0) {
+    if((num_cpus = hwloc_get_nbobjs_by_type(tp, HWLOC_OBJ_PU)) <= 0) {
        fprintf(stderr, "Warning: %s: Failed to determine number of processors.\n", __func__);
        return -1; 
      }
 
     /* Count number of sockets */
-    depth = hwloc_get_type_depth(topology, HWLOC_OBJ_SOCKET);
+    depth = hwloc_get_type_depth(tp, HWLOC_OBJ_SOCKET);
     if(depth == HWLOC_TYPE_DEPTH_UNKNOWN) {
       fprintf(stderr, "Warning: %s: Failed to determine number of sockets.\n", __func__);
       return (depth);
     } else {
-      num_sockets = hwloc_get_nbobjs_by_depth(topology, depth);
+      num_sockets = hwloc_get_nbobjs_by_depth(tp, depth);
     }
 
     if(s_cpu_mapping == NULL) {
@@ -993,7 +997,7 @@ int get_cpu_mapping_hwloc(long N_CPUs_online, hwloc_topology_t topology)
       }
 
       ip = 0;
-      sysobj = hwloc_get_root_obj(topology);
+      sysobj = hwloc_get_root_obj(tp);
 
       /* MV2_ENABLE_LEASTLOAD: map_bunch/scatter or map_bunch/scatter_load */
       if ((value = getenv("MV2_ENABLE_LEASTLOAD")) != NULL) {
@@ -1015,7 +1019,7 @@ int get_cpu_mapping_hwloc(long N_CPUs_online, hwloc_topology_t topology)
             return -1;
         } else {
             int status;
-            cpu_set_t pid_cpuset = {0};
+            cpu_set_t pid_cpuset;
             CPU_ZERO(&pid_cpuset);
 
             /* Get cpuset for each running process. */
@@ -1045,10 +1049,10 @@ int get_cpu_mapping_hwloc(long N_CPUs_online, hwloc_topology_t topology)
         /* MV2_ENABLE_LEASTLOAD != 1 or MV2_ENABLE_LEASTLOAD == NULL, map_bunch or map_scatter is used */
         if (policy == POLICY_SCATTER) {
             /* Scatter */
-	    map_scatter();
+    	    map_scatter(num_cpus);
         } else if (policy == POLICY_BUNCH) {
             /* Bunch */
-            map_bunch();
+            map_bunch(num_cpus);
         } else {
             goto error_free;
         }
@@ -1065,86 +1069,6 @@ int get_cpu_mapping_hwloc(long N_CPUs_online, hwloc_topology_t topology)
          custom_cpu_mapping[i-1] = '\0';
       }
    }
-
-#ifdef MV_ARCH_OLD_CODE
-    /* Parse /proc/cpuinfo for additional useful things */
-    if(fp = fopen(CONFIG_FILE, "r")) {
-
-      while(! feof(fp)) {
-        memset(line, 0, MAX_LINE_LENGTH);
-        fgets(line, MAX_LINE_LENGTH - 1, fp);
-
-        if(! (key = strtok(line, "\t:"))) {
-          continue;
-        }
-
-        if(cpu_type == CPU_FAMILY_NONE) {
-          if(! strcmp(key, "vendor_id")) {
-            strtok(NULL, " ");
-            s = strtok(NULL, " ");
-            if (! strncmp(s, "AuthenticAMD", strlen("AuthenticAMD"))) {
-               cpu_type = CPU_FAMILY_AMD;
-            } else {
-               cpu_type = CPU_FAMILY_INTEL;
-            }
-            continue;
-          }
-        }
-
-        if(! cpu_model) {
-          if(! strcmp(key, "model")) {
-             strtok(NULL, " ");
-             s = strtok(NULL, " ");
-             sscanf(s, "%d", &cpu_model);
-             continue;
-          }
-        }
-      }
-
-      fclose(fp);
-
-      if(cpu_type == CPU_FAMILY_INTEL) {
-         if(num_sockets == 2) {
-              if(num_cpus == 4) {
-                    arch_type = MULTI_CORE_ARCH_XEON_DUAL;
-              }
-              if(num_cpus == 8) {
-                  if(cpu_model == CLOVERTOWN_MODEL) {
-                      arch_type = MULTI_CORE_ARCH_CLOVERTOWN;
-                  }
-                  if(cpu_model == HARPERTOWN_MODEL) {
-                      arch_type = MULTI_CORE_ARCH_HARPERTOWN;
-                  }
-                  if(cpu_model == NEHALEM_MODEL) {
-                      arch_type = MULTI_CORE_ARCH_NEHALEM;
-                  }
-              }
-              if(num_cpus == 16) {
-                  if(cpu_model == NEHALEM_MODEL) {  /* nehalem with smt on */
-                      arch_type = MULTI_CORE_ARCH_NEHALEM;
-                   }
-              }
-         }
-      }
-      if(cpu_type == CPU_FAMILY_AMD) {
-           if(num_sockets == 2) {
-               if(num_cpus == 4) {
-                     arch_type = MULTI_CORE_ARCH_OPTERON_DUAL;
-               }
-               if(num_cpus == 24) {
-                     arch_type =  MULTI_CORE_ARCH_MAGNY_COURS;
-               }
-           }
-           if(num_sockets == 4) {
-               if(num_cpus == 16) {
-                     arch_type =  MULTI_CORE_ARCH_BARCELONA;
-               }
-           }
-       }
-    } else {
-             fprintf(stderr, "Warning: %s: Failed to open \"%s\".\n", __func__, CONFIG_FILE);
-    }
-#endif
 
     /* Done */
     rc = MPI_SUCCESS;
@@ -1175,12 +1099,11 @@ int get_cpu_mapping(long N_CPUs_online)
     char bogus2[MAX_NAME_LENGTH];
     char bogus3[MAX_NAME_LENGTH];
     int physical_id; //return value
-    int core_mapping[num_cpus];
+    int mapping[N_CPUs_online];
     int core_index = 0;
-    cpu_type_t cpu_type;
+    cpu_type_t cpu_type = 0;
     int model;
-    int vendor_set=0, model_set=0;
-    int mpi_errno = MPI_SUCCESS;
+    int vendor_set=0, model_set=0, num_cpus=0;
 
     FILE* fp=fopen(CONFIG_FILE,"r");
     if (fp == NULL){
@@ -1188,7 +1111,7 @@ int get_cpu_mapping(long N_CPUs_online)
         return 0;
     }
 
-    MPIU_Memset(core_mapping, 0, sizeof(core_mapping));
+    MPIU_Memset(mapping, 0, sizeof(mapping));
     custom_cpu_mapping = (char *) MPIU_Malloc(sizeof(char)*N_CPUs_online*2);
     if(custom_cpu_mapping == NULL) {
           return 0;
@@ -1225,54 +1148,39 @@ int get_cpu_mapping(long N_CPUs_online)
 
     if (strcmp(input, "physical") == 0) {
             sscanf(line, "%s%s%s%d", bogus1, bogus2, bogus3, &physical_id);
-            core_mapping[core_index++] = physical_id;
+            mapping[core_index++] = physical_id;
         }
-    }
+    }  
 
     num_cpus = core_index;
     if (num_cpus == 4) {
-       if((memcmp(INTEL_XEON_DUAL_MAPPING,core_mapping, sizeof(int)*num_cpus) == 0)
+       if((memcmp(INTEL_XEON_DUAL_MAPPING, mapping, sizeof(int)*num_cpus) == 0)
             && (cpu_type==CPU_FAMILY_INTEL)){
-#ifdef MV_ARCH_OLD_CODE
-               arch_type =  MULTI_CORE_ARCH_XEON_DUAL;
-#endif
                strcpy(custom_cpu_mapping , "0:2:1:3");
-       } else if((memcmp(AMD_OPTERON_DUAL_MAPPING,core_mapping,sizeof(int)*num_cpus) == 0)
+       } else if((memcmp(AMD_OPTERON_DUAL_MAPPING, mapping, sizeof(int)*num_cpus) == 0)
             && (cpu_type==CPU_FAMILY_AMD)){
-#ifdef MV_ARCH_OLD_CODE
-               arch_type =  MULTI_CORE_ARCH_OPTERON_DUAL;
-#endif
                strcpy(custom_cpu_mapping , "0:1:2:3");
        }
     } else if (num_cpus == 8) {
         if(cpu_type == CPU_FAMILY_INTEL) {
            if(model == CLOVERTOWN_MODEL) {
-#ifdef MV_ARCH_OLD_CODE
-                arch_type = MULTI_CORE_ARCH_CLOVERTOWN;
-#endif
-                if(memcmp(INTEL_CLOVERTOWN_MAPPING,core_mapping,sizeof(int)*num_cpus) == 0) {
+                if(memcmp(INTEL_CLOVERTOWN_MAPPING, mapping, sizeof(int)*num_cpus) == 0) {
                 strcpy(custom_cpu_mapping,"0:1:4:5:2:3:6:7");
                 }
             }
             else if(model == HARPERTOWN_MODEL) {
-#ifdef MV_ARCH_OLD_CODE                
-                arch_type = MULTI_CORE_ARCH_HARPERTOWN;
-#endif
-                if(memcmp(INTEL_HARPERTOWN_LEG_MAPPING,core_mapping,sizeof(int)*num_cpus) == 0) {
+                if(memcmp(INTEL_HARPERTOWN_LEG_MAPPING, mapping, sizeof(int)*num_cpus) == 0) {
                     strcpy(custom_cpu_mapping,"0:1:4:5:2:3:6:7");
                 }
-                else if(memcmp(INTEL_HARPERTOWN_COM_MAPPING,core_mapping,sizeof(int)*num_cpus) == 0) {
+                else if(memcmp(INTEL_HARPERTOWN_COM_MAPPING, mapping, sizeof(int)*num_cpus) == 0) {
                     strcpy(custom_cpu_mapping,"0:4:2:6:1:5:3:7");
                 }
             }
             else if(model == NEHALEM_MODEL) {
-#ifdef MV_ARCH_OLD_CODE
-                arch_type = MULTI_CORE_ARCH_NEHALEM;
-#endif
-                if(memcmp(INTEL_NEHALEM_LEG_MAPPING,core_mapping,sizeof(int)*num_cpus) == 0) {
+                if(memcmp(INTEL_NEHALEM_LEG_MAPPING, mapping, sizeof(int)*num_cpus) == 0) {
                     strcpy(custom_cpu_mapping, "0:2:4:6:1:3:5:7");
                 }
-                else if(memcmp(INTEL_NEHALEM_COM_MAPPING,core_mapping,sizeof(int)*num_cpus) == 0) {
+                else if(memcmp(INTEL_NEHALEM_COM_MAPPING, mapping, sizeof(int)*num_cpus) == 0) {
                     strcpy(custom_cpu_mapping, "0:4:1:5:2:6:3:7");
                 }
             }
@@ -1280,22 +1188,16 @@ int get_cpu_mapping(long N_CPUs_online)
     } else if (num_cpus == 16) {
         if(cpu_type == CPU_FAMILY_INTEL) {
               if(model == NEHALEM_MODEL) {
-#ifdef MV_ARCH_OLD_CODE
-                arch_type = MULTI_CORE_ARCH_NEHALEM;
-#endif
-                if(memcmp(INTEL_NEHALEM_LEG_MAPPING,core_mapping,sizeof(int)*num_cpus) == 0) {
+                if(memcmp(INTEL_NEHALEM_LEG_MAPPING, mapping, sizeof(int)*num_cpus) == 0) {
                     strcpy(custom_cpu_mapping,"0:2:4:6:1:3:5:7:8:10:12:14:9:11:13:15");
                 }
-                else if(memcmp(INTEL_NEHALEM_COM_MAPPING,core_mapping,sizeof(int)*num_cpus) == 0) {
+                else if(memcmp(INTEL_NEHALEM_COM_MAPPING, mapping, sizeof(int)*num_cpus) == 0) {
                     strcpy(custom_cpu_mapping, "0:4:1:5:2:6:3:7:8:12:9:13:10:14:11:15");
                 }
              }
          }
          else if(cpu_type == CPU_FAMILY_AMD) {
-            if(memcmp(AMD_BARCELONA_MAPPING,core_mapping, sizeof(int)*num_cpus) == 0) {
-#ifdef MV_ARCH_OLD_CODE
-                arch_type = MULTI_CORE_ARCH_BARCELONA;
-#endif
+            if(memcmp(AMD_BARCELONA_MAPPING, mapping, sizeof(int)*num_cpus) == 0) {
                 strcpy(custom_cpu_mapping, "0:1:2:3:4:5:6:7:8:9:10:11:12:13:14:15");
             }
          }
@@ -1310,7 +1212,7 @@ int get_cpu_mapping(long N_CPUs_online)
 #define FUNCNAME smpi_setaffinity
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int smpi_setaffinity ()
+int smpi_setaffinity (void)
 {
     int mpi_errno = MPI_SUCCESS;
 
@@ -1383,7 +1285,53 @@ int smpi_setaffinity ()
 
                 if (j == g_smpi.my_local_id)
                 {
-                    hwloc_cpuset_cpu(cpuset, atoi(tp_str));
+		    // parsing of the string
+                    char *token = tp_str;
+                    int cpunum;
+                    while (*token != '\0')
+                    {
+                        if (isdigit(*token)) {
+                            cpunum = first_num_from_str(&token);
+                            if (cpunum >= N_CPUs_online) {
+                                fprintf(stderr, "Warning! : Core id %d does not exist on this architecture! \n", cpunum);
+                                fprintf(stderr, "CPU Affinity is undefined \n");
+                                mv2_enable_affinity = 0;
+                                MPIU_Free(s_cpu_mapping);
+                                goto fn_fail;
+                            }
+                            hwloc_cpuset_set(cpuset, cpunum);
+                        } else if (*token == ',') {
+                            token++;
+                        } else if (*token == '-') {
+                            token++;
+                            if (!isdigit(*token)) {
+                                fprintf(stderr, "Warning! : Core id %c does not exist on this architecture! \n", *token);
+                                fprintf(stderr, "CPU Affinity is undefined \n");
+                                mv2_enable_affinity = 0;
+                                MPIU_Free(s_cpu_mapping);
+                                goto fn_fail;
+                            } else {
+                                int cpuend = first_num_from_str(&token);
+                                if (cpuend >= N_CPUs_online || cpuend < cpunum) {
+                                    fprintf(stderr, "Warning! : Core id %d does not exist on this architecture! \n", cpuend);
+                                    fprintf(stderr, "CPU Affinity is undefined \n");
+                                    mv2_enable_affinity = 0;
+                                    MPIU_Free(s_cpu_mapping);
+                                    goto fn_fail;
+                                }
+                                int cpuval;
+                                for (cpuval = cpunum + 1; cpuval <= cpuend; cpuval++)
+                                    hwloc_cpuset_set(cpuset, cpuval);
+                            }
+                        } else if (*token != '\0') {
+                            fprintf(stderr, "Warning! Error parsing the given CPU mask! \n");
+                            fprintf(stderr, "CPU Affinity is undefined \n");
+                            mv2_enable_affinity = 0;
+                            MPIU_Free(s_cpu_mapping);
+                            goto fn_fail;
+                        }
+                    }
+                    // then attachement
                     hwloc_set_cpubind(topology, cpuset, 0);
                     break;
                 }
@@ -1448,6 +1396,13 @@ int smpi_setaffinity ()
                 hwloc_set_cpubind(topology, cpuset, 0);
             }
             else {
+
+		char* tp = custom_cpu_mapping;
+                char* cp = NULL;
+                int j = 0;
+                int i;
+                char tp_str[custom_cpu_mapping_line_max + 1];
+
              /* We have all the information that we need. We will bind the processes
               * to the cpu's now
               */
@@ -1457,11 +1412,6 @@ int smpi_setaffinity ()
                 {
                   custom_cpu_mapping_line_max = linelen;
                 }
-                char* tp = custom_cpu_mapping;
-                char* cp = NULL;
-                int j = 0;
-                int i;
-                char tp_str[custom_cpu_mapping_line_max + 1];
 
                 while (*tp != '\0')
                 {

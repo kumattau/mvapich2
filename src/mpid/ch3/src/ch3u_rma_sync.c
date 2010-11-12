@@ -18,6 +18,11 @@
 #include "mpidimpl.h"
 #include "mpidrma.h"
 
+#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
+#include "mpiimpl.h"
+#include <limic.h>
+#endif /* _SMP_LIMIC_ && !DAPL_DEFAULT_PROVIDER*/
+
 #if defined(_OSU_MVAPICH_)
 #undef DEBUG_PRINT
 #if defined(DEBUG)
@@ -47,6 +52,14 @@
 #else 
 #define PSM_PRINT(args...)
 #endif 
+
+#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
+    extern int g_smp_use_limic2;
+    extern int limic_fd;
+    int MPIDI_CH3I_LIMIC_try_rma(MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr,
+                                   MPI_Win source_win_handle, MPID_Comm *comm_ptr,
+                                   int isPut);
+#endif /*_SMP_LIMIC_ && !DAPL_DEFAULT_PROVIDER*/
 
 /*
  * These routines provide a default implementation of the MPI RMA operations
@@ -1596,9 +1609,13 @@ static int MPIDI_CH3I_Recv_rma_msg(MPIDI_RMA_ops *rma_op, MPID_Win *win_ptr,
 #if defined(_OSU_MVAPICH_)
 	} else {
 	    MPIDI_CH3_Pkt_get_rndv_t get_rndv;
-	    MPIDI_Pkt_init(get_pkt, MPIDI_CH3_PKT_GET_RNDV);
+	    MPIDI_Pkt_init(&get_rndv, MPIDI_CH3_PKT_GET_RNDV);
 	    memcpy((void *) &get_rndv, (void *) get_pkt,
 	           sizeof(MPIDI_CH3_Pkt_get_t));
+	    /*The packed type should be set again because the memcpy would have 
+	      have overwritten it*/ 
+	    get_rndv.type = MPIDI_CH3_PKT_GET_RNDV;
+
 	    MPIDI_VC_FAI_send_seqnum(vc, seqnum);
 	    MPIDI_Pkt_set_seqnum(&get_rndv, seqnum);
         MPIU_THREAD_CS_ENTER(CH3COMM,vc); 
@@ -1765,6 +1782,9 @@ int MPIDI_Win_post(MPID_Group *group_ptr, int assert, MPID_Win *win_ptr)
     int mpi_errno=MPI_SUCCESS;
     MPI_Group win_grp, post_grp;
     int i, post_grp_size, *ranks_in_post_grp, *ranks_in_win_grp, dst, rank;
+#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
+    int l_rank, j;
+#endif /* _SMP_LIMIC_ && !DAPL_DEFAULT_PROVIDER*/
     MPIU_CHKLMEM_DECL(2);
     MPIU_THREADPRIV_DECL;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_WIN_POST);
@@ -1814,11 +1834,21 @@ int MPIDI_Win_post(MPID_Group *group_ptr, int assert, MPID_Win *win_ptr)
     win_ptr->my_counter = post_grp_size;
 #if defined(_OSU_MVAPICH_)
     win_ptr->my_counter = post_grp_size; /*MRAIL */
+
     if (win_ptr->fall_back != 1) {
-	memset(win_ptr->completion_counter, 0,
+	MPIU_Memset((void *) win_ptr->completion_counter, 0,
 	      sizeof(long long) * win_ptr->comm_size * rdma_num_rails);
     }
+
+#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
+    if (!win_ptr->limic_fallback) 
+    {
+       MPIU_Memset(win_ptr->limic_cmpl_counter_me, 0,
+                 sizeof(long long) * win_ptr->comm_size);
+    }
+#endif /* _SMP_LIMIC_ && !DAPL_DEFAULT_PROVIDER*/
 #endif /* defined(_OSU_MVAPICH_) */
+
     if ((assert & MPI_MODE_NOCHECK) == 0)
     {
 	/* NOCHECK not specified. We need to notify the source
@@ -1870,17 +1900,50 @@ int MPIDI_Win_post(MPID_Group *group_ptr, int assert, MPID_Win *win_ptr)
 #endif /* defined(_OSU_MVAPICH_) */
 	    if (dst != rank) {
 #if defined(_OSU_MVAPICH_)
-		if (win_ptr->fall_back != 1
-		    && (!SMP_INIT || vc->smp.local_nodes == -1))
-                {
-		    MPIDI_CH3I_RDMA_post(win_ptr, dst);
-		} else
-		{
+#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
+               if (!win_ptr->limic_fallback) 
+               {
+                   if(SMP_INIT && vc->smp.local_nodes != -1)
+                   {
+                       for(j=0; j<win_ptr->l_ranks; j++)
+                       {
+                           if(win_ptr->l2g_rank[j] == dst) 
+                           {
+                               l_rank = j;
+                               break;
+                           }
+                       }
+                       *(win_ptr->limic_post_flag_all[l_rank] + rank) = 1;
+                   }
+                   else if (win_ptr->fall_back != 1)
+                   {
+                       MPIDI_CH3I_RDMA_post(win_ptr, dst);
+                   }
+                   else
+                   {
+                       mpi_errno = NMPI_Send(&i, 0, MPI_INT, dst, 
+                                       100, win_ptr->comm);
+                       if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
+                   }
+               }
+               else 
+               {
+#endif /* _SMP_LIMIC_  && !DAPL_DEFAULT_PROVIDER*/
+                 if (win_ptr->fall_back != 1
+                       && (!SMP_INIT || vc->smp.local_nodes == -1))
+                 {
+                     MPIDI_CH3I_RDMA_post(win_ptr, dst);
+                 } 
+                 else
+                 {
 #endif /* defined(_OSU_MVAPICH_) */
-		mpi_errno = NMPI_Send(&i, 0, MPI_INT, dst, 100, win_ptr->comm);
-		if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
+	  	   mpi_errno = NMPI_Send(&i, 0, MPI_INT, dst, 100, win_ptr->comm);
+		   if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
 #if defined(_OSU_MVAPICH_)
-                }
+                 }
+#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
+               }
+#endif /* _SMP_LIMIC_  && !DAPL_DEFAULT_PROVIDER*/
 #endif /* defined(_OSU_MVAPICH_) */
 	    }
 	}
@@ -1982,6 +2045,10 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
 #if defined(_OSU_MVAPICH_)
     int need_dummy = 0;
     extern void MPIDI_CH3I_RDMA_complete_rma(MPID_Win *, int, int *, int);
+#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
+    int limic_failed = 0;
+    int transfer_complete;
+#endif /* _SMP_LIMIC_ && !_DAPL_DEFAULT_PROVDER_*/
 #endif /* defined(_OSU_MVAPICH_) */
     MPIU_CHKLMEM_DECL(7);
     MPIU_THREADPRIV_DECL;
@@ -2024,6 +2091,7 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
         
         
     NMPI_Comm_rank(win_ptr->comm, &rank);
+
 #if defined(_OSU_MVAPICH_)
     if (win_ptr->fall_back != 1) {
 	/* If 1 sided implementation is defined, finish all pending RDMA
@@ -2031,8 +2099,8 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
 	MPIDI_CH3I_RDMA_start(win_ptr, start_grp_size, ranks_in_win_grp);
 	MPIDI_CH3I_RDMA_try_rma(win_ptr, &win_ptr->rma_ops_list, 0);
 
-	if (win_ptr->rma_issued != 0)
-	{
+	if (win_ptr->rma_issued != 0) 
+        {
 	    MPIDI_CH3I_RDMA_complete_rma(win_ptr, start_grp_size,
 	                                 ranks_in_win_grp, 1);
 	}
@@ -2044,52 +2112,118 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
 	}
 	
 	if (win_ptr->rma_ops_list == NULL && need_dummy == 0) {
-	    MPIU_Free(ranks_in_win_grp);
-	    MPIU_Free(ranks_in_start_grp);
-	    return MPI_SUCCESS;
+            MPIU_Free(ranks_in_win_grp);
+            MPIU_Free(ranks_in_start_grp);
+
+            mpi_errno = NMPI_Group_free(&win_grp);
+            if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
+
+            /* free the group stored in window */
+            MPIR_Group_release(win_ptr->start_group_ptr);
+            win_ptr->start_group_ptr = NULL;
+
+            if (nest_level_inc)
+            { 
+               MPIR_Nest_decr();
+            } 
+            return MPI_SUCCESS;
 	} else if (win_ptr->rma_issued != 0) {
 	    MPIDI_CH3I_RDMA_finish_rma(win_ptr);
 	}
     }
 
-    if (SMP_INIT || (!SMP_INIT && win_ptr->fall_back == 1)) 
+#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
+    if (!win_ptr->limic_fallback) 
     {
-	MPIDI_VC_t* vc = NULL;
-#endif /* defined(_OSU_MVAPICH_) */
-    /* If MPI_MODE_NOCHECK was not specified, we need to check if
-       Win_post was called on the target processes. Wait for a 0-byte sync
-       message from each target process */
-    if ((win_ptr->start_assert & MPI_MODE_NOCHECK) == 0)
+        MPIDI_CH3I_LIMIC_start(win_ptr, start_grp_size, ranks_in_win_grp);
+        
+        MPIDI_VC_t* vc = NULL;
+ 
+        /* If MPI_MODE_NOCHECK was not specified, we need to check if
+           Win_post was called on the target processes. Wait for a 0-byte sync
+           message from each target process */
+        if ((win_ptr->start_assert & MPI_MODE_NOCHECK) == 0)
+        {
+           for (i=0; i<start_grp_size; i++)
+           {
+               src = ranks_in_win_grp[i];
+               MPIDI_Comm_get_vc(comm_ptr, src, &vc);
+ 
+               if (src != rank &&
+                      vc->smp.local_nodes == -1 && win_ptr->fall_back == 1)
+               {
+                     mpi_errno = NMPI_Recv(NULL, 0, MPI_INT, src, 100,
+                                           win_ptr->comm, MPI_STATUS_IGNORE);
+                     if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
+                }
+ 
+             }
+          }
+        
+    }
+    else 
     {
-	for (i=0; i<start_grp_size; i++)
-	{
-	    src = ranks_in_win_grp[i];
-#if defined(_OSU_MVAPICH_)
-              if (SMP_INIT) {
-		MPIDI_Comm_get_vc(comm_ptr, src, &vc);
-		if (src != rank && 
-		    (vc->smp.local_nodes != -1 || win_ptr->fall_back == 1)) 
-                  {
-                    mpi_errno = NMPI_Recv(NULL, 0, MPI_INT, src, 100,
-                                          win_ptr->comm, MPI_STATUS_IGNORE);
-                    if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
-                  }
+#endif /* _SMP_LIMIC_ && !DAPL_DEFAULT_PROVIDER*/
 
+       if (SMP_INIT || (!SMP_INIT && win_ptr->fall_back == 1))
+       {
+          MPIDI_VC_t* vc = NULL;
+ 
+       /* If MPI_MODE_NOCHECK was not specified, we need to check if
+          Win_post was called on the target processes. Wait for a 0-byte sync
+          message from each target process */
+ 
+          if ((win_ptr->start_assert & MPI_MODE_NOCHECK) == 0)
+          {
+             for (i=0; i<start_grp_size; i++)
+             {
+                 src = ranks_in_win_grp[i];
+ 
+                 if (SMP_INIT) 
+                 {
+                     MPIDI_Comm_get_vc(comm_ptr, src, &vc);
+                     if (src != rank &&
+                         (vc->smp.local_nodes != -1 || win_ptr->fall_back == 1))
+                     {
+                         mpi_errno = NMPI_Recv(NULL, 0, MPI_INT, src, 100,
+                                             win_ptr->comm, MPI_STATUS_IGNORE);
+                         if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
+                     }
+                  }
+                  else if (src != rank && win_ptr->fall_back == 1)
+                  {
+                         mpi_errno = NMPI_Recv(NULL, 0, MPI_INT, src, 100,
+                                              win_ptr->comm, MPI_STATUS_IGNORE);
+                         if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
+                  }
               }
-              else if (src != rank && win_ptr->fall_back == 1)
-              {
-#else /* defined(_OSU_MVAPICH_) */
-	    if (src != rank) {
-#endif /* defined(_OSU_MVAPICH_) */
-		mpi_errno = NMPI_Recv(NULL, 0, MPI_INT, src, 100,
-				      win_ptr->comm, MPI_STATUS_IGNORE);
-		if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
-	    }
-	}
+           }
+       }
+#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
     }
-#if defined(_OSU_MVAPICH_)
+#endif /* _SMP_LIMIC_ && !DAPL_DEFAULT_PROVIDER */
+#else  /* defined(_OSU_MVAPICH_) */
+
+    /* If MPI_MODE_NOCHECK was not specified, we need to check if
+     Win_post was called on the target processes. Wait for a 0-byte sync
+     message from each target process */
+
+     if ((win_ptr->start_assert & MPI_MODE_NOCHECK) == 0)
+     {
+        for (i=0; i<start_grp_size; i++)
+        {
+            src = ranks_in_win_grp[i];
+            if (src != rank) 
+            {
+                mpi_errno = NMPI_Recv(NULL, 0, MPI_INT, src, 100,
+                                      win_ptr->comm, MPI_STATUS_IGNORE);
+                if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
+            }
+        }
     }
+
 #endif /* defined(_OSU_MVAPICH_) */
+
     /* keep track of no. of ops to each proc. Needed for knowing
        whether or not to decrement the completion counter. The
        completion counter is decremented only on the last
@@ -2128,7 +2262,7 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
 			    mpi_errno, "dataloops");
 	for (i=0; i<total_op_count; i++) dataloops[i] = NULL;
     }
-        
+
     i = 0;
     curr_ptr = win_ptr->rma_ops_list;
     while (curr_ptr != NULL)
@@ -2144,26 +2278,70 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
 	    source_win_handle = MPI_WIN_NULL;
 	
 	target_win_handle = win_ptr->all_win_handles[curr_ptr->target_rank];
-	
+
+#if defined(_OSU_MVAPICH_)
+#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
+        if (!win_ptr->limic_fallback)
+        {
+            /* REASON FOR THIS CHECK: If one of the transfers has failed to go 
+               through limic and had used the SMP send/recv channel, the last 
+               message which sets the complete flag remotely should also go 
+               through the SMP channel. 
+               OTHER OPTIONS: Forcing a separate dummy message through SMP 
+               channel */
+            if (source_win_handle == MPI_WIN_NULL || limic_failed == 0)
+            { 
+                transfer_complete = 0;
+                if(curr_ptr->type == MPIDI_RMA_PUT) 
+                {
+                    transfer_complete =
+                          MPIDI_CH3I_LIMIC_try_rma(curr_ptr, win_ptr,
+                                               source_win_handle, comm_ptr,
+                                               1);
+                } 
+                else if(curr_ptr->type == MPIDI_RMA_GET)
+                {
+                    transfer_complete =
+                             MPIDI_CH3I_LIMIC_try_rma(curr_ptr, win_ptr,
+                                                source_win_handle, comm_ptr,
+                                                0);
+                }
+  
+                if(transfer_complete)
+                {
+                    total_op_count--;
+                    curr_ops_cnt[curr_ptr->target_rank]++;
+                    curr_ptr = curr_ptr->next;
+                    continue;
+                }
+                else
+                {
+                    limic_failed = 1;
+                }
+            }
+        }
+#endif /* _SMP_LIMIC_ && !_DAPL_DEFAULT_PROVIDER */
+#endif /*defined _OSU_MVAPICH_*/
+
 	switch (curr_ptr->type)
 	{
-	case (MPIDI_RMA_PUT):
-	case (MPIDI_RMA_ACCUMULATE):
-	    mpi_errno = MPIDI_CH3I_Send_rma_msg(curr_ptr, win_ptr,
+	   case (MPIDI_RMA_PUT):
+ 	   case (MPIDI_RMA_ACCUMULATE):
+	      mpi_errno = MPIDI_CH3I_Send_rma_msg(curr_ptr, win_ptr,
 				source_win_handle, target_win_handle, 
 				&dtype_infos[i],
 				&dataloops[i], &requests[i]); 
-	    if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
-	    break;
-	case (MPIDI_RMA_GET):
-	    mpi_errno = MPIDI_CH3I_Recv_rma_msg(curr_ptr, win_ptr,
+ 	      if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
+	      break;
+	   case (MPIDI_RMA_GET):
+	      mpi_errno = MPIDI_CH3I_Recv_rma_msg(curr_ptr, win_ptr,
 				source_win_handle, target_win_handle, 
 				&dtype_infos[i], 
 				&dataloops[i], &requests[i]);
-	    if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
-	    break;
-	default:
-	    MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**winInvalidOp");
+	      if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
+	      break;
+	   default:
+	       MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**winInvalidOp");
 	}
 	i++;
 	curr_ops_cnt[curr_ptr->target_rank]++;
@@ -2202,11 +2380,11 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
 	    put_pkt->addr = NULL;
 	    put_pkt->count = 0;
 #if defined (_OSU_PSM_)
-        put_pkt->rndv_mode = 0;
-        put_pkt->source_rank = win_ptr->my_rank;
-        put_pkt->target_rank = dst;
-        put_pkt->mapped_srank = win_ptr->rank_mapping[win_ptr->my_rank];
-        put_pkt->mapped_trank = win_ptr->rank_mapping[dst];
+            put_pkt->rndv_mode = 0;
+            put_pkt->source_rank = win_ptr->my_rank;
+            put_pkt->target_rank = dst;
+            put_pkt->mapped_srank = win_ptr->rank_mapping[win_ptr->my_rank];
+            put_pkt->mapped_trank = win_ptr->rank_mapping[dst];
 #endif    
 	    put_pkt->datatype = MPI_INT;
 	    put_pkt->target_win_handle = win_ptr->all_win_handles[dst];
@@ -2350,7 +2528,6 @@ int MPIDI_Win_wait(MPID_Win *win_ptr)
             for (i = 0; i < win_ptr->comm_size; ++i) {
 
                 for (j = 0; j < rdma_num_rails; ++j) {
-
                     index = i*rdma_num_rails+j;
                     if (win_ptr->completion_counter[index] == 1){
                         win_ptr->completion_counter[index] = 0;
@@ -2360,7 +2537,19 @@ int MPIDI_Win_wait(MPID_Win *win_ptr)
                             num_wait_completions = 0;
                          }
                    }
-                } 
+                }
+#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
+                if(!win_ptr->limic_fallback) 
+                {
+                   if(*((volatile long long *) 
+                       &win_ptr->limic_cmpl_counter_me[i]) == 1)
+                   {
+                       ++newly_finished;
+                       *((volatile long long *)
+                          &win_ptr->limic_cmpl_counter_me[i]) = 0;
+                   }
+                }
+#endif /* _SMP_LIMIC_ && !DAPL_DEFAULT_PROVIDER */ 
             } 
             win_ptr->my_counter -= newly_finished;
             if (win_ptr->my_counter == 0)
@@ -2370,9 +2559,32 @@ int MPIDI_Win_wait(MPID_Win *win_ptr)
                 MPIU_ERR_POP(mpi_errno); 
             }
         }
-    } else {
+    }
+#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER) 
+    else if(!win_ptr->limic_fallback)
+    {
+        while (win_ptr->my_counter || win_ptr->outstanding_rma != 0) 
+        {
+            for (i = 0; i < win_ptr->comm_size; ++i)
+            {
+               if(*((volatile long long *) 
+                   &win_ptr->limic_cmpl_counter_me[i]) == 1)
+               {
+                    win_ptr->my_counter --;
+                    *((volatile long long *) 
+                       &win_ptr->limic_cmpl_counter_me[i]) = 0;
+               }
+            }
+            mpi_errno = MPID_Progress_test();
+            if (mpi_errno != MPI_SUCCESS) {
+                MPIU_ERR_POP(mpi_errno);
+            }
+        }
+    }
+#endif /* _SMP_LIMIC_ && !DAPL_DEFAULT_PROVIDER */
+    else
+    {
 #endif /* defined(_OSU_MVAPICH_) */
-
     if (win_ptr->my_counter)
     {
 	MPID_Progress_state progress_state;
@@ -2408,11 +2620,40 @@ fn_fail:
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_Win_test(MPID_Win *win_ptr, int *flag)
 {
-    int mpi_errno=MPI_SUCCESS;
+    int i, j, index, mpi_errno=MPI_SUCCESS;
+    static int num_wait_completions = 0;
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_WIN_TEST);
 
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_WIN_TEST);
+
+#if defined(_OSU_MVAPICH_)
+    if (!win_ptr->fall_back) {
+        for (i = 0; i < win_ptr->comm_size; ++i) {
+           for (j = 0; j < rdma_num_rails; ++j) {
+                index = i*rdma_num_rails+j;
+                if (win_ptr->completion_counter[index] == 1){
+                    win_ptr->completion_counter[index] = 0;
+                    ++num_wait_completions;
+                    if (num_wait_completions == rdma_num_rails) {
+                        --win_ptr->my_counter;
+                        num_wait_completions = 0;
+                    } 
+                }
+           }
+        } 
+    }
+#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
+    if (!win_ptr->limic_fallback) {
+       for (i = 0; i < win_ptr->comm_size; ++i) {
+           if(win_ptr->limic_cmpl_counter_me[i] == 1) {
+               --win_ptr->my_counter;
+               win_ptr->limic_cmpl_counter_me[i] = 0;
+           }
+       }
+    }
+#endif /* _SMP_LIMIC_ && !DAPL_DEFAULT_PROVIDER */ 
+#endif /* _OSU_MVAPICH_ */
 
     mpi_errno = MPID_Progress_test();
     if (mpi_errno != MPI_SUCCESS) {

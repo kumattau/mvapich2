@@ -1400,7 +1400,7 @@ MRAILI_Init_vc (MPIDI_VC_t * vc, int pg_rank)
       }
 
     vc->mrail.rfp.rdma_credit = 0;
-#ifdef USE_HEADER_CACHING
+#ifndef MV2_DISABLE_HEADER_CACHING 
     vc->mrail.rfp.cached_miss = 0;
     vc->mrail.rfp.cached_hit = 0;
     vc->mrail.rfp.cached_incoming = MPIU_Malloc (sizeof (MPIDI_CH3_Pkt_send_t));
