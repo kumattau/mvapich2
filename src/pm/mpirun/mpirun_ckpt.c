@@ -989,7 +989,9 @@ static int cr_ftb_wait_for_resp(int nprocs)
     pthread_mutex_lock(&cr_ftb_ckpt_req_mutex);
     dbg("wait for nprocs %d \n", nprocs);
     cr_ftb_ckpt_req += nprocs;
-    pthread_cond_wait(&cr_ftb_ckpt_req_cond, &cr_ftb_ckpt_req_mutex);
+    while( cr_ftb_ckpt_req > 0 )
+        pthread_cond_wait(&cr_ftb_ckpt_req_cond, &cr_ftb_ckpt_req_mutex);
+    pthread_mutex_unlock(&cr_ftb_ckpt_req_mutex);
 
     if (cr_ftb_ckpt_req == 0) {
         return (0);
@@ -1058,20 +1060,22 @@ static int cr_ftb_callback(FTB_receive_event_t * revent, void *arg)
     /* TODO: Do some sanity checking to see if this is the intended target */
 
     if (!strcmp(revent->event_name, EVENT(MPI_PROCS_CKPTED))) {
+        pthread_mutex_lock(&cr_ftb_ckpt_req_mutex);
     	if (cr_ftb_ckpt_req <= 0) {
 	        fprintf(stderr, "Got CR_FTB_CKPT_DONE but "
 		        "cr_ftb_ckpt_req not set\n");
     	    cr_ftb_ckpt_req = -1;
     	    pthread_cond_signal(&cr_ftb_ckpt_req_cond);
+            pthread_mutex_unlock(&cr_ftb_ckpt_req_mutex);
     	    return (0);
     	}
-    	pthread_mutex_lock(&cr_ftb_ckpt_req_mutex);
     	--cr_ftb_ckpt_req;
-    	pthread_mutex_unlock(&cr_ftb_ckpt_req_mutex);
     	if (!cr_ftb_ckpt_req) {
     	    pthread_cond_signal(&cr_ftb_ckpt_req_cond);
+    	    pthread_mutex_unlock(&cr_ftb_ckpt_req_mutex);
     	    return (0);
-    	}
+        }
+        pthread_mutex_unlock(&cr_ftb_ckpt_req_mutex);
     }
 
     if( !strcmp(revent->event_name, EVENT(CR_FTB_RSRT_DONE)) ){
@@ -1080,9 +1084,11 @@ static int cr_ftb_callback(FTB_receive_event_t * revent, void *arg)
     }
 
     if (!strcmp(revent->event_name, EVENT(CR_FTB_CKPT_FAIL))) {
+        pthread_mutex_lock(&cr_ftb_ckpt_req_mutex);
         fprintf(stderr, "Got CR_FTB_CKPT_FAIL\n");
         cr_ftb_ckpt_req = -2;
         pthread_cond_signal(&cr_ftb_ckpt_req_cond);
+        pthread_mutex_unlock(&cr_ftb_ckpt_req_mutex);
         return (0);
     }
 

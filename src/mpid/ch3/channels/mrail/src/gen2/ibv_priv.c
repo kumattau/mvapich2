@@ -48,14 +48,10 @@ int MRAILI_Send_select_rail(MPIDI_VC_t * vc)
 {
     static int i = 0;
 
-    if (ROUND_ROBIN == sm_scheduling) {
+    if (ROUND_ROBIN == rdma_rail_sharing_policy) {
         i = (i + 1) % rdma_num_rails;
         return i;
-    } else if (PROCESS_BINDING == sm_scheduling) {
-        i = ((i + 1) % rdma_num_rails_per_hca) +
-             rdma_process_binding_rail_offset;
-        return i;
-    } else if (USER_DEFINED == sm_scheduling) {
+    } else if (FIXED_MAPPING == rdma_rail_sharing_policy) {
         i = ((i + 1) % rdma_num_rails_per_hca) +
              rdma_process_binding_rail_offset;
         return i;
@@ -95,8 +91,8 @@ int vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
 	/* allocate vbuf struct buffers */
         if(posix_memalign((void **) &vbuf_ctrl_buf, vbuf_alignment,
             sizeof(struct vbuf) * num_rdma_buffer)) {
-            ibv_error_abort(GEN_EXIT_ERR,
-                    "malloc: vbuf in vbuf_fast_rdma_alloc");
+            DEBUG_PRINT("malloc failed: vbuf in vbuf_fast_rdma_alloc\n");
+            goto fn_fail;
         }
 #endif /* USE_MEMORY_TRACING */
 
@@ -108,8 +104,8 @@ int vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
         /* allocate vbuf RDMA buffers */
         if(posix_memalign((void **)&vbuf_rdma_buf, pagesize,
             rdma_vbuf_total_size * num_rdma_buffer)) {
-            ibv_error_abort(GEN_EXIT_ERR,
-                    "malloc: vbuf DMA in vbuf_fast_rdma_alloc");
+            DEBUG_PRINT("malloc failed: vbuf DMA in vbuf_fast_rdma_alloc");
+            goto fn_exit;
         }
 #endif /* USE_MEMORY_TRACING */
 
@@ -120,19 +116,19 @@ int vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
             mem_handle[i] =  register_memory(vbuf_rdma_buf,
                                 rdma_vbuf_total_size * num_rdma_buffer, i);
             if (!mem_handle[i]) {
-                ibv_va_error_abort(GEN_EXIT_ERR,
-                        "fail to register rdma memory, size %d\n",
-                        rdma_vbuf_total_size * num_rdma_buffer);
+                DEBUG_PRINT("fail to register rdma memory, size %d\n",
+                            rdma_vbuf_total_size * num_rdma_buffer);
+                goto fn_fail;
             }
         }
 
         /* Connect the DMA buffer to the vbufs */
         for (i = 0; i < num_rdma_buffer; i++) {
             v = ((vbuf *)vbuf_ctrl_buf) + i;
-            v->head_flag = (VBUF_FLAG_TYPE *) ( (char *)(vbuf_rdma_buf) + (i + 1) *
-                          rdma_vbuf_total_size - sizeof *v->head_flag);
+            v->head_flag = (VBUF_FLAG_TYPE *) ( (char *)(vbuf_rdma_buf) + (i *
+                          rdma_vbuf_total_size ) );
             v->buffer = (unsigned char *) ( (char *)(vbuf_rdma_buf) + (i *
-                           rdma_vbuf_total_size) );
+                          rdma_vbuf_total_size ) + sizeof(*v->head_flag) );
             v->vc     = c;
         }
 
@@ -163,22 +159,20 @@ int vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
             c->mrail.rfp.RDMA_recv_buf_DMA   = vbuf_rdma_buf;
             for (i = 0; i < rdma_num_hcas; i++)
                 c->mrail.rfp.RDMA_recv_buf_mr[i] = mem_handle[i];
-            /* set pointers */
-            c->mrail.rfp.p_RDMA_recv = 0;
-            c->mrail.rfp.p_RDMA_recv_tail = num_rdma_buffer - 1;
-
-            /* Add the connection to the RDMA polling list */
-            MPIDI_CH3I_RDMA_Process.polling_set
-              [MPIDI_CH3I_RDMA_Process.polling_group_size] = c;
-            MPIDI_CH3I_RDMA_Process.polling_group_size++;
-
-           c->mrail.cmanager.num_channels      += 1;
-           c->mrail.cmanager.num_local_pollings = 1;
-	   c->mrail.rfp.in_polling_set          = 1;
         }
 
     }
+fn_exit:
     MPIDI_FUNC_EXIT(MPID_GEN2_VBUF_FAST_RDMA_ALLOC);
     return mpi_errno;
+fn_fail:
+    if (vbuf_rdma_buf) {
+        MPIU_Free(vbuf_rdma_buf);
+    }
+    if (vbuf_ctrl_buf) {
+        MPIU_Free(vbuf_ctrl_buf);
+    }
+    mpi_errno = -1;
+    goto fn_exit;
 }
 

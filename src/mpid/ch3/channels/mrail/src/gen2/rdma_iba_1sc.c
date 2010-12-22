@@ -67,7 +67,7 @@ static int Decrease_CC(MPID_Win *, int);
 static int Post_Get_Put_Get_List(MPID_Win *, 
         int , dreg_entry * ,
         MPIDI_VC_t * , void *local_buf[], 
-        void *remote_buf[], int length,
+        void *remote_buf[], void *user_buf[], int length,
         uint32_t lkeys[], uint32_t rkeys[], 
         int use_multi);
 
@@ -297,11 +297,10 @@ void MPIDI_CH3I_LIMIC_start (MPID_Win* win_ptr, int start_grp_size,
 write operation with fence to update the remote flag in target processes*/
 void
 MPIDI_CH3I_RDMA_complete_rma(MPID_Win * win_ptr,
-                         int start_grp_size, int *ranks_in_win_grp,
-                         int send_complete)
+                         int start_grp_size, int *ranks_in_win_grp)
 {
     int i, target, dst;
-    int comm_size;
+    int my_rank, comm_size;
     int *nops_to_proc;
     int mpi_errno;
     MPID_Comm *comm_ptr;
@@ -309,7 +308,15 @@ MPIDI_CH3I_RDMA_complete_rma(MPID_Win * win_ptr,
     MPIDI_VC_t* vc = NULL;
 
     MPID_Comm_get_ptr(win_ptr->comm, comm_ptr);
+    my_rank = comm_ptr->rank;
     comm_size = comm_ptr->local_size;
+
+    /* clean up all the post flag */
+    for (i = 0; i < start_grp_size; ++i) {
+        dst = ranks_in_win_grp[i];
+        win_ptr->post_flag[dst] = 0;
+    }
+    win_ptr->using_start = 0;
 
     nops_to_proc = (int *) MPIU_Calloc(comm_size, sizeof(int));
     /* --BEGIN ERROR HANDLING-- */
@@ -320,8 +327,6 @@ MPIDI_CH3I_RDMA_complete_rma(MPID_Win * win_ptr,
         goto fn_exit;
     }
     /* --END ERROR HANDLING-- */
-
-    win_ptr->wait_for_complete = 1;
 
     /* set rma_target_proc[i] to 1 if rank i is a target of RMA
        ops from this process */
@@ -334,21 +339,18 @@ MPIDI_CH3I_RDMA_complete_rma(MPID_Win * win_ptr,
         ++nops_to_proc[curr_ptr->target_rank];
         curr_ptr = curr_ptr->next;
     }
-    /* clean up all the post flag */
-    for (i = 0; i < start_grp_size; ++i) {
-        dst = ranks_in_win_grp[i];
-        win_ptr->post_flag[dst] = 0;
-    }
-    win_ptr->using_start = 0;
 
     for (i = 0; i < start_grp_size; ++i) {
         target = ranks_in_win_grp[i]; /* target is the rank is comm */
 
+        if (target == my_rank) {
+            continue;
+        }
+
         if(SMP_INIT) 
         {
             MPIDI_Comm_get_vc(comm_ptr, target, &vc);
-            if (nops_to_proc[target] == 0 && send_complete == 1 
-                     && vc->smp.local_nodes == -1)
+            if (nops_to_proc[target] == 0 && vc->smp.local_nodes == -1)
             {
             /* We ensure local completion of all the pending operations on 
              * the current window and then set the complete flag on the remote
@@ -356,17 +358,11 @@ MPIDI_CH3I_RDMA_complete_rma(MPID_Win * win_ptr,
              * would unnecessarily wait on completion of all operations on this
              * RC connection.
              */ 
-               if (win_ptr->wait_for_complete == 1) {
-                   MPIDI_CH3I_RDMA_finish_rma(win_ptr);
-               }
                Decrease_CC(win_ptr, target);
             }
         } 
-        else if (nops_to_proc[target] == 0 && send_complete == 1)  
+        else if (nops_to_proc[target] == 0)  
         {
-            if (win_ptr->wait_for_complete == 1) {
-                MPIDI_CH3I_RDMA_finish_rma(win_ptr);
-            }
             Decrease_CC(win_ptr, target);
         }
     }
@@ -691,26 +687,33 @@ int MPIDI_CH3I_RDMA_post(MPID_Win * win_ptr, int target_rank)
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_RDMA_POST);
     int mpi_errno = MPI_SUCCESS;
 
-    char                *origin_addr;
+    char                *origin_addr, *remote_addr;
     MPIDI_VC_t          *tmp_vc;
     MPID_Comm           *comm_ptr;
+    uint32_t            i, size, hca_index, 
+                        r_key[MAX_NUM_SUBRAILS],
+                        l_key[MAX_NUM_SUBRAILS];
+
     /*part 1 prepare origin side buffer */
-    char* remote_address = (char *) win_ptr->remote_post_flags[target_rank];
-    int size = sizeof(int);
+    remote_addr = (char *) win_ptr->remote_post_flags[target_rank];
+
+    size = sizeof(int);
     Get_Pinned_Buf(win_ptr, &origin_addr, size);
     *((int *) origin_addr) = 1;
 
     MPID_Comm_get_ptr(win_ptr->comm, comm_ptr);
     MPIDI_Comm_get_vc(comm_ptr, target_rank, &tmp_vc);
 
-    int hca_index = 0;
-    uint32_t l_key = win_ptr->pinnedpool_1sc_dentry->memhandle[hca_index]->lkey;
-    uint32_t r_key = win_ptr->post_flag_rkeys[target_rank * rdma_num_hcas + hca_index];
+    for (i=0; i<rdma_num_rails; ++i) {
+        hca_index = i/rdma_num_rails_per_hca;
+        l_key[i] = win_ptr->pinnedpool_1sc_dentry->memhandle[hca_index]->lkey;
+        r_key[i] = win_ptr->post_flag_rkeys[target_rank * rdma_num_hcas + hca_index];
+    }
 
     Post_Put_Put_Get_List(win_ptr, -1, NULL, 
             tmp_vc, (void *)&origin_addr, 
-            (void*)&remote_address, size, 
-            &l_key, &r_key, 0 );
+            (void*)&remote_addr, size, 
+            l_key, r_key, 0 );
 
     win_ptr->poll_flag = 1;
     while (win_ptr->poll_flag == 1)
@@ -1395,7 +1398,7 @@ Trac #426
             }
         }
     } else if (use_multi == 0) { /* send on a single rail */
-        rail = 0;
+        rail = MRAILI_Send_select_rail(vc_ptr);
         v = get_vbuf(); 
         if (NULL == v) {
             MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
@@ -1408,7 +1411,7 @@ Trac #426
         ++(vc_ptr->mrail.rails[rail].postsend_times_1sc);
 #endif
 
-        vbuf_init_rma_put(v, local_buf[rail], lkeys[rail], remote_buf[rail],
+        vbuf_init_rma_put(v, local_buf[0], lkeys[rail], remote_buf[0],
                           rkeys[rail], length, rail);
         v->list = (void *)(&(winptr->put_get_list[index]));
         v->vc = (void *)vc_ptr;
@@ -1495,19 +1498,19 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
                             dreg_entry * dreg_tmp,
                             MPIDI_VC_t * vc_ptr,
                             void *local_buf[], void *remote_buf[],
-                            int length,
+                            void *user_buf[], int length,
                             uint32_t lkeys[], uint32_t rkeys[],
                             int use_multi)
 {
      int i, mpi_errno = MPI_SUCCESS;
-     int hca_index;
+     int hca_index, rail;
      int index = winptr->put_get_list_tail;
      vbuf *v;
      MPIDI_VC_t *save_vc = vc_ptr;
 
      if(size <= rdma_eagersize_1sc){    
-         winptr->put_get_list[index].origin_addr = remote_buf[0];
-         winptr->put_get_list[index].target_addr = local_buf[0];
+         winptr->put_get_list[index].origin_addr = local_buf[0];
+         winptr->put_get_list[index].target_addr = user_buf[0];
      } else {
          winptr->put_get_list[index].origin_addr = NULL;
          winptr->put_get_list[index].target_addr = NULL;
@@ -1571,6 +1574,40 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
                 vc_ptr = save_vc;
             }
      	} 
+    } else if (use_multi == 0) { /* send on a single rail */
+        rail = MRAILI_Send_select_rail(vc_ptr);
+        v = get_vbuf();
+        if (NULL == v) {
+            MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
+        }
+
+        winptr->put_get_list[index].completion = 1;
+        ++(winptr->put_get_list_size);
+
+        vbuf_init_rma_get(v, local_buf[0], lkeys[rail], remote_buf[0],
+                          rkeys[rail], length, rail);
+        v->list = (void *)(&(winptr->put_get_list[index]));
+        v->vc = (void *)vc_ptr;
+
+        if (vc_ptr->ch.state != MPIDI_CH3I_VC_STATE_IDLE
+#ifdef _ENABLE_XRC_
+                || (USE_XRC && VC_XST_ISUNSET (vc_ptr, XF_SEND_IDLE))
+#endif
+            || !MPIDI_CH3I_CM_One_Sided_SendQ_empty(vc_ptr)) {
+            /* VC is not ready to be used. Wait till it is ready and send */
+            MPIDI_CH3I_CM_One_Sided_SendQ_enqueue(vc_ptr, v);
+
+            if (vc_ptr->ch.state == MPIDI_CH3I_VC_STATE_UNCONNECTED) {
+                /* VC is not connected, initiate connection */
+                MPIDI_CH3I_CM_Connect(vc_ptr);
+            }
+        } else {
+            XRC_FILL_SRQN_FIX_CONN (v, vc_ptr, rail);
+            if (MRAILI_Flush_wqe(vc_ptr, v, rail) != -1) {
+                --(vc_ptr->mrail.rails[rail].send_wqes_avail);
+                IBV_POST_SR(v, vc_ptr, rail, "Failed to post rma put");
+            }
+        }
     }
 
     while (winptr->put_get_list_size >= rdma_default_put_get_list_size)
@@ -1705,9 +1742,15 @@ static int iba_put(MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr, int size)
         l_key1[i] = l_key[hca_index];
     }
 
-    Post_Put_Put_Get_List(win_ptr, size, tmp_dreg, tmp_vc, 
-            (void *)&origin_addr, (void *)&remote_address, 
-            size, l_key1, r_key, 1 );
+    if(size < rdma_large_msg_rail_sharing_threshold) { 
+        Post_Put_Put_Get_List(win_ptr, size, tmp_dreg, tmp_vc, 
+                (void *)&origin_addr, (void *)&remote_address, 
+                size, l_key1, r_key, 0 );
+    } else {
+        Post_Put_Put_Get_List(win_ptr, size, tmp_dreg, tmp_vc,
+                (void *)&origin_addr, (void *)&remote_address,
+                size, l_key1, r_key, 1 );
+    }
 
     return mpi_errno;
 }
@@ -1715,34 +1758,35 @@ static int iba_put(MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr, int size)
 
 int iba_get(MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr, int size)
 {
-    char                *remote_address;
     int                 mpi_errno = MPI_SUCCESS;
     int                 hca_index;
     uint32_t            r_key[MAX_NUM_SUBRAILS], 
                         l_key1[MAX_NUM_SUBRAILS], 
                         l_key[MAX_NUM_SUBRAILS];
     dreg_entry          *tmp_dreg = NULL;
-    char                *origin_addr;
+    char                *target_addr, *user_addr;
+    char                *remote_addr;
     int                 i;
     MPIDI_VC_t          *tmp_vc;
     MPID_Comm           *comm_ptr;
 
     MPIU_Assert(rma_op->type == MPIDI_RMA_GET);
     /*part 1 prepare origin side buffer target address and keys  */
-    remote_address = (char *) win_ptr->base_addrs[rma_op->target_rank] +
+    remote_addr = (char *) win_ptr->base_addrs[rma_op->target_rank] +
         win_ptr->disp_units[rma_op->target_rank] * rma_op->target_disp;
 
     if (size <= rdma_eagersize_1sc) {
-        Get_Pinned_Buf(win_ptr, &origin_addr, size);
-    for(i = 0; i < rdma_num_hcas; ++i) {
+        Get_Pinned_Buf(win_ptr, &target_addr, size);
+        for(i = 0; i < rdma_num_hcas; ++i) {
             l_key[i] = win_ptr->pinnedpool_1sc_dentry->memhandle[i]->lkey;
         }
+        user_addr = rma_op->origin_addr;
     } else {
         tmp_dreg = dreg_register(rma_op->origin_addr, size);
-    for(i = 0; i < rdma_num_hcas; ++i) {
+        for(i = 0; i < rdma_num_hcas; ++i) {
             l_key[i] = tmp_dreg->memhandle[i]->lkey;
         }
-        origin_addr = rma_op->origin_addr;
+        target_addr = user_addr = rma_op->origin_addr;
         win_ptr->wait_for_complete = 1;
     }
 
@@ -1756,10 +1800,17 @@ int iba_get(MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr, int size)
        l_key1[i] = l_key[hca_index];
    }
 
-   Post_Get_Put_Get_List(win_ptr, size, tmp_dreg, 
-                         tmp_vc, (void *)&origin_addr, 
-                         (void *)&remote_address, size, 
-                         l_key1, r_key, 1 );
+   if(size < rdma_large_msg_rail_sharing_threshold) { 
+       Post_Get_Put_Get_List(win_ptr, size, tmp_dreg, 
+                             tmp_vc, (void *)&target_addr, 
+                             (void *)&remote_addr, (void*)&user_addr, size, 
+                             l_key1, r_key, 0 );
+   } else {
+       Post_Get_Put_Get_List(win_ptr, size, tmp_dreg,
+                             tmp_vc, (void *)&target_addr,
+                             (void *)&remote_addr, (void*)&user_addr, size,
+                             l_key1, r_key, 1 );
+   }
 
    return mpi_errno;
 }

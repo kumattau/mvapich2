@@ -20,9 +20,7 @@
 #include "vbuf.h"
 #include "pmi.h"
 #include "mpiutil.h"
-#ifdef _ENABLE_XRC_
 #include "rdma_impl.h"
-#endif
 
 #include "dreg.h"
 
@@ -47,11 +45,11 @@ do {                                                          \
 #define DEBUG_PRINT(args...)
 #endif
 
-
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Prepare_rndv_get
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
+
 int MPIDI_CH3_Prepare_rndv_get(MPIDI_VC_t * vc,
                                MPID_Request * rreq)
 {
@@ -456,6 +454,7 @@ void MPIDI_CH3_Rendezvous_r3_push(MPIDI_VC_t * vc, MPID_Request * sreq)
     int seqnum;
     int finished = 0;
     int mpi_errno;
+    int wait_for_rndv_r3_ack = 0;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_RNDV_R3_PUSH);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_RNDV_R3_PUSH);
 
@@ -468,6 +467,15 @@ void MPIDI_CH3_Rendezvous_r3_push(MPIDI_VC_t * vc, MPID_Request * sreq)
 
     do {
         do {
+#ifndef DAPL_DEFAULT_PROVIDER
+	    /* stop sending more R3 data to avoid SRQ flooding at receiver */
+            if (MPIDI_CH3I_RDMA_Process.has_srq) {
+                if (vc->ch.pending_r3_data >= rdma_max_r3_pending_data) {
+                    wait_for_rndv_r3_ack = 1;
+                    break;
+                }
+            }		
+#endif	    
             MPIDI_VC_FAI_send_seqnum(vc, seqnum);
             MPIDI_Pkt_set_seqnum(&pkt_head, seqnum);
             MPIDI_Request_set_seqnum(sreq, seqnum);
@@ -509,8 +517,12 @@ void MPIDI_CH3_Rendezvous_r3_push(MPIDI_VC_t * vc, MPID_Request * sreq)
             nb -= sizeof(MPIDI_CH3_Pkt_rndv_r3_data_t);
             finished = MPIDI_CH3I_Request_adjust_iov(sreq, nb);
             DEBUG_PRINT("ajust iov finish: %d\n", finished);
+            vc->ch.pending_r3_data += nb;
         } while (!finished/* && !msg_buffered*/);
 
+        if (wait_for_rndv_r3_ack) {
+            break;
+        }
         if (finished && sreq->dev.OnDataAvail ==
 			MPIDI_CH3_ReqHandler_SendReloadIOV) {
             MPIDI_CH3U_Handle_send_req(vc, sreq, &complete);
@@ -521,18 +533,24 @@ void MPIDI_CH3_Rendezvous_r3_push(MPIDI_VC_t * vc, MPID_Request * sreq)
         }
     } while (/* 1 != msg_buffered && */0 == complete);
 
-    DEBUG_PRINT("exit loop with complete %d, msg_buffered %d\n", complete,
-                msg_buffered);
+    DEBUG_PRINT("exit loop with complete %d, msg_buffered %d wiat %d pending data:%d \n", complete,
+                msg_buffered, wait_for_rndv_r3_ack, vc->ch.pending_r3_data);
 
-    /*if (0 == complete && 1 == msg_buffered) {
+    if (wait_for_rndv_r3_ack) { //|| 0 == complete && 1 == msg_buffered) {
         sreq->mrail.nearly_complete = 0;
-    } else */if (1 == msg_buffered) {
+    } else if (1 == msg_buffered) {
         buf->sreq = (void *) sreq;
         sreq->mrail.nearly_complete = 1;
     } else {
         buf->sreq = NULL;
         MPIDI_CH3U_Handle_send_req(vc, sreq, &complete);
         sreq->mrail.nearly_complete = 1;
+    }
+
+    if (sreq->mrail.nearly_complete) {
+        DEBUG_PRINT("R3 PUSH completed\n");
+    } else {
+        DEBUG_PRINT("Send Max R3 Pending Data. waiting for ACK\n");
     }
 
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_RNDV_R3_PUSH);
@@ -642,6 +660,7 @@ int MPIDI_CH3_Rendezvouz_r3_recv_data(MPIDI_VC_t * vc, vbuf * buffer)
         goto fn_exit;
     }
 
+    vc->ch.received_r3_data += nb;
     skipsize += nb;
     DEBUG_PRINT("[recv r3: handle read] filled request nb is %d\n", nb);
 
@@ -672,6 +691,7 @@ int MPIDI_CH3_Rendezvouz_r3_recv_data(MPIDI_VC_t * vc, vbuf * buffer)
                     0);
                 goto fn_exit;
             }
+            vc->ch.received_r3_data += nb;
             if (!MPIDI_CH3I_Request_adjust_iov(rreq, nb)) {
                 goto fn_exit;
             }
@@ -695,9 +715,35 @@ int MPIDI_CH3_Rendezvouz_r3_recv_data(MPIDI_VC_t * vc, vbuf * buffer)
         }
     }
   fn_exit:
+#ifndef DAPL_DEFAULT_PROVIDER
+    if (MPIDI_CH3I_RDMA_Process.has_srq) {
+        if ( vc->ch.received_r3_data >= rdma_max_r3_pending_data) {
+            DEBUG_PRINT("recved data: %d send ack\n", vc->ch.received_r3_data );
+            MPIDI_CH3I_MRAILI_Rendezvous_r3_ack_send(vc);
+        }
+    }
+#endif
     DEBUG_PRINT("Successfully return from r3 recv\n");
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_RNDV_R3_RCV_DATA);
     return mpi_errno;
+}
+
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3_Rendezvouz_r3_ack_recv
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+void MPIDI_CH3_Rendezvouz_r3_ack_recv(MPIDI_VC_t * vc, 
+				MPIDI_CH3_Pkt_rndv_r3_ack_t *r3ack_pkt)
+{
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_RNDV_R3_ACK_RECV);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_RNDV_R3_ACK_RECV);
+
+    DEBUG_PRINT("Received R3 Ack %d\n", r3ack_pkt->ack_data);
+    vc->ch.pending_r3_data -= r3ack_pkt->ack_data;
+    MPIU_Assert(vc->ch.pending_r3_data == 0);
+    PUSH_FLOWLIST(vc);
+    
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_RNDV_R3_ACK_RECV);
 }
 
 #undef FUNCNAME

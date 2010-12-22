@@ -111,6 +111,24 @@ typedef struct {
 #define SHMEM_COLL_BUF_SIZE (g_shmem_coll_blocks * SHMEM_COLL_BLOCK_SIZE + sizeof(shmem_coll_region))
 shmem_coll_region *shmem_coll;
 
+
+#define COLL_COUNT              7
+#define COLL_SIZE               3
+#define ALLGATHER_ID            0
+#define ALLREDUCE_SHMEM_ID      1
+#define ALLREDUCE_2LEVEL_ID     2
+#define BCAST_KNOMIAL_ID        3
+#define BCAST_SHMEM_ID          4
+#define REDUCE_SHMEM_ID         5
+#define REDUCE_2LEVEL_ID        6
+
+#define SMALL                   0
+#define MEDIUM                  1
+#define LARGE                   2
+
+extern int tuning_table[COLL_COUNT][COLL_SIZE]; 
+
+
 #define BCAST_LEN 20
 #define SHMEM_BCAST_FLAGS	1024
 /*
@@ -118,5 +136,41 @@ shmem_coll_region *shmem_coll;
  * #define SHMEM_BCAST_LEADERS     1024
  */
 #define SHMEM_BCAST_METADATA	(sizeof(addrint_t) + 2*sizeof(int))       /* METADATA: buffer address, offset, num_bytes */ 
+
+extern int enable_shmem_collectives;
+extern struct coll_runtime coll_param;
+extern void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int, int, int, void**);
+extern void MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(int, int, int);
+
+/* Use inside allreduce_osu.c*/
+extern int disable_shmem_allreduce;
+extern int check_comm_registry(MPI_Comm);
+
+
+/* Use inside alltoall_osu.h */
+extern int alltoall_dreg_disable_threshold;
+extern int alltoall_dreg_disable;
+extern int g_is_dreg_initialized;
+
+
+/* Use inside barrier_osu.c*/
+extern int disable_shmem_barrier;
+extern void MPIDI_CH3I_SHMEM_COLL_Barrier_gather(int, int, int);
+extern void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int, int, int);
+
+/* Use inside bcast_osu.c */
+extern int  knomial_2level_bcast_system_size_threshold;
+extern int  knomial_2level_bcast_message_size_threshold;
+extern int  enable_knomial_2level_bcast;
+extern int  inter_node_knomial_factor;
+extern int  intra_node_knomial_factor;
+extern int  bcast_short_msg_threshold;
+extern void MPID_SHMEM_COLL_GetShmemBcastBuf(void**, void*);
+extern void signal_local_processes(int, int, char*, int, int, void*);
+extern void wait_for_signal(int, int, char**, int*, int*, void*);
+
+/* Use inside reduce_osu.c */
+extern int disable_shmem_reduce;
+extern int check_comm_registry(MPI_Comm);
 
 #endif  /* _COLL_SHMEM_ */

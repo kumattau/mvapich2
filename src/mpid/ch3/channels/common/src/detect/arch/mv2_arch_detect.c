@@ -22,7 +22,8 @@
 
 #include "mv2_arch_hca_detect.h"
 
-static mv2_arch_type g_mv2_arch_type = MV2_ARCH_UNKWN; 
+static mv2_arch_type g_mv2_arch_type = MV2_ARCH_UNKWN;
+static int g_mv2_num_cpus = -1;
 
 
 #define CONFIG_FILE         "/proc/cpuinfo"
@@ -104,6 +105,7 @@ mv2_arch_type mv2_get_arch_type()
             fprintf(stderr, "Warning: %s: Failed to determine number of processors.\n", __func__);
             return arch_type;
         }
+        g_mv2_num_cpus = num_cpus;
 
         /* Count number of sockets */
         depth = hwloc_get_type_depth(topology, HWLOC_OBJ_SOCKET);
@@ -279,7 +281,8 @@ mv2_arch_type mv2_get_arch_type()
             }
         }
 
-        num_cpus = core_index;
+        /* Set the number of cores per node */
+        g_mv2_num_cpus = num_cpus = core_index;
         if ( 4 == num_cpus ) {
             if((memcmp(INTEL_XEON_DUAL_MAPPING,core_mapping,
                             sizeof(int)*num_cpus) == 0)
@@ -328,7 +331,6 @@ mv2_arch_type mv2_get_arch_type()
         }
 
         fclose(fp);
-
         g_mv2_arch_type = arch_type;
         return arch_type;
 
@@ -340,4 +342,13 @@ mv2_arch_type mv2_get_arch_type()
 
 #endif
 
+/* API for getting the number of cpus */
+int mv2_get_num_cpus()
+{
+    /* Check if num_cores is already identified */
+    if ( -1 == g_mv2_num_cpus ){
+        g_mv2_arch_type = mv2_get_arch_type();
+    }
+    return g_mv2_num_cpus;
+}
 

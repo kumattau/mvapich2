@@ -103,5 +103,7 @@ int MPID_nem_lmt_ib_start_send(struct MPIDI_VC *vc, struct MPID_Request *sreq,
 int MPID_nem_ib_lmt_start_recv(struct MPIDI_VC *VC, struct MPID_Request *rreq, MPID_IOV s_cookie);
 int MPID_nem_ib_lmt_done_recv(struct MPIDI_VC *VC, struct MPID_Request *rreq);
 int MPIDI_nem_ib_lmt_r3_recv_data(MPIDI_VC_t * vc, vbuf * buffer);
+void MPIDI_nem_ib_lmt_r3_recv_ack(MPIDI_VC_t * vc,
+                               void* vstart);
 
 #endif

@@ -129,8 +129,10 @@ CONFIGURE_ARGS_CLEAN=`echo $* | tr '"' ' '`
 AC_SUBST(CONFIGURE_ARGS_CLEAN)
 
 if test -z "$FC$F77"; then
-    export F77="gfortran"
-    export FC="gfortran"
+    if gfortran --version >&/dev/null; then
+        export F77="gfortran"
+        export FC="gfortran"
+    fi
 fi
 
 # Try to find the release date

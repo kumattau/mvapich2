@@ -18,9 +18,8 @@
  */
 
 #include "mpiimpl.h"
-
 #if defined(_OSU_MVAPICH_)
-extern struct coll_runtime coll_param;
+#include "coll_shmem.h"
 #endif /* defined(_OSU_MVAPICH_) */
 
 /* This is the default implementation of reduce. The algorithm is:
@@ -76,10 +75,6 @@ extern struct coll_runtime coll_param;
 /* begin:nested */
 /* not declared static because a machine-specific function may call this one
    in some cases */
-#if defined(_OSU_MVAPICH_)
-extern int enable_shmem_collectives;
-extern int disable_shmem_reduce;
-#endif /* defined(_OSU_MVAPICH_) */
 
 int MPIR_Reduce_OSU (
     void *sendbuf, 
@@ -113,9 +108,6 @@ int MPIR_Reduce_OSU (
     int stride = 0;
 	is_commutative = 0;
     int leader_root = 0, total_size, shmem_comm_rank;
-    extern int check_comm_registry(MPI_Comm);
-    extern int MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int, int, int, void**);
-    extern void MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(int, int, int);
 #endif /* defined(_OSU_MVAPICH_) */
 
 #ifdef HAVE_CXX_BINDING
@@ -276,9 +268,14 @@ int MPIR_Reduce_OSU (
                                       shmem_comm_rank, (void *)&shmem_buf);
 			local_buf = (char*)shmem_buf + stride*local_rank;
 			MPIR_Nest_incr();
-			mpi_errno = MPIR_Localcopy(sendbuf, count, datatype, 
+                        if(sendbuf != MPI_IN_PLACE) {
+ 		   	       mpi_errno = MPIR_Localcopy(sendbuf, count, datatype, 
 						       local_buf, count, datatype);
-			MPIR_Nest_decr();
+                        } else { 
+ 		   	       mpi_errno = MPIR_Localcopy(recvbuf, count, datatype, 
+                 				       local_buf, count, datatype);
+                        } 
+                    	MPIR_Nest_decr();
 			MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(local_size, local_rank, 
 								shmem_comm_rank);
                 }

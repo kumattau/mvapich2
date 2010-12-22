@@ -536,7 +536,9 @@ extern int disable_split_comm(pthread_t);
 extern void create_2level_comm (MPI_Comm, int, int);
 extern int enable_split_comm(pthread_t);
 
-struct coll_runtime coll_param = { MPIR_ALLREDUCE_SHORT_MSG,
+struct coll_runtime coll_param = { MPIR_ALLGATHER_SHORT_MSG, 
+                                   MPIR_ALLGATHER_LONG_MSG, 
+                                   MPIR_ALLREDUCE_SHORT_MSG,
                                    MPIR_ALLREDUCE_2LEVEL_THRESHOLD,
                                    MPIR_REDUCE_SHORT_MSG,
                                    MPIR_REDUCE_2LEVEL_THRESHOLD,
@@ -721,6 +723,14 @@ void MV2_Read_env_vars(void){
     if ((value = getenv("MV2_ALLREDUCE_SHORT_MSG")) != NULL){
 	    flag = (int)atoi(value);
 	    if (flag >= 0) coll_param.allreduce_short_msg = flag;
+    }
+    if ((value = getenv("MV2_ALLGATHER_RD_THRESHOLD")) != NULL){
+	    flag = (int)atoi(value);
+	    if (flag >= 0) coll_param.allgather_rd_threshold = flag;
+    }
+    if ((value = getenv("MV2_ALLGATHER_BRUCK_THRESHOLD")) != NULL){
+	    flag = (int)atoi(value);
+	    if (flag >= 0) coll_param.allgather_bruck_threshold = flag;
     }
     if ((value = getenv("MV2_ALLREDUCE_2LEVEL_MSG")) != NULL){
         flag = (int)atoi(value);

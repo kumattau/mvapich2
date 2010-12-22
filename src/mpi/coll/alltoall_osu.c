@@ -17,6 +17,9 @@
  */
 
 #include "mpiimpl.h"
+#if defined(_OSU_MVAPICH_)
+#include "coll_shmem.h"
+#endif /* defined(_OSU_MVAPICH_) */
 
 /* This is the default implementation of alltoall. The algorithm is:
    
@@ -58,11 +61,6 @@
 
    End Algorithm: MPI_Alltoall
 */
-#if defined(_OSU_MVAPICH_) 
-extern int alltoall_dreg_disable_threshold;
-extern int alltoall_dreg_disable;
-extern int g_is_dreg_initialized;
-#endif /* defined(_OSU_MVAPICH_) */
 
 
 /* begin:nested */

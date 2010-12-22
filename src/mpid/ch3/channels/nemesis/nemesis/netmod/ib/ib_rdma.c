@@ -36,8 +36,12 @@ int deregister_memory(struct ibv_mr * mr)
 
 
 
+#undef FUNCNAME
+#define FUNCNAME vbuf_fast_rdma_alloc
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
 /*vbuf_fast_rdma_alloc in iba_priv.c*/
-void vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
+int vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
 {
     vbuf * v;
     int vbuf_alignment = 64;
@@ -47,6 +51,9 @@ void vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
 
     void *vbuf_ctrl_buf = NULL;
     void *vbuf_rdma_buf = NULL;
+    int mpi_errno = MPI_SUCCESS;
+    MPIDI_STATE_DECL(MPID_NEM_IB_VBUF_FAST_RDMA_ALLOC);
+    MPIDI_FUNC_ENTER(MPID_NEM_IB_VBUF_FAST_RDMA_ALLOC);
 
     /* initialize revelant fields */
     VC_FIELD(c, connection)->rfp.rdma_credit = 0;
@@ -59,8 +66,8 @@ void vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
     /* allocate vbuf struct buffers */
         if(posix_memalign((void **) &vbuf_ctrl_buf, vbuf_alignment,
             sizeof(struct vbuf) * num_rdma_buffer)) {
-            ibv_error_abort(GEN_EXIT_ERR,
-                    "malloc: vbuf in vbuf_fast_rdma_alloc");
+            DEBUG_PRINT("malloc failed: vbuf in vbuf_fast_rdma_alloc\n");
+            goto fn_fail;
         }
 #endif /* USE_MEMORY_TRACING */
 
@@ -73,8 +80,8 @@ void vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
         /* allocate vbuf RDMA buffers */
         if(posix_memalign((void **)&vbuf_rdma_buf, pagesize,
             rdma_vbuf_total_size * num_rdma_buffer)) {
-            ibv_error_abort(GEN_EXIT_ERR,
-                "malloc: vbuf DMA in vbuf_fast_rdma_alloc");
+            DEBUG_PRINT("malloc failed: vbuf DMA in vbuf_fast_rdma_alloc");
+            goto fn_exit;
         }
 #endif /* USE_MEMORY_TRACING */
 
@@ -85,9 +92,9 @@ void vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
             mem_handle[i] =  register_memory(vbuf_rdma_buf,
                                 rdma_vbuf_total_size * num_rdma_buffer, i);
             if (!mem_handle[i]) {
-                ibv_va_error_abort(GEN_EXIT_ERR,
-                        "fail to register rdma memory, size %d\n",
+                DEBUG_PRINT("fail to register rdma memory, size %d\n",
                         rdma_vbuf_total_size * num_rdma_buffer);
+                goto fn_fail;
             }
         }
 
@@ -128,21 +135,21 @@ void vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
             VC_FIELD(c, connection)->rfp.RDMA_recv_buf_DMA   = vbuf_rdma_buf;
             for (i = 0; i < ib_hca_num_hcas; i++)
                 VC_FIELD(c, connection)->rfp.RDMA_recv_buf_mr[i] = mem_handle[i];
-            /* set pointers */
-            VC_FIELD(c, connection)->rfp.p_RDMA_recv = 0;
-            VC_FIELD(c, connection)->rfp.p_RDMA_recv_tail = num_rdma_buffer - 1;
-
-            /* Add the connection to the RDMA polling list */
-            process_info.polling_set
-              [process_info.polling_group_size] = c;
-            process_info.polling_group_size++;
-
-            VC_FIELD(c, cmanager)->num_channels      += 1;
-            VC_FIELD(c, cmanager)->num_local_pollings = 1;
-            VC_FIELD(c, connection)->rfp.in_polling_set          = 1;
         }
 
     }
+fn_exit:
+    MPIDI_FUNC_EXIT(MPID_NEM_IB_VBUF_FAST_RDMA_ALLOC);
+    return mpi_errno;
+fn_fail:
+    if (vbuf_rdma_buf) {
+        MPIU_Free(vbuf_rdma_buf);
+    }
+    if (vbuf_ctrl_buf) {
+        MPIU_Free(vbuf_ctrl_buf);
+    }
+    mpi_errno = -1;
+    goto fn_exit;
 }
 
 

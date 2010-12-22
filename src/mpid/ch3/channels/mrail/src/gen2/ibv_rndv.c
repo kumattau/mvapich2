@@ -665,6 +665,40 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
     sreq->mrail.nearly_complete = 1;
 }
 
+int MPIDI_CH3I_MRAILI_Rendezvous_r3_ack_send(MPIDI_VC_t *vc)
+{
+    vbuf *v;
+    int mpi_errno;
+    MPID_IOV iov;
+    int n_iov = 1;
+    int total_len;
+    int nb = 0;
+    int rail;
+    MPID_Seqnum_t seqnum;
+
+    v = get_vbuf();
+    rail = MRAILI_Send_select_rail(vc);
+ 
+    MPIDI_CH3_Pkt_rndv_r3_ack_t r3_ack;
+    MPIDI_Pkt_init(&r3_ack, MPIDI_CH3_PKT_RNDV_R3_ACK);
+    MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+    MPIDI_Pkt_set_seqnum(&r3_ack, seqnum);
+
+    r3_ack.ack_data = vc->ch.received_r3_data;
+    vc->ch.received_r3_data = 0;
+
+    iov.MPID_IOV_BUF = &r3_ack;
+    iov.MPID_IOV_LEN = sizeof(MPIDI_CH3_Pkt_rndv_r3_ack_t);
+
+    total_len = MRAILI_Fill_start_buffer(v, &iov, 1);
+    DEBUG_PRINT("[[eager send] len %d vbuf: %p\n",total_len, v);
+    vbuf_init_send(v, total_len, rail);
+    
+    mpi_errno = MPIDI_CH3I_RDMA_Process.post_send(vc, v, rail);
+
+    return mpi_errno;
+}
+
 /* Algorithm:
  * if (message size < striping threshold)
  *     mark as complete, independent of the rendezvous protocol

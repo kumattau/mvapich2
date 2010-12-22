@@ -59,7 +59,9 @@ int           rdma_get_fallback_threshold;
 int           rdma_integer_pool_size = RDMA_INTEGER_POOL_SIZE;
 int           rdma_polling_set_limit = -1;
 int           rdma_polling_set_threshold = 10;
-int	      rdma_eager_limit = 32;
+int           rdma_fp_sendconn_accepted = 0;
+int           rdma_pending_conn_request = 0;
+int	          rdma_eager_limit = 32;
 int           rdma_iba_eager_threshold;
 char          rdma_iba_hca[32];
 int           rdma_max_inline_size;
@@ -67,6 +69,7 @@ unsigned int  rdma_ndreg_entries = RDMA_NDREG_ENTRIES;
 int           rdma_rndv_protocol = MV2_LMT_PROTOCOL_RPUT;
 int           rdma_r3_threshold = 4096;
 int           rdma_r3_threshold_nocache = 8192 * 4;
+int           rdma_max_r3_pending_data = 512 * 1024;
 int           num_rdma_buffer;
 int           rdma_use_smp = 1;
 int           enable_knomial_2level_bcast=1;
@@ -449,6 +452,13 @@ int MPID_nem_ib_get_control_params_after_hcainit()
         rdma_r3_threshold_nocache = atoi(value);
         if(rdma_r3_threshold_nocache < 0) {
             rdma_r3_threshold_nocache = 0;
+        }
+    }
+
+    if ((value = getenv("MV2_MAX_R3_PENDING_DATA")) !=NULL) {
+        rdma_max_r3_pending_data = atoi(value);
+        if (rdma_max_r3_pending_data < 0) {
+            rdma_max_r3_pending_data = 0;
         }
     }
 

@@ -34,6 +34,7 @@ int MPIDI_CH3_Pkt_size_index[] = {
     sizeof(MPIDI_CH3_Pkt_packetized_send_start_t),
     sizeof(MPIDI_CH3_Pkt_packetized_send_data_t),
     sizeof(MPIDI_nem_ib_pkt_address),
+    sizeof(MPIDI_nem_ib_pkt_address_reply),
 #if defined(USE_EAGER_SHORT)
     sizeof(MPIDI_CH3_Pkt_eagershort_send_t),
 #endif /* defined(USE_EAGER_SHORT) */
@@ -86,6 +87,7 @@ int MPIDI_CH3I_nem_ib_parse_header(MPIDI_VC_t * vc,
     unsigned long crc;
 #endif
     int mpi_errno = MPI_SUCCESS;
+    int ret;
     DEBUG_PRINT("[parse header] vbuf address %p\n", v);
     vstart = v->pheader;
     header = (MPIDI_nem_ib_pkt_comm_header *)v->iheader;
@@ -199,6 +201,12 @@ int MPIDI_CH3I_nem_ib_parse_header(MPIDI_VC_t * vc,
             MPIDI_nem_ib_recv_addr(vc, vstart);
             break;
         }
+    case MPIDI_CH3_PKT_ADDRESS_REPLY:
+        {
+            *pkt = v->iheader;
+            MPIDI_nem_ib_recv_addr_reply(vc, vstart);
+            break;
+        }
     case MPIDI_CH3_PKT_PACKETIZED_SEND_START:
         {
             *pkt = vstart;
@@ -215,6 +223,12 @@ int MPIDI_CH3I_nem_ib_parse_header(MPIDI_VC_t * vc,
         {
             *header_size = sizeof(MPIDI_CH3_Pkt_rndv_r3_data_t);
             *pkt = vstart;
+            break;
+        }
+    case MPIDI_CH3_PKT_RNDV_R3_ACK:
+        {
+            *pkt = v->iheader;
+            MPIDI_nem_ib_lmt_r3_recv_ack(vc, vstart);
             break;
         }
     case MPIDI_CH3_PKT_EAGER_SYNC_SEND:
@@ -324,15 +338,20 @@ int MPIDI_CH3I_nem_ib_parse_header(MPIDI_VC_t * vc,
 
     /* rfp codes */
     if ((VC_FIELD(vc, connection)->rfp.RDMA_recv_buf == NULL) &&       /*(c->initialized) && */
-            num_rdma_buffer) {
-        if (process_info.polling_group_size <
+            num_rdma_buffer && !VC_FIELD(vc, connection)->rfp.rdma_failed) {
+        if ((process_info.polling_group_size + rdma_pending_conn_request) <
                 rdma_polling_set_limit) {
             VC_FIELD(vc, connection)->rfp.eager_start_cnt++;
             if (rdma_polling_set_threshold <
                     VC_FIELD(vc, connection)->rfp.eager_start_cnt) {
                 {
-                    vbuf_fast_rdma_alloc(vc, 1);
-                    vbuf_address_send(vc);
+                    ret = vbuf_fast_rdma_alloc(vc, 1);
+                    if (ret == MPI_SUCCESS) {
+                        vbuf_address_send(vc);
+                        rdma_pending_conn_request++;
+                    } else {
+                        VC_FIELD(vc, connection)->rfp.rdma_failed = 1;
+                    }
                     goto fn_exit;
                 }
             }
@@ -410,6 +429,7 @@ int MPIDI_nem_ib_recv_addr(MPIDI_VC_t * vc, void *vstart)
 {
     MPIDI_nem_ib_pkt_address *pkt = vstart;
     int i;
+    int ret;
 #ifdef _ENABLE_XRC_
     if (USE_XRC && (0 == MPIDI_CH3I_RDMA_Process.xrc_rdmafp ||
             VC_XST_ISSET (vc, XF_CONN_CLOSING)))
@@ -418,15 +438,96 @@ int MPIDI_nem_ib_recv_addr(MPIDI_VC_t * vc, void *vstart)
     DEBUG_PRINT("set rdma address, dma address %p\n",
             (void *)pkt->rdma_address);
 
-    if (pkt->rdma_address != 0) {
-    /* Allocating the send vbufs for the eager RDMA flow */
-    vbuf_fast_rdma_alloc(vc, 0);
+    /* check if it has accepted max allowing connections */
+    if (rdma_fp_sendconn_accepted >= rdma_polling_set_limit)
+    {
+        vbuf_address_reply_send(vc, RDMA_FP_MAX_SEND_CONN_REACHED);
+        goto fn_exit;
+    }
 
-    for (i = 0; i < ib_hca_num_hcas; i ++) {
-        VC_FIELD(vc, connection)->rfp.RDMA_remote_buf_rkey[i] = pkt->rdma_hndl[i];
+    if (pkt->rdma_address != 0) {
+        /* Allocating the send vbufs for the eager RDMA flow */
+        ret = vbuf_fast_rdma_alloc(vc, 0);
+        if (ret == MPI_SUCCESS) {
+            for (i = 0; i < ib_hca_num_hcas; i ++) {
+                VC_FIELD(vc, connection)->rfp.RDMA_remote_buf_rkey[i] = pkt->rdma_hndl[i];
+            }
+            VC_FIELD(vc, connection)->rfp.remote_RDMA_buf = (void *)pkt->rdma_address;
+            vbuf_address_reply_send(vc, RDMA_FP_SUCCESS);
+            rdma_fp_sendconn_accepted++;
+        } else {
+            vbuf_address_reply_send(vc, RDMA_FP_SENDBUFF_ALLOC_FAILED);
+            return -1;
+        }
     }
-    VC_FIELD(vc, connection)->rfp.remote_RDMA_buf = (void *)pkt->rdma_address;
+fn_exit:
+    return MPI_SUCCESS;
+}
+
+int MPIDI_nem_ib_recv_addr_reply(MPIDI_VC_t * vc, void *vstart)
+{
+    int hca_index;
+    int ret;
+    MPIDI_nem_ib_pkt_address_reply *pkt = vstart;
+    DEBUG_PRINT("Received addr reply packet. reply data :%d\n", pkt->reply_data);
+
+    if (pkt->reply_data == RDMA_FP_SENDBUFF_ALLOC_FAILED
+        || pkt->reply_data == RDMA_FP_MAX_SEND_CONN_REACHED) {
+
+        DEBUG_PRINT("RDMA FP setup failed. clean up recv buffers\n ");
+
+        /* de-regster the recv buffers */
+        for (hca_index = 0; hca_index < ib_hca_num_hcas; hca_index++) {
+            if (VC_FIELD(vc, connection)->rfp.RDMA_recv_buf_mr[hca_index]) {
+                ret = deregister_memory(VC_FIELD(vc, connection)->rfp.RDMA_recv_buf_mr[hca_index]);
+            if (ret) {
+                MPIU_Error_printf("Failed to deregister mr (%d)\n", ret);
+            } else {
+                VC_FIELD(vc, connection)->rfp.RDMA_recv_buf_mr[hca_index] = NULL;
+            }
+            }
+        }
+        /* deallocate recv RDMA buffers */
+        if (VC_FIELD(vc, connection)->rfp.RDMA_recv_buf_DMA) {
+            MPIU_Free(VC_FIELD(vc, connection)->rfp.RDMA_recv_buf_DMA);
+            VC_FIELD(vc, connection)->rfp.RDMA_recv_buf_DMA = NULL;
+        }
+
+        /* deallocate vbuf struct buffers */
+        if (VC_FIELD(vc, connection)->rfp.RDMA_recv_buf) {
+            MPIU_Free(VC_FIELD(vc, connection)->rfp.RDMA_recv_buf);
+            VC_FIELD(vc, connection)->rfp.RDMA_recv_buf = NULL;
+        }
+
+        /* set flag to mark that FP setup is failed/rejected. 
+        we sholdn't try further on this vc */
+        VC_FIELD(vc, connection)->rfp.rdma_failed = 1;
+
+    } else if (pkt->reply_data == RDMA_FP_SUCCESS) {
+
+        /* set pointers */
+        VC_FIELD(vc, connection)->rfp.p_RDMA_recv = 0;
+        VC_FIELD(vc, connection)->rfp.p_RDMA_recv_tail = num_rdma_buffer - 1;
+
+        /* Add the connection to the RDMA polling list */
+        MPIU_Assert(process_info.polling_group_size < rdma_polling_set_limit);
+
+        process_info.polling_set
+            [process_info.polling_group_size] = vc;
+        process_info.polling_group_size++;
+
+        VC_FIELD(vc, cmanager)->num_channels      += 1;
+        VC_FIELD(vc, cmanager)->num_local_pollings = 1;
+        VC_FIELD(vc, connection)->rfp.in_polling_set          = 1;
+
+    } else {
+        ibv_va_error_abort(GEN_EXIT_ERR,
+                "Invalid reply data received. reply_data: pkt->reply_data%d\n",
+                                                              pkt->reply_data);
     }
+
+
+    rdma_pending_conn_request--;
 
     return MPI_SUCCESS;
 }
@@ -530,3 +631,4 @@ int MPIDI_nem_ib_packetized_recv_data(MPIDI_VC_t * vc, vbuf *v)
     return mpi_errno;
 
 }
+

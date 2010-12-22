@@ -20,7 +20,7 @@
 #include "ib_vc.h"
 #include "ib_hca.h"
 
-void vbuf_fast_rdma_alloc(MPIDI_VC_t * c, int dir);
+int vbuf_fast_rdma_alloc(MPIDI_VC_t * c, int dir);
 int deregister_memory(struct ibv_mr * mr); 
 struct ibv_mr * register_memory(void * buf, int len, int hca_num);
 #endif

@@ -67,6 +67,8 @@ int MPID_nem_ib_vc_init (MPIDI_VC_t *vc )
     VC_FIELD(vc, in_queue) = 0;
     VC_FIELD(vc, seqnum_recv) = 0;
     VC_FIELD(vc, seqnum_send) = 0;
+    VC_FIELD(vc, pending_r3_data) = 0;
+    VC_FIELD(vc, received_r3_data) = 0;
 
     VC_FIELD(vc, conn_status) = MPID_NEM_IB_CONN_NONE;
 
@@ -83,6 +85,7 @@ int MPID_nem_ib_vc_init (MPIDI_VC_t *vc )
     VC_FIELD(vc, connection)->rfp.ptail_RDMA_send = 0;
     VC_FIELD(vc, connection)->rfp.p_RDMA_recv = 0;
     VC_FIELD(vc, connection)->rfp.p_RDMA_recv_tail = 0;
+    VC_FIELD(vc, connection)->rfp.rdma_failed = 0;
 
     VC_FIELD(vc, connection)->next_packet_expected  = 0;
     VC_FIELD(vc, connection)->next_packet_tosend    = 0;

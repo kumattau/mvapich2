@@ -19,16 +19,17 @@
 
 #define MPI_MRAIL_MSG_QUEUED (-1)
 
-
 typedef enum MPIDI_nem_ib_Pkt_type
 {
     MPIDI_CH3_PKT_NOOP = 100,
     MPIDI_CH3_PKT_ADDRESS,
+    MPIDI_CH3_PKT_ADDRESS_REPLY,
     MPIDI_CH3_PKT_FAST_EAGER_SEND,
     MPIDI_CH3_PKT_FAST_EAGER_SEND_WITH_REQ,
     MPIDI_CH3_PKT_PACKETIZED_SEND_START,
     MPIDI_CH3_PKT_PACKETIZED_SEND_DATA,
-    MPIDI_CH3_PKT_RNDV_R3_DATA
+    MPIDI_CH3_PKT_RNDV_R3_DATA, 
+    MPIDI_CH3_PKT_RNDV_R3_ACK
 }
 MPIDI_nem_ib_Pkt_type_t;
 
@@ -51,6 +52,19 @@ typedef struct MPIDI_nem_ib_pkt_address_t {
     uint32_t rdma_hndl[MAX_NUM_HCAS];
 } MPIDI_nem_ib_pkt_address;
 
+typedef struct MPIDI_nem_ib_pkt_address_reply_t {
+    uint8_t type;
+    uint8_t reply_data;
+} MPIDI_nem_ib_pkt_address_reply;
+
+typedef struct MPIDI_CH3_Pkt_rndv_r3_ack{
+    uint8_t type;
+    uint32_t ack_data;
+} MPIDI_CH3_Pkt_rndv_r3_ack_t;
+/* data values for reply_data field*/
+#define RDMA_FP_SUCCESS                 111
+#define RDMA_FP_SENDBUFF_ALLOC_FAILED   121
+#define RDMA_FP_MAX_SEND_CONN_REACHED   131
 #ifndef MV2_DISABLE_HEADER_CACHING
 #define MAX_SIZE_WITH_HEADER_CACHING 255
 
@@ -79,6 +93,7 @@ typedef struct MPIDI_CH3_Pkt_packetized_send_data {
     uint16_t seqnum;
     MPI_Request receiver_req_id;
 } MPIDI_CH3_Pkt_packetized_send_data_t;
+
 
 #define MPIDI_CH3_Pkt_rndv_r3_data_t MPIDI_CH3_Pkt_packetized_send_data_t
 
@@ -115,6 +130,7 @@ int MRAILI_Backlog_send(MPIDI_VC_t * vc, int rail);
 
 void MRAILI_Ext_sendq_enqueue(MPIDI_VC_t *c, int rail, vbuf * v);
 void vbuf_address_send(MPIDI_VC_t *vc);
+void vbuf_address_reply_send(MPIDI_VC_t *vc, uint8_t data);
 int MPIDI_nem_ib_fast_rdma_ok(MPIDI_VC_t * vc, int len);
 int MPIDI_nem_ib_fast_rdma_send_complete(MPIDI_VC_t * vc,
                                               MPID_IOV * iov,
@@ -129,4 +145,5 @@ int MPIDI_nem_ib_eager_send(MPIDI_VC_t * vc,
                         int pkt_len,
                         int *num_bytes_ptr,
                         vbuf **buf_handle);
+MPIDI_nem_ib_lmt_r3_ack_send(MPIDI_VC_t *vc);
 #endif

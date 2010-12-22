@@ -1219,15 +1219,25 @@ no_cr_aggre:
     mpispawn_checkin(l_port);
 
     if (USE_LINEAR_SSH) {
-        mt_degree = mpispawn_tree_init (mt_id, l_socket);
-        if (mt_degree == -1)
-            exit (EXIT_FAILURE);
+        mt_degree = ceil(pow(mt_nnodes, (1.0 / (MT_MAX_LEVEL - 1))));
+
+        if (mt_degree < MT_MIN_DEGREE) {
+            mt_degree = MT_MIN_DEGREE;
+        }
+
+        if (mt_degree > MT_MAX_DEGREE) {
+            mt_degree = MT_MAX_DEGREE;
+        }
+
 #ifdef CKPT
-        mpispawn_fds = mpispawn_tree_connect (0, mt_degree);
-        if (NULL == mpispawn_fds)
-            return EXIT_FAILURE;
+        mpispawn_fds = mpispawn_tree_init (mt_id, mt_degree, mt_nnodes,
+                l_socket);
+        if (mpispawn_fds == NULL) {
+            exit (EXIT_FAILURE);
+        }
     }
-	mtpmi_init();
+
+    mtpmi_init();
 #else
     }
 #endif
@@ -1273,10 +1283,13 @@ skip_spawn_processes:
 #endif
 #else
     if (USE_LINEAR_SSH) {
-        mpispawn_fds = mpispawn_tree_connect (0, mt_degree);
-        if (NULL == mpispawn_fds)
-            return EXIT_FAILURE;
+        mpispawn_fds = mpispawn_tree_init (mt_id, mt_degree, mt_nnodes,
+                l_socket);
+        if (mpispawn_fds == NULL) {
+            exit (EXIT_FAILURE);
+        }
     }
+
     mtpmi_init();
 #endif
         mtpmi_processops ();

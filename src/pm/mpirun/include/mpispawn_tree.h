@@ -43,8 +43,11 @@ typedef struct {
 } child_t;
 #define child_s sizeof (child_t)
 
-int mpispawn_tree_init (size_t me, int req_socket);
-int *mpispawn_tree_connect (size_t root, size_t degree);
+extern int * mpispawn_tree_init (
+        size_t me,
+        const size_t degree,
+        const size_t node_count,
+        int req_socket);
 void mpispawn_abort (int code);
 int mtpmi_init (void);
 int mtpmi_processops (void);

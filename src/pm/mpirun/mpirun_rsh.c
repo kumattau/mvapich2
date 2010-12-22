@@ -439,8 +439,8 @@ restart_from_ckpt:
 
     wait_for_mpispawn(server_socket, &sockaddr, sockaddr_len);
     
-    dbg(" after wait_for_spawn: cached_restart_context=%d\n", cached_restart_context);
 #ifdef CKPT
+    dbg(" after wait_for_spawn: cached_restart_context=%d\n", cached_restart_context);
     finalize_ckpt();
     if(cached_restart_context)
         goto restart_from_ckpt;
@@ -2347,8 +2347,47 @@ void child_handler(int signal)
 
     while (1) 
     {
-        //dbg("pid count =%d num_exited %d\n",++count, num_exited);
-        pid = wait(&status);
+        dbg("pid count =%d num_exited %d\n",count, num_exited);
+        
+        // Retry while system call is interrupted
+        do {
+            pid = waitpid ( -1, &status, WNOHANG );
+        } while ( pid == -1 && errno == EINTR );
+
+        // Debug output
+        if (pid < 0) {
+            dbg("waitpid return pid = %d: errno = %d: %s\n", pid, errno, strerror_r(errno,NULL,0));
+        } else {
+            dbg("waitpid return pid = %d\n", pid);
+            if ( WIFEXITED(status) ) {
+                dbg("process %d exited with status %d\n", pid, WEXITSTATUS(status));
+            } else if ( WIFSIGNALED(status) ) {
+                dbg("process %d terminated with signal %d\n", pid, WTERMSIG(status));
+            } else if ( WIFSTOPPED(status) ) {
+                dbg("process %d stopped with signal %d\n", pid, WSTOPSIG(status));
+            } else if ( WIFCONTINUED(status) ) {
+                dbg("process %d continued\n", pid);
+            }
+        }
+
+        if ( pid < 0 ) {
+            if ( errno == ECHILD ) {
+                // No more unwaited-for child -> end mpirun_rsh
+                if (legacy_startup)
+                    close(server_socket);
+                exit(EXIT_SUCCESS);
+            } else {
+                // Unhandled cases -> error
+                fprintf( stderr, "[mpirun_rsh][%s:%d] ", __FILE__, __LINE__ );
+                fprintf( stderr, "Error in %s: ", __func__ );
+                fprintf( stderr, "waitpid returned %d: %s\n", pid, strerror_r(errno,NULL,0) );
+                exit(EXIT_FAILURE);
+            }
+        } else if ( pid == 0 ) {
+            // No more exited child -> end handler
+            return;
+        }
+
         count++;
         /*With DPM if a SIGCHLD is sent by a child mpirun the mpirun
          *root must not end. It must continue its run and terminate only
@@ -2361,7 +2400,8 @@ void child_handler(int signal)
                         else
                             prev->next = (list_pid_mpirun_t *)curr->next;
                         free(curr);
-                        return;
+                        // Try with next exited child
+                        continue;
                     }
                     prev = curr;
                     curr = curr->next;
@@ -2373,22 +2413,16 @@ void child_handler(int signal)
         if (dpm_mpirun_pids != NULL && curr == NULL)
             check_mpirun = 0;
         dbg( "wait pid =%d count =%d, errno=%d\n",pid, count, errno);
-        /* No children to wait on */
-        if ((pid < 0) && (errno == ECHILD)) {
-            if (legacy_startup)
-                close(server_socket);
-            exit(EXIT_SUCCESS);
-        }
-//#ifdef CR_FTB
+
 #ifdef CKPT
         if( lookup_exit_pid(pid) >= 0 )
-#endif
         num_exited++;
         dbg(" pid =%d count =%d, num_exited=%d,nspawn=%d, ckptcnt=%d, wait_socks_succ=%d\n",
                 pid, count,num_exited, NSPAWNS, checkpoint_count, wait_socks_succ);
         // If number of active nodes have exited, ensure all 
         // other spare nodes are killed too.
-#if defined(CKPT) && defined(CR_FTB)
+
+#ifdef CR_FTB
         dbg("nsparehosts=%d\n", nsparehosts);
         if(sparehosts_on && (num_exited >= ( NSPAWNS - nsparehosts )))
         {
@@ -2397,8 +2431,11 @@ void child_handler(int signal)
             rkill_fast();
         }
 #endif
-#ifdef CKPT
-        if( num_exited < NSPAWNS )  return;
+
+        if( num_exited < NSPAWNS ) {
+            // Try with next exited child
+            continue;
+        }
 #endif
         if (!WIFEXITED(status) || WEXITSTATUS(status)) {
             /*
@@ -2497,8 +2534,7 @@ void mpispawn_checkin(int s, struct sockaddr *sockaddr, unsigned int
         cleanup();
     }
 
-    if (USE_LINEAR_SSH) 
-    {
+    if (USE_LINEAR_SSH) {
         sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (sock < 0) {
             perror("socket [mpispawn_checkin]");
@@ -2511,19 +2547,17 @@ void mpispawn_checkin(int s, struct sockaddr *sockaddr, unsigned int
             cleanup();
         }
 
-    /*
-     * Send address array to address[0] (mpispawn with id 0).  The mpispawn
-     * processes will propagate this information to each other after connecting
-     * in a tree like structure.
-     */
-        if (write_socket(sock, &pglist->npgs, sizeof(pglist->npgs))
-            || write_socket(sock, &address, sizeof(addr) * pglist->npgs)
-                || write_socket (sock, &mt_degree, sizeof (int))
+        /*
+         * Send address array to address[0] (mpispawn with id 0).  The mpispawn
+         * processes will propagate this information to each other after
+         * connecting in a tree like structure.
+         */
+        if (write_socket(sock, &address, sizeof(addr) * pglist->npgs)
 #if defined(CKPT) && defined(CR_FTB)
-                || write_socket (sock, spawninfo, sizeof(struct spawn_info_s)*(pglist->npgs))
+                || write_socket(sock, spawninfo, sizeof(struct
+                        spawn_info_s)*(pglist->npgs))
 #endif                                              
-            ) 
-        {
+            ) {
             cleanup();
         }
 

@@ -1064,6 +1064,7 @@ int MRAILI_Process_send(void *vbuf_addr)
 
     case MPIDI_CH3_PKT_NOOP:
     case MPIDI_CH3_PKT_ADDRESS:
+    case MPIDI_CH3_PKT_ADDRESS_REPLY:
     case MPIDI_CH3_PKT_PACKETIZED_SEND_START:
     case MPIDI_CH3_PKT_RNDV_CLR_TO_SEND:
     case MPIDI_CH3_PKT_EAGER_SYNC_ACK:
@@ -1081,6 +1082,7 @@ int MRAILI_Process_send(void *vbuf_addr)
     case MPIDI_NEM_PKT_LMT_RTS:
     case MPIDI_NEM_PKT_LMT_CTS:
     case MPIDI_NEM_PKT_LMT_COOKIE:
+    case MPIDI_CH3_PKT_RNDV_R3_ACK:
         DEBUG_PRINT("[process send] get %d\n", p->type);
 
         if (v->padding == NORMAL_VBUF_FLAG) {
@@ -1508,3 +1510,51 @@ void vbuf_address_send(MPIDI_VC_t *vc)
     process_info.post_send(vc, v, rail);
 }
 
+void vbuf_address_reply_send(MPIDI_VC_t *vc, uint8_t data)
+{
+    int rail;
+
+    vbuf *v = get_vbuf();
+    MPIDI_nem_ib_pkt_address_reply *p = (MPIDI_nem_ib_pkt_address_reply *) v->pheader;
+    MPIDI_nem_ib_pkt_comm_header *pi = v->iheader;
+
+    rail = MPIDI_nem_ib_send_select_rail(vc);
+    pi->type = MPIDI_CH3_PKT_ADDRESS_REPLY;
+    p->type     = 0;
+    p->reply_data = data;
+
+    vbuf_init_send(v, sizeof(MPIDI_nem_ib_pkt_address_reply)+IB_PKT_HEADER_LENGTH, rail);
+    process_info.post_send(vc, v, rail);
+}
+
+#undef FUNCNAME
+#define FUNCNAME MPIDI_nem_ib_lmt_r3_ack_send
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int MPIDI_nem_ib_lmt_r3_ack_send(MPIDI_VC_t *vc)
+{
+    vbuf *v;
+    int mpi_errno;
+    int rail;
+
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_NEM_IB_LMT_R3_ACK_SEND);
+    MPIDI_FUNC_ENTER(PID_STATE_MPIDI_NEM_IB_LMT_R3_ACK_SEND);
+
+    v = get_vbuf();
+    MPIDI_CH3_Pkt_rndv_r3_ack_t* p = (MPIDI_CH3_Pkt_rndv_r3_ack_t*) v->pheader;
+    MPIDI_nem_ib_pkt_comm_header *pi = v->iheader;
+    rail = MPIDI_nem_ib_send_select_rail(vc);
+
+    pi->type = MPIDI_CH3_PKT_RNDV_R3_ACK;
+    p->type = 0;
+
+    p->ack_data = VC_FIELD(vc, received_r3_data);
+    VC_FIELD(vc, received_r3_data) = 0;
+
+    vbuf_init_send(v, sizeof(MPIDI_CH3_Pkt_rndv_r3_ack_t) + IB_PKT_HEADER_LENGTH, rail);
+
+    mpi_errno = process_info.post_send(vc, v, rail);
+
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_NEM_IB_LMT_R3_ACK_SEND);
+    return mpi_errno;
+}

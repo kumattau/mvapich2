@@ -151,11 +151,10 @@ MPIDI_CH3I_RDMA_start (MPID_Win * win_ptr,
 write operation with fence to update the remote flag in target processes*/
 void
 MPIDI_CH3I_RDMA_complete_rma (MPID_Win * win_ptr,
-                              int start_grp_size, int *ranks_in_win_grp,
-                              int send_complete)
+                              int start_grp_size, int *ranks_in_win_grp)
 {
     int i, target, dst;
-    int comm_size;
+    int my_rank, comm_size;
     int* nops_to_proc = NULL;
     int mpi_errno;
     MPID_Comm* comm_ptr = NULL;
@@ -163,7 +162,16 @@ MPIDI_CH3I_RDMA_complete_rma (MPID_Win * win_ptr,
     MPIDI_VC_t* vc = NULL;
 
     MPID_Comm_get_ptr (win_ptr->comm, comm_ptr);
+    my_rank = comm_ptr->rank;
     comm_size = comm_ptr->local_size;
+
+    /* clean up all the post flag */
+    for (i = 0; i < start_grp_size; i++)
+      {
+          dst = ranks_in_win_grp[i];
+          win_ptr->post_flag[dst] = 0;
+      }
+    win_ptr->using_start = 0;
 
     nops_to_proc = (int *) MPIU_Calloc (comm_size, sizeof (int));
     /* --BEGIN ERROR HANDLING-- */
@@ -186,36 +194,23 @@ MPIDI_CH3I_RDMA_complete_rma (MPID_Win * win_ptr,
           nops_to_proc[curr_ptr->target_rank]++;
           curr_ptr = curr_ptr->next;
       }
-    /* clean up all the post flag */
-    for (i = 0; i < start_grp_size; i++)
-      {
-          dst = ranks_in_win_grp[i];
-          win_ptr->post_flag[dst] = 0;
-      }
-    win_ptr->using_start = 0;
 
     for (i = 0; i < start_grp_size; i++)
       {
           target = ranks_in_win_grp[i]; /* target is the rank is comm */
 
+          if (target == my_rank) {
+             continue;
+          }
+
           if (SMP_INIT) {
               MPIDI_Comm_get_vc (comm_ptr, target, &vc);
-              if (nops_to_proc[target] == 0 && send_complete == 1
-                  && vc->smp.local_nodes == -1) {
+              if (nops_to_proc[target] == 0 && vc->smp.local_nodes == -1) {
                   Decrease_CC (win_ptr, target);
-                  if (win_ptr->wait_for_complete == 1)
-                    {
-                      MPIDI_CH3I_RDMA_finish_rma (win_ptr);
-                    }
-
               }
-          } else if (nops_to_proc[target] == 0 && send_complete == 1)
+          } else if (nops_to_proc[target] == 0)
             {
                 Decrease_CC (win_ptr, target);
-                if (win_ptr->wait_for_complete == 1)
-                  {
-                      MPIDI_CH3I_RDMA_finish_rma (win_ptr);
-                  }
             }
       }
   fn_exit:

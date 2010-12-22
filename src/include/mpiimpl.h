@@ -3484,6 +3484,8 @@ posted at once. */
 #define MPIR_REDSCAT_NONCOMMUTATIVE_SHORT_MSG 512
 #define MPIR_ALLGATHER_SHORT_MSG      81920
 #define MPIR_ALLGATHER_LONG_MSG       524288
+#define MV2_ALLGATHER_SHORT_MSG       1024
+#define MV2_ALLGATHER_LONG_MSG        1024
 #define MPIR_REDUCE_SHORT_MSG         8192
 #define MPIR_ALLREDUCE_SHORT_MSG      2048
 #define MPIR_GATHER_VSMALL_MSG        1024
@@ -3530,6 +3532,8 @@ posted at once. */
 #define MPIR_REDUCE_2LEVEL_THRESHOLD (1<<15)
 
 struct coll_runtime {
+    int allgather_rd_threshold; 
+    int allgather_bruck_threshold; 
     int allreduce_short_msg;
     int allreduce_2level_threshold; 
     int reduce_short_msg;

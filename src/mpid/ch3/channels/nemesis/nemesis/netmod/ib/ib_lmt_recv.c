@@ -608,6 +608,7 @@ int MPIDI_nem_ib_lmt_r3_recv_data(MPIDI_VC_t * vc, vbuf * buffer)
         goto fn_exit;
     }
     
+    VC_FIELD(vc, received_r3_data) += nb;
     skipsize += nb;
     DEBUG_PRINT("[recv r3: handle read] filled request nb is %d\n", nb);
     
@@ -675,7 +676,29 @@ int MPIDI_nem_ib_lmt_r3_recv_data(MPIDI_VC_t * vc, vbuf * buffer)
         }
     }
   fn_exit:
+    if (process_info.has_srq) {
+        if ( VC_FIELD(vc, received_r3_data) >= rdma_max_r3_pending_data) {
+            MPIDI_nem_ib_lmt_r3_ack_send(vc);
+        }
+    }
     DEBUG_PRINT("Successfully return from r3 recv\n");
     return mpi_errno;
 }
 
+#undef FUNCNAME
+#define FUNCNAME MPIDI_nem_ib_lmt_r3_recv_ack 
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+void MPIDI_nem_ib_lmt_r3_recv_ack(MPIDI_VC_t * vc,
+                               void *vstart)
+{
+    MPIDI_CH3_Pkt_rndv_r3_ack_t* p = vstart;
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_RNDV_R3_ACK_RECV);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_RNDV_R3_ACK_RECV);
+
+    DEBUG_PRINT("Received R3 Ack %d\n", p->ack_data);
+    VC_FIELD(vc, pending_r3_data) -= p->ack_data;
+    MPIU_Assert(VC_FIELD(vc, pending_r3_data) == 0);
+
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_RNDV_R3_ACK_RECV);
+}

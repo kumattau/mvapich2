@@ -296,10 +296,9 @@ int rdma_find_network_type(struct ibv_device **dev_list, int num_devices,
 
     for (i = 0; i < num_devices; ++i) {
         hca_type = mv2_get_hca_type(dev_list[i]);
-        if ((hca_type > MV2_IB_HCA_START) && (hca_type < MV2_IB_HCA_END)) {
+        if (MV2_IS_IB_CARD( hca_type )) {
             num_ib_cards++;
-        } else if ((hca_type > MV2_IWARP_HCA_START) &&
-                   (hca_type < MV2_IWARP_HCA_END)) {
+        } else if (MV2_IS_IWARP_CARD( hca_type )) {
             num_iwarp_cards++;
         } else {
             num_unknwn_cards++;
@@ -345,10 +344,10 @@ int rdma_skip_network_card(mv2_iba_network_classes network_type,
     hca_type = mv2_get_hca_type(ib_dev);
 
     if ((network_type == MV2_NETWORK_CLASS_IB) &&
-        ((hca_type > MV2_IWARP_HCA_START) && (hca_type < MV2_IWARP_HCA_END))) {
+        (MV2_IS_IWARP_CARD( hca_type ))) {
        skip = 1;
     } else if ((network_type == MV2_NETWORK_CLASS_IWARP) &&
-        ((hca_type > MV2_IB_HCA_START) && (hca_type < MV2_IB_HCA_END))) {
+        ( MV2_IS_IB_CARD( hca_type ))) {
        skip = 1;
     } else {
        skip = 0;
@@ -451,9 +450,9 @@ int rdma_open_hca(struct MPIDI_CH3I_RDMA_Process_t *proc)
 
         rdma_num_hcas++;
         if ((rdma_multirail_usage_policy == MV2_MRAIL_BINDING) ||
-            (rdma_num_req_hcas == 1)) {
-            /* If usage policy is binding, or user has not asked for multiple
-             * HCAs then we only need one HCA */
+            (rdma_num_req_hcas == rdma_num_hcas)) {
+            /* If usage policy is binding, or if we have found enough
+             * number of HCAs asked for by the user */
             break;
         }
     }
@@ -1237,6 +1236,7 @@ void MRAILI_Init_vc(MPIDI_VC_t * vc)
     vc->mrail.rfp.ptail_RDMA_send = 0;
     vc->mrail.rfp.p_RDMA_recv = 0;
     vc->mrail.rfp.p_RDMA_recv_tail = 0;
+    vc->mrail.rfp.rdma_failed = 0;
 
     /* Now we will need to */
     for (i = 0; i < rdma_num_rails; i++) {
@@ -1532,6 +1532,11 @@ static inline int cm_qp_conn_create(MPIDI_VC_t *vc, int qptype)
 /*function to create qps for the connection and move them to INIT state*/
 int cm_qp_create(MPIDI_VC_t *vc, int force, int qptype)
 {
+    int match = 0;
+    int rail_index = 0;
+    int hca_index = 0;
+    int port_index = 0;
+
     XRC_MSG ("Talking to %d (force:%d)\n", vc->pg_rank, force);
 #ifdef _ENABLE_XRC_
     if (USE_XRC && !force && qptype == MV2_QPT_XRC) {
@@ -1549,9 +1554,46 @@ int cm_qp_create(MPIDI_VC_t *vc, int force, int qptype)
         while (iter) {
             if (iter->vc->smp.hostid == vc->smp.hostid &&
                     VC_XST_ISUNSET (vc, XF_CONN_CLOSING)) {
-                XRC_MSG ("Talking to %d Reusing conn to %d XST: 0x%08x", 
-                      vc->pg_rank, 
-                      iter->vc->pg_rank, iter->vc->ch.xrc_flags);
+
+                /* Check if processes use same HCA */
+                for (rail_index = 0; rail_index < vc->mrail.num_rails;
+                      rail_index++) {
+                    hca_index  = rail_index /
+                                  (vc->mrail.num_rails / rdma_num_hcas);
+                    port_index = (rail_index / (vc->mrail.num_rails /
+                           (rdma_num_hcas * rdma_num_ports))) % rdma_num_ports;
+
+                    XRC_MSG("rail_index = %d, old lid = %d, new lid = %d\n",
+                           rail_index,
+                           iter->vc->mrail.lid[hca_index][port_index],
+                           vc->mrail.lid[hca_index][port_index]);
+                    if ((vc->mrail.lid[hca_index][port_index] > 0) && 
+                        (vc->mrail.lid[hca_index][port_index] ==
+                         iter->vc->mrail.lid[hca_index][port_index])) {
+                        /* LID is valid and there is a match
+                         * i.e Both VC's use same HCA, so we can re-use QP
+                         */
+                        match = 1;
+                        break;
+                    } else if (memcmp(&vc->mrail.gid[hca_index][port_index],
+                                      &iter->vc->mrail.gid[hca_index][port_index],
+                                      sizeof(union ibv_gid))) {
+                        /* We're using RoCE mode. Check for GID's instead of
+                         * LID's. As above if GID's match we can re-use QP
+                         */
+                        match = 1;
+                        break;
+                    }
+                }
+
+                if (!match) {
+                    /* Cannot re-use QP. Need to create a new one */
+                    XRC_MSG("Cannot reuse QP to talk to %d\n", vc->pg_rank);
+                    break;
+                }
+
+                XRC_MSG("Talking to %d Reusing conn to %d XST: 0x%08x", 
+                      vc->pg_rank, iter->vc->pg_rank, iter->vc->ch.xrc_flags);
                 MPIU_Assert (vc->smp.hostid != -1);
                 if (VC_XST_ISSET (iter->vc, XF_SEND_CONNECTING)) {
                     xrc_pending_conn_t *n;

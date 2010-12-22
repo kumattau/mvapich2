@@ -53,7 +53,9 @@ typedef enum MPIDI_CH3_Pkt_type
     MPIDI_CH3_PKT_PACKETIZED_SEND_START,
     MPIDI_CH3_PKT_PACKETIZED_SEND_DATA,
     MPIDI_CH3_PKT_RNDV_R3_DATA,
+    MPIDI_CH3_PKT_RNDV_R3_ACK,
     MPIDI_CH3_PKT_ADDRESS,
+    MPIDI_CH3_PKT_ADDRESS_REPLY,
     MPIDI_CH3_PKT_CM_ESTABLISH,
 #if defined(CKPT)
     MPIDI_CH3_PKT_CM_SUSPEND,
@@ -111,8 +113,8 @@ typedef struct MPIDI_CH3_Pkt_send
     MPIDI_CH3_Pkt_type_t type;  /* XXX - uint8_t to conserve space ??? */
 #endif /* defined(_OSU_MVAPICH_) */
     MPIDI_Message_match match;
-    MPI_Request sender_req_id;	/* needed for ssend and send cancel */
     MPIDI_msg_sz_t data_sz;
+    MPI_Request sender_req_id;	/* needed for ssend and send cancel */
 #if defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
 #endif    
@@ -173,8 +175,8 @@ typedef struct MPIDI_CH3_Pkt_rndv_req_to_send
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
     MPIDI_Message_match match;
-    MPI_Request sender_req_id;  /* needed for ssend and send cancel */
     MPIDI_msg_sz_t data_sz;
+    MPI_Request sender_req_id;  /* needed for ssend and send cancel */
 #if defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
 #endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
@@ -184,11 +186,36 @@ typedef struct MPIDI_CH3_Pkt_rndv_req_to_send
 typedef struct MPIDI_CH3I_Pkt_address {
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-    MPIDI_CH3I_MRAILI_PKT_ADDRESS_DECL
+    uint32_t rdma_hndl[MAX_NUM_HCAS];
+    unsigned long rdma_address;
 } MPIDI_CH3_Pkt_address_t;
+
+typedef struct MPIDI_CH3I_Pkt_address_reply {
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+    uint32_t reply_data;
+} MPIDI_CH3_Pkt_address_reply_t;
+/* data values for reply_data field*/
+#define RDMA_FP_SUCCESS                 111
+#define RDMA_FP_SENDBUFF_ALLOC_FAILED   121
+#define RDMA_FP_MAX_SEND_CONN_REACHED   131
+
 #else /* defined(_OSU_MVAPICH_) */
 typedef MPIDI_CH3_Pkt_send_t MPIDI_CH3_Pkt_rndv_req_to_send_t;
 #endif /* defined(_OSU_MVAPICH_) */
+
+#if defined(_OSU_MVAPICH_)
+typedef struct MPIDI_CH3I_Pkt_rndv_r3_Ack
+{
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+#if defined(MPID_USE_SEQUENCE_NUMBERS)
+    MPID_Seqnum_t seqnum;
+#endif
+    uint32_t ack_data;
+} MPIDI_CH3_Pkt_rndv_r3_ack_t;
+#endif /* defined(_OSU_MVAPICH_) */
+
 
 typedef struct MPIDI_CH3_Pkt_rndv_clr_to_send
 {
@@ -268,8 +295,8 @@ typedef struct MPIDI_CH3_Pkt_cm_establish_t
 #if defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
 #endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
-    uint64_t vc_addr; /* The VC that is newly created */
     int port_name_tag;
+    uint64_t vc_addr; /* The VC that is newly created */
 } MPIDI_CH3_Pkt_cm_establish_t;
 
 #endif /* defined(_OSU_MVAPICH_) */
@@ -285,8 +312,8 @@ typedef struct MPIDI_CH3_Pkt_cancel_send_req
 #else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
 #endif /* defined(_OSU_MVAPICH_) */
-    MPIDI_Message_match match;
     MPI_Request sender_req_id;
+    MPIDI_Message_match match;
 }
 MPIDI_CH3_Pkt_cancel_send_req_t;
 
@@ -610,10 +637,10 @@ typedef struct MPIDI_CH3_Pkt_lock_get_unlock
     MPI_Win target_win_handle;
     MPI_Win source_win_handle;
     int lock_type;
-    void *addr;
     int count;
     MPI_Datatype datatype;
     MPI_Request request_handle;
+    void *addr;
 }
 MPIDI_CH3_Pkt_lock_get_unlock_t;
 
@@ -632,10 +659,10 @@ typedef struct MPIDI_CH3_Pkt_lock_accum_unlock
     MPI_Win target_win_handle;
     MPI_Win source_win_handle;
     int lock_type;
-    void *addr;
     int count;
     MPI_Datatype datatype;
     MPI_Op op;
+    void *addr;
 }
 MPIDI_CH3_Pkt_lock_accum_unlock_t;
 
@@ -660,10 +687,12 @@ typedef union MPIDI_CH3_Pkt
 #if defined(_OSU_MVAPICH_)
     uint8_t type;
     MPIDI_CH3_Pkt_address_t address;
+    MPIDI_CH3_Pkt_address_reply_t addr_reply;
     MPIDI_CH3_Pkt_rput_finish_t rput_finish;
     MPIDI_CH3_Pkt_put_rndv_t put_rndv;
     MPIDI_CH3_Pkt_get_rndv_t get_rndv;
     MPIDI_CH3_Pkt_accum_rndv_t accum_rndv;
+    MPIDI_CH3_Pkt_rndv_r3_ack_t rndv_r3_ack;
 #else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
 #endif /* defined(_OSU_MVAPICH_) */

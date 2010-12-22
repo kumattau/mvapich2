@@ -86,6 +86,7 @@ typedef struct MPIDI_CH3I_MRAILI_RDMAPATH_VC
 
     int     eager_start_cnt;
     int     in_polling_set;
+    int     rdma_failed;
 
 #ifndef MV2_DISABLE_HEADER_CACHING 
     void        *cached_outgoing;
@@ -194,7 +195,6 @@ typedef struct _MPID_nem_ib_connection_tag {
     int     inflow;
 
     uint64_t remote_vc_addr; /* Used to find vc at remote side */
-
 } MPID_nem_ib_connection_t;
 
 /**

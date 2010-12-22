@@ -63,6 +63,7 @@ extern unsigned long        rdma_dreg_cache_limit;
 extern int                  rdma_rndv_protocol;
 extern int                  rdma_r3_threshold;
 extern int                  rdma_r3_threshold_nocache;
+extern int                  rdma_max_r3_pending_data;
 extern int                  rdma_vbuf_total_size;
 extern int                  rdma_max_inline_size;
 extern int                  rdma_local_id;
@@ -74,7 +75,9 @@ extern uint32_t             viadev_max_r3_oust_send;
 
 extern int                  rdma_polling_set_threshold;
 extern int                  rdma_polling_set_limit;
-extern int		            rdma_eager_limit;
+extern int                  rdma_fp_sendconn_accepted;
+extern int                  rdma_pending_conn_request;
+extern int                  rdma_eager_limit;
 extern int                  rdma_rndv_ext_sendq_size;
 
 extern int                  rdma_pin_pool_size;
@@ -96,7 +99,7 @@ extern int                  max_num_win;
 /* HSAM Definitions */
 
 extern  int                 striping_threshold;
-extern  int                 sm_scheduling;
+extern  int                 rdma_rail_sharing_policy;
 extern  int                 alpha;
 extern  int                 stripe_factor;
 extern  int                 apm_tester;
@@ -213,7 +216,7 @@ typedef enum _mv2_iba_network_classes {
 } mv2_iba_network_classes;
 
 /* Below ROUND_ROBIN refers to the rails where the rails are alternately
- * given to any process asking for it. Where as PROCESS_BINDING refers
+ * given to any process asking for it. Where as FIXED_MAPPING refers
  * to a scheduling policy where processes are bound to rails in a round
  * robin manner. So once a process is bound to a rail it will use only 
  * that rail to send out messages */
@@ -223,16 +226,15 @@ typedef enum _mv2_multirail_policies {
     MV2_MRAIL_SHARING,
 } mv2_multirail_policies;
 
-typedef enum _mv2_sm_scheduling_policies {
+typedef enum _mv2_rail_sharing_policies {
     ROUND_ROBIN = 0,
     USE_FIRST,
     EVEN_STRIPING,
     ADAPTIVE_STRIPING,
-    PROCESS_BINDING,
+    FIXED_MAPPING,
     PARTIAL_ADAPTIVE,
-    USER_DEFINED,
     BEST_ADAPTIVE,
-} mv2_sm_scheduling_policies;
+} mv2_rail_sharing_policies;
 
 /* This is to allow users to specify rail mapping at run time */
 extern int                  mrail_use_default_mapping;

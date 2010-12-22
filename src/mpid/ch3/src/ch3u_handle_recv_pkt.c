@@ -74,7 +74,9 @@ int MPIDI_CH3_Pkt_size_index[] = {
     sizeof(MPIDI_CH3_Pkt_packetized_send_start_t),
     sizeof(MPIDI_CH3_Pkt_packetized_send_data_t),
     sizeof(MPIDI_CH3_Pkt_rndv_r3_data_t),
+    sizeof(MPIDI_CH3_Pkt_rndv_r3_ack_t),
     sizeof(MPIDI_CH3_Pkt_address_t),
+    sizeof(MPIDI_CH3_Pkt_address_reply_t),
     sizeof(MPIDI_CH3_Pkt_cm_establish_t),
 #if defined(CKPT)
     /* These contrl packet has no packet header,

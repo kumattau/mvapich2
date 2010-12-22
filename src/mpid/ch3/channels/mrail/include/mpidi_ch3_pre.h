@@ -120,6 +120,8 @@ typedef struct MPIDI_CH3I_VC
     uint32_t                    xrc_rqpn[MAX_NUM_SUBRAILS];
     uint32_t                    xrc_my_rqpn[MAX_NUM_SUBRAILS];
 #endif
+    int                         pending_r3_data;
+    int                         received_r3_data;
 } MPIDI_CH3I_VC;
 
 #ifdef _ENABLE_XRC_

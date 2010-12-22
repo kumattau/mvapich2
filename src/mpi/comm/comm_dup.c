@@ -181,37 +181,40 @@ int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
     newcomm_ptr->attributes = new_attributes;
     *newcomm = newcomm_ptr->handle;
 
-#if defined(_OSU_MVAPICH_)
-    /* We also need to replicate the leader_comm and the shmem_comm
-     * communicators in the newly created communicator. We have all the 
-     * information available locally. We can just use this information instead
-     * of 
-     * going through the create_2level_comm function. We can also save 
-     * on memory this way, instead of allocating new memory buffers. 
-     */
-    if (enable_shmem_collectives){
-       if(newcomm_ptr != NULL && *newcomm != MPI_COMM_NULL) {
-          int flag;
-          PMPI_Comm_test_inter(*newcomm, &flag);
 
-          if(flag == 0) {
-               newcomm_ptr->leader_comm       = comm_ptr->leader_comm;
-               newcomm_ptr->shmem_comm        = comm_ptr->shmem_comm;
-               newcomm_ptr->leader_map        = comm_ptr->leader_map;
-               newcomm_ptr->leader_rank       = comm_ptr->leader_rank;
-               newcomm_ptr->shmem_comm_rank   = comm_ptr->shmem_comm_rank;
-               newcomm_ptr->shmem_coll_ok     = comm_ptr->shmem_coll_ok;
-               newcomm_ptr->leader_group_size = comm_ptr->leader_group_size;
-               newcomm_ptr->bcast_fd          = comm_ptr->bcast_fd;
-               newcomm_ptr->bcast_index       = comm_ptr->bcast_index;
-               newcomm_ptr->bcast_mmap_ptr    = comm_ptr->bcast_mmap_ptr;
-               newcomm_ptr->bcast_shmem_file  = comm_ptr->bcast_shmem_file;
-               newcomm_ptr->bcast_seg_size    = comm_ptr->bcast_seg_size;
-           }
+#if defined(_OSU_MVAPICH_)
+    if (enable_shmem_collectives){
+        if (check_split_comm(pthread_self())){
+            if (*newcomm != MPI_COMM_NULL){
+                MPIR_Nest_incr();
+
+                int flag;
+                PMPI_Comm_test_inter(*newcomm, &flag);
+
+                if (flag == 0){
+                    int my_id, size;
+                    mpi_errno = PMPI_Comm_rank(*newcomm, &my_id);
+                     if(mpi_errno) {
+                        MPIU_ERR_POP(mpi_errno);
+                    }
+                    mpi_errno = PMPI_Comm_size(*newcomm, &size);
+                     if(mpi_errno) {
+                        MPIU_ERR_POP(mpi_errno);
+                    }
+                    disable_split_comm(pthread_self());
+                    mpi_errno = create_2level_comm(*newcomm, size, my_id);
+                     if(mpi_errno) {
+                        MPIU_ERR_POP(mpi_errno);
+                    }
+                    enable_split_comm(pthread_self());
+                }
+
+                MPIR_Nest_decr();
+            }
         }
-    }      
+    }
 #endif /* defined(_OSU_MVAPICH_) */
-    
+
     /* ... end of body of routine ... */
 
   fn_exit:

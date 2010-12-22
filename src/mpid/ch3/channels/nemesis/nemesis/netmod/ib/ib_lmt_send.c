@@ -327,6 +327,12 @@ int MPIDI_nem_ib_r3_send(MPIDI_VC_t * vc, MPID_Request * sreq)
 
     do{
         do{
+        /* stop sending more R3 data to avoid SRQ flooding at receiver */
+            if (process_info.has_srq) {
+                while (VC_FIELD(vc, pending_r3_data) >= rdma_max_r3_pending_data) {
+                   MPID_nem_ib_poll(FALSE); 
+                }
+            }
 
             MPIDI_VC_FAI_send_seqnum(vc, seqnum);
             MPIDI_Pkt_set_seqnum(&pkt_head, seqnum);
@@ -355,7 +361,7 @@ int MPIDI_nem_ib_r3_send(MPIDI_VC_t * vc, MPID_Request * sreq)
             }
 
             nb -= sizeof(MPIDI_CH3_Pkt_rndv_r3_data_t) + IB_PKT_HEADER_LENGTH;
-
+            VC_FIELD(vc, pending_r3_data) += nb;
         } while (!MPIDI_nem_ib_request_adjust_iov(sreq, nb));
 
         if (sreq->dev.OnDataAvail == MPIDI_CH3_ReqHandler_SendReloadIOV) {
@@ -372,8 +378,8 @@ int MPIDI_nem_ib_r3_send(MPIDI_VC_t * vc, MPID_Request * sreq)
         mpi_errno = MPI_MRAIL_MSG_QUEUED;
         buf->sreq = (void *) sreq;
     } else {
-         buf->sreq = NULL;
-         MPIDI_CH3U_Handle_send_req(vc, sreq, &complete);
+        buf->sreq = NULL;
+        MPIDI_CH3U_Handle_send_req(vc, sreq, &complete);
     }
 
 fn_exit:

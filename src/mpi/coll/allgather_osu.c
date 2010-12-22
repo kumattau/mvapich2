@@ -17,6 +17,52 @@
 
 #include "mpiimpl.h"
 
+#if defined(_OSU_MVAPICH_)
+#include "coll_shmem.h"
+extern struct coll_runtime coll_param;
+#define ALLGATHER_SMALL_SYSTEM_SIZE       32
+#define ALLGATHER_MEDIUM_SYSTEM_SIZE      128
+#define ALLGATHER_LARGE_SYSTEM_SIZE       256       
+#endif
+
+int allgather_tuning(int comm_size, int pof2)
+{
+   char *value;
+#if defined(_OSU_MVAPICH_)  
+   if (pof2 == 1 && (value = getenv("MV2_ALLGATHER_RD_THRESHOLD")) != NULL) { 
+       /* pof2 case. User has set the run-time parameter "MV2_ALLGATHER_RD_THRESHOLD".
+        * Just use that value */
+        return coll_param.allgather_rd_threshold; 
+   } if(pof2 == 0 && (value = getenv("MV2_ALLGATHER_BRUCK_THRESHOLD")) != NULL) {
+       /* Non-pof2 case. User has set the run-time parameter "MV2_ALLGATHER_BRUCK_THRESHOLD".
+        * Just use that value */
+        return coll_param.allgather_bruck_threshold;
+   } else {
+       /* User has not used any run-time parameters. 
+        */ 
+       if(comm_size <= ALLGATHER_SMALL_SYSTEM_SIZE) {
+ 	   return tuning_table[ALLGATHER_ID][SMALL]; 
+       } else if(comm_size > ALLGATHER_SMALL_SYSTEM_SIZE && comm_size <= ALLGATHER_MEDIUM_SYSTEM_SIZE) { 
+	   return tuning_table[ALLGATHER_ID][MEDIUM];
+       } else { 
+           return tuning_table[ALLGATHER_ID][LARGE];
+       } 
+   }
+#else
+   if(pof2 == 1) { 
+       return MV2_ALLGATHER_SHORT_MSG; 
+   } else { 
+       return MV2_ALLGATHER_LONG_MSG; 
+   } 
+#endif /* #if defined(_OSU_MVAPICH_) */ 
+
+}
+
+
+
+
+
+
 /* This is the default implementation of allgather. The algorithm is:
    
    Algorithm: MPI_Allgather
@@ -77,19 +123,12 @@ int MPIR_Allgather_OSU (
     int        mpi_errno = MPI_SUCCESS;
     MPI_Aint   recvtype_extent;
     MPI_Aint recvtype_true_extent, recvbuf_extent, recvtype_true_lb;
-#if defined(_OSU_MVAPICH_)
     int j, i, src, rem;
-#else /* defined(_OSU_MVAPICH_) */
-    int        j, i, pof2, src, rem;
-#endif /* defined(_OSU_MVAPICH_) */
     static const char FCNAME[] = "MPIR_Allgather_OSU";
     void *tmp_buf;
-#if defined(_OSU_MVAPICH_)
     int curr_cnt, dst, type_size, left, right, jnext;
-#else /* defined(_OSU_MVAPICH_) */
-    int curr_cnt, dst, type_size, left, right, jnext, comm_size_is_pof2;
-#endif /* defined(_OSU_MVAPICH_) */
     MPI_Comm comm;
+    int pof2=0, comm_size_is_pof2=0;
     MPI_Status status;
     int mask, dst_tree_root, my_tree_root, is_homogeneous,  
         send_offset, recv_offset, last_recv_cnt = 0, nprocs_completed, k,
@@ -106,11 +145,10 @@ int MPIR_Allgather_OSU (
     comm_size = comm_ptr->local_size;
     rank = comm_ptr->rank;
 
-	MPID_Datatype_get_extent_macro( recvtype, recvtype_extent );
+    MPID_Datatype_get_extent_macro( recvtype, recvtype_extent );
     MPID_Datatype_get_size_macro( recvtype, type_size );
 
     /* check if comm_size is a power of two */
-#if !defined(_OSU_MVAPICH_)
     pof2 = 1;
     while (pof2 < comm_size)
         pof2 *= 2;
@@ -119,25 +157,18 @@ int MPIR_Allgather_OSU (
     } else { 
         comm_size_is_pof2 = 0;
    }
-#endif /* !defined(_OSU_MVAPICH_) */
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
-#if defined(_OSU_MVAPICH_)
-    if (recvcount * comm_size * type_size < MPIR_ALLGATHER_LONG_MSG
-        && (comm_size & (comm_size - 1)) == 0)
-    {
-#else /* defined(_OSU_MVAPICH_) */    
-    if ((recvcount*comm_size*type_size < MPIR_ALLGATHER_LONG_MSG) &&
+    if ((recvcount*type_size <=  allgather_tuning(comm_size, comm_size_is_pof2)) &&
         (comm_size_is_pof2 == 1)) {
-#endif /* defined(_OSU_MVAPICH_) */
         /* Short or medium size message and power-of-two no. of processes. Use
          * recursive doubling algorithm */   
 
-    is_homogeneous = 1;
+        is_homogeneous = 1;
 #ifdef MPID_HAS_HETERO
-    if (comm_ptr->is_hetero) { 
-        is_homogeneous = 0;
-    } 
+        if (comm_ptr->is_hetero) { 
+           is_homogeneous = 0;
+        } 
 #endif
     
         if (is_homogeneous) {
@@ -438,7 +469,7 @@ int MPIR_Allgather_OSU (
             MPIU_Free(tmp_buf);
         }
 #endif /* MPID_HAS_HETERO */
-    } else if (recvcount*comm_size*type_size < MPIR_ALLGATHER_SHORT_MSG) {
+    } else if (recvcount*type_size <=  allgather_tuning(comm_size, comm_size_is_pof2)) {
         /* Short message and non-power-of-two no. of processes. Use
          * Bruck algorithm (see description above). */
 
@@ -485,11 +516,7 @@ int MPIR_Allgather_OSU (
         /* do the first \floor(\lg p) steps */
 
         curr_cnt = recvcount;
-#if defined(_OSU_MVAPICH_)
-        int pof2 = 1;
-#else /* defined(_OSU_MVAPICH_) */
         pof2 = 1;
-#endif /* defined(_OSU_MVAPICH_) */
         while (pof2 <= comm_size/2) {
             src = (rank + pof2) % comm_size;
             dst = (rank - pof2 + comm_size) % comm_size;

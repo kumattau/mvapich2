@@ -53,15 +53,6 @@ typedef struct MPIDI_CH3I_MRAILI_IBA_Pkt {
 #define MPIDI_CH3I_MRAILI_IBA_PKT_DECL \
     MPIDI_CH3I_MRAILI_Iba_pkt_t mrail;
 
-struct MPIDI_CH3I_MRAILI_Pkt_address {
-    uint8_t type;
-    unsigned long rdma_address;
-    uint32_t rdma_hndl[MAX_NUM_HCAS];
-};
-
-#define MPIDI_CH3I_MRAILI_PKT_ADDRESS_DECL \
-    struct MPIDI_CH3I_MRAILI_Pkt_address addr;
-
 typedef enum {
     VAPI_PROTOCOL_RENDEZVOUS_UNSPECIFIED = 0,
     VAPI_PROTOCOL_EAGER,
@@ -71,12 +62,12 @@ typedef enum {
 } MRAILI_Protocol_t;
 
 typedef struct MPIDI_CH3I_MRAILI_Rndv_info {
-    /* Protocol to be used, Choices: R3/RPUT/RGET */
-    MRAILI_Protocol_t   protocol;
     /* Buffer Address */
     void                *buf_addr;
     /* rkey for RDMA for all HCAs */
     uint32_t            rkey[MAX_NUM_HCAS];
+    /* Protocol to be used, Choices: R3/RPUT/RGET */
+    MRAILI_Protocol_t   protocol;
     /* This is required for telling the receiver
      * when to mark the recv as complete */
     uint8_t            weight_rail[MAX_NUM_HCAS];
@@ -186,6 +177,7 @@ typedef struct MPIDI_CH3I_MRAILI_RDMAPATH_VC
 
     int 	eager_start_cnt;
     int 	in_polling_set;
+    int     rdma_failed;
 
 #ifndef MV2_DISABLE_HEADER_CACHING 
     void    	*cached_outgoing;
@@ -260,6 +252,9 @@ typedef struct MPIDI_CH3I_MRAIL_VC_t
     int     	num_rails;
     /* qp handle for each of the sub-rails */
     struct  	mrail_rail *rails;
+
+    uint16_t        lid[MAX_NUM_HCAS][MAX_NUM_PORTS];
+    union ibv_gid   gid[MAX_NUM_HCAS][MAX_NUM_PORTS];
 
     /* number of send wqes available */
     uint16_t 	next_packet_expected;

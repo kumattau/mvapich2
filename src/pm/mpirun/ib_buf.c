@@ -36,7 +36,7 @@
 #include "debug.h" 
 
 
-inline void* ib_buffer_slot_addr( struct ib_buffer* buf, int slot)
+void* ib_buffer_slot_addr( struct ib_buffer* buf, int slot)
 {
 	if( slot > buf->num_slot ){
 		error("Error!! slot %d > buf-slot %d\n", slot, buf->num_slot);

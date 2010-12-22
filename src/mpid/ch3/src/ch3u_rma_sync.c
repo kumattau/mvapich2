@@ -118,7 +118,6 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
     int num_wait_completions;
     int need_dummy = 0, j;
     MPIDI_VC_t* vc = NULL;
-    extern void MPIDI_CH3I_RDMA_complete_rma(MPID_Win *, int , int *, int);
 #endif /* defined(_OSU_MVAPICH_) */
     MPIU_CHKLMEM_DECL(7);
     MPIU_THREADPRIV_DECL;
@@ -253,23 +252,13 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
 	    /* make sure all process has started access epoch
 	     * blocking call */
 	    MPIDI_CH3I_RDMA_start(win_ptr, comm_size - 1, ranks_in_win_grp);
-
 	    MPIDI_CH3I_RDMA_try_rma(win_ptr, &win_ptr->rma_ops_list, 0);
-	    if (win_ptr->rma_issued != 0) {
-	        MPIDI_CH3I_RDMA_complete_rma(win_ptr, comm_size - 1,
-	                                     ranks_in_win_grp, 1);
-	    } else {
-	        need_dummy = 1; /* completion msg not sent, need to set 0 if
-	                           no rma ops */
-	        for (i = 0; i < comm_size; i++) {
-	            win_ptr->post_flag[i] = 0;
-	        }
-	        /* MPIDI_CH3I_RDMA_complete_rma(win_ptr, comm_size - 1,
-                   ranks_in_win_grp, 0); */
-	    }
-	    if (win_ptr->rma_issued != 0 && need_dummy == 1) {
-	        MPIDI_CH3I_RDMA_finish_rma(win_ptr);
-	    }
+            if (win_ptr->rma_issued != 0) {
+                MPIDI_CH3I_RDMA_finish_rma(win_ptr);
+            }
+	    MPIDI_CH3I_RDMA_complete_rma(win_ptr, comm_size - 1,
+	                                ranks_in_win_grp);
+
 	    MPIU_Free(ranks_in_win_grp);
 	}                       /* else */
 #endif /* defined(_OSU_MVAPICH_) */
@@ -298,7 +287,7 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
 	    curr_ptr = curr_ptr->next;
 	}
 #if defined(_OSU_MVAPICH_)
-	if (need_dummy == 0 && win_ptr->fall_back != 1) {
+	if (win_ptr->fall_back != 1) {
 	    int j;
 	    for (j = 0; j < comm_size; j++) {
                 if (SMP_INIT) {
@@ -1731,9 +1720,12 @@ static int MPIDI_CH3I_Recv_rma_msg(MPIDI_RMA_ops *rma_op, MPID_Win *win_ptr,
 #if defined(_OSU_MVAPICH_)
 	} else {
 	    MPIDI_CH3_Pkt_get_rndv_t get_rndv;
-	    MPIDI_Pkt_init(get_pkt, MPIDI_CH3_PKT_GET_RNDV);
-	    MPIUI_Memcpy((void *) &get_rndv, (void *) get_pkt,
-	           sizeof(MPIDI_CH3_Pkt_get_t));
+            MPIDI_Pkt_init(&get_rndv, MPIDI_CH3_PKT_GET_RNDV);
+            MPIU_Memcpy((void *) &get_rndv, (void *) get_pkt,
+                   sizeof(MPIDI_CH3_Pkt_get_t));
+            /*The packed type should be set again because the memcpy would have 
+              have overwritten it*/
+            get_rndv.type = MPIDI_CH3_PKT_GET_RNDV;
 	    req->mrail.protocol = VAPI_PROTOCOL_RPUT;
 	    MPIDI_VC_FAI_send_seqnum(vc, seqnum);
 	    MPIDI_Pkt_set_seqnum(&get_rndv, seqnum);
@@ -2043,8 +2035,6 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
     MPI_Group win_grp, start_grp;
     int start_grp_size, *ranks_in_start_grp, *ranks_in_win_grp, rank;
 #if defined(_OSU_MVAPICH_)
-    int need_dummy = 0;
-    extern void MPIDI_CH3I_RDMA_complete_rma(MPID_Win *, int, int *, int);
 #if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
     int limic_failed = 0;
     int transfer_complete;
@@ -2098,38 +2088,11 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
 	 * operations */
 	MPIDI_CH3I_RDMA_start(win_ptr, start_grp_size, ranks_in_win_grp);
 	MPIDI_CH3I_RDMA_try_rma(win_ptr, &win_ptr->rma_ops_list, 0);
-
-	if (win_ptr->rma_issued != 0) 
-        {
-	    MPIDI_CH3I_RDMA_complete_rma(win_ptr, start_grp_size,
-	                                 ranks_in_win_grp, 1);
-	}
-	else
-	{
-	    need_dummy = 1;
-	    MPIDI_CH3I_RDMA_complete_rma(win_ptr, start_grp_size,
-	                                 ranks_in_win_grp, 0);
-	}
-	
-	if (win_ptr->rma_ops_list == NULL && need_dummy == 0) {
-            MPIU_Free(ranks_in_win_grp);
-            MPIU_Free(ranks_in_start_grp);
-
-            mpi_errno = NMPI_Group_free(&win_grp);
-            if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
-
-            /* free the group stored in window */
-            MPIR_Group_release(win_ptr->start_group_ptr);
-            win_ptr->start_group_ptr = NULL;
-
-            if (nest_level_inc)
-            { 
-               MPIR_Nest_decr();
-            } 
-            return MPI_SUCCESS;
-	} else if (win_ptr->rma_issued != 0) {
-	    MPIDI_CH3I_RDMA_finish_rma(win_ptr);
-	}
+        if (win_ptr->rma_issued != 0) {
+            MPIDI_CH3I_RDMA_finish_rma(win_ptr);
+        }
+	MPIDI_CH3I_RDMA_complete_rma(win_ptr, start_grp_size,
+	                             ranks_in_win_grp);
     }
 
 #if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
@@ -2352,12 +2315,6 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
        becoming targets of  RMA operations from this process, we need
        to send a dummy message to those processes just to decrement
        the completion counter */
-#if defined(_OSU_MVAPICH_)
-    if (win_ptr->fall_back != 1 && need_dummy != 1) {
-        new_total_op_count = total_op_count;
-    } else
-    {
-#endif /* defined(_OSU_MVAPICH_) */
     j = i;
     new_total_op_count = total_op_count;
     for (i=0; i<start_grp_size; i++)
@@ -2375,6 +2332,12 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
 	    
 #if defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS)
             MPID_Seqnum_t seqnum;
+
+	    MPIDI_Comm_get_vc(comm_ptr, dst, &vc);
+            if ((!SMP_INIT || vc->smp.local_nodes == -1) && 
+                win_ptr->fall_back != 1) {
+               continue;
+            }
 #endif /* defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS) */
 	    MPIDI_Pkt_init(put_pkt, MPIDI_CH3_PKT_PUT);
 	    put_pkt->addr = NULL;
@@ -2390,7 +2353,6 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
 	    put_pkt->target_win_handle = win_ptr->all_win_handles[dst];
 	    put_pkt->source_win_handle = win_ptr->handle;
 	    
-	    MPIDI_Comm_get_vc(comm_ptr, dst, &vc);
 #if defined(_OSU_MVAPICH_)
             MPIDI_CH3_SET_RMA_ISSUED_NUM(vc, put_pkt);
 	    
@@ -2412,9 +2374,6 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
 	    new_total_op_count++;
 	}
     }
-#if defined(_OSU_MVAPICH_)
-    }
-#endif /* defined(_OSU_MVAPICH) */
         
     if (new_total_op_count)
     {

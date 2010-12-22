@@ -147,9 +147,9 @@ struct process_init_info {
 
 typedef struct ud_addr_info {
     int hostid;
-    uint16_t lid;
+    uint16_t lid[MAX_NUM_HCAS][MAX_NUM_PORTS];
     uint32_t qpn;
-    union ibv_gid gid;
+    union ibv_gid gid[MAX_NUM_HCAS][MAX_NUM_PORTS];
 }ud_addr_info_t;
 
 struct MPIDI_PG;
@@ -475,6 +475,7 @@ void MRAILI_RDMA_Get(MPIDI_VC_t * vc, vbuf *v,
                      int nbytes, int subrail);
 int MRAILI_Send_select_rail(MPIDI_VC_t * vc);
 void vbuf_address_send(MPIDI_VC_t *vc);
+void vbuf_address_reply_send(MPIDI_VC_t *vc, uint8_t);
 int vbuf_fast_rdma_alloc (struct MPIDI_VC *, int dir);
 int MPIDI_CH3I_MRAILI_rput_complete(MPIDI_VC_t *, MPID_IOV *,
                                     int, int *num_bytes_ptr, 

@@ -17,11 +17,8 @@
  */
 
 #include "mpiimpl.h"
-
 #if defined(_OSU_MVAPICH_)
-extern struct coll_runtime coll_param;
-extern int enable_shmem_collectives;
-extern int disable_shmem_allreduce;
+#include "coll_shmem.h"
 #endif /* defined(_OSU_MVAPICH_) */
 
 /* This is the default implementation of allreduce. The algorithm is:
@@ -113,9 +110,6 @@ int MPIR_Allreduce_OSU (
     int stride = 0; 
 	is_commutative = 0;
     int total_size, shmem_comm_rank;
-    extern int check_comm_registry(MPI_Comm);
-    extern int MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int, int, int, void**);
-    extern void MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(int, int, int);
 #endif /* defined(_OSU_MVAPICH_) */   
     MPIU_CHKLMEM_DECL(3);
     
@@ -140,21 +134,15 @@ int MPIR_Allreduce_OSU (
         stride = count*MPIR_MAX(extent,true_extent);
 
         /* Get the operator and check whether it is commutative or not */
-        if (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) 
-		{
+        if (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN)  { 
             is_commutative = 1;
             /* get the function by indexing into the op table */
             uop = MPIR_Op_table[op%16 - 1];
-        } 
-	    else 
-	    {
+        } else  {
             MPID_Op_get_ptr(op, op_ptr);
-            if (op_ptr->kind == MPID_OP_USER_NONCOMMUTE) 
-		    { 
+            if (op_ptr->kind == MPID_OP_USER_NONCOMMUTE) { 
                 is_commutative = 0;
-            } 
-		    else 
-			{ 
+            } else {  
                 is_commutative = 1;
             } 
 
@@ -162,21 +150,18 @@ int MPIR_Allreduce_OSU (
             if (op_ptr->language == MPID_LANG_CXX) {
                 uop = (MPI_User_function *) op_ptr->function.c_function;
                 is_cxx_uop = 1;
-             } 
-             else 
+             } else 
 #endif /* defined(HAVE_CXX_BINDING) */
                 if ((op_ptr->language == MPID_LANG_C)) { 
                     uop = (MPI_User_function *) op_ptr->function.c_function;
-                } 
-		        else 
-				{ 
+                } else { 
                     uop = (MPI_User_function *) op_ptr->function.f77_function;
                 }
         }
         MPIR_Nest_decr();
     }
       
-	if ((comm_ptr->shmem_coll_ok == 1)&&(stride < coll_param.shmem_allreduce_msg)&&
+    if ((comm_ptr->shmem_coll_ok == 1)&&(stride < coll_param.allreduce_2level_threshold)&&
           (disable_shmem_allreduce == 0) &&(is_commutative) &&(enable_shmem_collectives) &&(check_comm_registry(comm)))
     {
         MPIR_Nest_incr();
@@ -198,11 +183,12 @@ int MPIR_Allreduce_OSU (
             if (sendbuf != MPI_IN_PLACE) { 
                 mpi_errno = MPIR_Localcopy(sendbuf, count, datatype, recvbuf, 
                                             count, datatype);
+                MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER, "**fail");
             }
         }                       
 
 #if defined(CKPT)
-		MPIDI_CH3I_CR_lock();
+	MPIDI_CH3I_CR_lock();
 #endif
 
         /* Doing the shared memory gather and reduction by the leader */
@@ -240,10 +226,12 @@ int MPIR_Allreduce_OSU (
                  * the same node*/
                 mpi_errno = PMPI_Reduce(sendbuf, recvbuf, count, datatype, op, 0,
                                    shmem_comm);
+                MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER, "**fail");
             }
             if (local_size != total_size) {
                 mpi_errno = PMPI_Allreduce(MPI_IN_PLACE, recvbuf, count, datatype, op, 
                                    leader_comm);
+                MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER, "**fail");
             }
         } else {
 	    if(stride <=  coll_param.shmem_allreduce_msg) {
@@ -257,11 +245,22 @@ int MPIR_Allreduce_OSU (
                     mpi_errno = MPIR_Localcopy(recvbuf, count, datatype, local_buf,  
                                                count, datatype);
                 }
+                MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER, "**fail");
      		MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(local_size, local_rank, 
                                             shmem_comm_rank);
 	    } else {
-		mpi_errno = PMPI_Reduce(sendbuf, recvbuf, count, datatype, op, 
+                if(sendbuf != MPI_IN_PLACE) { 
+		     mpi_errno = PMPI_Reduce(sendbuf, recvbuf, count, datatype, op, 
                                             0, shmem_comm);
+                } else { 
+                    /* MPI_Allreduce was called with MPI_IN_PLACE as the sendbuf.
+                     * Since we are doing Reduce now, we need to be careful. In
+                     * MPI_Reduce, only the root can use MPI_IN_PLACE as sendbuf.
+                     * Also, the recvbuf is not relevant at all non-root processes*/
+		      mpi_errno = PMPI_Reduce(recvbuf, NULL, count, datatype, op, 
+                                            0, shmem_comm);
+                } 
+                MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER, "**fail");
 	    }
         }
 
@@ -273,12 +272,13 @@ int MPIR_Allreduce_OSU (
         /* Note: shared memory broadcast could improve the performance */
 	if (local_size > 1){
            MPIR_Nest_incr();
-           MPIR_Bcast(recvbuf, count, datatype, 0, shmem_commptr);
+           mpi_errno = PMPI_Bcast(recvbuf, count, datatype, 0, shmem_comm);
+           MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER, "**fail");
            MPIR_Nest_decr();
 	}
     } else {
 #endif /* defined(_OSU_MVAPICH_) */
-		is_homogeneous = 1;
+        is_homogeneous = 1;
 #ifdef MPID_HAS_HETERO
         if (comm_ptr->is_hetero) { 
             is_homogeneous = 0;
@@ -286,8 +286,7 @@ int MPIR_Allreduce_OSU (
 #endif
     
 #ifdef MPID_HAS_HETERO
-        if (!is_homogeneous)
-		{
+        if (!is_homogeneous) {
             /* heterogeneous. To get the same result on all processes, we
                do a reduce to 0 and then broadcast. */
             mpi_errno = NMPI_Reduce ( sendbuf, recvbuf, count, datatype,
@@ -304,7 +303,7 @@ int MPIR_Allreduce_OSU (
                 if (rc) mpi_errno = rc;
             }
         } 
-		else 
+        else 
 #endif /* MPID_HAS_HETERO */
         {
             /* homogeneous */
@@ -315,45 +314,34 @@ int MPIR_Allreduce_OSU (
             comm_size = comm_ptr->local_size;
             rank = comm_ptr->rank;
         
-            if (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) 
-			{
+            if (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN)  {
                 is_commutative = 1;
                 /* get the function by indexing into the op table */
                 uop = MPIR_Op_table[op%16 - 1];
-            } 
-			else 
-			{
+            } else {
                 MPID_Op_get_ptr(op, op_ptr);
-                if (op_ptr->kind == MPID_OP_USER_NONCOMMUTE) 
-				{ 
+                if (op_ptr->kind == MPID_OP_USER_NONCOMMUTE) { 
                     is_commutative = 0;
-                } 
-				else 
-				{ 
+                } else { 
                     is_commutative = 1;
                 }
 #ifdef HAVE_CXX_BINDING            
-                if (op_ptr->language == MPID_LANG_CXX) 
-				{
+                if (op_ptr->language == MPID_LANG_CXX) {
                     uop = (MPI_User_function *) op_ptr->function.c_function;
 		            is_cxx_uop = 1;
-	            } 
-			    else
+	            } else
 #endif
-				    if ((op_ptr->language == MPID_LANG_C)) 
-				    { 
+	        if ((op_ptr->language == MPID_LANG_C)) { 
                         uop = (MPI_User_function *) op_ptr->function.c_function;
-                    }  
-				    else 
-				    { 
+                }  else { 
                         uop = (MPI_User_function *) op_ptr->function.f77_function;
-                    }
+                }
             }
             
-			/* need to allocate temporary buffer to store incoming data*/
+	    /* need to allocate temporary buffer to store incoming data*/
             mpi_errno = NMPI_Type_get_true_extent(datatype, &true_lb,
                                               &true_extent);
-	        MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER, "**fail");
+	    MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER, "**fail");
             MPID_Datatype_get_extent_macro(datatype, extent);
 
             MPIU_CHKLMEM_MALLOC(tmp_buf, void *, count*(MPIR_MAX(extent,true_extent)), mpi_errno, "temporary buffer");
@@ -362,10 +350,9 @@ int MPIR_Allreduce_OSU (
             tmp_buf = (void *)((char*)tmp_buf - true_lb);
         
             /* copy local data into recvbuf */
-            if (sendbuf != MPI_IN_PLACE) 
-			{
+            if (sendbuf != MPI_IN_PLACE) { 
                 mpi_errno = MPIR_Localcopy(sendbuf, count, datatype, recvbuf, count, datatype);
-				MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER, "**fail");
+		MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER, "**fail");
             }
 
             MPID_Datatype_get_size_macro(datatype, type_size);
@@ -384,45 +371,37 @@ int MPIR_Allreduce_OSU (
             remaining processes form a nice power-of-two. */
         
 
-            if (rank < 2*rem) 
-			{
-                if (rank % 2 == 0) 
-				{ 
-					/* even */
+            if (rank < 2*rem) {
+                if (rank % 2 == 0) {  
+		    /* even */
                     mpi_errno = MPIC_Send(recvbuf, count, datatype, rank+1,
                                       MPIR_ALLREDUCE_TAG, comm);
-		            MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER, "**fail");
+		    MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER, "**fail");
                 
-                /* temporarily set the rank to -1 so that this
+                   /* temporarily set the rank to -1 so that this
                    process does not pariticipate in recursive
                    doubling */
                     newrank = -1; 
-                } 
-				else 
-				{ 
-					/* odd */
+                } else 	{ 
+		    /* odd */
                     mpi_errno = MPIC_Recv(tmp_buf, count, datatype, rank-1, MPIR_ALLREDUCE_TAG, comm,
                                       MPI_STATUS_IGNORE);
-		            MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER, "**fail");
+		    MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER, "**fail");
                 
                     /* do the reduction on received data. since the
                     ordering is right, it doesn't matter whether
                     the operation is commutative or not. */
 #ifdef HAVE_CXX_BINDING
-                    if (is_cxx_uop) 
-					{
+                    if (is_cxx_uop) {
                         (*MPIR_Process.cxx_call_op_fn)( tmp_buf, recvbuf, count,datatype, uop ); 
-                    } 
-					else 
+                    }else 
 #endif
                         (*uop)(tmp_buf, recvbuf, &count, &datatype);
                 
                         /* change the rank */
                         newrank = rank / 2;
                 }
-            } 
-			else  /* rank >= 2*rem */ 
-			{ 
+            } else {  /* rank >= 2*rem */ 
                 newrank = rank - rem;
             } 
         
@@ -435,19 +414,16 @@ int MPIR_Allreduce_OSU (
             datatypes to do the reduce-scatter is tricky, therefore
             using recursive doubling in that case.) */
 
-            if (newrank != -1) 
-			{
+            if (newrank != -1) {
 #if defined(_OSU_MVAPICH_)
                 if ((count*type_size <= coll_param.allreduce_short_msg) ||
 #else /* defined(_OSU_MVAPICH_) */                    
-				if ((count*type_size <= MPIR_ALLREDUCE_SHORT_MSG) ||
+		    if ((count*type_size <= MPIR_ALLREDUCE_SHORT_MSG) ||
 #endif /* defined(_OSU_MVAPICH_) */
-					(HANDLE_GET_KIND(op) != HANDLE_KIND_BUILTIN) ||  
-					(count < pof2)) 
-					{ /* use recursive doubling */
+			(HANDLE_GET_KIND(op) != HANDLE_KIND_BUILTIN) ||  
+			(count < pof2)) {  /* use recursive doubling */
                         mask = 0x1;
-                        while (mask < pof2) 
-					    {
+                        while (mask < pof2) {
                             newdst = newrank ^ mask;
                             /* find real rank of dest */
                             dst = (newdst < rem) ? newdst*2 + 1 : newdst + rem;
@@ -464,40 +440,33 @@ int MPIR_Allreduce_OSU (
                             /* tmp_buf contains data received in this step.
                             recvbuf contains data accumulated so far */
                     
-                            if (is_commutative  || (dst < rank)) 
-						    {
+                            if (is_commutative  || (dst < rank)) {
                             /* op is commutative OR the order is already right */
 #ifdef HAVE_CXX_BINDING
                                 if (is_cxx_uop) {
                                     (*MPIR_Process.cxx_call_op_fn)( tmp_buf, recvbuf, 
                                                count,datatype, uop ); 
-                                } 
-							    else 
+                                } else 
 #endif
                                     (*uop)(tmp_buf, recvbuf, &count, &datatype);
-                            } 
-						    else 
-						    {
+                            } else {
                             /* op is noncommutative and the order is not right */
 #ifdef HAVE_CXX_BINDING
                                 if (is_cxx_uop) {
                                     (*MPIR_Process.cxx_call_op_fn)( recvbuf, tmp_buf, 
                                                       count, datatype, uop ); 
-                                } 
-							    else 
+                                }  else 
 #endif
                                     (*uop)(recvbuf, tmp_buf, &count, &datatype);
                         
                                 /* copy result back into recvbuf */
                                 mpi_errno = MPIR_Localcopy(tmp_buf, count, datatype,
                                                    recvbuf, count, datatype);
-			                    MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER, "**fail");
+			        MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER, "**fail");
                             }
                             mask <<= 1;
                         }
-                    } 
-					else 
-					{
+                    } else {
 
                     /* do a reduce-scatter followed by allgather */
 

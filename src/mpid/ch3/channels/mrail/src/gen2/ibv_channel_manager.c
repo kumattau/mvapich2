@@ -171,6 +171,10 @@ static inline int GetSeqNumVbuf(vbuf * buf)
             {
                 return ((MPIDI_CH3_Pkt_rndv_r3_data_t *)(buf->pheader))->seqnum;
             }
+      case MPIDI_CH3_PKT_RNDV_R3_ACK:
+            {
+                return ((MPIDI_CH3_Pkt_rndv_r3_ack_t *)(buf->pheader))->seqnum;
+            }
 #ifndef MV2_DISABLE_HEADER_CACHING 
         case MPIDI_CH3_PKT_FAST_EAGER_SEND:
         case MPIDI_CH3_PKT_FAST_EAGER_SEND_WITH_REQ:
@@ -231,23 +235,24 @@ static inline int GetSeqNumVbuf(vbuf * buf)
 static inline vbuf * MPIDI_CH3I_RDMA_poll(MPIDI_VC_t * vc)
 {
     vbuf *v = NULL;
-    volatile VBUF_FLAG_TYPE *tail;
+    volatile VBUF_FLAG_TYPE *head;
 
     if (num_rdma_buffer == 0)
         return NULL;
 
     v = &(vc->mrail.rfp.RDMA_recv_buf[vc->mrail.rfp.p_RDMA_recv]);
-    tail = v->head_flag;
+    head = v->head_flag;
 
-    if (*tail && vc->mrail.rfp.p_RDMA_recv != vc->mrail.rfp.p_RDMA_recv_tail) {
+    if (*head && vc->mrail.rfp.p_RDMA_recv != vc->mrail.rfp.p_RDMA_recv_tail) {
         /* advance receive pointer */
-        if (++(vc->mrail.rfp.p_RDMA_recv) >= num_rdma_buffer)
+        if (++(vc->mrail.rfp.p_RDMA_recv) >= num_rdma_buffer) {
             vc->mrail.rfp.p_RDMA_recv = 0;
-        MRAILI_FAST_RDMA_VBUF_START(v, *tail, v->pheader)
+        }
+        v->pheader = v->buffer;
             DEBUG_PRINT("[recv: poll rdma] recv %d, tail %d, size %d\n",
                     vc->pg_rank,
-                    vc->mrail.rfp.p_RDMA_recv, vc->mrail.rfp.p_RDMA_recv_tail, *tail);
-        v->content_size = *v->head_flag;
+                    vc->mrail.rfp.p_RDMA_recv, vc->mrail.rfp.p_RDMA_recv_tail, *head);
+        v->content_size = (*head & FAST_RDMA_SIZE_MASK);
     } else {
         v = NULL;
     }
@@ -309,6 +314,7 @@ int MPIDI_CH3I_MRAILI_Get_next_vbuf(MPIDI_VC_t** vc_ptr, vbuf** vbuf_ptr)
 {
     *vc_ptr = NULL;
     *vbuf_ptr = NULL;
+    VBUF_FLAG_TYPE size;
     int type;
     MPIDI_STATE_DECL(MPID_GEN2_MPIDI_CH3I_MRAILI_GET_NEXT_VBUF);
     MPIDI_FUNC_ENTER(MPID_GEN2_MPIDI_CH3I_MRAILI_GET_NEXT_VBUF);
@@ -337,6 +343,7 @@ int MPIDI_CH3I_MRAILI_Get_next_vbuf(MPIDI_VC_t** vc_ptr, vbuf** vbuf_ptr)
     int seq;
     vbuf* v = NULL;
     volatile VBUF_FLAG_TYPE* tail = NULL;
+    volatile VBUF_FLAG_TYPE* head = NULL;
 
     /* no msg is queued, poll rdma polling set */
     for (; i < MPIDI_CH3I_RDMA_Process.polling_group_size; ++i)
@@ -347,10 +354,18 @@ int MPIDI_CH3I_MRAILI_Get_next_vbuf(MPIDI_VC_t** vc_ptr, vbuf** vbuf_ptr)
         if (seq == PKT_IS_NULL)
         {
             v = &(vc->mrail.rfp.RDMA_recv_buf[vc->mrail.rfp.p_RDMA_recv]);
-            tail = v->head_flag;
+            head = v->head_flag;
 
-            if (*tail && vc->mrail.rfp.p_RDMA_recv != vc->mrail.rfp.p_RDMA_recv_tail)
+            if (*head && vc->mrail.rfp.p_RDMA_recv != vc->mrail.rfp.p_RDMA_recv_tail)
             {
+                size = (*head & FAST_RDMA_SIZE_MASK);
+                tail = (VBUF_FLAG_TYPE *) (v->buffer + size);
+                /* If the tail has not received yet, than go ahead and
+                ** poll next connection */
+                if (*head != *tail) {
+                    continue;
+                }
+                
                 DEBUG_PRINT("Get one!\n");
 
                 if (++vc->mrail.rfp.p_RDMA_recv >= num_rdma_buffer)
@@ -358,8 +373,9 @@ int MPIDI_CH3I_MRAILI_Get_next_vbuf(MPIDI_VC_t** vc_ptr, vbuf** vbuf_ptr)
                     vc->mrail.rfp.p_RDMA_recv = 0;
                 }
 
-                MRAILI_FAST_RDMA_VBUF_START(v, *tail, v->pheader)
-                v->content_size = *v->head_flag;
+                v->pheader = v->buffer;
+                v->content_size = size;
+                *head = 0;
 
                 seq = GetSeqNumVbuf(v);
 

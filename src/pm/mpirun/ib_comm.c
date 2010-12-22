@@ -822,7 +822,7 @@ int inline ib_connection_post_send(struct ib_connection *conn, int qp_index, int
 IB-server calls this to post a RDMA-read to SQ. 
 The "rrpkt" contains infor of RR in remote peer, it's a local-var from iop
 */
-int inline ib_connection_post_RR(struct ib_connection* conn, int qpidx, ib_packet_t* rrpkt ) 
+int ib_connection_post_RR(struct ib_connection* conn, int qpidx, ib_packet_t* rrpkt ) 
 {	
 	struct ib_HCA* hca = conn->hca;
 	
@@ -997,7 +997,7 @@ int inline	ib_connection_send_RR_rqst(struct ib_connection* conn, int qpidx,
 	return ib_connection_post_send( conn, qpidx, slot, sizeof(*pkt) );
 }
 /// mig-src node sends a RR rqst to tgt
-int inline	ib_connection_send_chunk_RR_rqst(struct ib_connection* conn, ckpt_file_t* cfile, ckpt_chunk_t* chunk, void* arg)
+int ib_connection_send_chunk_RR_rqst(struct ib_connection* conn, ckpt_file_t* cfile, ckpt_chunk_t* chunk, void* arg)
 {
 	struct ib_HCA* hca = conn->hca;
 	struct ib_packet *pkt;

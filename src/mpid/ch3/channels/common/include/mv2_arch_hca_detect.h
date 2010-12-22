@@ -18,7 +18,6 @@
  */ 
 typedef enum {
     MV2_HCA_UNKWN = 0, 
-    MV2_IB_HCA_START,
     MV2_HCA_MLX_PCI_EX_SDR, 
     MV2_HCA_MLX_PCI_EX_DDR, 
     MV2_HCA_MLX_CX_SDR,
@@ -27,16 +26,18 @@ typedef enum {
     MV2_HCA_PATH_HT, 
     MV2_HCA_MLX_PCI_X, 
     MV2_HCA_IBM_EHCA,
-    MV2_IB_HCA_END,
-    MV2_IWARP_HCA_START,
     MV2_HCA_CHELSIO_T3,
     MV2_HCA_INTEL_NE020,
-    MV2_IWARP_HCA_END
 } mv2_hca_type;
 
 /* No. of different HCA Types */
 #define MV2_NUM_HCA_TYPES 11
 
+/* Check if given card is IB card or not */
+#define MV2_IS_IB_CARD( x ) ( (MV2_HCA_MLX_PCI_EX_SDR == (x)) || (MV2_HCA_MLX_PCI_EX_DDR == (x)) || (MV2_HCA_MLX_CX_SDR == (x) )|| (MV2_HCA_MLX_CX_DDR == (x)) || (MV2_HCA_MLX_CX_QDR == (x)) || (MV2_HCA_PATH_HT == (x)) || (MV2_HCA_MLX_PCI_X == (x)) || (MV2_HCA_IBM_EHCA == (x)) )
+
+/* Check if given card is iWarp card or not */
+#define MV2_IS_IWARP_CARD( x ) ( (MV2_HCA_CHELSIO_T3 == (x)) || (MV2_HCA_INTEL_NE020 == (x)) )
 
 /* Architecture Type 
  * Note: Add new architecture types only at the end.
@@ -77,7 +78,7 @@ typedef enum {
     MV2_ARCH_UNKWN_HCA_INTEL_NE020,
 
     /* Arch Type = MV2_ARCH_AMD_BARCELONA */
-    MV2_ARCH_AMD_BRCLNA_16_HCA_UNKWN,    
+    MV2_ARCH_AMD_BRCLNA_16_HCA_UNKWN, 
     MV2_ARCH_AMD_BRCLNA_16_HCA_MLX_PCI_EX_SDR,
     MV2_ARCH_AMD_BRCLNA_16_HCA_MLX_PCI_EX_DDR,
     MV2_ARCH_AMD_BRCLNA_16_HCA_MLX_CX_SDR,
@@ -268,8 +269,7 @@ typedef enum{
     case MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_MLX_CX_QDR: \
     case MV2_ARCH_INTEL_HCA_MLX_CX_QDR: \
     case MV2_ARCH_AMD_HCA_MLX_CX_QDR: \
-    case MV2_ARCH_IBM_PPC_HCA_MLX_CX_QDR: \
-    case MV2_ARCH_INTEL_XEON_E5630_8_HCA_MLX_CX_QDR
+    case MV2_ARCH_IBM_PPC_HCA_MLX_CX_QDR
 
 /* All arch combinations with Mellanox PCI-X Cards */
 #define CASE_MV2_ANY_ARCH_WITH_MLX_PCI_X case MV2_ARCH_UNKWN_HCA_MLX_PCI_X: \
@@ -340,4 +340,7 @@ mv2_arch_type mv2_get_arch_type(void);
 
 /* API for getting the card type */
 mv2_hca_type mv2_get_hca_type( struct ibv_device *dev );
+
+/* API for getting the number of cpus */
+int mv2_get_num_cpus(void);
 

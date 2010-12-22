@@ -75,6 +75,9 @@ typedef struct
     MPID_nem_ib_channel_manager *cmanager;
 
     int force_rndv;
+
+    int pending_r3_data;
+    int received_r3_data;
 } MPID_nem_ib_vc_area;
 
 /**

@@ -272,8 +272,7 @@ static int MRAILI_Fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
 
         if (header->sender_req_id == cached->sender_req_id) {
             MPIDI_CH3I_MRAILI_Pkt_fast_eager *fast_header;
-            MRAILI_FAST_RDMA_VBUF_START(v, len - sizeof(MPIDI_CH3_Pkt_eager_send_t) +
-                                    sizeof(MPIDI_CH3I_MRAILI_Pkt_fast_eager), vstart);
+            vstart = v->buffer;
 
             /*
             DEBUG_PRINT 
@@ -303,9 +302,8 @@ static int MRAILI_Fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
             avail -= sizeof(MPIDI_CH3I_MRAILI_Pkt_fast_eager);
         } else {
             MPIDI_CH3I_MRAILI_Pkt_fast_eager_with_req *fast_header;
-            MRAILI_FAST_RDMA_VBUF_START(v, len - sizeof(MPIDI_CH3_Pkt_eager_send_t) +
-                                    sizeof(MPIDI_CH3I_MRAILI_Pkt_fast_eager_with_req),
-                                    vstart);
+            vstart = v->buffer;
+
             DEBUG_PRINT
                 ("[send: fill buf], head cached, head_flag %p, vstart %p, length %d\n",
                  &v->head_flag, vstart,
@@ -336,15 +334,17 @@ static int MRAILI_Fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
     } else
 #endif
     {
-        MRAILI_FAST_RDMA_VBUF_START(v, len, vstart);
+        vstart = v->buffer;
         DEBUG_PRINT
             ("[send: fill buf], head not cached, v %p, vstart %p, length %d, header size %d\n",
              v, vstart, len, iov[0].MPID_IOV_LEN);
         MPIU_Memcpy(vstart, header, iov[0].MPID_IOV_LEN);
 #ifndef MV2_DISABLE_HEADER_CACHING 
-        if (header->type == MPIDI_CH3_PKT_EAGER_SEND)
-          MPIU_Memcpy(cached, header, sizeof(MPIDI_CH3_Pkt_eager_send_t));
-        ++vc->mrail.rfp.cached_miss;
+        if (header->type == MPIDI_CH3_PKT_EAGER_SEND &&
+            ((len - sizeof(MPIDI_CH3_Pkt_eager_send_t)) <= MAX_SIZE_WITH_HEADER_CACHING)) {
+            MPIU_Memcpy(cached, header, sizeof(MPIDI_CH3_Pkt_eager_send_t));
+            ++vc->mrail.rfp.cached_miss;
+        }
 #endif
         data_buf = (void *) ((unsigned long) vstart + iov[0].MPID_IOV_LEN);
         *num_bytes_ptr += iov[0].MPID_IOV_LEN;
@@ -385,10 +385,10 @@ int MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(MPIDI_VC_t * vc,
                                               int *num_bytes_ptr,
                                               vbuf ** vbuf_handle)
 {
-    MPIDI_CH3I_MRAILI_Pkt_comm_header *p;
     int rail;
-    int  align_len;
+    int  post_len;
     char cq_overflow = 0;
+    VBUF_FLAG_TYPE flag;
     vbuf *v =
         &(vc->mrail.rfp.RDMA_send_buf[vc->mrail.rfp.phead_RDMA_send]);
     char *rstart;
@@ -399,19 +399,16 @@ int MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(MPIDI_VC_t * vc,
     rail = MRAILI_Send_select_rail(vc);
     MRAILI_Fast_rdma_fill_start_buf(vc, iov, n_iov, num_bytes_ptr);
     XRC_MSG ("Fast_rdma %d", vc->pg_rank);
-    p = v->pheader;
 
-    MRAILI_ALIGN_LEN((*num_bytes_ptr), align_len);
+    post_len = *num_bytes_ptr;
     rstart = vc->mrail.rfp.remote_RDMA_buf +
-            (vc->mrail.rfp.phead_RDMA_send + 1) * rdma_vbuf_total_size
-            - align_len - sizeof(VBUF_FLAG_TYPE);
+            (vc->mrail.rfp.phead_RDMA_send * rdma_vbuf_total_size);
     DEBUG_PRINT("[send: rdma_send] local vbuf %p, remote start %p, align size %d\n",
-               v, rstart, align_len);
+               v, rstart, post_len);
 
     if (++(vc->mrail.rfp.phead_RDMA_send) >= num_rdma_buffer)
         vc->mrail.rfp.phead_RDMA_send = 0;
 
-    *v->head_flag = (VBUF_FLAG_TYPE) (*num_bytes_ptr);
     v->rail = rail;
     v->padding = BUSY_FLAG;
 
@@ -420,18 +417,28 @@ int MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(MPIDI_VC_t * vc,
     v->eager = 1;
     v->vc = (void *) vc;
 
+    /* set tail flag with the size of the content */
+    if ((int) *(VBUF_FLAG_TYPE *) (v->buffer + post_len) == post_len) {
+        flag = (VBUF_FLAG_TYPE) (post_len + FAST_RDMA_ALT_TAG);
+    } else {
+        flag = (VBUF_FLAG_TYPE) post_len;
+    }
+    /* set head flag */
+    *v->head_flag = (VBUF_FLAG_TYPE) flag;
+    /* set tail flag */    
+    *((VBUF_FLAG_TYPE *)(v->buffer + post_len)) = flag;
+
     DEBUG_PRINT("incrementing the outstanding eager vbufs: RFP %d\n", vc->mrail.outstanding_eager_vbufs);
 
     /* generate a completion, following statements should have been executed during
      * initialization */
-    MRAILI_ALIGN_LEN(*num_bytes_ptr, align_len);
-    align_len += VBUF_FAST_RDMA_EXTRA_BYTES;
+    post_len += VBUF_FAST_RDMA_EXTRA_BYTES;
 
     DEBUG_PRINT("[send: rdma_send] lkey %p, rkey %p, len %d, flag %d\n",
                 vc->mrail.rfp.RDMA_send_buf_mr[vc->mrail.rails[rail].hca_index]->lkey,
-                vc->mrail.rfp.RDMA_remote_buf_rkey, align_len, *v->head_flag);
+                vc->mrail.rfp.RDMA_remote_buf_rkey, post_len, *v->head_flag);
 
-    VBUF_SET_RDMA_ADDR_KEY(v, align_len, p,
+    VBUF_SET_RDMA_ADDR_KEY(v, post_len, v->head_flag,
             vc->mrail.rfp.RDMA_send_buf_mr[vc->mrail.rails[rail].hca_index]->lkey, rstart,
             vc->mrail.rfp.RDMA_remote_buf_rkey[vc->mrail.rails[rail].hca_index]);
 
@@ -1369,6 +1376,7 @@ int MRAILI_Process_send(void *vbuf_addr)
         break;
     case MPIDI_CH3_PKT_NOOP:
     case MPIDI_CH3_PKT_ADDRESS:
+    case MPIDI_CH3_PKT_ADDRESS_REPLY:
     case MPIDI_CH3_PKT_CM_ESTABLISH:
     case MPIDI_CH3_PKT_PACKETIZED_SEND_START:
     case MPIDI_CH3_PKT_RNDV_REQ_TO_SEND:
@@ -1389,6 +1397,7 @@ int MRAILI_Process_send(void *vbuf_addr)
     case MPIDI_CH3_PKT_LOCK_GET_UNLOCK: /* optimization for single gets */
     case MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK: /* optimization for single accumulates */
     case MPIDI_CH3_PKT_FLOW_CNTL_UPDATE:
+    case MPIDI_CH3_PKT_RNDV_R3_ACK:
         DEBUG_PRINT("[process send] get %d\n", p->type);
         if (v->padding == NORMAL_VBUF_FLAG) {
             MRAILI_Release_vbuf(v);
@@ -1603,14 +1612,27 @@ void vbuf_address_send(MPIDI_VC_t *vc)
 
     rail = MRAILI_Send_select_rail(vc);
     p->type = MPIDI_CH3_PKT_ADDRESS;
-    p->addr.type        = 0;
-    p->addr.rdma_address = (unsigned long)vc->mrail.rfp.RDMA_recv_buf_DMA;
+    p->rdma_address = (unsigned long)vc->mrail.rfp.RDMA_recv_buf_DMA;
 
     for (i = 0; i < rdma_num_hcas; i++) {    
 	DEBUG_PRINT("mr %p\n", vc->mrail.rfp.RDMA_recv_buf_mr[i]);
-	p->addr.rdma_hndl[i]   = vc->mrail.rfp.RDMA_recv_buf_mr[i]->rkey;
+	p->rdma_hndl[i]   = vc->mrail.rfp.RDMA_recv_buf_mr[i]->rkey;
     }
     vbuf_init_send(v, sizeof(MPIDI_CH3_Pkt_address_t), rail);
     MPIDI_CH3I_RDMA_Process.post_send(vc, v, rail);
 }
 
+void vbuf_address_reply_send(MPIDI_VC_t *vc, uint8_t data)
+{
+    int rail;
+
+    vbuf *v = get_vbuf();
+    MPIDI_CH3_Pkt_address_reply_t *p = (MPIDI_CH3_Pkt_address_reply_t *) v->pheader;
+
+    rail = MRAILI_Send_select_rail(vc);
+    p->type = MPIDI_CH3_PKT_ADDRESS_REPLY;
+    p->reply_data = data;
+    
+    vbuf_init_send(v, sizeof(MPIDI_CH3_Pkt_address_reply_t), rail);
+    MPIDI_CH3I_RDMA_Process.post_send(vc, v, rail);
+}

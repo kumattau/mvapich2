@@ -111,6 +111,8 @@ int MPIDI_nem_ib_handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* heade
     {
     case MPIDI_CH3_PKT_NOOP:
     case MPIDI_CH3_PKT_ADDRESS:
+    case MPIDI_CH3_PKT_ADDRESS_REPLY: 
+    case MPIDI_CH3_PKT_RNDV_R3_ACK:
             DEBUG_PRINT("ADDRESS or NOOP received, don't need to proceed\n");
         goto fn_exit;
 /* packetized codes */
@@ -122,7 +124,6 @@ int MPIDI_nem_ib_handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* heade
             DEBUG_PRINT("R3 data received, don't need to proceed\n");
             MPIDI_nem_ib_lmt_r3_recv_data(vc,buffer);
         goto fn_exit;
-
 /* packetized codes */
     case MPIDI_CH3_PKT_PACKETIZED_SEND_START:
             packetized_recv = 1;

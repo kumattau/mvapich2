@@ -175,12 +175,14 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
     rdma_num_rails = rdma_num_hcas * rdma_num_ports * rdma_num_qp_per_port;
     rdma_num_rails_per_hca = rdma_num_ports * rdma_num_qp_per_port;
 
-    if (PROCESS_BINDING == sm_scheduling) {
-        rdma_process_binding_rail_offset = rdma_num_rails_per_hca*
-                                            (rdma_local_id % rdma_num_hcas);
-    } else if (USER_DEFINED == sm_scheduling) {
-        rdma_process_binding_rail_offset = rdma_num_rails_per_hca *
-                                            mrail_user_defined_p2r_mapping;
+    if (rdma_multirail_usage_policy == MV2_MRAIL_SHARING) {
+        if (mrail_use_default_mapping) {
+            rdma_process_binding_rail_offset = rdma_num_rails_per_hca*
+                                                (rdma_local_id % rdma_num_hcas);
+        } else {
+            rdma_process_binding_rail_offset = rdma_num_rails_per_hca *
+                                                mrail_user_defined_p2r_mapping;
+        }
     }
 
     DEBUG_PRINT("num_qp_per_port %d, num_rails = %d, "
@@ -946,12 +948,7 @@ static int mv2_xrc_init (MPIDI_PG_t * pg)
     }
 
     for(i = 0; i < rdma_num_hcas; i++) {
-        if (mrail_user_defined_p2r_mapping != -1) {
-            sprintf (xrc_file, "/dev/shm/%s-%d", ufile,
-                     mrail_user_defined_p2r_mapping);
-        } else {
-            sprintf (xrc_file, "/dev/shm/%s-%d", ufile, i);
-        }
+        sprintf (xrc_file, "/dev/shm/%s-%d", ufile, i);
         XRC_MSG ("Opening file: %s", xrc_file);
         proc->xrc_fd[i] = open (xrc_file, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR);
         if (proc->xrc_fd[i] < 0) {
@@ -1083,12 +1080,14 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
     rdma_num_rails = rdma_num_hcas * rdma_num_ports * rdma_num_qp_per_port;
     rdma_num_rails_per_hca = rdma_num_ports * rdma_num_qp_per_port;
 
-    if (PROCESS_BINDING == sm_scheduling) {
-        rdma_process_binding_rail_offset = rdma_num_rails_per_hca*
-                                            (rdma_local_id % rdma_num_hcas);
-    } else if (USER_DEFINED == sm_scheduling) {
-        rdma_process_binding_rail_offset = rdma_num_rails_per_hca *
-                                             mrail_user_defined_p2r_mapping;
+    if (rdma_multirail_usage_policy == MV2_MRAIL_SHARING) {
+        if (mrail_use_default_mapping) {
+            rdma_process_binding_rail_offset = rdma_num_rails_per_hca*
+                                                (rdma_local_id % rdma_num_hcas);
+        } else {
+            rdma_process_binding_rail_offset = rdma_num_rails_per_hca *
+                                                mrail_user_defined_p2r_mapping;
+        }
     }
 
     DEBUG_PRINT("num_qp_per_port %d, num_rails = %d, "
@@ -1253,8 +1252,10 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
 	    hostent = gethostbyname(hostname);
 	    hostid = (int) ((struct in_addr *) hostent->h_addr_list[0])->s_addr;
 	    self_info.hostid = hostid;
-	    self_info.lid = MPIDI_CH3I_RDMA_Process.lids[0][0];
-	    self_info.gid = MPIDI_CH3I_RDMA_Process.gids[0][0];
+	    memcpy(&self_info.lid, &MPIDI_CH3I_RDMA_Process.lids,
+                   sizeof(uint16_t)*MAX_NUM_HCAS*MAX_NUM_PORTS);
+	    memcpy(&self_info.gid, &MPIDI_CH3I_RDMA_Process.gids,
+                   sizeof(union ibv_gid)*MAX_NUM_HCAS*MAX_NUM_PORTS);
 	    self_info.qpn = ud_qpn_self;
 	    all_info = (ud_addr_info_t *) MPIU_Malloc(sizeof(ud_addr_info_t)*pg_size); 
 	    /*will be freed in rdma_cleanup_startup_ring */
@@ -1275,13 +1276,18 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
             {
 	        MPIDI_PG_Get_vc(pg, i, &vc);
 	        vc->smp.hostid = all_info[i].hostid;
+	        memcpy(&vc->mrail.lid, &all_info[i].lid,
+                       sizeof(uint16_t)*MAX_NUM_HCAS*MAX_NUM_PORTS);
+	        memcpy(&vc->mrail.gid, &all_info[i].gid,
+                       sizeof(union ibv_gid)*MAX_NUM_HCAS*MAX_NUM_PORTS);
 #ifdef _ENABLE_XRC_
-            if (USE_XRC)
+            if (USE_XRC) {
                 pg->ch.mrail.xrc_hostid[i] = all_info[i].hostid;
+            }
 #endif
 		ud_qpn_all[i] = all_info[i].qpn;
-		lid_all[i] = all_info[i].lid;
-        gid_all[i] = all_info[i].gid;
+		lid_all[i] = all_info[i].lid[0][0];
+                gid_all[i] = all_info[i].gid[0][0];
 	    }
 	}
 	else {

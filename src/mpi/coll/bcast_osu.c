@@ -18,7 +18,9 @@
 
 #include "mpiimpl.h"
 #include <unistd.h>
-
+#if defined(_OSU_MVAPICH_)
+#include "coll_shmem.h"
+#endif /* defined(_OSU_MVAPICH_) */
 
 #if defined(_OSU_MVAPICH_)
 int intra_shmem_Bcast_Large(
@@ -30,14 +32,6 @@ int intra_shmem_Bcast_Large(
 	MPID_Comm *comm );
 
 #define SHMEM_BCST_THRESHOLD 1<<20
-
-extern int enable_shmem_collectives;
-extern int  knomial_2level_bcast_system_size_threshold;
-extern int  knomial_2level_bcast_message_size_threshold;
-extern int  enable_knomial_2level_bcast;
-extern int  inter_node_knomial_factor;
-extern int  intra_node_knomial_factor;
-extern int  bcast_short_msg_threshold; 
 
 int shmem_bcast_threshold = SHMEM_BCST_THRESHOLD;
 int bcast_short_msg_threshold = -1;
@@ -1213,10 +1207,6 @@ int MPID_SHMEM_BCAST_init(int file_size, int shmem_comm_rank, int my_local_rank,
 
 int MPID_SHMEM_BCAST_mmap(void** mmap_ptr, int bcast_seg_size, int fd, 
 	int my_local_rank, char* bcast_shmem_file);
-
-extern void MPID_SHMEM_COLL_GetShmemBcastBuf(void**, void*);
-extern void signal_local_processes(int, int, char*, int, int, void*);
-extern void wait_for_signal(int, int, char**, int*, int*, void*);
 
 int viadev_use_shmem_ring= 1;
 int intra_shmem_Bcast_Large( 

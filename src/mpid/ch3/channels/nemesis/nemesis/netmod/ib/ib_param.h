@@ -68,6 +68,7 @@ extern unsigned long        rdma_dreg_cache_limit;
 extern int                  rdma_rndv_protocol;
 extern int                  rdma_r3_threshold;
 extern int                  rdma_r3_threshold_nocache;
+extern int                  rdma_max_r3_pending_data;
 extern int                  rdma_vbuf_total_size;
 extern int                  rdma_max_inline_size;
 
@@ -77,7 +78,9 @@ extern uint32_t             viadev_max_r3_oust_send;
 
 extern int                  rdma_polling_set_threshold;
 extern int                  rdma_polling_set_limit;
-extern int		    rdma_eager_limit;
+extern int                  rdma_fp_sendconn_accepted;
+extern int                  rdma_pending_conn_request;
+extern int		            rdma_eager_limit;
 extern int                  rdma_rndv_ext_sendq_size;
 
 extern int                  rdma_pin_pool_size;

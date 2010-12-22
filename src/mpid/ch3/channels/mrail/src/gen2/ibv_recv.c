@@ -52,6 +52,7 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
     unsigned long crc;
 #endif
     int mpi_errno = MPI_SUCCESS;
+    int ret;
     MPIDI_STATE_DECL(MPIDI_STATE_CH3I_MRAIL_PARSE_HEADER);
     MPIDI_FUNC_ENTER(MPIDI_STATE_CH3I_MRAIL_PARSE_HEADER);
 
@@ -112,7 +113,8 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
         {
             DEBUG_PRINT("[recv: parse header] pkt eager send\n");
 #ifndef MV2_DISABLE_HEADER_CACHING 
-            if (v->padding != NORMAL_VBUF_FLAG) {
+            if (v->padding != NORMAL_VBUF_FLAG &&
+                ((v->content_size - sizeof(MPIDI_CH3_Pkt_eager_send_t)) <= MAX_SIZE_WITH_HEADER_CACHING )) {
                 /* Only cache header if the packet is from RdMA path 
                  * XXXX: what is R3_FLAG? 
                  */
@@ -147,12 +149,23 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
             *pkt = vstart;
         }
         break;
+    case MPIDI_CH3_PKT_RNDV_R3_ACK: 
+        {
+            *pkt = vstart;
+        }
+        goto fn_exit;
     case MPIDI_CH3_PKT_ADDRESS:
 	{
 	    *pkt = vstart;
 	    MPIDI_CH3I_MRAILI_Recv_addr(vc, vstart);
 	    break;
 	}
+    case MPIDI_CH3_PKT_ADDRESS_REPLY:
+    {
+        *pkt = vstart;
+        MPIDI_CH3I_MRAILI_Recv_addr_reply(vc, vstart);
+        break;
+    }
     case MPIDI_CH3_PKT_CM_ESTABLISH:
         {
             *pkt = vstart;
@@ -315,8 +328,8 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
     }
 
     if ((vc->mrail.rfp.RDMA_recv_buf == NULL) &&       /*(c->initialized) && */
-            num_rdma_buffer) {
-        if (MPIDI_CH3I_RDMA_Process.polling_group_size <
+            num_rdma_buffer && !vc->mrail.rfp.rdma_failed) {
+        if ((MPIDI_CH3I_RDMA_Process.polling_group_size + rdma_pending_conn_request) <
                 rdma_polling_set_limit) {
             vc->mrail.rfp.eager_start_cnt++;
             if (rdma_polling_set_threshold < 
@@ -344,8 +357,13 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
                 {
                     XRC_MSG ("FP to %d (IDLE)\n", vc->pg_rank);
                     MPICM_unlock();
-                    vbuf_fast_rdma_alloc(vc, 1);
-                    vbuf_address_send(vc);
+                    ret = vbuf_fast_rdma_alloc(vc, 1);
+                    if (ret == MPI_SUCCESS) {
+                        vbuf_address_send(vc);
+                        rdma_pending_conn_request++;
+                    } else {
+                        vc->mrail.rfp.rdma_failed = 1;
+                    }
                     goto fn_exit;
                 }
                 MPICM_unlock();
@@ -427,6 +445,7 @@ int MPIDI_CH3I_MRAILI_Recv_addr(MPIDI_VC_t * vc, void *vstart)
 {
     MPIDI_CH3_Pkt_address_t *pkt = vstart;
     int i;
+    int ret;
 #ifdef _ENABLE_XRC_
     if (USE_XRC && (0 == MPIDI_CH3I_RDMA_Process.xrc_rdmafp || 
             VC_XST_ISSET (vc, XF_CONN_CLOSING)))
@@ -434,17 +453,97 @@ int MPIDI_CH3I_MRAILI_Recv_addr(MPIDI_VC_t * vc, void *vstart)
 #endif
 
     DEBUG_PRINT("set rdma address, dma address %p\n",
-            (void *)pkt->addr.rdma_address);
+            (void *)pkt->rdma_address);
 
-    if (pkt->addr.rdma_address != 0) {
-	/* Allocating the send vbufs for the eager RDMA flow */
-	vbuf_fast_rdma_alloc(vc, 0);
-
-	for (i = 0; i < rdma_num_hcas; i ++) {
-	    vc->mrail.rfp.RDMA_remote_buf_rkey[i] = pkt->addr.rdma_hndl[i];
-	}
-	vc->mrail.rfp.remote_RDMA_buf = (void *)pkt->addr.rdma_address;
+    /* check if it has accepted max allowing connections */
+    if (rdma_fp_sendconn_accepted >= rdma_polling_set_limit)
+    {
+        vbuf_address_reply_send(vc, RDMA_FP_MAX_SEND_CONN_REACHED);
+        goto fn_exit;
     }
 
+    if (pkt->rdma_address != 0) {
+	    /* Allocating the send vbufs for the eager RDMA flow */
+        ret = vbuf_fast_rdma_alloc(vc, 0);
+        if (ret == MPI_SUCCESS) {
+	        for (i = 0; i < rdma_num_hcas; i ++) {
+	            vc->mrail.rfp.RDMA_remote_buf_rkey[i] = pkt->rdma_hndl[i];
+	        }
+	        vc->mrail.rfp.remote_RDMA_buf = (void *)pkt->rdma_address;
+            vbuf_address_reply_send(vc, RDMA_FP_SUCCESS);
+            rdma_fp_sendconn_accepted++;
+        } else {
+            vbuf_address_reply_send(vc, RDMA_FP_SENDBUFF_ALLOC_FAILED);
+            return -1;
+        } 
+    }
+fn_exit:
+    return MPI_SUCCESS;
+}
+
+int MPIDI_CH3I_MRAILI_Recv_addr_reply(MPIDI_VC_t * vc, void *vstart)
+{
+    int hca_index;
+    int ret;
+    MPIDI_CH3_Pkt_address_reply_t *pkt = vstart;
+    DEBUG_PRINT("Received addr reply packet. reply data :%d\n", pkt->reply_data);
+    
+    if (pkt->reply_data == RDMA_FP_SENDBUFF_ALLOC_FAILED 
+        || pkt->reply_data == RDMA_FP_MAX_SEND_CONN_REACHED) {
+
+        DEBUG_PRINT("RDMA FP setup failed. clean up recv buffers\n ");
+    
+        /* de-regster the recv buffers */
+	    for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
+	        if (vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]) {
+		        ret = deregister_memory(vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]);
+                if (ret) {
+		            MPIU_Error_printf("Failed to deregister mr (%d)\n", ret);
+                } else {
+                    vc->mrail.rfp.RDMA_recv_buf_mr[hca_index] = NULL;
+                }
+	        }
+	    }
+        /* deallocate recv RDMA buffers */
+	    if (vc->mrail.rfp.RDMA_recv_buf_DMA) {
+	        MPIU_Free(vc->mrail.rfp.RDMA_recv_buf_DMA);
+            vc->mrail.rfp.RDMA_recv_buf_DMA = NULL;
+        }
+
+        /* deallocate vbuf struct buffers */
+	    if (vc->mrail.rfp.RDMA_recv_buf) {
+	        MPIU_Free(vc->mrail.rfp.RDMA_recv_buf);
+            vc->mrail.rfp.RDMA_recv_buf = NULL;
+        }
+        
+        /* set flag to mark that FP setup is failed/rejected. 
+        we sholdn't try further on this vc */
+        vc->mrail.rfp.rdma_failed = 1;
+
+    } else if (pkt->reply_data == RDMA_FP_SUCCESS) {
+            
+        /* set pointers */
+        vc->mrail.rfp.p_RDMA_recv = 0;
+        vc->mrail.rfp.p_RDMA_recv_tail = num_rdma_buffer - 1;
+
+        /* Add the connection to the RDMA polling list */
+        MPIU_Assert(MPIDI_CH3I_RDMA_Process.polling_group_size < rdma_polling_set_limit);
+
+        MPIDI_CH3I_RDMA_Process.polling_set
+            [MPIDI_CH3I_RDMA_Process.polling_group_size] = vc;
+        MPIDI_CH3I_RDMA_Process.polling_group_size++;
+
+        vc->mrail.cmanager.num_channels      += 1;
+        vc->mrail.cmanager.num_local_pollings = 1;
+        vc->mrail.rfp.in_polling_set          = 1;
+       
+    } else {
+        ibv_va_error_abort(GEN_EXIT_ERR,
+                "Invalid reply data received. reply_data: pkt->reply_data%d\n",
+                                                              pkt->reply_data);
+    }
+    
+    rdma_pending_conn_request--;
+    
     return MPI_SUCCESS;
 }

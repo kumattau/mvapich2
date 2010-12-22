@@ -3,7 +3,46 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
-MVAPICH2-1.6 (11/12/2010)
+MVAPICH2-1.6-RC2 (12/22/2010)
+
+* Features and Enhancements
+    - Optimization and enhanced performance for clusters with nVIDIA
+      GPU adapters (with and without GPUDirect technology)
+    - Enhanced R3 rendezvous protocol
+        - For both CH3 and Nemesis interfaces
+    - Robust RDMA Fast Path setup to avoid memory allocation
+      failures
+        - For both CH3 and Nemesis interfaces
+    - Multiple design enhancements for better performance of
+      medium sized messages
+    - Enhancements and optimizations for one sided Put and Get operations
+    - Enhancements and tuning of Allgather for small and medium
+      sized messages
+    - Optimization of AllReduce
+    - Enhancements to Multi-rail Design and features including striping
+      of one-sided messages
+    - Enhancements to mpirun_rsh job start-up scheme
+    - Enhanced designs for automatic detection of various
+      architectures and adapters
+
+* Bug fixes
+    - Fix a bug in Post-Wait/Start-Complete path for one-sided
+      operations
+    - Resolving a hang in mpirun_rsh termination when CR is enabled
+    - Fixing issue in MPI_Allreduce and Reduce when called with MPI_IN_PLACE
+        - Thanks to the initial patch by Alexander Alekhin
+    - Fix for an issue in rail selection for small RMA messages
+    - Fix for threading related errors with comm_dup
+    - Fix for alignment issues in RDMA Fast Path
+    - Fix for extra memcpy in header caching
+    - Fix for an issue to use correct HCA when process to rail binding
+      scheme used in combination with XRC.
+    - Fix for an RMA issue when configured with enable-g=meminit
+        - Thanks to James Dinan of Argonne for reporting this issue
+    - Only set FC and F77 if gfortran is executable
+
+
+MVAPICH2-1.6RC1 (11/12/2010)
 
 * Features and Enhancements
     - Using LiMIC2 for efficient intra-node RMA transfer to avoid extra 

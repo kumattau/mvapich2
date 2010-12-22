@@ -22,7 +22,7 @@ int get_buf_slot(struct ib_buffer* buf, void** addr, int expect );
 
 int free_buf_slot(struct ib_buffer* buf, int slot, int expect);
 
-inline void* ib_buffer_slot_addr( struct ib_buffer* buf, int slot);
+void* ib_buffer_slot_addr( struct ib_buffer* buf, int slot);
 
 void	dump_ib_buffer(struct ib_buffer* buf);
 

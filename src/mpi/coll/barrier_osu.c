@@ -18,6 +18,9 @@
  */
 
 #include "mpiimpl.h"
+#if defined(_OSU_MVAPICH_)
+#include "coll_shmem.h"
+#endif /* defined(_OSU_MVAPICH_) */
 
 /* This is the default implementation of the barrier operation.  The
    algorithm is:
@@ -39,10 +42,6 @@
 
    This is an intracommunicator barrier only!
 */
-#if defined(_OSU_MVAPICH_)
-extern int enable_shmem_collectives;
-extern int disable_shmem_barrier;
-#endif /*#if defined(_OSU_MVAPICH_)*/
 
 /* not declared static because it is called in ch3_comm_connect/accept */
 int MPIR_Barrier_OSU( MPID_Comm *comm_ptr )
@@ -56,8 +55,6 @@ int MPIR_Barrier_OSU( MPID_Comm *comm_ptr )
     MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
     int local_rank = -1, local_size=0, my_rank;
     int total_size, shmem_comm_rank;
-    extern void MPIDI_CH3I_SHMEM_COLL_Barrier_gather(int, int, int);
-    extern void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int, int, int);
     /* end shmem_comm declaration */
 
 	size = comm_ptr->local_size;

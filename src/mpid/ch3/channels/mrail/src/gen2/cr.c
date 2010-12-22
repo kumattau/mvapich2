@@ -211,8 +211,8 @@ inline void MPIDI_CH3I_SMC_unlock()
 {
     pthread_mutex_lock(&MPICR_SMC_lock);
     g_cr_in_progress = 0;
-    pthread_mutex_unlock(&MPICR_SMC_lock);
     pthread_cond_signal(&MPICR_SMC_cond);
+    pthread_mutex_unlock(&MPICR_SMC_lock);
     unlock1_count++;
 }
 
@@ -221,7 +221,8 @@ void Wait_for_CR_Completion()
     pthread_mutex_lock(&MPICR_SMC_lock);
     if (g_cr_in_progress) {
 	MPIDI_CH3I_CR_unlock();
-	pthread_cond_wait(&MPICR_SMC_cond, &MPICR_SMC_lock);
+    while( g_cr_in_progress )
+        pthread_cond_wait(&MPICR_SMC_cond, &MPICR_SMC_lock);
 	MPIDI_CH3I_CR_lock();
     }
     pthread_mutex_unlock(&MPICR_SMC_lock);
@@ -622,7 +623,8 @@ int CR_Thread_loop()
 
         pthread_mutex_lock(&cr_ftb_mutex);
         cr_ftb_ckpt_req = cr_ftb_mig_req = 0;
-        pthread_cond_wait(&cr_ftb_cond, &cr_ftb_mutex);
+        while( !cr_ftb_ckpt_finalize && !cr_ftb_ckpt_req && !cr_ftb_mig_req )
+            pthread_cond_wait(&cr_ftb_cond, &cr_ftb_mutex);
         pthread_mutex_unlock(&cr_ftb_mutex);
 
         if (cr_ftb_ckpt_finalize) return;
@@ -1134,8 +1136,10 @@ int MPIDI_CH3I_CR_Finalize()
     }
 
 #ifdef CR_FTB
+    pthread_mutex_lock(&cr_ftb_mutex);
     cr_ftb_ckpt_finalize = 1;
     pthread_cond_signal(&cr_ftb_cond);
+    pthread_mutex_unlock(&cr_ftb_mutex);
 #endif
 
 //    pthread_cancel(MPICR_child_thread);
@@ -1551,7 +1555,8 @@ int CR_IBU_Rebuild_network()
 	    hostent->h_addr_list[0])->s_addr;
 	    self_info.hostid = hostid;
 
-            self_info.lid = MPIDI_CH3I_RDMA_Process.lids[0][0];
+            memcpy(&self_info.lid, &MPIDI_CH3I_RDMA_Process.lids,
+                sizeof(uint16_t)*MAX_NUM_HCAS*MAX_NUM_PORTS);
             self_info.qpn = ud_qpn_self;
 
             ud_addr_info_t * all_info = (ud_addr_info_t *) MPIU_Malloc(sizeof(ud_addr_info_t)*pg_size);
@@ -1571,7 +1576,7 @@ int CR_IBU_Rebuild_network()
                 vc->smp.hostid = all_info[i].hostid;
 
                 ud_qpn_all[i] = all_info[i].qpn;
-                lid_all[i] = all_info[i].lid;
+                lid_all[i] = all_info[i].lid[0][0];
             }
 
             mpi_errno = rdma_cleanup_startup_ring(&MPIDI_CH3I_RDMA_Process);
@@ -2276,7 +2281,7 @@ static int CR_FTB_Callback(FTB_receive_event_t *revent, void *arg)
     /* TODO: Do some sanity checking */
   if (!strcmp(revent->event_name, EVENT(CR_FTB_CHECKPOINT))) {
         pthread_mutex_lock(&cr_ftb_mutex);
-       cr_ftb_ckpt_req = 1;
+        cr_ftb_ckpt_req = 1;
         pthread_cond_signal(&cr_ftb_cond);
         pthread_mutex_unlock(&cr_ftb_mutex);
         return(0);

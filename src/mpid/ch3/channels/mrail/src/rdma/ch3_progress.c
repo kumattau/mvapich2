@@ -70,6 +70,7 @@ inline static int MPIDI_CH3I_Seq(int type)
         case MPIDI_CH3_PKT_PACKETIZED_SEND_START:
         case MPIDI_CH3_PKT_PACKETIZED_SEND_DATA:
         case MPIDI_CH3_PKT_RNDV_R3_DATA:
+        case MPIDI_CH3_PKT_RNDV_R3_ACK:
 #ifndef MV2_DISABLE_HEADER_CACHING 
         case MPIDI_CH3_PKT_FAST_EAGER_SEND:
         case MPIDI_CH3_PKT_FAST_EAGER_SEND_WITH_REQ:
@@ -1089,6 +1090,7 @@ static int handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* header_type
             }
 #endif /* defined(RDMA_CM) */
     case MPIDI_CH3_PKT_ADDRESS:
+    case MPIDI_CH3_PKT_ADDRESS_REPLY:
             DEBUG_PRINT("NOOP received, don't need to proceed\n");
         goto fn_exit;
     case MPIDI_CH3_PKT_PACKETIZED_SEND_DATA:
@@ -1098,6 +1100,9 @@ static int handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* header_type
     case MPIDI_CH3_PKT_RNDV_R3_DATA:
             DEBUG_PRINT("R3 data received, don't need to proceed\n");
             MPIDI_CH3_Rendezvouz_r3_recv_data(vc, buffer);
+        goto fn_exit;
+    case MPIDI_CH3_PKT_RNDV_R3_ACK:
+            MPIDI_CH3_Rendezvouz_r3_ack_recv(vc, (void*) header);
         goto fn_exit;
     case MPIDI_CH3_PKT_RPUT_FINISH:
             DEBUG_PRINT("RPUT finish received, don't need to proceed\n");

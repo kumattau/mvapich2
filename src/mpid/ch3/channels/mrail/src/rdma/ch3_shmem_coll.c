@@ -58,6 +58,12 @@ extern int g_shmem_bcast_flags;
 int g_shmem_coll_blocks = 8;
 int g_shmem_coll_max_msg_size = (1 << 17); 
 
+int tuning_table[COLL_COUNT][COLL_SIZE] = {{1024, 512, 256},
+                                         {-1, -1, -1},
+                                         {-1, -1, -1}
+                                         };
+
+
 #if defined(CKPT)
 extern void Wait_for_CR_Completion();
 void *smc_store;
