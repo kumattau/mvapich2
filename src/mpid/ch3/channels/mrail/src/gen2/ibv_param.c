@@ -1101,8 +1101,8 @@ static void  rdma_set_default_parameters_numrail_4(struct MPIDI_CH3I_RDMA_Proces
                      2*1024,  4, /* Values for large cluster size */
                      4*1024,  8, /* Values for medium cluster size */
                      9*1024, 16, /* Values for small cluster size */
-                    33*1024, 16, /* Values for very small cluster size */
-                    33*1024, 16);/* Values for unknown cluster size */
+                    32*1024, 16, /* Values for very small cluster size */
+                    32*1024, 16);/* Values for unknown cluster size */
             rdma_eagersize_1sc           = 4 * 1024;
             rdma_put_fallback_threshold  = 8 * 1024;
             rdma_get_fallback_threshold  = 64;
@@ -1113,8 +1113,8 @@ static void  rdma_set_default_parameters_numrail_4(struct MPIDI_CH3I_RDMA_Proces
                      2*1024,  4, /* Values for large cluster size */
                      4*1024,  8, /* Values for medium cluster size */
                      9*1024, 16, /* Values for small cluster size */
-                    33*1024, 16, /* Values for very small cluster size */
-                    33*1024, 16);/* Values for unknown cluster size */
+                    32*1024, 16, /* Values for very small cluster size */
+                    32*1024, 16);/* Values for unknown cluster size */
             rdma_eagersize_1sc           = 4 * 1024;
             rdma_put_fallback_threshold  = 8 * 1024;
             rdma_get_fallback_threshold  = 394 * 1024;
@@ -1171,8 +1171,8 @@ static void  rdma_set_default_parameters_numrail_3(struct MPIDI_CH3I_RDMA_Proces
                      2*1024,  4, /* Values for large cluster size */
                      4*1024,  8, /* Values for medium cluster size */
                      9*1024, 16, /* Values for small cluster size */
-                    33*1024, 16, /* Values for very small cluster size */
-                    33*1024, 16);/* Values for unknown cluster size */
+                    32*1024, 16, /* Values for very small cluster size */
+                    32*1024, 16);/* Values for unknown cluster size */
             rdma_eagersize_1sc           = 4 * 1024;
             rdma_put_fallback_threshold  = 8 * 1024;
             rdma_get_fallback_threshold  = 64;
@@ -1183,8 +1183,8 @@ static void  rdma_set_default_parameters_numrail_3(struct MPIDI_CH3I_RDMA_Proces
                      2*1024,  4, /* Values for large cluster size */
                      4*1024,  8, /* Values for medium cluster size */
                      9*1024, 16, /* Values for small cluster size */
-                    33*1024, 16, /* Values for very small cluster size */
-                    33*1024, 16);/* Values for unknown cluster size */
+                    32*1024, 16, /* Values for very small cluster size */
+                    32*1024, 16);/* Values for unknown cluster size */
             rdma_eagersize_1sc           = 4 * 1024;
             rdma_put_fallback_threshold  = 8 * 1024;
             rdma_get_fallback_threshold  = 394 * 1024;
@@ -1241,8 +1241,8 @@ static void  rdma_set_default_parameters_numrail_2(struct MPIDI_CH3I_RDMA_Proces
                      2*1024,  4, /* Values for large cluster size */
                      4*1024,  8, /* Values for medium cluster size */
                      9*1024, 16, /* Values for small cluster size */
-                    33*1024, 16, /* Values for very small cluster size */
-                    33*1024, 16);/* Values for unknown cluster size */
+                    32*1024, 16, /* Values for very small cluster size */
+                    32*1024, 16);/* Values for unknown cluster size */
             rdma_eagersize_1sc           = 4 * 1024;
             rdma_put_fallback_threshold  = 8 * 1024;
             rdma_get_fallback_threshold  = 64;
@@ -1253,8 +1253,8 @@ static void  rdma_set_default_parameters_numrail_2(struct MPIDI_CH3I_RDMA_Proces
                      2*1024,  4, /* Values for large cluster size */
                      4*1024,  8, /* Values for medium cluster size */
                      9*1024, 16, /* Values for small cluster size */
-                    33*1024, 16, /* Values for very small cluster size */
-                    33*1024, 16);/* Values for unknown cluster size */
+                    32*1024, 16, /* Values for very small cluster size */
+                    32*1024, 16);/* Values for unknown cluster size */
             rdma_eagersize_1sc           = 4 * 1024;
             rdma_put_fallback_threshold  = 8 * 1024;
             rdma_get_fallback_threshold  = 394 * 1024;
@@ -1311,8 +1311,8 @@ static void  rdma_set_default_parameters_numrail_1(struct MPIDI_CH3I_RDMA_Proces
                      2*1024,  4, /* Values for large cluster size */
                      4*1024,  8, /* Values for medium cluster size */
                      9*1024, 16, /* Values for small cluster size */
-                    33*1024, 16, /* Values for very small cluster size */
-                    33*1024, 16);/* Values for unknown cluster size */
+                    32*1024, 16, /* Values for very small cluster size */
+                    32*1024, 16);/* Values for unknown cluster size */
             rdma_eagersize_1sc           = 4 * 1024;
             rdma_put_fallback_threshold  = 8 * 1024;
             rdma_get_fallback_threshold  = 64;
@@ -1323,8 +1323,8 @@ static void  rdma_set_default_parameters_numrail_1(struct MPIDI_CH3I_RDMA_Proces
                      2*1024,  4, /* Values for large cluster size */
                      4*1024,  8, /* Values for medium cluster size */
                      9*1024, 16, /* Values for small cluster size */
-                    33*1024, 16, /* Values for very small cluster size */
-                    33*1024, 16);/* Values for unknown cluster size */
+                    32*1024, 16, /* Values for very small cluster size */
+                    32*1024, 16);/* Values for unknown cluster size */
             rdma_eagersize_1sc           = 4 * 1024;
             rdma_put_fallback_threshold  = 8 * 1024;
             rdma_get_fallback_threshold  = 394 * 1024;
@@ -1375,8 +1375,8 @@ static void  rdma_set_default_parameters_numrail_unknwn(struct MPIDI_CH3I_RDMA_P
                      2*1024,  4, /* Values for large cluster size */
                      4*1024,  8, /* Values for medium cluster size */
                      9*1024, 16, /* Values for small cluster size */
-                    33*1024, 16, /* Values for very small cluster size */
-                    33*1024, 16);/* Values for unknown cluster size */
+                    32*1024, 16, /* Values for very small cluster size */
+                    32*1024, 16);/* Values for unknown cluster size */
             rdma_eagersize_1sc           = 4 * 1024;
             rdma_put_fallback_threshold  = 8 * 1024;
             rdma_get_fallback_threshold  = 64;
@@ -1387,8 +1387,8 @@ static void  rdma_set_default_parameters_numrail_unknwn(struct MPIDI_CH3I_RDMA_P
                      2*1024,  4, /* Values for large cluster size */
                      4*1024,  8, /* Values for medium cluster size */
                      9*1024, 16, /* Values for small cluster size */
-                    33*1024, 16, /* Values for very small cluster size */
-                    33*1024, 16);/* Values for unknown cluster size */
+                    32*1024, 16, /* Values for very small cluster size */
+                    32*1024, 16);/* Values for unknown cluster size */
             rdma_eagersize_1sc           = 4 * 1024;
             rdma_put_fallback_threshold  = 8 * 1024;
             rdma_get_fallback_threshold  = 394 * 1024;
