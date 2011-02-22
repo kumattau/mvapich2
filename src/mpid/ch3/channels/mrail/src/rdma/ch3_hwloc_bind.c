@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1376,15 +1376,6 @@ int smpi_setaffinity (void)
              if(mpi_errno != MPI_SUCCESS)  {
                  /* In case, we get an error from the hwloc mapping function */
                  mpi_errno = get_cpu_mapping(N_CPUs_online);
-             }
-
-            /*
-             * If get_cpu_mapping_hwloc() is called, before hwloc_set_cpubind()
-             * called to do CPU binding, all rank processes need the synchronization.
-             */
-             if(PMI_Barrier() != PMI_SUCCESS) {
-                 MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                 "**pmi_barrier", "**pmi_barrier %d", mpi_errno);
              }
 
             if(mpi_errno != MPI_SUCCESS || custom_cpu_mapping == NULL) {

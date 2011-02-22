@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -212,7 +212,7 @@ MRAILI_Fast_rdma_fill_start_buf (MPIDI_VC_t * vc,
 
     PACKET_SET_RDMA_CREDIT (header, vc);
     DEBUG_PRINT ("header credit %d cached credit %d\n",
-                 header->mrail.rdma_credit, cached->mrail.rdma_credit);
+                 header->rdma_credit, cached->rdma_credit);
 
     *num_bytes_ptr = 0;
 
@@ -224,9 +224,9 @@ MRAILI_Fast_rdma_fill_start_buf (MPIDI_VC_t * vc,
         (header->match.parts.rank == cached->match.parts.rank) &&
         (header->match.parts.context_id == cached->match.parts.context_id) &&
         /*(header->sender_req_id == cached->sender_req_id) && */
-        (header->mrail.vbuf_credit == cached->mrail.vbuf_credit) &&
-        (header->mrail.remote_credit == cached->mrail.remote_credit) &&
-        (header->mrail.rdma_credit == cached->mrail.rdma_credit))
+        (header->vbuf_credit == cached->vbuf_credit) &&
+        (header->remote_credit == cached->remote_credit) &&
+        (header->rdma_credit == cached->rdma_credit))
       {
           /* change the header contents */
           vc->mrail.rfp.cached_hit++;
@@ -894,9 +894,7 @@ int MRAILI_Process_send (void *vbuf_addr)
       case MPIDI_CH3_PKT_LOCK:
       case MPIDI_CH3_PKT_LOCK_GRANTED:
       case MPIDI_CH3_PKT_PT_RMA_DONE:
-      case MPIDI_CH3_PKT_LOCK_PUT_UNLOCK:      /* optimization for single puts */
       case MPIDI_CH3_PKT_LOCK_GET_UNLOCK:      /* optimization for single gets */
-      case MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK:    /* optimization for single accumulates */
       case MPIDI_CH3_PKT_FLOW_CNTL_UPDATE:
       case MPIDI_CH3_PKT_CLOSE:        /*24 */
           DEBUG_PRINT ("[process send] get %d\n", p->type);
@@ -913,6 +911,17 @@ int MRAILI_Process_send (void *vbuf_addr)
           }
 
           break;
+   case MPIDI_CH3_PKT_LOCK_PUT_UNLOCK: /* optimization for single puts */
+   case MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK: /* optimization for single accumulates */
+        req = (MPID_Request *) v->sreq;
+        if (NULL != req) { 
+          MPID_Request_set_completed(req);
+        }
+        if (v->padding == NORMAL_VBUF_FLAG) {
+            MRAILI_Release_vbuf(v);
+        }
+        else v->padding = FREE_FLAG;
+        break;
 
       default:
           dump_vbuf ("unknown packet (send finished)", v);

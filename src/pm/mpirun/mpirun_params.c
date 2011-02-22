@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2002-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -86,7 +86,6 @@ static struct option option_table[] = {
     {"debug", no_argument, 0, 0},
     {"xterm", no_argument, 0, 0},
     {"hostfile", required_argument, 0, 0},
-    {"paramfile", required_argument, 0, 0},
     {"show", no_argument, 0, 0},    // 5
     {"rsh", no_argument, 0, 0},
     {"ssh", no_argument, 0, 0},
@@ -183,8 +182,6 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
     int num_of_params = 0;
     int i;
     int c, option_index;
-    char paramfile[PARAMFILE_LEN + 1];
-    int paramfile_on = 0;
     char *param_env;
 
     size_t hostname_len = 0;
@@ -222,31 +219,24 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
 		if (strlen(optarg) >= HOSTFILE_LEN - 1)
 		    hostfile[HOSTFILE_LEN] = '\0';
 		break;
-	    case 4:		/* -paramfile */
-		paramfile_on = 1;
-		strncpy(paramfile, optarg, PARAMFILE_LEN);
-		if (strlen(optarg) >= PARAMFILE_LEN - 1) {
-		    paramfile[PARAMFILE_LEN] = '\0';
-		}
-		break;
-	    case 5:
+	    case 4:
 		show_on = 1;
 		break;
-	    case 6:
+	    case 5:
 		use_rsh = 1;
 		break;
-	    case 7:
+	    case 6:
 		use_rsh = 0;
 		break;
-	    case 8:
+	    case 7:
 		usage();
 		exit(EXIT_SUCCESS);
 		break;
-            case 9:
+            case 8:
                 PRINT_MVAPICH2_VERSION();
                 exit(EXIT_SUCCESS);
                 break;
-	    case 10:
+	    case 9:
 		{
 		    /* -tv */
 		    char *tv_env;
@@ -280,42 +270,42 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
 
 		}
 		break;
-	    case 12:
+	    case 10:
+		legacy_startup = 1;
+		break;
+	    case 11:
 		/* -startedByTv */
 		use_totalview = 1;
 		debug_on = 1;
 		break;
-	    case 11:
-		legacy_startup = 1;
-		break;
-	    case 13:		/* spawnspec given */
+	    case 12:		/* spawnspec given */
             spawnfile = strdup(optarg);
             DBG(fprintf(stderr, "spawn spec file = %s\n", spawnfile));
 		break;
-	    case 14:
+	    case 13:
 	        dpm = 1;
 		break;
-	    case 15:		/* -fastssh */
+	    case 14:		/* -fastssh */
 #ifndef CKPT
 		USE_LINEAR_SSH = 0;
 #endif				/* CKPT */
 		break;
 		//With this option the user want to activate the mpmd
-	    case 16:
+	    case 15:
 		configfile_on = 1;
 		strncpy(configfile, optarg, CONFILE_LEN);
 		if (strlen(optarg) >= CONFILE_LEN - 1)
 		    configfile[CONFILE_LEN] = '\0';
 		break;
-	    case 17:
+	    case 16:
                 spinf.totspawns = atoi(optarg);
                 break;
-        case 18:
+            case 17:
                 /* sg: change the active group */
                 change_group = optarg;
                 DBG(printf("Group change requested: '%s'\n", change_group));
                 break;
-        case 19:
+            case 18:
 #if defined(CKPT) && defined(CR_FTB)
             sparehosts_on = 1;
             strncpy(sparehostfile, optarg, HOSTFILE_LEN);
@@ -326,7 +316,7 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
     		exit(EXIT_SUCCESS);
 #endif
 	    	break;
-	    default:
+            default:
 		fprintf(stderr, "Unknown option\n");
 		usage();
 		exit(EXIT_FAILURE);
@@ -389,25 +379,6 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
     }
 
   cont:
-    /* reading default param file */
-    if (0 == (access(PARAM_GLOBAL, R_OK))) {
-	num_of_params += read_param_file(PARAM_GLOBAL, env);
-    }
-
-    /* reading file specified by user env */
-    if ((param_env = getenv("MVAPICH_DEF_PARAMFILE")) != NULL) {
-	num_of_params += read_param_file(param_env, env);
-    }
-
-    if (paramfile_on) {
-	/* construct a string of environment variable definitions from
-	 * the entries in the paramfile.  These environment variables
-	 * will be available to the remote processes, which
-	 * will use them to over-ride default parameter settings
-	 */
-	num_of_params += read_param_file(paramfile, env);
-    }
-
     if (!configfile_on) {
 	plist = malloc(nprocs * sizeof(process));
 	if (plist == NULL) {
@@ -444,7 +415,6 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
 void usage(void)
 {
     fprintf(stderr, "usage: mpirun_rsh [-v] [-sg group] [-rsh|-ssh] "
-	    "[-paramfile=pfile] "
 	    "[-debug] -[tv] [-xterm] [-show] [-legacy] -np N"
 	    "(-hostfile hfile | h1 h2 ... hN) a.out args | -config configfile (-hostfile hfile | h1 h2 ... hN)]\n");
     fprintf(stderr, "Where:\n");
@@ -452,8 +422,6 @@ void usage(void)
                     "execute the processes as different group ID\n");
     fprintf(stderr, "\trsh        => " "to use rsh for connecting\n");
     fprintf(stderr, "\tssh        => " "to use ssh for connecting\n");
-    fprintf(stderr, "\tparamfile  => "
-	    "file containing run-time MVICH parameters\n");
     fprintf(stderr, "\tdebug      => "
 	    "run each process under the control of gdb\n");
     fprintf(stderr, "\ttv         => "
@@ -612,157 +580,6 @@ static int read_hostfile(char *hostfile_name)
     fclose(hf);
     return hostname_len;
 }
-
-
-#if 0
-void create_paramfile()
-{
-    char bufname[128];
-    FILE *fp;
-
-    if (dpmenv == NULL)
-	return;
-
-    if (dpmparamfile == NULL) {
-	sprintf(bufname, "%sparamfile_%d_%d", TMP_PFX, getpid(),
-		(rand() % 512));
-	dpmparamfile = strdup(bufname);
-	fp = fopen(bufname, "w");
-	fprintf(fp, "%s", dpmenv);
-	fclose(fp);
-    }
-}
-#endif
-
-
-/*
- * reads the param file and constructs the environment strings
- * for each of the environment variables.
- * The caller is responsible for de-allocating the returned string.
- *
- * NOTE: we cant just append these to our current environment because
- * RSH and SSH do not export our environment vars to the remote host.
- * Rather, the RSH command that starts the remote process looks
- * something like:
- *    rsh remote_host "cd workdir; env ENVNAME=value ... command"
- */
-int read_param_file(char *paramfile, char **env)
-{
-    FILE *pf;
-    char errstr[256];
-    char name[128], value[193];
-    char buf[384];
-    char line[LINE_LEN];
-    char *p, *tmp;
-    int num, e_len;
-    int env_left = 0;
-    int num_params = 0;
-
-    if ((pf = fopen(paramfile, "r")) == NULL) {
-	sprintf(errstr, "Cant open paramfile = %s", paramfile);
-	perror(errstr);
-	exit(EXIT_FAILURE);
-    }
-
-    if (strlen(*env) == 0) {
-	/* Allocating space for env first time */
-	if ((*env = malloc(ENV_LEN)) == NULL) {
-	    fprintf(stderr, "Malloc of env failed in read_param_file\n");
-	    exit(EXIT_FAILURE);
-	}
-	env_left = ENV_LEN - 1;
-    } else {
-	/* already allocated */
-	env_left = ENV_LEN - (strlen(*env) + 1) - 1;
-    }
-
-    while (fgets(line, LINE_LEN, pf) != NULL) {
-	p = skip_white(line);
-	if (*p == '#' || *p == '\n') {
-	    /* a comment or a blank line, ignore it */
-	    continue;
-	}
-	/* look for NAME = VALUE, where NAME == MVICH_... */
-	name[0] = value[0] = '\0';
-	if (param_debug) {
-	    printf("Scanning: %s\n", p);
-	}
-	if ((num = sscanf(p, "%64[A-Z_0-9] = %192s", name, value)) != 2) {
-	    /* debug */
-	    if (param_debug) {
-		printf("FAILED: matched = %d, name = %s, "
-		       "value = %s in \n\t%s\n", num, name, value, p);
-	    }
-	    continue;
-	}
-
-	/* construct the environment string */
-	buf[0] = '\0';
-	sprintf(buf, "%s=%s ", name, value);
-	++num_params;
-	dpm_add_env(buf, NULL);
-
-	if (mpispawn_param_env) {
-	    tmp = mkstr("%s MPISPAWN_GENERIC_NAME_%d=%s"
-			" MPISPAWN_GENERIC_VALUE_%d=%s",
-			mpispawn_param_env, param_count, name,
-			param_count, value);
-
-	    free(mpispawn_param_env);
-
-	    if (tmp) {
-		mpispawn_param_env = tmp;
-		param_count++;
-	    }
-
-	    else {
-		fprintf(stderr, "malloc failed in read_param_file\n");
-		exit(EXIT_FAILURE);
-	    }
-	}
-
-	else {
-	    mpispawn_param_env = mkstr("MPISPAWN_GENERIC_NAME_%d=%s"
-				       " MPISPAWN_GENERIC_VALUE_%d=%s",
-				       param_count, name, param_count,
-				       value);
-
-	    if (!mpispawn_param_env) {
-		fprintf(stderr, "malloc failed in read_param_file\n");
-		exit(EXIT_FAILURE);
-	    }
-
-	    param_count++;
-	}
-
-	/* concat to actual environment string */
-	e_len = strlen(buf);
-	if (e_len > env_left) {
-	    /* oops, need to grow env string */
-	    int newlen =
-		(ENV_LEN > e_len + 1 ? ENV_LEN : e_len + 1) + strlen(*env);
-	    if ((*env = realloc(*env, newlen)) == NULL) {
-		fprintf(stderr, "realloc failed in read_param_file\n");
-		exit(EXIT_FAILURE);
-	    }
-	    if (param_debug) {
-		printf("realloc to %d\n", newlen);
-	    }
-	    env_left = ENV_LEN - 1;
-	}
-	strcat(*env, buf);
-	env_left -= e_len;
-	if (param_debug) {
-	    printf("Added: [%s]\n", buf);
-	    printf("env len = %d, env left = %d\n", (int) strlen(*env),
-		   env_left);
-	}
-    }
-    fclose(pf);
-
-    return num_params;
-}
-
 
 int file_exists(char *filename)
 {

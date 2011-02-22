@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -128,6 +128,7 @@ typedef struct MPIDI_CH3_Pkt_limic_comp
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
     int nb;
+    MPI_Request *send_req_id;
 } MPIDI_CH3_Pkt_limic_comp_t;
 #endif
 #endif
@@ -264,6 +265,9 @@ typedef struct MPIDI_CH3_Pkt_packetized_send_data {
     MPID_Seqnum_t seqnum;
 #endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
     MPI_Request receiver_req_id;
+#if defined(_SMP_LIMIC_)
+    MPID_Request *send_req_id;
+#endif
 } MPIDI_CH3_Pkt_packetized_send_data_t;
 
 typedef MPIDI_CH3_Pkt_packetized_send_data_t MPIDI_CH3_Pkt_rndv_r3_data_t;

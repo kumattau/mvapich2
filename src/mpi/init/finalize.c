@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -219,14 +219,24 @@ int MPI_Finalize( void )
     MPIR_DebuggerSetAborting( (char *)0 );
 #endif
 
-#if defined(_OSU_MVAPICH_)
+#if (defined(_OSU_MVAPICH_)||defined(_OSU_PSM_))
     /* Check to see if shmem_collectives were enabled. If yes, the
     specific entries need to be freed. */
-    if( MPIR_Process.comm_world->shmem_coll_ok == 1) {
-        MPIU_THREAD_CS_EXIT(ALLFUNC,);
-        free_2level_comm(MPIR_Process.comm_world);
-        MPIU_THREAD_CS_ENTER(ALLFUNC,);
+    MPIU_THREADPRIV_GET;
+    MPIR_Nest_incr();
+    mpi_errno = NMPI_Barrier(MPI_COMM_WORLD); 
+    if (mpi_errno) { 
+             MPIU_ERR_POP(mpi_errno); 
     }
+    MPIR_Nest_decr();
+#ifndef _OSU_PSM_ 
+    if( MPIR_Process.comm_world->shmem_coll_ok == 1) {
+        mpi_errno = free_2level_comm(MPIR_Process.comm_world);
+        if (mpi_errno) { 
+             MPIU_ERR_POP(mpi_errno); 
+        }
+    }
+#endif
 #endif
 
     mpi_errno = MPID_Finalize();
@@ -257,7 +267,6 @@ int MPI_Finalize( void )
 	parmFound = MPIU_GetEnvBool( "MPICH_NESTCHECK", &parmValue );
 	if (!parmFound) parmValue = 1;
 	if (parmValue) {
-	    MPIU_THREADPRIV_GET;
 	    /* Check for an error in the nesting level */
 	    if (MPIR_Nest_value()) {
 		int i,n;

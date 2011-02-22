@@ -1,5 +1,5 @@
 /*!\file */
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -89,6 +89,11 @@ extern int                  rdma_get_fallback_threshold;
 extern int                  rdma_integer_pool_size;
 extern int                  rdma_iba_eager_threshold;
 extern long                 rdma_eagersize_1sc;
+extern int                  rdma_qos_num_sls;
+extern int                  rdma_use_qos;
+extern int                  rdma_3dtorus_support;
+extern int                  rdma_path_sl_query;
+extern int                  rdma_num_sa_query_retries;
 
 /* HSAM Definitions */
 
@@ -133,12 +138,15 @@ extern int                  use_iboeth;
 #define RDMA_DEFAULT_PUT_GET_LIST_SIZE  (200)
 #define RDMA_INTEGER_POOL_SIZE          (1024)
 #define RDMA_IBA_NULL_HCA               "nohca"
+#define RDMA_DEFAULT_NUM_SA_QUERY_RETRIES   (20)
 
 /* This is a overprovision of resource, do not use in critical structures */
 #define MAX_NUM_SUBRAILS                (MAX_NUM_HCAS*  \
                                          MAX_NUM_PORTS* \
                                          MAX_NUM_QP_PER_PORT)
 
+#define RDMA_QOS_MAX_NUM_SLS            (15)
+#define RDMA_QOS_DEFAULT_NUM_SLS        (8)
 #define RDMA_NDREG_ENTRIES              (1100)
 #define RDMA_VBUF_POOL_SIZE             (2048)
 #define RDMA_VBUF_SECONDARY_POOL_SIZE   (256)

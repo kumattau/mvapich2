@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1247,6 +1247,7 @@ int MPIDI_Get_local_host(MPIDI_PG_t *pg, int our_pg_rank)
 
 fn_fail:
     MPIU_Free(key);
+    MPIU_Free(val);
     MPIU_Free(host_ids);
     MPIU_Free(unique_host_ids);
 
@@ -1334,13 +1335,6 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
         }
         goto fn_exit;
     }
-
-#ifdef _OSU_MVAPICH_ 
-    mpi_errno = MPIDI_Get_local_host(pg, our_pg_rank);
-    if (mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
-    }
-#endif /* ifdef _OSU_MVAPICH_ */
 
 #ifdef USE_PMI2_API
 #if 0 /* use nodeid list */
@@ -1438,6 +1432,15 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
     }
 
     }
+#ifdef _OSU_MVAPICH_
+    else {
+        mpi_errno = MPIDI_Get_local_host(pg, our_pg_rank);
+        if (mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+        }
+    }
+#endif /* ifdef _OSU_MVAPICH_ */
+
 
 #ifndef _OSU_MVAPICH_
     mpi_errno = publish_node_id(pg, our_pg_rank);

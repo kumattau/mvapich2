@@ -1,4 +1,4 @@
-/* crc32h.c -- package to compute 32-bit CRC one byte at a time using   */
+/* crc32h.h -- package to compute 32-bit CRC one byte at a time using   */
 /*             the high-bit first (Big-Endian) bit ordering convention  */
 /*                                                                      */
 /* Synopsis:                                                            */
@@ -32,65 +32,10 @@
 /*  The table lookup technique was adapted from the algorithm described */
 /*  by Avram Perez, Byte-wise CRC Calculations, IEEE Micro 3, 40 (1983).*/
 
-#include "mpidi_ch3i_rdma_conf.h"
+#ifndef CRC32H_H
+#define CRC32H_H
 
-#if defined(CRC_CHECK)
+void gen_crc_table();
+unsigned long update_crc(unsigned long, char *, int);
 
-#include <string.h>
-
-#define POLYNOMIAL 0x04c11db7L
-
-static unsigned long crc_table[256];
-
-
-/* Generate the table of CRC remainders for all possible bytes. */
-void gen_crc_table()
-{ 
-    register int i = 0;
-    register int j;
-    register unsigned long crc_accum;
-
-    memset(&crc_table, 0, sizeof(unsigned long) * 256);
-
-    for (; i < 256; ++i)
-    { 
-        crc_accum = (unsigned long) i << 24;
-
-        for (j = 0; j < 8;  ++j )
-        { 
-            if (crc_accum & 0x80000000L)
-            {
-                crc_accum = (crc_accum << 1) ^ POLYNOMIAL;
-            }
-            else
-            {
-                crc_accum = crc_accum << 1;
-            } 
-        }
-
-        crc_table[i] = crc_accum; 
-    }
-
-    return; 
-}
-
-
-/* Update the CRC on the data block one byte at a time. */
-unsigned long update_crc(unsigned long crc_accum, char* data_blk_ptr, int data_blk_size)
-{
-    register int j = 0;
-    register int i;
-
-    for (; j < data_blk_size; ++j)
-    {
-        i = ((int) (crc_accum >> 24) ^ *++data_blk_ptr) & 0xff;
-        crc_accum = crc_accum << 8 ^ crc_table[i];
-    }
-
-    return crc_accum;
-}
-
-#else /* ifdef CRC_CHECK */
-/* Avoid an empty translation unit warning. */
-int dummy_update_crc (int dummy) {return dummy;}
-#endif /* ifdef CRC_CHECK */
+#endif

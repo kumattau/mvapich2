@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -254,7 +254,7 @@ static inline int MPIDI_CH3I_SMP_Process_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t*
     {
         /* convert to MPIDI_CH3_Pkt_limic_comp_t */
         MPIDI_CH3_Pkt_limic_comp_t *lc_pkt = (MPIDI_CH3_Pkt_limic_comp_t *)pkt;
-        MPID_Request *sreq = (MPID_Request *)(lc_pkt->mrail.send_req_id);
+        MPID_Request *sreq = (MPID_Request *)(lc_pkt->send_req_id);
         
         int nb = lc_pkt->nb;
         int complete = 0;
@@ -270,11 +270,11 @@ static inline int MPIDI_CH3I_SMP_Process_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t*
 
     if (MPIDI_CH3_PKT_RNDV_R3_DATA == pkt->type)
     {
-        MPIDI_CH3_Pkt_send_t* pkt_header = (MPIDI_CH3_Pkt_send_t*) pkt;
+        MPIDI_CH3_Pkt_rndv_r3_data_t * pkt_header = (MPIDI_CH3_Pkt_rndv_r3_data_t*) pkt;
 
 #if defined(_SMP_LIMIC_)
         /* This is transferred through limic2, retrieve related info */
-        if (pkt_header->mrail.send_req_id) {
+        if (pkt_header->send_req_id) {
             *use_limic = 1;
             MPIU_Memcpy(&(l_header->lu), s_current_ptr[vc->smp.local_nodes], sizeof(limic_user));
          
@@ -283,7 +283,7 @@ static inline int MPIDI_CH3I_SMP_Process_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t*
                 + sizeof(limic_user));
 
             l_header->total_bytes = *((int *)s_current_ptr[vc->smp.local_nodes]);
-            l_header->send_req_id = (MPID_Request *)(pkt_header->mrail.send_req_id);
+            l_header->send_req_id = (MPID_Request *)(pkt_header->send_req_id);
 
             s_current_ptr[vc->smp.local_nodes] = (void*)(
                 (unsigned long) s_current_ptr[vc->smp.local_nodes]
@@ -293,7 +293,7 @@ static inline int MPIDI_CH3I_SMP_Process_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t*
                 sizeof(struct limic_user) - sizeof(int);
         } else {
 #endif
-            if ((*index = pkt_header->mrail.src.smp_index) == -1)
+            if ((*index = pkt_header->src.smp_index) == -1)
             {
                 MPIU_ERR_SETFATALANDJUMP1(
                     mpi_errno,
@@ -1481,7 +1481,7 @@ void MPIDI_CH3I_SMP_writev_rndv_header(MPIDI_VC_t * vc, const MPID_IOV * iov,
     volatile void *ptr_volatile;
     void *ptr_head, *ptr;
     int i, offset = 0;
-    MPIDI_CH3_Pkt_send_t *pkt_header;
+    MPIDI_CH3_Pkt_rndv_r3_data_t *pkt_header;
 #if defined(_SMP_LIMIC_)
     int err;
     int total_bytes = 0;
@@ -1507,11 +1507,11 @@ void MPIDI_CH3I_SMP_writev_rndv_header(MPIDI_VC_t * vc, const MPID_IOV * iov,
     pkt_avail -= sizeof(int);
 
     /* iov[0] is the header pkt */
-    pkt_header = (MPIDI_CH3_Pkt_send_t *)(iov[0].MPID_IOV_BUF);
+    pkt_header = (MPIDI_CH3_Pkt_rndv_r3_data_t *)(iov[0].MPID_IOV_BUF);
 
 #if defined(_SMP_LIMIC_)
     /* sreq is the send request handle for the data */
-    sreq = pkt_header->mrail.send_req_id;
+    sreq = pkt_header->send_req_id;
 
     /* sreq_req_id is set to NULL for non-contig data, then fall back to shared memory
      * instead of using limic; or else, continue data transfer by limic */
@@ -1577,7 +1577,7 @@ void MPIDI_CH3I_SMP_writev_rndv_header(MPIDI_VC_t * vc, const MPID_IOV * iov,
     goto fn_exit;
     }
 
-    pkt_header->mrail.src.smp_index = s_sh_buf_pool.free_head;
+    pkt_header->src.smp_index = s_sh_buf_pool.free_head;
 
     ptr = (void *) ((unsigned long) ptr + sizeof(int));
 
@@ -3079,7 +3079,7 @@ void MPIDI_CH3I_SMP_send_limic_comp(struct limic_header *l_header,
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SMP_SEND_LIMIC_COMP);
 
     pkt.type = MPIDI_CH3_PKT_LIMIC_COMP;
-    pkt.mrail.send_req_id = l_header->send_req_id;
+    pkt.send_req_id = l_header->send_req_id;
     pkt.nb = nb;
     
     /*make sure the complete message not sent between other unfinished message */

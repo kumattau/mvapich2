@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2002-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -33,25 +33,28 @@
 #define MPIDI_CH3I_VC_RDMA_DECL MPIDI_CH3I_MRAIL_VC mrail;
 #define MPIDI_CH3I_MRAILI_IBA_PKT_DEFS 1
 
-typedef struct MPIDI_CH3I_MRAILI_IBA_Pkt {
-    uint8_t  vbuf_credit;      
-    uint8_t  remote_credit;    
-    uint8_t  rdma_credit;
-    uint8_t  rail;
-    union {
-        uint32_t smp_index;
-        uint64_t vc_addr;
-    } src; 
 #ifdef CRC_CHECK
-    unsigned long crc;
-#endif
-#if defined(_SMP_LIMIC_)
-    void *send_req_id;
-#endif
-} MPIDI_CH3I_MRAILI_Iba_pkt_t;
-
 #define MPIDI_CH3I_MRAILI_IBA_PKT_DECL \
-    MPIDI_CH3I_MRAILI_Iba_pkt_t mrail;
+    uint8_t  vbuf_credit;       \
+    uint8_t  remote_credit;     \
+    uint8_t  rdma_credit;       \
+    uint8_t  rail;              \
+    union {                     \
+        uint32_t smp_index;     \
+        uint64_t vc_addr;       \
+    } src;                      \
+    unsigned long crc;
+#else
+#define MPIDI_CH3I_MRAILI_IBA_PKT_DECL \
+    uint8_t  vbuf_credit;       \
+    uint8_t  remote_credit;     \
+    uint8_t  rdma_credit;       \
+    uint8_t  rail;              \
+    union {                     \
+        uint32_t smp_index;     \
+        uint64_t vc_addr;       \
+    } src;                      
+#endif
 
 typedef enum {
     VAPI_PROTOCOL_RENDEZVOUS_UNSPECIFIED = 0,

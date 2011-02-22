@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -77,9 +77,9 @@ char *mkstr(char const *const format, ...)
 }
 
 /*
- * ptr & suffix must be dynamically allocated
+ * ptr must be dynamically allocated
  */
-char *append_str(char *ptr, char *const suffix)
+char * append_str(char * ptr, char const * const suffix)
 {
 
     ptr = realloc(ptr, sizeof(char) * (strlen(ptr) + strlen(suffix) + 1));
@@ -90,7 +90,6 @@ char *append_str(char *ptr, char *const suffix)
     }
 
     strcat(ptr, suffix);
-    free(suffix);
 
     return ptr;
 }

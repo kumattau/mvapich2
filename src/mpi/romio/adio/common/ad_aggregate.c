@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -23,9 +23,7 @@
 #endif
 
 #undef AGG_DEBUG
-/*<_OSU_MVAPICH_>*/
-#define ALIGNDOWN(sz, al) ((sz)/al*al)
-/*</_OSU_MVAPICH_>*/
+
 /* This file contains four functions:
  *
  * ADIOI_Calc_aggregator()
@@ -157,9 +155,6 @@ void ADIOI_Calc_file_domains(ADIO_Offset *st_offsets, ADIO_Offset
    process may directly access only its own file domain. */
 
     ADIO_Offset min_st_offset, max_end_offset, *fd_start, *fd_end, fd_size;
-/*<_OSU_MVAPICH_>*/
-    ADIO_Offset alignment = *fd_size_ptr;
-/*</_OSU_MVAPICH_>*/
     int i;
 
 #ifdef AGGREGATION_PROFILE
@@ -186,23 +181,8 @@ void ADIOI_Calc_file_domains(ADIO_Offset *st_offsets, ADIO_Offset
 
 /* partition the total file access range equally among nprocs_for_coll
    processes */ 
-/*<_OSU_MVAPICH_>*/
-/*
     fd_size = ((max_end_offset - min_st_offset + 1) + nprocs_for_coll -
-	       1)/nprocs_for_coll; */
-/*</_OSU_MVAPICH_>*/
-
-/*<_OSU_MVAPICH_>*/
-     if (alignment) {
-       min_st_offset = ALIGNDOWN(min_st_offset, alignment);
-       fd_size = ((max_end_offset - min_st_offset + 1)
-                       + nprocs_for_coll - 1)/nprocs_for_coll;
-        fd_size = (fd_size + alignment -1 ) / alignment * alignment;
-    } else {
-       fd_size = ((max_end_offset - min_st_offset + 1) + nprocs_for_coll -
-                  1)/nprocs_for_coll;
-     }
-/*</_OSU_MVAPICH_>*/
+	       1)/nprocs_for_coll; 
     /* ceiling division as in HPF block distribution */
 
     /* Tweak the file domains so that no fd is smaller than a threshold.  We

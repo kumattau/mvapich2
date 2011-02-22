@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -40,6 +40,8 @@ char *MPIU_DBG_parent_str = "?";
 #endif
 
 int MPIDI_Use_pmi2_api = 0;
+
+#include <mv2_config.h>
 
 #if defined(_OSU_MVAPICH_) && defined(CKPT)
 pthread_mutex_t MVAPICH2_sync_ckpt_lock;
@@ -150,6 +152,13 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 
     /* FIXME: This is a good place to check for environment variables
        and command line options that may control the device */
+    /* <_OSU_MVAPICH_> */
+    if(read_configuration_files(&MPIDI_Process.mv2_config_crc)) {
+        fprintf(stderr, "Error processing configuration file\n");
+        exit(EXIT_FAILURE);
+    }
+    /* </_OSU_MVAPICH_> */
+
     MPIDI_Use_pmi2_api = FALSE;
 #ifdef USE_PMI2_API
     MPIDI_Use_pmi2_api = TRUE;

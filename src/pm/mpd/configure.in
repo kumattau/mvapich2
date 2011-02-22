@@ -14,7 +14,7 @@ PAC_SUBCONFIG_INIT()
 rm -f ${srcdir}/mpdconf.h mpdconf.h
 AC_CONFIG_HEADER(mpdconf.h)
 AH_TOP([/* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -71,12 +71,81 @@ fi
 echo Using INSTALL=$INSTALL
 
 dnl <_OSU_MVAPICH_>
-AC_ARG_ENABLE(blcr,
-[--enable-blcr - Enable support for Berkeley Lab Checkpoint/Restart],,enable_blcr=no)
+AC_ARG_ENABLE([ckpt],
+              [AS_HELP_STRING([--enable-ckpt],
+                              [enable checkpoint/restart])
+              ],
+              [],
+              [enable_ckpt=default])
 
-if test "$enable_blcr" = "yes"; then
-   MPD_OTHERS=mpiexec_cr
-fi
+AC_ARG_ENABLE([ckpt-aggregation],
+              [AS_HELP_STRING([--enable-ckpt-aggregation],
+                              [enable aggregation with checkpoint/restart])
+              ],
+              [],
+              [enable_ckpt_aggregation=check])
+
+AC_ARG_ENABLE([ckpt-migration],
+              [AS_HELP_STRING([--enable-ckpt-migration],
+                              [enable process migration])
+              ],
+              [],
+              [enable_migration=no])
+
+AC_ARG_WITH([blcr],
+            [AS_HELP_STRING([--with-blcr@[:@=path@:]@],
+                            [provide path to blcr package])
+            ],
+            [],
+            [with_blcr=check])
+
+AC_ARG_WITH([blcr-include],
+            [AS_HELP_STRING([--with-blcr-include=@<:@path@:>@],
+                            [specify the path to the blcr header files])
+            ],
+            [AS_CASE([$with_blcr_include],
+                     [yes|no], [AC_MSG_ERROR([arg to --with-blcr-include must be a path])])
+            ],
+            [])
+
+AC_ARG_WITH([blcr-libpath],
+            [AS_HELP_STRING([--with-blcr-libpath=@<:@path@:>@],
+                            [specify the path to the blcr library])
+            ],
+            [AS_CASE([$with_blcr_libpath],
+                     [yes|no], [AC_MSG_ERROR([arg to --with-blcr-libpath must be a path])])
+            ],
+            [])
+
+AS_CASE([$with_blcr],
+        [yes|no|check], [],
+        [with_blcr_include="$with_blcr/include"
+         with_blcr_libpath="$with_blcr/lib"
+         with_blcr=yes])
+
+AS_IF([test -n "$with_blcr_include"],
+      [CPPFLAGS="$CPPFLAGS -I$with_blcr_include"
+       with_blcr=yes])
+
+AS_IF([test -n "$with_blcr_libpath"],
+      [LDFLAGS="$LDFLAGS -L$with_blcr_libpath -Wl,-rpath,$with_blcr_libpath"
+       with_blcr=yes])
+
+AS_IF([test "x$enable_ckpt" = xdefault], [
+       AS_IF([test "x$enable_ckpt_aggregation" = xyes || test "x$enable_ckpt_migration" = xyes], [enable_ckpt=yes], [enable_ckpt=no])
+       ])
+
+AS_IF([test "x$enable_ckpt" = xyes], [
+       AC_CHECK_HEADER([libcr.h],
+                       [],
+                       [AC_MSG_ERROR(['libcr.h not found. Please specify --with-blcr-include'])])
+       AC_SEARCH_LIBS([cr_init],
+                      [cr],
+                      [],
+                      [AC_MSG_ERROR([libcr not found.])],
+                      [])
+       MPD_OTHERS=mpiexec_cr
+      ])
 
 AC_SUBST(MPD_OTHERS)
 dnl </_OSU_MVAPICH_>

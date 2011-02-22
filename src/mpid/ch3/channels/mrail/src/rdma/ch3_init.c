@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -111,20 +111,11 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     }
 #endif /* defined(RDMA_CM) */
 
-#if defined(DISABLE_PTMALLOC)
-    MPIU_Error_printf("Error: Checkpointing does not work without registration "
-        "caching enabled.\nPlease configure and compile MVAPICH2 without checkpointing "
-        " or enable registration caching.\n");
-    MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**fail");
-#endif /* defined(DISABLE_PTMALLOC) */
-
+    // Always use CM_ON_DEMAND for Checkpoint/Restart and Migration
     MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_ON_DEMAND;
 
-    if ((mpi_errno = MPIDI_CH3I_CR_Init(pg, pg_rank, pg_size)))
-    {
-        MPIU_ERR_POP(mpi_errno);
-    }
 #endif /* defined(CKPT) */
+
 
     /* save my vc_ptr for easy access */
     MPIDI_PG_Get_vc(pg, pg_rank, &MPIDI_CH3I_Process.vc);
@@ -164,15 +155,29 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         break;
     }
 
+#if defined(CKPT)
+#if defined(DISABLE_PTMALLOC)
+    MPIU_Error_printf("Error: Checkpointing does not work without registration "
+        "caching enabled.\nPlease configure and compile MVAPICH2 without checkpointing "
+        " or enable registration caching.\n");
+    MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**fail");
+#endif /* defined(DISABLE_PTMALLOC) */
+
+    if ((mpi_errno = MPIDI_CH3I_CR_Init(pg, pg_rank, pg_size)))
+    {
+        MPIU_ERR_POP(mpi_errno);
+    }
+#endif /* defined(CKPT) */
+
     /* set connection info for dynamic process management */
-    if (conn_info) {
+    if (conn_info && dpm) {
         mpi_errno = MPIDI_PG_SetConnInfo(pg_rank, (const char *)conn_info);
         if (mpi_errno != MPI_SUCCESS)
         {
             MPIU_ERR_POP(mpi_errno);
         }
-        MPIU_Free(conn_info);
     }
+    MPIU_Free(conn_info);
 
     /* Initialize the smp channel */
     if ((mpi_errno = MPIDI_CH3I_SMP_init(pg)))
@@ -532,4 +537,27 @@ int MPIDI_CH3_InitCompleted(void)
     return MPI_SUCCESS;
 }
 
+
+int rdma_process_hostid(MPIDI_PG_t * pg, int *host_ids, int my_rank, int pg_size)
+{
+    int i;
+    int my_host_id;;
+    MPIDI_VC_t* vc = NULL;
+        
+    pg->ch.local_process_id = 0;
+    pg->ch.num_local_processes = 0;
+
+    my_host_id = host_ids[my_rank];
+    for (i = 0; i < pg_size; ++i) {
+        MPIDI_PG_Get_vc(pg, i, &vc);
+        if (host_ids[i] == my_host_id) {
+           vc->smp.local_rank = pg->ch.num_local_processes++;
+           if (i == my_rank) {
+               pg->ch.local_process_id = vc->smp.local_rank;
+           }
+        } else {
+           vc->smp.local_rank = -1;
+        }
+    }
+}
 /* vi: set sw=4 */

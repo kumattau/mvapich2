@@ -3,6 +3,49 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2-1.6-RC3 (02/15/2011)
+
+* Features and Enhancements
+    - Support for 3D torus topology with appropriate SL settings
+        - For both CH3 and Nemesis interfaces
+    - Thanks to Jim Schutt, Marcus Epperson and John Nagle from
+      Sandia for the initial patch
+    - Quality of Service (QoS) support with multiple InfiniBand SL
+        - For both CH3 and Nemesis interfaces
+    - Configuration file support (similar to the one available in MVAPICH).
+      Provides a convenient method for handling all runtime variables 
+      through a configuration file.
+    - Improved job-startup performance on large-scale systems
+    - Optimization in MPI_Finalize
+    - Improved pt-to-pt communication performance for small and
+      medium messages
+    - Optimized and tuned algorithms for Gather and Scatter collective
+      operations
+    - Optimized thresholds for one-sided RMA operations
+    - User-friendly configuration options to enable/disable various
+      checkpoint/restart and migration features
+    - Enabled ROMIO's auto detection scheme for filetypes
+      on Lustre file system
+    - Improved error checking for system and BLCR calls in
+      checkpoint-restart and migration codepath
+    - Enhanced OSU Micro-benchmarks suite (version 3.3)
+
+Bug Fixes
+    - Fix in aggregate ADIO alignment
+    - Fix for an issue with LiMIC2 header
+    - XRC connection management
+    - Fixes in registration cache
+    - IB card detection with MV2_IBA_HCA runtime option in
+      multi rail design
+    - Fix for a bug in multi-rail design while opening multiple HCAs
+    - Fixes for multiple memory leaks
+    - Fix for a bug in mpirun_rsh
+    - Checks before enabling aggregation and migration
+    - Fixing the build errors with --disable-cxx
+    - Thanks to Bright Yang for reporting this issue
+    - Fixing the build errors related to "pthread_spinlock_t"
+      seen on RHEL systems
+
 MVAPICH2-1.6-RC2 (12/22/2010)
 
 * Features and Enhancements

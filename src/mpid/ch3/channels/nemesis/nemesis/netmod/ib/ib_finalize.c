@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -175,6 +175,10 @@ int MPID_nem_ib_finalize (void)
     pg_rank = MPIDI_Process.my_pg_rank;
     pg_size = MPIDI_PG_Get_size(pg);
 
+    if (!use_iboeth && (rdma_3dtorus_support || rdma_path_sl_query)) {
+        mv2_release_3d_torus_resources();
+    }
+
     /* make sure everything has been sent */
     MPIDI_nem_ib_flush();
     for (i = 0; i < pg_size; i++) {
@@ -288,14 +292,22 @@ int MPID_nem_ib_finalize (void)
 
     for (i = 0; i < ib_hca_num_hcas; i++) {
         if (process_info.has_srq) {
-            pthread_cond_signal(&srq_info.srq_post_cond[i]);
-            pthread_mutex_lock(&srq_info.async_mutex_lock[i]);
+            /* Signal thread if waiting */
             pthread_mutex_lock(&srq_info.srq_post_mutex_lock[i]);
+            *((volatile int*)&srq_info.is_finalizing) = 1;
+            pthread_cond_signal(&srq_info.srq_post_cond[i]);
             pthread_mutex_unlock(&srq_info.srq_post_mutex_lock[i]);
+
+            /* wait for async thread to finish processing */
+            pthread_mutex_lock(&srq_info.async_mutex_lock[i]);
+
+            /* destroy mutex and cond and cancel thread */
             pthread_cond_destroy(&srq_info.srq_post_cond[i]);
             pthread_mutex_destroy(&srq_info.srq_post_mutex_lock[i]);
             pthread_cancel(srq_info.async_thread[i]);
+
             pthread_join(srq_info.async_thread[i], NULL);
+
             err = ibv_destroy_srq(hca_list[i].srq_hndl);
             pthread_mutex_unlock(&srq_info.async_mutex_lock[i]);
             pthread_mutex_destroy(&srq_info.async_mutex_lock[i]);

@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -16,7 +16,7 @@
 #include <mpimem.h>
 #include "mpidimpl.h"
 #include "mpicomm.h"
-#include "coll_shmem.h"
+#include "coll_shmem_internal.h"
 #include <pthread.h>
 #ifndef GEN_EXIT_ERR
 #define GEN_EXIT_ERR    -1
@@ -56,24 +56,44 @@ void clear_2level_comm (MPID_Comm* comm_ptr)
     comm_ptr->leader_rank = NULL;
 }
 
-void free_2level_comm (MPID_Comm* comm_ptr)
+int free_2level_comm (MPID_Comm* comm_ptr)
 {
-    pthread_mutex_lock(&comm_lock);
+    MPID_Comm *shmem_comm_ptr=NULL; 
+    MPID_Comm *leader_comm_ptr=NULL; 
     int local_rank=0;
+    int mpi_errno=MPI_SUCCESS;
+
     if (comm_ptr->leader_map != NULL)  { 
         MPIU_Free(comm_ptr->leader_map);  
-     }
+    }
     if (comm_ptr->leader_rank != NULL) { 
         MPIU_Free(comm_ptr->leader_rank); 
-     }
+    }
+    if (comm_ptr->bcast_mmap_ptr){
+        munmap(comm_ptr->bcast_mmap_ptr, comm_ptr->bcast_seg_size);
+    }
 
-    PMPI_Comm_rank(comm_ptr->shmem_comm, &local_rank);
+    MPID_Comm_get_ptr((comm_ptr->shmem_comm), shmem_comm_ptr );
+    MPID_Comm_get_ptr((comm_ptr->leader_comm), leader_comm_ptr );
 
-    if (comm_ptr->leader_comm && local_rank == 0) { 
-        PMPI_Comm_free(&(comm_ptr->leader_comm));
-     }
-    if (comm_ptr->shmem_comm)  { 
-        PMPI_Comm_free(&(comm_ptr->shmem_comm));
+    local_rank = shmem_comm_ptr->rank; 
+
+    if(local_rank == 0) { 
+        if(comm_ptr->node_sizes != NULL) { 
+            MPIU_Free(comm_ptr->node_sizes); 
+        } 
+    } 
+    if (local_rank == 0 && leader_comm_ptr != NULL) { 
+        mpi_errno = MPIR_Comm_release(leader_comm_ptr, 0);
+        if (mpi_errno != MPI_SUCCESS) { 
+            goto fn_fail;
+        } 
+    }
+    if (shmem_comm_ptr != NULL)  { 
+        mpi_errno = MPIR_Comm_release(shmem_comm_ptr, 0);
+        if (mpi_errno != MPI_SUCCESS) { 
+            goto fn_fail;
+        } 
      }
 
     if(comm_ptr->bcast_shmem_file != NULL) { 
@@ -81,7 +101,10 @@ void free_2level_comm (MPID_Comm* comm_ptr)
     } 
 
     clear_2level_comm(comm_ptr);
-    pthread_mutex_unlock(&comm_lock);
+    fn_exit:
+       return mpi_errno;
+    fn_fail:
+       goto fn_exit;
 }
 
 int create_2level_comm (MPI_Comm comm, int size, int my_rank)
@@ -92,7 +115,8 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     MPID_Comm* comm_world_ptr;
     MPI_Group subgroup1, comm_group;
     MPID_Group *group_ptr=NULL;
-
+    int leader_comm_size, my_local_size, my_local_id, input_flag =0, output_flag=0;
+  
     MPIU_THREADPRIV_DECL;
     MPIU_THREADPRIV_GET;
     MPID_Comm_get_ptr( comm, comm_ptr );
@@ -171,7 +195,6 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
            
         }
     }
-
     leader_group_size = grp_index;
     comm_ptr->leader_group_size = leader_group_size;
 
@@ -218,12 +241,37 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     MPID_Comm_get_ptr(comm_ptr->shmem_comm, shmem_ptr);
 
 
-    int my_local_id, input_flag =0, output_flag=0;
     mpi_errno = PMPI_Comm_rank(comm_ptr->shmem_comm, &my_local_id);
-     if(mpi_errno) {
+    if(mpi_errno) {
+       MPIU_ERR_POP(mpi_errno);
+    }
+    mpi_errno = PMPI_Comm_size(comm_ptr->shmem_comm, &my_local_size);
+    if(mpi_errno) {
        MPIU_ERR_POP(mpi_errno);
     }
 
+    if(my_local_id == 0) { 
+           int array_index=0;
+           mpi_errno = PMPI_Comm_size(comm_ptr->leader_comm, &leader_comm_size);
+           if(mpi_errno) {
+               MPIU_ERR_POP(mpi_errno);
+           }
+
+           comm_ptr->node_sizes = MPIU_Malloc(sizeof(int)*leader_comm_size);
+           mpi_errno = PMPI_Allgather(&my_local_size, 1, MPI_INT,
+				 comm_ptr->node_sizes, 1, MPI_INT, comm_ptr->leader_comm);
+           if(mpi_errno) {
+              MPIU_ERR_POP(mpi_errno);
+           }
+           comm_ptr->is_uniform = 1; 
+           for(array_index=0; array_index < leader_comm_size; array_index++) { 
+                if(comm_ptr->node_sizes[0] != comm_ptr->node_sizes[array_index]) {
+                     comm_ptr->is_uniform = 0; 
+                     break;
+                }
+           }
+     } 
+                
 
     if (my_local_id == 0){
         pthread_spin_lock(&shmem_coll->shmem_coll_lock);

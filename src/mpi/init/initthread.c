@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -48,6 +48,9 @@ MPICH_ThreadInfo_t MPIR_ThreadInfo = { 0 };
 
 #if defined(_OSU_MVAPICH_)
 #define DEFAULT_SHMEM_BCAST_LEADERS    4096
+#define GATHER_DIRECT_SYSTEM_SIZE_SMALL      64
+#define GATHER_DIRECT_SYSTEM_SIZE_MEDIUM     1024
+
 #endif /* _OSU_MVAPICH_ */
 
 
@@ -521,8 +524,14 @@ int enable_shmem_collectives = 1;
 int disable_shmem_allreduce=0;
 int disable_shmem_reduce=0;
 int disable_shmem_barrier=0;
+int use_two_level_gather=1;
+int use_direct_gather=1; 
+int use_two_level_scatter=1;
+int use_direct_scatter=1; 
 int g_shmem_bcast_leaders = DEFAULT_SHMEM_BCAST_LEADERS;
 int g_shmem_bcast_flags = DEFAULT_SHMEM_BCAST_LEADERS;
+int gather_direct_system_size_small = GATHER_DIRECT_SYSTEM_SIZE_SMALL; 
+int gather_direct_system_size_medium = GATHER_DIRECT_SYSTEM_SIZE_MEDIUM; 
 extern int g_shmem_coll_blocks;
 extern int g_shmem_coll_max_msg_size;
 extern int shmem_bcast_threshold;
@@ -760,6 +769,37 @@ void MV2_Read_env_vars(void){
         flag = (int)atoi(value);
         if (flag > 0) enable_shmem_bcast = 1;
         else enable_shmem_bcast = 0;
+    }
+    if ((value = getenv("MV2_USE_TWO_LEVEL_GATHER")) != NULL) {
+        flag = (int)atoi(value);
+        if (flag > 0) use_two_level_gather = 1;
+        else use_two_level_gather = 0;
+    }
+    if ((value = getenv("MV2_USE_DIRECT_GATHER")) != NULL) {
+        flag = (int)atoi(value);
+        if (flag > 0) use_direct_gather = 1;
+        else use_direct_gather = 0;
+    }
+    if ((value = getenv("MV2_USE_TWO_LEVEL_SCATTER")) != NULL) {
+        flag = (int)atoi(value);
+        if (flag > 0) use_two_level_scatter = 1;
+        else use_two_level_scatter = 0;
+    }
+    if ((value = getenv("MV2_USE_DIRECT_SCATTER")) != NULL) {
+        flag = (int)atoi(value);
+        if (flag > 0) use_direct_scatter = 1;
+        else use_direct_scatter = 0;
+    }
+
+    if ((value = getenv("MV2_USE_DIRECT_GATHER_SYSTEM_SIZE_SMALL")) != NULL) {
+        flag = (int)atoi(value);
+        if (flag > 0) gather_direct_system_size_small = flag;
+        else use_direct_gather = GATHER_DIRECT_SYSTEM_SIZE_SMALL;
+    }
+    if ((value = getenv("MV2_USE_DIRECT_GATHER_SYSTEM_SIZE_MEDIUM")) != NULL) {
+        flag = (int)atoi(value);
+        if (flag > 0) gather_direct_system_size_medium = flag;
+        else use_direct_gather = GATHER_DIRECT_SYSTEM_SIZE_MEDIUM;
     }
     if ((value = getenv("MV2_SHMEM_BCAST_MSG")) != NULL) {
         flag = (int)atoi(value);

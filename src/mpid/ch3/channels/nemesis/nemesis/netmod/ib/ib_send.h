@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -21,7 +21,7 @@
 
 typedef enum MPIDI_nem_ib_Pkt_type
 {
-    MPIDI_CH3_PKT_NOOP = 100,
+    MPIDI_CH3_PKT_NOOP = MPIDI_NEM_PKT_END + 1,
     MPIDI_CH3_PKT_ADDRESS,
     MPIDI_CH3_PKT_ADDRESS_REPLY,
     MPIDI_CH3_PKT_FAST_EAGER_SEND,
@@ -29,7 +29,8 @@ typedef enum MPIDI_nem_ib_Pkt_type
     MPIDI_CH3_PKT_PACKETIZED_SEND_START,
     MPIDI_CH3_PKT_PACKETIZED_SEND_DATA,
     MPIDI_CH3_PKT_RNDV_R3_DATA, 
-    MPIDI_CH3_PKT_RNDV_R3_ACK
+    MPIDI_CH3_PKT_RNDV_R3_ACK,
+    MPIDI_NEM_IB_PKT_END
 }
 MPIDI_nem_ib_Pkt_type_t;
 
@@ -48,8 +49,8 @@ typedef struct MPIDI_nem_ib_pkt_comm_header_t {
 
 typedef struct MPIDI_nem_ib_pkt_address_t {
     uint8_t type;
-    unsigned long rdma_address;
     uint32_t rdma_hndl[MAX_NUM_HCAS];
+    unsigned long rdma_address;
 } MPIDI_nem_ib_pkt_address;
 
 typedef struct MPIDI_nem_ib_pkt_address_reply_t {
@@ -70,14 +71,14 @@ typedef struct MPIDI_CH3_Pkt_rndv_r3_ack{
 
 typedef struct MPIDI_nem_ib_pkt_fast_eager_t {
     uint8_t type;
-    uint16_t    seqnum;
     uint8_t     bytes_in_pkt;
+    uint16_t    seqnum;
 } MPIDI_nem_ib_pkt_fast_eager;
 
 typedef struct MPIDI_nem_ib_pkt_fast_eager_with_req_t {
     uint8_t type;
-    uint16_t    seqnum;
     uint8_t     bytes_in_pkt;
+    uint16_t    seqnum;
     int         sender_req_id;
 } MPIDI_nem_ib_pkt_fast_eager_with_req;
 #endif

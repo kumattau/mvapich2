@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -646,6 +646,8 @@ int MPIDI_nem_ib_lmt_r3_recv_data(MPIDI_VC_t * vc, vbuf * buffer)
                     0);
                 goto fn_exit;
             }
+
+            VC_FIELD(vc, received_r3_data) += nb;
             if(!MPIDI_nem_ib_request_adjust_iov(rreq,nb)) {
                 goto fn_exit;
             }

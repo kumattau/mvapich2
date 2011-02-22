@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -11,6 +11,18 @@
  */
 
 #include "mpirun_ckpt.h"
+
+#define MPIRUN_ERR_ABORT(args...)  do {                                                \
+    fprintf(stderr, "[%s:%d] ",__FILE__, __LINE__);                                    \
+    fprintf(stderr, args);                                                             \
+    exit(-1);                                                                          \
+}while(0)
+
+#define MPIRUN_ERR(args...)  do {                                                      \
+    fprintf(stderr, "[%s:%d] ",__FILE__, __LINE__);                                    \
+    fprintf(stderr, args);                                                             \
+}while(0)
+
 
 #ifdef CKPT
 
@@ -259,12 +271,12 @@ int ckptInit()
 
     cr_id = cr_init();
     if (cr_id < 0) {
-        fprintf(stderr, "CR Initialization failed\n");
+        MPIRUN_ERR_ABORT("BLCR call cr_init() failed\n");
         return (-1);
     }
 
-    if (cr_register_callback(CR_Callback, (void *) NULL, CR_THREAD_CONTEXT) < 0) {
-        fprintf(stderr, "CR Callback Registration failed\n");
+    if (cr_register_callback(CR_Callback, (void *) NULL, CR_THREAD_CONTEXT) == -1) {
+        MPIRUN_ERR_ABORT("BLCR call cr_register_callback() failed with error %d: %s\n",errno,cr_strerror(errno));
         return (-2);
     }
 
@@ -414,14 +426,17 @@ void close_connections(int NSPAWNS)
     /* Nothing to be done */
 #else
     for (i = 0; i < NSPAWNS; i++) {
-	if ((mpirun_fd[i] = accept(mpirun_listen_fd, NULL, NULL)) < 0) {
-	    snprintf(cr_errmsg, CR_ERRMSG_SZ,
-		     "[mpirun_rsh] accept(mpirun_fd[%d])", i);
-	    perror(cr_errmsg);
-	    close(mpirun_listen_fd);
-	    /*Let mpirun_rsh handle the error. In this way, it can terminate the right pids.*/
-	    //cleanup();
-	}
+        // Ignore all EINTR 'Interrupted system call' errors
+        do {
+            mpirun_fd[i] = accept(mpirun_listen_fd, NULL, NULL);
+        } while ( mpirun_fd[i] < 0 && errno == EINTR );
+        if ( mpirun_fd[i] < 0 ) {
+            snprintf(cr_errmsg, CR_ERRMSG_SZ, "[mpirun_rsh] accept(mpirun_fd[%d])", i);
+            perror(cr_errmsg);
+            close(mpirun_listen_fd);
+            /*Let mpirun_rsh handle the error. In this way, it can terminate the right pids.*/
+            //cleanup();
+        }
     }
 
     close(mpirun_listen_fd);
@@ -581,17 +596,33 @@ static void *CR_Loop(void *arg)
 		    CR_MUTEX_LOCK;
 		    sprintf(buf, "%s.%d.sync", ckpt_filename,
 			    checkpoint_count + 1);
-		    cr_initialize_checkpoint_args_t(&cr_file_args);
-		    cr_file_args.cr_scope = CR_SCOPE_PROC;
+            int ret = cr_initialize_checkpoint_args_t(&cr_file_args);
+            if (ret < 0) {
+                MPIRUN_ERR_ABORT("BLCR call cr_initialize_checkpoint_args_t() failed\n");
+            }
+            cr_file_args.cr_scope = CR_SCOPE_PROC;
 		    cr_file_args.cr_target = getpid();
 		    cr_file_args.cr_fd =
 			open(buf, O_CREAT | O_WRONLY | O_TRUNC, 0666);
 		    cr_file_args.cr_signal = 0;
 		    cr_file_args.cr_timeout = 0;
 		    cr_file_args.cr_flags &= ~CR_CHKPT_DUMP_ALL;	// Save None
-		    cr_request_checkpoint(&cr_file_args, &cr_handle);
-		    cr_poll_checkpoint(&cr_handle, NULL);
-		    last_ckpt = now.tv_sec;
+            ret = cr_request_checkpoint(&cr_file_args, &cr_handle);
+            if (ret < 0) {
+                MPIRUN_ERR_ABORT("BLCR call cr_request_checkpoint() failed with error %d: %s\n",errno,cr_strerror(errno));
+            }
+            // Retry while interrupted
+            do {
+                ret = cr_poll_checkpoint(&cr_handle, NULL);
+            } while ( ret == CR_POLL_CHKPT_ERR_PRE && errno == EINTR );
+            if (ret < 0) {
+                MPIRUN_ERR_ABORT("BLCR call cr_poll_checkpoint() failed with error %d: %s\n",errno,cr_strerror(errno));
+            } else if ( ret == 0 ) {
+                // 0 means that the checkpoint is in progress
+                // It should never happen because we don't specify any timeout when calling cr_poll_checkpoint()
+                MPIRUN_ERR_ABORT("Bad assertion\n");
+            }
+            last_ckpt = now.tv_sec;
 		    CR_MUTEX_UNLOCK;
 		}
 #ifdef CR_FTB
@@ -626,16 +657,33 @@ static void *CR_Loop(void *arg)
 		if ((max_ckpts == 0) || (max_ckpts > checkpoint_count)) {
 		    sprintf(buf, "%s.%d.auto", ckpt_filename,
 			    checkpoint_count + 1);
-		    cr_initialize_checkpoint_args_t(&cr_file_args);
-		    cr_file_args.cr_scope = CR_SCOPE_PROC;
+            int ret = cr_initialize_checkpoint_args_t(&cr_file_args);
+            if (ret < 0) {
+                MPIRUN_ERR_ABORT("BLCR call cr_initialize_checkpoint_args_t() failed");
+            }
+            cr_file_args.cr_scope = CR_SCOPE_PROC;
 		    cr_file_args.cr_target = getpid();
 		    cr_file_args.cr_fd =
 			open(buf, O_CREAT | O_WRONLY | O_TRUNC, 0666);
 		    cr_file_args.cr_signal = 0;
 		    cr_file_args.cr_timeout = 0;
 		    cr_file_args.cr_flags &= ~CR_CHKPT_DUMP_ALL;	// Save None
-		    cr_request_checkpoint(&cr_file_args, &cr_handle);
-		    cr_poll_checkpoint(&cr_handle, NULL);
+		    ret = cr_request_checkpoint(&cr_file_args, &cr_handle);
+            if (ret < 0) {
+                MPIRUN_ERR_ABORT("BLCR call cr_request_checkpoint() failed with error %d: %s\n",errno,cr_strerror(errno));
+            }
+            // Retry while interrupted
+            do {
+                ret = cr_poll_checkpoint(&cr_handle, NULL);
+            } while ( ret == CR_POLL_CHKPT_ERR_PRE && errno == EINTR );
+            if (ret < 0) {
+                MPIRUN_ERR_ABORT("BLCR call cr_poll_checkpoint() failed with error %d: %s\n",errno,cr_strerror(errno));
+            } else if ( ret == 0 ) {
+                // 0 means that the checkpoint is in progress
+                // It should never happen because we don't specify any timeout when calling cr_poll_checkpoint()
+                MPIRUN_ERR_ABORT("Bad assertion\n");
+            }
+            
 		    last_ckpt = now.tv_sec;
 		}
 
@@ -658,6 +706,29 @@ static void *CR_Loop(void *arg)
 int get_checkpoint_count()
 {
     return checkpoint_count;
+}
+
+/*
+ * This stuff may be in the environment as well.  Call this function before
+ * save_ckpt_vars is called so the old way takes precedence.
+ */
+void save_ckpt_vars_env(void)
+{
+    if (getenv("MV2_CKPT_FILE")) {
+	strncpy(ckpt_filename, getenv("MV2_CKPT_FILE"), CR_MAX_FILENAME);
+    }
+
+    if (getenv("MV2_CKPT_INTERVAL")) {
+	checkpoint_interval = atoi(getenv("MV2_CKPT_INTERVAL")) * 60;
+    }
+    
+    if (getenv("MV2_CKPT_MAX_SAVE_CKPTS")) {
+	max_save_ckpts = atoi(getenv("MV2_CKPT_MAX_SAVE_CKPTS"));
+    }
+
+    if (getenv("MV2_CKPT_MAX_CKPTS")) {
+	max_ckpts = atoi(getenv("MV2_CKPT_MAX_CKPTS"));
+    }
 }
 
 void save_ckpt_vars(char *name, char *value)
@@ -690,9 +761,12 @@ static int CR_Callback(void *arg)
 #endif
 
     if (cr_state != CR_READY) {
-	cr_checkpoint(CR_CHECKPOINT_TEMP_FAILURE);
-	fprintf(stderr, "mpirun_rsh [CR_Callback] CR Subsystem not ready\n");
-	return (0);
+        MPIRUN_ERR("[CR_Callback] CR Subsystem not ready\n");
+        ret = cr_checkpoint(CR_CHECKPOINT_TEMP_FAILURE);
+        if (ret != -CR_ETEMPFAIL){
+            MPIRUN_ERR_ABORT("BLCR call cr_checkpoint() failed with error %d: %s\n",ret,cr_strerror(-ret));
+        }
+        return (0);
     }
 
     gettimeofday(&now, NULL);
@@ -725,8 +799,11 @@ static int CR_Callback(void *arg)
 
         if (sparehosts_idx == 2 * nsparehosts)
         {
-            fprintf(stderr, "\n\n mpirun_rsh [Migration] Out of Spares\n");
-            cr_checkpoint(CR_CHECKPOINT_OMIT);
+            MPIRUN_ERR("\n mpirun_rsh [Migration] Out of Spares\n");
+            ret = cr_checkpoint(CR_CHECKPOINT_TEMP_FAILURE);
+            if (ret != -CR_ETEMPFAIL){
+                MPIRUN_ERR_ABORT("BLCR call cr_checkpoint() failed with error %d: %s\n",ret,cr_strerror(-ret));
+            }
             return(0);
         }
    	    // migrate src
@@ -759,30 +836,34 @@ static int CR_Callback(void *arg)
         }
         dbg( "***  Sent CR_FTB_MIGRATE:%s: count=%d\n", buf, checkpoint_count);
        
-        /////////////   
- 		cr_checkpoint(CR_CHECKPOINT_OMIT); //CR_CHECKPOINT_TEMP_FAILURE ??
-		//cr_checkpoint(CR_CHECKPOINT_TEMP_FAILURE); //
+        ret = cr_checkpoint(CR_CHECKPOINT_OMIT);
+        if (ret != -CR_EOMITTED){
+            MPIRUN_ERR_ABORT("BLCR call cr_checkpoint() failed with error %d: %s\n",ret,cr_strerror(-ret));
+        }
         return(0);
-        /////////////////
     }
     else
     {
-    //cr_checkpoint(CR_CHECKPOINT_OMIT);
-    //return(0);
 no_mig_req:
         SET_EVENT(eprop, FTB_EVENT_NORMAL, "");
         ret = FTB_Publish(ftb_handle, EVENT(CR_FTB_CHECKPOINT), &eprop, &ehandle);
         if (ret != FTB_SUCCESS) {
-            fprintf(stderr, "[CR_Callback] FTB_Publish() failed with %d\n", ret);
-            cr_checkpoint(CR_CHECKPOINT_TEMP_FAILURE);
+            MPIRUN_ERR("[CR_Callback] FTB_Publish() failed with %d\n", ret);
+            ret = cr_checkpoint(CR_CHECKPOINT_TEMP_FAILURE);
+            if (ret != -CR_ETEMPFAIL){
+                MPIRUN_ERR_ABORT("BLCR call cr_checkpoint() failed with error %d: %s\n",ret,cr_strerror(-ret));
+            }
             return(-1);
         }
 
         //ret = cr_ftb_wait_for_resp(nprocs);
         ret = cr_ftb_wait_for_resp(num_procs);
         if (ret) {
-            fprintf(stderr, "[CR_Callback] Error in getting a response\n");
-            cr_checkpoint(CR_CHECKPOINT_TEMP_FAILURE);
+            MPIRUN_ERR("[CR_Callback] Error in getting a response\n");
+            ret = cr_checkpoint(CR_CHECKPOINT_TEMP_FAILURE);
+            if (ret != -CR_ETEMPFAIL){
+                MPIRUN_ERR_ABORT("BLCR call cr_checkpoint() failed with error %d: %s\n",ret,cr_strerror(-ret));
+            }
             return(-2);
         }
 
@@ -811,7 +892,10 @@ no_mig_req:
 
 	if (ret < 0) {
 	    perror("[CR_Callback] select()");
-	    cr_checkpoint(CR_CHECKPOINT_TEMP_FAILURE);
+	    ret = cr_checkpoint(CR_CHECKPOINT_TEMP_FAILURE);
+            if (ret != -CR_ETEMPFAIL){
+                MPIRUN_ERR_ABORT("BLCR call cr_checkpoint() failed with error %d: %s\n",ret,cr_strerror(-ret));
+            }
 	    return (-1);
 	}
 
@@ -825,7 +909,10 @@ no_mig_req:
 	    if (CR_MPDU_parse_keyvals(buf) < 0) {
 		fprintf(stderr,
 			"[CR_Callback] CR_MPDU_parse_keyvals() failed\n");
-		cr_checkpoint(CR_CHECKPOINT_TEMP_FAILURE);
+		ret = cr_checkpoint(CR_CHECKPOINT_TEMP_FAILURE);
+                if (ret != -CR_ETEMPFAIL){
+                    MPIRUN_ERR_ABORT("BLCR call cr_checkpoint() failed with error %d: %s\n",ret,cr_strerror(-ret));
+                }
 		return (-2);
 	    }
 
@@ -846,7 +933,10 @@ no_mig_req:
 		fprintf(stderr,
 			"[CR_Callback] Checkpoint of a Process Failed\n");
 		fflush(stderr);
-		cr_checkpoint(CR_CHECKPOINT_TEMP_FAILURE);
+		ret = cr_checkpoint(CR_CHECKPOINT_TEMP_FAILURE);
+                if (ret != -CR_ETEMPFAIL ){
+                    MPIRUN_ERR_ABORT("BLCR call cr_checkpoint() failed with error %d: %s\n",ret,cr_strerror(-ret));
+                }
 		return (-3);
 	    }
 	}
@@ -859,10 +949,9 @@ no_mig_req:
 
     if (ret < 0)
     {
-	fprintf(stderr, "[CR_Callback] Checkpoint of Console Failed\n");
-	fflush(stderr);
-	cr_state = CR_READY;
-	return (-4);
+        MPIRUN_ERR("BLCR call cr_checkpoint() failed with error %d: %s\n",ret,cr_strerror(-ret));
+        cr_state = CR_READY;
+        return (-4);
     }
     else if (ret == 0) 
     {

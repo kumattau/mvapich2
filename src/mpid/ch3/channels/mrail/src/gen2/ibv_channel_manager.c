@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2002-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -656,10 +656,10 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
 	            if(!is_send_completion && MPIDI_CH3I_RDMA_Process.has_srq) {
 	                vc = (void *)(unsigned long)
 	                     (((MPIDI_CH3I_MRAILI_Pkt_comm_header *)
-	                      ((vbuf *)v)->pheader)->mrail.src.vc_addr);
+	                      ((vbuf *)v)->pheader)->src.vc_addr);
 	                v->vc = vc;
 	                v->rail = ((MPIDI_CH3I_MRAILI_Pkt_comm_header *)
-	                        ((vbuf*)v)->pheader)->mrail.rail;
+	                        ((vbuf*)v)->pheader)->rail;
 	            } 
 	            
 	            /* get the VC and increase its wqe */
@@ -1049,8 +1049,8 @@ void async_thread(void *context)
 
                     ++MPIDI_CH3I_RDMA_Process.srq_zero_post_counter[hca_num];
 
-                    while(MPIDI_CH3I_RDMA_Process.
-                            srq_zero_post_counter[hca_num] >= 1) {
+                    while(MPIDI_CH3I_RDMA_Process.srq_zero_post_counter[hca_num] >= 1 
+                            && !(*(volatile int*)&MPIDI_CH3I_RDMA_Process.is_finalizing)) {
                         /* Cannot post to SRQ, since all WQEs
                          * might be waiting in CQ to be pulled out */
                         pthread_cond_wait(

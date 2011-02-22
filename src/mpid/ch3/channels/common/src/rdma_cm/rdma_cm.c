@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2002-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -881,6 +881,85 @@ int rdma_cm_create_qp(MPIDI_VC_t *vc, int rail_index)
 
     MPIDI_FUNC_EXIT(MPID_STATE_RDMA_CM_CREATE_QP);
     return ret;
+}
+
+#undef FUNCNAME
+#define FUNCNAME rdma_cm_exchange_hostid
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int rdma_cm_exchange_hostid(MPIDI_PG_t *pg, int pg_rank, int pg_size)
+{
+    int *hostid_all;
+    int error, i;
+    int key_max_sz;
+    int val_max_sz;
+    char *key;
+    char *val;
+
+    MPIDI_STATE_DECL(MPID_STATE_RDMA_CM_EXCHANGE_HOSTID);
+    MPIDI_FUNC_ENTER(MPID_STATE_RDMA_CM_EXCHANGE_HOSTID);
+
+    hostid_all = (int *) MPIU_Malloc (pg_size * sizeof(int));
+    if (!hostid_all){
+        ibv_error_abort(IBV_RETURN_ERR, "Memory allocation error\n");
+    }
+    
+    error = PMI_KVS_Get_key_length_max(&key_max_sz);
+    key = MPIU_Malloc(key_max_sz+1);
+    PMI_KVS_Get_value_length_max(&val_max_sz);
+    val = MPIU_Malloc(val_max_sz+1);
+
+    if (key == NULL || val == NULL) {
+       ibv_error_abort(GEN_EXIT_ERR, "Error allocating memory\n");
+    }
+
+    memset(key, 0, key_max_sz);
+    MPIU_Snprintf(key, key_max_sz, "HOST-%d", pg_rank);
+
+    hostid_all[pg_rank] = gethostid();
+    sprintf(val, "%d", hostid_all[pg_rank] );
+
+    error = PMI_KVS_Put(pg->ch.kvs_name, key, val);
+    if (error != 0) {
+        ibv_error_abort(IBV_RETURN_ERR,
+            "PMI put failed\n");
+    }
+
+    error = PMI_KVS_Commit(pg->ch.kvs_name);
+    if (error != 0) {
+        ibv_error_abort(IBV_RETURN_ERR,
+                        "PMI put failed\n");
+    }
+
+    {
+        error = PMI_Barrier();
+        if (error != 0) {
+            ibv_error_abort(IBV_RETURN_ERR,
+                            "PMI Barrier failed\n");
+        }
+    }
+
+    for (i = 0; i < pg_size; i++){    
+        if(i != pg_rank) {
+            MPIU_Snprintf(key, key_max_sz, "HOST-%d", i);
+            error = PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz);
+             if (error != 0) {
+                 ibv_error_abort(IBV_RETURN_ERR,
+                     "PMI Lookup name failed\n");
+             }
+            
+             sscanf(val, "%d", &hostid_all[i]);
+         }
+    }
+
+    rdma_process_hostid(pg, hostid_all, pg_rank, pg_size);
+
+    MPIU_Free(val);
+    MPIU_Free(key);
+    MPIU_Free(hostid_all);
+
+    MPIDI_FUNC_EXIT(MPID_STATE_RDMA_CM_GET_HOSTNAMES);
+    return error;
 }
 
 #undef FUNCNAME

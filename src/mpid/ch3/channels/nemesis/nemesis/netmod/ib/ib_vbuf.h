@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -39,22 +39,10 @@
 #define RPUT_VBUF_FLAG (333)
 #define RGET_VBUF_FLAG (444)
 #define RDMA_ONE_SIDED (555)
-#define VBUF_FLAG_TYPE uint32_t
+#define VBUF_FLAG_TYPE uint64_t
 
 #define FREE_FLAG (0)
 #define BUSY_FLAG (1)
-
-#define ALIGN_UNIT (4)
-#define MRAILI_ALIGN_LEN(len, align_len)                                    \
-{                                                                           \
-    align_len = ((int)(((len)+ALIGN_UNIT-1) / ALIGN_UNIT)) * ALIGN_UNIT;    \
-}
-
-#define MRAILI_FAST_RDMA_VBUF_START(_v, _len, _start)                              \
-{                                                                                  \
-    int __align_len = ((int)(((_len)+ALIGN_UNIT-1) / ALIGN_UNIT)) * ALIGN_UNIT;    \
-    _start = (void *)((unsigned long)((_v)->head_flag) - __align_len);             \
-}
 
 #define PKT_NO_SEQ_NUM -2
 #define PKT_IS_NULL -1
@@ -89,7 +77,7 @@ struct ibv_wr_descriptor
     void* next;
 };
 
-#define VBUF_BUFFER_SIZE (rdma_vbuf_total_size - sizeof(VBUF_FLAG_TYPE))
+#define VBUF_BUFFER_SIZE (rdma_vbuf_total_size - VBUF_FAST_RDMA_EXTRA_BYTES)
 
 #define MRAIL_MAX_EAGER_SIZE (VBUF_BUFFER_SIZE - sizeof(IB_PKT_HEADER_LENGTH))
 
@@ -135,7 +123,7 @@ typedef struct vbuf
 } vbuf;
 
 /* one for head and one for tail */
-#define VBUF_FAST_RDMA_EXTRA_BYTES (sizeof(VBUF_FLAG_TYPE))
+#define VBUF_FAST_RDMA_EXTRA_BYTES (2 * sizeof(VBUF_FLAG_TYPE))
 #define VBUF_IB_NETMOD_OFFSET (sizeof(VBUF_FLAG_TYPE) + sizeof(MPIDI_CH3_Pkt_t))
 
 #define FAST_RDMA_ALT_TAG 0x8000

@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -24,20 +24,9 @@
 /** We maintain an index table to get the header size ******/
 int MPIDI_CH3_Pkt_size_index[] = {
     sizeof(MPIDI_CH3_Pkt_eager_send_t),        /* 0 */
-#ifndef MV2_DISABLE_HEADER_CACHING
-    sizeof(MPIDI_nem_ib_pkt_fast_eager),
-    sizeof(MPIDI_nem_ib_pkt_fast_eager_with_req),
-#endif /* !MV2_DISABLE_HEADER_CACHING */
-    sizeof(MPIDI_nem_ib_pkt_noop),
-    sizeof(MPIDI_CH3_Pkt_rndv_clr_to_send_t),
-    sizeof(MPIDI_CH3_Pkt_rndv_req_to_send_t),
-    sizeof(MPIDI_CH3_Pkt_packetized_send_start_t),
-    sizeof(MPIDI_CH3_Pkt_packetized_send_data_t),
-    sizeof(MPIDI_nem_ib_pkt_address),
-    sizeof(MPIDI_nem_ib_pkt_address_reply),
 #if defined(USE_EAGER_SHORT)
     sizeof(MPIDI_CH3_Pkt_eagershort_send_t),
-#endif /* defined(USE_EAGER_SHORT) */
+#endif 
     sizeof(MPIDI_CH3_Pkt_eager_sync_send_t),
     sizeof(MPIDI_CH3_Pkt_eager_sync_ack_t),
     sizeof(MPIDI_CH3_Pkt_ready_send_t),
@@ -56,9 +45,27 @@ int MPIDI_CH3_Pkt_size_index[] = {
     sizeof(MPIDI_CH3_Pkt_lock_put_unlock_t),
     sizeof(MPIDI_CH3_Pkt_lock_get_unlock_t),
     sizeof(MPIDI_CH3_Pkt_lock_accum_unlock_t),
-    -1,                                /* FLOW CONTROL UPDATE unused */
+    -1,                                 /* FLOW CONTROL UPDATE unused */
     sizeof(MPIDI_CH3_Pkt_close_t),
-    -1
+    -1,                                 /* MPIDI_CH3_PKT_END_CH3 */  
+    -1,                                 /* MPIDI_CH3_PKT_END_ALL */ 
+    sizeof(MPID_nem_pkt_lmt_rts_t),
+    sizeof(MPID_nem_pkt_lmt_cts_t),
+    sizeof(MPID_nem_pkt_lmt_done_t),
+    sizeof(MPID_nem_pkt_lmt_cookie_t),
+    -1,                                 /* MPIDI_NEM_PKT_END */
+    sizeof(MPIDI_nem_ib_pkt_noop),
+    sizeof(MPIDI_nem_ib_pkt_address),
+    sizeof(MPIDI_nem_ib_pkt_address_reply),
+#ifndef MV2_DISABLE_HEADER_CACHING
+    sizeof(MPIDI_nem_ib_pkt_fast_eager),
+    sizeof(MPIDI_nem_ib_pkt_fast_eager_with_req),
+#endif 
+    sizeof(MPIDI_CH3_Pkt_packetized_send_start_t),
+    sizeof(MPIDI_CH3_Pkt_packetized_send_data_t),
+    sizeof(MPIDI_CH3_Pkt_rndv_r3_data_t),
+    sizeof(MPIDI_CH3_Pkt_rndv_r3_ack_t),
+    -1                                  /* MPIDI_NEM_IB_PKT_END */
 };
 
 #define SET_CREDIT(header, c, rail) \
@@ -154,7 +161,8 @@ int MPIDI_CH3I_nem_ib_parse_header(MPIDI_VC_t * vc,
             DEBUG_PRINT("[recv: parse header] pkt eager send\n");
 /* header caching codes */
 #ifndef MV2_DISABLE_HEADER_CACHING 
-            if (v->padding != NORMAL_VBUF_FLAG) {
+            if (v->padding != NORMAL_VBUF_FLAG && 
+                    (v->content_size - sizeof(MPIDI_CH3_Pkt_t) <= MAX_SIZE_WITH_HEADER_CACHING) ) {
                 /* Only cache header if the packet is from RdMA path
                  * XXXX: what is R3_FLAG?
                  */

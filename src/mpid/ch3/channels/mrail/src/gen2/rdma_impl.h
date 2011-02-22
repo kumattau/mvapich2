@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2002-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -26,6 +26,7 @@
 #include <infiniband/verbs.h>
 #include "ibv_param.h"
 #include "mv2_arch_hca_detect.h"
+#include "rdma_3dtorus.h"
 
 #ifdef RDMA_CM
 #include <rdma/rdma_cma.h>
@@ -101,8 +102,12 @@ typedef struct MPIDI_CH3I_RDMA_Process_t {
     uint32_t                    srq_zero_post_counter[MAX_NUM_HCAS];
     pthread_t                   async_thread[MAX_NUM_HCAS];
     uint32_t                    posted_bufs[MAX_NUM_HCAS];
+    int                         is_finalizing;
 
     /* data structure for ring based startup */
+    struct ibv_context          *boot_context;
+    struct ibv_device           *boot_device;
+    struct ibv_pd               *boot_ptag;
     struct ibv_cq               *boot_cq_hndl;
     struct ibv_qp               *boot_qp_hndl[2];
     int                         boot_tb[2][2];
@@ -139,8 +144,6 @@ struct process_init_info {
     uint16_t    **lid;
     uint32_t    **qp_num_rdma;
     union ibv_gid    **gid;
-    /* TODO: haven't consider one sided queue pair yet */
-    uint32_t    **qp_num_onesided;
     uint64_t    *vc_addr;
     uint32_t    *hca_type;
 };
@@ -186,19 +189,19 @@ MPIDI_CH3I_RDMA_Process_t MPIDI_CH3I_RDMA_Process;
 
 #define PACKET_SET_RDMA_CREDIT(_p, _c)                          \
 {                                                               \
-    (_p)->mrail.rdma_credit     = (_c)->mrail.rfp.rdma_credit;  \
+    (_p)->rdma_credit     = (_c)->mrail.rfp.rdma_credit;  \
     (_c)->mrail.rfp.rdma_credit = 0;                            \
-    (_p)->mrail.vbuf_credit     = 0;                            \
-    (_p)->mrail.remote_credit   = 0;                            \
+    (_p)->vbuf_credit     = 0;                            \
+    (_p)->remote_credit   = 0;                            \
 }
 
 #define PACKET_SET_CREDIT(_p, _c, _rail_index)                  \
 {                                                               \
-    (_p)->mrail.rdma_credit     = (_c)->mrail.rfp.rdma_credit;  \
+    (_p)->rdma_credit     = (_c)->mrail.rfp.rdma_credit;  \
     (_c)->mrail.rfp.rdma_credit = 0;                            \
-    (_p)->mrail.vbuf_credit     =                               \
+    (_p)->vbuf_credit     =                               \
     (_c)->mrail.srp.credits[(_rail_index)].local_credit;        \
-    (_p)->mrail.remote_credit   =                               \
+    (_p)->remote_credit   =                               \
     (_c)->mrail.srp.credits[(_rail_index)].remote_credit;       \
     (_c)->mrail.srp.credits[(_rail_index)].local_credit = 0;    \
 }

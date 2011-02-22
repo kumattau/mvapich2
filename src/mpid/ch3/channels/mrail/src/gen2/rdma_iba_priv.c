@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -61,15 +61,12 @@ struct process_init_info *alloc_process_init_info(int pg_size, int rails)
     info->hostid = (int **) MPIU_Malloc(pg_size * sizeof(int *));
     info->qp_num_rdma = (uint32_t **)
                             MPIU_Malloc(pg_size * sizeof(uint32_t *));
-    info->qp_num_onesided = (uint32_t **)
-                                MPIU_Malloc(pg_size * sizeof(uint32_t *));
     info->hca_type = (uint32_t *) MPIU_Malloc(pg_size * sizeof(uint32_t));
     info->vc_addr  = (uint64_t *) MPIU_Malloc(pg_size * sizeof(uint64_t));
     if (!info->lid
         || !info->gid 
         || !info->hostid 
         || !info->qp_num_rdma
-        || !info->qp_num_onesided 
         || !info->hca_type
         || !info->vc_addr) {
         return NULL;
@@ -82,14 +79,10 @@ struct process_init_info *alloc_process_init_info(int pg_size, int rails)
         info->gid[i] = (union ibv_gid *)
                          MPIU_Malloc(rails * sizeof(union ibv_gid));
         info->hostid[i] = (int *) MPIU_Malloc(rails * sizeof(int));
-        info->qp_num_onesided[i] = (uint32_t *)
-                                    MPIU_Malloc(rails * sizeof(uint32_t));
-
         if (!info->lid[i]
                 || !info->gid[i]
                 || !info->hostid[i]
-                || !info->qp_num_rdma[i]
-                || !info->qp_num_onesided[i]) {
+                || !info->qp_num_rdma[i]) {
              return NULL;
         }
     }
@@ -109,14 +102,12 @@ void free_process_init_info(struct process_init_info *info, int pg_size)
         MPIU_Free(info->lid[i]);
         MPIU_Free(info->gid[i]);
         MPIU_Free(info->hostid[i]);
-        MPIU_Free(info->qp_num_onesided[i]);
     }
 
     MPIU_Free(info->lid);
     MPIU_Free(info->gid);
     MPIU_Free(info->hostid);
     MPIU_Free(info->qp_num_rdma);
-    MPIU_Free(info->qp_num_onesided);
     MPIU_Free(info->hca_type);
     MPIU_Free(info->vc_addr);
     MPIU_Free(info); 
@@ -248,9 +239,11 @@ int rdma_find_active_port(struct ibv_context *context,struct ibv_device *ib_dev)
     for (j = 1; j <= RDMA_DEFAULT_MAX_PORTS; ++ j) {
         if ((! ibv_query_port(context, j, &port_attr)) &&
              port_attr.state == IBV_PORT_ACTIVE) {
-            if (!strncmp(dev_name, "cxgb3", 5) || port_attr.lid) {
+            if (!strncmp(dev_name, "cxgb3", 5) || port_attr.lid 
+			|| (!port_attr.lid && use_iboeth )) {
                 /* Chelsio RNIC's don't get LID's as they're not IB devices.
                  * So dont do this check for them.
+		 * LID on RoCE will be zero.
                  */
                 DEBUG_PRINT("Active port number = %d, state = %s, lid = %d\r\n",
                     j, (port_attr.state==IBV_PORT_ACTIVE)?"Active":"Not Active",
@@ -356,6 +349,79 @@ int rdma_skip_network_card(mv2_iba_network_classes network_type,
     return skip;
 }
 
+int ring_rdma_close_hca(struct MPIDI_CH3I_RDMA_Process_t *proc)
+{
+    int err;
+    proc->boot_device = NULL;
+    err = ibv_dealloc_pd(proc->boot_ptag);
+    if (err)  {
+        MPIU_Error_printf("Failed to dealloc pd (%s)\n", strerror(errno));
+    }
+    err = ibv_close_device(proc->boot_context);
+    if (err) {
+        MPIU_Error_printf("Failed to close ib device (%s)\n", strerror(errno));
+    }
+}
+
+#undef FUNCNAME
+#define FUNCNAME ring_rdma_open_hca
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int ring_rdma_open_hca(struct MPIDI_CH3I_RDMA_Process_t *proc)
+{
+    int i = 0;
+    int num_devices = 0;
+    int err;
+    int hca_type;
+    struct ibv_device *ib_dev = NULL;
+    struct ibv_device **dev_list = NULL;
+    int is_device_opened = 0;
+
+    dev_list = ibv_get_device_list(&num_devices);
+    
+    for (i = 0; i < num_devices; i ++) {
+        ib_dev = dev_list[i];
+        if (!ib_dev) {
+            goto fn_exit;
+        }
+
+        proc->boot_device = ib_dev;
+
+        proc->boot_context = ibv_open_device(ib_dev);
+        if (!proc->boot_context) {
+            /* Go to next device */
+            continue;
+        }
+        
+        if (ERROR == rdma_find_active_port(proc->boot_context, ib_dev)) {
+            /* No active ports. Go to next device */
+            err = ibv_close_device(proc->boot_context);
+            if (err) {
+                MPIU_Error_printf("Failed to close ib device (%s)\n", strerror(errno));
+            }
+            continue;
+        }
+            
+        proc->boot_ptag = ibv_alloc_pd(proc->boot_context);
+        if (!proc->boot_ptag) {
+            err = ibv_close_device(proc->boot_context);
+            if (err) {
+                MPIU_Error_printf("Failed to close ib device (%s)\n", strerror(errno));
+            }
+            continue;
+        }
+
+        is_device_opened = 1;
+        break;
+    }
+
+
+fn_exit:
+    /* Clean up before exit */
+    ibv_free_device_list(dev_list);
+    return is_device_opened;
+}
+
 /*
  * Function: rdma_open_hca
  *
@@ -406,7 +472,7 @@ int rdma_open_hca(struct MPIDI_CH3I_RDMA_Process_t *proc)
                mrail_user_defined_p2r_mapping = rdma_local_id % num_usable_hcas;
             }
             ib_dev = dev_list[mrail_user_defined_p2r_mapping];
-        } else if (!strncmp(rdma_iba_hcas[0], RDMA_IBA_NULL_HCA, 32)) {
+        } else if (!strncmp(rdma_iba_hcas[i], RDMA_IBA_NULL_HCA, 32)) {
             /* User hasn't specified any HCA name
              * We will use the first available HCA(s) */
             ib_dev = dev_list[i];
@@ -1018,6 +1084,8 @@ rdma_iba_allocate_memory(struct MPIDI_CH3I_RDMA_Process_t *proc,
         pthread_spin_init(&MPIDI_CH3I_RDMA_Process.srq_post_spin_lock, 0);
         pthread_spin_lock(&MPIDI_CH3I_RDMA_Process.srq_post_spin_lock);
 
+        MPIDI_CH3I_RDMA_Process.is_finalizing = 0;
+
         for (; hca_num < rdma_num_hcas; ++hca_num)
         { 
             pthread_mutex_init(&MPIDI_CH3I_RDMA_Process.srq_post_mutex_lock[hca_num], 0);
@@ -1152,6 +1220,21 @@ rdma_iba_enable_connections(struct MPIDI_CH3I_RDMA_Process_t *proc,
                         + rail_index % power_two(MPIDI_CH3I_RDMA_Process.lmc);
             }
             qp_attr_mask    |=  IBV_QP_DEST_QPN;
+
+            if (!use_iboeth && (rdma_3dtorus_support || rdma_path_sl_query)) {
+                /* Path SL Lookup */
+                int hca_index  = rail_index /
+                                    (vc->mrail.num_rails / rdma_num_hcas);
+                struct ibv_context *context =
+                                     vc->mrail.rails[rail_index].nic_context;
+                struct ibv_pd *pd  = proc->ptag[hca_index];
+                uint16_t lid       = vc->mrail.rails[rail_index].lid;
+                uint16_t rem_lid   = qp_attr.ah_attr.dlid;
+                uint32_t port_num  = qp_attr.ah_attr.port_num;
+                qp_attr.ah_attr.sl = mv2_get_path_rec_sl(context, pd, port_num,
+                                            lid, rem_lid, rdma_3dtorus_support,
+                                            rdma_num_sa_query_retries);
+            }
 
             if (ibv_modify_qp(vc->mrail.rails[rail_index].qp_hndl,
                                &qp_attr, qp_attr_mask)) {
@@ -1695,6 +1778,19 @@ int cm_qp_move_to_rtr(MPIDI_VC_t *vc, uint16_t *lids, union ibv_gid *gids,
         qp_attr_mask        |=  IBV_QP_MIN_RNR_TIMER;
         qp_attr_mask        |=  IBV_QP_AV;
         qp_attr_mask        |=  IBV_QP_DEST_QPN;
+
+        if (!use_iboeth && (rdma_3dtorus_support || rdma_path_sl_query)) {
+            /* Path SL Lookup */
+            struct ibv_context *context =
+                                 vc->mrail.rails[rail_index].nic_context;
+            struct ibv_pd *pd  = MPIDI_CH3I_RDMA_Process.ptag[hca_index];
+            uint16_t lid       = vc->mrail.rails[rail_index].lid;
+            uint16_t rem_lid   = qp_attr.ah_attr.dlid;
+            uint32_t port_num  = qp_attr.ah_attr.port_num;
+            qp_attr.ah_attr.sl = mv2_get_path_rec_sl(context, pd, port_num, lid,
+                                                 rem_lid, rdma_3dtorus_support,
+                                                 rdma_num_sa_query_retries);
+        }
 
        /* fprintf(stderr, "!!!Modify qp %d with qpnum %08x, dlid %x, port %d\n", 
                 rail_index, qp_attr.dest_qp_num, qp_attr.ah_attr.dlid,

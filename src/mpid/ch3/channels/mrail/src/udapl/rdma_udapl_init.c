@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -132,11 +132,11 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t *pg, int pg_rank)
     char *val;
     int key_max_sz;
     int val_max_sz;
+    int *hostid_all;
 
     char rdmakey[512];
     char rdmavalue[512];
     char tmp[512];
-    char tmp_hname[256];
 
 #ifndef DISABLE_PTMALLOC    
     if(mvapich2_minit()) {
@@ -150,7 +150,6 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t *pg, int pg_rank)
     mallopt(M_MMAP_MAX, 0);
 #endif
 
-    gethostname (tmp_hname, 255);
     cached_pg = pg;
     cached_pg_rank = pg_rank;
     pg_size = MPIDI_PG_Get_size (pg);
@@ -164,6 +163,7 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t *pg, int pg_rank)
         (DAT_CONN_QUAL **) MPIU_Malloc (pg_size * sizeof (DAT_CONN_QUAL *));
     rdma_iba_addr_table.service_id_1sc =
         (DAT_CONN_QUAL **) MPIU_Malloc (pg_size * sizeof (DAT_CONN_QUAL *));
+    hostid_all = MPIU_Malloc (pg_size * sizeof(int));
 
     if (!rdma_iba_addr_table.ia_addr
         || !rdma_iba_addr_table.hostid
@@ -346,11 +346,13 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t *pg, int pg_rank)
                 return error;
             }
 
-          /* STEP 2: Exchange qp_num */
+          /* STEP 2: Exchange qp_num and host id*/
                 /* generate the key and value pair for each connection */
+          hostid_all[pg_rank] =  gethostid();
           sprintf (rdmakey, "MV2QP%08d", pg_rank);
-          sprintf (rdmavalue, "%08d",
-                   (int) rdma_iba_addr_table.service_id[pg_rank][0]);
+          sprintf (rdmavalue, "%08d-%016d",
+                   (int) rdma_iba_addr_table.service_id[pg_rank][0],
+                    hostid_all[pg_rank]);
 
           /* put the kvs into PMI */
           MPIU_Strncpy (key, rdmakey, key_max_sz);
@@ -410,9 +412,18 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t *pg, int pg_rank)
                       return error;
                   }
                 MPIU_Strncpy (rdmavalue, val, val_max_sz);
-                rdma_iba_addr_table.service_id[i][0] = atoll (rdmavalue);
 
+                strncpy (tmp, rdmavalue, 8);
+                tmp[8] = '\0';
+                rdma_iba_addr_table.service_id[i][0] = atoll (tmp);
+                strncpy (tmp, rdmavalue + 8 + 1, 16);
+                tmp[16] = '\0';
+                hostid_all[i] = atoi(tmp);
             }
+
+            rdma_process_hostid(pg, hostid_all, pg_rank, pg_size);
+            MPIU_Free(hostid_all);
+            
 
           error = PMI_Barrier ();
           if (error != 0)
@@ -1004,11 +1015,11 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **str)
     char *val;
     int key_max_sz;
     int val_max_sz;
+    int *hostid_all;
 
     char rdmakey[512];
     char rdmavalue[512];
     char tmp[512];
-    char tmp_hname[256];
 
     *str = NULL; /* We do not support dynamic process management */
 #ifndef DISABLE_PTMALLOC
@@ -1023,7 +1034,6 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **str)
     mallopt(M_MMAP_MAX, 0);
 #endif
 
-    gethostname (tmp_hname, 255);
     cached_pg = pg;
     cached_pg_rank = pg_rank;
     pg_size = MPIDI_PG_Get_size (pg);
@@ -1037,6 +1047,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **str)
         (DAT_CONN_QUAL **) MPIU_Malloc (pg_size * sizeof (DAT_CONN_QUAL *));
     rdma_iba_addr_table.service_id_1sc =
         (DAT_CONN_QUAL **) MPIU_Malloc (pg_size * sizeof (DAT_CONN_QUAL *));
+    hostid_all = MPIU_Malloc (pg_size * sizeof(int));
 
     if (!rdma_iba_addr_table.ia_addr
         || !rdma_iba_addr_table.hostid
@@ -1219,11 +1230,12 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **str)
                 return error;
             }
 
-          /* STEP 2: Exchange qp_num */
+          /* STEP 2: Exchange qp_num and host id*/
           /* generate the key and value pair for each connection */
+          hostid_all[pg_rank] = gethostid();
           sprintf (rdmakey, "MV2QPR%08d", pg_rank);
-          sprintf (rdmavalue, "%08d",
-                   (int) rdma_iba_addr_table.service_id[pg_rank][0]);
+          sprintf (rdmavalue, "%08d-%016d",
+                   (int) rdma_iba_addr_table.service_id[pg_rank][0],hostid_all[pg_rank]);
 
           /* put the kvs into PMI */
           MPIU_Strncpy (key, rdmakey, key_max_sz);
@@ -1281,10 +1293,17 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **str)
                                                 "**pmi_kvs_get %d", error);
                       return error;
                   }
-                MPIU_Strncpy (rdmavalue, val, val_max_sz);
-                rdma_iba_addr_table.service_id[i][0] = atoll (rdmavalue);
 
+                MPIU_Strncpy (rdmavalue, val, val_max_sz);
+                strncpy (tmp, rdmavalue, 8);
+                tmp[8] = '\0';
+                rdma_iba_addr_table.service_id[i][0] = atoll (tmp);
+                strncpy (tmp, rdmavalue + 8 + 1, 16);
+                tmp[16] = '\0';
+                hostid_all[i] = atoi(tmp);
             }
+            rdma_process_hostid(pg, hostid_all, pg_rank, pg_size);
+            MPIU_Free(hostid_all);
 
           error = PMI_Barrier ();
           if (error != 0)

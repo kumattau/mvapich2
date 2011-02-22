@@ -1,5 +1,5 @@
 /*!\file */
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -50,9 +50,6 @@ typedef struct{
 #ifdef CRC_CHECK
     unsigned long crc;
 #endif
-#if defined(_SMP_LIMIC_)
-    void *send_req_id;
-#endif
 
     /* rndv (MPIDI_CH3I_MRAILI_RNDV_INFO_DECL) in original rts,cts pkt, now used as cookie */
     MPID_nem_ib_rndv_protocol_t  protocol;
@@ -80,7 +77,7 @@ typedef struct{
 } __attribute__((__packed__)) MPID_nem_ib_rndv_info;
 
 
-#define REQ_FIELD(req, field) (((MPID_nem_ib_rndv_info *)((struct MPIDI_CH3I_Request)((req)->ch)).netmod_area.padding)->field)
+#define REQ_FIELD(req, field) (((MPID_nem_ib_rndv_info *)((req)->ch.netmod_area.padding))->field)
 
 #define MPIDI_NEM_RNDV_SET_REQ_INFO(rreq, rndv_info) \
 {                                                   \

@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -25,23 +25,23 @@ typedef struct rdma_iba_addr_tb
 
 #define PACKET_SET_RDMA_CREDIT(_p, _c) \
 {                                                                   \
-    (_p)->mrail.rdma_credit = (_c)->mrail.rfp.rdma_credit;                     \
+    (_p)->rdma_credit = (_c)->mrail.rfp.rdma_credit;                     \
     (_c)->mrail.rfp.rdma_credit = 0;                                        \
-    (_p)->mrail.vbuf_credit = 0;      \
-    (_p)->mrail.remote_credit = 0;    \
+    (_p)->vbuf_credit = 0;      \
+    (_p)->remote_credit = 0;    \
 }
 
 #define PACKET_SET_CREDIT(_p, _c, _rail_index) \
 if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) \
 {                                                                   \
-    (_p)->mrail.rdma_credit = (_c)->mrail.rfp.rdma_credit;  \
+    (_p)->rdma_credit = (_c)->mrail.rfp.rdma_credit;  \
     (_c)->mrail.rfp.rdma_credit = 0;                                        \
-    (_p)->mrail.vbuf_credit = (_c)->mrail.srp.local_credit[(_rail_index)];      \
-    (_p)->mrail.remote_credit = (_c)->mrail.srp.remote_credit[(_rail_index)];   \
+    (_p)->vbuf_credit = (_c)->mrail.srp.local_credit[(_rail_index)];      \
+    (_p)->remote_credit = (_c)->mrail.srp.remote_credit[(_rail_index)];   \
     (_c)->mrail.srp.local_credit[(_rail_index)] = 0;         \
 } else {     \
-    (_p)->mrail.vbuf_credit = (_c)->mrail.srp.local_credit[(_rail_index)];      \
-    (_p)->mrail.remote_credit = (_c)->mrail.srp.remote_credit[(_rail_index)];   \
+    (_p)->vbuf_credit = (_c)->mrail.srp.local_credit[(_rail_index)];      \
+    (_p)->remote_credit = (_c)->mrail.srp.remote_credit[(_rail_index)];   \
     (_c)->mrail.srp.local_credit[(_rail_index)] = 0;         \
 }
 

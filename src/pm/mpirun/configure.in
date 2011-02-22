@@ -11,7 +11,7 @@ PAC_SUBCONFIG_INIT()
 
 AC_CONFIG_HEADER(include/mpirunconf.h)
 AH_TOP([/* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -32,24 +32,87 @@ echo "RUNNING CONFIGURE FOR THE MPIRUN PM"
 AC_CONFIG_AUX_DIR(../../../confdb)
 AC_CANONICAL_BUILD
 
-AC_ARG_ENABLE(blcr,
-[--enable-blcr - Enable Berkeley Lab Checkpoint/Restart support.],,enable_blcr=no)
-AC_ARG_WITH(blcr-include,
-[--with-blcr-include=path - Specify the path to the BLCR header files.],,)
-AC_ARG_WITH(blcr-libpath,
-[--with-blcr-libpath=path - Specify the path to the BLCR library.],,)
-AC_ARG_ENABLE(ftb-cr,
-[--with-ftb-cr - Enable Fault Back Tolerant Checkpoint Restart],,enable_ftb_cr=no)
-AC_ARG_WITH(ftb-include,
-[--with-ftb-include=path - Specify the path to the FTB-CR header files.],,)
-AC_ARG_WITH(ftb-libpath,
-[--with-ftb-libpath=path - Specify the path to the FTB-CR library.],,)
-AC_ARG_ENABLE(rsh,
-[--enable-rsh - Enable use of rsh for command execution by default.],,enable_rsh=no)
+AC_ARG_ENABLE([rsh],
+              [AS_HELP_STRING([--enable-rsh],
+                              [Enable use of rsh for command execution by default.])
+              ],
+              [],
+              [enable_rsh=no])
+
+AC_ARG_ENABLE([ckpt],
+              [AS_HELP_STRING([--enable-ckpt],
+                              [enable checkpoint/restart])
+              ],
+              [],
+              [enable_ckpt=default])
+
+AC_ARG_ENABLE([ckpt-aggregation],
+              [AS_HELP_STRING([--enable-ckpt-aggregation],
+                              [enable aggregation with checkpoint/restart])
+              ],
+              [],
+              [enable_ckpt_aggregation=check])
+
+AC_ARG_ENABLE([ckpt-migration],
+              [AS_HELP_STRING([--enable-ckpt-migration],
+                              [enable process migration])
+              ],
+              [],
+              [enable_migration=no])
+
+AC_ARG_WITH([ftb],
+            [AS_HELP_STRING([--with-ftb@[:@=path@:]@],
+                            [provide path to ftb package])
+            ],
+            [],
+            [with_ftb=check])
+
+AC_ARG_WITH([ftb-include],
+            [AS_HELP_STRING([--with-ftb-include=@<:@path@:>@],
+                            [specify the path to the ftb header files])
+            ],
+            [AS_CASE([$with_ftb_include],
+                     [yes|no], [AC_MSG_ERROR([arg to --with-ftb-include must be a path])])
+            ],
+            [])
+
+AC_ARG_WITH([ftb-libpath],
+            [AS_HELP_STRING([--with-ftb-libpath=@<:@path@:>@],
+                            [specify the path to the ftb library])
+            ],
+            [AS_CASE([$with_ftb_libpath],
+                     [yes|no], [AC_MSG_ERROR([arg to --with-ftb-libpath must be a path])])
+            ],
+            [])
+
+AC_ARG_WITH([blcr],
+            [AS_HELP_STRING([--with-blcr@[:@=path@:]@],
+                            [provide path to blcr package])
+            ],
+            [],
+            [with_blcr=check])
+
+AC_ARG_WITH([blcr-include],
+            [AS_HELP_STRING([--with-blcr-include=@<:@path@:>@],
+                            [specify the path to the blcr header files])
+            ],
+            [AS_CASE([$with_blcr_include],
+                     [yes|no], [AC_MSG_ERROR([arg to --with-blcr-include must be a path])])
+            ],
+            [])
+
+AC_ARG_WITH([blcr-libpath],
+            [AS_HELP_STRING([--with-blcr-libpath=@<:@path@:>@],
+                            [specify the path to the blcr library])
+            ],
+            [AS_CASE([$with_blcr_libpath],
+                     [yes|no], [AC_MSG_ERROR([arg to --with-blcr-libpath must be a path])])
+            ],
+            [])
 
 AC_ARG_WITH([fuse],
             [AS_HELP_STRING([--with-fuse@[:@=path@:]@],
-                            [enable checkpoint aggregation @<:@default=check@:>@])
+                            [provide path to fuse package])
             ],
             [],
             [with_fuse=check])
@@ -97,6 +160,34 @@ if test -n "`echo $build_os | grep solaris`"; then
     mpispawn_other_libs="-lresolv -lsocket -lnsl -lsendfile"
 fi
 
+AS_CASE([$with_ftb],
+        [yes|no|check], [],
+        [with_ftb_include="$with_ftb/include"
+         with_ftb_libpath="$with_ftb/lib"
+         with_ftb=yes])
+
+AS_IF([test -n "$with_ftb_include"],
+      [CPPFLAGS="$CPPFLAGS -I$with_ftb_include"
+       with_ftb=yes])
+
+AS_IF([test -n "$with_ftb_libpath"],
+      [LDFLAGS="$LDFLAGS -L$with_ftb_libpath -Wl,-rpath,$with_ftb_libpath"
+       with_ftb=yes])
+
+AS_CASE([$with_blcr],
+        [yes|no|check], [],
+        [with_blcr_include="$with_blcr/include"
+         with_blcr_libpath="$with_blcr/lib"
+         with_blcr=yes])
+
+AS_IF([test -n "$with_blcr_include"],
+      [CPPFLAGS="$CPPFLAGS -I$with_blcr_include"
+       with_blcr=yes])
+
+AS_IF([test -n "$with_blcr_libpath"],
+      [LDFLAGS="$LDFLAGS -L$with_blcr_libpath -Wl,-rpath,$with_blcr_libpath"
+       with_blcr=yes])
+
 AS_CASE([$with_fuse],
         [yes|no|check], [],
         [with_fuse_include="$with_fuse/include"
@@ -111,123 +202,101 @@ AS_IF([test -n "$with_fuse_libpath"],
       [LDFLAGS="$LDFLAGS -L$with_fuse_libpath -Wl,-rpath,$with_fuse_libpath"
        with_fuse=yes])
 
-AS_IF([test "$with_fuse" = yes], [enable_blcr=yes])
+AS_IF([test "x$enable_ckpt" = xdefault], [
+       AS_IF([test "x$enable_ckpt_aggregation" = xyes || test "x$enable_ckpt_migration" = xyes], [enable_ckpt=yes], [enable_ckpt=no])
+       ])
 
-AC_MSG_CHECKING([whether to enable support for BLCR])
-AC_MSG_RESULT($enable_blcr)
+AS_IF([test "x$with_blcr" = "xno"], [
+       AS_IF([test "x$enable_ckpt" = "xyes"], [AC_MSG_ERROR([BLCR is required if Checkpoint/Restart is enabled])])
+       AS_IF([test "x$enable_ckpt_aggregation" = "xyes"], [AC_MSG_ERROR([BLCR is required if Checkpoint/Restart Aggregation is enabled])])
+       AS_IF([test "x$enable_ckpt_migration" = "xyes"], [AC_MSG_ERROR([BLCR is required if Checkpoint/Restart Migration is enabled])])
+       ])
 
-if test "$enable_blcr" = "yes"; then
+AS_IF([test "x$with_fuse" = "xno"], [
+       AS_IF([test "x$enable_ckpt_aggregation" = "xyes"], [AC_MSG_ERROR([FUSE is required if Checkpoint/Restart Aggregation is enabled])])
+       ])
 
-    AC_MSG_CHECKING([for the BLCR includes path])
-    if test -n "$with_blcr_include"; then
-        AC_MSG_RESULT($with_blcr_include)
-        CPPFLAGS="$CPPFLAGS -I$with_blcr_include"
-    else
-        AC_MSG_RESULT([default])
-    fi
-    AC_CHECK_HEADER([libcr.h],,[AC_MSG_ERROR(['libcr.h not found. Please specify --with-blcr-include'])])
-    blcr_include="-I${blcr-include}"
+AS_IF([test "x$with_ftb" = "xno"], [
+       AS_IF([test "x$enable_ckpt_migration" = "xyes"], [AC_MSG_ERROR([FTB is required if Checkpoint/Restart Migration is enabled])])
+       ])
+        
+AS_IF([test "x$enable_ckpt_aggregation" = "xyes"], [
+       AS_IF([test "x$with_fuse" = "xcheck"], [with_fuse=yes])
+       ])
 
-    AC_MSG_CHECKING([for the BLCR library path])
-    if test -n "$with_blcr_libpath"; then
-        AC_MSG_RESULT($with_blcr_libpath)
-        LDFLAGS="$LDFLAGS -L$with_blcr_libpath"
-    else
-        AC_MSG_RESULT([default])
-    fi
-    AC_SEARCH_LIBS(cr_init, cr,,[AC_MSG_ERROR([libcr not found.])],)
-    blcr_lib="-lcr"
-    BLCR_LIBPATH="-L${blcr-libpath}"
+AS_IF([test "x$enable_ckpt_migration" = "xyes"], [
+       AS_IF([test "x$with_ftb" = "xcheck"], [with_ftb=yes])
+       ])
 
-    AC_DEFINE(CKPT, 1, [Define to enable Checkpoint/Restart support.])
+AC_MSG_CHECKING([whether to enable Checkpoint/Restart support support])
+AC_MSG_RESULT([$enable_ckpt])
 
-    AS_IF([test "$with_fuse" = yes], [
-           AC_SEARCH_LIBS([fuse_new],
-                          [fuse],
-                          [],
-                          [AC_MSG_ERROR([checkpoint aggregation requires fuse library])])
-           AC_SEARCH_LIBS([dlopen],
-                          [dl],
-                          [],
-                          [AC_MSG_ERROR([checkpoint aggregation requires dl library])])
-           AC_SEARCH_LIBS([pthread_create],
-                          [pthread],
-                          [],
-                          [AC_MSG_ERROR([checkpoint aggregation requires pthread library])])
-           AC_SEARCH_LIBS([aio_read],
-                          [rt],
-                          [],
-                          [AC_MSG_ERROR([checkpoint aggregation requires rt library])])
-          ],
-          [test "$with_fuse" = check], [
-           AC_MSG_NOTICE([checking whether to enable checkpoint aggregation])
-           SAVE_LIBS="$LIBS"
-           AC_SEARCH_LIBS([fuse_new],
-                          [fuse],
-                          [],
-                          [AC_MSG_WARN([checkpoint aggregation requires fuse library])
-                          with_fuse=no])
-           AC_SEARCH_LIBS([dlopen],
-                          [dl],
-                          [],
-                          [AC_MSG_WARN([checkpoint aggregation requires dl library])
-                          with_fuse=no])
-           AC_SEARCH_LIBS([pthread_create],
-                          [pthread],
-                          [],
-                          [AC_MSG_WARN([checkpoint aggregation requires pthread library])
-                          with_fuse=no])
-           AC_SEARCH_LIBS([aio_read],
-                          [rt],
-                          [],
-                          [AC_MSG_WARN([checkpoint aggregation requires rt library])
-                          with_fuse=no])
-           AS_IF([test "$with_fuse" = no], [LIBS="$SAVE_LIBS"],
-                 [with_fuse=yes])
-          ])
+AS_IF([test "x$enable_ckpt" = xyes], [
+       AC_CHECK_HEADER([libcr.h],
+                       [],
+                       [AC_MSG_ERROR(['libcr.h not found. Please specify --with-blcr-include'])])
+       AC_SEARCH_LIBS([cr_init],
+                      [cr],
+                      [],
+                      [AC_MSG_ERROR([libcr not found.])],
+                      [])
 
-    AS_IF([test "$with_fuse" = yes], [
-           AC_DEFINE([CR_AGGRE], [1],
-                     [Define when using checkpoint aggregation])
-           AC_DEFINE([_FILE_OFFSET_BITS], [64],
-                     [Define to set the number of file offset bits])
-           AC_MSG_NOTICE([checkpoint aggregation enabled])
-          ],
-          [AC_MSG_NOTICE([checkpoint aggregation disabled])])
-    
-    AC_MSG_CHECKING([whether to enable support for FTB-CR])
-    AC_MSG_RESULT($enable_ftb_cr)
+       AC_DEFINE(CKPT, 1, [Define to enable Checkpoint/Restart support.])
+       AS_IF([test "x$with_fuse" = xcheck || test "x$with_fuse" = xyes], [
+              AC_MSG_NOTICE([checking checkpoint aggregation components])
+              SAVE_LIBS="$LIBS"
+              ckpt_aggregation=yes
+              AC_SEARCH_LIBS([fuse_new],
+                             [fuse],
+                             [],
+                             [AS_IF([test "x$with_fuse" = xyes], [AC_MSG_ERROR([fuse library not found])], [AC_MSG_WARN([fuse library not found])])
+                              ckpt_aggregation=no])
+              AC_SEARCH_LIBS([dlopen],
+                             [dl],
+                             [],
+                             [AS_IF([test "x$with_fuse" = xyes], [AC_MSG_ERROR([dl library not found])], [AC_MSG_WARN([dl library not found])])
+                              ckpt_aggregation=no])
+              AC_SEARCH_LIBS([pthread_create],
+                             [pthread],
+                             [],
+                             [AS_IF([test "x$with_fuse" = xyes], [AC_MSG_ERROR([pthread library not found])], [AC_MSG_WARN([pthread library not found])])
+                              ckpt_aggregation=no])
+              AC_SEARCH_LIBS([aio_read],
+                             [rt],
+                             [],
+                             [AS_IF([test "x$with_fuse" = xyes], [AC_MSG_ERROR([rt library not found])], [AC_MSG_WARN([rt library not found])])
+                              ckpt_aggregation=no])
+              AS_IF([test "$ckpt_aggregation" = no], [
+                     LIBS="$SAVE_LIBS"
+                    ], [
+                     with_fuse=yes
+                    ])
+             ])
 
-    if test "$enable_ftb_cr" = "yes"; then
+       AS_IF([test "x$with_fuse" = xyes], [
+              AC_DEFINE([CR_AGGRE], [1], [Define when using checkpoint aggregation])
+              AC_DEFINE([_FILE_OFFSET_BITS], [64], [Define to set the number of file offset bits])
+              AC_MSG_NOTICE([checkpoint aggregation enabled])
+             ], [
+              AC_MSG_WARN([checkpoint aggregation disabled])
+             ])
+   
+       AC_MSG_CHECKING([whether to enable support for FTB-CR])
+       AC_MSG_RESULT($enable_ftb_cr)
 
-        AC_MSG_CHECKING([for the FTB includes path])
-        if test -n "$with_ftb_include"; then
-            AC_MSG_RESULT($with_ftb_include)
-            CPPFLAGS="$CPPFLAGS -I$with_ftb_include"
-        else
-            AC_MSG_RESULT([default])
-        fi
-        AC_CHECK_HEADER([libftb.h],,[AC_MSG_ERROR(['libftb.h not found. Please specify --with-ftb-include'])])
-        ftb_include="-I${with_ftb_include}"
+       AS_IF([test "x$enable_ckpt_migration" = xyes], [
+              AC_CHECK_HEADER([libftb.h],
+                              [],
+                              [AC_MSG_ERROR(['libftb.h not found. Please specify --with-ftb-include'])])
 
-        AC_MSG_CHECKING([for the FTB library path])
-        if test -n "$with_ftb_libpath"; then
-            AC_MSG_RESULT($with_ftb_libpath)
-            LDFLAGS="$LDFLAGS -L$with_ftb_libpath"
-        else
-            AC_MSG_RESULT([default])
-        fi
-        AC_SEARCH_LIBS(FTB_Connect, ftb,,[AC_MSG_ERROR([libftb not found.])],)
-        ftb_lib="-lftb"
-        FTB_LIBPATH="-L${with_ftb_libpath}"
-
-        AC_DEFINE(CR_FTB, 1, [Define to enable FTB-CR support.])
-    fi
-fi
-AC_SUBST(blcr_lib)
-AC_SUBST(blcr_include)
-AC_SUBST(ftb_lib)
-AC_SUBST(ftb_include)
+              AC_SEARCH_LIBS([FTB_Connect],
+                             [ftb],
+                             [],
+                             [AC_MSG_ERROR([libftb not found.])],
+                             [])
+              AC_DEFINE(CR_FTB, 1, [Define to enable FTB-CR support.])
+             ])
+      ])
 
 if test "$enable_rsh" = "yes"; then
     AC_DEFINE(USE_RSH, 1, [Define to enable use of rsh for command execution by default.])
@@ -242,6 +311,10 @@ AC_SUBST(MVAPICH2_VERSION)
 AC_SUBST(MAKE_DEPEND_C)
 AC_SUBST(mpirun_rsh_other_libs)
 AC_SUBST(mpispawn_other_libs)
+AC_SUBST(master_top_srcdir)
+AC_SUBST(master_top_builddir)
+AC_SUBST(AR)
+AC_SUBST(RANLIB)
 
 PAC_SUBCONFIG_FINALIZE()
 

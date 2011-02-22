@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -27,6 +27,8 @@
 #include <sys/select.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <stdlib.h>
+#include <sys/wait.h>
 
 #include "crfs.h"
 
@@ -955,8 +957,17 @@ int main(int argc, char *argv[])
 	add_kvc("PARENT_ROOT_PORT_NAME", portname, 1);
     }
 
+    gethostname(hostname, MAX_HOST_LEN);
+
 #if defined(CKPT) && defined(CR_AGGRE)
-    use_aggre = env2int("MV2_CKPT_USE_AGGREGATION");
+    char* str = getenv("MV2_CKPT_USE_AGGREGATION");
+    if ( str == NULL ) {
+        // Use default value, ie 1 since aggregation has been enabled at configure time
+        use_aggre = 1;
+    } else {
+        // Use the value forwarded by mpirun_rsh in MV2_CKPT_USE_AGGREGATION
+        use_aggre = atoi( str );
+    }
     dbg(" *********  [mpispawn-%d]: use-aggre=%d, use-aggre-mig=%d\n", 
              mt_id, use_aggre, use_aggre_mig);
 
@@ -966,6 +977,34 @@ int main(int argc, char *argv[])
         strncpy(ckpt_filename, DEFAULT_CHECKPOINT_FILENAME, CR_MAX_FILENAME ); 
     }
 
+    if ( use_aggre || use_aggre_mig ) {
+        // Check for fusermount
+        int status = system("fusermount -V > /dev/null");
+        if ( status == -1 ) {
+            // The 'system' call failed (because of failed fork, missing sh, ...)
+            // This is a serious error, aborting
+            fprintf(stderr, "[%s] Fatal error: Failed to call 'system()'\n", hostname );
+            exit(EXIT_FAILURE);
+        } else {
+            if ( !(WIFEXITED(status) && WEXITSTATUS(status) == 0) ) {
+                // Debug information
+                if ( WIFEXITED(status) ) {
+                    dbg("'sh -c fusermount -V' exited with status %d\n", WEXITSTATUS(status));
+                } else if ( WIFSIGNALED(status) ) {
+                    dbg("'sh -c fusermount -V' terminated with signal %d\n", WTERMSIG(status));
+                } else {
+                    dbg("fail to execute 'sh -c fusermount -V' process for an unknown reason\n");
+                }
+
+                // Failed to run 'fusermount -V', disabling aggregation and RDMA migration
+                fprintf(stderr, "[%s] Cannot enable Write Aggregation for Checkpoint/Restart. Aborting...\n", hostname );
+                fprintf(stderr, "[%s] Please check for 'fusermount' in your PATH.\n", hostname );
+                fprintf(stderr, "[%s] To disable Write Aggregation, use MV2_CKPT_USE_AGGREGATION=0.\n", hostname );
+                exit(EXIT_FAILURE);
+            }
+        }
+    }
+
     if( !use_aggre ){
         //strncpy(ckpt_filename, DEFAULT_CHECKPOINT_FILENAME, CR_MAX_FILENAME ); 
         goto no_cr_aggre;
@@ -973,10 +1012,10 @@ int main(int argc, char *argv[])
     
     if( start_crfs(getenv("MPISPAWN_CR_SESSIONID") , ckpt_filename, use_aggre_mig )!= 0 )
     {
-        fprintf(stderr, "Failed to init CR-aggregation.\n"
-                "Falling back to CR-Basic scheme...\n");
-        use_aggre = 0;
-        use_aggre_mig = 0;
+        fprintf(stderr, "[%s] Failed to initialize Write Aggregation for Checkpoint/Restart. Aborting...\n", hostname );
+        fprintf(stderr, "[%s] Please check that the fuse module is loaded on this node.\n", hostname );
+        fprintf(stderr, "[%s] To disable Write Aggregation, use MV2_CKPT_USE_AGGREGATION=0.\n", hostname );
+        exit(EXIT_FAILURE);
     }
     debug("Now, ckptname is: %s\n", ckpt_filename );
 no_cr_aggre:
@@ -1065,7 +1104,6 @@ no_cr_aggre:
 
 	command = mkstr("cd %s; %s", env2str("MPISPAWN_WD"), ENV_CMD);
 
-	gethostname(hostname, MAX_HOST_LEN);
 	mpispawn_env = mkstr("MPISPAWN_MPIRUN_HOST=%s"
 			     " MPISPAWN_CHECKIN_PORT=%d MPISPAWN_MPIRUN_PORT=%d",
 			     hostname, port, port);
@@ -1219,6 +1257,9 @@ no_cr_aggre:
     mpispawn_checkin(l_port);
 
     if (USE_LINEAR_SSH) {
+#ifdef CR_FTB
+        mt_degree = MT_MAX_DEGREE;
+#else /* !defined(CR_FTB) */
         mt_degree = ceil(pow(mt_nnodes, (1.0 / (MT_MAX_LEVEL - 1))));
 
         if (mt_degree < MT_MIN_DEGREE) {
@@ -1228,6 +1269,7 @@ no_cr_aggre:
         if (mt_degree > MT_MAX_DEGREE) {
             mt_degree = MT_MAX_DEGREE;
         }
+#endif /* !defined(CR_FTB) */
 
 #ifdef CKPT
         mpispawn_fds = mpispawn_tree_init (mt_id, mt_degree, mt_nnodes,

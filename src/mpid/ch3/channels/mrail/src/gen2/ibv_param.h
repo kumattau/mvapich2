@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -79,6 +79,8 @@ extern int                  rdma_fp_sendconn_accepted;
 extern int                  rdma_pending_conn_request;
 extern int                  rdma_eager_limit;
 extern int                  rdma_rndv_ext_sendq_size;
+extern int                  rdma_global_ext_sendq_size;
+extern int                  rdma_num_extra_polls;
 
 extern int                  rdma_pin_pool_size;
 extern int                  rdma_put_fallback_threshold;
@@ -88,6 +90,9 @@ extern int                  rdma_iba_eager_threshold;
 extern long                 rdma_eagersize_1sc;
 extern int                  rdma_qos_num_sls;
 extern int                  rdma_use_qos;
+extern int                  rdma_3dtorus_support;
+extern int                  rdma_path_sl_query;
+extern int                  rdma_num_sa_query_retries;
 extern int                  rdma_multirail_usage_policy;
 extern int                  rdma_small_msg_rail_sharing_policy;
 extern int                  rdma_med_msg_rail_sharing_policy;
@@ -116,6 +121,7 @@ extern int                  rdma_use_smp;
 extern int                  use_iboeth;
 extern int                  rdma_iwarp_multiple_cq_threshold;
 extern int                  rdma_iwarp_use_multiple_cq;
+extern int                  using_mpirun_rsh;
 
 extern int                  use_hwloc_cpu_binding; 
 extern int                  max_rdma_connect_attempts;
@@ -173,6 +179,7 @@ extern int                  rdma_default_async_thread_stack_size;
 #define MAX_NUM_QP_PER_PORT             (4)
 #define RDMA_QOS_MAX_NUM_SLS	        (15)
 #define RDMA_QOS_DEFAULT_NUM_SLS	    (8)
+#define RDMA_DEFAULT_NUM_SA_QUERY_RETRIES   (20)
 #define RDMA_DEFAULT_MED_MSG_RAIL_SHARING_THRESHOLD (2048)
 #define RDMA_DEFAULT_LARGE_MSG_RAIL_SHARING_THRESHOLD (16384)
 

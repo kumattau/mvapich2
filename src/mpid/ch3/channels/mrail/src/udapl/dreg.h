@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2002-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -39,12 +39,6 @@
 #include "udapl_header.h"
 
 typedef struct dreg_entry dreg_entry;
-
-typedef struct {
-    void *buf; 
-    size_t len;
-} dreg_region;
-
 
 struct dreg_entry {
     unsigned long pagenum;

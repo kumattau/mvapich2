@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -271,13 +271,11 @@ int MPID_nem_ib_free_conn_info(int size) {
         MPIU_Free(conn_info.init_info->lid[i]);
         MPIU_Free(conn_info.init_info->gid[i]);
         MPIU_Free(conn_info.init_info->hostid[i]);
-        MPIU_Free(conn_info.init_info->qp_num_onesided[i]);
     }
     MPIU_Free(conn_info.init_info->lid);
     MPIU_Free(conn_info.init_info->gid);
     MPIU_Free(conn_info.init_info->hostid);
     MPIU_Free(conn_info.init_info->qp_num_rdma);
-    MPIU_Free(conn_info.init_info->qp_num_onesided);
     MPIU_Free(conn_info.init_info->hca_type);
     MPIU_Free(conn_info.init_info->vc_addr);
 
@@ -323,8 +321,6 @@ int MPID_nem_ib_alloc_process_init_info()
     info->hostid = (int **) MPIU_Malloc(size * sizeof(int *));
     info->qp_num_rdma = (uint32_t **)
                             MPIU_Malloc(size * sizeof(uint32_t *));
-    info->qp_num_onesided = (uint32_t **)
-                                MPIU_Malloc(size * sizeof(uint32_t *));
     info->hca_type = (uint32_t *) MPIU_Malloc(size * sizeof(uint32_t));
     info->vc_addr  = (uint64_t *) MPIU_Malloc(size * sizeof(uint64_t));
 
@@ -343,9 +339,6 @@ int MPID_nem_ib_alloc_process_init_info()
         info->gid[i] = (union ibv_gid *)
                          MPIU_Malloc(rails * sizeof(union ibv_gid));
         info->hostid[i] = (int *) MPIU_Malloc(rails * sizeof(int));
-        info->qp_num_onesided[i] = (uint32_t *)
-                                    MPIU_Malloc(rails * sizeof(uint32_t));
-
         if (!info->lid[i]
                 || !info->gid[i]
                 || !info->hostid[i]
@@ -1139,6 +1132,7 @@ int MPID_nem_ib_establish_conn()
 
     struct ibv_qp_attr  qp_attr;
     uint32_t            qp_attr_mask = 0;
+    static int          rdma_qos_sl = 0;
 
     int i;
     int size = conn_info.size;
@@ -1151,7 +1145,13 @@ int MPID_nem_ib_establish_conn()
     qp_attr.rq_psn      =   rdma_default_psn;
     qp_attr.max_dest_rd_atomic  =   rdma_default_max_rdma_dst_ops;
     qp_attr.min_rnr_timer       =   rdma_default_min_rnr_timer;
-    qp_attr.ah_attr.sl          =   rdma_default_service_level;
+    if (rdma_use_qos) {
+        qp_attr.ah_attr.sl          =   rdma_qos_sl;
+        rdma_qos_sl = (rdma_qos_sl + 1) % rdma_qos_num_sls;
+    } else {
+        qp_attr.ah_attr.sl          =   rdma_default_service_level;
+    }
+
     qp_attr.ah_attr.static_rate =   rdma_default_static_rate;
     qp_attr.ah_attr.src_path_bits   =   rdma_default_src_path_bits;
 
@@ -1177,6 +1177,19 @@ int MPID_nem_ib_establish_conn()
             int hca_index, port_index;
             hca_index  = rail_index / (rdma_num_rails / ib_hca_num_hcas);
             port_index = (rail_index / (rdma_num_rails / (ib_hca_num_hcas * ib_hca_num_ports))) % ib_hca_num_ports;
+
+            if (!use_iboeth && (rdma_3dtorus_support || rdma_path_sl_query)) {
+                /* Path SL Lookup */
+                struct ibv_context *context = hca_list[hca_index].nic_context;
+                struct ibv_pd *pd  = hca_list[hca_index].ptag;
+                uint16_t lid       = hca_list[hca_index].lids[port_index];
+                uint16_t rem_lid   = conn_info.init_info->lid[i][rail_index];
+                uint32_t port_num  = hca_list[hca_index].ports[port_index];
+                qp_attr.ah_attr.sl = mv2_get_path_rec_sl(context, pd, port_num,
+                                            lid, rem_lid, rdma_3dtorus_support,
+                                            rdma_num_sa_query_retries);
+            }
+
 
             qp_attr.dest_qp_num = conn_info.init_info->qp_num_rdma[i][rail_index];
             qp_attr.ah_attr.port_num = hca_list[hca_index].ports[port_index];
@@ -1324,6 +1337,8 @@ static int _setup_ib_boot_ring(struct init_addr_inf * neighbor_addr,
     uint32_t    qp_attr_mask = 0;
     int         i;
     int         ret;
+    static int  rdma_qos_sl = 0;
+
     qp_attr.qp_state        = IBV_QPS_INIT;
     set_pkey_index(&qp_attr.pkey_index, 0, port);
     qp_attr.qp_access_flags = IBV_ACCESS_LOCAL_WRITE |
@@ -1351,7 +1366,13 @@ static int _setup_ib_boot_ring(struct init_addr_inf * neighbor_addr,
     qp_attr.rq_psn      =   rdma_default_psn;
     qp_attr.max_dest_rd_atomic  =   rdma_default_max_rdma_dst_ops;
     qp_attr.min_rnr_timer       =   rdma_default_min_rnr_timer;
-    qp_attr.ah_attr.sl          =   rdma_default_service_level;
+    if (rdma_use_qos) {
+        qp_attr.ah_attr.sl          =   rdma_qos_sl;
+        rdma_qos_sl = (rdma_qos_sl + 1) % rdma_qos_num_sls;
+    } else {
+        qp_attr.ah_attr.sl          =   rdma_default_service_level;
+    }
+
     qp_attr.ah_attr.static_rate =   rdma_default_static_rate;
     qp_attr.ah_attr.src_path_bits   =   rdma_default_src_path_bits;
     qp_attr.ah_attr.port_num    =   port;
@@ -1390,6 +1411,21 @@ static int _setup_ib_boot_ring(struct init_addr_inf * neighbor_addr,
            qp_attr.ah_attr.dlid    = neighbor_addr[i].lid;
         }
         qp_attr_mask            |=  IBV_QP_DEST_QPN;
+
+        /* Path SL Lookup */
+        if (!use_iboeth && (rdma_3dtorus_support || rdma_path_sl_query)) {
+            struct ibv_context *context = hca_list[0].nic_context;
+            struct ibv_pd *pd  = hca_list[0].ptag;
+            /* don't know our local LID yet, so set it to 0 to let
+               mv2_get_path_rec_sl do the lookup */
+            /*uint16_t lid = proc->lids[0][port];*/
+            uint16_t lid = 0x0;
+            uint16_t rem_lid   = qp_attr.ah_attr.dlid;
+            uint32_t port_num  = qp_attr.ah_attr.port_num;
+            qp_attr.ah_attr.sl = mv2_get_path_rec_sl(context, pd, port_num,
+                                            lid, rem_lid, rdma_3dtorus_support,
+                                            rdma_num_sa_query_retries);
+        }
 
         ret = ibv_modify_qp(process_info.boot_qp_hndl[i],&qp_attr, qp_attr_mask);
         CHECK_RETURN(ret, "Could not modify boot qp to RTR");

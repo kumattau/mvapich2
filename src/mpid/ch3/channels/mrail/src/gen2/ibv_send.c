@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2002-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -37,6 +37,14 @@ do {                                                          \
 #else
 #define DEBUG_PRINT(args...)
 #endif
+
+#define INCR_EXT_SENDQ_SIZE(_c,_rail) \
+    ++ rdma_global_ext_sendq_size;      \
+    ++ (_c)->mrail.rails[(_rail)].ext_sendq_size;
+
+#define DECR_EXT_SENDQ_SIZE(_c,_rail)  \
+        -- rdma_global_ext_sendq_size;      \
+        -- (_c)->mrail.rails[(_rail)].ext_sendq_size; 
 
 static inline int MRAILI_Coalesce_ok(MPIDI_VC_t * vc, int rail)
 {
@@ -79,7 +87,8 @@ static inline void MRAILI_Ext_sendq_enqueue(MPIDI_VC_t *c,
             c->mrail.rails[rail].ext_sendq_head, 
             c->mrail.rails[rail].ext_sendq_tail); 
 
-    ++ c->mrail.rails[rail].ext_sendq_size;
+    INCR_EXT_SENDQ_SIZE(c, rail)
+
     if (c->mrail.rails[rail].ext_sendq_size > rdma_rndv_ext_sendq_size) {
         c->force_rndv = 1;
     }
@@ -134,7 +143,8 @@ static inline void MRAILI_Ext_sendq_send(MPIDI_VC_t *c, int rail)
         }
         v->desc.next = NULL;
         -- c->mrail.rails[rail].send_wqes_avail;                
-        -- c->mrail.rails[rail].ext_sendq_size;
+
+        DECR_EXT_SENDQ_SIZE(c, rail)
 
         if(1 == v->coalesce) {
             DEBUG_PRINT("Sending coalesce vbuf %p\n", v);
@@ -264,9 +274,9 @@ static int MRAILI_Fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
         (header->match.parts.tag == cached->match.parts.tag) &&
         (header->match.parts.rank == cached->match.parts.rank) &&
         (header->match.parts.context_id == cached->match.parts.context_id) &&
-        (header->mrail.vbuf_credit == cached->mrail.vbuf_credit) &&
-        (header->mrail.remote_credit == cached->mrail.remote_credit) &&
-        (header->mrail.rdma_credit == cached->mrail.rdma_credit)) {
+        (header->vbuf_credit == cached->vbuf_credit) &&
+        (header->remote_credit == cached->remote_credit) &&
+        (header->rdma_credit == cached->rdma_credit)) {
         /* change the header contents */
         ++vc->mrail.rfp.cached_hit;
 
@@ -445,7 +455,7 @@ int MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(MPIDI_VC_t * vc,
     XRC_FILL_SRQN_FIX_CONN (v, vc, rail);
     FLUSH_RAIL(vc, rail);
 #ifdef CRC_CHECK
-    p->mrail.crc = update_crc(1, (void *)((uintptr_t)p+sizeof *p),
+    p->crc = update_crc(1, (void *)((uintptr_t)p+sizeof *p),
                               *v->head_flag - sizeof *p);
 #endif
     if(rdma_iwarp_use_multiple_cq) {
@@ -578,8 +588,8 @@ int post_srq_send(MPIDI_VC_t* vc, vbuf* v, int rail)
     MPIDI_FUNC_ENTER(MPID_STATE_POST_SRQ_SEND);
 
     v->vc = (void *) vc;
-    p->mrail.src.vc_addr = vc->mrail.remote_vc_addr;
-    p->mrail.rail        = rail;
+    p->src.vc_addr = vc->mrail.remote_vc_addr;
+    p->rail        = rail;
     
     XRC_FILL_SRQN_FIX_CONN (v, vc, rail);
 
@@ -653,7 +663,7 @@ int post_send(MPIDI_VC_t * vc, vbuf * v, int rail)
 
         PACKET_SET_CREDIT(p, vc, rail);
 #ifdef CRC_CHECK
-	p->mrail.crc = update_crc(1, (void *)((uintptr_t)p+sizeof *p),
+	p->crc = update_crc(1, (void *)((uintptr_t)p+sizeof *p),
 				  v->desc.sg_entry.length - sizeof *p );
 #endif
         if (p->type != MPIDI_CH3_PKT_NOOP)
@@ -894,12 +904,12 @@ int MPIDI_CH3I_MRAILI_Eager_send(MPIDI_VC_t * vc,
 
         PACKET_SET_CREDIT(p, vc, v->rail);
 #ifdef CRC_CHECK
-	p->mrail.crc = update_crc(1, (void *)((uintptr_t)p+sizeof *p),
+	p->crc = update_crc(1, (void *)((uintptr_t)p+sizeof *p),
                                   v->desc.sg_entry.length - sizeof *p);
 #endif
         v->vc                = (void *) vc;
-        p->mrail.src.vc_addr = vc->mrail.remote_vc_addr;
-        p->mrail.rail        = v->rail;
+        p->src.vc_addr = vc->mrail.remote_vc_addr;
+        p->rail        = v->rail;
     }
 
     *buf_handle = v;
@@ -1010,8 +1020,8 @@ int MRAILI_Backlog_send(MPIDI_VC_t * vc, int rail)
         --vc->mrail.srp.credits[rail].remote_credit;
 
         if (MPIDI_CH3I_RDMA_Process.has_srq) {
-            p->mrail.src.vc_addr = vc->mrail.remote_vc_addr;
-            p->mrail.rail        = rail;
+            p->src.vc_addr = vc->mrail.remote_vc_addr;
+            p->rail        = rail;
         }
 
      	v->vc = vc;
@@ -1393,12 +1403,21 @@ int MRAILI_Process_send(void *vbuf_addr)
     case MPIDI_CH3_PKT_LOCK:
     case MPIDI_CH3_PKT_LOCK_GRANTED:
     case MPIDI_CH3_PKT_PT_RMA_DONE:
-    case MPIDI_CH3_PKT_LOCK_PUT_UNLOCK: /* optimization for single puts */
     case MPIDI_CH3_PKT_LOCK_GET_UNLOCK: /* optimization for single gets */
-    case MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK: /* optimization for single accumulates */
     case MPIDI_CH3_PKT_FLOW_CNTL_UPDATE:
     case MPIDI_CH3_PKT_RNDV_R3_ACK:
         DEBUG_PRINT("[process send] get %d\n", p->type);
+        if (v->padding == NORMAL_VBUF_FLAG) {
+            MRAILI_Release_vbuf(v);
+        }
+        else v->padding = FREE_FLAG;
+        break;
+   case MPIDI_CH3_PKT_LOCK_PUT_UNLOCK: /* optimization for single puts */
+   case MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK: /* optimization for single accumulates */
+        req = (MPID_Request *) v->sreq;
+        if (NULL != req) { 
+          MPID_Request_set_completed(req);
+        }
         if (v->padding == NORMAL_VBUF_FLAG) {
             MRAILI_Release_vbuf(v);
         }

@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -229,7 +229,9 @@ int MPIR_Reduce_OSU (
   			    } else { 
 #endif /* defined(HAVE_CXX_BINDING) */
          			 (*uop)(local_buf, tmpbuf, &count, &datatype);
+#if defined(HAVE_CXX_BINDING)
 	 	            }
+#endif
 		        }
 			MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(local_size, 
 							   local_rank, shmem_comm_rank);
@@ -410,9 +412,12 @@ int MPIR_Reduce_OSU (
                                                     count,
                                                     datatype,
                                                     uop );
-                } else
+                } else { 
 #endif
                     (*uop)(tmp_buf, recvbuf, &count, &datatype);
+#ifdef HAVE_CXX_BINDING
+                } 
+#endif
 
                 /* change the rank */
                 newrank = rank / 2;
@@ -495,11 +500,14 @@ int MPIR_Reduce_OSU (
                                                    (char *) recvbuf +
                                                    disps[recv_idx]*extent,
                                                    recv_cnt, datatype, uop);
-                } else
+                } else { 
 #endif
                     (*uop)((char *) tmp_buf + disps[recv_idx]*extent,
                            (char *) recvbuf + disps[recv_idx]*extent,
                            &recv_cnt, &datatype);
+#ifdef HAVE_CXX_BINDING
+                } 
+#endif
 
                 /* update send_idx for next iteration */
                 send_idx = recv_idx;
@@ -692,17 +700,23 @@ int MPIR_Reduce_OSU (
                         if (is_cxx_uop) {
                             (*MPIR_Process.cxx_call_op_fn)( tmp_buf, recvbuf,
                                                             count, datatype, uop );
-                        } else
+                        } else { 
 #endif
                             (*uop)(tmp_buf, recvbuf, &count, &datatype);
+#ifdef HAVE_CXX_BINDING
+                        } 
+#endif
                     } else {
 #ifdef HAVE_CXX_BINDING
                         if (is_cxx_uop) {
                             (*MPIR_Process.cxx_call_op_fn)( recvbuf, tmp_buf,
                                                             count, datatype, uop );
-                        } else
+                        } else { 
 #endif
                             (*uop)(recvbuf, tmp_buf, &count, &datatype);
+#ifdef HAVE_CXX_BINDING
+                        } 
+#endif
                         mpi_errno = MPIR_Localcopy(tmp_buf, count, datatype,
                                                    recvbuf, count, datatype);
 			if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }

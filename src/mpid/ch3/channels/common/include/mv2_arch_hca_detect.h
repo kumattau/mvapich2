@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -246,7 +246,6 @@ typedef enum{
 
 /* All arch combinations with Mellanox ConnectX DDR Cards */
 #define CASE_MV2_ANY_ARCH_WITH_MLX_CX_DDR case MV2_ARCH_UNKWN_HCA_MLX_CX_DDR: \
-    case MV2_ARCH_AMD_BRCLNA_16_HCA_MLX_CX_DDR: \
     case MV2_ARCH_AMD_MGNYCRS_24_HCA_MLX_CX_DDR: \
     case MV2_ARCH_INTEL_CLVRTWN_8_HCA_MLX_CX_DDR: \
     case MV2_ARCH_INTEL_NEHLM_8_HCA_MLX_CX_DDR: \
@@ -261,9 +260,7 @@ typedef enum{
 /* All arch combinations with Mellanox ConnectX QDR Cards */
 #define CASE_MV2_ANY_ARCH_WITH_MLX_CX_QDR case MV2_ARCH_UNKWN_HCA_MLX_CX_QDR: \
     case MV2_ARCH_AMD_BRCLNA_16_HCA_MLX_CX_QDR: \
-    case MV2_ARCH_AMD_MGNYCRS_24_HCA_MLX_CX_QDR: \
     case MV2_ARCH_INTEL_CLVRTWN_8_HCA_MLX_CX_QDR: \
-    case MV2_ARCH_INTEL_NEHLM_8_HCA_MLX_CX_QDR: \
     case MV2_ARCH_INTEL_NEHLM_16_HCA_MLX_CX_QDR: \
     case MV2_ARCH_INTEL_HRPRTWN_8_HCA_MLX_CX_QDR: \
     case MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_MLX_CX_QDR: \

@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
- /* Copyright (c) 2003-2010, The Ohio State University. All rights
+ /* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1102,7 +1102,6 @@ static int comm_delete(MPID_Comm * comm_ptr, int isDisconnect)
             if (comm_ptr->local_comm)
                 MPIR_Comm_release(comm_ptr->local_comm, isDisconnect );
         }
-
         /* Free the local and remote groups, if they exist */
         if (comm_ptr->local_group)
             MPIR_Group_release(comm_ptr->local_group);
@@ -1110,6 +1109,11 @@ static int comm_delete(MPID_Comm * comm_ptr, int isDisconnect)
             MPIR_Group_release(comm_ptr->remote_group);
 
         /* free the intra/inter-node communicators, if they exist */
+#if defined(_OSU_MVAPICH_)
+        if( comm_ptr->shmem_coll_ok == 1) { 
+             free_2level_comm(comm_ptr); 
+        } 
+#endif
         if (comm_ptr->node_comm)
             MPIR_Comm_release(comm_ptr->node_comm, isDisconnect);
         if (comm_ptr->node_roots_comm)

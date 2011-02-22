@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -142,14 +142,6 @@ int MPI_Isend(void *buf, int count, MPI_Datatype datatype, int dest, int tag,
 
     /* return the handle of the request to the user */
     *request = request_ptr->handle;
-
-#if defined(_OSU_MVAPICH_)
-    mpi_errno = MPID_Progress_test();
-    if (mpi_errno != MPI_SUCCESS)
-    {
-	goto fn_fail;
-    }
-#endif /* defined(_OSU_MVAPICH_) */
 
     /* ... end of body of routine ... */
     

@@ -1,5 +1,5 @@
 /*!\file */
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -127,7 +127,6 @@ struct process_init_info {
     uint16_t    **lid;
     uint32_t    **qp_num_rdma;
     union ibv_gid    **gid;
-    uint32_t    **qp_num_onesided;
     uint64_t    *vc_addr;
     uint32_t    *hca_type;
 };

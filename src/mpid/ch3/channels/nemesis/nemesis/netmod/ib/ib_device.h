@@ -7,6 +7,7 @@
 #define IB_DEVICE_H
 
 #include <infiniband/verbs.h>
+#include <rdma_3dtorus.h>
 
 typedef enum  {
     IB_PROGRESS_POLL,

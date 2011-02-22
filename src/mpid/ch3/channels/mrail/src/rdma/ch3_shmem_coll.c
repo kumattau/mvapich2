@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -40,6 +40,8 @@
 #endif
 
 #include "coll_shmem.h"
+#include "coll_shmem_internal.h"
+
 #include <stdio.h>
 
 typedef unsigned long addrint_t;
@@ -63,6 +65,9 @@ int tuning_table[COLL_COUNT][COLL_SIZE] = {{1024, 512, 256},
                                          {-1, -1, -1}
                                          };
 
+int size_scatter_tuning_table=3;
+
+struct scatter_tuning scatter_tuning_table[] = {{64, 2048, 4069},{128, 1024, 4096},{512, 256, 2048}};
 
 #if defined(CKPT)
 extern void Wait_for_CR_Completion();

@@ -326,4 +326,10 @@ AC_OUTPUT(Makefile src/Makefile util/Makefile util/shm/Makefile
         util/shmbase/Makefile channels/Makefile util/ftb/Makefile localdefs
         $MPID_THREAD_OUTPUT_FILES)
 
+dnl <_OSU_MVAPICH_>
+dnl Build util components for channels
+AC_OUTPUT([channels/common/Makefile channels/common/src/Makefile
+           channels/common/src/util/Makefile])
+dnl </_OSU_MVAPICH_>
+
 PAC_SUBDIR_CACHE_CLEANUP

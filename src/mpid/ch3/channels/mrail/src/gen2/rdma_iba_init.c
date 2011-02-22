@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2002-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -36,6 +36,7 @@
 /* global rdma structure for the local process */
 MPIDI_CH3I_RDMA_Process_t MPIDI_CH3I_RDMA_Process;
 char ufile[512];
+int ring_setup_done = 0;
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_MRAIL_PG_Init
@@ -134,7 +135,6 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
     char rdmakey[512];
     char rdmavalue[512];
     char* buf = NULL;
-    char tmp_hname[256];
     int mpi_errno = MPI_SUCCESS;
     struct process_init_info *init_info = NULL;
     uint32_t my_hca_type;
@@ -142,8 +142,22 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_RDMA_INIT);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_RDMA_INIT);
 
-    gethostname(tmp_hname, 255);
     pg_size = MPIDI_PG_Get_size(pg);
+
+    rdma_get_pm_parameters(&MPIDI_CH3I_RDMA_Process);
+    
+    if((pg_size > 1) && ((!using_mpirun_rsh) || MPIDI_CH3I_RDMA_Process.has_ring_startup)) {
+        mpi_errno = rdma_setup_startup_ring(&MPIDI_CH3I_RDMA_Process, pg_rank, pg_size);
+        if (mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+        }
+        /* Host ids exchanges through PMI in MPIDI_Get_local_host for
+        ** mpirun_rsh. for all other launchers do it here */
+        if(!using_mpirun_rsh) {
+            rdma_ring_exchange_host_id(pg, pg_rank, pg_size);
+        }
+        ring_setup_done = 1;
+    }
 
     rdma_local_id = MPIDI_Get_local_process_id(pg);
     rdma_num_local_procs = MPIDI_Num_local_processes(pg);
@@ -198,25 +212,18 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
     }
 
     if (pg_size > 1) {
-        /* IBoEth mode does not support loop back connections as of now. Ring
-         * based connection setup uses QP's to exchange info between all
-         * processes, whether they're on the same node or different nodes.
-         */
-        mpi_errno = rdma_setup_startup_ring(&MPIDI_CH3I_RDMA_Process, pg_rank,
-                                             pg_size);
-        if (mpi_errno) {
-            MPIU_ERR_POP(mpi_errno);
-        }
-
-        my_hca_type = MPIDI_CH3I_RDMA_Process.hca_type;
-        mpi_errno = rdma_ring_based_allgather(&my_hca_type, sizeof my_hca_type,
+        if (MPIDI_CH3I_RDMA_Process.has_ring_startup) {
+            my_hca_type = MPIDI_CH3I_RDMA_Process.hca_type;
+            mpi_errno = rdma_ring_based_allgather(&my_hca_type, sizeof my_hca_type,
                                         pg_rank, init_info->hca_type, pg_size, 
                                         &MPIDI_CH3I_RDMA_Process);
-	    if (mpi_errno) {
-	        MPIU_ERR_POP(mpi_errno);
-	    }
-        /* Check heterogenity */
-        rdma_param_handle_heterogenity(init_info->hca_type, pg_size);
+
+	        if (mpi_errno) {
+	            MPIU_ERR_POP(mpi_errno);
+	        }
+            /* Check heterogenity */
+            rdma_param_handle_heterogenity(init_info->hca_type, pg_size);
+        }
     }
 
     if (MPIDI_CH3I_RDMA_Process.has_apm) {
@@ -319,14 +326,14 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
         buf += 8;
         sprintf(buf, "%016llx", init_info->vc_addr[i]);
         buf += 16;
-        DEBUG_PRINT(stderr, "Put hca type %d, vc addr %llx, max val%d\n", 
+        DEBUG_PRINT("Put hca type %d, vc addr %llx, max val%d\n", 
                 init_info->hca_type[i], init_info->vc_addr[i],
                 val_max_sz);
 
 	    /* put the kvs into PMI */
 	    MPIU_Strncpy(key, rdmakey, key_max_sz);
 	    MPIU_Strncpy(val, rdmavalue, val_max_sz);
-        DEBUG_PRINT(stderr, "rdmavalue %s\n", val);
+        DEBUG_PRINT("rdmavalue %s len:%d \n", val,strlen(val))
 
 	    error = PMI_KVS_Put(pg->ch.kvs_name, key, val);
 	    if (error != PMI_SUCCESS) {
@@ -342,13 +349,19 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
 	        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
 		        "**pmi_kvs_commit", "**pmi_kvs_commit %d", error);
 	    }
-        }
-
+        
+        /* 
+        ** This barrer is placed here because PMI is not allowing to put
+        ** multiple key-value pairs. otherwise this berrier is not required.
+        ** This should be moved out of this loop if PMI allows multiple pairs.
+        */
 	    error = PMI_Barrier();
 	    if (error != PMI_SUCCESS) {
 		    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
 			    "**pmi_barrier", "**pmi_barrier %d", error);
 	    }
+        }
+
 
 	    /* Here, all the key and value pairs are put, now we can get them */
 	    for (i = 0; i < pg_size; i++) {
@@ -405,7 +418,7 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
             buf += 8;
             sscanf(buf, "%016llx", &init_info->vc_addr[i]);
             buf += 16;
-            DEBUG_PRINT(stderr, "Get vc addr %llx\n", init_info->vc_addr[i]);
+            DEBUG_PRINT("Get vc addr %llx\n", init_info->vc_addr[i]);
 	    }
 
 	    /* This barrier is to prevent some process from
@@ -422,9 +435,9 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
         if (pg_rank == i) {
             continue;
         }
-	    /* Generate the key and value pair */
-	    MPIU_Snprintf(rdmakey, 512, "1-%08x-%08x", pg_rank, i);
-		buf = rdmavalue;
+	        /* Generate the key and value pair */
+	        MPIU_Snprintf(rdmakey, 512, "1-%08x-%08x", pg_rank, i);
+	   	buf = rdmavalue;
 
 		for (rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
 		    sprintf(buf, "%08X", init_info->qp_num_rdma[i][rail_index]);
@@ -451,13 +464,20 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
 		    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
 			    "**pmi_kvs_commit", "**pmi_kvs_commit %d", error);
 		}
-        }
 
+        /* 
+        ** This barrer is placed here because PMI is not allowing to put
+        ** multiple key-value pairs. otherwise this berrier is not required.
+        ** This should be moved out of this loop if PMI allows multiple pairs.
+        */
+            
 	    error = PMI_Barrier();
 	    if (error != PMI_SUCCESS) {
 		    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
 			    "**pmi_barrier", "**pmi_barrier %d", error);
 	    }
+        }
+
 
 	    /* Here, all the key and value pairs are put, now we can get them */
 	    for (i = 0; i < pg_size; i++) {
@@ -495,98 +515,14 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
 
 	    DEBUG_PRINT("After barrier\n");
 
-	    if (MPIDI_CH3I_RDMA_Process.has_one_sided) {
-		    /* Exchange qp_num */
-	        for (i = 0; i < pg_size; i++) {
-            if (pg_rank == i) {
-                continue;
-            }
-		    /* Generate the key and value pair */
-		    MPIU_Snprintf(rdmakey, 512, "2-%08x-%08x", pg_rank, i);
-		    buf = rdmavalue;
-
-		    for (rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
-			    sprintf(buf, "%08X", 
-                        init_info->qp_num_onesided[i][rail_index]);
-			    buf += 8;
-			    DEBUG_PRINT("Put key %s, onesided qp %d, num %08X\n",
-			                rdmakey, i,
-                            init_info->qp_num_onesided[i][rail_index]);
-		    }
-
-		    /* put the kvs into PMI */
-		    DEBUG_PRINT("Put a string %s\n", rdmavalue);
-		    MPIU_Strncpy(key, rdmakey, key_max_sz);
-		    MPIU_Strncpy(val, rdmavalue, val_max_sz);
-
-		    error = PMI_KVS_Put(pg->ch.kvs_name, key, val);
-		    if (error != PMI_SUCCESS) {
-			    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-				    "**pmi_kvs_put", "**pmi_kvs_put %d", error);
-		    }
-
-		    error = PMI_KVS_Commit(pg->ch.kvs_name);
-		    if (error != PMI_SUCCESS) {
-			    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-				    "**pmi_kvs_commit", "**pmi_kvs_commit %d", error);
-		    }
-            }
-
-		    error = PMI_Barrier();
-		    if (error != PMI_SUCCESS) {
-		        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-			        "**pmi_barrier", "**pmi_barrier %d", error);
-		    }
-
-		    /* Here, all the key and value pairs are put, now we can get them */
-		    for (i = 0; i < pg_size; i++) {
-		        if (pg_rank == i) {
-			        continue;
-		        }
-
-		        /* Generate the key */
-		        MPIU_Snprintf(rdmakey, 512, "2-%08x-%08x", i, pg_rank);
-		        MPIU_Strncpy(key, rdmakey, key_max_sz);
-
-		        error = PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz);
-
-		        if (error != PMI_SUCCESS) {
-			        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-				        "**pmi_kvs_get", "**pmi_kvs_get %d", error);
-		        }
-
-		        MPIU_Strncpy(rdmavalue, val, val_max_sz);
-		        DEBUG_PRINT("Get a string %s\n", rdmavalue);
-		        buf = rdmavalue;
-
-		        for (rail_index = 0; rail_index < rdma_num_rails;
-			            rail_index++) {
-			        sscanf(buf, "%08X", 
-                            &init_info->qp_num_onesided[i][rail_index]);
-			        buf += 8;
-			        DEBUG_PRINT("Get key %s, onesided qp %d, num %08X\n",
-			                    rdmakey, i,
-			                    init_info->qp_num_onesided[i][rail_index]);
-		        }
-		    }
-
-		    error = PMI_Barrier();
-		    if (error != PMI_SUCCESS) {
-		        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-			        "**pmi_barrier", "**pmi_barrier %d", error);
-		    }
-
-		    MPIU_Free(val);
-		    MPIU_Free(key);
-	    }
 	} else {
 	    /* Exchange the information about HCA_lid, qp_num, and memory,
 	     * With the ring-based queue pair */
-        mpi_errno = rdma_ring_boot_exchange(&MPIDI_CH3I_RDMA_Process, pg,
+            mpi_errno = rdma_ring_boot_exchange(&MPIDI_CH3I_RDMA_Process, pg,
                                              pg_rank, init_info);
-        if(mpi_errno) {
-            MPIU_ERR_POP(mpi_errno)
-       }
+           if(mpi_errno) {
+              MPIU_ERR_POP(mpi_errno)
+           }
 	}
     }
 
@@ -641,7 +577,7 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
 		    "**pmi_barrier", "**pmi_barrier %d", error);
     }
 
-    if ((pg_size > 1) && (!use_iboeth)) {
+    if (ring_setup_done) {
         /* clean up the bootstrap qps and free memory */
         if ((mpi_errno = rdma_cleanup_startup_ring(&MPIDI_CH3I_RDMA_Process))
              != MPI_SUCCESS) {
@@ -765,6 +701,14 @@ int MPIDI_CH3I_RDMA_finalize(void)
     pg_size = MPIDI_PG_Get_size(pg);
 
     /* make sure everything has been sent */
+    if (!use_iboeth && (rdma_3dtorus_support || rdma_path_sl_query)) {
+        mv2_release_3d_torus_resources();
+    }
+
+    if (ring_setup_done) {
+        ring_rdma_close_hca(&MPIDI_CH3I_RDMA_Process);
+    }
+
     MPIDI_CH3I_MRAILI_Flush();
     for (i = 0; i < pg_size; i++) {
 	if (i == pg_rank) {
@@ -853,14 +797,23 @@ int MPIDI_CH3I_RDMA_finalize(void)
 
     for (i = 0; i < rdma_num_hcas; i++) {
 	if (MPIDI_CH3I_RDMA_Process.has_srq) {
-        pthread_cond_signal(&MPIDI_CH3I_RDMA_Process.srq_post_cond[i]);
-        pthread_mutex_lock(&MPIDI_CH3I_RDMA_Process.async_mutex_lock[i]);
+        
+        /* Signal thread if waiting */
         pthread_mutex_lock(&MPIDI_CH3I_RDMA_Process.srq_post_mutex_lock[i]);
+        *((volatile int*)&MPIDI_CH3I_RDMA_Process.is_finalizing ) = 1;
+        pthread_cond_signal(&MPIDI_CH3I_RDMA_Process.srq_post_cond[i]);
         pthread_mutex_unlock(&MPIDI_CH3I_RDMA_Process.srq_post_mutex_lock[i]);
+        
+        /* wait for async thread to finish processing */
+        pthread_mutex_lock(&MPIDI_CH3I_RDMA_Process.async_mutex_lock[i]);
+        
+        /* destroy mutex and cond and cancel thread */
         pthread_cond_destroy(&MPIDI_CH3I_RDMA_Process.srq_post_cond[i]);
         pthread_mutex_destroy(&MPIDI_CH3I_RDMA_Process.srq_post_mutex_lock[i]);
         pthread_cancel(MPIDI_CH3I_RDMA_Process.async_thread[i]);
+
         pthread_join(MPIDI_CH3I_RDMA_Process.async_thread[i], NULL);
+
         err = ibv_destroy_srq(MPIDI_CH3I_RDMA_Process.srq_hndl[i]);
         pthread_mutex_unlock(&MPIDI_CH3I_RDMA_Process.async_mutex_lock[i]);
         pthread_mutex_destroy(&MPIDI_CH3I_RDMA_Process.async_mutex_lock[i]);
@@ -1010,8 +963,14 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
     union ibv_gid *gid_all;
     uint32_t *hca_type_all;
     uint32_t my_hca_type;
-    char tmp_hname[256];
     int mpi_errno = MPI_SUCCESS;
+    ud_addr_info_t self_info;
+    ud_addr_info_t *all_info;
+    char hostname[HOSTNAME_LEN + 1];
+    int hostid;
+    struct hostent *hostent;
+    int result;
+
     MPIDI_STATE_DECL(MPID_STATE_CH3I_CM_INIT);
     MPIDI_FUNC_ENTER(MPID_STATE_CH3I_CM_INIT);
 
@@ -1025,8 +984,30 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
     mallopt(M_MMAP_MAX, 0);
 #endif
 
-    gethostname(tmp_hname, 255);
     pg_size = MPIDI_PG_Get_size(pg);
+
+    rdma_get_pm_parameters(&MPIDI_CH3I_RDMA_Process);
+#if defined(RDMA_CM)
+    /* We cann't setup UD Ring for iWARP devices. Use PMI here for hostid exchange
+    ** in the case of hydra. Consider using hydra process mapping in the next
+    ** release as it is not correct in the current release.
+    */
+    if(MPIDI_CH3I_RDMA_Process.use_rdma_cm && !using_mpirun_rsh ) {
+        rdma_cm_exchange_hostid(pg, pg_rank, pg_size);
+    } else 
+#endif 
+    if((pg_size > 1) && ((!using_mpirun_rsh) || MPIDI_CH3I_RDMA_Process.has_ring_startup)) {
+        mpi_errno = rdma_setup_startup_ring(&MPIDI_CH3I_RDMA_Process, pg_rank, pg_size);
+        if (mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+        }
+        /* Host ids exchanges through PMI in MPIDI_Get_local_host for
+        ** mpirun_rsh. for all other launchers do it here */
+        if(!using_mpirun_rsh) {
+            rdma_ring_exchange_host_id(pg, pg_rank, pg_size);
+        }
+        ring_setup_done = 1;
+    }
 
     rdma_local_id = MPIDI_Get_local_process_id(pg);
     rdma_num_local_procs = MPIDI_Num_local_processes(pg);
@@ -1065,16 +1046,18 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
         && !MPIDI_CH3I_RDMA_Process.use_rdma_cm
 #endif /* defined(RDMA_CM) */
     ) {
-        rdma_setup_startup_ring(&MPIDI_CH3I_RDMA_Process, pg_rank, pg_size);
-        my_hca_type = MPIDI_CH3I_RDMA_Process.hca_type;
+        if (MPIDI_CH3I_RDMA_Process.has_ring_startup)
+        {
+            my_hca_type = MPIDI_CH3I_RDMA_Process.hca_type;
 
-        mpi_errno = rdma_ring_based_allgather(&my_hca_type, sizeof my_hca_type,
-                                                pg_rank, hca_type_all, pg_size,
-                                                &MPIDI_CH3I_RDMA_Process);
-        if (mpi_errno) {
-            MPIU_ERR_POP(mpi_errno);
+            mpi_errno = rdma_ring_based_allgather(&my_hca_type, sizeof my_hca_type,
+                                                    pg_rank, hca_type_all, pg_size,
+                                                    &MPIDI_CH3I_RDMA_Process);
+            if (mpi_errno) {
+                MPIU_ERR_POP(mpi_errno);
+            }
+            rdma_param_handle_heterogenity(hca_type_all, pg_size);
         }
-        rdma_param_handle_heterogenity(hca_type_all, pg_size);
     }
 
     rdma_num_rails = rdma_num_hcas * rdma_num_ports * rdma_num_qp_per_port;
@@ -1224,19 +1207,16 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
         MPIU_ERR_POP(mpi_errno);
     }
 
+
+	result = gethostname(hostname, HOSTNAME_LEN);
+	hostent = gethostbyname(hostname);
+	hostid = (int) ((struct in_addr *) hostent->h_addr_list[0])->s_addr;
+
     if (pg_size > 1)
     {
         if (MPIDI_CH3I_RDMA_Process.has_ring_startup)
         {
-	    ud_addr_info_t self_info;
-            ud_addr_info_t *all_info;
-            
-	    char hostname[HOSTNAME_LEN + 1];
-	    int hostid;
-	    struct hostent *hostent;
-        int result;
 
-	    result = gethostname(hostname, HOSTNAME_LEN);
 
 	    if (result!=0)
             {
@@ -1249,8 +1229,6 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
                 );
 	    }
 
-	    hostent = gethostbyname(hostname);
-	    hostid = (int) ((struct in_addr *) hostent->h_addr_list[0])->s_addr;
 	    self_info.hostid = hostid;
 	    memcpy(&self_info.lid, &MPIDI_CH3I_RDMA_Process.lids,
                    sizeof(uint16_t)*MAX_NUM_HCAS*MAX_NUM_PORTS);
@@ -1328,12 +1306,20 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
 
 	    /*Just put lid for default port and ud_qpn is sufficient*/
 	    MPIU_Snprintf(key, key_max_sz, "ud_info_%08d", pg_rank);
-	    MPIU_Snprintf(val, val_max_sz, "%08x:%08x",
-		    MPIDI_CH3I_RDMA_Process.lids[0][0],ud_qpn_self);
-	    /*
-	       printf("Rank %d, my lid: %08x, my qpn: %08x\n", pg_rank,
-	       MPIDI_CH3I_RDMA_Process.lids[0][0],ud_qpn_self);
-	     */
+
+        if (!use_iboeth) {
+	        MPIU_Snprintf(val, val_max_sz, "%08hx:%08x:%02x:%08x",
+		        MPIDI_CH3I_RDMA_Process.lids[0][0], ud_qpn_self, MPIDI_CH3I_RDMA_Process.hca_type, hostid);
+        } else {
+            MPIU_Snprintf(val, val_max_sz, "%08hx:%08x:%02x:%08x:%016llx:%016llx",
+                MPIDI_CH3I_RDMA_Process.lids[0][0], ud_qpn_self, MPIDI_CH3I_RDMA_Process.hca_type, hostid,
+                MPIDI_CH3I_RDMA_Process.gids[0][0].global.subnet_prefix, 
+                MPIDI_CH3I_RDMA_Process.gids[0][0].global.interface_id);
+        }
+	       
+        DEBUG_PRINT("[%d] Put lids: %08hx ud_qp: %08x hca_type: %02x hostid: %08x\n", 
+                pg_rank, MPIDI_CH3I_RDMA_Process.lids[0][0], ud_qpn_self,MPIDI_CH3I_RDMA_Process.hca_type,hostid);
+	     
 	    error = PMI_KVS_Put(pg->ch.kvs_name, key, val);
 	    if (error != PMI_SUCCESS) {
 		MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
@@ -1354,28 +1340,46 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
 	    }
 
 	    for (i = 0; i < pg_size; i++)
+        {
+		    if (pg_rank == i)
             {
-		if (pg_rank == i)
-                {
-		    lid_all[i] = MPIDI_CH3I_RDMA_Process.lids[0][0];
-		    ud_qpn_all[i] = ud_qpn_self;
-		    continue;
-		}
+                lid_all[i] = MPIDI_CH3I_RDMA_Process.lids[0][0];
+                ud_qpn_all[i] = ud_qpn_self;
+                hca_type_all[i] = MPIDI_CH3I_RDMA_Process.hca_type;
+                gid_all[i] = MPIDI_CH3I_RDMA_Process.gids[0][0];
+                continue;
+		    }
 
-		MPIU_Snprintf(key, key_max_sz, "ud_info_%08d", i);
+		    MPIU_Snprintf(key, key_max_sz, "ud_info_%08d", i);
 
-		error = PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz);
-		if (error != PMI_SUCCESS) {
+		    error = PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz);
+		    if (error != PMI_SUCCESS) {
 		    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
 			    "**pmi_kvs_get", "**pmi_kvs_get %d", error);
-		}
-
-		sscanf(val,"%08x:%08x",
-                       (unsigned int *)&(lid_all[i]),&(ud_qpn_all[i]));
-		/*    
-		      printf("Rank %d: from rank %d, lid: %08x, qpn: %08x\n",pg_rank,i,lid_all[i],ud_qpn_all[i]);
-		 */
+		    }
+            
+            if (!use_iboeth) {
+		        sscanf(val,"%08hx:%08x:%02x:%08x",
+                   (uint16_t *)&(lid_all[i]), &(ud_qpn_all[i]), &(hca_type_all[i]), &hostid);
+            } else {
+		        sscanf(val,"%08hx:%08x:%02x:%08x:%016llx:%016llx",
+                   (uint16_t *)&(lid_all[i]), &(ud_qpn_all[i]), &(hca_type_all[i]), &hostid, 
+                    &(gid_all[i].global.subnet_prefix), &(gid_all[i].global.interface_id));
+            }
+        
+#ifdef _ENABLE_XRC_
+            if (USE_XRC) {
+                pg->ch.mrail.xrc_hostid[i] = hostid;
+            }
+#endif
+            DEBUG_PRINT("[d<-%d] Get: lid: %08hx, qpn: %08x hca_type:%02x hostid: %08x\n",pg_rank,i,
+		                        lid_all[i], ud_qpn_all[i], hca_type_all[i], hostid);
 	    }
+        
+        rdma_param_handle_heterogenity(hca_type_all, pg_size);
+        MPIU_Free(key); 
+        MPIU_Free(val);
+        
 	}
     }
     else
@@ -1407,7 +1411,9 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
 #endif /* defined(RDMA_CM) */
     )
     {
-        rdma_cleanup_startup_ring(&MPIDI_CH3I_RDMA_Process);
+        if (ring_setup_done) {
+            rdma_cleanup_startup_ring(&MPIDI_CH3I_RDMA_Process);
+        }
     }
 
 #if defined(RDMA_CM)
@@ -1460,13 +1466,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
     MPIU_Free(ud_qpn_all);
     MPIU_Free(lid_all);
     MPIU_Free(hca_type_all);
-
-    /*barrier to make sure queues are initialized before continuing */
-    error = PMI_Barrier();
-    if (error != PMI_SUCCESS) {
-	MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-		"**pmi_barrier", "**pmi_barrier %d", error);
-    }
+    MPIU_Free(gid_all);
 
     DEBUG_PRINT("Done MPIDI_CH3I_CM_Init()\n");
 
@@ -1526,6 +1526,14 @@ int MPIDI_CH3I_CM_Finalize(void)
 #if defined(RDMA_CM)
     }
 #endif /* defined(RDMA_CM) */
+
+    if (!use_iboeth && (rdma_3dtorus_support || rdma_path_sl_query)) {
+        mv2_release_3d_torus_resources();
+    }
+
+    if (ring_setup_done) {
+        ring_rdma_close_hca(&MPIDI_CH3I_RDMA_Process);
+    }
 
     for (; i < pg_size; ++i)
     {

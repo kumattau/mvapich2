@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1212,8 +1212,7 @@ int MPIDI_nem_ib_fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
 
         if (header->sender_req_id == cached->sender_req_id) {
             MPIDI_nem_ib_pkt_fast_eager *fast_header;
-            MRAILI_FAST_RDMA_VBUF_START(v, len - sizeof(MPIDI_CH3_Pkt_t) +
-                                    sizeof(MPIDI_nem_ib_pkt_fast_eager), vstart);
+            vstart = v->buffer;
 
             DEBUG_PRINT 
                 ("[send: fill buf], head cached, head_flag %p, vstart %p, length %d",
@@ -1241,9 +1240,7 @@ int MPIDI_nem_ib_fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
             avail -= sizeof(MPIDI_nem_ib_pkt_fast_eager);
         } else {
             MPIDI_nem_ib_pkt_fast_eager_with_req *fast_header;
-            MRAILI_FAST_RDMA_VBUF_START(v, len - sizeof(MPIDI_CH3_Pkt_t) +
-                                    sizeof(MPIDI_nem_ib_pkt_fast_eager_with_req),
-                                    vstart);
+            vstart = v->buffer;
             DEBUG_PRINT 
                 ("[send: fill buf], head cached, head_flag %p, vstart %p, length %d\n",
                  &v->head_flag, vstart,
@@ -1274,7 +1271,7 @@ int MPIDI_nem_ib_fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
     } else
 #endif
     {
-    MRAILI_FAST_RDMA_VBUF_START(v, len + IB_PKT_HEADER_LENGTH, vstart);
+    vstart = v->buffer;
     v->iheader = vstart;
     MPIDI_nem_ib_pkt_comm_header *p = v->iheader;
     PACKET_SET_RDMA_CREDIT(p, VC_FIELD(vc, connection));
@@ -1283,7 +1280,8 @@ int MPIDI_nem_ib_fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
         p->type = header->type;
         MPIU_Memcpy(vstart, header, iov[0].MPID_IOV_LEN);
 #ifndef MV2_DISABLE_HEADER_CACHING
-        if (header->type == MPIDI_CH3_PKT_EAGER_SEND) {
+        if (header->type == MPIDI_CH3_PKT_EAGER_SEND && 
+            (len - sizeof(MPIDI_CH3_Pkt_t) <= MAX_SIZE_WITH_HEADER_CACHING) ) {
           MPIU_Memcpy(cached, header, sizeof(MPIDI_CH3_Pkt_eager_send_t));
           MPIU_Memcpy(cached_iheader, p, sizeof(MPIDI_nem_ib_pkt_comm_header));
         }
@@ -1330,8 +1328,9 @@ int MPIDI_nem_ib_fast_rdma_send_complete(MPIDI_VC_t * vc,
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_NEM_IB_FAST_RDMA_SEND_COMPLETE);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_NEM_IB_FAST_RDMA_SEND_COMPLETE);
     int rail;
-    int  align_len;
+    int  post_len;
     char cq_overflow = 0;
+    VBUF_FLAG_TYPE flag;
     vbuf *v =
         &(VC_FIELD(vc, connection)->rfp.RDMA_send_buf[VC_FIELD(vc, connection)->rfp.phead_RDMA_send]);
     char *rstart;
@@ -1344,17 +1343,15 @@ int MPIDI_nem_ib_fast_rdma_send_complete(MPIDI_VC_t * vc,
     MPIDI_nem_ib_get_send_seqnum(vc, seqnum);
     MPIDI_nem_ib_set_seqnum(p, seqnum);
 
-    MRAILI_ALIGN_LEN((*num_bytes_ptr), align_len);
+    post_len = *num_bytes_ptr;
     rstart = VC_FIELD(vc, connection)->rfp.remote_RDMA_buf +
-            (VC_FIELD(vc, connection)->rfp.phead_RDMA_send + 1) * rdma_vbuf_total_size
-            - align_len - sizeof(VBUF_FLAG_TYPE);
+            (VC_FIELD(vc, connection)->rfp.phead_RDMA_send * rdma_vbuf_total_size);
     DEBUG_PRINT("[send: rdma_send] local vbuf %p, remote start %p, align size %d, iheader = %p\n",
                v, rstart, align_len, v->iheader);
 
     if (++(VC_FIELD(vc, connection)->rfp.phead_RDMA_send) >= num_rdma_buffer)
         VC_FIELD(vc, connection)->rfp.phead_RDMA_send = 0;
 
-    *v->head_flag = (VBUF_FLAG_TYPE) (*num_bytes_ptr);
     v->rail = rail;
     v->padding = BUSY_FLAG;
 
@@ -1363,18 +1360,28 @@ int MPIDI_nem_ib_fast_rdma_send_complete(MPIDI_VC_t * vc,
     v->eager = 1;
     v->vc = (void *) vc;
 
+    /* set tail flag with the size of the content */
+    if ((int) *(VBUF_FLAG_TYPE *) (v->buffer + post_len) == post_len) {
+        flag = (VBUF_FLAG_TYPE) (post_len + FAST_RDMA_ALT_TAG);
+    } else {
+        flag = (VBUF_FLAG_TYPE) post_len;
+    }
+    /* set head flag */
+    *v->head_flag = (VBUF_FLAG_TYPE) flag;
+    /* set tail flag */
+    *((VBUF_FLAG_TYPE *)(v->buffer + post_len)) = flag;
+
     DEBUG_PRINT("incrementing the outstanding eager vbufs: RFP %d\n", VC_FIELD(vc, connection)->outstanding_eager_vbufs);
 
     /* generate a completion, following statements should have been executed during
      * initialization */
-    MRAILI_ALIGN_LEN(*num_bytes_ptr, align_len);
-    align_len += VBUF_FAST_RDMA_EXTRA_BYTES;
+    post_len += VBUF_FAST_RDMA_EXTRA_BYTES;
 
     DEBUG_PRINT("[send: rdma_send] lkey %p, rkey %p, len %d, flag %d\n",
                 VC_FIELD(vc, connection)->rfp.RDMA_send_buf_mr[VC_FIELD(vc, connection)->rails[rail].hca_index]->lkey,
-                VC_FIELD(vc, connection)->rfp.RDMA_remote_buf_rkey, align_len, *v->head_flag);
+                VC_FIELD(vc, connection)->rfp.RDMA_remote_buf_rkey, post_len, *v->head_flag);
 
-    VBUF_SET_RDMA_ADDR_KEY(v, align_len, p,
+    VBUF_SET_RDMA_ADDR_KEY(v, post_len, v->head_flag,
             VC_FIELD(vc, connection)->rfp.RDMA_send_buf_mr[VC_FIELD(vc, connection)->rails[rail].hca_index]->lkey, rstart,
             VC_FIELD(vc, connection)->rfp.RDMA_remote_buf_rkey[VC_FIELD(vc, connection)->rails[rail].hca_index]);
 

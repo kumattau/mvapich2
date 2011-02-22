@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -50,7 +50,8 @@ int MPID_Isend(const void * buf, int count, MPI_Datatype datatype, int rank,
     MPIDI_VC_t * vc=0;
 #if defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
-#endif    
+#endif
+    int i;    
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_MPID_ISEND);
 
@@ -152,6 +153,13 @@ skip_self_send:
         goto eager_send;
 #endif /* _OSU_PSM_ */
 
+#if defined(_OSU_MVAPICH_)
+    for (i = 0 ; i < rdma_num_extra_polls; i++)
+    {
+        if (rdma_global_ext_sendq_size > 1)
+            MPID_Progress_test();
+    }
+#endif
     /* FIXME: flow control: limit number of outstanding eager messsages 
        containing data and need to be buffered by the receiver */
 #if defined(_OSU_MVAPICH_)
@@ -204,6 +212,10 @@ eager_send:
            because the CTS packet could arrive and be processed before the 
 	   above iStartmsg completes (depending on the progress
            engine, threads, etc.). */
+#if defined(_OSU_MVAPICH_)
+        /* rndv transfers need to process CTS packet to initiate the actual RDMA transfer */
+        MPID_Progress_test();
+#endif /* defined(_OSU_MVAPICH_) */
 	
 	if (sreq && dt_ptr != NULL)
 	{
@@ -214,6 +226,14 @@ eager_send:
 
   fn_exit:
     *request = sreq;
+
+#if defined(_OSU_MVAPICH_)
+    for (i = 0 ; i < rdma_num_extra_polls; i++)
+    {
+        if (rdma_global_ext_sendq_size > 1)
+            MPID_Progress_test();
+    }
+#endif
 
     MPIU_DBG_STMT(CH3_OTHER,VERBOSE,
     {

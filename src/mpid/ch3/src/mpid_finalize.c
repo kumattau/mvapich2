@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -111,12 +111,6 @@ int MPID_Finalize(void)
 #endif 
 
 #ifdef MPID_NEEDS_ICOMM_WORLD
-    MPIU_THREADPRIV_GET;
-    MPIR_Nest_incr();
-    mpi_errno = NMPI_Barrier(MPIR_ICOMM_WORLD); 
-    MPIR_Nest_decr();
-    if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
-
     mpi_errno = MPIR_Comm_release_always(MPIR_Process.icomm_world, 0);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 #endif

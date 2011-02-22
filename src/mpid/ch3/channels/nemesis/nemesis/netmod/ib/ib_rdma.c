@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -101,10 +101,10 @@ int vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
         /* Connect the DMA buffer to the vbufs */
         for (i = 0; i < num_rdma_buffer; i++) {
             v = ((vbuf *)vbuf_ctrl_buf) + i;
-            v->head_flag = (VBUF_FLAG_TYPE *) ( (char *)(vbuf_rdma_buf) + (i + 1) *
-                          rdma_vbuf_total_size - sizeof *v->head_flag);
+            v->head_flag = (VBUF_FLAG_TYPE *) ( (char *)(vbuf_rdma_buf) + (i *
+                          rdma_vbuf_total_size ) );
             v->buffer = (unsigned char *) ( (char *)(vbuf_rdma_buf) + (i *
-                           rdma_vbuf_total_size) );
+                           rdma_vbuf_total_size) + sizeof(*v->head_flag) );
             v->vc     = c;
         }
 

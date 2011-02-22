@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -9,11 +9,6 @@
  * copyright file COPYRIGHT in the top level MVAPICH2 directory.
  *
  */
-
-/* 
-    This is the entry-point for the PSM channel code. 
-    Author: Tejus Gangadharappa
-*/
 
 #include "psmpriv.h"
 #include "psm_vbuf.h"

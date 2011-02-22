@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -28,6 +28,9 @@
 #include "ib_send.h"
 #include "ib_lmt.h"
 #include "ib_vbuf.h"
+#include "mv2_utils.h"
+
+#define INLINE_THRESHOLD_ADJUST  (20)
 
 /* Global variables */
 int           rdma_num_qp_per_port = 1;
@@ -72,6 +75,15 @@ int           rdma_r3_threshold_nocache = 8192 * 4;
 int           rdma_max_r3_pending_data = 512 * 1024;
 int           num_rdma_buffer;
 int           rdma_use_smp = 1;
+int           rdma_qos_num_sls = RDMA_QOS_DEFAULT_NUM_SLS;
+int           rdma_use_qos = 0;
+#ifdef ENABLE_3DTORUS_SUPPORT
+int           rdma_3dtorus_support = 1;
+#else
+int           rdma_3dtorus_support = 0;
+#endif /* ENABLE_3DTORUS_SUPPORT */
+int           rdma_num_sa_query_retries = RDMA_DEFAULT_NUM_SA_QUERY_RETRIES;
+int           rdma_path_sl_query = 0;
 int           enable_knomial_2level_bcast=1;
 int           inter_node_knomial_factor=4;
 int           intra_node_knomial_factor=4;
@@ -549,7 +561,7 @@ int MPID_nem_ib_set_default_params()
     } else if (hca_list[0].hca_type == CHELSIO_T3) {
         rdma_max_inline_size = 64;
     } else {
-		rdma_max_inline_size = 128;
+		rdma_max_inline_size = 128 + INLINE_THRESHOLD_ADJUST;
     }
 
     if (hca_list[0].hca_type == MLX_PCI_EX_DDR) {
@@ -700,9 +712,9 @@ int MPID_nem_ib_get_user_params()
         rdma_polling_set_limit = pg_size;
     }
     if ((value = getenv("MV2_VBUF_TOTAL_SIZE")) != NULL) {
-        rdma_vbuf_total_size= atoi(value);
-        if (rdma_vbuf_total_size <= 2 * sizeof(int))
-            rdma_vbuf_total_size = 2 * sizeof(int);
+            rdma_vbuf_total_size = user_val_to_bytes(value,"MV2_VBUF_TOTAL_SIZE"); 
+            if (rdma_vbuf_total_size <= 2 * sizeof(int))
+              rdma_vbuf_total_size = 2 * sizeof(int);
     }
 
     /* We have read the value of the rendezvous threshold, and the number of
@@ -730,7 +742,7 @@ int MPID_nem_ib_get_user_params()
     }
 
     if ((value = getenv("MV2_IBA_EAGER_THRESHOLD")) != NULL) {
-        rdma_iba_eager_threshold = (int)atoi(value);
+        rdma_iba_eager_threshold =  user_val_to_bytes(value,"MV2_IBA_EAGER_THRESHOLD");
     }
 
     if ((value = getenv("MV2_STRIPING_THRESHOLD")) != NULL) {
@@ -895,6 +907,38 @@ int MPID_nem_ib_get_control_params()
          * multi-pathing with current version of opensm and
          * up/down */
         process_info.has_hsam = 0;
+    }
+
+#ifdef ENABLE_QOS_SUPPORT
+    if ((value = getenv("MV2_USE_QOS")) != NULL) {
+        rdma_use_qos = !!atoi(value);
+    }
+
+    if ((value = getenv("MV2_3DTORUS_SUPPORT")) != NULL) {
+        rdma_3dtorus_support = !!atoi(value);
+    }
+
+    if ((value = getenv("MV2_PATH_SL_QUERY")) != NULL) {
+        rdma_path_sl_query = !!atoi(value);
+    }
+
+    if ((value = getenv("MV2_NUM_SLS")) != NULL) {
+        rdma_qos_num_sls = atoi(value);
+        if (rdma_qos_num_sls <= 0 && rdma_qos_num_sls > RDMA_QOS_MAX_NUM_SLS) {
+            rdma_qos_num_sls = RDMA_QOS_DEFAULT_NUM_SLS;
+        }
+        /* User asked us to use multiple SL's without enabling QoS globally. */
+        if (rdma_use_qos == 0) {
+            rdma_use_qos = 1;
+        }
+    }
+#endif /* ENABLE_QOS_SUPPORT */
+
+    if ((value = getenv("MV2_NUM_SA_QUERY_RETRIES")) != NULL) {
+        rdma_num_sa_query_retries = !!atoi(value);
+        if (rdma_num_sa_query_retries < RDMA_DEFAULT_NUM_SA_QUERY_RETRIES) {
+            rdma_num_sa_query_retries = RDMA_DEFAULT_NUM_SA_QUERY_RETRIES;
+        }
     }
 
     process_info.has_apm = (value = getenv("MV2_USE_APM")) != NULL ? (int) atoi(value) : 0;

@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -38,7 +38,248 @@
 
 /* not declared static because it is called in intercomm. allgather */
 /* begin:nested */
-int MPIR_Gather_OSU ( 
+#if defined(_OSU_MVAPICH_)
+#include "coll_shmem.h" 
+
+int MPIR_Gather_OSU_two_level (
+        void *sendbuf,
+        int sendcnt,
+        MPI_Datatype sendtype,
+        void *recvbuf,
+        int recvcnt,
+        MPI_Datatype recvtype,
+        int root,
+        MPID_Comm *comm_ptr )
+{
+    static const char FCNAME[] = "MPIR_Gather_OSU_two_level";
+    int comm_size, rank;
+    int local_rank, local_size; 
+    int leader_comm_rank, leader_comm_size; 
+    int mpi_errno = MPI_SUCCESS;
+    int recvtype_size, sendtype_size, nbytes; 
+    void *tmp_buf=NULL;
+    void *leader_gather_buf = NULL; 
+    MPI_Status status;
+    MPI_Aint   sendtype_extent=0, recvtype_extent=0;       /* Datatype extent */
+    MPI_Comm comm;
+    int i=0;
+    MPIU_THREADPRIV_DECL;
+    int leader_root, leader_of_root; 
+    MPI_Comm shmem_comm, leader_comm; 
+    MPID_Comm *shmem_commptr, *leader_commptr; 
+
+    comm = comm_ptr->handle;
+    comm_size = comm_ptr->local_size;
+    rank = comm_ptr->rank;
+    
+     MPID_Datatype_get_extent_macro(recvtype, recvtype_extent);
+     MPID_Datatype_get_extent_macro(sendtype, sendtype_extent);
+     if ( ((rank == root) && (recvcnt == 0)) ||
+         ((rank != root) && (sendcnt == 0)) ) {
+        return MPI_SUCCESS;
+    }
+    /* check if multiple threads are calling this collective function */
+    MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
+    
+    /* extract the rank,size information for the intra-node
+     * communicator */
+    shmem_comm = comm_ptr->shmem_comm; 
+    mpi_errno = PMPI_Comm_rank(shmem_comm, &local_rank);
+    if(mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+    }
+    mpi_errno = PMPI_Comm_size(shmem_comm, &local_size);
+    if(mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+    }
+    MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
+
+    if(local_rank == 0) { 
+         /* Node leader. Extract the rank, size information for the leader
+          * communicator */
+	    leader_comm = comm_ptr->leader_comm;
+	    mpi_errno = PMPI_Comm_rank(leader_comm, &leader_comm_rank);
+	    if(mpi_errno) {
+		    MPIU_ERR_POP(mpi_errno);
+	    }
+	    mpi_errno = PMPI_Comm_size(leader_comm, &leader_comm_size);
+	    if(mpi_errno) {
+		    MPIU_ERR_POP(mpi_errno);
+	    }
+	    MPID_Comm_get_ptr(leader_comm, leader_commptr);
+     } 
+
+     MPID_Datatype_get_size_macro(recvtype, recvtype_size);
+     MPID_Datatype_get_size_macro(sendtype, sendtype_size);
+
+     if(rank == root ) { 
+         nbytes = recvcnt*recvtype_size; 
+     } else { 
+         nbytes = sendcnt*sendtype_size; 
+     } 
+
+     /* First do the intra-node gather */ 
+     if(local_rank == 0 ) { 
+            /* Node leader, allocate tmp_buffer */
+         tmp_buf = MPIU_Malloc(nbytes*local_size);
+     } 
+
+     MPIU_THREADPRIV_GET;
+     MPIR_Nest_incr();
+     if(rank == root && sendbuf == MPI_IN_PLACE) {  
+          mpi_errno = MPIR_Gather_OSU_Direct(recvbuf + rank*recvcnt*recvtype_extent, 
+                                        recvcnt, recvtype, 
+					tmp_buf, nbytes, MPI_BYTE, 
+					0, shmem_commptr); 
+     } else { 
+	  mpi_errno = MPIR_Gather_OSU_Direct(sendbuf, sendcnt, sendtype, 
+					tmp_buf, nbytes, MPI_BYTE, 
+					0, shmem_commptr);  
+     } 
+     MPIR_Nest_decr();
+     if(mpi_errno) {
+          MPIU_ERR_POP(mpi_errno);
+     }
+
+      leader_of_root = comm_ptr->leader_map[root]; 
+      /* leader_of_root is the global rank of the leader of the root */
+      leader_root = comm_ptr->leader_rank[leader_of_root]; 
+      /* leader_root is the rank of the leader of the root in leader_comm. 
+       * leader_root is to be used as the root of the inter-leader gather ops 
+       */ 
+      if(comm_ptr->is_uniform != 1) { 
+	      if(local_rank == 0) {
+		  int *displs;
+		  int *recvcnts;
+		  int *node_sizes; 
+		  int i=0;
+		  /* Node leaders have all the data. But, different nodes can have
+		   * different number of processes. Do a Gather first to get the 
+		   * buffer lengths at each leader, followed by a Gatherv to move
+		   * the actual data */ 
+		  
+
+		  if(leader_comm_rank == leader_root && root != leader_of_root) { 
+		      /* The root of the Gather operation is not a node-level leader 
+		       * and this process's rank in the leader_comm is the same 
+		       * as leader_root */ 
+		      leader_gather_buf = MPIU_Malloc(nbytes*comm_size); 
+		  } 
+
+                  node_sizes = comm_ptr->node_sizes; 
+
+		  if(leader_comm_rank == leader_root) {
+			  displs = MPIU_Malloc(sizeof(int)*leader_comm_size);
+			  recvcnts = MPIU_Malloc(sizeof(int)*leader_comm_size);
+			  recvcnts[0] = node_sizes[0]*nbytes;
+			  displs[0] = 0; 
+
+			  for(i=1; i< leader_comm_size ; i++) {
+				displs[i] = displs[i-1] + node_sizes[i-1]*nbytes;
+				recvcnts[i] = node_sizes[i]*nbytes;
+			  } 
+		  }
+
+                  MPIR_Nest_incr();
+		  if(root == leader_of_root) { 
+		      /* The root of the gather operation is also the node leader. Receive
+		       * into recvbuf and we are done */ 
+		      mpi_errno = MPIR_Gatherv_OSU(tmp_buf, local_size*nbytes, 
+				  MPI_BYTE, recvbuf, recvcnts, displs, MPI_BYTE,
+				  leader_root, leader_commptr);
+		  } else { 
+		      /* The root of the gather operation is not the node leader. Receive
+		       * into leader_gather_buf and then send to the root */ 
+		      mpi_errno = MPIR_Gatherv_OSU(tmp_buf, local_size*nbytes, 
+				  MPI_BYTE, leader_gather_buf, recvcnts, displs, MPI_BYTE,
+				  leader_root, leader_commptr);
+		  }
+                  MPIR_Nest_decr();
+		  if(mpi_errno) {
+			    MPIU_ERR_POP(mpi_errno);
+		  }
+                  if(leader_comm_rank == leader_root) { 
+                      MPIU_Free(displs); 
+                      MPIU_Free(recvcnts); 
+                  } 
+	     }
+     } else { 
+             /* All nodes have the same number of processes. Just do one Gather to get all 
+              * the data */ 
+	     if(local_rank == 0) { 
+		  if(leader_comm_rank == leader_root && root != leader_of_root) {
+		      /* The root of the Gather operation is not a node-level leader
+		       */
+		      leader_gather_buf = MPIU_Malloc(nbytes*comm_size);
+		  }
+                  MPIR_Nest_incr();
+                  if(nbytes*local_size >MPIR_GATHER_TWO_LEVEL_SMALL_MSG) { 
+                         /* For larger messages, use direct algorithm in the inter-leader phase */  
+			  if(root == leader_of_root) { 
+			      mpi_errno = MPIR_Gather_OSU_Direct(tmp_buf, nbytes*local_size, MPI_BYTE,
+					  recvbuf, recvcnt*local_size, recvtype,
+					  leader_root, leader_commptr);
+			  } else { 
+			      mpi_errno = MPIR_Gather_OSU_Direct(tmp_buf, nbytes*local_size, MPI_BYTE,
+					  leader_gather_buf, nbytes*local_size, MPI_BYTE,
+					  leader_root, leader_commptr);
+			  }
+                  } else {
+                         /* For small messages, use binomial algorithm in the inter-leader phase */  
+                         if(root == leader_of_root) {
+                              mpi_errno = MPIR_Gather_OSU_Binomial(tmp_buf, nbytes*local_size, MPI_BYTE,
+                                          recvbuf, recvcnt*local_size, recvtype,
+                                          leader_root, leader_commptr);
+                          } else {
+                              mpi_errno = MPIR_Gather_OSU_Binomial(tmp_buf, nbytes*local_size, MPI_BYTE,
+                                          leader_gather_buf, nbytes*local_size, MPI_BYTE,
+                                          leader_root, leader_commptr);
+                          }
+                  } 
+                  MPIR_Nest_decr();
+		  if(mpi_errno) {
+			    MPIU_ERR_POP(mpi_errno);
+		  }
+	     } 
+      } 
+     if ((local_rank == 0) && (root != rank)
+           && (leader_of_root == rank)) {
+           mpi_errno  = MPIC_Send( leader_gather_buf, nbytes*comm_size, MPI_BYTE, 
+                                        root, MPIR_GATHER_TAG, comm );
+           if(mpi_errno) {
+                    MPIU_ERR_POP(mpi_errno);
+           }
+     } 
+
+
+     if(rank == root  && local_rank != 0) { 
+         /* The root of the gather operation is not the node leader. Receive
+          * data from the node leader */ 
+          mpi_errno = MPIC_Recv(recvbuf, recvcnt*comm_size, recvtype, 
+                                        leader_of_root, MPIR_GATHER_TAG, comm, &status); 
+          if(mpi_errno) {
+                    MPIU_ERR_POP(mpi_errno);
+          }
+     }
+          
+ fn_fail:
+    /* check if multiple threads are calling this collective function */
+    if(local_rank == 0) { 
+          MPIU_Free(tmp_buf); 
+          if(leader_comm_rank == 0) { 
+               MPIU_Free(leader_gather_buf); 
+          } 
+    }  
+    MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
+
+    return (mpi_errno);
+}
+#endif /* #if defined(_OSU_MVAPICH_) */ 
+
+
+
+
+int MPIR_Gather_OSU_Direct ( 
 	void *sendbuf, 
 	int sendcnt, 
 	MPI_Datatype sendtype, 
@@ -48,7 +289,226 @@ int MPIR_Gather_OSU (
 	int root, 
 	MPID_Comm *comm_ptr )
 {
+    static const char FCNAME[] = "MPIR_Gather_OSU_Direct";
+    int        comm_size, rank;
+    int        mpi_errno = MPI_SUCCESS;
+    void *tmp_buf=NULL;
+    MPI_Status status;
+    MPI_Aint   extent=0;            /* Datatype extent */
+    MPI_Comm comm;
+    int displs[2];
+    MPI_Aint struct_displs[2];
+    int reqs=0, i=0;
+    MPI_Request *reqarray;
+    MPI_Status *starray;
+    MPIU_CHKLMEM_DECL(2);
+
+    comm = comm_ptr->handle;
+    comm_size = comm_ptr->local_size;
+    rank = comm_ptr->rank;
+
+    if ( ((rank == root) && (recvcnt == 0)) ||
+         ((rank != root) && (sendcnt == 0)) ) {
+        return MPI_SUCCESS;
+    }
+
+    /* check if multiple threads are calling this collective function */
+    MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
+
+    if (((comm_ptr->comm_kind == MPID_INTRACOMM) && (root == rank)) ||
+        ((comm_ptr->comm_kind == MPID_INTERCOMM) && (root == MPI_ROOT))) {
+        if (comm_ptr->comm_kind == MPID_INTRACOMM) { 
+            comm_size = comm_ptr->local_size;
+        } else { 
+            comm_size = comm_ptr->remote_size;
+        } 
+
+        MPID_Datatype_get_extent_macro(recvtype, extent);
+        /* each node can make sure it is not going to overflow aint */
+
+        MPID_Ensure_Aint_fits_in_pointer(MPI_VOID_PTR_CAST_TO_MPI_AINT recvbuf +
+                                         displs[rank] * extent);
+
+        MPIU_CHKLMEM_MALLOC(reqarray, MPI_Request *, comm_size * sizeof(MPI_Request), mpi_errno, "reqarray");
+        MPIU_CHKLMEM_MALLOC(starray, MPI_Status *, comm_size * sizeof(MPI_Status), mpi_errno, "starray");
+
+        reqs = 0;
+        for (i = 0; i < comm_size; i++) {
+                if ((comm_ptr->comm_kind == MPID_INTRACOMM) && (i == rank)) {
+                    if (sendbuf != MPI_IN_PLACE) {
+                        mpi_errno = MPIR_Localcopy(sendbuf, sendcnt, sendtype,
+                                                   ((char *)recvbuf+rank*recvcnt*extent),
+                                                   recvcnt, recvtype);
+                    }
+                }
+                else {
+                    mpi_errno = MPIC_Irecv(((char *)recvbuf+i*recvcnt*extent),
+                                           recvcnt, recvtype, i,
+                                           MPIR_GATHER_TAG, comm,
+                                           &reqarray[reqs++]);
+
+                }
+                /* --BEGIN ERROR HANDLING-- */
+                if (mpi_errno) {
+                    mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, 
+                                                      __LINE__, MPI_ERR_OTHER, "**fail", 0);
+                    return mpi_errno;
+                }
+                /* --END ERROR HANDLING-- */
+        }
+        /* ... then wait for *all* of them to finish: */
+        mpi_errno = NMPI_Waitall(reqs, reqarray, starray);
+        /* --BEGIN ERROR HANDLING-- */
+        if (mpi_errno == MPI_ERR_IN_STATUS) {
+            for (i = 0; i < reqs; i++) {
+                if (starray[i].MPI_ERROR != MPI_SUCCESS) { 
+                    mpi_errno = starray[i].MPI_ERROR;
+                 } 
+            }
+        }
+        /* --END ERROR HANDLING-- */
+    }
+
+    else if (root != rank) { /* non-root nodes, and in the intercomm. case, non-root nodes on remote side */
+        if (sendcnt) {
+            /* we want local size in both the intracomm and intercomm cases
+               because the size of the root's group (group A in the standard) is
+               irrelevant here. */
+            comm_size = comm_ptr->local_size;
+            if(sendbuf != MPI_IN_PLACE) {
+                   mpi_errno = MPIC_Send(sendbuf, sendcnt, sendtype, root,
+                                      MPIR_GATHER_TAG, comm);
+            } else { 
+                   mpi_errno = MPIC_Send(recvbuf, sendcnt, sendtype, root,
+                                      MPIR_GATHER_TAG, comm);
+            } 
+            /* --BEGIN ERROR HANDLING-- */
+            if (mpi_errno) {
+                mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, 
+                                                    __LINE__, MPI_ERR_OTHER, "**fail", 0);
+                return mpi_errno;
+            }
+            /* --END ERROR HANDLING-- */
+        }
+     }
+ fn_fail:
+    /* check if multiple threads are calling this collective function */
+    MPIU_CHKLMEM_FREEALL();
+    MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
+
+    return (mpi_errno);
+}
+
+int MPIR_Gather_OSU(
+        void *sendbuf,
+        int sendcnt,
+        MPI_Datatype sendtype,
+        void *recvbuf,
+        int recvcnt,
+        MPI_Datatype recvtype,
+        int root,
+        MPID_Comm *comm_ptr )
+{
     static const char FCNAME[] = "MPIR_Gather_OSU";
+    int        mpi_errno = MPI_SUCCESS;
+    int rank, nbytes, comm_size; 
+    int recvtype_size, sendtype_size; 
+    MPIU_THREADPRIV_DECL;
+
+    MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
+    mpi_errno = PMPI_Comm_size(comm_ptr->handle, &comm_size); 
+    if (mpi_errno) { 
+          MPIU_ERR_POP(mpi_errno); 
+    }
+    mpi_errno = PMPI_Comm_rank(comm_ptr->handle, &rank); 
+    if (mpi_errno) { 
+          MPIU_ERR_POP(mpi_errno); 
+    }
+    MPIU_THREADPRIV_GET;
+    MPIR_Nest_incr();
+     if(rank == root ) {
+         MPID_Datatype_get_size_macro(recvtype, recvtype_size);
+         nbytes = recvcnt*recvtype_size;
+     } else {
+         MPID_Datatype_get_size_macro(sendtype, sendtype_size);
+         nbytes = sendcnt*sendtype_size;
+     }
+
+#if defined(_OSU_MVAPICH_)
+    if(comm_size <= gather_direct_system_size_small && use_direct_gather == 1) { 
+         if(nbytes <= MPIR_GATHER_SMALL_MSG) { 
+              if(comm_ptr->shmem_coll_ok == 1) { 
+                    mpi_errno = MPIR_Gather_OSU_two_level( sendbuf, sendcnt, sendtype, 
+                                       recvbuf, recvcnt, recvtype, 
+                                       root, comm_ptr);   
+               } else { 
+                    mpi_errno = MPIR_Gather_OSU_Binomial( sendbuf, sendcnt, sendtype, 
+                                       recvbuf, recvcnt, recvtype,
+                                       root, comm_ptr);
+               } 
+         } else { 
+               mpi_errno = MPIR_Gather_OSU_Direct( sendbuf, sendcnt, sendtype, 
+                                       recvbuf, recvcnt, recvtype, 
+                                       root, comm_ptr);  
+         } 
+    } 
+    else if(comm_size > gather_direct_system_size_small && 
+          comm_size <= gather_direct_system_size_medium  && use_direct_gather == 1) {
+         if(nbytes <= MPIR_GATHER_MEDIUM_MSG) {
+               mpi_errno = MPIR_Gather_OSU_Binomial( sendbuf, sendcnt, sendtype, 
+                                       recvbuf, recvcnt, recvtype,
+                                       root, comm_ptr);
+         } else { 
+               mpi_errno = MPIR_Gather_OSU_Direct( sendbuf, sendcnt, sendtype,
+                                       recvbuf, recvcnt, recvtype, 
+                                       root, comm_ptr);  
+         }
+    } 
+    else if(comm_ptr->shmem_coll_ok == 1 && use_two_level_gather == 1) { 
+         if(nbytes <= MPIR_GATHER_BINOMIAL_MEDIUM_MSG) { 
+              mpi_errno = MPIR_Gather_OSU_Binomial(sendbuf, sendcnt, sendtype, 
+                                       recvbuf, recvcnt, recvtype, 
+                                       root, comm_ptr);  
+         } else {  
+              mpi_errno = MPIR_Gather_OSU_two_level(sendbuf, sendcnt, sendtype, 
+                                       recvbuf, recvcnt, recvtype, 
+                                       root, comm_ptr);  
+         } 
+    } else { 
+#endif /* #if defined(_OSU_MVAPICH_) */ 
+         mpi_errno = MPIR_Gather_OSU_Binomial( sendbuf, sendcnt, sendtype, 
+                                       recvbuf, recvcnt, recvtype, 
+                                       root, comm_ptr);  
+#if defined(_OSU_MVAPICH_)
+    } 
+#endif /* #if defined(_OSU_MVAPICH_) */ 
+    MPIR_Nest_decr();
+    if (mpi_errno) { 
+          MPIU_ERR_POP(mpi_errno); 
+    }
+
+
+ fn_fail:
+    /* check if multiple threads are calling this collective function */
+    MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
+    
+    return (mpi_errno);
+
+
+} 
+
+
+int MPIR_Gather_OSU_Binomial ( 
+	void *sendbuf, 
+	int sendcnt, 
+	MPI_Datatype sendtype, 
+	void *recvbuf, 
+	int recvcnt, 
+	MPI_Datatype recvtype, 
+	int root, 
+	MPID_Comm *comm_ptr )
+{
+    static const char FCNAME[] = "MPIR_Gather_OSU_Binomial";
     int        comm_size, rank;
     int        mpi_errno = MPI_SUCCESS;
     int curr_cnt=0, relative_rank, nbytes, is_homogeneous;

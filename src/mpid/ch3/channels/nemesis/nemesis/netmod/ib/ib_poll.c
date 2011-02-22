@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -32,24 +32,25 @@ static MPIDI_CH3_PktHandler_Fcn *pktArray[PKTARRAY_SIZE];
 static inline vbuf * MPIDI_CH3I_RDMA_poll(MPIDI_VC_t * vc)
 {
     vbuf *v = NULL;
-    volatile VBUF_FLAG_TYPE *tail;
+    volatile VBUF_FLAG_TYPE *head;
 
     if (num_rdma_buffer == 0)
         return NULL;
 
     v = &(VC_FIELD(vc, connection)->rfp.RDMA_recv_buf[VC_FIELD(vc, connection)->rfp.p_RDMA_recv]);
-    tail = v->head_flag;
+    head = v->head_flag;
 
-    if (*tail && VC_FIELD(vc, connection)->rfp.p_RDMA_recv != VC_FIELD(vc, connection)->rfp.p_RDMA_recv_tail) {
+    if (*head && VC_FIELD(vc, connection)->rfp.p_RDMA_recv != VC_FIELD(vc, connection)->rfp.p_RDMA_recv_tail) {
         /* advance receive pointer */
-        if (++(VC_FIELD(vc, connection)->rfp.p_RDMA_recv) >= num_rdma_buffer)
+        if (++(VC_FIELD(vc, connection)->rfp.p_RDMA_recv) >= num_rdma_buffer) {
             VC_FIELD(vc, connection)->rfp.p_RDMA_recv = 0;
-        MRAILI_FAST_RDMA_VBUF_START(v, *tail, v->iheader);
+        }
+        v->iheader = v->buffer;
         DEBUG_PRINT("[recv: poll rdma] recv %d, tail %d, size %d\n",
             vc->pg_rank,
-            VC_FIELD(vc, connection)->rfp.p_RDMA_recv, VC_FIELD(vc, connection)->rfp.p_RDMA_recv_tail, *tail);
+            VC_FIELD(vc, connection)->rfp.p_RDMA_recv, VC_FIELD(vc, connection)->rfp.p_RDMA_recv_tail, *head);
         v->pheader = v->iheader + IB_PKT_HEADER_LENGTH;
-        v->content_size = *v->head_flag - IB_PKT_HEADER_LENGTH;
+        v->content_size = (*head & FAST_RDMA_SIZE_MASK) - IB_PKT_HEADER_LENGTH;
     } else {
         v = NULL;
     }
@@ -913,6 +914,7 @@ int MPIDI_nem_ib_get_next_vbuf(MPIDI_VC_t** vc_ptr, vbuf** vbuf_ptr)
 {
     *vc_ptr = NULL;
     *vbuf_ptr = NULL;
+    VBUF_FLAG_TYPE size;
     int type = MPIDI_nem_ib_test_pkt(vbuf_ptr);
 
     switch(type)
@@ -937,6 +939,7 @@ int MPIDI_nem_ib_get_next_vbuf(MPIDI_VC_t** vc_ptr, vbuf** vbuf_ptr)
     int seq;
     vbuf* v = NULL;
     volatile VBUF_FLAG_TYPE* tail = NULL;
+    volatile VBUF_FLAG_TYPE* head = NULL;
 
 
     /* no msg is queued, poll rdma polling set */
@@ -949,19 +952,29 @@ int MPIDI_nem_ib_get_next_vbuf(MPIDI_VC_t** vc_ptr, vbuf** vbuf_ptr)
         if (seq == PKT_IS_NULL)
         {
             v = &(VC_FIELD(vc, connection)->rfp.RDMA_recv_buf[VC_FIELD(vc, connection)->rfp.p_RDMA_recv]);
-            tail = v->head_flag;
+            head = v->head_flag;
 
-            if (*tail && VC_FIELD(vc, connection)->rfp.p_RDMA_recv != VC_FIELD(vc, connection)->rfp.p_RDMA_recv_tail)
+            if (*head && VC_FIELD(vc, connection)->rfp.p_RDMA_recv != VC_FIELD(vc, connection)->rfp.p_RDMA_recv_tail)
             {
+                size = (*head & FAST_RDMA_SIZE_MASK);
+                tail = (VBUF_FLAG_TYPE *) (v->buffer + size);
+                /* If the tail has not received yet, than go ahead and
+                ** poll next connection */
+                if (*head != *tail) {
+                    continue;
+                }
+
+                DEBUG_PRINT("Get one!\n");
 
                 if (++VC_FIELD(vc, connection)->rfp.p_RDMA_recv >= num_rdma_buffer)
                 {
                     VC_FIELD(vc, connection)->rfp.p_RDMA_recv = 0;
                 }
 
-                MRAILI_FAST_RDMA_VBUF_START(v, *tail, v->iheader)
+                v->iheader = v->buffer;
                 v->pheader = v->iheader + IB_PKT_HEADER_LENGTH;
-                v->content_size = *v->head_flag - IB_PKT_HEADER_LENGTH;
+                v->content_size = size - IB_PKT_HEADER_LENGTH;
+                *head = 0;
 
                 seq = GetSeqNumVbuf(v);
                 DEBUG_PRINT("[get rfp packet] seq = %d, expect %d, seqnum in ib = %d, v->iheader->type = %d\n", seq, 

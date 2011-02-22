@@ -14,7 +14,7 @@ dnl Definitions will be placed in this file rather than in the DEFS variable
 dnl
 AC_CONFIG_HEADER(include/mpidi_ch3i_rdma_conf.h)
 AH_TOP([/* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -54,18 +54,84 @@ AC_ARG_WITH([limic2],
     ],
     [AC_DEFINE([_SMP_LIMIC_], 1, [Define when using LiMIC2])])
 
-AC_ARG_ENABLE(blcr,
-[--enable-blcr - Enable Berkeley Lab Checkpoint/Restart support.],,enable_blcr=no)
-AC_ARG_WITH(blcr-include,
-[--with-blcr-include=path - Specify the path to the BLCR header files.],,)
-AC_ARG_WITH(blcr-libpath,
-[--with-blcr-libpath=path - Specify the path to the BLCR library.],,with_blcr_libpath=default)
-AC_ARG_ENABLE(ftb-cr,
-[--with-ftb-cr - Enable Fault Back Tolerant Checkpoint Restart],,enable_ftb_cr=no)
-AC_ARG_WITH(ftb-include,
-[--with-ftb-include=path - Specify the path to the FTB-CR header files.],,)
-AC_ARG_WITH(ftb-libpath,
-[--with-ftb-libpath=path - Specify the path to the FTB-CR library.],,with_ftb_libpath=default)
+AC_ARG_ENABLE([3dtorus-support],
+              [AS_HELP_STRING([--enable-3dtorus-support],
+                              [Enable support for 3D torus networks])
+              ],
+              [],
+              [enable_3dtorus_support=no])
+
+AC_ARG_ENABLE([ckpt],
+              [AS_HELP_STRING([--enable-ckpt],
+                              [enable checkpoint/restart])
+              ],
+              [],
+              [enable_ckpt=default])
+
+AC_ARG_ENABLE([ckpt-aggregation],
+              [AS_HELP_STRING([--enable-ckpt-aggregation],
+                              [enable aggregation with checkpoint/restart])
+              ],
+              [],
+              [enable_ckpt_aggregation=check])
+
+AC_ARG_ENABLE([ckpt-migration],
+              [AS_HELP_STRING([--enable-ckpt-migration],
+                              [enable process migration])
+              ],
+              [],
+              [enable_migration=no])
+
+AC_ARG_WITH([ftb],
+            [AS_HELP_STRING([--with-ftb@[:@=path@:]@],
+                            [provide path to ftb package])
+            ],
+            [],
+            [with_ftb=check])
+
+AC_ARG_WITH([ftb-include],
+            [AS_HELP_STRING([--with-ftb-include=@<:@path@:>@],
+                            [specify the path to the ftb header files])
+            ],
+            [AS_CASE([$with_ftb_include],
+                     [yes|no], [AC_MSG_ERROR([arg to --with-ftb-include must be a path])])
+            ],
+            [])
+
+AC_ARG_WITH([ftb-libpath],
+            [AS_HELP_STRING([--with-ftb-libpath=@<:@path@:>@],
+                            [specify the path to the ftb library])
+            ],
+            [AS_CASE([$with_ftb_libpath],
+                     [yes|no], [AC_MSG_ERROR([arg to --with-ftb-libpath must be a path])])
+            ],
+            [])
+
+AC_ARG_WITH([blcr],
+            [AS_HELP_STRING([--with-blcr@[:@=path@:]@],
+                            [provide path to blcr package])
+            ],
+            [],
+            [with_blcr=check])
+
+AC_ARG_WITH([blcr-include],
+            [AS_HELP_STRING([--with-blcr-include=@<:@path@:>@],
+                            [specify the path to the blcr header files])
+            ],
+            [AS_CASE([$with_blcr_include],
+                     [yes|no], [AC_MSG_ERROR([arg to --with-blcr-include must be a path])])
+            ],
+            [])
+
+AC_ARG_WITH([blcr-libpath],
+            [AS_HELP_STRING([--with-blcr-libpath=@<:@path@:>@],
+                            [specify the path to the blcr library])
+            ],
+            [AS_CASE([$with_blcr_libpath],
+                     [yes|no], [AC_MSG_ERROR([arg to --with-blcr-libpath must be a path])])
+            ],
+            [])
+
 AC_ARG_WITH(cluster-size,
 [--with-cluster-size=level - Specify the cluster size.],,with_cluster_size=small)
 AC_ARG_WITH(dapl-include,
@@ -139,6 +205,95 @@ AS_IF([test "$use_internal_hwloc" = "yes"],
        CPPFLAGS="-I$srcdir/src/hwloc/include -I$abs_top_builddir/src/hwloc/include $CPPFLAGS"
        AC_CONFIG_SUBDIRS(src/hwloc)])
 
+AS_IF([test "x$enable_3dtorus_support" != xno],
+      [AC_DEFINE([ENABLE_3DTORUS_SUPPORT], [1],
+                 [Define to enable 3D Torus support])])
+
+AS_CASE([$with_ftb],
+        [yes|no|check], [],
+        [with_ftb_include="$with_ftb/include"
+         with_ftb_libpath="$with_ftb/lib"
+         with_ftb=yes])
+
+AS_IF([test -n "$with_ftb_include"],
+      [CPPFLAGS="$CPPFLAGS -I$with_ftb_include"
+       with_ftb=yes])
+
+AS_IF([test -n "$with_ftb_libpath"],
+      [LDFLAGS="$LDFLAGS -L$with_ftb_libpath"
+       mrail_ld_library_flags="$with_ftb_libpath:$mrail_ld_library_flags"
+       mrail_fflags="-L$with_ftb_libpath $mrail_fflags"
+       mrail_ldflags="-L$with_ftb_libpath $mrail_ldflags"
+       with_ftb=yes])
+
+AS_CASE([$with_blcr],
+        [yes|no|check], [],
+        [with_blcr_include="$with_blcr/include"
+         with_blcr_libpath="$with_blcr/lib"
+         with_blcr=yes])
+
+AS_IF([test -n "$with_blcr_include"],
+      [CPPFLAGS="$CPPFLAGS -I$with_blcr_include"
+       with_blcr=yes])
+
+AS_IF([test -n "$with_blcr_libpath"],
+      [LDFLAGS="$LDFLAGS -L$with_blcr_libpath"
+       mrail_ld_library_flags="$with_blcr_libpath:$mrail_ld_library_flags"
+       mrail_fflags="-L$with_blcr_libpath $mrail_fflags"
+       mrail_ldflags="-L$with_blcr_libpath $mrail_ldflags"
+       with_blcr=yes])
+
+AS_IF([test "x$enable_ckpt" = xdefault], [
+       AS_IF([test "x$enable_ckpt_aggregation" = xyes || test "x$enable_ckpt_migration" = xyes], [enable_ckpt=yes], [enable_ckpt=no])
+       ])
+
+
+AS_IF([test "x$with_blcr" = "xno"], [
+       AS_IF([test "x$enable_ckpt" = "xyes"], [AC_MSG_ERROR([BLCR is required if Checkpoint/Restart is enabled])])
+       AS_IF([test "x$enable_ckpt_migration" = "xyes"], [AC_MSG_ERROR([BLCR is required if Checkpoint/Restart Migration is enabled])])
+       ])
+
+AS_IF([test "x$with_ftb" = "xno"], [
+       AS_IF([test "x$enable_ckpt_migration" = "xyes"], [AC_MSG_ERROR([FTB is required if Checkpoint/Restart Migration is enabled])])
+       ])
+        
+AS_IF([test "x$enable_ckpt_migration" = "xyes"], [
+       AS_IF([test "x$with_ftb" = "xcheck"], [with_ftb=yes])
+       ])
+
+AS_IF([test "x$enable_ckpt" = xyes], [
+       AC_MSG_NOTICE([Testing Checkpoint/Restart dependencies])
+       AC_CHECK_HEADER([libcr.h],
+                       [],
+                       [AC_MSG_ERROR(['libcr.h not found. Please specify --with-blcr-include'])])
+       AC_SEARCH_LIBS([cr_init],
+                      [cr],
+                      [],
+                      [AC_MSG_ERROR([libcr not found.])],
+                      [])
+
+       AC_DEFINE(CKPT, 1, [Define to enable Checkpoint/Restart support.])
+       mrail_libs="-lcr $mrail_libs"
+
+       AC_MSG_CHECKING([whether to enable support for FTB-CR])
+       AC_MSG_RESULT($enable_ftb_cr)
+
+       AS_IF([test "x$enable_ckpt_migration" = xyes], [
+              AC_CHECK_HEADER([libftb.h],
+                              [],
+                              [AC_MSG_ERROR(['libftb.h not found. Please specify --with-ftb-include'])])
+
+              AC_SEARCH_LIBS([FTB_Connect],
+                             [ftb],
+                             [],
+                             [AC_MSG_ERROR([libftb not found.])],
+                             [])
+              AC_DEFINE(CR_FTB, 1, [Define to enable FTB-CR support.])
+              mrail_libs="-lftb $mrail_libs"
+             ])
+      ])
+
+
 if test -n "`echo $build_os | grep linux`"; then
     if test "$build_cpu" = "i686"; then
         AC_DEFINE(_IA32_, 1, [Define to specify the build CPU type.])
@@ -185,6 +340,15 @@ else
     AC_MSG_ERROR([The build OS type is not supported.])
 fi
 
+AS_IF([test "x$enable_ckpt" = xyes], [
+       AS_CASE([$enable_rdma_cm],
+               [default], [enable_rdma_cm=no],
+               [yes], [AC_MSG_ERROR([RDMA CM is not supported with BLCR.])])
+       AS_IF([test "x$enable_registration_cache" = "xno"], [
+              AC_MSG_ERROR([Registration caching is required for BLCR support.])
+             ])
+      ])
+
 if test "$with_rdma" = "gen2"; then
     AC_MSG_CHECKING([for the InfiniBand includes path])
 
@@ -228,88 +392,7 @@ if test "$with_rdma" = "gen2"; then
     AC_CHECK_HEADER([infiniband/verbs.h],,[AC_MSG_ERROR(['infiniband/verbs.h not found. Did you specify --with-ib-include=?'])])
     mrail_libs="-libverbs -libumad $mrail_libs"
 
-    AC_MSG_CHECKING([whether to enable support for BLCR])
-    AC_MSG_RESULT($enable_blcr)
-
-    AC_MSG_CHECKING([whether to enable support for FTB-CR])
-    AC_MSG_RESULT($enable_ftb_cr)
-    
-    if test "$enable_ftb_cr" = "yes"; then
-        AC_MSG_CHECKING([for the FTB-CR includes path])
-
-        if test -n "$with_ftb_include"; then
-            AC_MSG_RESULT($with_ftb_include)
-            CPPFLAGS="$CPPFLAGS -I$with_ftb_include"
-        else
-            AC_MSG_RESULT([default])
-        fi
-
-        AC_MSG_CHECKING([for the FTB-CR library path])
-
-        if test "$with_ftb_libpath" != "default"; then
-            AC_MSG_RESULT($with_ftb_libpath)
-            if test ! -d $with_ftb_libpath; then
-                AC_MSG_ERROR([The specified FTB-CR library path is invalid.])
-            fi
-
-            mrail_ld_library_path=${with_ftb_libpath}:$mrail_ld_library_path
-            mrail_fflags="-L${with_ftb_libpath} $mrail_fflags"
-            mrail_ldflags="-L${with_ftb_libpath} $mrail_ldflags"
-            LDFLAGS="-L${with_ftb_libpath} $LDFLAGS"
-        else
-            AC_MSG_RESULT([default])
-        fi
-
-        AC_SEARCH_LIBS(FTB_Connect, ftb,,[AC_MSG_ERROR(['libftb not found.'])],)
-        AC_CHECK_HEADER([libftb.h],,[AC_MSG_ERROR(['libftb.h not found.'])])
-        mrail_libs="-lftb $mrail_libs"
-        AC_DEFINE(CR_FTB, 1, [Define to enable FTB-CR support.])
-
-        if test "$enable_blcr" = "no"; then
-            enable_blcr="yes"
-        fi
-    fi
-
-    if test "$enable_blcr" = "yes"; then
-        if test "$enable_rdma_cm" = "default"; then
-            enable_rdma_cm="no"
-        elif test "$enable_rdma_cm" = "yes"; then
-            AC_MSG_ERROR([RDMA CM is not supported with BLCR.])
-        fi
-
-        if test "$enable_registration_cache" = "no"; then
-            AC_MSG_ERROR([Registration caching is required for BLCR support.])
-        fi
-
-        AC_MSG_CHECKING([for the BLCR includes path])
-
-        if test -n "$with_blcr_include"; then
-            AC_MSG_RESULT($with_blcr_include)
-        else
-            AC_MSG_RESULT([default])
-        fi
-
-        AC_MSG_CHECKING([for the BLCR library path])
-
-        if test "$with_blcr_libpath" != "default"; then
-            if test ! -d $with_blcr_libpath; then
-                AC_MSG_ERROR([The specified BLCR library path is invalid.])
-            fi
-
-            mrail_ld_library_path=${with_blcr_libpath}:$mrail_ld_library_path
-            mrail_fflags="-L${with_blcr_libpath} $mrail_fflags"
-            mrail_ldflags="-L${with_blcr_libpath} $mrail_ldflags"
-            LDFLAGS="-L${with_blcr_libpath} $LDFLAGS"
-        fi
-
-        AC_MSG_RESULT($with_blcr_libpath)
-
-        AC_SEARCH_LIBS(cr_init, cr,,[AC_MSG_ERROR(['libcr not found.'])],)
-        AC_CHECK_HEADER([libcr.h],,[AC_MSG_ERROR(['libcr.h not found.'])])
-        mrail_libs="-lcr $mrail_libs"
-        AC_DEFINE(CKPT, 1, [Define to enable Berkeley Lab Checkpoint-Restart support.])
-    fi
-
+   
     AC_MSG_CHECKING([whether to enable support for XRC])
     AC_MSG_RESULT($enable_xrc)
 

@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -55,6 +55,8 @@ extern int rdma_get_fallback_threshold;
 extern int rdma_integer_pool_size;
 extern int rdma_iba_eager_threshold;
 extern long rdma_eagersize_1sc;
+extern int rdma_global_ext_sendq_size;
+extern int rdma_num_extra_polls;
 
 extern int  use_hwloc_cpu_binding;
 extern int  use_osu_collectives; 

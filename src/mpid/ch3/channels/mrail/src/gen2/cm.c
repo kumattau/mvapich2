@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1629,7 +1629,7 @@ void *cm_timeout_handler(void *arg)
     struct timeval now;
     int delay;
     int ret;
-    cm_pending *p;
+    cm_pending *next_p, *curr_p;
     struct timespec remain;
     MPIDI_STATE_DECL(MPID_GEN2_CM_TIMEOUT_HANDLER);
     MPIDI_FUNC_ENTER(MPID_GEN2_CM_TIMEOUT_HANDLER);
@@ -1663,37 +1663,39 @@ void *cm_timeout_handler(void *arg)
                 break;
             }
             CM_DBG("Time out");
-            p = cm_pending_head;
-            if (NULL == p)
+            curr_p = cm_pending_head;
+            if (NULL == curr_p)
             {
                 CM_ERR_ABORT("cm_pending_head corrupted");
             }
+            next_p = cm_pending_head->next;
             gettimeofday(&now, NULL);
-            while (p->next != cm_pending_head)
+            while (next_p != cm_pending_head)
             {
-                p = p->next;
+                curr_p = next_p;
+                next_p = next_p->next;
 #ifdef _ENABLE_XRC_
-                p->attempts ++;
-                if (p->packet->payload.msg_type == CM_MSG_TYPE_XRC_REP 
-                        || (USE_XRC && p->attempts > CM_ATTS))
+                curr_p->attempts ++;
+                if (curr_p->packet->payload.msg_type == CM_MSG_TYPE_XRC_REP 
+                        || (USE_XRC && curr_p->attempts > CM_ATTS))
                 {
                     /* Free it, never retransmit */
                     XRC_MSG ("Deleted CM entry");
-                    cm_pending_remove_and_destroy (p);
+                    cm_pending_remove_and_destroy (curr_p);
                     continue;
                 }
 #endif
-                delay = (now.tv_sec - p->packet->timestamp.tv_sec) * 1000000
-                    + (now.tv_usec - p->packet->timestamp.tv_usec);
+                delay = (now.tv_sec - curr_p->packet->timestamp.tv_sec) * 1000000
+                    + (now.tv_usec - curr_p->packet->timestamp.tv_usec);
                 if (delay > cm_timeout_usec)
                 {       /*Timer expired */
-                    p->packet->timestamp = now;
-                    if (p->has_pg){
-                        ret = cm_post_ud_packet(p->data.pg.pg, &(p->packet->payload));
+                    curr_p->packet->timestamp = now;
+                    if (curr_p->has_pg){
+                        ret = cm_post_ud_packet(curr_p->data.pg.pg, &(curr_p->packet->payload));
                     }
                     else 
-                        ret = __cm_post_ud_packet(&(p->packet->payload),
-                                                  p->data.nopg.ah, p->data.nopg.qpn);
+                        ret = __cm_post_ud_packet(&(curr_p->packet->payload),
+                                                  curr_p->data.nopg.ah, curr_p->data.nopg.qpn);
                     if (ret)
                     {
                         CM_ERR_ABORT("cm_post_ud_packet failed %d", ret);
@@ -1892,10 +1894,13 @@ int MPICM_Init_UD(uint32_t * ud_qpn)
 
     cm_timeout.tv_sec = cm_timeout_usec/1000000;
     cm_timeout.tv_nsec = (cm_timeout_usec-cm_timeout.tv_sec*1000000)*1000;
-
+#ifdef USE_MEMORY_TRACING
+    cm_ud_buf = MPIU_Malloc((sizeof(cm_msg) + 40) * (cm_recv_buffer_size + 1)); 
+#else
     result = posix_memalign(&cm_ud_buf, page_size,
                  (sizeof(cm_msg) + 40) * (cm_recv_buffer_size + 1));
-    if ((result!=0) || (cm_ud_buf==NULL))
+#endif
+    if ((cm_ud_buf==NULL))
     {
 	MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
 		"**nomem %s", "cm_ud_buf");
@@ -2621,7 +2626,7 @@ int cm_send_suspend_msg(MPIDI_VC_t* vc)
     }
     vc->ch.state = MPIDI_CH3I_VC_STATE_SUSPENDING;
     vc->ch.rput_stop = 1;
-    
+
     CM_DBG("Out cm_send_suspend_msg");
     return 0;
 }

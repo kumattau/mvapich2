@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -212,7 +212,10 @@ int MPIR_Allreduce_OSU (
 				} else { 
 #endif /* defined(HAVE_CXX_BINDING) */
                         		(*uop)(local_buf, recvbuf, &count, &datatype);
-                		}
+#if defined(HAVE_CXX_BINDING) 
+                                } 
+#endif /* defined(HAVE_CXX_BINDING) */
+                		
 			 }
                 	 MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(local_size, local_rank,
                                                                 shmem_comm_rank);
@@ -329,13 +332,16 @@ int MPIR_Allreduce_OSU (
                 if (op_ptr->language == MPID_LANG_CXX) {
                     uop = (MPI_User_function *) op_ptr->function.c_function;
 		            is_cxx_uop = 1;
-	            } else
+	            } else { 
 #endif
-	        if ((op_ptr->language == MPID_LANG_C)) { 
-                        uop = (MPI_User_function *) op_ptr->function.c_function;
-                }  else { 
-                        uop = (MPI_User_function *) op_ptr->function.f77_function;
-                }
+			if ((op_ptr->language == MPID_LANG_C)) { 
+				uop = (MPI_User_function *) op_ptr->function.c_function;
+			}  else { 
+				uop = (MPI_User_function *) op_ptr->function.f77_function;
+			}
+#ifdef HAVE_CXX_BINDING            
+                } 
+#endif
             }
             
 	    /* need to allocate temporary buffer to store incoming data*/
@@ -394,12 +400,15 @@ int MPIR_Allreduce_OSU (
 #ifdef HAVE_CXX_BINDING
                     if (is_cxx_uop) {
                         (*MPIR_Process.cxx_call_op_fn)( tmp_buf, recvbuf, count,datatype, uop ); 
-                    }else 
+                    }else {  
 #endif
                         (*uop)(tmp_buf, recvbuf, &count, &datatype);
                 
                         /* change the rank */
                         newrank = rank / 2;
+#ifdef HAVE_CXX_BINDING
+                    } 
+#endif
                 }
             } else {  /* rank >= 2*rem */ 
                 newrank = rank - rem;
@@ -446,19 +455,24 @@ int MPIR_Allreduce_OSU (
                                 if (is_cxx_uop) {
                                     (*MPIR_Process.cxx_call_op_fn)( tmp_buf, recvbuf, 
                                                count,datatype, uop ); 
-                                } else 
+                                } else  { 
 #endif
                                     (*uop)(tmp_buf, recvbuf, &count, &datatype);
+#ifdef HAVE_CXX_BINDING
+                                } 
+#endif
                             } else {
                             /* op is noncommutative and the order is not right */
 #ifdef HAVE_CXX_BINDING
                                 if (is_cxx_uop) {
                                     (*MPIR_Process.cxx_call_op_fn)( recvbuf, tmp_buf, 
                                                       count, datatype, uop ); 
-                                }  else 
+                                }  else  { 
 #endif
                                     (*uop)(recvbuf, tmp_buf, &count, &datatype);
-                        
+#ifdef HAVE_CXX_BINDING
+                                } 
+#endif
                                 /* copy result back into recvbuf */
                                 mpi_errno = MPIR_Localcopy(tmp_buf, count, datatype,
                                                    recvbuf, count, datatype);

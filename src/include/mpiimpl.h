@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1184,6 +1184,8 @@ typedef struct MPID_Comm {
     MPI_Comm     shmem_comm;
     int*    leader_map;
     int*    leader_rank;
+    int*    node_sizes; 
+    int     is_uniform; 
     int     shmem_comm_rank;
     int     shmem_coll_ok;
 
@@ -3704,6 +3706,15 @@ int MPIR_Gather (void *sendbuf, int sendcnt, MPI_Datatype sendtype,
                  void *recvbuf, int recvcnt, MPI_Datatype recvtype,
                  int root, MPID_Comm *comm_ptr);
 int MPIR_Gather_OSU (void *sendbuf, int sendcnt, MPI_Datatype sendtype,
+                 void *recvbuf, int recvcnt, MPI_Datatype recvtype,
+                 int root, MPID_Comm *comm_ptr);
+int MPIR_Gather_OSU_Binomial (void *sendbuf, int sendcnt, MPI_Datatype sendtype,
+                 void *recvbuf, int recvcnt, MPI_Datatype recvtype,
+                 int root, MPID_Comm *comm_ptr);
+int MPIR_Gather_OSU_Direct (void *sendbuf, int sendcnt, MPI_Datatype sendtype,
+                 void *recvbuf, int recvcnt, MPI_Datatype recvtype,
+                 int root, MPID_Comm *comm_ptr);
+int MPIR_Gather_OSU_two_level (void *sendbuf, int sendcnt, MPI_Datatype sendtype,
                  void *recvbuf, int recvcnt, MPI_Datatype recvtype,
                  int root, MPID_Comm *comm_ptr);
 int MPIR_Gather_inter (void *sendbuf, int sendcnt, MPI_Datatype sendtype, 

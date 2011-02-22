@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -253,13 +253,13 @@ volatile MPICR_cr_state MPICR_state = MPICR_STATE_ERROR;
 static pthread_rwlock_t MPICR_cs_lock;
 
 #define CR_ERR_ABORT(args...)  do {                                                             \
-    fprintf(stderr, "[Rank %d][%s: line %d]", MPIDI_Process.my_pg_rank ,__FILE__, __LINE__);    \
+    fprintf(stderr, "[Rank %d][%s:%d] ", MPIDI_Process.my_pg_rank ,__FILE__, __LINE__);         \
     fprintf(stderr, args);                                                                      \
     exit(-1);                                                                                   \
 }while(0)
 
 #define CR_ERR(args...)  do {                                                                   \
-    fprintf(stderr, "[Rank %d][%s: line %d]", MPIDI_Process.my_pg_rank ,__FILE__, __LINE__);    \
+    fprintf(stderr, "[Rank %d][%s:%d] ", MPIDI_Process.my_pg_rank ,__FILE__, __LINE__);         \
     fprintf(stderr, args);                                                                      \
 }while(0)
 
@@ -606,6 +606,8 @@ int CR_Thread_loop()
     char valstr[CRU_MAX_VAL_LEN];
     cr_checkpoint_handle_t cr_handle;
     cr_checkpoint_args_t   cr_args;
+    char* no_sync_str = getenv("MV2_CKPT_NO_SYNC");
+    int no_sync = ( (no_sync_str != NULL) ? atoi(no_sync_str) : 0 );
     CR_DBG("CR_Thread_loop:\n");
 #ifdef CR_AGGRE
     char* aggre_mig_file = getenv("MV2_CKPT_AGGRE_MIG_FILE");
@@ -746,20 +748,47 @@ int CR_Thread_loop()
 
             if (cr_file_fd < 0)
             {
+                CR_ERR("Failed to open file '%s': %d (%s)", cr_file, errno, strerror_r(errno,NULL,0) );
                 CR_MPDU_Ckpt_fail();
-                CR_ERR_ABORT("checkpoint file creation failed\n");
+                CR_ERR_ABORT("Checkpoint failed, aborting...\n");
             }
 
             MPICR_callback_fin = 0;
-            cr_initialize_checkpoint_args_t(&cr_args);
+
+            ret = cr_initialize_checkpoint_args_t(&cr_args);
+            if (ret < 0) {
+                CR_ERR("BLCR call cr_initialize_checkpoint_args_t() failed\n");
+                CR_MPDU_Ckpt_fail();
+                CR_ERR_ABORT("Checkpoint failed, aborting...\n");
+            }
             cr_args.cr_scope   = CR_SCOPE_PROC;
             cr_args.cr_target  = getpid();
             cr_args.cr_fd      = cr_file_fd;
             cr_args.cr_signal  = 0;
             cr_args.cr_timeout = 0;
             cr_args.cr_flags   &= ~CR_CHKPT_DUMP_ALL; // Save None
-            cr_request_checkpoint(&cr_args, &cr_handle);
-            cr_poll_checkpoint(&cr_handle, NULL);
+            ret = cr_request_checkpoint(&cr_args, &cr_handle);
+            if (ret < 0) {
+                CR_ERR("BLCR call cr_request_checkpoint() failed with error %d: %s\n",errno,cr_strerror(errno));
+                CR_MPDU_Ckpt_fail();
+                CR_ERR_ABORT("Checkpoint failed, aborting...\n");
+            }
+            // Retry while interrupted
+            do {
+                ret = cr_poll_checkpoint(&cr_handle, NULL);
+            } while ( ret == CR_POLL_CHKPT_ERR_PRE && errno == EINTR );
+            if (ret < 0 && errno == CR_ERESTARTED) {
+                // Restarting -> ignoring
+                // We should not call cr_poll_checkpoint() at restart!!!
+            } else if (ret < 0) {
+                CR_ERR("BLCR call cr_poll_checkpoint() failed with error %d: %s\n",errno,cr_strerror(errno));
+                CR_MPDU_Ckpt_fail();
+                CR_ERR_ABORT("Checkpoint failed, aborting...\n");
+            } else if ( ret == 0 ) {
+                // 0 means that the checkpoint is in progress
+                // It should never happen because we don't specify any timeout when calling cr_poll_checkpoint()
+                CR_ERR_ABORT("Bad assertion\n");
+            }
 
             CR_DBG("cr_request_fd\n");
 
@@ -772,15 +801,26 @@ int CR_Thread_loop()
             pthread_mutex_unlock(&MPICR_cond_callback_lock);
             */
 
-            if (getenv("MV2_CKPT_NO_SYNC") == NULL)
+            if (!MPICR_is_restarting)
             {
-                CR_DBG("fsync\n");
-                fsync(cr_file_fd);
-                CR_DBG("fsync done\n");
-                if(!MPICR_is_restarting){
-                    ret = close(cr_file_fd);
-                    dbg("close cr-file %s: ret=%d\n", cr_file, ret);
+                if ( no_sync == 0 ) {
+                    CR_DBG("fsync\n");
+                    ret = fsync(cr_file_fd);
+                    if (ret < 0){
+                        perror("fsync() failed!");
+                        CR_MPDU_Ckpt_fail();
+                        CR_ERR_ABORT("Checkpoint failed, aborting...\n");
+                    }
+                    CR_DBG("fsync done\n");
                 }
+
+                ret = close(cr_file_fd);
+                if (ret < 0){
+                    CR_ERR("Failed to close file '%s': %d (%s)", cr_file, errno, strerror_r(errno,NULL,0) );
+                    CR_MPDU_Ckpt_fail();
+                    CR_ERR_ABORT("Checkpoint failed, aborting...\n");
+                }
+                dbg("close cr-file %s: ret=%d\n", cr_file, ret);
             }
 
 #ifdef CR_FTB
@@ -948,12 +988,13 @@ static int CR_Callback (void* arg)
     int rc = cr_checkpoint(0);
 
 
-    if (rc < 0)
+    if (rc < 0) // failed
     {
+        CR_ERR("BLCR call cr_checkpoint() failed with error %d: %s\n",rc,cr_strerror(-rc));
         CR_MPDU_Ckpt_fail();
-        CR_ERR_ABORT("cr_checkpoint failed\n");
+        CR_ERR_ABORT("Checkpoint failed, aborting...\n");
     }
-    else if (rc) // restart
+    else if (rc > 0) // restart
     {
         /*Build the pipe between mpdman and app procs*/
         CR_Set_state(MPICR_STATE_RESTARTING);
@@ -1026,10 +1067,14 @@ void* CR_Thread_entry(void* arg)
 
     if (MPICR_cli_id < 0)
     {
-        CR_ERR_ABORT("cr_init failed\n");
+        CR_ERR_ABORT("BLCR call cr_init() failed\n");
     }
 
     MPICR_callback_id = cr_register_callback(CR_Callback,NULL,CR_THREAD_CONTEXT);
+    if (-1 == MPICR_callback_id)
+    {
+        CR_ERR_ABORT("BLCR call cr_register_callback() failed with error %d: %s\n",errno,cr_strerror(errno));
+    }
     MPICR_is_initialized = 1;
 
     char* temp = getenv("MV2_CKPT_MPD_BASE_PORT");

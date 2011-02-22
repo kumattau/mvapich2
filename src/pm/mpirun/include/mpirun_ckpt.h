@@ -21,6 +21,8 @@
 int ckptInit();
 //static void *CR_Loop(void *arg);
 char *create_mpispawn_vars( char *mpispawn_env );
+void save_ckpt_vars_env (void);
+void save_ckpt_vars(char *, char *);
 
 #include <sys/time.h>
 #include <libcr.h>

@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -291,7 +291,7 @@ static int _setup_ib_boot_ring(struct init_addr_inf * neighbor_addr,
         qp_attr.path_mtu            = IBV_MTU_1024;
     } else {
         qp_attr.ah_attr.is_global   =   0;
-        qp_attr.path_mtu    =   rdma_default_mtu;
+        qp_attr.path_mtu    =   IBV_MTU_1024;
     }
 
     qp_attr_mask        |=  IBV_QP_STATE;
@@ -310,6 +310,21 @@ static int _setup_ib_boot_ring(struct init_addr_inf * neighbor_addr,
            qp_attr.ah_attr.dlid    = neighbor_addr[i].lid;
         }
         qp_attr_mask            |=  IBV_QP_DEST_QPN;
+
+        /* Path SL Lookup */
+        if (!use_iboeth && (rdma_3dtorus_support || rdma_path_sl_query)) {
+            struct ibv_context *context = proc->boot_context;
+             struct ibv_pd *pd  = proc->boot_ptag;
+            /* don't know our local LID yet, so set it to 0 to let
+               mv2_get_path_rec_sl do the lookup */
+            /*uint16_t lid = proc->lids[0][port];*/
+            uint16_t lid = 0x0;
+            uint16_t rem_lid   = qp_attr.ah_attr.dlid;
+            uint32_t port_num  = qp_attr.ah_attr.port_num;
+            qp_attr.ah_attr.sl = mv2_get_path_rec_sl(context, pd, port_num, lid,
+                                                 rem_lid, rdma_3dtorus_support,
+                                                 rdma_num_sa_query_retries);
+        }
 
         ret = ibv_modify_qp(proc->boot_qp_hndl[i],&qp_attr, qp_attr_mask);
         CHECK_RETURN(ret, "Could not modify boot qp to RTR");
@@ -344,6 +359,35 @@ static int _setup_ib_boot_ring(struct init_addr_inf * neighbor_addr,
 }
 
 #undef FUNCNAME
+#define FUNCNAME rdma_exchange_host_id
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int rdma_ring_exchange_host_id(MPIDI_PG_t * pg, int pg_rank, int pg_size)
+{
+    int i, mpi_errno = MPI_SUCCESS;
+    int *hostid_all;
+
+    hostid_all =  (int *) MPIU_Malloc(pg_size * sizeof(int));
+
+    int my_hostid =  gethostid();
+    hostid_all[pg_rank] = my_hostid;
+    mpi_errno = rdma_ring_based_allgather(&my_hostid, sizeof my_hostid,
+                                      pg_rank, hostid_all, pg_size, &MPIDI_CH3I_RDMA_Process);
+    if (mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+
+    rdma_process_hostid(pg, hostid_all, pg_rank, pg_size );
+
+fn_exit:
+    MPIU_Free(hostid_all);
+    return mpi_errno;
+
+fn_fail:
+    goto fn_exit;
+}
+
+#undef FUNCNAME
 #define FUNCNAME rdma_setup_startup_ring
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
@@ -358,13 +402,19 @@ int rdma_setup_startup_ring(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
     int mpi_errno = MPI_SUCCESS;
     int port;
 
-    port = _find_active_port(proc->nic_context[0]);
+
+    if (!ring_rdma_open_hca(proc)) {
+        MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto out,
+                "**fail", "**fail %s", "cannot open hca device");
+    }
+        
+    port = _find_active_port(proc->boot_context);
     if (port < 0) {
         MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto out, "**fail",
                 "**fail %s", "could not find active port");
     }
 
-    proc->boot_cq_hndl = ibv_create_cq(proc->nic_context[0],
+    proc->boot_cq_hndl = ibv_create_cq(proc->boot_context,
                                        rdma_default_max_cq_size,
                                        NULL, NULL, 0);
     if (!proc->boot_cq_hndl) {
@@ -372,14 +422,14 @@ int rdma_setup_startup_ring(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                 "**fail", "**fail %s", "cannot create cq");
     }
 
-    proc->boot_qp_hndl[0] = create_qp(proc->ptag[0], proc->boot_cq_hndl,
+    proc->boot_qp_hndl[0] = create_qp(proc->boot_ptag, proc->boot_cq_hndl,
                                       proc->boot_cq_hndl);
     if (!proc->boot_qp_hndl[0]) {
         MPIU_ERR_SETFATALANDSTMT2(mpi_errno, MPI_ERR_OTHER, goto out,
                 "**fail", "%s%d", "Fail to create qp on rank ", pg_rank);
     }
 
-    proc->boot_qp_hndl[1] = create_qp(proc->ptag[0], proc->boot_cq_hndl,
+    proc->boot_qp_hndl[1] = create_qp(proc->boot_ptag, proc->boot_cq_hndl,
                                       proc->boot_cq_hndl);
     if (!proc->boot_qp_hndl[1]) {
         MPIU_ERR_SETFATALANDSTMT2(mpi_errno, MPI_ERR_OTHER, goto out,
@@ -387,7 +437,7 @@ int rdma_setup_startup_ring(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
     }
 
     if (use_iboeth) {
-        gid = get_local_gid(MPIDI_CH3I_RDMA_Process.nic_context[0], port);
+        gid = get_local_gid(proc->boot_context, port);
         sprintf(ring_qp_out, "%016llx:%016llx:%08x:%08x:",
                  gid.global.subnet_prefix, gid.global.interface_id,
                  proc->boot_qp_hndl[0]->qp_num,
@@ -402,14 +452,14 @@ int rdma_setup_startup_ring(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
     } else {
         /* printf("Not using RDMAOE\r\n"); */
         sprintf(ring_qp_out, "%08x:%08x:%08x:",
-                 get_local_lid(MPIDI_CH3I_RDMA_Process.nic_context[0],
+                 get_local_lid(proc->boot_context,
                                port),
                  proc->boot_qp_hndl[0]->qp_num,
                  proc->boot_qp_hndl[1]->qp_num
                );
     
         DEBUG_PRINT("After setting LID: %d, qp0: %x, qp1: %x\n",
-                get_local_lid(MPIDI_CH3I_RDMA_Process.nic_context[0],
+                get_local_lid(proc->boot_context,
                               port),
                 proc->boot_qp_hndl[0]->qp_num,
                 proc->boot_qp_hndl[1]->qp_num
@@ -504,7 +554,7 @@ int rdma_ring_based_allgather(void *sbuf, int data_size,
     struct ibv_mr *addr_hndl = NULL;
     int mpi_errno = MPI_SUCCESS;
 
-    addr_hndl = ibv_reg_mr(proc->ptag[0], rbuf, data_size*pg_size,
+    addr_hndl = ibv_reg_mr(proc->boot_ptag, rbuf, data_size*pg_size,
                            IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
 
     if (addr_hndl == NULL) {
@@ -924,7 +974,7 @@ int rdma_ring_boot_exchange(struct MPIDI_CH3I_RDMA_Process_t *proc,
     int pg_size = MPIDI_PG_Get_size(pg);
     int mpi_errno = MPI_SUCCESS;
     addr_pool = MPIU_Malloc(MPD_WINDOW * addr_packet_size(pg_size));
-    addr_hndl = ibv_reg_mr(proc->ptag[0],
+    addr_hndl = ibv_reg_mr(proc->boot_ptag,
             addr_pool, MPD_WINDOW * addr_packet_size(pg_size),
             IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
 

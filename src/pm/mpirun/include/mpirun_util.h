@@ -1,6 +1,6 @@
 #ifndef MPIRUN_UTIL_H
 #define MPIRUN_UTIL_H
-/* Copyright (c) 2002-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH software package developed by the
@@ -20,7 +20,7 @@
 char *vedit_str (char *const, const char *, va_list);
 char *edit_str (char *const, char const *const, ...);
 char *mkstr (const char *, ...);
-char *append_str (char *, char *const);
+char *append_str (char *, char const * const);
 
 int read_socket (int, void *, size_t);
 int write_socket (int, void *, size_t);

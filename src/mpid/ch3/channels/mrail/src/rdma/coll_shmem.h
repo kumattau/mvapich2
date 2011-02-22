@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -83,33 +83,7 @@
 
 #endif
 
-#define SHMEM_COLL_NUM_PROCS 32
-#define SHMEM_COLL_NUM_COMM  20
-
 #define SHMEM_COLL_BLOCK_SIZE (g_smpi.num_local_nodes * g_shmem_coll_max_msg_size)
-
-/* the shared area itself */
-typedef struct {
-    volatile int child_complete_bcast[SHMEM_COLL_NUM_COMM][SHMEM_COLL_NUM_PROCS];   /* use for initial synchro */
-    volatile int root_complete_bcast[SHMEM_COLL_NUM_COMM][SHMEM_COLL_NUM_PROCS];  
-    volatile int child_complete_gather[SHMEM_COLL_NUM_COMM][SHMEM_COLL_NUM_PROCS];   /* use for initial synchro */
-    volatile int root_complete_gather[SHMEM_COLL_NUM_COMM][SHMEM_COLL_NUM_PROCS];  
-    volatile int barrier_gather[SHMEM_COLL_NUM_COMM][SHMEM_COLL_NUM_PROCS];
-    volatile int barrier_bcast[SHMEM_COLL_NUM_COMM][SHMEM_COLL_NUM_PROCS];
-    volatile int shmem_comm_count;
-    pthread_spinlock_t shmem_coll_lock;
-
-#if defined(CKPT)
-    volatile int cr_smc_cnt;
-    volatile pthread_spinlock_t cr_smc_spinlock;
-#endif
-
-    /* the collective buffer */
-    char shmem_coll_buf;
-} shmem_coll_region;
-
-#define SHMEM_COLL_BUF_SIZE (g_shmem_coll_blocks * SHMEM_COLL_BLOCK_SIZE + sizeof(shmem_coll_region))
-shmem_coll_region *shmem_coll;
 
 
 #define COLL_COUNT              7
@@ -128,6 +102,15 @@ shmem_coll_region *shmem_coll;
 
 extern int tuning_table[COLL_COUNT][COLL_SIZE]; 
 
+struct scatter_tuning{
+    int numproc;
+    int binomial;
+    int two_lvl_direct;
+};
+
+extern int size_scatter_tuning_table;
+
+extern struct scatter_tuning scatter_tuning_table[3];
 
 #define BCAST_LEN 20
 #define SHMEM_BCAST_FLAGS	1024
@@ -141,6 +124,24 @@ extern int enable_shmem_collectives;
 extern struct coll_runtime coll_param;
 extern void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int, int, int, void**);
 extern void MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(int, int, int);
+
+/* Use inside gather_osu.c*/
+#define MPIR_GATHER_SMALL_MSG 2048
+#define MPIR_GATHER_MEDIUM_MSG 8192
+#define MPIR_GATHER_TWO_LEVEL_SMALL_MSG 4096
+#define MPIR_GATHER_BINOMIAL_SMALL_MSG  1024
+#define MPIR_GATHER_BINOMIAL_MEDIUM_MSG 16384
+extern int use_two_level_gather; 
+extern int gather_direct_system_size_small; 
+extern int gather_direct_system_size_medium; 
+extern int use_direct_gather; 
+
+
+
+/* Use inside scatter_osu.c*/
+extern int use_two_level_scatter; 
+extern int use_direct_scatter; 
+
 
 /* Use inside allreduce_osu.c*/
 extern int disable_shmem_allreduce;

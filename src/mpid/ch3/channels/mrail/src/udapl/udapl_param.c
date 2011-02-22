@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -116,6 +116,8 @@ int use_anl_collectives = 0;
 unsigned long rdma_polling_spin_count_threshold=5;
 int use_thread_yield = 0; 
 
+int rdma_global_ext_sendq_size = 0;
+int rdma_num_extra_polls = 0;
 
 
 unsigned int  rdma_ndreg_entries = RDMA_NDREG_ENTRIES;

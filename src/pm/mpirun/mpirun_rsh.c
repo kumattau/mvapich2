@@ -13,7 +13,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2003-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -38,6 +38,8 @@
 #include "mpirun_dbg.h"
 #include "mpirun_params.h"
 #include "mpirun_ckpt.h"
+#include <param.h>
+#include <mv2_config.h>
 
 
 
@@ -230,6 +232,7 @@ int main(int argc, char *argv[])
     int ret;
     struct sockaddr_in sockaddr;
     unsigned int sockaddr_len = sizeof(sockaddr);
+    unsigned long crc;
 
     char *env = "\0";
 
@@ -243,6 +246,10 @@ int main(int argc, char *argv[])
     totalview_cmd[TOTALVIEW_CMD_LEN - 1] = '\0';
     display[0] = '\0';
 
+    if (read_configuration_files(&crc)) {
+        fprintf(stderr, "mpirun_rsh: error reading configuration file\n");
+        return EXIT_FAILURE;
+    }
 
 #ifdef CKPT
     int ret_ckpt;
@@ -384,6 +391,18 @@ restart_from_ckpt:
 #endif
 
     USE_LINEAR_SSH = dpm ? 1 : USE_LINEAR_SSH;
+
+    /*
+     * Check to see of ckpt variables are in the environment
+     */
+#ifdef CKPT
+    save_ckpt_vars_env();
+#ifdef CR_AGGRE 
+    if (getenv("MV2_CKPT_USE_AGGREGATION")) {
+        use_aggre = atoi(getenv("MV2_CKPT_USE_AGGREGATION"));
+    }
+#endif
+#endif
 
     if (USE_LINEAR_SSH) 
     {
@@ -1116,6 +1135,15 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env)
     if (!mpispawn_env)
     goto allocation_error;
 
+    /*
+     * Forward mpirun parameters to mpispawn
+     */
+    mpispawn_env = append_mpirun_parameters(mpispawn_env);
+
+    if (!mpispawn_env) {
+        goto allocation_error;
+    }
+
     tmp = mkstr("%s MPISPAWN_MPIRUN_MPD=0", mpispawn_env);
     if (tmp) {
     free(mpispawn_env);
@@ -1803,6 +1831,15 @@ void spawn_one(int argc, char *argv[], char *totalview_cmd, char *env,
 
     if (!mpispawn_env)
     goto allocation_error;
+
+    /*
+     * Forward mpirun parameters to mpispawn
+     */
+    mpispawn_env = append_mpirun_parameters(mpispawn_env);
+
+    if (!mpispawn_env) {
+        goto allocation_error;
+    }
 
     tmp = mkstr("%s MPISPAWN_MPIRUN_MPD=0", mpispawn_env);
     if (tmp) {

@@ -1,4 +1,4 @@
-/* Copyright (c) 2002-2010, The Ohio State University. All rights
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -17,11 +17,11 @@
 
 #define SET_CREDIT(header, vc, rail) \
 {                                                               \
-    vc->mrail.rfp.ptail_RDMA_send += header->mrail.rdma_credit; \
+    vc->mrail.rfp.ptail_RDMA_send += header->rdma_credit; \
     if (vc->mrail.rfp.ptail_RDMA_send >= num_rdma_buffer)       \
         vc->mrail.rfp.ptail_RDMA_send -= num_rdma_buffer;       \
-    vc->mrail.srp.credits[rail].remote_cc = header->mrail.remote_credit;\
-    vc->mrail.srp.credits[rail].remote_credit += header->mrail.vbuf_credit; \
+    vc->mrail.srp.credits[rail].remote_cc = header->remote_credit;\
+    vc->mrail.srp.credits[rail].remote_credit += header->vbuf_credit; \
 }
 
 #undef DEBUG_PRINT
@@ -66,11 +66,11 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
 #ifdef CRC_CHECK
     crc = update_crc(1, (void *)((uintptr_t)header+sizeof *header),
                      v->content_size - sizeof *header);
-    if (crc != header->mrail.crc) {
+    if (crc != header->crc) {
 	int rank; PMI_Get_rank(&rank);
 	MPIU_Error_printf(stderr, "CRC mismatch, get %lx, should be %lx "
 		"type %d, ocntent size %d\n", 
-		crc, header->mrail.crc, header->type, v->content_size);
+		crc, header->crc, header->type, v->content_size);
         exit(EXIT_FAILURE);
     }
 #endif
@@ -97,7 +97,7 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
             }
 
             DEBUG_PRINT("[receiver side] cached credit %d\n",
-                        eager_header->mrail.rdma_credit);
+                        eager_header->rdma_credit);
 
             eager_header->data_sz = fast_header->bytes_in_pkt;
             eager_header->seqnum = fast_header->seqnum;
