@@ -5,18 +5,6 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
- * reserved.
- *
- * This file is part of the MVAPICH2 software package developed by the
- * team members of The Ohio State University's Network-Based Computing
- * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
- *
- * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT in the top level MVAPICH2 directory.
- *
- */
-
 #include "mpiimpl.h"
 
 /* -- Begin Profiling Symbol Block for routine MPI_Isend */
@@ -39,7 +27,8 @@
 
 #undef FUNCNAME
 #define FUNCNAME MPI_Isend
-
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 /*@
     MPI_Isend - Begins a nonblocking send
 
@@ -69,11 +58,9 @@ Output Parameter:
 int MPI_Isend(void *buf, int count, MPI_Datatype datatype, int dest, int tag,
 	      MPI_Comm comm, MPI_Request *request)
 {
-    static const char FCNAME[] = "MPI_Isend";
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr = NULL;
     MPID_Request *request_ptr = NULL;
-    MPIU_THREADPRIV_DECL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPI_ISEND);
 
     MPIR_ERRTEST_INITIALIZED_ORDIE();
@@ -141,6 +128,9 @@ int MPI_Isend(void *buf, int count, MPI_Datatype datatype, int dest, int tag,
     MPIR_SENDQ_REMEMBER(request_ptr,dest,tag,comm_ptr->context_id);
 
     /* return the handle of the request to the user */
+    /* MPIU_OBJ_HANDLE_PUBLISH is unnecessary for isend, lower-level access is
+     * responsible for its own consistency, while upper-level field access is
+     * controlled by the completion counter */
     *request = request_ptr->handle;
 
     /* ... end of body of routine ... */

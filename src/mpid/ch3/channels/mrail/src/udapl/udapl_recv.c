@@ -237,6 +237,12 @@ MPIDI_CH3I_MRAIL_Parse_header (MPIDI_VC_t * vc,
               *pkt = vstart;
               break;
           }
+    case MPIDI_CH3_PKT_ACCUM_IMMED:
+        {   
+            *header_size = sizeof(MPIDI_CH3_Pkt_accum_immed_t);
+            *pkt = vstart;
+            break;
+        }   
       case MPIDI_CH3_PKT_FLOW_CNTL_UPDATE:
           {
               *pkt = vstart;

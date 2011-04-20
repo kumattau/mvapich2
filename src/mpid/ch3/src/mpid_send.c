@@ -53,29 +53,30 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
 #if !defined (_OSU_PSM_)
     if (rank == comm->rank && comm->comm_kind != MPID_INTERCOMM)
     {
-        mpi_errno = MPIDI_Isend_self(buf, count, datatype, rank, tag, comm, 
-                         context_offset, MPIDI_REQUEST_TYPE_SEND, 
-                         &sreq);
+	mpi_errno = MPIDI_Isend_self(buf, count, datatype, rank, tag, comm, 
+				     context_offset, MPIDI_REQUEST_TYPE_SEND, 
+				     &sreq);
 
-        /* In the single threaded case, sending to yourself will cause 
-           deadlock.  Note that in the runtime-thread case, this check
-           will not be made (long-term FIXME) */
- #ifndef MPICH_IS_THREADED
+	/* In the single threaded case, sending to yourself will cause 
+	   deadlock.  Note that in the runtime-thread case, this check
+	   will not be made (long-term FIXME) */
+#       ifndef MPICH_IS_THREADED
+	{
 	    if (sreq != NULL && sreq->cc != 0) {
-		    MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,
+		MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,
 				    "**dev|selfsenddeadlock");
 	    }
- #endif
-	  if (mpi_errno != MPI_SUCCESS) { MPIU_ERR_POP(mpi_errno); }
-
-	  goto fn_exit;
+	}
+#	endif
+	if (mpi_errno != MPI_SUCCESS) { MPIU_ERR_POP(mpi_errno); }
+	goto fn_exit;
     }
 #endif /*_OSU_PSM_*/
 
 
     if (rank == MPI_PROC_NULL)
     {
-	  goto fn_exit;
+	goto fn_exit;
     }
 
     MPIDI_Comm_get_vc_set_active(comm, rank, &vc);
@@ -83,8 +84,8 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
 #ifdef ENABLE_COMM_OVERRIDES
     if (vc->comm_ops && vc->comm_ops->send)
     {
-	  mpi_errno = vc->comm_ops->send( vc, buf, count, datatype, rank, tag, comm, context_offset, &sreq);
-	  goto fn_exit;
+	mpi_errno = vc->comm_ops->send( vc, buf, count, datatype, rank, tag, comm, context_offset, &sreq);
+	goto fn_exit;
     }
 #endif
 
@@ -97,51 +98,46 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
 #if defined (_OSU_PSM_)  /* zero length send, let PSM handle it */
         goto eager_send;
 #endif
-      MPIDI_CH3_Pkt_t upkt;
-	  MPIDI_CH3_Pkt_eager_send_t * const eager_pkt = &upkt.eager_send;
+	MPIDI_CH3_Pkt_t upkt;
+	MPIDI_CH3_Pkt_eager_send_t * const eager_pkt = &upkt.eager_send;
 
-	  MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"sending zero length message");
-	  MPIDI_Pkt_init(eager_pkt, MPIDI_CH3_PKT_EAGER_SEND);
-	  eager_pkt->match.parts.rank = comm->rank;
-	  eager_pkt->match.parts.tag = tag;
-	  eager_pkt->match.parts.context_id = comm->context_id + context_offset;
-	  eager_pkt->sender_req_id = MPI_REQUEST_NULL;
-	  eager_pkt->data_sz = 0;
+	MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"sending zero length message");
+	MPIDI_Pkt_init(eager_pkt, MPIDI_CH3_PKT_EAGER_SEND);
+	eager_pkt->match.parts.rank = comm->rank;
+	eager_pkt->match.parts.tag = tag;
+	eager_pkt->match.parts.context_id = comm->context_id + context_offset;
+	eager_pkt->sender_req_id = MPI_REQUEST_NULL;
+	eager_pkt->data_sz = 0;
 	
-	  MPIDI_VC_FAI_send_seqnum(vc, seqnum);
-	  MPIDI_Pkt_set_seqnum(eager_pkt, seqnum);
+	MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+	MPIDI_Pkt_set_seqnum(eager_pkt, seqnum);
 	
-	  MPIU_THREAD_CS_ENTER(CH3COMM,vc);
-	  mpi_errno = MPIU_CALL(MPIDI_CH3,iStartMsg(vc, eager_pkt,
+	MPIU_THREAD_CS_ENTER(CH3COMM,vc);
+	mpi_errno = MPIU_CALL(MPIDI_CH3,iStartMsg(vc, eager_pkt, 
 						  sizeof(*eager_pkt), &sreq));
-	  MPIU_THREAD_CS_EXIT(CH3COMM,vc);
-	  /* --BEGIN ERROR HANDLING-- */
-	  if (mpi_errno != MPI_SUCCESS)
-	  {
-	    /* FIXME: this is a fatal error because a sequence number has 
-	       already been allocated.  If sequence numbers are not
-	       being used then this could be a recoverable error.  A check 
-	       needs to be added that sets the error to fatal or
-	       recoverable depending on the use of sequence numbers. */
-	    MPIU_ERR_SETFATALANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|eagermsg");
-	  }
-	  /* --END ERROR HANDLING-- */
-	  if (sreq != NULL)
-	  {
-	      MPIDI_Request_set_seqnum(sreq, seqnum);
-	      MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_SEND);
-	      /* sreq->comm = comm;
+	MPIU_THREAD_CS_EXIT(CH3COMM,vc);
+	/* --BEGIN ERROR HANDLING-- */
+	if (mpi_errno != MPI_SUCCESS)
+	{
+	    MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|eagermsg");
+	}
+	/* --END ERROR HANDLING-- */
+	if (sreq != NULL)
+	{
+	    MPIDI_Request_set_seqnum(sreq, seqnum);
+	    MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_SEND);
+	    /* sreq->comm = comm;
 	      MPIR_Comm_add_ref(comm); -- not necessary for blocking functions */
-  	  }
+	}
 	
-	  goto fn_exit;
+	goto fn_exit;
     }
     
     /* FIXME: flow control: limit number of outstanding eager messsages 
        containing data and need to be buffered by the receiver */
 #ifdef USE_EAGER_SHORT
     if (dt_contig && data_sz <= MPIDI_EAGER_SHORT_SIZE) {
-	  mpi_errno = MPIDI_CH3_EagerContigShortSend( &sreq,
+	mpi_errno = MPIDI_CH3_EagerContigShortSend( &sreq, 
 					       MPIDI_CH3_PKT_EAGERSHORT_SEND,
 					       (char *)buf + dt_true_lb,
 					       data_sz, rank, tag, comm, 
@@ -182,16 +178,15 @@ eager_send:
                                                           comm, context_offset );
         }
     }
-    else
-    {
-	  MPIDI_Request_create_sreq(sreq, mpi_errno, goto fn_exit);
-	  MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_SEND);
-	  mpi_errno = vc->rndvSend_fn( &sreq, buf, count, datatype, dt_contig,
+    else {
+	MPIDI_Request_create_sreq(sreq, mpi_errno, goto fn_exit);
+	MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_SEND);
+	mpi_errno = vc->rndvSend_fn( &sreq, buf, count, datatype, dt_contig,
                                      data_sz, dt_true_lb, rank, tag, comm, 
                                      context_offset );
-	  /* Note that we don't increase the ref count on the datatype
-	     because this is a blocking call, and the calling routine
-	     must wait until sreq completes */
+	/* Note that we don't increase the ref count on the datatype
+	   because this is a blocking call, and the calling routine 
+	   must wait until sreq completes */
     }
 
  fn_fail:

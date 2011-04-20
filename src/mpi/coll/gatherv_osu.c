@@ -36,7 +36,7 @@
 */
 
 /* not declared static because it is called in intercommunicator allgatherv */
-int MPIR_Gatherv_OSU ( 
+int MPIR_Gatherv_MV2 ( 
 	void *sendbuf, 
 	int sendcnt,  
 	MPI_Datatype sendtype, 
@@ -45,9 +45,10 @@ int MPIR_Gatherv_OSU (
 	int *displs, 
 	MPI_Datatype recvtype, 
 	int root, 
-	MPID_Comm *comm_ptr )
+	MPID_Comm *comm_ptr,
+    int *errflag )
 {
-    static const char FCNAME[] = "MPIR_Gatherv_OSU";
+    static const char FCNAME[] = "MPIR_Gatherv_MV2";
     int        comm_size, rank;
     int        mpi_errno = MPI_SUCCESS;
     MPI_Comm comm;
@@ -106,7 +107,7 @@ int MPIR_Gatherv_OSU (
             }
         }
         /* ... then wait for *all* of them to finish: */
-        mpi_errno = NMPI_Waitall(reqs, reqarray, starray);
+        mpi_errno = MPIR_Waitall_impl(reqs, reqarray, starray);
         /* --BEGIN ERROR HANDLING-- */
         if (mpi_errno == MPI_ERR_IN_STATUS) {
             for (i = 0; i < reqs; i++) {

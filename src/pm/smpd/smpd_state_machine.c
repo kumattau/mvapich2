@@ -148,286 +148,6 @@ fn_fail:
     }
     goto fn_exit;
 }
-/* forward entire input lines at a time version */
-#if 0
-void smpd_stdin_thread(SOCKET hWrite)
-{
-    DWORD num_read;
-    char str[SMPD_MAX_CMD_LENGTH];
-    int index;
-    HANDLE h[2];
-    int result;
-    /*int i;*/
-
-    smpd_dbg_printf("smpd_stdin_thread started.\n");
-    /* acquire the launch process mutex to avoid grabbing a redirected input handle */
-    WaitForSingleObject(smpd_process.hLaunchProcessMutex, INFINITE);
-    h[0] = GetStdHandle(STD_INPUT_HANDLE);
-    ReleaseMutex(smpd_process.hLaunchProcessMutex);
-    if (h[0] == NULL || h[0] == INVALID_HANDLE_VALUE)
-    {
-	smpd_err_printf("Unable to get the stdin handle.\n");
-	return;
-    }
-    h[1] = smpd_process.hCloseStdinThreadEvent;
-    index = 0;
-    for (;;)
-    {
-	/*smpd_dbg_printf("waiting for input from stdin\n");*/
-	result = WaitForMultipleObjects(2, h, FALSE, INFINITE);
-	if (result == WAIT_OBJECT_0)
-	{
-	    num_read = 0;
-	    str[index] = '\0';
-	    if (ReadFile(h[0], &str[index], 1, &num_read, NULL))
-	    {
-		if (num_read < 1)
-		{
-		    /* ReadFile failed, what do I do? */
-		    if (shutdown(hWrite, SD_BOTH) == SOCKET_ERROR)
-		    {
-			smpd_err_printf("shutdown failed, sock %d, error %d\n", hWrite, WSAGetLastError());
-		    }
-		    if (closesocket(hWrite) == SOCKET_ERROR)
-		    {
-			smpd_err_printf("closesocket failed, sock %d, error %d\n", hWrite, WSAGetLastError());
-		    }
-		    smpd_dbg_printf("ReadFile failed, closing stdin reader thread.\n");
-		    return;
-		}
-		/*printf("CHAR(%d)", (int)str[index]);fflush(stdout);*/
-		if (str[index] == '\n' || index == SMPD_MAX_CMD_LENGTH-1)
-		{
-		    num_read = index + 1;
-		    index = 0; /* reset the index back to the beginning of the input buffer */
-		    smpd_dbg_printf("forwarding stdin: %d bytes\n", num_read);
-		    print_bytes(str, num_read);
-		    /*
-		    printf("forwarding stdin: '");
-		    for (i=0; i<num_read; i++)
-		    {
-		    printf("%c", str[i]);
-		    }
-		    printf("'\n");
-		    fflush(stdout);
-		    */
-		    if (send(hWrite, str, num_read, 0) == SOCKET_ERROR)
-		    {
-			smpd_err_printf("unable to forward stdin, send failed, error %d\n", WSAGetLastError());
-			return;
-		    }
-		}
-		else
-		{
-		    index++;
-		}
-	    }
-	    else
-	    {
-		/* ReadFile failed, what do I do? */
-		if (shutdown(hWrite, SD_BOTH) == SOCKET_ERROR)
-		{
-		    smpd_err_printf("shutdown failed, sock %d, error %d\n", hWrite, WSAGetLastError());
-		}
-		if (closesocket(hWrite) == SOCKET_ERROR)
-		{
-		    smpd_err_printf("closesocket failed, sock %d, error %d\n", hWrite, WSAGetLastError());
-		}
-		smpd_dbg_printf("ReadFile failed, closing stdin reader thread.\n");
-		return;
-	    }
-	}
-	else if (result == WAIT_OBJECT_0 + 1)
-	{
-	    if (shutdown(hWrite, SD_BOTH) == SOCKET_ERROR)
-	    {
-		smpd_err_printf("shutdown failed, sock %d, error %d\n", hWrite, WSAGetLastError());
-	    }
-	    if (closesocket(hWrite) == SOCKET_ERROR)
-	    {
-		smpd_err_printf("closesocket failed, sock %d, error %d\n", hWrite, WSAGetLastError());
-	    }
-	    smpd_dbg_printf("hCloseStdinThreadEvent signalled, closing stdin reader thread.\n");
-	    return;
-	}
-	else
-	{
-	    smpd_err_printf("stdin wait failed, error %d\n", GetLastError());
-	    return;
-	}
-    }
-}
-#endif
-#if 0
-/* 1 byte at a time version */
-void smpd_stdin_thread(SOCKET hWrite)
-{
-    DWORD num_read;
-    char str[SMPD_MAX_CMD_LENGTH];
-    HANDLE h[2];
-    int result;
-    /*int i;*/
-
-    smpd_dbg_printf("smpd_stdin_thread started.\n");
-    /* acquire the launch process mutex to avoid grabbing a redirected input handle */
-    WaitForSingleObject(smpd_process.hLaunchProcessMutex, INFINITE);
-    h[0] = GetStdHandle(STD_INPUT_HANDLE);
-    ReleaseMutex(smpd_process.hLaunchProcessMutex);
-    if (h[0] == NULL)
-    {
-	smpd_err_printf("Unable to get the stdin handle.\n");
-	return;
-    }
-    h[1] = smpd_process.hCloseStdinThreadEvent;
-    for (;;)
-    {
-	/*smpd_dbg_printf("waiting for input from stdin\n");*/
-	result = WaitForMultipleObjects(2, h, FALSE, INFINITE);
-	if (result == WAIT_OBJECT_0)
-	{
-	    if (ReadFile(h[0], str, 1/*SMPD_MAX_CMD_LENGTH*/, &num_read, NULL))
-	    {
-		smpd_dbg_printf("forwarding stdin: %d bytes\n", num_read);
-		/*
-		printf("forwarding stdin: '");
-		for (i=0; i<num_read; i++)
-		{
-		    printf("%c", str[i]);
-		}
-		printf("'\n");
-		fflush(stdout);
-		*/
-		if (num_read > 0)
-		{
-		    if (send(hWrite, str, num_read, 0) == SOCKET_ERROR)
-		    {
-			smpd_err_printf("unable to forward stdin, send failed, error %d\n", WSAGetLastError());
-			return;
-		    }
-		}
-		else
-		{
-		    /* ReadFile failed, what do I do? */
-		    if (shutdown(hWrite, SD_BOTH) == SOCKET_ERROR)
-		    {
-			smpd_err_printf("shutdown failed, sock %d, error %d\n", hWrite, WSAGetLastError());
-		    }
-		    if (closesocket(hWrite) == SOCKET_ERROR)
-		    {
-			smpd_err_printf("closesocket failed, sock %d, error %d\n", hWrite, WSAGetLastError());
-		    }
-		    smpd_dbg_printf("ReadFile failed, closing stdin reader thread.\n");
-		    return;
-		}
-	    }
-	    else
-	    {
-		/* ReadFile failed, what do I do? */
-		if (shutdown(hWrite, SD_BOTH) == SOCKET_ERROR)
-		{
-		    smpd_err_printf("shutdown failed, sock %d, error %d\n", hWrite, WSAGetLastError());
-		}
-		if (closesocket(hWrite) == SOCKET_ERROR)
-		{
-		    smpd_err_printf("closesocket failed, sock %d, error %d\n", hWrite, WSAGetLastError());
-		}
-		smpd_dbg_printf("ReadFile failed, closing stdin reader thread.\n");
-		return;
-	    }
-	}
-	else if (result == WAIT_OBJECT_0 + 1)
-	{
-	    if (shutdown(hWrite, SD_BOTH) == SOCKET_ERROR)
-	    {
-		smpd_err_printf("shutdown failed, sock %d, error %d\n", hWrite, WSAGetLastError());
-	    }
-	    if (closesocket(hWrite) == SOCKET_ERROR)
-	    {
-		smpd_err_printf("closesocket failed, sock %d, error %d\n", hWrite, WSAGetLastError());
-	    }
-	    smpd_dbg_printf("hCloseStdinThreadEvent signalled, closing stdin reader thread.\n");
-	    return;
-	}
-	else
-	{
-	    smpd_err_printf("stdin wait failed, error %d\n", GetLastError());
-	    return;
-	}
-    }
-}
-#endif
-#if 0
-/* fgets version */
-void smpd_stdin_thread(SOCKET hWrite)
-{
-    DWORD len;
-    char str[SMPD_MAX_CMD_LENGTH];
-    HANDLE h[2];
-    int result;
-
-    smpd_dbg_printf("smpd_stdin_thread started.\n");
-    /* acquire the launch process mutex to avoid grabbing a redirected input handle */
-    WaitForSingleObject(smpd_process.hLaunchProcessMutex, INFINITE);
-    h[0] = GetStdHandle(STD_INPUT_HANDLE);
-    ReleaseMutex(smpd_process.hLaunchProcessMutex);
-    if (h[0] == NULL)
-    {
-	smpd_err_printf("Unable to get the stdin handle.\n");
-	return;
-    }
-    h[1] = smpd_process.hCloseStdinThreadEvent;
-    for (;;)
-    {
-	/*smpd_dbg_printf("waiting for input from stdin\n");*/
-	result = WaitForMultipleObjects(2, h, FALSE, INFINITE);
-	if (result == WAIT_OBJECT_0)
-	{
-	    if (fgets(str, SMPD_MAX_CMD_LENGTH, stdin))
-	    {
-		len = (DWORD)strlen(str);
-		smpd_dbg_printf("forwarding stdin: '%s'\n", str);
-		if (send(hWrite, str, len, 0) == SOCKET_ERROR)
-		{
-		    smpd_err_printf("unable to forward stdin, send failed, error %d\n", WSAGetLastError());
-		    return;
-		}
-	    }
-	    else
-	    {
-		/* fgets failed, what do I do? */
-		if (shutdown(hWrite, SD_BOTH) == SOCKET_ERROR)
-		{
-		    smpd_err_printf("shutdown failed, sock %d, error %d\n", hWrite, WSAGetLastError());
-		}
-		if (closesocket(hWrite) == SOCKET_ERROR)
-		{
-		    smpd_err_printf("closesocket failed, sock %d, error %d\n", hWrite, WSAGetLastError());
-		}
-		smpd_dbg_printf("fgets failed, closing stdin reader thread.\n");
-		return;
-	    }
-	}
-	else if (result == WAIT_OBJECT_0 + 1)
-	{
-	    if (shutdown(hWrite, SD_BOTH) == SOCKET_ERROR)
-	    {
-		smpd_err_printf("shutdown failed, sock %d, error %d\n", hWrite, WSAGetLastError());
-	    }
-	    if (closesocket(hWrite) == SOCKET_ERROR)
-	    {
-		smpd_err_printf("closesocket failed, sock %d, error %d\n", hWrite, WSAGetLastError());
-	    }
-	    smpd_dbg_printf("hCloseStdinThreadEvent signalled, closing stdin reader thread.\n");
-	    return;
-	}
-	else
-	{
-	    smpd_err_printf("stdin wait failed, error %d\n", GetLastError());
-	    return;
-	}
-    }
-}
-#endif
 #else
 #ifdef USE_PTHREAD_STDIN_REDIRECTION
 void *smpd_pthread_stdin_thread(void *p)
@@ -680,6 +400,7 @@ int smpd_state_reading_challenge_string(smpd_context_t *context, SMPDU_Sock_even
 
     if (smpd_verify_version(context->pszChallengeResponse) == SMPD_TRUE)
     {
+        smpd_dbg_printf("Verification of smpd version succeeded\n");
 	strcpy(phrase, smpd_process.passphrase);
 	/* crypt the passphrase + the challenge */
 	if (strlen(phrase) + strlen(context->pszChallengeResponse) > SMPD_PASSPHRASE_MAX_LENGTH)
@@ -697,7 +418,8 @@ int smpd_state_reading_challenge_string(smpd_context_t *context, SMPDU_Sock_even
     }
     else
     {
-	strcpy(context->pszChallengeResponse, SMPD_VERSION_FAILURE);
+        smpd_dbg_printf("Verification of smpd version failed...Sending version failure to PM\n");
+	    strcpy(context->pszChallengeResponse, SMPD_VERSION_FAILURE);
     }
 
     /* write the response */
@@ -6228,6 +5950,9 @@ int smpd_state_singleton_mpiexec_connecting(smpd_context_t *context, SMPDU_Sock_
     result = smpd_create_command("singinit_info", smpd_process.id, 1, SMPD_FALSE, &cmd_ptr);
     if(result == SMPD_SUCCESS){
         result = smpd_add_command_arg(cmd_ptr, "kvsname", context->singleton_init_kvsname);
+    }
+    if(result == SMPD_SUCCESS){
+        result = smpd_add_command_arg(cmd_ptr, "domainname", context->singleton_init_domainname);
     }
     if(result == SMPD_SUCCESS){
         result = smpd_add_command_arg(cmd_ptr, "host", context->singleton_init_hostname);

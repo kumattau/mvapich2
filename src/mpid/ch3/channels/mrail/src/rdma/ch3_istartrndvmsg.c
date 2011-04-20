@@ -46,6 +46,7 @@ static inline void MPIDI_CH3_Prepare_rndv(MPIDI_VC_t *vc, MPID_Request *sreq)
     if (SMP_INIT && vc->smp.local_nodes >= 0 &&
         vc->smp.local_nodes != g_smpi.my_local_id) {
         sreq->mrail.protocol = VAPI_PROTOCOL_R3;
+        sreq->mrail.d_entry = NULL;
     } else 
     {
         MPIDI_CH3I_MRAIL_Prepare_rndv(vc, sreq);

@@ -1,48 +1,31 @@
-# Copyright (c) 2003-2011, The Ohio State University. All rights
-# reserved.
-#
-# This file is part of the MVAPICH2 software package developed by the
-# team members of The Ohio State University's Network-Based Computing
-# Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
-#
-# For detailed copyright and licensing information, please refer to the
-# copyright file COPYRIGHT in the top level MVAPICH2 directory.
-
 # SUBDIRS_pm_name are the names that @ pm_name @ can take in SUBDIRS
 # (except for util, which is included so that simplemake will process
 # the Makefile.sm in that directory)
-# <_OSU_MVAPICH_>
-# SUBDIRS_pm_name = mpd smpd gforker remshell
-SUBDIRS_pm_name = mpd smpd gforker remshell mpirun
-# </_OSU_MVAPICH_> 
-SUBDIRS = @pm_name@ @other_pm_names@ mpirun .
+SUBDIRS_pm_name = mpd smpd gforker remshell
+SUBDIRS = @pm_name@ @other_pm_names@ .
 # Remove PMPILIBNAME from the common make variables for the mpid
 # directories
 smvarSubdir_commonmake=MPILIBNAME      = @MPILIBNAME@
-
-smvarSubdir_do_dependencies=no
-smvar_dependenciesDummy=yes
-
-OTHER_DIRS = util mpirun
-NOTSIMPLEMAKE_SUBDIRS = mpd hydra
+OTHER_DIRS = util
+NOTSIMPLEMAKE_SUBDIRS = mpd hydra mpirun
 
 # We need to handle the case where the process manager is external to 
 # MPICH2
 all-postamble:
-	build_prefix=`cd ../.. && pwd` && cd mpirun && \
-	${MAKE} prefix=$$build_prefix exec_prefix=$$build_prefix bindir=$$build_prefix/bin mpich2-build-install ; \
 	if [ -n "@pm_name@" -a -d "@pm_name@" ] ; then \
 	build_prefix=`cd ../.. && pwd` && cd @pm_name@ && \
-	${MAKE} prefix=$$build_prefix exec_prefix=$$build_prefix bindir=$$build_prefix/bin mpich2-build-install ; \
+	${MAKE} prefix=$$build_prefix exec_prefix=$$build_prefix bindir=$$build_prefix/bin \
+		libdir=$$build_prefix/lib includedir=$$build_prefix/include \
+		docdir=$$build_prefix/share/doc mpich2-build-install ; \
 	fi
 
 # Add util to distclean if possible
 distclean-local:
-	build_prefix=`cd ../.. && pwd` && cd mpirun && \
-	${MAKE} prefix=$$build_prefix exec_prefix=$$build_prefix bindir=$$build_prefix/bin mpich2-build-uninstall ; \
 	if [ -n "@pm_name@" -a -d "@pm_name@" ] ; then \
 	build_prefix=`cd ../.. && pwd` && cd @pm_name@ && \
-	${MAKE} prefix=$$build_prefix exec_prefix=$$build_prefix bindir=$$build_prefix/bin mpich2-build-uninstall ; \
+	${MAKE} prefix=$$build_prefix exec_prefix=$$build_prefix bindir=$$build_prefix/bin \
+		libdir=$$build_prefix/lib includedir=$$build_prefix/include \
+		docdir=$$build_prefix/share/doc mpich2-build-uninstall ; \
 	fi
 	if [ -s util/Makefile ] ; then 	(cd util && ${MAKE} distclean) ; fi
 

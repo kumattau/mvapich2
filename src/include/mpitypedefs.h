@@ -25,6 +25,14 @@
 #ifdef HAVE_STDINT_H
 #include <stdint.h>
 #endif
+/* stdbool.h gives us the C boolean type */
+#ifdef HAVE_STDBOOL_H
+#include <stdbool.h>
+#endif
+/* complex.h gives us the C complex type */
+#ifdef HAVE_COMPLEX_H
+#include <complex.h>
+#endif
 
 #ifdef HAVE_WINDOWS_H
 #include <winsock2.h>
@@ -54,9 +62,9 @@
 
 #include "mpiiov.h"
 
-/* FIXME MPI_UNSIGNED_SHORT will not always be the same size as uint16_t. */
-#define MPIR_CONTEXT_ID_T_DATATYPE MPI_UNSIGNED_SHORT
+#define MPIR_CONTEXT_ID_T_DATATYPE MPI_UINT16_T
 typedef uint16_t MPIR_Context_id_t;
+#define MPIR_INVALID_CONTEXT_ID ((MPIR_Context_id_t)0xffff)
 
 typedef MPIU_SIZE_T MPIU_Size_t;
 

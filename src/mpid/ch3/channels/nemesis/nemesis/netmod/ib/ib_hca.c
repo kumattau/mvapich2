@@ -142,7 +142,8 @@ static int rdma_find_active_port(struct ibv_context *context,struct ibv_device *
     for (j = 1; j <= RDMA_DEFAULT_MAX_PORTS; ++ j) {
         if ((! ibv_query_port(context, j, &port_attr)) &&
              port_attr.state == IBV_PORT_ACTIVE) {
-            if (!strncmp(dev_name, "cxgb3", 5) || port_attr.lid) {
+            if (!strncmp(dev_name, "cxgb3", 5) || !strncmp(dev_name, "cxgb4", 5)
+                || port_attr.lid) {
                 /* Chelsio RNIC's don't get LID's as they're not IB devices.
                  * So dont do this check for them.
                  */
@@ -255,6 +256,8 @@ int hcaNameToType(char *dev_name, HCA_Type* hca_type)
         *hca_type = IBM_EHCA;
     } else if (!strncmp(dev_name, "cxgb3", 5)) {
         *hca_type = CHELSIO_T3;
+    } else if (!strncmp(dev_name, "cxgb4", 5)) {
+        *hca_type = CHELSIO_T4;
     } else {
         *hca_type = UNKNOWN_HCA;
     }

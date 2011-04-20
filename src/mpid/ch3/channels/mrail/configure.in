@@ -7,7 +7,6 @@ dnl arguments (--enable-g, --enable-default-optimization). These updated
 dnl flags are passed down as a separate flag. Here, we don't care about
 dnl the user-defined flags, but rather this updated flags, so we just
 dnl overwrite CFLAGS with them.
-PAC_SUBCONFIG_INIT()
 
 dnl
 dnl Definitions will be placed in this file rather than in the DEFS variable
@@ -184,8 +183,8 @@ AC_ARG_WITH([hwloc],
 
 use_internal_hwloc=no
 AS_IF([test "x$with_hwloc" != xno],
-      [AC_CHECKING([for any hwloc installation])
-       AC_CHECK_LIB([hwloc], [hwloc_topology_set_pid],
+      [AC_CHECKING([for any suitable hwloc installation])
+       AC_CHECK_LIB([hwloc], [hwloc_bitmap_alloc],
                     [AC_CHECK_HEADER([hwloc.h],
                                      [LIBS="-lhwloc $LIBS"
                                       AC_DEFINE([HAVE_LIBHWLOC], [],
@@ -203,7 +202,14 @@ AS_IF([test "$use_internal_hwloc" = "yes"],
        AC_DEFINE([HAVE_LIBHWLOC], [], [Define if hwloc library is available])
        other_subdirs="hwloc $other_subdirs"
        CPPFLAGS="-I$srcdir/src/hwloc/include -I$abs_top_builddir/src/hwloc/include $CPPFLAGS"
-       AC_CONFIG_SUBDIRS(src/hwloc)])
+       ac_configure_args="${ac_configure_args} --enable-embedded-mode"
+       AC_CONFIG_SUBDIRS(src/hwloc)
+       AC_CHECK_HEADERS([numaif.h],
+                        [AC_SEARCH_LIBS([set_mempolicy], [numa])
+                         AS_IF([test "$ac_cv_search_set_mempolicy" = "-lnuma"],
+                               [mrail_libs="-lnuma $mrail_libs"])
+                        ])
+       ])
 
 AS_IF([test "x$enable_3dtorus_support" != xno],
       [AC_DEFINE([ENABLE_3DTORUS_SUPPORT], [1],
@@ -557,11 +563,44 @@ if test "$ac_cv_func_snprintf" = "yes" ; then
     PAC_FUNC_NEEDS_DECL([#include <stdio.h>],snprintf)
 fi
 
+# check how to allocate shared memory
+AC_ARG_WITH(shared-memory, [--with-shared-memory[=auto|sysv|mmap] - create shared memory using sysv or mmap (default is auto)],,
+    with_shared_memory=auto)
+
+if test "$with_shared_memory" = auto -o "$with_shared_memory" = mmap; then
+    found_mmap_funcs=yes
+    AC_CHECK_FUNCS(mmap munmap, , found_mmap_funcs=no)
+    if test "$found_mmap_funcs" = yes ; then
+        with_shared_memory=mmap
+        AC_DEFINE(USE_MMAP_SHM,1,[Define if we have sysv shared memory])
+        AC_MSG_NOTICE([Using a memory-mapped file for shared memory])
+    elif test "$with_shared_memory" = mmap ; then
+        AC_MSG_ERROR([cannot support shared memory:  mmap() or munmap() not found])
+    fi
+fi
+if test "$with_shared_memory" = auto -o "$with_shared_memory" = sysv; then
+    found_sysv_shm_funcs=yes
+    AC_CHECK_FUNCS(shmget shmat shmctl shmdt, , found_sysv_shm_funcs=no)
+    if test "$found_sysv_shm_funcs" = yes ; then
+        AC_DEFINE(USE_SYSV_SHM,1,[Define if we have sysv shared memory])
+        AC_MSG_NOTICE([Using SYSV shared memory])
+    elif test "$with_shared_memory" = sysv ; then
+        AC_MSG_ERROR([cannot support shared memory:  sysv shared memory functions functions not found])
+    else
+        AC_MSG_ERROR([cannot support shared memory:  need either sysv shared memory functions or mmap in order to support shared memory])
+    fi
+fi
+
+if test "$found_sysv_shm_funcs" = yes ; then
+   AC_CHECK_FUNCS(strtoll, , AC_MSG_ERROR([cannot find strtoll function needed by sysv shared memory implementation]))
+fi
+
 AC_SUBST(mrail_ld_library_path)
 AC_SUBST(mrail_fflags)
 AC_SUBST(mrail_ldflags)
 AC_SUBST(mrail_libs)
 AC_SUBST(AR)
+AC_SUBST(AR_FLAGS)
 AC_SUBST(RANLIB)
 AC_SUBST(MPILIBNAME)
 AC_SUBST(CC)
@@ -595,7 +634,6 @@ fi; fi])
 CPPFLAGS="$CPPFLAGS $MPICH2_INCLUDE_FLAGS"
 
 dnl Placeholder macro for finalization
-PAC_SUBCONFIG_FINALIZE()
 
 AC_OUTPUT(Makefile \
     src/Makefile \

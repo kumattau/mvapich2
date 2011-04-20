@@ -80,7 +80,7 @@ skip_self_send:
     if (rank == MPI_PROC_NULL)
     {
 	MPIU_Object_set_ref(sreq, 1);
-	sreq->cc = 0;
+        MPID_cc_set(&sreq->cc, 0);
 	goto fn_exit;
     }
     

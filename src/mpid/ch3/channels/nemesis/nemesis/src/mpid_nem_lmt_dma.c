@@ -14,8 +14,11 @@ static int knem_has_dma = 0;
 static volatile knem_status_t *knem_status = MAP_FAILED;
 #define KNEM_STATUS_NR 4096 /* FIXME: randomly chosen */
 
-static size_t dma_threshold = 2048*1024;
-#define MPICH_NEW_KNEM_ABI_VERSION (0x0000000c) 
+/* Values of KNEM_ABI_VERSION less than this are the old interface (pre-0.7),
+ * values greater than or equal to this are the newer interface.  At some point
+ * in the future we should drop support for the old version to keep the code
+ * simpler. */
+#define MPICH_NEW_KNEM_ABI_VERSION (0x0000000c)
 
 /* These are for maintaining a linked-list of outstanding requests on which we
    can make progress. */
@@ -57,13 +60,7 @@ static int open_knem_dev(void)
     int mpi_errno = MPI_SUCCESS;
     int err;
     int i;
-    int ret;
-    int tmp_threshold = -1;
     struct knem_cmd_info info;
-
-    ret = MPIU_GetEnvInt("MPICH_NEM_LMT_DMA_THRESHOLD", &tmp_threshold);
-    if (ret == 1)
-        dma_threshold = tmp_threshold;
 
     knem_fd = open(KNEM_DEVICE_FILENAME, O_RDWR);
     MPIU_ERR_CHKANDJUMP2(knem_fd < 0, mpi_errno, MPI_ERR_OTHER, "**shm_open",
@@ -139,11 +136,11 @@ fn_exit:
     return mpi_errno;
 }
 
+/* s_cookie is an input parameter */
 #undef FUNCNAME
 #define FUNCNAME do_dma_recv
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-/* s_cookie is an input parameter */
 static int do_dma_recv(int iov_n, MPID_IOV iov[], knem_cookie_t s_cookie, int nodma, volatile knem_status_t **status_p_p, knem_status_t *current_status_p)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -303,7 +300,7 @@ int MPID_nem_lmt_dma_initiate_lmt(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, MPID_Req
     MPID_nem_pkt_lmt_rts_t * const rts_pkt = (MPID_nem_pkt_lmt_rts_t *)pkt;
     MPIU_CHKPMEM_DECL(1);
     MPIDI_STATE_DECL(MPID_STATE_MPID_NEM_LMT_DMA_INITIATE_LMT);
-
+    
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_NEM_LMT_DMA_INITIATE_LMT);
 
     MPIU_CHKPMEM_MALLOC(sreq->ch.s_cookie, knem_cookie_t *, sizeof(knem_cookie_t), mpi_errno, "s_cookie");
@@ -353,8 +350,7 @@ int MPID_nem_lmt_dma_start_recv(MPIDI_VC_t *vc, MPID_Request *rreq, MPID_IOV s_c
     MPIDI_Datatype_get_info(rreq->dev.user_count, rreq->dev.datatype,
                             dt_contig, data_sz, dt_ptr, dt_true_lb);
 
-    /* this is where Stephanie might want to look at VC's local rank and shared cache size */
-    nodma = !knem_has_dma || data_sz < dma_threshold;
+    nodma = !knem_has_dma || data_sz < MPIR_PARAM_NEM_LMT_DMA_THRESHOLD;
 
     if (dt_contig) {
         /* handle the iov creation ourselves */

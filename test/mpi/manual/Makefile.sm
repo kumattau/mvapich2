@@ -14,6 +14,3 @@ testconnectserial.o: testconnectserial.c
 
 clean-local:
 	@rm -f test-port
-
-smvarSubdir_do_dependencies=no
-smvar_dependenciesDummy=yes

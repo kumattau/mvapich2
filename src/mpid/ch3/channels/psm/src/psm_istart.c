@@ -149,6 +149,17 @@ int psm_istartmsg(MPIDI_VC_t *vc, void *upkt, MPIDI_msg_sz_t pkt_sz, MPID_Reques
             }
             break;
 
+        case MPIDI_CH3_PKT_ACCUM_IMMED: 
+            buflen = sizeof(MPIDI_CH3_Pkt_t);
+            src = ((MPIDI_CH3_Pkt_accum_immed_t *) genpkt)->mapped_srank;
+            trank = ((MPIDI_CH3_Pkt_accum_immed_t *) genpkt)->mapped_trank;
+            ++psm_tot_eager_accs;
+            mpi_errno = psm_send_1sided_ctrlpkt(rptr, trank, buf, buflen, src, 1);
+            if(unlikely(mpi_errno != MPI_SUCCESS)) {
+                MPIU_ERR_POP(mpi_errno);
+            }
+            break;
+
         case MPIDI_CH3_PKT_LOCK:
             buflen = sizeof(MPIDI_CH3_Pkt_t);
             src = ((MPIDI_CH3_Pkt_lock_t *) genpkt)->mapped_srank;

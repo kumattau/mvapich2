@@ -19,7 +19,9 @@
 
 /* FIXME: These should be removed */
 #define MPIDI_DEV_IMPLEMENTS_KVS
-
+/* This variable is used in the definitions of the MPID_Progress_xxx macros,
+   and must be available to the routines in src/mpi */
+extern volatile unsigned int MPIDI_CH3I_progress_completion_count;
 
 typedef struct MPIDI_CH3I_VC
 {
@@ -51,14 +53,6 @@ typedef struct MPIDI_CH3I_VC
     uint32_t pksz;                      \
     uint32_t psm_flags;                 \
     void *vbufptr;                      
-
-#if __GNUC__ >= 3
-    #define likely(x)     __builtin_expect(!!(x), 1)
-    #define unlikely(x)   __builtin_expect(!!(x), 0)
-#else
-    #define likely(x)     (x)
-    #define unlikely(x)   (x)
-#endif
 
 #define PSM_BLOCKING    1
 #define PSM_NONBLOCKING 0

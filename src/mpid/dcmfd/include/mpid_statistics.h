@@ -28,9 +28,9 @@
  * \brief Storage for statistical collection
  */
 typedef struct {
-  size_t s0;  /**< The running sum of the input0 (AKA add 1 every time) */
-  size_t s1;  /**< The running sum of the input1 */
-  size_t s2;  /**< The running sum of the input2 */
+  size_t s0;  /**< The running sum of the input^0 (AKA add 1 every time) */
+  size_t s1;  /**< The running sum of the input^1 */
+  size_t s2;  /**< The running sum of the input^2 */
   size_t max; /**< The largest input seen so far */
 } stat_time;
 

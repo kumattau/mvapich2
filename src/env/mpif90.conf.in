@@ -13,28 +13,28 @@ sysconfdir=@sysconfdir@
 includedir=@includedir@
 modincdir=@modincdir@
 libdir=@libdir@
-#
+
 # Default settings for compiler, flags, and libraries
 # Determined by a combination of environment variables and tests within
 # configure (e.g., determining whehter -lsocket is needee)
-F90="@F90@"
-F90CPP="@F90CPP@"
+FC="@FC@"
+FCCPP="@FCCPP@"
 # Fortran 90 Compiler characteristics
-F90INC="@F90INC@"
+FCINC="@FCINC@"
 # f90modinc specifies how to add a directory to the search path for modules.
 # Some compilers (Intel ifc version 5) do not support this concept, and 
 # instead need 
 # a specific list of files that contain module names and directories.
-# The F90MODINCSPEC is a more general approach that uses <dir> and <file>
+# The FCMODINCSPEC is a more general approach that uses <dir> and <file>
 # for the directory and file respectively.
-F90MODINC="@F90MODINCFLAG@"
-F90MODINCSPEC="@F90MODINCSPEC@"
-F90EXT="@F90EXT@"
-WRAPPER_F90FLAGS="@WRAPPER_F90FLAGS@"
-WRAPPER_LDFLAGS="@WRAPPER_LDFLAGS@"
+FCMODINC="@FCMODINCFLAG@"
+FCMODINCSPEC="@FCMODINCSPEC@"
+FCEXT="@FCEXT@"
+FCFLAGS="@WRAPPER_FCFLAGS@"
+LDFLAGS="@WRAPPER_LDFLAGS@"
+LIBS="@WRAPPER_LIBS@"
 MPILIBNAME="@MPILIBNAME@"
 PMPILIBNAME="@PMPILIBNAME@"
-MPI_OTHERLIBS="@LIBS@"
 NEEDSPLIB="@NEEDSPLIB@"
 # MPICH2_VERSION is the version of the MPICH2 library that mpicc is intended for
 MPICH2_VERSION="@MPICH2_VERSION@"

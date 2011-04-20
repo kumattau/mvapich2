@@ -34,3 +34,10 @@ $(pkgconfig_DATA): config.status
 
 
 .PHONY: prettycheck all-executable
+
+mandoc:
+
+htmldoc:
+
+latexdoc:
+

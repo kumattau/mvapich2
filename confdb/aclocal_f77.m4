@@ -1,3 +1,10 @@
+dnl PAC_PROG_F77 - reprioritize the F77 compiler search order
+AC_DEFUN([PAC_PROG_F77],[
+PAC_PUSH_FLAG([FFLAGS])
+AC_PROG_F77([ifort pgf77 af77 xlf frt cf77 fort77 fl32 fort ifc efc ftn gfortran f77 g77])
+PAC_POP_FLAG([FFLAGS])
+])
+
 dnl
 dnl/*D
 dnl PAC_PROG_F77_NAME_MANGLE - Determine how the Fortran compiler mangles
@@ -680,7 +687,13 @@ EOF
     AC_MSG_CHECKING([whether ${F77-f77} $flags $libs works with GETARG and IARGC])
     if AC_TRY_EVAL(ac_fcompilelink) && test -x conftest ; then
 	# Check that cross != yes so that this works with autoconf 2.52
-	if test "$ac_cv_prog_f77_cross" != "yes" ; then
+	# Check that cross_compiling != yes so that this works with 
+	# autoconf 2.6x for some (but almost certainly not all)x
+	# Question: why do we test that this runs?  It looks like we
+	# needed this for some old Fortran compilers that produced
+	# executable code that then did not run.
+	if test "$ac_cv_prog_f77_cross" != "yes" -a \
+	        "$cross_compiling" != "yes" ; then
 	    if ./conftest >/dev/null 2>&1 ; then
 		found_answer="yes"
 	        FXX_MODULE="$fxx_module"
@@ -695,18 +708,12 @@ EOF
 	AC_MSG_RESULT(no)
     # Grumph.  Here are a bunch of different approaches
     # We have several axes the check:
-dnl <_OSU_MVAPICH_>
-dnl    # Library to link with (none, -lU77 (HPUX), -lg2c (LINUX f77))
-dnl    # PEPCF90 (Intel ifc)
-    # Library to link with (none, -U77 (HPUX), -lg2c (LINUX f77), -lPEPCF90 (Intel ifc), -lfui (Sun Studio))
-dnl </_OSU_MVAPICH_> 
+    # Library to link with (none, -lU77 (HPUX), -lg2c (LINUX f77))
+    # PEPCF90 (Intel ifc)
     # The first line is a dummy
     # (we experimented with using a <space>, but this caused other 
     # problems because we need <space> in the IFS)
-dnl <_OSU_MVAPICH_> 
-dnl    trial_LIBS="0 -lU77 -lPEPCF90"
-    trial_LIBS="0 -lU77 -lPEPCF90 -lfui"
-dnl </_OSU_MVAPICH_>
+    trial_LIBS="0 -lU77 -lPEPCF90"
     if test "$NOG2C" != "1" ; then
         trial_LIBS="$trial_LIBS -lg2c"
     fi
@@ -932,7 +939,8 @@ EOF
 	        ac_fcompilelink_test="${F77-f77} -o conftest $FFLAGS $flags conftest.f $LDFLAGS $libs $LIBS 1>&AC_FD_CC"
 		found_answer="no"
                 if AC_TRY_EVAL(ac_fcompilelink_test) && test -x conftest ; then
-		    if test "$ac_cv_prog_f77_cross" != "yes" ; then
+		    if test "$ac_cv_prog_f77_cross" != "yes" -a \	 
+		            "$cross_compiling" != "yes" ; then
 			if ./conftest >/dev/null 2>&1 ; then
 			    found_answer="yes"
 			fi
@@ -1146,34 +1154,6 @@ if test "X$pac_cv_prog_f77_allows_unused_externals" = "Xyes" ; then
    ifelse([$1],,:,[$1])
 else
    ifelse([$2],,:,[$2])
-fi
-])
-
-
-dnl /*D 
-dnl PAC_PROG_F77_HAS_POINTER - Determine if Fortran allows pointer type
-dnl
-dnl Synopsis:
-dnl   PAC_PROG_F77_HAS_POINTER(action-if-true,action-if-false)
-dnl D*/
-AC_DEFUN([PAC_PROG_F77_HAS_POINTER],[
-AC_CACHE_CHECK([whether Fortran has pointer declaration],
-pac_cv_prog_f77_has_pointer,[
-AC_LANG_SAVE
-AC_LANG_FORTRAN77
-AC_COMPILE_IFELSE([AC_LANG_PROGRAM(,[
-        integer M
-        pointer (MPTR,M)
-        data MPTR/0/
-])],
-    pac_cv_prog_f77_has_pointer="yes",
-    pac_cv_prog_f77_has_pointer="no")
-AC_LANG_RESTORE
-])
-if test "$pac_cv_prog_f77_has_pointer" = "yes" ; then
-    ifelse([$1],,:,[$1])
-else
-    ifelse([$2],,:,[$2])
 fi
 ])
 

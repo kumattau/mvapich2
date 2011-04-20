@@ -1,22 +1,24 @@
 smvarSubdir_do_dependencies=no
 smvar_dependenciesDummy=yes
 #OTHER_DIRS = f77 f90 cxx
-smvarSubdir_do_dependencies=no
-smvar_dependenciesDummy=yes
 # We want to replace the compilation and linking rule used by simplement
 MPICHDIR=..
 CC       = $(MPICHDIR)/bin/mpicc
 CFLAGS   =
 CXXFLAGS =
 FFLAGS   =
-F90FLAGS =
+FCFLAGS  =
 LDFLAGS  =
 CPPFLAGS = 
 DEFS     = 
 INCLUDES = -I../src/include -I${top_srcdir}/src/include
 
 LDADD  = 
-DEPADD = ../lib/lib${MPILIBNAME}.a ../src/openpa/src/libopa.a
+
+# We previously put "../lib/libopa.a" here, but that only covers one of the
+# various OPA build/install cases.  Omit it for now.
+DEPADD = ../lib/lib${MPILIBNAME}.a
+
 LIBS   =
 # pmandel requires a separate set of socket calls (its a long story)
 # and may not build on most platforms

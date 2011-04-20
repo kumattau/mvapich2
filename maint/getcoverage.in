@@ -19,6 +19,8 @@
 # make coverage
 # maint/getcoverage src/mpi src/util > coverage.txt
 #
+# The script in mpich2-tests/getcoverage will perform all of these steps 
+# (this script is not yet included with the MPICH2 distribution)
 #
 # As an option, create HTML versions of the files with the uncovered code
 # highlighted with a different background color (e.g., pale red).  These
@@ -47,6 +49,7 @@ $outputUncovered = 1;
 # file names
 $annoteSrcDir = "";
 $annoteWebPrefix = "";
+$CoverageMessage = "";     # Extra message for the coverage index file
 $indexfile = "";     # File to contain the index of files
 $annoteFiles = 0;
 $annoteBaseDir = "";
@@ -132,6 +135,10 @@ for (@ARGV) {
 	$indexfile = "$indexdir/index.htm";
 	$coveredindexfile = "$indexdir/covered.htm";
 	if (! -d $indexdir) { &MakeDirs( $indexfile ); }
+	next;
+    }
+    elsif (/-coveredmsg=(.*)/) {
+	$CoverageMessage = $1;
 	next;
     }
     elsif (/-debug/) { 
@@ -521,6 +528,10 @@ sub WriteAnnoteFileMap {
     my $indexfile = $_[0];
     #my $date = `date "+%Y-%m-%d-%H-%M"`;
     my $date = `date`;
+    # FilesByMissed is a semicolon separated list of files, indexed by the
+    # number of lines missed.  This will allow us to list the top problems
+    # in terms of the number of uncovered lines.
+    my %FilesByMissed = ();
 
     open (IFD, ">$indexfile" ) || die "Could not open $indexfile\n";
 
@@ -539,6 +550,9 @@ sub WriteAnnoteFileMap {
 	print IFD "or $percent% missed ($covered% covered)\n";
 	my $date = `date "+%Y-%m-%d-%H-%M"`;
 	print IFD "<br>This index created on $date\n";
+	if ($CoverageMessage ne "") { 
+	    print IFD "<br>$CoverageMessage<br>\n"
+	}
 	print IFD "<p>\n";
 	print IFD "The following files contained some code that was not executed.  Files in which all non-error-handling, non-debug code was executed are not shown\n"
     }
@@ -589,8 +603,10 @@ sub WriteAnnoteFileMap {
 	}
 	my $label = $basename;
 	my $origFileName = $AnnoteFilesToOrig{$names[$i]};
+	my $missed;
+	my $total;
 	if (defined($AnnoteMissed{$origFileName})) {
-	    my ($missed,$total) = split(/;/,$AnnoteMissed{$origFileName});
+	    ($missed,$total) = split(/;/,$AnnoteMissed{$origFileName});
 	    $label = "$label ($missed)";
 	}
 	# FIXME: 
@@ -600,7 +616,14 @@ sub WriteAnnoteFileMap {
 	    print IFD "</TR>\n";
 	    $col = 1;
 	}
+	if (defined($FilesByMissed{$missed})) {
+	    $FilesByMissed{$missed} .= ";$dirname/$basename($target)";
+	}
+	else {
+	    $FilesByMissed{$missed} = "$dirname/$basename($target)";
+	}
     }
+
     # Flush the final table
     if ($curprefix ne "--NONE--") {
 	# In case the page is empty
@@ -611,6 +634,21 @@ sub WriteAnnoteFileMap {
 	    print IFD "</TR>\n";
 	}
 	print IFD "</TABLE>\n";
+    }
+
+    print IFD "<P><HR>\n<h2>Files with the most coverage gaps</h2>\n";
+    foreach my $key (sort {$b <=> $a} keys(%FilesByMissed)) {
+	if ($key < 10) { last; }
+	print IFD "($key): ";
+	foreach my $file (split(/;/,$FilesByMissed{$key})) {
+	    if ($file =~ /(.*)\((.*)\)/) {
+		print IFD "<A HREF=\"$2\">$1</A>\n";
+	    }
+	    else {
+		print IFD "$file\n";
+	    }
+	}
+	print IFD "<BR>\n";
     }
 
     print IFD "<P><HR>\nGenerated on $date\n";

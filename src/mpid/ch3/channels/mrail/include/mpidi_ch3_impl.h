@@ -21,6 +21,7 @@
 
 #include "mpidi_ch3i_rdma_conf.h"
 #include "mpidimpl.h"
+#include "mpiu_os_wrappers.h"
 
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
@@ -498,23 +499,22 @@ void MPIDI_CH3I_SMP_writev(MPIDI_VC_t * vc, const MPID_IOV * iov,
 #if defined(_SMP_LIMIC_)
 int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
         const int iovlen, int index, struct limic_header *l_header,
-        int *num_bytes_ptr, int use_limic);
+        size_t *num_bytes_ptr, int use_limic);
 #else
 int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
-	const int iovlen, int index, int *num_bytes_ptr);
+	const int iovlen, int index, size_t *num_bytes_ptr);
 #endif
 	
 #if defined(_SMP_LIMIC_)
 int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
-        const int iovlen, int index, struct limic_header *l_header, int *num_bytes_ptr, int use_limic);
+        const int iovlen, int index, struct limic_header *l_header, size_t *num_bytes_ptr, int use_limic);
 #else
 int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
-	const int iovlen, int index, int *num_bytes_ptr);
+	const int iovlen, int index, size_t *num_bytes_ptr);
 #endif
 
 int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
-                         const int iovlen, int
-                         *num_bytes_ptr);
+                         const int iovlen, size_t *num_bytes_ptr);
 
 int MPIDI_CH3I_SMP_pull_header(MPIDI_VC_t * vc,
                                MPIDI_CH3_Pkt_t ** pkt_head);

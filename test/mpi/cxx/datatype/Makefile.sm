@@ -3,12 +3,10 @@ INCLUDES = -I../../include -I${srcdir}/../../include
 LDADD = ../util/mtest.o 
 DEPADD = @MPILIBLOC@ ../util/mtest.o
 
+packsizex_SOURCES  = packsizex.cxx
 typecntsx_SOURCES  = typecntsx.cxx
 typenamex_SOURCES  = typenamex.cxx
 typemiscx_SOURCES  = typemiscx.cxx
 
 ../util/mtest.o:
 	cd ../util && $(MAKE) mtest.o
-
-smvarSubdir_do_dependencies=no
-smvar_dependenciesDummy=yes

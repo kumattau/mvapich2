@@ -1,13 +1,3 @@
-# Copyright (c) 2003-2011, The Ohio State University. All rights
-# reserved.
-#
-# This file is part of the MVAPICH2 software package developed by the
-# team members of The Ohio State University's Network-Based Computing
-# Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
-#
-# For detailed copyright and licensing information, please refer to the
-# copyright file COPYRIGHT in the top level MVAPICH2 directory.
-
 # Makefile.in for mpd2
 
 @SET_MAKE@
@@ -30,25 +20,16 @@ DO_MTV    = @DO_MTV@
 INSTALL   = @INSTALL@
 CFLAGS    = @CFLAGS@
 
-# <_OSU_MVAPICH_>
-#C_COMPILE = ${CC} ${INCLUDES} ${CFLAGS} ${COPTIONS}
-C_COMPILE = ${CC} ${INCLUDES} ${CFLAGS} ${CPPFLAGS} ${COPTIONS}
-# </_OSU_MVAPICH_>
+C_COMPILE = ${CC} ${INCLUDES} ${CFLAGS} ${COPTIONS}
 C_LINK	  = ${CLINKER} ${CFLAGS} ${COPTIONS} ${LDFLAGS}
 
 VPATH     = .:@srcdir@
 
-# <_OSU_MVAPICH_>
-#PROGRAMS  = mpdroot
-PROGRAMS  = mpdroot @MPD_OTHERS@
-# </_OSU_MVAPICH_>
+PROGRAMS  = mpdroot
 EXAMPLES  = sigcatcher infloop
-# <_OSU_MVAPICH_>
-#SOURCES   = ${mpdroot_SOURCES} ${example_SOURCES}
-#OBJECTS   = ${mpdroot_OBJECTS} ${example_OBJECTS}
-SOURCES   = ${mpdroot_SOURCES} ${example_SOURCES} ${mpiexec_cr_SOURCES}
-OBJECTS   = ${mpdroot_OBJECTS} ${example_OBJECTS} ${mpiexec_cr_OBJECTS}
-# </_OSU_MVAPICH_>
+
+SOURCES   = ${mpdroot_SOURCES} ${example_SOURCES}
+OBJECTS   = ${mpdroot_OBJECTS} ${example_OBJECTS}
 HEADERS   = mpdconf.h mpdroot.h
 
 MPD      = mpd
@@ -65,10 +46,6 @@ example_SOURCES	 = sigcatcher.c infloop.c
 mpdroot_OBJECTS	= ${mpdroot_SOURCES:.c=.o}
 example_OBJECTS	= ${example_SOURCES:.c=.o}
 
-# <_OSU_MVAPICH_>
-mpiexec_cr_SOURCES = mpiexec_cr.c
-mpiexec_cr_OBJECTS = ${mpiexec_cr_SOURCES:.c=.o}
-# </_OSU_MVAPICH_>
 
 all: Makefile ${PROGRAMS}
 	@if [ ! -x ${srcdir}/install.sh ] ; then \
@@ -94,15 +71,8 @@ mpdroot: ${mpdroot_OBJECTS}
 	$(C_LINK) -o mpdroot ${mpdroot_OBJECTS} $(LIBS)
 
 mpdroot.o: ${srcdir}/mpdroot.c ${srcdir}/mpdroot.h mpdconf.h
-	${C_COMPILE} -c  $< 
+	${C_COMPILE} -DSYSCONFDIR=\"@sysconfdir@\" -c  $<
 
-# <_OSU_MVAPICH_>
-mpiexec_cr: ${mpiexec_cr_OBJECTS} 
-	$(C_LINK) -o mpiexec_cr ${mpiexec_cr_OBJECTS} $(LIBS)
-
-mpiexec_cr.o: ${srcdir}/mpiexec_cr.c
-	${C_COMPILE} -c  $<
-# </_OSU_MVAPICH_>
 # The following lines provide the right libraries for all example programs
 .c:
 	${C_LINK} -o $* $*.c $(LIBS)
@@ -127,9 +97,7 @@ maintainer-clean: distclean
 
 ${srcdir}/configure: ${srcdir}/configure.in
 	@rm -rf autom4te*.cache
-	(cd ${srcdir} && autoheader -I ../../../confdb && \
-	autoconf -I \
-	../../../confdb )
+	(cd ${srcdir} && autoheader -I ../../../confdb && autoconf -I ../../../confdb)
 
 Makefile: ${srcdir}/Makefile.in config.status
 	./config.status
@@ -140,7 +108,7 @@ Makefile: ${srcdir}/Makefile.in config.status
 # if configured with wrong prefix, use:
 #     make prefix=new_install_dir install
 # Note the conditional test for files in PYTHON_SOURCE; this is to allow
-# us to install Zeroconf if present (it is not part of the MVAPICH2 release
+# us to install Zeroconf if present (it is not part of the MPICH2 release
 # in order to avoid Copyright problems).
 install: all
 	@if [ ! -d $(DESTDIR)${bindir} ] ; then \
@@ -152,16 +120,13 @@ install: all
         else \
 	    ${INSTALL} -m  755 mpdroot $(DESTDIR)${bindir}/mpdroot ;\
 	fi
-# <_OSU_MVAPICH_>
-	-@if [ -n "@MPD_OTHERS@" ] ; then \
-	   ${INSTALL} -m  755 mpiexec_cr $(DESTDIR)${bindir}/mpiexec_cr ;\
-	   ${INSTALL} -m  755 $(srcdir)/mv2_checkpoint $(DESTDIR)${bindir}/mv2_checkpoint ;\
-	fi
-# </_OSU_MVAPICH_>
 	@echo "copying python files/links into " $(DESTDIR)${bindir}
 	-@for cmd in ${PYTHON_SOURCE} ; do \
 	    if [ ! -s $(srcdir)/$$cmd.py ] ; then continue ; fi ; \
-	    sed -e 's#/usr/bin/env python.*#/usr/bin/env ${PYTHON}#' ${srcdir}/$$cmd.py > $(DESTDIR)${bindir}/temp$$cmd.py ; \
+		sed \
+			-e 's#/usr/bin/env python.*#/usr/bin/env ${PYTHON}#' \
+			-e 's,/etc/mpd.conf,@sysconfdir@/mpd.conf,g' \
+			${srcdir}/$$cmd.py > $(DESTDIR)${bindir}/temp$$cmd.py ; \
 	    ${INSTALL} -m 755 $(DESTDIR)${bindir}/temp$$cmd.py $(DESTDIR)${bindir}/$$cmd.py; \
 	    ( rm -f $(DESTDIR)${bindir}/temp$$cmd.py >/dev/null 2>&1 || exit 0 ) ; \
 	done
@@ -177,21 +142,10 @@ install: all
 	-@( rm -f $(DESTDIR)${bindir}/mpdrun.py >/dev/null 2>&1 || exit 0 )
 	-@( rm -f $(DESTDIR)${bindir}/mpirun >/dev/null 2>&1 || exit 0 )
 	-@( rm -f $(DESTDIR)${bindir}/mpirun.py >/dev/null 2>&1 || exit 0 )
-# <_OSU_MVAPICH_>
-#	-@cd $(DESTDIR)${bindir} && @LN_S@ mpiexec mpdrun
+	-@cd $(DESTDIR)${bindir} && @LN_S@ mpiexec mpdrun
 	-@cd $(DESTDIR)${bindir} && @LN_S@ mpiexec.py mpdrun.py
-#	-@cd $(DESTDIR)${bindir} && @LN_S@ mpiexec mpirun
+	-@cd $(DESTDIR)${bindir} && @LN_S@ mpiexec mpirun
 	-@cd $(DESTDIR)${bindir} && @LN_S@ mpiexec.py mpirun.py
-	-@if [ -n "@MPD_OTHERS@" ] ; then \
-	    cd $(DESTDIR)${bindir} && rm -f mpiexec ;\
-            cd $(DESTDIR)${bindir} && @LN_S@ mpiexec_cr mpiexec ;\
-            cd $(DESTDIR)${bindir} && @LN_S@ mpiexec_cr mpdrun ;\
-            cd $(DESTDIR)${bindir} && @LN_S@ mpiexec_cr mpirun ;\
-	else \
-            cd $(DESTDIR)${bindir} && @LN_S@ mpiexec mpdrun ;\
-            cd $(DESTDIR)${bindir} && @LN_S@ mpiexec mpirun ;\
-	fi
-# </_OSU_MVAPICH_>
 	-@if [ "${DO_MTV}" = "yes" ] ; then \
 	    ${INSTALL} -m 755 mtv.so $(DESTDIR)${bindir}/mtv.so ;\
 	fi
@@ -254,13 +208,13 @@ mpich2-mpdroot: mpich2-mpdroot.o
 
 mpich2-mpdroot.o: ${srcdir}/mpdroot.c ${srcdir}/mpdroot.h mpdconf.h
 	${INSTALL} -m 644 ${srcdir}/mpdroot.c mpich2-mpdroot.c
-	${C_COMPILE} -c mpich2-mpdroot.c
+	${C_COMPILE} -DSYSCONFDIR=\"@sysconfdir@\" -c mpich2-mpdroot.c
 	rm -f mpich2-mpdroot.c
 
 # A special alternate installation target when using multiple process managers
-# MVAPICH2 expects this, but it only needs to install enough to run mpiexec
+# MPICH2 expects this, but it only needs to install enough to run mpiexec
 # The purpose of this target is to allow users to use mpiexec.mpd to run
-# MVAPICH2 programs using the MPD process manager when they configure MVAPICH2
+# MPICH2 programs using the MPD process manager when they configure MPICH2
 # to build multiple process managers.
 install-alt: mpiexec.py
 	@echo "copying python files/links into " $(DESTDIR)${bindir}
@@ -288,13 +242,11 @@ install-alt: mpiexec.py
 	mv -f $(DESTDIR)${bindir}/mpiexec.py $(DESTDIR)${bindir}/mpiexec.mpd
 	cd $(DESTDIR)${bindir} && @LN_S@ mpiexec.mpd mpdrun
 
-# Empty dependencies target (MVAPICH2 wants this target)
+# Empty dependencies target (MPICH2 wants this target)
 dependencies:
-# Empty documentations targets (MVAPICH2 wants this target)
+# Empty documentations targets (MPICH2 wants this target)
 htmldoc:
 latexdoc:
-mandoc:
-# Empty tags targets (MVAPICH2 wants this target)
 tags: TAGS
 TAGS:
 

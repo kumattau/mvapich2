@@ -104,13 +104,14 @@ extern int tuning_table[COLL_COUNT][COLL_SIZE];
 
 struct scatter_tuning{
     int numproc;
-    int binomial;
-    int two_lvl_direct;
+    int small;
+    int medium;
 };
 
-extern int size_scatter_tuning_table;
-
-extern struct scatter_tuning scatter_tuning_table[3];
+struct gather_tuning{
+    int numproc;
+    int switchp;
+};
 
 #define BCAST_LEN 20
 #define SHMEM_BCAST_FLAGS	1024
@@ -125,20 +126,24 @@ extern struct coll_runtime coll_param;
 extern void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int, int, int, void**);
 extern void MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(int, int, int);
 
-/* Use inside gather_osu.c*/
-#define MPIR_GATHER_SMALL_MSG 2048
-#define MPIR_GATHER_MEDIUM_MSG 8192
-#define MPIR_GATHER_TWO_LEVEL_SMALL_MSG 4096
-#define MPIR_GATHER_BINOMIAL_SMALL_MSG  1024
+extern int tune_parameter;
+/* Use for gather_osu.c*/
 #define MPIR_GATHER_BINOMIAL_MEDIUM_MSG 16384
+extern int user_gather_switch_point;
+extern int size_gather_tuning_table;
+extern struct gather_tuning gather_tuning_table[8];
 extern int use_two_level_gather; 
-extern int gather_direct_system_size_small; 
+extern int gather_direct_system_size_small;
 extern int gather_direct_system_size_medium; 
 extern int use_direct_gather; 
 
 
 
-/* Use inside scatter_osu.c*/
+/* Use for scatter_osu.c*/
+extern int user_scatter_small_msg;
+extern int user_scatter_medium_msg;
+extern int size_scatter_tuning_table;
+extern struct scatter_tuning scatter_tuning_table[4];
 extern int use_two_level_scatter; 
 extern int use_direct_scatter; 
 
@@ -149,9 +154,7 @@ extern int check_comm_registry(MPI_Comm);
 
 
 /* Use inside alltoall_osu.h */
-extern int alltoall_dreg_disable_threshold;
-extern int alltoall_dreg_disable;
-extern int g_is_dreg_initialized;
+extern int use_xor_alltoall; 
 
 
 /* Use inside barrier_osu.c*/
@@ -173,5 +176,13 @@ extern void wait_for_signal(int, int, char**, int*, int*, void*);
 /* Use inside reduce_osu.c */
 extern int disable_shmem_reduce;
 extern int check_comm_registry(MPI_Comm);
+
+/* Lock/unlock shmem region */
+extern void lock_shmem_region(void);
+extern void unlock_shmem_region(void);
+
+/* utils */
+extern void increment_shmem_comm_count(void);
+extern int get_shmem_comm_count(void);
 
 #endif  /* _COLL_SHMEM_ */

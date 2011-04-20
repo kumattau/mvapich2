@@ -333,7 +333,7 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
 	    /* put the kvs into PMI */
 	    MPIU_Strncpy(key, rdmakey, key_max_sz);
 	    MPIU_Strncpy(val, rdmavalue, val_max_sz);
-        DEBUG_PRINT("rdmavalue %s len:%d \n", val,strlen(val))
+        DEBUG_PRINT("rdmavalue %s len:%d \n", val,strlen(val));
 
 	    error = PMI_KVS_Put(pg->ch.kvs_name, key, val);
 	    if (error != PMI_SUCCESS) {
@@ -1111,7 +1111,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
             MPIU_Error_printf("Error obtaining hostnames\n");
         }
 
-    if (MV2_HCA_CHELSIO_T3 == MPIDI_CH3I_RDMA_Process.hca_type) {
+    if (MV2_IS_CHELSIO_IWARP_CARD(MPIDI_CH3I_RDMA_Process.hca_type)) {
          /* TRAC Ticket #455 */
          if(g_num_smp_peers + 1 < pg_size) {
            int avail_cq_entries = 0;

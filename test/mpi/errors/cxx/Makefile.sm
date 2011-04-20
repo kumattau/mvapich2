@@ -6,6 +6,3 @@ testing:
 		   -mpiexec=$(bindir)/mpiexec \
 		   -xmlfile=summary.xml
 
-
-smvarSubdir_do_dependencies=no
-smvar_dependenciesDummy=yes

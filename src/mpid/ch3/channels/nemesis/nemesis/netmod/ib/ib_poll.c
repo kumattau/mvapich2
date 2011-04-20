@@ -490,6 +490,9 @@ static inline int GetSeqNumVbuf(vbuf * buf)
 
     switch(((MPIDI_nem_ib_pkt_comm_header *)buf->iheader)->type) {
         case MPIDI_CH3_PKT_EAGER_SEND:
+#if defined(USE_EAGER_SHORT)
+        case MPIDI_CH3_PKT_EAGERSHORT_SEND:
+#endif
         case MPIDI_CH3_PKT_READY_SEND:
         case MPIDI_CH3_PKT_EAGER_SYNC_SEND:
         case MPIDI_CH3_PKT_EAGER_SYNC_ACK:
@@ -510,6 +513,7 @@ static inline int GetSeqNumVbuf(vbuf * buf)
         case MPIDI_CH3_PKT_LOCK_PUT_UNLOCK:
         case MPIDI_CH3_PKT_LOCK_GET_UNLOCK:
         case MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK:
+        case MPIDI_CH3_PKT_ACCUM_IMMED:
         case MPIDI_CH3_PKT_PT_RMA_DONE:
         case MPIDI_CH3_PKT_FLOW_CNTL_UPDATE:
         case MPIDI_CH3_PKT_CLOSE:

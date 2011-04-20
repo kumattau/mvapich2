@@ -27,7 +27,6 @@ int MPID_Probe(int source, int tag, MPID_Comm * comm, int context_offset,
     MPID_Progress_state progress_state;
     const int context = comm->recvcontext_id + context_offset;
     int mpi_errno = MPI_SUCCESS;
-    int complete = FALSE;
     MPIDI_STATE_DECL(MPID_STATE_MPID_PROBE);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_PROBE);
@@ -39,6 +38,7 @@ int MPID_Probe(int source, int tag, MPID_Comm * comm, int context_offset,
     }
 
 #if defined (_OSU_PSM_)
+	int complete = FALSE;
     MPID_Progress_poke();
     mpi_errno = MPIDI_CH3_Probe(source, tag, context, status,
                                 &complete, PSM_BLOCKING);
@@ -46,21 +46,73 @@ int MPID_Probe(int source, int tag, MPID_Comm * comm, int context_offset,
     assert(complete == TRUE);
     goto fn_exit;
 #endif
+#ifdef ENABLE_COMM_OVERRIDES
+    if (MPIDI_Anysource_iprobe_fn) {
+        if (source == MPI_ANY_SOURCE) {
+            /* if it's anysource, loop while checking the shm recv
+               queue and iprobing the netmod, then do a progress
+               test to make some progress. */
+            do {
+                int found;
+                
+                MPIU_THREAD_CS_ENTER(MSGQUEUE,);
+                found = MPIDI_CH3U_Recvq_FU(source, tag, context, status);
+                MPIU_THREAD_CS_EXIT(MSGQUEUE,);
+                if (found) break;
 
+                mpi_errno = MPIDI_Anysource_iprobe_fn(tag, comm, context_offset, &found, status);
+                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                if (found) break;
+
+                MPIU_THREAD_CS_YIELD(ALLFUNC,);
+                
+                mpi_errno = MPIDI_CH3_Progress_test();
+                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+            } while (1);
+            goto fn_exit;
+        } else {
+            /* it's not anysource, see if this is for the netmod */
+            MPIDI_VC_t * vc;
+            MPIDI_Comm_get_vc_set_active(comm, source, &vc);
+            
+            if (vc->comm_ops && vc->comm_ops->iprobe) {
+                /* netmod has overridden iprobe */
+                do {
+                    int found;
+                    
+                    mpi_errno = vc->comm_ops->iprobe(vc, source, tag, comm, context_offset, &found,
+                                                     status);
+                    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                    if (found) break;
+                    
+                    MPIU_THREAD_CS_YIELD(ALLFUNC,);
+                    
+                    mpi_errno = MPIDI_CH3_Progress_test();
+                    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                } while (1);
+            }
+            /* fall-through to shm case */
+        }
+    }
+#endif
     MPIDI_CH3_Progress_start(&progress_state);
     do
     {
-	if (MPIDI_CH3U_Recvq_FU( source, tag, context, status )) {
-	    break;
-	}
+        int found;
+
+        MPIU_THREAD_CS_ENTER(MSGQUEUE,);
+        found = MPIDI_CH3U_Recvq_FU(source, tag, context, status);
+        MPIU_THREAD_CS_EXIT(MSGQUEUE,);
+        if (found) break;
 
 	mpi_errno = MPIDI_CH3_Progress_wait(&progress_state);
     }
     while(mpi_errno == MPI_SUCCESS);
     MPIDI_CH3_Progress_end(&progress_state);
 
- fn_fail:
  fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_PROBE);
     return mpi_errno;
+ fn_fail:
+    goto fn_exit;
 }

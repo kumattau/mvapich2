@@ -21,7 +21,7 @@ extern const char MPIR_Version_device[];
 extern const char MPIR_Version_CC[];
 extern const char MPIR_Version_CXX[];
 extern const char MPIR_Version_F77[];
-extern const char MPIR_Version_F90[];
+extern const char MPIR_Version_FC[];
 #define MPINAME_VERSION MPIR_Version_string
 #define MPINAME_RELEASE_DATE MPIR_Version_date
 #define MPINAME_OPTIONS MPIR_Version_configure
@@ -29,7 +29,7 @@ extern const char MPIR_Version_F90[];
 #define MPINAME_CC MPIR_Version_CC
 #define MPINAME_CXX MPIR_Version_CXX
 #define MPINAME_F77 MPIR_Version_F77
-#define MPINAME_F90 MPIR_Version_F90
+#define MPINAME_FC MPIR_Version_FC
 #define MPINAME_NAME "MVAPICH2"
 
 #define PRINT_DEVICE 8
@@ -120,11 +120,11 @@ int main (int argc, char* argv[])
     if (s_stackElements & PRINT_COMPILERS)
     {
         s_stackElements ^= PRINT_COMPILERS;
-        printf("Compilation\nCC: %s\nCXX: %s\nF77: %s\nF90: %s\n\n",
+        printf("Compilation\nCC: %s\nCXX: %s\nF77: %s\nFC: %s\n\n",
             MPINAME_CC,
             MPINAME_CXX,
             MPINAME_F77,
-            MPINAME_F90);
+            MPINAME_FC);
     }
     
     if (s_stackElements & PRINT_OPTIONS)

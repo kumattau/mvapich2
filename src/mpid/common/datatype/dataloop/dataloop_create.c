@@ -23,6 +23,7 @@ void PREPEND_PREFIX(Dataloop_create)(MPI_Datatype type,
 				     int flag)
 {
     int i;
+    int err;
 
     int nr_ints, nr_aints, nr_types, combiner;
     MPI_Datatype *types;
@@ -38,7 +39,7 @@ void PREPEND_PREFIX(Dataloop_create)(MPI_Datatype type,
     MPI_Aint stride;
     MPI_Aint *disps;
 
-    NMPI_Type_get_envelope(type, &nr_ints, &nr_aints, &nr_types, &combiner);
+    MPIR_Type_get_envelope_impl(type, &nr_ints, &nr_aints, &nr_types, &combiner);
 
     /* some named types do need dataloops; handle separately. */
     if (combiner == MPI_COMBINER_NAMED) {
@@ -105,8 +106,7 @@ void PREPEND_PREFIX(Dataloop_create)(MPI_Datatype type,
      * note: in the struct case below we'll handle any additional
      *       types "below" the current one.
      */
-    NMPI_Type_get_envelope(types[0], &dummy1, &dummy2, &dummy3,
-			   &type0_combiner);
+    MPIR_Type_get_envelope_impl(types[0], &dummy1, &dummy2, &dummy3, &type0_combiner);
     if (type0_combiner != MPI_COMBINER_NAMED)
     {
 	DLOOP_Handle_get_loopptr_macro(types[0], old_dlp, flag);
@@ -244,8 +244,7 @@ void PREPEND_PREFIX(Dataloop_create)(MPI_Datatype type,
 	case MPI_COMBINER_STRUCT:
 	    for (i = 1; i < ints[0]; i++) {
 		int type_combiner;
-		NMPI_Type_get_envelope(types[i], &dummy1, &dummy2, &dummy3,
-				       &type_combiner);
+		MPIR_Type_get_envelope_impl(types[i], &dummy1, &dummy2, &dummy3, &type_combiner);
 
 		if (type_combiner != MPI_COMBINER_NAMED) {
 		    DLOOP_Handle_get_loopptr_macro(types[i], old_dlp, flag);
@@ -277,12 +276,15 @@ void PREPEND_PREFIX(Dataloop_create)(MPI_Datatype type,
 		disps = aints;
 	    }
 
-	    PREPEND_PREFIX(Dataloop_create_struct)(ints[0] /* count */,
-						   &ints[1] /* blklens */,
-						   disps,
-						   types /* oldtype array */,
-						   dlp_p, dlsz_p, dldepth_p,
-						   flag);
+            err = PREPEND_PREFIX(Dataloop_create_struct)(ints[0] /* count */,
+                                                         &ints[1] /* blklens */,
+                                                         disps,
+                                                         types /* oldtype array */,
+                                                         dlp_p, dlsz_p, dldepth_p,
+                                                         flag);
+            /* TODO if/when this function returns error codes, propagate this failure instead */
+            DLOOP_Assert(0 == err);
+            /* if (err) return err; */
 
 	    if (combiner == MPI_COMBINER_STRUCT_INTEGER) {
 		DLOOP_Free(disps);
@@ -304,7 +306,7 @@ void PREPEND_PREFIX(Dataloop_create)(MPI_Datatype type,
 					    dldepth_p,
 					    flag);
 	    
-	    NMPI_Type_free(&tmptype);
+	    MPIR_Type_free_impl(&tmptype);
 	    break;
 	case MPI_COMBINER_DARRAY:
 	    ndims = ints[2];
@@ -325,7 +327,7 @@ void PREPEND_PREFIX(Dataloop_create)(MPI_Datatype type,
 					    dldepth_p,
 					    flag);
 
-	    NMPI_Type_free(&tmptype);
+	    MPIR_Type_free_impl(&tmptype);
 	    break;
 	default:
 	    DLOOP_Assert(0);

@@ -27,10 +27,9 @@ typedef struct MPIDU_Sock_ifaddr_t {
     unsigned char ifaddr[16];
 } MPIDU_Sock_ifaddr_t;
 
+/* FIXME: Move all externs to say socksm_globals.h */
+extern MPIU_ExSetHandle_t MPID_nem_newtcp_module_ex_set_hnd;
 
-MPID_nem_queue_ptr_t MPID_nem_newtcp_module_free_queue = 0;
-MPID_nem_queue_ptr_t MPID_nem_process_recv_queue = 0;
-MPID_nem_queue_ptr_t MPID_nem_process_free_queue = 0;
 extern sockconn_t MPID_nem_newtcp_module_g_lstn_sc;
 extern struct pollfd g_lstn_plfd;
 
@@ -45,7 +44,6 @@ MPID_nem_netmod_funcs_t MPIDI_nem_newtcp_module_funcs = {
     MPID_nem_newtcp_module_init,
     MPID_nem_newtcp_module_finalize,
     MPID_nem_newtcp_module_poll,
-    MPID_nem_newtcp_module_send,
     MPID_nem_newtcp_module_get_business_card,
     MPID_nem_newtcp_module_connect_to_root,
     MPID_nem_newtcp_module_vc_init,
@@ -61,28 +59,33 @@ MPID_nem_netmod_funcs_t MPIDI_nem_newtcp_module_funcs = {
 #define FUNCNAME MPID_nem_newtcp_module_init
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPID_nem_newtcp_module_init (MPID_nem_queue_ptr_t proc_recv_queue, MPID_nem_queue_ptr_t proc_free_queue,
-                                 MPID_nem_cell_ptr_t proc_elements, int num_proc_elements, MPID_nem_cell_ptr_t module_elements,
-                                 int num_module_elements, MPID_nem_queue_ptr_t *module_free_queue,
-                                 MPIDI_PG_t *pg_p, int pg_rank, char **bc_val_p, int *val_max_sz_p)
+int MPID_nem_newtcp_module_init (MPIDI_PG_t *pg_p, int pg_rank, char **bc_val_p, int *val_max_sz_p)
 {
     int mpi_errno = MPI_SUCCESS;
-    int i;
     MPIDI_STATE_DECL(MPID_STATE_MPID_NEM_NEWTCP_MODULE_INIT);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_NEM_NEWTCP_MODULE_INIT);
 
     MPIU_UNREFERENCED_ARG(pg_p);
-    MPIU_UNREFERENCED_ARG(proc_elements);
-    MPIU_UNREFERENCED_ARG(num_proc_elements);
 
     /* first make sure that our private fields in the vc fit into the area provided  */
     MPIU_Assert(sizeof(MPID_nem_newtcp_module_vc_area) <= MPID_NEM_VC_NETMOD_AREA_LEN);
     
-    /* set up listener socket */
+    /* Initialize sock wrapper */
     mpi_errno = MPIU_SOCKW_Init();
     if(mpi_errno != MPI_SUCCESS) { MPIU_ERR_POP(mpi_errno); }
 
+    /* Initialize the Executive progress engine */
+    mpi_errno = MPIU_ExInitialize();
+    if(mpi_errno != MPI_SUCCESS) { MPIU_ERR_POP(mpi_errno); }
+
+    /* Create an Executive set */
+    /* FIXME: All MPI util funcs should return an MPI error code */
+    MPID_nem_newtcp_module_ex_set_hnd = MPIU_ExCreateSet();
+    MPIU_ERR_CHKANDJUMP(MPID_nem_newtcp_module_ex_set_hnd == MPIU_EX_INVALID_SET,
+                            mpi_errno, MPI_ERR_OTHER, "**ex_create_set"); 
+
+    /* Setup listen socket */
     mpi_errno = MPIU_SOCKW_Sock_open(AF_INET, SOCK_STREAM, IPPROTO_TCP, &(MPID_nem_newtcp_module_g_lstn_sc.fd));
     if(mpi_errno != MPI_SUCCESS) MPIU_ERR_POP(mpi_errno);
 
@@ -95,30 +98,22 @@ int MPID_nem_newtcp_module_init (MPID_nem_queue_ptr_t proc_recv_queue, MPID_nem_
     mpi_errno = MPIU_SOCKW_Listen(MPID_nem_newtcp_module_g_lstn_sc.fd, SOMAXCONN);
     if(mpi_errno != MPI_SUCCESS) MPIU_ERR_POP(mpi_errno);
 
-    MPID_nem_newtcp_module_g_lstn_sc.state.lstate = LISTEN_STATE_LISTENING;
+    /* Associate the listen sock with the newtcp module executive set 
+     * - Key 0 command processor */
+    /* FIXME: No error code returned ! */
+    MPIU_ExAttachHandle(MPID_nem_newtcp_module_ex_set_hnd, MPIU_EX_WIN32_COMP_PROC_KEY, (HANDLE )MPID_nem_newtcp_module_g_lstn_sc.fd);
+    
+    /* Register the listening handlers with executive */
+    /* We also need to post the first accept here */
+
+    MPID_nem_newtcp_module_g_lstn_sc.state = LISTEN_STATE_LISTENING;
+    /* FIXME: WINTCP ASYNC
     MPID_nem_newtcp_module_g_lstn_sc.handler = MPID_nem_newtcp_module_state_listening_handler;
+    */
 
     /* create business card */
     mpi_errno = MPID_nem_newtcp_module_get_business_card (pg_rank, bc_val_p, val_max_sz_p);
     if (mpi_errno) MPIU_ERR_POP (mpi_errno);
-
-    /* save references to queues */
-    MPID_nem_process_recv_queue = proc_recv_queue;
-    MPID_nem_process_free_queue = proc_free_queue;
-
-    MPID_nem_newtcp_module_free_queue = &_free_queue;
-
-    /* set up network module queues */
-    MPID_nem_queue_init (MPID_nem_newtcp_module_free_queue);
-
-    for (i = 0; i < num_module_elements; ++i)
-    {
-        MPID_nem_queue_enqueue (MPID_nem_newtcp_module_free_queue, &module_elements[i]);
-    }
-
-    *module_free_queue = MPID_nem_newtcp_module_free_queue;
-
-    /* FIXME: Why happens on an error ? */
 
     mpi_errno = MPID_nem_newtcp_module_sm_init();
     if(mpi_errno != MPI_SUCCESS) MPIU_ERR_POP(mpi_errno);
@@ -237,6 +232,7 @@ static int GetSockInterfaceAddr(int myRank, char *ifname, int maxIfname,
 int MPID_nem_newtcp_module_get_business_card (int my_rank, char **bc_val_p, int *val_max_sz_p)
 {
     int mpi_errno = MPI_SUCCESS;
+    int str_errno = MPIU_STR_SUCCESS;
     MPIDU_Sock_ifaddr_t ifaddr;
     char ifname[MAX_HOST_DESCRIPTION_LEN];
     int ret;
@@ -250,34 +246,20 @@ int MPID_nem_newtcp_module_get_business_card (int my_rank, char **bc_val_p, int 
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     
     
-    mpi_errno = MPIU_Str_add_string_arg(bc_val_p, val_max_sz_p, MPIDI_CH3I_HOST_DESCRIPTION_KEY, ifname);
-    if (mpi_errno != MPIU_STR_SUCCESS)
-    {
-        if (mpi_errno == MPIU_STR_NOMEM)
-        {
-            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**buscard_len");
-        }
-        else
-        {
-            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**buscard");
-        }
+    str_errno = MPIU_Str_add_string_arg(bc_val_p, val_max_sz_p, MPIDI_CH3I_HOST_DESCRIPTION_KEY, ifname);
+    if (str_errno) {
+        MPIU_ERR_CHKANDJUMP(str_errno == MPIU_STR_NOMEM, mpi_errno, MPI_ERR_OTHER, "**buscard_len");
+        MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**buscard");
     }
 
     len = sizeof(sock_id);
     ret = getsockname (MPID_nem_newtcp_module_g_lstn_sc.fd, (struct sockaddr *)&sock_id, &len);
     MPIU_ERR_CHKANDJUMP1 (ret == -1, mpi_errno, MPI_ERR_OTHER, "**getsockname", "**getsockname %s", strerror (errno));
 
-    mpi_errno = MPIU_Str_add_int_arg (bc_val_p, val_max_sz_p, MPIDI_CH3I_PORT_KEY, sock_id.sin_port);
-    if (mpi_errno != MPIU_STR_SUCCESS)
-    {
-        if (mpi_errno == MPIU_STR_NOMEM)
-        {
-            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**buscard_len");
-        }
-        else
-        {
-            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**buscard");
-        }
+    str_errno = MPIU_Str_add_int_arg (bc_val_p, val_max_sz_p, MPIDI_CH3I_PORT_KEY, sock_id.sin_port);
+    if (str_errno) {
+        MPIU_ERR_CHKANDJUMP(str_errno == MPIU_STR_NOMEM, mpi_errno, MPI_ERR_OTHER, "**buscard_len");
+        MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**buscard");
     }
 
     {
@@ -288,18 +270,11 @@ int MPID_nem_newtcp_module_get_business_card (int my_rank, char **bc_val_p, int 
 	    p = (unsigned char *)(ifaddr.ifaddr);
 	    MPIU_Snprintf( ifname, sizeof(ifname), "%u.%u.%u.%u", p[0], p[1], p[2], p[3] );
 	    MPIU_DBG_MSG_S(CH3_CONNECT,VERBOSE,"ifname = %s",ifname );
-	    mpi_errno = MPIU_Str_add_string_arg(bc_val_p, val_max_sz_p, MPIDI_CH3I_IFNAME_KEY, ifname);
-	    if (mpi_errno != MPIU_STR_SUCCESS)
-            {
-		if (mpi_errno == MPIU_STR_NOMEM)
-                {
-		    MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**buscard_len");
-		}
-		else
-                {
-		    MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**buscard");
-		}
-	    }
+	    str_errno = MPIU_Str_add_string_arg(bc_val_p, val_max_sz_p, MPIDI_CH3I_IFNAME_KEY, ifname);
+	    if (str_errno) {
+                MPIU_ERR_CHKANDJUMP(str_errno == MPIU_STR_NOMEM, mpi_errno, MPI_ERR_OTHER, "**buscard_len");
+                MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**buscard");
+            }
 	}
     }
 
@@ -355,7 +330,7 @@ int MPID_nem_newtcp_module_vc_init (MPIDI_VC_t *vc)
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_NEM_NEWTCP_MODULE_VC_INIT);
 
-    vc_ch->state = MPID_NEM_NEWTCP_MODULE_VC_STATE_DISCONNECTED;
+    VC_FIELD(vc, state) = MPID_NEM_NEWTCP_MODULE_VC_STATE_DISCONNECTED;
     
     vc->sendNoncontig_fn      = MPID_nem_newtcp_SendNoncontig;
     vc_ch->iStartContigMsg    = MPID_nem_newtcp_iStartContigMsg;
@@ -369,12 +344,8 @@ int MPID_nem_newtcp_module_vc_init (MPIDI_VC_t *vc)
     VC_FIELD(vc, sc_ref_count) = 0; 
     VC_FIELD(vc, send_queue).head = VC_FIELD(vc, send_queue).tail = NULL;
     
- fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_NEM_NEWTCP_MODULE_VC_INIT);
     return mpi_errno;
- fn_fail:
-    MPIU_DBG_MSG_FMT(NEM_SOCK_DET, VERBOSE, (MPIU_DBG_FDEST, "failure. mpi_errno = %d", mpi_errno));
-    goto fn_exit;
 }
 
 #undef FUNCNAME
@@ -388,10 +359,7 @@ int MPID_nem_newtcp_module_vc_destroy(MPIDI_VC_t *vc)
     /* free any resources associated with this VC here */
     MPIU_UNREFERENCED_ARG(vc);
 
- fn_exit:   
        return mpi_errno;
- fn_fail:
-       goto fn_exit;
 }
 
 
@@ -414,8 +382,8 @@ int MPID_nem_newtcp_module_get_addr_port_from_bc (const char *business_card, str
     MPIU_ERR_CHKANDJUMP (ret != MPIU_STR_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**argstr_missinghost");
     */
 
-    mpi_errno = MPIU_Str_get_int_arg (business_card, MPIDI_CH3I_PORT_KEY, (int *)port);
-    MPIU_ERR_CHKANDJUMP (mpi_errno != MPIU_STR_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**argstr_missingport");
+    ret = MPIU_Str_get_int_arg (business_card, MPIDI_CH3I_PORT_KEY, (int *)port);
+    MPIU_ERR_CHKANDJUMP (ret != MPIU_STR_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**argstr_missingport");
     /*     fprintf(stdout, "get_addr_port_from_bc buscard=%s  desc=%s port=%d\n",business_card, desc_str, *port); fflush(stdout); */
 
     ret = MPIU_Str_get_string_arg(business_card, MPIDI_CH3I_IFNAME_KEY, ifname, sizeof(ifname));
@@ -445,7 +413,7 @@ int MPID_nem_newtcp_module_get_addr_port_from_bc (const char *business_card, str
 #define FUNCNAME MPID_nem_newtcp_module_bind
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPID_nem_newtcp_module_bind (int sockfd)
+int MPID_nem_newtcp_module_bind (MPIU_SOCKW_Sockfd_t sockfd)
 {
     int mpi_errno = MPI_SUCCESS;
     struct sockaddr_in sin;
@@ -457,7 +425,7 @@ int MPID_nem_newtcp_module_bind (int sockfd)
     low_port = 0;
     high_port = 0;
 
-    MPIU_GetEnvRange( "MPICH_PORT_RANGE", &low_port, &high_port );
+    MPL_env2range( "MPICH_PORT_RANGE", &low_port, &high_port );
     MPIU_ERR_CHKANDJUMP (low_port < 0 || low_port > high_port, mpi_errno, MPI_ERR_OTHER, "**badportrange");
 
     memset((void *)&sin, 0, sizeof(sin));

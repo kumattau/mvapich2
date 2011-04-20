@@ -417,6 +417,7 @@ int psm_1sided_input(MPID_Request *req, int inlen)
     __check(GET,            pkt->type);
     __check(GET_RESP,       pkt->type);
     __check(ACCUMULATE,     pkt->type);
+    __check(ACCUM_IMMED,    pkt->type);
     __check(LOCK,           pkt->type);
     __check(LOCK_GRANTED,   pkt->type);
     __check(PT_RMA_DONE,    pkt->type);
@@ -478,6 +479,16 @@ int psm_1sided_input(MPID_Request *req, int inlen)
         req->dev.source_win_handle = resppkt->target_win_handle;
         psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
         goto end;
+    }
+
+    {
+        _SECTION(ACCUM_IMMED); /*immediate accumulate*/
+        MPIDI_CH3_Pkt_accum_immed_t *accimmpkt = (MPIDI_CH3_Pkt_accum_immed_t *) pkt;
+        GET_VC(vc, accimmpkt->target_win_handle, accimmpkt->source_rank);
+        vc->ch.recv_active = req;
+        DBG("accum immed packet from %d\n", vc->pg_rank);
+        psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
+        goto end;           
     }
 
     {

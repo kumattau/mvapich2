@@ -114,6 +114,7 @@ int mv2_rma_allocate_shm(int size, int g_rank, int *shmem_fd,
                    void **rnt_buf, MPID_Comm * comm_ptr)
 {
     int ret, mpi_errno = MPI_SUCCESS;
+    int errflag = FALSE;
     void* rma_shared_memory = NULL;
     const char *rma_shmem_dir="/";
     struct stat file_status;
@@ -134,7 +135,7 @@ int mv2_rma_allocate_shm(int size, int g_rank, int *shmem_fd,
        rma_shmid++;
     }
 
-    MPIR_Bcast(rma_shmem_file, length, MPI_CHAR, 0, comm_ptr); 
+    MPIR_Bcast_impl(rma_shmem_file, length, MPI_CHAR, 0, comm_ptr, &errflag); 
 
     *shmem_fd = shm_open(rma_shmem_file, O_CREAT | O_RDWR, S_IRWXU);
     if(*shmem_fd == -1){
@@ -179,7 +180,7 @@ int mv2_rma_allocate_shm(int size, int g_rank, int *shmem_fd,
 
     *rnt_buf =  rma_shared_memory;
 
-    MPIR_Barrier(comm_ptr);
+    MPIR_Barrier_impl(comm_ptr, &errflag);
  
     shm_unlink(rma_shmem_file);
     MPIU_Free(rma_shmem_file);
@@ -218,7 +219,7 @@ MPIDI_CH3I_RDMA_start (MPID_Win* win_ptr, int start_grp_size, int* ranks_in_win_
 
     if (SMP_INIT)
     {
-        MPID_Comm_get_ptr(win_ptr->comm, comm_ptr);
+        comm_ptr = win_ptr->comm_ptr;
     }
 
     while (flag == 0 && start_grp_size != 0)
@@ -272,7 +273,7 @@ void MPIDI_CH3I_LIMIC_start (MPID_Win* win_ptr, int start_grp_size,
     MPID_Comm* comm_ptr = NULL;
     int src, i;
 
-    MPID_Comm_get_ptr(win_ptr->comm, comm_ptr);
+    comm_ptr = win_ptr->comm_ptr;
 
     for (i = 0; i < start_grp_size; ++i) {
        src = ranks_in_win_grp[i];  /*src is the rank in comm*/
@@ -307,7 +308,7 @@ MPIDI_CH3I_RDMA_complete_rma(MPID_Win * win_ptr,
     MPIDI_RMA_ops *curr_ptr;
     MPIDI_VC_t* vc = NULL;
 
-    MPID_Comm_get_ptr(win_ptr->comm, comm_ptr);
+    comm_ptr = win_ptr->comm_ptr;
     my_rank = comm_ptr->rank;
     comm_size = comm_ptr->local_size;
 
@@ -334,7 +335,7 @@ MPIDI_CH3I_RDMA_complete_rma(MPID_Win * win_ptr,
     {
         nops_to_proc[i] = 0;
     }
-    curr_ptr = win_ptr->rma_ops_list;
+    curr_ptr = win_ptr->rma_ops_list_head;
     while (curr_ptr != NULL) {
         ++nops_to_proc[curr_ptr->target_rank];
         curr_ptr = curr_ptr->next;
@@ -393,13 +394,11 @@ fn_fail:
 
 /* Go through RMA op list once, and start as many RMA ops as possible */
 void
-MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr,
-                        MPIDI_RMA_ops ** MPIDI_RMA_ops_list, int passive)
+MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive)
 {
-    MPIDI_RMA_ops *curr_ptr, *head_ptr = NULL, *prev_ptr =
-        NULL, *tmp_ptr;
+    MPIDI_RMA_ops *curr_ptr = NULL, *prev_ptr = NULL, *tmp_ptr;
+    MPIDI_RMA_ops **list_head = NULL, **list_tail = NULL;
     int size, origin_type_size, target_type_size;
-    int tag = 0;
 #ifdef _SCHEDULE
     int curr_put = 1;
     int fall_back = 0;
@@ -411,11 +410,12 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr,
 
     if (SMP_INIT)
     {
-        MPID_Comm_get_ptr( win_ptr->comm, comm_ptr );
+        comm_ptr = win_ptr->comm_ptr;
     }
 
-    prev_ptr = curr_ptr = head_ptr = *MPIDI_RMA_ops_list;
-    if (*MPIDI_RMA_ops_list != NULL) tag = 1;
+    list_head = &win_ptr->rma_ops_list_head;
+    list_tail = &win_ptr->rma_ops_list_tail;
+    prev_ptr = curr_ptr = *list_head;
 
 #ifdef _SCHEDULE
     while (curr_ptr != NULL || skipped_op != NULL)
@@ -473,9 +473,21 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr,
                         ++win_ptr->rma_issued;
                         iba_put(curr_ptr, win_ptr, size);
 
-                        if (head_ptr == curr_ptr)
+                        if (*list_head == curr_ptr)
                         {
-                            prev_ptr = head_ptr = curr_ptr->next;
+                            if (*list_head == *list_tail) 
+                            {
+                               *list_head = *list_tail = NULL;
+                            } 
+                            else 
+                            {
+                               *list_head = prev_ptr = curr_ptr->next; 
+                            }
+                        }
+                        else if (*list_tail == curr_ptr)
+                        {
+                            *list_tail = prev_ptr;
+                            (*list_tail)->next = NULL;
                         }
                         else
                         {
@@ -513,6 +525,10 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr,
                 prev_ptr = curr_ptr;
                 curr_ptr = curr_ptr->next;
                 break;
+            case MPIDI_RMA_ACC_CONTIG:
+                prev_ptr = curr_ptr;
+                curr_ptr = curr_ptr->next;
+                break;
             case MPIDI_RMA_GET:
             {
                 int origin_dt_derived;
@@ -534,9 +550,21 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr,
                         ++win_ptr->rma_issued;
                         iba_get(curr_ptr, win_ptr, size);
 
-                        if (head_ptr == curr_ptr)
+                        if (*list_head == curr_ptr)
                         {
-                            prev_ptr = head_ptr = curr_ptr->next;
+                            if (*list_head == *list_tail)
+                            {
+                               *list_head = *list_tail = NULL;
+                            }
+                            else
+                            {
+                               *list_head = prev_ptr = curr_ptr->next;
+                            }
+                        }
+                        else if (*list_tail == curr_ptr)
+                        {
+                            *list_tail = prev_ptr;
+                            (*list_tail)->next = NULL;
                         }
                         else
                         {
@@ -583,7 +611,6 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr,
         }
     }
 
-    *MPIDI_RMA_ops_list = head_ptr;
 }
 
 #if defined(_SMP_LIMIC_)
@@ -654,7 +681,7 @@ int MPIDI_CH3I_LIMIC_try_rma(MPIDI_RMA_ops * curr_ptr, MPID_Win * win_ptr,
     }
     else if(source_win_handle != MPI_WIN_NULL)
     {
-        NMPI_Comm_rank(win_ptr->comm, &rank);
+        rank = win_ptr->myrank;
         for(i=0; i<win_ptr->l_ranks; i++)
         {
            if(win_ptr->l2g_rank[i] == curr_ptr->target_rank){
@@ -701,7 +728,7 @@ int MPIDI_CH3I_RDMA_post(MPID_Win * win_ptr, int target_rank)
     Get_Pinned_Buf(win_ptr, &origin_addr, size);
     *((int *) origin_addr) = 1;
 
-    MPID_Comm_get_ptr(win_ptr->comm, comm_ptr);
+    comm_ptr = win_ptr->comm_ptr;
     MPIDI_Comm_get_vc(comm_ptr, target_rank, &tmp_vc);
 
     for (i=0; i<rdma_num_rails; ++i) {
@@ -738,6 +765,7 @@ MPIDI_CH3I_RDMA_win_create(void *base,
 {
  
     int             ret, i,j,arrIndex;
+    int             errflag = FALSE;
     win_info        *win_info_exchange;
     uintptr_t       *cc_ptrs_exchange;
     uintptr_t       *post_flag_ptr_send, *post_flag_ptr_recv;
@@ -876,8 +904,8 @@ MPIDI_CH3I_RDMA_win_create(void *base,
      * since each process has the same data for all other
      * processes, use allgather */
 
-    ret = NMPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, win_info_exchange,
-               sizeof(win_info), MPI_BYTE, comm_ptr->handle);
+    ret = MPIR_Allgather_impl(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, win_info_exchange,
+               sizeof(win_info), MPI_BYTE, comm_ptr, &errflag);
     if (ret != MPI_SUCCESS) {
         DEBUG_PRINT("Error gather win_info  when creating windows\n");
         ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
@@ -905,8 +933,8 @@ MPIDI_CH3I_RDMA_win_create(void *base,
         goto fn_exit;
     }
 
-    ret = NMPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, cc_ptrs_exchange,
-             rdma_num_rails*sizeof(uintptr_t), MPI_BYTE, comm_ptr->handle);
+    ret = MPIR_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, cc_ptrs_exchange,
+             rdma_num_rails*sizeof(uintptr_t), MPI_BYTE, comm_ptr, &errflag);
     if (ret != MPI_SUCCESS) {
         DEBUG_PRINT("Error cc pointer  when creating windows\n");
         ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
@@ -1001,8 +1029,8 @@ MPIDI_CH3I_RDMA_win_create(void *base,
     }
 
     /* use all to all to exchange the address of post flag */
-    ret = NMPI_Alltoall(post_flag_ptr_send, sizeof(uintptr_t), MPI_BYTE, 
-            post_flag_ptr_recv, sizeof(uintptr_t), MPI_BYTE, comm_ptr->handle);
+    ret = MPIR_Alltoall_impl(post_flag_ptr_send, sizeof(uintptr_t), MPI_BYTE, 
+            post_flag_ptr_recv, sizeof(uintptr_t), MPI_BYTE, comm_ptr, &errflag);
     if (ret != MPI_SUCCESS) {
         DEBUG_PRINT("Error gather post flag ptr  when creating windows\n");
         ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
@@ -1064,8 +1092,8 @@ fn_exit:
   err_base_register:
     win_info_exchange[my_rank].fall_back = (*win_ptr)->fall_back;
 
-    ret = NMPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, win_info_exchange, 
-                      sizeof(win_info), MPI_BYTE, comm_ptr->handle);
+    ret = MPIR_Allgather_impl(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, win_info_exchange, 
+                      sizeof(win_info), MPI_BYTE, comm_ptr, &errflag);
     if (ret != MPI_SUCCESS) {
         DEBUG_PRINT("Error gather window information when creating windows\n");
         ibv_error_abort (GEN_EXIT_ERR, "rdma_iba_1sc");
@@ -1086,7 +1114,9 @@ void MPIDI_CH3I_LIMIC_win_create(void *base, MPI_Aint size, int comm_size,
                       int g_rank, MPID_Win ** win_ptr, MPID_Comm * comm_ptr)
 {
     int             i, j, mpi_errno=MPI_SUCCESS;
-    int             num_local_procs = 0, l_rank = -1, tx_init_size, counter_size;
+    int             errflag = FALSE;
+    int             num_local_procs = 0, l_rank = -1, counter_size;
+    size_t          tx_init_size;
     MPIDI_VC_t*     vc;
 
     if(!SMP_INIT || !g_smp_use_limic2 || 
@@ -1145,9 +1175,9 @@ void MPIDI_CH3I_LIMIC_win_create(void *base, MPI_Aint size, int comm_size,
       }
     }
 
-    NMPI_Allgather(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL,
+    MPIR_Allgather_impl(MPI_IN_PLACE, 0, MPI_DATATYPE_NULL,
          (*win_ptr)->peer_lu, sizeof(limic_user), MPI_BYTE,
-         comm_ptr->handle);
+         comm_ptr, &errflag);
 
     /*allocate completion counter buffers in shared memory*/
     counter_size = sizeof(long long) * comm_size * num_local_procs;
@@ -1212,7 +1242,7 @@ void MPIDI_CH3I_LIMIC_win_create(void *base, MPI_Aint size, int comm_size,
     MPIU_Memset((*win_ptr)->limic_post_flag_me, 0, comm_size * sizeof(int));
     (*win_ptr)->limic_post_flag_me[g_rank] = 1;
 
-    MPIR_Barrier(comm_ptr);
+    MPIR_Barrier_impl(comm_ptr, &errflag);
 
 fn_exit:  
     return;
@@ -1263,7 +1293,7 @@ void MPIDI_CH3I_LIMIC_win_free(MPID_Win** win_ptr)
     MPID_Comm *comm_ptr;
     int i, counter_size, rank;
 
-    MPID_Comm_get_ptr((*win_ptr)->comm, comm_ptr);
+    comm_ptr = (*win_ptr)->comm_ptr;
     rank = comm_ptr->rank;
 
     close((*win_ptr)->cmpl_shmid);
@@ -1296,7 +1326,7 @@ static int Decrease_CC(MPID_Win * win_ptr, int target_rank)
     MPIDI_VC_t *tmp_vc;
     MPID_Comm *comm_ptr;
 
-    MPID_Comm_get_ptr(win_ptr->comm, comm_ptr);
+    comm_ptr = win_ptr->comm_ptr;
     MPIDI_Comm_get_vc(comm_ptr, target_rank, &tmp_vc);
 
     
@@ -1733,7 +1763,7 @@ static int iba_put(MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr, int size)
         win_ptr->wait_for_complete = 1;
     }
     
-    MPID_Comm_get_ptr(win_ptr->comm, comm_ptr);
+    comm_ptr = win_ptr->comm_ptr;
     MPIDI_Comm_get_vc(comm_ptr, rma_op->target_rank, &tmp_vc);
 
     for (i=0; i<rdma_num_rails; ++i) {
@@ -1790,7 +1820,7 @@ int iba_get(MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr, int size)
         win_ptr->wait_for_complete = 1;
     }
 
-    MPID_Comm_get_ptr(win_ptr->comm, comm_ptr);
+    comm_ptr = win_ptr->comm_ptr;
     MPIDI_Comm_get_vc(comm_ptr, rma_op->target_rank, &tmp_vc);
 
    for (i=0; i<rdma_num_rails; ++i)

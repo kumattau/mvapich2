@@ -17,12 +17,12 @@ MPID_nem_netmod_funcs_t MPIDI_nem_elan_funcs = {
     MPID_nem_elan_finalize,
     MPID_nem_elan_ckpt_shutdown,
     MPID_nem_elan_poll,
-    MPID_nem_elan_send,
     MPID_nem_elan_get_business_card,
     MPID_nem_elan_connect_to_root,
     MPID_nem_elan_vc_init,
     MPID_nem_elan_vc_destroy,
-    MPID_nem_elan_vc_terminate
+    MPID_nem_elan_vc_terminate,
+    NULL /* anysource iprobe */
 };
 
 
@@ -301,35 +301,19 @@ int
   MPID_nem_elan_get_business_card (int my_rank, char **bc_val_p, int *val_max_sz_p)
 {
    int mpi_errno = MPI_SUCCESS;
+   int str_errno = MPIU_STR_SUCCESS;
 
-   mpi_errno = MPIU_Str_add_int_arg (bc_val_p, val_max_sz_p, MPIDI_CH3I_ELAN_VPID_KEY, elan_base->state->vp);
-   if (mpi_errno != MPIU_STR_SUCCESS)
-     {	
-	if (mpi_errno == MPIU_STR_NOMEM)
-	  {	     
-	     MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**buscard_len");
-	  }       
-	else
-	  {	     
-	     MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**buscard");
-	  }	
-	goto fn_exit;
-     }   
+   str_errno = MPIU_Str_add_int_arg (bc_val_p, val_max_sz_p, MPIDI_CH3I_ELAN_VPID_KEY, elan_base->state->vp);
+   if (str_errno) {
+        MPIU_ERR_CHKANDJUMP(str_errno == MPIU_STR_NOMEM, mpi_errno, MPI_ERR_OTHER, "**buscard_len");
+        MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**buscard");
+    }
    
-   mpi_errno = MPIU_Str_add_binary_arg (bc_val_p, val_max_sz_p, MPIDI_CH3I_QUEUE_PTR_KEY, (char *)&(*localq_ptr_val), sizeof(ELAN_QUEUE *));
-   
-   if (mpi_errno != MPIU_STR_SUCCESS)
-     {	
-	if (mpi_errno == MPIU_STR_NOMEM)
-	  {	     
-	     MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**buscard_len");
-	  }	
-	else
-	  {	     
-	     MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**buscard");
-	  }	
-	goto fn_exit;
-     }
+   str_errno = MPIU_Str_add_binary_arg (bc_val_p, val_max_sz_p, MPIDI_CH3I_QUEUE_PTR_KEY, (char *)&(*localq_ptr_val), sizeof(ELAN_QUEUE *));
+   if (str_errno) {
+        MPIU_ERR_CHKANDJUMP(str_errno == MPIU_STR_NOMEM, mpi_errno, MPI_ERR_OTHER, "**buscard_len");
+        MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**buscard");
+    }
 
    MPIU_Free(localq_ptr_val);
    
@@ -346,29 +330,25 @@ int
 int
 MPID_nem_elan_get_from_bc (const char *business_card,ELAN_QUEUE **remoteq_ptr, int *vpid)
 {
-   int mpi_errno = MPI_SUCCESS;
-   int tmp_vpid;
-   int len;
-
-   mpi_errno = MPIU_Str_get_int_arg (business_card, MPIDI_CH3I_ELAN_VPID_KEY, &tmp_vpid);
-   if (mpi_errno != MPIU_STR_SUCCESS)
-     {	
-	/* FIXME: create a real error string for this */
-	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**argstr_hostd");
-     }
-   *vpid = tmp_vpid;
-   
-   mpi_errno = MPIU_Str_get_binary_arg (business_card, MPIDI_CH3I_QUEUE_PTR_KEY,(char *)remoteq_ptr, sizeof(ELAN_QUEUE *), &len);
-   if ((mpi_errno != MPIU_STR_SUCCESS) || len != sizeof(ELAN_QUEUE *))
-     {	
-	/* FIXME: create a real error string for this */
-	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**argstr_hostd");
-     }
-   
-   fn_exit:
-     return mpi_errno;
-  fn_fail:  
-     goto fn_exit;
+    int mpi_errno = MPI_SUCCESS;
+    int str_errno = MPIU_STR_SUCCESS;
+    int tmp_vpid;
+    int len;
+    
+    str_errno = MPIU_Str_get_int_arg (business_card, MPIDI_CH3I_ELAN_VPID_KEY, &tmp_vpid);
+    /* FIXME: create a real error string for this */
+    MPIU_ERR_CHKANDJUMP(str_errno, mpi_errno, MPI_ERR_OTHER, "**argstr_hostd");
+    
+    *vpid = tmp_vpid;
+    
+    str_errno = MPIU_Str_get_binary_arg (business_card, MPIDI_CH3I_QUEUE_PTR_KEY,(char *)remoteq_ptr, sizeof(ELAN_QUEUE *), &len);
+    /* FIXME: create a real error string for this */
+    MPIU_ERR_CHKANDJUMP(str_errno || len != sizeof(ELAN_QUEUE *), mpi_errno, MPI_ERR_OTHER, "**argstr_hostd");
+    
+ fn_exit:
+    return mpi_errno;
+ fn_fail:
+    goto fn_exit;
 }
 
 #undef FUNCNAME

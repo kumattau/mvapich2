@@ -239,11 +239,10 @@ int rdma_find_active_port(struct ibv_context *context,struct ibv_device *ib_dev)
     for (j = 1; j <= RDMA_DEFAULT_MAX_PORTS; ++ j) {
         if ((! ibv_query_port(context, j, &port_attr)) &&
              port_attr.state == IBV_PORT_ACTIVE) {
-            if (!strncmp(dev_name, "cxgb3", 5) || port_attr.lid 
-			|| (!port_attr.lid && use_iboeth )) {
+            if (!strncmp(dev_name, "cxgb3", 5) || !strncmp(dev_name, "cxgb4", 5)
+                 || port_attr.lid || (!port_attr.lid && use_iboeth )) {
                 /* Chelsio RNIC's don't get LID's as they're not IB devices.
-                 * So dont do this check for them.
-		 * LID on RoCE will be zero.
+                 * So dont do this check for them. LID on RoCE will be zero.
                  */
                 DEBUG_PRINT("Active port number = %d, state = %s, lid = %d\r\n",
                     j, (port_attr.state==IBV_PORT_ACTIVE)?"Active":"Not Active",

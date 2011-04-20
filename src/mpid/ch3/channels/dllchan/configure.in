@@ -6,30 +6,10 @@ dnl config.guess
 dnl
 AC_CONFIG_AUX_DIR(../../../../../confdb)
 
-dnl The MVAPICH2 top-level configure adds a bunch of flags to the
-dnl user-defined CFLAGS by processing different configure command-line
-dnl arguments (--enable-g, --enable-default-optimization). These updated
-dnl flags are passed down as a separate flag. Here, we don't care about
-dnl the user-defined flags, but rather this updated flags, so we just
-dnl overwrite CFLAGS with them.
-PAC_SUBCONFIG_INIT()
-
-dnl
 dnl Definitions will be placed in this file rather than in the DEFS variable
 dnl
 AC_CONFIG_HEADER(include/mpidi_ch3i_dllchan_conf.h)
 AH_TOP([/* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
- * reserved.
- *
- * This file is part of the MVAPICH2 software package developed by the
- * team members of The Ohio State University's Network-Based Computing
- * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
- *
- * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT in the top level MVAPICH2 directory.
- *
- */
 /*  
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -62,10 +42,27 @@ fi
 MPICH_SHLIB_EXT='"'$SHLIB_EXT'"'
 AC_DEFINE_UNQUOTED(MPICH_SHLIB_EXT,$MPICH_SHLIB_EXT,[Extension for shared libraries])
 
+# AR_FLAGS provides a way to potentially improve build performance on Mac OSX
+if test -z "$AR_FLAGS" ; then AR_FLAGS=cr ; fi
+
+# ABIVERSION is needed when a separate sock dll library is built (e.g., for
+# dllchan)
+if test "X$ABIVERSION" = "X" ; then
+   if test "X$libmpich_so_version" != X ; then 
+      ABIVERSION="$libmpich_so_version"
+   else
+      # Note that an install of a sock-dll will fail if the ABI version is not
+      # available
+      AC_MSG_WARN([Unable to set the ABIVERSION])
+   fi
+fi
+AC_SUBST(ABIVERSION)
+
 
 AC_SUBST(device_name)
 AC_SUBST(channel_name)
 AC_SUBST(AR)
+AC_SUBST(AR_FLAGS)
 AC_SUBST(RANLIB)
 AC_SUBST(MPILIBNAME)
 AC_SUBST(CC)
@@ -97,6 +94,8 @@ PAC_UPDATE_BASE_CACHE
 if test -z "$channel_args" ; then
      channel_args=sock
 fi
+
+export ABIVERSION
 
 channel_args=`echo $channel_args | sed -e 's/,/ /g'`
 builddir=`(cd .. && pwd)`
@@ -145,16 +144,5 @@ done
 # it is the first of the channels in the list
 MPICH_DEFAULT_CH3_CHANNEL='"'$firstChannel'"'
 AC_DEFINE_UNQUOTED(MPICH_DEFAULT_CH3_CHANNEL,$MPICH_DEFAULT_CH3_CHANNEL,[Define the name of the channel to use if none is selected])
-
-# -------------------------------------------------------------------------
-
-
-# Add the MVAPICH2 include flags to CPPFLAGS.  See the discussion above about
-# which include flags should start in MPICH2_INCLUDE_FLAGS and which in 
-# CPPFLAGS
-CPPFLAGS="$CPPFLAGS $MPICH2_INCLUDE_FLAGS"
-
-dnl Place holder macro for finalization
-PAC_SUBCONFIG_FINALIZE()
 
 AC_OUTPUT(Makefile src/Makefile localdefs)

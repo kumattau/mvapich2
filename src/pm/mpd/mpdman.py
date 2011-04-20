@@ -1,15 +1,5 @@
 #!/usr/bin/env python
 #
-# Copyright (c) 2003-2011, The Ohio State University. All rights
-# reserved.
-#
-# This file is part of the MVAPICH2 software package developed by the
-# team members of The Ohio State University's Network-Based Computing
-# Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
-#
-# For detailed copyright and licensing information, please refer to the
-# copyright file COPYRIGHT in the top level MVAPICH2 directory.
-#
 #   (C) 2001 by Argonne National Laboratory.
 #       See COPYRIGHT in top-level directory.
 #
@@ -262,21 +252,6 @@ class MPDMan(object):
                 msgToSend = { 'cmd' : 'man_checking_in' }
                 self.conSock.send_dict_msg(msgToSend)
                 msg = self.conSock.recv_dict_msg()
-# <_OSU_MVAPICH_>
-                #CR_SUPPORT
-                if (not msg  or  not msg.has_key('cmd')):
-                    mpd_print(1,'spawned: bad msg from con; got: %s' % (msg) )
-                    sys.exit(-1)
-                if (msg['cmd'] == 'enable_cr'):
-                    mpd_print(1, 'cr_enabled')
-                    self.cr_enabled = 1
-                    self.cr_base_port = msg['cr_mpd_base_port'] #Actual listen port will be base port + rank
-                    self.cr_restart_file = msg['cr_restart_file']
-                    msg = self.conSock.recv_dict_msg() #call recv again
-                else:
-                    self.cr_enabled = 0
-                #CR_SUPPORT_END
-# </_OSU_MVAPICH_>
                 if not msg  or  not msg.has_key('cmd')  or  msg['cmd'] != 'ringsize':
                     mpd_print(1,'invalid msg from con; expected ringsize got: %s' % (msg) )
                     sys.exit(-1)
@@ -284,15 +259,6 @@ class MPDMan(object):
                     self.universeSize = int(self.clientPgmEnv['MPI_UNIVERSE_SIZE'])
                 else:
                     self.universeSize = msg['ring_ncpus']
-# <_OSU_MVAPICH_>
-                #CR_SUPPORT
-                #enable CR on all other nodes
-                if self.cr_enabled == 1:
-                    msg['cr_enabled'] = 1
-                    msg['cr_mpd_base_port'] = self.cr_base_port
-                    msg['cr_restart_file'] = self.cr_restart_file
-                #CR_SUPPORT_END
-# </_OSU_MVAPICH_>
                 self.ring.rhsSock.send_dict_msg(msg)
             ## NOTE: if you spawn a non-MPI job, it may not send this msg
             ## in which case the pgm will hang; the reason for this is that
@@ -326,26 +292,6 @@ class MPDMan(object):
                 self.universeSize = int(self.clientPgmEnv['MPI_UNIVERSE_SIZE'])
             else:
                 self.universeSize = msg['ring_ncpus']
-# <_OSU_MVAPICH_>
-        #CR_SUPPORT
-        if (msg.has_key('cr_enabled') and msg['cr_enabled'] == 1):
-            self.cr_enabled = 1
-            mpd_print(1, 'cr_enabled')
-            self.cr_base_port = msg['cr_mpd_base_port'] #Actual listen port will be base port + rank
-            self.cr_restart_file = msg['cr_restart_file']
-        else:
-            self.cr_enabled = 0
-        #CR_SUPPORT_END
-        #CR_SUPPORT
-        #listen to CR_Port
-        if self.cr_enabled == 1:
-            self.crListenSock = MPDListenSock('',self.cr_base_port+self.myRank,name='cr_listen_sock')
-            print 'listen to port %d ' % (self.cr_base_port+self.myRank)
-            self.streamHandler.set_handler(self.crListenSock,self.handle_cr_connection)
-            os.environ['MV2_CKPT_MPD_BASE_PORT'] = self.cr_base_port
-            print 'cr_restart_file %s' % self.cr_restart_file
-        #CR_SUPPORT_END
-# </_OSU_MVAPICH_>
         if self.doingBNR:
             (self.pmiSock,self.cliBNRSock) = mpd_sockpair()
             self.streamHandler.set_handler(self.pmiSock,self.handle_pmi_input)
@@ -824,25 +770,6 @@ class MPDMan(object):
                 if self.pmiSock:    # should be valid sock if running tv
                     pmiMsgToSend = 'cmd=tv_ready\n'
                     self.pmiSock.send_char_msg(pmiMsgToSend)
-# <_OSU_MVAPICH_>
-        #CR_SUPPORT
-        elif msg['cmd'] == 'ckpt_req':
-            if self.myRank != 0:
-                #pass request
-                self.ring.rhsSock.send_dict_msg(msg)
-            mpd_print(1, 'got checkpoint request file:%s:' % msg['file'])
-            charMsg = 'cmd=ckpt_req file=%s\n' % (msg['file'])
-            if self.crSock:
-                self.crSock.send_char_msg(charMsg)
-        elif msg['cmd'] == 'ckpt_rep' or msg['cmd'] == 'rsrt_rep':
-            if self.myRank == 0:
-                if self.conSock:
-                    self.conSock.send_dict_msg(msg)
-            else:
-                if self.ring.rhsSock:
-                    self.ring.rhsSock.send_dict_msg(msg)
-        #CR_SUPPORT_END
-# </_OSU_MVAPICH_>
         else:
             mpd_print(1, 'unexpected msg recvd on lhsSock :%s:' % msg )
 
@@ -1003,52 +930,6 @@ class MPDMan(object):
                 self.spawnInProgress = 0
         else:
             mpd_print(1, "unrecognized msg from spawned child :%s:" % msg )
-# <_OSU_MVAPICH_>
-    #CR_SUPPORT
-    def handle_cr_connection(self, sock):
-        (self.crSock,tempConnAddr) = self.crListenSock.accept()
-        mpd_print(1, "crSock connected")
-        if not self.crSock:
-            mpd_print(1,"failed accept for cr connection from MPI process")
-            sys.exit(-1)
-        self.crSock.name = 'cr'
-        self.streamHandler.set_handler(self.crSock,self.handle_cr_input)
-
-    def handle_cr_input(self,sock):
-        line = self.crSock.recv_char_msg()
-        if not line:
-            self.streamHandler.del_handler(self.crSock)
-            self.crSock.close()
-            self.crSock = 0
-            return
-        msg = parse_pmi_msg(line)
-        if not msg.has_key('cmd'):
-            mpd_print(1, "unrecognized pmi msg (no cmd) :%s:" % line )
-            return
-        if msg['cmd'] == 'ckpt_rep':
-            mpd_print(1,'received ckpt_rep from app, result = %s ' % msg['result'])
-            msgToSend = {'cmd' : 'ckpt_rep', 'rank' : self.myRank, 'result' : msg['result']}
-            self.ring.rhsSock.send_dict_msg(msgToSend)
-        elif msg['cmd'] == 'rsrt_rep':
-            mpd_print(1,'received rsrt_rep from app, result = %s ' % msg['result'])
-            msgToSend = {'cmd' : 'rsrt_rep', 'rank' : self.myRank, 'result' : msg['result']}
-            self.ring.rhsSock.send_dict_msg(msgToSend)
-        elif msg['cmd'] == 'query_pmi_port':
-            mpd_print(1,'received query_pmi_port from app')
-            charMsg = 'cmd=reply_pmi_port val=%s:%s\n' % (self.myIfhn,self.pmiListenPort)
-            self.crSock.send_char_msg(charMsg)
-	elif msg['cmd'] == 'app_ckpt_req':
-	    mpd_print(1,'received app_ckpt_req from app')
-	    msgToSend = {'cmd' : 'app_ckpt_req'}
-	    self.conSock.send_dict_msg(msgToSend);
-        elif msg['cmd'] == 'finalize_ckpt':
-            mpd_print(1,'received finalize_ckpt from app')
-            msgToSend = {'cmd' : 'finalize_ckpt'}
-            self.conSock.send_dict_msg(msgToSend);
-        else:
-            print 'unrecognized msg:%s:' % msg
-    #CR_SUPPORT_END
-# </_OSU_MVAPICH_>
     def handle_pmi_connection(self,sock):
         if self.pmiSock:  # already have one
             pmiMsgToSend = 'cmd=you_already_have_an_open_pmi_conn_to_me\n'
@@ -1489,12 +1370,6 @@ class MPDMan(object):
             if self.pmiSock:    # should be valid sock if running tv
                 pmiMsgToSend = 'cmd=tv_ready\n'
                 self.pmiSock.send_char_msg(pmiMsgToSend)
-# <_OSU_MVAPICH_>
-        #CR_SUPPORT
-        elif msg['cmd'] == 'ckpt_req':
-            self.ring.rhsSock.send_dict_msg(msg)
-        #CR_SUPPORT_END
-# </_OSU_MVAPICH_>
         else:
             mpd_print(1, 'unexpected msg recvd on conSock :%s:' % msg )
     def handle_mpd_input(self,sock):
@@ -1590,12 +1465,6 @@ class MPDMan(object):
             os.dup2(self.fd_write_cli_stderr,2)  # closes fd 2 (stderr) if open
             os.close(self.fd_write_cli_stderr)
 
-# <_OSU_MVAPICH_>
-            #CR_SUPPORT
-            if (self.cr_enabled == 1):
-                self.crListenSock.close()
-            #CR_SUPPORT_END
-# </_OSU_MVAPICH_>
             msg = self.handshake_sock_cli_end.recv_char_msg()
             if not msg.startswith('go'):
                 mpd_print(1,'%s: invalid go msg from man :%s:' % (self.myId,msg) )
@@ -1603,16 +1472,6 @@ class MPDMan(object):
             self.handshake_sock_cli_end.close()
 
             self.clientPgmArgs = [self.clientPgm] + self.clientPgmArgs
-# <_OSU_MVAPICH_>
-            #CR_SUPPORT
-            if (self.cr_enabled == 1 and self.cr_restart_file!=''):
-            #    mpd_print(1,'restart from file %s' % self.cr_restart_file)
-                self.clientPgm = 'cr_restart'
-                restart_file_local = '%s.%d' % (self.cr_restart_file, self.myRank)
-                self.clientPgmArgs = [self.clientPgm] + [restart_file_local]
-                #In restart case, env set here does not matter
-            #CR_SUPPORT_END
-# </_OSU_MVAPICH_>
             errmsg = set_limits(self.clientPgmLimits)
             if errmsg:
                 self.pmiSock = MPDSock(name='pmi')

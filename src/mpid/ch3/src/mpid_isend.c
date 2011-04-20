@@ -50,8 +50,7 @@ int MPID_Isend(const void * buf, int count, MPI_Datatype datatype, int rank,
     MPIDI_VC_t * vc=0;
 #if defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
-#endif
-    int i;    
+#endif    
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_MPID_ISEND);
 
@@ -94,7 +93,7 @@ skip_self_send:
     if (rank == MPI_PROC_NULL)
     {
 	MPIU_Object_set_ref(sreq, 1);
-	sreq->cc = 0;
+        MPID_cc_set(&sreq->cc, 0);
 	goto fn_exit;
     }
 
@@ -134,8 +133,7 @@ skip_self_send:
 	    MPIU_Object_set_ref(sreq, 0);
 	    MPIDI_CH3_Request_destroy(sreq);
 	    sreq = NULL;
-	    mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL, FCNAME,
-			 __LINE__, MPI_ERR_OTHER, "**ch3|eagermsg", 0);
+            MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**ch3|eagermsg");
 	    goto fn_exit;
 	}
 	/* --END ERROR HANDLING-- */
@@ -154,6 +152,7 @@ skip_self_send:
 #endif /* _OSU_PSM_ */
 
 #if defined(_OSU_MVAPICH_)
+    int i;
     for (i = 0 ; i < rdma_num_extra_polls; i++)
     {
         if (rdma_global_ext_sendq_size > 1)

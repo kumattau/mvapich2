@@ -253,7 +253,7 @@ extern int                  mrail_p2r_length;
 
 #define DYNAMIC_TOTAL_WEIGHT            (3* 1024)
 
-#define CHELSIO_RNIC                    "cxgb3"                       
+#define CHELSIO_RNIC                    "cxgb"
 #define INTEL_NE020_RNIC                "nes0"                       
                                
 #endif /* _RDMA_PARAM_H */

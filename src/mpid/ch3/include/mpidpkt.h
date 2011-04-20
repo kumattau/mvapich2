@@ -18,14 +18,16 @@
 #ifndef HAVE_MPIDPKT_H
 #define HAVE_MPIDPKT_H
 
-#if defined(_OSU_MVAPICH_)
-/* Enable the use of data within the message packet for small messages. */
-/* TODO: Add support for eager short packet type.
- * #define USE_EAGER_SHORT
- * #define MPIDI_EAGER_SHORT_INTS 4
- * #define MPIDI_EAGER_SHORT_SIZE 16
- */
-#endif /* defined(_OSU_MVAPICH_) */
+/* Enable the use of data within the message packet for small messages */
+#if 0
+#define USE_EAGER_SHORT
+#define MPIDI_EAGER_SHORT_INTS 4
+/* FIXME: This appears to assume that sizeof(int) == 4 (or at least >= 4) */
+#define MPIDI_EAGER_SHORT_SIZE 16
+#endif
+
+/* This is the number of ints that can be carried within an RMA packet */
+#define MPIDI_RMA_IMMED_INTS 1
 
 /*
  * MPIDI_CH3_Pkt_type_t
@@ -88,6 +90,8 @@ typedef enum MPIDI_CH3_Pkt_type
     MPIDI_CH3_PKT_LOCK_GET_UNLOCK, /* optimization for single gets */
     MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK, /* optimization for single accumulates */
                                      /* RMA Packets end here */
+    MPIDI_CH3_PKT_ACCUM_IMMED,     /* optimization for short accumulate */
+    /* FIXME: Add PUT, GET_IMMED packet types */
     MPIDI_CH3_PKT_FLOW_CNTL_UPDATE,  /* FIXME: Unused */
     MPIDI_CH3_PKT_CLOSE,
     MPIDI_CH3_PKT_END_CH3
@@ -127,7 +131,7 @@ typedef struct MPIDI_CH3_Pkt_limic_comp
 {
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-    int nb;
+    size_t nb;
     MPI_Request *send_req_id;
 } MPIDI_CH3_Pkt_limic_comp_t;
 #endif
@@ -493,6 +497,7 @@ typedef struct MPIDI_CH3_Pkt_get_resp
 }
 MPIDI_CH3_Pkt_get_resp_t;
 
+
 #if defined(_OSU_MVAPICH_)
 typedef struct MPIDI_CH3_Pkt_accum_rndv
 {
@@ -557,6 +562,41 @@ typedef struct MPIDI_CH3_Pkt_accum
 #endif    
 }
 MPIDI_CH3_Pkt_accum_t;
+
+typedef struct MPIDI_CH3_Pkt_accum_immed
+{
+#if defined(_OSU_MVAPICH_)
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+#if defined(MPID_USE_SEQUENCE_NUMBERS)
+    MPID_Seqnum_t seqnum;
+#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
+    uint32_t rma_issued;
+#else /* defined(_OSU_MVAPICH_) */
+    MPIDI_CH3_Pkt_type_t type;
+#endif /* defined(_OSU_MVAPICH_) */ 
+    void *addr;
+    int count;
+    /* FIXME: Compress datatype/op into a single word (immedate mode) */
+    MPI_Datatype datatype;
+    MPI_Op op;
+    /* FIXME: do we need these (use a regular accum packet if we do?) */
+    MPI_Win target_win_handle; /* Used in the last RMA operation in each
+                               * epoch for decrementing rma op counter in
+                               * active target rma and for unlocking window 
+                               * in passive target rma. Otherwise set to NULL*/
+    MPI_Win source_win_handle; /* Used in the last RMA operation in an
+                               * epoch in the case of passive target rma
+                               * with shared locks. Otherwise set to NULL*/
+    int data[MPIDI_RMA_IMMED_INTS];
+#if defined (_OSU_PSM_)
+    int source_rank;
+    int target_rank;
+    int mapped_srank;
+    int mapped_trank;
+#endif
+}
+MPIDI_CH3_Pkt_accum_immed_t;
 
 typedef struct MPIDI_CH3_Pkt_lock
 {
@@ -716,6 +756,7 @@ typedef union MPIDI_CH3_Pkt
     MPIDI_CH3_Pkt_get_t get;
     MPIDI_CH3_Pkt_get_resp_t get_resp;
     MPIDI_CH3_Pkt_accum_t accum;
+    MPIDI_CH3_Pkt_accum_immed_t accum_immed;
     MPIDI_CH3_Pkt_lock_t lock;
     MPIDI_CH3_Pkt_lock_granted_t lock_granted;
     MPIDI_CH3_Pkt_pt_rma_done_t pt_rma_done;    

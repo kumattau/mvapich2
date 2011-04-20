@@ -64,16 +64,52 @@ int tuning_table[COLL_COUNT][COLL_SIZE] = {{1024, 512, 256},
                                          {-1, -1, -1},
                                          {-1, -1, -1}
                                          };
+/* array used to tune scatter*/
+int size_scatter_tuning_table=4;
+struct scatter_tuning scatter_tuning_table[] = {{64, 2048, 4069},{128, 1024, 4096},{256, 512, 2048},{512, 256, 2048}};
 
-int size_scatter_tuning_table=3;
+/*array used to tune gather */
+int size_gather_tuning_table=8;
+struct gather_tuning gather_tuning_table[] = {{32, 256},{64, 512},{128, 2048},{256, 2048},{384, 8196},{512, 8196},{768,8196},{1024,8196}};
 
-struct scatter_tuning scatter_tuning_table[] = {{64, 2048, 4069},{128, 1024, 4096},{512, 256, 2048}};
 
 #if defined(CKPT)
 extern void Wait_for_CR_Completion();
 void *smc_store;
 int smc_store_set;
 #endif
+
+/* Change the values set inside the array by the one define by the user */
+int tuning_init(){
+
+    int i;
+
+    /* If MV2_SCATTER_SMALL_MSG is define*/
+    if(user_scatter_small_msg>0){
+        for(i=0; i <= size_scatter_tuning_table; i++){
+            scatter_tuning_table[i].small = user_scatter_small_msg;
+        }
+    }
+
+    /* If MV2_SCATTER_MEDIUM_MSG is define */
+    if(user_scatter_medium_msg>0){
+        for(i=0; i <= size_scatter_tuning_table; i++){
+            if(scatter_tuning_table[i].small < user_scatter_medium_msg){ 
+                scatter_tuning_table[i].medium = user_scatter_medium_msg;
+            }
+        }
+    }
+
+    /* If MV2_GATHER_SWITCH_POINT is define  */
+    if(user_gather_switch_point>0){
+        for(i=0; i <= size_gather_tuning_table; i++){
+            gather_tuning_table[i].switchp = user_gather_switch_point;
+        }
+    }
+
+    return 0;
+} 
+
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_SHMEM_COLL_Init
@@ -195,6 +231,10 @@ int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t *pg)
 
     }
 
+    if(tune_parameter==1){
+        tuning_init();
+    }
+    
 fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_INIT);
     return mpi_errno;
@@ -705,4 +745,23 @@ void wait_for_signal(int step, int index, char** output_buf, int* offset, int* b
     buffer = (int*)(tmp + sizeof(addrint_t) + sizeof(int));
     *bytes = *((int*)buffer);
 
+}
+
+void lock_shmem_region()
+{
+    pthread_spin_lock(&shmem_coll->shmem_coll_lock);
+}
+
+void unlock_shmem_region()
+{
+    pthread_spin_unlock(&shmem_coll->shmem_coll_lock);
+}
+
+void increment_shmem_comm_count()
+{
+    ++ shmem_coll->shmem_comm_count;
+}
+int get_shmem_comm_count()
+{
+    return shmem_coll->shmem_comm_count;
 }

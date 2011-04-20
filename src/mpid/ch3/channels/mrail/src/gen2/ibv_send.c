@@ -1151,8 +1151,7 @@ int MRAILI_Process_send(void *vbuf_addr)
     if(v->eager) {
         XRC_MSG ("veager %d\n", vc->pg_rank);
         --vc->mrail.outstanding_eager_vbufs;
-        DEBUG_PRINT("Eager, decrementing to: %d\n", v, 
-                vc->mrail.outstanding_eager_vbufs);
+        DEBUG_PRINT("Eager, decrementing to: %d\n", vc->mrail.outstanding_eager_vbufs);
 
         if(vc->mrail.outstanding_eager_vbufs < 
                 rdma_coalesce_threshold) {
@@ -1404,6 +1403,7 @@ int MRAILI_Process_send(void *vbuf_addr)
     case MPIDI_CH3_PKT_LOCK_GRANTED:
     case MPIDI_CH3_PKT_PT_RMA_DONE:
     case MPIDI_CH3_PKT_LOCK_GET_UNLOCK: /* optimization for single gets */
+    case MPIDI_CH3_PKT_ACCUM_IMMED: 
     case MPIDI_CH3_PKT_FLOW_CNTL_UPDATE:
     case MPIDI_CH3_PKT_RNDV_R3_ACK:
         DEBUG_PRINT("[process send] get %d\n", p->type);

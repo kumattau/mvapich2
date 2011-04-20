@@ -558,7 +558,7 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
     int mpi_errno = MPI_SUCCESS;
     MPIDI_VC_t* vc = NULL;
     MPIDI_CH3_Pkt_t* pkt_head = NULL;
-    int nb = 0;
+    size_t nb = 0;
     int complete = 0;
     int i = 0;
     int index = -1;
@@ -1483,8 +1483,8 @@ void MPIDI_CH3I_SMP_writev_rndv_header(MPIDI_VC_t * vc, const MPID_IOV * iov,
     int i, offset = 0;
     MPIDI_CH3_Pkt_rndv_r3_data_t *pkt_header;
 #if defined(_SMP_LIMIC_)
-    int err;
-    int total_bytes = 0;
+    size_t err;
+    size_t  total_bytes = 0;
     MPID_Request *sreq = NULL;
     limic_user lu;
 #endif
@@ -1539,11 +1539,11 @@ void MPIDI_CH3I_SMP_writev_rndv_header(MPIDI_VC_t * vc, const MPID_IOV * iov,
         for(i = 0; i < sreq->dev.iov_count; ++i) {
             err = limic_tx_init( limic_fd, sreq->dev.iov[i].MPID_IOV_BUF,
                       sreq->dev.iov[i].MPID_IOV_LEN, &lu);
-            if (err != sreq->dev.iov[i].MPID_IOV_LEN)
+            if (!err) {
                 MPIU_ERR_SETFATALANDJUMP1(err, MPI_ERR_OTHER,
                     "**fail", "**fail %s",
                     "LiMIC: (MPIDI_CH3I_SMP_writev_rndv_header) limic_tx_init fail");
-
+            }
             total_bytes += sreq->dev.iov[i].MPID_IOV_LEN;
 
             /* copy the limic_user information to the shared memory
@@ -2023,10 +2023,10 @@ fn_exit:
 #if defined(_SMP_LIMIC_)
 int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
         const int iovlen, int index, struct limic_header *l_header,
-        int *num_bytes_ptr, int use_limic)
+        size_t *num_bytes_ptr, int use_limic)
 #else
 int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
-        const int iovlen, int index, int *num_bytes_ptr)
+        const int iovlen, int index, size_t *num_bytes_ptr)
 #endif
 {
     int mpi_errno = MPI_SUCCESS;
@@ -2035,11 +2035,12 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
     int destination = recv_vc_ptr->smp.local_nodes;
     int current_index = index;
     int recv_offset = 0;
-    int msglen, iov_len;
+    size_t msglen, iov_len;
     void *current_buf;
     SEND_BUF_T *recv_buf;
 #if defined(_SMP_LIMIC_)
-    int i, err, old_len;
+    int i;
+    size_t err, old_len;
     int total_bytes = l_header->total_bytes;
 #endif
     /* all variable must be declared before the state declarations */
@@ -2321,20 +2322,21 @@ fn_fail:
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 #if defined(_SMP_LIMIC_)
 int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
-        const int iovlen, int index, struct limic_header *l_header, int *num_bytes_ptr, int use_limic)
+        const int iovlen, int index, struct limic_header *l_header, size_t *num_bytes_ptr, int use_limic)
 #else
 int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
-    const int iovlen, int index, int *num_bytes_ptr)
+    const int iovlen, int index, size_t *num_bytes_ptr)
 #endif
 {
     int mpi_errno = MPI_SUCCESS;
-    int iov_off = 0, buf_off = 0;
-    int received_bytes = 0;
-    int msglen, iov_len;
+    size_t iov_off = 0, buf_off = 0;
+    size_t received_bytes = 0;
+    size_t msglen, iov_len;
     /* all variable must be declared before the state declarations */
 #if defined(_SMP_LIMIC_)
-    int i, err, old_len;
-    int total_bytes = l_header->total_bytes;
+    int i;
+    size_t  err, old_len;
+    size_t total_bytes = l_header->total_bytes;
 #endif
     int destination = recv_vc_ptr->smp.local_nodes;
     int current_index = index;
@@ -2626,8 +2628,7 @@ fn_fail:
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
-    const int iovlen, int
-    *num_bytes_ptr)
+    const int iovlen, size_t  *num_bytes_ptr)
 {
     int mpi_errno = MPI_SUCCESS;
 

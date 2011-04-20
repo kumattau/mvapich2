@@ -7,5 +7,3 @@ createf90types_DEPADD    = ../../util/mtest.o
 ../../util/mtest.o: 
 	(cd ../../util && $(MAKE) mtest.o)
 
-smvarSubdir_do_dependencies=no
-smvar_dependenciesDummy=yes

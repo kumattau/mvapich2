@@ -1,23 +1,14 @@
-# Copyright (c) 2003-2011, The Ohio State University. All rights
-# reserved.
-#
-# This file is part of the MVAPICH2 software package developed by the
-# team members of The Ohio State University's Network-Based Computing
-# Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
-#
-# For detailed copyright and licensing information, please refer to the
-# copyright file COPYRIGHT in the top level MVAPICH2 directory.
-
 SUBDIRS_mpe_dir = mpe2
-SUBDIRS = mpid mpi util nameserv binding env packaging @mpe_dir@ pmi pm .
+SUBDIRS = mpl mpid mpi util nameserv binding env packaging @mpe_dir@ pmi pm .
 # Add "include" to the directories used for creating the TAGS files
 TAGS_DIRS = include
-NOTSIMPLEMAKE_SUBDIRS = mpe2
+NOTSIMPLEMAKE_SUBDIRS = mpl mpe2 openpa
 # We need to invoke the distclean target in the include directory
 distclean-local:
 	(cd include && $(MAKE) distclean)
-
-# <_OSU_MVAPICH_>
-maintainer-clean-local:
-	(cd include && ${MAKE} maintainer-clean)
-# </_OSU_MVAPICH_> 
+all-postamble:
+	for dir in mpl @opadir@ ; do \
+	    (cd $$dir && ${MAKE} prefix=$(top_builddir) exec_prefix=$(top_builddir) \
+	    bindir=$(top_builddir)/bin libdir=$(top_builddir)/lib \
+	    includedir=$(top_builddir)/include docdir=$(top_builddir)/share/doc install) ; \
+	done

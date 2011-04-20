@@ -1,14 +1,3 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
- * reserved.
- *
- * This file is part of the MVAPICH2 software package developed by the
- * team members of The Ohio State University's Network-Based Computing
- * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
- *
- * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT in the top level MVAPICH2 directory.
- *
- */
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
 /* 
  *   Copyright (C) 1997-2001 University of Chicago. 
@@ -94,13 +83,6 @@ int ADIOI_Calc_aggregator(ADIO_File fd,
 
     ADIOI_UNREFERENCED_ARG(fd_start);
 
-#ifdef AGG_DEBUG
-#if 0
-    FPRINTF(stdout, "off = %lld, min_off = %lld, len = %lld, fd_size = %lld\n",
-	    off, min_off, *len, fd_size);
-#endif
-#endif
-    
     /* get an index into our array of aggregators */
     rank_index = (int) ((off - min_off + fd_size)/ fd_size - 1);
 

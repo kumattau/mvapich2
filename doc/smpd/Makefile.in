@@ -7,7 +7,7 @@ srcdir = @srcdir@
 
 LATEX      = TEXINPUTS=".:$(srcdir):$(srcdir)/../pmi:" ; export TEXINPUTS ; latex
 BIBTEX     = BIBINPUTS=".:$(srcdir):$(srcdir)/../pmi:" ; export BIBINPUTS ; bibtex
-DVIPDFM    = TEXINPUTS=".:$(srcdir):$(srcdir)/../pmi:" ; export TEXINPUTS ; dvipdfm
+DVIPDFM    = TEXINPUTS=".:$(srcdir):$(srcdir)/../pmi:" ; export TEXINPUTS ; dvipdf
 LATEX2HTML = latex2html
 
 smpd_pmi.dvi: smpd_pmi.tex smpd_tree.eps

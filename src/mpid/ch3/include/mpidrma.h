@@ -40,6 +40,11 @@ typedef struct MPIDI_RMA_dtype_info { /* for derived datatypes */
 /* for keeping track of RMA ops, which will be executed at the next sync call */
 typedef struct MPIDI_RMA_ops {
     struct MPIDI_RMA_ops *next;  /* pointer to next element in list */
+    /* FIXME: It would be better to setup the packet that will be sent, at 
+       least in most cases (if, as a result of the sync/ops/sync sequence,
+       a different packet type is needed, it can be extracted from the 
+       information otherwise stored). */
+    /* FIXME: Use enum for RMA op type? */
     int type;  /* MPIDI_RMA_PUT, MPID_REQUEST_GET,
 		  MPIDI_RMA_ACCUMULATE, MPIDI_RMA_LOCK */
     void *origin_addr;
@@ -51,6 +56,10 @@ typedef struct MPIDI_RMA_ops {
     MPI_Datatype target_datatype;
     MPI_Op op;  /* for accumulate */
     int lock_type;  /* for win_lock */
+    /* Used to complete operations */
+    struct MPID_Request *request;
+    MPIDI_RMA_dtype_info dtype_info;
+    void *dataloop;
 } MPIDI_RMA_ops;
 
 typedef struct MPIDI_PT_single_op {
@@ -72,13 +81,15 @@ typedef struct MPIDI_Win_lock_queue {
     struct MPIDI_PT_single_op *pt_single_op;  /* to store info for lock-put-unlock optimization */
 } MPIDI_Win_lock_queue;
 
+/* Routine use to tune RMA optimizations */
+void MPIDI_CH3_RMA_SetAccImmed( int flag );
 #if defined(_OSU_MVAPICH_)
 void MPIDI_CH3I_RDMA_win_create(void *base, MPI_Aint size, int comm_size,
                            int rank, MPID_Win ** win_ptr, MPID_Comm * comm_ptr);
 void MPIDI_CH3I_RDMA_win_free(MPID_Win ** win_ptr);
 void MPIDI_CH3I_RDMA_start(MPID_Win * win_ptr, int start_grp_size, int *ranks_in_win_grp);
 void MPIDI_CH3I_RDMA_complete(MPID_Win * win_ptr, int start_grp_size, int *ranks_in_win_grp);
-void MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, MPIDI_RMA_ops ** MPIDI_RMA_ops_list, int passive);
+void MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive);
 void MPIDI_CH3I_RDMA_complete_rma(MPID_Win * win_ptr, int start_grp_size, int *ranks_in_win_grp);
 int MPIDI_CH3I_RDMA_post(MPID_Win * win_ptr, int target_rank);
 int MPIDI_CH3I_RDMA_finish_rma(MPID_Win * win_ptr);

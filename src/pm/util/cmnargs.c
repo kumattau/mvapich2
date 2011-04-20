@@ -29,9 +29,6 @@
 #include "pmiserv.h"
 #include "cmnargs.h"
 
-/* Use the memory defintions from mpich2/src/include */
-#include "mpimem.h"
-
 /* ----------------------------------------------------------------------- */
 /* Process options                                                         */
 /* The process options steps loads up the processTable with entries,       */
@@ -188,7 +185,7 @@ int MPIE_Args( int argc, char *argv[], ProcessUniverse *pUniv,
 		mpiexec_usage( "Missing argument to -configfile" );
 	    optionCmdline = 1;
 	} 
-/* Here begins the MVAPICH2 mpiexec extension for singleton init */	
+/* Here begins the MPICH2 mpiexec extension for singleton init */	
  	else if ( strncmp( argv[i], "-pmi_args", 8 ) == 0) {
 	    if (i+4 < argc ) {
 		pUniv->fromSingleton   = 1;
@@ -202,7 +199,7 @@ int MPIE_Args( int argc, char *argv[], ProcessUniverse *pUniv,
 		mpiexec_usage( "Missing argument to -pmi_args" );
 	    optionArgs = 1;
 	}
-/* Here begin the MVAPICH2 mpiexec common extensions for 
+/* Here begin the MPICH2 mpiexec common extensions for 
     -usize n   - Universe size
     -l         - label stdout/err
     -maxtime n - set a timelimit of n seconds
@@ -253,7 +250,7 @@ int MPIE_Args( int argc, char *argv[], ProcessUniverse *pUniv,
 			   channame );
 	    MPIE_Putenv( pUniv->worlds, envstring );
 	}
-/* End of the MVAPICH2 mpiexec common extentions */
+/* End of the MPICH2 mpiexec common extentions */
 
 	else if (argv[i][0] != '-') {
 	    exename = argv[i];

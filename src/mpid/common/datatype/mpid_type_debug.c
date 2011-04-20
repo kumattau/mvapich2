@@ -24,7 +24,6 @@
 void MPIDI_Datatype_dot_printf(MPI_Datatype type, int depth, int header);
 void MPIDI_Dataloop_dot_printf(MPID_Dataloop *loop_p, int depth, int header);
 void MPIDI_Datatype_contents_printf(MPI_Datatype type, int depth, int acount);
-
 static char *MPIDI_Datatype_depth_spacing(int depth) ATTRIBUTE((unused));
 
 /* note: this isn't really "error handling" per se, but leave these comments
@@ -237,9 +236,6 @@ void MPIDI_Datatype_printf(MPI_Datatype type,
     char *string;
     int size;
     MPI_Aint extent, true_lb, true_ub, lb, ub, sticky_lb, sticky_ub;
-    MPIU_THREADPRIV_DECL;
-
-    MPIU_THREADPRIV_GET;
 
     if (HANDLE_GET_KIND(type) == HANDLE_KIND_BUILTIN) {
 	string = MPIDU_Datatype_builtin_to_string(type);
@@ -257,13 +253,11 @@ void MPIDI_Datatype_printf(MPI_Datatype type,
 	sticky_ub = type_ptr->has_sticky_ub;
     }
 
-    MPIR_Nest_incr();
-    NMPI_Type_size(type, &size);
-    NMPI_Type_get_true_extent(type, &true_lb, &extent);
+    MPIR_Type_size_impl(type, &size);
+    MPIR_Type_get_true_extent_impl(type, &true_lb, &extent);
     true_ub = extent + true_lb;
-    NMPI_Type_get_extent(type, &lb, &extent);
+    MPIR_Type_get_extent_impl(type, &lb, &extent);
     ub = extent + lb;
-    MPIR_Nest_decr();
 
     if (header == 1) {
 	/*               012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789 */
@@ -327,8 +321,10 @@ char *MPIDU_Datatype_builtin_to_string(MPI_Datatype type)
     static char t_doubleprecision[]  = "MPI_DOUBLE_PRECISION";
     static char t_integer[]          = "MPI_INTEGER";
     static char t_2integer[]         = "MPI_2INTEGER";
+#ifdef MPICH_DEFINE_2COMPLEX
     static char t_2complex[]         = "MPI_2COMPLEX";
     static char t_2doublecomplex[]   = "MPI_2DOUBLE_COMPLEX";
+#endif
     static char t_2real[]            = "MPI_2REAL";
     static char t_2doubleprecision[] = "MPI_2DOUBLE_PRECISION";
     static char t_character[]        = "MPI_CHARACTER";
@@ -369,8 +365,10 @@ char *MPIDU_Datatype_builtin_to_string(MPI_Datatype type)
     if (type == MPI_DOUBLE_PRECISION)  return t_doubleprecision;
     if (type == MPI_INTEGER)           return t_integer;
     if (type == MPI_2INTEGER)          return t_2integer;
+#ifdef MPICH_DEFINE_2COMPLEX
     if (type == MPI_2COMPLEX)          return t_2complex;
     if (type == MPI_2DOUBLE_COMPLEX)   return t_2doublecomplex;
+#endif
     if (type == MPI_2REAL)             return t_2real;
     if (type == MPI_2DOUBLE_PRECISION) return t_2doubleprecision;
     if (type == MPI_CHARACTER)         return t_character;
@@ -477,7 +475,6 @@ void MPIDU_Datatype_debug(MPI_Datatype type,
     MPIDI_Datatype_dot_printf(type, 0, 1);
 }
 
-#ifdef USE_DBG_LOGGING
 static char *MPIDI_Datatype_depth_spacing(int depth)
 {
     static char d0[] = "";
@@ -496,7 +493,6 @@ static char *MPIDI_Datatype_depth_spacing(int depth)
 	default: return d5;
     }
 }
-#endif
 
 #define __mpidi_datatype_free_and_return { \
  if (cp->nr_ints  > 0) MPIU_Free(ints);   \

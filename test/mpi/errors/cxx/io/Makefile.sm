@@ -4,6 +4,3 @@ smvar_do_sharedlibs = 0
 
 fileerrretx_SOURCES   = fileerrretx.cxx
 
-
-smvarSubdir_do_dependencies=no
-smvar_dependenciesDummy=yes

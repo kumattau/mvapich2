@@ -516,6 +516,7 @@ int MPID_nem_ib_set_default_params()
             rdma_get_fallback_threshold  = 394 * 1024;
 			break;
         case CHELSIO_T3:
+        case CHELSIO_T4:
             rdma_vbuf_total_size     = 9 * 1024;
             num_rdma_buffer          = 16;
             rdma_iba_eager_threshold = rdma_vbuf_total_size -
@@ -558,7 +559,8 @@ int MPID_nem_ib_set_default_params()
 
     if (hca_list[0].hca_type == IBM_EHCA) {
         rdma_max_inline_size = -1;
-    } else if (hca_list[0].hca_type == CHELSIO_T3) {
+    } else if ((hca_list[0].hca_type == CHELSIO_T3) ||
+               (hca_list[0].hca_type == CHELSIO_T4)) {
         rdma_max_inline_size = 64;
     } else {
 		rdma_max_inline_size = 128 + INLINE_THRESHOLD_ADJUST;
@@ -572,7 +574,8 @@ int MPID_nem_ib_set_default_params()
         rdma_default_mtu = IBV_MTU_1024;
     }
 
-    if (hca_list[0].hca_type == CHELSIO_T3) {
+    if ((hca_list[0].hca_type == CHELSIO_T3) ||
+        (hca_list[0].hca_type == CHELSIO_T4)) {
         /* Trac #423 */
         struct ibv_device_attr dev_attr;
         int mpi_errno = MPI_SUCCESS;

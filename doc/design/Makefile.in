@@ -8,7 +8,7 @@ srcdir = @srcdir@
 
 LATEX      = TEXINPUTS=".:$(srcdir):" ; export TEXINPUTS ; latex
 BIBTEX     = BIBINPUTS=".:$(srcdir):" ; export BIBINPUTS ; bibtex
-DVIPDFM    = TEXINPUTS=".:$(srcdir):" ; export TEXINPUTS ; dvipdfm
+DVIPDFM    = TEXINPUTS=".:$(srcdir):" ; export TEXINPUTS ; dvipdf
 LATEX2HTML = latex2html
 
 .tex.dvi:

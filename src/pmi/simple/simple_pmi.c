@@ -3,17 +3,6 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
- /* Copyright (c) 2003-2011, The Ohio State University. All rights
- * reserved.
- *
- * This file is part of the MVAPICH2 software package developed by the
- * team members of The Ohio State University's Network-Based Computing
- * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
- *
- * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT in the top level MVAPICH2 directory.
- *
- */
 
 /*********************** PMI implementation ********************************/
 /*
@@ -62,16 +51,13 @@
 #include "mpimem.h"
 
 /* Temporary debug definitions */
-#if 0
-#define DBG_PRINTF(args) printf args ; fflush(stdout)
-#else
+/* #define DBG_PRINTF(args) printf args ; fflush(stdout) */
 #define DBG_PRINTF(args)
-#endif
 
 #include "pmi.h"
 #include "simple_pmiutil.h"
 #include "mpi.h"		/* to get MPI_MAX_PORT_NAME */
-#include <stdint.h>
+
 /* 
    These are global variable used *ONLY* in this file, and are hence
    declared static.
@@ -125,8 +111,6 @@ static char cached_singinit_key[PMIU_MAXLINE];
 static char cached_singinit_val[PMIU_MAXLINE];
 static char singinit_kvsname[256];
 
-extern void MPIU_Exit(int);
-
 /******************************** Group functions *************************/
 
 int PMI_Init( int *spawned )
@@ -134,7 +118,9 @@ int PMI_Init( int *spawned )
     char *p;
     int notset = 1;
     int rc;
-
+    
+    PMI_initialized = PMI_UNINITIALIZED;
+    
     /* FIXME: Why is setvbuf commented out? */
     /* FIXME: What if the output should be fully buffered (directed to file)?
        unbuffered (user explicitly set?) */
@@ -421,23 +407,8 @@ int PMI_Finalize( void )
 int PMI_Abort(int exit_code, const char error_msg[])
 {
     PMIU_printf(1, "aborting job:\n%s\n", error_msg);
-#if defined(_OSU_MVAPICH_)
-#if defined(HAVE_WINDOWS_H)
-    /* exit can hang if libc fflushes output while in/out/err buffers are locked.  ExitProcess does not hang. */
-    ExitProcess(exit_code);
-#else /* defined(HAVE_WINDOWS_H) */
-    exit(exit_code);
-#endif /* defined(HAVE_WINDOWS_H) */
-#else /* defined(_OSU_MVAPICH_) */
     MPIU_Exit(exit_code);
-#endif /* defined(_OSU_MVAPICH_) */
-#if defined(_OSU_MVAPICH_) && (defined(__SUNPRO_C) || defined(__SUNPRO_CC))
-#pragma error_messages(off, E_STATEMENT_NOT_REACHED)
-#endif /* defined (_OSU_MVAPICH_) && (defined(__SUNPRO_C) || defined(__SUNPRO_CC)) */   
     return -1;
-#if defined(_OSU_MVAPICH_) && (defined(__SUNPRO_C) || defined(__SUNPRO_CC))
-#pragma error_messages(default, E_STATEMENT_NOT_REACHED)
-#endif /* defined(_OSU_MVAPICH_) && (defined(__SUNPRO_C) || defined(__SUNPRO_CC)) */
 }
 
 /************************************* Keymap functions **********************/
@@ -736,29 +707,11 @@ int PMI_Spawn_multiple(int count,
     int  i,rc,argcnt,spawncnt,total_num_processes,num_errcodes_found;
     char buf[PMIU_MAXLINE], tempbuf[PMIU_MAXLINE], cmd[PMIU_MAXLINE];
     char *lead, *lag;
-    char *val;
-    char small[PMIU_MAXLINE];
-    int mpirun = 0, sz;
 
     /* Connect to the PM if we haven't already */
     if (PMIi_InitIfSingleton() != 0) return -1;
 
     total_num_processes = 0;
-
-    val = getenv("MPIRUN_RSH_LAUNCH");
-    if(val && (atoi(val) == 1)) {
-        mpirun = 1;
-    }
-
-    if(mpirun) {
-        sprintf(small, "mcmd=spawn\n");
-        write(PMI_fd, small, PMIU_MAXLINE);
-        write(PMI_fd, &count, sizeof(uint32_t));
-        sz = 0;
-        for(spawncnt=0; spawncnt < count; spawncnt++) 
-            sz += maxprocs[spawncnt];
-        write(PMI_fd, &sz, sizeof(uint32_t));
-    }
 
     for (spawncnt=0; spawncnt < count; spawncnt++)
     {
@@ -767,21 +720,21 @@ int PMI_Spawn_multiple(int count,
         rc = MPIU_Snprintf(buf, PMIU_MAXLINE, 
 			   "mcmd=spawn\nnprocs=%d\nexecname=%s\n",
 			   maxprocs[spawncnt], cmds[spawncnt] );
-        if (rc < 0) {
-            return PMI_FAIL;
-        }
+	if (rc < 0) {
+	    return PMI_FAIL;
+	}
 
-        rc = MPIU_Snprintf(tempbuf, PMIU_MAXLINE,
-                   "totspawns=%d\nspawnssofar=%d\n",
-                   count, spawncnt+1);
+	rc = MPIU_Snprintf(tempbuf, PMIU_MAXLINE,
+			   "totspawns=%d\nspawnssofar=%d\n",
+			   count, spawncnt+1);
 
-        if (rc < 0) {
-            return PMI_FAIL;
-        }
-        rc = MPIU_Strnapp(buf,tempbuf,PMIU_MAXLINE);
-        if (rc != 0) {
-            return PMI_FAIL;
-        }
+	if (rc < 0) { 
+	    return PMI_FAIL;
+	}
+	rc = MPIU_Strnapp(buf,tempbuf,PMIU_MAXLINE);
+	if (rc != 0) {
+	    return PMI_FAIL;
+	}
 
         argcnt = 0;
         if ((argvs != NULL) && (argvs[spawncnt] != NULL)) {
@@ -799,23 +752,18 @@ int PMI_Spawn_multiple(int count,
 		   argn=<any nonnewline><newline> */
                 rc = MPIU_Snprintf(tempbuf,PMIU_MAXLINE,"arg%d=%s\n",
 				   i+1,argvs[spawncnt][i]);
-                if (rc < 0) {
-                    return PMI_FAIL;
-                }
-                        rc = MPIU_Strnapp(buf,tempbuf,PMIU_MAXLINE);
-                if (rc != 0) {
-                    return PMI_FAIL;
-                }
-                        argcnt++;
+		if (rc < 0) {
+		    return PMI_FAIL;
+		}
+                rc = MPIU_Strnapp(buf,tempbuf,PMIU_MAXLINE);
+		if (rc != 0) {
+		    return PMI_FAIL;
+		}
+                argcnt++;
+		rc = PMIU_writeline( PMI_fd, buf );
+		buf[0] = 0;
 
-               if(mpirun) {
-                   sz = strlen(buf);
-                   write(PMI_fd, &sz, sizeof(uint32_t));
-                }
-                rc = PMIU_writeline( PMI_fd, buf );
-                buf[0] = 0;
-
-              }
+            }
         }
         rc = MPIU_Snprintf(tempbuf,PMIU_MAXLINE,"argcnt=%d\n",argcnt);
 	if (rc < 0) {
@@ -891,12 +839,7 @@ int PMI_Spawn_multiple(int count,
 	if (rc != 0) {
 	    return PMI_FAIL;
 	}
-        if(mpirun) {
-            sz = strlen(buf);
-            write(PMI_fd, &sz, sizeof(uint32_t));
-        }
         PMIU_writeline( PMI_fd, buf );
-
     }
 
     PMIU_readline( PMI_fd, buf, PMIU_MAXLINE );

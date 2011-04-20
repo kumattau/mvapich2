@@ -5,18 +5,6 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
- * reserved.
- *
- * This file is part of the MVAPICH2 software package developed by the
- * team members of The Ohio State University's Network-Based Computing
- * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
- *
- * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT in the top level MVAPICH2 directory.
- *
- */
-
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -121,7 +109,6 @@ int PREPEND_PREFIX(Segment_init)(const DLOOP_Buffer buf,
 	DLOOP_Type el_type;
 	
 	DLOOP_Handle_get_loopdepth_macro(handle, depth, flag);
-	if (depth >= DLOOP_MAX_DATATYPE_DEPTH) return -1;
 
 	DLOOP_Handle_get_loopptr_macro(handle, oldloop, flag);
 	DLOOP_Assert(oldloop != NULL);
@@ -165,10 +152,14 @@ int PREPEND_PREFIX(Segment_init)(const DLOOP_Buffer buf,
 	    sblp->el_type                  = el_type;
 
 	    depth++; /* we're adding to the depth with the builtin */
+            DLOOP_Assert(depth < (DLOOP_MAX_DATATYPE_DEPTH));
 	}
 
 	dlp = sblp;
     }
+
+    /* assert instead of return b/c dtype/dloop errorhandling code is inconsistent */
+    DLOOP_Assert(depth < (DLOOP_MAX_DATATYPE_DEPTH));
 
     /* initialize the rest of the segment values */
     segp->handle = handle;
@@ -209,6 +200,8 @@ int PREPEND_PREFIX(Segment_init)(const DLOOP_Buffer buf,
                 break;
                 /* --END ERROR HANDLING-- */
         }
+
+        DLOOP_Assert(i < DLOOP_MAX_DATATYPE_DEPTH);
 
 	/* loop_p, orig_count, orig_block, and curcount are all filled by us now.
 	 * the rest are filled in at processing time.
@@ -379,14 +372,14 @@ void PREPEND_PREFIX(Segment_manipulate)(struct DLOOP_Segment *segp,
 
     if (first == *lastp) {
 	/* nothing to do */
-	DLOOP_dbg_printf("dloop_segment_manipulate: warning: first == last (" MPI_AINT_FMT_DEC_SPEC ")\n", first);
+	DLOOP_dbg_printf("dloop_segment_manipulate: warning: first == last (" DLOOP_OFFSET_FMT_DEC_SPEC ")\n", first);
 	return;
     }
 
     /* first we ensure that stream_off and first are in the same spot */
     if (first != stream_off) {
 #ifdef DLOOP_DEBUG_MANIPULATE
-	DLOOP_dbg_printf("first=" MPI_AINT_FMT_DEC_SPEC "; stream_off=" MPI_AINT_FMT_DEC_SPEC "; resetting.\n",
+	DLOOP_dbg_printf("first=" DLOOP_OFFSET_FMT_DEC_SPEC "; stream_off=" DLOOP_OFFSET_FMT_DEC_SPEC "; resetting.\n",
 			 first, stream_off);
 #endif
 
@@ -413,14 +406,14 @@ void PREPEND_PREFIX(Segment_manipulate)(struct DLOOP_Segment *segp,
 
 	    /* --BEGIN ERROR HANDLING-- */
 	    /* verify that we're in the right location */
-	    if (tmp_last != first) DLOOP_Assert(0);
+	    DLOOP_Assert(tmp_last == first);
 	    /* --END ERROR HANDLING-- */
 	}
 
 	DLOOP_SEGMENT_LOAD_LOCAL_VALUES;
 
 #ifdef DLOOP_DEBUG_MANIPULATE
-	DLOOP_dbg_printf("done repositioning stream_off; first=" MPI_AINT_FMT_DEC_SPEC ", stream_off=" MPI_AINT_FMT_DEC_SPEC ", last=" MPI_AINT_FMT_DEC_SPEC "\n",
+	DLOOP_dbg_printf("done repositioning stream_off; first=" DLOOP_OFFSET_FMT_DEC_SPEC ", stream_off=" DLOOP_OFFSET_FMT_DEC_SPEC ", last=" DLOOP_OFFSET_FMT_DEC_SPEC "\n",
 		   first, stream_off, last);
 #endif
     }
@@ -505,7 +498,7 @@ void PREPEND_PREFIX(Segment_manipulate)(struct DLOOP_Segment *segp,
 	    }
 
 #ifdef DLOOP_DEBUG_MANIPULATE
-	    DLOOP_dbg_printf("\thit leaf; cur_sp=%d, elmp=%x, piece_sz=" MPI_AINT_FMT_DEC_SPEC "\n",
+	    DLOOP_dbg_printf("\thit leaf; cur_sp=%d, elmp=%x, piece_sz=" DLOOP_OFFSET_FMT_DEC_SPEC "\n",
 			     cur_sp,
 		             (unsigned) cur_elmp, myblocks * local_el_size);
 #endif
@@ -516,7 +509,7 @@ void PREPEND_PREFIX(Segment_manipulate)(struct DLOOP_Segment *segp,
 	    {
 		myblocks = ((last - stream_off) / stream_el_size);
 #ifdef DLOOP_DEBUG_MANIPULATE
-		DLOOP_dbg_printf("\tpartial block count=" MPI_AINT_FMT_DEC_SPEC " (" MPI_AINT_FMT_DEC_SPEC " bytes)\n",
+		DLOOP_dbg_printf("\tpartial block count=" DLOOP_OFFSET_FMT_DEC_SPEC " (" DLOOP_OFFSET_FMT_DEC_SPEC " bytes)\n",
 				 myblocks,
                                  myblocks * stream_el_size);
 #endif
@@ -826,7 +819,7 @@ void PREPEND_PREFIX(Segment_manipulate)(struct DLOOP_Segment *segp,
 	    }
 
 #ifdef DLOOP_DEBUG_MANIPULATE
-	    DLOOP_dbg_printf("\tstep 1: next orig_offset = " MPI_AINT_FMT_DEC_SPEC " (0x" MPI_AINT_FMT_HEX_SPEC ")\n",
+	    DLOOP_dbg_printf("\tstep 1: next orig_offset = " DLOOP_OFFSET_FMT_DEC_SPEC " (0x" DLOOP_OFFSET_FMT_HEX_SPEC ")\n",
 			     next_elmp->orig_offset,
 			     next_elmp->orig_offset);
 #endif
@@ -866,7 +859,7 @@ void PREPEND_PREFIX(Segment_manipulate)(struct DLOOP_Segment *segp,
 	    }
 
 #ifdef DLOOP_DEBUG_MANIPULATE
-	    DLOOP_dbg_printf("\tstep 2: next curoffset = " MPI_AINT_FMT_DEC_SPEC " (0x" MPI_AINT_FMT_HEX_SPEC ")\n",
+	    DLOOP_dbg_printf("\tstep 2: next curoffset = " DLOOP_OFFSET_FMT_DEC_SPEC " (0x" DLOOP_OFFSET_FMT_HEX_SPEC ")\n",
 			     next_elmp->curoffset,
 			     next_elmp->curoffset);
 #endif
@@ -875,18 +868,13 @@ void PREPEND_PREFIX(Segment_manipulate)(struct DLOOP_Segment *segp,
 	    DLOOP_SEGMENT_PUSH;
 	} /* end of else push the stackelm */
     } /* end of for (;;) */
-#if defined(_OSU_MVAPICH_) && (defined(__SUNPRO_C) || defined(__SUNPRO_CC))
-#pragma error_messages(off, E_STATEMENT_NOT_REACHED)
-#endif /* defined(_OSU_MVAPICH_) && (defined(__SUNPRO_C) || defined(__SUNPRO_CC)) */
+
 #ifdef DLOOP_DEBUG_MANIPULATE
     DLOOP_dbg_printf("hit end of datatype\n");
 #endif
 
     DLOOP_SEGMENT_SAVE_LOCAL_VALUES;
     return;
-#if defined(_OSU_MVAPICH_) && (defined(__SUNPRO_C) || defined(__SUNPRO_CC))
-#pragma error_messages(default, E_STATEMENT_NOT_REACHED)
-#endif /* defined(_OSU_MVAPICH_) && (defined(__SUNPRO_C) || defined(__SUNPRO_CC)) */
 }
 
 /* DLOOP_Stackelm_blocksize - returns block size for stackelm based on current

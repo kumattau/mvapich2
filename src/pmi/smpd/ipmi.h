@@ -1,15 +1,4 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
- * reserved.
- *
- * This file is part of the MVAPICH2 software package developed by the
- * team members of The Ohio State University's Network-Based Computing
- * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
- *
- * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT in the top level MVAPICH2 directory.
- *
- */
 /*
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -104,11 +93,7 @@ int iPMI_Spawn_multiple(int count,
 int iPMI_Parse_option(int num_args, char *args[], int *num_parsed, PMI_keyval_t **keyvalp, int *size);
 /* parse PMI implementation specific values into an info object that can then be passed to 
    PMI_Spawn_multiple.  Remove PMI implementation specific arguments from argc and argv */
-#if defined(_OSU_MVAPICH_)
-int iPMI_Args_to_keyval(int *argcp, char** const* argvp, PMI_keyval_t **keyvalp, int *size);
-#else /* defined(_OSU_MVAPICH_) */
 int iPMI_Args_to_keyval(int *argcp, char *((*argvp)[]), PMI_keyval_t **keyvalp, int *size);
-#endif /* defined(_OSU_MVAPICH_) */
 /* free the data returned by iPMI_Parse_option or iPMI_Args_to_keyval */
 int iPMI_Free_keyvals(PMI_keyval_t keyvalp[], int size);
 

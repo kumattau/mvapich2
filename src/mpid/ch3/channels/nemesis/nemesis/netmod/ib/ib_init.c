@@ -47,8 +47,12 @@ MPID_nem_netmod_funcs_t MPIDI_nem_ib_funcs = {
     MPID_nem_ib_init,
     MPID_nem_ib_finalize,
     /* MPID_nem_ib_ckpt_shutdown, */
+    #ifdef ENABLE_CHECKPOINTING
+    NULL,
+    NULL,
+    NULL,
+    #endif
     MPID_nem_ib_poll,
-    MPID_nem_ib_send,
     MPID_nem_ib_get_business_card,
     MPID_nem_ib_connect_to_root,
     MPID_nem_ib_vc_init,
@@ -286,14 +290,7 @@ MPID_nem_ib_allocate_memory(int pg_rank, int pg_size)
  * @val_max_sz_p: Pointer to max. size
  */
 
-int MPID_nem_ib_init (MPID_nem_queue_ptr_t proc_recv_queue,
-        MPID_nem_queue_ptr_t proc_free_queue,
-        MPID_nem_cell_ptr_t proc_elements,
-        int num_proc_elements,
-        MPID_nem_cell_ptr_t module_elements,
-        int num_module_elements,
-        MPID_nem_queue_ptr_t *module_free_queue,
-        MPIDI_PG_t *pg_p,
+int MPID_nem_ib_init (MPIDI_PG_t *pg_p,
         int pg_rank,
         char **bc_val_p,
         int *val_max_sz_p)

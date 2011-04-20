@@ -11,7 +11,7 @@ namepub.dvi: namepub.tex code.sty twopm.eps
 .dvi.ps:
 	dvips $*
 .dvi.pdf:
-	(unset TEXMF ; dvipdfm $* )
+	(unset TEXMF ; dvipdf $* )
 .tex.dvi:
 	-latex $* </dev/null 2>&1 >/dev/null
 	-bibtex $*

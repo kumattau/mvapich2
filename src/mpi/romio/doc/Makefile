@@ -3,7 +3,7 @@ all:
 	bibtex users-guide
 	latex users-guide.tex
 	latex users-guide.tex
-	dvipdfm users-guide
+	dvipdf users-guide
 
 clean:
 	-rm -f users-guide.toc users-guide.log users-guide.dvi \

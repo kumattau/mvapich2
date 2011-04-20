@@ -1,5 +1,7 @@
 /*
- * Copyright © 2009 CNRS, INRIA, Université Bordeaux 1
+ * Copyright © 2009 CNRS
+ * Copyright © 2009-2010 INRIA
+ * Copyright © 2009-2010 Université Bordeaux 1
  * See COPYING in top-level directory.
  */
 
@@ -15,6 +17,12 @@
 
 #include <hwloc.h>
 #include <stdio.h>
+
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 
 /** \defgroup hwlocality_linux Linux-only helpers
  *
@@ -46,5 +54,11 @@ HWLOC_DECLSPEC int hwloc_linux_set_tid_cpubind(hwloc_topology_t topology, pid_t 
 HWLOC_DECLSPEC int hwloc_linux_get_tid_cpubind(hwloc_topology_t topology, pid_t tid, hwloc_cpuset_t set);
 
 /** @} */
+
+
+#ifdef __cplusplus
+} /* extern "C" */
+#endif
+
 
 #endif /* HWLOC_GLIBC_SCHED_H */

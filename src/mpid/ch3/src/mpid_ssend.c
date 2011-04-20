@@ -118,7 +118,7 @@ psm_ssend:
     }
     goto fn_exit;
 #endif /* _OSU_PSM_ */
-
+    
 #if defined(_OSU_MVAPICH_)
     if (data_sz + sizeof(MPIDI_CH3_Pkt_eager_sync_send_t) <= vc->eager_max_msg_sz
         && ! vc->force_rndv)

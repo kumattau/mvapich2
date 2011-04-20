@@ -6,28 +6,9 @@ dnl
 dnl The file name here refers to a file in the source being configured
 AC_INIT(pmiserv.c)
 
-dnl The MVAPICH2 top-level configure adds a bunch of flags to the
-dnl user-defined CFLAGS by processing different configure command-line
-dnl arguments (--enable-g, --enable-default-optimization). These updated
-dnl flags are passed down as a separate flag. Here, we don't care about
-dnl the user-defined flags, but rather this updated flags, so we just
-dnl overwrite CFLAGS with them.
-PAC_SUBCONFIG_INIT()
-
 dnl Definitions will be placed in this file rather than in the DEFS variable
 AC_CONFIG_HEADER(pmutilconf.h)
 AH_TOP([/* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
- * reserved.
- *
- * This file is part of the MVAPICH2 software package developed by the
- * team members of The Ohio State University's Network-Based Computing
- * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
- *
- * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT in the top level MVAPICH2 directory.
- *
- */
 /*  
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -86,11 +67,12 @@ dnl     check for compiler characteristics
 dnl     check for library functions
 dnl     check for system services
 dnl Here are some sample tests
-dnl
-dnl Find a C compiler (choose gcc first)
-AC_PROG_CC
+
+dnl Find a C compiler
+PAC_PROG_CC
 PAC_PROG_MAKE
 AC_CHECK_PROGS(AR,ar)
+AC_SUBST([AR_FLAGS])
 AC_PROG_RANLIB
 # Turn off creating shared libraries for any utility routines
 ENABLE_SHLIB=none
@@ -397,9 +379,6 @@ dnl Allow the Makefile to refer to the top of the build dir
 AC_SUBST(master_top_builddir)
 
 PAC_UPDATE_BASE_CACHE
-
-dnl Place holder macro for finalization
-PAC_SUBCONFIG_FINALIZE()
 
 dnl Generate the Makefiles from Makefile.in
 AC_OUTPUT(Makefile test/Makefile)

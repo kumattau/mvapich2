@@ -238,8 +238,8 @@ void async_thread(void *context)
 
                     ++srq_info.srq_zero_post_counter[hca_num];
 
-                    while(srq_info.srq_zero_post_counter[hca_num] >= 1
-                            && !(*(volatile int*)&srq_info.is_finalizing)) {
+                    while(srq_info.
+                            srq_zero_post_counter[hca_num] >= 1) {
                         /* Cannot post to SRQ, since all WQEs
                          * might be waiting in CQ to be pulled out */
                         pthread_cond_wait(
@@ -302,8 +302,6 @@ int MPID_nem_ib_allocate_srq()
 
         pthread_spin_init(&srq_info.srq_post_spin_lock, 0);
         pthread_spin_lock(&srq_info.srq_post_spin_lock);
-
-        srq_info.is_finalizing = 0;
 
         for (; hca_num < ib_hca_num_hcas; ++hca_num)
         {

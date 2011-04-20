@@ -31,6 +31,12 @@
 #include "mpichconf.h"
 #endif
 
+/* if we are defining this, we must define it before including mpl.h */
+#if defined(MPICH_DEBUG_MEMINIT)
+#define MPL_VG_ENABLED 1
+#endif
+#include "mpl.h"
+
 /* The most common MPI error classes */
 #ifndef MPI_SUCCESS
 #define MPI_SUCCESS 0
@@ -61,9 +67,7 @@
 
 /* Add support for the states and function enter/exit macros */
 /* #include "mpitimerimpl.h" */
-#if defined(MPICH_DEBUG_FINE_GRAIN_NESTING)
-#   include "mpiu_func_nesting.h"
-#elif defined(MPICH_DEBUG_MEMARENA)
+#if defined(MPICH_DEBUG_MEMARENA)
 #   include "mpifuncmem.h"
 #elif defined(USE_DBG_LOGGING)
 #   include "mpifunclog.h"
@@ -128,11 +132,6 @@
 /* Add support for the assert and strerror routines */
 #include "mpiutil.h"
 
-/* Prototypes for the functions to provide uniform access to the environment */
-int MPIU_GetEnvInt( const char *envName, int *val );
-int MPIU_GetEnvRange( const char *envName, int *lowPtr, int *highPtr );
-int MPIU_GetEnvBool( const char *envName, int *val );
-
 /* Use this macro for each parameter to a function that is not referenced in
    the body of the function */
 #ifdef HAVE_WINDOWS_H
@@ -140,5 +139,7 @@ int MPIU_GetEnvBool( const char *envName, int *val );
 #else
 #define MPIU_UNREFERENCED_ARG(a)
 #endif
+
+#include "mpiimplthreadpost.h"
 
 #endif

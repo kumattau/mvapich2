@@ -12,7 +12,7 @@
 #if defined(MPIR_MEMDEBUG)
 /* Enable memory tracing.  This requires MPICH's mpid/util/tr2.c codes */
 #include "mpimem.h"             /* Chameleon memory debugging stuff */
-#define MALLOC(a)       MPID_trmalloc((size_t)(a),__LINE__,__FILE__)
+#define MALLOC(a)       MPID_trmalloc((unsigned)(a),__LINE__,__FILE__)
 #define FREE(a)         MPID_trfree(a,__LINE__,__FILE__)
 #define REALLOC(a,b)    realloc(a,b)
 #else

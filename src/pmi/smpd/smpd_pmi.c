@@ -3,18 +3,6 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
- * reserved.
- *
- * This file is part of the MVAPICH2 software package developed by the
- * team members of The Ohio State University's Network-Based Computing
- * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
- *
- * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT in the top level MVAPICH2 directory.
- *
- */
-
 #include "ipmi.h"
 #ifdef HAVE_MACH_O_DYLD_H
 #include <mach-o/dyld.h>
@@ -110,11 +98,7 @@ int PMI_Init(int *spawned)
 	    fn.PMI_KVS_Iter_next = (int (*)(const char [], char [], int, char [], int))PMIGetProcAddress(hModule, "PMI_KVS_Iter_next");
 	    fn.PMI_Spawn_multiple = (int (*)(int, const char *[], const char **[], const int [], const int [], const PMI_keyval_t *[], int, const PMI_keyval_t [], int []))PMIGetProcAddress(hModule, "PMI_Spawn_multiple");
 	    fn.PMI_Parse_option = (int (*)(int, char *[], int *, PMI_keyval_t **, int *))PMIGetProcAddress(hModule, "PMI_Parse_option");
-#if defined(_OSU_MVAPICH_)
-            fn.PMI_Args_to_keyval = (int (*)(int *, char** const*, PMI_keyval_t **, int *))PMIGetProcAddress(hModule, "PMI_Args_to_keyval");
-#else /* defined(_OSU_MVAPICH_) */
 	    fn.PMI_Args_to_keyval = (int (*)(int *, char *((*)[]), PMI_keyval_t **, int *))PMIGetProcAddress(hModule, "PMI_Args_to_keyval");
-#endif /* defined(_OSU_MVAPICH_) */
 	    fn.PMI_Free_keyvals = (int (*)(PMI_keyval_t [], int))PMIGetProcAddress(hModule, "PMI_Free_keyvals");
 	    fn.PMI_Publish_name = (int (*)(const char [], const char [] ))PMIGetProcAddress(hModule, "PMI_Publish_name");
 	    fn.PMI_Unpublish_name = (int (*)( const char [] ))PMIGetProcAddress(hModule, "PMI_Unpublish_name");
@@ -337,33 +321,6 @@ int PMI_Spawn_multiple(int count,
 	preput_keyval_size, preput_keyval_vector,
 	errors);
 }
-
-#if 0
-int PMI_Parse_option(int num_args, char *args[], int *num_parsed, PMI_keyval_t **keyvalp, int *size)
-{
-    if (fn.PMI_Parse_option == NULL)
-	return PMI_FAIL;
-    return fn.PMI_Parse_option(num_args, args, num_parsed, keyvalp, size);
-}
-
-#if defined(_OSU_MVAPICH_)
-int PMI_Args_to_keyval(int *argcp, char ***argvp, PMI_keyval_t **keyvalp, int *size)
-#else /* defined(_OSU_MVAPICH_) */
-int PMI_Args_to_keyval(int *argcp, char *((*argvp)[]), PMI_keyval_t **keyvalp, int *size)
-#endif /* defined(_OSU_MVAPICH_) */
-{
-    if (fn.PMI_Args_to_keyval == NULL)
-	return PMI_FAIL;
-    return fn.PMI_Args_to_keyval(argcp, argvp, keyvalp, size);
-}
-
-int PMI_Free_keyvals(PMI_keyval_t keyvalp[], int size)
-{
-    if (fn.PMI_Free_keyvals == NULL)
-	return PMI_FAIL;
-    return fn.PMI_Free_keyvals(keyvalp, size);
-}
-#endif
 
 int PMI_Publish_name( const char service_name[], const char port[] )
 {

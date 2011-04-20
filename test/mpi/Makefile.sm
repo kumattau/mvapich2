@@ -28,6 +28,3 @@ dist:
 	    mv .tmp/mpi2test.tar.gz . ; rm -rf .tmp ; \
 	else echo "Could not create tarfile for test suite"; exit 1 ; fi
 
-smvarSubdir_do_dependencies=no
-smvar_dependenciesDummy=yes
-

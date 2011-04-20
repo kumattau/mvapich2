@@ -56,7 +56,10 @@ typedef enum MPID_nem_pkt_type
     MPIDI_NEM_PKT_LMT_CTS,
     MPIDI_NEM_PKT_LMT_DONE,
     MPIDI_NEM_PKT_LMT_COOKIE,
-    MPIDI_NEM_PKT_END    
+    MPIDI_NEM_PKT_CKPT_MARKER,
+    MPIDI_NEM_PKT_NETMOD,
+    MPIDI_NEM_PKT_END,
+    MPIDI_NEM_PKT_INVALID = -1 /* forces a signed enum to quash warnings */
 } MPID_nem_pkt_type_t;
 
 typedef struct MPID_nem_pkt_lmt_rts
@@ -97,12 +100,28 @@ typedef struct MPID_nem_pkt_lmt_cookie
 }
 MPID_nem_pkt_lmt_cookie_t;
 
+typedef struct MPID_nem_pkt_ckpt_marker
+{
+    MPID_nem_pkt_type_t type;
+    int wave; /* used for debugging */
+}
+MPID_nem_pkt_ckpt_marker_t;
+
+typedef struct MPID_nem_pkt_netmod
+{
+    MPID_nem_pkt_type_t type;
+    unsigned subtype;
+}
+MPID_nem_pkt_netmod_t;
+
 typedef union MPIDI_CH3_nem_pkt
 {
     MPID_nem_pkt_lmt_rts_t lmt_rts;
     MPID_nem_pkt_lmt_cts_t lmt_cts;
     MPID_nem_pkt_lmt_done_t lmt_done;
     MPID_nem_pkt_lmt_cookie_t lmt_cookie;
+    MPID_nem_pkt_ckpt_marker_t ckpt_marker;
+    MPID_nem_pkt_netmod_t netmod;
 } MPIDI_CH3_nem_pkt_t;
 
 
@@ -152,7 +171,7 @@ typedef union MPIDI_CH3_nem_pkt
         {                                                                                               \
             MPIU_Object_set_ref(_rts_req, 0);                                                           \
             MPIDI_CH3_Request_destroy(_rts_req);                                                        \
-            MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**rtspkt");                             \
+            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**rtspkt");                                  \
         }                                                                                               \
         /* --END ERROR HANDLING-- */                                                                    \
         if (_rts_req != NULL)                                                                           \
@@ -161,10 +180,9 @@ typedef union MPIDI_CH3_nem_pkt
             {                                                                                           \
                 MPIU_Object_set_ref(_rts_req, 0);                                                       \
                 MPIDI_CH3_Request_destroy(_rts_req);                                                    \
-                mpi_errno = MPIR_Err_create_code(_rts_req->status.MPI_ERROR, MPIR_ERR_FATAL,            \
-                                                 FCNAME, __LINE__, MPI_ERR_OTHER, "**rtspkt", 0);       \
+                mpi_errno = _rts_req->status.MPI_ERROR;                                                 \
                 MPID_Request_release(_rts_req);                                                         \
-                goto fn_exit;                                                                           \
+                MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**rtspkt");                              \
             }                                                                                           \
             MPID_Request_release(_rts_req);                                                             \
         }                                                                                               \
@@ -194,7 +212,7 @@ typedef union MPIDI_CH3_nem_pkt
             MPIU_ERR_CHKANDJUMP(_cts_req->status.MPI_ERROR, mpi_errno, MPI_ERR_OTHER, "**ctspkt");      \
             MPID_Request_release(_cts_req);                                                             \
         }                                                                                               \
-    } while (0)   
+    } while (0)
         
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_lmt_send_COOKIE
@@ -221,6 +239,9 @@ static inline int MPID_nem_lmt_send_COOKIE(MPIDI_VC_t *vc, MPID_Request *req,
             cookie_pkt->receiver_req_id = (req)->handle;
             break;
         case MPIDI_REQUEST_TYPE_SEND:
+        case MPIDI_REQUEST_TYPE_RSEND:
+        case MPIDI_REQUEST_TYPE_SSEND:
+        case MPIDI_REQUEST_TYPE_BSEND:
             cookie_pkt->from_sender = TRUE;
             cookie_pkt->sender_req_id = (req)->handle;
             cookie_pkt->receiver_req_id = (req)->ch.lmt_req_id;
@@ -232,7 +253,7 @@ static inline int MPID_nem_lmt_send_COOKIE(MPIDI_VC_t *vc, MPID_Request *req,
 
     iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) cookie_pkt;
     iov[0].MPID_IOV_LEN = sizeof(*cookie_pkt);
-    iov[1].MPID_IOV_BUF = cookie_buf;
+    iov[1].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) cookie_buf;
     iov[1].MPID_IOV_LEN = cookie_len;
 
     mpi_errno = MPIDI_CH3_iStartMsgv(vc, iov, (cookie_len ? 2 : 1), &cookie_req);

@@ -8,6 +8,3 @@ infodelx_SOURCES = infodelx.cxx
 infovallenx_SOURCES = infovallenx.cxx
 infoorderx_SOURCES = infoorderx.cxx
 
-
-smvarSubdir_do_dependencies=no
-smvar_dependenciesDummy=yes

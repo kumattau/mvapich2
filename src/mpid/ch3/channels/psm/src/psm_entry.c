@@ -90,7 +90,7 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
     }
 
     if((err = psm_ep_connect(psmdev_cw.ep, pg_size, epidlist, NULL, errs, 
-                psmdev_cw.epaddrs, TIMEOUT)) != PSM_OK) {
+                psmdev_cw.epaddrs, TIMEOUT * SEC_IN_NS)) != PSM_OK) {
         fprintf(stderr, "psm_ep_connect failed with error %s\n", psm_error_get_string(err));
         MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_INTERN, "**psmconnectfailed");
     }

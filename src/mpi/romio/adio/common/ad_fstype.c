@@ -9,7 +9,6 @@
  */
 
 #include "adio.h"
-#include "mpiimpl.h"
 
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
@@ -348,9 +347,9 @@ static void ADIO_FileSysType_fncall(char *filename, int *fstype, int *error_code
 # endif
 
 #ifdef ROMIO_LUSTRE
-#ifndef LL_SUPER_MAGIC 
-#define LL_SUPER_MAGIC 0x0BD00BD0
-#endif
+# ifndef LL_SUPER_MAGIC
+#  define LL_SUPER_MAGIC 0x0BD00BD0
+# endif
     if (fsbuf.f_type == LL_SUPER_MAGIC) {
 	*fstype = ADIO_LUSTRE;
 	return;
@@ -389,6 +388,13 @@ static void ADIO_FileSysType_fncall(char *filename, int *fstype, int *error_code
     if (fsbuf.f_type == PVFS2_SUPER_MAGIC) {
 	*fstype = ADIO_PVFS2;
 	return;
+    }
+# endif
+
+# ifdef XFS_SUPER_MAGIC
+    if (fsbuf.f_type == XFS_SUPER_MAGIC) {
+	    *fstype = ADIO_XFS;
+	    return;
     }
 # endif
 

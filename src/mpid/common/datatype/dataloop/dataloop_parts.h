@@ -204,9 +204,6 @@ typedef struct DLOOP_Dataloop_common {
   this union, 'count', allows quick access to the shared 'count' field in the
   five dataloop structure.
 . extent - The extent of the dataloop
-#if 0
-- handle     - handle for the corresponding 'MPI_Datatype'.
-#endif
 
   Module:
   Datatype
@@ -226,9 +223,7 @@ typedef struct DLOOP_Dataloop {
 	DLOOP_Dataloop_struct       s_t;
 	DLOOP_Dataloop_common       cm_t;
     } loop_params;
-    DLOOP_Offset el_size; /* I don't feel like dealing with the bit manip. 
-			   * needed to get the packed size right at the moment.
-			   */
+    DLOOP_Offset el_size;
     DLOOP_Offset el_extent;
     DLOOP_Type   el_type;
 } DLOOP_Dataloop;
@@ -245,7 +240,7 @@ typedef struct DLOOP_Dataloop {
    evaluate datatypes.  It represents the length of the chain of 
    datatype dependencies.  Defining this and testing when a datatype
    is created removes a test in the datatype evaluation loop. */
-#define DLOOP_MAX_DATATYPE_DEPTH 8
+#define DLOOP_MAX_DATATYPE_DEPTH 16
 
 /*S
   DLOOP_Dataloop_stackelm - Structure for an element of the stack used

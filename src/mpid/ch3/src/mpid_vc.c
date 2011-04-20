@@ -54,6 +54,8 @@
 typedef struct MPIDI_VCRT
 {
     MPIU_OBJECT_HEADER; /* adds handle and ref_count fields */
+    int contains_failed_vc;
+    int last_check_for_failed_vc;
     int size;
     MPIDI_VC_t * vcr_table[1];
 }
@@ -99,6 +101,8 @@ int MPID_VCRT_Create(int size, MPID_VCRT *vcrt_ptr)
     MPIU_Object_set_ref(vcrt, 1);
     vcrt->size = size;
     *vcrt_ptr = vcrt;
+    vcrt->contains_failed_vc = FALSE;
+    vcrt->last_check_for_failed_vc = 0;
 
  fn_exit:
     MPIU_CHKPMEM_COMMIT();
@@ -210,7 +214,7 @@ int MPID_VCRT_Release(MPID_VCRT vcrt, int isDisconnect )
                     }
 		    continue;
 		}
-
+		
 #ifdef _ENABLE_XRC_
         MPICM_lock();
         VC_XST_SET (vc, XF_CONN_CLOSING);
@@ -291,6 +295,34 @@ int MPID_VCRT_Get_ptr(MPID_VCRT vcrt, MPID_VCR **vc_pptr)
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_VCRT_GET_PTR);
     return MPI_SUCCESS;
 }
+
+/*@
+  MPID_VCRT_Contains_failed_vc - returns TRUE iff a VC in this VCRT is in MORUBIND state
+  @*/
+#undef FUNCNAME
+#define FUNCNAME MPID_VCRT_Contains_failed_vc
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPID_VCRT_Contains_failed_vc(MPID_VCRT vcrt)
+{
+    if (vcrt->contains_failed_vc) {
+        /* We have already determined that this VCRT has a dead VC */
+        return TRUE;
+    } else if (vcrt->last_check_for_failed_vc < MPIDI_Failed_vc_count) {
+        /* A VC has failed since the last time we checked for dead VCs
+           in this VCRT */
+        int i;
+        for (i = 0; i < vcrt->size; ++i) {
+            if (vcrt->vcr_table[i]->state == MPIDI_VC_STATE_MORIBUND) {
+                vcrt->contains_failed_vc = TRUE;
+                return TRUE;
+            }
+        }
+        vcrt->last_check_for_failed_vc = MPIDI_Failed_vc_count;
+    }
+    return FALSE;
+}
+
 
 /*@
   MPID_VCR_Dup - Duplicate a virtual connection reference 
@@ -575,10 +607,12 @@ int MPID_PG_ForwardPGInfo( MPID_Comm *peer_ptr, MPID_Comm *comm_ptr,
 			   int nPGids, const int gpids[], 
 			   int root )
 {
+    int mpi_errno = MPI_SUCCESS;
     int i, allfound = 1, pgid, pgidWorld;
     MPIDI_PG_t *pg = 0;
     MPIDI_PG_iterator iter;
-
+    int errflag = FALSE;
+    
     /* Get the pgid for CommWorld (always attached to the first process 
        group) */
     MPIDI_PG_Get_iterator(&iter);
@@ -605,9 +639,10 @@ int MPID_PG_ForwardPGInfo( MPID_Comm *peer_ptr, MPID_Comm *comm_ptr,
     }
 
     /* See if everyone is happy */
-    NMPI_Allreduce( MPI_IN_PLACE, &allfound, 1, MPI_INT, MPI_LAND, 
-		    comm_ptr->handle );
-
+    mpi_errno = MPIR_Allreduce_impl( MPI_IN_PLACE, &allfound, 1, MPI_INT, MPI_LAND, comm_ptr, &errflag );
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    MPIU_ERR_CHKANDJUMP(errflag, mpi_errno, MPI_ERR_OTHER, "**coll_fail");
+    
     if (allfound) return MPI_SUCCESS;
 
     /* FIXME: We need a cleaner way to handle this case than using an ifdef.
@@ -622,7 +657,10 @@ int MPID_PG_ForwardPGInfo( MPID_Comm *peer_ptr, MPID_Comm *comm_ptr,
        from ch3u_port.c */
     MPID_PG_BCast( peer_ptr, comm_ptr, root );
 #endif
+ fn_exit:
     return MPI_SUCCESS;
+ fn_fail:
+    goto fn_exit;
 }
 
 #undef FUNCNAME
@@ -654,17 +692,6 @@ static int MPIDI_CH3U_VC_FinishPending( MPIDI_VCRT_t *vcrt )
 			i, vc[i]->state ); fflush(stdout);
 		nPending++;
 	    }
-#if 0
-	    /* FIXME: We shouldn't have any references to the channel-specific
-	       fields in this part of the code.  This case should actually
-	       not be needed; if there is a pending send element, the
-	       top-level state should not be inactive */
-	    if (vc[i]->ch.sendq_head) {
-		/* FIXME: Printf for debugging */
-		printf( "Nonempty sendQ for vc[%d]\n", i ); fflush(stdout);
-		nPending++;
-	    }
-#endif
 	}
 	if (nPending > 0) {
 	    printf( "Panic! %d pending operations!\n", nPending );
@@ -757,7 +784,7 @@ int MPIDI_VC_Init( MPIDI_VC_t *vc, MPIDI_PG_t *pg, int rank )
     /* FIXME: We need a better abstraction for initializing the thread state 
        for an object */
 #if MPIU_THREAD_GRANULARITY == MPIU_THREAD_GRANULARITY_PER_OBJECT
-    MPID_Thread_mutex_create(&vc->pobj_mutex,NULL)
+    MPID_Thread_mutex_create(&vc->pobj_mutex,NULL);
 #endif /* MPIU_THREAD_GRANULARITY */
 
 #if defined(_OSU_MVAPICH_)
@@ -828,7 +855,7 @@ static int publish_node_id(MPIDI_PG_t *pg, int our_pg_rank)
 
     /* set MPIU_hostname */
     ret = gethostname(MPIU_hostname, MAX_HOSTNAME_LEN);
-    MPIU_ERR_CHKANDJUMP2(ret == -1, mpi_errno, MPI_ERR_OTHER, "**sock_gethost", "**sock_gethost %s %d", strerror(errno), errno);
+    MPIU_ERR_CHKANDJUMP2(ret == -1, mpi_errno, MPI_ERR_OTHER, "**sock_gethost", "**sock_gethost %s %d", MPIU_Strerror(errno), errno);
     MPIU_hostname[MAX_HOSTNAME_LEN-1] = '\0';
 
     /* Allocate space for pmi key */
@@ -878,6 +905,7 @@ fn_fail:
 #define expect_s(_s, _e) (strncmp(_s, _e, strlen(_e)) == 0 && !isident((_s)[strlen(_e)]))
 
 typedef enum {
+    UNKNOWN_MAPPING = -1,
     NULL_MAPPING = 0,
     VECTOR_MAPPING
 } mapping_type_t;
@@ -999,7 +1027,7 @@ static void t(const char *s, int nprocs)
     map_block_t *mb;
     int nblocks=0;
     int i;
-    mapping_type_t mt = -1;
+    mapping_type_t mt = UNKNOWN_MAPPING;
     int rank;
     int block, block_node, node_proc;
 
@@ -1058,7 +1086,7 @@ static int populate_ids_from_mapping(char *mapping, int *num_nodes, MPIDI_PG_t *
 {
     int mpi_errno = MPI_SUCCESS;
     /* PMI_process_mapping is available */
-    mapping_type_t mt = -1;
+    mapping_type_t mt = UNKNOWN_MAPPING;
     map_block_t *mb = NULL;
     int nblocks = 0;
     int rank;
@@ -1087,15 +1115,16 @@ static int populate_ids_from_mapping(char *mapping, int *num_nodes, MPIDI_PG_t *
                     pg->vct[rank].node_id = node_id;
                     ++rank;
                     if (rank == pg->size)
-                        goto fn_exit;
+                        goto map_done;
                 }
                 ++node_id;
             }
         }
     }
 
-fn_exit:
+map_done:
     ++(*num_nodes); /* add one to get the num instead of the max */
+fn_exit:
     MPIU_Free(mb);
     return mpi_errno;
 fn_fail:
@@ -1295,8 +1324,8 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
     MPIU_CHKLMEM_DECL(4);
 
     /* See if the user wants to override our default values */
-    MPIU_GetEnvInt("PMI_VERSION", &pmi_version);
-    MPIU_GetEnvInt("PMI_SUBVERSION", &pmi_subversion);
+    MPL_env2int("PMI_VERSION", &pmi_version);
+    MPL_env2int("PMI_SUBVERSION", &pmi_subversion);
 
     if (pg->size == 1) {
         pg->vct[0].node_id = g_num_nodes++;
@@ -1312,9 +1341,7 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
 #ifdef ENABLED_NO_LOCAL
     no_local = 1;
 #else
-    ret = MPIU_GetEnvBool("MPICH_NO_LOCAL", &val);
-    if (ret == 1 && val)
-        no_local = 1;
+    no_local = MPIR_PARAM_NOLOCAL;
 #endif
 
     /* Used for debugging on a single machine: Odd procs on a node are
@@ -1323,7 +1350,7 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
 #ifdef ENABLED_ODD_EVEN_CLIQUES
     odd_even_cliques = 1;
 #else
-    ret = MPIU_GetEnvBool("MPICH_ODD_EVEN_CLIQUES", &val);
+    ret = MPL_env2bool("MPICH_ODD_EVEN_CLIQUES", &val);
     if (ret == 1 && val)
         odd_even_cliques = 1;
 #endif
@@ -1337,29 +1364,6 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
     }
 
 #ifdef USE_PMI2_API
-#if 0 /* use nodeid list */
-    {
-        int *node_ids;
-        int outlen;
-        int found = FALSE;
-        MPIU_CHKLMEM_MALLOC(node_ids, int *, pg->size * sizeof(int), mpi_errno, "node_ids");
-
-        mpi_errno = PMI2_Info_GetJobAttrIntArray("nodeIDs", node_ids, pg->size, &outlen, &found);
-        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-        MPIU_ERR_CHKINTERNAL(!found, mpi_errno, "nodeIDs attribute not found");
-        MPIU_ERR_CHKINTERNAL(outlen != pg->size, mpi_errno, "did not receive enough nodeids");
-        g_num_nodes = 0;
-        for (i = 0; i < pg->size; ++i) {
-            pg->vct[i].node_id = node_ids[i];
-            if (g_num_nodes < node_ids[i])
-                g_num_nodes = node_ids[i];
-        }
-
-        ++g_num_nodes;
-
-        /* FIXME: need to handle oddeven cliques DARIUS */
-    }
-#else
     {
         char process_mapping[PMI2_MAX_VALLEN];
         int outlen;
@@ -1381,7 +1385,6 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
         MPIU_ERR_CHKINTERNAL(!did_map, mpi_errno, "unable to populate node ids from PMI_process_mapping");
         g_num_nodes = num_nodes;
     }
-#endif
 #else /* USE_PMI2_API */
     if (our_pg_rank == -1) {
         /* FIXME this routine can't handle the dynamic process case at this
@@ -1405,7 +1408,8 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
     /* See if process manager supports PMI_process_mapping keyval */
     /* Check if the user have used MPIRUN_RSH */
     char *str = getenv("MPIRUN_RSH_LAUNCH");
-    if (str == NULL || (atoi(str) != 1)) 
+    char *my_slurm_str = getenv("SLURM_NPROCS");
+    if ((str == NULL || (atoi(str) != 1)) && (my_slurm_str == NULL))
     {
 
     /* FIXME 'PMI_process_mapping' only applies for the original PG (MPI_COMM_WORLD) */
@@ -1458,8 +1462,11 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
         node_names[i][0] = '\0';
     }
 
+    g_num_nodes = 0; /* defensive */
+
     for (i = 0; i < pg->size; ++i)
     {
+        MPIU_Assert(g_num_nodes < pg->size);
         if (i == our_pg_rank)
         {
             /* This is us, no need to perform a get */
@@ -1499,7 +1506,6 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
         g_num_nodes *= 2;
     }
 #endif
-
 
 fn_exit:
     MPIU_CHKLMEM_FREEALL();

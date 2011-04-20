@@ -895,6 +895,7 @@ int MRAILI_Process_send (void *vbuf_addr)
       case MPIDI_CH3_PKT_LOCK_GRANTED:
       case MPIDI_CH3_PKT_PT_RMA_DONE:
       case MPIDI_CH3_PKT_LOCK_GET_UNLOCK:      /* optimization for single gets */
+      case MPIDI_CH3_PKT_ACCUM_IMMED:
       case MPIDI_CH3_PKT_FLOW_CNTL_UPDATE:
       case MPIDI_CH3_PKT_CLOSE:        /*24 */
           DEBUG_PRINT ("[process send] get %d\n", p->type);

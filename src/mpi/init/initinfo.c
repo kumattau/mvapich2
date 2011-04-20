@@ -31,7 +31,7 @@ const char MPIR_Version_device[]       = MPICH2_DEVICE;
 const char MPIR_Version_CC[]           = MPICH2_COMPILER_CC;
 const char MPIR_Version_CXX[]          = MPICH2_COMPILER_CXX;
 const char MPIR_Version_F77[]          = MPICH2_COMPILER_F77;
-const char MPIR_Version_F90[]          = MPICH2_COMPILER_F90;
+const char MPIR_Version_FC[]           = MPICH2_COMPILER_FC;
 #else
 const char MPIR_Version_string[]       = MVAPICH2_VERSION;
 const char MPIR_Version_date[]         = MVAPICH2_VERSION_DATE;
@@ -40,6 +40,5 @@ const char MPIR_Version_device[]       = MVAPICH2_DEVICE;
 const char MPIR_Version_CC[]           = MVAPICH2_COMPILER_CC;
 const char MPIR_Version_CXX[]          = MVAPICH2_COMPILER_CXX;
 const char MPIR_Version_F77[]          = MVAPICH2_COMPILER_F77;
-const char MPIR_Version_F90[]          = MVAPICH2_COMPILER_F90;
+const char MPIR_Version_FC[]           = MVAPICH2_COMPILER_FC;
 #endif /* _OSU_MVAPICH_ */
-

@@ -28,8 +28,8 @@ Running the pmandel* programs
  or run it in a non-interactive mode. In the interactive mode the output of the
  program is saved as an image file (you can specify the name of the file using -out
  option of the program). In the non-interactive mode you need a visualizer for the 
- output.
- 
+ output (A Visualizer is available in Windows. Compile the project pman_vis for the
+ visualizer.). 
  Non-interactive execution eg -- 
 	mpiexec -n 2 pmandel -i
  (The program prompts for entering the coordinates, scales and no of iterations

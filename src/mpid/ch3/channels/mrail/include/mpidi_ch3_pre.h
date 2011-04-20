@@ -224,11 +224,25 @@ struct MPIDI_CH3I_Request						\
     struct MPIDI_VC *vc;                                                \
 } ch;
 
+#define MPIDI_CH3_REQUEST_INIT(_rreq)   \
+    (_rreq)->mrail.rndv_buf_alloc = 0;   \
+    (_rreq)->mrail.rndv_buf = NULL;      \
+    (_rreq)->mrail.rndv_buf_sz = 0;      \
+    (_rreq)->mrail.rndv_buf_off = 0;     \
+    (_rreq)->mrail.protocol = 0;         \
+    (_rreq)->mrail.d_entry = NULL;       \
+    (_rreq)->mrail.remote_addr = NULL;   \
+    (_rreq)->mrail.nearly_complete = 0;
+
 typedef struct MPIDI_CH3I_Progress_state
 {
     int completion_count;
 }
 MPIDI_CH3I_Progress_state;
+
+/* This variable is used in the definitions of the MPID_Progress_xxx macros,
+   and must be available to the routines in src/mpi */
+extern volatile unsigned int MPIDI_CH3I_progress_completion_count;
 
 #define MPIDI_CH3_PROGRESS_STATE_DECL MPIDI_CH3I_Progress_state ch;
 

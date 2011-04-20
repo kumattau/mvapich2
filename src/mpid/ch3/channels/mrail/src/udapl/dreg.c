@@ -68,10 +68,6 @@ unsigned long dreg_stat_cache_miss=0;
 unsigned long dreg_stat_evicted=0;
 static unsigned long pinned_pages_count;
 
-struct iovec *delayed_buf_region;
-int buf_reg_count;
-
-
 struct dreg_entry *dreg_free_list;
 struct dreg_entry *dreg_unused_list;
 struct dreg_entry *dreg_unused_tail;
@@ -118,6 +114,9 @@ static dreg_entry **deregister_mr_array;
  * entries
  */
 static int n_dereg_mr;
+
+struct iovec *delayed_buf_region;
+int buf_reg_count;
 
 /* Keep free list of VMA data structs
  * and entries */
@@ -585,15 +584,6 @@ void dreg_init()
 
     MPIU_Memset(dreg_free_list, 0, sizeof(dreg_entry) * rdma_ndreg_entries);
 
-    delayed_buf_region = MPIU_Malloc((unsigned)(sizeof(struct iovec) * rdma_ndreg_entries));
-    if (delayed_buf_region == NULL) {
-        udapl_error_abort(GEN_EXIT_ERR,
-                "dreg_init: unable to malloc %d bytes",
-                (int) sizeof(sizeof(struct iovec)) * rdma_ndreg_entries);
-    }
-
-    MPIU_Memset(delayed_buf_region, 0, sizeof(struct iovec) * rdma_ndreg_entries);
-
 #ifdef CKPT
     dreg_all_list = dreg_free_list;
 #endif
@@ -612,6 +602,17 @@ void dreg_init()
 #ifndef DISABLE_PTMALLOC
     pthread_spin_init(&dreg_lock, 0);
     pthread_spin_init(&dereg_lock, 0);
+    
+    delayed_buf_region = MPIU_Malloc((unsigned)(sizeof(struct iovec) * rdma_ndreg_entries));
+    if (delayed_buf_region == NULL) {
+        udapl_error_abort(GEN_EXIT_ERR,
+                "dreg_init: unable to malloc %d bytes",
+                (int) sizeof(sizeof(struct iovec)) * rdma_ndreg_entries);
+    }
+
+    MPIU_Memset(delayed_buf_region, 0, sizeof(struct iovec) * rdma_ndreg_entries);
+    buf_reg_count = 0;
+
     deregister_mr_array = (dreg_entry **)
         MPIU_Malloc(sizeof(dreg_entry *) * rdma_ndreg_entries);
 

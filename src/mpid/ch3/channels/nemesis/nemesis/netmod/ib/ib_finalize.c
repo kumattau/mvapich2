@@ -292,22 +292,14 @@ int MPID_nem_ib_finalize (void)
 
     for (i = 0; i < ib_hca_num_hcas; i++) {
         if (process_info.has_srq) {
-            /* Signal thread if waiting */
-            pthread_mutex_lock(&srq_info.srq_post_mutex_lock[i]);
-            *((volatile int*)&srq_info.is_finalizing) = 1;
             pthread_cond_signal(&srq_info.srq_post_cond[i]);
-            pthread_mutex_unlock(&srq_info.srq_post_mutex_lock[i]);
-
-            /* wait for async thread to finish processing */
             pthread_mutex_lock(&srq_info.async_mutex_lock[i]);
-
-            /* destroy mutex and cond and cancel thread */
+            pthread_mutex_lock(&srq_info.srq_post_mutex_lock[i]);
+            pthread_mutex_unlock(&srq_info.srq_post_mutex_lock[i]);
             pthread_cond_destroy(&srq_info.srq_post_cond[i]);
             pthread_mutex_destroy(&srq_info.srq_post_mutex_lock[i]);
             pthread_cancel(srq_info.async_thread[i]);
-
             pthread_join(srq_info.async_thread[i], NULL);
-
             err = ibv_destroy_srq(hca_list[i].srq_hndl);
             pthread_mutex_unlock(&srq_info.async_mutex_lock[i]);
             pthread_mutex_destroy(&srq_info.async_mutex_lock[i]);

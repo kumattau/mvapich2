@@ -2,17 +2,6 @@
 #set -x
 # -*- Mode: shell-script; -*-
 #
-# Copyright (c) 2003-2011, The Ohio State University. All rights
-# reserved.
-#
-# This file is part of the MVAPICH2 software package developed by the
-# team members of The Ohio State University's Network-Based Computing
-# Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
-#
-# For detailed copyright and licensing information, please refer to the
-# copyright file COPYRIGHT in the top level MVAPICH2 directory.
-
-#
 # This is a simplified tool for creating and installing shared libraries
 # Like libtool, is has a link and install mode
 # It handles fewer cases than libtool, but it is also simpler and easier to
@@ -34,12 +23,6 @@
 #
 # Set the characteristics of the shared library support, determined 
 # by configure
-
-# <_OSU_MVAPICH_>
-# Return an error if some command fail
-set -e
-# </_OSU_MVAPICH_>
-
 CC="@CC@ @CFLAGS@"
 C_LINK_SHL="@C_LINK_SHL@"
 SHLIB_EXT="@SHLIB_EXT@"
@@ -112,12 +95,12 @@ for arg in "$@" ; do
        nextarg=$arg
        ;;
        -echo) set -x ;;
-       -dryrun) Show=echo ;;
+       -dryrun|--dryrun) Show=echo ;;
        # -cc and -clink allow us to override the commands used to 
        # build the shared library
-       -cc=*) CC_SHL=$option ;;
-       -clink=*) C_LINK_SHL=$option ;;
-       -libtype=*) libtype=$option ;;
+       -cc=*|--cc=*) CC_SHL=$option ;;
+       -clink=*|--clink=*) C_LINK_SHL=$option ;;
+       -libtype=*|--libtype=*) libtype=$option ;;
        -l*|-L*)
        dependentLibs="$dependentLibs $arg"
        ;;
@@ -213,10 +196,6 @@ if [ -z "$minorVersion" ] ; then
     echo "Invalid ABIVerion $ABIVersion - should be n:m"
     exit 1
 fi
-if [ "$minorVersion" = "0" ] ; then
-    echo "Minor version number must be greater than zero"
-    exit 1
-fi
 dottedVersion=`echo $ABIVersion | sed -e 's/:/./g'`
 #
 # Now we can create the names
@@ -225,7 +204,7 @@ soName=
 altNames=
 case $libtype in 
     gcc-osx|osx-gcc)
-    soname=$srclibbase.$dottedVersion.$SHLIB_EXT
+    soname=$srclibbase.$majorVersion.$SHLIB_EXT
     realName=$srclibbase.$dottedVersion.$SHLIB_EXT
     altNames="$srclibbase.$SHLIB_EXT"
     if [ -n "$majorVersion" ] ; then
@@ -237,7 +216,7 @@ case $libtype in
 
     *)
     # Typical Unix default
-    soName=$srclibbase.$SHLIB_EXT.$dottedVersion
+    soName=$srclibbase.$SHLIB_EXT.$majorVersion
     realName=$srclibbase.$SHLIB_EXT.$dottedVersion
     altNames="$srclibbase.$SHLIB_EXT"
     if [ -n "$majorVersion" ] ; then
@@ -323,15 +302,8 @@ if [ $mode = link ] ; then
         # Typically -Wl,-h,$soName
 	# FIXME: C_LINK_SHL knows the options for shared libraries,
 	# but not the args for setting the soname.
-	
-        # <_OSU_MVAPICH_>
-        # Yes, we need to add $dependentLibs.
-        #$Show ${C_LINK_SHL} -o $realName -Wl,-h,$soName .tmp/*.o
-        $Show ${C_LINK_SHL} -o $realName -Wl,-h,$soName .tmp/*.o $dependentLibs
-        # </_OSU_MVAPICH_>
-        # Do we need to add $dependentLibs ?
-        #$Show ${C_LINK_SHL} $ldflags -o $realName -Wl,-h,$soName .tmp/*.o $dependentLibs
-        ;;
+	$Show ${C_LINK_SHL} $ldflags -o $realName -Wl,-h,$soName .tmp/*.o $dependentLibs
+	;;
     esac
     if [ -n "$altNames" ] ; then
         for alt in $altNames ; do

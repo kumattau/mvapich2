@@ -256,7 +256,7 @@ do {                                                                    \
         }                                                             \
         if ((_rail) != (_v)->rail)                                    \
         {                                                             \
-                DEBUG_PRINT(stderr, "[%s:%d] rail %d, vrail %d\n",    \
+                DEBUG_PRINT("[%s:%d] rail %d, vrail %d\n",            \
                         __FILE__, __LINE__,(_rail), (_v)->rail);      \
                 MPIU_Assert((_rail) == (_v)->rail);                   \
         }                                                             \
@@ -323,7 +323,7 @@ inline static void print_info(vbuf* v, char* title, int err)
         }                                                             \
         if ((_rail) != (_v)->rail)                                    \
         {                                                             \
-                DEBUG_PRINT(stderr, "[%s:%d] rail %d, vrail %d\n",    \
+                DEBUG_PRINT("[%s:%d] rail %d, vrail %d\n",            \
                         __FILE__, __LINE__,(_rail), (_v)->rail);      \
                 MPIU_Assert((_rail) == (_v)->rail);                   \
         }                                                             \

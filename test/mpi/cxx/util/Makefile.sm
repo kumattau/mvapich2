@@ -3,6 +3,3 @@ mtest.o: mtest.cxx
 all-local: mtest.o
 INCLUDES = -I../../../src/include -I${top_srcdir}/src/include -I../../include \
 	 -I${srcdir}/../../include
-
-smvarSubdir_do_dependencies=no
-smvar_dependenciesDummy=yes

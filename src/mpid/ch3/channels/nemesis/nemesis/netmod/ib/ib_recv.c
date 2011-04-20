@@ -239,6 +239,9 @@ int MPIDI_CH3I_nem_ib_parse_header(MPIDI_VC_t * vc,
             MPIDI_nem_ib_lmt_r3_recv_ack(vc, vstart);
             break;
         }
+#if defined(USE_EAGER_SHORT)
+    case MPIDI_CH3_PKT_EAGERSHORT_SEND:
+#endif
     case MPIDI_CH3_PKT_EAGER_SYNC_SEND:
     case MPIDI_CH3_PKT_READY_SEND:
         {
@@ -291,6 +294,7 @@ int MPIDI_CH3I_nem_ib_parse_header(MPIDI_VC_t * vc,
             break;
         }
     case MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK:
+    case MPIDI_CH3_PKT_ACCUM_IMMED:
         {
             *pkt = vstart;
             break;

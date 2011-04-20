@@ -78,7 +78,7 @@ int (*psm_unlock_fn)(pthread_spinlock_t *);
 #define _psm_enter_  psm_lock_fn(&psmlock)
 #define _psm_exit_   psm_unlock_fn(&psmlock)
 
-#define PSM_COUNTERS    8 
+#define PSM_COUNTERS    9 
 
 struct psmdev_info_t {
     psm_ep_t        ep;
@@ -92,10 +92,11 @@ struct psmdev_info_t {
 #define psm_tot_recvs           psmdev_cw.cnt[1]
 #define psm_tot_pposted_recvs   psmdev_cw.cnt[2]
 #define psm_tot_eager_puts      psmdev_cw.cnt[3]
-#define psm_tot_rndv_puts       psmdev_cw.cnt[4]
-#define psm_tot_eager_gets      psmdev_cw.cnt[5]
-#define psm_tot_rndv_gets       psmdev_cw.cnt[6]
-#define psm_tot_accs            psmdev_cw.cnt[7]
+#define psm_tot_eager_accs      psmdev_cw.cnt[4]
+#define psm_tot_rndv_puts       psmdev_cw.cnt[5]
+#define psm_tot_eager_gets      psmdev_cw.cnt[6]
+#define psm_tot_rndv_gets       psmdev_cw.cnt[7]
+#define psm_tot_accs            psmdev_cw.cnt[8]
 
 /* externs */
 extern struct psmdev_info_t psmdev_cw;

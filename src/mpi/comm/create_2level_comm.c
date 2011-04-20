@@ -16,7 +16,7 @@
 #include <mpimem.h>
 #include "mpidimpl.h"
 #include "mpicomm.h"
-#include "coll_shmem_internal.h"
+#include "coll_shmem.h"
 #include <pthread.h>
 #ifndef GEN_EXIT_ERR
 #define GEN_EXIT_ERR    -1
@@ -42,7 +42,6 @@ unsigned int comm_registered = 0;
 unsigned int comm_count = 0;
 
 int shmem_comm_count = 0;
-extern shmem_coll_region *shmem_coll;
 static pthread_mutex_t comm_lock  = PTHREAD_MUTEX_INITIALIZER;
 extern int g_shmem_coll_blocks;
 
@@ -116,13 +115,13 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     MPI_Group subgroup1, comm_group;
     MPID_Group *group_ptr=NULL;
     int leader_comm_size, my_local_size, my_local_id, input_flag =0, output_flag=0;
+    int errflag = FALSE;
   
     MPIU_THREADPRIV_DECL;
     MPIU_THREADPRIV_GET;
     MPID_Comm_get_ptr( comm, comm_ptr );
     MPID_Comm_get_ptr( MPI_COMM_WORLD, comm_world_ptr );
 
-    MPIR_Nest_incr();
 
     int* shmem_group = MPIU_Malloc(sizeof(int) * size);
     if (NULL == shmem_group){
@@ -134,8 +133,8 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     int i = 0;
     int local_rank = 0;
     int grp_index = 0;
-    comm_ptr->leader_comm=0;
-    comm_ptr->shmem_comm=0;
+    comm_ptr->leader_comm=MPI_COMM_NULL;
+    comm_ptr->shmem_comm=MPI_COMM_NULL;
 
     MPIDI_VC_t* vc = NULL;
     for (; i < size ; ++i){
@@ -161,8 +160,8 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
         printf("Couldn't malloc group\n");
         ibv_error_abort (GEN_EXIT_ERR, "create_2level_com");
     }
-
-    mpi_errno = MPIR_Allgather (&leader, 1, MPI_INT , comm_ptr->leader_map, 1, MPI_INT, comm_ptr);
+    
+    mpi_errno = MPIR_Allgather_impl (&leader, 1, MPI_INT , comm_ptr->leader_map, 1, MPI_INT, comm_ptr, &errflag);
     if(mpi_errno) {
        MPIU_ERR_POP(mpi_errno);
     }
@@ -274,15 +273,15 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
                 
 
     if (my_local_id == 0){
-        pthread_spin_lock(&shmem_coll->shmem_coll_lock);
-        ++shmem_coll->shmem_comm_count;
-        shmem_comm_count = shmem_coll->shmem_comm_count;
-        pthread_spin_unlock(&shmem_coll->shmem_coll_lock);
+        lock_shmem_region();
+        increment_shmem_comm_count();
+        shmem_comm_count = get_shmem_comm_count();
+        unlock_shmem_region();
     }
     
     shmem_ptr->shmem_coll_ok = 0; 
     /* To prevent Bcast taking the knomial_2level_bcast route */
-    mpi_errno = MPIR_Bcast (&shmem_comm_count, 1, MPI_INT, 0, shmem_ptr);
+    mpi_errno = MPIR_Bcast_impl (&shmem_comm_count, 1, MPI_INT, 0, shmem_ptr, &errflag);
      if(mpi_errno) {
        MPIU_ERR_POP(mpi_errno);
     }
@@ -295,7 +294,7 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
         input_flag = 0;
     }
     comm_ptr->shmem_coll_ok = 0;/* To prevent Allreduce taking shmem route*/
-    mpi_errno = MPIR_Allreduce(&input_flag, &output_flag, 1, MPI_INT, MPI_LAND, comm_ptr);
+    mpi_errno = MPIR_Allreduce_impl(&input_flag, &output_flag, 1, MPI_INT, MPI_LAND, comm_ptr, &errflag);
      if(mpi_errno) {
        MPIU_ERR_POP(mpi_errno);
     }
@@ -321,16 +320,10 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
              }
         }
         free_2level_comm(comm_ptr);
+        comm_ptr->shmem_comm = MPI_COMM_NULL; 
+        comm_ptr->leader_comm = MPI_COMM_NULL; 
     }
     ++comm_count;
-
-    comm_ptr->bcast_mmap_ptr = NULL;
-    comm_ptr->bcast_shmem_file = NULL;
-    comm_ptr->bcast_fd = -1;
-    comm_ptr->bcast_index = 0;
-
-    MPIR_Nest_decr();
-   
 
     fn_fail: 
        MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
@@ -434,10 +427,8 @@ int check_comm_registry(MPI_Comm comm)
     int context_id = 0, i =0, my_rank, size;
     context_id = comm_ptr->context_id;
 
-    MPIR_Nest_incr();
     PMPI_Comm_rank(comm, &my_rank);
     PMPI_Comm_size(comm, &size);
-    MPIR_Nest_decr();
 
     for (i = 0; i < comm_registered; i++){
         if (comm_registry[i] == context_id){

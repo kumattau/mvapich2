@@ -35,7 +35,7 @@
 #include "mpimem.h"
 #include <stdlib.h>
 
-#include "ibv_param.h"
+#include "ib_param.h"
 #include "dreg.h"
 #include "avl.h"
 #include "mpiimpl.h"
@@ -77,9 +77,6 @@ unsigned long dreg_stat_cache_hit=0;
 unsigned long dreg_stat_cache_miss=0;
 unsigned long dreg_stat_evicted;
 static unsigned long g_pinned_pages_count;
-
-struct iovec *delayed_buf_region;
-int buf_reg_count;
 
 #if !defined(DISABLE_PTMALLOC)
 static pthread_spinlock_t dreg_lock = 0;
@@ -138,6 +135,10 @@ static dreg_entry **deregister_mr_array;
  * entries
  */
 static int n_dereg_mr;
+
+struct iovec *delayed_buf_region;
+int buf_reg_count;
+
 
 /* Keep free list of VMA data structs
  * and entries */
@@ -671,19 +672,6 @@ int dreg_init()
     MPIU_Memset(dreg_free_list, 0, sizeof(dreg_entry) * rdma_ndreg_entries);
     dreg_all_list = dreg_free_list;
 
-    delayed_buf_region = MPIU_Malloc((unsigned)(sizeof(struct iovec) * rdma_ndreg_entries));
-    
-    if (delayed_buf_region == NULL) {
-        MPIU_ERR_SETFATALANDJUMP2(mpi_errno,
-                MPI_ERR_INTERN,
-                "**fail",
-                "**fail %s %d",
-                "dreg_init: unable to malloc %d bytes",
-                (int) sizeof(sizeof(struct iovec)) * rdma_ndreg_entries);
-    }
-
-    MPIU_Memset(delayed_buf_region, 0, sizeof(struct iovec) * rdma_ndreg_entries);
-
     for (i=0; i < (int) rdma_ndreg_entries - 1; ++i) {
         dreg_free_list[i].next = &dreg_free_list[i + 1];
     }
@@ -698,6 +686,21 @@ int dreg_init()
 #if !defined(DISABLE_PTMALLOC)
     pthread_spin_init(&dreg_lock, 0);
     pthread_spin_init(&dereg_lock, 0);
+    
+    delayed_buf_region = MPIU_Malloc((unsigned)(sizeof(struct iovec) * rdma_ndreg_entries));
+    
+    if (delayed_buf_region == NULL) {
+        MPIU_ERR_SETFATALANDJUMP2(mpi_errno,
+                MPI_ERR_INTERN,
+                "**fail",
+                "**fail %s %d",
+                "dreg_init: unable to malloc %d bytes",
+                (int) sizeof(sizeof(struct iovec)) * rdma_ndreg_entries);
+    }
+
+    MPIU_Memset(delayed_buf_region, 0, sizeof(struct iovec) * rdma_ndreg_entries);
+    buf_reg_count = 0;
+
 
     deregister_mr_array = (dreg_entry **)
         MPIU_Malloc(sizeof(dreg_entry *) * rdma_ndreg_entries);
@@ -772,6 +775,10 @@ int dreg_finalize()
       MPIU_Free(dreg_all_list);
 
 #if !defined(DISABLE_PTMALLOC)
+    
+    if(delayed_buf_region != NULL)
+      MPIU_Free(delayed_buf_region);
+
    if(deregister_mr_array != NULL) {
       MPIU_Free(deregister_mr_array);
    }

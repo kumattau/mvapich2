@@ -5,6 +5,3 @@ testing:
 	../runtests -srcdir=$(srcdir) -tests=testlist \
 		   -mpiexec=@MPIEXEC@ \
 		   -xmlfile=summary.xml
-
-smvarSubdir_do_dependencies=no
-smvar_dependenciesDummy=yes

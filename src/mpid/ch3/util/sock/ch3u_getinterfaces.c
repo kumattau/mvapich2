@@ -72,7 +72,7 @@ int MPIDU_CH3U_GetSockInterfaceAddr( int myRank, char *ifname, int maxIfname,
 
     if (dbg_ifname < 0) {
 	int rc;
-	rc = MPIU_GetEnvBool( "MPICH_DBG_IFNAME", &dbg_ifname );
+	rc = MPL_env2bool( "MPICH_DBG_IFNAME", &dbg_ifname );
 	if (rc != 1) dbg_ifname = 0;
     }
 
@@ -140,21 +140,6 @@ int MPIDU_CH3U_GetSockInterfaceAddr( int myRank, char *ifname, int maxIfname,
 	    }
 	    else {
 		MPIU_Memcpy( ifaddr->ifaddr, info->h_addr_list[0], ifaddr->len );
-#if 0
-		printf( "ifaddr len = %d\n", ifaddr->len );
-		{int i;
-		    unsigned char *p = info->h_addr_list[0];
-		    for (i=0; i<ifaddr->len; i++) { 
-			printf( "%.2x", *p++ );
-		    }
-		    printf( "\n" ); fflush(stdout);
-		    p = info->h_addr_list[0];
-		    for (i=0; i<ifaddr->len; i++) { 
-			printf( "%.3d", *p++ );
-		    }
-		    printf( "\n" ); fflush(stdout);
-		}
-#endif
 	    }
 	}
     }
@@ -211,7 +196,7 @@ static int MPIDI_CH3U_GetIPInterface( MPIDU_Sock_ifaddr_t *ifaddr, int *found )
 
     if (dbg_ifname < 0) {
 	int rc;
-	rc = MPIU_GetEnvBool( "MPICH_DBG_IFNAME", &dbg_ifname );
+	rc = MPL_env2bool( "MPICH_DBG_IFNAME", &dbg_ifname );
 	if (rc != 1) dbg_ifname = 0;
     }
 

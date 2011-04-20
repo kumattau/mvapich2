@@ -109,6 +109,7 @@ int MPIDI_CH3_Pkt_size_index[] = {
     sizeof(MPIDI_CH3_Pkt_lock_put_unlock_t),
     sizeof(MPIDI_CH3_Pkt_lock_get_unlock_t),
     sizeof(MPIDI_CH3_Pkt_lock_accum_unlock_t),
+    sizeof(MPIDI_CH3_Pkt_accum_immed_t),
     -1,                                /* FLOW CONTROL UPDATE unused */
     sizeof(MPIDI_CH3_Pkt_close_t),
     -1
@@ -201,7 +202,6 @@ int MPIDI_CH3U_Handle_ordered_recv_pkt(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_t * pkt,
 	MPIDI_CH3_PktHandler_Init( pktArray, MPIDI_CH3_PKT_END_CH3 );
 	needsInit = 0;
     }
-
     /* Packet type is an enum and hence >= 0 */
     MPIU_Assert(pkt->type <= MPIDI_CH3_PKT_END_CH3);
     mpi_errno = pktArray[pkt->type](vc, pkt, buflen, rreqp);
@@ -375,7 +375,8 @@ int MPIDI_CH3U_Receive_data_unexpected(MPID_Request * rreq, char *buf, MPIDI_msg
     
     rreq->dev.tmpbuf = MPIU_Malloc(rreq->dev.recv_data_sz);
     if (!rreq->dev.tmpbuf) {
-	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**nomem");
+	MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**nomem","**nomem %d",
+			     rreq->dev.recv_data_sz);
     }
     rreq->dev.tmpbuf_sz = rreq->dev.recv_data_sz;
     
@@ -506,7 +507,8 @@ int MPIDI_CH3U_Post_data_receive_unexpected(MPID_Request * rreq)
     
     rreq->dev.tmpbuf = MPIU_Malloc(rreq->dev.recv_data_sz);
     if (!rreq->dev.tmpbuf) {
-	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**nomem");
+	MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**nomem","**nomem %d",
+			     rreq->dev.recv_data_sz);
     }
     rreq->dev.tmpbuf_sz = rreq->dev.recv_data_sz;
     
@@ -731,6 +733,8 @@ int MPIDI_CH3_PktHandler_Init( MPIDI_CH3_PktHandler_Fcn *pktArray[],
 	MPIDI_CH3_PktHandler_LockAccumUnlock;
     pktArray[MPIDI_CH3_PKT_LOCK_GET_UNLOCK] = 
 	MPIDI_CH3_PktHandler_LockGetUnlock;
+    pktArray[MPIDI_CH3_PKT_ACCUM_IMMED] = 
+	MPIDI_CH3_PktHandler_Accumulate_Immed;
     /* End of default RMA operations */
 
  fn_fail:

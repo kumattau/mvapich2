@@ -12,13 +12,14 @@
 
 #ifndef NEMESIS_BUILD
 #include "mpidi_ch3i_rdma_conf.h"
+#include "ibv_param.h"
 #else
 #define _GNU_SOURCE 1
+#include "ib_param.h"
 #endif
 
 #if !defined(DISABLE_PTMALLOC)
 #include "mem_hooks.h"
-#include "ibv_param.h"
 #include "dreg.h"
 #include <stdio.h>
 #include <unistd.h>

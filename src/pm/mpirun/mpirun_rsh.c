@@ -40,6 +40,7 @@
 #include "mpirun_ckpt.h"
 #include <param.h>
 #include <mv2_config.h>
+#include "error_handling.h"
 
 
 
@@ -240,16 +241,31 @@ int main(int argc, char *argv[])
 
     int timeout, fastssh_threshold;
 
+    if (read_configuration_files(&crc)) {
+        fprintf(stderr, "mpirun_rsh: error reading configuration file\n");
+        return EXIT_FAILURE;
+    }
+
+    // Set coresize limit
+    char* coresize = getenv("MV2_DEBUG_CORESIZE");
+    set_coresize_limit( coresize );
+    // ignore error code, failure if not fatal
+
+    // Set an error signal handler
+    char* bt = getenv("MV2_DEBUG_SHOW_BACKTRACE");
+    int backtrace = 0;
+    if ( bt != NULL ) {
+        backtrace = !!atoi( bt );
+    }
+    set_error_prefix( "mpirun_rsh" );
+    setup_error_sighandler( backtrace );
+    // ignore error code, failure if not fatal
+
     atexit(remove_host_list_file);
     atexit(free_memory);
 
     totalview_cmd[TOTALVIEW_CMD_LEN - 1] = '\0';
     display[0] = '\0';
-
-    if (read_configuration_files(&crc)) {
-        fprintf(stderr, "mpirun_rsh: error reading configuration file\n");
-        return EXIT_FAILURE;
-    }
 
 #ifdef CKPT
     int ret_ckpt;

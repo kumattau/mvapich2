@@ -117,7 +117,7 @@ MPIDI_CH3I_RDMA_start (MPID_Win * win_ptr,
 
     if (SMP_INIT)
     {
-        MPID_Comm_get_ptr (win_ptr->comm, comm_ptr);
+        comm_ptr = win_ptr->comm_ptr;
     }
 
     DEBUG_PRINT ("before while loop %d\n", win_ptr->post_flag[1]);
@@ -161,7 +161,7 @@ MPIDI_CH3I_RDMA_complete_rma (MPID_Win * win_ptr,
     MPIDI_RMA_ops* curr_ptr = NULL;
     MPIDI_VC_t* vc = NULL;
 
-    MPID_Comm_get_ptr (win_ptr->comm, comm_ptr);
+    comm_ptr = win_ptr->comm_ptr;
     my_rank = comm_ptr->rank;
     comm_size = comm_ptr->local_size;
 
@@ -188,7 +188,7 @@ MPIDI_CH3I_RDMA_complete_rma (MPID_Win * win_ptr,
        ops from this process */
     for (i = 0; i < comm_size; i++)
         nops_to_proc[i] = 0;
-    curr_ptr = win_ptr->rma_ops_list;
+    curr_ptr = win_ptr->rma_ops_list_head;
     while (curr_ptr != NULL)
       {
           nops_to_proc[curr_ptr->target_rank]++;
@@ -232,12 +232,11 @@ MPIDI_CH3I_RDMA_finish_rma (MPID_Win * win_ptr)
 
 /* Go through RMA op list once, and start as many RMA ops as possible */
 void
-MPIDI_CH3I_RDMA_try_rma (MPID_Win * win_ptr,
-                         MPIDI_RMA_ops ** MPIDI_RMA_ops_list, int passive)
+MPIDI_CH3I_RDMA_try_rma (MPID_Win * win_ptr, int passive)
 {
-    MPIDI_RMA_ops *curr_ptr, *head_ptr = NULL, *prev_ptr = NULL, *tmp_ptr;
+    MPIDI_RMA_ops *curr_ptr = NULL, *prev_ptr = NULL, *tmp_ptr;
+    MPIDI_RMA_ops **list_head = NULL, **list_tail = NULL;
     int size, origin_type_size, target_type_size;
-    int tag = 0;
 #ifdef _SCHEDULE
     int curr_put = 1;
     int fall_back = 0;
@@ -250,12 +249,12 @@ MPIDI_CH3I_RDMA_try_rma (MPID_Win * win_ptr,
     
     if (SMP_INIT)
     {
-        MPID_Comm_get_ptr (win_ptr->comm, comm_ptr);
+        comm_ptr = win_ptr->comm_ptr;
     }
 
-    prev_ptr = curr_ptr = head_ptr = *MPIDI_RMA_ops_list;
-    if (*MPIDI_RMA_ops_list != NULL)
-        tag = 1;
+    list_head = &win_ptr->rma_ops_list_head;
+    list_tail = &win_ptr->rma_ops_list_tail;
+    prev_ptr = curr_ptr = *list_head;
 
 #ifdef _SCHEDULE
     while (curr_ptr != NULL || skipped_op != NULL)
@@ -328,14 +327,28 @@ MPIDI_CH3I_RDMA_try_rma (MPID_Win * win_ptr,
                                 else
                                   {
                                       win_ptr->rma_issued++;
-                                      if (head_ptr == curr_ptr)
+                                      if (*list_head == curr_ptr)
                                         {
-                                            prev_ptr = head_ptr =
-                                                curr_ptr->next;
+                                            if (*list_head == *list_tail)
+                                              {
+                                                  *list_head = *list_tail 
+                                                        = NULL;
+                                              }
+                                            else
+                                              {
+                                                  *list_head = prev_ptr 
+                                                        = curr_ptr->next;
+                                              }
+                                        }
+                                      else if (*list_tail == curr_ptr)
+                                        {
+                                            *list_tail = prev_ptr;
+                                            (*list_tail)->next = NULL;
                                         }
                                       else
-                                          prev_ptr->next = curr_ptr->next;
-
+                                        {
+                                            prev_ptr->next = curr_ptr->next;
+                                        }
                                       tmp_ptr = curr_ptr->next;
                                       MPIU_Free (curr_ptr);
                                       curr_ptr = tmp_ptr;
@@ -354,6 +367,12 @@ MPIDI_CH3I_RDMA_try_rma (MPID_Win * win_ptr,
                           curr_ptr = curr_ptr->next;
                           break;
                       }
+                  case MPIDI_RMA_ACC_CONTIG:
+                    {
+                        prev_ptr = curr_ptr;
+                        curr_ptr = curr_ptr->next;
+                        break;
+                    }
                   case (MPIDI_RMA_GET):
                       {
                           int origin_dt_derived, target_dt_derived;
@@ -384,11 +403,28 @@ MPIDI_CH3I_RDMA_try_rma (MPID_Win * win_ptr,
                                 else
                                   {
                                       win_ptr->rma_issued++;
-                                      if (head_ptr == curr_ptr)
-                                          prev_ptr = head_ptr =
-                                              curr_ptr->next;
+                                      if (*list_head == curr_ptr)
+                                        {
+                                            if (*list_head == *list_tail)
+                                              {
+                                                  *list_head = *list_tail 
+                                                        = NULL;
+                                              }
+                                            else
+                                              {
+                                                  *list_head = prev_ptr 
+                                                        = curr_ptr->next;
+                                              }
+                                        }
+                                      else if (*list_tail == curr_ptr)
+                                        {
+                                            *list_tail = prev_ptr;
+                                            (*list_tail)->next = NULL;
+                                        }
                                       else
-                                          prev_ptr->next = curr_ptr->next;
+                                        {
+                                            prev_ptr->next = curr_ptr->next;
+                                        }
                                       tmp_ptr = curr_ptr->next;
                                       MPIU_Free (curr_ptr);
                                       curr_ptr = tmp_ptr;
@@ -413,7 +449,6 @@ MPIDI_CH3I_RDMA_try_rma (MPID_Win * win_ptr,
                 curr_ptr = curr_ptr->next;
             }
       }
-    *MPIDI_RMA_ops_list = head_ptr;
 }
 
 /* For active synchronization */
@@ -438,7 +473,7 @@ int MPIDI_CH3I_RDMA_post (MPID_Win * win_ptr, int target_rank)
     Get_Pinned_Buf (win_ptr, &origin_addr, size);
     *((int *) origin_addr) = 1;
 
-    MPID_Comm_get_ptr (win_ptr->comm, comm_ptr);
+    comm_ptr = win_ptr->comm_ptr;
     MPIDI_Comm_get_vc (comm_ptr, target_rank, &tmp_vc);
 
     /*part 2 Do RDMA WRITE */
@@ -478,6 +513,7 @@ MPIDI_CH3I_RDMA_win_create (void *base,
                             MPID_Win ** win_ptr, MPID_Comm * comm_ptr)
 {
     int ret, i, fall_back;
+    int errflag = FALSE;
     win_info *win_info_exchange;
     uintptr_t *post_flag_ptr_send, *post_flag_ptr_recv;
 
@@ -519,8 +555,8 @@ MPIDI_CH3I_RDMA_win_create (void *base,
     }
 
     ret =
-       NMPI_Allreduce (&((*win_ptr)->fall_back), &fall_back, 1, MPI_INT,
-                        MPI_SUM, comm_ptr->handle);
+       MPIR_Allreduce_impl (&((*win_ptr)->fall_back), &fall_back, 1, MPI_INT,
+                            MPI_SUM, comm_ptr, &errflag);
     if (ret != MPI_SUCCESS)
     {
         printf ("Error allreduce while creating windows\n");
@@ -583,8 +619,8 @@ MPIDI_CH3I_RDMA_win_create (void *base,
     win_info_exchange[my_rank].fall_back = (*win_ptr)->fall_back;
 
     ret =
-        NMPI_Allgather (MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, (void *) win_info_exchange, 
-                 sizeof(win_info), MPI_BYTE, comm_ptr->handle);
+        MPIR_Allgather_impl (MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, (void *) win_info_exchange, 
+                 sizeof(win_info), MPI_BYTE, comm_ptr, &errflag);
     if (ret != MPI_SUCCESS)
       {
           printf ("Error while gathering window information in win_create\n");
@@ -689,8 +725,8 @@ MPIDI_CH3I_RDMA_win_create (void *base,
     }
 
     ret =
-        NMPI_Alltoall (post_flag_ptr_send, sizeof(uintptr_t), MPI_BYTE, post_flag_ptr_recv, 
-                  sizeof(uintptr_t), MPI_BYTE, comm_ptr->handle);
+        MPIR_Alltoall_impl (post_flag_ptr_send, sizeof(uintptr_t), MPI_BYTE, post_flag_ptr_recv, 
+                            sizeof(uintptr_t), MPI_BYTE, comm_ptr, &errflag);
     if (ret != MPI_SUCCESS)
     {
           printf ("Error alltoall exchange post flag rkey when creating windows\n");
@@ -761,8 +797,8 @@ MPIDI_CH3I_RDMA_win_create (void *base,
     win_info_exchange[my_rank].fall_back = (uint32_t) (*win_ptr)->fall_back;
 
     ret =
-        NMPI_Allgather (MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, win_info_exchange, 
-                        sizeof(win_info), MPI_BYTE, comm_ptr->handle);
+        MPIR_Allgather_impl (MPI_IN_PLACE, 0, MPI_DATATYPE_NULL, win_info_exchange, 
+                        sizeof(win_info), MPI_BYTE, comm_ptr, &errflag);
     if (ret != MPI_SUCCESS)
     {
         printf ("Error when gathering win_info in win_create\n");
@@ -811,7 +847,7 @@ Decrease_CC (MPID_Win * win_ptr, int target_rank)
     MPIDI_VC_t *tmp_vc;
     MPID_Comm *comm_ptr;
 
-    MPID_Comm_get_ptr (win_ptr->comm, comm_ptr);
+    comm_ptr = win_ptr->comm_ptr;
     MPIDI_Comm_get_vc (comm_ptr, target_rank, &tmp_vc);
     qp_hndl = tmp_vc->mrail.qp_hndl_1sc;
     Get_Pinned_Buf (win_ptr, (char **) &cc, sizeof (long long));
@@ -1098,7 +1134,7 @@ IBA_PUT (MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr, int size)
           win_ptr->wait_for_complete = 1;
       }
     r_key = win_ptr->win_rkeys[rma_op->target_rank];
-    MPID_Comm_get_ptr (win_ptr->comm, comm_ptr);
+    comm_ptr = win_ptr->comm_ptr;
     MPIDI_Comm_get_vc (comm_ptr, rma_op->target_rank, &tmp_vc);
     qp_hndl = tmp_vc->mrail.qp_hndl_1sc;
 
@@ -1168,7 +1204,7 @@ IBA_GET (MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr, int size)
       }
 
     r_key = win_ptr->win_rkeys[rma_op->target_rank];
-    MPID_Comm_get_ptr (win_ptr->comm, comm_ptr);
+    comm_ptr = win_ptr->comm_ptr;
     MPIDI_Comm_get_vc (comm_ptr, rma_op->target_rank, &tmp_vc);
     qp_hndl = tmp_vc->mrail.qp_hndl_1sc;
 

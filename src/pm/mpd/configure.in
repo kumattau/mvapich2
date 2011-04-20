@@ -2,29 +2,10 @@ dnl Process this file with autoconf to produce a configure script.
 # Autoconf initialization:
 AC_INIT(mpdroot.h)
 
-dnl The MVAPICH2 top-level configure adds a bunch of flags to the
-dnl user-defined CFLAGS by processing different configure command-line
-dnl arguments (--enable-g, --enable-default-optimization). These updated
-dnl flags are passed down as a separate flag. Here, we don't care about
-dnl the user-defined flags, but rather this updated flags, so we just
-dnl overwrite CFLAGS with them.
-PAC_SUBCONFIG_INIT()
-
 # Autoconf header:
 rm -f ${srcdir}/mpdconf.h mpdconf.h
 AC_CONFIG_HEADER(mpdconf.h)
 AH_TOP([/* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
- * reserved.
- *
- * This file is part of the MVAPICH2 software package developed by the
- * team members of The Ohio State University's Network-Based Computing
- * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
- *
- * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT in the top level MVAPICH2 directory.
- *
- */
 /*  
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -54,7 +35,7 @@ dnl are needed for some operations under cygwin
 AC_EXEEXT
 AC_OBJEXT
 # Checking for programs.
-AC_PROG_CC
+PAC_PROG_CC
 AC_PROG_MAKE_SET
 AC_PROG_LN_S
 # A quick check to ensure that install-sh has the execute bit set
@@ -62,93 +43,13 @@ AC_PROG_LN_S
 if test -f install.sh -a ! -x install.sh ; then chmod +x install.sh ; fi
 AC_PROG_INSTALL
 
-MPD_AC_PROG_CHECK_INSTALL_WORKS
+PAC_PROG_CHECK_INSTALL_WORKS
 
 if test "$installOk" = "no" ; then
     # echo "RMB1: SETTING install"
     INSTALL="${srcdir}/install.sh"
 fi
 echo Using INSTALL=$INSTALL
-
-dnl <_OSU_MVAPICH_>
-AC_ARG_ENABLE([ckpt],
-              [AS_HELP_STRING([--enable-ckpt],
-                              [enable checkpoint/restart])
-              ],
-              [],
-              [enable_ckpt=default])
-
-AC_ARG_ENABLE([ckpt-aggregation],
-              [AS_HELP_STRING([--enable-ckpt-aggregation],
-                              [enable aggregation with checkpoint/restart])
-              ],
-              [],
-              [enable_ckpt_aggregation=check])
-
-AC_ARG_ENABLE([ckpt-migration],
-              [AS_HELP_STRING([--enable-ckpt-migration],
-                              [enable process migration])
-              ],
-              [],
-              [enable_migration=no])
-
-AC_ARG_WITH([blcr],
-            [AS_HELP_STRING([--with-blcr@[:@=path@:]@],
-                            [provide path to blcr package])
-            ],
-            [],
-            [with_blcr=check])
-
-AC_ARG_WITH([blcr-include],
-            [AS_HELP_STRING([--with-blcr-include=@<:@path@:>@],
-                            [specify the path to the blcr header files])
-            ],
-            [AS_CASE([$with_blcr_include],
-                     [yes|no], [AC_MSG_ERROR([arg to --with-blcr-include must be a path])])
-            ],
-            [])
-
-AC_ARG_WITH([blcr-libpath],
-            [AS_HELP_STRING([--with-blcr-libpath=@<:@path@:>@],
-                            [specify the path to the blcr library])
-            ],
-            [AS_CASE([$with_blcr_libpath],
-                     [yes|no], [AC_MSG_ERROR([arg to --with-blcr-libpath must be a path])])
-            ],
-            [])
-
-AS_CASE([$with_blcr],
-        [yes|no|check], [],
-        [with_blcr_include="$with_blcr/include"
-         with_blcr_libpath="$with_blcr/lib"
-         with_blcr=yes])
-
-AS_IF([test -n "$with_blcr_include"],
-      [CPPFLAGS="$CPPFLAGS -I$with_blcr_include"
-       with_blcr=yes])
-
-AS_IF([test -n "$with_blcr_libpath"],
-      [LDFLAGS="$LDFLAGS -L$with_blcr_libpath -Wl,-rpath,$with_blcr_libpath"
-       with_blcr=yes])
-
-AS_IF([test "x$enable_ckpt" = xdefault], [
-       AS_IF([test "x$enable_ckpt_aggregation" = xyes || test "x$enable_ckpt_migration" = xyes], [enable_ckpt=yes], [enable_ckpt=no])
-       ])
-
-AS_IF([test "x$enable_ckpt" = xyes], [
-       AC_CHECK_HEADER([libcr.h],
-                       [],
-                       [AC_MSG_ERROR(['libcr.h not found. Please specify --with-blcr-include'])])
-       AC_SEARCH_LIBS([cr_init],
-                      [cr],
-                      [],
-                      [AC_MSG_ERROR([libcr not found.])],
-                      [])
-       MPD_OTHERS=mpiexec_cr
-      ])
-
-AC_SUBST(MPD_OTHERS)
-dnl </_OSU_MVAPICH_>
 
 AC_ARG_ENABLE(totalview,[--enable-totalview - turn on mpd-totalview support],,
               enable_totalview=default )
@@ -284,9 +185,6 @@ AC_SUBST(MPD_HOME)
 dnl
 dnl Dependency handling
 AC_SUBST(MAKE_DEPEND_C)
-
-dnl Place holder macro for finalization
-PAC_SUBCONFIG_FINALIZE()
 
 # AC_OUTPUT_COMMANDS(chmod +x startdaemons)
 AC_OUTPUT(Makefile)

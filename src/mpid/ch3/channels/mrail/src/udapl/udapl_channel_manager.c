@@ -143,6 +143,7 @@ GetSeqNumVbuf (vbuf * buf)
       case MPIDI_CH3_PKT_GET:
       case MPIDI_CH3_PKT_GET_RESP:
       case MPIDI_CH3_PKT_ACCUMULATE:
+      case MPIDI_CH3_PKT_ACCUM_IMMED:
       case MPIDI_CH3_PKT_LOCK:
       case MPIDI_CH3_PKT_LOCK_GRANTED:
       case MPIDI_CH3_PKT_LOCK_PUT_UNLOCK:

@@ -20,32 +20,20 @@
 
 static MPID_Collops collective_functions_osu = {
     0,    /* ref_count */
-    MPIR_Barrier_OSU, /* Barrier */ 
-    MPIR_Barrier_inter_OSU, /* Barrier Inter*/
-    MPIR_Bcast_OSU, /* Bcast intra*/
-    MPIR_Bcast_inter_OSU, /*Bcast inter */
-    MPIR_Gather_OSU, /* Gather */
-    MPIR_Gather_inter_OSU, /* Gather inter */
-    MPIR_Gatherv_OSU, /* Gatherv */
-    MPIR_Scatter_OSU, /* Scatter */
-    MPIR_Scatter_inter_OSU, /* Scatter inter */
-    MPIR_Scatterv_OSU, /* Scatterv */
-    MPIR_Allgather_OSU, /* Allgather */
-    MPIR_Allgather_inter_OSU, /* Allgather inter */
-    MPIR_Allgatherv_OSU, /* Allgatherv */
-    MPIR_Allgatherv_inter_OSU, /* Allgatherv inter */
-    MPIR_Alltoall_OSU, /* Alltoall */
-    MPIR_Alltoall_inter_OSU, /* Alltoall inter */
-    MPIR_Alltoallv_OSU, /* Alltoallv */
-    MPIR_Alltoallv_inter_OSU, /* Alltoallv inter*/
-    MPIR_Alltoallw_OSU, /* Alltoallw */
-    MPIR_Alltoallw_inter_OSU, /* Alltoallw inter */
-    MPIR_Reduce_OSU, /* Reduce */
-    MPIR_Reduce_inter_OSU, /* Reduce inter */
-    MPIR_Allreduce_OSU, /* Allreduce */
-    MPIR_Allreduce_inter_OSU, /* Allreduce inter*/
-    MPIR_Reduce_scatter_OSU, /* Reduce_scatter */
-	MPIR_Reduce_scatter_inter_OSU, /* Reduce_scatter */
+    MPIR_Barrier_MV2, /* Barrier */ 
+    MPIR_Bcast_MV2, /* Bcast intra*/
+    MPIR_Gather_MV2, /* Gather */
+    MPIR_Gatherv_MV2, /* Gatherv */
+    MPIR_Scatter_MV2, /* Scatter */
+    MPIR_Scatterv_MV2, /* Scatterv */
+    MPIR_Allgather_MV2, /* Allgather */
+    MPIR_Allgatherv_MV2, /* Allgatherv */
+    MPIR_Alltoall_MV2, /* Alltoall */
+    MPIR_Alltoallv_MV2, /* Alltoallv */
+    MPIR_Alltoallw_MV2, /* Alltoallw */
+    MPIR_Reduce_MV2, /* Reduce */
+    MPIR_Allreduce_MV2, /* Allreduce */
+    MPIR_Reduce_scatter_MV2, /* Reduce_scatter */
     MPIR_Scan, /* Scan */
     NULL  /* Exscan */
 };
@@ -53,31 +41,19 @@ static MPID_Collops collective_functions_osu = {
 static MPID_Collops collective_functions_anl = {
     0,    /* ref_count */
     MPIR_Barrier, /* Barrier */
-    MPIR_Barrier_inter, /* Barrier Inter*/
     MPIR_Bcast, /* Bcast intra*/
-    MPIR_Bcast_inter, /*Bcast inter */
     MPIR_Gather, /* Gather */
-    MPIR_Gather_inter, /* Gather inter */
     MPIR_Gatherv, /* Gatherv */
     MPIR_Scatter, /* Scatter */
-    MPIR_Scatter_inter, /* Scatter inter */
     MPIR_Scatterv, /* Scatterv */
     MPIR_Allgather, /* Allgather */
-    MPIR_Allgather_inter, /* Allgather inter */
     MPIR_Allgatherv, /* Allgatherv */
-    MPIR_Allgatherv_inter, /* Allgather inter */
     MPIR_Alltoall, /* Alltoall */
-    MPIR_Alltoall_inter, /* Alltoall inter */
     MPIR_Alltoallv, /* Alltoallv */
-    MPIR_Alltoallv_inter, /* Alltoallv inter*/
     MPIR_Alltoallw, /* Alltoallw */
-    MPIR_Alltoallw_inter, /* Alltoallw inter */
     MPIR_Reduce, /* Reduce */
-	MPIR_Reduce_inter, /* Reduce inter */
     MPIR_Allreduce, /* Allreduce */
-    MPIR_Allreduce_inter, /* Allreduce inter*/
 	MPIR_Reduce_scatter, /* Reduce_scatter */
-	MPIR_Reduce_scatter_inter, /* Reduce_scatter */
     MPIR_Scan, /* Scan */
     NULL  /* Exscan */
 };

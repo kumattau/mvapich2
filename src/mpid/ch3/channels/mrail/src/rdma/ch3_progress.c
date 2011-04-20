@@ -17,7 +17,6 @@
  */
 
 #include "mpidi_ch3_impl.h"
-#include "mpidu_process_locks.h"        /* for MPIDU_Yield */
 #include "mpiutil.h"
 #include "rdma_impl.h"
 
@@ -86,6 +85,7 @@ inline static int MPIDI_CH3I_Seq(int type)
         case MPIDI_CH3_PKT_LOCK_PUT_UNLOCK:
         case MPIDI_CH3_PKT_LOCK_GET_UNLOCK:
         case MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK:
+        case MPIDI_CH3_PKT_ACCUM_IMMED:
         case MPIDI_CH3_PKT_PT_RMA_DONE:
         case MPIDI_CH3_PKT_PUT_RNDV:
         case MPIDI_CH3_PKT_ACCUMULATE_RNDV:
@@ -271,8 +271,8 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
                     spin_count = 0;
                     MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
                     if( use_thread_yield == 1) { 
-                         /* User has requested this thread to yield the CPU */
-                         MPIDU_Yield();
+                        /* User has requested this thread to yield the CPU */
+                        MPIU_PW_Sched_yield();
                     } else { 
                          /* After releasing the lock, lets just wait for a 
                           * short time before trying to acquire the lock

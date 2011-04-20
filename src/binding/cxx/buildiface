@@ -387,7 +387,7 @@ $specialReturnType{"intra-Dup"} = "Intracomm";
 #
 # Here are the MPI-2 methods
 # WARNING: These are incomplete.  They primarily define only the
-# MPI-2 routines implemented by MVAPICH2.
+# MPI-2 routines implemented by MPICH2.
 %class_mpi2base = ( 'Alloc_mem' => '3;void *:2',
 		    'Free_mem' => '0', 
 		    'Open_port' => '1',
@@ -1080,6 +1080,7 @@ class Graphcomm;
 # put these here because none of them use any of the other classes,
 # and we'll want to use a few of them in the implementations of the
 # other functions.
+print $OUTFD "// base (classless) routines\n";
 foreach $routine (keys(%class_mpi1base)) {
     # These aren't really a class, so they don't use Begin/EndClass
     $arginfo = $class_mpi1base{$routine};
@@ -1195,8 +1196,6 @@ typedef int Datarep_conversion_function( void *, Datatype &, int, void *,
     print $OUTFD "extern void Init(int &, char **& );\n";
     print $OUTFD "extern int Init_thread(int);\n";
     print $OUTFD "extern int Init_thread(int &, char **&, int );\n";
-    print $OUTFD "extern void Finalize(void);\n";
-    print $OUTFD "extern Aint Get_address( void * );\n";
     print $OUTFD "extern double Wtime(void);\n";
     print $OUTFD "extern double Wtick(void);\n";
 
@@ -1303,17 +1302,6 @@ sub print_endline {
 # Print the header of the file, containing the definitions etc.
 sub print_header {
     print $OUTFD "/* -*- Mode: C++; c-basic-offset:4 ; -*- */\
-/* Copyright (c) 2003-2011, The Ohio State University. All rights           \
- * reserved.                                                                \
- *                                                                          \
- * This file is part of the MVAPICH2 software package developed by the      \
- * team members of The Ohio State University's Network-Based Computing      \
- * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.        \
- *                                                                          \
- * For detailed copyright and licensing information, please refer to the    \
- * copyright file COPYRIGHT in the top level MVAPICH2 directory.            \
- *                                                                          \
- */
 /*  \
  *  (C) 2001 by Argonne National Laboratory.\
  *      See COPYRIGHT in top-level directory.\
@@ -2189,7 +2177,6 @@ print $OUTFD "\
 
     # Keyval and attribute routines
     print $OUTFD <<EOT;
-#include \"mpihandlemem.h\"
 #include \"mpi_attr.h\"
 #include \"mpi_lang.h\"
 static

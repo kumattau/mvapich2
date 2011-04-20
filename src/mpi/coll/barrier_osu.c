@@ -44,14 +44,16 @@
 */
 
 /* not declared static because it is called in ch3_comm_connect/accept */
-int MPIR_Barrier_OSU( MPID_Comm *comm_ptr )
+int MPIR_Barrier_intra_MV2( MPID_Comm *comm_ptr, int *errflag )
 {
-    static const char FCNAME[] = "MPIR_Barrier_OSU";
-    int size, rank, src, dst, mask, mpi_errno=MPI_SUCCESS;
+    static const char FCNAME[] = "MPIR_Barrier_intra_MV2";
+    int size, rank, src, dst, mask;
+    int mpi_errno=MPI_SUCCESS;
+    int mpi_errno_ret=MPI_SUCCESS;
     MPI_Comm comm;
 
 	/* begin shmem_comm delaration */
-	MPI_Comm shmem_comm, leader_comm;
+	MPI_Comm shmem_comm = MPI_COMM_NULL, leader_comm = MPI_COMM_NULL;
     MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
     int local_rank = -1, local_size=0, my_rank;
     int total_size, shmem_comm_rank;
@@ -74,19 +76,15 @@ int MPIR_Barrier_OSU( MPID_Comm *comm_ptr )
         shmem_comm = comm_ptr->shmem_comm;                                              
         leader_comm = comm_ptr->leader_comm;
 	    
-		if ((disable_shmem_barrier == 0) && (shmem_comm != 0)&&(leader_comm !=0) &&(comm_ptr->shmem_coll_ok == 1 ))
-	    {
+	if ((disable_shmem_barrier == 0) && (comm_ptr->shmem_coll_ok == 1 )) {
 
 #if defined(CKPT)
             MPIDI_CH3I_CR_lock();
 #endif
             my_rank = comm_ptr->rank;
-	        /* MPI_Comm_size(comm, &total_size); */
-		    total_size = comm_ptr->local_size;
-		    shmem_comm = comm_ptr->shmem_comm;
+    	    total_size = comm_ptr->local_size;
+            shmem_comm = comm_ptr->shmem_comm;
         
-		    /*  MPI_Comm_rank(shmem_comm, &local_rank);
-		    MPI_Comm_size(shmem_comm, &local_size); */
 
             MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
             local_rank = shmem_commptr->rank;
@@ -95,49 +93,52 @@ int MPIR_Barrier_OSU( MPID_Comm *comm_ptr )
             leader_comm = comm_ptr->leader_comm;
             MPID_Comm_get_ptr(leader_comm, leader_commptr);
 		 
-            if (local_size > 1)
-		    {
+            if (local_size > 1) { 
                 MPIDI_CH3I_SHMEM_COLL_Barrier_gather(local_size, local_rank, shmem_comm_rank);
             }
 		
-	        if ((local_rank == 0) && (local_size != total_size))
-		    {
-                mpi_errno = MPIR_Barrier( leader_commptr );
-		    }
+            if ((local_rank == 0) && (local_size != total_size)) {
+                    mpi_errno = MPIR_Barrier_intra_MV2( leader_commptr, errflag );
+                    if (mpi_errno) {
+                        /* for communication errors, just record the error but continue */
+                         *errflag = TRUE;
+                         MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                         MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                    }  
+            }
 
-            if (local_size > 1)
-		    {
+            if (local_size > 1) {
                 MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(local_size, local_rank, shmem_comm_rank);
             }
 #if defined(CKPT)
             MPIDI_CH3I_CR_unlock();
 #endif
+        } else {
+            mpi_errno = MPIR_Barrier_intra( comm_ptr, errflag );
+            if (mpi_errno) {
+                /* for communication errors, just record the error but continue */
+                *errflag = TRUE;
+                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+             }
         }
-		else
-		{
-            mpi_errno = MPIR_Barrier( comm_ptr );
-        }
-    }   
-	else
+    } else
 	{
 #endif /*#if defined(_OSU_MVAPICH_)*/
         mask = 0x1;
-        while (mask < size) 
-		{
+        while (mask < size) { 
             dst = (rank + mask) % size;
             src = (rank - mask + size) % size;
-            mpi_errno = MPIC_Sendrecv(NULL, 0, MPI_BYTE, dst,
+            mpi_errno = MPIC_Sendrecv_ft(NULL, 0, MPI_BYTE, dst,
                                   MPIR_BARRIER_TAG, NULL, 0, MPI_BYTE,
                                   src, MPIR_BARRIER_TAG, comm,                          
-                                  MPI_STATUS_IGNORE);
-        
-	        /* --BEGIN ERROR HANDLING-- */
-            if (mpi_errno)
-	        {
-	            mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", 0);
-	            return mpi_errno;
-	        }
-	        /* --END ERROR HANDLING-- */
+                                  MPI_STATUS_IGNORE, errflag);
+            if (mpi_errno) {
+                /* for communication errors, just record the error but continue */
+                *errflag = TRUE;
+                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            }
             mask <<= 1;
         }
 
@@ -283,7 +284,7 @@ int MPIR_Barrier( MPID_Comm *comm_ptr )
 
 /* not declared static because a machine-specific function may call this one 
    in some cases */
-int MPIR_Barrier_inter_OSU( MPID_Comm *comm_ptr )
+int MPIR_Barrier_inter_MV2( MPID_Comm *comm_ptr, int *errflag )
 {
     static const char FCNAME[] = "MPIR_Barrier_inter";
     int rank, mpi_errno, i, root;
@@ -298,7 +299,7 @@ int MPIR_Barrier_inter_OSU( MPID_Comm *comm_ptr )
     newcomm_ptr = comm_ptr->local_comm;
 
     /* do a barrier on the local intracommunicator */
-    mpi_errno = MPIR_Barrier(newcomm_ptr);
+    mpi_errno = MPIR_Barrier(newcomm_ptr, errflag);
     /* --BEGIN ERROR HANDLING-- */
     if (mpi_errno)
     {
@@ -317,7 +318,7 @@ int MPIR_Barrier_inter_OSU( MPID_Comm *comm_ptr )
     if (comm_ptr->is_low_group) {
         /* bcast to right*/
         root = (rank == 0) ? MPI_ROOT : MPI_PROC_NULL;
-        mpi_errno = MPIR_Bcast_inter(&i, 1, MPI_BYTE, root, comm_ptr); 
+        mpi_errno = MPIR_Bcast_inter(&i, 1, MPI_BYTE, root, comm_ptr, errflag); 
 	/* --BEGIN ERROR HANDLING-- */
         if (mpi_errno)
 	{
@@ -327,7 +328,7 @@ int MPIR_Barrier_inter_OSU( MPID_Comm *comm_ptr )
 	/* --END ERROR HANDLING-- */
         /* receive bcast from right */
         root = 0;
-        mpi_errno = MPIR_Bcast_inter(&i, 1, MPI_BYTE, root, comm_ptr); 
+        mpi_errno = MPIR_Bcast_inter(&i, 1, MPI_BYTE, root, comm_ptr, errflag); 
 	/* --BEGIN ERROR HANDLING-- */
         if (mpi_errno)
 	{
@@ -339,7 +340,7 @@ int MPIR_Barrier_inter_OSU( MPID_Comm *comm_ptr )
     else {
         /* receive bcast from left */
         root = 0;
-        mpi_errno = MPIR_Bcast_inter(&i, 1, MPI_BYTE, root, comm_ptr); 
+        mpi_errno = MPIR_Bcast_inter(&i, 1, MPI_BYTE, root, comm_ptr, errflag); 
 	/* --BEGIN ERROR HANDLING-- */
         if (mpi_errno)
 	{
@@ -349,7 +350,7 @@ int MPIR_Barrier_inter_OSU( MPID_Comm *comm_ptr )
 	/* --END ERROR HANDLING-- */
         /* bcast to left */
         root = (rank == 0) ? MPI_ROOT : MPI_PROC_NULL;
-        mpi_errno = MPIR_Bcast_inter(&i, 1, MPI_BYTE, root, comm_ptr);  
+        mpi_errno = MPIR_Bcast_inter(&i, 1, MPI_BYTE, root, comm_ptr, errflag);  
 	/* --BEGIN ERROR HANDLING-- */
         if (mpi_errno)
 	{
@@ -361,3 +362,28 @@ int MPIR_Barrier_inter_OSU( MPID_Comm *comm_ptr )
 
     return mpi_errno;
 }
+
+#undef FUNCNAME
+#define FUNCNAME MPIR_Barrier_MV2
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPIR_Barrier_MV2(MPID_Comm *comm_ptr, int *errflag)
+{
+    int mpi_errno = MPI_SUCCESS;
+
+    if (comm_ptr->comm_kind == MPID_INTRACOMM) {
+        /* intracommunicator */
+        mpi_errno = MPIR_Barrier_intra_MV2( comm_ptr, errflag);
+        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    } else {
+        /* intercommunicator */
+        mpi_errno = MPIR_Barrier_inter_MV2( comm_ptr, errflag);
+        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    }
+
+ fn_exit:
+    return mpi_errno;
+ fn_fail:
+    goto fn_exit;
+}
+

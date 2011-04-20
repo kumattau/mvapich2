@@ -1,37 +1,11 @@
-dnl
-dnl This is a replacement for AC_PROG_CC that does not prefer gcc and
-dnl that does not mess with CFLAGS.  See acspecific.m4 for the original defn.
-dnl
-dnl/*D
-dnl PAC_PROG_CC - Find a working C compiler
-dnl
-dnl Synopsis:
-dnl PAC_PROG_CC
-dnl
-dnl Output Effect:
-dnl   Sets the variable CC if it is not already set
-dnl
-dnl Notes:
-dnl   Unlike AC_PROG_CC, this does not prefer gcc and does not set CFLAGS.
-dnl   It does check that the compiler can compile a simple C program.
-dnl   It also sets the variable GCC to yes if the compiler is gcc.  It does
-dnl   not yet check for some special options needed in particular for 
-dnl   parallel computers, such as -Tcray-t3e, or special options to get
-dnl   full ANSI/ISO C, such as -Aa for HP.
-dnl
-dnl D*/
-dnl 2.52 doesn't have AC_PROG_CC_GNU
+dnl AC_PROG_CC_GNU
 ifdef([AC_PROG_CC_GNU],,[AC_DEFUN([AC_PROG_CC_GNU],)])
+
+dnl PAC_PROG_CC - reprioritize the C compiler search order
 AC_DEFUN([PAC_PROG_CC],[
-AC_CHECK_PROGS(CC, cc xlC xlc pgcc icc pathcc gcc )
-test -z "$CC" && AC_MSG_ERROR([no acceptable cc found in \$PATH])
-PAC_PROG_CC_WORKS
-AC_PROG_CC_GNU
-if test "$ac_cv_prog_gcc" = yes; then
-  GCC=yes
-else
-  GCC=
-fi
+	PAC_PUSH_FLAG([CFLAGS])
+	AC_PROG_CC([gcc icc pgcc xlc xlC pathcc cc])
+	PAC_POP_FLAG([CFLAGS])
 ])
 dnl
 dnl/*D
@@ -55,71 +29,95 @@ dnl
 dnl Because this is a long script, we have ensured that you can pass a 
 dnl variable containing the option name as the first argument.
 dnl
-dnl gcc 4.2.4 on 32-bit does not complain about the -Wno-type-limits option 
-dnl even though it doesn't support it.  However, when another warning is 
-dnl triggered, it gives an error that the option is not recognized.  So we 
-dnl need to test with a conftest file that will generate warnings
 dnl D*/
 AC_DEFUN([PAC_C_CHECK_COMPILER_OPTION],[
 AC_MSG_CHECKING([whether C compiler accepts option $1])
-pccco_save_CFLAGS="$CFLAGS"
-CFLAGS="$1 $CFLAGS"
-rm -f conftest.out
-pac_success=no
-# conftest3.c has an invalid prototype to ensure we generate warnings
-echo 'int main(){}' > conftest3.c
-echo 'int foo(void);int foo(void){return 0;}' > conftest2.c
-echo 'int main(void);int main(void){return 0;}' > conftest.c
-if ${CC-cc} $CFLAGS $CPPFLAGS -o conftest conftest3.c $LDFLAGS >/dev/null 2>&1 &&
-   ${CC-cc} $pccco_save_CFLAGS $CPPFLAGS -o conftest conftest.c $LDFLAGS >conftest.bas 2>&1 ; then
-   if ${CC-cc} $CFLAGS $CPPFLAGS -o conftest conftest.c $LDFLAGS >conftest.out 2>&1 ; then
-      if diff -b conftest.out conftest.bas >/dev/null 2>&1 ; then
-         AC_MSG_RESULT(yes)
-         AC_MSG_CHECKING([whether routines compiled with $1 can be linked with ones compiled without $1])       
-         rm -f conftest.out
-         rm -f conftest.bas
-         if ${CC-cc} -c $pccco_save_CFLAGS $CPPFLAGS conftest2.c >conftest2.out 2>&1 ; then
-            if ${CC-cc} $CFLAGS $CPPFLAGS -o conftest conftest2.o conftest.c $LDFLAGS >conftest.bas 2>&1 ; then
-               if ${CC-cc} $CFLAGS $CPPFLAGS -o conftest conftest2.o conftest.c $LDFLAGS >conftest.out 2>&1 ; then
-                  if diff -b conftest.out conftest.bas >/dev/null 2>&1 ; then
-		     pac_success=yes
-                  else
-		     :
-                  fi  
-               else
-                  :
-               fi
-	    else
-               # Could not link with the option!
-	       :
-            fi
-         else
-            if test -s conftest2.out ; then
-               cat conftest2.out >&AC_FD_CC
-            fi
-         fi
-      else
-         :
-      fi
-   else
-       :
-   fi
-else
-    # Could not compile without the option!
-    :
+pac_opt="$1"
+AC_LANG_PUSH([C])
+CFLAGS_orig="$CFLAGS"
+CFLAGS_opt="$pac_opt $CFLAGS"
+pac_result="unknown"
+
+AC_LANG_CONFTEST([AC_LANG_PROGRAM()])
+CFLAGS="$CFLAGS_orig"
+rm -f pac_test1.log
+PAC_LINK_IFELSE_LOG([pac_test1.log], [], [
+    CFLAGS="$CFLAGS_opt"
+    rm -f pac_test2.log
+    PAC_LINK_IFELSE_LOG([pac_test2.log], [], [
+        PAC_RUNLOG_IFELSE([diff -b pac_test1.log pac_test2.log],
+                          [pac_result=yes],[pac_result=no])
+    ],[
+        pac_result=no
+    ])
+], [
+    pac_result=no
+])
+AC_MSG_RESULT([$pac_result])
+dnl Delete the conftest created by AC_LANG_CONFTEST.
+rm -f conftest.$ac_ext
+
+# gcc 4.2.4 on 32-bit does not complain about the -Wno-type-limits option 
+# even though it doesn't support it.  However, when another warning is 
+# triggered, it gives an error that the option is not recognized.  So we 
+# need to test with a conftest file that will generate warnings.
+# 
+# add an extra switch, pac_c_check_compiler_option_invalidprototest, to
+# disable this test just in case some new compiler does not like it.
+#
+# Linking with a program with an invalid prototype to ensure a compiler warning.
+
+if test "$pac_result" = "yes" \
+     -a "$pac_c_check_compiler_option_prototest" != "no" ; then
+    AC_MSG_CHECKING([whether C compiler option $1 works with an invalid prototype program])
+    AC_LINK_IFELSE([
+        AC_LANG_SOURCE([void main(){ return 0; }])
+    ],[pac_result=yes],[pac_result=no])
+    AC_MSG_RESULT([$pac_result])
 fi
-CFLAGS="$pccco_save_CFLAGS"
-if test "$pac_success" = yes ; then
-   AC_MSG_RESULT(yes)	  
-   ifelse($2,,COPTIONS="$COPTIONS $1",$2)
-else
-   AC_MSG_RESULT(no)
-   if test -s conftest.out ; then cat conftest.out >&AC_FD_CC ; fi    
-   $3
+#
+if test "$pac_result" = "yes" ; then
+    AC_MSG_CHECKING([whether routines compiled with $pac_opt can be linked with ones compiled without $pac_opt])
+    pac_result=unknown
+    CFLAGS="$CFLAGS_orig"
+    rm -f pac_test3.log
+    PAC_COMPILE_IFELSE_LOG([pac_test3.log], [
+        AC_LANG_SOURCE([
+            int foo(void);
+            int foo(void){return 0;}
+        ])
+    ],[
+        PAC_RUNLOG([mv conftest.$OBJEXT pac_conftest.$OBJEXT])
+        saved_LIBS="$LIBS"
+        LIBS="pac_conftest.$OBJEXT $LIBS"
+
+        CFLAGS="$CFLAGS_opt"
+        rm -f pac_test4.log
+        PAC_LINK_IFELSE_LOG([pac_test4.log], [AC_LANG_PROGRAM()], [
+            PAC_RUNLOG_IFELSE([diff -b pac_test2.log pac_test4.log],
+                              [pac_result=yes], [pac_result=no])
+        ],[
+            pac_result=no
+        ])
+        LIBS="$saved_LIBS"
+        rm -f pac_conftest.$OBJEXT
+    ],[
+        pac_result=no
+    ])
+    AC_MSG_RESULT([$pac_result])
+    rm -f pac_test3.log pac_test4.log
 fi
-# This is needed for Mac OSX 10.5
-rm -rf conftest.dSYM
-rm -f conftest*
+rm -f pac_test1.log pac_test2.log
+
+dnl Restore CFLAGS before 2nd/3rd argument commands are executed,
+dnl as 2nd/3rd argument command could be modifying CFLAGS.
+CFLAGS="$CFLAGS_orig"
+if test "$pac_result" = "yes" ; then
+     ifelse([$2],[],[COPTIONS="$COPTIONS $1"],[$2])
+else
+     ifelse([$3],[],[:],[$3])
+fi
+AC_LANG_POP([C])
 ])
 dnl
 dnl/*D
@@ -250,64 +248,44 @@ int Foo(int a) { return a; }
 # pragma.  Some compilers require this in order to make the weak symbol
 # extenally visible.  
 if test "$has_pragma_weak" = yes ; then
-    # This is needed for Mac OSX 10.5
-    rm -rf conftest.dSYM
-    rm -f conftest*
-    cat >>conftest1.c <<EOF
+    PAC_COMPLINK_IFELSE([
+        AC_LANG_SOURCE([
 extern int PFoo(int);
 #pragma weak PFoo = Foo
 int Foo(int);
 int Foo(int a) { return a; }
-EOF
-    cat >>conftest2.c <<EOF
+        ])
+    ],[
+        AC_LANG_SOURCE([
 extern int PFoo(int);
 int main(int argc, char **argv) {
 return PFoo(0);}
-EOF
-    ac_link2='${CC-cc} -o conftest $CFLAGS $CPPFLAGS $LDFLAGS conftest1.c conftest2.c $LIBS >conftest.out 2>&1'
-    if eval $ac_link2 ; then
-        # The gcc 3.4.x compiler accepts the pragma weak, but does not
-        # correctly implement it on systems where the loader doesn't 
-        # support weak symbols (e.g., cygwin).  This is a bug in gcc, but it
-        # it is one that *we* have to detect.
-	# This is needed for Mac OSX 10.5
-	rm -rf conftest.dSYM
-        rm -f conftest*
-        cat >>conftest1.c <<EOF
+        ])
+    ],[
+        PAC_COMPLINK_IFELSE([
+            AC_LANG_SOURCE([
 extern int PFoo(int);
 #pragma weak PFoo = Foo
 int Foo(int);
 int Foo(int a) { return a; }
-EOF
-    cat >>conftest2.c <<EOF
+            ])
+        ],[
+            AC_LANG_SOURCE([
 extern int Foo(int);
 int PFoo(int a) { return a+1;}
 int main(int argc, char **argv) {
 return Foo(0);}
-EOF
-        if eval $ac_link2 ; then
+            ])
+        ],[
             pac_cv_prog_c_weak_symbols="pragma weak"
-        else 
-            echo "$ac_link2" >> config.log
-	    echo "Failed program was" >> config.log
-            cat conftest1.c >>config.log
-            cat conftest2.c >>config.log
-            if test -s conftest.out ; then cat conftest.out >> config.log ; fi
+        ],[
             has_pragma_weak=0
             pragma_extra_message="pragma weak accepted but does not work (probably creates two non-weak entries)"
-        fi
-    else
-      echo "$ac_link2" >>config.log
-      echo "Failed program was" >>config.log
-      cat conftest1.c >>config.log
-      cat conftest2.c >>config.log
-      if test -s conftest.out ; then cat conftest.out >> config.log ; fi
-      has_pragma_weak=0
-      pragma_extra_message="pragma weak does not work outside of a file"
-    fi
-    # This is needed for Mac OSX 10.5
-    rm -rf conftest.dSYM
-    rm -f conftest*
+        ])
+    ],[
+        has_pragma_weak=0
+        pragma_extra_message="pragma weak accepted but does not work (probably creates two non-weak entries)"
+    ])
 fi
 dnl
 if test -z "$pac_cv_prog_c_weak_symbols" ; then 
@@ -341,12 +319,12 @@ if test "$pac_cv_prog_c_weak_symbols" = "no" ; then
     ifelse([$2],,:,[$2])
 else
     case "$pac_cv_prog_c_weak_symbols" in
-	"pragma weak") AC_DEFINE(HAVE_PRAGMA_WEAK,1,[Supports weak pragma]) 
-	;;
-	"pragma _HP")  AC_DEFINE(HAVE_PRAGMA_HP_SEC_DEF,1,[HP style weak pragma])
-	;;
-	"pragma _CRI") AC_DEFINE(HAVE_PRAGMA_CRI_DUP,1,[Cray style weak pragma])
-	;;
+        "pragma weak") AC_DEFINE(HAVE_PRAGMA_WEAK,1,[Supports weak pragma])
+        ;;
+        "pragma _HP")  AC_DEFINE(HAVE_PRAGMA_HP_SEC_DEF,1,[HP style weak pragma])
+        ;;
+        "pragma _CRI") AC_DEFINE(HAVE_PRAGMA_CRI_DUP,1,[Cray style weak pragma])
+        ;;
     esac
     ifelse([$1],,:,[$1])
 fi
@@ -354,13 +332,13 @@ AC_CACHE_CHECK([whether __attribute__ ((weak)) allowed],
 pac_cv_attr_weak,[
 AC_TRY_COMPILE([int foo(int) __attribute__ ((weak));],[int a;],
 pac_cv_attr_weak=yes,pac_cv_attr_weak=no)])
-# Note that being able to compile with weak_import doesn't mean that 
+# Note that being able to compile with weak_import doesn't mean that
 # it works.
 AC_CACHE_CHECK([whether __attribute__ ((weak_import)) allowed],
 pac_cv_attr_weak_import,[
 AC_TRY_COMPILE([int foo(int) __attribute__ ((weak_import));],[int a;],
 pac_cv_attr_weak_import=yes,pac_cv_attr_weak_import=no)])
-# Check if the alias option for weak attributes is allowed 
+# Check if the alias option for weak attributes is allowed
 AC_CACHE_CHECK([whether __attribute__((weak,alias(...))) allowed],
 pac_cv_attr_weak_alias,[
 AC_TRY_COMPILE([int foo(int) __attribute__((weak,alias("__foo")));],[int a;],
@@ -402,11 +380,8 @@ AC_DEFUN([PAC_PROG_C_MULTIPLE_WEAK_SYMBOLS],[
 AC_CACHE_CHECK([for multiple weak symbol support],
 pac_cv_prog_c_multiple_weak_symbols,[
 # Test for multiple weak symbol support...
-#
-# This is needed for Mac OSX 10.5
-rm -rf conftest.dSYM
-rm -f conftest*
-cat >>conftest1.c <<EOF
+PAC_COMPLINK_IFELSE([
+    AC_LANG_SOURCE([
 extern int PFoo(int);
 extern int PFoo_(int);
 extern int pfoo_(int);
@@ -415,25 +390,16 @@ extern int pfoo_(int);
 #pragma weak pfoo_ = Foo
 int Foo(int);
 int Foo(a) { return a; }
-EOF
-cat >>conftest2.c <<EOF
+    ])
+],[
+    AC_LANG_SOURCE([
 extern int PFoo(int), PFoo_(int), pfoo_(int);
 int main() {
 return PFoo(0) + PFoo_(1) + pfoo_(2);}
-EOF
-ac_link2='${CC-cc} -o conftest $CFLAGS $CPPFLAGS $LDFLAGS conftest1.c conftest2.c $LIBS >conftest.out 2>&1'
-if eval $ac_link2 ; then
+    ])
+],[
     pac_cv_prog_c_multiple_weak_symbols="yes"
-else
-    echo "$ac_link2" >>config.log
-    echo "Failed program was" >>config.log
-    cat conftest1.c >>config.log
-    cat conftest2.c >>config.log
-    if test -s conftest.out ; then cat conftest.out >> config.log ; fi
-fi
-# This is needed for Mac OSX 10.5
-rm -rf conftest.dSYM
-rm -f conftest*
+])
 dnl
 ])
 if test "$pac_cv_prog_c_multiple_weak_symbols" = "yes" ; then
@@ -492,6 +458,9 @@ if test "$enable_strict_done" != "yes" ; then
     #	    values, but they are structs of a single basic type (used to enforce
     #	    type checking for relative vs. absolute ptrs), and with optimization
     #	    the aggregate value is converted to a scalar.
+    #   -Wdeclaration-after-statement -- This is a C89
+    #       requirement. When compiling with C99, this should be
+    #       disabled.
     # the embedded newlines in this string are safe because we evaluate each
     # argument in the for-loop below and append them to the CFLAGS with a space
     # as the separator instead
@@ -508,7 +477,6 @@ if test "$enable_strict_done" != "yes" ; then
         -Wmissing-declarations
         -Wno-long-long
         -Wfloat-equal
-        -Wdeclaration-after-statement
         -Wundef
         -Wno-endif-labels
         -Wpointer-arith
@@ -527,45 +495,74 @@ if test "$enable_strict_done" != "yes" ; then
         -Wno-format-zero-length
 	-Wno-type-limits
     "
-    pac_cc_strict_flags=""
-    case "$1" in 
-        yes|all|posix)
+
+    enable_c89=yes
+    enable_c99=no
+    enable_posix=yes
+    enable_opt=yes
+    flags="`echo $1 | sed -e 's/:/ /g' -e 's/,/ /g'`"
+    for flag in ${flags}; do
+        case "$flag" in
+	     c89)
 		enable_strict_done="yes"
-		pac_cc_strict_flags="-O2 $pac_common_strict_flags -D_POSIX_C_SOURCE=199506L"
-                PAC_APPEND_FLAG([-std=c89],[pac_cc_strict_flags])
-        ;;
-
-        # sometimes we want to assume c99 but still want strict warnings/errors
-        c99)
-                enable_strict_done="yes"
-                pac_cc_strict_flags="-O2 $pac_common_strict_flags -D_POSIX_C_SOURCE=199506L"
-                PAC_APPEND_FLAG([-std=c99],[pac_cc_strict_flags])
-        ;;
-
-        noposix)
+		enable_c89=yes
+		;;
+	     c99)
 		enable_strict_done="yes"
-		pac_cc_strict_flags="-O2 $pac_common_strict_flags"
-                PAC_APPEND_FLAG([-std=c89],[pac_cc_strict_flags])
-        ;;
-
-	noopt)
+		enable_c99=yes
+		;;
+	     posix)
 		enable_strict_done="yes"
-		pac_cc_strict_flags="$pac_common_strict_flags -D_POSIX_C_SOURCE=199506L"
-                PAC_APPEND_FLAG([-std=c89],[pac_cc_strict_flags])
-	;;
-
-        no)
+		enable_posix=yes
+		;;
+	     noposix)
+		enable_strict_done="yes"
+		enable_posix=no
+		;;
+	     opt)
+		enable_strict_done="yes"
+		enable_opt=yes
+		;;
+	     noopt)
+		enable_strict_done="yes"
+		enable_opt=no
+		;;
+	     all|yes)
+		enable_strict_done="yes"
+		enable_c89=yes
+		enable_posix=yes
+		enable_opt=yes
+	        ;;
+	     no)
 		# Accept and ignore this value
 		:
-        ;;
-
-        *)
-		if test -n "$1" ; then
-		   AC_MSG_WARN([Unrecognized value for enable-strict:$1])
+		;;
+	     *)
+		if test -n "$flag" ; then
+		   AC_MSG_WARN([Unrecognized value for enable-strict:$flag])
 		fi
-        ;;
+		;;
+	esac
+    done
 
-    esac
+    pac_cc_strict_flags=""
+    if test "${enable_strict_done}" = "yes" ; then
+       if test "${enable_opt}" = "yes" ; then
+       	  pac_cc_strict_flags="-O2"
+       fi
+       pac_cc_strict_flags="$pac_cc_strict_flags $pac_common_strict_flags"
+       if test "${enable_posix}" = "yes" ; then
+       	  PAC_APPEND_FLAG([-D_POSIX_C_SOURCE=199506L],[pac_cc_strict_flags])
+       fi
+       # We only allow one of strict-C99 or strict-C89 to be
+       # enabled. If C99 is enabled, we automatically disable C89.
+       if test "${enable_c99}" = "yes" ; then
+       	  PAC_APPEND_FLAG([-std=c99],[pac_cc_strict_flags])
+       elif test "${enable_c89}" = "yes" ; then
+       	  PAC_APPEND_FLAG([-std=c89],[pac_cc_strict_flags])
+       	  PAC_APPEND_FLAG([-Wdeclaration-after-statement],[pac_cc_strict_flags])
+       fi
+    fi
 
     # See if the above options work with the compiler
     accepted_flags=""
@@ -591,7 +588,7 @@ dnl
 dnl D*/
 AC_DEFUN([PAC_ARG_STRICT],[
 AC_ARG_ENABLE(strict,
-[--enable-strict  - Turn on strict compilation testing])
+	AC_HELP_STRING([--enable-strict], [Turn on strict compilation testing]))
 PAC_CC_STRICT($enable_strict)
 CFLAGS="$CFLAGS $pac_cc_strict_flags"
 export CFLAGS
@@ -1225,55 +1222,60 @@ AC_REQUIRE([AC_PROG_RANLIB])
 AC_REQUIRE([AC_PROG_INSTALL])
 AC_REQUIRE([AC_PROG_CC])
 ac_cv_prog_install_breaks_libs=yes
-# This is needed for Mac OSX 10.5
-rm -rf conftest.dSYM
-rm -f libconftest* conftest*
-echo 'int foo(int);int foo(int a){return a;}' > conftest1.c
-echo 'extern int foo(int); int main( int argc, char **argv){ return foo(0); }' > conftest2.c
-if ${CC-cc} $CFLAGS -c conftest1.c >conftest.out 2>&1 ; then
-    if ${AR-ar} cr libconftest.a conftest1.o >/dev/null 2>&1 ; then
+
+AC_COMPILE_IFELSE([
+    AC_LANG_SOURCE([ int foo(int); int foo(int a){return a;} ])
+],[
+    if ${AR-ar} ${AR_FLAGS-cr} libconftest.a conftest.$OBJEXT >/dev/null 2>&1 ; then
         if ${RANLIB-:} libconftest.a >/dev/null 2>&1 ; then
-	    # Anything less than sleep 10, and Mac OS/X (Darwin) 
-	    # will claim that install works because ranlib won't complain
-	    sleep 10
-	    libinstall="$INSTALL_DATA"
-	    eval "libinstall=\"$libinstall\""
-	    if ${libinstall} libconftest.a libconftest1.a  >/dev/null 2>&1 ; then
-                if ${CC-cc} $CFLAGS -o conftest conftest2.c $LDFLAGS libconftest1.a >>conftest.out 2>&1 && test -x conftest ; then
-		    # Success!  Install works
- 	            ac_cv_prog_install_breaks_libs=no
-	        else
-	            # Failure!  Does install -p work?	
-		    rm -f libconftest1.a
-		    if ${libinstall} -p libconftest.a libconftest1.a >/dev/null 2>&1 ; then
-                        if ${CC-cc} $CFLAGS -o conftest conftest2.c $LDFLAGS libconftest1.a >>conftest.out 2>&1 && test -x conftest ; then
-			# Success!  Install works
-			    ac_cv_prog_install_breaks_libs="no, with -p"
-			fi
-		    fi
-                fi
+            # Anything less than sleep 10, and Mac OS/X (Darwin) 
+            # will claim that install works because ranlib won't complain
+            sleep 10
+            libinstall="$INSTALL_DATA"
+            eval "libinstall=\"$libinstall\""
+            if ${libinstall} libconftest.a libconftest1.a >/dev/null 2>&1 ; then
+                saved_LIBS="$LIBS"
+                LIBS="libconftest1.a"
+                AC_LINK_IFELSE([
+                    AC_LANG_SOURCE([
+extern int foo(int);
+int main(int argc, char **argv){ return foo(0); }
+                    ])
+                ],[
+                    # Success!  Install works
+                    ac_cv_prog_install_breaks_libs=no
+                ],[
+                    # Failure!  Does install -p work?        
+                    rm -f libconftest1.a
+                    if ${libinstall} -p libconftest.a libconftest1.a >/dev/null 2>&1 ; then
+                        AC_LINK_IFELSE([],[
+                            # Success!  Install works
+                            ac_cv_prog_install_breaks_libs="no, with -p"
+                        ])
+                    fi
+                ])
+                LIBS="$saved_LIBS"
             fi
         fi
     fi
-fi
-# This is needed for Mac OSX 10.5
-rm -rf conftest.dSYM
-rm -f conftest* libconftest*])
+])
+rm -f libconftest*.a
+]) dnl Endof ac_cache_check
 
 if test -z "$RANLIB_AFTER_INSTALL" ; then
     RANLIB_AFTER_INSTALL=no
 fi
 case "$ac_cv_prog_install_breaks_libs" in
-	yes)
-	    RANLIB_AFTER_INSTALL=yes
-	;;
-	"no, with -p")
-	    INSTALL_DATA="$INSTALL_DATA -p"
-	;;
-	*)
-	# Do nothing
-	:
-	;;
+    yes)
+        RANLIB_AFTER_INSTALL=yes
+    ;;
+    "no, with -p")
+        INSTALL_DATA="$INSTALL_DATA -p"
+    ;;
+    *)
+    # Do nothing
+    :
+    ;;
 esac
 AC_SUBST(RANLIB_AFTER_INSTALL)
 ])
@@ -1295,6 +1297,7 @@ AC_CACHE_CHECK([whether the compiler defines __func__],
 pac_cv_have__func__,[
 tmp_am_cross=no
 AC_RUN_IFELSE([
+AC_LANG_SOURCE([
 #include <string.h>
 int foo(void);
 int foo(void)
@@ -1305,9 +1308,11 @@ int main(int argc, char ** argv)
 {
     return (foo() ? 0 : 1);
 }
+])
 ], pac_cv_have__func__=yes, pac_cv_have__func__=no,tmp_am_cross=yes)
 if test "$tmp_am_cross" = yes ; then
     AC_LINK_IFELSE([
+    AC_LANG_SOURCE([
 #include <string.h>
 int foo(void);
 int foo(void)
@@ -1318,6 +1323,7 @@ int main(int argc, char ** argv)
 {
     return (foo() ? 0 : 1);
 }
+    ])
 ], pac_cv_have__func__=yes, pac_cv_have__func__=no)
 fi
 ])
@@ -1330,6 +1336,7 @@ AC_CACHE_CHECK([whether the compiler defines __FUNC__],
 pac_cv_have_cap__func__,[
 tmp_am_cross=no
 AC_RUN_IFELSE([
+AC_LANG_SOURCE([
 #include <string.h>
 int foo(void);
 int foo(void)
@@ -1340,9 +1347,11 @@ int main(int argc, char ** argv)
 {
     return (foo() ? 0 : 1);
 }
+])
 ], pac_cv_have_cap__func__=yes, pac_cv_have_cap__func__=no,tmp_am_cross=yes)
 if test "$tmp_am_cross" = yes ; then
     AC_LINK_IFELSE([
+    AC_LANG_SOURCE([
 #include <string.h>
 int foo(void);
 int foo(void)
@@ -1353,6 +1362,7 @@ int main(int argc, char ** argv)
 {
     return (foo() ? 0 : 1);
 }
+    ])
 ], pac_cv_have__func__=yes, pac_cv_have__func__=no)
 fi
 ])
@@ -1365,6 +1375,7 @@ AC_CACHE_CHECK([whether the compiler sets __FUNCTION__],
 pac_cv_have__function__,[
 tmp_am_cross=no
 AC_RUN_IFELSE([
+AC_LANG_SOURCE([
 #include <string.h>
 int foo(void);
 int foo(void)
@@ -1375,9 +1386,11 @@ int main(int argc, char ** argv)
 {
     return (foo() ? 0 : 1);
 }
+])
 ], pac_cv_have__function__=yes, pac_cv_have__function__=no,tmp_am_cross=yes)
 if test "$tmp_am_cross" = yes ; then
     AC_LINK_IFELSE([
+    AC_LANG_SOURCE([
 #include <string.h>
 int foo(void);
 int foo(void)
@@ -1388,6 +1401,7 @@ int main(int argc, char ** argv)
 {
     return (foo() ? 0 : 1);
 }
+    ])
 ], pac_cv_have__func__=yes, pac_cv_have__func__=no)
 fi
 ])

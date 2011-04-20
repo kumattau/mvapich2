@@ -6,28 +6,9 @@ dnl
 dnl The file name here refers to a file in the source being configured
 AC_INIT(mpiexec.c)
 
-dnl The MVAPICH2 top-level configure adds a bunch of flags to the
-dnl user-defined CFLAGS by processing different configure command-line
-dnl arguments (--enable-g, --enable-default-optimization). These updated
-dnl flags are passed down as a separate flag. Here, we don't care about
-dnl the user-defined flags, but rather this updated flags, so we just
-dnl overwrite CFLAGS with them.
-PAC_SUBCONFIG_INIT()
-
 dnl Definitions will be placed in this file rather than in the DEFS variable
 AC_CONFIG_HEADER(remshellconf.h)
 AH_TOP([/* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
- * reserved.
- *
- * This file is part of the MVAPICH2 software package developed by the
- * team members of The Ohio State University's Network-Based Computing
- * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
- *
- * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT in the top level MVAPICH2 directory.
- *
- */
 /*  
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -90,8 +71,9 @@ dnl Determine the executable and object file extensions.  These
 dnl are needed for some operations under cygwin
 AC_EXEEXT
 AC_OBJEXT
-dnl Find a C compiler (choose gcc first)
-AC_PROG_CC
+
+dnl Find a C compiler
+PAC_PROG_CC
 
 PAC_ARG_STRICT
 AC_PROG_INSTALL
@@ -226,14 +208,15 @@ dnl     if test -f "$cachedir/$fname" ; then
 dnl         cache_file=$cachedir/$fname
 dnl     fi
 dnl fi
-dnl See setup_pm.  The pm/util directory must also be configured
-AC_CONFIG_SUBDIRS(../util)
-
-AC_CHECK_HEADERS(string.h sys/time.h unistd.h stdlib.h sys/socket.h wait.h errno.h)
 
 if test -z "$master_top_srcdir" ; then
    master_top_srcdir='${srcdir}/../../..'
 fi
+
+dnl See setup_pm.  The pm/util directory must also be configured
+PAC_CONFIG_SUBDIR(../util,,AC_ERROR(pm/utils configure failed))
+
+AC_CHECK_HEADERS(string.h sys/time.h unistd.h stdlib.h sys/socket.h wait.h errno.h)
 
 AC_PATH_PROG(SSH,ssh)
 if test -z "$SSH" ; then
@@ -267,9 +250,6 @@ dnl
 dnl Other autoconf variables that may be imported from the calling environment
 AC_SUBST(DOCTEXT)
 PAC_UPDATE_BASE_CACHE
-
-dnl Place holder macro for finalization
-PAC_SUBCONFIG_FINALIZE()
 
 dnl Generate the Makefiles from Makefile.in
 AC_OUTPUT(Makefile)

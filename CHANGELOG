@@ -3,6 +3,35 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+
+MVAPICH2-1.7a (04/19/2011)
+
+* Features and Enhancements 
+
+    - Based on MPICH2-1.3.2p1
+    - Integrated with Portable Hardware Locality (hwloc v1.1.1)
+    - Supporting Large Data transfers (>2GB)
+    - Integrated with Enhanced LiMIC2 (v0.5.5) to support Intra-node
+      large message (>2GB) transfers
+    - Optimized and tuned algorithm for AlltoAll
+    - Enhanced debugging config options to generate
+      core files and back-traces
+    - Support for Chelsio's T4 Adapter
+
+MVAPICH2-1.6 (03/09/2011)
+
+* Features and Enhancements (since 1.6-RC3)
+    - Improved configure help for MVAPICH2 features
+    - Updated Hydra launcher with MPICH2-1.3.3 Hydra process manager
+    - Building and installation of OSU micro benchmarks during default
+      MVAPICH2 installation
+    - Hydra is the default mpiexec process manager
+
+* Bug fixes (since 1.6-RC3)
+    - Fix hang issues in RMA
+    - Fix memory leaks
+    - Fix in RDMA_FP
+
 MVAPICH2-1.6-RC3 (02/15/2011)
 
 * Features and Enhancements

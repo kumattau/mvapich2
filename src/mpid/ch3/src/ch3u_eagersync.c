@@ -49,11 +49,14 @@ int MPIDI_CH3_EagerSyncNoncontigSend( MPID_Request **sreq_p,
     MPIDI_CH3_Pkt_eager_sync_send_t * const es_pkt = &upkt.eager_sync_send;
     MPIDI_VC_t * vc;
     MPID_Request *sreq = *sreq_p;
+
 #if defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
 #endif /* defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS) */
-    
-    sreq->cc = 2;
+
+    /* MT FIXME what are the two operations we are waiting for?  the send and
+     * the sync response? */
+    MPID_cc_set(&sreq->cc, 2);
     sreq->dev.OnDataAvail = 0;
     sreq->dev.OnFinal = 0;
 
@@ -93,8 +96,7 @@ int MPIDI_CH3_EagerSyncNoncontigSend( MPID_Request **sreq_p,
 	    MPIU_Object_set_ref(sreq, 0);
 	    MPIDI_CH3_Request_destroy(sreq);
 	    *sreq_p = NULL;
-	    mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**ch3|eagermsg", 0);
-	    goto fn_fail;
+            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ch3|eagermsg");
 	}
 	/* --END ERROR HANDLING-- */
     }
@@ -141,7 +143,9 @@ int MPIDI_CH3_EagerSyncZero(MPID_Request **sreq_p, int rank, int tag,
     
     MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"sending zero length message");
     
-    sreq->cc = 2;
+    /* MT FIXME what are the two operations we are waiting for?  the send and
+     * the sync response? */
+    MPID_cc_set(&sreq->cc, 2);
     MPIDI_Request_set_msg_type(sreq, MPIDI_REQUEST_EAGER_MSG);
     sreq->dev.OnDataAvail = 0;
     
@@ -167,13 +171,14 @@ int MPIDI_CH3_EagerSyncZero(MPID_Request **sreq_p, int rank, int tag,
 	MPIU_Object_set_ref(sreq, 0);
 	MPIDI_CH3_Request_destroy(sreq);
 	*sreq_p = NULL;
-	mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL, FCNAME, __LINE__, MPI_ERR_OTHER, "**ch3|eagermsg", 0);
-	goto fn_exit;
+        MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ch3|eagermsg");
     }
     /* --END ERROR HANDLING-- */
 
  fn_exit:
     return mpi_errno;
+ fn_fail:
+    goto fn_exit;
 }
 
 /* 

@@ -42,6 +42,7 @@ char *MPIU_DBG_parent_str = "?";
 int MPIDI_Use_pmi2_api = 0;
 
 #include <mv2_config.h>
+#include <error_handling.h>
 
 #if defined(_OSU_MVAPICH_) && defined(CKPT)
 pthread_mutex_t MVAPICH2_sync_ckpt_lock;
@@ -54,6 +55,9 @@ static int InitPG( int *argc_p, char ***argv_p,
 		   int *pg_rank_p, MPIDI_PG_t **pg_p );
 static int MPIDI_CH3I_PG_Compare_ids(void * id1, void * id2);
 static int MPIDI_CH3I_PG_Destroy(MPIDI_PG_t * pg );
+
+int MPICH_ATTR_FAILED_PROCESSES = MPI_KEYVAL_INVALID;
+static int failed_procs_delete_fn(MPI_Comm comm, int keyval, void *attr_val, void *extra_data);
 
 MPIDI_Process_t MPIDI_Process = { NULL };
 MPIDI_CH3U_SRBuf_element_t * MPIDI_CH3U_SRBuf_pool = NULL;
@@ -113,6 +117,7 @@ char *MPIDI_CH3_Pkt_type_to_string[MPIDI_CH3_PKT_END_ALL+1] = {
     [MPIDI_CH3_PKT_LOCK_PUT_UNLOCK] = "MPIDI_CH3_PKT_LOCK_PUT_UNLOCK",
     [MPIDI_CH3_PKT_LOCK_GET_UNLOCK] = "MPIDI_CH3_PKT_LOCK_GET_UNLOCK",
     [MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK] = "MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK",
+    [MPIDI_CH3_PKT_ACCUM_IMMED] = "MPIDI_CH3_PKT_ACCUM_IMMED",
     [MPIDI_CH3_PKT_FLOW_CNTL_UPDATE] = "MPIDI_CH3_PKT_FLOW_CNTL_UPDATE",
     [MPIDI_CH3_PKT_CLOSE] = "MPIDI_CH3_PKT_CLOSE",
     [MPIDI_CH3_PKT_END_CH3] = "MPIDI_CH3_PKT_END_CH3"
@@ -141,6 +146,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     int pg_size;
     MPID_Comm * comm;
     int p;
+    int *attr_val = NULL;
 #if defined(_OSU_MVAPICH_)
     char *value;
     int blocking_val;
@@ -158,6 +164,23 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
         exit(EXIT_FAILURE);
     }
     /* </_OSU_MVAPICH_> */
+    /* <_OSU_MVAPICH_> */
+
+    // Set coresize limit
+    char* coresize = getenv("MV2_DEBUG_CORESIZE");
+    set_coresize_limit( coresize );
+    // ignore error code, failure if not fatal
+
+    // Set an error signal handler
+    char* bt = getenv("MV2_DEBUG_SHOW_BACKTRACE");
+    int backtrace = 0;
+    if ( bt != NULL ) {
+        backtrace = !!atoi( bt );
+    }
+    setup_error_sighandler( backtrace );
+    // ignore error code, failure if not fatal
+
+    /* </_OSU_MVAPICH_> */
 
     MPIDI_Use_pmi2_api = FALSE;
 #ifdef USE_PMI2_API
@@ -165,7 +188,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 #else
     {
         int ret, val;
-        ret = MPIU_GetEnvBool("MPICH_USE_PMI2_API", &val);
+        ret = MPL_env2bool("MPICH_USE_PMI2_API", &val);
         if (ret == 1 && val)
             MPIDI_Use_pmi2_api = TRUE;
     }
@@ -202,6 +225,15 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     if (mpi_errno) {
 	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**ch3|ch3_init");
     }
+
+    /* <_OSU_MVAPICH_> */
+    {
+        const int max_length = 256;
+        char error_prefix[max_length];
+        snprintf( error_prefix, max_length, "mpi_rank_%i", pg_rank);
+        set_error_prefix( error_prefix );
+    }
+    /* </_OSU_MVAPICH_> */
 
 #if defined(_OSU_MVAPICH_)
     if(has_parent) {
@@ -311,28 +343,6 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     comm->rank        = pg_rank;
     comm->remote_size = pg_size;
     comm->local_size  = pg_size;
-#if 0    
-    mpi_errno = MPID_VCRT_Create(comm->remote_size, &comm->vcrt);
-    if (mpi_errno != MPI_SUCCESS)
-    {
-	MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**dev|vcrt_create", 
-			     "**dev|vcrt_create %s", "MPI_COMM_WORLD");
-    }
-    
-    mpi_errno = MPID_VCRT_Get_ptr(comm->vcrt, &comm->vcr);
-    if (mpi_errno != MPI_SUCCESS)
-    {
-	MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**dev|vcrt_get_ptr", 
-			     "dev|vcrt_get_ptr %s", "MPI_COMM_WORLD");
-    }
-    
-    /* Initialize the connection table on COMM_WORLD from the process group's
-       connection table */
-    for (p = 0; p < pg_size; p++)
-    {
-	MPID_VCR_Dup(&pg->vct[p], &comm->vcr[p]);
-    }
-#endif
     MPID_VCRT_Add_ref( MPIR_Process.comm_world->vcrt );
     comm->vcrt = MPIR_Process.comm_world->vcrt;
     comm->vcr  = MPIR_Process.comm_world->vcr;
@@ -356,7 +366,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 	char * parent_port;
 
 	/* FIXME: To allow just the "root" process to 
-	   request the port and then use MPIR_Bcast to 
+	   request the port and then use MPIR_Bcast_intra to 
 	   distribute it to the rest of the processes,
 	   we need to perform the Bcast after MPI is
 	   otherwise initialized.  We could do this
@@ -438,6 +448,17 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 #endif /* defined(_OSU_MVAPICH_) && defined(CKPT) */
 
 
+    /* create attribute to list failed processes */
+    mpi_errno = MPIR_Comm_create_keyval_impl(MPI_COMM_NULL_COPY_FN,
+                                             failed_procs_delete_fn,
+                                             &MPICH_ATTR_FAILED_PROCESSES, 0);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    attr_val = MPIU_Malloc(sizeof(int));
+    if (!attr_val) { MPIU_CHKMEM_SETERR(mpi_errno, sizeof(int), "attr_val"); goto fn_fail; }
+    *attr_val = MPI_PROC_NULL;
+    mpi_errno = MPIR_Comm_set_attr_impl(MPIR_Process.comm_world, MPICH_ATTR_FAILED_PROCESSES, attr_val, MPIR_ATTR_PTR);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    
   fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_INIT);
     return mpi_errno;
@@ -543,7 +564,8 @@ static int InitPG( int *argc, char ***argv,
         /* This memory will be freed by the PG_Destroy if there is an error */
 	pg_id = MPIU_Malloc(MAX_JOBID_LEN);
 	if (pg_id == NULL) {
-	    MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**nomem");
+	    MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**nomem","**nomem %d",
+				 MAX_JOBID_LEN);
 	}
 
         mpi_errno = PMI2_Job_GetId(pg_id, MAX_JOBID_LEN);
@@ -565,7 +587,8 @@ static int InitPG( int *argc, char ***argv,
 	/* This memory will be freed by the PG_Destroy if there is an error */
 	pg_id = MPIU_Malloc(pg_id_sz + 1);
 	if (pg_id == NULL) {
-	    MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**nomem");
+	    MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**nomem","**nomem %d",
+				 pg_id_sz+1);
 	}
 
 	/* Note in the singleton init case, the pg_id is a dummy.
@@ -663,7 +686,8 @@ int MPIDI_CH3I_BCInit( char **bc_val_p, int *val_max_sz_p )
     /* This memroy is returned by this routine */
     *bc_val_p = MPIU_Malloc(*val_max_sz_p);
     if (*bc_val_p == NULL) {
-	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**nomem");
+	MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**nomem","**nomem %d",
+			     *val_max_sz_p);
     }
     
     /* Add a null to simplify looking at the bc */
@@ -706,6 +730,18 @@ static int MPIDI_CH3I_PG_Destroy(MPIDI_PG_t * pg)
     return MPI_SUCCESS;
 }
 
+static int failed_procs_delete_fn(MPI_Comm comm ATTRIBUTE((unused)),
+                                  int keyval ATTRIBUTE((unused)),
+                                  void *attr_val,
+                                  void *extra_data ATTRIBUTE((unused)))
+{
+    MPIU_UNREFERENCED_ARG(comm);
+    MPIU_UNREFERENCED_ARG(keyval);
+    MPIU_UNREFERENCED_ARG(extra_data);
+
+    MPIU_Free(attr_val);
+    return MPI_SUCCESS;
+}
 #if defined(_OSU_MVAPICH_) && defined(CKPT)
 /*Synchronous checkpoint interface*/
 int MVAPICH2_Sync_Checkpoint()
@@ -713,6 +749,7 @@ int MVAPICH2_Sync_Checkpoint()
     MPID_Comm * comm_ptr;
     MPIU_THREADPRIV_DECL;
     MPIU_THREADPRIV_GET;
+    int errflag = FALSE;
 
     if (MPIDI_Process.use_sync_ckpt == 0) /*Not enabled*/
         return 0;
@@ -721,9 +758,7 @@ int MVAPICH2_Sync_Checkpoint()
 
     /*MPIU_THREAD_SINGLE_CS_ENTER("coll");*/
     MPIU_THREAD_CS_ENTER(ALLFUNC,);
-    MPIR_Nest_incr();
-    MPIR_Barrier(comm_ptr);
-    MPIR_Nest_decr();
+    MPIR_Barrier_impl(comm_ptr, &errflag);
     MPIU_THREAD_CS_EXIT(ALLFUNC,);
     /*MPIU_THREAD_SINGLE_CS_EXIT("coll");*/
 

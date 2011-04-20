@@ -26,14 +26,10 @@ static F90Predefined f90Types[MAX_F90_TYPES];
 static int MPIR_FreeF90Datatypes( void *d )
 {
     int i;
-    MPIU_THREADPRIV_DECL;
 
-    MPIU_THREADPRIV_GET;
-    MPIR_Nest_incr();
     for (i=0; i<nAlloc; i++) {
-        NMPI_Type_free( &f90Types[i].d );
+        MPIR_Type_free_impl( &f90Types[i].d );
     }
-    MPIR_Nest_decr();
     return 0;
 }
 
@@ -62,7 +58,9 @@ int MPIR_Create_unnamed_predefined( MPI_Datatype old, int combiner,
 
     /* Create a new type and remember it */
     if (nAlloc > MAX_F90_TYPES) {
-	return 1;
+	return MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, 
+				     "MPIF_Create_unnamed_predefined", __LINE__,
+				     MPI_ERR_INTERN, "**f90typetoomany", 0 );
     }
     if (nAlloc == 0) {
 	/* Install the finalize callback that frees these datatyeps.
@@ -151,7 +149,7 @@ int MPIR_Match_f90_int( int range, int length, MPI_Datatype *newtype )
 			   is of no relevance to either the user or 
 			   developer */
 	return MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, 
-				     "MPI_Type_create_f90_integer", line,
+				     "MPI_Type_create_f90_integer", __LINE__,
 				     MPI_ERR_INTERN, "**f90typetoomany", 0 );
     }
     

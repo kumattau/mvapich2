@@ -19,6 +19,8 @@ static char const * const parameters[] = {
     "MV2_IGNORE_SYSTEM_CONFIG",
     "MV2_IGNORE_USER_CONFIG",
     "MV2_USER_CONFIG",
+    "MV2_DEBUG_CORESIZE",
+    "MV2_DEBUG_SHOW_BACKTRACE",
 };
 
 static size_t const num_parameters = sizeof(parameters) / sizeof(char

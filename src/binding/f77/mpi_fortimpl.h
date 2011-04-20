@@ -3,16 +3,6 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
- * reserved.
- *
- * This file is part of the MVAPICH2 software package developed by the
- * team members of The Ohio State University's Network-Based Computing
- * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
- *
- * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT in the top level MVAPICH2 directory.
- */
 #include "mpichconf.h"
 
 /* Handle different mechanisms for passing Fortran CHARACTER to routines */
@@ -144,6 +134,7 @@ typedef MPI_Aint MPI_FAint;
 extern FORT_DLL_SPEC int  MPIR_F_NeedInit;
 extern FORT_DLL_SPEC void *MPIR_F_MPI_BOTTOM;
 extern FORT_DLL_SPEC void *MPIR_F_MPI_IN_PLACE;
+extern FORT_DLL_SPEC void *MPIR_F_MPI_UNWEIGHTED;
 /* MPI_F_STATUS(ES)_IGNORE are defined in mpi.h and are intended for C 
    programs. */
 /*
@@ -235,10 +226,6 @@ typedef char *MPID_FCHAR_T;
 /* A special case to help out when ROMIO is disabled */
 #ifndef MPI_MODE_RDONLY
 #ifndef MPI_File_f2c
-#if defined(_OSU_MVAPICH_)
-#define MPI_File_f2c(a) (*(MPI_File*)(&(a)))
-#else /* defined(_OSU_MVAPICH_) */
 #define MPI_File_f2c(a) ((MPI_File*)(a))
-#endif /* defined(_OSU_MVAPICH_) */
 #endif
 #endif /* MPI_MODE_RDONLY */

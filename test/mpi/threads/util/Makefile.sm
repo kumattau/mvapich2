@@ -3,6 +3,3 @@ mtestthread.o: mtestthread.c
 all-local: mtestthread.o
 INCLUDES = -I../../../../src/include -I${top_srcdir}/src/include \
 	 -I../../include -I${srcdir}/../../include
-
-smvarSubdir_do_dependencies=no
-smvar_dependenciesDummy=yes

@@ -29,6 +29,7 @@ extern "C" {
 #endif
 
 #include "mpichconf.h"
+#include "mpl.h"
 
 /* ensure that we weren't included out of order */
 #include "mpibase.h"
@@ -142,6 +143,20 @@ int MPIU_Str_get_string(char **str_ptr, char *val, int maxlen);
 
 /* ------------------------------------------------------------------------- */
 
+void MPIU_trinit(int);
+void *MPIU_trmalloc(unsigned int, int, const char []);
+void MPIU_trfree(void *, int, const char []);
+int MPIU_trvalid(const char []);
+void MPIU_trspace(int *, int *);
+void MPIU_trid(int);
+void MPIU_trlevel(int);
+void MPIU_trDebugLevel(int);
+void *MPIU_trcalloc(unsigned int, unsigned int, int, const char []);
+void *MPIU_trrealloc(void *, int, int, const char[]);
+void *MPIU_trstrdup(const char *, int, const char[]);
+void MPIU_TrSetMaxMem(int);
+void MPIU_trdump(FILE *, int);
+
 #ifdef USE_MEMORY_TRACING
 /*M
   MPIU_Malloc - Allocate memory
@@ -172,8 +187,8 @@ int MPIU_Str_get_string(char **str_ptr, char *val, int maxlen);
   Module:
   Utility
   M*/
+#define MPIU_Malloc(a)    MPIU_trmalloc((unsigned)(a),__LINE__,__FILE__)
 
-#define MPIU_Malloc(a)    MPIU_trmalloc((size_t)(a),__LINE__,__FILE__)
 /*M
   MPIU_Calloc - Allocate memory that is initialized to zero.
 
@@ -194,7 +209,7 @@ int MPIU_Str_get_string(char **str_ptr, char *val, int maxlen);
   Utility
   M*/
 #define MPIU_Calloc(a,b)  \
-    MPIU_trcalloc((size_t)(a),(size_t)(b),__LINE__,__FILE__)
+    MPIU_trcalloc((unsigned)(a),(unsigned)(b),__LINE__,__FILE__)
 
 /*M
   MPIU_Free - Free memory
@@ -252,31 +267,6 @@ int MPIU_Str_get_string(char **str_ptr, char *val, int maxlen);
        will give the explanation */
 #undef strdup /* in case strdup is a macro */
 #define strdup(a)         'Error use MPIU_Strdup' :::
-
-/* FIXME: Note that some of these prototypes are for old functions in the 
-   src/util/mem/trmem.c package, and are no longer used.  Also, 
-   it may be preferable to use trmem.h instead of these definitions */
-void MPIU_trinit ( int );
-void *MPIU_trmalloc ( size_t, int, const char * );
-void MPIU_trfree ( void *, int, const char * );
-int MPIU_trvalid ( const char * );
-void MPIU_trspace ( int *, int * );
-void MPIU_trid ( int );
-void MPIU_trlevel ( int );
-void MPIU_trpush ( int );
-void MPIU_trpop (void);
-void MPIU_trDebugLevel ( int );
-void *MPIU_trstrdup( const char *, int, const char * );
-void *MPIU_trcalloc ( size_t, size_t, int, const char * );
-void *MPIU_trrealloc ( void *, size_t, int, const char * );
-void MPIU_TrSetMaxMem ( int );
-
-#ifndef MPIU_MEM_NOSTDIO
-#include <stdio.h>
-void MPIU_trdump ( FILE *, int );
-void MPIU_trSummary ( FILE *, int );
-void MPIU_trdumpGrouped ( FILE *, int );
-#endif
 
 #else /* USE_MEMORY_TRACING */
 /* No memory tracing; just use native functions */
@@ -411,6 +401,24 @@ if (pointer_) { \
 #define MPIU_CHKPMEM_MALLOC_ORJUMP(pointer_,type_,nbytes_,rc_,name_) \
     MPIU_CHKPMEM_MALLOC_ORSTMT(pointer_,type_,nbytes_,rc_,name_,goto fn_fail)
 
+/* now the CALLOC version for zeroed memory */
+#define MPIU_CHKPMEM_CALLOC(pointer_,type_,nbytes_,rc_,name_) \
+    MPIU_CHKPMEM_CALLOC_ORJUMP(pointer_,type_,nbytes_,rc_,name_)
+#define MPIU_CHKPMEM_CALLOC_ORJUMP(pointer_,type_,nbytes_,rc_,name_) \
+    MPIU_CHKPMEM_CALLOC_ORSTMT(pointer_,type_,nbytes_,rc_,name_,goto fn_fail)
+#define MPIU_CHKPMEM_CALLOC_ORSTMT(pointer_,type_,nbytes_,rc_,name_,stmt_) \
+    do {                                                                   \
+        pointer_ = (type_)MPIU_Calloc(1, (nbytes_));                       \
+        if (pointer_) {                                                    \
+            MPIU_Assert(mpiu_chkpmem_stk_sp_<mpiu_chkpmem_stk_sz_);        \
+            mpiu_chkpmem_stk_[mpiu_chkpmem_stk_sp_++] = pointer_;          \
+        }                                                                  \
+        else if (nbytes_ > 0) {                                            \
+            MPIU_CHKMEM_SETERR(rc_,nbytes_,name_);                         \
+            stmt_;                                                         \
+        }                                                                  \
+    } while (0)
+
 /* A special version for routines that only allocate one item */
 #define MPIU_CHKPMEM_MALLOC1(pointer_,type_,nbytes_,rc_,name_,stmt_) \
 {pointer_ = (type_)MPIU_Malloc(nbytes_); \
@@ -452,17 +460,7 @@ if (pointer_) { \
 #   error "No function defined for case-insensitive strncmp"
 #endif
 
-/* Provide a fallback snprintf for systems that do not have one */
-#ifdef HAVE_SNPRINTF
-#define MPIU_Snprintf snprintf
-/* Sometimes systems don't provide prototypes for snprintf */
-#ifdef NEEDS_SNPRINTF_DECL
-extern int snprintf( char *, size_t, const char *, ... ) ATTRIBUTE((format(printf,3,4)));
-#endif
-#else
-int MPIU_Snprintf( char *str, size_t size, const char *format, ... ) 
-     ATTRIBUTE((format(printf,3,4)));
-#endif /* HAVE_SNPRINTF */
+#define MPIU_Snprintf MPL_snprintf
 
 /* MPIU_Basename(path, basename)
    This function finds the basename in a path (ala "man 1 basename").
@@ -493,8 +491,8 @@ void MPIU_Basename(char *path, char **basename);
         if (len_) {                                                                                             \
             MPIU_Assert((dst_) != NULL);                                                                        \
             MPIU_Assert((src_) != NULL);                                                                        \
-            MPIU_VG_CHECK_MEM_IS_ADDRESSABLE((dst_),(len_));                                                    \
-            MPIU_VG_CHECK_MEM_IS_ADDRESSABLE((src_),(len_));                                                    \
+            MPL_VG_CHECK_MEM_IS_ADDRESSABLE((dst_),(len_));                                                     \
+            MPL_VG_CHECK_MEM_IS_ADDRESSABLE((src_),(len_));                                                     \
             if (MPIU_MEM_RANGES_OVERLAP((dst_),(len_),(src_),(len_))) {                                          \
                 MPIU_Assert_fmt_msg(FALSE,("memcpy argument memory ranges overlap, dst_=%p src_=%p len_=%ld\n", \
                                            (dst_), (src_), (long)(len_)));                                      \
@@ -507,7 +505,7 @@ void MPIU_Basename(char *path, char **basename);
     do {                                                     \
           MPIU_Assert( len_>0 );                              \
           MPIU_Assert((dst_) != NULL);                       \
-          MPIU_VG_CHECK_MEM_IS_ADDRESSABLE((dst_),(len_));   \
+          MPL_VG_CHECK_MEM_IS_ADDRESSABLE((dst_),(len_));   \
     } while (0)
 /* #endif / * defined(_OSU_MVAPICH_) */
 
@@ -516,10 +514,9 @@ void MPIU_Basename(char *path, char **basename);
 /* #if defined(_OSU_MVAPICH_) */
   #define MPIU_MEM_CHECK_MEMSET(dst_,c_,len_)
 /* #endif / * defined(_OSU_MVAPICH_) */
+#endif
 
-#endif /* (!defined(NDEBUG) && defined(HAVE_ERROR_CHECKING)) */
-
-#include "mpiu_valgrind.h"
+/* valgrind macros are now provided by MPL (via mpl.h included in mpiimpl.h) */
 
 /* ------------------------------------------------------------------------- */
 /* end of mpimem.h */

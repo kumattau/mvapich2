@@ -3,7 +3,7 @@ SHELL = /bin/sh
 
 DOCTEXT = doctext
 LATEX=latex
-DVIPDF=dvipdfm
+DVIPDF=dvipdf
 .SUFFIXES: .ps .pdf .dvi .tex .eps .fig
 
 paper.dvi: paper.tex paper.bib
@@ -23,7 +23,7 @@ pmi.dvi: pmi.tex
 .dvi.ps:
 	dvips $*
 .dvi.pdf:
-	(unset TEXMF ; dvipdfm $* )
+	(unset TEXMF ; dvipdf $* )
 .tex.dvi:
 	-latex $*
 	-bibtex $*
@@ -78,7 +78,7 @@ pmi.ps: pmi.dvi
 
 pmi.pdf: pmipdf.dvi
 	rm -f pmi.pdf pmipdf.pdf
-	dvipdfm pmipdf
+	dvipdf pmipdf
 	mv pmipdf.pdf pmi.pdf
 
 clean:

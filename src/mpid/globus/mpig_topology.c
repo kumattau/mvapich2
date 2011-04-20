@@ -38,26 +38,31 @@ int mpig_topology_init(void)
     MPIG_FUNC_ENTER(MPID_STATE_mpig_topology_init);
     MPIG_DEBUG_PRINTF((MPIG_DEBUG_LEVEL_FUNC | MPIG_DEBUG_LEVEL_COMM, "entering"));
 
-    MPIR_Nest_incr();
-    
     /* create the toplogy attribute keys */
-    mpi_errno = NMPI_Comm_create_keyval(MPI_NULL_COPY_FN, mpig_topology_destroy_depths_attr, &mpig_topology_depths_keyval, NULL);
+    mpi_errno = MPIR_Comm_create_keyval_impl(MPI_NULL_COPY_FN, mpig_topology_destroy_depths_attr, &mpig_topology_depths_keyval, NULL);
     MPIU_ERR_CHKANDJUMP1((mpi_errno), mpi_errno, MPI_ERR_OTHER, "**globus|comm_create_key", "**globus|comm_create_key %s",
 	"topology depths keyval");
-    mpi_errno = NMPI_Comm_create_keyval(MPI_NULL_COPY_FN, mpig_topology_destroy_colors_attr, &mpig_topology_colors_keyval, NULL);
+    mpi_errno = MPIR_Comm_create_keyval_impl(MPI_NULL_COPY_FN, mpig_topology_destroy_colors_attr, &mpig_topology_colors_keyval, NULL);
     MPIU_ERR_CHKANDJUMP1((mpi_errno), mpi_errno, MPI_ERR_OTHER, "**globus|comm_create_key", "**globus|comm_create_key %s",
 	"topology colors keyval");
     
   fn_return:
-    MPIR_Nest_decr();
     MPIG_DEBUG_PRINTF((MPIG_DEBUG_LEVEL_FUNC | MPIG_DEBUG_LEVEL_COMM, "exiting: mpi_errno=" MPIG_ERRNO_FMT, mpi_errno));
     MPIG_FUNC_EXIT(MPID_STATE_mpig_topology_init);
     return mpi_errno;
     
   fn_fail:
     {   /* --BEGIN ERROR HANDLING-- */
-	if (mpig_topology_depths_keyval != MPI_KEYVAL_INVALID) NMPI_Comm_free_keyval(&mpig_topology_depths_keyval);
-	if (mpig_topology_colors_keyval != MPI_KEYVAL_INVALID) NMPI_Comm_free_keyval(&mpig_topology_colors_keyval);
+	if (mpig_topology_depths_keyval != MPI_KEYVAL_INVALID) {
+            MPID_Comm_free_keyval_impl(mpig_topology_depths_keyval);
+            mpig_topology_depths_keyval = MPI_KEYVAL_INVALID;
+        }
+        
+	if (mpig_topology_colors_keyval != MPI_KEYVAL_INVALID) {
+            MPID_Comm_free_keyval_impl(mpig_topology_colors_keyval);
+            mpig_topology_colors_keyval = MPI_KEYVAL_INVALID;
+        }
+        
 	goto fn_return;
     }   /* --END ERROR HANDLING-- */
 }
@@ -84,18 +89,19 @@ int mpig_topology_finalize(void)
     MPIG_FUNC_ENTER(MPID_STATE_mpig_topology_finalize);
     MPIG_DEBUG_PRINTF((MPIG_DEBUG_LEVEL_FUNC | MPIG_DEBUG_LEVEL_COMM, "entering"));
 
-    MPIR_Nest_incr();
-    
     /* destroy the toplogy attribute keys */
-    mpi_errno = NMPI_Comm_free_keyval(&mpig_topology_depths_keyval);
-    MPIU_ERR_CHKANDSTMT1((mpi_errno), mpi_errno, MPI_ERR_OTHER, {;}, "**globus|comm_destroy_key", "**globus|comm_destroy_key %s",
-	"topology depths keyval");
-    NMPI_Comm_free_keyval(&mpig_topology_colors_keyval);
-    MPIU_ERR_CHKANDSTMT1((mpi_errno), mpi_errno, MPI_ERR_OTHER, {;}, "**globus|comm_destroy_key", "**globus|comm_destroy_key %s",
-	"topology colors keyval");
-
+    
+    MPIU_ERR_CHKANDSTMT1(mpig_topology_depths_keyval == MPI_KEYVAL_INVALID, mpi_errno, MPI_ERR_OTHER, {;},
+                         "**globus|comm_destroy_key", "**globus|comm_destroy_key %s", "topology depths keyval");
+    MPID_Comm_free_keyval_impl(mpig_topology_depths_keyval);
+    mpig_topology_depths_keyval = MPI_KEYVAL_INVALID;
+    
+    MPIU_ERR_CHKANDSTMT1(mpig_topology_colors_keyval == MPI_KEYVAL_INVALID, mpi_errno, MPI_ERR_OTHER, {;},
+                         "**globus|comm_destroy_key", "**globus|comm_destroy_key %s", "topology colors keyval");
+    MPID_Comm_free_keyval_impl(mpig_topology_colors_keyval);
+    mpig_topology_colors_keyval = MPI_KEYVAL_INVALID;
+    
     /* fn_return: */
-    MPIR_Nest_decr();
     MPIG_DEBUG_PRINTF((MPIG_DEBUG_LEVEL_FUNC | MPIG_DEBUG_LEVEL_COMM, "exiting: mpi_errno=" MPIG_ERRNO_FMT, mpi_errno));
     MPIG_FUNC_EXIT(MPID_STATE_mpig_topology_finalize);
     return mpi_errno;
@@ -139,8 +145,6 @@ int mpig_topology_comm_construct(MPID_Comm * const comm)
     MPIG_DEBUG_PRINTF((MPIG_DEBUG_LEVEL_FUNC | MPIG_DEBUG_LEVEL_COMM,
 	"entering: comm=" MPIG_HANDLE_FMT ", commp=" MPIG_PTR_FMT, comm->handle, MPIG_PTR_CAST(comm)));
 
-    MPIR_Nest_incr();
-    
     /* topology information is only created for intracommunicators, at least for now */
     if (comm->comm_kind == MPID_INTERCOMM) goto fn_return;
 
@@ -400,13 +404,15 @@ int mpig_topology_comm_construct(MPID_Comm * const comm)
     }
 
     /* attach a the copies of the topology depths and collors information to the communicator using the attribute keys */
-    mpi_errno = NMPI_Comm_set_attr(comm->handle, mpig_topology_colors_keyval, colors_attr_copy);
+    mpi_errno = MPIR_Comm_set_attr_impl(comm, mpig_topology_colors_keyval, colors_attr_copy, MPIR_ATTR_PTR);
     MPIU_ERR_CHKANDJUMP1((mpi_errno), mpi_errno, MPI_ERR_OTHER, "**globus|comm_set_attr", "**globus|comm_set_attr %s",
 	"topology colors attribute");
-    mpi_errno = NMPI_Comm_set_attr(comm->handle, mpig_topology_depths_keyval, depths_attr_copy);
+    mpi_errno = MPIR_Comm_set_attr_impl(comm, mpig_topology_depths_keyval, depths_attr_copy, MPIR_ATTR_PTR);
     if (mpi_errno)
     {
-	NMPI_Comm_delete_attr(comm->handle, mpig_topology_colors_keyval);
+        MPID_Keyval *keyval_ptr;
+        MPID_Keyval_get_ptr( mpig_topology_colors_keyval, keyval_ptr );
+	MPIR_Comm_delete_attr_impl(comm, keyval_ptr);
 	colors_attr_copy = NULL;
 	MPIU_ERR_CHKANDJUMP1((mpi_errno), mpi_errno, MPI_ERR_OTHER, "**globus|comm_set_attr", "**globus|comm_set_attr %s",
 	    "topology depths attribute");
@@ -422,7 +428,6 @@ int mpig_topology_comm_construct(MPID_Comm * const comm)
     comm->dev.topology_max_depth = max_depth;
 
   fn_return:
-    MPIR_Nest_decr();
     MPIG_DEBUG_PRINTF((MPIG_DEBUG_LEVEL_FUNC | MPIG_DEBUG_LEVEL_COMM, "exiting: comm=" MPIG_HANDLE_FMT ", commp=" MPIG_PTR_FMT
 	",mpi_errno=" MPIG_ERRNO_FMT, comm->handle, MPIG_PTR_CAST(comm), mpi_errno));
     MPIG_FUNC_EXIT(MPID_STATE_mpig_topology_comm_construct);

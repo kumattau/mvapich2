@@ -73,8 +73,6 @@
     }   \
 }
 
-extern volatile unsigned int MPIDI_CH3I_progress_completion_count;
-
 #undef FUNCNAME
 #define FUNCNAME create_request
 #undef FCNAME
@@ -506,19 +504,6 @@ int MPIDI_nem_ib_post_send(MPIDI_VC_t * vc, vbuf * v, int rail)
     }
 
     MPIDI_FUNC_EXIT(MPID_STATE_IB_POST_SEND);
-    return 0;
-}
-
-#undef FUNCNAME
-#define FUNCNAME MPID_nem_ib_send
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-
-int MPID_nem_ib_send (MPIDI_VC_t *vc,
-        MPID_nem_cell_ptr_t cell,
-        int datalen)
-{
-
     return 0;
 }
 
@@ -985,12 +970,16 @@ int MRAILI_Process_send(void *vbuf_addr)
     case MPIDI_CH3_PKT_FAST_EAGER_SEND_WITH_REQ:
 #endif
     case MPIDI_CH3_PKT_EAGER_SEND:
+#if defined(USE_EAGER_SHORT)
+    case MPIDI_CH3_PKT_EAGERSHORT_SEND:
+#endif
     case MPIDI_CH3_PKT_EAGER_SYNC_SEND:
     case MPIDI_CH3_PKT_PACKETIZED_SEND_DATA:
     case MPIDI_CH3_PKT_RNDV_R3_DATA:
     case MPIDI_CH3_PKT_READY_SEND:
     case MPIDI_CH3_PKT_PUT:
     case MPIDI_CH3_PKT_ACCUMULATE:
+    case MPIDI_CH3_PKT_ACCUM_IMMED:
         req = v->sreq;
         v->sreq = NULL;
         DEBUG_PRINT("[process send type: %d] complete for eager msg, req %p, seqnum = %d\n",

@@ -198,6 +198,7 @@ static inline int GetSeqNumVbuf(vbuf * buf)
         case MPIDI_CH3_PKT_GET:
         case MPIDI_CH3_PKT_GET_RESP:
         case MPIDI_CH3_PKT_ACCUMULATE:
+        case MPIDI_CH3_PKT_ACCUM_IMMED:
         case MPIDI_CH3_PKT_LOCK:
         case MPIDI_CH3_PKT_LOCK_GRANTED:
         case MPIDI_CH3_PKT_LOCK_PUT_UNLOCK:
@@ -236,6 +237,8 @@ static inline vbuf * MPIDI_CH3I_RDMA_poll(MPIDI_VC_t * vc)
 {
     vbuf *v = NULL;
     volatile VBUF_FLAG_TYPE *head;
+    volatile VBUF_FLAG_TYPE *tail;
+    int size;
 
     if (num_rdma_buffer == 0)
         return NULL;
@@ -244,6 +247,12 @@ static inline vbuf * MPIDI_CH3I_RDMA_poll(MPIDI_VC_t * vc)
     head = v->head_flag;
 
     if (*head && vc->mrail.rfp.p_RDMA_recv != vc->mrail.rfp.p_RDMA_recv_tail) {
+        size = (*head & FAST_RDMA_SIZE_MASK);
+        tail = (VBUF_FLAG_TYPE *) (v->buffer + size);
+        /* rdma write is in progress, the tail has not received yet.*/
+        if(*head != *tail) {
+            return NULL;
+        }
         /* advance receive pointer */
         if (++(vc->mrail.rfp.p_RDMA_recv) >= num_rdma_buffer) {
             vc->mrail.rfp.p_RDMA_recv = 0;
@@ -578,7 +587,7 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
     }
 
     if (rdma_iwarp_use_multiple_cq &&
-        (MPIDI_CH3I_RDMA_Process.hca_type == MV2_HCA_CHELSIO_T3) &&
+        MV2_IS_CHELSIO_IWARP_CARD(MPIDI_CH3I_RDMA_Process.hca_type) &&
         (MPIDI_CH3I_RDMA_Process.cluster_size != VERY_SMALL_CLUSTER)) {
         num_cqs = 2;
     } else {

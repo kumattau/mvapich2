@@ -35,7 +35,7 @@
 */
 
 /* not declared static because it is called in intercomm. reduce_scatter */
-int MPIR_Scatterv_OSU ( 
+int MPIR_Scatterv_MV2 ( 
 	void *sendbuf, 
 	int *sendcnts, 
 	int *displs, 
@@ -44,13 +44,15 @@ int MPIR_Scatterv_OSU (
 	int recvcnt,  
 	MPI_Datatype recvtype, 
 	int root, 
-	MPID_Comm *comm_ptr )
+	MPID_Comm *comm_ptr,
+    int *errflag )
 {
-    static const char FCNAME[] = "MPIR_Scatterv_OSU";
+    static const char FCNAME[] = "MPIR_Scatterv_MV2";
     int rank, comm_size, mpi_errno = MPI_SUCCESS;
+    int mpi_errno_ret = MPI_SUCCESS;
     MPI_Comm comm;
     MPI_Aint extent;
-    int      i, reqs;
+    int i, reqs;
     MPI_Request *reqarray;
     MPI_Status *starray;
     MPIU_CHKLMEM_DECL(2);
@@ -92,25 +94,27 @@ int MPIR_Scatterv_OSU (
                     }
                 }
                 else {
-                    mpi_errno = MPIC_Isend(((char *)sendbuf+displs[i]*extent), 
+                    mpi_errno = MPIC_Isend_ft(((char *)sendbuf+displs[i]*extent), 
                                            sendcnts[i], sendtype, i,
-                                           MPIR_SCATTERV_TAG, comm, &reqarray[reqs++]);
+                                           MPIR_SCATTERV_TAG, comm, &reqarray[reqs++], errflag);
+                    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
                 }
-		/* --BEGIN ERROR HANDLING-- */
-                if (mpi_errno) {
-		    mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", 0);
-		    return mpi_errno;
-		}
-		/* --END ERROR HANDLING-- */
             }
         }
         /* ... then wait for *all* of them to finish: */
-        mpi_errno = NMPI_Waitall(reqs, reqarray, starray);
+        mpi_errno = MPIC_Waitall_ft(reqs, reqarray, starray, errflag);
         /* --BEGIN ERROR HANDLING-- */
         if (mpi_errno == MPI_ERR_IN_STATUS) {
             for (i = 0; i < reqs; i++) {
                 if (starray[i].MPI_ERROR != MPI_SUCCESS)
                     mpi_errno = starray[i].MPI_ERROR;
+                   if (mpi_errno) {
+                        /* for communication errors, just record the error but continue */
+                        *errflag = TRUE;
+                        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                    }
             }
         }
         /* --END ERROR HANDLING-- */
@@ -118,14 +122,14 @@ int MPIR_Scatterv_OSU (
 
     else if (root != MPI_PROC_NULL) { /* non-root nodes, and in the intercomm. case, non-root nodes on remote side */
         if (recvcnt) {
-            mpi_errno = MPIC_Recv(recvbuf,recvcnt,recvtype,root,
-                                  MPIR_SCATTERV_TAG,comm,MPI_STATUS_IGNORE);
-            /* --BEGIN ERROR HANDLING-- */
+            mpi_errno = MPIC_Recv_ft(recvbuf,recvcnt,recvtype,root,
+                                  MPIR_SCATTERV_TAG,comm,MPI_STATUS_IGNORE, errflag);
             if (mpi_errno) {
-                mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", 0);
-                return mpi_errno;
+                /* for communication errors, just record the error but continue */
+                *errflag = TRUE;
+                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
             }
-            /* --END ERROR HANDLING-- */
         }
     }
     

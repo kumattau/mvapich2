@@ -362,7 +362,7 @@ int rdma_cm_get_hca_type (struct MPIDI_CH3I_RDMA_Process_t *proc)
         proc->hca_type = mv2_get_hca_type( ctx[i]->device );
         proc->arch_hca_type = mv2_get_arch_hca_type( ctx[i]->device );
 
-        if ( MV2_HCA_CHELSIO_T3 == proc->hca_type ) {
+        if ( MV2_IS_CHELSIO_IWARP_CARD(proc->hca_type) ) {
         /* Trac #376 recognize chelsio nic even if it's not the first */
 		    proc->use_rdma_cm = 1;
 		    proc->use_iwarp_mode = 1;
@@ -1109,6 +1109,7 @@ static void  rdma_set_default_parameters_numrail_4(struct MPIDI_CH3I_RDMA_Proces
             break;
 
         CASE_MV2_ANY_ARCH_WITH_CHELSIO_T3:
+        CASE_MV2_ANY_ARCH_WITH_CHELSIO_T4:
             rdma_set_params_based_on_cluster_size( proc->cluster_size, 
                      2*1024,  4, /* Values for large cluster size */
                      4*1024,  8, /* Values for medium cluster size */
@@ -1205,6 +1206,7 @@ static void  rdma_set_default_parameters_numrail_3(struct MPIDI_CH3I_RDMA_Proces
             break;
 
         CASE_MV2_ANY_ARCH_WITH_CHELSIO_T3:
+        CASE_MV2_ANY_ARCH_WITH_CHELSIO_T4:
             rdma_set_params_based_on_cluster_size( proc->cluster_size, 
                      2*1024,  4, /* Values for large cluster size */
                      4*1024,  8, /* Values for medium cluster size */
@@ -1301,6 +1303,7 @@ static void  rdma_set_default_parameters_numrail_2(struct MPIDI_CH3I_RDMA_Proces
             break;
 
         CASE_MV2_ANY_ARCH_WITH_CHELSIO_T3:
+        CASE_MV2_ANY_ARCH_WITH_CHELSIO_T4:
             rdma_set_params_based_on_cluster_size( proc->cluster_size, 
                      2*1024,  4, /* Values for large cluster size */
                      4*1024,  8, /* Values for medium cluster size */
@@ -1397,6 +1400,7 @@ static void  rdma_set_default_parameters_numrail_1(struct MPIDI_CH3I_RDMA_Proces
             break;
 
         CASE_MV2_ANY_ARCH_WITH_CHELSIO_T3:
+        CASE_MV2_ANY_ARCH_WITH_CHELSIO_T4:
             rdma_set_params_based_on_cluster_size( proc->cluster_size, 
                      2*1024,  4, /* Values for large cluster size */
                      4*1024,  8, /* Values for medium cluster size */
@@ -1461,6 +1465,7 @@ static void  rdma_set_default_parameters_numrail_unknwn(struct MPIDI_CH3I_RDMA_P
             break;
 
         CASE_MV2_ANY_ARCH_WITH_CHELSIO_T3:
+        CASE_MV2_ANY_ARCH_WITH_CHELSIO_T4:
             rdma_set_params_based_on_cluster_size( proc->cluster_size, 
                      2*1024,  4, /* Values for large cluster size */
                      4*1024,  8, /* Values for medium cluster size */
@@ -1576,7 +1581,7 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 
     if ( MV2_HCA_IBM_EHCA  == proc->hca_type ) {
         rdma_max_inline_size = -1;
-    } else if ( MV2_HCA_CHELSIO_T3 == proc->hca_type ) {
+    } else if ( MV2_IS_CHELSIO_IWARP_CARD(proc->hca_type) ) {
         rdma_max_inline_size = 64;
     } else if ( MV2_HCA_INTEL_NE020 == proc->hca_type ) {
         rdma_max_inline_size = 64;
@@ -1592,7 +1597,7 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
         rdma_default_mtu = IBV_MTU_1024;
     }
 
-    if ( MV2_HCA_CHELSIO_T3 == proc->hca_type ) {
+    if ( MV2_IS_CHELSIO_IWARP_CARD(proc->hca_type) ) {
         /* Trac #423 */
         struct ibv_device_attr dev_attr;
         int mpi_errno = MPI_SUCCESS;

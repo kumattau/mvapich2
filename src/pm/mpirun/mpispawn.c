@@ -29,6 +29,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <sys/wait.h>
+#include "error_handling.h"
 
 #include "crfs.h"
 
@@ -942,9 +943,30 @@ int main(int argc, char *argv[])
     char hostname[MAX_HOST_LEN];
     int port;
 
+    mt_id = env2int("MPISPAWN_ID");
+
+    // Set coresize limit
+    char* coresize = getenv("MV2_DEBUG_CORESIZE");
+    set_coresize_limit( coresize );
+    // ignore error code, failure if not fatal
+
+    // Set prefix for error output
+    const int max_length = 256;
+    char error_prefix[max_length];
+    snprintf( error_prefix, max_length, "mpispawn_%i", mt_id);
+    set_error_prefix( error_prefix );
+
+    // Set an error signal handler
+    char* bt = getenv("MV2_DEBUG_SHOW_BACKTRACE");
+    int backtrace = 0;
+    if ( bt != NULL ) {
+        backtrace = !!atoi( bt );
+    }
+    setup_error_sighandler( backtrace );
+    // ignore error code, failure if not fatal
+
     FD_ZERO(&child_socks);
 
-    mt_id = env2int("MPISPAWN_ID");
     mt_nnodes = env2int("MPISPAWN_NNODES");
     USE_LINEAR_SSH = env2int("USE_LINEAR_SSH");
 

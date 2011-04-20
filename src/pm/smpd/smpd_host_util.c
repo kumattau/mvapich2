@@ -575,6 +575,28 @@ int smpd_parse_hosts_string(const char *host_str)
     return SMPD_FALSE;
 }
 
+/* Free the global SMPD host list */
+#undef FCNAME
+#define FCNAME "smpd_free_host_list"
+int smpd_free_host_list(void )
+{
+    smpd_host_node_t *pnode;
+
+    while(smpd_process.host_list){
+        pnode = smpd_process.host_list;
+        smpd_process.host_list = smpd_process.host_list->next;
+        MPIU_Free(pnode);
+    }
+    smpd_process.host_list = NULL;
+    /* Reset tree id - mpiexec uses tree id = 0 & all hosts use
+     * tree id >= 1
+     */
+    smpd_process.tree_id = 1;
+    /* mpiexec with id=0 is the root of all hosts */
+    smpd_process.tree_parent = 0;
+    return SMPD_SUCCESS;
+}
+
 #undef FCNAME
 #define FCNAME "smpd_get_host_id"
 int smpd_get_host_id(char *host, int *id_ptr)
@@ -794,49 +816,6 @@ SMPD_BOOL smpd_get_argcv_from_file(FILE *fin, int *argcp, char ***argvp)
     smpd_exit_fn(FCNAME);
     return SMPD_FALSE;
 }
-#if 0 /* This way simply tokenizes by space characters without any escape capabilities */
-#undef FCNAME
-#define FCNAME "smpd_get_argcv_from_file"
-SMPD_BOOL smpd_get_argcv_from_file(FILE *fin, int *argcp, char ***argvp)
-{
-    static char line[SMPD_MAX_LINE_LENGTH];
-    static char *argv[SMPD_MAX_ARGC];
-    char *token;
-    int index;
-
-    smpd_enter_fn(FCNAME);
-
-    argv[0] = "bogus.exe";
-    while (fgets(line, SMPD_MAX_LINE_LENGTH, fin))
-    {
-	index = 1;
-	token = strtok(line, " \r\n");
-	while (token)
-	{
-	    argv[index] = token;
-	    index++;
-	    if (index == SMPD_MAX_ARGC)
-	    {
-		argv[SMPD_MAX_ARGC-1] = NULL;
-		break;
-	    }
-	    token = strtok(NULL, " \r\n");
-	}
-	if (index != 1)
-	{
-	    if (index < SMPD_MAX_ARGC)
-		argv[index] = NULL;
-	    *argcp = index;
-	    *argvp = argv;
-	    smpd_exit_fn(FCNAME);
-	    return SMPD_TRUE;
-	}
-    }
-
-    smpd_exit_fn(FCNAME);
-    return SMPD_FALSE;
-}
-#endif
 
 #undef FCNAME
 #define FCNAME "next_launch_node"
