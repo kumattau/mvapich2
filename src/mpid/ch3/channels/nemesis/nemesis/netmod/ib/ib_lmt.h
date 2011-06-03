@@ -93,6 +93,26 @@ typedef struct{
   (rndv_info_)->seqnum = (seqnum_);             \
 }   
 
+#define MPIDI_NEM_IB_RREQ_RNDV_FINISH(rreq)                         \
+{                                                                    \
+    if (rreq != NULL) {                                                 \
+        if (REQ_FIELD(rreq, d_entry) != NULL) {                      \
+            dreg_unregister(REQ_FIELD(rreq, d_entry));       \
+            REQ_FIELD(rreq, d_entry) = NULL;                   \
+        }                                                       \
+        if (1 == REQ_FIELD(rreq, rndv_buf_alloc)                \
+            && REQ_FIELD(rreq, rndv_buf) != NULL) {             \
+            MPIU_Free(REQ_FIELD(rreq, rndv_buf));                    \
+            REQ_FIELD(rreq, rndv_buf) = NULL;                        \
+            REQ_FIELD(rreq, rndv_buf_off) = REQ_FIELD(rreq, rndv_buf_sz) = 0; \
+            REQ_FIELD(rreq, rndv_buf_alloc) = 0;                     \
+        }  else {                                               \
+            REQ_FIELD(rreq, rndv_buf_off) = REQ_FIELD(rreq, rndv_buf_sz) = 0; \
+        }                                                       \
+        REQ_FIELD(rreq, protocol) = MV2_LMT_PROTOCOL_RENDEZVOUS_UNSPECIFIED; \
+    }                                                           \
+}
+
 int MPID_nem_lmt_ib_initiate_lmt(struct MPIDI_VC *vc, struct MPID_nem_pkt_lmt_rts *rts_pkt,
                                            struct MPID_Request *req);
 int MPID_nem_lmt_ib_start_send(struct MPIDI_VC *vc, struct MPID_Request *sreq,

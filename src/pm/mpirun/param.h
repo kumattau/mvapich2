@@ -12,6 +12,6 @@
 #ifndef PARAM_H
 #define PARAH_H
 
-extern char * append_mpirun_parameters (char *);
+extern char *append_mpirun_parameters(char *);
 
 #endif

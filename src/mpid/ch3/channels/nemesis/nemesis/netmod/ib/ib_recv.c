@@ -12,6 +12,7 @@
 
 #include "ib_recv.h"
 #include "ib_send.h"
+#include "ib_lmt.h"
 #include "ib_vc.h"
 #include "ib_vbuf.h"
 #include "ib_errors.h"
@@ -181,8 +182,6 @@ int MPIDI_CH3I_nem_ib_parse_header(MPIDI_VC_t * vc,
     case (MPIDI_CH3_PKT_RNDV_REQ_TO_SEND):
     case (MPIDI_CH3_PKT_RNDV_CLR_TO_SEND):
     case MPIDI_CH3_PKT_EAGER_SYNC_ACK:
-    case MPIDI_CH3_PKT_CANCEL_SEND_REQ:
-    case MPIDI_CH3_PKT_CANCEL_SEND_RESP:
     case MPIDI_NEM_PKT_LMT_RTS:
     case MPIDI_NEM_PKT_LMT_CTS:
     case MPIDI_NEM_PKT_LMT_DONE:
@@ -195,6 +194,23 @@ int MPIDI_CH3I_nem_ib_parse_header(MPIDI_VC_t * vc,
 #endif
         {
             *pkt = vstart;
+        }
+        break;
+    case MPIDI_CH3_PKT_CANCEL_SEND_REQ:
+        {
+            *pkt = vstart;
+            /*Fix: Need to unregister and free the rndv buffer in get protocol.*/
+        }
+        break;
+    case MPIDI_CH3_PKT_CANCEL_SEND_RESP:
+        {
+            MPID_Request *req;
+            *pkt = vstart;
+            MPID_Request_get_ptr(((MPIDI_CH3_Pkt_cancel_send_resp_t *)(*pkt))->sender_req_id, req);
+            if (req != NULL) {
+              /* unregister and free the rndv buffer */
+              MPIDI_NEM_IB_RREQ_RNDV_FINISH(req);
+            }
         }
         break;
     case (MPIDI_CH3_PKT_NOOP):

@@ -85,7 +85,7 @@ int MPIR_Gather_MV2_two_level_Direct(
     
     /* extract the rank,size information for the intra-node
      * communicator */
-    shmem_comm = comm_ptr->shmem_comm; 
+    shmem_comm = comm_ptr->ch.shmem_comm; 
     mpi_errno = PMPI_Comm_rank(shmem_comm, &local_rank);
     if(mpi_errno) {
             MPIU_ERR_POP(mpi_errno);
@@ -99,7 +99,7 @@ int MPIR_Gather_MV2_two_level_Direct(
     if(local_rank == 0) { 
          /* Node leader. Extract the rank, size information for the leader
           * communicator */
-	    leader_comm = comm_ptr->leader_comm;
+	    leader_comm = comm_ptr->ch.leader_comm;
 	    mpi_errno = PMPI_Comm_rank(leader_comm, &leader_comm_rank);
 	    if(mpi_errno) {
 		    MPIU_ERR_POP(mpi_errno);
@@ -140,13 +140,13 @@ int MPIR_Gather_MV2_two_level_Direct(
           MPIU_ERR_POP(mpi_errno);
      }
 
-      leader_of_root = comm_ptr->leader_map[root]; 
+      leader_of_root = comm_ptr->ch.leader_map[root]; 
       /* leader_of_root is the global rank of the leader of the root */
-      leader_root = comm_ptr->leader_rank[leader_of_root]; 
+      leader_root = comm_ptr->ch.leader_rank[leader_of_root]; 
       /* leader_root is the rank of the leader of the root in leader_comm. 
        * leader_root is to be used as the root of the inter-leader gather ops 
        */ 
-      if(comm_ptr->is_uniform != 1) { 
+      if(comm_ptr->ch.is_uniform != 1) { 
 	      if(local_rank == 0) {
 		  int *displs;
 		  int *recvcnts;
@@ -165,7 +165,7 @@ int MPIR_Gather_MV2_two_level_Direct(
 		      leader_gather_buf = MPIU_Malloc(nbytes*comm_size); 
 		  } 
 
-                  node_sizes = comm_ptr->node_sizes; 
+                  node_sizes = comm_ptr->ch.node_sizes; 
 
 		  if(leader_comm_rank == leader_root) {
 			  displs = MPIU_Malloc(sizeof(int)*leader_comm_size);
@@ -306,7 +306,7 @@ int MPIR_Gather_MV2_two_level_Binomial(
     
     /* extract the rank,size information for the intra-node
      * communicator */
-    shmem_comm = comm_ptr->shmem_comm; 
+    shmem_comm = comm_ptr->ch.shmem_comm; 
     mpi_errno = PMPI_Comm_rank(shmem_comm, &local_rank);
     if(mpi_errno) {
             MPIU_ERR_POP(mpi_errno);
@@ -320,7 +320,7 @@ int MPIR_Gather_MV2_two_level_Binomial(
     if(local_rank == 0) { 
          /* Node leader. Extract the rank, size information for the leader
           * communicator */
-	    leader_comm = comm_ptr->leader_comm;
+	    leader_comm = comm_ptr->ch.leader_comm;
 	    mpi_errno = PMPI_Comm_rank(leader_comm, &leader_comm_rank);
 	    if(mpi_errno) {
 		    MPIU_ERR_POP(mpi_errno);
@@ -361,13 +361,13 @@ int MPIR_Gather_MV2_two_level_Binomial(
           MPIU_ERR_POP(mpi_errno);
      }
 
-      leader_of_root = comm_ptr->leader_map[root]; 
+      leader_of_root = comm_ptr->ch.leader_map[root]; 
       /* leader_of_root is the global rank of the leader of the root */
-      leader_root = comm_ptr->leader_rank[leader_of_root]; 
+      leader_root = comm_ptr->ch.leader_rank[leader_of_root]; 
       /* leader_root is the rank of the leader of the root in leader_comm. 
        * leader_root is to be used as the root of the inter-leader gather ops 
        */ 
-      if(comm_ptr->is_uniform != 1) { 
+      if(comm_ptr->ch.is_uniform != 1) { 
 	      if(local_rank == 0) {
 		  int *displs;
 		  int *recvcnts;
@@ -386,7 +386,7 @@ int MPIR_Gather_MV2_two_level_Binomial(
 		      leader_gather_buf = MPIU_Malloc(nbytes*comm_size); 
 		  } 
 
-                  node_sizes = comm_ptr->node_sizes; 
+                  node_sizes = comm_ptr->ch.node_sizes; 
 
 		  if(leader_comm_rank == leader_root) {
 			  displs = MPIU_Malloc(sizeof(int)*leader_comm_size);
@@ -1224,43 +1224,45 @@ int MPIR_Gather_intra_MV2(
         range++;
     }
     
-    if(comm_size < gather_direct_system_size_small && use_direct_gather == 1) { 
-         if(nbytes <= gather_tuning_table[range].switchp && 
-            comm_ptr->shmem_coll_ok == 1){ 
-              mpi_errno = MPIR_Gather_MV2_two_level_Direct( sendbuf, sendcnt, sendtype, 
-                                   recvbuf, recvcnt, recvtype, 
-                                   root, comm_ptr, errflag);   
-         } else { 
-               mpi_errno = MPIR_Gather_MV2_Direct( sendbuf, sendcnt, sendtype, 
-                                       recvbuf, recvcnt, recvtype, 
-                                       root, comm_ptr, errflag);  
-         }
-    }    
-    else if(comm_size >= gather_direct_system_size_small && 
-            comm_size <= gather_direct_system_size_medium  && use_direct_gather == 1) { 
-         if(nbytes <= gather_tuning_table[range].switchp) {
-               mpi_errno = MPIR_Gather_MV2_Binomial( sendbuf, sendcnt, sendtype, 
-                                       recvbuf, recvcnt, recvtype,
-                                       root, comm_ptr, errflag);
-         } else { 
-               mpi_errno = MPIR_Gather_MV2_Direct( sendbuf, sendcnt, sendtype,
-                                       recvbuf, recvcnt, recvtype, 
-                                       root, comm_ptr, errflag);  
-         }
-    }    
-    else if(comm_ptr->shmem_coll_ok == 1 && use_two_level_gather == 1) { 
-         if(nbytes <= MPIR_GATHER_BINOMIAL_MEDIUM_MSG) { 
-              mpi_errno = MPIR_Gather_MV2_Binomial(sendbuf, sendcnt, sendtype, 
-                                       recvbuf, recvcnt, recvtype, 
-                                       root, comm_ptr, errflag);  
-         } else {                                         
-              mpi_errno = MPIR_Gather_MV2_two_level_Direct(sendbuf, sendcnt, sendtype, 
-                                       recvbuf, recvcnt, recvtype, 
-                                       root, comm_ptr, errflag);  
-         }
-    } else {
+    if(comm_ptr->ch.is_global_block == 1 && use_direct_gather == 1 &&
+            use_two_level_gather == 1  && comm_ptr->ch.shmem_coll_ok == 1) { 
+            if(comm_size < gather_direct_system_size_small) { 
+                 if(nbytes <= gather_tuning_table[range].switchp) { 
+                      mpi_errno = MPIR_Gather_MV2_two_level_Direct( sendbuf, sendcnt, sendtype, 
+                                           recvbuf, recvcnt, recvtype, 
+                                           root, comm_ptr, errflag);   
+                 } else { 
+                       mpi_errno = MPIR_Gather_MV2_Direct( sendbuf, sendcnt, sendtype, 
+                                               recvbuf, recvcnt, recvtype, 
+                                               root, comm_ptr, errflag);  
+                 }
+            }    
+            else if(comm_size >= gather_direct_system_size_small && 
+                    comm_size <= gather_direct_system_size_medium) { 
+                 if(nbytes <= gather_tuning_table[range].switchp) {
+                       mpi_errno = MPIR_Gather_MV2_Binomial( sendbuf, sendcnt, sendtype, 
+                                               recvbuf, recvcnt, recvtype,
+                                               root, comm_ptr, errflag);
+                 } else { 
+                       mpi_errno = MPIR_Gather_MV2_Direct( sendbuf, sendcnt, sendtype,
+                                               recvbuf, recvcnt, recvtype, 
+                                               root, comm_ptr, errflag);  
+                 }
+            }    
+            else { 
+                 if(nbytes <= MPIR_GATHER_BINOMIAL_MEDIUM_MSG) { 
+                      mpi_errno = MPIR_Gather_MV2_Binomial(sendbuf, sendcnt, sendtype, 
+                                               recvbuf, recvcnt, recvtype, 
+                                               root, comm_ptr, errflag);  
+                 } else {                                         
+                      mpi_errno = MPIR_Gather_MV2_two_level_Direct(sendbuf, sendcnt, sendtype, 
+                                               recvbuf, recvcnt, recvtype, 
+                                               root, comm_ptr, errflag);  
+                 }
+            }
+    }  else {
 #endif /* #if defined(_OSU_MVAPICH_) */ 
-         mpi_errno = MPIR_Gather_MV2_Binomial( sendbuf, sendcnt, sendtype, 
+            mpi_errno = MPIR_Gather_MV2_Binomial( sendbuf, sendcnt, sendtype, 
                                        recvbuf, recvcnt, recvtype, 
                                        root, comm_ptr, errflag);  
 #if defined(_OSU_MVAPICH_)

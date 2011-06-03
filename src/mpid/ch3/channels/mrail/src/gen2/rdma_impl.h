@@ -512,5 +512,6 @@ void MRAILI_RDMA_Get_finish(MPIDI_VC_t * vc,
 int reload_alternate_path(struct ibv_qp *qp);
 
 int power_two(int x);
+int qp_required(MPIDI_VC_t* vc, int my_rank, int dst_rank);
 
 #endif                          /* RDMA_IMPL_H */

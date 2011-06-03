@@ -59,6 +59,9 @@ do {                                                              \
 /** We maintain an index table to get the header size ******/
 int MPIDI_CH3_Pkt_size_index[] = {
     sizeof(MPIDI_CH3_Pkt_eager_send_t),        /* 0 */
+#if defined(_OSU_MVAPICH_)
+    sizeof(MPIDI_CH3_Pkt_eager_send_contig_t),
+#endif /* defined(_OSU_MVAPICH_) */
 #ifndef MV2_DISABLE_HEADER_CACHING 
     sizeof(MPIDI_CH3I_MRAILI_Pkt_fast_eager),
     sizeof(MPIDI_CH3I_MRAILI_Pkt_fast_eager_with_req),
@@ -673,6 +676,8 @@ int MPIDI_CH3_PktHandler_Init( MPIDI_CH3_PktHandler_Fcn *pktArray[],
     pktArray[MPIDI_CH3_PKT_RNDV_REQ_TO_SEND] =
 	MPIDI_CH3_PktHandler_RndvReqToSend;
 #if defined(_OSU_MVAPICH_)
+    pktArray[MPIDI_CH3_PKT_EAGER_SEND_CONTIG] = 
+	MPIDI_CH3_PktHandler_EagerSend_Contig;
     pktArray[MPIDI_CH3_PKT_RNDV_READY_REQ_TO_SEND] =
 	MPIDI_CH3_PktHandler_RndvReqToSend;
 #endif /* defined(_OSU_MVAPICH_) */

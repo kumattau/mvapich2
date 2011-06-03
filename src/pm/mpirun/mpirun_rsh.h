@@ -34,22 +34,22 @@
 #define USE_VIADEV_BARRIER  1
 #endif
 
-#define BASE_ENV_LEN	    17
-#define COMMAND_LEN	    20000
+#define BASE_ENV_LEN        17
+#define COMMAND_LEN        20000
 
-#define ENV_CMD		    "/usr/bin/env"
-#define RSH_CMD		    "/usr/bin/rsh"
-#define SSH_CMD		    "/usr/bin/ssh"
-#define XTERM		    "/usr/bin/xterm"
-#define SSH_ARG		    "-q"
-#define RSH_ARG		    "NOPARAM"
-#define BASH_CMD	    "/bin/bash"
-#define BASH_ARG	    "-c"
+#define ENV_CMD            "/usr/bin/env"
+#define RSH_CMD            "/usr/bin/rsh"
+#define SSH_CMD            "/usr/bin/ssh"
+#define XTERM            "/usr/bin/xterm"
+#define SSH_ARG            "-q"
+#define RSH_ARG            "NOPARAM"
+#define BASH_CMD        "/bin/bash"
+#define BASH_ARG        "-c"
 
 #ifdef USE_DDD
-#define DEBUGGER	    "/usr/bin/ddd"
+#define DEBUGGER        "/usr/bin/ddd"
 #else
-#define DEBUGGER	    "/usr/bin/gdb"
+#define DEBUGGER        "/usr/bin/gdb"
 #endif
 
 #define _GNU_SOURCE
@@ -105,17 +105,17 @@ typedef struct {
 } process;
 
 typedef struct {
-    const char * hostname;
+    const char *hostname;
     pid_t pid;
-    int * plist_indices;
+    int *plist_indices;
     size_t npids, npids_allocated;
-    
-    pid_t   local_pid; //the local forked() proc pid
+
+    pid_t local_pid;            //the local forked() proc pid
 } process_group;
 
 typedef struct {
-    process_group * data;
-    process_group ** index;
+    process_group *data;
+    process_group **index;
     size_t npgs, npgs_allocated;
 } process_groups;
 
@@ -131,13 +131,12 @@ typedef struct {
     char runbuf[MAXLINE];
     char argbuf[MAXLINE];
     char *spawnfile;
-}spawn_info_t;
-
+} spawn_info_t;
 
 /*This list is used for dpm to take care of the mpirun_rsh started.*/
 typedef struct list_pid_mpirun {
-   pid_t pid;
-   struct list_pid_mpirun * next;
+    pid_t pid;
+    struct list_pid_mpirun *next;
 } list_pid_mpirun_t;
 
 extern int NSPAWNS;

@@ -210,7 +210,7 @@ int MPIDI_CH3_Rendezvous_push(MPIDI_VC_t * vc, MPID_Request * sreq);
 void MPIDI_CH3_Rendezvous_r3_push(MPIDI_VC_t * vc, MPID_Request * sreq);
 void MPIDI_CH3I_MRAILI_Process_rndv(void);
 
-int MPIDI_CH3I_read_progress(MPIDI_VC_t **vc_pptr, vbuf **, int);
+int MPIDI_CH3I_read_progress(MPIDI_VC_t **vc_pptr, vbuf **, int *, int);
 int MPIDI_CH3I_post_read(MPIDI_VC_t *vc, void *buf, int len);
 int MPIDI_CH3I_post_readv(MPIDI_VC_t *vc, MPID_IOV *iov, int n);
 
@@ -329,6 +329,8 @@ int MPIDI_CH3I_CM_Connect(MPIDI_VC_t * vc);
  * from a VC */
 int MPIDI_CH3I_CM_Establish(MPIDI_VC_t * vc);
 void MPIDI_CH3I_Cleanup_after_connection(MPIDI_VC_t *vc);
+/*flag to check if cq_poll is success in the progressing loop*/
+int cq_poll_completion;
 
 #ifdef CKPT
 
@@ -495,6 +497,11 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, const MPID_IOV * iov,
 
 void MPIDI_CH3I_SMP_writev(MPIDI_VC_t * vc, const MPID_IOV * iov,
                           const int n, int *num_bytes_ptr);
+
+void MPIDI_CH3I_SMP_write_contig(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t reqtype,
+                          const void * buf, MPIDI_msg_sz_t data_sz, int rank,
+                          int tag, MPID_Comm * comm, int context_offset, 
+                          int *num_bytes_ptr);
                           
 #if defined(_SMP_LIMIC_)
 int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,

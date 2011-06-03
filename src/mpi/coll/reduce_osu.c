@@ -172,18 +172,18 @@ int MPIR_Reduce_intra_MV2 (
     MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER, "**fail");
     stride = count*MPIR_MAX(extent,true_extent);
     
-    if ((comm_ptr->shmem_coll_ok == 1)&&(stride < coll_param.reduce_2level_threshold) &&
+    if ((comm_ptr->ch.shmem_coll_ok == 1)&&(stride < coll_param.reduce_2level_threshold) &&
 		(disable_shmem_reduce == 0) && (is_commutative==1) &&
 		(enable_shmem_collectives) && (check_comm_registry(comm))) {
      	my_rank = comm_ptr->rank;
         PMPI_Comm_size(comm, &total_size);
-        shmem_comm = comm_ptr->shmem_comm;
+        shmem_comm = comm_ptr->ch.shmem_comm;
         PMPI_Comm_rank(shmem_comm, &local_rank);
         PMPI_Comm_size(shmem_comm, &local_size);
         MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
-        shmem_comm_rank = shmem_commptr->shmem_comm_rank;
+        shmem_comm_rank = shmem_commptr->ch.shmem_comm_rank;
         
-        leader_comm = comm_ptr->leader_comm;
+        leader_comm = comm_ptr->ch.leader_comm;
 	    MPID_Comm_get_ptr(leader_comm, leader_commptr);
 
         if(local_rank == 0){ 
@@ -208,7 +208,7 @@ int MPIR_Reduce_intra_MV2 (
 #if defined(CKPT)
         MPIDI_CH3I_CR_lock();
 #endif
-        int leader_of_root = comm_ptr->leader_map[root];
+        int leader_of_root = comm_ptr->ch.leader_map[root];
 	if (local_rank == 0) {
             if(stride <= coll_param.shmem_reduce_msg) { 
                 /* Message size is smaller than the shmem_reduce threshold. 
@@ -251,7 +251,7 @@ int MPIR_Reduce_intra_MV2 (
                          MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
                     }
             } 
-            leader_root = comm_ptr->leader_rank[leader_of_root];
+            leader_root = comm_ptr->ch.leader_rank[leader_of_root];
 	    if (local_size != total_size) {
                 /* The leaders perform the inter-leader reduce operation */ 
                 mpi_errno = MPIR_Reduce_intra_MV2(tmpbuf, tmpbuf1, count, datatype, op, leader_root, 

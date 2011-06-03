@@ -65,6 +65,7 @@ int           rdma_get_fallback_threshold;
 int           rdma_integer_pool_size = RDMA_INTEGER_POOL_SIZE;
 int           rdma_polling_set_limit = -1;
 int           rdma_polling_set_threshold = 10;
+int           rdma_fp_buffer_size = RDMA_FP_DEFAULT_BUF_SIZE;
 int           rdma_fp_sendconn_accepted = 0;
 int           rdma_pending_conn_request = 0;
 int           rdma_eager_limit = 32;
@@ -165,7 +166,8 @@ int rdma_initial_credits        = 0;
 int rdma_rq_size;
 int using_mpirun_rsh            = 1;
 
-uint32_t viadev_srq_size = 512;
+uint32_t viadev_srq_alloc_size = 4096;
+uint32_t viadev_srq_fill_size = 512;
 uint32_t viadev_srq_limit = 30;
 uint32_t viadev_max_r3_oust_send = 32;
 
@@ -233,6 +235,8 @@ int use_hwloc_cpu_binding=0;
 /* Use of LIMIC of RMA Communication */
 int limic_put_threshold;
 int limic_get_threshold;
+
+mv2_polling_level rdma_polling_level = MV2_POLLING_LEVEL_1;
 
 static int check_hsam_parameters(void);
 
@@ -510,6 +514,56 @@ int rdma_get_rail_sharing_policy(char *value)
         MPIU_Usage_printf("Invalid small message scheduling\n");
     }
     return policy;
+}
+
+#undef FUNCNAME
+#define FUNCNAME rdma_set_smp_parameters
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int rdma_set_smp_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
+{
+    switch  (proc->arch_type){
+        case MV2_ARCH_INTEL:
+        case MV2_ARCH_INTEL_XEON_E5630_8:
+        case MV2_ARCH_INTEL_CLOVERTOWN_8:
+        case MV2_ARCH_INTEL_XEON_DUAL_4:
+        case MV2_ARCH_INTEL_HARPERTOWN_8:
+#if defined(_SMP_LIMIC_)
+            g_smp_eagersize = 8192;
+#else
+            g_smp_eagersize = 65536;
+#endif
+            s_smpi_length_queue = 262144;
+            s_smp_num_send_buffer = 256;
+            s_smp_batch_size = 8;
+            break;
+        
+        case MV2_ARCH_INTEL_NEHALEM_8:
+        case MV2_ARCH_INTEL_NEHALEM_16:
+            g_smp_eagersize = 65536;
+            s_smpi_length_queue = 262144;
+            s_smp_num_send_buffer = 256;
+            s_smp_batch_size = 8;
+            break;
+
+        case MV2_ARCH_AMD_BARCELONA_16:
+        case MV2_ARCH_AMD_MAGNY_COURS_24:
+        case MV2_ARCH_AMD_OPTERON_DUAL_4:
+        case MV2_ARCH_AMD:
+            g_smp_eagersize = 4096;
+            s_smpi_length_queue = 65536;
+            s_smp_num_send_buffer = 32;
+            s_smp_batch_size = 8;
+            break;
+
+        default:
+            g_smp_eagersize = 16384;
+            s_smpi_length_queue = 65536;
+            s_smp_num_send_buffer = 128;
+            s_smp_batch_size = 8;
+            break;
+    }
+    return 0;
 }
 
 #undef FUNCNAME
@@ -980,16 +1034,12 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
     }
 #endif /* defined(RDMA_CM) */
 
-/* Reading SMP user parameters */
+    /* Set SMP params based on architecture */
+    rdma_set_smp_parameters( proc );
 
-    g_smp_eagersize = SMP_EAGERSIZE;
-    s_smpi_length_queue = SMPI_LENGTH_QUEUE;
-    s_smp_num_send_buffer = SMP_NUM_SEND_BUFFER;
-    s_smp_batch_size = SMP_BATCH_SIZE;
-
+    /* Reading SMP user parameters */
     if ((value = getenv("SMP_EAGERSIZE")) != NULL) {
         g_smp_eagersize = user_val_to_bytes(value,"SMP_EAGERSIZE");
-        default_eager_size = 0;
     }
 
     if ((value = getenv("SMPI_LENGTH_QUEUE")) != NULL) {
@@ -1023,27 +1073,32 @@ static void rdma_set_params_based_on_cluster_size ( int cluster_size,
 
         case LARGE_CLUSTER:
             rdma_vbuf_total_size = lc_vbuf_total_size + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 4 * 1024;
             num_rdma_buffer = lc_num_rdma_buff;
             rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
             break;
 
         case MEDIUM_CLUSTER:
             rdma_vbuf_total_size = mc_vbuf_total_size + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 4 * 1024;
             num_rdma_buffer = mc_num_rdma_buff;
             rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
             break;
         case SMALL_CLUSTER:
             rdma_vbuf_total_size = sc_vbuf_total_size + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 4 * 1024;
             num_rdma_buffer = sc_num_rdma_buff;
             rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
             break;
         case VERY_SMALL_CLUSTER:
             rdma_vbuf_total_size = vsc_vbuf_total_size + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 4 * 1024;
             num_rdma_buffer = vsc_num_rdma_buff;
             rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
             break;
         default:
             rdma_vbuf_total_size = def_vbuf_total_size + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 4 * 1024;
             num_rdma_buffer = def_num_rdma_buff;
             rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
             break;
@@ -1056,6 +1111,7 @@ static void  rdma_set_default_parameters_numrail_4(struct MPIDI_CH3I_RDMA_Proces
     switch(proc->arch_hca_type) {
         case MV2_ARCH_INTEL_XEON_E5630_8_HCA_MLX_CX_QDR:
             rdma_vbuf_total_size = 17 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 5 * 1024;
             rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
             rdma_eagersize_1sc           = 4 * 1024;
             rdma_put_fallback_threshold  = 8 * 1024;
@@ -1064,6 +1120,7 @@ static void  rdma_set_default_parameters_numrail_4(struct MPIDI_CH3I_RDMA_Proces
 
         case MV2_ARCH_INTEL_NEHLM_8_HCA_MLX_CX_QDR:
             rdma_vbuf_total_size = 17 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 5 * 1024;
             rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
             rdma_eagersize_1sc           = 8 * 1024;
             rdma_put_fallback_threshold  = 8 * 1024;
@@ -1072,6 +1129,7 @@ static void  rdma_set_default_parameters_numrail_4(struct MPIDI_CH3I_RDMA_Proces
 
         case MV2_ARCH_AMD_MGNYCRS_24_HCA_MLX_CX_QDR:
             rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 5 * 1024;
             rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
             rdma_eagersize_1sc           = 4 * 1024;
             rdma_put_fallback_threshold  = 4 * 1024;
@@ -1080,6 +1138,7 @@ static void  rdma_set_default_parameters_numrail_4(struct MPIDI_CH3I_RDMA_Proces
 
         case MV2_ARCH_AMD_BRCLNA_16_HCA_MLX_CX_DDR:
             rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 9 * 1024;
             rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
             rdma_eagersize_1sc           = 4 * 1024;
             rdma_put_fallback_threshold  = 128;
@@ -1087,8 +1146,18 @@ static void  rdma_set_default_parameters_numrail_4(struct MPIDI_CH3I_RDMA_Proces
             break;
 
         CASE_MV2_ANY_ARCH_WITH_MLX_CX_QDR:
+            rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 5 * 1024;
+            rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+            rdma_eagersize_1sc           = 4 * 1024;
+            rdma_put_fallback_threshold  = 8 * 1024;
+            rdma_get_fallback_threshold  = 0;
+            break;
+
+        case MV2_ARCH_INTEL_CLVRTWN_8_HCA_MLX_CX_DDR:
         CASE_MV2_ANY_ARCH_WITH_MLX_CX_DDR:
             rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 9 * 1024;
             rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
             rdma_eagersize_1sc           = 4 * 1024;
             rdma_put_fallback_threshold  = 8 * 1024;
@@ -1143,6 +1212,7 @@ static void  rdma_set_default_parameters_numrail_4(struct MPIDI_CH3I_RDMA_Proces
             rdma_eagersize_1sc               = 4 * 1024;
             rdma_put_fallback_threshold      = 8 * 1024;
             rdma_get_fallback_threshold      = 256 * 1024;
+            rdma_fp_buffer_size = rdma_vbuf_total_size;
             break;
     }
 }
@@ -1153,6 +1223,7 @@ static void  rdma_set_default_parameters_numrail_3(struct MPIDI_CH3I_RDMA_Proces
     switch(proc->arch_hca_type) {
         case MV2_ARCH_INTEL_XEON_E5630_8_HCA_MLX_CX_QDR:
             rdma_vbuf_total_size = 17 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 5 * 1024;
             rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
             rdma_eagersize_1sc           = 4 * 1024;
             rdma_put_fallback_threshold  = 8 * 1024;
@@ -1161,6 +1232,7 @@ static void  rdma_set_default_parameters_numrail_3(struct MPIDI_CH3I_RDMA_Proces
 
         case MV2_ARCH_INTEL_NEHLM_8_HCA_MLX_CX_QDR:
             rdma_vbuf_total_size = 17 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 5 * 1024;
             rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
             rdma_eagersize_1sc           = 8 * 1024;
             rdma_put_fallback_threshold  = 8 * 1024;
@@ -1169,6 +1241,7 @@ static void  rdma_set_default_parameters_numrail_3(struct MPIDI_CH3I_RDMA_Proces
 
         case MV2_ARCH_AMD_MGNYCRS_24_HCA_MLX_CX_QDR:
             rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 5 * 1024;
             rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
             rdma_eagersize_1sc           = 4 * 1024;
             rdma_put_fallback_threshold  = 4 * 1024;
@@ -1177,15 +1250,26 @@ static void  rdma_set_default_parameters_numrail_3(struct MPIDI_CH3I_RDMA_Proces
 
         case MV2_ARCH_AMD_BRCLNA_16_HCA_MLX_CX_DDR:
             rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 9 * 1024;
             rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
             rdma_eagersize_1sc           = 4 * 1024;
             rdma_put_fallback_threshold  = 128;
             rdma_get_fallback_threshold  = 0;
             break;
 
+        case MV2_ARCH_INTEL_CLVRTWN_8_HCA_MLX_CX_DDR:
         CASE_MV2_ANY_ARCH_WITH_MLX_CX_DDR:
+            rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 9 * 1024;
+            rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+            rdma_eagersize_1sc           = 4 * 1024;
+            rdma_put_fallback_threshold  = 8 * 1024;
+            rdma_get_fallback_threshold  = 0;
+            break;
+
         CASE_MV2_ANY_ARCH_WITH_MLX_CX_QDR:
             rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 5 * 1024;
             rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
             rdma_eagersize_1sc           = 4 * 1024;
             rdma_put_fallback_threshold  = 8 * 1024;
@@ -1240,6 +1324,7 @@ static void  rdma_set_default_parameters_numrail_3(struct MPIDI_CH3I_RDMA_Proces
             rdma_eagersize_1sc               = 4 * 1024;
             rdma_put_fallback_threshold      = 8 * 1024;
             rdma_get_fallback_threshold      = 256 * 1024;
+            rdma_fp_buffer_size = rdma_vbuf_total_size;
             break;
     }
 }
@@ -1250,6 +1335,7 @@ static void  rdma_set_default_parameters_numrail_2(struct MPIDI_CH3I_RDMA_Proces
     switch(proc->arch_hca_type) {
         case MV2_ARCH_INTEL_XEON_E5630_8_HCA_MLX_CX_QDR:
             rdma_vbuf_total_size = 17 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 5 * 1024;
             rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
             rdma_eagersize_1sc           = 4 * 1024;
             rdma_put_fallback_threshold  = 8 * 1024;
@@ -1258,6 +1344,7 @@ static void  rdma_set_default_parameters_numrail_2(struct MPIDI_CH3I_RDMA_Proces
 
         case MV2_ARCH_INTEL_NEHLM_8_HCA_MLX_CX_QDR:
             rdma_vbuf_total_size = 17 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 5 * 1024;
             rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
             rdma_eagersize_1sc           = 8 * 1024;
             rdma_put_fallback_threshold  = 8 * 1024;
@@ -1266,6 +1353,7 @@ static void  rdma_set_default_parameters_numrail_2(struct MPIDI_CH3I_RDMA_Proces
 
         case MV2_ARCH_AMD_MGNYCRS_24_HCA_MLX_CX_QDR:
             rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 5 * 1024;
             rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
             rdma_eagersize_1sc           = 4 * 1024;
             rdma_put_fallback_threshold  = 4 * 1024;
@@ -1274,6 +1362,7 @@ static void  rdma_set_default_parameters_numrail_2(struct MPIDI_CH3I_RDMA_Proces
     
         case MV2_ARCH_AMD_BRCLNA_16_HCA_MLX_CX_DDR:
             rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 9 * 1024;
             rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
             rdma_eagersize_1sc           = 4 * 1024;
             rdma_put_fallback_threshold  = 128;
@@ -1281,8 +1370,18 @@ static void  rdma_set_default_parameters_numrail_2(struct MPIDI_CH3I_RDMA_Proces
             break;
 
         CASE_MV2_ANY_ARCH_WITH_MLX_CX_QDR:
+            rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 5 * 1024;
+            rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+            rdma_eagersize_1sc           = 4 * 1024;
+            rdma_put_fallback_threshold  = 8 * 1024;
+            rdma_get_fallback_threshold  = 0;
+            break;
+
+        case MV2_ARCH_INTEL_CLVRTWN_8_HCA_MLX_CX_DDR:
         CASE_MV2_ANY_ARCH_WITH_MLX_CX_DDR:
             rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 9 * 1024;
             rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
             rdma_eagersize_1sc           = 4 * 1024;
             rdma_put_fallback_threshold  = 8 * 1024;
@@ -1337,6 +1436,7 @@ static void  rdma_set_default_parameters_numrail_2(struct MPIDI_CH3I_RDMA_Proces
             rdma_eagersize_1sc               = 4 * 1024;
             rdma_put_fallback_threshold      = 8 * 1024;
             rdma_get_fallback_threshold      = 256 * 1024;
+            rdma_fp_buffer_size = rdma_vbuf_total_size;
             break;
     }
 }
@@ -1347,6 +1447,7 @@ static void  rdma_set_default_parameters_numrail_1(struct MPIDI_CH3I_RDMA_Proces
     switch(proc->arch_hca_type) {
         case MV2_ARCH_INTEL_XEON_E5630_8_HCA_MLX_CX_QDR:
             rdma_vbuf_total_size = 17 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 5 * 1024;
             rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
             rdma_eagersize_1sc           = 4 * 1024;
             rdma_put_fallback_threshold  = 8 * 1024;
@@ -1355,6 +1456,7 @@ static void  rdma_set_default_parameters_numrail_1(struct MPIDI_CH3I_RDMA_Proces
 
         case MV2_ARCH_INTEL_NEHLM_8_HCA_MLX_CX_QDR:
             rdma_vbuf_total_size = 17 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 5 * 1024;
             rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
             rdma_eagersize_1sc           = 8 * 1024;
             rdma_put_fallback_threshold  = 8 * 1024;
@@ -1363,6 +1465,7 @@ static void  rdma_set_default_parameters_numrail_1(struct MPIDI_CH3I_RDMA_Proces
 
         case MV2_ARCH_AMD_MGNYCRS_24_HCA_MLX_CX_QDR:
             rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 5 * 1024;
             rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
             rdma_eagersize_1sc           = 4 * 1024;
             rdma_put_fallback_threshold  = 4 * 1024;
@@ -1371,6 +1474,7 @@ static void  rdma_set_default_parameters_numrail_1(struct MPIDI_CH3I_RDMA_Proces
 
         case MV2_ARCH_AMD_BRCLNA_16_HCA_MLX_CX_DDR:
             rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 9 * 1024;
             rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
             rdma_eagersize_1sc           = 4 * 1024;
             rdma_put_fallback_threshold  = 128;
@@ -1378,8 +1482,18 @@ static void  rdma_set_default_parameters_numrail_1(struct MPIDI_CH3I_RDMA_Proces
             break;
 
         CASE_MV2_ANY_ARCH_WITH_MLX_CX_QDR:
+            rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 5 * 1024;
+            rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+            rdma_eagersize_1sc           = 4 * 1024;
+            rdma_put_fallback_threshold  = 8 * 1024;
+            rdma_get_fallback_threshold  = 0;
+            break;
+
+        case MV2_ARCH_INTEL_CLVRTWN_8_HCA_MLX_CX_DDR:
         CASE_MV2_ANY_ARCH_WITH_MLX_CX_DDR: 
             rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 9 * 1024;
             rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
             rdma_eagersize_1sc           = 4 * 1024;
             rdma_put_fallback_threshold  = 8 * 1024;
@@ -1434,6 +1548,7 @@ static void  rdma_set_default_parameters_numrail_1(struct MPIDI_CH3I_RDMA_Proces
             rdma_eagersize_1sc               = 4 * 1024;
             rdma_put_fallback_threshold      = 8 * 1024;
             rdma_get_fallback_threshold      = 256 * 1024;
+            rdma_fp_buffer_size = rdma_vbuf_total_size;
             break;
     }
 }
@@ -1446,12 +1561,26 @@ static void  rdma_set_default_parameters_numrail_unknwn(struct MPIDI_CH3I_RDMA_P
         
         case MV2_ARCH_INTEL_XEON_E5630_8_HCA_MLX_CX_QDR:
             rdma_vbuf_total_size = 17 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 5 * 1024;
             rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
             rdma_put_fallback_threshold  = 8 * 1024;
             rdma_get_fallback_threshold  = 0;
             break;
 
         CASE_MV2_ANY_ARCH_WITH_MLX_CX_QDR:
+            rdma_set_params_based_on_cluster_size( proc->cluster_size, 
+                     2*1024,  4, /* Values for large cluster size */
+                     4*1024, 16, /* Values for medium cluster size */
+                    12*1024, 32, /* Values for small cluster size */
+                    12*1024, 32, /* Values for very small cluster size */
+                    12*1024, 32);/* Values for unknown cluster size */
+            rdma_eagersize_1sc           = 4 * 1024;
+            rdma_put_fallback_threshold  = 8 * 1024;
+            rdma_get_fallback_threshold  = 0;
+            rdma_fp_buffer_size = 4 * 1024;
+            break;
+
+        case MV2_ARCH_INTEL_CLVRTWN_8_HCA_MLX_CX_DDR:
         CASE_MV2_ANY_ARCH_WITH_MLX_CX_DDR:
             rdma_set_params_based_on_cluster_size( proc->cluster_size, 
                      2*1024,  4, /* Values for large cluster size */
@@ -1462,6 +1591,7 @@ static void  rdma_set_default_parameters_numrail_unknwn(struct MPIDI_CH3I_RDMA_P
             rdma_eagersize_1sc           = 4 * 1024;
             rdma_put_fallback_threshold  = 8 * 1024;
             rdma_get_fallback_threshold  = 0;
+            rdma_fp_buffer_size = 9 * 1024;
             break;
 
         CASE_MV2_ANY_ARCH_WITH_CHELSIO_T3:
@@ -1499,6 +1629,7 @@ static void  rdma_set_default_parameters_numrail_unknwn(struct MPIDI_CH3I_RDMA_P
             rdma_eagersize_1sc               = 4 * 1024;
             rdma_put_fallback_threshold      = 8 * 1024;
             rdma_get_fallback_threshold      = 256 * 1024;
+            rdma_fp_buffer_size = rdma_vbuf_total_size;
             break;
     }
 }
@@ -1539,6 +1670,7 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
     /* Setting the default values; these values are fine-tuned for specific platforms 
        in the following code */
     rdma_vbuf_total_size = 12 * 1024 + EAGER_THRESHOLD_ADJUST;
+    rdma_fp_buffer_size = RDMA_FP_DEFAULT_BUF_SIZE;
     num_rdma_buffer = 16;
     rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
 
@@ -1822,6 +1954,14 @@ void rdma_get_user_parameters(int num_proc, int me)
         }
     }
 
+    if ((value = getenv("MV2_RDMA_FAST_PATH_BUF_SIZE")) != NULL
+        && MPIDI_CH3I_RDMA_Process.has_adaptive_fast_path) {
+        rdma_fp_buffer_size = atoi(value);
+    }
+
+    if ((value = getenv("MV2_POLLING_LEVEL")) != NULL) {
+        rdma_polling_level =  atoi(value);
+    }
     /* We have read the value of the rendezvous threshold, and the number of
      * rails used for communication, increase the striping threshold
      * accordingly */
@@ -1832,16 +1972,25 @@ void rdma_get_user_parameters(int num_proc, int me)
     striping_threshold = rdma_vbuf_total_size * rdma_num_ports *
                          rdma_num_qp_per_port * rdma_num_hcas;
        
+    if ((value = getenv("MV2_SRQ_MAX_SIZE")) != NULL) {
+        viadev_srq_alloc_size = (uint32_t) atoi(value);
+    }
+
     if ((value = getenv("MV2_SRQ_SIZE")) != NULL) {
-        viadev_srq_size = (uint32_t) atoi(value);
+        viadev_srq_fill_size = (uint32_t) atoi(value);
     }
 
     if ((value = getenv("MV2_SRQ_LIMIT")) != NULL) {
         viadev_srq_limit = (uint32_t) atoi(value);
 
-        if (viadev_srq_limit > viadev_srq_size) {
+        if (viadev_srq_limit > viadev_srq_fill_size) {
 	        MPIU_Usage_printf("SRQ limit shouldn't be greater than SRQ size\n");
         }
+    }
+
+    if (MPIDI_CH3I_RDMA_Process.has_srq) {
+        rdma_credit_preserve = (viadev_srq_fill_size > 200) ?
+            (viadev_srq_fill_size - 100) : (viadev_srq_fill_size / 2);
     }
 
     if ((value = getenv("MV2_IBA_EAGER_THRESHOLD")) != NULL) {

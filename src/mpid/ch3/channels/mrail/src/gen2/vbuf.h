@@ -78,9 +78,11 @@ struct ibv_wr_descriptor
     void* next;
 };
 
-#define VBUF_BUFFER_SIZE (rdma_vbuf_total_size - VBUF_FAST_RDMA_EXTRA_BYTES)
+#define VBUF_BUFFER_SIZE (rdma_vbuf_total_size)
 
 #define MRAIL_MAX_EAGER_SIZE VBUF_BUFFER_SIZE
+
+#define MRAIL_MAX_RDMA_FP_SIZE (rdma_fp_buffer_size - VBUF_FAST_RDMA_EXTRA_BYTES)
 
 typedef struct vbuf
 {

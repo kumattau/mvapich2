@@ -809,11 +809,11 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
         send_packet->host_id = hostid;
 
         for(i = 0; i < pg_size; i++) {
-            if(i == pg_rank) {
+            MPIDI_PG_Get_vc(pg, i, &vc); 
+			if (!qp_required(vc, pg_rank, i)) {
                 send_packet->val[i].sr_qp_num = -1;
                 info->hca_type[i] = MPIDI_CH3I_RDMA_Process.hca_type;
             } else {
-                MPIDI_PG_Get_vc(pg, i, &vc); 
 
                 send_packet->lid     = vc->mrail.rails[rail_index].lid;
                 send_packet->gid     = vc->mrail.rails[rail_index].gid;

@@ -180,6 +180,13 @@ int MPIDI_CH3_EagerContigSend( MPID_Request **sreq_p,
 			       int tag, MPID_Comm * comm, int context_offset )
 {
     int mpi_errno = MPI_SUCCESS;
+
+#if defined(_OSU_MVAPICH_)
+    if(MPIDI_CH3_ContigSend(sreq_p, MPIDI_CH3_PKT_EAGER_SEND_CONTIG, buf, data_sz, 
+                rank, tag, comm, context_offset) == 0)
+        goto fn_exit;
+#endif
+
     MPIDI_VC_t * vc;
     MPIDI_CH3_Pkt_t upkt;
     MPIDI_CH3_Pkt_eager_send_t * const eager_pkt = &upkt.eager_send;
@@ -225,6 +232,7 @@ int MPIDI_CH3_EagerContigSend( MPID_Request **sreq_p,
 	MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_SEND);
     }
 
+ fn_exit:
  fn_fail:
     return mpi_errno;
 }
@@ -608,6 +616,85 @@ int MPIDI_CH3_EagerContigIsend( MPID_Request **sreq_p,
     (rreq_)->dev.recv_data_sz = (pkt_)->data_sz;		\
     MPIDI_Request_set_seqnum((rreq_), (pkt_)->seqnum);		\
     MPIDI_Request_set_msg_type((rreq_), (msg_type_));		\
+}
+
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3_PktHandler_EagerSend_Contig
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int MPIDI_CH3_PktHandler_EagerSend_Contig( MPIDI_VC_t *vc, 
+        MPIDI_CH3_Pkt_t *pkt, 
+        MPIDI_msg_sz_t *buflen, MPID_Request **rreqp )
+{
+    MPIDI_CH3_Pkt_eager_send_t * eager_pkt = &pkt->eager_send;
+    MPID_Request * rreq;
+    int found;
+    int complete;
+    char *data_buf;
+    MPIDI_msg_sz_t data_len;
+    int mpi_errno = MPI_SUCCESS;
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_PKTHANDLER_EAGERSEND_CONTIG);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_PKTHANDLER_EAGERSEND_CONTIG);
+
+    MPIU_THREAD_CS_ENTER(MSGQUEUE,);
+
+    MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
+   "received eager send contig pkt, sreq=0x%08x, rank=%d, tag=%d, context=%d",
+   eager_pkt->sender_req_id, eager_pkt->match.parts.rank, 
+   eager_pkt->match.parts.tag, eager_pkt->match.parts.context_id));
+    MPIU_DBG_MSGPKT(vc,eager_pkt->match.parts.tag,
+           eager_pkt->match.parts.context_id,
+           eager_pkt->match.parts.rank,eager_pkt->data_sz,
+           "ReceivedEager");
+       
+    rreq = MPIDI_CH3U_Recvq_FDP_or_AEU(&eager_pkt->match, &found);
+    MPIU_ERR_CHKANDJUMP1(!rreq, mpi_errno,MPI_ERR_OTHER, "**nomemreq", "**nomemuereq %d", MPIDI_CH3U_Recvq_count_unexp());
+   
+    set_request_info(rreq, eager_pkt, MPIDI_REQUEST_EAGER_MSG);
+    
+    data_len = ((*buflen >= rreq->dev.recv_data_sz)
+                ? rreq->dev.recv_data_sz : *buflen );
+    data_buf = (char *)pkt + sizeof(MPIDI_CH3_Pkt_eager_send_t);
+
+    if (rreq->dev.recv_data_sz == 0) {
+        /* return the number of bytes processed in this function */
+        *buflen = sizeof(MPIDI_CH3_Pkt_eager_send_t);
+        MPIDI_CH3U_Request_complete(rreq);
+        *rreqp = NULL;
+    }
+    else {
+   if (found) {
+       mpi_errno = MPIDI_CH3U_Receive_data_found( rreq, data_buf,
+               &data_len, &complete );
+   }
+   else {
+       mpi_errno = MPIDI_CH3U_Receive_data_unexpected( rreq, data_buf,
+               &data_len, &complete );
+   }
+
+   if (mpi_errno != MPI_SUCCESS) {
+       MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**ch3|postrecv",
+                "**ch3|postrecv %s", "MPIDI_CH3_PKT_EAGER_SEND");
+   }
+
+        /* return the number of bytes processed in this function */
+   *buflen = data_len + sizeof(MPIDI_CH3_Pkt_eager_send_t);
+
+   if (complete) 
+   {
+       MPIDI_CH3U_Request_complete(rreq);
+       *rreqp = NULL;
+   }
+   else
+   {
+       *rreqp = rreq;
+   }
+    }
+
+fn_fail:
+    MPIU_THREAD_CS_EXIT(MSGQUEUE,);
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_PKTHANDLER_EAGERSEND_CONTIG);
+    return mpi_errno;
 }
 
 /* FIXME: This is not optimized for short messages, which 

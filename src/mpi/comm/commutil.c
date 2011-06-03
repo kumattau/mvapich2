@@ -108,16 +108,13 @@ int MPIR_Comm_init(MPID_Comm *comm_p)
     comm_p->intranode_table = NULL;
     comm_p->internode_table = NULL;
 #if defined(_OSU_MVAPICH_)
-    comm_p->shmem_coll_ok = 0;
+    comm_p->ch.shmem_coll_ok = 0;
+    comm_p->ch.is_global_block  = 0;
     /* We are yet to call create_2level_comm on this new intra-communicator
      * We should make sure that shared-mem collectives do not get used
      * with this communicator */ 
-    comm_p->leader_comm=MPI_COMM_NULL;
-    comm_p->shmem_comm=MPI_COMM_NULL;
-    comm_p->bcast_mmap_ptr = NULL;
-    comm_p->bcast_shmem_file = NULL;
-    comm_p->bcast_fd = -1;
-    comm_p->bcast_index = 0;
+    comm_p->ch.leader_comm=MPI_COMM_NULL;
+    comm_p->ch.shmem_comm=MPI_COMM_NULL;
 
 #endif /* defined(_OSU_MVAPICH_) */
 
@@ -210,9 +207,10 @@ int MPIR_Setup_intercomm_localcomm( MPID_Comm *intercomm_ptr )
 
     intercomm_ptr->local_comm = localcomm_ptr;
 #if defined(_OSU_MVAPICH_)
-    localcomm_ptr->shmem_coll_ok = 0;
-    localcomm_ptr->shmem_comm = MPI_COMM_NULL;
-    localcomm_ptr->leader_comm = MPI_COMM_NULL;
+    localcomm_ptr->ch.shmem_coll_ok = 0;
+    localcomm_ptr->ch.is_global_block  = 0;
+    localcomm_ptr->ch.shmem_comm = MPI_COMM_NULL;
+    localcomm_ptr->ch.leader_comm = MPI_COMM_NULL;
     MPID_Dev_comm_create_hook( localcomm_ptr );
 #endif
 
@@ -1162,7 +1160,7 @@ static int comm_delete(MPID_Comm * comm_ptr, int isDisconnect)
 
         /* free the intra/inter-node communicators, if they exist */
 #if defined(_OSU_MVAPICH_)
-        if( comm_ptr->shmem_coll_ok == 1) { 
+        if( comm_ptr->ch.shmem_coll_ok == 1) { 
              free_2level_comm(comm_ptr); 
         } 
 #endif

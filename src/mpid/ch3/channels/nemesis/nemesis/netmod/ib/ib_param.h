@@ -72,12 +72,14 @@ extern int                  rdma_max_r3_pending_data;
 extern int                  rdma_vbuf_total_size;
 extern int                  rdma_max_inline_size;
 
-extern uint32_t             viadev_srq_size;
+extern uint32_t             viadev_srq_alloc_size;
+extern uint32_t             viadev_srq_fill_size;
 extern uint32_t             viadev_srq_limit;
 extern uint32_t             viadev_max_r3_oust_send;
 
 extern int                  rdma_polling_set_threshold;
 extern int                  rdma_polling_set_limit;
+extern int                  rdma_fp_buffer_size;
 extern int                  rdma_fp_sendconn_accepted;
 extern int                  rdma_pending_conn_request;
 extern int		            rdma_eager_limit;
@@ -154,6 +156,7 @@ extern int                  use_iboeth;
 #define RDMA_INITIAL_PREPOST_DEPTH      (10)
 #define RDMA_LOW_WQE_THRESHOLD          (10)
 #define RDMA_MAX_RDMA_SIZE              (4194304)
+#define RDMA_FP_DEFAULT_BUF_SIZE        (4096)
 
 #define RDMA_IWARP_DEFAULT_MULTIPLE_CQ_THRESHOLD (32)
 

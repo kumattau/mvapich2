@@ -12,7 +12,11 @@
 
 #ifndef NEMESIS_BUILD
 #include "mpidi_ch3i_rdma_conf.h"
+#ifndef DAPL_DEFAULT_PROVIDER
 #include "ibv_param.h"
+#else
+#include "udapl_param.h"
+#endif
 #else
 #define _GNU_SOURCE 1
 #include "ib_param.h"

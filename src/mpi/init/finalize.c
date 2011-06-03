@@ -228,7 +228,7 @@ int MPI_Finalize( void )
              MPIU_ERR_POP(mpi_errno); 
     }
 #ifndef _OSU_PSM_ 
-    if( MPIR_Process.comm_world->shmem_coll_ok == 1) {
+    if( MPIR_Process.comm_world->ch.shmem_coll_ok == 1) {
         mpi_errno = free_2level_comm(MPIR_Process.comm_world);
         if (mpi_errno) { 
              MPIU_ERR_POP(mpi_errno); 

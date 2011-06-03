@@ -127,7 +127,10 @@ AC_ARG_WITH([fuse-libpath],
             [])
 
 AC_PROG_CC
+AC_PROG_YACC
+AC_PROG_LEX
 AC_PROG_INSTALL
+AC_PROG_RANLIB
 PAC_PROG_CHECK_INSTALL_WORKS
 PAC_PROG_MKDIR_P
 PAC_PROG_MAKE
@@ -138,7 +141,7 @@ MPILIBNAME=${MPILIBNAME:-"mpich"}
 AC_SUBST(MPILIBNAME)
 
 AC_SEARCH_LIBS(ceil, m,,[AC_MSG_ERROR([libm not found.])],)
-AC_CHECK_FUNCS(strndup get_current_dir_name)
+AC_CHECK_FUNCS([strdup strndup get_current_dir_name])
 
 if test -n "`echo $build_os | grep solaris`"; then
     AC_SEARCH_LIBS(herror, resolv,,[AC_MSG_ERROR([libresolv not found.])],)
@@ -307,4 +310,5 @@ AC_SUBST(master_top_builddir)
 AC_SUBST(AR)
 AC_SUBST(RANLIB)
 
-AC_OUTPUT(Makefile)
+AC_CONFIG_FILES([Makefile src/Makefile src/hostfile/Makefile])
+AC_OUTPUT

@@ -211,6 +211,35 @@ static int allocate_vbuf_region(int nvbufs)
        ibv_error_abort(GEN_EXIT_ERR, "unable to malloc vbufs DMA buffer");
     }
 
+    /* region should be registered for all of the hca */
+    for (i=0 ; i < rdma_num_hcas; ++i)
+    {
+        reg->mem_handle[i] = ibv_reg_mr(
+            ptag_save[i],
+            vbuf_dma_buffer,
+            nvbufs * rdma_vbuf_total_size,
+            IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+
+        if (!reg->mem_handle[i])
+        {
+            /* de-register already registered with other hcas*/
+            for (i = i-1; i >=0 ; --i)
+            {
+                if (reg->mem_handle[i] != NULL
+                        && ibv_dereg_mr(reg->mem_handle[i]))
+                {
+                    fprintf(stderr, "[%s %d] Cannot de-register vbuf region\n", __FILE__, __LINE__);
+                }
+            }
+            /* free allocated buffers */
+            free(vbuf_dma_buffer);
+            free(mem);
+            MPIU_Free(reg);
+            fprintf(stderr, "[%s %d] Cannot register vbuf region\n", __FILE__, __LINE__);
+            return -1;
+        }
+    }
+
     MPIU_Memset(mem, 0, nvbufs * sizeof(vbuf));
     MPIU_Memset(vbuf_dma_buffer, 0, nvbufs * rdma_vbuf_total_size);
 
@@ -232,22 +261,6 @@ static int allocate_vbuf_region(int nvbufs)
         num_free_vbuf,
         num_vbuf_freed,
         num_vbuf_get);
-
-    /* region should be registered for both of the hca */
-    for (; i < rdma_num_hcas; ++i)
-    {
-        reg->mem_handle[i] = ibv_reg_mr(
-            ptag_save[i],
-            vbuf_dma_buffer,
-            nvbufs * rdma_vbuf_total_size,
-            IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
-
-        if (!reg->mem_handle[i])
-        {
-            fprintf(stderr, "[%s %d] Cannot register vbuf region\n", __FILE__, __LINE__);
-            return -1;
-        }
-    }
 
     /* init the free list */
     for (i = 0; i < nvbufs - 1; ++i)
@@ -298,7 +311,12 @@ int allocate_vbufs(struct ibv_pd* ptag[], int nvbufs)
         ptag_save[i] = ptag[i];
     }
 
-    return allocate_vbuf_region(nvbufs);
+    if(allocate_vbuf_region(nvbufs) != 0) {
+        ibv_va_error_abort(GEN_EXIT_ERR,
+            "VBUF reagion allocation failed. Pool size %d\n", vbuf_n_allocated);
+    }
+    
+    return 0;
 }
 
 vbuf* get_vbuf(void)
@@ -323,13 +341,9 @@ vbuf* get_vbuf(void)
      */
     if (NULL == free_vbuf_head)
     {
-        allocate_vbuf_region(rdma_vbuf_secondary_pool_size);
-
-        if (NULL == free_vbuf_head)
-        {
+        if(allocate_vbuf_region(rdma_vbuf_secondary_pool_size) != 0) {
             ibv_va_error_abort(GEN_EXIT_ERR,
-                    "No free vbufs. Pool size %d",
-                       vbuf_n_allocated);
+                "VBUF reagion allocation failed. Pool size %d\n", vbuf_n_allocated);
         }
     }
 

@@ -75,25 +75,29 @@ int vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
                 sizeof(struct vbuf) * num_rdma_buffer);
 
 #ifdef USE_MEMORY_TRACING
-         vbuf_rdma_buf = MPIU_Malloc(rdma_vbuf_total_size * num_rdma_buffer);
+        vbuf_rdma_buf = MPIU_Malloc(rdma_fp_buffer_size * num_rdma_buffer);
+        if (vbuf_rdma_buf == NULL) {
+            DEBUG_PRINT("malloc failed: vbuf DMA in vbuf_fast_rdma_alloc");
+            goto fn_exit;
+        }
 #else
         /* allocate vbuf RDMA buffers */
         if(posix_memalign((void **)&vbuf_rdma_buf, pagesize,
-            rdma_vbuf_total_size * num_rdma_buffer)) {
+            rdma_fp_buffer_size * num_rdma_buffer)) {
             DEBUG_PRINT("malloc failed: vbuf DMA in vbuf_fast_rdma_alloc");
             goto fn_exit;
         }
 #endif /* USE_MEMORY_TRACING */
 
-        memset(vbuf_rdma_buf, 0, rdma_vbuf_total_size * num_rdma_buffer);
+        memset(vbuf_rdma_buf, 0, rdma_fp_buffer_size * num_rdma_buffer);
 
         /* REGISTER RDMA SEND BUFFERS */
         for ( i = 0 ; i < ib_hca_num_hcas; i ++ ) {
             mem_handle[i] =  register_memory(vbuf_rdma_buf,
-                                rdma_vbuf_total_size * num_rdma_buffer, i);
+                                rdma_fp_buffer_size * num_rdma_buffer, i);
             if (!mem_handle[i]) {
                 DEBUG_PRINT("fail to register rdma memory, size %d\n",
-                        rdma_vbuf_total_size * num_rdma_buffer);
+                        rdma_fp_buffer_size * num_rdma_buffer);
                 goto fn_fail;
             }
         }
@@ -102,9 +106,9 @@ int vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
         for (i = 0; i < num_rdma_buffer; i++) {
             v = ((vbuf *)vbuf_ctrl_buf) + i;
             v->head_flag = (VBUF_FLAG_TYPE *) ( (char *)(vbuf_rdma_buf) + (i *
-                          rdma_vbuf_total_size ) );
+                                            rdma_fp_buffer_size ) );
             v->buffer = (unsigned char *) ( (char *)(vbuf_rdma_buf) + (i *
-                           rdma_vbuf_total_size) + sizeof(*v->head_flag) );
+                           rdma_fp_buffer_size) + sizeof(*v->head_flag) );
             v->vc     = c;
         }
 

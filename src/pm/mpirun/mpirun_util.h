@@ -17,41 +17,41 @@
 #include <unistd.h>
 #include <string.h>
 
-char *vedit_str (char *const, const char *, va_list);
-char *edit_str (char *const, char const *const, ...);
-char *mkstr (const char *, ...);
-char *append_str (char *, char const * const);
+char *vedit_str(char *const, const char *, va_list);
+char *edit_str(char *const, char const *const, ...);
+char *mkstr(const char *, ...);
+char *append_str(char *, char const *const);
 
-int read_socket (int, void *, size_t);
-int write_socket (int, void *, size_t);
+int read_socket(int, void *, size_t);
+int write_socket(int, void *, size_t);
 
 typedef struct _process_info {
-	/* pid_t pid; */
-	long pid;
-	int rank;
+    /* pid_t pid; */
+    long pid;
+    int rank;
 } process_info_t;
 
 struct MPIR_PROCDESC {
-	char *host_name;
-	char *executable_name;
-	long pid;
+    char *host_name;
+    char *executable_name;
+    long pid;
 };
 
 struct spawn_info_s {
     char spawnhost[32];
-    int  sparenode;
+    int sparenode;
 };
 #define MPIR_PROCDESC_s (sizeof (struct MPIR_PROCDESC))
 #define process_info_s (sizeof (process_info_t))
 
-static inline int env2int (char *env_ptr)
+static inline int env2int(char *env_ptr)
 {
-	return (env_ptr = getenv (env_ptr)) ? atoi (env_ptr) : 0;
+    return (env_ptr = getenv(env_ptr)) ? atoi(env_ptr) : 0;
 }
 
-static inline char *env2str (char *env_ptr)
+static inline char *env2str(char *env_ptr)
 {
-	return (env_ptr = getenv (env_ptr)) ? strdup (env_ptr) : NULL;
+    return (env_ptr = getenv(env_ptr)) ? strdup(env_ptr) : NULL;
 }
 
 #endif

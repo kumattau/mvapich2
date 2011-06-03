@@ -13,11 +13,6 @@
 #ifndef ERROR_HANDLING_H
 #define ERROR_HANDLING_H
 
-// Define a prefix to distinguish output from different processes
-// - prefix: string
-extern void set_error_prefix( char* prefix );
-
-
 // Configure an error signal handler 
 // for SIGSEGV, SIGFPE, SIGILL, SIGABRT, SIGBUS
 // - backtrace: if not 0, print a backtrace when an error occurs
@@ -29,5 +24,6 @@ extern int setup_error_sighandler( int backtrace );
 // - coresize: "unlimited" or string representation of a positive integer
 // - return value: on success, 0 is returned
 extern int set_coresize_limit( const char* coresize );
+
 
 #endif

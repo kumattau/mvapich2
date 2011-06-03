@@ -461,4 +461,22 @@ extern int use_thread_yield;
 #define MIN(a,b) ((a)<(b)?(a):(b))
 #endif
 
+/* MV2_POLLING_LEVEL
+Level 1 : Exit on finding a message on any channel 
+Level 2 : Exit on finding a message on RDMA_FP or SMP channel.
+          Continue on ibv_poll_cq success.
+Level 3 : Exit on finding a message on RDMA_FP channel.
+          Continue polling on SMP and ibv_poll_cq channels
+          until no more messages.
+Level 4 : Exit only after processing all the messages on 
+          all the channels
+*/
+typedef enum mv2_polling_level {
+    MV2_POLLING_LEVEL_1 = 1, 
+    MV2_POLLING_LEVEL_2, 
+    MV2_POLLING_LEVEL_3, 
+    MV2_POLLING_LEVEL_4,
+} mv2_polling_level; 
+                               
+extern mv2_polling_level    rdma_polling_level;
 #endif /* _UDAPL_PARAM_H */

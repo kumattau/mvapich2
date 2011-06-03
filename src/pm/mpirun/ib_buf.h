@@ -13,18 +13,16 @@
 #ifndef __IB_BUF__
 #define __IB_BUF__
 
+struct ib_buffer *create_ib_buffer(int size, int slot_size, char *name);
 
-struct ib_buffer* create_ib_buffer(int size, int slot_size, char* name);
+void free_ib_buffer(struct ib_buffer *buf);
 
-void	free_ib_buffer(struct ib_buffer* buf );
+int get_buf_slot(struct ib_buffer *buf, void **addr, int expect);
 
-int get_buf_slot(struct ib_buffer* buf, void** addr, int expect );
+int free_buf_slot(struct ib_buffer *buf, int slot, int expect);
 
-int free_buf_slot(struct ib_buffer* buf, int slot, int expect);
+void *ib_buffer_slot_addr(struct ib_buffer *buf, int slot);
 
-void* ib_buffer_slot_addr( struct ib_buffer* buf, int slot);
+void dump_ib_buffer(struct ib_buffer *buf);
 
-void	dump_ib_buffer(struct ib_buffer* buf);
-
-#endif // __IB_BUF__
-
+#endif                          // __IB_BUF__

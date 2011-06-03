@@ -20,9 +20,9 @@
 #if defined(_OSU_MVAPICH_)
 #include "coll_shmem.h"
 extern struct coll_runtime coll_param;
-#define ALLGATHER_SMALL_SYSTEM_SIZE       32
-#define ALLGATHER_MEDIUM_SYSTEM_SIZE      128
-#define ALLGATHER_LARGE_SYSTEM_SIZE       256       
+#define ALLGATHER_SMALL_SYSTEM_SIZE       128
+#define ALLGATHER_MEDIUM_SYSTEM_SIZE      256
+#define ALLGATHER_LARGE_SYSTEM_SIZE       512       
 #endif
 
 int allgather_tuning(int comm_size, int pof2)
@@ -428,7 +428,6 @@ int MPIR_Allgather_intra_MV2 (
                     
                     while (tmp_mask) {
                         dst = rank ^ tmp_mask;
-                        
                         tree_root = rank >> k;
                         tree_root <<= k;
                         
@@ -548,8 +547,7 @@ int MPIR_Allgather_intra_MV2 (
                 *errflag = TRUE;
                 MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
                 MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
-	    }
-
+            }
             curr_cnt *= 2;
             pof2 *= 2;
         }
@@ -763,28 +761,116 @@ int MPIR_Allgather_inter_MV2 (
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIR_Allgather_MV2(void *sendbuf, int sendcount, MPI_Datatype sendtype,
-                   void *recvbuf, int recvcount, MPI_Datatype recvtype,
-                   MPID_Comm *comm_ptr, int *errflag)
+                       void *recvbuf, int recvcount, MPI_Datatype recvtype,
+                       MPID_Comm * comm_ptr, int *errflag)
 {
+    
     int mpi_errno = MPI_SUCCESS;
-
     if (comm_ptr->comm_kind == MPID_INTRACOMM) {
+#if defined(_OSU_MVAPICH_)
+        int comm_size_is_pof2=0;
+        int nbytes=0, comm_size, recvtype_size;
+        
+        /* Get the size of the communicator */
+        comm_size = comm_ptr->local_size;
+        
+        /*Check if it's a pof2 or not*/    
+        if(!(comm_size & (comm_size-1))){
+            comm_size_is_pof2=1;
+        } 
+        
+        MPID_Datatype_get_size_macro(recvtype, recvtype_size);
+        nbytes = recvtype_size * recvcount;
+    
         /* intracommunicator */
-        mpi_errno = MPIR_Allgather_intra_MV2(sendbuf, sendcount, sendtype,
-                                         recvbuf, recvcount, recvtype,
-                                         comm_ptr, errflag);
-        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+        if (allgather_ranking == 1 && comm_ptr->ch.allgather_comm_ok == 1 && 
+           (nbytes <=  allgather_tuning(comm_size, comm_size_is_pof2))) {
+                    int i, rank;
+                    MPI_Aint   recvtype_extent;
+                    int sendtype_iscontig=0, recvtype_iscontig=0;
+                    void *tmp_recv_buf=NULL;
+                 
+                   if(sendtype != MPI_DATATYPE_NULL && recvtype != MPI_DATATYPE_NULL){
+                        MPIR_Datatype_iscontig(sendtype, &sendtype_iscontig);
+                        MPIR_Datatype_iscontig(recvtype, &recvtype_iscontig);
+                    }
+
+                    MPID_Datatype_get_extent_macro( recvtype, recvtype_extent );
+                    mpi_errno = PMPI_Comm_rank(comm_ptr->handle, &rank);
+                    if(mpi_errno) {
+                        MPIU_ERR_POP(mpi_errno);
+                    }
+
+                    MPID_Comm *allgather_comm_ptr;
+                    MPID_Comm_get_ptr(comm_ptr->ch.allgather_comm, allgather_comm_ptr);
+                    
+                    /*creation of a temporary recvbuf*/
+                    tmp_recv_buf = MPIU_Malloc( recvcount * comm_size * recvtype_extent ); 
+                    if (!tmp_recv_buf) { 
+                        mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, 
+                                                          FCNAME, __LINE__, MPI_ERR_OTHER, 
+                                                          "**nomem", 0 );
+                        return mpi_errno;
+                    }
+                    /* Calling Allgather with temporary buffer and allgather communicator */
+                    if(sendbuf != MPI_IN_PLACE) {
+                        mpi_errno = MPIR_Allgather_intra_MV2(sendbuf, sendcount, sendtype,
+                                                         tmp_recv_buf, recvcount, recvtype,
+                                                         allgather_comm_ptr, errflag);
+                    } else { 
+                        mpi_errno = MPIR_Allgather_intra_MV2(recvbuf + rank * recvcount * 
+                                                         recvtype_extent, recvcount, recvtype,
+                                                         tmp_recv_buf, recvcount, recvtype,
+                                                         allgather_comm_ptr, errflag);
+                    } 
+                    if (mpi_errno){
+                        MPIU_ERR_POP(mpi_errno);
+                    }
+                    /* Reordering data into recvbuf */ 
+                    if (sendtype_iscontig == 1 && recvtype_iscontig ==1 ) { 
+                            for (i=0; i<comm_size; i++){
+                                 MPIUI_Memcpy((void*)((char*)recvbuf +
+                                               (comm_ptr->ch.allgather_new_ranks[i])*nbytes),
+                                               (char*)tmp_recv_buf+ i*nbytes, nbytes);
+                            }
+                    } else { 
+                            for (i=0; i<comm_size; i++){
+                                 mpi_errno = MPIR_Localcopy( (void *)((char*)tmp_recv_buf + 
+                                                 i*recvcount*recvtype_extent),
+                                                 recvcount, recvtype,
+                                                 (void *)((char*)recvbuf + 
+                                                 (comm_ptr->ch.allgather_new_ranks[i])*
+                                                 recvcount*recvtype_extent),
+                                                 recvcount, recvtype);
+                                 if (mpi_errno){
+                                      MPIU_ERR_POP(mpi_errno);
+                                 }
+                            }
+                    } 
+                    MPIU_Free(tmp_recv_buf); 
+        } else {
+#endif /* #if defined(_OSU_MVAPICH_) */
+            mpi_errno = MPIR_Allgather_intra_MV2(sendbuf, sendcount, sendtype,
+                                                 recvbuf, recvcount, recvtype,
+                                                 comm_ptr, errflag);
+ #if defined(_OSU_MVAPICH_)        
+        }
+#endif /* #if defined(_OSU_MVAPICH_) */    
+        if (mpi_errno){
+            MPIU_ERR_POP(mpi_errno);
+        }
     } else {
         /* intercommunicator */
         mpi_errno = MPIR_Allgather_inter_MV2(sendbuf, sendcount, sendtype,
-                                         recvbuf, recvcount, recvtype,
-                                         comm_ptr, errflag);
-        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                                             recvbuf, recvcount, recvtype,
+                                             comm_ptr, errflag);
+        if (mpi_errno){
+            MPIU_ERR_POP(mpi_errno);
+        }
     }
-
-fn_exit:
+  
+  fn_exit:
     return mpi_errno;
-fn_fail:
+  fn_fail:
     goto fn_exit;
-}
-
+}                   

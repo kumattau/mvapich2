@@ -20,6 +20,117 @@
 #include "mpiimpl.h"
 #if defined(_OSU_MVAPICH_)
 #include "coll_shmem.h"
+
+/*
+Comm_N2_prev - retrieve greatest power of two < size of Comm.
+*/
+
+static int Comm_N2_prev(int x){ 
+    int v=1, old_v=1;
+    if(!(x & (x-1))) return x;
+    while(v < x) {
+        old_v = v;
+        v = v << 1;
+    }
+    return old_v;
+} 
+
+static int MPIR_Pairwise_Barrier_MV2(MPID_Comm *comm_ptr, int *errflag){
+    
+    int size, rank;
+    int d, dst, src;
+    int mpi_errno=MPI_SUCCESS;
+    MPI_Comm comm;
+    
+    size = comm_ptr->local_size;
+    /* Trivial barriers return immediately */
+    if (size == 1) return MPI_SUCCESS;
+
+    rank = comm_ptr->rank;
+    comm = comm_ptr->handle;
+
+    int N2_prev=Comm_N2_prev(size);
+    int surfeit = size - N2_prev;
+
+    /* Perform a combine-like operation */
+    if ( rank < N2_prev ) {
+        if( rank < surfeit ) {
+            /* get the fanin letter from the upper "half" process: */
+            dst = N2_prev + rank;
+            mpi_errno = MPIC_Recv_ft(NULL, 0, MPI_BYTE, dst, MPIR_BARRIER_TAG,
+                     comm, MPI_STATUS_IGNORE, errflag);
+        }
+
+        /* combine on embedded N2_prev power-of-two processes */
+        for (d = 1; d < N2_prev; d <<= 1) {
+            dst = (rank ^ d);
+            mpi_errno = MPIC_Sendrecv_ft(NULL, 0, MPI_BYTE, dst, MPIR_BARRIER_TAG,
+                     NULL , 0, MPI_BYTE, dst, MPIR_BARRIER_TAG,
+                     comm, MPI_STATUS_IGNORE, errflag);
+        }
+
+        /* fanout data to nodes above N2_prev... */
+        if ( rank < surfeit ) {
+            dst = N2_prev + rank;
+            mpi_errno = MPIC_Send_ft(NULL, 0, MPI_BYTE, dst, MPIR_BARRIER_TAG,
+                 comm, errflag);
+        }
+    } else {
+        /* fanin data to power of 2 subset */
+        src = rank - N2_prev;
+        mpi_errno = MPIC_Sendrecv_ft(NULL, 0, MPI_BYTE, src, MPIR_BARRIER_TAG,
+               NULL, 0, MPI_BYTE, src, MPIR_BARRIER_TAG,
+               comm, MPI_STATUS_IGNORE, errflag);
+    }
+
+    return mpi_errno;
+
+}
+
+static int MPIR_shmem_barrier_MV2(MPID_Comm *comm_ptr, int *errflag){
+    
+    int size, rank;
+    int mpi_errno=MPI_SUCCESS;
+    MPI_Comm comm;
+	
+    MPI_Comm shmem_comm = MPI_COMM_NULL, leader_comm = MPI_COMM_NULL;
+    MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
+    int local_rank = -1, local_size=0, my_rank;
+    int total_size, shmem_comm_rank;
+   
+    size = comm_ptr->local_size;
+    rank = comm_ptr->rank;
+    comm = comm_ptr->handle;
+
+    shmem_comm = comm_ptr->ch.shmem_comm;
+    leader_comm = comm_ptr->ch.leader_comm;
+
+    my_rank = comm_ptr->rank;
+    total_size = comm_ptr->local_size;
+    shmem_comm = comm_ptr->ch.shmem_comm;
+
+    MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
+    local_rank = shmem_commptr->rank;
+    local_size = shmem_commptr->local_size;
+    shmem_comm_rank = shmem_commptr->ch.shmem_comm_rank;
+    leader_comm = comm_ptr->ch.leader_comm;
+    MPID_Comm_get_ptr(leader_comm, leader_commptr);
+
+    if (local_size > 1) {
+        MPIDI_CH3I_SHMEM_COLL_Barrier_gather(local_size, local_rank, shmem_comm_rank);
+    }
+
+    if ((local_rank == 0) && (local_size != total_size)) {
+        mpi_errno = MPIR_Pairwise_Barrier_MV2(leader_commptr, errflag );
+    }
+
+    if (local_size > 1) {
+        MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(local_size, local_rank, shmem_comm_rank);
+    }
+
+    return mpi_errno;
+
+}
 #endif /* defined(_OSU_MVAPICH_) */
 
 /* This is the default implementation of the barrier operation.  The
@@ -27,14 +138,11 @@
    
    Algorithm: MPI_Barrier
 
-   We use the dissemination algorithm described in:
-   Debra Hensgen, Raphael Finkel, and Udi Manbet, "Two Algorithms for
-   Barrier Synchronization," International Journal of Parallel
-   Programming, 17(1):1-17, 1988.  
-
-   It uses ceiling(lgp) steps. In step k, 0 <= k <= (ceiling(lgp)-1),
-   process i sends to process (i + 2^k) % p and receives from process 
-   (i - 2^k + p) % p.
+   We use pairwise exchange with recursive doubling algorithm 
+   described in:
+   R. Gupta, V. Tipparaju, J. Nieplocha and D.K. Panda,
+   "Efficient Barrier using Remote Memory Operations on VIA-Based Clusters",
+   IEEE Cluster Computing, 2002
 
    Possible improvements: 
 
@@ -44,243 +152,62 @@
 */
 
 /* not declared static because it is called in ch3_comm_connect/accept */
+
 int MPIR_Barrier_intra_MV2( MPID_Comm *comm_ptr, int *errflag )
 {
     static const char FCNAME[] = "MPIR_Barrier_intra_MV2";
-    int size, rank, src, dst, mask;
+    int size;
     int mpi_errno=MPI_SUCCESS;
     int mpi_errno_ret=MPI_SUCCESS;
     MPI_Comm comm;
 
-	/* begin shmem_comm delaration */
-	MPI_Comm shmem_comm = MPI_COMM_NULL, leader_comm = MPI_COMM_NULL;
-    MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
-    int local_rank = -1, local_size=0, my_rank;
-    int total_size, shmem_comm_rank;
-    /* end shmem_comm declaration */
 
 	size = comm_ptr->local_size;
     /* Trivial barriers return immediately */
     if (size == 1) return MPI_SUCCESS;
-
-    rank = comm_ptr->rank;
-    comm = comm_ptr->handle;
-
+              
     /* Only one collective operation per communicator can be active at any
        time */
-    MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
+    MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER(comm_ptr);
 
 #if defined(_OSU_MVAPICH_)
-    if (enable_shmem_collectives)
-	{
-        shmem_comm = comm_ptr->shmem_comm;                                              
-        leader_comm = comm_ptr->leader_comm;
-	    
-	if ((disable_shmem_barrier == 0) && (comm_ptr->shmem_coll_ok == 1 )) {
 
 #if defined(CKPT)
-            MPIDI_CH3I_CR_lock();
+    MPIDI_CH3I_CR_lock();
 #endif
-            my_rank = comm_ptr->rank;
-    	    total_size = comm_ptr->local_size;
-            shmem_comm = comm_ptr->shmem_comm;
-        
 
-            MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
-            local_rank = shmem_commptr->rank;
-            local_size = shmem_commptr->local_size;
-            shmem_comm_rank = shmem_commptr->shmem_comm_rank;
-            leader_comm = comm_ptr->leader_comm;
-            MPID_Comm_get_ptr(leader_comm, leader_commptr);
-		 
-            if (local_size > 1) { 
-                MPIDI_CH3I_SHMEM_COLL_Barrier_gather(local_size, local_rank, shmem_comm_rank);
-            }
-		
-            if ((local_rank == 0) && (local_size != total_size)) {
-                    mpi_errno = MPIR_Barrier_intra_MV2( leader_commptr, errflag );
-                    if (mpi_errno) {
-                        /* for communication errors, just record the error but continue */
-                         *errflag = TRUE;
-                         MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                         MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
-                    }  
-            }
+    if (enable_shmem_collectives && disable_shmem_barrier == 0
+          && comm_ptr->ch.shmem_coll_ok == 1 ){
 
-            if (local_size > 1) {
-                MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(local_size, local_rank, shmem_comm_rank);
-            }
-#if defined(CKPT)
-            MPIDI_CH3I_CR_unlock();
-#endif
-        } else {
-            mpi_errno = MPIR_Barrier_intra( comm_ptr, errflag );
-            if (mpi_errno) {
-                /* for communication errors, just record the error but continue */
-                *errflag = TRUE;
-                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
-             }
-        }
-    } else
-	{
-#endif /*#if defined(_OSU_MVAPICH_)*/
-        mask = 0x1;
-        while (mask < size) { 
-            dst = (rank + mask) % size;
-            src = (rank - mask + size) % size;
-            mpi_errno = MPIC_Sendrecv_ft(NULL, 0, MPI_BYTE, dst,
-                                  MPIR_BARRIER_TAG, NULL, 0, MPI_BYTE,
-                                  src, MPIR_BARRIER_TAG, comm,                          
-                                  MPI_STATUS_IGNORE, errflag);
-            if (mpi_errno) {
-                /* for communication errors, just record the error but continue */
-                *errflag = TRUE;
-                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
-            }
-            mask <<= 1;
-        }
+        mpi_errno = MPIR_shmem_barrier_MV2(comm_ptr, errflag);
 
-#if defined(_OSU_MVAPICH_)
+    } else {
+
+        mpi_errno = MPIR_Pairwise_Barrier_MV2(comm_ptr, errflag);
     }
+
+    
+#if defined(CKPT)
+    MPIDI_CH3I_CR_unlock();
+#endif
+
+#else
+
+    mpi_errno = MPIR_Barrier_intra( comm_ptr, errflag );
+    
 #endif /* #if defined(_OSU_MVAPICH_) */
     
-    MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
+    if (mpi_errno) {
+        /* for communication errors, just record the error but continue */
+        *errflag = TRUE;
+        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+    }   
+    
+    MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT(comm_ptr);
     
     return mpi_errno;
 }
-
-
-#if 0
-
-/* This is the default implementation of the barrier operation.  The
-   algorithm is:
-   
-   Algorithm: MPI_Barrier
-
-   Find the largest power of two that is less than or equal to the size of 
-   the communicator.  Call tbis twon_within.
-
-   Divide the communicator by rank into two groups: those with 
-   rank < twon_within and those with greater rank.  The barrier
-   executes in three steps.  First, the group with rank >= twon_within
-   sends to the first (size-twon_within) ranks of the first group.
-   That group then executes a recursive doubling algorithm for the barrier.
-   For the third step, the first (size-twon_within) ranks send to the top
-   group.  This is the same algorithm used in MPICH-1.
-
-   Possible improvements: 
-   The upper group could apply recursively this approach to reduce the 
-   total number of messages sent (in the case of of a size of 2^n-1, there 
-   are 2^(n-1) messages sent in the first and third steps).
-
-   End Algorithm: MPI_Barrier
-
-   This is an intracommunicator barrier only!
-*/
-int MPIR_Barrier( MPID_Comm *comm_ptr )
-{
-    int size, rank;
-    int twon_within, n2, remaining, gap, partner;
-    MPID_Request *request_ptr;
-    int mpi_errno = MPI_SUCCESS;
-    
-    size = comm_ptr->remote_size;
-    rank = comm_ptr->rank;
-
-    /* Trivial barriers return immediately */
-    if (size == 1) return MPI_SUCCESS;
-
-    /* Only one collective operation per communicator can be active at any
-       time */
-    MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
-    
-    /* Find the twon_within (this could be cached if more routines
-     need it) */
-    twon_within = 1;
-    n2          = 2;
-    while (n2 <= size) { twon_within = n2; n2 <<= 1; }
-    remaining = size - twon_within;
-
-    if (rank < twon_within) {
-	/* First step: receive from the upper group */
-	if (rank < remaining) {
-	    MPID_Recv( 0, 0, MPI_BYTE, twon_within + rank, MPIR_BARRIER_TAG, 
-		       comm_ptr, MPID_CONTEXT_INTRA_COLL, MPI_STATUS_IGNORE,
-		       &request_ptr );
-	    if (request_ptr) {
-		mpi_errno = MPIC_Wait(request_ptr);
-		MPID_Request_release(request_ptr);
-		/* --BEGIN ERROR HANDLING-- */
-		if (mpi_errno != MPI_SUCCESS)
-		{
-		    goto fn_exit;
-		}
-		/* --END ERROR HANDLING-- */
-	    }
-	}
-	/* Second step: recursive doubling exchange */
-	for (gap=1; gap<twon_within; gap <<= 1) {
-	    partner = (rank ^ gap);
-	    MPIC_Sendrecv( 0, 0, MPI_BYTE, partner, MPIR_BARRIER_TAG,
-			   0, 0, MPI_BYTE, partner, MPIR_BARRIER_TAG,
-			   comm_ptr->handle, MPI_STATUS_IGNORE );
-	}
-
-	/* Third step: send to the upper group */
-	if (rank < remaining) {
-	    MPID_Send( 0, 0, MPI_BYTE, rank + twon_within, MPIR_BARRIER_TAG,
-		       comm_ptr, MPID_CONTEXT_INTRA_COLL, &request_ptr );
-	    if (request_ptr) {
-		mpi_errno = MPIC_Wait(request_ptr);
-		MPID_Request_release(request_ptr);
-		/* --BEGIN ERROR HANDLING-- */
-		if (mpi_errno != MPI_SUCCESS)
-		{
-		    goto fn_exit;
-		}
-		/* --END ERROR HANDLING-- */
-	    }
-	}
-    }
-    else {
-	/* For the upper group, step one is a send */
-	MPID_Send( 0, 0, MPI_BYTE, rank - twon_within, MPIR_BARRIER_TAG,
-		   comm_ptr, MPID_CONTEXT_INTRA_COLL, &request_ptr );
-	if (request_ptr) {
-	    mpi_errno = MPIC_Wait(request_ptr);
-	    MPID_Request_release(request_ptr);
-	    /* --BEGIN ERROR HANDLING-- */
-	    if (mpi_errno != MPI_SUCCESS)
-	    {
-		goto fn_exit;
-	    }
-	    /* --END ERROR HANDLING-- */
-	}
-	/* There is no second step; for the third step, recv */
-	MPID_Recv( 0, 0, MPI_BYTE, rank - twon_within, MPIR_BARRIER_TAG, 
-		   comm_ptr, MPID_CONTEXT_INTRA_COLL, MPI_STATUS_IGNORE,
-		   &request_ptr );
-	if (request_ptr) {
-	    mpi_errno = MPIC_Wait(request_ptr);
-	    MPID_Request_release(request_ptr);
-	    /* --BEGIN ERROR HANDLING-- */
-	    if (mpi_errno != MPI_SUCCESS)
-	    {
-		goto fn_exit;
-	    }
-	    /* --END ERROR HANDLING-- */
-	}
-    }
-
-  fn_exit:
-    MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
-
-    return mpi_errno;
-}
-#endif
-
 
 /* not declared static because a machine-specific function may call this one 
    in some cases */

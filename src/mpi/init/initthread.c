@@ -153,6 +153,7 @@ void MPIR_CleanupThreadStorage( void *a )
 #if defined(_OSU_MVAPICH_)
 extern int split_comm;
 int enable_shmem_collectives = 1;
+int allgather_ranking=1;
 int disable_shmem_allreduce=0;
 int disable_shmem_reduce=0;
 int disable_shmem_barrier=0;
@@ -160,16 +161,18 @@ int use_two_level_gather=1;
 int use_direct_gather=1; 
 int use_two_level_scatter=1;
 int use_direct_scatter=1; 
-int g_shmem_bcast_leaders = DEFAULT_SHMEM_BCAST_LEADERS;
-int g_shmem_bcast_flags = DEFAULT_SHMEM_BCAST_LEADERS;
 int gather_direct_system_size_small = GATHER_DIRECT_SYSTEM_SIZE_SMALL;
 int gather_direct_system_size_medium = GATHER_DIRECT_SYSTEM_SIZE_MEDIUM;
 int use_xor_alltoall=1; 
 extern int g_shmem_coll_blocks;
 extern int g_shmem_coll_max_msg_size;
-extern int shmem_bcast_threshold;
-extern int bcast_short_msg_threshold; 
-extern int enable_shmem_bcast;
+int enable_shmem_bcast=1;
+int scatter_rd_inter_leader_bcast=0;
+int scatter_ring_inter_leader_bcast=0;
+int knomial_inter_leader_bcast=1; 
+int knomial_intra_node_threshold=256*1024;
+int knomial_inter_leader_threshold=16*1024;
+
 void MV2_Read_env_vars(void);
 void init_thread_reg();
 
@@ -185,6 +188,7 @@ int user_scatter_medium_msg = 0;
 
 /* Runtime threshold for scatter */
 int user_gather_switch_point = 0;
+int bcast_short_msg = MPIR_BCAST_SHORT_MSG; 
 
 struct coll_runtime coll_param = { MPIR_ALLGATHER_SHORT_MSG, 
                                    MPIR_ALLGATHER_LONG_MSG, 
@@ -685,13 +689,6 @@ void MV2_Read_env_vars(void){
 	    flag = (int)atoi(value);
 	    if (flag > 0) g_shmem_coll_max_msg_size = flag;
     }
-    if ((value = getenv("MV2_SHMEM_BCAST_LEADERS")) != NULL){
-        if ((atoi(value) > DEFAULT_SHMEM_BCAST_LEADERS )) {
-            /* We only accept positive values */
-	        g_shmem_bcast_leaders = (int)atoi(value);
-	        g_shmem_bcast_flags = (int)atoi(value);
-        }
-    }
     if ((value = getenv("MV2_USE_SHARED_MEM")) != NULL){
 	    flag = (int)atoi(value);
 	    if (flag <= 0) enable_shmem_collectives = 0;
@@ -704,6 +701,11 @@ void MV2_Read_env_vars(void){
     if ((value = getenv("MV2_ALLREDUCE_SHORT_MSG")) != NULL){
 	    flag = (int)atoi(value);
 	    if (flag >= 0) coll_param.allreduce_short_msg = flag;
+    }
+    if ((value = getenv("MV2_ALLGATHER_REVERSE_RANKING")) != NULL) {
+        flag = (int)atoi(value);
+        if (flag > 0) allgather_ranking = 1;
+        else allgather_ranking = 0;
     }
     if ((value = getenv("MV2_ALLGATHER_RD_THRESHOLD")) != NULL){
 	    flag = (int)atoi(value);
@@ -784,14 +786,6 @@ void MV2_Read_env_vars(void){
         if (flag > 0) gather_direct_system_size_medium = flag;
         else use_direct_gather = GATHER_DIRECT_SYSTEM_SIZE_MEDIUM;
     }
-    if ((value = getenv("MV2_SHMEM_BCAST_MSG")) != NULL) {
-        flag = (int)atoi(value);
-        if (flag > 0) shmem_bcast_threshold = flag;
-    }
-    if ((value = getenv("MV2_BCAST_SHORT_MSG")) != NULL) {
-        flag = (int)atoi(value);
-        if (flag > 0) bcast_short_msg_threshold = flag;
-    }
     if ((value = getenv("MV2_ALLTOALL_SMALL_MSG")) != NULL) {
         flag = (int)atoi(value);
         if (flag > 0) coll_param.alltoall_small_msg = flag;
@@ -812,6 +806,30 @@ void MV2_Read_env_vars(void){
         flag = (int)atoi(value);
         if (flag >= 0) use_xor_alltoall = flag;
     }
+    if ((value = getenv("MV2_KNOMIAL_INTER_LEADER_THRESHOLD")) != NULL) {
+          flag = (int)atoi(value);
+         if (flag > 0) knomial_inter_leader_threshold = flag;
+      }
+     if ((value = getenv("MV2_KNOMIAL_INTRA_NODE_THRESHOLD")) != NULL) {
+         flag = (int)atoi(value);
+         if (flag > 0) knomial_intra_node_threshold = flag;
+     }
+     if ((value = getenv("MV2_USE_SCATTER_RING_INTER_LEADER_BCAST")) != NULL) {
+         flag = (int)atoi(value);
+         if (flag > 0) scatter_ring_inter_leader_bcast = flag;
+     }
+     if ((value = getenv("MV2_USE_SCATTER_RD_INTER_LEADER_BCAST")) != NULL) {
+         flag = (int)atoi(value);
+         if (flag > 0) scatter_rd_inter_leader_bcast = flag;
+     }
+     if ((value = getenv("MV2_USE_KNOMIAL_INTER_LEADER_BCAST")) != NULL) {
+         flag = (int)atoi(value);
+         if (flag > 0) knomial_inter_leader_bcast  = flag;
+     }
+     if ((value = getenv("MV2_USE_BCAST_SHORT_MSG")) != NULL) {
+         flag = (int)atoi(value);
+         if (flag > 0) bcast_short_msg  = flag;
+     }
 
     init_thread_reg();
 }

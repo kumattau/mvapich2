@@ -20,14 +20,19 @@
 
 int ckptInit();
 //static void *CR_Loop(void *arg);
-char *create_mpispawn_vars( char *mpispawn_env );
-void save_ckpt_vars_env (void);
+char *create_mpispawn_vars(char *mpispawn_env);
+void save_ckpt_vars_env(void);
 void save_ckpt_vars(char *, char *);
+
+void set_ckpt_nprocs(int nprocs);
+void create_connections(int NSPAWNS);
+void close_connections(int NSPAWNS);
+void free_locks();
+void cr_cleanup();
 
 #include <sys/time.h>
 #include <libcr.h>
 #include <pthread.h>
-
 
 #define CR_ERRMSG_SZ 64
 
@@ -45,7 +50,6 @@ void save_ckpt_vars(char *, char *);
 #define DEFAULT_CHECKPOINT_FILENAME "/tmp/ckpt"
 #define CR_MAX_FILENAME 128
 #define CR_SESSION_MAX  16
-
 
 extern int restart_context;
 extern int cached_restart_context;
@@ -131,8 +135,6 @@ extern char ckpt_filename[CR_MAX_FILENAME];
 #define CR_FTB_EVENTS_MAX    17
 ////////////////////////////////////////////////////
 
-
-
 /* Type of event to throw */
 #define FTB_EVENT_NORMAL   1
 #define FTB_EVENT_RESPONSE 2
@@ -148,8 +150,8 @@ do {                                                       \
 /* Macro to pick an CR_FTB event */
 #define EVENT(n) (cr_ftb_events[n].event_name)
 
-extern pthread_t       cr_tid;
-extern cr_client_id_t  cr_id;
+extern pthread_t cr_tid;
+extern cr_client_id_t cr_id;
 extern pthread_mutex_t cr_lock;
 
 extern pthread_spinlock_t flock;
@@ -158,7 +160,7 @@ extern int fcnt;
 #define CR_ERRMSG_SZ 64
 extern char cr_errmsg[CR_ERRMSG_SZ];
 
-extern FTB_client_t        ftb_cinfo;
+extern FTB_client_t ftb_cinfo;
 extern FTB_client_handle_t ftb_handle;
 //extern FTB_event_info_t    cr_ftb_events[] = CR_FTB_EVENT_INFO;
 extern FTB_subscribe_handle_t shandle;
@@ -170,23 +172,22 @@ extern int cr_ftb_ckpt_req;
 extern int cr_ftb_app_ckpt_req;
 extern int cr_ftb_finalize_ckpt;
 
-
 /*struct spawn_info_s { 
     char spawnhost[32];
     int  sparenode;
 };*/
 
-#define HOSTFILE_LEN 256 
-extern int  nsparehosts;
-extern int  sparehosts_on;
-extern char sparehostfile[HOSTFILE_LEN+1];
+#define HOSTFILE_LEN 256
+extern int nsparehosts;
+extern int sparehosts_on;
+extern char sparehostfile[HOSTFILE_LEN + 1];
 extern char **sparehosts;
 
-extern char * current_spare_host;
+extern char *current_spare_host;
 extern struct spawn_info_s *spawninfo;
 
 //int  cr_ftb_init(int, char *);
-int  cr_ftb_init( int );
+int cr_ftb_init(int);
 //extern void cr_ftb_finalize();
 //extern int  cr_ftb_callback(FTB_receive_event_t *, void *);
 //extern int  cr_ftb_wait_for_resp(int);
@@ -201,13 +202,12 @@ int  cr_ftb_init( int );
 extern int *mpirun_fd;
 extern int mpirun_port;
 
-#endif /* CR_FTB */
+#endif                          /* CR_FTB */
 
 void restart_from_ckpt();
 void finalize_ckpt();
 #endif
 
 int read_sparehosts(char *hostfile, char ***hostarr, int *nhosts);
-
 
 #endif

@@ -103,9 +103,9 @@ FROM priv.h
  * Information about one HCA.
  */
 typedef struct {
-	HCA_Type hca_type;
+    HCA_Type hca_type;
 
-	struct ibv_context          *nic_context;
+    struct ibv_context          *nic_context;
     struct ibv_device           *ib_dev;
 
     /** Infiniband protection tag */
@@ -125,16 +125,16 @@ typedef struct {
     struct ibv_srq *srq_hndl;
 
     /*
-    int                     num_cqs;
-    struct ibv_pd           *pd;
-    struct ibv_cq           **cq;
-    struct ibv_device       *device;
-    struct ibv_context      *context;
-    struct ibv_port_attr    *port_attr;
-    struct ibv_port_attr    *default_port_attr;
-    struct ibv_device_attr  device_attr;
-    pthread_t async_thread;
-    */
+       int                     num_cqs;
+       struct ibv_pd           *pd;
+       struct ibv_cq           **cq;
+       struct ibv_device       *device;
+       struct ibv_context      *context;
+       struct ibv_port_attr    *port_attr;
+       struct ibv_port_attr    *default_port_attr;
+       struct ibv_device_attr  device_attr;
+       pthread_t async_thread;
+     */
 } MPID_nem_ib_nem_hca;
 
 /* --------------------------------------------- *

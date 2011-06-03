@@ -86,9 +86,9 @@ static int check_attrs( struct ibv_port_attr *port_attr, struct ibv_device_attr 
             ret = 1;
         }
 
-        if(dev_attr->max_srq_wr < viadev_srq_size) {
+        if(dev_attr->max_srq_wr < viadev_srq_alloc_size) {
         	MPIU_Error_printf( "Max MV2_SRQ_SIZE is %d, set to %d\n",
-                    dev_attr->max_srq_wr, (int) viadev_srq_size);
+                    dev_attr->max_srq_wr, (int) viadev_srq_alloc_size);
             ret = 1;
         }
     } else {
@@ -534,7 +534,7 @@ struct ibv_srq *create_srq(int hca_num)
     memset(&srq_init_attr, 0, sizeof(srq_init_attr));
 
     srq_init_attr.srq_context    = hca_list[hca_num].nic_context;
-    srq_init_attr.attr.max_wr    = viadev_srq_size;
+    srq_init_attr.attr.max_wr    = viadev_srq_alloc_size;
     srq_init_attr.attr.max_sge   = 1;
     /* The limit value should be ignored during SRQ create */
     srq_init_attr.attr.srq_limit = viadev_srq_limit;

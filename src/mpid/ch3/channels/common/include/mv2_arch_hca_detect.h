@@ -10,6 +10,9 @@
  *
  */
 
+#ifndef MV2_ARCH_HCA_DETECT_H
+#define MV2_ARCH_HCA_DETECT_H
+
 #include <infiniband/verbs.h>
 #include <infiniband/umad.h>
 
@@ -264,7 +267,6 @@ typedef enum{
 /* All arch combinations with Mellanox ConnectX DDR Cards */
 #define CASE_MV2_ANY_ARCH_WITH_MLX_CX_DDR case MV2_ARCH_UNKWN_HCA_MLX_CX_DDR: \
     case MV2_ARCH_AMD_MGNYCRS_24_HCA_MLX_CX_DDR: \
-    case MV2_ARCH_INTEL_CLVRTWN_8_HCA_MLX_CX_DDR: \
     case MV2_ARCH_INTEL_NEHLM_8_HCA_MLX_CX_DDR: \
     case MV2_ARCH_INTEL_NEHLM_16_HCA_MLX_CX_DDR: \
     case MV2_ARCH_INTEL_HRPRTWN_8_HCA_MLX_CX_DDR: \
@@ -371,4 +373,6 @@ mv2_hca_type mv2_get_hca_type( struct ibv_device *dev );
 
 /* API for getting the number of cpus */
 int mv2_get_num_cpus(void);
+
+#endif /*  #ifndef MV2_ARCH_HCA_DETECT_H */
 

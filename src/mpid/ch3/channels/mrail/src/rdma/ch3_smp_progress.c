@@ -59,22 +59,28 @@
 
 /* Macros for flow control and rqueues management */
 #define SMPI_TOTALIN(sender,receiver)                               \
-    ((volatile smpi_params *)g_smpi_shmem->rqueues_params[sender])[receiver].msgs_total_in
+    g_smpi_shmem->rqueues_flow[sender * g_smpi.num_local_nodes + receiver]->msgs_total_in
 
 #define SMPI_TOTALOUT(sender,receiver)                              \
-    ((volatile smpi_rqueues *)g_smpi_shmem->rqueues_flow_out[receiver])[sender].msgs_total_out
+    g_smpi_shmem->rqueues_flow[receiver * g_smpi.num_local_nodes + sender]->msgs_total_out
 
 #define SMPI_CURRENT(sender,receiver)                               \
-    ((volatile smpi_params *)g_smpi_shmem->rqueues_params[receiver])[sender].current
+    g_smpi_shmem->rqueues_params_c[sender].current
 
 #define SMPI_NEXT(sender,receiver)                                  \
-    ((volatile smpi_params *)g_smpi_shmem->rqueues_params[sender])[receiver].next
+    g_smpi_shmem->rqueues_params_n[receiver].next
 
-#define SMPI_FIRST(sender,receiver)                                 \
-    ((volatile smpi_rq_limit *)g_smpi_shmem->rqueues_limits[receiver])[sender].first
+#define SMPI_FIRST_S(sender,receiver)                                 \
+    g_smpi_shmem->rqueues_limits_s[receiver].first
 
-#define SMPI_LAST(sender,receiver)                                  \
-    ((volatile smpi_rq_limit *)g_smpi_shmem->rqueues_limits[receiver])[sender].last
+#define SMPI_LAST_S(sender,receiver)                                  \
+    g_smpi_shmem->rqueues_limits_s[receiver].last
+
+#define SMPI_FIRST_R(sender,receiver)                                 \
+    g_smpi_shmem->rqueues_limits_r[sender].first
+
+#define SMPI_LAST_R(sender,receiver)                                  \
+    g_smpi_shmem->rqueues_limits_r[sender].last
 
 struct smpi_var g_smpi;
 struct shared_mem *g_smpi_shmem;
@@ -97,7 +103,6 @@ int g_smp_eagersize;
 int s_smpi_length_queue;
 int s_smp_num_send_buffer;
 int s_smp_batch_size;
-int default_eager_size = 1;
 
 #if defined(_SMP_LIMIC_)
 int limic_fd;
@@ -213,8 +218,8 @@ static inline void smpi_complete_send(unsigned int my_id,
 {
     SMPI_NEXT(my_id, destination) += SMPI_ALIGN(length);
 
-    if (SMPI_NEXT(my_id, destination) > SMPI_LAST(my_id, destination)) {
-    SMPI_NEXT(my_id, destination) = SMPI_FIRST(my_id, destination);
+    if (SMPI_NEXT(my_id, destination) > SMPI_LAST_S(my_id, destination)) {
+    SMPI_NEXT(my_id, destination) = SMPI_FIRST_S(my_id, destination);
     }
     WRITEBAR();
     SMPI_TOTALIN(my_id, destination) += SMPI_ALIGN(length);
@@ -227,8 +232,8 @@ static inline void smpi_complete_recv(unsigned int from_grank,
 {
     SMPI_CURRENT(from_grank, my_id) += SMPI_ALIGN(length);
 
-    if (SMPI_CURRENT(from_grank, my_id) > SMPI_LAST(from_grank, my_id)) {
-    SMPI_CURRENT(from_grank, my_id) = SMPI_FIRST(from_grank, my_id);
+    if (SMPI_CURRENT(from_grank, my_id) > SMPI_LAST_R(from_grank, my_id)) {
+    SMPI_CURRENT(from_grank, my_id) = SMPI_FIRST_R(from_grank, my_id);
     }
     WRITEBAR();
     SMPI_TOTALOUT(from_grank, my_id) += SMPI_ALIGN(length);
@@ -359,18 +364,42 @@ static inline int MPIDI_CH3I_SMP_Process_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t*
     }
 #endif /* defined(CKPT) */
 
-    MPIDI_msg_sz_t buflen = sizeof(MPIDI_CH3_Pkt_t);
+    if (pkt->type == MPIDI_CH3_PKT_EAGER_SEND_CONTIG) {
+        MPIDI_msg_sz_t buflen = s_total_bytes[vc->smp.local_nodes] -
+            sizeof(MPIDI_CH3_Pkt_eager_send_t);
+        if ((mpi_errno = MPIDI_CH3_PktHandler_EagerSend_Contig(
+                        vc,
+                        pkt,
+                        &buflen,
+                        &vc->smp.recv_active)) != MPI_SUCCESS)
+        {
+            MPIU_ERR_POP(mpi_errno);
+        }
 
-    if ((mpi_errno = MPIDI_CH3U_Handle_recv_pkt(
-        vc,
-        pkt,
-        &buflen,
-        &vc->smp.recv_active)) != MPI_SUCCESS)
-    {
-    MPIU_ERR_POP(mpi_errno);
+        if (!vc->smp.recv_active) {
+            s_current_ptr[vc->smp.local_nodes] = NULL;
+            s_current_bytes[vc->smp.local_nodes] = 0;        
+            smpi_complete_recv(vc->smp.local_nodes,
+                    g_smpi.my_local_id,
+                    s_total_bytes[vc->smp.local_nodes] +
+                    sizeof(int));
+            s_total_bytes[vc->smp.local_nodes] = 0;
+            goto fn_exit;
+        }
+    } else {
+        MPIDI_msg_sz_t buflen = sizeof(MPIDI_CH3_Pkt_t);
+
+        if ((mpi_errno = MPIDI_CH3U_Handle_recv_pkt(
+                        vc,
+                        pkt,
+                        &buflen,
+                        &vc->smp.recv_active)) != MPI_SUCCESS)
+        {
+            MPIU_ERR_POP(mpi_errno);
+        }
+
+        vc->smp.recv_current_pkt_type = SMP_EAGER_MSG;
     }
-
-    vc->smp.recv_current_pkt_type = SMP_EAGER_MSG;
 
 fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SMP_PROGRESS_HEADER);
@@ -566,15 +595,13 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
     struct limic_header l_header;
     int use_limic = 0;
 #endif
+    int from;
 
-    for (i=0; i < g_smpi.num_local_nodes; ++i)
+    for (i=1; i < g_smpi.num_local_nodes; ++i)
     {
-        if (g_smpi.my_local_id == i)
-        {
-            continue;
-        }
+        from = (g_smpi.my_local_id + i) % g_smpi.num_local_nodes;
 
-        MPIDI_PG_Get_vc(pg, g_smpi.l2g_rank[i], &vc);
+        MPIDI_PG_Get_vc(pg, g_smpi.l2g_rank[from], &vc);
 
         if (!vc->smp.recv_active)
         {
@@ -737,7 +764,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     int mpi_errno = MPI_SUCCESS;
     int use_smp;
     unsigned int i, j, pool, pid, wait;
-    int local_num, sh_size, pid_len, rq_len, param_len, limit_len;
+    int local_num, sh_size, pid_len, rq_len;
     struct stat file_status;
     struct stat file_status_pool;
     char *shmem_file = NULL;
@@ -864,16 +891,6 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 
     DEBUG_PRINT("finished exchange info\n");
 
-    {
-#ifdef _SMP_LIMIC_
-        mv2_arch_type arch_type = mv2_get_arch_type();
-        if(default_eager_size && ( MV2_ARCH_INTEL_NEHALEM_8 == arch_type ||
-                    MV2_ARCH_INTEL_NEHALEM_16 == arch_type ) ){
-            g_smp_eagersize = 65536;
-        }
-#endif /* _SMP_LIMIC_ */
-    }
-
     /* Convert to bytes */
     g_smp_eagersize = g_smp_eagersize + 1;
 
@@ -958,11 +975,12 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     /* compute the size of this file */
     local_num = g_smpi.num_local_nodes * g_smpi.num_local_nodes;
     pid_len = g_smpi.num_local_nodes * sizeof(int);
-    param_len = sizeof(smpi_params) * local_num;
-    rq_len = sizeof(smpi_rqueues) * local_num;
-    limit_len = sizeof(smpi_rq_limit) * local_num;
-    sh_size = sizeof(struct shared_mem) + pid_len + param_len + rq_len +
-    limit_len + SMPI_CACHE_LINE_SIZE * 4;
+    /* pid_len need to be padded to cache aligned, in order to make sure the
+     * following flow control structures cache aligned. */
+    pid_len = pid_len + SMPI_CACHE_LINE_SIZE - (pid_len % SMPI_CACHE_LINE_SIZE);
+    rq_len = sizeof(smpi_rqueues) * g_smpi.num_local_nodes *
+        (g_smpi.num_local_nodes - 1);
+    sh_size = sizeof(struct shared_mem) + pid_len + SMPI_ALIGN(rq_len) + SMPI_CACHE_LINE_SIZE * 2;
 
     g_size_shmem = (SMPI_CACHE_LINE_SIZE + sh_size + pagesize +
         (g_smpi.num_local_nodes * (g_smpi.num_local_nodes - 1) *
@@ -1201,39 +1219,92 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     /* Initialize shared_mem pointers */
     g_smpi_shmem->pid = (int *) shmem;
 
-    g_smpi_shmem->rqueues_params =
-        (smpi_params **) MPIU_Malloc(sizeof(smpi_params *)*g_smpi.num_local_nodes);
-    g_smpi_shmem->rqueues_flow_out =
-        (smpi_rqueues **) MPIU_Malloc(sizeof(smpi_rqueues *)*g_smpi.num_local_nodes);
-    g_smpi_shmem->rqueues_limits =
-        (smpi_rq_limit **) MPIU_Malloc(sizeof(smpi_rq_limit *)*g_smpi.num_local_nodes);
+    g_smpi_shmem->rqueues_params_c =
+        (smpi_params_c *) MPIU_Malloc(sizeof(smpi_params_c)*g_smpi.num_local_nodes);
+    g_smpi_shmem->rqueues_params_n =
+        (smpi_params_n *) MPIU_Malloc(sizeof(smpi_params_n)*g_smpi.num_local_nodes);
+    g_smpi_shmem->rqueues_flow =
+        (smpi_rqueues **) MPIU_Malloc(sizeof(smpi_rqueues *)*g_smpi.num_local_nodes * g_smpi.num_local_nodes);
+    g_smpi_shmem->rqueues_limits_s =
+        (smpi_rq_limit *) MPIU_Malloc(sizeof(smpi_rq_limit)*g_smpi.num_local_nodes);
+    g_smpi_shmem->rqueues_limits_r =
+        (smpi_rq_limit *) MPIU_Malloc(sizeof(smpi_rq_limit)*g_smpi.num_local_nodes);
 
-    if (g_smpi_shmem->rqueues_params == NULL ||
-        g_smpi_shmem->rqueues_flow_out == NULL ||
-        g_smpi_shmem->rqueues_limits == NULL) {
+    if (g_smpi_shmem->rqueues_params_c == NULL ||
+        g_smpi_shmem->rqueues_params_n == NULL ||
+        g_smpi_shmem->rqueues_flow == NULL ||
+        g_smpi_shmem->rqueues_limits_s == NULL ||
+        g_smpi_shmem->rqueues_limits_r == NULL ) {
     MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
         "**nomem %s", "smpi_shmem rqueues");
     }
 
-    g_smpi_shmem->rqueues_params[0] =
-    (smpi_params *)((char *)shmem + SMPI_ALIGN(pid_len) + SMPI_CACHE_LINE_SIZE);
-    g_smpi_shmem->rqueues_flow_out[0] =
-    (smpi_rqueues *)((char *)g_smpi_shmem->rqueues_params[0] +
-        SMPI_ALIGN(param_len) + SMPI_CACHE_LINE_SIZE);
-    g_smpi_shmem->rqueues_limits[0] =
-    (smpi_rq_limit *)((char *)g_smpi_shmem->rqueues_flow_out[0] +
-        SMPI_ALIGN(rq_len) + SMPI_CACHE_LINE_SIZE);
-    g_smpi_shmem->pool =
-    (char *)((char *)g_smpi_shmem->rqueues_limits[0] + SMPI_ALIGN(limit_len) +
-        SMPI_CACHE_LINE_SIZE);
+    if (g_smpi.num_local_nodes > 1) {
+        g_smpi_shmem->rqueues_flow[0*g_smpi.num_local_nodes + 1] = 
+            (smpi_rqueues *)((char *)shmem + 
+                    pid_len + SMPI_CACHE_LINE_SIZE);
 
-    for (i = 1; i < g_smpi.num_local_nodes; ++i) {
-    g_smpi_shmem->rqueues_params[i] = (smpi_params *)
-        (g_smpi_shmem->rqueues_params[i-1] + g_smpi.num_local_nodes);
-    g_smpi_shmem->rqueues_flow_out[i] = (smpi_rqueues *)
-        (g_smpi_shmem->rqueues_flow_out[i-1] + g_smpi.num_local_nodes);
-    g_smpi_shmem->rqueues_limits[i] = (smpi_rq_limit *)
-        (g_smpi_shmem->rqueues_limits[i-1] + g_smpi.num_local_nodes);
+        for (i = 2; i < g_smpi.num_local_nodes; ++i) {
+            g_smpi_shmem->rqueues_flow[0*g_smpi.num_local_nodes + i] = 
+                (smpi_rqueues *)((char*)g_smpi_shmem->rqueues_flow[0*g_smpi.num_local_nodes + i - 1] + 
+                        SMPI_CACHE_LINE_SIZE);
+        }
+
+        smpi_rqueues * tmp_rqueues =
+            g_smpi_shmem->rqueues_flow[0*g_smpi.num_local_nodes + g_smpi.num_local_nodes - 1];
+
+        for (i = 1; i < g_smpi.num_local_nodes; ++i) {
+            for (j = 0; j < g_smpi.num_local_nodes; ++j) {
+                if(j == i) continue;
+                if(i < j) {
+                    g_smpi_shmem->rqueues_flow[i*g_smpi.num_local_nodes + j] = 
+                        tmp_rqueues = (smpi_rqueues *)((char*)tmp_rqueues + SMPI_CACHE_LINE_SIZE);
+                } else {
+                    g_smpi_shmem->rqueues_flow[i*g_smpi.num_local_nodes + j] =
+                        (smpi_rqueues*)((char*)g_smpi_shmem->rqueues_flow[j*g_smpi.num_local_nodes
+                                + i] + (SMPI_CACHE_LINE_SIZE/2));
+                }
+            }
+        }
+
+        g_smpi_shmem->pool =
+            (char *)((char *)g_smpi_shmem->rqueues_flow[1] + SMPI_ALIGN(rq_len) +
+                    SMPI_CACHE_LINE_SIZE);
+    } else {
+        g_smpi_shmem->rqueues_flow[0] = NULL;
+        g_smpi_shmem->pool =
+            (char *)((char *)shmem + pid_len + SMPI_CACHE_LINE_SIZE);
+    }
+ 
+    for (i=0; i < g_smpi.num_local_nodes; ++i) {
+        if ( i == g_smpi.my_local_id)
+            continue;
+        g_smpi_shmem->rqueues_limits_s[i].first = 
+            SMPI_ALIGN(pagesize + (pagesize + s_smpi_length_queue) *
+                (i * (g_smpi.num_local_nodes - 1) + 
+                (g_smpi.my_local_id > i ? (g_smpi.my_local_id - 1) : g_smpi.my_local_id)));
+        g_smpi_shmem->rqueues_limits_r[i].first = 
+            SMPI_ALIGN(pagesize + (pagesize + s_smpi_length_queue) * 
+                (g_smpi.my_local_id * (g_smpi.num_local_nodes - 1) + 
+                (i > g_smpi.my_local_id ? (i - 1): i)));
+        g_smpi_shmem->rqueues_limits_s[i].last =
+            SMPI_ALIGN(pagesize + (pagesize + s_smpi_length_queue) * 
+                (i * (g_smpi.num_local_nodes - 1) + 
+                (g_smpi.my_local_id > i ? (g_smpi.my_local_id - 1) : g_smpi.my_local_id)) +
+                g_smpi.available_queue_length);
+        g_smpi_shmem->rqueues_limits_r[i].last =
+            SMPI_ALIGN(pagesize + (pagesize + s_smpi_length_queue) * 
+                (g_smpi.my_local_id * (g_smpi.num_local_nodes - 1) + 
+                (i > g_smpi.my_local_id ? (i - 1): i)) + 
+                g_smpi.available_queue_length);
+        g_smpi_shmem->rqueues_params_c[i].current = 
+            SMPI_ALIGN(pagesize + (pagesize + s_smpi_length_queue) *
+                (g_smpi.my_local_id * (g_smpi.num_local_nodes - 1) + 
+                (i > g_smpi.my_local_id ? (i - 1): i)));
+        g_smpi_shmem->rqueues_params_n[i].next = 
+            SMPI_ALIGN(pagesize + (pagesize + s_smpi_length_queue) *
+                (i * (g_smpi.num_local_nodes - 1) + 
+                (g_smpi.my_local_id > i ? (g_smpi.my_local_id - 1) : g_smpi.my_local_id)));
     }
 
     /* init rqueues in shared memory */
@@ -1243,18 +1314,9 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
         for (j = 0; j < g_smpi.num_local_nodes; ++j) {
         if (i != j) {
             READBAR();
-            g_smpi_shmem->rqueues_limits[i][j].first =
-            SMPI_ALIGN(pool);
-            g_smpi_shmem->rqueues_limits[i][j].last =
-            SMPI_ALIGN(pool + g_smpi.available_queue_length);
-            g_smpi_shmem->rqueues_params[i][j].current =
-            SMPI_ALIGN(pool);
-            g_smpi_shmem->rqueues_params[j][i].next =
-            SMPI_ALIGN(pool);
-            g_smpi_shmem->rqueues_params[j][i].msgs_total_in = 0;
-            g_smpi_shmem->rqueues_flow_out[i][j].msgs_total_out = 0;
+            g_smpi_shmem->rqueues_flow[j*g_smpi.num_local_nodes + i]->msgs_total_in = 0;
+            g_smpi_shmem->rqueues_flow[i*g_smpi.num_local_nodes + j]->msgs_total_out = 0;
             READBAR();
-            pool += SMPI_ALIGN(s_smpi_length_queue + pagesize);
         }
         }
     }
@@ -1333,8 +1395,8 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
         if (sender != receiver) {
         int k;
 
-        for (k = SMPI_FIRST(sender, receiver);
-            k < SMPI_LAST(sender, receiver); k += pagesize) {
+        for (k = SMPI_FIRST_S(sender, receiver);
+            k < SMPI_LAST_S(sender, receiver); k += pagesize) {
             tmp = ptr[k];
         }
         }
@@ -1416,14 +1478,20 @@ int MPIDI_CH3I_SMP_finalize()
     } 
 
     if(g_smpi_shmem) {
-       if(g_smpi_shmem->rqueues_params != NULL) { 
-          MPIU_Free(g_smpi_shmem->rqueues_params);
+       if(g_smpi_shmem->rqueues_params_c != NULL) { 
+          MPIU_Free(g_smpi_shmem->rqueues_params_c);
        } 
-       if(g_smpi_shmem->rqueues_flow_out != NULL) { 
-          MPIU_Free(g_smpi_shmem->rqueues_flow_out);
+       if(g_smpi_shmem->rqueues_params_n != NULL) { 
+          MPIU_Free(g_smpi_shmem->rqueues_params_n);
        } 
-       if(g_smpi_shmem->rqueues_limits != NULL) { 
-          MPIU_Free(g_smpi_shmem->rqueues_limits);
+       if(g_smpi_shmem->rqueues_flow != NULL) { 
+          MPIU_Free(g_smpi_shmem->rqueues_flow);
+       } 
+       if(g_smpi_shmem->rqueues_limits_s != NULL) { 
+          MPIU_Free(g_smpi_shmem->rqueues_limits_s);
+       }
+       if(g_smpi_shmem->rqueues_limits_r != NULL) { 
+          MPIU_Free(g_smpi_shmem->rqueues_limits_r);
        }
        if(g_smpi_shmem != NULL) { 
           MPIU_Free(g_smpi_shmem);
@@ -2014,6 +2082,68 @@ void MPIDI_CH3I_SMP_writev(MPIDI_VC_t * vc, const MPID_IOV * iov,
 fn_exit:
     DEBUG_PRINT("writev returns bytes %d\n", *num_bytes_ptr);
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SMP_WRITEV);
+}
+
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_SMP_write_contig
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+void MPIDI_CH3I_SMP_write_contig(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t reqtype,
+                          const void * buf, MPIDI_msg_sz_t data_sz, int rank,
+                          int tag, MPID_Comm * comm, int context_offset,
+                          int *num_bytes_ptr)
+{
+#if defined(MPID_USE_SEQUENCE_NUMBERS)
+    MPID_Seqnum_t seqnum;
+#endif
+    int pkt_avail;
+    int pkt_len = 0;
+    volatile void *ptr_volatile;
+    void *ptr_head, *ptr;
+    int i, offset = 0;
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SMP_WRITE_CONTIG);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SMP_WRITE_CONTIG);
+
+    pkt_avail = smpi_get_avail_length(vc->smp.local_nodes);
+
+    pkt_len = sizeof(MPIDI_CH3_Pkt_eager_send_t) + data_sz;
+    if (pkt_avail < pkt_len + sizeof(int) ) {
+        *num_bytes_ptr = 0;
+        return;
+    }
+
+    MPIDI_CH3_Pkt_t *upkt;
+    MPIDI_CH3_Pkt_eager_send_t * eager_pkt;
+    ptr_volatile = (void *) ((g_smpi_shmem->pool)
+        + SMPI_NEXT(g_smpi.my_local_id,
+        vc->smp.local_nodes));
+    ptr_head = ptr = (void *) ptr_volatile;
+    
+    ptr = (void *) ((unsigned long) ptr + sizeof(int));
+    *num_bytes_ptr = 0;
+
+    upkt = (MPIDI_CH3_Pkt_t *) ptr;
+    eager_pkt = &((*upkt).eager_send);
+    MPIDI_Pkt_init(eager_pkt, reqtype);
+    eager_pkt->match.parts.rank = comm->rank;
+    eager_pkt->match.parts.tag  = tag;
+    eager_pkt->match.parts.context_id   = comm->context_id + context_offset;
+    eager_pkt->sender_req_id    = MPI_REQUEST_NULL;
+    eager_pkt->data_sz      = data_sz;
+
+    MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+    MPIDI_Pkt_set_seqnum(eager_pkt, seqnum);
+
+    memcpy((void *) ((unsigned long) ptr +
+                     sizeof(MPIDI_CH3_Pkt_eager_send_t)), buf, data_sz);
+
+    *num_bytes_ptr += pkt_len;
+    *((int *) ptr_head) = pkt_len;
+
+    smpi_complete_send(g_smpi.my_local_id, vc->smp.local_nodes,
+        (pkt_len + sizeof(int)));
+    
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SMP_WRITE_CONTIG);
 }
 
 #undef FUNCNAME

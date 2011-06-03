@@ -2171,9 +2171,8 @@ int MPIDI_Win_post(MPID_Group *post_grp_ptr, int assert, MPID_Win *win_ptr)
 	    } else {
                 req[i] = MPI_REQUEST_NULL;
             }
-}
+        }
 
-#if !defined(_OSU_MVAPICH_)
         mpi_errno = MPIR_Waitall_impl(post_grp_size, req, status);
         if (mpi_errno && mpi_errno != MPI_ERR_IN_STATUS) MPIU_ERR_POP(mpi_errno);
 
@@ -2187,7 +2186,6 @@ int MPIDI_Win_post(MPID_Group *post_grp_ptr, int assert, MPID_Win *win_ptr)
             }
         }
         /* --END ERROR HANDLING-- */
-#endif
 
         mpi_errno = MPIR_Group_free_impl(win_grp_ptr);
 	if (mpi_errno) MPIU_ERR_POP(mpi_errno);

@@ -1208,24 +1208,6 @@ typedef struct MPID_Comm {
     struct MPID_TopoOps  *topo_fns; /* Pointer to a table of functions
 				       implementting the topology routines
 				    */
-#if defined(_OSU_MVAPICH_)
-    MPI_Comm     leader_comm;
-    MPI_Comm     shmem_comm;
-    int*    leader_map;
-    int*    leader_rank;
-    int*    node_sizes; 
-    int     is_uniform; 
-    int     shmem_comm_rank;
-    int     shmem_coll_ok;
-
-    int     leader_group_size;
-    int     bcast_fd;
-    int     bcast_index;
-    void*   bcast_mmap_ptr;
-    char*   bcast_shmem_file;
-    int     bcast_seg_size;
-
-#endif /* defined(_OSU_MVAPICH_) */
 
 #ifdef MPID_HAS_HETERO
     int is_hetero;
@@ -3253,7 +3235,6 @@ int MPID_VCR_Get_lpid(MPID_VCR vcr, int * lpid_ptr);
 #include "mpich_param_vals.h"
 
 //MERGE_FIXME
-#define MPIR_BCAST_SHORT_MSG          12288 
 #define MPIR_BCAST_LONG_MSG           524288
 #define MPIR_BCAST_MIN_PROCS          8
 
@@ -3262,12 +3243,14 @@ time in some alltoall algorithms. Setting it to 0 causes all irecvs/isends to be
 posted at once. */
 
 #if defined(_OSU_MVAPICH_)
-#define MPIR_ALLTOALL_SHORT_MSG       2048
-#define MPIR_ALLTOALL_MEDIUM_MSG      16384
+#define MPIR_ALLTOALL_SHORT_MSG         2048
+#define MPIR_ALLTOALL_MEDIUM_MSG        16384
 #define MPIR_ALLTOALL_SMALL_SYSTEM_SIZE 256
+#define MPIR_BCAST_SHORT_MSG            16384
 #else
 #define MPIR_ALLTOALL_SHORT_MSG       8192
 #define MPIR_ALLTOALL_MEDIUM_MSG      8192
+#define MPIR_BCAST_SHORT_MSG          12288 
 #endif
 #define MPIR_ALLGATHER_SHORT_MSG      81920
 #define MPIR_ALLGATHER_LONG_MSG       524288

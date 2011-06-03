@@ -261,5 +261,23 @@ extern volatile unsigned int MPIDI_CH3I_progress_completion_count;
     } while(0)
 
 
+typedef struct MPIDI_CH3I_comm
+{
+    MPI_Comm     leader_comm;
+    MPI_Comm     shmem_comm;
+    MPI_Comm     allgather_comm;
+    int*    leader_map;
+    int*    leader_rank;
+    int*    node_sizes; 
+    int*    allgather_new_ranks;
+    int     is_uniform; 
+    int     shmem_comm_rank;
+    int     shmem_coll_ok;
+    int     allgather_comm_ok; 
+    int     leader_group_size;
+    int     is_global_block; 
+} MPIDI_CH3I_comm_t;
+
+#define MPID_DEV_COMM_DECL MPIDI_CH3I_comm_t ch;
 
 #endif /* !defined(MPICH_MPIDI_CH3_PRE_H_INCLUDED) */

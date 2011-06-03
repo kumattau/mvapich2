@@ -1,14 +1,3 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
- * reserved.
- *
- * This file is part of the MVAPICH2 software package developed by the
- * team members of The Ohio State University's Network-Based Computing
- * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
- *
- * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT in the top level MVAPICH2 directory.
- *
- */
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
 /*
  *   Copyright (C) 1997 University of Chicago.
@@ -110,25 +99,6 @@ void ADIOI_LUSTRE_Open(ADIO_File fd, int *error_code)
 	} else {
 	    perror("cannot open file with O_Direct");
 	    fd->direct_write = fd->direct_read = 0;
-/* <_OSU_MVAPICH_> */
-/*	    fd->lustre_ignore_locks = 0; */
-            fd->hints->fs_hints.lustre.ignore_locks = 0;
-/* </_OSU_MVAPICH_> */
-	}
-    }
-
-    if ((fd->direct_write || fd->direct_read) && 
-/* <_OSU_MVAPICH_> */
-/*	fd->fd_direct != -1 && fd->lustre_ignore_locks) { */
-        fd->fd_direct != -1 && fd->hints->fs_hints.lustre.ignore_locks) {
-/* </_OSU_MVAPICH_> */
-	int lustre_ioctl_flags = LL_FILE_IGNORE_LOCK; 
-	if (ioctl(fd->fd_direct, LL_IOC_SETFLAGS, &lustre_ioctl_flags) == -1) {
-	    perror("cannot set ignore locks in ioctl");
-/* <_OSU_MVAPICH_> */
-/*	    fd->lustre_ignore_locks = 0; */
-            fd->hints->fs_hints.lustre.ignore_locks = 0;
-/* </_OSU_MVAPICH_> */
 	}
     }
 

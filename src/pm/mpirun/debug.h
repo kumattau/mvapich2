@@ -13,33 +13,29 @@
 #ifndef __DEBUG__
 #define __DEBUG__
 
-
 #define MYDBG 0
+// defined in mpispawn.c
 extern int mt_id;
 #if MYDBG
-	#define dbg(fmt, args... )	do{ \
+#define dbg(fmt, args... )    do{ \
     fprintf(stderr,"[mt_%d]: %s: " fmt, mt_id, __func__, ##args); fflush(stderr); }while(0)
 #else
-	#define dbg(fmt, args... )
+#define dbg(fmt, args... )
 #endif
-		
-#define error(fmt, args... )			\
-	do{	fprintf(stderr, "%s:   ", __func__ );	\
-		fprintf(stderr, fmt, ## args); \
-	}while(0)
 
-#define err(fmt, args... )			\
-	do{	fprintf( stderr, "%s:   ", __func__ );	\
-		fprintf( stderr, fmt, ## args); \
-	}while(0)
+#define error(fmt, args... )            \
+    do{    fprintf(stderr, "%s:   ", __func__ );    \
+        fprintf(stderr, fmt, ## args); \
+    }while(0)
+
+#define err(fmt, args... )            \
+    do{    fprintf( stderr, "%s:   ", __func__ );    \
+        fprintf( stderr, fmt, ## args); \
+    }while(0)
 
 #undef MYDBG
-
-
 
 //#define my_error(fmt, args...) printf(fmt , ## args)
 //#define my_dbg(fmt, args...)  printf(fmt, ## args)
 
-
-
-#endif  /// end of __DEBUG__
+#endif                          /// end of __DEBUG__

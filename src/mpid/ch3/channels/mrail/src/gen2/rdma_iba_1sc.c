@@ -922,6 +922,7 @@ MPIDI_CH3I_RDMA_win_create(void *base,
     
     if (fallback_trigger) {
         MPIU_Free((void *) win_info_exchange);
+        MPIU_Free((void *) cc_ptrs_exchange);
         dreg_unregister((*win_ptr)->pinnedpool_1sc_dentry);
         MPIU_Free((void *) (*win_ptr)->pinnedpool_1sc_buf);
         dreg_unregister((*win_ptr)->post_flag_dreg_entry);

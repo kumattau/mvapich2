@@ -30,13 +30,13 @@ char *vedit_str(char *const ptr, const char *format, va_list args)
     va_end(ap);
 
     if (size++ < 0)
-	return NULL;
+        return NULL;
 
     str = realloc(ptr, sizeof(char) * size);
 
     if (!str) {
-	perror("vedit_str [realloc]");
-	exit(EXIT_FAILURE);
+        perror("vedit_str [realloc]");
+        exit(EXIT_FAILURE);
     }
 
     va_copy(ap, args);
@@ -44,7 +44,7 @@ char *vedit_str(char *const ptr, const char *format, va_list args)
     va_end(ap);
 
     if (size < 0)
-	return NULL;
+        return NULL;
 
     return str;
 }
@@ -79,14 +79,14 @@ char *mkstr(char const *const format, ...)
 /*
  * ptr must be dynamically allocated
  */
-char * append_str(char * ptr, char const * const suffix)
+char *append_str(char *ptr, char const *const suffix)
 {
 
     ptr = realloc(ptr, sizeof(char) * (strlen(ptr) + strlen(suffix) + 1));
 
     if (!ptr) {
-	perror("append_str [realloc]");
-	exit(EXIT_FAILURE);
+        perror("append_str [realloc]");
+        exit(EXIT_FAILURE);
     }
 
     strcat(ptr, suffix);
@@ -94,26 +94,25 @@ char * append_str(char * ptr, char const * const suffix)
     return ptr;
 }
 
-
 int read_socket(int socket, void *buffer, size_t bytes)
 {
     char *data = buffer;
     ssize_t rv;
 
     while (bytes != 0) {
-	if ((rv = read(socket, data, bytes)) == -1) {
-	    switch (errno) {
-	    case EINTR:
-	    case EAGAIN:
-		continue;
-	    default:
-		perror("read");
-		return -1;
-	    }
-	}
+        if ((rv = read(socket, data, bytes)) == -1) {
+            switch (errno) {
+            case EINTR:
+            case EAGAIN:
+                continue;
+            default:
+                perror("read");
+                return -1;
+            }
+        }
 
-	data += rv;
-	bytes -= rv;
+        data += rv;
+        bytes -= rv;
     }
 
     return 0;
@@ -125,19 +124,19 @@ int write_socket(int socket, void *buffer, size_t bytes)
     ssize_t rv;
 
     while (bytes != 0) {
-	if ((rv = write(socket, data, bytes)) == -1) {
-	    switch (errno) {
-	    case EINTR:
-	    case EAGAIN:
-		continue;
-	    default:
-		perror("write");
-		return -1;
-	    }
-	}
+        if ((rv = write(socket, data, bytes)) == -1) {
+            switch (errno) {
+            case EINTR:
+            case EAGAIN:
+                continue;
+            default:
+                perror("write");
+                return -1;
+            }
+        }
 
-	data += rv;
-	bytes -= rv;
+        data += rv;
+        bytes -= rv;
     }
 
     return 0;
@@ -170,12 +169,12 @@ int CR_MPDU_writeline(int fd, char *buf)
     size = strlen(buf);
 
     if (size > MAX_CR_MSG_LEN) {
-	buf[MAX_CR_MSG_LEN - 1] = '\0';
+        buf[MAX_CR_MSG_LEN - 1] = '\0';
     } else {
-	n = write(fd, buf, size);
-	if (n < 0) {
-	    return (-1);
-	}
+        n = write(fd, buf, size);
+        if (n < 0) {
+            return (-1);
+        }
     }
     return 0;
 }
@@ -188,21 +187,21 @@ int CR_MPDU_readline(int fd, char *buf, int maxlen)
 
     for (ptr = buf; n < maxlen; ++n) {
       again:
-	rc = read(fd, &c, 1);
-	if (rc == 1) {
-	    *ptr++ = c;
-	    if (c == '\n')
-		break;
-	} else if (rc == 0) {
-	    if (n == 1)
-		return (0);
-	    else
-		break;
-	} else {
-	    if (errno == EINTR)
-		goto again;
-	    return (-1);
-	}
+        rc = read(fd, &c, 1);
+        if (rc == 1) {
+            *ptr++ = c;
+            if (c == '\n')
+                break;
+        } else if (rc == 0) {
+            if (n == 1)
+                return (0);
+            else
+                break;
+        } else {
+            if (errno == EINTR)
+                goto again;
+            return (-1);
+        }
     }
     *ptr = 0;
     return (n);
@@ -213,48 +212,46 @@ int CR_MPDU_parse_keyvals(char *st)
     char *p, *keystart, *valstart;
 
     if (!st) {
-	return (-1);
+        return (-1);
     }
 
     CRU_keyval_tab_idx = 0;
     p = st;
     while (1) {
-	while (*p == ' ') {
-	    ++p;
-	}
+        while (*p == ' ') {
+            ++p;
+        }
 
-	/* got non-blank */
-	if (*p == '=') {
-	    return (-2);
-	}
-	if ((*p == '\n') || (*p == '\0'))
-	    return (0);		/* normal exit */
+        /* got non-blank */
+        if (*p == '=') {
+            return (-2);
+        }
+        if ((*p == '\n') || (*p == '\0'))
+            return (0);         /* normal exit */
 
-	keystart = p;
-	while ((*p != ' ') && (*p != '=') && (*p != '\n') && (*p != '\0')) {
-	    ++p;
-	}
-	if ((*p == ' ') || (*p == '\n') || (*p == '\0')) {
-	    return (-3);
-	}
-	strncpy(CRU_keyval_tab[CRU_keyval_tab_idx].key, keystart,
-		CRU_MAX_KEY_LEN);
-	CRU_keyval_tab[CRU_keyval_tab_idx].key[p - keystart] = '\0';	/* store key */
+        keystart = p;
+        while ((*p != ' ') && (*p != '=') && (*p != '\n') && (*p != '\0')) {
+            ++p;
+        }
+        if ((*p == ' ') || (*p == '\n') || (*p == '\0')) {
+            return (-3);
+        }
+        strncpy(CRU_keyval_tab[CRU_keyval_tab_idx].key, keystart, CRU_MAX_KEY_LEN);
+        CRU_keyval_tab[CRU_keyval_tab_idx].key[p - keystart] = '\0';    /* store key */
 
-	valstart = ++p;
-	while ((*p != ' ') && (*p != '\n') && (*p != '\0')) {
-	    ++p;
-	}
-	strncpy(CRU_keyval_tab[CRU_keyval_tab_idx].value, valstart,
-		CRU_MAX_VAL_LEN);
-	CRU_keyval_tab[CRU_keyval_tab_idx].value[p - valstart] = '\0';	/* store value */
-	++CRU_keyval_tab_idx;
-	if (*p == ' ') {
-	    continue;
-	}
-	if (*p == '\n' || *p == '\0') {
-	    return (0);		/* value has been set to empty */
-	}
+        valstart = ++p;
+        while ((*p != ' ') && (*p != '\n') && (*p != '\0')) {
+            ++p;
+        }
+        strncpy(CRU_keyval_tab[CRU_keyval_tab_idx].value, valstart, CRU_MAX_VAL_LEN);
+        CRU_keyval_tab[CRU_keyval_tab_idx].value[p - valstart] = '\0';  /* store value */
+        ++CRU_keyval_tab_idx;
+        if (*p == ' ') {
+            continue;
+        }
+        if (*p == '\n' || *p == '\0') {
+            return (0);         /* value has been set to empty */
+        }
     }
 
     return (-4);
@@ -265,16 +262,16 @@ char *CR_MPDU_getval(const char *keystr, char *valstr, int vallen)
     int i;
 
     for (i = 0; i < CRU_keyval_tab_idx; ++i) {
-	if (strcmp(keystr, CRU_keyval_tab[i].key) == 0) {
-	    strncpy(valstr, CRU_keyval_tab[i].value, vallen - 1);
-	    valstr[vallen - 1] = '\0';
-	    return (valstr);
-	}
+        if (strcmp(keystr, CRU_keyval_tab[i].key) == 0) {
+            strncpy(valstr, CRU_keyval_tab[i].value, vallen - 1);
+            valstr[vallen - 1] = '\0';
+            return (valstr);
+        }
     }
     valstr[0] = '\0';
     return (NULL);
 }
 
-#endif				/* CKPT */
+#endif                          /* CKPT */
 
 /* vi:set sw=4 sts=4 tw=80 */

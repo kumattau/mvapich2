@@ -26,13 +26,12 @@
 #include "coll_shmem.h"
 
 
-#define SHMEM_COLL_NUM_PROCS 32
+#define SHMEM_COLL_NUM_PROCS 48
 #define SHMEM_COLL_NUM_COMM  20
 
 /* the shared area itself */
 typedef struct {
     volatile int child_complete_bcast[SHMEM_COLL_NUM_COMM][SHMEM_COLL_NUM_PROCS];   /* use for initial synchro */
-    volatile int root_complete_bcast[SHMEM_COLL_NUM_COMM][SHMEM_COLL_NUM_PROCS];  
     volatile int child_complete_gather[SHMEM_COLL_NUM_COMM][SHMEM_COLL_NUM_PROCS];   /* use for initial synchro */
     volatile int root_complete_gather[SHMEM_COLL_NUM_COMM][SHMEM_COLL_NUM_PROCS];  
     volatile int barrier_gather[SHMEM_COLL_NUM_COMM][SHMEM_COLL_NUM_PROCS];
@@ -49,7 +48,7 @@ typedef struct {
     char shmem_coll_buf;
 } shmem_coll_region;
 
-#define SHMEM_COLL_BUF_SIZE (g_shmem_coll_blocks * SHMEM_COLL_BLOCK_SIZE + sizeof(shmem_coll_region))
+#define SHMEM_COLL_BUF_SIZE (g_shmem_coll_blocks * 2 * SHMEM_COLL_BLOCK_SIZE + sizeof(shmem_coll_region))
 shmem_coll_region *shmem_coll;
 
 

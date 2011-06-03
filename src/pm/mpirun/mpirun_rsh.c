@@ -41,12 +41,9 @@
 #include <param.h>
 #include <mv2_config.h>
 #include "error_handling.h"
+#include "debug_utils.h"
 
-
-
-#if defined(_NSIG)
-#define NSIG _NSIG
-#endif                /* defined(_NSIG) */
+#include <signal_processor.h>
 
 /*
  * When an error occurs in the init phase, mpirun_rsh doesn't have the pid
@@ -58,19 +55,18 @@
 
 int wait_socks_succ = 0;
 int socket_error = 0;
+static int exit_code = EXIT_SUCCESS;
 
-
-void spawn_one(int argc, char *argv[], char *totalview_cmd, char *env,
-           int fastssh_nprocs_thres);
+void spawn_one(int argc, char *argv[], char *totalview_cmd, char *env, int fastssh_nprocs_thres);
 
 process_groups *pglist = NULL;
 int totalprocs = 0;
 char *TOTALPROCS;
 int port;
-char *wd;            /* working directory of current process */
+char *wd;                       /* working directory of current process */
 char *custpath, *custwd;
 #define MAX_HOST_LEN 256
-char mpirun_host[MAX_HOST_LEN];    /* hostname of current process */
+char mpirun_host[MAX_HOST_LEN]; /* hostname of current process */
 
 /* xxx need to add checking for string overflow, do this more carefully ... */
 
@@ -79,16 +75,16 @@ char *dpmenv;
 int dpmenvlen;
 int dpm_cnt = 0;
 /*List of pids of the mpirun started by mpirun_rsh with dpm.*/
-list_pid_mpirun_t * dpm_mpirun_pids = NULL;
+list_pid_mpirun_t *dpm_mpirun_pids = NULL;
 
 #if defined(CKPT) && defined(CR_AGGRE)
-int use_aggre = 1; // by default we use CR-aggregation
-int use_aggre_mig = 0; 
+int use_aggre = 1;              // by default we use CR-aggregation
+int use_aggre_mig = 1;
 #endif
 
-//#define dbg(fmt, args...)   do{ \
-//    fprintf(stderr,"%s: [mpirun]: "fmt, __func__, ##args); fflush(stderr); } while(0)
-#define dbg(fmt, args...) 
+/* #define dbg(fmt, args...)   do{ \
+    fprintf(stderr,"%s: [mpirun]: "fmt, __func__, ##args); fflush(stderr); } while(0) */
+#define dbg(fmt, args...)
 
 /*struct spawn_info_t {
     int totspawns;
@@ -105,7 +101,6 @@ int use_aggre_mig = 0;
 struct spawn_info_t spinf;
 */
 spawn_info_t spinf;
-
 
 /*
  * Message notifying user of what timed out
@@ -127,11 +122,9 @@ void usage(void);
 void cleanup(void);
 char *skip_white(char *s);
 int read_param_file(char *paramfile, char **env);
-void wait_for_mpispawn(int s, struct sockaddr_in *sockaddr,
-               unsigned int sockaddr_len);
+void wait_for_mpispawn(int s, struct sockaddr_in *sockaddr, unsigned int sockaddr_len);
 int set_fds(fd_set * rfds, fd_set * efds);
-void make_command_strings(int argc, char *argv[], char *totalview_cmd,
-              char *command_name, char *command_name_tv);
+void make_command_strings(int argc, char *argv[], char *totalview_cmd, char *command_name, char *command_name_tv);
 void mpispawn_checkin(int, struct sockaddr *, unsigned int);
 void handle_spawn_req(int readsock);
 void launch_newmpirun(int total);
@@ -167,13 +160,11 @@ static void get_display_str()
 
     p = getenv("DISPLAY");
     if (p != NULL) {
-    /* For X11 programs */
-    assert(DISPLAY_STR_LEN > strlen("DISPLAY=") + strlen(p));
-        snprintf( display, DISPLAY_STR_LEN, "DISPLAY=%s", p );
+        /* For X11 programs */
+        assert(DISPLAY_STR_LEN > strlen("DISPLAY=") + strlen(p));
+        snprintf(display, DISPLAY_STR_LEN, "DISPLAY=%s", p);
     }
 }
-
-
 
 //Define the max len of a pid
 #define MAX_PID_LEN 22
@@ -187,50 +178,113 @@ char *host_list_file = NULL;
 void remove_host_list_file()
 {
     if (host_list_file) {
-    if (unlink(host_list_file) < 0) {
-        fprintf(stderr, "ERROR removing the %s\n", host_list_file);
-    }
-    free(host_list_file);
-    host_list_file = NULL;
+        if (unlink(host_list_file) < 0) {
+            fprintf(stderr, "ERROR removing the %s\n", host_list_file);
+        }
+        free(host_list_file);
+        host_list_file = NULL;
     }
 }
 
-void    dump_pgrps()
+void dump_pgrps()
 {
     int i;
-    for(i=0; i< pglist->npgs; i++)
-    {
-        dbg( "pg_%d@%s: local_proc %d : rem_proc %d, has %d pids\n", i,
-          pglist->data[i].hostname, pglist->data[i].local_pid, 
-            pglist->data[i].pid, pglist->data[i].npids );
+    for (i = 0; i < pglist->npgs; i++) {
+        dbg("pg_%d@%s: local_proc %d : rem_proc %d, has %d pids\n", i, pglist->data[i].hostname, pglist->data[i].local_pid, pglist->data[i].pid, pglist->data[i].npids);
     }
 }
 
 int lookup_exit_pid(pid_t pid)
 {
     int rv = -1;
-    if( pid<0 ){
+    if (pid < 0) {
         dbg("invalid pid %d\n", pid);
         return rv;
     }
     int i;
-    for(i=0; i< pglist->npgs; i++)
-    {
-        if( pid == pglist->data[i].local_pid )
-        {
-            dbg("proc exit: local_proc %d:%d for %s\n", 
-                i, pid, pglist->data[i].hostname );
+    for (i = 0; i < pglist->npgs; i++) {
+        if (pid == pglist->data[i].local_pid) {
+            dbg("proc exit: local_proc %d:%d for %s\n", i, pid, pglist->data[i].hostname);
             return i;
-        } 
+        }
     }
     dbg("exit pid %d cannot found\n", pid);
     return rv;
 }
 
+void init_debug()
+{
+    // Set coresize limit
+    char *coresize = getenv("MV2_DEBUG_CORESIZE");
+    set_coresize_limit(coresize);
+    // ignore error code, failure if not fatal
+
+    // Set prefix for debug output
+    const int MAX_LENGTH = 256;
+    char hostname[MAX_LENGTH];
+    gethostname(hostname, MAX_LENGTH);
+    hostname[MAX_LENGTH - 1] = '\0';
+    char output_prefix[MAX_LENGTH];
+    snprintf(output_prefix, MAX_LENGTH, "%s:mpirun_rsh", hostname);
+    set_output_prefix(output_prefix);
+
+    // Set an error signal handler
+    char *bt = getenv("MV2_DEBUG_SHOW_BACKTRACE");
+    int backtrace = 0;
+    if (bt != NULL) {
+        backtrace = ! !atoi(bt);
+    }
+    setup_error_sighandler(backtrace);
+    // ignore error code, failure if not fatal
+
+    // Initialize DEBUG variables
+    initialize_debug_variables();
+}
+
+static void
+signal_processor (int signal)
+{
+    switch (signal) {
+        case SIGHUP:
+        case SIGINT:
+        case SIGTERM:
+            cleanup_handler(signal);
+            break;
+        case SIGTSTP:
+            nostop_handler(signal);
+            break;
+        case SIGALRM:
+            alarm_handler(signal);
+            break;
+        case SIGCHLD:
+            child_handler(signal);
+            break;
+        default:
+            PRINT_ERROR("Caught unexpected signal %d\n, killing job", signal);
+            cleanup_handler(signal);
+            break;
+    }
+}
+
+void
+setup_signal_handling_thread (void)
+{
+    sigset_t sigmask;
+
+    sigemptyset(&sigmask);
+    sigaddset(&sigmask, SIGHUP);
+    sigaddset(&sigmask, SIGINT);
+    sigaddset(&sigmask, SIGTERM);
+    sigaddset(&sigmask, SIGTSTP);
+    sigaddset(&sigmask, SIGALRM);
+    sigaddset(&sigmask, SIGCHLD);
+
+    start_signal_processor(sigmask, signal_processor);
+}
+
 int main(int argc, char *argv[])
 {
     int i, s;
-    int ret;
     struct sockaddr_in sockaddr;
     unsigned int sockaddr_len = sizeof(sockaddr);
     unsigned long crc;
@@ -246,20 +300,8 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    // Set coresize limit
-    char* coresize = getenv("MV2_DEBUG_CORESIZE");
-    set_coresize_limit( coresize );
-    // ignore error code, failure if not fatal
-
-    // Set an error signal handler
-    char* bt = getenv("MV2_DEBUG_SHOW_BACKTRACE");
-    int backtrace = 0;
-    if ( bt != NULL ) {
-        backtrace = !!atoi( bt );
-    }
-    set_error_prefix( "mpirun_rsh" );
-    setup_error_sighandler( backtrace );
-    // ignore error code, failure if not fatal
+    init_debug();
+    setup_signal_handling_thread();
 
     atexit(remove_host_list_file);
     atexit(free_memory);
@@ -270,10 +312,10 @@ int main(int argc, char *argv[])
 #ifdef CKPT
     int ret_ckpt;
 
-    if (( ret_ckpt = ckptInit()) < 0 )
+    if ((ret_ckpt = ckptInit()) < 0)
         return ret_ckpt;
-restart_from_ckpt:
-#endif                /* CKPT */
+  restart_from_ckpt:
+#endif                          /* CKPT */
 
     commandLine(argc, argv, totalview_cmd, &env);
 
@@ -281,10 +323,9 @@ restart_from_ckpt:
     set_ckpt_nprocs(nprocs);
 #endif
 
-    if (use_totalview) 
-    {
+    if (use_totalview) {
         MPIR_proctable = (struct MPIR_PROCDESC *)
-        malloc(MPIR_PROCDESC_s * nprocs);
+            malloc(MPIR_PROCDESC_s * nprocs);
         MPIR_proctable_size = nprocs;
 
         for (i = 0; i < nprocs; ++i) {
@@ -299,14 +340,14 @@ restart_from_ckpt:
 
     server_socket = s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (s < 0) {
-    perror("socket");
-    exit(EXIT_FAILURE);
+        perror("socket");
+        exit(EXIT_FAILURE);
     }
     sockaddr.sin_addr.s_addr = INADDR_ANY;
     sockaddr.sin_port = 0;
     if (bind(s, (struct sockaddr *) &sockaddr, sockaddr_len) < 0) {
-    perror("bind");
-    exit(EXIT_FAILURE);
+        perror("bind");
+        exit(EXIT_FAILURE);
     }
 
     if (getsockname(s, (struct sockaddr *) &sockaddr, &sockaddr_len) < 0) {
@@ -318,35 +359,11 @@ restart_from_ckpt:
 
     listen(s, nprocs);
 
-    if (!show_on) {
-        struct sigaction signal_handler;
-        signal_handler.sa_handler = cleanup_handler;
-        sigfillset(&signal_handler.sa_mask);
-        signal_handler.sa_flags = 0;
-
-        sigaction(SIGHUP, &signal_handler, NULL);
-        sigaction(SIGINT, &signal_handler, NULL);
-        sigaction(SIGTERM, &signal_handler, NULL);
-
-        signal_handler.sa_handler = nostop_handler;
-
-        sigaction(SIGTSTP, &signal_handler, NULL);
-
-        signal_handler.sa_handler = alarm_handler;
-
-        sigaction(SIGALRM, &signal_handler, NULL);
-
-        signal_handler.sa_handler = child_handler;
-        sigemptyset(&signal_handler.sa_mask);
-
-        sigaction(SIGCHLD, &signal_handler, NULL);
-    }
-
     for (i = 0; i < nprocs; i++) {
-    /* I should probably do some sort of hostname lookup to account for
-     * situations where people might use two different hostnames for the
-     * same host.
-     */
+        /* I should probably do some sort of hostname lookup to account for
+         * situations where people might use two different hostnames for the
+         * same host.
+         */
         pglist_insert(plist[i].hostname, i);
     }
 
@@ -354,23 +371,21 @@ restart_from_ckpt:
     dbg("****************  enabled CR_FTB && CKPT  ****************\n");
 #endif
 #if defined(CKPT) && defined(CR_FTB)
-    if (sparehosts_on) 
-    {
+    if (sparehosts_on) {
         /* Read Hot Spares */
-        ret = read_sparehosts(sparehostfile, &sparehosts, &nsparehosts);
+        int ret = read_sparehosts(sparehostfile, &sparehosts, &nsparehosts);
         if (ret) {
-             DBG(fprintf(stderr, "Error Reading Spare Hosts (%d)\n", ret));
-             exit(EXIT_FAILURE);
+            DBG(fprintf(stderr, "Error Reading Spare Hosts (%d)\n", ret));
+            exit(EXIT_FAILURE);
         }
         /* Add Hot Spares to pglist */
         for (i = 0; i < nsparehosts; i++) {
             pglist_insert(sparehosts[i], -1);
-            dbg("sparehosts[%d] = %s\n", i, sparehosts[i] );
+            dbg("sparehosts[%d] = %s\n", i, sparehosts[i]);
         }
     }
+#endif                          /* CR_FTB */
 
-#endif /* CR_FTB */
-    
     /*
      * Set alarm for mpirun initialization on MV2_MPIRUN_TIMEOUT if set.
      * Otherwise set to default value based on size of job and whether
@@ -379,24 +394,23 @@ restart_from_ckpt:
     timeout = env2int("MV2_MPIRUN_TIMEOUT");
 
     if (timeout <= 0) {
-    timeout = pglist ? pglist->npgs : nprocs;
-    if (timeout < 30) {
-        timeout = 30;
-    } else if (timeout > 1000) {
-        timeout = 1000;
-    }
+        timeout = pglist ? pglist->npgs : nprocs;
+        if (timeout < 30) {
+            timeout = 30;
+        } else if (timeout > 1000) {
+            timeout = 1000;
+        }
     }
 
     alarm_msg = "Timeout during client startup.\n";
     if (!debug_on) {
-    alarm(timeout);
+        alarm(timeout);
     }
-
 
     fastssh_threshold = env2int("MV2_FASTSSH_THRESHOLD");
 
     if (!fastssh_threshold)
-    fastssh_threshold = 1 << 8;
+        fastssh_threshold = 1 << 8;
 
 #ifndef CKPT
     //Another way to activate hiearachical ssh is having a number of nodes
@@ -413,15 +427,14 @@ restart_from_ckpt:
      */
 #ifdef CKPT
     save_ckpt_vars_env();
-#ifdef CR_AGGRE 
+#ifdef CR_AGGRE
     if (getenv("MV2_CKPT_USE_AGGREGATION")) {
         use_aggre = atoi(getenv("MV2_CKPT_USE_AGGREGATION"));
     }
 #endif
 #endif
 
-    if (USE_LINEAR_SSH) 
-    {
+    if (USE_LINEAR_SSH) {
         NSPAWNS = pglist->npgs;
         DBG(fprintf(stderr, "USE_LINEAR = %d \n", USE_LINEAR_SSH));
 
@@ -430,7 +443,7 @@ restart_from_ckpt:
             create_connections(NSPAWNS);
         }
         /* if (!show_on) */
-#endif                /* CKPT */
+#endif                          /* CKPT */
         spawn_fast(argc, argv, totalview_cmd, env);
 
 #ifdef CKPT
@@ -438,11 +451,9 @@ restart_from_ckpt:
             close_connections(NSPAWNS);
         }
         /* if (!show_on) */
-#endif                /* CKPT */
+#endif                          /* CKPT */
 
-    } 
-    else 
-    {
+    } else {
         NSPAWNS = 1;
         //Search if the number of processes is set up as a environment
         int fastssh_nprocs_thres = env2int("MV2_NPROCS_THRESHOLD");
@@ -468,18 +479,18 @@ restart_from_ckpt:
      */
     timeout = env2int("MPIEXEC_TIMEOUT");
     if (timeout > 0 && !debug_on) {
-    alarm_msg = mkstr("Timeout [TIMEOUT = %d seconds].\n", timeout);
-    alarm(timeout);
+        alarm_msg = mkstr("Timeout [TIMEOUT = %d seconds].\n", timeout);
+        alarm(timeout);
     }
 
     wait_for_mpispawn(server_socket, &sockaddr, sockaddr_len);
-    
+
 #ifdef CKPT
     dbg(" after wait_for_spawn: cached_restart_context=%d\n", cached_restart_context);
     finalize_ckpt();
-    if(cached_restart_context)
+    if (cached_restart_context)
         goto restart_from_ckpt;
-#endif /* CKPT */
+#endif                          /* CKPT */
 
     /*
      * This return should never be reached.
@@ -487,12 +498,30 @@ restart_from_ckpt:
     return EXIT_FAILURE;
 }
 
+// Error code from MPISPAWN
+const char* get_mpispawn_error_str( mpispawn_error_code ec )
+{
+    switch( ec ) {
+        case MPISPAWN_MPIPROCESS_ERROR:
+            return "MPI process error";
+        case MPISPAWN_MPIPROCESS_NONZEROEXIT:
+            return "An MPI process returned a non-zero exit code";
+        case MPISPAWN_DPM_REQ:
+            return "DPM request (not an error)";
+        case MPISPAWN_PMI_READ_ERROR:
+            return "Error while reading a PMI socket";
+        case MPISPAWN_PMI_WRITE_ERROR:
+            return "Error while writing a PMI socket";
+        case MPISPAWN_INTERNAL_ERROR:
+            return "MPISPAWN internal error";
+        case MPISPAWN_CLEANUP_SIGNAL:
+            return "MPISPAWN got cleanup signal";
+        default:
+            return "Unknown error";
+    }
+}
 
-/**
- *
- */
-void wait_for_mpispawn(int s, struct sockaddr_in *sockaddr,
-               unsigned int sockaddr_len)
+void wait_for_mpispawn(int s, struct sockaddr_in *sockaddr, unsigned int sockaddr_len)
 {
     int wfe_socket, wfe_mpispawn_code, wfe_abort_mid;
 
@@ -500,13 +529,12 @@ void wait_for_mpispawn(int s, struct sockaddr_in *sockaddr,
 
 #ifdef CKPT
     if (restart_context)
-    return;
+        return;
 #endif
 
-    while ((wfe_socket = accept(s, (struct sockaddr *) sockaddr, &sockaddr_len)) < 0) 
-    {
+    while ((wfe_socket = accept(s, (struct sockaddr *) sockaddr, &sockaddr_len)) < 0) {
 #ifdef CKPT
-        dbg("%s: got wfe %d\n", __func__, wfe_socket );
+        dbg("%s: got wfe %d\n", __func__, wfe_socket);
         if (restart_context)
             return;
 #endif
@@ -517,56 +545,63 @@ void wait_for_mpispawn(int s, struct sockaddr_in *sockaddr,
         cleanup();
     }
 
-wait_for_non_spare:
+#if defined(CKPT) && defined(CR_FTB)
+  wait_for_non_spare:
+#endif
 
     if (read_socket(wfe_socket, &wfe_mpispawn_code, sizeof(int))
-            || read_socket(wfe_socket, &wfe_abort_mid, sizeof(int))) {
-        fprintf(stderr, "Termination socket read failed!\n");
-
-    } else if (wfe_mpispawn_code == MPISPAWN_DPM_REQ) {
-        DBG(fprintf(stderr, "Dynamic spawn request from %d\n", wfe_abort_mid));
-        handle_spawn_req(wfe_socket);
-        dpm_cnt++;
-        close(wfe_socket);
-        goto listen;
-
+        || read_socket(wfe_socket, &wfe_abort_mid, sizeof(int))) {
+        PRINT_ERROR("Termination socket read failed!\n");
     } else {
-        fprintf(stderr, "Exit code %d signaled from %s\n",
-        wfe_mpispawn_code, pglist->index[wfe_abort_mid]->hostname);
+        // Got error code from mpispawn
+        if ( wfe_mpispawn_code == MPISPAWN_DPM_REQ ) {
+            // Handle DPM request and restart listening for errors
+            PRINT_DEBUG(DEBUG_Fork_verbose, "Dynamic spawn request from %d\n", wfe_abort_mid);
+            handle_spawn_req(wfe_socket);
+            dpm_cnt++;
+            close(wfe_socket);
+            goto listen;
+        } else if ( wfe_mpispawn_code == MPISPAWN_MPIPROCESS_NONZEROEXIT ) {
+            // Set non_zeo exit code and restart listening for errors
+            PRINT_DEBUG(DEBUG_Fork_verbose, "mpispawn %d reported an MPI process exit with non-zero code\n", wfe_abort_mid);
+            exit_code = EXIT_FAILURE;
+            close(wfe_socket);
+            goto listen;
+        } else {
+            // Another error code: assume abort from mpispawn:
+            // -> print error message, cleanup and exit
+            const char *error_message = get_mpispawn_error_str( wfe_mpispawn_code );
+            const char* hostname = pglist->index[wfe_abort_mid]->hostname;
+            PRINT_ERROR("mpispawn_%d from node %s aborted: %s (%d)\n", wfe_abort_mid, hostname, error_message, wfe_mpispawn_code);
+            exit_code = EXIT_FAILURE;
+            // cleanup and exit will follow
+        }
     }
-
 #if defined(CKPT) && defined(CR_FTB)
-      if(sparehosts_on && !strcmp(current_spare_host,
-            pglist->index[wfe_abort_mid]->hostname))
-      {
-            dbg("Not Exited, only spare node!\n");
-            goto wait_for_non_spare;
-      }
-      else
-      {
-            dbg("  current_spare=%s, host=%s\n",
-              current_spare_host, pglist->index[wfe_abort_mid]->hostname);
-      }
+    if (sparehosts_on && current_spare_host && !strcmp(current_spare_host, pglist->index[wfe_abort_mid]->hostname)) {
+        PRINT_DEBUG(DEBUG_FT_verbose, "Not Exited, only spare node!\n");
+        goto wait_for_non_spare;
+    } else {
+        PRINT_DEBUG(DEBUG_FT_verbose, "current_spare=%s, host=%s\n", current_spare_host, pglist->index[wfe_abort_mid]->hostname);
+    }
 #endif
     close(wfe_socket);
     cleanup();
 }
 
 #if defined(CKPT) && defined(CR_AGGRE)
-static int rkill_aggregation()
+static void rkill_aggregation()
 {
-    int i, pid;
-    char    cmd[256];
-
-    for(i=0; i<NSPAWNS; i++)
-    {
+    int i;
+    char cmd[256];
+    if (!use_aggre)
+        return;
+    for (i = 0; i < NSPAWNS; i++) {
         extern char sessionid[16];
-        dbg("before umnt for pg_%d @ %s...\n", i, pglist->index[i]->hostname );
-        snprintf(cmd, 256, "%s %s fusermount -u /tmp/cr-%s/wa > /dev/null 2>&1", 
-              SSH_CMD, pglist->index[i]->hostname, sessionid );
+        dbg("before umnt for pg_%d @ %s...\n", i, pglist->index[i]->hostname);
+        snprintf(cmd, 256, "%s %s fusermount -u /tmp/cr-%s/wa > /dev/null 2>&1", SSH_CMD, pglist->index[i]->hostname, sessionid);
         system(cmd);
-        snprintf(cmd, 256, "%s %s fusermount -u /tmp/cr-%s/mig > /dev/null 2>&1", 
-              SSH_CMD, pglist->index[i]->hostname, sessionid );
+        snprintf(cmd, 256, "%s %s fusermount -u /tmp/cr-%s/mig > /dev/null 2>&1", SSH_CMD, pglist->index[i]->hostname, sessionid);
         system(cmd);
         dbg("has finished umnt pg_%d @ %s\n", i, pglist->index[i]->hostname);
     }
@@ -576,60 +611,48 @@ static int rkill_aggregation()
 void cleanup_handler(int sig)
 {
     cleanup();
-    #if defined(CKPT) && defined(CR_AGGRE) 
-        rkill_aggregation();
-    #endif
+#if defined(CKPT) && defined(CR_AGGRE)
+    rkill_aggregation();
+#endif
     exit(EXIT_FAILURE);
 }
-
-
-
 
 void pglist_print(void)
 {
     if (pglist) {
-    size_t i, j, npids = 0, npids_allocated = 0;
+        size_t i, j, npids = 0, npids_allocated = 0;
 
-    fprintf(stderr, "\n--------------pglist-------------\ndata:\n");
-    for (i = 0; i < pglist->npgs; i++) {
-        fprintf(stderr, "%p - %s:", &pglist->data[i],
-            pglist->data[i].hostname);
-        fprintf(stderr, " %d (", pglist->data[i].pid);
+        fprintf(stderr, "\n--------------pglist-------------\ndata:\n");
+        for (i = 0; i < pglist->npgs; i++) {
+            fprintf(stderr, "%p - %s:", &pglist->data[i], pglist->data[i].hostname);
+            fprintf(stderr, " %d (", pglist->data[i].pid);
 
-        for (j = 0; j < pglist->data[i].npids;
-         fprintf(stderr, ", "), j++) {
-        fprintf(stderr, "%d", pglist->data[i].plist_indices[j]);
+            for (j = 0; j < pglist->data[i].npids; fprintf(stderr, ", "), j++) {
+                fprintf(stderr, "%d", pglist->data[i].plist_indices[j]);
+            }
+
+            fprintf(stderr, ")\n");
+            npids += pglist->data[i].npids;
+            npids_allocated += pglist->data[i].npids_allocated;
         }
 
-        fprintf(stderr, ")\n");
-        npids += pglist->data[i].npids;
-        npids_allocated += pglist->data[i].npids_allocated;
-    }
+        fprintf(stderr, "\nindex:");
+        for (i = 0; i < pglist->npgs; i++) {
+            fprintf(stderr, " %p", pglist->index[i]);
+        }
 
-    fprintf(stderr, "\nindex:");
-    for (i = 0; i < pglist->npgs; i++) {
-        fprintf(stderr, " %p", pglist->index[i]);
-    }
-
-    fprintf(stderr, "\nnpgs/allocated: %d/%d (%d%%)\n",
-        (int) pglist->npgs, (int) pglist->npgs_allocated,
-        (int) (pglist->npgs_allocated ? 100. * pglist->npgs /
-               pglist->npgs_allocated : 100.));
-    fprintf(stderr, "npids/allocated: %d/%d (%d%%)\n", (int) npids,
-        (int) npids_allocated,
-        (int) (npids_allocated ? 100. * npids /
-               npids_allocated : 100.));
-    fprintf(stderr, "--pglist-end--\n\n");
+        fprintf(stderr, "\nnpgs/allocated: %d/%d (%d%%)\n", (int) pglist->npgs, (int) pglist->npgs_allocated, (int) (pglist->npgs_allocated ? 100. * pglist->npgs / pglist->npgs_allocated : 100.));
+        fprintf(stderr, "npids/allocated: %d/%d (%d%%)\n", (int) npids, (int) npids_allocated, (int) (npids_allocated ? 100. * npids / npids_allocated : 100.));
+        fprintf(stderr, "--pglist-end--\n\n");
 
         /// show all procs
-        for(i=0; i<nprocs; i++)
-        {
-            fprintf(stderr, "proc_%d: at %s: pid=%d, remote_pid=%d\n",
-                    i, plist[i].hostname, plist[i].pid, plist[i].remote_pid );
+        for (i = 0; i < nprocs; i++) {
+            fprintf(stderr, "proc_%ld: at %s: pid=%d, remote_pid=%d\n", i, plist[i].hostname, plist[i].pid, plist[i].remote_pid);
         }
     }
-    
+
 }
+
 //Used when dpm is enabled
 int index_dpm_spawn = 1;
 
@@ -643,69 +666,61 @@ void pglist_insert(const char *const hostname, const int plist_index)
     void *backup_ptr;
 
     if (alloc_error)
-    return;
+        return;
     if (pglist == NULL)
-    goto init_pglist;
+        goto init_pglist;
 
     top = pglist->npgs - 1;
     index = (top + bottom) / 2;
 
-    while ((strcmp_result =
-        strcmp(hostname, pglist->index[index]->hostname))) {
-    if (strcmp_result > 0) {
-        bottom = index + 1;
-    }
+    while ((strcmp_result = strcmp(hostname, pglist->index[index]->hostname))) {
+        if (strcmp_result > 0) {
+            bottom = index + 1;
+        }
 
-    else {
-        top = index - 1;
-    }
+        else {
+            top = index - 1;
+        }
 
-    if (bottom > top)
-        break;
-    index = (top + bottom) / 2;
+        if (bottom > top)
+            break;
+        index = (top + bottom) / 2;
     }
 
     //We need to add another control (we need to understand if the exe is different from the others inserted)
     if (configfile_on && strcmp_result == 0) {
-    /* Check if the previous name of exexutable and args in the pglist are equal.
-     * If they are different we need to add this exe to another group.*/
-    int index_previous = pglist->index[index]->plist_indices[0];
-    if ((strcmp_result =
-         strcmp(plist[plist_index].executable_name,
-            plist[index_previous].executable_name)) == 0) {
-        //If both the args are different from NULL we need to compare these
-        if (plist[plist_index].executable_args != NULL
-        && plist[index_previous].executable_args != NULL)
-        strcmp_result =
-            strcmp(plist[plist_index].executable_args,
-               plist[index_previous].executable_args);
-        //If both are null they are the same
-        else if (plist[plist_index].executable_args == NULL
-             && plist[index_previous].executable_args == NULL)
-        strcmp_result = 0;
-        //If one is null and the other one is not null they are different
-        else
-        strcmp_result = 1;
-    }
+        /* Check if the previous name of exexutable and args in the pglist are equal.
+         * If they are different we need to add this exe to another group.*/
+        int index_previous = pglist->index[index]->plist_indices[0];
+        if ((strcmp_result = strcmp(plist[plist_index].executable_name, plist[index_previous].executable_name)) == 0) {
+            //If both the args are different from NULL we need to compare these
+            if (plist[plist_index].executable_args != NULL && plist[index_previous].executable_args != NULL)
+                strcmp_result = strcmp(plist[plist_index].executable_args, plist[index_previous].executable_args);
+            //If both are null they are the same
+            else if (plist[plist_index].executable_args == NULL && plist[index_previous].executable_args == NULL)
+                strcmp_result = 0;
+            //If one is null and the other one is not null they are different
+            else
+                strcmp_result = 1;
+        }
     }
     //if (!dpm && !strcmp_result)
-      //  goto insert_pid;
+    //  goto insert_pid;
     //If dpm is enabled mpirun_rsh should know how many spawn to start
-    if ( dpm ) {
+    if (dpm) {
         if (index_dpm_spawn < spinf.totspawns) {
             index_dpm_spawn++;
             if (strcmp_result > 0)
                 index++;
             goto add_process_group;
-        }
-        else
+        } else
             goto insert_pid;
     }
     if (!strcmp_result)
         goto insert_pid;
 
     if (strcmp_result > 0)
-    index++;
+        index++;
 
     goto add_process_group;
 
@@ -713,50 +728,47 @@ void pglist_insert(const char *const hostname, const int plist_index)
     pglist = malloc(sizeof(process_groups));
 
     if (pglist) {
-    pglist->data = NULL;
-    pglist->index = NULL;
-    pglist->npgs = 0;
-    pglist->npgs_allocated = 0;
+        pglist->data = NULL;
+        pglist->index = NULL;
+        pglist->npgs = 0;
+        pglist->npgs_allocated = 0;
     } else {
-    goto register_alloc_error;
+        goto register_alloc_error;
     }
 
   add_process_group:
     if (pglist->npgs == pglist->npgs_allocated) {
-    process_group *pglist_data_backup = pglist->data;
-    ptrdiff_t offset;
+        process_group *pglist_data_backup = pglist->data;
+        ptrdiff_t offset;
 
-    pglist->npgs_allocated += increment;
+        pglist->npgs_allocated += increment;
 
-    backup_ptr = pglist->data;
-    pglist->data = realloc(pglist->data, sizeof(process_group) *
-                   pglist->npgs_allocated);
+        backup_ptr = pglist->data;
+        pglist->data = realloc(pglist->data, sizeof(process_group) * pglist->npgs_allocated);
 
-    if (pglist->data == NULL) {
-        pglist->data = backup_ptr;
-        goto register_alloc_error;
-    }
-
-    backup_ptr = pglist->index;
-    pglist->index = realloc(pglist->index, sizeof(process_group *) *
-                pglist->npgs_allocated);
-
-    if (pglist->index == NULL) {
-        pglist->index = backup_ptr;
-        goto register_alloc_error;
-    }
-
-    offset = (size_t) pglist->data - (size_t) pglist_data_backup;
-    if (offset) {
-        for (i = 0; i < pglist->npgs; i++) {
-        pglist->index[i] =
-            (process_group *) ((size_t) pglist->index[i] + offset);
+        if (pglist->data == NULL) {
+            pglist->data = backup_ptr;
+            goto register_alloc_error;
         }
-    }
+
+        backup_ptr = pglist->index;
+        pglist->index = realloc(pglist->index, sizeof(process_group *) * pglist->npgs_allocated);
+
+        if (pglist->index == NULL) {
+            pglist->index = backup_ptr;
+            goto register_alloc_error;
+        }
+
+        offset = (size_t) pglist->data - (size_t) pglist_data_backup;
+        if (offset) {
+            for (i = 0; i < pglist->npgs; i++) {
+                pglist->index[i] = (process_group *) ((size_t) pglist->index[i] + offset);
+            }
+        }
     }
 
     for (i = pglist->npgs; i > index; i--) {
-    pglist->index[i] = pglist->index[i - 1];
+        pglist->index[i] = pglist->index[i - 1];
     }
 
     pglist->data[pglist->npgs].hostname = hostname;
@@ -769,31 +781,31 @@ void pglist_insert(const char *const hostname, const int plist_index)
 
   insert_pid:
 #if defined(CKPT) && defined(CR_FTB)
-       /* This is a spare host. Create a PG but do not insert a PID */
-       if (plist_index == -1) return;
+    /* This is a spare host. Create a PG but do not insert a PID */
+    if (plist_index == -1)
+        return;
 #endif
     pg = pglist->index[index];
 
     if (pg->npids == pg->npids_allocated) {
-    if (pg->npids_allocated) {
-        pg->npids_allocated <<= 1;
+        if (pg->npids_allocated) {
+            pg->npids_allocated <<= 1;
 
-        if (pg->npids_allocated < pg->npids)
-        pg->npids_allocated = SIZE_MAX;
-        if (pg->npids_allocated > (size_t) nprocs)
-        pg->npids_allocated = nprocs;
-    } else {
-        pg->npids_allocated = 1;
-    }
+            if (pg->npids_allocated < pg->npids)
+                pg->npids_allocated = SIZE_MAX;
+            if (pg->npids_allocated > (size_t) nprocs)
+                pg->npids_allocated = nprocs;
+        } else {
+            pg->npids_allocated = 1;
+        }
 
-    backup_ptr = pg->plist_indices;
-    pg->plist_indices =
-        realloc(pg->plist_indices, pg->npids_allocated * sizeof(int));
+        backup_ptr = pg->plist_indices;
+        pg->plist_indices = realloc(pg->plist_indices, pg->npids_allocated * sizeof(int));
 
-    if (pg->plist_indices == NULL) {
-        pg->plist_indices = backup_ptr;
-        goto register_alloc_error;
-    }
+        if (pg->plist_indices == NULL) {
+            pg->plist_indices = backup_ptr;
+            goto register_alloc_error;
+        }
     }
 
     pg->plist_indices[pg->npids++] = plist_index;
@@ -802,24 +814,24 @@ void pglist_insert(const char *const hostname, const int plist_index)
 
   register_alloc_error:
     if (pglist) {
-    if (pglist->data) {
-        for (pg = pglist->data; pglist->npgs--; pg++) {
-        if (pg->plist_indices) {
-            free(pg->plist_indices);
-            pg->plist_indices = NULL;
+        if (pglist->data) {
+            for (pg = pglist->data; pglist->npgs--; pg++) {
+                if (pg->plist_indices) {
+                    free(pg->plist_indices);
+                    pg->plist_indices = NULL;
+                }
+            }
+            free(pglist->data);
+            pglist->data = NULL;
         }
+
+        if (pglist->index) {
+            free(pglist->index);
+            pglist->index = NULL;
         }
-        free(pglist->data);
-        pglist->data = NULL;
-    }
 
-    if (pglist->index) {
-        free(pglist->index);
-        pglist->index = NULL;
-    }
-
-    free(pglist);
-    pglist = NULL;
+        free(pglist);
+        pglist = NULL;
     }
 
     alloc_error = 1;
@@ -839,7 +851,7 @@ void free_memory(void)
                     free(pg->plist_indices);
                     pg->plist_indices = NULL;
                 }
-            pg++;
+                pg++;
             }
 
             free(pglist->data);
@@ -866,7 +878,6 @@ void free_memory(void)
         free(plist);
         plist = NULL;
     }
-
 }
 
 void cleanup(void)
@@ -875,16 +886,11 @@ void cleanup(void)
 
 #ifdef CKPT
     cr_cleanup();
-#endif                /* CKPT */
+#endif                          /* CKPT */
 
     if (use_totalview) {
         fprintf(stderr, "Cleaning up all processes ...\n");
-    }
-    if (use_totalview) {
         MPIR_debug_state = MPIR_DEBUG_ABORTING;
-    }
-    for (i = 0; i < NSIG; i++) {
-        signal(i, SIG_DFL);
     }
 
     if (pglist) {
@@ -893,35 +899,53 @@ void cleanup(void)
     }
 
     else {
-    for (i = 0; i < nprocs; i++) {
-        if (RUNNING(i)) {
-        /* send terminal interrupt, which will hopefully
-           propagate to the other side. (not sure what xterm will
-           do here.
-         */
-        kill(plist[i].pid, SIGINT);
+        for (i = 0; i < nprocs; i++) {
+            if (RUNNING(i)) {
+                /* send terminal interrupt, which will hopefully
+                   propagate to the other side. (not sure what xterm will
+                   do here.
+                 */
+                PRINT_DEBUG(DEBUG_Fork_verbose, "send SIGINT to pid %d\n", plist[i].pid);
+                int rv = kill(plist[i].pid, SIGINT);
+                if (rv == 0) {
+                    PRINT_DEBUG(DEBUG_Fork_verbose, "kill SIGINT to pid %d returned successfully\n", plist[i].pid);
+                } else {
+                    PRINT_ERROR_ERRNO("kill pid %d with SIGINT returned %d", errno, plist[i].pid, rv);
+                }
+            }
         }
-    }
 
-    sleep(1);
+        sleep(1);
 
-    for (i = 0; i < nprocs; i++) {
-        if (plist[i].state != P_NOTSTARTED) {
-        /* send regular interrupt to rsh */
-        kill(plist[i].pid, SIGTERM);
+        for (i = 0; i < nprocs; i++) {
+            if (plist[i].state != P_NOTSTARTED) {
+                /* send regular interrupt to rsh */
+                PRINT_DEBUG(DEBUG_Fork_verbose, "send SIGTERM to pid %d\n", plist[i].pid);
+                int rv = kill(plist[i].pid, SIGTERM);
+                if (rv == 0) {
+                    PRINT_DEBUG(DEBUG_Fork_verbose, "kill SIGTERM to pid %d returned successfully\n", plist[i].pid);
+                } else {
+                    PRINT_ERROR_ERRNO("kill pid %d with SIGTERM returned %d", errno, plist[i].pid, rv);
+                }
+            }
         }
-    }
 
-    sleep(1);
+        sleep(1);
 
-    for (i = 0; i < nprocs; i++) {
-        if (plist[i].state != P_NOTSTARTED) {
-        /* Kill the processes */
-        kill(plist[i].pid, SIGKILL);
+        for (i = 0; i < nprocs; i++) {
+            if (plist[i].state != P_NOTSTARTED) {
+                /* Kill the processes */
+                PRINT_DEBUG(DEBUG_Fork_verbose, "send SIGKILL to pid %d\n", plist[i].pid);
+                int rv = kill(plist[i].pid, SIGKILL);
+                if (rv == 0) {
+                    PRINT_DEBUG(DEBUG_Fork_verbose, "kill SIGKILL to pid %d returned successfully\n", plist[i].pid);
+                } else {
+                    PRINT_ERROR_ERRNO("kill pid %d with SIGKILL returned %d", errno, plist[i].pid, rv);
+                }
+            }
         }
-    }
 
-    rkill_linear();
+        rkill_linear();
     }
 
     exit(EXIT_FAILURE);
@@ -933,91 +957,84 @@ void rkill_fast(void)
     size_t i, j;
 
     for (i = 0; i < NSPAWNS; i++) {
-    if (0 == (spawned_pid[i] = fork())) {
-        dbg("pglist->index[%d]->pid=%d\n", i, pglist->index[i]->pid );
-        if (pglist->index[i]->pid != -1) {
-        const size_t bufsize = 40 + 10 * pglist->index[i]->npids;
-        const process_group *pg = pglist->index[i];
-        char kill_cmd[bufsize], tmp[10];
+        if (0 == (spawned_pid[i] = fork())) {
+            dbg("pglist->index[%d]->pid=%d\n", i, pglist->index[i]->pid);
+            if (pglist->index[i]->pid != -1) {
+                const size_t bufsize = 40 + 10 * pglist->index[i]->npids;
+                const process_group *pg = pglist->index[i];
+                char kill_cmd[bufsize], tmp[10];
 
-        kill_cmd[0] = '\0';
+                kill_cmd[0] = '\0';
 
-        if (legacy_startup) {
-            strcat(kill_cmd, "kill -s 9");
-            for (j = 0; j < pg->npids; j++) {
-            snprintf(tmp, 10, " %d",
-                 plist[pg->plist_indices[j]].remote_pid);
-            strcat(kill_cmd, tmp);
+                if (legacy_startup) {
+                    strcat(kill_cmd, "kill -s 9");
+                    for (j = 0; j < pg->npids; j++) {
+                        snprintf(tmp, 10, " %d", plist[pg->plist_indices[j]].remote_pid);
+                        strcat(kill_cmd, tmp);
+                    }
+                } else {
+                    strcat(kill_cmd, "kill");
+                    snprintf(tmp, 10, " %d", pg->pid);
+                    strcat(kill_cmd, tmp);
+                }
+
+                strcat(kill_cmd, " >&/dev/null");
+
+                if (use_rsh) {
+                    PRINT_DEBUG(DEBUG_Fork_verbose, "FORK kill mpispawn[%ld] (pid=%d): %s %s %s %s\n", i, getpid(), RSH_CMD, RSH_CMD, pg->hostname, kill_cmd);
+                    execl(RSH_CMD, RSH_CMD, pg->hostname, kill_cmd, NULL);
+                } else {
+                    PRINT_DEBUG(DEBUG_Fork_verbose, "FORK kill mpispawn[%ld] (pid=%d): %s %s %s %s %s %s\n", i, getpid(), SSH_CMD, SSH_CMD, SSH_ARG, "-x", pg->hostname, kill_cmd);
+                    execl(SSH_CMD, SSH_CMD, SSH_ARG, "-x", pg->hostname, kill_cmd, NULL);
+                }
+
+                perror("Here");
+                exit(EXIT_FAILURE);
+            } else {
+                exit(exit_code);
             }
-        } else {
-            strcat(kill_cmd, "kill");
-            snprintf(tmp, 10, " %d", pg->pid);
-            strcat(kill_cmd, tmp);
         }
-
-        strcat(kill_cmd, " >&/dev/null");
-
-        if (use_rsh) {
-            dbg("will kill mpispawn_%d: %s\n", i, kill_cmd );
-            execl(RSH_CMD, RSH_CMD, pg->hostname, kill_cmd, NULL);
-        } else {
-            dbg("use SSH_CMD: will kill mpispawn_%d of %d @ %s: %s\n", 
-                i,NSPAWNS,pg->hostname, kill_cmd );
-            execl(SSH_CMD, SSH_CMD, SSH_ARG, "-x", pg->hostname,
-              kill_cmd, NULL);
-        }
-
-        perror("Here");
-        exit(EXIT_FAILURE);
-        } else {
-        exit(EXIT_SUCCESS);
-        }
-    }
     }
 #if defined(CKPT) && defined(CR_AGGRE)
     rkill_aggregation();
 #endif
     while (1) {
-    static int iteration = 0;
-    tryagain = 0;
+        static int iteration = 0;
+        tryagain = 0;
 
-    sleep(1 << iteration);
+        sleep(1 << iteration);
 
-    for (i = 0; i < pglist->npgs; i++) {
-        if (spawned_pid[i]) {
-        spawned_pid[i] = waitpid(spawned_pid[i], NULL, WNOHANG);
-        if (!spawned_pid[i]) {
-            tryagain = 1;
+        for (i = 0; i < pglist->npgs; i++) {
+            if (spawned_pid[i]) {
+                spawned_pid[i] = waitpid(spawned_pid[i], NULL, WNOHANG);
+                if (!spawned_pid[i]) {
+                    tryagain = 1;
+                }
+            }
         }
-        }
-    }
 
-    if (++iteration == 5 || !tryagain) {
-        break;
-    }
+        if (++iteration == 5 || !tryagain) {
+            break;
+        }
     }
 
     if (tryagain) {
-    fprintf(stderr,
-        "The following processes may have not been killed:\n");
-    for (i = 0; i < pglist->npgs; i++) {
-        if (spawned_pid[i]) {
-        const process_group *pg = pglist->index[i];
+        fprintf(stderr, "The following processes may have not been killed:\n");
+        for (i = 0; i < pglist->npgs; i++) {
+            if (spawned_pid[i]) {
+                const process_group *pg = pglist->index[i];
 
-        fprintf(stderr, "%s:", pg->hostname);
+                fprintf(stderr, "%s:", pg->hostname);
 
-        for (j = 0; j < pg->npids; j++) {
-            fprintf(stderr, " %d",
-                plist[pg->plist_indices[j]].remote_pid);
+                for (j = 0; j < pg->npids; j++) {
+                    fprintf(stderr, " %d", plist[pg->plist_indices[j]].remote_pid);
+                }
+
+                fprintf(stderr, "\n");
+            }
         }
-
-        fprintf(stderr, "\n");
-        }
-    }
     }
 }
-
-
 
 void rkill_linear(void)
 {
@@ -1026,61 +1043,55 @@ void rkill_linear(void)
     fprintf(stderr, "Killing remote processes...");
 
     for (i = 0; i < nprocs; i++) {
-    if (0 == (spawned_pid[i] = fork())) {
-        char kill_cmd[80];
+        if (0 == (spawned_pid[i] = fork())) {
+            char kill_cmd[80];
 
-        if (!plist[i].remote_pid)
-        exit(EXIT_SUCCESS);
+            if (!plist[i].remote_pid)
+                exit(exit_code);
 
-        snprintf(kill_cmd, 80, "kill -s 9 %d >&/dev/null",
-             plist[i].remote_pid);
+            snprintf(kill_cmd, 80, "kill -s 9 %d >&/dev/null", plist[i].remote_pid);
 
-        if (use_rsh) {
-        execl(RSH_CMD, RSH_CMD, plist[i].hostname, kill_cmd, NULL);
-        } else {
-        execl(SSH_CMD, SSH_CMD, SSH_ARG, "-x",
-              plist[i].hostname, kill_cmd, NULL);
+            if (use_rsh) {
+                PRINT_DEBUG(DEBUG_Fork_verbose, "FORK kill remote processes (pid=%d): %s %s %s %s\n", getpid(), RSH_CMD, RSH_CMD, plist[i].hostname, kill_cmd);
+                execl(RSH_CMD, RSH_CMD, plist[i].hostname, kill_cmd, NULL);
+            } else {
+                PRINT_DEBUG(DEBUG_Fork_verbose, "FORK kill remote processes (pid=%d): %s %s %s %s %s %s\n", getpid(), SSH_CMD, SSH_CMD, SSH_ARG, "-x", plist[i].hostname, kill_cmd);
+                execl(SSH_CMD, SSH_CMD, SSH_ARG, "-x", plist[i].hostname, kill_cmd, NULL);
+            }
+
+            perror(NULL);
+            exit(EXIT_FAILURE);
         }
-
-        perror(NULL);
-        exit(EXIT_FAILURE);
-    }
     }
 
     while (1) {
-    static int iteration = 0;
-    tryagain = 0;
+        static int iteration = 0;
+        tryagain = 0;
 
-    sleep(1 << iteration);
+        sleep(1 << iteration);
 
-    for (i = 0; i < nprocs; i++) {
-        if (spawned_pid[i]) {
-        if (!
-            (spawned_pid[i] =
-             waitpid(spawned_pid[i], NULL, WNOHANG))) {
-            tryagain = 1;
+        for (i = 0; i < nprocs; i++) {
+            if (spawned_pid[i]) {
+                if (!(spawned_pid[i] = waitpid(spawned_pid[i], NULL, WNOHANG))) {
+                    tryagain = 1;
+                }
+            }
         }
-        }
-    }
 
-    if (++iteration == 5 || !tryagain) {
-        break;
-    }
+        if (++iteration == 5 || !tryagain) {
+            break;
+        }
     }
 
     if (tryagain) {
-    fprintf(stderr,
-        "The following processes may have not been killed:\n");
-    for (i = 0; i < nprocs; i++) {
-        if (spawned_pid[i]) {
-        fprintf(stderr, "%s [%d]\n", plist[i].hostname,
-            plist[i].remote_pid);
+        fprintf(stderr, "The following processes may have not been killed:\n");
+        for (i = 0; i < nprocs; i++) {
+            if (spawned_pid[i]) {
+                fprintf(stderr, "%s [%d]\n", plist[i].hostname, plist[i].remote_pid);
+            }
         }
     }
-    }
 }
-
-
 
 int getpath(char *buf, int buf_len)
 {
@@ -1092,14 +1103,14 @@ int getpath(char *buf, int buf_len)
 
     len = readlink(&link[0], buf, buf_len);
     if (len == -1) {
-    buf[0] = 0;
-    return 0;
+        buf[0] = 0;
+        return 0;
     } else {
-    buf[len] = 0;
-    while (len && buf[--len] != '/');
-    if (buf[len] == '/')
         buf[len] = 0;
-    return len;
+        while (len && buf[--len] != '/') ;
+        if (buf[len] == '/')
+            buf[len] = 0;
+        return len;
     }
 }
 
@@ -1118,14 +1129,13 @@ int getpath(char *buf, int buf_len)
 */
 // Append "name=value" into env string.
 // the old env-string is freed, the return value shall be assigned to the env-string
-static inline  char* append2env(char* env, char* name, char* value)
+static inline char *append2env(char *env, char *name, char *value)
 {
-    if( !env || !name || !value ){
-        fprintf(stderr, "%s: Invalid params:  env=%s, name=%s, val=%s\n",
-            __func__, env, name, value);
+    if (!env || !name || !value) {
+        fprintf(stderr, "%s: Invalid params:  env=%s, name=%s, val=%s\n", __func__, env, name, value);
         return NULL;
     }
-    char* tmp = mkstr("%s %s=%s", env, name, value);
+    char *tmp = mkstr("%s %s=%s", env, name, value);
     free(env);
     return tmp;
 }
@@ -1149,7 +1159,7 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env)
     }
 
     if (!mpispawn_env)
-    goto allocation_error;
+        goto allocation_error;
 
     /*
      * Forward mpirun parameters to mpispawn
@@ -1162,207 +1172,198 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env)
 
     tmp = mkstr("%s MPISPAWN_MPIRUN_MPD=0", mpispawn_env);
     if (tmp) {
-    free(mpispawn_env);
-    mpispawn_env = tmp;
+        free(mpispawn_env);
+        mpispawn_env = tmp;
     } else {
-    goto allocation_error;
+        goto allocation_error;
     }
-
 
     tmp = mkstr("%s USE_LINEAR_SSH=%d", mpispawn_env, USE_LINEAR_SSH);
-    if (tmp) {
-    free(mpispawn_env);
-    mpispawn_env = tmp;
-    } else {
-    goto allocation_error;
-    }
-
-
-    tmp = mkstr("%s MPISPAWN_MPIRUN_HOST=%s", mpispawn_env, mpirun_host);
-    if (tmp) {
-    free(mpispawn_env);
-    mpispawn_env = tmp;
-    } else {
-    goto allocation_error;
-    }
-
-
-    tmp = mkstr("%s MPIRUN_RSH_LAUNCH=1", mpispawn_env);
-    if (tmp) {
-    free(mpispawn_env);
-    mpispawn_env = tmp;
-    } else {
-    goto allocation_error;
-    }
-
-
-    tmp = mkstr("%s MPISPAWN_CHECKIN_PORT=%d", mpispawn_env, port);
-    if (tmp) {
-    free(mpispawn_env);
-    mpispawn_env = tmp;
-    } else {
-    goto allocation_error;
-    }
-
-
-    tmp = mkstr("%s MPISPAWN_MPIRUN_PORT=%d", mpispawn_env, port);
-    if (tmp) {
-    free(mpispawn_env);
-    mpispawn_env = tmp;
-    } else {
-    goto allocation_error;
-    }
-
-
-    tmp = mkstr("%s MPISPAWN_NNODES=%d", mpispawn_env, pglist->npgs);
-    if (tmp) {
-    free(mpispawn_env);
-    mpispawn_env = tmp;
-    } else {
-    goto allocation_error;
-    }
- 
-    tmp = mkstr("%s MPISPAWN_GLOBAL_NPROCS=%d", mpispawn_env, nprocs);
-    if (tmp) {
-    free(mpispawn_env);
-    mpispawn_env = tmp;
-    } else {
-    goto allocation_error;
-    }
-
-
-    tmp = mkstr("%s MPISPAWN_MPIRUN_ID=%d", mpispawn_env, getpid());
-    if (tmp) {
-    free(mpispawn_env);
-    mpispawn_env = tmp;
-    } else {
-    goto allocation_error;
-    }
-
-
-    if (use_totalview) {
-    tmp = mkstr("%s MPISPAWN_USE_TOTALVIEW=1", mpispawn_env);
     if (tmp) {
         free(mpispawn_env);
         mpispawn_env = tmp;
     } else {
         goto allocation_error;
     }
+
+    tmp = mkstr("%s MPISPAWN_MPIRUN_HOST=%s", mpispawn_env, mpirun_host);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    tmp = mkstr("%s MPIRUN_RSH_LAUNCH=1", mpispawn_env);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    tmp = mkstr("%s MPISPAWN_CHECKIN_PORT=%d", mpispawn_env, port);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    tmp = mkstr("%s MPISPAWN_MPIRUN_PORT=%d", mpispawn_env, port);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    tmp = mkstr("%s MPISPAWN_NNODES=%d", mpispawn_env, pglist->npgs);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    tmp = mkstr("%s MPISPAWN_GLOBAL_NPROCS=%d", mpispawn_env, nprocs);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    tmp = mkstr("%s MPISPAWN_MPIRUN_ID=%d", mpispawn_env, getpid());
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    if (use_totalview) {
+        tmp = mkstr("%s MPISPAWN_USE_TOTALVIEW=1", mpispawn_env);
+        if (tmp) {
+            free(mpispawn_env);
+            mpispawn_env = tmp;
+        } else {
+            goto allocation_error;
+        }
     }
 #ifdef CKPT
     mpispawn_env = create_mpispawn_vars(mpispawn_env);
 
-#endif				/* CKPT */
+#endif                          /* CKPT */
 
     /*
      * mpirun_rsh allows env variables to be set on the commandline
      */
     if (!mpispawn_param_env) {
-    mpispawn_param_env = mkstr("");
-    if (!mpispawn_param_env)
-        goto allocation_error;
+        mpispawn_param_env = mkstr("");
+        if (!mpispawn_param_env)
+            goto allocation_error;
     }
 
     while (aout_index != argc && strchr(argv[aout_index], '=')) {
-    name = strdup(argv[aout_index++]);
-    value = strchr(name, '=');
-    value[0] = '\0';
-    value++;
-    dpm_add_env(name, value);
+        name = strdup(argv[aout_index++]);
+        value = strchr(name, '=');
+        value[0] = '\0';
+        value++;
+        dpm_add_env(name, value);
 
 #ifdef CKPT
-	save_ckpt_vars(name, value);
+        save_ckpt_vars(name, value);
 #ifdef CR_AGGRE
-    if( strcmp(name, "MV2_CKPT_FILE")==0){
-        mpispawn_env = append2env(mpispawn_env, name, value);
-        if( !mpispawn_env ) goto allocation_error;
-    }
-    else if( strcmp(name, "MV2_CKPT_USE_AGGREGATION")==0 ){
-        use_aggre = atoi(value);
-    }
-    else if( strcmp(name, "MV2_CKPT_AGGREGATION_BUFPOOL_SIZE")==0 ){
-        mpispawn_env = append2env(mpispawn_env, name, value);
-        if( !mpispawn_env ) goto allocation_error;
-    }
-    else if( strcmp(name, "MV2_CKPT_AGGREGATION_CHUNK_SIZE")==0 ){
-        mpispawn_env = append2env(mpispawn_env, name, value);
-        if( !mpispawn_env ) goto allocation_error;
-    }
+        if (strcmp(name, "MV2_CKPT_FILE") == 0) {
+            mpispawn_env = append2env(mpispawn_env, name, value);
+            if (!mpispawn_env)
+                goto allocation_error;
+        } else if (strcmp(name, "MV2_CKPT_USE_AGGREGATION") == 0) {
+            use_aggre = atoi(value);
+        } else if (strcmp(name, "MV2_CKPT_USE_AGGREGATION_MIGRATION") == 0) {
+            use_aggre_mig = atoi(value);
+        } else if (strcmp(name, "MV2_CKPT_AGGREGATION_BUFPOOL_SIZE") == 0) {
+            mpispawn_env = append2env(mpispawn_env, name, value);
+            if (!mpispawn_env)
+                goto allocation_error;
+        } else if (strcmp(name, "MV2_CKPT_AGGREGATION_CHUNK_SIZE") == 0) {
+            mpispawn_env = append2env(mpispawn_env, name, value);
+            if (!mpispawn_env)
+                goto allocation_error;
+        }
 #endif
-#endif				/* CKPT */
+#endif                          /* CKPT */
 
-    tmp = mkstr("%s MPISPAWN_GENERIC_NAME_%d=%s"
-            " MPISPAWN_GENERIC_VALUE_%d=%s", mpispawn_param_env,
-            param_count, name, param_count, value);
+        tmp = mkstr("%s MPISPAWN_GENERIC_NAME_%d=%s" " MPISPAWN_GENERIC_VALUE_%d=%s", mpispawn_param_env, param_count, name, param_count, value);
 
-    free(name);
-    free(mpispawn_param_env);
+        free(name);
+        free(mpispawn_param_env);
 
-    if (tmp) {
-        mpispawn_param_env = tmp;
-        param_count++;
-    }
+        if (tmp) {
+            mpispawn_param_env = tmp;
+            param_count++;
+        }
 
-    else {
-        goto allocation_error;
-    }
+        else {
+            goto allocation_error;
+        }
     }
 #if defined(CKPT) && defined(CR_AGGRE)
-    if( use_aggre> 0 )
-        mpispawn_env = append2env(mpispawn_env, "MV2_CKPT_USE_AGGREGATION","1");
+    if (use_aggre > 0)
+        mpispawn_env = append2env(mpispawn_env, "MV2_CKPT_USE_AGGREGATION", "1");
     else
-        mpispawn_env = append2env(mpispawn_env, "MV2_CKPT_USE_AGGREGATION","0");
-    if( !mpispawn_env ) goto allocation_error;
+        mpispawn_env = append2env(mpispawn_env, "MV2_CKPT_USE_AGGREGATION", "0");
+    if (!mpispawn_env)
+        goto allocation_error;
 #endif
     if (!configfile_on) {
-    if (!dpm && aout_index == argc) {
-        fprintf(stderr, "Incorrect number of arguments.\n");
-        usage();
-        exit(EXIT_FAILURE);
-    }
+        if (!dpm && aout_index == argc) {
+            fprintf(stderr, "Incorrect number of arguments.\n");
+            usage();
+            exit(EXIT_FAILURE);
+        }
     }
 
     i = argc - aout_index;
     if (debug_on && !use_totalview)
-    i++;
+        i++;
 
     if (dpm == 0 && !configfile_on) {
-    tmp =
-        mkstr("%s MPISPAWN_ARGC=%d", mpispawn_env, argc - aout_index);
-    if (tmp) {
-        free(mpispawn_env);
-        mpispawn_env = tmp;
-    } else {
-        goto allocation_error;
-    }
+        tmp = mkstr("%s MPISPAWN_ARGC=%d", mpispawn_env, argc - aout_index);
+        if (tmp) {
+            free(mpispawn_env);
+            mpispawn_env = tmp;
+        } else {
+            goto allocation_error;
+        }
 
     }
 
     i = 0;
 
     if (debug_on && !use_totalview) {
-    tmp = mkstr("%s MPISPAWN_ARGV_%d=%s", mpispawn_env, i++, DEBUGGER);
-    if (tmp) {
-        free(mpispawn_env);
-        mpispawn_env = tmp;
-    } else {
-        goto allocation_error;
-    }
+        tmp = mkstr("%s MPISPAWN_ARGV_%d=%s", mpispawn_env, i++, DEBUGGER);
+        if (tmp) {
+            free(mpispawn_env);
+            mpispawn_env = tmp;
+        } else {
+            goto allocation_error;
+        }
     }
 
     if (use_totalview) {
-    int j;
-    if (!configfile_on) {
-        for (j = 0; j < MPIR_proctable_size; j++) {
-        MPIR_proctable[j].executable_name = argv[aout_index];
-        }
-    } else {
-        for (j = 0; j < MPIR_proctable_size; j++) {
-        MPIR_proctable[j].executable_name =
-            plist[j].executable_name;
-        }
+        int j;
+        if (!configfile_on) {
+            for (j = 0; j < MPIR_proctable_size; j++) {
+                MPIR_proctable[j].executable_name = argv[aout_index];
+            }
+        } else {
+            for (j = 0; j < MPIR_proctable_size; j++) {
+                MPIR_proctable[j].executable_name = plist[j].executable_name;
+            }
 
-    }
+        }
     }
 
     tmp_i = i;
@@ -1370,15 +1371,13 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env)
     /* to make sure all tasks generate same pg-id we send a kvs_template */
     srand(getpid());
     i = rand() % MAXLINE;
-    tmp = mkstr("%s MPDMAN_KVS_TEMPLATE=kvs_%d_%s_%d", mpispawn_env, i,
-        mpirun_host, getpid());
+    tmp = mkstr("%s MPDMAN_KVS_TEMPLATE=kvs_%d_%s_%d", mpispawn_env, i, mpirun_host, getpid());
     if (tmp) {
-    free(mpispawn_env);
-    mpispawn_env = tmp;
+        free(mpispawn_env);
+        mpispawn_env = tmp;
     } else {
-    goto allocation_error;
+        goto allocation_error;
     }
-
 
     if (dpm) {
         fp = fopen(spawnfile, "r");
@@ -1394,7 +1393,6 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env)
         } else {
             goto allocation_error;
         }
-
 
     }
 
@@ -1412,7 +1410,7 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env)
             char *key = NULL;
             int tot_args = 1, arg_done = 0, infonum = 0;
 
-            ++tmp_i;        /* argc index starts from 1 */
+            ++tmp_i;            /* argc index starts from 1 */
             if (spinf.dpmindex < spinf.dpmtot) {
                 DBG(fprintf(stderr, "one more fork of same binary\n"));
                 ++spinf.dpmindex;
@@ -1425,131 +1423,120 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env)
             get_line(fp, spinf.linebuf, 1);
             spinf.dpmtot = atoi(spinf.linebuf);
             get_line(fp, spinf.runbuf, 1);
-            DBG(fprintf
-            (stderr, "Spawning %d instances of %s\n", spinf.dpmtot,
-             spinf.runbuf));
+            DBG(fprintf(stderr, "Spawning %d instances of %s\n", spinf.dpmtot, spinf.runbuf));
             if (multichk) {
-            if (spinf.dpmtot == pglist->npgs)
-                multival = 0;
-            else
-                multival = 1;
-            multichk = 0;
+                if (spinf.dpmtot == pglist->npgs)
+                    multival = 0;
+                else
+                    multival = 1;
+                multichk = 0;
             }
 
             ret = 1;
             /* first data is arguments */
             while (ret) {
-            get_line(fp, spinf.linebuf, 1);
-
-            if (infonum) {
-                char *infokey;
-                /* is it an info we are about ? */
-                if (check_info(spinf.linebuf)) {
-                infokey = strdup(spinf.linebuf);
                 get_line(fp, spinf.linebuf, 1);
-                store_info(infokey, spinf.linebuf);
-                free(infokey);
-                } else {
-                get_line(fp, spinf.linebuf, 1);
-                }
-                --infonum;
-                continue;
-            }
 
-            if (keyin) {
-                sprintf(spinf.buf, "%s='%s'", key, spinf.linebuf);
-                free(key);
-                keyin = 0;
-            }
-
-            if (0 == (strncmp(spinf.linebuf, ARG, strlen(ARG)))) {
-                key = index(spinf.linebuf, '=');
-                ++key;
-                tmp =
-                mkstr("%s MPISPAWN_ARGV_%d=\"%s\"", mpispawn_env,
-                      tmp_i++, key);
-                if (tmp) {
-                    free(mpispawn_env);
-                    mpispawn_env = tmp;
-                } else {
-                    goto allocation_error;
+                if (infonum) {
+                    char *infokey;
+                    /* is it an info we are about ? */
+                    if (check_info(spinf.linebuf)) {
+                        infokey = strdup(spinf.linebuf);
+                        get_line(fp, spinf.linebuf, 1);
+                        store_info(infokey, spinf.linebuf);
+                        free(infokey);
+                    } else {
+                        get_line(fp, spinf.linebuf, 1);
+                    }
+                    --infonum;
+                    continue;
                 }
 
-                ++tot_args;
-            }
-
-            if (0 == (strncmp(spinf.linebuf, ENDARG, strlen(ENDARG)))) {
-
-                tmp =
-                mkstr("%s MPISPAWN_ARGC=%d", mpispawn_env,
-                      tot_args);
-                if (tmp) {
-                    free(mpispawn_env);
-                    mpispawn_env = tmp;
-                } else {
-                    goto allocation_error;
+                if (keyin) {
+                    sprintf(spinf.buf, "%s='%s'", key, spinf.linebuf);
+                    free(key);
+                    keyin = 0;
                 }
 
-                tot_args = 0;
-                arg_done = 1;
-            }
+                if (0 == (strncmp(spinf.linebuf, ARG, strlen(ARG)))) {
+                    key = index(spinf.linebuf, '=');
+                    ++key;
+                    tmp = mkstr("%s MPISPAWN_ARGV_%d=\"%s\"", mpispawn_env, tmp_i++, key);
+                    if (tmp) {
+                        free(mpispawn_env);
+                        mpispawn_env = tmp;
+                    } else {
+                        goto allocation_error;
+                    }
 
-            if (0 == (strncmp(spinf.linebuf, END, strlen(END)))) {
-                ret = 0;
-                ++spinf.dpmindex;
-            }
-            if (0 == (strncmp(spinf.linebuf, PORT, strlen(PORT)))) {
-                keyin = 1;
-                key = strdup(spinf.linebuf);
-            }
-            if (0 == (strncmp(spinf.linebuf, INFN, strlen(INFN)))) {
-                /* info num parsed */
-                infonum = atoi(index(spinf.linebuf, '=') + 1);
-            }
+                    ++tot_args;
+                }
+
+                if (0 == (strncmp(spinf.linebuf, ENDARG, strlen(ENDARG)))) {
+
+                    tmp = mkstr("%s MPISPAWN_ARGC=%d", mpispawn_env, tot_args);
+                    if (tmp) {
+                        free(mpispawn_env);
+                        mpispawn_env = tmp;
+                    } else {
+                        goto allocation_error;
+                    }
+
+                    tot_args = 0;
+                    arg_done = 1;
+                }
+
+                if (0 == (strncmp(spinf.linebuf, END, strlen(END)))) {
+                    ret = 0;
+                    ++spinf.dpmindex;
+                }
+                if (0 == (strncmp(spinf.linebuf, PORT, strlen(PORT)))) {
+                    keyin = 1;
+                    key = strdup(spinf.linebuf);
+                }
+                if (0 == (strncmp(spinf.linebuf, INFN, strlen(INFN)))) {
+                    /* info num parsed */
+                    infonum = atoi(index(spinf.linebuf, '=') + 1);
+                }
 
             }
             if (!arg_done) {
-            tmp = mkstr("%s MPISPAWN_ARGC=%d", mpispawn_env, 1);
+                tmp = mkstr("%s MPISPAWN_ARGC=%d", mpispawn_env, 1);
+                if (tmp) {
+                    free(mpispawn_env);
+                    mpispawn_env = tmp;
+                } else {
+                    goto allocation_error;
+                }
+            }
+
+            tmp = mkstr("%s MPISPAWN_LOCAL_NPROCS=%d", mpispawn_env, pglist->data[i].npids);
             if (tmp) {
                 free(mpispawn_env);
                 mpispawn_env = tmp;
             } else {
                 goto allocation_error;
             }
-            }
 
-            tmp = mkstr("%s MPISPAWN_LOCAL_NPROCS=%d",
-mpispawn_env,pglist->data[i].npids);
+            tmp = mkstr("%s MPIRUN_COMM_MULTIPLE=%d", mpispawn_env, multival);
             if (tmp) {
-            free(mpispawn_env);
-            mpispawn_env = tmp;
+                free(mpispawn_env);
+                mpispawn_env = tmp;
             } else {
-            goto allocation_error;
-            }
-
-
-            tmp =
-            mkstr("%s MPIRUN_COMM_MULTIPLE=%d", mpispawn_env,
-                  multival);
-            if (tmp) {
-            free(mpispawn_env);
-            mpispawn_env = tmp;
-            } else {
-            goto allocation_error;
+                goto allocation_error;
             }
             template2 = strdup(mpispawn_env);
         } else {
-            tmp = mkstr("%s MPISPAWN_LOCAL_NPROCS=%d", mpispawn_env,
-                pglist->data[i].npids);
+            tmp = mkstr("%s MPISPAWN_LOCAL_NPROCS=%d", mpispawn_env, pglist->data[i].npids);
             if (tmp) {
-            free(mpispawn_env);
-            mpispawn_env = tmp;
+                free(mpispawn_env);
+                mpispawn_env = tmp;
             } else {
-            goto allocation_error;
+                goto allocation_error;
             }
         }
 
-          done_spawn_read:
+      done_spawn_read:
 
         if (!(pglist->data[i].pid = fork())) {
             size_t arg_offset = 0;
@@ -1557,59 +1544,19 @@ mpispawn_env,pglist->data[i].npids);
             char *command;
 
 #if defined(CKPT) && defined(CR_FTB) && defined(CR_AGGRE)
-            mpispawn_env = append2env(mpispawn_env, "MV2_CKPT_AGGRE_MIG_ROLE","0");
+            if (use_aggre > 0 && use_aggre_mig > 0) {   // use Aggre-based migration
+                if (pglist->data[i].npids > 0)  // will be src of mig
+                    mpispawn_env = append2env(mpispawn_env, "MV2_CKPT_AGGRE_MIG_ROLE", "1");
+                else            // will be target of mig
+                    mpispawn_env = append2env(mpispawn_env, "MV2_CKPT_AGGRE_MIG_ROLE", "2");
+                if (!mpispawn_env)
+                    goto allocation_error;
+            } else {            // not use Aggre-based migration
+                mpispawn_env = append2env(mpispawn_env, "MV2_CKPT_AGGRE_MIG_ROLE", "0");
+            }
 #endif
             if (dpm) {
-            tmp = mkstr("%s MPISPAWN_ARGV_0=%s", mpispawn_env,
-                    spinf.runbuf);
-            if (tmp) {
-                free(mpispawn_env);
-                mpispawn_env = tmp;
-            } else {
-                goto allocation_error;
-            }
-
-            tmp = mkstr("%s %s", mpispawn_env, spinf.buf);
-            if (tmp) {
-                free(mpispawn_env);
-                mpispawn_env = tmp;
-            } else {
-                goto allocation_error;
-            }
-
-            }
-            //If the config option is activated, the executable information are taken from the pglist.
-            if (configfile_on) {
-            int index_plist = pglist->data[i].plist_indices[0];
-            /* When the config option is activated we need to put in the mpispawn the number of argument of the exe. */
-            tmp =
-                mkstr("%s MPISPAWN_ARGC=%d", mpispawn_env,
-                  plist[index_plist].argc);
-            if (tmp) {
-                free(mpispawn_env);
-                mpispawn_env = tmp;
-            } else {
-                goto allocation_error;
-            }
-            /*Add the executable name and args in the list of arguments from the pglist. */
-            tmp =
-                add_argv(mpispawn_env,
-                     plist[index_plist].executable_name,
-                     plist[index_plist].executable_args, tmp_i);
-            if (tmp) {
-                free(mpispawn_env);
-                mpispawn_env = tmp;
-            } else {
-                goto allocation_error;
-            }
-
-            } else {
-
-            if (!dpm) {
-                while (aout_index < argc) {
-                tmp =
-                    mkstr("%s MPISPAWN_ARGV_%d=%s", mpispawn_env,
-                      tmp_i++, argv[aout_index++]);
+                tmp = mkstr("%s MPISPAWN_ARGV_0=%s", mpispawn_env, spinf.runbuf);
                 if (tmp) {
                     free(mpispawn_env);
                     mpispawn_env = tmp;
@@ -1617,190 +1564,207 @@ mpispawn_env,pglist->data[i].npids);
                     goto allocation_error;
                 }
 
+                tmp = mkstr("%s %s", mpispawn_env, spinf.buf);
+                if (tmp) {
+                    free(mpispawn_env);
+                    mpispawn_env = tmp;
+                } else {
+                    goto allocation_error;
                 }
+
             }
+            //If the config option is activated, the executable information are taken from the pglist.
+            if (configfile_on) {
+                int index_plist = pglist->data[i].plist_indices[0];
+                /* When the config option is activated we need to put in the mpispawn the number of argument of the exe. */
+                tmp = mkstr("%s MPISPAWN_ARGC=%d", mpispawn_env, plist[index_plist].argc);
+                if (tmp) {
+                    free(mpispawn_env);
+                    mpispawn_env = tmp;
+                } else {
+                    goto allocation_error;
+                }
+                /*Add the executable name and args in the list of arguments from the pglist. */
+                tmp = add_argv(mpispawn_env, plist[index_plist].executable_name, plist[index_plist].executable_args, tmp_i);
+                if (tmp) {
+                    free(mpispawn_env);
+                    mpispawn_env = tmp;
+                } else {
+                    goto allocation_error;
+                }
+
+            } else {
+
+                if (!dpm) {
+                    while (aout_index < argc) {
+                        tmp = mkstr("%s MPISPAWN_ARGV_%d=%s", mpispawn_env, tmp_i++, argv[aout_index++]);
+                        if (tmp) {
+                            free(mpispawn_env);
+                            mpispawn_env = tmp;
+                        } else {
+                            goto allocation_error;
+                        }
+
+                    }
+                }
             }
 
             if (mpispawn_param_env) {
-            tmp =
-                mkstr("%s MPISPAWN_GENERIC_ENV_COUNT=%d %s",
-                  mpispawn_env, param_count, mpispawn_param_env);
+                tmp = mkstr("%s MPISPAWN_GENERIC_ENV_COUNT=%d %s", mpispawn_env, param_count, mpispawn_param_env);
 
-            free(mpispawn_param_env);
-            free(mpispawn_env);
+                free(mpispawn_param_env);
+                free(mpispawn_env);
 
-            if (tmp) {
-                mpispawn_env = tmp;
-            } else {
-                goto allocation_error;
-            }
+                if (tmp) {
+                    mpispawn_env = tmp;
+                } else {
+                    goto allocation_error;
+                }
             }
 
             tmp = mkstr("%s MPISPAWN_ID=%d", mpispawn_env, i);
             if (tmp) {
-            free(mpispawn_env);
-            mpispawn_env = tmp;
-            } else {
-            goto allocation_error;
-            }
-
-
-            /* user may specify custom binary path via MPI_Info */
-            if (custpath) {
-            tmp =
-                mkstr("%s MPISPAWN_BINARY_PATH=%s", mpispawn_env,
-                  custpath);
-            if (tmp) {
                 free(mpispawn_env);
                 mpispawn_env = tmp;
             } else {
                 goto allocation_error;
             }
-            free(custpath);
-            custpath = NULL;
+
+            /* user may specify custom binary path via MPI_Info */
+            if (custpath) {
+                tmp = mkstr("%s MPISPAWN_BINARY_PATH=%s", mpispawn_env, custpath);
+                if (tmp) {
+                    free(mpispawn_env);
+                    mpispawn_env = tmp;
+                } else {
+                    goto allocation_error;
+                }
+                free(custpath);
+                custpath = NULL;
             }
 
             /* user may specifiy custom working dir via MPI_Info */
             if (custwd) {
-            tmp =
-                mkstr("%s MPISPAWN_WORKING_DIR=%s", mpispawn_env,
-                  custwd);
-            if (tmp) {
-                free(mpispawn_env);
-                mpispawn_env = tmp;
-            } else {
-                goto allocation_error;
-            }
-
-            free(custwd);
-            custwd = NULL;
-            } else {
-            tmp =
-                mkstr("%s MPISPAWN_WORKING_DIR=%s", mpispawn_env, wd);
-            if (tmp) {
-                free(mpispawn_env);
-                mpispawn_env = tmp;
-            } else {
-                goto allocation_error;
-            }
-
-            }
-
-            for (n = 0; n < pglist->data[i].npids; n++) {
-            tmp =
-                mkstr("%s MPISPAWN_MPIRUN_RANK_%d=%d", mpispawn_env,
-                  n, pglist->data[i].plist_indices[n]);
-            if (tmp) {
-                free(mpispawn_env);
-                mpispawn_env = tmp;
-            } else {
-                goto allocation_error;
-            }
-
-
-            if (plist[pglist->data[i].plist_indices[n]].device != NULL) {
-                tmp =
-                mkstr("%s MPISPAWN_VIADEV_DEVICE_%d=%s",
-                      mpispawn_env, n,
-                      plist[pglist->data[i].plist_indices[n]].
-                      device);
+                tmp = mkstr("%s MPISPAWN_WORKING_DIR=%s", mpispawn_env, custwd);
                 if (tmp) {
-                free(mpispawn_env);
-                mpispawn_env = tmp;
+                    free(mpispawn_env);
+                    mpispawn_env = tmp;
                 } else {
-                goto allocation_error;
+                    goto allocation_error;
+                }
+
+                free(custwd);
+                custwd = NULL;
+            } else {
+                tmp = mkstr("%s MPISPAWN_WORKING_DIR=%s", mpispawn_env, wd);
+                if (tmp) {
+                    free(mpispawn_env);
+                    mpispawn_env = tmp;
+                } else {
+                    goto allocation_error;
                 }
 
             }
 
-            tmp = mkstr("%s MPISPAWN_VIADEV_DEFAULT_PORT_%d=%d",
-                    mpispawn_env, n,
-                    plist[pglist->data[i].plist_indices[n]].port);
-            if (tmp) {
-                free(mpispawn_env);
-                mpispawn_env = tmp;
-            } else {
-                goto allocation_error;
+            for (n = 0; n < pglist->data[i].npids; n++) {
+                tmp = mkstr("%s MPISPAWN_MPIRUN_RANK_%d=%d", mpispawn_env, n, pglist->data[i].plist_indices[n]);
+                if (tmp) {
+                    free(mpispawn_env);
+                    mpispawn_env = tmp;
+                } else {
+                    goto allocation_error;
+                }
+
+                if (plist[pglist->data[i].plist_indices[n]].device != NULL) {
+                    tmp = mkstr("%s MPISPAWN_MV2_IBA_HCA_%d=%s", mpispawn_env, n, plist[pglist->data[i].plist_indices[n]].device);
+                    if (tmp) {
+                        free(mpispawn_env);
+                        mpispawn_env = tmp;
+                    } else {
+                        goto allocation_error;
+                    }
+
+                }
+#if 0
+                tmp = mkstr("%s MPISPAWN_VIADEV_DEFAULT_PORT_%d=%d", mpispawn_env, n, plist[pglist->data[i].plist_indices[n]].port);
+                if (tmp) {
+                    free(mpispawn_env);
+                    mpispawn_env = tmp;
+                } else {
+                    goto allocation_error;
+                }
+#endif
             }
 
-            }
-            
             int local_hostname = 0;
-            if ((strcmp(pglist->data[i].hostname,mpirun_host) == 0) && (!xterm_on)) {                
+            if ((strcmp(pglist->data[i].hostname, mpirun_host) == 0) && (!xterm_on)) {
                 local_hostname = 1;
                 nargv[arg_offset++] = BASH_CMD;
                 nargv[arg_offset++] = BASH_ARG;
-            }
-            else {
+            } else {
 
-              if (xterm_on) {
-                nargv[arg_offset++] = XTERM;
-                nargv[arg_offset++] = "-e";
-              }
+                if (xterm_on) {
+                    nargv[arg_offset++] = XTERM;
+                    nargv[arg_offset++] = "-e";
+                }
 
-              if (use_rsh) {
-                nargv[arg_offset++] = RSH_CMD;
-              }
-              else {
-                nargv[arg_offset++] = SSH_CMD;
-                nargv[arg_offset++] = SSH_ARG;
-              }
+                if (use_rsh) {
+                    nargv[arg_offset++] = RSH_CMD;
+                } else {
+                    nargv[arg_offset++] = SSH_CMD;
+                    nargv[arg_offset++] = SSH_ARG;
+                }
             }
             if (getpath(pathbuf, PATH_MAX) && file_exists(pathbuf)) {
-              command =
-                mkstr("cd %s; %s %s %s %s/mpispawn 0", wd, ENV_CMD,
-                  mpispawn_env, env, pathbuf);
+                command = mkstr("cd %s; %s %s %s %s/mpispawn 0", wd, ENV_CMD, mpispawn_env, env, pathbuf);
             } else if (use_dirname) {
-              command =
-                mkstr("cd %s; %s %s %s %s/mpispawn 0", wd, ENV_CMD,
-                  mpispawn_env, env, binary_dirname);
+                command = mkstr("cd %s; %s %s %s %s/mpispawn 0", wd, ENV_CMD, mpispawn_env, env, binary_dirname);
             } else {
-              command = mkstr("cd %s; %s %s %s mpispawn 0", wd, ENV_CMD,
-                    mpispawn_env, env);
+                command = mkstr("cd %s; %s %s %s mpispawn 0", wd, ENV_CMD, mpispawn_env, env);
             }
-            
+
             /* If the user request an execution with an alternate group
                use the 'sg' command to run mpispawn */
-            if (change_group!=NULL) {
-               command = mkstr( "sg %s -c '%s'", change_group, command );
+            if (change_group != NULL) {
+                command = mkstr("sg %s -c '%s'", change_group, command);
             }
 
             if (!command) {
-              fprintf(stderr,
-                "Couldn't allocate string for remote command!\n");
-              exit(EXIT_FAILURE);
+                fprintf(stderr, "Couldn't allocate string for remote command!\n");
+                exit(EXIT_FAILURE);
             }
-            if ( local_hostname == 0)
+            if (local_hostname == 0)
                 nargv[arg_offset++] = pglist->data[i].hostname;
 
             nargv[arg_offset++] = command;
             nargv[arg_offset++] = NULL;
 
             if (show_on) {
-              size_t arg = 0;
-              fprintf(stdout, "\n");
-              while (nargv[arg] != NULL)
-                  fprintf(stdout, "%s ", nargv[arg++]);
-              fprintf(stdout, "\n");
+                size_t arg = 0;
+                fprintf(stdout, "\n");
+                while (nargv[arg] != NULL)
+                    fprintf(stdout, "%s ", nargv[arg++]);
+                fprintf(stdout, "\n");
 
-              exit(EXIT_SUCCESS);
+                exit(exit_code);
             }
 
             if (strcmp(pglist->data[i].hostname, plist[0].hostname)) {
-              int fd = open("/dev/null", O_RDWR, 0);
-              dup2(fd, STDIN_FILENO);
+                int fd = open("/dev/null", O_RDWR, 0);
+                dup2(fd, STDIN_FILENO);
             }
             /*
-            int myti = 0;
-            for(myti=0; myti<arg_offset; myti++)
-                printf("%s: before exec-%d:  argv[%d] = %s\n", __func__, i, myti, nargv[myti] );
-            */
-            DBG(fprintf(stderr, "final cmd line = %s\n", mpispawn_env));
+               int myti = 0;
+               for(myti=0; myti<arg_offset; myti++)
+               printf("%s: before exec-%d:  argv[%d] = %s\n", __func__, i, myti, nargv[myti] );
+             */
+            PRINT_DEBUG(DEBUG_Fork_verbose, "FORK mpispawn (pid=%d)\n", getpid());
+            PRINT_DEBUG(DEBUG_Fork_verbose > 1, "mpispawn command line: %s\n", mpispawn_env);
             execv(nargv[0], (char *const *) nargv);
             perror("execv");
 
             for (i = 0; i < argc; i++) {
-              fprintf(stderr, "%s ", nargv[i]);
+                fprintf(stderr, "%s ", nargv[i]);
             }
 
             fprintf(stderr, "\n");
@@ -1811,15 +1775,15 @@ mpispawn_env,pglist->data[i].npids);
     }
 
     if (spawnfile) {
-    unlink(spawnfile);
+        unlink(spawnfile);
     }
     return;
 
   allocation_error:
     perror("spawn_fast");
     if (mpispawn_env) {
-    fprintf(stderr, "%s\n", mpispawn_env);
-    free(mpispawn_env);
+        fprintf(stderr, "%s\n", mpispawn_env);
+        free(mpispawn_env);
     }
 
     exit(EXIT_FAILURE);
@@ -1828,13 +1792,12 @@ mpispawn_env,pglist->data[i].npids);
 /*
  * Spawn the processes using the hierarchical way.
  */
-void spawn_one(int argc, char *argv[], char *totalview_cmd, char *env,
-           int fastssh_nprocs_thres)
+void spawn_one(int argc, char *argv[], char *totalview_cmd, char *env, int fastssh_nprocs_thres)
 {
     char *mpispawn_env, *tmp, *ld_library_path;
     char *name, *value;
     int j, i, n, tmp_i, numBytes = 0;
-    FILE *fp, *host_list_file_fp;
+    FILE *host_list_file_fp;
     char pathbuf[PATH_MAX];
     char *host_list = NULL;
     int k;
@@ -1846,7 +1809,7 @@ void spawn_one(int argc, char *argv[], char *totalview_cmd, char *env,
     }
 
     if (!mpispawn_env)
-    goto allocation_error;
+        goto allocation_error;
 
     /*
      * Forward mpirun parameters to mpispawn
@@ -1859,99 +1822,13 @@ void spawn_one(int argc, char *argv[], char *totalview_cmd, char *env,
 
     tmp = mkstr("%s MPISPAWN_MPIRUN_MPD=0", mpispawn_env);
     if (tmp) {
-    free(mpispawn_env);
-    mpispawn_env = tmp;
+        free(mpispawn_env);
+        mpispawn_env = tmp;
     } else {
-    goto allocation_error;
+        goto allocation_error;
     }
-
 
     tmp = mkstr("%s USE_LINEAR_SSH=%d", mpispawn_env, USE_LINEAR_SSH);
-    if (tmp) {
-    free(mpispawn_env);
-    mpispawn_env = tmp;
-    } else {
-    goto allocation_error;
-    }
-
-
-    tmp = mkstr("%s MPISPAWN_MPIRUN_HOST=%s", mpispawn_env, mpirun_host);
-    if (tmp) {
-    free(mpispawn_env);
-    mpispawn_env = tmp;
-    } else {
-    goto allocation_error;
-    }
-
-
-    tmp = mkstr("%s MPIRUN_RSH_LAUNCH=1", mpispawn_env);
-    if (tmp) {
-    free(mpispawn_env);
-    mpispawn_env = tmp;
-    } else {
-    goto allocation_error;
-    }
-
-
-    tmp = mkstr("%s MPISPAWN_CHECKIN_PORT=%d", mpispawn_env, port);
-    if (tmp) {
-    free(mpispawn_env);
-    mpispawn_env = tmp;
-    } else {
-    goto allocation_error;
-    }
-
-
-    tmp = mkstr("%s MPISPAWN_MPIRUN_PORT=%d", mpispawn_env, port);
-    if (tmp) {
-    free(mpispawn_env);
-    mpispawn_env = tmp;
-    } else {
-    goto allocation_error;
-    }
-
-
-    tmp = mkstr("%s MPISPAWN_GLOBAL_NPROCS=%d", mpispawn_env, nprocs);
-    if (tmp) {
-    free(mpispawn_env);
-    mpispawn_env = tmp;
-    } else {
-    goto allocation_error;
-    }
-
-
-    tmp = mkstr("%s MPISPAWN_MPIRUN_ID=%d", mpispawn_env, getpid());
-    if (tmp) {
-    free(mpispawn_env);
-    mpispawn_env = tmp;
-    } else {
-    goto allocation_error;
-    }
-
-    if (!configfile_on) {
-    for (k = 0; k < pglist->npgs; k++) {
-        /* Make a list of hosts and the number of processes on each host */
-        /* NOTE: RFCs do not allow : or ; in hostnames */
-        if (host_list)
-        host_list = mkstr("%s:%s:%d", host_list,
-                  pglist->data[k].hostname,
-                  pglist->data[k].npids);
-        else
-        host_list = mkstr("%s:%d", pglist->data[k].hostname,
-                  pglist->data[k].npids);
-        if (!host_list)
-        goto allocation_error;
-        for (n = 0; n < pglist->data[k].npids; n++) {
-        host_list = mkstr("%s:%d", host_list,
-                  pglist->data[k].plist_indices[n]);
-        if (!host_list)
-            goto allocation_error;
-        }
-    }
-    } else {
-    /*In case of mpmd activated we need to pass to mpispawn the different names and arguments of executables */
-    host_list = create_host_list_mpmd(pglist, plist);
-    tmp = mkstr("%s MPISPAWN_MPMD=%d", mpispawn_env, 1);
     if (tmp) {
         free(mpispawn_env);
         mpispawn_env = tmp;
@@ -1959,6 +1836,80 @@ void spawn_one(int argc, char *argv[], char *totalview_cmd, char *env,
         goto allocation_error;
     }
 
+    tmp = mkstr("%s MPISPAWN_MPIRUN_HOST=%s", mpispawn_env, mpirun_host);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    tmp = mkstr("%s MPIRUN_RSH_LAUNCH=1", mpispawn_env);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    tmp = mkstr("%s MPISPAWN_CHECKIN_PORT=%d", mpispawn_env, port);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    tmp = mkstr("%s MPISPAWN_MPIRUN_PORT=%d", mpispawn_env, port);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    tmp = mkstr("%s MPISPAWN_GLOBAL_NPROCS=%d", mpispawn_env, nprocs);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    tmp = mkstr("%s MPISPAWN_MPIRUN_ID=%d", mpispawn_env, getpid());
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    if (!configfile_on) {
+        for (k = 0; k < pglist->npgs; k++) {
+            /* Make a list of hosts and the number of processes on each host */
+            /* NOTE: RFCs do not allow : or ; in hostnames */
+            if (host_list)
+                host_list = mkstr("%s:%s:%d", host_list, pglist->data[k].hostname, pglist->data[k].npids);
+            else
+                host_list = mkstr("%s:%d", pglist->data[k].hostname, pglist->data[k].npids);
+            if (!host_list)
+                goto allocation_error;
+            for (n = 0; n < pglist->data[k].npids; n++) {
+                host_list = mkstr("%s:%d", host_list, pglist->data[k].plist_indices[n]);
+                if (!host_list)
+                    goto allocation_error;
+            }
+        }
+    } else {
+        /*In case of mpmd activated we need to pass to mpispawn the different names and arguments of executables */
+        host_list = create_host_list_mpmd(pglist, plist);
+        tmp = mkstr("%s MPISPAWN_MPMD=%d", mpispawn_env, 1);
+        if (tmp) {
+            free(mpispawn_env);
+            mpispawn_env = tmp;
+        } else {
+            goto allocation_error;
+        }
 
     }
 
@@ -1967,350 +1918,318 @@ void spawn_one(int argc, char *argv[], char *totalview_cmd, char *env,
     //bytes to the other procs
     if (nprocs >= fastssh_nprocs_thres) {
 
-    int pathlen = strlen(wd);
-    host_list_file =
-        (char *) malloc(sizeof(char) *
-                (pathlen + strlen("host_list_file.tmp") +
-                 MAX_PID_LEN + 1));
-    sprintf(host_list_file, "%s/host_list_file%d.tmp", wd, getpid());
+        int pathlen = strlen(wd);
+        host_list_file = (char *) malloc(sizeof(char) * (pathlen + strlen("host_list_file.tmp") + MAX_PID_LEN + 1));
+        sprintf(host_list_file, "%s/host_list_file%d.tmp", wd, getpid());
 
-    /* open the host list file and write the host_list in it */
-    DBG(fprintf(stderr, "OPEN FILE %s\n", host_list_file));
-    host_list_file_fp = fopen(host_list_file, "w");
+        /* open the host list file and write the host_list in it */
+        DBG(fprintf(stderr, "OPEN FILE %s\n", host_list_file));
+        host_list_file_fp = fopen(host_list_file, "w");
 
-    if (host_list_file_fp == NULL) {
-        fprintf(stderr, "host list temp file could not be created\n");
-        goto allocation_error;
-    }
+        if (host_list_file_fp == NULL) {
+            fprintf(stderr, "host list temp file could not be created\n");
+            goto allocation_error;
+        }
 
-    fprintf(host_list_file_fp, "%s", host_list);
-    fclose(host_list_file_fp);
+        fprintf(host_list_file_fp, "%s", host_list);
+        fclose(host_list_file_fp);
 
-    tmp = mkstr("%s HOST_LIST_FILE=%s", mpispawn_env, host_list_file);
-    if (tmp) {
-        free(mpispawn_env);
-        mpispawn_env = tmp;
-    } else {
-        goto allocation_error;
-    }
+        tmp = mkstr("%s HOST_LIST_FILE=%s", mpispawn_env, host_list_file);
+        if (tmp) {
+            free(mpispawn_env);
+            mpispawn_env = tmp;
+        } else {
+            goto allocation_error;
+        }
 
+        numBytes = (strlen(host_list) + 1) * sizeof(char);
+        DBG(fprintf(stderr, "WRITTEN %d bytes\n", numBytes));
 
-    numBytes = (strlen(host_list) + 1) * sizeof(char);
-    DBG(fprintf(stderr, "WRITTEN %d bytes\n", numBytes));
-
-    tmp = mkstr("%s HOST_LIST_NBYTES=%d", mpispawn_env, numBytes);
-    if (tmp) {
-        free(mpispawn_env);
-        mpispawn_env = tmp;
-    } else {
-        goto allocation_error;
-    }
-
+        tmp = mkstr("%s HOST_LIST_NBYTES=%d", mpispawn_env, numBytes);
+        if (tmp) {
+            free(mpispawn_env);
+            mpispawn_env = tmp;
+        } else {
+            goto allocation_error;
+        }
 
     } else {
 
-    /*This is the standard approach used when the number of processes < PROCS_THRES */
-    tmp = mkstr("%s MPISPAWN_HOSTLIST=%s", mpispawn_env, host_list);
-    if (tmp) {
-        free(mpispawn_env);
-        mpispawn_env = tmp;
-    } else {
-        goto allocation_error;
-    }
+        /*This is the standard approach used when the number of processes < PROCS_THRES */
+        tmp = mkstr("%s MPISPAWN_HOSTLIST=%s", mpispawn_env, host_list);
+        if (tmp) {
+            free(mpispawn_env);
+            mpispawn_env = tmp;
+        } else {
+            goto allocation_error;
+        }
     }
 
     tmp = mkstr("%s MPISPAWN_NNODES=%d", mpispawn_env, pglist->npgs);
     if (tmp) {
-    free(mpispawn_env);
-    mpispawn_env = tmp;
-    } else {
-    goto allocation_error;
-    }
-
-
-    if (use_totalview) {
-    tmp = mkstr("%s MPISPAWN_USE_TOTALVIEW=1", mpispawn_env);
-    if (tmp) {
         free(mpispawn_env);
         mpispawn_env = tmp;
     } else {
         goto allocation_error;
     }
+
+    if (use_totalview) {
+        tmp = mkstr("%s MPISPAWN_USE_TOTALVIEW=1", mpispawn_env);
+        if (tmp) {
+            free(mpispawn_env);
+            mpispawn_env = tmp;
+        } else {
+            goto allocation_error;
+        }
     }
 
     /*
      * mpirun_rsh allows env variables to be set on the commandline
      */
     if (!mpispawn_param_env) {
-    mpispawn_param_env = mkstr("");
-    if (!mpispawn_param_env)
-        goto allocation_error;
+        mpispawn_param_env = mkstr("");
+        if (!mpispawn_param_env)
+            goto allocation_error;
     }
 
     while (aout_index != argc && strchr(argv[aout_index], '=')) {
-    name = strdup(argv[aout_index++]);
-    value = strchr(name, '=');
-    value[0] = '\0';
-    value++;
+        name = strdup(argv[aout_index++]);
+        value = strchr(name, '=');
+        value[0] = '\0';
+        value++;
 
-    tmp = mkstr("%s MPISPAWN_GENERIC_NAME_%d=%s"
-            " MPISPAWN_GENERIC_VALUE_%d=%s", mpispawn_param_env,
-            param_count, name, param_count, value);
+        tmp = mkstr("%s MPISPAWN_GENERIC_NAME_%d=%s" " MPISPAWN_GENERIC_VALUE_%d=%s", mpispawn_param_env, param_count, name, param_count, value);
 
-    free(name);
-    free(mpispawn_param_env);
+        free(name);
+        free(mpispawn_param_env);
 
-    if (tmp) {
-        mpispawn_param_env = tmp;
-        param_count++;
-    }
+        if (tmp) {
+            mpispawn_param_env = tmp;
+            param_count++;
+        }
 
-    else {
-        goto allocation_error;
-    }
+        else {
+            goto allocation_error;
+        }
     }
 
     if (!configfile_on) {
-    if (aout_index == argc) {
-        fprintf(stderr, "Incorrect number of arguments.\n");
-        usage();
-        exit(EXIT_FAILURE);
-    }
+        if (aout_index == argc) {
+            fprintf(stderr, "Incorrect number of arguments.\n");
+            usage();
+            exit(EXIT_FAILURE);
+        }
 
+        i = argc - aout_index;
+        if (debug_on && !use_totalview)
+            i++;
 
-    i = argc - aout_index;
-    if (debug_on && !use_totalview)
-        i++;
-
-    tmp =
-        mkstr("%s MPISPAWN_ARGC=%d", mpispawn_env, argc - aout_index);
-    if (tmp) {
-        free(mpispawn_env);
-        mpispawn_env = tmp;
-    } else {
-        goto allocation_error;
-    }
+        tmp = mkstr("%s MPISPAWN_ARGC=%d", mpispawn_env, argc - aout_index);
+        if (tmp) {
+            free(mpispawn_env);
+            mpispawn_env = tmp;
+        } else {
+            goto allocation_error;
+        }
 
     }
     i = 0;
 
     if (debug_on && !use_totalview) {
-    tmp = mkstr("%s MPISPAWN_ARGV_%d=%s", mpispawn_env, i++, DEBUGGER);
-    if (tmp) {
-        free(mpispawn_env);
-        mpispawn_env = tmp;
-    } else {
-        goto allocation_error;
-    }
+        tmp = mkstr("%s MPISPAWN_ARGV_%d=%s", mpispawn_env, i++, DEBUGGER);
+        if (tmp) {
+            free(mpispawn_env);
+            mpispawn_env = tmp;
+        } else {
+            goto allocation_error;
+        }
     }
 
     if (use_totalview) {
-    int j;
-    if (!configfile_on) {
-        for (j = 0; j < MPIR_proctable_size; j++) {
-        MPIR_proctable[j].executable_name = argv[aout_index];
+        int j;
+        if (!configfile_on) {
+            for (j = 0; j < MPIR_proctable_size; j++) {
+                MPIR_proctable[j].executable_name = argv[aout_index];
+            }
+        } else {
+            for (j = 0; j < MPIR_proctable_size; j++) {
+                MPIR_proctable[j].executable_name = plist[j].executable_name;
+            }
         }
-    } else {
-        for (j = 0; j < MPIR_proctable_size; j++) {
-        MPIR_proctable[j].executable_name =
-            plist[j].executable_name;
-        }
-    }
     }
 
     tmp_i = i;
 
-    i = 0;            /* Spawn root mpispawn */
+    i = 0;                      /* Spawn root mpispawn */
     {
-    if (!(pglist->data[i].pid = fork())) {
-        size_t arg_offset = 0;
-        const char *nargv[7];
-        char *command;
-        //If the config option is activated, the executable information are taken from the pglist.
-        if (configfile_on) {
-        int index_plist = pglist->data[i].plist_indices[0];
+        if (!(pglist->data[i].pid = fork())) {
+            size_t arg_offset = 0;
+            const char *nargv[7];
+            char *command;
+            //If the config option is activated, the executable information are taken from the pglist.
+            if (configfile_on) {
+                int index_plist = pglist->data[i].plist_indices[0];
 
-        /* When the config option is activated we need to put in the mpispawn the number of argument of the exe. */
-        tmp =
-            mkstr("%s MPISPAWN_ARGC=%d", mpispawn_env,
-              plist[index_plist].argc);
-        if (tmp) {
-            free(mpispawn_env);
-            mpispawn_env = tmp;
-        } else {
-            goto allocation_error;
-        }
-        /*Add the executable name and args in the list of arguments from the pglist. */
-        tmp =
-            add_argv(mpispawn_env,
-                 plist[index_plist].executable_name,
-                 plist[index_plist].executable_args, tmp_i);
-        if (tmp) {
-            free(mpispawn_env);
-            mpispawn_env = tmp;
-        } else {
-            goto allocation_error;
-        }
-        } else {
-        while (aout_index < argc) {
-            tmp =
-            mkstr("%s MPISPAWN_ARGV_%d=%s", mpispawn_env,
-                  tmp_i++, argv[aout_index++]);
-            if (tmp) {
-            free(mpispawn_env);
-            mpispawn_env = tmp;
+                /* When the config option is activated we need to put in the mpispawn the number of argument of the exe. */
+                tmp = mkstr("%s MPISPAWN_ARGC=%d", mpispawn_env, plist[index_plist].argc);
+                if (tmp) {
+                    free(mpispawn_env);
+                    mpispawn_env = tmp;
+                } else {
+                    goto allocation_error;
+                }
+                /*Add the executable name and args in the list of arguments from the pglist. */
+                tmp = add_argv(mpispawn_env, plist[index_plist].executable_name, plist[index_plist].executable_args, tmp_i);
+                if (tmp) {
+                    free(mpispawn_env);
+                    mpispawn_env = tmp;
+                } else {
+                    goto allocation_error;
+                }
             } else {
-            goto allocation_error;
+                while (aout_index < argc) {
+                    tmp = mkstr("%s MPISPAWN_ARGV_%d=%s", mpispawn_env, tmp_i++, argv[aout_index++]);
+                    if (tmp) {
+                        free(mpispawn_env);
+                        mpispawn_env = tmp;
+                    } else {
+                        goto allocation_error;
+                    }
+
+                }
             }
 
+            if (mpispawn_param_env) {
+                tmp = mkstr("%s MPISPAWN_GENERIC_ENV_COUNT=%d %s", mpispawn_env, param_count, mpispawn_param_env);
+
+                free(mpispawn_param_env);
+                free(mpispawn_env);
+
+                if (tmp) {
+                    mpispawn_env = tmp;
+                } else {
+                    goto allocation_error;
+                }
+            }
+
+            tmp = mkstr("%s MPISPAWN_ID=%d", mpispawn_env, i);
+            if (tmp) {
+                free(mpispawn_env);
+                mpispawn_env = tmp;
+            } else {
+                goto allocation_error;
+            }
+
+            tmp = mkstr("%s MPISPAWN_LOCAL_NPROCS=%d", mpispawn_env, pglist->data[i].npids);
+            if (tmp) {
+                free(mpispawn_env);
+                mpispawn_env = tmp;
+            } else {
+                goto allocation_error;
+            }
+
+            tmp = mkstr("%s MPISPAWN_WORKING_DIR=%s", mpispawn_env, wd);
+            if (tmp) {
+                free(mpispawn_env);
+                mpispawn_env = tmp;
+            } else {
+                goto allocation_error;
+            }
+
+            if (xterm_on) {
+                nargv[arg_offset++] = XTERM;
+                nargv[arg_offset++] = "-e";
+            }
+
+            if (use_rsh) {
+                nargv[arg_offset++] = RSH_CMD;
+            }
+
+            else {
+                nargv[arg_offset++] = SSH_CMD;
+                nargv[arg_offset++] = SSH_ARG;
+            }
+            tmp = mkstr("%s MPISPAWN_WD=%s", mpispawn_env, wd);
+            if (tmp) {
+                free(mpispawn_env);
+                mpispawn_env = tmp;
+            } else {
+                goto allocation_error;
+            }
+
+            for (j = 0; j < arg_offset; j++) {
+                tmp = mkstr("%s MPISPAWN_NARGV_%d=%s", mpispawn_env, j, nargv[j]);
+                if (tmp) {
+                    free(mpispawn_env);
+                    mpispawn_env = tmp;
+                } else {
+                    goto allocation_error;
+                }
+            }
+            tmp = mkstr("%s MPISPAWN_NARGC=%d", mpispawn_env, arg_offset);
+            if (tmp) {
+                free(mpispawn_env);
+                mpispawn_env = tmp;
+            } else {
+                goto allocation_error;
+            }
+
+            if (getpath(pathbuf, PATH_MAX) && file_exists(pathbuf)) {
+                command = mkstr("cd %s; %s %s %s %s/mpispawn %d", wd, ENV_CMD, mpispawn_env, env, pathbuf, pglist->npgs);
+            } else if (use_dirname) {
+                command = mkstr("cd %s; %s %s %s %s/mpispawn %d", wd, ENV_CMD, mpispawn_env, env, binary_dirname, pglist->npgs);
+            } else {
+                command = mkstr("cd %s; %s %s %s mpispawn %d", wd, ENV_CMD, mpispawn_env, env, pglist->npgs);
+            }
+
+            if (!command) {
+                fprintf(stderr, "Couldn't allocate string for remote command!\n");
+                exit(EXIT_FAILURE);
+            }
+
+            nargv[arg_offset++] = pglist->data[i].hostname;
+            nargv[arg_offset++] = command;
+            nargv[arg_offset++] = NULL;
+
+            if (show_on) {
+                size_t arg = 0;
+                fprintf(stdout, "\n");
+                while (nargv[arg] != NULL)
+                    fprintf(stdout, "%s ", nargv[arg++]);
+                fprintf(stdout, "\n");
+
+                exit(EXIT_SUCCESS);
+            }
+
+            if (strcmp(pglist->data[i].hostname, plist[0].hostname)) {
+                int fd = open("/dev/null", O_RDWR, 0);
+                dup2(fd, STDIN_FILENO);
+            }
+            PRINT_DEBUG(DEBUG_Fork_verbose, "FORK mpispawn (pid=%d)\n", getpid());
+            PRINT_DEBUG(DEBUG_Fork_verbose > 1, "mpispawn command line: %s\n", mpispawn_env);
+            execv(nargv[0], (char *const *) nargv);
+            perror("execv");
+
+            for (i = 0; i < argc; i++) {
+                fprintf(stderr, "%s ", nargv[i]);
+            }
+
+            fprintf(stderr, "\n");
+
+            exit(EXIT_FAILURE);
         }
-        }
-
-        if (mpispawn_param_env) {
-        tmp =
-            mkstr("%s MPISPAWN_GENERIC_ENV_COUNT=%d %s",
-              mpispawn_env, param_count, mpispawn_param_env);
-
-        free(mpispawn_param_env);
-        free(mpispawn_env);
-
-        if (tmp) {
-            mpispawn_env = tmp;
-        } else {
-            goto allocation_error;
-        }
-        }
-
-        tmp = mkstr("%s MPISPAWN_ID=%d", mpispawn_env, i);
-        if (tmp) {
-        free(mpispawn_env);
-        mpispawn_env = tmp;
-        } else {
-        goto allocation_error;
-        }
-
-
-        tmp = mkstr("%s MPISPAWN_LOCAL_NPROCS=%d", mpispawn_env,
-            pglist->data[i].npids);
-        if (tmp) {
-        free(mpispawn_env);
-        mpispawn_env = tmp;
-        } else {
-        goto allocation_error;
-        }
-
-
-        tmp = mkstr("%s MPISPAWN_WORKING_DIR=%s", mpispawn_env, wd);
-        if (tmp) {
-        free(mpispawn_env);
-        mpispawn_env = tmp;
-        } else {
-        goto allocation_error;
-        }
-
-
-        if (xterm_on) {
-        nargv[arg_offset++] = XTERM;
-        nargv[arg_offset++] = "-e";
-        }
-
-        if (use_rsh) {
-        nargv[arg_offset++] = RSH_CMD;
-        }
-
-        else {
-        nargv[arg_offset++] = SSH_CMD;
-        nargv[arg_offset++] = SSH_ARG;
-        }
-        tmp = mkstr("%s MPISPAWN_WD=%s", mpispawn_env, wd);
-        if (tmp) {
-        free(mpispawn_env);
-        mpispawn_env = tmp;
-        } else {
-        goto allocation_error;
-        }
-
-
-        for (j = 0; j < arg_offset; j++) {
-        tmp = mkstr("%s MPISPAWN_NARGV_%d=%s", mpispawn_env, j,
-                nargv[j]);
-        if (tmp) {
-            free(mpispawn_env);
-            mpispawn_env = tmp;
-        } else {
-            goto allocation_error;
-        }
-        }
-        tmp = mkstr("%s MPISPAWN_NARGC=%d", mpispawn_env, arg_offset);
-        if (tmp) {
-        free(mpispawn_env);
-        mpispawn_env = tmp;
-        } else {
-        goto allocation_error;
-        }
-
-
-        if (getpath(pathbuf, PATH_MAX) && file_exists(pathbuf)) {
-        command =
-            mkstr("cd %s; %s %s %s %s/mpispawn %d", wd, ENV_CMD,
-              mpispawn_env, env, pathbuf, pglist->npgs);
-        } else if (use_dirname) {
-        command =
-            mkstr("cd %s; %s %s %s %s/mpispawn %d", wd, ENV_CMD,
-              mpispawn_env, env, binary_dirname, pglist->npgs);
-        } else {
-        command = mkstr("cd %s; %s %s %s mpispawn %d", wd, ENV_CMD,
-                mpispawn_env, env, pglist->npgs);
-        }
-
-        if (!command) {
-        fprintf(stderr,
-            "Couldn't allocate string for remote command!\n");
-        exit(EXIT_FAILURE);
-        }
-
-        nargv[arg_offset++] = pglist->data[i].hostname;
-        nargv[arg_offset++] = command;
-        nargv[arg_offset++] = NULL;
-
-        if (show_on) {
-        size_t arg = 0;
-        fprintf(stdout, "\n");
-        while (nargv[arg] != NULL)
-            fprintf(stdout, "%s ", nargv[arg++]);
-        fprintf(stdout, "\n");
-
-        exit(EXIT_SUCCESS);
-        }
-
-        if (strcmp(pglist->data[i].hostname, plist[0].hostname)) {
-        int fd = open("/dev/null", O_RDWR, 0);
-        dup2(fd, STDIN_FILENO);
-        }
-        DBG(fprintf(stderr, "final cmd line = %s\n", mpispawn_env));
-        execv(nargv[0], (char *const *) nargv);
-        perror("execv");
-
-        for (i = 0; i < argc; i++) {
-        fprintf(stderr, "%s ", nargv[i]);
-        }
-
-        fprintf(stderr, "\n");
-
-        exit(EXIT_FAILURE);
-    }
     }
 
     if (spawnfile) {
-    unlink(spawnfile);
+        unlink(spawnfile);
     }
     return;
 
   allocation_error:
     perror("spawn_one");
     if (mpispawn_env) {
-    fprintf(stderr, "%s\n", mpispawn_env);
-    free(mpispawn_env);
+        fprintf(stderr, "%s\n", mpispawn_env);
+        free(mpispawn_env);
     }
 
     exit(EXIT_FAILURE);
@@ -2318,53 +2237,50 @@ void spawn_one(int argc, char *argv[], char *totalview_cmd, char *env,
 
 /* #undef CHECK_ALLOC */
 
-void make_command_strings(int argc, char *argv[], char *totalview_cmd,
-              char *command_name, char *command_name_tv)
+void make_command_strings(int argc, char *argv[], char *totalview_cmd, char *command_name, char *command_name_tv)
 {
     int i;
     if (debug_on) {
-    fprintf(stderr, "debug enabled !\n");
-    char keyval_list[COMMAND_LEN];
-    sprintf(keyval_list, "%s", " ");
-    /* Take more env variables if present */
-    while (strchr(argv[aout_index], '=')) {
-        strcat(keyval_list, argv[aout_index]);
-        strcat(keyval_list, " ");
-        aout_index++;
-    }
-    if (use_totalview) {
-        sprintf(command_name_tv, "%s %s %s", keyval_list,
-            totalview_cmd, argv[aout_index]);
-        sprintf(command_name, "%s %s ", keyval_list, argv[aout_index]);
+        fprintf(stderr, "debug enabled !\n");
+        char keyval_list[COMMAND_LEN];
+        sprintf(keyval_list, "%s", " ");
+        /* Take more env variables if present */
+        while (strchr(argv[aout_index], '=')) {
+            strcat(keyval_list, argv[aout_index]);
+            strcat(keyval_list, " ");
+            aout_index++;
+        }
+        if (use_totalview) {
+            sprintf(command_name_tv, "%s %s %s", keyval_list, totalview_cmd, argv[aout_index]);
+            sprintf(command_name, "%s %s ", keyval_list, argv[aout_index]);
+        } else {
+            sprintf(command_name, "%s %s %s", keyval_list, DEBUGGER, argv[aout_index]);
+        }
     } else {
-        sprintf(command_name, "%s %s %s", keyval_list,
-            DEBUGGER, argv[aout_index]);
-    }
-    } else {
-    sprintf(command_name, "%s", argv[aout_index]);
+        sprintf(command_name, "%s", argv[aout_index]);
     }
 
     if (use_totalview) {
-    /* Only needed for root */
-    strcat(command_name_tv, " -a ");
+        /* Only needed for root */
+        strcat(command_name_tv, " -a ");
     }
 
     /* add the arguments */
     for (i = aout_index + 1; i < argc; i++) {
-    strcat(command_name, " ");
-    strcat(command_name, argv[i]);
+        strcat(command_name, " ");
+        strcat(command_name, argv[i]);
     }
 
     if (use_totalview) {
-    /* Complete the command for non-root processes */
-    strcat(command_name, " -mpichtv");
+        /* Complete the command for non-root processes */
+        strcat(command_name, " -mpichtv");
 
-    /* Complete the command for root process */
-    for (i = aout_index + 1; i < argc; i++) {
-        strcat(command_name_tv, " ");
-        strcat(command_name_tv, argv[i]);
-    }
-    strcat(command_name_tv, " -mpichtv");
+        /* Complete the command for root process */
+        for (i = aout_index + 1; i < argc; i++) {
+            strcat(command_name_tv, " ");
+            strcat(command_name_tv, argv[i]);
+        }
+        strcat(command_name_tv, " -mpichtv");
     }
 }
 
@@ -2378,65 +2294,57 @@ void alarm_handler(int signal)
     extern const char *alarm_msg;
 
     if (use_totalview) {
-    fprintf(stderr, "Timeout alarm signaled\n");
+        fprintf(stderr, "Timeout alarm signaled\n");
     }
 
     if (alarm_msg)
-    fprintf(stderr, "%s", alarm_msg);
+        fprintf(stderr, "%s", alarm_msg);
     cleanup();
 }
-
 
 void child_handler(int signal)
 {
     int status, pid;
     static int count = 0;
-    static int num_exited = 0;
 
     int check_mpirun = 1;
-    int i = 0;
     list_pid_mpirun_t *curr = dpm_mpirun_pids;
     list_pid_mpirun_t *prev = NULL;
 
-    while (1) 
-    {
-        dbg("pid count =%d num_exited %d\n",count, num_exited);
-        
+    while (1) {
+        dbg("pid count =%d num_exited %d\n", count, num_exited);
+
         // Retry while system call is interrupted
         do {
-            pid = waitpid ( -1, &status, WNOHANG );
-        } while ( pid == -1 && errno == EINTR );
+            pid = waitpid(-1, &status, WNOHANG);
+        } while (pid == -1 && errno == EINTR);
 
         // Debug output
-        if (pid < 0) {
-            dbg("waitpid return pid = %d: errno = %d: %s\n", pid, errno, strerror_r(errno,NULL,0));
-        } else {
-            dbg("waitpid return pid = %d\n", pid);
-            if ( WIFEXITED(status) ) {
-                dbg("process %d exited with status %d\n", pid, WEXITSTATUS(status));
-            } else if ( WIFSIGNALED(status) ) {
-                dbg("process %d terminated with signal %d\n", pid, WTERMSIG(status));
-            } else if ( WIFSTOPPED(status) ) {
-                dbg("process %d stopped with signal %d\n", pid, WSTOPSIG(status));
-            } else if ( WIFCONTINUED(status) ) {
-                dbg("process %d continued\n", pid);
+        PRINT_DEBUG(DEBUG_Fork_verbose, "waitpid return pid = %d\n", pid);
+        if (pid >= 0) {
+            if (WIFEXITED(status)) {
+                PRINT_DEBUG(DEBUG_Fork_verbose, "process %d exited with status %d\n", pid, WEXITSTATUS(status));
+            } else if (WIFSIGNALED(status)) {
+                PRINT_DEBUG(DEBUG_Fork_verbose, "process %d terminated with signal %d\n", pid, WTERMSIG(status));
+            } else if (WIFSTOPPED(status)) {
+                PRINT_DEBUG(DEBUG_Fork_verbose, "process %d stopped with signal %d\n", pid, WSTOPSIG(status));
+            } else if (WIFCONTINUED(status)) {
+                PRINT_DEBUG(DEBUG_Fork_verbose, "process %d continued\n", pid);
             }
         }
 
-        if ( pid < 0 ) {
-            if ( errno == ECHILD ) {
+        if (pid < 0) {
+            if (errno == ECHILD) {
                 // No more unwaited-for child -> end mpirun_rsh
                 if (legacy_startup)
                     close(server_socket);
-                exit(EXIT_SUCCESS);
+                exit(exit_code);
             } else {
                 // Unhandled cases -> error
-                fprintf( stderr, "[mpirun_rsh][%s:%d] ", __FILE__, __LINE__ );
-                fprintf( stderr, "Error in %s: ", __func__ );
-                fprintf( stderr, "waitpid returned %d: %s\n", pid, strerror_r(errno,NULL,0) );
-                exit(EXIT_FAILURE);
+                PRINT_ERROR_ERRNO("Error: waitpid returned %d", errno, pid);
+                abort();
             }
-        } else if ( pid == 0 ) {
+        } else if (pid == 0) {
             // No more exited child -> end handler
             return;
         }
@@ -2445,47 +2353,45 @@ void child_handler(int signal)
         /*With DPM if a SIGCHLD is sent by a child mpirun the mpirun
          *root must not end. It must continue its run and terminate only
          *when a signal is sent by a different child.*/
-         if ( check_mpirun ){
-                while( curr != NULL ) {
-                   if ( pid == curr->pid ){
-                        if ( prev == NULL )
-                            dpm_mpirun_pids = (list_pid_mpirun_t *)curr->next;
-                        else
-                            prev->next = (list_pid_mpirun_t *)curr->next;
-                        free(curr);
-                        // Try with next exited child
-                        continue;
-                    }
-                    prev = curr;
-                    curr = curr->next;
+        if (check_mpirun) {
+            while (curr != NULL) {
+                if (pid == curr->pid) {
+                    if (prev == NULL)
+                        dpm_mpirun_pids = (list_pid_mpirun_t *) curr->next;
+                    else
+                        prev->next = (list_pid_mpirun_t *) curr->next;
+                    free(curr);
+                    // Try with next exited child
+                    continue;
                 }
+                prev = curr;
+                curr = curr->next;
             }
+        }
 
-            /*If this is the root mpirun and the signal was sent by another child (not mpirun)
-             *it can wait the termination of the mpirun childs too.*/
+        /*If this is the root mpirun and the signal was sent by another child (not mpirun)
+         *it can wait the termination of the mpirun childs too.*/
         if (dpm_mpirun_pids != NULL && curr == NULL)
             check_mpirun = 0;
-        dbg( "wait pid =%d count =%d, errno=%d\n",pid, count, errno);
+        dbg("wait pid =%d count =%d, errno=%d\n", pid, count, errno);
 
 #ifdef CKPT
-        if( lookup_exit_pid(pid) >= 0 )
-        num_exited++;
-        dbg(" pid =%d count =%d, num_exited=%d,nspawn=%d, ckptcnt=%d, wait_socks_succ=%d\n",
-                pid, count,num_exited, NSPAWNS, checkpoint_count, wait_socks_succ);
+        static int num_exited = 0;
+        if (lookup_exit_pid(pid) >= 0)
+            num_exited++;
+        dbg(" pid =%d count =%d, num_exited=%d,nspawn=%d, ckptcnt=%d, wait_socks_succ=%d\n", pid, count, num_exited, NSPAWNS, checkpoint_count, wait_socks_succ);
         // If number of active nodes have exited, ensure all 
         // other spare nodes are killed too.
 
 #ifdef CR_FTB
         dbg("nsparehosts=%d\n", nsparehosts);
-        if(sparehosts_on && (num_exited >= ( NSPAWNS - nsparehosts )))
-        {
-            dbg(" num_exit=%d, NSPAWNS=%d, nsparehosts=%d, will kill-fast\n",
-                 num_exited, NSPAWNS, nsparehosts );
+        if (sparehosts_on && (num_exited >= (NSPAWNS - nsparehosts))) {
+            dbg(" num_exit=%d, NSPAWNS=%d, nsparehosts=%d, will kill-fast\n", num_exited, NSPAWNS, nsparehosts);
             rkill_fast();
         }
 #endif
 
-        if( num_exited < NSPAWNS ) {
+        if (num_exited < NSPAWNS) {
             // Try with next exited child
             continue;
         }
@@ -2497,10 +2403,8 @@ void child_handler(int signal)
              * wait for the timeout.
              */
             if (wait_socks_succ < NSPAWNS) {
-                fprintf(stderr,  "%s: Error in init phase...wait for cleanup! (%d/%d"
-                    "mpispawn connections)\n", __func__, wait_socks_succ, NSPAWNS);
-                alarm_msg =
-                    "Failed in initilization phase, cleaned up all the mpispawn!\n";
+                fprintf(stderr, "%s: Error in init phase...wait for cleanup! (%d/%d" "mpispawn connections)\n", __func__, wait_socks_succ, NSPAWNS);
+                alarm_msg = "Failed in initilization phase, cleaned up all the mpispawn!\n";
                 socket_error = 1;
                 return;
             } else {
@@ -2511,8 +2415,7 @@ void child_handler(int signal)
     dbg("mpirun_rsh EXIT FROM child_handler\n");
 }
 
-void mpispawn_checkin(int s, struct sockaddr *sockaddr, unsigned int
-              sockaddr_len)
+void mpispawn_checkin(int s, struct sockaddr *sockaddr, unsigned int sockaddr_len)
 {
     int sock, id, i, n, mpispawn_root = -1;
     in_port_t port;
@@ -2521,62 +2424,59 @@ void mpispawn_checkin(int s, struct sockaddr *sockaddr, unsigned int
     int mt_degree;
     mt_degree = env2int("MV2_MT_DEGREE");
     if (!mt_degree) {
-    mt_degree = ceil(pow(pglist->npgs, (1.0 / (MT_MAX_LEVEL - 1))));
-    if (mt_degree < MT_MIN_DEGREE)
-        mt_degree = MT_MIN_DEGREE;
-    if (mt_degree > MT_MAX_DEGREE)
-        mt_degree = MT_MAX_DEGREE;
+        mt_degree = ceil(pow(pglist->npgs, (1.0 / (MT_MAX_LEVEL - 1))));
+        if (mt_degree < MT_MIN_DEGREE)
+            mt_degree = MT_MIN_DEGREE;
+        if (mt_degree > MT_MAX_DEGREE)
+            mt_degree = MT_MAX_DEGREE;
     } else {
-    if (mt_degree < 2) {
-        fprintf(stderr, "mpirun_rsh: MV2_MT_DEGREE too low");
-        cleanup();
+        if (mt_degree < 2) {
+            fprintf(stderr, "mpirun_rsh: MV2_MT_DEGREE too low");
+            cleanup();
+        }
     }
-    }
-
 
 #if defined(CKPT) && defined(CR_FTB)
     mt_degree = MT_MAX_DEGREE;
-       spawninfo = (struct spawn_info_s *) malloc(NSPAWNS*sizeof(struct spawn_info_s));
-       if (!spawninfo) {
-               perror("[CR_MIG:mpirun_rsh] malloc(spawninfo)");
-               cleanup();
-       }
+    spawninfo = (struct spawn_info_s *) malloc(NSPAWNS * sizeof(struct spawn_info_s));
+    if (!spawninfo) {
+        perror("[CR_MIG:mpirun_rsh] malloc(spawninfo)");
+        cleanup();
+    }
 #endif
 
-    for (i = 0; i < NSPAWNS; i++) 
-    {
+    for (i = 0; i < NSPAWNS; i++) {
         addrlen = sizeof(addr);
 
-        while ((sock = accept(s, (struct sockaddr *) &addr, &addrlen)) < 0) 
-        {
+        while ((sock = accept(s, (struct sockaddr *) &addr, &addrlen)) < 0) {
             if (errno == EINTR || errno == EAGAIN)
                 continue;
             socket_error = 1;
         }
 
-    if (read_socket(sock, &id, sizeof(int))
-        || read_socket(sock, &pglist->data[id].pid, sizeof(pid_t))
-        || read_socket(sock, &port, sizeof(in_port_t))) {
-        socket_error = 1;
-    }
+        if (read_socket(sock, &id, sizeof(int))
+            || read_socket(sock, &pglist->data[id].pid, sizeof(pid_t))
+            || read_socket(sock, &port, sizeof(in_port_t))) {
+            socket_error = 1;
+        }
 
-    address[id] = addr;
-    ((struct sockaddr_in *) &address[id])->sin_port = port;
+        address[id] = addr;
+        ((struct sockaddr_in *) &address[id])->sin_port = port;
 
-    if (!(id == 0 && use_totalview))
-        close(sock);
-    else
-        mpispawn_root = sock;
+        if (!(id == 0 && use_totalview))
+            close(sock);
+        else
+            mpispawn_root = sock;
 
-    for (n = 0; n < pglist->data[id].npids; n++) {
-        plist[pglist->data[id].plist_indices[n]].state = P_STARTED;
-    }
+        for (n = 0; n < pglist->data[id].npids; n++) {
+            plist[pglist->data[id].plist_indices[n]].state = P_STARTED;
+        }
         wait_socks_succ++;
 
 #if defined(CKPT) && defined(CR_FTB)
         strncpy(spawninfo[i].spawnhost, pglist->data[i].hostname, 31);
         spawninfo[i].sparenode = (pglist->data[i].npids == 0) ? 1 : 0;
-#endif 
+#endif
     }
 
     /*
@@ -2594,8 +2494,7 @@ void mpispawn_checkin(int s, struct sockaddr *sockaddr, unsigned int
             cleanup();
         }
 
-        if (connect(sock, (struct sockaddr *) &address[0],
-            sizeof(struct sockaddr)) < 0) {
+        if (connect(sock, (struct sockaddr *) &address[0], sizeof(struct sockaddr)) < 0) {
             perror("connect");
             cleanup();
         }
@@ -2607,9 +2506,8 @@ void mpispawn_checkin(int s, struct sockaddr *sockaddr, unsigned int
          */
         if (write_socket(sock, &address, sizeof(addr) * pglist->npgs)
 #if defined(CKPT) && defined(CR_FTB)
-                || write_socket(sock, spawninfo, sizeof(struct
-                        spawn_info_s)*(pglist->npgs))
-#endif                                              
+            || write_socket(sock, spawninfo, sizeof(struct spawn_info_s) * (pglist->npgs))
+#endif
             ) {
             cleanup();
         }
@@ -2617,23 +2515,22 @@ void mpispawn_checkin(int s, struct sockaddr *sockaddr, unsigned int
         close(sock);
     }
     if (use_totalview) {
-    int id, j;
-    process_info_t *pinfo = (process_info_t *) malloc
-        (process_info_s * nprocs);
-    read_socket(mpispawn_root, pinfo, process_info_s * nprocs);
-    for (j = 0; j < nprocs; j++) {
-        MPIR_proctable[pinfo[j].rank].pid = pinfo[j].pid;
-    }
-    free(pinfo);
-    /* We're ready for totalview */
-    MPIR_debug_state = MPIR_DEBUG_SPAWNED;
-    MPIR_Breakpoint();
+        int id, j;
+        process_info_t *pinfo = (process_info_t *) malloc(process_info_s * nprocs);
+        read_socket(mpispawn_root, pinfo, process_info_s * nprocs);
+        for (j = 0; j < nprocs; j++) {
+            MPIR_proctable[pinfo[j].rank].pid = pinfo[j].pid;
+        }
+        free(pinfo);
+        /* We're ready for totalview */
+        MPIR_debug_state = MPIR_DEBUG_SPAWNED;
+        MPIR_Breakpoint();
 
-    /* MPI processes can proceed now */
-    id = 0;
-    write_socket(mpispawn_root, &id, sizeof(int));
-    if (USE_LINEAR_SSH)
-        close(mpispawn_root);
+        /* MPI processes can proceed now */
+        id = 0;
+        write_socket(mpispawn_root, &id, sizeof(int));
+        if (USE_LINEAR_SSH)
+            close(mpispawn_root);
     }
 }
 
@@ -2707,54 +2604,51 @@ int check_token (FILE * fp, char *tmpbuf)
 int check_token(FILE * fp, char *tmpbuf)
 {
     char *tokptr, *val, *key;
-    if (strncmp(tmpbuf, "preput_val_",11) == 0
-        || strncmp(tmpbuf, "info_val_",9) == 0) {
+    if (strncmp(tmpbuf, "preput_val_", 11) == 0 || strncmp(tmpbuf, "info_val_", 9) == 0) {
         /* info_val_ */
         tokptr = strtok(tmpbuf, "=");
         key = strtok(NULL, "=");
         fprintf(fp, "%s\n", key);
 
         return 0;
-    } else if (strncmp(tmpbuf, "execname",8) == 0
-           || strncmp(tmpbuf, "preput_key_",11) == 0
-           || strncmp(tmpbuf, "info_key_",9) == 0) {
+    } else if (strncmp(tmpbuf, "execname", 8) == 0 || strncmp(tmpbuf, "preput_key_", 11) == 0 || strncmp(tmpbuf, "info_key_", 9) == 0) {
         /* execname, preput.. */
         /* info_key_ */
         tokptr = strtok(tmpbuf, "=");
         val = strtok(NULL, "=");
         fprintf(fp, "%s\n", val);
         return 0;
-    } else if (strncmp(tmpbuf, "nprocs",6) == 0) {
+    } else if (strncmp(tmpbuf, "nprocs", 6) == 0) {
         tokptr = strtok(tmpbuf, "=");
         val = strtok(NULL, "=");
         fprintf(fp, "%s\n", val);
         spinf.launch_num = atoi(val);
         return 0;
-    } else if (strncmp(tmpbuf, "totspawns",9) == 0) {
+    } else if (strncmp(tmpbuf, "totspawns", 9) == 0) {
         /* totspawns */
         tokptr = strtok(tmpbuf, "=");
         spinf.totspawns = atoi(strtok(NULL, "="));
         return 0;
-    } else if (strncmp(tmpbuf, "endcmd",6) == 0) {
+    } else if (strncmp(tmpbuf, "endcmd", 6) == 0) {
         /* endcmd */
         fprintf(fp, "endcmd\n");
         spinf.spawnsdone = spinf.spawnsdone + 1;
         if (spinf.spawnsdone >= spinf.totspawns)
             return 1;
         return 0;
-    } else if (strncmp(tmpbuf, "info_num",8) == 0) {
+    } else if (strncmp(tmpbuf, "info_num", 8) == 0) {
         /* info num */
         fprintf(fp, "%s\n", tmpbuf);
         return 0;
-    } else if (strncmp(tmpbuf, "argcnt",6) == 0) {
+    } else if (strncmp(tmpbuf, "argcnt", 6) == 0) {
         /* args end */
         fprintf(fp, "endarg\n");
         return 0;
-     } else if (strncmp(tmpbuf, "arg",3) == 0) {
+    } else if (strncmp(tmpbuf, "arg", 3) == 0) {
         /* arguments */
         fprintf(fp, "%s\n", tmpbuf);
         return 0;
-   }
+    }
 
     return 0;
 }
@@ -2767,9 +2661,8 @@ void handle_spawn_req(int readsock)
     uint32_t size, spcnt;
 
     memset(&spinf, 0, sizeof(spawn_info_t));
-    
-    sprintf(spinf.linebuf, TMP_PFX "%d_%d_spawn_spec.file", getpid(),
-dpm_cnt);
+
+    sprintf(spinf.linebuf, TMP_PFX "%d_%d_spawn_spec.file", getpid(), dpm_cnt);
     spinf.spawnfile = strdup(spinf.linebuf);
 
     fp = fopen(spinf.linebuf, "w");
@@ -2828,8 +2721,6 @@ static void get_line(void *ptr, char *fill, int is_file)
     fill[i] = '\0';
 }
 
-
-
 void launch_newmpirun(int total)
 {
     FILE *fp;
@@ -2850,12 +2741,12 @@ void launch_newmpirun(int total)
 
     sprintf(spinf.buf, "%d", total);
 
-    /*It needs to maintain the list of mpirun pids to handle the termination.*/
+    /*It needs to maintain the list of mpirun pids to handle the termination. */
     list_pid_mpirun_t *curr;
-    curr = (list_pid_mpirun_t *)malloc(sizeof(list_pid_mpirun_t));
-    curr->next  = (list_pid_mpirun_t *)dpm_mpirun_pids;
+    curr = (list_pid_mpirun_t *) malloc(sizeof(list_pid_mpirun_t));
+    curr->next = (list_pid_mpirun_t *) dpm_mpirun_pids;
     dpm_mpirun_pids = curr;
-    if (curr->pid = fork())
+    if ((curr->pid = fork()))
         return;
 
     newbuf = (char *) malloc(PATH_MAX + MAXLINE);
@@ -2867,16 +2758,15 @@ void launch_newmpirun(int total)
         strcat(newbuf, "/mpirun_rsh");
     }
     DBG(fprintf(stderr, "launching %s\n", newbuf));
-    DBG(fprintf(stderr, "numhosts = %s, hostfile = %s, spawnfile = %s\n",
-        spinf.buf, spinf.linebuf, spinf.spawnfile));
+    DBG(fprintf(stderr, "numhosts = %s, hostfile = %s, spawnfile = %s\n", spinf.buf, spinf.linebuf, spinf.spawnfile));
     char nspawns[MAXLINE];
     sprintf(nspawns, "%d", spinf.totspawns);
+    PRINT_DEBUG(DEBUG_Fork_verbose, "FORK new mpirun (pid=%d)\n", getpid());
+    PRINT_DEBUG(DEBUG_Fork_verbose > 1, "new mpirun command line: %s\n", newbuf);
     if (dpmenv) {
-        execl(newbuf, newbuf, "-np", spinf.buf, "-hostfile", spinf.linebuf,
-          "-spawnfile", spinf.spawnfile, "-dpmspawn",nspawns,"-dpm", dpmenv, NULL);
+        execl(newbuf, newbuf, "-np", spinf.buf, "-hostfile", spinf.linebuf, "-spawnfile", spinf.spawnfile, "-dpmspawn", nspawns, "-dpm", dpmenv, NULL);
     } else {
-        execl(newbuf, newbuf, "-np", spinf.buf, "-hostfile", spinf.linebuf,
-          "-spawnfile", spinf.spawnfile, "-dpmspawn",nspawns,"-dpm", NULL);
+        execl(newbuf, newbuf, "-np", spinf.buf, "-hostfile", spinf.linebuf, "-spawnfile", spinf.spawnfile, "-dpmspawn", nspawns, "-dpm", NULL);
     }
 
     perror("execl failed\n");
@@ -2889,12 +2779,11 @@ void launch_newmpirun(int total)
 static int check_info(char *str)
 {
     if (0 == (strcmp(str, "wdir")))
-    return 1;
+        return 1;
     if (0 == (strcmp(str, "path")))
-    return 1;
+        return 1;
     return 0;
 }
-
 
 /**
  *
@@ -2902,18 +2791,15 @@ static int check_info(char *str)
 static void store_info(char *key, char *val)
 {
     if (0 == (strcmp(key, "wdir")))
-    custwd = strdup(val);
+        custwd = strdup(val);
 
     if (0 == (strcmp(key, "path")))
-    custpath = strdup(val);
+        custpath = strdup(val);
 }
-
 
 #define ENVLEN 20480
 void dpm_add_env(char *buf, char *optval)
 {
-    int len;
-
     if (dpmenv == NULL) {
         dpmenv = (char *) malloc(ENVLEN);
         dpmenv[0] = '\0';
@@ -2932,6 +2818,5 @@ void dpm_add_env(char *buf, char *optval)
 }
 
 #undef ENVLEN
-
 
 /* vi:set sw=4 sts=4 tw=76 expandtab: */

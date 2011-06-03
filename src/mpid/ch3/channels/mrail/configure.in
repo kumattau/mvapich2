@@ -201,7 +201,7 @@ AS_IF([test "$use_internal_hwloc" = "yes"],
       [AC_MSG_NOTICE([No suitable hwloc installed, using internal version])
        AC_DEFINE([HAVE_LIBHWLOC], [], [Define if hwloc library is available])
        other_subdirs="hwloc $other_subdirs"
-       CPPFLAGS="-I$srcdir/src/hwloc/include -I$abs_top_builddir/src/hwloc/include $CPPFLAGS"
+       CPPFLAGS="-I$master_top_srcdir/src/mpid/ch3/channels/mrail/src/hwloc/include -I$master_top_builddir/src/mpid/ch3/channels/mrail//src/hwloc/include $CPPFLAGS"
        ac_configure_args="${ac_configure_args} --enable-embedded-mode"
        AC_CONFIG_SUBDIRS(src/hwloc)
        AC_CHECK_HEADERS([numaif.h],

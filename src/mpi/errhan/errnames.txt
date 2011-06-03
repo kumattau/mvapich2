@@ -1478,6 +1478,7 @@ is too big (> MPIU_SHMW_GHND_SZ)
 **connect_to_pm %s %d: Unable to connect process manager at host %s port %d
 **pmi_port: Unable to decide hostport from PMI_PORT
 **pmi_port %s: Unable to decide hostport from \"%s\"
+**ch3|contigsend: Unable to create eager contig send request
 
 # MPIR functions
 

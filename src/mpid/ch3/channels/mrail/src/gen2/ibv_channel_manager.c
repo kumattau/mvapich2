@@ -612,6 +612,7 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
 	            v = (vbuf *) ((uintptr_t) wc.wr_id);
 	
 	            vc = (MPIDI_VC_t *) (v->vc);
+                cq_poll_completion = 1;
 	
 	            if (wc.status != IBV_WC_SUCCESS) {
 	                if (wc.opcode == IBV_WC_SEND ||
@@ -659,13 +660,11 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
                        }     
                 }
  
-	            if (!is_send_completion) {
-	                int rank; PMI_Get_rank(&rank);
-	            }
 	            if(!is_send_completion && MPIDI_CH3I_RDMA_Process.has_srq) {
-	                vc = (void *)(unsigned long)
-	                     (((MPIDI_CH3I_MRAILI_Pkt_comm_header *)
-	                      ((vbuf *)v)->pheader)->src.vc_addr);
+                    int rank;
+	                rank = ((MPIDI_CH3I_MRAILI_Pkt_comm_header *)
+	                       ((vbuf *)v)->pheader)->src.rank;
+                    MPIDI_PG_Get_vc(MPIDI_Process.my_pg, rank, &vc);
 	                v->vc = vc;
 	                v->rail = ((MPIDI_CH3I_MRAILI_Pkt_comm_header *)
 	                        ((vbuf*)v)->pheader)->rail;
@@ -698,7 +697,7 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
 	                            rdma_credit_preserve) {
 	                        /* Need to post more to the SRQ */
 	                        MPIDI_CH3I_RDMA_Process.posted_bufs[i] +=
-	                            viadev_post_srq_buffers(viadev_srq_size - 
+	                            viadev_post_srq_buffers(viadev_srq_fill_size - 
 	                                MPIDI_CH3I_RDMA_Process.posted_bufs[i], i);
 	
 	                    }
@@ -797,7 +796,7 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
 	                    if(MPIDI_CH3I_RDMA_Process.posted_bufs[i] <= rdma_credit_preserve) {
 	                        /* Need to post more to the SRQ */
 	                        MPIDI_CH3I_RDMA_Process.posted_bufs[i] +=
-	                            viadev_post_srq_buffers(viadev_srq_size - 
+	                            viadev_post_srq_buffers(viadev_srq_fill_size - 
 	                                MPIDI_CH3I_RDMA_Process.posted_bufs[i], i);
 	
 	                    }
@@ -1037,12 +1036,21 @@ void async_thread(void *context)
                     ibv_error_abort(GEN_EXIT_ERR,
                             "Couldn't find out SRQ context\n");
                 }
+
+                /* dynamically re-size the srq to be larger */
+                viadev_srq_fill_size *= 2;
+                if (viadev_srq_fill_size > viadev_srq_alloc_size) {
+                    viadev_srq_fill_size = viadev_srq_alloc_size;
+                }
+
+                rdma_credit_preserve = (viadev_srq_fill_size > 200) ?
+                     (viadev_srq_fill_size - 100) : (viadev_srq_fill_size / 2);
                 
                 /* Need to post more to the SRQ */
                 post_new = MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num];
 
                 MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num] +=
-                    viadev_post_srq_buffers(viadev_srq_size -
+                    viadev_post_srq_buffers(viadev_srq_fill_size -
                             viadev_srq_limit, hca_num);
 
                 post_new = MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num] - 
@@ -1081,7 +1089,7 @@ void async_thread(void *context)
 
                 pthread_spin_lock(&MPIDI_CH3I_RDMA_Process.srq_post_spin_lock);
 
-                srq_attr.max_wr = viadev_srq_size;
+                srq_attr.max_wr = viadev_srq_fill_size;
                 srq_attr.max_sge = 1;
                 srq_attr.srq_limit = viadev_srq_limit;
 

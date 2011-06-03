@@ -45,6 +45,7 @@ clean-preamble:
 
 clean-postamble:
 	cd examples && ${MAKE} clean
+	-test -f osu_benchmarks/Makefile && cd osu_benchmarks && ${MAKE} clean
 
 cleanobjsandlibs:
 	${MAKE} clean && cd test && ${MAKE} clean

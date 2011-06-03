@@ -69,12 +69,14 @@ extern int                  rdma_max_inline_size;
 extern int                  rdma_local_id;
 extern int                  rdma_num_local_procs; 
 
-extern uint32_t             viadev_srq_size;
+extern uint32_t             viadev_srq_alloc_size;
+extern uint32_t             viadev_srq_fill_size;
 extern uint32_t             viadev_srq_limit;
 extern uint32_t             viadev_max_r3_oust_send;
 
 extern int                  rdma_polling_set_threshold;
 extern int                  rdma_polling_set_limit;
+extern int                  rdma_fp_buffer_size;
 extern int                  rdma_fp_sendconn_accepted;
 extern int                  rdma_pending_conn_request;
 extern int                  rdma_eager_limit;
@@ -174,6 +176,7 @@ extern int                  rdma_default_async_thread_stack_size;
 #define RDMA_INTEGER_POOL_SIZE          (1024)
 #define RDMA_IBA_NULL_HCA               "nohca"
 #define RDMA_DEFAULT_POLLING_SET_LIMIT  (64)
+#define RDMA_FP_DEFAULT_BUF_SIZE        (4096)
 #define MAX_NUM_HCAS                    (4)
 #define MAX_NUM_PORTS                   (2)
 #define MAX_NUM_QP_PER_PORT             (4)
@@ -254,6 +257,24 @@ extern int                  mrail_p2r_length;
 #define DYNAMIC_TOTAL_WEIGHT            (3* 1024)
 
 #define CHELSIO_RNIC                    "cxgb"
-#define INTEL_NE020_RNIC                "nes0"                       
+#define INTEL_NE020_RNIC                "nes0"
+
+/* MV2_POLLING_LEVEL
+Level 1 : Exit on finding a message on any channel 
+Level 2 : Exit on finding a message on RDMA_FP or SMP channel.
+          Continue on ibv_poll_cq success.
+Level 3 : Exit on finding a message on RDMA_FP channel.
+          Continue polling on SMP and ibv_poll_cq channels
+          until no more messages.
+Level 4 : Exit only after processing all the messages on 
+          all the channels
+*/
+typedef enum mv2_polling_level {
+    MV2_POLLING_LEVEL_1 = 1, 
+    MV2_POLLING_LEVEL_2, 
+    MV2_POLLING_LEVEL_3, 
+    MV2_POLLING_LEVEL_4,
+} mv2_polling_level; 
                                
+extern mv2_polling_level    rdma_polling_level;
 #endif /* _RDMA_PARAM_H */

@@ -68,6 +68,7 @@ MPIDI_CH3U_SRBuf_element_t * MPIDI_CH3U_SRBuf_pool = NULL;
 char *MPIDI_CH3_Pkt_type_to_string[MPIDI_CH3_PKT_END_ALL+1] = {
     [MPIDI_CH3_PKT_EAGER_SEND] = "MPIDI_CH3_PKT_EAGER_SEND",
 #if defined(_OSU_MVAPICH_)
+    [MPIDI_CH3_PKT_EAGER_SEND_CONTIG] = "MPIDI_CH3_PKT_EAGER_SEND_CONTIG",
 #ifndef MV2_DISABLE_HEADER_CACHING
     [MPIDI_CH3_PKT_FAST_EAGER_SEND] = "MPIDI_CH3_PKT_FAST_EAGER_SEND",
     [MPIDI_CH3_PKT_FAST_EAGER_SEND_WITH_REQ] =
@@ -132,6 +133,39 @@ char *MPIDI_CH3_Pkt_type_to_string[MPIDI_CH3_PKT_END_ALL+1] = {
 #endif
 
 
+void init_debug1() {
+    // Set coresize limit
+    char* coresize = getenv("MV2_DEBUG_CORESIZE");
+    set_coresize_limit( coresize );
+    // ignore error code, failure if not fatal
+
+    // Set an error signal handler
+    char* bt = getenv("MV2_DEBUG_SHOW_BACKTRACE");
+    int backtrace = 0;
+    if ( bt != NULL ) {
+        backtrace = !!atoi( bt );
+    }
+    setup_error_sighandler( backtrace );
+    // ignore error code, failure if not fatal
+    
+    // Initialize DEBUG variables
+    initialize_debug_variables();
+}
+
+void init_debug2(int mpi_rank) {
+    // Set prefix for debug output
+    const int MAX_LENGTH = 256;
+    char hostname[MAX_LENGTH];
+    gethostname(hostname, MAX_LENGTH);
+    hostname[MAX_LENGTH-1] = '\0';
+    char output_prefix[MAX_LENGTH];
+    snprintf( output_prefix, MAX_LENGTH, "%s:mpi_rank_%i", hostname, mpi_rank);
+    set_output_prefix( output_prefix );
+}
+
+
+
+
 #undef FUNCNAME
 #define FUNCNAME MPID_Init
 #undef FCNAME
@@ -163,23 +197,8 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
         fprintf(stderr, "Error processing configuration file\n");
         exit(EXIT_FAILURE);
     }
-    /* </_OSU_MVAPICH_> */
-    /* <_OSU_MVAPICH_> */
-
-    // Set coresize limit
-    char* coresize = getenv("MV2_DEBUG_CORESIZE");
-    set_coresize_limit( coresize );
-    // ignore error code, failure if not fatal
-
-    // Set an error signal handler
-    char* bt = getenv("MV2_DEBUG_SHOW_BACKTRACE");
-    int backtrace = 0;
-    if ( bt != NULL ) {
-        backtrace = !!atoi( bt );
-    }
-    setup_error_sighandler( backtrace );
-    // ignore error code, failure if not fatal
-
+    
+    init_debug1();
     /* </_OSU_MVAPICH_> */
 
     MPIDI_Use_pmi2_api = FALSE;
@@ -227,12 +246,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     }
 
     /* <_OSU_MVAPICH_> */
-    {
-        const int max_length = 256;
-        char error_prefix[max_length];
-        snprintf( error_prefix, max_length, "mpi_rank_%i", pg_rank);
-        set_error_prefix( error_prefix );
-    }
+    init_debug2( pg_rank );
     /* </_OSU_MVAPICH_> */
 
 #if defined(_OSU_MVAPICH_)

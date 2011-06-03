@@ -218,11 +218,20 @@ void async_thread(void *context)
                             "Couldn't find out SRQ context\n");
                 }
 
+                /* dynamically re-size the srq to be larger */
+                viadev_srq_fill_size *= 2;
+                if (viadev_srq_fill_size > viadev_srq_alloc_size) {
+                    viadev_srq_fill_size = viadev_srq_alloc_size;
+                }
+
+                rdma_credit_preserve = (viadev_srq_fill_size > 200) ?
+                     (viadev_srq_fill_size - 100) : (viadev_srq_fill_size / 2);
+
                 /* Need to post more to the SRQ */
                 post_new = srq_info.posted_bufs[hca_num];
 
                 srq_info.posted_bufs[hca_num] +=
-                    MPIDI_nem_ib_post_srq_buffers(viadev_srq_size -
+                    MPIDI_nem_ib_post_srq_buffers(viadev_srq_fill_size -
                             viadev_srq_limit, hca_num);
 
                 post_new = srq_info.posted_bufs[hca_num] -
@@ -261,7 +270,7 @@ void async_thread(void *context)
 
                 pthread_spin_lock(&srq_info.srq_post_spin_lock);
 
-                srq_attr.max_wr = viadev_srq_size;
+                srq_attr.max_wr = viadev_srq_fill_size;
                 srq_attr.max_sge = 1;
                 srq_attr.srq_limit = viadev_srq_limit;
 
@@ -309,11 +318,11 @@ int MPID_nem_ib_allocate_srq()
             pthread_cond_init(&srq_info.srq_post_cond[hca_num], 0);
             srq_info.srq_zero_post_counter[hca_num] = 0;
             srq_info.posted_bufs[hca_num] =
-                MPIDI_nem_ib_post_srq_buffers(viadev_srq_size, hca_num);
+                MPIDI_nem_ib_post_srq_buffers(viadev_srq_fill_size, hca_num);
 
             {
                 struct ibv_srq_attr srq_attr;
-                srq_attr.max_wr = viadev_srq_size;
+                srq_attr.max_wr = viadev_srq_alloc_size;
                 srq_attr.max_sge = 1;
                 srq_attr.srq_limit = viadev_srq_limit;
 
@@ -345,13 +354,13 @@ int MPIDI_nem_ib_post_srq_buffers(int num_bufs,
     vbuf* v = NULL;
     struct ibv_recv_wr* bad_wr = NULL;
 
-    if (num_bufs > viadev_srq_size)
+    if (num_bufs > viadev_srq_fill_size)
     {
         ibv_va_error_abort(
             GEN_ASSERT_ERR,
             "Try to post %d to SRQ, max %d\n",
             num_bufs,
-            viadev_srq_size);
+            viadev_srq_fill_size);
     }
 
     for (; i < num_bufs; ++i)

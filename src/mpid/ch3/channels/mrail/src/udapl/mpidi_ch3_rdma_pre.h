@@ -44,7 +44,7 @@
     unsigned int rdma_credit;                                       \
     union {                                                         \
         int smp_index;                                              \
-        uint64_t vc_addr;                                           \
+        int src_rank;                                               \
     } src;
 
 typedef enum

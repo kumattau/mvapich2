@@ -412,7 +412,7 @@ int MPIDI_CH3I_MRAILI_Fast_rdma_send_complete(MPIDI_VC_t * vc,
 
     post_len = *num_bytes_ptr;
     rstart = vc->mrail.rfp.remote_RDMA_buf +
-            (vc->mrail.rfp.phead_RDMA_send * rdma_vbuf_total_size);
+            (vc->mrail.rfp.phead_RDMA_send * rdma_fp_buffer_size);
     DEBUG_PRINT("[send: rdma_send] local vbuf %p, remote start %p, align size %d\n",
                v, rstart, post_len);
 
@@ -507,6 +507,10 @@ int MPIDI_CH3I_MRAILI_Fast_rdma_ok(MPIDI_VC_t * vc, int len)
         return 0;
     }
 
+    if (len > MRAIL_MAX_RDMA_FP_SIZE) {
+        return 0;
+    }
+
     if (num_rdma_buffer < 2
         || vc->mrail.rfp.phead_RDMA_send == vc->mrail.rfp.ptail_RDMA_send
         || vc->mrail.rfp.RDMA_send_buf[vc->mrail.rfp.phead_RDMA_send].padding == BUSY_FLAG
@@ -541,13 +545,13 @@ int viadev_post_srq_buffers(int num_bufs, int hca_num)
     MPIDI_STATE_DECL(MPID_STATE_POST_SRQ_BUFFERS);
     MPIDI_FUNC_ENTER(MPID_STATE_POST_SRQ_BUFFERS);
 
-    if (num_bufs > viadev_srq_size)
+    if (num_bufs > viadev_srq_fill_size)
     {
         ibv_va_error_abort(
             GEN_ASSERT_ERR,
             "Try to post %d to SRQ, max %d\n",
             num_bufs,
-            viadev_srq_size);
+            viadev_srq_fill_size);
     }
 
     for (; i < num_bufs; ++i)
@@ -588,7 +592,7 @@ int post_srq_send(MPIDI_VC_t* vc, vbuf* v, int rail)
     MPIDI_FUNC_ENTER(MPID_STATE_POST_SRQ_SEND);
 
     v->vc = (void *) vc;
-    p->src.vc_addr = vc->mrail.remote_vc_addr;
+    p->src.rank = MPIDI_Process.my_pg_rank;
     p->rail        = rail;
     
     XRC_FILL_SRQN_FIX_CONN (v, vc, rail);
@@ -627,7 +631,7 @@ int post_srq_send(MPIDI_VC_t* vc, vbuf* v, int rail)
 
     if(MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num] <= rdma_credit_preserve) {
         MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num] +=
-            viadev_post_srq_buffers(viadev_srq_size - 
+            viadev_post_srq_buffers(viadev_srq_fill_size - 
                     MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num], 
                     hca_num);
     }
@@ -908,7 +912,7 @@ int MPIDI_CH3I_MRAILI_Eager_send(MPIDI_VC_t * vc,
                                   v->desc.sg_entry.length - sizeof *p);
 #endif
         v->vc                = (void *) vc;
-        p->src.vc_addr = vc->mrail.remote_vc_addr;
+        p->src.rank    = MPIDI_Process.my_pg_rank;
         p->rail        = v->rail;
     }
 
@@ -1020,7 +1024,7 @@ int MRAILI_Backlog_send(MPIDI_VC_t * vc, int rail)
         --vc->mrail.srp.credits[rail].remote_credit;
 
         if (MPIDI_CH3I_RDMA_Process.has_srq) {
-            p->src.vc_addr = vc->mrail.remote_vc_addr;
+            p->src.rank = MPIDI_Process.my_pg_rank;
             p->rail        = rail;
         }
 

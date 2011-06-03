@@ -140,7 +140,6 @@ void MPIDI_CH3_Progress_start(MPID_Progress_state * state)
 
 
 
-
 #undef FUNCNAME
 #define FUNCNAME _MPIDI_CH3I_Progress
 #undef FCNAME
@@ -153,6 +152,8 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
     int spin_count = 0;
     unsigned completions = MPIDI_CH3I_progress_completion_count;
     vbuf *buffer = NULL;
+    int rdmafp_found = 0;
+    int smp_completions, smp_found;
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_MRAIL_PROGRESS);
     MPIDI_STATE_DECL(MPID_STATE_MPIDU_YIELD);
@@ -172,18 +173,23 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
 
     do
     {
+
+start_polling:
+        smp_completions = MPIDI_CH3I_progress_completion_count;
+        smp_found = 0;
         /*needed if early send complete does not occur */
         if (SMP_INIT && (mpi_errno = MPIDI_CH3I_SMP_write_progress(MPIDI_Process.my_pg)) != MPI_SUCCESS) {
             MPIU_ERR_POP(mpi_errno);
         }
 
-        if (completions != MPIDI_CH3I_progress_completion_count) {
-            goto fn_completion;
-        }
-
         if (SMP_INIT) { 
             MPIDI_CH3I_SMP_read_progress(MPIDI_Process.my_pg);
         } 
+       
+        if (smp_completions != MPIDI_CH3I_progress_completion_count) {
+            smp_found = 1;
+        }
+
 
         if (!SMP_ONLY) {
 
@@ -203,7 +209,9 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
             }
 #endif
 
-            mpi_errno = MPIDI_CH3I_read_progress(&vc_ptr, &buffer, is_blocking);
+            cq_poll_completion = 0;
+            rdmafp_found = 0;
+            mpi_errno = MPIDI_CH3I_read_progress(&vc_ptr, &buffer, &rdmafp_found, is_blocking);
             if (mpi_errno != MPI_SUCCESS) {
                 MPIU_ERR_POP(mpi_errno);
             }
@@ -286,7 +294,43 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
          } 
 #endif
 
+        if (rdma_polling_level == MV2_POLLING_LEVEL_2) {
+            /* Level 2 : exit on finding a message on RDMA_FP or SMP channel.
+            ** Continue on ibv_poll_cq success.
+            */
+            if (rdmafp_found || smp_found) {
+                if (MPIDI_CH3I_progress_completion_count != completions) {
+                    break;
+                }
+            }
+        
+            if (cq_poll_completion) {
+                goto start_polling;
+            }
+        } else if (rdma_polling_level == MV2_POLLING_LEVEL_3) {
+            /* Level 3 : exit on finding a message on RDMA_FP channel.
+            ** continue polling on SMP and ibv_poll_cq channels until 
+            ** no more messages.
+            */
+            if (rdmafp_found) {
+                if (MPIDI_CH3I_progress_completion_count != completions) {
+                    break;
+                }
+            }
+            if (smp_found || cq_poll_completion) {
+                goto start_polling;
+            }
+        } else if (rdma_polling_level == MV2_POLLING_LEVEL_4) {
+            /* Level 4 : exit only after processing all the messages on 
+            ** all the channels
+            */
+            if (smp_found || rdmafp_found || cq_poll_completion ) {
+                goto start_polling;
+            }
+        }
+          
     }
+    /* Level 1 : exit on finding a message on any channel */
     while (completions == MPIDI_CH3I_progress_completion_count
            && is_blocking);
 
@@ -374,7 +418,7 @@ int MPIDI_CH3I_Progress_test()
         vbuf *buffer = NULL;
 
         /* SS: Progress test should not be blocking */
-        if ((mpi_errno = MPIDI_CH3I_read_progress(&vc_ptr, &buffer, 0)) != MPI_SUCCESS)
+        if ((mpi_errno = MPIDI_CH3I_read_progress(&vc_ptr, &buffer, NULL, 0)) != MPI_SUCCESS)
         {
             MPIU_ERR_POP(mpi_errno);
         }

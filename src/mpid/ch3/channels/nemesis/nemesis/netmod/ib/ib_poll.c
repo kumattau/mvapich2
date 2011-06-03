@@ -661,14 +661,12 @@ int MPIDI_nem_ib_cq_poll(vbuf **vbuf_handle,
                         || wc.opcode == IBV_WC_RDMA_WRITE
                         || wc.opcode == IBV_WC_RDMA_READ);
 
-                    if (!is_send_completion) {
-                        int rank; PMI_Get_rank(&rank);
-                    }
                     /* srq codes */
                     if(!is_send_completion && process_info.has_srq) {
-                        vc = (void *)(unsigned long)
-                            (((MPIDI_nem_ib_pkt_comm_header *)
-                              ((vbuf *)v)->iheader)->vc_addr);
+                        int rank;
+                        rank = ((MPIDI_nem_ib_pkt_comm_header *)
+                              ((vbuf *)v)->iheader)->rank;
+                        MPIDI_PG_Get_vc(MPIDI_Process.my_pg, rank, &vc);
                         v->vc = vc;
                         v->rail = ((MPIDI_nem_ib_pkt_comm_header *)
                                 ((vbuf*)v)->iheader)->rail;
@@ -703,7 +701,7 @@ int MPIDI_nem_ib_cq_poll(vbuf **vbuf_handle,
                                     rdma_credit_preserve) {
                                 /* Need to post more to the SRQ */
                                 srq_info.posted_bufs[i] +=
-                                    MPIDI_nem_ib_post_srq_buffers(viadev_srq_size -
+                                    MPIDI_nem_ib_post_srq_buffers(viadev_srq_fill_size -
                                         srq_info.posted_bufs[i], i);
 
                             }
@@ -802,7 +800,7 @@ int MPIDI_nem_ib_cq_poll(vbuf **vbuf_handle,
                             if(srq_info.posted_bufs[i] <= rdma_credit_preserve) {
                                 /* Need to post more to the SRQ */
                                 srq_info.posted_bufs[i] +=
-                                    MPIDI_nem_ib_post_srq_buffers(viadev_srq_size -
+                                    MPIDI_nem_ib_post_srq_buffers(viadev_srq_fill_size -
                                         srq_info.posted_bufs[i], i);
 
                             }

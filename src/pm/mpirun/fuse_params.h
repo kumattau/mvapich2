@@ -29,16 +29,13 @@
 #include <limits.h>
 #include <stdio.h>
 
+#define MAX_PATH_LEN    (256)
 
-#define MAX_PATH_LEN	(256)
-
-struct crfs_state 
-{
+struct crfs_state {
     FILE *logfile;
     char *rootdir;
 };
 
 #define CRFS_DATA ( (struct crfs_state *)(fuse_get_context()->private_data) )
 
-
-#endif  // end of _FUSE_PARAMS_H_
+#endif                          // end of _FUSE_PARAMS_H_

@@ -44,7 +44,7 @@ typedef struct MPIDI_nem_ib_pkt_comm_header_t {
     uint8_t  remote_credit;
     uint8_t  rdma_credit;
     uint8_t  rail;
-    uint64_t vc_addr;
+    uint32_t rank;
 } MPIDI_nem_ib_pkt_comm_header;
 
 typedef struct MPIDI_nem_ib_pkt_address_t {
@@ -127,6 +127,8 @@ int MPID_nem_ib_iSendContig(MPIDI_VC_t *vc, MPID_Request *sreq, void *hdr,
                 MPIDI_msg_sz_t hdr_sz, void *data, MPIDI_msg_sz_t data_sz);
 int MPID_nem_ib_iStartContigMsg(MPIDI_VC_t *vc, void *hdr, MPIDI_msg_sz_t hdr_sz, 
                 void *data, MPIDI_msg_sz_t data_sz, MPID_Request **sreq_ptr);
+int MPID_nem_ib_iSendNoncontig (MPIDI_VC_t *vc, MPID_Request *sreq, void *header, 
+		MPIDI_msg_sz_t hdr_sz);
 int MRAILI_Backlog_send(MPIDI_VC_t * vc, int rail);
 
 void MRAILI_Ext_sendq_enqueue(MPIDI_VC_t *c, int rail, vbuf * v);

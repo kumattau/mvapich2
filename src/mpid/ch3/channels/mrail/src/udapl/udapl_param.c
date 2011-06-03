@@ -123,6 +123,8 @@ int rdma_num_extra_polls = 0;
 unsigned int  rdma_ndreg_entries = RDMA_NDREG_ENTRIES;
 unsigned long rdma_dreg_cache_limit = 0;
 
+mv2_polling_level rdma_polling_level = MV2_POLLING_LEVEL_1;
+
 /* Optimal CPU Binding parameters */
 #ifdef HAVE_LIBHWLOC
 int use_hwloc_cpu_binding=1;
@@ -130,22 +132,64 @@ int use_hwloc_cpu_binding=1;
 int use_hwloc_cpu_binding=0;
 #endif
 
+int rdma_set_smp_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
+{
+    switch  (proc->arch_type){
+        case MV2_ARCH_INTEL:
+        case MV2_ARCH_INTEL_XEON_E5630_8:
+        case MV2_ARCH_INTEL_CLOVERTOWN_8:
+        case MV2_ARCH_INTEL_XEON_DUAL_4:
+        case MV2_ARCH_INTEL_HARPERTOWN_8:
+#if defined(_SMP_LIMIC_)
+            g_smp_eagersize = 8192;
+#else
+            g_smp_eagersize = 65536;
+#endif
+            s_smpi_length_queue = 262144;
+            s_smp_num_send_buffer = 256;
+            s_smp_batch_size = 8;
+            break;
+
+        case MV2_ARCH_INTEL_NEHALEM_8:
+        case MV2_ARCH_INTEL_NEHALEM_16:
+            g_smp_eagersize = 65536;
+            s_smpi_length_queue = 262144;
+            s_smp_num_send_buffer = 256;
+            s_smp_batch_size = 8;
+            break;
+
+        case MV2_ARCH_AMD_BARCELONA_16:
+        case MV2_ARCH_AMD_MAGNY_COURS_24:
+        case MV2_ARCH_AMD_OPTERON_DUAL_4:
+        case MV2_ARCH_AMD:
+            g_smp_eagersize = 4096;
+            s_smpi_length_queue = 65536;
+            s_smp_num_send_buffer = 32;
+            s_smp_batch_size = 8;
+            break;
+        default:
+            g_smp_eagersize = 16384;
+            s_smpi_length_queue = 65536;
+            s_smp_num_send_buffer = 128;
+            s_smp_batch_size = 8;
+            break;
+    }
+    return 0;
+}
+
+
 void
 rdma_init_parameters (MPIDI_CH3I_RDMA_Process_t *proc)
 {
-
     char* value = NULL;
+    proc->arch_type = mv2_get_arch_type();
 
-/* Reading SMP user parameters */
+    /* Set SMP params based on architecture */
+    rdma_set_smp_parameters( proc );
 
-    g_smp_eagersize = SMP_EAGERSIZE;
-    s_smpi_length_queue = SMPI_LENGTH_QUEUE;
-    s_smp_num_send_buffer = SMP_NUM_SEND_BUFFER;
-    s_smp_batch_size = SMP_BATCH_SIZE;
-
+    /* Reading SMP user parameters */
     if ((value = getenv("SMP_EAGERSIZE")) != NULL) {
         g_smp_eagersize = atoi(value);
-        default_eager_size = 0;
     }
 
     if ((value = getenv("SMPI_LENGTH_QUEUE")) != NULL) {
@@ -297,6 +341,10 @@ rdma_init_parameters (MPIDI_CH3I_RDMA_Process_t *proc)
           udapl_prepost_depth = (int) atoi (value);
       }
     
+    if ((value = getenv("MV2_POLLING_LEVEL")) != NULL) {
+        rdma_polling_level =  atoi(value);
+    }
+
     udapl_initial_credits = udapl_initial_prepost_depth <= udapl_prepost_noop_extra ?
         udapl_initial_prepost_depth
         : udapl_initial_prepost_depth - udapl_prepost_noop_extra;

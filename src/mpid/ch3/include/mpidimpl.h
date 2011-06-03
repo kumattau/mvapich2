@@ -1774,6 +1774,10 @@ int MPIDI_CH3_InitCompleted( void );
 int MPIDI_GetTagFromPort( const char *, int * );
 
 /* Here are the packet handlers */
+#if defined(_OSU_MVAPICH_)
+int MPIDI_CH3_PktHandler_EagerSend_Contig( MPIDI_VC_t *, MPIDI_CH3_Pkt_t *, 
+                  MPIDI_msg_sz_t *, MPID_Request ** );
+#endif
 int MPIDI_CH3_PktHandler_EagerSend( MPIDI_VC_t *, MPIDI_CH3_Pkt_t *, 
 				   MPIDI_msg_sz_t *, MPID_Request ** );
 #ifdef USE_EAGER_SHORT
@@ -1967,6 +1971,10 @@ int MPIDI_CH3_ReqHandler_GetSendRespComplete( MPIDI_VC_t *, MPID_Request *,
 #endif /* MPICH_IS_THREADED */
 
 #if defined(_OSU_MVAPICH_)
+int MPIDI_CH3_ContigSend(MPID_Request **sreq_p,
+                         MPIDI_CH3_Pkt_type_t reqtype,
+                         const void * buf, MPIDI_msg_sz_t data_sz, int rank,
+                         int tag, MPID_Comm * comm, int context_offset);
 int MPIDI_CH3_Prepare_rndv_cts(MPIDI_VC_t * vc,
                                MPIDI_CH3_Pkt_rndv_clr_to_send_t * cts_pkt,
                                MPID_Request * rreq);

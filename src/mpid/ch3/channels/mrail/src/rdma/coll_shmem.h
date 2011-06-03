@@ -137,7 +137,8 @@ extern int gather_direct_system_size_small;
 extern int gather_direct_system_size_medium; 
 extern int use_direct_gather; 
 
-
+/* Use for allgather_osu.c */
+extern int allgather_ranking;
 
 /* Use for scatter_osu.c*/
 extern int user_scatter_small_msg;
@@ -163,15 +164,18 @@ extern void MPIDI_CH3I_SHMEM_COLL_Barrier_gather(int, int, int);
 extern void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int, int, int);
 
 /* Use inside bcast_osu.c */
+extern int  bcast_short_msg; 
 extern int  knomial_2level_bcast_system_size_threshold;
 extern int  knomial_2level_bcast_message_size_threshold;
 extern int  enable_knomial_2level_bcast;
 extern int  inter_node_knomial_factor;
 extern int  intra_node_knomial_factor;
-extern int  bcast_short_msg_threshold;
-extern void MPID_SHMEM_COLL_GetShmemBcastBuf(void**, void*);
-extern void signal_local_processes(int, int, char*, int, int, void*);
-extern void wait_for_signal(int, int, char**, int*, int*, void*);
+extern int  scatter_rd_inter_leader_bcast; 
+extern int  scatter_ring_inter_leader_bcast;
+extern int  knomial_intra_node_threshold; 
+extern int  knomial_inter_leader_threshold; 
+extern int  knomial_inter_leader_bcast;
+extern int  enable_shmem_bcast;
 
 /* Use inside reduce_osu.c */
 extern int disable_shmem_reduce;

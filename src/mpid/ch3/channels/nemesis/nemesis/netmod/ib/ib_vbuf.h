@@ -47,6 +47,7 @@
 #define PKT_NO_SEQ_NUM -2
 #define PKT_IS_NULL -1
 
+#define VBUF_BUFFER_SIZE (rdma_vbuf_total_size)
 
 /*
  * brief justification for vbuf format:
@@ -77,9 +78,11 @@ struct ibv_wr_descriptor
     void* next;
 };
 
-#define VBUF_BUFFER_SIZE (rdma_vbuf_total_size - VBUF_FAST_RDMA_EXTRA_BYTES)
+#define VBUF_BUFFER_SIZE (rdma_vbuf_total_size)
 
-#define MRAIL_MAX_EAGER_SIZE (VBUF_BUFFER_SIZE - sizeof(IB_PKT_HEADER_LENGTH))
+#define MRAIL_MAX_EAGER_SIZE (VBUF_BUFFER_SIZE - IB_PKT_HEADER_LENGTH)
+
+#define MRAIL_MAX_RDMA_FP_SIZE (rdma_fp_buffer_size - IB_PKT_HEADER_LENGTH - VBUF_FAST_RDMA_EXTRA_BYTES)
 
 typedef struct vbuf
 {

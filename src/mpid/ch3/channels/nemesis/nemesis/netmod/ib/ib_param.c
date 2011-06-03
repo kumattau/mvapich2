@@ -29,7 +29,9 @@
 #include "ib_lmt.h"
 #include "ib_vbuf.h"
 #include "mv2_utils.h"
+#include <mv2_arch_hca_detect.h>
 
+#define EAGER_THRESHOLD_ADJUST    0
 #define INLINE_THRESHOLD_ADJUST  (20)
 
 /* Global variables */
@@ -62,6 +64,7 @@ int           rdma_get_fallback_threshold;
 int           rdma_integer_pool_size = RDMA_INTEGER_POOL_SIZE;
 int           rdma_polling_set_limit = -1;
 int           rdma_polling_set_threshold = 10;
+int           rdma_fp_buffer_size = RDMA_FP_DEFAULT_BUF_SIZE;
 int           rdma_fp_sendconn_accepted = 0;
 int           rdma_pending_conn_request = 0;
 int	          rdma_eager_limit = 32;
@@ -133,7 +136,8 @@ int rdma_initial_credits        = 0;
  */
 int rdma_rq_size;
 
-uint32_t viadev_srq_size = 512;
+uint32_t viadev_srq_alloc_size = 4096;
+uint32_t viadev_srq_fill_size = 512;
 uint32_t viadev_srq_limit = 30;
 uint32_t viadev_max_r3_oust_send = 32;
 
@@ -503,54 +507,111 @@ int MPID_nem_ib_set_default_params()
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_SET_DEFAULT_PARAMS);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_SET_DEFAULT_PARAMS);
 
+    rdma_fp_buffer_size = RDMA_FP_DEFAULT_BUF_SIZE;
+    mv2_arch_hca_type arch_hca_type = mv2_get_arch_hca_type ( hca_list[0].ib_dev );
 
-	switch(hca_list[0].hca_type) {
-		case MLX_PCI_X:
-		case IBM_EHCA:
-            rdma_vbuf_total_size     = 12*1024;
-            num_rdma_buffer          = 32;
-            rdma_iba_eager_threshold = rdma_vbuf_total_size -
-                                          sizeof(VBUF_FLAG_TYPE);
+    switch( arch_hca_type  ) {
+
+        case MV2_ARCH_INTEL_XEON_E5630_8_HCA_MLX_CX_QDR:
+            rdma_vbuf_total_size = 17 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 5 * 1024;
+            rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
             rdma_eagersize_1sc           = 4 * 1024;
             rdma_put_fallback_threshold  = 8 * 1024;
-            rdma_get_fallback_threshold  = 394 * 1024;
-			break;
-        case CHELSIO_T3:
-        case CHELSIO_T4:
-            rdma_vbuf_total_size     = 9 * 1024;
-            num_rdma_buffer          = 16;
-            rdma_iba_eager_threshold = rdma_vbuf_total_size -
-                                        sizeof(VBUF_FLAG_TYPE);
+            rdma_get_fallback_threshold  = 0; 
+            break;
+
+        case MV2_ARCH_INTEL_NEHLM_8_HCA_MLX_CX_QDR:
+            rdma_vbuf_total_size = 17 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 5 * 1024;
+            rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+            rdma_eagersize_1sc           = 8 * 1024;
+            rdma_put_fallback_threshold  = 8 * 1024;
+            rdma_get_fallback_threshold  = 0; 
+            break;
+
+        case MV2_ARCH_AMD_MGNYCRS_24_HCA_MLX_CX_QDR:
+            rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 5 * 1024;
+            rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+            rdma_eagersize_1sc           = 4 * 1024;
+            rdma_put_fallback_threshold  = 4 * 1024;
+            rdma_get_fallback_threshold  = 0; 
+            break;
+
+        case MV2_ARCH_AMD_BRCLNA_16_HCA_MLX_CX_DDR:
+            rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 9 * 1024;
+            rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+            rdma_eagersize_1sc           = 4 * 1024;
+            rdma_put_fallback_threshold  = 128;
+            rdma_get_fallback_threshold  = 0;
+            break;
+
+        case MV2_ARCH_INTEL_CLVRTWN_8_HCA_MLX_CX_DDR:
+            rdma_vbuf_total_size = 17 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 9 * 1024;
+            rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+            rdma_eagersize_1sc           = 4 * 1024;
+            rdma_put_fallback_threshold  = 8 * 1024;
+            rdma_get_fallback_threshold  = 0;
+            break;
+
+        CASE_MV2_ANY_ARCH_WITH_MLX_CX_QDR:
+            rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 5 * 1024;
+            rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+            rdma_eagersize_1sc           = 4 * 1024;
+            rdma_put_fallback_threshold  = 8 * 1024;
+            rdma_get_fallback_threshold  = 0;
+            break;
+
+        CASE_MV2_ANY_ARCH_WITH_MLX_CX_DDR:
+            rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_fp_buffer_size = 9 * 1024;
+            rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+            rdma_eagersize_1sc           = 4 * 1024;
+            rdma_put_fallback_threshold  = 8 * 1024;
+            rdma_get_fallback_threshold  = 0;
+            break;
+
+        CASE_MV2_ANY_ARCH_WITH_MLX_PCI_X:
+        CASE_MV2_ANY_ARCH_WITH_IBM_EHCA:
+            rdma_vbuf_total_size     = 12*1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
             rdma_eagersize_1sc           = 4 * 1024;
             rdma_put_fallback_threshold  = 8 * 1024;
             rdma_get_fallback_threshold  = 394 * 1024;
             break;
-        case INTEL_NE020:
-            rdma_vbuf_total_size     = 9 * 1024;
-            num_rdma_buffer          = 16;
-            rdma_iba_eager_threshold = rdma_vbuf_total_size -
-                                        sizeof(VBUF_FLAG_TYPE);
+
+        CASE_MV2_ANY_ARCH_WITH_CHELSIO_T3:
+        CASE_MV2_ANY_ARCH_WITH_CHELSIO_T4:
+            rdma_vbuf_total_size     = 9 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
             rdma_eagersize_1sc           = 4 * 1024;
             rdma_put_fallback_threshold  = 8 * 1024;
             rdma_get_fallback_threshold  = 394 * 1024;
             break;
-        case MLX_PCI_EX_SDR:
-        case MLX_PCI_EX_DDR:
-		case MLX_CX_DDR:
-		case MLX_CX_SDR:
-		case MLX_CX_QDR:
-		case PATH_HT:
-		default:
+
+        CASE_MV2_ANY_ARCH_WITH_INTEL_NE020:
+            rdma_vbuf_total_size     = 9 * 1024 + EAGER_THRESHOLD_ADJUST;
+            rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+            rdma_eagersize_1sc           = 4 * 1024;
+            rdma_put_fallback_threshold  = 8 * 1024;
+            rdma_get_fallback_threshold  = 394 * 1024;
+            break;
+
+        default:
             rdma_vbuf_total_size     = 12 * 1024;
-            num_rdma_buffer          = 16;
-            rdma_iba_eager_threshold = rdma_vbuf_total_size -
-                                         sizeof(VBUF_FLAG_TYPE);
+            rdma_fp_buffer_size      = VBUF_BUFFER_SIZE;
+            rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
             rdma_eagersize_1sc               = 4 * 1024;
-            rdma_put_fallback_threshold      = 2 * 1024;
-            rdma_get_fallback_threshold      = 192 * 1024;
+            rdma_put_fallback_threshold      = 8 * 1024;
+            rdma_get_fallback_threshold      = 256 * 1024;
             break;
-	}
+    }
 
+    num_rdma_buffer          = 16;
     if (hca_list[0].hca_type == PATH_HT) {
         rdma_default_qp_ous_rd_atom = 1;
     } else {
@@ -560,10 +621,10 @@ int MPID_nem_ib_set_default_params()
     if (hca_list[0].hca_type == IBM_EHCA) {
         rdma_max_inline_size = -1;
     } else if ((hca_list[0].hca_type == CHELSIO_T3) ||
-               (hca_list[0].hca_type == CHELSIO_T4)) {
+            (hca_list[0].hca_type == CHELSIO_T4)) {
         rdma_max_inline_size = 64;
     } else {
-		rdma_max_inline_size = 128 + INLINE_THRESHOLD_ADJUST;
+        rdma_max_inline_size = 128 + INLINE_THRESHOLD_ADJUST;
     }
 
     if (hca_list[0].hca_type == MLX_PCI_EX_DDR) {
@@ -575,7 +636,7 @@ int MPID_nem_ib_set_default_params()
     }
 
     if ((hca_list[0].hca_type == CHELSIO_T3) ||
-        (hca_list[0].hca_type == CHELSIO_T4)) {
+            (hca_list[0].hca_type == CHELSIO_T4)) {
         /* Trac #423 */
         struct ibv_device_attr dev_attr;
         int mpi_errno = MPI_SUCCESS;
@@ -584,11 +645,11 @@ int MPID_nem_ib_set_default_params()
         mpi_errno = ibv_query_device(hca_list[0].nic_context, &dev_attr);
 
         if(!mpi_errno) {
-           if(dev_attr.max_cqe < rdma_default_max_cq_size) {
-               rdma_default_max_cq_size = dev_attr.max_cqe;
-           } 
+            if(dev_attr.max_cqe < rdma_default_max_cq_size) {
+                rdma_default_max_cq_size = dev_attr.max_cqe;
+            } 
         } else {
-           rdma_default_max_cq_size = RDMA_DEFAULT_IWARP_CQ_SIZE;
+            rdma_default_max_cq_size = RDMA_DEFAULT_IWARP_CQ_SIZE;
         } 
 
         rdma_prepost_noop_extra = 8;
@@ -603,11 +664,6 @@ int MPID_nem_ib_set_default_params()
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_SET_DEFAULT_PARAMS);
     return mpi_errno;
 }
-
-
-
-
-
 
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_get_user_params
@@ -720,6 +776,11 @@ int MPID_nem_ib_get_user_params()
               rdma_vbuf_total_size = 2 * sizeof(int);
     }
 
+    if ((value = getenv("MV2_RDMA_FAST_PATH_BUF_SIZE")) != NULL
+        && process_info.has_adaptive_fast_path) {
+        rdma_fp_buffer_size = atoi(value);
+    }
+
     /* We have read the value of the rendezvous threshold, and the number of
      * rails used for communication, increase the striping threshold
      * accordingly */
@@ -732,16 +793,25 @@ int MPID_nem_ib_get_user_params()
     striping_threshold = rdma_vbuf_total_size * ib_hca_num_ports *
         rdma_num_qp_per_port * ib_hca_num_hcas;
 
+    if ((value = getenv("MV2_SRQ_MAX_SIZE")) != NULL) {
+        viadev_srq_alloc_size = (uint32_t) atoi(value);
+    }
+
     if ((value = getenv("MV2_SRQ_SIZE")) != NULL) {
-        viadev_srq_size = (uint32_t) atoi(value);
+        viadev_srq_fill_size = (uint32_t) atoi(value);
     }
 
     if ((value = getenv("MV2_SRQ_LIMIT")) != NULL) {
         viadev_srq_limit = (uint32_t) atoi(value);
 
-        if(viadev_srq_limit > viadev_srq_size) {
+        if(viadev_srq_limit > viadev_srq_fill_size) {
 	    MPIU_Usage_printf("SRQ limit shouldn't be greater than SRQ size\n");
         }
+    }
+
+    if (process_info.has_srq) {
+        rdma_credit_preserve = (viadev_srq_fill_size > 200) ?
+            (viadev_srq_fill_size - 100) : (viadev_srq_fill_size / 2);
     }
 
     if ((value = getenv("MV2_IBA_EAGER_THRESHOLD")) != NULL) {

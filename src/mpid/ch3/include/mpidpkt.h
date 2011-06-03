@@ -40,6 +40,7 @@ typedef enum MPIDI_CH3_Pkt_type
 {
     MPIDI_CH3_PKT_EAGER_SEND = 0,
 #if defined(_OSU_MVAPICH_)
+    MPIDI_CH3_PKT_EAGER_SEND_CONTIG,
 #ifndef MV2_DISABLE_HEADER_CACHING 
     MPIDI_CH3_PKT_FAST_EAGER_SEND,
     MPIDI_CH3_PKT_FAST_EAGER_SEND_WITH_REQ,
@@ -142,6 +143,9 @@ typedef struct MPIDI_CH3_Pkt_limic_comp
 typedef MPIDI_CH3_Pkt_send_t MPIDI_CH3_Pkt_eager_send_t;
 typedef MPIDI_CH3_Pkt_send_t MPIDI_CH3_Pkt_eager_sync_send_t;
 typedef MPIDI_CH3_Pkt_send_t MPIDI_CH3_Pkt_ready_send_t;
+ #if defined(_OSU_MVAPICH_)
+typedef MPIDI_CH3_Pkt_send_t MPIDI_CH3_Pkt_eager_send_contig_t;
+#endif /* defined(_OSU_MVAPICH_) */
 
 #if defined(USE_EAGER_SHORT)
 typedef struct MPIDI_CH3_Pkt_eagershort_send

@@ -41,7 +41,7 @@
     uint8_t  rail;              \
     union {                     \
         uint32_t smp_index;     \
-        uint64_t vc_addr;       \
+        uint32_t rank;          \
     } src;                      \
     unsigned long crc;
 #else
@@ -52,7 +52,7 @@
     uint8_t  rail;              \
     union {                     \
         uint32_t smp_index;     \
-        uint64_t vc_addr;       \
+        uint32_t rank;          \
     } src;                      
 #endif
 

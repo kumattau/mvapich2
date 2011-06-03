@@ -58,26 +58,6 @@ int MPID_nem_ib_lmt_done_recv(struct MPIDI_VC *VC, struct MPID_Request *rreq);
         REQ_FIELD(_sreq, protocol) = MV2_LMT_PROTOCOL_RPUT;           \
 } 
 
-#define MPIDI_NEM_IB_RREQ_RNDV_FINISH(rreq)                         \
-{                                                                    \
-    if (rreq != NULL) {                                                 \
-        if (REQ_FIELD(rreq, d_entry) != NULL) {                      \
-            dreg_unregister(REQ_FIELD(rreq, d_entry));       \
-            REQ_FIELD(rreq, d_entry) = NULL;                   \
-        }                                                       \
-        if (1 == REQ_FIELD(rreq, rndv_buf_alloc)                \
-            && REQ_FIELD(rreq, rndv_buf) != NULL) {             \
-            MPIU_Free(REQ_FIELD(rreq, rndv_buf));                    \
-            REQ_FIELD(rreq, rndv_buf) = NULL;                        \
-            REQ_FIELD(rreq, rndv_buf_off) = REQ_FIELD(rreq, rndv_buf_sz) = 0; \
-            REQ_FIELD(rreq, rndv_buf_alloc) = 0;                     \
-        }  else {                                               \
-            REQ_FIELD(rreq, rndv_buf_off) = REQ_FIELD(rreq, rndv_buf_sz) = 0; \
-        }                                                       \
-        REQ_FIELD(rreq, protocol) = MV2_LMT_PROTOCOL_RENDEZVOUS_UNSPECIFIED; \
-    }                                                           \
-}
-
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_lmt_start_recv
 #undef FCNAME

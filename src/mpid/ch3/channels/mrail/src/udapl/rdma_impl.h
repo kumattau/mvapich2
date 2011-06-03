@@ -25,6 +25,7 @@
 #include "mpidi_ch3_impl.h"
 #include "udapl_priv.h"
 #include "mpidi_ch3_rdma_pre.h"
+#include <mv2_arch_hca_detect.h>
 
 #include DAT_HEADER
 #include <pthread.h>
@@ -34,6 +35,7 @@ typedef struct MPIDI_CH3I_RDMA_Process_t
     /* keep all rdma implementation specific global variable in a
        structure like this to avoid name collisions */
     int num_hcas;
+    mv2_arch_type arch_type;
 
     uint8_t                     has_lazy_mem_unregister;
     uint8_t                     has_rdma_fast_path;

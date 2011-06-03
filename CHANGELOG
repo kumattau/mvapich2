@@ -4,6 +4,37 @@ This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
 
+MVAPICH2-1.7a2 (06/03/2011)
+
+* Features and Enhancements 
+    - Improved intra-node shared memory communication performance
+    - Tuned RDMA Fast Path Buffer size to get better performance
+      with less memory footprint (CH3 and Nemesis)
+    - Fast process migration using RDMA
+    - Automatic inter-node communication parameter tuning
+      based on platform and adapter detection (Nemesis)
+    - Automatic intra-node communication parameter tuning
+      based on platform
+    - Efficient connection set-up for multi-core systems
+    - Enhancements for collectives (barrier, gather and allgather)
+    - Compact and shorthand way to specify blocks of processes on the same
+      host with mpirun_rsh
+    - Support for latest stable version of HWLOC v1.2
+    - Improved debug message output in process management and fault tolerance
+      functionality
+    - Better handling of process signals and error management in mpispawn
+    - Performance tuning for pt-to-pt and several collective operations
+
+* Bug fixes
+    - Fixes for memory leaks
+    - Fixes in CR/migration
+    - Better handling of memory allocation and registration failures
+    - Fixes for compilation warnings
+    - Fix a bug that disallows '=' from mpirun_rsh arguments
+    - Handling of non-contiguous transfer in Nemesis interface
+    - Bug fix in gather collective when ranks are in cyclic order
+    - Fix for the ignore_locks bug in MPI-IO with Lustre
+
 MVAPICH2-1.7a (04/19/2011)
 
 * Features and Enhancements 

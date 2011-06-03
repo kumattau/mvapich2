@@ -16,7 +16,7 @@
 /**
  *  Totalview intercepts MPIR_Breakpoint
  */
-int MPIR_Breakpoint (void);
+int MPIR_Breakpoint(void);
 
 //#define SPAWN_DEBUG
 #ifdef SPAWN_DEBUG
@@ -24,7 +24,6 @@ int MPIR_Breakpoint (void);
 #else
 #define DBG(_stmt_)
 #endif
-
 
 #define TOTALVIEW_CMD_LEN       200
 

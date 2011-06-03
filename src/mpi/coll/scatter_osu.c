@@ -209,7 +209,7 @@ int MPIR_Scatter_MV2_two_level_Binomial (
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
     /* extract the rank,size information for the intra-node
      * communicator */
-    shmem_comm = comm_ptr->shmem_comm;
+    shmem_comm = comm_ptr->ch.shmem_comm;
     mpi_errno = PMPI_Comm_rank(shmem_comm, &local_rank);
     if(mpi_errno) {
             MPIU_ERR_POP(mpi_errno);
@@ -223,7 +223,7 @@ int MPIR_Scatter_MV2_two_level_Binomial (
     if(local_rank == 0) {
          /* Node leader. Extract the rank, size information for the leader
           * communicator */
-            leader_comm = comm_ptr->leader_comm;
+            leader_comm = comm_ptr->ch.leader_comm;
             mpi_errno = PMPI_Comm_rank(leader_comm, &leader_comm_rank);
             if(mpi_errno) {
                     MPIU_ERR_POP(mpi_errno);
@@ -261,9 +261,9 @@ int MPIR_Scatter_MV2_two_level_Binomial (
 		 tmp_buf = MPIU_Malloc(nbytes*local_size);
 	     }
 
-	     leader_of_root = comm_ptr->leader_map[root];
+	     leader_of_root = comm_ptr->ch.leader_map[root];
 	     /* leader_of_root is the global rank of the leader of the root */
-	     leader_root = comm_ptr->leader_rank[leader_of_root];
+	     leader_root = comm_ptr->ch.leader_rank[leader_of_root];
 	     /* leader_root is the rank of the leader of the root in leader_comm.
 	      * leader_root is to be used as the root of the inter-leader gather ops
 	      */
@@ -297,12 +297,12 @@ int MPIR_Scatter_MV2_two_level_Binomial (
 	     }
 
 	     if(leader_comm_size > 1 && local_rank  == 0) { 
-		 if(comm_ptr->is_uniform != 1) {
+		 if(comm_ptr->ch.is_uniform != 1) {
 			  int *displs=NULL;
 			  int *sendcnts=NULL;
 			  int *node_sizes;
 			  int i=0;
-			  node_sizes = comm_ptr->node_sizes;
+			  node_sizes = comm_ptr->ch.node_sizes;
 			
 			  if (root != leader_of_root) {
 				  if(leader_comm_rank == leader_root) { 
@@ -447,7 +447,7 @@ int MPIR_Scatter_MV2_two_level_Direct (
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
     /* extract the rank,size information for the intra-node
      * communicator */
-    shmem_comm = comm_ptr->shmem_comm;
+    shmem_comm = comm_ptr->ch.shmem_comm;
     mpi_errno = PMPI_Comm_rank(shmem_comm, &local_rank);
     if(mpi_errno) {
             MPIU_ERR_POP(mpi_errno);
@@ -461,7 +461,7 @@ int MPIR_Scatter_MV2_two_level_Direct (
     if(local_rank == 0) {
          /* Node leader. Extract the rank, size information for the leader
           * communicator */
-            leader_comm = comm_ptr->leader_comm;
+            leader_comm = comm_ptr->ch.leader_comm;
             mpi_errno = PMPI_Comm_rank(leader_comm, &leader_comm_rank);
             if(mpi_errno) {
                     MPIU_ERR_POP(mpi_errno);
@@ -496,9 +496,9 @@ int MPIR_Scatter_MV2_two_level_Direct (
 		 tmp_buf = MPIU_Malloc(nbytes*local_size);
 	     }
 
-	     leader_of_root = comm_ptr->leader_map[root];
+	     leader_of_root = comm_ptr->ch.leader_map[root];
 	     /* leader_of_root is the global rank of the leader of the root */
-	     leader_root = comm_ptr->leader_rank[leader_of_root];
+	     leader_root = comm_ptr->ch.leader_rank[leader_of_root];
 	     /* leader_root is the rank of the leader of the root in leader_comm.
 	      * leader_root is to be used as the root of the inter-leader gather ops
 	      */
@@ -532,12 +532,12 @@ int MPIR_Scatter_MV2_two_level_Direct (
 	     }
 
 	     if(leader_comm_size > 1 && local_rank  == 0) { 
-		 if(comm_ptr->is_uniform != 1) {
+		 if(comm_ptr->ch.is_uniform != 1) {
 			  int *displs=NULL;
 			  int *sendcnts=NULL;
 			  int *node_sizes;
 			  int i=0;
-			  node_sizes = comm_ptr->node_sizes;
+			  node_sizes = comm_ptr->ch.node_sizes;
 			
 			  if (root != leader_of_root) {
 				  if(leader_comm_rank == leader_root) { 
@@ -1058,7 +1058,7 @@ int MPIR_Scatter_intra_MV2(
 						  root, comm_ptr, errflag); 	
 		} else if (nbytes > scatter_tuning_table[range].small
 			       && nbytes < scatter_tuning_table[range].medium
-			       && comm_ptr->shmem_coll_ok == 1
+			       && comm_ptr->ch.shmem_coll_ok == 1
 			       && use_two_level_scatter == 1) { 
 		       mpi_errno = MPIR_Scatter_MV2_two_level_Direct(sendbuf, sendcnt, sendtype, 
 					      recvbuf, recvcnt, recvtype, 
@@ -1070,7 +1070,7 @@ int MPIR_Scatter_intra_MV2(
 						  root, comm_ptr, errflag);
 		}
 	    } else if (comm_size > scatter_tuning_table[range-1].numproc
-                               && comm_ptr->shmem_coll_ok == 1
+                               && comm_ptr->ch.shmem_coll_ok == 1
                                && use_two_level_scatter == 1) {
 		    mpi_errno = MPIR_Scatter_MV2_two_level_Binomial(sendbuf, sendcnt, sendtype,    
 						recvbuf, recvcnt, recvtype,

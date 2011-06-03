@@ -13,7 +13,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <infiniband/verbs.h>
-#include <mpidi_ch3i_rdma_conf.h>
 
 #ifdef HAVE_LIBHWLOC
 #include <hwloc.h>

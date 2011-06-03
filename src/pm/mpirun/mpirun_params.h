@@ -12,10 +12,10 @@
 #ifndef MPIRUN_PARAMS_H
 #define MPIRUN_PARAMS_H
 
-int read_param_file (char *paramfile, char **env);
+int read_param_file(char *paramfile, char **env);
 void commandLine(int argc, char *argv[], char *totalview_cmd, char **env);
-int file_exists (char *filename);
-void usage (void);
+int file_exists(char *filename);
+void usage(void);
 
 /* xxx need to add checking for string overflow, do this more carefully ... */
 extern char *mpispawn_param_env;
@@ -24,7 +24,6 @@ extern process *plist;
 extern int nprocs;
 extern int aout_index;
 extern int use_rsh;
-
 
 #define ENV_LEN 1024
 #define MAXLINE 1024
@@ -44,7 +43,7 @@ extern int use_rsh;
 */
 
 #define HOSTFILE_LEN 256
-extern char hostfile[HOSTFILE_LEN+1];
+extern char hostfile[HOSTFILE_LEN + 1];
 
 extern int xterm_on;
 extern int show_on;
@@ -66,5 +65,5 @@ extern char *change_group;
    -fastssh for tree based ssh */
 extern int USE_LINEAR_SSH;
 
-#endif /* MPIRUN_PARAMS_H */
+#endif                          /* MPIRUN_PARAMS_H */
 /* vi:set sw=4 sts=4 tw=76 expandtab: */

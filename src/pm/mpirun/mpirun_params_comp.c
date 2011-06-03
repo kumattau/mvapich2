@@ -40,10 +40,9 @@
 
 #if defined(_NSIG)
 #define NSIG _NSIG
-#endif				/* defined(_NSIG) */
+#endif                          /* defined(_NSIG) */
 
-
-static int read_hostfile(char *hostfile_name);
+extern int read_hostfile(char *hostfile_name);
 
 process *plist = NULL;
 int nprocs = 0;
@@ -56,11 +55,9 @@ char *binary_dirname;
 
 #if defined(USE_RSH)
 int use_rsh = 1;
-#else				/* defined(USE_RSH) */
+#else                           /* defined(USE_RSH) */
 int use_rsh = 0;
-#endif				/* defined(USE_RSH) */
-
-
+#endif                          /* defined(USE_RSH) */
 
 int xterm_on = 0;
 int show_on = 0;
@@ -70,8 +67,8 @@ int param_count = 0;
 int legacy_startup = 0;
 int dpm = 0;
 extern spawn_info_t spinf;
-int USE_LINEAR_SSH = 1;		/* By default, use linear ssh. Enable
-				   -fastssh for tree based ssh */
+int USE_LINEAR_SSH = 1;         /* By default, use linear ssh. Enable
+                                   -fastssh for tree based ssh */
 
 char hostfile[HOSTFILE_LEN + 1];
 
@@ -83,7 +80,7 @@ char *change_group = NULL;
 #define PARAM_NP    0
 #define PARAM_SG    17
 #define PARAM_N     18
-#define PARAM_ENV   19 
+#define PARAM_ENV   19
 
 static struct option option_table[] = {
     {"np", required_argument, 0, 0},
@@ -118,39 +115,35 @@ char *get_current_dir_name()
     struct stat64 pwdstat;
     char *pwd = getenv("PWD");
 
-    if (pwd != NULL
-	&& stat64(".", &dotstat) == 0
-	&& stat64(pwd, &pwdstat) == 0
-	&& pwdstat.st_dev == dotstat.st_dev
-	&& pwdstat.st_ino == dotstat.st_ino) {
-	/* The PWD value is correct. */
-	return strdup(pwd);
+    if (pwd != NULL && stat64(".", &dotstat) == 0 && stat64(pwd, &pwdstat) == 0 && pwdstat.st_dev == dotstat.st_dev && pwdstat.st_ino == dotstat.st_ino) {
+        /* The PWD value is correct. */
+        return strdup(pwd);
     }
 
     size_t size = 1;
     char *buffer;
 
     for (;; ++size) {
-	buffer = malloc(size);
+        buffer = malloc(size);
 
-	if (!buffer) {
-	    return NULL;
-	}
+        if (!buffer) {
+            return NULL;
+        }
 
-	if (getcwd(buffer, size) == buffer) {
-	    break;
-	}
+        if (getcwd(buffer, size) == buffer) {
+            break;
+        }
 
-	free(buffer);
+        free(buffer);
 
-	if (errno != ERANGE) {
-	    return NULL;
-	}
+        if (errno != ERANGE) {
+            return NULL;
+        }
     }
 
     return buffer;
 }
-#endif				/* !defined(HAVE_GET_CURRENT_DIR_NAME) */
+#endif                          /* !defined(HAVE_GET_CURRENT_DIR_NAME) */
 
 #if !defined(HAVE_STRNDUP)
 char *strndup(const char *s, size_t n)
@@ -158,31 +151,29 @@ char *strndup(const char *s, size_t n)
     size_t len = strlen(s);
 
     if (n < len) {
-	len = n;
+        len = n;
     }
 
     char *result = malloc(len + 1);
 
     if (!result) {
-	return NULL;
+        return NULL;
     }
 
     result[len] = '\0';
     return memcpy(result, s, len);
 }
-#endif				/* !defined(HAVE_STRNDUP) */
-
+#endif                          /* !defined(HAVE_STRNDUP) */
 
 #define PARAMFILE_LEN 256
 
-static void check_option(int argc, char *argv[], int option_index,
-        char * totalview_cmd)
+static void check_option(int argc, char *argv[], int option_index, char *totalview_cmd)
 {
 
-  char *tmp;
+    char *tmp;
 
-  switch (option_index) {
-    case PARAM_NP:              /* -np */
+    switch (option_index) {
+    case PARAM_NP:             /* -np */
     case PARAM_N:              /* -n */
         nprocs = atoi(optarg);
         if (nprocs < 1) {
@@ -190,14 +181,14 @@ static void check_option(int argc, char *argv[], int option_index,
             exit(EXIT_FAILURE);
         }
         break;
-    case 1:             /* -debug */
+    case 1:                    /* -debug */
         debug_on = 1;
         xterm_on = 1;
         break;
-    case 2:             /* -xterm */
+    case 2:                    /* -xterm */
         xterm_on = 1;
         break;
-    case 3:             /* -hostfile */
+    case 3:                    /* -hostfile */
         hostfile_on = 1;
         strncpy(hostfile, optarg, HOSTFILE_LEN);
         if (strlen(optarg) >= HOSTFILE_LEN - 1)
@@ -230,13 +221,10 @@ static void check_option(int argc, char *argv[], int option_index,
             if (tv_env != NULL) {
                 strncpy(totalview_cmd, tv_env, TOTALVIEW_CMD_LEN);
             } else {
-                fprintf(stderr,
-                        "TOTALVIEW env is NULL, use default: %s\n",
-                        TOTALVIEW_CMD);
+                fprintf(stderr, "TOTALVIEW env is NULL, use default: %s\n", TOTALVIEW_CMD);
                 sprintf(totalview_cmd, "%s", TOTALVIEW_CMD);
             }
-            new_argv =
-                (char **) malloc(sizeof(char **) * argc + 3);
+            new_argv = (char **) malloc(sizeof(char **) * argc + 3);
             new_argv[0] = totalview_cmd;
             new_argv[1] = argv[0];
             new_argv[2] = "-a";
@@ -262,17 +250,17 @@ static void check_option(int argc, char *argv[], int option_index,
         use_totalview = 1;
         debug_on = 1;
         break;
-    case 12:            /* spawnspec given */
+    case 12:                   /* spawnspec given */
         spawnfile = strdup(optarg);
         DBG(fprintf(stderr, "spawn spec file = %s\n", spawnfile));
         break;
     case 13:
         dpm = 1;
         break;
-    case 14:            /* -fastssh */
-    #ifndef CKPT
+    case 14:                   /* -fastssh */
+#ifndef CKPT
         USE_LINEAR_SSH = 0;
-    #endif                          /* CKPT */
+#endif                          /* CKPT */
         break;
         //With this option the user want to activate the mpmd
     case 15:
@@ -292,17 +280,11 @@ static void check_option(int argc, char *argv[], int option_index,
     case PARAM_ENV:
         /* -env */
         if (mpispawn_param_env) {
-            tmp = mkstr("%s MPISPAWN_GENERIC_NAME_%d=%s"
-                        " MPISPAWN_GENERIC_VALUE_%d=%s",
-                        mpispawn_param_env, param_count, argv[optind-1],
-                        param_count, argv[optind]);
+            tmp = mkstr("%s MPISPAWN_GENERIC_NAME_%d=%s" " MPISPAWN_GENERIC_VALUE_%d=%s", mpispawn_param_env, param_count, argv[optind - 1], param_count, argv[optind]);
 
             free(mpispawn_param_env);
         } else {
-            tmp = mkstr("MPISPAWN_GENERIC_NAME_%d=%s"
-                        " MPISPAWN_GENERIC_VALUE_%d=%s",
-                        param_count, argv[optind-1],
-                        param_count, argv[optind]);
+            tmp = mkstr("MPISPAWN_GENERIC_NAME_%d=%s" " MPISPAWN_GENERIC_VALUE_%d=%s", param_count, argv[optind - 1], param_count, argv[optind]);
         }
 
         if (tmp) {
@@ -323,8 +305,9 @@ static void check_option(int argc, char *argv[], int option_index,
         usage();
         exit(EXIT_FAILURE);
         break;
-  }
+    }
 }
+
 /**
  * Command line analysis function.
  *
@@ -332,57 +315,54 @@ static void check_option(int argc, char *argv[], int option_index,
  */
 void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
 {
-    int num_of_params = 0;
     int i;
     int c, option_index;
-    char *param_env;
 
     size_t hostname_len = 0;
 
-
     do {
-	c = getopt_long_only(argc, argv, "+", option_table, &option_index);
-	switch (c) {
-	case '?':
-	case ':':
-	    usage();
-	    exit(EXIT_FAILURE);
-	    break;
-	case EOF:
-	    break;
-	case 0:
-	    check_option(argc, argv, option_index, totalview_cmd);
-	    break;
-	default:
-	    fprintf(stderr, "Unreachable statement!\n");
-	    usage();
-	    exit(EXIT_FAILURE);
-	    break;
-	}
+        c = getopt_long_only(argc, argv, "+", option_table, &option_index);
+        switch (c) {
+        case '?':
+        case ':':
+            usage();
+            exit(EXIT_FAILURE);
+            break;
+        case EOF:
+            break;
+        case 0:
+            check_option(argc, argv, option_index, totalview_cmd);
+            break;
+        default:
+            fprintf(stderr, "Unreachable statement!\n");
+            usage();
+            exit(EXIT_FAILURE);
+            break;
+        }
     }
     while (c != EOF);
 
     if (!nprocs && !configfile_on) {
-	usage();
-	exit(EXIT_FAILURE);
+        usage();
+        exit(EXIT_FAILURE);
     }
 #ifdef CR_FTB
     //if (cr_ftb_init(nprocs, sessionid))
     if (cr_ftb_init(nprocs))
-	exit(EXIT_FAILURE);
+        exit(EXIT_FAILURE);
 #endif
 
     binary_dirname = dirname(strdup(argv[0]));
     if (strlen(binary_dirname) == 1 && argv[0][0] != '.') {
-	use_dirname = 0;
+        use_dirname = 0;
     }
     //If the mpmd is active we need to parse the configuration file
     if (configfile_on) {
-	/*TODO In the future the user can add the nprocs on the command line. Now the
-	 * number of processes is defined in the configfile */
-	nprocs = 0;
-	plist = parse_config(configfile, &nprocs);
-	DBG(fprintf(stderr, "PARSED CONFIG FILE\n"));
+        /*TODO In the future the user can add the nprocs on the command line. Now the
+         * number of processes is defined in the configfile */
+        nprocs = 0;
+        plist = parse_config(configfile, &nprocs);
+        DBG(fprintf(stderr, "PARSED CONFIG FILE\n"));
 
     }
 
@@ -402,48 +382,45 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
     }
 
     if (!configfile_on) {
-	plist = malloc(nprocs * sizeof(process));
-	if (plist == NULL) {
-	    perror("malloc");
-	    exit(EXIT_FAILURE);
-	}
+        plist = malloc(nprocs * sizeof(process));
+        if (plist == NULL) {
+            perror("malloc");
+            exit(EXIT_FAILURE);
+        }
 
-	for (i = 0; i < nprocs; i++) {
-	    plist[i].state = P_NOTSTARTED;
-	    plist[i].device = NULL;
-	    plist[i].port = -1;
-	    plist[i].remote_pid = 0;
-	    //TODO ADD EXECNAME AND ARGS
+        for (i = 0; i < nprocs; i++) {
+            plist[i].state = P_NOTSTARTED;
+            plist[i].device = NULL;
+            plist[i].port = -1;
+            plist[i].remote_pid = 0;
+            //TODO ADD EXECNAME AND ARGS
 
-	}
+        }
     }
 
     /* grab hosts from command line or file */
     /* TODO: remove  hostname_len variable */
     hostname_len = 0;
     if (hostfile_on) {
-	hostname_len = read_hostfile(hostfile);
+        hostname_len = read_hostfile(hostfile);
     }
 
     /*
      * Use localhost since default hostfile does not exist
      */
     else {
-	for (i = 0; i < nprocs; i++) {
-	    plist[i].hostname = (char *) strdup("localhost");
-	    if (hostname_len < strlen(plist[i].hostname)) {
-		hostname_len = strlen(plist[i].hostname);
-	    }
-	}
+        for (i = 0; i < nprocs; i++) {
+            plist[i].hostname = (char *) strdup("localhost");
+            if (hostname_len < strlen(plist[i].hostname)) {
+                hostname_len = strlen(plist[i].hostname);
+            }
+        }
     }
 }
 
-
 void usage(void)
 {
-    fprintf(stderr, "usage: mpirun_rsh [-v] [-sg group] [-rsh|-ssh] "
-	    "[-gdb] -[tv] [-xterm] [-show] [-legacy] -n N"
-	    "[-machinefile hfile] a.out args | -config configfile [-hostfile hfile]\n");
+    fprintf(stderr, "usage: mpirun_rsh [-v] [-sg group] [-rsh|-ssh] " "[-gdb] -[tv] [-xterm] [-show] [-legacy] -n N" "[-machinefile hfile] a.out args | -config configfile [-hostfile hfile]\n");
     fprintf(stderr, "Where:\n");
     fprintf(stderr, "\tsg         =>  execute the processes as different group ID\n");
     fprintf(stderr, "\trsh        =>  to use rsh for connecting\n");
@@ -461,140 +438,12 @@ void usage(void)
     fprintf(stderr, "\n");
 }
 
-
-
-/**
- *  Finds first non-whitespace char in input string
- */
-char *skip_white(char *s)
-{
-    int len;
-    /* return pointer to first non-whitespace char in string */
-    /* Assumes string is null terminated */
-    /* Clean from start */
-    while ((*s == ' ') || (*s == '\t'))
-	s++;
-    /* Clean from end */
-    len = strlen(s) - 1;
-
-    while (((s[len] == ' ') || (s[len] == '\t')) && (len >= 0)) {
-	s[len] = '\0';
-	len--;
-    }
-    return s;
-}
-
-
-
-/**
- * Read hostfile
- */
-static int read_hostfile(char *hostfile_name)
-{
-    size_t j, hostname_len = 0;
-    int i, start, count;
-    char temp[100];
-    FILE *hf = fopen(hostfile_name, "r");
-
-    if (hf == NULL) {
-	fprintf(stderr, "Can't open hostfile %s\n", hostfile_name);
-	perror("open");
-	exit(EXIT_FAILURE);
-    }
-
-    start = 0;
-    if (dpm) {
-        start = env2int("TOTALPROCS");
-        while (fgets(temp, 100, hf) != NULL)
-            count++;
-        rewind(hf);
-        start = start % count;
-    }
-
-    for (i = 0; i < nprocs; i++) {
-	  char line[100];
-      char *trimmed_line;
-      int separator_count = 0, prev_j = 0;
-
-reread_host:
-      if (fgets(line, 100, hf) != NULL) {
-
-          if (dpm) {
-              if (start > 0) {
-                  start--;
-                  goto reread_host;
-              }
-          }
-
-          size_t len = strlen(line);
-
-          if (line[len - 1] == '\n') {
-              line[len - 1] = '\0';
-          }
-
-          /* Remove comments and empty lines */
-          if (strchr(line, '#') != NULL) {
-              line[strlen(line) - strlen(strchr(line, '#'))] = '\0';
-          }
-
-          trimmed_line = skip_white(line);
-
-          if (strlen(trimmed_line) == 0) {
-              /* The line is empty, drop it */
-              i--;
-              continue;
-          }
-
-          /*Update len and continue patch ?! move it to func ? */
-          len = strlen(trimmed_line);
-
-          /* Parsing format:
-           * hostname SEPARATOR hca_name SEPARATOR port
-           */
-
-          for (j = 0; j < len; j++) {
-              if (trimmed_line[j] == SEPARATOR && separator_count == 0) {
-                  plist[i].hostname =(char *) strndup(trimmed_line, j + 1);
-                  plist[i].hostname[j] = '\0';
-                  prev_j = j;
-                  separator_count++;
-                  hostname_len = hostname_len > len ? hostname_len : len;
-                  continue;
-              }
-              if (trimmed_line[j] == SEPARATOR && separator_count == 1) {
-                  int h;
-                  int num_rep_hosts = atoi(&trimmed_line[j]);
-                  for (h=0; h<num_rep_hosts; h++) {
-                      i++;
-                      plist[i].hostname =(char *) strdup(plist[i-1].hostname);
-                  }
-                  separator_count++;
-                  continue;
-              }
-          }
-          if (0 == separator_count) {
-              plist[i].hostname = strdup(trimmed_line);
-              hostname_len = hostname_len > len ? hostname_len : len;
-          }
-          if (1 == separator_count) {
-              plist[i].device = (char *) strdup(&trimmed_line[prev_j + 1]);
-          }
-      } else {
-          /* if less than available hosts, rewind file and re-use hosts */
-          rewind(hf);
-          goto reread_host;
-      }
-    }
-    fclose(hf);
-    return hostname_len;
-}
-
 int file_exists(char *filename)
 {
     FILE *fp = fopen(filename, "r");
     if (fp) {
-	fclose(fp);
-	return 1;
+        fclose(fp);
+        return 1;
     }
     return 0;
 }

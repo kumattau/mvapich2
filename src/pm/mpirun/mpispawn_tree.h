@@ -1,13 +1,12 @@
-
 /* Copyright (c) 2003-2011, The Ohio State University. All rights
  * reserved.
  *
- * This file is part of the MVAPICH software package developed by the
+ * This file is part of the MVAPICH2 software package developed by the
  * team members of The Ohio State University's Network-Based Computing
  * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
  *
  * For detailed copyright and licensing information, please refer to the
- * copyright file COPYRIGHT_MVAPICH in the top level MPICH directory.
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
  *
  */
 
@@ -21,12 +20,16 @@
 #include <netinet/in.h>
 #include <unistd.h>
 
-#define MPISPAWN_PMGR_ERROR -1
-#define MPISPAWN_PMGR_ABORT -2
-#define MPISPAWN_RANK_ERROR -3
-#define MPISPAWN_MT_ERROR   -4
-#define MPISPAWN_PROCESS_ABORT  -5
-#define MPISPAWN_DPM_REQ    10
+typedef enum {
+    MPISPAWN_MPIPROCESS_ERROR = 1,         // An MPI process got an error
+    MPISPAWN_MPIPROCESS_NONZEROEXIT = 2,   // An MPI process returned a non-zero exit code
+    MPISPAWN_DPM_REQ = 3,                  // DPM request
+    MPISPAWN_PMI_READ_ERROR = 4,           // MPISPAWN got an error while reading a PMI socket
+    MPISPAWN_PMI_WRITE_ERROR = 5,          // MPISPAWN got an error while writing a PMI socket
+    MPISPAWN_INTERNAL_ERROR = 6,           // MPISPAWN got an internal error
+    MPISPAWN_CLEANUP_SIGNAL = 7,           // MPISPAWN received a cleanup signal
+} mpispawn_error_code;
+
 
 #define MAX_HOST_LEN    256
 #define MAX_PORT_LEN    8
@@ -36,21 +39,17 @@
 #define MT_MAX_DEGREE   64
 
 typedef struct {
-	int rank;
-	int fd;
-	int c_barrier;
+    int rank;
+    int fd;
+    int c_barrier;
 #define c_finalize c_barrier
 } child_t;
 #define child_s sizeof (child_t)
 
-extern int * mpispawn_tree_init (
-        size_t me,
-        const size_t degree,
-        const size_t node_count,
-        int req_socket);
-void mpispawn_abort (int code);
-int mtpmi_init (void);
-int mtpmi_processops (void);
+extern int *mpispawn_tree_init(size_t me, const size_t degree, const size_t node_count, int req_socket);
+void mpispawn_abort(int code);
+int mtpmi_init(void);
+int mtpmi_processops(void);
 
 #if defined(CKPT) && defined(CR_FTB)
 extern volatile int cr_mig_tgt;
@@ -67,8 +66,8 @@ extern volatile int cr_mig_tgt;
                 __LINE__, #cond); \
     }\
 } while (0);
-#else /* defined(MPISPAWN_DEBUG) */
+#else                           /* defined(MPISPAWN_DEBUG) */
 #define MT_ASSERT(cond)
-#endif /* defined(MPISPAWN_DEBUG) */
+#endif                          /* defined(MPISPAWN_DEBUG) */
 
 #endif

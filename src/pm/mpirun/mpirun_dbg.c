@@ -26,7 +26,6 @@ int debug_on = 0;
 int param_debug = 0;
 int use_totalview = 0;
 
-
 /**
  *  Totalview intercepts MPIR_Breakpoint
  */

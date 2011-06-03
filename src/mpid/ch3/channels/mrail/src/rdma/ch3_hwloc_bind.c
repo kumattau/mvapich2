@@ -1228,7 +1228,7 @@ int smpi_setaffinity (void)
     if (mv2_enable_affinity > 0)
     {
         hwloc_topology_load(topology);
-        cpuset = hwloc_cpuset_alloc();
+        cpuset = hwloc_bitmap_alloc();
         if (s_cpu_mapping)
         {
             /* If the user has specified how to map the processes,
@@ -1299,7 +1299,7 @@ int smpi_setaffinity (void)
                                 MPIU_Free(s_cpu_mapping);
                                 goto fn_fail;
                             }
-                            hwloc_cpuset_set(cpuset, cpunum);
+                            hwloc_bitmap_set(cpuset, cpunum);
                         } else if (*token == ',') {
                             token++;
                         } else if (*token == '-') {
@@ -1321,7 +1321,7 @@ int smpi_setaffinity (void)
                                 }
                                 int cpuval;
                                 for (cpuval = cpunum + 1; cpuval <= cpuend; cpuval++)
-                                    hwloc_cpuset_set(cpuset, cpuval);
+                                    hwloc_bitmap_set(cpuset, cpuval);
                             }
                         } else if (*token != '\0') {
                             fprintf(stderr, "Warning! Error parsing the given CPU mask! \n");
@@ -1383,7 +1383,7 @@ int smpi_setaffinity (void)
                 * information. We are falling back on the linear mapping.
                 * This may not deliver the best performace
                 */
-                hwloc_cpuset_cpu(cpuset, g_smpi.my_local_id % N_CPUs_online) ;
+                hwloc_bitmap_only(cpuset, g_smpi.my_local_id % N_CPUs_online) ;
                 hwloc_set_cpubind(topology, cpuset, 0);
             }
             else {
@@ -1420,7 +1420,7 @@ int smpi_setaffinity (void)
 
                     if (j == g_smpi.my_local_id)
                     {
-                        hwloc_cpuset_cpu(cpuset, atoi(tp_str));
+                        hwloc_bitmap_only(cpuset, atoi(tp_str));
                         hwloc_set_cpubind(topology, cpuset, 0);
                         break;
                     }

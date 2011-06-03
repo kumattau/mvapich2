@@ -33,6 +33,19 @@ do {                                                          \
 #define DEBUG_PRINT(args...)
 #endif
 
+int qp_required(MPIDI_VC_t* vc, int my_rank, int dst_rank)
+{
+	int qp_reqd = 1;
+
+	if ((my_rank == dst_rank) ||
+		(rdma_use_smp && (vc->smp.local_rank != -1))) {
+		/* Process is local */
+		qp_reqd = 0;
+	}
+
+	return qp_reqd;
+}
+
 int power_two(int x)
 {
     int pow = 1;
@@ -122,7 +135,7 @@ struct ibv_srq *create_srq(struct MPIDI_CH3I_RDMA_Process_t *proc,
     MPIU_Memset(&srq_init_attr, 0, sizeof(srq_init_attr));
 
     srq_init_attr.srq_context = proc->nic_context[hca_num];
-    srq_init_attr.attr.max_wr = viadev_srq_size;
+    srq_init_attr.attr.max_wr = viadev_srq_alloc_size;
     srq_init_attr.attr.max_sge = 1;
     /* The limit value should be ignored during SRQ create */
     srq_init_attr.attr.srq_limit = viadev_srq_limit;
@@ -179,10 +192,10 @@ static int check_attrs( struct ibv_port_attr *port_attr, struct ibv_device_attr 
             ret = 1;
         }
 
-        if(dev_attr->max_srq_wr < viadev_srq_size) {
+        if(dev_attr->max_srq_wr < viadev_srq_alloc_size) {
             fprintf(stderr,
                     "Max MV2_SRQ_SIZE is %d, set to %d\n",
-                    dev_attr->max_srq_wr, (int) viadev_srq_size);
+                    dev_attr->max_srq_wr, (int) viadev_srq_alloc_size);
             ret = 1;
         }
     } else {
@@ -911,8 +924,9 @@ int rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
 	    MPIU_Memset(vc->mrail.srp.credits, 0,
 	            (sizeof *vc->mrail.srp.credits * vc->mrail.num_rails));
 
-        if (i == pg_rank)
+        if (!qp_required(vc, pg_rank, i)) {
             continue;
+		}
 #ifdef RDMA_CM
 	if (proc->use_rdma_cm)
 		continue;
@@ -1090,11 +1104,11 @@ rdma_iba_allocate_memory(struct MPIDI_CH3I_RDMA_Process_t *proc,
             pthread_mutex_init(&MPIDI_CH3I_RDMA_Process.srq_post_mutex_lock[hca_num], 0);
             pthread_cond_init(&MPIDI_CH3I_RDMA_Process.srq_post_cond[hca_num], 0);
             MPIDI_CH3I_RDMA_Process.srq_zero_post_counter[hca_num] = 0;
-            MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num] = viadev_post_srq_buffers(viadev_srq_size, hca_num);
+            MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num] = viadev_post_srq_buffers(viadev_srq_fill_size, hca_num);
 
             {
                 struct ibv_srq_attr srq_attr;
-                srq_attr.max_wr = viadev_srq_size;
+                srq_attr.max_wr = viadev_srq_alloc_size;
                 srq_attr.max_sge = 1;
                 srq_attr.srq_limit = viadev_srq_limit;
 
@@ -1189,10 +1203,11 @@ rdma_iba_enable_connections(struct MPIDI_CH3I_RDMA_Process_t *proc,
 
     pg_size = MPIDI_PG_Get_size(pg);
     for (i = 0; i < pg_size; i++) {
-        if (i == pg_rank)
-            continue;
-
         MPIDI_PG_Get_vc(pg, i, &vc);
+        if (!qp_required(vc, pg_rank, i)) {
+            continue;
+		}
+
         vc->mrail.remote_vc_addr = info->vc_addr[i];
         DEBUG_PRINT("[%d->%d] from %d received vc %08llx\n",
                 pg_rank, i, pg_rank, info->vc_addr[i]);
@@ -1262,10 +1277,11 @@ rdma_iba_enable_connections(struct MPIDI_CH3I_RDMA_Process_t *proc,
                       IBV_QP_MAX_QP_RD_ATOMIC;
 
     for (i = 0; i < pg_size; i++) {
-        if (i == pg_rank)
-            continue;
-
         MPIDI_PG_Get_vc(pg, i, &vc);
+
+        if (!qp_required(vc, pg_rank, i)) {
+            continue;
+		}
 
         for(j = 0; j < rdma_num_rails - 1; j++) {
             vc->mrail.rails[j].s_weight =
@@ -1277,8 +1293,6 @@ rdma_iba_enable_connections(struct MPIDI_CH3I_RDMA_Process_t *proc,
             (DYNAMIC_TOTAL_WEIGHT / rdma_num_rails) * 
             (rdma_num_rails - 1);
 
-        if (i == pg_rank)
-            continue;
         for (rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
             if (ibv_modify_qp(vc->mrail.rails[rail_index].qp_hndl, &qp_attr,
                                 qp_attr_mask)) {
@@ -1566,6 +1580,7 @@ static inline int cm_qp_conn_create(MPIDI_VC_t *vc, int qptype)
 
         vc->mrail.rails[rail_index].qp_hndl = 
             ibv_create_qp(MPIDI_CH3I_RDMA_Process.ptag[hca_index], &attr);
+
         if (!vc->mrail.rails[rail_index].qp_hndl) {
             ibv_error_abort(GEN_EXIT_ERR, "Failed to create QP\n");
         }

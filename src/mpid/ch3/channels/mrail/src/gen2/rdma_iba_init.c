@@ -739,55 +739,53 @@ int MPIDI_CH3I_RDMA_finalize(void)
     }
 
     for (i = 0; i < pg_size; i++) {
-	if (i == pg_rank) {
-	    continue;
-	}
-
-	MPIDI_PG_Get_vc(pg, i, &vc);
-
-	for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
-	    if (vc->mrail.rfp.RDMA_send_buf_mr[hca_index]) {
-		err = ibv_dereg_mr(vc->mrail.rfp.RDMA_send_buf_mr[hca_index]);
-		if (err)
-		    MPIU_Error_printf("Failed to deregister mr (%d)\n", err);
-	    }
-	    if (vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]) {
-		err = ibv_dereg_mr(vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]);
-		if (err)
-		    MPIU_Error_printf("Failed to deregister mr (%d)\n", err);
-	    }
-	}
-
-	if (vc->mrail.rfp.RDMA_send_buf_DMA)
-	    MPIU_Free(vc->mrail.rfp.RDMA_send_buf_DMA);
-	if (vc->mrail.rfp.RDMA_recv_buf_DMA)
-	    MPIU_Free(vc->mrail.rfp.RDMA_recv_buf_DMA);
-	if (vc->mrail.rfp.RDMA_send_buf)
-	    MPIU_Free(vc->mrail.rfp.RDMA_send_buf);
-	if (vc->mrail.rfp.RDMA_recv_buf)
-	    MPIU_Free(vc->mrail.rfp.RDMA_recv_buf);
+		if (i == pg_rank) {
+		    continue;
+		}
+	
+		MPIDI_PG_Get_vc(pg, i, &vc);
+	
+		for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
+		    if (vc->mrail.rfp.RDMA_send_buf_mr[hca_index]) {
+			err = ibv_dereg_mr(vc->mrail.rfp.RDMA_send_buf_mr[hca_index]);
+			if (err)
+			    MPIU_Error_printf("Failed to deregister mr (%d)\n", err);
+		    }
+		    if (vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]) {
+			err = ibv_dereg_mr(vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]);
+			if (err)
+			    MPIU_Error_printf("Failed to deregister mr (%d)\n", err);
+		    }
+		}
+	
+		if (vc->mrail.rfp.RDMA_send_buf_DMA)
+		    MPIU_Free(vc->mrail.rfp.RDMA_send_buf_DMA);
+		if (vc->mrail.rfp.RDMA_recv_buf_DMA)
+		    MPIU_Free(vc->mrail.rfp.RDMA_recv_buf_DMA);
+		if (vc->mrail.rfp.RDMA_send_buf)
+		    MPIU_Free(vc->mrail.rfp.RDMA_send_buf);
+		if (vc->mrail.rfp.RDMA_recv_buf)
+		    MPIU_Free(vc->mrail.rfp.RDMA_recv_buf);
     }
 
     /* STEP 2: destroy all the qps, tears down all connections */
     for (i = 0; i < pg_size; i++) {
-	MPIDI_PG_Get_vc(pg, i, &vc);
-
-	if (pg_rank == i) {
-	    continue;
-	}
-
-	for (rail_index = 0; rail_index < vc->mrail.num_rails;
-		rail_index++) {
-	    err = ibv_destroy_qp(vc->mrail.rails[rail_index].qp_hndl);
-	    if (err)
-		MPIU_Error_printf("Failed to destroy QP (%d)\n", err);
-
-	}
+		MPIDI_PG_Get_vc(pg, i, &vc);
 
 #ifndef MV2_DISABLE_HEADER_CACHING
-	MPIU_Free(vc->mrail.rfp.cached_incoming);
-	MPIU_Free(vc->mrail.rfp.cached_outgoing);
+		MPIU_Free(vc->mrail.rfp.cached_incoming);
+		MPIU_Free(vc->mrail.rfp.cached_outgoing);
 #endif
+        if (!qp_required(vc, pg_rank, i)) {
+            continue;
+        }
+
+		for (rail_index = 0; rail_index < vc->mrail.num_rails; rail_index++) {
+	    	err = ibv_destroy_qp(vc->mrail.rails[rail_index].qp_hndl);
+	    	if (err) {
+				MPIU_Error_printf("Failed to destroy QP (%d)\n", err);
+			}
+		}
     }
 
     /* STEP 3: release all the cq resource, 
@@ -1537,16 +1535,11 @@ int MPIDI_CH3I_CM_Finalize(void)
 
     for (; i < pg_size; ++i)
     {
-	if (i == pg_rank)
-        {
-	    continue;
-	}
 
-	MPIDI_PG_Get_vc(pg, i, &vc);
-
-	/* Skip SMP VCs */
-	if (SMP_INIT && (vc->smp.local_nodes >= 0))
-	    continue;
+		MPIDI_PG_Get_vc(pg, i, &vc);
+        if (!qp_required(vc, pg_rank, i)) {
+            continue;
+        }
 
 	if (vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE 
 #ifdef _ENABLE_XRC_

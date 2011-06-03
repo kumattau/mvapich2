@@ -10,7 +10,7 @@
 
 CFLAGS=@CFLAGS@ -D_GNU_SOURCE
 
-INCLUDES= -I@master_top_srcdir@/src/include -I../../../../../../include -I@master_top_srcdir@/src/mpid/ch3/channels/common/include -I../hwloc/include
+INCLUDES= -I@master_top_srcdir@/src/include -I../../../../../../include -I@master_top_srcdir@/src/mpid/ch3/channels/common/include
 
 lib${MPILIBNAME}_a_SOURCES = \
 mpid_mrail_rndv.c \
@@ -36,4 +36,5 @@ ch3_smp_progress.c \
 ch3_get_business_card.c \
 ch3_shmem_coll.c \
 ch3_hwloc_bind.c \
-ch3i_comm.c
+ch3i_comm.c \
+ch3_contigsend.c

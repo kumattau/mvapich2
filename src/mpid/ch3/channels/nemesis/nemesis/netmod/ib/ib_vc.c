@@ -52,6 +52,9 @@ int MPID_nem_ib_vc_init (MPIDI_VC_t *vc )
     MPIDI_STATE_DECL(MPID_STATE_MPID_NEM_IB_VC_INIT);
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_NEM_IB_VC_INIT);
 
+    /* override nocontig send function */
+    vc->sendNoncontig_fn = MPID_nem_ib_iSendNoncontig;
+
     vc_ch->iStartContigMsg    = MPID_nem_ib_iStartContigMsg;
     vc_ch->iSendContig        = MPID_nem_ib_iSendContig;
 

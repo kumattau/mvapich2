@@ -12,26 +12,13 @@
 
 #include <unistd.h>
 #include <stdlib.h>
-#include <stdio.h>
 #include <execinfo.h>
 #include <sys/resource.h>
 #include <signal.h>
 #include <errno.h>
 #include <string.h>
+#include "debug_utils.h"
 
-#define print_error(fmt, args...) \
-{ fprintf( stderr, "[%s:%i] %s: "fmt, __FILE__, __LINE__, __func__ , ##args); }
-
-
-#define MAX_MSG_SIZE 200
-#define print_error_errno(fmt, args...) \
-{ char err_msg[MAX_MSG_SIZE]; \
-  int rv = strerror_r( errno, err_msg, MAX_MSG_SIZE ); \
-  if ( rv != 0 ) err_msg[0] = '\0'; \
-  print_error( fmt": %s (%i)\n", ##args, err_msg, errno); }
-
-
-#define MAX_DEPTH 100
 
 // Basic principle
 //
@@ -44,16 +31,9 @@
 // that caused the error. So, we can explore its stack using backtrace(3).
 
 
-// Prefix to distinguish output from different processes
-#define ERROR_PREFIX_LENGTH 256
-char error_prefix[ERROR_PREFIX_LENGTH];
-int error_prefix_length = 0;
-void set_error_prefix( char* prefix ) {
-    strncpy( error_prefix, prefix, ERROR_PREFIX_LENGTH);
-    error_prefix[ERROR_PREFIX_LENGTH-1]= '\0';
-    error_prefix_length = strlen(error_prefix);
-}
 
+
+#define MAX_DEPTH 100
 
 // Print backtrace of the current thread
 int print_backtrace()
@@ -66,7 +46,7 @@ int print_backtrace()
     trace_size = backtrace(trace, MAX_DEPTH);
     trace_strings = backtrace_symbols(trace, trace_size);
     if ( trace_strings == NULL ) {
-        print_error( "backtrace_symbols: error\n" );
+        PRINT_ERROR( "backtrace_symbols: error\n" );
         return -1;
     }
 
@@ -74,7 +54,7 @@ int print_backtrace()
     unsigned int i;
     for ( i = 0 ; i < trace_size ; ++i )
     {
-        fprintf( stderr, "[%s] %3i: %s\n", error_prefix, i, trace_strings[i] );
+        PRINT_ERROR( "%3i: %s\n", i, trace_strings[i] );
     }
 
     // Free trace_strings allocated by backtrace_symbols()
@@ -89,12 +69,43 @@ int show_backtrace = 0;
 // Signal handler for errors
 void error_sighandler(int sig, siginfo_t *info, void *secret) {
     // Always print error
-    fprintf( stderr, "[%s] ", error_prefix);
-    psignal( sig, "Caught error");
+    PRINT_ERROR( "Caught error: %s (signal %d)\n", sys_siglist[sig], sig );
     // Show backtrace if required
     if ( show_backtrace ) print_backtrace();
     // Raise the signal again with default handler
     raise( sig );
+}
+
+int setup_error_sighandler_helper( int signal ) {
+    int rv;
+
+    // Get the current signal handler
+    struct sigaction old_sa;
+    rv = sigaction(signal , NULL, &old_sa);
+    if ( 0 != rv ) {
+        PRINT_ERROR_ERRNO( "sigaction(): failed to read old signal handler for signal %d", errno, signal );
+        return -1;
+    }
+
+    // Check for an existing signal handler (eg setup by the user)
+    if ( old_sa.sa_handler != SIG_DFL && old_sa.sa_handler != SIG_IGN ) {
+        // Do not overwrite a signal handler setup by the user
+        // Silently return
+        return -2;
+    }
+
+    // Setup the new handler
+    struct sigaction sa;
+    sigemptyset (&sa.sa_mask);
+    sa.sa_flags = SA_RESTART | SA_SIGINFO | SA_RESETHAND;   
+    sa.sa_sigaction = error_sighandler;
+    rv = sigaction(signal , &sa, NULL);
+    if ( 0 != rv ) {
+        PRINT_ERROR_ERRNO( "sigaction(): failed to setup a new signal handler for signal %d", errno, signal );
+        return -3;
+    }
+
+    return 0;
 }
 
 // Configure the error signal handler
@@ -102,41 +113,14 @@ int setup_error_sighandler( int backtrace ) {
     // Enable backtrace?
     show_backtrace = backtrace;
 
-    // If not set, set null error_prefix
-    if (error_prefix_length == 0) {
-        set_error_prefix( "" );
-    }
-
-    // Setup the handler for all targeted errors
-    struct sigaction sa;
-    sa.sa_sigaction = error_sighandler;
-    sigemptyset (&sa.sa_mask);
-    sa.sa_flags = SA_RESTART | SA_SIGINFO | SA_RESETHAND;
-
-    if ( 0 != sigaction(SIGILL , &sa, NULL) ) {
-        print_error_errno( "sigaction" );
-        return -1;
-    }
-
-    if ( 0 != sigaction(SIGABRT , &sa, NULL) ) {
-        print_error_errno( "sigaction" );
-        return -1;
-    }
-
-    if ( 0 != sigaction(SIGFPE , &sa, NULL) ) {
-        print_error_errno( "sigaction" );
-        return -1;
-    }
-
-    if ( 0 != sigaction(SIGSEGV , &sa, NULL) ) {
-        print_error_errno( "sigaction" );
-        return -1;
-    }
-
-    if ( 0 != sigaction(SIGBUS , &sa, NULL) ) {
-        print_error_errno( "sigaction" );
-        return -1;
-    }
+    // Setup the handler for these signals
+    setup_error_sighandler_helper( SIGILL );
+    setup_error_sighandler_helper( SIGABRT );
+    setup_error_sighandler_helper( SIGFPE );
+    setup_error_sighandler_helper( SIGSEGV );
+    setup_error_sighandler_helper( SIGBUS );
+    // All return codes are ignored because
+    // this is not required for MVAPICH2 to work properly
 
     return 0;
 }
@@ -150,7 +134,7 @@ int set_coresize_limit( const char* coresize )
         // read current rlimit structure
         rv = getrlimit( RLIMIT_CORE, &core_limit );
         if ( rv != 0 ) {
-            print_error_errno( "getrlimit" );
+            PRINT_ERROR_ERRNO( "getrlimit", errno );
             return -1;
         }
         // update the rlimit structure
@@ -163,7 +147,7 @@ int set_coresize_limit( const char* coresize )
         rv = setrlimit(RLIMIT_CORE,&core_limit);
         if ( rv != 0 )
         {
-            print_error_errno( "setrlimit" );
+            PRINT_ERROR_ERRNO( "setrlimit", errno );
             return -1;
         }
     }

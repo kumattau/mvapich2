@@ -44,7 +44,7 @@ do {                                                          \
 #define FUNCNAME MPIDI_CH3I_RDMA_read_progress
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int is_blocking)
+int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int *rdmafp_found, int is_blocking)
 {
     static MPIDI_VC_t 	*pending_vc = NULL;
     int 	type;
@@ -123,13 +123,16 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int is_blocki
   } else {
        type = MPIDI_CH3I_MRAILI_Get_next_vbuf(vc_pptr, v_ptr);
        if (type != T_CHANNEL_NO_ARRIVE) {
-           goto fn_exit;
+            goto fn_exit;
        }
   }
 #else
     type = MPIDI_CH3I_MRAILI_Get_next_vbuf(vc_pptr, v_ptr);
     if (type != T_CHANNEL_NO_ARRIVE) {
-	goto fn_exit;
+        if (rdmafp_found != NULL ) {
+            *rdmafp_found = 1;
+        }
+	    goto fn_exit;
     } 
 #endif
 

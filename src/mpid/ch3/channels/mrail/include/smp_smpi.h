@@ -28,7 +28,6 @@
 /* SMP user parameters*/
 
 extern int                  g_smp_eagersize;
-extern int                  default_eager_size;
 extern int                  s_smpi_length_queue;
 extern int                  s_smp_num_send_buffer;
 extern int                  s_smp_batch_size;
@@ -42,12 +41,7 @@ extern int                  s_smp_batch_size;
 
 #if defined(_IA32_)
 
-#define SMP_EAGERSIZE	    (8192)
-#define SMPI_LENGTH_QUEUE   (32768)
-#define SMP_BATCH_SIZE 8
 #define SMP_SEND_BUF_SIZE 8192
-#define SMP_NUM_SEND_BUFFER 128
-
 #define SMPI_CACHE_LINE_SIZE 64
 #define SMPI_ALIGN(a)                                               \
 ((a + SMPI_CACHE_LINE_SIZE + 7) & 0xFFFFFFF8)
@@ -57,12 +51,7 @@ extern int                  s_smp_batch_size;
                                                                                                                                                
 #elif defined(_IA64_)
 
-#define SMP_EAGERSIZE       (8192)
-#define SMPI_LENGTH_QUEUE   (32768)
-#define SMP_BATCH_SIZE 8
 #define SMP_SEND_BUF_SIZE 8192
-#define SMP_NUM_SEND_BUFFER 128
-
 #define SMPI_CACHE_LINE_SIZE 128
 #define SMPI_ALIGN(a)                                               \
 ((a + SMPI_CACHE_LINE_SIZE + 7) & 0xFFFFFFFFFFFFFFF8)
@@ -70,16 +59,8 @@ extern int                  s_smp_batch_size;
  ((a & 0xFFFFFFFFFFFFFFF8) - SMPI_CACHE_LINE_SIZE)
 
 #elif defined(_X86_64_) && defined(_AMD_QUAD_CORE_)
-#if defined(_SMP_LIMIC_)
-#define SMP_EAGERSIZE       (4096)
-#else
-#define SMP_EAGERSIZE       (32768)
-#endif
-#define SMPI_LENGTH_QUEUE   (131072)
-#define SMP_BATCH_SIZE 32
-#define SMP_SEND_BUF_SIZE 8192
-#define SMP_NUM_SEND_BUFFER 128
 
+#define SMP_SEND_BUF_SIZE 8192
 #define SMPI_CACHE_LINE_SIZE 128
 #define SMPI_ALIGN(a)                                               \
 ((a + SMPI_CACHE_LINE_SIZE + 7) & 0xFFFFFFFFFFFFFFF8)
@@ -88,12 +69,7 @@ extern int                  s_smp_batch_size;
 
 #elif defined(_X86_64_)
 
-#define SMP_EAGERSIZE	    (4096)
-#define SMPI_LENGTH_QUEUE   (65536)
-#define SMP_BATCH_SIZE 8
 #define SMP_SEND_BUF_SIZE 8192
-#define SMP_NUM_SEND_BUFFER 32
-
 #define SMPI_CACHE_LINE_SIZE 128
 #define SMPI_ALIGN(a)                                               \
 ((a + SMPI_CACHE_LINE_SIZE + 7) & 0xFFFFFFFFFFFFFFF8)
@@ -101,16 +77,8 @@ extern int                  s_smp_batch_size;
  ((a & 0xFFFFFFFFFFFFFFF8) - SMPI_CACHE_LINE_SIZE)
 
 #elif defined(_EM64T_)
-#if defined(_SMP_LIMIC_)
-#define SMP_EAGERSIZE       (8192)
-#else
-#define SMP_EAGERSIZE       (65536)
-#endif
-#define SMPI_LENGTH_QUEUE   (262144)
-#define SMP_BATCH_SIZE 8
-#define SMP_SEND_BUF_SIZE 8192 
-#define SMP_NUM_SEND_BUFFER 256 
 
+#define SMP_SEND_BUF_SIZE 8192 
 #define SMPI_CACHE_LINE_SIZE 64
 #define SMPI_ALIGN(a) (a +SMPI_CACHE_LINE_SIZE)
 
@@ -119,12 +87,7 @@ extern int                  s_smp_batch_size;
 
 #elif defined(MAC_OSX)
 
-#define SMP_EAGERSIZE	    (8192)
-#define SMPI_LENGTH_QUEUE   (32768)
-#define SMP_BATCH_SIZE 8
 #define SMP_SEND_BUF_SIZE 8192
-#define SMP_NUM_SEND_BUFFER 128
-
 #define SMPI_CACHE_LINE_SIZE 16
 #define SMPI_ALIGN(a)                                               \
 (((a + SMPI_CACHE_LINE_SIZE + 7) & 0xFFFFFFF8))
@@ -133,12 +96,7 @@ extern int                  s_smp_batch_size;
 
 #else
                                                                                                                                                
-#define SMP_EAGERSIZE	    (16384)
-#define SMPI_LENGTH_QUEUE   (65536)
-#define SMP_BATCH_SIZE 8
 #define SMP_SEND_BUF_SIZE 8192 
-#define SMP_NUM_SEND_BUFFER 128
-
 #define SMPI_CACHE_LINE_SIZE 64
 #define SMPI_ALIGN(a) (a +SMPI_CACHE_LINE_SIZE)
 
@@ -149,13 +107,16 @@ extern int                  s_smp_batch_size;
 
 typedef struct {
     volatile unsigned int current;
-    volatile unsigned int next;
-    volatile unsigned int msgs_total_in;
-} smpi_params;
+} smpi_params_c;
 
 typedef struct {
+    volatile unsigned int next;
+} smpi_params_n;
+
+typedef struct {
+    volatile unsigned int msgs_total_in;
     volatile unsigned int msgs_total_out;
-    char pad[SMPI_CACHE_LINE_SIZE - 4];
+    char pad[SMPI_CACHE_LINE_SIZE/2 - 8];
 } smpi_rqueues;
 
 typedef struct {
@@ -167,12 +128,14 @@ typedef struct {
 struct shared_mem {
     volatile int *pid;   /* use for initial synchro */
     /* receive queues descriptors */
-    smpi_params **rqueues_params;
+    smpi_params_c *rqueues_params_c;
+    smpi_params_n *rqueues_params_n;
 
      /* rqueues flow control */
-    smpi_rqueues **rqueues_flow_out;
+    smpi_rqueues **rqueues_flow;
 
-    smpi_rq_limit **rqueues_limits;
+    smpi_rq_limit *rqueues_limits_s;
+    smpi_rq_limit *rqueues_limits_r;
 
     /* the receives queues */
     char *pool;
