@@ -41,7 +41,7 @@
     uint8_t  rail;              \
     union {                     \
         uint32_t smp_index;     \
-        uint32_t rank;          \
+        uint64_t vc_addr;       \
     } src;                      \
     unsigned long crc;
 #else
@@ -52,7 +52,7 @@
     uint8_t  rail;              \
     union {                     \
         uint32_t smp_index;     \
-        uint32_t rank;          \
+        uint64_t vc_addr;       \
     } src;                      
 #endif
 
@@ -339,6 +339,7 @@ typedef struct MPIDI_CH3I_MRAIL_PG {
     struct ibv_ah   **cm_ah;        /*Array of address handles of peers */
     uint32_t        *cm_ud_qpn;     /*Array of ud pqn of peers */
     uint16_t        *cm_lid;        /*Array of lid of all procs */
+    union ibv_gid    *cm_gid;        /*Array of gid of all procs */
 #ifdef _ENABLE_XRC_
     uint32_t        *xrc_hostid;
 #endif

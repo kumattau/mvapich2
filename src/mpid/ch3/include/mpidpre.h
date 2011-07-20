@@ -203,8 +203,8 @@ typedef struct MPIDI_VC * MPID_VCR;
         int limic_fallback;                                                     \
         int l_ranks;                                                            \
         int *l2g_rank;                                                          \
-        int post_shmid;                                                         \
-        int cmpl_shmid;                                                         \
+        int shmid;                                                              \
+        void *limic_buf;                                                        \
         long long *limic_cmpl_counter_buf;                                      \
         long long *limic_cmpl_counter_me;                                       \
         long long **limic_cmpl_counter_all;                                     \

@@ -661,10 +661,9 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
                 }
  
 	            if(!is_send_completion && MPIDI_CH3I_RDMA_Process.has_srq) {
-                    int rank;
-	                rank = ((MPIDI_CH3I_MRAILI_Pkt_comm_header *)
-	                       ((vbuf *)v)->pheader)->src.rank;
-                    MPIDI_PG_Get_vc(MPIDI_Process.my_pg, rank, &vc);
+	                vc = (void *)(unsigned long)
+	                     (((MPIDI_CH3I_MRAILI_Pkt_comm_header *)
+	                      ((vbuf *)v)->pheader)->src.vc_addr);
 	                v->vc = vc;
 	                v->rail = ((MPIDI_CH3I_MRAILI_Pkt_comm_header *)
 	                        ((vbuf*)v)->pheader)->rail;

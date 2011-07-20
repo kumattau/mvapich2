@@ -553,6 +553,106 @@ static int __cm_post_ud_packet(cm_msg * msg, struct ibv_ah *ah, uint32_t qpn)
 }
 
 #undef FUNCNAME
+#define FUNCNAME cm_get_conn_info
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+static int cm_get_conn_info(MPIDI_PG_t *pg, int peer)
+{
+    int hostid = 0;
+    int pg_rank = -1;
+    uint32_t hca_type = 0;
+    char *key = NULL;
+    char *val = NULL;
+    int error = PMI_SUCCESS;
+    int mpi_errno = MPI_SUCCESS;
+    int key_max_sz = 0;
+    int val_max_sz = 0;
+ 
+    PMI_Get_rank(&pg_rank);
+
+    CM_DBG("[%d]: Exchanging conn info with %d", pg_rank, peer);
+
+    /* Allocate memory and initialize it */
+    error = PMI_KVS_Get_key_length_max(&key_max_sz);
+    if (error != PMI_SUCCESS) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+        "**fail %s", "Error getting max key length");
+    }
+
+    ++key_max_sz;
+    key = MPIU_Malloc(key_max_sz);
+    if (key == NULL) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**nomem",
+        "**nomem %s", "PMI key");
+    }
+
+    error = PMI_KVS_Get_value_length_max(&val_max_sz);
+    if (error != PMI_SUCCESS) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+        "**fail %s", "Error getting max value length");
+    }
+
+    ++val_max_sz;
+    val = MPIU_Malloc(val_max_sz);
+    if (val == NULL) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**nomem",
+        "**nomem %s", "PMI value");
+    }
+
+    if (key_max_sz < 20 || val_max_sz < 30) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+        "**fail", "**fail %s", "PMI value too small");
+    }
+
+    /* Generate key */
+    MPIU_Snprintf(key, key_max_sz, "ud_info_%08d", peer);
+
+    /* Get necessary info from PMI */
+    error = PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz);
+    if (error != PMI_SUCCESS) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+        "**pmi_kvs_get", "**pmi_kvs_get %d", error);
+    }
+
+    /* Store the info locally */
+    if (!use_iboeth) {
+        sscanf(val,"%08hx:%08x:%02x:%08x",
+                (uint16_t *)&(pg->ch.mrail.cm_lid[peer]),
+                &(pg->ch.mrail.cm_ud_qpn[peer]), &hca_type, &hostid);
+    } else {
+        sscanf(val,"%08hx:%08x:%02x:%08x:%016llx:%016llx",
+                (uint16_t *)&(pg->ch.mrail.cm_lid[peer]),
+                &(pg->ch.mrail.cm_ud_qpn[peer]), &hca_type, &hostid,
+                &(pg->ch.mrail.cm_gid[peer].global.subnet_prefix),
+                &(pg->ch.mrail.cm_gid[peer].global.interface_id));
+    }
+
+#ifdef _ENABLE_XRC_
+    if (USE_XRC) {
+        pg->ch.mrail.xrc_hostid[peer] = hostid;
+    }
+#endif
+    if (!use_iboeth) {
+        DEBUG_PRINT("[%d<-%d]Get: lid: %08hx, qpn: %08x hca_type:%02x"
+                " hostid: %08x\n", pg_rank, peer, pg->ch.mrail.cm_lid[peer],
+                pg->ch.mrail.cm_ud_qpn[peer], hca_type, hostid);
+    } else {
+        DEBUG_PRINT("[%d<-%d]Get: Gid: %016llx:%016llx, qpn: %08x hca_type:%02x"
+                " hostid: %08x\n", pg_rank, peer,
+                pg->ch.mrail.cm_gid[peer].global.subnet_prefix,
+                pg->ch.mrail.cm_gid[peer].global.interface_id,
+                pg->ch.mrail.cm_ud_qpn[peer], hca_type, hostid);
+    }
+
+    MPIU_Free(key);
+    MPIU_Free(val);
+
+fn_fail:
+fn_exit:
+    return error;
+}
+
+#undef FUNCNAME
 #define FUNCNAME cm_resolve_conn_info
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
@@ -571,31 +671,43 @@ static int cm_resolve_conn_info(MPIDI_PG_t *pg, int peer)
                 "**fail", "**fail %s", "No connection info available");
     }
 
-    mpi_errno = MPIDI_PG_GetConnString(pg, peer, string, 128);
-    if (mpi_errno) {
-        MPIU_ERR_POP(mpi_errno);
-    }
+    if (mv2_on_demand_ud_info_exchange) {
+        mpi_errno = cm_get_conn_info(pg, peer);
+        ah = cm_create_ah(MPIDI_CH3I_RDMA_Process.ptag[0],
+                            pg->ch.mrail.cm_lid[peer], rdma_default_port);
+        if (!ah) {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                    "**fail", "**fail %s", "Cannot create address handle");
+        }
+    } else {
+        mpi_errno = MPIDI_PG_GetConnString(pg, peer, string, 128);
+        if (mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+        }
 
-    CM_DBG(stderr, "Peer %d, connString %s\n", peer, string);
+        CM_DBG(stderr, "Peer %d, connString %s\n", peer, string);
 #ifdef _ENABLE_XRC_
-    sscanf(string, "#RANK:%08d(%08x:%08x:%08x:%08x)#",
-            &rank, &lid, &qpn, &port, &hostid);
+        sscanf(string, "#RANK:%08d(%08x:%08x:%08x:%08x)#",
+                &rank, &lid, &qpn, &port, &hostid);
 #else
-    sscanf(string, "#RANK:%08d(%08x:%08x:%08x)#",
-            &rank, &lid, &qpn, &port);
+        sscanf(string, "#RANK:%08d(%08x:%08x:%08x)#",
+                &rank, &lid, &qpn, &port);
 #endif
-    ah = cm_create_ah(MPIDI_CH3I_RDMA_Process.ptag[0], lid, port);
-    if (!ah) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                "**fail", "**fail %s", "Cannot create address handle");
-    }
+	    ah = cm_create_ah(MPIDI_CH3I_RDMA_Process.ptag[0], lid, port);
+	    if (!ah) {
+	        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+	                "**fail", "**fail %s", "Cannot create address handle");
+	    }
+
+        pg->ch.mrail.cm_lid[peer]    = lid;
+        pg->ch.mrail.cm_ud_qpn[peer] = qpn;
+#ifdef _ENABLE_XRC_
+        pg->ch.mrail.xrc_hostid[peer] = hostid;
+#endif
+	}
 
     pg->ch.mrail.cm_ah[peer]     = ah;
-    pg->ch.mrail.cm_ud_qpn[peer] = qpn;
-    pg->ch.mrail.cm_lid[peer]    = lid;
-#ifdef _ENABLE_XRC_
-    pg->ch.mrail.xrc_hostid[peer] = hostid;
-#endif
+
 fn_fail:
     return mpi_errno;
 }
@@ -2038,6 +2150,49 @@ fn_fail:
 }
 
 #undef FUNCNAME
+#define FUNCNAME MPICM_Init_Local_UD_struct
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int MPICM_Init_Local_UD_struct(MPIDI_PG_t *pg, uint32_t qpn, uint16_t lid,
+                                union ibv_gid *gid, int hostid)
+{
+    int i;
+    int rank;
+    int mpi_errno = MPI_SUCCESS;
+    MPIDI_STATE_DECL(MPID_GEN2_MPICM_INIT_LOCAL_UD_STRUCT);
+    MPIDI_FUNC_ENTER(MPID_GEN2_MPICM_INIT_LOCAL_UD_STRUCT);
+    
+    PMI_Get_rank(&rank);
+
+    /*Copy qpns and lids */
+    pg->ch.mrail.cm_lid[rank]    = lid;
+    pg->ch.mrail.cm_ud_qpn[rank] = qpn;
+
+    if (use_iboeth) {
+        memcpy(&pg->ch.mrail.cm_gid[rank], gid, sizeof(union ibv_gid));
+    }
+
+#ifdef _ENABLE_XRC_
+    if (USE_XRC) {
+        pg->ch.mrail.xrc_hostid[rank] = hostid;
+    }
+#endif
+
+    /*Create address handles */
+    pg->ch.mrail.cm_ah[rank] = cm_create_ah(MPIDI_CH3I_RDMA_Process.ptag[0],
+                                                 pg->ch.mrail.cm_lid[rank],
+                                                 rdma_default_port);
+    if (!pg->ch.mrail.cm_ah[rank]) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+            "**fail %s", "Failed to create AH");
+    }
+
+fn_fail:
+    MPIDI_FUNC_EXIT(MPID_GEN2_MPICM_INIT_LOCAL_UD_STRUCT);
+    return mpi_errno;
+}
+
+#undef FUNCNAME
 #define FUNCNAME MPICM_Init_UD_struct
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
@@ -2176,9 +2331,11 @@ int MPICM_Finalize_UD()
     /*Clean up */
     for (; i < pg->size; ++i)
     {
-        if (ibv_destroy_ah(pg->ch.mrail.cm_ah[i]))
-        {
-            CM_ERR_ABORT("ibv_destroy_ah failed\n");
+        if (pg->ch.mrail.cm_ah[i]) {
+	        if (ibv_destroy_ah(pg->ch.mrail.cm_ah[i]))
+	        {
+	            CM_ERR_ABORT("ibv_destroy_ah failed\n");
+	        }
         }
     }
 

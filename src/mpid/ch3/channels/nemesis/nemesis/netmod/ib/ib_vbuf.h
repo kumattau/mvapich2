@@ -31,6 +31,7 @@
 #include "infiniband/verbs.h"
 #include "ib_param.h"
 #include "ib_hca.h"
+#include "ib_errors.h"
 
 #define IB_PKT_HEADER_LENGTH (sizeof(MPIDI_nem_ib_pkt_comm_header))
 

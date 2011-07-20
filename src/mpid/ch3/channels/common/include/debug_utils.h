@@ -53,7 +53,7 @@ do {                                                              \
 #define ASSERT_MSG( COND, FMT, args... )   \
 do {                                       \
     if( !(COND) ) {   \
-        _COMMON_PRINT_( FMT, ##args );     \
+        _COMMON_PRINT_( "At %s:%d: "FMT, __FILE__, __LINE__, ##args );     \
         abort();                           \
 }} while(0)
 

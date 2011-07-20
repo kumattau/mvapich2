@@ -131,7 +131,7 @@ int mv2_system_report(void) {
 
     errno &= mem_info( rank );
     errno &= hca_check( rank );
-    MPI_Barrier( MPI_COMM_WORLD );
+    PMPI_Barrier( MPI_COMM_WORLD );
 
     return mpi_errno;
 }

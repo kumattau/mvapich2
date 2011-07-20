@@ -53,6 +53,13 @@ Provide connect information to UD
 int MPICM_Init_UD_struct(MPIDI_PG_t *, uint32_t *qpns, uint16_t *lids);
 
 /*
+MPICM_Init_Local_UD_struct
+Provide local connect information to UD
+*/
+int MPICM_Init_Local_UD_struct(MPIDI_PG_t *, uint32_t qpn, uint16_t lid,
+								union ibv_gid *gid, int hostid);
+
+/*
 MPICM_Create_ud_threads
 Create UD worker threads 
 */

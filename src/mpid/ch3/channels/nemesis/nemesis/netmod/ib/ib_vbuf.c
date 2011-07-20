@@ -36,7 +36,6 @@
 #include "ib_vbuf.h"
 #include "mpiutil.h"
 #include "ib_process.h"
-#include "ib_errors.h"
 #include "ib_send.h"
 /* add ib_vc.h for MRAILI_Release_recv_rdma */
 #include "ib_vc.h"
@@ -66,7 +65,7 @@ void dump_vbuf(char* msg, vbuf* v)
 {
     int i = 0;
     int len = 100;
-    MPIDI_CH3I_MRAILI_Pkt_comm_header* header = v->pheader;
+    MPIDI_nem_ib_pkt_comm_header* header = v->iheader;
     printf("%s: dump of vbuf %p, type = %d\n", msg, v, header->type);
     len = 100;
 

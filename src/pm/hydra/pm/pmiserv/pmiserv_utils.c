@@ -12,7 +12,7 @@
 
 HYD_status HYD_pmcd_pmi_fill_in_proxy_args(char **proxy_args, char *control_port, int pgid)
 {
-    int i, arg, use_ddd, use_valgrind, use_strace;
+    int i, arg, use_ddd, use_valgrind, use_strace, retries, ret;
     char *path_str[HYD_NUM_TMP_STRINGS];
     HYD_status status = HYD_SUCCESS;
 
@@ -85,6 +85,13 @@ HYD_status HYD_pmcd_pmi_fill_in_proxy_args(char **proxy_args, char *control_port
     proxy_args[arg++] = HYDU_strdup("--pgid");
     proxy_args[arg++] = HYDU_int_to_str(pgid);
 
+    ret = MPL_env2int("HYDRA_RETRY_COUNT", &retries);
+    if (ret == 0)
+        retries = HYD_DEFAULT_RETRY_COUNT;
+
+    proxy_args[arg++] = HYDU_strdup("--retries");
+    proxy_args[arg++] = HYDU_int_to_str(retries);
+
     proxy_args[arg++] = HYDU_strdup("--proxy-id");
     proxy_args[arg++] = NULL;
 
@@ -105,56 +112,76 @@ static HYD_status pmi_process_mapping(struct HYD_pg *pg, char **process_mapping_
 {
     int i, is_equal;
     char *tmp[HYD_NUM_TMP_STRINGS];
-    struct HYD_proxy *proxy;
     struct block {
         int start_idx;
-        int num_blocks;
-        int block_size;
+        int num_nodes;
+        int core_count;
         struct block *next;
     } *blocklist_head, *blocklist_tail = NULL, *block, *nblock;
+    struct HYD_node *node;
+    struct HYD_proxy *proxy;
     HYD_status status = HYD_SUCCESS;
 
     HYDU_FUNC_ENTER();
 
+    /* FIXME: For dynamic processes, we give a process mapping that
+     * does not provide any locality information. This is required as
+     * our calculation of the locality below is static and is only
+     * valid for PGID 0 */
+    if (pg->pgid) {
+        HYDU_MALLOC(block, struct block *, sizeof(struct block), status);
+        block->start_idx = 0;
+        block->core_count = 1;
+        block->next = NULL;
+
+        block->num_nodes = 0;
+        for (proxy = pg->proxy_list; proxy; proxy = proxy->next)
+            block->num_nodes += proxy->node->core_count;
+
+        blocklist_tail = blocklist_head = block;
+
+        goto create_mapping_key;
+    }
+
     /*
-     * Blocks are of the format: (start node ID, number of blocks,
-     * block size): (sid, nb, bz)
+     * Blocks are of the format: (start node ID, number of nodes,
+     * core count): (sid, nn, cc)
      *
      * Assume B1 and B2 are neighboring blocks. The following blocks
      * can be merged:
      *
-     *   1. [B1(sid) + B1(nb) == B2(sid)] && [B1(bz) == B2(bz)]
+     *   1. [B1(sid) + B1(nn) == B2(sid)] && [B1(cc) == B2(cc)]
      *
-     *   2. [B1(sid) == B2(sid)] && [B1(nb) == 1]
+     *   2. [B1(sid) == B2(sid)] && [B1(nn) == 1]
      *
      * Special case: If all blocks are exactly the same, we delete all
      *               except one.
      */
     blocklist_head = NULL;
-    for (proxy = pg->proxy_list; proxy; proxy = proxy->next) {
+    for (node = HYD_server_info.node_list; node; node = node->next) {
         if (blocklist_head == NULL) {
             HYDU_MALLOC(block, struct block *, sizeof(struct block), status);
-            block->start_idx = proxy->proxy_id;
-            block->num_blocks = 1;
-            block->block_size = proxy->node->core_count;
+            block->start_idx = node->node_id;
+            block->num_nodes = 1;
+            block->core_count = node->core_count;
             block->next = NULL;
 
             blocklist_tail = blocklist_head = block;
         }
-        else if (blocklist_tail->start_idx + blocklist_tail->num_blocks == proxy->proxy_id &&
-                 blocklist_tail->block_size == proxy->node->core_count) {
-            blocklist_tail->num_blocks++;
+        else if (blocklist_tail->start_idx + blocklist_tail->num_nodes == node->node_id &&
+                 blocklist_tail->core_count == node->core_count) {
+            blocklist_tail->num_nodes++;
         }
-        else if (blocklist_tail->start_idx == proxy->proxy_id &&
-                 blocklist_tail->num_blocks == 1) {
-            blocklist_tail->block_size += proxy->node->core_count;
+        else if (blocklist_tail->start_idx == node->node_id &&
+                 blocklist_tail->num_nodes == 1) {
+            blocklist_tail->core_count += node->core_count;
         }
         else {
             HYDU_MALLOC(blocklist_tail->next, struct block *, sizeof(struct block), status);
             blocklist_tail = blocklist_tail->next;
-            blocklist_tail->start_idx = proxy->proxy_id;
-            blocklist_tail->num_blocks = 1;
-            blocklist_tail->block_size = proxy->node->core_count;
+            blocklist_tail->start_idx = node->node_id;
+            blocklist_tail->num_nodes = 1;
+            blocklist_tail->core_count = node->core_count;
             blocklist_tail->next = NULL;
         }
     }
@@ -163,7 +190,7 @@ static HYD_status pmi_process_mapping(struct HYD_pg *pg, char **process_mapping_
     is_equal = 1;
     for (block = blocklist_head; block->next; block = block->next) {
         if (block->start_idx != block->next->start_idx ||
-            block->block_size != block->next->block_size) {
+            block->core_count != block->next->core_count) {
             is_equal = 0;
             break;
         }
@@ -177,6 +204,7 @@ static HYD_status pmi_process_mapping(struct HYD_pg *pg, char **process_mapping_
         blocklist_tail = blocklist_head;
     }
 
+create_mapping_key:
     /* Create the mapping out of the blocks */
     i = 0;
     tmp[i++] = HYDU_strdup("(");
@@ -185,9 +213,9 @@ static HYD_status pmi_process_mapping(struct HYD_pg *pg, char **process_mapping_
         tmp[i++] = HYDU_strdup("(");
         tmp[i++] = HYDU_int_to_str(block->start_idx);
         tmp[i++] = HYDU_strdup(",");
-        tmp[i++] = HYDU_int_to_str(block->num_blocks);
+        tmp[i++] = HYDU_int_to_str(block->num_nodes);
         tmp[i++] = HYDU_strdup(",");
-        tmp[i++] = HYDU_int_to_str(block->block_size);
+        tmp[i++] = HYDU_int_to_str(block->core_count);
         tmp[i++] = HYDU_strdup(")");
         if (block->next)
             tmp[i++] = HYDU_strdup(",");
@@ -243,7 +271,7 @@ HYD_status HYD_pmcd_pmi_fill_in_exec_launch_info(struct HYD_pg *pg)
 
     /* Create the arguments list for each proxy */
     process_id = 0;
-    right_global_cores = HYD_server_info.global_core_count;
+    right_global_cores = pg->pg_core_count;
     left_global_cores = 0;
 
     right_filler_processes = 0;

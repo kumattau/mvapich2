@@ -22,6 +22,7 @@ static mv2_multirail_info_type g_mv2_multirail_info = mv2_num_rail_unknown;
 #define MV2_STR_MLX4         "mlx4"
 #define MV2_STR_MTHCA        "mthca"
 #define MV2_STR_IPATH        "ipath"
+#define MV2_STR_QIB          "qib"
 #define MV2_STR_EHCA         "ehca"
 #define MV2_STR_CXGB3        "cxgb3"
 #define MV2_STR_CXGB4        "cxgb4"
@@ -332,6 +333,9 @@ static mv2_hca_type mv2_hca_name_to_type ( char *dev_name )
 
     } else if(!strncmp(dev_name, MV2_STR_IPATH, 5)) {
         hca_type = MV2_HCA_PATH_HT;
+
+    } else if(!strncmp(dev_name, MV2_STR_QIB, 3)) {
+        hca_type = MV2_HCA_QIB;
 
     } else if(!strncmp(dev_name, MV2_STR_EHCA, 4)) {
         hca_type = MV2_HCA_IBM_EHCA;

@@ -18,17 +18,33 @@
 
 #ifdef CKPT
 
-int ckptInit();
-//static void *CR_Loop(void *arg);
+// Initialize CR
+// - it should be called only once at mpirun_rsh startup
+// - it should *not* be called after restart
+int CR_initialize();
+
+// Finalize CR
+// - it should be called only once at mpirun_rsh ending
+// - it should *not* be called before restart
+int CR_finalize();
+
+// Start CR thread
+// - it can be called again after CR_stop_thread() has been called
+// - it should be called after restart
+int CR_thread_start( unsigned int nspawns );
+
+// Stop CR thread
+// - it can be called again after CR_start_thread() has been called
+// - it should be called when restarting
+// If blocking is set, it will wait for the CR thread to terminate
+int CR_thread_stop( int blocking );
+
 char *create_mpispawn_vars(char *mpispawn_env);
 void save_ckpt_vars_env(void);
 void save_ckpt_vars(char *, char *);
 
 void set_ckpt_nprocs(int nprocs);
-void create_connections(int NSPAWNS);
-void close_connections(int NSPAWNS);
-void free_locks();
-void cr_cleanup();
+
 
 #include <sys/time.h>
 #include <libcr.h>
@@ -51,29 +67,6 @@ void cr_cleanup();
 #define CR_MAX_FILENAME 128
 #define CR_SESSION_MAX  16
 
-extern int restart_context;
-extern int cached_restart_context;
-
-//static void *CR_Loop(void *);
-//static int   CR_Callback(void *);
-
-//extern char *CR_MPDU_getval(const char *, char *, int);
-//extern int   CR_MPDU_parse_keyvals(char *);
-//extern int   CR_MPDU_readline(int , char *, int);
-//extern int   CR_MPDU_writeline(int , char *);
-
-typedef enum {
-    CR_INIT,
-    CR_READY,
-    CR_CHECKPOINT,
-    CR_CHECKPOINT_CONFIRM,
-    CR_CHECKPOINT_ABORT,
-    CR_RESTART,
-    CR_RESTART_CONFIRM,
-    CR_FINALIZED,
-} CR_state_t;
-
-extern CR_state_t cr_state;
 extern unsigned long starting_time;
 extern unsigned long last_ckpt;
 
@@ -150,16 +143,6 @@ do {                                                       \
 /* Macro to pick an CR_FTB event */
 #define EVENT(n) (cr_ftb_events[n].event_name)
 
-extern pthread_t cr_tid;
-extern cr_client_id_t cr_id;
-extern pthread_mutex_t cr_lock;
-
-extern pthread_spinlock_t flock;
-extern int fcnt;
-
-#define CR_ERRMSG_SZ 64
-extern char cr_errmsg[CR_ERRMSG_SZ];
-
 extern FTB_client_t ftb_cinfo;
 extern FTB_client_handle_t ftb_handle;
 //extern FTB_event_info_t    cr_ftb_events[] = CR_FTB_EVENT_INFO;
@@ -187,7 +170,7 @@ extern char *current_spare_host;
 extern struct spawn_info_s *spawninfo;
 
 //int  cr_ftb_init(int, char *);
-int cr_ftb_init(int);
+// int cr_ftb_init(int);
 //extern void cr_ftb_finalize();
 //extern int  cr_ftb_callback(FTB_receive_event_t *, void *);
 //extern int  cr_ftb_wait_for_resp(int);
@@ -199,13 +182,7 @@ int cr_ftb_init(int);
 //extern int   CR_MPDU_readline(int , char *, int);
 //extern int   CR_MPDU_writeline(int , char *);
 
-extern int *mpirun_fd;
-extern int mpirun_port;
-
 #endif                          /* CR_FTB */
-
-void restart_from_ckpt();
-void finalize_ckpt();
 #endif
 
 int read_sparehosts(char *hostfile, char ***hostarr, int *nhosts);

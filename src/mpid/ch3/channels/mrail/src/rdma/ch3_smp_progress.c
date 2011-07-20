@@ -93,6 +93,8 @@ int SMP_ONLY = 0;
 static void** s_current_ptr = NULL;
 static int* s_current_bytes = NULL;
 static int* s_total_bytes = NULL;
+static char *shmem_file = NULL;
+static char *pool_file = NULL;
 
 int g_size_shmem = 0;
 int g_size_pool = 0; 
@@ -115,6 +117,7 @@ extern MPID_Request * create_request(void * hdr, MPIDI_msg_sz_t hdr_sz,
 #endif
 
 extern int enable_shmem_collectives;
+extern struct MPIDI_CH3I_RDMA_Process_t MPIDI_CH3I_RDMA_Process;
 
 #if defined(MAC_OSX) || defined(_PPC64_) 
 #if defined(__GNUC__)
@@ -752,6 +755,89 @@ fn_fail:
     goto fn_exit;
 }
 
+void MPIDI_CH3I_SMP_unlink() 
+{ 
+    /*clean up pool file*/
+    if (g_smpi.fd_pool != -1) { 
+        unlink(pool_file);
+    } 
+    if (pool_file != NULL) {
+        MPIU_Free(pool_file);
+    }
+    pool_file = NULL;
+
+    /*clean up shmem file*/
+    if (g_smpi.fd != -1) { 
+        unlink(shmem_file);
+    }
+    if (shmem_file != NULL) { 
+        MPIU_Free(shmem_file);
+    }
+    shmem_file = NULL;
+}
+
+void MPIDI_CH3I_set_smp_only()
+{
+    char *value;
+
+    g_smpi.only_one_device = 0;
+    SMP_ONLY = 0;
+    if (MPIDI_CH3I_Process.has_dpm) {
+        return;
+    }
+
+    if (MPIDI_Get_num_nodes() == 1) {
+        if ((value = getenv("MV2_USE_SHARED_MEM")) != NULL) {
+            if(!atoi(value)) {
+                return;
+            }
+        }
+        g_smpi.only_one_device = 1;
+        SMP_ONLY = 1;
+    }
+}
+
+void MPIDI_CH3I_SMP_Init_VC(MPIDI_VC_t *vc)
+{
+    /*initialize RNDV parameter*/
+    vc->mrail.sreq_head = NULL;
+    vc->mrail.sreq_tail = NULL;
+    vc->mrail.nextflow  = NULL;
+    vc->mrail.inflow    = 0;
+}
+
+void MPIDI_CH3I_SMP_cleanup() 
+{ 
+    /*clean up pool file*/
+    if (g_smpi.send_buf_pool_ptr != NULL) {
+        munmap(g_smpi.send_buf_pool_ptr, g_size_pool); 
+    }
+    if (g_smpi.fd_pool != -1) { 
+        close(g_smpi.fd_pool);
+        unlink(pool_file);
+    } 
+    if (pool_file != NULL) {
+        MPIU_Free(pool_file);
+    }
+    g_smpi.send_buf_pool_ptr = NULL;
+    g_smpi.fd_pool = -1;
+    pool_file = NULL;
+
+    /*clean up shmem file*/
+    if (g_smpi.mmap_ptr != NULL) { 
+        munmap(g_smpi.mmap_ptr, g_size_shmem);        
+    }
+    if (g_smpi.fd != -1) { 
+        close(g_smpi.fd);
+        unlink(shmem_file);
+    }
+    if (shmem_file != NULL) { 
+        MPIU_Free(shmem_file);
+    }
+    g_smpi.mmap_ptr = NULL;
+    g_smpi.fd = -1;
+    shmem_file = NULL;
+}
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_SMP_Init
@@ -767,8 +853,6 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     int local_num, sh_size, pid_len, rq_len;
     struct stat file_status;
     struct stat file_status_pool;
-    char *shmem_file = NULL;
-    char *pool_file = NULL;
     int pagesize = getpagesize();
     char *value;
     struct shared_mem *shmem;
@@ -784,6 +868,10 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 #if defined(_X86_64_)
     volatile char tmpchar;
 #endif /* defined(_X86_64_) */
+    
+    /* Set SMP params based on architecture */
+    rdma_set_smp_parameters(&MPIDI_CH3I_RDMA_Process);
+
     if ((value = getenv("MV2_USE_BLOCKING")) != NULL) {
         blocking_val = !!atoi(value);
         if(blocking_val) {
@@ -876,10 +964,9 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     } 
 #endif  /* defined(HAVE_LIBHWLOC) */
 
-
     if (gethostname(s_hostname, sizeof(char) * HOSTNAME_LEN) < 0) {
-    MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
-        "%s: %s", "gethostname", strerror(errno));
+       MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
+           "%s: %s", "gethostname", strerror(errno));
     }
 
     DEBUG_PRINT("gethostname: %s\n", s_hostname);
@@ -906,36 +993,37 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 #endif /* defined(DEBUG) */
 
     if (g_smp_eagersize > s_smpi_length_queue / 2) {
-    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-        "**fail %s", "SMP_EAGERSIZE should not exceed half of "
-        "SMPI_LENGTH_QUEUE. Note that SMP_EAGERSIZE "
-        "and SMPI_LENGTH_QUEUE are set in KBytes.");
+       MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+           "**fail %s", "SMP_EAGERSIZE should not exceed half of "
+           "SMPI_LENGTH_QUEUE. Note that SMP_EAGERSIZE "
+           "and SMPI_LENGTH_QUEUE are set in KBytes.");
     }
 
+    g_smpi.fd = -1;
+    g_smpi.fd_pool = -1; 
+    g_smpi.mmap_ptr = NULL; 
+    g_smpi.send_buf_pool_ptr = NULL;
     g_smpi.available_queue_length =
-        (s_smpi_length_queue - g_smp_eagersize - sizeof(int));
+          (s_smpi_length_queue - g_smp_eagersize - sizeof(int));
 
     /* add pid for unique file name */
     shmem_file =
         (char *) MPIU_Malloc(sizeof(char) * (pathlen + HOSTNAME_LEN + 26 + PID_CHAR_LEN));
-
     if(!shmem_file) {
-    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
-        "**nomem %s", "shmem_file");
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+            "**nomem %s", "shmem_file");
     }
 
     pool_file =
         (char *) MPIU_Malloc (sizeof (char) * (pathlen + HOSTNAME_LEN + 26 + PID_CHAR_LEN));
-
     if(!pool_file) {
-    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
-        "**nomem %s", "pool_file");
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+            "**nomem %s", "pool_file");
     }
 
     /* unique shared file name */
     sprintf(shmem_file, "%s/ib_shmem-%s-%s-%d.tmp",
         shmem_dir, pg->ch.kvs_name, s_hostname, getuid());
-
     DEBUG_PRINT("shemfile %s\n", shmem_file);
 
     sprintf (pool_file, "%s/ib_pool-%s-%s-%d.tmp", shmem_dir, pg->ch.kvs_name,
@@ -943,9 +1031,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     DEBUG_PRINT("shemfile %s\n", pool_file);
 
     /* open the shared memory file */
-    g_smpi.fd =
-    open(shmem_file, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
-
+    g_smpi.fd = open(shmem_file, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
     if (g_smpi.fd < 0) {
         /* fallback */
         sprintf(shmem_file, "/tmp/ib_shmem-%s-%s-%d.tmp",
@@ -966,10 +1052,13 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     }
 
     g_smpi.fd_pool =
-    open (pool_file, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
+        open (pool_file, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
     if (g_smpi.fd_pool < 0) {
-    MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
-        "%s: %s", "open", strerror(errno));
+        mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                    FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
+                    "%s: %s", "open",
+                    strerror(errno)); 
+        goto cleanup_files;
     }
 
     /* compute the size of this file */
@@ -980,11 +1069,12 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     pid_len = pid_len + SMPI_CACHE_LINE_SIZE - (pid_len % SMPI_CACHE_LINE_SIZE);
     rq_len = sizeof(smpi_rqueues) * g_smpi.num_local_nodes *
         (g_smpi.num_local_nodes - 1);
-    sh_size = sizeof(struct shared_mem) + pid_len + SMPI_ALIGN(rq_len) + SMPI_CACHE_LINE_SIZE * 2;
+    sh_size = sizeof(struct shared_mem) + pid_len 
+          + SMPI_ALIGN(rq_len) + SMPI_CACHE_LINE_SIZE * 2;
 
-    g_size_shmem = (SMPI_CACHE_LINE_SIZE + sh_size + pagesize +
-        (g_smpi.num_local_nodes * (g_smpi.num_local_nodes - 1) *
-         (SMPI_ALIGN(s_smpi_length_queue + pagesize))));
+    g_size_shmem = (SMPI_CACHE_LINE_SIZE + sh_size + pagesize 
+          + (g_smpi.num_local_nodes * (g_smpi.num_local_nodes - 1) 
+          * (SMPI_ALIGN(s_smpi_length_queue + pagesize))));
 
     DEBUG_PRINT("sizeof shm file %d\n", g_size_shmem);
 
@@ -994,225 +1084,237 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 	
     DEBUG_PRINT("sizeof pool file %d\n", g_size_pool);
     if (g_smpi.my_local_id == 0) 
-	{
-		DEBUG_PRINT("%s[%d]: size_shmem=%d, size_pool = %d\n", 
-			__func__, MPIDI_Process.my_pg_rank, g_size_shmem, g_size_pool);
-	}
+    {
+       DEBUG_PRINT("%s[%d]: size_shmem=%d, size_pool = %d\n", 
+          __func__, MPIDI_Process.my_pg_rank, g_size_shmem, g_size_pool);
+    }
     /* initialization of the shared memory file */
     /* just set size, don't really allocate memory, to allow intelligent memory
      * allocation on NUMA arch */
     if (g_smpi.my_local_id == 0) {
-    if (ftruncate(g_smpi.fd, 0)) {
-        int ftruncate_errno = errno;
-
-        /* to clean up tmp shared file */
-        unlink(shmem_file);
-        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
-            "%s: %s", "ftruncate", strerror(ftruncate_errno));
-    }
-
-    /* set file size, without touching pages */
-    if (ftruncate(g_smpi.fd, g_size_shmem)) {
-        int ftruncate_errno = errno;
-
-        /* to clean up tmp shared file */
-        unlink(shmem_file);
-        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
-            "%s: %s", "ftruncate", strerror(ftruncate_errno));
-    }
-
-    if (ftruncate (g_smpi.fd_pool, 0)) {
-        int ftruncate_errno = errno;
-
-        /* to clean up tmp shared file */
-        unlink (pool_file);
-        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
-            "%s: %s", "ftruncate", strerror(ftruncate_errno));
-    }
-
-    if (ftruncate (g_smpi.fd_pool, g_size_pool)) {
-        int ftruncate_errno = errno;
-
-        /* to clean up tmp shared file */
-        unlink (pool_file);
-        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
-            "%s: %s", "ftruncate", strerror(ftruncate_errno));
-    }
+       if (ftruncate(g_smpi.fd, 0)) {
+           /* to clean up tmp shared file */
+           mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER, 
+                       FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
+                       "%s: %s", "ftruncate",
+                       strerror(errno));
+           goto cleanup_files;
+       }
+ 
+       /* set file size, without touching pages */
+       if (ftruncate(g_smpi.fd, g_size_shmem)) {
+           /* to clean up tmp shared file */
+           mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                       FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
+                       "%s: %s", "ftruncate",
+                       strerror(errno));
+           goto cleanup_files;
+       }
+ 
+       if (ftruncate (g_smpi.fd_pool, 0)) {
+           /* to clean up tmp shared file */
+           mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                       FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
+                       "%s: %s", "ftruncate",
+                       strerror(errno)); 
+           goto cleanup_files;
+       }
+ 
+       if (ftruncate (g_smpi.fd_pool, g_size_pool)) {
+           /* to clean up tmp shared file */
+           mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                       FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
+                       "%s: %s", "ftruncate",
+                       strerror(errno)); 
+           goto cleanup_files;
+       }
 
 #if !defined(_X86_64_)
-    {
-        char *buf;
-        buf = (char *) MPIU_Calloc(g_size_shmem + 1, sizeof(char));
-        if (write(g_smpi.fd, buf, g_size_shmem) != g_size_shmem) {
-        int write_errno = errno;
-
-        MPIU_Free(buf);
-        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
-            "%s: %s", "write", strerror(write_errno));
-        }
-            MPIU_Free(buf);
-    }
-
-    {
-        char *buf;
-        buf = (char *) MPIU_Calloc (g_size_pool + 1, sizeof (char));
-        if (write (g_smpi.fd_pool, buf, g_size_pool) != g_size_pool) {
-        int write_errno = errno;
-
-        MPIU_Free(buf);
-        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
-            "%s: %s", "write", strerror(write_errno));
-        }
-        MPIU_Free(buf);
-    }
+       {
+           char *buf;
+           buf = (char *) MPIU_Calloc(g_size_shmem + 1, sizeof(char));
+           if (write(g_smpi.fd, buf, g_size_shmem) != g_size_shmem) {
+              mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                        FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", 
+                       "%s: %s", "write",
+                       strerror(errno));
+              MPIU_Free(buf);
+              goto cleanup_files;
+           }
+           MPIU_Free(buf);
+       }
+ 
+       {
+           char *buf;
+           buf = (char *) MPIU_Calloc (g_size_pool + 1, sizeof (char));
+           if (write (g_smpi.fd_pool, buf, g_size_pool) != g_size_pool) {
+              mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                        FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", 
+                        "%s: %s", "write",
+                        strerror(errno)); 
+              MPIU_Free(buf);
+              goto cleanup_files;
+           }
+           MPIU_Free(buf);
+       }
 #endif /* !defined(_X86_64_) */
 
-    if (lseek(g_smpi.fd, 0, SEEK_SET) != 0) {
-        int lseek_errno = errno;
-
-        /* to clean up tmp shared file */
-        unlink(shmem_file);
-        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
-            "%s: %s", "lseek", strerror(lseek_errno));
+       if (lseek(g_smpi.fd, 0, SEEK_SET) != 0) {
+           /* to clean up tmp shared file */
+           mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                      FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
+                      "%s: %s", "lseek",
+                      strerror(errno)); 
+           goto cleanup_files;
+       }
+ 
+       if (lseek (g_smpi.fd_pool, 0, SEEK_SET) != 0) {
+           /* to clean up tmp shared file */
+           mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                      FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", 
+                       "%s: %s", "lseek",
+                       strerror(errno)); 
+           goto cleanup_files;
+       }
     }
 
-    if (lseek (g_smpi.fd_pool, 0, SEEK_SET) != 0) {
-        int lseek_errno = errno;
-
-        /* to clean up tmp shared file */
-        unlink (pool_file);
-        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
-            "%s: %s", "lseek", strerror(lseek_errno));
-    }
-
-    }
-
-    if (enable_shmem_collectives){
-    /* Shared memory for collectives */
-
+    if (enable_shmem_collectives) {
+        /* Shared memory for collectives */
         if ((mpi_errno = MPIDI_CH3I_SHMEM_COLL_init(pg)) != MPI_SUCCESS)
         {
-            MPIU_ERR_POP(mpi_errno);
+            mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                   FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", 
+                   "%s", "SHMEM_COLL_init failed");
+            goto cleanup_files;
         }
     }
 
     DEBUG_PRINT("process arrives before sync stage\n");
     /* synchronization between local processes */
     do {
-    if (fstat(g_smpi.fd, &file_status) != 0 ||
-        fstat (g_smpi.fd_pool, &file_status_pool) != 0) {
-        int fstat_errno = errno;
-
-        /* to clean up tmp shared file */
-        unlink(shmem_file);
-        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
-            "%s: %s", "fstat", strerror(fstat_errno));
-    }
-    usleep(1);
-    }
-    while (file_status.st_size != g_size_shmem ||
-        file_status_pool.st_size != g_size_pool);
+       if (fstat(g_smpi.fd, &file_status) != 0 ||
+           fstat (g_smpi.fd_pool, &file_status_pool) != 0) {
+             /* to clean up tmp shared file */
+             mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                   FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
+                   "%s: %s", "fstat",
+                   strerror(errno));
+             goto cleanup_files;
+       }
+       usleep(1);
+    } while (file_status.st_size != g_size_shmem ||
+         file_status_pool.st_size != g_size_pool);
 
     g_smpi_shmem = (struct shared_mem *) MPIU_Malloc(sizeof(struct shared_mem));
-
     if(!g_smpi_shmem) {
-    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
-        "**nomem %s", "g_smpi_shmem");
+       mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0);
+       goto cleanup_files;
     }
 
     DEBUG_PRINT("before mmap\n");
+
     /* mmap of the shared memory file */
     g_smpi.mmap_ptr = mmap(0, g_size_shmem,
-        (PROT_READ | PROT_WRITE), (MAP_SHARED), g_smpi.fd,
-        0);
+        (PROT_READ | PROT_WRITE), (MAP_SHARED), g_smpi.fd, 0);
     if (g_smpi.mmap_ptr == (void *) -1) {
-    /* to clean up tmp shared file */
-    unlink(shmem_file);
-    MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
-        "%s: %s", "mmap", strerror(errno));
+       /* to clean up tmp shared file */
+       mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", "%s: %s", 
+                "mmap", strerror(errno));
+       goto cleanup_files;
     }
 
-    g_smpi.send_buf_pool_ptr = mmap (0, g_size_pool, (PROT_READ | PROT_WRITE),
-        (MAP_SHARED), g_smpi.fd_pool, 0);
-
+    g_smpi.send_buf_pool_ptr = mmap (0, g_size_pool, 
+        (PROT_READ | PROT_WRITE), (MAP_SHARED), g_smpi.fd_pool, 0);
     if (g_smpi.send_buf_pool_ptr == (void *) -1) {
-    unlink (pool_file);
-    MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
-        "%s: %s", "mmap", strerror(errno));
+       /* to clean up tmp shared file */
+       mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", "%s: %s", 
+                "mmap", strerror(errno));
+       goto cleanup_files;
     }
 
     shmem = (struct shared_mem *) g_smpi.mmap_ptr;
     if (((long) shmem & (SMPI_CACHE_LINE_SIZE - 1)) != 0) {
-    /* to clean up tmp shared file */
-    unlink(shmem_file);
-    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-        "**fail %s", "error in shifting mmapped shared memory");
+       /* to clean up tmp shared file */
+       mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", "%s", 
+                "error in shifting mmaped shmem");
+       goto cleanup_files;
     }
 
     s_buffer_head = (SEND_BUF_T **) MPIU_Malloc(sizeof(SEND_BUF_T *) * g_smpi.num_local_nodes);
-    for(i=0; i < g_smpi.num_local_nodes; ++i){
-    s_buffer_head[i] = (SEND_BUF_T *)((unsigned long)g_smpi.send_buf_pool_ptr +
-        SMPI_ALIGN(sizeof(SEND_BUF_T) * s_smp_num_send_buffer +
-            pagesize) * i);
-
-    if (((long) s_buffer_head[i] & (SMPI_CACHE_LINE_SIZE - 1)) != 0) {
-        unlink (pool_file);
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-            "**fail %s",
-            "error in shifting mmapped shared pool memory");
+    if(!s_buffer_head) {
+       mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0);
+       goto cleanup_files;
     }
+
+    for(i=0; i < g_smpi.num_local_nodes; ++i) {
+       s_buffer_head[i] = (SEND_BUF_T *)((unsigned long)g_smpi.send_buf_pool_ptr +
+           SMPI_ALIGN(sizeof(SEND_BUF_T) * s_smp_num_send_buffer +
+               pagesize) * i);
+
+       if (((long) s_buffer_head[i] & (SMPI_CACHE_LINE_SIZE - 1)) != 0) {
+          /* to clean up tmp shared file */
+          mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                   FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s", 
+                   "error in shifting mmaped pool");
+          goto cleanup_files;
+       }
     }
     s_my_buffer_head = s_buffer_head[g_smpi.my_local_id];
 
     s_sh_buf_pool.free_head = 0;
 
     s_sh_buf_pool.send_queue = (int *) MPIU_Malloc(sizeof(int) * g_smpi.num_local_nodes);
-
     if(!s_sh_buf_pool.send_queue) {
-    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
-        "**nomem %s", "s_sh_buf_pool.send_queue");
+       mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0);
+       goto cleanup_files;
     }
 
     s_sh_buf_pool.tail = (int *) MPIU_Malloc(sizeof(int) * g_smpi.num_local_nodes);
-
     if(!s_sh_buf_pool.tail) {
-    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
-        "**nomem %s", "s_sh_buf_pool.tail");
+       mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0);
+       goto cleanup_files;
     }
 
     for (i = 0; i < g_smpi.num_local_nodes; ++i) {
-    s_sh_buf_pool.send_queue[i] = s_sh_buf_pool.tail[i] = -1;
+       s_sh_buf_pool.send_queue[i] = s_sh_buf_pool.tail[i] = -1;
     }
 
 #if defined(_X86_64_)
     for (i = 0; i < s_smp_num_send_buffer; ++i) {
-    send_buf =&(s_my_buffer_head[i]);
-    send_buf->myindex = i;
-    send_buf->next = i+1;
-    send_buf->busy = 0;
-    send_buf->len = 0;
-    send_buf->has_next = 0;
-    send_buf->msg_complete = 0;
+       send_buf =&(s_my_buffer_head[i]);
+       send_buf->myindex = i;
+       send_buf->next = i+1;
+       send_buf->busy = 0;
+       send_buf->len = 0;
+       send_buf->has_next = 0;
+       send_buf->msg_complete = 0;
 
-    for (j = 0; j < SMP_SEND_BUF_SIZE; j += pagesize) {
-        tmpchar = (send_buf->buf)[j];
-    }
+       for (j = 0; j < SMP_SEND_BUF_SIZE; j += pagesize) {
+           tmpchar = (send_buf->buf)[j];
+       }
     }
     send_buf->next = -1;
 #else /* defined(_X86_64_) */
     if (0 == g_smpi.my_local_id) {
-    for(j = 0; j < g_smpi.num_local_nodes; ++j){
-        for (i = 0; i < s_smp_num_send_buffer; ++i) {
-        send_buf = &s_buffer_head[j][i];
-        send_buf->myindex = i;
-        send_buf->next = i+1;
-        send_buf->busy = 0;
-        send_buf->len = 0;
-        send_buf->has_next = 0;
-        send_buf->msg_complete = 0;
-        }
-        send_buf->next = -1;
-    }
+       for(j = 0; j < g_smpi.num_local_nodes; ++j){
+           for (i = 0; i < s_smp_num_send_buffer; ++i) {
+              send_buf = &s_buffer_head[j][i];
+              send_buf->myindex = i;
+              send_buf->next = i+1;
+              send_buf->busy = 0;
+              send_buf->len = 0;
+              send_buf->has_next = 0;
+              send_buf->msg_complete = 0;
+           }
+           send_buf->next = -1;
+       }
     }
 #endif /* defined(_X86_64_) */
 
@@ -1235,8 +1337,9 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
         g_smpi_shmem->rqueues_flow == NULL ||
         g_smpi_shmem->rqueues_limits_s == NULL ||
         g_smpi_shmem->rqueues_limits_r == NULL ) {
-    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
-        "**nomem %s", "smpi_shmem rqueues");
+         mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                  FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0);
+         goto cleanup_files;
     }
 
     if (g_smpi.num_local_nodes > 1) {
@@ -1309,28 +1412,29 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 
     /* init rqueues in shared memory */
     if (0 == g_smpi.my_local_id) {
-    pool = pagesize;
-    for (i = 0; i < g_smpi.num_local_nodes; ++i) {
-        for (j = 0; j < g_smpi.num_local_nodes; ++j) {
-        if (i != j) {
-            READBAR();
-            g_smpi_shmem->rqueues_flow[j*g_smpi.num_local_nodes + i]->msgs_total_in = 0;
-            g_smpi_shmem->rqueues_flow[i*g_smpi.num_local_nodes + j]->msgs_total_out = 0;
-            READBAR();
-        }
-        }
-    }
+       pool = pagesize;
+       for (i = 0; i < g_smpi.num_local_nodes; ++i) {
+           for (j = 0; j < g_smpi.num_local_nodes; ++j) {
+           if (i != j) {
+               READBAR();
+               g_smpi_shmem->rqueues_flow[j*g_smpi.num_local_nodes + i]->msgs_total_in = 0;
+               g_smpi_shmem->rqueues_flow[i*g_smpi.num_local_nodes + j]->msgs_total_out = 0;
+               READBAR();
+           }
+           }
+       }
     }
 
-    if (enable_shmem_collectives)
-    {
-    /* Memory Mapping shared files for collectives*/
+    if (enable_shmem_collectives) {
+        /* Memory Mapping shared files for collectives*/
         if ((mpi_errno = MPIDI_CH3I_SHMEM_COLL_Mmap()) != MPI_SUCCESS)
         {
-            MPIU_ERR_POP(mpi_errno);
+           mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                 FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s", 
+                 "SHMEM_COLL_Mmap failed");
+           goto cleanup_files;
         }
     }
-
     /* another synchronization barrier */
     if (0 == g_smpi.my_local_id) {
     wait = 1;
@@ -1342,20 +1446,13 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
         }
         }
     }
-    /* id = 0, unlink the shared memory file, so that it is cleaned
-     *       up when everyone exits */
-    unlink(shmem_file);
-    unlink(pool_file);
-
-    if (enable_shmem_collectives){
-        /* Unlinking shared files for collectives*/
-        MPIDI_CH3I_SHMEM_COLL_Unlink();
-    }
 
     pid = getpid();
     if (0 == pid) {
-        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
-            "%s: %s", "getpid", strerror(errno));
+        mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+              FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
+              "getpid", strerror(errno));
+        goto cleanup_files;
     }
 
     g_smpi_shmem->pid[g_smpi.my_local_id] = pid;
@@ -1368,14 +1465,19 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     }
     for (i = 0; i < g_smpi.num_local_nodes; ++i) {
         if (g_smpi_shmem->pid[i] <= 0) {
-        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
-            "%s: %s", "getpid", strerror(errno));
+           mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+               FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
+               "getpid", strerror(errno));
+           goto cleanup_files;
         }
     }
     }
 
-    MPIU_Free(shmem_file);
-    MPIU_Free(pool_file);
+    /* Unlinking shared memory files*/
+    MPIDI_CH3I_SMP_unlink();
+    if (enable_shmem_collectives){
+        MPIDI_CH3I_SHMEM_COLL_Unlink();
+    }
 
 #if defined(_X86_64_)
     /*
@@ -1385,50 +1487,47 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
      * near the first process).
      */
     {
-    int receiver, sender;
-
-    for (receiver = 0; receiver < g_smpi.num_local_nodes; ++receiver) {
-        volatile char *ptr = g_smpi_shmem->pool;
-        volatile char tmp;
-
-        sender = g_smpi.my_local_id;
-        if (sender != receiver) {
-        int k;
-
-        for (k = SMPI_FIRST_S(sender, receiver);
-            k < SMPI_LAST_S(sender, receiver); k += pagesize) {
-            tmp = ptr[k];
-        }
-        }
-    }
+       int receiver, sender;
+ 
+       for (receiver = 0; receiver < g_smpi.num_local_nodes; ++receiver) {
+           volatile char *ptr = g_smpi_shmem->pool;
+           volatile char tmp;
+ 
+           sender = g_smpi.my_local_id;
+           if (sender != receiver) {
+              int k;
+           
+              for (k = SMPI_FIRST_S(sender, receiver);
+                  k < SMPI_LAST_S(sender, receiver); k += pagesize) {
+                  tmp = ptr[k];
+              }
+           }
+       }
     }
 #endif /* defined(_X86_64_) */
 
     s_current_ptr = (void **) MPIU_Malloc(sizeof(void *) * g_smpi.num_local_nodes);
-
-    if(!s_current_ptr) {
-    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
-        "**nomem %s", "s_current_ptr");
+    if (!s_current_ptr) {
+      MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+          "**nomem %s", "s_current_ptr");
     }
 
     s_current_bytes = (int *) MPIU_Malloc(sizeof(int) * g_smpi.num_local_nodes);
-
-    if(!s_current_bytes) {
-    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
-        "**nomem %s", "s_current_bytes");
+    if (!s_current_bytes) {
+      MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+          "**nomem %s", "s_current_bytes");
     }
 
     s_total_bytes = (int *) MPIU_Malloc(sizeof(int) * g_smpi.num_local_nodes);
-
-    if(!s_total_bytes) {
-    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
-        "**nomem %s", "s_total_bytes");
+    if (!s_total_bytes) {
+       MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+           "**nomem %s", "s_total_bytes");
     }
 
     for (i = 0; i < g_smpi.num_local_nodes; ++i) {
-    s_current_ptr[i] = NULL;
-    s_current_bytes[i] = 0;
-    s_total_bytes[i] = 0;
+       s_current_ptr[i] = NULL;
+       s_current_bytes[i] = 0;
+       s_total_bytes[i] = 0;
     }
 
 #ifdef _SMP_LIMIC_
@@ -1449,6 +1548,12 @@ fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SMP_INIT);
     return mpi_errno;
 
+cleanup_files:
+    MPIDI_CH3I_SMP_cleanup();
+cleanup_shmem_coll_file:
+    if (enable_shmem_collectives){
+        MPIDI_CH3I_SHMEM_COLL_Cleanup();
+    }
 fn_fail:
     goto fn_exit;
 }
@@ -3032,14 +3137,7 @@ static int smpi_exchange_info(MPIDI_PG_t *pg)
     PMI_Get_rank(&pg_rank);
     PMI_Get_size(&pg_size);
 
-    g_smpi.only_one_device = 1;
-    SMP_ONLY = 1;
     g_smpi.num_local_nodes = MPIDI_Num_local_processes(pg);
-
-    if (g_smpi.num_local_nodes < pg_size) {
-        g_smpi.only_one_device = 0;
-        SMP_ONLY = 0;
-    }
 
     for (i = 0; i < pg->size; ++i) {
         MPIDI_PG_Get_vc(pg, i, &vc);
@@ -3058,9 +3156,6 @@ static int smpi_exchange_info(MPIDI_PG_t *pg)
         }
     }
 #endif /* defined(HAVE_LIBHWLOC) */
-
-    if (MPIDI_CH3I_Process.has_dpm)
-        SMP_ONLY = 0;
 
     DEBUG_PRINT("num local nodes %d, my local id %d\n",
         g_smpi.num_local_nodes, g_smpi.my_local_id);

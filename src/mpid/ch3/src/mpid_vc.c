@@ -1190,6 +1190,11 @@ int MPIDI_Num_local_processes(MPIDI_PG_t *pg)
     return pg->ch.num_local_processes;
 }
 
+int MPIDI_Get_num_nodes()
+{
+    return g_num_nodes;
+}
+
 int MPIDI_Get_local_host(MPIDI_PG_t *pg, int our_pg_rank)
 {
     int i = 0, j = 0;
@@ -1282,6 +1287,28 @@ fn_fail:
 
     return mpi_errno;
 }
+
+void MPIDI_Get_local_host_mapping(MPIDI_PG_t *pg, int our_pg_rank)
+{
+    int my_node_id;
+    int i;
+    MPIDI_VC_t* vc = NULL;
+
+    pg->ch.num_local_processes = 0;
+    pg->ch.local_process_id = 0;
+    my_node_id = pg->vct[our_pg_rank].node_id;
+
+    for (i=0; i<pg->size; ++i)  {
+        MPIDI_PG_Get_vc(pg, i, &vc);
+        if (pg->vct[i].node_id == my_node_id) {
+            vc->smp.local_rank = pg->ch.num_local_processes++;
+            if (i == our_pg_rank)
+                pg->ch.local_process_id = vc->smp.local_rank;
+        } else {
+            vc->smp.local_rank = -1;
+        }
+    }
+}
 #endif
 /* Fills in the node_id info from PMI info.  Adapted from MPIU_Get_local_procs.
    This function is collective over the entire PG because PMI_Barrier is called.
@@ -1308,8 +1335,6 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
 {
     int mpi_errno = MPI_SUCCESS;
     int pmi_errno;
-    int ret;
-    int val;
     int i, j;
     char *key;
     char *value;
@@ -1350,9 +1375,7 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
 #ifdef ENABLED_ODD_EVEN_CLIQUES
     odd_even_cliques = 1;
 #else
-    ret = MPL_env2bool("MPICH_ODD_EVEN_CLIQUES", &val);
-    if (ret == 1 && val)
-        odd_even_cliques = 1;
+    odd_even_cliques = MPIR_PARAM_ODD_EVEN_CLIQUES;
 #endif
 
     if (no_local) {
@@ -1382,6 +1405,12 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
         /* this code currently assumes pg is comm_world */
         mpi_errno = populate_ids_from_mapping(process_mapping, &num_nodes, pg, &did_map);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+#ifdef _OSU_MVAPICH_
+        /* We can relay on Hydra proccess mapping info on signle node case.*/
+        if (g_num_nodes == 1) {
+            MPIDI_Get_local_host_mapping(pg, our_pg_rank);
+        }
+#endif
         MPIU_ERR_CHKINTERNAL(!did_map, mpi_errno, "unable to populate node ids from PMI_process_mapping");
         g_num_nodes = num_nodes;
     }
@@ -1422,6 +1451,12 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
             mpi_errno = populate_ids_from_mapping(value, &num_nodes, pg, &did_map);
             if (mpi_errno) MPIU_ERR_POP(mpi_errno);
             g_num_nodes = num_nodes;
+#ifdef _OSU_MVAPICH_
+            /* We can relay on Hydra proccess mapping info on signle node case. */
+            if (g_num_nodes == 1) {
+                MPIDI_Get_local_host_mapping(pg, our_pg_rank);
+            }
+#endif
             if (did_map) {
                 goto fn_exit;
             }

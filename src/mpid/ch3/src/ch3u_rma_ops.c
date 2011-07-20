@@ -265,8 +265,32 @@ int MPIDI_Win_free(MPID_Win **win_ptr)
     }
 
 #if defined(_OSU_MVAPICH_)
+    /*complete any pending outgoing operations*/
     if ((*win_ptr)->fall_back != 1) {
-	MPIDI_CH3I_RDMA_finish_rma(*win_ptr);
+        MPIDI_CH3I_RDMA_finish_rma(*win_ptr);
+    }
+
+    /*you can be a passive target and hence should wait for any incoming 
+      communication to complete*/
+    if ((*win_ptr)->outstanding_rma != 0 || 
+        (*win_ptr)->current_lock_type != MPID_LOCK_NONE) {
+        MPID_Progress_state progress_state;
+        
+        MPID_Progress_start(&progress_state);
+        while ((*win_ptr)->outstanding_rma != 0 || 
+               (*win_ptr)->current_lock_type != MPID_LOCK_NONE) {
+            mpi_errno = MPID_Progress_wait(&progress_state);
+            /* --BEGIN ERROR HANDLING-- */
+            if (mpi_errno != MPI_SUCCESS) {
+                MPID_Progress_end(&progress_state);
+                MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**winnoprogress");
+            }
+            /* --END ERROR HANDLING-- */
+        }
+        MPID_Progress_end(&progress_state);
+    }  
+
+    if ((*win_ptr)->fall_back != 1) {
 	MPIDI_CH3I_RDMA_win_free(win_ptr);
     }
 #if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)

@@ -29,6 +29,7 @@
 #include <unistd.h>
 #include <assert.h>
 #include <pthread.h>
+#include "debug_utils.h"
 
 static int mem_hook_init = 0;
 static pthread_t lock_holder = -1;
@@ -43,15 +44,54 @@ static size_t store_len = 0;
 
 static void set_real_munmap_ptr()
 {
-    munmap_t munmap = (munmap_t) dlsym(RTLD_NEXT, "munmap");
+    munmap_t munmap_ptr = (munmap_t) dlsym(RTLD_NEXT, "munmap");
     char* dlerror_str = dlerror();
-
     if(NULL != dlerror_str) {
-        fprintf(stderr,"Error resolving munmap (%s)\n",
-                dlerror_str);
+        PRINT_ERROR("Error resolving munmap(): %s\n", dlerror_str);
     }       
 
-    mvapich2_minfo.munmap = munmap;
+    /*
+     * The following code tries to detect link error where both static 
+     * and dynamic libraries are linked to executable. This link error 
+     * is not currently detected by the linker (should it be? I don't know).
+     * However, at execution, it produces an infinite recursive loop of 
+     * mvapich2_munmap() -> munmap() -> mvapich2_munmap() -> ...
+     * that crashes the program. 
+     * It is because in this case, the above code picks the wrong munmap() 
+     * function from the second library instead of the one from the system.
+     */
+
+    void* handle = dlopen("libmpich.so", RTLD_LAZY | RTLD_LOCAL);
+    dlerror_str = dlerror();
+    if(NULL != dlerror_str) {
+        // The error in this case can be ignored
+        // This is probably because only the shared library is not available. 
+        // However, we keep calling dlerror() so it reset the error flag for dl calls.
+    }
+
+    if (NULL != handle) {
+        /* Shared libraries are in use, otherwise simply proceed. */
+        munmap_t mvapich_munmap_ptr = (munmap_t) dlsym(handle, "munmap");
+        char* dlerror_str = dlerror();
+        if(NULL != dlerror_str) {
+            PRINT_ERROR("Error resolving munmap() from libmpich.so: %s\n", dlerror_str);
+        }
+
+        if (munmap_ptr == mvapich_munmap_ptr) {
+            /*
+             * This means the "real" munmap is the same as libmpich.so.
+             * This happens if a program is statically and dynamically
+             * linked at the same time.  Using the libmpich.so munmap
+             * again results in recursion.
+             */
+            PRINT_ERROR("Error getting real munmap(). MVAPICH2 cannot run properly.\n");
+            PRINT_ERROR("This error usually means that the program is linked with both static and shared MVAPICH2 libraries.\n");
+            PRINT_ERROR("Please check your Makefile or your link command line.\n");
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    mvapich2_minfo.munmap = munmap_ptr;
 }
 #endif /* !defined(DISABLE_MUNMAP_HOOK) */
 
@@ -162,8 +202,9 @@ int mvapich2_minit()
 
 void mvapich2_mfin()
 {
-    assert(1 == mem_hook_init);
-    mvapich2_minfo.is_mem_hook_finalized = 1;
+    if (mem_hook_init) {
+        mvapich2_minfo.is_mem_hook_finalized = 1;
+    }
 }
 
 #if !defined(DISABLE_MUNMAP_HOOK)

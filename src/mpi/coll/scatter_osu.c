@@ -316,7 +316,7 @@ int MPIR_Scatter_MV2_two_level_Binomial (
 						sendcnts[i] = node_sizes[i]*nbytes;
 					  }
 				  } 
-				  mpi_errno = MPIR_Scatterv_MV2(leader_scatter_buf, sendcnts, displs, 
+				  mpi_errno = MPIR_Scatterv(leader_scatter_buf, sendcnts, displs, 
 					  MPI_BYTE, tmp_buf, nbytes*local_size, MPI_BYTE,
 					  leader_root, leader_commptr, errflag);
 			  } else { 
@@ -331,7 +331,7 @@ int MPIR_Scatter_MV2_two_level_Binomial (
 						sendcnts[i] = node_sizes[i]*sendcnt;
 					  }
 				  } 
-				  mpi_errno = MPIR_Scatterv_MV2(sendbuf, sendcnts, displs, 
+				  mpi_errno = MPIR_Scatterv(sendbuf, sendcnts, displs, 
 					  sendtype, tmp_buf, nbytes*local_size, MPI_BYTE,
 					  leader_root, leader_commptr, errflag);
 			  } 
@@ -551,7 +551,7 @@ int MPIR_Scatter_MV2_two_level_Direct (
 						sendcnts[i] = node_sizes[i]*nbytes;
 					  }
 				  } 
-				  mpi_errno = MPIR_Scatterv_MV2(leader_scatter_buf, sendcnts, displs, 
+				  mpi_errno = MPIR_Scatterv(leader_scatter_buf, sendcnts, displs, 
 					  MPI_BYTE, tmp_buf, nbytes*local_size, MPI_BYTE,
 					  leader_root, leader_commptr, errflag);
 			  } else { 
@@ -566,7 +566,7 @@ int MPIR_Scatter_MV2_two_level_Direct (
 						sendcnts[i] = node_sizes[i]*sendcnt;
 					  }
 				  } 
-				  mpi_errno = MPIR_Scatterv_MV2(sendbuf, sendcnts, displs, 
+				  mpi_errno = MPIR_Scatterv(sendbuf, sendcnts, displs, 
 					  sendtype, tmp_buf, nbytes*local_size, MPI_BYTE,
 					  leader_root, leader_commptr, errflag);
 			  } 

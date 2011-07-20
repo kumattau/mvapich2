@@ -405,7 +405,7 @@ typedef struct MPIDI_CH3_Pkt_put_rndv
                                * epoch in the case of passive target rma
                                * with shared locks. Otherwise set to NULL*/
     MPI_Request sender_req_id;
-    int data_sz;
+    MPIDI_msg_sz_t data_sz;
     MPIDI_CH3I_MRAILI_Rndv_info_t rndv;
 }
 MPIDI_CH3_Pkt_put_rndv_t;
@@ -468,7 +468,7 @@ typedef struct MPIDI_CH3_Pkt_get_rndv
     MPI_Win source_win_handle; /* Used in the last RMA operation in an
                                * epoch in the case of passive target rma
                                * with shared locks. Otherwise set to NULL*/
-    int data_sz;
+    MPIDI_msg_sz_t data_sz;
     MPIDI_CH3I_MRAILI_Rndv_info_t rndv;
 }
 MPIDI_CH3_Pkt_get_rndv_t;
@@ -524,7 +524,7 @@ typedef struct MPIDI_CH3_Pkt_accum_rndv
                                * epoch in the case of passive target rma
                                * with shared locks. Otherwise set to NULL*/
     MPI_Request sender_req_id;
-    int data_sz;
+    MPIDI_msg_sz_t data_sz;
 
     MPIDI_CH3I_MRAILI_RNDV_INFO_DECL
 }

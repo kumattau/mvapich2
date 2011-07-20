@@ -48,6 +48,24 @@
 #define PKT_NO_SEQ_NUM -2
 #define PKT_IS_NULL -1
 
+#define MRAILI_ALIGN_LEN(len, align_unit)           \
+{                                                   \
+    len = ((int)(((len)+align_unit-1) /             \
+                align_unit)) * align_unit;          \
+}
+
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <sys/mman.h>
+#ifdef __ia64__
+/* Only ia64 requires this */
+#define SHMAT_ADDR (void *)(0x8000000000000000UL)
+#define SHMAT_FLAGS (SHM_RND)
+#else
+#define SHMAT_ADDR (void *)(0x0UL)
+#define SHMAT_FLAGS (0)
+#endif /* __ia64__*/
+#define HUGEPAGE_ALIGN  (2*1024*1024)
 
 /*
  * brief justification for vbuf format:
@@ -145,6 +163,7 @@ typedef struct vbuf_region
     int count;                  /* number of vbufs in region  */
     struct vbuf* vbuf_head;     /* first vbuf in region       */
     struct vbuf_region* next;   /* thread vbuf regions        */
+    int shmid;
 } vbuf_region;
 
 static inline void VBUF_SET_RDMA_ADDR_KEY(

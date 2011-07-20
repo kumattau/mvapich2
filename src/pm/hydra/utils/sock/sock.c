@@ -123,7 +123,7 @@ HYD_status HYDU_sock_listen(int *listen_fd, char *port_range, uint16_t * port)
     if (*port > high_port)
         HYDU_ERR_SETANDJUMP(status, HYD_SOCK_ERROR, "no port to bind\n");
 
-    if (listen(*listen_fd, -1) < 0)
+    if (listen(*listen_fd, SOMAXCONN) < 0)
         HYDU_ERR_SETANDJUMP(status, HYD_SOCK_ERROR, "listen error (%s)\n",
                             HYDU_strerror(errno));
 
@@ -147,11 +147,12 @@ HYD_status HYDU_sock_listen(int *listen_fd, char *port_range, uint16_t * port)
 }
 
 
-HYD_status HYDU_sock_connect(const char *host, uint16_t port, int *fd)
+HYD_status HYDU_sock_connect(const char *host, uint16_t port, int *fd, int retries,
+                             unsigned long delay)
 {
     struct hostent *ht;
     struct sockaddr_in sa;
-    int one = 1;
+    int one = 1, ret, retry_count;
     HYD_status status = HYD_SUCCESS;
 
     HYDU_FUNC_ENTER();
@@ -179,7 +180,21 @@ HYD_status HYDU_sock_connect(const char *host, uint16_t port, int *fd)
     /* Not being able to connect is not an error in all cases. So we
      * return an error, but only print a warning message. The upper
      * layer can decide what to do with the return status. */
-    if (connect(*fd, (struct sockaddr *) &sa, sizeof(sa)) < 0) {
+    retry_count = 0;
+    do {
+        ret = connect(*fd, (struct sockaddr *) &sa, sizeof(sa));
+        if (ret < 0 && errno == ECONNREFUSED) {
+            /* connection error; increase retry count and delay */
+            retry_count++;
+            if (retry_count > retries)
+                break;
+            HYDU_delay(delay);
+        }
+        else
+            break;
+    } while (1);
+
+    if (ret < 0) {
         status = sock_localhost_init();
         HYDU_ERR_POP(status, "unable to initialize sock local information\n");
 
@@ -290,9 +305,9 @@ HYD_status HYDU_sock_write(int fd, const void *buf, int maxlen, int *sent, int *
     while (1) {
         do {
             tmp = write(fd, (char *) buf + *sent, maxlen - *sent);
-        } while (tmp < 0 && errno == EINTR);
+        } while (tmp < 0 && (errno == EINTR || errno == EAGAIN));
 
-        if ((tmp < 0) || (*sent == 0 && tmp == 0)) {
+        if (tmp < 0 || tmp == 0) {
             *closed = 1;
             goto fn_exit;
         }
@@ -461,7 +476,7 @@ HYD_status HYDU_sock_get_iface_ip(char *iface, char **ip)
         HYDU_ERR_SETANDJUMP(status, HYD_INTERNAL_ERROR, "getifaddrs failed\n");
 
     for (ifa = ifaddr; ifa; ifa = ifa->ifa_next)
-        if (!strcmp(ifa->ifa_name, iface) && (ifa->ifa_addr->sa_family == AF_INET))
+        if (!strcmp(ifa->ifa_name, iface) && (ifa->ifa_addr) && (ifa->ifa_addr->sa_family == AF_INET))
             break;
 
     if (!ifa)

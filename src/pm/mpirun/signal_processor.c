@@ -16,6 +16,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+static pthread_t sp_tid;
+
+static int is_joined = 1;
+static int is_running = 0;
+
 typedef void (*func_t)(int);
 
 struct sp_params {
@@ -27,40 +32,47 @@ struct sp_params {
 };
 
 static void
-signal_thread (struct sp_params * params)
+cleanup_sp_thread (void * arg)
+{
+    extern int is_running;
+    is_running = 0;
+}
+
+static void
+sp_thread (struct sp_params * params)
 {
     sigset_t sigmask = params->sigmask;
     func_t processor = params->processor;
     int error, signal;
 
-    if ((error = pthread_detach(pthread_self()))) {
-        PRINT_ERROR_ERRNO("pthread_detach", error);
-        exit(EXIT_FAILURE);
-    }
-
     /*
      * Signal the completion of copying the signal mask and function pointer
-     * to signal processor so any pending resources can be reclaimed.
+     * to signal processor so any pending resources can be reclaimed.  Also
+     * set the is_running variable.
      */
     pthread_mutex_lock(&params->mutex);
     params->copied = 1;
+    is_running = 1;
     pthread_cond_signal(&params->cond);
     pthread_mutex_unlock(&params->mutex);
 
+    pthread_cleanup_push(&cleanup_sp_thread, NULL);
     for (;;) {
         if ((error = sigwait(&sigmask, &signal))) {
             PRINT_ERROR_ERRNO("sigwait", error);
-            exit(EXIT_FAILURE);
+            abort();
         }
 
         processor(signal);
     }
+    pthread_cleanup_pop(0);
 }
 
 extern void
-start_signal_processor (sigset_t sigmask, void (*processor)(int))
+start_sp_thread (sigset_t sigmask, void
+        (*processor)(int), int detach_thread)
 {
-    pthread_t thread;
+    pthread_attr_t attr;
     int error;
     struct sp_params params = {
         .mutex = PTHREAD_MUTEX_INITIALIZER,
@@ -71,15 +83,35 @@ start_signal_processor (sigset_t sigmask, void (*processor)(int))
     params.sigmask = sigmask;
     params.processor = processor;
 
-    if ((error = pthread_sigmask(SIG_SETMASK, &params.sigmask, NULL))) {
-        PRINT_ERROR_ERRNO("pthread_sigmask", error);
-        exit(EXIT_FAILURE);
+    if ((error = pthread_attr_init(&attr))) {
+        PRINT_ERROR_ERRNO("pthread_attr_init", error);
+        abort();
     }
 
-    if ((error = pthread_create(&thread, NULL, (void * (*)(void
-                        *))signal_thread, (void *)&params))) {
+    /*
+     * This code is shared between mpirun_rsh and mpispawn.  In mpirun_rsh
+     * we need the signal thread to be joinable but mpispawn is not yet
+     * ready to join with this thread.
+     */
+    if (detach_thread) {
+        error = pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+        if (error) {
+            PRINT_ERROR_ERRNO("pthread_attr_setdetachstate", error);
+            abort();
+        }
+    }
+
+    error = pthread_sigmask(SIG_SETMASK, &params.sigmask, NULL);
+    if (error) {
+        PRINT_ERROR_ERRNO("pthread_sigmask", error);
+        abort();
+    }
+
+    error = pthread_create(&sp_tid, &attr, (void * (*)(void *))&sp_thread,
+            (void *)&params);
+    if (error) {
         PRINT_ERROR_ERRNO("pthread_create", error);
-        exit(EXIT_FAILURE);
+        abort();
     }
 
     /*
@@ -95,6 +127,27 @@ start_signal_processor (sigset_t sigmask, void (*processor)(int))
      */
     pthread_mutex_destroy(&params.mutex);
     pthread_cond_destroy(&params.cond);
+
+    /*
+     * This is so that stop_signal_processor does not try to join a detached
+     * thread.
+     */
+    if (!detach_thread) {
+        is_joined = 0;
+    }
+}
+
+extern void
+stop_sp_thread (void)
+{
+    extern pthread_t sp_tid;
+    extern int is_joined;
+    extern int is_running;
+    void * return_value;
+
+    if (is_running) pthread_cancel(sp_tid);
+    if (!is_joined) pthread_join(sp_tid, &return_value);
+    is_joined = 1;
 }
 
 /* vi:set sw=4 sts=4 tw=76 expandtab: */

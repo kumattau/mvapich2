@@ -134,6 +134,12 @@ int use_hwloc_cpu_binding=0;
 
 int rdma_set_smp_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 {
+    char *value = NULL;
+    
+    if (!proc->arch_type) {
+        proc->arch_type = mv2_get_arch_type();
+    }
+
     switch  (proc->arch_type){
         case MV2_ARCH_INTEL:
         case MV2_ARCH_INTEL_XEON_E5630_8:
@@ -174,19 +180,7 @@ int rdma_set_smp_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
             s_smp_batch_size = 8;
             break;
     }
-    return 0;
-}
-
-
-void
-rdma_init_parameters (MPIDI_CH3I_RDMA_Process_t *proc)
-{
-    char* value = NULL;
-    proc->arch_type = mv2_get_arch_type();
-
-    /* Set SMP params based on architecture */
-    rdma_set_smp_parameters( proc );
-
+    
     /* Reading SMP user parameters */
     if ((value = getenv("SMP_EAGERSIZE")) != NULL) {
         g_smp_eagersize = atoi(value);
@@ -202,6 +196,16 @@ rdma_init_parameters (MPIDI_CH3I_RDMA_Process_t *proc)
     if ((value = getenv("SMP_BATCH_SIZE")) != NULL ) {
        s_smp_batch_size = atoi(value);
     }
+
+    return 0;
+}
+
+
+void
+rdma_init_parameters (MPIDI_CH3I_RDMA_Process_t *proc)
+{
+    char* value = NULL;
+    proc->arch_type = mv2_get_arch_type();
 
     if ((value = (char *) getenv ("MV2_DAPL_PROVIDER")) != NULL)
       {

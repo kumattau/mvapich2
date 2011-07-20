@@ -23,17 +23,17 @@ static MPID_Collops collective_functions_osu = {
     MPIR_Barrier_MV2, /* Barrier */ 
     MPIR_Bcast_MV2, /* Bcast intra*/
     MPIR_Gather_MV2, /* Gather */
-    MPIR_Gatherv_MV2, /* Gatherv */
+    MPIR_Gatherv, /* Gatherv */
     MPIR_Scatter_MV2, /* Scatter */
-    MPIR_Scatterv_MV2, /* Scatterv */
+    MPIR_Scatterv, /* Scatterv */
     MPIR_Allgather_MV2, /* Allgather */
-    MPIR_Allgatherv_MV2, /* Allgatherv */
+    MPIR_Allgatherv, /* Allgatherv */
     MPIR_Alltoall_MV2, /* Alltoall */
-    MPIR_Alltoallv_MV2, /* Alltoallv */
-    MPIR_Alltoallw_MV2, /* Alltoallw */
+    MPIR_Alltoallv, /* Alltoallv */
+    MPIR_Alltoallw, /* Alltoallw */
     MPIR_Reduce_MV2, /* Reduce */
     MPIR_Allreduce_MV2, /* Allreduce */
-    MPIR_Reduce_scatter_MV2, /* Reduce_scatter */
+    MPIR_Reduce_scatter, /* Reduce_scatter */
     MPIR_Scan, /* Scan */
     NULL  /* Exscan */
 };
@@ -69,10 +69,10 @@ int MPIDI_CH3I_comm_create (MPID_Comm *comm)
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_COMM_CREATE);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_COMM_CREATE);
 
-    if(use_osu_collectives == 1)  { 
+    if(use_osu_collectives == 1 && 
+        comm->comm_kind == MPID_INTRACOMM)  { 
         comm->coll_fns = &collective_functions_osu;
-    }
-    if(use_anl_collectives == 1)  {
+    } else { 
         comm->coll_fns = &collective_functions_anl;
     }
 

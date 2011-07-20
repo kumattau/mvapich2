@@ -346,11 +346,6 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
         usage();
         exit(EXIT_FAILURE);
     }
-#ifdef CR_FTB
-    //if (cr_ftb_init(nprocs, sessionid))
-    if (cr_ftb_init(nprocs))
-        exit(EXIT_FAILURE);
-#endif
 
     binary_dirname = dirname(strdup(argv[0]));
     if (strlen(binary_dirname) == 1 && argv[0][0] != '.') {

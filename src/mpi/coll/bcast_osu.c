@@ -1159,16 +1159,16 @@ static int MPIR_Bcast_inter_node_helper_MV2(
 
         if (knomial_inter_leader_bcast == 1 
                   && nbytes <= knomial_inter_leader_threshold ) {
-                      mpi_errno =  MPIR_Knomial_Bcast_MV2(buffer, count, 
+                 mpi_errno =  MPIR_Knomial_Bcast_MV2(buffer, count, 
                                      datatype, root, leader_commptr, errflag);  
         } else { 
-            if(scatter_rd_inter_leader_bcast) { 
-                 mpi_errno = MPIR_Bcast_scatter_doubling_allgather_MV2(buffer, count, 
-                                     datatype, root, leader_commptr, errflag);   
-            } 
-            else if(scatter_ring_inter_leader_bcast) {                                        
+            if(scatter_ring_inter_leader_bcast) { 
                  mpi_errno = MPIR_Bcast_scatter_ring_allgather_MV2(buffer, count, 
                                      datatype, root, leader_commptr, errflag);  
+            } 
+            else if(scatter_rd_inter_leader_bcast) {                                        
+                 mpi_errno = MPIR_Bcast_scatter_doubling_allgather_MV2(buffer, count, 
+                                     datatype, root, leader_commptr, errflag);   
             } 
             else if(knomial_inter_leader_bcast) { 
                       mpi_errno =  MPIR_Knomial_Bcast_MV2(buffer, count, 
@@ -1261,7 +1261,9 @@ int MPIR_Bcast_intra_MV2 (
     }
     nbytes = type_size * count;
 
-    if(comm_ptr->ch.shmem_coll_ok == 1) {  
+    if(comm_ptr->ch.shmem_coll_ok == 1 && 
+       enable_shmem_bcast == 1         && 
+       comm_size > bcast_two_level_system_size) {  
          if (!is_contig || !is_homogeneous) {
                 MPIU_CHKLMEM_MALLOC(tmp_buf, void *, nbytes, mpi_errno, "tmp_buf");
 
@@ -1328,11 +1330,11 @@ int MPIR_Bcast_intra_MV2 (
                                     comm_ptr, errflag);
             } else {
                     if(scatter_rd_inter_leader_bcast) {
-                         mpi_errno = MPIR_Bcast_scatter_doubling_allgather_MV2(buffer, count,
+                         mpi_errno = MPIR_Bcast_scatter_ring_allgather_MV2(buffer, count,
                                              datatype, root, comm_ptr, errflag);
                     }
                     else {
-                         mpi_errno = MPIR_Bcast_scatter_ring_allgather_MV2(buffer, count,
+                         mpi_errno = MPIR_Bcast_scatter_doubling_allgather_MV2(buffer, count,
                                              datatype, root, comm_ptr, errflag);
                     }
             }

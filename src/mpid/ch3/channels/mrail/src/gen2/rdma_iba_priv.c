@@ -19,6 +19,7 @@
 #include "mpiutil.h"
 #include "cm.h"
 #include "dreg.h"
+#include "debug_utils.h"
 
 #undef DEBUG_PRINT
 #ifdef DEBUG
@@ -292,7 +293,7 @@ int rdma_find_network_type(struct ibv_device **dev_list, int num_devices,
 {
     int i = 0;
     int hca_type = 0;
-    int network_type = 0;
+    int network_type = MV2_NETWORK_CLASS_UNKNOWN;
     int num_ib_cards = 0;
     int num_iwarp_cards = 0;
     int num_unknwn_cards = 0;
@@ -308,14 +309,23 @@ int rdma_find_network_type(struct ibv_device **dev_list, int num_devices,
         } else {
             num_unknwn_cards++;
         }
+        if (MV2_IS_QLE_CARD( hca_type )) {
+            PRINT_ERROR("QLogic IB card detected in system\n");
+            PRINT_ERROR("Please re-configure the library with the"
+                        " '--with-device=ch3:psm' configure option"
+                        " for best performance\n");
+        }
     }
 
-    if (num_ib_cards >= num_iwarp_cards) {
+    if (num_ib_cards && (num_ib_cards >= num_iwarp_cards)) {
         network_type = MV2_NETWORK_CLASS_IB;
         *num_usable_hcas = num_ib_cards;
-    } else {
+    } else if (num_iwarp_cards && (num_ib_cards < num_iwarp_cards)) {
         network_type = MV2_NETWORK_CLASS_IWARP;
         *num_usable_hcas = num_iwarp_cards;
+    } else {
+        network_type = MV2_NETWORK_CLASS_UNKNOWN;
+        *num_usable_hcas = num_unknwn_cards;
     }
 
     return network_type;
@@ -471,6 +481,17 @@ int rdma_open_hca(struct MPIDI_CH3I_RDMA_Process_t *proc)
     
     network_type = rdma_find_network_type(dev_list, num_devices,
                                           &num_usable_hcas);
+
+    if (network_type == MV2_NETWORK_CLASS_UNKNOWN) {
+        if (num_usable_hcas) {
+            PRINT_ERROR("Unknown HCA type: this build of MVAPICH2 does not"
+                         "fully support the HCA found on the system (try with"
+                         " other build options)\n");
+        } else {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                    "**fail %s", "No IB device found");
+        }
+    }
 
     for (i = 0; i < num_devices; i ++) {
         if (rdma_skip_network_card(network_type, dev_list[i])) {
@@ -1366,7 +1387,7 @@ void MRAILI_Init_vc(MPIDI_VC_t * vc)
     vc->mrail.cmanager.num_channels         = vc->mrail.num_rails;
     vc->mrail.cmanager.num_local_pollings   = 0;
 
-    if (pg_size < rdma_eager_limit) 
+    if (pg_size < rdma_eager_limit && !MPIDI_CH3I_Process.has_dpm) 
 	vc->mrail.rfp.eager_start_cnt = rdma_polling_set_threshold + 1;
     else
 	vc->mrail.rfp.eager_start_cnt = 0;
@@ -1432,12 +1453,6 @@ void MRAILI_Init_vc(MPIDI_VC_t * vc)
     vc->mrail.rails[rdma_num_rails - 1].s_weight =
         DYNAMIC_TOTAL_WEIGHT -
         (DYNAMIC_TOTAL_WEIGHT / rdma_num_rails) * (rdma_num_rails - 1);
-
-    if (MPIDI_CH3I_RDMA_Process.has_one_sided) {
-	for (i = 0; i < rdma_num_rails; ++i) {
-	    vc->mrail.rails[i].postsend_times_1sc = 0;
-        }
-    }
 }
 
 #ifdef _ENABLE_XRC_

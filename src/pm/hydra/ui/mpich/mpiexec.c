@@ -157,6 +157,7 @@ static void signal_cb(int signum)
     else {
         /* All other signals are forwarded to the user */
         cmd.type = HYD_SIGNAL;
+        cmd.signum = signum;
         HYDU_sock_write(HYD_server_info.cleanup_pipe[1], &cmd, sizeof(cmd), &sent, &closed);
     }
 
@@ -281,8 +282,13 @@ int main(int argc, char **argv)
         HYDU_ERR_POP(status, "unable to query the RMK for a node list\n");
 
         if (HYD_server_info.node_list == NULL) {
+            char localhost[MAX_HOSTNAME_LEN] = { 0 };
+
             /* The RMK didn't give us anything back; use localhost */
-            status = HYDU_add_to_node_list("localhost", 1, &HYD_server_info.node_list);
+            status = HYDU_gethostname(localhost);
+            HYDU_ERR_POP(status, "unable to get local hostname\n");
+
+            status = HYDU_add_to_node_list(localhost, 1, &HYD_server_info.node_list);
             HYDU_ERR_POP(status, "unable to add to node list\n");
 
             reset_rmk = 1;
@@ -320,25 +326,19 @@ int main(int argc, char **argv)
         HYDU_ERR_POP(status, "unable to reinitialize the bootstrap server\n");
     }
 
-    HYD_server_info.global_core_count = 0;
+    HYD_server_info.pg_list.pg_core_count = 0;
     for (node = HYD_server_info.node_list, i = 0; node; node = node->next, i++) {
-        HYD_server_info.global_core_count += node->core_count;
+        HYD_server_info.pg_list.pg_core_count += node->core_count;
         node->node_id = i;
     }
 
     /* If the number of processes is not given, we allocate all the
      * available nodes to each executable */
+    HYD_server_info.pg_list.pg_process_count = 0;
     for (exec = HYD_uii_mpx_exec_list; exec; exec = exec->next) {
-        if (exec->proc_count == -1) {
-            if (HYD_server_info.global_core_count == 0)
-                exec->proc_count = 1;
-            else
-                exec->proc_count = HYD_server_info.global_core_count;
-
-            /* If we didn't get anything from the user, take whatever
-             * the RMK gave */
-            HYD_server_info.pg_list.pg_process_count += exec->proc_count;
-        }
+        if (exec->proc_count == -1)
+            exec->proc_count = HYD_server_info.pg_list.pg_core_count;
+        HYD_server_info.pg_list.pg_process_count += exec->proc_count;
     }
 
     status = HYDU_list_inherited_env(&HYD_server_info.user_global.global_env.inherited);

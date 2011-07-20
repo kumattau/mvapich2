@@ -33,6 +33,10 @@
 
 #define SHMEM_MAX_INT ((unsigned int)(-1))
 
+#define DEFAULT_SHMEM_BCAST_LEADERS    4096
+#define GATHER_DIRECT_SYSTEM_SIZE_SMALL      384
+#define GATHER_DIRECT_SYSTEM_SIZE_MEDIUM     1024
+
 #if defined(_IA32_)
 
 #define SHMEM_CACHE_LINE_SIZE 64
@@ -176,6 +180,7 @@ extern int  knomial_intra_node_threshold;
 extern int  knomial_inter_leader_threshold; 
 extern int  knomial_inter_leader_bcast;
 extern int  enable_shmem_bcast;
+extern int  bcast_two_level_system_size; 
 
 /* Use inside reduce_osu.c */
 extern int disable_shmem_reduce;

@@ -128,6 +128,7 @@ int           use_osu_collectives = 1;
 int           use_anl_collectives = 0; 
 unsigned long rdma_polling_spin_count_threshold = 5; 
 int           use_thread_yield=0; 
+int		      mv2_on_demand_ud_info_exchange = 0;
 /* If this number of eager sends are already outstanding
  * the message can be coalesced with other messages (and
  * will not be sent until a previous message completes)
@@ -210,6 +211,8 @@ int striping_threshold = STRIPING_THRESHOLD;
 
 /* Used IBoEth mode */
 int use_iboeth = 0;
+
+int rdma_enable_hugepage = 1;
 
 /* Linear update factor for HSAM */
 int alpha = 0.9;
@@ -522,6 +525,12 @@ int rdma_get_rail_sharing_policy(char *value)
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int rdma_set_smp_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 {
+    char *value = NULL;
+    
+    if (!proc->arch_type) {
+        proc->arch_type = mv2_get_arch_type();
+    }
+
     switch  (proc->arch_type){
         case MV2_ARCH_INTEL:
         case MV2_ARCH_INTEL_XEON_E5630_8:
@@ -563,6 +572,23 @@ int rdma_set_smp_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
             s_smp_batch_size = 8;
             break;
     }
+
+    /* Reading SMP user parameters */
+    if ((value = getenv("SMP_EAGERSIZE")) != NULL) {
+        g_smp_eagersize = user_val_to_bytes(value,"SMP_EAGERSIZE");
+    }
+
+    if ((value = getenv("SMPI_LENGTH_QUEUE")) != NULL) {
+        s_smpi_length_queue = user_val_to_bytes(value,"SMPI_LENGTH_QUEUE");
+    }
+
+    if ((value = getenv("SMP_NUM_SEND_BUFFER")) != NULL ) {
+        s_smp_num_send_buffer = atoi(value);
+    }
+    if ((value = getenv("SMP_BATCH_SIZE")) != NULL ) {
+       s_smp_batch_size = atoi(value);
+    }
+
     return 0;
 }
 
@@ -792,6 +818,8 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 	    }
 	    if (pg_size > threshold) {
 		    proc->use_rdma_cm_on_demand = 1;
+            mv2_on_demand_ud_info_exchange = 1;
+            proc->has_ring_startup = 0;
 	    }	    
     }
 #endif
@@ -855,6 +883,7 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
    
     if (proc->has_srq
         && proc->hca_type != MV2_HCA_PATH_HT
+        && proc->hca_type != MV2_HCA_QIB
         && proc->hca_type != MV2_HCA_MLX_PCI_X
         && proc->hca_type != MV2_HCA_IBM_EHCA
 #if defined(RDMA_CM)
@@ -1033,25 +1062,6 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 	    proc->use_iwarp_mode = 1;
     }
 #endif /* defined(RDMA_CM) */
-
-    /* Set SMP params based on architecture */
-    rdma_set_smp_parameters( proc );
-
-    /* Reading SMP user parameters */
-    if ((value = getenv("SMP_EAGERSIZE")) != NULL) {
-        g_smp_eagersize = user_val_to_bytes(value,"SMP_EAGERSIZE");
-    }
-
-    if ((value = getenv("SMPI_LENGTH_QUEUE")) != NULL) {
-        s_smpi_length_queue = user_val_to_bytes(value,"SMPI_LENGTH_QUEUE");
-    }
-
-    if ((value = getenv("SMP_NUM_SEND_BUFFER")) != NULL ) {
-        s_smp_num_send_buffer = atoi(value);
-    }
-    if ((value = getenv("SMP_BATCH_SIZE")) != NULL ) {
-       s_smp_batch_size = atoi(value);
-    }
 
 fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_RDMA_GET_CONTROL_PARAMETERS);
@@ -1705,7 +1715,8 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
             break;
     }
 
-    if ( MV2_HCA_PATH_HT == proc->hca_type ) {
+    if ( ( MV2_HCA_PATH_HT == proc->hca_type ) ||
+         ( MV2_HCA_QIB == proc->hca_type ) ) {
         rdma_default_qp_ous_rd_atom = 1;
     } else {
         rdma_default_qp_ous_rd_atom = 4;
@@ -1785,6 +1796,7 @@ void rdma_param_handle_heterogenity(uint32_t hca_type[], int pg_size)
     type = hca_type[0];
     for (i = 0; i < pg_size; ++ i) {
         if (hca_type[i] == MV2_HCA_PATH_HT ||
+            hca_type[i] == MV2_HCA_QIB ||
             hca_type[i] == MV2_HCA_MLX_PCI_X ||
             hca_type[i] == MV2_HCA_IBM_EHCA ) {
             MPIDI_CH3I_RDMA_Process.has_srq = 0;
@@ -1795,8 +1807,10 @@ void rdma_param_handle_heterogenity(uint32_t hca_type[], int pg_size)
         if ( MV2_HCA_IBM_EHCA == hca_type[i] )
             rdma_max_inline_size = -1;                
         
-        if ( MV2_HCA_PATH_HT == hca_type[i] )
+        if ( ( MV2_HCA_PATH_HT == hca_type[i] ) ||
+             ( MV2_HCA_QIB == hca_type[i] ) ) {
             rdma_default_qp_ous_rd_atom = 1;
+        }
 
         if (hca_type[i] != type)
             heterogenous = 1;
@@ -2175,6 +2189,9 @@ void rdma_get_user_parameters(int num_proc, int me)
             rdma_default_async_thread_stack_size = RDMA_DEFAULT_ASYNC_THREAD_STACK_SIZE;
         }
     }
+    if ((value = getenv("MV2_USE_HUGEPAGES")) != NULL) {
+         rdma_enable_hugepage = atoi(value);
+    }
 }
 
 /* This function is specifically written to make sure that HSAM
@@ -2259,6 +2276,13 @@ int rdma_get_pm_parameters(MPIDI_CH3I_RDMA_Process_t *proc)
         default:
             proc->has_ring_startup = (value = getenv("MV2_USE_RING_STARTUP")) != NULL ? !!atoi(value) : 1;
             break;
+    }
+
+    if ((value = getenv("MV2_ON_DEMAND_UD_INFO_EXCHANGE")) != NULL) {
+        mv2_on_demand_ud_info_exchange = !!atoi(value);
+        if (mv2_on_demand_ud_info_exchange) {
+            proc->has_ring_startup = 0;
+        }
     }
 }
 

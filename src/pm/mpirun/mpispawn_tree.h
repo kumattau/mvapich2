@@ -20,15 +20,6 @@
 #include <netinet/in.h>
 #include <unistd.h>
 
-typedef enum {
-    MPISPAWN_MPIPROCESS_ERROR = 1,         // An MPI process got an error
-    MPISPAWN_MPIPROCESS_NONZEROEXIT = 2,   // An MPI process returned a non-zero exit code
-    MPISPAWN_DPM_REQ = 3,                  // DPM request
-    MPISPAWN_PMI_READ_ERROR = 4,           // MPISPAWN got an error while reading a PMI socket
-    MPISPAWN_PMI_WRITE_ERROR = 5,          // MPISPAWN got an error while writing a PMI socket
-    MPISPAWN_INTERNAL_ERROR = 6,           // MPISPAWN got an internal error
-    MPISPAWN_CLEANUP_SIGNAL = 7,           // MPISPAWN received a cleanup signal
-} mpispawn_error_code;
 
 
 #define MAX_HOST_LEN    256

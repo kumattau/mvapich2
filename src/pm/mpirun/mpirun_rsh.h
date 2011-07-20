@@ -159,4 +159,6 @@ extern process_groups *pglist;
 #define TOTALVIEW_CMD "/usr/totalview/bin/totalview"
 #endif
 
+void handle_spawn_req(int readsock);
+
 /* vi:set sw=4 sts=4 tw=80: */

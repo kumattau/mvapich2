@@ -3,10 +3,41 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2-1.7rc1 (07/20/2011)
+
+* Features and Enhancements (since 1.7a2)
+    - Based on MPICH2-1.4
+    - CH3 shared memory channel for standalone hosts (including laptops)
+      without any InfiniBand adapters
+    - HugePage support
+    - Improved on-demand InfiniBand connection setup
+    - Optimized Fence synchronization (with and without LIMIC2 support)
+    - Enhanced mpirun_rsh design to avoid race conditions and support for
+      improved debug messages
+    - Optimized design for collectives (Bcast and Reduce)
+    - Improved performance for medium size messages for QLogic PSM
+    - Support for Ekopath Compiler
+
+* Bug Fixes
+    - Fixes in Dynamic Process Management (DPM) support
+    - Fixes in Checkpoint/Restart and Migration support
+    - Fix Restart when using automatic checkpoint
+        - Thanks to Alexandr for reporting this
+    - Compilation warnings fixes
+    - Handling very large one-sided transfers using RDMA
+    - Fixes for memory leaks
+    - Graceful handling of unknown HCAs
+    - Better handling of shmem file creation errors
+    - Fix for a hang in intra-node transfer
+    - Fix for a build error with --disable-weak-symbols
+        - Thanks to Peter Willis for reporting this issue
+    - Fixes for one-sided communication with passive target synchronization
+    - Proper error reporting when a program is linked with both static and
+      shared MVAPICH2 libraries
 
 MVAPICH2-1.7a2 (06/03/2011)
 
-* Features and Enhancements 
+* Features and Enhancements (Since 1.7a)
     - Improved intra-node shared memory communication performance
     - Tuned RDMA Fast Path Buffer size to get better performance
       with less memory footprint (CH3 and Nemesis)

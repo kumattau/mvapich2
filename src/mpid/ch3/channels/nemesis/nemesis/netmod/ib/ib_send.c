@@ -134,7 +134,7 @@ static inline void MPIDI_nem_ib_POST_SR(vbuf *_v, MPID_nem_ib_connection_t *_c, 
 
 	if (_rail != _v->rail)
 	{
-			DEBUG_PRINT(stderr, "[%s:%d] rail %d, vrail %d\n", __FILE__, __LINE__,(_rail), (_v)->rail);
+			DEBUG_PRINT("[%s:%d] rail %d, vrail %d\n", __FILE__, __LINE__,(_rail), (_v)->rail);
 			MPIU_Assert((_rail) == (_v)->rail);
 	}
 
@@ -997,7 +997,7 @@ int MRAILI_Backlog_send(MPIDI_VC_t * vc, int rail)
 
         /* srq codes */
         if (process_info.has_srq) {
-            p->rank = MPIDI_Process.my_pg_rank;
+            p->vc_addr = VC_FIELD(vc, connection)->remote_vc_addr;
             p->rail        = rail;
         }
 
@@ -1316,7 +1316,7 @@ int MPIDI_nem_ib_fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
     v->sreq = NULL;
 
     DEBUG_PRINT("Header info, tag %d, rank %d, context_id %d\n", 
-            header->match.tag, header->match.rank, header->match.context_id);
+            header->match.parts.tag, header->match.parts.rank, header->match.parts.context_id);
 #ifndef MV2_DISABLE_HEADER_CACHING
     if ((header->type == MPIDI_CH3_PKT_EAGER_SEND) &&
         (len - sizeof(MPIDI_CH3_Pkt_t) <= MAX_SIZE_WITH_HEADER_CACHING) &&
@@ -1466,8 +1466,8 @@ int MPIDI_nem_ib_fast_rdma_send_complete(MPIDI_VC_t * vc,
     post_len = *num_bytes_ptr;
     rstart = VC_FIELD(vc, connection)->rfp.remote_RDMA_buf +
             (VC_FIELD(vc, connection)->rfp.phead_RDMA_send * rdma_fp_buffer_size);
-    DEBUG_PRINT("[send: rdma_send] local vbuf %p, remote start %p, align size %d, iheader = %p\n",
-               v, rstart, align_len, v->iheader);
+    DEBUG_PRINT("[send: rdma_send] local vbuf %p, remote start %p, size %d, iheader = %p\n",
+               v, rstart, post_len, v->iheader);
 
     if (++(VC_FIELD(vc, connection)->rfp.phead_RDMA_send) >= num_rdma_buffer)
         VC_FIELD(vc, connection)->rfp.phead_RDMA_send = 0;
@@ -1584,7 +1584,7 @@ int MPIDI_nem_ib_post_srq_send(MPIDI_VC_t* vc, vbuf* v, int rail)
     PACKET_SET_CREDIT(p, VC_FIELD( vc, connection), rail);
 
     v->vc = (void *) vc;
-    p->rank = MPIDI_Process.my_pg_rank;
+    p->vc_addr = VC_FIELD(vc, connection)->remote_vc_addr;
     p->rail        = rail;
 
     if ((NULL != hca_list[hca_num].send_cq_hndl) &&
@@ -1633,7 +1633,7 @@ void vbuf_address_send(MPIDI_VC_t *vc)
             (void *)p->rdma_address);
 
     for (i = 0; i < ib_hca_num_hcas; i++) {
-    DEBUG_PRINT("mr %p\n", VC_FILED(vc, connection)->rfp.RDMA_recv_buf_mr[i]);
+    DEBUG_PRINT("mr %p\n", VC_FIELD(vc, connection)->rfp.RDMA_recv_buf_mr[i]);
     p->rdma_hndl[i]   = VC_FIELD(vc, connection)->rfp.RDMA_recv_buf_mr[i]->rkey;
     }
     vbuf_init_send(v, sizeof(MPIDI_nem_ib_pkt_address)+IB_PKT_HEADER_LENGTH, rail);

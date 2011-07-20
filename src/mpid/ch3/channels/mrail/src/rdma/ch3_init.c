@@ -126,35 +126,44 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         MPIU_ERR_POP(mpi_errno);
     }
 
-    switch (MPIDI_CH3I_Process.cm_type)
+    /* Check for SMP only */
+    MPIDI_CH3I_set_smp_only();
+
+    /*CR functionality depends on on-demand CM initialization
+    even in single node case(SMP_ONLY)*/
+#if !defined(CKPT)
+    if (!SMP_ONLY) 
+#endif
     {
-    /* allocate rmda memory and set up the queues */
-    case MPIDI_CH3I_CM_ON_DEMAND:
+        switch (MPIDI_CH3I_Process.cm_type)
+        {
+            /* allocate rmda memory and set up the queues */
+            case MPIDI_CH3I_CM_ON_DEMAND:
 #if defined(RDMA_CM)
-    case MPIDI_CH3I_CM_RDMA_CM:
+            case MPIDI_CH3I_CM_RDMA_CM:
 #endif /* defined(RDMA_CM) */
-	mpi_errno = MPIDI_CH3I_CM_Init(pg, pg_rank, &conn_info);
-	if (mpi_errno != MPI_SUCCESS)
-        {
-            MPIU_ERR_POP(mpi_errno);
-        }
-        break;
-    default:
-        /*call old init to setup all connections*/
-        if ((mpi_errno = MPIDI_CH3I_RDMA_init(pg, pg_rank)) != MPI_SUCCESS)
-        {
-            MPIU_ERR_POP(mpi_errno);
-        }
+                mpi_errno = MPIDI_CH3I_CM_Init(pg, pg_rank, &conn_info);
+                if (mpi_errno != MPI_SUCCESS)
+                {
+                    MPIU_ERR_POP(mpi_errno);
+                }
+                break;
+            default:
+                /*call old init to setup all connections*/
+                if ((mpi_errno = MPIDI_CH3I_RDMA_init(pg, pg_rank)) != MPI_SUCCESS)
+                {
+                    MPIU_ERR_POP(mpi_errno);
+                }
 
-        /* All vc should be connected */
-        for (p = 0; p < pg_size; ++p)
-        {
-            MPIDI_PG_Get_vc(pg, p, &vc);
-            vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
+                /* All vc should be connected */
+                for (p = 0; p < pg_size; ++p)
+                {
+                    MPIDI_PG_Get_vc(pg, p, &vc);
+                    vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
+                }
+                break;
         }
-        break;
     }
-
 #if defined(CKPT)
 #if defined(DISABLE_PTMALLOC)
     MPIU_Error_printf("Error: Checkpointing does not work without registration "
@@ -194,6 +203,9 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 	    if (vc->smp.local_nodes >= 0)
             {
                 vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
+                if (SMP_ONLY) {
+                    MPIDI_CH3I_SMP_Init_VC(vc);
+                }
 #ifdef _ENABLE_XRC_
                 VC_XST_SET (vc, XF_SMP_VC);
 #endif

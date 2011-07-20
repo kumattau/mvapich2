@@ -43,7 +43,7 @@ psm_error_t psm_send_pkt(MPID_Request **rptr, MPIDI_Message_match m,
     DBG("psm_mq_send: ctx = %d tag = %d\n", m.parts.context_id, m.parts.tag);
     DBG("psm_mq_send: dst = %d src = %d\n", dest, m.partsrank);
 
-    if(blocking && !CAN_BLK_PSM(buflen)) 
+    if(blocking && !CAN_BLK_PSM(buflen))
         blocking = 0;
 
     if(blocking) {

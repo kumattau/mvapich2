@@ -698,7 +698,7 @@ int MPIR_Allgather_inter_MV2 (
     newcomm = newcomm_ptr->handle;
 
     if (sendcount != 0) {
-        mpi_errno = MPIR_Gather_intra_MV2(sendbuf, sendcount, sendtype, tmp_buf, sendcount,
+        mpi_errno = MPIR_Gather_MV2(sendbuf, sendcount, sendtype, tmp_buf, sendcount,
                                 sendtype, 0, newcomm_ptr, errflag);
 	if (mpi_errno) {
 	    MPIU_ERR_POP(mpi_errno);

@@ -867,10 +867,6 @@ int cm_send_pending_1sc_msg(MPIDI_VC_t * vc)
         /* Get the queued message */
         v = MPIDI_CH3I_CM_One_Sided_SendQ_head(vc);
 
-
-        v->desc.next = NULL;
-
-
         /* Fill the SRQ number. We wouldn't have done this while queueing the
          * message as the connection was not established then
          */

@@ -747,19 +747,23 @@ int CR_Thread_loop()
             cr_args.cr_signal = 0;
             cr_args.cr_timeout = 0;
             cr_args.cr_flags &= ~CR_CHKPT_DUMP_ALL; // Save None
+            PRINT_DEBUG( DEBUG_FT_verbose, "cr_request_checkpoint() with file '%s'\n", cr_file );
             ret = cr_request_checkpoint(&cr_args, &cr_handle);
+            PRINT_DEBUG( DEBUG_FT_verbose, "cr_request_checkpoint() returned %d\n", ret );
             if (ret < 0) {
                 CR_ERR("BLCR call cr_request_checkpoint() failed with error %d: %s\n", errno, cr_strerror(errno));
                 CR_MPDU_Ckpt_fail();
                 CR_ERR_ABORT("Checkpoint failed, aborting...\n");
             }
             // Retry while interrupted
+            PRINT_DEBUG( DEBUG_FT_verbose, "cr_poll_checkpoint()\n" );
             do {
                 ret = cr_poll_checkpoint(&cr_handle, NULL);
             } while (ret == CR_POLL_CHKPT_ERR_PRE && errno == EINTR);
-            if (ret < 0 && errno == CR_ERESTARTED) {
-                /* Restarting -> ignoring
-                   We should not call cr_poll_checkpoint() at restart!!! */
+            PRINT_DEBUG( DEBUG_FT_verbose, "cr_poll_checkpoint() returned %d\n", ret );
+            if (ret == CR_POLL_CHKPT_ERR_POST && errno == CR_ERESTARTED) { 
+                // We are restarting, ignore this error code
+                // Wait for the CR_Callback thread to return from cr_checkpoint()
             } else if (ret < 0) {
                 CR_ERR("BLCR call cr_poll_checkpoint() failed with error %d: %s\n", errno, cr_strerror(errno));
                 CR_MPDU_Ckpt_fail();
@@ -916,19 +920,19 @@ int CR_Reset_proc_info()
 
     dbg("PMI_Init, has_parent=%d\n", has_parent);
 
-    if (PMI_Get_id_length_max(&pg_id_sz)) {
-        CR_ERR_ABORT("PMI_Get_id_length_max failed\n");
+    if (PMI_KVS_Get_name_length_max(&pg_id_sz)) {
+        CR_ERR_ABORT("PMI_KVS_Get_name_length_max failed\n");
     }
 
-    dbg("PMI_Get_id_length_max = %d\n", pg_id_sz);
+    dbg("PMI_KVS_Get_name_length_max = %d\n", pg_id_sz);
     MPIDI_Process.my_pg->id = MPIU_Malloc(pg_id_sz + 1);
 
     if (NULL == MPIDI_Process.my_pg->id) {
         CR_ERR_ABORT("MPIU_Malloc failed\n");
     }
 
-    if (PMI_Get_id(MPIDI_Process.my_pg->id, pg_id_sz)) {
-        CR_ERR_ABORT("PMI_Get_id failed\n");
+    if (PMI_KVS_Get_my_name(MPIDI_Process.my_pg->id, pg_id_sz)) {
+        CR_ERR_ABORT("PMI_KVS_Get_my_name failed\n");
     }
     dbg("get id=%d\n", MPIDI_Process.my_pg->id);
     if (PMI_KVS_Get_name_length_max(&kvs_name_sz)) {

@@ -149,12 +149,57 @@ void deallocate_vbuf_region(void)
     while (curr) {
         next = curr->next;
         free(curr->malloc_start);
-        free(curr->malloc_buf_start);
+
+        if (rdma_enable_hugepage && curr->shmid >= 0) {
+            shmdt(curr->malloc_buf_start);
+        } else 
+        {
+            free(curr->malloc_buf_start);
+        }
+
         MPIU_Free(curr);
         curr = next;
     }
 }
 
+int alloc_hugepage_region (int *shmid, void **buffer, int *nvbufs, int buf_size)
+{
+    int ret = 0;
+    size_t size = *nvbufs * buf_size;
+    MRAILI_ALIGN_LEN(size, HUGEPAGE_ALIGN);
+
+    /* create hugepage shared region */
+    *shmid = shmget(IPC_PRIVATE, size, 
+                        SHM_HUGETLB | IPC_CREAT | SHM_R | SHM_W);
+    if (*shmid < 0) {
+        goto fn_fail;
+    }
+
+    /* attach shared memory */
+    *buffer = (void *) shmat(*shmid, SHMAT_ADDR, SHMAT_FLAGS);
+    if (*buffer == (void *) -1) {
+        goto fn_fail;
+    }
+    
+    /* Mark shmem for removal */
+    if (shmctl(*shmid, IPC_RMID, 0) != 0) {
+        fprintf(stderr, "Failed to mark shm for removal\n");
+    }
+    
+    /* Find max no.of vbufs can fit in allocated buffer */
+    *nvbufs = size / buf_size;
+     
+fn_exit:
+    return ret;
+fn_fail:
+    ret = -1;
+    if (rdma_enable_hugepage >= 2) {
+        fprintf(stderr,"[%d] Failed to allocate buffer from huge pages. "
+                       "fallback to regular pages. requested buf size:%d\n",
+                        MPIDI_Process.my_pg_rank, size);
+    }
+    goto fn_exit;
+}    
 
 static int allocate_vbuf_region(int nvbufs)
 {
@@ -195,6 +240,22 @@ static int allocate_vbuf_region(int nvbufs)
         ibv_error_abort(GEN_EXIT_ERR, "Unable to malloc a new struct vbuf_region");
     }
 
+    if (rdma_enable_hugepage) {
+        result = alloc_hugepage_region (&reg->shmid, &vbuf_dma_buffer, &nvbufs, rdma_vbuf_total_size);
+    }
+
+    /* do posix_memalign if enable hugepage disabled or failed */
+    if (rdma_enable_hugepage == 0 || result != 0 )  
+    {
+        reg->shmid = -1;
+        result = posix_memalign(&vbuf_dma_buffer, alignment_dma, nvbufs * rdma_vbuf_total_size);
+    }
+
+    if ((result!=0) || (NULL == vbuf_dma_buffer))
+    {
+       ibv_error_abort(GEN_EXIT_ERR, "unable to malloc vbufs DMA buffer");
+    }
+    
     if (posix_memalign(
         (void**) &mem,
         alignment_vbuf,
@@ -203,14 +264,7 @@ static int allocate_vbuf_region(int nvbufs)
         fprintf(stderr, "[%s %d] Cannot allocate vbuf region\n", __FILE__, __LINE__);
         return -1;
     }
-   
-    result = posix_memalign(&vbuf_dma_buffer, alignment_dma, nvbufs * rdma_vbuf_total_size);
-
-    if ((result!=0) || (NULL == vbuf_dma_buffer))
-    {
-       ibv_error_abort(GEN_EXIT_ERR, "unable to malloc vbufs DMA buffer");
-    }
-
+  
     /* region should be registered for all of the hca */
     for (i=0 ; i < rdma_num_hcas; ++i)
     {

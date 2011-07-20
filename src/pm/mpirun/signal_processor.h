@@ -13,6 +13,7 @@
 #ifndef SIGNAL_PROCESSOR_H
 #define SIGNAL_PROCESSOR_H 1
 
+#include <pthread.h>
 #include <signal.h>
 #include <debug_utils.h>
 
@@ -29,6 +30,7 @@
  * Error messages are made using the PRINT_ERROR & PRINT_ERROR_ERRNO macros so
  * `set_output_prefix' should be called before calling this function.
  */
-extern void start_signal_processor (sigset_t, void (*)(int));
+extern void start_sp_thread (sigset_t, void (*)(int), int);
+extern void stop_sp_thread (void);
 
 #endif

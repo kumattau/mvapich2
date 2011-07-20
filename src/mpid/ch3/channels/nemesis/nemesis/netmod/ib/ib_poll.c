@@ -663,10 +663,9 @@ int MPIDI_nem_ib_cq_poll(vbuf **vbuf_handle,
 
                     /* srq codes */
                     if(!is_send_completion && process_info.has_srq) {
-                        int rank;
-                        rank = ((MPIDI_nem_ib_pkt_comm_header *)
-                              ((vbuf *)v)->iheader)->rank;
-                        MPIDI_PG_Get_vc(MPIDI_Process.my_pg, rank, &vc);
+                        vc = (void *)(unsigned long)
+                            (((MPIDI_nem_ib_pkt_comm_header *)
+                              ((vbuf *)v)->iheader)->vc_addr);
                         v->vc = vc;
                         v->rail = ((MPIDI_nem_ib_pkt_comm_header *)
                                 ((vbuf*)v)->iheader)->rail;
@@ -748,7 +747,7 @@ int MPIDI_nem_ib_cq_poll(vbuf **vbuf_handle,
                             type = T_CHANNEL_OUT_OF_ORDER_ARRIVE;
                             VQUEUE_ENQUEUE(VC_FIELD(vc, cmanager),
                                     INDEX_GLOBAL(VC_FIELD(vc, cmanager), v->rail), v);
-                            DEBUG_PRINT("get recv %d (%d)\n", seqnum, vc->seqnum_recv);
+                            DEBUG_PRINT("get recv %d (expected %d)\n", seqnum, VC_FIELD( vc, seqnum_recv));
                         }
 
                         /* srq codes */
@@ -1045,7 +1044,7 @@ int MPIDI_nem_ib_waiting_msg(MPIDI_VC_t * vc, vbuf ** vbuf_handle, int blocking)
 
     if (blocking) {
         DEBUG_PRINT("{entering} solve_out_of_order next expected %d, channel %d, head %p (%d)\n",
-                vc->seqnum_recv, cmanager->num_channels,
+                VC_FIELD( vc, seqnum_recv), cmanager->num_channels,
                 cmanager->msg_channels[0].v_queue_head,
                 GetSeqNumVbuf(cmanager->msg_channels[0].v_queue_head));
     }
@@ -1124,7 +1123,7 @@ int MPIDI_nem_ib_waiting_msg(MPIDI_VC_t * vc, vbuf ** vbuf_handle, int blocking)
 fn_exit:
     if (blocking) {
         DEBUG_PRINT("{return} solve_out_of_order, type %d, next expected %d\n",
-                type, vc->seqnum_recv);
+                type, VC_FIELD( vc, seqnum_recv));
     }
     return type;
 }

@@ -203,7 +203,5 @@ int MPID_nem_ib_vc_destroy(MPIDI_VC_t *vc)
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPID_nem_ib_vc_terminate (MPIDI_VC_t *vc)
 {
-    int mpi_errno = MPI_SUCCESS;
-
-           return mpi_errno;
+    return MPIDI_CH3U_Handle_connection(vc, MPIDI_VC_EVENT_TERMINATED);
 }

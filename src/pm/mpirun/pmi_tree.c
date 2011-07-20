@@ -24,6 +24,7 @@
 #include <sys/sendfile.h>
 #include "mpirunconf.h"
 #include "debug_utils.h"
+#include <mpispawn_error_codes.h>
 
 #if defined(CKPT) && defined(CR_FTB)
 #include "mpispawn_ckpt.h"

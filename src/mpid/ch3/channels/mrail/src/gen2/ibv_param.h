@@ -103,6 +103,7 @@ extern int                  rdma_large_msg_rail_sharing_threshold;
 
 
 extern int                  max_num_win;
+extern int                  mv2_on_demand_ud_info_exchange;
 /* HSAM Definitions */
 
 extern  int                 striping_threshold;
@@ -143,6 +144,8 @@ extern int                  use_anl_collectives;
 /* Use of LIMIC of RMA Communication */
 extern int                  limic_put_threshold;
 extern int                  limic_get_threshold;
+
+extern int                  rdma_enable_hugepage;
 
 #define INTER_NODE_KNOMIAL_FACTOR_MAX 8
 #define INTER_NODE_KNOMIAL_FACTOR_MIN 2

@@ -44,7 +44,7 @@ typedef struct MPIDI_nem_ib_pkt_comm_header_t {
     uint8_t  remote_credit;
     uint8_t  rdma_credit;
     uint8_t  rail;
-    uint32_t rank;
+    uint64_t vc_addr;
 } MPIDI_nem_ib_pkt_comm_header;
 
 typedef struct MPIDI_nem_ib_pkt_address_t {

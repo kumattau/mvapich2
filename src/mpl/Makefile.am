@@ -17,9 +17,7 @@ check_PROGRAMS = $(MPL_TESTS)
 strsep_SOURCES = test/strsep.c
 strsep_LDADD = libmpl.la
 
-mandoc:
-
 htmldoc:
 
-latexdoc:
+mandoc:
 

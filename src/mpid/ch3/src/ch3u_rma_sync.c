@@ -71,11 +71,13 @@ MPIU_INSTR_DURATION_DECL(winstart_clearlock);
 MPIU_INSTR_DURATION_DECL(wincomplete_issue);
 MPIU_INSTR_DURATION_DECL(wincomplete_complete);
 MPIU_INSTR_DURATION_DECL(wincomplete_recvsync);
+MPIU_INSTR_DURATION_DECL(wincomplete_block);
 MPIU_INSTR_DURATION_DECL(winwait_wait);
 MPIU_INSTR_DURATION_DECL(winlock_getlocallock);
 MPIU_INSTR_DURATION_DECL(winunlock_getlock);
 MPIU_INSTR_DURATION_DECL(winunlock_issue);
 MPIU_INSTR_DURATION_DECL(winunlock_complete);
+MPIU_INSTR_DURATION_DECL(winunlock_block);
 MPIU_INSTR_DURATION_DECL(lockqueue_alloc);
 MPIU_INSTR_DURATION_DECL(rmapkt_acc);
 MPIU_INSTR_DURATION_DECL(rmapkt_acc_predef);
@@ -98,11 +100,13 @@ void MPIDI_CH3_RMA_InitInstr(void)
     MPIU_INSTR_DURATION_INIT(wincomplete_recvsync,1,"WIN_COMPLETE:Recv sync messages");
     MPIU_INSTR_DURATION_INIT(wincomplete_issue,2,"WIN_COMPLETE:Issue RMA ops");
     MPIU_INSTR_DURATION_INIT(wincomplete_complete,1,"WIN_COMPLETE:Complete RMA ops");
+    MPIU_INSTR_DURATION_INIT(wincomplete_block,0,"WIN_COMPLETE:Wait for any progress");
     MPIU_INSTR_DURATION_INIT(winwait_wait,1,"WIN_WAIT:Wait for ops from other processes");
     MPIU_INSTR_DURATION_INIT(winlock_getlocallock,0,"WIN_LOCK:Get local lock");
     MPIU_INSTR_DURATION_INIT(winunlock_issue,2,"WIN_UNLOCK:Issue RMA ops");
     MPIU_INSTR_DURATION_INIT(winunlock_complete,1,"WIN_UNLOCK:Complete RMA ops");
     MPIU_INSTR_DURATION_INIT(winunlock_getlock,0,"WIN_UNLOCK:Acquire lock");
+    MPIU_INSTR_DURATION_INIT(winunlock_block,0,"WIN_UNLOCK:Wait for any progress");
     MPIU_INSTR_DURATION_INIT(rmapkt_acc,0,"RMA:PKTHANDLER for Accumulate");
     MPIU_INSTR_DURATION_INIT(rmapkt_acc_predef,0,"RMA:PKTHANDLER for Accumulate: predef dtype");
     MPIU_INSTR_DURATION_INIT(rmapkt_acc_immed,0,"RMA:PKTHANDLER for Accum immed");
@@ -110,11 +114,8 @@ void MPIDI_CH3_RMA_InitInstr(void)
 #endif
 
 #if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
-    extern int g_smp_use_limic2;
-    extern int limic_fd;
-    int MPIDI_CH3I_LIMIC_try_rma(MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr,
-                                   MPI_Win source_win_handle, MPID_Comm *comm_ptr,
-                                   int isPut);
+extern int g_smp_use_limic2;
+extern int limic_fd;
 #endif /*_SMP_LIMIC_ && !DAPL_DEFAULT_PROVIDER*/
 
 /*
@@ -178,6 +179,9 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
     int num_wait_completions;
     int j;
     MPIDI_VC_t* vc = NULL;
+#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
+    int transfer_complete;
+#endif /* _SMP_LIMIC_ && !_DAPL_DEFAULT_PROVDER_*/
 #endif /* defined(_OSU_MVAPICH_) */
     int errflag = FALSE;
     MPIU_CHKLMEM_DECL(3);
@@ -218,32 +222,25 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
     {
 	win_ptr->fence_cnt = (assert & MPI_MODE_NOSUCCEED) ? 0 : 1;
 #if defined(_OSU_MVAPICH_)
-	if (win_ptr->fence_cnt != 0 && win_ptr->fall_back != 1) {
-	    int dst;
-	    comm_ptr = win_ptr->comm_ptr;
-	    comm_size = comm_ptr->local_size;
-	    /*MPI_Win_start */
-	    win_ptr->using_start = 1;
-	    /*MPI_Win_post */
-	    memset((void *) win_ptr->completion_counter, 0,
-		   sizeof(long long) * comm_size*rdma_num_rails);
-	    win_ptr->my_counter = (long long) comm_size - 1;
-	    for (dst = 0; dst < comm_size; dst++) {
-                if (SMP_INIT) {
-        		MPIDI_Comm_get_vc(comm_ptr, dst, &vc);
-	        	if (dst == win_ptr->my_id || vc->smp.local_nodes != -1)
-                        {
-                            continue;
-                        }
+	if (win_ptr->fence_cnt != 0) {
+           comm_ptr = win_ptr->comm_ptr;
+           comm_size = comm_ptr->local_size;
 
-                } else if (dst == win_ptr->my_id)
-		{
-		    continue;
-		}
-		MPIDI_CH3I_RDMA_post(win_ptr, dst);
-	    }
-	    MPIR_Barrier_impl(comm_ptr, &errflag);
-	}
+           if (win_ptr->fall_back != 1) { 
+	      MPIR_Barrier_impl(comm_ptr, &errflag);
+              /* All the processes have syncrhonized, we can assume windows at 
+                 all the processes to be posted, set post flags appropriately 
+                 for check in communication operations */
+	      for (i = 0; i < comm_size; i++) {
+  		  win_ptr->post_flag[i] = 1; 
+	      }
+	   } 
+#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
+           else if (win_ptr->limic_fallback != 1) { 
+              MPIR_Barrier_impl(comm_ptr, &errflag);
+           }
+#endif /*_SMP_LIMIC_ && DAPL_DEFAULT_PROVIDER*/
+        }
 #endif /* defined(_OSU_MVAPICH_) */
 	goto fn_exit;
     }
@@ -261,31 +258,24 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
 
 #if defined(_OSU_MVAPICH_)
         /* OSU-MPI2 uses extended CH3 interface */
-		if (win_ptr->fall_back != 1) {
-			int dst;
-			comm_ptr = win_ptr->comm_ptr;
-			comm_size = comm_ptr->local_size;
-			/*MPI_Win_start */
-			win_ptr->using_start = 1;
-			/*MPI_Win_post */
-			memset((void *) win_ptr->completion_counter, 0,
-			   sizeof(long long) * comm_size * rdma_num_rails);
-			win_ptr->my_counter = (long long) comm_size - 1;
+	if (win_ptr->fence_cnt != 0) {
+           comm_ptr = win_ptr->comm_ptr;
+           comm_size = comm_ptr->local_size;
 
-			for (dst = 0; dst < comm_size; dst++) {
-		            if (SMP_INIT) {
-				MPIDI_Comm_get_vc(comm_ptr, dst, &vc);
-				if (dst == win_ptr->my_id || vc->smp.local_nodes != -1)
-		                {
-		                    continue;
-		                }
-		            } else if (dst == win_ptr->my_id)
-			{
-				continue;
-			}
-			MPIDI_CH3I_RDMA_post(win_ptr, dst);
-			}
-		}
+           if (win_ptr->fall_back != 1) { 
+              MPIR_Barrier_impl(comm_ptr, &errflag);
+              for (i = 0; i < comm_size; i++) {
+                 /* All the processes have syncrhonized, each process can assume windows at 
+                    all the processes to be posted */
+                 win_ptr->post_flag[i] = 1;
+              }
+           }
+#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
+           else if (win_ptr->limic_fallback != 1) { 
+              MPIR_Barrier_impl(comm_ptr, &errflag);
+           }
+#endif /*_SMP_LIMIC_ && DAPL_DEFAULT_PROVIDER*/
+	}
 #endif /* defined(_OSU_MVAPICH_) */
     }
     else
@@ -308,9 +298,8 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
 		if (i > win_ptr->my_id)
 		    ranks_in_win_grp[i - 1] = i;
 	    }
-	    /* make sure all process has started access epoch
-	     * blocking call */
-	    MPIDI_CH3I_RDMA_start(win_ptr, comm_size - 1, ranks_in_win_grp);
+	    /* we are sure that all processes have started access epoch as this is the 
+               second or later fence */
 	    MPIDI_CH3I_RDMA_try_rma(win_ptr, 0);
             if (win_ptr->rma_issued != 0) {
                 MPIDI_CH3I_RDMA_finish_rma(win_ptr);
@@ -319,7 +308,35 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
 	                                ranks_in_win_grp);
 
 	    MPIU_Free(ranks_in_win_grp);
-	}                       /* else */
+	}                 
+
+#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
+        /* As this is the second or later fence, we can complete any intranode operations 
+          possible through limic */
+        if (win_ptr->limic_fallback != 1) {
+           curr_ptr = win_ptr->rma_ops_list_head;
+           prevNextPtr = &win_ptr->rma_ops_list_head;
+           while (curr_ptr != NULL) {
+              transfer_complete = 0;
+              transfer_complete =
+                   MPIDI_CH3I_LIMIC_try_rma(curr_ptr, win_ptr, 
+                          MPI_WIN_NULL, comm_ptr);
+              if(transfer_complete)
+              {
+                 /* If transfer is complete, free the curr pointer and remove it from the list */
+                 tmpptr       = curr_ptr->next;
+                 *prevNextPtr = tmpptr;
+                 MPIU_Free( curr_ptr );
+                 curr_ptr     = tmpptr;
+              } else {
+                 /* If transfer is not complete, skip and continue */
+                 prevNextPtr = &curr_ptr->next;
+                 curr_ptr    = curr_ptr->next;
+              }
+              continue;
+           }
+        }
+#endif /* _SMP_LIMIC_ && !_DAPL_DEFAULT_PROVDER_*/  
 #endif /* defined(_OSU_MVAPICH_) */
 
 	MPIU_CHKLMEM_MALLOC(rma_target_proc, int *, comm_size*sizeof(int),
@@ -345,7 +362,12 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
 	    nops_to_proc[curr_ptr->target_rank]++;
 	    curr_ptr = curr_ptr->next;
 	}
+
 #if defined(_OSU_MVAPICH_)
+        /* Set all off-node remote processes as possible targets as we donot keep track of 
+           which processes operations had been issued to. 
+           FIXME: This can be optimized by keeping track of processes to which operations 
+           had been issued and marking only them as targets.*/
 	if (win_ptr->fall_back != 1) {
 	    int j;
 	    for (j = 0; j < comm_size; j++) {
@@ -359,12 +381,8 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
                 }
 	    }
 	}
-	
-        DEBUG_PRINT
-            ("rankd %d comm_size %d, rmatarget procs[%d][%d][%d][%d]\n",
-             win_ptr->my_id, comm_size, rma_target_proc[0],
-             rma_target_proc[1], rma_target_proc[2], rma_target_proc[3]);
 #endif /* defined(_OSU_MVAPICH_) */	
+
 	MPIU_CHKLMEM_MALLOC(curr_ops_cnt, int *, comm_size*sizeof(int),
 			    mpi_errno, "curr_ops_cnt");
 	for (i=0; i<comm_size; i++) curr_ops_cnt[i] = 0;
@@ -547,34 +565,34 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
 	win_ptr->rma_ops_list_head = NULL;
 	win_ptr->rma_ops_list_tail = NULL;
 #if defined(_OSU_MVAPICH_) 
-    if (win_ptr->fall_back != 1) {
-        num_wait_completions = 0;
-        while (win_ptr->my_counter || win_ptr->outstanding_rma != 0) {
-            newly_finished = 0; 
-            for (i = 0; i < win_ptr->comm_size; ++i) {
-
-                for (j = 0; j < rdma_num_rails; ++j) {
-	
-                    index = i*rdma_num_rails+j;
-                    if (win_ptr->completion_counter[index] == 1) {
-                        win_ptr->completion_counter[index] = 0;
-                        ++num_wait_completions;
-                        if (num_wait_completions == rdma_num_rails) {
-                            ++newly_finished;
-                            num_wait_completions = 0;
-                        }
-                    }		
+        if (win_ptr->fall_back != 1) {
+            num_wait_completions = 0;
+            while (win_ptr->my_counter || win_ptr->outstanding_rma != 0) {
+                newly_finished = 0; 
+                for (i = 0; i < win_ptr->comm_size; ++i) {
+ 
+                    for (j = 0; j < rdma_num_rails; ++j) {
+            
+                        index = i*rdma_num_rails+j;
+                        if (win_ptr->completion_counter[index] == 1) {
+                            win_ptr->completion_counter[index] = 0;
+                            ++num_wait_completions;
+                            if (num_wait_completions == rdma_num_rails) {
+                                ++newly_finished;
+                                num_wait_completions = 0;
+                            }
+                        }		
+                    }
+                }
+                win_ptr->my_counter -= newly_finished;
+                if (win_ptr->my_counter == 0)
+                    break;
+                mpi_errno = MPID_Progress_test();
+                if (mpi_errno != MPI_SUCCESS) {
+                    MPIU_ERR_POP(mpi_errno);
                 }
             }
-            win_ptr->my_counter -= newly_finished;
-            if (win_ptr->my_counter == 0)
-                break;
-            mpi_errno = MPID_Progress_test();
-            if (mpi_errno != MPI_SUCCESS) {
-                MPIU_ERR_POP(mpi_errno);
-            }
-        }
-    }else 
+        } else 
 #endif /* defined(_OSU_MVAPICH_) */
 	/* wait for all operations from other processes to finish */
 	if (win_ptr->my_counter)
@@ -600,36 +618,10 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
 	{
 	    win_ptr->fence_cnt = 0;
 	}
-
 #if defined(_OSU_MVAPICH_)
 	else if (win_ptr->fall_back != 1)
-	    /*there will be a fence after this one */
 	{
-    	    int dst = 0;
-	    comm_ptr = win_ptr->comm_ptr;
-	    comm_size = comm_ptr->local_size;
-            
-	    /*MPI_Win_start */
-	    win_ptr->using_start = 1;
-	    /*MPI_Win_post */
-	    win_ptr->my_counter = (long long) comm_size - 1;
-	    for (; dst < comm_size; dst++)
-            {
-	        for (j = 0; j < rdma_num_rails; ++j) {
-	             index = (dst*rdma_num_rails)+j;
-		
-                MPIU_Assert(win_ptr->completion_counter[index] == 0);
-		}
-                if (SMP_INIT) {
-		    MPIDI_Comm_get_vc(comm_ptr, dst, &vc);
-		    if (dst == win_ptr->my_id || vc->smp.local_nodes != -1)
-                        continue;
-                } else if (dst == win_ptr->my_id)
-                {
-		    continue;
-                }
-		MPIDI_CH3I_RDMA_post(win_ptr, dst);
-	    }
+            MPIR_Barrier_impl(comm_ptr, &errflag);
 	}
 #endif /* defined(_OSU_MVAPICH_) */
     }
@@ -749,7 +741,7 @@ static int MPIDI_CH3I_Send_rma_msg(MPIDI_RMA_ops *rma_op, MPID_Win *win_ptr,
 #if defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
 #endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
-    int total_length;
+    MPIDI_msg_sz_t total_length;
 #endif /* defined(_OSU_MVAPICH_) */
     MPIU_CHKPMEM_DECL(1);
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SEND_RMA_MSG);
@@ -911,7 +903,7 @@ static int MPIDI_CH3I_Send_rma_msg(MPIDI_RMA_ops *rma_op, MPID_Win *win_ptr,
         {
             /* basic datatype on origin */
             iov[1].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)rma_op->origin_addr;
-            iov[1].MPID_IOV_LEN = rma_op->origin_count * origin_type_size;
+            iov[1].MPID_IOV_LEN = (MPIDI_msg_sz_t) rma_op->origin_count * origin_type_size;
             iovcnt = 2;
 
 #if defined(_OSU_MVAPICH_)
@@ -932,8 +924,6 @@ static int MPIDI_CH3I_Send_rma_msg(MPIDI_RMA_ops *rma_op, MPID_Win *win_ptr,
               {
                  copy_size = sizeof(MPIDI_CH3_Pkt_accum_rndv_t);
                  copy_src = (void *) accum_pkt;
-                 ((MPIDI_CH3_Pkt_accum_rndv_t *) & pkt_rndv)->data_sz =
-                       rma_op->origin_count * origin_type_size;
               }
 
               memcpy((void *) &pkt_rndv, copy_src, copy_size);
@@ -942,13 +932,13 @@ static int MPIDI_CH3I_Send_rma_msg(MPIDI_RMA_ops *rma_op, MPID_Win *win_ptr,
               {
                  pkt_rndv.type = MPIDI_CH3_PKT_PUT_RNDV;
                  ((MPIDI_CH3_Pkt_put_rndv_t *) & pkt_rndv)->data_sz =
-                       rma_op->origin_count * origin_type_size;
+                       (MPIDI_msg_sz_t) rma_op->origin_count * origin_type_size;
               }   
               else
               {
                  pkt_rndv.type = MPIDI_CH3_PKT_ACCUMULATE_RNDV;
                  ((MPIDI_CH3_Pkt_accum_rndv_t *) & pkt_rndv)->data_sz =
-                       rma_op->origin_count * origin_type_size;
+                       (MPIDI_msg_sz_t) rma_op->origin_count * origin_type_size;
               }
 
               *request = MPID_Request_create();
@@ -1678,16 +1668,16 @@ static int MPIDI_CH3I_Recv_rma_msg(MPIDI_RMA_ops *rma_op, MPID_Win *win_ptr,
     MPID_Datatype *dtp;
     MPID_IOV iov[MPID_IOV_LIMIT];
 #if defined(_OSU_MVAPICH_)
-    int origin_type_size, total_size;
-    int type_size;
+    int origin_type_size, type_size;
+    MPIDI_msg_sz_t total_size;
 #if defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
 #endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
 #endif /* defined(_OSU_MVAPICH_) */
 #if defined(_OSU_PSM_)
     MPID_Datatype *o_dtp;
-    int origin_type_size, total_size;
-    int type_size;
+    int origin_type_size, type_size; 
+    MPIDI_msg_sz_t total_size;
 #endif 
 
 
@@ -1726,7 +1716,7 @@ static int MPIDI_CH3I_Recv_rma_msg(MPIDI_RMA_ops *rma_op, MPID_Win *win_ptr,
 
 #if defined(_OSU_MVAPICH_)
     MPID_Datatype_get_size_macro(req->dev.datatype, type_size);
-    req->dev.recv_data_sz = type_size * req->dev.user_count;
+    req->dev.recv_data_sz = (MPIDI_msg_sz_t) type_size * req->dev.user_count;
 
     mpi_errno = MPIDI_CH3U_Post_data_receive_found(req);
     /* --BEGIN ERROR HANDLING-- */
@@ -1778,7 +1768,7 @@ static int MPIDI_CH3I_Recv_rma_msg(MPIDI_RMA_ops *rma_op, MPID_Win *win_ptr,
 #if defined(_OSU_MVAPICH_)
 	MPID_Datatype_get_size_macro(rma_op->origin_datatype,
 	                             origin_type_size);
-	total_size = origin_type_size * rma_op->origin_count +
+	total_size = (MPIDI_msg_sz_t) origin_type_size * rma_op->origin_count +
 	    sizeof(MPIDI_CH3_Pkt_get_resp_t);
 	if (total_size <= vc->eager_max_msg_sz) {
 	    req->mrail.protocol = VAPI_PROTOCOL_EAGER;
@@ -1788,7 +1778,7 @@ static int MPIDI_CH3I_Recv_rma_msg(MPIDI_RMA_ops *rma_op, MPID_Win *win_ptr,
 
 #if defined (_OSU_PSM_)
     MPID_Datatype_get_size_macro(rma_op->origin_datatype, origin_type_size);
-    total_size = origin_type_size * rma_op->origin_count + 
+    total_size = (MPIDI_msg_sz_t) origin_type_size * rma_op->origin_count + 
         sizeof(MPIDI_CH3_Pkt_t);
     MPID_Datatype_get_ptr(rma_op->origin_datatype, o_dtp);
 
@@ -1879,7 +1869,7 @@ static int MPIDI_CH3I_Recv_rma_msg(MPIDI_RMA_ops *rma_op, MPID_Win *win_ptr,
         iov[2].MPID_IOV_LEN = dtp->dataloop_size;
 #if defined (_OSU_PSM_)
     MPID_Datatype_get_size_macro(rma_op->origin_datatype, origin_type_size);
-    total_size = origin_type_size * rma_op->origin_count + 
+    total_size = (MPIDI_msg_sz_t) origin_type_size * rma_op->origin_count + 
         sizeof(MPIDI_CH3_Pkt_t);
     MPID_Datatype_get_ptr(rma_op->origin_datatype, o_dtp);
 
@@ -1926,7 +1916,7 @@ static int MPIDI_CH3I_Recv_rma_msg(MPIDI_RMA_ops *rma_op, MPID_Win *win_ptr,
 #if defined(_OSU_MVAPICH_)
 	MPID_Datatype_get_size_macro(rma_op->origin_datatype,
 	                             origin_type_size);
-	total_size = origin_type_size * rma_op->origin_count
+	total_size = (MPIDI_msg_sz_t) origin_type_size * rma_op->origin_count
 	    + sizeof(MPIDI_CH3_Pkt_get_resp_t);
 
 	if (total_size <= vc->eager_max_msg_sz) {
@@ -2090,8 +2080,9 @@ int MPIDI_Win_post(MPID_Group *post_grp_ptr, int assert, MPID_Win *win_ptr)
 	if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 	
 
-	MPIR_Group_translate_ranks_impl(post_grp_ptr, post_grp_size, ranks_in_post_grp,
-                                        win_grp_ptr, ranks_in_win_grp);
+        mpi_errno = MPIR_Group_translate_ranks_impl(post_grp_ptr, post_grp_size, ranks_in_post_grp,
+                                                    win_grp_ptr, ranks_in_win_grp);
+        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 	
         rank = win_ptr->myrank;
 	
@@ -2309,10 +2300,11 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
     mpi_errno = MPIR_Comm_group_impl(comm_ptr, &win_grp_ptr);
     if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
 
-    MPIR_Group_translate_ranks_impl(win_ptr->start_group_ptr, start_grp_size, 
-				    ranks_in_start_grp,
-                                    win_grp_ptr, ranks_in_win_grp);
-        
+    mpi_errno = MPIR_Group_translate_ranks_impl(win_ptr->start_group_ptr, start_grp_size,
+                                                ranks_in_start_grp,
+                                                win_grp_ptr, ranks_in_win_grp);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
     rank = win_ptr->myrank;
 #if defined(_OSU_MVAPICH_)
     if (win_ptr->fall_back != 1) {
@@ -2556,21 +2548,9 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
             if (source_win_handle == MPI_WIN_NULL || limic_failed == 0)
             { 
                 transfer_complete = 0;
-                if(curr_ptr->type == MPIDI_RMA_PUT) 
-                {
-                    transfer_complete =
-                          MPIDI_CH3I_LIMIC_try_rma(curr_ptr, win_ptr,
-                                               source_win_handle, comm_ptr,
-                                               1);
-                } 
-                else if(curr_ptr->type == MPIDI_RMA_GET)
-                {
-                    transfer_complete =
-                             MPIDI_CH3I_LIMIC_try_rma(curr_ptr, win_ptr,
-                                                source_win_handle, comm_ptr,
-                                                0);
-                }
-  
+                transfer_complete =
+                      MPIDI_CH3I_LIMIC_try_rma(curr_ptr, win_ptr,
+                                           source_win_handle, comm_ptr);
                 if(transfer_complete)
                 {
                     total_op_count--;
@@ -2783,7 +2763,7 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
 	       there was an incomplete request. */
 	    curr_ptr = win_ptr->rma_ops_list_head;
 	    if (curr_ptr && !MPID_Request_is_complete(curr_ptr->request) ) {
-		MPIU_INSTR_DURATION_START(winfence_block);
+		MPIU_INSTR_DURATION_START(wincomplete_block);
 		mpi_errno = MPID_Progress_wait(&progress_state);
 		/* --BEGIN ERROR HANDLING-- */
 		if (mpi_errno != MPI_SUCCESS) {
@@ -2791,7 +2771,7 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
 		    MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**winnoprogress");
 		}
 		/* --END ERROR HANDLING-- */
-		MPIU_INSTR_DURATION_END(winfence_block);
+		MPIU_INSTR_DURATION_END(wincomplete_block);
 	    }
 	} /* While list of rma operation is non-empty */
 	    
@@ -3019,7 +2999,7 @@ int MPIDI_Win_lock(int lock_type, int dest, int assert, MPID_Win *win_ptr)
     if (dest == MPI_PROC_NULL) goto fn_exit;
         
     comm_ptr = win_ptr->comm_ptr;
-    
+
     if (dest == win_ptr->myrank) {
 	/* The target is this process itself. We must block until the lock
 	 * is acquired. */
@@ -3047,7 +3027,6 @@ int MPIDI_Win_lock(int lock_type, int dest, int assert, MPID_Win *win_ptr)
 	/* local lock acquired. local puts, gets, accumulates will be done 
 	   directly without queueing. */
     }
-    
     else {
 	/* target is some other process. add the lock request to rma_ops_list */
 	MPIU_INSTR_DURATION_START(rmaqueue_alloc);
@@ -3055,6 +3034,7 @@ int MPIDI_Win_lock(int lock_type, int dest, int assert, MPID_Win *win_ptr)
 			    mpi_errno, "RMA operation entry");
 	MPIU_INSTR_DURATION_END(rmaqueue_alloc);
             
+	MPIU_Assert( !win_ptr->rma_ops_list_head );
 	win_ptr->rma_ops_list_head = new_ptr;
 	win_ptr->rma_ops_list_tail = new_ptr;
         
@@ -3100,16 +3080,17 @@ int MPIDI_Win_unlock(int dest, MPID_Win *win_ptr)
 
     if (dest == MPI_PROC_NULL) goto fn_exit;
         
-    comm_ptr = win_ptr->comm_ptr;
-        
     if (dest == win_ptr->myrank) {
 	/* local lock. release the lock on the window, grant the next one
 	 * in the queue, and return. */
+	MPIU_Assert(!win_ptr->rma_ops_list_head);
 	mpi_errno = MPIDI_CH3I_Release_lock(win_ptr);
 	if (mpi_errno != MPI_SUCCESS) goto fn_exit;
 	mpi_errno = MPID_Progress_poke();
 	goto fn_exit;
     }
+        
+    comm_ptr = win_ptr->comm_ptr;
         
     rma_op = win_ptr->rma_ops_list_head;
     
@@ -3137,20 +3118,21 @@ int MPIDI_Win_unlock(int dest, MPID_Win *win_ptr)
   
 #if !defined (_OSU_PSM_) 
     MPIDI_Comm_get_vc_set_active(comm_ptr, dest, &vc);
-   
+
     if (rma_op->next->next == NULL) {
 	/* Single put, get, or accumulate between the lock and unlock. If it
 	 * is of small size and predefined datatype at the target, we
 	 * do an optimization where the lock and the RMA operation are
 	 * sent in a single packet. Otherwise, we send a separate lock
 	 * request first. */
-	
+
 	curr_op = rma_op->next;
 	
 	MPID_Datatype_get_size_macro(curr_op->origin_datatype, type_size);
 	
 	MPIDI_CH3I_DATATYPE_IS_PREDEFINED(curr_op->target_datatype, predefined);
 
+	/* msg_sz typically = 65480 */
 	if ( predefined &&
 	     (type_size * curr_op->origin_count <= vc->eager_max_msg_sz) ) {
 	    single_op_opt = 1;
@@ -3273,6 +3255,7 @@ int MPIDI_Win_unlock(int dest, MPID_Win *win_ptr)
 #endif /* defined(_OSU_MVAPICH_) */
 
  fn_exit:
+    MPIU_Assert( !win_ptr->rma_ops_list_head );
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPIDI_WIN_UNLOCK);
     return mpi_errno;
     /* --BEGIN ERROR HANDLING-- */
@@ -3480,7 +3463,7 @@ static int MPIDI_CH3I_Do_passive_target_rma(MPID_Win *win_ptr,
 	       there was an incomplete request. */
 	    curr_ptr = win_ptr->rma_ops_list_head;
 	    if (curr_ptr && !MPID_Request_is_complete(curr_ptr->request) ) {
-		MPIU_INSTR_DURATION_START(winfence_block);
+		MPIU_INSTR_DURATION_START(winunlock_block);
 		mpi_errno = MPID_Progress_wait(&progress_state);
 		/* --BEGIN ERROR HANDLING-- */
 		if (mpi_errno != MPI_SUCCESS) {
@@ -3488,7 +3471,7 @@ static int MPIDI_CH3I_Do_passive_target_rma(MPID_Win *win_ptr,
 		    MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**winnoprogress");
 		}
 		/* --END ERROR HANDLING-- */
-		MPIU_INSTR_DURATION_END(winfence_block);
+		MPIU_INSTR_DURATION_END(winunlock_block);
 	    }
 	} /* While list of rma operation is non-empty */
 	    
@@ -3591,7 +3574,7 @@ static int MPIDI_CH3I_Send_lock_put_or_acc(MPID_Win *win_ptr)
 #if defined(_OSU_MVAPICH_)
 	MPIDI_VC_FAI_send_seqnum(vc, seqnum);
 	MPIDI_Pkt_set_seqnum(lock_accum_unlock_pkt, seqnum);
-	MPIDI_CH3_SET_RMA_ISSUED_NUM(vc, lock_put_unlock_pkt);
+	MPIDI_CH3_SET_RMA_ISSUED_NUM(vc, lock_accum_unlock_pkt);
 #endif /* defined(_OSU_MVAPICH_) */
         iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) lock_accum_unlock_pkt;
         iov[0].MPID_IOV_LEN = sizeof(*lock_accum_unlock_pkt);
@@ -3611,10 +3594,17 @@ static int MPIDI_CH3I_Send_lock_put_or_acc(MPID_Win *win_ptr)
         lock_accum_unlock_pkt->datatype = rma_op->target_datatype;
         lock_accum_unlock_pkt->op = rma_op->op;
 
+#if defined(_OSU_MVAPICH_)
+        MPIDI_VC_FAI_send_seqnum(vc, seqnum);
+        MPIDI_Pkt_set_seqnum(lock_accum_unlock_pkt, seqnum);
+        MPIDI_CH3_SET_RMA_ISSUED_NUM(vc, lock_accum_unlock_pkt);
+#endif /* defined(_OSU_MVAPICH_) */
+
         iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) lock_accum_unlock_pkt;
         iov[0].MPID_IOV_LEN = sizeof(*lock_accum_unlock_pkt);
     }
     else {
+	/* FIXME: Error return */
 	printf( "expected short accumulate...\n" );
 	/* */
     }
@@ -4030,17 +4020,18 @@ int MPIDI_CH3_PktHandler_Put( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     {
         MPIDI_Request_set_type(req, MPIDI_REQUEST_TYPE_PUT_RESP);
         req->dev.datatype = put_pkt->datatype;
-	    
+
         MPID_Datatype_get_size_macro(put_pkt->datatype,
                                      type_size);
-        req->dev.recv_data_sz = type_size * put_pkt->count;
-		    
+        req->dev.recv_data_sz = (MPIDI_msg_sz_t) type_size * put_pkt->count;
+
         if (req->dev.recv_data_sz == 0) {
             MPIDI_CH3U_Request_complete( req );
             *buflen = sizeof(MPIDI_CH3_Pkt_t);
             *rreqp = NULL;
             goto fn_exit;
         }
+
 #if defined (_OSU_PSM_)
         MPIU_Assert((*rreqp));
         if((*rreqp)->psm_flags & PSM_RNDVPUT_COMPLETED) {
@@ -4071,7 +4062,7 @@ int MPIDI_CH3_PktHandler_Put( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 
             cts_pkt->sender_req_id = rts_pkt->sender_req_id;
             cts_pkt->receiver_req_id = req->handle;
-
+ 
             mpi_errno = MPIDI_CH3_Prepare_rndv_cts(vc, cts_pkt, req);
             if (mpi_errno != MPI_SUCCESS) {
                 MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|rndv");
@@ -4317,7 +4308,7 @@ int MPIDI_CH3_PktHandler_Get( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 	
 	iov[1].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)get_pkt->addr;
 	MPID_Datatype_get_size_macro(get_pkt->datatype, type_size);
-	iov[1].MPID_IOV_LEN = get_pkt->count * type_size;
+	iov[1].MPID_IOV_LEN = (MPIDI_msg_sz_t) get_pkt->count * type_size;
 
         MPIU_THREAD_CS_ENTER(CH3COMM,vc);
 #if defined (_OSU_PSM_)
@@ -4848,9 +4839,9 @@ int MPIDI_CH3_PktHandler_Accumulate_Immed( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 		    }
 		}
 		mpi_errno = MPIDI_CH3I_Release_lock(win_ptr);
-#if defined(_OSU_MVAPICH_)
-                MPIDI_CH3_Progress_signal_completion();
-#endif
+		/* Without the following signal_completion call, we 
+		   sometimes hang */
+		MPIDI_CH3_Progress_signal_completion();
 	    }
 	}
 
@@ -4898,6 +4889,7 @@ int MPIDI_CH3_PktHandler_Lock( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 	/* queue the lock information */
 	MPIDI_Win_lock_queue *curr_ptr, *prev_ptr, *new_ptr;
 	
+	/* Note: This code is reached by the fechandadd rma tests */
 	/* FIXME: MT: This may need to be done atomically. */
 	
 	/* FIXME: Since we need to add to the tail of the list,

@@ -403,6 +403,7 @@ void MPIDI_CH3I_CR_Sync_ckpt_request();
     MPIDI_DBG_PRINTF((50, FCNAME, "SendQ_enqueue vc=%08p req=0x%08x",    \
                   vc, req->handle));                                     \
     req->dev.next = NULL;                                                \
+    MPIR_Request_add_ref(req);                                           \
     if (vc->smp.sendq_tail != NULL)                                      \
     {                                                                    \
         vc->smp.sendq_tail->dev.next = req;                              \
@@ -422,6 +423,7 @@ void MPIDI_CH3I_CR_Sync_ckpt_request();
     /* MT - not thread safe! */                                               \
     MPIDI_DBG_PRINTF((50, FCNAME, "SendQ_enqueue_head vc=%08p req=0x%08x",    \
                   vc, req->handle));                                          \
+    MPIR_Request_add_ref(req);                                                \
     req->dev.next = vc->smp.sendq_head;                                       \
     if (vc->smp.sendq_tail == NULL)                                           \
     {                                                                         \
@@ -432,6 +434,7 @@ void MPIDI_CH3I_CR_Sync_ckpt_request();
 
 #define MPIDI_CH3I_SMP_SendQ_dequeue(vc)                                      \
 {                                                                             \
+    MPID_Request *req = vc->smp.sendq_head;                                   \
     /* MT - not thread safe! */                                               \
     MPIDI_DBG_PRINTF((50, FCNAME, "SendQ_dequeue vc=%08p req=0x%08x",         \
                   vc, vc->smp.sendq_head));                                   \
@@ -440,6 +443,7 @@ void MPIDI_CH3I_CR_Sync_ckpt_request();
     {                                                                         \
         vc->smp.sendq_tail = NULL;                                            \
     }                                                                         \
+    MPID_Request_release(req);                                                \
 }
 
 #define MPIDI_CH3I_SMP_SendQ_head(vc) (vc->smp.sendq_head)

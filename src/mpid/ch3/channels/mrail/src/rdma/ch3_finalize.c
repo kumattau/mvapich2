@@ -56,23 +56,28 @@ int MPIDI_CH3_Finalize()
     mpi_errno = MPIDI_CH3I_Progress_finalize();
     if(mpi_errno) MPIU_ERR_POP(mpi_errno);
 
-    /* allocate rmda memory and set up the queues */
-    if (MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND) {
-	/*FillMe:call MPIDI_CH3I_CM_Finalize here*/
-	mpi_errno = MPIDI_CH3I_CM_Finalize();
-    }
+#if !defined(CKPT)
+    if (!SMP_ONLY) 
+#endif 
+    {
+        /* allocate rmda memory and set up the queues */
+        if (MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND) {
+            /*FillMe:call MPIDI_CH3I_CM_Finalize here*/
+            mpi_errno = MPIDI_CH3I_CM_Finalize();
+        }
 #ifdef RDMA_CM
-    else if (MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_RDMA_CM) {
-	/*FillMe:call RDMA_CM's finalization here*/
-	mpi_errno = MPIDI_CH3I_CM_Finalize();
-    }
+        else if (MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_RDMA_CM) {
+            /*FillMe:call RDMA_CM's finalization here*/
+            mpi_errno = MPIDI_CH3I_CM_Finalize();
+        }
 #endif
-    else {
-	/*call old init to setup all connections*/
-	mpi_errno = MPIDI_CH3I_RDMA_finalize();
-    }
+        else {
+            /*call old init to setup all connections*/
+            mpi_errno = MPIDI_CH3I_RDMA_finalize();
+        }
 
-    if(mpi_errno) MPIU_ERR_POP(mpi_errno);
+        if(mpi_errno) MPIU_ERR_POP(mpi_errno);
+    }
 
     if (SMP_INIT) {
 	mpi_errno = MPIDI_CH3I_SMP_finalize();

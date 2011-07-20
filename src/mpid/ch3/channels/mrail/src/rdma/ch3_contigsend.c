@@ -100,8 +100,9 @@ static int MPIDI_CH3_SMP_ContigSend(MPIDI_VC_t * vc,
 
         /* send all or NULL */
         if( !nb ) {
-            /* no available shared memory buffer, enqueue request */
-            sreq = create_eagercontig_request(vc, reqtype, buf, data_sz, rank, tag,
+            /* no available shared memory buffer, enqueue request, fallback to
+             * MPIDI_CH3_PKT_EAGER_SEND */
+            sreq = create_eagercontig_request(vc, MPIDI_CH3_PKT_EAGER_SEND, buf, data_sz, rank, tag,
                     comm, context_offset);
             if (sreq == NULL) {
                 MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ch3|contigsend");
@@ -109,8 +110,8 @@ static int MPIDI_CH3_SMP_ContigSend(MPIDI_VC_t * vc,
             MPIDI_CH3I_SMP_SendQ_enqueue(vc, sreq);
         }
     } else {
-        /* sendQ not empty, enqueue request */
-        sreq = create_eagercontig_request(vc, reqtype, buf, data_sz, rank, tag,
+        /* sendQ not empty, enqueue request, fallback MPIDI_CH3_PKT_EAGER_SEND */
+        sreq = create_eagercontig_request(vc, MPIDI_CH3_PKT_EAGER_SEND, buf, data_sz, rank, tag,
                 comm, context_offset);
         if (sreq == NULL) {
             MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ch3|contigsend");

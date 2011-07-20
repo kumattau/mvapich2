@@ -505,9 +505,11 @@ int MPIU_Handle_free( void *((*)[]), int );
 /* Check not only for a null pointer but for an invalid communicator,
    such as one that has been freed.  Let's try the ref_count as the test
    for now */
+/* ticket #1441: check (refcount<=0) to cover the case of 0, an "over-free" of
+ * -1 or similar, and the 0xecec... case when --enable-g=mem is used */
 #define MPID_Comm_valid_ptr(ptr,err) {                \
      MPID_Valid_ptr_class(Comm,ptr,MPI_ERR_COMM,err); \
-     if ((ptr) && MPIU_Object_get_ref(ptr) == 0) {    \
+     if ((ptr) && MPIU_Object_get_ref(ptr) <= 0) {    \
          MPIU_ERR_SET(err,MPI_ERR_COMM,"**comm");     \
          ptr = 0;                                     \
      }                                                \
@@ -1563,6 +1565,8 @@ typedef struct MPID_Win {
     MPID_Comm *comm_ptr;         /* Pointer to comm of window (dup) */
     int         myrank;          /* Rank of this process in comm (used to 
 				    detect operations on self) */
+    int lockRank;                /* If within an MPI_Win_lock epoch, 
+				    the rank that we locked */
 #ifdef USE_THREADED_WINDOW_CODE
     /* These were causing compilation errors.  We need to figure out how to
        integrate threads into MPICH2 before including these fields. */
@@ -2080,6 +2084,9 @@ int MPIR_Comm_copy( MPID_Comm *, int, MPID_Comm ** );
 extern void MPIR_Keyval_set_cxx( int, void (*)(void), void (*)(void) );
 extern void MPIR_Op_set_cxx( MPI_Op, void (*)(void) );
 extern void MPIR_Errhandler_set_cxx( MPI_Errhandler, void (*)(void) );
+#endif
+#if defined(HAVE_FORTRAN_BINDING) && !defined(HAVE_FINT_IS_INT)
+void MPIR_Op_set_fc( MPI_Op );
 #endif
 
 int MPIR_Group_create( int, MPID_Group ** );
@@ -3297,8 +3304,9 @@ posted at once. */
 #if defined(_OSU_MVAPICH_)
 #define SHMEM_ALLREDUCE_THRESHOLD (1<<15)
 #define MPIR_ALLREDUCE_2LEVEL_THRESHOLD (1<<18)
-#define SHMEM_REDUCE_THRESHOLD (1<<13)
-#define MPIR_REDUCE_2LEVEL_THRESHOLD (1<<15)
+#define SHMEM_REDUCE_THRESHOLD (1<<12)
+#define SHMEM_INTRA_REDUCE_THRESHOLD (1<<11)
+#define MPIR_REDUCE_2LEVEL_THRESHOLD (1<<14)
 
 struct coll_runtime {
     int allgather_rd_threshold; 
@@ -3309,6 +3317,7 @@ struct coll_runtime {
     int reduce_2level_threshold;
     int shmem_allreduce_msg;
     int shmem_reduce_msg;
+    int shmem_intra_reduce_msg;
     int alltoall_small_msg; 
     int alltoall_medium_msg; 
     int alltoall_throttle_factor;
@@ -3408,39 +3417,21 @@ extern MPIR_Op_check_dtype_fn *MPIR_Op_check_dtype_table[];
 int MPIR_Allgather_MV2(void *sendbuf, int sendcount, MPI_Datatype sendtype,
                    void *recvbuf, int recvcount, MPI_Datatype recvtype,
                    MPID_Comm *comm_ptr, int *errflag );
-int MPIR_Allgatherv_MV2(void *sendbuf, int sendcount, MPI_Datatype sendtype, 
-                    void *recvbuf, int *recvcounts, int *displs,   
-                    MPI_Datatype recvtype, MPID_Comm *comm_ptr, int *errflag );
 int MPIR_Allreduce_MV2(void *sendbuf, void *recvbuf, int count, 
                    MPI_Datatype datatype, MPI_Op op, MPID_Comm *comm_ptr, int *errflag);
 int MPIR_Alltoall_MV2(void *sendbuf, int sendcount, MPI_Datatype sendtype,
                   void *recvbuf, int recvcount, MPI_Datatype recvtype,
                   MPID_Comm *comm_ptr, int *errflag);
-int MPIR_Alltoallv_MV2(void *sendbuf, int *sendcnts, int *sdispls, 
-                   MPI_Datatype sendtype, void *recvbuf, int *recvcnts, 
-                   int *rdispls, MPI_Datatype recvtype, MPID_Comm *comm_ptr, int *errflag);
-int MPIR_Alltoallw_MV2(void *sendbuf, int *sendcnts, int *sdispls, 
-                   MPI_Datatype *sendtypes, void *recvbuf, int *recvcnts, 
-                   int *rdispls, MPI_Datatype *recvtypes, MPID_Comm *comm_ptr, int *errflag);
 int MPIR_Bcast_MV2 (void *buffer, int count, MPI_Datatype datatype, int
                 root, MPID_Comm *comm_ptr, int *errflag);
 int MPIR_Gather_MV2 (void *sendbuf, int sendcnt, MPI_Datatype sendtype,
                  void *recvbuf, int recvcnt, MPI_Datatype recvtype,
                  int root, MPID_Comm *comm_ptr, int *errflag);
-int MPIR_Gatherv_MV2 (void *sendbuf, int sendcnt, MPI_Datatype sendtype, 
-                  void *recvbuf, int *recvcnts, int *displs,
-                  MPI_Datatype recvtype, int root, MPID_Comm *comm_ptr, int *errflag); 
-int MPIR_Reduce_scatter_MV2(void *sendbuf, void *recvbuf, int *recvcnts, 
-                        MPI_Datatype datatype, MPI_Op op, MPID_Comm *comm_ptr, int *errflag);
 int MPIR_Reduce_MV2(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
                 MPI_Op op, int root, MPID_Comm *comm_ptr, int *errflag );
 int MPIR_Scatter_MV2(void *sendbuf, int sendcnt, MPI_Datatype sendtype, 
                  void *recvbuf, int recvcnt, MPI_Datatype recvtype, 
                  int root, MPID_Comm *comm_ptr, int *errflag );
-int MPIR_Scatterv_MV2 (void *sendbuf, int *sendcnts, int *displs,
-                   MPI_Datatype sendtype, void *recvbuf, int recvcnt,
-                   MPI_Datatype recvtype, int root, MPID_Comm
-                   *comm_ptr, int *errflag);
 int MPIR_Barrier_MV2( MPID_Comm *comm_ptr, int *errflag);
 
 #endif /* _OSU_MVAPICH_ */
@@ -3685,7 +3676,7 @@ void MPIR_Comm_get_name_impl(MPID_Comm *comm, char *comm_name, int *resultlen);
 int MPIR_Comm_group_impl(MPID_Comm *comm_ptr, MPID_Group **group_ptr);
 int MPIR_Comm_remote_group_impl(MPID_Comm *comm_ptr, MPID_Group **group_ptr);
 int MPIR_Comm_split_impl(MPID_Comm *comm_ptr, int color, int key, MPID_Comm **newcomm_ptr);
-void MPIR_Group_compare_impl(MPID_Group *group_ptr1, MPID_Group *group_ptr2, int *result);
+int MPIR_Group_compare_impl(MPID_Group *group_ptr1, MPID_Group *group_ptr2, int *result);
 int MPIR_Group_free_impl(MPID_Group *group_ptr);
 void MPIR_Get_count_impl(MPI_Status *status, MPI_Datatype datatype, int *count);
 void MPIR_Grequest_complete_impl(MPID_Request *request_ptr);
@@ -3719,7 +3710,7 @@ int MPIR_Type_indexed_impl(int count, int blocklens[], int indices[], MPI_Dataty
 void MPIR_Type_free_impl(MPI_Datatype *datatype);
 int MPIR_Type_vector_impl(int count, int blocklength, int stride, MPI_Datatype old_type, MPI_Datatype *newtype_p);
 int MPIR_Type_struct_impl(int count, int blocklens[], MPI_Aint indices[], MPI_Datatype old_types[], MPI_Datatype *newtype);
-void MPIR_Group_translate_ranks_impl(MPID_Group *group_ptr1, int n, int *ranks1,
+int MPIR_Group_translate_ranks_impl(MPID_Group *group_ptr1, int n, int *ranks1,
                                      MPID_Group *group_ptr2, int *ranks2);
 int MPIR_Pack_impl(void *inbuf, int incount, MPI_Datatype datatype, void *outbuf, int outcount, int *position);
 void MPIR_Pack_size_impl(int incount, MPI_Datatype datatype, int *size);

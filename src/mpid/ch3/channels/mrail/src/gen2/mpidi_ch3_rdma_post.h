@@ -122,6 +122,7 @@ struct MPIDI_CH3I_RDMA_put_get_list_t{
  */
 
 #define RENDEZVOUS_IN_PROGRESS(c, s) {                          \
+    MPIR_Request_add_ref(s);                                    \
     if (NULL == (c)->mrail.sreq_tail) {                         \
         (c)->mrail.sreq_head = (void *)(s);                     \
     } else {                                                    \
@@ -134,12 +135,14 @@ struct MPIDI_CH3I_RDMA_put_get_list_t{
 }
 
 #define RENDEZVOUS_DONE(c) {                                    \
+    MPID_Request *req = (c)->mrail.sreq_head;                   \
     (c)->mrail.sreq_head =                                      \
     ((MPID_Request *)                                           \
      (c)->mrail.sreq_head)->mrail.next_inflow;                  \
         if (NULL == (c)->mrail.sreq_head) {                     \
             (c)->mrail.sreq_tail = NULL;                        \
         }                                                       \
+    MPID_Request_release(req);                                  \
 }
 
 #define MPIDI_CH3I_MRAIL_REVERT_RPUT(_sreq)                     \

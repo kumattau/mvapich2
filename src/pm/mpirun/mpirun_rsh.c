@@ -44,6 +44,8 @@
 #include "debug_utils.h"
 
 #include <signal_processor.h>
+#include <wfe_mpirun.h>
+#include <m_state.h>
 
 /*
  * When an error occurs in the init phase, mpirun_rsh doesn't have the pid
@@ -55,7 +57,7 @@
 
 int wait_socks_succ = 0;
 int socket_error = 0;
-static int exit_code = EXIT_SUCCESS;
+pthread_mutex_t wait_socks_succ_lock = PTHREAD_MUTEX_INITIALIZER;
 
 void spawn_one(int argc, char *argv[], char *totalview_cmd, char *env, int fastssh_nprocs_thres);
 
@@ -122,7 +124,6 @@ void usage(void);
 void cleanup(void);
 char *skip_white(char *s);
 int read_param_file(char *paramfile, char **env);
-void wait_for_mpispawn(int s, struct sockaddr_in *sockaddr, unsigned int sockaddr_len);
 int set_fds(fd_set * rfds, fd_set * efds);
 void make_command_strings(int argc, char *argv[], char *totalview_cmd, char *command_name, char *command_name_tv);
 void mpispawn_checkin(int, struct sockaddr *, unsigned int);
@@ -248,6 +249,7 @@ signal_processor (int signal)
         case SIGHUP:
         case SIGINT:
         case SIGTERM:
+            PRINT_ERROR("Caught signal %d, killing job\n", signal);
             cleanup_handler(signal);
             break;
         case SIGTSTP:
@@ -279,7 +281,7 @@ setup_signal_handling_thread (void)
     sigaddset(&sigmask, SIGALRM);
     sigaddset(&sigmask, SIGCHLD);
 
-    start_signal_processor(sigmask, signal_processor);
+    start_sp_thread(sigmask, signal_processor, 0);
 }
 
 int main(int argc, char *argv[])
@@ -294,6 +296,8 @@ int main(int argc, char *argv[])
     char totalview_cmd[TOTALVIEW_CMD_LEN];
 
     int timeout, fastssh_threshold;
+    struct wfe_params wfe_params;
+    M_STATE state;
 
     if (read_configuration_files(&crc)) {
         fprintf(stderr, "mpirun_rsh: error reading configuration file\n");
@@ -301,19 +305,18 @@ int main(int argc, char *argv[])
     }
 
     init_debug();
-    setup_signal_handling_thread();
-
-    atexit(remove_host_list_file);
-    atexit(free_memory);
-
     totalview_cmd[TOTALVIEW_CMD_LEN - 1] = '\0';
     display[0] = '\0';
+
+    setup_signal_handling_thread();
 
 #ifdef CKPT
     int ret_ckpt;
 
-    if ((ret_ckpt = ckptInit()) < 0)
-        return ret_ckpt;
+    ret_ckpt = CR_initialize();
+    if ( ret_ckpt  < 0 ) {
+        goto exit_main;
+    }
   restart_from_ckpt:
 #endif                          /* CKPT */
 
@@ -368,9 +371,6 @@ int main(int argc, char *argv[])
     }
 
 #if defined(CKPT) && defined(CR_FTB)
-    dbg("****************  enabled CR_FTB && CKPT  ****************\n");
-#endif
-#if defined(CKPT) && defined(CR_FTB)
     if (sparehosts_on) {
         /* Read Hot Spares */
         int ret = read_sparehosts(sparehostfile, &sparehosts, &nsparehosts);
@@ -412,20 +412,23 @@ int main(int argc, char *argv[])
     if (!fastssh_threshold)
         fastssh_threshold = 1 << 8;
 
-#ifndef CKPT
     //Another way to activate hiearachical ssh is having a number of nodes
     //beyond a threshold
     if (pglist->npgs >= fastssh_threshold) {
         USE_LINEAR_SSH = 0;
     }
-#endif
 
     USE_LINEAR_SSH = dpm ? 1 : USE_LINEAR_SSH;
+
+#ifdef CKPT
+    // Force USE_LINEAR_SSH==1 because CKPT assumes this
+    // Could this be fixed?
+    USE_LINEAR_SSH = 1;
+    CR_thread_start(pglist->npgs);
 
     /*
      * Check to see of ckpt variables are in the environment
      */
-#ifdef CKPT
     save_ckpt_vars_env();
 #ifdef CR_AGGRE
     if (getenv("MV2_CKPT_USE_AGGREGATION")) {
@@ -434,24 +437,27 @@ int main(int argc, char *argv[])
 #endif
 #endif
 
+
+#if defined(CKPT) && defined(CR_FTB) 
+    // Wait for CR thread to connect to FTB before proceeding
+    // The CR thread will change the state to M_LAUNCH when ready
+    // This should be removed once we remove the use of FTB for this
+    state = m_state_wait_while(M_INITIALIZE|M_RESTART);
+#else
+    // We are ready to launch, make the transition
+    state = m_state_transition(M_INITIALIZE|M_RESTART, M_LAUNCH);
+#endif
+
+    // If an error happened, skip launching and exit
+    if (M_LAUNCH != state) {
+        goto exit_main;
+    }
+
     if (USE_LINEAR_SSH) {
         NSPAWNS = pglist->npgs;
         DBG(fprintf(stderr, "USE_LINEAR = %d \n", USE_LINEAR_SSH));
 
-#ifdef CKPT
-        if (!show_on) {
-            create_connections(NSPAWNS);
-        }
-        /* if (!show_on) */
-#endif                          /* CKPT */
         spawn_fast(argc, argv, totalview_cmd, env);
-
-#ifdef CKPT
-        if (!show_on) {
-            close_connections(NSPAWNS);
-        }
-        /* if (!show_on) */
-#endif                          /* CKPT */
 
     } else {
         NSPAWNS = 1;
@@ -466,14 +472,27 @@ int main(int argc, char *argv[])
     if (show_on)
         exit(EXIT_SUCCESS);
 
-    mpispawn_checkin(server_socket, (struct sockaddr *) &sockaddr, sockaddr_len);
+    /*
+     * Create Communication Thread
+     */
+    wfe_params.s            = server_socket;
+    wfe_params.sockaddr     = &sockaddr;
+    wfe_params.sockaddr_len = sockaddr_len;
+
+    start_wfe_thread(&wfe_params);
+
+    state = m_state_wait_while(M_LAUNCH);
 
     /*
-     * Disable alarm since mpirun has initialized.
+     * Disable alarm since mpirun is no longer launching.
      */
-    //pglist_print();
     alarm(0);
     dump_pgrps();
+
+    if (M_RUN != state) {
+        goto exit_main;
+    }
+
     /*
      * Activate new alarm for mpi job based on MPIEXEC_TIMEOUT if set.
      */
@@ -483,110 +502,56 @@ int main(int argc, char *argv[])
         alarm(timeout);
     }
 
-    wait_for_mpispawn(server_socket, &sockaddr, sockaddr_len);
-
-#ifdef CKPT
-    dbg(" after wait_for_spawn: cached_restart_context=%d\n", cached_restart_context);
-    finalize_ckpt();
-    if (cached_restart_context)
-        goto restart_from_ckpt;
-#endif                          /* CKPT */
-
     /*
-     * This return should never be reached.
+     * Wait until a transition from the M_RUN to M_RESTART or M_EXIT occurs.
      */
-    return EXIT_FAILURE;
-}
+    state = m_state_wait_until(M_RESTART|M_EXIT);
 
-// Error code from MPISPAWN
-const char* get_mpispawn_error_str( mpispawn_error_code ec )
-{
-    switch( ec ) {
-        case MPISPAWN_MPIPROCESS_ERROR:
-            return "MPI process error";
-        case MPISPAWN_MPIPROCESS_NONZEROEXIT:
-            return "An MPI process returned a non-zero exit code";
-        case MPISPAWN_DPM_REQ:
-            return "DPM request (not an error)";
-        case MPISPAWN_PMI_READ_ERROR:
-            return "Error while reading a PMI socket";
-        case MPISPAWN_PMI_WRITE_ERROR:
-            return "Error while writing a PMI socket";
-        case MPISPAWN_INTERNAL_ERROR:
-            return "MPISPAWN internal error";
-        case MPISPAWN_CLEANUP_SIGNAL:
-            return "MPISPAWN got cleanup signal";
+exit_main:
+    stop_wfe_thread();
+    stop_sp_thread();
+
+    switch (state) {
+        case M_RESTART:
+#ifdef CKPT
+            // Restart mpirun_rsh: cleanup and re-initialize
+            PRINT_DEBUG( DEBUG_FT_verbose, "Restarting mpirun_rsh...\n" );
+
+            // Cleanup
+            CR_thread_stop(1);
+            remove_host_list_file();
+            free_memory();
+
+            // Reset the parsing function
+            optind = 1;
+
+            // Restart
+            setup_signal_handling_thread();
+            goto restart_from_ckpt;
+#else
+            ASSERT_MSG( 0==1, "Internal Error\n");
+#endif /* CKPT */
+            break;
+        case M_EXIT:
+            break;
         default:
-            return "Unknown error";
+            /*
+             * This should only happen due to a coding error.
+             */
+            PRINT_ERROR("invalid state");
+            m_state_fail();
+            break;
     }
-}
-
-void wait_for_mpispawn(int s, struct sockaddr_in *sockaddr, unsigned int sockaddr_len)
-{
-    int wfe_socket, wfe_mpispawn_code, wfe_abort_mid;
-
-  listen:
 
 #ifdef CKPT
-    if (restart_context)
-        return;
-#endif
-
-    while ((wfe_socket = accept(s, (struct sockaddr *) sockaddr, &sockaddr_len)) < 0) {
-#ifdef CKPT
-        dbg("%s: got wfe %d\n", __func__, wfe_socket);
-        if (restart_context)
-            return;
-#endif
-
-        if (errno == EINTR || errno == EAGAIN)
-            continue;
-        perror("accept");
-        cleanup();
-    }
-
-#if defined(CKPT) && defined(CR_FTB)
-  wait_for_non_spare:
-#endif
-
-    if (read_socket(wfe_socket, &wfe_mpispawn_code, sizeof(int))
-        || read_socket(wfe_socket, &wfe_abort_mid, sizeof(int))) {
-        PRINT_ERROR("Termination socket read failed!\n");
-    } else {
-        // Got error code from mpispawn
-        if ( wfe_mpispawn_code == MPISPAWN_DPM_REQ ) {
-            // Handle DPM request and restart listening for errors
-            PRINT_DEBUG(DEBUG_Fork_verbose, "Dynamic spawn request from %d\n", wfe_abort_mid);
-            handle_spawn_req(wfe_socket);
-            dpm_cnt++;
-            close(wfe_socket);
-            goto listen;
-        } else if ( wfe_mpispawn_code == MPISPAWN_MPIPROCESS_NONZEROEXIT ) {
-            // Set non_zeo exit code and restart listening for errors
-            PRINT_DEBUG(DEBUG_Fork_verbose, "mpispawn %d reported an MPI process exit with non-zero code\n", wfe_abort_mid);
-            exit_code = EXIT_FAILURE;
-            close(wfe_socket);
-            goto listen;
-        } else {
-            // Another error code: assume abort from mpispawn:
-            // -> print error message, cleanup and exit
-            const char *error_message = get_mpispawn_error_str( wfe_mpispawn_code );
-            const char* hostname = pglist->index[wfe_abort_mid]->hostname;
-            PRINT_ERROR("mpispawn_%d from node %s aborted: %s (%d)\n", wfe_abort_mid, hostname, error_message, wfe_mpispawn_code);
-            exit_code = EXIT_FAILURE;
-            // cleanup and exit will follow
-        }
-    }
-#if defined(CKPT) && defined(CR_FTB)
-    if (sparehosts_on && current_spare_host && !strcmp(current_spare_host, pglist->index[wfe_abort_mid]->hostname)) {
-        PRINT_DEBUG(DEBUG_FT_verbose, "Not Exited, only spare node!\n");
-        goto wait_for_non_spare;
-    } else {
-        PRINT_DEBUG(DEBUG_FT_verbose, "current_spare=%s, host=%s\n", current_spare_host, pglist->index[wfe_abort_mid]->hostname);
-    }
-#endif
-    close(wfe_socket);
+    CR_thread_stop(0);
+    CR_finalize();
+#endif 
     cleanup();
+    remove_host_list_file();
+    free_memory();
+
+    return m_state_get_exit_code();
 }
 
 #if defined(CKPT) && defined(CR_AGGRE)
@@ -610,11 +575,7 @@ static void rkill_aggregation()
 
 void cleanup_handler(int sig)
 {
-    cleanup();
-#if defined(CKPT) && defined(CR_AGGRE)
-    rkill_aggregation();
-#endif
-    exit(EXIT_FAILURE);
+    m_state_fail();
 }
 
 void pglist_print(void)
@@ -839,9 +800,6 @@ void pglist_insert(const char *const hostname, const int plist_index)
 
 void free_memory(void)
 {
-#ifdef CKPT
-    free_locks();
-#endif
     if (pglist) {
         if (pglist->data) {
             process_group *pg = pglist->data;
@@ -883,10 +841,6 @@ void free_memory(void)
 void cleanup(void)
 {
     int i;
-
-#ifdef CKPT
-    cr_cleanup();
-#endif                          /* CKPT */
 
     if (use_totalview) {
         fprintf(stderr, "Cleaning up all processes ...\n");
@@ -947,8 +901,6 @@ void cleanup(void)
 
         rkill_linear();
     }
-
-    exit(EXIT_FAILURE);
 }
 
 void rkill_fast(void)
@@ -958,6 +910,11 @@ void rkill_fast(void)
 
     for (i = 0; i < NSPAWNS; i++) {
         if (0 == (spawned_pid[i] = fork())) {
+            /*
+             * We're no longer the mpirun_rsh process but a child process
+             * used to kill a specific instance of mpispawn.  No exit codes
+             * are state transitions should be called here.
+             */
             dbg("pglist->index[%d]->pid=%d\n", i, pglist->index[i]->pid);
             if (pglist->index[i]->pid != -1) {
                 const size_t bufsize = 40 + 10 * pglist->index[i]->npids;
@@ -990,9 +947,9 @@ void rkill_fast(void)
 
                 perror("Here");
                 exit(EXIT_FAILURE);
-            } else {
-                exit(exit_code);
-            }
+            } 
+
+            exit(EXIT_SUCCESS);
         }
     }
 #if defined(CKPT) && defined(CR_AGGRE)
@@ -1044,10 +1001,16 @@ void rkill_linear(void)
 
     for (i = 0; i < nprocs; i++) {
         if (0 == (spawned_pid[i] = fork())) {
+            /*
+             * We're no longer the mpirun_rsh process but a child process
+             * used to kill a specific instance of mpispawn.  No exit codes
+             * are state transitions should be called here.
+             */
             char kill_cmd[80];
 
-            if (!plist[i].remote_pid)
-                exit(exit_code);
+            if (!plist[i].remote_pid) {
+                exit(EXIT_SUCCESS);
+            }
 
             snprintf(kill_cmd, 80, "kill -s 9 %d >&/dev/null", plist[i].remote_pid);
 
@@ -1539,6 +1502,11 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env)
       done_spawn_read:
 
         if (!(pglist->data[i].pid = fork())) {
+            /*
+             * We're no longer the mpirun_rsh process but a child process
+             * used to launch a specific instance of mpispawn.  No exit codes
+             * are state transitions should be called here.
+             */
             size_t arg_offset = 0;
             const char *nargv[7];
             char *command;
@@ -1746,7 +1714,7 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env)
                     fprintf(stdout, "%s ", nargv[arg++]);
                 fprintf(stdout, "\n");
 
-                exit(exit_code);
+                exit(EXIT_SUCCESS);
             }
 
             if (strcmp(pglist->data[i].hostname, plist[0].hostname)) {
@@ -2063,6 +2031,11 @@ void spawn_one(int argc, char *argv[], char *totalview_cmd, char *env, int fasts
     i = 0;                      /* Spawn root mpispawn */
     {
         if (!(pglist->data[i].pid = fork())) {
+            /*
+             * We're no longer the mpirun_rsh process but a child process
+             * used to launch a specific instance of mpispawn.  No exit codes
+             * are state transitions should be called here.
+             */
             size_t arg_offset = 0;
             const char *nargv[7];
             char *command;
@@ -2297,9 +2270,11 @@ void alarm_handler(int signal)
         fprintf(stderr, "Timeout alarm signaled\n");
     }
 
-    if (alarm_msg)
+    if (alarm_msg) {
         fprintf(stderr, "%s", alarm_msg);
-    cleanup();
+    }
+
+    m_state_fail();
 }
 
 void child_handler(int signal)
@@ -2336,13 +2311,26 @@ void child_handler(int signal)
         if (pid < 0) {
             if (errno == ECHILD) {
                 // No more unwaited-for child -> end mpirun_rsh
-                if (legacy_startup)
+                if (legacy_startup) {
                     close(server_socket);
-                exit(exit_code);
+                }
+
+                /*
+                 * Tell main thread to exit mpirun_rsh cleanly.
+                 */
+                m_state_exit();
+
+                return;
             } else {
                 // Unhandled cases -> error
                 PRINT_ERROR_ERRNO("Error: waitpid returned %d", errno, pid);
-                abort();
+
+                /*
+                 * Tell main thread to abort mpirun_rsh.
+                 */
+                m_state_fail();
+
+                return;
             }
         } else if (pid == 0) {
             // No more exited child -> end handler
@@ -2386,8 +2374,15 @@ void child_handler(int signal)
 #ifdef CR_FTB
         dbg("nsparehosts=%d\n", nsparehosts);
         if (sparehosts_on && (num_exited >= (NSPAWNS - nsparehosts))) {
-            dbg(" num_exit=%d, NSPAWNS=%d, nsparehosts=%d, will kill-fast\n", num_exited, NSPAWNS, nsparehosts);
-            rkill_fast();
+            dbg(" num_exit=%d, NSPAWNS=%d, nsparehosts=%d, will kill-fast\n",
+                    num_exited, NSPAWNS, nsparehosts);
+
+            /*
+             * Tell main thread to exit mpirun_rsh cleanly.
+             */
+            m_state_exit();
+
+            continue;
         }
 #endif
 
@@ -2398,18 +2393,25 @@ void child_handler(int signal)
 #endif
         if (!WIFEXITED(status) || WEXITSTATUS(status)) {
             /*
-             *  If mpirun_rsh was not successful connected to all the
-             * mpispawn, it cannot cleanup the mpispawn. It should
-             * wait for the timeout.
+             * mpirun_rsh did not successfully accept the connections of each
+             * mpispawn before one of the processes terminated abnormally or
+             * with a bad exit status.
              */
+            pthread_mutex_lock(&wait_socks_succ_lock);
             if (wait_socks_succ < NSPAWNS) {
-                fprintf(stderr, "%s: Error in init phase...wait for cleanup! (%d/%d" "mpispawn connections)\n", __func__, wait_socks_succ, NSPAWNS);
+                PRINT_ERROR("Error in init phase, aborting! "
+                            "(%d/%d mpispawn connections)\n", wait_socks_succ, NSPAWNS);
                 alarm_msg = "Failed in initilization phase, cleaned up all the mpispawn!\n";
                 socket_error = 1;
-                return;
-            } else {
-                cleanup();
             }
+            pthread_mutex_unlock(&wait_socks_succ_lock);
+
+            /*
+             * Tell main thread to abort mpirun_rsh.
+             */
+            m_state_fail();
+
+            continue;
         }
     }
     dbg("mpirun_rsh EXIT FROM child_handler\n");
@@ -2431,8 +2433,13 @@ void mpispawn_checkin(int s, struct sockaddr *sockaddr, unsigned int sockaddr_le
             mt_degree = MT_MAX_DEGREE;
     } else {
         if (mt_degree < 2) {
+            /*
+             * Shouldn't we detect this error much earlier in this process?
+             */
             fprintf(stderr, "mpirun_rsh: MV2_MT_DEGREE too low");
-            cleanup();
+            m_state_fail();
+
+            return;
         }
     }
 
@@ -2441,7 +2448,9 @@ void mpispawn_checkin(int s, struct sockaddr *sockaddr, unsigned int sockaddr_le
     spawninfo = (struct spawn_info_s *) malloc(NSPAWNS * sizeof(struct spawn_info_s));
     if (!spawninfo) {
         perror("[CR_MIG:mpirun_rsh] malloc(spawninfo)");
-        cleanup();
+        m_state_fail();
+
+        return;
     }
 #endif
 
@@ -2471,7 +2480,10 @@ void mpispawn_checkin(int s, struct sockaddr *sockaddr, unsigned int sockaddr_le
         for (n = 0; n < pglist->data[id].npids; n++) {
             plist[pglist->data[id].plist_indices[n]].state = P_STARTED;
         }
+
+        pthread_mutex_lock(&wait_socks_succ_lock);
         wait_socks_succ++;
+        pthread_mutex_unlock(&wait_socks_succ_lock);
 
 #if defined(CKPT) && defined(CR_FTB)
         strncpy(spawninfo[i].spawnhost, pglist->data[i].hostname, 31);
@@ -2484,19 +2496,25 @@ void mpispawn_checkin(int s, struct sockaddr *sockaddr, unsigned int sockaddr_le
      * mpispawns.    
      */
     if (socket_error) {
-        cleanup();
+        m_state_fail();
+
+        return;
     }
 
     if (USE_LINEAR_SSH) {
         sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (sock < 0) {
             perror("socket [mpispawn_checkin]");
-            cleanup();
+            m_state_fail();
+
+            return;
         }
 
         if (connect(sock, (struct sockaddr *) &address[0], sizeof(struct sockaddr)) < 0) {
             perror("connect");
-            cleanup();
+            m_state_fail();
+
+            return;
         }
 
         /*
@@ -2509,7 +2527,9 @@ void mpispawn_checkin(int s, struct sockaddr *sockaddr, unsigned int sockaddr_le
             || write_socket(sock, spawninfo, sizeof(struct spawn_info_s) * (pglist->npgs))
 #endif
             ) {
-            cleanup();
+            m_state_fail();
+
+            return;
         }
 
         close(sock);

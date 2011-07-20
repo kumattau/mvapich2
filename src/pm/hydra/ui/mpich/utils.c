@@ -206,6 +206,7 @@ static void mfile_help_fn(void)
 
 static HYD_status mfile_fn(char *arg, char ***argv)
 {
+    char localhost[MAX_HOSTNAME_LEN] = { 0 };
     HYD_status status = HYD_SUCCESS;
 
     if (reading_config_file && HYD_server_info.node_list) {
@@ -222,7 +223,10 @@ static HYD_status mfile_fn(char *arg, char ***argv)
         HYDU_ERR_POP(status, "error parsing hostfile\n");
     }
     else {
-        status = HYDU_add_to_node_list("localhost", 1, &HYD_server_info.node_list);
+        status = HYDU_gethostname(localhost);
+        HYDU_ERR_POP(status, "unable to get local hostname\n");
+
+        status = HYDU_add_to_node_list(localhost, 1, &HYD_server_info.node_list);
         HYDU_ERR_POP(status, "unable to add to node list\n");
     }
 
@@ -652,8 +656,6 @@ static HYD_status np_fn(char *arg, char ***argv)
 
     status = HYDU_set_int(arg, &exec->proc_count, atoi(**argv));
     HYDU_ERR_POP(status, "error getting executable process count\n");
-
-    HYD_server_info.pg_list.pg_process_count += exec->proc_count;
 
   fn_exit:
     (*argv)++;
@@ -1293,8 +1295,12 @@ static HYD_status set_default_values(void)
         MPL_env2bool("HYDRA_DEBUG", &HYD_server_info.user_global.debug) == 0)
         HYD_server_info.user_global.debug = 0;
 
-    if (MPL_env2str("HYDRA_IFACE", (const char **) &HYD_server_info.user_global.iface) == 0)
-        HYD_server_info.user_global.iface = NULL;
+    /* don't clobber existing iface values from the command line */
+    if (HYD_server_info.user_global.iface == NULL) {
+        if (MPL_env2str("HYDRA_IFACE", (const char **)&tmp) != 0)
+            HYD_server_info.user_global.iface = HYDU_strdup(tmp);
+        tmp = NULL;
+    }
 
     if (HYD_server_info.node_list == NULL &&
         MPL_env2str("HYDRA_HOST_FILE", (const char **) &tmp)) {

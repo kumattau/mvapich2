@@ -157,7 +157,7 @@ typedef struct ud_addr_info {
 
 struct MPIDI_PG;
 
-MPIDI_CH3I_RDMA_Process_t MPIDI_CH3I_RDMA_Process;
+extern MPIDI_CH3I_RDMA_Process_t MPIDI_CH3I_RDMA_Process;
 
 #define GEN_EXIT_ERR     -1     /* general error which forces us to abort */
 #define GEN_ASSERT_ERR   -2     /* general assert error */

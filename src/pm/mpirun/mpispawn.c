@@ -36,6 +36,7 @@
 #include "mpispawn_ckpt.h"
 
 #include <signal_processor.h>
+#include <mpispawn_error_codes.h>
 
 #define DBG(_stmt_)
 typedef struct {
@@ -816,7 +817,7 @@ setup_signal_handling_thread (void)
     sigaddset(&sigmask, SIGTERM);
     sigaddset(&sigmask, SIGCHLD);
 
-    start_signal_processor(sigmask, signal_processor);
+    start_sp_thread(sigmask, signal_processor, 1);
 }
 
 int main(int argc, char *argv[])

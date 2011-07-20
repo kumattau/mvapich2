@@ -62,6 +62,21 @@ do {                                                          \
             _seqnum = ((MPIDI_CH3_Pkt_accum_rndv_t *) (_pkt))->seqnum;    \
             break; \
         }   \
+    case MPIDI_CH3_PKT_LOCK_PUT_UNLOCK:  \
+        {   \
+            _seqnum = ((MPIDI_CH3_Pkt_lock_put_unlock_t *) (_pkt))->seqnum;    \
+            break; \
+        }   \
+    case MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK:  \
+        {   \
+            _seqnum = ((MPIDI_CH3_Pkt_lock_accum_unlock_t *) (_pkt))->seqnum;    \
+            break; \
+        }   \
+     case MPIDI_CH3_PKT_GET_RESP:  \
+        {   \
+            _seqnum = ((MPIDI_CH3_Pkt_get_resp_t *) (_pkt))->seqnum;    \
+            break; \
+        }   \
     default:    \
         _seqnum =  -1;  \
     }   \

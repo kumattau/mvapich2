@@ -592,7 +592,7 @@ int post_srq_send(MPIDI_VC_t* vc, vbuf* v, int rail)
     MPIDI_FUNC_ENTER(MPID_STATE_POST_SRQ_SEND);
 
     v->vc = (void *) vc;
-    p->src.rank = MPIDI_Process.my_pg_rank;
+    p->src.vc_addr = vc->mrail.remote_vc_addr;
     p->rail        = rail;
     
     XRC_FILL_SRQN_FIX_CONN (v, vc, rail);
@@ -912,7 +912,7 @@ int MPIDI_CH3I_MRAILI_Eager_send(MPIDI_VC_t * vc,
                                   v->desc.sg_entry.length - sizeof *p);
 #endif
         v->vc                = (void *) vc;
-        p->src.rank    = MPIDI_Process.my_pg_rank;
+        p->src.vc_addr = vc->mrail.remote_vc_addr;
         p->rail        = v->rail;
     }
 
@@ -1024,7 +1024,7 @@ int MRAILI_Backlog_send(MPIDI_VC_t * vc, int rail)
         --vc->mrail.srp.credits[rail].remote_credit;
 
         if (MPIDI_CH3I_RDMA_Process.has_srq) {
-            p->src.rank = MPIDI_Process.my_pg_rank;
+            p->src.vc_addr = vc->mrail.remote_vc_addr;
             p->rail        = rail;
         }
 

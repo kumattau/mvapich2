@@ -42,14 +42,12 @@
 #include "coll_shmem.h"
 #include "coll_shmem_internal.h"
 
-#include <stdio.h>
-
 typedef unsigned long addrint_t;
 
-struct shmem_coll_mgmt shmem_coll_obj;
+struct shmem_coll_mgmt shmem_coll_obj = {NULL, -1};
 
 int shmem_coll_size = 0;
-char *shmem_file = NULL;
+char *shmem_coll_file = NULL;
 
 char hostname[SHMEM_COLL_HOSTNAME_LEN];
 int my_rank;
@@ -69,6 +67,48 @@ struct scatter_tuning scatter_tuning_table[] = {{64, 4096, 8192},{128, 8192, 163
 int size_gather_tuning_table=8;
 struct gather_tuning gather_tuning_table[] = {{32, 256},{64, 512},{128, 2048},{256, 2048},{384, 8196},{512, 8196},{768,8196},{1024,8196}};
 
+int enable_shmem_collectives = 1;
+int allgather_ranking=1;
+int disable_shmem_allreduce=0;
+int disable_shmem_reduce=0;
+int disable_shmem_barrier=0;
+int use_two_level_gather=1;
+int use_direct_gather=1; 
+int use_two_level_scatter=1;
+int use_direct_scatter=1; 
+int gather_direct_system_size_small = GATHER_DIRECT_SYSTEM_SIZE_SMALL;
+int gather_direct_system_size_medium = GATHER_DIRECT_SYSTEM_SIZE_MEDIUM;
+int use_xor_alltoall=1; 
+int enable_shmem_bcast=1;
+int scatter_rd_inter_leader_bcast=1;
+int scatter_ring_inter_leader_bcast=1;
+int knomial_inter_leader_bcast=1; 
+int knomial_intra_node_threshold=256*1024;
+int knomial_inter_leader_threshold=64*1024;
+int bcast_two_level_system_size=64; 
+
+int tune_parameter=0;
+/* Runtime threshold for scatter */
+int user_scatter_small_msg = 0;
+int user_scatter_medium_msg = 0;
+
+/* Runtime threshold for scatter */
+int user_gather_switch_point = 0;
+int bcast_short_msg = MPIR_BCAST_SHORT_MSG; 
+
+struct coll_runtime coll_param = { MPIR_ALLGATHER_SHORT_MSG, 
+                                   MPIR_ALLGATHER_LONG_MSG, 
+                                   MPIR_ALLREDUCE_SHORT_MSG,
+                                   MPIR_ALLREDUCE_2LEVEL_THRESHOLD,
+                                   MPIR_REDUCE_SHORT_MSG,
+                                   MPIR_REDUCE_2LEVEL_THRESHOLD,
+                                   SHMEM_ALLREDUCE_THRESHOLD,
+                                   SHMEM_REDUCE_THRESHOLD, 
+                                   SHMEM_INTRA_REDUCE_THRESHOLD, 
+                                   MPIR_ALLTOALL_SHORT_MSG, 
+                                   MPIR_ALLTOALL_MEDIUM_MSG, 
+                                   MPIR_ALLTOALL_THROTTLE, 
+};
 
 #if defined(CKPT)
 extern void Wait_for_CR_Completion();
@@ -107,6 +147,36 @@ int tuning_init(){
     return 0;
 } 
 
+void MPIDI_CH3I_SHMEM_COLL_Cleanup()
+{
+    /*unmap*/
+    if (shmem_coll_obj.mmap_ptr != NULL) { 
+        munmap(shmem_coll_obj.mmap_ptr, shmem_coll_size);
+    }
+    /*unlink and close*/
+    if (shmem_coll_obj.fd != -1) {
+        close(shmem_coll_obj.fd);
+        unlink(shmem_coll_file);
+    }
+    /*free filename variable*/
+    if (shmem_coll_file != NULL) {
+        MPIU_Free(shmem_coll_file);
+    }
+    shmem_coll_obj.mmap_ptr = NULL;
+    shmem_coll_obj.fd = -1;
+    shmem_coll_file = NULL;
+}
+
+void MPIDI_CH3I_SHMEM_COLL_Unlink()
+{
+    if (shmem_coll_obj.fd != -1) {
+        unlink(shmem_coll_file);
+    }
+    if (shmem_coll_file != NULL) {
+       MPIU_Free(shmem_coll_file);
+    }
+    shmem_coll_file = NULL;
+}
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_SHMEM_COLL_Init
@@ -140,29 +210,25 @@ int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t *pg)
     PMI_Get_rank(&my_rank);
 
     /* add pid for unique file name */
-    if ((shmem_file = (char *) MPIU_Malloc(pathlen + 
-             sizeof(char) * (SHMEM_COLL_HOSTNAME_LEN + 26 + PID_CHAR_LEN))) == NULL) {
-        MPIU_CHKMEM_SETERR(mpi_errno, sizeof(char) * (SHMEM_COLL_HOSTNAME_LEN + 26 + PID_CHAR_LEN), "shared memory filename");
-    }
-
-    if (!shmem_file) {
+    shmem_coll_file = (char *) MPIU_Malloc(pathlen + 
+             sizeof(char) * (SHMEM_COLL_HOSTNAME_LEN + 26 + PID_CHAR_LEN));
+    if (!shmem_coll_file) {
 	MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
-		"**nomem %s", "shmem_file");
+		"**nomem %s", "shmem_coll_file");
     }
 
     /* unique shared file name */
-    sprintf(shmem_file, "%s/ib_shmem_coll-%s-%s-%d.tmp",
+    sprintf(shmem_coll_file, "%s/ib_shmem_coll-%s-%s-%d.tmp",
             shmem_dir, pg->ch.kvs_name, hostname, getuid());
 
     /* open the shared memory file */
-    shmem_coll_obj.fd = open(shmem_file, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
-    
+    shmem_coll_obj.fd = open(shmem_coll_file, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
     if (shmem_coll_obj.fd < 0) {
         /* Fallback */
-        sprintf(shmem_file, "/tmp/ib_shmem_coll-%s-%s-%d.tmp",
+        sprintf(shmem_coll_file, "/tmp/ib_shmem_coll-%s-%s-%d.tmp",
                 pg->ch.kvs_name, hostname, getuid());
 
-        shmem_coll_obj.fd = open(shmem_file, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
+        shmem_coll_obj.fd = open(shmem_coll_file, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
         if (shmem_coll_obj.fd < 0) {
             MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail", "%s: %s",
                 "open", strerror(errno));
@@ -173,22 +239,21 @@ int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t *pg)
 
     if (g_smpi.my_local_id == 0) {
         if (ftruncate(shmem_coll_obj.fd, 0)) {
-	    int ftruncate_errno = errno;
-
             /* to clean up tmp shared file */
-            unlink(shmem_file);
-   	        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
-		    "%s: %s", "ftruncate", strerror(ftruncate_errno));
+            mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                      FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
+                      "ftruncate", strerror(errno)); 
+            goto cleanup_files;
         }
 
         /* set file size, without touching pages */
         if (ftruncate(shmem_coll_obj.fd, shmem_coll_size)) {
-	    int ftruncate_errno = errno;
-
             /* to clean up tmp shared file */
-            unlink(shmem_file);
-	    MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
-		    "%s: %s", "ftruncate", strerror(ftruncate_errno));
+            mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                      FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
+                      "%s: %s", "ftruncate",
+                      strerror(errno));
+            goto cleanup_files;
         }
 
 /* Ignoring optimal memory allocation for now */
@@ -197,22 +262,24 @@ int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t *pg)
             char *buf = (char *) MPIU_Calloc(shmem_coll_size + 1, sizeof(char));
             
             if (write(shmem_coll_obj.fd, buf, shmem_coll_size) != shmem_coll_size) {
-  		        int write_errno = errno;
+                mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                      FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
+                      "%s: %s", "write",
+                      strerror(errno));
                 MPIU_Free(buf);
- 		        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
- 			    "%s: %s", "write", strerror(write_errno));
+                goto cleanup_files;
             }
             MPIU_Free(buf);
         }
 #endif /* !defined(_X86_64_) */
 
         if (lseek(shmem_coll_obj.fd, 0, SEEK_SET) != 0) {
-	         int lseek_errno = errno;
-
             /* to clean up tmp shared file */
-            unlink(shmem_file);
-	        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
-		    "%s: %s", "lseek", strerror(lseek_errno));
+            mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                      FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
+                      "%s: %s", "lseek",
+                      strerror(errno));
+            goto cleanup_files;
         }
 
     }
@@ -225,6 +292,8 @@ fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_INIT);
     return mpi_errno;
 
+cleanup_files:
+    MPIDI_CH3I_SHMEM_COLL_Cleanup();
 fn_fail:
     goto fn_exit;
 }
@@ -246,12 +315,11 @@ int MPIDI_CH3I_SHMEM_COLL_Mmap()
                          (PROT_READ | PROT_WRITE), (MAP_SHARED), shmem_coll_obj.fd,
                          0);
     if (shmem_coll_obj.mmap_ptr == (void *) -1) {
-	int mmap_errno = errno;
-
         /* to clean up tmp shared file */
-        unlink(shmem_file);
-	MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail", "%s: %s",
-		"mmap", strerror(mmap_errno));
+        mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                   FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
+                   "mmap", strerror(errno));
+        goto cleanup_files;
     }
 
 #if defined(CKPT)
@@ -265,7 +333,7 @@ int MPIDI_CH3I_SHMEM_COLL_Mmap()
     shmem_coll = (shmem_coll_region *) shmem_coll_obj.mmap_ptr;
 
     if (g_smpi.my_local_id == 0) {
-      MPIU_Memset(shmem_coll_obj.mmap_ptr, 0, shmem_coll_size);
+        MPIU_Memset(shmem_coll_obj.mmap_ptr, 0, shmem_coll_size);
 
         for (j=0; j < SHMEM_COLL_NUM_COMM; ++j) {
             for (i = 0; i < SHMEM_COLL_NUM_PROCS; ++i) {
@@ -294,6 +362,8 @@ fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SHMEM_COLLMMAP);
     return mpi_errno;
 
+cleanup_files:
+    MPIDI_CH3I_SHMEM_COLL_Cleanup();
 fn_fail:
     goto fn_exit;
 }
@@ -328,20 +398,11 @@ int MPIDI_CH3I_SHMEM_COLL_finalize()
 
 #endif
 
-    /* unmap the shared memory file */
-    munmap(shmem_coll_obj.mmap_ptr, shmem_coll_size);
-    close(shmem_coll_obj.fd);
-    MPIU_Free(shmem_file);
+    MPIDI_CH3I_SHMEM_COLL_Cleanup();
+
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_FINALIZE);
     return MPI_SUCCESS;
 }
-
-
-void MPIDI_CH3I_SHMEM_COLL_Unlink()
-{
-    unlink(shmem_file);
-}
-
 
 /* Shared memory gather: rank zero is the root always*/
 #undef FUNCNAME
@@ -689,4 +750,193 @@ void increment_shmem_comm_count()
 int get_shmem_comm_count()
 {
     return shmem_coll->shmem_comm_count;
+}
+
+int is_shmem_collectives_enabled()
+{
+    return enable_shmem_collectives;
+}
+
+void MV2_Read_env_vars(void){
+    char *value;
+    int flag;
+    if ((value = getenv("MV2_USE_SHMEM_COLL")) != NULL){
+        flag = (int)atoi(value); 
+        if (flag > 0) enable_shmem_collectives = 1;
+        else enable_shmem_collectives = 0;
+    }
+    if ((value = getenv("MV2_USE_SHMEM_ALLREDUCE")) != NULL) {
+        flag = (int)atoi(value);
+        if (flag > 0) disable_shmem_allreduce = 0;
+        else disable_shmem_allreduce = 1;
+    }
+    if ((value = getenv("MV2_USE_SHMEM_REDUCE")) != NULL) {
+        flag = (int)atoi(value);
+        if (flag > 0) disable_shmem_reduce = 0;
+        else disable_shmem_reduce = 1;
+    }
+    if ((value = getenv("MV2_USE_SHMEM_BARRIER")) != NULL) {
+        flag = (int)atoi(value);
+        if (flag > 0) disable_shmem_barrier = 0;
+        else disable_shmem_barrier = 1;
+    }
+    if ((value = getenv("MV2_SHMEM_COLL_NUM_COMM")) != NULL){
+	    flag = (int)atoi(value);
+	    if (flag > 0) g_shmem_coll_blocks = flag;
+    }
+    if ((value = getenv("MV2_SHMEM_COLL_MAX_MSG_SIZE")) != NULL){
+	    flag = (int)atoi(value);
+	    if (flag > 0) g_shmem_coll_max_msg_size = flag;
+    }
+    if ((value = getenv("MV2_USE_SHARED_MEM")) != NULL){
+	    flag = (int)atoi(value);
+	    if (flag <= 0) enable_shmem_collectives = 0;
+    }
+    if ((value = getenv("MV2_USE_BLOCKING")) != NULL){
+	    flag = (int)atoi(value);
+	    if (flag > 0) enable_shmem_collectives = 0;
+    }
+
+    if ((value = getenv("MV2_ALLREDUCE_SHORT_MSG")) != NULL){
+	    flag = (int)atoi(value);
+	    if (flag >= 0) coll_param.allreduce_short_msg = flag;
+    }
+    if ((value = getenv("MV2_ALLGATHER_REVERSE_RANKING")) != NULL) {
+        flag = (int)atoi(value);
+        if (flag > 0) allgather_ranking = 1;
+        else allgather_ranking = 0;
+    }
+    if ((value = getenv("MV2_ALLGATHER_RD_THRESHOLD")) != NULL){
+	    flag = (int)atoi(value);
+	    if (flag >= 0) coll_param.allgather_rd_threshold = flag;
+    }
+    if ((value = getenv("MV2_ALLGATHER_BRUCK_THRESHOLD")) != NULL){
+	    flag = (int)atoi(value);
+	    if (flag >= 0) coll_param.allgather_bruck_threshold = flag;
+    }
+    if ((value = getenv("MV2_ALLREDUCE_2LEVEL_MSG")) != NULL){
+        flag = (int)atoi(value);
+        if (flag >= 0) { 
+            coll_param.allreduce_2level_threshold = flag;
+        }
+    }
+    if ((value = getenv("MV2_REDUCE_SHORT_MSG")) != NULL){
+	    flag = (int)atoi(value);
+	    if (flag >= 0) coll_param.reduce_short_msg = flag;
+    }
+    if ((value = getenv("MV2_SHMEM_ALLREDUCE_MSG")) != NULL){
+	    flag = (int)atoi(value);
+	    if (flag >= 0) coll_param.shmem_allreduce_msg = flag;
+    }
+    if ((value = getenv("MV2_REDUCE_2LEVEL_MSG")) != NULL){
+	    flag = (int)atoi(value);
+	    if (flag >= 0) { 
+                  coll_param.reduce_2level_threshold = flag;
+            } 
+    }
+    if ((value = getenv("MV2_SCATTER_SMALL_MSG")) != NULL) {
+        user_scatter_small_msg = atoi(value);
+        tune_parameter=1;
+    }
+    if ((value = getenv("MV2_SCATTER_MEDIUM_MSG")) != NULL) {
+        user_scatter_medium_msg = atoi(value);
+        tune_parameter=1;
+    }
+    if ((value = getenv("MV2_GATHER_SWITCH_PT")) != NULL) {
+        user_gather_switch_point = atoi(value);
+        tune_parameter=1;
+    }
+    if ((value = getenv("MV2_SHMEM_REDUCE_MSG")) != NULL){
+	    flag = (int)atoi(value);
+	    if (flag >= 0) coll_param.shmem_reduce_msg = flag;
+    }
+    if ((value = getenv("MV2_INTRA_SHMEM_REDUCE_MSG")) != NULL){
+	    flag = (int)atoi(value);
+	    if (flag >= 0) coll_param.shmem_intra_reduce_msg = flag;
+    }
+    if ((value = getenv("MV2_USE_SHMEM_BCAST")) != NULL) {
+        flag = (int)atoi(value);
+        if (flag > 0) enable_shmem_bcast = 1;
+        else enable_shmem_bcast = 0;
+    }
+    if ((value = getenv("MV2_USE_TWO_LEVEL_GATHER")) != NULL) {
+        flag = (int)atoi(value);
+        if (flag > 0) use_two_level_gather = 1;
+        else use_two_level_gather = 0;
+    }
+    if ((value = getenv("MV2_USE_DIRECT_GATHER")) != NULL) {
+        flag = (int)atoi(value);
+        if (flag > 0) use_direct_gather = 1;
+        else use_direct_gather = 0;
+    }
+    if ((value = getenv("MV2_USE_TWO_LEVEL_SCATTER")) != NULL) {
+        flag = (int)atoi(value);
+        if (flag > 0) use_two_level_scatter = 1;
+        else use_two_level_scatter = 0;
+    }
+    if ((value = getenv("MV2_USE_DIRECT_SCATTER")) != NULL) {
+        flag = (int)atoi(value);
+        if (flag > 0) use_direct_scatter = 1;
+        else use_direct_scatter = 0;
+    }
+    if ((value = getenv("MV2_USE_DIRECT_GATHER_SYSTEM_SIZE_SMALL")) != NULL) {
+        flag = (int)atoi(value);
+        if (flag > 0) gather_direct_system_size_small = flag;
+        else use_direct_gather = GATHER_DIRECT_SYSTEM_SIZE_SMALL;
+    }
+    if ((value = getenv("MV2_USE_DIRECT_GATHER_SYSTEM_SIZE_MEDIUM")) != NULL) {
+        flag = (int)atoi(value);
+        if (flag > 0) gather_direct_system_size_medium = flag;
+        else use_direct_gather = GATHER_DIRECT_SYSTEM_SIZE_MEDIUM;
+    }
+    if ((value = getenv("MV2_ALLTOALL_SMALL_MSG")) != NULL) {
+        flag = (int)atoi(value);
+        if (flag > 0) coll_param.alltoall_small_msg = flag;
+    }
+    if ((value = getenv("MV2_ALLTOALL_THROTTLE_FACTOR")) != NULL) {
+        flag = (int)atoi(value);
+        if (flag <= 1) { 
+             coll_param.alltoall_throttle_factor = 1;
+        } else { 
+             coll_param.alltoall_throttle_factor = flag;
+        } 
+    }
+    if ((value = getenv("MV2_ALLTOALL_MEDIUM_MSG")) != NULL) {
+        flag = (int)atoi(value);
+        if (flag > 0) coll_param.alltoall_medium_msg = flag;
+    }
+    if ((value = getenv("MV2_USE_XOR_ALLTOALL")) != NULL) {
+        flag = (int)atoi(value);
+        if (flag >= 0) use_xor_alltoall = flag;
+    }
+    if ((value = getenv("MV2_KNOMIAL_INTER_LEADER_THRESHOLD")) != NULL) {
+          flag = (int)atoi(value);
+         if (flag > 0) knomial_inter_leader_threshold = flag;
+      }
+     if ((value = getenv("MV2_KNOMIAL_INTRA_NODE_THRESHOLD")) != NULL) {
+         flag = (int)atoi(value);
+         if (flag > 0) knomial_intra_node_threshold = flag;
+     }
+     if ((value = getenv("MV2_USE_SCATTER_RING_INTER_LEADER_BCAST")) != NULL) {
+         flag = (int)atoi(value);
+         if (flag > 0) scatter_ring_inter_leader_bcast = flag;
+     }
+     if ((value = getenv("MV2_USE_SCATTER_RD_INTER_LEADER_BCAST")) != NULL) {
+         flag = (int)atoi(value);
+         if (flag > 0) scatter_rd_inter_leader_bcast = flag;
+     }
+     if ((value = getenv("MV2_USE_KNOMIAL_INTER_LEADER_BCAST")) != NULL) {
+         flag = (int)atoi(value);
+         if (flag > 0) knomial_inter_leader_bcast  = flag;
+     }
+     if ((value = getenv("MV2_BCAST_TWO_LEVEL_SYSTEM_SIZE")) != NULL) {
+         flag = (int)atoi(value);
+         if (flag > 0) bcast_two_level_system_size  = flag;
+     }
+     if ((value = getenv("MV2_USE_BCAST_SHORT_MSG")) != NULL) {
+         flag = (int)atoi(value);
+         if (flag > 0) bcast_short_msg  = flag;
+     }
+
+    init_thread_reg();
 }

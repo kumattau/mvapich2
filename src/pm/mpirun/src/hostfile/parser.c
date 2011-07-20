@@ -1736,14 +1736,14 @@ read_hostfile(char * pathname)
     }
 
     for (i = offset; i < n; i++) {
-        plist[i].hostname = strdup(rank[i % n_ranks].hostname);
+        plist[i - offset].hostname = strdup(rank[i % n_ranks].hostname);
 
         if (rank[i % n_ranks].hca) {
-            plist[i].device = strdup(rank[i % n_ranks].hca);
+            plist[i - offset].device = strdup(rank[i % n_ranks].hca);
         }
 
         if (rank[i % n_ranks].port >= 0) {
-            plist[i].port = rank[i % n_ranks].port;
+            plist[i - offset].port = rank[i % n_ranks].port;
         }
     }
 

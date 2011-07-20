@@ -138,6 +138,8 @@ void HYDU_init_pg(struct HYD_pg *pg, int pgid)
     pg->pg_process_count = 0;
     pg->barrier_count = 0;
     pg->spawner_pg = NULL;
+    pg->user_node_list = NULL;
+    pg->pg_core_count = 0;
     pg->pg_scratch = NULL;
     pg->next = NULL;
 }
@@ -169,6 +171,9 @@ void HYDU_free_pg_list(struct HYD_pg *pg_list)
 
         if (pg->proxy_list)
             HYDU_free_proxy_list(pg->proxy_list);
+
+        if (pg->user_node_list)
+            HYDU_free_node_list(pg->user_node_list);
 
         HYDU_FREE(pg);
 
@@ -340,35 +345,18 @@ static HYD_status add_exec_to_proxy(struct HYD_exec *exec, struct HYD_proxy *pro
     goto fn_exit;
 }
 
-static int dceil(int x, int y)
-{
-    int z;
-
-    z = x / y;
-
-    if (z * y == x)
-        return z;
-    else
-        return z + 1;
-}
-
 HYD_status HYDU_create_proxy_list(struct HYD_exec * exec_list, struct HYD_node * node_list,
                                   struct HYD_pg * pg)
 {
     struct HYD_proxy *proxy = NULL, *tproxy, *last_proxy;
     struct HYD_exec *exec;
     struct HYD_node *node;
-    int pg_process_count, process_core_ratio, c, global_core_count, filler_process_count;
+    int process_core_ratio, c, global_core_count, filler_process_count;
     int num_procs, proxy_rem_cores, exec_rem_procs, global_active_processes, included_cores;
     int proxy_id, global_node_count, pcr, i;
     HYD_status status = HYD_SUCCESS;
 
     HYDU_FUNC_ENTER();
-
-    pg_process_count = 0;
-    for (exec = exec_list; exec; exec = exec->next)
-        pg_process_count += exec->proc_count;
-    HYDU_ASSERT(pg_process_count, status);
 
     /*
      * Find the process/core ratio that we can go to. The minimum is
@@ -382,7 +370,7 @@ HYD_status HYDU_create_proxy_list(struct HYD_exec * exec_list, struct HYD_node *
     global_core_count = 0;
     global_active_processes = 0;
     for (node = node_list; node; node = node->next) {
-        pcr = dceil(node->active_processes, node->core_count);
+        pcr = HYDU_dceil(node->active_processes, node->core_count);
         if (pcr > process_core_ratio)
             process_core_ratio = pcr;
         global_node_count++;
@@ -436,7 +424,7 @@ HYD_status HYDU_create_proxy_list(struct HYD_exec * exec_list, struct HYD_node *
             last_proxy->next = proxy;
         last_proxy = proxy;
 
-        if (included_cores >= pg_process_count)
+        if (included_cores >= pg->pg_process_count)
             break;
 
         i++;

@@ -31,7 +31,6 @@ void HYD_uiu_init_params(void)
     HYD_server_info.stderr_cb = NULL;
 
     HYD_server_info.node_list = NULL;
-    HYD_server_info.global_core_count = 0;
 
     HYDU_init_pg(&HYD_server_info.pg_list, 0);
 
@@ -148,16 +147,12 @@ void HYD_uiu_print_params(void)
     HYDU_dump_noprefix(stdout, "    *********************\n");
     i = 1;
     for (proxy = HYD_server_info.pg_list.proxy_list; proxy; proxy = proxy->next) {
-        HYDU_dump_noprefix(stdout, "      Proxy ID: %2d\n", i++);
-        HYDU_dump_noprefix(stdout, "      -----------------\n");
-        HYDU_dump_noprefix(stdout, "        Proxy name: %s\n", proxy->node->hostname);
-        HYDU_dump_noprefix(stdout, "        Process count: %d\n", proxy->node->core_count);
-        HYDU_dump_noprefix(stdout, "\n");
-        HYDU_dump_noprefix(stdout, "        Proxy exec list:\n");
-        HYDU_dump_noprefix(stdout, "        ....................\n");
+        HYDU_dump_noprefix(stdout, "      [%d] proxy: %s (%d cores)\n", i++,
+                           proxy->node->hostname, proxy->node->core_count);
+        HYDU_dump_noprefix(stdout, "      Exec list: ");
         for (exec = proxy->exec_list; exec; exec = exec->next)
-            HYDU_dump_noprefix(stdout, "          Exec: %s; Process count: %d\n",
-                               exec->exec[0], exec->proc_count);
+            HYDU_dump_noprefix(stdout, "%s (%d processes); ", exec->exec[0], exec->proc_count);
+        HYDU_dump_noprefix(stdout, "\n\n");
     }
 
     HYDU_dump_noprefix(stdout, "\n");
