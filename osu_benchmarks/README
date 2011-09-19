@@ -12,7 +12,7 @@ If your mpicc is not in your path or you would like to use another particular
 version you can tell configure by setting CC.
 
 Example:
-	./configure CC=/path/to/special/mpicc
+	./configure CC=/path/to/mpicc
 	make
 	make install
 
@@ -40,14 +40,10 @@ Rank	Block   Cyclic
 6	host2	host1
 7	host2	host2
 
-If you're using mpirun_rsh with mvapich the ranks are assigned in the order they
-are seen in the hostfile or on the command line.  If you're using mpd with
-mvapich2 two you have to specify the number of processes on each host in the
-hostfile otherwise mpd will assign ranks in a cyclic fashion.
-
-Example MPD HOSTFILE:
-host1:4
-host2:4
+If you're using mpirun_rsh with mvapich the ranks are assigned in the order
+they are seen in the hostfile or on the command line.  Please see your process
+managers' documentation for information on how to control the distribution of
+the rank to host mapping.
 
 
 MPI-1
@@ -61,14 +57,21 @@ osu_multi_lat   - Multi-pair Latency Test
 
 MPI-2
 -----
-osu_acc_latency	- Accumulate Latency Test
-osu_get_bw	- One-Sided Get Bandwidth Test
-osu_get_latency	- One-Sided Get Latency Test
-osu_latency_mt	- Multi-threaded Latency Test
-osu_put_bibw	- One-Sided Put Biderectional Test
-osu_put_bw	- One-Sided Put Bandwidth Test
-osu_put_latency	- One-Sided Put Latency Test
-
+osu_acc_latency         - Latency Test for Accumulate with Active 
+                          Synchronization
+osu_get_bw              - Bandwidth Test for Get with Active Synchronization
+osu_get_latency         - Latency Test for Get with Active Synchronization
+osu_latency_mt          - Multi-threaded Latency Test
+osu_passive_acc_latency - Latency Test for Accumulate with Passive 
+                          Synchronization
+osu_passive_get_bw      - Bandwidth Test for Get with Passive Synchronization
+osu_passive_get_latency - Latency Test for Get with Passive Synchronization
+osu_passive_put_bw      - Bandwidth Test for Put with Passive Synchronization
+osu_passive_put_latency - Latency Test for Put with Passive Synchronization
+osu_put_bibw            - Bi-directional Bandwidth Test for Put with Active 
+                          Synchronization
+osu_put_bw              - Bandwidth Test for Put with Active Synchronization
+osu_put_latency         - Latency Test for Put with Active Synchronization
 
 Latency Test
     * The latency tests were carried out in a ping-pong fashion. The sender
@@ -79,7 +82,7 @@ Latency Test
     * obtained. Blocking version of MPI functions (MPI_Send and MPI_Recv) were
     * used in the tests. This test is available here.
 
-Multi-threaded Latency Test (only applicable for MVAPICH2 with threading support enabled)
+Multi-threaded Latency Test (MPI-2 Benchmark [requires threading support])
     * The multi-threaded latency test performs a ping-pong test with a single
     * sender process and multiple threads on the receiving process. In this test
     * the sending process sends a message of a given data size to the receiver
@@ -106,8 +109,7 @@ Bidirectional Bandwidth Test
     * The bidirectional bandwidth test is similar to the bandwidth test, except
     * that both the nodes involved send out a fixed number of back-to-back
     * messages and wait for the reply. This test measures the maximum
-    * sustainable aggregrate bandwidth by two nodes. This test is available
-    * here.
+    * sustainable aggregate bandwidth by two nodes. This test is available here.
 
 Multiple Bandwidth / Message Rate test
     * The multi-pair bandwidth and message rate test evaluates the aggregate
@@ -135,54 +137,162 @@ Broadcast Latency Test
     * time taken for the ack from the total time. We compute the ack time
     * initially by doing a ping-pong test. This test is available here.
 
-One-Sided Put Latency Test (only applicable for MVAPICH2)
-    * One-Sided Put Latency Test: The sender (origin process) calls MPI_Put
-    * (ping) to directly place a message of certain data size in the receiver
-    * window. The receiver (target process) calls MPI_Win_wait to make sure the
-    * message has been received. Then the receiver initates a MPI_Put (pong) of
-    * the same data size to the sender which is now waiting on a synchronization
-    * call. Several iterations of this test is carried out and the average put
-    * latency numbers is obtained. This test is available here.
+Latency Test for Put with Active Synchronization (MPI-2 Benchmark)
+    * Post-Wait/Start-Complete synchronization is used in this test. The origin
+    * process calls MPI_Put to directly place data of a certain size in the
+    * remote process's window. It waits on the MPI_Win_complete call to ensure
+    * the local completion of the message. The target process calls
+    * MPI_Win_wait to make sure the message has been received in its window.
+    * Then the origin and target are interchanged and the communication happens
+    * in the opposite direction.  Several iterations of this test is carried
+    * out and the average put latency numbers is obtained. The latency includes
+    * the synchronization time. By default, the window memory is allocated in
+    * shared memory by providing 'alloc_shm' hint to MPI_Alloc_mem call. This
+    * hint is specific to MVAPICH2 and is ignored by other MPI libraries.
+    * MVAPICH2 takes advantage of this to optimize intra-node one-sided
+    * communication. It does not have an impact on internode performance. This
+    * optimization can be disabled by providing '-n' or '-no-hints' option to
+    * the benchmark.
 
-One-Sided Get Latency Test (only applicable for MVAPICH2)
-    * One-Sided Get Latency Test: The origin process calls MPI_Get (ping) to
-    * directly fetch a message of certain data size from the target process
-    * window to its local window.It then waits on a synchronization call
-    * (MPI_Win_complete) for local completion. After the synchronization call
-    * the target and origin process are switched for the pong message. Several
-    * iterations of this test are carried out and the average get latency
-    * numbers is obtained. This test is available here.
+Latency Test for Get with Active Synchronization (MPI-2 Benchmark)
+    * Post-Wait/Start-Complete synchronization is used in this test. The origin
+    * process calls MPI_Get to directly fetch data of a certain size from the
+    * target process's window into a local buffer. It then waits on a
+    * synchronization call (MPI_Win_complete) for local completion of the Gets.
+    * The remote process waits on a MPI_Win_wait call. After the
+    * synchronization calls, the target and origin process are switched for a
+    * message in the opposite direction.  Several iterations of this test are
+    * carried out and the average get latency numbers is obtained. The latency
+    * includes the synchronization time. By default, the window memory is
+    * allocated in shared memory by providing 'alloc_shm' hint to MPI_Alloc_mem
+    * call. This hint is specific to MVAPICH2 and is ignored by other MPI
+    * libraries. MVAPICH2 takes advantage of this to optimize intra-node
+    * one-sided communication. It does not have an impact on internode
+    * performance. This optimization can be disabled by providing '-n' or
+    * '-no-hints' option to the benchmark. 
 
-One-Sided Put Bandwidth Test (only applicable for MVAPICH2)
-    * One-Sided Put Bandwidth Test: The bandwidth tests were carried out by the
-    * origin process calling a fixed number of back to back Puts and then wait
-    * on a synchronization call (MPI_Win_complete) for completion. This process
-    * is repeated for several iterations and the bandwidth is calculated based
-    * on the elapsed time and the number of bytes sent by the origin process.
-    * This test is available here.
+Bandwidth Test for Put with Active Synchronization (MPI-2 Benchmark)
+    * Post-Wait/Start-Complete synchronization is used in this test. The test
+    * is carried out by the origin process calling a fixed number of
+    * back-to-back MPI_Puts on remote window and then waiting on a
+    * synchronization call (MPI_Win_complete) for their completion. The remote
+    * process participates in synchronization with MPI_Win_post and
+    * MPI_Win_wait calls. This process is repeated for several iterations and
+    * the bandwidth is calculated based on the elapsed time and the number of
+    * bytes put by the origin process.  By default, the window memory is
+    * allocated in shared memory by providing 'alloc_shm' hint to MPI_Alloc_mem
+    * call. This hint is specific to MVAPICH2 and is ignored by other MPI
+    * libraries. MVAPICH2 takes advantage of this to optimize intra-node
+    * one-sided communication. It does not have an impact on internode
+    * performance. This optimization can be disabled by providing '-n' or
+    * '-no-hints' option to the benchmark. 
 
-One-Sided Get Bandwidth Test (only applicable for MVAPICH2)
-    * One-Sided Get Bandwidth Test: The bandwidth tests were carried out by
-    * origin process calling a fixed number of back to back Gets and then wait
-    * on a synchronization call (MPI_Win_complete) for completion. This process
-    * is repeated for several iterations and the bandwidth is calculated based
-    * on the elapsed time and the number of bytes sent by the origin process.
-    * This test is available here.
+Bandwidth Test for Get with Active Synchronization (MPI-2 Benchmark)
+    * Post-Wait/Start-Complete synchronization is used in this test. The test
+    * is carried out by origin process calling a fixed number of back-to-back
+    * MPI_Gets and then waiting on a synchronization call (MPI_Win_complete)
+    * for their completion. The remote process participates in synchronization
+    * with MPI_Win_post and MPI_Win_wait calls. This process is repeated for
+    * several iterations and the bandwidth is calculated based on the elapsed
+    * time and the number of bytes received by the origin process. By default,
+    * the window memory is allocated in shared memory by providing 'alloc_shm'
+    * hint to MPI_Alloc_mem call. This hint is specific to MVAPICH2 and is
+    * ignored by other MPI libraries.  MVAPICH2 takes advantage of this to
+    * optimize intra-node one-sided communication.  It does not have an impact
+    * on internode performance. This optimization can be disabled by providing
+    * '-n' or '-no-hints' option to the benchmark. 
 
-One-Sided Put Bidirectional Bandwidth Test (only applicable for MVAPICH2)
-    * One-Sided Put Bidirectional Bandwidth Test: The bidirectional bandwidth
-    * test is similar to the bandwidth test,except that both the nodes involved
-    * send out a fixed number of back to back put messages and wait for the
-    * completion. This test measures the maximum sustainable aggregrate
-    * bandwidth by two nodes. This test is available here.
+Bidirectional Bandwidth Test for Put with Active Synchronization (MPI-2
+  Benchmark)
+    * Post-Wait/Start-Complete synchronization is used in this test. This test
+    * is similar to the bandwidth test, except that both the processes involved
+    * send out a fixed number of back-to-back MPI_Puts and wait for their
+    * completion.  This test measures the maximum sustainable aggregate
+    * bandwidth by two processes. By default, the window memory is allocated in
+    * shared memory by providing 'alloc_shm' hint to MPI_Alloc_mem call. This
+    * hint is specific to MVAPICH2 and is ignored by other MPI libraries.
+    * MVAPICH2 takes advantage of this to optimize intra-node one-sided
+    * communication. It does not have an impact on internode performance. This
+    * optimization can be disabled by providing '-n' or '-no-hints' option to
+    * the benchmark. 
 
-Accumulate Latency Test (only applicable for MVAPICH2)
-    * One-Sided Accumulate Latency Test: The origin process calls MPI_Accumulate
-    * to combine the data moved to the target process window with the data that
-    * resides at the remote window. The combining operation used in the test is
-    * MPI_SUM. It then waits on a synchronization call (MPI_Win_complete) for
-    * local completion. After the synchronization call, the target and origin
-    * process are switched for the pong message. Several iterations of this test
-    * are carried out and the average accumulate latency number is obtained.
-    * This test is available here.
+Latency Test for Accumulate with Active Synchronization (MPI-2 Benchmark)
+    * Post-Wait/Start-Complete synchronization is used in this test. The origin
+    * process calls MPI_Accumulate to combine data from the local buffer with
+    * the data in the remote window and store it in the remote window. The
+    * combining operation used in the test is MPI_SUM. The origin process then
+    * waits on a synchronization call (MPI_Win_complete) for local completion
+    * of the operations.  The remote process waits on a MPI_Win_wait call.
+    * After the synchronization call, the target and origin process are
+    * switched for the pong message. Several iterations of this test are
+    * carried out and the average accumulate latency number is obtained. The
+    * latency includes the synchronization time. By default, the window memory
+    * is allocated in shared memory by providing 'alloc_shm' hint to
+    * MPI_Alloc_mem call. This hint is specific to MVAPICH2 and is ignored by
+    * other MPI libraries. MVAPICH2 takes advantage of this to optimize
+    * intra-node one-sided communication. It does not have an impact on
+    * internode performance. This optimization can be disabled by providing
+    * '-n' or '-no-hints' option to the benchmark. 
 
+Latency Test for Put with Passive Synchronization (MPI-2 Benchmark)
+    * The origin process calls MPI_Win_lock to lock the target process's window
+    * and calls MPI_Put to directly place data of certain size in the window.
+    * Then it calls MPI_Win_unlock to ensure completion of the Put and release
+    * lock on the window. This is carried out for several iterations and the
+    * average time for MPI_Lock + MPI_Put + MPI_Unlock calls is measured.  By
+    * default, the window memory is allocated in shared memory by providing
+    * 'alloc_shm' hint to MPI_Alloc_mem call. This optimization is specific to
+    * MVAPICH2 and the hint is ignored by other MPI libraries. It does not have
+    * an impact on internode performance. This optimization can be disabled by
+    * providing '-n' or '-no-hints' option to the benchmark. 
+
+Latency Test for Get with Passive Synchronization (MPI-2 Benchmark)
+    * The origin process calls MPI_Win_lock to lock the target process's window
+    * and calls MPI_Get to directly read data of certain size from the window.
+    * Then it calls MPI_Win_unlock to ensure completion of the Get and releases
+    * lock on remote window. This is carried out for several iterations and the
+    * average time for MPI_Lock + MPI_Get + MPI_Unlock calls is measured.  By
+    * default, the window memory is allocated in shared memory by providing
+    * 'alloc_shm' hint to MPI_Alloc_mem call. This optimization is specific to
+    * MVAPICH2 and the hint is ignored by other MPI libraries. It does not have
+    * an impact on internode performance. This optimization can be disabled by
+    * providing '-n' or '-no-hints' option to the benchmark. 
+
+Bandwidth Test for Put with Passive Synchronization (MPI-2 Benchmark)
+    * The origin process calls MPI_Win_lock to lock the target process's window
+    * and calls a fixed number of back-to-back MPI_Puts to directly place data
+    * in the window. Then it calls MPI_Win_unlock to ensure completion of the
+    * Puts and release lock on remote window. This process is repeated for
+    * several iterations and the bandwidth is calculated based on the elapsed
+    * time and the number of bytes put by the origin process. By default, the
+    * window memory is allocated in shared memory by providing 'alloc_shm' hint
+    * to MPI_Alloc_mem call. This optimization is specific to MVAPICH2 and the
+    * hint is ignored by other MPI libraries. It does not have an impact on
+    * internode performance. This optimization can be disabled by providing
+    * '-n' or '-no-hints' option to the benchmark.
+
+Bandwidth Test for Get with Passive Synchronization (MPI-2 Benchmark)
+    * The origin process calls MPI_Win_lock to lock the target process's window
+    * and calls a fixed number of back-to-back MPI_Gets to directly get data
+    * from the window. Then it calls MPI_Win_unlock to ensure completion of the
+    * Gets and release lock on the window. This process is repeated for several
+    * iterations and the bandwidth is calculated based on the elapsed time and
+    * the number of bytes read by the origin process. By default, the window
+    * memory is allocated in shared memory by providing 'alloc_shm' hint to
+    * MPI_Alloc_mem call. This optimization is specific to MVAPICH2 and the
+    * hint is ignored by other MPI libraries. It does not have an impact on
+    * internode performance. This optimization can be disabled by providing
+    * '-n' or '-no-hints' option to the benchmark.
+
+Latency Test for Accumulate with Passive Synchronization (MPI-2 Benchmark)
+    * The origin process calls MPI_Win_lock to lock the target process's window
+    * and calls MPI_Accumulate to combine data from a local buffer with the
+    * data in the remote window and store it in the remote window. Then it
+    * calls MPI_Win_unlock to ensure completion of the Accumulate and release
+    * lock on the window. This is carried out for several iterations and the
+    * average time for MPI_Lock + MPI_Accumulate + MPI_Unlock calls is
+    * measured.  By default, the window memory is allocated in shared memory by
+    * providing 'alloc_shm' hint to MPI_Alloc_mem call. This optimization is
+    * specific to MVAPICH2 and the hint is ignored by other MPI libraries. It
+    * does not have an impact on internode performance.  This optimization can
+    * be disabled by providing '-n' or '-no-hints' option to the benchmark. 

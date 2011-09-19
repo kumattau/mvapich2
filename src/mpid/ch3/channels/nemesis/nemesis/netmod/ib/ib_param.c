@@ -87,10 +87,6 @@ int           rdma_3dtorus_support = 0;
 #endif /* ENABLE_3DTORUS_SUPPORT */
 int           rdma_num_sa_query_retries = RDMA_DEFAULT_NUM_SA_QUERY_RETRIES;
 int           rdma_path_sl_query = 0;
-int           enable_knomial_2level_bcast=1;
-int           inter_node_knomial_factor=4;
-int           intra_node_knomial_factor=4;
-int           knomial_2level_bcast_threshold=0;
 /* Threshold of job size beyond which we want to use 2-cq approach */
 int           rdma_iwarp_multiple_cq_threshold = RDMA_IWARP_DEFAULT_MULTIPLE_CQ_THRESHOLD;
 int           rdma_iwarp_use_multiple_cq = 1;
@@ -705,20 +701,6 @@ int MPID_nem_ib_get_user_params()
         }
     }
 
-
-     if( (value = getenv("MV2_USE_KNOMIAL_2LEVEL_BCAST")) != NULL) {
-            enable_knomial_2level_bcast=!!(int)atoi(value);
-        if(enable_knomial_2level_bcast <= 0)  {
-                enable_knomial_2level_bcast = 0;
-         }
-     }
-
-    if( (value = getenv("MV2_KNOMIAL_2LEVEL_BCAST_THRESHOLD")) != NULL) {
-            knomial_2level_bcast_threshold=(int)atoi(value);
-     }
-
-
-
     /* Get number of qps/port used by a process */
     if ((value = getenv("MV2_NUM_QP_PER_PORT")) != NULL) {
 
@@ -768,7 +750,7 @@ int MPID_nem_ib_get_user_params()
             rdma_polling_set_limit = log_2(pg_size);
         }
     } else if (process_info.has_adaptive_fast_path) {
-        rdma_polling_set_limit = pg_size;
+        rdma_polling_set_limit = RDMA_DEFAULT_POLLING_SET_LIMIT;
     }
     if ((value = getenv("MV2_VBUF_TOTAL_SIZE")) != NULL) {
             rdma_vbuf_total_size = user_val_to_bytes(value,"MV2_VBUF_TOTAL_SIZE"); 

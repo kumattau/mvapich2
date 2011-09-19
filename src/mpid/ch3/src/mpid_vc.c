@@ -20,8 +20,6 @@
 
 #ifdef _ENABLE_XRC_
 #include "rdma_impl.h"
-#else 
-#define XRC_MSG(s...)
 #endif
 
 #ifdef USE_PMI2_API
@@ -218,8 +216,8 @@ int MPID_VCRT_Release(MPID_VCRT vcrt, int isDisconnect )
 #ifdef _ENABLE_XRC_
         MPICM_lock();
         VC_XST_SET (vc, XF_CONN_CLOSING);
-        XRC_MSG ("CONNCLOSING2");
-        XRC_MSG ("SC %d 0x%08x %d\n", vc->pg_rank, vc->ch.xrc_flags, 
+        PRINT_DEBUG(DEBUG_XRC_verbose>0, "CONNCLOSING2");
+        PRINT_DEBUG(DEBUG_XRC_verbose>0, "SC %d 0x%08x %d\n", vc->pg_rank, vc->ch.xrc_flags, 
                 vc->state);
         MPICM_unlock();
 #endif
@@ -238,8 +236,10 @@ int MPID_VCRT_Release(MPID_VCRT vcrt, int isDisconnect )
 		    vc->state == MPIDI_VC_STATE_REMOTE_CLOSE)
 #endif
 		{
-        XRC_MSG ("SendClose2 %d 0x%08x %d\n", vc->pg_rank, vc->ch.xrc_flags, 
+#ifdef _ENABLE_XRC_
+        PRINT_DEBUG(DEBUG_XRC_verbose>0, "SendClose2 %d 0x%08x %d\n", vc->pg_rank, vc->ch.xrc_flags, 
                 vc->ch.state);
+#endif
 		    MPIDI_CH3U_VC_SendClose( vc, i );
 		}
 		else
@@ -1132,7 +1132,7 @@ fn_fail:
     goto fn_exit;
 }
 
-#ifdef _OSU_MVAPICH_
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 static int publish_host_id(MPIDI_PG_t *pg, int our_pg_rank)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -1235,7 +1235,6 @@ int MPIDI_Get_local_host(MPIDI_PG_t *pg, int our_pg_rank)
     mpi_errno = MPIDI_PG_GetConnKVSname(&kvs_name);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
-
     /* Exchange host info through PMI */
     for (i = 0; i < pg->size; ++i) {
         memset(key, 0, key_max_sz);
@@ -1309,7 +1308,7 @@ void MPIDI_Get_local_host_mapping(MPIDI_PG_t *pg, int our_pg_rank)
         }
     }
 }
-#endif
+#endif  /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 /* Fills in the node_id info from PMI info.  Adapted from MPIU_Get_local_procs.
    This function is collective over the entire PG because PMI_Barrier is called.
 
@@ -1405,9 +1404,12 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
         /* this code currently assumes pg is comm_world */
         mpi_errno = populate_ids_from_mapping(process_mapping, &num_nodes, pg, &did_map);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-#ifdef _OSU_MVAPICH_
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
         /* We can relay on Hydra proccess mapping info on signle node case.*/
-        if (g_num_nodes == 1) {
+#if defined(_OSU_MVAPICH_) 
+        if (g_num_nodes == 1) 
+#endif  
+		{
             MPIDI_Get_local_host_mapping(pg, our_pg_rank);
         }
 #endif
@@ -1451,9 +1453,12 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
             mpi_errno = populate_ids_from_mapping(value, &num_nodes, pg, &did_map);
             if (mpi_errno) MPIU_ERR_POP(mpi_errno);
             g_num_nodes = num_nodes;
-#ifdef _OSU_MVAPICH_
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
             /* We can relay on Hydra proccess mapping info on signle node case. */
-            if (g_num_nodes == 1) {
+#if defined(_OSU_MVAPICH_) 
+            if (g_num_nodes == 1) 
+#endif            
+		    {
                 MPIDI_Get_local_host_mapping(pg, our_pg_rank);
             }
 #endif
@@ -1471,17 +1476,17 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
     }
 
     }
-#ifdef _OSU_MVAPICH_
     else {
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
         mpi_errno = MPIDI_Get_local_host(pg, our_pg_rank);
         if (mpi_errno) {
             MPIU_ERR_POP(mpi_errno);
         }
+#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
     }
-#endif /* ifdef _OSU_MVAPICH_ */
 
 
-#ifndef _OSU_MVAPICH_
+#if !defined(_OSU_MVAPICH_) && !defined(_OSU_PSM_)
     mpi_errno = publish_node_id(pg, our_pg_rank);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
@@ -1529,7 +1534,8 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
             node_names[g_num_nodes][0] = '\0';
         pg->vct[i].node_id = j;
     }
-#endif /* ifdef _OSU_MVAPICH_ */
+#endif /* !defined(_OSU_MVAPICH_) && !defined(_OSU_PSM_) */
+
     if (odd_even_cliques)
     {
         /* Create new processes for all odd numbered processes. This

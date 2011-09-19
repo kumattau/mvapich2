@@ -155,22 +155,74 @@ int MPIDI_CH3_ReqHandler_PutAccumRespComplete( MPIDI_VC_t *vc,
 {
     int mpi_errno = MPI_SUCCESS;
     MPID_Win *win_ptr;
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+    int rank = -1, l_rank = -1;
+#endif
+
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_REQHANDLER_PUTACCUMRESPCOMPLETE);
     
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_REQHANDLER_PUTACCUMRESPCOMPLETE);
 
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+    MPID_Win_get_ptr(rreq->dev.target_win_handle, win_ptr);
+#if defined (_SMP_LIMIC_)
+    if (!win_ptr->limic_fallback || !win_ptr->shm_fallback)
+#else
+    if (!win_ptr->shm_fallback)
+#endif
+    {
+        rank = win_ptr->my_id;
+        l_rank = win_ptr->shm_g2l_rank[rank];
+    }
+#endif
+
     if (MPIDI_Request_get_type(rreq) == MPIDI_REQUEST_TYPE_ACCUM_RESP) {
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+    if (!win_ptr->shm_fallback) {
+        mpi_errno = MPIDI_CH3I_SHM_win_mutex_lock(win_ptr, l_rank);
+        if (mpi_errno != MPI_SUCCESS) {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+               "**fail %s", "mutex lock error");
+        }
+    }
+#endif
 	/* accumulate data from tmp_buf into user_buf */
 	mpi_errno = do_accumulate_op(rreq);
 	if (mpi_errno) {
 	    MPIU_ERR_POP(mpi_errno);
 	}
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+    if (!win_ptr->shm_fallback) {
+        mpi_errno = MPIDI_CH3I_SHM_win_mutex_unlock(win_ptr, l_rank);
+        if (mpi_errno != MPI_SUCCESS) {
+           MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+              "**fail %s", "mutex unlock error");
+        }
+    }
+#endif
     }
     
     MPID_Win_get_ptr(rreq->dev.target_win_handle, win_ptr);
     
 #if defined(_OSU_MVAPICH_)
     win_ptr->outstanding_rma--;
+
+    /* if intranode peer and sync is passive, increment pt_rma_puts_accs 
+     * counter to indicate completion of an operation. The case of internode 
+     * peers is handled by the next if check*/
+#if !defined(DAPL_DEFAULT_PROVIDER)
+#if defined (_SMP_LIMIC_)
+    if ((!win_ptr->limic_fallback || !win_ptr->shm_fallback)
+        && vc->smp.local_nodes != -1)
+#else
+    if (!win_ptr->shm_fallback && vc->smp.local_nodes != -1)
+#endif
+    {
+        if (*((volatile int *) &win_ptr->shm_lock[l_rank]) != MPID_LOCK_NONE) {
+            win_ptr->my_pt_rma_puts_accs++;
+        }
+    }
+#endif /* !defined(DAPL_DEFAULT_PROVIDER) */
 #endif /* defined(_OSU_MVAPICH_) */
    
     /* if passive target RMA, increment counter */
@@ -185,6 +237,29 @@ int MPIDI_CH3_ReqHandler_PutAccumRespComplete( MPIDI_VC_t *vc,
 	   any. If it's a shared lock or a lock-put-unlock
 	   type of optimization, we also need to send an
 	   ack to the source. */ 
+
+    /*If intranode peer, send done packet and release the SHM lock*/
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+#if defined (_SMP_LIMIC_)
+    if ((!win_ptr->limic_fallback || !win_ptr->shm_fallback) 
+            && vc->smp.local_nodes != -1)
+#else
+    if (!win_ptr->shm_fallback && vc->smp.local_nodes != -1)
+#endif
+    {
+        if (*((volatile int *) &win_ptr->shm_lock[l_rank]) != MPID_LOCK_NONE) {
+            if(*((volatile int *) &win_ptr->shm_lock[l_rank]) == MPI_LOCK_SHARED) {
+                mpi_errno = MPIDI_CH3I_Send_pt_rma_done_pkt(vc,
+                                rreq->dev.source_win_handle);
+                if (mpi_errno) {
+                    MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**rmasync");
+                }
+            }
+            MPIDI_CH3I_SHM_win_unlock(rank, win_ptr);
+            goto fn_exit;
+        }
+    }
+#endif
 	
 	if (win_ptr->current_lock_type == MPID_LOCK_NONE) {
 	    /* FIXME: MT: this has to be done atomically */
@@ -202,7 +277,10 @@ int MPIDI_CH3_ReqHandler_PutAccumRespComplete( MPIDI_VC_t *vc,
 	    mpi_errno = MPIDI_CH3I_Release_lock(win_ptr);
 	}
     }
-    
+   
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+ fn_exit:
+#endif 
     /* mark data transfer as complete and decrement CC */
     MPIDI_CH3U_Request_complete(rreq);
     *complete = TRUE;
@@ -483,18 +561,16 @@ int MPIDI_CH3_ReqHandler_GetRespDerivedDTComplete( MPIDI_VC_t *vc,
         get_resp_pkt->mapped_srank = get_pkt->mapped_trank;
         get_resp_pkt->mapped_trank = get_pkt->mapped_srank;
 
-        if(new_dtp->is_contig) {
-            PSM_PRINT("GET_RESP: contiguous packet\n");
-            iov[1].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) get_pkt->addr;
-            iov[1].MPID_IOV_LEN = new_dtp->size * sreq->dev.user_count;
-        } else {
+        /*If data is contig/non-contig is taken care by 
+        psm_do_pack function*/
             MPID_Request tmp;
-            psm_do_pack(sreq->dev.user_count, new_dtp->handle, NULL, &tmp, 
+        mpi_errno = psm_do_pack(sreq->dev.user_count, new_dtp->handle, NULL, &tmp, 
                     get_pkt->addr, SEGMENT_IGNORE_LAST);
+        if(mpi_errno) MPIU_ERR_POP(mpi_errno);
+
             iov[1].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) tmp.pkbuf;
             iov[1].MPID_IOV_LEN = tmp.pksz;
-            PSM_PRINT("GET_RESP: segment did pack\n");
-        }
+        
         if(get_pkt->rndv_mode) {
             assert(get_pkt->rndv_len == iov[1].MPID_IOV_LEN);
         }
@@ -563,7 +639,9 @@ int MPIDI_CH3_ReqHandler_GetRespDerivedDTComplete( MPIDI_VC_t *vc,
 #endif //defined(_OSU_MVAPICH_)
     /* mark receive data transfer as complete and decrement CC in receive
        request */
+#if defined (_OSU_PSM_)
 fn_exit:	   
+#endif
     MPIDI_CH3U_Request_complete(rreq);
     *complete = TRUE;
     
@@ -647,6 +725,18 @@ int MPIDI_CH3_ReqHandler_SinglePutAccumComplete( MPIDI_VC_t *vc,
     else {
 	/* could not acquire lock. mark data recd as 1 */
 	lock_queue_entry->pt_single_op->data_recd = 1;
+
+    /*enqueue window to detect SHM unlocks in progress engine*/
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+#if defined (_SMP_LIMIC_)
+    if (!win_ptr->limic_fallback || !win_ptr->shm_fallback)
+#else
+    if (!win_ptr->shm_fallback)
+#endif
+    {
+        MPIDI_CH3I_SHM_win_lock_enqueue(win_ptr);
+    }
+#endif
     }
     
     /* mark data transfer as complete and decrement CC */
@@ -958,6 +1048,206 @@ static int do_accumulate_op(MPID_Request *rreq)
 static int entered_flag = 0;
 static int entered_count = 0;
 
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+static int process_lock_flag = 0;
+
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_Release_lock
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int MPIDI_CH3I_Process_locks()
+{
+    MPIDI_Win_lock_queue *lock_queue, **lock_queue_ptr;
+    int requested_lock, mpi_errno = MPI_SUCCESS;
+    int rank, l_rank;
+    MPID_Comm *comm_ptr;
+    MPID_Win *win_ptr;
+    MPIDI_Win_pending_lock_t *curr_ptr, *prev_ptr;
+
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_RELEASE_LOCK);
+    
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_RELEASE_LOCK);
+
+    /* This function needs to be reentrant even in the single-threaded case
+     * as it can be called from the progress engine during  do_simple_get or 
+     * MPIDI_CH3I_Release_lock functions*/  
+    if (process_lock_flag == 0 && entered_flag == 0) {
+        process_lock_flag = 1; 
+    } else {
+        goto fn_exit;
+    } 
+
+    curr_ptr = pending_lock_winlist;
+    prev_ptr = NULL;
+    while (curr_ptr) {
+        win_ptr = curr_ptr->win_ptr;
+        comm_ptr = win_ptr->comm_ptr;
+        rank = win_ptr->my_id;
+        l_rank = win_ptr->shm_g2l_rank[rank];
+
+        if(*((volatile int*) &win_ptr->shm_lock_released[l_rank]) == 0) {
+            prev_ptr = curr_ptr;
+            curr_ptr = curr_ptr->next;
+            continue;
+        }
+        win_ptr->shm_lock_released[l_rank] = 0;             
+
+        /* If there is a lock queue, try to satisfy as many lock requests as 
+           possible. If the first one is a shared lock, grant it and grant all 
+           other shared locks. If the first one is an exclusive lock, grant 
+           only that one. */
+    
+        /* FIXME: MT: All queue accesses need to be made atomic */
+        lock_queue = (MPIDI_Win_lock_queue *) win_ptr->lock_queue;
+        lock_queue_ptr = (MPIDI_Win_lock_queue **) &(win_ptr->lock_queue);
+        while (lock_queue) {
+        	/* if it is not a lock-op-unlock type case or if it is a 
+        	   lock-op-unlock type case but all the data has been received, 
+        	   try to acquire the lock */
+        	if ((lock_queue->pt_single_op == NULL) || 
+        	    (lock_queue->pt_single_op->data_recd == 1)) {
+	
+        	    requested_lock = lock_queue->lock_type;
+        	    if (MPIDI_CH3I_Try_acquire_win_lock(win_ptr, requested_lock)) { 
+
+                    /* first dequeue the element as the functions 
+                     * MPIDI_CH3I_Process_locks and MPIDI_CH3I_Release_lock*/	
+             		if (lock_queue->pt_single_op != NULL) {
+             		    /* single op. do it here */
+             		    MPIDI_PT_single_op * single_op;
+ 	        
+             		    single_op = lock_queue->pt_single_op;
+             		    if (single_op->type == MPIDI_RMA_PUT) {
+                 			mpi_errno = MPIR_Localcopy(single_op->data,
+                 						   single_op->count,
+                 						   single_op->datatype,
+                 						   single_op->addr,
+                 						   single_op->count,
+                 						   single_op->datatype);
+ 	                    } else if (single_op->type == MPIDI_RMA_ACCUMULATE) {
+                            mpi_errno = MPIDI_CH3I_SHM_win_mutex_lock(win_ptr, l_rank);
+                            if (mpi_errno != MPI_SUCCESS) { 
+                               MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                                    "**fail %s", "mutex lock error");
+                            }
+                            mpi_errno = do_simple_accumulate(single_op);
+                            mpi_errno = MPIDI_CH3I_SHM_win_mutex_unlock(win_ptr, l_rank);
+                            if (mpi_errno != MPI_SUCCESS) {
+                               MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                                    "**fail %s", "mutex unlock error");
+                            }
+ 	                    } else if (single_op->type == MPIDI_RMA_GET) {
+                 			mpi_errno = do_simple_get(win_ptr, lock_queue);
+ 	                    }
+             		    if (mpi_errno != MPI_SUCCESS) {
+                            MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,
+                                         "**ch3|rmamsg");
+                        }
+ 	        
+             		    /* if put or accumulate, send rma done packet and 
+                          * release lock. */
+             		    if (single_op->type != MPIDI_RMA_GET) {
+                 			/* increment counter */
+                 			win_ptr->my_pt_rma_puts_accs++;
+ 	    	
+                 			mpi_errno = 
+                 			    MPIDI_CH3I_Send_pt_rma_done_pkt(lock_queue->vc, 
+         							    lock_queue->source_win_handle);
+                 			if (mpi_errno != MPI_SUCCESS) {
+                                 MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,
+                                         "**ch3|rmamsg");
+                            } 
+
+                            MPIDI_CH3I_SHM_win_unlock(rank, win_ptr);
+ 	    
+                 			/* release the lock */
+                 			if (win_ptr->current_lock_type == MPI_LOCK_SHARED) {
+                 			    /* decr ref cnt */
+                 			    /* FIXME: MT: Must be done atomically */
+                 			    win_ptr->shared_lock_ref_cnt--;
+             			    }
+ 	    	
+                 			/* If shared lock ref count is 0 
+                 			   (which is also true if the lock is an
+                 			   exclusive lock), release the lock. */
+                 			if (win_ptr->shared_lock_ref_cnt == 0) {
+                 			    /* FIXME: MT: The setting of the lock type 
+             			       must be done atomically */
+                 			    win_ptr->current_lock_type = MPID_LOCK_NONE;
+                 			}
+ 	    	
+                 			/* dequeue entry from lock queue */
+                 			MPIU_Free(single_op->data);
+                 			MPIU_Free(single_op);
+                 			*lock_queue_ptr = lock_queue->next;
+                 			MPIU_Free(lock_queue);
+                 			lock_queue = *lock_queue_ptr;
+ 	                    } else {
+                 			/* it's a get. The operation is not complete. It 
+                 			   will be completed in ch3u_handle_send_req.c. 
+                 			   Free the single_op structure. If it's an 
+                 			   exclusive lock, break. Otherwise continue to the
+                 			   next operation. */
+ 	    
+                 			MPIU_Free(single_op);
+                 			*lock_queue_ptr = lock_queue->next;
+                 			MPIU_Free(lock_queue);
+                 			lock_queue = *lock_queue_ptr;
+ 	    
+                 			if (requested_lock == MPI_LOCK_EXCLUSIVE)
+                 			    break;
+                         }
+                     } else {
+                 	    /* send lock granted packet. */
+                 	    mpi_errno = MPIDI_CH3I_Send_lock_granted_pkt(lock_queue->vc,
+         	    				 lock_queue->source_win_handle);
+ 	    
+                 	    /* dequeue entry from lock queue */
+                 	    *lock_queue_ptr = lock_queue->next;
+                 	    MPIU_Free(lock_queue);
+                 	    lock_queue = *lock_queue_ptr;
+ 	    
+                 	    /* if the granted lock is exclusive, 
+                 	       no need to continue */
+                 	    if (requested_lock == MPI_LOCK_EXCLUSIVE) {
+                     		break;
+                         }
+             	    }
+                } else {
+                    lock_queue_ptr = &(lock_queue->next);
+                    lock_queue = lock_queue->next;
+                }
+            } else {
+                lock_queue_ptr = &(lock_queue->next);
+                lock_queue = lock_queue->next;
+            }
+        }
+
+        if(win_ptr->lock_queue == NULL) {
+           win_ptr->shm_lock_queued = 0;
+           if(prev_ptr != NULL) {
+              prev_ptr->next = curr_ptr->next;
+              MPIU_Free(curr_ptr);
+              curr_ptr = prev_ptr->next;
+           } else {
+              pending_lock_winlist = curr_ptr->next;
+              MPIU_Free(curr_ptr);
+              curr_ptr = pending_lock_winlist;
+           }
+         } else {
+           curr_ptr = curr_ptr->next;
+         }
+    }
+
+    process_lock_flag = 0;
+
+ fn_fail:
+ fn_exit:
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_RELEASE_LOCK);
+    return mpi_errno;
+}
+#endif
+
 /* Release the current lock on the window and grant the next lock in the
    queue if any */
 #undef FUNCNAME
@@ -968,9 +1258,26 @@ int MPIDI_CH3I_Release_lock(MPID_Win *win_ptr)
 {
     MPIDI_Win_lock_queue *lock_queue, **lock_queue_ptr;
     int requested_lock, mpi_errno = MPI_SUCCESS, temp_entered_count;
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+    int rank = -1, l_rank = -1;
+#endif
+
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_RELEASE_LOCK);
     
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_RELEASE_LOCK);
+
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+#if defined (_SMP_LIMIC_)
+    if (!win_ptr->limic_fallback || !win_ptr->shm_fallback)
+#else
+    if (!win_ptr->shm_fallback)
+#endif
+    {
+        rank = win_ptr->my_id;
+        l_rank = win_ptr->shm_g2l_rank[rank];
+        MPIDI_CH3I_SHM_win_unlock (rank, win_ptr);
+    }
+#endif /*_OSU_MVAPICH_ && !DAPL_DEFAULT_PROVIDER*/
 
     if (win_ptr->current_lock_type == MPI_LOCK_SHARED) {
         /* decr ref cnt */
@@ -981,6 +1288,25 @@ int MPIDI_CH3I_Release_lock(MPID_Win *win_ptr)
     /* If shared lock ref count is 0 (which is also true if the lock is an
        exclusive lock), release the lock. */
     if (win_ptr->shared_lock_ref_cnt == 0) {
+
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+#if defined (_SMP_LIMIC_)
+    if (!win_ptr->limic_fallback || !win_ptr->shm_fallback)
+#else
+    if (!win_ptr->shm_fallback)
+#endif
+    {
+        /* Exit after releasing lock if this has been called from within 
+         * MPIDI_CH3I_Process_locks */
+        /* FIXME: MT: The setting of the lock type and released flags 
+         * must be done atomically */
+        if (process_lock_flag == 1) {
+            win_ptr->shm_lock_released[l_rank] = 1;
+            win_ptr->current_lock_type = MPID_LOCK_NONE;
+            goto fn_exit;
+        }
+    }
+#endif /*_OSU_MVAPICH_ && !DAPL_DEFAULT_PROVIDER*/
 
 	/* This function needs to be reentrant even in the single-threaded case
            because when going through the lock queue, the do_simple_get 
@@ -1007,8 +1333,8 @@ int MPIDI_CH3I_Release_lock(MPID_Win *win_ptr)
 	do { 
 	    if (temp_entered_count != entered_count) temp_entered_count++;
 
-#if defined(_OSU_MVAPICH_)
-        if (win_ptr->outstanding_rma != 0) {
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+        if (win_ptr->outstanding_rma != 0) { 
         MPID_Progress_state progress_state;
 
         MPID_Progress_start(&progress_state);
@@ -1024,7 +1350,7 @@ int MPIDI_CH3I_Release_lock(MPID_Win *win_ptr)
         }
         MPID_Progress_end(&progress_state);
         }
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
 	    /* FIXME: MT: The setting of the lock type must be done atomically */
 	    win_ptr->current_lock_type = MPID_LOCK_NONE;
@@ -1062,7 +1388,25 @@ int MPIDI_CH3I_Release_lock(MPID_Win *win_ptr)
 							   single_op->datatype);
 			    }   
 			    else if (single_op->type == MPIDI_RMA_ACCUMULATE) {
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+                if (!win_ptr->shm_fallback) {
+                    mpi_errno = MPIDI_CH3I_SHM_win_mutex_lock(win_ptr, l_rank);
+                    if (mpi_errno != MPI_SUCCESS) {
+                          MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                                "**fail %s", "mutex lock error");
+                    }
+                }
+#endif
 				mpi_errno = do_simple_accumulate(single_op);
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+                if (!win_ptr->shm_fallback) {
+                    mpi_errno = MPIDI_CH3I_SHM_win_mutex_unlock(win_ptr, l_rank);
+                    if (mpi_errno != MPI_SUCCESS) {
+                          MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                                "**fail %s", "mutex unlock error");
+                    }
+                }
+#endif
 			    }
 			    else if (single_op->type == MPIDI_RMA_GET) {
 				mpi_errno = do_simple_get(win_ptr, lock_queue);
@@ -1079,7 +1423,18 @@ int MPIDI_CH3I_Release_lock(MPID_Win *win_ptr)
 				    MPIDI_CH3I_Send_pt_rma_done_pkt(lock_queue->vc, 
 								    lock_queue->source_win_handle);
 				if (mpi_errno != MPI_SUCCESS) goto fn_exit;
-				
+
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+#if defined (_SMP_LIMIC_)
+                if (!win_ptr->limic_fallback || !win_ptr->shm_fallback)
+#else
+                if (!win_ptr->shm_fallback)
+#endif
+                {
+                    MPIDI_CH3I_SHM_win_unlock (rank, win_ptr);
+                }
+#endif /*_OSU_MVAPICH_ && !DAPL_DEFAULT_PROVIDER*/			
+	
 				/* release the lock */
 				if (win_ptr->current_lock_type == MPI_LOCK_SHARED) {
 				    /* decr ref cnt */
@@ -1138,6 +1493,22 @@ int MPIDI_CH3I_Release_lock(MPID_Win *win_ptr)
 				break;
 			}
 		    }
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+            /* If SHM locks are being used, the process should not block 
+             * here. It should skip the lock and continue as the lock might
+             * have been acquired by an intra-node peer */
+            else {
+#if defined (_SMP_LIMIC_)
+                if (!win_ptr->limic_fallback || !win_ptr->shm_fallback)
+#else
+                if (!win_ptr->shm_fallback)
+#endif
+                {
+                    lock_queue_ptr = &(lock_queue->next);
+                    lock_queue = lock_queue->next;
+                }
+            }
+#endif
 		}
 		else {
 		    lock_queue_ptr = &(lock_queue->next);
@@ -1148,6 +1519,9 @@ int MPIDI_CH3I_Release_lock(MPID_Win *win_ptr)
 	entered_count = entered_flag = 0;
     }
 
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+ fn_fail:
+#endif
  fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_RELEASE_LOCK);
     return mpi_errno;

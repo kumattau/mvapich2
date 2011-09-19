@@ -47,6 +47,8 @@ MPIDI_CH3I_Process_group_t;
 
 #define MPIDI_DEV_IMPLEMENTS_KVS
 
+#define MPIDI_CH3_IMPLEMENTS_ABORT
+
 typedef enum MPIDI_CH3I_VC_state
 {
     MPIDI_CH3I_VC_STATE_INVALID,
@@ -68,6 +70,10 @@ typedef enum MPIDI_CH3I_VC_state
     MPIDI_CH3I_VC_STATE_FAILED
 }
 MPIDI_CH3I_VC_state_t;
+
+#define IS_RC_CONN_ESTABLISHED(vc) \
+    (vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE && \
+        vc->mrail.state & MRAILI_RC_CONNECTED)
 
 /* This structure requires the iovec structure macros to be defined */
 typedef struct MPIDI_CH3I_Buffer_t
@@ -154,6 +160,7 @@ typedef struct _xrc_pending_conn {
 #define     XF_SMP_VC           0x00000800
 #define     XF_DPM_INI          0x00001000
 #define     XF_TERMINATED       0x00002000
+#define     XF_UD_CONNECTED     0x00004000
 #endif
 /* SMP Channel is added by OSU-MPI2 */
 typedef enum SMP_pkt_type

@@ -119,18 +119,6 @@ extern int *rdma_cm_host_list;
     exit(-1);                                                                \
 }while (0)
 
-#if defined(CM_DEBUG)
-#define CM_DBG(args...)  do {                                                \
-    int _rank; PMI_Get_rank(&_rank);                                         \
-    fprintf(stderr, "[Rank %d][%s: line %d]", _rank ,__FILE__, __LINE__);    \
-    fprintf(stderr, args);                                                   \
-    fprintf(stderr, "\n");                                                   \
-    fflush(stderr);                                                          \
-}while (0)
-#else /* defined(CM_DEBUG) */
-#define CM_DBG(args...)
-#endif /* defined(CM_DEBUG) */
-
 typedef struct cm_packet {
     struct timeval timestamp;        /*the time when timer begins */
     cm_msg payload;
@@ -220,7 +208,7 @@ void remove_vc_xrc_hash (MPIDI_VC_t *vc)
                 tmp = iter->next;
                 iter->next = iter->next->next;
                 MPIU_Free (tmp);
-                XRC_MSG ("Removed vc from hash");
+                PRINT_DEBUG(DEBUG_XRC_verbose>0, "Removed vc from hash\n");
                 return;
             }
             iter = iter->next;
@@ -272,16 +260,16 @@ static inline int cm_enq_react_done(MPIDI_VC_t* vc,
 	       MSG_LOG_ENQUEUE(vc, entry);
            vc->mrail.react_entry = NULL;
            ret = 0;
-           CM_DBG("%s: [%d => %d]: enq REACT_DONE\n", __func__,
-                 MPIDI_Process.my_pg_rank, vc->pg_rank );
+           PRINT_DEBUG(DEBUG_CM_verbose>0 ,"%s: [%d => %d]: enq REACT_DONE\n",
+                 __func__, MPIDI_Process.my_pg_rank, vc->pg_rank );
        }
        else
        {       // may need to enq some local REM_UPDATE msg before this 
                // REACT_DONE, so store it temporarily
            vc->mrail.react_entry = entry;
            ret = 1;
-           CM_DBG("%s: [%d => %d]: save REACT_DONE to be enq later...\n",__func__,
-                MPIDI_Process.my_pg_rank, vc->pg_rank );
+           PRINT_DEBUG(DEBUG_CM_verbose>0 ,"%s: [%d => %d]: save REACT_DONE to be enq later...\n",
+            __func__, MPIDI_Process.my_pg_rank, vc->pg_rank );
        }
        pthread_spin_unlock( &vc->mrail.cr_lock);
        return ret;
@@ -292,14 +280,28 @@ static inline int cm_enq_react_done(MPIDI_VC_t* vc,
  * TODO add error checking
  */
 static inline struct ibv_ah *cm_create_ah(struct ibv_pd *pd, uint32_t lid, 
-                                          int port)
+                                           union ibv_gid gid, int port)
 {
     struct ibv_ah_attr ah_attr;
 
     MPIU_Memset(&ah_attr, 0, sizeof(ah_attr));
-    ah_attr.is_global = 0;
-    ah_attr.dlid = lid;
-    ah_attr.sl = 0;
+
+    if (use_iboeth) {
+        ah_attr.grh.dgid.global.subnet_prefix = 0;
+        ah_attr.grh.dgid.global.interface_id = 0;
+        ah_attr.grh.flow_label = 0;
+        ah_attr.grh.sgid_index = 0;
+        ah_attr.grh.hop_limit = 1;
+        ah_attr.grh.traffic_class = 0;
+        ah_attr.is_global      = 1;
+        ah_attr.dlid           = 0;
+        ah_attr.grh.dgid    = gid;
+    } else {
+        ah_attr.is_global = 0;
+        ah_attr.dlid = lid;
+        ah_attr.sl = 0;
+    }
+
     ah_attr.src_path_bits = 0;
     ah_attr.port_num = port;
 
@@ -383,7 +385,7 @@ static cm_pending *cm_pending_search_peer(MPIDI_PG_t *pg, int peer,
             pending->cli_or_srv == cli_or_srv && pending->data.pg.peer == peer) {
             return pending;
         } else if (!pending->has_pg && (uintptr_t)pending->data.nopg.tag == (uintptr_t)tag) {
-            CM_DBG("Found pending, return pending\n");
+            PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Found pending, return pending\n");
             return pending;
         }
     }
@@ -495,7 +497,7 @@ static int __cm_post_ud_packet(cm_msg * msg, struct ibv_ah *ah, uint32_t qpn)
     struct ibv_wc wc;
     int ne;
 
-    CM_DBG("cm_post_ud_packet, post message type %d", msg->msg_type);
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"cm_post_ud_packet, post message type %d\n", msg->msg_type);
 
     MPIU_Memcpy((char*)cm_ud_send_buf + 40, msg, sizeof(cm_msg));
     MPIU_Memset(&list, 0, sizeof(struct ibv_sge));
@@ -513,7 +515,7 @@ static int __cm_post_ud_packet(cm_msg * msg, struct ibv_ah *ah, uint32_t qpn)
     wr.wr.ud.remote_qpn = qpn;
     wr.wr.ud.remote_qkey = 0;
 
-    CM_DBG("Post with nrails %d\n", msg->nrails);
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Post with nrails %d\n", msg->nrails);
     if (ibv_post_send(cm_ud_qp, &wr, &bad_wr))
     {
         CM_ERR_ABORT("ibv_post_send to ud qp failed");
@@ -570,7 +572,7 @@ static int cm_get_conn_info(MPIDI_PG_t *pg, int peer)
  
     PMI_Get_rank(&pg_rank);
 
-    CM_DBG("[%d]: Exchanging conn info with %d", pg_rank, peer);
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"[%d]: Exchanging conn info with %d\n", pg_rank, peer);
 
     /* Allocate memory and initialize it */
     error = PMI_KVS_Get_key_length_max(&key_max_sz);
@@ -620,7 +622,7 @@ static int cm_get_conn_info(MPIDI_PG_t *pg, int peer)
                 (uint16_t *)&(pg->ch.mrail.cm_lid[peer]),
                 &(pg->ch.mrail.cm_ud_qpn[peer]), &hca_type, &hostid);
     } else {
-        sscanf(val,"%08hx:%08x:%02x:%08x:%016llx:%016llx",
+        sscanf(val,"%08hx:%08x:%02x:%08x:%016"SCNx64":%016"SCNx64,
                 (uint16_t *)&(pg->ch.mrail.cm_lid[peer]),
                 &(pg->ch.mrail.cm_ud_qpn[peer]), &hca_type, &hostid,
                 &(pg->ch.mrail.cm_gid[peer].global.subnet_prefix),
@@ -637,7 +639,7 @@ static int cm_get_conn_info(MPIDI_PG_t *pg, int peer)
                 " hostid: %08x\n", pg_rank, peer, pg->ch.mrail.cm_lid[peer],
                 pg->ch.mrail.cm_ud_qpn[peer], hca_type, hostid);
     } else {
-        DEBUG_PRINT("[%d<-%d]Get: Gid: %016llx:%016llx, qpn: %08x hca_type:%02x"
+        DEBUG_PRINT("[%d<-%d]Get: Gid: %016"PRIx64":%016"PRIx64", qpn: %08x hca_type:%02x"
                 " hostid: %08x\n", pg_rank, peer,
                 pg->ch.mrail.cm_gid[peer].global.subnet_prefix,
                 pg->ch.mrail.cm_gid[peer].global.interface_id,
@@ -648,7 +650,6 @@ static int cm_get_conn_info(MPIDI_PG_t *pg, int peer)
     MPIU_Free(val);
 
 fn_fail:
-fn_exit:
     return error;
 }
 
@@ -660,6 +661,7 @@ static int cm_resolve_conn_info(MPIDI_PG_t *pg, int peer)
 {
     int mpi_errno = MPI_SUCCESS;
     uint32_t rank, lid, qpn, port; 
+    union ibv_gid gid;
 #ifdef _ENABLE_XRC_
     uint32_t hostid;
 #endif
@@ -674,7 +676,8 @@ static int cm_resolve_conn_info(MPIDI_PG_t *pg, int peer)
     if (mv2_on_demand_ud_info_exchange) {
         mpi_errno = cm_get_conn_info(pg, peer);
         ah = cm_create_ah(MPIDI_CH3I_RDMA_Process.ptag[0],
-                            pg->ch.mrail.cm_lid[peer], rdma_default_port);
+                            pg->ch.mrail.cm_lid[peer],
+                            pg->ch.mrail.cm_gid[peer], rdma_default_port);
         if (!ah) {
             MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                     "**fail", "**fail %s", "Cannot create address handle");
@@ -685,21 +688,34 @@ static int cm_resolve_conn_info(MPIDI_PG_t *pg, int peer)
             MPIU_ERR_POP(mpi_errno);
         }
 
-        CM_DBG(stderr, "Peer %d, connString %s\n", peer, string);
+        PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Peer %d, connString %s\n", peer, string);
 #ifdef _ENABLE_XRC_
-        sscanf(string, "#RANK:%08d(%08x:%08x:%08x:%08x)#",
+        if (use_iboeth) {
+            sscanf(string, "#RANK:%08d(%08x:%016"SCNx64":%016"SCNx64":%08x:"
+                "%08x:%08x)#", &rank, &lid, &gid.global.subnet_prefix,
+                &gid.global.interface_id, &qpn, &port, &hostid);
+        } else {
+            sscanf(string, "#RANK:%08d(%08x:%08x:%08x:%08x)#",
                 &rank, &lid, &qpn, &port, &hostid);
+        }
 #else
-        sscanf(string, "#RANK:%08d(%08x:%08x:%08x)#",
+        if (use_iboeth) {
+            sscanf(string, "#RANK:%08d(%08x:%016"SCNx64":%016"SCNx64":"
+                "%08x:%08x)#", &rank, &lid, &gid.global.subnet_prefix,
+                &gid.global.interface_id, &qpn, &port);
+        } else {
+            sscanf(string, "#RANK:%08d(%08x:%08x:%08x)#",
                 &rank, &lid, &qpn, &port);
+        }
 #endif
-	    ah = cm_create_ah(MPIDI_CH3I_RDMA_Process.ptag[0], lid, port);
+	    ah = cm_create_ah(MPIDI_CH3I_RDMA_Process.ptag[0], lid, gid, port);
 	    if (!ah) {
 	        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
 	                "**fail", "**fail %s", "Cannot create address handle");
 	    }
 
         pg->ch.mrail.cm_lid[peer]    = lid;
+        pg->ch.mrail.cm_gid[peer]    = gid;
         pg->ch.mrail.cm_ud_qpn[peer] = qpn;
 #ifdef _ENABLE_XRC_
         pg->ch.mrail.xrc_hostid[peer] = hostid;
@@ -721,11 +737,11 @@ static int cm_post_ud_packet(MPIDI_PG_t *pg, cm_msg * msg)
 #ifdef _ENABLE_XRC_
     case CM_MSG_TYPE_XRC_REQ:
         peer = msg->server_rank;
-        XRC_MSG ("Posting REQ msg to %d\n", peer);
+        PRINT_DEBUG(DEBUG_XRC_verbose>0, "Posting REQ msg to %d\n", peer);
         break;
     case CM_MSG_TYPE_XRC_REP:
         peer = msg->client_rank;
-        XRC_MSG ("Posting REP msg to %d\n", peer);
+        PRINT_DEBUG(DEBUG_XRC_verbose>0, "Posting REP msg to %d\n", peer);
         break;
 #endif /* _ENABLE_XRC_ */
     case CM_MSG_TYPE_REQ:
@@ -748,14 +764,14 @@ static int cm_post_ud_packet(MPIDI_PG_t *pg, cm_msg * msg)
 
     if (!pg->ch.mrail.cm_ah[peer]) {
         /* We need to resolve the address */
-        CM_DBG("cm_ah not created, resolve conn info\n");
+        PRINT_DEBUG(DEBUG_CM_verbose>0 ,"cm_ah not created, resolve conn info\n");
         err = cm_resolve_conn_info(pg, peer);
         if (err) {
             CM_ERR_ABORT("Cannot resolve connection info");
         }
     }
 
-    CM_DBG("[%d] Post ud packet, srank %d, crank %d, peer %d, rid %d, "
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"[%d] Post ud packet, srank %d, crank %d, peer %d, rid %d, "
             "rlid %08x\n",
             MPIDI_Process.my_pg_rank, msg->server_rank, msg->client_rank, peer,
             msg->req_id, pg->ch.mrail.cm_lid[peer]);
@@ -774,7 +790,7 @@ static int cm_send_ud_msg(MPIDI_PG_t *pg, cm_msg * msg)
     cm_pending *pending;
     int ret;
 
-    CM_DBG("cm_send_ud_msg Enter");
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"cm_send_ud_msg Enter\n");
 
     pending = cm_pending_create();
     if (cm_pending_init(pending, pg, msg, NULL))
@@ -796,7 +812,7 @@ static int cm_send_ud_msg(MPIDI_PG_t *pg, cm_msg * msg)
     {
         pthread_cond_signal(&cm_cond_new_pending);
     }
-    CM_DBG("cm_send_ud_msg Exit");
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"cm_send_ud_msg Exit\n");
 
     return MPI_SUCCESS;
 }
@@ -809,7 +825,7 @@ static int cm_send_ud_msg_nopg(cm_msg * msg, struct ibv_ah *ah,
     cm_pending *pending;
     int ret;
 
-    CM_DBG("cm_send_ud_msg_nopg Enter");
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"cm_send_ud_msg_nopg Enter\n");
 
     pending = cm_pending_create();
     if (cm_pending_init(pending, NULL, msg, tag))
@@ -819,7 +835,7 @@ static int cm_send_ud_msg_nopg(cm_msg * msg, struct ibv_ah *ah,
     pending->data.nopg.ah  = ah;
     pending->data.nopg.qpn = qpn;
     cm_pending_append(pending);
-    CM_DBG("pending head %p, add pending %p\n", cm_pending_head, pending);
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"pending head %p, add pending %p\n", cm_pending_head, pending);
 
     gettimeofday(&now, NULL);
     pending->packet->timestamp = now;
@@ -834,7 +850,7 @@ static int cm_send_ud_msg_nopg(cm_msg * msg, struct ibv_ah *ah,
     {
         pthread_cond_signal(&cm_cond_new_pending);
     }
-    CM_DBG("cm_send_ud_msg_nopg Exit");
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"cm_send_ud_msg_nopg Exit\n");
 
     return MPI_SUCCESS;
 }
@@ -859,6 +875,8 @@ int cm_rcv_qp_create (MPIDI_VC_t *vc, uint32_t *qpn)
             ibv_error_abort(GEN_EXIT_ERR, 
                     "Fail to allocate resources for multirails\n");
         }
+        MPIU_Memset (vc->mrail.rails, 0, 
+                    (sizeof *vc->mrail.rails * vc->mrail.num_rails));
     }
 
     if (!vc->mrail.srp.credits) {
@@ -868,6 +886,8 @@ int cm_rcv_qp_create (MPIDI_VC_t *vc, uint32_t *qpn)
             ibv_error_abort(GEN_EXIT_ERR, 
                     "Fail to allocate resources for credits array\n");
         }
+        MPIU_Memset(vc->mrail.srp.credits, 0 ,
+                    (sizeof (*vc->mrail.srp.credits) * vc->mrail.num_rails));
     }
     
     attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ;
@@ -883,12 +903,18 @@ int cm_rcv_qp_create (MPIDI_VC_t *vc, uint32_t *qpn)
         if (ibv_create_xrc_rcv_qp (&init_attr, &qpn[rail_index])) {
             goto fn_err;
         }
-        XRC_MSG ("Created RQPN: %d(%d) on %d\n", qpn[rail_index], rail_index,
+        PRINT_DEBUG(DEBUG_XRC_verbose>0, "Created RQPN: %d(%d) on %d\n", qpn[rail_index], rail_index,
                 MPIDI_Process.my_pg->ch.mrail.xrc_hostid[MPIDI_Process.my_pg_rank]);
         vc->ch.xrc_my_rqpn[rail_index] = qpn[rail_index];
         
         vc->mrail.rails[rail_index].lid     = 
             MPIDI_CH3I_RDMA_Process.lids[hca_index][port_index];
+
+        if (use_iboeth) {
+            MPIU_Memcpy(&vc->mrail.rails[rail_index].gid, 
+            	&MPIDI_CH3I_RDMA_Process.gids[hca_index][port_index],
+				sizeof(union ibv_gid));
+        }
 
         attr.port_num = MPIDI_CH3I_RDMA_Process.ports[hca_index][port_index];
         set_pkey_index (&attr.pkey_index, hca_index, attr.port_num);
@@ -924,11 +950,11 @@ static int cm_accept(MPIDI_PG_t *pg, cm_msg * msg)
     MPIDI_STATE_DECL(MPID_GET2_CM_ACCEPT);
     MPIDI_FUNC_ENTER(MPID_GET2_CM_ACCEPT);
 
-    CM_DBG("cm_accpet Enter");
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"cm_accpet Enter\n");
 
     /*Prepare QP */
     MPIDI_PG_Get_vc(pg, msg->client_rank, &vc);
-    XRC_MSG ("BAR %d %d %d %d\n", vc->mrail.num_rails, msg->nrails, msg->client_rank, vc->pg_rank);
+    PRINT_DEBUG(DEBUG_XRC_verbose>0, "BAR %d %d %d %d\n", vc->mrail.num_rails, msg->nrails, msg->client_rank, vc->pg_rank);
     vc->mrail.num_rails = msg->nrails;
 
     /*Prepare rep msg */
@@ -941,8 +967,12 @@ static int cm_accept(MPIDI_PG_t *pg, cm_msg * msg)
         for (i = 0; i < msg_send.nrails; ++i)
         {
             msg_send.lids[i] = vc->mrail.rails[i].lid;
-            XRC_MSG ("cm_accept for %d lid %d qpn %d\n", vc->pg_rank, msg->lids[i], msg->qpns[i]);
-            XRC_MSG ("RQP for %d, LID: %d\n", vc->pg_rank, msg_send.lids[i]);
+            PRINT_DEBUG(DEBUG_XRC_verbose>0, "cm_accept for %d lid %d qpn %d\n", vc->pg_rank, msg->lids[i], msg->qpns[i]);
+            PRINT_DEBUG(DEBUG_XRC_verbose>0, "RQP for %d, LID: %d\n", vc->pg_rank, msg_send.lids[i]);
+            if (use_iboeth) {
+                MPIU_Memcpy(&msg_send.gids[i], &vc->mrail.rails[i].gid,
+                            sizeof(union ibv_gid));
+            }
             msg_send.qpns[i] = msg_send.xrc_rqpn[i];
         }
         for (i = 0; i < rdma_num_hcas; i++) {
@@ -958,6 +988,10 @@ static int cm_accept(MPIDI_PG_t *pg, cm_msg * msg)
         for (i = 0; i < msg_send.nrails; ++i)
         {
             msg_send.lids[i] = vc->mrail.rails[i].lid;
+            if (use_iboeth) {
+                MPIU_Memcpy(&msg_send.gids[i], &vc->mrail.rails[i].gid,
+                        sizeof(union ibv_gid));
+            }
             msg_send.qpns[i] = vc->mrail.rails[i].qp_hndl->qp_num;
         }
     }
@@ -974,15 +1008,23 @@ static int cm_accept(MPIDI_PG_t *pg, cm_msg * msg)
             /*Adding the reactivation done message to the msg_log_queue*/
             MPIDI_CH3I_CR_msg_log_queue_entry_t *entry = 
                 (MPIDI_CH3I_CR_msg_log_queue_entry_t *) MPIU_Malloc(sizeof(MPIDI_CH3I_CR_msg_log_queue_entry_t));
-            vbuf *v=get_vbuf();
-            MPIDI_CH3I_MRAILI_Pkt_comm_header *p = (MPIDI_CH3I_MRAILI_Pkt_comm_header*)v->pheader;
+
+            vbuf *v=NULL;
+            MPIDI_CH3I_MRAILI_Pkt_comm_header *p;
+
+            if(!SMP_ONLY)
+            {
+                v = get_vbuf();
+                p = (MPIDI_CH3I_MRAILI_Pkt_comm_header *) v->pheader;
+            }
+
             p->type = MPIDI_CH3_PKT_CM_REACTIVATION_DONE;
             /*Now all logged messages are sent using rail 0, 
             otherwise every rail needs to have one message*/
             entry->buf = v;
             entry->len = sizeof(MPIDI_CH3I_MRAILI_Pkt_comm_header);
             // MSG_LOG_ENQUEUE(vc, entry);
-	        cm_enq_react_done(vc, entry);
+            cm_enq_react_done(vc, entry);
         }
         vc->ch.state = MPIDI_CH3I_VC_STATE_REACTIVATING_SRV;
     }
@@ -996,7 +1038,7 @@ static int cm_accept(MPIDI_PG_t *pg, cm_msg * msg)
         /* Recv only */
         if (USE_XRC) 
         {
-            XRC_MSG ("RECV_IDLE\n");
+            PRINT_DEBUG(DEBUG_XRC_verbose>0, "RECV_IDLE\n");
             VC_XST_SET (vc, XF_RECV_IDLE | XF_NEW_RECV);
             VC_SET_ACTIVE (vc);
         }
@@ -1013,7 +1055,7 @@ static int cm_accept(MPIDI_PG_t *pg, cm_msg * msg)
         CM_ERR_ABORT("cm_send_ud_msg failed");
     }
 
-    CM_DBG("cm_accept exit");
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"cm_accept exit\n");
     MPIDI_FUNC_EXIT(MPID_GET2_CM_ACCEPT);
     return MPI_SUCCESS;
 }
@@ -1031,8 +1073,8 @@ static int cm_accept_and_cancel(MPIDI_PG_t *pg, cm_msg * msg)
     int i = 0;
     MPIDI_STATE_DECL(MPID_GEN2_CM_ACCEPT_AND_CANCEL);
     MPIDI_FUNC_ENTER(MPID_GEN2_CM_ACCEPT_AND_CANCEL);
-    CM_DBG("cm_accept_and_cancel Enter");
-    XRC_MSG ("accept_and_cancel\n");
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"cm_accept_and_cancel Enter\n");
+    PRINT_DEBUG(DEBUG_XRC_verbose>0, "accept_and_cancel\n");
     /* Prepare QP */
     MPIDI_PG_Get_vc(pg, msg->client_rank, &vc);
     vc->mrail.num_rails = msg->nrails;
@@ -1044,6 +1086,10 @@ static int cm_accept_and_cancel(MPIDI_PG_t *pg, cm_msg * msg)
     for (; i < msg_send.nrails; ++i)
     {
         msg_send.lids[i] = vc->mrail.rails[i].lid;
+        if (use_iboeth) {
+            MPIU_Memcpy(&msg_send.gids[i], &vc->mrail.rails[i].gid,
+                        sizeof(union ibv_gid));
+        }
         msg_send.qpns[i] = vc->mrail.rails[i].qp_hndl->qp_num;
     }
     msg_send.vc_addr = (uintptr_t)vc;
@@ -1059,8 +1105,16 @@ static int cm_accept_and_cancel(MPIDI_PG_t *pg, cm_msg * msg)
             /*Adding the reactivation done message to the msg_log_queue*/
             MPIDI_CH3I_CR_msg_log_queue_entry_t *entry = 
                 (MPIDI_CH3I_CR_msg_log_queue_entry_t *) MPIU_Malloc(sizeof(MPIDI_CH3I_CR_msg_log_queue_entry_t));
-            vbuf *v=get_vbuf();
-            MPIDI_CH3I_MRAILI_Pkt_comm_header *p = (MPIDI_CH3I_MRAILI_Pkt_comm_header*)v->pheader;
+
+            vbuf *v=NULL;
+            MPIDI_CH3I_MRAILI_Pkt_comm_header *p;
+
+            if(!SMP_ONLY)
+            {
+                v = get_vbuf();
+                p = (MPIDI_CH3I_MRAILI_Pkt_comm_header *) v->pheader;
+            }
+
             p->type = MPIDI_CH3_PKT_CM_REACTIVATION_DONE;
             /*Now all logged messages are sent using rail 0, 
             otherwise every rail needs to have one message*/
@@ -1086,7 +1140,7 @@ static int cm_accept_and_cancel(MPIDI_PG_t *pg, cm_msg * msg)
         CM_ERR_ABORT("cm_send_ud_msg failed");
     }
 
-    CM_DBG("cm_accept_and_cancel Cancel");
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"cm_accept_and_cancel Cancel\n");
     /*Cancel client role */
     {
         cm_pending *pending = cm_pending_search_peer(pg, msg->client_rank,
@@ -1096,10 +1150,10 @@ static int cm_accept_and_cancel(MPIDI_PG_t *pg, cm_msg * msg)
         {
             CM_ERR_ABORT("Can't find pending entry");
         }
-        CM_DBG("[line 676] remove pending %p\n", pending);
+        PRINT_DEBUG(DEBUG_CM_verbose>0 ,"remove pending %p\n", pending);
         cm_pending_remove_and_destroy(pending);
     }
-    CM_DBG("cm_accept_and_cancel Exit");
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"cm_accept_and_cancel Exit\n");
     
     MPIDI_FUNC_EXIT(MPID_GEN2_CM_ACCEPT_AND_CANCEL);
     return MPI_SUCCESS;
@@ -1115,15 +1169,16 @@ static int cm_accept_nopg(MPIDI_VC_t *vc, cm_msg * msg)
     struct ibv_ah *ah;
     int rank;
     uint32_t lid, qpn, port;
+    union ibv_gid gid;
 #ifdef _ENABLE_XRC_
     uint32_t hostid;
 #endif
     int i;
     MPIDI_STATE_DECL(MPID_GEN2_CM_ACCEPT_NOPG);
     MPIDI_FUNC_ENTER(MPID_GEN2_CM_ACCEPT_NOPG);
-    CM_DBG("cm_accpet_nopg Enter");
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"cm_accpet_nopg Enter\n");
     
-    XRC_MSG ("cm_accept_nopg");
+    PRINT_DEBUG(DEBUG_XRC_verbose>0, "cm_accept_nopg\n");
 #ifdef _ENABLE_XRC_
     VC_XST_SET (vc, XF_DPM_INI);
 #endif
@@ -1136,24 +1191,40 @@ static int cm_accept_nopg(MPIDI_VC_t *vc, cm_msg * msg)
     for (i=0; i < msg_send.nrails; ++i)
     {
         msg_send.lids[i] = vc->mrail.rails[i].lid;
+        if (use_iboeth) {
+            MPIU_Memcpy(&msg_send.gids[i], &vc->mrail.rails[i].gid,
+                        sizeof(union ibv_gid));
+        }
         msg_send.qpns[i] = vc->mrail.rails[i].qp_hndl->qp_num;
     }
     msg_send.vc_addr = (uintptr_t)vc;
     msg_send.vc_addr_bounce = msg->vc_addr;
 
     PMI_Get_rank(&rank);
-    CM_DBG("[%d cm_accept_nopg] get remote ifname %s, local qpn %08x, "
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"[%d cm_accept_nopg] get remote ifname %s, local qpn %08x, "
             "remote qpn %08x\n", rank, msg->ifname,
             vc->mrail.rails[0].qp_hndl->qp_num, msg->qpns[0]);
 
 #ifdef _ENABLE_XRC_
-    sscanf(msg->ifname, "#RANK:%08d(%08x:%08x:%08x:%08x)#",
+    if (use_iboeth) {
+        sscanf(msg->ifname, "#RANK:%08d(%08x:%016"SCNx64":%016"SCNx64":%08x:"
+            "%08x:%08x)#", &rank, &lid, &gid.global.subnet_prefix,
+            &gid.global.interface_id, &qpn, &port, &hostid);
+    } else {
+        sscanf(msg->ifname, "#RANK:%08d(%08x:%08x:%08x:%08x)#",
             &rank, &lid, &qpn, &port, &hostid);
+    }
 #else
-    sscanf(msg->ifname, "#RANK:%08d(%08x:%08x:%08x)#", &rank,
-            &lid, &qpn, &port);
+    if (use_iboeth) {
+        sscanf(msg->ifname, "#RANK:%08d(%08x:%016"SCNx64":%016"SCNx64":"
+            "%08x:%08x)#", &rank, &lid, &gid.global.subnet_prefix,
+            &gid.global.interface_id, &qpn, &port);
+    } else {
+        sscanf(msg->ifname, "#RANK:%08d(%08x:%08x:%08x)#",
+            &rank, &lid, &qpn, &port);
+    }
 #endif
-    ah = cm_create_ah(MPIDI_CH3I_RDMA_Process.ptag[0], lid, port);
+    ah = cm_create_ah(MPIDI_CH3I_RDMA_Process.ptag[0], lid, gid, port);
     if (!ah) {
         CM_ERR_ABORT("Cannot create ah");
     }
@@ -1162,7 +1233,7 @@ static int cm_accept_nopg(MPIDI_VC_t *vc, cm_msg * msg)
     vc->ch.state = MPIDI_CH3I_VC_STATE_CONNECTING_SRV;
     msg_send.msg_type = CM_MSG_TYPE_RAW_REP;
 
-    CM_DBG("### send RAW REP\n");
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"### send RAW REP\n");
 
     /*Send rep msg */
     if (cm_send_ud_msg_nopg(&msg_send, ah, qpn, vc))
@@ -1170,7 +1241,7 @@ static int cm_accept_nopg(MPIDI_VC_t *vc, cm_msg * msg)
         CM_ERR_ABORT("cm_send_ud_msg failed");
     }
 
-    CM_DBG("cm_accpet_nopg Exit");
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"cm_accpet_nopg Exit\n");
     MPIDI_FUNC_EXIT(MPID_GEN2_CM_ACCEPT_NOPG);
     return MPI_SUCCESS;
 }
@@ -1183,11 +1254,16 @@ void cm_xrc_send_enable (MPIDI_VC_t *vc)
     VC_XST_SET (vc, XF_SEND_IDLE);
     VC_XST_CLR (vc, XF_SEND_CONNECTING);
     VC_XST_CLR (vc, XF_REUSE_WAIT);
+#ifdef _ENABLE_UD_
+    if(vc->mrail.state & MRAILI_UD_CONNECTED) {
+        MRAILI_RC_Enable(vc);
+    }
+#endif
 
     iter = vc->ch.xrc_conn_queue;
     while (iter) {
         tmp = iter->next;
-        XRC_MSG ("Activating conn to %d\n", iter->vc->pg_rank);
+        PRINT_DEBUG(DEBUG_XRC_verbose>0, "Activating conn to %d\n", iter->vc->pg_rank);
         cm_qp_reuse (iter->vc, vc);
         VC_XST_CLR (iter->vc, XF_REUSE_WAIT);
         MPIU_Free (iter);
@@ -1207,12 +1283,12 @@ static int cm_enable(MPIDI_PG_t *pg, cm_msg * msg)
     MPIDI_VC_t* vc;
     MPIDI_STATE_DECL(MPID_GEN2_CM_ENABLE);
     MPIDI_FUNC_ENTER(MPID_GEN2_CM_ENABLE);
-    CM_DBG("cm_enable Enter");
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"cm_enable Enter\n");
 
     MPIDI_PG_Get_vc(pg, msg->server_rank, &vc);
     if (vc->mrail.num_rails != msg->nrails)
     { /* Sanity check */
-        XRC_MSG ("FOO %d %d \n", vc->mrail.num_rails, msg->nrails);
+        PRINT_DEBUG(DEBUG_XRC_verbose>0, "numrails: %d msg_numrails: %d \n", vc->mrail.num_rails, msg->nrails);
         CM_ERR_ABORT("mismatch in number of rails");
     }
 
@@ -1221,8 +1297,8 @@ static int cm_enable(MPIDI_PG_t *pg, cm_msg * msg)
         int i;
         /* Copy rcv qp numbers */
         for (i = 0; i < msg->nrails; ++i) {
-            XRC_MSG ("cm_enable for %d lid %d qpn %d\n", vc->pg_rank, msg->lids[i], msg->qpns[i]);
-            XRC_MSG ("Got RQPN: %d lid: %d\n", msg->xrc_rqpn[i], msg->lids[i]);
+            PRINT_DEBUG(DEBUG_XRC_verbose>0, "cm_enable for %d lid %d qpn %d\n", vc->pg_rank, msg->lids[i], msg->qpns[i]);
+            PRINT_DEBUG(DEBUG_XRC_verbose>0, "Got RQPN: %d lid: %d\n", msg->xrc_rqpn[i], msg->lids[i]);
             vc->ch.xrc_rqpn[i] = msg->xrc_rqpn[i];
         }
         for (i = 0; i < rdma_num_hcas; i++) {
@@ -1245,15 +1321,23 @@ static int cm_enable(MPIDI_PG_t *pg, cm_msg * msg)
             /*Adding the reactivation done message to the msg_log_queue*/
             MPIDI_CH3I_CR_msg_log_queue_entry_t *entry = 
                 (MPIDI_CH3I_CR_msg_log_queue_entry_t *) MPIU_Malloc(sizeof(MPIDI_CH3I_CR_msg_log_queue_entry_t));
-            vbuf *v=get_vbuf();
-            MPIDI_CH3I_MRAILI_Pkt_comm_header *p = (MPIDI_CH3I_MRAILI_Pkt_comm_header*)v->pheader;
+
+            vbuf *v=NULL;
+            MPIDI_CH3I_MRAILI_Pkt_comm_header *p;
+
+            if(!SMP_ONLY)
+            {
+                v = get_vbuf();
+                p = (MPIDI_CH3I_MRAILI_Pkt_comm_header *) v->pheader;
+            }
+
             p->type = MPIDI_CH3_PKT_CM_REACTIVATION_DONE;
             /*Now all logged messages are sent using rail 0, 
             otherwise every rail needs to have one message*/
             entry->buf = v;
             entry->len = sizeof(MPIDI_CH3I_MRAILI_Pkt_comm_header);
             // MSG_LOG_ENQUEUE(vc, entry);
-	        cm_enq_react_done(vc, entry);
+	    cm_enq_react_done(vc, entry);
         }
     }
     else 
@@ -1280,16 +1364,16 @@ static int cm_enable(MPIDI_PG_t *pg, cm_msg * msg)
         VC_SET_ACTIVE (vc);
 #ifdef _ENABLE_XRC_
         if (USE_XRC) {
-            XRC_MSG ("SEND_IDLE\n");
+            PRINT_DEBUG(DEBUG_XRC_verbose>0, "SEND_IDLE\n");
             cm_xrc_send_enable (vc);
         }
+        PRINT_DEBUG(DEBUG_XRC_verbose>0, "new_conn_complete to %d state %d\n"
+            "xst: 0x%08x\n", vc->pg_rank, vc->state, vc->ch.xrc_flags);
 #endif
-        XRC_MSG ("new_conn_complete to %d state %d xst: 0x%08x", vc->pg_rank, 
-                vc->state, vc->ch.xrc_flags);
         MPIDI_CH3I_Process.new_conn_complete = 1;
     } 
 
-    CM_DBG("cm_enable Exit");
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"cm_enable Exit\n");
     MPIDI_FUNC_EXIT(MPID_GEN2_CM_ENABLE);
     return MPI_SUCCESS;
 }
@@ -1297,9 +1381,9 @@ static int cm_enable(MPIDI_PG_t *pg, cm_msg * msg)
 static int cm_enable_nopg(MPIDI_VC_t *vc, cm_msg * msg)
 {
     int rank; PMI_Get_rank(&rank);
-    CM_DBG("cm_enable_nopg Enter");
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"cm_enable_nopg Enter\n");
 
-    XRC_MSG ("cm_enable_nopg");
+    PRINT_DEBUG(DEBUG_XRC_verbose>0, "cm_enable_nopg\n");
 #ifdef _ENABLE_XRC_
     VC_XST_SET (vc, XF_DPM_INI);
 #endif
@@ -1309,8 +1393,8 @@ static int cm_enable_nopg(MPIDI_VC_t *vc, cm_msg * msg)
     MRAILI_Init_vc(vc);
 
     cm_qp_move_to_rts(vc);
-    XRC_MSG ("RTS1");
-    CM_DBG("[%d enable-nopg] remote qpn %08x, local qpn %08x\n",
+    PRINT_DEBUG(DEBUG_XRC_verbose>0, "RTS1\n");
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"[%d enable-nopg] remote qpn %08x, local qpn %08x\n",
             rank, msg->qpns[0], vc->mrail.rails[0].qp_hndl->qp_num);
 
     vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
@@ -1320,7 +1404,7 @@ static int cm_enable_nopg(MPIDI_VC_t *vc, cm_msg * msg)
     VC_SET_ACTIVE (vc);
     MPIDI_CH3I_Process.new_conn_complete = 1;
 
-    CM_DBG("cm_enable_nopg Exit");
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"cm_enable_nopg Exit\n");
     return MPI_SUCCESS;
 }
 
@@ -1335,9 +1419,8 @@ int cm_handle_msg(cm_msg * msg)
     int my_rank;
     MPIDI_STATE_DECL(MPID_GEN2_CM_HANDLE_MSG);
     MPIDI_FUNC_ENTER(MPID_GEN2_CM_HANDLE_MSG);
-    CM_DBG("##### Handle cm_msg: msg_type: %d, client_rank %d, server_rank"
-           "%d\n",
-           msg->msg_type, msg->client_rank, msg->server_rank, msg->nrails);
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"##### Handle cm_msg: msg_type: %d, client_rank %d, server_rank"
+           "%d rails:%d\n", msg->msg_type, msg->client_rank, msg->server_rank, msg->nrails);
 
     /* FIXME: Ideally MPIDI_Process.my_pg_rank should be used here. However, 
      * MPIDI_Process.my_pg_rank is initialized after the ud thread is created,
@@ -1353,7 +1436,7 @@ int cm_handle_msg(cm_msg * msg)
                 MPIU_Assert (USE_XRC != 0);
                 MPICM_lock ();
                 cm_msg rep;
-                XRC_MSG ("CM_MSG_TYPE_XRC_REQ from %d\n", msg->client_rank);
+                PRINT_DEBUG(DEBUG_XRC_verbose>0, "CM_MSG_TYPE_XRC_REQ from %d\n", msg->client_rank);
                 MPIDI_PG_Find (msg->pg_id, &pg);
                 if (!pg) {
                     CM_ERR_ABORT ("No PG matches id %s", msg->pg_id);
@@ -1366,6 +1449,7 @@ int cm_handle_msg(cm_msg * msg)
                 }
                 VC_XST_SET (vc, XF_RECV_IDLE);
                 VC_SET_ACTIVE (vc);
+                MV2_HYBRID_SET_RC_CONN_INITIATED(vc); 
                 
                 MPIU_Memcpy (&rep, msg, sizeof(cm_msg));
                 rep.vc_addr = (uintptr_t) vc;
@@ -1375,31 +1459,12 @@ int cm_handle_msg(cm_msg * msg)
 
                 vc->mrail.remote_vc_addr = msg->vc_addr;
                 vc->mrail.num_rails = rdma_num_rails;
-                if (!vc->mrail.rails) {
-                     vc->mrail.rails = MPIU_Malloc
-                             (sizeof *vc->mrail.rails * vc->mrail.num_rails);
-                    if (!vc->mrail.rails) {
-                        ibv_error_abort(GEN_EXIT_ERR, 
-                                "Fail to allocate resources for multirails\n");
-                    }
-                }
-
-                if (!vc->mrail.srp.credits) {
-                    vc->mrail.srp.credits = MPIU_Malloc(sizeof 
-                            *vc->mrail.srp.credits * 
-                            vc->mrail.num_rails);
-                    if (!vc->mrail.srp.credits) {
-                        ibv_error_abort(GEN_EXIT_ERR, 
-                                "Fail to allocate resources for credits "
-                                "array\n");
-                    }
-                }
                 MRAILI_Init_vc (vc);
                 for (rail_index = 0; rail_index < msg->nrails;
                         rail_index++) {
                     hca_index  = rail_index / (vc->mrail.num_rails / 
                             rdma_num_hcas);
-                    XRC_MSG ("Registered with RQPN %d hca_index: %d on %d\n", 
+                    PRINT_DEBUG(DEBUG_XRC_verbose>0, "Registered with RQPN %d hca_index: %d on %d\n", 
                             msg->xrc_rqpn[rail_index], hca_index,
                             MPIDI_Process.my_pg->ch.mrail.xrc_hostid[MPIDI_Process.my_pg_rank]);
                     if (ibv_reg_xrc_rcv_qp (
@@ -1409,7 +1474,7 @@ int cm_handle_msg(cm_msg * msg)
                         ibv_error_abort(GEN_EXIT_ERR, 
                                 "Can't register with RCV QP");
                     }
-                    XRC_MSG ("DONE");
+                    PRINT_DEBUG(DEBUG_XRC_verbose>0, "DONE\n");
                     vc->ch.xrc_my_rqpn[rail_index] = msg->xrc_rqpn[rail_index];
                 }
                 for (rail_index = 0; rail_index < rdma_num_hcas; 
@@ -1423,7 +1488,14 @@ int cm_handle_msg(cm_msg * msg)
                 }
                 MPICM_unlock ();
                 if (USE_XRC && VC_XSTS_ISUNSET (vc, XF_DPM_INI)) {
-                    XRC_MSG ("2 CONNECT");
+                    PRINT_DEBUG(DEBUG_XRC_verbose>0, "2 CONNECT state:%d flags: 0x%08x\n", vc->ch.state, vc->ch.xrc_flags);
+#ifdef _ENABLE_UD_
+                if (USE_XRC && rdma_enable_hybrid && 
+                        VC_XST_ISUNSET(vc, XF_UD_CONNECTED)) {
+                    vc->ch.state = MPIDI_CH3I_VC_STATE_UNCONNECTED;
+                    VC_XST_CLR (vc, XF_SEND_IDLE);
+                }
+#endif
                     MPIDI_CH3I_CM_Connect (vc);
                 }
             }
@@ -1434,7 +1506,7 @@ int cm_handle_msg(cm_msg * msg)
                 int i;
                 MPICM_lock();
                 MPIU_Assert (USE_XRC != 0);
-                XRC_MSG ("CM_MSG_TYPE_XRC_REP from %d\n", msg->server_rank);
+                PRINT_DEBUG(DEBUG_XRC_verbose>0, "CM_MSG_TYPE_XRC_REP from %d\n", msg->server_rank);
            
                 MPIDI_PG_Find (msg->pg_id, &pg);
                 if (!pg) {
@@ -1453,7 +1525,7 @@ int cm_handle_msg(cm_msg * msg)
                 if (NULL == pending) {
                     CM_ERR_ABORT("Can't find pending entry");
                 }
-                CM_DBG("type rep, remove pending %p\n", pending);
+                PRINT_DEBUG(DEBUG_CM_verbose>0 ,"type rep, remove pending %p\n", pending);
                 cm_pending_remove_and_destroy(pending);
 
                 MRAILI_Init_vc (vc);
@@ -1472,8 +1544,8 @@ int cm_handle_msg(cm_msg * msg)
     case CM_MSG_TYPE_REQ:
         {
             MPICM_lock();
-            XRC_MSG ("CM_MSG_TYPE_REQ from %d\n", msg->client_rank);
-            CM_DBG("Search for pg_id %s\n", msg->pg_id);
+            PRINT_DEBUG(DEBUG_XRC_verbose>0, "CM_MSG_TYPE_REQ from %d\n", msg->client_rank);
+            PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Search for pg_id %s\n", msg->pg_id);
             MPIDI_PG_Find(msg->pg_id, &pg);
             if (!pg) {
                 CM_ERR_ABORT("No PG matches id %s", msg->pg_id);
@@ -1485,7 +1557,7 @@ int cm_handle_msg(cm_msg * msg)
             MPIDI_PG_Get_vc(pg, msg->client_rank, &vc);
 
             vc->mrail.remote_vc_addr = msg->vc_addr;
-            CM_DBG("pg_id %s, pg %p, mypg %p, Server rank %d, "
+            PRINT_DEBUG(DEBUG_CM_verbose>0 ,"pg_id %s, pg %p, mypg %p, Server rank %d, "
                     "client rank %d,  my pg rank %d, "
                     "my lid %08x, vc state %d\n", msg->pg_id,
                     pg, MPIDI_Process.my_pg, 
@@ -1495,12 +1567,13 @@ int cm_handle_msg(cm_msg * msg)
 
             assert(msg->server_rank == my_rank);
 
-            if (vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE
+            MV2_HYBRID_SET_RC_CONN_INITIATED(vc); 
+            if (IS_RC_CONN_ESTABLISHED(vc)
 #ifdef _ENABLE_XRC_
                     && (!USE_XRC || VC_XST_ISSET (vc, XF_RECV_IDLE))
 #endif
                     ) {
-                CM_DBG("Connection already exits");
+                PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Connection already exits\n");
                 /*already existing */
                 MPICM_unlock();
                 return MPI_SUCCESS;
@@ -1511,7 +1584,7 @@ int cm_handle_msg(cm_msg * msg)
 #endif
                     vc->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_SRV)
             {
-                CM_DBG("Already serving that client");
+                PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Already serving that client\n");
                 /*already a pending request from that peer */
                 MPICM_unlock();
                 return MPI_SUCCESS;
@@ -1527,16 +1600,16 @@ int cm_handle_msg(cm_msg * msg)
                 /*smaller rank will be server*/
                 int compare = cm_compare_peer(pg, MPIDI_Process.my_pg,
                                               msg->client_rank, my_rank);
-                CM_DBG("Concurrent request");
+                PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Concurrent request\n");
                 if (compare < 0) {
                     /*that peer should be server, ignore the request*/
                     MPICM_unlock();
-                    CM_DBG("Should act as client, ignore request");
+                    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Should act as client, ignore request\n");
                     return MPI_SUCCESS;
                 }
                 else if (compare > 0) {
                     /*myself should be server */
-                    CM_DBG("Should act as server, accept and cancel");
+                    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Should act as server, accept and cancel\n");
                     cm_accept_and_cancel(pg, msg);
                 } else {
                     CM_ERR_ABORT("Remote process has the same order");
@@ -1549,7 +1622,14 @@ int cm_handle_msg(cm_msg * msg)
             MPICM_unlock();
 #ifdef _ENABLE_XRC_
             if (USE_XRC && VC_XSTS_ISUNSET (vc, XF_DPM_INI)) {
-                XRC_MSG ("3 CONNECT");
+                PRINT_DEBUG(DEBUG_XRC_verbose>0, "3 CONNECT\n");
+#ifdef _ENABLE_UD_
+                if (USE_XRC && rdma_enable_hybrid && 
+                        VC_XST_ISUNSET(vc, XF_UD_CONNECTED)) {
+                    vc->ch.state = MPIDI_CH3I_VC_STATE_UNCONNECTED;
+                    VC_XST_CLR (vc, XF_SEND_IDLE);
+                }
+#endif
                 MPIDI_CH3I_CM_Connect (vc);
             }
 #endif
@@ -1559,9 +1639,9 @@ int cm_handle_msg(cm_msg * msg)
         {
             cm_pending* pending;
             MPICM_lock();
-            XRC_MSG ("CM_MSG_TYPE_REP from %d\n", msg->server_rank);
-            CM_DBG("Got TYPE_REP, pg_id %s, my pg_id %s\n",
-                    msg->pg_id, MPIDI_Process.my_pg->id);
+            PRINT_DEBUG(DEBUG_XRC_verbose>0, "CM_MSG_TYPE_REP from %d\n", msg->server_rank);
+            PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Got TYPE_REP, pg_id %s, my pg_id %s\n",
+                    msg->pg_id, (char *)MPIDI_Process.my_pg->id);
             MPIDI_PG_Find(msg->pg_id, &pg);
             if (!pg) {
                 CM_ERR_ABORT("No PG matches id %s", msg->pg_id);
@@ -1585,7 +1665,7 @@ int cm_handle_msg(cm_msg * msg)
             {
                 CM_ERR_ABORT("Can't find pending entry");
             }
-            CM_DBG("type rep, remove pending %p\n", pending);
+            PRINT_DEBUG(DEBUG_CM_verbose>0 ,"type rep, remove pending %p\n", pending);
             cm_pending_remove_and_destroy(pending);
             cm_enable(pg, msg);
             MPICM_unlock();
@@ -1601,7 +1681,7 @@ int cm_handle_msg(cm_msg * msg)
             }
             MPIDI_VC_Init(vc, NULL, 0);
             vc->mrail.remote_vc_addr = msg->vc_addr;
-            CM_DBG("Incoming REQ. remote VC is %x\n", msg->vc_addr);
+            PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Incoming REQ. remote VC is %"PRIx64"\n", msg->vc_addr);
             MPICM_lock();
             cm_accept_nopg(vc, msg);
             MPICM_unlock();
@@ -1611,25 +1691,25 @@ int cm_handle_msg(cm_msg * msg)
         {
             cm_pending *pending;
             MPIDI_VC_t *vc = (void *)(uintptr_t)(msg->vc_addr_bounce);
-            CM_DBG("Bounced VC is %x\n", vc);
+            PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Bounced VC is %p\n", vc);
 
             if(vc && vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE) { /* this might a re-transmitted raw rep message */
-                CM_DBG("RAW_REP re-transmission ignored\n");
+                PRINT_DEBUG(DEBUG_CM_verbose>0 ,"RAW_REP re-transmission ignored\n");
                 return MPI_SUCCESS;
             }
             
             if(!(vc && vc->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_CLI)) {
                 if(!vc) {
-                    CM_DBG("No VC. Bounced VC is NULL\n");
+                    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"No VC. Bounced VC is NULL\n");
                     CM_ERR_ABORT("VC Missing\n");
                 }
-                CM_DBG("Invalid VC: state is %d\n", vc->ch.state);         
+                PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Invalid VC: state is %d\n", vc->ch.state);         
                 /* CM_ERR_ABORT("Invalid VC or VC state\n"); */
                 if(vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE) {
-                    CM_DBG("VC already in connected state\n");
+                    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"VC already in connected state\n");
                 }
                 if(vc->ch.state == MPIDI_CH3I_VC_STATE_UNCONNECTED) {
-                    CM_DBG("VC in dis-connected state. but tried RAW-REQ\n");
+                    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"VC in dis-connected state. but tried RAW-REQ\n");
                     CM_ERR_ABORT("VC should not be in UNCONN state\n");
                 }
                 return MPI_SUCCESS;
@@ -1639,7 +1719,7 @@ int cm_handle_msg(cm_msg * msg)
             MPICM_lock();
             pending = cm_pending_search_peer(NULL, -1, -1, vc);
             if (pending) {
-                CM_DBG("Raw reply, remove pending %p\n", pending);
+                PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Raw reply, remove pending %p\n", pending);
                 cm_pending_remove_and_destroy(pending);
                 cm_enable_nopg(vc, msg);
             }
@@ -1705,7 +1785,7 @@ int cm_handle_msg(cm_msg * msg)
             if (vc->ch.state != MPIDI_CH3I_VC_STATE_REACTIVATING_CLI_1)
             {
                 /*not waiting for any reply */
-                CM_DBG("Ignore CM_MSG_TYPE_REACTIVATE_REP, local state: %d",
+                PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Ignore CM_MSG_TYPE_REACTIVATE_REP, local state: %d\n",
                         vc->ch.state);
                 MPICM_unlock();
                 return MPI_SUCCESS;
@@ -1727,7 +1807,7 @@ int cm_handle_msg(cm_msg * msg)
     default:
         CM_ERR_ABORT("Unknown msg type: %d", msg->msg_type);
     }
-    CM_DBG("cm_handle_msg Exit");
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"cm_handle_msg Exit\n");
     MPIDI_FUNC_EXIT(MPID_GEN2_CM_HANDLE_MSG);
     return MPI_SUCCESS;
 }
@@ -1751,10 +1831,10 @@ void *cm_timeout_handler(void *arg)
         while (cm_pending_num == 0)
         {
             pthread_cond_wait(&cm_cond_new_pending, &cm_conn_state_lock);
-            CM_DBG("cond wait finish");
+            PRINT_DEBUG(DEBUG_CM_verbose>0 ,"cond wait finish\n");
             if (cm_is_finalizing)
             {
-                CM_DBG("Timer thread finalizing");
+                PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Timer thread finalizing\n");
                 MPICM_unlock();
                 pthread_exit(NULL);
             }
@@ -1766,7 +1846,7 @@ void *cm_timeout_handler(void *arg)
             MPICM_lock();
             if (cm_is_finalizing)
             {
-                CM_DBG("Timer thread finalizing");
+                PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Timer thread finalizing\n");
                 MPICM_unlock();
                 pthread_exit(NULL);
             }
@@ -1774,7 +1854,7 @@ void *cm_timeout_handler(void *arg)
             {
                 break;
             }
-            CM_DBG("Time out");
+            PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Time out\n");
             curr_p = cm_pending_head;
             if (NULL == curr_p)
             {
@@ -1792,7 +1872,7 @@ void *cm_timeout_handler(void *arg)
                         || (USE_XRC && curr_p->attempts > CM_ATTS))
                 {
                     /* Free it, never retransmit */
-                    XRC_MSG ("Deleted CM entry");
+                    PRINT_DEBUG(DEBUG_XRC_verbose>0, "Deleted CM entry\n");
                     cm_pending_remove_and_destroy (curr_p);
                     continue;
                 }
@@ -1815,7 +1895,7 @@ void *cm_timeout_handler(void *arg)
                     gettimeofday(&now,NULL);
                 }
             }
-            CM_DBG("Time out exit");
+            PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Time out exit\n");
         }
         MPICM_unlock();
     }
@@ -1842,7 +1922,7 @@ void *cm_completion_handler(void *arg)
         char* buf;
         cm_msg* msg;
 
-        CM_DBG("Waiting for cm message");
+        PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Waiting for cm message\n");
 
         do
         {
@@ -1863,7 +1943,7 @@ void *cm_completion_handler(void *arg)
             return NULL;
         }
 
-        CM_DBG("Processing cm message");
+        PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Processing cm message\n");
           
         spin_count = 0;
         do
@@ -1895,18 +1975,18 @@ void *cm_completion_handler(void *arg)
                 msg = (cm_msg*) buf;
                 if (msg->msg_type == CM_MSG_TYPE_FIN_SELF)
                 {
-                    CM_DBG("received finalization message");
+                    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"received finalization message\n");
                     return NULL;
                 }
                 cm_handle_msg(msg);
-                CM_DBG("Post recv");
+                PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Post recv \n");
                 cm_post_ud_recv(buf - 40, sizeof(cm_msg));
                 cm_ud_recv_buf_index = (cm_ud_recv_buf_index + 1) % cm_recv_buffer_size;
             }
         }
         while (spin_count < cm_max_spin_count);
 
-        CM_DBG("notify_cq");
+        PRINT_DEBUG(DEBUG_CM_verbose>0 ,"notify_cq\n");
         if (ibv_req_notify_cq(cm_ud_recv_cq, 1))
         {
             CM_ERR_ABORT("Couldn't request CQ notification");
@@ -2156,7 +2236,6 @@ fn_fail:
 int MPICM_Init_Local_UD_struct(MPIDI_PG_t *pg, uint32_t qpn, uint16_t lid,
                                 union ibv_gid *gid, int hostid)
 {
-    int i;
     int rank;
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_GEN2_MPICM_INIT_LOCAL_UD_STRUCT);
@@ -2181,6 +2260,7 @@ int MPICM_Init_Local_UD_struct(MPIDI_PG_t *pg, uint32_t qpn, uint16_t lid,
     /*Create address handles */
     pg->ch.mrail.cm_ah[rank] = cm_create_ah(MPIDI_CH3I_RDMA_Process.ptag[0],
                                                  pg->ch.mrail.cm_lid[rank],
+                                                 pg->ch.mrail.cm_gid[rank],
                                                  rdma_default_port);
     if (!pg->ch.mrail.cm_ah[rank]) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
@@ -2196,7 +2276,8 @@ fn_fail:
 #define FUNCNAME MPICM_Init_UD_struct
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPICM_Init_UD_struct(MPIDI_PG_t *pg, uint32_t * qpns, uint16_t * lids)
+int MPICM_Init_UD_struct(MPIDI_PG_t *pg, uint32_t * qpns, uint16_t * lids,
+							union ibv_gid *gids)
 {
     int i;
     int mpi_errno = MPI_SUCCESS;
@@ -2207,15 +2288,20 @@ int MPICM_Init_UD_struct(MPIDI_PG_t *pg, uint32_t * qpns, uint16_t * lids)
     /*Copy qpns and lids */
     MPIU_Memcpy(pg->ch.mrail.cm_ud_qpn, qpns, pg->size * sizeof(uint32_t));
     MPIU_Memcpy(pg->ch.mrail.cm_lid, lids, pg->size * sizeof(uint16_t));
+    if (use_iboeth) {
+        MPIU_Memcpy(pg->ch.mrail.cm_gid, gids,
+                    pg->size * sizeof(union ibv_gid));
+    }
 
     /*Create address handles */
     for (i=0; i < pg->size; ++i)
     {
         pg->ch.mrail.cm_ah[i] = cm_create_ah(MPIDI_CH3I_RDMA_Process.ptag[0], 
                                              pg->ch.mrail.cm_lid[i],
+                                             pg->ch.mrail.cm_gid[i],
                                              rdma_default_port);
-        if (!pg->ch.mrail.cm_ah[i])
-        {
+
+        if (!pg->ch.mrail.cm_ah[i]) {
             MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                 "**fail %s", "Failed to create AH");
         }
@@ -2277,7 +2363,7 @@ int MPICM_Finalize_UD()
 
     int i = 0;
 
-    CM_DBG("In MPICM_Finalize_UD");
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"In MPICM_Finalize_UD\n");
     cm_is_finalizing = 1;
     cm_pending_list_finalize();
 
@@ -2303,10 +2389,10 @@ int MPICM_Finalize_UD()
     {
         CM_ERR_ABORT("ibv_post_send to ud qp failed");
     }
-    CM_DBG("Self send issued");
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Self send issued\n");
 
     pthread_join(cm_comp_thread,NULL);
-    CM_DBG("Completion thread destroyed");
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Completion thread destroyed\n");
 #if defined(CKPT)
     if (MPIDI_CH3I_CR_Get_state() == MPICR_STATE_PRE_COORDINATION)
     {
@@ -2314,7 +2400,7 @@ int MPICM_Finalize_UD()
 /*
         pthread_mutex_trylock(&cm_cond_new_pending);
         pthread_cond_signal(&cm_cond_new_pending);
-        CM_DBG("Timer thread signaled");
+        PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Timer thread signaled\n");
 */        
         MPICM_unlock();
         pthread_join(cm_timer_thread, NULL);
@@ -2324,7 +2410,7 @@ int MPICM_Finalize_UD()
     {
         pthread_cancel(cm_timer_thread);
     }
-    CM_DBG("Timer thread destroyed");
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Timer thread destroyed\n");
 
     pthread_mutex_destroy(&cm_conn_state_lock);
     pthread_cond_destroy(&cm_cond_new_pending);
@@ -2369,7 +2455,7 @@ int MPICM_Finalize_UD()
         MPIU_Free(cm_ud_buf);
     }
 
-    CM_DBG("MPICM_Finalize_UD done");
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"MPICM_Finalize_UD done\n");
     MPIDI_FUNC_EXIT(MPID_GEN2_MPICM_FINALIZE_UD);
     return MPI_SUCCESS;
 }
@@ -2424,16 +2510,18 @@ int MPIDI_CH3I_CM_Connect(MPIDI_VC_t * vc)
     }
 #endif /* defined(RDMA_CM) */ 
 
-    CM_DBG("Sending Req to rank %d", vc->pg_rank);
-    CM_DBG("Sending CM_Request, pgid %s, vc %p, num_rails %d\n", 
-            MPIDI_Process.my_pg->id, vc, vc->mrail.num_rails);
-    XRC_MSG ("CM_Connect");
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Sending Req to rank %d\n", vc->pg_rank);
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Sending CM_Request, pgid %s, vc %p, num_rails %d\n", 
+            (char *)MPIDI_Process.my_pg->id, vc, vc->mrail.num_rails);
+    PRINT_DEBUG(DEBUG_XRC_verbose>0, "CM_Connect\n");
     /*Create qps*/
 #ifdef _ENABLE_XRC_
     if (USE_XRC) {
         VC_XST_SET (vc, XF_SEND_CONNECTING);
+#ifdef _ENABLE_UD_
+        VC_XST_SET (vc, XF_UD_CONNECTED);
+#endif
         if (!vc->mrail.rails) {
-            XRC_MSG ("alloc 20");
             vc->mrail.num_rails = rdma_num_rails;
             vc->mrail.rails = MPIU_Malloc
                     (sizeof *vc->mrail.rails * vc->mrail.num_rails);
@@ -2441,17 +2529,18 @@ int MPIDI_CH3I_CM_Connect(MPIDI_VC_t * vc)
                 ibv_error_abort(GEN_EXIT_ERR, 
                         "Fail to allocate resources for multirails\n");
             }
+            MPIU_Memset (vc->mrail.rails, 0, 
+                        (sizeof *vc->mrail.rails * vc->mrail.num_rails));
         }
         if (!vc->pg->ch.mrail.cm_ah[vc->pg_rank]) {
-            XRC_MSG ("BBB");
             /* We need to resolve the address */
-            CM_DBG("cm_ah not created, resolve conn info\n");
+            PRINT_DEBUG(DEBUG_CM_verbose>0 ,"cm_ah not created, resolve conn info\n");
             if (cm_resolve_conn_info(vc->pg, vc->pg_rank)) {
                 CM_ERR_ABORT("Cannot resolve connection info");
             }
         }
         if (vc->smp.hostid == -1) {
-            XRC_MSG ("INIT HOSTID %d", 
+            PRINT_DEBUG(DEBUG_XRC_verbose>0, "INIT HOSTID %d\n", 
                     vc->pg->ch.mrail.xrc_hostid [vc->pg_rank]);
             vc->smp.hostid = vc->pg->ch.mrail.xrc_hostid [vc->pg_rank];
         }
@@ -2469,8 +2558,12 @@ int MPIDI_CH3I_CM_Connect(MPIDI_VC_t * vc)
     for (i = 0; i < msg.nrails; ++i)
     {
         msg.lids[i] = vc->mrail.rails[i].lid;
+        if (use_iboeth) {
+            MPIU_Memcpy(&msg.gids[i], &vc->mrail.rails[i].gid,
+                        sizeof(union ibv_gid));
+        }
         msg.qpns[i] = vc->mrail.rails[i].qp_hndl->qp_num;
-        XRC_MSG ("Created SQP: %d LID: %d\n", msg.qpns[i], msg.lids[i]);
+        PRINT_DEBUG(DEBUG_XRC_verbose>0, "Created SQP: %d LID: %d\n", msg.qpns[i], msg.lids[i]);
     }
     msg.vc_addr = (uintptr_t)vc;
     if (strlen(MPIDI_Process.my_pg->id) > MAX_PG_ID_SIZE) {
@@ -2507,12 +2600,13 @@ int MPIDI_CH3I_CM_Connect_raw_vc(MPIDI_VC_t * vc, char *ifname)
     int mpi_errno = MPI_SUCCESS;
     int rank;
     uint32_t lid, qpn, port;
+    union ibv_gid gid;
 #ifdef _ENABLE_XRC_
     uint32_t hostid;
 #endif
     int i = 0;
 
-    XRC_MSG ("MPIDI_CH3I_CM_Connect_raw_vc");
+    PRINT_DEBUG(DEBUG_XRC_verbose>0, "MPIDI_CH3I_CM_Connect_raw_vc\n");
     MPICM_lock();
 
 #ifdef _ENABLE_XRC_
@@ -2526,19 +2620,31 @@ int MPIDI_CH3I_CM_Connect_raw_vc(MPIDI_VC_t * vc, char *ifname)
     }
 
 #ifdef _ENABLE_XRC_
-    sscanf(ifname, "#RANK:%08d(%08x:%08x:%08x:%08x)#",
+    if (use_iboeth) {
+        sscanf(ifname, "#RANK:%08d(%08x:%016"SCNx64":%016"SCNx64":%08x:"
+            "%08x:%08x)#", &rank, &lid, &gid.global.subnet_prefix,
+            &gid.global.interface_id, &qpn, &port, &hostid);
+    } else {
+        sscanf(ifname, "#RANK:%08d(%08x:%08x:%08x:%08x)#",
             &rank, &lid, &qpn, &port, &hostid);
+    }
 #else
-    sscanf(ifname, "#RANK:%08d(%08x:%08x:%08x)#", &rank,
-            &lid, &qpn, &port);
+    if (use_iboeth) {
+        sscanf(ifname, "#RANK:%08d(%08x:%016"SCNx64":%016"SCNx64":"
+            "%08x:%08x)#", &rank, &lid, &gid.global.subnet_prefix,
+            &gid.global.interface_id, &qpn, &port);
+    } else {
+        sscanf(ifname, "#RANK:%08d(%08x:%08x:%08x)#",
+            &rank, &lid, &qpn, &port);
+    }
 #endif
 
-    ah = cm_create_ah(MPIDI_CH3I_RDMA_Process.ptag[0], lid, port);
+    ah = cm_create_ah(MPIDI_CH3I_RDMA_Process.ptag[0], lid, gid, port);
     if (!ah) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
                     "**fail %s", "Fail to create address handle");
     }
-    CM_DBG("Sending Req to rank %d", vc->pg_rank);
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Sending Req to rank %d\n", vc->pg_rank);
     /*Create qps*/
     cm_qp_create(vc, 1, MV2_QPT_RC);
     msg.msg_type = CM_MSG_TYPE_RAW_REQ;
@@ -2551,7 +2657,7 @@ int MPIDI_CH3I_CM_Connect_raw_vc(MPIDI_VC_t * vc, char *ifname)
     }
 
     msg.vc_addr = (uintptr_t)vc;
-    CM_DBG("CM_MSG_SEND_RAW_REQ: sending vc is %x\n", vc);
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"CM_MSG_SEND_RAW_REQ: sending vc is %p\n", vc);
     mpi_errno = MPIDI_CH3I_CM_Get_port_info(msg.ifname, 128);
     if (mpi_errno) {
         MPIU_ERR_POP(mpi_errno);
@@ -2586,9 +2692,11 @@ int MPIDI_CH3I_CM_Establish(MPIDI_VC_t * vc)
         return MPI_SUCCESS;
     }
 #endif /* defined(RDMA_CM) */
-        XRC_MSG ("EST vc %d: st: %d, xr: 0x%08x\n", vc->pg_rank, vc->state, vc->ch.xrc_flags);
+#ifdef _ENABLE_XRC_
+    PRINT_DEBUG(DEBUG_XRC_verbose>0, "EST vc %d: st: %d, xr: 0x%08x\n", vc->pg_rank, vc->state, vc->ch.xrc_flags);
+#endif
 
-    CM_DBG("MPIDI_CH3I_CM_Establish peer rank %d",vc->pg_rank);
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"MPIDI_CH3I_CM_Establish peer rank %d\n",vc->pg_rank);
     if (vc->ch.state != MPIDI_CH3I_VC_STATE_CONNECTING_SRV
 #if defined(CKPT)
             && vc->ch.state != MPIDI_CH3I_VC_STATE_REACTIVATING_SRV
@@ -2618,7 +2726,7 @@ remove_pending:
     }
     else {
     
-        CM_DBG("pending head %p, remove %p\n", cm_pending_head, pending);
+        PRINT_DEBUG(DEBUG_CM_verbose>0 ,"pending head %p, remove %p\n", cm_pending_head, pending);
         cm_pending_remove_and_destroy(pending);
     }
 #ifdef _ENABLE_XRC_
@@ -2630,7 +2738,7 @@ remove_pending:
     {
         cm_qp_move_to_rts(vc);
 
-        XRC_MSG ("RTS2");
+        PRINT_DEBUG(DEBUG_XRC_verbose>0, "RTS2\n");
         vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
 #ifdef _ENABLE_XRC_
         VC_XST_SET (vc, XF_SEND_IDLE);
@@ -2658,17 +2766,34 @@ int MPIDI_CH3I_CM_Get_port_info(char *ifname, int max_len)
     }
 
 #ifdef _ENABLE_XRC_
-    MPIU_Snprintf(ifname, 128, "#RANK:%08d(%08x:%08x:%08x:%08x)#",
+    if (use_iboeth) {
+        MPIU_Snprintf(ifname, 128, "#RANK:%08d(%08x:%016"SCNx64":%016"SCNx64":%08x:"
+            "%08x:%08x)#", rank, MPIDI_CH3I_RDMA_Process.lids[0][0],
+            MPIDI_CH3I_RDMA_Process.gids[0][0].global.subnet_prefix,
+            MPIDI_CH3I_RDMA_Process.gids[0][0].global.interface_id,
+            cm_ud_qp->qp_num, rdma_default_port, 
+            MPIDI_Process.my_pg->ch.mrail.xrc_hostid[rank]);
+    } else {
+        MPIU_Snprintf(ifname, 128, "#RANK:%08d(%08x:%08x:%08x:%08x)#",
             rank, MPIDI_CH3I_RDMA_Process.lids[0][0], cm_ud_qp->qp_num, 
             rdma_default_port, 
             MPIDI_Process.my_pg->ch.mrail.xrc_hostid[rank]);
+    }
 #else
-    MPIU_Snprintf(ifname, 128, "#RANK:%08d(%08x:%08x:%08x)#",
+    if (use_iboeth) {
+        MPIU_Snprintf(ifname, 128, "#RANK:%08d(%08x:%016"SCNx64":%016"SCNx64":"
+            "%08x:%08x)#", rank, MPIDI_CH3I_RDMA_Process.lids[0][0],
+            MPIDI_CH3I_RDMA_Process.gids[0][0].global.subnet_prefix,
+            MPIDI_CH3I_RDMA_Process.gids[0][0].global.interface_id,
+            cm_ud_qp->qp_num, rdma_default_port);
+    } else {
+        MPIU_Snprintf(ifname, 128, "#RANK:%08d(%08x:%08x:%08x)#",
             rank, MPIDI_CH3I_RDMA_Process.lids[0][0], cm_ud_qp->qp_num, 
             rdma_default_port);
+    }
 #endif
 fn_fail:
-    XRC_MSG ("ret: %d\n", mpi_errno);
+    PRINT_DEBUG(DEBUG_XRC_verbose>0, "ret: %d\n", mpi_errno);
     return mpi_errno;   
 }
 
@@ -2684,12 +2809,12 @@ int cm_send_xrc_cm_msg (MPIDI_VC_t *vc, MPIDI_VC_t *orig_vc)
     int i;
     MPIDI_PG_t *pg;
 
-    XRC_MSG ("cm_send_xrc_cm_msg %d\n", vc->pg_rank);
+    PRINT_DEBUG(DEBUG_XRC_verbose>0, "cm_send_xrc_cm_msg %d\n", vc->pg_rank);
 
     msg.nrails = vc->mrail.num_rails;
     pg = vc->pg;
     for (i = 0; i < msg.nrails; ++i) {
-        XRC_MSG ("Sending RQPN %d to %d\n", 
+        PRINT_DEBUG(DEBUG_XRC_verbose>0, "Sending RQPN %d to %d\n", 
                 orig_vc->ch.xrc_rqpn[i], vc->pg_rank);
         msg.xrc_rqpn[i] = orig_vc->ch.xrc_rqpn[i];
     }
@@ -2743,7 +2868,7 @@ int MPIDI_CH3I_CM_Send_logged_msg(MPIDI_VC_t *vc)
  
 int cm_send_suspend_msg(MPIDI_VC_t* vc)
 {
-    vbuf *v;
+    vbuf *v=NULL;
     int rail = 0;
     MPIDI_CH3I_MRAILI_Pkt_comm_header *p;
 
@@ -2751,32 +2876,35 @@ int cm_send_suspend_msg(MPIDI_VC_t* vc)
         /* Use the shared memory channel to send Suspend message for SMP VCs */
         MPID_Request *sreq = NULL;
         extern int MPIDI_CH3_SMP_iStartMsg(MPIDI_VC_t *, void *, MPIDI_msg_sz_t, MPID_Request **);
-        v = get_vbuf();
-        p = (MPIDI_CH3I_MRAILI_Pkt_comm_header*)v->pheader;
+
+        p = (MPIDI_CH3I_MRAILI_Pkt_comm_header*)MPIU_Malloc(sizeof(MPIDI_CH3I_MRAILI_Pkt_comm_header));
         p->type = MPIDI_CH3_PKT_CM_SUSPEND;
         MPIDI_CH3_SMP_iStartMsg(vc, p, sizeof(MPIDI_CH3I_MRAILI_Pkt_comm_header), &sreq);
         vc->ch.state = MPIDI_CH3I_VC_STATE_SUSPENDING;
         vc->ch.rput_stop = 1;
 
-		if(!sreq )// if sreq == NULL, the msg has been sent out 
-			vc->mrail.suspended_rails_send++;
-		if( vc->mrail.suspended_rails_send > 0 &&
-			vc->mrail.suspended_rails_recv > 0 ){
-			vc->ch.state = MPIDI_CH3I_VC_STATE_SUSPENDED;
-			vc->mrail.suspended_rails_send = 0;
-			vc->mrail.suspended_rails_recv = 0;
-			CM_DBG("%s [%d <= %d]: turn to SUSPENDED\n", __func__, 
-				MPIDI_Process.my_pg_rank, vc->pg_rank );
-		}
+        if(!sreq )// if sreq == NULL, the msg has been sent out 
+		vc->mrail.suspended_rails_send++;
+	if( vc->mrail.suspended_rails_send > 0 &&
+		vc->mrail.suspended_rails_recv > 0 ){
+		vc->ch.state = MPIDI_CH3I_VC_STATE_SUSPENDED;
+		vc->mrail.suspended_rails_send = 0;
+		vc->mrail.suspended_rails_recv = 0;
+		PRINT_DEBUG(DEBUG_CM_verbose>0 ,"%s [%d <= %d]: turn to SUSPENDED\n", __func__, 
+                                			MPIDI_Process.my_pg_rank, vc->pg_rank );
+	}
+
+        MPIU_Free(p);
         return(0);
     }
 
-    CM_DBG("In cm_send_suspend_msg peer %d",vc->pg_rank);
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"In cm_send_suspend_msg peer %d\n",vc->pg_rank);
     for (; rail < vc->mrail.num_rails; ++rail)
     {
         /*Send suspend msg to each rail*/
-        v = get_vbuf(); 
-        p = (MPIDI_CH3I_MRAILI_Pkt_comm_header*)v->pheader;
+
+        v = get_vbuf();
+        p = (MPIDI_CH3I_MRAILI_Pkt_comm_header*) v->pheader;
         p->type = MPIDI_CH3_PKT_CM_SUSPEND;
         vbuf_init_send(v, sizeof(MPIDI_CH3I_MRAILI_Pkt_comm_header), rail);
         MPIDI_CH3I_RDMA_Process.post_send(vc, v, rail);
@@ -2784,7 +2912,7 @@ int cm_send_suspend_msg(MPIDI_VC_t* vc)
     vc->ch.state = MPIDI_CH3I_VC_STATE_SUSPENDING;
     vc->ch.rput_stop = 1;
 
-    CM_DBG("Out cm_send_suspend_msg");
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Out cm_send_suspend_msg\n");
     return 0;
 }
 
@@ -2796,25 +2924,27 @@ int cm_send_reactivate_msg(MPIDI_VC_t* vc)
     /* Use the SMP channel to send Reactivate message for SMP VCs */
     MPID_Request *sreq;
     MPIDI_CH3I_MRAILI_Pkt_comm_header *p;
-    vbuf *v;
+    vbuf *v=NULL;
     extern int MPIDI_CH3_SMP_iStartMsg(MPIDI_VC_t *, void *, MPIDI_msg_sz_t, MPID_Request **);
-    if (SMP_INIT && (vc->smp.local_nodes >= 0)) {
-    v = get_vbuf();
-    p = (MPIDI_CH3I_MRAILI_Pkt_comm_header*)v->pheader;
-    p->type = MPIDI_CH3_PKT_CM_REACTIVATION_DONE;
-    MPIDI_CH3_SMP_iStartMsg(vc, p, sizeof(MPIDI_CH3I_MRAILI_Pkt_comm_header), &sreq);
-    vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
-    return(MPI_SUCCESS);
+    if (SMP_INIT && (vc->smp.local_nodes >= 0))
+    {
+        p = (MPIDI_CH3I_MRAILI_Pkt_comm_header*)MPIU_Malloc(sizeof(MPIDI_CH3I_MRAILI_Pkt_comm_header));
+        p->type = MPIDI_CH3_PKT_CM_REACTIVATION_DONE;
+        MPIDI_CH3_SMP_iStartMsg(vc, p, sizeof(MPIDI_CH3I_MRAILI_Pkt_comm_header), &sreq);
+        vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
+
+        MPIU_Free(p);
+        return(MPI_SUCCESS);
     }
 
     MPICM_lock();
     if (vc->ch.state != MPIDI_CH3I_VC_STATE_SUSPENDED)
     {
-        CM_DBG("Already being reactivated by remote side peer rank %d\n", vc->pg_rank);
+        PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Already being reactivated by remote side peer rank %d\n", vc->pg_rank);
         MPICM_unlock();
         return MPI_SUCCESS;
     }
-    CM_DBG("Sending CM_MSG_TYPE_REACTIVATE_REQ to rank %d", vc->pg_rank);
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Sending CM_MSG_TYPE_REACTIVATE_REQ to rank %d\n", vc->pg_rank);
     /*Create qps*/
     if (cm_qp_create(vc, 0, MV2_QPT_XRC) == MV2_QP_REUSE) {
         MPICM_unlock();
@@ -2868,7 +2998,7 @@ int MPIDI_CH3I_CM_Suspend(MPIDI_VC_t ** vc_vector)
     MPIDI_VC_t * vc;
     int i;
     int flag;
-    CM_DBG("MPIDI_CH3I_CM_Suspend Enter");
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"MPIDI_CH3I_CM_Suspend Enter\n");
     /*Send out all flag messages*/
     for (i = 0; i < MPIDI_Process.my_pg->size; ++i)
     {
@@ -2894,7 +3024,7 @@ int MPIDI_CH3I_CM_Suspend(MPIDI_VC_t ** vc_vector)
             pthread_mutex_unlock(&cm_automic_op_lock);
         }
     }
-    CM_DBG("Progressing"); 
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Progressing\n"); 
     /*Make sure all channels suspended*/
     do
     {
@@ -2925,7 +3055,7 @@ int MPIDI_CH3I_CM_Suspend(MPIDI_VC_t ** vc_vector)
     }
     while (flag);
 
-    CM_DBG("Channels suspended");
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Channels suspended\n");
 
 #if defined(CM_DEBUG)
     int rail;
@@ -2956,7 +3086,7 @@ int MPIDI_CH3I_CM_Suspend(MPIDI_VC_t ** vc_vector)
         }
     }
 #endif /* defined(CM_DEBUG) */
-    CM_DBG("MPIDI_CH3I_CM_Suspend Exit");
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"MPIDI_CH3I_CM_Suspend Exit\n");
     return 0;
 }
 
@@ -2967,7 +3097,7 @@ int MPIDI_CH3I_CM_Reactivate(MPIDI_VC_t ** vc_vector)
     MPIDI_VC_t* vc;
     int i = 0;
     int flag;
-    CM_DBG("MPIDI_CH3I_CM_Reactivate Enter");
+    PRINT_DEBUG(DEBUG_CM_verbose>0 ,"MPIDI_CH3I_CM_Reactivate Enter\n");
 
     /*Send out all reactivate messages*/
     for (; i < MPIDI_Process.my_pg->size; ++i)
@@ -3072,13 +3202,13 @@ int MPIDI_CH3I_CM_Reactivate(MPIDI_VC_t ** vc_vector)
 /*CM message handler for RC message in progress engine*/
 void MPIDI_CH3I_CM_Handle_recv(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t msg_type, vbuf * v)
 {
-	CM_DBG("%s: [%d <= %d]: got msg: %s(%d)\n", __func__, MPIDI_Process.my_pg_rank, 
+	PRINT_DEBUG(DEBUG_CM_verbose>0 ,"%s: [%d <= %d]: got msg: %s(%d)\n", __func__, MPIDI_Process.my_pg_rank, 
 		vc->pg_rank, MPIDI_CH3_Pkt_type_to_string[msg_type], msg_type  );
 
     /*Only count the total number, specific rail matching is not needed*/
     if (msg_type == MPIDI_CH3_PKT_CM_SUSPEND)
     {
-        CM_DBG("[%d]: handle recv CM_SUSPEND, peer rank %d, rails_send %d, rails_recv %d, ch.state %d",
+        PRINT_DEBUG(DEBUG_CM_verbose>0 ,"[%d]: handle recv CM_SUSPEND, peer rank%d, rails_send %d, rails_recv %d, ch.state %d\n",
            MPIDI_Process.my_pg_rank,  vc->pg_rank, vc->mrail.suspended_rails_send, vc->mrail.suspended_rails_recv, vc->ch.state);
         pthread_mutex_lock(&cm_automic_op_lock);
 
@@ -3087,7 +3217,7 @@ void MPIDI_CH3I_CM_Handle_recv(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t msg_type, v
         if (vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE)
         { 
             /*passive suspending*/
-            CM_DBG("Not in Suspending state yet, start suspending");
+            PRINT_DEBUG(DEBUG_CM_verbose>0 ,"Not in Suspending state yet, start suspending\n");
             cm_send_suspend_msg(vc);
         }
 
@@ -3103,12 +3233,14 @@ void MPIDI_CH3I_CM_Handle_recv(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t msg_type, v
         }
 
         pthread_mutex_unlock(&cm_automic_op_lock);
-        CM_DBG("handle recv CM_SUSPEND done, peer rank %d, rails_send %d, rails_recv %d, ch.state %d",
-                vc->pg_rank, vc->mrail.suspended_rails_send, vc->mrail.suspended_rails_recv, vc->ch.state);
+        PRINT_DEBUG(DEBUG_CM_verbose>0 ,"handle recv CM_SUSPEND done, peer rank"
+                    " %d,rails_send %d, rails_recv %d, ch.state %d\n",
+                    vc->pg_rank, vc->mrail.suspended_rails_send, 
+                    vc->mrail.suspended_rails_recv, vc->ch.state);
     } 
     else if (msg_type == MPIDI_CH3_PKT_CM_REACTIVATION_DONE)
     {
-        CM_DBG("handle recv MPIDI_CH3_PKT_CM_REACTIVATION_DONE peer rank %d, done_recv %d",
+        PRINT_DEBUG(DEBUG_CM_verbose>0 ,"handle recv MPIDI_CH3_PKT_CM_REACTIVATION_DONE peer rank %d, done_recv %d\n",
                 vc->pg_rank,vc->mrail.reactivation_done_recv);
         vc->mrail.reactivation_done_recv = 1;
         //vc->ch.rput_stop = 0;
@@ -3126,8 +3258,10 @@ void MPIDI_CH3I_CM_Handle_send_completion(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t 
     /*Only count the total number, specific rail matching is not needed*/
     if (msg_type == MPIDI_CH3_PKT_CM_SUSPEND)
     {
-        CM_DBG("handle send CM_SUSPEND, peer rank %d, rails_send %d, rails_recv %d, ch.state %d",
-                vc->pg_rank, vc->mrail.suspended_rails_send, vc->mrail.suspended_rails_recv, vc->ch.state);
+        PRINT_DEBUG(DEBUG_CM_verbose>0 ,"handle send CM_SUSPEND, peer rank %d"
+                    " rails_send %d, rails_recv %d, ch.state %d\n",
+                    vc->pg_rank, vc->mrail.suspended_rails_send, 
+                    vc->mrail.suspended_rails_recv, vc->ch.state);
         pthread_mutex_lock(&cm_automic_op_lock);
         ++vc->mrail.suspended_rails_send;
 
@@ -3141,12 +3275,14 @@ void MPIDI_CH3I_CM_Handle_send_completion(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t 
         }
 
         pthread_mutex_unlock(&cm_automic_op_lock);
-        CM_DBG("handle send CM_SUSPEND done, peer rank %d, rails_send %d, rails_recv %d, ch.state %d",
-                vc->pg_rank, vc->mrail.suspended_rails_send, vc->mrail.suspended_rails_recv, vc->ch.state);
+        PRINT_DEBUG(DEBUG_CM_verbose>0 ,"handle send CM_SUSPEND done, peer rank"
+                    " %d, rails_send %d, rails_recv %d, ch.state %d\n",
+                    vc->pg_rank, vc->mrail.suspended_rails_send, 
+                    vc->mrail.suspended_rails_recv, vc->ch.state);
     } 
     else if (msg_type == MPIDI_CH3_PKT_CM_REACTIVATION_DONE)
     {
-        CM_DBG("handle send MPIDI_CH3_PKT_CM_REACTIVATION_DONE peer rank %d, done_send %d",
+        PRINT_DEBUG(DEBUG_CM_verbose>0 ,"handle send MPIDI_CH3_PKT_CM_REACTIVATION_DONE peer rank %d, done_send %d\n",
                 vc->pg_rank, vc->mrail.reactivation_done_send);
         vc->mrail.reactivation_done_send = 1;
     }

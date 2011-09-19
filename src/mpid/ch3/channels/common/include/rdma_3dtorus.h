@@ -12,7 +12,7 @@
 
 #ifndef RDMA_3DTORUS_H
 #define RDMA_3DTORUS_H
-
+#include <netinet/in.h>
 #include <infiniband/verbs.h>
 #include <infiniband/umad.h>
 #include <mpidi_ch3_impl.h>

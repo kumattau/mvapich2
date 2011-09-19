@@ -27,6 +27,7 @@ fi
 
 pathlist=""
 pathlist="$pathlist src/mpid/${device_name}/channels/${channel_name}/include"
+pathlist="$pathlist src/mpid/${device_name}/channels/common/include"
 pathlist="$pathlist src/mpid/${device_name}/channels/${channel_name}/src/${with_rdma}"
 pathlist="$pathlist src/mpid/common/locks"
 pathlist="$pathlist src/util/wrappers"

@@ -17,18 +17,15 @@
 
 #include "mpiimpl.h"
 
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include "coll_shmem.h"
 extern struct coll_runtime coll_param;
-#define ALLGATHER_SMALL_SYSTEM_SIZE       128
-#define ALLGATHER_MEDIUM_SYSTEM_SIZE      256
-#define ALLGATHER_LARGE_SYSTEM_SIZE       512       
 #endif
 
 int allgather_tuning(int comm_size, int pof2)
 {
    char *value;
-#if defined(_OSU_MVAPICH_)  
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) 
    if (pof2 == 1 && (value = getenv("MV2_ALLGATHER_RD_THRESHOLD")) != NULL) { 
        /* pof2 case. User has set the run-time parameter "MV2_ALLGATHER_RD_THRESHOLD".
         * Just use that value */
@@ -54,7 +51,7 @@ int allgather_tuning(int comm_size, int pof2)
    } else { 
        return MV2_ALLGATHER_LONG_MSG; 
    } 
-#endif /* #if defined(_OSU_MVAPICH_) */ 
+#endif /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */ 
 
 }
 
@@ -110,6 +107,10 @@ int allgather_tuning(int comm_size, int pof2)
 /* begin:nested */
 /* not declared static because a machine-specific function may call this 
    one in some cases */
+#undef FUNCNAME
+#define FUNCNAME MPIR_Allgather_intra_MV2
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIR_Allgather_intra_MV2 ( 
     void *sendbuf, 
     int sendcount, 
@@ -126,7 +127,6 @@ int MPIR_Allgather_intra_MV2 (
     MPI_Aint   recvtype_extent;
     MPI_Aint recvtype_true_extent, recvbuf_extent, recvtype_true_lb;
     int j, i, src, rem;
-    static const char FCNAME[] = "MPIR_Allgather_intra_MV2";
     void *tmp_buf;
     int curr_cnt, dst, type_size, left, right, jnext;
     MPI_Comm comm;
@@ -649,6 +649,10 @@ int MPIR_Allgather_intra_MV2 (
 /* begin:nested */
 /* not declared static because a machine-specific function may call this one 
    in some cases */
+#undef FUNCNAME
+#define FUNCNAME MPIR_Allgatherv_inter_MV2
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIR_Allgather_inter_MV2 ( 
     void *sendbuf, 
     int sendcount, 
@@ -664,9 +668,7 @@ int MPIR_Allgather_inter_MV2 (
        intracommunicator, and then does an intercommunicator broadcast.
     */
 
-    static const char FCNAME[] = "MPIR_Allgather_inter_MV2";
     int rank, local_size, remote_size, mpi_errno = MPI_SUCCESS, root;
-    MPI_Comm newcomm;
     MPI_Aint true_extent, true_lb = 0, extent, send_extent;
     void *tmp_buf=NULL;
     MPID_Comm *newcomm_ptr = NULL;
@@ -695,7 +697,6 @@ int MPIR_Allgather_inter_MV2 (
 	MPIR_Setup_intercomm_localcomm( comm_ptr );
 
     newcomm_ptr = comm_ptr->local_comm;
-    newcomm = newcomm_ptr->handle;
 
     if (sendcount != 0) {
         mpi_errno = MPIR_Gather_MV2(sendbuf, sendcount, sendtype, tmp_buf, sendcount,
@@ -767,7 +768,7 @@ int MPIR_Allgather_MV2(void *sendbuf, int sendcount, MPI_Datatype sendtype,
     
     int mpi_errno = MPI_SUCCESS;
     if (comm_ptr->comm_kind == MPID_INTRACOMM) {
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
         int comm_size_is_pof2=0;
         int nbytes=0, comm_size, recvtype_size;
         
@@ -849,13 +850,13 @@ int MPIR_Allgather_MV2(void *sendbuf, int sendcount, MPI_Datatype sendtype,
                     } 
                     MPIU_Free(tmp_recv_buf); 
         } else {
-#endif /* #if defined(_OSU_MVAPICH_) */
+#endif /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
             mpi_errno = MPIR_Allgather_intra_MV2(sendbuf, sendcount, sendtype,
                                                  recvbuf, recvcount, recvtype,
                                                  comm_ptr, errflag);
- #if defined(_OSU_MVAPICH_)        
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)       
         }
-#endif /* #if defined(_OSU_MVAPICH_) */    
+#endif /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */    
         if (mpi_errno){
             MPIU_ERR_POP(mpi_errno);
         }

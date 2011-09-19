@@ -52,7 +52,7 @@ static int mem_info( int rank ) {
   fclose(fin);
   return mpi_errno;
 }
-
+/*
 static char *port_state_str[] = {
         "???",
         "Down",
@@ -71,7 +71,7 @@ static char *port_phy_state_str[] = {
         "LinkErrorRecovery",
         "PhyTest"
 };
-
+*/
 
 /**
  * Check the status of Infiniband devices, and print a report.
@@ -89,8 +89,6 @@ static int hca_check(int rank) {
     for (hcan=0; hcan<rdma_num_hcas; hcan++) {
         /* umad_ca_t ca; */
         char *ca_name;
-        int p;
-        int ret;
         ca_name = (char *)ibv_get_device_name(dev_list[hcan]);
         /*
         ret = umad_get_ca(ca_name, &ca);

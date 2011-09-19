@@ -24,7 +24,6 @@
 
 #include <semaphore.h>
 
-#include "common.h"
 #include "ib_comm.h"
 #include "ib_buf.h"
 

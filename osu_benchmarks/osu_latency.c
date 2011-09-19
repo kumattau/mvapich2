@@ -56,6 +56,20 @@ int skip_large = 10;
 int loop_large = 100;
 int large_message_size = 8192;
 
+#ifdef PACKAGE_VERSION
+#   define HEADER "# " BENCHMARK " v" PACKAGE_VERSION "\n"
+#else
+#   define HEADER "# " BENCHMARK "\n"
+#endif
+
+#ifndef FIELD_WIDTH
+#   define FIELD_WIDTH 20
+#endif
+
+#ifndef FLOAT_PRECISION
+#   define FLOAT_PRECISION 2
+#endif
+
 int main(int argc, char *argv[])
 {
     int myid, numprocs, i;
@@ -90,12 +104,12 @@ int main(int argc, char *argv[])
     }
 
     if(myid == 0) {
-        fprintf(stdout, "# %s v%s\n", BENCHMARK, PACKAGE_VERSION);
+        fprintf(stdout, HEADER);
         fprintf(stdout, "%-*s%*s\n", 10, "# Size", FIELD_WIDTH, "Latency (us)");
         fflush(stdout);
     }
 
-    for(size = 0; size <= MAX_MSG_SIZE; size = (size ? size * 2 : size + 1)) {
+    for(size = 0; size <= MAX_MSG_SIZE; size = (size ? size * 2 : 1)) {
         /* touch the data */
         for(i = 0; i < size; i++) {
             s_buf[i] = 'a';

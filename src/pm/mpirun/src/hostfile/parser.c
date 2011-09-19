@@ -81,9 +81,14 @@
  * copyright file COPYRIGHT in the top level MVAPICH2 directory.
  */
 
-#include <stdio.h>
-#include <mpirun_rsh.h>
+#include <process.h>
 #include <debug_utils.h>
+#include <mpirun_util.h>
+
+#include <stdio.h>
+#include <stdlib.h>
+
+extern int yylex();
 
 void yyerror (char const *s);
 static int commit(void);
@@ -106,7 +111,7 @@ static int lineno = 1;
 
 
 /* Line 189 of yacc.c  */
-#line 110 "parser.c"
+#line 115 "parser.c"
 
 /* Enabling traces.  */
 #ifndef YYDEBUG
@@ -149,7 +154,7 @@ typedef union YYSTYPE
 {
 
 /* Line 214 of yacc.c  */
-#line 40 "parser.y"
+#line 45 "parser.y"
 
     size_t decimal;
     char * text;
@@ -157,7 +162,7 @@ typedef union YYSTYPE
 
 
 /* Line 214 of yacc.c  */
-#line 161 "parser.c"
+#line 166 "parser.c"
 } YYSTYPE;
 # define YYSTYPE_IS_TRIVIAL 1
 # define yystype YYSTYPE /* obsolescent; will be withdrawn */
@@ -169,7 +174,7 @@ typedef union YYSTYPE
 
 
 /* Line 264 of yacc.c  */
-#line 173 "parser.c"
+#line 178 "parser.c"
 
 #ifdef short
 # undef short
@@ -454,8 +459,8 @@ static const yytype_int8 yyrhs[] =
 /* YYRLINE[YYN] -- source line where rule number YYN was defined.  */
 static const yytype_uint8 yyrline[] =
 {
-       0,    50,    50,    51,    54,    55,    56,    59,    60,    63,
-      64,    65,    68,    71,    72
+       0,    55,    55,    56,    59,    60,    61,    64,    65,    68,
+      69,    70,    73,    76,    77
 };
 #endif
 
@@ -1368,56 +1373,56 @@ yyreduce:
         case 4:
 
 /* Line 1464 of yacc.c  */
-#line 54 "parser.y"
+#line 59 "parser.y"
     { lineno++; }
     break;
 
   case 5:
 
 /* Line 1464 of yacc.c  */
-#line 55 "parser.y"
+#line 60 "parser.y"
     { lineno++; if(commit()) YYERROR; }
     break;
 
   case 6:
 
 /* Line 1464 of yacc.c  */
-#line 56 "parser.y"
+#line 61 "parser.y"
     { lineno++; YYERROR; }
     break;
 
   case 7:
 
 /* Line 1464 of yacc.c  */
-#line 59 "parser.y"
+#line 64 "parser.y"
     { current.hostname = (yyvsp[(1) - (1)].text); }
     break;
 
   case 12:
 
 /* Line 1464 of yacc.c  */
-#line 68 "parser.y"
+#line 73 "parser.y"
     { multiplier = (yyvsp[(1) - (1)].decimal); }
     break;
 
   case 13:
 
 /* Line 1464 of yacc.c  */
-#line 71 "parser.y"
+#line 76 "parser.y"
     { current.hca = (yyvsp[(1) - (1)].text); }
     break;
 
   case 14:
 
 /* Line 1464 of yacc.c  */
-#line 72 "parser.y"
+#line 77 "parser.y"
     { current.hca = (yyvsp[(1) - (3)].text); current.port = (yyvsp[(3) - (3)].decimal); }
     break;
 
 
 
 /* Line 1464 of yacc.c  */
-#line 1421 "parser.c"
+#line 1426 "parser.c"
       default: break;
     }
   YY_SYMBOL_PRINT ("-> $$ =", yyr1[yyn], &yyval, &yyloc);
@@ -1629,7 +1634,7 @@ yyreturn:
 
 
 /* Line 1684 of yacc.c  */
-#line 75 "parser.y"
+#line 80 "parser.y"
 
 
 extern FILE * yyin;
@@ -1696,8 +1701,8 @@ commit(void)
         ++n_ranks;
     }
 
-    if (current.hostname) free(current.hostname);
-    if (current.hca) free(current.hca);
+    if (current.hostname) free((void *)current.hostname);
+    if (current.hca) free((void *)current.hca);
 
     current.hostname = NULL;
     current.hca = NULL;
@@ -1732,6 +1737,14 @@ read_hostfile(char * pathname)
         free_memory();
         fclose(yyin);
         
+        exit(EXIT_FAILURE);
+    }
+
+    if (n_ranks == 0) {
+        PRINT_ERROR("No host found in hostfile `%s'\n", hostfile);
+        print_memory();
+        free_memory();
+        fclose(yyin);
         exit(EXIT_FAILURE);
     }
 

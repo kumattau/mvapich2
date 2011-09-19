@@ -19,6 +19,10 @@
 #include "mpidi_ch3_impl.h"
 #include "mpiutil.h"
 #include "rdma_impl.h"
+#include "mpidrma.h"
+#ifdef _ENABLE_XRC_
+#include "cm.h"
+#endif
 
 #ifdef DEBUG
 #include "pmi.h"
@@ -34,8 +38,19 @@ do {                                                          \
 #define DEBUG_PRINT(args...)
 #endif
 
+#define MV2_UD_SEND_ACKS() {                            \
+    int i;                                              \
+    MPIDI_VC_t *vc;                                     \
+    int size = MPIDI_PG_Get_size(MPIDI_Process.my_pg);  \
+    for (i=0; i<size; i++) {                            \
+        MPIDI_PG_Get_vc(MPIDI_Process.my_pg, i, &vc);   \
+        if (vc->mrail.ack_need_tosend) {                \
+            mv2_send_explicit_ack(vc);                  \
+        }                                               \
+    }                                                   \
+}
 
-static int handle_read(MPIDI_VC_t * vc, vbuf * v);
+
 static int handle_read_individual(MPIDI_VC_t * vc, 
         vbuf * buffer, int *header_type);
 
@@ -154,6 +169,9 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
     vbuf *buffer = NULL;
     int rdmafp_found = 0;
     int smp_completions, smp_found;
+#ifdef _ENABLE_UD_
+    static int nspin = 0;
+#endif
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_MRAIL_PROGRESS);
     MPIDI_STATE_DECL(MPID_STATE_MPIDU_YIELD);
@@ -190,6 +208,28 @@ start_polling:
             smp_found = 1;
         }
 
+#if !defined(DAPL_DEFAULT_PROVIDER)
+        if (SMP_INIT && (MPIDI_CH3I_RDMA_Process.has_shm_one_sided 
+#if defined(_SMP_LIMIC_)
+            || MPIDI_CH3I_RDMA_Process.has_limic_one_sided
+#endif
+            )) {
+            /*Check and process rma locks released through shared memory*/
+            mpi_errno = MPIDI_CH3I_Process_locks();
+            if (mpi_errno != MPI_SUCCESS)
+            {
+                MPIU_ERR_POP(mpi_errno);
+            }
+        }
+#endif
+
+#ifdef CKPT
+        if (MPIDI_CH3I_Process.reactivation_complete) {
+            /*Some channel has been reactivated*/
+            //MPIDI_CH3I_Process.reactivation_complete = 0;
+            cm_handle_reactivation_complete();
+        }
+#endif
 
         if (!SMP_ONLY) {
 
@@ -197,17 +237,9 @@ start_polling:
             if (MPIDI_CH3I_Process.new_conn_complete) {
                 /*New connection has been established*/
                 MPIDI_CH3I_Process.new_conn_complete = 0;
-                XRC_MSG ("new conn!");
+                PRINT_DEBUG(DEBUG_XRC_verbose>0, "New connection\n");
                 cm_handle_pending_send();
             }
-
-#ifdef CKPT
-            if (MPIDI_CH3I_Process.reactivation_complete) {
-                /*Some channel has been reactivated*/
-                //MPIDI_CH3I_Process.reactivation_complete = 0;
-                cm_handle_reactivation_complete();
-            }
-#endif
 
             cq_poll_completion = 0;
             rdmafp_found = 0;
@@ -252,11 +284,31 @@ start_polling:
                     }
                 }
 #endif /* CKPT */
-                mpi_errno = handle_read(vc_ptr, buffer); 
-                if (mpi_errno != MPI_SUCCESS) {
-                    MPIU_ERR_POP(mpi_errno);
+#ifdef _ENABLE_UD_
+                if (rdma_enable_hybrid) {
+                    MRAILI_Process_recv(buffer);
+                }
+                else
+#endif
+                {
+                    mpi_errno = handle_read(vc_ptr, buffer); 
+                    if (mpi_errno != MPI_SUCCESS) {
+                        MPIU_ERR_POP(mpi_errno);
+                    }
                 }
             }
+#ifdef _ENABLE_UD_
+            else if (rdma_enable_hybrid){
+                nspin++;
+                if (nspin % rdma_ud_progress_spin == 0) {
+                    if (UD_ACK_PROGRESS_TIMEOUT) {
+                        rdma_ud_last_check = mv2_get_time_us();
+                        mv2_check_resend();
+                        MV2_UD_SEND_ACKS();
+                    }
+                }
+            }
+#endif
         } 
 
         if (flowlist) { 
@@ -270,28 +322,29 @@ start_polling:
 #endif
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
         if (completions == MPIDI_CH3I_progress_completion_count) { 
-                /* We are yet to get all the completions, increment the spin_count */ 
-                MPIU_THREAD_CHECK_BEGIN
+            /* We are yet to get all the completions, increment the spin_count */ 
+            MPIU_THREAD_CHECK_BEGIN
                 spin_count++; 
-                if(spin_count > rdma_polling_spin_count_threshold) {
-                    /* We have reached the polling_spin_count_threshold. So, we
-                     * are now going to release the lock. */ 
-                    spin_count = 0;
-                    MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
-                    if( use_thread_yield == 1) { 
-                        /* User has requested this thread to yield the CPU */
-                        MPIU_PW_Sched_yield();
-                    } else { 
-                         /* After releasing the lock, lets just wait for a 
-                          * short time before trying to acquire the lock
-                          * again. */ 
-                         do { 
-                         } while(0); 
-                    } 
-                    MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
-                }
-                MPIU_THREAD_CHECK_END
-         } 
+            if(spin_count > rdma_polling_spin_count_threshold) {
+                /* We have reached the polling_spin_count_threshold. So, we
+                 * are now going to release the lock. */ 
+                spin_count = 0;
+                MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
+                if( use_thread_yield == 1) { 
+                    /* User has requested this thread to yield the CPU */
+                    MPIU_PW_Sched_yield();
+                } 
+                /* After releasing the lock, lets just wait for a 
+                 * short time before trying to acquire the lock
+                 * again. */
+                int spins = 0; 
+                do {
+                    spins++;
+                } while(spins < spins_before_lock); 
+                MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
+            }
+            MPIU_THREAD_CHECK_END
+        } 
 #endif
 
         if (rdma_polling_level == MV2_POLLING_LEVEL_2) {
@@ -334,7 +387,13 @@ start_polling:
     while (completions == MPIDI_CH3I_progress_completion_count
            && is_blocking);
 
-fn_completion:
+#ifdef _ENABLE_UD_
+    if ( !SMP_ONLY && rdma_enable_hybrid && UD_ACK_PROGRESS_TIMEOUT) {
+        mv2_check_resend();
+        MV2_UD_SEND_ACKS();
+        rdma_ud_last_check = mv2_get_time_us();
+    }
+#endif
 fn_fail:
 #ifdef CKPT
         MPIDI_CH3I_CR_unlock();
@@ -393,7 +452,31 @@ int MPIDI_CH3I_Progress_test()
         {
             MPIU_ERR_POP(mpi_errno);
         }
+
+#if !defined(DAPL_DEFAULT_PROVIDER)
+        if (MPIDI_CH3I_RDMA_Process.has_shm_one_sided 
+#if defined(_SMP_LIMIC_)
+            || MPIDI_CH3I_RDMA_Process.has_limic_one_sided
+#endif
+            ) { 
+            /*Check and process rma locks released through shared memory*/
+            mpi_errno = MPIDI_CH3I_Process_locks();
+            if (mpi_errno != MPI_SUCCESS)
+            {
+                MPIU_ERR_POP(mpi_errno);
+            }
+        }
+#endif
     }
+
+#if defined(CKPT)
+    if (MPIDI_CH3I_Process.reactivation_complete)
+    {
+        /*Some channel has been reactivated*/
+        cm_handle_reactivation_complete();
+    }
+#endif /* defined(CKPT) */
+
 
     if (!SMP_ONLY) 
     {
@@ -401,18 +484,10 @@ int MPIDI_CH3I_Progress_test()
         if (MPIDI_CH3I_Process.new_conn_complete)
         {
             /*New connection has been established*/
-            XRC_MSG ("new conn!");
+            PRINT_DEBUG(DEBUG_XRC_verbose>0, "New Connection\n");
             MPIDI_CH3I_Process.new_conn_complete = 0;
             cm_handle_pending_send();
         }
-
-#if defined(CKPT)
-        if (MPIDI_CH3I_Process.reactivation_complete)
-        {
-            /*Some channel has been reactivated*/
-            cm_handle_reactivation_complete();
-        }
-#endif /* defined(CKPT) */
 
         MPIDI_VC_t *vc_ptr = NULL;
         vbuf *buffer = NULL;
@@ -469,10 +544,18 @@ int MPIDI_CH3I_Progress_test()
             }
 #endif /* defined(CKPT) */
 
-            mpi_errno = handle_read(vc_ptr, buffer);
-            if (mpi_errno != MPI_SUCCESS)
+#ifdef _ENABLE_UD_
+            if (rdma_enable_hybrid){
+                MRAILI_Process_recv(buffer);
+            }
+            else
+#endif
             {
-                MPIU_ERR_POP(mpi_errno);
+                mpi_errno = handle_read(vc_ptr, buffer);
+                if (mpi_errno != MPI_SUCCESS)
+                {
+                    MPIU_ERR_POP(mpi_errno);
+                }
             }
         }
     }
@@ -483,6 +566,13 @@ int MPIDI_CH3I_Progress_test()
         MPIDI_CH3I_MRAILI_Process_rndv();
     }
 
+#ifdef _ENABLE_UD_
+    if ( !SMP_ONLY && rdma_enable_hybrid && UD_ACK_PROGRESS_TIMEOUT) {
+        mv2_check_resend();
+        MV2_UD_SEND_ACKS();
+        rdma_ud_last_check = mv2_get_time_us();
+    }
+#endif
 fn_fail:
 fn_exit:
 #if defined(CKPT)
@@ -642,9 +732,9 @@ int cm_send_pending_msg(MPIDI_VC_t * vc)
     MPIDI_FUNC_ENTER(MPID_STATE_CM_SENDING_PENDING_MSG);
     int mpi_errno = MPI_SUCCESS;
 
-    XRC_MSG ("cm_send_pending_msg %d 0x%08x %d\n", vc->pg_rank, 
-            vc->ch.xrc_flags, vc->ch.state);
 #ifdef _ENABLE_XRC_
+    PRINT_DEBUG(DEBUG_XRC_verbose>0, "cm_send_pending_msg %d 0x%08x %d\n", vc->pg_rank, 
+            vc->ch.xrc_flags, vc->ch.state);
     MPIU_Assert (vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE 
             || VC_XST_ISSET (vc, XF_SEND_IDLE));
 #else
@@ -657,6 +747,7 @@ int cm_send_pending_msg(MPIDI_VC_t * vc)
         int n_iov;
 
         sreq = MPIDI_CH3I_CM_SendQ_head(vc);
+        MPIDI_CH3I_CM_SendQ_dequeue(vc);
         iov=sreq->dev.iov;
         n_iov = sreq->dev.iov_count;
         void *databuf = NULL;
@@ -827,8 +918,6 @@ loop_exit:
             MPIU_Free(databuf);
         }
 
-        /*Does sreq need to be freed? or upper layer will take care*/
-        MPIDI_CH3I_CM_SendQ_dequeue(vc);
     }
 
     MPIDI_FUNC_EXIT(MPID_STATE_CM_SENDING_PENDING_MSG);
@@ -853,9 +942,9 @@ int cm_send_pending_1sc_msg(MPIDI_VC_t * vc)
     int mpi_errno = MPI_SUCCESS;
     MPIDI_VC_t *save_vc = vc;
 
-    XRC_MSG ("cm_send_pending_1sc_msg %d 0x%08x %d\n", vc->pg_rank, 
-            vc->ch.xrc_flags, vc->ch.state);
 #ifdef _ENABLE_XRC_
+    PRINT_DEBUG(DEBUG_XRC_verbose>0, "cm_send_pending_1sc_msg %d 0x%08x %d\n", vc->pg_rank, 
+            vc->ch.xrc_flags, vc->ch.state);
     MPIU_Assert (vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE 
             || VC_XST_ISSET (vc, XF_SEND_IDLE));
 #else
@@ -945,11 +1034,15 @@ static int cm_handle_pending_send()
             }
 
 #ifdef _ENABLE_XRC_
+            if (vc->mrail.sreq_head) { /*has rndv*/
+                PUSH_FLOWLIST(vc);
+            }
+
             MPICM_lock();
             if (USE_XRC && MPIDI_CH3I_RDMA_Process.xrc_rdmafp && 
                     VC_XSTS_ISSET (vc, (XF_START_RDMAFP | XF_SEND_IDLE))
                     && VC_XST_ISUNSET (vc, XF_CONN_CLOSING)) {
-                XRC_MSG ("FP to %d\n", vc->pg_rank);
+                PRINT_DEBUG(DEBUG_XRC_verbose>0, "FP to %d\n", vc->pg_rank);
                 MPICM_unlock();
                 vbuf_fast_rdma_alloc (vc, 1);
                 vbuf_address_send (vc);
@@ -975,7 +1068,7 @@ static int cm_accept_new_vc(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_cm_establish_t *header
 {
     MPIDI_STATE_DECL(MPID_STATE_CM_ACCEPT_NEW_VC);
     MPIDI_FUNC_ENTER(MPID_STATE_CM_ACCEPT_NEW_VC);
-    XRC_MSG ("cm_accept_new_vc");
+    PRINT_DEBUG(DEBUG_XRC_verbose>0, "cm_accept_new_vc");
     MPIU_Assert((uintptr_t)vc == header->vc_addr);
     MPIU_Assert(vc->pg == NULL);
 #if 0
@@ -991,7 +1084,7 @@ static int cm_accept_new_vc(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_cm_establish_t *header
 #define FUNCNAME handle_read
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-static int handle_read(MPIDI_VC_t * vc, vbuf * buffer)
+int handle_read(MPIDI_VC_t * vc, vbuf * buffer)
 {
     int mpi_errno = MPI_SUCCESS;
     int header_type;
@@ -1131,6 +1224,7 @@ static int handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* header_type
 #endif /* defined(RDMA_CM) */
     case MPIDI_CH3_PKT_ADDRESS:
     case MPIDI_CH3_PKT_ADDRESS_REPLY:
+    case MPIDI_CH3_PKT_FLOW_CNTL_UPDATE:
             DEBUG_PRINT("NOOP received, don't need to proceed\n");
         goto fn_exit;
     case MPIDI_CH3_PKT_PACKETIZED_SEND_DATA:
@@ -1152,6 +1246,16 @@ static int handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* header_type
             DEBUG_PRINT("RGET finish received\n");
             MPIDI_CH3_Rendezvous_rget_send_finish(vc, (void*) header);
         goto fn_exit;
+#ifdef _ENABLE_UD_
+    case MPIDI_CH3_PKT_ZCOPY_FINISH:
+            PRINT_DEBUG(DEBUG_ZCY_verbose>1, "zcopy finish received from:%d\n", vc->pg_rank);
+            MPIDI_CH3_Rendezvous_zcopy_finish(vc, (void *) header);
+        goto fn_exit;
+    case MPIDI_CH3_PKT_ZCOPY_ACK:
+            PRINT_DEBUG(DEBUG_ZCY_verbose>1, "zcopy ack received from:%d\n", vc->pg_rank);
+            MPIDI_CH3_Rendezvous_zcopy_ack(vc , (void *) header);
+        goto fn_exit;
+#endif
     case MPIDI_CH3_PKT_CM_ESTABLISH:
         mpi_errno = cm_accept_new_vc(vc, (void *)header);
         if (mpi_errno)

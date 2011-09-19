@@ -6,6 +6,7 @@
 
 #include "mpidi_ch3_impl.h"
 #include "pmi.h"
+#include "error_handling.h"
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Abort
@@ -15,6 +16,10 @@ int MPIDI_CH3_Abort(int exit_code, char *error_msg)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_ABORT);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_ABORT);
+
+    /* print backtrace */
+    if (show_backtrace) print_backtrace();
+    
     PMI_Abort(exit_code, error_msg);
 
     /* if abort returns for some reason, exit here */

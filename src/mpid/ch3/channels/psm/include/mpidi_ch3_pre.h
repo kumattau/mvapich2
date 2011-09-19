@@ -23,6 +23,11 @@
    and must be available to the routines in src/mpi */
 extern volatile unsigned int MPIDI_CH3I_progress_completion_count;
 
+typedef struct MPIDI_CH3I_SMP_VC
+{
+	int local_rank;
+} MPIDI_CH3I_SMP_VC;
+
 typedef struct MPIDI_CH3I_VC
 {
     /* currently, psm is fully connected. so no state is needed. */
@@ -31,7 +36,16 @@ typedef struct MPIDI_CH3I_VC
 } MPIDI_CH3I_VC;
 
 #define MPIDI_CH3_VC_DECL   \
-    MPIDI_CH3I_VC   ch;
+    MPIDI_CH3I_VC   ch;     \
+	MPIDI_CH3I_SMP_VC smp;
+
+typedef struct MPIDI_CH3I_Process_group_s
+{
+	int num_local_processes;
+    int local_process_id;
+} MPIDI_CH3I_Process_group_t;
+
+#define MPIDI_CH3_PG_DECL MPIDI_CH3I_Process_group_t ch;
 
 /*  psm specific items in MPID_Request 
     mqreq is the request pushed to psm
@@ -88,7 +102,35 @@ typedef struct MPIDI_CH3I_VC
         __p->pksz = 0                \
 
 #define HAVE_DEV_COMM_HOOK
-#define MPID_Dev_comm_create_hook( a ) 
-#define MPID_Dev_comm_destroy_hook( a ) 
+#define MPID_Dev_comm_create_hook(comm_) do {       \
+	int _mpi_errno;                                 \
+	_mpi_errno = MPIDI_CH3I_comm_create (comm_);    \
+	if (_mpi_errno) MPIU_ERR_POP (_mpi_errno);      \
+} while(0)
+
+#define MPID_Dev_comm_destroy_hook(comm_) do {      \
+	int _mpi_errno;                                 \
+	_mpi_errno = MPIDI_CH3I_comm_destroy (comm_);   \
+	if (_mpi_errno) MPIU_ERR_POP (_mpi_errno);      \
+} while(0)
+
+typedef struct MPIDI_CH3I_comm
+{
+     MPI_Comm     leader_comm;
+     MPI_Comm     shmem_comm;
+     MPI_Comm     allgather_comm;
+     int*    leader_map;
+     int*    leader_rank;
+     int*    node_sizes; 
+     int*    allgather_new_ranks;
+     int     is_uniform; 
+     int     shmem_comm_rank;
+     int     shmem_coll_ok;
+     int     allgather_comm_ok;
+     int     leader_group_size;
+     int     is_global_block;
+ } MPIDI_CH3I_comm_t;
+ 
+ #define MPID_DEV_COMM_DECL MPIDI_CH3I_comm_t ch;
 
 #endif

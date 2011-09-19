@@ -38,7 +38,8 @@
 
 #define _SCHEDULE 1
 
-#define MPIDI_CH3I_MRAILI_IBA_PKT_DECL \
+#define MPIDI_CH3I_MRAILI_IBA_PKT_DECL                              \
+    uint16_t seqnum;                                                \
     unsigned int vbuf_credit;   /* piggybacked vbuf credit   */     \
     unsigned int remote_credit; /* our current credit count */      \
     unsigned int rdma_credit;                                       \
@@ -116,6 +117,7 @@ typedef struct MPIDI_CH3I_MRAILI_Pkt_comm_header_t
 } MPIDI_CH3I_MRAILI_Pkt_comm_header;
 
 #define MPIDI_CH3I_MRAILI_Pkt_noop MPIDI_CH3I_MRAILI_Pkt_comm_header
+#define MPIDI_CH3I_MRAILI_Pkt_flow_cntl MPIDI_CH3I_MRAILI_Pkt_comm_header
 
 typedef struct MRAILI_Channel_manager_t
 {

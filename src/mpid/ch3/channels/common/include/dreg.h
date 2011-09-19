@@ -40,6 +40,7 @@
 #include <ib_errors.h>
 #else
 #include "mpidi_ch3i_rdma_conf.h"
+#include "ibv_param.h"
 #endif
 
 

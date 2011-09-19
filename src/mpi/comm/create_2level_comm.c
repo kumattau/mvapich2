@@ -12,7 +12,7 @@
 
 #include "mpiimpl.h"
 
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include <mpimem.h>
 #include "mpidimpl.h"
 #include "mpicomm.h"
@@ -144,7 +144,7 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     MPIDI_VC_t* vc = NULL;
     for (; i < size ; ++i){
        MPIDI_Comm_get_vc(comm_ptr, i, &vc);
-       if (my_rank == i || vc->smp.local_nodes >= 0){
+       if (my_rank == i || vc->smp.local_rank >= 0){
            shmem_group[grp_index] = i;
            if (my_rank == i){
                local_rank = grp_index;
@@ -555,4 +555,4 @@ int check_comm_registry(MPI_Comm comm)
     return 0;
 }
 
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */

@@ -18,7 +18,7 @@
  */
 
 #include "mpiimpl.h"
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include "coll_shmem.h"
 
 /*
@@ -89,23 +89,16 @@ static int MPIR_Pairwise_Barrier_MV2(MPID_Comm *comm_ptr, int *errflag){
 
 static int MPIR_shmem_barrier_MV2(MPID_Comm *comm_ptr, int *errflag){
     
-    int size, rank;
     int mpi_errno=MPI_SUCCESS;
-    MPI_Comm comm;
 	
     MPI_Comm shmem_comm = MPI_COMM_NULL, leader_comm = MPI_COMM_NULL;
     MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
-    int local_rank = -1, local_size=0, my_rank;
+    int local_rank = -1, local_size=0;
     int total_size, shmem_comm_rank;
-   
-    size = comm_ptr->local_size;
-    rank = comm_ptr->rank;
-    comm = comm_ptr->handle;
 
     shmem_comm = comm_ptr->ch.shmem_comm;
     leader_comm = comm_ptr->ch.leader_comm;
 
-    my_rank = comm_ptr->rank;
     total_size = comm_ptr->local_size;
     shmem_comm = comm_ptr->ch.shmem_comm;
 
@@ -131,7 +124,7 @@ static int MPIR_shmem_barrier_MV2(MPID_Comm *comm_ptr, int *errflag){
     return mpi_errno;
 
 }
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
 /* This is the default implementation of the barrier operation.  The
    algorithm is:
@@ -159,8 +152,6 @@ int MPIR_Barrier_intra_MV2( MPID_Comm *comm_ptr, int *errflag )
     int size;
     int mpi_errno=MPI_SUCCESS;
     int mpi_errno_ret=MPI_SUCCESS;
-    MPI_Comm comm;
-
 
 	size = comm_ptr->local_size;
     /* Trivial barriers return immediately */
@@ -170,7 +161,7 @@ int MPIR_Barrier_intra_MV2( MPID_Comm *comm_ptr, int *errflag )
        time */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER(comm_ptr);
 
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 
 #if defined(CKPT)
     MPIDI_CH3I_CR_lock();
@@ -195,7 +186,7 @@ int MPIR_Barrier_intra_MV2( MPID_Comm *comm_ptr, int *errflag )
 
     mpi_errno = MPIR_Barrier_intra( comm_ptr, errflag );
     
-#endif /* #if defined(_OSU_MVAPICH_) */
+#endif /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
     
     if (mpi_errno) {
         /* for communication errors, just record the error but continue */

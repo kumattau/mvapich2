@@ -8,8 +8,6 @@
 #include "mpidimpl.h"
 #ifdef _ENABLE_XRC_
 #include "rdma_impl.h"
-#else
-#define XRC_MSG(s...)
 #endif
 /*@
    MPID_Comm_disconnect - Disconnect a communicator 
@@ -57,7 +55,6 @@ int MPID_Comm_disconnect(MPID_Comm *comm_ptr)
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     /* If any of the VCs were released by this Comm_release, wait
      for those close operations to complete */
-    XRC_MSG ("disconnect: WaitForClose");
     mpi_errno = MPIDI_CH3U_VC_WaitForClose();
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     /* MPIU_PG_Printall( stdout ); */

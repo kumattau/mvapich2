@@ -13,6 +13,7 @@
 #include "psmpriv.h"
 #include "psm_vbuf.h"
 #include <dirent.h>
+#include "coll_shmem.h"
 
 volatile unsigned int MPIDI_CH3I_progress_completion_count = 0; //ODOT: what is this ?
 volatile int MPIDI_CH3I_progress_blocked = FALSE;
@@ -36,6 +37,8 @@ static void psm_preinit(int pg_size);
 static int  decode(unsigned s_len, char *src, unsigned d_len, char *dst);
 static int  encode(unsigned s_len, char *src, unsigned d_len, char *dst);
 
+extern void MPIDI_CH3I_SHMEM_COLL_Cleanup();
+
 #undef FUNCNAME
 #define FUNCNAME psm_doinit
 #undef FCNAME
@@ -45,13 +48,38 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
     int verno_major, verno_minor, mpi_errno;
     int i, pg_size, ret;
     psm_epid_t myid, *epidlist = NULL;
+    MPIDI_VC_t *vc = NULL;	
     psm_error_t *errs = NULL, err;
-   
+
     pg_size = MPIDI_PG_Get_size(pg);
     MPIDI_PG_GetConnKVSname(&kvsid);
     psmdev_cw.pg_size = pg_size;
     verno_major = PSM_VERNO_MAJOR;
     verno_minor = PSM_VERNO_MINOR;
+
+    /* initialize shared memory for collectives */
+    if (enable_shmem_collectives) {
+        if ((mpi_errno = MPIDI_CH3I_SHMEM_COLL_init(pg, pg->ch.local_process_id)) != MPI_SUCCESS)
+        {
+            mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                   FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
+                   "%s", "SHMEM_COLL_init failed");
+            goto cleanup_files;
+        }
+
+        PMI_Barrier();
+
+        /* Memory Mapping shared files for collectives*/
+        if ((mpi_errno = MPIDI_CH3I_SHMEM_COLL_Mmap(pg, pg->ch.local_process_id)) != MPI_SUCCESS)
+        {
+           mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                 FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s",
+                 "SHMEM_COLL_Mmap failed");
+           goto cleanup_files;
+        }
+
+        MPIDI_CH3I_SHMEM_COLL_Unlink();
+    }  
 
     assert(pg_rank < pg_size);
     mpi_errno = psm_bcast_uuid(pg_size, pg_rank);
@@ -108,6 +136,8 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
     MPIU_Free(epidlist);
     return MPI_SUCCESS;
 
+cleanup_files:
+    MPIDI_CH3I_SHMEM_COLL_Cleanup();
 fn_fail:
     if(errs)
         MPIU_Free(errs);

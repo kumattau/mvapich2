@@ -36,6 +36,7 @@
 #include "mpiutil.h"
 #include <errno.h>
 #include <string.h>
+#include <debug_utils.h>
 
 /* head of list of allocated vbuf regions */
 static vbuf_region *vbuf_region_head = NULL;
@@ -54,6 +55,14 @@ static int vbuf_n_allocated = 0;
 static long num_free_vbuf = 0;
 static long num_vbuf_get = 0;
 static long num_vbuf_freed = 0;
+
+#ifdef _ENABLE_UD_
+static vbuf *ud_free_vbuf_head = NULL;
+static int ud_vbuf_n_allocated = 0;
+static long ud_num_free_vbuf = 0;
+static long ud_num_vbuf_get = 0;
+static long ud_num_vbuf_freed = 0;
+#endif
 
 static pthread_spinlock_t vbuf_lock;
 
@@ -80,6 +89,22 @@ void dump_vbuf(char* msg, vbuf* v)
     DEBUG_PRINT("  END OF VBUF DUMP\n");
 }
 #endif /* defined(DEBUG) */
+
+void print_vbuf_usage()
+{
+    int tot_mem = 0;
+    
+    tot_mem = (vbuf_n_allocated * (rdma_vbuf_total_size + sizeof(struct vbuf)));
+
+#ifdef _ENABLE_UD_
+    tot_mem += (ud_vbuf_n_allocated * (rdma_default_ud_mtu + sizeof(struct vbuf))); 
+    PRINT_INFO(DEBUG_MEM_verbose, "RC VBUFs:%d  UD VBUFs:%d TOT MEM:%d kB\n",
+                    vbuf_n_allocated, ud_vbuf_n_allocated, (tot_mem / 1024));
+#else
+    PRINT_INFO(DEBUG_MEM_verbose, "RC VBUF: %d  TOT MEM: %d kB\n", 
+                        vbuf_n_allocated, (tot_mem / 1024));
+#endif
+}
 
 int init_vbuf_lock(void)
 {
@@ -195,7 +220,7 @@ fn_fail:
     ret = -1;
     if (rdma_enable_hugepage >= 2) {
         fprintf(stderr,"[%d] Failed to allocate buffer from huge pages. "
-                       "fallback to regular pages. requested buf size:%d\n",
+                       "fallback to regular pages. requested buf size:%lu\n",
                         MPIDI_Process.my_pg_rank, size);
     }
     goto fn_exit;
@@ -211,7 +236,7 @@ static int allocate_vbuf_region(int nvbufs)
     void *vbuf_dma_buffer = NULL;
     int alignment_vbuf = 64;
     int alignment_dma = getpagesize();
-    int result;
+    int result = 0;
 
     DEBUG_PRINT("Allocating a new vbuf region.\n");
 
@@ -422,6 +447,8 @@ vbuf* get_vbuf(void)
     v->coalesce = 0;
     v->content_size = 0;
     v->eager = 0;
+    /* Decide which transport need to assign here */
+    v->transport = IB_TRANSPORT_RC;
 
 #if !defined(CKPT)
     if (MPIDI_CH3I_RDMA_Process.has_srq
@@ -439,6 +466,17 @@ vbuf* get_vbuf(void)
 
 void MRAILI_Release_vbuf(vbuf* v)
 {
+#ifdef _ENABLE_UD_
+    /* This message might be in progress. Wait for ib send completion 
+     * to release this buffer to avoid to reusing buffer
+     */
+    if(v->transport== IB_TRANSPORT_UD 
+        && v->flags & UD_VBUF_SEND_INPROGRESS) {
+        v->flags |= UD_VBUF_FREE_PENIDING;
+        return;
+    }
+#endif
+
     /* note this correctly handles appending to empty free list */
 #if !defined(CKPT)
     if (MPIDI_CH3I_RDMA_Process.has_srq
@@ -453,8 +491,23 @@ void MRAILI_Release_vbuf(vbuf* v)
 
     DEBUG_PRINT("release_vbuf: releasing %p previous head = %p, padding %d\n", v, free_vbuf_head, v->padding);
 
-    MPIU_Assert(v != free_vbuf_head);
-    v->desc.next = free_vbuf_head;
+#ifdef _ENABLE_UD_
+    if(v->transport == IB_TRANSPORT_UD) {
+        MPIU_Assert(v != ud_free_vbuf_head);
+        v->desc.next = ud_free_vbuf_head;
+        ud_free_vbuf_head = v;
+        ++ud_num_free_vbuf;
+        ++ud_num_vbuf_freed;
+    } 
+    else 
+#endif /* _ENABLE_UD_ */
+    {
+        MPIU_Assert(v != free_vbuf_head);
+        v->desc.next = free_vbuf_head;
+        free_vbuf_head = v;
+        ++num_free_vbuf;
+        ++num_vbuf_freed;
+    }
 
     if (v->padding != NORMAL_VBUF_FLAG
         && v->padding != RPUT_VBUF_FLAG
@@ -465,13 +518,10 @@ void MRAILI_Release_vbuf(vbuf* v)
     }
 
     *v->head_flag = 0;
-    free_vbuf_head = v;
     v->pheader = NULL;
     v->content_size = 0;
     v->sreq = NULL;
     v->vc = NULL;
-    ++num_free_vbuf;
-    ++num_vbuf_freed;
 
 #if !defined(CKPT)
     if (MPIDI_CH3I_RDMA_Process.has_srq
@@ -484,6 +534,221 @@ void MRAILI_Release_vbuf(vbuf* v)
         pthread_spin_unlock(&vbuf_lock);
     }
 }
+
+#ifdef _ENABLE_UD_
+static int allocate_ud_vbuf_region(int nvbufs)
+{
+
+    struct vbuf_region *reg = NULL;
+    void *mem = NULL;
+    int i = 0;
+    vbuf *cur = NULL;
+    void *vbuf_dma_buffer = NULL;
+    int alignment_vbuf = 64;
+    int alignment_dma = getpagesize();
+    int result;
+
+    PRINT_DEBUG(DEBUG_UD_verbose>0,"Allocating a UD buf region.\n");
+
+    if (ud_free_vbuf_head != NULL)
+    {
+        ibv_error_abort(GEN_ASSERT_ERR, "free_vbuf_head = NULL");
+    }
+
+    reg = (struct vbuf_region *) MPIU_Malloc (sizeof(struct vbuf_region));
+
+    if (NULL == reg)
+    {
+        ibv_error_abort(GEN_EXIT_ERR,
+                "Unable to malloc a new struct vbuf_region");
+    }
+    
+    if (rdma_enable_hugepage) {
+        result = alloc_hugepage_region (&reg->shmid, &vbuf_dma_buffer, &nvbufs,
+rdma_default_ud_mtu);
+    }
+
+    /* do posix_memalign if enable hugepage disabled or failed */
+    if (rdma_enable_hugepage == 0 || result != 0 )  
+    {
+        reg->shmid = -1;
+        result = posix_memalign(&vbuf_dma_buffer, 
+            alignment_dma, nvbufs * rdma_default_ud_mtu);
+    }
+
+    if ((result!=0) || (NULL == vbuf_dma_buffer))
+    {
+        ibv_error_abort(GEN_EXIT_ERR, "unable to malloc vbufs DMA buffer");
+    }
+    
+    if (posix_memalign(
+                (void**) &mem,
+                alignment_vbuf,
+                nvbufs * sizeof(vbuf)))
+    {
+        fprintf(stderr, "[%s %d] Cannot allocate vbuf region\n", 
+                __FILE__, __LINE__);
+        return -1;
+    }
+
+    MPIU_Memset(mem, 0, nvbufs * sizeof(vbuf));
+    MPIU_Memset(vbuf_dma_buffer, 0, nvbufs * rdma_default_ud_mtu);
+
+    ud_vbuf_n_allocated += nvbufs;
+    ud_num_free_vbuf += nvbufs;
+    reg->malloc_start = mem;
+    reg->malloc_buf_start = vbuf_dma_buffer;
+    reg->malloc_end = (void *) ((char *) mem + nvbufs * sizeof(vbuf));
+    reg->malloc_buf_end = (void *) ((char *) vbuf_dma_buffer + 
+            nvbufs * rdma_default_ud_mtu);
+
+    reg->count = nvbufs;
+    ud_free_vbuf_head = mem;
+    reg->vbuf_head = ud_free_vbuf_head;
+
+    PRINT_DEBUG(DEBUG_UD_verbose>0,
+            "VBUF REGION ALLOCATION SZ %d TOT %d FREE %ld NF %ld NG %ld\n",
+            rdma_default_ud_mtu,
+            ud_vbuf_n_allocated,
+            ud_num_free_vbuf,
+            ud_num_vbuf_freed,
+            ud_num_vbuf_get);
+
+    /* region should be registered for both of the hca */
+    for (; i < rdma_num_hcas; ++i)
+    {
+        reg->mem_handle[i] = ibv_reg_mr(
+                ptag_save[i],
+                vbuf_dma_buffer,
+                nvbufs * rdma_default_ud_mtu,
+                IBV_ACCESS_LOCAL_WRITE );
+
+        if (!reg->mem_handle[i])
+        {
+            fprintf(stderr, "[%s %d] Cannot register vbuf region\n", 
+                    __FILE__, __LINE__);
+            return -1;
+        }
+    }
+
+    /* init the free list */
+    for (i = 0; i < nvbufs; ++i)
+    {
+        cur = ud_free_vbuf_head + i;
+        cur->desc.next = ud_free_vbuf_head + i + 1;
+        if (i == (nvbufs -1)) cur->desc.next = NULL;
+        cur->region = reg;
+        cur->head_flag = (VBUF_FLAG_TYPE *) ((char *)vbuf_dma_buffer
+                + (i + 1) * rdma_default_ud_mtu - sizeof * cur->head_flag);
+        cur->buffer = (unsigned char *) ((char *)vbuf_dma_buffer
+                + i * rdma_default_ud_mtu);
+
+        cur->eager = 0;
+        cur->content_size = 0;
+        cur->coalesce = 0;
+    }
+
+    /* thread region list */
+    reg->next = vbuf_region_head;
+    vbuf_region_head = reg;
+
+    return 0;
+}
+
+int allocate_ud_vbufs(int nvbufs)
+{
+    return allocate_ud_vbuf_region(nvbufs);
+}
+
+vbuf* get_ud_vbuf(void)
+{
+    vbuf* v = NULL;
+
+#if !defined(CKPT)
+    if (MPIDI_CH3I_RDMA_Process.has_srq
+#if defined(RDMA_CM)
+            || MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
+#endif /* defined(RDMA_CM) */
+            || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
+#endif /* !defined(CKPT) */
+    {
+        pthread_spin_lock(&vbuf_lock);
+    }
+
+    if (NULL == ud_free_vbuf_head)
+    {
+        if(allocate_ud_vbuf_region(rdma_vbuf_secondary_pool_size) != 0) {
+            ibv_va_error_abort(GEN_EXIT_ERR,
+                    "UD VBUF reagion allocation failed. Pool size %d\n", vbuf_n_allocated);
+        }
+    }
+
+
+    v = ud_free_vbuf_head;
+    --ud_num_free_vbuf;
+    ++ud_num_vbuf_get;
+
+    /* this correctly handles removing from single entry free list */
+    ud_free_vbuf_head = ud_free_vbuf_head->desc.next;
+
+    /* need to change this to RPUT_VBUF_FLAG later
+     * if we are doing rput */
+    v->padding = NORMAL_VBUF_FLAG;
+    v->pheader = (void *)v->buffer;
+    v->transport = IB_TRANSPORT_UD;
+    v->retry_count = 0;
+    v->flags = 0;
+
+    /* this is probably not the right place to initialize shandle to NULL.
+     * Do it here for now because it will make sure it is always initialized.
+     * Otherwise we would need to very carefully add the initialization in
+     * a dozen other places, and probably miss one.
+     */
+    v->sreq = NULL;
+    v->coalesce = 0;
+    v->content_size = 0;
+    v->eager = 0;
+    /* Decide which transport need to assign here */
+
+#if !defined(CKPT)
+    if (MPIDI_CH3I_RDMA_Process.has_srq
+#if defined(RDMA_CM)
+            || MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
+#endif /* defined(RDMA_CM) */
+            || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
+#endif /* !defined(CKPT) */
+    {
+        pthread_spin_unlock(&vbuf_lock);
+    }
+
+    return(v);
+}
+
+#undef FUNCNAME
+#define FUNCNAME vbuf_init_ud_recv
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+void vbuf_init_ud_recv(vbuf* v, unsigned long len, int hca_num)
+{
+    MPIDI_STATE_DECL(MPID_STATE_VBUF_INIT_UD_RECV);
+    MPIDI_FUNC_ENTER(MPID_STATE_VBUF_INIT_UD_RECV);
+
+    MPIU_Assert(v != NULL);
+
+    v->desc.u.rr.next = NULL;
+    v->desc.u.rr.wr_id = (uintptr_t) v;
+    v->desc.u.rr.num_sge = 1;
+    v->desc.u.rr.sg_list = &(v->desc.sg_entry);
+    v->desc.sg_entry.length = len;
+    v->desc.sg_entry.lkey = v->region->mem_handle[hca_num]->lkey;
+    v->desc.sg_entry.addr = (uintptr_t)(v->buffer);
+    v->padding = NORMAL_VBUF_FLAG;
+    v->rail = hca_num;
+
+    MPIDI_FUNC_EXIT(MPID_STATE_VBUF_INIT_RECV);
+}
+
+#endif /* _ENABLE_UD_ */
 
 void MRAILI_Release_recv_rdma(vbuf* v)
 {

@@ -138,8 +138,7 @@ int psm_process_completion(MPID_Request *req, psm_mq_status_t gblstatus)
 
     /* request is a RNDV send */
     if(req->psm_flags & PSM_RNDVSEND_REQ) {
-        MPIU_Object_set_ref(req, 0);
-        MPIDI_CH3_Request_destroy(req);
+        psm_complete_req(req, gblstatus);
         goto fn_exit;
     }
 

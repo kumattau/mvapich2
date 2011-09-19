@@ -48,7 +48,7 @@ int MPIDI_CH3_SendNoncontig_iov( MPIDI_VC_t *vc, MPID_Request *sreq,
     if (mpi_errno == MPI_SUCCESS)
     {
 	iov_n += 1;
-	
+
 	/* Note this routine is invoked withing a CH3 critical section */
 	/* MPIU_THREAD_CS_ENTER(CH3COMM,vc); */
 	mpi_errno = MPIU_CALL(MPIDI_CH3,iSendv(vc, sreq, iov, iov_n));
@@ -134,7 +134,8 @@ int MPIDI_CH3_EagerNoncontigSend( MPID_Request **sreq_p,
         PSMSG(fprintf(stderr, "PSM Noncontig fn done\n"));
 
         /* free buffer if blocking send */
-        if(!(sreq->psm_flags & PSM_NON_BLOCKING_SEND)) {
+        if(!(sreq->psm_flags & PSM_NON_BLOCKING_SEND) && 
+            (sreq->psm_flags & PSM_PACK_BUF_FREE)) {
             MPIU_Free(sreq->pkbuf);
             sreq->pkbuf = NULL;
         }
@@ -952,13 +953,29 @@ int psm_do_pack(int count, MPI_Datatype datatype, MPID_Comm *comm, MPID_Request
     int pksz;
     MPID_Segment *segp;
     MPI_Aint first = 0, last = data_sz;
+    MPID_IOV iov[MPID_IOV_LIMIT];
+    int iov_n = MPID_IOV_LIMIT;
 
     if(count == 0) {
-        sreq->pkbuf = MPIU_Malloc(0);
+        sreq->pkbuf = NULL;
         sreq->pksz = 0;
         return MPI_SUCCESS;
     }
 
+    segp = MPID_Segment_alloc();
+    if(segp == NULL) 
+        return MPI_ERR_NO_MEM;
+    if((MPID_Segment_init(buf, count, datatype, segp, 0)) != MPI_SUCCESS) {
+        MPID_Segment_free(segp);
+        return MPI_ERR_INTERN;
+    }
+    
+    MPID_Segment_pack_vector(segp, first, &last, iov, &iov_n); 
+
+    if (iov_n == 1) { 
+        sreq->pkbuf = iov[0].MPID_IOV_BUF;
+        sreq->pksz = iov[0].MPID_IOV_LEN;
+    } else {  
     if(comm)
         MPI_Pack_size(count, datatype, comm->handle, &pksz);
     else 
@@ -969,16 +986,14 @@ int psm_do_pack(int count, MPI_Datatype datatype, MPID_Comm *comm, MPID_Request
     if(!sreq->pkbuf)
         return MPI_ERR_NO_MEM;
 
-    segp = MPID_Segment_alloc();
-    if(segp == NULL) 
-        return MPI_ERR_NO_MEM;
-    if((MPID_Segment_init(buf, count, datatype, segp, 0)) != MPI_SUCCESS) {
-        MPID_Segment_free(segp);
-        return MPI_ERR_INTERN;
-    }
+        first = 0; 
+        last = data_sz;
+        MPID_Segment_pack(segp, first, &last, sreq->pkbuf);
 
-    MPID_Segment_pack(segp, first, &last, sreq->pkbuf);
-    MPID_Segment_free(segp);
+        sreq->psm_flags |= PSM_PACK_BUF_FREE;
+    }
+        MPID_Segment_free(segp);
+
     return MPI_SUCCESS;
 }
 #endif

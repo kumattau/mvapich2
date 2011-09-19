@@ -106,19 +106,14 @@ int rdma_num_rails = 1;
 
 int rdma_num_hcas = 1;
 
-int enable_knomial_2level_bcast=1;
-int inter_node_knomial_factor=4;
-int intra_node_knomial_factor=4;
-int knomial_2level_bcast_message_size_threshold=2048;
-int knomial_2level_bcast_system_size_threshold=32;
-int use_osu_collectives = 1; 
-int use_anl_collectives = 0; 
 unsigned long rdma_polling_spin_count_threshold=5;
-int use_thread_yield = 0; 
+int use_thread_yield = 1;
+int spins_before_lock = 2000; 
 
 int rdma_global_ext_sendq_size = 0;
 int rdma_num_extra_polls = 0;
-
+int rdma_use_smp = 1;
+int rdma_use_blocking = 0;
 
 unsigned int  rdma_ndreg_entries = RDMA_NDREG_ENTRIES;
 unsigned long rdma_dreg_cache_limit = 0;
@@ -357,55 +352,18 @@ rdma_init_parameters (MPIDI_CH3I_RDMA_Process_t *proc)
         udapl_prepost_depth + udapl_prepost_rendezvous_extra +
         udapl_prepost_noop_extra;
 
-    if( (value = getenv("MV2_USE_KNOMIAL_2LEVEL_BCAST")) != NULL) {
-            enable_knomial_2level_bcast=!!(int)atoi(value);
-        if(enable_knomial_2level_bcast <= 0)  {
-                enable_knomial_2level_bcast = 0;
-         }
-     }
-
-    if( (value = getenv("MV2_KNOMIAL_INTRA_NODE_FACTOR")) != NULL) {
-            intra_node_knomial_factor=(int)atoi(value);
-        if(intra_node_knomial_factor < INTRA_NODE_KNOMIAL_FACTOR_MIN) {
-                intra_node_knomial_factor = INTRA_NODE_KNOMIAL_FACTOR_MIN;
-        }
-        if(intra_node_knomial_factor > INTRA_NODE_KNOMIAL_FACTOR_MAX) {
-                intra_node_knomial_factor = INTRA_NODE_KNOMIAL_FACTOR_MAX;
-        }
-     }
-    if( (value = getenv("MV2_KNOMIAL_INTER_NODE_FACTOR")) != NULL) {
-            inter_node_knomial_factor=(int)atoi(value);
-        if(inter_node_knomial_factor < INTER_NODE_KNOMIAL_FACTOR_MIN) {
-                inter_node_knomial_factor = INTER_NODE_KNOMIAL_FACTOR_MIN;
-        }
-        if(inter_node_knomial_factor > INTER_NODE_KNOMIAL_FACTOR_MAX) {
-                inter_node_knomial_factor = INTER_NODE_KNOMIAL_FACTOR_MAX;
-        }
-     }
-    if( (value = getenv("MV2_KNOMIAL_2LEVEL_BCAST_MESSAGE_SIZE_THRESHOLD")) != NULL) {
-            knomial_2level_bcast_message_size_threshold=(int)atoi(value);
-     }
-    if( (value = getenv("MV2_KNOMIAL_2LEVEL_BCAST_SYSTEM_SIZE_THRESHOLD")) != NULL) {
-            knomial_2level_bcast_system_size_threshold=(int)atoi(value);
-     }
-
     if ((value = getenv("MV2_USE_HWLOC_CPU_BINDING")) != NULL) {
         use_hwloc_cpu_binding = atoi(value);
     }
-    if ((value = getenv("MV2_USE_OSU_COLLECTIVES")) != NULL) {
-        if( atoi(value) == 1) {
-              use_osu_collectives = 1;
-        }
-        else {
-              use_osu_collectives = 0;
-              use_anl_collectives = 1;
-        }
-    }
+
     if ((value = getenv("MV2_THREAD_YIELD_SPIN_THRESHOLD")) != NULL) {
          rdma_polling_spin_count_threshold = atol(value);
     }
     if ((value = getenv("MV2_USE_THREAD_YIELD")) != NULL) {
          use_thread_yield = atoi(value);
+    }
+    if ((value = getenv("MV2_NUM_SPINS_BEFORE_LOCK")) != NULL) {
+         spins_before_lock = atoi(value);
     }
 
 }

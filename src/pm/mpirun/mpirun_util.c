@@ -12,6 +12,7 @@
 
 #include "mpirunconf.h"
 #include "mpirun_util.h"
+#include "debug_utils.h"
 #include "string.h"
 #include "stdio.h"
 #include <errno.h>
@@ -29,13 +30,17 @@ char *vedit_str(char *const ptr, const char *format, va_list args)
     size = vsnprintf(NULL, 0, format, ap);
     va_end(ap);
 
-    if (size++ < 0)
+    if (size < 0) {
+        PRINT_ERROR("vsnprintf() returned %d\n", size);
         return NULL;
-
+    }
+    
+    
+    size++; // Add space for the null char
     str = realloc(ptr, sizeof(char) * size);
 
     if (!str) {
-        perror("vedit_str [realloc]");
+        PRINT_ERROR_ERRNO("realloc() failed", errno);
         exit(EXIT_FAILURE);
     }
 
@@ -43,8 +48,10 @@ char *vedit_str(char *const ptr, const char *format, va_list args)
     size = vsnprintf(str, size, format, ap);
     va_end(ap);
 
-    if (size < 0)
+    if (size < 0) {
+        PRINT_ERROR("vsnprintf() returned %d\n", size);
         return NULL;
+    }
 
     return str;
 }
@@ -130,7 +137,7 @@ int write_socket(int socket, void *buffer, size_t bytes)
             case EAGAIN:
                 continue;
             default:
-                perror("write");
+                PRINT_ERROR_ERRNO("write() failed", errno);
                 return -1;
             }
         }
@@ -144,9 +151,7 @@ int write_socket(int socket, void *buffer, size_t bytes)
 
 #ifdef CKPT
 
-#define MAX_CR_MSG_LEN  256
-#define CRU_MAX_KEY_LEN 64
-#define CRU_MAX_VAL_LEN 64
+#include "common_ckpt.h"
 
 struct CRU_keyval_pairs {
     char key[CRU_MAX_KEY_LEN];
@@ -156,11 +161,6 @@ struct CRU_keyval_pairs {
 static struct CRU_keyval_pairs CRU_keyval_tab[64] = { {{0}} };
 
 static int CRU_keyval_tab_idx = 0;
-
-int CR_MPDU_writeline(int, char *);
-int CR_MPDU_readline(int, char *, int);
-int CR_MPDU_parse_keyvals(char *);
-char *CR_MPDU_getval(const char *, char *, int);
 
 int CR_MPDU_writeline(int fd, char *buf)
 {

@@ -23,8 +23,6 @@
 #endif
 #ifdef _ENABLE_XRC_
 #include "rdma_impl.h"
-#else
-#define XRC_MSG(args...)
 #endif
 
 #define MAX_JOBID_LEN 1024
@@ -1187,15 +1185,18 @@ int MPIDI_PG_Close_VCs( void )
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_PG_CLOSE_VCS);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_PG_CLOSE_VCS);
-
-    XRC_MSG ("MPIDI_PG_Close_VCs");
+#ifdef _ENABLE_XRC_
+    PRINT_DEBUG(DEBUG_XRC_verbose>0, "MPIDI_PG_Close_VCs\n");
+#endif
     while (pg) {
 	int i, inuse, n, i_start;
 
 	MPIU_DBG_MSG_S(CH3_DISCONNECT,VERBOSE,"Closing vcs for pg %s",
 		       (char *)pg->id );
 
-    XRC_MSG ("closing vcs for pg %s", (char *) pg->id);
+#ifdef _ENABLE_XRC_
+    PRINT_DEBUG(DEBUG_XRC_verbose>0, "closing vcs for pg %s\n", (char *) pg->id);
+#endif
         /* We want to reduce the chance of having all processes send
            close requests to the same process at once.  We do this by
            having processes start at different indices, namely
@@ -1214,9 +1215,9 @@ int MPIDI_PG_Close_VCs( void )
                 }
 		continue;
 	    }
-        XRC_MSG ("closing %d xf: 0x%08x st", vc->pg_rank, vc->ch.xrc_flags, 
-                vc->state);
 #ifdef _ENABLE_XRC_
+        PRINT_DEBUG(DEBUG_XRC_verbose>0, "closing %d xf: 0x%08x state:%d\n", vc->pg_rank, vc->ch.xrc_flags, 
+                vc->state);
         MPICM_lock();
         VC_XST_SET (vc, XF_CONN_CLOSING);
         MPICM_unlock();
@@ -1227,16 +1228,21 @@ int MPIDI_PG_Close_VCs( void )
                 (vc->state == MPIDI_VC_STATE_ACTIVE || 
                 vc->state == MPIDI_VC_STATE_REMOTE_CLOSE
             ):(VC_XST_ISUNSET (vc, XF_TERMINATED) &&
-            VC_XST_ISSET (vc, (XF_SEND_IDLE | XF_SEND_CONNECTING))))
-    
+                VC_XST_ISSET (vc, (XF_SEND_IDLE | XF_SEND_CONNECTING))
+#ifdef _ENABLE_UD_ 
+                && VC_XST_ISSET (vc, XF_UD_CONNECTED)
+#endif
+            ))
 #else
 
 	    if (vc->state == MPIDI_VC_STATE_ACTIVE || 
 		vc->state == MPIDI_VC_STATE_REMOTE_CLOSE)
 #endif
 	    {
-        XRC_MSG ("SendClose %d 0x%08x %d\n", vc->pg_rank, vc->ch.xrc_flags, 
+#ifdef _ENABLE_XRC_
+        PRINT_DEBUG(DEBUG_XRC_verbose>0, "SendClose %d 0x%08x %d\n", vc->pg_rank, vc->ch.xrc_flags, 
                 vc->ch.state);
+#endif
 		MPIDI_CH3U_VC_SendClose( vc, i );
 	    } else if (vc->state == MPIDI_VC_STATE_INACTIVE ||
                        vc->state == MPIDI_VC_STATE_MORIBUND) {

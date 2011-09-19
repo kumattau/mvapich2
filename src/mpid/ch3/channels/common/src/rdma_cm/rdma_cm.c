@@ -21,6 +21,7 @@
 #include "rdma_impl.h"
 #include "pmi.h"
 #include "vbuf.h"
+#include "dreg.h"
 #include "rdma_cm.h"
 #include "cm.h"
 
@@ -717,7 +718,7 @@ fn_fail:
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int rdma_cm_connect_all(int *hosts, int pg_rank, MPIDI_PG_t *pg)
 {
-    int i, j, k, ret, rail_index, pg_size;
+    int i, j, k, rail_index, pg_size;
     MPIDI_VC_t  *vc;
     MPIDI_CH3I_RDMA_Process_t *proc = &MPIDI_CH3I_RDMA_Process;
     int max_num_ips = rdma_num_hcas * rdma_num_ports;
@@ -971,7 +972,7 @@ int rdma_cm_exchange_hostid(MPIDI_PG_t *pg, int pg_rank, int pg_size)
 int *rdma_cm_get_hostnames(int pg_rank, MPIDI_PG_t *pg)
 {
     int *hosts;
-    int error, i,j,k;
+    int error, i,j;
     char *temp;
     int length = 32*rdma_num_hcas*rdma_num_ports;
     char rank[16];

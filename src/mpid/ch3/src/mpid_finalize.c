@@ -111,10 +111,8 @@ int MPID_Finalize(void)
     MPIDI_CH3_Flush();
     MPIDI_CH3I_RDMA_Process.xrc_rdmafp = 0;
     if (USE_XRC) {
-        XRC_MSG ("PMI_Barrier START");
         if (PMI_Barrier ())
             ibv_error_abort (GEN_EXIT_ERR, "PMI_Barrier failed");
-        XRC_MSG ("PMI_Barrier END");
     }
 #endif 
 #ifdef MPID_NEEDS_ICOMM_WORLD
@@ -145,9 +143,6 @@ int MPID_Finalize(void)
      */
     mpi_errno = MPIDI_CH3U_VC_WaitForClose();
     if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
-#endif
-#ifdef _ENABLE_XRC_
-    XRC_MSG("ALLCLOSE");
 #endif
 #endif
 

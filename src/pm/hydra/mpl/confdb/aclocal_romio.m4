@@ -787,7 +787,7 @@ EOF
   rm -f conftest$EXEEXT mpitest.c
 ])dnl
 define(PAC_TEST_MPIU_FUNCS,[
-  AC_MSG_CHECKING(support for MPICH2 memory macros)
+  AC_MSG_CHECKING(support for MVAPICH2 memory macros)
   rm -f mpitest.c
   cat > mpitest.c <<EOF
 #include "mpi.h"

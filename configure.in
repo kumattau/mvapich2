@@ -204,9 +204,9 @@ AC_SUBST(ABIVERSION)
 CONFIGURE_ARGUMENTS="$ac_configure_args"
 AC_SUBST(CONFIGURE_ARGUMENTS)
 if test -n "$ac_configure_args" ; then
-    echo "Configuring MPICH2 version $MPICH2_VERSION with $ac_configure_args"
+    echo "Configuring MVAPICH2 version $MPICH2_VERSION with $ac_configure_args"
 else 
-    echo "Configuring MPICH2 version $MPICH2_VERSION"
+    echo "Configuring MVAPICH2 version $MPICH2_VERSION"
 fi
 
 # Add the information on the system:
@@ -245,7 +245,7 @@ FROM_MPICH2=yes
 export FROM_MPICH2
 AC_ARG_VAR(FROM_MPICH2,
 	[internal flag to tell subconfigures that
-	they are built from within MPICH2])
+	they are built from within MVAPICH2])
 
 # Save a copy of precious flags as USER_* before any of these flags
 # are being modified by configure tests.
@@ -276,19 +276,19 @@ WRAPPER_LIBS="$MPICH2_LIBS"
 
 # Add MPICH2LIB_* to the appropriate flags
 AC_ARG_VAR(MPICH2LIB_CFLAGS,
-	[extra CFLAGS used in building MPICH2 libraries])
+	[extra CFLAGS used in building MVAPICH2 libraries])
 AC_ARG_VAR(MPICH2LIB_CPPFLAGS,
-	[extra CPPFLAGS used in building MPICH2 libraries])
+	[extra CPPFLAGS used in building MVAPICH2 libraries])
 AC_ARG_VAR(MPICH2LIB_CXXFLAGS,
-	[extra CXXFLAGS used in building MPICH2 libraries])
+	[extra CXXFLAGS used in building MVAPICH2 libraries])
 AC_ARG_VAR(MPICH2LIB_FFLAGS,
-	[extra FFLAGS used in building MPICH2 libraries])
+	[extra FFLAGS used in building MVAPICH2 libraries])
 AC_ARG_VAR(MPICH2LIB_FCFLAGS,
-	[extra FCFLAGS used in building MPICH2 libraries])
+	[extra FCFLAGS used in building MVAPICH2 libraries])
 AC_ARG_VAR(MPICH2LIB_LDFLAGS,
-	[extra LDFLAGS used in building MPICH2 libraries])
+	[extra LDFLAGS used in building MVAPICH2 libraries])
 AC_ARG_VAR(MPICH2LIB_LIBS,
-	[extra LIBS used in building MPICH2 libraries])
+	[extra LIBS used in building MVAPICH2 libraries])
 CFLAGS="$CFLAGS $MPICH2LIB_CFLAGS"
 CPPFLAGS="$CPPFLAGS $MPICH2LIB_CPPFLAGS"
 CXXFLAGS="$CXXFLAGS $MPICH2LIB_CXXFLAGS"
@@ -557,6 +557,9 @@ AC_ARG_WITH(namepublisher,
                                    mpd
 			           file[:directory] (optional directory)
                                    pmi],,with_namepublisher=default)
+AC_ARG_WITH(name-publisher,
+    [],
+    with_namepublisher=$with_name_publisher,)
 
 AC_SUBST(MPIFLIBNAME)
 AC_SUBST(PMPIFLIBNAME)
@@ -706,6 +709,13 @@ AC_ARG_WITH([fuse-libpath],
                             [specify the path to the fuse library])
             ])
 
+AC_ARG_ENABLE([hybrid],
+              [AS_HELP_STRING([--enable-hybrid],
+                              [enable hybrid communication channel])
+              ],
+              [],
+              [enable_hybrid=no])
+
 AC_MSG_CHECKING([whether to enable header caching])
 
 if test "$enable_header_caching" != "yes"; then
@@ -714,6 +724,12 @@ fi
 
 AC_MSG_RESULT($enable_header_caching)
 
+AC_MSG_CHECKING([whether to enable hybrid communication channel])
+if test "$enable_hybrid" == "yes"; then
+    AC_DEFINE(_ENABLE_UD_,1,[Define to enable hybrid design.])
+fi
+
+AC_MSG_RESULT($enable_hybrid)
 dnl <_OSU_MVAPICH_>
 
 # Find a C compiler.
@@ -1239,7 +1255,7 @@ AC_ARG_WITH([openpa-prefix],
                             [use the OpenPA atomics library installed in DIR,
                              rather than the one included in src/openpa.  Pass
                              "embedded" to force usage of the OpenPA source
-                             distributed with MPICH2.])],
+                             distributed with MVAPICH2.])],
             [],
             [# see if OPA is already installed on the system
              PAC_PUSH_FLAG([LIBS])
@@ -2817,7 +2833,7 @@ AC_PATH_PROG(PERL,perl)
 # Look for ar.  If we fail, abort
 AC_CHECK_PROGS(AR,ar)
 if test -z "$AR" ; then
-    AC_MSG_ERROR([The program ar is required for building MPICH2.  Make sure that your path includes ar])
+    AC_MSG_ERROR([The program ar is required for building MVAPICH2.  Make sure that your path includes ar])
 fi
 
 # AR_FLAGS provides a way to potentially improve build performance on Mac OSX
@@ -2920,6 +2936,12 @@ if test "x$with_limic2" != "xno"; then
     if test "x$limic_h_found$limic2_lib_found" != "xyesyes"; then
         AC_MSG_ERROR([cannot find LiMIC2, please install and retry.])
     fi
+
+    AC_RUN_IFELSE([AC_LANG_PROGRAM([], [])],
+        [],
+        [AC_MSG_ERROR(Unable to run program linked with LiMIC2)],
+        [AC_MSG_WARN([Unable to verify if program can run linked with LiMIC2])])
+
 fi
 dnl </OSU_MVAPICH>
 
@@ -2971,7 +2993,7 @@ dnl         fi
     prefix=$savePrefix
     exec_prefix=$saveExecprefix
     MPICH2_LIBDIR='"'$MPICH2_LIBDIR'"'
-    AC_DEFINE_UNQUOTED(MPICH2_LIBDIR,$MPICH2_LIBDIR,[Name of installation directory intended for MPICH2])
+    AC_DEFINE_UNQUOTED(MPICH2_LIBDIR,$MPICH2_LIBDIR,[Name of installation directory intended for MVAPICH2])
 fi
 
 # Special restrictions for some shared libraries
@@ -3440,7 +3462,7 @@ if test "$pac_cv_have_long_double" = yes ; then
     # we need to do something else in the alignment rule code.
     if test "$pac_cv_c_max_fp_align" != "$pac_cv_c_max_longdouble_fp_align" -o \
             "$pac_cv_c_max_fp_align" != "$pac_cv_c_max_double_fp_align" ; then
-        AC_MSG_WARN([Structures containing long doubles may be aligned differently from structures with floats or longs.  MPICH2 does not handle this case automatically and you should avoid assumed extents for structures containing float types.])
+        AC_MSG_WARN([Structures containing long doubles may be aligned differently from structures with floats or longs.  MVAPICH2 does not handle this case automatically and you should avoid assumed extents for structures containing float types.])
 
 	double_align=-1
 	case $pac_cv_c_max_double_fp_align in 
@@ -4440,7 +4462,7 @@ if test "$enable_f77" = yes ; then
     elif test "$SIZEOF_F77_INTEGER" != "$ac_cv_sizeof_int" ; then
         # Make this fatal because we do not want to build a broken fortran
 	# interface (was error)
-        AC_MSG_WARN([Fortran integers and C ints are not the same size.  The current Fortran binding does not support this case.  Either force the Fortran compiler to use integers of $ac_cv_sizeof_int bytes, or use --disable-f77 on the configure line for MPICH2.])
+        AC_MSG_WARN([Fortran integers and C ints are not the same size.  The current Fortran binding does not support this case.  Either force the Fortran compiler to use integers of $ac_cv_sizeof_int bytes, or use --disable-f77 on the configure line for MVAPICH2.])
     fi
 
     #
@@ -5365,7 +5387,7 @@ AC_ARG_ENABLE(timer-type,
                              for OSX)
         device - The timer is provided by the device
 
-        *Note that the cycle timers are intended to be used by MPICH2
+        *Note that the cycle timers are intended to be used by MVAPICH2
         developers for internal low-level timing.  Normal users should
         not use these as they are not guaranteed to be accurate in
         certain situations.
@@ -6495,12 +6517,12 @@ AC_OUTPUT(Makefile src/Makefile src/include/Makefile \
 	  src/binding/f90/mpi_sizeofs.f90 \
 	  src/binding/f90/mpi_base.f90 \
 	  src/packaging/Makefile \
-	  src/packaging/pkgconfig/mpich2-c.pc \
-	  src/packaging/pkgconfig/mpich2-cxx.pc \
-	  src/packaging/pkgconfig/mpich2-f77.pc \
-	  src/packaging/pkgconfig/mpich2-f90.pc \
+	  src/packaging/pkgconfig/mvapich2-c.pc \
+	  src/packaging/pkgconfig/mvapich2-cxx.pc \
+	  src/packaging/pkgconfig/mvapich2-f77.pc \
+	  src/packaging/pkgconfig/mvapich2-f90.pc \
 	  src/packaging/pkgconfig/Makefile \
-	  src/packaging/envmods/mpich2.module \
+	  src/packaging/envmods/mvapich2.module \
 	  src/packaging/envmods/Makefile \
           src/env/mpixxx_opts.conf \
           src/env/mpicc \

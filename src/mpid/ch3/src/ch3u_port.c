@@ -18,8 +18,6 @@
 #include "mpidi_ch3_impl.h"
 #ifdef _ENABLE_XRC_
 #include "rdma_impl.h"
-#else
-#define XRC_MSG(s...)
 #endif
 
 /*
@@ -1231,7 +1229,6 @@ static int FreeNewVC( MPIDI_VC_t *new_vc )
 	   the state of the new vc is complete */
 	MPID_Progress_start(&progress_state);
 	while (new_vc->state != MPIDI_VC_STATE_INACTIVE) {
-        XRC_MSG ("FN: State %d", new_vc->state);
 	    mpi_errno = MPID_Progress_wait(&progress_state);
 	    /* --BEGIN ERROR HANDLING-- */
 	    if (mpi_errno != MPI_SUCCESS)
@@ -1243,7 +1240,6 @@ static int FreeNewVC( MPIDI_VC_t *new_vc )
 	}
 	MPID_Progress_end(&progress_state);
     }
-    XRC_MSG ("FreeNew Done");
 
     MPIU_CALL(MPIDI_CH3,VC_Destroy(new_vc));
     MPIU_Free(new_vc);

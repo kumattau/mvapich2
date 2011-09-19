@@ -58,6 +58,11 @@ AC_CHECK_HEADERS(				\
 	sys/shm.h                               \
 )
 
+AC_CHECK_HEADERS([sys/syscall.h syscall.h], [
+                  AC_CHECK_FUNCS([syscall])
+                  break
+                  ])
+
 # netinet/in.h often requires sys/types.h first.  With AC 2.57, check_headers
 # does the right thing, which is to test whether the header is found 
 # by the compiler, but this can cause problems when the header needs 

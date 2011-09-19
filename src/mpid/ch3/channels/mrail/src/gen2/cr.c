@@ -898,7 +898,12 @@ int CR_Thread_loop()
 
         }                       // finished a ckpt-req
         else {
-            CR_ERR_ABORT("Unknown command\n");
+#ifdef CR_FTB
+            PRINT_ERROR("Internal Error: Unknown command\n");
+#else
+            PRINT_ERROR("Internal Error: Unknown command: msg = '%s', cmd = '%s'\n", cr_msg_buf, valstr);
+#endif
+            abort();
         }
     }
 }
@@ -1409,6 +1414,8 @@ int CR_IBU_Rebuild_network()
 
     uint32_t *ud_qpn_all = (uint32_t *) MPIU_Malloc(pg_size * sizeof(uint32_t));
     uint16_t *lid_all = (uint16_t *) MPIU_Malloc(pg_size * sizeof(uint16_t));
+    union ibv_gid *gid_all = (union ibv_gid *)
+                                 MPIU_Malloc(pg_size * sizeof(union ibv_gid));
     rdma_num_rails = rdma_num_hcas * rdma_num_ports * rdma_num_qp_per_port;
 
     dbg("num_qp_per_port %d, num_rails = %d\n", rdma_num_qp_per_port, rdma_num_rails);
@@ -1479,6 +1486,7 @@ int CR_IBU_Rebuild_network()
     if (pg_size == 1) {
         ud_qpn_all[0] = ud_qpn_self;
         lid_all[0] = MPIDI_CH3I_RDMA_Process.lids[0][0];
+        gid_all[0] = MPIDI_CH3I_RDMA_Process.gids[0][0];
     } else if (pg_size > 1) {
         if (MPIDI_CH3I_RDMA_Process.has_ring_startup) {
             ud_addr_info_t self_info;
@@ -1499,6 +1507,8 @@ int CR_IBU_Rebuild_network()
             self_info.hostid = hostid;
 
             memcpy(&self_info.lid, &MPIDI_CH3I_RDMA_Process.lids, sizeof(uint16_t) * MAX_NUM_HCAS * MAX_NUM_PORTS);
+            memcpy(&self_info.gid, &MPIDI_CH3I_RDMA_Process.gids,
+                   sizeof(union ibv_gid) * MAX_NUM_HCAS * MAX_NUM_PORTS);
             self_info.qpn = ud_qpn_self;
 
             ud_addr_info_t *all_info = (ud_addr_info_t *) MPIU_Malloc(sizeof(ud_addr_info_t) * pg_size);
@@ -1558,7 +1568,16 @@ int CR_IBU_Rebuild_network()
             }
 
             sprintf(key, "ud_info_%08d", pg_rank);
-            sprintf(val, "%08x:%08x", MPIDI_CH3I_RDMA_Process.lids[0][0], ud_qpn_self);
+            if (!use_iboeth) {
+                sprintf(val, "%08x:%08x", MPIDI_CH3I_RDMA_Process.lids[0][0],
+                        ud_qpn_self);
+            } else {
+                sprintf(val, "%08x:%08x:%016"PRIx64":%016"PRIx64,
+                       MPIDI_CH3I_RDMA_Process.lids[0][0], ud_qpn_self,
+                       MPIDI_CH3I_RDMA_Process.gids[0][0].global.subnet_prefix,
+                       MPIDI_CH3I_RDMA_Process.gids[0][0].global.interface_id);
+            }
+
 
             if (PMI_KVS_Put(pg->ch.kvs_name, key, val) != 0) {
                 CR_ERR_ABORT("PMI_KVS_Put failed\n");
@@ -1574,6 +1593,7 @@ int CR_IBU_Rebuild_network()
             for (i = 0; i < pg_size; ++i) {
                 if (pg_rank == i) {
                     lid_all[i] = MPIDI_CH3I_RDMA_Process.lids[0][0];
+                    gid_all[i] = MPIDI_CH3I_RDMA_Process.gids[0][0];
                     ud_qpn_all[i] = ud_qpn_self;
                     continue;
                 }
@@ -1584,14 +1604,20 @@ int CR_IBU_Rebuild_network()
                     CR_ERR_ABORT("PMI_KVS_Get failed\n");
                 }
 
-                sscanf(val, "%08hx:%08x", &(lid_all[i]), &(ud_qpn_all[i]));
+                if (!use_iboeth) {
+                    sscanf(val, "%08hx:%08x", &(lid_all[i]), &(ud_qpn_all[i]));
+                } else {
+                    sscanf(val, "%08hx:%08x:%016"SCNx64":%016"SCNx64, &(lid_all[i]),
+                           &(ud_qpn_all[i]), &(gid_all[i].global.subnet_prefix),
+                           &(gid_all[i].global.interface_id));
+                }
             }
         }
     }
 
     CR_DBG("Exchanging parameters done\n");
 
-    mpi_errno = MPICM_Init_UD_struct(MPICR_pg, ud_qpn_all, lid_all);
+    mpi_errno = MPICM_Init_UD_struct(MPICR_pg, ud_qpn_all, lid_all, gid_all);
     MPICM_Create_UD_threads();
 
     if (mpi_errno) {
@@ -1719,8 +1745,16 @@ int CR_IBU_Prep_remote_update()
         /*FIXME: use recv_mem_addr as only identifier */
         CR_DBG("recv_mem_addr %p, rkey0 %x\n", msg.recv_mem_addr, msg.recv_buf_rkey[0]);
 
-        v = get_vbuf();
-        p = (MPIDI_CH3I_MRAILI_Pkt_comm_header *) v->pheader;
+        if(!SMP_ONLY)
+        {
+            v = get_vbuf();
+            p = (MPIDI_CH3I_MRAILI_Pkt_comm_header*) v->pheader;
+        }
+        else
+        {
+            p = (MPIDI_CH3I_MRAILI_Pkt_comm_header *)MPIU_Malloc(sizeof(MPIDI_CH3I_MRAILI_Pkt_comm_header));
+        }
+
         p->type = MPIDI_CH3_PKT_CR_REMOTE_UPDATE;
         MPIU_Memcpy(v->buffer + sizeof(MPIDI_CH3I_MRAILI_Pkt_comm_header), &msg, sizeof(msg));
 
@@ -1835,17 +1869,32 @@ int CR_IBU_Suspend_channels()
             vc_vector[i] = NULL;
         }
     }
-
     int retval = 0;
+
     if ((retval = MPIDI_CH3I_CM_Suspend(vc_vector))) {
         return retval;
     }
     CR_DBG("fin:  MPIDI_CH3I_CM_suspend\n");
 
-    if ((retval = CR_IBU_Release_network())) {
-        return retval;
+    if(!SMP_ONLY)
+    {
+        if ((retval = CR_IBU_Release_network()))
+        {
+            return retval;
+        }
+        CR_DBG("fin:  IBU_Release_network\n");
     }
-    CR_DBG("fin:  IBU_Release_network\n");
+    else
+    {
+        /*  The cm_conn_state_lock is unlocked inside CR_IBU_Release_network().
+            But for the SMP_ONLY case, we need to unlock it explicitly here
+            as CR_IBU_Release_network() is not called */
+        if (MPIDI_CH3I_CR_Get_state() == MPICR_STATE_PRE_COORDINATION)
+        {
+            MPICM_unlock();
+        }
+        CR_DBG("fin:  MPICM_unlock\n");
+    }
 
     /// record num of rndvs(sender) to update at restart
     CR_record_rndv(vc_vector);
@@ -1859,10 +1908,15 @@ int CR_IBU_Reactivate_channels()
 {
     int retval = 0;
 
-    CR_DBG("CR_IBU_Rebuild_network\n");
-    if ((retval = CR_IBU_Rebuild_network())) {
-        return retval;
+    if(!SMP_ONLY)
+    {
+        CR_DBG("CR_IBU_Rebuild_network\n");
+        if ((retval = CR_IBU_Rebuild_network()))
+        {
+            return retval;
+        }
     }
+
 
     /* Reinitialize the SMP channel */
     CR_DBG("MPIDI_CH3I_SMP_init()\n");
@@ -2301,11 +2355,11 @@ int CR_MPDU_parse_keyvals(char *st)
 
     while (1) {
         /* Increment until a numeric digit or a letter of the alphabet is found. */
-        while (p && !isalnum(*p)) {
+        while (*p != '\0' && !isalnum(*p)) {
             ++p;
         }
 
-        if (!p) {
+        if (*p == '\0') {
             return 0;
         }
 
@@ -2316,7 +2370,7 @@ int CR_MPDU_parse_keyvals(char *st)
         }
 
         if (*p == ' ' || *p == '\n' || *p == '\0') {
-            fprintf(stderr, "CRU_parse_keyvals: unexpected key delimiter at character %d in %s\n", (int) (p - st), st);
+            PRINT_ERROR("Internal error: Unexpected key delimiter at character %d in '%s'\n", (int) (p - st), st);
             return -1;
         }
 

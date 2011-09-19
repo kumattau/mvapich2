@@ -14,6 +14,9 @@ install_BIN = mpich2version
 install_ETC = mpixxx_opts.conf mpicc.conf
 optinstall_SCRIPT = mpicxx mpif77 mpif90
 optinstall_ETC = mpicxx.conf mpif77.conf mpif90.conf
+
+#
+# 
 install-preamble:
 	@if [ "@prefix@" != ${prefix} -o \
 	      "@includedir@" != ${includedir} -o \

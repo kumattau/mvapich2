@@ -919,8 +919,8 @@ static int PMII_Connect_to_pm( char *hostname, int portnum )
     
     hp = gethostbyname( hostname );
     if (!hp) {
-	PMIU_printf( 1, "Unable to get host entry for %s\n", hostname );
-	return -1;
+        PMIU_printf( 1, "Unable to get host entry for '%s': %s (%d)\n", hostname, hstrerror(h_errno), h_errno );
+        return -1;
     }
     
     memset( (void *)&sa, 0, sizeof(sa) );

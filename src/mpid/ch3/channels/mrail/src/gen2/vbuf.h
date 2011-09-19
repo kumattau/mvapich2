@@ -30,6 +30,7 @@
 #include "mpidi_ch3i_rdma_conf.h"
 #include "infiniband/verbs.h"
 #include "ibv_param.h"
+#include "mv2_clock.h"
 
 #define CREDIT_VBUF_FLAG (111)
 #define NORMAL_VBUF_FLAG (222)
@@ -99,8 +100,63 @@ struct ibv_wr_descriptor
 #define VBUF_BUFFER_SIZE (rdma_vbuf_total_size)
 
 #define MRAIL_MAX_EAGER_SIZE VBUF_BUFFER_SIZE
+typedef enum {
+    IB_TRANSPORT_UD = 1,
+    IB_TRANSPORT_RC = 2,
+} ib_transport;
+
+#ifdef _ENABLE_UD_
+#define MRAILI_Get_buffer(_vc, _v)                  \
+do {                                                \
+    if((_vc)->mrail.state & MRAILI_RC_CONNECTED) {  \
+        (_v) = get_vbuf();                          \
+    } else  {                                       \
+        (_v) = get_ud_vbuf();                       \
+    }                                               \
+} while (0)
+
+#define UD_VBUF_FREE_PENIDING       (0x01)
+#define UD_VBUF_SEND_INPROGRESS     (0x02)
+#define UD_VBUF_RETRY_ALWAYS        (0x04)
+
+#else
+#define MRAILI_Get_buffer(_vc, _v)  \
+do {                                \
+    (_v) = get_vbuf();              \
+} while (0)
+#endif 
+
+
+#define MV2_UD_GRH_LEN (40)
+
+#define PKT_TRANSPORT_OFFSET(_v) ((_v->transport == IB_TRANSPORT_UD) ? MV2_UD_GRH_LEN : 0)
+
+/* extend this macro if there is more control messages */
+#define IS_CNTL_MSG(p) \
+(((MPIDI_CH3I_MRAILI_Pkt_comm_header *)p)->type ==  MPIDI_CH3_PKT_FLOW_CNTL_UPDATE || \
+ ((MPIDI_CH3I_MRAILI_Pkt_comm_header *)p)->type ==  MPIDI_CH3_PKT_NOOP)
+
+#define SET_PKT_LEN_HEADER(_v, _wc) {                                       \
+    if(IB_TRANSPORT_UD == (_v)->transport) {                                \
+        (_v)->content_size = (_wc).byte_len - MV2_UD_GRH_LEN ;              \
+    } else {                                                                \
+        (_v)->content_size= _wc.byte_len;                                   \
+    }                                                                       \
+}
+
+#define SET_PKT_HEADER_OFFSET(_v) {                                         \
+    (_v)->pheader = (_v)->buffer + PKT_TRANSPORT_OFFSET(_v);                \
+}
 
 #define MRAIL_MAX_RDMA_FP_SIZE (rdma_fp_buffer_size - VBUF_FAST_RDMA_EXTRA_BYTES)
+
+#define MRAIL_MAX_UD_SIZE (rdma_default_ud_mtu - MV2_UD_GRH_LEN)
+
+typedef struct link
+{
+    void *next;
+    void *prev;
+} LINK;
 
 typedef struct vbuf
 {
@@ -128,6 +184,19 @@ typedef struct vbuf
      * means pointer to send handle that is now complete. Used
      * by viadev_process_send
      */
+    ib_transport transport;
+    uint16_t seqnum;
+#ifdef _ENABLE_UD_
+    uint16_t retry_count;
+    uint8_t flags;
+    uint8_t in_sendwin;
+    LINK sendwin_msg;
+    LINK recvwin_msg;
+    LINK extwin_msg;
+    LINK unack_msg;
+    double timestamp;
+#endif
+
 } vbuf;
 
 /* one for head and one for tail */
@@ -142,6 +211,7 @@ void dump_vbuf(char* msg, vbuf* v);
 #define dump_vbuf(msg, v)
 #endif /* defined(DEBUG) */
 
+void print_vbuf_usage();
 int init_vbuf_lock(void);
 
 /*
@@ -195,6 +265,12 @@ void deallocate_vbufs(int);
 void deallocate_vbuf_region(void);
 
 vbuf* get_vbuf(void);
+
+#ifdef _ENABLE_UD_
+vbuf* get_ud_vbuf(void);
+int allocate_ud_vbufs(int nvbufs);
+void vbuf_init_ud_recv(vbuf* v, unsigned long len, int rail);
+#endif
 
 void MRAILI_Release_vbuf(vbuf* v);
 

@@ -72,6 +72,20 @@ typedef struct thread_tag {
 void * send_thread(void *arg);
 void * recv_thread(void *arg);
 
+#ifdef PACKAGE_VERSION
+#   define HEADER "# " BENCHMARK " v" PACKAGE_VERSION "\n"
+#else
+#   define HEADER "# " BENCHMARK "\n"
+#endif
+
+#ifndef FIELD_WIDTH
+#   define FIELD_WIDTH 20
+#endif
+
+#ifndef FLOAT_PRECISION
+#   define FLOAT_PRECISION 2
+#endif
+
 int main(int argc, char *argv[])
 {
     int numprocs, provided, myid, err;
@@ -120,7 +134,7 @@ int main(int argc, char *argv[])
     }
 
     if(myid == 0) {
-        fprintf(stdout, "# %s v%s\n", BENCHMARK, PACKAGE_VERSION);
+        fprintf(stdout, HEADER);
         fprintf(stdout, "%-*s%*s\n", 10, "# Size", FIELD_WIDTH, "Latency (us)");
         fflush(stdout);
 
@@ -148,12 +162,9 @@ int main(int argc, char *argv[])
 }
 
 void * recv_thread(void *arg) {
-    int size, i, j, val, align_size;
-    int local_window_size, local_start;
-    int start_send, send_size;
-    int messages_recv = 0, iter;
+    int size, i, val, align_size;
+    int iter;
     char *s_buf, *r_buf;
-    double t_start = 0, t_end = 0, t = 0;
     thread_tag_t *thread_id;
 
     thread_id = (thread_tag_t *)arg;
@@ -169,7 +180,7 @@ void * recv_thread(void *arg) {
                   align_size * align_size);
 
 
-    for(size = 1, iter = 0; size <= MAX_MSG_SIZE; size *= 2) {
+    for(size = 0, iter = 0; size <= MAX_MSG_SIZE; size = (size ? size * 2 : 1)) {
         pthread_mutex_lock(&finished_size_mutex);
 
         if(finished_size == THREADS) {
@@ -215,11 +226,9 @@ void * recv_thread(void *arg) {
 
 
 void * send_thread(void *arg) {
-    int size, i, j, k, val, align_size, iter;
-    int local_start, local_window_size;
-    int start_send, send_size;
+    int size, i, val, align_size, iter;
     char *s_buf, *r_buf;
-    double t_start = 0, t_end = 0, t = 0, latency, t_sum;
+    double t_start = 0, t_end = 0, t = 0, latency;
     thread_tag_t *thread_id = (thread_tag_t *)arg;
 
     val = thread_id->id;
@@ -232,7 +241,7 @@ void * send_thread(void *arg) {
         (char *) (((unsigned long) r_buf1 + (align_size - 1)) /
                   align_size * align_size);
 
-    for(size = 1, iter = 0; size <= MAX_MSG_SIZE; size *= 2) {
+    for(size = 0, iter = 0; size <= MAX_MSG_SIZE; size = (size ? size * 2 : 1)) {
         MPI_Barrier(MPI_COMM_WORLD);
 
         if(size > large_message_size) {

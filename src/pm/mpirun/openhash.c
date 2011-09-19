@@ -22,8 +22,6 @@
 #include "list.h"
 #include "atomic.h"
 
-#include "common.h"
-
 #include "debug.h"
 #include "openhash.h"
 //#include "ftb.h"

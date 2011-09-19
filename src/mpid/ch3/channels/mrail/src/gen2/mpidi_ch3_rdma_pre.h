@@ -33,28 +33,35 @@
 #define MPIDI_CH3I_VC_RDMA_DECL MPIDI_CH3I_MRAIL_VC mrail;
 #define MPIDI_CH3I_MRAILI_IBA_PKT_DEFS 1
 
-#ifdef CRC_CHECK
-#define MPIDI_CH3I_MRAILI_IBA_PKT_DECL \
-    uint8_t  vbuf_credit;       \
-    uint8_t  remote_credit;     \
-    uint8_t  rdma_credit;       \
-    uint8_t  rail;              \
+#ifdef _ENABLE_UD_
+#define VC_SRC_INFO \
     union {                     \
         uint32_t smp_index;     \
-        uint64_t vc_addr;       \
-    } src;                      \
-    unsigned long crc;
+        uint32_t rank;          \
+    } src;                      
 #else
-#define MPIDI_CH3I_MRAILI_IBA_PKT_DECL \
-    uint8_t  vbuf_credit;       \
-    uint8_t  remote_credit;     \
-    uint8_t  rdma_credit;       \
-    uint8_t  rail;              \
+#define VC_SRC_INFO \
     union {                     \
         uint32_t smp_index;     \
         uint64_t vc_addr;       \
     } src;                      
 #endif
+
+#ifdef CRC_CHECK
+#define VC_CRC_INFO  unsigned long crc;
+#else
+#define VC_CRC_INFO  
+#endif
+
+#define MPIDI_CH3I_MRAILI_IBA_PKT_DECL \
+    uint16_t seqnum;            \
+    uint16_t acknum;            \
+    uint8_t  vbuf_credit;       \
+    uint8_t  remote_credit;     \
+    uint8_t  rdma_credit;       \
+    uint8_t  rail;              \
+    VC_SRC_INFO                 \
+    VC_CRC_INFO                                 
 
 typedef enum {
     VAPI_PROTOCOL_RENDEZVOUS_UNSPECIFIED = 0,
@@ -62,6 +69,7 @@ typedef enum {
     VAPI_PROTOCOL_R3,
     VAPI_PROTOCOL_RPUT,
     VAPI_PROTOCOL_RGET,
+    VAPI_PROTOCOL_UD_ZCOPY
 } MRAILI_Protocol_t;
 
 typedef struct MPIDI_CH3I_MRAILI_Rndv_info {
@@ -74,12 +82,24 @@ typedef struct MPIDI_CH3I_MRAILI_Rndv_info {
     /* This is required for telling the receiver
      * when to mark the recv as complete */
     uint8_t            weight_rail[MAX_NUM_HCAS];
+#ifdef _ENABLE_UD_
+    uint8_t             hca_index;
+    uint32_t            rndv_qpn;
+#endif
 } MPIDI_CH3I_MRAILI_Rndv_info_t;
 
 #define MPIDI_CH3I_MRAILI_RNDV_INFO_DECL \
     MPIDI_CH3I_MRAILI_Rndv_info_t rndv;
 
 struct dreg_entry;
+#ifdef _ENABLE_UD_
+#define MPIDI_CH3I_MRAILI_ZCOPY_REQ_DECL \
+        void *rndv_qp_entry;            \
+        uint32_t remote_qpn;            \
+        uint8_t hca_index;              
+#else
+#define MPIDI_CH3I_MRAILI_ZCOPY_REQ_DECL
+#endif
 
 #define MPIDI_CH3I_MRAILI_REQUEST_DECL \
     struct MPIDI_CH3I_MRAILI_Request {  \
@@ -99,6 +119,7 @@ struct dreg_entry;
         double  stripe_start_time;   \
         double  stripe_finish_time[MAX_NUM_SUBRAILS];   \
         struct MPID_Request *next_inflow;  \
+        MPIDI_CH3I_MRAILI_ZCOPY_REQ_DECL   \
     } mrail;
 
 #ifndef MV2_DISABLE_HEADER_CACHING 
@@ -126,6 +147,7 @@ typedef struct MPIDI_CH3I_MRAILI_Pkt_comm_header_t {
 } MPIDI_CH3I_MRAILI_Pkt_comm_header;
 
 #define MPIDI_CH3I_MRAILI_Pkt_noop MPIDI_CH3I_MRAILI_Pkt_comm_header
+#define MPIDI_CH3I_MRAILI_Pkt_flow_cntl MPIDI_CH3I_MRAILI_Pkt_comm_header
 
 typedef struct MRAILI_Channel_manager_t {
     int     num_channels;
@@ -214,6 +236,23 @@ typedef struct MPIDI_CH3I_MRAILI_SR_VC
     } *credits;
 } MPIDI_CH3I_MRAILI_SR_VC;
 
+#define MARK_ACK_COMPLETED(vc) (vc->mrail.ack_need_tosend = 0)
+#define MARK_ACK_REQUIRED(vc) (vc->mrail.ack_need_tosend = 1)
+
+#define MRAILI_UD_CONNECTING    (0x0001)
+#define MRAILI_UD_CONNECTED     (0x0002)
+#define MRAILI_RC_CONNECTING    (0x0004)
+#define MRAILI_RC_CONNECTED     (0x0008)
+#define MRAILI_RFP_CONNECTING   (0x0010)
+#define MRAILI_RFP_CONNECTED    (0x0020)
+
+#ifdef  _ENABLE_UD_
+#include "mv2_ud.h"
+    
+#define MPIDI_CH3I_MRAILI_UD_VC  mv2_ud_vc_info_t
+
+#endif /* _ENABLE_UD_ */
+
 struct mrail_rail {
         struct ibv_context *nic_context;
         int    hca_index;
@@ -259,9 +298,14 @@ typedef struct MPIDI_CH3I_MRAIL_VC_t
     uint16_t        lid[MAX_NUM_HCAS][MAX_NUM_PORTS];
     union ibv_gid   gid[MAX_NUM_HCAS][MAX_NUM_PORTS];
 
+    uint16_t    state;
+    
     /* number of send wqes available */
-    uint16_t 	next_packet_expected;
-    uint16_t 	next_packet_tosend;
+    uint16_t    seqnum_next_tosend;
+    uint16_t    seqnum_next_torecv;
+    uint16_t    seqnum_last_recv;
+    uint16_t    seqnum_next_toack;
+    uint16_t    ack_need_tosend;
 
     /* how many eager sends do we have outstanding */
     int outstanding_eager_vbufs;
@@ -271,6 +315,9 @@ typedef struct MPIDI_CH3I_MRAIL_VC_t
 
     MPIDI_CH3I_MRAILI_RDMAPATH_VC 	rfp;
     MPIDI_CH3I_MRAILI_SR_VC 		srp;
+#ifdef _ENABLE_UD_ 
+    MPIDI_CH3I_MRAILI_UD_VC         ud;
+#endif /* _ENABLE_UD_ */
 
     MRAILI_Channel_manager  cmanager;
     /* Buffered receiving request for packetized transfer */

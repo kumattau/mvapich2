@@ -14,6 +14,7 @@
 #define _IBV_PARAM_H
 
 #include <infiniband/verbs.h>
+#include "debug_utils.h"
 
 /* Support multiple QPs/port, multiple ports, multiple HCAs and combinations */
 extern int                  rdma_num_hcas;
@@ -24,8 +25,8 @@ extern int                  rdma_num_rails;
 
 extern unsigned long        rdma_default_max_cq_size;
 extern int                  rdma_default_port;
-extern unsigned long        rdma_default_max_send_wqe;
-extern unsigned long        rdma_default_max_recv_wqe;
+extern int                  rdma_default_max_send_wqe;
+extern int                  rdma_default_max_recv_wqe;
 extern uint32_t             rdma_default_max_sg_list;
 extern uint16_t             rdma_default_pkey_ix;
 extern uint16_t             rdma_default_pkey;
@@ -102,7 +103,6 @@ extern int                  rdma_med_msg_rail_sharing_threshold;
 extern int                  rdma_large_msg_rail_sharing_threshold;
 
 
-extern int                  max_num_win;
 extern int                  mv2_on_demand_ud_info_exchange;
 /* HSAM Definitions */
 
@@ -120,6 +120,7 @@ extern int                  rdma_use_blocking;
 extern unsigned long        rdma_blocking_spin_count_threshold;
 extern unsigned long        rdma_polling_spin_count_threshold;
 extern int                  use_thread_yield; 
+extern int                  spins_before_lock; 
 extern int                  rdma_use_smp;
 extern int                  use_iboeth;
 extern int                  rdma_iwarp_multiple_cq_threshold;
@@ -132,25 +133,38 @@ extern int                  rdma_cm_connect_retry_interval;
 extern int                  rdma_num_rails_per_hca;
 extern int                  rdma_process_binding_rail_offset;
 
-/* Shared memory collective parameters */ 
-extern int                  enable_knomial_2level_bcast;
-extern int                  inter_node_knomial_factor;
-extern int                  knomial_2level_bcast_system_size_threshold;
-extern int                  knomial_2level_bcast_mesage_size_threshold;
-extern int                  intra_node_knomial_factor;
-extern int                  use_osu_collectives; 
-extern int                  use_anl_collectives;
-
 /* Use of LIMIC of RMA Communication */
 extern int                  limic_put_threshold;
 extern int                  limic_get_threshold;
 
 extern int                  rdma_enable_hugepage;
-
-#define INTER_NODE_KNOMIAL_FACTOR_MAX 8
-#define INTER_NODE_KNOMIAL_FACTOR_MIN 2
-#define INTRA_NODE_KNOMIAL_FACTOR_MAX 8
-#define INTRA_NODE_KNOMIAL_FACTOR_MIN 2
+#ifdef _ENABLE_UD_
+extern uint8_t              rdma_enable_hybrid;
+extern uint8_t              rdma_use_ud_zcopy;
+extern uint32_t             rdma_hybrid_enable_threshold;
+extern uint32_t             rdma_default_max_ud_send_wqe;
+extern uint32_t             rdma_default_max_ud_recv_wqe;
+extern uint32_t             rdma_default_ud_sendwin_size;
+extern uint32_t             rdma_default_ud_recvwin_size;
+extern long                 rdma_ud_progress_timeout;
+extern long                 rdma_ud_retry_timeout;
+extern long                 rdma_ud_max_retry_timeout;
+extern long                 rdma_ud_last_check;
+extern uint16_t             rdma_ud_max_retry_count;
+extern uint16_t             rdma_ud_progress_spin;
+extern uint16_t             rdma_ud_max_ack_pending;
+extern uint16_t             rdma_default_ud_mtu;
+extern uint16_t             rdma_ud_num_rndv_qps;
+extern uint32_t             rdma_ud_num_msg_limit;
+extern uint32_t             rdma_ud_vbuf_pool_size;
+extern uint32_t             rdma_ud_zcopy_threshold;
+extern uint32_t             rdma_ud_zcopy_rq_size;
+extern uint16_t             rdma_hybrid_max_rc_conn;
+extern uint16_t             rdma_hybrid_pending_rc_conn;
+#ifdef _MV2_UD_DROP_PACKET_RATE_
+extern uint32_t             ud_drop_packet_rate;
+#endif
+#endif /* _ENABLE_UD_ */
 
 extern int                  rdma_default_async_thread_stack_size;
 
@@ -162,6 +176,9 @@ extern int                  rdma_default_async_thread_stack_size;
 #define RDMA_DEFAULT_MAX_PORTS          (2)
 #define RDMA_DEFAULT_MAX_SEND_WQE       (64)
 #define RDMA_DEFAULT_MAX_RECV_WQE       (128)
+#define RDMA_DEFAULT_MAX_UD_SEND_WQE    (2048)
+#define RDMA_DEFAULT_MAX_UD_RECV_WQE    (4096)
+#define RDMA_UD_NUM_MSG_LIMIT           (4096)
 #define RDMA_READ_RESERVE               (10)
 #define RDMA_DEFAULT_MAX_SG_LIST        (1)
 #define RDMA_DEFAULT_PKEY_IX            (0)
@@ -196,6 +213,7 @@ extern int                  rdma_default_async_thread_stack_size;
 
 #define RDMA_NDREG_ENTRIES              (1100)
 #define RDMA_VBUF_POOL_SIZE             (2048)
+#define RDMA_UD_VBUF_POOL_SIZE          (8192)
 #define RDMA_MIN_VBUF_POOL_SIZE         (512)
 #define RDMA_VBUF_SECONDARY_POOL_SIZE   (256)
 #define RDMA_PREPOST_DEPTH              (64)
@@ -210,7 +228,6 @@ extern int                  rdma_default_async_thread_stack_size;
 
 /* Inline not supported for PPC */
 #define HOSTNAME_LEN                    (255)
-#define MAX_NUM_WIN                     (64)
 #define RDMA_MAX_REGISTERED_PAGES       (0)
 
 /* #define MIN(a,b) ((a)<(b)?(a):(b)) */

@@ -107,16 +107,17 @@ int MPIR_Comm_init(MPID_Comm *comm_p)
     comm_p->node_roots_comm = NULL;
     comm_p->intranode_table = NULL;
     comm_p->internode_table = NULL;
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     comm_p->ch.shmem_coll_ok = 0;
+    comm_p->ch.allgather_comm_ok = 0;
     comm_p->ch.is_global_block  = 0;
     /* We are yet to call create_2level_comm on this new intra-communicator
      * We should make sure that shared-mem collectives do not get used
      * with this communicator */ 
     comm_p->ch.leader_comm=MPI_COMM_NULL;
     comm_p->ch.shmem_comm=MPI_COMM_NULL;
-
-#endif /* defined(_OSU_MVAPICH_) */
+    comm_p->ch.allgather_comm=MPI_COMM_NULL;
+#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
     /* Fields not set include context_id, remote and local size, and
        kind, since different communicator construction routines need
@@ -208,11 +209,13 @@ int MPIR_Setup_intercomm_localcomm( MPID_Comm *intercomm_ptr )
     /* FIXME  : No local functions for the topology routines */
 
     intercomm_ptr->local_comm = localcomm_ptr;
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     localcomm_ptr->ch.shmem_coll_ok = 0;
     localcomm_ptr->ch.is_global_block  = 0;
+    localcomm_ptr->ch.allgather_comm_ok = 0;
     localcomm_ptr->ch.shmem_comm = MPI_COMM_NULL;
     localcomm_ptr->ch.leader_comm = MPI_COMM_NULL;
+    localcomm_ptr->ch.allgather_comm = MPI_COMM_NULL;
     MPID_Dev_comm_create_hook( localcomm_ptr );
 #endif
 
@@ -1161,7 +1164,7 @@ static int comm_delete(MPID_Comm * comm_ptr, int isDisconnect)
             MPIR_Group_release(comm_ptr->remote_group);
 
         /* free the intra/inter-node communicators, if they exist */
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
         if( comm_ptr->ch.shmem_coll_ok == 1) { 
              free_2level_comm(comm_ptr); 
         } 

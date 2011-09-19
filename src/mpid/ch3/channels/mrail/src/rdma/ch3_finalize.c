@@ -56,9 +56,7 @@ int MPIDI_CH3_Finalize()
     mpi_errno = MPIDI_CH3I_Progress_finalize();
     if(mpi_errno) MPIU_ERR_POP(mpi_errno);
 
-#if !defined(CKPT)
     if (!SMP_ONLY) 
-#endif 
     {
         /* allocate rmda memory and set up the queues */
         if (MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND) {

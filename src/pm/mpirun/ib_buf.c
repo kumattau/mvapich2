@@ -30,7 +30,6 @@
 
 #include <infiniband/verbs.h>
 
-#include "common.h"
 #include "ib_comm.h"
 // #include "ibutil.h"
 #include "debug.h"

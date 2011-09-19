@@ -21,3 +21,5 @@ htmldoc:
 
 mandoc:
 
+latexdoc:
+

@@ -50,7 +50,8 @@ int MPICM_Init_UD(uint32_t *ud_qpn);
 MPICM_Init_ud_struct
 Provide connect information to UD
 */
-int MPICM_Init_UD_struct(MPIDI_PG_t *, uint32_t *qpns, uint16_t *lids);
+int MPICM_Init_UD_struct(MPIDI_PG_t *, uint32_t *qpns, uint16_t *lids,
+                          union ibv_gid *gid);
 
 /*
 MPICM_Init_Local_UD_struct
@@ -92,6 +93,8 @@ int compute_xrc_hash (uint32_t v);
 void clear_xrc_hash (void);
 void add_vc_xrc_hash (MPIDI_VC_t *vc);
 void remove_vc_xrc_hash (MPIDI_VC_t *vc);
+int cm_send_xrc_cm_msg (MPIDI_VC_t *vc, MPIDI_VC_t *orig_vc);
+int cm_qp_reuse (MPIDI_VC_t *vc, MPIDI_VC_t *orig);
 
 #endif /* _ENABLE_XRC_ */
 

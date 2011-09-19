@@ -39,6 +39,7 @@
 #include "mpiutil.h"
 #include "ch3_hwloc_bind.h"
 #include "mv2_arch_hca_detect.h"
+#include "coll_shmem.h"
 
 #if defined(MAC_OSX)
 #include <netinet/in.h>
@@ -118,6 +119,10 @@ extern MPID_Request * create_request(void * hdr, MPIDI_msg_sz_t hdr_sz,
 
 extern int enable_shmem_collectives;
 extern struct MPIDI_CH3I_RDMA_Process_t MPIDI_CH3I_RDMA_Process;
+
+extern int MPIDI_Get_num_nodes();
+extern int rdma_set_smp_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc);
+extern void MPIDI_CH3I_SHMEM_COLL_Cleanup();
 
 #if defined(MAC_OSX) || defined(_PPC64_) 
 #if defined(__GNUC__)
@@ -785,12 +790,18 @@ void MPIDI_CH3I_set_smp_only()
     if (MPIDI_CH3I_Process.has_dpm) {
         return;
     }
+    
+    if ((value = getenv("MV2_USE_SHARED_MEM")) != NULL) {
+        rdma_use_smp = !!atoi(value);
+    }
+
+    if ((value = getenv("MV2_USE_BLOCKING")) != NULL) {
+        rdma_use_blocking = !!atoi(value);
+    }
 
     if (MPIDI_Get_num_nodes() == 1) {
-        if ((value = getenv("MV2_USE_SHARED_MEM")) != NULL) {
-            if(!atoi(value)) {
-                return;
-            }
+        if(!rdma_use_smp || rdma_use_blocking) {
+            return;
         }
         g_smpi.only_one_device = 1;
         SMP_ONLY = 1;
@@ -848,7 +859,6 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SMP_INIT);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SMP_INIT);
     int mpi_errno = MPI_SUCCESS;
-    int use_smp;
     unsigned int i, j, pool, pid, wait;
     int local_num, sh_size, pid_len, rq_len;
     struct stat file_status;
@@ -856,7 +866,6 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     int pagesize = getpagesize();
     char *value;
     struct shared_mem *shmem;
-    int blocking_val;
     SEND_BUF_T *send_buf = NULL;
 #if defined(SOLARIS)
     char *setdir="/tmp";
@@ -872,28 +881,20 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     /* Set SMP params based on architecture */
     rdma_set_smp_parameters(&MPIDI_CH3I_RDMA_Process);
 
-    if ((value = getenv("MV2_USE_BLOCKING")) != NULL) {
-        blocking_val = !!atoi(value);
-        if(blocking_val) {
-            /* blocking is enabled, so
-             * automatically disable
-             * shared memory */
-            return MPI_SUCCESS;
-        }
+    if(rdma_use_blocking) {
+        /* blocking is enabled, so
+         * automatically disable
+         * shared memory */
+        return MPI_SUCCESS;
     }
 
-    if ((value = getenv("MV2_USE_SHARED_MEM")) != NULL) {
-
-        use_smp= atoi(value);
-
-        if (!use_smp) {
+    if (!rdma_use_smp) {
 #if defined(HAVE_LIBHWLOC)
-            /* Shared Memory is turned off. We cannot do 
-             * any CPU Affinity in this case */ 
-            mv2_enable_affinity = 0;
+        /* Shared Memory is turned off. We cannot do 
+         * any CPU Affinity in this case */ 
+        mv2_enable_affinity = 0;
 #endif
-            return MPI_SUCCESS;
-        }
+        return MPI_SUCCESS;
     }
 
     if(MPIDI_CH3I_Process.has_dpm) {
@@ -918,15 +919,6 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 #endif
 
 #if defined(HAVE_LIBHWLOC)
-#if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
-    /* by default turn off affinity if THREAD_MULTIPLE
-       is requested
-    */
-    MPIU_THREAD_CHECK_BEGIN
-        mv2_enable_affinity = 0;
-    MPIU_THREAD_CHECK_END
-#endif /* (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE) */
-
     if ((value = getenv("MV2_ENABLE_AFFINITY")) != NULL) {
         mv2_enable_affinity = atoi(value);
     }
@@ -1180,7 +1172,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 
     if (enable_shmem_collectives) {
         /* Shared memory for collectives */
-        if ((mpi_errno = MPIDI_CH3I_SHMEM_COLL_init(pg)) != MPI_SUCCESS)
+        if ((mpi_errno = MPIDI_CH3I_SHMEM_COLL_init(pg, g_smpi.my_local_id)) != MPI_SUCCESS)
         {
             mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
                    FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", 
@@ -1427,7 +1419,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 
     if (enable_shmem_collectives) {
         /* Memory Mapping shared files for collectives*/
-        if ((mpi_errno = MPIDI_CH3I_SHMEM_COLL_Mmap()) != MPI_SUCCESS)
+        if ((mpi_errno = MPIDI_CH3I_SHMEM_COLL_Mmap(pg, g_smpi.my_local_id)) != MPI_SUCCESS)
         {
            mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
                  FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s", 
@@ -1550,7 +1542,6 @@ fn_exit:
 
 cleanup_files:
     MPIDI_CH3I_SMP_cleanup();
-cleanup_shmem_coll_file:
     if (enable_shmem_collectives){
         MPIDI_CH3I_SHMEM_COLL_Cleanup();
     }
@@ -1623,9 +1614,9 @@ int MPIDI_CH3I_SMP_finalize()
     MPIU_Free(s_sh_buf_pool.tail);
     }
 
-    if (enable_shmem_collectives){
+	if (enable_shmem_collectives){
     /* Freeing up shared memory collective resources*/
-    MPIDI_CH3I_SHMEM_COLL_finalize();
+    MPIDI_CH3I_SHMEM_COLL_finalize( g_smpi.my_local_id, g_smpi.num_local_nodes);
     }
 
 #if defined(HAVE_LIBHWLOC)
@@ -1819,8 +1810,10 @@ fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_WRITEV_RNDV_HEADER);
     return;
 
+#if defined(_SMP_LIMIC_)
 fn_fail:
     goto fn_exit;
+#endif /* _SMP_LIMIC_ */
 }
 
 #undef FUNCNAME
@@ -2205,7 +2198,6 @@ void MPIDI_CH3I_SMP_write_contig(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t reqtype,
     int pkt_len = 0;
     volatile void *ptr_volatile;
     void *ptr_head, *ptr;
-    int i, offset = 0;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SMP_WRITE_CONTIG);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SMP_WRITE_CONTIG);
 
@@ -3116,19 +3108,9 @@ static int smpi_exchange_info(MPIDI_PG_t *pg)
 {
     int mpi_errno = MPI_SUCCESS;
     int pg_rank, pg_size;
-    int hostid;
 
-    int *hostnames_j = NULL;
-    int *smpi_ptr = NULL;
     int i = 0;
     int j;
-
-    /** variables needed for PMI exchange **/
-    int key_max_sz;
-    int val_max_sz;
-
-    char rdmakey[512];
-    char rdmavalue[512];
 
     MPIDI_VC_t* vc = NULL;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SMPI_EXCHANGE_INFO);
@@ -3305,7 +3287,7 @@ void MPIDI_CH3I_SMP_send_limic_comp(struct limic_header *l_header,
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SMP_SEND_LIMIC_COMP);
 
     pkt.type = MPIDI_CH3_PKT_LIMIC_COMP;
-    pkt.send_req_id = l_header->send_req_id;
+    pkt.send_req_id = (MPI_Request *)l_header->send_req_id;
     pkt.nb = nb;
     
     /*make sure the complete message not sent between other unfinished message */

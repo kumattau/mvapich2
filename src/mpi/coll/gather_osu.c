@@ -32,12 +32,8 @@ static int MPIR_Gather_MV2_Direct (
     int comm_size, rank;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
-    void *tmp_buf=NULL;
-    MPI_Status status;
     MPI_Aint   extent=0;            /* Datatype extent */
     MPI_Comm comm;
-    int displs[2];
-    MPI_Aint struct_displs[2];
     int reqs=0, i=0;
     MPI_Request *reqarray;
     MPI_Status *starray;
@@ -59,7 +55,7 @@ static int MPIR_Gather_MV2_Direct (
         /* each node can make sure it is not going to overflow aint */
 
         MPID_Ensure_Aint_fits_in_pointer(MPI_VOID_PTR_CAST_TO_MPI_AINT 
-                                         recvbuf + displs[rank] * extent);
+                                         recvbuf + (extent*recvcnt*comm_size));
 
         MPIU_CHKLMEM_MALLOC(reqarray, MPI_Request *, 
                             comm_size * sizeof(MPI_Request), 
@@ -142,9 +138,12 @@ static int MPIR_Gather_MV2_Direct (
     return (mpi_errno);
 }
 
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include "coll_shmem.h" 
-
+#undef FUNCNAME
+#define FUNCNAME MPIR_Gather_MV2_two_level_Direct
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int MPIR_Gather_MV2_two_level_Direct(
         void *sendbuf,
         int sendcnt,
@@ -156,25 +155,23 @@ static int MPIR_Gather_MV2_two_level_Direct(
         MPID_Comm *comm_ptr, 
         int *errflag )
 {
-    static const char FCNAME[] = "MPIR_Gather_MV2_two_level_Direct";
     int comm_size, rank;
     int local_rank, local_size; 
-    int leader_comm_rank, leader_comm_size; 
+    int leader_comm_rank=-1, leader_comm_size=0; 
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
-    int recvtype_size, sendtype_size, nbytes; 
+    int recvtype_size=0, sendtype_size=0, nbytes; 
     void *tmp_buf=NULL;
     void *leader_gather_buf = NULL; 
     MPI_Status status;
     MPI_Aint  sendtype_extent=0, recvtype_extent=0;       /* Datatype extent */
     MPI_Aint  true_lb, sendtype_true_extent, recvtype_true_extent;
     MPI_Comm comm;
-    int i=0;
     MPIU_THREADPRIV_DECL;
     MPIU_THREADPRIV_GET;
     int leader_root, leader_of_root; 
     MPI_Comm shmem_comm, leader_comm; 
-    MPID_Comm *shmem_commptr, *leader_commptr; 
+    MPID_Comm *shmem_commptr, *leader_commptr=NULL; 
 
     comm = comm_ptr->handle;
     comm_size = comm_ptr->local_size;
@@ -264,8 +261,8 @@ static int MPIR_Gather_MV2_two_level_Direct(
      */ 
     if(comm_ptr->ch.is_uniform != 1) { 
           if(local_rank == 0) {
-                  int *displs;
-                  int *recvcnts;
+                  int *displs=NULL;
+                  int *recvcnts=NULL;
                   int *node_sizes; 
                   int i=0;
                   /* Node leaders have all the data. But, different nodes can have
@@ -414,16 +411,19 @@ static int MPIR_Gather_MV2_two_level_Direct(
           if(tmp_buf != NULL) {  
               MPIU_Free(tmp_buf); 
           } 
-          if(leader_comm_rank == 0) { 
+          if(leader_gather_buf != NULL) { 
                MPIU_Free(leader_gather_buf); 
           } 
     }  
 
     return (mpi_errno);
 }
-#endif /* #if defined(_OSU_MVAPICH_) */ 
+#endif /* #if defined(_OSU_MVAPICH_)  || defined(_OSU_PSM_) */ 
 
-
+#undef FUNCNAME
+#define FUNCNAME MPIR_Gather_MV2
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIR_Gather_MV2(
         void *sendbuf,
         int sendcnt,
@@ -435,7 +435,6 @@ int MPIR_Gather_MV2(
         MPID_Comm *comm_ptr,
         int *errflag )
 {
-    static const char FCNAME[] = "MPIR_Gather_MV2";
     int mpi_errno = MPI_SUCCESS;
     int range = 0;
     int rank, nbytes, comm_size; 
@@ -455,14 +454,14 @@ int MPIR_Gather_MV2(
          nbytes = sendcnt*sendtype_size;
      }
 
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     while((range < size_gather_tuning_table) && 
           (comm_size > gather_tuning_table[range].numproc)){
         range++;
     }
     
     if(comm_ptr->ch.is_global_block == 1 && use_direct_gather == 1 &&
-            use_two_level_gather == 1  && comm_ptr->ch.shmem_coll_ok == 1) { 
+            use_two_level_gather == 1  && comm_ptr->ch.shmem_coll_ok == 1) {
             if(comm_size < gather_direct_system_size_small) {
                  /* Small system sizes : 
                     Small messages : Two-level-direct gather
@@ -512,7 +511,7 @@ int MPIR_Gather_MV2(
             mpi_errno = MPIR_Gather( sendbuf, sendcnt, sendtype, 
                                        recvbuf, recvcnt, recvtype, 
                                        root, comm_ptr, errflag);  
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     } 
 #endif /* #if defined(_OSU_MVAPICH_) */ 
     if (mpi_errno) { 

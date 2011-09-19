@@ -68,8 +68,5 @@ doc readme:
 endif HWLOC_BUILD_STANDALONE
 
 mandoc:
-
 htmldoc:
-
 latexdoc:
-

@@ -17,13 +17,9 @@
 
 #ifdef CKPT
 
-#ifdef CR_FTB
-#include "ftb_helper.h"
-#endif
+#include "common_ckpt.h"
 
 #define CR_RESTART_CMD      "cr_restart"
-#define CR_MAX_FILENAME     128
-#define DEFAULT_CHECKPOINT_FILENAME "/tmp/ckpt"
 
 // Used in mpispawn.c TODO: try remove these dependencies
 extern char *sessionid;
@@ -56,11 +52,6 @@ extern pthread_t CR_wfe_tid;
 
 void *CR_wait_for_errors(void *);
 #else                           /* ! CR_FTB */
-
-extern char *CR_MPDU_getval(const char *, char *, int);
-extern int CR_MPDU_parse_keyvals(char *);
-extern int CR_MPDU_readline(int, char *, int);
-extern int CR_MPDU_writeline(int, char *);
 
 #endif                          /* CR_FTB */
 

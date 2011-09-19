@@ -37,7 +37,6 @@
 //#include "ib_server.h"
 //#include "ib_client.h"
 
-#include "common.h"
 #include "ib_comm.h"
 #include "openhash.h"
 #include "ckpt_file.h"

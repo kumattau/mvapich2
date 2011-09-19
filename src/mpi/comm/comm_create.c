@@ -545,14 +545,14 @@ Output Parameter:
 .seealso: MPI_Comm_free
 @*/
 
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 int split_comm = 1;
 extern int enable_shmem_collectives;
 extern int check_split_comm(pthread_t);
 extern int disable_split_comm(pthread_t);
 extern int create_2level_comm (MPI_Comm, int, int);
 extern int enable_split_comm(pthread_t);
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
 int MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm)
 {
@@ -618,7 +618,7 @@ int MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm)
     }
     /* ... end of body of routine ... */
 
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     if (enable_shmem_collectives){
         if (check_split_comm(pthread_self())){
             if ((*newcomm != MPI_COMM_NULL)){
@@ -642,7 +642,7 @@ int MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm)
             }
         }
     }
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
   fn_exit:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPI_COMM_CREATE);

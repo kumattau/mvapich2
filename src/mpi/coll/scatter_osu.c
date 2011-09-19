@@ -17,9 +17,9 @@
 
 #include "mpiimpl.h"
 
-#if defined(_OSU_MVAPICH_) 
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include "coll_shmem.h" 
-#endif /* #if defined(_OSU_MVAPICH_) */
+#endif /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
 /* This is the default implementation of scatter. The algorithm is:
    
@@ -45,593 +45,11 @@
 /* begin:nested */
 /* not declared static because a machine-specific function may call this one in some cases */
 
-int MPIR_Scatter_MV2_Direct (
-        void *sendbuf,  
-        int sendcnt, 
-        MPI_Datatype sendtype, 
-        void *recvbuf, 
-        int recvcnt, 
-        MPI_Datatype recvtype, 
-        int root,
-        MPID_Comm *comm_ptr, 
-        int *errflag )
-{
 
-    static const char FCNAME[] = "MPIR_Scatter_MV2_Direct";
-    int rank, comm_size;
-    int mpi_errno = MPI_SUCCESS;
-    int mpi_errno_ret = MPI_SUCCESS;
-    MPI_Comm comm;
-    MPI_Aint sendtype_extent, recvtype_extent;
-    int i, reqs;
-    MPI_Request *reqarray;
-    MPI_Status *starray;
-    MPIU_CHKLMEM_DECL(2);
-
-    comm = comm_ptr->handle;
-    rank = comm_ptr->rank;
-    
-    /* check if multiple threads are calling this collective function */
-    MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
-    
-    /* If I'm the root, then scatter */
-    if (((comm_ptr->comm_kind == MPID_INTRACOMM) && (root == rank)) ||
-        ((comm_ptr->comm_kind == MPID_INTERCOMM) && (root == MPI_ROOT))) {
-        if (comm_ptr->comm_kind == MPID_INTRACOMM)
-            comm_size = comm_ptr->local_size;
-        else
-            comm_size = comm_ptr->remote_size;
-
-        MPID_Datatype_get_extent_macro(sendtype, sendtype_extent);
-        MPID_Datatype_get_extent_macro(recvtype, recvtype_extent);
-        /* We need a check to ensure extent will fit in a
-         * pointer. That needs extent * (max count) but we can't get
-         * that without looping over the input data. This is at least
-         * a minimal sanity check. Maybe add a global var since we do
-         * loop over sendcount[] in MPI_Scatterv before calling
-         * this? */
-        MPID_Ensure_Aint_fits_in_pointer(MPI_VOID_PTR_CAST_TO_MPI_AINT sendbuf + sendtype_extent);  
-
-        MPIU_CHKLMEM_MALLOC(reqarray, MPI_Request *, comm_size * sizeof(MPI_Request), 
-                            mpi_errno, "reqarray");
-        MPIU_CHKLMEM_MALLOC(starray, MPI_Status *, comm_size * sizeof(MPI_Status), 
-                            mpi_errno, "starray");
-
-        reqs = 0;
-        for (i = 0; i < comm_size; i++) {
-            if (sendcnt) {
-                if ((comm_ptr->comm_kind == MPID_INTRACOMM) && (i == rank)) {
-                    if (recvbuf != MPI_IN_PLACE) {
-                        mpi_errno = MPIR_Localcopy(((char *)sendbuf+rank*sendcnt*sendtype_extent), 
-                                                   sendcnt, sendtype, 
-                                                   recvbuf, recvcnt, recvtype);
-                    }
-                }
-                else {
-                    mpi_errno = MPIC_Isend_ft(((char *)sendbuf+i*sendcnt*sendtype_extent), 
-                                           sendcnt, sendtype, i,
-                                           MPIR_SCATTER_TAG, comm, &reqarray[reqs++], errflag);
-                }
-                if (mpi_errno) {
-                        /* for communication errors, just record the error but continue */
-                        *errflag = TRUE;
-                        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
-                }
-            }
-        }
-        /* ... then wait for *all* of them to finish: */
-        mpi_errno = MPIC_Waitall_ft(reqs, reqarray, starray, errflag);
-        /* --BEGIN ERROR HANDLING-- */
-        if (mpi_errno == MPI_ERR_IN_STATUS) {
-            for (i = 0; i < reqs; i++) { 
-                if (starray[i].MPI_ERROR != MPI_SUCCESS)
-                    mpi_errno = starray[i].MPI_ERROR;
-                    if (mpi_errno) {
-                        /* for communication errors, just record the error but continue */
-                        *errflag = TRUE;
-                        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
-                    }
-
-            }
-        }
-        /* --END ERROR HANDLING-- */
-    }
-
-    else if (root != MPI_PROC_NULL) { /* non-root nodes, and in the intercomm. case, non-root nodes on remote side */
-        if (recvcnt) {
-            mpi_errno = MPIC_Recv_ft(recvbuf,recvcnt,recvtype,root,
-                                  MPIR_SCATTER_TAG,comm,MPI_STATUS_IGNORE, errflag);
-            if (mpi_errno) {
-                        /* for communication errors, just record the error but continue */
-                        *errflag = TRUE;
-                        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
-             }
-        }
-    }
-
-    /* check if multiple threads are calling this collective function */
-    MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
-
-fn_exit:
-    MPIU_CHKLMEM_FREEALL();
-    return mpi_errno;
-fn_fail:
-    goto fn_exit;
-}
-
-
-#if defined(_OSU_MVAPICH_) 
-int MPIR_Scatter_MV2_two_level_Binomial (
-        void *sendbuf,
-        int sendcnt,
-        MPI_Datatype sendtype,
-        void *recvbuf,
-        int recvcnt,
-        MPI_Datatype recvtype,
-        int root,
-        MPID_Comm *comm_ptr,  
-        int *errflag )
-{
-    static const char FCNAME[] = "MPIR_Scatter_MV2_two_level_Binomial";
-    int comm_size, rank;
-    int local_rank, local_size;
-    int leader_comm_rank, leader_comm_size;
-    int mpi_errno = MPI_SUCCESS;
-    int mpi_errno_ret = MPI_SUCCESS;
-    int recvtype_size, sendtype_size, nbytes;
-    void *tmp_buf=NULL;
-    void *tmp_send_buf=NULL;
-    void *leader_scatter_buf = NULL;
-    MPI_Status status;
-    MPI_Aint   sendtype_extent=0, recvtype_extent=0;       /* Datatype extent */
-    MPI_Comm comm;
-    int i=0;
-    MPIU_THREADPRIV_DECL;
-    MPIU_THREADPRIV_GET;
-    int leader_root, leader_of_root;
-    MPI_Comm shmem_comm, leader_comm;
-    MPID_Comm *shmem_commptr, *leader_commptr;
-
-    comm = comm_ptr->handle;
-    comm_size = comm_ptr->local_size;
-    rank = comm_ptr->rank;
-
-     MPID_Datatype_get_extent_macro(recvtype, recvtype_extent);
-     MPID_Datatype_get_extent_macro(sendtype, sendtype_extent);
-     if ( ((rank == root) && (recvcnt == 0)) ||
-         ((rank != root) && (sendcnt == 0)) ) {
-        return MPI_SUCCESS;
-    }
-    /* check if multiple threads are calling this collective function */
-    MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
-    /* extract the rank,size information for the intra-node
-     * communicator */
-    shmem_comm = comm_ptr->ch.shmem_comm;
-    mpi_errno = PMPI_Comm_rank(shmem_comm, &local_rank);
-    if(mpi_errno) {
-            MPIU_ERR_POP(mpi_errno);
-    }
-    mpi_errno = PMPI_Comm_size(shmem_comm, &local_size);
-    if(mpi_errno) {
-            MPIU_ERR_POP(mpi_errno);
-    }
-    MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
-
-    if(local_rank == 0) {
-         /* Node leader. Extract the rank, size information for the leader
-          * communicator */
-            leader_comm = comm_ptr->ch.leader_comm;
-            mpi_errno = PMPI_Comm_rank(leader_comm, &leader_comm_rank);
-            if(mpi_errno) {
-                    MPIU_ERR_POP(mpi_errno);
-            }
-            mpi_errno = PMPI_Comm_size(leader_comm, &leader_comm_size);
-            if(mpi_errno) {
-                    MPIU_ERR_POP(mpi_errno);
-            }
-            MPID_Comm_get_ptr(leader_comm, leader_commptr);
-     }
-
-     if(local_size == comm_size) {
-           /* purely intra-node scatter. Just use the direct algorithm and we are done */
-           mpi_errno = MPIR_Scatter_MV2_Direct(sendbuf, sendcnt, sendtype,
-                                          recvbuf, recvcnt, recvtype,
-                                          root, comm_ptr, errflag);
-           if (mpi_errno) {
-                   /* for communication errors, just record the error but continue */
-                    *errflag = TRUE;
-                    MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                    MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
-           }
-     } else { 
-	     MPID_Datatype_get_size_macro(recvtype, recvtype_size);
-	     MPID_Datatype_get_size_macro(sendtype, sendtype_size);
-
-	     if(rank == root ) {
-		 nbytes = sendcnt*sendtype_size;
-	     } else {
-		 nbytes = recvcnt*recvtype_size;
-	     }
-
-	     if(local_rank == 0 ) {
-		    /* Node leader, allocate tmp_buffer */
-		 tmp_buf = MPIU_Malloc(nbytes*local_size);
-	     }
-
-	     leader_of_root = comm_ptr->ch.leader_map[root];
-	     /* leader_of_root is the global rank of the leader of the root */
-	     leader_root = comm_ptr->ch.leader_rank[leader_of_root];
-	     /* leader_root is the rank of the leader of the root in leader_comm.
-	      * leader_root is to be used as the root of the inter-leader gather ops
-	      */
-	     
-	     if ((local_rank == 0) && (root != rank)
-		   && (leader_of_root == rank)) {
-		  /* The root of the scatter operation is not the node leader. Recv
-		  * data from the node leader */
-		   leader_scatter_buf = MPIU_Malloc(nbytes*comm_size); 
-		   mpi_errno  = MPIC_Recv_ft( leader_scatter_buf, nbytes*comm_size, MPI_BYTE,
-						root, MPIR_SCATTER_TAG, comm, &status, errflag );
-                    if (mpi_errno) {
-                        /* for communication errors, just record the error but continue */
-                        *errflag = TRUE;
-                        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
-                    }
-	     }
-
-	     if(rank == root  && local_rank != 0) {
-		 /* The root of the scatter operation is not the node leader. Send
-		  * data to the node leader */
-		  mpi_errno = MPIC_Send_ft(sendbuf, sendcnt*comm_size, sendtype,
-						leader_of_root, MPIR_SCATTER_TAG, comm, errflag);
-                  if (mpi_errno) {
-                        /* for communication errors, just record the error but continue */
-                        *errflag = TRUE;
-                        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
-                  }
-	     }
-
-	     if(leader_comm_size > 1 && local_rank  == 0) { 
-		 if(comm_ptr->ch.is_uniform != 1) {
-			  int *displs=NULL;
-			  int *sendcnts=NULL;
-			  int *node_sizes;
-			  int i=0;
-			  node_sizes = comm_ptr->ch.node_sizes;
-			
-			  if (root != leader_of_root) {
-				  if(leader_comm_rank == leader_root) { 
-					  displs = MPIU_Malloc(sizeof(int)*leader_comm_size);
-					  sendcnts = MPIU_Malloc(sizeof(int)*leader_comm_size);
-					  sendcnts[0] = node_sizes[0]*nbytes;
-					  displs[0] = 0;
-
-					  for(i=1; i< leader_comm_size ; i++) {
-						displs[i] = displs[i-1] + node_sizes[i-1]*nbytes;
-						sendcnts[i] = node_sizes[i]*nbytes;
-					  }
-				  } 
-				  mpi_errno = MPIR_Scatterv(leader_scatter_buf, sendcnts, displs, 
-					  MPI_BYTE, tmp_buf, nbytes*local_size, MPI_BYTE,
-					  leader_root, leader_commptr, errflag);
-			  } else { 
-				  if(leader_comm_rank == leader_root) { 
-					  displs = MPIU_Malloc(sizeof(int)*leader_comm_size);
-					  sendcnts = MPIU_Malloc(sizeof(int)*leader_comm_size);
-					  sendcnts[0] = node_sizes[0]*sendcnt;
-					  displs[0] = 0;
-
-					  for(i=1; i< leader_comm_size ; i++) {
-						displs[i] = displs[i-1] + node_sizes[i-1]*sendcnt;
-						sendcnts[i] = node_sizes[i]*sendcnt;
-					  }
-				  } 
-				  mpi_errno = MPIR_Scatterv(sendbuf, sendcnts, displs, 
-					  sendtype, tmp_buf, nbytes*local_size, MPI_BYTE,
-					  leader_root, leader_commptr, errflag);
-			  } 
-                          if (mpi_errno) {
-                               /* for communication errors, just record the error but continue */
-                               *errflag = TRUE;
-                               MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                               MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
-                          }
-			  if(leader_comm_rank == leader_root) {
-			      MPIU_Free(displs);
-			      MPIU_Free(sendcnts);
-			  }
-		 } else {
-			  if (leader_of_root != root) {
-				mpi_errno = MPIR_Scatter_MV2_Binomial(leader_scatter_buf, nbytes*local_size, 
-						  MPI_BYTE,tmp_buf, nbytes*local_size, MPI_BYTE,
-						  leader_root, leader_commptr, errflag);
-			  } else { 
-				mpi_errno = MPIR_Scatter_MV2_Binomial(sendbuf, sendcnt*local_size, 
-						  sendtype, tmp_buf, nbytes*local_size, MPI_BYTE,
-						  leader_root, leader_commptr, errflag);
-
-			  }
-                          if (mpi_errno) {
-                               /* for communication errors, just record the error but continue */
-                               *errflag = TRUE;
-                               MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                               MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
-                          }
-		  } 
-	     } 
-	     /* The leaders are now done with the inter-leader part. Scatter the data within the nodes */ 
-		
-	     if(rank == root && recvbuf == MPI_IN_PLACE) { 
-		  mpi_errno = MPIR_Scatter_MV2_Direct(tmp_buf, nbytes, MPI_BYTE,
-						sendbuf, sendcnt, sendtype,
-						0, shmem_commptr, errflag);
-	     } else { 
-		  mpi_errno = MPIR_Scatter_MV2_Direct(tmp_buf, nbytes, MPI_BYTE,
-						recvbuf, recvcnt, recvtype,
-						0, shmem_commptr, errflag);
-	     } 
-  	     if (mpi_errno) {
-	        /* for communication errors, just record the error but continue */
-	        *errflag = TRUE;
-	        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-	        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
-   	     }
-
-	     if(mpi_errno) {
-		 MPIU_ERR_POP(mpi_errno);
-	     }
-     }     
- 
- fn_fail:
-    /* check if multiple threads are calling this collective function */
-    if(comm_size != local_size && local_rank == 0) {
-          MPIU_Free(tmp_buf);
-          if(leader_of_root == rank && root != rank) {
-               MPIU_Free(leader_scatter_buf);
-          }
-    }
-    MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
-
-    return (mpi_errno);
-}
-
-
-
-int MPIR_Scatter_MV2_two_level_Direct (
-        void *sendbuf,
-        int sendcnt,
-        MPI_Datatype sendtype,
-        void *recvbuf,
-        int recvcnt,
-        MPI_Datatype recvtype,
-        int root,
-        MPID_Comm *comm_ptr, 
-        int *errflag )
-{
-    static const char FCNAME[] = "MPIR_Scatter_MV2_two_level_Direct";
-    int comm_size, rank;
-    int local_rank, local_size;
-    int leader_comm_rank, leader_comm_size;
-    int mpi_errno = MPI_SUCCESS;
-    int mpi_errno_ret = MPI_SUCCESS;
-    int recvtype_size, sendtype_size, nbytes;
-    void *tmp_buf=NULL;
-    void *tmp_send_buf=NULL;
-    void *leader_scatter_buf = NULL;
-    MPI_Status status;
-    MPI_Aint   sendtype_extent=0, recvtype_extent=0;       /* Datatype extent */
-    MPI_Comm comm;
-    int i=0;
-    MPIU_THREADPRIV_DECL;
-    MPIU_THREADPRIV_GET;
-    int leader_root, leader_of_root;
-    MPI_Comm shmem_comm, leader_comm;
-    MPID_Comm *shmem_commptr, *leader_commptr;
-
-    comm = comm_ptr->handle;
-    comm_size = comm_ptr->local_size;
-    rank = comm_ptr->rank;
-
-     MPID_Datatype_get_extent_macro(recvtype, recvtype_extent);
-     MPID_Datatype_get_extent_macro(sendtype, sendtype_extent);
-     if ( ((rank == root) && (recvcnt == 0)) ||
-         ((rank != root) && (sendcnt == 0)) ) {
-        return MPI_SUCCESS;
-    }
-    /* check if multiple threads are calling this collective function */
-    MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
-    /* extract the rank,size information for the intra-node
-     * communicator */
-    shmem_comm = comm_ptr->ch.shmem_comm;
-    mpi_errno = PMPI_Comm_rank(shmem_comm, &local_rank);
-    if(mpi_errno) {
-            MPIU_ERR_POP(mpi_errno);
-    }
-    mpi_errno = PMPI_Comm_size(shmem_comm, &local_size);
-    if(mpi_errno) {
-            MPIU_ERR_POP(mpi_errno);
-    }
-    MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
-
-    if(local_rank == 0) {
-         /* Node leader. Extract the rank, size information for the leader
-          * communicator */
-            leader_comm = comm_ptr->ch.leader_comm;
-            mpi_errno = PMPI_Comm_rank(leader_comm, &leader_comm_rank);
-            if(mpi_errno) {
-                    MPIU_ERR_POP(mpi_errno);
-            }
-            mpi_errno = PMPI_Comm_size(leader_comm, &leader_comm_size);
-            if(mpi_errno) {
-                    MPIU_ERR_POP(mpi_errno);
-            }
-            MPID_Comm_get_ptr(leader_comm, leader_commptr);
-     }
-
-    if(local_size == comm_size) { 
-           /* purely intra-node scatter. Just use the direct algorithm and we are done */ 
-           mpi_errno = MPIR_Scatter_MV2_Direct(sendbuf, sendcnt, sendtype,    
-                                          recvbuf, recvcnt, recvtype,
-                                          root, comm_ptr, errflag);
-           if(mpi_errno) {
-               MPIU_ERR_POP(mpi_errno);
-            }
-    } else { 
-	     MPID_Datatype_get_size_macro(recvtype, recvtype_size);
-	     MPID_Datatype_get_size_macro(sendtype, sendtype_size);
-
-	     if(rank == root ) {
-		 nbytes = sendcnt*sendtype_size;
-	     } else {
-		 nbytes = recvcnt*recvtype_size;
-	     }
-
-	     if(local_rank == 0 ) {
-		    /* Node leader, allocate tmp_buffer */
-		 tmp_buf = MPIU_Malloc(nbytes*local_size);
-	     }
-
-	     leader_of_root = comm_ptr->ch.leader_map[root];
-	     /* leader_of_root is the global rank of the leader of the root */
-	     leader_root = comm_ptr->ch.leader_rank[leader_of_root];
-	     /* leader_root is the rank of the leader of the root in leader_comm.
-	      * leader_root is to be used as the root of the inter-leader gather ops
-	      */
-	     
-	     if ((local_rank == 0) && (root != rank)
-		   && (leader_of_root == rank)) {
-		  /* The root of the scatter operation is not the node leader. Recv
-		  * data from the node leader */
-		   leader_scatter_buf = MPIU_Malloc(nbytes*comm_size); 
-		   mpi_errno  = MPIC_Recv_ft( leader_scatter_buf, nbytes*comm_size, MPI_BYTE,
-						root, MPIR_SCATTER_TAG, comm, &status, errflag );
-                   if (mpi_errno) {
-                        /* for communication errors, just record the error but continue */
-                        *errflag = TRUE;
-                        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
-                    }
-	     }
-
-	     if(rank == root  && local_rank != 0) {
-		 /* The root of the scatter operation is not the node leader. Send
-		  * data to the node leader */
-		  mpi_errno = MPIC_Send_ft(sendbuf, sendcnt*comm_size, sendtype,
-						leader_of_root, MPIR_SCATTER_TAG, comm, errflag);
-                  if (mpi_errno) {
-                        /* for communication errors, just record the error but continue */
-                        *errflag = TRUE;
-                        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
-                  }
-	     }
-
-	     if(leader_comm_size > 1 && local_rank  == 0) { 
-		 if(comm_ptr->ch.is_uniform != 1) {
-			  int *displs=NULL;
-			  int *sendcnts=NULL;
-			  int *node_sizes;
-			  int i=0;
-			  node_sizes = comm_ptr->ch.node_sizes;
-			
-			  if (root != leader_of_root) {
-				  if(leader_comm_rank == leader_root) { 
-					  displs = MPIU_Malloc(sizeof(int)*leader_comm_size);
-					  sendcnts = MPIU_Malloc(sizeof(int)*leader_comm_size);
-					  sendcnts[0] = node_sizes[0]*nbytes;
-					  displs[0] = 0;
-
-					  for(i=1; i< leader_comm_size ; i++) {
-						displs[i] = displs[i-1] + node_sizes[i-1]*nbytes;
-						sendcnts[i] = node_sizes[i]*nbytes;
-					  }
-				  } 
-				  mpi_errno = MPIR_Scatterv(leader_scatter_buf, sendcnts, displs, 
-					  MPI_BYTE, tmp_buf, nbytes*local_size, MPI_BYTE,
-					  leader_root, leader_commptr, errflag);
-			  } else { 
-				  if(leader_comm_rank == leader_root) { 
-					  displs = MPIU_Malloc(sizeof(int)*leader_comm_size);
-					  sendcnts = MPIU_Malloc(sizeof(int)*leader_comm_size);
-					  sendcnts[0] = node_sizes[0]*sendcnt;
-					  displs[0] = 0;
-
-					  for(i=1; i< leader_comm_size ; i++) {
-						displs[i] = displs[i-1] + node_sizes[i-1]*sendcnt;
-						sendcnts[i] = node_sizes[i]*sendcnt;
-					  }
-				  } 
-				  mpi_errno = MPIR_Scatterv(sendbuf, sendcnts, displs, 
-					  sendtype, tmp_buf, nbytes*local_size, MPI_BYTE,
-					  leader_root, leader_commptr, errflag);
-			  } 
- 		          if (mpi_errno) {
-				/* for communication errors, just record the error but continue */
-				*errflag = TRUE;
-				MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-				MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
-			  }
-			  if(leader_comm_rank == leader_root) {
-			      MPIU_Free(displs);
-			      MPIU_Free(sendcnts);
-			  }
-		 } else {
-			  if (leader_of_root != root) {
-				mpi_errno = MPIR_Scatter_MV2_Direct(leader_scatter_buf, nbytes*local_size, 
-						  MPI_BYTE,tmp_buf, nbytes*local_size, MPI_BYTE,
-						  leader_root, leader_commptr, errflag);
-			  } else { 
-				mpi_errno = MPIR_Scatter_MV2_Direct(sendbuf, sendcnt*local_size, 
-						  sendtype, tmp_buf, nbytes*local_size, MPI_BYTE,
-						  leader_root, leader_commptr, errflag);
-
-			  }
-			  if (mpi_errno) {
-				/* for communication errors, just record the error but continue */
-				*errflag = TRUE;
-				MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-				MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
-			  }
-		  } 
-	     } 
-	     /* The leaders are now done with the inter-leader part. Scatter the data within the nodes */ 
-		
-	     if(rank == root && recvbuf == MPI_IN_PLACE) { 
-		  mpi_errno = MPIR_Scatter_MV2_Direct(tmp_buf, nbytes, MPI_BYTE,
-						sendbuf, sendcnt, sendtype,
-						0, shmem_commptr, errflag);
-	     } else { 
-		  mpi_errno = MPIR_Scatter_MV2_Direct(tmp_buf, nbytes, MPI_BYTE,
-						recvbuf, recvcnt, recvtype,
-						0, shmem_commptr, errflag);
-	     } 
-             if (mpi_errno) {
-                        /* for communication errors, just record the error but continue */
-                        *errflag = TRUE;
-                        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
-              }
-     } 
-
- fn_fail:
-    /* check if multiple threads are calling this collective function */
-    if(comm_size != local_size && local_rank == 0) {
-          MPIU_Free(tmp_buf);
-          if(leader_of_root == rank && root != rank) {
-               MPIU_Free(leader_scatter_buf);
-          }
-    }
-    MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
-
-    return (mpi_errno);
-}
-#endif /* #if defined(_OSU_MVAPICH_) */
-
+#undef FUNCNAME
+#define FUNCNAME MPIR_Scatter_MV2_Binomial
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIR_Scatter_MV2_Binomial ( 
 	void *sendbuf, 
 	int sendcnt, 
@@ -643,12 +61,14 @@ int MPIR_Scatter_MV2_Binomial (
 	MPID_Comm *comm_ptr, 
         int *errflag )
 {
-    static const char FCNAME[] = "MPIR_Scatter_MV2_Binomial";
     MPI_Status status;
     MPI_Aint   extent=0;
     int rank, comm_size, is_homogeneous, sendtype_size;
     int curr_cnt, relative_rank, nbytes, send_subtree_cnt;
-    int mask, recvtype_size=0, src, dst, position;
+    int mask, recvtype_size=0, src, dst;
+#ifdef MPID_HAS_HETERO
+    int position;
+#endif /* MPID_HAS_HETERO */
     int tmp_buf_size = 0;
     void *tmp_buf=NULL;
     int mpi_errno = MPI_SUCCESS;
@@ -724,8 +144,6 @@ int MPIR_Scatter_MV2_Binomial (
                     return mpi_errno;
                 }
 		/* --END ERROR HANDLING-- */
-
-                position = 0;
 
                 if (recvbuf != MPI_IN_PLACE) { 
                     mpi_errno = MPIR_Localcopy(((char *) sendbuf + extent*sendcnt*rank),
@@ -1006,8 +424,597 @@ int MPIR_Scatter_MV2_Binomial (
     
     return (mpi_errno);
 }
-/* end:nested */
 
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#undef FUNCNAME
+#define FUNCNAME MPIR_Scatter_MV2_Direct
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPIR_Scatter_MV2_Direct (
+        void *sendbuf,  
+        int sendcnt, 
+        MPI_Datatype sendtype, 
+        void *recvbuf, 
+        int recvcnt, 
+        MPI_Datatype recvtype, 
+        int root,
+        MPID_Comm *comm_ptr, 
+        int *errflag )
+{
+
+    int rank, comm_size;
+    int mpi_errno = MPI_SUCCESS;
+    int mpi_errno_ret = MPI_SUCCESS;
+    MPI_Comm comm;
+    MPI_Aint sendtype_extent;
+    int i, reqs;
+    MPI_Request *reqarray;
+    MPI_Status *starray;
+    MPIU_CHKLMEM_DECL(2);
+
+    comm = comm_ptr->handle;
+    rank = comm_ptr->rank;
+    
+    /* check if multiple threads are calling this collective function */
+    MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
+    
+    /* If I'm the root, then scatter */
+    if (((comm_ptr->comm_kind == MPID_INTRACOMM) && (root == rank)) ||
+        ((comm_ptr->comm_kind == MPID_INTERCOMM) && (root == MPI_ROOT))) {
+        if (comm_ptr->comm_kind == MPID_INTRACOMM)
+            comm_size = comm_ptr->local_size;
+        else
+            comm_size = comm_ptr->remote_size;
+
+        MPID_Datatype_get_extent_macro(sendtype, sendtype_extent);
+        /* We need a check to ensure extent will fit in a
+         * pointer. That needs extent * (max count) but we can't get
+         * that without looping over the input data. This is at least
+         * a minimal sanity check. Maybe add a global var since we do
+         * loop over sendcount[] in MPI_Scatterv before calling
+         * this? */
+        MPID_Ensure_Aint_fits_in_pointer(MPI_VOID_PTR_CAST_TO_MPI_AINT sendbuf + sendtype_extent);  
+
+        MPIU_CHKLMEM_MALLOC(reqarray, MPI_Request *, comm_size * sizeof(MPI_Request), 
+                            mpi_errno, "reqarray");
+        MPIU_CHKLMEM_MALLOC(starray, MPI_Status *, comm_size * sizeof(MPI_Status), 
+                            mpi_errno, "starray");
+
+        reqs = 0;
+        for (i = 0; i < comm_size; i++) {
+            if (sendcnt) {
+                if ((comm_ptr->comm_kind == MPID_INTRACOMM) && (i == rank)) {
+                    if (recvbuf != MPI_IN_PLACE) {
+                        mpi_errno = MPIR_Localcopy(((char *)sendbuf+rank*sendcnt*sendtype_extent), 
+                                                   sendcnt, sendtype, 
+                                                   recvbuf, recvcnt, recvtype);
+                    }
+                }
+                else {
+                    mpi_errno = MPIC_Isend_ft(((char *)sendbuf+i*sendcnt*sendtype_extent), 
+                                           sendcnt, sendtype, i,
+                                           MPIR_SCATTER_TAG, comm, &reqarray[reqs++], errflag);
+                }
+                if (mpi_errno) {
+                        /* for communication errors, just record the error but continue */
+                        *errflag = TRUE;
+                        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                }
+            }
+        }
+        /* ... then wait for *all* of them to finish: */
+        mpi_errno = MPIC_Waitall_ft(reqs, reqarray, starray, errflag);
+        /* --BEGIN ERROR HANDLING-- */
+        if (mpi_errno == MPI_ERR_IN_STATUS) {
+            for (i = 0; i < reqs; i++) { 
+                if (starray[i].MPI_ERROR != MPI_SUCCESS)
+                    mpi_errno = starray[i].MPI_ERROR;
+                    if (mpi_errno) {
+                        /* for communication errors, just record the error but continue */
+                        *errflag = TRUE;
+                        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                    }
+
+            }
+        }
+        /* --END ERROR HANDLING-- */
+    }
+
+    else if (root != MPI_PROC_NULL) { /* non-root nodes, and in the intercomm. case, non-root nodes on remote side */
+        if (recvcnt) {
+            mpi_errno = MPIC_Recv_ft(recvbuf,recvcnt,recvtype,root,
+                                  MPIR_SCATTER_TAG,comm,MPI_STATUS_IGNORE, errflag);
+            if (mpi_errno) {
+                        /* for communication errors, just record the error but continue */
+                        *errflag = TRUE;
+                        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+             }
+        }
+    }
+
+    /* check if multiple threads are calling this collective function */
+    MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
+
+fn_exit:
+    MPIU_CHKLMEM_FREEALL();
+    return mpi_errno;
+fn_fail:
+    goto fn_exit;
+}
+
+#undef FUNCNAME
+#define FUNCNAME MPIR_Scatter_MV2_two_level_Binomial
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPIR_Scatter_MV2_two_level_Binomial (
+        void *sendbuf,
+        int sendcnt,
+        MPI_Datatype sendtype,
+        void *recvbuf,
+        int recvcnt,
+        MPI_Datatype recvtype,
+        int root,
+        MPID_Comm *comm_ptr,  
+        int *errflag )
+{
+    int comm_size, rank;
+    int local_rank, local_size;
+    int leader_comm_rank, leader_comm_size;
+    int mpi_errno = MPI_SUCCESS;
+    int mpi_errno_ret = MPI_SUCCESS;
+    int recvtype_size, sendtype_size, nbytes;
+    void *tmp_buf=NULL;
+    void *leader_scatter_buf = NULL;
+    MPI_Status status;
+    MPI_Aint recvtype_extent=0;       /* Datatype extent */
+    MPI_Comm comm;
+    MPIU_THREADPRIV_DECL;
+    MPIU_THREADPRIV_GET;
+    int leader_root=-1, leader_of_root=-1;
+    MPI_Comm shmem_comm, leader_comm;
+    MPID_Comm *shmem_commptr, *leader_commptr=NULL;
+
+    comm = comm_ptr->handle;
+    comm_size = comm_ptr->local_size;
+    rank = comm_ptr->rank;
+
+     MPID_Datatype_get_extent_macro(recvtype, recvtype_extent);
+     if ( ((rank == root) && (recvcnt == 0)) ||
+         ((rank != root) && (sendcnt == 0)) ) {
+        return MPI_SUCCESS;
+    }
+    /* check if multiple threads are calling this collective function */
+    MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
+    /* extract the rank,size information for the intra-node
+     * communicator */
+    shmem_comm = comm_ptr->ch.shmem_comm;
+    mpi_errno = PMPI_Comm_rank(shmem_comm, &local_rank);
+    if(mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+    }
+    mpi_errno = PMPI_Comm_size(shmem_comm, &local_size);
+    if(mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+    }
+    MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
+
+    if(local_rank == 0) {
+         /* Node leader. Extract the rank, size information for the leader
+          * communicator */
+            leader_comm = comm_ptr->ch.leader_comm;
+            mpi_errno = PMPI_Comm_rank(leader_comm, &leader_comm_rank);
+            if(mpi_errno) {
+                    MPIU_ERR_POP(mpi_errno);
+            }
+            mpi_errno = PMPI_Comm_size(leader_comm, &leader_comm_size);
+            if(mpi_errno) {
+                    MPIU_ERR_POP(mpi_errno);
+            }
+            MPID_Comm_get_ptr(leader_comm, leader_commptr);
+     }
+
+     if(local_size == comm_size) {
+           /* purely intra-node scatter. Just use the direct algorithm and we are done */
+           mpi_errno = MPIR_Scatter_MV2_Direct(sendbuf, sendcnt, sendtype,
+                                          recvbuf, recvcnt, recvtype,
+                                          root, comm_ptr, errflag);
+           if (mpi_errno) {
+                   /* for communication errors, just record the error but continue */
+                    *errflag = TRUE;
+                    MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                    MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+           }
+     } else { 
+	     MPID_Datatype_get_size_macro(recvtype, recvtype_size);
+	     MPID_Datatype_get_size_macro(sendtype, sendtype_size);
+
+	     if(rank == root ) {
+		 nbytes = sendcnt*sendtype_size;
+	     } else {
+		 nbytes = recvcnt*recvtype_size;
+	     }
+
+	     if(local_rank == 0 ) {
+		    /* Node leader, allocate tmp_buffer */
+		 tmp_buf = MPIU_Malloc(nbytes*local_size);
+	     }
+
+	     leader_of_root = comm_ptr->ch.leader_map[root];
+	     /* leader_of_root is the global rank of the leader of the root */
+	     leader_root = comm_ptr->ch.leader_rank[leader_of_root];
+	     /* leader_root is the rank of the leader of the root in leader_comm.
+	      * leader_root is to be used as the root of the inter-leader gather ops
+	      */
+	     
+	     if ((local_rank == 0) && (root != rank)
+		   && (leader_of_root == rank)) {
+		  /* The root of the scatter operation is not the node leader. Recv
+		  * data from the node leader */
+		   leader_scatter_buf = MPIU_Malloc(nbytes*comm_size); 
+		   mpi_errno  = MPIC_Recv_ft( leader_scatter_buf, nbytes*comm_size, MPI_BYTE,
+						root, MPIR_SCATTER_TAG, comm, &status, errflag );
+                    if (mpi_errno) {
+                        /* for communication errors, just record the error but continue */
+                        *errflag = TRUE;
+                        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                    }
+	     }
+
+	     if(rank == root  && local_rank != 0) {
+		 /* The root of the scatter operation is not the node leader. Send
+		  * data to the node leader */
+		  mpi_errno = MPIC_Send_ft(sendbuf, sendcnt*comm_size, sendtype,
+						leader_of_root, MPIR_SCATTER_TAG, comm, errflag);
+                  if (mpi_errno) {
+                        /* for communication errors, just record the error but continue */
+                        *errflag = TRUE;
+                        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                  }
+	     }
+
+	     if(leader_comm_size > 1 && local_rank  == 0) { 
+		 if(comm_ptr->ch.is_uniform != 1) {
+			  int *displs=NULL;
+			  int *sendcnts=NULL;
+			  int *node_sizes;
+			  int i=0;
+			  node_sizes = comm_ptr->ch.node_sizes;
+			
+			  if (root != leader_of_root) {
+				  if(leader_comm_rank == leader_root) { 
+					  displs = MPIU_Malloc(sizeof(int)*leader_comm_size);
+					  sendcnts = MPIU_Malloc(sizeof(int)*leader_comm_size);
+					  sendcnts[0] = node_sizes[0]*nbytes;
+					  displs[0] = 0;
+
+					  for(i=1; i< leader_comm_size ; i++) {
+						displs[i] = displs[i-1] + node_sizes[i-1]*nbytes;
+						sendcnts[i] = node_sizes[i]*nbytes;
+					  }
+				  } 
+				  mpi_errno = MPIR_Scatterv(leader_scatter_buf, sendcnts, displs, 
+					  MPI_BYTE, tmp_buf, nbytes*local_size, MPI_BYTE,
+					  leader_root, leader_commptr, errflag);
+			  } else { 
+				  if(leader_comm_rank == leader_root) { 
+					  displs = MPIU_Malloc(sizeof(int)*leader_comm_size);
+					  sendcnts = MPIU_Malloc(sizeof(int)*leader_comm_size);
+					  sendcnts[0] = node_sizes[0]*sendcnt;
+					  displs[0] = 0;
+
+					  for(i=1; i< leader_comm_size ; i++) {
+						displs[i] = displs[i-1] + node_sizes[i-1]*sendcnt;
+						sendcnts[i] = node_sizes[i]*sendcnt;
+					  }
+				  } 
+				  mpi_errno = MPIR_Scatterv(sendbuf, sendcnts, displs, 
+					  sendtype, tmp_buf, nbytes*local_size, MPI_BYTE,
+					  leader_root, leader_commptr, errflag);
+			  } 
+                          if (mpi_errno) {
+                               /* for communication errors, just record the error but continue */
+                               *errflag = TRUE;
+                               MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                               MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                          }
+			  if(leader_comm_rank == leader_root) {
+			      MPIU_Free(displs);
+			      MPIU_Free(sendcnts);
+			  }
+		 } else {
+			  if (leader_of_root != root) {
+				mpi_errno = MPIR_Scatter_MV2_Binomial(leader_scatter_buf, nbytes*local_size, 
+						  MPI_BYTE,tmp_buf, nbytes*local_size, MPI_BYTE,
+						  leader_root, leader_commptr, errflag);
+			  } else { 
+				mpi_errno = MPIR_Scatter_MV2_Binomial(sendbuf, sendcnt*local_size, 
+						  sendtype, tmp_buf, nbytes*local_size, MPI_BYTE,
+						  leader_root, leader_commptr, errflag);
+
+			  }
+                          if (mpi_errno) {
+                               /* for communication errors, just record the error but continue */
+                               *errflag = TRUE;
+                               MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                               MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                          }
+		  } 
+	     } 
+	     /* The leaders are now done with the inter-leader part. Scatter the data within the nodes */ 
+		
+	     if(rank == root && recvbuf == MPI_IN_PLACE) { 
+		  mpi_errno = MPIR_Scatter_MV2_Direct(tmp_buf, nbytes, MPI_BYTE,
+						sendbuf, sendcnt, sendtype,
+						0, shmem_commptr, errflag);
+	     } else { 
+		  mpi_errno = MPIR_Scatter_MV2_Direct(tmp_buf, nbytes, MPI_BYTE,
+						recvbuf, recvcnt, recvtype,
+						0, shmem_commptr, errflag);
+	     } 
+  	     if (mpi_errno) {
+	        /* for communication errors, just record the error but continue */
+	        *errflag = TRUE;
+	        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+	        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+   	     }
+
+	     if(mpi_errno) {
+		 MPIU_ERR_POP(mpi_errno);
+	     }
+     }     
+ 
+ fn_fail:
+    /* check if multiple threads are calling this collective function */
+    if(comm_size != local_size && local_rank == 0) {
+          MPIU_Free(tmp_buf);
+          if(leader_of_root == rank && root != rank) {
+               MPIU_Free(leader_scatter_buf);
+          }
+    }
+    MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
+
+    return (mpi_errno);
+}
+
+
+#undef FUNCNAME
+#define FUNCNAME MPIR_Scatter_MV2_two_level_Direct
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPIR_Scatter_MV2_two_level_Direct (
+        void *sendbuf,
+        int sendcnt,
+        MPI_Datatype sendtype,
+        void *recvbuf,
+        int recvcnt,
+        MPI_Datatype recvtype,
+        int root,
+        MPID_Comm *comm_ptr, 
+        int *errflag )
+{
+    int comm_size, rank;
+    int local_rank, local_size;
+    int leader_comm_rank, leader_comm_size;
+    int mpi_errno = MPI_SUCCESS;
+    int mpi_errno_ret = MPI_SUCCESS;
+    int recvtype_size, sendtype_size, nbytes;
+    void *tmp_buf=NULL;
+    void *leader_scatter_buf = NULL;
+    MPI_Status status;
+    MPI_Comm comm;
+    MPIU_THREADPRIV_DECL;
+    MPIU_THREADPRIV_GET;
+    int leader_root, leader_of_root=-1;
+    MPI_Comm shmem_comm, leader_comm;
+    MPID_Comm *shmem_commptr, *leader_commptr=NULL;
+   
+    comm = comm_ptr->handle;
+    comm_size = comm_ptr->local_size;
+    rank = comm_ptr->rank;
+
+     if ( ((rank == root) && (recvcnt == 0)) ||
+         ((rank != root) && (sendcnt == 0)) ) {
+        return MPI_SUCCESS;
+    }
+    /* check if multiple threads are calling this collective function */
+    MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
+    /* extract the rank,size information for the intra-node
+     * communicator */
+    shmem_comm = comm_ptr->ch.shmem_comm;
+    mpi_errno = PMPI_Comm_rank(shmem_comm, &local_rank);
+    if(mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+    }
+    mpi_errno = PMPI_Comm_size(shmem_comm, &local_size);
+    if(mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+    }
+    MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
+
+    if(local_rank == 0) {
+         /* Node leader. Extract the rank, size information for the leader
+          * communicator */
+            leader_comm = comm_ptr->ch.leader_comm;
+            mpi_errno = PMPI_Comm_rank(leader_comm, &leader_comm_rank);
+            if(mpi_errno) {
+                    MPIU_ERR_POP(mpi_errno);
+            }
+            mpi_errno = PMPI_Comm_size(leader_comm, &leader_comm_size);
+            if(mpi_errno) {
+                    MPIU_ERR_POP(mpi_errno);
+            }
+            MPID_Comm_get_ptr(leader_comm, leader_commptr);
+     }
+
+    if(local_size == comm_size) { 
+           /* purely intra-node scatter. Just use the direct algorithm and we are done */ 
+           mpi_errno = MPIR_Scatter_MV2_Direct(sendbuf, sendcnt, sendtype,    
+                                          recvbuf, recvcnt, recvtype,
+                                          root, comm_ptr, errflag);
+           if(mpi_errno) {
+               MPIU_ERR_POP(mpi_errno);
+            }
+    } else { 
+	     MPID_Datatype_get_size_macro(recvtype, recvtype_size);
+	     MPID_Datatype_get_size_macro(sendtype, sendtype_size);
+
+	     if(rank == root ) {
+		 nbytes = sendcnt*sendtype_size;
+	     } else {
+		 nbytes = recvcnt*recvtype_size;
+	     }
+
+	     if(local_rank == 0 ) {
+		    /* Node leader, allocate tmp_buffer */
+		 tmp_buf = MPIU_Malloc(nbytes*local_size);
+	     }
+
+	     leader_of_root = comm_ptr->ch.leader_map[root];
+	     /* leader_of_root is the global rank of the leader of the root */
+	     leader_root = comm_ptr->ch.leader_rank[leader_of_root];
+	     /* leader_root is the rank of the leader of the root in leader_comm.
+	      * leader_root is to be used as the root of the inter-leader gather ops
+	      */
+	     
+	     if ((local_rank == 0) && (root != rank)
+		   && (leader_of_root == rank)) {
+		  /* The root of the scatter operation is not the node leader. Recv
+		  * data from the node leader */
+		   leader_scatter_buf = MPIU_Malloc(nbytes*comm_size); 
+		   mpi_errno  = MPIC_Recv_ft( leader_scatter_buf, nbytes*comm_size, MPI_BYTE,
+						root, MPIR_SCATTER_TAG, comm, &status, errflag );
+                   if (mpi_errno) {
+                        /* for communication errors, just record the error but continue */
+                        *errflag = TRUE;
+                        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                    }
+	     }
+
+	     if(rank == root  && local_rank != 0) {
+		 /* The root of the scatter operation is not the node leader. Send
+		  * data to the node leader */
+		  mpi_errno = MPIC_Send_ft(sendbuf, sendcnt*comm_size, sendtype,
+						leader_of_root, MPIR_SCATTER_TAG, comm, errflag);
+                  if (mpi_errno) {
+                        /* for communication errors, just record the error but continue */
+                        *errflag = TRUE;
+                        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                  }
+	     }
+
+	     if(leader_comm_size > 1 && local_rank  == 0) { 
+		 if(comm_ptr->ch.is_uniform != 1) {
+			  int *displs=NULL;
+			  int *sendcnts=NULL;
+			  int *node_sizes;
+			  int i=0;
+			  node_sizes = comm_ptr->ch.node_sizes;
+			
+			  if (root != leader_of_root) {
+				  if(leader_comm_rank == leader_root) { 
+					  displs = MPIU_Malloc(sizeof(int)*leader_comm_size);
+					  sendcnts = MPIU_Malloc(sizeof(int)*leader_comm_size);
+					  sendcnts[0] = node_sizes[0]*nbytes;
+					  displs[0] = 0;
+
+					  for(i=1; i< leader_comm_size ; i++) {
+						displs[i] = displs[i-1] + node_sizes[i-1]*nbytes;
+						sendcnts[i] = node_sizes[i]*nbytes;
+					  }
+				  } 
+				  mpi_errno = MPIR_Scatterv(leader_scatter_buf, sendcnts, displs, 
+					  MPI_BYTE, tmp_buf, nbytes*local_size, MPI_BYTE,
+					  leader_root, leader_commptr, errflag);
+			  } else { 
+				  if(leader_comm_rank == leader_root) { 
+					  displs = MPIU_Malloc(sizeof(int)*leader_comm_size);
+					  sendcnts = MPIU_Malloc(sizeof(int)*leader_comm_size);
+					  sendcnts[0] = node_sizes[0]*sendcnt;
+					  displs[0] = 0;
+
+					  for(i=1; i< leader_comm_size ; i++) {
+						displs[i] = displs[i-1] + node_sizes[i-1]*sendcnt;
+						sendcnts[i] = node_sizes[i]*sendcnt;
+					  }
+				  } 
+				  mpi_errno = MPIR_Scatterv(sendbuf, sendcnts, displs, 
+					  sendtype, tmp_buf, nbytes*local_size, MPI_BYTE,
+					  leader_root, leader_commptr, errflag);
+			  } 
+ 		          if (mpi_errno) {
+				/* for communication errors, just record the error but continue */
+				*errflag = TRUE;
+				MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+				MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+			  }
+			  if(leader_comm_rank == leader_root) {
+			      MPIU_Free(displs);
+			      MPIU_Free(sendcnts);
+			  }
+		 } else {
+			  if (leader_of_root != root) {
+				mpi_errno = MPIR_Scatter_MV2_Direct(leader_scatter_buf, nbytes*local_size, 
+						  MPI_BYTE,tmp_buf, nbytes*local_size, MPI_BYTE,
+						  leader_root, leader_commptr, errflag);
+			  } else { 
+				mpi_errno = MPIR_Scatter_MV2_Direct(sendbuf, sendcnt*local_size, 
+						  sendtype, tmp_buf, nbytes*local_size, MPI_BYTE,
+						  leader_root, leader_commptr, errflag);
+
+			  }
+			  if (mpi_errno) {
+				/* for communication errors, just record the error but continue */
+				*errflag = TRUE;
+				MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+				MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+			  }
+		  } 
+	     } 
+	     /* The leaders are now done with the inter-leader part. Scatter the data within the nodes */ 
+		
+	     if(rank == root && recvbuf == MPI_IN_PLACE) { 
+		  mpi_errno = MPIR_Scatter_MV2_Direct(tmp_buf, nbytes, MPI_BYTE,
+						sendbuf, sendcnt, sendtype,
+						0, shmem_commptr, errflag);
+	     } else { 
+		  mpi_errno = MPIR_Scatter_MV2_Direct(tmp_buf, nbytes, MPI_BYTE,
+						recvbuf, recvcnt, recvtype,
+						0, shmem_commptr, errflag);
+	     } 
+             if (mpi_errno) {
+                        /* for communication errors, just record the error but continue */
+                        *errflag = TRUE;
+                        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+              }
+     } 
+
+ fn_fail:
+    /* check if multiple threads are calling this collective function */
+    if(comm_size != local_size && local_rank == 0) {
+          MPIU_Free(tmp_buf);
+          if(leader_of_root == rank && root != rank) {
+               MPIU_Free(leader_scatter_buf);
+          }
+    }
+    MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
+
+    return (mpi_errno);
+}
+#endif /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
+
+
+#undef FUNCNAME
+#define FUNCNAME MPIR_Scatter_intra_MV2
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIR_Scatter_intra_MV2(
         void *sendbuf,
         int sendcnt,
@@ -1019,8 +1026,9 @@ int MPIR_Scatter_intra_MV2(
         MPID_Comm *comm_ptr, 
         int *errflag )
 {
-    static const char FCNAME[] = "MPIR_Scatter_intra_MV2";
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     int range = 0;
+#endif /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
     int rank, nbytes, comm_size;
@@ -1045,12 +1053,12 @@ int MPIR_Scatter_intra_MV2(
         MPID_Datatype_get_size_macro(sendtype, sendtype_size);
         nbytes = sendcnt*sendtype_size;
     }
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     while((range < size_scatter_tuning_table) && (comm_size > scatter_tuning_table[range].numproc)){
         range++;
     }
     
-    if(use_two_level_scatter == 1 || use_direct_scatter == 1) { 
+    if(use_two_level_scatter == 1 || use_direct_scatter == 1) {
 	    if(range < size_scatter_tuning_table ){
 		if (nbytes < scatter_tuning_table[range].small){
 			mpi_errno = MPIR_Scatter_MV2_Binomial(sendbuf, sendcnt, sendtype, 
@@ -1081,13 +1089,13 @@ int MPIR_Scatter_intra_MV2(
                                           root, comm_ptr, errflag); 
             } 
     } else {
-#endif
+#endif /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
        mpi_errno = MPIR_Scatter_MV2_Binomial(sendbuf, sendcnt, sendtype, 
                                           recvbuf, recvcnt, recvtype, 
                                           root, comm_ptr, errflag); 
-#if defined(_OSU_MVAPICH_) 
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     }    
-#endif
+#endif  /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
     if (mpi_errno) {
 	/* for communication errors, just record the error but continue */
@@ -1105,8 +1113,13 @@ int MPIR_Scatter_intra_MV2(
 
 }
 
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 /* begin:nested */
 /* not declared static because a machine-specific function may call this one in some cases */
+#undef FUNCNAME
+#define FUNCNAME MPIR_Scatter_inter_MV2
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIR_Scatter_inter_MV2 ( 
 	void *sendbuf, 
 	int sendcnt, 
@@ -1127,7 +1140,6 @@ int MPIR_Scatter_inter_MV2 (
     Cost: p.alpha + n.beta
 */
 
-    static const char FCNAME[] = "MPIR_Scatter_inter_MV2";
     int rank, local_size, remote_size, mpi_errno=MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
     int i, nbytes, sendtype_size, recvtype_size;
@@ -1247,7 +1259,6 @@ fn_exit:
 
     return mpi_errno;
 }
-/* end:nested */
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Scatter_MV2
@@ -1280,3 +1291,5 @@ int MPIR_Scatter_MV2(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
     goto fn_exit;
 }
 
+/* end:nested */
+#endif  /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */

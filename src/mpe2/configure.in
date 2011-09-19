@@ -136,7 +136,7 @@ if test "$enable_mpich" = "yes" -o "$FROM_MPICH" = "yes" ; then
     enable_checkMPI=no
 dnl BUILDING_MPI=yes & MPE_KNOWN_MPI_IMPL=yes
 elif test "$FROM_MPICH2" = "yes" ; then
-    AC_MSG_RESULT([This MPE build is part of the MPICH2 build])
+    AC_MSG_RESULT([This MPE build is part of the MVAPICH2 build])
     MPI_IMPL="MPICH2"
     if test -d "$includebuild_dir" ; then
         MPICPPFLAGS="$MPICPPFLAGS -I$includebuild_dir"

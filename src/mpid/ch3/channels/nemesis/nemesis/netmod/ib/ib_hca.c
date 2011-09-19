@@ -539,19 +539,7 @@ struct ibv_srq *create_srq(int hca_num)
     /* The limit value should be ignored during SRQ create */
     srq_init_attr.attr.srq_limit = viadev_srq_limit;
 
-#ifdef _ENABLE_XRC_
-    if (USE_XRC) {
-        srq_ptr = ibv_create_xrc_srq (proc->ptag[hca_num],
-            proc->xrc_domain[hca_num], proc->cq_hndl[hca_num],
-            &srq_init_attr);
-        XRC_MSG ("created xrc srq %d\n",
-            srq_ptr->xrc_srq_num);
-    }
-    else
-#endif /* _ENABLE_XRC_ */
-    {
-        srq_ptr = ibv_create_srq(hca_list[hca_num].ptag, &srq_init_attr);
-    }
+    srq_ptr = ibv_create_srq(hca_list[hca_num].ptag, &srq_init_attr);
 
     if (!srq_ptr) {
         ibv_error_abort(-1, "Error creating SRQ\n");

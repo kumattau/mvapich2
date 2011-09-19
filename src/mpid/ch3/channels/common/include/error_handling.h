@@ -25,5 +25,10 @@ extern int setup_error_sighandler( int backtrace );
 // - return value: on success, 0 is returned
 extern int set_coresize_limit( const char* coresize );
 
+// Print backtrace of the current thread
+extern int print_backtrace();
+
+// Enable/disable backtrace on error
+extern int show_backtrace;
 
 #endif

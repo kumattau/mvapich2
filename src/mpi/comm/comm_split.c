@@ -382,14 +382,14 @@ int MPIR_Comm_split_impl(MPID_Comm *comm_ptr, int color, int key, MPID_Comm **ne
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
 
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 extern int split_comm;
 extern int enable_shmem_collectives;
 extern int check_split_comm(pthread_t);
 extern int disable_split_comm(pthread_t);
 extern int create_2level_comm (MPI_Comm, int, int);
 extern int enable_split_comm(pthread_t);
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 /*@
 
 MPI_Comm_split - Creates new communicators based on colors and keys
@@ -477,7 +477,7 @@ int MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm)
     else
         *newcomm = MPI_COMM_NULL;
 
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     if (enable_shmem_collectives){
         if (check_split_comm(pthread_self())){
             if (*newcomm != MPI_COMM_NULL){
@@ -505,7 +505,7 @@ int MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm)
             }
         }
     }
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
     /* ... end of body of routine ... */
 
   fn_exit:

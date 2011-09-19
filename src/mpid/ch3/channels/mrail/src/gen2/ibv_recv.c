@@ -14,14 +14,20 @@
 #include "pmi.h"
 #include "mpiutil.h"
 #include "cm.h"
+#ifdef _ENABLE_UD_
+#include "mv2_ud.h"
+#endif
 
-#define SET_CREDIT(header, vc, rail) \
-{                                                               \
-    vc->mrail.rfp.ptail_RDMA_send += header->rdma_credit; \
-    if (vc->mrail.rfp.ptail_RDMA_send >= num_rdma_buffer)       \
-        vc->mrail.rfp.ptail_RDMA_send -= num_rdma_buffer;       \
-    vc->mrail.srp.credits[rail].remote_cc = header->remote_credit;\
-    vc->mrail.srp.credits[rail].remote_credit += header->vbuf_credit; \
+#define SET_CREDIT(header, vc, rail, transport)                             \
+{                                                                           \
+    if (transport  == IB_TRANSPORT_RC)  {                                   \
+        vc->mrail.rfp.ptail_RDMA_send += header->rdma_credit;               \
+        if (vc->mrail.rfp.ptail_RDMA_send >= num_rdma_buffer)               \
+            vc->mrail.rfp.ptail_RDMA_send -= num_rdma_buffer;               \
+        vc->mrail.srp.credits[rail].remote_cc = header->remote_credit;      \
+        vc->mrail.srp.credits[rail].remote_credit += header->vbuf_credit;   \
+    } else {                                                                \
+    }                                                                       \
 }
 
 #undef DEBUG_PRINT
@@ -74,8 +80,6 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
         exit(EXIT_FAILURE);
     }
 #endif
-    XRC_MSG ("Recd %d from %d\n", header->type,
-            vc->pg_rank);
     switch (header->type) {
 #ifndef MV2_DISABLE_HEADER_CACHING 
     case (MPIDI_CH3_PKT_FAST_EAGER_SEND):
@@ -136,6 +140,8 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
     case (MPIDI_CH3_PKT_RNDV_CLR_TO_SEND):
     case (MPIDI_CH3_PKT_RMA_RNDV_CLR_TO_SEND):
     case (MPIDI_CH3_PKT_RPUT_FINISH):
+    case (MPIDI_CH3_PKT_ZCOPY_FINISH):
+    case (MPIDI_CH3_PKT_ZCOPY_ACK):
     case (MPIDI_CH3_PKT_NOOP):
     case MPIDI_CH3_PKT_EAGER_SYNC_ACK:
     case MPIDI_CH3_PKT_CANCEL_SEND_REQ:
@@ -283,6 +289,7 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
         }
     case MPIDI_CH3_PKT_FLOW_CNTL_UPDATE:
         {
+            *header_size = sizeof(MPIDI_CH3I_MRAILI_Pkt_flow_cntl);
             *pkt = vstart;
             break;
         }
@@ -316,7 +323,7 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
             "pkt: %p, pheader: %p\n", vc, v->rail, pkt, v->pheader);
 
     SET_CREDIT((&(((MPIDI_CH3_Pkt_t *) 
-                        (*pkt))->eager_send)), vc, (v->rail));
+                        (*pkt))->eager_send)), vc, (v->rail),v->transport);
 
 
     if (vc->mrail.srp.credits[v->rail].remote_credit > 0 &&
@@ -325,16 +332,18 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
     }
 
     /* if any credits remain, schedule rendezvous progress */
-    if ((vc->mrail.srp.credits[v->rail].remote_credit > 0 
+    if (((vc->mrail.srp.credits[v->rail].remote_credit > 0 
             || (vc->mrail.rfp.ptail_RDMA_send != 
-                vc->mrail.rfp.phead_RDMA_send)
+                vc->mrail.rfp.phead_RDMA_send))
         )
         && (vc->mrail.sreq_head != NULL)) {
         PUSH_FLOWLIST(vc);
     }
 
-    if ((vc->mrail.rfp.RDMA_recv_buf == NULL) &&       /*(c->initialized) && */
-            num_rdma_buffer && !vc->mrail.rfp.rdma_failed) {
+    if (vc->mrail.state & MRAILI_RC_CONNECTED
+            && v->transport == IB_TRANSPORT_RC
+            && vc->mrail.rfp.RDMA_recv_buf == NULL
+            && num_rdma_buffer && !vc->mrail.rfp.rdma_failed) {
         if ((MPIDI_CH3I_RDMA_Process.polling_group_size + rdma_pending_conn_request) <
                 rdma_polling_set_limit) {
             vc->mrail.rfp.eager_start_cnt++;
@@ -346,7 +355,7 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
                         USE_XRC && VC_XST_ISUNSET (vc, XF_SEND_IDLE)) {
                     if (VC_XSTS_ISUNSET (vc, XF_START_RDMAFP | 
                                 XF_CONN_CLOSING | XF_DPM_INI)) {
-                        XRC_MSG ("Trying to FP to %d st: %d xr: 0x%08x", 
+                        PRINT_DEBUG(DEBUG_XRC_verbose>0, "Trying to FP to %d st: %d xr: 0x%08x", 
                                 vc->pg_rank, vc->ch.state, vc->ch.xrc_flags);
                         VC_XST_SET (vc, XF_START_RDMAFP);
                         MPICM_unlock();
@@ -358,15 +367,17 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
                         (MPIDI_CH3I_RDMA_Process.xrc_rdmafp && 
                         VC_XSTS_ISUNSET(vc, 
                             XF_DPM_INI | XF_CONN_CLOSING | XF_START_RDMAFP)
+                        && VC_XSTS_ISSET (vc, XF_SEND_IDLE | XF_RECV_IDLE)
                         && header->type != MPIDI_CH3_PKT_ADDRESS))
 #endif
                 {
-                    XRC_MSG ("FP to %d (IDLE)\n", vc->pg_rank);
+                    DEBUG_PRINT("FP to %d (IDLE)\n", vc->pg_rank);
                     MPICM_unlock();
                     ret = vbuf_fast_rdma_alloc(vc, 1);
                     if (ret == MPI_SUCCESS) {
                         vbuf_address_send(vc);
                         rdma_pending_conn_request++;
+                        vc->mrail.state |=  MRAILI_RFP_CONNECTING;
                     } else {
                         vc->mrail.rfp.rdma_failed = 1;
                     }
@@ -412,7 +423,7 @@ int MPIDI_CH3I_MRAIL_Fill_Request(MPID_Request * req, vbuf * v,
 
     *nb = 0;
     for (i = req->dev.iov_offset; i < n_iov; i++) {
-        if (len_avail >= (int) iov[i].MPID_IOV_LEN
+        if (len_avail >= (MPIDI_msg_sz_t) iov[i].MPID_IOV_LEN
             && iov[i].MPID_IOV_LEN != 0) {
             MPIU_Memcpy(iov[i].MPID_IOV_BUF, data_buf, iov[i].MPID_IOV_LEN);
             data_buf = (void *) ((uintptr_t) data_buf + iov[i].MPID_IOV_LEN);
@@ -542,7 +553,8 @@ int MPIDI_CH3I_MRAILI_Recv_addr_reply(MPIDI_VC_t * vc, void *vstart)
         vc->mrail.cmanager.num_channels      += 1;
         vc->mrail.cmanager.num_local_pollings = 1;
         vc->mrail.rfp.in_polling_set          = 1;
-       
+        vc->mrail.state &= ~(MRAILI_RFP_CONNECTING);
+        vc->mrail.state |= MRAILI_RFP_CONNECTED;
     } else {
         ibv_va_error_abort(GEN_EXIT_ERR,
                 "Invalid reply data received. reply_data: pkt->reply_data%d\n",
@@ -553,3 +565,4 @@ int MPIDI_CH3I_MRAILI_Recv_addr_reply(MPIDI_VC_t * vc, void *vstart)
     
     return MPI_SUCCESS;
 }
+

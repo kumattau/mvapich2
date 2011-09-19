@@ -61,6 +61,20 @@ int skip_large = 10;
 
 static void multi_latency(int rank, int pairs);
 
+#ifdef PACKAGE_VERSION
+#   define HEADER "# " BENCHMARK " v" PACKAGE_VERSION "\n"
+#else
+#   define HEADER "# " BENCHMARK "\n"
+#endif
+
+#ifndef FIELD_WIDTH
+#   define FIELD_WIDTH 20
+#endif
+
+#ifndef FLOAT_PRECISION
+#   define FLOAT_PRECISION 2
+#endif
+
 int main(int argc, char* argv[])
 {
     int align_size, rank, nprocs; 
@@ -85,7 +99,7 @@ int main(int argc, char* argv[])
     pairs = nprocs/2;
 
     if(rank == 0) {
-        fprintf(stdout, "# %s v%s\n", BENCHMARK, PACKAGE_VERSION);
+        fprintf(stdout, HEADER);
         fprintf(stdout, "%-*s%*s\n", 10, "# Size", FIELD_WIDTH, "Latency (us)");
         fflush(stdout);
     }
@@ -112,7 +126,7 @@ static void multi_latency(int rank, int pairs)
     MPI_Status reqstat;
 
 
-    for(size = 1; size <= MAX_MSG_SIZE; size *=2) {
+    for(size = 0; size <= MAX_MSG_SIZE; size  = (size ? size * 2 : 1)) {
 
         MPI_Barrier(MPI_COMM_WORLD);
 

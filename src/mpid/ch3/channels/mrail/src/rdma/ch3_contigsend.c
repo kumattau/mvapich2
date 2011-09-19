@@ -25,7 +25,6 @@ static inline MPID_Request * create_eagercontig_request(MPIDI_VC_t * vc,
                          int tag, MPID_Comm * comm, int context_offset)
 {
     MPID_Request * sreq;
-    int i;
     MPIDI_CH3_Pkt_t upkt;
     MPIDI_CH3_Pkt_eager_send_t * const eager_pkt = &upkt.eager_send;
     MPIDI_STATE_DECL(MPID_STATE_CREATE_EAGERCONTIG_REQUEST);
@@ -138,7 +137,6 @@ int MPIDI_CH3_ContigSend(MPID_Request **sreq_p,
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_CONTIGSEND);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_CONTIGSEND);
 
-    int mpi_errno = MPI_SUCCESS;
     MPIDI_VC_t * vc;
     MPIDI_Comm_get_vc_set_active(comm, rank, &vc);
 

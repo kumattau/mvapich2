@@ -10,6 +10,18 @@
  *
  */
 
+#include <mpirunconf.h>
+#include <mpirun_util.h>
+#include <mpispawn_tree.h>
+#include <pmi_tree.h>
+#include <mpmd.h>
+#include <error_handling.h>
+#include <debug_utils.h>
+#include <crfs.h>
+#include <mpispawn_ckpt.h>
+#include <signal_processor.h>
+#include <mpispawn_error_codes.h>
+
 #include <signal.h>
 #include <stdio.h>
 #include <sys/socket.h>
@@ -19,24 +31,11 @@
 #include <wait.h>
 #include <string.h>
 #include <math.h>
-#include "mpirunconf.h"
-#include "mpirun_util.h"
-#include "mpispawn_tree.h"
-#include "pmi_tree.h"
-#include "mpmd.h"
 #include <sys/select.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <sys/wait.h>
 #include <sys/time.h>
-#include "error_handling.h"
-#include "debug_utils.h"
-
-#include "crfs.h"
-#include "mpispawn_ckpt.h"
-
-#include <signal_processor.h>
-#include <mpispawn_error_codes.h>
 
 #define DBG(_stmt_)
 typedef struct {
@@ -178,7 +177,7 @@ lvalues get_lvalues(int i)
     return v;
 }
 
-void setup_global_environment()
+int setup_global_environment()
 {
     char my_host_name[MAX_HOST_LEN + MAX_PORT_LEN];
 
@@ -190,7 +189,11 @@ void setup_global_environment()
     setenv("MV2_NUM_NODES_IN_JOB", getenv("MPISPAWN_NNODES"), 1);
 
     /* Ranks now connect to mpispawn */
-    gethostname(my_host_name, MAX_HOST_LEN);
+    int rv = gethostname(my_host_name, MAX_HOST_LEN);
+    if ( rv == -1 ) {
+        PRINT_ERROR_ERRNO("gethostname() failed", errno);
+        return -1;
+    }
 
     sprintf(my_host_name, "%s:%d", my_host_name, c_port);
 
@@ -242,6 +245,7 @@ void setup_global_environment()
         free(name);
         free(value);
     }
+    return 0;
 }
 
 void setup_local_environment(lvalues lv)
@@ -268,7 +272,7 @@ void spawn_processes(int n)
 {
     char my_host_name[MAX_HOST_LEN + MAX_PORT_LEN];
     gethostname(my_host_name, MAX_HOST_LEN);
-    int i, j;
+    int i;
     npids = n;
     local_processes = (process_info_t *) malloc(process_info_s * n);
 
@@ -309,7 +313,6 @@ void spawn_processes(int n)
             }
 
             argv[argc] = NULL;
-            j = argc;
 
             while (argc--) {
                 nwritten = snprintf(buffer, 80, "MPISPAWN_ARGV_%d", argc);
@@ -345,7 +348,7 @@ void spawn_processes(int n)
             PRINT_DEBUG(DEBUG_Fork_verbose > 1, "EXEC MPI proc command line: %s %s\n", argv[0], argv[1]);
             execvp(argv[0], argv);
 
-            PRINT_ERROR_ERRNO("execvp() failed", errno);
+            PRINT_ERROR_ERRNO("Failed to execvp() '%s'", errno, argv[0]);
             PRINT_DEBUG(DEBUG_Fork_verbose, "exit(EXIT_FAILURE)\n");
             exit(EXIT_FAILURE);
 
@@ -365,6 +368,11 @@ void spawn_processes(int n)
 
 void process_cleanup(void)
 {
+    // Run process cleanup only once
+    static OPA_int_t process_cleanup_started = {0};
+    int started = OPA_fetch_and_add_int( &process_cleanup_started, 1 );
+    if (started) return;
+
     PRINT_DEBUG(DEBUG_FT_verbose, "Cleanup stray processes\n");
     int i;
     for (i = 0; i < npids; i++) {
@@ -433,7 +441,9 @@ void process_cleanup(void)
         }
 
     free(local_processes);
+    local_processes = NULL;
     free(children);
+    children = NULL;
 }
 
 void cleanup_handler(int sig)
@@ -1061,7 +1071,10 @@ int main(int argc, char *argv[])
 
     }
     /* if (!USE_LINEAR_SSH) */
-    setup_global_environment();
+    int r = setup_global_environment();
+    if ( r != 0 ) {
+        exit(EXIT_FAILURE);
+    }
 
     if (chdir(getenv("MPISPAWN_WORKING_DIR"))) {
         perror("chdir");

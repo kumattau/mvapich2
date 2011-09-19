@@ -165,6 +165,18 @@ struct MPIDI_CH3I_RDMA_put_get_list_t{
     }                                                           \
 }
 
+#define MPIDI_CH3I_MRAIL_FREE_RNDV_BUFFER(req)                  \
+do {                                                            \
+    if (1 == req->mrail.rndv_buf_alloc                          \
+            && NULL != req->mrail.rndv_buf) {                   \
+        MPIU_Free(req->mrail.rndv_buf);                         \
+        req->mrail.rndv_buf_alloc = 0;                          \
+        req->mrail.rndv_buf_off = 0;                            \
+        req->mrail.rndv_buf_sz = 0;                             \
+        req->mrail.rndv_buf = NULL;                             \
+    }                                                           \
+}while(0)
+
 #define MPIDI_CH3I_MRAIL_SET_REMOTE_RNDV_INFO(_rndv,_req)       \
 {                                                               \
     int _i;                                                     \
@@ -201,7 +213,7 @@ void MRAILI_Init_vc(struct MPIDI_VC* vc);
 int MPIDI_CH3I_MRAILI_Eager_send(   struct MPIDI_VC* vc,
                                     MPID_IOV * iov,
                                     int n_iov,
-                                    int len,
+                                    size_t len,
                                     int * num_bytes_ptr,
                                     vbuf **buf_handle);
 
@@ -212,6 +224,7 @@ int MPIDI_CH3I_MRAILI_Eager_send(   struct MPIDI_VC* vc,
 #define T_CHANNEL_EXACT_ARRIVE 1
 #define T_CHANNEL_OUT_OF_ORDER_ARRIVE 2
 #define T_CHANNEL_CONTROL_MSG_ARRIVE 3
+#define T_CHANNEL_HYBRID_MSG_ARRIVE 4
 #define T_CHANNEL_ERROR -1
 
 int MPIDI_CH3I_MRAILI_Get_next_vbuf_local(struct MPIDI_VC* vc, vbuf** vbuf_handle, int is_blocking);
@@ -232,6 +245,13 @@ int MRAILI_Send_rdma_credit_if_needed(struct MPIDI_VC* vc);
 void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(struct MPIDI_VC* vc, MPID_Request * sreq);
 
 void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(struct MPIDI_VC* vc, MPID_Request * sreq);
+
+#ifdef _ENABLE_UD_
+/* UD ZCOPY RNDV interface */
+void MPIDI_CH3I_MRAILI_Rendezvous_zcopy_push(struct MPIDI_VC * vc,
+                                             MPID_Request * sreq,
+                                             mv2_ud_zcopy_info_t *zcopy_info);
+#endif
 
 void MRAILI_Release_recv_rdma(vbuf *v);
 

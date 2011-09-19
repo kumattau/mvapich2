@@ -13,7 +13,11 @@
 /****Include Files****/
 #include "mv2_utils.h"
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <alloca.h>
+#include <ctype.h>
+#include <pmi.h>
 
 /****Function Definitions****/
 /**

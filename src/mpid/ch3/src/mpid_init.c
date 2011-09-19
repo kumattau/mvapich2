@@ -76,6 +76,8 @@ char *MPIDI_CH3_Pkt_type_to_string[MPIDI_CH3_PKT_END_ALL+1] = {
 #endif /* !MV2_DISABLE_HEADER_CACHING */
     [MPIDI_CH3_PKT_RPUT_FINISH] = "MPIDI_CH3_PKT_RPUT_FINISH",
     [MPIDI_CH3_PKT_RGET_FINISH] = "MPIDI_CH3_PKT_RGET_FINISH",
+    [MPIDI_CH3_PKT_ZCOPY_FINISH] = "MPIDI_CH3_PKT_ZCOPY_FINISH",
+    [MPIDI_CH3_PKT_ZCOPY_ACK] = "MPIDI_CH3_PKT_ZCOPY_ACK",
     [MPIDI_CH3_PKT_NOOP] = "MPIDI_CH3_PKT_NOOP",
     [MPIDI_CH3_PKT_RMA_RNDV_CLR_TO_SEND] = "MPIDI_CH3_PKT_RMA_RNDV_CLR_TO_SEND",
     [MPIDI_CH3_PKT_PUT_RNDV] = "MPIDI_CH3_PKT_PUT_RNDV",
@@ -455,6 +457,23 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
                     MPICH_THREAD_LEVEL : MPI_THREAD_SERIALIZED;
             }
         }
+
+#ifdef HAVE_LIBHWLOC
+        int affinity_env = 1;
+
+        /*
+         * Check to see if the user has explicitly disabled affinity.  If not
+         * then affinity will be enabled barring any errors.
+         */
+        MPL_env2bool("MV2_ENABLE_AFFINITY", &affinity_env);
+        if (affinity_env) {
+            /*
+             * Affinity will be enabled, MPI_THREAD_SINGLE will be the provided
+             * MPICH_THREAD_LEVEL in this case.
+             */
+            *provided = MPI_THREAD_SINGLE;
+        }
+#endif /* HAVE_LIBHWLOC */
 #endif /* defined(_OSU_MVAPICH_) */
 
     }

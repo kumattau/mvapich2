@@ -121,19 +121,9 @@ extern MPIDI_CH3I_Process_t MPIDI_CH3I_Process;
 
 /* #define XRC_DEBUG */
 
-#if defined(_ENABLE_XRC_) && defined(XRC_DEBUG)
-#define XRC_MSG(fmt, ...) do { \
-    printf ("<%08x:%03d>  " #fmt "\n", MPIDI_Process.my_pg->id, MPIDI_Process.my_pg_rank, ##__VA_ARGS__);\
-    fflush (stdout); \
-} while (0);
-#else
-#define XRC_MSG(args...)
-#endif
-
 #define MPIDI_CH3I_CM_SendQ_enqueue(vc, req)                                \
 {                                                                           \
     /* MT - not thread safe! */						    \
-    XRC_MSG ("enque %d %s:%d\n", vc->pg_rank, __FILE__, __LINE__);   \
     MPIDI_DBG_PRINTF((50, FCNAME, "CM_SendQ_enqueue vc=%08p req=0x%08x",    \
 	              vc, req->handle));		                    \
     req->dev.next = NULL;						    \
@@ -151,7 +141,6 @@ extern MPIDI_CH3I_Process_t MPIDI_CH3I_Process;
 #define MPIDI_CH3I_CM_SendQ_dequeue(vc)                                     \
 {                                                                           \
     /* MT - not thread safe! */						    \
-    XRC_MSG ("deque %d\n", vc->pg_rank);   \
     MPIDI_DBG_PRINTF((50, FCNAME, "CM_SendQ_dequeue vc=%08p req=0x%08x",    \
 	              vc, vc->ch.sendq_head));		                    \
     vc->ch.cm_sendq_head = vc->ch.cm_sendq_head->dev.next;		    \
@@ -170,7 +159,6 @@ extern MPIDI_CH3I_Process_t MPIDI_CH3I_Process;
 #define MPIDI_CH3I_CM_One_Sided_SendQ_enqueue(vc, v)                                \
 {                                                                           \
     /* MT - not thread safe! */						    \
-    XRC_MSG ("enque %d %s:%d\n", vc->pg_rank, __FILE__, __LINE__);   \
     MPIDI_DBG_PRINTF((50, FCNAME, "CM_SendQ_enqueue vc=%08p vbuf=0x%08x",    \
 	              vc, v));		                    \
     v->desc.next = NULL;						    \
@@ -188,7 +176,6 @@ extern MPIDI_CH3I_Process_t MPIDI_CH3I_Process;
 #define MPIDI_CH3I_CM_One_Sided_SendQ_dequeue(vc)                                     \
 {                                                                           \
     /* MT - not thread safe! */						    \
-    XRC_MSG ("deque %d\n", vc->pg_rank);   \
     MPIDI_DBG_PRINTF((50, FCNAME, "CM_SendQ_dequeue vc=%08p", vc));	\
     vc->ch.cm_1sc_sendq_head = vc->ch.cm_1sc_sendq_head->desc.next;		    \
     if (vc->ch.cm_1sc_sendq_head == NULL)					    \
@@ -278,7 +265,25 @@ int MPIDI_CH3_Packetized_send(MPIDI_VC_t * vc, MPID_Request *);
 int MPIDI_CH3_Packetized_recv_data(MPIDI_VC_t * vc, vbuf * v);
 
 int MPIDI_CH3_Rendezvouz_r3_recv_data(MPIDI_VC_t * vc, vbuf * v);
+
+void MPIDI_CH3_Rendezvouz_r3_ack_recv(MPIDI_VC_t * vc, 
+				MPIDI_CH3_Pkt_rndv_r3_ack_t *r3ack_pkt);
+
+int MPIDI_CH3I_MRAILI_Rendezvous_r3_ack_send(MPIDI_VC_t *vc);
+
 int MPIDI_CH3_Packetized_recv_req(MPIDI_VC_t * vc, MPID_Request *);
+
+int MPIDI_CH3_Rendezvous_unpack_data(MPIDI_VC_t *vc, MPID_Request *); 
+#ifdef _ENABLE_UD_
+/* UD ZCOPY RNDV interface */
+void MPIDI_CH3I_MRAIL_Prepare_rndv_zcopy(MPIDI_VC_t * vc, MPID_Request * req);
+
+void MPIDI_CH3_Rendezvous_zcopy_finish(MPIDI_VC_t * vc,
+                             MPIDI_CH3_Pkt_zcopy_finish_t * zcopy_finish);
+
+void MPIDI_CH3_Rendezvous_zcopy_ack(MPIDI_VC_t * vc,
+                             MPIDI_CH3_Pkt_zcopy_ack_t * zcopy_ack);
+#endif
 
 /* Mrail interfaces*/
 int MPIDI_CH3I_MRAIL_Prepare_rndv(
@@ -293,6 +298,8 @@ int MPIDI_CH3I_MRAILI_Get_rndv_rput(MPIDI_VC_t *vc,
 
 int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc, 
         vbuf * v, void **, int *headersize);
+
+int handle_read(MPIDI_VC_t * vc, vbuf * v);
 
 int MPIDI_CH3I_MRAIL_Fill_Request(MPID_Request *, 
         vbuf *v, int header_size, int * nb);
@@ -482,6 +489,10 @@ struct smpi_var {
 
 extern struct smpi_var g_smpi;
 
+void MPIDI_CH3I_set_smp_only();
+
+void MPIDI_CH3I_SMP_Init_VC(MPIDI_VC_t *vc);
+
 int MPIDI_CH3I_SMP_write_progress(MPIDI_PG_t *pg);
 
 int MPIDI_CH3I_SMP_read_progress(MPIDI_PG_t *pg);
@@ -529,20 +540,6 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
 
 int MPIDI_CH3I_SMP_pull_header(MPIDI_VC_t * vc,
                                MPIDI_CH3_Pkt_t ** pkt_head);
-
-/* Shared memory collectives mgmt*/
-struct shmem_coll_mgmt{
-    void *mmap_ptr;
-    int fd;
-};
-
-int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t *pg);
-
-int MPIDI_CH3I_SHMEM_COLL_Mmap(void);
-
-int MPIDI_CH3I_SHMEM_COLL_finalize(void);
-
-void MPIDI_CH3I_SHMEM_COLL_Unlink(void);
 
 /********* End of OSU-MPI2 *************************/
 

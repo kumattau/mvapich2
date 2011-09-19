@@ -339,8 +339,7 @@ static void cac_load(obj_attribute_type *tree, cpu_set_t cpuset)
         int i, j, depth_pus, num_pus;
         float proc_load;
         int num_processes = 0;
-        int depth_cores, num_cores, depth_sockets, num_sockets, depth_nodes, num_nodes;
-        hwloc_obj_t obj, root;
+        hwloc_obj_t obj;
 
         depth_pus = hwloc_get_type_or_below_depth(topology, HWLOC_OBJ_PU);
         num_pus = hwloc_get_nbobjs_by_depth(topology, depth_pus);
@@ -358,20 +357,6 @@ static void cac_load(obj_attribute_type *tree, cpu_set_t cpuset)
          * num_objs is HWLOC_OBJ_PU number, and system CPU number;
          * also HWLOC_OBJ_CORE number when HT disabled or without HT.
          */
-
-        root = hwloc_get_root_obj(topology);
-        depth_nodes = hwloc_get_type_depth(topology, HWLOC_OBJ_NODE);
-        if(depth_nodes != HWLOC_TYPE_DEPTH_UNKNOWN) {
-                num_nodes = hwloc_get_nbobjs_by_depth(topology, depth_nodes);
-        }
-        depth_sockets = hwloc_get_type_depth(topology, HWLOC_OBJ_SOCKET);
-        if(depth_sockets != HWLOC_TYPE_DEPTH_UNKNOWN) {
-                num_sockets = hwloc_get_nbobjs_by_depth(topology, depth_sockets);
-        }
-        depth_cores = hwloc_get_type_depth(topology, HWLOC_OBJ_CORE);
-        if(depth_cores != HWLOC_TYPE_DEPTH_UNKNOWN) {
-                num_cores = hwloc_get_nbobjs_by_depth(topology, depth_cores);
-        }
 
         for (i = 0; i < num_pus; i++) {
                 if (CPU_ISSET(i, &cpuset)) {
@@ -447,7 +432,7 @@ void map_scatter_load(obj_attribute_type *tree)
 void map_bunch_load(obj_attribute_type *tree)
 {
         int i, j, k, per = 0;
-	int per_socket_node, core_parent_num, depth_pus, num_pus = 0;
+	int per_socket_node, depth_pus, num_pus = 0;
         float current_socketornode_load = 0, current_core_load = 0;
         int depth_cores, depth_sockets, depth_nodes, num_cores = 0, num_sockets = 0, num_nodes = 0;
         hwloc_obj_t root, node, sockets, core_parent, core, pu, result;
@@ -479,7 +464,6 @@ void map_bunch_load(obj_attribute_type *tree)
         while (k < num_cores) {
                 if (depth_nodes == HWLOC_TYPE_DEPTH_UNKNOWN) {
                         find_leastload_socket(tree, root, &result);
-                        core_parent_num = num_sockets;
                         core_parent = result;
             		per = num_cores / num_sockets;
                         for (i = 0; (i < per) && (k < num_cores); i++) {
@@ -920,7 +904,6 @@ static int num_digits(int numcpus)
 
 int get_cpu_mapping_hwloc(long N_CPUs_online, hwloc_topology_t tp)
 {
-    hwloc_obj_t  sysobj;
     unsigned topodepth = -1, depth = -1;
     int num_sockets = 0, num_processes = 0, rc = 0, i;
     int num_cpus=0; 
@@ -997,7 +980,6 @@ int get_cpu_mapping_hwloc(long N_CPUs_online, hwloc_topology_t tp)
       }
 
       ip = 0;
-      sysobj = hwloc_get_root_obj(tp);
 
       /* MV2_ENABLE_LEASTLOAD: map_bunch/scatter or map_bunch/scatter_load */
       if ((value = getenv("MV2_ENABLE_LEASTLOAD")) != NULL) {
@@ -1287,7 +1269,7 @@ int smpi_setaffinity (void)
                 {
 		    // parsing of the string
                     char *token = tp_str;
-                    int cpunum;
+                    int cpunum = 0;
                     while (*token != '\0')
                     {
                         if (isdigit(*token)) {

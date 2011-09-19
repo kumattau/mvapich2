@@ -12,6 +12,8 @@
 #ifndef MPIRUN_PARAMS_H
 #define MPIRUN_PARAMS_H
 
+#include <process.h>
+
 int read_param_file(char *paramfile, char **env);
 void commandLine(int argc, char *argv[], char *totalview_cmd, char **env);
 int file_exists(char *filename);
@@ -20,7 +22,6 @@ void usage(void);
 /* xxx need to add checking for string overflow, do this more carefully ... */
 extern char *mpispawn_param_env;
 
-extern process *plist;
 extern int nprocs;
 extern int aout_index;
 extern int use_rsh;

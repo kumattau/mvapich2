@@ -17,9 +17,9 @@
  */
 
 #include "mpiimpl.h"
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include "coll_shmem.h"
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
 /* This is the default implementation of alltoall. The algorithm is:
    
@@ -155,7 +155,7 @@ int MPIR_Alltoall_intra_MV2(
             }
         }
     }  
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     else if ((nbytes <= coll_param.alltoall_small_msg) && (comm_size >= 8)) {
 #else 
     else if ((nbytes <= MPIR_ALLTOALL_SHORT_MSG) && (comm_size >= 8)) {
@@ -465,11 +465,11 @@ int MPIR_Alltoall_intra_MV2(
         MPIU_Free((char *)tmp_buf+sendtype_true_lb); 
 #endif
 
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
      } else if (nbytes <= coll_param.alltoall_medium_msg) {
 #else 
      } else if (nbytes <= MPIR_ALLTOALL_MEDIUM_MSG) {
-#endif /* #if defined(_OSU_MVAPICH_) */
+#endif /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
           /* Medium-size message. Use isend/irecv with scattered
            destinations. Use Tony Ladd's modification to post only
            a small number of isends/irecvs at a time. */
@@ -486,7 +486,7 @@ int MPIR_Alltoall_intra_MV2(
         int ii, ss, bblock;
         
         MPIU_CHKLMEM_DECL(2);
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
         bblock = coll_param.alltoall_throttle_factor;
 #else 
         bblock = MPIR_ALLTOALL_THROTTLE;
@@ -561,11 +561,11 @@ int MPIR_Alltoall_intra_MV2(
         i = 1;
         while (i < comm_size)
             i *= 2;
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
         if (i == comm_size && use_xor_alltoall == 1) {
 #else 
         if (i == comm_size) {
-#endif /* #if defined(_OSU_MVAPICH_) */ 
+#endif /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */ 
             pof2 = 1;
         } else  {
             pof2 = 0;

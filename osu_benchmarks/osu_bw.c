@@ -67,6 +67,20 @@ char r_buf1[MYBUFSIZE];
 MPI_Request request[MAX_REQ_NUM];
 MPI_Status  reqstat[MAX_REQ_NUM];
 
+#ifdef PACKAGE_VERSION
+#   define HEADER "# " BENCHMARK " v" PACKAGE_VERSION "\n"
+#else
+#   define HEADER "# " BENCHMARK "\n"
+#endif
+
+#ifndef FIELD_WIDTH
+#   define FIELD_WIDTH 20
+#endif
+
+#ifndef FLOAT_PRECISION
+#   define FLOAT_PRECISION 2
+#endif
+
 int main(int argc, char *argv[])
 {
     int myid, numprocs, i, j;
@@ -99,7 +113,7 @@ int main(int argc, char *argv[])
     }
 
     if(myid == 0) {
-        fprintf(stdout, "# %s v%s\n", BENCHMARK, PACKAGE_VERSION);
+        fprintf(stdout, HEADER);
         fprintf(stdout, "%-*s%*s\n", 10, "# Size", FIELD_WIDTH,
                 "Bandwidth (MB/s)");
         fflush(stdout);

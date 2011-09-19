@@ -15,6 +15,8 @@
  */
 
 #include "mpidi_ch3_impl.h"
+#include "mpiimpl.h"
+#include "coll_shmem.h"
 
 #define NULL_CONTEXT_ID -1
 
@@ -27,7 +29,7 @@ static MPID_Collops collective_functions_osu = {
     MPIR_Scatter_MV2, /* Scatter */
     MPIR_Scatterv, /* Scatterv */
     MPIR_Allgather_MV2, /* Allgather */
-    MPIR_Allgatherv, /* Allgatherv */
+    MPIR_Allgatherv_MV2, /* Allgatherv */
     MPIR_Alltoall_MV2, /* Alltoall */
     MPIR_Alltoallv, /* Alltoallv */
     MPIR_Alltoallw, /* Alltoallw */
@@ -76,11 +78,8 @@ int MPIDI_CH3I_comm_create (MPID_Comm *comm)
         comm->coll_fns = &collective_functions_anl;
     }
 
- fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_COMM_CREATE);
     return mpi_errno;
- fn_fail:
-    goto fn_exit;
 }
 
 #undef FUNCNAME
@@ -97,5 +96,3 @@ int MPIDI_CH3I_comm_destroy (MPID_Comm *comm)
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_COMM_DESTROY);
     return mpi_errno;
 }
-
- 

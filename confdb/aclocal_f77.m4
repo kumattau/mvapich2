@@ -1,8 +1,8 @@
 dnl PAC_PROG_F77 - reprioritize the F77 compiler search order
 AC_DEFUN([PAC_PROG_F77],[
 PAC_PUSH_FLAG([FFLAGS])
-AC_PROG_F77([ifort pgf77 af77 xlf frt cf77 fort77 fl32 fort ifc efc ftn \
-             gfortran f77 g77])
+AC_PROG_F77([gfortran g77 ifort pgf77 af77 xlf frt cf77 fort77 fl32 fort ifc \
+    efc ftn f77])
 PAC_POP_FLAG([FFLAGS])
 ])
 dnl

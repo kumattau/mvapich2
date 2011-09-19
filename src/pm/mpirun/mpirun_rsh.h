@@ -80,45 +80,6 @@
 
 #define PMGR_VERSION PMGR_COLLECTIVE
 
-typedef enum {
-    P_NOTSTARTED,
-    P_STARTED,
-    P_CONNECTED,
-    P_DISCONNECTED,
-    P_RUNNING,
-    P_FINISHED,
-    P_EXITED
-} process_state;
-
-typedef struct {
-    char *hostname;
-    char *device;
-    pid_t pid;
-    pid_t remote_pid;
-    int port;
-    int control_socket;
-    process_state state;
-    //These information are about the mpmd (multi process multiple data) option
-    char *executable_name;
-    char *executable_args;
-    int argc;
-} process;
-
-typedef struct {
-    const char *hostname;
-    pid_t pid;
-    int *plist_indices;
-    size_t npids, npids_allocated;
-
-    pid_t local_pid;            //the local forked() proc pid
-} process_group;
-
-typedef struct {
-    process_group *data;
-    process_group **index;
-    size_t npgs, npgs_allocated;
-} process_groups;
-
 #define MAXLINE 1024
 typedef struct {
     int totspawns;
@@ -141,9 +102,6 @@ typedef struct list_pid_mpirun {
 
 extern int NSPAWNS;
 
-extern process *plist;
-extern process_groups *pglist;
-
 #define RUNNING(i) ((plist[i].state == P_STARTED ||                 \
             plist[i].state == P_CONNECTED ||                        \
             plist[i].state == P_RUNNING) ? 1 : 0)
@@ -159,6 +117,7 @@ extern process_groups *pglist;
 #define TOTALVIEW_CMD "/usr/totalview/bin/totalview"
 #endif
 
-void handle_spawn_req(int readsock);
+int handle_spawn_req(int readsock);
+void mpispawn_checkin(int);
 
 /* vi:set sw=4 sts=4 tw=80: */

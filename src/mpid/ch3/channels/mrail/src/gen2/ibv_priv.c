@@ -79,7 +79,6 @@ int vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
     MPIDI_STATE_DECL(MPID_GEN2_VBUF_FAST_RDMA_ALLOC);
     MPIDI_FUNC_ENTER(MPID_GEN2_VBUF_FAST_RDMA_ALLOC);
 
-    XRC_MSG ("vbuf_fast_rdma_alloc %d", c->pg_rank);
     /* initialize revelant fields */
     c->mrail.rfp.rdma_credit = 0;
 
@@ -134,6 +133,7 @@ int vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
             v->buffer = (unsigned char *) ( (char *)(vbuf_rdma_buf) + (i *
                           rdma_fp_buffer_size ) + sizeof(*v->head_flag) );
             v->vc     = c;
+            v->transport = IB_TRANSPORT_RC;
         }
 
         /* Some vbuf initialization */

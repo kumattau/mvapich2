@@ -13,11 +13,9 @@
 #ifndef CKPT_FILE_H
 #define CKPT_FILE_H
 
-//#include "ib_comm.h"
-
+#include <sys/time.h>
+#include "common_crfs.h"
 #include "atomic.h"
-#include "common.h"
-
 #include "list.h"
 
 /////////////////////////////

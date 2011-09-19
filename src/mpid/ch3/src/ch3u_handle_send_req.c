@@ -16,6 +16,9 @@
  */
 
 #include "mpidimpl.h"
+#if defined(_OSU_MVAPICH_)
+#include "mpidrma.h"
+#endif
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3U_Handle_send_req
@@ -62,6 +65,7 @@ int MPIDI_CH3_ReqHandler_GetSendRespComplete( MPIDI_VC_t *vc ATTRIBUTE((unused))
     MPID_Win *win_ptr;
     MPID_Win_get_ptr(sreq->dev.target_win_handle, win_ptr);
     win_ptr->outstanding_rma --;
+    int rank, l_rank;   
 #endif /* defined(_OSU_MVAPICH_) */
 
     /* FIXME: Should this test be an MPIU_Assert? */
@@ -74,6 +78,24 @@ int MPIDI_CH3_ReqHandler_GetSendRespComplete( MPIDI_VC_t *vc ATTRIBUTE((unused))
 	   packet since the last operation is a get. */
 	
 	MPID_Win_get_ptr(sreq->dev.target_win_handle, win_ptr);
+
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+#if defined (_SMP_LIMIC_)
+    if ((!win_ptr->limic_fallback || !win_ptr->shm_fallback) 
+            && vc->smp.local_nodes != -1)
+#else
+    if (!win_ptr->shm_fallback && vc->smp.local_nodes != -1)
+#endif
+    {
+        rank = win_ptr->my_id;
+        l_rank = win_ptr->shm_g2l_rank[rank];
+        if (*((volatile int *) &win_ptr->shm_lock[l_rank]) != MPID_LOCK_NONE) {
+            MPIDI_CH3I_SHM_win_unlock(rank, win_ptr);
+            goto fn_exit;
+        }
+    }
+#endif
+
 	if (win_ptr->current_lock_type == MPID_LOCK_NONE) {
 	    /* FIXME: MT: this has to be done atomically */
 	    win_ptr->my_counter -= 1;
@@ -83,10 +105,12 @@ int MPIDI_CH3_ReqHandler_GetSendRespComplete( MPIDI_VC_t *vc ATTRIBUTE((unused))
 	}
     }
 
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+fn_exit:
+#endif
     /* mark data transfer as complete and decrement CC */
     MPIDI_CH3U_Request_complete(sreq);
     *complete = TRUE;
-
     return mpi_errno;
 }
 

@@ -18,6 +18,11 @@
 #if !defined(MPICH_MPIDRMA_H_INCLUDED)
 #define MPICH_MPIDRMA_H_INCLUDED
 
+#if defined(_OSU_MVAPICH_) && !defined(_DAPL_DEFAULT_PROVIDER_)
+#define MPIDI_CH3I_SHM_win_mutex_lock(win, rank) pthread_mutex_lock(&win->shm_mutex[rank]);
+#define MPIDI_CH3I_SHM_win_mutex_unlock(win, rank) pthread_mutex_unlock(&win->shm_mutex[rank]);
+#endif
+
 /*
  * RMA Declarations.  We should move these into something separate from
  * a Request.
@@ -81,25 +86,45 @@ typedef struct MPIDI_Win_lock_queue {
     struct MPIDI_PT_single_op *pt_single_op;  /* to store info for lock-put-unlock optimization */
 } MPIDI_Win_lock_queue;
 
+#if defined(_OSU_MVAPICH_) && !defined(_DAPL_DEFAULT_PROVIDER_)
+typedef struct MPIDI_Win_pending_lock {
+   MPID_Win *win_ptr;
+   struct MPIDI_Win_pending_lock *next;
+} MPIDI_Win_pending_lock_t;
+
+extern MPIDI_Win_pending_lock_t *pending_lock_winlist;
+#endif
+
 /* Routine use to tune RMA optimizations */
 void MPIDI_CH3_RMA_SetAccImmed( int flag );
 #if defined(_OSU_MVAPICH_)
+void *MPIDI_CH3I_Alloc_mem (size_t size, MPID_Info *info);
+void MPIDI_CH3I_Free_mem (void *ptr);
 void MPIDI_CH3I_RDMA_win_create(void *base, MPI_Aint size, int comm_size,
                            int rank, MPID_Win ** win_ptr, MPID_Comm * comm_ptr);
 void MPIDI_CH3I_RDMA_win_free(MPID_Win ** win_ptr);
 void MPIDI_CH3I_RDMA_start(MPID_Win * win_ptr, int start_grp_size, int *ranks_in_win_grp);
-void MPIDI_CH3I_RDMA_complete(MPID_Win * win_ptr, int start_grp_size, int *ranks_in_win_grp);
 void MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive);
-void MPIDI_CH3I_RDMA_complete_rma(MPID_Win * win_ptr, int start_grp_size, int *ranks_in_win_grp);
 int MPIDI_CH3I_RDMA_post(MPID_Win * win_ptr, int target_rank);
+void MPIDI_CH3I_RDMA_complete(MPID_Win * win_ptr, int start_grp_size, int *ranks_in_win_grp);
 int MPIDI_CH3I_RDMA_finish_rma(MPID_Win * win_ptr);
-#if defined(_SMP_LIMIC_) && !defined(_DAPL_DEFAULT_PROVIDER_)
-void MPIDI_CH3I_LIMIC_win_create(void *base, MPI_Aint size, int comm_size,
-                           int rank, MPID_Win ** win_ptr, MPID_Comm * comm_ptr);
-void MPIDI_CH3I_LIMIC_start(MPID_Win * win_ptr, int start_grp_size, int *ranks_in_win_grp);
-int MPIDI_CH3I_LIMIC_try_rma(MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr,
-                                   MPI_Win source_win_handle, MPID_Comm *comm_ptr);
-#endif /* _SMP_LIMIC_  && !_DAPL_DEFAULT_PROVIDER_ */
+#if !defined(_DAPL_DEFAULT_PROVIDER_)
+void MPIDI_CH3I_SHM_win_create(void *base, MPI_Aint size, MPID_Win ** win_ptr);
+void MPIDI_CH3I_SHM_win_free(MPID_Win ** win_ptr);
+int MPIDI_CH3I_SHM_try_rma(MPID_Win * win_ptr);
+int MPIDI_CH3I_SHM_win_lock (int dest_rank, int lock_type_requested, 
+                MPID_Win *win_ptr, int blocking);
+void MPIDI_CH3I_SHM_win_unlock (int dest_rank, MPID_Win *win_ptr);
+void MPIDI_CH3I_SHM_win_lock_enqueue (MPID_Win *win_ptr);
+int MPIDI_CH3I_Process_locks();
+void MPIDI_CH3I_INTRANODE_start(MPID_Win * win_ptr, int start_grp_size, int *ranks_in_win_grp);
+void MPIDI_CH3I_INTRANODE_complete(MPID_Win * win_ptr, int start_grp_size, int *ranks_in_win_grp);
+#if defined(_SMP_LIMIC_)
+void MPIDI_CH3I_LIMIC_win_create(void *base, MPI_Aint size, MPID_Win ** win_ptr);
+void MPIDI_CH3I_LIMIC_win_free(MPID_Win** win_ptr);
+int MPIDI_CH3I_LIMIC_try_rma(MPID_Win * win_ptr);
+#endif /* _SMP_LIMIC_ */
+#endif /* !_DAPL_DEFAULT_PROVIDER_ */
 #endif /* defined(_OSU_MVAPICH_) */
 
 #endif

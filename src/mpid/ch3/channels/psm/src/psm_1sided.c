@@ -114,7 +114,7 @@ static psm_error_t psm_iget_rndvsend(MPID_Request *req, int dest, void *buf, int
     return psmerr;
 }
 
-void psm_iput_rndv(int dest, void *buf, int buflen, int tag, int src)
+void psm_iput_rndv(int dest, void *buf, int buflen, int tag, int src, MPID_Request **rptr)
 {
     uint64_t stag = 0;
     psm_error_t psmerr;
@@ -123,6 +123,7 @@ void psm_iput_rndv(int dest, void *buf, int buflen, int tag, int src)
     rndvreq = psm_create_req();
     rndvreq->kind = MPID_REQUEST_SEND;
     rndvreq->psm_flags |= PSM_RNDVSEND_REQ;
+    *rptr = rndvreq;
     DBG("rndv send len %d tag %d dest %d I-am %d\n", buflen, tag, dest, src);
   
     MAKE_PSM_SELECTOR(stag, MPID_CONTEXT_RNDVPSM, tag, src);
@@ -188,7 +189,7 @@ int psm_1sided_putpkt(MPIDI_CH3_Pkt_put_t *pkt, MPID_IOV *iov, int iov_n,
         psm_iput(rank, vptr->buffer, buflen, req, pkt->mapped_srank);
         iovp = (void *)iov[iov_n-1].MPID_IOV_BUF;
         len = iov[iov_n-1].MPID_IOV_LEN;
-        psm_iput_rndv(rank, iovp, len, pkt->rndv_tag, pkt->mapped_srank);
+        psm_iput_rndv(rank, iovp, len, pkt->rndv_tag, pkt->mapped_srank, rptr);
         ++psm_tot_rndv_puts;
     }
 }
@@ -248,7 +249,7 @@ int psm_1sided_accumpkt(MPIDI_CH3_Pkt_accum_t *pkt, MPID_IOV *iov, int iov_n,
         psm_iput(rank, vptr->buffer, buflen, req, pkt->mapped_srank);
         iovp = (void *)iov[iov_n-1].MPID_IOV_BUF;
         len = iov[iov_n-1].MPID_IOV_LEN;
-        psm_iput_rndv(rank, iovp, len, pkt->rndv_tag, pkt->mapped_srank);
+        psm_iput_rndv(rank, iovp, len, pkt->rndv_tag, pkt->mapped_srank, rptr);
     }
     ++psm_tot_accs;
 }
@@ -445,6 +446,11 @@ int psm_1sided_input(MPID_Request *req, int inlen)
             goto end;
         } else {                /* large put */
             MPID_Request *nreq = NULL;
+            MPID_Win *win_ptr = NULL;
+
+            MPID_Win_get_ptr(putpkt->target_win_handle, win_ptr); 
+            win_ptr->outstanding_rma++;
+
             GET_VC(vc, putpkt->target_win_handle, putpkt->source_rank);
             vc->ch.recv_active = req;
             DBG("large put packet from %d\n", vc->pg_rank);
@@ -502,6 +508,10 @@ int psm_1sided_input(MPID_Request *req, int inlen)
             goto end;           /* large accumulate */
         } else {
             MPID_Request *nreq = NULL;
+            MPID_Win *win_ptr = NULL; 
+
+            MPID_Win_get_ptr(acpkt->target_win_handle, win_ptr); 
+            win_ptr->outstanding_rma++; 
 
             GET_VC(vc, acpkt->target_win_handle, acpkt->source_rank);
             req->psm_flags |= PSM_RNDV_ACCUM_REQ;
@@ -586,7 +596,6 @@ int psm_complete_rndvrecv(MPID_Request *req, int inlen)
     if(req->psm_flags & PSM_RNDVRECV_PUT_REQ) {
         MPIDI_CH3_Pkt_put_t *putpkt;
         putpkt = (MPIDI_CH3_Pkt_put_t *) pkt;
-        putreq->psm_flags |= PSM_RNDVPUT_COMPLETED;
         MPID_Win_get_ptr(putpkt->target_win_handle, win_ptr);
         MPIDI_Comm_get_vc(win_ptr->comm_ptr, putpkt->source_rank, &vc);
         vc->ch.recv_active = putreq;
@@ -598,6 +607,8 @@ int psm_complete_rndvrecv(MPID_Request *req, int inlen)
             /* treq had dataloop et al free it now */
             MPIDI_CH3U_Request_complete(treq);
         }
+        putreq->psm_flags |= PSM_RNDVPUT_COMPLETED;
+        win_ptr->outstanding_rma--;
         psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
     } else if(req->psm_flags & PSM_RNDVRECV_ACCUM_REQ) {
         MPIDI_CH3_Pkt_accum_t *acpkt;
@@ -613,6 +624,7 @@ int psm_complete_rndvrecv(MPID_Request *req, int inlen)
             MPIDI_CH3U_Request_complete(treq);
         }
         req->psm_flags |= PSM_RNDVPUT_COMPLETED;
+        win_ptr->outstanding_rma--;
         MPIDI_CH3_ReqHandler_PutAccumRespComplete(vc, req, &complete);
     }
 
@@ -711,7 +723,7 @@ static MPID_Request *psm_1sc_putacc_rndvrecv(MPID_Request *putreq, int putlen,
             MPIDI_CH3U_Request_complete(preq);
         }
     }
-
+	 
     _psm_enter_;
     psmerr = psm_mq_irecv(psmdev_cw.mq, rtag, rtagsel, MQ_FLAGS_NONE, useraddr,
                  rndv_len, req, &(req->mqreq));

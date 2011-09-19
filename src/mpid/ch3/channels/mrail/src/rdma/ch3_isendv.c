@@ -187,6 +187,11 @@ int MPIDI_CH3_iSendv(MPIDI_VC_t * vc, MPID_Request * sreq, MPID_IOV * iov,
         goto fn_exit;
     }
 
+#ifdef  _ENABLE_UD_
+    int len;
+    Calculate_IOV_len(iov, n_iov, len);
+#endif 
+
     /*CM code*/
     if ((vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE
 #ifdef _ENABLE_XRC_
@@ -222,9 +227,13 @@ int MPIDI_CH3_iSendv(MPIDI_VC_t * vc, MPID_Request * sreq, MPID_IOV * iov,
            channel, thus insuring that the progress engine does also try to
            write */
         Calculate_IOV_len(iov, n_iov, pkt_len);
-
-        if (pkt_len > MRAIL_MAX_EAGER_SIZE) {
-          MPIU_Memcpy(sreq->dev.iov, iov, n_iov * sizeof(MPID_IOV));
+        
+        if (pkt_len > MRAIL_MAX_EAGER_SIZE
+#ifdef _ENABLE_UD_
+         || (!(vc->mrail.state & MRAILI_RC_CONNECTED) && pkt_len > MRAIL_MAX_UD_SIZE)
+#endif
+        ) {
+            MPIU_Memcpy(sreq->dev.iov, iov, n_iov * sizeof(MPID_IOV));
             sreq->dev.iov_count = n_iov;
             mpi_errno = MPIDI_CH3_Packetized_send(vc, sreq);
             if (MPI_MRAIL_MSG_QUEUED == mpi_errno) {
@@ -276,8 +285,12 @@ int MPIDI_CH3_iSendv(MPIDI_VC_t * vc, MPID_Request * sreq, MPID_IOV * iov,
             n_iov = 1;
         }
 
-        if (pkt_len > MRAIL_MAX_EAGER_SIZE) {
-          MPIU_Memcpy(sreq->dev.iov, iov, n_iov * sizeof(MPID_IOV));
+        if (pkt_len > MRAIL_MAX_EAGER_SIZE
+#ifdef _ENABLE_UD_
+         || (!(vc->mrail.state & MRAILI_RC_CONNECTED) && pkt_len > MRAIL_MAX_UD_SIZE)
+#endif
+        ) {
+            MPIU_Memcpy(sreq->dev.iov, iov, n_iov * sizeof(MPID_IOV));
             sreq->dev.iov_count = n_iov;
             mpi_errno = MPIDI_CH3_Packetized_send(vc, sreq);
             if (MPI_MRAIL_MSG_QUEUED == mpi_errno) {

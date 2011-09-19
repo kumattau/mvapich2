@@ -44,7 +44,9 @@ int MPIR_Assert_fail_fmt(const char *cond, const char *file_name, int line_num, 
 #else
 #   define MPIU_Assert(a_)
 /* Empty decls not allowed in C */
-#   define MPIU_AssertDecl(a_) a_ 
+/* <_OSU_MVAPICH_> */
+#   define MPIU_AssertDecl(a_) a_ ATTRIBUTE((unused))
+/* </_OSU_MVAPICH_> */
 #   define MPIU_AssertDeclValue(_a,_b) _a ATTRIBUTE((unused)) = _b
 #endif
 

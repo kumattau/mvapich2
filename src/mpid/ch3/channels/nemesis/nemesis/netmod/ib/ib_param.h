@@ -139,6 +139,7 @@ extern int                  use_iboeth;
 #define RDMA_DEFAULT_RNR_RETRY          (7)
 #define RDMA_DEFAULT_PUT_GET_LIST_SIZE  (200)
 #define RDMA_INTEGER_POOL_SIZE          (1024)
+#define RDMA_DEFAULT_POLLING_SET_LIMIT  (64)
 #define RDMA_IBA_NULL_HCA               "nohca"
 #define RDMA_DEFAULT_NUM_SA_QUERY_RETRIES   (20)
 

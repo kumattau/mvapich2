@@ -17,7 +17,7 @@
 
 #include <semaphore.h>
 
-#define WORKELEM_SIZE (256)
+#define WORKELEM_SIZE (512)
 
 typedef struct work_elem {
     unsigned char data[WORKELEM_SIZE];

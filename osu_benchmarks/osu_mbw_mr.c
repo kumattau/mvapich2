@@ -70,6 +70,20 @@ MPI_Status * reqstat;
 double calc_bw(int rank, int size, int num_pairs, int window_size, char *s_buf, char *r_buf);
 void usage();
 
+#ifdef PACKAGE_VERSION
+#   define HEADER "# " BENCHMARK " v" PACKAGE_VERSION "\n"
+#else
+#   define HEADER "# " BENCHMARK "\n"
+#endif
+
+#ifndef FIELD_WIDTH
+#   define FIELD_WIDTH 20
+#endif
+
+#ifndef FLOAT_PRECISION
+#   define FLOAT_PRECISION 2
+#endif
+
 int main(int argc, char *argv[])
 {
     char *s_buf, *r_buf;
@@ -156,7 +170,7 @@ int main(int argc, char *argv[])
     }
 
     if(rank == 0) {
-        fprintf(stdout, "# %s v%s\n", BENCHMARK, PACKAGE_VERSION);
+        fprintf(stdout, HEADER);
 
         if(window_varied) {
             fprintf(stdout, "# [ pairs: %d ] [ window size: varied ]\n", pairs);

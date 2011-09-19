@@ -16,8 +16,6 @@
 #include <pthread.h>
 #include <semaphore.h>
 
-#include "common.h"
-//#include "ib_comm.h"
 #include "list.h"
 #include "atomic.h"
 #include "ckpt_file.h"

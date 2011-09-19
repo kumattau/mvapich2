@@ -15,6 +15,7 @@
 #include <debug_utils.h>
 #include <mpispawn_error_codes.h>
 #include <m_state.h>
+#include <process.h>
 
 #include <pthread.h>
 #include <unistd.h>
@@ -86,7 +87,10 @@ process_mpispawn_connection (int sfd)
              */
             PRINT_DEBUG(DEBUG_Fork_verbose, "Dynamic spawn request from %d\n",
                     id);
-            handle_spawn_req(sfd);
+            if (handle_spawn_req(sfd)) {
+                PRINT_ERROR("Unable to process DPM spawn request\n");
+                m_state_fail();
+            }
             dpm_cnt++;
             break;
         case MPISPAWN_MPIPROCESS_NONZEROEXIT:
@@ -137,14 +141,14 @@ wfe_thread (void * arg)
     /*
      * First let the mpispawn processes checkin before waiting for errors
      */
-    mpispawn_checkin(params->s, (struct sockaddr *)params->sockaddr,
-            &params->sockaddr_len);
+    mpispawn_checkin(params->s);
 
     /*
      * Do not continue if something prevented a smooth transition from the
      * launch state to the run state.
      */
     if (M_RUN != m_state_transition(M_LAUNCH, M_RUN)) {
+        PRINT_ERROR("Internal error: transition failed\n");
         m_state_fail();
         pthread_exit(NULL);
     }

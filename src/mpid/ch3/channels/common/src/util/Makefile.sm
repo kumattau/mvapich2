@@ -4,4 +4,5 @@ lib${MPILIBNAME}_a_SOURCES =	\
     crc32h.c			\
     mv2_config.c		\
     error_handling.c	\
-    debug_utils.c
+    debug_utils.c		\
+    mv2_clock.c

@@ -11,6 +11,7 @@
  */
 
 #include "psmpriv.h"
+#include "coll_shmem.h"
 
 #undef FUNCNAME
 #define FUNCNAME psm_dofinalize
@@ -18,6 +19,7 @@
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int psm_dofinalize()
 {
+    MPIDI_VC_t *vc = NULL;
     int mpi_errno = MPI_ERR_INTERN;
     psm_error_t psmerr;
 
@@ -42,6 +44,12 @@ int psm_dofinalize()
     MPIU_Free(psmdev_cw.epaddrs);
 
     psm_deallocate_vbuf();
+
+    if (enable_shmem_collectives){
+        MPIDI_PG_Get_vc(MPIDI_Process.my_pg, MPIDI_Process.my_pg_rank, &vc);
+	    /* Freeing up shared memory collective resources*/
+     	MPIDI_CH3I_SHMEM_COLL_finalize(vc->smp.local_rank, MPIDI_Process.my_pg->ch.num_local_processes);
+    }
 
     mpi_errno = MPI_SUCCESS;
 fn_fail:

@@ -3249,7 +3249,7 @@ int MPID_VCR_Get_lpid(MPID_VCR vcr, int * lpid_ptr);
 time in some alltoall algorithms. Setting it to 0 causes all irecvs/isends to be 
 posted at once. */
 
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || (_OSU_PSM_)
 #define MPIR_ALLTOALL_SHORT_MSG         2048
 #define MPIR_ALLTOALL_MEDIUM_MSG        16384
 #define MPIR_ALLTOALL_SMALL_SYSTEM_SIZE 256
@@ -3301,7 +3301,7 @@ posted at once. */
 #define MPIR_TOPO_B_TAG               27
 #define MPIR_REDUCE_SCATTER_BLOCK_TAG 28
 #define MPIR_ERROR_TAG                29
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || (_OSU_PSM_)
 #define SHMEM_ALLREDUCE_THRESHOLD (1<<15)
 #define MPIR_ALLREDUCE_2LEVEL_THRESHOLD (1<<18)
 #define SHMEM_REDUCE_THRESHOLD (1<<12)
@@ -3310,7 +3310,7 @@ posted at once. */
 
 struct coll_runtime {
     int allgather_rd_threshold; 
-    int allgather_bruck_threshold; 
+    int allgather_bruck_threshold;
     int allreduce_short_msg;
     int allreduce_2level_threshold; 
     int reduce_short_msg;
@@ -3322,7 +3322,7 @@ struct coll_runtime {
     int alltoall_medium_msg; 
     int alltoall_throttle_factor;
 };
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(_OSU_MVAPICH_) || (_OSU_PSM_) */
 
 /* These functions are used in the implementation of collective and
    other internal operations. They are wrappers around MPID send/recv
@@ -3413,10 +3413,13 @@ extern MPIR_Op_check_dtype_fn *MPIR_Op_check_dtype_table[];
 #define MPIR_MAX(a,b) (((b)>(a))?(b):(a))
 #endif /* MPIR_MAX */
 
-#if defined(_OSU_MVAPICH_)
+#if defined (_OSU_MVAPICH_) || (_OSU_PSM_)
 int MPIR_Allgather_MV2(void *sendbuf, int sendcount, MPI_Datatype sendtype,
                    void *recvbuf, int recvcount, MPI_Datatype recvtype,
                    MPID_Comm *comm_ptr, int *errflag );
+int MPIR_Allgatherv_MV2(void *sendbuf, int sendcount, MPI_Datatype sendtype, 
+                    void *recvbuf, int *recvcounts, int *displs,   
+                    MPI_Datatype recvtype, MPID_Comm *comm_ptr, int *errflag );
 int MPIR_Allreduce_MV2(void *sendbuf, void *recvbuf, int count, 
                    MPI_Datatype datatype, MPI_Op op, MPID_Comm *comm_ptr, int *errflag);
 int MPIR_Alltoall_MV2(void *sendbuf, int sendcount, MPI_Datatype sendtype,
@@ -3434,7 +3437,7 @@ int MPIR_Scatter_MV2(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
                  int root, MPID_Comm *comm_ptr, int *errflag );
 int MPIR_Barrier_MV2( MPID_Comm *comm_ptr, int *errflag);
 
-#endif /* _OSU_MVAPICH_ */
+#endif /* _OSU_MVAPICH_ || _OSU_PSM_ */
 
 int MPIR_Allgather_impl(void *sendbuf, int sendcount, MPI_Datatype sendtype,
                         void *recvbuf, int recvcount, MPI_Datatype recvtype,

@@ -140,7 +140,10 @@ int MPIDI_CH3_iStartMsgv(MPIDI_VC_t * vc, MPID_IOV * iov, int n_iov,
 #endif
         return(mpi_errno);
     }
-
+#ifdef _ENABLE_UD_
+    int len;
+    Calculate_IOV_len(iov, n_iov, len);
+#endif    
     /*CM code*/
     if ((vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE 
 #ifdef _ENABLE_XRC_
@@ -172,7 +175,12 @@ int MPIDI_CH3_iStartMsgv(MPIDI_VC_t * vc, MPID_IOV * iov, int n_iov,
         Calculate_IOV_len(iov, n_iov, pkt_len);
         DEBUG_PRINT("[send], n_iov: %d, pkt_len %d\n", n_iov,
                     pkt_len);
-        if (pkt_len > MRAIL_MAX_EAGER_SIZE) {
+        
+        if (pkt_len > MRAIL_MAX_EAGER_SIZE
+#ifdef _ENABLE_UD_
+         || (!(vc->mrail.state & MRAILI_RC_CONNECTED) && pkt_len > MRAIL_MAX_UD_SIZE)
+#endif
+        ) {
             sreq = create_request(iov, n_iov, 0, 0);
             mpi_errno = MPIDI_CH3_Packetized_send(vc, sreq);
             if (MPI_MRAIL_MSG_QUEUED == mpi_errno) {

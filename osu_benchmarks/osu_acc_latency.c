@@ -42,6 +42,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
+#include <getopt.h>
 
 int skip = 100;
 int loop = 1000;
@@ -53,17 +54,30 @@ int large_message_size = 8192;
 #define MAX_SIZE (1<<22)
 #define MYBUFSIZE (MAX_SIZE + MAX_ALIGNMENT)
 
-char        A[MYBUFSIZE];
-char        B[MYBUFSIZE];
+#ifdef PACKAGE_VERSION
+#   define HEADER "# " BENCHMARK " v" PACKAGE_VERSION "\n"
+#else
+#   define HEADER "# " BENCHMARK "\n"
+#endif
+
+#ifndef FIELD_WIDTH
+#   define FIELD_WIDTH 20
+#endif
+
+#ifndef FLOAT_PRECISION
+#   define FLOAT_PRECISION 2
+#endif
 
 int main (int argc, char *argv[])
 {
     int         rank, destrank, nprocs, i;
     MPI_Group   comm_group, group;
     MPI_Win     win;
-    int         size;
-    double      t_start, t_end;
+    MPI_Info    win_info;
+    int         size, no_hints = 0;
+    double      t_start=0.0, t_end=0.0;
     int         count, page_size;
+    char        *A, *B;
     int         *s_buf, *r_buf;
 
     MPI_Init(&argc, &argv);
@@ -81,8 +95,56 @@ int main (int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
+    while (1) {
+        static struct option long_options[] =
+            {{"no-hints", no_argument, NULL, 'n'},
+             {0, 0, 0, 0}};
+        int option, index;
+
+        option = getopt_long (argc, argv, "n::",
+                            long_options, &index);
+
+        if (option == -1) {
+            break;
+        }
+
+        switch (option) {
+            case 'n':
+                no_hints = 1;
+                break;
+            default:
+                if (rank == 0) {
+                    fprintf(stderr, "Invalid Option \n");
+                }
+                MPI_Finalize();
+                return EXIT_FAILURE;
+        }
+    }
+
     page_size = getpagesize();
     assert(page_size <= MAX_ALIGNMENT);
+
+    MPI_Alloc_mem (MYBUFSIZE, MPI_INFO_NULL, &A);
+    if (NULL == A) {
+         fprintf(stderr, "[%d] Buffer Allocation Failed \n", rank);
+         exit(-1);
+    }
+
+    if (no_hints == 0) {
+        /* Providing MVAPICH2 specific hint to allocate memory 
+         * in shared space. MVAPICH2 optimizes communication          
+         * on windows created in this memory */
+        MPI_Info_create(&win_info);
+        MPI_Info_set(win_info, "alloc_shm", "true");
+
+        MPI_Alloc_mem (MYBUFSIZE, win_info, &B);
+    } else {
+        MPI_Alloc_mem (MYBUFSIZE, MPI_INFO_NULL, &B);
+    }
+    if (NULL == B) {
+         fprintf(stderr, "[%d] Buffer Allocation Failed \n", rank);
+         exit(-1);
+    }
 
     s_buf =
         (int *) (((unsigned long) A + (page_size - 1)) /
@@ -97,12 +159,12 @@ int main (int argc, char *argv[])
     }
 
     if (rank == 0) {
-        fprintf(stdout, "# %s v%s\n", BENCHMARK, PACKAGE_VERSION);
+        fprintf(stdout, HEADER);
         fprintf(stdout, "%-*s%*s\n", 10, "# Size", FIELD_WIDTH, "Latency (us)");
         fflush(stdout);
     }
 
-    for (count = 0; count <= MAX_SIZE / sizeof(int); (count <<= 1) || (count += 1)) {
+    for (count = 0; count <= MAX_SIZE / sizeof(int); count = (count ? count << 1 : 1)) {
         size = count * sizeof(int);
 
         if (size > large_message_size) {
@@ -161,6 +223,13 @@ int main (int argc, char *argv[])
         MPI_Group_free(&group);
         MPI_Win_free(&win);
     }
+
+    if (no_hints == 0) {
+        MPI_Info_free(&win_info);
+    }
+
+    MPI_Free_mem(A);
+    MPI_Free_mem(B);
 
     MPI_Group_free(&comm_group);
     MPI_Finalize ();

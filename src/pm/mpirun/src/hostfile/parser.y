@@ -13,9 +13,14 @@
  * copyright file COPYRIGHT in the top level MVAPICH2 directory.
  */
 
-#include <stdio.h>
-#include <mpirun_rsh.h>
+#include <process.h>
 #include <debug_utils.h>
+#include <mpirun_util.h>
+
+#include <stdio.h>
+#include <stdlib.h>
+
+extern int yylex();
 
 void yyerror (char const *s);
 static int commit(void);
@@ -138,8 +143,8 @@ commit(void)
         ++n_ranks;
     }
 
-    if (current.hostname) free(current.hostname);
-    if (current.hca) free(current.hca);
+    if (current.hostname) free((void *)current.hostname);
+    if (current.hca) free((void *)current.hca);
 
     current.hostname = NULL;
     current.hca = NULL;
@@ -174,6 +179,14 @@ read_hostfile(char * pathname)
         free_memory();
         fclose(yyin);
         
+        exit(EXIT_FAILURE);
+    }
+
+    if (n_ranks == 0) {
+        PRINT_ERROR("No host found in hostfile `%s'\n", hostfile);
+        print_memory();
+        free_memory();
+        fclose(yyin);
         exit(EXIT_FAILURE);
     }
 

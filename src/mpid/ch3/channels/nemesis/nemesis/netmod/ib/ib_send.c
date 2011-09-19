@@ -1201,9 +1201,7 @@ int MRAILI_Process_send(void *vbuf_addr)
     case MPIDI_CH3_PKT_LOCK:
     case MPIDI_CH3_PKT_LOCK_GRANTED:
     case MPIDI_CH3_PKT_PT_RMA_DONE:
-    case MPIDI_CH3_PKT_LOCK_PUT_UNLOCK: /* optimization for single puts */
     case MPIDI_CH3_PKT_LOCK_GET_UNLOCK: /* optimization for single gets */
-    case MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK: /* optimization for single accumulates */
     case MPIDI_CH3_PKT_FLOW_CNTL_UPDATE:
     case MPIDI_CH3_PKT_CLOSE:  /*24*/
     case MPIDI_NEM_PKT_LMT_RTS:
@@ -1217,7 +1215,17 @@ int MRAILI_Process_send(void *vbuf_addr)
         }
         else v->padding = FREE_FLAG;
         break;
-
+   case MPIDI_CH3_PKT_LOCK_PUT_UNLOCK: /* optimization for single puts */
+   case MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK: /* optimization for single accumulates */
+        req = (MPID_Request *) v->sreq;
+        if (NULL != req) {
+          MPID_Request_set_completed(req);
+        }
+        if (v->padding == NORMAL_VBUF_FLAG) {
+            MRAILI_Release_vbuf(v);
+        }
+        else v->padding = FREE_FLAG;
+        break;
     default:
         dump_vbuf("unknown packet (send finished)", v);
         ibv_va_error_abort(IBV_STATUS_ERR,

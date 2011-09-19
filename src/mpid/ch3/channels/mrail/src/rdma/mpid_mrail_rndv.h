@@ -33,5 +33,11 @@ int MPID_MRAIL_RndvRecv (
     MPIDI_VC_t* vc,
     MPID_Request* rreq);
 
+int MPIDI_CH3_iStartRndvMsg(MPIDI_VC_t * vc,
+                            MPID_Request * sreq, 
+                            MPIDI_CH3_Pkt_t * rts_pkt);
+
+int MPIDI_CH3_iStartRndvTransfer(MPIDI_VC_t * vc,
+                                 MPID_Request * rreq);
 #endif /* __MPID_MRAIL_RNDV_H_ */
 

@@ -43,6 +43,8 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
+#include <string.h>
+#include <getopt.h>
 
 #define MAX_ALIGNMENT 65536
 #define MAX_MSG_SIZE (1<<22)
@@ -59,6 +61,20 @@ int skip_large = 10;
 
 int large_message_size = 8192;
 
+#ifdef PACKAGE_VERSION
+#   define HEADER "# " BENCHMARK " v" PACKAGE_VERSION "\n"
+#else
+#   define HEADER "# " BENCHMARK "\n"
+#endif
+
+#ifndef FIELD_WIDTH
+#   define FIELD_WIDTH 20
+#endif
+
+#ifndef FLOAT_PRECISION
+#   define FLOAT_PRECISION 2
+#endif
+
 int main (int argc, char *argv[])
 {
     int         myid, numprocs, i, j;
@@ -66,9 +82,10 @@ int main (int argc, char *argv[])
     char        *s_buf, *r_buf;
     char        *s_buf1, *r_buf1;
     double      t_start = 0.0, t_end = 0.0, t = 0.0;
-    int         destrank;
+    int         destrank, no_hints = 0;
     MPI_Group   comm_group, group;
     MPI_Win     win;
+    MPI_Info    win_info;
 
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
@@ -84,19 +101,59 @@ int main (int argc, char *argv[])
 
         return EXIT_FAILURE;
     }
+    
+    while (1) {
+        static struct option long_options[] = 
+            {{"no-hints", no_argument, NULL, 'n'},
+             {0, 0, 0, 0}};
+        int option, index;
+
+        option = getopt_long (argc, argv, "n::",
+                            long_options, &index);
+
+        if (option == -1) {
+            break;
+        }
+
+        switch (option) {
+            case 'n':
+                no_hints = 1;
+                break;
+            default:
+                if (myid == 0) { 
+                    fprintf(stderr, "Invalid Option \n");
+                }
+                MPI_Finalize();
+                return EXIT_FAILURE; 
+        }
+    }
 
     page_size = getpagesize();
     assert(page_size <= MAX_ALIGNMENT);
 
-    s_buf1 = malloc(MAX_MSG_SIZE + MAX_ALIGNMENT);
+    MPI_Alloc_mem (MAX_MSG_SIZE*window_size + MAX_ALIGNMENT, 
+            MPI_INFO_NULL, &s_buf1);
     if (NULL == s_buf1) {
          fprintf(stderr, "[%d] Buffer Allocation Failed \n", myid);
          exit(-1);
-    } 
-    r_buf1 = malloc(MAX_MSG_SIZE*window_size + MAX_ALIGNMENT);
+    }
+        
+    if (no_hints == 0) {
+        /* Providing MVAPICH2 specific hint to allocate memory 
+         * in shared space. MVAPICH2 optimizes communication          
+         * on windows created in this memory */
+        MPI_Info_create(&win_info);
+        MPI_Info_set(win_info, "alloc_shm", "true");
+
+        MPI_Alloc_mem (MAX_MSG_SIZE*window_size + MAX_ALIGNMENT, 
+                win_info, &r_buf1);
+    } else {
+        MPI_Alloc_mem (MAX_MSG_SIZE*window_size + MAX_ALIGNMENT,
+                MPI_INFO_NULL, &r_buf1);
+    }
+
     if (NULL == r_buf1) {
          fprintf(stderr, "[%d] Buffer Allocation Failed \n", myid);
-         fflush(stdout);
          exit(-1);
     }  
 
@@ -106,11 +163,12 @@ int main (int argc, char *argv[])
     r_buf =
         (char *) (((unsigned long) r_buf1 + (page_size - 1)) / page_size *
                   page_size);
-
     assert((s_buf != NULL) && (r_buf != NULL));
+    memset(s_buf, 0, MAX_MSG_SIZE*window_size);
+    memset(r_buf, 1, MAX_MSG_SIZE*window_size);
 
     if (myid == 0) {
-        fprintf(stdout, "# %s v%s\n", BENCHMARK, PACKAGE_VERSION);
+        fprintf(stdout, HEADER);
         fprintf(stdout, "%-*s%*s\n", 10, "# Size", FIELD_WIDTH,
                 "Bandwidth (MB/s)");
         fflush(stdout);
@@ -135,7 +193,7 @@ int main (int argc, char *argv[])
 
             for (i = 0; i < skip; i++) {
                 MPI_Win_start(group, 0, win);
-                MPI_Put(s_buf, size, MPI_CHAR, 1, i * size, size, MPI_CHAR,
+                MPI_Put(s_buf + i*size, size, MPI_CHAR, 1, i*size, size, MPI_CHAR,
                         win);
                 MPI_Win_complete(win);
             }
@@ -160,7 +218,7 @@ int main (int argc, char *argv[])
                 MPI_Win_start(group, 0, win);
 
                 for(j = 0; j < window_size; j++) {
-                    MPI_Put(s_buf, size, MPI_CHAR, 1, j * size, size, MPI_CHAR,
+                    MPI_Put(s_buf + j*size, size, MPI_CHAR, 1, j*size, size, MPI_CHAR,
                             win);
                 }
 
@@ -191,6 +249,14 @@ int main (int argc, char *argv[])
     } 
     
     MPI_Barrier(MPI_COMM_WORLD);
+
+    if (no_hints == 0) {
+        MPI_Info_free(&win_info);
+    }
+
+    MPI_Free_mem(s_buf1);
+    MPI_Free_mem(r_buf1);
+
     MPI_Group_free(&comm_group);
     MPI_Finalize();
 

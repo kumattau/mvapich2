@@ -18,10 +18,12 @@
 
 #include "mpiimpl.h"
 #include <unistd.h>
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include "coll_shmem.h"
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 #include <unistd.h>
+
+int MPIR_Bcast_intra_MV2(void *, int, MPI_Datatype, int, MPID_Comm *, int *); 
 
 /* Not PMPI_LOCAL because it is called in intercomm allgather */
 #undef FUNCNAME
@@ -106,7 +108,6 @@ int MPIR_Bcast_inter_MV2 (
         }
     }
 
-fn_fail:
     MPID_MPI_FUNC_EXIT(MPID_STATE_MPIR_BCAST_INTER);
     if (mpi_errno_ret)
         mpi_errno = mpi_errno_ret;
@@ -115,6 +116,7 @@ fn_fail:
     return mpi_errno;
 }
 
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 
 /* A binomial tree broadcast algorithm.  Good for short messages, 
    Cost = lgp.alpha + n.lgp.beta */
@@ -428,14 +430,11 @@ static int scatter_for_bcast_MV2(
         mask >>= 1;
     }
 
-fn_exit:
     if (mpi_errno_ret)
         mpi_errno = mpi_errno_ret;
     else if (*errflag)
         MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**coll_fail");
     return mpi_errno;
-fn_fail:
-    goto fn_exit;
 }
 
 /*
@@ -458,6 +457,7 @@ fn_fail:
    it's still a logarithmic algorithm.) Therefore, for long messages
    Total Cost = 2.lgp.alpha + 2.n.((p-1)/p).beta
 */
+
 #undef FUNCNAME
 #define FUNCNAME MPIR_Bcast_scatter_doubling_allgather_MV2
 #undef FCNAME
@@ -747,7 +747,6 @@ static int MPIR_Bcast_scatter_ring_allgather_MV2(
     int *errflag)
 {
     int rank, comm_size;
-    int relative_rank;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
     int scatter_size, nbytes;
@@ -763,7 +762,6 @@ static int MPIR_Bcast_scatter_ring_allgather_MV2(
     comm = comm_ptr->handle;
     comm_size = comm_ptr->local_size;
     rank = comm_ptr->rank;
-    relative_rank = (rank >= root) ? rank - root : rank - root + comm_size;
 
     /* If there is only one process, return */
     if (comm_size == 1) goto fn_exit;
@@ -898,12 +896,6 @@ fn_fail:
     goto fn_exit;
 }
 
-
-
-
-
-
-#if defined(_OSU_MVAPICH_)
 #undef FUNCNAME
 #define FUNCNAME MPIR_Shmem_Bcast_MV2
 #undef FCNAME
@@ -917,13 +909,11 @@ int MPIR_Shmem_Bcast_MV2(
     MPID_Comm *shmem_comm_ptr)
 { 
     int mpi_errno = MPI_SUCCESS; 
-    MPI_Comm shmem_comm; 
-    int rank, size, shmem_comm_rank, nbytes, type_size; 
+    int shmem_comm_rank, nbytes, type_size; 
     int local_rank, local_size; 
 
     MPID_Datatype_get_size_macro(datatype, type_size);
     nbytes = count*type_size; 
-    shmem_comm = shmem_comm_ptr->handle; 
     shmem_comm_rank = shmem_comm_ptr->ch.shmem_comm_rank; 
     void *shmem_buf = NULL; 
    
@@ -971,16 +961,12 @@ int MPIR_Knomial_Bcast_MV2(
         int *errflag)
 {
     MPI_Comm comm;
-    MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
-    int local_rank = -1, global_rank = -1, local_size=0,rank,size;
-    int leader_root = 0;
-    int leader_of_root;
+    int local_size=0,rank;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
     MPI_Request *reqarray=NULL; 
     MPI_Status  *starray=NULL;
-    void *tmp_buf;
-    int src,dst,mask,relative_rank,comm_size;
+    int src,dst,mask,relative_rank;
     int k;
     comm  = comm_ptr->handle;
     PMPI_Comm_size ( comm, &local_size );
@@ -1082,17 +1068,14 @@ static int MPIR_Bcast_inter_node_helper_MV2(
     MPID_Comm *comm_ptr, 
     int *errflag)
 {
-    MPI_Status status;
     int rank, comm_size;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
     int nbytes, type_size; 
     MPI_Comm comm, shmem_comm, leader_comm;
     MPID_Comm *shmem_commptr = 0, *leader_commptr = 0;
-    int local_rank, local_size, global_rank;
+    int local_rank, local_size, global_rank=-1;
     int leader_root, leader_of_root;
-    void *tmp_buf;
-    int k;
 
     comm = comm_ptr->handle; 
 
@@ -1150,10 +1133,9 @@ static int MPIR_Bcast_inter_node_helper_MV2(
 
 
     if(local_rank == 0) { 
-        void *tmp_buf; 
         leader_comm = comm_ptr->ch.leader_comm;
-   	    root = leader_root; 
-	    MPID_Comm_get_ptr(leader_comm,leader_commptr);
+        root = leader_root; 
+        MPID_Comm_get_ptr(leader_comm,leader_commptr);
         comm_size = leader_commptr->local_size; 
         rank      = leader_commptr->rank; 
 
@@ -1178,8 +1160,8 @@ static int MPIR_Bcast_inter_node_helper_MV2(
                                      datatype, root, leader_commptr, errflag);  
             } 
             if (mpi_errno) {
-			MPIU_ERR_POP(mpi_errno);
-	    }
+            MPIU_ERR_POP(mpi_errno);
+        }
         }    
     } 
 
@@ -1188,14 +1170,13 @@ fn_exit:
 fn_fail:
     goto fn_exit;
 }
-#endif /*#if defined(_OSU_MVAPICH_)*/
+#endif /*#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Bcast_intra_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-
 
 int MPIR_Bcast_intra_MV2 ( 
         void *buffer, 
@@ -1207,17 +1188,20 @@ int MPIR_Bcast_intra_MV2 (
 {
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
-    int comm_size, rank, local_rank;
+    int comm_size, rank;
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     int nbytes=0, intra_node_root=0;
     int type_size, is_homogeneous, is_contig, position;
     void *tmp_buf = NULL; 
-    MPI_Comm comm, leader_comm, shmem_comm;
-    MPID_Comm *leader_commptr, *shmem_commptr; 
+    MPID_Comm *shmem_commptr;
+    MPI_Comm shmem_comm;
+    MPID_Datatype *dtp;
+#endif /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)  */
+    
     MPIU_THREADPRIV_DECL;
     MPID_MPI_STATE_DECL(MPID_STATE_MPIR_BCAST);
 
     MPID_MPI_FUNC_ENTER(MPID_STATE_MPIR_BCAST);
-    MPID_Datatype *dtp;
     MPIU_CHKLMEM_DECL(1);
     
     /* The various MPIR_Bcast_* impls use NMPI functions, so we bump the nest
@@ -1228,11 +1212,10 @@ int MPIR_Bcast_intra_MV2 (
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
     if (count == 0) goto fn_exit;
 
-    comm = comm_ptr->handle;
     comm_size = comm_ptr->local_size;
     rank = comm_ptr->rank; 
 
-#ifdef _OSU_MVAPICH_
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     if (HANDLE_GET_KIND(datatype) == HANDLE_KIND_BUILTIN)
         is_contig = 1;
     else {
@@ -1263,7 +1246,7 @@ int MPIR_Bcast_intra_MV2 (
 
     if(comm_ptr->ch.shmem_coll_ok == 1 && 
        enable_shmem_bcast == 1         && 
-       comm_size > bcast_two_level_system_size) {  
+       comm_size > bcast_two_level_system_size) { 
          if (!is_contig || !is_homogeneous) {
                 MPIU_CHKLMEM_MALLOC(tmp_buf, void *, nbytes, mpi_errno, "tmp_buf");
 
@@ -1280,10 +1263,10 @@ int MPIR_Bcast_intra_MV2 (
          MPID_Comm_get_ptr(shmem_comm,shmem_commptr);
          if (!is_contig || !is_homogeneous) {
                 mpi_errno = MPIR_Bcast_inter_node_helper_MV2( tmp_buf, nbytes, MPI_BYTE,
-	     	             	    root, comm_ptr, errflag);  
+                                root, comm_ptr, errflag);  
          } else { 
                 mpi_errno = MPIR_Bcast_inter_node_helper_MV2( buffer, count, datatype,
-	     	             	    root, comm_ptr, errflag);  
+                                root, comm_ptr, errflag);  
          } 
          if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
@@ -1295,21 +1278,21 @@ int MPIR_Bcast_intra_MV2 (
          /* We are now done with the inter-node phase */ 
          if(nbytes <= knomial_intra_node_threshold) { 
               if (!is_contig || !is_homogeneous) {
-		             mpi_errno = MPIR_Shmem_Bcast_MV2( tmp_buf, nbytes, MPI_BYTE,
-				         root, shmem_commptr);   
+                     mpi_errno = MPIR_Shmem_Bcast_MV2( tmp_buf, nbytes, MPI_BYTE,
+                         root, shmem_commptr);   
               } else { 
-		             mpi_errno = MPIR_Shmem_Bcast_MV2( buffer, count, datatype,
-				         root, shmem_commptr);   
+                     mpi_errno = MPIR_Shmem_Bcast_MV2( buffer, count, datatype,
+                         root, shmem_commptr);   
               } 
-	     } else { 
+         } else { 
               if (!is_contig || !is_homogeneous) {
-		             mpi_errno = MPIR_Knomial_Bcast_MV2( tmp_buf, nbytes, MPI_BYTE,
-				         intra_node_root, shmem_commptr, errflag);  
+                     mpi_errno = MPIR_Knomial_Bcast_MV2( tmp_buf, nbytes, MPI_BYTE,
+                         intra_node_root, shmem_commptr, errflag);  
               } else { 
-		             mpi_errno = MPIR_Knomial_Bcast_MV2( buffer, count, datatype,
-				         intra_node_root, shmem_commptr, errflag);  
+                     mpi_errno = MPIR_Knomial_Bcast_MV2( buffer, count, datatype,
+                         intra_node_root, shmem_commptr, errflag);  
               } 
-	     }   
+         }   
          if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
                 *errflag = TRUE;
@@ -1345,16 +1328,16 @@ int MPIR_Bcast_intra_MV2 (
                 MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
             }
     } 
-#else /* #ifdef _OSU_MVAPICH_ */ 
+#else /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */ 
     mpi_errno = MPIR_Bcast( buffer, count, datatype,
-		     root, comm_ptr, errflag);  
+             root, comm_ptr, errflag);  
     if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
                 *errflag = TRUE;
                 MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
                 MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
     }
-#endif /* #ifdef _OSU_MVAPICH_ */
+#endif /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
    
 
 fn_exit:
@@ -1364,9 +1347,10 @@ fn_exit:
     else if (*errflag)
         MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**coll_fail");
     return mpi_errno;
-fn_fail:
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+ fn_fail:
     goto fn_exit;
-
+#endif /* #ifdef _OSU_MVAPICH_ */
 }
 
 #undef FUNCNAME

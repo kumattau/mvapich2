@@ -99,7 +99,15 @@ int MPIDI_Win_create(void *base, MPI_Aint size, int disp_unit, MPID_Info *info,
     (*win_ptr)->my_counter = 0;
     (*win_ptr)->my_pt_rma_puts_accs = 0;
 #if defined(_OSU_MVAPICH_)
+    (*win_ptr)->fall_back = 1;
     (*win_ptr)->outstanding_rma = 0;
+#if !defined (DAPL_DEFAULT_PROVIDER)
+    (*win_ptr)->shm_lock_queued = 0;
+    (*win_ptr)->shm_fallback = 1;
+#if defined (_SMP_LIMIC_) 
+    (*win_ptr)->limic_fallback = 1;
+#endif /* _SMP_LIMIC */
+#endif /* !defined (DAPL_DEFAULT_PROVIDER) */
 #endif /* defined(_OSU_MVAPICH_) */
 #if defined (_OSU_PSM_)
     /* my_rank is rank within this communicator. For psm-messaging
@@ -176,26 +184,28 @@ int MPIDI_Win_create(void *base, MPI_Aint size, int disp_unit, MPID_Info *info,
     (*win_ptr)->my_id = rank;
     (*win_ptr)->comm_size = comm_size;
     /* -- OSU-MPI2 uses extended CH3 interface */
-    if (comm_ptr->comm_kind != MPID_INTRACOMM)
+    if (comm_ptr->comm_kind == MPID_INTRACOMM)
     {
+        /* Only Intracomm supports drect one-sided communication*/
 	/* Intercomm is not well supported currently,
-	 * fall back to pt2pt implementation if we use inter
-	 * communicator */
-	(*win_ptr)->fall_back = 1;
-#if defined (_SMP_LIMIC_) && !defined (DAPL_DEFAULT_PROVIDER)
-	(*win_ptr)->limic_fallback = 1;
-#endif /* _SMP_LIMIC_ && !DAPL_DEFAULT_PROVIDER */
-    }
-    else 
-    {
+	 * directly fall back to pt2pt implementation if we use inter
+	 * communicator */ 
 	(*win_ptr)->fall_back = 0;
 	MPIDI_CH3I_RDMA_win_create(base, size, comm_size, 
-                        rank, win_ptr, comm_ptr);
-#if defined (_SMP_LIMIC_) && !defined (DAPL_DEFAULT_PROVIDER)
-        (*win_ptr)->limic_fallback = 0;
-        MPIDI_CH3I_LIMIC_win_create(base, size, comm_size, 
-                        rank, win_ptr, comm_ptr);
-#endif /* _SMP_LIMIC_ && !DAPL_DEFAULT_PROVIDER */
+                   rank, win_ptr, comm_ptr);
+#if !defined (DAPL_DEFAULT_PROVIDER)
+        (*win_ptr)->shm_fallback = 0;
+        MPIDI_CH3I_SHM_win_create(base, size, win_ptr);
+        if ((*win_ptr)->shm_fallback) { 
+#if defined (_SMP_LIMIC_)
+            (*win_ptr)->limic_fallback = 0;
+            MPIDI_CH3I_LIMIC_win_create(base, size, win_ptr);
+#endif /* _SMP_LIMIC_ */
+        }
+	/* A barrier syncrhonization to esnure every one has completed 
+	 * SHM/LIMIC iniitialization/fallback */
+        MPIR_Barrier_impl((*win_ptr)->comm_ptr, &errflag);
+#endif /* DAPL_DEFAULT_PROVIDER */
     }
 #endif /* defined(_OSU_MVAPICH_) */
 
@@ -293,12 +303,18 @@ int MPIDI_Win_free(MPID_Win **win_ptr)
     if ((*win_ptr)->fall_back != 1) {
 	MPIDI_CH3I_RDMA_win_free(win_ptr);
     }
-#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
+#if !defined(DAPL_DEFAULT_PROVIDER)
+#if defined(_SMP_LIMIC_)
     if (!(*win_ptr)->limic_fallback)
     {
         MPIDI_CH3I_LIMIC_win_free(win_ptr);
     }
-#endif /* _SMP_LIMIC_ && !_DAPL_DEFAULT_PROVIDER */
+#endif /* _SMP_LIMIC_ */
+    if (!(*win_ptr)->shm_fallback) 
+    {
+        MPIDI_CH3I_SHM_win_free(win_ptr);
+    }
+#endif /* !DAPL_DEFAULT_PROVIDER */
 #endif /* defined(_OSU_MVAPICH_) */
 
 #if defined (_OSU_PSM_)
@@ -559,13 +575,32 @@ int MPIDI_Accumulate(void *origin_addr, int origin_count, MPI_Datatype
     if (target_rank == rank)
     {
 	MPI_User_function *uop;
-	
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+    int l_rank = -1;
+    if (!win_ptr->shm_fallback) {
+        l_rank = win_ptr->shm_g2l_rank[rank]; 
+        mpi_errno = MPIDI_CH3I_SHM_win_mutex_lock(win_ptr, l_rank);
+        if (mpi_errno != MPI_SUCCESS) {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+               "**fail %s", "mutex lock error");
+        }
+    }
+#endif
 	if (op == MPI_REPLACE)
 	{
 	    mpi_errno = MPIR_Localcopy(origin_addr, origin_count, 
 				origin_datatype,
 				(char *) win_ptr->base + win_ptr->disp_unit *
 				target_disp, target_count, target_datatype); 
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+        if (!win_ptr->shm_fallback) {
+            mpi_errno = MPIDI_CH3I_SHM_win_mutex_unlock(win_ptr, l_rank);
+            if (mpi_errno != MPI_SUCCESS) {
+                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                    "**fail %s", "mutex unlock error");
+            }
+        }
+#endif
 	    goto fn_exit;
 	}
 	
@@ -654,6 +689,15 @@ int MPIDI_Accumulate(void *origin_addr, int origin_count, MPI_Datatype
 		MPID_Segment_free(segp);
 	    }
 	}
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+    if (!win_ptr->shm_fallback) {
+        mpi_errno = MPIDI_CH3I_SHM_win_mutex_unlock(win_ptr, l_rank);
+        if (mpi_errno != MPI_SUCCESS) {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                "**fail %s", "mutex unlock error");
+        }
+    }
+#endif
     }
     else
     {
@@ -733,7 +777,11 @@ void *MPIDI_Alloc_mem( size_t size, MPID_Info *info_ptr )
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_ALLOC_MEM);
 
+#if defined (_OSU_MVAPICH_) && !defined (DAPL_DEFAULT_PROVIDER)
+    ap = MPIDI_CH3I_Alloc_mem(size, info_ptr);
+#else
     ap = MPIU_Malloc(size);
+#endif
     
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_ALLOC_MEM);
     return ap;
@@ -751,7 +799,11 @@ int MPIDI_Free_mem( void *ptr )
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_FREE_MEM);
 
+#if defined(_OSU_MVAPICH_) && !defined (DAPL_DEFAULT_PROVIDER)
+    MPIDI_CH3I_Free_mem(ptr);
+#else
     MPIU_Free(ptr);
+#endif
     
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_FREE_MEM);
     return mpi_errno;

@@ -15,6 +15,7 @@
 
 #include <semaphore.h>
 #include "atomic.h"
+#include "common_crfs.h"
 
 enum {
     /// crfs-mode

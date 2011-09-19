@@ -16,7 +16,6 @@
 #include "thread_pool.h"
 #include "bitmap.h"
 
-#include "common.h"
 #include "atomic.h"
 #include "list.h"
 

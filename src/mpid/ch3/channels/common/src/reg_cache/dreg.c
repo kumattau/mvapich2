@@ -28,8 +28,8 @@
  * registration cache implementation
  */
 
-
 #ifdef NEMESIS_BUILD
+#define _GNU_SOURCE
 #include "mpiimpl.h"
 #include "mpidimpl.h"
 #include "mpimem.h"
@@ -653,7 +653,6 @@ int dreg_init()
     int i = 0;
     int mpi_errno = MPI_SUCCESS;
     g_pinned_pages_count = 0;
-    struct dreg_entry* dreg_entry_new=NULL;
     MPIDI_STATE_DECL(MPID_GEN2_DREG_INIT);
     MPIDI_FUNC_ENTER(MPID_GEN2_DREG_INIT);
 

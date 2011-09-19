@@ -19,9 +19,9 @@
 
 
 #include "mpiimpl.h"
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include "coll_shmem.h"
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
 
 /* This function implements a binomial tree reduce.
@@ -45,7 +45,7 @@ static int MPIR_Reduce_binomial_MV2 (
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
     MPI_Status status;
-    int comm_size, rank, is_commutative, type_size;
+    int comm_size, rank, is_commutative;
     int mask, relrank, source, lroot;
     MPI_User_function *uop;
     MPI_Aint true_lb, true_extent, extent; 
@@ -122,8 +122,6 @@ static int MPIR_Reduce_binomial_MV2 (
                                    count, datatype);
         if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
     }
-
-    MPID_Datatype_get_size_macro(datatype, type_size);
 
     /* This code is from MPICH-1. */
 
@@ -305,7 +303,7 @@ static int MPIR_Reduce_redscat_gather_MV2 (
 {
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
-    int comm_size, rank, is_commutative, type_size, pof2, rem, newrank;
+    int comm_size, rank, pof2, rem, newrank;
     int mask, *cnts, *disps, i, j, send_idx=0;
     int recv_idx, last_idx=0, newdst;
     int dst, send_cnt, recv_cnt, newroot, newdst_tree_root, newroot_tree_root; 
@@ -334,16 +332,11 @@ static int MPIR_Reduce_redscat_gather_MV2 (
     MPID_Datatype_get_extent_macro(datatype, extent);
 
     if (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) {
-        is_commutative = 1;
         /* get the function by indexing into the op table */
         uop = MPIR_Op_table[op%16 - 1];
     }
     else {
         MPID_Op_get_ptr(op, op_ptr);
-        if (op_ptr->kind == MPID_OP_USER_NONCOMMUTE)
-            is_commutative = 0;
-        else
-            is_commutative = 1;
         
 #ifdef HAVE_CXX_BINDING            
             if (op_ptr->language == MPID_LANG_CXX) {
@@ -382,8 +375,6 @@ static int MPIR_Reduce_redscat_gather_MV2 (
                                    count, datatype);
         if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
     }
-
-    MPID_Datatype_get_size_macro(datatype, type_size);
 
     /* find nearest power-of-two less than or equal to comm_size */
     pof2 = 1;
@@ -712,7 +703,7 @@ fn_fail:
     goto fn_exit;
 }
 
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #undef FUNCNAME
 #define FUNCNAME MPIR_Shmem_Reduce_MV2
 #undef FCNAME
@@ -731,7 +722,6 @@ int MPIR_Reduce_shmem_MV2 (
     int mpi_errno_ret = MPI_SUCCESS;
     int i,stride, local_rank, local_size, shmem_comm_rank; 
     MPI_User_function *uop; 
-    int is_commutative=0;
     MPID_Op *op_ptr;
     char* shmem_buf = NULL;
     void* local_buf = NULL;
@@ -763,16 +753,10 @@ int MPIR_Reduce_shmem_MV2 (
  
     /* Get the operator and check whether it is commutative or not */
     if (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) {
-        is_commutative = 1; 
         /* get the function by indexing into the op table */
         uop = MPIR_Op_table[op%16 - 1];
     } else {
         MPID_Op_get_ptr(op, op_ptr);
-        if (op_ptr->kind == MPID_OP_USER_NONCOMMUTE) {
-            is_commutative = 0;
-        } else  {
-            is_commutative = 1;
-        }
 #if defined(HAVE_CXX_BINDING)
         if (op_ptr->language == MPID_LANG_CXX) {
                uop = (MPI_User_function *) op_ptr->function.c_function;
@@ -850,8 +834,8 @@ int MPIR_Reduce_two_level_helper_MV2 (
 {
     int mpi_errno = MPI_SUCCESS; 
     int mpi_errno_ret = MPI_SUCCESS;
-    int global_rank, my_rank, total_size, local_rank, local_size; 
-    int shmem_comm_rank, leader_comm_rank, leader_comm_size; 
+    int my_rank, total_size, local_rank, local_size; 
+    int leader_comm_rank=-1, leader_comm_size=0; 
     MPI_Comm comm, shmem_comm, leader_comm; 
     int leader_root, leader_of_root; 
     MPID_Comm *shmem_commptr=NULL, *leader_commptr=NULL; 
@@ -871,7 +855,6 @@ int MPIR_Reduce_two_level_helper_MV2 (
     MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
     local_rank      = shmem_commptr->rank; 
     local_size      = shmem_commptr->local_size; 
-    shmem_comm_rank = shmem_commptr->ch.shmem_comm_rank;
     
     leader_of_root = comm_ptr->ch.leader_map[root];
     leader_root = comm_ptr->ch.leader_rank[leader_of_root];
@@ -910,7 +893,7 @@ int MPIR_Reduce_two_level_helper_MV2 (
                                                   mpi_errno, "receive buffer");
                         tmp_buf = (void *)((char*)tmp_buf - true_lb);
                         out_buf = tmp_buf; 
-                   } 
+                   }
                    mpi_errno = MPIR_Reduce_shmem_MV2(in_buf, out_buf, count, 
                                                   datatype, op,
                                                   0, shmem_commptr, errflag);
@@ -1070,7 +1053,7 @@ fn_exit:
 fn_fail:
     goto fn_exit;
 }
-#endif /*  #if defined(_OSU_MVAPICH_) */
+#endif /*  #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
 
 
@@ -1176,10 +1159,10 @@ int MPIR_Reduce_MV2 (
     while (pof2 <= comm_size) pof2 <<= 1;
     pof2 >>=1;
 
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     if(comm_ptr->ch.shmem_coll_ok == 1  
        && is_commutative == 1
-       && count*type_size < coll_param.reduce_2level_threshold) { 
+       && count*type_size < coll_param.reduce_2level_threshold) {
              mpi_errno = MPIR_Reduce_two_level_helper_MV2(sendbuf, recvbuf, count, 
                                                        datatype, op, 
                                                        root, comm_ptr, errflag);
@@ -1190,7 +1173,7 @@ int MPIR_Reduce_MV2 (
                     MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
              }
     } else
-#endif /*  #if defined(_OSU_MVAPICH_) */
+#endif /*  #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
     { 
             if ((count*type_size > MPIR_PARAM_REDUCE_SHORT_MSG_SIZE) &&
                 (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) && (count >= pof2)) {
@@ -1220,16 +1203,13 @@ int MPIR_Reduce_MV2 (
     } 
         
 
-  fn_exit:
-    /* check if multiple threads are calling this collective function */
+	/* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT( comm_ptr );
     if (mpi_errno_ret)
         mpi_errno = mpi_errno_ret;
     else if (*errflag)
         MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**coll_fail");
     return mpi_errno;
-  fn_fail:
-    goto fn_exit;
 }
 
 

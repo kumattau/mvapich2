@@ -234,7 +234,7 @@ mv2_arch_type mv2_get_arch_type()
         int model;
         int vendor_set=0, model_set=0;
 
-        mv2_cpu_type cpu_type;
+        mv2_cpu_type cpu_type = CPU_FAMILY_NONE;
         mv2_arch_type arch_type = MV2_ARCH_UNKWN;
 
         FILE* fp=fopen(CONFIG_FILE,"r");

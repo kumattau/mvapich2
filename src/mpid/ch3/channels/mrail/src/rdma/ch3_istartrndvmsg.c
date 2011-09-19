@@ -240,6 +240,13 @@ int MPIDI_CH3_iStartGetRndv(MPIDI_VC_t * vc,
     MPIDI_CH3_Prepare_rndv(vc, sreq);
     MPIDI_CH3I_MRAIL_REVERT_RPUT(sreq);
 
+#ifdef _ENABLE_UD_
+    if(rdma_enable_hybrid && sreq->mrail.protocol == VAPI_PROTOCOL_UD_ZCOPY) {
+        sreq->mrail.protocol = VAPI_PROTOCOL_R3;
+        MPIDI_CH3I_MRAIL_FREE_RNDV_BUFFER(sreq);
+    }
+#endif
+
     MPIDI_CH3I_MRAIL_SET_PKT_RNDV(get_rndv, sreq);
 
     mpi_errno = MPIDI_CH3_iStartMsgv(vc, iov, n_iov, &send_req);

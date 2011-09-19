@@ -254,7 +254,7 @@ static int get_rate(umad_ca_t *umad_ca)
 
 static mv2_hca_type mv2_hca_name_to_type ( char *dev_name )
 {
-    int rate;
+    int rate=0;
     mv2_hca_type hca_type = MV2_HCA_UNKWN;
 
     if (!strncmp(dev_name, MV2_STR_MLX4, 4) || !strncmp(dev_name,
@@ -358,7 +358,6 @@ static mv2_hca_type mv2_hca_name_to_type ( char *dev_name )
 /* Identify hca type */
 mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
 {
-    int ret = 0;
     char* dev_name = NULL;
 
     dev_name = (char*) ibv_get_device_name( dev );

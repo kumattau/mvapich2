@@ -348,7 +348,7 @@ int MPIDI_CH3_PktHandler_RndvClrToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     MPID_Request * sreq;
     int mpi_errno = MPI_SUCCESS;
 #if defined(_OSU_MVAPICH_)
-    int recv_size;
+    MPIDI_msg_sz_t recv_size;
     int i;
     extern int MPIDI_CH3_Rndv_transfer(MPIDI_VC_t *, MPID_Request *, MPID_Request *,
                                        MPIDI_CH3_Pkt_rndv_clr_to_send_t *,

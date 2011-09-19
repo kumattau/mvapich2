@@ -3,6 +3,47 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2-1.7rc2 (09/19/2011)
+
+* Features and Enhancements (since 1.7rc1):
+    - Based on MPICH2-1.4.1p1
+    - Integrated Hybrid (UD-RC/XRC) design to get best performance
+      on large-scale systems with reduced/constant memory footprint
+    - Shared memory backed Windows for One-Sided Communication
+    - Support for truly passive locking for intra-node RMA in shared
+      memory and LIMIC based windows
+    - Integrated with Portable Hardware Locality (hwloc v1.2.1)
+    - Integrated with latest OSU Micro-Benchmarks (3.4)
+    - Enhancements and tuned collectives (Allreduce and Allgatherv)
+    - MPI_THREAD_SINGLE provided by default and MPI_THREAD_MULTIPLE as an
+      option
+    - Enabling Checkpoint/Restart support in pure SMP mode
+    - Optimization for QDR cards
+    - On-demand connection management support with IB CM (RoCE interface)
+    - Optimization to limit number of RDMA Fast Path connections for very large
+      clusters (Nemesis interface)
+    - Multi-core-aware collective support (QLogic PSM interface)
+
+* Bug Fixes:
+    - Fixes for code compilation warnings
+    - Compiler preference lists reordered to avoid mixing GCC and Intel
+      compilers if both are found by configure
+    - Fix a bug in transferring very large messages (>2GB)
+        - Thanks to Tibor Pausz from Univ. of Frankfurt for reporting it
+    - Fix a hang with One-Sided Put operation
+    - Fix a bug in ptmalloc integration
+    - Avoid double-free crash with mpispawn
+    - Avoid crash and print an error message in mpirun_rsh when the hostfile is
+      empty
+    - Checking for error codes in PMI design
+    - Verify programs can link with LiMIC2 at runtime
+    - Fix for compilation issue when BLCR or FTB installed in non-system paths
+    - Fix an issue with RDMA-Migration
+    - Fix for memory leaks
+    - Fix an issue in supporting RoCE with second port on available on HCA
+        - Thanks to Jeffrey Konz from HP for reporting it
+    - Fix for a hang with passive RMA tests (QLogic PSM interface)
+
 MVAPICH2-1.7rc1 (07/20/2011)
 
 * Features and Enhancements (since 1.7a2)

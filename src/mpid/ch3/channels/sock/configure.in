@@ -50,7 +50,7 @@ PAC_PROG_MKDIR_P
 PAC_PROG_MAKE
 AC_CHECK_PROGS(AR,ar)
 if test -z "$AR" ; then
-    AC_MSG_ERROR([The program ar is required for building MPICH2.  Make sure that your path includes ar])
+    AC_MSG_ERROR([The program ar is required for building MVAPICH2.  Make sure that your path includes ar])
 fi
 # AR_FLAGS provides a way to potentially improve build performance on Mac OSX
 if test -z "$AR_FLAGS" ; then AR_FLAGS=cr ; fi

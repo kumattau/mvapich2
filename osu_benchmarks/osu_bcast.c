@@ -66,6 +66,20 @@ double ack_time = 0.0;
 int numprocs;
 double t[ITERATIONS_TEST+1];
 
+#ifdef PACKAGE_VERSION
+#   define HEADER "# " BENCHMARK " v" PACKAGE_VERSION "\n"
+#else
+#   define HEADER "# " BENCHMARK "\n"
+#endif
+
+#ifndef FIELD_WIDTH
+#   define FIELD_WIDTH 20
+#endif
+
+#ifndef FLOAT_PRECISION
+#   define FLOAT_PRECISION 2
+#endif
+
 int main(int argc, char *argv[])
 {
     int i = 0, rank, size, mpi_errno = MPI_SUCCESS;
@@ -88,7 +102,7 @@ int main(int argc, char *argv[])
     }
 
     if(rank == ROOT) {
-        fprintf(stdout, "# %s v%s\n", BENCHMARK, PACKAGE_VERSION);
+        fprintf(stdout, HEADER);
         fprintf(stdout, "%-*s%*s\n", 10, "# Size", FIELD_WIDTH, "Latency (us)");
         fflush(stdout);
     }

@@ -16,16 +16,17 @@
 #include <ctype.h>
 #include <infiniband/verbs.h>
 #include <infiniband/umad.h>
-#include "ibv_param.h"
-#include "vbuf.h"
 #include "rdma_impl.h"
+#include "vbuf.h"
+#include "ibv_param.h"
 #include "sysreport.h"
 #include "smp_smpi.h"
 #include "mv2_utils.h"
 
 /* Extra buffer space for header(s); used to adjust the eager-threshold */
 #define EAGER_THRESHOLD_ADJUST    0
-#define INLINE_THRESHOLD_ADJUST  (20)
+#define INLINE_THRESHOLD_ADJUST  (40)
+
 /*
  * ==============================================================
  * Initialize global parameter variables to default values
@@ -41,8 +42,8 @@ int           rdma_num_rails;
 int           rdma_pin_pool_size = RDMA_PIN_POOL_SIZE;
 unsigned long rdma_default_max_cq_size = RDMA_DEFAULT_MAX_CQ_SIZE;
 int           rdma_default_port = RDMA_DEFAULT_PORT;
-unsigned long rdma_default_max_send_wqe = RDMA_DEFAULT_MAX_SEND_WQE;
-unsigned long rdma_default_max_recv_wqe = RDMA_DEFAULT_MAX_RECV_WQE;
+int           rdma_default_max_send_wqe = RDMA_DEFAULT_MAX_SEND_WQE;
+int           rdma_default_max_recv_wqe = RDMA_DEFAULT_MAX_RECV_WQE;
 uint32_t      rdma_default_max_sg_list = RDMA_DEFAULT_MAX_SG_LIST;
 uint16_t      rdma_default_pkey_ix = RDMA_DEFAULT_PKEY_IX;
 uint16_t      rdma_default_pkey = RDMA_DEFAULT_PKEY;
@@ -88,12 +89,6 @@ int           rdma_3dtorus_support = 0;
 int           rdma_path_sl_query = 0;
 int           rdma_num_sa_query_retries = RDMA_DEFAULT_NUM_SA_QUERY_RETRIES;
 MPID_Node_id_t rdma_num_nodes_in_job = 0;
-int           enable_knomial_2level_bcast=1;
-int           inter_node_knomial_factor=4;
-int           intra_node_knomial_factor=4;
-int           knomial_2level_bcast_message_size_threshold=2048;
-int           knomial_2level_bcast_system_size_threshold=64;
-int           max_num_win = MAX_NUM_WIN;
 int           rdma_qos_num_sls = RDMA_QOS_DEFAULT_NUM_SLS;
 int           max_rdma_connect_attempts = DEFAULT_RDMA_CONNECT_ATTEMPTS;
 int           rdma_cm_connect_retry_interval = RDMA_DEFAULT_CONNECT_INTERVAL;
@@ -124,10 +119,9 @@ int           rdma_local_id = -1;
 int           rdma_num_local_procs = -1;
 /* Whether coalescing of messages should be attempted */
 int           rdma_use_coalesce = 1;
-int           use_osu_collectives = 1; 
-int           use_anl_collectives = 0; 
 unsigned long rdma_polling_spin_count_threshold = 5; 
-int           use_thread_yield=0; 
+int           use_thread_yield = 1;
+int           spins_before_lock = 2000;
 int		      mv2_on_demand_ud_info_exchange = 0;
 /* If this number of eager sends are already outstanding
  * the message can be coalesced with other messages (and
@@ -158,6 +152,38 @@ int rdma_initial_prepost_depth  = RDMA_INITIAL_PREPOST_DEPTH;
 int rdma_prepost_noop_extra     = 6;
 int rdma_credit_preserve;
 int rdma_initial_credits        = 0; 
+
+#ifdef _ENABLE_UD_
+uint8_t rdma_enable_hybrid = 1;
+uint8_t rdma_use_ud_zcopy = 1;
+uint32_t rdma_default_max_ud_send_wqe = RDMA_DEFAULT_MAX_UD_SEND_WQE;
+uint32_t rdma_default_max_ud_recv_wqe = RDMA_DEFAULT_MAX_UD_RECV_WQE;
+uint32_t rdma_ud_num_msg_limit = RDMA_UD_NUM_MSG_LIMIT;
+uint32_t rdma_ud_vbuf_pool_size = RDMA_UD_VBUF_POOL_SIZE;
+/* Maximum number of outstanding buffers (waiting for ACK)*/
+uint32_t rdma_default_ud_sendwin_size = 400;
+/* Maximum number of out-of-order messages that will be buffered */
+uint32_t rdma_default_ud_recvwin_size = 2501;
+/* Time (usec) until ACK status is checked (and ACKs are sent) */
+long rdma_ud_progress_timeout = 48000;
+/* Time (usec) until a message is resent */
+long rdma_ud_retry_timeout = 500000;
+long rdma_ud_max_retry_timeout = 20000000;
+long rdma_ud_last_check;
+uint32_t rdma_ud_zcopy_threshold;
+uint32_t rdma_ud_zcopy_rq_size = 4096;
+uint32_t rdma_hybrid_enable_threshold = 1024;
+uint16_t rdma_default_ud_mtu = 2048;
+uint16_t rdma_ud_progress_spin = 1200;
+uint16_t rdma_ud_max_retry_count = 1000;
+uint16_t rdma_ud_max_ack_pending;
+uint16_t rdma_ud_num_rndv_qps = 64;
+uint16_t rdma_hybrid_max_rc_conn = 64;
+uint16_t rdma_hybrid_pending_rc_conn = 0;
+#ifdef _MV2_UD_DROP_PACKET_RATE_
+uint32_t ud_drop_packet_rate = 0;
+#endif
+#endif /* _ENABLE_UD_ */
 
 /* Max number of entries on the RecvQ of QPs per connection.
  * computed to be:
@@ -519,6 +545,29 @@ int rdma_get_rail_sharing_policy(char *value)
     return policy;
 }
 
+/* Set thresholds for Nnum_rail=unknown */
+static void  set_limic_thresholds (struct MPIDI_CH3I_RDMA_Process_t *proc)
+{
+    switch ( proc->arch_type ) {
+        case MV2_ARCH_AMD_BARCELONA_16:
+            limic_put_threshold  = 1 * 1024;
+            limic_get_threshold  = 256;
+            break;
+        case MV2_ARCH_INTEL_CLOVERTOWN_8:
+            limic_put_threshold  = 1 * 1024;
+            limic_get_threshold  = 1 * 1024;
+            break; 
+        case MV2_ARCH_INTEL_NEHALEM_8:
+            limic_put_threshold  = 8 * 1024;
+            limic_get_threshold  = 4 * 1024;
+            break;
+        default:
+            limic_put_threshold  = 8 * 1024;
+            limic_get_threshold  = 8 * 1024;
+            break;
+    }
+}
+
 #undef FUNCNAME
 #define FUNCNAME rdma_set_smp_parameters
 #undef FCNAME
@@ -573,6 +622,9 @@ int rdma_set_smp_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
             break;
     }
 
+    /* Set Limic Thresholds */
+    set_limic_thresholds(proc);
+
     /* Reading SMP user parameters */
     if ((value = getenv("SMP_EAGERSIZE")) != NULL) {
         g_smp_eagersize = user_val_to_bytes(value,"SMP_EAGERSIZE");
@@ -589,6 +641,28 @@ int rdma_set_smp_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
        s_smp_batch_size = atoi(value);
     }
 
+#if defined(CKPT)
+    proc->has_shm_one_sided = 0;
+    proc->has_limic_one_sided = 0;
+#else
+    proc->has_shm_one_sided =
+          (value = getenv("MV2_USE_SHM_ONE_SIDED")) != NULL ? !!atoi(value) : 0;
+
+    if (!proc->has_shm_one_sided) {
+       proc->has_limic_one_sided =
+             (value = getenv("MV2_USE_LIMIC_ONE_SIDED")) != NULL ? !!atoi(value) : 1;
+    }
+#endif
+
+    if ((value = getenv("MV2_LIMIC_PUT_THRESHOLD")) != NULL) {
+        limic_put_threshold = 
+               user_val_to_bytes(value,"MV2_LIMIC_PUT_THRESHOLD");
+    }
+    if ((value = getenv("MV2_LIMIC_GET_THRESHOLD")) != NULL) {
+        limic_get_threshold = 
+               user_val_to_bytes(value,"MV2_LIMIC_GET_THRESHOLD");
+    }
+
     return 0;
 }
 
@@ -600,6 +674,7 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 {
     int i = 0;
     int size = -1;
+    int pg_size = ERROR;
     int my_rank = -1;
     char* value = NULL;
     int mpi_errno = MPI_SUCCESS;
@@ -613,6 +688,7 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
     proc->global_used_send_cq = 0; 
     proc->global_used_recv_cq = 0;
 
+    PMI_Get_size(&pg_size);
     PMI_Get_rank(&my_rank);
 
     if ((value = getenv("MV2_NUM_NODES_IN_JOB")) != NULL) {
@@ -799,8 +875,6 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
     }
 
     if (proc->use_rdma_cm) {
-        int rank = ERROR;
-	    int pg_size = ERROR;
 	    int threshold = ERROR;
 
         if (proc->use_iwarp_mode) {
@@ -809,9 +883,6 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
         } else {
 	        threshold = MPIDI_CH3I_CM_DEFAULT_ON_DEMAND_THRESHOLD;
         }
-
-	    PMI_Get_size(&pg_size);
-	    PMI_Get_rank(&rank);                                      
 
 	    if ((value = getenv("MV2_ON_DEMAND_THRESHOLD")) != NULL){
 		    threshold = atoi(value);
@@ -857,6 +928,34 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
         proc->cluster_size = LARGE_CLUSTER;
     }
 
+#ifdef _ENABLE_UD_
+    if (pg_size < 1024) {
+        rdma_ud_progress_timeout = 48000;
+        rdma_ud_retry_timeout = 500000;
+        rdma_ud_max_retry_count = 1024;
+        rdma_ud_num_msg_limit = 512;
+        rdma_hybrid_max_rc_conn = 32;
+    } else if (pg_size < 4096) {
+        rdma_ud_progress_timeout = 96000;
+        rdma_ud_retry_timeout = 1000000;
+        rdma_ud_max_retry_count = 512;
+        rdma_ud_num_msg_limit = 1024;
+        rdma_hybrid_max_rc_conn = 64;
+    } else if (pg_size < 8192) {
+        rdma_ud_progress_timeout = 96000;
+        rdma_ud_retry_timeout = 1000000;
+        rdma_ud_max_retry_count = 512;
+        rdma_ud_num_msg_limit = 2048;
+        rdma_hybrid_max_rc_conn = 128;
+    } else {
+        rdma_ud_progress_timeout = 190000;
+        rdma_ud_retry_timeout = 2000000;
+        rdma_ud_max_retry_count = 256;
+        rdma_ud_num_msg_limit = 4096;
+        rdma_hybrid_max_rc_conn = 128;
+    }
+#endif
+
     proc->has_srq = (value = getenv("MV2_USE_SRQ")) != NULL ? !!atoi(value) : 1;
 
     if ((value = getenv("MV2_IWARP_MULTIPLE_CQ_THRESHOLD")) != NULL) {
@@ -880,7 +979,7 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
         rdma_use_blocking = 0;
     }
 #endif /* _ENABLE_XRC_ */
-   
+  
     if (proc->has_srq
         && proc->hca_type != MV2_HCA_PATH_HT
         && proc->hca_type != MV2_HCA_QIB
@@ -898,6 +997,11 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
         proc->has_srq = 0;
         proc->post_send = post_send;
     }
+#ifdef _ENABLE_UD_
+    if (rdma_enable_hybrid){
+        proc->post_send = post_hybrid_send;
+    }
+#endif
 
 #if defined(CKPT)
     proc->has_adaptive_fast_path = 0;
@@ -921,17 +1025,14 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 #if defined(CKPT)
     proc->has_one_sided = 0;
 #else /* defined(CKPT) */
-    proc->has_one_sided = (value = getenv("MV2_USE_RDMA_ONE_SIDED")) != NULL ? !!atoi(value) : 1; 
-
-    if ((value = getenv("MV2_MAX_NUM_WIN")) != NULL) {
-        max_num_win = atoi(value);
-        if (max_num_win <= 0) {
-             proc->has_one_sided = 0;
-        }
+#ifdef _ENABLE_UD_
+    if (rdma_enable_hybrid) {
+        proc->has_one_sided = 0;
+    } else 
+#endif
+    {
+        proc->has_one_sided = (value = getenv("MV2_USE_RDMA_ONE_SIDED")) != NULL ? !!atoi(value) : 1; 
     }
-
-    proc->has_limic_one_sided = 
-          (value = getenv("MV2_USE_LIMIC_ONE_SIDED")) != NULL ? !!atoi(value) : 1;
 #endif /* defined(CKPT) */
 
     if ((value = getenv("MV2_RNDV_EXT_SENDQ_SIZE")) != NULL) {
@@ -973,10 +1074,6 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
         rdma_use_coalesce = 0;
     }
 
-    if ((value = getenv("MV2_USE_SHARED_MEM")) != NULL) {
-        rdma_use_smp = !!atoi(value);
-    }
-
     if ((value = getenv("MV2_USE_RDMAOE")) != NULL) {
         use_iboeth = !!atoi(value);
         if (!rdma_use_smp) {
@@ -992,15 +1089,11 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 #ifdef _ENABLE_XRC_
     if (!USE_XRC) {
 #endif
-    if ((value = getenv("MV2_USE_BLOCKING")) != NULL) {
-        rdma_use_blocking = !!atoi(value);
-
         /* Automatically turn off RDMA fast path */
         if(rdma_use_blocking) {
             rdma_use_smp = 0;
             proc->has_adaptive_fast_path = 0;
         }
-    }
 #ifdef _ENABLE_XRC_
     }
 #endif
@@ -1644,29 +1737,6 @@ static void  rdma_set_default_parameters_numrail_unknwn(struct MPIDI_CH3I_RDMA_P
     }
 }
 
-/* Set thresholds for Nnum_rail=unknown */
-static void  set_limic_thresholds (struct MPIDI_CH3I_RDMA_Process_t *proc)
-{
-    switch ( proc->arch_type ) {
-        case MV2_ARCH_AMD_BARCELONA_16:
-            limic_put_threshold  = 1 * 1024;
-            limic_get_threshold  = 256;
-            break;
-        case MV2_ARCH_INTEL_CLOVERTOWN_8:
-            limic_put_threshold  = 1 * 1024;
-            limic_get_threshold  = 1 * 1024;
-            break; 
-        case MV2_ARCH_INTEL_NEHALEM_8:
-            limic_put_threshold  = 8 * 1024;
-            limic_get_threshold  = 4 * 1024;
-            break;
-        default:
-            limic_put_threshold  = 8 * 1024;
-            limic_get_threshold  = 8 * 1024;
-            break;
-    }
-}
-
 void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 {
     mv2_multirail_info_type multirail_info = mv2_get_multirail_info();
@@ -1735,7 +1805,7 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
     if ( MV2_HCA_MLX_PCI_EX_DDR == proc->hca_type ) {
         rdma_default_mtu = IBV_MTU_2048;
     } else if( MV2_HCA_MLX_CX_QDR == proc->hca_type ) {
-        rdma_default_mtu = IBV_MTU_2048;
+        rdma_default_mtu = IBV_MTU_1024;
     } else {
         rdma_default_mtu = IBV_MTU_1024;
     }
@@ -1769,8 +1839,6 @@ void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
         rdma_credit_preserve = 3;
     }
 
-    /* Set Limic Thresholds */
-    set_limic_thresholds ( proc );
     return;
 }
 
@@ -1857,44 +1925,6 @@ void rdma_get_user_parameters(int num_proc, int me)
         } else {
             rdma_default_mtu = IBV_MTU_1024;
         }
-    }
-
-
-    if ((value = getenv("MV2_USE_KNOMIAL_2LEVEL_BCAST")) != NULL) { 
-        enable_knomial_2level_bcast=!!atoi(value);
-        if (enable_knomial_2level_bcast <= 0)  { 
-            enable_knomial_2level_bcast = 0;
-        } 
-    }     
-
-    if ((value = getenv("MV2_KNOMIAL_INTRA_NODE_FACTOR")) != NULL) {
-        intra_node_knomial_factor=atoi(value);
-        if (intra_node_knomial_factor < INTRA_NODE_KNOMIAL_FACTOR_MIN) { 
-            intra_node_knomial_factor = INTRA_NODE_KNOMIAL_FACTOR_MIN;
-        } 
-        if (intra_node_knomial_factor > INTRA_NODE_KNOMIAL_FACTOR_MAX) { 
-            intra_node_knomial_factor = INTRA_NODE_KNOMIAL_FACTOR_MAX;
-        } 
-    }     
-
-    if ((value = getenv("MV2_KNOMIAL_INTER_NODE_FACTOR")) != NULL) {
-        inter_node_knomial_factor=atoi(value);
-        if (inter_node_knomial_factor < INTER_NODE_KNOMIAL_FACTOR_MIN) { 
-            inter_node_knomial_factor = INTER_NODE_KNOMIAL_FACTOR_MIN;
-        } 
-        if (inter_node_knomial_factor > INTER_NODE_KNOMIAL_FACTOR_MAX) { 
-            inter_node_knomial_factor = INTER_NODE_KNOMIAL_FACTOR_MAX;
-        } 
-    }     
-
-    if ((value = getenv("MV2_KNOMIAL_2LEVEL_BCAST_MESSAGE_SIZE_THRESHOLD"))
-        != NULL) {
-        knomial_2level_bcast_message_size_threshold=atoi(value);
-    }
-
-    if ((value = getenv("MV2_KNOMIAL_2LEVEL_BCAST_SYSTEM_SIZE_THRESHOLD"))
-        != NULL) {
-        knomial_2level_bcast_system_size_threshold=atoi(value);
     }
 
     /* Get number of ports/HCA used by a process */
@@ -2060,14 +2090,6 @@ void rdma_get_user_parameters(int num_proc, int me)
     if ((value = getenv("MV2_GET_FALLBACK_THRESHOLD")) != NULL) {
         rdma_get_fallback_threshold = user_val_to_bytes(value,"MV2_GET_FALLBACK_THRESHOLD");
     }
-    if ((value = getenv("MV2_LIMIC_PUT_THRESHOLD")) != NULL) {
-        limic_put_threshold = 
-               user_val_to_bytes(value,"MV2_LIMIC_PUT_THRESHOLD");
-    }
-    if ((value = getenv("MV2_LIMIC_GET_THRESHOLD")) != NULL) {
-        limic_get_threshold = 
-               user_val_to_bytes(value,"MV2_LIMIC_GET_THRESHOLD");
-    }
     if ((value = getenv("MV2_DEFAULT_PORT")) != NULL) {
         rdma_default_port = atoi(value);
     }
@@ -2112,6 +2134,79 @@ void rdma_get_user_parameters(int num_proc, int me)
     if ((value = getenv("MV2_DEFAULT_MAX_SEND_WQE")) != NULL) {
         rdma_default_max_send_wqe = atol(value);
     }
+#ifdef _ENABLE_UD_
+    if ((value = getenv("MV2_HYBRID_MAX_RC_CONN")) != NULL) {
+        rdma_hybrid_max_rc_conn = atoi(value);
+    }
+    if ((value = getenv("MV2_UD_NUM_MSG_LIMIT")) != NULL) {
+        rdma_ud_num_msg_limit = atoi(value);
+    }
+    if ((value = getenv("MV2_UD_SENDWINDOW_SIZE")) != NULL) {
+        rdma_default_ud_sendwin_size = atoi(value);
+    }
+    if ((value = getenv("MV2_UD_RECVWINDOW_SIZE")) != NULL) {
+        rdma_default_ud_recvwin_size = atoi(value);
+    }
+    if ((value = getenv("MV2_UD_RETRY_TIMEOUT")) != NULL) {
+        rdma_ud_retry_timeout = atoi(value);
+    }
+    if ((value = getenv("MV2_UD_MAX_RETRY_TIMEOUT")) != NULL) {
+        rdma_ud_max_retry_timeout = atoi(value);
+    }
+    if ((value = getenv("MV2_UD_PROGRESS_SPIN")) != NULL) {
+        rdma_ud_progress_spin = atoi(value);
+    }
+    if ((value = getenv("MV2_UD_RETRY_COUNT")) != NULL) {
+        rdma_ud_max_retry_count = atoi(value);
+    }
+    if ((value = getenv("MV2_UD_PROGRESS_TIMEOUT")) != NULL) {
+        rdma_ud_progress_timeout = atoi(value);
+    }
+    if ((value = getenv("MV2_UD_MAX_SEND_WQE")) != NULL) {
+        rdma_default_max_ud_send_wqe = atol(value);
+    }
+    if ((value = getenv("MV2_UD_MAX_RECV_WQE")) != NULL) {
+        rdma_default_max_ud_recv_wqe = atol(value);
+    }
+    if ((value = getenv("MV2_UD_VBUF_POOL_SIZE")) != NULL) {
+        rdma_ud_vbuf_pool_size = atol(value);
+    }
+    if (rdma_enable_hybrid) {
+        rdma_vbuf_pool_size = (RDMA_VBUF_POOL_SIZE / 2);
+    }
+    if ((value = getenv("MV2_UD_MTU")) != NULL) {
+        rdma_default_ud_mtu = atol(value);
+        if (rdma_default_ud_mtu > 2048) {
+            rdma_default_ud_mtu = 2048;
+            MPIU_Usage_printf("UD transport fails with MTU greater than 2K,"
+            " retaining default MTU(2K)\n");
+        }
+    }
+    if ((value = getenv("MV2_UD_MAX_ACK_PENDING")) != NULL) {
+        rdma_ud_max_ack_pending = atoi(value);
+    } else {
+        rdma_ud_max_ack_pending = (rdma_default_ud_sendwin_size / 4);
+    }
+    if ((value = getenv("MV2_USE_UD_ZCOPY")) != NULL) {
+        rdma_use_ud_zcopy = atoi(value);
+    }
+    rdma_ud_zcopy_threshold = rdma_iba_eager_threshold;
+    if ((value = getenv("MV2_UD_ZCOPY_THRESHOLD")) != NULL) {
+        rdma_ud_zcopy_threshold = atoi(value);
+    }
+    if ((value = getenv("MV2_UD_NUM_ZCOPY_RNDV_QPS")) != NULL) {
+        rdma_ud_num_rndv_qps = atoi(value);
+    }
+    if ((value = getenv("MV2_UD_ZCOPY_RQ_SIZE")) != NULL) {
+        rdma_ud_zcopy_rq_size = atoi(value);
+    }
+#ifdef _MV2_UD_DROP_PACKET_RATE_
+    if ((value = getenv("MV2_UD_DROP_PACKET_RATE")) != NULL) {
+        ud_drop_packet_rate = atoi(value);
+    }
+#endif
+
+#endif 
     if ((value = getenv("MV2_DEFAULT_MAX_RECV_WQE")) != NULL) {
         rdma_default_max_recv_wqe = atol(value);
     } 
@@ -2169,17 +2264,9 @@ void rdma_get_user_parameters(int num_proc, int me)
     if ((value = getenv("MV2_USE_THREAD_YIELD")) != NULL) {
          use_thread_yield = atoi(value);
     }
-    
-    if ((value = getenv("MV2_USE_OSU_COLLECTIVES")) != NULL) {
-        if( atoi(value) == 1) { 
-              use_osu_collectives = 1; 
-        } 
-        else { 
-              use_osu_collectives = 0; 
-              use_anl_collectives = 1; 
-        } 
+    if ((value = getenv("MV2_NUM_SPINS_BEFORE_LOCK")) != NULL) {
+         spins_before_lock = atoi(value);
     }
-
     if ((value = getenv("MV2_ASYNC_THREAD_STACK_SIZE")) != NULL) {
         rdma_default_async_thread_stack_size = atoi(value);
         if(rdma_default_async_thread_stack_size < 1<<10) {
@@ -2239,7 +2326,7 @@ static int check_hsam_parameters(void)
     return MPI_SUCCESS;
 }
 
-int rdma_get_pm_parameters(MPIDI_CH3I_RDMA_Process_t *proc)
+void rdma_get_pm_parameters(MPIDI_CH3I_RDMA_Process_t *proc)
 {
     int ring_setup;
     char * value;

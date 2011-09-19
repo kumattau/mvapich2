@@ -70,7 +70,7 @@ int MPIDI_CH3_iSend(MPIDI_VC_t * vc, MPID_Request * sreq, void *pkt,
     }
 
     /*CM code*/
-    if ((vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE 
+    if ((vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE
 #ifdef _ENABLE_XRC_
             || (USE_XRC && VC_XST_ISUNSET (vc, XF_SEND_IDLE))
 #endif

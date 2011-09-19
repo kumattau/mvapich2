@@ -10,8 +10,10 @@
  *
  */
 
+#include <mpmd.h>
+#include <mpirun_rsh.h>
+
 #include <ctype.h>
-#include "mpmd.h"
 
 //These are used when activated mpmd
 

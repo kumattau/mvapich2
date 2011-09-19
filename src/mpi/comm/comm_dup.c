@@ -30,14 +30,14 @@
 #endif
 /* -- End Profiling Symbol Block */
 
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 extern int split_comm;
 extern int enable_shmem_collectives;
 extern int check_split_comm(pthread_t);
 extern int disable_split_comm(pthread_t);
 extern int create_2level_comm (MPI_Comm, int, int);
 extern int enable_split_comm(pthread_t);
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
 
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
@@ -184,7 +184,7 @@ int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
 
     MPIU_OBJ_PUBLISH_HANDLE(*newcomm, newcomm_ptr->handle);
 
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     if (enable_shmem_collectives){
         if (check_split_comm(pthread_self())){
             if (*newcomm != MPI_COMM_NULL){
@@ -213,7 +213,7 @@ int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
             }
         }
     }
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
     /* ... end of body of routine ... */
 

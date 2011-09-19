@@ -83,7 +83,6 @@ static inline int get_host_id(char *myhostname, int hostname_len)
 static union ibv_gid get_local_gid(struct ibv_context * ctx, int port)
 {
     union ibv_gid gid;
-    struct ibv_port_attr attr;
 
     ibv_query_gid(ctx, port, 0, &gid);
 
@@ -364,7 +363,7 @@ static int _setup_ib_boot_ring(struct init_addr_inf * neighbor_addr,
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int rdma_ring_exchange_host_id(MPIDI_PG_t * pg, int pg_rank, int pg_size)
 {
-    int i, mpi_errno = MPI_SUCCESS;
+    int mpi_errno = MPI_SUCCESS;
     int *hostid_all;
 
     hostid_all =  (int *) MPIU_Malloc(pg_size * sizeof(int));
@@ -401,17 +400,27 @@ int rdma_setup_startup_ring(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
     union ibv_gid gid;
     int mpi_errno = MPI_SUCCESS;
     int port;
-
+    char *value = NULL;
 
     if (!ring_rdma_open_hca(proc)) {
         MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto out,
                 "**fail", "**fail %s", "cannot open hca device");
     }
         
-    port = _find_active_port(proc->boot_context);
-    if (port < 0) {
-        MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto out, "**fail",
-                "**fail %s", "could not find active port");
+    if ((value = getenv("MV2_DEFAULT_PORT")) != NULL) {
+        rdma_default_port = atoi(value);
+    }
+
+    if (rdma_default_port < 0 || rdma_num_ports > 1) {
+        /* Find active port if user has not asked us to use one */
+        port = _find_active_port(proc->boot_context);
+        if (port < 0) {
+            MPIU_ERR_SETFATALANDSTMT1(mpi_errno, MPI_ERR_OTHER, goto out, "**fail",
+                    "**fail %s", "could not find active port");
+        }
+    } else {
+        /* Use port specified by user */
+        port = rdma_default_port;
     }
 
     proc->boot_cq_hndl = ibv_create_cq(proc->boot_context,
@@ -438,13 +447,13 @@ int rdma_setup_startup_ring(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
 
     if (use_iboeth) {
         gid = get_local_gid(proc->boot_context, port);
-        sprintf(ring_qp_out, "%016llx:%016llx:%08x:%08x:",
+        sprintf(ring_qp_out, "%016"SCNx64":%016"SCNx64":%08x:%08x:",
                  gid.global.subnet_prefix, gid.global.interface_id,
                  proc->boot_qp_hndl[0]->qp_num,
                  proc->boot_qp_hndl[1]->qp_num
                );
     
-        DEBUG_PRINT("After setting GID: %llx:%llx, qp0: %x, qp1: %x\n",
+        DEBUG_PRINT("After setting GID: %"PRIx64":%"PRIx64", qp0: %x, qp1: %x\n",
                 gid.global.subnet_prefix, gid.global.interface_id,
                 proc->boot_qp_hndl[0]->qp_num,
                 proc->boot_qp_hndl[1]->qp_num
@@ -471,22 +480,22 @@ int rdma_setup_startup_ring(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
             bootstrap_len, ring_qp_in);
 
     if (use_iboeth) {
-        sscanf(&ring_qp_in[0], "%016llx:%016llx:%08x:%08x:", 
+        sscanf(&ring_qp_in[0], "%016"SCNx64":%016"SCNx64":%08x:%08x:", 
                &neighbor_addr[0].gid.global.subnet_prefix,
                &neighbor_addr[0].gid.global.interface_id,
                &neighbor_addr[0].qp_num[0],
                &neighbor_addr[0].qp_num[1]);
-        sscanf(&ring_qp_in[53], "%016llx:%016llx:%08x:%08x:",
+        sscanf(&ring_qp_in[53], "%016"SCNx64":%016"SCNx64":%08x:%08x:",
                &neighbor_addr[1].gid.global.subnet_prefix,
                &neighbor_addr[1].gid.global.interface_id,
                &neighbor_addr[1].qp_num[0],
                &neighbor_addr[1].qp_num[1]);
-        DEBUG_PRINT("After retrieving GID: %llx:%llx, qp0: %x, qp1: %x\n",
+        DEBUG_PRINT("After retrieving GID: %"PRIx64":%"PRIx64", qp0: %x, qp1: %x\n",
                neighbor_addr[0].gid.global.subnet_prefix,
                neighbor_addr[0].gid.global.interface_id,
                neighbor_addr[0].qp_num[0],
                neighbor_addr[0].qp_num[1]);
-        DEBUG_PRINT("After retrieving GID: %llx:%llx, qp0: %x, qp1: %x\n",
+        DEBUG_PRINT("After retrieving GID: %"PRIx64":%"PRIx64", qp0: %x, qp1: %x\n",
                neighbor_addr[1].gid.global.subnet_prefix,
                neighbor_addr[1].gid.global.interface_id,
                neighbor_addr[1].qp_num[0],

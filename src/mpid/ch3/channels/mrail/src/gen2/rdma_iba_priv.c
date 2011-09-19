@@ -146,7 +146,7 @@ struct ibv_srq *create_srq(struct MPIDI_CH3I_RDMA_Process_t *proc,
         srq_ptr = ibv_create_xrc_srq (proc->ptag[hca_num], 
                 proc->xrc_domain[hca_num], proc->cq_hndl[hca_num], 
                 &srq_init_attr);
-        XRC_MSG ("created xrc srq %d\n", 
+        PRINT_DEBUG(DEBUG_XRC_verbose>0, "created xrc srq %d\n", 
                 srq_ptr->xrc_srq_num);
     }
     else 
@@ -371,7 +371,7 @@ int rdma_skip_network_card(mv2_iba_network_classes network_type,
     return skip;
 }
 
-int ring_rdma_close_hca(struct MPIDI_CH3I_RDMA_Process_t *proc)
+void ring_rdma_close_hca(struct MPIDI_CH3I_RDMA_Process_t *proc)
 {
     int err;
     proc->boot_device = NULL;
@@ -394,7 +394,6 @@ int ring_rdma_open_hca(struct MPIDI_CH3I_RDMA_Process_t *proc)
     int i = 0;
     int num_devices = 0;
     int err;
-    int hca_type;
     struct ibv_device *ib_dev = NULL;
     struct ibv_device **dev_list = NULL;
     int is_device_opened = 0;
@@ -464,7 +463,6 @@ fn_exit:
 int rdma_open_hca(struct MPIDI_CH3I_RDMA_Process_t *proc)
 {
     int i = 0, j = 0;
-    int hca_type = 0;
     int num_devices = 0;
     int network_type = 0;
     int num_usable_hcas = 0;
@@ -613,7 +611,7 @@ int rdma_iba_hca_init_noqp(struct MPIDI_CH3I_RDMA_Process_t *proc,
     /* step 1: open hca, create ptags  and create cqs */
     for (i = 0; i < rdma_num_hcas; i++) {
 
-      MPIU_Memset(&gid, 0, sizeof(gid));
+        MPIU_Memset(&gid, 0, sizeof(gid));
         if(ibv_query_device(proc->nic_context[i], &dev_attr)) {
             MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
                     MPI_ERR_INTERN,
@@ -628,7 +626,7 @@ int rdma_iba_hca_init_noqp(struct MPIDI_CH3I_RDMA_Process_t *proc,
             for (j = 1; j <= RDMA_DEFAULT_MAX_PORTS; j ++) {
                 if ((! ibv_query_port(MPIDI_CH3I_RDMA_Process.nic_context[i],
                                         j, &port_attr)) &&
-                        port_attr.state == IBV_PORT_ACTIVE &&
+                        (port_attr.state == IBV_PORT_ACTIVE) &&
                         (port_attr.lid || (!port_attr.lid && use_iboeth))) {
 
                     if (use_iboeth) {
@@ -664,10 +662,9 @@ int rdma_iba_hca_init_noqp(struct MPIDI_CH3I_RDMA_Process_t *proc,
             }
         } else {
             if(ibv_query_port(MPIDI_CH3I_RDMA_Process.nic_context[i],
-                        rdma_default_port, &port_attr)
-                    || (!port_attr.lid )
-                    || (port_attr.state != IBV_PORT_ACTIVE))
-            {
+                                rdma_default_port, &port_attr)
+                || (!port_attr.lid && !use_iboeth)
+                || (port_attr.state != IBV_PORT_ACTIVE)) {
                 MPIU_ERR_SETFATALANDJUMP2(mpi_errno,
                         MPI_ERR_INTERN,
                         "**fail",
@@ -739,7 +736,7 @@ int rdma_iba_hca_init_noqp(struct MPIDI_CH3I_RDMA_Process_t *proc,
             }
 #ifdef _ENABLE_XRC_
             proc->xrc_srqn[i] = proc->srq_hndl[i]->xrc_srq_num;
-            XRC_MSG ("My SRQN=%d rail:%d\n", proc->xrc_srqn[i], i);
+            PRINT_DEBUG(DEBUG_XRC_verbose>0, "My SRQN=%d rail:%d\n", proc->xrc_srqn[i], i);
 #endif /* _ENABLE_XRC_ */
         }
     }
@@ -814,7 +811,7 @@ int rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
             for (j = 1; j <= RDMA_DEFAULT_MAX_PORTS; j ++) {
                 if ((! ibv_query_port(MPIDI_CH3I_RDMA_Process.nic_context[i],
                                         j, &port_attr)) &&
-                        port_attr.state == IBV_PORT_ACTIVE &&
+                        (port_attr.state == IBV_PORT_ACTIVE) &&
                         (port_attr.lid || (!port_attr.lid && use_iboeth))) {
 
                     if (use_iboeth) {
@@ -857,8 +854,8 @@ int rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
             ports[i][0] = rdma_default_port;
 
             if (use_iboeth) {
-                if (ibv_query_gid(MPIDI_CH3I_RDMA_Process.nic_context[i], 0,
-                                    0, &gids[i][0])) {
+                if (ibv_query_gid(MPIDI_CH3I_RDMA_Process.nic_context[i],
+                                    rdma_default_port, 0, &gids[i][0])) {
                     MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
                         "**fail", "Failed to retrieve gid on rank %d", pg_rank);
                 }
@@ -934,6 +931,9 @@ int rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
 		        "**fail", "**fail %s", "Failed to allocate resources for "
 		        "multirails");
         }
+
+        MPIU_Memset (vc->mrail.rails, 0, 
+                    (sizeof *vc->mrail.rails * vc->mrail.num_rails));
 
 	    vc->mrail.srp.credits = MPIU_Malloc
                         (sizeof *vc->mrail.srp.credits * vc->mrail.num_rails);
@@ -1109,7 +1109,14 @@ rdma_iba_allocate_memory(struct MPIDI_CH3I_RDMA_Process_t *proc,
     {
         return ret;
     }
-   
+
+#ifdef _ENABLE_UD_
+    if (rdma_enable_hybrid) {
+        if ((ret = allocate_ud_vbufs(rdma_ud_vbuf_pool_size))) {
+            return ret;
+        }
+    }
+#endif /* _ENABLE_UD_ */   
     /* Post the buffers for the SRQ */
     if (MPIDI_CH3I_RDMA_Process.has_srq)
     {
@@ -1332,10 +1339,32 @@ rdma_iba_enable_connections(struct MPIDI_CH3I_RDMA_Process_t *proc,
     return 0;
 }
 
+void MRAILI_RC_Enable(MPIDI_VC_t *vc)
+{
+    int i,k;
+    PRINT_DEBUG(DEBUG_UD_verbose>0, "Enabled to create RC Channel to rank:%d\n", vc->pg_rank);
+    vc->mrail.state |= MRAILI_RC_CONNECTED;
+    for (i = 0; i < vc->mrail.num_rails; i++) {
+        if (!MPIDI_CH3I_RDMA_Process.has_srq) {
+            for (k = 0; k < rdma_initial_prepost_depth; k++) {
+                PREPOST_VBUF_RECV(vc, i);
+            }    
+        }
+    }
+#ifdef _ENABLE_UD_
+    if (rdma_enable_hybrid) {
+        vc->mrail.rfp.eager_start_cnt = 0;
+        MPIDI_CH3I_RDMA_Process.rc_connections++;
+        rdma_hybrid_pending_rc_conn--;
+        MPIU_Assert(vc->mrail.state & MRAILI_RC_CONNECTING);
+    }
+#endif
+}
+
 void MRAILI_Init_vc(MPIDI_VC_t * vc)
 {
     int pg_size;
-    int i;
+    int i,k;
 
 #ifdef _ENABLE_XRC_
     if (USE_XRC) {
@@ -1344,9 +1373,15 @@ void MRAILI_Init_vc(MPIDI_VC_t * vc)
         else
             VC_XST_SET (vc, XF_INIT_DONE);
     }
+    PRINT_DEBUG(DEBUG_XRC_verbose>0, "MRAILI_Init_vc %d\n", vc->pg_rank);
+#endif
+#ifdef _ENABLE_UD_
+    if(vc->mrail.state & MRAILI_UD_CONNECTED) {
+        MRAILI_RC_Enable(vc);
+        return;
+    }
 #endif
 
-    XRC_MSG ("MRAILI_Init_vc %d\n", vc->pg_rank);
     PMI_Get_size(&pg_size);
 
     vc->mrail.rfp.phead_RDMA_send = 0;
@@ -1354,6 +1389,29 @@ void MRAILI_Init_vc(MPIDI_VC_t * vc)
     vc->mrail.rfp.p_RDMA_recv = 0;
     vc->mrail.rfp.p_RDMA_recv_tail = 0;
     vc->mrail.rfp.rdma_failed = 0;
+    vc->mrail.num_rails = rdma_num_rails;
+          
+    if (!vc->mrail.rails) {
+        vc->mrail.rails = MPIU_Malloc
+            (sizeof *vc->mrail.rails * vc->mrail.num_rails);
+        if (!vc->mrail.rails) {
+            ibv_error_abort(GEN_EXIT_ERR, 
+                    "Fail to allocate resources for multirails\n");
+        }
+        MPIU_Memset (vc->mrail.rails, 0, 
+                (sizeof *vc->mrail.rails * vc->mrail.num_rails));
+    }
+
+    if (!vc->mrail.srp.credits) {
+        vc->mrail.srp.credits = MPIU_Malloc(sizeof (*vc->mrail.srp.credits) * 
+                vc->mrail.num_rails);
+        if (!vc->mrail.srp.credits) {
+            ibv_error_abort(GEN_EXIT_ERR, 
+                    "Fail to allocate resources for credits array\n");
+        }
+        MPIU_Memset(vc->mrail.srp.credits, 0 ,
+                (sizeof (*vc->mrail.srp.credits) * vc->mrail.num_rails));
+    }
 
     /* Now we will need to */
     for (i = 0; i < rdma_num_rails; i++) {
@@ -1367,9 +1425,6 @@ void MRAILI_Init_vc(MPIDI_VC_t * vc)
         vc->mrail.rails[i].hca_index = i / (rdma_num_rails / rdma_num_hcas);
 #endif
     }
-
-    vc->mrail.next_packet_expected  = 0;
-    vc->mrail.next_packet_tosend    = 0;
 
     vc->mrail.outstanding_eager_vbufs = 0;
     vc->mrail.coalesce_vbuf = NULL;
@@ -1387,10 +1442,11 @@ void MRAILI_Init_vc(MPIDI_VC_t * vc)
     vc->mrail.cmanager.num_channels         = vc->mrail.num_rails;
     vc->mrail.cmanager.num_local_pollings   = 0;
 
-    if (pg_size < rdma_eager_limit && !MPIDI_CH3I_Process.has_dpm) 
-	vc->mrail.rfp.eager_start_cnt = rdma_polling_set_threshold + 1;
-    else
-	vc->mrail.rfp.eager_start_cnt = 0;
+    if (pg_size < rdma_eager_limit && !MPIDI_CH3I_Process.has_dpm) { 
+	    vc->mrail.rfp.eager_start_cnt = rdma_polling_set_threshold + 1;
+    } else {
+	    vc->mrail.rfp.eager_start_cnt = 0;
+    }
 
     vc->mrail.rfp.in_polling_set = 0;
 
@@ -1418,8 +1474,11 @@ void MRAILI_Init_vc(MPIDI_VC_t * vc)
     vc->mrail.inflow    = 0;
 
     for (i = 0; i < vc->mrail.num_rails; i++) {
-        int k;
-        if (!MPIDI_CH3I_RDMA_Process.has_srq) {
+        if (!MPIDI_CH3I_RDMA_Process.has_srq 
+#ifdef _ENABLE_UD_
+        && !rdma_enable_hybrid
+#endif
+        ) {
             for (k = 0; k < rdma_initial_prepost_depth; k++) {
                  PREPOST_VBUF_RECV(vc, i);
             } 
@@ -1453,6 +1512,28 @@ void MRAILI_Init_vc(MPIDI_VC_t * vc)
     vc->mrail.rails[rdma_num_rails - 1].s_weight =
         DYNAMIC_TOTAL_WEIGHT -
         (DYNAMIC_TOTAL_WEIGHT / rdma_num_rails) * (rdma_num_rails - 1);
+    
+        vc->mrail.seqnum_next_tosend  = 0;
+        vc->mrail.seqnum_next_torecv  = 0;
+#ifdef _ENABLE_UD_
+    if (rdma_enable_hybrid && ! (vc->mrail.state & MRAILI_UD_CONNECTED)) { 
+
+        vc->mrail.ud.total_messages = 0;
+        vc->mrail.ud.ack_pending = 0;
+
+        vc->mrail.state &= ~(MRAILI_RC_CONNECTING | MRAILI_RC_CONNECTING);
+
+        MESSAGE_QUEUE_INIT(&vc->mrail.ud.send_window); 
+        MESSAGE_QUEUE_INIT(&vc->mrail.ud.ext_window);
+        vc->mrail.ud.cntl_acks = 0;
+        vc->mrail.ud.resend_count = 0;
+        vc->mrail.ud.ext_win_send_count = 0;
+    }
+    else
+#endif /* _ENABLE_UD_ */
+    {
+        vc->mrail.state |= MRAILI_RC_CONNECTED;
+    }
 }
 
 #ifdef _ENABLE_XRC_
@@ -1473,6 +1554,8 @@ int cm_qp_reuse (MPIDI_VC_t *vc, MPIDI_VC_t *orig)
             ibv_error_abort(GEN_EXIT_ERR, 
                     "Fail to allocate resources for multirails\n");
         }
+        MPIU_Memset (vc->mrail.rails, 0, 
+                    (sizeof *vc->mrail.rails * vc->mrail.num_rails));
     }
 
     if (!vc->mrail.srp.credits) {
@@ -1482,6 +1565,8 @@ int cm_qp_reuse (MPIDI_VC_t *vc, MPIDI_VC_t *orig)
             ibv_error_abort(GEN_EXIT_ERR, 
                     "Fail to allocate resources for credits array\n");
         }
+        MPIU_Memset(vc->mrail.srp.credits, 0 ,
+                    (sizeof (*vc->mrail.srp.credits) * vc->mrail.num_rails));
     }
 
     for (rail_index = 0; rail_index < vc->mrail.num_rails;
@@ -1530,7 +1615,7 @@ static inline int cm_qp_conn_create(MPIDI_VC_t *vc, int qptype)
 
 
     vc->mrail.num_rails = rdma_num_rails;
-#ifdef _ENABLE_XRC_
+#if defined _ENABLE_XRC_ || _ENABLE_UD_
     if (!vc->mrail.rails) {
 #endif
         vc->mrail.rails = MPIU_Malloc
@@ -1540,11 +1625,13 @@ static inline int cm_qp_conn_create(MPIDI_VC_t *vc, int qptype)
             ibv_error_abort(GEN_EXIT_ERR, 
                     "Fail to allocate resources for multirails\n");
         }
-#ifdef _ENABLE_XRC_
+        MPIU_Memset (vc->mrail.rails, 0, 
+                    (sizeof *vc->mrail.rails * vc->mrail.num_rails));
+#if defined _ENABLE_XRC_ || _ENABLE_UD_
     }
 #endif
 
-#ifdef _ENABLE_XRC_
+#if defined _ENABLE_XRC_ || _ENABLE_UD_
     if (!vc->mrail.srp.credits) {
 #endif
         vc->mrail.srp.credits = MPIU_Malloc(sizeof *vc->mrail.srp.credits * 
@@ -1553,7 +1640,9 @@ static inline int cm_qp_conn_create(MPIDI_VC_t *vc, int qptype)
             ibv_error_abort(GEN_EXIT_ERR, 
                     "Fail to allocate resources for credits array\n");
         }
-#ifdef _ENABLE_XRC_
+        MPIU_Memset(vc->mrail.srp.credits, 0 ,
+                    (sizeof (*vc->mrail.srp.credits) * vc->mrail.num_rails));
+#if defined _ENABLE_XRC_ || _ENABLE_UD_
     }
 #endif
 
@@ -1634,7 +1723,7 @@ static inline int cm_qp_conn_create(MPIDI_VC_t *vc, int qptype)
 
 #ifdef _ENABLE_XRC_ 
     if (USE_XRC && qptype == MV2_QPT_XRC) {
-        XRC_MSG ("Added vc to XRC hash\n");
+        PRINT_DEBUG(DEBUG_XRC_verbose>0, "Added vc to XRC hash\n");
         add_vc_xrc_hash (vc);
     }
 #endif /* _ENABLE_XRC_ */
@@ -1644,19 +1733,20 @@ static inline int cm_qp_conn_create(MPIDI_VC_t *vc, int qptype)
 /*function to create qps for the connection and move them to INIT state*/
 int cm_qp_create(MPIDI_VC_t *vc, int force, int qptype)
 {
+
+#ifdef _ENABLE_XRC_
     int match = 0;
     int rail_index = 0;
     int hca_index = 0;
     int port_index = 0;
 
-    XRC_MSG ("Talking to %d (force:%d)\n", vc->pg_rank, force);
-#ifdef _ENABLE_XRC_
+    PRINT_DEBUG(DEBUG_XRC_verbose>0, "Talking to %d (force:%d)\n", vc->pg_rank, force);
     if (USE_XRC && !force && qptype == MV2_QPT_XRC) {
         int hash;
         xrc_hash_t *iter;
         
         if (VC_XST_ISSET (vc, XF_REUSE_WAIT)) {
-            XRC_MSG ("Already waiting for REUSE %d\n", vc->pg_rank);
+            PRINT_DEBUG(DEBUG_XRC_verbose>0, "Already waiting for REUSE %d\n", vc->pg_rank);
             return MV2_QP_REUSE;
         }
 
@@ -1675,7 +1765,7 @@ int cm_qp_create(MPIDI_VC_t *vc, int force, int qptype)
                     port_index = (rail_index / (vc->mrail.num_rails /
                            (rdma_num_hcas * rdma_num_ports))) % rdma_num_ports;
 
-                    XRC_MSG("rail_index = %d, old lid = %d, new lid = %d\n",
+                    PRINT_DEBUG(DEBUG_XRC_verbose>0, "rail_index = %d, old lid = %d, new lid = %d\n",
                            rail_index,
                            iter->vc->mrail.lid[hca_index][port_index],
                            vc->mrail.lid[hca_index][port_index]);
@@ -1700,11 +1790,11 @@ int cm_qp_create(MPIDI_VC_t *vc, int force, int qptype)
 
                 if (!match) {
                     /* Cannot re-use QP. Need to create a new one */
-                    XRC_MSG("Cannot reuse QP to talk to %d\n", vc->pg_rank);
+                    PRINT_DEBUG(DEBUG_XRC_verbose>0, "Cannot reuse QP to talk to %d\n", vc->pg_rank);
                     break;
                 }
 
-                XRC_MSG("Talking to %d Reusing conn to %d XST: 0x%08x", 
+                PRINT_DEBUG(DEBUG_XRC_verbose>0, "Talking to %d Reusing conn to %d XST: 0x%08x\n", 
                       vc->pg_rank, iter->vc->pg_rank, iter->vc->ch.xrc_flags);
                 MPIU_Assert (vc->smp.hostid != -1);
                 if (VC_XST_ISSET (iter->vc, XF_SEND_CONNECTING)) {
@@ -1715,7 +1805,7 @@ int cm_qp_create(MPIDI_VC_t *vc, int force, int qptype)
                     n->vc = vc;
                     n->next = iter->vc->ch.xrc_conn_queue;
                     iter->vc->ch.xrc_conn_queue = n;
-                    XRC_MSG ("Added %d to pending queue of %d \n", vc->pg_rank,
+                    PRINT_DEBUG(DEBUG_XRC_verbose>0, "Added %d to pending queue of %d \n", vc->pg_rank,
                             iter->vc->pg_rank);
                 }
                 else {
@@ -1724,7 +1814,7 @@ int cm_qp_create(MPIDI_VC_t *vc, int force, int qptype)
                 return MV2_QP_REUSE;
             }
         }
-        XRC_MSG ("Not FOUND!\n");
+        PRINT_DEBUG(DEBUG_XRC_verbose>0, "Not FOUND!\n");
     }
 #endif /* _ENABLE_XRC_ */
     /* XRC not in use or no qps found */
@@ -1780,16 +1870,15 @@ int cm_qp_move_to_rtr(MPIDI_VC_t *vc, uint16_t *lids, union ibv_gid *gids,
 #ifdef _ENABLE_XRC_
         if (USE_XRC && !is_rqp && !is_dpm) {
             /* Move send qp to RTR */
-            MPIDI_PG_t *pg = vc->pg;
             qp_attr.dest_qp_num = vc->ch.xrc_rqpn[rail_index];
-            XRC_MSG ("HERE HERE %d dlid: %d\n", vc->ch.xrc_rqpn[rail_index], 
+            PRINT_DEBUG(DEBUG_XRC_verbose>0, "%d dlid: %d\n", vc->ch.xrc_rqpn[rail_index], 
                     lids[rail_index]);
         }
         else /* Move rcv qp to RTR, or no XRC */
 #endif
         {
             qp_attr.dest_qp_num = qpns[rail_index];
-            XRC_MSG ("DQPN: %d dlid: %d\n", rail_index[qpns], lids[rail_index])
+            PRINT_DEBUG(DEBUG_XRC_verbose>0, "DQPN: %d dlid: %d\n", rail_index[qpns], lids[rail_index]);
         }
     
         if (MPIDI_CH3I_RDMA_Process.has_hsam) {
@@ -1827,7 +1916,7 @@ int cm_qp_move_to_rtr(MPIDI_VC_t *vc, uint16_t *lids, union ibv_gid *gids,
 #ifdef _ENABLE_XRC_
         if (USE_XRC && is_rqp) {
             /* Move rcv qp to RTR */
-            XRC_MSG ("HERE HERE HERE %d <-> %d\n", 
+            PRINT_DEBUG(DEBUG_XRC_verbose>0, "%d <-> %d\n", 
                     rqpn[rail_index], qp_attr.dest_qp_num);
             if (ibv_modify_xrc_rcv_qp (
                     MPIDI_CH3I_RDMA_Process.xrc_domain[hca_index],
@@ -1838,7 +1927,7 @@ int cm_qp_move_to_rtr(MPIDI_VC_t *vc, uint16_t *lids, union ibv_gid *gids,
         else /* Move send qp to RTR */
 #endif 
         {
-            XRC_MSG ("HHHH dpqn %d\n", 
+            PRINT_DEBUG(DEBUG_XRC_verbose>0, "dpqn %d\n", 
                     qp_attr.dest_qp_num);
             if (ibv_modify_qp( vc->mrail.rails[rail_index].qp_hndl,
                                &qp_attr, qp_attr_mask)) {
@@ -1873,7 +1962,7 @@ int cm_qp_move_to_rts(MPIDI_VC_t *vc)
                           IBV_QP_RNR_RETRY          |
                           IBV_QP_SQ_PSN             |
                           IBV_QP_MAX_QP_RD_ATOMIC;
-        XRC_MSG ("RTS %d\n", vc->pg_rank);
+        PRINT_DEBUG(DEBUG_XRC_verbose>0, "RTS %d\n", vc->pg_rank);
         if (ibv_modify_qp(vc->mrail.rails[rail_index].qp_hndl, &qp_attr,
                     qp_attr_mask)) {
             ibv_error_abort(GEN_EXIT_ERR, "Failed to modify QP to RTS\n");
@@ -1982,5 +2071,317 @@ void MRAILI_Init_vc_network(MPIDI_VC_t * vc)
 }
 
 #endif
+
+#ifdef _ENABLE_UD_
+int rdma_init_ud(struct MPIDI_CH3I_RDMA_Process_t *proc)
+{
+    int mpi_errno = MPI_SUCCESS;
+    int hca_index;
+    mv2_ud_ctx_t *ud_ctx;
+    mv2_ud_qp_info_t qp_info;
+    char *val;
+
+
+    for (hca_index=0; hca_index< rdma_num_hcas; hca_index++)
+    {
+        qp_info.send_cq = qp_info.recv_cq = proc->cq_hndl[hca_index];
+        qp_info.sq_psn = rdma_default_psn;
+        qp_info.pd = proc->ptag[hca_index];
+        qp_info.cap.max_send_sge = rdma_default_max_sg_list;
+        qp_info.cap.max_recv_sge = rdma_default_max_sg_list;
+        qp_info.cap.max_send_wr = rdma_default_max_ud_send_wqe;
+        qp_info.cap.max_recv_wr = rdma_default_max_ud_recv_wqe;
+        qp_info.srq = NULL;
+        if((val = getenv("MV2_USE_UD_SRQ"))!=NULL && atoi(val))
+        {
+            qp_info.srq = create_srq(proc, hca_index);
+        }
+        qp_info.cap.max_inline_data = rdma_max_inline_size;
+        ud_ctx = mv2_ud_create_ctx (&qp_info);
+        if (!ud_ctx)
+        {
+            fprintf(stderr,"Error in create UD qp\n");
+            return MPI_ERR_INTERN;
+        }
+
+        ud_ctx->send_wqes_avail = rdma_default_max_ud_send_wqe - 50;
+        MESSAGE_QUEUE_INIT(&ud_ctx->ext_send_queue);
+        ud_ctx->hca_num = hca_index;
+        ud_ctx->num_recvs_posted = 0;
+        ud_ctx->credit_preserve = (rdma_default_max_ud_recv_wqe / 4 );
+        ud_ctx->num_recvs_posted += mv2_post_ud_recv_buffers( 
+                (rdma_default_max_ud_recv_wqe - ud_ctx->num_recvs_posted), ud_ctx);
+
+        proc->ud_rails[hca_index] = ud_ctx;
+        proc->rc_connections = 0;
+        ud_ctx->ext_sendq_count = 0;
+    }
+    MESSAGE_QUEUE_INIT(&proc->unack_queue);
+    PRINT_DEBUG(DEBUG_UD_verbose>0,"Finish setting up UD queue pairs\n");
+    return mpi_errno;
+}
+
+int mv2_ud_get_remote_info(MPIDI_PG_t *pg, int pg_rank, int pg_size)
+{
+    int error, mpi_errno = MPI_SUCCESS, i;
+    char *key, *val;
+    int key_max_sz, val_max_sz;
+    mv2_ud_exch_info_t my_info, *all_info;
+
+    all_info = (mv2_ud_exch_info_t *) MPIU_Malloc(pg_size * sizeof(mv2_ud_exch_info_t));
+
+    my_info.lid = MPIDI_CH3I_RDMA_Process.lids[0][0];
+    my_info.qpn = MPIDI_CH3I_RDMA_Process.ud_rails[0]->qp->qp_num;
+
+    error = PMI_KVS_Get_key_length_max(&key_max_sz);
+    if(error != PMI_SUCCESS) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                "**fail %s", "Error getting max key length");
+    }
+
+    ++key_max_sz;
+    key = MPIU_Malloc(key_max_sz);
+    if (key == NULL) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**nomem",
+                "**nomem %s", "PMI key");
+    }
+
+    error = PMI_KVS_Get_value_length_max(&val_max_sz);
+    if(error != PMI_SUCCESS) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                "**fail %s", "Error getting max value length");
+    }
+
+    ++val_max_sz;
+    val = MPIU_Malloc(val_max_sz);
+    if (val == NULL) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**nomem",
+                "**nomem %s", "PMI value");
+    }
+
+    if (key_max_sz < 20 || val_max_sz < 30) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                "**fail", "**fail %s", "PMI value too small");
+    }
+
+    /*Just put lid for default port and ud_qpn is sufficient*/
+    MPIU_Snprintf(key, key_max_sz, "ud_%08d", pg_rank);
+
+    MPIU_Snprintf(val, val_max_sz, "%08hx:%08x",my_info.lid, my_info.qpn);
+    PRINT_DEBUG(DEBUG_UD_verbose>0,"rank:%d Put lids: %d ud_qp: %d\n",pg_rank, my_info.lid, my_info.qpn);
+
+    error = PMI_KVS_Put(pg->ch.kvs_name, key, val);
+    if (error != PMI_SUCCESS) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                "**pmi_kvs_put", "**pmi_kvs_put %d", error);
+    }
+
+    error = PMI_KVS_Commit(pg->ch.kvs_name);
+    if (error != PMI_SUCCESS) {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                "**pmi_kvs_commit", "**pmi_kvs_commit %d", error);
+    }
+
+    error = PMI_Barrier();
+    if (error != PMI_SUCCESS)
+    {
+        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                "**pmi_barrier", "**pmi_barrier %d", error);
+    }
+
+    for (i = 0; i < pg_size; i++) {
+        if (pg_rank == i) {
+            continue;
+        }
+
+        MPIU_Snprintf(key, key_max_sz, "ud_%08d", i);
+
+        error = PMI_KVS_Get(pg->ch.kvs_name, key, val, val_max_sz);
+        if (error != PMI_SUCCESS) {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                    "**pmi_kvs_get", "**pmi_kvs_get %d", error);
+        }
+
+        sscanf(val,"%08hx:%08x",
+                    &(all_info[i].lid), &(all_info[i].qpn));
+        PRINT_DEBUG(DEBUG_UD_verbose>0,"rank:%d Get lid:%d ud_qpn:%d\n",i,all_info[i].lid,
+                all_info[i].qpn);
+    }
+    MPIDI_CH3I_RDMA_Process.remote_ud_info = all_info;
+    MPIU_Free(key); 
+    MPIU_Free(val);
+
+fn_exit:
+    return mpi_errno;
+fn_fail:
+    goto fn_exit;
+
+}
+
+int MPIDI_CH3I_UD_Generate_addr_handles(MPIDI_PG_t *pg, int pg_rank, int pg_size)
+{
+    int i;
+    MPIDI_VC_t *vc = NULL;
+
+
+    for (i=0; i< pg_size; i++)
+    {
+        MPIDI_PG_Get_vc(pg, i, &vc);
+        if (i == pg_rank ) {
+            continue;
+        }
+
+        mv2_ud_set_vc_info(&vc->mrail.ud, &MPIDI_CH3I_RDMA_Process.remote_ud_info[i],
+                MPIDI_CH3I_RDMA_Process.ptag[0], rdma_default_port);
+
+        /* Change vc state to avoid UD CM connection establishment */
+        MRAILI_Init_vc(vc);
+        vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;
+#ifdef _ENABLE_XRC_
+        VC_XST_SET (vc, XF_SEND_IDLE);
+#endif
+        vc->mrail.state |= MRAILI_UD_CONNECTED;
+
+    }
+    PRINT_DEBUG(DEBUG_UD_verbose>0,"Created UD Address handles \n");
+    return MPI_SUCCESS;
+
+}
+
+int mv2_ud_setup_zcopy_rndv(struct MPIDI_CH3I_RDMA_Process_t *proc)
+{
+    int i, hca_index;
+    mv2_ud_zcopy_info_t *zcopy_info  = &proc->zcopy_info;
+    mv2_ud_qp_info_t qp_info;
+    mv2_ud_ctx_t *ud_ctx;
+
+    zcopy_info->rndv_qp_pool = (mv2_rndv_qp_t *)
+                MPIU_Malloc(sizeof(mv2_rndv_qp_t) *rdma_ud_num_rndv_qps);
+    zcopy_info->rndv_ud_cqs = (struct ibv_cq **) 
+                MPIU_Malloc(sizeof(struct ibv_cq *) * rdma_num_hcas);
+    zcopy_info->rndv_ud_qps = (mv2_ud_ctx_t **)
+                MPIU_Malloc(sizeof(mv2_ud_ctx_t *) *rdma_num_hcas);
+
+    for (i=0; i< rdma_ud_num_rndv_qps; i++) {
+        hca_index = i % rdma_num_hcas;
+
+        /* creating 256 extra cq entries than max possible recvs for safer side */
+        zcopy_info->rndv_qp_pool[i].ud_cq = 
+                ibv_create_cq(proc->nic_context[hca_index], (rdma_ud_zcopy_rq_size + 256), NULL, NULL, 0);
+        if (!zcopy_info->rndv_qp_pool[i].ud_cq) {
+            fprintf(stderr, "Error in creating ZCOPY Rndv CQ\n");
+            return MPI_ERR_INTERN;
+        }
+
+        qp_info.send_cq = qp_info.recv_cq = zcopy_info->rndv_qp_pool[i].ud_cq;
+        qp_info.sq_psn = rdma_default_psn;
+        qp_info.pd = proc->ptag[hca_index];
+        qp_info.cap.max_send_sge = 1;
+        qp_info.cap.max_recv_sge = 2;
+        qp_info.cap.max_send_wr = 1;
+        qp_info.cap.max_recv_wr = rdma_ud_zcopy_rq_size;;
+        qp_info.srq = NULL;
+        qp_info.cap.max_inline_data = 0;
+        zcopy_info->rndv_qp_pool[i].ud_qp = mv2_ud_create_qp(&qp_info);
+        if(!zcopy_info->rndv_qp_pool[i].ud_qp) {
+            fprintf(stderr, "Error in creating ZCOPY Rndv QP\n");
+            return MPI_ERR_INTERN;
+        }
+    
+        zcopy_info->rndv_qp_pool[i].seqnum = 0;
+        zcopy_info->rndv_qp_pool[i].next = zcopy_info->rndv_qp_pool[i].prev = NULL;
+        zcopy_info->rndv_qp_pool[i].hca_num = hca_index;
+    }
+
+    for (i=0; i< rdma_ud_num_rndv_qps-1 ; i++) {
+        zcopy_info->rndv_qp_pool[i].next = &zcopy_info->rndv_qp_pool[i+1];
+    }
+    zcopy_info->rndv_qp_pool_free_head = &zcopy_info->rndv_qp_pool[0];
+
+    /* allocate and register GRH buffer */
+    zcopy_info->grh_buf = MPIU_Malloc(MV2_UD_GRH_LEN);
+    zcopy_info->grh_mr = (void *)dreg_register(zcopy_info->grh_buf, MV2_UD_GRH_LEN);
+    zcopy_info->no_free_rndv_qp = 0;
+
+    /* Setup QP for sending zcopy rndv messages */
+    for (hca_index=0; hca_index<rdma_num_hcas; hca_index++) {
+        zcopy_info->rndv_ud_cqs[hca_index] = 
+                ibv_create_cq(proc->nic_context[hca_index], 16384, NULL, NULL, 0);
+        if (!zcopy_info->rndv_ud_cqs[hca_index]) {
+            fprintf(stderr, "Error in creating ZCOPY Rndv CQ\n");
+            return MPI_ERR_INTERN;
+        }   
+    }
+
+    for (hca_index=0; hca_index<rdma_num_hcas; hca_index++) {
+        qp_info.send_cq = qp_info.recv_cq = zcopy_info->rndv_ud_cqs[hca_index];
+        qp_info.sq_psn = rdma_default_psn;
+        qp_info.pd = proc->ptag[hca_index];
+        qp_info.cap.max_send_sge = rdma_default_max_sg_list;
+        qp_info.cap.max_recv_sge = rdma_default_max_sg_list;
+        qp_info.cap.max_send_wr = rdma_default_max_ud_send_wqe;
+        qp_info.cap.max_recv_wr = 1;
+        qp_info.srq = NULL;
+        qp_info.cap.max_inline_data = 0;
+        ud_ctx = mv2_ud_create_ctx (&qp_info);
+        if (!ud_ctx)
+        {
+            fprintf(stderr,"Error in create UD qp\n");
+            return MPI_ERR_INTERN;
+        }
+
+        ud_ctx->send_wqes_avail = rdma_default_max_ud_send_wqe - 50;
+        MESSAGE_QUEUE_INIT(&ud_ctx->ext_send_queue);
+        ud_ctx->hca_num = hca_index;
+        ud_ctx->num_recvs_posted = 0;
+        ud_ctx->credit_preserve = (rdma_default_max_ud_recv_wqe / 4 );
+        ud_ctx->num_recvs_posted = 0;
+        zcopy_info->rndv_ud_qps[hca_index] = ud_ctx;
+    }
+
+    PRINT_DEBUG(DEBUG_ZCY_verbose>2, "ZCOPY Rndv setup done num rndv qps:%d\n", rdma_ud_num_rndv_qps);
+    return MPI_SUCCESS;
+}
+void MPIDI_CH3I_UD_Stats(MPIDI_PG_t *pg)
+{
+
+    int i;
+    mv2_ud_ctx_t *ud_ctx;
+    mv2_ud_vc_info_t *ud_vc;
+    MPIDI_VC_t *vc;
+
+    int pg_size = MPIDI_PG_Get_size(pg);
+    int pg_rank = MPIDI_Process.my_pg_rank;
+
+    if(pg_rank !=0 && DEBUG_UDSTAT_verbose < 3) {
+        return;
+    }
+
+    PRINT_INFO(DEBUG_UDSTAT_verbose > 0,"RC conns: %u pending:%d "
+        "zcopy_fallback_count:%u\n", MPIDI_CH3I_RDMA_Process.rc_connections, 
+        rdma_hybrid_pending_rc_conn, 
+        MPIDI_CH3I_RDMA_Process.zcopy_info.no_free_rndv_qp);
+
+    for (i = 0; i < rdma_num_hcas; i++) {
+        ud_ctx = MPIDI_CH3I_RDMA_Process.ud_rails[i];
+        if (ud_ctx->ext_sendq_count) {
+            PRINT_INFO(DEBUG_UDSTAT_verbose > 0,"rail:%d "
+            " ext send queue sends: %lu\n", i, ud_ctx->ext_sendq_count);
+        }
+    }
+    for (i = 0; i < pg_size; i++)
+    {
+        MPIDI_PG_Get_vc(pg, i, &vc);
+        if (rdma_use_smp && (vc->smp.local_rank != -1))  continue;
+        ud_vc = &vc->mrail.ud;
+        if (ud_vc->resend_count) {
+            PRINT_INFO(DEBUG_UDSTAT_verbose > 1,"\t[-> %d]: resends:%lu "
+                "cntl msg:%lu extwin_msgs:%lu tot_ud_msgs:%llu\n", 
+                vc->pg_rank,ud_vc->resend_count, ud_vc->cntl_acks,
+                ud_vc->ext_win_send_count, ud_vc->total_messages);
+        }
+    }
+}
+#endif /* _ENABLE_UD_ */
 
 /* vi:set sw=4 */

@@ -35,7 +35,6 @@ void MPICM_unlock();
 #else
 #define XRC_CM_LOCK();
 #define XRC_CM_UNLOCK();
-#define XRC_MSG(s...) 
 #endif
 
 /* Count the number of outstanding close requests */
@@ -86,8 +85,8 @@ int MPIDI_CH3U_Handle_connection(MPIDI_VC_t * vc, MPIDI_VC_Event_t event)
 	    {
 		case MPIDI_VC_STATE_CLOSED:
                     /* Normal termination. */
-            XRC_MSG ("%d cls STATE: %d\n", vc->pg_rank, vc->state);
 #ifdef _ENABLE_XRC_
+            PRINT_DEBUG(DEBUG_XRC_verbose>0, "%d cls STATE: %d\n", vc->pg_rank, vc->state);
             MPICM_lock();
             if (USE_XRC) {
                 VC_XST_SET (vc, XF_TERMINATED);
@@ -104,8 +103,8 @@ int MPIDI_CH3U_Handle_connection(MPIDI_VC_t * vc, MPIDI_VC_Event_t event)
                     remove_vc_xrc_hash (vc);
                 }
             }
+            PRINT_DEBUG(DEBUG_XRC_verbose>0, "sub_close_ops: %d\n", MPIDI_Outstanding_close_ops);
 #endif
-            XRC_MSG ("sub_close_ops: %d\n", MPIDI_Outstanding_close_ops);
 		    MPIU_DBG_MSG_D(CH3_DISCONNECT,TYPICAL,
              "outstanding close operations = %d", MPIDI_Outstanding_close_ops);
 	    
@@ -187,7 +186,9 @@ int MPIDI_CH3U_Handle_connection(MPIDI_VC_t * vc, MPIDI_VC_Event_t event)
 
 		default:
 		{
-            XRC_MSG ("%d def STATE: %d\n", vc->pg_rank, vc->state);
+#ifdef _ENABLE_XRC_
+            PRINT_DEBUG(DEBUG_XRC_verbose>0, "%d def STATE: %d\n", vc->pg_rank, vc->state);
+#endif
 		    MPIU_DBG_MSG_D(CH3_DISCONNECT,TYPICAL, "Unhandled connection state %d when closing connection",vc->state);
 		    mpi_errno = MPIR_Err_create_code(
 			MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME, __LINE__, 
@@ -268,7 +269,7 @@ int MPIDI_CH3U_VC_SendClose( MPIDI_VC_t *vc, int rank )
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3U_VC_SENDCLOSE);
 #ifdef _ENABLE_XRC_
     MPICM_lock();
-    XRC_MSG ("ST: %d XST: 0x%08x", vc->state, vc->ch.xrc_flags);
+    PRINT_DEBUG(DEBUG_XRC_verbose>0, "ST: %d XST: 0x%08x\n", vc->state, vc->ch.xrc_flags);
     MPIU_Assert (!USE_XRC || 
             VC_XST_ISSET (vc, (XF_SMP_VC | XF_DPM_INI)) ||
             VC_XST_ISSET (vc, (XF_SEND_IDLE | XF_SEND_CONNECTING)));
@@ -278,11 +279,18 @@ int MPIDI_CH3U_VC_SendClose( MPIDI_VC_t *vc, int rank )
 
     MPIU_THREAD_CS_ENTER(CH3COMM,vc);
 
-#if _ENABLE_XRC_
+#ifdef _ENABLE_XRC_
+#ifdef _ENABLE_UD_
+    MPIU_Assert( vc->state == MPIDI_VC_STATE_ACTIVE || 
+		 vc->state == MPIDI_VC_STATE_REMOTE_CLOSE ||
+         (VC_XST_ISSET (vc, (XF_SEND_IDLE | XF_SEND_CONNECTING))
+         && VC_XST_ISSET (vc, XF_RECV_IDLE)) || rdma_enable_hybrid);
+#else
     MPIU_Assert( vc->state == MPIDI_VC_STATE_ACTIVE || 
 		 vc->state == MPIDI_VC_STATE_REMOTE_CLOSE ||
          (VC_XST_ISSET (vc, (XF_SEND_IDLE | XF_SEND_CONNECTING))
          && VC_XST_ISSET (vc, XF_RECV_IDLE)));
+#endif
 #else
     MPIU_Assert( vc->state == MPIDI_VC_STATE_ACTIVE ||
 		 vc->state == MPIDI_VC_STATE_REMOTE_CLOSE );
@@ -307,7 +315,6 @@ int MPIDI_CH3U_VC_SendClose( MPIDI_VC_t *vc, int rank )
     /* MT: this is not thread safe, the CH3COMM CS is scoped to the vc and
      * doesn't protect this global correctly */
     MPIDI_Outstanding_close_ops += 1;
-    XRC_MSG ("close_ops: %d\n", MPIDI_Outstanding_close_ops);
     MPIU_DBG_MSG_FMT(CH3_DISCONNECT,TYPICAL,(MPIU_DBG_FDEST,
 		  "sending close(%s) on vc (pg=%p) %p to rank %d, ops = %d", 
 		  close_pkt->ack ? "TRUE" : "FALSE", vc->pg, vc, 
@@ -320,6 +327,8 @@ int MPIDI_CH3U_VC_SendClose( MPIDI_VC_t *vc, int rank )
      * be changed before the close packet is sent.
      */
 #ifdef _ENABLE_XRC_
+    PRINT_DEBUG(DEBUG_XRC_verbose>0, "close_ops: %d\n", MPIDI_Outstanding_close_ops);
+
     if (vc->state == MPIDI_VC_STATE_ACTIVE || VC_XST_ISSET (vc, XF_SEND_CONNECTING)) {
 #else
     if (vc->state == MPIDI_VC_STATE_ACTIVE) {
@@ -370,11 +379,11 @@ int MPIDI_CH3_PktHandler_Close( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     MPICM_lock();
     VC_XST_SET (vc, XF_CONN_CLOSING);
     MPICM_unlock();
-#endif 
-   
-    XRC_MSG ("Recd close (%s) from %d s:%d x:0x%08x\n", 
+    PRINT_DEBUG(DEBUG_XRC_verbose>0, "Recd close (%s) from %d s:%d x:0x%08x\n", 
             close_pkt->ack ? "ACK": "NOACK", vc->pg_rank, vc->state, 
             vc->ch.xrc_flags);
+#endif 
+   
 
     if (vc->state == MPIDI_VC_STATE_LOCAL_CLOSE)
     {
@@ -441,11 +450,11 @@ int MPIDI_CH3_PktHandler_Close( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     if (USE_XRC && VC_XST_ISUNSET (vc, XF_DPM_INI) && 
             VC_XST_ISSET (vc, XF_TERMINATED))
         goto fn_fail;
+    PRINT_DEBUG(DEBUG_XRC_verbose>0, "close VC state %d\n", vc->state);
 #endif
 	MPIU_DBG_MSG_D(CH3_DISCONNECT,TYPICAL,
                        "received close(TRUE) from %d, moving to CLOSED.", 
 			       vc->pg_rank);
-    XRC_MSG ("close VC state %d\n", vc->state);
 	MPIU_Assert (vc->state == MPIDI_VC_STATE_LOCAL_CLOSE || 
 		     vc->state == MPIDI_VC_STATE_CLOSE_ACKED);
         MPIDI_CHANGE_VC_STATE(vc, CLOSED);

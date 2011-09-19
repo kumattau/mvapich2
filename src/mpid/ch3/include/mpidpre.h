@@ -194,28 +194,43 @@ typedef struct MPIDI_VC * MPID_VCR;
 #if defined (_OSU_PSM_)
 #define MPIDI_CH3_WIN_DECL      \
     int my_rank;                \
-    int *rank_mapping;
-#endif
-
-#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
-    #define RMA_LIMIC_DECL                                                      \
-        limic_user *peer_lu;                                                    \
-        int limic_fallback;                                                     \
-        int l_ranks;                                                            \
-        int *l2g_rank;                                                          \
-        int shmid;                                                              \
-        void *limic_buf;                                                        \
-        long long *limic_cmpl_counter_buf;                                      \
-        long long *limic_cmpl_counter_me;                                       \
-        long long **limic_cmpl_counter_all;                                     \
-        int *limic_post_flag_buf;                                               \
-        int *limic_post_flag_me;                                                \
-        int **limic_post_flag_all;                                                 
-#else
-    #define RMA_LIMIC_DECL
+    int *rank_mapping;          \
+    int16_t outstanding_rma;
 #endif
 
 #if defined(_OSU_MVAPICH_)
+#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)               
+#define RMA_LIMIC_DECL                                                           \
+    limic_user *peer_lu;                                                         \
+    int limic_fallback;                                                     
+#else
+#define RMA_LIMIC_DECL
+#endif /*_SMP_LIMIC_ && !DAPL_DEFAULT_PROVIDER*/
+
+#if !defined(DAPL_DEFAULT_PROVIDER) 
+#define RMA_SHM_DECL                                                             \
+    int shm_fallback;                                                            \
+    int shm_fd;                                                                  \
+    void *shm_control_buf;                                                       \
+    int shm_control_bufsize;                                                     \
+    void **shm_buffer_all;                                                       \
+    void **shm_win_buffer_all;                                                   \
+    long long *shm_cmpl_counter_me;                                              \
+    long long **shm_cmpl_counter_all;                                            \
+    int *shm_post_flag_me;                                                       \
+    int **shm_post_flag_all;                                                     \
+    int *shm_lock;                                                               \
+    long *shm_shared_lock_count;                                                 \
+    int *shm_lock_released;                                                      \
+    int shm_lock_queued;                                                         \
+    pthread_mutex_t *shm_mutex;                                                  \
+    int shm_l_ranks;                                                             \
+    int *shm_l2g_rank;                                                           \
+    int *shm_g2l_rank;                                                           
+#else 
+#define RMA_SHM_DECL
+#endif 
+
 #define MPIDI_CH3_WIN_DECL                                                       \
     int  fall_back;                                                              \
     int  using_lock;                                                             \
@@ -250,6 +265,7 @@ typedef struct MPIDI_VC * MPID_VCR;
     int comm_size;                                                               \
     int16_t outstanding_rma;                                                     \
     volatile int poll_flag; /* flag to indicate if polling for one sided completions is needed */ \
+    RMA_SHM_DECL                                                                 \
     RMA_LIMIC_DECL
 #endif /* defined(_OSU_MVAPICH_) */
 

@@ -99,7 +99,7 @@ appendUninstall=0
 if [ -z "$UNINSTALLFILE" ] ; then
     INSTALL_base=`basename $0`
     UNINSTALL_base=`echo $INSTALL_base | sed -e 's/install/uninstall/'`
-    UNINSTALLFILE=$DESTDIR${sbindir}/${UNINSTALL_base}
+    UNINSTALLFILE=${sbindir}/${UNINSTALL_base}
 fi
 
 for arg in "$@" ; do
@@ -454,7 +454,7 @@ if [ "$prefix_override" = 1 -o "$package_override" = 1 ] ; then
         htmldir=${docdir}
     fi
     if [ $appendUninstall = 0 ] ; then
-        UNINSTALLFILE=$DESTDIR${sbindir}/${UNINSTALL_base}
+        UNINSTALLFILE=${sbindir}/${UNINSTALL_base}
     fi
 fi
 
@@ -588,19 +588,19 @@ for type in doc man html ; do
 done
 
 # Remove old uninstall file
-if [ "$appendUninstall" = 0 -a -f $UNINSTALLFILE ] ; then
-    $RM -f $UNINSTALLFILE
+if [ "$appendUninstall" = 0 -a -f $DESTDIR$UNINSTALLFILE ] ; then
+    $RM -f $DESTDIR$UNINSTALLFILE
 fi
 #
 # Open an uninstall file and force strong echo if one does NOT exist
-if [ ! -f $UNINSTALLFILE ] ; then
-    cat > $UNINSTALLFILE <<EOF
+if [ ! -f $DESTDIR$UNINSTALLFILE ] ; then
+    cat > $DESTDIR$UNINSTALLFILE <<EOF
 #! /bin/sh
 set -x
 EOF
 fi
 
-chmod u+x $UNINSTALLFILE
+chmod u+x $DESTDIR$UNINSTALLFILE
 
 # Install the SLOG-2 tools if they exist
 # Don't set the prefix if the default is chosen.
@@ -621,27 +621,27 @@ for pkg in logging graphics ; do
     dirname=${pkg}_dirname
     examplesdir=$sharedir/examples_${pkg}
     if [ -s $DESTDIR$examplesdir/Makefile ] ; then
-       echo "( cd $examplesdir && $MAKE clean )" >> $UNINSTALLFILE
+       echo "( cd $examplesdir && $MAKE clean )" >> $DESTDIR$UNINSTALLFILE
     fi
 done
 
 # Add the files to be removed to the UNINSTALLFILE
 for file in $filelist ; do
-    echo "$RM -f $file" >> $UNINSTALLFILE
+    echo "$RM -f $file" >> $DESTDIR$UNINSTALLFILE
 done
 
 if [ "$appendUninstall" = 0 ] ; then
-    echo "$RM -f $sbindir/mpeuninstall" >> $UNINSTALLFILE
-    echo "$RM -f $UNINSTALLFILE" >> $UNINSTALLFILE
+    echo "$RM -f $sbindir/mpeuninstall" >> $DESTDIR$UNINSTALLFILE
+    echo "$RM -f $UNINSTALLFILE" >> $DESTDIR$UNINSTALLFILE
 fi
 
 # Add the directory removes to the UNINSTALL file
 for dir in $dirlist ; do
-    echo "if [ -d $dir ] ; then rmdir $dir ; fi" >> $UNINSTALLFILE
+    echo "if [ -d $dir ] ; then rmdir $dir ; fi" >> $DESTDIR$UNINSTALLFILE
 done
 
 if [ "$appendUninstall" = 0 ] ; then
-    cp $UNINSTALLFILE $sbinbuild_dir/mpeuninstall
+    cp $DESTDIR$UNINSTALLFILE $DESTDIR$sbinbuild_dir/mpeuninstall
 #
     echo "Installed $pkgname in $DESTDIR$prefix"
     echo "$UNINSTALLFILE may be used to remove the installation"

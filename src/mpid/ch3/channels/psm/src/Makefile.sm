@@ -8,6 +8,7 @@ socksources = \
     psm_recv.c              \
     psm_queue.c             \
     psm_1sided.c            \
+	psm_comm.c              \
     psm_vbuf.c
 
 lib${MPILIBNAME}_a_SOURCES = ${socksources}

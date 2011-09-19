@@ -73,6 +73,7 @@ typedef struct MPIDI_CH3I_RDMA_Process_t {
     uint8_t                     has_lazy_mem_unregister;
     uint8_t                     has_one_sided;
     uint8_t                     has_limic_one_sided;
+    uint8_t                     has_shm_one_sided;
     int                         maxtransfersize;
     int                         global_used_send_cq;
     int                         global_used_recv_cq;
@@ -133,6 +134,15 @@ typedef struct MPIDI_CH3I_RDMA_Process_t {
     uint8_t                     has_xrc;
     uint8_t                     xrc_rdmafp;
 #endif /* _ENABLE_XRC_ */
+
+#ifdef _ENABLE_UD_
+    /* UD specific parameters */
+    mv2_ud_ctx_t                *ud_rails[MAX_NUM_HCAS];
+    mv2_ud_exch_info_t          *remote_ud_info;
+    message_queue_t             unack_queue;
+    mv2_ud_zcopy_info_t         zcopy_info;
+    uint32_t                    rc_connections;
+#endif /*_ENABLE_UD_ */
 } MPIDI_CH3I_RDMA_Process_t;
 
 #ifdef _ENABLE_XRC_
@@ -220,16 +230,15 @@ do {                                                                    \
     if (USE_XRC && VC_XST_ISUNSET ((_vc), XF_DPM_INI)) {                \
         int hca_index = _rail / (rdma_num_ports                         \
                 * rdma_num_qp_per_port);                                \
-        MPIDI_PG_t *pg = (_vc)->pg;                                     \
         (_v)->desc.u.sr.xrc_remote_srq_num =                            \
                 (_vc)->ch.xrc_srqn[hca_index];                          \
-        XRC_MSG ("Msg for %d. Fixed SRQN: %d (WQE: %d) (%s:%d)\n",      \
+        PRINT_DEBUG(DEBUG_XRC_verbose>1, "Msg for %d. Fixed SRQN: %d (WQE: %d) (%s:%d)\n",      \
                 (_vc)->pg_rank,                                         \
                 (_v)->desc.u.sr.xrc_remote_srq_num,                     \
                 (_vc)->mrail.rails[(_rail)].send_wqes_avail,            \
                 __FILE__, __LINE__);                                    \
         if (VC_XST_ISSET ((_vc), XF_INDIRECT_CONN)) {                   \
-            XRC_MSG ("Switched vc from %d to %d\n",                     \
+            PRINT_DEBUG(DEBUG_XRC_verbose>1, "Switched vc from %d to %d\n",                     \
                     (_vc)->pg_rank,                                     \
                     (_vc)->ch.orig_vc->pg_rank);                        \
             (_vc) = (_vc)->ch.orig_vc;                                  \
@@ -238,7 +247,7 @@ do {                                                                    \
 } while (0);
 #define  IBV_POST_SR(_v, _c, _rail, err_string) {                           \
     {                                                                       \
-        XRC_MSG ("POST_SR: to %d (qpn: %d) (state: %d %d %d) (%s:%d)\n",    \
+        PRINT_DEBUG(DEBUG_XRC_verbose>1, "POST_SR: to %d (qpn: %d) (state: %d %d %d) (%s:%d)\n",    \
                 (_c)->pg_rank, (_c)->mrail.rails[(_rail)].qp_hndl->qp_num,  \
                 (_c)->mrail.rails[(_rail)].qp_hndl->state, (_c)->ch.state,  \
                 (_c)->state, __FILE__, __LINE__);                           \
@@ -396,6 +405,18 @@ do {                                                    \
 }                                                       \
 while (0)
 
+#ifdef _ENABLE_UD_
+#define MV2_HYBRID_SET_RC_CONN_INITIATED(vc)            \
+do {                                                    \
+    if (!(vc->mrail.state & MRAILI_RC_CONNECTING)) {    \
+        rdma_hybrid_pending_rc_conn++;                  \
+        vc->mrail.state |= MRAILI_RC_CONNECTING;        \
+    }                                                   \
+}while(0)
+#else
+#define MV2_HYBRID_SET_RC_CONN_INITIATED(vc)
+#endif
+
 #ifdef CKPT
 #define MSG_LOG_ENQUEUE(vc, entry) { \
     entry->next = NULL; \
@@ -437,7 +458,13 @@ void MRAILI_Init_vc_network(MPIDI_VC_t * vc);
 int rdma_ring_boot_exchange(struct MPIDI_CH3I_RDMA_Process_t *proc,
                         MPIDI_PG_t *pg, int pg_size, struct process_init_info *);
 int rdma_setup_startup_ring(struct MPIDI_CH3I_RDMA_Process_t *, int pg_rank, int pg_size);
+int rdma_ring_exchange_host_id(MPIDI_PG_t * pg, int pg_rank, int pg_size);
+int ring_rdma_open_hca(struct MPIDI_CH3I_RDMA_Process_t *proc);
+void ring_rdma_close_hca(struct MPIDI_CH3I_RDMA_Process_t *proc);
+int rdma_cm_get_hca_type (struct MPIDI_CH3I_RDMA_Process_t *proc);
+void rdma_process_hostid(MPIDI_PG_t * pg, int *host_ids, int my_rank, int pg_size);
 int rdma_cleanup_startup_ring(struct MPIDI_CH3I_RDMA_Process_t *proc);
+int rdma_cm_exchange_hostid(MPIDI_PG_t *pg, int pg_rank, int pg_size);
 int rdma_ring_based_allgather(void *sbuf, int data_size,
         int proc_rank, void *rbuf, int job_size,
         struct MPIDI_CH3I_RDMA_Process_t *proc);
@@ -454,6 +481,7 @@ int rdma_get_process_to_rail_mapping(int mrail_user_defined_p2r_type);
 int  rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc);
 void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc);
 void rdma_get_user_parameters(int num_proc, int me);
+void rdma_get_pm_parameters(MPIDI_CH3I_RDMA_Process_t *proc);
 int rdma_iba_hca_init_noqp(struct MPIDI_CH3I_RDMA_Process_t *proc,
               int pg_rank, int pg_size);
 int rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
@@ -464,10 +492,26 @@ int rdma_iba_enable_connections(struct MPIDI_CH3I_RDMA_Process_t *proc,
                 int pg_rank, MPIDI_PG_t *pg, struct process_init_info *);
 void rdma_param_handle_heterogenity(uint32_t hca_type[], int pg_size);
 int MRAILI_Process_send(void *vbuf_addr);
+void MRAILI_Process_recv(vbuf *v); 
 int post_send(MPIDI_VC_t *vc, vbuf *v, int rail);
 int post_srq_send(MPIDI_VC_t *vc, vbuf *v, int rail);
+#ifdef _ENABLE_UD_
+int post_hybrid_send(MPIDI_VC_t *vc, vbuf *v, int rail);
+int post_ud_send(MPIDI_VC_t* vc, vbuf* v, int rail, mv2_ud_ctx_t *);
+int mv2_post_ud_recv_buffers(int num_bufs, mv2_ud_ctx_t *ud_ctx);
+void mv2_ud_update_send_credits(vbuf *v);
+int rdma_init_ud(struct MPIDI_CH3I_RDMA_Process_t *proc);
+int mv2_ud_setup_zcopy_rndv(struct MPIDI_CH3I_RDMA_Process_t *proc);
+int mv2_ud_get_remote_info(MPIDI_PG_t *pg, int pg_rank, int pg_size);
+void mv2_check_resend();
+void mv2_send_explicit_ack(MPIDI_VC_t *vc);
+int MPIDI_CH3I_UD_Generate_addr_handles(MPIDI_PG_t *pg, int pg_rank, int pg_size);
+void MRAILI_RC_Enable(MPIDI_VC_t *vc);
+void MPIDI_CH3I_UD_Stats(MPIDI_PG_t *pg);
+#endif /* _ENABLE_UD_ */
 int MRAILI_Fill_start_buffer(vbuf *v, MPID_IOV *iov, int n_iov);
 int MPIDI_CH3I_MRAILI_Recv_addr(MPIDI_VC_t * vc, void *vstart);
+int MPIDI_CH3I_MRAILI_Recv_addr_reply(MPIDI_VC_t * vc, void *vstart);
 void MRAILI_RDMA_Put(MPIDI_VC_t * vc, vbuf *v,
                      char * local_addr, uint32_t lkey,
                      char * remote_addr, uint32_t rkey,

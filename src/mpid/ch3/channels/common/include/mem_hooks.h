@@ -25,9 +25,7 @@
 #include <ptmalloc2/malloc.h>
 #include <ptmalloc2/sysdeps/pthread/malloc-machine.h>
 
-#ifndef DISABLE_MUNMAP_HOOK
 typedef int (*munmap_t)(void*, size_t);
-#endif /* ifndef DISABLE_MUNMAP_HOOK */
 
 typedef struct {
     int         is_our_malloc;
@@ -38,9 +36,7 @@ typedef struct {
     int         is_our_memalign;
     int         is_inside_free;
     int         is_mem_hook_finalized;
-#ifndef DISABLE_MUNMAP_HOOK
     munmap_t    munmap;
-#endif
 } mvapich2_malloc_info_t;
 
 mvapich2_malloc_info_t mvapich2_minfo;
@@ -49,9 +45,7 @@ void mvapich2_mem_unhook(void *mem, size_t size);
 int  mvapich2_minit(void);
 void mvapich2_mfin(void);
 
-#ifndef DISABLE_MUNMAP_HOOK
 int mvapich2_munmap(void *buf, size_t len);
-#endif
 
 #ifndef DISABLE_TRAP_SBRK
 void *mvapich2_sbrk(intptr_t delta);

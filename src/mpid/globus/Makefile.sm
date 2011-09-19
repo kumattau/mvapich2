@@ -108,7 +108,7 @@ install-postamble:
 	    cn=mpi$${c} ; \
 	    cf=${bindir}/$${cn} ; \
 	    if test -f $${cf} ; then \
-		echo "Updating the paths in the MPICH2 compiler script $${cn}" ; \
+		echo "Updating the paths in the MVAPICH2 compiler script $${cn}" ; \
 	        mv $${cf} $${cf}.orig ; \
 	        sed -e "s,${MPIG_BUILD_DIR}/mpich2-grid-$${c}-insure-psrc,${sysconfdir}/mpich2-grid-$${c}-insure-psrc," \
 		    -e "s,${MPIG_BUILD_DIR},${bindir}," $${cf}.orig >$${cf} ; \
@@ -118,7 +118,7 @@ install-postamble:
 	    cn=mpi$${c} ; \
 	    cf=${sysconfdir}/$${cn}.conf ; \
 	    if test -f $${cf} ; then \
-		echo "Updating the paths in the MPICH2 configuration file $${cn}" ; \
+		echo "Updating the paths in the MVAPICH2 configuration file $${cn}" ; \
 	        mv $${cf} $${cf}.orig ; \
 	        sed -e "s,${MPIG_BUILD_DIR}/mpich2-grid-$${c}-insure-psrc,${sysconfdir}/mpich2-grid-$${c}-insure-psrc," \
 		    -e "s,${MPIG_BUILD_DIR},${bindir}," $${cf}.orig >$${cf} ; \

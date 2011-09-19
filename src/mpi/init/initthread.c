@@ -282,10 +282,9 @@ int MPIR_Init_thread(int * argc, char ***argv, int required, int * provided)
 #   endif
 
 #ifdef HAVE_ERROR_CHECKING
-    /* Eventually this will support commandline and environment options
-     for controlling error checks.  It will use the routine 
-     MPIR_Err_init, which does as little as possible (e.g., it only 
-     determines the value of do_error_checks) */
+    /* Because the PARAM system has not been initialized, temporarily
+       uncondtionally enable error checks.  Once the PARAM system is
+       initialized, this may be reset */
     MPIR_Process.do_error_checks = 1;
 #else
     MPIR_Process.do_error_checks = 0;
@@ -386,6 +385,11 @@ int MPIR_Init_thread(int * argc, char ***argv, int required, int * provided)
             ;
     }
 
+
+#if HAVE_ERROR_CHECKING == MPID_ERROR_LEVEL_RUNTIME
+    MPIR_Process.do_error_checks = MPIR_PARAM_ERROR_CHECKING;
+#endif
+
     /* define MPI as initialized so that we can use MPI functions within 
        MPID_Init if necessary */
     MPIR_Process.initialized = MPICH_WITHIN_MPI;
@@ -448,7 +452,7 @@ int MPIR_Init_thread(int * argc, char ***argv, int required, int * provided)
     if (mpi_errno == MPI_SUCCESS) 
 	mpi_errno = MPID_InitCompleted();
 
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     if (is_shmem_collectives_enabled()){
         if (check_split_comm(pthread_self())){
             int my_id, size;
@@ -459,7 +463,7 @@ int MPIR_Init_thread(int * argc, char ***argv, int required, int * provided)
             enable_split_comm(pthread_self());
         }
     }
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
 
 fn_exit:
@@ -535,9 +539,9 @@ int MPI_Init_thread( int *argc, char ***argv, int required, int *provided )
 
     MPID_MPI_INIT_FUNC_ENTER(MPID_STATE_MPI_INIT_THREAD);
 
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     MV2_Read_env_vars();
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
 #   ifdef HAVE_ERROR_CHECKING
     {

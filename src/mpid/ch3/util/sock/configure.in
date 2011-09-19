@@ -39,7 +39,7 @@ PAC_LOAD_BASE_CACHE
 PAC_PROG_MAKE
 AC_CHECK_PROGS(AR,ar)
 if test -z "$AR" ; then
-    AC_MSG_ERROR([The program ar is required for building MPICH2.  Make sure that your path includes ar])
+    AC_MSG_ERROR([The program ar is required for building MVAPICH2.  Make sure that your path includes ar])
 fi
 # Note that we set RANLIB to true if we don't find it (some systems neither
 # need it nor provide it)

@@ -34,7 +34,7 @@ int MPID_nem_choose_netmod(void);
 					    MPI_SUCCESS)
 
 /* initialize shared-memory MPI_Barrier variables */
-int MPID_nem_barrier_vars_init (MPID_nem_barrier_vars_t *barrier_region);
+extern int MPID_nem_barrier_vars_init (MPID_nem_barrier_vars_t *barrier_region);
 
 static inline int
 MPID_nem_islocked (MPID_nem_fbox_common_ptr_t pbox, int value, int count)

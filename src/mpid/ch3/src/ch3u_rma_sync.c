@@ -179,9 +179,6 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
     int num_wait_completions;
     int j;
     MPIDI_VC_t* vc = NULL;
-#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
-    int transfer_complete;
-#endif /* _SMP_LIMIC_ && !_DAPL_DEFAULT_PROVDER_*/
 #endif /* defined(_OSU_MVAPICH_) */
     int errflag = FALSE;
     MPIU_CHKLMEM_DECL(3);
@@ -235,11 +232,15 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
   		  win_ptr->post_flag[i] = 1; 
 	      }
 	   } 
-#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
-           else if (win_ptr->limic_fallback != 1) { 
+#if !defined(DAPL_DEFAULT_PROVIDER)
+#if defined(_SMP_LIMIC_)
+           else if (!win_ptr->limic_fallback || !win_ptr->shm_fallback) { 
+#else
+           else if (!win_ptr->shm_fallback) { 
+#endif /*_SMP_LIMIC_*/
               MPIR_Barrier_impl(comm_ptr, &errflag);
            }
-#endif /*_SMP_LIMIC_ && DAPL_DEFAULT_PROVIDER*/
+#endif /* !DAPL_DEFAULT_PROVIDER*/
         }
 #endif /* defined(_OSU_MVAPICH_) */
 	goto fn_exit;
@@ -270,11 +271,15 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
                  win_ptr->post_flag[i] = 1;
               }
            }
-#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
-           else if (win_ptr->limic_fallback != 1) { 
+#if !defined(DAPL_DEFAULT_PROVIDER)
+#if defined(_SMP_LIMIC_) 
+           else if (!win_ptr->limic_fallback || !win_ptr->shm_fallback) { 
+#else
+           else if (win_ptr->shm_fallback != 1) {
+#endif /* _SMP_LIMIC_ */ 
               MPIR_Barrier_impl(comm_ptr, &errflag);
            }
-#endif /*_SMP_LIMIC_ && DAPL_DEFAULT_PROVIDER*/
+#endif /* !DAPL_DEFAULT_PROVIDER*/
 	}
 #endif /* defined(_OSU_MVAPICH_) */
     }
@@ -304,39 +309,25 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
             if (win_ptr->rma_issued != 0) {
                 MPIDI_CH3I_RDMA_finish_rma(win_ptr);
             }
-	    MPIDI_CH3I_RDMA_complete_rma(win_ptr, comm_size - 1,
+	    MPIDI_CH3I_RDMA_complete(win_ptr, comm_size - 1,
 	                                ranks_in_win_grp);
 
 	    MPIU_Free(ranks_in_win_grp);
-	}                 
+	}
 
-#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
-        /* As this is the second or later fence, we can complete any intranode operations 
-          possible through limic */
-        if (win_ptr->limic_fallback != 1) {
-           curr_ptr = win_ptr->rma_ops_list_head;
-           prevNextPtr = &win_ptr->rma_ops_list_head;
-           while (curr_ptr != NULL) {
-              transfer_complete = 0;
-              transfer_complete =
-                   MPIDI_CH3I_LIMIC_try_rma(curr_ptr, win_ptr, 
-                          MPI_WIN_NULL, comm_ptr);
-              if(transfer_complete)
-              {
-                 /* If transfer is complete, free the curr pointer and remove it from the list */
-                 tmpptr       = curr_ptr->next;
-                 *prevNextPtr = tmpptr;
-                 MPIU_Free( curr_ptr );
-                 curr_ptr     = tmpptr;
-              } else {
-                 /* If transfer is not complete, skip and continue */
-                 prevNextPtr = &curr_ptr->next;
-                 curr_ptr    = curr_ptr->next;
-              }
-              continue;
-           }
+#if !defined(DAPL_DEFAULT_PROVIDER)
+#if defined(_SMP_LIMIC_)
+    if (!win_ptr->limic_fallback) { 
+        MPIDI_CH3I_LIMIC_try_rma(win_ptr);
+    }
+#endif
+    if (!win_ptr->shm_fallback) {
+        mpi_errno = MPIDI_CH3I_SHM_try_rma(win_ptr);     
+        if (mpi_errno != MPI_SUCCESS) {
+            MPIU_ERR_POP(mpi_errno); 
         }
-#endif /* _SMP_LIMIC_ && !_DAPL_DEFAULT_PROVDER_*/  
+    }
+#endif /* DAPL_DEFAULT_PROVIDER */
 #endif /* defined(_OSU_MVAPICH_) */
 
 	MPIU_CHKLMEM_MALLOC(rma_target_proc, int *, comm_size*sizeof(int),
@@ -997,22 +988,17 @@ static int MPIDI_CH3I_Send_rma_msg(MPIDI_RMA_ops *rma_op, MPID_Win *win_ptr,
         {
 #if defined (_OSU_PSM_)
             /* Derived data type at origin and predefined */               
-            if(origin_dtp->is_contig) {
-              PSM_PRINT("origin is contig data\n");
-              iov[1].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)rma_op->origin_addr;
-              iov[1].MPID_IOV_LEN = rma_op->origin_count * origin_type_size;
-              iovcnt = 2;
-            } else {
+            /*if data is contig/non-contig, it is taken care in psm_do_pack fn*/
               /* do packing and pass packing buffer */
               MPID_Request tmp;
-              PSM_PRINT("origin is nc\n"); //ODOT: segment->last bound
-              psm_do_pack(rma_op->origin_count, rma_op->origin_datatype,
+            mpi_errno = psm_do_pack(rma_op->origin_count, rma_op->origin_datatype,
                         win_ptr->comm_ptr, &tmp, rma_op->origin_addr,
                         SEGMENT_IGNORE_LAST);
+            if(mpi_errno) MPIU_ERR_POP(mpi_errno);
+
               iov[1].MPID_IOV_BUF = tmp.pkbuf;
               iov[1].MPID_IOV_LEN = tmp.pksz;
               iovcnt = 2;
-            }
 
             MPIU_THREAD_CS_ENTER(CH3COMM,vc);
             mpi_errno = MPIU_CALL(MPIDI_CH3,iStartMsgv(vc, iov, iovcnt,
@@ -1158,24 +1144,20 @@ iov_n));
                 MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ch3|rmamsg");
           }
         } else {
+          MPID_Request tmp;
+          /*if data is contig/non-contig, it is taken care in psm_do_pack fn*/
           iov[1].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)dtype_info;
           iov[1].MPID_IOV_LEN = sizeof(*dtype_info);
           iov[2].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)*dataloop;
           iov[2].MPID_IOV_LEN = target_dtp->dataloop_size;
-          if(origin_dtp->is_contig) {
-                PSM_PRINT("origin is contig data\n");
-                iov[3].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)rma_op->origin_addr;
-                iov[3].MPID_IOV_LEN = rma_op->origin_count * origin_type_size;
-          } else {
-                /* do packing and pass packing buffer */
-                MPID_Request tmp;
-                PSM_PRINT("origin is nc\n"); //ODOT: segment->last bound
-                psm_do_pack(rma_op->origin_count, rma_op->origin_datatype,
+
+          mpi_errno=  psm_do_pack(rma_op->origin_count, rma_op->origin_datatype,
                         win_ptr->comm_ptr, &tmp, rma_op->origin_addr,
                         SEGMENT_IGNORE_LAST);
+          if(mpi_errno) MPIU_ERR_POP(mpi_errno);
                 iov[3].MPID_IOV_BUF = tmp.pkbuf;
                 iov[3].MPID_IOV_LEN = tmp.pksz;
-          }
+
           iovcnt = 4;
 
           MPIU_THREAD_CS_ENTER(CH3COMM,vc);
@@ -1984,9 +1966,9 @@ int MPIDI_Win_post(MPID_Group *post_grp_ptr, int assert, MPID_Win *win_ptr)
     int mpi_errno=MPI_SUCCESS;
     MPID_Group *win_grp_ptr;
     int i, post_grp_size, *ranks_in_post_grp, *ranks_in_win_grp, dst, rank;
-#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
-    int l_rank, j;
-#endif /* _SMP_LIMIC_ && !DAPL_DEFAULT_PROVIDER*/
+#if !defined(DAPL_DEFAULT_PROVIDER)
+    int local_rank, my_local_rank;
+#endif /* !DAPL_DEFAULT_PROVIDER*/
     MPID_Comm *win_comm_ptr;
     MPIU_CHKLMEM_DECL(4);
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_WIN_POST);
@@ -2032,22 +2014,26 @@ int MPIDI_Win_post(MPID_Group *post_grp_ptr, int assert, MPID_Win *win_ptr)
         
     /* initialize the completion counter */
     win_ptr->my_counter = post_grp_size;
+
 #if defined(_OSU_MVAPICH_)
-    win_ptr->my_counter = post_grp_size; /*MRAIL */
-        
     if (win_ptr->fall_back != 1) {
 	MPIU_Memset((void *) win_ptr->completion_counter, 0,
 	      sizeof(long long) * win_ptr->comm_size * rdma_num_rails);
     }
 
-#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
-    if (!win_ptr->limic_fallback) 
+#if !defined(DAPL_DEFAULT_PROVIDER)
+#if defined(_SMP_LIMIC_)
+    if (!win_ptr->limic_fallback || !win_ptr->shm_fallback) 
+#else
+    if (!win_ptr->shm_fallback) 
+#endif
     {
-       MPIU_Memset(win_ptr->limic_cmpl_counter_me, 0,
-                 sizeof(long long) * win_ptr->comm_size);
+       MPIU_Memset(win_ptr->shm_cmpl_counter_me, 0,
+                 sizeof(long long) * win_ptr->shm_l_ranks);
     }
-#endif /* _SMP_LIMIC_ && !DAPL_DEFAULT_PROVIDER*/
+#endif /* !DAPL_DEFAULT_PROVIDER*/
 #endif /* defined(_OSU_MVAPICH_) */
+
     if ((assert & MPI_MODE_NOCHECK) == 0)
     {
         MPI_Request *req;
@@ -2109,20 +2095,19 @@ int MPIDI_Win_post(MPID_Group *post_grp_ptr, int assert, MPID_Win *win_ptr)
 	    if (dst != rank) {
 #if defined(_OSU_MVAPICH_)
                req[i] = MPI_REQUEST_NULL;
-#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
-               if (!win_ptr->limic_fallback) 
+#if !defined (DAPL_DEFAULT_PROVIDER)
+#if defined (_SMP_LIMIC_)
+               if (!win_ptr->limic_fallback || !win_ptr->shm_fallback) 
+#else 
+               if (!win_ptr->shm_fallback)
+#endif
                {
                    if (SMP_INIT && vc->smp.local_nodes != -1)
                    {
-                       for(j=0; j<win_ptr->l_ranks; j++)
-                       {
-                           if(win_ptr->l2g_rank[j] == dst) 
-                           {
-                               l_rank = j;
-                               break;
-                           }
-                       }
-                       *(win_ptr->limic_post_flag_all[l_rank] + rank) = 1;
+                       local_rank = win_ptr->shm_g2l_rank[dst];
+                       my_local_rank = win_ptr->shm_g2l_rank[rank];
+                       *(win_ptr->shm_post_flag_all[local_rank] 
+                                + my_local_rank) = 1;
                    } else if (win_ptr->fall_back != 1) {
                        MPIDI_CH3I_RDMA_post(win_ptr, dst);
                    } else {
@@ -2135,7 +2120,7 @@ int MPIDI_Win_post(MPID_Group *post_grp_ptr, int assert, MPID_Win *win_ptr)
                }
                else 
                {
-#endif /* _SMP_LIMIC_  && !DAPL_DEFAULT_PROVIDER*/
+#endif /* !DAPL_DEFAULT_PROVIDER*/
                  if (win_ptr->fall_back != 1
                        && (!SMP_INIT || vc->smp.local_nodes == -1))
                  {
@@ -2149,9 +2134,9 @@ int MPIDI_Win_post(MPID_Group *post_grp_ptr, int assert, MPID_Win *win_ptr)
 		        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
                      req[i] = req_ptr->handle;
                  } 
-#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
+#if !defined(DAPL_DEFAULT_PROVIDER)
                }
-#endif /* _SMP_LIMIC_  && !DAPL_DEFAULT_PROVIDER*/
+#endif /* !DAPL_DEFAULT_PROVIDER*/
 #else  /* defined(_OSU_MVAPICH_)*/
                MPID_Request *req_ptr;
                    mpi_errno = MPID_Isend(&i, 0, MPI_INT, dst, SYNC_POST_TAG, win_comm_ptr,
@@ -2159,7 +2144,7 @@ int MPIDI_Win_post(MPID_Group *post_grp_ptr, int assert, MPID_Win *win_ptr)
                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
                req[i] = req_ptr->handle;
 #endif /* defined(_OSU_MVAPICH_) */
-	    } else {
+	        } else {
                 req[i] = MPI_REQUEST_NULL;
             }
         }
@@ -2266,12 +2251,6 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
     MPI_Win source_win_handle, target_win_handle;
     MPID_Group *win_grp_ptr;
     int start_grp_size, *ranks_in_start_grp, *ranks_in_win_grp, rank;
-#if defined(_OSU_MVAPICH_)
-#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
-    int limic_failed = 0;
-    int transfer_complete;
-#endif /* _SMP_LIMIC_ && !_DAPL_DEFAULT_PROVDER_*/
-#endif /* defined(_OSU_MVAPICH_) */
     MPIU_CHKLMEM_DECL(9);
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_WIN_COMPLETE);
 
@@ -2306,24 +2285,30 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
     rank = win_ptr->myrank;
+
 #if defined(_OSU_MVAPICH_)
     if (win_ptr->fall_back != 1) {
-	/* If 1 sided implementation is defined, finish all pending RDMA
-	 * operations */
-	MPIDI_CH3I_RDMA_start(win_ptr, start_grp_size, ranks_in_win_grp);
-	MPIDI_CH3I_RDMA_try_rma(win_ptr, 0);
+        /* If 1 sided implementation is defined, finish all pending RDMA
+        * operations */
+        if ((win_ptr->start_assert & MPI_MODE_NOCHECK) == 0)
+        {
+            MPIDI_CH3I_RDMA_start(win_ptr, start_grp_size, ranks_in_win_grp);
+        }
+        MPIDI_CH3I_RDMA_try_rma(win_ptr, 0);
         if (win_ptr->rma_issued != 0) {
             MPIDI_CH3I_RDMA_finish_rma(win_ptr);
         }
-	MPIDI_CH3I_RDMA_complete_rma(win_ptr, start_grp_size,
+        MPIDI_CH3I_RDMA_complete(win_ptr, start_grp_size,
 	                             ranks_in_win_grp);
     }
 
-#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
-    if (!win_ptr->limic_fallback) 
-    {
-        MPIDI_CH3I_LIMIC_start(win_ptr, start_grp_size, ranks_in_win_grp);
-        
+#if !defined(DAPL_DEFAULT_PROVIDER)
+#if defined(_SMP_LIMIC_) 
+    if (!win_ptr->limic_fallback || !win_ptr->shm_fallback)
+#else
+    if (!win_ptr->shm_fallback) 
+#endif
+    {        
         MPIDI_VC_t* vc = NULL;
  
         /* If MPI_MODE_NOCHECK was not specified, we need to check if
@@ -2334,11 +2319,15 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
             MPI_Request *req;
             MPI_Status *status;
             MPID_Request *req_ptr;
-            
+           
             MPIU_CHKLMEM_MALLOC(req, MPI_Request *, start_grp_size*sizeof(MPI_Request), mpi_errno, "req");
             MPIU_CHKLMEM_MALLOC(status, MPI_Status *, start_grp_size*sizeof(MPI_Status), mpi_errno, "status");
 
             MPIU_INSTR_DURATION_INCR(wincomplete_recvsync,0,start_grp_size);
+
+            /*check for post from intranode peers*/ 
+            MPIDI_CH3I_INTRANODE_start(win_ptr, start_grp_size, ranks_in_win_grp);
+
             for (i=0; i<start_grp_size; i++)
             {
                src = ranks_in_win_grp[i];
@@ -2369,10 +2358,29 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
             }
             /* --END ERROR HANDLING-- */ 
         }
+
+        win_ptr->rma_issued = 0;
+
+#if defined(_SMP_LIMIC_)
+        if (!win_ptr->limic_fallback) {
+            MPIDI_CH3I_LIMIC_try_rma(win_ptr);
+        }
+#endif
+        if (!win_ptr->shm_fallback) {
+            mpi_errno = MPIDI_CH3I_SHM_try_rma(win_ptr);
+            if (mpi_errno != MPI_SUCCESS) {
+                MPIU_ERR_POP(mpi_errno);
+            }
+        }
+
+        if (win_ptr->rma_issued != 0 || win_ptr->rma_ops_list_head == NULL) {
+            MPIDI_CH3I_INTRANODE_complete(win_ptr, start_grp_size, 
+                    ranks_in_win_grp);
+        }
     }
     else 
     {
-#endif /* _SMP_LIMIC_ && !DAPL_DEFAULT_PROVIDER*/
+#endif /* !DAPL_DEFAULT_PROVIDER*/
 
        if (SMP_INIT || (!SMP_INIT && win_ptr->fall_back == 1))
        {
@@ -2436,9 +2444,9 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
               /* --END ERROR HANDLING-- */ 
           }
        }
-#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
+#if !defined(DAPL_DEFAULT_PROVIDER)
     }
-#endif /* _SMP_LIMIC_ && !DAPL_DEFAULT_PROVIDER */
+#endif /* !DAPL_DEFAULT_PROVIDER */
 #else  /* defined(_OSU_MVAPICH_) */
 
     /* If MPI_MODE_NOCHECK was not specified, we need to check if
@@ -2535,43 +2543,6 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
 	
 	target_win_handle = win_ptr->all_win_handles[curr_ptr->target_rank];
 
-#if defined(_OSU_MVAPICH_)
-#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
-        if (!win_ptr->limic_fallback)
-        {
-            /* REASON FOR THIS CHECK: If one of the transfers has failed to go 
-               through limic and had used the SMP send/recv channel, the last 
-               message which sets the complete flag remotely should also go 
-               through the SMP channel. 
-               OTHER OPTIONS: Forcing a separate dummy message through SMP 
-               channel */
-            if (source_win_handle == MPI_WIN_NULL || limic_failed == 0)
-            { 
-                transfer_complete = 0;
-                transfer_complete =
-                      MPIDI_CH3I_LIMIC_try_rma(curr_ptr, win_ptr,
-                                           source_win_handle, comm_ptr);
-                if(transfer_complete)
-                {
-                    total_op_count--;
-                    i++;
-                    curr_ops_cnt[curr_ptr->target_rank]++;
-                    /* If transfer is complete, free the curr pointer and remove it from the list */
-                    tmpptr       = curr_ptr->next;
-                    *prevNextPtr = tmpptr;
-                    MPIU_Free( curr_ptr );
-                    curr_ptr     = tmpptr;
-                    continue;
-                }
-                else
-                {
-                    limic_failed = 1;
-                }
-            }
-        }
-#endif /* _SMP_LIMIC_ && !_DAPL_DEFAULT_PROVIDER */
-#endif /*defined _OSU_MVAPICH_*/
-
 	curr_ptr->dataloop = 0;
 	switch (curr_ptr->type)
 	{
@@ -2640,15 +2611,28 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
 	    MPIDI_VC_t * vc;
 	    MPID_Request *request;
 	    
-#if defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS)
+#if defined(_OSU_MVAPICH_) 
+#if defined(MPID_USE_SEQUENCE_NUMBERS)
             MPID_Seqnum_t seqnum;
-
-	    MPIDI_Comm_get_vc(comm_ptr, dst, &vc);
-            if ((!SMP_INIT || vc->smp.local_nodes == -1) && 
-                win_ptr->fall_back != 1) {
-               continue;
+#endif
+	        MPIDI_Comm_get_vc(comm_ptr, dst, &vc);
+            if ((!SMP_INIT || vc->smp.local_nodes == -1) 
+                && win_ptr->fall_back != 1) {
+                continue;
             }
-#endif /* defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS) */
+#if !defined (DAPL_DEFAULT_PROVIDER)
+#if defined (_SMP_LIMIC_)
+            if (vc->smp.local_nodes != -1 
+                && win_ptr->limic_fallback != 1) {
+                continue;
+            }
+#endif
+            if (vc->smp.local_nodes != -1 
+                && win_ptr->shm_fallback != 1) {
+                continue;
+            }        
+#endif /* !DAPL_DEFAULT_PROVIDER */
+#endif /* defined(_OSU_MVAPICH_) */
 	    MPIDI_Pkt_init(put_pkt, MPIDI_CH3_PKT_PUT);
 	    put_pkt->addr = NULL;
 	    put_pkt->count = 0;
@@ -2819,12 +2803,19 @@ int MPIDI_Win_wait(MPID_Win *win_ptr)
 
     /* wait for all operations from other processes to finish */
 #if defined(_OSU_MVAPICH_)
-    if (win_ptr->fall_back != 1) {
-        num_wait_completions = 0;
-        while (win_ptr->my_counter || win_ptr->outstanding_rma != 0) {
-            newly_finished = 0; 
-            for (i = 0; i < win_ptr->comm_size; ++i) {
+    while (win_ptr->outstanding_rma != 0) { 
+        mpi_errno = MPID_Progress_test();
+        if (mpi_errno != MPI_SUCCESS) {
+            MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPIDI_WIN_WAIT);
+            return mpi_errno;
+        }
+    }
 
+    num_wait_completions = 0;
+    while (win_ptr->my_counter) {
+        newly_finished = 0; 
+        if (win_ptr->fall_back != 1) {
+            for (i = 0; i < win_ptr->comm_size; ++i) {
                 for (j = 0; j < rdma_num_rails; ++j) {
                     index = i*rdma_num_rails+j;
                     if (win_ptr->completion_counter[index] == 1){
@@ -2834,81 +2825,60 @@ int MPIDI_Win_wait(MPID_Win *win_ptr)
                             ++newly_finished;
                             num_wait_completions = 0;
                          }
-                   }
+                    }
                 }
-#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
-                if(!win_ptr->limic_fallback) 
-                {
-                   if(*((volatile long long *) 
-                       &win_ptr->limic_cmpl_counter_me[i]) == 1)
-                   {
-                       ++newly_finished;
-                       *((volatile long long *)
-                          &win_ptr->limic_cmpl_counter_me[i]) = 0;
-                   }
-                }
-#endif /* _SMP_LIMIC_ && !DAPL_DEFAULT_PROVIDER */ 
-            } 
-            win_ptr->my_counter -= newly_finished;
-            if (win_ptr->my_counter == 0)
-      	        break;
-	    mpi_errno = MPID_Progress_test();
-            if (mpi_errno != MPI_SUCCESS) {
-                MPIU_ERR_POP(mpi_errno); 
             }
         }
-    }
-#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER) 
-    else if(!win_ptr->limic_fallback)
-    {
-        while (win_ptr->my_counter || win_ptr->outstanding_rma != 0) 
+#if !defined(DAPL_DEFAULT_PROVIDER)
+#if defined(_SMP_LIMIC_)
+        if (!win_ptr->limic_fallback || !win_ptr->shm_fallback)  
+#else
+        if (!win_ptr->shm_fallback) 
+#endif 
         {
-            for (i = 0; i < win_ptr->comm_size; ++i)
-            {
-               if(*((volatile long long *) 
-                   &win_ptr->limic_cmpl_counter_me[i]) == 1)
-               {
-                    win_ptr->my_counter --;
-                    *((volatile long long *) 
-                       &win_ptr->limic_cmpl_counter_me[i]) = 0;
-               }
-            }
-            mpi_errno = MPID_Progress_test();
-            if (mpi_errno != MPI_SUCCESS) {
-                MPIU_ERR_POP(mpi_errno);
+            for (i = 0; i < win_ptr->shm_l_ranks; ++i) {
+                if(*((volatile long long *) 
+                    &win_ptr->shm_cmpl_counter_me[i]) == 1)
+                {
+                    ++newly_finished;
+                    *((volatile long long *)
+                        &win_ptr->shm_cmpl_counter_me[i]) = 0;
+                }
             }
         }
+#endif /* !DAPL_DEFAULT_PROVIDER */ 
+        win_ptr->my_counter -= newly_finished;
+        if (win_ptr->my_counter == 0)
+      	    break;
+	    mpi_errno = MPID_Progress_test();
+        if (mpi_errno != MPI_SUCCESS) {
+            MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPIDI_WIN_WAIT);
+            return mpi_errno;
+        }
     }
-#endif /* _SMP_LIMIC_ && !DAPL_DEFAULT_PROVIDER */
-    else
-    {
-#endif /* defined(_OSU_MVAPICH_) */
+#else /* _OSU_MVAPICH_ */
     if (win_ptr->my_counter)
     {
-	MPID_Progress_state progress_state;
+    	MPID_Progress_state progress_state;
 	
-	MPIU_INSTR_DURATION_START(winwait_wait);
-	MPID_Progress_start(&progress_state);
-	while (win_ptr->my_counter)
-	{
-	    mpi_errno = MPID_Progress_wait(&progress_state);
-	    /* --BEGIN ERROR HANDLING-- */
-	    if (mpi_errno != MPI_SUCCESS)
-	    {
-		MPID_Progress_end(&progress_state);
-		MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPIDI_WIN_WAIT);
-		return mpi_errno;
-	    }
-	    /* --END ERROR HANDLING-- */
-	    MPIU_INSTR_DURATION_INCR(winwait_wait,0,1)
-	}
-	MPID_Progress_end(&progress_state);
-	MPIU_INSTR_DURATION_END(winwait_wait);
+    	MPIU_INSTR_DURATION_START(winwait_wait);
+    	MPID_Progress_start(&progress_state);
+    	while (win_ptr->my_counter)
+    	{
+    	    mpi_errno = MPID_Progress_wait(&progress_state);
+    	    /* --BEGIN ERROR HANDLING-- */
+    	    if (mpi_errno != MPI_SUCCESS)
+    	    {
+        		MPID_Progress_end(&progress_state);
+        		MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPIDI_WIN_WAIT);
+        		return mpi_errno;
+    	    }
+    	    /* --END ERROR HANDLING-- */
+    	    MPIU_INSTR_DURATION_INCR(winwait_wait,0,1)
+    	}
+    	MPID_Progress_end(&progress_state);
+    	MPIU_INSTR_DURATION_END(winwait_wait);
     } 
-#if defined(_OSU_MVAPICH_)
-    }
-
-fn_fail:
 #endif /* defined(_OSU_MVAPICH_) */
 
     MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPIDI_WIN_WAIT);
@@ -2947,16 +2917,21 @@ int MPIDI_Win_test(MPID_Win *win_ptr, int *flag)
            }
         } 
     }
-#if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
-    if (!win_ptr->limic_fallback) {
+#if !defined(DAPL_DEFAULT_PROVIDER)
+#if defined(_SMP_LIMIC_)
+    if (!win_ptr->limic_fallback || !win_ptr->shm_fallback) 
+#else
+    if (!win_ptr->shm_fallback) 
+#endif
+    {
        for (i = 0; i < win_ptr->comm_size; ++i) {
-           if(win_ptr->limic_cmpl_counter_me[i] == 1) {
+           if(win_ptr->shm_cmpl_counter_me[i] == 1) {
                --win_ptr->my_counter;
-               win_ptr->limic_cmpl_counter_me[i] = 0;
+               win_ptr->shm_cmpl_counter_me[i] = 0;
            }
        }
     }
-#endif /* _SMP_LIMIC_ && !DAPL_DEFAULT_PROVIDER */ 
+#endif /* !DAPL_DEFAULT_PROVIDER */ 
 #endif /* _OSU_MVAPICH_ */
 
     mpi_errno = MPID_Progress_test();
@@ -3005,6 +2980,32 @@ int MPIDI_Win_lock(int lock_type, int dest, int assert, MPID_Win *win_ptr)
 	 * is acquired. */
             
 	/* poke the progress engine until lock is granted */
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+    /* if SHM lock are being used, one should not block in 
+     * progress engine for a completeion as the lock can be 
+     * released directly by an intra-node peer */
+#if defined (_SMP_LIMIC_)
+    if (!win_ptr->limic_fallback || !win_ptr->shm_fallback)
+#else
+    if (!win_ptr->shm_fallback)
+#endif
+    {
+        if (MPIDI_CH3I_Try_acquire_win_lock(win_ptr, lock_type) == 0)
+        {
+    	    MPIU_INSTR_DURATION_START(winlock_getlocallock);
+            while (MPIDI_CH3I_Try_acquire_win_lock(win_ptr, lock_type) == 0) 
+            {
+                mpi_errno = MPID_Progress_test();
+                /* --BEGIN ERROR HANDLING-- */
+                if (mpi_errno != MPI_SUCCESS) {
+                    MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**winnoprogress");
+                }
+                /* --END ERROR HANDLING-- */
+            }
+            MPIU_INSTR_DURATION_END(winlock_getlocallock);
+        }
+    } else {
+#endif
 	if (MPIDI_CH3I_Try_acquire_win_lock(win_ptr, lock_type) == 0)
 	{
 	    MPID_Progress_state progress_state;
@@ -3024,6 +3025,10 @@ int MPIDI_Win_lock(int lock_type, int dest, int assert, MPID_Win *win_ptr)
 	    MPID_Progress_end(&progress_state);
 	    MPIU_INSTR_DURATION_END(winlock_getlocallock);
 	}
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+    }
+#endif
+
 	/* local lock acquired. local puts, gets, accumulates will be done 
 	   directly without queueing. */
     }
@@ -3091,7 +3096,7 @@ int MPIDI_Win_unlock(int dest, MPID_Win *win_ptr)
     }
         
     comm_ptr = win_ptr->comm_ptr;
-        
+
     rma_op = win_ptr->rma_ops_list_head;
     
     /* win_lock was not called. return error */
@@ -3112,10 +3117,81 @@ int MPIDI_Win_unlock(int dest, MPID_Win *win_ptr)
 	win_ptr->rma_ops_list_tail = NULL;
 	goto fn_exit;
     }
-        
-    single_op_opt = 0;
 
-  
+#if defined (_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER) 
+    MPIDI_Comm_get_vc(comm_ptr, dest, &vc);
+#if defined (_SMP_LIMIC_)
+    if ((!win_ptr->limic_fallback || !win_ptr->shm_fallback)
+        && vc->smp.local_nodes != -1)
+#else
+    if (!win_ptr->shm_fallback && vc->smp.local_nodes != -1)
+#endif
+    {
+        /*Acquire the lock*/
+        win_ptr->lock_granted = MPIDI_CH3I_SHM_win_lock(dest, 
+                                    rma_op->lock_type, win_ptr, 1);
+        if(!win_ptr->lock_granted) {
+            MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**rmasync");
+        } 
+
+        /*Try and complete operations through SHM backed window*/
+        win_ptr->rma_ops_list_head = win_ptr->rma_ops_list_head->next;
+        if (!win_ptr->shm_fallback) {
+            mpi_errno = MPIDI_CH3I_SHM_try_rma(win_ptr);
+#if defined(_SMP_LIMIC_)
+        } else {
+            mpi_errno = MPIDI_CH3I_LIMIC_try_rma(win_ptr);
+#endif
+        }
+        if (mpi_errno != MPI_SUCCESS) {
+            MPIU_ERR_POP(mpi_errno);
+        }
+
+        if (win_ptr->rma_ops_list_head != NULL) {
+            /* If some oprations could not be completed through SHM backed window, do 
+             * do them using send/recv. Re-insert lock op as it is used by 
+             * do_passive_target_rma.        
+             * Window will be unlocked by the remote process when the last op 
+             * completes */
+            rma_op->next = win_ptr->rma_ops_list_head;
+            win_ptr->rma_ops_list_head = rma_op;
+            mpi_errno = MPIDI_CH3I_Do_passive_target_rma(win_ptr,
+                                 &wait_for_rma_done_pkt);
+            if (mpi_errno) { MPIU_ERR_POP(mpi_errno); } 
+
+            if (wait_for_rma_done_pkt == 1) {
+                /* poke the progress engine until lock_granted flag is reset to 0 */
+                if (win_ptr->lock_granted != 0) {
+                    MPID_Progress_state progress_state;
+
+                    MPID_Progress_start(&progress_state);
+                    while (win_ptr->lock_granted != 0) {
+                        mpi_errno = MPID_Progress_wait(&progress_state);
+                        /* --BEGIN ERROR HANDLING-- */
+                        if (mpi_errno != MPI_SUCCESS) {
+                        MPID_Progress_end(&progress_state);
+                        MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**winnoprogress");
+                        }
+                    /* --END ERROR HANDLING-- */
+                    }
+                    MPID_Progress_end(&progress_state);
+                }
+            } else { 
+                win_ptr->lock_granted = 0;
+            }
+        } else {
+            /*If all operations completed, free the lock op and unlock window*/  
+            MPIU_Free(rma_op);
+            MPIDI_CH3I_SHM_win_unlock(dest, win_ptr);
+        }
+
+        win_ptr->using_lock = 0;
+        goto fn_exit;
+    }
+#endif /*_OSU_MVAPICH_ && && !DAPL_DEFAULT_PROVIDER*/       
+ 
+    single_op_opt = 0;
+ 
 #if !defined (_OSU_PSM_) 
     MPIDI_Comm_get_vc_set_active(comm_ptr, dest, &vc);
 
@@ -3152,7 +3228,7 @@ int MPIDI_Win_unlock(int dest, MPID_Win *win_ptr)
 #endif
         
     if (single_op_opt == 0) {
-	
+
 	/* Send a lock packet over to the target. wait for the lock_granted
 	 * reply. Then do all the RMA ops. */ 
 	
@@ -3375,7 +3451,7 @@ static int MPIDI_CH3I_Do_passive_target_rma(MPID_Win *win_ptr,
 	    if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
             break;
 	case MPIDI_RMA_ACC_CONTIG:
-            win_ptr->pt_rma_puts_accs[curr_ptr->target_rank]++;
+        win_ptr->pt_rma_puts_accs[curr_ptr->target_rank]++;
 	    mpi_errno = MPIDI_CH3I_Send_contig_acc_msg(curr_ptr, win_ptr,
 				       source_win_handle, target_win_handle, 
 				       &curr_ptr->request );
@@ -4752,6 +4828,10 @@ int MPIDI_CH3_PktHandler_Accumulate_Immed( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     MPID_Win *win_ptr;
     MPI_Aint extent;
     int mpi_errno = MPI_SUCCESS;
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+    int l_rank = -1;
+#endif
+
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_PKTHANDLER_ACCUMULATE_IMMED);
     
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_PKTHANDLER_ACCUMULATE_IMMED);
@@ -4759,6 +4839,18 @@ int MPIDI_CH3_PktHandler_Accumulate_Immed( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"received accumulate immedidate pkt");
 
     MPIU_INSTR_DURATION_START(rmapkt_acc_immed);
+
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+    MPID_Win_get_ptr(accum_pkt->target_win_handle, win_ptr);
+#if defined (_SMP_LIMIC_)
+    if (!win_ptr->limic_fallback || !win_ptr->shm_fallback)
+#else
+    if (!win_ptr->shm_fallback)
+#endif
+    {
+        l_rank = win_ptr->shm_g2l_rank[win_ptr->my_id];
+    }
+#endif
 
     /* return the number of bytes processed in this function */
     /* data_len == 0 (all within packet) */
@@ -4769,14 +4861,17 @@ int MPIDI_CH3_PktHandler_Accumulate_Immed( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     
     /* size == 0 should never happen */
     if (accum_pkt->count == 0 || extent == 0) {
-#if defined(_OSU_MVAPICH_)
-        MPID_Win_get_ptr(accum_pkt->target_win_handle, win_ptr);
-        --win_ptr->outstanding_rma;
-#else
-	;
-#endif /* defined(_OSU_MVAPICH_) */
     }
     else {
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+    if (!win_ptr->shm_fallback) {
+        mpi_errno = MPIDI_CH3I_SHM_win_mutex_lock(win_ptr, l_rank);
+        if (mpi_errno != MPI_SUCCESS) {
+              MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                    "**fail %s", "mutex lock error");
+        }
+    }
+#endif
 	/* Data is already present */
 	if (accum_pkt->op == MPI_REPLACE) {
 	    /* no datatypes required */
@@ -4797,6 +4892,15 @@ int MPIDI_CH3_PktHandler_Accumulate_Immed( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 				     "**opnotpredefined %d", accum_pkt->op );
 	    }
 	}
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+    if (!win_ptr->shm_fallback) {
+        mpi_errno = MPIDI_CH3I_SHM_win_mutex_unlock(win_ptr, l_rank);
+        if (mpi_errno != MPI_SUCCESS) {
+              MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                    "**fail %s", "mutex unlock error");
+        }
+    }
+#endif
 
 	/* There are additional steps to take if this is a passive 
 	   target RMA or the last operation from the source */
@@ -4805,7 +4909,22 @@ int MPIDI_CH3_PktHandler_Accumulate_Immed( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 	   accumulation operation */
 	MPID_Win_get_ptr(accum_pkt->target_win_handle, win_ptr);
 #if defined(_OSU_MVAPICH_)
-        --win_ptr->outstanding_rma;
+    --win_ptr->outstanding_rma;
+
+    /* if passive target RMA, increment pt_rma_puts_accs counter */
+#if !defined(DAPL_DEFAULT_PROVIDER)
+#if defined (_SMP_LIMIC_)
+    if ((!win_ptr->limic_fallback || !win_ptr->shm_fallback)
+        && vc->smp.local_nodes != -1)
+#else
+    if (!win_ptr->shm_fallback && vc->smp.local_nodes != -1)
+#endif
+    {
+        if (*((volatile int *) &win_ptr->shm_lock[l_rank]) != MPID_LOCK_NONE) {
+            win_ptr->my_pt_rma_puts_accs++;
+        }
+    }
+#endif /* !defined(DAPL_DEFAULT_PROVIDER) */
 #endif /* defined(_OSU_MVAPICH_) */
 	
 	/* if passive target RMA, increment counter */
@@ -4821,7 +4940,30 @@ int MPIDI_CH3_PktHandler_Accumulate_Immed( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 	       type of optimization, we also need to send an
 	       ack to the source. */ 
 #if defined(_OSU_MVAPICH_)
-            win_ptr->outstanding_rma += accum_pkt->rma_issued;
+        win_ptr->outstanding_rma += accum_pkt->rma_issued;
+
+#if !defined(DAPL_DEFAULT_PROVIDER)
+#if defined (_SMP_LIMIC_)
+        if ((!win_ptr->limic_fallback || !win_ptr->shm_fallback)
+            && vc->smp.local_nodes != -1)
+#else
+        if (!win_ptr->shm_fallback && vc->smp.local_nodes != -1)
+#endif
+        {
+            if (*((volatile int *) &win_ptr->shm_lock[l_rank]) != MPID_LOCK_NONE) {
+                if(*((volatile int *) &win_ptr->shm_lock[l_rank]) == MPI_LOCK_SHARED) {
+                    mpi_errno = MPIDI_CH3I_Send_pt_rma_done_pkt(vc,
+                                accum_pkt->source_win_handle);
+                    if (mpi_errno) {
+                        MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**rmasync");
+                    }
+                }
+                MPIDI_CH3I_SHM_win_unlock(win_ptr->my_id, win_ptr);
+                MPIDI_CH3_Progress_signal_completion();
+                goto fn_exit;
+            }
+        }
+#endif /* !defined(DAPL_DEFAULT_PROVIDER) */
 #endif /* defined(_OSU_MVAPICH_) */ 
 
 	    if (win_ptr->current_lock_type == MPID_LOCK_NONE) {
@@ -4920,6 +5062,18 @@ int MPIDI_CH3_PktHandler_Lock( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 	new_ptr->source_win_handle = lock_pkt->source_win_handle;
 	new_ptr->vc = vc;
 	new_ptr->pt_single_op = NULL;
+
+    /*enqueue window to detect SHM unlocks in progress engine*/
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+#if defined (_SMP_LIMIC_)
+    if (!win_ptr->limic_fallback || !win_ptr->shm_fallback)
+#else
+    if (!win_ptr->shm_fallback)
+#endif
+    {
+        MPIDI_CH3I_SHM_win_lock_enqueue(win_ptr);
+    }
+#endif
     }
     
     *rreqp = NULL;
@@ -5036,6 +5190,18 @@ int MPIDI_CH3_PktHandler_LockPutUnlock( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 	req->dev.OnDataAvail = MPIDI_CH3_ReqHandler_SinglePutAccumComplete;
 	req->dev.user_buf = new_ptr->pt_single_op->data;
 	req->dev.lock_queue_entry = new_ptr;
+
+    /*enqueue window to detect SHM unlocks in progress engine*/
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+#if defined (_SMP_LIMIC_)
+    if (!win_ptr->limic_fallback || !win_ptr->shm_fallback)
+#else
+    if (!win_ptr->shm_fallback)
+#endif
+    {
+        MPIDI_CH3I_SHM_win_lock_enqueue(win_ptr);
+    }
+#endif
     }
     
     if (req->dev.recv_data_sz == 0) {
@@ -5208,6 +5374,18 @@ int MPIDI_CH3_PktHandler_LockGetUnlock( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 	new_ptr->pt_single_op->data = NULL;
 	new_ptr->pt_single_op->request_handle = lock_get_unlock_pkt->request_handle;
 	new_ptr->pt_single_op->data_recd = 1;
+
+    /*enqueue window to detect SHM based unlocks in progress engine*/
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+#if defined (_SMP_LIMIC_)
+    if (!win_ptr->limic_fallback || !win_ptr->shm_fallback)
+#else
+    if (!win_ptr->shm_fallback)
+#endif
+    {
+        MPIDI_CH3I_SHM_win_lock_enqueue(win_ptr);
+    }
+#endif
     }
     
     *rreqp = NULL;
@@ -5299,6 +5477,7 @@ int MPIDI_CH3_PktHandler_LockAccumUnlock( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     new_ptr->pt_single_op->count = lock_accum_unlock_pkt->count;
     new_ptr->pt_single_op->datatype = lock_accum_unlock_pkt->datatype;
     new_ptr->pt_single_op->op = lock_accum_unlock_pkt->op;
+
     /* allocate memory to receive the data */
     new_ptr->pt_single_op->data = MPIU_Malloc(req->dev.recv_data_sz);
     if (new_ptr->pt_single_op->data == NULL) {

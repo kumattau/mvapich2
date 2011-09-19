@@ -16,6 +16,8 @@
 %}
 
 %option noyywrap
+%option nounput
+%option noinput
 
 decimal     ([[:digit:]]+)
 whitespace  ([ \t]+)

@@ -22,6 +22,14 @@
 #include "ib_param.h"
 #endif
 
+#ifdef HAVE_SYS_SYSCALL_H
+#include <sys/syscall.h>
+#elif HAVE_SYSCALL_H
+#include <syscall.h>
+#endif
+
+#include <unistd.h>
+
 #if !defined(DISABLE_PTMALLOC)
 #include "mem_hooks.h"
 #include "dreg.h"
@@ -32,15 +40,16 @@
 #include "debug_utils.h"
 
 static int mem_hook_init = 0;
+
+#if !(defined(HAVE_SYSCALL) && defined(__NR_munmap))
+#include <dlfcn.h>
+
 static pthread_t lock_holder = -1;
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 static int recurse_level = 0;
 static int resolving_munmap = 0;
 static void * store_buf = NULL;
 static size_t store_len = 0;
-
-#if !defined(DISABLE_MUNMAP_HOOK)
-#include <dlfcn.h>
 
 static void set_real_munmap_ptr()
 {
@@ -93,7 +102,6 @@ static void set_real_munmap_ptr()
 
     mvapich2_minfo.munmap = munmap_ptr;
 }
-#endif /* !defined(DISABLE_MUNMAP_HOOK) */
 
 static int lock_hooks(void)
 {
@@ -130,7 +138,10 @@ static int unlock_hooks(void)
     }
     return 0;
 }
-
+#else
+static int lock_hooks(void) { return 0; }
+static int unlock_hooks(void) { return 0; }
+#endif
 void mvapich2_mem_unhook(void *ptr, size_t size)
 {
     if(mem_hook_init && 
@@ -177,10 +188,11 @@ int mvapich2_minit()
             mvapich2_minfo.is_our_valloc &&
             mvapich2_minfo.is_our_memalign &&
             mvapich2_minfo.is_our_free)) {
+        unlock_hooks();
         return 1;
     }
 
-#if !defined(DISABLE_MUNMAP_HOOK)
+#if !(defined(HAVE_SYSCALL) && defined(__NR_munmap))
     dlerror(); /* Clear the error string */
     resolving_munmap = 1;
     set_real_munmap_ptr();
@@ -189,7 +201,7 @@ int mvapich2_minit()
         mvapich2_minfo.munmap(store_buf, store_len);
         store_buf = NULL; store_len = 0;
     }
-#endif /* !defined(DISABLE_MUNMAP_HOOK) */
+#endif
 
     mem_hook_init = 1;
 
@@ -207,13 +219,13 @@ void mvapich2_mfin()
     }
 }
 
-#if !defined(DISABLE_MUNMAP_HOOK)
 int mvapich2_munmap(void *buf, size_t len)
 {
     if(lock_hooks()) {
         return 1;
     }
 
+#if !(defined(HAVE_SYSCALL) && defined(__NR_munmap))
     if(!mvapich2_minfo.munmap &&
             !resolving_munmap) {
         resolving_munmap = 1;
@@ -245,9 +257,12 @@ int mvapich2_munmap(void *buf, size_t len)
          * for now and return */
         store_buf = buf;
         store_len = len;
+        if(unlock_hooks()) {
+            return 1;
+        }
         return 0;
     }
-
+#endif
     if(mem_hook_init &&
             !mvapich2_minfo.is_mem_hook_finalized) {
         mvapich2_mem_unhook(buf, len);
@@ -257,14 +272,17 @@ int mvapich2_munmap(void *buf, size_t len)
         return 1;
     }
 
+#if !(defined(HAVE_SYSCALL) && defined(__NR_munmap))
     return mvapich2_minfo.munmap(buf, len);
+#else
+    return syscall(__NR_munmap, buf, len);
+#endif
 }
 
 int munmap(void *buf, size_t len)
 {
     return mvapich2_munmap(buf, len);
 }
-#endif /* !defined(DISABLE_MUNMAP_HOOK) */
 
 #if !defined(DISABLE_TRAP_SBRK)
 void *mvapich2_sbrk(intptr_t delta)

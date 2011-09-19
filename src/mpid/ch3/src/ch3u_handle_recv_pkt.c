@@ -16,6 +16,9 @@
  */
 
 #include "mpidimpl.h"
+#if defined(_OSU_MVAPICH_)
+#include "mpidrma.h"
+#endif
 
 /*
  * This file contains the dispatch routine called by the ch3 progress 
@@ -68,6 +71,8 @@ int MPIDI_CH3_Pkt_size_index[] = {
 #endif /* !MV2_DISABLE_HEADER_CACHING */
     sizeof(MPIDI_CH3_Pkt_rput_finish_t),
     sizeof(MPIDI_CH3_Pkt_rget_finish_t),
+    sizeof(MPIDI_CH3_Pkt_zcopy_finish_t),
+    sizeof(MPIDI_CH3_Pkt_zcopy_ack_t),
     sizeof(MPIDI_CH3I_MRAILI_Pkt_noop),
     sizeof(MPIDI_CH3_Pkt_rndv_clr_to_send_t),
     sizeof(MPIDI_CH3_Pkt_put_rndv_t),
@@ -113,7 +118,7 @@ int MPIDI_CH3_Pkt_size_index[] = {
     sizeof(MPIDI_CH3_Pkt_lock_get_unlock_t),
     sizeof(MPIDI_CH3_Pkt_lock_accum_unlock_t),
     sizeof(MPIDI_CH3_Pkt_accum_immed_t),
-    -1,                                /* FLOW CONTROL UPDATE unused */
+    sizeof(MPIDI_CH3I_MRAILI_Pkt_flow_cntl),
     sizeof(MPIDI_CH3_Pkt_close_t),
     -1
 };
@@ -563,6 +568,23 @@ int MPIDI_CH3I_Try_acquire_win_lock(MPID_Win *win_ptr, int requested_lock)
          || 
          ( (requested_lock == MPI_LOCK_EXCLUSIVE) &&
            (existing_lock == MPID_LOCK_NONE) ) ) {
+
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+        /*try and qcquire SHM lock before setting normal lock, if SHM lock busy 
+         *we need to retry later */
+#if defined (_SMP_LIMIC_)
+        if (!win_ptr->limic_fallback || !win_ptr->shm_fallback)
+#else
+        if (!win_ptr->shm_fallback)
+#endif
+        {
+            if(MPIDI_CH3I_SHM_win_lock (win_ptr->my_id, requested_lock, 
+                            win_ptr, 0) == 0) {
+                MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_TRY_ACQUIRE_WIN_LOCK);
+                return 0;
+            } 
+        }
+#endif
 
         /* grant lock.  set new lock type on window */
         win_ptr->current_lock_type = requested_lock;

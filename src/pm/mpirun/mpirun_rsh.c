@@ -26,26 +26,28 @@
  */
 
 #include <mpirunconf.h>
-#include "mpirun_rsh.h"
+#include <mpirun_rsh.h>
+#include <mpispawn_tree.h>
+#include <mpirun_util.h>
+#include <mpmd.h>
+#include <mpirun_dbg.h>
+#include <mpirun_params.h>
+#include <mpirun_ckpt.h>
+#include <param.h>
+#include <mv2_config.h>
+#include <error_handling.h>
+#include <debug_utils.h>
+#include <signal_processor.h>
+#include <wfe_mpirun.h>
+#include <m_state.h>
+#include <process.h>
+
+
 #include <errno.h>
 #include <signal.h>
 #include <stdint.h>
 #include <math.h>
 #include <assert.h>
-#include "mpispawn_tree.h"
-#include "mpirun_util.h"
-#include "mpmd.h"
-#include "mpirun_dbg.h"
-#include "mpirun_params.h"
-#include "mpirun_ckpt.h"
-#include <param.h>
-#include <mv2_config.h>
-#include "error_handling.h"
-#include "debug_utils.h"
-
-#include <signal_processor.h>
-#include <wfe_mpirun.h>
-#include <m_state.h>
 
 /*
  * When an error occurs in the init phase, mpirun_rsh doesn't have the pid
@@ -126,8 +128,6 @@ char *skip_white(char *s);
 int read_param_file(char *paramfile, char **env);
 int set_fds(fd_set * rfds, fd_set * efds);
 void make_command_strings(int argc, char *argv[], char *totalview_cmd, char *command_name, char *command_name_tv);
-void mpispawn_checkin(int, struct sockaddr *, unsigned int);
-void handle_spawn_req(int readsock);
 void launch_newmpirun(int total);
 static void get_line(void *buf, char *fill, int buf_or_file);
 static void store_info(char *key, char *val);
@@ -315,6 +315,7 @@ int main(int argc, char *argv[])
 
     ret_ckpt = CR_initialize();
     if ( ret_ckpt  < 0 ) {
+        m_state_fail();
         goto exit_main;
     }
   restart_from_ckpt:
@@ -424,7 +425,12 @@ int main(int argc, char *argv[])
     // Force USE_LINEAR_SSH==1 because CKPT assumes this
     // Could this be fixed?
     USE_LINEAR_SSH = 1;
-    CR_thread_start(pglist->npgs);
+
+    ret_ckpt = CR_thread_start(pglist->npgs);
+    if ( ret_ckpt  < 0 ) {
+        m_state_fail();
+        goto exit_main;
+    }
 
     /*
      * Check to see of ckpt variables are in the environment
@@ -547,11 +553,15 @@ exit_main:
     CR_thread_stop(0);
     CR_finalize();
 #endif 
-    cleanup();
+    int exit_code = m_state_get_exit_code();
+    if (exit_code != EXIT_SUCCESS) {
+        cleanup();
+    }
+
     remove_host_list_file();
     free_memory();
 
-    return m_state_get_exit_code();
+    return exit_code;
 }
 
 #if defined(CKPT) && defined(CR_AGGRE)
@@ -562,7 +572,6 @@ static void rkill_aggregation()
     if (!use_aggre)
         return;
     for (i = 0; i < NSPAWNS; i++) {
-        extern char sessionid[16];
         dbg("before umnt for pg_%d @ %s...\n", i, pglist->index[i]->hostname);
         snprintf(cmd, 256, "%s %s fusermount -u /tmp/cr-%s/wa > /dev/null 2>&1", SSH_CMD, pglist->index[i]->hostname, sessionid);
         system(cmd);
@@ -2367,6 +2376,7 @@ void child_handler(int signal)
         static int num_exited = 0;
         if (lookup_exit_pid(pid) >= 0)
             num_exited++;
+        // TODO update
         dbg(" pid =%d count =%d, num_exited=%d,nspawn=%d, ckptcnt=%d, wait_socks_succ=%d\n", pid, count, num_exited, NSPAWNS, checkpoint_count, wait_socks_succ);
         // If number of active nodes have exited, ensure all 
         // other spare nodes are killed too.
@@ -2417,7 +2427,7 @@ void child_handler(int signal)
     dbg("mpirun_rsh EXIT FROM child_handler\n");
 }
 
-void mpispawn_checkin(int s, struct sockaddr *sockaddr, unsigned int sockaddr_len)
+void mpispawn_checkin(int s)
 {
     int sock, id, i, n, mpispawn_root = -1;
     in_port_t port;
@@ -2436,7 +2446,7 @@ void mpispawn_checkin(int s, struct sockaddr *sockaddr, unsigned int sockaddr_le
             /*
              * Shouldn't we detect this error much earlier in this process?
              */
-            fprintf(stderr, "mpirun_rsh: MV2_MT_DEGREE too low");
+            PRINT_ERROR("MV2_MT_DEGREE too low\n");
             m_state_fail();
 
             return;
@@ -2447,7 +2457,7 @@ void mpispawn_checkin(int s, struct sockaddr *sockaddr, unsigned int sockaddr_le
     mt_degree = MT_MAX_DEGREE;
     spawninfo = (struct spawn_info_s *) malloc(NSPAWNS * sizeof(struct spawn_info_s));
     if (!spawninfo) {
-        perror("[CR_MIG:mpirun_rsh] malloc(spawninfo)");
+        PRINT_ERROR_ERRNO("malloc() failed", errno);
         m_state_fail();
 
         return;
@@ -2496,6 +2506,7 @@ void mpispawn_checkin(int s, struct sockaddr *sockaddr, unsigned int sockaddr_le
      * mpispawns.    
      */
     if (socket_error) {
+        PRINT_ERROR( "Error on the socket\n" );
         m_state_fail();
 
         return;
@@ -2504,14 +2515,14 @@ void mpispawn_checkin(int s, struct sockaddr *sockaddr, unsigned int sockaddr_le
     if (USE_LINEAR_SSH) {
         sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (sock < 0) {
-            perror("socket [mpispawn_checkin]");
+            PRINT_ERROR_ERRNO("socket() failed", errno);
             m_state_fail();
 
             return;
         }
 
         if (connect(sock, (struct sockaddr *) &address[0], sizeof(struct sockaddr)) < 0) {
-            perror("connect");
+            PRINT_ERROR_ERRNO("connect() failed", errno);
             m_state_fail();
 
             return;
@@ -2554,126 +2565,79 @@ void mpispawn_checkin(int s, struct sockaddr *sockaddr, unsigned int sockaddr_le
     }
 }
 
-/*
-#define TEST_STR(_key_, _val_, _set_) do {            \
-    if(0 == strncmp(_key_, #_val_, strlen(#_val_))) { \
-        type = _set_;                                 \
-    }                                                 \
-} while(0)
-
-int check_token (FILE * fp, char *tmpbuf)
-{
-    char *tokptr, *val, *key;
-    int type = 0;
-
-    TEST_STR (tmpbuf, nprocs, 7);
-    TEST_STR (tmpbuf, execname, 1);
-    TEST_STR (tmpbuf, preput_key_, 1);
-    TEST_STR (tmpbuf, totspawns, 2);
-    TEST_STR (tmpbuf, endcmd, 3);
-    TEST_STR (tmpbuf, preput_val_, 4);
-    TEST_STR (tmpbuf, arg, 5);
-    TEST_STR (tmpbuf, argcnt, 6);
-    TEST_STR (tmpbuf, info_num, 8);
-    TEST_STR (tmpbuf, info_key_, 9);
-    TEST_STR (tmpbuf, info_val_, 10);
-
-    switch (type) {
-    case 4:
-    case 10:                / * info_val_ * /
-        tokptr = strtok (tmpbuf, "=");
-        key = strtok (NULL, "=");
-        fprintf (fp, "%s\n", key);
-        return 0;
-    case 1:                    / * execname, preput.. * /
-    case 7:
-    case 9:                 / * info_key_ * /
-        tokptr = strtok (tmpbuf, "=");
-        val = strtok (NULL, "=");
-        fprintf (fp, "%s\n", val);
-        if (type == 7) {
-            spinf.launch_num = atoi (val);
-        }
-        return 0;
-    case 2:                    / * totspawns * /
-        tokptr = strtok (tmpbuf, "=");
-        spinf.totspawns = atoi (strtok (NULL, "="));
-        return 0;
-    case 3:                    / * endcmd * /
-        fprintf (fp, "endcmd\n");
-        spinf.spawnsdone = spinf.spawnsdone + 1;
-        if (spinf.spawnsdone >= spinf.totspawns)
-            return 1;
-        return 0;
-    case 8:                 / * info num * /
-        fprintf (fp, "%s\n", tmpbuf);
-        return 0;
-    case 5:                    / * arguments * /
-        fprintf (fp, "%s\n", tmpbuf);
-        return 0;
-    case 6:                    / * args end * /
-        fprintf (fp, "endarg\n");
-        return 0;
-    }
-
-    return 0;
-}
-#undef TEST_STR
-*/
-
 int check_token(FILE * fp, char *tmpbuf)
 {
     char *tokptr, *val, *key;
     if (strncmp(tmpbuf, "preput_val_", 11) == 0 || strncmp(tmpbuf, "info_val_", 9) == 0) {
         /* info_val_ */
         tokptr = strtok(tmpbuf, "=");
-        key = strtok(NULL, "=");
-        fprintf(fp, "%s\n", key);
+        if (!tokptr) {
+            return -1;
+        }
 
-        return 0;
+        key = strtok(NULL, "=");
+        if (!key) {
+            return -1;
+        }
+
+        fprintf(fp, "%s\n", key);
     } else if (strncmp(tmpbuf, "execname", 8) == 0 || strncmp(tmpbuf, "preput_key_", 11) == 0 || strncmp(tmpbuf, "info_key_", 9) == 0) {
         /* execname, preput.. */
         /* info_key_ */
         tokptr = strtok(tmpbuf, "=");
+        if (!tokptr) {
+            return -1;
+        }
+
         val = strtok(NULL, "=");
+        if (!val) {
+            return -1;
+        }
+
         fprintf(fp, "%s\n", val);
-        return 0;
     } else if (strncmp(tmpbuf, "nprocs", 6) == 0) {
         tokptr = strtok(tmpbuf, "=");
+        if (!tokptr) {
+            return -1;
+        }
+
         val = strtok(NULL, "=");
+        if (!val) {
+            return -1;
+        }
+
         fprintf(fp, "%s\n", val);
         spinf.launch_num = atoi(val);
-        return 0;
     } else if (strncmp(tmpbuf, "totspawns", 9) == 0) {
         /* totspawns */
         tokptr = strtok(tmpbuf, "=");
+        if (!tokptr) {
+            return -1;
+        }
+
         spinf.totspawns = atoi(strtok(NULL, "="));
-        return 0;
     } else if (strncmp(tmpbuf, "endcmd", 6) == 0) {
         /* endcmd */
         fprintf(fp, "endcmd\n");
         spinf.spawnsdone = spinf.spawnsdone + 1;
-        if (spinf.spawnsdone >= spinf.totspawns)
+        if (spinf.spawnsdone >= spinf.totspawns) {
             return 1;
-        return 0;
+        }
     } else if (strncmp(tmpbuf, "info_num", 8) == 0) {
         /* info num */
         fprintf(fp, "%s\n", tmpbuf);
-        return 0;
     } else if (strncmp(tmpbuf, "argcnt", 6) == 0) {
         /* args end */
         fprintf(fp, "endarg\n");
-        return 0;
     } else if (strncmp(tmpbuf, "arg", 3) == 0) {
         /* arguments */
         fprintf(fp, "%s\n", tmpbuf);
-        return 0;
     }
 
     return 0;
 }
 
-void handle_spawn_req(int readsock)
+int handle_spawn_req(int readsock)
 {
     FILE *fp;
     int done = 0;
@@ -2706,6 +2670,13 @@ void handle_spawn_req(int readsock)
     fclose(fp);
     free(hdptr);
 
+    /*
+     * Check to see if there was an error returned by check_token
+     */
+    if (0 > done) {
+        return 1;
+    }
+
     if (totalprocs == 0)
         totalprocs = nprocs;
     TOTALPROCS = mkstr("TOTALPROCS=%d", totalprocs);
@@ -2713,10 +2684,7 @@ void handle_spawn_req(int readsock)
     totalprocs = totalprocs + spcnt;
 
     launch_newmpirun(spcnt);
-    return;
-
-    DBG(perror("Fatal error:"));
-    return;
+    return 0;
 }
 
 static void get_line(void *ptr, char *fill, int is_file)

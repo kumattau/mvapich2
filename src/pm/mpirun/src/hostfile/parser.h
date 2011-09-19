@@ -54,7 +54,7 @@ typedef union YYSTYPE
 {
 
 /* Line 1685 of yacc.c  */
-#line 40 "parser.y"
+#line 45 "parser.y"
 
     size_t decimal;
     char * text;

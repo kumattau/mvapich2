@@ -12,9 +12,11 @@
 
 #ifndef MPMD_H_
 #define MPMD_H_
+
+#include <process.h>
+
 #include <stdio.h>
 #include <string.h>
-#include "mpirun_rsh.h"
 
 #define CONFILE_LEN 256
 extern int configfile_on;

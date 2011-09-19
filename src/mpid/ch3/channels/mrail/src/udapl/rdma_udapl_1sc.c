@@ -150,7 +150,7 @@ MPIDI_CH3I_RDMA_start (MPID_Win * win_ptr,
 /* For active synchronization, if all rma operation has completed, we issue a RDMA
 write operation with fence to update the remote flag in target processes*/
 void
-MPIDI_CH3I_RDMA_complete_rma (MPID_Win * win_ptr,
+MPIDI_CH3I_RDMA_complete (MPID_Win * win_ptr,
                               int start_grp_size, int *ranks_in_win_grp)
 {
     int i, target, dst;

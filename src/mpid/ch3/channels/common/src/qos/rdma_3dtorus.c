@@ -54,9 +54,7 @@ int mv2_get_path_rec_sl(struct ibv_context *context_arg, struct ibv_pd *hca_pd,
     struct ibv_qp_attr mattr;
     struct ibv_port_attr pattr;
     struct ibv_recv_wr *brwr;
-    int mpi_errno = MPI_SUCCESS;
     int i;
-    int nic;
 
     for (cache = openib_sa_qp_cache; cache; cache = cache->next) {
   	    if ((strcmp(cache->device_name,
@@ -201,7 +199,7 @@ int mv2_get_path_rec_sl(struct ibv_context *context_arg, struct ibv_pd *hca_pd,
     	    struct ibv_port_attr port_attr;
     	    int ret;
     
-    	    if (ret = ibv_query_port(context, port_num, &port_attr)) {
+    	    if ((ret = ibv_query_port(context, port_num, &port_attr))) {
                 fprintf(stderr, "Failed to query port\n");
                 goto fn_fail;
     	    }
@@ -328,10 +326,7 @@ fn_fail:
 
 int mv2_release_3d_torus_resources()
 {
-    int i = 0;
-    int j = 0;
     int err;
-    struct ibv_wc wc;
     struct openib_sa_qp_cache_t *cache = NULL;
 
     for (cache = openib_sa_qp_cache; cache; cache = cache->next) {

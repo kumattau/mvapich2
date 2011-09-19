@@ -73,11 +73,25 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         }
     }
 #endif /* _ENABLE_XRC_ */
+#ifdef _ENABLE_UD_
+    if ((value = getenv("MV2_HYBRID_ENABLE_THRESHOLD")) != NULL) {
+        rdma_hybrid_enable_threshold = atoi(value);
+    }
+    if ((value = getenv("MV2_USE_UD_HYBRID")) != NULL) {
+        rdma_enable_hybrid = atoi(value);
+    }
+    if (pg_size < rdma_hybrid_enable_threshold) {
+        rdma_enable_hybrid = 0;
+    }
+#endif
 
     if (pg_size > threshold || dpm 
 #ifdef _ENABLE_XRC_
             || USE_XRC
 #endif /* _ENABLE_XRC_ */
+#ifdef _ENABLE_UD_
+            || rdma_enable_hybrid
+#endif
             )
     {
         MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_ON_DEMAND;
@@ -115,7 +129,11 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_ON_DEMAND;
 
 #endif /* defined(CKPT) */
-
+#ifdef _ENABLE_UD_
+    if (rdma_enable_hybrid) {
+        MPIU_Assert(MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND);
+    }
+#endif
 
     /* save my vc_ptr for easy access */
     MPIDI_PG_Get_vc(pg, pg_rank, &MPIDI_CH3I_Process.vc);
@@ -129,11 +147,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     /* Check for SMP only */
     MPIDI_CH3I_set_smp_only();
 
-    /*CR functionality depends on on-demand CM initialization
-    even in single node case(SMP_ONLY)*/
-#if !defined(CKPT)
     if (!SMP_ONLY) 
-#endif
     {
         switch (MPIDI_CH3I_Process.cm_type)
         {
@@ -550,7 +564,7 @@ int MPIDI_CH3_InitCompleted(void)
 }
 
 
-int rdma_process_hostid(MPIDI_PG_t * pg, int *host_ids, int my_rank, int pg_size)
+void rdma_process_hostid(MPIDI_PG_t * pg, int *host_ids, int my_rank, int pg_size)
 {
     int i;
     int my_host_id;;

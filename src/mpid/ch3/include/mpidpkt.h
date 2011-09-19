@@ -47,6 +47,8 @@ typedef enum MPIDI_CH3_Pkt_type
 #endif /* !MV2_DISABLE_HEADER_CACHING */
     MPIDI_CH3_PKT_RPUT_FINISH,
     MPIDI_CH3_PKT_RGET_FINISH,
+    MPIDI_CH3_PKT_ZCOPY_FINISH,
+    MPIDI_CH3_PKT_ZCOPY_ACK,
     MPIDI_CH3_PKT_NOOP,
     MPIDI_CH3_PKT_RMA_RNDV_CLR_TO_SEND,
     MPIDI_CH3_PKT_PUT_RNDV,
@@ -93,7 +95,7 @@ typedef enum MPIDI_CH3_Pkt_type
                                      /* RMA Packets end here */
     MPIDI_CH3_PKT_ACCUM_IMMED,     /* optimization for short accumulate */
     /* FIXME: Add PUT, GET_IMMED packet types */
-    MPIDI_CH3_PKT_FLOW_CNTL_UPDATE,  /* FIXME: Unused */
+    MPIDI_CH3_PKT_FLOW_CNTL_UPDATE,
     MPIDI_CH3_PKT_CLOSE,
     MPIDI_CH3_PKT_END_CH3
     /* The channel can define additional types by defining the value
@@ -120,9 +122,6 @@ typedef struct MPIDI_CH3_Pkt_send
     MPIDI_Message_match match;
     MPIDI_msg_sz_t data_sz;
     MPI_Request sender_req_id;	/* needed for ssend and send cancel */
-#if defined(MPID_USE_SEQUENCE_NUMBERS)
-    MPID_Seqnum_t seqnum;
-#endif    
 }
 MPIDI_CH3_Pkt_send_t;
 
@@ -158,9 +157,6 @@ typedef struct MPIDI_CH3_Pkt_eagershort_send
 #endif /* defined(_OSU_MVAPICH_) */
     MPIDI_Message_match match;
     MPIDI_msg_sz_t data_sz;
-#if defined(MPID_USE_SEQUENCE_NUMBERS)
-    MPID_Seqnum_t seqnum;
-#endif
     int  data[MPIDI_EAGER_SHORT_INTS];    /* FIXME: Experimental for now */
 }
 MPIDI_CH3_Pkt_eagershort_send_t;
@@ -186,9 +182,6 @@ typedef struct MPIDI_CH3_Pkt_rndv_req_to_send
     MPIDI_Message_match match;
     MPIDI_msg_sz_t data_sz;
     MPI_Request sender_req_id;  /* needed for ssend and send cancel */
-#if defined(MPID_USE_SEQUENCE_NUMBERS)
-    MPID_Seqnum_t seqnum;
-#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
     MPIDI_CH3I_MRAILI_RNDV_INFO_DECL
 } MPIDI_CH3_Pkt_rndv_req_to_send_t;
 
@@ -218,9 +211,6 @@ typedef struct MPIDI_CH3I_Pkt_rndv_r3_Ack
 {
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#if defined(MPID_USE_SEQUENCE_NUMBERS)
-    MPID_Seqnum_t seqnum;
-#endif
     uint32_t ack_data;
 } MPIDI_CH3_Pkt_rndv_r3_ack_t;
 #endif /* defined(_OSU_MVAPICH_) */
@@ -231,10 +221,7 @@ typedef struct MPIDI_CH3_Pkt_rndv_clr_to_send
 #if defined(_OSU_MVAPICH_)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#if defined(MPID_USE_SEQUENCE_NUMBERS)
-    MPID_Seqnum_t seqnum;
-#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
-    int recv_sz;
+    MPIDI_msg_sz_t recv_sz;
     MPIDI_CH3I_MRAILI_RNDV_INFO_DECL
 #else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
@@ -260,18 +247,12 @@ MPIDI_CH3_Pkt_rndv_send_t;
 typedef struct MPIDI_CH3_Pkt_packetized_send_start {
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#if defined(MPID_USE_SEQUENCE_NUMBERS)
-    MPID_Seqnum_t seqnum;
-#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
     MPIDI_msg_sz_t origin_head_size;
 } MPIDI_CH3_Pkt_packetized_send_start_t;
 
 typedef struct MPIDI_CH3_Pkt_packetized_send_data {
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#if defined(MPID_USE_SEQUENCE_NUMBERS)
-    MPID_Seqnum_t seqnum;
-#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
     MPI_Request receiver_req_id;
 #if defined(_SMP_LIMIC_)
     MPID_Request *send_req_id;
@@ -284,19 +265,28 @@ typedef struct MPIDI_CH3_Pkt_rput_finish_t
 {
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#if defined(MPID_USE_SEQUENCE_NUMBERS)
-    MPID_Seqnum_t seqnum;
-#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
     MPI_Request receiver_req_id; /* echoed*/
 } MPIDI_CH3_Pkt_rput_finish_t;
+
+typedef struct MPIDI_CH3_Pkt_zcopy_finish_t
+{
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+    int hca_index;
+    MPI_Request receiver_req_id;
+} MPIDI_CH3_Pkt_zcopy_finish_t;
+
+typedef struct MPIDI_CH3_Pkt_zcopy_ack_t
+{
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+    MPI_Request sender_req_id; 
+} MPIDI_CH3_Pkt_zcopy_ack_t;
 
 typedef struct MPIDI_CH3_Pkt_rget_finish_t
 {
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#if defined(MPID_USE_SEQUENCE_NUMBERS)
-    MPID_Seqnum_t seqnum;
-#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
     MPI_Request sender_req_id;
 } MPIDI_CH3_Pkt_rget_finish_t;
 
@@ -304,9 +294,6 @@ typedef struct MPIDI_CH3_Pkt_cm_establish_t
 {
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#if defined(MPID_USE_SEQUENCE_NUMBERS)
-    MPID_Seqnum_t seqnum;
-#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
     int port_name_tag;
     uint64_t vc_addr; /* The VC that is newly created */
 } MPIDI_CH3_Pkt_cm_establish_t;
@@ -318,9 +305,6 @@ typedef struct MPIDI_CH3_Pkt_cancel_send_req
 #if defined(_OSU_MVAPICH_)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#if defined(MPID_USE_SEQUENCE_NUMBERS)
-    MPID_Seqnum_t seqnum;
-#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
 #else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
 #endif /* defined(_OSU_MVAPICH_) */
@@ -334,9 +318,6 @@ typedef struct MPIDI_CH3_Pkt_cancel_send_resp
 #if defined(_OSU_MVAPICH_)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#if defined(MPID_USE_SEQUENCE_NUMBERS)
-    MPID_Seqnum_t seqnum;
-#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
 #else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
 #endif /* defined(_OSU_MVAPICH_) */
@@ -354,9 +335,6 @@ typedef struct MPIDI_CH3_Pkt_put
 #if defined(_OSU_MVAPICH_)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#if defined(MPID_USE_SEQUENCE_NUMBERS)
-    MPID_Seqnum_t seqnum;
-#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
     uint32_t rma_issued;
 #else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
@@ -389,9 +367,6 @@ typedef struct MPIDI_CH3_Pkt_put_rndv
 {
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#if defined(MPID_USE_SEQUENCE_NUMBERS)
-    MPID_Seqnum_t seqnum;
-#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
     uint32_t rma_issued;
     void *addr;
     int count;
@@ -416,9 +391,6 @@ typedef struct MPIDI_CH3_Pkt_get
 #if defined(_OSU_MVAPICH_)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#if defined(MPID_USE_SEQUENCE_NUMBERS)
-    MPID_Seqnum_t seqnum;
-#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
     uint32_t rma_issued;
 #else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
@@ -452,9 +424,6 @@ typedef struct MPIDI_CH3_Pkt_get_rndv
 {
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#if defined(MPID_USE_SEQUENCE_NUMBERS)
-    MPID_Seqnum_t seqnum;
-#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
     uint32_t rma_issued;
     void *addr;
     int count;
@@ -479,9 +448,6 @@ typedef struct MPIDI_CH3_Pkt_get_resp
 #if defined(_OSU_MVAPICH_)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#if defined(MPID_USE_SEQUENCE_NUMBERS)
-    MPID_Seqnum_t seqnum;
-#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
     int protocol;
 #else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
@@ -507,9 +473,6 @@ typedef struct MPIDI_CH3_Pkt_accum_rndv
 {
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#if defined(MPID_USE_SEQUENCE_NUMBERS)
-    MPID_Seqnum_t seqnum;
-#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
     uint32_t rma_issued;
     void *addr;
     int count;
@@ -536,9 +499,6 @@ typedef struct MPIDI_CH3_Pkt_accum
 #if defined(_OSU_MVAPICH_)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#if defined(MPID_USE_SEQUENCE_NUMBERS)
-    MPID_Seqnum_t seqnum;
-#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
     uint32_t rma_issued;
 #else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
@@ -572,9 +532,6 @@ typedef struct MPIDI_CH3_Pkt_accum_immed
 #if defined(_OSU_MVAPICH_)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#if defined(MPID_USE_SEQUENCE_NUMBERS)
-    MPID_Seqnum_t seqnum;
-#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
     uint32_t rma_issued;
 #else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
@@ -607,9 +564,6 @@ typedef struct MPIDI_CH3_Pkt_lock
 #if defined(_OSU_MVAPICH_)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#if defined(MPID_USE_SEQUENCE_NUMBERS)
-    MPID_Seqnum_t seqnum;
-#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
 #else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
 #endif /* defined(_OSU_MVAPICH_) */
@@ -630,9 +584,6 @@ typedef struct MPIDI_CH3_Pkt_lock_granted
 #if defined(_OSU_MVAPICH_)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#if defined(MPID_USE_SEQUENCE_NUMBERS)
-    MPID_Seqnum_t seqnum;
-#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
 #else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
 #endif /* defined(_OSU_MVAPICH_) */
@@ -654,9 +605,6 @@ typedef struct MPIDI_CH3_Pkt_lock_put_unlock
 #if defined(_OSU_MVAPICH_)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#if defined(MPID_USE_SEQUENCE_NUMBERS)
-    MPID_Seqnum_t seqnum;
-#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
     uint32_t rma_issued;
 #else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
@@ -675,9 +623,6 @@ typedef struct MPIDI_CH3_Pkt_lock_get_unlock
 #if defined(_OSU_MVAPICH_)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#if defined(MPID_USE_SEQUENCE_NUMBERS)
-    MPID_Seqnum_t seqnum;
-#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
     uint32_t rma_issued;
 #else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
@@ -697,9 +642,6 @@ typedef struct MPIDI_CH3_Pkt_lock_accum_unlock
 #if defined(_OSU_MVAPICH_)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#if defined(MPID_USE_SEQUENCE_NUMBERS)
-    MPID_Seqnum_t seqnum;
-#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
     uint32_t rma_issued;
 #else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
@@ -720,9 +662,6 @@ typedef struct MPIDI_CH3_Pkt_close
 #if defined(_OSU_MVAPICH_)
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-#if defined(MPID_USE_SEQUENCE_NUMBERS)
-    MPID_Seqnum_t seqnum;
-#endif /* defined(MPID_USE_SEQUENCE_NUMBERS) */
 #else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
 #endif /* defined(_OSU_MVAPICH_) */

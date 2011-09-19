@@ -19,6 +19,9 @@
 #include "mpiimpl.h"
 #include "mpi_init.h"
 
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#include "coll_shmem.h"
+#endif
 
 /* -- Begin Profiling Symbol Block for routine MPI_Init */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -93,9 +96,9 @@ int MPI_Init( int *argc, char ***argv )
 #endif
 
     MPID_MPI_INIT_FUNC_ENTER(MPID_STATE_MPI_INIT);
-#if defined(_OSU_MVAPICH_)
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     MV2_Read_env_vars();
-#endif /* defined(_OSU_MVAPICH_) */
+#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
 #   ifdef HAVE_ERROR_CHECKING
     {
