@@ -1188,8 +1188,8 @@ int MPIR_Bcast_intra_MV2 (
 {
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
-    int comm_size, rank;
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+    int comm_size, rank;
     int nbytes=0, intra_node_root=0;
     int type_size, is_homogeneous, is_contig, position;
     void *tmp_buf = NULL; 
@@ -1212,10 +1212,11 @@ int MPIR_Bcast_intra_MV2 (
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
     if (count == 0) goto fn_exit;
 
-    comm_size = comm_ptr->local_size;
-    rank = comm_ptr->rank; 
 
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+    comm_size = comm_ptr->local_size;
+    rank = comm_ptr->rank; 
+    
     if (HANDLE_GET_KIND(datatype) == HANDLE_KIND_BUILTIN)
         is_contig = 1;
     else {

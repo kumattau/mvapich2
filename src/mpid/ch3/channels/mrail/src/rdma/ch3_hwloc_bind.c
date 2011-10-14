@@ -384,20 +384,14 @@ static void insert_core_mapping(int ix, hwloc_obj_t pu, obj_attribute_type * tre
 void map_scatter_load(obj_attribute_type *tree)
 {
         int k;
-        int depth_cores, depth_sockets, depth_nodes, num_cores = 0, num_sockets = 0, num_nodes = 0;
+        int depth_cores, depth_sockets, depth_nodes, num_cores = 0;
         hwloc_obj_t root, node, sockets, core_parent, core, result;
 
         root =  hwloc_get_root_obj(topology);
 
         depth_nodes = hwloc_get_type_depth(topology, HWLOC_OBJ_NODE);
-        if(depth_nodes != HWLOC_TYPE_DEPTH_UNKNOWN) {
-                num_nodes = hwloc_get_nbobjs_by_depth(topology, depth_nodes);
-        }
 
         depth_sockets = hwloc_get_type_depth(topology, HWLOC_OBJ_SOCKET);
-        if(depth_sockets != HWLOC_TYPE_DEPTH_UNKNOWN) {
-                num_sockets = hwloc_get_nbobjs_by_depth(topology, depth_sockets);
-        }
 
         depth_cores = hwloc_get_type_depth(topology, HWLOC_OBJ_CORE);
         if(depth_cores != HWLOC_TYPE_DEPTH_UNKNOWN) {
@@ -905,7 +899,8 @@ static int num_digits(int numcpus)
 int get_cpu_mapping_hwloc(long N_CPUs_online, hwloc_topology_t tp)
 {
     unsigned topodepth = -1, depth = -1;
-    int num_sockets = 0, num_processes = 0, rc = 0, i;
+    int num_processes = 0, rc = 0, i;
+    int num_sockets ATTRIBUTE ((unused)) = 0;
     int num_cpus=0; 
     char *s;
     struct dirent **namelist;

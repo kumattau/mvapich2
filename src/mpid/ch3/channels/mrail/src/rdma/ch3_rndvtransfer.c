@@ -82,7 +82,6 @@ int MPIDI_CH3_Prepare_rndv_cts(MPIDI_VC_t * vc,
                                MPID_Request * rreq)
 {
     int mpi_errno = MPI_SUCCESS;
-    int reg_success;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_PREPARE_RNDV_CTS);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_PREPARE_RNDV_CTS);
 
@@ -99,7 +98,7 @@ int MPIDI_CH3_Prepare_rndv_cts(MPIDI_VC_t * vc,
         }
     case VAPI_PROTOCOL_RPUT:
         {
-            reg_success = MPIDI_CH3I_MRAIL_Prepare_rndv(vc, rreq);
+            MPIDI_CH3I_MRAIL_Prepare_rndv(vc, rreq);
             MPIDI_CH3I_MRAIL_SET_PKT_RNDV(cts_pkt, rreq);
             MPIDI_CH3I_MRAIL_REVERT_RPUT(rreq);
             break;

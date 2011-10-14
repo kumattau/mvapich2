@@ -188,6 +188,7 @@ static void inline VBUF_SET_RDMA_ADDR_KEY(
 int allocate_vbufs(int nvbufs);
 
 void deallocate_vbufs(int);
+void deallocate_vbuf_region();
 
 vbuf* get_vbuf();
 

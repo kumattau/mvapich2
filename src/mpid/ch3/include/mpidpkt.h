@@ -119,9 +119,9 @@ typedef struct MPIDI_CH3_Pkt_send
 #else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;  /* XXX - uint8_t to conserve space ??? */
 #endif /* defined(_OSU_MVAPICH_) */
+    MPI_Request sender_req_id;	/* needed for ssend and send cancel */
     MPIDI_Message_match match;
     MPIDI_msg_sz_t data_sz;
-    MPI_Request sender_req_id;	/* needed for ssend and send cancel */
 }
 MPIDI_CH3_Pkt_send_t;
 
@@ -179,9 +179,9 @@ typedef struct MPIDI_CH3_Pkt_rndv_req_to_send
 {
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+    MPI_Request sender_req_id;  /* needed for ssend and send cancel */
     MPIDI_Message_match match;
     MPIDI_msg_sz_t data_sz;
-    MPI_Request sender_req_id;  /* needed for ssend and send cancel */
     MPIDI_CH3I_MRAILI_RNDV_INFO_DECL
 } MPIDI_CH3_Pkt_rndv_req_to_send_t;
 

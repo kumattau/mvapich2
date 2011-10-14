@@ -32,5 +32,6 @@
  */
 extern void start_sp_thread (sigset_t, void (*)(int), int);
 extern void stop_sp_thread (void);
+extern void clear_sigmask (void);
 
 #endif

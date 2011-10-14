@@ -1034,7 +1034,8 @@ static int cm_handle_pending_send()
             }
 
 #ifdef _ENABLE_XRC_
-            if (vc->mrail.sreq_head) { /*has rndv*/
+            if (USE_XRC && VC_XST_ISSET (vc, XF_SEND_IDLE)
+                    && (vc->mrail.sreq_head)) { /*has rndv*/
                 PUSH_FLOWLIST(vc);
             }
 

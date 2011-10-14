@@ -148,5 +148,5 @@ int MPIDI_nem_ib_eager_send(MPIDI_VC_t * vc,
                         int pkt_len,
                         int *num_bytes_ptr,
                         vbuf **buf_handle);
-MPIDI_nem_ib_lmt_r3_ack_send(MPIDI_VC_t *vc);
+int MPIDI_nem_ib_lmt_r3_ack_send(MPIDI_VC_t *vc);
 #endif

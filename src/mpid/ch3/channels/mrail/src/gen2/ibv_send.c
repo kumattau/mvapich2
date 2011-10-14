@@ -1092,7 +1092,6 @@ int MPIDI_CH3I_MRAILI_rget_finish(MPIDI_VC_t * vc,
 {
     vbuf *v;
     int mpi_errno;
-    MPIDI_CH3I_MRAILI_Pkt_comm_header *pheader;
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_MRAILI_RGET_FINISH);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_MRAILI_RGET_FINISH);
@@ -1100,8 +1099,6 @@ int MPIDI_CH3I_MRAILI_rget_finish(MPIDI_VC_t * vc,
     v = get_vbuf();
     *buf_handle = v;
     *num_bytes_ptr = MRAILI_Fill_start_buffer(v, iov, n_iov);
-
-    pheader = v->pheader;
 
     vbuf_init_send(v, *num_bytes_ptr, rail);
 
@@ -1122,7 +1119,6 @@ int MPIDI_CH3I_MRAILI_rput_complete(MPIDI_VC_t * vc,
 {
     vbuf * v;
     int mpi_errno;
-    MPIDI_CH3I_MRAILI_Pkt_comm_header *pheader;
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_MRAILI_RPUT_COMPLETE);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_MRAILI_RPUT_COMPLETE);
@@ -1134,7 +1130,6 @@ int MPIDI_CH3I_MRAILI_rput_complete(MPIDI_VC_t * vc,
 
     DEBUG_PRINT("[eager send] len %d, selected rail hca %d, rail %d\n",
                 *num_bytes_ptr, vc->mrail.rails[rail].hca_index, rail);
-    pheader = v->pheader;
 
     vbuf_init_send(v, *num_bytes_ptr, rail);
 

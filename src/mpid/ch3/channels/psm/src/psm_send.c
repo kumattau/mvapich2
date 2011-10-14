@@ -72,7 +72,6 @@ psm_error_t psm_send_pkt(MPID_Request **rptr, MPIDI_Message_match m,
         ++psm_tot_sends;
     }
 
-out:
     return psmerr;
 }
 

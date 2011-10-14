@@ -83,7 +83,7 @@ typedef struct
 /**
  *  accessor macro to private fields in VC
  */
-#define VC_FIELD(vc, field) (((MPID_nem_ib_vc_area *)((MPIDI_CH3I_VC *)(vc)->channel_private)->netmod_area.padding)->field)
+#define VC_FIELD(vc, field) (((MPID_nem_ib_vc_area *)(&((MPIDI_CH3I_VC *)(vc)->channel_private)->netmod_area))->field)
 
 #define MPID_NEM_IB_UD_QPN_KEY      "ud_qp_key"
 #define MPID_NEM_IB_LID_KEY         "lid_key"

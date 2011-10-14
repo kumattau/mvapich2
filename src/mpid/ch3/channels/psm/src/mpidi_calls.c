@@ -62,7 +62,7 @@ inline int MPIDI_CH3_iStartMsg(MPIDI_VC_t *vc, void *pkt, MPIDI_msg_sz_t pkt_sz,
 
 int MPIDI_CH3_iSend(MPIDI_VC_t *vc, MPID_Request *req, void *pkt, MPIDI_msg_sz_t pkt_sz)
 {
-
+    return MPI_SUCCESS; 
 }
 
 #undef FUNCNAME
@@ -72,7 +72,7 @@ int MPIDI_CH3_iSend(MPIDI_VC_t *vc, MPID_Request *req, void *pkt, MPIDI_msg_sz_t
 
 int MPIDI_CH3_Connection_terminate(MPIDI_VC_t *vc)
 {
-
+    return MPI_SUCCESS; 
 }
 
 #undef FUNCNAME
@@ -82,7 +82,7 @@ int MPIDI_CH3_Connection_terminate(MPIDI_VC_t *vc)
 
 int MPIDI_CH3_Connect_to_root(const char *port, MPIDI_VC_t **vc)
 {
-
+    return MPI_SUCCESS; 
 }
 
 #undef FUNCNAME
@@ -139,7 +139,7 @@ int MPIDI_CH3_InitCompleted()
 
 int MPIDI_CH3_PortFnsInit(MPIDI_PortFns *fns)
 {
-
+    return MPI_SUCCESS; 
 }
 
 #undef FUNCNAME
@@ -149,7 +149,7 @@ int MPIDI_CH3_PortFnsInit(MPIDI_PortFns *fns)
 
 int MPIDI_CH3_Get_business_card(int myRank, char *port, int len)
 {
-
+    return MPI_SUCCESS; 
 }
 
 #undef FUNCNAME
@@ -274,7 +274,8 @@ int MPIDI_CH3_SendNonContig(MPIDI_VC_t *vc, MPID_Request *sreq,
                             MPIDI_Message_match match, int blocking)
 {
     fprintf(stderr, "SHOULD NOT BE USED\n");
-    fflush(stderr);       
+    fflush(stderr);
+    return MPI_SUCCESS; 
 }
     
 #undef FUNCNAME

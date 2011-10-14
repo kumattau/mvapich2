@@ -90,6 +90,7 @@ static int hca_check(int rank) {
         /* umad_ca_t ca; */
         char *ca_name;
         ca_name = (char *)ibv_get_device_name(dev_list[hcan]);
+        printf ("device_name: %s\n",ca_name);
         /*
         ret = umad_get_ca(ca_name, &ca);
         if (ret<0) {

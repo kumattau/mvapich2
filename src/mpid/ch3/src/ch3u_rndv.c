@@ -16,6 +16,10 @@
  */
 
 #include "mpidimpl.h"
+#ifdef _OSU_MVAPICH_
+#include "mpid_mrail_rndv.h"
+#endif
+
 
 /*
  * This file contains the implementation of the rendezvous protocol
@@ -101,7 +105,7 @@ int MPIDI_CH3_RndvSend( MPID_Request **sreq_p, const void * buf, int count,
 	    mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL,
 					     FCNAME, __LINE__, MPI_ERR_OTHER,
 					     "**ch3|loadsendiov", 0);
-	    goto fn_exit;
+	    goto fn_fail;
 	}
 	/* --END ERROR HANDLING-- */
     }
@@ -115,7 +119,7 @@ int MPIDI_CH3_RndvSend( MPID_Request **sreq_p, const void * buf, int count,
 	mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL,
 					 FCNAME, __LINE__, MPI_ERR_OTHER,
 					 "**ch3|rtspkt", 0);
-	goto fn_exit;
+	goto fn_fail;
     }
     /* --END ERROR HANDLING-- */
     
@@ -210,9 +214,6 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     *buflen = sizeof(MPIDI_CH3_Pkt_t);
 #if defined(_OSU_MVAPICH_)
     MPIDI_CH3_RNDV_SET_REQ_INFO(rreq, rts_pkt);
-    extern int MPIDI_CH3_Rndv_transfer(MPIDI_VC_t *, MPID_Request *, MPID_Request *,
-                                       MPIDI_CH3_Pkt_rndv_clr_to_send_t *,
-                                       MPIDI_CH3_Pkt_rndv_req_to_send_t *);
 #endif /* defined(_OSU_MVAPICH_) */
     
     if (found)
@@ -350,9 +351,6 @@ int MPIDI_CH3_PktHandler_RndvClrToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 #if defined(_OSU_MVAPICH_)
     MPIDI_msg_sz_t recv_size;
     int i;
-    extern int MPIDI_CH3_Rndv_transfer(MPIDI_VC_t *, MPID_Request *, MPID_Request *,
-                                       MPIDI_CH3_Pkt_rndv_clr_to_send_t *,
-                                       MPIDI_CH3_Pkt_rndv_req_to_send_t *);
 #else
     MPID_Request * rts_sreq;
     MPIDI_CH3_Pkt_t upkt;
@@ -378,9 +376,9 @@ int MPIDI_CH3_PktHandler_RndvClrToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
         recv_size = cts_pkt->recv_sz;
         for (i = 0; i < sreq->dev.iov_count ; i ++) {
             if (recv_size < sreq->dev.iov[i].MPID_IOV_LEN) {
-                fprintf(stderr, "Warning! Rndv Receiver is expecting %d Bytes "
-                        "But, is receiving %d Bytes \n", 
-                        (int) sreq->dev.iov[i].MPID_IOV_LEN, recv_size);
+                fprintf(stderr, "Warning! Rndv Receiver is expecting %lu Bytes "
+                        "But, is receiving %lu Bytes \n", 
+                        sreq->dev.iov[i].MPID_IOV_LEN, recv_size);
                 sreq->dev.iov[i].MPID_IOV_LEN = recv_size;
                 sreq->dev.iov_count = i + 1;
                 break;

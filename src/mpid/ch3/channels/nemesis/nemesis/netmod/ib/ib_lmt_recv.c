@@ -140,7 +140,7 @@ int MPIDI_CH3U_Post_data_receive_found_temp(MPID_Request * rreq)
 {
     int dt_contig;
     MPI_Aint dt_true_lb;
-    MPIDI_msg_sz_t userbuf_sz;
+    MPIDI_msg_sz_t userbuf_sz ATTRIBUTE((unused));
     MPID_Datatype * dt_ptr = NULL;
     MPIDI_msg_sz_t data_sz;
     int mpi_errno = MPI_SUCCESS;
@@ -377,7 +377,6 @@ int MPIDI_NEM_Prepare_ib_lmt_r_cookie(MPIDI_VC_t * vc,
                                MPID_Request * rreq)
 {
     int mpi_errno = MPI_SUCCESS;
-    int reg_success;
                                                   
     switch (REQ_FIELD(rreq, protocol)) {
     case MV2_LMT_PROTOCOL_R3:
@@ -388,7 +387,7 @@ int MPIDI_NEM_Prepare_ib_lmt_r_cookie(MPIDI_VC_t * vc,
         }
     case MV2_LMT_PROTOCOL_RPUT:
         {
-            reg_success = MPIDI_CH3I_MRAIL_Prepare_rndv(vc, rreq);
+            MPIDI_CH3I_MRAIL_Prepare_rndv(vc, rreq);
             MPIDI_CH3I_MRAIL_SET_COOKIE_RNDV(r_cookie_buf, rreq);
             MPIDI_CH3I_MRAIL_REVERT_RPUT(rreq);
             break;
@@ -419,7 +418,6 @@ int MPIDI_NEM_Prepare_ib_lmt_r_cookie(MPIDI_VC_t * vc,
         }
     }
 
-fn_fail:
     return mpi_errno;
 }
 

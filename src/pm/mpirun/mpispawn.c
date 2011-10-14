@@ -150,11 +150,11 @@ void mpispawn_abort(int abort_code)
 {
     PRINT_DEBUG(DEBUG_Fork_verbose, "MPISPAWN ABORT with code %d\n", abort_code);
     mpispawn_state = MPISPAWN_STATE_FINALIZING;
-    report_error(abort_code);
 #ifdef CKPT
     cr_cleanup();
 #endif
     process_cleanup();
+    report_error(abort_code);
     PRINT_DEBUG(DEBUG_Fork_verbose, "exit(EXIT_FAILURE)\n");
     exit(EXIT_FAILURE);
 }
@@ -291,6 +291,7 @@ void spawn_processes(int n)
     for (i = 0; i < n; i++) {
         local_processes[i].pid = fork();
         if (local_processes[i].pid == 0) {
+            clear_sigmask();
             PRINT_DEBUG(DEBUG_Fork_verbose, "FORK MPI proc (pid=%d)\n", getpid());
 
 #ifdef CKPT
@@ -1056,6 +1057,7 @@ int main(int argc, char *argv[])
 
             MPISPAWN_NCHILD++;
             if (0 == fork()) {
+                clear_sigmask();
                 mpispawn_env = mkstr("%s MPISPAWN_ID=%d MPISPAWN_LOCAL_NPROCS=%d", mpispawn_env, target, np[target]);
                 command = mkstr("%s %s %s %d", command, mpispawn_env, args, NON_LINEAR_num_mpispawn_children / 2);
 
@@ -1191,9 +1193,8 @@ int main(int argc, char *argv[])
     while (!cr_mig_tgt && num_migrations > 0);
     // At src of migration. Keep idle till mpirun_rsh tells me to stop
 
-    int ret = 0;
     dbg("%s pthread_cancel wfe_thread\n", my_hostname);
-    ret = pthread_cancel(CR_wfe_tid);
+    pthread_cancel(CR_wfe_tid);
 
     pthread_join(CR_wfe_tid, NULL);
     dbg("%s: ******  will exit now... \n", my_hostname);

@@ -117,7 +117,7 @@ static psm_error_t psm_iget_rndvsend(MPID_Request *req, int dest, void *buf, int
 void psm_iput_rndv(int dest, void *buf, int buflen, int tag, int src, MPID_Request **rptr)
 {
     uint64_t stag = 0;
-    psm_error_t psmerr;
+    psm_error_t psmerr ATTRIBUTE((unused));
     MPID_Request *rndvreq = NULL;
 
     rndvreq = psm_create_req();
@@ -141,10 +141,10 @@ int psm_1sided_putpkt(MPIDI_CH3_Pkt_put_t *pkt, MPID_IOV *iov, int iov_n,
 {
     vbuf *vptr;
     void *iovp, *off;
+    int mpi_errno = MPI_SUCCESS;
     int rank, i;
     uint32_t buflen = 0, len;
     MPID_Request *req;
-    MPID_Request temp;
 
     req = psm_create_req();
     req->kind = MPID_REQUEST_SEND;
@@ -192,6 +192,7 @@ int psm_1sided_putpkt(MPIDI_CH3_Pkt_put_t *pkt, MPID_IOV *iov, int iov_n,
         psm_iput_rndv(rank, iovp, len, pkt->rndv_tag, pkt->mapped_srank, rptr);
         ++psm_tot_rndv_puts;
     }
+    return mpi_errno;
 }
 
 /* copy iov into a single vbuf, post send to target rank,
@@ -203,9 +204,9 @@ int psm_1sided_accumpkt(MPIDI_CH3_Pkt_accum_t *pkt, MPID_IOV *iov, int iov_n,
     vbuf *vptr;
     void *iovp, *off;
     int rank, i;
+    int mpi_errno = MPI_SUCCESS;
     uint32_t buflen = 0, len;
     MPID_Request *req;
-    MPID_Request temp;
 
     req = psm_create_req();
     req->kind = MPID_REQUEST_SEND;
@@ -252,6 +253,7 @@ int psm_1sided_accumpkt(MPIDI_CH3_Pkt_accum_t *pkt, MPID_IOV *iov, int iov_n,
         psm_iput_rndv(rank, iovp, len, pkt->rndv_tag, pkt->mapped_srank, rptr);
     }
     ++psm_tot_accs;
+    return mpi_errno;
 }
 
 #undef FUNCNAME
@@ -477,8 +479,6 @@ int psm_1sided_input(MPID_Request *req, int inlen)
     {
         _SECTION(GET_RESP);
         MPIDI_CH3_Pkt_get_resp_t *resppkt = (MPIDI_CH3_Pkt_get_resp_t *) pkt;
-        MPID_Win *nptr;
-        MPID_Win_get_ptr(resppkt->target_win_handle, nptr);
         GET_VC(vc, resppkt->target_win_handle, resppkt->source_rank);
         vc->ch.recv_active = req;
         req->dev.target_win_handle = resppkt->source_win_handle;

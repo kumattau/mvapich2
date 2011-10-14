@@ -150,4 +150,18 @@ stop_sp_thread (void)
     is_joined = 1;
 }
 
+/*
+ * Use this function to unset any blocked or ignored signals.  It is important
+ * to do this for any forked processes that we want to respond to signals
+ * normally.
+ */
+extern void
+clear_sigmask (void)
+{
+    sigset_t sigmask;
+
+    sigemptyset(&sigmask);
+    sigprocmask(SIG_SETMASK, &sigmask, NULL);
+}
+
 /* vi:set sw=4 sts=4 tw=76 expandtab: */

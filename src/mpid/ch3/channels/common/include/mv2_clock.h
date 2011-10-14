@@ -53,12 +53,12 @@
 typedef unsigned long long cycles_t;
 static inline cycles_t get_cycles()
 {
-	unsigned low, high;
-	unsigned long long val;
-	asm volatile ("rdtsc" : "=a" (low), "=d" (high));
-	val = high;
-	val = (val << 32) | low;
-	return val;
+    unsigned low, high;
+    unsigned long long val;
+    asm volatile ("rdtsc" : "=a" (low), "=d" (high));
+    val = high;
+    val = (val << 32) | low;
+    return val;
 }
 #elif defined(__PPC__) || defined(__PPC64__)
 /* Note: only PPC CPUs which have mftb instruction are supported. */
@@ -66,20 +66,20 @@ static inline cycles_t get_cycles()
 typedef unsigned long cycles_t;
 static inline cycles_t get_cycles()
 {
-	cycles_t ret;
+    cycles_t ret;
 
-	asm volatile ("mftb %0" : "=r" (ret) : );
-	return ret;
+    asm volatile ("mftb %0" : "=r" (ret) : );
+    return ret;
 }
 #elif defined(__ia64__)
 /* Itanium2 and up has ar.itc (Itanium1 has errata) */
 typedef unsigned long cycles_t;
 static inline cycles_t get_cycles()
 {
-	cycles_t ret;
+    cycles_t ret;
 
-	asm volatile ("mov %0=ar.itc" : "=r" (ret));
-	return ret;
+    asm volatile ("mov %0=ar.itc" : "=r" (ret));
+    return ret;
 }
 
 #else

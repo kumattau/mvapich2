@@ -1155,8 +1155,8 @@ int MRAILI_Process_send(void *vbuf_addr)
                 REQ_FIELD(orig_req, d_entry) = NULL;
             }
             int dt_contig;
-            MPIDI_msg_sz_t data_sz;
-            MPI_Aint dt_true_lb;
+            MPIDI_msg_sz_t data_sz ATTRIBUTE((unused));
+            MPI_Aint dt_true_lb ATTRIBUTE((unused));
             MPID_Datatype * dt_ptr;
             MPIDI_Datatype_get_info(orig_req->dev.user_count, orig_req->dev.datatype, dt_contig, data_sz, dt_ptr, dt_true_lb);
             if(!dt_contig)

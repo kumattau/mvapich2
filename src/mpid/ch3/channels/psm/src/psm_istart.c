@@ -36,7 +36,6 @@ int psm_istartmsgv(MPIDI_VC_t *vc, MPID_IOV *iov, int iov_n, MPID_Request **rptr
             iov[0].MPID_IOV_LEN = sizeof(MPIDI_CH3_Pkt_t);
             DBG("mpi put to %d\n", putpkt->mapped_trank);
             mpi_errno = psm_1sided_putpkt(putpkt, iov, iov_n, rptr); //ODOT: err
-            mpi_errno = MPI_SUCCESS;
             goto fn_exit;
         }
         case MPIDI_CH3_PKT_ACCUMULATE: {
@@ -44,7 +43,6 @@ int psm_istartmsgv(MPIDI_VC_t *vc, MPID_IOV *iov, int iov_n, MPID_Request **rptr
             iov[0].MPID_IOV_LEN = sizeof(MPIDI_CH3_Pkt_t);
             DBG("mpi accum to %d\n", acpkt->mapped_trank);
             mpi_errno = psm_1sided_accumpkt(acpkt, iov, iov_n, rptr); //ODOT: error handle
-            mpi_errno = MPI_SUCCESS;
             goto fn_exit;
         }
         case MPIDI_CH3_PKT_GET_RESP: {
@@ -67,7 +65,7 @@ int psm_istartmsgv(MPIDI_VC_t *vc, MPID_IOV *iov, int iov_n, MPID_Request **rptr
                 MPIU_ERR_POP(mpi_errno);
             }
             if(getpkt->rndv_mode) {
-                mpi_errno = psm_1sc_get_rndvrecv((*rptr), getpkt,
+                mpi_errno = psm_1sc_get_rndvrecv((*rptr), (MPIDI_CH3_Pkt_t *)getpkt,
                         getpkt->mapped_trank);
             }
             goto fn_exit;
@@ -211,8 +209,9 @@ fn_exit:
     if(unlikely(mpi_errno != MPI_SUCCESS)) {
         MPIU_ERR_POP(mpi_errno);
     }
-fn_fail:    
     return mpi_errno;
+fn_fail:    
+    goto fn_exit;
 }
 
 #undef FUNCNAME

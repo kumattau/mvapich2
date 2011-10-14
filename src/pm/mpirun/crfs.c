@@ -125,7 +125,6 @@ void *crfs_init(struct fuse_conn_info *conn)
     dbg("\tprivate_data is %p\n", CRFS_DATA);
     // crfs_data is the fuse_get_context()->private_data, is the 
     // last param passed to fuse_main(..., priv_data)
-    int i;
     char ch;
 #ifdef CKPT_MIG
     memset(&minfo, 0, sizeof(minfo));
@@ -136,7 +135,7 @@ void *crfs_init(struct fuse_conn_info *conn)
         ch = '0';
     dbg("****  crfs_mode=%d, mig_role=%d\n", crfs_mode, mig_role);
 #if BUILDIN_MOD
-    i = write(pipe_fd, &ch, 1);
+    write(pipe_fd, &ch, 1);
     close(pipe_fd);
 #endif
 
@@ -416,7 +415,6 @@ int crfs_create(const char *path, mode_t mode, struct fuse_file_info *fi)
  */
 int crfs_open(const char *path, struct fuse_file_info *fi)
 {
-    int retstat = 0;
     int fd;
     char fpath[PATH_MAX];
 
@@ -428,7 +426,7 @@ int crfs_open(const char *path, struct fuse_file_info *fi)
 
     fd = open(fpath, fi->flags);
     if (fd < 0) {
-        retstat = crfs_error("crfs_open open");
+        crfs_error("crfs_open open");
         error("fail with: %s: %s\n", fpath, strerror(errno));
     }
     /////////////////////////////////////

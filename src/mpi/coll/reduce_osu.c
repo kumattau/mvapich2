@@ -1132,8 +1132,11 @@ int MPIR_Reduce_MV2 (
 {
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
-    int is_commutative, comm_size, type_size, pof2;
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+    int is_commutative;
     MPID_Op *op_ptr;
+#endif /*  #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
+    int comm_size, type_size, pof2;
     if (count == 0) return MPI_SUCCESS;
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
@@ -1141,6 +1144,7 @@ int MPIR_Reduce_MV2 (
     comm_size = comm_ptr->local_size;
     
     MPID_Datatype_get_size_macro(datatype, type_size);
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     if (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) {
         is_commutative = 1;
         /* get the function by indexing into the op table */
@@ -1152,6 +1156,7 @@ int MPIR_Reduce_MV2 (
             is_commutative = 1;
         }
     }
+#endif /*  #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
 
     /* find nearest power-of-two less than or equal to comm_size */

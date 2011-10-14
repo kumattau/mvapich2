@@ -140,8 +140,8 @@ int CR_Init(int nProcs)
 {
     char *temp;
 
+#ifndef CR_FTB
     int mpirun_port;
-
     temp = getenv("MPISPAWN_MPIRUN_CR_PORT");
     if (temp) {
         mpirun_port = atoi(temp);
@@ -149,6 +149,7 @@ int CR_Init(int nProcs)
         PRINT_ERROR("MPISPAWN_MPIRUN_CR_PORT unknown\n");
         exit(EXIT_FAILURE);
     }
+#endif
 
     temp = getenv("MPISPAWN_CR_CONTEXT");
     if (temp) {

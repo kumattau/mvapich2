@@ -1057,7 +1057,10 @@ void MV2_Read_env_vars(void){
             inter_node_knomial_factor = INTER_NODE_KNOMIAL_FACTOR_MAX;
         } 
     }      
-  
+
+    /* Override MPICH2 default env values */
+    MPIR_PARAM_GATHERV_INTER_SSEND_MIN_PROCS = 1024;
+
     init_thread_reg();
 }
 #endif

@@ -47,8 +47,6 @@ void psm_queue_init()
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 void psm_complete_req(MPID_Request *req, psm_mq_status_t psmstat)
 {
-    int inuse;
-    
     if(MPIR_ThreadInfo.thread_provided == MPI_THREAD_MULTIPLE) {
         pthread_spin_lock(&reqlock);
     }
@@ -293,6 +291,7 @@ psm_error_t psm_probe(int src, int tag, int context, MPI_Status *stat)
 int psm_no_lock(pthread_spinlock_t *lock) 
 {  
     /* no-lock needed */
+    return 0;
 }
 
 /* in multi-threaded mode, the mpich2 global lock has to be released
@@ -322,6 +321,8 @@ void psm_update_mpistatus(MPI_Status *stat, psm_mq_status_t psmst)
         case PSM_MQ_TRUNCATION:
             stat->MPI_ERROR = MPI_ERR_TRUNCATE;
             break;
+        default:
+            break;
     }           
     stat->MPI_SOURCE = psmst.msg_tag & SRC_RANK_MASK;
     stat->count = psmst.nbytes;
@@ -332,6 +333,8 @@ void psm_update_mpistatus(MPI_Status *stat, psm_mq_status_t psmst)
 static void psm_dump_debug()
 {
     static time_t  timedump;
+    struct tm *ts;
+    char buf[80];
     time_t last;
     int rank;
     extern uint32_t ipath_dump_frequency;
@@ -351,6 +354,8 @@ static void psm_dump_debug()
     fprintf(stderr, "[%d] Total rendezvous PUTS\t\t%d\n", rank, psm_tot_rndv_puts);
     fprintf(stderr, "[%d] Total rendezvous GETS\t\t%d\n", rank, psm_tot_rndv_gets);
     fprintf(stderr, "[%d] Total ACCUMULATES\t\t%d\n", rank, psm_tot_accs);
-    fprintf(stderr, "[%d] ------Time of dump %d-----\n", rank, last);
+    ts = localtime(&last);
+    strftime(buf, sizeof(buf), "%a %Y-%m-%d %H:%M:%S %Z", ts);
+    fprintf(stderr, "[%d] ------Time of dump %s-----\n", rank, buf);
     timedump = last;
 }

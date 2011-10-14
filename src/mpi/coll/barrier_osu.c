@@ -145,10 +145,12 @@ static int MPIR_shmem_barrier_MV2(MPID_Comm *comm_ptr, int *errflag){
 */
 
 /* not declared static because it is called in ch3_comm_connect/accept */
-
+#undef FUNCNAME
+#define FUNCNAME MPIR_Barrier_intra_MV2
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIR_Barrier_intra_MV2( MPID_Comm *comm_ptr, int *errflag )
 {
-    static const char FCNAME[] = "MPIR_Barrier_intra_MV2";
     int size;
     int mpi_errno=MPI_SUCCESS;
     int mpi_errno_ret=MPI_SUCCESS;
@@ -202,9 +204,12 @@ int MPIR_Barrier_intra_MV2( MPID_Comm *comm_ptr, int *errflag )
 
 /* not declared static because a machine-specific function may call this one 
    in some cases */
+#undef FUNCNAME
+#define FUNCNAME MPIR_Barrier_inter
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIR_Barrier_inter_MV2( MPID_Comm *comm_ptr, int *errflag )
 {
-    static const char FCNAME[] = "MPIR_Barrier_inter";
     int rank, mpi_errno, i, root;
     MPID_Comm *newcomm_ptr = NULL;
 

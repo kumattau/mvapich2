@@ -1768,6 +1768,10 @@ int MPIDI_CH3_InitCompleted( void );
 #ifdef MPIDI_CH3_HASIMPL_HEADER
 #include "mpidi_ch3_mpid.h"
 #endif
+#if defined (_OSU_PSM_)
+#include "psmpriv.h"
+#endif
+
 /* Routines in support of ch3 */
 
 /* Routine to return the tag associated with a port */
@@ -1983,6 +1987,9 @@ int MPIDI_CH3_Prepare_rndv_get(MPIDI_VC_t * vc,
 int MPIDI_CH3_Start_rndv_transfer(MPIDI_VC_t * vc,
                                   MPID_Request *sreq,
                                   MPIDI_CH3_Pkt_rndv_clr_to_send_t * cts_pkt);
+int MPIDI_CH3_Rndv_transfer(MPIDI_VC_t *, MPID_Request *, MPID_Request *,
+                                    MPIDI_CH3_Pkt_rndv_clr_to_send_t *,
+                                    MPIDI_CH3_Pkt_rndv_req_to_send_t *);
 int MPIDI_CH3_iStartRmaRndv(MPIDI_VC_t * vc,
                             MPID_Request * sreq, int control_cnt);
 int MPIDI_CH3_iStartGetRndv(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_get_rndv_t *,

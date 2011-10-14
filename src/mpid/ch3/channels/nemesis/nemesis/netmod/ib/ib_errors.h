@@ -13,6 +13,7 @@
 #ifndef IB_ERRORS_H
 #define IB_ERRORS_H
 
+#include "pmi.h"
 
 #define NEM_IB_ERR(message, args...) {                          \
     MPIU_Internal_error_printf("[%s:%d] [%s:%d] ",              \

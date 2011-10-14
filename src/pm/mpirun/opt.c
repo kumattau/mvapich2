@@ -10,6 +10,7 @@
  *
  */
 #include <mpirunconf.h>
+#include <signal_processor.h>
 
 #ifdef CR_AGGRE
 
@@ -128,6 +129,8 @@ int start_crfs_wa(char *sessionid, char *realdir)
 
     if (crfs_wa_pid == 0)       // in child proc
     {
+        clear_sigmask();
+
         // Set prefix for debug output
         {
             const int MAX_LENGTH = 256;
@@ -227,6 +230,8 @@ int start_crfs_mig(char *sessionid, int src_tgt)
 
     if (crfs_mig_pid == 0)      // in child proc
     {
+        clear_sigmask();
+
         // Set prefix for debug output
         {
             const int MAX_LENGTH = 256;

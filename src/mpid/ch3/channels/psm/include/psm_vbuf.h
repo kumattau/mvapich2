@@ -67,6 +67,7 @@ int     psm_init_vbuf_lock();
 int     psm_allocate_vbufs(int nvbufs);
 vbuf*   psm_get_vbuf();
 void    psm_release_vbuf(vbuf* v);
-void    psm_deallocate_vbufs(int);
+void    psm_deallocate_vbuf();
+void    psm_release_vbuf(vbuf* v);
 
 #endif

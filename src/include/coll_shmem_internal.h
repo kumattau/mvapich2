@@ -25,7 +25,7 @@
 #include "coll_shmem.h"
 
 
-#define SHMEM_COLL_NUM_PROCS 48
+#define SHMEM_COLL_NUM_PROCS 64
 #define SHMEM_COLL_NUM_COMM  20
 
 /* the shared area itself */

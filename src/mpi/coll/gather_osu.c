@@ -16,7 +16,13 @@
  */
 
 #include "mpiimpl.h"
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#include "coll_shmem.h" 
 
+#undef FUNCNAME
+#define FUNCNAME MPIR_Gather_MV2_Direct
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 static int MPIR_Gather_MV2_Direct ( 
 	void *sendbuf, 
 	int sendcnt, 
@@ -28,7 +34,6 @@ static int MPIR_Gather_MV2_Direct (
 	MPID_Comm *comm_ptr,
     int *errflag )
 {
-    static const char FCNAME[] = "MPIR_Gather_MV2_Direct";
     int comm_size, rank;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
@@ -138,8 +143,6 @@ static int MPIR_Gather_MV2_Direct (
     return (mpi_errno);
 }
 
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
-#include "coll_shmem.h" 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Gather_MV2_two_level_Direct
 #undef FCNAME
@@ -436,16 +439,23 @@ int MPIR_Gather_MV2(
         int *errflag )
 {
     int mpi_errno = MPI_SUCCESS;
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     int range = 0;
-    int rank, nbytes, comm_size; 
+    int nbytes = 0; 
+    int comm_size = 0; 
     int recvtype_size, sendtype_size; 
+    int rank = -1;
+#endif /* #if defined(_OSU_MVAPICH_) */ 
     MPIU_THREADPRIV_DECL;
 
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER( comm_ptr );
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     comm_size = comm_ptr->local_size;
     rank = comm_ptr->rank;
+#endif /* #if defined(_OSU_MVAPICH_) */ 
 
     MPIU_THREADPRIV_GET;
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
      if(rank == root ) {
          MPID_Datatype_get_size_macro(recvtype, recvtype_size);
          nbytes = recvcnt*recvtype_size;
@@ -454,7 +464,6 @@ int MPIR_Gather_MV2(
          nbytes = sendcnt*sendtype_size;
      }
 
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     while((range < size_gather_tuning_table) && 
           (comm_size > gather_tuning_table[range].numproc)){
         range++;

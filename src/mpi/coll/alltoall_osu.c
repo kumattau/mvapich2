@@ -610,6 +610,10 @@ int MPIR_Alltoall_intra_MV2(
 
 /* begin:nested */
 /* not declared static because a machine-specific function may call this one in some cases */
+#undef FUNCNAME
+#define FUNCNAME MPIR_Alltoall_inter_MV2
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIR_Alltoall_inter_MV2( 
     void *sendbuf, 
     int sendcount, 
@@ -629,7 +633,6 @@ int MPIR_Alltoall_inter_MV2(
    remote_size, and sends to dst = (rank + i) % max_size if dst <
    remote_size. 
 */
-    static const char FCNAME[] = "MPIR_Alltoall_inter_MV2";
     int local_size, remote_size, max_size, i;
     MPI_Aint sendtype_extent, recvtype_extent;
     int mpi_errno = MPI_SUCCESS;

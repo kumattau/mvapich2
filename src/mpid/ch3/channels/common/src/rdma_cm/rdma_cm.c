@@ -323,11 +323,11 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
                     /* Sending a noop for handling the iWARP requirement */
                     if (proc->use_iwarp_mode) {
                         int i;
+                        vc->ch.state = MPIDI_CH3I_VC_STATE_IWARP_CLI_WAITING;
                         for (i = 0; i < rdma_num_rails; i++){
                             MRAILI_Send_noop(vc, i);
                             DEBUG_PRINT("Sending noop to [%d]\n", rank);
                         }
-                        vc->ch.state = MPIDI_CH3I_VC_STATE_IWARP_CLI_WAITING;
                      }
                      else {
                          vc->ch.state = MPIDI_CH3I_VC_STATE_IDLE;

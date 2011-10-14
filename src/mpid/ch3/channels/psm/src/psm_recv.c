@@ -21,7 +21,6 @@ int psm_recv(int src, int tag, int context_id, void *buf, int buflen,
 {
     uint64_t rtag, rtagsel;
     psm_error_t psmerr;
-    psm_mq_status_t psmstat;
     MPID_Request *req = *request;
     int mpi_errno = MPI_SUCCESS;
 

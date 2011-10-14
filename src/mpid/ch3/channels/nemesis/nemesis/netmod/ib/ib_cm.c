@@ -23,6 +23,7 @@
 #include "ib_errors.h"
 #include "ib_process.h"
 #include "ib_send.h"
+#include "rdma_3dtorus.h"
 
 /****************for ring_startup*****************************/
 #define CHECK_UNEXP(ret, s)                           \

@@ -31,6 +31,7 @@
 #include "psmpriv.h"
 #include "psm_vbuf.h"
 #include <sys/types.h>
+#include <unistd.h>
 #include <features.h>
 
 

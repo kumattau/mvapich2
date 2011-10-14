@@ -859,8 +859,8 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SMP_INIT);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SMP_INIT);
     int mpi_errno = MPI_SUCCESS;
-    unsigned int i, j, pool, pid, wait;
-    int local_num, sh_size, pid_len, rq_len;
+    unsigned int i, j, pid, wait;
+    int sh_size, pid_len, rq_len;
     struct stat file_status;
     struct stat file_status_pool;
     int pagesize = getpagesize();
@@ -1054,7 +1054,6 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     }
 
     /* compute the size of this file */
-    local_num = g_smpi.num_local_nodes * g_smpi.num_local_nodes;
     pid_len = g_smpi.num_local_nodes * sizeof(int);
     /* pid_len need to be padded to cache aligned, in order to make sure the
      * following flow control structures cache aligned. */
@@ -1404,7 +1403,6 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 
     /* init rqueues in shared memory */
     if (0 == g_smpi.my_local_id) {
-       pool = pagesize;
        for (i = 0; i < g_smpi.num_local_nodes; ++i) {
            for (j = 0; j < g_smpi.num_local_nodes; ++j) {
            if (i != j) {

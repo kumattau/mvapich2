@@ -9,7 +9,7 @@
  * copyright file COPYRIGHT in the top level MVAPICH2 directory.
  *
  */
-
+#include <unistd.h>
 #include "psmpriv.h"
 #include "psm_vbuf.h"
 #include <dirent.h>
@@ -26,7 +26,7 @@ uint32_t                ipath_rndv_thresh;
 uint8_t                 ipath_debug_enable;
 uint32_t                ipath_dump_frequency;
 
-static unsigned char    scratch[WRBUFSZ];
+static char    scratch[WRBUFSZ];
 static char             *kvsid;
 static psm_uuid_t       psm_uuid;
 
@@ -45,10 +45,9 @@ extern void MPIDI_CH3I_SHMEM_COLL_Cleanup();
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
 {
-    int verno_major, verno_minor, mpi_errno;
-    int i, pg_size, ret;
+    int verno_major, verno_minor;
+    int pg_size, mpi_errno;
     psm_epid_t myid, *epidlist = NULL;
-    MPIDI_VC_t *vc = NULL;	
     psm_error_t *errs = NULL, err;
 
     pg_size = MPIDI_PG_Get_size(pg);
@@ -148,7 +147,7 @@ fn_fail:
 
 static int filter(const struct dirent *ent)
 {
-    int res, len;
+    int res;
     sprintf(scratch, "mpi_%s_", kvsid);
     res = strncmp(ent->d_name, scratch, strlen(scratch));
     if(res)     return 0;
@@ -250,19 +249,19 @@ static int psm_allgather_epid(psm_epid_t *list, int pg_size, int pg_rank)
 {
     char *kvs_name;
     int kvslen;
-    unsigned char *kvskey;
-    int i, mpi_errno;
+    char *kvskey;
+    int i, mpi_errno = MPI_SUCCESS;
 
     if(pg_size == 1)
         return MPI_SUCCESS;
 
     PMI_KVS_Get_key_length_max(&kvslen);
-    kvskey = (unsigned char *) MPIU_Malloc (kvslen);
+    kvskey = (char *) MPIU_Malloc (kvslen);
 
     DBG("[%d] my epid = %d\n", pg_rank, list[pg_rank]);
     MPIDI_PG_GetConnKVSname(&kvs_name);
-    MPIU_Snprintf(kvskey, kvslen, "pmi_epidkey_%llu", pg_rank, list[pg_rank]);
-    MPIU_Snprintf(scratch, WRBUFSZ, "%llu", list[pg_rank]);
+    MPIU_Snprintf(kvskey, kvslen, "pmi_epidkey_%d", pg_rank);
+    MPIU_Snprintf(scratch, WRBUFSZ, "%lu", list[pg_rank]);
     if(PMI_KVS_Put(kvs_name, kvskey, scratch) != PMI_SUCCESS) {
         MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**epid_putfailed");
     }
@@ -279,7 +278,7 @@ static int psm_allgather_epid(psm_epid_t *list, int pg_size, int pg_rank)
         if(PMI_KVS_Get(kvs_name, kvskey, scratch, WRBUFSZ) != PMI_SUCCESS) {
             MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**epid_getfailed");
         }
-        sscanf(scratch, "%llu", &(list[i]));
+        sscanf(scratch, "%lu", &(list[i]));
         DBG("[%d] got epid %llu\n", pg_rank, list[i]);
     }
     PMI_Barrier();
@@ -295,11 +294,10 @@ fn_fail:
 /* broadcast the uuid to all ranks via PMI put/get */
 static int psm_bcast_uuid(int pg_size, int pg_rank)
 {
-    char *kvs_name, *ptr;
-    int mpi_errno, len, valen;
+    char *kvs_name;
+    int mpi_errno = MPI_SUCCESS, valen;
     int kvslen, srclen = sizeof(psm_uuid_t), dst = WRBUFSZ;
-    unsigned char *kvskey;
-    int i;
+    char *kvskey;
 
     if(pg_rank == ROOT)
         psm_uuid_generate(psm_uuid);
@@ -309,13 +307,13 @@ static int psm_bcast_uuid(int pg_size, int pg_rank)
 
     PMI_KVS_Get_key_length_max(&kvslen);
     PMI_KVS_Get_value_length_max(&valen);
-    kvskey = (unsigned char *) MPIU_Malloc (kvslen);
+    kvskey = (char *) MPIU_Malloc (kvslen);
     MPIDI_PG_GetConnKVSname(&kvs_name);
     snprintf(kvskey, kvslen, MPID_PSM_UUID"_%d_%s", pg_rank, kvs_name);
 
     DBG("key name = %s\n", kvskey);
     if(pg_rank == ROOT) {
-        encode(srclen, psm_uuid, dst, scratch);
+        encode(srclen, (char *)&psm_uuid, dst, scratch);
     } else {
         strcpy(scratch, "dummy-entry");
     }
@@ -335,7 +333,7 @@ static int psm_bcast_uuid(int pg_size, int pg_rank)
         }
         strcat(scratch, "==");
         srclen = strlen(scratch);
-        if(decode(srclen, scratch, sizeof(psm_uuid_t), psm_uuid)) {
+        if(decode(srclen, scratch, sizeof(psm_uuid_t), (char *)&psm_uuid)) {
             fprintf(stderr, "base-64 decode failed of UUID\n");
             goto fn_fail;
         }
@@ -377,11 +375,11 @@ static void psm_other_init(MPIDI_PG_t *pg)
         ipath_rndv_thresh = i;
     DBG("blocking threshold %d\n", ipath_rndv_thresh);
     ipath_debug_enable = 0;
-    if(flag = getenv("MV2_PSM_DEBUG")) {
+    if((flag = getenv("MV2_PSM_DEBUG")) != NULL) {
         ipath_debug_enable = !!atoi(flag);
     }
     ipath_dump_frequency = 10;
-    if(flag = getenv("MV2_PSM_DUMP_FREQUENCY")) {
+    if((flag = getenv("MV2_PSM_DUMP_FREQUENCY")) != NULL) {
         ipath_dump_frequency = atoi(flag);
     }
 

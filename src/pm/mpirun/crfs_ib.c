@@ -200,7 +200,7 @@ process one RR rqst from client
 ****/
 void *ibsrv_ioprocess(void *arg)
 {
-    int ret, i;
+    int i;
 
     struct thread_pool *ownertp = (struct thread_pool *) arg;
     sem_t sem;
@@ -261,9 +261,8 @@ void *ibsrv_ioprocess(void *arg)
         //////// 1.   start the RDMA-READ
         rrpkt = (struct ib_packet *) welem.data;
         rrpkt->RR.larg1 = (uint64_t) & sem;
-        int lbuf_id;
         if (rrpkt->RR.size > 0) {
-            lbuf_id = ib_connection_post_RR(conn, qpidx, rrpkt);
+            int lbuf_id __attribute__((__unused__)) = ib_connection_post_RR(conn, qpidx, rrpkt);
 
             // Now, lbuf_id is local RDMA-buf id to store the RR data
             dbg("[iot_%d]: post RR using local-buf %d\n", myid, lbuf_id);
@@ -292,7 +291,7 @@ void *ibsrv_ioprocess(void *arg)
             spkt->command = reply_RR;
             dbg("[iot_%d]: reply RR: (%s) %ld@%ld, is-last=%d\n", myid, rrpkt->RR.filename, rrpkt->RR.size, rrpkt->RR.offset, rrpkt->RR.is_last_chunk);
 
-            ret = ib_connection_post_send(conn, qpidx, slot, sizeof(*spkt));
+            ib_connection_post_send(conn, qpidx, slot, sizeof(*spkt));
         }
 
     }
@@ -505,9 +504,6 @@ static void *ibcli_ioprocess(void *arg);
 
 int ibcli_main_entry(void *p)
 {
-    int port = 0;
-    port = g_srv_tcpport;
-
     sendslot_size = recvslot_size = sizeof(ib_packet_t);
 
     /// 1. init the IB 

@@ -185,7 +185,7 @@ int MPIDI_CH3_EagerContigSend( MPID_Request **sreq_p,
 #if defined(_OSU_MVAPICH_)
     if(MPIDI_CH3_ContigSend(sreq_p, MPIDI_CH3_PKT_EAGER_SEND_CONTIG, buf, data_sz, 
                 rank, tag, comm, context_offset) == 0)
-        goto fn_exit;
+        goto fn_fail;
 #endif
 
     MPIDI_VC_t * vc;
@@ -233,7 +233,6 @@ int MPIDI_CH3_EagerContigSend( MPID_Request **sreq_p,
 	MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_SEND);
     }
 
- fn_exit:
  fn_fail:
     return mpi_errno;
 }
@@ -948,7 +947,7 @@ int MPIDI_CH3_PktPrint_ReadySend( FILE *fp, MPIDI_CH3_Pkt_t *pkt )
 
 #if defined (_OSU_PSM_)
 int psm_do_pack(int count, MPI_Datatype datatype, MPID_Comm *comm, MPID_Request
-                *sreq, void *buf, int data_sz)
+                *sreq, const void *buf, int data_sz)
 {
     int pksz;
     MPID_Segment *segp;

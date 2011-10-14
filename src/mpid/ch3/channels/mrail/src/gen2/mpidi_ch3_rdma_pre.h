@@ -56,12 +56,12 @@
 #define MPIDI_CH3I_MRAILI_IBA_PKT_DECL \
     uint16_t seqnum;            \
     uint16_t acknum;            \
-    uint8_t  vbuf_credit;       \
     uint8_t  remote_credit;     \
     uint8_t  rdma_credit;       \
-    uint8_t  rail;              \
     VC_SRC_INFO                 \
-    VC_CRC_INFO                                 
+    VC_CRC_INFO                 \
+    uint8_t  vbuf_credit;       \
+    uint8_t  rail;              
 
 typedef enum {
     VAPI_PROTOCOL_RENDEZVOUS_UNSPECIFIED = 0,

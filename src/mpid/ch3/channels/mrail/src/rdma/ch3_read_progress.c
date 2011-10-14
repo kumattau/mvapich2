@@ -48,7 +48,6 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int *rdmafp_f
 {
     static MPIDI_VC_t 	*pending_vc = NULL;
     int 	type;
-    MPIDI_PG_t 	*pg;
     MPIDI_VC_t 	*recv_vc_ptr;
 #ifdef DAPL_DEFAULT_PROVIDER
     static int 		local_vc_index = 0;
@@ -73,7 +72,6 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int *rdmafp_f
 
     *vc_pptr = NULL;
     *v_ptr = NULL;
-    pg = MPIDI_Process.my_pg;
 
     if (pending_vc != NULL) {
         type = MPIDI_CH3I_MRAILI_Waiting_msg(pending_vc, v_ptr, 1);
@@ -100,6 +98,7 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int *rdmafp_f
 
 #ifdef DAPL_DEFAULT_PROVIDER
   int i;
+  MPIDI_PG_t 	*pg = MPIDI_Process.my_pg;
   if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
     for (i = 0; i < pg->size; i++) {
         MPIDI_PG_Get_vc(MPIDI_Process.my_pg, local_vc_index,

@@ -546,7 +546,7 @@ static int allocate_ud_vbuf_region(int nvbufs)
     void *vbuf_dma_buffer = NULL;
     int alignment_vbuf = 64;
     int alignment_dma = getpagesize();
-    int result;
+    int result = 0;
 
     PRINT_DEBUG(DEBUG_UD_verbose>0,"Allocating a UD buf region.\n");
 

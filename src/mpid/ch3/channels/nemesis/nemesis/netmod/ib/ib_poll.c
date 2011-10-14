@@ -290,13 +290,10 @@ int MPIDI_nem_ib_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int is_bloc
 {
     static MPIDI_VC_t   *pending_vc = NULL;
     int         type;
-    MPIDI_PG_t  *pg;
     MPIDI_VC_t  *recv_vc_ptr;
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_IB_READ_PROGRESS);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_IB_READ_PROGRESS);
-
-    pg = process_info.pg;
 
     if (pending_vc != NULL) {
         type =

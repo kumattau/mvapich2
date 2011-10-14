@@ -22,6 +22,7 @@ int MPIDI_nem_ib_fill_request(MPID_Request * req, vbuf * v,
                                   int header_size, int *nb);
 void MPIDI_nem_ib_release_vbuf(vbuf * v);
 int MPIDI_nem_ib_recv_addr(MPIDI_VC_t * vc, void *vstart);
+int MPIDI_nem_ib_recv_addr_reply(MPIDI_VC_t * vc, void *vstart);
 int MPIDI_nem_ib_packetized_recv_data(MPIDI_VC_t * vc, vbuf *v);
 int MPIDI_nem_ib_packetized_recv_req(MPIDI_VC_t * vc, MPID_Request * rreq);
 

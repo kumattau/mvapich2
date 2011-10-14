@@ -106,7 +106,7 @@ void MPIDI_CH3I_RDMA_win_free(MPID_Win ** win_ptr);
 void MPIDI_CH3I_RDMA_start(MPID_Win * win_ptr, int start_grp_size, int *ranks_in_win_grp);
 void MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive);
 int MPIDI_CH3I_RDMA_post(MPID_Win * win_ptr, int target_rank);
-void MPIDI_CH3I_RDMA_complete(MPID_Win * win_ptr, int start_grp_size, int *ranks_in_win_grp);
+int MPIDI_CH3I_RDMA_complete(MPID_Win * win_ptr, int start_grp_size, int *ranks_in_win_grp);
 int MPIDI_CH3I_RDMA_finish_rma(MPID_Win * win_ptr);
 #if !defined(_DAPL_DEFAULT_PROVIDER_)
 void MPIDI_CH3I_SHM_win_create(void *base, MPI_Aint size, MPID_Win ** win_ptr);

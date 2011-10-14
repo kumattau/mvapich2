@@ -19,6 +19,7 @@
 #include "mpidrma.h"
 
 #if defined(_OSU_MVAPICH_)
+#include "dreg.h"
 #undef DEBUG_PRINT
 #if defined (DEBUG)
 #define DEBUG_PRINT(args...)                                      \
@@ -1060,7 +1061,6 @@ int MPIDI_CH3I_Process_locks()
     MPIDI_Win_lock_queue *lock_queue, **lock_queue_ptr;
     int requested_lock, mpi_errno = MPI_SUCCESS;
     int rank, l_rank;
-    MPID_Comm *comm_ptr;
     MPID_Win *win_ptr;
     MPIDI_Win_pending_lock_t *curr_ptr, *prev_ptr;
 
@@ -1081,7 +1081,6 @@ int MPIDI_CH3I_Process_locks()
     prev_ptr = NULL;
     while (curr_ptr) {
         win_ptr = curr_ptr->win_ptr;
-        comm_ptr = win_ptr->comm_ptr;
         rank = win_ptr->my_id;
         l_rank = win_ptr->shm_g2l_rank[rank];
 

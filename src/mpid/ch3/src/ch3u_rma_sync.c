@@ -1658,7 +1658,7 @@ static int MPIDI_CH3I_Recv_rma_msg(MPIDI_RMA_ops *rma_op, MPID_Win *win_ptr,
 #endif /* defined(_OSU_MVAPICH_) */
 #if defined(_OSU_PSM_)
     MPID_Datatype *o_dtp;
-    int origin_type_size, type_size; 
+    int origin_type_size; 
     MPIDI_msg_sz_t total_size;
 #endif 
 
@@ -1966,7 +1966,7 @@ int MPIDI_Win_post(MPID_Group *post_grp_ptr, int assert, MPID_Win *win_ptr)
     int mpi_errno=MPI_SUCCESS;
     MPID_Group *win_grp_ptr;
     int i, post_grp_size, *ranks_in_post_grp, *ranks_in_win_grp, dst, rank;
-#if !defined(DAPL_DEFAULT_PROVIDER)
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
     int local_rank, my_local_rank;
 #endif /* !DAPL_DEFAULT_PROVIDER*/
     MPID_Comm *win_comm_ptr;

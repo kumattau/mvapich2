@@ -2092,7 +2092,7 @@ int MPICM_Init_UD(uint32_t * ud_qpn)
     result = posix_memalign(&cm_ud_buf, page_size,
                  (sizeof(cm_msg) + 40) * (cm_recv_buffer_size + 1));
 #endif
-    if ((cm_ud_buf==NULL))
+    if (result !=0 || cm_ud_buf==NULL)
     {
 	MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
 		"**nomem %s", "cm_ud_buf");
@@ -2807,12 +2807,10 @@ int cm_send_xrc_cm_msg (MPIDI_VC_t *vc, MPIDI_VC_t *orig_vc)
     cm_msg msg;
     int mpi_errno = MPI_SUCCESS;
     int i;
-    MPIDI_PG_t *pg;
 
     PRINT_DEBUG(DEBUG_XRC_verbose>0, "cm_send_xrc_cm_msg %d\n", vc->pg_rank);
 
     msg.nrails = vc->mrail.num_rails;
-    pg = vc->pg;
     for (i = 0; i < msg.nrails; ++i) {
         PRINT_DEBUG(DEBUG_XRC_verbose>0, "Sending RQPN %d to %d\n", 
                 orig_vc->ch.xrc_rqpn[i], vc->pg_rank);

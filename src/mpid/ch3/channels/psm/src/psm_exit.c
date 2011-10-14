@@ -12,6 +12,7 @@
 
 #include "psmpriv.h"
 #include "coll_shmem.h"
+#include "psm_vbuf.h"
 
 #undef FUNCNAME
 #define FUNCNAME psm_dofinalize

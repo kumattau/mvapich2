@@ -694,7 +694,7 @@ void MPID_Request_set_completed( MPID_Request *req )
 }
 
 #if defined (_OSU_PSM_)
-int psm_do_ncrecv_complete(MPID_Request *req)
+void psm_do_ncrecv_complete(MPID_Request *req)
 {
     /* pkbuf is UB for packing, we should stop after unpacking byte count
        received: status.count */

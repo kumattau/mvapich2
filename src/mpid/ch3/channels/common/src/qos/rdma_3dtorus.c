@@ -326,7 +326,7 @@ fn_fail:
 
 int mv2_release_3d_torus_resources()
 {
-    int err;
+    int err = MPI_SUCCESS;
     struct openib_sa_qp_cache_t *cache = NULL;
 
     for (cache = openib_sa_qp_cache; cache; cache = cache->next) {
@@ -339,5 +339,5 @@ int mv2_release_3d_torus_resources()
         err = ibv_destroy_qp(cache->qp);
     }
 
-    return MPI_SUCCESS;
+    return err;
 }

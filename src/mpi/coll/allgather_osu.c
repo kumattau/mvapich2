@@ -18,14 +18,15 @@
 #include "mpiimpl.h"
 
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#include "datatype.h"
 #include "coll_shmem.h"
 extern struct coll_runtime coll_param;
 #endif
 
 int allgather_tuning(int comm_size, int pof2)
 {
-   char *value;
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) 
+   char *value;
    if (pof2 == 1 && (value = getenv("MV2_ALLGATHER_RD_THRESHOLD")) != NULL) { 
        /* pof2 case. User has set the run-time parameter "MV2_ALLGATHER_RD_THRESHOLD".
         * Just use that value */
@@ -54,11 +55,6 @@ int allgather_tuning(int comm_size, int pof2)
 #endif /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */ 
 
 }
-
-
-
-
-
 
 /* This is the default implementation of allgather. The algorithm is:
    
@@ -782,7 +778,7 @@ int MPIR_Allgather_MV2(void *sendbuf, int sendcount, MPI_Datatype sendtype,
         
         MPID_Datatype_get_size_macro(recvtype, recvtype_size);
         nbytes = recvtype_size * recvcount;
-    
+        
         /* intracommunicator */
         if (allgather_ranking == 1 && comm_ptr->ch.allgather_comm_ok == 1 && 
            (nbytes <=  allgather_tuning(comm_size, comm_size_is_pof2))) {
@@ -790,8 +786,8 @@ int MPIR_Allgather_MV2(void *sendbuf, int sendcount, MPI_Datatype sendtype,
                     MPI_Aint   recvtype_extent;
                     int sendtype_iscontig=0, recvtype_iscontig=0;
                     void *tmp_recv_buf=NULL;
-                 
-                   if(sendtype != MPI_DATATYPE_NULL && recvtype != MPI_DATATYPE_NULL){
+                    
+                    if(sendtype != MPI_DATATYPE_NULL && recvtype != MPI_DATATYPE_NULL){
                         MPIR_Datatype_iscontig(sendtype, &sendtype_iscontig);
                         MPIR_Datatype_iscontig(recvtype, &recvtype_iscontig);
                     }

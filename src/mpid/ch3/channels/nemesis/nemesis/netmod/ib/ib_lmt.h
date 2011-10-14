@@ -77,7 +77,7 @@ typedef struct{
 } __attribute__((__packed__)) MPID_nem_ib_rndv_info;
 
 
-#define REQ_FIELD(req, field) (((MPID_nem_ib_rndv_info *)((req)->ch.netmod_area.padding))->field)
+#define REQ_FIELD(req, field) (((MPID_nem_ib_rndv_info *)(&(req)->ch.netmod_area))->field)
 
 #define MPIDI_NEM_RNDV_SET_REQ_INFO(rreq, rndv_info) \
 {                                                   \

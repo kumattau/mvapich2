@@ -157,7 +157,7 @@ int MPID_nem_ib_finalize (void)
 
 
     /* No rdma functions will be called after this function */
-    int error;
+    int error ATTRIBUTE((unused));
     int pg_rank;
     int pg_size;
     int i;

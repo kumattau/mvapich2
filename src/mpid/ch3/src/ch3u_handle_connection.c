@@ -24,8 +24,7 @@
 
 #ifdef _ENABLE_XRC_
 #include "rdma_impl.h"
-void MPICM_lock();
-void MPICM_unlock();
+#include "cm.h"
 #define XRC_CM_LOCK() do {          \
     if (USE_XRC) MPICM_lock ();     \
 } while (0); 

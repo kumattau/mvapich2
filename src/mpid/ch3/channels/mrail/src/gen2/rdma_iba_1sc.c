@@ -724,14 +724,14 @@ void MPIDI_CH3I_INTRANODE_start (MPID_Win* win_ptr, int start_grp_size,
 
 /* For active synchronization, if all rma operation has completed, we issue a RDMA
 write operation with fence to update the remote flag in target processes*/
-void
+int
 MPIDI_CH3I_RDMA_complete(MPID_Win * win_ptr,
                          int start_grp_size, int *ranks_in_win_grp)
 {
     int i, target, dst;
     int my_rank, comm_size;
     int *nops_to_proc;
-    int mpi_errno;
+    int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr;
     MPIDI_RMA_ops *curr_ptr;
     MPIDI_VC_t* vc = NULL;
@@ -802,7 +802,7 @@ MPIDI_CH3I_RDMA_complete(MPID_Win * win_ptr,
     MPIU_Free(nops_to_proc);
 
   fn_exit:
-    return;
+    return mpi_errno;
 }
 
 /* For active synchronization, if all rma operation has completed, set the 
@@ -814,13 +814,12 @@ complete flag on the remote processes. */
 void MPIDI_CH3I_INTRANODE_complete(MPID_Win * win_ptr,
                          int start_grp_size, int *ranks_in_win_grp)
 {
-    int i, comm_size, my_rank, my_local_rank, rank, local_rank;
+    int i, my_rank, my_local_rank, rank, local_rank;
     int *nops_to_proc;
     MPID_Comm *comm_ptr;
     MPIDI_RMA_ops *curr_ptr;
 
     comm_ptr = win_ptr->comm_ptr; 
-    comm_size = comm_ptr->local_size;
     my_rank = comm_ptr->rank;
     my_local_rank = win_ptr->shm_g2l_rank[my_rank];
 
@@ -1227,12 +1226,10 @@ int MPIDI_CH3I_SHM_try_rma(MPID_Win * win_ptr)
     int target_type_size, msg_size;
     int origin_dt_derived, target_dt_derived, target_l_rank;
     void *target_addr;
-    MPID_Comm *comm_ptr;
     MPIDI_RMA_ops *curr_ptr = NULL, *prev_ptr = NULL, *tmp_ptr;
     MPIDI_RMA_ops **list_head = NULL, **list_tail = NULL;
     MPI_User_function *uop;
 
-    comm_ptr = win_ptr->comm_ptr;
     list_head = &win_ptr->rma_ops_list_head;
     list_tail = &win_ptr->rma_ops_list_tail;
     prev_ptr = curr_ptr = *list_head; 
@@ -1800,7 +1797,7 @@ void mv2_rma_init_rank_info (MPID_Win ** win_ptr)
 int mv2_rma_allocate_counters(MPID_Win ** win_ptr)
 {
     int             i, mpi_errno=MPI_SUCCESS;
-    int             num_local_procs, comm_size, l_rank, g_rank;
+    int             num_local_procs, l_rank, g_rank;
     int             cmpl_counter_size, post_flag_size, mutex_size;
     int             lock_size;
     long long       *shm_cmpl_counter_buf;
@@ -1813,7 +1810,6 @@ int mv2_rma_allocate_counters(MPID_Win ** win_ptr)
     num_local_procs = (*win_ptr)->shm_l_ranks;
 
     comm_ptr = (*win_ptr)->comm_ptr;
-    comm_size = comm_ptr->local_size;
 
     (*win_ptr)->shm_fd = -1;
     (*win_ptr)->shm_control_buf = NULL;
@@ -1920,10 +1916,8 @@ fn_exit:
 
 void mv2_rma_free_counters(MPID_Win ** win_ptr)
 {
-    MPID_Comm *comm_ptr;
     int l_rank;
 
-    comm_ptr = (*win_ptr)->comm_ptr;
     l_rank = (*win_ptr)->shm_g2l_rank[(*win_ptr)->my_id];
 
     if ((*win_ptr)->shm_mutex != NULL) { 
@@ -2684,10 +2678,8 @@ int MRAILI_Handle_one_sided_completions(vbuf * v)
     void                          *target_addr, *origin_addr;
     MPIDI_CH3I_RDMA_put_get_list  *list_entry=NULL;
     MPID_Win                      *list_win_ptr;
-    MPIDI_VC_t                    *list_vc_ptr;
     list_entry = (MPIDI_CH3I_RDMA_put_get_list *)v->list;
     list_win_ptr = list_entry->win_ptr;
-    list_vc_ptr = list_entry->vc_ptr;
 
     switch (list_entry->op_type) {
     case (SIGNAL_FOR_PUT):
