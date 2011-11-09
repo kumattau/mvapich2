@@ -19,6 +19,10 @@
 
 #include "mpiimpl.h"
 #include "mpicomm.h"
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#include "coll_shmem.h"
+#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
+
 
 /* -- Begin Profiling Symbol Block for routine MPI_Comm_dup */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -29,16 +33,6 @@
 #pragma _CRI duplicate MPI_Comm_dup as PMPI_Comm_dup
 #endif
 /* -- End Profiling Symbol Block */
-
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
-extern int split_comm;
-extern int enable_shmem_collectives;
-extern int check_split_comm(pthread_t);
-extern int disable_split_comm(pthread_t);
-extern int create_2level_comm (MPI_Comm, int, int);
-extern int enable_split_comm(pthread_t);
-#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
-
 
 /* Define MPICH_MPI_FROM_PMPI if weak symbols are not supported to build
    the MPI routines */

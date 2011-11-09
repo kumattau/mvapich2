@@ -55,10 +55,16 @@ AC_DEFUN([HWLOC_DEFINE_ARGS],[
                   AS_HELP_STRING([--disable-cairo], 
                                  [Disable the Cairo back-end of hwloc's lstopo command]))
 
-    # XML?
-    AC_ARG_ENABLE([xml],
-                  AS_HELP_STRING([--disable-xml], 
-		                 [Disable the XML back-end of hwloc's lstopo command]),,enable_xml=no)
+    # XML using libxml2?
+    AC_ARG_ENABLE([libxml2],
+                  AS_HELP_STRING([--disable-libxml2], 
+		                 [Do not use libxml2 for XML support, use a custom minimalistic support]),,enable_libxml2=no)
+
+    # PCI?
+    AC_ARG_ENABLE([pci],
+                  AS_HELP_STRING([--disable-pci],
+                                 [Disable the PCI device discovery using libpci]))
+
 ])dnl
 
 #-----------------------------------------------------------------------
@@ -293,6 +299,7 @@ EOF
     unset hwloc_old_LIBS
 
     _HWLOC_CHECK_DIFF_U
+    _HWLOC_CHECK_DIFF_W
 
     # Only generate this if we're building the utilities
     AC_CONFIG_FILES(
@@ -363,9 +370,7 @@ EOF
 		      hwloc_have_cudart=yes])],
        [AC_MSG_RESULT(no)])])
 
-    if test "x$enable_xml" != "xno"; then
-        AC_CHECK_PROGS(XMLLINT, [xmllint])
-    fi
+    AC_CHECK_PROGS(XMLLINT, [xmllint])
 
     AC_CHECK_PROGS(BUNZIPP, bunzip2, false)
 

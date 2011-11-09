@@ -15,6 +15,7 @@
 #include <netinet/in.h>
 #include <infiniband/verbs.h>
 #include <infiniband/umad.h>
+#include <sys/time.h>
 #include <mpidi_ch3_impl.h>
 
 #define IB_MGMT_BASE_VERSION        1

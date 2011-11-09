@@ -58,7 +58,11 @@ int MPID_MRAIL_RndvSend (
     rts_pkt->match.parts.context_id = comm->context_id + context_offset;
     rts_pkt->sender_req_id    = sreq->handle;
     rts_pkt->data_sz	      = data_sz;
-
+#if defined(_ENABLE_CUDA_)
+    if(rdma_enable_cuda) {
+        rts_pkt->rndv.cuda_transfer_mode = sreq->mrail.cuda_transfer_mode;
+    }
+#endif
     MPIDI_Comm_get_vc(comm, rank, &vc);
     MPIDI_VC_FAI_send_seqnum(vc, seqnum);
     MPIDI_Pkt_set_seqnum(rts_pkt, seqnum);

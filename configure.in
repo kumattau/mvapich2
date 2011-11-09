@@ -1885,6 +1885,61 @@ if test "$ENABLE_SHLIB" != "none" -o "$enable_debuginfo" != "no" ; then
 fi
 AC_SUBST(CREATESHLIB)
 dnl <_OSU_MVAPICH_>
+AC_ARG_WITH([cuda],
+    [AS_HELP_STRING([--with-cuda=@<:@CUDA installation path@:>@],
+                    [Enable use of MVAPICH2-GPU design])
+    ],
+    [case $with_cuda in
+         yes|no) ;;
+         *) CPPFLAGS="-I$with_cuda/include $CPPFLAGS" ;
+            LDFLAGS="-L$with_cuda/lib64 -L$with_cuda/lib $LDFLAGS" ;;
+     esac
+    ])
+
+AC_ARG_WITH([cuda-include],
+    [AS_HELP_STRING([--with-cuda-include=@<:@CUDA include path@:>@],
+                       [Specify path to CUDA header files])
+    ], [
+        case $with_cuda_include in
+            yes|no) AC_MSG_FAILURE([must specify path!]) ;;
+            *) CPPFLAGS="-I$with_cuda_include $CPPFLAGS" ;;
+        esac
+    ])
+
+AC_ARG_WITH([cuda-libpath],
+    [AS_HELP_STRING([--with-cuda-libpath=@<:@CUDA library path@:>@],
+                       [Specify path to CUDA libraries])
+    ], [
+        case $with_cuda_libpath in
+            yes|no) AC_MSG_FAILURE([must specify path!]) ;;
+            *) LDFLAGS="-L$with_cuda_libpath $LDFLAGS" ;;
+        esac
+    ])
+
+AC_ARG_ENABLE([cuda],
+              [AS_HELP_STRING([--enable-cuda],
+                              [enable MVAPICH-GPU design])
+              ])
+
+AS_IF([test "$enable_cuda" == "yes"], [
+       PAC_CHECK_HEADER_LIB_FATAL([cuda],
+                                  [cuda.h],
+                                  [cuda],
+                                  [cuPointerGetAttribute])
+       AC_SEARCH_LIBS([cudaFree],
+                      [cudart],
+                      [],
+                      [AC_MSG_ERROR([Could not link with cudart])])
+
+       AC_RUN_IFELSE([AC_LANG_PROGRAM([], [])],
+                     [],
+                     [AC_MSG_ERROR(Unable to run program linked with CUDA)],
+                     [AC_MSG_WARN([Unable to verify if program can run linked with CUDA])])
+
+
+       AC_DEFINE(_ENABLE_CUDA_,1,[Define to enable MVAPICH2-GPU design.])
+      ])
+
 AC_ARG_WITH([hwloc],
             [AS_HELP_STRING([--with-hwloc],
                             [use hwloc for process binding])
@@ -6360,7 +6415,7 @@ MPI_NO_SPAWN=$MPID_NO_SPAWN
 export MPI_NO_SPAWN
 MPI_NO_RMA=$MPID_NO_RMA
 export MPI_NO_RMA
-AC_CONFIG_SUBDIRS(test/mpi)
+AC_CONFIG_SUBDIRS(test/mpi osu_benchmarks)
 dnl
 dnl Generate the Makefiles from Makefile.in
 dnl Also generate mpi.h from mpi.h.in so that we can eliminate all ifdefs

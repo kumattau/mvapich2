@@ -691,9 +691,6 @@ int MPIR_Allreduce_shmem_MV2 (
              }
     }
 
-#if defined(CKPT)
-    MPIDI_CH3I_CR_unlock();
-#endif      
 
         /* Broadcasting the mesage from leader to the rest*/
         /* Note: shared memory broadcast could improve the performance */
@@ -702,7 +699,7 @@ int MPIR_Allreduce_shmem_MV2 (
                  mpi_errno = MPIR_Shmem_Bcast_MV2( recvbuf, count, datatype,
                                                    0, shmem_commptr);           
            } else { 
-                 mpi_errno = MPIR_Knomial_Bcast_MV2(recvbuf, count, datatype, 0, 
+                 mpi_errno = MPIR_Knomial_Bcast_intra_node_MV2(recvbuf, count, datatype, 0, 
                                             shmem_commptr, errflag);
            } 
            if (mpi_errno) {
@@ -713,6 +710,9 @@ int MPIR_Allreduce_shmem_MV2 (
            }
 	}
   
+#if defined(CKPT)
+	MPIDI_CH3I_CR_unlock();
+#endif
 
    
   fn_exit:

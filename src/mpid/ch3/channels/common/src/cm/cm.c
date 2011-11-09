@@ -1010,7 +1010,7 @@ static int cm_accept(MPIDI_PG_t *pg, cm_msg * msg)
                 (MPIDI_CH3I_CR_msg_log_queue_entry_t *) MPIU_Malloc(sizeof(MPIDI_CH3I_CR_msg_log_queue_entry_t));
 
             vbuf *v=NULL;
-            MPIDI_CH3I_MRAILI_Pkt_comm_header *p;
+            MPIDI_CH3I_MRAILI_Pkt_comm_header *p = NULL;
 
             if(!SMP_ONLY)
             {
@@ -1107,7 +1107,7 @@ static int cm_accept_and_cancel(MPIDI_PG_t *pg, cm_msg * msg)
                 (MPIDI_CH3I_CR_msg_log_queue_entry_t *) MPIU_Malloc(sizeof(MPIDI_CH3I_CR_msg_log_queue_entry_t));
 
             vbuf *v=NULL;
-            MPIDI_CH3I_MRAILI_Pkt_comm_header *p;
+            MPIDI_CH3I_MRAILI_Pkt_comm_header *p = NULL;
 
             if(!SMP_ONLY)
             {
@@ -1323,7 +1323,7 @@ static int cm_enable(MPIDI_PG_t *pg, cm_msg * msg)
                 (MPIDI_CH3I_CR_msg_log_queue_entry_t *) MPIU_Malloc(sizeof(MPIDI_CH3I_CR_msg_log_queue_entry_t));
 
             vbuf *v=NULL;
-            MPIDI_CH3I_MRAILI_Pkt_comm_header *p;
+            MPIDI_CH3I_MRAILI_Pkt_comm_header *p = NULL;
 
             if(!SMP_ONLY)
             {
@@ -2011,7 +2011,7 @@ int MPICM_Init_UD(uint32_t * ud_qpn)
     int i = 0;
     char *value;
     int mpi_errno = MPI_SUCCESS;
-    int result;
+    int result = 0;
     MPIDI_STATE_DECL(MPID_GEN2_MPICM_INIT_UD);
     MPIDI_FUNC_ENTER(MPID_GEN2_MPICM_INIT_UD);
 
@@ -2922,7 +2922,6 @@ int cm_send_reactivate_msg(MPIDI_VC_t* vc)
     /* Use the SMP channel to send Reactivate message for SMP VCs */
     MPID_Request *sreq;
     MPIDI_CH3I_MRAILI_Pkt_comm_header *p;
-    vbuf *v=NULL;
     extern int MPIDI_CH3_SMP_iStartMsg(MPIDI_VC_t *, void *, MPIDI_msg_sz_t, MPID_Request **);
     if (SMP_INIT && (vc->smp.local_nodes >= 0))
     {

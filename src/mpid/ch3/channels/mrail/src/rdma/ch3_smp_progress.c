@@ -790,7 +790,16 @@ void MPIDI_CH3I_set_smp_only()
     if (MPIDI_CH3I_Process.has_dpm) {
         return;
     }
-    
+
+#ifdef _ENABLE_CUDA_
+    /* CUDA transger efficient in loop back mode.  Remove this
+    ** code when efficient SHMEM intra node CUDA transfer in place.
+    */
+    if (rdma_enable_cuda) {
+        rdma_use_smp = 0; 
+    }    
+#endif
+
     if ((value = getenv("MV2_USE_SHARED_MEM")) != NULL) {
         rdma_use_smp = !!atoi(value);
     }
@@ -1831,6 +1840,10 @@ void MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, const MPID_IOV * iov,
     SEND_BUF_T *send_buf = NULL;
     SEND_BUF_T *tmp_buf = NULL;
     int has_sent = 0;
+#if defined(_ENABLE_CUDA_)
+    int iov_isdev = 0;
+#endif
+
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_WRITEV_RNDV_DATA_CONT);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_WRITEV_RNDV_DATA_CONT);
 
@@ -1852,6 +1865,13 @@ void MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, const MPID_IOV * iov,
 
     first_index = s_sh_buf_pool.free_head;
 
+#if defined(_ENABLE_CUDA_)
+    if (rdma_enable_cuda) {
+        /*as it is all data, we check the first iov to determine if the buffer is on device*/
+        iov_isdev = is_device_buffer((void *) iov[0].MPID_IOV_BUF);
+    } 
+#endif
+
     i = 0;
     *num_bytes_ptr = 0;
     do {
@@ -1872,10 +1892,21 @@ void MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, const MPID_IOV * iov,
 
         if (pkt_avail >= (iov[i].MPID_IOV_LEN - offset)) {
         if (offset != 0) {
-          MPIU_Memcpy(send_buf->buf,
-                (void *) ((unsigned long) iov[i].MPID_IOV_BUF +
-                offset),
-                iov[i].MPID_IOV_LEN - offset);
+#if defined(_ENABLE_CUDA_) 
+            if (iov_isdev) {
+                cudaMemcpy(send_buf->buf,
+                    (void *) ((unsigned long) iov[i].MPID_IOV_BUF +
+                    offset),
+                    iov[i].MPID_IOV_LEN - offset, 
+                    cudaMemcpyDeviceToHost); 
+            } else  
+#endif
+            { 
+                MPIU_Memcpy(send_buf->buf,
+                    (void *) ((unsigned long) iov[i].MPID_IOV_BUF +
+                    offset),
+                    iov[i].MPID_IOV_LEN - offset);
+            }
             send_buf->busy = 1;
             send_buf->len = iov[i].MPID_IOV_LEN - offset;
             send_buf->has_next = 1;
@@ -1886,7 +1917,17 @@ void MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, const MPID_IOV * iov,
             pkt_len += (iov[i].MPID_IOV_LEN - offset);
             offset = 0;
         } else {
-          MPIU_Memcpy(send_buf->buf, iov[i].MPID_IOV_BUF, iov[i].MPID_IOV_LEN);
+#if defined(_ENABLE_CUDA_) 
+            if (iov_isdev) {
+                cudaMemcpy(send_buf->buf, iov[i].MPID_IOV_BUF,
+                        iov[i].MPID_IOV_LEN,
+                        cudaMemcpyDeviceToHost);
+            } else  
+#endif
+            {
+                MPIU_Memcpy(send_buf->buf, iov[i].MPID_IOV_BUF, 
+                        iov[i].MPID_IOV_LEN);
+            }
             send_buf->busy = 1;
             send_buf->len = iov[i].MPID_IOV_LEN;
             send_buf->has_next = 1;
@@ -1898,19 +1939,28 @@ void MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, const MPID_IOV * iov,
         }
         ++i;
         } else if (pkt_avail > 0) {
-          MPIU_Memcpy(send_buf->buf,
-            (void *) ((unsigned long) iov[i].MPID_IOV_BUF +
-                offset),
-            pkt_avail);
-        send_buf->busy = 1;
-        send_buf->len = pkt_avail;
-        send_buf->has_next = 1;
+#if defined(_ENABLE_CUDA_) 
+            if (iov_isdev) {
+                cudaMemcpy(send_buf->buf,
+                    (void *) ((unsigned long) iov[i].MPID_IOV_BUF + offset),
+                    pkt_avail,
+                    cudaMemcpyDeviceToHost);
+            } else  
+#endif
+            { 
+                MPIU_Memcpy(send_buf->buf,
+                    (void *) ((unsigned long) iov[i].MPID_IOV_BUF + offset),
+                    pkt_avail);
+            }
+            send_buf->busy = 1;
+            send_buf->len = pkt_avail;
+            send_buf->has_next = 1;
 
-        link_buf_to_send_queue (destination, send_buf->myindex);
-        tmp_buf = send_buf;
+            link_buf_to_send_queue (destination, send_buf->myindex);
+            tmp_buf = send_buf;
 
-        pkt_len += pkt_avail;
-        offset += pkt_avail;
+            pkt_len += pkt_avail;
+            offset += pkt_avail;
         }
     }
 
@@ -1965,6 +2015,10 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, const MPID_IOV * iov,
     SEND_BUF_T *tmp_buf = NULL;
     int has_sent=0;
     int mpi_errno = MPI_SUCCESS;
+#if defined(_ENABLE_CUDA_)
+    int iov_isdev = 0;
+#endif
+
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_WRITE_RNDV_DATA);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_WRITE_RNDV_DATA);
 
@@ -1974,6 +2028,13 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, const MPID_IOV * iov,
     MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
         "**fail %s", "s_sh_buf_pool.free_head == -1");
     }
+
+#if defined(_ENABLE_CUDA_)
+    if (rdma_enable_cuda) {
+        /*as it is all data, we check the first iov to determine if the buffer is on device*/
+        iov_isdev = is_device_buffer((void *) iov[0].MPID_IOV_BUF);
+    } 
+#endif
 
     i = 0;
     *num_bytes_ptr = 0;
@@ -1994,10 +2055,21 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, const MPID_IOV * iov,
 
         if (pkt_avail >= (iov[i].MPID_IOV_LEN - offset)) {
         if (offset != 0) {
-          MPIU_Memcpy(send_buf->buf,
-                (void *) ((unsigned long) iov[i].MPID_IOV_BUF +
-                offset),
-                iov[i].MPID_IOV_LEN - offset);
+#if defined(_ENABLE_CUDA_)
+            if (iov_isdev) { 
+                cudaMemcpy(send_buf->buf,
+                    (void *) ((unsigned long) iov[i].MPID_IOV_BUF +
+                    offset),
+                    iov[i].MPID_IOV_LEN - offset,
+                    cudaMemcpyDeviceToHost);
+            } else 
+#endif
+            {
+                MPIU_Memcpy(send_buf->buf,
+                    (void *) ((unsigned long) iov[i].MPID_IOV_BUF +
+                    offset),
+                    iov[i].MPID_IOV_LEN - offset);
+            }
             send_buf->busy = 1;
             send_buf->len = iov[i].MPID_IOV_LEN - offset;
             send_buf->has_next = 1;
@@ -2008,7 +2080,16 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, const MPID_IOV * iov,
             pkt_len += (iov[i].MPID_IOV_LEN - offset);
             offset = 0;
         } else {
-          MPIU_Memcpy(send_buf->buf, iov[i].MPID_IOV_BUF, iov[i].MPID_IOV_LEN);
+#if defined(_ENABLE_CUDA_)
+            if (iov_isdev) {
+                cudaMemcpy(send_buf->buf, iov[i].MPID_IOV_BUF, 
+                        iov[i].MPID_IOV_LEN, cudaMemcpyDeviceToHost);
+            } else 
+#endif
+            {
+                MPIU_Memcpy(send_buf->buf, iov[i].MPID_IOV_BUF, 
+                        iov[i].MPID_IOV_LEN);
+            }
             send_buf->busy = 1;
             send_buf->len = iov[i].MPID_IOV_LEN;
             send_buf->has_next = 1;
@@ -2020,19 +2101,30 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, const MPID_IOV * iov,
         }
         ++i;
         } else if (pkt_avail > 0) {
-          MPIU_Memcpy(send_buf->buf,
-            (void *) ((unsigned long) iov[i].MPID_IOV_BUF +
-                offset),
-            pkt_avail);
-        send_buf->busy = 1;
-        send_buf->len = pkt_avail;
-        send_buf->has_next = 1;
+#if defined(_ENABLE_CUDA_)
+            if (iov_isdev) { 
+                cudaMemcpy(send_buf->buf,
+                    (void *) ((unsigned long) iov[i].MPID_IOV_BUF +
+                    offset),
+                    pkt_avail,
+                    cudaMemcpyDeviceToHost);
+            } else 
+#endif
+            {    
+                MPIU_Memcpy(send_buf->buf,
+                    (void *) ((unsigned long) iov[i].MPID_IOV_BUF +
+                    offset),
+                    pkt_avail);
+            }
+            send_buf->busy = 1;
+            send_buf->len = pkt_avail;
+            send_buf->has_next = 1;
 
-        link_buf_to_send_queue (destination, send_buf->myindex);
-        tmp_buf = send_buf;
+            link_buf_to_send_queue (destination, send_buf->myindex);
+            tmp_buf = send_buf;
 
-        pkt_len += pkt_avail;
-        offset += pkt_avail;
+            pkt_len += pkt_avail;
+            offset += pkt_avail;
         }
     }
 
@@ -2083,6 +2175,10 @@ void MPIDI_CH3I_SMP_writev(MPIDI_VC_t * vc, const MPID_IOV * iov,
     volatile void *ptr_volatile;
     void *ptr_head, *ptr;
     int i, offset = 0;
+#if defined(_ENABLE_CUDA_)
+    int iov_isdev = 0; 
+#endif
+
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SMP_WRITEV);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SMP_WRITEV);
 
@@ -2113,16 +2209,30 @@ void MPIDI_CH3I_SMP_writev(MPIDI_VC_t * vc, const MPID_IOV * iov,
     do {
     pkt_len = 0;
     for (; i < n;) {
+#if defined(_ENABLE_CUDA_)
+        if (rdma_enable_cuda) {
+            iov_isdev = is_device_buffer((void *) iov[i].MPID_IOV_BUF);
+        }
+#endif
         DEBUG_PRINT
         ("i %d, iov[i].len %d, (len-offset) %d, pkt_avail %d\n", i,
          iov[i].MPID_IOV_LEN, (iov[i].MPID_IOV_LEN - offset),
          pkt_avail);
         if (pkt_avail >= (iov[i].MPID_IOV_LEN - offset)) {
         if (offset != 0) {
-          MPIU_Memcpy(ptr,
-                (void *) ((unsigned long) iov[i].MPID_IOV_BUF +
-                offset),
-                iov[i].MPID_IOV_LEN - offset);
+#if defined(_ENABLE_CUDA_)
+            if (iov_isdev) {
+                cudaMemcpy(ptr,
+                        (void *) ((unsigned long) iov[i].MPID_IOV_BUF + offset),
+                        iov[i].MPID_IOV_LEN - offset,
+                        cudaMemcpyDeviceToHost);
+            } else 
+#endif
+            {
+                 MPIU_Memcpy(ptr,
+                        (void *) ((unsigned long) iov[i].MPID_IOV_BUF + offset),
+                         iov[i].MPID_IOV_LEN - offset);
+            }
             pkt_avail -= (iov[i].MPID_IOV_LEN - offset);
             ptr =
             (void *) ((unsigned long) ptr +
@@ -2130,7 +2240,15 @@ void MPIDI_CH3I_SMP_writev(MPIDI_VC_t * vc, const MPID_IOV * iov,
             pkt_len += (iov[i].MPID_IOV_LEN - offset);
             offset = 0;
         } else {
-          MPIU_Memcpy(ptr, iov[i].MPID_IOV_BUF, iov[i].MPID_IOV_LEN);
+#if defined(_ENABLE_CUDA_)
+            if (iov_isdev) {
+                cudaMemcpy(ptr, iov[i].MPID_IOV_BUF, iov[i].MPID_IOV_LEN, 
+                            cudaMemcpyDeviceToHost);
+            } else 
+#endif
+            {
+                MPIU_Memcpy(ptr, iov[i].MPID_IOV_BUF, iov[i].MPID_IOV_LEN);
+            }
             pkt_avail -= iov[i].MPID_IOV_LEN;
             ptr =
             (void *) ((unsigned long) ptr +
@@ -2139,14 +2257,24 @@ void MPIDI_CH3I_SMP_writev(MPIDI_VC_t * vc, const MPID_IOV * iov,
         }
         ++i;
         } else if (pkt_avail > 0) {
-          MPIU_Memcpy(ptr,
-            (void *) ((unsigned long) iov[i].MPID_IOV_BUF +
-                offset), pkt_avail);
-        ptr = (void *) ((unsigned long) ptr + pkt_avail);
-        pkt_len += pkt_avail;
-        offset += pkt_avail;
-        pkt_avail = 0;
-        break;
+#if defined(_ENABLE_CUDA_)
+            if (iov_isdev) {
+                cudaMemcpy(ptr, 
+                           (void *) ((unsigned long) iov[i].MPID_IOV_BUF +
+                           offset), pkt_avail,
+                           cudaMemcpyDeviceToHost);
+            } else 
+#endif
+            {
+                MPIU_Memcpy(ptr,
+                    (void *) ((unsigned long) iov[i].MPID_IOV_BUF +
+                    offset), pkt_avail);
+            }
+            ptr = (void *) ((unsigned long) ptr + pkt_avail);
+            pkt_len += pkt_avail;
+            offset += pkt_avail;
+            pkt_avail = 0;
+            break;
         }
     }
 
@@ -2196,6 +2324,10 @@ void MPIDI_CH3I_SMP_write_contig(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t reqtype,
     int pkt_len = 0;
     volatile void *ptr_volatile;
     void *ptr_head, *ptr;
+#if defined(_ENABLE_CUDA_)
+    int buf_isdev = 0;
+#endif
+
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SMP_WRITE_CONTIG);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SMP_WRITE_CONTIG);
 
@@ -2229,8 +2361,20 @@ void MPIDI_CH3I_SMP_write_contig(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t reqtype,
     MPIDI_VC_FAI_send_seqnum(vc, seqnum);
     MPIDI_Pkt_set_seqnum(eager_pkt, seqnum);
 
-    memcpy((void *) ((unsigned long) ptr +
+#if defined(_ENABLE_CUDA_)
+    if (rdma_enable_cuda) {
+        buf_isdev = is_device_buffer((void *) buf);
+    }
+    if (buf_isdev) { 
+        cudaMemcpy((void *) ((unsigned long) ptr +
+                     sizeof(MPIDI_CH3_Pkt_eager_send_t)), buf, data_sz,
+                     cudaMemcpyDeviceToHost);
+    } else 
+#endif
+    {
+        memcpy((void *) ((unsigned long) ptr +
                      sizeof(MPIDI_CH3_Pkt_eager_send_t)), buf, data_sz);
+    }
 
     *num_bytes_ptr += pkt_len;
     *((int *) ptr_head) = pkt_len;
@@ -2268,6 +2412,10 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
     size_t err, old_len;
     int total_bytes = l_header->total_bytes;
 #endif
+#if defined(_ENABLE_CUDA_)
+    int iov_isdev = 0;
+#endif
+
     /* all variable must be declared before the state declarations */
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_READV_RNDV_CONT);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_READV_RNDV_CONT);
@@ -2394,8 +2542,15 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
     }
 
     msglen = recv_buf->len - recv_offset;
-    current_buf = (void *)((unsigned long) recv_buf->buf + recv_offset);
+    current_buf = (void *)((unsigned long)recv_buf->buf + recv_offset);
     iov_len = iov[0].MPID_IOV_LEN;
+
+#if defined(_ENABLE_CUDA_)
+    if (rdma_enable_cuda) {
+        /*as it is all data, we check the first iov to determine if the buffer is on device*/
+        iov_isdev = is_device_buffer((void *) iov[0].MPID_IOV_BUF);
+    }
+#endif
 
     for (;
         iov_off < iovlen
@@ -2404,8 +2559,21 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
 
         if (msglen > iov_len) {
         READBAR();
-        MPIU_Memcpy((void *) ((unsigned long)iov[iov_off].MPID_IOV_BUF + buf_off),
-            (void *) current_buf, iov_len);
+#if defined(_ENABLE_CUDA_)
+        if (iov_isdev) {  
+            cudaMemcpy((void *) ((unsigned long)iov[iov_off].MPID_IOV_BUF 
+                        + buf_off),
+                        (void *) current_buf, 
+                        iov_len,
+                        cudaMemcpyHostToDevice);
+        } else
+#endif
+        {
+            MPIU_Memcpy((void *) ((unsigned long)iov[iov_off].MPID_IOV_BUF 
+                        + buf_off),
+                        (void *) current_buf, 
+                        iov_len);
+        }
         READBAR();
         current_buf = (void *) ((unsigned long) current_buf +
             iov_len);
@@ -2437,8 +2605,21 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
         iov_len = iov[iov_off].MPID_IOV_LEN;
         } else if (msglen == iov_len) {
         READBAR();
-        MPIU_Memcpy((void *) ((unsigned long)iov[iov_off].MPID_IOV_BUF + buf_off),
-            (void *) current_buf, iov_len);
+#if defined(_ENABLE_CUDA_)
+        if (iov_isdev) {
+            cudaMemcpy((void *) ((unsigned long)iov[iov_off].MPID_IOV_BUF 
+                        + buf_off),
+                        (void *) current_buf, 
+                        iov_len, 
+                        cudaMemcpyHostToDevice);
+        } else 
+#endif
+        {
+            MPIU_Memcpy((void *) ((unsigned long)iov[iov_off].MPID_IOV_BUF 
+                        + buf_off),
+                        (void *) current_buf, 
+                        iov_len);
+        }
         READBAR();
         s_current_bytes[recv_vc_ptr->smp.local_nodes] -=
             iov_len;
@@ -2474,8 +2655,21 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
 
         } else if (msglen > 0) {
         READBAR();
-        MPIU_Memcpy((void *) ((unsigned long)iov[iov_off].MPID_IOV_BUF + buf_off),
-            (void *) current_buf, msglen);
+#if defined(_ENABLE_CUDA_)
+        if (iov_isdev) {
+            cudaMemcpy((void *) ((unsigned long)iov[iov_off].MPID_IOV_BUF 
+                        + buf_off),
+                        (void *) current_buf, 
+                        msglen,
+                        cudaMemcpyHostToDevice);
+        } else 
+#endif
+        {
+            MPIU_Memcpy((void *) ((unsigned long)iov[iov_off].MPID_IOV_BUF 
+                        + buf_off),
+                        (void *) current_buf, 
+                        msglen);
+        }
         READBAR();
         iov_len -= msglen;
         received_bytes += msglen;
@@ -2567,6 +2761,10 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
     int current_index = index;
     void *current_buf;
     SEND_BUF_T *recv_buf;
+#if defined(_ENABLE_CUDA_)
+    int iov_isdev = 0;
+#endif
+
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SMP_READ_RNDV);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SMP_READ_RNDV);
 
@@ -2694,6 +2892,14 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
     current_buf = (void *)recv_buf->buf;
     iov_len = iov[0].MPID_IOV_LEN;
 
+#if defined(_ENABLE_CUDA_)
+    if (rdma_enable_cuda) {
+        /*as it is all data, we check the first iov to determine if the buffer is on device*/
+        iov_isdev = is_device_buffer((void *) iov[0].MPID_IOV_BUF);
+    }
+#endif
+
+
     for (;
         iov_off < iovlen
         && s_current_bytes[recv_vc_ptr->smp.local_nodes] > 0
@@ -2701,8 +2907,21 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
 
         if (msglen > iov_len) {
         READBAR();
-        MPIU_Memcpy((void *) ((unsigned long)iov[iov_off].MPID_IOV_BUF + buf_off),
-            (void *) current_buf, iov_len);
+#if defined(_ENABLE_CUDA_)
+        if (iov_isdev) {
+            cudaMemcpy((void *) ((unsigned long)iov[iov_off].MPID_IOV_BUF 
+                            + buf_off),
+                        (void *) current_buf,   
+                        iov_len, 
+                        cudaMemcpyHostToDevice); 
+        } else 
+#endif
+        {
+            MPIU_Memcpy((void *) ((unsigned long)iov[iov_off].MPID_IOV_BUF 
+                            + buf_off),
+                        (void *) current_buf,   
+                        iov_len);
+        }
         READBAR();
         current_buf = (void *) ((unsigned long) current_buf +
             iov_len);
@@ -2728,8 +2947,21 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
         iov_len = iov[iov_off].MPID_IOV_LEN;
         } else if (msglen == iov_len) {
         READBAR();
-        MPIU_Memcpy((void *) ((unsigned long)iov[iov_off].MPID_IOV_BUF + buf_off),
-            (void *) current_buf, iov_len);
+#if defined(_ENABLE_CUDA_)
+        if (iov_isdev) {
+            cudaMemcpy((void *) ((unsigned long)iov[iov_off].MPID_IOV_BUF 
+                            + buf_off),
+                        (void *) current_buf, 
+                        iov_len,
+                        cudaMemcpyHostToDevice);
+        } else   
+#endif
+        {
+            MPIU_Memcpy((void *) ((unsigned long)iov[iov_off].MPID_IOV_BUF 
+                            + buf_off),
+                        (void *) current_buf, 
+                        iov_len);
+        }
         READBAR();
         s_current_bytes[recv_vc_ptr->smp.local_nodes] -=
             iov_len;
@@ -2776,8 +3008,21 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
 
         } else if (msglen > 0) {
         READBAR();
-        MPIU_Memcpy((void *) ((unsigned long)iov[iov_off].MPID_IOV_BUF + buf_off),
-            (void *) current_buf, msglen);
+#if defined(_ENABLE_CUDA_)
+        if (iov_isdev) {
+            cudaMemcpy((void *) ((unsigned long)iov[iov_off].MPID_IOV_BUF 
+                            + buf_off),
+                        (void *) current_buf, 
+                        msglen,
+                        cudaMemcpyHostToDevice);
+        } else 
+#endif
+        {
+            MPIU_Memcpy((void *) ((unsigned long)iov[iov_off].MPID_IOV_BUF 
+                            + buf_off),
+                        (void *) current_buf, 
+                        msglen);
+        }
         READBAR();
         iov_len -= msglen;
         received_bytes += msglen;
@@ -2859,7 +3104,11 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
 
     int iov_off = 0, buf_off = 0;
     int received_bytes = 0;
+#if defined(_ENABLE_CUDA_)
+    int iov_isdev = 0;
+#endif
     /* all variable must be declared before the state declarations */
+
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SMP_READV);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SMP_READV);
 
@@ -2879,12 +3128,27 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
     for (;
         iov_off < iovlen
         && s_current_bytes[recv_vc_ptr->smp.local_nodes] > 0;) {
+#if defined(_ENABLE_CUDA_)
+        if (rdma_enable_cuda) {
+            iov_isdev = is_device_buffer((void *) iov[iov_off].MPID_IOV_BUF);
+        }
+#endif
         if (s_current_bytes[recv_vc_ptr->smp.local_nodes] >=
             iov[iov_off].MPID_IOV_LEN) {
         READBAR();
-        MPIU_Memcpy((void *) iov[iov_off].MPID_IOV_BUF,
-            (void *) s_current_ptr[recv_vc_ptr->smp.local_nodes],
-            iov[iov_off].MPID_IOV_LEN);
+#if defined(_ENABLE_CUDA_)
+        if (iov_isdev) {
+            cudaMemcpy((void *) iov[iov_off].MPID_IOV_BUF,
+                (void *) s_current_ptr[recv_vc_ptr->smp.local_nodes],
+                iov[iov_off].MPID_IOV_LEN,
+                cudaMemcpyHostToDevice);
+        } else 
+#endif
+        {
+            MPIU_Memcpy((void *) iov[iov_off].MPID_IOV_BUF,
+                (void *) s_current_ptr[recv_vc_ptr->smp.local_nodes],
+                iov[iov_off].MPID_IOV_LEN);
+        }
         READBAR();
         s_current_ptr[recv_vc_ptr->smp.local_nodes] =
             (void *) ((unsigned long)
@@ -2896,9 +3160,19 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
         ++iov_off;
         } else if (s_current_bytes[recv_vc_ptr->smp.local_nodes] > 0) {
         READBAR();
-        MPIU_Memcpy((void *) iov[iov_off].MPID_IOV_BUF,
-            (void *) s_current_ptr[recv_vc_ptr->smp.local_nodes],
-            s_current_bytes[recv_vc_ptr->smp.local_nodes]);
+#if defined(_ENABLE_CUDA_)
+        if (iov_isdev) {
+            cudaMemcpy((void *) iov[iov_off].MPID_IOV_BUF,
+                (void *) s_current_ptr[recv_vc_ptr->smp.local_nodes],
+                s_current_bytes[recv_vc_ptr->smp.local_nodes],
+                cudaMemcpyHostToDevice);
+        } else 
+#endif
+        {
+            MPIU_Memcpy((void *) iov[iov_off].MPID_IOV_BUF,
+                (void *) s_current_ptr[recv_vc_ptr->smp.local_nodes],
+                s_current_bytes[recv_vc_ptr->smp.local_nodes]);
+        }
         READBAR();
         s_current_ptr[recv_vc_ptr->smp.local_nodes] =
             (void *) ((unsigned long)
@@ -2969,13 +3243,29 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
     for (;
         iov_off < iovlen
         && s_current_bytes[recv_vc_ptr->smp.local_nodes] > 0;) {
+#if defined(_ENABLE_CUDA_)
+        if (rdma_enable_cuda) {
+            iov_isdev = is_device_buffer((void *) iov[iov_off].MPID_IOV_BUF);
+        }
+#endif
         if (s_current_bytes[recv_vc_ptr->smp.local_nodes] >=
             iov[iov_off].MPID_IOV_LEN - buf_off) {
         WRITEBAR();
-        MPIU_Memcpy((void *) ((unsigned long) iov[iov_off].
+#if defined(_ENABLE_CUDA_)
+        if (iov_isdev) {
+            cudaMemcpy((void *) ((unsigned long) iov[iov_off].
                 MPID_IOV_BUF + buf_off),
-            (void *) s_current_ptr[recv_vc_ptr->smp.local_nodes],
-            iov[iov_off].MPID_IOV_LEN - buf_off);
+                (void *) s_current_ptr[recv_vc_ptr->smp.local_nodes],
+                iov[iov_off].MPID_IOV_LEN - buf_off,
+                cudaMemcpyHostToDevice);
+        } else 
+#endif
+        {
+            MPIU_Memcpy((void *) ((unsigned long) iov[iov_off].
+                MPID_IOV_BUF + buf_off),
+                (void *) s_current_ptr[recv_vc_ptr->smp.local_nodes],
+                iov[iov_off].MPID_IOV_LEN - buf_off);
+        }
         s_current_bytes[recv_vc_ptr->smp.local_nodes] -=
             (iov[iov_off].MPID_IOV_LEN - buf_off);
         READBAR();
@@ -2988,10 +3278,21 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
         buf_off = 0;
         } else if (s_current_bytes[recv_vc_ptr->smp.local_nodes] > 0) {
         WRITEBAR();
-        MPIU_Memcpy((void *) ((unsigned long) iov[iov_off].
+#if defined(_ENABLE_CUDA_)
+        if (iov_isdev) {
+            cudaMemcpy((void *) ((unsigned long) iov[iov_off].
                 MPID_IOV_BUF + buf_off),
-            (void *) s_current_ptr[recv_vc_ptr->smp.local_nodes],
-            s_current_bytes[recv_vc_ptr->smp.local_nodes]);
+                (void *) s_current_ptr[recv_vc_ptr->smp.local_nodes],
+                s_current_bytes[recv_vc_ptr->smp.local_nodes],
+                cudaMemcpyHostToDevice);
+        } else  
+#endif
+        {
+            MPIU_Memcpy((void *) ((unsigned long) iov[iov_off].
+                MPID_IOV_BUF + buf_off),
+                (void *) s_current_ptr[recv_vc_ptr->smp.local_nodes],
+                s_current_bytes[recv_vc_ptr->smp.local_nodes]);
+        }
         READBAR();
         s_current_ptr[recv_vc_ptr->smp.local_nodes] =
             (void *) ((unsigned long)

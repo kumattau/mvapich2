@@ -226,9 +226,7 @@ void usage(const char *name, FILE *where)
 		  ", svg"
 #endif /* CAIRO_HAS_SVG_SURFACE */
 #endif /* HWLOC_HAVE_CAIRO */
-#ifdef HWLOC_HAVE_XML
 		  ", xml"
-#endif /* HWLOC_HAVE_XML */
 		  "\n");
   fprintf (where, "\nFormatting options:\n");
   fprintf (where, "  -l --logical          Display hwloc logical object indexes\n");
@@ -254,6 +252,11 @@ void usage(const char *name, FILE *where)
                   "                        impact\n");
   fprintf (where, "  --restrict <cpuset>   Restrict the topology to processors listed in <cpuset>\n");
   fprintf (where, "  --restrict binding    Restrict the topology to the current process binding\n");
+#ifdef HWLOC_HAVE_LIBPCI
+  fprintf (where, "  --no-io               Do not show any I/O device or bridge\n");
+  fprintf (where, "  --no-bridges          Do not any I/O bridge except hostbridges\n");
+  fprintf (where, "  --whole-io            Show all I/O devices and bridges\n");
+#endif
   fprintf (where, "Input options:\n");
   hwloc_utils_input_format_usage(where, 6);
   fprintf (where, "  --thissystem          Assume that the input topology provides the topology\n"
@@ -319,7 +322,7 @@ main (int argc, char *argv[])
   int verbose_mode = LSTOPO_VERBOSE_MODE_DEFAULT;
   hwloc_topology_t topology;
   const char *filename = NULL;
-  unsigned long flags = 0;
+  unsigned long flags = HWLOC_TOPOLOGY_FLAG_IO_DEVICES | HWLOC_TOPOLOGY_FLAG_IO_BRIDGES;
   int merge = 0;
   int ignorecache = 0;
   char * callname;
@@ -387,6 +390,12 @@ main (int argc, char *argv[])
 	ignorecache = 1;
       else if (!strcmp (argv[1], "--whole-system"))
 	flags |= HWLOC_TOPOLOGY_FLAG_WHOLE_SYSTEM;
+      else if (!strcmp (argv[1], "--no-io"))
+	flags &= ~(HWLOC_TOPOLOGY_FLAG_IO_DEVICES | HWLOC_TOPOLOGY_FLAG_IO_BRIDGES);
+      else if (!strcmp (argv[1], "--no-bridges"))
+	flags &= ~(HWLOC_TOPOLOGY_FLAG_IO_BRIDGES);
+      else if (!strcmp (argv[1], "--whole-io"))
+	flags |= HWLOC_TOPOLOGY_FLAG_WHOLE_IO;
       else if (!strcmp (argv[1], "--merge"))
 	merge = 1;
       else if (!strcmp (argv[1], "--thissystem"))
@@ -599,11 +608,9 @@ main (int argc, char *argv[])
       break;
 #endif /* CAIRO_HAS_SVG_SURFACE */
 #endif /* HWLOC_HAVE_CAIRO */
-#ifdef HWLOC_HAVE_XML
     case LSTOPO_OUTPUT_XML:
       output_xml(topology, filename, logical, legend, verbose_mode);
       break;
-#endif
     default:
       fprintf(stderr, "file format not supported\n");
       usage(callname, stderr);

@@ -350,15 +350,51 @@ int MPIR_Localcopy(void *sendbuf, int sendcount, MPI_Datatype sendtype,
 
     if (sendtype_iscontig && recvtype_iscontig)
     {
+#if defined(_ENABLE_CUDA_)
+        if (rdma_enable_cuda && enable_device_ptr_checks) {
+            int sbuf_isdev = 0, rbuf_isdev = 0;
+        
+            sbuf_isdev = is_device_buffer(sendbuf); 
+            rbuf_isdev = is_device_buffer(recvbuf); 
+
+            if (sbuf_isdev) { 
+                if(rbuf_isdev) {
+                    cudaMemcpy((void *) ((char *)recvbuf + recvtype_true_lb), 
+                           (void *) ((char *)sendbuf + sendtype_true_lb), 
+                           copy_sz,
+                           cudaMemcpyDeviceToDevice);
+                } else {
+                     cudaMemcpy((void *) ((char *)recvbuf + recvtype_true_lb), 
+                           (void *) ((char *)sendbuf + sendtype_true_lb), 
+                           copy_sz,
+                           cudaMemcpyDeviceToHost);       
+                }
+            } else {
+                if(rbuf_isdev) {
+                     cudaMemcpy((void *) ((char *)recvbuf + recvtype_true_lb),
+                           (void *) ((char *)sendbuf + sendtype_true_lb),
+                           copy_sz,
+                           cudaMemcpyHostToDevice); 
+                } else {
+                     MPIU_Memcpy(((char *) recvbuf + recvtype_true_lb),
+                           ((char *) sendbuf + sendtype_true_lb),
+                           copy_sz);
+                }
+            }
+        } else {     
+#endif
 #if defined(HAVE_ERROR_CHECKING)
-        MPIU_ERR_CHKMEMCPYANDJUMP(mpi_errno,
+            MPIU_ERR_CHKMEMCPYANDJUMP(mpi_errno,
                                   ((char *)recvbuf + recvtype_true_lb),
                                   ((char *)sendbuf + sendtype_true_lb),
                                   copy_sz);
 #endif
-        MPIU_Memcpy(((char *) recvbuf + recvtype_true_lb),
-               ((char *) sendbuf + sendtype_true_lb),
-               copy_sz);
+            MPIU_Memcpy(((char *) recvbuf + recvtype_true_lb),
+                   ((char *) sendbuf + sendtype_true_lb),
+                   copy_sz);
+#if defined(_ENABLE_CUDA_)
+        }
+#endif 
     }
     else if (sendtype_iscontig)
     {
@@ -451,6 +487,153 @@ int MPIR_Localcopy(void *sendbuf, int sendcount, MPI_Datatype sendtype,
     goto fn_exit;
 }
 
+#ifdef _ENABLE_CUDA_
+#undef FUNCNAME
+#define FUNCNAME MPIR_Localcopy_cuda
+#undef FCNAME
+#define FCNAME "MPIR_Localcopy"
+int MPIR_Localcopy_cuda(void *sendbuf, int sendcount, 
+                    MPI_Datatype sendtype, void *recvbuf,
+                    int recvcount, MPI_Datatype recvtype, 
+                    enum cudaMemcpyKind kind)
+{
+    int mpi_errno = MPI_SUCCESS;
+    int sendtype_iscontig, recvtype_iscontig;
+    MPI_Aint sendsize, recvsize, sdata_sz, rdata_sz, copy_sz;
+    MPI_Aint true_extent, sendtype_true_lb, recvtype_true_lb;
+    MPIU_CHKLMEM_DECL(1);
+    MPID_MPI_STATE_DECL(MPID_STATE_MPIR_LOCALCOPY);
+
+    MPID_MPI_FUNC_ENTER(MPID_STATE_MPIR_LOCALCOPY);
+
+    MPIR_Datatype_iscontig(sendtype, &sendtype_iscontig);
+    MPIR_Datatype_iscontig(recvtype, &recvtype_iscontig);
+
+    MPID_Datatype_get_size_macro(sendtype, sendsize);
+    MPID_Datatype_get_size_macro(recvtype, recvsize);
+    sdata_sz = sendsize * sendcount;
+    rdata_sz = recvsize * recvcount;
+
+    if (!sdata_sz || !rdata_sz)
+        goto fn_exit;
+
+    if (sdata_sz > rdata_sz)
+    {
+        MPIU_ERR_SET2(mpi_errno, MPI_ERR_TRUNCATE, "**truncate", 
+            "**truncate %d %d", sdata_sz, rdata_sz);
+        copy_sz = rdata_sz;
+    }
+    else
+    {
+        copy_sz = sdata_sz;
+    }
+
+    MPIR_Type_get_true_extent_impl(sendtype, &sendtype_true_lb, &true_extent);
+    MPIR_Type_get_true_extent_impl(recvtype, &recvtype_true_lb, &true_extent);
+
+    if (sendtype_iscontig && recvtype_iscontig)
+    {
+#if defined(HAVE_ERROR_CHECKING)
+        MPIU_ERR_CHKMEMCPYANDJUMP(mpi_errno,
+                ((char *)recvbuf + recvtype_true_lb),
+                ((char *)sendbuf + sendtype_true_lb),
+                copy_sz);
+#endif
+        cudaMemcpy(((char *) recvbuf + recvtype_true_lb),
+                ((char *) sendbuf + sendtype_true_lb),
+                copy_sz, kind);
+    }
+    else if (sendtype_iscontig)
+    {
+        MPID_Segment seg;
+        MPI_Aint last;
+
+        MPID_Segment_init(recvbuf, recvcount, recvtype, &seg, 0);
+        last = copy_sz;
+        MPID_Segment_unpack(&seg, 0, &last, (char*)sendbuf + sendtype_true_lb);
+        MPIU_ERR_CHKANDJUMP(last != copy_sz, mpi_errno, MPI_ERR_TYPE, "**dtypemismatch");
+    }
+    else if (recvtype_iscontig)
+    {
+        MPID_Segment seg;
+        MPI_Aint last;
+
+        MPID_Segment_init(sendbuf, sendcount, sendtype, &seg, 0);
+        last = copy_sz;
+        MPID_Segment_pack(&seg, 0, &last, (char*)recvbuf + recvtype_true_lb);
+        MPIU_ERR_CHKANDJUMP(last != copy_sz, mpi_errno, MPI_ERR_TYPE, "**dtypemismatch");
+    }
+    else
+    {
+        char * buf;
+        MPIDI_msg_sz_t buf_off;
+        MPID_Segment sseg;
+        MPIDI_msg_sz_t sfirst;
+        MPID_Segment rseg;
+        MPIDI_msg_sz_t rfirst;
+
+        MPIU_CHKLMEM_MALLOC(buf, char *, COPY_BUFFER_SZ, mpi_errno, "buf");
+
+        MPID_Segment_init(sendbuf, sendcount, sendtype, &sseg, 0);
+        MPID_Segment_init(recvbuf, recvcount, recvtype, &rseg, 0);
+
+        sfirst = 0;
+        rfirst = 0;
+        buf_off = 0;
+
+        while (1)
+        {
+            MPI_Aint last;
+            char * buf_end;
+
+            if (copy_sz - sfirst > COPY_BUFFER_SZ - buf_off)
+            {
+                last = sfirst + (COPY_BUFFER_SZ - buf_off);
+            }
+            else
+            {
+                last = copy_sz;
+            }
+
+            MPID_Segment_pack(&sseg, sfirst, &last, buf + buf_off);
+            MPIU_Assert(last > sfirst);
+
+            buf_end = buf + buf_off + (last - sfirst);
+            sfirst = last;
+
+            MPID_Segment_unpack(&rseg, rfirst, &last, buf);
+            MPIU_Assert(last > rfirst);
+
+            rfirst = last;
+
+            if (rfirst == copy_sz)
+            {
+                /* successful completion */
+                break;
+            }
+
+            /* if the send side finished, but the recv side couldn't unpack it, there's a datatype mismatch */
+            MPIU_ERR_CHKANDJUMP(sfirst == copy_sz, mpi_errno, MPI_ERR_TYPE, "**dtypemismatch");        
+
+            /* if not all data was unpacked, copy it to the front of the buffer for next time */
+            buf_off = sfirst - rfirst;
+            if (buf_off > 0)
+            {
+                memmove(buf, buf_end - buf_off, buf_off);
+            }
+        }
+    }
+
+
+fn_exit:
+    MPIU_CHKLMEM_FREEALL();
+    MPID_MPI_FUNC_EXIT(MPID_STATE_MPIR_LOCALCOPY);
+    return mpi_errno;
+
+fn_fail:
+    goto fn_exit;
+}
+#endif
 
 #undef FUNCNAME
 #define FUNCNAME MPIC_Isend

@@ -107,6 +107,21 @@ int MPID_Recv(void * buf, int count, MPI_Datatype datatype, int rank, int tag,
 	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**nomemreq");
     }
 
+#ifdef _ENABLE_CUDA_
+    int mem_type = 0;
+    cuPointerGetAttribute((void*) &mem_type, 
+        CU_POINTER_ATTRIBUTE_MEMORY_TYPE, (CUdeviceptr) buf);
+    if (rdma_enable_cuda) {
+        if (mem_type == CU_MEMORYTYPE_DEVICE) {
+            /* buf is in the GPU device memory */
+            rreq->mrail.cuda_transfer_mode = CONT_DEVICE_TO_DEVICE;
+        } else {
+            /* buf is in the host memory*/
+            rreq->mrail.cuda_transfer_mode = NONE;
+        }
+    }
+#endif
+
     if (found)
     {
 	MPIDI_VC_t * vc;

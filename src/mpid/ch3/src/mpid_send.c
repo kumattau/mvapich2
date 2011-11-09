@@ -180,6 +180,18 @@ eager_send:
     }
     else {
 	MPIDI_Request_create_sreq(sreq, mpi_errno, goto fn_exit);
+#ifdef _ENABLE_CUDA_
+    sreq->mrail.cts_received = 0;
+    int mem_type = 0;
+    cuPointerGetAttribute((void*) &mem_type, CU_POINTER_ATTRIBUTE_MEMORY_TYPE, (CUdeviceptr) buf);
+    if (rdma_enable_cuda && mem_type == CU_MEMORYTYPE_DEVICE) {
+        /* buf is in the GPU device memory */
+        sreq->mrail.cuda_transfer_mode = CONT_DEVICE_TO_DEVICE;
+    } else {
+        /* buf is in the main memory */
+        sreq->mrail.cuda_transfer_mode = NONE;
+    }
+#endif
 	MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_SEND);
 	mpi_errno = vc->rndvSend_fn( &sreq, buf, count, datatype, dt_contig,
                                      data_sz, dt_true_lb, rank, tag, comm, 

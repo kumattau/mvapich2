@@ -72,15 +72,34 @@ int tuning_table[COLL_COUNT][COLL_SIZE] = {{2048, 1024, 512},
                                          };
 /* array used to tune scatter*/
 int size_scatter_tuning_table=4;
-struct scatter_tuning scatter_tuning_table[] = {{64, 4096, 8192},{128, 8192, 16384},{256, 4096, 8192},{512, 4096, 8192}};
+struct scatter_tuning scatter_tuning_table[] = {
+                                               {64, 4096, 8192},
+                                               {128, 8192, 16384}, 
+                                               {256, 4096, 8192},
+                                               {512, 4096, 8192}
+                                               };
 
 /*array used to tune gather */
 int size_gather_tuning_table=8;
-struct gather_tuning gather_tuning_table[] = {{32, 256},{64, 512},{128, 2048},{256, 2048},{384, 8196},{512, 8196},{768,8196},{1024,8196}};
+struct gather_tuning gather_tuning_table[] = {
+                                             {32, 256},
+                                             {64, 512},
+                                             {128, 2048},
+                                             {256, 2048},
+                                             {384, 8196},
+                                             {512, 8196},
+                                             {768,8196},
+                                             {1024,8196}
+                                             };
 
 /* array used to tune allgatherv */
 int size_allgatherv_tuning_table=4;
-struct allgatherv_tuning allgatherv_tuning_table[] = {{64, 32768},{128, 65536},{256, 131072},{512, 262144}};
+struct allgatherv_tuning allgatherv_tuning_table[] = {
+                                                    {64, 32768},
+                                                    {128, 65536},
+                                                    {256, 131072},
+                                                    {512, 262144}
+                                                     };
 
 int enable_shmem_collectives = 1;
 int allgather_ranking=1;
@@ -102,6 +121,7 @@ int knomial_intra_node_threshold=256*1024;
 int knomial_inter_leader_threshold=64*1024;
 int bcast_two_level_system_size=64;
 int intra_node_knomial_factor=4;
+int shmem_coll_spin_count=5;
 
 int tune_parameter=0;
 /* Runtime threshold for scatter */
@@ -115,13 +135,13 @@ int user_gather_switch_point = 0;
 int user_allgatherv_switch_point = 0;
 
 int bcast_short_msg = MPIR_BCAST_SHORT_MSG; 
+int bcast_large_msg = MPIR_BCAST_LARGE_MSG; 
 
 char* kvs_name;
 
 int  use_osu_collectives = 1;
 int  use_anl_collectives = 0;
 
-#if defined(_OSU_MVAPICH_) || defined (_OSU_PSM_)
 struct coll_runtime coll_param = { MPIR_ALLGATHER_SHORT_MSG, 
                                    MPIR_ALLGATHER_LONG_MSG,
                                    MPIR_ALLREDUCE_SHORT_MSG,
@@ -135,7 +155,6 @@ struct coll_runtime coll_param = { MPIR_ALLGATHER_SHORT_MSG,
                                    MPIR_ALLTOALL_MEDIUM_MSG, 
                                    MPIR_ALLTOALL_THROTTLE, 
 };
-#endif
 
 #if defined(CKPT)
 extern void Wait_for_CR_Completion();
@@ -259,22 +278,24 @@ int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t *pg, int local_id)
             shmem_dir, kvs_name, hostname, getuid());
 
     /* open the shared memory file */
-    shmem_coll_obj.fd = open(shmem_coll_file, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
+    shmem_coll_obj.fd = open(shmem_coll_file, O_RDWR | O_CREAT, 
+                             S_IRWXU | S_IRWXG | S_IRWXO);
     if (shmem_coll_obj.fd < 0) {
         /* Fallback */
         sprintf(shmem_coll_file, "/tmp/ib_shmem_coll-%s-%s-%d.tmp",
                 kvs_name, hostname, getuid());
 
-        shmem_coll_obj.fd = open(shmem_coll_file, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
+        shmem_coll_obj.fd = open(shmem_coll_file, O_RDWR | O_CREAT, 
+                                 S_IRWXU | S_IRWXG | S_IRWXO);
         if (shmem_coll_obj.fd < 0) {
-            MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail", "%s: %s",
-                "open", strerror(errno));
+            MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, 
+                                     "**fail", "%s: %s",
+                                     "open", strerror(errno));
         }
     }
 
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
-    shmem_coll_size = SHMEM_ALIGN (SHMEM_COLL_BUF_SIZE + getpagesize()) + SHMEM_CACHE_LINE_SIZE;
-#endif
+    shmem_coll_size = SHMEM_ALIGN (SHMEM_COLL_BUF_SIZE + 
+                                   getpagesize()) + SHMEM_CACHE_LINE_SIZE;
 
    if (local_id == 0) {
         if (ftruncate(shmem_coll_obj.fd, 0)) {
@@ -298,9 +319,11 @@ int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t *pg, int local_id)
 /* Ignoring optimal memory allocation for now */
 #if !defined(_X86_64_)
         {
-            char *buf = (char *) MPIU_Calloc(shmem_coll_size + 1, sizeof(char));
+            char *buf = (char *) MPIU_Calloc(shmem_coll_size + 1, 
+                                             sizeof(char));
             
-            if (write(shmem_coll_obj.fd, buf, shmem_coll_size) != shmem_coll_size) {
+            if (write(shmem_coll_obj.fd, buf, shmem_coll_size) != 
+                 shmem_coll_size) {
                 mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
                       FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
                       "%s: %s", "write",
@@ -354,7 +377,8 @@ int MPIDI_CH3I_SHMEM_COLL_Mmap(MPIDI_PG_t *pg, int local_id)
     MPIDI_PG_Get_vc(pg, my_rank, &vc);
 
     shmem_coll_obj.mmap_ptr = mmap(0, shmem_coll_size,
-                         (PROT_READ | PROT_WRITE), (MAP_SHARED), shmem_coll_obj.fd,
+                         (PROT_READ | PROT_WRITE), (MAP_SHARED), 
+                         shmem_coll_obj.fd,
                          0);
     if (shmem_coll_obj.mmap_ptr == (void *) -1) {
         /* to clean up tmp shared file */
@@ -433,7 +457,8 @@ int MPIDI_CH3I_SHMEM_COLL_finalize(int local_id, int num_local_nodes)
 
             if (local_id == 0) {
                 smc_store = MPIU_Malloc(shmem_coll_size);
-                MPIU_Memcpy(smc_store, shmem_coll_obj.mmap_ptr, shmem_coll_size);
+                MPIU_Memcpy(smc_store, shmem_coll_obj.mmap_ptr, 
+                            shmem_coll_size);
                 smc_store_set = 1;
             }
     }
@@ -468,7 +493,7 @@ void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int size, int rank, int shmem_comm_rank, 
                 /* Yield once in a while */
                 MPIU_THREAD_CHECK_BEGIN
                 ++cnt;
-                if (cnt >= 20) {
+                if (cnt >= shmem_coll_spin_count) {
                     cnt = 0;
 #if defined(CKPT)
                     MPIDI_CH3I_CR_unlock();
@@ -497,7 +522,8 @@ void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int size, int rank, int shmem_comm_rank, 
             shmem_coll->child_complete_gather[shmem_comm_rank][i] = 0;
         }
 
-        *output_buf = (char*)shmem_coll_buf + shmem_comm_rank * SHMEM_COLL_BLOCK_SIZE;
+        *output_buf = (char*)shmem_coll_buf + 
+                      shmem_comm_rank * SHMEM_COLL_BLOCK_SIZE;
     } else {
         while (shmem_coll->root_complete_gather[shmem_comm_rank][rank] == 0) {
 #if defined(CKPT)
@@ -507,7 +533,7 @@ void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int size, int rank, int shmem_comm_rank, 
                 /* Yield once in a while */
             MPIU_THREAD_CHECK_BEGIN
             ++cnt;
-            if (cnt >= 20) {
+            if (cnt >= shmem_coll_spin_count) {
                     cnt = 0;
 #if defined(CKPT)
                     MPIDI_CH3I_CR_unlock();
@@ -532,7 +558,8 @@ void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int size, int rank, int shmem_comm_rank, 
         }
 
         shmem_coll->root_complete_gather[shmem_comm_rank][rank] = 0;
-        *output_buf = (char*)shmem_coll_buf + shmem_comm_rank * SHMEM_COLL_BLOCK_SIZE;
+        *output_buf = (char*)shmem_coll_buf + 
+                      shmem_comm_rank * SHMEM_COLL_BLOCK_SIZE;
     }
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_GETSHMEMBUF);
 }
@@ -543,7 +570,8 @@ void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int size, int rank, int shmem_comm_rank, 
 #define FUNCNAME MPIDI_CH3I_SHMEM_Bcast_GetBuf
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-void MPIDI_CH3I_SHMEM_Bcast_GetBuf(int size, int rank, int shmem_comm_rank, void** output_buf)
+void MPIDI_CH3I_SHMEM_Bcast_GetBuf(int size, int rank, 
+                                   int shmem_comm_rank, void** output_buf)
 {
     int i = 1, cnt=0;
     char* shmem_coll_buf = (char*)(&(shmem_coll->shmem_coll_buf) +
@@ -561,7 +589,7 @@ void MPIDI_CH3I_SHMEM_Bcast_GetBuf(int size, int rank, int shmem_comm_rank, void
                 /* Yield once in a while */
                 MPIU_THREAD_CHECK_BEGIN
                 ++cnt;
-                if (cnt >= 20) {
+                if (cnt >= shmem_coll_spin_count) {
                     cnt = 0;
 #if defined(CKPT)
                     MPIDI_CH3I_CR_unlock();
@@ -585,7 +613,8 @@ void MPIDI_CH3I_SHMEM_Bcast_GetBuf(int size, int rank, int shmem_comm_rank, void
 
             }
         }
-        *output_buf = (char*)shmem_coll_buf + shmem_comm_rank * SHMEM_COLL_BLOCK_SIZE;
+        *output_buf = (char*)shmem_coll_buf + 
+                      shmem_comm_rank * SHMEM_COLL_BLOCK_SIZE;
     } else {
         while (shmem_coll->child_complete_bcast[shmem_comm_rank][rank] == 0) {
 #if defined(CKPT)
@@ -595,7 +624,7 @@ void MPIDI_CH3I_SHMEM_Bcast_GetBuf(int size, int rank, int shmem_comm_rank, void
                 /* Yield once in a while */
             MPIU_THREAD_CHECK_BEGIN
             ++cnt;
-            if (cnt >= 20) {
+            if (cnt >= shmem_coll_spin_count) {
                     cnt = 0;
 #if defined(CKPT)
                     MPIDI_CH3I_CR_unlock();
@@ -618,7 +647,8 @@ void MPIDI_CH3I_SHMEM_Bcast_GetBuf(int size, int rank, int shmem_comm_rank, void
             MPIU_THREAD_CHECK_END
 
         }
-        *output_buf = (char*)shmem_coll_buf + shmem_comm_rank * SHMEM_COLL_BLOCK_SIZE;
+        *output_buf = (char*)shmem_coll_buf + 
+                      shmem_comm_rank * SHMEM_COLL_BLOCK_SIZE;
     }
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SHMEM_BCAST_GETBUF);
 }
@@ -650,7 +680,8 @@ void MPIDI_CH3I_SHMEM_Bcast_Complete(int size, int rank, int shmem_comm_rank)
 #define FUNCNAME MPIDI_CH3I_SHMEM_COLL_SetGatherComplete
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-void MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(int size, int rank, int shmem_comm_rank)
+void MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(int size, int rank, 
+                                             int shmem_comm_rank)
 {
     int i = 1;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_SETGATHERCOMPLETE);
@@ -671,7 +702,8 @@ void MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(int size, int rank, int shmem_comm_
 #define FUNCNAME MPIDI_CH3I_SHMEM_COLL_Barrier_gather
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-void MPIDI_CH3I_SHMEM_COLL_Barrier_gather(int size, int rank, int shmem_comm_rank)
+void MPIDI_CH3I_SHMEM_COLL_Barrier_gather(int size, int rank, 
+                                          int shmem_comm_rank)
 {
     int i = 1, cnt=0;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHMEM_COLL_BARRIER_GATHER);
@@ -687,7 +719,7 @@ void MPIDI_CH3I_SHMEM_COLL_Barrier_gather(int size, int rank, int shmem_comm_ran
                 /* Yield once in a while */
                 MPIU_THREAD_CHECK_BEGIN
                 ++cnt;
-                if (cnt >= 20) {
+                if (cnt >= shmem_coll_spin_count) {
                     cnt = 0;
 #if defined(CKPT)
                     MPIDI_CH3I_CR_unlock();
@@ -724,7 +756,8 @@ void MPIDI_CH3I_SHMEM_COLL_Barrier_gather(int size, int rank, int shmem_comm_ran
 #define FUNCNAME MPIDI_CH3I_SHMEM_COLL_Barrier_bcast
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int size, int rank, int shmem_comm_rank)
+void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int size, int rank, 
+                                         int shmem_comm_rank)
 {
     int i = 1, cnt=0;
 
@@ -744,7 +777,7 @@ void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int size, int rank, int shmem_comm_rank
                 /* Yield once in a while */
                 MPIU_THREAD_CHECK_BEGIN
                 ++cnt;
-                if (cnt >= 20) {
+                if (cnt >= shmem_coll_spin_count) {
                     cnt = 0;
 #if defined(CKPT)
                     MPIDI_CH3I_CR_unlock();
@@ -811,6 +844,16 @@ void MV2_Read_env_vars(void){
             use_anl_collectives = 1;
         }
     }
+#ifdef _ENABLE_CUDA_
+    if ((value = getenv("MV2_USE_CUDA")) != NULL) {
+        flag = (int)atoi(value); 
+        if (flag > 0) enable_shmem_collectives = 0;
+    }
+    if ((value = getenv("MV2_USE_SHARED_MEM")) != NULL){
+            flag = (int)atoi(value);
+            if (flag > 0) enable_shmem_collectives = 1;
+    }
+#endif 
 
     if ((value = getenv("MV2_USE_SHMEM_COLL")) != NULL){
         flag = (int)atoi(value); 
@@ -833,104 +876,83 @@ void MV2_Read_env_vars(void){
         else disable_shmem_barrier = 1;
     }
     if ((value = getenv("MV2_SHMEM_COLL_NUM_COMM")) != NULL){
-	    flag = (int)atoi(value);
-	    if (flag > 0) g_shmem_coll_blocks = flag;
+            flag = (int)atoi(value);
+            if (flag > 0) g_shmem_coll_blocks = flag;
     }
     if ((value = getenv("MV2_SHMEM_COLL_MAX_MSG_SIZE")) != NULL){
-	    flag = (int)atoi(value);
-	    if (flag > 0) g_shmem_coll_max_msg_size = flag;
+            flag = (int)atoi(value);
+            if (flag > 0) g_shmem_coll_max_msg_size = flag;
     }
     if ((value = getenv("MV2_USE_SHARED_MEM")) != NULL){
-	    flag = (int)atoi(value);
-	    if (flag <= 0) enable_shmem_collectives = 0;
+            flag = (int)atoi(value);
+            if (flag <= 0) enable_shmem_collectives = 0;
     }
     if ((value = getenv("MV2_USE_BLOCKING")) != NULL){
-	    flag = (int)atoi(value);
-	    if (flag > 0) enable_shmem_collectives = 0;
+            flag = (int)atoi(value);
+            if (flag > 0) enable_shmem_collectives = 0;
     }
-
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     if ((value = getenv("MV2_ALLREDUCE_SHORT_MSG")) != NULL){
-	    flag = (int)atoi(value);
-	    if (flag >= 0) coll_param.allreduce_short_msg = flag;
+            flag = (int)atoi(value);
+            if (flag >= 0) coll_param.allreduce_short_msg = flag;
     }
-#endif
     if ((value = getenv("MV2_ALLGATHER_REVERSE_RANKING")) != NULL) {
         flag = (int)atoi(value);
         if (flag > 0) allgather_ranking = 1;
         else allgather_ranking = 0;
     }
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     if ((value = getenv("MV2_ALLGATHER_RD_THRESHOLD")) != NULL){
-	    flag = (int)atoi(value);
-	    if (flag >= 0) coll_param.allgather_rd_threshold = flag;
+            flag = (int)atoi(value);
+            if (flag >= 0) coll_param.allgather_rd_threshold = flag;
     }
-#endif
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     if ((value = getenv("MV2_ALLGATHERV_RD_THRESHOLD")) != NULL){
-        flag = (int)atoi(value);
-        user_allgatherv_switch_point = atoi(value);
-        tune_parameter=1;
+            flag = (int)atoi(value);
+            user_allgatherv_switch_point = atoi(value);
+            tune_parameter=1;
     }
-#endif
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     if ((value = getenv("MV2_ALLGATHER_BRUCK_THRESHOLD")) != NULL){
-	    flag = (int)atoi(value);
-	    if (flag >= 0) coll_param.allgather_bruck_threshold = flag;
+            flag = (int)atoi(value);
+            if (flag >= 0) coll_param.allgather_bruck_threshold = flag;
     }
-#endif
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     if ((value = getenv("MV2_ALLREDUCE_2LEVEL_MSG")) != NULL){
-        flag = (int)atoi(value);
-        if (flag >= 0) { 
-            coll_param.allreduce_2level_threshold = flag;
-        }
+            flag = (int)atoi(value);
+            if (flag >= 0) { 
+                    coll_param.allreduce_2level_threshold = flag;
+            }
     }
-#endif
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     if ((value = getenv("MV2_REDUCE_SHORT_MSG")) != NULL){
-	    flag = (int)atoi(value);
-	    if (flag >= 0) coll_param.reduce_short_msg = flag;
+            flag = (int)atoi(value);
+            if (flag >= 0) coll_param.reduce_short_msg = flag;
     }
-#endif
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     if ((value = getenv("MV2_SHMEM_ALLREDUCE_MSG")) != NULL){
-	    flag = (int)atoi(value);
-	    if (flag >= 0) coll_param.shmem_allreduce_msg = flag;
+            flag = (int)atoi(value);
+            if (flag >= 0) coll_param.shmem_allreduce_msg = flag;
     }
-#endif
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     if ((value = getenv("MV2_REDUCE_2LEVEL_MSG")) != NULL){
-	    flag = (int)atoi(value);
-	    if (flag >= 0) { 
-                  coll_param.reduce_2level_threshold = flag;
+            flag = (int)atoi(value);
+            if (flag >= 0) { 
+                    coll_param.reduce_2level_threshold = flag;
             } 
     }
-#endif
     if ((value = getenv("MV2_SCATTER_SMALL_MSG")) != NULL) {
-        user_scatter_small_msg = atoi(value);
-        tune_parameter=1;
+            user_scatter_small_msg = atoi(value);
+            tune_parameter=1;
     }
     if ((value = getenv("MV2_SCATTER_MEDIUM_MSG")) != NULL) {
-        user_scatter_medium_msg = atoi(value);
-        tune_parameter=1;
+            user_scatter_medium_msg = atoi(value);
+            tune_parameter=1;
     }
     if ((value = getenv("MV2_GATHER_SWITCH_PT")) != NULL) {
-        user_gather_switch_point = atoi(value);
-        tune_parameter=1;
+            user_gather_switch_point = atoi(value);
+            tune_parameter=1;
     }
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     if ((value = getenv("MV2_SHMEM_REDUCE_MSG")) != NULL){
-	    flag = (int)atoi(value);
-	    if (flag >= 0) coll_param.shmem_reduce_msg = flag;
+            flag = (int)atoi(value);
+            if (flag >= 0) coll_param.shmem_reduce_msg = flag;
     }
-#endif
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     if ((value = getenv("MV2_INTRA_SHMEM_REDUCE_MSG")) != NULL){
-	    flag = (int)atoi(value);
-	    if (flag >= 0) coll_param.shmem_intra_reduce_msg = flag;
+            flag = (int)atoi(value);
+            if (flag >= 0) coll_param.shmem_intra_reduce_msg = flag;
     }
-#endif
     if ((value = getenv("MV2_USE_SHMEM_BCAST")) != NULL) {
         flag = (int)atoi(value);
         if (flag > 0) enable_shmem_bcast = 1;
@@ -959,20 +981,17 @@ void MV2_Read_env_vars(void){
     if ((value = getenv("MV2_USE_DIRECT_GATHER_SYSTEM_SIZE_SMALL")) != NULL) {
         flag = (int)atoi(value);
         if (flag > 0) gather_direct_system_size_small = flag;
-        else use_direct_gather = GATHER_DIRECT_SYSTEM_SIZE_SMALL;
+        else gather_direct_system_size_small = GATHER_DIRECT_SYSTEM_SIZE_SMALL;
     }
     if ((value = getenv("MV2_USE_DIRECT_GATHER_SYSTEM_SIZE_MEDIUM")) != NULL) {
         flag = (int)atoi(value);
         if (flag > 0) gather_direct_system_size_medium = flag;
-        else use_direct_gather = GATHER_DIRECT_SYSTEM_SIZE_MEDIUM;
+        else gather_direct_system_size_medium =GATHER_DIRECT_SYSTEM_SIZE_MEDIUM;
     }
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     if ((value = getenv("MV2_ALLTOALL_SMALL_MSG")) != NULL) {
         flag = (int)atoi(value);
         if (flag > 0) coll_param.alltoall_small_msg = flag;
     }
-#endif
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     if ((value = getenv("MV2_ALLTOALL_THROTTLE_FACTOR")) != NULL) {
         flag = (int)atoi(value);
         if (flag <= 1) { 
@@ -981,13 +1000,10 @@ void MV2_Read_env_vars(void){
              coll_param.alltoall_throttle_factor = flag;
         } 
     }
-#endif
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     if ((value = getenv("MV2_ALLTOALL_MEDIUM_MSG")) != NULL) {
         flag = (int)atoi(value);
         if (flag > 0) coll_param.alltoall_medium_msg = flag;
     }
-#endif
     if ((value = getenv("MV2_USE_XOR_ALLTOALL")) != NULL) {
         flag = (int)atoi(value);
         if (flag >= 0) use_xor_alltoall = flag;
@@ -1020,6 +1036,10 @@ void MV2_Read_env_vars(void){
         flag = (int)atoi(value);
         if (flag > 0) bcast_short_msg  = flag;
     }
+    if ((value = getenv("MV2_SHMEM_COLL_SPIN_COUNT")) != NULL) {
+        flag = (int)atoi(value);
+        if (flag > 0) shmem_coll_spin_count  = flag;
+    }
 
     if ((value = getenv("MV2_USE_KNOMIAL_2LEVEL_BCAST")) != NULL) { 
        enable_knomial_2level_bcast=!!atoi(value);
@@ -1037,7 +1057,7 @@ void MV2_Read_env_vars(void){
              != NULL) {
         knomial_2level_bcast_system_size_threshold=atoi(value);
     }
-  
+
     if ((value = getenv("MV2_KNOMIAL_INTRA_NODE_FACTOR")) != NULL) {
         intra_node_knomial_factor=atoi(value);
         if (intra_node_knomial_factor < INTRA_NODE_KNOMIAL_FACTOR_MIN) { 
@@ -1047,7 +1067,7 @@ void MV2_Read_env_vars(void){
             intra_node_knomial_factor = INTRA_NODE_KNOMIAL_FACTOR_MAX;
         } 
     }     
-  
+
     if ((value = getenv("MV2_KNOMIAL_INTER_NODE_FACTOR")) != NULL) {
         inter_node_knomial_factor=atoi(value);
         if (inter_node_knomial_factor < INTER_NODE_KNOMIAL_FACTOR_MIN) { 
@@ -1063,4 +1083,22 @@ void MV2_Read_env_vars(void){
 
     init_thread_reg();
 }
-#endif
+
+#if defined(_ENABLE_CUDA_)
+int is_device_buffer(void *buffer) 
+{
+    int memory_type;
+    cudaError_t cu_err;
+
+    cu_err = cudaSuccess;
+    cu_err = cuPointerGetAttribute(&memory_type, 
+                    CU_POINTER_ATTRIBUTE_MEMORY_TYPE, 
+                    (CUdeviceptr) buffer);
+    if (cu_err != cudaSuccess) {
+        return 0;
+    }
+    return (memory_type == CU_MEMORYTYPE_DEVICE);
+}
+#endif 
+
+#endif /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */ 

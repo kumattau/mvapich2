@@ -151,7 +151,7 @@ extern int                  use_iboeth;
 #define RDMA_QOS_MAX_NUM_SLS            (15)
 #define RDMA_QOS_DEFAULT_NUM_SLS        (8)
 #define RDMA_NDREG_ENTRIES              (1100)
-#define RDMA_VBUF_POOL_SIZE             (2048)
+#define RDMA_VBUF_POOL_SIZE             (512)
 #define RDMA_VBUF_SECONDARY_POOL_SIZE   (256)
 #define RDMA_PREPOST_DEPTH              (64)
 #define RDMA_INITIAL_PREPOST_DEPTH      (10)

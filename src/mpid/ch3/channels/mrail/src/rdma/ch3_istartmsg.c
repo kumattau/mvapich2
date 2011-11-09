@@ -59,9 +59,15 @@ MPID_Request * create_request(void * hdr, MPIDI_msg_sz_t hdr_sz,
     /* --END ERROR HANDLING-- */
     MPIU_Object_set_ref(sreq, 2);
     sreq->kind = MPID_REQUEST_SEND;
+#ifdef _ENABLE_CUDA_
+    sreq->dev.pending_pkt = MPIU_Malloc(hdr_sz - nb);
+    MPIU_Memcpy(sreq->dev.pending_pkt, (char *)hdr + nb, hdr_sz - nb);
+    sreq->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)((char *)sreq->dev.pending_pkt);
+#else
     sreq->dev.pending_pkt = *(MPIDI_CH3_PktGeneric_t *) hdr;
-    sreq->ch.reqtype = REQUEST_NORMAL;
     sreq->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)((char *) &sreq->dev.pending_pkt + nb);
+#endif
+    sreq->ch.reqtype = REQUEST_NORMAL;
     sreq->dev.iov[0].MPID_IOV_LEN = hdr_sz - nb;
     sreq->dev.iov_count = 1;
     sreq->dev.OnDataAvail = 0;

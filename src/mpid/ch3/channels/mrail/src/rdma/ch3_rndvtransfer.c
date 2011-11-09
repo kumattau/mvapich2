@@ -89,6 +89,12 @@ int MPIDI_CH3_Prepare_rndv_cts(MPIDI_VC_t * vc,
     MPIDI_CH3I_CR_lock();
 #endif
 
+#ifdef _ENABLE_CUDA_
+    if (rdma_enable_cuda) {
+        cts_pkt->rndv.cuda_transfer_mode = NONE;
+    }
+#endif
+
     switch (rreq->mrail.protocol) {
     case VAPI_PROTOCOL_R3:
         {
@@ -177,7 +183,16 @@ int MPIDI_CH3_iStartRndvTransfer(MPIDI_VC_t * vc, MPID_Request * rreq)
     MPIDI_VC_FAI_send_seqnum(vc, seqnum);
     MPIDI_Pkt_set_seqnum(cts_pkt, seqnum);    
 
-    mpi_errno = MPIDI_CH3_Prepare_rndv_cts(vc, cts_pkt, rreq);
+#ifdef _ENABLE_CUDA_
+    if(rdma_enable_cuda && rreq->mrail.cuda_transfer_mode != NONE
+            && vc->smp.local_nodes == -1) { 
+       mpi_errno = MPIDI_CH3_Prepare_rndv_cts_cuda(vc, cts_pkt, rreq);
+    } else 
+#endif
+    {
+        mpi_errno = MPIDI_CH3_Prepare_rndv_cts(vc, cts_pkt, rreq);
+    }
+
     if (mpi_errno != MPI_SUCCESS) {
 	mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_FATAL,
 					 FCNAME, __LINE__,
@@ -243,6 +258,18 @@ int MPIDI_CH3_Rndv_transfer(MPIDI_VC_t * vc,
     {
     case VAPI_PROTOCOL_RPUT:
             rndv = (cts_pkt == NULL) ? NULL : &cts_pkt->rndv;
+#ifdef _ENABLE_CUDA_
+            if (rdma_enable_cuda && sreq) {
+                if(sreq->mrail.cuda_transfer_mode == NONE 
+                        && cts_pkt->rndv.cuda_transfer_mode != NONE) {
+                    req->mrail.cuda_transfer_mode = CONT_HOST_TO_DEVICE;
+                }
+                if (sreq->mrail.cuda_transfer_mode == CONT_DEVICE_TO_DEVICE && 
+                                   cts_pkt->rndv.cuda_transfer_mode == NONE) {
+                    req->mrail.cuda_transfer_mode = CONT_DEVICE_TO_HOST;
+                }
+            }
+#endif
             sreq->mrail.partner_id = cts_pkt->receiver_req_id;
             MPIDI_CH3I_MRAIL_Prepare_rndv_transfer(sreq, rndv);
         break;
@@ -592,6 +619,9 @@ void MPIDI_CH3_Rendezvous_r3_push(MPIDI_VC_t * vc, MPID_Request * sreq)
 void MPIDI_CH3I_MRAILI_Process_rndv()
 {
     MPID_Request *sreq;
+#ifdef _ENABLE_CUDA_
+    MPIDI_VC_t *pending_flowlist = NULL, *temp_vc = NULL;
+#endif
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_PROCESS_RNDV);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_PROCESS_RNDV);
     while (flowlist) {
@@ -640,9 +670,28 @@ void MPIDI_CH3I_MRAILI_Process_rndv()
             RENDEZVOUS_DONE(flowlist);
             sreq = flowlist->mrail.sreq_head;
         }
+#ifdef _ENABLE_CUDA_
+        temp_vc = flowlist;
+#endif
         /* now move on to the next connection */
         POP_FLOWLIST();
+
+#ifdef _ENABLE_CUDA_
+        if (rdma_enable_cuda && sreq && 1 != sreq->mrail.nearly_complete) {    
+            ADD_PENDING_FLOWLIST(temp_vc, pending_flowlist);
+        }
+#endif
     }
+
+#ifdef _ENABLE_CUDA_
+    if(rdma_enable_cuda) {
+        while(pending_flowlist) {
+            /* push pending vc to the flowlist */
+            REMOVE_PENDING_FLOWLIST(temp_vc, pending_flowlist)
+            PUSH_FLOWLIST(temp_vc);
+        }
+    }
+#endif
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_PROCESS_RNDV);
 }
 
@@ -1031,6 +1080,14 @@ int MPIDI_CH3_Rendezvous_rput_finish(MPIDI_VC_t * vc,
 #if defined(CKPT)
     MPIDI_CH3I_CR_req_dequeue(rreq);
 #endif /* defined(CKPT) */
+
+#if defined(_ENABLE_CUDA_)
+    if (rdma_enable_cuda && rreq->mrail.cuda_transfer_mode != NONE) {
+        if (MPIDI_CH3I_MRAILI_Process_cuda_finish(vc, rreq, rf_pkt) != 1) {
+            goto fn_exit;
+        }
+    }
+#endif
 
     MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(rreq);
 

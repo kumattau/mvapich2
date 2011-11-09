@@ -110,9 +110,28 @@ int MPID_Irecv(void * buf, int count, MPI_Datatype datatype, int rank, int tag,
 	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**nomemreq");
     }
 
+#ifdef _ENABLE_CUDA_
+    int mem_type = 0;
+    if (rdma_enable_cuda) {
+        cuPointerGetAttribute((void*) &mem_type, 
+            CU_POINTER_ATTRIBUTE_MEMORY_TYPE, (CUdeviceptr) buf);
+    }
+#endif
     if (found)
     {
 	MPIDI_VC_t * vc;
+
+#ifdef _ENABLE_CUDA_
+    if (rdma_enable_cuda) {
+        if (mem_type == CU_MEMORYTYPE_DEVICE) {
+            /* buf is in the GPU device memory */
+            rreq->mrail.cuda_transfer_mode = CONT_DEVICE_TO_DEVICE;
+        } else {
+            /* buf is in the host memory*/
+            rreq->mrail.cuda_transfer_mode = NONE;
+        }
+    }
+#endif
 	
 	/* Message was found in the unexepected queue */
 	MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"request found in unexpected queue");
@@ -176,6 +195,20 @@ int MPID_Irecv(void * buf, int count, MPI_Datatype datatype, int rank, int tag,
 	else if (MPIDI_Request_get_msg_type(rreq) == MPIDI_REQUEST_RNDV_MSG)
 	{
 	    MPIDI_Comm_get_vc_set_active(comm, rreq->dev.match.parts.rank, &vc);
+
+#ifdef _ENABLE_CUDA_
+        if (rdma_enable_cuda) {
+            if (mem_type == CU_MEMORYTYPE_DEVICE) {
+                /* buf is in the GPU device memory */
+                rreq->mrail.cuda_transfer_mode = CONT_DEVICE_TO_DEVICE;
+            } else {
+                /* buf is in the host memory*/
+                rreq->mrail.cuda_transfer_mode = NONE;
+            }
+        }
+#endif
+
+
 	
 #if defined(_OSU_MVAPICH_)
         mpi_errno = MPIDI_CH3_RecvRndv( vc, rreq );
@@ -217,6 +250,18 @@ int MPID_Irecv(void * buf, int count, MPI_Datatype datatype, int rank, int tag,
 	    MPID_Datatype_get_ptr(datatype, rreq->dev.datatype_ptr);
 	    MPID_Datatype_add_ref(rreq->dev.datatype_ptr);
 	}
+
+#ifdef _ENABLE_CUDA_
+    if(rdma_enable_cuda) {
+        if (mem_type == CU_MEMORYTYPE_DEVICE) {
+            /* buf is in the GPU device memory */
+            rreq->mrail.cuda_transfer_mode = CONT_DEVICE_TO_DEVICE;
+        } else {
+            /* buf is in the host memory*/
+            rreq->mrail.cuda_transfer_mode = NONE;
+        }
+    }
+#endif
 
 	rreq->dev.recv_pending_count = 1;
 

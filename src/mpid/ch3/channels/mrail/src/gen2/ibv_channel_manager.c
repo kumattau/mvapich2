@@ -151,11 +151,21 @@ static inline int GetSeqNumVbuf(vbuf * buf)
 
     p = buf->pheader;
 
-    if (p->type == MPIDI_CH3_PKT_NOOP) {
-        return PKT_NO_SEQ_NUM;
+    switch (p->type) {
+        case MPIDI_CH3_PKT_NOOP:
+        {
+            return PKT_NO_SEQ_NUM;
+        }
+#ifndef MV2_DISABLE_HEADER_CACHING 
+        case MPIDI_CH3_PKT_FAST_EAGER_SEND:
+        case MPIDI_CH3_PKT_FAST_EAGER_SEND_WITH_REQ:
+        {
+            return ((MPIDI_CH3I_MRAILI_Pkt_fast_eager *)(p))->seqnum;
+        }
+#endif
+        default:
+            return (p->seqnum);
     }
-    
-    return (p->seqnum);
 }
 
 static inline vbuf * MPIDI_CH3I_RDMA_poll(MPIDI_VC_t * vc)

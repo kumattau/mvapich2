@@ -787,6 +787,12 @@ int MPIDI_CH3I_RDMA_finalize(void)
 			    MPIU_Error_printf("Failed to deregister mr (%d)\n", err);
 		    }
 		}
+#if defined(_ENABLE_CUDA_)
+        if (rdma_enable_cuda && rdma_eager_cudahost_reg) {
+            ibv_cuda_unregister(vc->mrail.rfp.RDMA_send_buf_DMA);
+            ibv_cuda_unregister(vc->mrail.rfp.RDMA_recv_buf_DMA);
+        }
+#endif
 	
 		if (vc->mrail.rfp.RDMA_send_buf_DMA)
 		    MPIU_Free(vc->mrail.rfp.RDMA_send_buf_DMA);
@@ -986,12 +992,14 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
     int i, error;
     int key_max_sz;
     int val_max_sz;
+#if defined(RDMA_CM)
     int *hosts = NULL;
-    uint32_t *ud_qpn_all;
+#endif
+    uint32_t *ud_qpn_all = NULL;
     uint32_t ud_qpn_self;
-    uint16_t *lid_all;
-    union ibv_gid *gid_all;
-    uint32_t *hca_type_all;
+    uint16_t *lid_all = NULL;
+    union ibv_gid *gid_all = NULL;
+    uint32_t *hca_type_all = NULL;
     uint32_t my_hca_type;
     int mpi_errno = MPI_SUCCESS;
     ud_addr_info_t self_info;
@@ -1526,6 +1534,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
     }
 #endif /* _ENABLE_UD_ */
 
+fn_exit:
     /*
      * Freeing local memory
      */
@@ -1536,7 +1545,6 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
 
     DEBUG_PRINT("Done MPIDI_CH3I_CM_Init()\n");
 
-fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_CH3I_CM_INIT);
     return mpi_errno;
 
@@ -1651,6 +1659,13 @@ int MPIDI_CH3I_CM_Finalize(void)
                 ibv_dereg_mr(vc->mrail.rfp.RDMA_recv_buf_mr[hca_index]);
             }
 	}
+
+#if defined(_ENABLE_CUDA_)
+        if (rdma_enable_cuda && rdma_eager_cudahost_reg) {
+            ibv_cuda_unregister(vc->mrail.rfp.RDMA_send_buf_DMA);
+            ibv_cuda_unregister(vc->mrail.rfp.RDMA_recv_buf_DMA);
+        }
+#endif
 
 	for (rail_index = 0; rail_index < vc->mrail.num_rails; ++rail_index) {
 #if defined(RDMA_CM)

@@ -64,6 +64,11 @@
 #include <sys/types.h>
 #endif
 
+#ifdef _ENABLE_CUDA_
+#include "cuda.h"
+#include "cuda_runtime.h"
+#endif
+
 /* for MAXHOSTNAMELEN under Linux and OSX */
 #ifdef HAVE_SYS_PARAM_H
 #include <sys/param.h>
@@ -3254,6 +3259,7 @@ posted at once. */
 #define MPIR_ALLTOALL_MEDIUM_MSG        16384
 #define MPIR_ALLTOALL_SMALL_SYSTEM_SIZE 256
 #define MPIR_BCAST_SHORT_MSG            16384
+#define MPIR_BCAST_LARGE_MSG            512*1024
 #else
 #define MPIR_ALLTOALL_SHORT_MSG       8192
 #define MPIR_ALLTOALL_MEDIUM_MSG      8192
@@ -3344,6 +3350,14 @@ int MPIC_Sendrecv_replace(void *buf, int count, MPI_Datatype type,
                           MPI_Comm comm, MPI_Status *status);
 int MPIR_Localcopy(void *sendbuf, int sendcount, MPI_Datatype sendtype,
                    void *recvbuf, int recvcount, MPI_Datatype recvtype);
+#ifdef _ENABLE_CUDA_
+int enable_device_ptr_checks;
+
+int is_device_buffer(void *buffer);
+int MPIR_Localcopy_cuda(void *sendbuf, int sendcount, MPI_Datatype sendtype,
+                   void *recvbuf, int recvcount, MPI_Datatype recvtype,
+                   enum cudaMemcpyKind kind);
+#endif
 int MPIC_Irecv(void *buf, int count, MPI_Datatype datatype, int
                source, int tag, MPI_Comm comm, MPI_Request *request);
 int MPIC_Isend(void *buf, int count, MPI_Datatype datatype, int dest, int tag,
@@ -3425,6 +3439,12 @@ int MPIR_Allreduce_MV2(void *sendbuf, void *recvbuf, int count,
 int MPIR_Alltoall_MV2(void *sendbuf, int sendcount, MPI_Datatype sendtype,
                   void *recvbuf, int recvcount, MPI_Datatype recvtype,
                   MPID_Comm *comm_ptr, int *errflag);
+int MPIR_Alltoallv_MV2(void *sendbuf, int *sendcnts, int *sdispls, 
+                         MPI_Datatype sendtype, void *recvbuf, int *recvcnts, 
+                         int *rdispls, MPI_Datatype recvtype, MPID_Comm *comm_ptr, int *errflag);
+int MPIR_Alltoallv_intra_MV2(void *sendbuf, int *sendcnts, int *sdispls, 
+                         MPI_Datatype sendtype, void *recvbuf, int *recvcnts, 
+                         int *rdispls, MPI_Datatype recvtype, MPID_Comm *comm_ptr, int *errflag);
 int MPIR_Bcast_MV2 (void *buffer, int count, MPI_Datatype datatype, int
                 root, MPID_Comm *comm_ptr, int *errflag);
 int MPIR_Gather_MV2 (void *sendbuf, int sendcnt, MPI_Datatype sendtype,
@@ -3436,7 +3456,6 @@ int MPIR_Scatter_MV2(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
                  void *recvbuf, int recvcnt, MPI_Datatype recvtype, 
                  int root, MPID_Comm *comm_ptr, int *errflag );
 int MPIR_Barrier_MV2( MPID_Comm *comm_ptr, int *errflag);
-
 #endif /* _OSU_MVAPICH_ || _OSU_PSM_ */
 
 int MPIR_Allgather_impl(void *sendbuf, int sendcount, MPI_Datatype sendtype,

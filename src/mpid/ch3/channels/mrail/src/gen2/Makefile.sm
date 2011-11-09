@@ -11,7 +11,7 @@
 SUBDIRS = .
 CFLAGS = @CFLAGS@ -D_GNU_SOURCE
 INCLUDES= -I@master_top_srcdir@/src/include -I../../../../../../include -I@master_top_srcdir@/src/mpid/ch3/channels/mrail/include/memory -I@master_top_srcdir@/src/mpid/ch3/channels/common/include
-VPATH = .:@srcdir@:@master_top_srcdir@/src/mpid/ch3/channels/common/src/memory:@master_top_srcdir@/src/mpid/ch3/channels/common/src/reg_cache:@master_top_srcdir@/src/mpid/ch3/channels/common/src/rdma_cm:@master_top_srcdir@/src/mpid/ch3/channels/common/src/detect/hca:@master_top_srcdir@/src/mpid/ch3/channels/common/src/detect/arch:@master_top_srcdir@/src/mpid/ch3/channels/common/src/memory/ptmalloc2:@master_top_srcdir@/src/mpid/ch3/channels/common/src/util/:@master_top_srcdir@/src/mpid/ch3/channels/common/src/qos:@master_top_srcdir@/src/mpid/ch3/channels/common/src/ud-hybrid
+VPATH = .:@srcdir@:@master_top_srcdir@/src/mpid/ch3/channels/common/src/memory:@master_top_srcdir@/src/mpid/ch3/channels/common/src/reg_cache:@master_top_srcdir@/src/mpid/ch3/channels/common/src/rdma_cm:@master_top_srcdir@/src/mpid/ch3/channels/common/src/detect/hca:@master_top_srcdir@/src/mpid/ch3/channels/common/src/detect/arch:@master_top_srcdir@/src/mpid/ch3/channels/common/src/memory/ptmalloc2:@master_top_srcdir@/src/mpid/ch3/channels/common/src/util/:@master_top_srcdir@/src/mpid/ch3/channels/common/src/qos:@master_top_srcdir@/src/mpid/ch3/channels/common/src/ud-hybrid:@master_top_srcdir@/src/mpid/ch3/channels/common/src/ft:@master_top_srcdir@/src/mpid/ch3/channels/common/src/cm
 
 lib${MPILIBNAME}_a_SOURCES = \
 ibv_send.c \
@@ -41,4 +41,6 @@ mem_hooks.c \
 mvapich_malloc.c \
 mv2_utils.c \
 mv2_ud_init.c \
-rdma_3dtorus.c
+rdma_3dtorus.c \
+ibv_cuda_rndv.c \
+ibv_cuda_stream.c

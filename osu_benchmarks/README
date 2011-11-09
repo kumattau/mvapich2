@@ -74,12 +74,12 @@ osu_put_bw              - Bandwidth Test for Put with Active Synchronization
 osu_put_latency         - Latency Test for Put with Active Synchronization
 
 Latency Test
-    * The latency tests were carried out in a ping-pong fashion. The sender
+    * The latency tests are carried out in a ping-pong fashion. The sender
     * sends a message with a certain data size to the receiver and waits for a
     * reply from the receiver. The receiver receives the message from the sender
     * and sends back a reply with the same data size. Many iterations of this
-    * ping-pong test were carried out and average one-way latency numbers were
-    * obtained. Blocking version of MPI functions (MPI_Send and MPI_Recv) were
+    * ping-pong test are carried out and average one-way latency numbers are
+    * obtained. Blocking version of MPI functions (MPI_Send and MPI_Recv) are
     * used in the tests. This test is available here.
 
 Multi-threaded Latency Test (MPI-2 Benchmark [requires threading support])
@@ -295,4 +295,49 @@ Latency Test for Accumulate with Passive Synchronization (MPI-2 Benchmark)
     * providing 'alloc_shm' hint to MPI_Alloc_mem call. This optimization is
     * specific to MVAPICH2 and the hint is ignored by other MPI libraries. It
     * does not have an impact on internode performance.  This optimization can
-    * be disabled by providing '-n' or '-no-hints' option to the benchmark. 
+    * be disabled by providing '-n' or '-no-hints' option to the benchmark.
+ 
+CUDA Extensions to OMB
+
+    CUDA Extensions to OMB can be enable by configuring the benchmark suite with
+    --enable-cuda option as shown below. The MPI library used should be able to 
+    support MPI_Send/MPI_Recv from buffers in GPU Device memory. 
+   
+    ./configure CC=/path/to/mpicc 
+                --enable-cuda 
+                --with-cuda-include=/path/to/cuda/include
+                --with-cuda-lib=/path/to/cuda/lib
+    make
+    make install
+
+    The following benchmarks have been extended to evaluate performance of 
+    MPI_Send/MPI_Recv from and to buffers on NVIDIA GPU devices. 
+
+    osu_bibw    - Bidirectional Bandwidth Test
+    osu_bw      - Bandwidth Test
+    osu_latency - Latency Test
+
+    These extensions are enabled when the benchmark suite is configured with 
+    --enable-cuda option, as shown above. Whether a process allocates its 
+    communication buffers on the GPU device or on the host can be controlled 
+    at run-time.
+
+    Each of these benchmarks takes two input parameters. The first parameter
+    indicates the location of the buffers at rank 0 and the second parameter
+    indicates the location of the buffers at rank 1. The value of each of 
+    these parameters can be either 'H' or 'D' to indicate if the buffers are 
+    to be on the host or on the device respectively. When no parameters are 
+    specified, the buffers are allocated on the host.
+
+    Examples:
+
+    - mpirun_rsh -np 2 -hostfile hostfile osu_latency D D 
+    
+    In this run, the latency test allocates buffers at both rank 0 and rank 1 on 
+    the GPU devices.
+
+    - mpirun_rsh -np 2 -hostfile hostfile osu_bw D H
+
+    In this run, the bandwidth test allocates buffers at rank 0 on the GPU
+    device and buffers at rank 1 on the host.
+

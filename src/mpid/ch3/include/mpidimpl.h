@@ -362,6 +362,7 @@ extern MPIDI_Process_t MPIDI_Process;
     (sreq_)->dev.OnFinal	   = NULL;                      \
     (sreq_)->dev.iov_count	   = 0;                         \
     (sreq_)->dev.iov_offset	   = 0;                         \
+    MPIDI_CH3_REQUEST_INIT(sreq_);                          \
 }
 
 /* This is the receive request version of MPIDI_Request_create_sreq */
@@ -392,7 +393,7 @@ extern MPIDI_Process_t MPIDI_Process;
     (rreq_)->dev.iov_offset   = 0;                              \
     (rreq_)->dev.OnDataAvail	   = NULL;                      \
     (rreq_)->dev.OnFinal	   = NULL;                      \
-     MPIDI_CH3_REQUEST_INIT(rreq_);\
+    MPIDI_CH3_REQUEST_INIT(rreq_);                              \
 }
 
 #define MPIDI_REQUEST_MSG_MASK (0x3 << MPIDI_REQUEST_MSG_SHIFT)
@@ -1535,6 +1536,12 @@ void MPIDI_CH3U_Buffer_copy(const void * const sbuf, int scount,
 			    MPI_Datatype sdt, int * smpi_errno,
 			    void * const rbuf, int rcount, MPI_Datatype rdt, 
 			    MPIDI_msg_sz_t * rdata_sz, int * rmpi_errno);
+#ifdef _ENABLE_CUDA_
+void MPIDI_CH3U_Buffer_copy_cuda(const void * const sbuf, int scount,
+                            MPI_Datatype sdt, int * smpi_errno,
+                            void * const rbuf, int rcount, MPI_Datatype rdt,
+                            MPIDI_msg_sz_t * rdata_sz, int * rmpi_errno);
+#endif
 int MPIDI_CH3U_Post_data_receive(int found, MPID_Request ** rreqp);
 int MPIDI_CH3U_Post_data_receive_found(MPID_Request * rreqp);
 int MPIDI_CH3U_Post_data_receive_unexpected(MPID_Request * rreqp);
@@ -1975,6 +1982,11 @@ int MPIDI_CH3_ReqHandler_GetSendRespComplete( MPIDI_VC_t *, MPID_Request *,
 #endif /* MPICH_IS_THREADED */
 
 #if defined(_OSU_MVAPICH_)
+#if defined(_ENABLE_CUDA_)
+int MPIDI_CH3_Prepare_rndv_cts_cuda(MPIDI_VC_t * vc, 
+        MPIDI_CH3_Pkt_rndv_clr_to_send_t * cts_pkt,
+        MPID_Request * rreq);
+#endif
 int MPIDI_CH3_ContigSend(MPID_Request **sreq_p,
                          MPIDI_CH3_Pkt_type_t reqtype,
                          const void * buf, MPIDI_msg_sz_t data_sz, int rank,

@@ -26,6 +26,10 @@
 #include <unistd.h>
 #endif
 
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#include "coll_shmem.h"
+#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
+
 /* -- Begin Profiling Symbol Block for routine MPI_Init_thread */
 #if defined(HAVE_PRAGMA_WEAK)
 #pragma weak MPI_Init_thread = PMPI_Init_thread

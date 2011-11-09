@@ -413,7 +413,7 @@ int MPID_nem_ib_init_hca()
     for (nHca = 0; nHca < ib_hca_num_hcas; nHca++) {
 
     	/* Check for user choice */
-        if( (rdma_iba_hca[0]==0) || (strncmp(rdma_iba_hca, RDMA_IBA_NULL_HCA, 32)!=0) || (ib_hca_num_hcas > 1)) {
+        if( (rdma_iba_hca[0]==0) || (strncmp(rdma_iba_hca, RDMA_IBA_NULL_HCA, 32)==0) || (ib_hca_num_hcas > 1)) {
             /* User hasn't specified any HCA name, or the number of HCAs is greater then 1 */
             ib_dev = dev_list[nHca];
 

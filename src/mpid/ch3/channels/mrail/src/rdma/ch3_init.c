@@ -73,6 +73,13 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         }
     }
 #endif /* _ENABLE_XRC_ */
+
+#ifdef _ENABLE_CUDA_
+    if ((value = getenv("MV2_USE_CUDA")) != NULL) {
+        rdma_enable_cuda = atoi(value);
+    }
+#endif
+
 #ifdef _ENABLE_UD_
     if ((value = getenv("MV2_HYBRID_ENABLE_THRESHOLD")) != NULL) {
         rdma_hybrid_enable_threshold = atoi(value);

@@ -51,6 +51,7 @@ typedef enum MPIDI_CH3_Pkt_type
     MPIDI_CH3_PKT_ZCOPY_ACK,
     MPIDI_CH3_PKT_NOOP,
     MPIDI_CH3_PKT_RMA_RNDV_CLR_TO_SEND,
+    MPIDI_CH3_PKT_CUDA_CTS_CONTI,
     MPIDI_CH3_PKT_PUT_RNDV,
     MPIDI_CH3_PKT_ACCUMULATE_RNDV,  /*8*/
     MPIDI_CH3_PKT_GET_RNDV,         /*9*/
@@ -231,6 +232,10 @@ typedef struct MPIDI_CH3_Pkt_rndv_clr_to_send
 }
 MPIDI_CH3_Pkt_rndv_clr_to_send_t;
 
+#if defined(_ENABLE_CUDA_)
+typedef MPIDI_CH3_Pkt_rndv_clr_to_send_t MPIDI_CH3_Pkt_cuda_cts_cont_t;
+#endif
+
 typedef struct MPIDI_CH3_Pkt_rndv_send
 {
 #if defined(_OSU_MVAPICH_)
@@ -266,6 +271,12 @@ typedef struct MPIDI_CH3_Pkt_rput_finish_t
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
     MPI_Request receiver_req_id; /* echoed*/
+#ifdef _ENABLE_CUDA_
+    uint8_t is_cuda;
+    uint8_t is_cuda_pipeline;
+    uint8_t cuda_pipeline_finish;
+    uint32_t cuda_offset;
+#endif
 } MPIDI_CH3_Pkt_rput_finish_t;
 
 typedef struct MPIDI_CH3_Pkt_zcopy_finish_t

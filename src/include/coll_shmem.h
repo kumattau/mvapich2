@@ -145,9 +145,11 @@ struct allgatherv_tuning{
 #define SHMEM_BCAST_METADATA	(sizeof(addrint_t) + 2*sizeof(int))       /* METADATA: buffer address, offset, num_bytes */ 
 
 extern int enable_shmem_collectives;
+int is_shmem_collectives_enabled();
+
 extern struct coll_runtime coll_param;
-extern void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int, int, int, void**);
-extern void MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(int, int, int);
+void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int, int, int, void**);
+void MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(int, int, int);
 
 extern int tune_parameter;
 /* Use for gather_osu.c*/
@@ -181,7 +183,7 @@ extern int use_direct_scatter;
 
 /* Use inside allreduce_osu.c*/
 extern int disable_shmem_allreduce;
-extern int check_comm_registry(MPI_Comm);
+int check_comm_registry(MPI_Comm);
 
 
 /* Use inside alltoall_osu.h */
@@ -195,6 +197,7 @@ extern void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int, int, int);
 
 /* Use inside bcast_osu.c */
 extern int  bcast_short_msg; 
+extern int  bcast_large_msg; 
 extern int  knomial_2level_bcast_system_size_threshold;
 extern int  knomial_2level_bcast_message_size_threshold;
 extern int  enable_knomial_2level_bcast;
@@ -208,27 +211,36 @@ extern int  knomial_inter_leader_bcast;
 extern int  enable_shmem_bcast;
 extern int  bcast_two_level_system_size; 
 extern int MPIR_Shmem_Bcast_MV2( void *,  int ,  MPI_Datatype , int ,  MPID_Comm *);
-extern int MPIR_Knomial_Bcast_MV2(void *, int ,  MPI_Datatype, int , MPID_Comm *, int *);
+extern int MPIR_Knomial_Bcast_intra_node_MV2(void *, int ,  MPI_Datatype, int , MPID_Comm *, int *);
+extern int MPIR_Knomial_Bcast_inter_node_MV2(void *, int ,  MPI_Datatype, int , int * , MPID_Comm *, int *);
 
 
 
 /* Use inside reduce_osu.c */
 extern int disable_shmem_reduce;
-extern int check_comm_registry(MPI_Comm);
+int check_comm_registry(MPI_Comm);
 
 /* Lock/unlock shmem region */
-extern void lock_shmem_region(void);
-extern void unlock_shmem_region(void);
+void lock_shmem_region(void);
+void unlock_shmem_region(void);
 
 /* utils */
-extern void increment_shmem_comm_count(void);
-extern int get_shmem_comm_count(void);
+void increment_shmem_comm_count(void);
+int get_shmem_comm_count(void);
 
-extern void MPIDI_CH3I_SHMEM_Bcast_GetBuf(int, int, int, void**);
-extern void MPIDI_CH3I_SHMEM_Bcast_Complete(int ,int , int);
-extern int init_thread_reg(void);
+void MPIDI_CH3I_SHMEM_Bcast_GetBuf(int, int, int, void**);
+void MPIDI_CH3I_SHMEM_Bcast_Complete(int ,int , int);
+int init_thread_reg(void);
 
 extern int use_osu_collectives;
 extern int use_anl_collectives;
+
+
+/* Comm functions*/
+extern int split_comm;
+int check_split_comm(pthread_t);
+int disable_split_comm(pthread_t);
+int create_2level_comm (MPI_Comm, int, int);
+int enable_split_comm(pthread_t);
 
 #endif  /* _COLL_SHMEM_ */

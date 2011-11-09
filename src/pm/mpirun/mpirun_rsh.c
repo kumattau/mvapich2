@@ -928,7 +928,6 @@ void rkill_fast(void)
 
     for (i = 0; i < NSPAWNS; i++) {
         if (0 == (spawned_pid[i] = fork())) {
-            clear_sigmask();
             /*
              * We're no longer the mpirun_rsh process but a child process
              * used to kill a specific instance of mpispawn.  No exit codes
@@ -1025,7 +1024,6 @@ void rkill_linear(void)
 
     for (i = 0; i < nprocs; i++) {
         if (0 == (spawned_pid[i] = fork())) {
-            clear_sigmask();
             /*
              * We're no longer the mpirun_rsh process but a child process
              * used to kill a specific instance of mpispawn.  No exit codes
@@ -2056,8 +2054,6 @@ void spawn_one(int argc, char *argv[], char *totalview_cmd, char *env, int fasts
     i = 0;                      /* Spawn root mpispawn */
     {
         if (!(pglist->data[i].pid = fork())) {
-            clear_sigmask();
-
             /*
              * We're no longer the mpirun_rsh process but a child process
              * used to launch a specific instance of mpispawn.  No exit codes
@@ -2754,8 +2750,6 @@ void launch_newmpirun(int total)
     dpm_mpirun_pids = curr;
     if ((curr->pid = fork()))
         return;
-
-    clear_sigmask();
 
     newbuf = (char *) malloc(PATH_MAX + MAXLINE);
     if (use_dirname) {

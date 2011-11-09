@@ -1518,7 +1518,6 @@ int rdma_setup_startup_ring(int pg_rank, int pg_size)
     } else 
 #endif
     {
-        /* printf("Not using RDMAOE\r\n"); */
         sprintf(ring_qp_out, "%08x:%08x:%08x:",
                  get_local_lid(hca_list[0].nic_context,
                                port),

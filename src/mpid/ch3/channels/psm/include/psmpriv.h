@@ -68,7 +68,8 @@
         out = out | (rank & SRC_RANK_MASK);         \
 } while(0)
 
-#define CAN_BLK_PSM(_len) (MPIR_ThreadInfo.thread_provided != MPI_THREAD_MULTIPLE)
+#define CAN_BLK_PSM(_len) ((MPIR_ThreadInfo.thread_provided != MPI_THREAD_MULTIPLE) &&  \
+                             (_len < ipath_rndv_thresh))
 
 int psm_no_lock(pthread_spinlock_t *);
 int (*psm_lock_fn)(pthread_spinlock_t *);

@@ -200,6 +200,8 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
                     " %d attempts\n", ret, connect_attempts);
             }
 
+            MPIU_Free(conn_param.private_data);
+
         break;
         case RDMA_CM_EVENT_CONNECT_REQUEST:
             DEBUG_PRINT("case RDMA_CM_EVENT_CONNECT_REQUEST\n");
@@ -289,6 +291,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
                 ibv_va_error_abort(IBV_RETURN_ERR,
                     "rdma_accept error: %d\n", ret);
             }
+            MPIU_Free(conn_param.private_data);
 
         break;
         case RDMA_CM_EVENT_ESTABLISHED:
@@ -1374,7 +1377,9 @@ void ib_finalize_rdma_cm(int pg_rank, MPIDI_PG_t *pg)
     MPIDI_CH3I_RDMA_Process_t *proc = &MPIDI_CH3I_RDMA_Process;
 
     MPIU_Free(rdma_base_listen_port);
-    MPIU_Free(rdma_cm_accept_count); 
+    MPIU_Free(rdma_cm_accept_count);
+    MPIU_Free(rdma_cm_connect_count);
+    MPIU_Free(rdma_cm_iwarp_msg_count);
     MPIU_Free(rdma_cm_local_ips);
     pg_size = MPIDI_PG_Get_size(pg);
 
@@ -1422,11 +1427,13 @@ void ib_finalize_rdma_cm(int pg_rank, MPIDI_PG_t *pg)
                     MPIDI_CH3I_RDMA_Process.comp_channel[i]);
             }
             deallocate_vbufs(i);
-            while (dreg_evict());
 
             if (MPIDI_CH3I_RDMA_Process.ptag[i])
                 ibv_dealloc_pd(MPIDI_CH3I_RDMA_Process.ptag[i]);
         }
+      
+        deallocate_vbuf_region();
+        dreg_finalize();
 
         for (i = 0; i < pg_size; i++){
             if (i == pg_rank)

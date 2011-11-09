@@ -1304,6 +1304,14 @@ int MPIR_Bcast_impl(void *buffer, int count, MPI_Datatype datatype, int root, MP
 {
     int mpi_errno = MPI_SUCCESS;
 
+#if defined(_ENABLE_CUDA_)
+    if (rdma_enable_cuda) {
+        if (is_device_buffer(buffer)) { 
+            enable_device_ptr_checks = 1;
+        }
+    }
+#endif
+
     if (comm_ptr->coll_fns != NULL && comm_ptr->coll_fns->Bcast != NULL)
     {
        /* --BEGIN USEREXTENSION-- */
@@ -1331,6 +1339,11 @@ int MPIR_Bcast_impl(void *buffer, int count, MPI_Datatype datatype, int root, MP
 
 
  fn_exit:
+#if defined(_ENABLE_CUDA_)
+    if (rdma_enable_cuda) {
+        enable_device_ptr_checks = 0;
+    }
+#endif
     return mpi_errno;
  fn_fail:
     goto fn_exit;

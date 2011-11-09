@@ -203,6 +203,22 @@ eager_send:
     {
 	/* Note that the sreq was created above */
 	MPIDI_Request_set_msg_type( sreq, MPIDI_REQUEST_RNDV_MSG );
+
+#ifdef _ENABLE_CUDA_
+    int mem_type = 0;
+    if (rdma_enable_cuda) {
+        cuPointerGetAttribute((void*) &mem_type, 
+            CU_POINTER_ATTRIBUTE_MEMORY_TYPE, (CUdeviceptr) buf);
+        if (mem_type == CU_MEMORYTYPE_DEVICE) {
+            /* buf is in the GPU device memory */
+            sreq->mrail.cuda_transfer_mode = CONT_DEVICE_TO_DEVICE;
+        } else {
+            /* buf is in the host memory*/
+            sreq->mrail.cuda_transfer_mode = NONE;
+        }
+    }
+#endif
+
 	mpi_errno = vc->rndvSend_fn( &sreq, buf, count, datatype, dt_contig,
                                      data_sz, dt_true_lb, rank, tag, comm, 
                                      context_offset );

@@ -63,8 +63,14 @@ static inline MPID_Request * create_request(MPID_IOV * iov, int iov_count,
 	/*
         MPIU_Assert(iov[0].MPID_IOV_LEN == sizeof(MPIDI_CH3_Pkt_t));
 	*/
+#ifdef _ENABLE_CUDA_
+        sreq->dev.pending_pkt = MPIU_Malloc(iov[0].MPID_IOV_LEN);
+        MPIU_Memcpy(sreq->dev.pending_pkt, iov[0].MPID_IOV_BUF, iov[0].MPID_IOV_LEN);
+        sreq->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)sreq->dev.pending_pkt;
+#else
         sreq->dev.pending_pkt = *(MPIDI_CH3_PktGeneric_t *) iov[0].MPID_IOV_BUF;
         sreq->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) &sreq->dev.pending_pkt;
+#endif
     }
     sreq->ch.reqtype = REQUEST_NORMAL;
     sreq->dev.iov[iov_offset].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)((char *)

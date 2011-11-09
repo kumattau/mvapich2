@@ -1137,10 +1137,9 @@ static int publish_host_id(MPIDI_PG_t *pg, int our_pg_rank)
 {
     int mpi_errno = MPI_SUCCESS;
     int pmi_errno;
-    int ret;
-    char *key;
+    char *key = NULL;
     int key_max_sz;
-    char *kvs_name;
+    char *kvs_name = NULL;
     long host_id = 0;
     char val[512];
     MPIU_CHKLMEM_DECL(1);
@@ -1198,9 +1197,9 @@ int MPIDI_Get_num_nodes()
 int MPIDI_Get_local_host(MPIDI_PG_t *pg, int our_pg_rank)
 {
     int i = 0, j = 0;
-    char *key;
-    char *val;
-    char *kvs_name;
+    char *key = NULL;
+    char *val = NULL;
+    char *kvs_name = NULL;
     long my_host_id = 0;
     long *host_ids = NULL;
     long *unique_host_ids = NULL;

@@ -3,6 +3,31 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2-1.8a1 (11/09/2011)
+
+* Features and Enhancements (since 1.7):
+    - Support for MPI communication from NVIDIA GPU device memory
+        - High performance RDMA-based inter-node point-to-point communication
+          (GPU-GPU, GPU-Host and Host-GPU)
+        - High performance intra-node point-to-point communication for
+          multi-GPU adapters/node (GPU-GPU, GPU-Host and Host-GPU)
+        - Communication with contiguous datatype
+    - Reduced memory footprint of the library
+    - Enhanced one-sided communication design with reduced memory requirement
+    - Enhancements and tuned collectives (Bcast and Alltoallv)
+    - Update to hwloc v1.3.0
+    - Flexible HCA selection with Nemesis interface
+        - Thanks to Grigori Inozemtsev, Queens University
+    - Support iWARP interoperability between Intel NE020 and Chelsio T4 Adapters
+    - RoCE enable environment variable name is changed from MV2_USE_RDMAOE to
+      MV2_USE_RoCE
+
+* Bug Fixes (since 1.7):
+    - Fix for a bug in mpirun_rsh while doing process clean-up in abort and
+      other error scenarios
+    - Fixes for code compilation warnings
+    - Fix for memory leaks in RDMA CM code path
+
 MVAPICH2-1.7 (10/14/2011)
 
 * Features and Enhancements (since 1.7rc2):

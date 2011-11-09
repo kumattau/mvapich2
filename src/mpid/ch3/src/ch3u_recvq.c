@@ -349,6 +349,11 @@ MPID_Request * MPIDI_CH3U_Recvq_FDU_or_AEP(int source, int tag,
         found = FALSE;
 
 	MPIDI_Request_create_rreq( rreq, mpi_errno, goto lock_exit );
+#ifdef _ENABLE_CUDA_
+    if (rdma_enable_cuda) {
+        rreq->mrail.cts_received   = 1;
+    }
+#endif
 	rreq->dev.match.parts.tag	   = tag;
 	rreq->dev.match.parts.rank	   = source;
 	rreq->dev.match.parts.context_id   = context_id;

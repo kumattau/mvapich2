@@ -123,6 +123,9 @@ extern int DEBUG_UDSTAT_verbose;
 // Verbosity level for memory stats
 extern int DEBUG_MEM_verbose;
 
+// Verbosity level for GPU CUDA
+extern int DEBUG_CUDA_verbose;
+
 // Initialize the verbosity level of the above variables
 extern int initialize_debug_variables();
 

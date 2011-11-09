@@ -314,6 +314,13 @@ start_polling:
         if (flowlist) { 
             MPIDI_CH3I_MRAILI_Process_rndv();
         } 
+
+#if defined(_ENABLE_CUDA_)
+        if (rdma_enable_cuda) {
+            progress_cuda_streams();
+        }
+#endif
+ 
 #ifdef CKPT
         if (MPIDI_CH3I_CR_Get_state()==MPICR_STATE_REQUESTED) {
             /*Release the lock if it is about to checkpoint*/
@@ -566,6 +573,11 @@ int MPIDI_CH3I_Progress_test()
         MPIDI_CH3I_MRAILI_Process_rndv();
     }
 
+#if defined(_ENABLE_CUDA_)
+    if (rdma_enable_cuda) {
+        progress_cuda_streams();
+    }
+#endif
 #ifdef _ENABLE_UD_
     if ( !SMP_ONLY && rdma_enable_hybrid && UD_ACK_PROGRESS_TIMEOUT) {
         mv2_check_resend();
@@ -1247,6 +1259,11 @@ static int handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* header_type
             DEBUG_PRINT("RGET finish received\n");
             MPIDI_CH3_Rendezvous_rget_send_finish(vc, (void*) header);
         goto fn_exit;
+#ifdef _ENABLE_CUDA_
+    case MPIDI_CH3_PKT_CUDA_CTS_CONTI:
+            MPIDI_CH3_Rendezvous_cuda_cts_conti(vc, (void *) header);
+        goto fn_exit;
+#endif
 #ifdef _ENABLE_UD_
     case MPIDI_CH3_PKT_ZCOPY_FINISH:
             PRINT_DEBUG(DEBUG_ZCY_verbose>1, "zcopy finish received from:%d\n", vc->pg_rank);

@@ -58,7 +58,9 @@ output_console_obj (hwloc_obj_t l, FILE *output, int logical, int verbose_mode)
       hwloc_obj_type_snprintf (type, sizeof(type), l, verbose_mode-1);
       fprintf(output, "%s", type);
     }
-    if (l->depth != 0 && idx != (unsigned)-1)
+    if (l->depth != 0 && idx != (unsigned)-1
+        && l->type != HWLOC_OBJ_PCI_DEVICE
+        && (l->type != HWLOC_OBJ_BRIDGE || l->attr->bridge.upstream_type == HWLOC_OBJ_BRIDGE_HOST))
       fprintf(output, "%s%u", indexprefix, idx);
     if (logical && l->os_index != (unsigned) -1 &&
 	(verbose_mode >= 2 || l->type == HWLOC_OBJ_PU || l->type == HWLOC_OBJ_NODE))
@@ -73,7 +75,7 @@ output_console_obj (hwloc_obj_t l, FILE *output, int logical, int verbose_mode)
 	      phys, separator, attr);
     }
     free(attr);
-    if (verbose_mode >= 2 && l->name && l->type != HWLOC_OBJ_MISC)
+    if ((l->type == HWLOC_OBJ_OS_DEVICE || verbose_mode >= 2) && l->name && l->type != HWLOC_OBJ_MISC)
       fprintf(output, " \"%s\"", l->name);
   }
   if (!l->cpuset)
@@ -209,7 +211,7 @@ void output_console(hwloc_topology_t topology, const char *filename, int logical
     hwloc_const_bitmap_t online = hwloc_topology_get_online_cpuset(topology);
     hwloc_const_bitmap_t allowed = hwloc_topology_get_allowed_cpuset(topology);
 
-    if (!hwloc_bitmap_isequal(topo, complete)) {
+    if (complete && !hwloc_bitmap_isequal(topo, complete)) {
       hwloc_bitmap_t unknown = hwloc_bitmap_alloc();
       char *unknownstr;
       hwloc_bitmap_copy(unknown, complete);
@@ -219,7 +221,7 @@ void output_console(hwloc_topology_t topology, const char *filename, int logical
       free(unknownstr);
       hwloc_bitmap_free(unknown);
     }
-    if (!hwloc_bitmap_isequal(online, complete)) {
+    if (complete && !hwloc_bitmap_isequal(online, complete)) {
       hwloc_bitmap_t offline = hwloc_bitmap_alloc();
       char *offlinestr;
       hwloc_bitmap_copy(offline, complete);
@@ -229,7 +231,7 @@ void output_console(hwloc_topology_t topology, const char *filename, int logical
       free(offlinestr);
       hwloc_bitmap_free(offline);
     }
-    if (!hwloc_bitmap_isequal(allowed, online)) {
+    if (complete && !hwloc_bitmap_isequal(allowed, online)) {
       if (!hwloc_bitmap_isincluded(online, allowed)) {
         hwloc_bitmap_t forbidden = hwloc_bitmap_alloc();
         char *forbiddenstr;

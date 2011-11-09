@@ -72,6 +72,7 @@ typedef enum {
     VAPI_PROTOCOL_UD_ZCOPY
 } MRAILI_Protocol_t;
 
+#define MAX_CUDA_RNDV_BLOCKS            (64)
 typedef struct MPIDI_CH3I_MRAILI_Rndv_info {
     /* Buffer Address */
     void                *buf_addr;
@@ -86,6 +87,14 @@ typedef struct MPIDI_CH3I_MRAILI_Rndv_info {
     uint8_t             hca_index;
     uint32_t            rndv_qpn;
 #endif
+#ifdef _ENABLE_CUDA_
+    uint8_t             cuda_transfer_mode;
+    uint32_t            buf_sz;
+    uint32_t            cuda_block_offset;
+    uint32_t            num_cuda_blocks;
+    uint32_t            buffer_rkey[MAX_CUDA_RNDV_BLOCKS][MAX_NUM_HCAS];
+    void                *buffer_addr[MAX_CUDA_RNDV_BLOCKS];
+#endif
 } MPIDI_CH3I_MRAILI_Rndv_info_t;
 
 #define MPIDI_CH3I_MRAILI_RNDV_INFO_DECL \
@@ -99,6 +108,23 @@ struct dreg_entry;
         uint8_t hca_index;              
 #else
 #define MPIDI_CH3I_MRAILI_ZCOPY_REQ_DECL
+#endif
+#ifdef _ENABLE_CUDA_
+#define MPIDI_CH3I_MRAILI_CUDA_REQ_DECL \
+        enum cuda_transfer_mode_t  cuda_transfer_mode; \
+        vbuf *cuda_vbuf[MAX_CUDA_RNDV_BLOCKS]; \
+        void *cuda_remote_addr[MAX_CUDA_RNDV_BLOCKS]; \
+        uint32_t cuda_remote_rkey[MAX_CUDA_RNDV_BLOCKS][MAX_NUM_HCAS]; \
+        uint16_t num_cuda_blocks;           \
+        uint16_t cuda_block_offset;         \
+        uint16_t num_send_cuda_copy;        \
+        uint16_t pipeline_nm;               \
+        uint8_t num_remote_cuda_pending;    \
+        uint8_t num_remote_cuda_done;       \
+        uint8_t is_cuda_pipeline;           \
+        uint8_t cts_received;               
+#else
+#define MPIDI_CH3I_MRAILI_CUDA_REQ_DECL 
 #endif
 
 #define MPIDI_CH3I_MRAILI_REQUEST_DECL \
@@ -120,6 +146,7 @@ struct dreg_entry;
         double  stripe_finish_time[MAX_NUM_SUBRAILS];   \
         struct MPID_Request *next_inflow;  \
         MPIDI_CH3I_MRAILI_ZCOPY_REQ_DECL   \
+        MPIDI_CH3I_MRAILI_CUDA_REQ_DECL    \
     } mrail;
 
 #ifndef MV2_DISABLE_HEADER_CACHING 
@@ -404,4 +431,42 @@ struct MPIDI_CH3I_RDMA_put_get_list_t;
 typedef struct MPIDI_CH3I_RDMA_put_get_list_t
 MPIDI_CH3I_RDMA_put_get_list;
 
-#endif /* MPIDI_CH3_RDMA_PRE_H */
+#ifdef _ENABLE_CUDA_
+enum cuda_transfer_mode_t {
+    NONE            = 0,  /* default: HOST_TO_HOST */
+    CONT_DEVICE_TO_DEVICE,
+    CONT_HOST_TO_DEVICE,
+    CONT_DEVICE_TO_HOST
+};
+
+enum cuda_stream_op {
+    SEND = 0,
+    RECV,
+};
+
+typedef struct cuda_stream {
+    cudaStream_t stream;
+    enum cuda_stream_op op_type;
+    uint8_t is_finish;
+    uint8_t is_query_done;
+    uint32_t size;
+    uint32_t displacement;
+    void *vc;
+    void *req;
+    vbuf *cuda_vbuf;
+    struct cuda_stream *next, *prev;
+} cuda_stream_t;
+
+extern void *cuda_stream_region;
+extern cuda_stream_t *free_cuda_stream_list_head;
+extern cuda_stream_t *busy_cuda_stream_list_head;
+extern cuda_stream_t *busy_cuda_stream_list_tail;
+
+int allocate_cuda_streams();
+void deallocate_cuda_streams();
+void progress_cuda_streams();
+cuda_stream_t *get_cuda_stream();
+#endif
+
+
+#endif /* mpidi_ch3_rdma_pre_h */

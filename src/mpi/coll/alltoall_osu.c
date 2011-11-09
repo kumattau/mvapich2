@@ -156,7 +156,12 @@ int MPIR_Alltoall_intra_MV2(
         }
     }  
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
-    else if ((nbytes <= coll_param.alltoall_small_msg) && (comm_size >= 8)) {
+    else if ((nbytes <= coll_param.alltoall_small_msg) && (comm_size >= 8)
+#if defined(_ENABLE_CUDA_)
+    /* use Isend/Irecv and pairwise in cuda configuration*/
+    && !rdma_enable_cuda
+#endif 
+    ) {
 #else 
     else if ((nbytes <= MPIR_ALLTOALL_SHORT_MSG) && (comm_size >= 8)) {
 #endif

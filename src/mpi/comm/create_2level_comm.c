@@ -116,7 +116,6 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     static const char FCNAME[] = "create_2level_comm";
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm* comm_ptr;
-    MPID_Comm* comm_world_ptr;
     MPI_Group subgroup1, comm_group;
     MPID_Group *group_ptr=NULL;
     int leader_comm_size, my_local_size, my_local_id, input_flag =0, output_flag=0;
@@ -126,7 +125,6 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     MPIU_THREADPRIV_DECL;
     MPIU_THREADPRIV_GET;
     MPID_Comm_get_ptr( comm, comm_ptr );
-    MPID_Comm_get_ptr( MPI_COMM_WORLD, comm_world_ptr );
 
     int* shmem_group = MPIU_Malloc(sizeof(int) * size);
     if (NULL == shmem_group){

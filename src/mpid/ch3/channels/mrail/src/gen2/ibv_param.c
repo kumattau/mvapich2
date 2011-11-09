@@ -194,7 +194,7 @@ int rdma_rq_size;
 int using_mpirun_rsh            = 1;
 
 uint32_t viadev_srq_alloc_size = 4096;
-uint32_t viadev_srq_fill_size = 512;
+uint32_t viadev_srq_fill_size = 256;
 uint32_t viadev_srq_limit = 30;
 uint32_t viadev_max_r3_oust_send = 32;
 
@@ -245,6 +245,14 @@ int alpha = 0.9;
 int stripe_factor = 1;
 int apm_tester = 0;
 int apm_count;
+
+#ifdef _ENABLE_CUDA_
+int rdma_cuda_block_size;
+int rdma_num_cuda_rndv_blocks = 8;
+int rdma_cuda_stream_count;
+int rdma_enable_cuda = 0;
+int rdma_eager_cudahost_reg = 0;
+#endif
 
 typedef enum _mv2_user_defined_mapping_policies {
 
@@ -1023,12 +1031,19 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
 #endif /* !defined(DISABLE_PTMALLOC) */
 
 #if defined(CKPT)
-    proc->has_one_sided = 0;
+    {
+        proc->has_one_sided = 0;
+    }
 #else /* defined(CKPT) */
 #ifdef _ENABLE_UD_
     if (rdma_enable_hybrid) {
         proc->has_one_sided = 0;
     } else 
+#endif
+#ifdef _ENABLE_CUDA_
+    if (rdma_enable_cuda) {
+        proc->has_one_sided = 0;
+    } else
 #endif
     {
         proc->has_one_sided = (value = getenv("MV2_USE_RDMA_ONE_SIDED")) != NULL ? !!atoi(value) : 1; 
@@ -1074,7 +1089,7 @@ int rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc)
         rdma_use_coalesce = 0;
     }
 
-    if ((value = getenv("MV2_USE_RDMAOE")) != NULL) {
+    if ((value = getenv("MV2_USE_RoCE")) != NULL) {
         use_iboeth = !!atoi(value);
         if (!rdma_use_smp) {
             if (0 == my_rank) {
@@ -1909,7 +1924,6 @@ void rdma_get_user_parameters(int num_proc, int me)
         enable_sysreport = atoi(value);
     }
 
-
     if ((value = getenv("MV2_DEFAULT_MTU")) != NULL) {
 
         if (strncmp(value,"IBV_MTU_256",11)==0) {
@@ -1997,6 +2011,52 @@ void rdma_get_user_parameters(int num_proc, int me)
                 rdma_vbuf_total_size);
         }
     }
+
+#ifdef _ENABLE_CUDA_
+    if (rdma_enable_cuda) {
+        int i =0;
+        int default_cuda_vbuf_sizes[] = DEFAULT_CUDA_VBUF_SIZES;
+        int default_cuda_vbuf_init_count[] = DEFAULT_CUDA_VBUF_POOL_SIZE;
+        int default_cuda_vbuf_secondary_count[] = DEFAULT_CUDA_VBUF_SECONDARY_POOL_SIZE;
+        rdma_num_vbuf_pools = sizeof(default_cuda_vbuf_sizes) / sizeof(int);;
+
+        default_cuda_vbuf_sizes[CUDA_EAGER_BUF] = rdma_vbuf_total_size;
+        rdma_cuda_block_size = DEFAULT_CUDA_BLOCK_SIZE;
+        if ((value = getenv("MV2_CUDA_BLOCK_SIZE")) != NULL) {
+            rdma_cuda_block_size = atoi(value);
+            default_cuda_vbuf_sizes[CUDA_RNDV_BLOCK_BUF] = 
+                                            rdma_cuda_block_size;
+        }
+
+        rdma_cuda_stream_count = DEFAULT_CUDA_STREAM_COUNT;
+        if ((value = getenv("MV2_CUDA_NUM_STREAMS")) != NULL) {
+            rdma_cuda_stream_count = atoi(value);
+        }
+
+        if ((value = getenv("MV2_CUDA_NUM_RNDV_BLOCKS")) != NULL) {
+            rdma_num_cuda_rndv_blocks = atoi(value);
+        }
+    
+        if ((value = getenv("MV2_EAGER_CUDAHOST_REG")) != NULL) {
+            rdma_eager_cudahost_reg = atoi(value);
+        }
+
+        rdma_vbuf_pools = (vbuf_pool_t *) 
+                MPIU_Malloc(sizeof(vbuf_pool_t) * rdma_num_vbuf_pools);
+        MPIU_Memset(rdma_vbuf_pools, 0,
+                sizeof(vbuf_pool_t) * rdma_num_vbuf_pools);
+
+        for (i = 0; i < rdma_num_vbuf_pools; i++) {
+            RDMA_VBUF_POOL_INIT(rdma_vbuf_pools[i]);
+            rdma_vbuf_pools[i].buf_size = default_cuda_vbuf_sizes[i];
+            rdma_vbuf_pools[i].initial_count = 
+                                    default_cuda_vbuf_init_count[i];
+            rdma_vbuf_pools[i].incr_count = 
+                                    default_cuda_vbuf_secondary_count[i];
+            rdma_vbuf_pools[i].index = i;
+        }
+    }
+#endif
 
     if ((value = getenv("MV2_RDMA_FAST_PATH_BUF_SIZE")) != NULL
         && MPIDI_CH3I_RDMA_Process.has_adaptive_fast_path) {
@@ -2134,6 +2194,7 @@ void rdma_get_user_parameters(int num_proc, int me)
     if ((value = getenv("MV2_DEFAULT_MAX_SEND_WQE")) != NULL) {
         rdma_default_max_send_wqe = atol(value);
     }
+
 #ifdef _ENABLE_UD_
     if ((value = getenv("MV2_HYBRID_MAX_RC_CONN")) != NULL) {
         rdma_hybrid_max_rc_conn = atoi(value);
@@ -2171,9 +2232,7 @@ void rdma_get_user_parameters(int num_proc, int me)
     if ((value = getenv("MV2_UD_VBUF_POOL_SIZE")) != NULL) {
         rdma_ud_vbuf_pool_size = atol(value);
     }
-    if (rdma_enable_hybrid) {
-        rdma_vbuf_pool_size = (RDMA_VBUF_POOL_SIZE / 2);
-    }
+    
     if ((value = getenv("MV2_UD_MTU")) != NULL) {
         rdma_default_ud_mtu = atol(value);
         if (rdma_default_ud_mtu > 2048) {
@@ -2341,7 +2400,7 @@ void rdma_get_pm_parameters(MPIDI_CH3I_RDMA_Process_t *proc)
     }
 #endif
     
-    if ((value = getenv("MV2_USE_RDMAOE")) != NULL) {
+    if ((value = getenv("MV2_USE_RoCE")) != NULL) {
         use_iboeth = !!atoi(value);
     }
 

@@ -468,6 +468,14 @@ int MPIR_Gather_MV2(
           (comm_size > gather_tuning_table[range].numproc)){
         range++;
     }
+#if defined(_ENABLE_CUDA_)
+    /* Use Direct algorithm in cuda configuration*/
+    if (rdma_enable_cuda) {
+        mpi_errno = MPIR_Gather_MV2_Direct( sendbuf, sendcnt,
+                sendtype, recvbuf, recvcnt, recvtype, 
+                root, comm_ptr, errflag); 
+    } else 
+#endif /*_ENABLE_CUDA_*/
     
     if(comm_ptr->ch.is_global_block == 1 && use_direct_gather == 1 &&
             use_two_level_gather == 1  && comm_ptr->ch.shmem_coll_ok == 1) {

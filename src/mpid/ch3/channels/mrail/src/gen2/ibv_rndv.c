@@ -9,7 +9,7 @@
  * copyright file COPYRIGHT in the top level MVAPICH2 directory.
  *
  */
-
+#include <sys/time.h>
 #include "mpidi_ch3i_rdma_conf.h"
 #include <mpimem.h>
 #include "rdma_impl.h"
@@ -96,6 +96,16 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv(MPIDI_VC_t * vc, MPID_Request * req)
     {
         req->mrail.protocol = VAPI_PROTOCOL_R3;
     }
+#ifdef _ENABLE_CUDA_
+    if (rdma_enable_cuda && req->mrail.cuda_transfer_mode != NONE) {
+        if ( (VAPI_PROTOCOL_RPUT == req->mrail.protocol) ||
+                (VAPI_PROTOCOL_RGET == req->mrail.protocol) ) {
+            return 1;
+        } else {
+            return 0;
+        }
+    }
+#endif
 #ifdef _ENABLE_UD_
     if (rdma_enable_hybrid && (req->mrail.rndv_buf_sz < rdma_ud_zcopy_threshold
      || req->mrail.rndv_buf_sz > (rdma_default_ud_mtu * rdma_ud_zcopy_rq_size))) {
@@ -167,9 +177,39 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv_transfer(MPID_Request * sreq,
         }
         /* TODO: Can we avoid dev.iov copy for zcopy */
 #endif
-        sreq->mrail.remote_addr = rndv->buf_addr;
-        for (hca_index = 0; hca_index < rdma_num_hcas; hca_index ++)
+#ifdef _ENABLE_CUDA_
+        int i;
+        if( rdma_enable_cuda && sreq->mrail.cuda_transfer_mode != NONE) {
+            sreq->mrail.cts_received = 1;
+            sreq->mrail.num_send_cuda_copy = 0;
+            if (sreq->mrail.cuda_transfer_mode == CONT_DEVICE_TO_DEVICE 
+                || sreq->mrail.cuda_transfer_mode == CONT_HOST_TO_DEVICE) {
+                for (i = 0; i < rndv->num_cuda_blocks; i++) {
+                    sreq->mrail.cuda_remote_addr[i] = rndv->buffer_addr[i];
+                    for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
+                        sreq->mrail.cuda_remote_rkey[i][hca_index] = 
+                            rndv->buffer_rkey[i][hca_index];
+                    }
+                    sreq->mrail.num_remote_cuda_pending = rndv->num_cuda_blocks;
+                    sreq->mrail.cuda_block_offset = rndv->cuda_block_offset;
+                    sreq->mrail.num_remote_cuda_done = 0;
+                }
+            } else if (sreq->mrail.cuda_transfer_mode == CONT_DEVICE_TO_HOST) {
+                sreq->mrail.num_remote_cuda_pending = 
+                        ROUNDUP(sreq->mrail.rndv_buf_sz, rdma_cuda_block_size);
+                sreq->mrail.cuda_block_offset = 0;
+                sreq->mrail.num_remote_cuda_done = 0;
+                sreq->mrail.remote_addr = rndv->buf_addr;
+                for (hca_index = 0; hca_index < rdma_num_hcas; hca_index ++)
+                    sreq->mrail.rkey[hca_index] = rndv->rkey[hca_index];
+            }
+        } else
+#endif
+        {
+            sreq->mrail.remote_addr = rndv->buf_addr;
+            for (hca_index = 0; hca_index < rdma_num_hcas; hca_index ++)
             sreq->mrail.rkey[hca_index] = rndv->rkey[hca_index];
+        }
 
         DEBUG_PRINT("[add rndv list] addr %p, key %p\n",
                 sreq->mrail.remote_addr,
@@ -226,6 +266,11 @@ void MRAILI_RDMA_Put_finish(MPIDI_VC_t * vc,
     MPID_Seqnum_t seqnum;
 
     MPIDI_Pkt_init(&rput_pkt, MPIDI_CH3_PKT_RPUT_FINISH);
+#ifdef _ENABLE_CUDA_
+    if (rdma_enable_cuda) {
+        rput_pkt.is_cuda = 0;
+    }
+#endif
     rput_pkt.receiver_req_id = sreq->mrail.partner_id;
     MPIDI_VC_FAI_send_seqnum(vc, seqnum);
     MPIDI_Pkt_set_seqnum(&rput_pkt, seqnum); 
@@ -556,6 +601,12 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
 
     }
 
+#ifdef _ENABLE_CUDA_
+    if (rdma_enable_cuda && sreq->mrail.cuda_transfer_mode != NONE) {
+        MPIDI_CH3I_MRAILI_Rendezvous_rput_push_cuda(vc, sreq);
+        return;
+    }
+#endif
     while (sreq->mrail.rndv_buf_off < sreq->mrail.rndv_buf_sz) {
         nbytes = sreq->mrail.rndv_buf_sz - sreq->mrail.rndv_buf_off;
 
@@ -692,7 +743,6 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
     for(rail = 0; rail < rdma_num_rails; rail++) { 
         MRAILI_RDMA_Put_finish(vc, sreq, rail);
     }
-
     sreq->mrail.nearly_complete = 1;
 }
 

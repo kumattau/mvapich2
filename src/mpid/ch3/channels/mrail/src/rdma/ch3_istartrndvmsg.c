@@ -247,7 +247,7 @@ int MPIDI_CH3_iStartGetRndv(MPIDI_VC_t * vc,
     }
 #endif
 
-    MPIDI_CH3I_MRAIL_SET_PKT_RNDV(get_rndv, sreq);
+    MPIDI_CH3I_MRAIL_SET_PKT_RNDV(get_rndv, sreq); 
 
     mpi_errno = MPIDI_CH3_iStartMsgv(vc, iov, n_iov, &send_req);
     if (NULL != send_req) {

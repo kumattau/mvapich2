@@ -54,7 +54,24 @@ int MPIR_Unpack_impl(void *inbuf, int insize, int *position,
     }
 
     if (contig) {
-        MPIU_Memcpy((char *) outbuf + dt_true_lb, (char *)inbuf + *position, data_sz);
+#if defined(_ENABLE_CUDA_)
+        if (rdma_enable_cuda && enable_device_ptr_checks) {
+            int outbuf_isdev = 0;
+
+            outbuf_isdev = is_device_buffer(outbuf);
+
+            if(outbuf_isdev) {
+                cudaMemcpy((void *) ((char *)outbuf + *position),
+                       (void *) ((char *)inbuf + dt_true_lb),
+                       data_sz,
+                       cudaMemcpyHostToDevice);
+            }
+        } else {
+#endif
+            MPIU_Memcpy((char *) outbuf + dt_true_lb, (char *)inbuf + *position, data_sz);
+#if defined(_ENABLE_CUDA_)        
+        }
+#endif
         *position = (int)((MPI_Aint)*position + data_sz);
         goto fn_exit;
     }

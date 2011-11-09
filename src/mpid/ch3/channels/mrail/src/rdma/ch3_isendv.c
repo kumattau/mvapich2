@@ -44,8 +44,14 @@ static inline int update_request(MPID_Request* sreq, MPID_IOV* iov, int count, i
             MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**arg");
         }
 #endif /* defined(MPICH_DBG_OUTPUT) */
+#ifdef _ENABLE_CUDA_
+        sreq->dev.pending_pkt = MPIU_Malloc(iov[0].MPID_IOV_LEN);
+        MPIU_Memcpy(sreq->dev.pending_pkt, iov[0].MPID_IOV_BUF, iov[0].MPID_IOV_LEN);
+        sreq->dev.iov[0].MPID_IOV_BUF = (void*)sreq->dev.pending_pkt;
+#else
         sreq->dev.pending_pkt = *(MPIDI_CH3_PktGeneric_t *) iov[0].MPID_IOV_BUF;
         sreq->dev.iov[0].MPID_IOV_BUF = (void*)&sreq->dev.pending_pkt;
+#endif
     }
 
     sreq->dev.iov[offset].MPID_IOV_BUF = (char *) sreq->dev.iov[offset].MPID_IOV_BUF + nb;

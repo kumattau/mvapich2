@@ -80,6 +80,7 @@ char *MPIDI_CH3_Pkt_type_to_string[MPIDI_CH3_PKT_END_ALL+1] = {
     [MPIDI_CH3_PKT_ZCOPY_ACK] = "MPIDI_CH3_PKT_ZCOPY_ACK",
     [MPIDI_CH3_PKT_NOOP] = "MPIDI_CH3_PKT_NOOP",
     [MPIDI_CH3_PKT_RMA_RNDV_CLR_TO_SEND] = "MPIDI_CH3_PKT_RMA_RNDV_CLR_TO_SEND",
+    [MPIDI_CH3_PKT_CUDA_CTS_CONTI] = "MPIDI_CH3_PKT_CUDA_CTS_CONTI",
     [MPIDI_CH3_PKT_PUT_RNDV] = "MPIDI_CH3_PKT_PUT_RNDV",
     [MPIDI_CH3_PKT_ACCUMULATE_RNDV] = "MPIDI_CH3_PKT_ACCUMULATE_RNDV",
     [MPIDI_CH3_PKT_GET_RNDV] = "MPIDI_CH3_PKT_GET_RNDV",
@@ -215,7 +216,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     }
 #endif
     
-#if 1
+#if 1 && !defined(_ENABLE_CUDA_)
     /* This is a sanity check because we define a generic packet size
      */
     if (sizeof(MPIDI_CH3_PktGeneric_t) < sizeof(MPIDI_CH3_Pkt_t)) {

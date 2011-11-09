@@ -91,7 +91,12 @@ static inline void MRAILI_Ext_sendq_enqueue(MPIDI_VC_t *c,
     INCR_EXT_SENDQ_SIZE(c, rail)
 
     if (c->mrail.rails[rail].ext_sendq_size > rdma_rndv_ext_sendq_size) {
-        c->force_rndv = 1;
+#ifdef _ENABLE_CUDA_
+        if (!rdma_enable_cuda)
+#endif
+        {
+            c->force_rndv = 1;
+        }
     }
 
     MPIDI_FUNC_EXIT(MPID_STATE_MRAILI_EXT_SENDQ_ENQUEUE);
@@ -360,6 +365,39 @@ static int MRAILI_Fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
 
     
     /* We have filled the header, it is time to fit in the actual data */
+#ifdef _ENABLE_CUDA_
+    int mem_type = 0;
+    cuPointerGetAttribute((void*) &mem_type, CU_POINTER_ATTRIBUTE_MEMORY_TYPE,
+                                        (CUdeviceptr) iov[1].MPID_IOV_BUF);
+
+    if (mem_type == CU_MEMORYTYPE_DEVICE && rdma_enable_cuda) {
+        /*if (n_iov > 2) {
+            //Assuming vector datatype
+            cudaMemcpy2D(data_buf,
+                    iov[1].MPID_IOV_LEN,
+                    iov[1].MPID_IOV_BUF,
+                    iov[2].MPID_IOV_BUF - iov[1].MPID_IOV_BUF,
+                    iov[1].MPID_IOV_LEN,
+                    n_iov-1,
+                    cudaMemcpyDeviceToHost);
+            for (i=1; i<n_iov; i++) {
+                *num_bytes_ptr += iov[i].MPID_IOV_LEN;
+                avail -= iov[i].MPID_IOV_LEN;
+            }
+            MPIU_Assert(avail >= 0);
+        } else */
+        if (n_iov == 2) {
+            cudaMemcpy(data_buf,
+                    iov[1].MPID_IOV_BUF,
+                    iov[1].MPID_IOV_LEN,
+                    cudaMemcpyDeviceToHost);
+            *num_bytes_ptr += iov[1].MPID_IOV_LEN;
+            avail -= iov[1].MPID_IOV_LEN;
+            MPIU_Assert(avail >= 0);
+        }
+    } else {
+#endif
+
     for (i = 1; i < n_iov; i++) {
         if (avail >= iov[i].MPID_IOV_LEN) {
           MPIU_Memcpy(data_buf, iov[i].MPID_IOV_BUF, iov[i].MPID_IOV_LEN);
@@ -374,6 +412,10 @@ static int MRAILI_Fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
             break;
         } else break;
     }
+
+#ifdef _ENABLE_CUDA_
+    }
+#endif
 
     DEBUG_PRINT("[send: fill buf], num bytes copied %d\n", *num_bytes_ptr);
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_MRAILI_FAST_RDMA_FILL_START_BUF);
@@ -869,7 +911,24 @@ int MRAILI_Fill_start_buffer(vbuf * v,
                              int n_iov)
 {
     int i = 0;
-    int avail = VBUF_BUFFER_SIZE - v->content_size;
+    int avail = 0;
+#ifdef _ENABLE_CUDA_
+    int mem_type = -1;
+    cudaError_t cuda_error = cudaSuccess;
+    if (rdma_enable_cuda) {
+        cuda_error = cuPointerGetAttribute((void*) &mem_type, 
+            CU_POINTER_ATTRIBUTE_MEMORY_TYPE, (CUdeviceptr) iov[1].MPID_IOV_BUF);
+        if (cuda_error != cudaSuccess) {
+            DEBUG_PRINT("\n [%d] Memory type not detected, "
+                "assuming user buffer \n", MPIDI_Process.my_pg_rank);
+            cuda_error = cudaSuccess;
+        }
+        avail = ((vbuf_pool_t*)v->pool_index)->buf_size - v->content_size;
+    } else 
+#endif
+    {
+        avail = VBUF_BUFFER_SIZE - v->content_size;
+    }
     void *ptr = (v->buffer + v->content_size);
     int len = 0;
 #ifdef _ENABLE_UD_
@@ -883,25 +942,62 @@ int MRAILI_Fill_start_buffer(vbuf * v,
 
     DEBUG_PRINT("buffer: %p, content size: %d\n", v->buffer, v->content_size);
 
-    for (; i < n_iov; i++) {
-        DEBUG_PRINT("[fill buf]avail %d, len %d\n", avail,
+#ifdef _ENABLE_CUDA_
+    if (mem_type == CU_MEMORYTYPE_DEVICE && rdma_enable_cuda) {
+        MPIU_Memcpy(ptr, iov[0].MPID_IOV_BUF,
+                (iov[0].MPID_IOV_LEN));
+        len += (iov[0].MPID_IOV_LEN);
+        avail -= (iov[0].MPID_IOV_LEN);
+        ptr = (void *) ((unsigned long) ptr + iov[0].MPID_IOV_LEN);
+
+        /*if (n_iov > 2) {
+            cuda_error = cudaMemcpy2D(ptr,
+                    iov[1].MPID_IOV_LEN,
+                    iov[1].MPID_IOV_BUF,
+                    iov[2].MPID_IOV_BUF - iov[1].MPID_IOV_BUF,
+                    iov[1].MPID_IOV_LEN,
+                    n_iov-1,
+                    cudaMemcpyDeviceToHost);
+            for (i=1; i<n_iov; i++) {
+                len += iov[i].MPID_IOV_LEN;
+                avail -= iov[i].MPID_IOV_LEN;
+                ptr = (void *) ((unsigned long) ptr + iov[i].MPID_IOV_LEN);
+            }
+            MPIU_Assert(avail >= 0);
+        } else */
+        if (n_iov == 2) {
+            cuda_error = cudaMemcpy(ptr,
+                    iov[1].MPID_IOV_BUF,
+                    iov[1].MPID_IOV_LEN,
+                    cudaMemcpyDeviceToHost);
+            len += iov[1].MPID_IOV_LEN;
+        }
+        if (cuda_error != cudaSuccess) {
+            PRINT_INFO(1, "Cuda memcpy failed in MRAILI_Fill_start_buffer \n");
+            MPIU_Assert(0);
+        }
+    } else 
+#endif
+    {
+        for (; i < n_iov; i++) {
+            DEBUG_PRINT("[fill buf]avail %d, len %d\n", avail,
                     iov[i].MPID_IOV_LEN);
-        if (avail >= iov[i].MPID_IOV_LEN) {
-            DEBUG_PRINT("[fill buf] cpy ptr %p\n", ptr);
-            MPIU_Memcpy(ptr, iov[i].MPID_IOV_BUF,
-                   (iov[i].MPID_IOV_LEN));
-            len += (iov[i].MPID_IOV_LEN);
-            avail -= (iov[i].MPID_IOV_LEN);
-            ptr = (void *) ((unsigned long) ptr + iov[i].MPID_IOV_LEN);
-        } else {
-          MPIU_Memcpy(ptr, iov[i].MPID_IOV_BUF, avail);
-            len += avail;
-            avail = 0;
-            break;
+            if (avail >= iov[i].MPID_IOV_LEN) {
+                DEBUG_PRINT("[fill buf] cpy ptr %p\n", ptr);
+                MPIU_Memcpy(ptr, iov[i].MPID_IOV_BUF,
+                        (iov[i].MPID_IOV_LEN));
+                len += (iov[i].MPID_IOV_LEN);
+                avail -= (iov[i].MPID_IOV_LEN);
+                ptr = (void *) ((unsigned long) ptr + iov[i].MPID_IOV_LEN);
+            } else {
+                MPIU_Memcpy(ptr, iov[i].MPID_IOV_BUF, avail);
+                len += avail;
+                avail = 0;
+                break;
+            }
         }
     }
-
-    v->content_size += len;
+v->content_size += len;
 
     MPIDI_FUNC_EXIT(MPID_STATE_MRAILI_FILL_START_BUFFER);
     return len;
@@ -1458,6 +1554,19 @@ int MRAILI_Process_send(void *vbuf_addr)
                     "handler of the rput finish", v);
         }
 
+#ifdef _ENABLE_CUDA_
+        int process_rput_finish = 0;
+        MPIDI_CH3_Pkt_rput_finish_t *rput_pkt = 
+                        (MPIDI_CH3_Pkt_rput_finish_t *) v->buffer;
+        if (rdma_enable_cuda) {
+            if (req->mrail.cuda_transfer_mode == NONE 
+                        || rput_pkt->cuda_pipeline_finish) {
+                process_rput_finish = 1;
+            }
+        }
+        if (!rdma_enable_cuda || process_rput_finish)
+#endif
+        {
         ++req->mrail.completion_counter;
 
         DEBUG_PRINT("req pointer %p, entry %p\n", req, req->mrail.d_entry);
@@ -1489,11 +1598,13 @@ int MRAILI_Process_send(void *vbuf_addr)
                         "Get incomplete eager send request\n");
             }
         }
+        }
 
-        if (v->padding == NORMAL_VBUF_FLAG)
+        if (v->padding == NORMAL_VBUF_FLAG) {
             MRAILI_Release_vbuf(v);
-        else v->padding = FREE_FLAG;
-
+        } else {
+            v->padding = FREE_FLAG;
+        }
         break;
     case MPIDI_CH3_PKT_GET_RESP:
         DEBUG_PRINT("[process send] get get respond finish\n");
@@ -1505,7 +1616,7 @@ int MRAILI_Process_send(void *vbuf_addr)
                     dreg_unregister(req->mrail.d_entry);
                     req->mrail.d_entry = NULL;
                 }
-                 MPIDI_CH3I_MRAIL_FREE_RNDV_BUFFER(req);
+                MPIDI_CH3I_MRAIL_FREE_RNDV_BUFFER(req);
                 req->mrail.d_entry = NULL;
             }
 
@@ -1514,9 +1625,12 @@ int MRAILI_Process_send(void *vbuf_addr)
                 ibv_error_abort(IBV_STATUS_ERR, "Get incomplete eager send request\n");
             }
         }
-        if (v->padding == NORMAL_VBUF_FLAG)
+
+        if (v->padding == NORMAL_VBUF_FLAG) {
             MRAILI_Release_vbuf(v);
-        else v->padding = FREE_FLAG;
+        } else {
+            v->padding = FREE_FLAG;
+        }
         break;
 
     case MPIDI_CH3_PKT_RGET_FINISH:
@@ -1543,6 +1657,7 @@ int MRAILI_Process_send(void *vbuf_addr)
     case MPIDI_CH3_PKT_CANCEL_SEND_RESP:
     case MPIDI_CH3_PKT_PUT_RNDV:
     case MPIDI_CH3_PKT_RMA_RNDV_CLR_TO_SEND:
+    case MPIDI_CH3_PKT_CUDA_CTS_CONTI:
     case MPIDI_CH3_PKT_GET:
     case MPIDI_CH3_PKT_GET_RNDV:
     case MPIDI_CH3_PKT_ACCUMULATE_RNDV:

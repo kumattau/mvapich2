@@ -71,9 +71,41 @@ int MPIDI_Isend_self(const void * buf, int count, MPI_Datatype datatype, int ran
 
 	MPIU_DBG_MSG(CH3_OTHER,VERBOSE,
 		     "found posted receive request; copying data");
+#ifdef _ENABLE_CUDA_
+    int mem_type = 0;
+    cuPointerGetAttribute((void*) &mem_type, 
+            CU_POINTER_ATTRIBUTE_MEMORY_TYPE, (CUdeviceptr) buf);
+    if (rdma_enable_cuda && mem_type == CU_MEMORYTYPE_DEVICE) {
+        /* buf is in the GPU device memory */
+        sreq->mrail.cuda_transfer_mode = CONT_DEVICE_TO_DEVICE;
+    } else { 
+        /* buf is in the host memory*/
+        sreq->mrail.cuda_transfer_mode = NONE;
+    }
+
+    cuPointerGetAttribute((void*) &mem_type, 
+        CU_POINTER_ATTRIBUTE_MEMORY_TYPE, (CUdeviceptr) rreq->dev.user_buf);
+    if (rdma_enable_cuda && mem_type == CU_MEMORYTYPE_DEVICE) {
+        /* buf is in the GPU device memory */
+        rreq->mrail.cuda_transfer_mode = CONT_DEVICE_TO_DEVICE;
+    } else { 
+        /* buf is in the host memory*/
+        rreq->mrail.cuda_transfer_mode = NONE;
+    }
+
+    if (rdma_enable_cuda 
+            && ((CONT_DEVICE_TO_DEVICE == sreq->mrail.cuda_transfer_mode) 
+                || (CONT_DEVICE_TO_DEVICE == rreq->mrail.cuda_transfer_mode))) {
+        MPIDI_CH3U_Buffer_copy_cuda(buf, count, datatype, &sreq->status.MPI_ERROR,
+                rreq->dev.user_buf, rreq->dev.user_count, rreq->dev.datatype, &data_sz, &rreq->status.MPI_ERROR);    
+    } else {
+#endif	    
 	    
 	MPIDI_CH3U_Buffer_copy(buf, count, datatype, &sreq->status.MPI_ERROR,
 			       rreq->dev.user_buf, rreq->dev.user_count, rreq->dev.datatype, &data_sz, &rreq->status.MPI_ERROR);
+#ifdef _ENABLE_CUDA_
+	}
+#endif
 	rreq->status.count = (int)data_sz;
 	MPID_REQUEST_SET_COMPLETED(rreq);
 	MPID_Request_release(rreq);

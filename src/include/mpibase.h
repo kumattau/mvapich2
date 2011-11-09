@@ -32,7 +32,7 @@
 /* These macros can be used to prevent inlining for utility functions
  * where it might make debugging easier. */
 #if defined(HAVE_ERROR_CHECKING)
-#define MPIU_DBG_ATTRIBUTE_NOINLINE ATTRIBUTE((__noinline__))
+#define MPIU_DBG_ATTRIBUTE_NOINLINE ATTRIBUTE((noinline))
 #define MPIU_DBG_INLINE_KEYWORD
 #else
 #define MPIU_DBG_ATTRIBUTE_NOINLINE

@@ -139,6 +139,7 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
     case (MPIDI_CH3_PKT_RNDV_READY_REQ_TO_SEND):
     case (MPIDI_CH3_PKT_RNDV_CLR_TO_SEND):
     case (MPIDI_CH3_PKT_RMA_RNDV_CLR_TO_SEND):
+    case (MPIDI_CH3_PKT_CUDA_CTS_CONTI):
     case (MPIDI_CH3_PKT_RPUT_FINISH):
     case (MPIDI_CH3_PKT_ZCOPY_FINISH):
     case (MPIDI_CH3_PKT_ZCOPY_ACK):
@@ -421,6 +422,45 @@ int MPIDI_CH3I_MRAIL_Fill_Request(MPID_Request * req, vbuf * v,
         ("[recv:fill request] total len %d, head len %d, n iov %d\n",
          v->content_size, header_size, n_iov);
 
+
+
+#ifdef _ENABLE_CUDA_
+    int mem_type = 0;
+    cudaError_t cuda_error = cudaSuccess;
+    cuPointerGetAttribute((void*) &mem_type, 
+            CU_POINTER_ATTRIBUTE_MEMORY_TYPE, (CUdeviceptr) iov[0].MPID_IOV_BUF);
+
+    if ( rdma_enable_cuda && mem_type == CU_MEMORYTYPE_DEVICE) {
+
+        *nb = 0;
+        MPIU_Assert(req->dev.iov_offset == 0);
+        /*if (n_iov > 1) {
+            cuda_error = cudaMemcpy2D(iov[0].MPID_IOV_BUF,  
+                    iov[1].MPID_IOV_BUF - iov[0].MPID_IOV_BUF,
+                    data_buf,
+                    iov[0].MPID_IOV_LEN,
+                    iov[0].MPID_IOV_LEN,
+                    n_iov,                
+                    cudaMemcpyHostToDevice);
+            for (i = 0; i < n_iov; i++) {
+                *nb += iov[i].MPID_IOV_LEN;
+                len_avail -= iov[i].MPID_IOV_LEN;
+            }
+        } else */{
+            cuda_error = cudaMemcpy(iov[0].MPID_IOV_BUF, 
+                    data_buf, 
+                    iov[0].MPID_IOV_LEN,
+                    cudaMemcpyHostToDevice);
+            *nb += iov[0].MPID_IOV_LEN;
+            len_avail -= iov[0].MPID_IOV_LEN;
+        }
+        if (cuda_error != cudaSuccess) { 
+            fprintf(stderr, "cuda memcpy failed in eager fill \n");
+            MPIU_Assert(0);
+        }
+    } else {
+#endif
+
     *nb = 0;
     for (i = req->dev.iov_offset; i < n_iov; i++) {
         if (len_avail >= (MPIDI_msg_sz_t) iov[i].MPID_IOV_LEN
@@ -435,7 +475,9 @@ int MPIDI_CH3I_MRAIL_Fill_Request(MPID_Request * req, vbuf * v,
             break;
         }
     }
-
+#ifdef _ENABLE_CUDA_
+    }
+#endif
     v->content_consumed = header_size + *nb;
 
     DEBUG_PRINT

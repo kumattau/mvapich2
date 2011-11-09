@@ -523,24 +523,106 @@ EOF])
       AC_DEFINE([HWLOC_HAVE_PTHREAD_GETTHRDS_NP], 1, `Define to 1 if you have pthread_getthrds_np')
     )
 
-    # XML support
-    hwloc_xml_happy=
-    if test "x$enable_xml" != "xno"; then
-        HWLOC_PKG_CHECK_MODULES([XML], [libxml-2.0], [xmlNewDoc], 
-                                [hwloc_xml_happy=yes], 
-                                [hwloc_xml_happy=no])
+    # PCI support
+    hwloc_pci_happy=no
+    if test "x$enable_pci" != "xno"; then
+        hwloc_pci_happy=yes
+        HWLOC_PKG_CHECK_MODULES([PCI], [libpci], [pci_cleanup], [:], [
+          # manually check pciutils in case a old one without .pc is installed
+          AC_CHECK_HEADERS([pci/pci.h], [
+	    # try first without -lz, it's not always needed (RHEL5, Debian Etch)
+	    AC_CHECK_LIB([pci], [pci_init], [
+	      HWLOC_PCI_LIBS="-lpci"
+	      ], [
+              # try again with -lz because it's needed sometimes (FC7).
+              # don't use AC_CHECK_LIB again because the cache would
+              # return "no" without actually rechecking
+              AC_MSG_CHECKING([for pci_init in -lpci with -lz])
+              tmp_save_LIBS=$LIBS
+              LIBS="-lpci -lz $LIBS"
+              AC_LINK_IFELSE([AC_LANG_CALL([], [pci_init])],
+                             [HWLOC_PCI_LIBS="-lpci -lz"
+                              HWLOC_PCI_ADDITIONAL_LIBS="-lz"
+                              AC_MSG_RESULT(yes)],
+                             [hwloc_pci_happy=no
+                              AC_MSG_RESULT(no)])
+              LIBS=$tmp_save_LIBS])
+            # Also check with pci_lookup_name, because that sometimes
+            # requires -lresolv (RHEL5.6). don't use AC_CHECK_LIB twice
+            # because the cache would return "no" without actually rechecking
+	    AC_CHECK_LIB([pci], [pci_lookup_name], [],
+                [AC_CHECK_LIB([resolv], [inet_ntoa], 
+                    [AC_MSG_CHECKING([for pci_lookup_name in -lpci with -lresolv])
+                     tmp_save_LIBS=$LIBS
+                     LIBS="-lpci -lresolv $LIBS $HWLOC_PCI_ADDITIONAL_LIBS"
+                     AC_LINK_IFELSE([AC_LANG_CALL([], [pci_lookup_name])],
+                                    [HWLOC_PCI_LIBS="$HWLOC_PCI_LIBS -lresolv"
+                                     HWLOC_PCI_ADDITIONAL_LIBS="$HWLOC_PCI_ADDITIONAL_LIBS -lresolv"
+                                     AC_MSG_RESULT(yes)],
+                                    [hwloc_pci_happy=no
+                                     AC_MSG_RESULT(no)])
+                     LIBS=$tmp_save_LIBS],
+                    [hwloc_pci_happy=no])])
+            ], [hwloc_pci_happy=no])
+        ])
     fi
-    if test "x$hwloc_xml_happy" = "xyes"; then
-        HWLOC_REQUIRES="libxml-2.0 $HWLOC_REQUIRES"
-        AC_DEFINE([HWLOC_HAVE_XML], [1], [Define to 1 if you have the `xml' library.])
-        AC_SUBST([HWLOC_HAVE_XML], [1])
+    AC_SUBST(HWLOC_PCI_LIBS)
+    # If we asked for pci support but couldn't deliver, fail
+    AS_IF([test "$enable_pci" = "yes" -a "$hwloc_pci_happy" = "no"],
+          [AC_MSG_WARN([Specified --enable-pci switch, but could not])
+           AC_MSG_WARN([find appropriate support])
+           AC_MSG_ERROR([Cannot continue])])
+    if test "x$hwloc_pci_happy" = "xyes"; then
+      AC_CHECK_DECLS([PCI_LOOKUP_NO_NUMBERS],,[:],[[#include <pci/pci.h>]])
+      AC_CHECK_LIB([pci], [pci_find_cap], [enable_pci_caps=yes], [enable_pci_caps=no], [$HWLOC_PCI_ADDITIONAL_LIBS])
+      if test "x$enable_pci_caps" = "xyes"; then
+        AC_DEFINE([HWLOC_HAVE_PCI_FIND_CAP], [1], [Define to 1 if `libpci' has the `pci_find_cap' function.])
+      fi
+
+      AC_MSG_CHECKING(whether struct pci_dev has a device_class field)
+      AC_TRY_COMPILE([#include <pci/pci.h>],
+	[int f(struct pci_dev *dev) { return dev->device_class; }],
+        [pcidev_device_class=yes], [pcidev_device_class=no])
+      AC_MSG_RESULT([$pcidev_device_class])
+      if test x$pcidev_device_class = xyes; then
+        AC_DEFINE([HWLOC_HAVE_PCIDEV_DEVICE_CLASS], [1], [Define to 1 if struct pci_dev has a `device_class' field.])
+      fi
+
+      AC_MSG_CHECKING(whether struct pci_dev has a domain field)
+      AC_TRY_COMPILE([#include <pci/pci.h>],
+	[int f(struct pci_dev *dev) { return dev->domain; }],
+        [pcidev_domain=yes], [pcidev_domain=no])
+      AC_MSG_RESULT([$pcidev_domain])
+      if test x$pcidev_domain = xyes; then
+        AC_DEFINE([HWLOC_HAVE_PCIDEV_DOMAIN], [1], [Define to 1 if struct pci_dev has a `domain' field.])
+      fi
+
+      HWLOC_REQUIRES="libpci $HWLOC_REQUIRES"
+  dnl    AC_DEFINE([HWLOC_HAVE_LIBPCI], [1], [Define to 1 if you have the `libpci' library.])
+  dnl    AC_SUBST([HWLOC_HAVE_LIBPCI], [1])
     else
-        AC_SUBST([HWLOC_HAVE_XML], [0])
-	AS_IF([test "$enable_xml" = "yes"],
-              [AC_MSG_WARN([--enable-xml requested, but XML support was not found])
+      AC_SUBST([HWLOC_HAVE_LIBPCI], [0])
+    fi
+    HWLOC_CFLAGS="$HWLOC_CFLAGS $HWLOC_PCI_CFLAGS"
+
+    # libxml2 support
+    hwloc_libxml2_happy=
+    if test "x$enable_libxml2" != "xno"; then
+        HWLOC_PKG_CHECK_MODULES([LIBXML2], [libxml-2.0], [xmlNewDoc], 
+                                [hwloc_libxml2_happy=yes], 
+                                [hwloc_libxml2_happy=no])
+    fi
+    if test "x$hwloc_libxml2_happy" = "xyes"; then
+        HWLOC_REQUIRES="libxml-2.0 $HWLOC_REQUIRES"
+        AC_DEFINE([HWLOC_HAVE_LIBXML2], [1], [Define to 1 if you have the `libxml2' library.])
+        AC_SUBST([HWLOC_HAVE_LIBXML2], [1])
+    else
+        AC_SUBST([HWLOC_HAVE_LIBXML2], [0])
+	AS_IF([test "$enable_libxml2" = "yes"],
+              [AC_MSG_WARN([--enable-libxml2 requested, but libxml2 was not found])
                AC_MSG_ERROR([Cannot continue])])
     fi
-    HWLOC_CFLAGS="$HWLOC_CFLAGS $HWLOC_XML_CFLAGS"    
+    HWLOC_CFLAGS="$HWLOC_CFLAGS $HWLOC_LIBXML2_CFLAGS"    
 
     # Setup HWLOC's C, CPP, and LD flags, and LIBS
     AC_SUBST(HWLOC_REQUIRES)
@@ -629,7 +711,7 @@ AC_DEFUN([HWLOC_DO_AM_CONDITIONALS],[
 	AM_CONDITIONAL([HWLOC_HAVE_CUDART],
 		       [test "x$hwloc_have_cudart" = "xyes"])
         AM_CONDITIONAL([HWLOC_HAVE_CAIRO], [test "x$enable_cairo" != "xno"])
-        AM_CONDITIONAL([HWLOC_HAVE_XML], [test "$hwloc_xml_happy" = "yes"])
+        AM_CONDITIONAL([HWLOC_HAVE_LIBPCI], [test "$hwloc_pci_happy" = "yes"])
         AM_CONDITIONAL([HWLOC_HAVE_SET_MEMPOLICY], [test "x$enable_set_mempolicy" != "xno"])
         AM_CONDITIONAL([HWLOC_HAVE_MBIND], [test "x$enable_mbind" != "xno"])
         AM_CONDITIONAL([HWLOC_HAVE_BUNZIPP], [test "x$BUNZIPP" != "xfalse"])
@@ -674,6 +756,18 @@ AC_DEFUN([_HWLOC_CHECK_DIFF_U], [
   fi
   AC_SUBST([HWLOC_DIFF_U])
   AC_MSG_RESULT([$HWLOC_DIFF_U])
+])
+
+AC_DEFUN([_HWLOC_CHECK_DIFF_W], [
+  AC_MSG_CHECKING([whether diff accepts -w])
+  if diff -w /dev/null /dev/null 2> /dev/null
+  then
+    HWLOC_DIFF_W="-w"
+  else
+    HWLOC_DIFF_W=""
+  fi
+  AC_SUBST([HWLOC_DIFF_W])
+  AC_MSG_RESULT([$HWLOC_DIFF_W])
 ])
 
 #-----------------------------------------------------------------------

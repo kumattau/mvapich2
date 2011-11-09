@@ -47,9 +47,7 @@ typedef enum hwloc_backend_e {
 #ifdef HWLOC_LINUX_SYS
   HWLOC_BACKEND_SYSFS,
 #endif
-#ifdef HWLOC_HAVE_XML
   HWLOC_BACKEND_XML,
-#endif
   /* This value is only here so that we can end the enum list without
      a comma (thereby preventing compiler warnings) */
   HWLOC_BACKEND_MAX
@@ -66,6 +64,16 @@ struct hwloc_topology {
   int is_thissystem;
   int is_loaded;
   hwloc_pid_t pid;                                      /* Process ID the topology is view from, 0 for self */
+
+  unsigned bridge_nbobjects;
+  struct hwloc_obj **bridge_level;
+  struct hwloc_obj *first_bridge, *last_bridge;
+  unsigned pcidev_nbobjects;
+  struct hwloc_obj **pcidev_level;
+  struct hwloc_obj *first_pcidev, *last_pcidev;
+  unsigned osdev_nbobjects;
+  struct hwloc_obj **osdev_level;
+  struct hwloc_obj *first_osdev, *last_osdev;
 
   int (*set_thisproc_cpubind)(hwloc_topology_t topology, hwloc_const_cpuset_t set, int flags);
   int (*get_thisproc_cpubind)(hwloc_topology_t topology, hwloc_cpuset_t set, int flags);
@@ -111,6 +119,7 @@ struct hwloc_topology {
 		       * distance from i to j is stored in slot i*nbnodes+j.
 		       * will be copied into the main logical-index-ordered distance at the end of the discovery.
 		       */
+    int forced; /* set if the user forced a matrix to ignore the OS one */
   } os_distances[HWLOC_OBJ_TYPE_MAX];
 
   hwloc_backend_t backend_type;
@@ -127,12 +136,13 @@ struct hwloc_topology {
       int nbnodes;
     } osf;
 #endif /* HWLOC_OSF_SYS */
-#ifdef HWLOC_HAVE_XML
     struct hwloc_backend_params_xml_s {
       /* xml backend parameters */
+#ifdef HWLOC_HAVE_LIBXML2
       void *doc;
+#endif /* HWLOC_HAVE_LIBXML2 */
+      char *buffer; /* only used when not using libxml2 */
     } xml;
-#endif /* HWLOC_HAVE_XML */
     struct hwloc_backend_params_synthetic_s {
       /* synthetic backend parameters */
 #define HWLOC_SYNTHETIC_MAX_DEPTH 128
@@ -157,12 +167,10 @@ extern int hwloc_backend_sysfs_init(struct hwloc_topology *topology, const char 
 extern void hwloc_backend_sysfs_exit(struct hwloc_topology *topology);
 #endif /* HWLOC_LINUX_SYS */
 
-#ifdef HWLOC_HAVE_XML
 extern int hwloc_backend_xml_init(struct hwloc_topology *topology, const char *xmlpath, const char *xmlbuffer, int buflen);
 extern void hwloc_xml_check_distances(struct hwloc_topology *topology);
-extern void hwloc_look_xml(struct hwloc_topology *topology);
+extern int hwloc_look_xml(struct hwloc_topology *topology);
 extern void hwloc_backend_xml_exit(struct hwloc_topology *topology);
-#endif /* HWLOC_HAVE_XML */
 
 #ifdef HWLOC_SOLARIS_SYS
 extern void hwloc_look_solaris(struct hwloc_topology *topology);
@@ -201,6 +209,10 @@ extern void hwloc_set_hpux_hooks(struct hwloc_topology *topology);
 
 extern void hwloc_look_x86(struct hwloc_topology *topology, unsigned nbprocs);
 
+#ifdef HWLOC_HAVE_LIBPCI
+extern void hwloc_look_libpci(struct hwloc_topology *topology);
+#endif /* HWLOC_HAVE_LIBPCI */
+
 extern int hwloc_backend_synthetic_init(struct hwloc_topology *topology, const char *description);
 extern void hwloc_backend_synthetic_exit(struct hwloc_topology *topology);
 extern void hwloc_look_synthetic (struct hwloc_topology *topology);
@@ -223,11 +235,13 @@ extern void hwloc_look_synthetic (struct hwloc_topology *topology);
  */
 extern void hwloc_insert_object_by_cpuset(struct hwloc_topology *topology, hwloc_obj_t obj);
 
+/* Error reporting */
+typedef void (*hwloc_report_error_t)(const char * msg, int line);
+extern void hwloc_report_os_error(const char * msg, int line);
+extern int hwloc_hide_errors(void);
 /*
  * Add an object to the topology and specify which error callback to use
  */
-typedef void (*hwloc_report_error_t)(const char * msg, int line);
-extern void hwloc_report_os_error(const char * msg, int line);
 extern int hwloc__insert_object_by_cpuset(struct hwloc_topology *topology, hwloc_obj_t obj, hwloc_report_error_t report_error);
 
 /*
@@ -242,9 +256,6 @@ extern int hwloc__insert_object_by_cpuset(struct hwloc_topology *topology, hwloc
  * Remember to call topology_connect() afterwards to fix handy pointers.
  */
 extern void hwloc_insert_object_by_parent(struct hwloc_topology *topology, hwloc_obj_t parent, hwloc_obj_t obj);
-
-/* Insert name/value in the object infos array. name and value are copied by the callee. */
-extern void hwloc_add_object_info(hwloc_obj_t obj, const char *name, const char *value);
 
 /* Insert uname-specific names/values in the object infos array */
 extern void hwloc_add_uname_info(struct hwloc_topology *topology);
@@ -332,7 +343,7 @@ hwloc_alloc_or_fail(hwloc_topology_t topology, size_t len, int flags)
 extern void hwloc_topology_distances_init(struct hwloc_topology *topology);
 extern void hwloc_topology_distances_clear(struct hwloc_topology *topology);
 extern void hwloc_topology_distances_destroy(struct hwloc_topology *topology);
-extern void hwloc_topology__set_distance_matrix(struct hwloc_topology *topology, hwloc_obj_type_t type, unsigned nbobjs, unsigned *indexes, hwloc_obj_t *objs, float *distances);
+extern void hwloc_topology__set_distance_matrix(struct hwloc_topology *topology, hwloc_obj_type_t type, unsigned nbobjs, unsigned *indexes, hwloc_obj_t *objs, float *distances, int force);
 extern void hwloc_store_distances_from_env(struct hwloc_topology *topology);
 extern void hwloc_convert_distances_indexes_into_objects(struct hwloc_topology *topology);
 extern void hwloc_finalize_logical_distances(struct hwloc_topology *topology);

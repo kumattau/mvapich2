@@ -20,6 +20,10 @@
 #include "mpiimpl.h"
 #include "mpicomm.h"
 
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#include "coll_shmem.h"
+#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
+
 /* -- Begin Profiling Symbol Block for routine MPI_Comm_split */
 #if defined(HAVE_PRAGMA_WEAK)
 #pragma weak MPI_Comm_split = PMPI_Comm_split
@@ -382,14 +386,6 @@ int MPIR_Comm_split_impl(MPID_Comm *comm_ptr, int color, int key, MPID_Comm **ne
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
 
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
-extern int split_comm;
-extern int enable_shmem_collectives;
-extern int check_split_comm(pthread_t);
-extern int disable_split_comm(pthread_t);
-extern int create_2level_comm (MPI_Comm, int, int);
-extern int enable_split_comm(pthread_t);
-#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 /*@
 
 MPI_Comm_split - Creates new communicators based on colors and keys

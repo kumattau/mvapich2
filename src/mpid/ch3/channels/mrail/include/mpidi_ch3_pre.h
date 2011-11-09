@@ -231,6 +231,15 @@ struct MPIDI_CH3I_Request						\
     struct MPIDI_VC *vc;                                                \
 } ch;
 
+#ifdef _ENABLE_CUDA_
+#define  MPIDI_CH3_REQUEST_INIT_CUDA(_rreq)          \
+    (_rreq)->mrail.cuda_transfer_mode = 0;           \
+    (_rreq)->mrail.pipeline_nm = 0;                  \
+    (_rreq)->dev.pending_pkt = NULL;                        
+#else
+#define MPIDI_CH3_REQUEST_INIT_CUDA(sreq_)
+#endif
+
 #define MPIDI_CH3_REQUEST_INIT(_rreq)   \
     (_rreq)->mrail.rndv_buf_alloc = 0;   \
     (_rreq)->mrail.rndv_buf = NULL;      \
@@ -239,7 +248,8 @@ struct MPIDI_CH3I_Request						\
     (_rreq)->mrail.protocol = 0;         \
     (_rreq)->mrail.d_entry = NULL;       \
     (_rreq)->mrail.remote_addr = NULL;   \
-    (_rreq)->mrail.nearly_complete = 0;
+    (_rreq)->mrail.nearly_complete = 0;  \
+    MPIDI_CH3_REQUEST_INIT_CUDA(_rreq)   
 
 typedef struct MPIDI_CH3I_Progress_state
 {

@@ -496,6 +496,15 @@ int MPIR_Scan_impl(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatyp
 {
     int mpi_errno = MPI_SUCCESS;
 
+#if defined(_ENABLE_CUDA_)
+    if (rdma_enable_cuda) {
+        if (is_device_buffer(sendbuf)
+            || is_device_buffer(recvbuf)) {
+            enable_device_ptr_checks = 1;
+        }
+    }
+#endif
+
     if (comm_ptr->coll_fns != NULL && comm_ptr->coll_fns->Scan != NULL) {
 	mpi_errno = comm_ptr->coll_fns->Scan(sendbuf, recvbuf, count,
                                              datatype, op, comm_ptr, errflag);
@@ -507,6 +516,11 @@ int MPIR_Scan_impl(void *sendbuf, void *recvbuf, int count, MPI_Datatype datatyp
     }
         
  fn_exit:
+#if defined(_ENABLE_CUDA_)
+    if (rdma_enable_cuda) {
+        enable_device_ptr_checks = 0;
+    }
+#endif
     return mpi_errno;
  fn_fail:
     goto fn_exit;

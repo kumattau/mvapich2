@@ -174,7 +174,16 @@ int MPIR_Scatterv_impl(void *sendbuf, int *sendcnts, int *displs, MPI_Datatype s
                        int root, MPID_Comm *comm_ptr, int *errflag)
 {
     int mpi_errno = MPI_SUCCESS;
-        
+
+#if defined(_ENABLE_CUDA_)
+    if (rdma_enable_cuda) {
+        if (is_device_buffer(sendbuf)
+            || is_device_buffer(recvbuf)) {
+            enable_device_ptr_checks = 1;
+        }
+    }
+#endif       
+ 
     if (comm_ptr->coll_fns != NULL && comm_ptr->coll_fns->Scatter != NULL) {
 	mpi_errno = comm_ptr->coll_fns->Scatterv(sendbuf, sendcnts, displs,
                                                  sendtype, recvbuf, recvcnt,
@@ -188,6 +197,11 @@ int MPIR_Scatterv_impl(void *sendbuf, int *sendcnts, int *displs, MPI_Datatype s
     }
 
  fn_exit:
+#if defined(_ENABLE_CUDA_)
+    if (rdma_enable_cuda) {
+        enable_device_ptr_checks = 0;
+    }
+#endif
     return mpi_errno;
  fn_fail:
     goto fn_exit;

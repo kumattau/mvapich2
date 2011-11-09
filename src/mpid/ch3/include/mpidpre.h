@@ -119,9 +119,9 @@ typedef union {
 typedef struct MPIDI_CH3_PktGeneric { int32_t kind; int32_t *pktptrs[1]; int32_t pktwords[6];
 #if defined(_OSU_MVAPICH_)
 #if defined(_SMP_LIMIC_)
-                                      int32_t osu_pktwords[20];
+    int32_t osu_pktwords[20];
 #else
-				      int32_t osu_pktwords[18];
+    int32_t osu_pktwords[18];
 #endif
 #endif /* defined(_OSU_MVAPICH_) */
 #if defined (_OSU_PSM_)
@@ -392,7 +392,13 @@ typedef struct MPIDI_Request {
        message packet. This field provide a generic location for that.
        Question: do we want to make this a link instead of reserving 
        a fixed spot in the request? */
+#ifdef _ENABLE_CUDA_
+    /* CUDA has a large CTS packet. It is ineffitient to have static 
+       MPIDI_CH3_PktGeneric_t var */
+    void *pending_pkt;
+#else
     MPIDI_CH3_PktGeneric_t pending_pkt;
+#endif
     struct MPID_Request * next;
 } MPIDI_Request;
 #define MPID_REQUEST_DECL MPIDI_Request dev;

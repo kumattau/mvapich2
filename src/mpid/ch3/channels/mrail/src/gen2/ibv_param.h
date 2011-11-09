@@ -138,6 +138,16 @@ extern int                  limic_put_threshold;
 extern int                  limic_get_threshold;
 
 extern int                  rdma_enable_hugepage;
+
+#ifdef _ENABLE_CUDA_
+extern int rdma_cuda_block_size;
+extern int rdma_num_cuda_rndv_blocks;
+extern int rdma_cuda_stream_count;
+extern int rdma_enable_cuda;
+extern int rdma_eager_cudahost_reg;
+#endif
+
+
 #ifdef _ENABLE_UD_
 extern uint8_t              rdma_enable_hybrid;
 extern uint8_t              rdma_use_ud_zcopy;
@@ -212,7 +222,7 @@ extern int                  rdma_default_async_thread_stack_size;
                                          MAX_NUM_QP_PER_PORT)
 
 #define RDMA_NDREG_ENTRIES              (1100)
-#define RDMA_VBUF_POOL_SIZE             (2048)
+#define RDMA_VBUF_POOL_SIZE             (512)
 #define RDMA_UD_VBUF_POOL_SIZE          (8192)
 #define RDMA_MIN_VBUF_POOL_SIZE         (512)
 #define RDMA_VBUF_SECONDARY_POOL_SIZE   (256)
@@ -222,6 +232,16 @@ extern int                  rdma_default_async_thread_stack_size;
 #define RDMA_MAX_RDMA_SIZE              (4194304)
 #define DEFAULT_RDMA_CONNECT_ATTEMPTS   (10)
 #define RDMA_DEFAULT_CONNECT_INTERVAL   (100)
+
+#ifdef _ENABLE_CUDA_
+#define DEFAULT_CUDA_VBUF_SIZES          {17408, 65536}
+#define DEFAULT_CUDA_VBUF_POOL_SIZE      {1024, 128}
+#define DEFAULT_CUDA_VBUF_SECONDARY_POOL_SIZE {256, 64}
+#define DEFAULT_CUDA_VBUF_MAX_POOL_SIZE  {-1, -1}
+#define DEFAULT_CUDA_BLOCK_SIZE          (65536)
+#define DEFAULT_CUDA_STREAM_COUNT        (64)
+#define NUM_CUDA_BUF_POOLS               (2)
+#endif
 
 #define RDMA_IWARP_DEFAULT_MULTIPLE_CQ_THRESHOLD  (32)
 #define RDMA_DEFAULT_ASYNC_THREAD_STACK_SIZE  (1<<20)

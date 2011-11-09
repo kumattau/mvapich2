@@ -38,6 +38,11 @@
 #include <string.h>
 #include <debug_utils.h>
 
+/* vbuf pool info */
+vbuf_pool_t *rdma_vbuf_pools;
+int rdma_num_vbuf_pools;
+
+
 /* head of list of allocated vbuf regions */
 static vbuf_region *vbuf_region_head = NULL;
 /*
@@ -47,7 +52,7 @@ static vbuf *free_vbuf_head = NULL;
 
 /*
  * cache the nic handle, and ptag the first time a region is
- * allocated (at init time) for later additional vbur allocations
+ * allocated (at init time) for later additional vbuf allocations
  */
 static struct ibv_pd *ptag_save[MAX_NUM_HCAS];
 
@@ -154,6 +159,25 @@ void deallocate_vbufs(int hca_num)
         r = r->next;
     }
 
+#ifdef _ENABLE_CUDA_
+    if (rdma_enable_cuda) {
+        int i;
+        for(i = 0; i < NUM_CUDA_BUF_POOLS; i++) {
+            r = rdma_vbuf_pools[i].region_head;
+            while (r) {
+                if (r->mem_handle[hca_num] != NULL
+                        && ibv_dereg_mr(r->mem_handle[hca_num])) {
+                    ibv_error_abort(IBV_RETURN_ERR, "could not deregister MR");
+                }
+
+                DEBUG_PRINT("deregister vbufs\n");
+                r = r->next;
+            } 
+        }
+        deallocate_cuda_streams();
+    }
+#endif
+
 #if !defined(CKPT)
     if (MPIDI_CH3I_RDMA_Process.has_srq
 #if defined(RDMA_CM)
@@ -185,6 +209,32 @@ void deallocate_vbuf_region(void)
         MPIU_Free(curr);
         curr = next;
     }
+#ifdef _ENABLE_CUDA_
+    if (rdma_enable_cuda) {
+        int i;
+        for(i = 0; i < NUM_CUDA_BUF_POOLS; i++) {
+            curr = rdma_vbuf_pools[i].region_head;
+            while (curr) {
+                next = curr->next;
+                free(curr->malloc_start);
+                if (( rdma_vbuf_pools[i].index == CUDA_RNDV_BLOCK_BUF ||
+                    (rdma_eager_cudahost_reg && 
+                             rdma_vbuf_pools[i].index == CUDA_EAGER_BUF))) {
+                    ibv_cuda_unregister(curr->malloc_buf_start);
+                }
+                    
+                if (rdma_enable_hugepage && curr->shmid >= 0) {
+                    shmdt(curr->malloc_buf_start);
+                } else {
+                    free(curr->malloc_buf_start);
+                }
+                MPIU_Free(curr);
+                curr = next;
+            }
+        }
+        MPIU_Free(rdma_vbuf_pools);
+    }
+#endif
 }
 
 int alloc_hugepage_region (int *shmid, void **buffer, int *nvbufs, int buf_size)
@@ -378,6 +428,253 @@ static int allocate_vbuf_region(int nvbufs)
     return 0;
 }
 
+#ifdef _ENABLE_CUDA_
+static int allocate_vbuf_pool(vbuf_pool_t *rdma_vbuf_pool)
+{
+
+    int mpi_errno = MPI_SUCCESS;
+    int i = 0;
+    struct vbuf_region *region = NULL;
+    void *vbuf_struct = NULL;
+    void *vbuf_buffer = NULL;
+    vbuf *cur = NULL;
+    int alignment_vbuf = 64;
+    int result = 0;
+    int alignment_dma = getpagesize();
+    int nvbufs, buf_size;
+
+    DEBUG_PRINT("Allocating a new vbuf region.\n");
+
+    if (rdma_vbuf_pool->free_head != NULL) {
+        ibv_error_abort(GEN_ASSERT_ERR, "vbuf_head = NULL");
+    }
+
+    if (rdma_vbuf_pool->num_allocated == 0) {
+        nvbufs = rdma_vbuf_pool->initial_count;
+    } else {
+        nvbufs = rdma_vbuf_pool->incr_count;
+    }
+
+    buf_size = rdma_vbuf_pool->buf_size;
+
+
+    /* are we limiting vbuf allocation?  If so, make sure
+     * we dont alloc more than allowed
+     */
+    if (rdma_vbuf_pool->max_num_buf > 0) {
+        nvbufs = MIN(nvbufs, rdma_vbuf_pool->max_num_buf  
+                - rdma_vbuf_pool->num_allocated);
+        if (nvbufs <= 0) {
+            DEBUG_PRINT("max vbuf pool size reached for size : %d \n", buf_size); 
+            mpi_errno=-1; 
+            return mpi_errno;
+        }
+    }
+
+    /* Allocate vbuf region structure */
+    region = (struct vbuf_region *) MPIU_Malloc (sizeof(struct vbuf_region));
+    if (NULL == region) {
+        ibv_error_abort(GEN_EXIT_ERR, "Unable to malloc a new struct vbuf_region");
+    }
+
+    result = posix_memalign(&vbuf_buffer, alignment_dma, nvbufs * buf_size);
+    if ((result!=0) || (NULL == vbuf_buffer)) {
+        ibv_error_abort(GEN_EXIT_ERR, "unable to malloc vbufs DMA buffer");
+    }
+
+    if (rdma_enable_cuda && (rdma_vbuf_pool->index == CUDA_RNDV_BLOCK_BUF ||
+        (rdma_eager_cudahost_reg && rdma_vbuf_pool->index == CUDA_EAGER_BUF))) {
+        ibv_cuda_register(vbuf_buffer, nvbufs * buf_size);
+    }
+
+    if (posix_memalign((void**) &vbuf_struct, alignment_vbuf, 
+                nvbufs * sizeof(struct vbuf))) {
+        ibv_error_abort(GEN_EXIT_ERR, "Unable to allocate vbuf structs");
+    }
+
+    MPIU_Memset(vbuf_struct, 0, nvbufs * sizeof(struct vbuf));
+    MPIU_Memset(vbuf_buffer, 0, nvbufs * buf_size);
+
+    rdma_vbuf_pool->num_free += nvbufs;
+    rdma_vbuf_pool->num_allocated += nvbufs;
+
+    region->malloc_start = vbuf_struct;
+    region->malloc_buf_start = vbuf_buffer;
+    region->malloc_end = (void *) ((char *) vbuf_struct 
+            + nvbufs * sizeof(struct vbuf));
+    region->malloc_buf_end = (void *) ((char *) vbuf_buffer 
+            + nvbufs * buf_size);
+
+    region->count = nvbufs;
+    rdma_vbuf_pool->free_head = vbuf_struct;
+    region->vbuf_head = vbuf_struct;
+
+    DEBUG_PRINT(
+            "VBUF REGION ALLOCATION SZ %d TOT %d FREE %ld NF %ld NG %ld\n",
+            nvbufs,
+            vbuf_n_allocated,
+            num_free_vbuf,
+            num_vbuf_freed,
+            num_vbuf_get);
+
+    // for posix_memalign
+    for (i = 0; i < rdma_num_hcas; ++i) {
+        region->mem_handle[i] = ibv_reg_mr(ptag_save[i], vbuf_buffer,
+                nvbufs * buf_size, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+        if (!region->mem_handle[i]) {
+            fprintf(stderr, "[%s %d] Cannot register vbuf region\n", __FILE__, __LINE__);
+            return -1;	
+        }
+    }
+
+    /* init the free list */
+    for (i = 0; i < nvbufs; ++i)
+    {
+        cur = rdma_vbuf_pool->free_head + i;
+        cur->desc.next = rdma_vbuf_pool->free_head + i + 1;
+        if (i == (nvbufs -1)) cur->desc.next = NULL;
+        cur->region = region;
+        cur->pool_index = rdma_vbuf_pool ;  
+        cur->head_flag = (VBUF_FLAG_TYPE *) ((char *)vbuf_buffer
+                + (i + 1) * buf_size - sizeof(*cur->head_flag));
+        cur->buffer = (unsigned char *) ((char *)vbuf_buffer
+                + i * buf_size);
+        cur->eager = 0;
+        cur->content_size = 0;
+        cur->coalesce = 0;
+        cur->rdma_cuda_block_size = rdma_cuda_block_size;
+    }
+
+
+    /* thread region list */
+    region->next = rdma_vbuf_pool->region_head;
+    rdma_vbuf_pool->region_head = region;
+    region->pool_index = rdma_vbuf_pool;
+
+    return 0;
+}
+
+int allocate_cuda_vbufs(struct ibv_pd* ptag[])
+{
+    int mpi_errno = MPI_SUCCESS;
+    int i;
+
+    for (i = 0; i < rdma_num_hcas; ++i) {
+        ptag_save[i] = ptag[i];
+    }
+
+    for(i = 0; i < rdma_num_vbuf_pools; i++) {
+        mpi_errno = allocate_vbuf_pool(&rdma_vbuf_pools[i]); 
+        if(mpi_errno) {
+            return mpi_errno;
+        }
+    }
+    return mpi_errno;
+}
+
+vbuf* get_cuda_vbuf(int offset)
+{
+    vbuf* v = NULL;
+    vbuf_pool_t *rdma_vbuf_pool = &rdma_vbuf_pools[offset];
+
+#if !defined(CKPT)
+    if (MPIDI_CH3I_RDMA_Process.has_srq
+#if defined(RDMA_CM)
+            || MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
+#endif /* defined(RDMA_CM) */
+            || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
+#endif /* !defined(CKPT) */
+    {
+        pthread_spin_lock(&vbuf_lock);
+    }
+
+    if (NULL ==rdma_vbuf_pool->free_head) {
+        if (allocate_vbuf_pool(rdma_vbuf_pool) != 0) {
+            ibv_va_error_abort(GEN_EXIT_ERR,"vbuf pool allocation failed");
+        }
+    }
+
+    v = rdma_vbuf_pool->free_head;
+    rdma_vbuf_pool->free_head = rdma_vbuf_pool->free_head->desc.next;
+    --rdma_vbuf_pool->num_free;
+
+
+    /* need to change this to RPUT_VBUF_FLAG later
+     * if we are doing rput */
+    v->padding = NORMAL_VBUF_FLAG;
+    v->pheader = (void *)v->buffer;
+
+    v->sreq = NULL;
+    v->coalesce = 0;
+    v->content_size = 0;
+    v->eager = 0;
+    /* Decide which transport need to assign here */
+    v->transport = IB_TRANSPORT_RC;
+
+#if !defined(CKPT)
+    if (MPIDI_CH3I_RDMA_Process.has_srq
+#if defined(RDMA_CM)
+            || MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
+#endif /* defined(RDMA_CM) */
+            || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
+#endif /* !defined(CKPT) */
+    {
+        pthread_spin_unlock(&vbuf_lock);
+    }
+
+    return(v);
+}
+
+void release_cuda_vbuf(vbuf* v)
+{
+    vbuf_pool_t *rdma_vbuf_pool = v->pool_index;
+
+    /* note this correctly handles appending to empty free list */
+#if !defined(CKPT)
+    if (MPIDI_CH3I_RDMA_Process.has_srq
+#if defined(RDMA_CM)
+            || MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
+#endif /* defined(RDMA_CM) */
+            || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
+#endif /* !defined(CKPT) */
+    {
+        pthread_spin_lock(&vbuf_lock);
+    }
+
+    DEBUG_PRINT("release_vbuf: releasing %p previous head = %p, padding %d\n", v, rdma_vbuf_pool->free_head, v->padding);
+
+    if (v->padding != NORMAL_VBUF_FLAG
+            && v->padding != RPUT_VBUF_FLAG
+            && v->padding != RGET_VBUF_FLAG
+            && v->padding != RDMA_ONE_SIDED)
+    {
+        ibv_error_abort(GEN_EXIT_ERR, "vbuf not correct.\n");
+    }
+
+    *v->head_flag = 0;
+    v->pheader = NULL;
+    v->content_size = 0;
+    v->sreq = NULL;
+    v->vc = NULL;
+
+    v->desc.next = rdma_vbuf_pool->free_head;
+    rdma_vbuf_pool->free_head = v;
+    ++rdma_vbuf_pool->num_free;
+
+#if !defined(CKPT)
+    if (MPIDI_CH3I_RDMA_Process.has_srq
+#if defined(RDMA_CM)
+            || MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
+#endif /* defined(RDMA_CM) */
+            || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
+#endif /* !defined(CKPT) */
+    {
+        pthread_spin_unlock(&vbuf_lock);
+    }
+}
+
+#endif /* _ENABLE_CUDA_ */
+
 /* this function is only called by the init routines.
  * Cache the nic handle and ptag for later vbuf_region allocations.
  */
@@ -390,9 +687,26 @@ int allocate_vbufs(struct ibv_pd* ptag[], int nvbufs)
         ptag_save[i] = ptag[i];
     }
 
+#ifdef _ENABLE_CUDA_
+    if (rdma_enable_cuda) {
+        if (allocate_cuda_vbufs(ptag) !=0 ) {
+            ibv_va_error_abort(GEN_EXIT_ERR,
+                    "VBUF CUDA reagion allocation failed. Pool size %d\n",
+                    vbuf_n_allocated);
+        }
+
+        /* allocate cuda stream region */
+        if (allocate_cuda_streams() != 0) {
+            ibv_va_error_abort(GEN_EXIT_ERR,
+                    "CUDA stream allocation failed, \n");
+        }
+
+    } else 
+#endif
     if(allocate_vbuf_region(nvbufs) != 0) {
         ibv_va_error_abort(GEN_EXIT_ERR,
-            "VBUF reagion allocation failed. Pool size %d\n", vbuf_n_allocated);
+            "VBUF reagion allocation failed. Pool size %d\n", 
+                vbuf_n_allocated);
     }
     
     return 0;
@@ -401,6 +715,12 @@ int allocate_vbufs(struct ibv_pd* ptag[], int nvbufs)
 vbuf* get_vbuf(void)
 {
     vbuf* v = NULL;
+
+#ifdef _ENABLE_CUDA_
+    if (rdma_enable_cuda) {
+        return (get_cuda_vbuf(CUDA_EAGER_BUF));
+    }
+#endif
 
 #if !defined(CKPT)
     if (MPIDI_CH3I_RDMA_Process.has_srq
@@ -466,6 +786,12 @@ vbuf* get_vbuf(void)
 
 void MRAILI_Release_vbuf(vbuf* v)
 {
+#ifdef _ENABLE_CUDA_
+    if(rdma_enable_cuda && IS_CUDA_VBUF((vbuf_pool_t*)v->pool_index)){
+        release_cuda_vbuf(v);
+        return;
+    }
+#endif
 #ifdef _ENABLE_UD_
     /* This message might be in progress. Wait for ib send completion 
      * to release this buffer to avoid to reusing buffer
@@ -1045,5 +1371,35 @@ void vbuf_reregister_all()
     MPIDI_FUNC_EXIT(MPID_STATE_VBUF_REREGISTER_ALL);
 }
 #endif /* defined(CKPT) */
+
+#if defined(_ENABLE_CUDA_)
+void ibv_cuda_register(void *ptr, size_t size)
+{
+    cudaError_t cuerr = cudaSuccess;
+    if(ptr == NULL) {
+        return;
+    }
+    cuerr = cudaHostRegister(ptr, size, cudaHostRegisterPortable);
+    if (cuerr != cudaSuccess) {
+        ibv_error_abort(GEN_EXIT_ERR, "cudaHostRegister Failed");
+    }
+    PRINT_DEBUG(DEBUG_CUDA_verbose, 
+            "cudaHostRegister success ptr:%p size:%d\n", ptr, size);
+}
+
+void ibv_cuda_unregister(void *ptr)
+{
+    cudaError_t cuerr = cudaSuccess;
+    if (ptr == NULL) {
+        return;
+    }
+    cuerr = cudaHostUnregister(ptr);
+    if (cuerr != cudaSuccess) {
+        ibv_error_abort(GEN_EXIT_ERR,"cudaHostUnegister Failed");
+    }
+    PRINT_DEBUG(DEBUG_CUDA_verbose, "cudaHostUnregister success ptr:%p\n", ptr);
+}
+
+#endif
 
 /* vi:set sw=4 tw=80: */

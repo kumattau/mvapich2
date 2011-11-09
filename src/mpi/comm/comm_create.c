@@ -20,6 +20,10 @@
 #include "mpiimpl.h"
 #include "mpicomm.h"
 
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#include "coll_shmem.h"
+#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
+
 /* -- Begin Profiling Symbol Block for routine MPI_Comm_create */
 #if defined(HAVE_PRAGMA_WEAK)
 #pragma weak MPI_Comm_create = PMPI_Comm_create
@@ -547,11 +551,6 @@ Output Parameter:
 
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 int split_comm = 1;
-extern int enable_shmem_collectives;
-extern int check_split_comm(pthread_t);
-extern int disable_split_comm(pthread_t);
-extern int create_2level_comm (MPI_Comm, int, int);
-extern int enable_split_comm(pthread_t);
 #endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
 int MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm)

@@ -290,6 +290,18 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv(
                 MPIDI_VC_t * vc, MPID_Request * rreq);
 int MPIDI_CH3I_MRAIL_Prepare_rndv_transfer(MPID_Request * sreq,
                 MPIDI_CH3I_MRAILI_Rndv_info_t *rndv);
+#if defined(_ENABLE_CUDA_)
+void MRAILI_RDMA_Put_finish_cuda(MPIDI_VC_t * vc,
+          MPID_Request * sreq, int rail, int is_cuda_pipeline, 
+            int cuda_pipeline_finish, int offset);
+int MPIDI_CH3I_MRAILI_Process_cuda_finish(MPIDI_VC_t * vc, 
+            MPID_Request * rreq, MPIDI_CH3_Pkt_rput_finish_t * rf_pkt);
+void MPIDI_CH3I_MRAILI_Rendezvous_rput_push_cuda(MPIDI_VC_t * vc,
+        MPID_Request * sreq);
+void MPIDI_CH3I_MRAIL_Send_cuda_cts_conti(MPIDI_VC_t * vc, MPID_Request * req);
+void MPIDI_CH3_Rendezvous_cuda_cts_conti(MPIDI_VC_t * vc,
+                           MPIDI_CH3_Pkt_cuda_cts_cont_t * cts_pkt);
+#endif
 
 int MPIDI_CH3I_MRAILI_Get_rndv_rput(MPIDI_VC_t *vc,
         MPID_Request * req,

@@ -61,26 +61,26 @@ struct MPIDI_CH3I_RDMA_put_get_list_t{
     }                                                           \
 }
 
-#define MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(rreq)                \
-{                                                               \
-    if (rreq != NULL) {                                         \
-        if (rreq->mrail.d_entry != NULL) {                      \
-            dreg_unregister(rreq->mrail.d_entry);               \
-            rreq->mrail.d_entry = NULL;                         \
-        }                                                       \
-        if (1 == rreq->mrail.rndv_buf_alloc                     \
-            && rreq->mrail.rndv_buf != NULL) {                  \
-            MPIU_Free(rreq->mrail.rndv_buf);                    \
-            rreq->mrail.rndv_buf = NULL;                        \
-            rreq->mrail.rndv_buf_off = rreq->mrail.rndv_buf_sz = 0; \
-            rreq->mrail.rndv_buf_alloc = 0;                     \
-        }  else {                                               \
-            rreq->mrail.rndv_buf_off = rreq->mrail.rndv_buf_sz = 0; \
-        }                                                       \
-        rreq->mrail.d_entry = NULL;                             \
-	rreq->mrail.protocol = VAPI_PROTOCOL_RENDEZVOUS_UNSPECIFIED; \
-    }                                                           \
-}
+#if defined(_ENABLE_CUDA_)
+
+#define IS_CUDA_RNDV_REQ(rreq)  (NONE != rreq->mrail.cuda_transfer_mode)            
+#else
+#define MPIDI_CH3I_MRAIL_FREE_CUDA_RNDV_BUFFER(rreq)           
+#define IS_CUDA_RNDV_REQ(rreq)  (0)               
+#endif
+
+#define MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(rreq)                    \
+{                                                                   \
+    if (rreq != NULL) {                                             \
+        if (rreq->mrail.d_entry != NULL) {                          \
+            dreg_unregister(rreq->mrail.d_entry);                   \
+            rreq->mrail.d_entry = NULL;                             \
+        }                                                           \
+        MPIDI_CH3I_MRAIL_FREE_RNDV_BUFFER(rreq);                    \
+    }                                                               \
+    rreq->mrail.d_entry = NULL;                                     \
+    rreq->mrail.protocol = VAPI_PROTOCOL_RENDEZVOUS_UNSPECIFIED;    \
+}                                                                   \
 
 #define PUSH_FLOWLIST(c) {                                      \
     if (0 == c->mrail.inflow) {                                 \
@@ -100,6 +100,18 @@ struct MPIDI_CH3I_RDMA_put_get_list_t{
     }                                                           \
 }
 
+#ifdef _ENABLE_CUDA_
+#define ADD_PENDING_FLOWLIST(_c, _list) {                   \
+    _c->mrail.nextflow = _list;                             \
+    _list = _c;                                             \
+}                                                           \
+
+#define REMOVE_PENDING_FLOWLIST(_c, _list) {                \
+    _c = _list;                                             \
+    _list = _c->mrail.nextflow;                             \
+    _c->mrail.nextflow = NULL;                              \
+}
+#endif
 /*
  * Attached to each connection is a list of send handles that
  * represent rendezvous sends that have been started and acked but not
@@ -149,7 +161,27 @@ struct MPIDI_CH3I_RDMA_put_get_list_t{
 {                                                               \
     if (VAPI_PROTOCOL_RGET == (_sreq)->mrail.protocol)          \
         (_sreq)->mrail.protocol = VAPI_PROTOCOL_RPUT;           \
+}
+
+#ifdef _ENABLE_CUDA_
+#define MPIDI_CH3I_MRAIL_SET_PKT_RNDV_CUDA(_pkt, _req)          \
+{                                                               \
+    int _i, _k;                                                     \
+    (_pkt)->rndv.protocol = (_req)->mrail.protocol;             \
+        (_pkt)->rndv.num_cuda_blocks = MIN(((_req)->mrail.num_cuda_blocks - (_req)->mrail.cuda_block_offset), rdma_num_cuda_rndv_blocks); \
+    if ( (VAPI_PROTOCOL_RPUT == (_pkt)->rndv.protocol) ||       \
+            (VAPI_PROTOCOL_RGET == (_pkt)->rndv.protocol) ) {   \
+        for (_i = 0; _i < (_pkt)->rndv.num_cuda_blocks; _i++) {   \
+        (_pkt)->rndv.buffer_addr[_i] = (_req)->mrail.cuda_vbuf[_i]->buffer;    \
+            for(_k = 0; _k < rdma_num_hcas; _k++) {             \
+                (_pkt)->rndv.buffer_rkey[_i][_k] =              \
+                    (_req)->mrail.cuda_vbuf[_i]->region->mem_handle[_k]->rkey;\
+            }                                                   \
+        }                                                       \
+        (_pkt)->rndv.cuda_block_offset = (_req)->mrail.cuda_block_offset;  \
+    }                                                           \
 } 
+#endif
 
 #define MPIDI_CH3I_MRAIL_SET_PKT_RNDV(_pkt, _req)               \
 {                                                               \
@@ -157,9 +189,11 @@ struct MPIDI_CH3I_RDMA_put_get_list_t{
     (_pkt)->rndv.protocol = (_req)->mrail.protocol;             \
     if ( (VAPI_PROTOCOL_RPUT == (_pkt)->rndv.protocol) ||       \
             (VAPI_PROTOCOL_RGET == (_pkt)->rndv.protocol) ) {   \
-        for (_i = 0; _i < rdma_num_hcas; _i ++) {               \
-            (_pkt)->rndv.rkey[_i] =                             \
-            ((_req)->mrail.d_entry)->memhandle[_i]->rkey;       \
+        if (!IS_CUDA_RNDV_REQ(_req)) {                          \
+            for (_i = 0; _i < rdma_num_hcas; _i ++) {           \
+                (_pkt)->rndv.rkey[_i] =                         \
+                ((_req)->mrail.d_entry)->memhandle[_i]->rkey;   \
+            }                                                   \
         }                                                       \
         (_pkt)->rndv.buf_addr = (_req)->mrail.rndv_buf;         \
     }                                                           \
@@ -174,6 +208,9 @@ do {                                                            \
         req->mrail.rndv_buf_off = 0;                            \
         req->mrail.rndv_buf_sz = 0;                             \
         req->mrail.rndv_buf = NULL;                             \
+    } else {                                                    \
+        req->mrail.rndv_buf_off = 0;                            \
+        req->mrail.rndv_buf_sz = 0;                             \
     }                                                           \
 }while(0)
 

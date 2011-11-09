@@ -291,7 +291,6 @@ void spawn_processes(int n)
     for (i = 0; i < n; i++) {
         local_processes[i].pid = fork();
         if (local_processes[i].pid == 0) {
-            clear_sigmask();
             PRINT_DEBUG(DEBUG_Fork_verbose, "FORK MPI proc (pid=%d)\n", getpid());
 
 #ifdef CKPT
@@ -371,8 +370,16 @@ void process_cleanup(void)
 {
     // Run process cleanup only once
     static OPA_int_t process_cleanup_started = {0};
+    static int process_cleanup_complete = 0;
     int started = OPA_fetch_and_add_int( &process_cleanup_started, 1 );
-    if (started) return;
+
+    /*
+     * Do not return until process cleanup is done running
+     */
+    if (started) {
+	while (!process_cleanup_complete);
+	return;
+    }
 
     PRINT_DEBUG(DEBUG_FT_verbose, "Cleanup stray processes\n");
     int i;
@@ -445,6 +452,7 @@ void process_cleanup(void)
     local_processes = NULL;
     free(children);
     children = NULL;
+    process_cleanup_complete = 1;
 }
 
 void cleanup_handler(int sig)
@@ -1057,7 +1065,6 @@ int main(int argc, char *argv[])
 
             MPISPAWN_NCHILD++;
             if (0 == fork()) {
-                clear_sigmask();
                 mpispawn_env = mkstr("%s MPISPAWN_ID=%d MPISPAWN_LOCAL_NPROCS=%d", mpispawn_env, target, np[target]);
                 command = mkstr("%s %s %s %d", command, mpispawn_env, args, NON_LINEAR_num_mpispawn_children / 2);
 

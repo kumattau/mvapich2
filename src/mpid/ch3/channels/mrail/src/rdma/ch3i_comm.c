@@ -31,7 +31,7 @@ static MPID_Collops collective_functions_osu = {
     MPIR_Allgather_MV2, /* Allgather */
     MPIR_Allgatherv_MV2, /* Allgatherv */
     MPIR_Alltoall_MV2, /* Alltoall */
-    MPIR_Alltoallv, /* Alltoallv */
+    MPIR_Alltoallv_MV2, /* Alltoallv */
     MPIR_Alltoallw, /* Alltoallw */
     MPIR_Reduce_MV2, /* Reduce */
     MPIR_Allreduce_MV2, /* Allreduce */

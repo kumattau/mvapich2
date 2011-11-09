@@ -146,6 +146,11 @@ void MPIDI_CH3_Request_destroy(MPID_Request * req)
 	MPID_Abort(MPIR_Process.comm_world, mpi_errno, -1, NULL);
     }
 #endif
+#ifdef _ENABLE_CUDA_
+    if (req->dev.pending_pkt) {
+        MPIU_Free(req->dev.pending_pkt);
+    }
+#endif
 
 #if defined (_OSU_PSM_)
     PSMSG(fprintf(stderr, "req release time\n"));
@@ -195,11 +200,10 @@ void MPIDI_CH3_Request_destroy(MPID_Request * req)
     }
 
     if (MPIDI_Request_get_srbuf_flag(req)) {
-	MPIDI_CH3U_SRBuf_free(req);
+    MPIDI_CH3U_SRBuf_free(req);
     }
 
     MPIU_Handle_obj_free(&MPID_Request_mem, req);
-    
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_REQUEST_DESTROY);
 }
 
@@ -268,8 +272,8 @@ int MPIDI_CH3U_Request_load_send_iov(MPID_Request * const sreq,
 	data_sz = sreq->dev.segment_size - sreq->dev.segment_first;
 	if (!MPIDI_Request_get_srbuf_flag(sreq))
 	{
-	    MPIDI_CH3U_SRBuf_alloc(sreq, data_sz);
-	    /* --BEGIN ERROR HANDLING-- */
+        MPIDI_CH3U_SRBuf_alloc(sreq, data_sz);
+        /* --BEGIN ERROR HANDLING-- */
 	    if (sreq->dev.tmpbuf_sz == 0)
 	    {
 		MPIU_DBG_MSG(CH3_CHANNEL,TYPICAL,"SRBuf allocation failure");
@@ -651,10 +655,18 @@ int MPIDI_CH3U_Request_unpack_uebuf(MPID_Request * rreq)
 	       In other words, if we were to use Segment_unpack()
 	       would last = unpack?  If not we should return an error 
 	       (unless configured with --enable-fast) */
-	    MPIDI_FUNC_ENTER(MPID_STATE_MEMCPY);
-	    MPIU_Memcpy((char *)rreq->dev.user_buf + dt_true_lb, rreq->dev.tmpbuf,
-		   unpack_sz);
-	    MPIDI_FUNC_EXIT(MPID_STATE_MEMCPY);
+        MPIDI_FUNC_ENTER(MPID_STATE_MEMCPY);
+#ifdef _ENABLE_CUDA_
+        if (rdma_enable_cuda && rreq->mrail.cuda_transfer_mode != NONE) {
+            cudaMemcpy((char *)rreq->dev.user_buf + dt_true_lb,
+                    rreq->dev.tmpbuf, unpack_sz, cudaMemcpyHostToDevice);
+        } else
+#endif
+        {
+            MPIU_Memcpy((char *)rreq->dev.user_buf + dt_true_lb, 
+                    rreq->dev.tmpbuf, unpack_sz);
+        }
+        MPIDI_FUNC_EXIT(MPID_STATE_MEMCPY);
 	}
 	else
 	{

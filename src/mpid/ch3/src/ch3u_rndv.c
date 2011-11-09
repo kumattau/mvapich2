@@ -285,7 +285,15 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
             cts_pkt->recv_sz = rreq->dev.segment_size;
         }
 
-        mpi_errno = MPIDI_CH3_Prepare_rndv_cts(vc, cts_pkt, rreq);
+#if defined(_ENABLE_CUDA_)
+        if(rdma_enable_cuda && rreq->mrail.cuda_transfer_mode != NONE
+                && vc->smp.local_nodes == -1) {
+    	    mpi_errno = MPIDI_CH3_Prepare_rndv_cts_cuda(vc, cts_pkt, rreq);
+        } else
+#endif
+        {
+            mpi_errno = MPIDI_CH3_Prepare_rndv_cts(vc, cts_pkt, rreq);
+        }
         if (mpi_errno != MPI_SUCCESS)
         {
             MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|rndv");

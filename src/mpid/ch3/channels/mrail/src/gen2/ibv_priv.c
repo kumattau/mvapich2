@@ -111,6 +111,11 @@ int vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
             goto fn_exit;
         }
 #endif /* USE_MEMORY_TRACING */
+#if defined(_ENABLE_CUDA_)
+        if (rdma_enable_cuda && rdma_eager_cudahost_reg) {
+            ibv_cuda_register(vbuf_rdma_buf, num_rdma_buffer * rdma_fp_buffer_size);
+        }
+#endif
 
         MPIU_Memset(vbuf_rdma_buf, 0, rdma_fp_buffer_size * num_rdma_buffer);
 

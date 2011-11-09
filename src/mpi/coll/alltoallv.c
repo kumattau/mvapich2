@@ -376,7 +376,16 @@ int MPIR_Alltoallv_impl(void *sendbuf, int *sendcnts, int *sdispls, MPI_Datatype
                         MPID_Comm *comm_ptr, int *errflag)
 {
     int mpi_errno = MPI_SUCCESS;
-        
+
+#if defined(_ENABLE_CUDA_)
+    if (rdma_enable_cuda) {
+        if (is_device_buffer(sendbuf)
+            || is_device_buffer(recvbuf)) {
+            enable_device_ptr_checks = 1;
+        }
+    }
+#endif       
+ 
     if (comm_ptr->coll_fns != NULL && comm_ptr->coll_fns->Alltoallv != NULL) {
 	mpi_errno = comm_ptr->coll_fns->Alltoallv(sendbuf, sendcnts, sdispls,
                                                  sendtype, recvbuf, recvcnts,
@@ -390,6 +399,11 @@ int MPIR_Alltoallv_impl(void *sendbuf, int *sendcnts, int *sdispls, MPI_Datatype
     }
 
  fn_exit:
+#if defined(_ENABLE_CUDA_)
+    if (rdma_enable_cuda) {
+        enable_device_ptr_checks = 0;
+    }
+#endif
     return mpi_errno;
  fn_fail:
     goto fn_exit;

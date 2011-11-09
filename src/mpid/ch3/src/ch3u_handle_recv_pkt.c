@@ -75,6 +75,7 @@ int MPIDI_CH3_Pkt_size_index[] = {
     sizeof(MPIDI_CH3_Pkt_zcopy_ack_t),
     sizeof(MPIDI_CH3I_MRAILI_Pkt_noop),
     sizeof(MPIDI_CH3_Pkt_rndv_clr_to_send_t),
+    sizeof(MPIDI_CH3_Pkt_rndv_clr_to_send_t),
     sizeof(MPIDI_CH3_Pkt_put_rndv_t),
     sizeof(MPIDI_CH3_Pkt_accum_rndv_t),
     sizeof(MPIDI_CH3_Pkt_get_rndv_t),
@@ -244,6 +245,10 @@ int MPIDI_CH3U_Receive_data_found(MPID_Request *rreq, char *buf, MPIDI_msg_sz_t 
     MPID_Datatype * dt_ptr = NULL;
     MPIDI_msg_sz_t data_sz;
     int mpi_errno = MPI_SUCCESS;
+#if defined(_ENABLE_CUDA_)
+    int userbuf_isdev = 0;
+#endif
+
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3U_RECEIVE_DATA_FOUND);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3U_RECEIVE_DATA_FOUND);
@@ -282,7 +287,19 @@ int MPIDI_CH3U_Receive_data_found(MPID_Request *rreq, char *buf, MPIDI_msg_sz_t 
         {
             MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"Copying contiguous data to user buffer");
             /* copy data out of the receive buffer */
-            MPIU_Memcpy((char*)(rreq->dev.user_buf) + dt_true_lb, buf, data_sz);
+#if defined(_ENABLE_CUDA_) 
+            if (rdma_enable_cuda) {
+                userbuf_isdev = is_device_buffer((void *) rreq->dev.user_buf);
+            }
+            if (userbuf_isdev) {
+               cudaMemcpy((void *) ((char*)(rreq->dev.user_buf) + dt_true_lb),
+                            buf, data_sz,
+                            cudaMemcpyHostToDevice);
+            } else
+#endif
+            {
+                MPIU_Memcpy((char*)(rreq->dev.user_buf) + dt_true_lb, buf, data_sz);
+            }
             *buflen = data_sz;
             *complete = TRUE;
         }

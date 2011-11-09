@@ -55,6 +55,8 @@
                 align_unit)) * align_unit;          \
 }
 
+#define ROUNDUP(len, unit) ((len + unit - 1) / unit) 
+
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <sys/mman.h>
@@ -170,6 +172,12 @@ typedef struct vbuf
     VBUF_FLAG_TYPE* head_flag;
     unsigned char* buffer;
 
+#ifdef _ENABLE_CUDA_
+    void *pool_index;
+    int rdma_cuda_block_size;
+    int cuda_pipeline_finish;
+#endif
+
     int content_size;
     int content_consumed;
 
@@ -234,8 +242,45 @@ typedef struct vbuf_region
     struct vbuf* vbuf_head;     /* first vbuf in region       */
     struct vbuf_region* next;   /* thread vbuf regions        */
     int shmid;
+#ifdef _ENABLE_CUDA_
+    void *pool_index;   /* region allocated for a pool */
+#endif
 } vbuf_region;
 
+/* The data structure to hold vbuf pool info */
+typedef struct vbuf_pool
+{
+    uint8_t index;
+    uint16_t initial_count;
+    uint16_t incr_count;
+    uint32_t buf_size;
+    uint32_t num_allocated;
+    uint32_t num_free;
+    uint32_t max_num_buf;
+    long num_get;
+    long num_freed;
+    vbuf *free_head;
+    vbuf_region *region_head;
+}vbuf_pool_t;
+
+/* index into vbuf pool */
+enum {
+    CUDA_EAGER_BUF = 0,
+    CUDA_RNDV_BLOCK_BUF,
+};
+
+#define RDMA_VBUF_POOL_INIT(rdma_vbuf_pool)     \
+do{                                             \
+    rdma_vbuf_pool.free_head = NULL;            \
+    rdma_vbuf_pool.region_head = NULL;          \
+    rdma_vbuf_pool.buf_size = 0;                \
+    rdma_vbuf_pool.num_allocated = 0;           \
+    rdma_vbuf_pool.num_free = 0;                \
+    rdma_vbuf_pool.max_num_buf = -1;            \
+    rdma_vbuf_pool.num_get = 0;                 \
+    rdma_vbuf_pool.num_freed = 0;               \
+} while(0)
+    
 static inline void VBUF_SET_RDMA_ADDR_KEY(
     vbuf* v, 
     int len,
@@ -319,5 +364,19 @@ void vbuf_init_rma_put(
 #if defined(CKPT)
 void vbuf_reregister_all();
 #endif /* defined(CKPT) */
+
+#ifdef _ENABLE_CUDA_
+void ibv_cuda_register(void * ptr, size_t size);
+void ibv_cuda_unregister(void *ptr);
+int allocate_cuda_vbufs(struct ibv_pd* ptag[]);
+vbuf* get_cuda_vbuf(int flag);
+void release_cuda_vbuf(vbuf* v);
+#define IS_CUDA_VBUF(vbuf_pool) (vbuf_pool &&  (\
+                                (vbuf_pool)->index == CUDA_EAGER_BUF || \
+                                (vbuf_pool)->index == CUDA_RNDV_BLOCK_BUF))
+#endif
+
+extern vbuf_pool_t *rdma_vbuf_pools;
+extern int rdma_num_vbuf_pools;
 
 #endif

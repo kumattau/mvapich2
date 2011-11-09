@@ -133,7 +133,7 @@ int rdma_initial_credits        = 0;
 int rdma_rq_size;
 
 uint32_t viadev_srq_alloc_size = 4096;
-uint32_t viadev_srq_fill_size = 512;
+uint32_t viadev_srq_fill_size = 256;
 uint32_t viadev_srq_limit = 30;
 uint32_t viadev_max_r3_oust_send = 32;
 
@@ -193,13 +193,20 @@ static inline int log_2(int np)
 
 /*
  * User parameters for HCA module. The supported parameters are:
+ * - MV2_IBA_HCA
  * - MV2_NUM_HCAS
  * - MV2_NUM_PORTS
  */
-static void get_hca_user_parameters() {
-	char *value;
+static void get_hca_user_parameters() 
+{
+    char *value;
 
-	value = getenv("MV2_NUM_HCAS");
+    value = getenv("MV2_IBA_HCA");
+    if (value != NULL) {
+        strncpy(rdma_iba_hca, value, sizeof(rdma_iba_hca));
+    }
+
+    value = getenv("MV2_NUM_HCAS");
     if (value != NULL) {
     	ib_hca_num_hcas = (int)atoi(value);
         if (ib_hca_num_hcas > MAX_NUM_HCAS) {

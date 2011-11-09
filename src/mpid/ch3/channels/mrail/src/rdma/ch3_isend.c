@@ -28,8 +28,14 @@ static void isend_update_request(MPID_Request* sreq, void* pkt, int pkt_sz, int 
 {
     MPIDI_STATE_DECL(MPID_STATE_ISEND_UPDATE_REQUEST);
     MPIDI_FUNC_ENTER(MPID_STATE_ISEND_UPDATE_REQUEST);
+#ifdef _ENABLE_CUDA_
+    sreq->dev.pending_pkt = MPIU_Malloc(pkt_sz - nb);
+    MPIU_Memcpy(sreq->dev.pending_pkt, (char *) pkt+ nb,  pkt_sz - nb);
+    sreq->dev.iov[0].MPID_IOV_BUF = (char *) sreq->dev.pending_pkt;
+#else
     sreq->dev.pending_pkt = *(MPIDI_CH3_PktGeneric_t *) pkt;
     sreq->dev.iov[0].MPID_IOV_BUF = (char *) &sreq->dev.pending_pkt + nb;
+#endif
     sreq->dev.iov[0].MPID_IOV_LEN = pkt_sz - nb;
     sreq->dev.iov_count = 1;
     sreq->dev.iov_offset = 0;
