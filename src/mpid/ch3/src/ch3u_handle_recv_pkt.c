@@ -288,13 +288,17 @@ int MPIDI_CH3U_Receive_data_found(MPID_Request *rreq, char *buf, MPIDI_msg_sz_t 
             MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"Copying contiguous data to user buffer");
             /* copy data out of the receive buffer */
 #if defined(_ENABLE_CUDA_) 
+            cudaError_t cuda_error = cudaSuccess;
             if (rdma_enable_cuda) {
                 userbuf_isdev = is_device_buffer((void *) rreq->dev.user_buf);
             }
             if (userbuf_isdev) {
-               cudaMemcpy((void *) ((char*)(rreq->dev.user_buf) + dt_true_lb),
-                            buf, data_sz,
-                            cudaMemcpyHostToDevice);
+                cuda_error = cudaMemcpy((void *) ((char*)(rreq->dev.user_buf) + dt_true_lb),
+                        buf, data_sz,
+                        cudaMemcpyHostToDevice);
+                if (cuda_error != cudaSuccess) {
+                    MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**cudamemcpy");
+                }
             } else
 #endif
             {

@@ -3,6 +3,16 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2-1.8a1p1 (11/14/2011)
+
+* Bug Fixes (since 1.8a1)
+    - Fix for a data validation issue in GPU transfers
+        - Thanks to Massimiliano Fatica, NVIDIA, for reporting this issue
+    - Tuned CUDA block size to 256K for better performance
+    - Enhanced error checking for CUDA library calls
+    - Fix for mpirun_rsh issue while launching applications on Linux Kernels
+      (3.x)
+
 MVAPICH2-1.8a1 (11/09/2011)
 
 * Features and Enhancements (since 1.7):

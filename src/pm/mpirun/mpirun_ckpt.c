@@ -301,6 +301,7 @@ int create_connections()
     }
 
     memset(&cr_sa, 0, sizeof(cr_sa));
+    cr_sa.sin_family = AF_INET;
     cr_sa.sin_addr.s_addr = INADDR_ANY;
     cr_sa.sin_port = 0;
 

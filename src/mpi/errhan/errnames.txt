@@ -1502,6 +1502,9 @@ is too big (> MPIU_SHMW_GHND_SZ)
 **pmi_port: Unable to decide hostport from PMI_PORT
 **pmi_port %s: Unable to decide hostport from \"%s\"
 **ch3|contigsend: Unable to create eager contig send request
+# <_OSU_MVAPICH_>
+**cudamemcpy:failure occured while cudaMemcpy
+# <_OSU_MVAPICH_>
 
 # MPIR functions
 

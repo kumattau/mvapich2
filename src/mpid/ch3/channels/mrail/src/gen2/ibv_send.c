@@ -367,6 +367,7 @@ static int MRAILI_Fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
     /* We have filled the header, it is time to fit in the actual data */
 #ifdef _ENABLE_CUDA_
     int mem_type = 0;
+    cudaError_t cuda_error = cudaSuccess;
     cuPointerGetAttribute((void*) &mem_type, CU_POINTER_ATTRIBUTE_MEMORY_TYPE,
                                         (CUdeviceptr) iov[1].MPID_IOV_BUF);
 
@@ -387,10 +388,13 @@ static int MRAILI_Fast_rdma_fill_start_buf(MPIDI_VC_t * vc,
             MPIU_Assert(avail >= 0);
         } else */
         if (n_iov == 2) {
-            cudaMemcpy(data_buf,
+            cuda_error = cudaMemcpy(data_buf,
                     iov[1].MPID_IOV_BUF,
                     iov[1].MPID_IOV_LEN,
                     cudaMemcpyDeviceToHost);
+            if (cuda_error != cudaSuccess) {
+                ibv_error_abort(IBV_RETURN_ERR,"cudaMemcpy Failed to Host\n");
+            }
             *num_bytes_ptr += iov[1].MPID_IOV_LEN;
             avail -= iov[1].MPID_IOV_LEN;
             MPIU_Assert(avail >= 0);
@@ -973,8 +977,7 @@ int MRAILI_Fill_start_buffer(vbuf * v,
             len += iov[1].MPID_IOV_LEN;
         }
         if (cuda_error != cudaSuccess) {
-            PRINT_INFO(1, "Cuda memcpy failed in MRAILI_Fill_start_buffer \n");
-            MPIU_Assert(0);
+            ibv_error_abort(IBV_RETURN_ERR,"cudaMemcpy Failed to Host\n");
         }
     } else 
 #endif

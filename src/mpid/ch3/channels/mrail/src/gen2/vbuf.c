@@ -98,16 +98,32 @@ void dump_vbuf(char* msg, vbuf* v)
 void print_vbuf_usage()
 {
     int tot_mem = 0;
-    
-    tot_mem = (vbuf_n_allocated * (rdma_vbuf_total_size + sizeof(struct vbuf)));
 
-#ifdef _ENABLE_UD_
+#if defined(_ENABLE_UD_)
+    tot_mem = (vbuf_n_allocated * (rdma_vbuf_total_size + sizeof(struct vbuf)));
     tot_mem += (ud_vbuf_n_allocated * (rdma_default_ud_mtu + sizeof(struct vbuf))); 
     PRINT_INFO(DEBUG_MEM_verbose, "RC VBUFs:%d  UD VBUFs:%d TOT MEM:%d kB\n",
                     vbuf_n_allocated, ud_vbuf_n_allocated, (tot_mem / 1024));
 #else
-    PRINT_INFO(DEBUG_MEM_verbose, "RC VBUF: %d  TOT MEM: %d kB\n", 
-                        vbuf_n_allocated, (tot_mem / 1024));
+#if defined(_ENABLE_CUDA_)
+    int i;
+    if (rdma_enable_cuda) {
+        for(i = 0; i < rdma_num_vbuf_pools; i++) {
+            tot_mem = rdma_vbuf_pools[i].num_allocated *
+                      (rdma_vbuf_pools[i].buf_size + sizeof(struct vbuf));
+
+            PRINT_INFO(DEBUG_MEM_verbose, "buf_size:%d num_bufs:%d tot_mem:%d kB\n",
+                rdma_vbuf_pools[i].buf_size, rdma_vbuf_pools[i].num_allocated, 
+                                                (tot_mem/1024));
+        }
+    } else 
+#endif
+    {
+        tot_mem = (vbuf_n_allocated * 
+                (rdma_vbuf_total_size + sizeof(struct vbuf)));
+        PRINT_INFO(DEBUG_MEM_verbose, "RC VBUF: %d  TOT MEM: %d kB\n",
+                vbuf_n_allocated, (tot_mem / 1024));
+    }
 #endif
 }
 

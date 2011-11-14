@@ -657,9 +657,13 @@ int MPIDI_CH3U_Request_unpack_uebuf(MPID_Request * rreq)
 	       (unless configured with --enable-fast) */
         MPIDI_FUNC_ENTER(MPID_STATE_MEMCPY);
 #ifdef _ENABLE_CUDA_
+        cudaError_t cuda_error = cudaSuccess;
         if (rdma_enable_cuda && rreq->mrail.cuda_transfer_mode != NONE) {
-            cudaMemcpy((char *)rreq->dev.user_buf + dt_true_lb,
+            cuda_error = cudaMemcpy((char *)rreq->dev.user_buf + dt_true_lb,
                     rreq->dev.tmpbuf, unpack_sz, cudaMemcpyHostToDevice);
+            if (cuda_error != cudaSuccess) {
+                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**cudamemcpy");
+            }
         } else
 #endif
         {

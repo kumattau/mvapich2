@@ -127,7 +127,7 @@ int main(int argc, char *argv[])
 #ifdef _ENABLE_CUDA_
     if (src == 'D' || desti == 'D'){
         cuerr = cuInit(0);
-        cuDeviceGet(&cuDevice, my_dev);
+        cuDeviceGet(&cuDevice, 0);
         cuCtxCreate(&cuContext, 0, cuDevice);
     }
 #endif

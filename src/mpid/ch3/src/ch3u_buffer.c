@@ -234,6 +234,7 @@ void MPIDI_CH3U_Buffer_copy_cuda(
 {
     int sdt_contig;
     int rdt_contig;
+    cudaError_t cuda_error = cudaSuccess;
     MPI_Aint sdt_true_lb, rdt_true_lb;
     MPIDI_msg_sz_t sdata_sz;
     MPIDI_msg_sz_t rdata_sz;
@@ -270,7 +271,13 @@ void MPIDI_CH3U_Buffer_copy_cuda(
     {
         MPIDI_FUNC_ENTER(MPID_STATE_MEMCPY);
         //	MPIU_Memcpy((char *)rbuf + rdt_true_lb, (const char *)sbuf + sdt_true_lb, sdata_sz);
-        cudaMemcpy((char *)rbuf + rdt_true_lb, (const char *)sbuf + sdt_true_lb, sdata_sz, cudaMemcpyDeviceToDevice);
+        cuda_error = cudaMemcpy((char *)rbuf + rdt_true_lb, 
+                (const char *)sbuf + sdt_true_lb, sdata_sz, cudaMemcpyDeviceToDevice);
+        if (cuda_error != cudaSuccess) {
+            *rmpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME, 
+                                    __LINE__, MPI_ERR_OTHER, "**cudamemcpy", 0);
+            goto fn_exit;
+        }
         MPIDI_FUNC_EXIT(MPID_STATE_MEMCPY);
         *rsz = sdata_sz;
     }

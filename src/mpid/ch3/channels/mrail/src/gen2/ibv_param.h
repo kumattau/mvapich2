@@ -234,11 +234,11 @@ extern int                  rdma_default_async_thread_stack_size;
 #define RDMA_DEFAULT_CONNECT_INTERVAL   (100)
 
 #ifdef _ENABLE_CUDA_
-#define DEFAULT_CUDA_VBUF_SIZES          {17408, 65536}
+#define DEFAULT_CUDA_VBUF_SIZES          {17408, 262144}
 #define DEFAULT_CUDA_VBUF_POOL_SIZE      {1024, 128}
 #define DEFAULT_CUDA_VBUF_SECONDARY_POOL_SIZE {256, 64}
 #define DEFAULT_CUDA_VBUF_MAX_POOL_SIZE  {-1, -1}
-#define DEFAULT_CUDA_BLOCK_SIZE          (65536)
+#define DEFAULT_CUDA_BLOCK_SIZE          (262144)
 #define DEFAULT_CUDA_STREAM_COUNT        (64)
 #define NUM_CUDA_BUF_POOLS               (2)
 #endif

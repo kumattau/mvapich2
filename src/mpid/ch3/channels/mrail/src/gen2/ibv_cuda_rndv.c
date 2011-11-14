@@ -195,6 +195,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push_cuda(MPIDI_VC_t * vc,
     int nbytes, rail_index;
     uint32_t rkey = 0;
     char *remote_addr = NULL;
+    cudaError_t cuda_error = cudaSuccess;
     vbuf *v;
 
     if (sreq->mrail.cuda_transfer_mode == CONT_DEVICE_TO_DEVICE 
@@ -211,9 +212,12 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push_cuda(MPIDI_VC_t * vc,
             cuda_vbuf = get_cuda_vbuf(CUDA_RNDV_BLOCK_BUF);
             nbytes = sreq->mrail.rndv_buf_sz;
 
-            cudaMemcpy(cuda_vbuf->buffer, 
+            cuda_error = cudaMemcpy(cuda_vbuf->buffer, 
                     (const void *)(sreq->dev.iov[0].MPID_IOV_BUF), nbytes,
                     cudaMemcpyDeviceToHost);
+            if (cuda_error != cudaSuccess) {
+                ibv_error_abort(IBV_RETURN_ERR,"cudaMemcpy to host failed\n");
+            }
 
             rail = 0;
             rail_index = vc->mrail.rails[rail].hca_index;
@@ -261,11 +265,13 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push_cuda(MPIDI_VC_t * vc,
                 cuda_stream->size = nbytes; 
                 cuda_stream->cuda_vbuf = get_cuda_vbuf(CUDA_RNDV_BLOCK_BUF);
                 sreq->mrail.num_send_cuda_copy++;
-                cudaMemcpyAsync(cuda_stream->cuda_vbuf->buffer, 
+                cuda_error = cudaMemcpyAsync(cuda_stream->cuda_vbuf->buffer, 
                         (const void *)(sreq->dev.iov[0].MPID_IOV_BUF + 
                             rdma_cuda_block_size * i), nbytes, 
                         cudaMemcpyDeviceToHost, cuda_stream->stream);
-       
+                if (cuda_error != cudaSuccess) {
+                    ibv_error_abort(IBV_RETURN_ERR,"cudaMemcpyAsync to host failed\n");
+                } 
                 PRINT_DEBUG(DEBUG_CUDA_verbose>1, 
                     "Issue cudaMemcpyAsync :%d req:%p strm:%p\n",
                     sreq->mrail.num_send_cuda_copy, sreq, cuda_stream);
@@ -336,6 +342,7 @@ int MPIDI_CH3I_MRAILI_Process_cuda_finish(MPIDI_VC_t * vc, MPID_Request * rreq,
     int nbytes;
     int rreq_complete = 0;
     cuda_stream_t *cuda_stream = NULL;
+    cudaError_t cuda_error = cudaSuccess;
 
     progress_cuda_streams();
     
@@ -354,10 +361,14 @@ int MPIDI_CH3I_MRAILI_Process_cuda_finish(MPIDI_VC_t * vc, MPID_Request * rreq,
             PRINT_DEBUG(DEBUG_CUDA_verbose>1, "CudaMemCpy offset:%d "
             "is_fin:%d cuda_buf_idx:%d pending:%d rreq:%p\n", rf_pkt->cuda_offset,
             rf_pkt->cuda_pipeline_finish, rreq->mrail.num_remote_cuda_done, rreq->mrail.num_remote_cuda_pending, rreq);
-            cudaMemcpy(rreq->mrail.rndv_buf + rf_pkt->cuda_offset,
+            cuda_error = cudaMemcpy(rreq->mrail.rndv_buf + rf_pkt->cuda_offset,
                     (const void *)(rreq->mrail.cuda_vbuf
                         [rreq->mrail.num_remote_cuda_done]->buffer), 
                     nbytes, cudaMemcpyHostToDevice);
+            if (cuda_error != cudaSuccess) {
+                ibv_error_abort(IBV_RETURN_ERR,"cudaMemcpy to device failed\n");
+            }
+ 
             release_cuda_vbuf(rreq->mrail.cuda_vbuf[rreq->mrail.num_remote_cuda_done++]);
             if (rf_pkt->cuda_pipeline_finish) {
                 return 1;
@@ -390,18 +401,25 @@ int MPIDI_CH3I_MRAILI_Process_cuda_finish(MPIDI_VC_t * vc, MPID_Request * rreq,
             MPIDI_CH3I_MRAIL_Send_cuda_cts_conti(vc, rreq);
         }
 
-        cudaMemcpyAsync(rreq->mrail.rndv_buf + rf_pkt->cuda_offset,
+        cuda_error = cudaMemcpyAsync(rreq->mrail.rndv_buf + rf_pkt->cuda_offset,
                 (const void *)(cuda_stream->cuda_vbuf->buffer),
                 nbytes, cudaMemcpyHostToDevice, cuda_stream->stream);
-                
+        if (cuda_error != cudaSuccess) {
+            ibv_error_abort(IBV_RETURN_ERR,"cudaMemcpyAsync to device failed\n");
+        }
+
         PRINT_DEBUG(DEBUG_CUDA_verbose>1, "RECV cudaMemcpyAsync :%d "
             "req:%p strm:%p\n", rreq->mrail.num_remote_cuda_done,
                                 rreq, cuda_stream);
     } else {
         nbytes = rreq->mrail.rndv_buf_sz;
-        cudaMemcpy(rreq->mrail.rndv_buf + rf_pkt->cuda_offset,
+        cuda_error = cudaMemcpy(rreq->mrail.rndv_buf + rf_pkt->cuda_offset,
                 (const void *)(rreq->mrail.cuda_vbuf[0]->buffer), nbytes,
                 cudaMemcpyHostToDevice);
+        if (cuda_error != cudaSuccess) {
+            ibv_error_abort(IBV_RETURN_ERR,"cudaMemcpy Failed to device failed\n");
+        }
+
         rreq->mrail.pipeline_nm++;
         release_cuda_vbuf(rreq->mrail.cuda_vbuf[0]);
         rreq_complete = 1;

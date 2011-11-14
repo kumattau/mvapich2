@@ -347,6 +347,7 @@ int main(int argc, char *argv[])
         perror("socket");
         exit(EXIT_FAILURE);
     }
+    sockaddr.sin_family = AF_INET;  
     sockaddr.sin_addr.s_addr = INADDR_ANY;
     sockaddr.sin_port = 0;
     if (bind(s, (struct sockaddr *) &sockaddr, sockaddr_len) < 0) {

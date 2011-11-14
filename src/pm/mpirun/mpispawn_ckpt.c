@@ -585,6 +585,7 @@ static int Connect_MPI_Procs(int nProcs)
     }
 
     memset(&sa, 0, sizeof(sa));
+    sa.sin_family = AF_INET;
     sa.sin_addr.s_addr = INADDR_ANY;
     sa.sin_port = 0;
 

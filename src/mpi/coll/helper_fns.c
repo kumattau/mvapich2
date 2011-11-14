@@ -353,28 +353,38 @@ int MPIR_Localcopy(void *sendbuf, int sendcount, MPI_Datatype sendtype,
 #if defined(_ENABLE_CUDA_)
         if (rdma_enable_cuda && enable_device_ptr_checks) {
             int sbuf_isdev = 0, rbuf_isdev = 0;
+            cudaError_t cuda_error = cudaSuccess;
         
             sbuf_isdev = is_device_buffer(sendbuf); 
             rbuf_isdev = is_device_buffer(recvbuf); 
 
             if (sbuf_isdev) { 
                 if(rbuf_isdev) {
-                    cudaMemcpy((void *) ((char *)recvbuf + recvtype_true_lb), 
+                    cuda_error = cudaMemcpy((void *) ((char *)recvbuf + recvtype_true_lb), 
                            (void *) ((char *)sendbuf + sendtype_true_lb), 
                            copy_sz,
                            cudaMemcpyDeviceToDevice);
+                    if (cuda_error != cudaSuccess) {
+                        MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**cudamemcpy");
+                    }
                 } else {
-                     cudaMemcpy((void *) ((char *)recvbuf + recvtype_true_lb), 
+                    cuda_error =  cudaMemcpy((void *) ((char *)recvbuf + recvtype_true_lb), 
                            (void *) ((char *)sendbuf + sendtype_true_lb), 
                            copy_sz,
                            cudaMemcpyDeviceToHost);       
+                    if (cuda_error != cudaSuccess) {
+                        MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**cudamemcpy");
+                    }
                 }
             } else {
                 if(rbuf_isdev) {
-                     cudaMemcpy((void *) ((char *)recvbuf + recvtype_true_lb),
+                    cuda_error =  cudaMemcpy((void *) ((char *)recvbuf + recvtype_true_lb),
                            (void *) ((char *)sendbuf + sendtype_true_lb),
                            copy_sz,
                            cudaMemcpyHostToDevice); 
+                    if (cuda_error != cudaSuccess) {
+                        MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**cudamemcpy");
+                    }
                 } else {
                      MPIU_Memcpy(((char *) recvbuf + recvtype_true_lb),
                            ((char *) sendbuf + sendtype_true_lb),
@@ -498,6 +508,7 @@ int MPIR_Localcopy_cuda(void *sendbuf, int sendcount,
                     enum cudaMemcpyKind kind)
 {
     int mpi_errno = MPI_SUCCESS;
+    cudaError_t cuda_error = cudaSuccess;
     int sendtype_iscontig, recvtype_iscontig;
     MPI_Aint sendsize, recvsize, sdata_sz, rdata_sz, copy_sz;
     MPI_Aint true_extent, sendtype_true_lb, recvtype_true_lb;
@@ -539,9 +550,12 @@ int MPIR_Localcopy_cuda(void *sendbuf, int sendcount,
                 ((char *)sendbuf + sendtype_true_lb),
                 copy_sz);
 #endif
-        cudaMemcpy(((char *) recvbuf + recvtype_true_lb),
+        cuda_error = cudaMemcpy(((char *) recvbuf + recvtype_true_lb),
                 ((char *) sendbuf + sendtype_true_lb),
                 copy_sz, kind);
+        if (cuda_error != cudaSuccess) {
+            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**cudamemcpy");
+        }
     }
     else if (sendtype_iscontig)
     {

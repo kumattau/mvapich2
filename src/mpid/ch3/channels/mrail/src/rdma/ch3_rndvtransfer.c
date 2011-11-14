@@ -1071,6 +1071,14 @@ int MPIDI_CH3_Rendezvous_rput_finish(MPIDI_VC_t * vc,
         return MPI_SUCCESS;
     }
 
+#if defined(_ENABLE_CUDA_)
+    if (rdma_enable_cuda && rreq->mrail.cuda_transfer_mode != NONE) {
+        if (MPIDI_CH3I_MRAILI_Process_cuda_finish(vc, rreq, rf_pkt) != 1) {
+            goto fn_exit;
+        }
+    }
+#endif
+
     if (rreq->mrail.rndv_buf_alloc == 1){
         MPIDI_CH3_Rendezvous_unpack_data(vc, rreq);
     } else {
@@ -1080,14 +1088,6 @@ int MPIDI_CH3_Rendezvous_rput_finish(MPIDI_VC_t * vc,
 #if defined(CKPT)
     MPIDI_CH3I_CR_req_dequeue(rreq);
 #endif /* defined(CKPT) */
-
-#if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda && rreq->mrail.cuda_transfer_mode != NONE) {
-        if (MPIDI_CH3I_MRAILI_Process_cuda_finish(vc, rreq, rf_pkt) != 1) {
-            goto fn_exit;
-        }
-    }
-#endif
 
     MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(rreq);
 

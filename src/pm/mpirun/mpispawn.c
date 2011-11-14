@@ -684,6 +684,7 @@ in_port_t init_listening_socket(int *mc_socket)
         exit(EXIT_FAILURE);
     }
 
+    mc_sockaddr.sin_family = AF_INET;
     mc_sockaddr.sin_addr.s_addr = INADDR_ANY;
     mc_sockaddr.sin_port = 0;
 
@@ -898,6 +899,7 @@ int main(int argc, char *argv[])
         perror("socket");
         exit(EXIT_FAILURE);
     }
+    c_sockaddr.sin_family = AF_INET;
     c_sockaddr.sin_addr.s_addr = INADDR_ANY;
     c_sockaddr.sin_port = 0;
 
@@ -927,6 +929,7 @@ int main(int argc, char *argv[])
             exit(EXIT_FAILURE);
         }
         struct sockaddr_in checkin_sockaddr;
+        checkin_sockaddr.sin_family = AF_INET;
         checkin_sockaddr.sin_addr.s_addr = INADDR_ANY;
         checkin_sockaddr.sin_port = 0;
         if (bind(checkin_sock, (struct sockaddr *) &checkin_sockaddr, sockaddr_len) < 0) {
