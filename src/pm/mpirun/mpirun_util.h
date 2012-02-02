@@ -1,6 +1,6 @@
 #ifndef MPIRUN_UTIL_H
 #define MPIRUN_UTIL_H
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH software package developed by the

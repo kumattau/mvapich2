@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -21,6 +21,9 @@
 #include "mpiimpl.h"
 #include "mpi_init.h"
 
+#if (defined(_OSU_MVAPICH_)||defined(_OSU_PSM_))
+#include "coll_shmem.h"
+#endif
 /* -- Begin Profiling Symbol Block for routine MPI_Finalize */
 #if defined(HAVE_PRAGMA_WEAK)
 #pragma weak MPI_Finalize = PMPI_Finalize

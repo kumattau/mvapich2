@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -13,10 +13,81 @@
 #include "mpidi_ch3_impl.h"
 #include "mpid_mrail_rndv.h"
 #include "rdma_impl.h"
+#if defined(HAVE_LIBHWLOC)
+#include "hwloc_bind.h"
+#endif
 
 #define MPIDI_CH3I_HOST_DESCRIPTION_KEY "description"
 
 MPIDI_CH3I_Process_t MPIDI_CH3I_Process;
+
+#if defined(HAVE_LIBHWLOC)
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_set_affinity
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int MPIDI_CH3I_set_affinity(MPIDI_PG_t * pg, int pg_rank)
+{
+    char *value;
+    int mpi_errno = MPI_SUCCESS;
+    int my_local_id;
+    MPIDI_VC_t *vc;
+    
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SET_AFFINITY);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SET_AFFINITY);
+    
+    if ((value = getenv("MV2_ENABLE_AFFINITY")) != NULL) {
+        mv2_enable_affinity = atoi(value);
+    }
+
+    if (mv2_enable_affinity && (value = getenv("MV2_CPU_MAPPING")) != NULL) {
+        /* Affinity is on and the user has supplied a cpu mapping string */
+        int linelen = strlen(value);
+        if (linelen < s_cpu_mapping_line_max)
+        {
+            s_cpu_mapping_line_max = linelen;
+        }
+        s_cpu_mapping = (char*) MPIU_Malloc(sizeof(char) * (s_cpu_mapping_line_max + 1));
+        strncpy(s_cpu_mapping, value, s_cpu_mapping_line_max);
+        s_cpu_mapping[s_cpu_mapping_line_max] = '\0';
+    } 
+
+    if(mv2_enable_affinity && (value = getenv("MV2_CPU_MAPPING")) == NULL ) {
+        /* Affinity is on and the user has not specified a mapping string */
+        if ((value = getenv("MV2_CPU_BINDING_POLICY")) != NULL) {
+            /* User has specified a binding policy */
+            if (!strcmp(value, "bunch")  ||  !strcmp(value, "BUNCH")) {
+                    policy = POLICY_BUNCH;
+            } else if (!strcmp(value, "scatter") || !strcmp(value, "SCATTER")) {
+                    policy = POLICY_SCATTER;
+            } else {
+                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                                                    "**fail", "**fail %s",
+                                                    "CPU_BINDING_PRIMITIVE: Policy should be bunch or scatter.");
+            } 
+         } else {
+            /* User has not specified a binding policy.
+             * We are going to do "bunch" binding, by default  */
+            policy = POLICY_BUNCH;
+         }
+    } 
+    /* Get my VC */
+    MPIDI_PG_Get_vc(pg, pg_rank, &vc);
+    my_local_id = vc->smp.local_rank;
+
+    if (mv2_enable_affinity) {
+        mpi_errno = smpi_setaffinity(my_local_id);
+        if (mpi_errno != MPI_SUCCESS) {
+            MPIU_ERR_POP(mpi_errno);
+        }
+    }
+fn_exit:
+    MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SET_AFFINITY);
+    return mpi_errno;
+fn_fail:
+    goto fn_exit;
+}
+#endif /* defined(HAVE_LIBHWLOC) */
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Init
@@ -63,22 +134,32 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         setenv("MV2_ENABLE_AFFINITY", "0", 1);
     }
 
-#ifdef _ENABLE_XRC_
     value = getenv ("MV2_USE_XRC");
     if (value) {
-        USE_XRC = atoi(value);
-        if (USE_XRC) {
+        if (atoi(value)) {
+#ifdef _ENABLE_XRC_
+            USE_XRC = atoi(value);
             /* Enable on-demand */
             threshold = 1;
+#else
+            MPIU_Error_printf("XRC support is not configured. Please retry with "
+                    "MV2_USE_XRC=0 (or) Reconfiure MVAPICH2 library without --disable-xrc.\n");
+            MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**fail");
+#endif
         }
     }
-#endif /* _ENABLE_XRC_ */
 
-#ifdef _ENABLE_CUDA_
     if ((value = getenv("MV2_USE_CUDA")) != NULL) {
-        rdma_enable_cuda = atoi(value);
-    }
+        if (atoi(value)) {
+#ifdef _ENABLE_CUDA_
+            rdma_enable_cuda = atoi(value);
+#else
+            MPIU_Error_printf("GPU CUDA support is not configured. "
+                "Please reconfigure MVAPICH2 library with --enable-cuda option.\n");
+            MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**fail");
 #endif
+        }
+    }
 
 #ifdef _ENABLE_UD_
     if ((value = getenv("MV2_HYBRID_ENABLE_THRESHOLD")) != NULL) {
@@ -115,7 +196,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         && atoi(value) && ! dpm) {
         MPIDI_CH3I_Process.cm_type = MPIDI_CH3I_CM_RDMA_CM;
     } else {
-        rdma_cm_get_hca_type(&MPIDI_CH3I_RDMA_Process);
+        rdma_cm_get_hca_type(&mv2_MPIDI_CH3I_RDMA_Process);
     }
 #endif /* defined(RDMA_CM) */
 
@@ -209,6 +290,12 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     }
     MPIU_Free(conn_info);
 
+#if defined(HAVE_LIBHWLOC)
+    if (MPIDI_CH3I_set_affinity(pg, pg_rank) != MPI_SUCCESS) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+#endif
+
     /* Initialize the smp channel */
     if ((mpi_errno = MPIDI_CH3I_SMP_init(pg)))
     {
@@ -233,8 +320,8 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
             }
         }
     } else {
-        extern int enable_shmem_collectives;
-        enable_shmem_collectives = SMP_INIT;
+        extern int mv2_enable_shmem_collectives;
+        mv2_enable_shmem_collectives = SMP_INIT;
     }
 
     /* Set the eager max msg size now that we know SMP and RDMA are initialized.
@@ -246,6 +333,15 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         MPIDI_PG_Get_vc(pg, p, &vc);
         vc->eager_max_msg_sz = MPIDI_CH3_EAGER_MAX_MSG_SIZE(vc);
     }
+
+#ifndef DAPL_DEFAULT_PROVIDER
+    if ((value = getenv("MV2_SHOW_ENV_INFO")) != NULL) {
+        mv2_show_env_info = atoi(value);
+    }
+    if (pg_rank == 0 && mv2_show_env_info) {
+        mv2_print_env_info(&mv2_MPIDI_CH3I_RDMA_Process);
+    }
+#endif
     
 fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_INIT);

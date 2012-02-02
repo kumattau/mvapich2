@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -67,10 +67,14 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv(MPIDI_VC_t * vc, MPID_Request * req)
     }
 
     /* Step 1: ready for user space (user buffer or pack) */
-    if (1 == req->dev.iov_count && (req->dev.OnDataAvail == NULL ||
-                (req->dev.OnDataAvail == req->dev.OnFinal) ||
-                (req->dev.OnDataAvail == 
-                 MPIDI_CH3_ReqHandler_UnpackSRBufComplete))) {
+    if (1 == req->dev.iov_count && (req->dev.OnDataAvail == NULL 
+        || req->dev.OnDataAvail == req->dev.OnFinal
+        || req->dev.OnDataAvail == MPIDI_CH3_ReqHandler_UnpackSRBufComplete
+#if defined(_ENABLE_CUDA_)
+        || req->dev.OnDataAvail == MPIDI_CH3_ReqHandler_unpack_cudabuf
+#endif 
+        ))
+    {
         req->mrail.rndv_buf = req->dev.iov[0].MPID_IOV_BUF;
         req->mrail.rndv_buf_sz = req->dev.iov[0].MPID_IOV_LEN;
         req->mrail.rndv_buf_alloc = 0;
@@ -182,8 +186,8 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv_transfer(MPID_Request * sreq,
         if( rdma_enable_cuda && sreq->mrail.cuda_transfer_mode != NONE) {
             sreq->mrail.cts_received = 1;
             sreq->mrail.num_send_cuda_copy = 0;
-            if (sreq->mrail.cuda_transfer_mode == CONT_DEVICE_TO_DEVICE 
-                || sreq->mrail.cuda_transfer_mode == CONT_HOST_TO_DEVICE) {
+            if (sreq->mrail.cuda_transfer_mode == DEVICE_TO_DEVICE 
+                || sreq->mrail.cuda_transfer_mode == HOST_TO_DEVICE) {
                 for (i = 0; i < rndv->num_cuda_blocks; i++) {
                     sreq->mrail.cuda_remote_addr[i] = rndv->buffer_addr[i];
                     for (hca_index = 0; hca_index < rdma_num_hcas; hca_index++) {
@@ -194,7 +198,7 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv_transfer(MPID_Request * sreq,
                     sreq->mrail.cuda_block_offset = rndv->cuda_block_offset;
                     sreq->mrail.num_remote_cuda_done = 0;
                 }
-            } else if (sreq->mrail.cuda_transfer_mode == CONT_DEVICE_TO_HOST) {
+            } else if (sreq->mrail.cuda_transfer_mode == DEVICE_TO_HOST) {
                 sreq->mrail.num_remote_cuda_pending = 
                         ROUNDUP(sreq->mrail.rndv_buf_sz, rdma_cuda_block_size);
                 sreq->mrail.cuda_block_offset = 0;
@@ -351,7 +355,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
     }
 
     for(rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
-        if(MPIDI_CH3I_RDMA_Process.has_apm && apm_tester) {
+        if(mv2_MPIDI_CH3I_RDMA_Process.has_apm && apm_tester) {
             perform_manual_apm(vc->mrail.rails[rail_index].qp_hndl);
         }
     }
@@ -368,7 +372,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
 #endif /* defined(DEBUG) */
 
     /* Use the HSAM Functionality */
-    if(MPIDI_CH3I_RDMA_Process.has_hsam && 
+    if(mv2_MPIDI_CH3I_RDMA_Process.has_hsam && 
             (rreq->mrail.rndv_buf_sz > rdma_large_msg_rail_sharing_threshold)) {
 
       MPIU_Memset(mapped, 0, rdma_num_rails * sizeof(int));
@@ -397,8 +401,8 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
             rreq->mrail.rndv_buf_sz) {
         nbytes = rreq->mrail.rndv_buf_sz - rreq->mrail.rndv_buf_off;
 
-        if (nbytes > MPIDI_CH3I_RDMA_Process.maxtransfersize) {
-            nbytes = MPIDI_CH3I_RDMA_Process.maxtransfersize;
+        if (nbytes > mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize) {
+            nbytes = mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize;
         }
 
         DEBUG_PRINT("[buffer content]: %02x,%02x,%02x, "
@@ -426,7 +430,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,
 
             rreq->mrail.num_rdma_read_completions++;
 
-        } else if(!MPIDI_CH3I_RDMA_Process.has_hsam) {
+        } else if(!mv2_MPIDI_CH3I_RDMA_Process.has_hsam) {
             inc = nbytes / rdma_num_rails;
             
             for(rail = 0; rail < rdma_num_rails - 1; rail++) {
@@ -561,7 +565,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
     }
     
     for(rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
-        if(MPIDI_CH3I_RDMA_Process.has_apm && apm_tester) {
+        if(mv2_MPIDI_CH3I_RDMA_Process.has_apm && apm_tester) {
             perform_manual_apm(vc->mrail.rails[rail_index].qp_hndl);
         }
     }
@@ -576,7 +580,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
 #endif /* defined(DEBUG) */
 
     /* Use the HSAM Functionality */
-    if(MPIDI_CH3I_RDMA_Process.has_hsam && 
+    if(mv2_MPIDI_CH3I_RDMA_Process.has_hsam && 
             (sreq->mrail.rndv_buf_sz > rdma_large_msg_rail_sharing_threshold)) {
 
       MPIU_Memset(mapped, 0, rdma_num_rails * sizeof(int));
@@ -610,8 +614,8 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
     while (sreq->mrail.rndv_buf_off < sreq->mrail.rndv_buf_sz) {
         nbytes = sreq->mrail.rndv_buf_sz - sreq->mrail.rndv_buf_off;
 
-        if (nbytes > MPIDI_CH3I_RDMA_Process.maxtransfersize) {
-            nbytes = MPIDI_CH3I_RDMA_Process.maxtransfersize;
+        if (nbytes > mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize) {
+            nbytes = mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize;
         }
 
         DEBUG_PRINT("[buffer content]: %02x,%02x,%02x, offset %d, remote buf %p\n",
@@ -636,7 +640,7 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push(MPIDI_VC_t * vc,
                     sreq->mrail.rkey[vc->mrail.rails[rail].hca_index],
                     nbytes, rail);
            
-        } else if(!MPIDI_CH3I_RDMA_Process.has_hsam) {
+        } else if(!mv2_MPIDI_CH3I_RDMA_Process.has_hsam) {
             inc = nbytes / rdma_num_rails;
             
             for(rail = 0; rail < rdma_num_rails - 1; rail++) {
@@ -773,7 +777,7 @@ int MPIDI_CH3I_MRAILI_Rendezvous_r3_ack_send(MPIDI_VC_t *vc)
     DEBUG_PRINT("[[eager send] len %d vbuf: %p\n",total_len, v);
     vbuf_init_send(v, total_len, rail);
     
-    mpi_errno = MPIDI_CH3I_RDMA_Process.post_send(vc, v, rail);
+    mpi_errno = mv2_MPIDI_CH3I_RDMA_Process.post_send(vc, v, rail);
 
     return mpi_errno;
 }

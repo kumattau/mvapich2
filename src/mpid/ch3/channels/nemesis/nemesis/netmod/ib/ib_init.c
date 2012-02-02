@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -304,6 +304,7 @@ int MPID_nem_ib_init (MPIDI_PG_t *pg_p,
         int *val_max_sz_p)
 {
     int mpi_errno = MPI_SUCCESS;
+    char *value = NULL;
 
     MPIDI_STATE_DECL(MPID_STATE_MPID_IB_INIT);
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_IB_INIT);
@@ -459,6 +460,13 @@ int MPID_nem_ib_init (MPIDI_PG_t *pg_p,
     if (mpi_errno != MPI_SUCCESS) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**fail",
                                     "**fail %s", "Failed to init conn info");
+    }
+    
+    if ((value = getenv("MV2_SHOW_ENV_INFO")) != NULL) {
+        mv2_show_env_info = atoi(value);
+    }
+    if (pg_rank == 0 && mv2_show_env_info) {
+        mv2_print_env_info();
     }
 
 

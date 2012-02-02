@@ -375,6 +375,7 @@ EOF])
     fi
     
     _HWLOC_CHECK_DECL([sched_setaffinity], [
+      AC_DEFINE([HWLOC_HAVE_SCHED_SETAFFINITY], [1], [Define to 1 if glibc provides a prototype of sched_setaffinity()])
       AC_MSG_CHECKING([for old prototype of sched_setaffinity])
       AC_COMPILE_IFELSE([
         AC_LANG_PROGRAM([[
@@ -382,7 +383,7 @@ EOF])
           #include <sched.h>
           static unsigned long mask;
           ]], [[ sched_setaffinity(0, (void*) &mask); ]])],
-        [AC_DEFINE([HWLOC_HAVE_OLD_SCHED_SETAFFINITY], [1], [Define to 1 if glibc provides the old prototype of sched_setaffinity()])
+        [AC_DEFINE([HWLOC_HAVE_OLD_SCHED_SETAFFINITY], [1], [Define to 1 if glibc provides the old prototype (without length) of sched_setaffinity()])
          AC_MSG_RESULT([yes])],
         [AC_MSG_RESULT([no])])
     ], , [[
@@ -485,25 +486,6 @@ EOF])
     AC_CHECK_HEADERS([sys/utsname.h])
     AC_CHECK_FUNCS([uname])
 
-    # set_mempolicy and mbind support   
-    AC_CHECK_HEADERS([numaif.h], [
-      AC_CHECK_LIB([numa], [set_mempolicy], [
-	enable_set_mempolicy=yes
-	AC_SUBST([HWLOC_LINUX_LIBNUMA_LIBS], ["-lnuma"])
-	AC_DEFINE([HWLOC_HAVE_SET_MEMPOLICY], [1], [Define to 1 if set_mempolicy is available.])
-      ])
-      AC_CHECK_LIB([numa], [mbind], [
-	enable_mbind=yes
-	AC_SUBST([HWLOC_LINUX_LIBNUMA_LIBS], ["-lnuma"])
-	AC_DEFINE([HWLOC_HAVE_MBIND], [1], [Define to 1 if mbind is available.])
-      ])
-      AC_CHECK_LIB([numa], [migrate_pages], [
-	enable_migrate_pages=yes
-	AC_SUBST([HWLOC_LINUX_LIBNUMA_LIBS], ["-lnuma"])
-	AC_DEFINE([HWLOC_HAVE_MIGRATE_PAGES], [1], [Define to 1 if migrate_pages is available.])
-      ])
-    ])
-
     AC_CHECK_HEADERS([pthread_np.h])
     AC_CHECK_DECLS([pthread_setaffinity_np],,[:],[[
       #include <pthread.h>
@@ -522,6 +504,40 @@ EOF])
     AC_SEARCH_LIBS([pthread_getthrds_np], [pthread],
       AC_DEFINE([HWLOC_HAVE_PTHREAD_GETTHRDS_NP], 1, `Define to 1 if you have pthread_getthrds_np')
     )
+
+    # Linux libnuma support
+    hwloc_linux_libnuma_happy=no
+    if test "x$enable_libnuma" != "xno"; then
+        hwloc_linux_libnuma_happy=yes
+        AC_CHECK_HEADERS([numaif.h], [
+            AC_CHECK_LIB([numa], [numa_available], [HWLOC_LINUX_LIBNUMA_LIBS="-lnuma"], [hwloc_linux_libnuma_happy=no])
+        ], [hwloc_linux_libnuma_happy=no])
+    fi
+    AC_SUBST(HWLOC_LINUX_LIBNUMA_LIBS)
+    # If we asked for Linux libnuma support but couldn't deliver, fail
+    AS_IF([test "$enable_libnuma" = "yes" -a "$hwloc_linux_libnuma_happy" = "no"],
+          [AC_MSG_WARN([Specified --enable-libnuma switch, but could not])
+           AC_MSG_WARN([find appropriate support])
+           AC_MSG_ERROR([Cannot continue])])
+    if test "x$hwloc_linux_libnuma_happy" = "xyes"; then
+      tmp_save_LIBS="$LIBS"
+      LIBS="$LIBS $HWLOC_LINUX_LIBNUMA_LIBS"
+
+      AC_CHECK_LIB([numa], [set_mempolicy], [
+	enable_set_mempolicy=yes
+	AC_DEFINE([HWLOC_HAVE_SET_MEMPOLICY], [1], [Define to 1 if set_mempolicy is available.])
+      ])
+      AC_CHECK_LIB([numa], [mbind], [
+	enable_mbind=yes
+	AC_DEFINE([HWLOC_HAVE_MBIND], [1], [Define to 1 if mbind is available.])
+      ])
+      AC_CHECK_LIB([numa], [migrate_pages], [
+	enable_migrate_pages=yes
+	AC_DEFINE([HWLOC_HAVE_MIGRATE_PAGES], [1], [Define to 1 if migrate_pages is available.])
+      ])
+
+      LIBS="$tmp_save_LIBS"
+    fi
 
     # PCI support
     hwloc_pci_happy=no
@@ -573,6 +589,11 @@ EOF])
            AC_MSG_WARN([find appropriate support])
            AC_MSG_ERROR([Cannot continue])])
     if test "x$hwloc_pci_happy" = "xyes"; then
+      tmp_save_CFLAGS="$CFLAGS"
+      CFLAGS="$CFLAGS $HWLOC_PCI_CFLAGS"
+      tmp_save_LIBS="$LIBS"
+      LIBS="$LIBS $HWLOC_PCI_LIBS"
+      AC_CHECK_DECLS([PCI_LOOKUP_NO_NUMBERS],,[:],[[#include <pci/pci.h>]])
       AC_CHECK_DECLS([PCI_LOOKUP_NO_NUMBERS],,[:],[[#include <pci/pci.h>]])
       AC_CHECK_LIB([pci], [pci_find_cap], [enable_pci_caps=yes], [enable_pci_caps=no], [$HWLOC_PCI_ADDITIONAL_LIBS])
       if test "x$enable_pci_caps" = "xyes"; then
@@ -598,8 +619,10 @@ EOF])
       fi
 
       HWLOC_REQUIRES="libpci $HWLOC_REQUIRES"
-  dnl    AC_DEFINE([HWLOC_HAVE_LIBPCI], [1], [Define to 1 if you have the `libpci' library.])
-  dnl    AC_SUBST([HWLOC_HAVE_LIBPCI], [1])
+      dnl    AC_DEFINE([HWLOC_HAVE_LIBPCI], [1], [Define to 1 if you have the `libpci' library.])
+      dnl    AC_SUBST([HWLOC_HAVE_LIBPCI], [1])
+      CFLAGS="$tmp_save_CFLAGS"
+      LIBS="$tmp_save_LIBS"
     else
       AC_SUBST([HWLOC_HAVE_LIBPCI], [0])
     fi

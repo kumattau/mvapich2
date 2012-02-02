@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -31,6 +31,7 @@ extern int                  g_smp_eagersize;
 extern int                  s_smpi_length_queue;
 extern int                  s_smp_num_send_buffer;
 extern int                  s_smp_batch_size;
+extern int                  s_smp_block_size;
 
 /*********** Macro defines of local variables ************/
 #define PID_CHAR_LEN 22
@@ -41,7 +42,6 @@ extern int                  s_smp_batch_size;
 
 #if defined(_IA32_)
 
-#define SMP_SEND_BUF_SIZE 8192
 #define SMPI_CACHE_LINE_SIZE 64
 #define SMPI_ALIGN(a)                                               \
 ((a + SMPI_CACHE_LINE_SIZE + 7) & 0xFFFFFFF8)
@@ -51,7 +51,6 @@ extern int                  s_smp_batch_size;
                                                                                                                                                
 #elif defined(_IA64_)
 
-#define SMP_SEND_BUF_SIZE 8192
 #define SMPI_CACHE_LINE_SIZE 128
 #define SMPI_ALIGN(a)                                               \
 ((a + SMPI_CACHE_LINE_SIZE + 7) & 0xFFFFFFFFFFFFFFF8)
@@ -60,7 +59,6 @@ extern int                  s_smp_batch_size;
 
 #elif defined(_X86_64_) && defined(_AMD_QUAD_CORE_)
 
-#define SMP_SEND_BUF_SIZE 8192
 #define SMPI_CACHE_LINE_SIZE 128
 #define SMPI_ALIGN(a)                                               \
 ((a + SMPI_CACHE_LINE_SIZE + 7) & 0xFFFFFFFFFFFFFFF8)
@@ -69,7 +67,6 @@ extern int                  s_smp_batch_size;
 
 #elif defined(_X86_64_)
 
-#define SMP_SEND_BUF_SIZE 8192
 #define SMPI_CACHE_LINE_SIZE 128
 #define SMPI_ALIGN(a)                                               \
 ((a + SMPI_CACHE_LINE_SIZE + 7) & 0xFFFFFFFFFFFFFFF8)
@@ -78,7 +75,6 @@ extern int                  s_smp_batch_size;
 
 #elif defined(_EM64T_)
 
-#define SMP_SEND_BUF_SIZE 8192 
 #define SMPI_CACHE_LINE_SIZE 64
 #define SMPI_ALIGN(a) (a +SMPI_CACHE_LINE_SIZE)
 
@@ -87,7 +83,6 @@ extern int                  s_smp_batch_size;
 
 #elif defined(MAC_OSX)
 
-#define SMP_SEND_BUF_SIZE 8192
 #define SMPI_CACHE_LINE_SIZE 16
 #define SMPI_ALIGN(a)                                               \
 (((a + SMPI_CACHE_LINE_SIZE + 7) & 0xFFFFFFF8))
@@ -96,7 +91,6 @@ extern int                  s_smp_batch_size;
 
 #else
                                                                                                                                                
-#define SMP_SEND_BUF_SIZE 8192 
 #define SMPI_CACHE_LINE_SIZE 64
 #define SMPI_ALIGN(a) (a +SMPI_CACHE_LINE_SIZE)
 
@@ -120,6 +114,11 @@ typedef struct {
 } smpi_rqueues;
 
 typedef struct {
+    volatile unsigned int ptr;
+    char pad[SMPI_CACHE_LINE_SIZE - sizeof(unsigned int)];
+} smpi_shared_tails;
+
+typedef struct {
     volatile unsigned int first;
     volatile unsigned int last;
 } smpi_rq_limit;
@@ -127,12 +126,8 @@ typedef struct {
 /* the shared area itself */
 struct shared_mem {
     volatile int *pid;   /* use for initial synchro */
-    /* receive queues descriptors */
-    smpi_params_c *rqueues_params_c;
-    smpi_params_n *rqueues_params_n;
 
-     /* rqueues flow control */
-    smpi_rqueues **rqueues_flow;
+    smpi_shared_tails **shared_tails;
 
     smpi_rq_limit *rqueues_limits_s;
     smpi_rq_limit *rqueues_limits_r;
@@ -144,12 +139,12 @@ struct shared_mem {
 /* structure for a buffer in the sending buffer pool */
 typedef struct send_buf_t {
     int myindex;
-    int next;
+    volatile int next;
     volatile int busy;
     int len;
-    int has_next;
+    volatile int has_next;
     int msg_complete;
-    char buf[SMP_SEND_BUF_SIZE];
+    char buf;
 } SEND_BUF_T;
 
 /* send queue, to be initialized */
@@ -165,6 +160,7 @@ struct limic_header {
     int total_bytes;
     struct MPID_Request *send_req_id;
 };
+extern int g_smp_use_limic2;
 #endif
 
 extern struct smpi_var g_smpi;

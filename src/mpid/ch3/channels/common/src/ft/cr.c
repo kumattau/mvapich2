@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -47,6 +47,9 @@
 #include "mpiutil.h"
 #include "error_handling.h"
 #include "debug_utils.h"
+#if defined(HAVE_LIBHWLOC)
+#include "hwloc_bind.h"
+#endif
 
 #ifdef CR_FTB
 
@@ -66,7 +69,7 @@
         {"CR_FTB_APP_CKPT_REQ",  "info"}, \
         {"CR_FTB_CKPT_FINALIZE", "info"}, \
         {"CR_FTB_MIGRATE_PIC",   "info"}, \
-        {"CR_FTB_RTM",           "info"},  \
+        {"FTB_MIGRATE_TRIGGER",  "info"},  \
         {"MPI_PROCS_CKPTED", "info"},       \
         {"MPI_PROCS_CKPT_FAIL", "info"},    \
         {"MPI_PROCS_RESTARTED", "info"},    \
@@ -86,16 +89,16 @@
 #define CR_FTB_APP_CKPT_REQ  7
 #define CR_FTB_CKPT_FINALIZE 8
 #define CR_FTB_MIGRATE_PIC   9
-#define CR_FTB_RTM           10
+#define FTB_MIGRATE_TRIGGER  10
     // start of standard FTB MPI events
 #define MPI_PROCS_CKPTED        11
 #define MPI_PROCS_CKPT_FAIL     12
 #define MPI_PROCS_RESTARTED     13
 #define MPI_PROCS_RESTART_FAIL  14
 #define MPI_PROCS_MIGRATED      15
-#define MPI_PROCS_MIGRATE_FAIL 16
+#define MPI_PROCS_MIGRATE_FAIL  16
 
-#define CR_FTB_EVENTS_MAX    17
+#define CR_FTB_EVENTS_MAX       17
 ////////////////////////////////////////////////////
 
 /* Type of event to throw */
@@ -170,7 +173,7 @@ static int restart_count = 0;
 static int MPICR_max_save_ckpts = 0;
 volatile int MPICR_callback_fin = 0;
 
-extern int enable_shmem_collectives;
+extern int mv2_enable_shmem_collectives;
 static pthread_mutex_t MPICR_SMC_lock;
 static pthread_cond_t MPICR_SMC_cond = PTHREAD_COND_INITIALIZER;
 int g_cr_in_progress;
@@ -674,7 +677,7 @@ int CR_Thread_loop()
              * Let the shared memory collectives know that a checkpoint
              * has been requested
              */
-            if (enable_shmem_collectives)
+            if (mv2_enable_shmem_collectives)
                 MPIDI_CH3I_SMC_lock();
 
             pthread_rwlock_wrlock(&MPICR_cs_lock);
@@ -879,7 +882,7 @@ int CR_Thread_loop()
              * Let the shared memory collectives know that the checkpoint
              * request has completed
              */
-            if (enable_shmem_collectives)
+            if (mv2_enable_shmem_collectives)
                 MPIDI_CH3I_SMC_unlock();
 
             CR_Set_state(MPICR_STATE_RUNNING);
@@ -1338,14 +1341,14 @@ int CR_IBU_Release_network()
 #endif                          /* !MV2_DISABLE_HEADER_CACHING */
     }
     CR_DBG("CR_IBU_Release_network: CH3I_RDMA.has_srq\n");
-    if (MPIDI_CH3I_RDMA_Process.has_srq) {
+    if (mv2_MPIDI_CH3I_RDMA_Process.has_srq) {
         for (i = 0; i < rdma_num_hcas; ++i) {
-            pthread_cond_destroy(&MPIDI_CH3I_RDMA_Process.srq_post_cond[i]);
-            pthread_mutex_destroy(&MPIDI_CH3I_RDMA_Process.srq_post_mutex_lock[i]);
-            pthread_cancel(MPIDI_CH3I_RDMA_Process.async_thread[i]);
-            pthread_join(MPIDI_CH3I_RDMA_Process.async_thread[i], NULL);
+            pthread_cond_destroy(&mv2_MPIDI_CH3I_RDMA_Process.srq_post_cond[i]);
+            pthread_mutex_destroy(&mv2_MPIDI_CH3I_RDMA_Process.srq_post_mutex_lock[i]);
+            pthread_cancel(mv2_MPIDI_CH3I_RDMA_Process.async_thread[i]);
+            pthread_join(mv2_MPIDI_CH3I_RDMA_Process.async_thread[i], NULL);
 
-            if (ibv_destroy_srq(MPIDI_CH3I_RDMA_Process.srq_hndl[i])) {
+            if (ibv_destroy_srq(mv2_MPIDI_CH3I_RDMA_Process.srq_hndl[i])) {
                 ibv_error_abort(IBV_RETURN_ERR, "Couldn't destroy SRQ\n");
             }
         }
@@ -1354,16 +1357,16 @@ int CR_IBU_Release_network()
     dreg_deregister_all();
 
     for (i = 0; i < rdma_num_hcas; ++i) {
-        if (rdma_iwarp_use_multiple_cq && MV2_IS_CHELSIO_IWARP_CARD(MPIDI_CH3I_RDMA_Process.hca_type) && (MPIDI_CH3I_RDMA_Process.cluster_size != VERY_SMALL_CLUSTER)) {
+        if (rdma_iwarp_use_multiple_cq && MV2_IS_CHELSIO_IWARP_CARD(mv2_MPIDI_CH3I_RDMA_Process.hca_type) && (mv2_MPIDI_CH3I_RDMA_Process.cluster_size != VERY_SMALL_CLUSTER)) {
             /* Trac #423 */
-            ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.send_cq_hndl[i]);
-            ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i]);
+            ibv_destroy_cq(mv2_MPIDI_CH3I_RDMA_Process.send_cq_hndl[i]);
+            ibv_destroy_cq(mv2_MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i]);
         } else {
-            ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.cq_hndl[i]);
+            ibv_destroy_cq(mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[i]);
         }
         deallocate_vbufs(i);
-        ibv_dealloc_pd(MPIDI_CH3I_RDMA_Process.ptag[i]);
-        ibv_close_device(MPIDI_CH3I_RDMA_Process.nic_context[i]);
+        ibv_dealloc_pd(mv2_MPIDI_CH3I_RDMA_Process.ptag[i]);
+        ibv_close_device(mv2_MPIDI_CH3I_RDMA_Process.nic_context[i]);
     }
     CR_DBG("CR_IBU_Release_network: ibv_close\n");
 #if !defined(DISABLE_PTMALLOC)
@@ -1377,6 +1380,11 @@ int CR_IBU_Release_network()
             return (-1);
         }
     }
+#if defined(HAVE_LIBHWLOC)
+    if(mv2_enable_affinity == 1) { 
+       hwloc_topology_destroy(topology);
+    } 
+#endif
 
     return 0;
 }
@@ -1432,12 +1440,12 @@ int CR_IBU_Rebuild_network()
     }
 
     /* Open the device and create cq and qp's */
-    if (rdma_open_hca(&MPIDI_CH3I_RDMA_Process)) {
+    if (rdma_open_hca(&mv2_MPIDI_CH3I_RDMA_Process)) {
         MPIU_Error_printf("rdma_open_hca failed\n");
         return -1;
     }
 
-    mpi_errno = rdma_iba_hca_init_noqp(&MPIDI_CH3I_RDMA_Process, pg_rank, pg_size);
+    mpi_errno = rdma_iba_hca_init_noqp(&mv2_MPIDI_CH3I_RDMA_Process, pg_rank, pg_size);
     if (mpi_errno) {
         MPIU_Error_printf("Failed to Initialize HCA type\n");
         MPIU_ERR_POP(mpi_errno);
@@ -1447,33 +1455,33 @@ int CR_IBU_Rebuild_network()
     vbuf_reregister_all();
 
     /* Post the buffers for the SRQ */
-    if (MPIDI_CH3I_RDMA_Process.has_srq) {
-        pthread_spin_init(&MPIDI_CH3I_RDMA_Process.srq_post_spin_lock, 0);
-        pthread_spin_lock(&MPIDI_CH3I_RDMA_Process.srq_post_spin_lock);
+    if (mv2_MPIDI_CH3I_RDMA_Process.has_srq) {
+        pthread_spin_init(&mv2_MPIDI_CH3I_RDMA_Process.srq_post_spin_lock, 0);
+        pthread_spin_lock(&mv2_MPIDI_CH3I_RDMA_Process.srq_post_spin_lock);
 
         struct ibv_srq_attr srq_attr;
 
         for (i = 0; i < rdma_num_hcas; ++i) {
-            pthread_mutex_init(&MPIDI_CH3I_RDMA_Process.srq_post_mutex_lock[i], 0);
-            pthread_cond_init(&MPIDI_CH3I_RDMA_Process.srq_post_cond[i], 0);
+            pthread_mutex_init(&mv2_MPIDI_CH3I_RDMA_Process.srq_post_mutex_lock[i], 0);
+            pthread_cond_init(&mv2_MPIDI_CH3I_RDMA_Process.srq_post_cond[i], 0);
 
-            MPIDI_CH3I_RDMA_Process.srq_zero_post_counter[i] = 0;
-            MPIDI_CH3I_RDMA_Process.posted_bufs[i] = viadev_post_srq_buffers(viadev_srq_fill_size, i);
+            mv2_MPIDI_CH3I_RDMA_Process.srq_zero_post_counter[i] = 0;
+            mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[i] = viadev_post_srq_buffers(viadev_srq_fill_size, i);
 
             srq_attr.max_wr = viadev_srq_fill_size;
             srq_attr.max_sge = 1;
             srq_attr.srq_limit = viadev_srq_limit;
 
-            if (ibv_modify_srq(MPIDI_CH3I_RDMA_Process.srq_hndl[i], &srq_attr, IBV_SRQ_LIMIT)) {
+            if (ibv_modify_srq(mv2_MPIDI_CH3I_RDMA_Process.srq_hndl[i], &srq_attr, IBV_SRQ_LIMIT)) {
                 ibv_error_abort(IBV_RETURN_ERR, "Couldn't modify SRQ limit\n");
             }
 
             /* Start the async thread which watches for SRQ limit events. */
-            pthread_create(&MPIDI_CH3I_RDMA_Process.async_thread[i], NULL, (void *) async_thread, (void *) MPIDI_CH3I_RDMA_Process.nic_context[i]
+            pthread_create(&mv2_MPIDI_CH3I_RDMA_Process.async_thread[i], NULL, (void *) async_thread, (void *) mv2_MPIDI_CH3I_RDMA_Process.nic_context[i]
                 );
         }
 
-        pthread_spin_unlock(&MPIDI_CH3I_RDMA_Process.srq_post_spin_lock);
+        pthread_spin_unlock(&mv2_MPIDI_CH3I_RDMA_Process.srq_post_spin_lock);
     }
 
     uint32_t ud_qpn_self;
@@ -1485,10 +1493,10 @@ int CR_IBU_Rebuild_network()
 
     if (pg_size == 1) {
         ud_qpn_all[0] = ud_qpn_self;
-        lid_all[0] = MPIDI_CH3I_RDMA_Process.lids[0][0];
-        gid_all[0] = MPIDI_CH3I_RDMA_Process.gids[0][0];
+        lid_all[0] = mv2_MPIDI_CH3I_RDMA_Process.lids[0][0];
+        gid_all[0] = mv2_MPIDI_CH3I_RDMA_Process.gids[0][0];
     } else if (pg_size > 1) {
-        if (MPIDI_CH3I_RDMA_Process.has_ring_startup) {
+        if (mv2_MPIDI_CH3I_RDMA_Process.has_ring_startup) {
             ud_addr_info_t self_info;
             dbg("****  Ring-based exchange\n");
 
@@ -1506,16 +1514,16 @@ int CR_IBU_Rebuild_network()
                                 hostent->h_addr_list[0])->s_addr;
             self_info.hostid = hostid;
 
-            memcpy(&self_info.lid, &MPIDI_CH3I_RDMA_Process.lids, sizeof(uint16_t) * MAX_NUM_HCAS * MAX_NUM_PORTS);
-            memcpy(&self_info.gid, &MPIDI_CH3I_RDMA_Process.gids,
+            memcpy(&self_info.lid, &mv2_MPIDI_CH3I_RDMA_Process.lids, sizeof(uint16_t) * MAX_NUM_HCAS * MAX_NUM_PORTS);
+            memcpy(&self_info.gid, &mv2_MPIDI_CH3I_RDMA_Process.gids,
                    sizeof(union ibv_gid) * MAX_NUM_HCAS * MAX_NUM_PORTS);
             self_info.qpn = ud_qpn_self;
 
             ud_addr_info_t *all_info = (ud_addr_info_t *) MPIU_Malloc(sizeof(ud_addr_info_t) * pg_size);
             /*will be freed in rdma_iba_bootstrap_cleanup */
-            rdma_setup_startup_ring(&MPIDI_CH3I_RDMA_Process, pg_rank, pg_size);
+            rdma_setup_startup_ring(&mv2_MPIDI_CH3I_RDMA_Process, pg_rank, pg_size);
 
-            mpi_errno = rdma_ring_based_allgather(&self_info, sizeof(self_info), pg_rank, all_info, pg_size, &MPIDI_CH3I_RDMA_Process);
+            mpi_errno = rdma_ring_based_allgather(&self_info, sizeof(self_info), pg_rank, all_info, pg_size, &mv2_MPIDI_CH3I_RDMA_Process);
             if (mpi_errno) {
                 dbg("rdma-ring-based-allgather failed, ret=%d...\n", mpi_errno);
                 MPIU_ERR_POP(mpi_errno);
@@ -1530,7 +1538,7 @@ int CR_IBU_Rebuild_network()
                 lid_all[i] = all_info[i].lid[0][0];
             }
 
-            mpi_errno = rdma_cleanup_startup_ring(&MPIDI_CH3I_RDMA_Process);
+            mpi_errno = rdma_cleanup_startup_ring(&mv2_MPIDI_CH3I_RDMA_Process);
 
             if (mpi_errno) {
                 MPIU_ERR_POP(mpi_errno);
@@ -1569,13 +1577,13 @@ int CR_IBU_Rebuild_network()
 
             sprintf(key, "ud_info_%08d", pg_rank);
             if (!use_iboeth) {
-                sprintf(val, "%08x:%08x", MPIDI_CH3I_RDMA_Process.lids[0][0],
+                sprintf(val, "%08x:%08x", mv2_MPIDI_CH3I_RDMA_Process.lids[0][0],
                         ud_qpn_self);
             } else {
                 sprintf(val, "%08x:%08x:%016"PRIx64":%016"PRIx64,
-                       MPIDI_CH3I_RDMA_Process.lids[0][0], ud_qpn_self,
-                       MPIDI_CH3I_RDMA_Process.gids[0][0].global.subnet_prefix,
-                       MPIDI_CH3I_RDMA_Process.gids[0][0].global.interface_id);
+                       mv2_MPIDI_CH3I_RDMA_Process.lids[0][0], ud_qpn_self,
+                       mv2_MPIDI_CH3I_RDMA_Process.gids[0][0].global.subnet_prefix,
+                       mv2_MPIDI_CH3I_RDMA_Process.gids[0][0].global.interface_id);
             }
 
 
@@ -1592,8 +1600,8 @@ int CR_IBU_Rebuild_network()
 
             for (i = 0; i < pg_size; ++i) {
                 if (pg_rank == i) {
-                    lid_all[i] = MPIDI_CH3I_RDMA_Process.lids[0][0];
-                    gid_all[i] = MPIDI_CH3I_RDMA_Process.gids[0][0];
+                    lid_all[i] = mv2_MPIDI_CH3I_RDMA_Process.lids[0][0];
+                    gid_all[i] = mv2_MPIDI_CH3I_RDMA_Process.gids[0][0];
                     ud_qpn_all[i] = ud_qpn_self;
                     continue;
                 }
@@ -1917,7 +1925,16 @@ int CR_IBU_Reactivate_channels()
         }
     }
 
-
+#if defined(HAVE_LIBHWLOC)
+    int pg_rank;
+    PMI_Get_rank(&pg_rank);
+    retval = MPIDI_CH3I_set_affinity(MPICR_pg, pg_rank);
+    if (retval) {
+        fprintf(stderr, "[%s:%d] MPIDI_CH3I_set_affinity) returned %d\n", 
+                                          __FILE__, __LINE__, retval);
+        return (retval);
+    }
+#endif
     /* Reinitialize the SMP channel */
     CR_DBG("MPIDI_CH3I_SMP_init()\n");
     retval = MPIDI_CH3I_SMP_init(MPICR_pg);

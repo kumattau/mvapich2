@@ -20,6 +20,10 @@
 #include "mpirun_dbg.h"
 #include "common_ckpt.h"
 
+#ifdef CR_FTB
+#include <libftb.h>
+#endif
+
 // Initialize CR
 // - it should be called only once at mpirun_rsh startup
 // - it should *not* be called after restart
@@ -54,6 +58,7 @@ extern char sessionid[CR_SESSION_MAX];
 // =====================================================
 // For Migration
 
+#ifdef CR_FTB
 #define HOSTFILE_LEN 256
 extern int nsparehosts;
 extern int sparehosts_on;
@@ -62,10 +67,13 @@ extern char **sparehosts;
 extern struct spawn_info_s *spawninfo;
 
 int read_sparehosts(char *hostfile, char ***hostarr, int *nhosts);
+int cr_ftb_aggre_based_mig(char *src);
+extern int cr_ftb_callback(FTB_receive_event_t *, void *);
+#endif /* CR_FTB */
 
 // =====================================================
 
-#endif
+#endif /* CKPT */ 
 
 
 #endif

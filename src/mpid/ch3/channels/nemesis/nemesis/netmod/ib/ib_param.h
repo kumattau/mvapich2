@@ -1,5 +1,5 @@
 /*!\file */
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -45,7 +45,6 @@ extern uint8_t              rdma_default_time_out;
 extern uint8_t              rdma_default_retry_count;
 extern uint8_t              rdma_default_rnr_retry;
 extern int                  rdma_default_put_get_list_size;
-extern int                  rdma_read_reserve;
 extern float                rdma_credit_update_threshold;
 extern int                  num_rdma_buffer;
 extern int                  rdma_iba_eager_threshold;
@@ -88,7 +87,6 @@ extern int                  rdma_rndv_ext_sendq_size;
 extern int                  rdma_pin_pool_size;
 extern int                  rdma_put_fallback_threshold;
 extern int                  rdma_get_fallback_threshold;
-extern int                  rdma_integer_pool_size;
 extern int                  rdma_iba_eager_threshold;
 extern long                 rdma_eagersize_1sc;
 extern int                  rdma_qos_num_sls;
@@ -104,7 +102,6 @@ extern  int                 sm_scheduling;
 extern  int                 alpha;
 extern  int                 stripe_factor;
 extern  int                 apm_tester;
-extern  int                 apm_count;
 
 extern int                  rdma_coalesce_threshold;
 extern int                  rdma_use_coalesce;
@@ -113,6 +110,7 @@ extern int                  rdma_use_blocking;
 extern unsigned long        rdma_blocking_spin_count_threshold;
 extern int                  rdma_use_smp;
 extern int                  use_iboeth;
+extern int                  mv2_show_env_info;
 
 
 
@@ -124,7 +122,6 @@ extern int                  use_iboeth;
 #define RDMA_DEFAULT_MAX_PORTS          (2)
 #define RDMA_DEFAULT_MAX_SEND_WQE       (64)
 #define RDMA_DEFAULT_MAX_RECV_WQE       (128)
-#define RDMA_READ_RESERVE               (10)
 #define RDMA_DEFAULT_MAX_SG_LIST        (1)
 #define RDMA_DEFAULT_PKEY_IX            (0)
 #define RDMA_DEFAULT_PKEY               (0x0)
@@ -138,7 +135,6 @@ extern int                  use_iboeth;
 #define RDMA_DEFAULT_RETRY_COUNT        (7)
 #define RDMA_DEFAULT_RNR_RETRY          (7)
 #define RDMA_DEFAULT_PUT_GET_LIST_SIZE  (200)
-#define RDMA_INTEGER_POOL_SIZE          (1024)
 #define RDMA_DEFAULT_POLLING_SET_LIMIT  (64)
 #define RDMA_IBA_NULL_HCA               "nohca"
 #define RDMA_DEFAULT_NUM_SA_QUERY_RETRIES   (20)
@@ -181,8 +177,6 @@ extern int                  use_iboeth;
 #define PROCESS_BINDING                 4
 #define PARTIAL_ADAPTIVE                5
 #define BEST_ADAPTIVE                   6
-
-#define APM_COUNT                       2
 
 #define DYNAMIC_TOTAL_WEIGHT            (3* 1024)
 

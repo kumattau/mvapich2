@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -30,7 +30,7 @@
 #include DAT_HEADER
 #include <pthread.h>
 
-typedef struct MPIDI_CH3I_RDMA_Process_t
+typedef struct mv2_MPIDI_CH3I_RDMA_Process_t
 {
     /* keep all rdma implementation specific global variable in a
        structure like this to avoid name collisions */
@@ -67,11 +67,11 @@ typedef struct MPIDI_CH3I_RDMA_Process_t
     DAT_EVD_HANDLE creq_cq_hndl_1sc;
 
     int inline_size_1sc;
-} MPIDI_CH3I_RDMA_Process_t;
+} mv2_MPIDI_CH3I_RDMA_Process_t;
 
 int MRAILI_Backlog_send(MPIDI_VC_t * vc,
                         const MRAILI_Channel_info * channel);
-extern MPIDI_CH3I_RDMA_Process_t MPIDI_CH3I_RDMA_Process;
+extern mv2_MPIDI_CH3I_RDMA_Process_t mv2_MPIDI_CH3I_RDMA_Process;
 extern rdma_iba_addr_tb_t rdma_iba_addr_table;
 extern MPIDI_PG_t *cached_pg;
 void MRAILI_RDMA_Put(   MPIDI_VC_t * vc, vbuf *v,
@@ -80,24 +80,24 @@ void MRAILI_RDMA_Put(   MPIDI_VC_t * vc, vbuf *v,
                         int nbytes, MRAILI_Channel_info * subchannel
                     );
 int
-rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
+rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                   MPIDI_VC_t * vc, int pg_rank, int pg_size);
 
 int
-rdma_iba_allocate_memory(struct MPIDI_CH3I_RDMA_Process_t *proc,
+rdma_iba_allocate_memory(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                          MPIDI_VC_t * vc, int pg_rank, int pg_size);
 
 #ifdef USE_MPD_RING
 int
-rdma_iba_exchange_info(struct MPIDI_CH3I_RDMA_Process_t *proc,
+rdma_iba_exchange_info(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                        MPIDI_VC_t * vc, int pg_rank, int pg_size);
 #endif
 int
-rdma_iba_enable_connections(struct MPIDI_CH3I_RDMA_Process_t *proc,
+rdma_iba_enable_connections(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                             MPIDI_VC_t * vc, int pg_rank, int pg_size);
 
 int MRAILI_Process_send(void *vbuf_addr);
 
-void rdma_init_parameters (MPIDI_CH3I_RDMA_Process_t *proc);
+void rdma_init_parameters (mv2_MPIDI_CH3I_RDMA_Process_t *proc);
 
 #endif /* RDMA_IMPL_H */

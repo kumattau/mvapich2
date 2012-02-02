@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -28,230 +28,53 @@ static mv2_multirail_info_type g_mv2_multirail_info = mv2_num_rail_unknown;
 #define MV2_STR_CXGB4        "cxgb4"
 #define MV2_STR_NES0         "nes0"
 
-/* Possible Architecture- Card Combinations */
-const mv2_arch_hca_type
-mv2_arch_hca_types[MV2_NUM_ARCH_TYPES][MV2_NUM_HCA_TYPES] = { 
+typedef struct _mv2_hca_types_log_t{
+    uint64_t hca_type;
+    char *hca_name;
+}mv2_hca_types_log_t;
 
-    /* Arch Type = MV2_ARCH_UNKWN */
-    {   
-        MV2_ARCH_UNKWN_HCA_UNKWN,  
-        MV2_ARCH_UNKWN_HCA_MLX_PCI_EX_SDR, 
-        MV2_ARCH_UNKWN_HCA_MLX_PCI_EX_DDR, 
-        MV2_ARCH_UNKWN_HCA_MLX_CX_SDR,
-        MV2_ARCH_UNKWN_HCA_MLX_CX_DDR,
-        MV2_ARCH_UNKWN_HCA_MLX_CX_QDR,
-        MV2_ARCH_UNKWN_HCA_PATH_HT, 
-        MV2_ARCH_UNKWN_HCA_QIB, 
-        MV2_ARCH_UNKWN_HCA_MLX_PCI_X, 
-        MV2_ARCH_UNKWN_HCA_IBM_EHCA,
-        MV2_ARCH_UNKWN_HCA_CHELSIO_T3,
-        MV2_ARCH_UNKWN_HCA_CHELSIO_T4,
-        MV2_ARCH_UNKWN_HCA_INTEL_NE020
-    },  
+#define MV2_HCA_LAST_ENTRY -1
+static mv2_hca_types_log_t mv2_hca_types_log[] = {
 
-    /* Arch Type = MV2_ARCH_AMD_BARCELONA */
-    {   
-        MV2_ARCH_AMD_BRCLNA_16_HCA_UNKWN,
-        MV2_ARCH_AMD_BRCLNA_16_HCA_MLX_PCI_EX_SDR,
-        MV2_ARCH_AMD_BRCLNA_16_HCA_MLX_PCI_EX_DDR,
-        MV2_ARCH_AMD_BRCLNA_16_HCA_MLX_CX_SDR,
-        MV2_ARCH_AMD_BRCLNA_16_HCA_MLX_CX_DDR,
-        MV2_ARCH_AMD_BRCLNA_16_HCA_MLX_CX_QDR,
-        MV2_ARCH_AMD_BRCLNA_16_HCA_PATH_HT,
-        MV2_ARCH_AMD_BRCLNA_16_HCA_QIB,
-        MV2_ARCH_AMD_BRCLNA_16_HCA_MLX_PCI_X,
-        MV2_ARCH_AMD_BRCLNA_16_HCA_IBM_EHCA,
-        MV2_ARCH_AMD_BRCLNA_16_HCA_CHELSIO_T3,
-        MV2_ARCH_AMD_BRCLNA_16_HCA_CHELSIO_T4,
-        MV2_ARCH_AMD_BRCLNA_16_HCA_INTEL_NE020
-    },
-    /* Arch Type = MV2_ARCH_AMD_MAGNY_COURS */
-    {
-        MV2_ARCH_AMD_MGNYCRS_24_HCA_UNKWN,
-        MV2_ARCH_AMD_MGNYCRS_24_HCA_MLX_PCI_EX_SDR,
-        MV2_ARCH_AMD_MGNYCRS_24_HCA_MLX_PCI_EX_DDR,
-        MV2_ARCH_AMD_MGNYCRS_24_HCA_MLX_CX_SDR,
-        MV2_ARCH_AMD_MGNYCRS_24_HCA_MLX_CX_DDR,
-        MV2_ARCH_AMD_MGNYCRS_24_HCA_MLX_CX_QDR,
-        MV2_ARCH_AMD_MGNYCRS_24_HCA_PATH_HT,
-        MV2_ARCH_AMD_MGNYCRS_24_HCA_QIB,
-        MV2_ARCH_AMD_MGNYCRS_24_HCA_MLX_PCI_X,
-        MV2_ARCH_AMD_MGNYCRS_24_HCA_IBM_EHCA,
-        MV2_ARCH_AMD_MGNYCRS_24_HCA_CHELSIO_T3,
-        MV2_ARCH_AMD_MGNYCRS_24_HCA_CHELSIO_T4,
-        MV2_ARCH_AMD_MGNYCRS_24_HCA_INTEL_NE020
-    },
+    /* Mellanox Cards */
+    {MV2_HCA_MLX_PCI_EX_SDR,"MV2_HCA_MLX_PCI_EX_SDR"},
+    {MV2_HCA_MLX_PCI_EX_DDR,"MV2_HCA_MLX_PCI_EX_DDR"},
+    {MV2_HCA_MLX_CX_SDR,    "MV2_HCA_MLX_CX_SDR"},
+    {MV2_HCA_MLX_CX_DDR,    "MV2_HCA_MLX_CX_DDR"},
+    {MV2_HCA_MLX_CX_QDR,    "MV2_HCA_MLX_CX_QDR"},
+    {MV2_HCA_MLX_PCI_X,     "MV2_HCA_MLX_PCI_X"},
 
-    /* Arch Type = MV2_ARCH_INTEL_CLOVERTOWN */
-    {
-        MV2_ARCH_INTEL_CLVRTWN_8_HCA_UNKWN,
-        MV2_ARCH_INTEL_CLVRTWN_8_HCA_MLX_PCI_EX_SDR,
-        MV2_ARCH_INTEL_CLVRTWN_8_HCA_MLX_PCI_EX_DDR,
-        MV2_ARCH_INTEL_CLVRTWN_8_HCA_MLX_CX_SDR,
-        MV2_ARCH_INTEL_CLVRTWN_8_HCA_MLX_CX_DDR,
-        MV2_ARCH_INTEL_CLVRTWN_8_HCA_MLX_CX_QDR,
-        MV2_ARCH_INTEL_CLVRTWN_8_HCA_PATH_HT,
-        MV2_ARCH_INTEL_CLVRTWN_8_HCA_QIB,
-        MV2_ARCH_INTEL_CLVRTWN_8_HCA_MLX_PCI_X,
-        MV2_ARCH_INTEL_CLVRTWN_8_HCA_IBM_EHCA,
-        MV2_ARCH_INTEL_CLVRTWN_8_HCA_CHELSIO_T3,
-        MV2_ARCH_INTEL_CLVRTWN_8_HCA_CHELSIO_T4,
-        MV2_ARCH_INTEL_CLVRTWN_8_HCA_INTEL_NE020
-    },
-    /* Arch Type = MV2_ARCH_INTEL_NEHALEM (8)*/
-    {
-        MV2_ARCH_INTEL_NEHLM_8_HCA_UNKWN,
-        MV2_ARCH_INTEL_NEHLM_8_HCA_MLX_PCI_EX_SDR,
-        MV2_ARCH_INTEL_NEHLM_8_HCA_MLX_PCI_EX_DDR,
-        MV2_ARCH_INTEL_NEHLM_8_HCA_MLX_CX_SDR,
-        MV2_ARCH_INTEL_NEHLM_8_HCA_MLX_CX_DDR,
-        MV2_ARCH_INTEL_NEHLM_8_HCA_MLX_CX_QDR,
-        MV2_ARCH_INTEL_NEHLM_8_HCA_PATH_HT,
-        MV2_ARCH_INTEL_NEHLM_8_HCA_QIB,
-        MV2_ARCH_INTEL_NEHLM_8_HCA_MLX_PCI_X,
-        MV2_ARCH_INTEL_NEHLM_8_HCA_IBM_EHCA,
-        MV2_ARCH_INTEL_NEHLM_8_HCA_CHELSIO_T3,
-        MV2_ARCH_INTEL_NEHLM_8_HCA_CHELSIO_T4,
-        MV2_ARCH_INTEL_NEHLM_8_HCA_INTEL_NE020
-    },
+    /* Qlogic Cards */
+    {MV2_HCA_QLGIC_PATH_HT, "MV2_HCA_QLGIC_PATH_HT"},
+    {MV2_HCA_QLGIC_QIB,     "MV2_HCA_QLGIC_QIB"},
 
-    /* Arch Type = MV2_ARCH_INTEL_NEHALEM (16)*/
-    {
-        MV2_ARCH_INTEL_NEHLM_16_HCA_UNKWN,
-        MV2_ARCH_INTEL_NEHLM_16_HCA_MLX_PCI_EX_SDR,
-        MV2_ARCH_INTEL_NEHLM_16_HCA_MLX_PCI_EX_DDR,
-        MV2_ARCH_INTEL_NEHLM_16_HCA_MLX_CX_SDR,
-        MV2_ARCH_INTEL_NEHLM_16_HCA_MLX_CX_DDR,
-        MV2_ARCH_INTEL_NEHLM_16_HCA_MLX_CX_QDR,
-        MV2_ARCH_INTEL_NEHLM_16_HCA_PATH_HT,
-        MV2_ARCH_INTEL_NEHLM_16_HCA_QIB,
-        MV2_ARCH_INTEL_NEHLM_16_HCA_MLX_PCI_X,
-        MV2_ARCH_INTEL_NEHLM_16_HCA_IBM_EHCA,
-        MV2_ARCH_INTEL_NEHLM_16_HCA_CHELSIO_T3,
-        MV2_ARCH_INTEL_NEHLM_16_HCA_CHELSIO_T4,
-        MV2_ARCH_INTEL_NEHLM_16_HCA_INTEL_NE020
-    },
+    /* IBM Cards */
+    {MV2_HCA_IBM_EHCA,      "MV2_HCA_IBM_EHCA"},
+    
+    /* Chelsio Cards */
+    {MV2_HCA_CHELSIO_T3,    "MV2_HCA_CHELSIO_T3"},
+    {MV2_HCA_CHELSIO_T4,    "MV2_HCA_CHELSIO_T4"},
 
-    /* Arch Type = MV2_ARCH_INTEL_HARPERTOWN */
-    {
-        MV2_ARCH_INTEL_HRPRTWN_8_HCA_UNKWN,
-        MV2_ARCH_INTEL_HRPRTWN_8_HCA_MLX_PCI_EX_SDR,
-        MV2_ARCH_INTEL_HRPRTWN_8_HCA_MLX_PCI_EX_DDR,
-        MV2_ARCH_INTEL_HRPRTWN_8_HCA_MLX_CX_SDR,
-        MV2_ARCH_INTEL_HRPRTWN_8_HCA_MLX_CX_DDR,
-        MV2_ARCH_INTEL_HRPRTWN_8_HCA_MLX_CX_QDR,
-        MV2_ARCH_INTEL_HRPRTWN_8_HCA_PATH_HT,
-        MV2_ARCH_INTEL_HRPRTWN_8_HCA_QIB,
-        MV2_ARCH_INTEL_HRPRTWN_8_HCA_MLX_PCI_X,
-        MV2_ARCH_INTEL_HRPRTWN_8_HCA_IBM_EHCA,
-        MV2_ARCH_INTEL_HRPRTWN_8_HCA_CHELSIO_T3,
-        MV2_ARCH_INTEL_HRPRTWN_8_HCA_CHELSIO_T4,
-        MV2_ARCH_INTEL_HRPRTWN_8_HCA_INTEL_NE020
-    },
+    /* Intel iWarp Cards */
+    {MV2_HCA_INTEL_NE020,   "MV2_HCA_INTEL_NE020"},
 
-    /* Arch Type = MV2_ARCH_INTEL_XEON_DUAL_4 */
-    {
-        MV2_ARCH_INTEL_XEON_DUAL_4_HCA_UNKWN,
-        MV2_ARCH_INTEL_XEON_DUAL_4_HCA_MLX_PCI_EX_SDR,
-        MV2_ARCH_INTEL_XEON_DUAL_4_HCA_MLX_PCI_EX_DDR,
-        MV2_ARCH_INTEL_XEON_DUAL_4_HCA_MLX_CX_SDR,
-        MV2_ARCH_INTEL_XEON_DUAL_4_HCA_MLX_CX_DDR,
-        MV2_ARCH_INTEL_XEON_DUAL_4_HCA_MLX_CX_QDR,
-        MV2_ARCH_INTEL_XEON_DUAL_4_HCA_PATH_HT,
-        MV2_ARCH_INTEL_XEON_DUAL_4_HCA_QIB,
-        MV2_ARCH_INTEL_XEON_DUAL_4_HCA_MLX_PCI_X,
-        MV2_ARCH_INTEL_XEON_DUAL_4_HCA_IBM_EHCA,
-        MV2_ARCH_INTEL_XEON_DUAL_4_HCA_CHELSIO_T3,
-        MV2_ARCH_INTEL_XEON_DUAL_4_HCA_CHELSIO_T4,
-        MV2_ARCH_INTEL_XEON_DUAL_4_HCA_INTEL_NE020
-    },
-
-    /* Arch Type = MV2_ARCH_AMD_OPTERON_DUAL */
-    {
-        MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_UNKWN,
-        MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_MLX_PCI_EX_SDR,
-        MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_MLX_PCI_EX_DDR,
-        MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_MLX_CX_SDR,
-        MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_MLX_CX_DDR,
-        MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_MLX_CX_QDR,
-        MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_PATH_HT,
-        MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_QIB,
-        MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_MLX_PCI_X,
-        MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_IBM_EHCA,
-        MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_CHELSIO_T3,
-        MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_CHELSIO_T4,
-        MV2_ARCH_AMD_OPTRN_DUAL_4_HCA_INTEL_NE020
-    },
-
-    /* Arch Type = MV2_ARCH_INTEL */
-    {
-        MV2_ARCH_INTEL_HCA_UNKWN,
-        MV2_ARCH_INTEL_HCA_MLX_PCI_EX_SDR,
-        MV2_ARCH_INTEL_HCA_MLX_PCI_EX_DDR,
-        MV2_ARCH_INTEL_HCA_MLX_CX_SDR,
-        MV2_ARCH_INTEL_HCA_MLX_CX_DDR,
-        MV2_ARCH_INTEL_HCA_MLX_CX_QDR,
-        MV2_ARCH_INTEL_HCA_PATH_HT,
-        MV2_ARCH_INTEL_HCA_QIB,
-        MV2_ARCH_INTEL_HCA_MLX_PCI_X,
-        MV2_ARCH_INTEL_HCA_IBM_EHCA,
-        MV2_ARCH_INTEL_HCA_CHELSIO_T3,
-        MV2_ARCH_INTEL_HCA_CHELSIO_T4,
-        MV2_ARCH_INTEL_HCA_INTEL_NE020
-    },
-
-    /* Arch Type = MV2_ARCH_AMD */
-    {
-        MV2_ARCH_AMD_HCA_UNKWN,
-        MV2_ARCH_AMD_HCA_MLX_PCI_EX_SDR,
-        MV2_ARCH_AMD_HCA_MLX_PCI_EX_DDR,
-        MV2_ARCH_AMD_HCA_MLX_CX_SDR,
-        MV2_ARCH_AMD_HCA_MLX_CX_DDR,
-        MV2_ARCH_AMD_HCA_MLX_CX_QDR,
-        MV2_ARCH_AMD_HCA_PATH_HT,
-        MV2_ARCH_AMD_HCA_QIB,
-        MV2_ARCH_AMD_HCA_MLX_PCI_X,
-        MV2_ARCH_AMD_HCA_IBM_EHCA,
-        MV2_ARCH_AMD_HCA_CHELSIO_T3,
-        MV2_ARCH_AMD_HCA_CHELSIO_T4,
-        MV2_ARCH_AMD_HCA_INTEL_NE020
-    },
-
-    /* Arch Type = MV2_ARCH_IBM_PPC */
-    {
-        MV2_ARCH_IBM_PPC_HCA_UNKWN,
-        MV2_ARCH_IBM_PPC_HCA_MLX_PCI_EX_SDR,
-        MV2_ARCH_IBM_PPC_HCA_MLX_PCI_EX_DDR,
-        MV2_ARCH_IBM_PPC_HCA_MLX_CX_SDR,
-        MV2_ARCH_IBM_PPC_HCA_MLX_CX_DDR,
-        MV2_ARCH_IBM_PPC_HCA_MLX_CX_QDR,
-        MV2_ARCH_IBM_PPC_HCA_PATH_HT,
-        MV2_ARCH_IBM_PPC_HCA_QIB,
-        MV2_ARCH_IBM_PPC_HCA_MLX_PCI_X,
-        MV2_ARCH_IBM_PPC_HCA_IBM_EHCA,
-        MV2_ARCH_IBM_PPC_HCA_CHELSIO_T3,
-        MV2_ARCH_IBM_PPC_HCA_CHELSIO_T4,
-        MV2_ARCH_IBM_PPC_HCA_INTEL_NE020
-    },
-
-        /* Arch Type : MV2_ARCH_INTEL_XEON_E5630_8 */
-    {   
-        MV2_ARCH_INTEL_XEON_E5630_8_HCA_UNKWN,    
-        MV2_ARCH_INTEL_XEON_E5630_8_HCA_MLX_PCI_EX_SDR,
-        MV2_ARCH_INTEL_XEON_E5630_8_HCA_MLX_PCI_EX_DDR,
-        MV2_ARCH_INTEL_XEON_E5630_8_HCA_MLX_CX_SDR,
-        MV2_ARCH_INTEL_XEON_E5630_8_HCA_MLX_CX_DDR,
-        MV2_ARCH_INTEL_XEON_E5630_8_HCA_MLX_CX_QDR,
-        MV2_ARCH_INTEL_XEON_E5630_8_HCA_PATH_HT,
-        MV2_ARCH_INTEL_XEON_E5630_8_HCA_QIB,
-        MV2_ARCH_INTEL_XEON_E5630_8_HCA_MLX_PCI_X,
-        MV2_ARCH_INTEL_XEON_E5630_8_HCA_IBM_EHCA,
-        MV2_ARCH_INTEL_XEON_E5630_8_HCA_CHELSIO_T3,
-        MV2_ARCH_INTEL_XEON_E5630_8_HCA_CHELSIO_T4,
-        MV2_ARCH_INTEL_XEON_E5630_8_HCA_INTEL_NE020
-    }, 
+    /*Unknown */
+    {MV2_HCA_UNKWN,         "MV2_HCA_UNKWN"},
+    {MV2_HCA_LAST_ENTRY,    "MV2_HCA_LAST_ENTRY"},
 };
 
+char* mv2_get_hca_name(mv2_hca_type hca_type)
+{
+    int i=0;
+    while(mv2_hca_types_log[i].hca_type != MV2_HCA_LAST_ENTRY){
+
+        if(mv2_hca_types_log[i].hca_type == hca_type){
+            return(mv2_hca_types_log[i].hca_name);
+        }
+        i++;
+    }
+    return("MV2_HCA_UNKWN");
+}
 
 static int get_rate(umad_ca_t *umad_ca)
 {
@@ -345,10 +168,10 @@ static mv2_hca_type mv2_hca_name_to_type ( char *dev_name )
         umad_done();
 
     } else if(!strncmp(dev_name, MV2_STR_IPATH, 5)) {
-        hca_type = MV2_HCA_PATH_HT;
+        hca_type = MV2_HCA_QLGIC_PATH_HT;
 
     } else if(!strncmp(dev_name, MV2_STR_QIB, 3)) {
-        hca_type = MV2_HCA_QIB;
+        hca_type = MV2_HCA_QLGIC_QIB;
 
     } else if(!strncmp(dev_name, MV2_STR_EHCA, 4)) {
         hca_type = MV2_HCA_IBM_EHCA;
@@ -384,7 +207,9 @@ mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
 
 mv2_arch_hca_type mv2_get_arch_hca_type ( struct ibv_device *dev )
 {
-    return mv2_arch_hca_types[mv2_get_arch_type()][mv2_get_hca_type(dev)];
+    mv2_arch_hca_type arch_hca = mv2_get_arch_type();
+    arch_hca = arch_hca << 32 | mv2_get_hca_type(dev);
+    return arch_hca;
 }
 
 mv2_multirail_info_type mv2_get_multirail_info()
@@ -416,5 +241,32 @@ mv2_multirail_info_type mv2_get_multirail_info()
         ibv_free_device_list(dev_list);
     }
     return g_mv2_multirail_info;
+}
+
+/* Check arch-hca type */
+int mv2_is_arch_hca_type(mv2_arch_hca_type arch_hca_type, 
+        mv2_arch_type arch_type, mv2_hca_type hca_type)
+{
+    int ret;
+    if (MV2_ARCH_ANY == arch_type && MV2_HCA_ANY == hca_type){
+        ret = 1;
+
+    } else if (MV2_ARCH_ANY == arch_type){
+        mv2_arch_hca_type tmp = UINT32_MAX;
+        mv2_arch_hca_type input = arch_hca_type & tmp;
+        ret = (input==hca_type) ? 1: 0;
+
+    } else if (MV2_HCA_ANY == hca_type){
+        mv2_arch_hca_type tmp = UINT32_MAX;
+        tmp = tmp << 32;
+        mv2_arch_hca_type input = arch_hca_type & tmp;
+        ret = (input==arch_type) ? 1: 0;
+
+    } else{
+        uint64_t value = arch_type;
+        value = value << 32 | hca_type;
+        ret = (value==arch_hca_type) ? 1:0;
+    }
+    return ret;
 }
 

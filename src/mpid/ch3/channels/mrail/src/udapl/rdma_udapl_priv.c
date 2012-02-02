@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -83,7 +83,7 @@ get_host_id (char *myhostname, int hostname_len)
 
 #ifdef USE_MPD_RING
 int
-rdma_iba_bootstrap_cleanup (struct MPIDI_CH3I_RDMA_Process_t *proc)
+rdma_iba_bootstrap_cleanup (struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 {
     int ret;
     /* Free all the temorary memory used for MPD_RING */
@@ -107,7 +107,7 @@ rdma_iba_bootstrap_cleanup (struct MPIDI_CH3I_RDMA_Process_t *proc)
  * The return of these two tokens completes the barrier.
  */
 int
-bootstrap_barrier (struct MPIDI_CH3I_RDMA_Process_t *proc,
+bootstrap_barrier (struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                    int pg_rank, int pg_size)
 {
     /* work entries related variables */
@@ -244,9 +244,9 @@ ib_vapi_enable_ring (int lhs, int rhs, char *ring_addr)
     char temp_str[UNIT_QPLEN + 1];
     char *temp_ptr;
 
-    MPIDI_CH3I_RDMA_Process_t *proc;
+    mv2_MPIDI_CH3I_RDMA_Process_t *proc;
 
-    proc = &MPIDI_CH3I_RDMA_Process;
+    proc = &mv2_MPIDI_CH3I_RDMA_Process;
     temp_str[UNIT_QPLEN] = '\0';
 
     for (i = 0; i < 2; i++)
@@ -384,8 +384,8 @@ ib_vapi_bootstrap_ring (int lhs, int rhs,
         char *recv_addr;
         char *send_addr;
 
-        struct MPIDI_CH3I_RDMA_Process_t *proc;
-        proc = &MPIDI_CH3I_RDMA_Process;
+        struct mv2_MPIDI_CH3I_RDMA_Process_t *proc;
+        proc = &mv2_MPIDI_CH3I_RDMA_Process;
 
 #if 1
         /* Same as local_addr_len; memory is already regitered */
@@ -627,7 +627,7 @@ rdma_pmi_exchange_addresses (int pg_rank, int pg_size,
 }
 
 int
-rdma_iba_hca_init (struct MPIDI_CH3I_RDMA_Process_t *proc,
+rdma_iba_hca_init (struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                    MPIDI_VC_t * vc, int pg_rank, int pg_size)
 {
     DAT_EP_ATTR ep_attr;
@@ -696,7 +696,7 @@ rdma_iba_hca_init (struct MPIDI_CH3I_RDMA_Process_t *proc,
           }
       }
 
-  if (MPIDI_CH3I_RDMA_Process.has_one_sided) {
+  if (mv2_MPIDI_CH3I_RDMA_Process.has_one_sided) {
     /* This part is for built up QPs and CQ for one-sided communication */
     ret = dat_evd_create (proc->nic[0],
                           MIN (RDMA_DEFAULT_MAX_CQ_SIZE,
@@ -844,7 +844,7 @@ rdma_iba_hca_init (struct MPIDI_CH3I_RDMA_Process_t *proc,
             }
       }
 
-  if (MPIDI_CH3I_RDMA_Process.has_one_sided) {
+  if (mv2_MPIDI_CH3I_RDMA_Process.has_one_sided) {
     for (i = 0; i < pg_size; i++)
       {
 
@@ -868,7 +868,7 @@ rdma_iba_hca_init (struct MPIDI_CH3I_RDMA_Process_t *proc,
 
 /* For on demand connection mode */
 int
-rdma_iba_hca_init_noep (struct MPIDI_CH3I_RDMA_Process_t *proc,
+rdma_iba_hca_init_noep (struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                    MPIDI_VC_t * vc, int pg_rank, int pg_size)
 {
     DAT_EP_ATTR ep_attr;
@@ -923,7 +923,7 @@ rdma_iba_hca_init_noep (struct MPIDI_CH3I_RDMA_Process_t *proc,
           CHECK_RETURN (ret, "cannot create conn EVD");
 
           rdma_iba_addr_table.service_id[pg_rank][i] = 1024 + getpid () + i;
-          MPIDI_CH3I_RDMA_Process.service_id[i] =
+          mv2_MPIDI_CH3I_RDMA_Process.service_id[i] =
               rdma_iba_addr_table.service_id[pg_rank][i];
 
           ret = dat_psp_create (proc->nic[i],
@@ -939,7 +939,7 @@ rdma_iba_hca_init_noep (struct MPIDI_CH3I_RDMA_Process_t *proc,
           }
       }
 
-  if (MPIDI_CH3I_RDMA_Process.has_one_sided) {
+  if (mv2_MPIDI_CH3I_RDMA_Process.has_one_sided) {
     /* This part is for built up QPs and CQ for one-sided communication */
     ret = dat_evd_create (proc->nic[0],
                           MIN (RDMA_DEFAULT_MAX_CQ_SIZE,
@@ -998,7 +998,7 @@ void cm_ep_create(MPIDI_VC_t *vc)
     unsigned int act_num_cqe;
     int i;
     DAT_RETURN ret = DAT_SUCCESS;
-    MPIDI_CH3I_RDMA_Process_t *proc = &MPIDI_CH3I_RDMA_Process;
+    mv2_MPIDI_CH3I_RDMA_Process_t *proc = &mv2_MPIDI_CH3I_RDMA_Process;
 
     ret = dat_ia_query (proc->nic[0], &async_evd_handle, DAT_IA_ALL, 
                         &ia_attr, 
@@ -1090,13 +1090,13 @@ void cm_ep_create(MPIDI_VC_t *vc)
 
 /* Allocate memory and handlers */
 int
-rdma_iba_allocate_memory (struct MPIDI_CH3I_RDMA_Process_t *proc,
+rdma_iba_allocate_memory (struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                           MPIDI_VC_t * vc, int pg_rank, int pg_size)
 {
     int ret, i = 0;
     int iter_hca;
 
-  if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+  if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
     /*The memory for sending the long int variable */
 
     VIP_MEM_HANDLE mem_handle;
@@ -1157,13 +1157,13 @@ rdma_iba_allocate_memory (struct MPIDI_CH3I_RDMA_Process_t *proc,
           vc->mrail.rfp.p_RDMA_recv_tail = num_rdma_buffer - 1;
 
           vc->mrail.rfp.RDMA_send_buf_hndl = MPIU_Malloc (sizeof (VIP_MEM_HANDLE) *
-                                                     MPIDI_CH3I_RDMA_Process.
+                                                     mv2_MPIDI_CH3I_RDMA_Process.
                                                      num_hcas);
           vc->mrail.rfp.RDMA_recv_buf_hndl =
               MPIU_Malloc (sizeof (VIP_MEM_HANDLE) *
-                      MPIDI_CH3I_RDMA_Process.num_hcas);
+                      mv2_MPIDI_CH3I_RDMA_Process.num_hcas);
 
-          for (iter_hca = 0; iter_hca < MPIDI_CH3I_RDMA_Process.num_hcas;
+          for (iter_hca = 0; iter_hca < mv2_MPIDI_CH3I_RDMA_Process.num_hcas;
                iter_hca++)
             {
                 /* initialize unsignal record */
@@ -1214,18 +1214,18 @@ rdma_iba_allocate_memory (struct MPIDI_CH3I_RDMA_Process_t *proc,
       }
   }
 
-  if (MPIDI_CH3I_RDMA_Process.has_one_sided) {
+  if (mv2_MPIDI_CH3I_RDMA_Process.has_one_sided) {
     vc->mrail.postsend_times_1sc = 0;
   }
 
     /* We need now allocate vbufs for send/recv path */
-    allocate_vbufs (MPIDI_CH3I_RDMA_Process.nic, MPIDI_CH3I_RDMA_Process.ptag,
+    allocate_vbufs (mv2_MPIDI_CH3I_RDMA_Process.nic, mv2_MPIDI_CH3I_RDMA_Process.ptag,
                     udapl_vbuf_pool_size);
     return MPI_SUCCESS;
 }
 
 int
-rdma_iba_enable_connections (struct MPIDI_CH3I_RDMA_Process_t *proc,
+rdma_iba_enable_connections (struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                              MPIDI_VC_t * vc, int pg_rank, int pg_size)
 {
     int i, step;
@@ -1304,7 +1304,7 @@ rdma_iba_enable_connections (struct MPIDI_CH3I_RDMA_Process_t *proc,
             }
       }
 
-  if (MPIDI_CH3I_RDMA_Process.has_one_sided) {
+  if (mv2_MPIDI_CH3I_RDMA_Process.has_one_sided) {
     int num_connected_1sc = 0;
     for (step = 1; step < pg_size; step++)
       {
@@ -1386,7 +1386,7 @@ MRAILI_Init_vc (MPIDI_VC_t * vc, int pg_rank)
     vc->mrail.next_packet_expected = 0;
     vc->mrail.next_packet_tosend = 0;
 
-  if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+  if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
     /* prefill desc of credit_vbuf */
     for (i = 0; i < num_rdma_buffer; i++)
       {
@@ -1534,7 +1534,7 @@ conn_server (int n, int pg_rank, int pg_size)
     while (num < n)
       {
           status =
-              dat_evd_wait (MPIDI_CH3I_RDMA_Process.creq_cq_hndl[0],
+              dat_evd_wait (mv2_MPIDI_CH3I_RDMA_Process.creq_cq_hndl[0],
                             DAT_TIMEOUT_INFINITE, 1, &event, &count);
           if (status != DAT_SUCCESS)
             {
@@ -1546,7 +1546,7 @@ conn_server (int n, int pg_rank, int pg_size)
                 if ((cr_stat.conn_qual !=
                      rdma_iba_addr_table.service_id[pg_rank][0])
                     || (cr_stat.sp_handle.psp_handle !=
-                        MPIDI_CH3I_RDMA_Process.psp_hndl[0]))
+                        mv2_MPIDI_CH3I_RDMA_Process.psp_hndl[0]))
                   {
                       MPIU_Internal_error_printf
                           ("Error: connection request mismatch.\n");
@@ -1604,7 +1604,7 @@ conn_server_1sc (int n, int pg_rank, int pg_size)
     while (num < n)
       {
           status =
-              dat_evd_wait (MPIDI_CH3I_RDMA_Process.creq_cq_hndl_1sc,
+              dat_evd_wait (mv2_MPIDI_CH3I_RDMA_Process.creq_cq_hndl_1sc,
                             DAT_TIMEOUT_INFINITE, 1, &event, &count);
           if (status != DAT_SUCCESS)
             {
@@ -1616,7 +1616,7 @@ conn_server_1sc (int n, int pg_rank, int pg_size)
                 if ((cr_stat.conn_qual !=
                      rdma_iba_addr_table.service_id_1sc[pg_rank][0])
                     || (cr_stat.sp_handle.psp_handle !=
-                        MPIDI_CH3I_RDMA_Process.psp_hndl_1sc))
+                        mv2_MPIDI_CH3I_RDMA_Process.psp_hndl_1sc))
                   {
                       MPIU_Internal_error_printf
                           ("Error: connection request mismatch.\n");

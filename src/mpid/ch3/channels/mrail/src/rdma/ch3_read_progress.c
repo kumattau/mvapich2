@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -22,7 +22,7 @@
 
 #ifdef DAPL_DEFAULT_PROVIDER
 #include "rdma_impl.h"
-extern MPIDI_CH3I_RDMA_Process_t MPIDI_CH3I_RDMA_Process;
+extern mv2_MPIDI_CH3I_RDMA_Process_t mv2_MPIDI_CH3I_RDMA_Process;
 extern struct smpi_var g_smpi;
 extern int od_server_thread;
 extern int cached_pg_size;
@@ -60,10 +60,10 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int *rdmafp_f
     if (od_server_thread &&
         MPIDI_CH3I_Process.num_conn >= cached_pg_size - g_smpi.num_local_nodes) {
 	int ret;
-        ret = pthread_cancel(MPIDI_CH3I_RDMA_Process.server_thread);
+        ret = pthread_cancel(mv2_MPIDI_CH3I_RDMA_Process.server_thread);
 	MPIU_Assert(ret == 0);
 
-        ret = pthread_join(MPIDI_CH3I_RDMA_Process.server_thread, NULL);
+        ret = pthread_join(mv2_MPIDI_CH3I_RDMA_Process.server_thread, NULL);
 	MPIU_Assert(ret == 0);
 
         od_server_thread = 0;
@@ -99,7 +99,7 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int *rdmafp_f
 #ifdef DAPL_DEFAULT_PROVIDER
   int i;
   MPIDI_PG_t 	*pg = MPIDI_Process.my_pg;
-  if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+  if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
     for (i = 0; i < pg->size; i++) {
         MPIDI_PG_Get_vc(MPIDI_Process.my_pg, local_vc_index,
                          &recv_vc_ptr);

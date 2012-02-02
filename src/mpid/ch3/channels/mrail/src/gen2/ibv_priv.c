@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -27,7 +27,7 @@ do {                                                          \
 
 struct ibv_mr * register_memory(void * buf, int len, int hca_num)
 {
-    struct ibv_mr * mr = ibv_reg_mr(MPIDI_CH3I_RDMA_Process.ptag[hca_num], buf, len,
+    struct ibv_mr * mr = ibv_reg_mr(mv2_MPIDI_CH3I_RDMA_Process.ptag[hca_num], buf, len,
             IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE |
             IBV_ACCESS_REMOTE_READ );
     DEBUG_PRINT("register return mr %p, buf %p, len %d\n", mr, buf, len);

@@ -2,7 +2,7 @@
 
 %{
 /*
- * Copyright (c) 2003-2011, The Ohio State University. All rights
+ * Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -16,6 +16,7 @@
 #include <process.h>
 #include <debug_utils.h>
 #include <mpirun_util.h>
+#include <db/text.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -50,6 +51,8 @@ static int lineno = 1;
 %token <decimal> DECIMAL
 %token <text> TEXT
 
+%name-prefix "hostfile_yy"
+
 %%
 
 hostfile:   /* empty */
@@ -79,7 +82,7 @@ hca:    TEXT                            { current.hca = $1; }
 
 %%
 
-extern FILE * yyin;
+extern FILE * hostfile_yyin;
 extern process * plist;
 extern int nprocs;
 extern int dpm;
@@ -135,9 +138,8 @@ commit(void)
     }
 
     while (multiplier--) {
-        rank[n_ranks].hostname =
-                current.hostname ? strdup(current.hostname) : NULL;
-        rank[n_ranks].hca = current.hca ? strdup(current.hca) : NULL;
+        rank[n_ranks].hostname = db_add_text(current.hostname);
+        rank[n_ranks].hca = db_add_text(current.hca);
         rank[n_ranks].port = current.port;
 
         ++n_ranks;
@@ -165,9 +167,9 @@ read_hostfile(char * pathname)
     lineno = 1;
 
     hostfile = pathname;
-    yyin = fopen(hostfile, "r");
+    hostfile_yyin = fopen(hostfile, "r");
 
-    if (yyin == NULL) {
+    if (hostfile_yyin == NULL) {
 	PRINT_ERROR_ERRNO("Can't open hostfile `%s'", errno, hostfile);
 	exit(EXIT_FAILURE);
     }
@@ -177,7 +179,7 @@ read_hostfile(char * pathname)
     if (rv) {
         print_memory();
         free_memory();
-        fclose(yyin);
+        fclose(hostfile_yyin);
         
         exit(EXIT_FAILURE);
     }
@@ -186,15 +188,15 @@ read_hostfile(char * pathname)
         PRINT_ERROR("No host found in hostfile `%s'\n", hostfile);
         print_memory();
         free_memory();
-        fclose(yyin);
+        fclose(hostfile_yyin);
         exit(EXIT_FAILURE);
     }
 
     for (i = offset; i < n; i++) {
-        plist[i - offset].hostname = strdup(rank[i % n_ranks].hostname);
+        plist[i - offset].hostname = rank[i % n_ranks].hostname;
 
         if (rank[i % n_ranks].hca) {
-            plist[i - offset].device = strdup(rank[i % n_ranks].hca);
+            plist[i - offset].device = rank[i % n_ranks].hca;
         }
 
         if (rank[i % n_ranks].port >= 0) {
@@ -204,7 +206,7 @@ read_hostfile(char * pathname)
 
     print_memory();
     free_memory();
-    fclose(yyin);
+    fclose(hostfile_yyin);
 
     return rv;
 }

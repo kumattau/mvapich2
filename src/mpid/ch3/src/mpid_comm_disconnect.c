@@ -6,9 +6,6 @@
  */
 
 #include "mpidimpl.h"
-#ifdef _ENABLE_XRC_
-#include "rdma_impl.h"
-#endif
 /*@
    MPID_Comm_disconnect - Disconnect a communicator 
 

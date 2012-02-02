@@ -2,7 +2,7 @@
 # Process this file with autoconf to produce a configure script.
 
 AC_PREREQ([2.59])
-AC_INIT([OSU-Micro-Benchmarks], [3.5], [mvapich-discuss@cse.ohio-state.edu])
+AC_INIT([OSU-Micro-Benchmarks], [3.5.1], [mvapich-discuss@cse.ohio-state.edu])
 AC_CONFIG_SRCDIR([osu_get_latency.c])
 
 AM_INIT_AUTOMAKE([foreign])
@@ -24,6 +24,8 @@ AC_CHECK_FUNCS([getpagesize gettimeofday memset sqrt])
 
 AS_IF([test "x$enable_cuda" == xyes],
 		[AC_DEFINE([_ENABLE_CUDA_], [1], [Enable CUDA Buffers])])
+
+AM_CONDITIONAL([CUDA], [test x$enable_cuda = xyes])
 
 AC_DEFINE([FIELD_WIDTH], [20], [Width of field used to report numbers])
 AC_DEFINE([FLOAT_PRECISION], [2], [Precision of reported numbers])

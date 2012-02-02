@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -458,11 +458,6 @@ int MPIDI_nem_ib_recv_addr(MPIDI_VC_t * vc, void *vstart)
     MPIDI_nem_ib_pkt_address *pkt = vstart;
     int i;
     int ret;
-#ifdef _ENABLE_XRC_
-    if (USE_XRC && (0 == MPIDI_CH3I_RDMA_Process.xrc_rdmafp ||
-            VC_XST_ISSET (vc, XF_CONN_CLOSING)))
-        return 1;
-#endif
     DEBUG_PRINT("set rdma address, dma address %p\n",
             (void *)pkt->rdma_address);
 

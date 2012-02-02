@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -73,7 +73,7 @@ deallocate_vbufs (DAT_IA_HANDLE nic[])
 
     while (r)
       {
-          for (i = 0; i < MPIDI_CH3I_RDMA_Process.num_hcas; i++)
+          for (i = 0; i < mv2_MPIDI_CH3I_RDMA_Process.num_hcas; i++)
             {
                 if (r->mem_handle[i].hndl != DAT_HANDLE_NULL)
                   {
@@ -149,7 +149,7 @@ allocate_vbuf_region (int nvbufs)
              num_vbuf_free, num_vbuf_get);
 
     /* region should be registered for both of the hca */
-    for (i = 0; i < MPIDI_CH3I_RDMA_Process.num_hcas; i++)
+    for (i = 0; i < mv2_MPIDI_CH3I_RDMA_Process.num_hcas; i++)
       {
 
           region.for_va = (DAT_PVOID) free_vbuf_head;
@@ -200,7 +200,7 @@ allocate_vbufs (DAT_IA_HANDLE nic[], DAT_PZ_HANDLE ptag[], int nvbufs)
      */
     int i;
 
-    for (i = 0; i < MPIDI_CH3I_RDMA_Process.num_hcas; i++)
+    for (i = 0; i < mv2_MPIDI_CH3I_RDMA_Process.num_hcas; i++)
       {
           nic_save[i] = nic[i];
           ptag_save[i] = ptag[i];
@@ -239,7 +239,7 @@ get_vbuf ()
     /* this correctly handles removing from single entry free list */
     free_vbuf_head = free_vbuf_head->desc.next;
 
-    if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+    if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
         /* need to change this to RPUT_VBUF_FLAG later
          * if we are doing rput */
         v->padding = NORMAL_VBUF_FLAG;
@@ -268,7 +268,7 @@ MRAILI_Release_vbuf (vbuf * v)
 
     v->desc.next = free_vbuf_head;
 
-    if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+    if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
         if ((v->padding != NORMAL_VBUF_FLAG) && (v->padding != RPUT_VBUF_FLAG))
           {
               udapl_error_abort (GEN_EXIT_ERR, "vbuf not correct!!!\n");
@@ -332,7 +332,7 @@ vbuf_init_rdma_write (vbuf * v)
     v->desc.opcode = UDAPL_RDMA_WRITE;
     v->desc.cookie.as_ptr = (DAT_PVOID) v;
 
-    if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+    if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
         v->padding = FREE_FLAG;
     }
 }
@@ -343,7 +343,7 @@ vbuf_init_send (vbuf * v, unsigned long len,
 {
     int hca_num = subchannel->hca_index;
 
-    if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+    if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
         v->padding = NORMAL_VBUF_FLAG;
     }
 
@@ -364,7 +364,7 @@ vbuf_init_recv (vbuf * v, unsigned long len,
 {
     int hca_num = subchannel->hca_index;
 
-    if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+    if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
         v->padding = NORMAL_VBUF_FLAG;
     }
 
@@ -385,7 +385,7 @@ vbuf_init_rput (vbuf * v, void *local_address,
                 VIP_MEM_HANDLE remote_memhandle, int len,
                 const MRAILI_Channel_info * subchannel)
 {
-    if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+    if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
         v->padding = RPUT_VBUF_FLAG;
     }
 
@@ -479,7 +479,7 @@ dump_vbuf (char *msg, vbuf * v)
     DEBUG_PRINT ("%s: dump of vbuf %p, type = %d\n", msg, v, header->type);
     len = 100;
 #if defined(DEBUG)
-    if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+    if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
         DEBUG_PRINT ("total_size = %u\n", v->head_flag);
     }
 #endif /* defined(DEBUG) */

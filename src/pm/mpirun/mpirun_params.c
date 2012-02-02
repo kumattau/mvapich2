@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -172,14 +172,12 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
     int i;
     int c, option_index;
 
-    size_t hostname_len = 0;
-
     do {
         c = getopt_long_only(argc, argv, "+", option_table, &option_index);
         switch (c) {
         case '?':
         case ':':
-            usage();
+            usage(argv[0]);
             exit(EXIT_FAILURE);
             break;
         case EOF:
@@ -189,7 +187,7 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
             case 0:            /* -np */
                 nprocs = atoi(optarg);
                 if (nprocs < 1) {
-                    usage();
+                    usage(argv[0]);
                     exit(EXIT_FAILURE);
                 }
                 break;
@@ -216,7 +214,7 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
                 use_rsh = 0;
                 break;
             case 7:
-                usage();
+                usage(argv[0]);
                 exit(EXIT_SUCCESS);
                 break;
             case 8:
@@ -296,20 +294,20 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
                 if (strlen(optarg) >= HOSTFILE_LEN - 1)
                     sparehostfile[HOSTFILE_LEN] = 0;
 #else
-                usage();
+                usage(argv[0]);
                 exit(EXIT_SUCCESS);
 #endif
                 break;
             default:
                 fprintf(stderr, "Unknown option\n");
-                usage();
+                usage(argv[0]);
                 exit(EXIT_FAILURE);
                 break;
             }
             break;
         default:
             fprintf(stderr, "Unreachable statement!\n");
-            usage();
+            usage(argv[0]);
             exit(EXIT_FAILURE);
             break;
         }
@@ -317,7 +315,7 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
     while (c != EOF);
 
     if (!nprocs && !configfile_on) {
-        usage();
+        usage(argv[0]);
         exit(EXIT_FAILURE);
     }
 
@@ -345,7 +343,7 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
                 goto cont;
             } else {
                 fprintf(stderr, "Without hostfile option, hostnames must be " "specified on command line.\n");
-                usage();
+                usage(argv[0]);
                 exit(EXIT_FAILURE);
             }
         }
@@ -374,22 +372,16 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
     }
 
     /* grab hosts from command line or file */
-    /* TODO: remove  hostname_len variable */
-    hostname_len = 0;
     if (hostfile_on) {
-        hostname_len = read_hostfile(hostfile);
+        read_hostfile(hostfile);
     } else {
         for (i = 0; i < nprocs; i++) {
-            plist[i].hostname = (char *) strndup(argv[optind + i], 100);
-            if (hostname_len < strlen(plist[i].hostname)) {
-                hostname_len = strlen(plist[i].hostname);
-            }
+            plist[i].hostname = argv[optind + i];
         }
     }
-
 }
 
-void usage(void)
+void usage(const char * arg0)
 {
     fprintf(stderr, "usage: mpirun_rsh [-v] [-sg group] [-rsh|-ssh] " "[-debug] -[tv] [-xterm] [-show] [-legacy] -np N"
 #if defined(CKPT) && defined(CR_FTB)

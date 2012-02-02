@@ -3,6 +3,63 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2-1.8a2 (02/02/2012)
+
+* Features and Enhancements (since 1.8a1p1):
+    - Support for collective communication from GPU buffers
+    - Non-contiguous datatype support in point-to-point and collective
+      communication from GPU buffers
+    - Efficient GPU-GPU transfers within a node using CUDA IPC (for CUDA 4.1)
+    - Alternate synchronization mechanism using CUDA Events for pipelined device
+      data transfers
+    - Exporting processes local rank in a node through environment variable
+    - Adjust shared-memory communication block size at runtime
+    - Enable XRC by default at configure time
+    - New shared memory design for enhanced intra-node small message performance
+    - Tuned inter-node and intra-node performance on different cluster
+      architectures
+    - Update to hwloc v1.3.1
+    - Support for fallback to R3 rendezvous protocol if RGET fails
+    - SLURM integration with mpiexec.mpirun_rsh to use SLURM allocated hosts
+      without specifying a hostfile
+    - Support added to automatically use PBS_NODEFILE in Torque and PBS
+      environments
+    - Enable signal-triggered (SIGUSR2) migration
+
+* Bug Fixes (since 1.8a1p1):
+    - Set process affinity independently of SMP enable/disable to control the
+      affinity in loopback mode
+    - Report error and exit if user requests MV2_USE_CUDA=1 in non-cuda
+      configuration
+    - Fix for data validation error with GPU buffers
+    - Updated WRAPPER_CPPFLAGS when using --with-cuda. Users should not have to
+      explicitly specify CPPFLAGS or LDFLAGS to build applications
+    - Fix for several compilation warnings
+    - Report an error message if user requests MV2_USE_XRC=1 in non-XRC
+      configuration
+    - Remove debug prints in regular code path with MV2_USE_BLOCKING=1
+        - Thanks to Vaibhav Dutt for the report
+    - Handling shared memory collective buffers in a dynamic manner to eliminate
+      static setting of maximum CPU core count
+    - Fix for validation issue in MPICH2 strided_get_indexed.c
+    - Fix a bug in packetized transfers on heterogeneous clusters
+    - Fix for deadlock between psm_ep_connect and PMGR_COLLECTIVE calls on
+      QLogic systems 
+        - Thanks to Adam T. Moody for the patch
+    - Fix a bug in MPI_Allocate_mem when it is called with size 0
+        - Thanks to Michele De Stefano for reporting this issue
+    - Create vendor for Open64 compilers and add rpath for unknown compilers
+        - Thanks to Martin Hilgemen from Dell Inc. for the initial patch
+    - Fix issue due to overlapping buffers with sprintf
+        - Thanks to Mark Debbage from QLogic for reporting this issue
+    - Fallback to using GNU options for unknown f90 compilers
+    - Fix hang in PMI_Barrier due to incorrect handling of the socket return
+      values in mpirun_rsh
+    - Unify the redundant FTB events used to initiate a migration
+    - Fix memory leaks when mpirun_rsh reads hostfiles
+    - Fix a bug where library attempts to use in-active rail in multi-rail
+      scenario
+
 MVAPICH2-1.8a1p1 (11/14/2011)
 
 * Bug Fixes (since 1.8a1)

@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -33,14 +33,14 @@
 
 #define SHMEM_MAX_INT ((unsigned int)(-1))
 
-#define DEFAULT_SHMEM_BCAST_LEADERS    4096
-#define GATHER_DIRECT_SYSTEM_SIZE_SMALL      384
-#define GATHER_DIRECT_SYSTEM_SIZE_MEDIUM     1024
+#define MV2_DEFAULT_SHMEM_BCAST_LEADERS    4096
+#define MV2_GATHER_DIRECT_SYSTEM_SIZE_SMALL      384
+#define MV2_GATHER_DIRECT_SYSTEM_SIZE_MEDIUM     1024
 
-#define INTER_NODE_KNOMIAL_FACTOR_MAX 8
-#define INTER_NODE_KNOMIAL_FACTOR_MIN 2
-#define INTRA_NODE_KNOMIAL_FACTOR_MAX 8
-#define INTRA_NODE_KNOMIAL_FACTOR_MIN 2 
+#define MV2_INTER_NODE_KNOMIAL_FACTOR_MAX 8
+#define MV2_INTER_NODE_KNOMIAL_FACTOR_MIN 2
+#define MV2_INTRA_NODE_KNOMIAL_FACTOR_MAX 8
+#define MV2_INTRA_NODE_KNOMIAL_FACTOR_MIN 2 
 
 #if defined(_IA32_)
 
@@ -101,7 +101,7 @@ void MPIDI_CH3I_SHMEM_COLL_Unlink(void);
 
 void MV2_Read_env_vars(void);
 
-#define SHMEM_COLL_BLOCK_SIZE (MPIDI_Process.my_pg->ch.num_local_processes * g_shmem_coll_max_msg_size)
+#define SHMEM_COLL_BLOCK_SIZE (MPIDI_Process.my_pg->ch.num_local_processes * mv2_g_shmem_coll_max_msg_size)
 
 
 #define COLL_COUNT              7
@@ -118,7 +118,7 @@ void MV2_Read_env_vars(void);
 #define MEDIUM                  1
 #define LARGE                   2
 
-extern int tuning_table[COLL_COUNT][COLL_SIZE]; 
+extern int mv2_tuning_table[COLL_COUNT][COLL_SIZE]; 
 
 struct scatter_tuning{
     int numproc;
@@ -142,74 +142,81 @@ struct allgatherv_tuning{
  * We're converting this into a environment variable
  * #define SHMEM_BCAST_LEADERS     1024
  */
-#define SHMEM_BCAST_METADATA	(sizeof(addrint_t) + 2*sizeof(int))       /* METADATA: buffer address, offset, num_bytes */ 
+#define SHMEM_BCAST_METADATA	(sizeof(addrint_t) + 2*sizeof(int))       
+  /* METADATA: buffer address, offset, num_bytes */ 
 
-extern int enable_shmem_collectives;
+extern int mv2_g_shmem_coll_max_msg_size;
+extern int mv2_g_shmem_coll_blocks;
+extern int mv2_shmem_coll_num_procs;
+extern int mv2_shmem_coll_num_comm;
+extern int mv2_shmem_coll_spin_count;
+extern int mv2_enable_shmem_collectives;
 int is_shmem_collectives_enabled();
 
-extern struct coll_runtime coll_param;
+extern struct coll_runtime mv2_coll_param;
 void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int, int, int, void**);
 void MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(int, int, int);
 
-extern int tune_parameter;
+extern int mv2_tune_parameter;
 /* Use for gather_osu.c*/
 #define MPIR_GATHER_BINOMIAL_MEDIUM_MSG 16384
-extern int user_gather_switch_point;
-extern int size_gather_tuning_table;
-extern struct gather_tuning gather_tuning_table[8];
-extern int use_two_level_gather; 
-extern int gather_direct_system_size_small;
-extern int gather_direct_system_size_medium; 
-extern int use_direct_gather; 
+extern int mv2_user_gather_switch_point;
+extern int mv2_size_mv2_gather_mv2_tuning_table;
+extern struct gather_tuning mv2_gather_mv2_tuning_table[8];
+extern int mv2_use_two_level_gather; 
+extern int mv2_gather_direct_system_size_small;
+extern int mv2_gather_direct_system_size_medium; 
+extern int mv2_use_direct_gather; 
 
 /* Use for allgather_osu.c */
-#define ALLGATHER_SMALL_SYSTEM_SIZE       128
-#define ALLGATHER_MEDIUM_SYSTEM_SIZE      256
-#define ALLGATHER_LARGE_SYSTEM_SIZE       512 
-extern int allgather_ranking;
+#define MV2_ALLGATHER_SMALL_SYSTEM_SIZE       128
+#define MV2_ALLGATHER_MEDIUM_SYSTEM_SIZE      256
+#define MV2_ALLGATHER_LARGE_SYSTEM_SIZE       512 
+extern int mv2_allgather_ranking;
 
 /* Use for allgatherv_osu.c */
-extern int size_allgatherv_tuning_table;
-extern struct allgatherv_tuning allgatherv_tuning_table[4];
+extern int mv2_size_mv2_allgatherv_mv2_tuning_table;
+extern struct allgatherv_tuning mv2_allgatherv_mv2_tuning_table[4];
+extern int mv2_user_allgatherv_switch_point;
 
 /* Use for scatter_osu.c*/
-extern int user_scatter_small_msg;
-extern int user_scatter_medium_msg;
-extern int size_scatter_tuning_table;
-extern struct scatter_tuning scatter_tuning_table[4];
-extern int use_two_level_scatter; 
-extern int use_direct_scatter; 
+extern int mv2_user_scatter_small_msg;
+extern int mv2_user_scatter_medium_msg;
+extern int mv2_size_mv2_scatter_mv2_tuning_table;
+extern struct scatter_tuning mv2_scatter_mv2_tuning_table[4];
+extern int mv2_use_two_level_scatter; 
+extern int mv2_use_direct_scatter; 
 
 
 /* Use inside allreduce_osu.c*/
-extern int disable_shmem_allreduce;
+extern int mv2_disable_shmem_allreduce;
 int check_comm_registry(MPI_Comm);
 
 
 /* Use inside alltoall_osu.h */
-extern int use_xor_alltoall; 
+extern int mv2_use_xor_alltoall; 
 
 
 /* Use inside barrier_osu.c*/
-extern int disable_shmem_barrier;
+extern int mv2_disable_shmem_barrier;
 extern void MPIDI_CH3I_SHMEM_COLL_Barrier_gather(int, int, int);
 extern void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int, int, int);
 
 /* Use inside bcast_osu.c */
-extern int  bcast_short_msg; 
-extern int  bcast_large_msg; 
-extern int  knomial_2level_bcast_system_size_threshold;
-extern int  knomial_2level_bcast_message_size_threshold;
-extern int  enable_knomial_2level_bcast;
-extern int  inter_node_knomial_factor;
-extern int  intra_node_knomial_factor;
-extern int  scatter_rd_inter_leader_bcast; 
-extern int  scatter_ring_inter_leader_bcast;
-extern int  knomial_intra_node_threshold; 
-extern int  knomial_inter_leader_threshold; 
-extern int  knomial_inter_leader_bcast;
-extern int  enable_shmem_bcast;
-extern int  bcast_two_level_system_size; 
+extern int  mv2_bcast_short_msg; 
+extern int  mv2_bcast_large_msg; 
+extern int  mv2_knomial_2level_bcast_system_size_threshold;
+extern int  mv2_knomial_2level_bcast_message_size_threshold;
+extern int  mv2_enable_knomial_2level_bcast;
+extern int  mv2_inter_node_knomial_factor;
+extern int  mv2_intra_node_knomial_factor;
+extern int  mv2_scatter_rd_inter_leader_bcast; 
+extern int  mv2_scatter_ring_inter_leader_bcast;
+extern int  mv2_knomial_intra_node_threshold; 
+extern int  mv2_knomial_inter_leader_threshold; 
+extern int  mv2_knomial_inter_leader_bcast;
+extern int  mv2_enable_shmem_bcast;
+extern int  mv2_bcast_two_level_system_size; 
 extern int MPIR_Shmem_Bcast_MV2( void *,  int ,  MPI_Datatype , int ,  MPID_Comm *);
 extern int MPIR_Knomial_Bcast_intra_node_MV2(void *, int ,  MPI_Datatype, int , MPID_Comm *, int *);
 extern int MPIR_Knomial_Bcast_inter_node_MV2(void *, int ,  MPI_Datatype, int , int * , MPID_Comm *, int *);
@@ -217,23 +224,30 @@ extern int MPIR_Knomial_Bcast_inter_node_MV2(void *, int ,  MPI_Datatype, int , 
 
 
 /* Use inside reduce_osu.c */
-extern int disable_shmem_reduce;
+extern int mv2_disable_shmem_reduce;
 int check_comm_registry(MPI_Comm);
+
+
+/* Use inside red_scat_osu.c */
+#define MPIR_RED_SCAT_SHORT_MSG 64
+#define MPIR_RED_SCAT_LONG_MSG  512*1024
+extern int mv2_red_scat_short_msg;
+extern int mv2_red_scat_long_msg;
 
 /* Lock/unlock shmem region */
 void lock_shmem_region(void);
 void unlock_shmem_region(void);
 
 /* utils */
-void increment_shmem_comm_count(void);
-int get_shmem_comm_count(void);
+void increment_mv2_shmem_comm_count(void);
+int get_mv2_shmem_comm_count(void);
 
 void MPIDI_CH3I_SHMEM_Bcast_GetBuf(int, int, int, void**);
 void MPIDI_CH3I_SHMEM_Bcast_Complete(int ,int , int);
 int init_thread_reg(void);
 
-extern int use_osu_collectives;
-extern int use_anl_collectives;
+extern int mv2_use_osu_collectives;
+extern int mv2_use_anl_collectives;
 
 
 /* Comm functions*/
@@ -241,6 +255,9 @@ extern int split_comm;
 int check_split_comm(pthread_t);
 int disable_split_comm(pthread_t);
 int create_2level_comm (MPI_Comm, int, int);
+int free_2level_comm (MPID_Comm *);
 int enable_split_comm(pthread_t);
+void MPIR_pof2_comm(MPID_Comm *, int, int);
+
 
 #endif  /* _COLL_SHMEM_ */

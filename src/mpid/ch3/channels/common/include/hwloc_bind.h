@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -38,6 +38,7 @@ typedef struct {
 extern policy_type_t policy;
 extern hwloc_topology_t topology;
 extern unsigned int mv2_enable_affinity;
+extern unsigned int mv2_enable_leastload;
 
 extern int s_cpu_mapping_line_max;
 extern char* s_cpu_mapping;
@@ -48,7 +49,7 @@ void map_scatter (int num_cpus);
 void map_bunch (int num_cpus);
 int get_cpu_mapping_hwloc (long N_CPUs_online, hwloc_topology_t topology);
 int get_cpu_mapping (long N_CPUs_online);
-int smpi_setaffinity (void);
+int smpi_setaffinity (int my_local_id);
 
 #endif
 

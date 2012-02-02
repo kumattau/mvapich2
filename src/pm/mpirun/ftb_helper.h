@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -34,7 +34,7 @@
         {"CR_FTB_APP_CKPT_REQ",  "info"}, \
         {"CR_FTB_CKPT_FINALIZE", "info"}, \
         {"CR_FTB_MIGRATE_PIC",   "info"}, \
-        {"CR_FTB_RTM",           "info"},  \
+        {"FTB_MIGRATE_TRIGGER",  "info"},  \
         {"MPI_PROCS_CKPTED", "info"},       \
         {"MPI_PROCS_CKPT_FAIL", "info"},    \
         {"MPI_PROCS_RESTARTED", "info"},    \
@@ -54,7 +54,7 @@
 #define CR_FTB_APP_CKPT_REQ  7
 #define CR_FTB_CKPT_FINALIZE 8
 #define CR_FTB_MIGRATE_PIC   9
-#define CR_FTB_RTM           10
+#define FTB_MIGRATE_TRIGGER  10
     // start of standard FTB MPI events
 #define MPI_PROCS_CKPTED        11
 #define MPI_PROCS_CKPT_FAIL     12

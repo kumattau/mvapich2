@@ -1,0 +1,304 @@
+/* Copyright (c) 2003-2011, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
+
+#include "mpidi_ch3_impl.h"
+#include "mpiutil.h"
+#include "rdma_impl.h"
+#include "ibv_cuda_util.h"
+#include "dreg.h"
+
+#ifdef _ENABLE_CUDA_
+cuda_event_region_t *cuda_event_region_list = NULL;
+cuda_event_t *free_cuda_event_list_head = NULL;
+cuda_event_t *busy_cuda_event_list_head = NULL;
+cuda_event_t *busy_cuda_event_list_tail = NULL;
+
+void allocate_cuda_events()
+{
+    int i;
+    cudaError_t result;
+    cuda_event_t *curr;
+    cuda_event_region_t *cuda_event_region = MPIU_Malloc(sizeof(cuda_event_region_t));
+    cuda_event_region->list = (void *) MPIU_Malloc(sizeof(cuda_event_t)
+                                              * rdma_cuda_event_count);
+    if (stream_d2h == 0 && stream_h2d == 0) {
+        allocate_cuda_rndv_streams();
+    }
+    MPIU_Assert(free_cuda_event_list_head == NULL);
+    free_cuda_event_list_head = cuda_event_region->list;
+    curr = (cuda_event_t *) cuda_event_region->list;
+    for (i = 1; i <= rdma_cuda_event_count; i++) {
+        curr->next = (cuda_event_t *) ((size_t) cuda_event_region->list +
+                                        i * sizeof(cuda_event_t));
+        result = cudaEventCreateWithFlags(&(curr->event), cudaEventDisableTiming
+#if defined(HAVE_CUDA_IPC)
+                         | cudaEventInterprocess
+#endif
+            );
+        if (result != cudaSuccess) {
+            ibv_error_abort(GEN_EXIT_ERR, "Cuda Event Creation failed \n");
+        }
+        curr->op_type = -1;
+        if (i == rdma_cuda_event_count) {
+            curr->next = NULL;
+        }
+        curr->prev = NULL;
+        curr = curr->next;
+    }
+
+    cuda_event_region->next = NULL;
+    if (cuda_event_region_list != NULL) {
+        cuda_event_region->next = cuda_event_region_list;
+    }
+    cuda_event_region_list = cuda_event_region;
+}
+
+void deallocate_cuda_events()
+{
+    cuda_event_region_t *curr = NULL, *next = NULL;
+    cuda_event_t *curr_event = free_cuda_event_list_head;
+    MPIU_Assert(busy_cuda_event_list_head == NULL);
+    while(curr_event) {
+        cudaEventDestroy(curr_event->event);
+        curr_event = curr_event->next;
+    }
+
+    curr = cuda_event_region_list;
+    while (curr != NULL) {
+        next = curr->next;
+        MPIU_Free(curr->list);
+        MPIU_Free(curr);
+        curr = next;
+    }
+}
+
+void process_cuda_event_op(cuda_event_t * event)
+{
+    int mpi_errno = MPI_SUCCESS;
+    MPID_Request *req = event->req;
+    MPIDI_VC_t *vc = (MPIDI_VC_t *) event->vc;
+    vbuf *cuda_vbuf = event->cuda_vbuf_head; 
+    int displacement = event->displacement;
+    int is_finish = event->is_finish;
+    int is_pipeline = (!displacement && is_finish) ? 0 : 1;
+    int size = event->size;
+    int rail = 0;
+    vbuf *v;
+
+    if (event->op_type == SEND) {
+
+        v = cuda_vbuf;
+        v->sreq = req;
+
+        req->mrail.pipeline_nm++;
+        is_finish = (req->mrail.pipeline_nm == req->mrail.num_cuda_blocks)? 1 : 0;
+        
+        if (req->mrail.cuda_transfer_mode == DEVICE_TO_DEVICE) {
+            MRAILI_RDMA_Put(vc, v,
+                (char *) (v->buffer),
+                v->region->mem_handle[vc->mrail.rails[rail].hca_index]->lkey,
+                (char *) (req->mrail.cuda_remote_addr[req->mrail.num_remote_cuda_done]),
+                req->mrail.cuda_remote_rkey[req->mrail.num_remote_cuda_done]
+                        [vc->mrail.rails[rail].hca_index], size, rail);
+
+            MRAILI_RDMA_Put_finish_cuda(vc, req, rail, is_pipeline, is_finish,
+                                        rdma_cuda_block_size * displacement);
+            req->mrail.num_remote_cuda_done++;
+
+        } else if (req->mrail.cuda_transfer_mode == DEVICE_TO_HOST) {
+            MRAILI_RDMA_Put(vc, v,
+                (char *) (v->buffer),
+                v->region->mem_handle[vc->mrail.rails[rail].hca_index]->lkey,
+                (char *) (req->mrail.remote_addr) + displacement * 
+                rdma_cuda_block_size,
+                req->mrail.rkey[vc->mrail.rails[rail].hca_index],
+                size, rail);
+
+            if (is_finish) {
+                MRAILI_RDMA_Put_finish_cuda(vc, req, rail, is_pipeline,
+                                            is_finish,
+                                            rdma_cuda_block_size *
+                                            displacement);
+            }
+        }
+
+        PRINT_DEBUG(DEBUG_CUDA_verbose > 1, "RDMA write block: "
+                    "send offset:%d  rem idx: %d is_fin:%d"
+                    "addr offset:%d strm:%p\n", displacement,
+                    req->mrail.num_remote_cuda_done, is_finish,
+                    rdma_cuda_block_size * displacement, event);
+
+        req->mrail.num_remote_cuda_pending--;
+        if (req->mrail.num_send_cuda_copy != req->mrail.num_cuda_blocks) {
+            PUSH_FLOWLIST(vc);
+        }
+
+    } else if (event->op_type == RECV) {
+
+        vbuf *temp_buf;
+        /* release all the vbufs in the recv event */
+        while(cuda_vbuf)
+        {
+            PRINT_DEBUG(DEBUG_CUDA_verbose > 2, "CUDA copy block: "
+                "buf:%p\n", cuda_vbuf->buffer);
+            temp_buf = cuda_vbuf->next;
+            cuda_vbuf->next = NULL;
+            release_cuda_vbuf(cuda_vbuf);
+            cuda_vbuf = temp_buf;
+        }
+        event->cuda_vbuf_head = event->cuda_vbuf_tail = NULL; 
+        
+        if (event->is_finish) {
+            int complete = 0;
+            MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(req);
+            
+            mpi_errno = MPIDI_CH3U_Handle_recv_req(vc, req, &complete);
+            if (mpi_errno != MPI_SUCCESS) {
+                ibv_error_abort(IBV_RETURN_ERR,
+                        "MPIDI_CH3U_Handle_recv_req returned error");
+            }
+            MPIU_Assert(complete == TRUE);
+            vc->ch.recv_active = NULL;
+        }
+#if defined(HAVE_CUDA_IPC)
+    } else if (event->op_type == RGET) {
+        cudaError_t cudaerr = cudaSuccess;
+
+        cudaerr = cudaEventRecord(req->mrail.ipc_event, stream_d2h);
+        if (cudaerr != cudaSuccess) {
+           ibv_error_abort(IBV_STATUS_ERR,
+                    "cudaEventRecord failed");
+        }
+
+        cudaerr = cudaStreamWaitEvent(0, req->mrail.ipc_event, 0);
+        if (cudaerr != cudaSuccess) {
+            ibv_error_abort(IBV_RETURN_ERR,"cudaStreamWaitEvent failed\n");
+        }
+
+        cudaerr = cudaEventDestroy(req->mrail.ipc_event);
+        if (cudaerr != cudaSuccess) {
+            ibv_error_abort(IBV_RETURN_ERR,"cudaEventDestroy failed\n");
+        }
+
+        if (req->mrail.cuda_reg) {
+            cudaipc_deregister(req->mrail.cuda_reg);
+            req->mrail.cuda_reg = NULL;
+        }
+
+        MRAILI_RDMA_Get_finish(vc, req, 0);
+#endif
+    } else { 
+        ibv_error_abort(IBV_RETURN_ERR, "Invalid op type in event");
+    }
+}
+
+void progress_cuda_events()
+{
+    cudaError_t result = cudaSuccess;
+    cuda_event_t *curr_event = busy_cuda_event_list_head;
+    cuda_event_t *next_event;
+    cuda_async_op_t op_type;
+
+    while (NULL != curr_event) {
+        if (!curr_event->is_query_done) {
+            result = cudaEventQuery(curr_event->event);
+        }
+        if (cudaSuccess == result || curr_event->is_query_done) {
+            curr_event->is_query_done = 1;
+            if ((SEND == curr_event->op_type) &&
+                ((1 != ((MPID_Request *) curr_event->req)->mrail.cts_received)
+                || !((MPID_Request *) curr_event->req)->mrail.
+                num_remote_cuda_pending)) {
+                curr_event = curr_event->next;
+            } else {
+                next_event = curr_event->next;
+
+                /* detach finished event from the busy list*/    
+                if (curr_event->prev) {
+                    curr_event->prev->next = curr_event->next;
+                } else {
+                    busy_cuda_event_list_head = curr_event->next;
+                }
+                if (curr_event->next) {
+                    curr_event->next->prev = curr_event->prev;
+                } else {
+                    busy_cuda_event_list_tail = curr_event->prev;
+                }
+
+                curr_event->is_query_done = 0;
+                curr_event->next = curr_event->prev = NULL;
+                op_type = curr_event->op_type;
+
+                /* process finished event */
+                process_cuda_event_op(curr_event);
+
+                /* add event to the free list */
+                curr_event->next = free_cuda_event_list_head;
+                free_cuda_event_list_head = curr_event;
+                
+                curr_event = next_event;
+            }
+        } else {
+            curr_event = curr_event->next;
+        }
+    }
+}
+
+cuda_event_t *get_cuda_event()
+{
+
+    cuda_event_t *curr_event;
+   
+    if (NULL == free_cuda_event_list_head) {
+        allocate_cuda_events();
+    } 
+
+    curr_event = free_cuda_event_list_head;
+    free_cuda_event_list_head = free_cuda_event_list_head->next;
+    curr_event->next = curr_event->prev = NULL;
+
+    /* Enqueue event to the busy list*/
+    if (NULL == busy_cuda_event_list_head) {
+        busy_cuda_event_list_head = curr_event;
+        busy_cuda_event_list_tail = curr_event;
+    } else {
+        busy_cuda_event_list_tail->next = curr_event;
+        curr_event->prev = busy_cuda_event_list_tail;
+        busy_cuda_event_list_tail = curr_event;
+    }
+    curr_event->is_query_done = 0;
+    return curr_event;
+}
+
+cuda_event_t *get_free_cuda_event()
+{
+    cuda_event_t *curr_event;
+
+    if (NULL == free_cuda_event_list_head) {
+        allocate_cuda_events();
+    }    
+
+    curr_event = free_cuda_event_list_head;
+    free_cuda_event_list_head = free_cuda_event_list_head->next;
+    curr_event->next = curr_event->prev = NULL;
+    curr_event->is_query_done = 0;
+
+    return curr_event;
+}
+
+void release_cuda_event(cuda_event_t *event) 
+{
+    /* add event to the free list */
+    event->next = free_cuda_event_list_head;
+    free_cuda_event_list_head = event; 
+}
+#endif

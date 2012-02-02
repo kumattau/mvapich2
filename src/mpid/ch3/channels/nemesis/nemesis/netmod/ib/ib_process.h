@@ -1,5 +1,5 @@
 /*!\file */
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -47,6 +47,7 @@ typedef struct  {
 
     int rails;
 
+    uint8_t                     heterogenity;
     uint8_t                     has_srq;
     uint8_t                     has_hsam;
     uint8_t                     has_apm;
@@ -69,6 +70,9 @@ typedef struct  {
     struct ibv_cq               *boot_cq_hndl;
     struct ibv_qp               *boot_qp_hndl[2];
     int                         boot_tb[2][2];
+
+    mv2_hca_type        hca_type;
+    mv2_arch_hca_type   arch_hca_type;
 
 } MPID_nem_ib_process_info_t;
 

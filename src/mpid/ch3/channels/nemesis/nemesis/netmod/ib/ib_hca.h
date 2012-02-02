@@ -1,5 +1,5 @@
 /*!\file */
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -17,6 +17,7 @@
 #include <infiniband/verbs.h>
 
 #include "ib_param.h"
+#include <mv2_arch_hca_detect.h>
 
 /* --------------------------------------------- *
  * Constants and limits
@@ -36,29 +37,6 @@
  * Max number queues per port.
  */
 #define MAX_NUM_QP_PER_PORT             (4)
-
-
-/**
- * HCA type.
- */
-typedef enum {
-    UNKNOWN_HCA,
-    MLX_PCI_EX_SDR,
-    MLX_PCI_EX_DDR,
-    MLX_CX_SDR,
-    MLX_CX_DDR,
-    MLX_CX_QDR,
-    PATH_HT,
-    MLX_PCI_X,
-    IBM_EHCA,
-    CHELSIO_T3,
-    CHELSIO_T4,
-    INTEL_NE020
-} HCA_Type;
-
-/*
-#define CHELSIO_RNIC                    "cxgb3"
-*/
 
 /* --------------------------------------------- *
  * Configuration parameters (ex. from environment
@@ -103,7 +81,7 @@ FROM priv.h
  * Information about one HCA.
  */
 typedef struct {
-    HCA_Type hca_type;
+    mv2_hca_type hca_type;
 
     struct ibv_context          *nic_context;
     struct ibv_device           *ib_dev;

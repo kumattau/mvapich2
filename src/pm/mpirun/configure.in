@@ -5,7 +5,7 @@ AM_INIT_AUTOMAKE([foreign])
 AC_CONFIG_HEADER([mpirunconf.h])
 
 AH_TOP([/* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -310,5 +310,6 @@ AC_SUBST(master_top_builddir)
 AC_SUBST(AR)
 AC_SUBST(RANLIB)
 
-AC_CONFIG_FILES([Makefile src/Makefile src/hostfile/Makefile])
+AC_CONFIG_FILES([Makefile src/Makefile src/db/Makefile src/hostfile/Makefile
+                 src/slurm/Makefile src/pbs/Makefile])
 AC_OUTPUT

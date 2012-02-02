@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -114,7 +114,6 @@ void MPIDI_CH3_RMA_InitInstr(void)
 #endif
 
 #if defined(_SMP_LIMIC_) && !defined(DAPL_DEFAULT_PROVIDER)
-extern int g_smp_use_limic2;
 extern int limic_fd;
 #endif /*_SMP_LIMIC_ && !DAPL_DEFAULT_PROVIDER*/
 

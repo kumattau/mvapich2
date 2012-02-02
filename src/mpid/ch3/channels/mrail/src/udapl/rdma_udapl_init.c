@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -30,7 +30,7 @@
 #define DEBUG_PRINT(args...)
 
 /* global rdma structure for the local process */
-MPIDI_CH3I_RDMA_Process_t MPIDI_CH3I_RDMA_Process;
+mv2_MPIDI_CH3I_RDMA_Process_t mv2_MPIDI_CH3I_RDMA_Process;
 
 static int MPIDI_CH3I_PG_Compare_ids (void *id1, void *id2);
 static int MPIDI_CH3I_PG_Destroy (MPIDI_PG_t * pg, void *id);
@@ -50,7 +50,7 @@ extern void
 MPIDI_CH3I_RDMA_util_stoa (DAT_SOCK_ADDR * addr, char *str);
 
 extern int
-rdma_iba_hca_init_noep (struct MPIDI_CH3I_RDMA_Process_t *proc,
+rdma_iba_hca_init_noep (struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                    MPIDI_VC_t * vc, int pg_rank, int pg_size);
 extern void cm_ep_create(MPIDI_VC_t *vc);
 
@@ -203,10 +203,10 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t *pg, int pg_rank)
       }
 
     /* enable rdma_fast_path */
-    MPIDI_CH3I_RDMA_Process.has_rdma_fast_path = 1;
-    MPIDI_CH3I_RDMA_Process.has_one_sided = 1;
+    mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path = 1;
+    mv2_MPIDI_CH3I_RDMA_Process.has_one_sided = 1;
 
-    rdma_init_parameters (&MPIDI_CH3I_RDMA_Process);
+    rdma_init_parameters (&mv2_MPIDI_CH3I_RDMA_Process);
 
     /* the vc structure has to be initialized */
     for (i = 0; i < pg_size; ++i)
@@ -218,14 +218,14 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t *pg, int pg_rank)
       }
 
     /* Open the device and create cq and qp's */
-    MPIDI_CH3I_RDMA_Process.num_hcas = 1;
-    rdma_iba_hca_init (&MPIDI_CH3I_RDMA_Process, vc, pg_rank, pg_size);
-    MPIDI_CH3I_RDMA_Process.maxtransfersize = UDAPL_MAX_RDMA_SIZE;
+    mv2_MPIDI_CH3I_RDMA_Process.num_hcas = 1;
+    rdma_iba_hca_init (&mv2_MPIDI_CH3I_RDMA_Process, vc, pg_rank, pg_size);
+    mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize = UDAPL_MAX_RDMA_SIZE;
     /* init dreg entry */
     dreg_init();
     DEBUG_PRINT ("vc->num_subrails %d\n", vc->mrail.num_subrails);
     /* Allocate memory and handlers */
-    rdma_iba_allocate_memory (&MPIDI_CH3I_RDMA_Process, vc, pg_rank, pg_size);
+    rdma_iba_allocate_memory (&mv2_MPIDI_CH3I_RDMA_Process, vc, pg_rank, pg_size);
 
     if (pg_size > 1)
       {
@@ -437,7 +437,7 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t *pg, int pg_rank)
             }
           DEBUG_PRINT ("After barrier\n");
 
-      if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+      if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
           /* STEP 3: exchange the information about remote buffer */
           for (i = 0; i < pg_size; ++i)
             {
@@ -529,7 +529,7 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t *pg, int pg_rank)
                 /*format : "%032d-%016d-%032d-%016d" */
                 vc->mrail.rfp.remote_RDMA_buf_hndl =
                     MPIU_Malloc (sizeof (VIP_MEM_HANDLE) *
-                            MPIDI_CH3I_RDMA_Process.num_hcas);
+                            mv2_MPIDI_CH3I_RDMA_Process.num_hcas);
                 strncpy (tmp, rdmavalue, 32);
                 tmp[32] = '\0';
                 vc->mrail.rfp.remote_RDMA_buf = (void *) atol (tmp);
@@ -558,7 +558,7 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t *pg, int pg_rank)
             }
       }
 
-      if (MPIDI_CH3I_RDMA_Process.has_one_sided) {
+      if (mv2_MPIDI_CH3I_RDMA_Process.has_one_sided) {
           /* Exchange qp_num */
           /* generate the key and value pair for each connection */
           sprintf (rdmakey, "MV2OS%08d", pg_rank);
@@ -647,13 +647,13 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t *pg, int pg_rank)
 
           /* Exchange the information about HCA_lid, qp_num, and memory,
            * With the ring-based queue pair */
-          rdma_iba_exchange_info (&MPIDI_CH3I_RDMA_Process,
+          rdma_iba_exchange_info (&mv2_MPIDI_CH3I_RDMA_Process,
                                   vc, pg_rank, pg_size);
 #endif
       }
 
     /* Enable all the queue pair connections */
-    rdma_iba_enable_connections (&MPIDI_CH3I_RDMA_Process,
+    rdma_iba_enable_connections (&mv2_MPIDI_CH3I_RDMA_Process,
                                  vc, pg_rank, pg_size);
 
     /*barrier to make sure queues are initialized before continuing */
@@ -735,14 +735,14 @@ MPIDI_CH3I_RDMA_finalize ()
 
     if (MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND &&
 	od_server_thread) {
-        ret = pthread_cancel(MPIDI_CH3I_RDMA_Process.server_thread);
+        ret = pthread_cancel(mv2_MPIDI_CH3I_RDMA_Process.server_thread);
         CHECK_RETURN (ret, "could not cancel server thread");
   
-        ret = pthread_join(MPIDI_CH3I_RDMA_Process.server_thread, NULL);
+        ret = pthread_join(mv2_MPIDI_CH3I_RDMA_Process.server_thread, NULL);
         CHECK_RETURN(ret, "pthread_join failed in finalization");
     }
 
-  if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+  if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
     for (i = 0; i < pg_size; ++i)
       {
           if (i == pg_rank)
@@ -761,7 +761,7 @@ MPIDI_CH3I_RDMA_finalize ()
       }
   }
 
-    deallocate_vbufs (MPIDI_CH3I_RDMA_Process.nic);
+    deallocate_vbufs (mv2_MPIDI_CH3I_RDMA_Process.nic);
     while (dreg_evict ());
 
     /* STEP 2: destry all the eps, tears down all connections */
@@ -802,7 +802,7 @@ MPIDI_CH3I_RDMA_finalize ()
         while (num_disconnected > 0)
           {
               if ((DAT_SUCCESS ==
-                   dat_evd_wait (MPIDI_CH3I_RDMA_Process.conn_cq_hndl[0],
+                   dat_evd_wait (mv2_MPIDI_CH3I_RDMA_Process.conn_cq_hndl[0],
                                  DAT_TIMEOUT_INFINITE, 1, &event, &count))
                   && (event.event_number ==
                       DAT_CONNECTION_EVENT_DISCONNECTED))
@@ -812,7 +812,7 @@ MPIDI_CH3I_RDMA_finalize ()
           }                     /* while */
     }
 
-  if (MPIDI_CH3I_RDMA_Process.has_one_sided) {
+  if (mv2_MPIDI_CH3I_RDMA_Process.has_one_sided) {
     PMI_Barrier ();
     /* Disconnect all the EPs for 1sc  now */
 
@@ -838,7 +838,7 @@ MPIDI_CH3I_RDMA_finalize ()
         while (num_disconnected_1sc < pg_size - 1)
           {
               if ((DAT_SUCCESS ==
-                   dat_evd_wait (MPIDI_CH3I_RDMA_Process.conn_cq_hndl_1sc,
+                   dat_evd_wait (mv2_MPIDI_CH3I_RDMA_Process.conn_cq_hndl_1sc,
                                  DAT_TIMEOUT_INFINITE, 1, &event, &count))
                   && (event.event_number ==
                       DAT_CONNECTION_EVENT_DISCONNECTED))
@@ -850,7 +850,7 @@ MPIDI_CH3I_RDMA_finalize ()
   }
 
 #ifndef MV2_DISABLE_HEADER_CACHING 
-  if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+  if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
     for (i = 0; i < pg_size; ++i)
       {
           if (i == pg_rank)
@@ -909,23 +909,23 @@ MPIDI_CH3I_RDMA_finalize ()
           }
       }
 
-    for (i = 0; i < MPIDI_CH3I_RDMA_Process.num_hcas; ++i)
+    for (i = 0; i < mv2_MPIDI_CH3I_RDMA_Process.num_hcas; ++i)
       {
 
-          error = dat_psp_free (MPIDI_CH3I_RDMA_Process.psp_hndl[i]);
+          error = dat_psp_free (mv2_MPIDI_CH3I_RDMA_Process.psp_hndl[i]);
           CHECK_RETURN (error, "error freeing psp");
 
-          error = dat_evd_free (MPIDI_CH3I_RDMA_Process.conn_cq_hndl[i]);
+          error = dat_evd_free (mv2_MPIDI_CH3I_RDMA_Process.conn_cq_hndl[i]);
           CHECK_RETURN (error, "error freeing creq evd");
 
-          error = dat_evd_free (MPIDI_CH3I_RDMA_Process.creq_cq_hndl[i]);
+          error = dat_evd_free (mv2_MPIDI_CH3I_RDMA_Process.creq_cq_hndl[i]);
           CHECK_RETURN (error, "error freeing conn evd");
 
-          error = dat_evd_free (MPIDI_CH3I_RDMA_Process.cq_hndl[i]);
+          error = dat_evd_free (mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[i]);
           CHECK_RETURN (error, "error freeing evd");
       }
 
-  if (MPIDI_CH3I_RDMA_Process.has_one_sided) {
+  if (mv2_MPIDI_CH3I_RDMA_Process.has_one_sided) {
     for (i = 0; i < pg_size; ++i)
       {
           if (i == pg_rank)
@@ -935,27 +935,27 @@ MPIDI_CH3I_RDMA_finalize ()
           CHECK_RETURN (error, "error freeing ep for 1SC");
       }
 
-    error = dat_psp_free (MPIDI_CH3I_RDMA_Process.psp_hndl_1sc);
+    error = dat_psp_free (mv2_MPIDI_CH3I_RDMA_Process.psp_hndl_1sc);
     CHECK_RETURN (error, "error freeing psp 1SC");
 
-    error = dat_evd_free (MPIDI_CH3I_RDMA_Process.conn_cq_hndl_1sc);
+    error = dat_evd_free (mv2_MPIDI_CH3I_RDMA_Process.conn_cq_hndl_1sc);
     CHECK_RETURN (error, "error freeing creq evd 1SC");
 
-    error = dat_evd_free (MPIDI_CH3I_RDMA_Process.creq_cq_hndl_1sc);
+    error = dat_evd_free (mv2_MPIDI_CH3I_RDMA_Process.creq_cq_hndl_1sc);
     CHECK_RETURN (error, "error freeing conn evd 1SC");
 
-    error = dat_evd_free (MPIDI_CH3I_RDMA_Process.cq_hndl_1sc);
+    error = dat_evd_free (mv2_MPIDI_CH3I_RDMA_Process.cq_hndl_1sc);
     CHECK_RETURN (error, "error freeing evd 1SC");
   }
 
-    error = dat_pz_free (MPIDI_CH3I_RDMA_Process.ptag[0]);
+    error = dat_pz_free (mv2_MPIDI_CH3I_RDMA_Process.ptag[0]);
     error =
-        dat_ia_close (MPIDI_CH3I_RDMA_Process.nic[0],
+        dat_ia_close (mv2_MPIDI_CH3I_RDMA_Process.nic[0],
                       DAT_CLOSE_GRACEFUL_FLAG);
     if (error != DAT_SUCCESS)
       {
           error =
-              dat_ia_close (MPIDI_CH3I_RDMA_Process.nic[0],
+              dat_ia_close (mv2_MPIDI_CH3I_RDMA_Process.nic[0],
                             DAT_CLOSE_ABRUPT_FLAG);
           CHECK_RETURN (error, "fail to close IA");
       }
@@ -1086,7 +1086,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **str)
             }
       }
 
-    rdma_init_parameters (&MPIDI_CH3I_RDMA_Process);
+    rdma_init_parameters (&mv2_MPIDI_CH3I_RDMA_Process);
 
     /* the vc structure has to be initialized */
     for (i = 0; i < pg_size; ++i)
@@ -1098,19 +1098,19 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **str)
       }
 
     /* disable rdma_fast_path if using on demand connection management */
-    MPIDI_CH3I_RDMA_Process.has_rdma_fast_path = 0;
-    MPIDI_CH3I_RDMA_Process.has_one_sided = 0;
+    mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path = 0;
+    mv2_MPIDI_CH3I_RDMA_Process.has_one_sided = 0;
  
     /* Open the device and create cq and qp's */
-    MPIDI_CH3I_RDMA_Process.num_hcas = 1;
-    rdma_iba_hca_init_noep (&MPIDI_CH3I_RDMA_Process, vc, pg_rank, pg_size);
+    mv2_MPIDI_CH3I_RDMA_Process.num_hcas = 1;
+    rdma_iba_hca_init_noep (&mv2_MPIDI_CH3I_RDMA_Process, vc, pg_rank, pg_size);
 
-    MPIDI_CH3I_RDMA_Process.maxtransfersize = UDAPL_MAX_RDMA_SIZE;
+    mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize = UDAPL_MAX_RDMA_SIZE;
     /* init dreg entry */
     dreg_init();
     DEBUG_PRINT ("vc->num_subrails %d\n", vc->mrail.num_subrails);
     /* Allocate memory and handlers */
-    rdma_iba_allocate_memory (&MPIDI_CH3I_RDMA_Process, vc, pg_rank, pg_size);
+    rdma_iba_allocate_memory (&mv2_MPIDI_CH3I_RDMA_Process, vc, pg_rank, pg_size);
 
     if (pg_size > 1)
       {
@@ -1317,7 +1317,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **str)
             }
           DEBUG_PRINT ("After barrier\n");
 
-      if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+      if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
           /* STEP 3: exchange the information about remote buffer */
           for (i = 0; i < pg_size; ++i)
             {
@@ -1409,7 +1409,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **str)
                 /*format : "%032d-%016d-%032d-%016d" */
                 vc->mrail.rfp.remote_RDMA_buf_hndl =
                     MPIU_Malloc (sizeof (VIP_MEM_HANDLE) *
-                            MPIDI_CH3I_RDMA_Process.num_hcas);
+                            mv2_MPIDI_CH3I_RDMA_Process.num_hcas);
                 strncpy (tmp, rdmavalue, 32);
                 tmp[32] = '\0';
                 vc->mrail.rfp.remote_RDMA_buf = (void *) atol (tmp);
@@ -1438,7 +1438,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **str)
             }
       }
 
-      if (MPIDI_CH3I_RDMA_Process.has_one_sided) {
+      if (mv2_MPIDI_CH3I_RDMA_Process.has_one_sided) {
           /* Exchange qp_num */
           /* generate the key and value pair for each connection */
           sprintf (rdmakey, "MV2OSR%08d", pg_rank);
@@ -1526,7 +1526,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **str)
 
           /* Exchange the information about HCA_lid, qp_num, and memory,
            * With the ring-based queue pair */
-          rdma_iba_exchange_info (&MPIDI_CH3I_RDMA_Process,
+          rdma_iba_exchange_info (&mv2_MPIDI_CH3I_RDMA_Process,
                                   vc, pg_rank, pg_size);
 #endif
       }
@@ -1544,7 +1544,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **str)
       }
 
     /* Start this thread after the EPs have been created and before any connection request has been made */
-    pthread_create(&MPIDI_CH3I_RDMA_Process.server_thread, NULL, od_conn_server, (void*)pg);
+    pthread_create(&mv2_MPIDI_CH3I_RDMA_Process.server_thread, NULL, od_conn_server, (void*)pg);
     od_server_thread = 1;
     error = PMI_Barrier ();
 
@@ -1585,7 +1585,7 @@ static void *od_conn_server( void * arg )
 
      while (1) {
 
-         status = dat_evd_wait(MPIDI_CH3I_RDMA_Process.creq_cq_hndl[0], DAT_TIMEOUT_INFINITE,
+         status = dat_evd_wait(mv2_MPIDI_CH3I_RDMA_Process.creq_cq_hndl[0], DAT_TIMEOUT_INFINITE,
                                1, &event, &nmore);
          if (status != DAT_SUCCESS)
              continue;
@@ -1619,7 +1619,7 @@ static void *od_conn_server( void * arg )
                 do {
                     size = -1;
 
-                    status = dat_evd_wait(MPIDI_CH3I_RDMA_Process.conn_cq_hndl[0], 
+                    status = dat_evd_wait(mv2_MPIDI_CH3I_RDMA_Process.conn_cq_hndl[0], 
                                           DAT_TIMEOUT_INFINITE,
                                           1, &event, &nmore);
 
@@ -1651,7 +1651,7 @@ static void *od_conn_server( void * arg )
                 do {
                     size = -1;
 
-                    status = dat_evd_dequeue(MPIDI_CH3I_RDMA_Process.conn_cq_hndl[0], &event);
+                    status = dat_evd_dequeue(mv2_MPIDI_CH3I_RDMA_Process.conn_cq_hndl[0], &event);
 
                     if (status != DAT_SUCCESS) continue;
 
@@ -1726,7 +1726,7 @@ static void *od_conn_server( void * arg )
 
 #ifdef SOLARIS
                     do {
-                        status = dat_evd_wait(MPIDI_CH3I_RDMA_Process.conn_cq_hndl[0], 
+                        status = dat_evd_wait(mv2_MPIDI_CH3I_RDMA_Process.conn_cq_hndl[0], 
                                               DAT_TIMEOUT_INFINITE,
                                               1, &event, &nmore);
 
@@ -1759,7 +1759,7 @@ static void *od_conn_server( void * arg )
                     do {
                         size = -1;
 
-                        status = dat_evd_dequeue(MPIDI_CH3I_RDMA_Process.conn_cq_hndl[0], &event);
+                        status = dat_evd_dequeue(mv2_MPIDI_CH3I_RDMA_Process.conn_cq_hndl[0], &event);
 
                         if (status != DAT_SUCCESS) continue;
 
@@ -1857,10 +1857,10 @@ int MPIDI_CH3I_CM_Connect(MPIDI_VC_t * vc)
         while (vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE) {
 
 #ifdef SOLARIS
-            ret = dat_evd_wait(MPIDI_CH3I_RDMA_Process.conn_cq_hndl[0], 
+            ret = dat_evd_wait(mv2_MPIDI_CH3I_RDMA_Process.conn_cq_hndl[0], 
                                10, 1, &event, &nmore);
 #else
-            ret = dat_evd_dequeue(MPIDI_CH3I_RDMA_Process.conn_cq_hndl[0], &event);
+            ret = dat_evd_dequeue(mv2_MPIDI_CH3I_RDMA_Process.conn_cq_hndl[0], &event);
 #endif
 
             if (ret != DAT_SUCCESS) {

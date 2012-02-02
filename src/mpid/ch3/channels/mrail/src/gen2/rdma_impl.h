@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -58,13 +58,14 @@ do {                                                          \
 /* cluster size */
 enum {VERY_SMALL_CLUSTER, SMALL_CLUSTER, MEDIUM_CLUSTER, LARGE_CLUSTER};
 
-typedef struct MPIDI_CH3I_RDMA_Process_t {
+typedef struct mv2_MPIDI_CH3I_RDMA_Process_t {
     /* keep all rdma implementation specific global variable in a
        structure like this to avoid name collisions */
     mv2_hca_type                 hca_type;
     mv2_arch_type                arch_type;
     mv2_arch_hca_type            arch_hca_type;
     int                         cluster_size;
+    uint8_t                     heterogenity;
     uint8_t                     has_srq;
     uint8_t                     has_hsam;
     uint8_t                     has_apm;
@@ -131,8 +132,6 @@ typedef struct MPIDI_CH3I_RDMA_Process_t {
     uint32_t                    xrc_srqn[MAX_NUM_HCAS];
     int                         xrc_fd[MAX_NUM_HCAS];
     struct ibv_xrc_domain       *xrc_domain[MAX_NUM_HCAS];
-    uint8_t                     has_xrc;
-    uint8_t                     xrc_rdmafp;
 #endif /* _ENABLE_XRC_ */
 
 #ifdef _ENABLE_UD_
@@ -143,11 +142,7 @@ typedef struct MPIDI_CH3I_RDMA_Process_t {
     mv2_ud_zcopy_info_t         zcopy_info;
     uint32_t                    rc_connections;
 #endif /*_ENABLE_UD_ */
-} MPIDI_CH3I_RDMA_Process_t;
-
-#ifdef _ENABLE_XRC_
-#define USE_XRC (MPIDI_CH3I_RDMA_Process.has_xrc)
-#endif  /* _ENABLE_XRC_ */
+} mv2_MPIDI_CH3I_RDMA_Process_t;
 
 struct process_init_info {
     int         **hostid;
@@ -155,7 +150,7 @@ struct process_init_info {
     uint32_t    **qp_num_rdma;
     union ibv_gid    **gid;
     uint64_t    *vc_addr;
-    uint32_t    *hca_type;
+    mv2_arch_hca_type    *arch_hca_type;
 };
 
 typedef struct ud_addr_info {
@@ -167,7 +162,7 @@ typedef struct ud_addr_info {
 
 struct MPIDI_PG;
 
-extern MPIDI_CH3I_RDMA_Process_t MPIDI_CH3I_RDMA_Process;
+extern mv2_MPIDI_CH3I_RDMA_Process_t mv2_MPIDI_CH3I_RDMA_Process;
 
 #define GEN_EXIT_ERR     -1     /* general error which forces us to abort */
 #define GEN_ASSERT_ERR   -2     /* general assert error */
@@ -269,7 +264,7 @@ do {                                                                    \
                         __FILE__, __LINE__,(_rail), (_v)->rail);      \
                 MPIU_Assert((_rail) == (_v)->rail);                   \
         }                                                             \
-        MPIDI_CH3I_RDMA_Process.global_used_send_cq++;                \
+        mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq++;                \
         __ret = ibv_post_send((_c)->mrail.rails[(_rail)].qp_hndl,     \
                   &((_v)->desc.u.sr),&((_v)->desc.y.bad_sr));         \
         if(__ret) {                                                   \
@@ -336,7 +331,7 @@ inline static void print_info(vbuf* v, char* title, int err)
                         __FILE__, __LINE__,(_rail), (_v)->rail);      \
                 MPIU_Assert((_rail) == (_v)->rail);                   \
         }                                                             \
-        MPIDI_CH3I_RDMA_Process.global_used_send_cq++;                \
+        mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq++;                \
         __ret = ibv_post_send((_c)->mrail.rails[(_rail)].qp_hndl,     \
                   &((_v)->desc.u.sr),&((_v)->desc.y.bad_sr));         \
         if(__ret) {                                                   \
@@ -455,19 +450,19 @@ void MRAILI_Init_vc_network(MPIDI_VC_t * vc);
 #define SIGNAL_FOR_DECR_CC    (4)
 
 /* Prototype for ring based startup */
-int rdma_ring_boot_exchange(struct MPIDI_CH3I_RDMA_Process_t *proc,
+int rdma_ring_boot_exchange(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                         MPIDI_PG_t *pg, int pg_size, struct process_init_info *);
-int rdma_setup_startup_ring(struct MPIDI_CH3I_RDMA_Process_t *, int pg_rank, int pg_size);
+int rdma_setup_startup_ring(struct mv2_MPIDI_CH3I_RDMA_Process_t *, int pg_rank, int pg_size);
 int rdma_ring_exchange_host_id(MPIDI_PG_t * pg, int pg_rank, int pg_size);
-int ring_rdma_open_hca(struct MPIDI_CH3I_RDMA_Process_t *proc);
-void ring_rdma_close_hca(struct MPIDI_CH3I_RDMA_Process_t *proc);
-int rdma_cm_get_hca_type (struct MPIDI_CH3I_RDMA_Process_t *proc);
+int ring_rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc);
+void ring_rdma_close_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc);
+int rdma_cm_get_hca_type (struct mv2_MPIDI_CH3I_RDMA_Process_t *proc);
 void rdma_process_hostid(MPIDI_PG_t * pg, int *host_ids, int my_rank, int pg_size);
-int rdma_cleanup_startup_ring(struct MPIDI_CH3I_RDMA_Process_t *proc);
+int rdma_cleanup_startup_ring(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc);
 int rdma_cm_exchange_hostid(MPIDI_PG_t *pg, int pg_rank, int pg_size);
 int rdma_ring_based_allgather(void *sbuf, int data_size,
         int proc_rank, void *rbuf, int job_size,
-        struct MPIDI_CH3I_RDMA_Process_t *proc);
+        struct mv2_MPIDI_CH3I_RDMA_Process_t *proc);
 
 /* Other prototype */
 struct process_init_info *alloc_process_init_info(int pg_size, int num_rails);
@@ -475,22 +470,23 @@ void free_process_init_info(struct process_init_info *, int pg_size);
 struct ibv_mr * register_memory(void *, int len, int hca_num);
 int deregister_memory(struct ibv_mr * mr);
 int MRAILI_Backlog_send(MPIDI_VC_t * vc, int subrail);
-int rdma_open_hca(struct MPIDI_CH3I_RDMA_Process_t *proc);
+int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc);
 int rdma_find_active_port(struct ibv_context *context, struct ibv_device *ib_dev);
 int rdma_get_process_to_rail_mapping(int mrail_user_defined_p2r_type);
-int  rdma_get_control_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc);
-void  rdma_set_default_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc);
+int  rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc);
+void  rdma_set_default_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc);
 void rdma_get_user_parameters(int num_proc, int me);
-void rdma_get_pm_parameters(MPIDI_CH3I_RDMA_Process_t *proc);
-int rdma_iba_hca_init_noqp(struct MPIDI_CH3I_RDMA_Process_t *proc,
+void rdma_get_pm_parameters(mv2_MPIDI_CH3I_RDMA_Process_t *proc);
+void mv2_print_env_info(mv2_MPIDI_CH3I_RDMA_Process_t *proc);
+int rdma_iba_hca_init_noqp(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
               int pg_rank, int pg_size);
-int rdma_iba_hca_init(struct MPIDI_CH3I_RDMA_Process_t *proc,
+int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
               int pg_rank, MPIDI_PG_t *pg, struct process_init_info *);
-int rdma_iba_allocate_memory(struct MPIDI_CH3I_RDMA_Process_t *proc,
+int rdma_iba_allocate_memory(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                  int pg_rank, int pg_size);
-int rdma_iba_enable_connections(struct MPIDI_CH3I_RDMA_Process_t *proc,
+int rdma_iba_enable_connections(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                 int pg_rank, MPIDI_PG_t *pg, struct process_init_info *);
-void rdma_param_handle_heterogenity(uint32_t hca_type[], int pg_size);
+void rdma_param_handle_heterogenity(mv2_arch_hca_type hca_type[], int pg_size);
 int MRAILI_Process_send(void *vbuf_addr);
 void MRAILI_Process_recv(vbuf *v); 
 int post_send(MPIDI_VC_t *vc, vbuf *v, int rail);
@@ -500,8 +496,8 @@ int post_hybrid_send(MPIDI_VC_t *vc, vbuf *v, int rail);
 int post_ud_send(MPIDI_VC_t* vc, vbuf* v, int rail, mv2_ud_ctx_t *);
 int mv2_post_ud_recv_buffers(int num_bufs, mv2_ud_ctx_t *ud_ctx);
 void mv2_ud_update_send_credits(vbuf *v);
-int rdma_init_ud(struct MPIDI_CH3I_RDMA_Process_t *proc);
-int mv2_ud_setup_zcopy_rndv(struct MPIDI_CH3I_RDMA_Process_t *proc);
+int rdma_init_ud(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc);
+int mv2_ud_setup_zcopy_rndv(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc);
 int mv2_ud_get_remote_info(MPIDI_PG_t *pg, int pg_rank, int pg_size);
 void mv2_check_resend();
 void mv2_send_explicit_ack(MPIDI_VC_t *vc);
@@ -532,7 +528,7 @@ int MPIDI_CH3I_MRAILI_rget_finish(MPIDI_VC_t *, MPID_IOV *,
                                     vbuf **, int rail);
 int MRAILI_Handle_one_sided_completions(vbuf * v);                            
 int MRAILI_Flush_wqe(MPIDI_VC_t *vc, vbuf *v , int rail);
-struct ibv_srq *create_srq(struct MPIDI_CH3I_RDMA_Process_t *proc,
+struct ibv_srq *create_srq(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
 				  int hca_num);
 
 /*function to create qps for the connection and move them to INIT state*/
@@ -557,5 +553,9 @@ int reload_alternate_path(struct ibv_qp *qp);
 
 int power_two(int x);
 int qp_required(MPIDI_VC_t* vc, int my_rank, int dst_rank);
+#if defined(_ENABLE_CUDA_)
+void cuda_cleanup();
+void cuda_init(MPIDI_PG_t * pg);
+#endif
 
 #endif                          /* RDMA_IMPL_H */

@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -45,6 +45,18 @@ int MPIDI_CH3_SendNoncontig_iov( MPIDI_VC_t *vc, MPID_Request *sreq,
     iov_n = MPID_IOV_LIMIT - 1;
 
     mpi_errno = MPIDI_CH3U_Request_load_send_iov(sreq, &iov[1], &iov_n);
+#if defined(_ENABLE_CUDA_)
+    if (rdma_enable_cuda && sreq->dev.OnDataAvail == 
+                        MPIDI_CH3_ReqHandler_pack_cudabuf) {
+        int complete ATTRIBUTE((unused));
+        MPIDI_CH3_ReqHandler_pack_cudabuf(vc, sreq, &complete);
+        iov[1].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)sreq->dev.tmpbuf;
+        iov[1].MPID_IOV_LEN = sreq->dev.segment_size;
+        iov_n = 1;
+        sreq->dev.OnDataAvail = 0;
+    }
+#endif
+
     if (mpi_errno == MPI_SUCCESS)
     {
 	iov_n += 1;
@@ -654,11 +666,19 @@ int MPIDI_CH3_PktHandler_EagerSend_Contig( MPIDI_VC_t *vc,
     
     data_len = ((*buflen >= rreq->dev.recv_data_sz)
                 ? rreq->dev.recv_data_sz : *buflen );
+#if defined(_OSU_MVAPICH_)
+    data_buf = (char *)pkt + MPIDI_CH3U_PKT_SIZE(pkt);
+#else
     data_buf = (char *)pkt + sizeof(MPIDI_CH3_Pkt_eager_send_t);
+#endif
 
     if (rreq->dev.recv_data_sz == 0) {
         /* return the number of bytes processed in this function */
+#if defined(_OSU_MVAPICH_)
+         *buflen = MPIDI_CH3U_PKT_SIZE(pkt);
+#else
         *buflen = sizeof(MPIDI_CH3_Pkt_eager_send_t);
+#endif
         MPIDI_CH3U_Request_complete(rreq);
         *rreqp = NULL;
     }
@@ -678,11 +698,27 @@ int MPIDI_CH3_PktHandler_EagerSend_Contig( MPIDI_VC_t *vc,
    }
 
         /* return the number of bytes processed in this function */
+#if defined(_OSU_MVAPICH_)
+   *buflen = data_len + MPIDI_CH3U_PKT_SIZE(pkt);
+#else
    *buflen = data_len + sizeof(MPIDI_CH3_Pkt_eager_send_t);
-
+#endif
+       
    if (complete) 
    {
-       MPIDI_CH3U_Request_complete(rreq);
+#if defined(_ENABLE_CUDA_)
+       if (rdma_enable_cuda && 
+            rreq->dev.OnDataAvail == MPIDI_CH3_ReqHandler_unpack_cudabuf) {
+           mpi_errno = MPIDI_CH3U_Handle_recv_req(vc, rreq, &complete);
+           if (mpi_errno != MPI_SUCCESS) {
+               MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER, "**ch3|postrecv",
+                       "**ch3|postrecv %s", "MPIDI_CH3_PKT_EAGER_SEND");
+           }
+       } else 
+#endif
+       {
+           MPIDI_CH3U_Request_complete(rreq);
+       }
        *rreqp = NULL;
    }
    else

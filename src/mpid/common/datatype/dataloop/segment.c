@@ -97,6 +97,9 @@ int PREPEND_PREFIX(Segment_init)(const DLOOP_Buffer buf,
     }
     else if (count == 1) {
 	/* don't use the builtin */
+#if defined(_OSU_MVAPICH_)
+	sblp->loop_params.count = 1;
+#endif
 	DLOOP_Handle_get_loopptr_macro(handle, dlp, flag);
 	DLOOP_Handle_get_loopdepth_macro(handle, depth, flag);
     }

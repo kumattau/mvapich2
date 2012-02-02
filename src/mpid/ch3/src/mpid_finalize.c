@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -16,8 +16,8 @@
  */
 
 #include "mpidimpl.h"
-#ifdef _ENABLE_XRC_
-#include "rdma_impl.h"
+#ifdef _OSU_MVAPICH_
+#include "pmi.h"
 #endif
 
 /* FIXME: This routine needs to be factored into finalize actions per module,
@@ -109,10 +109,10 @@ int MPID_Finalize(void)
     
 #ifdef _ENABLE_XRC_
     MPIDI_CH3_Flush();
-    MPIDI_CH3I_RDMA_Process.xrc_rdmafp = 0;
+    xrc_rdmafp_init = 0;
     if (USE_XRC) {
-        if (PMI_Barrier ())
-            ibv_error_abort (GEN_EXIT_ERR, "PMI_Barrier failed");
+        mpi_errno = PMI_Barrier ();
+        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
 #endif 
 #ifdef MPID_NEEDS_ICOMM_WORLD
@@ -175,6 +175,19 @@ int MPID_Finalize(void)
 	    p = pNext;
 	}
     }
+#if defined(_ENABLE_CUDA_)
+    /* Release any CUDA SRbuf storage */
+    if (MPIDI_CH3U_CUDA_SRBuf_pool) {
+        MPIDI_CH3U_CUDA_SRBuf_element_t *p, *pNext;
+        p = MPIDI_CH3U_CUDA_SRBuf_pool;
+        while (p) {
+            pNext = p->next;
+            MPIU_Free_CUDA(p->buf);
+            MPIU_Free(p);
+            p = pNext;
+        }
+    }
+#endif
     
     MPIDU_Ftb_finalize();
 

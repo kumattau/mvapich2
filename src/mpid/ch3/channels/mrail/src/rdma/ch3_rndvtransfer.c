@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -23,10 +23,6 @@
 #include "rdma_impl.h"
 
 #include "dreg.h"
-
-#if defined(_SMP_LIMIC_)
-extern int g_smp_use_limic2;
-#endif
 
 static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t *, MPID_Request *);
 
@@ -171,7 +167,7 @@ int MPIDI_CH3_iStartRndvTransfer(MPIDI_VC_t * vc, MPID_Request * rreq)
 #ifdef CKPT
     MPIDI_CH3I_CR_lock();
 #endif
-        
+       
     MPIDI_Pkt_init(cts_pkt, MPIDI_CH3_PKT_RNDV_CLR_TO_SEND);
     if (rreq->dev.iov_count == 1 && rreq->dev.OnDataAvail == NULL)
 	cts_pkt->recv_sz = rreq->dev.iov[0].MPID_IOV_LEN;
@@ -262,11 +258,11 @@ int MPIDI_CH3_Rndv_transfer(MPIDI_VC_t * vc,
             if (rdma_enable_cuda && sreq) {
                 if(sreq->mrail.cuda_transfer_mode == NONE 
                         && cts_pkt->rndv.cuda_transfer_mode != NONE) {
-                    req->mrail.cuda_transfer_mode = CONT_HOST_TO_DEVICE;
+                    req->mrail.cuda_transfer_mode = HOST_TO_DEVICE;
                 }
-                if (sreq->mrail.cuda_transfer_mode == CONT_DEVICE_TO_DEVICE && 
+                if (sreq->mrail.cuda_transfer_mode == DEVICE_TO_DEVICE && 
                                    cts_pkt->rndv.cuda_transfer_mode == NONE) {
-                    req->mrail.cuda_transfer_mode = CONT_DEVICE_TO_HOST;
+                    req->mrail.cuda_transfer_mode = DEVICE_TO_HOST;
                 }
             }
 #endif
@@ -279,8 +275,10 @@ int MPIDI_CH3_Rndv_transfer(MPIDI_VC_t * vc,
             MPIU_Assert(rndv->protocol == VAPI_PROTOCOL_R3);
         break;
     case VAPI_PROTOCOL_RGET:
-            rndv = (rts_pkt == NULL) ? NULL : &rts_pkt->rndv;
-            MPIDI_CH3I_MRAIL_Prepare_rndv_transfer(rreq, rndv);
+            rndv = (rts_pkt == NULL) ? ((cts_pkt == NULL) ? NULL : &cts_pkt->rndv) : &rts_pkt->rndv;
+            MPIU_Assert (rndv != NULL);
+            if (sreq != NULL && cts_pkt != NULL) sreq->mrail.partner_id = cts_pkt->receiver_req_id;
+            MPIDI_CH3I_MRAIL_Prepare_rndv_transfer(req, rndv);
         break;
 #ifdef _ENABLE_UD_
     case VAPI_PROTOCOL_UD_ZCOPY:
@@ -356,7 +354,7 @@ int MPIDI_CH3_Rendezvous_push(MPIDI_VC_t * vc, MPID_Request * sreq)
 #ifdef _ENABLE_UD_
     case VAPI_PROTOCOL_UD_ZCOPY:
             MPIDI_CH3I_MRAILI_Rendezvous_zcopy_push(vc, sreq,
-                        &(MPIDI_CH3I_RDMA_Process.zcopy_info));
+                        &(mv2_MPIDI_CH3I_RDMA_Process.zcopy_info));
         break;
 #endif
     default:
@@ -429,10 +427,10 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
     }
 #endif
 
-    vc->smp.send_current_pkt_type = SMP_RNDV_MSG;
 
     DEBUG_PRINT("r3 sent req is %p\n", sreq);
     if (MPIDI_CH3I_SMP_SendQ_empty(vc)) {
+        vc->smp.send_current_pkt_type = SMP_RNDV_MSG;
         for (;;) {
             DEBUG_PRINT("iov count (sreq): %d, offset %d, len[1] %d\n",
                         sreq->dev.iov_count, sreq->dev.iov_offset,
@@ -458,7 +456,7 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
                 return mpi_errno;
             }
 
-            if (nb >= 0) {
+            if (nb > 0) {
                 if (MPIDI_CH3I_Request_adjust_iov(sreq, nb)) {
                     MPIDI_CH3U_Handle_send_req(vc, sreq, &complete);
                     if (complete) {
@@ -476,6 +474,7 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
                     break;
                 }
             } else {
+                sreq->ch.reqtype = REQUEST_RNDV_R3_DATA;
                 MPIDI_CH3I_SMP_SendQ_enqueue_head(vc, sreq);
                 vc->smp.send_active = sreq;
                 sreq->mrail.nearly_complete = 1;
@@ -486,7 +485,6 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
         sreq->ch.reqtype = REQUEST_RNDV_R3_DATA;
         MPIDI_CH3I_SMP_SendQ_enqueue(vc, sreq);
         sreq->mrail.nearly_complete = 1;
-        vc->smp.send_current_pkt_type = SMP_RNDV_MSG;
         DEBUG_PRINT("Enqueue sreq %p", sreq);
     }
 
@@ -524,7 +522,7 @@ void MPIDI_CH3_Rendezvous_r3_push(MPIDI_VC_t * vc, MPID_Request * sreq)
         do {
 #ifndef DAPL_DEFAULT_PROVIDER
 	    /* stop sending more R3 data to avoid SRQ flooding at receiver */
-            if (MPIDI_CH3I_RDMA_Process.has_srq) {
+            if (mv2_MPIDI_CH3I_RDMA_Process.has_srq) {
                 if (vc->ch.pending_r3_data >= rdma_max_r3_pending_data) {
                     wait_for_rndv_r3_ack = 1;
                     break;
@@ -794,7 +792,7 @@ int MPIDI_CH3_Rendezvouz_r3_recv_data(MPIDI_VC_t * vc, vbuf * buffer)
     }
   fn_exit:
 #ifndef DAPL_DEFAULT_PROVIDER
-    if (MPIDI_CH3I_RDMA_Process.has_srq) {
+    if (mv2_MPIDI_CH3I_RDMA_Process.has_srq) {
         if ( vc->ch.received_r3_data >= rdma_max_r3_pending_data) {
             DEBUG_PRINT("recved data: %d send ack\n", vc->ch.received_r3_data );
             MPIDI_CH3I_MRAILI_Rendezvous_r3_ack_send(vc);
@@ -839,6 +837,20 @@ int MPIDI_CH3_Rendezvous_rget_send_finish(MPIDI_VC_t * vc,
 
     MPID_Request_get_ptr(rget_pkt->sender_req_id, sreq);
 
+#if defined (_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
+    cudaError_t cudaerr = cudaSuccess;
+
+    if (rdma_enable_cuda && sreq->mrail.ipc_cuda_event) {
+        cudaerr = cudaStreamWaitEvent(0, sreq->mrail.ipc_cuda_event->event, 0);
+        if (cudaerr != cudaSuccess) {
+            ibv_error_abort(IBV_RETURN_ERR,"cudaStreamWaitEvent failed\n");
+        }
+    
+        release_cuda_event(sreq->mrail.ipc_cuda_event);
+        sreq->mrail.ipc_cuda_event = NULL;
+    }
+#endif
+
     if (!MPIDI_CH3I_MRAIL_Finish_request(sreq)) {
         return MPI_SUCCESS;
     }
@@ -846,7 +858,7 @@ int MPIDI_CH3_Rendezvous_rget_send_finish(MPIDI_VC_t * vc,
     MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(sreq);
 
 #if 0
-    if(MPIDI_CH3I_RDMA_Process.has_hsam && 
+    if(mv2_MPIDI_CH3I_RDMA_Process.has_hsam && 
             ((req->mrail.rndv_buf_sz > rdma_large_msg_rail_sharing_threshold))) {
 
         /* Adjust the weights of different paths according to the
@@ -1065,6 +1077,13 @@ int MPIDI_CH3_Rendezvous_rput_finish(MPIDI_VC_t * vc,
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_RNDV_RPUT_FINISH);
 
     MPID_Request_get_ptr(rf_pkt->receiver_req_id, rreq);
+#if defined(_ENABLE_CUDA_)
+    if (rdma_enable_cuda && rf_pkt->is_cuda) {
+        /* In cuda multi-rail case, the finish message will be sent
+           only on rail 0 for pipepine RDMA transfers.*/
+        rreq->mrail.completion_counter = rdma_num_rails - 1;
+    }
+#endif
 
     if (!MPIDI_CH3I_MRAIL_Finish_request(rreq))
     {

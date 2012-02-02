@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -17,7 +17,7 @@
 int read_param_file(char *paramfile, char **env);
 void commandLine(int argc, char *argv[], char *totalview_cmd, char **env);
 int file_exists(char *filename);
-void usage(void);
+void usage(const char * arg0);
 
 /* xxx need to add checking for string overflow, do this more carefully ... */
 extern char *mpispawn_param_env;

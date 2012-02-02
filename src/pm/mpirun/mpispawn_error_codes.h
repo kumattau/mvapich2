@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -21,6 +21,7 @@ typedef enum {
     MPISPAWN_PMI_WRITE_ERROR = 5,          // MPISPAWN got an error while writi
     MPISPAWN_INTERNAL_ERROR = 6,           // MPISPAWN got an internal error
     MPISPAWN_CLEANUP_SIGNAL = 7,           // MPISPAWN received a cleanup signa
+    MPISPAWN_TRIGGER_MIGRATION = 8,        // MPISPAWN triggers a migration
 } mpispawn_error_code;
 
 static inline const char *
@@ -41,6 +42,8 @@ get_mpispawn_error_str (mpispawn_error_code ec)
             return "MPISPAWN internal error";
         case MPISPAWN_CLEANUP_SIGNAL:
             return "MPISPAWN got cleanup signal";
+        case MPISPAWN_TRIGGER_MIGRATION:
+            return "MPISPAWN triggers a migration (not an error)";
         default:
             return "Unknown error";
     }

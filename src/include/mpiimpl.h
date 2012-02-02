@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -3352,11 +3352,7 @@ int MPIR_Localcopy(void *sendbuf, int sendcount, MPI_Datatype sendtype,
                    void *recvbuf, int recvcount, MPI_Datatype recvtype);
 #ifdef _ENABLE_CUDA_
 int enable_device_ptr_checks;
-
 int is_device_buffer(void *buffer);
-int MPIR_Localcopy_cuda(void *sendbuf, int sendcount, MPI_Datatype sendtype,
-                   void *recvbuf, int recvcount, MPI_Datatype recvtype,
-                   enum cudaMemcpyKind kind);
 #endif
 int MPIC_Irecv(void *buf, int count, MPI_Datatype datatype, int
                source, int tag, MPI_Comm comm, MPI_Request *request);
@@ -3455,6 +3451,8 @@ int MPIR_Reduce_MV2(void *sendbuf, void *recvbuf, int count, MPI_Datatype dataty
 int MPIR_Scatter_MV2(void *sendbuf, int sendcnt, MPI_Datatype sendtype, 
                  void *recvbuf, int recvcnt, MPI_Datatype recvtype, 
                  int root, MPID_Comm *comm_ptr, int *errflag );
+int MPIR_Reduce_scatter_MV2(void *sendbuf, void *recvbuf, int *recvcnts, 
+                              MPI_Datatype datatype, MPI_Op op, MPID_Comm *comm_ptr, int *errflag);
 int MPIR_Barrier_MV2( MPID_Comm *comm_ptr, int *errflag);
 #endif /* _OSU_MVAPICH_ || _OSU_PSM_ */
 

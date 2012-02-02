@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -20,9 +20,6 @@
 #include "pmi2.h"
 #else
 #include "pmi.h"
-#endif
-#ifdef _ENABLE_XRC_
-#include "rdma_impl.h"
 #endif
 
 #define MAX_JOBID_LEN 1024
@@ -1216,11 +1213,13 @@ int MPIDI_PG_Close_VCs( void )
 		continue;
 	    }
 #ifdef _ENABLE_XRC_
-        PRINT_DEBUG(DEBUG_XRC_verbose>0, "closing %d xf: 0x%08x state:%d\n", vc->pg_rank, vc->ch.xrc_flags, 
-                vc->state);
-        MPICM_lock();
-        VC_XST_SET (vc, XF_CONN_CLOSING);
-        MPICM_unlock();
+        if (USE_XRC) {
+            PRINT_DEBUG(DEBUG_XRC_verbose>0, "closing %d xf: 0x%08x state:%d\n", 
+                            vc->pg_rank, vc->ch.xrc_flags, vc->state);
+            MPICM_lock();
+            VC_XST_SET (vc, XF_CONN_CLOSING);
+            MPICM_unlock();
+        }
 #endif
 
 #ifdef _ENABLE_XRC_

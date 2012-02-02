@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -28,7 +28,7 @@
 #include "pmi.h"
 #include "smp_smpi.h"
 #include "mpiutil.h"
-#include "ch3_hwloc_bind.h"
+#include "hwloc_bind.h"
 
 #if defined(HAVE_LIBHWLOC)
 /* CPU Mapping related definitions */
@@ -39,6 +39,7 @@
 
 
 unsigned int mv2_enable_affinity=1;
+unsigned int mv2_enable_leastload = 0;
 
 typedef enum{
     CPU_FAMILY_NONE=0,
@@ -907,7 +908,6 @@ int get_cpu_mapping_hwloc(long N_CPUs_online, hwloc_topology_t tp)
     pid_t pid;
     obj_attribute_type *tree = NULL;
     char *value;
-    int mv2_enable_leastload = 0;
 
     /* Determine topology depth */
     topodepth = hwloc_topology_get_depth(tp);
@@ -1189,7 +1189,7 @@ int get_cpu_mapping(long N_CPUs_online)
 #define FUNCNAME smpi_setaffinity
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int smpi_setaffinity (void)
+int smpi_setaffinity (int my_local_id)
 {
     int mpi_errno = MPI_SUCCESS;
 
@@ -1260,7 +1260,7 @@ int smpi_setaffinity (void)
                 }
                 tp_str[i] = '\0';
 
-                if (j == g_smpi.my_local_id)
+                if (j == my_local_id)
                 {
 		    // parsing of the string
                     char *token = tp_str;
@@ -1360,7 +1360,7 @@ int smpi_setaffinity (void)
                 * information. We are falling back on the linear mapping.
                 * This may not deliver the best performace
                 */
-                hwloc_bitmap_only(cpuset, g_smpi.my_local_id % N_CPUs_online) ;
+                hwloc_bitmap_only(cpuset, my_local_id % N_CPUs_online) ;
                 hwloc_set_cpubind(topology, cpuset, 0);
             }
             else {
@@ -1395,7 +1395,7 @@ int smpi_setaffinity (void)
                     strncpy(tp_str, tp, i);
                     tp_str[i] = '\0';
 
-                    if (j == g_smpi.my_local_id)
+                    if (j == my_local_id)
                     {
                         hwloc_bitmap_only(cpuset, atoi(tp_str));
                         hwloc_set_cpubind(topology, cpuset, 0);

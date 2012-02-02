@@ -1,6 +1,6 @@
                          COPYRIGHT
 
-Copyright (c) 2003-2011, The Ohio State University. All rights
+Copyright (c) 2003-2012, The Ohio State University. All rights
 reserved.
 
 The MVAPICH2 software package is developed by the team members of The
@@ -15,6 +15,8 @@ The Ohio State University
 Columbus, OH - 43210-1277
 Tel: (614)-292-5199; Fax: (614)-292-2911
 E-mail:panda@cse.ohio-state.edu
+
+This program is available under BSD licensing.
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are

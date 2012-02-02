@@ -251,6 +251,7 @@ if test "$enable_checkfaults" = "yes" ; then
     faultsdir=faults
 fi
 AC_SUBST(faultsdir)
+
 #
 if test "$enable_strictmpi" = "yes" ; then
     AC_DEFINE(USE_STRICT_MPI,1,[Define if only operations defined in MPI should be tested])

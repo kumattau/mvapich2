@@ -1,6 +1,6 @@
 %{
 /*
- * Copyright (c) 2003-2011, The Ohio State University. All rights
+ * Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -24,13 +24,15 @@ whitespace  ([ \t]+)
 text        ([^[:space:]:#]+)
 comment     (#.*)
 
+%option prefix="hostfile_yy" outfile="lex.yy.c"
+
 %%
 
 {comment}|{whitespace}  /* eat up comments and whitespace */
 
-{decimal}               { yylval.decimal = (size_t)atoi(yytext);
+{decimal}               { hostfile_yylval.decimal = (size_t)atoi(yytext);
                           return DECIMAL; }
-{text}                  { yylval.text = strdup(yytext); return TEXT; }
+{text}                  { hostfile_yylval.text = strdup(yytext); return TEXT; }
 :                       { return ':'; }
 \n                      { return '\n'; }
 

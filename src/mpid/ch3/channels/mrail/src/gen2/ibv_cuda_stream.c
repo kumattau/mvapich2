@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -17,11 +17,12 @@
 
 #ifdef _ENABLE_CUDA_
 void *cuda_stream_region;
-cuda_stream_t *free_cuda_stream_list_head;
-cuda_stream_t *busy_cuda_stream_list_head;
-cuda_stream_t *busy_cuda_stream_list_tail;
+cuda_stream_t *free_cuda_stream_list_head = NULL;
+cuda_stream_t *busy_cuda_stream_list_head = NULL;
+cuda_stream_t *busy_cuda_stream_list_tail = NULL;
+cudaStream_t  stream_d2h = 0, stream_h2d = 0;
 
-int allocate_cuda_streams()
+void allocate_cuda_streams()
 {
     int j;
     cudaError_t result;
@@ -38,6 +39,7 @@ int allocate_cuda_streams()
             ibv_error_abort(GEN_EXIT_ERR, "Cuda Stream Creation failed \n");
         }
         curr->op_type = -1;
+        curr->flags = CUDA_STREAM_FREE_POOL; 
         curr = curr->next;
         curr->prev = NULL;
     }
@@ -47,7 +49,6 @@ int allocate_cuda_streams()
     }
     curr->next = curr->prev = NULL;
     busy_cuda_stream_list_head = NULL;
-    return 0;
 }
 
 void deallocate_cuda_streams()
@@ -63,12 +64,52 @@ void deallocate_cuda_streams()
     }
 }
 
+int allocate_cuda_stream(cuda_stream_t **cuda_stream)
+{
+    cudaError_t result;
+    *cuda_stream = (cuda_stream_t *) MPIU_Malloc(sizeof(cuda_stream_t));
+    result = cudaStreamCreate(&((*cuda_stream)->stream));
+    if (result != cudaSuccess) {
+        ibv_error_abort(GEN_EXIT_ERR, "Cuda Stream Creation failed \n");
+    }
+    (*cuda_stream)->next = (*cuda_stream)->prev = NULL;
+    (*cuda_stream)->cuda_vbuf_head = (*cuda_stream)->cuda_vbuf_tail = NULL;
+    (*cuda_stream)->flags = CUDA_STREAM_DEDICATED;
+    return 0;
+}
+
+void deallocate_cuda_stream(cuda_stream_t **cuda_stream)
+{
+    cudaStreamDestroy((*cuda_stream)->stream);
+    MPIU_Free(*cuda_stream);
+    *cuda_stream = NULL;
+}
+
+void allocate_cuda_rndv_streams()
+{
+    cudaError_t result;
+    result = cudaStreamCreate(&(stream_d2h));
+    if (result != cudaSuccess) {
+        ibv_error_abort(GEN_EXIT_ERR, "Cuda Stream Creation failed \n");
+    }
+    result = cudaStreamCreate(&(stream_h2d));
+    if (result != cudaSuccess) {
+        ibv_error_abort(GEN_EXIT_ERR, "Cuda Stream Creation failed \n");
+    }
+}
+
+void deallocate_cuda_rndv_streams()
+{
+    cudaStreamDestroy(stream_d2h);
+    cudaStreamDestroy(stream_h2d);
+}
+
 void process_cuda_stream_op(cuda_stream_t * stream)
 {
     int mpi_errno = MPI_SUCCESS;
     MPID_Request *req = stream->req;
     MPIDI_VC_t *vc = (MPIDI_VC_t *) stream->vc;
-    vbuf *cuda_vbuf = stream->cuda_vbuf;
+    vbuf *cuda_vbuf = stream->cuda_vbuf_head; 
     int displacement = stream->displacement;
     int is_finish = stream->is_finish;
     int is_pipeline = (!displacement && is_finish) ? 0 : 1;
@@ -82,7 +123,9 @@ void process_cuda_stream_op(cuda_stream_t * stream)
         v->sreq = req;
 
         req->mrail.pipeline_nm++;
-        if (req->mrail.cuda_transfer_mode == CONT_DEVICE_TO_DEVICE) {
+        is_finish = (req->mrail.pipeline_nm == req->mrail.num_cuda_blocks)? 1 : 0;
+        
+        if (req->mrail.cuda_transfer_mode == DEVICE_TO_DEVICE) {
             MRAILI_RDMA_Put(vc, v,
                 (char *) (v->buffer),
                 v->region->mem_handle[vc->mrail.rails[rail].hca_index]->lkey,
@@ -94,7 +137,7 @@ void process_cuda_stream_op(cuda_stream_t * stream)
                                         rdma_cuda_block_size * displacement);
             req->mrail.num_remote_cuda_done++;
 
-        } else if (req->mrail.cuda_transfer_mode == CONT_DEVICE_TO_HOST) {
+        } else if (req->mrail.cuda_transfer_mode == DEVICE_TO_HOST) {
             MRAILI_RDMA_Put(vc, v,
                 (char *) (v->buffer),
                 v->region->mem_handle[vc->mrail.rails[rail].hca_index]->lkey,
@@ -103,11 +146,12 @@ void process_cuda_stream_op(cuda_stream_t * stream)
                 req->mrail.rkey[vc->mrail.rails[rail].hca_index],
                 size, rail);
 
-            if (is_finish)
+            if (is_finish) {
                 MRAILI_RDMA_Put_finish_cuda(vc, req, rail, is_pipeline,
                                             is_finish,
                                             rdma_cuda_block_size *
                                             displacement);
+            }
         }
 
         PRINT_DEBUG(DEBUG_CUDA_verbose > 1, "RDMA write block: "
@@ -122,14 +166,27 @@ void process_cuda_stream_op(cuda_stream_t * stream)
         }
 
     } else if (stream->op_type == RECV) {
-        PRINT_DEBUG(DEBUG_CUDA_verbose > 2, "CUDA copy block: "
-                    "cuda block offset:%d , block addr offset:%d buf:%p\n",
-                    displacement, rdma_cuda_block_size * displacement, cuda_vbuf->buffer);
 
-        release_cuda_vbuf(cuda_vbuf);
+        vbuf *temp_buf;
+        /* release all the vbufs in the recv stream */
+        while(cuda_vbuf)
+        {
+            PRINT_DEBUG(DEBUG_CUDA_verbose > 2, "CUDA copy block: "
+                "buf:%p\n", cuda_vbuf->buffer);
+            temp_buf = cuda_vbuf->next;
+            cuda_vbuf->next = NULL;
+            release_cuda_vbuf(cuda_vbuf);
+            cuda_vbuf = temp_buf;
+        }
+        stream->cuda_vbuf_head = stream->cuda_vbuf_tail = NULL; 
+        
         if (stream->is_finish) {
             int complete = 0;
             MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(req);
+            /* deallocate the stream if request is finished */
+            if (req->mrail.cuda_stream) {
+                deallocate_cuda_stream(&req->mrail.cuda_stream);
+            }
 
             mpi_errno = MPIDI_CH3U_Handle_recv_req(vc, req, &complete);
             if (mpi_errno != MPI_SUCCESS) {
@@ -139,7 +196,39 @@ void process_cuda_stream_op(cuda_stream_t * stream)
             MPIU_Assert(complete == TRUE);
             vc->ch.recv_active = NULL;
         }
-    } else {
+#if defined(HAVE_CUDA_IPC)
+    } else if (stream->op_type == RGET) {
+        cudaError_t cudaerr = cudaSuccess;
+
+        cudaerr = cudaEventRecord(req->mrail.ipc_event, stream->stream);
+        if (cudaerr != cudaSuccess) {
+           ibv_error_abort(IBV_STATUS_ERR,
+                    "cudaEventRecord failed");
+        }
+
+        cudaerr = cudaStreamWaitEvent(0, req->mrail.ipc_event, 0);
+        if (cudaerr != cudaSuccess) {
+            ibv_error_abort(IBV_RETURN_ERR,"cudaStreamWaitEvent failed\n");
+        }
+
+        cudaerr = cudaEventDestroy(req->mrail.ipc_event);
+        if (cudaerr != cudaSuccess) {
+            ibv_error_abort(IBV_RETURN_ERR,"cudaEventDestroy failed\n");
+        }
+        
+        if (req->mrail.cuda_reg) {
+            cudaipc_deregister(req->mrail.cuda_reg);
+            req->mrail.cuda_reg = NULL;
+        }
+
+        /* deallocate the stream if it is allocated */
+        if (req->mrail.cuda_stream) {
+            deallocate_cuda_stream(&req->mrail.cuda_stream);
+        }
+
+        MRAILI_RDMA_Get_finish(vc, req, 0);
+#endif
+    } else { 
         ibv_error_abort(IBV_RETURN_ERR, "Invalid op type in stream");
     }
 }
@@ -149,6 +238,7 @@ void progress_cuda_streams()
     cudaError_t result = cudaSuccess;
     cuda_stream_t *curr_stream = busy_cuda_stream_list_head;
     cuda_stream_t *next_stream;
+    cuda_async_op_t op_type;
 
     while (NULL != curr_stream) {
         if (!curr_stream->is_query_done) {
@@ -161,10 +251,10 @@ void progress_cuda_streams()
                 || !((MPID_Request *) curr_stream->req)->mrail.
                 num_remote_cuda_pending)) {
                 curr_stream = curr_stream->next;
-                //break;
             } else {
-                process_cuda_stream_op(curr_stream);
                 next_stream = curr_stream->next;
+
+                /* detach finished stream from the busy list*/    
                 if (curr_stream->prev) {
                     curr_stream->prev->next = curr_stream->next;
                 } else {
@@ -178,8 +268,16 @@ void progress_cuda_streams()
 
                 curr_stream->is_query_done = 0;
                 curr_stream->next = curr_stream->prev = NULL;
-                curr_stream->next = free_cuda_stream_list_head;
-                free_cuda_stream_list_head = curr_stream;
+                op_type = curr_stream->op_type;
+
+                /* process finished stream */
+                process_cuda_stream_op(curr_stream);
+
+                /* Dedicated stream will be deallocated after the request is finished*/
+                if (curr_stream->flags == CUDA_STREAM_FREE_POOL) {
+                    curr_stream->next = free_cuda_stream_list_head;
+                    free_cuda_stream_list_head = curr_stream;
+                }
                 curr_stream = next_stream;
             }
         } else {
@@ -188,19 +286,24 @@ void progress_cuda_streams()
     }
 }
 
-
 cuda_stream_t *get_cuda_stream()
 {
 
     cuda_stream_t *curr_stream;
 
     if (NULL == free_cuda_stream_list_head) {
-        return NULL;
+        if (NULL != busy_cuda_stream_list_head) {
+            return NULL;
+        } else {
+            /* allocate cuda stream region */
+            allocate_cuda_streams();
+        }
     }
     curr_stream = free_cuda_stream_list_head;
     free_cuda_stream_list_head = free_cuda_stream_list_head->next;
     curr_stream->next = curr_stream->prev = NULL;
 
+    /* Enqueue stream to the busy list*/
     if (NULL == busy_cuda_stream_list_head) {
         busy_cuda_stream_list_head = curr_stream;
         busy_cuda_stream_list_tail = curr_stream;

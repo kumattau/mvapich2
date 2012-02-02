@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -183,6 +183,26 @@ struct MPIDI_CH3I_RDMA_put_get_list_t{
 } 
 #endif
 
+#if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
+#define MPIDI_CH3I_MRAIL_SET_PKT_RNDV_CUDA_IPC(_pkt, _req)      \
+{                                                               \
+    if ( VAPI_PROTOCOL_RGET == (_pkt)->rndv.protocol            \
+         && IS_CUDA_RNDV_REQ(_req)) {                           \
+        (_pkt)->rndv.ipc_displ = (_req)->mrail.ipc_displ;       \
+        (_pkt)->rndv.ipc_baseptr = (_req)->mrail.ipc_baseptr;   \
+        (_pkt)->rndv.ipc_size = (_req)->mrail.ipc_size;         \
+        MPIU_Memcpy(&(_pkt)->rndv.ipc_memhandle,                \
+                    &(_req)->mrail.ipc_memhandle,               \
+                    sizeof(cudaIpcMemHandle_t));                \
+        MPIU_Memcpy(&(_pkt)->rndv.ipc_eventhandle,              \
+                    &(_req)->mrail.ipc_eventhandle,             \
+                    sizeof(cudaIpcEventHandle_t));              \
+    }                                                           \
+}
+#else
+#define MPIDI_CH3I_MRAIL_SET_PKT_RNDV_CUDA_IPC(_pkt, _req)
+#endif
+
 #define MPIDI_CH3I_MRAIL_SET_PKT_RNDV(_pkt, _req)               \
 {                                                               \
     int _i;                                                     \
@@ -197,6 +217,7 @@ struct MPIDI_CH3I_RDMA_put_get_list_t{
         }                                                       \
         (_pkt)->rndv.buf_addr = (_req)->mrail.rndv_buf;         \
     }                                                           \
+    MPIDI_CH3I_MRAIL_SET_PKT_RNDV_CUDA_IPC(_pkt, _req);         \
 }
 
 #define MPIDI_CH3I_MRAIL_FREE_RNDV_BUFFER(req)                  \

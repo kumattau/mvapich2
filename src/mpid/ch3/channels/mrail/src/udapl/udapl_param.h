@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -26,7 +26,6 @@ extern u_int8_t rdma_default_qp_ous_rd_atom;
 extern u_int8_t rdma_default_max_rdma_dst_ops;
 extern u_int8_t rdma_default_src_path_bits;
 extern int rdma_default_put_get_list_size;
-extern int rdma_read_reserve;
 extern float rdma_credit_update_threshold;
 extern int num_rdma_buffer;
 extern int rdma_iba_eager_threshold;
@@ -53,7 +52,6 @@ extern char dapl_provider[32];
 extern int rdma_pin_pool_size;
 extern int rdma_put_fallback_threshold;
 extern int rdma_get_fallback_threshold;
-extern int rdma_integer_pool_size;
 extern int rdma_iba_eager_threshold;
 extern long rdma_eagersize_1sc;
 extern int rdma_global_ext_sendq_size;
@@ -63,13 +61,13 @@ extern int rdma_use_blocking;
 
 extern int  use_hwloc_cpu_binding;
 extern unsigned long rdma_polling_spin_count_threshold;
-extern int use_thread_yield;
-extern int spins_before_lock; 
+extern int mv2_use_thread_yield;
+extern int mv2_spins_before_lock; 
 
-#define INTER_NODE_KNOMIAL_FACTOR_MAX 8
-#define INTER_NODE_KNOMIAL_FACTOR_MIN 2
-#define INTRA_NODE_KNOMIAL_FACTOR_MAX 8
-#define INTRA_NODE_KNOMIAL_FACTOR_MIN 2
+#define MV2_INTER_NODE_KNOMIAL_FACTOR_MAX 8
+#define MV2_INTER_NODE_KNOMIAL_FACTOR_MIN 2
+#define MV2_INTRA_NODE_KNOMIAL_FACTOR_MAX 8
+#define MV2_INTRA_NODE_KNOMIAL_FACTOR_MIN 2
 
 
 #define RDMA_NDREG_ENTRIES              (1100)
@@ -78,7 +76,6 @@ extern int spins_before_lock;
 #define RDMA_DEFAULT_PORT               (1)
 #define RDMA_DEFAULT_MAX_SEND_WQE       (64)
 #define RDMA_DEFAULT_MAX_RECV_WQE       (128)
-#define RDMA_READ_RESERVE  				(10)
 #define RDMA_DEFAULT_MAX_SG_LIST        (20)
 #define RDMA_DEFAULT_QP_OUS_RD_ATOM     (8)
 #define RDMA_DEFAULT_MAX_RDMA_DST_OPS   (8)
@@ -87,7 +84,6 @@ extern int spins_before_lock;
 #define RDMA_DEFAULT_SRC_PATH_BITS      (0)
 #define RDMA_DEFAULT_PUT_GET_LIST_SIZE  (300)
 #define	RDMA_CREDIT_UPDATE_THRESHOLD	(1.1)
-#define RDMA_INTEGER_POOL_SIZE			(1024)
 
 #define MAX_NUM_HCAS                    (1)
 #define MAX_SUBCHANNELS                 (1)
@@ -106,7 +102,6 @@ extern int spins_before_lock;
 #define RDMA_DEFAULT_MAX_WQE_CCIL       (100)
 #define RDMA_DEFAULT_MAX_WQE_GM         (8)
 #define RDMA_DEFAULT_MAX_WQE_SOLARIS    (300)
-#define RDMA_READ_RESERVE_GM            (6)
 #define RDMA_DEFAULT_MTU_SIZE           (1024)
 #define RDMA_DEFAULT_MTU_SIZE_GM             (4096)
 #define RDMA_DEFAULT_MTU_SIZE_CCIL           (65535)

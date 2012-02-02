@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -162,6 +162,23 @@ skip_self_send:
     /* FIXME: flow control: limit number of outstanding eager messsages 
        containing data and need to be buffered by the receiver */
 #if defined(_OSU_MVAPICH_)
+#ifdef _ENABLE_CUDA_
+    if (rdma_enable_cuda) {
+        if(HANDLE_GET_KIND(datatype) != HANDLE_KIND_BUILTIN &&
+                sreq->dev.datatype_ptr == NULL) {
+            sreq->dev.datatype_ptr = dt_ptr;
+            MPID_Datatype_add_ref(dt_ptr);
+        }
+        if (is_device_buffer((void *)buf)) {
+            /* buf is in the GPU device memory */
+            sreq->mrail.cuda_transfer_mode = DEVICE_TO_DEVICE;
+        } else {
+            /* buf is in the host memory*/
+            sreq->mrail.cuda_transfer_mode = NONE;
+        }
+    }
+#endif
+
     if (data_sz + sizeof(MPIDI_CH3_Pkt_eager_send_t) <=	vc->eager_max_msg_sz
         && !vc->force_rndv)
 #else /* defined(_OSU_MVAPICH_) */
@@ -203,21 +220,6 @@ eager_send:
     {
 	/* Note that the sreq was created above */
 	MPIDI_Request_set_msg_type( sreq, MPIDI_REQUEST_RNDV_MSG );
-
-#ifdef _ENABLE_CUDA_
-    int mem_type = 0;
-    if (rdma_enable_cuda) {
-        cuPointerGetAttribute((void*) &mem_type, 
-            CU_POINTER_ATTRIBUTE_MEMORY_TYPE, (CUdeviceptr) buf);
-        if (mem_type == CU_MEMORYTYPE_DEVICE) {
-            /* buf is in the GPU device memory */
-            sreq->mrail.cuda_transfer_mode = CONT_DEVICE_TO_DEVICE;
-        } else {
-            /* buf is in the host memory*/
-            sreq->mrail.cuda_transfer_mode = NONE;
-        }
-    }
-#endif
 
 	mpi_errno = vc->rndvSend_fn( &sreq, buf, count, datatype, dt_contig,
                                      data_sz, dt_true_lb, rank, tag, comm, 

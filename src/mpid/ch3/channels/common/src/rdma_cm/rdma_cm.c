@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -104,7 +104,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
     int connect_attempts = 0;
     int exp_factor = 1;
     int pg_size, pg_rank, tmplen;
-    MPIDI_CH3I_RDMA_Process_t *proc = &MPIDI_CH3I_RDMA_Process;
+    mv2_MPIDI_CH3I_RDMA_Process_t *proc = &mv2_MPIDI_CH3I_RDMA_Process;
     MPIDI_VC_t  *vc, *gotvc;
     MPIDI_PG_t *pg_tmp;
     struct rdma_conn_param conn_param;
@@ -419,7 +419,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
 void *cm_thread(void *arg)
 {
     struct rdma_cm_event *event;
-    MPIDI_CH3I_RDMA_Process_t *proc = &MPIDI_CH3I_RDMA_Process;    
+    mv2_MPIDI_CH3I_RDMA_Process_t *proc = &mv2_MPIDI_CH3I_RDMA_Process;    
     int ret;
 
     while (1) {
@@ -560,7 +560,7 @@ static int bind_listen_port(int pg_rank, int pg_size)
 {
     struct sockaddr_in sin;
     int ret, count = 0;
-    MPIDI_CH3I_RDMA_Process_t *proc = &MPIDI_CH3I_RDMA_Process;
+    mv2_MPIDI_CH3I_RDMA_Process_t *proc = &mv2_MPIDI_CH3I_RDMA_Process;
     int mpi_errno;
     MPIDI_STATE_DECL(MPID_STATE_BIND_LISTEN_PORT);
     MPIDI_FUNC_ENTER(MPID_STATE_BIND_LISTEN_PORT);
@@ -614,7 +614,7 @@ fn_fail:
 #define FUNCNAME ib_init_rdma_cm
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int ib_init_rdma_cm(struct MPIDI_CH3I_RDMA_Process_t *proc,
+int ib_init_rdma_cm(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                 int pg_rank, int pg_size)
 {
     int i = 0, ret, num_interfaces;
@@ -723,7 +723,7 @@ int rdma_cm_connect_all(int *hosts, int pg_rank, MPIDI_PG_t *pg)
 {
     int i, j, k, rail_index, pg_size;
     MPIDI_VC_t  *vc;
-    MPIDI_CH3I_RDMA_Process_t *proc = &MPIDI_CH3I_RDMA_Process;
+    mv2_MPIDI_CH3I_RDMA_Process_t *proc = &mv2_MPIDI_CH3I_RDMA_Process;
     int max_num_ips = rdma_num_hcas * rdma_num_ports;
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_RDMA_CM_CONNECT_ALL);
@@ -776,7 +776,7 @@ fn_fail:
 int rdma_cm_get_contexts(){
     int i, ret;
     struct sockaddr_in sin;
-    MPIDI_CH3I_RDMA_Process_t *proc = &MPIDI_CH3I_RDMA_Process;
+    mv2_MPIDI_CH3I_RDMA_Process_t *proc = &mv2_MPIDI_CH3I_RDMA_Process;
     MPIDI_STATE_DECL(MPID_STATE_RDMA_CM_GET_CONTEXTS);
     MPIDI_FUNC_ENTER(MPID_STATE_RDMA_CM_GET_CONTEXTS);
 
@@ -819,7 +819,7 @@ int rdma_cm_create_qp(MPIDI_VC_t *vc, int rail_index)
 {
     struct ibv_qp_init_attr init_attr;
     int hca_index, ret;
-    MPIDI_CH3I_RDMA_Process_t *proc = &MPIDI_CH3I_RDMA_Process;
+    mv2_MPIDI_CH3I_RDMA_Process_t *proc = &mv2_MPIDI_CH3I_RDMA_Process;
     struct rdma_cm_id *cmid;
     MPIDI_STATE_DECL(MPID_STATE_RDMA_CM_CREATE_QP);
     MPIDI_FUNC_ENTER(MPID_STATE_RDMA_CM_CREATE_QP);
@@ -1116,7 +1116,7 @@ int rdma_cm_get_local_ip(){
 int rdma_cm_connect_to_server(MPIDI_VC_t *vc, int ipnum, int rail_index){
     int ret = 0;
     struct sockaddr_in sin;
-    MPIDI_CH3I_RDMA_Process_t *proc = &MPIDI_CH3I_RDMA_Process;
+    mv2_MPIDI_CH3I_RDMA_Process_t *proc = &mv2_MPIDI_CH3I_RDMA_Process;
 
     /* store VC used for connection in the context, 
      * so we get back vc at event callbacks 
@@ -1152,7 +1152,7 @@ int rdma_cm_connect_to_server(MPIDI_VC_t *vc, int ipnum, int rail_index){
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int rdma_cm_init_pd_cq()
 {
-    MPIDI_CH3I_RDMA_Process_t* proc = &MPIDI_CH3I_RDMA_Process;
+    mv2_MPIDI_CH3I_RDMA_Process_t* proc = &mv2_MPIDI_CH3I_RDMA_Process;
     int i = 0;
     int pg_rank;
 
@@ -1374,7 +1374,7 @@ void ib_finalize_rdma_cm(int pg_rank, MPIDI_PG_t *pg)
 {
     int i, rail_index = 0, pg_size;
     MPIDI_VC_t  *vc;
-    MPIDI_CH3I_RDMA_Process_t *proc = &MPIDI_CH3I_RDMA_Process;
+    mv2_MPIDI_CH3I_RDMA_Process_t *proc = &mv2_MPIDI_CH3I_RDMA_Process;
 
     MPIU_Free(rdma_base_listen_port);
     MPIU_Free(rdma_cm_accept_count);
@@ -1404,32 +1404,32 @@ void ib_finalize_rdma_cm(int pg_rank, MPIDI_PG_t *pg)
         }
     
         for (i = 0; i < rdma_num_hcas; i++) {
-            if (MPIDI_CH3I_RDMA_Process.cq_hndl[i])
-                ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.cq_hndl[i]);
+            if (mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[i])
+                ibv_destroy_cq(mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[i]);
 
-            if (MPIDI_CH3I_RDMA_Process.send_cq_hndl[i]) {
-                ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.send_cq_hndl[i]);
+            if (mv2_MPIDI_CH3I_RDMA_Process.send_cq_hndl[i]) {
+                ibv_destroy_cq(mv2_MPIDI_CH3I_RDMA_Process.send_cq_hndl[i]);
             }
 
-            if (MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i]) {
-                ibv_destroy_cq(MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i]);
+            if (mv2_MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i]) {
+                ibv_destroy_cq(mv2_MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i]);
             }
 
-            if (MPIDI_CH3I_RDMA_Process.has_srq) {
-                if (!MPIDI_CH3I_RDMA_Process.srq_hndl[i]){
-                    pthread_cancel(MPIDI_CH3I_RDMA_Process.async_thread[i]);
-                    pthread_join(MPIDI_CH3I_RDMA_Process.async_thread[i],NULL);
-                    ibv_destroy_srq(MPIDI_CH3I_RDMA_Process.srq_hndl[i]);
+            if (mv2_MPIDI_CH3I_RDMA_Process.has_srq) {
+                if (!mv2_MPIDI_CH3I_RDMA_Process.srq_hndl[i]){
+                    pthread_cancel(mv2_MPIDI_CH3I_RDMA_Process.async_thread[i]);
+                    pthread_join(mv2_MPIDI_CH3I_RDMA_Process.async_thread[i],NULL);
+                    ibv_destroy_srq(mv2_MPIDI_CH3I_RDMA_Process.srq_hndl[i]);
                 }
             }
             if(rdma_use_blocking) {
                 ibv_destroy_comp_channel(
-                    MPIDI_CH3I_RDMA_Process.comp_channel[i]);
+                    mv2_MPIDI_CH3I_RDMA_Process.comp_channel[i]);
             }
             deallocate_vbufs(i);
 
-            if (MPIDI_CH3I_RDMA_Process.ptag[i])
-                ibv_dealloc_pd(MPIDI_CH3I_RDMA_Process.ptag[i]);
+            if (mv2_MPIDI_CH3I_RDMA_Process.ptag[i])
+                ibv_dealloc_pd(mv2_MPIDI_CH3I_RDMA_Process.ptag[i]);
         }
       
         deallocate_vbuf_region();
@@ -1456,7 +1456,7 @@ void ib_finalize_rdma_cm(int pg_rank, MPIDI_PG_t *pg)
 
         rdma_destroy_id(proc->cm_listen_id);
         rdma_cm_finalized = 1;
-        rdma_destroy_event_channel(MPIDI_CH3I_RDMA_Process.cm_channel);
+        rdma_destroy_event_channel(mv2_MPIDI_CH3I_RDMA_Process.cm_channel);
 
         pthread_cancel(proc->cmthread);
         pthread_join(proc->cmthread, NULL);

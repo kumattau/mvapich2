@@ -1,5 +1,4 @@
-
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -18,8 +17,8 @@
 #include "vbuf.h"
 #include "dreg.h"
 
-
 #ifdef _ENABLE_CUDA_
+#include "ibv_cuda_util.h"
 
 int MPIDI_CH3I_MRAIL_Prepare_rndv_cuda(MPIDI_VC_t * vc, MPID_Request * sreq,
                                        MPID_Request * rreq)
@@ -47,10 +46,10 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv_cuda(MPIDI_VC_t * vc, MPID_Request * sreq,
     }
 
     /* Step 1: ready for user space (user buffer or pack) */
-    if (1 == req->dev.iov_count && (req->dev.OnDataAvail == NULL ||
-                                    (req->dev.OnDataAvail == req->dev.OnFinal)
-                                    || (req->dev.OnDataAvail ==
-                                        MPIDI_CH3_ReqHandler_UnpackSRBufComplete)))
+    if (1 == req->dev.iov_count && (req->dev.OnDataAvail == NULL 
+                    || req->dev.OnDataAvail == req->dev.OnFinal
+                    || req->dev.OnDataAvail == MPIDI_CH3_ReqHandler_UnpackSRBufComplete
+                    || req->dev.OnDataAvail == MPIDI_CH3_ReqHandler_unpack_cudabuf))
     {
 
         req->mrail.rndv_buf = req->dev.iov[0].MPID_IOV_BUF;
@@ -87,6 +86,164 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv_cuda(MPIDI_VC_t * vc, MPID_Request * sreq,
     return 1;
 }
 
+#if defined(HAVE_CUDA_IPC)
+int MPIDI_CH3I_MRAIL_Prepare_rndv_cuda_ipc (MPIDI_VC_t * vc, 
+                                            MPID_Request * sreq) 
+{
+    int status = 1;
+    size_t size;
+    CUresult cuerr = CUDA_SUCCESS;
+    cudaError_t cudaerr = cudaSuccess;
+    CUdeviceptr baseptr;
+
+    if (vc->smp.local_rank == -1
+        || vc->smp.can_access_peer == 0
+        || sreq->mrail.cuda_transfer_mode == NONE
+        || sreq->dev.iov_count > 1 
+        || sreq->dev.iov[0].MPID_IOV_LEN < rdma_cuda_ipc_threshold) {
+        status = 0;
+        goto fn_exit;
+    }
+
+    sreq->mrail.protocol = VAPI_PROTOCOL_RGET;
+    sreq->mrail.d_entry = NULL;
+
+    cuerr = cuMemGetAddressRange(&baseptr, &size, (CUdeviceptr) sreq->dev.iov[0].MPID_IOV_BUF);
+    if (cuerr != CUDA_SUCCESS) {
+        DEBUG_PRINT("cuMemGetAddressRange failed, reverting to R3 \n");
+        status = 0;
+        goto fn_exit;
+    }
+
+
+    cudaerr = cudaIpcGetMemHandle (&sreq->mrail.ipc_memhandle, (void *) baseptr);
+    if (cudaerr != cudaSuccess) {
+        DEBUG_PRINT("cudaIpcGetMemHandle failed, reverting to R3");
+        status = 0;
+        goto fn_exit;
+    }
+
+    sreq->mrail.ipc_displ = (uint64_t) sreq->dev.iov[0].MPID_IOV_BUF - (uint64_t) baseptr;
+
+    sreq->mrail.ipc_baseptr = (void *)baseptr;
+    sreq->mrail.ipc_size = size;
+
+    sreq->mrail.ipc_cuda_event = get_free_cuda_event();
+
+    cudaerr = cudaIpcGetEventHandle (&sreq->mrail.ipc_eventhandle, 
+                    sreq->mrail.ipc_cuda_event->event);
+    if (cudaerr != cudaSuccess) {
+        DEBUG_PRINT("cudaIpcGetEventHandle failed, reverting to R3 \n");
+        status = 0;
+        goto fn_exit;
+    }
+
+    cudaerr = cudaEventRecord(sreq->mrail.ipc_cuda_event->event, 0);
+    if (cudaerr != cudaSuccess) {
+        DEBUG_PRINT("cudaEventRecord failed, reverting to R3 \n");
+        status = 0;
+        goto fn_exit;
+    }
+
+fn_exit:
+    return status; 
+} 
+
+int MPIDI_CH3I_MRAIL_Rndv_transfer_cuda_ipc (MPIDI_VC_t * vc, 
+                                MPID_Request * rreq, 
+                                MPIDI_CH3_Pkt_rndv_req_to_send_t *rts_pkt)
+{
+    int status = 1;
+    void *remote_buf;
+    cudaError_t cudaerr = cudaSuccess;
+    void *base_ptr;
+    size_t size;
+    cuda_regcache_entry_t *reg;
+
+    MPIU_Memcpy (&rreq->mrail.ipc_eventhandle, 
+            &rts_pkt->rndv.ipc_eventhandle, sizeof(cudaIpcEventHandle_t));
+    MPIU_Memcpy (&rreq->mrail.ipc_memhandle, 
+            &rts_pkt->rndv.ipc_memhandle, sizeof(cudaIpcMemHandle_t));
+    base_ptr = rts_pkt->rndv.ipc_baseptr;
+    size = rts_pkt->rndv.ipc_size;
+
+    cudaipc_register(base_ptr, size, vc->smp.local_rank, rreq->mrail.ipc_memhandle, &reg);
+    rreq->mrail.cuda_reg = reg;
+
+    rreq->mrail.ipc_baseptr = reg->remote_base; 
+    remote_buf = (void *)((uint64_t) reg->remote_base + rts_pkt->rndv.ipc_displ);
+
+    cudaerr = cudaIpcOpenEventHandle(&rreq->mrail.ipc_event, 
+                    rts_pkt->rndv.ipc_eventhandle);
+    if (cudaerr != cudaSuccess) {
+        ibv_error_abort(IBV_STATUS_ERR, "cudaIpcOpenMemHandle failed");
+    }
+
+    cudaerr = cudaEventRecord(rreq->mrail.ipc_event, 0); 
+    if (cudaerr != cudaSuccess) {
+        ibv_error_abort(IBV_STATUS_ERR, "cudaEventRecord failed");
+    }   
+
+    cudaerr = cudaStreamWaitEvent(0, rreq->mrail.ipc_event, 0);
+    if (cudaerr != cudaSuccess) {
+        ibv_error_abort(IBV_RETURN_ERR,"cudaStreamWaitEvent failed\n");
+    }
+
+    if (rdma_cuda_event_sync) {
+        cuda_event_t *cuda_event;
+
+        cuda_event = get_cuda_event();
+        cudaerr = cudaMemcpyAsync(rreq->mrail.rndv_buf,
+               remote_buf, rreq->mrail.rndv_buf_sz, cudaMemcpyDefault, stream_d2h);
+        if (cudaerr != cudaSuccess) {
+           ibv_error_abort(IBV_STATUS_ERR,
+                    "cudaMemcpyAsync failed");
+        }
+
+        cuda_event->op_type = RGET;
+        cuda_event->vc = vc;
+        cuda_event->req = rreq;
+        cudaerr = cudaEventRecord(cuda_event->event, stream_d2h);
+        if (cudaerr != cudaSuccess) {
+           ibv_error_abort(IBV_STATUS_ERR,
+                    "cudaEventRecord failed");
+        }
+    } else {
+        cuda_stream_t *cuda_stream;
+        
+        cuda_stream = get_cuda_stream();
+        if (cuda_stream == NULL) {
+            allocate_cuda_stream(&rreq->mrail.cuda_stream);
+            cuda_stream = rreq->mrail.cuda_stream;
+            /* add to the busy list */
+            cuda_stream->is_query_done = 0;
+            if (NULL == busy_cuda_stream_list_head) {
+                busy_cuda_stream_list_head = cuda_stream;
+                busy_cuda_stream_list_tail = cuda_stream;
+            } else {
+                busy_cuda_stream_list_tail->next = cuda_stream;
+                cuda_stream->prev = busy_cuda_stream_list_tail;
+                busy_cuda_stream_list_tail = cuda_stream;
+            }
+        }
+        cudaerr = cudaMemcpyAsync(rreq->mrail.rndv_buf,
+                remote_buf, rreq->mrail.rndv_buf_sz, cudaMemcpyDefault, 
+                cuda_stream->stream);
+        if (cudaerr != cudaSuccess) {
+           ibv_error_abort(IBV_STATUS_ERR,
+                    "cudaMemcpyAsync failed");
+        }
+
+        cuda_stream->op_type = RGET;
+        cuda_stream->vc = vc;
+        cuda_stream->req = rreq;
+    }
+
+    rreq->mrail.nearly_complete = 1;
+
+   return status;
+}
+#endif
 
 void MPIDI_CH3I_MRAIL_Send_cuda_cts_conti(MPIDI_VC_t * vc, MPID_Request * req)
 {
@@ -113,7 +270,7 @@ void MPIDI_CH3I_MRAIL_Send_cuda_cts_conti(MPIDI_VC_t * vc, MPID_Request * req)
 
     req->mrail.num_remote_cuda_done = 0;
     vbuf_init_send(v, sizeof(MPIDI_CH3_Pkt_cuda_cts_cont_t), 0);
-    MPIDI_CH3I_RDMA_Process.post_send(vc, v, 0);
+    mv2_MPIDI_CH3I_RDMA_Process.post_send(vc, v, 0);
 
     PRINT_DEBUG(DEBUG_CUDA_verbose, "Send CTS conti : offset: %d"
                 " no.of buffers:%d req:%p\n", req->mrail.cuda_block_offset,
@@ -140,8 +297,7 @@ void MPIDI_CH3_Rendezvous_cuda_cts_conti(MPIDI_VC_t * vc,
     }
     PRINT_DEBUG(DEBUG_CUDA_verbose, "received cuda CTS conti: sreq:%p\n", sreq);
 
-    progress_cuda_streams();
-
+    MV2_CUDA_PROGRESS();
     PUSH_FLOWLIST(vc);
 
 }
@@ -174,7 +330,6 @@ void MRAILI_RDMA_Put_finish_cuda(MPIDI_VC_t * vc,
     DEBUG_PRINT("Sending RPUT FINISH\n");
 
     int rc = MPIDI_CH3I_MRAILI_rput_complete(vc, &iov, n_iov, &nb, &buf, rail);
-    buf->cuda_pipeline_finish = cuda_pipeline_finish;
 
     if (rc != 0 && rc != MPI_MRAIL_MSG_QUEUED) {
         ibv_error_abort(IBV_STATUS_ERR,
@@ -198,14 +353,13 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push_cuda(MPIDI_VC_t * vc,
     cudaError_t cuda_error = cudaSuccess;
     vbuf *v;
 
-    if (sreq->mrail.cuda_transfer_mode == CONT_DEVICE_TO_DEVICE 
-        || sreq->mrail.cuda_transfer_mode == CONT_DEVICE_TO_HOST){
+    if (sreq->mrail.cuda_transfer_mode == DEVICE_TO_DEVICE 
+        || sreq->mrail.cuda_transfer_mode == DEVICE_TO_HOST){
 
         sreq->mrail.num_cuda_blocks = 
             ROUNDUP(sreq->mrail.rndv_buf_sz, rdma_cuda_block_size);
 
         vbuf *cuda_vbuf;
-        cuda_stream_t *cuda_stream;
 
         if (sreq->mrail.num_cuda_blocks == 1) {
             sreq->mrail.pipeline_nm++;   
@@ -224,11 +378,11 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push_cuda(MPIDI_VC_t * vc,
             v = cuda_vbuf;
             v->sreq = sreq;
 
-            if (sreq->mrail.cuda_transfer_mode == CONT_DEVICE_TO_DEVICE) {
+            if (sreq->mrail.cuda_transfer_mode == DEVICE_TO_DEVICE) {
                 remote_addr = (char *)
                     sreq->mrail.cuda_remote_addr[0] + sreq->mrail.rndv_buf_off;
                 rkey = sreq->mrail.cuda_remote_rkey[0][rail_index];
-            } else if (sreq->mrail.cuda_transfer_mode == CONT_DEVICE_TO_HOST) {
+            } else if (sreq->mrail.cuda_transfer_mode == DEVICE_TO_HOST) {
                 remote_addr = (char *)
                     sreq->mrail.remote_addr + sreq->mrail.rndv_buf_off;
                 rkey = sreq->mrail.rkey[rail_index];
@@ -243,42 +397,85 @@ void MPIDI_CH3I_MRAILI_Rendezvous_rput_push_cuda(MPIDI_VC_t * vc,
             sreq->mrail.num_send_cuda_copy++;
         } else {
 
-            /* get cuda_vbuf and enqueue asynchronous stream copy*/
+            /* get cuda_vbuf and enqueue asynchronous copy*/
             i = sreq->mrail.num_send_cuda_copy;
-            for (; i < sreq->mrail.num_cuda_blocks; i++) {
-                cuda_stream = get_cuda_stream();
-                if (cuda_stream == NULL) {
-                    break;
-                }
-                nbytes = rdma_cuda_block_size;
-                cuda_stream->is_finish = 0;
-                if (i == (sreq->mrail.num_cuda_blocks - 1)) {
-                    if (sreq->mrail.rndv_buf_sz % rdma_cuda_block_size) {
-                        nbytes = sreq->mrail.rndv_buf_sz % rdma_cuda_block_size;
+            if (rdma_cuda_event_sync) {
+                cuda_event_t *cuda_event;
+                for (; i < sreq->mrail.num_cuda_blocks; i++) {
+                    nbytes = rdma_cuda_block_size;
+                    /* get cuda event */
+                    cuda_event = get_cuda_event();
+                    cuda_event->is_finish = 0;
+                    if (i == (sreq->mrail.num_cuda_blocks - 1)) {
+                        if (sreq->mrail.rndv_buf_sz % rdma_cuda_block_size) {
+                            nbytes = sreq->mrail.rndv_buf_sz % rdma_cuda_block_size;
+                        }
+                        cuda_event->is_finish = 1;
                     }
-                    cuda_stream->is_finish = 1;
+                    cuda_event->op_type = SEND;
+                    cuda_event->vc = vc;
+                    cuda_event->req = sreq;
+                    cuda_event->displacement = i;
+                    cuda_event->size = nbytes; 
+                    cuda_event->cuda_vbuf_head = get_cuda_vbuf(CUDA_RNDV_BLOCK_BUF);
+                    sreq->mrail.num_send_cuda_copy++;
+                    cuda_error = cudaMemcpyAsync(cuda_event->cuda_vbuf_head->buffer, 
+                            (const void *)(sreq->dev.iov[0].MPID_IOV_BUF + 
+                                rdma_cuda_block_size * i), nbytes, 
+                            cudaMemcpyDeviceToHost, stream_d2h);
+                    if (cuda_error != cudaSuccess) {
+                        ibv_error_abort(IBV_RETURN_ERR,
+                                "cudaMemcpyAsync to host failed\n");
+                    } 
+                    PRINT_DEBUG(DEBUG_CUDA_verbose>1, 
+                            "Issue cudaMemcpyAsync :%d req:%p strm:%p\n",
+                            sreq->mrail.num_send_cuda_copy, sreq, cuda_event);
+
+                    /* recoed the event */
+                    cuda_error = cudaEventRecord(cuda_event->event, stream_d2h);
+                    if (cuda_error != cudaSuccess) {
+                        ibv_error_abort(IBV_RETURN_ERR,
+                                "cudaEventRecord failed\n");
+                    } 
                 }
-                cuda_stream->op_type = SEND;
-                cuda_stream->vc = vc;
-                cuda_stream->req = sreq;
-                cuda_stream->displacement = i;
-                cuda_stream->size = nbytes; 
-                cuda_stream->cuda_vbuf = get_cuda_vbuf(CUDA_RNDV_BLOCK_BUF);
-                sreq->mrail.num_send_cuda_copy++;
-                cuda_error = cudaMemcpyAsync(cuda_stream->cuda_vbuf->buffer, 
-                        (const void *)(sreq->dev.iov[0].MPID_IOV_BUF + 
-                            rdma_cuda_block_size * i), nbytes, 
-                        cudaMemcpyDeviceToHost, cuda_stream->stream);
-                if (cuda_error != cudaSuccess) {
-                    ibv_error_abort(IBV_RETURN_ERR,"cudaMemcpyAsync to host failed\n");
-                } 
-                PRINT_DEBUG(DEBUG_CUDA_verbose>1, 
-                    "Issue cudaMemcpyAsync :%d req:%p strm:%p\n",
-                    sreq->mrail.num_send_cuda_copy, sreq, cuda_stream);
+            } else {
+                cuda_stream_t *cuda_stream;
+                for (; i < sreq->mrail.num_cuda_blocks; i++) {
+                    cuda_stream = get_cuda_stream();
+                    if (cuda_stream == NULL) {
+                        break;
+                    }
+                    nbytes = rdma_cuda_block_size;
+                    cuda_stream->is_finish = 0;
+                    if (i == (sreq->mrail.num_cuda_blocks - 1)) {
+                        if (sreq->mrail.rndv_buf_sz % rdma_cuda_block_size) {
+                            nbytes = sreq->mrail.rndv_buf_sz % rdma_cuda_block_size;
+                        }
+                        cuda_stream->is_finish = 1;
+                    }
+                    cuda_stream->op_type = SEND;
+                    cuda_stream->vc = vc;
+                    cuda_stream->req = sreq;
+                    cuda_stream->displacement = i;
+                    cuda_stream->size = nbytes; 
+                    cuda_stream->cuda_vbuf_head = get_cuda_vbuf(CUDA_RNDV_BLOCK_BUF);
+                    sreq->mrail.num_send_cuda_copy++;
+                    cuda_error = cudaMemcpyAsync(cuda_stream->cuda_vbuf_head->buffer, 
+                            (const void *)(sreq->dev.iov[0].MPID_IOV_BUF + 
+                                rdma_cuda_block_size * i), nbytes, 
+                            cudaMemcpyDeviceToHost, cuda_stream->stream);
+                    if (cuda_error != cudaSuccess) {
+                        ibv_error_abort(IBV_RETURN_ERR,
+                                "cudaMemcpyAsync to host failed\n");
+                    } 
+                    PRINT_DEBUG(DEBUG_CUDA_verbose>1, 
+                            "Issue cudaMemcpyAsync :%d req:%p strm:%p\n",
+                            sreq->mrail.num_send_cuda_copy, sreq, cuda_stream);
+                }
             }
         }
     } else if (rdma_enable_cuda 
-            && sreq->mrail.cuda_transfer_mode == CONT_HOST_TO_DEVICE) {
+            && sreq->mrail.cuda_transfer_mode == HOST_TO_DEVICE) {
 
         int i = 0, is_finish = 0, is_pipeline = 0;
         rail = 0;
@@ -341,76 +538,117 @@ int MPIDI_CH3I_MRAILI_Process_cuda_finish(MPIDI_VC_t * vc, MPID_Request * rreq,
 {
     int nbytes;
     int rreq_complete = 0;
-    cuda_stream_t *cuda_stream = NULL;
     cudaError_t cuda_error = cudaSuccess;
+    vbuf *cuda_vbuf = NULL;
 
-    progress_cuda_streams();
+    MV2_CUDA_PROGRESS();
     
     if (rf_pkt->is_cuda && rf_pkt->is_cuda_pipeline) {
         rreq->mrail.pipeline_nm++;
-        nbytes = rdma_cuda_block_size;
-        if(rf_pkt->cuda_pipeline_finish) {
-            if(rreq->mrail.rndv_buf_sz % rdma_cuda_block_size) {
-                nbytes = rreq->mrail.rndv_buf_sz % rdma_cuda_block_size;
-            }
-        }
-        //TODO: Handle NULL return
-        cuda_stream = get_cuda_stream();
-        if (cuda_stream == NULL) {
-
-            PRINT_DEBUG(DEBUG_CUDA_verbose>1, "CudaMemCpy offset:%d "
-            "is_fin:%d cuda_buf_idx:%d pending:%d rreq:%p\n", rf_pkt->cuda_offset,
-            rf_pkt->cuda_pipeline_finish, rreq->mrail.num_remote_cuda_done, rreq->mrail.num_remote_cuda_pending, rreq);
-            cuda_error = cudaMemcpy(rreq->mrail.rndv_buf + rf_pkt->cuda_offset,
-                    (const void *)(rreq->mrail.cuda_vbuf
-                        [rreq->mrail.num_remote_cuda_done]->buffer), 
-                    nbytes, cudaMemcpyHostToDevice);
-            if (cuda_error != cudaSuccess) {
-                ibv_error_abort(IBV_RETURN_ERR,"cudaMemcpy to device failed\n");
-            }
- 
-            release_cuda_vbuf(rreq->mrail.cuda_vbuf[rreq->mrail.num_remote_cuda_done++]);
-            if (rf_pkt->cuda_pipeline_finish) {
-                return 1;
-            } else {
-                rreq->mrail.num_remote_cuda_pending--;
-                if (rreq->mrail.num_remote_cuda_pending == 0) {
-                    rreq->mrail.cuda_block_offset += rdma_num_cuda_rndv_blocks;
-                    MPIDI_CH3I_MRAIL_Send_cuda_cts_conti(vc, rreq);
-                }
-                return 0;
-            }
-        }
-
+        nbytes = (rreq->mrail.rndv_buf_sz - rf_pkt->cuda_offset < rdma_cuda_block_size) ? 
+                 (rreq->mrail.rndv_buf_sz - rf_pkt->cuda_offset) : rdma_cuda_block_size;
     
-        cuda_stream->op_type = RECV;
-        cuda_stream->is_finish = (rreq->mrail.pipeline_nm == 
-                            rreq->mrail.num_cuda_blocks) ? 1 : 0;
-        cuda_stream->displacement = rf_pkt->cuda_offset / rdma_cuda_block_size;
-        cuda_stream->vc = vc;
-        cuda_stream->req = rreq;
-        cuda_stream->cuda_vbuf = 
-            rreq->mrail.cuda_vbuf[rreq->mrail.num_remote_cuda_done];
+        if (rdma_cuda_event_sync) {
+            cuda_event_t *cuda_event = NULL;
+            cuda_event = get_cuda_event();
+
+            cuda_event->op_type = RECV;
+            cuda_event->is_finish = (rreq->mrail.pipeline_nm == 
+                    rreq->mrail.num_cuda_blocks) ? 1 : 0;
+            cuda_event->displacement = rf_pkt->cuda_offset / rdma_cuda_block_size;
+            cuda_event->vc = vc;
+            cuda_event->req = rreq;
+
+            cuda_vbuf = rreq->mrail.cuda_vbuf[rreq->mrail.num_remote_cuda_done];
+
+            cuda_event->cuda_vbuf_head  = cuda_vbuf;
+            cuda_event->cuda_vbuf_tail = cuda_vbuf;
+            cuda_event->cuda_vbuf_tail->next = NULL;
+
+            rreq->mrail.num_remote_cuda_done++;
+            rreq->mrail.num_remote_cuda_pending--;
+            if (rreq->mrail.num_remote_cuda_pending == 0 &&
+                    rreq->mrail.pipeline_nm != rreq->mrail.num_cuda_blocks) {
+                rreq->mrail.cuda_block_offset += rdma_num_cuda_rndv_blocks;
+                MPIDI_CH3I_MRAIL_Send_cuda_cts_conti(vc, rreq);
+            }
+
+            cuda_error = cudaMemcpyAsync(rreq->mrail.rndv_buf + rf_pkt->cuda_offset,
+                    (const void *)(cuda_vbuf->buffer),
+                    nbytes, cudaMemcpyHostToDevice, stream_h2d);
+            if (cuda_error != cudaSuccess) {
+                ibv_error_abort(IBV_RETURN_ERR,"cudaMemcpyAsync to device failed\n");
+            }
+
+            /* recoed the event */
+            cuda_error = cudaEventRecord(cuda_event->event, stream_h2d);
+            if (cuda_error != cudaSuccess) {
+                ibv_error_abort(IBV_RETURN_ERR,
+                        "cudaEventRecord failed\n");
+            } 
+
+            PRINT_DEBUG(DEBUG_CUDA_verbose>1, "RECV cudaMemcpyAsync :%d "
+                    "req:%p strm:%p\n", rreq->mrail.num_remote_cuda_done,
+                    rreq, cuda_event);
+        } else {    
+            cuda_stream_t *cuda_stream = NULL;
+            if (rreq->mrail.cuda_stream == NULL) {
+                /* allocate cuda stream for handle recv requests*/
+                allocate_cuda_stream(&rreq->mrail.cuda_stream);
+            }
+            cuda_stream = rreq->mrail.cuda_stream;    
+            cuda_stream->op_type = RECV;
+            cuda_stream->is_finish = (rreq->mrail.pipeline_nm == 
+                    rreq->mrail.num_cuda_blocks) ? 1 : 0;
+            cuda_stream->displacement = rf_pkt->cuda_offset / rdma_cuda_block_size;
+            cuda_stream->vc = vc;
+            cuda_stream->req = rreq;
+
+            cuda_vbuf = rreq->mrail.cuda_vbuf[rreq->mrail.num_remote_cuda_done];
+
+            /* add vbuf to the list of buffer on this stream */
+            if (cuda_stream->cuda_vbuf_head == NULL) {
+                cuda_stream->cuda_vbuf_head  = cuda_vbuf;
+            } else {
+                cuda_stream->cuda_vbuf_tail->next = cuda_vbuf;
+            }
+            cuda_stream->cuda_vbuf_tail = cuda_vbuf;
+            cuda_stream->cuda_vbuf_tail->next = NULL;
+
+            rreq->mrail.num_remote_cuda_done++;
+            rreq->mrail.num_remote_cuda_pending--;
+            if (rreq->mrail.num_remote_cuda_pending == 0 &&
+                    rreq->mrail.pipeline_nm != rreq->mrail.num_cuda_blocks) {
+                rreq->mrail.cuda_block_offset += rdma_num_cuda_rndv_blocks;
+                MPIDI_CH3I_MRAIL_Send_cuda_cts_conti(vc, rreq);
+            }
+
+            cuda_error = cudaMemcpyAsync(rreq->mrail.rndv_buf + rf_pkt->cuda_offset,
+                    (const void *)(cuda_vbuf->buffer),
+                    nbytes, cudaMemcpyHostToDevice, cuda_stream->stream);
+            if (cuda_error != cudaSuccess) {
+                ibv_error_abort(IBV_RETURN_ERR,"cudaMemcpyAsync to device failed\n");
+            }
+
+            /* Add stream to the polling(busy) list if it is not already in it*/
+            if (cuda_stream->next == NULL && cuda_stream->prev == NULL &&
+                    cuda_stream != busy_cuda_stream_list_head) {
+                cuda_stream->is_query_done = 0;
+                if (NULL == busy_cuda_stream_list_head) {
+                    busy_cuda_stream_list_head = cuda_stream;
+                    busy_cuda_stream_list_tail = cuda_stream;
+                } else {
+                    busy_cuda_stream_list_tail->next = cuda_stream;
+                    cuda_stream->prev = busy_cuda_stream_list_tail;
+                    busy_cuda_stream_list_tail = cuda_stream;
+                }
+            }
 
 
-        rreq->mrail.num_remote_cuda_done++;
-        rreq->mrail.num_remote_cuda_pending--;
-        if (rreq->mrail.num_remote_cuda_pending == 0 &&
-            rreq->mrail.pipeline_nm != rreq->mrail.num_cuda_blocks) {
-            rreq->mrail.cuda_block_offset += rdma_num_cuda_rndv_blocks;
-            MPIDI_CH3I_MRAIL_Send_cuda_cts_conti(vc, rreq);
+            PRINT_DEBUG(DEBUG_CUDA_verbose>1, "RECV cudaMemcpyAsync :%d "
+                    "req:%p strm:%p\n", rreq->mrail.num_remote_cuda_done,
+                    rreq, cuda_stream);
         }
-
-        cuda_error = cudaMemcpyAsync(rreq->mrail.rndv_buf + rf_pkt->cuda_offset,
-                (const void *)(cuda_stream->cuda_vbuf->buffer),
-                nbytes, cudaMemcpyHostToDevice, cuda_stream->stream);
-        if (cuda_error != cudaSuccess) {
-            ibv_error_abort(IBV_RETURN_ERR,"cudaMemcpyAsync to device failed\n");
-        }
-
-        PRINT_DEBUG(DEBUG_CUDA_verbose>1, "RECV cudaMemcpyAsync :%d "
-            "req:%p strm:%p\n", rreq->mrail.num_remote_cuda_done,
-                                rreq, cuda_stream);
     } else {
         nbytes = rreq->mrail.rndv_buf_sz;
         cuda_error = cudaMemcpy(rreq->mrail.rndv_buf + rf_pkt->cuda_offset,
@@ -441,7 +679,7 @@ int MPIDI_CH3_Prepare_rndv_cts_cuda(MPIDI_VC_t * vc,
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_PREPARE_RNDV_CTS_CUDA);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_PREPARE_RNDV_CTS_CUDA);
 
-    cts_pkt->rndv.cuda_transfer_mode = CONT_DEVICE_TO_DEVICE;
+    cts_pkt->rndv.cuda_transfer_mode = DEVICE_TO_DEVICE;
 
 #ifdef CKPT
     MPIDI_CH3I_CR_lock();

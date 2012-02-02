@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -203,6 +203,17 @@ void MPIDI_CH3_Request_destroy(MPID_Request * req)
     MPIDI_CH3U_SRBuf_free(req);
     }
 
+#if defined(_ENABLE_CUDA_)
+    if (rdma_enable_cuda && req->dev.tmpbuf && req->dev.is_device_tmpbuf) {
+        if (req->dev.cuda_srbuf_entry) {
+            MPIDI_CH3U_CUDA_SRBuf_free(req);
+        } else {
+            MPIU_Free_CUDA(req->dev.tmpbuf);
+        }
+        req->dev.tmpbuf = NULL;
+    }
+#endif
+
     MPIU_Handle_obj_free(&MPID_Request_mem, req);
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_REQUEST_DESTROY);
 }
@@ -250,6 +261,17 @@ int MPIDI_CH3U_Request_load_send_iov(MPID_Request * const sreq,
     "post-pv: first=" MPIDI_MSG_SZ_FMT ", last=" MPIDI_MSG_SZ_FMT ", iov_n=%d",
 		      sreq->dev.segment_first, last, *iov_n));
     MPIU_Assert(*iov_n > 0 && *iov_n <= MPID_IOV_LIMIT);
+#if defined(_ENABLE_CUDA_)
+    if (rdma_enable_cuda && is_device_buffer(iov[0].MPID_IOV_BUF)) {
+        MPIDI_CH3U_CUDA_SRBuf_alloc(sreq, sreq->dev.segment_size);
+        if (sreq->dev.tmpbuf == NULL) {
+            MPIU_Malloc_CUDA(sreq->dev.tmpbuf, sreq->dev.segment_size);
+        }
+        sreq->dev.is_device_tmpbuf = 1;
+        sreq->dev.OnDataAvail = MPIDI_CH3_ReqHandler_pack_cudabuf;
+        goto fn_exit;
+    }
+#endif
     
     if (last == sreq->dev.segment_size)
     {
@@ -429,6 +451,25 @@ int MPIDI_CH3U_Request_load_recv_iov(MPID_Request * const rreq)
         {
             MPIU_Assert(rreq->dev.iov_offset < rreq->dev.iov_count);
         }
+#ifdef _ENABLE_CUDA_ 
+        if (rdma_enable_cuda && is_device_buffer(rreq->dev.iov[0].MPID_IOV_BUF)) {
+            MPIDI_CH3U_CUDA_SRBuf_alloc(rreq, rreq->dev.segment_size);
+            if (rreq->dev.tmpbuf == NULL) {
+                MPIU_Malloc_CUDA(rreq->dev.tmpbuf, rreq->dev.segment_size); 
+            }
+            rreq->dev.tmpbuf_off = 0;
+            rreq->dev.is_device_tmpbuf = 1;
+            rreq->dev.iov[0].MPID_IOV_BUF = rreq->dev.tmpbuf + 
+                rreq->dev.tmpbuf_off;
+            rreq->dev.iov[0].MPID_IOV_LEN = rreq->dev.segment_size;
+            rreq->dev.iov_offset = 0;
+            rreq->dev.iov_count = 1;
+            rreq->dev.OnDataAvail = MPIDI_CH3_ReqHandler_unpack_cudabuf;
+            goto fn_exit;
+        }
+#endif
+               
+
 	/* --END ERROR HANDLING-- */
 
 	if (last == rreq->dev.recv_data_sz)
@@ -680,7 +721,14 @@ int MPIDI_CH3U_Request_unpack_uebuf(MPID_Request * rreq)
 	    MPID_Segment_init(rreq->dev.user_buf, rreq->dev.user_count, 
 			      rreq->dev.datatype, &seg, 0);
 	    last = unpack_sz;
-	    MPID_Segment_unpack(&seg, 0, &last, rreq->dev.tmpbuf);
+#if defined(_ENABLE_CUDA_)
+        if (rdma_enable_cuda && rreq->mrail.cuda_transfer_mode != NONE) {
+            MPID_Segment_unpack_cuda(&seg, 0, &last, dt_ptr, rreq->dev.tmpbuf);
+        } else
+#endif
+        {
+	        MPID_Segment_unpack(&seg, 0, &last, rreq->dev.tmpbuf);
+        }
 	    if (last != unpack_sz)
 	    {
 		/* --BEGIN ERROR HANDLING-- */

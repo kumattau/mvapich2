@@ -184,8 +184,7 @@ static void look_proc(struct procinfo *infos, unsigned highest_cpuid, unsigned h
     cache = infos->cache = malloc(infos->numcaches * sizeof(*infos->cache));
 
     for (cachenum = 0; ; cachenum++) {
-      unsigned linesize, linepart, sets;
-      unsigned ways = 0;
+      unsigned linesize, linepart, ways, sets;
       unsigned type;
       eax = 0x04;
       ecx = cachenum;

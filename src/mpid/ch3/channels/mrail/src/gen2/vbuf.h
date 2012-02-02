@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -31,6 +31,9 @@
 #include "infiniband/verbs.h"
 #include "ibv_param.h"
 #include "mv2_clock.h"
+#if defined(_ENABLE_CUDA_)
+#include "ibv_cuda_util.h"
+#endif
 
 #define CREDIT_VBUF_FLAG (111)
 #define NORMAL_VBUF_FLAG (222)
@@ -172,12 +175,6 @@ typedef struct vbuf
     VBUF_FLAG_TYPE* head_flag;
     unsigned char* buffer;
 
-#ifdef _ENABLE_CUDA_
-    void *pool_index;
-    int rdma_cuda_block_size;
-    int cuda_pipeline_finish;
-#endif
-
     int content_size;
     int content_consumed;
 
@@ -204,7 +201,10 @@ typedef struct vbuf
     LINK unack_msg;
     double timestamp;
 #endif
-
+#ifdef _ENABLE_CUDA_
+    void *pool_index;
+    void *next;
+#endif
 } vbuf;
 
 /* one for head and one for tail */
@@ -366,8 +366,6 @@ void vbuf_reregister_all();
 #endif /* defined(CKPT) */
 
 #ifdef _ENABLE_CUDA_
-void ibv_cuda_register(void * ptr, size_t size);
-void ibv_cuda_unregister(void *ptr);
 int allocate_cuda_vbufs(struct ibv_pd* ptag[]);
 vbuf* get_cuda_vbuf(int flag);
 void release_cuda_vbuf(vbuf* v);

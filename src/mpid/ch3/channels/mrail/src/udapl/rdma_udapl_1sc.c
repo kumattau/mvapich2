@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -522,7 +522,7 @@ MPIDI_CH3I_RDMA_win_create (void *base,
           return;
     }
 
-    if (!MPIDI_CH3I_RDMA_Process.has_one_sided) {
+    if (!mv2_MPIDI_CH3I_RDMA_Process.has_one_sided) {
         (*win_ptr)->fall_back = 1;
         return;
     }
@@ -1002,7 +1002,7 @@ Consume_signals (MPID_Win * winptr, aint_t expected)
 
     while (1)
       {
-          ret = dat_evd_dequeue (MPIDI_CH3I_RDMA_Process.cq_hndl_1sc, &event);
+          ret = dat_evd_dequeue (mv2_MPIDI_CH3I_RDMA_Process.cq_hndl_1sc, &event);
           if (ret == DAT_SUCCESS)
             {
                 i++;

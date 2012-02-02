@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -223,7 +223,7 @@ MPIDI_CH3I_MRAILI_Get_next_vbuf_local (MPIDI_VC_t * vc, vbuf ** vbuf_handle)
 
     *vbuf_handle = NULL;
 
- if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) { 
+ if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) { 
     /*First loop over all queues to see if there is any pkt already there */
     for (i = 0; i < cmanager->total_subrails; i++)
       {
@@ -373,7 +373,7 @@ int MPIDI_CH3I_MRAILI_Waiting_msg(MPIDI_VC_t * vc, vbuf ** vbuf_handle, int bloc
                   }
                 else
                   {
-                      if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+                      if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
                           *vbuf_handle = MPIDI_CH3I_RDMA_poll (vc);
                           seq = GetSeqNumVbuf (*vbuf_handle);
                           if (seq == seq_expected)
@@ -459,11 +459,11 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle, MPIDI_VC_t * vc_req,
 
     *vbuf_handle = NULL;
     for (i = last_poll, j = 0;
-         j < MPIDI_CH3I_RDMA_Process.num_hcas;
-         i = ((i + 1) % MPIDI_CH3I_RDMA_Process.num_hcas), j++)
+         j < mv2_MPIDI_CH3I_RDMA_Process.num_hcas;
+         i = ((i + 1) % mv2_MPIDI_CH3I_RDMA_Process.num_hcas), j++)
       {
           last_poll = i;
-          ret1 = dat_evd_dequeue (MPIDI_CH3I_RDMA_Process.cq_hndl[i], &event);
+          ret1 = dat_evd_dequeue (mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[i], &event);
           if (ret1 == DAT_SUCCESS)
             {
                 DEBUG_PRINT ("[poll cq]: get complete queue entry\n");

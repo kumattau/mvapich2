@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -42,7 +42,6 @@ extern uint8_t              rdma_default_time_out;
 extern uint8_t              rdma_default_retry_count;
 extern uint8_t              rdma_default_rnr_retry;
 extern int                  rdma_default_put_get_list_size;
-extern int                  rdma_read_reserve;
 extern float                rdma_credit_update_threshold;   
 extern int                  num_rdma_buffer;
 extern int                  rdma_iba_eager_threshold;
@@ -88,7 +87,6 @@ extern int                  rdma_num_extra_polls;
 extern int                  rdma_pin_pool_size;
 extern int                  rdma_put_fallback_threshold;
 extern int                  rdma_get_fallback_threshold; 
-extern int                  rdma_integer_pool_size;
 extern int                  rdma_iba_eager_threshold;
 extern long                 rdma_eagersize_1sc;
 extern int                  rdma_qos_num_sls;
@@ -104,6 +102,7 @@ extern int                  rdma_large_msg_rail_sharing_threshold;
 
 
 extern int                  mv2_on_demand_ud_info_exchange;
+extern int                  mv2_show_env_info;
 /* HSAM Definitions */
 
 extern  int                 striping_threshold;
@@ -111,7 +110,6 @@ extern  int                 rdma_rail_sharing_policy;
 extern  int                 alpha;
 extern  int                 stripe_factor;
 extern  int                 apm_tester;
-extern  int                 apm_count;
 
 extern int                  rdma_coalesce_threshold;
 extern int                  rdma_use_coalesce;
@@ -119,8 +117,10 @@ extern int                  rdma_use_coalesce;
 extern int                  rdma_use_blocking;
 extern unsigned long        rdma_blocking_spin_count_threshold;
 extern unsigned long        rdma_polling_spin_count_threshold;
-extern int                  use_thread_yield; 
-extern int                  spins_before_lock; 
+extern int                  mv2_use_thread_yield; 
+extern int                  mv2_spins_before_lock;
+extern int                  rdma_use_xrc;
+extern int                  xrc_rdmafp_init;
 extern int                  rdma_use_smp;
 extern int                  use_iboeth;
 extern int                  rdma_iwarp_multiple_cq_threshold;
@@ -143,8 +143,17 @@ extern int                  rdma_enable_hugepage;
 extern int rdma_cuda_block_size;
 extern int rdma_num_cuda_rndv_blocks;
 extern int rdma_cuda_stream_count;
+extern int rdma_cuda_event_count;
+extern int rdma_cuda_event_sync;
 extern int rdma_enable_cuda;
 extern int rdma_eager_cudahost_reg;
+extern int rdma_cuda_vector_dt_opt;
+#if defined(HAVE_CUDA_IPC)
+extern int rdma_cuda_ipc;
+extern int rdma_cuda_enable_ipc_cache;
+extern int rdma_cuda_ipc_threshold;
+extern int cudaipc_cache_max_entries;
+#endif
 #endif
 
 
@@ -189,7 +198,6 @@ extern int                  rdma_default_async_thread_stack_size;
 #define RDMA_DEFAULT_MAX_UD_SEND_WQE    (2048)
 #define RDMA_DEFAULT_MAX_UD_RECV_WQE    (4096)
 #define RDMA_UD_NUM_MSG_LIMIT           (4096)
-#define RDMA_READ_RESERVE               (10)
 #define RDMA_DEFAULT_MAX_SG_LIST        (1)
 #define RDMA_DEFAULT_PKEY_IX            (0)
 #define RDMA_DEFAULT_PKEY               (0x0)
@@ -203,7 +211,6 @@ extern int                  rdma_default_async_thread_stack_size;
 #define RDMA_DEFAULT_RETRY_COUNT        (7)  
 #define RDMA_DEFAULT_RNR_RETRY          (7)
 #define RDMA_DEFAULT_PUT_GET_LIST_SIZE  (200)
-#define RDMA_INTEGER_POOL_SIZE          (1024)
 #define RDMA_IBA_NULL_HCA               "nohca"
 #define RDMA_DEFAULT_POLLING_SET_LIMIT  (64)
 #define RDMA_FP_DEFAULT_BUF_SIZE        (4096)
@@ -238,7 +245,11 @@ extern int                  rdma_default_async_thread_stack_size;
 #define DEFAULT_CUDA_VBUF_POOL_SIZE      {1024, 128}
 #define DEFAULT_CUDA_VBUF_SECONDARY_POOL_SIZE {256, 64}
 #define DEFAULT_CUDA_VBUF_MAX_POOL_SIZE  {-1, -1}
+#if CUDART_VERSION > 4000
+#define DEFAULT_CUDA_BLOCK_SIZE          (131072)
+#else
 #define DEFAULT_CUDA_BLOCK_SIZE          (262144)
+#endif
 #define DEFAULT_CUDA_STREAM_COUNT        (64)
 #define NUM_CUDA_BUF_POOLS               (2)
 #endif
@@ -292,8 +303,6 @@ extern int                  mrail_user_defined_p2r_mapping;
 extern char*                mrail_p2r_string;
 extern int                  mrail_p2r_length;
 
-#define APM_COUNT                       2
-
 #define DYNAMIC_TOTAL_WEIGHT            (3* 1024)
 
 #define CHELSIO_RNIC                    "cxgb"
@@ -317,4 +326,326 @@ typedef enum mv2_polling_level {
 } mv2_polling_level; 
                                
 extern mv2_polling_level    rdma_polling_level;
+
+/* enum list of MV2 runtime environment variables */
+typedef enum mv2_env_param_id
+{
+    /* mpirun_rsh */
+    MV2_COMM_WORLD_LOCAL_RANK,
+    PMI_ID,
+    MPIRUN_COMM_MULTIPLE,
+    MPIRUN_RSH_LAUNCH,
+    MPISPAWN_BINARY_PATH,
+    MPISPAWN_CR_CKPT_CNT,
+    MPISPAWN_CR_CONTEXT,
+    MPISPAWN_CR_SESSIONID,
+    MPISPAWN_GLOBAL_NPROCS,
+    MPISPAWN_MPIRUN_CR_PORT,
+    MPISPAWN_MPIRUN_HOST,
+    MPISPAWN_MPIRUN_ID,
+    MPISPAWN_NNODES,
+    MPISPAWN_WORKING_DIR,
+    MPIEXEC_TIMEOUT,
+    MPISPAWN_USE_TOTALVIEW,
+    MV2_FASTSSH_THRESHOLD,
+    MV2_MPIRUN_TIMEOUT,
+    MV2_MT_DEGREE,
+    MV2_NPROCS_THRESHOLD,
+    USE_LINEAR_SSH,
+    PMI_SUBVERSION,
+    PMI_VERSION,
+    PMI_PORT,
+    PARENT_ROOT_PORT_NAME,
+    /* QoS */
+    MV2_3DTORUS_SUPPORT,
+    MV2_NUM_SA_QUERY_RETRIES,
+    MV2_NUM_SLS,
+    MV2_DEFAULT_SERVICE_LEVEL,
+    MV2_PATH_SL_QUERY,
+    MV2_USE_QOS,
+    /* collectives */
+    MV2_ALLGATHER_BRUCK_THRESHOLD,
+    MV2_ALLGATHER_RD_THRESHOLD,
+    MV2_ALLGATHER_REVERSE_RANKING,
+    MV2_ALLGATHERV_RD_THRESHOLD,
+    MV2_ALLREDUCE_2LEVEL_MSG,
+    MV2_ALLREDUCE_SHORT_MSG,
+    MV2_ALLTOALL_MEDIUM_MSG,
+    MV2_ALLTOALL_SMALL_MSG,
+    MV2_ALLTOALL_THROTTLE_FACTOR,
+    MV2_BCAST_TWO_LEVEL_SYSTEM_SIZE,
+    MV2_GATHER_SWITCH_PT,
+    MV2_INTRA_SHMEM_REDUCE_MSG,
+    MV2_KNOMIAL_2LEVEL_BCAST_MESSAGE_SIZE_THRESHOLD,
+    MV2_KNOMIAL_2LEVEL_BCAST_SYSTEM_SIZE_THRESHOLD,
+    MV2_KNOMIAL_INTER_LEADER_THRESHOLD,
+    MV2_KNOMIAL_INTER_NODE_FACTOR,
+    MV2_KNOMIAL_INTRA_NODE_FACTOR,
+    MV2_KNOMIAL_INTRA_NODE_THRESHOLD,
+    MV2_RED_SCAT_LARGE_MSG,
+    MV2_RED_SCAT_SHORT_MSG,
+    MV2_REDUCE_2LEVEL_MSG,
+    MV2_REDUCE_SHORT_MSG,
+    MV2_SCATTER_MEDIUM_MSG,
+    MV2_SCATTER_SMALL_MSG,
+    MV2_SHMEM_ALLREDUCE_MSG,
+    MV2_SHMEM_COLL_MAX_MSG_SIZE,
+    MV2_SHMEM_COLL_NUM_COMM,
+    MV2_SHMEM_COLL_NUM_PROCS,
+    MV2_SHMEM_COLL_SPIN_COUNT,
+    MV2_SHMEM_DIR,
+    MV2_SHMEM_REDUCE_MSG,
+    MV2_USE_BCAST_SHORT_MSG,
+    MV2_USE_DIRECT_GATHER,
+    MV2_USE_DIRECT_GATHER_SYSTEM_SIZE_MEDIUM,
+    MV2_USE_DIRECT_GATHER_SYSTEM_SIZE_SMALL,
+    MV2_USE_DIRECT_SCATTER,
+    MV2_USE_OSU_COLLECTIVES,
+    MV2_USE_KNOMIAL_2LEVEL_BCAST,
+    MV2_USE_KNOMIAL_INTER_LEADER_BCAST,
+    MV2_USE_SCATTER_RD_INTER_LEADER_BCAST,
+    MV2_USE_SCATTER_RING_INTER_LEADER_BCAST,
+    MV2_USE_SHMEM_ALLREDUCE,
+    MV2_USE_SHMEM_BARRIER,
+    MV2_USE_SHMEM_BCAST,
+    MV2_USE_SHMEM_COLL,
+    MV2_USE_SHMEM_REDUCE,
+    MV2_USE_TWO_LEVEL_GATHER,
+    MV2_USE_TWO_LEVEL_SCATTER,
+    MV2_USE_XOR_ALLTOALL,
+    /* ckpt */
+    MV2_CKPT_AGGRE_MIG_ROLE,
+    MV2_CKPT_AGGREGATION_BUFPOOL_SIZE,
+    MV2_CKPT_AGGREGATION_CHUNK_SIZE,
+    MV2_CKPT_AGGRE_MIG_FILE,
+    MV2_CKPT_FILE,
+    MV2_CKPT_INTERVAL,
+    MV2_CKPT_MAX_CKPTS,
+    MV2_CKPT_MAX_SAVE_CKPTS,
+    MV2_CKPT_MPD_BASE_PORT,
+    MV2_CKPT_NO_SYNC,
+    MV2_CKPT_SESSIONID,
+    MV2_CKPT_USE_AGGREGATION,
+    /*start up */
+    MV2_CM_MAX_SPIN_COUNT,
+    MV2_CM_RECV_BUFFERS,
+    MV2_CM_SEND_DEPTH,
+    MV2_CM_TIMEOUT,
+    MV2_CM_UD_PSN,
+    MV2_DEFAULT_SRC_PATH_BITS,
+    MV2_DEFAULT_STATIC_RATE,
+    MV2_DEFAULT_TIME_OUT,
+    MV2_DEFAULT_MTU,
+    MV2_DEFAULT_PKEY,
+    MV2_DEFAULT_PORT,
+    MV2_DEFAULT_PSN,
+    MV2_DEFAULT_MAX_RECV_WQE,
+    MV2_DEFAULT_MAX_SEND_WQE,
+    MV2_DEFAULT_MAX_SG_LIST,
+    MV2_DEFAULT_MIN_RNR_TIMER,
+    MV2_DEFAULT_QP_OUS_RD_ATOM,
+    MV2_DEFAULT_RETRY_COUNT,
+    MV2_DEFAULT_RNR_RETRY,
+    MV2_DEFAULT_MAX_CQ_SIZE,
+    MV2_DEFAULT_MAX_RDMA_DST_OPS,
+    MV2_IGNORE_SYSTEM_CONFIG,
+    MV2_IGNORE_USER_CONFIG,
+    MV2_INITIAL_PREPOST_DEPTH,
+    MV2_IBA_HCA,
+    MV2_IWARP_MULTIPLE_CQ_THRESHOLD,
+    MV2_NUM_HCAS,
+    MV2_NUM_NODES_IN_JOB,
+    MV2_NUM_PORTS,
+    MV2_NUM_QP_PER_PORT,
+    MV2_MAX_RDMA_CONNECT_ATTEMPTS,
+    MV2_ON_DEMAND_THRESHOLD,
+    MV2_ON_DEMAND_UD_INFO_EXCHANGE,
+    MV2_PREPOST_DEPTH,
+    MV2_USER_CONFIG,
+    MV2_USE_RING_STARTUP,
+    /* pt-pt */
+    MV2_COALESCE_THRESHOLD,
+    MV2_DREG_CACHE_LIMIT,
+    MV2_IBA_EAGER_THRESHOLD,
+    MV2_MAX_INLINE_SIZE,
+    MV2_MAX_R3_PENDING_DATA,
+    MV2_MED_MSG_RAIL_SHARING_POLICY,
+    MV2_NDREG_ENTRIES,
+    MV2_NUM_RDMA_BUFFER,
+    MV2_NUM_SPINS_BEFORE_LOCK,
+    MV2_POLLING_LEVEL,
+    MV2_POLLING_SET_LIMIT,
+    MV2_POLLING_SET_THRESHOLD,
+    MV2_PROCESS_TO_RAIL_MAPPING,
+    MV2_R3_NOCACHE_THRESHOLD,
+    MV2_R3_THRESHOLD,
+    MV2_RAIL_SHARING_LARGE_MSG_THRESHOLD,
+    MV2_RAIL_SHARING_MED_MSG_THRESHOLD,
+    MV2_RAIL_SHARING_POLICY,
+    MV2_RDMA_EAGER_LIMIT,
+    MV2_RDMA_FAST_PATH_BUF_SIZE,
+    MV2_RDMA_NUM_EXTRA_POLLS,
+    MV2_RNDV_EXT_SENDQ_SIZE,
+    MV2_RNDV_PROTOCOL,
+    MV2_SMALL_MSG_RAIL_SHARING_POLICY,
+    MV2_SM_SCHEDULING,
+    MV2_SPIN_COUNT,
+    MV2_SRQ_LIMIT,
+    MV2_SRQ_MAX_SIZE,
+    MV2_SRQ_SIZE,
+    MV2_STRIPING_THRESHOLD,
+    MV2_USE_BLOCKING,
+    MV2_USE_COALESCE,
+    MV2_USE_LAZY_MEM_UNREGISTER,
+    MV2_USE_RDMA_FAST_PATH,
+    MV2_USE_SRQ,
+    MV2_USE_XRC,
+    MV2_VBUF_MAX,
+    MV2_VBUF_POOL_SIZE,
+    MV2_VBUF_SECONDARY_POOL_SIZE,
+    MV2_VBUF_TOTAL_SIZE,
+    MV2_USE_IWARP_MODE,
+    MV2_USE_RoCE,
+    /* smp */
+    MV2_CPU_BINDING_POLICY,
+    MV2_USE_HWLOC_CPU_BINDING,
+    MV2_CPU_MAPPING,
+    MV2_ENABLE_AFFINITY,
+    MV2_ENABLE_LEASTLOAD,
+    MV2_LIMIC_GET_THRESHOLD,
+    MV2_LIMIC_PUT_THRESHOLD,
+    MV2_SMP_USE_LIMIC2,
+    MV2_SMP_BATCH_SIZE,
+    MV2_SMP_EAGERSIZE,
+    MV2_SMPI_LENGTH_QUEUE,
+    MV2_SMP_NUM_SEND_BUFFER,
+    MV2_SMP_SEND_BUF_SIZE,
+    MV2_USE_SHARED_MEM,
+    /* cuda */
+    MV2_CUDA_BLOCK_SIZE,
+    MV2_CUDA_NUM_RNDV_BLOCKS,
+    MV2_CUDA_NUM_STREAMS,
+    MV2_CUDA_VECTOR_OPT,
+    MV2_EAGER_CUDAHOST_REG,
+    MV2_USE_CUDA,
+    MV2_CUDA_NUM_EVENTS,
+    MV2_CUDA_EVENT_SYNC,
+#if defined(HAVE_CUDA_IPC)
+    MV2_CUDA_IPC,
+    MV2_CUDA_IPC_THRESHOLD,
+    MV2_CUDA_ENABLE_IPC_CACHE,
+#endif
+    /* debug */
+    MV2_DEBUG_CORESIZE,
+    MV2_DEBUG_SHOW_BACKTRACE,
+    MV2_SHOW_ENV_INFO,
+    MV2_SYSREPORT,
+    TOTALVIEW,
+    MV2_DEBUG_CM_VERBOSE,
+    MV2_DEBUG_CUDA_VERBOSE,
+    MV2_DEBUG_FORK_VERBOSE,
+    MV2_DEBUG_FT_VERBOSE,
+    MV2_DEBUG_MEM_USAGE_VERBOSE,
+    MV2_DEBUG_MIG_VERBOSE,
+    MV2_DEBUG_UDSTAT_VERBOSE,
+    MV2_DEBUG_UD_VERBOSE,
+    MV2_DEBUG_XRC_VERBOSE,
+    MV2_DEBUG_ZCOPY_VERBOSE,
+    /* one-sided */
+    MV2_DEFAULT_PUT_GET_LIST_SIZE,
+    MV2_EAGERSIZE_1SC,
+    MV2_GET_FALLBACK_THRESHOLD,
+    MV2_PIN_POOL_SIZE,
+    MV2_PUT_FALLBACK_THRESHOLD,
+    MV2_USE_LIMIC_ONE_SIDED,
+    MV2_USE_RDMA_ONE_SIDED,
+    MV2_USE_SHM_ONE_SIDED,
+    /* rdma cm */
+    MV2_RDMA_CM_ARP_TIMEOUT,
+    MV2_RDMA_CM_CONNECT_RETRY_INTERVAL,
+    MV2_RDMA_CM_MAX_PORT,
+    MV2_RDMA_CM_MIN_PORT,
+    MV2_RDMA_CM_PORT,
+    MV2_USE_RDMA_CM,
+    /* hybrid */
+    MV2_UD_DROP_PACKET_RATE,
+    MV2_UD_MAX_ACK_PENDING,
+    MV2_UD_MAX_RECV_WQE,
+    MV2_UD_MAX_RETRY_TIMEOUT,
+    MV2_UD_MAX_SEND_WQE,
+    MV2_UD_MTU,
+    MV2_UD_NUM_MSG_LIMIT,
+    MV2_UD_NUM_ZCOPY_RNDV_QPS,
+    MV2_UD_PROGRESS_SPIN,
+    MV2_UD_PROGRESS_TIMEOUT,
+    MV2_UD_RECVWINDOW_SIZE,
+    MV2_UD_RETRY_COUNT,
+    MV2_UD_RETRY_TIMEOUT,
+    MV2_UD_SENDWINDOW_SIZE,
+    MV2_UD_VBUF_POOL_SIZE,
+    MV2_UD_ZCOPY_RQ_SIZE,
+    MV2_UD_ZCOPY_THRESHOLD,
+    MV2_USE_UD_ZCOPY,
+    MV2_USE_UD_HYBRID,
+    MV2_USE_UD_SRQ,
+    MV2_HYBRID_ENABLE_THRESHOLD,
+    MV2_HYBRID_MAX_RC_CONN,
+    /* threads */
+    MV2_ASYNC_THREAD_STACK_SIZE,
+    MV2_CM_THREAD_STACKSIZE,
+    MV2_THREAD_YIELD_SPIN_THRESHOLD,
+    MV2_USE_THREAD_WARNING,
+    MV2_USE_THREAD_YIELD,
+    /* other */
+    MV2_SUPPORT_DPM,
+    MV2_USE_APM,
+    MV2_USE_APM_TEST,
+    MV2_USE_HSAM,
+    MV2_USE_HUGEPAGES,
+    MV2_MAX_PARAM_ID,
+} mv2_env_param_id_t;
+
+typedef enum mv2_env_param_type {
+    MV2_PARAM_TYPE_INVALID = 0,
+    MV2_PARAM_TYPE_INT8,
+    MV2_PARAM_TYPE_INT16,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_TYPE_LONG,
+    MV2_PARAM_TYPE_STRING,
+} mv2_env_param_type_t;
+
+/* parameter categories */
+typedef enum mv2_env_param_group {
+    MV2_PARAM_GROUP_launcher,
+    MV2_PARAM_GROUP_QoS,
+    MV2_PARAM_GROUP_collective,
+    MV2_PARAM_GROUP_ckpt,
+    MV2_PARAM_GROUP_startup,
+    MV2_PARAM_GROUP_pt2pt,
+    MV2_PARAM_GROUP_intranode,
+    MV2_PARAM_GROUP_cuda,
+    MV2_PARAM_GROUP_debugger,
+    MV2_PARAM_GROUP_rma,
+    MV2_PARAM_GROUP_rdma_cm,
+    MV2_PARAM_GROUP_hybrid,
+    MV2_PARAM_GROUP_threads,
+    MV2_PARAM_GROUP_other,
+    MV2_PARAM_NUM_GROUPS
+} mv2_env_param_group_t;
+
+/* runtime environment list structure */
+typedef struct mv2_env_param_list
+{
+    mv2_env_param_id_t id;          /* param id */
+    mv2_env_param_type_t type;      /* param datatype */
+    mv2_env_param_group_t group;    /* param category */
+    char *name;                     /* param name */
+    void *value;                    /* param value store addr*/
+    int extrenal_visible;           /* 1 or 0 */
+    char *descrption;               /* param descrption */
+} mv2_env_param_list_t;
+
+extern mv2_env_param_list_t  param_list[];
+void mv2_show_all_params();
+
 #endif /* _RDMA_PARAM_H */

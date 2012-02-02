@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -113,7 +113,8 @@ static int MPIDI_CH3_SMP_ContigSend(MPIDI_VC_t * vc,
             if (sreq == NULL) {
                 MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ch3|contigsend");
             }
-            MPIDI_CH3I_SMP_SendQ_enqueue(vc, sreq);
+            MPIDI_CH3I_SMP_SendQ_enqueue_head(vc, sreq);
+            vc->smp.send_active = sreq;
         }
     } else {
         /* sendQ not empty, enqueue request, fallback MPIDI_CH3_PKT_EAGER_SEND */

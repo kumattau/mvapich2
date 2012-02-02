@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -11,6 +11,7 @@
  */
 
 #include <mpirun_rsh.h>
+#include <mpirun_ckpt.h>
 #include <wfe_mpirun.h>
 #include <debug_utils.h>
 #include <mpispawn_error_codes.h>
@@ -22,6 +23,11 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <stdio.h>
+
+#ifdef CR_FTB
+#include <libftb.h>
+#endif
+
 
 static pthread_t wfe_tid;
 static pthread_cond_t wfe_cond = PTHREAD_COND_INITIALIZER;
@@ -102,13 +108,34 @@ process_mpispawn_connection (int sfd)
                     "process exit with non-zero code\n", id);
             m_state_fail();
             break;
+        case MPISPAWN_TRIGGER_MIGRATION:
+
+#ifdef CR_FTB
+            /*
+             * Handle the migration request mpispawn
+             */
+            PRINT_DEBUG(DEBUG_FT_verbose,"Migration request from: "
+                                        "%s\n", pglist->index[id]->hostname);
+            FTB_receive_event_t mig_recv_event;
+            memset(&mig_recv_event, 0, sizeof(FTB_receive_event_t));
+            snprintf(mig_recv_event.event_name,FTB_MAX_EVENT_NAME,
+                                            "FTB_MIGRATE_TRIGGER");
+            snprintf(mig_recv_event.event_payload,
+                                sizeof(pglist->index[id]->hostname),
+                                pglist->index[id]->hostname);
+            cr_ftb_callback(&mig_recv_event,NULL);
+#else
+            PRINT_ERROR("MVAPICH2 has not been configured with"
+                                    " Process-Migration support!\n");
+#endif
+            break;
         default:
             /*
              * Assume abort from mpispawn
              */
             PRINT_ERROR("mpispawn_%d from node %s aborted: %s (%d)\n", id,
-                    pglist->index[id]->hostname,
-                    get_mpispawn_error_str(code), code);
+                                        pglist->index[id]->hostname,
+                                        get_mpispawn_error_str(code), code);
             m_state_fail();
             pthread_exit(NULL);
             break;

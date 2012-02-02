@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -188,6 +188,9 @@ typedef struct MPIDI_CH3I_SMP_VC
     int current_nb;
     int use_limic;
 #endif
+#if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
+    int can_access_peer;
+#endif
 } MPIDI_CH3I_SMP_VC;
 
 #ifndef MPIDI_CH3I_VC_RDMA_DECL
@@ -235,10 +238,25 @@ struct MPIDI_CH3I_Request						\
 #define  MPIDI_CH3_REQUEST_INIT_CUDA(_rreq)          \
     (_rreq)->mrail.cuda_transfer_mode = 0;           \
     (_rreq)->mrail.pipeline_nm = 0;                  \
-    (_rreq)->dev.pending_pkt = NULL;                        
+    (_rreq)->mrail.cuda_stream = NULL;               \
+    (_rreq)->dev.pending_pkt = NULL;                 \
+    (_rreq)->dev.cuda_srbuf_entry = NULL;            \
+    (_rreq)->dev.is_device_tmpbuf = 0;
 #else
 #define MPIDI_CH3_REQUEST_INIT_CUDA(sreq_)
 #endif
+
+#if defined(HAVE_CUDA_IPC)
+#define MPIDI_CH3_REQUEST_INIT_CUDA_IPC(_rreq)      \
+    (_rreq)->mrail.ipc_cuda_event = NULL;           \
+    (_rreq)->mrail.ipc_baseptr = NULL;              \
+    (_rreq)->mrail.ipc_size = 0;                    \
+    (_rreq)->mrail.ipc_event = NULL;                \
+    (_rreq)->mrail.cuda_reg = NULL;
+
+#else
+#define MPIDI_CH3_REQUEST_INIT_CUDA_IPC(_rreq)
+#endif 
 
 #define MPIDI_CH3_REQUEST_INIT(_rreq)   \
     (_rreq)->mrail.rndv_buf_alloc = 0;   \
@@ -249,7 +267,8 @@ struct MPIDI_CH3I_Request						\
     (_rreq)->mrail.d_entry = NULL;       \
     (_rreq)->mrail.remote_addr = NULL;   \
     (_rreq)->mrail.nearly_complete = 0;  \
-    MPIDI_CH3_REQUEST_INIT_CUDA(_rreq)   
+    MPIDI_CH3_REQUEST_INIT_CUDA(_rreq)   \
+    MPIDI_CH3_REQUEST_INIT_CUDA_IPC(_rreq) 
 
 typedef struct MPIDI_CH3I_Progress_state
 {
@@ -292,7 +311,9 @@ typedef struct MPIDI_CH3I_comm
     int     shmem_coll_ok;
     int     allgather_comm_ok; 
     int     leader_group_size;
-    int     is_global_block; 
+    int     is_global_block;
+    int     is_pof2; /* Boolean to know if comm size is equal to pof2  */
+    int     gpof2; /* Greater pof2 < size of comm */ 
 } MPIDI_CH3I_comm_t;
 
 #define MPID_DEV_COMM_DECL MPIDI_CH3I_comm_t ch;

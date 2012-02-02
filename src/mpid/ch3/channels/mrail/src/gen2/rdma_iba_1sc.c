@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -130,7 +130,6 @@ shm_buffer *shm_buffer_rlist = NULL;
 #if defined(_SMP_LIMIC_)
 char* shmem_file;
 extern struct smpi_var g_smpi;
-extern int g_smp_use_limic2;
 extern int limic_fd;
 #endif /* _SMP_LIMIC_ */
 
@@ -445,15 +444,11 @@ void *MPIDI_CH3I_Alloc_mem (size_t size, MPID_Info *info)
    int flag = 0;
    void *ptr = NULL;
 
-   if (size<=0) {
-     goto fn_exit;  
-   }
-
    if (info != NULL) { 
        MPIR_Info_get_impl(info, "alloc_shm", 10, value, &flag);
    }
 
-   if(SMP_INIT && (MPIDI_CH3I_RDMA_Process.has_shm_one_sided || 
+   if(size > 0 && SMP_INIT && (mv2_MPIDI_CH3I_RDMA_Process.has_shm_one_sided || 
       (flag && !strcmp(value, "true")))) {
       mpi_errno = mv2_allocate_shm_local(size, &ptr);
       if(mpi_errno != MPI_SUCCESS) {
@@ -1390,7 +1385,7 @@ MPIDI_CH3I_RDMA_win_create (void *base,
     uintptr_t       *post_flag_ptr_send, *post_flag_ptr_recv;
     int             fallback_trigger = 0;
 
-    if (!MPIDI_CH3I_RDMA_Process.has_one_sided)
+    if (!mv2_MPIDI_CH3I_RDMA_Process.has_one_sided)
     {
         (*win_ptr)->fall_back = 1;
         return;
@@ -1905,7 +1900,7 @@ void MPIDI_CH3I_LIMIC_win_create(void *base, MPI_Aint size, MPID_Win ** win_ptr)
     size_t          tx_init_size;
 
     if(!SMP_INIT || !g_smp_use_limic2 || 
-            !MPIDI_CH3I_RDMA_Process.has_limic_one_sided) {
+            !mv2_MPIDI_CH3I_RDMA_Process.has_limic_one_sided) {
        (*win_ptr)->limic_fallback = 1;
        return;
     }
@@ -2272,11 +2267,11 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
     winptr->put_get_list[index].completion = 0;
 
     if (rail_select == STRIPE) { /* stripe the message across rails */
-        /*post data in chunks of MPIDI_CH3I_RDMA_Process.maxtransfersize as long as the 
+        /*post data in chunks of mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize as long as the 
           total size per rail is larger than that*/
         count = 0;
         bytes_per_rail = length/rdma_num_rails;
-        while (bytes_per_rail > MPIDI_CH3I_RDMA_Process.maxtransfersize) {
+        while (bytes_per_rail > mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize) {
            for (i = 0; i < rdma_num_rails; ++i) {
               v = get_vbuf(); 
               if (NULL == v) {
@@ -2290,29 +2285,29 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
               ++(winptr->put_get_list_size);
 
               local_address = (void *)((char*)local_buf[0] 
-                         + count*rdma_num_rails*MPIDI_CH3I_RDMA_Process.maxtransfersize 
-                         + i*MPIDI_CH3I_RDMA_Process.maxtransfersize);
+                         + count*rdma_num_rails*mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize 
+                         + i*mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize);
               remote_address = (void *)((char *)remote_buf[0] 
-                         + count*rdma_num_rails*MPIDI_CH3I_RDMA_Process.maxtransfersize
-                         + i*MPIDI_CH3I_RDMA_Process.maxtransfersize);
+                         + count*rdma_num_rails*mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize
+                         + i*mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize);
 
               vbuf_init_rma_put(v, 
                                 local_address, 
                                 lkeys[i], 
                                 remote_address,
                                 rkeys[i], 
-                                MPIDI_CH3I_RDMA_Process.maxtransfersize, 
+                                mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize, 
                                 i);
               ONESIDED_RDMA_POST(vc_ptr, save_vc, i);
 
            }
           
            ++count;
-           length -= rdma_num_rails*MPIDI_CH3I_RDMA_Process.maxtransfersize;
+           length -= rdma_num_rails*mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize;
            bytes_per_rail = length/rdma_num_rails; 
         }
 
-        /* Post remaining data as length < rdma_num_rails*MPIDI_CH3I_RDMA_Process.maxtransfersize 
+        /* Post remaining data as length < rdma_num_rails*mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize 
          * Still stripe if length > rdma_large_msg_rail_sharing_threshold*/
         if (length < rdma_large_msg_rail_sharing_threshold) { 
            rail = MRAILI_Send_select_rail(vc_ptr);
@@ -2325,9 +2320,9 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
            ++(winptr->put_get_list_size);
 
            local_address = (void *)((char*)local_buf[0]
-                      + count*rdma_num_rails*MPIDI_CH3I_RDMA_Process.maxtransfersize);
+                      + count*rdma_num_rails*mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize);
            remote_address = (void *)((char *)remote_buf[0]
-                      + count*rdma_num_rails*MPIDI_CH3I_RDMA_Process.maxtransfersize);
+                      + count*rdma_num_rails*mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize);
  
            vbuf_init_rma_put(v, 
                              local_address, 
@@ -2355,10 +2350,10 @@ static int Post_Put_Put_Get_List(  MPID_Win * winptr,
               ++(winptr->put_get_list_size);
 
               local_address = (void *)((char*)local_buf[0] 
-                         + count*rdma_num_rails*MPIDI_CH3I_RDMA_Process.maxtransfersize 
+                         + count*rdma_num_rails*mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize 
                          + i*bytes_per_rail);
               remote_address = (void *)((char *)remote_buf[0] 
-                         + count*rdma_num_rails*MPIDI_CH3I_RDMA_Process.maxtransfersize
+                         + count*rdma_num_rails*mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize
                          + i*bytes_per_rail);
 
               if (i < rdma_num_rails - 1) {
@@ -2482,11 +2477,11 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
      winptr->put_get_list[index].completion = 0;
 
      if (rail_select == STRIPE) { /*stripe across the rails*/
-        /*post data in chunks of MPIDI_CH3I_RDMA_Process.maxtransfersize as long as the 
+        /*post data in chunks of mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize as long as the 
           total size per rail is larger than that*/
         count = 0;
         bytes_per_rail = length/rdma_num_rails;
-        while (bytes_per_rail > MPIDI_CH3I_RDMA_Process.maxtransfersize) {
+        while (bytes_per_rail > mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize) {
            for (i = 0; i < rdma_num_rails; ++i) {
               v = get_vbuf(); 
               if (NULL == v) {
@@ -2500,18 +2495,18 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
               ++(winptr->put_get_list_size);
 
               local_address = (void *)((char*)local_buf[0] 
-                         + count*rdma_num_rails*MPIDI_CH3I_RDMA_Process.maxtransfersize 
-                         + i*MPIDI_CH3I_RDMA_Process.maxtransfersize);
+                         + count*rdma_num_rails*mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize 
+                         + i*mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize);
               remote_address = (void *)((char *)remote_buf[0] 
-                         + count*rdma_num_rails*MPIDI_CH3I_RDMA_Process.maxtransfersize
-                         + i*MPIDI_CH3I_RDMA_Process.maxtransfersize);
+                         + count*rdma_num_rails*mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize
+                         + i*mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize);
 
               vbuf_init_rma_get(v, 
                                 local_address, 
                                 lkeys[i], 
                                 remote_address,
                                 rkeys[i], 
-                                MPIDI_CH3I_RDMA_Process.maxtransfersize, 
+                                mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize, 
                                 i);
 
               ONESIDED_RDMA_POST(vc_ptr, save_vc, i);
@@ -2519,11 +2514,11 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
            }
           
            ++count;
-           length -= rdma_num_rails*MPIDI_CH3I_RDMA_Process.maxtransfersize;
+           length -= rdma_num_rails*mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize;
            bytes_per_rail = length/rdma_num_rails; 
         }
 
-        /* Post remaining data as length < rdma_num_rails*MPIDI_CH3I_RDMA_Process.maxtransfersize 
+        /* Post remaining data as length < rdma_num_rails*mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize 
          * Still stripe if length > rdma_large_msg_rail_sharing_threshold*/
         if (length < rdma_large_msg_rail_sharing_threshold) { 
            rail = MRAILI_Send_select_rail(vc_ptr);
@@ -2536,9 +2531,9 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
            ++(winptr->put_get_list_size);
 
            local_address = (void *)((char*)local_buf[0]
-                      + count*rdma_num_rails*MPIDI_CH3I_RDMA_Process.maxtransfersize);
+                      + count*rdma_num_rails*mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize);
            remote_address = (void *)((char *)remote_buf[0]
-                      + count*rdma_num_rails*MPIDI_CH3I_RDMA_Process.maxtransfersize);
+                      + count*rdma_num_rails*mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize);
  
            vbuf_init_rma_get(v, 
                              local_address, 
@@ -2566,10 +2561,10 @@ static int Post_Get_Put_Get_List(  MPID_Win * winptr,
               ++(winptr->put_get_list_size);
 
               local_address = (void *)((char*)local_buf[0] 
-                         + count*rdma_num_rails*MPIDI_CH3I_RDMA_Process.maxtransfersize 
+                         + count*rdma_num_rails*mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize 
                          + i*bytes_per_rail);
               remote_address = (void *)((char *)remote_buf[0] 
-                         + count*rdma_num_rails*MPIDI_CH3I_RDMA_Process.maxtransfersize
+                         + count*rdma_num_rails*mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize
                          + i*bytes_per_rail);
 
               if (i < rdma_num_rails - 1) {

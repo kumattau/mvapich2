@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -209,9 +209,9 @@ start_polling:
         }
 
 #if !defined(DAPL_DEFAULT_PROVIDER)
-        if (SMP_INIT && (MPIDI_CH3I_RDMA_Process.has_shm_one_sided 
+        if (SMP_INIT && (mv2_MPIDI_CH3I_RDMA_Process.has_shm_one_sided 
 #if defined(_SMP_LIMIC_)
-            || MPIDI_CH3I_RDMA_Process.has_limic_one_sided
+            || mv2_MPIDI_CH3I_RDMA_Process.has_limic_one_sided
 #endif
             )) {
             /*Check and process rma locks released through shared memory*/
@@ -316,9 +316,7 @@ start_polling:
         } 
 
 #if defined(_ENABLE_CUDA_)
-        if (rdma_enable_cuda) {
-            progress_cuda_streams();
-        }
+        MV2_CUDA_PROGRESS();
 #endif
  
 #ifdef CKPT
@@ -337,7 +335,7 @@ start_polling:
                  * are now going to release the lock. */ 
                 spin_count = 0;
                 MPID_Thread_mutex_unlock(&MPIR_ThreadInfo.global_mutex);
-                if( use_thread_yield == 1) { 
+                if( mv2_use_thread_yield == 1) { 
                     /* User has requested this thread to yield the CPU */
                     MPIU_PW_Sched_yield();
                 } 
@@ -347,7 +345,7 @@ start_polling:
                 int spins = 0; 
                 do {
                     spins++;
-                } while(spins < spins_before_lock); 
+                } while(spins < mv2_spins_before_lock); 
                 MPID_Thread_mutex_lock(&MPIR_ThreadInfo.global_mutex);
             }
             MPIU_THREAD_CHECK_END
@@ -461,9 +459,9 @@ int MPIDI_CH3I_Progress_test()
         }
 
 #if !defined(DAPL_DEFAULT_PROVIDER)
-        if (MPIDI_CH3I_RDMA_Process.has_shm_one_sided 
+        if (mv2_MPIDI_CH3I_RDMA_Process.has_shm_one_sided 
 #if defined(_SMP_LIMIC_)
-            || MPIDI_CH3I_RDMA_Process.has_limic_one_sided
+            || mv2_MPIDI_CH3I_RDMA_Process.has_limic_one_sided
 #endif
             ) { 
             /*Check and process rma locks released through shared memory*/
@@ -574,9 +572,7 @@ int MPIDI_CH3I_Progress_test()
     }
 
 #if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda) {
-        progress_cuda_streams();
-    }
+    MV2_CUDA_PROGRESS();
 #endif
 #ifdef _ENABLE_UD_
     if ( !SMP_ONLY && rdma_enable_hybrid && UD_ACK_PROGRESS_TIMEOUT) {
@@ -1052,7 +1048,7 @@ static int cm_handle_pending_send()
             }
 
             MPICM_lock();
-            if (USE_XRC && MPIDI_CH3I_RDMA_Process.xrc_rdmafp && 
+            if (USE_XRC && xrc_rdmafp_init && 
                     VC_XSTS_ISSET (vc, (XF_START_RDMAFP | XF_SEND_IDLE))
                     && VC_XST_ISUNSET (vc, XF_CONN_CLOSING)) {
                 PRINT_DEBUG(DEBUG_XRC_verbose>0, "FP to %d\n", vc->pg_rank);

@@ -4,43 +4,14 @@
     #define BENCHMARK "OSU MPI Bi-Directional Bandwidth Test"
 #endif
 /*
- * Copyright (C) 2002-2011 the Network-Based Computing Laboratory
+ * Copyright (C) 2002-2012 the Network-Based Computing Laboratory
  * (NBCL), The Ohio State University. 
  *
  * Contact: Dr. D. K. Panda (panda@cse.ohio-state.edu)
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level OMB directory.
  */
-
-/*
-This program is available under BSD licensing.
-
-Redistribution and use in source and binary forms, with or without
-modification, are permitted provided that the following conditions are
-met:
-
-(1) Redistributions of source code must retain the above copyright
-notice, this list of conditions and the following disclaimer.
-
-(2) Redistributions in binary form must reproduce the above copyright
-notice, this list of conditions and the following disclaimer in the
-documentation and/or other materials provided with the distribution.
-
-(3) Neither the name of The Ohio State University nor the names of
-their contributors may be used to endorse or promote products derived
-from this software without specific prior written permission.
-
-THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
-"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
-LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
-OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
-SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
-LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
-DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
-THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
-OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-*/
 
 #include <mpi.h>
 #include <unistd.h>
@@ -97,13 +68,15 @@ int main(int argc, char *argv[])
     char *s_buf, *r_buf;
     double t_start = 0.0, t_end = 0.0, t = 0.0;
 #ifdef _ENABLE_CUDA_
-    int dev_count, my_dev;
+    char *str = NULL;
+    int dev_id, local_rank, dev_count;
     char *s_buf_rev = NULL;
     char *r_buf_rev = NULL;
     char src, desti;
     char *sender;
     char *receiver;
     cudaError_t  cuerr = cudaSuccess;
+    CUresult curesult = CUDA_SUCCESS;
     CUcontext cuContext;
     CUdevice cuDevice;
 
@@ -124,10 +97,25 @@ int main(int argc, char *argv[])
 #endif
 
 #ifdef _ENABLE_CUDA_
-    if (src == 'D' || desti == 'D'){
-        cuerr = cuInit(0);
-        cuDeviceGet(&cuDevice, 0);
-        cuCtxCreate(&cuContext, 0, cuDevice);
+    if (src == 'D' || desti == 'D') {
+        dev_id = 0;
+        if ((str = getenv("LOCAL_RANK")) != NULL) {
+            cudaGetDeviceCount(&dev_count);
+            local_rank = atoi(str);
+            dev_id = local_rank % dev_count;
+        }
+        curesult = cuInit(0);
+        if (curesult != CUDA_SUCCESS) {
+            return EXIT_FAILURE;
+        }
+        curesult = cuDeviceGet(&cuDevice, dev_id);
+        if (curesult != CUDA_SUCCESS) {
+            return EXIT_FAILURE;
+        }
+        curesult = cuCtxCreate(&cuContext, 0, cuDevice);
+        if (curesult != CUDA_SUCCESS) {
+            return EXIT_FAILURE;
+        }
     }
 #endif
 
@@ -144,15 +132,6 @@ int main(int argc, char *argv[])
 
         return EXIT_FAILURE;
     }
-
-#ifdef _ENABLE_CUDA_
-    if ((src == 'D' && 0 == myid) 
-        || (desti == 'D' && 1 == myid)){
-        cuDeviceGetCount(&dev_count);
-        my_dev = myid % dev_count;
-        cudaSetDevice(my_dev);
-    }
-#endif
 
     align_size = getpagesize();
     assert(align_size <= MAX_ALIGNMENT);

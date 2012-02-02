@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -178,7 +178,7 @@ MRAILI_Fast_rdma_fill_start_buf (MPIDI_VC_t * vc,
     /* Here we assume that iov holds a packet header, 
        ATTN!: it is a must!! */
 #ifndef MV2_DISABLE_HEADER_CACHING 
-  if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+  if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
     cached =
         (NULL == vc) ? NULL : vc->mrail.rfp.cached_outgoing;
   }
@@ -217,7 +217,7 @@ MRAILI_Fast_rdma_fill_start_buf (MPIDI_VC_t * vc,
     *num_bytes_ptr = 0;
 
 #ifndef MV2_DISABLE_HEADER_CACHING 
-  if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+  if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
     if ((header->type == MPIDI_CH3_PKT_EAGER_SEND) &&
 	(len - sizeof(MPIDI_CH3_Pkt_eager_send_t) <= MAX_SIZE_WITH_HEADER_CACHING) &&
         (header->match.parts.tag == cached->match.parts.tag) &&
@@ -324,7 +324,7 @@ MRAILI_Fast_rdma_fill_start_buf (MPIDI_VC_t * vc,
                v, vstart, len, iov[0].MPID_IOV_LEN);
           MPIU_Memcpy (vstart, header, iov[0].MPID_IOV_LEN);
 #ifndef MV2_DISABLE_HEADER_CACHING 
-          if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+          if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
               if (header->type == MPIDI_CH3_PKT_EAGER_SEND)
                 MPIU_Memcpy (cached, header, sizeof (MPIDI_CH3_Pkt_eager_send_t));
               vc->mrail.rfp.cached_miss++;
@@ -375,7 +375,7 @@ MPIDI_CH3I_MRAILI_Fast_rdma_send_complete (MPIDI_VC_t * vc,
                                            int *num_bytes_ptr,
                                            vbuf ** vbuf_handle)
 {
-    if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path == 0) {
+    if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path == 0) {
         return -1;
     }
 
@@ -456,7 +456,7 @@ MPIDI_CH3I_MRAILI_Fast_rdma_send_complete (MPIDI_VC_t * vc,
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int MPIDI_CH3I_MRAILI_Fast_rdma_ok (MPIDI_VC_t * vc, int len)
 {
-    if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path == 0) {
+    if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path == 0) {
         return 0;
     }
 
@@ -721,7 +721,7 @@ int MRAILI_Process_send (void *vbuf_addr)
     DEBUG_PRINT ("after increase 2, %d\n",
                  v->desc.sr.opcode == UDAPL_RDMA_WRITE);
 
-    if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+    if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
         if (v->padding == RPUT_VBUF_FLAG)
           {
               MRAILI_Release_vbuf (v);
@@ -773,7 +773,7 @@ int MRAILI_Process_send (void *vbuf_addr)
                   }
             }
 
-          if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+          if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
               if (v->padding == NORMAL_VBUF_FLAG)
                 {
                     DEBUG_PRINT ("[process send] normal flag, free vbuf\n");
@@ -826,7 +826,7 @@ int MRAILI_Process_send (void *vbuf_addr)
                                    "Get incomplete eager send request\n");
             }
 
-          if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+          if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
               if (v->padding == NORMAL_VBUF_FLAG)
                   MRAILI_Release_vbuf (v);
               else
@@ -868,7 +868,7 @@ int MRAILI_Process_send (void *vbuf_addr)
                   }
             }
 
-          if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+          if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
               if (v->padding == NORMAL_VBUF_FLAG)
                   MRAILI_Release_vbuf (v);
               else
@@ -900,7 +900,7 @@ int MRAILI_Process_send (void *vbuf_addr)
       case MPIDI_CH3_PKT_CLOSE:        /*24 */
           DEBUG_PRINT ("[process send] get %d\n", p->type);
 
-          if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+          if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
               if (v->padding == NORMAL_VBUF_FLAG)
                 {
                     MRAILI_Release_vbuf (v);
@@ -982,7 +982,7 @@ int MRAILI_Send_noop_if_needed (MPIDI_VC_t * vc,
                  vc->mrail.rfp.rdma_credit);
     if (vc->mrail.srp.local_credit[channel->rail_index] >=
         udapl_dynamic_credit_threshold
-        || (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path 
+        || (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path 
             && vc->mrail.rfp.rdma_credit > num_rdma_buffer / 2)
         || (vc->mrail.srp.remote_cc[channel->rail_index] <=
             udapl_credit_preserve

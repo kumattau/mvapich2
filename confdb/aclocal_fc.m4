@@ -706,6 +706,8 @@ for arg in --version -V -v ; do
             pac_cv_fc_vendor=gnu
         elif grep Intel conftest.txt >/dev/null 2>&1 ; then
             pac_cv_fc_vendor=intel
+        elif grep Open64 conftest.txt >/dev/null 2>&1 ; then
+            pac_cv_fc_vendor=open64
         fi
     fi
     if test "$pac_cv_fc_vendor" != "unknown" ; then break ; fi

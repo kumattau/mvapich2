@@ -4,7 +4,7 @@ AC_PREREQ(2.63)
 #     See COPYRIGHT in top-level directory.
 #
 
-# Copyright (c) 2003-2011, The Ohio State University. All rights
+# Copyright (c) 2003-2012, The Ohio State University. All rights
 # reserved.
 #
 # This file is part of the MVAPICH2 software package developed by the
@@ -215,7 +215,7 @@ echo "Running on system: `uname -a`"
 dnl Definitions will be placed in this file rather than in the DEFS variable
 AC_CONFIG_HEADER(src/include/mpichconf.h)
 AH_TOP([/* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -685,8 +685,8 @@ AC_ARG_ENABLE([registration-cache],
               ])
 
 AC_ARG_ENABLE([xrc],
-              [AS_HELP_STRING([--enable-xrc],
-                              [compile MVAPICH2 with XRC])
+              [AS_HELP_STRING([--disable-xrc],
+                              [compile MVAPICH2 without XRC support])
               ])
 
 AC_ARG_ENABLE([rsh],
@@ -1892,6 +1892,7 @@ AC_ARG_WITH([cuda],
     [case $with_cuda in
          yes|no) ;;
          *) CPPFLAGS="-I$with_cuda/include $CPPFLAGS" ;
+            WRAPPER_CPPFLAGS="$WRAPPER_CPPFLAGS -I$with_cuda/include"
             LDFLAGS="-L$with_cuda/lib64 -L$with_cuda/lib $LDFLAGS" ;;
      esac
     ])
@@ -1902,7 +1903,8 @@ AC_ARG_WITH([cuda-include],
     ], [
         case $with_cuda_include in
             yes|no) AC_MSG_FAILURE([must specify path!]) ;;
-            *) CPPFLAGS="-I$with_cuda_include $CPPFLAGS" ;;
+            *) CPPFLAGS="-I$with_cuda_include $CPPFLAGS"
+               WRAPPER_CPPFLAGS="$WRAPPER_CPPFLAGS -I$with_cuda_include" ;;
         esac
     ])
 
@@ -1922,10 +1924,15 @@ AC_ARG_ENABLE([cuda],
               ])
 
 AS_IF([test "$enable_cuda" == "yes"], [
-       PAC_CHECK_HEADER_LIB_FATAL([cuda],
-                                  [cuda.h],
-                                  [cuda],
-                                  [cuPointerGetAttribute])
+       AC_CHECK_HEADER([cuda.h],
+                       [],
+                       [AC_MSG_ERROR([Could not find cuda.h])])
+
+       AC_SEARCH_LIBS([cuPointerGetAttribute], 
+                      [cuda],
+                      [],
+                      [AC_MSG_ERROR([Could not link with cuda])])
+
        AC_SEARCH_LIBS([cudaFree],
                       [cudart],
                       [],
@@ -1938,6 +1945,11 @@ AS_IF([test "$enable_cuda" == "yes"], [
 
 
        AC_DEFINE(_ENABLE_CUDA_,1,[Define to enable MVAPICH2-GPU design.])
+       found_cudaipc_funcs=yes
+       AC_CHECK_FUNCS([cudaIpcGetMemHandle], , found_cudaipc_funcs=no)
+       if test "$found_cudaipc_funcs" = yes ; then
+           AC_DEFINE(HAVE_CUDA_IPC,1,[Define to enable CUDA IPC features])
+       fi
       ])
 
 AC_ARG_WITH([hwloc],
@@ -2561,7 +2573,15 @@ if test "$enable_fc" = "yes" ; then
                     FC_LINKPATH_SHL="-Wl,-rpath -Wl,"
 		fi
 	        ;;
-			
+
+		open64)
+	        # Open64 implements the GNU options
+	        FC_SHL="$FC -shared -fPIC"
+		if test "$enable_rpath" = yes ; then 
+                    FC_LINKPATH_SHL="-Wl,-rpath -Wl,"
+		fi
+	        ;;
+
 		sun)
 		# Sun studio compiler on Linux
 		FC_SHL="$FC -KPIC"
@@ -2596,8 +2616,11 @@ if test "$enable_fc" = "yes" ; then
 	if test -n "$FC_SHL" ; then 
 	    AC_MSG_RESULT([Compile with $FC_SHL and link using path argument $FC_LINKPATH_SHL])
         else
-            AC_MSG_WARN([Unable to determine how to link Fortran 90 compiler with shared libraries])
- 	    FC_SHL=false
+            AC_MSG_WARN([Unable to determine how to link Fortran 90 compiler with shared libraries, trying GNU options])
+            FC_SHL="$FC -shared -fPIC"
+	    if test "$enable_rpath" = yes ; then 
+		FC_LINKPATH_SHL="-Wl,-rpath -Wl,"
+	    fi
 	fi
     fi
 

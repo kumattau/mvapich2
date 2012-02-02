@@ -40,6 +40,9 @@ extern "C" {
  * If no object of this type is present on the underlying architecture, the
  * function returns the depth of the first "present" object typically found
  * inside \p type.
+ *
+ * If some objects of the given type exist in different levels, for instance
+ * L1 and L2 caches, the function returns HWLOC_TYPE_DEPTH_MULTIPLE.
  */
 static __hwloc_inline int __hwloc_attribute_pure
 hwloc_get_type_or_below_depth (hwloc_topology_t topology, hwloc_obj_type_t type)
@@ -63,6 +66,9 @@ hwloc_get_type_or_below_depth (hwloc_topology_t topology, hwloc_obj_type_t type)
  * If no object of this type is present on the underlying architecture, the
  * function returns the depth of the first "present" object typically
  * containing \p type.
+ *
+ * If some objects of the given type exist in different levels, for instance
+ * L1 and L2 caches, the function returns HWLOC_TYPE_DEPTH_MULTIPLE.
  */
 static __hwloc_inline int __hwloc_attribute_pure
 hwloc_get_type_or_above_depth (hwloc_topology_t topology, hwloc_obj_type_t type)
@@ -1018,7 +1024,7 @@ hwloc_get_whole_distance_matrix_by_type(hwloc_topology_t topology, hwloc_obj_typ
 /** \brief Get distances for the given depth and covering some objects
  *
  * Return a distance matrix that describes depth \p depth and covers at
- * least object \p obj and all its ancestors.
+ * least object \p obj and all its children.
  *
  * When looking for the distance between some objects, a common ancestor should
  * be passed in \p obj.
@@ -1102,7 +1108,7 @@ hwloc_get_latency(hwloc_topology_t topology,
  * object. This regular object may then be used for binding because
  * its locality is the same as \p ioobj.
  */
-static __inline hwloc_obj_t
+static __hwloc_inline hwloc_obj_t
 hwloc_get_non_io_ancestor_obj(hwloc_topology_t topology __hwloc_attribute_unused,
 			      hwloc_obj_t ioobj)
 {
@@ -1117,7 +1123,7 @@ hwloc_get_non_io_ancestor_obj(hwloc_topology_t topology __hwloc_attribute_unused
  *
  * \return the first PCI device if \p prev is \c NULL.
  */
-static __inline hwloc_obj_t
+static __hwloc_inline hwloc_obj_t
 hwloc_get_next_pcidev(hwloc_topology_t topology, hwloc_obj_t prev)
 {
   return hwloc_get_next_obj_by_type(topology, HWLOC_OBJ_PCI_DEVICE, prev);
@@ -1126,7 +1132,7 @@ hwloc_get_next_pcidev(hwloc_topology_t topology, hwloc_obj_t prev)
 /** \brief Find the PCI device object matching the PCI bus id
  * given domain, bus device and function PCI bus id.
  */
-static __inline hwloc_obj_t
+static __hwloc_inline hwloc_obj_t
 hwloc_get_pcidev_by_busid(hwloc_topology_t topology,
 			  unsigned domain, unsigned bus, unsigned dev, unsigned func)
 {
@@ -1144,7 +1150,7 @@ hwloc_get_pcidev_by_busid(hwloc_topology_t topology,
 /** \brief Find the PCI device object matching the PCI bus id
  * given as a string xxxx:yy:zz.t or yy:zz.t.
  */
-static __inline hwloc_obj_t
+static __hwloc_inline hwloc_obj_t
 hwloc_get_pcidev_by_busidstring(hwloc_topology_t topology, const char *busid)
 {
   unsigned domain = 0; /* default */
@@ -1163,7 +1169,7 @@ hwloc_get_pcidev_by_busidstring(hwloc_topology_t topology, const char *busid)
  *
  * \return the first OS device if \p prev is \c NULL.
  */
-static __inline hwloc_obj_t
+static __hwloc_inline hwloc_obj_t
 hwloc_get_next_osdev(hwloc_topology_t topology, hwloc_obj_t prev)
 {
   return hwloc_get_next_obj_by_type(topology, HWLOC_OBJ_OS_DEVICE, prev);
@@ -1173,7 +1179,7 @@ hwloc_get_next_osdev(hwloc_topology_t topology, hwloc_obj_t prev)
  *
  * \return the first bridge if \p prev is \c NULL.
  */
-static __inline hwloc_obj_t
+static __hwloc_inline hwloc_obj_t
 hwloc_get_next_bridge(hwloc_topology_t topology, hwloc_obj_t prev)
 {
   return hwloc_get_next_obj_by_type(topology, HWLOC_OBJ_BRIDGE, prev);
@@ -1181,7 +1187,7 @@ hwloc_get_next_bridge(hwloc_topology_t topology, hwloc_obj_t prev)
 
 /* \brief Checks whether a given bridge covers a given PCI bus.
  */
-static __inline int
+static __hwloc_inline int
 hwloc_bridge_covers_pcibus(hwloc_obj_t bridge,
 			   unsigned domain, unsigned bus)
 {
@@ -1197,7 +1203,7 @@ hwloc_bridge_covers_pcibus(hwloc_obj_t bridge,
  * This is useful for finding the locality of a bus because
  * it is the hostbridge parent cpuset.
  */
-static __inline hwloc_obj_t
+static __hwloc_inline hwloc_obj_t
 hwloc_get_hostbridge_by_pcibus(hwloc_topology_t topology,
 			       unsigned domain, unsigned bus)
 {

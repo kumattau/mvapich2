@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -95,6 +95,17 @@ int MPID_MRAIL_RndvSend (
 	sreq->dev.OnFinal = 0;
 	mpi_errno = MPIDI_CH3U_Request_load_send_iov(sreq, &sreq->dev.iov[0],
 						     &sreq->dev.iov_count);
+#if defined(_ENABLE_CUDA_)
+    if (rdma_enable_cuda && sreq->dev.OnDataAvail == 
+                        MPIDI_CH3_ReqHandler_pack_cudabuf) {
+        int complete ATTRIBUTE((unused));
+        MPIDI_CH3_ReqHandler_pack_cudabuf(vc, sreq, &complete);
+        sreq->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)sreq->dev.tmpbuf;
+        sreq->dev.iov[0].MPID_IOV_LEN = sreq->dev.segment_size;
+        sreq->dev.iov_count = 1;
+        sreq->dev.OnDataAvail = 0;
+    }
+#endif
 	/* --BEGIN ERROR HANDLING-- */
 	if (mpi_errno != MPI_SUCCESS)
 	{

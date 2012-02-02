@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -67,7 +67,7 @@ struct addr_packet {
     int         host_id;
     int         lid;
     int         rail;
-    uint32_t    hca_type;
+    mv2_arch_hca_type    arch_hca_type;
     union  ibv_gid gid;
     struct host_addr_inf val[0];
 };
@@ -277,7 +277,7 @@ int MPID_nem_ib_free_conn_info(int size) {
     MPIU_Free(conn_info.init_info->gid);
     MPIU_Free(conn_info.init_info->hostid);
     MPIU_Free(conn_info.init_info->qp_num_rdma);
-    MPIU_Free(conn_info.init_info->hca_type);
+    MPIU_Free(conn_info.init_info->arch_hca_type);
     MPIU_Free(conn_info.init_info->vc_addr);
 
     MPIU_Free( conn_info.init_info );
@@ -322,14 +322,14 @@ int MPID_nem_ib_alloc_process_init_info()
     info->hostid = (int **) MPIU_Malloc(size * sizeof(int *));
     info->qp_num_rdma = (uint32_t **)
                             MPIU_Malloc(size * sizeof(uint32_t *));
-    info->hca_type = (uint32_t *) MPIU_Malloc(size * sizeof(uint32_t));
+    info->arch_hca_type = (mv2_arch_hca_type *) MPIU_Malloc(size * sizeof(mv2_arch_hca_type));
     info->vc_addr  = (uint64_t *) MPIU_Malloc(size * sizeof(uint64_t));
 
     if (!info->lid
         || !info->gid
         || !info->hostid
         || !info->qp_num_rdma
-        || !info->hca_type) {
+        || !info->arch_hca_type) {
         return 1;
     }
 
@@ -404,9 +404,9 @@ int MPID_nem_ib_setup_conn(MPIDI_PG_t *pg)
                 "multirails");
         }
 
-        /* set to the first hca_type ? */
+        /* set to the first arch_hca_type ? */
         if (conn_info.init_info)
-            conn_info.init_info->hca_type[curRank] = hca_list[0].hca_type;
+            conn_info.init_info->arch_hca_type[curRank] = process_info.arch_hca_type;
 
         for ( rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
             int hca_index, port_index;
@@ -560,12 +560,12 @@ int MPID_nem_ib_pmi_exchange()
             buf += 8;
         }
 
-        /* hca_list[0].hca_type
-         * what if there are different kinds of hca_type
+        /* hca_list[0].arch_hca_type
+         * what if there are different kinds of arch_hca_type
          * for multiple HCAs?
          */
-        sprintf(buf, "%08x", conn_info.init_info->hca_type[i]);
-        buf += 8;
+        sprintf(buf, "%016lx", conn_info.init_info->arch_hca_type[i]);
+        buf += 16;
         /* still about vc_addr here. vc should have not be initialized right now*/
         sprintf(buf, "%016llx", (long long unsigned int)conn_info.init_info->vc_addr[i]);
         buf += 16;
@@ -613,7 +613,7 @@ int MPID_nem_ib_pmi_exchange()
             conn_info.init_info->lid[i][0] =
                 get_local_lid(hca_list[0].nic_context,
                                 rdma_default_port);
-            conn_info.init_info->hca_type[i] = hca_list[0].hca_type;
+            conn_info.init_info->arch_hca_type[i] = process_info.arch_hca_type;
             continue;
         }
 
@@ -636,8 +636,8 @@ int MPID_nem_ib_pmi_exchange()
             buf += 8;
         }
 
-        sscanf(buf, "%08x", &conn_info.init_info->hca_type[i]);
-        buf += 8;
+        sscanf(buf, "%016lx", &conn_info.init_info->arch_hca_type[i]);
+        buf += 16;
         sscanf(buf, "%016llx", (long long unsigned int *) &conn_info.init_info->vc_addr[i]);
         buf += 16;
     }
@@ -730,7 +730,7 @@ int MPID_nem_ib_pmi_exchange()
 
     DEBUG_PRINT("After barrier\n");
 
-    /* if MPIDI_CH3I_RDMA_Process.has_one_sided
+    /* if mv2_MPIDI_CH3I_RDMA_Process.has_one_sided
      * skip one-sided for now
      */
 
@@ -742,7 +742,7 @@ fn_fail:
     goto fn_exit;
 }
 
-/* rdma_param_handle_heterogenity resets control parameters given the hca_type 
+/* rdma_param_handle_heterogenity resets control parameters given the arch_hca_type 
  * from all ranks. Parameters may change:
  *      rdma_default_mtu
  *      rdma_iba_eager_threshold
@@ -755,37 +755,50 @@ fn_fail:
  *      num_rdma_buffer
  *      rdma_vbuf_total_size
  */
-void rdma_param_handle_heterogenity(uint32_t hca_type[], int pg_size)
+void rdma_param_handle_heterogenity(mv2_arch_hca_type arch_hca_type[], int pg_size)
 {       
-    uint32_t type;                           
-    int heterogenous = 0;
+    mv2_arch_hca_type type;                           
+    process_info.heterogenity = 0;
     int i;  
-        
-    type = hca_type[0];
+
+    type = arch_hca_type[0];
     for (i = 0; i < pg_size; ++ i) {
-        if (hca_type[i] == PATH_HT ||
-            hca_type[i] == MLX_PCI_X || 
-            hca_type[i] == IBM_EHCA) {  
+
+        if(MV2_IS_ARCH_HCA_TYPE(arch_hca_type[i], 
+                    MV2_ARCH_ANY, MV2_HCA_QLGIC_PATH_HT) || 
+                MV2_IS_ARCH_HCA_TYPE(arch_hca_type[i], 
+                    MV2_ARCH_ANY, MV2_HCA_QLGIC_QIB)){
+            process_info.has_srq = 0;
+            process_info.post_send = MPIDI_nem_ib_post_send;
+            rdma_credit_preserve = 3;
+            rdma_default_qp_ous_rd_atom = 1;
+        }
+
+        else if(MV2_IS_ARCH_HCA_TYPE(arch_hca_type[i], 
+                    MV2_ARCH_ANY, MV2_HCA_MLX_PCI_X)){
             process_info.has_srq = 0;
             process_info.post_send = MPIDI_nem_ib_post_send;
             rdma_credit_preserve = 3;
         }
 
-        if (hca_type[i] == IBM_EHCA)
+        else if(MV2_IS_ARCH_HCA_TYPE(arch_hca_type[i], 
+                    MV2_ARCH_ANY, MV2_HCA_IBM_EHCA)){
+            process_info.has_srq = 0;
+            process_info.post_send = MPIDI_nem_ib_post_send;
+            rdma_credit_preserve = 3;
             rdma_max_inline_size = -1;
+        }
 
-        if (hca_type[i] == PATH_HT)
-            rdma_default_qp_ous_rd_atom = 1;
+        if (arch_hca_type[i] != type)
+            process_info.heterogenity = 1;
 
-        if (hca_type[i] != type)
-            heterogenous = 1;
-
-        DEBUG_PRINT("rank %d, type %d\n", i, hca_type[i]);
+        DEBUG_PRINT("rank %d, arch_hca_type %d\n", i, arch_hca_type[i]);
     }
 
-    if (heterogenous) {
+    if (process_info.heterogenity) {
         rdma_default_mtu = IBV_MTU_1024;
         rdma_vbuf_total_size = 8 * 1024;
+        rdma_fp_buffer_size = 8 * 1024;
         rdma_iba_eager_threshold = rdma_vbuf_total_size;
         rdma_max_inline_size = (rdma_max_inline_size == -1) ? -1 : 64;
         rdma_put_fallback_threshold = 4 * 1024;
@@ -884,14 +897,14 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
         for(i = 0; i < pg_size; i++) {
             if(i == pg_rank) {
                 send_packet->val[i].sr_qp_num = -1;
-                conn_info.init_info->hca_type[i] = hca_list[0].hca_type;
+                conn_info.init_info->arch_hca_type[i] = process_info.arch_hca_type;
             } else {
                 send_packet->lid     = conn_info.init_info->lid[i][rail_index];
                 send_packet->gid     = conn_info.init_info->gid[i][rail_index];
                 send_packet->val[i].sr_qp_num =
                     conn_info.init_info->qp_num_rdma[i][rail_index];
                 send_packet->val[i].vc_addr  = (uintptr_t)conn_info.init_info->vc_addr[i];
-                send_packet->hca_type = conn_info.init_info->hca_type[i];
+                send_packet->arch_hca_type = conn_info.init_info->arch_hca_type[i];
             }
         }
 
@@ -964,8 +977,8 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
                             recv_packet->gid;
                         conn_info.init_info->hostid[recv_packet->rank][rail_index] =
                             recv_packet->host_id;
-                        conn_info.init_info->hca_type[recv_packet->rank] =
-                            recv_packet->hca_type;
+                        conn_info.init_info->arch_hca_type[recv_packet->rank] =
+                            recv_packet->arch_hca_type;
                         conn_info.init_info->vc_addr[recv_packet->rank] =
                                 recv_packet->val[pg_rank].vc_addr;
                         /* smp codes
@@ -1105,7 +1118,7 @@ int MPID_nem_ib_exchange_conn(MPIDI_PG_t *pg, int rank)
                 MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**fail",
                         "**fail %s", "Failed to get HCA attrs");
             }
-            rdma_param_handle_heterogenity(conn_info.init_info->hca_type, conn_info.size);
+            rdma_param_handle_heterogenity(conn_info.init_info->arch_hca_type, conn_info.size);
         }
     }
 
@@ -1503,7 +1516,7 @@ int rdma_setup_startup_ring(int pg_rank, int pg_size)
 
 #if defined(USE_IBOETH)
     if (use_iboeth) {
-        gid = get_local_gid(MPIDI_CH3I_RDMA_Process.nic_context[0], port);
+        gid = get_local_gid(mv2_MPIDI_CH3I_RDMA_Process.nic_context[0], port);
         sprintf(ring_qp_out, "%016llx:%016llx:%08x:%08x:",
                  gid.global.subnet_prefix, gid.global.interface_id,
                  proc->boot_qp_hndl[0]->qp_num,
@@ -1767,7 +1780,7 @@ int MPID_nem_ib_setup_startup_ring(MPIDI_PG_t *pg, int rank)
 {
     int mpi_errno = MPI_SUCCESS;
     int pg_size;
-    uint32_t my_hca_type;
+    uint64_t my_hca_type;
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_SETUP_STARTUP_RING);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_SETUP_STARTUP_RING);
@@ -1786,12 +1799,12 @@ int MPID_nem_ib_setup_startup_ring(MPIDI_PG_t *pg, int rank)
         my_hca_type = hca_list[0].hca_type;
 
         mpi_errno = rdma_ring_based_allgather(&my_hca_type, sizeof my_hca_type,
-                                        rank, conn_info.init_info->hca_type, pg_size);
+                                        rank, conn_info.init_info->arch_hca_type, pg_size);
         if (mpi_errno) {
             MPIU_ERR_POP(mpi_errno);
         }
         /* Check heterogenity */
-        rdma_param_handle_heterogenity(conn_info.init_info->hca_type, pg_size);
+        rdma_param_handle_heterogenity(conn_info.init_info->arch_hca_type, pg_size);
     }
 
 fn_exit:

@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -130,7 +130,6 @@ static int cr_ftb_finalize_ckpt;
 
 static int cr_ftb_init(int nprocs);
 static void cr_ftb_finalize();
-static int cr_ftb_callback(FTB_receive_event_t *, void *);
 static int cr_ftb_wait_for_resp(int);
 
 // =====================================================
@@ -1108,7 +1107,7 @@ static int cr_ftb_wait_for_resp(int nprocs)
 }
 
 #ifdef CR_AGGRE
-static int cr_ftb_aggre_based_mig(char *src)
+int cr_ftb_aggre_based_mig(char *src)
 {
     FTB_event_properties_t eprop;
     FTB_event_handle_t ehandle;
@@ -1119,7 +1118,6 @@ static int cr_ftb_aggre_based_mig(char *src)
     char *tgt;
 
     tgt = sparehosts[sparehosts_idx];
-
     PRINT_DEBUG(DEBUG_FT_verbose, "enter: src=%s, tgt=%s, tgt-idx=%d\n", src, tgt, sparehosts_idx);
 
     //// find src and tgt node idx
@@ -1159,7 +1157,7 @@ static int cr_ftb_aggre_based_mig(char *src)
 }
 #endif
 
-static int cr_ftb_callback(FTB_receive_event_t * revent, void *arg)
+int cr_ftb_callback(FTB_receive_event_t * revent, void *arg)
 {
     FTB_event_properties_t eprop;
     FTB_event_handle_t ehandle;
@@ -1213,7 +1211,7 @@ static int cr_ftb_callback(FTB_receive_event_t * revent, void *arg)
         return (0);
     }
 
-    if (!strcmp(revent->event_name, EVENT(CR_FTB_RTM))) {
+    if (!strcmp(revent->event_name, EVENT(FTB_MIGRATE_TRIGGER))) {
         if (sparehosts_on) {
             if (sparehosts_idx >= nsparehosts) {
                 PRINT_ERROR("[Migration] Out of Spares\n");

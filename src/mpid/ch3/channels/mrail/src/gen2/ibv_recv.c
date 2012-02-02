@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -345,14 +345,14 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
             && v->transport == IB_TRANSPORT_RC
             && vc->mrail.rfp.RDMA_recv_buf == NULL
             && num_rdma_buffer && !vc->mrail.rfp.rdma_failed) {
-        if ((MPIDI_CH3I_RDMA_Process.polling_group_size + rdma_pending_conn_request) <
+        if ((mv2_MPIDI_CH3I_RDMA_Process.polling_group_size + rdma_pending_conn_request) <
                 rdma_polling_set_limit) {
             vc->mrail.rfp.eager_start_cnt++;
             if (rdma_polling_set_threshold < 
                     vc->mrail.rfp.eager_start_cnt) {
                 MPICM_lock();
 #ifdef _ENABLE_XRC_
-                if (MPIDI_CH3I_RDMA_Process.xrc_rdmafp &&
+                if (xrc_rdmafp_init &&
                         USE_XRC && VC_XST_ISUNSET (vc, XF_SEND_IDLE)) {
                     if (VC_XSTS_ISUNSET (vc, XF_START_RDMAFP | 
                                 XF_CONN_CLOSING | XF_DPM_INI)) {
@@ -365,7 +365,7 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
                     }
                 }
                 else if (!USE_XRC || 
-                        (MPIDI_CH3I_RDMA_Process.xrc_rdmafp && 
+                        (xrc_rdmafp_init && 
                         VC_XSTS_ISUNSET(vc, 
                             XF_DPM_INI | XF_CONN_CLOSING | XF_START_RDMAFP)
                         && VC_XSTS_ISSET (vc, XF_SEND_IDLE | XF_RECV_IDLE)
@@ -425,28 +425,14 @@ int MPIDI_CH3I_MRAIL_Fill_Request(MPID_Request * req, vbuf * v,
 
 
 #ifdef _ENABLE_CUDA_
-    int mem_type = 0;
     cudaError_t cuda_error = cudaSuccess;
-    cuPointerGetAttribute((void*) &mem_type, 
-            CU_POINTER_ATTRIBUTE_MEMORY_TYPE, (CUdeviceptr) iov[0].MPID_IOV_BUF);
-
-    if ( rdma_enable_cuda && mem_type == CU_MEMORYTYPE_DEVICE) {
+    if ( rdma_enable_cuda && is_device_buffer(iov[0].MPID_IOV_BUF)) {
 
         *nb = 0;
         MPIU_Assert(req->dev.iov_offset == 0);
-        /*if (n_iov > 1) {
-            cuda_error = cudaMemcpy2D(iov[0].MPID_IOV_BUF,  
-                    iov[1].MPID_IOV_BUF - iov[0].MPID_IOV_BUF,
-                    data_buf,
-                    iov[0].MPID_IOV_LEN,
-                    iov[0].MPID_IOV_LEN,
-                    n_iov,                
-                    cudaMemcpyHostToDevice);
-            for (i = 0; i < n_iov; i++) {
-                *nb += iov[i].MPID_IOV_LEN;
-                len_avail -= iov[i].MPID_IOV_LEN;
-            }
-        } else */{
+        if (n_iov > 1) {
+            MPIU_Assert(0);
+        } else {
             cuda_error = cudaMemcpy(iov[0].MPID_IOV_BUF, 
                     data_buf, 
                     iov[0].MPID_IOV_LEN,
@@ -506,7 +492,7 @@ int MPIDI_CH3I_MRAILI_Recv_addr(MPIDI_VC_t * vc, void *vstart)
     int i;
     int ret;
 #ifdef _ENABLE_XRC_
-    if (USE_XRC && (0 == MPIDI_CH3I_RDMA_Process.xrc_rdmafp || 
+    if (USE_XRC && (0 == xrc_rdmafp_init || 
             VC_XST_ISSET (vc, XF_CONN_CLOSING)))
         return MPI_ERR_INTERN;
 #endif
@@ -586,11 +572,11 @@ int MPIDI_CH3I_MRAILI_Recv_addr_reply(MPIDI_VC_t * vc, void *vstart)
         vc->mrail.rfp.p_RDMA_recv_tail = num_rdma_buffer - 1;
 
         /* Add the connection to the RDMA polling list */
-        MPIU_Assert(MPIDI_CH3I_RDMA_Process.polling_group_size < rdma_polling_set_limit);
+        MPIU_Assert(mv2_MPIDI_CH3I_RDMA_Process.polling_group_size < rdma_polling_set_limit);
 
-        MPIDI_CH3I_RDMA_Process.polling_set
-            [MPIDI_CH3I_RDMA_Process.polling_group_size] = vc;
-        MPIDI_CH3I_RDMA_Process.polling_group_size++;
+        mv2_MPIDI_CH3I_RDMA_Process.polling_set
+            [mv2_MPIDI_CH3I_RDMA_Process.polling_group_size] = vc;
+        mv2_MPIDI_CH3I_RDMA_Process.polling_group_size++;
 
         vc->mrail.cmanager.num_channels      += 1;
         vc->mrail.cmanager.num_local_pollings = 1;

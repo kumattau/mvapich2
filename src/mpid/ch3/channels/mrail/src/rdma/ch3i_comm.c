@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -35,7 +35,7 @@ static MPID_Collops collective_functions_osu = {
     MPIR_Alltoallw, /* Alltoallw */
     MPIR_Reduce_MV2, /* Reduce */
     MPIR_Allreduce_MV2, /* Allreduce */
-    MPIR_Reduce_scatter, /* Reduce_scatter */
+    MPIR_Reduce_scatter_MV2, /* Reduce_scatter */
     MPIR_Scan, /* Scan */
     NULL  /* Exscan */
 };
@@ -71,12 +71,13 @@ int MPIDI_CH3I_comm_create (MPID_Comm *comm)
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_COMM_CREATE);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_COMM_CREATE);
 
-    if(use_osu_collectives == 1 && 
+    if(mv2_use_osu_collectives == 1 && 
         comm->comm_kind == MPID_INTRACOMM)  { 
         comm->coll_fns = &collective_functions_osu;
     } else { 
         comm->coll_fns = &collective_functions_anl;
     }
+    MPIR_pof2_comm(comm, comm->local_size, comm->rank);
 
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_COMM_CREATE);
     return mpi_errno;

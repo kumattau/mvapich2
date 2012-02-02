@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -290,9 +290,9 @@ int MPIDI_CH3I_MRAILI_Get_next_vbuf(MPIDI_VC_t** vc_ptr, vbuf** vbuf_ptr)
     volatile VBUF_FLAG_TYPE* head = NULL;
 
     /* no msg is queued, poll rdma polling set */
-    for (; i < MPIDI_CH3I_RDMA_Process.polling_group_size; ++i)
+    for (; i < mv2_MPIDI_CH3I_RDMA_Process.polling_group_size; ++i)
     {
-        vc = MPIDI_CH3I_RDMA_Process.polling_set[i];
+        vc = mv2_MPIDI_CH3I_RDMA_Process.polling_set[i];
         seq  = GetSeqNumVbuf(vc->mrail.cmanager.msg_channels[INDEX_LOCAL(&vc->mrail.cmanager,0)].v_queue_head);
 
         if (seq == PKT_IS_NULL)
@@ -535,8 +535,8 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
     }
 
     if (rdma_iwarp_use_multiple_cq &&
-        MV2_IS_CHELSIO_IWARP_CARD(MPIDI_CH3I_RDMA_Process.hca_type) &&
-        (MPIDI_CH3I_RDMA_Process.cluster_size != VERY_SMALL_CLUSTER)) {
+        MV2_IS_CHELSIO_IWARP_CARD(mv2_MPIDI_CH3I_RDMA_Process.hca_type) &&
+        (mv2_MPIDI_CH3I_RDMA_Process.cluster_size != VERY_SMALL_CLUSTER)) {
         num_cqs = 2;
     } else {
         num_cqs = 1;
@@ -545,12 +545,12 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
     for (; i < rdma_num_hcas; ++i) {
         for (cq_choice = 0; cq_choice < num_cqs; ++cq_choice) {
             if (1 == num_cqs) {
-	            chosen_cq = MPIDI_CH3I_RDMA_Process.cq_hndl[i];
+	            chosen_cq = mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[i];
 	        } else {
 	            if (0 == cq_choice) {
-	                chosen_cq = MPIDI_CH3I_RDMA_Process.send_cq_hndl[i];
+	                chosen_cq = mv2_MPIDI_CH3I_RDMA_Process.send_cq_hndl[i];
                 } else {
-	                chosen_cq = MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i];
+	                chosen_cq = mv2_MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i];
                 }
 	        }
 	        ne = ibv_poll_cq(chosen_cq, 1, &wc);
@@ -589,8 +589,8 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
 	
                 if (2 == num_cqs) {
     	            if (0 == cq_choice) {
-    	                if (MPIDI_CH3I_RDMA_Process.global_used_send_cq) {
-                             MPIDI_CH3I_RDMA_Process.global_used_send_cq--;
+    	                if (mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq) {
+                             mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq--;
     	                } else {
                             DEBUG_PRINT("[%d] Possibly received a duplicate \
                                        send completion event \n", 
@@ -599,8 +599,8 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
     	            } 
                 } else {
                        if(is_send_completion && 
-                              (MPIDI_CH3I_RDMA_Process.global_used_send_cq > 0)) {
-                             MPIDI_CH3I_RDMA_Process.global_used_send_cq--;
+                              (mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq > 0)) {
+                             mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq--;
                        } else {
                             DEBUG_PRINT("[%d] Possibly received a duplicate \
                                        send completion event \n",
@@ -608,7 +608,7 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
                        }     
                 }
  
-	            if(!is_send_completion && (MPIDI_CH3I_RDMA_Process.has_srq
+	            if(!is_send_completion && (mv2_MPIDI_CH3I_RDMA_Process.has_srq
                                     || v->transport == IB_TRANSPORT_UD)) {
                     SET_PKT_LEN_HEADER(v, wc);
                     SET_PKT_HEADER_OFFSET(v);
@@ -663,7 +663,7 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
                     if (v->transport == IB_TRANSPORT_UD)
                     {
                         mv2_ud_ctx_t *ud_ctx = 
-                            MPIDI_CH3I_RDMA_Process.ud_rails[i];
+                            mv2_MPIDI_CH3I_RDMA_Process.ud_rails[i];
                         --ud_ctx->num_recvs_posted;
                         if(ud_ctx->num_recvs_posted < ud_ctx->credit_preserve) {
                             ud_ctx->num_recvs_posted += mv2_post_ud_recv_buffers(
@@ -672,38 +672,38 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
                     }
                     else
 #endif 
-                    if (MPIDI_CH3I_RDMA_Process.has_srq) {
-	                    pthread_spin_lock(&MPIDI_CH3I_RDMA_Process.
+                    if (mv2_MPIDI_CH3I_RDMA_Process.has_srq) {
+	                    pthread_spin_lock(&mv2_MPIDI_CH3I_RDMA_Process.
 	                            srq_post_spin_lock);
 	
 	                    if(v->padding == NORMAL_VBUF_FLAG) {
 	                        /* Can only be from SRQ path */
-	                        --MPIDI_CH3I_RDMA_Process.posted_bufs[i];
+	                        --mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[i];
 	                    }
 	
-	                    if(MPIDI_CH3I_RDMA_Process.posted_bufs[i] <= 
+	                    if(mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[i] <= 
 	                            rdma_credit_preserve) {
 	                        /* Need to post more to the SRQ */
-	                        MPIDI_CH3I_RDMA_Process.posted_bufs[i] +=
+	                        mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[i] +=
 	                            viadev_post_srq_buffers(viadev_srq_fill_size - 
-	                                MPIDI_CH3I_RDMA_Process.posted_bufs[i], i);
+	                                mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[i], i);
 	
 	                    }
 	
-	                    pthread_spin_unlock(&MPIDI_CH3I_RDMA_Process.
+	                    pthread_spin_unlock(&mv2_MPIDI_CH3I_RDMA_Process.
 	                            srq_post_spin_lock);
 	
 	                    /* Check if we need to release the SRQ limit thread */
-	                    if (MPIDI_CH3I_RDMA_Process.
+	                    if (mv2_MPIDI_CH3I_RDMA_Process.
 	                            srq_zero_post_counter[i] >= 1) {
 	                        pthread_mutex_lock(
-	                                &MPIDI_CH3I_RDMA_Process.
+	                                &mv2_MPIDI_CH3I_RDMA_Process.
 	                                srq_post_mutex_lock[i]);
-	                        MPIDI_CH3I_RDMA_Process.srq_zero_post_counter[i] = 0;
-	                        pthread_cond_signal(&MPIDI_CH3I_RDMA_Process.
+	                        mv2_MPIDI_CH3I_RDMA_Process.srq_zero_post_counter[i] = 0;
+	                        pthread_cond_signal(&mv2_MPIDI_CH3I_RDMA_Process.
 	                                srq_post_cond[i]);
 	                        pthread_mutex_unlock(
-	                                &MPIDI_CH3I_RDMA_Process.
+	                                &mv2_MPIDI_CH3I_RDMA_Process.
 	                                srq_post_mutex_lock[i]);
 	                    }
 	
@@ -743,7 +743,7 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
                             DEBUG_PRINT("get recv %d (%d)\n", seqnum, vc->mrail.seqnum_next_torecv);
                         }
                     }
-	                if (!MPIDI_CH3I_RDMA_Process.has_srq && v->transport != IB_TRANSPORT_UD) {
+	                if (!mv2_MPIDI_CH3I_RDMA_Process.has_srq && v->transport != IB_TRANSPORT_UD) {
                           
 	                    if (PKT_IS_NOOP(v)) {
 	                        PREPOST_VBUF_RECV(vc, v->rail);
@@ -785,23 +785,23 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
 	                        INDEX_GLOBAL(&vc->mrail.cmanager, v->rail),
 	                        v);
                     if (v->transport != IB_TRANSPORT_UD) {
-                        if (MPIDI_CH3I_RDMA_Process.has_srq) {
-                            pthread_spin_lock(&MPIDI_CH3I_RDMA_Process.srq_post_spin_lock);
+                        if (mv2_MPIDI_CH3I_RDMA_Process.has_srq) {
+                            pthread_spin_lock(&mv2_MPIDI_CH3I_RDMA_Process.srq_post_spin_lock);
 
                             if(v->padding == NORMAL_VBUF_FLAG ) {
                                 /* Can only be from SRQ path */
-                                --MPIDI_CH3I_RDMA_Process.posted_bufs[i];
+                                --mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[i];
                             }
 
-                            if(MPIDI_CH3I_RDMA_Process.posted_bufs[i] <= rdma_credit_preserve) {
+                            if(mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[i] <= rdma_credit_preserve) {
                                 /* Need to post more to the SRQ */
-                                MPIDI_CH3I_RDMA_Process.posted_bufs[i] +=
+                                mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[i] +=
                                     viadev_post_srq_buffers(viadev_srq_fill_size - 
-                                            MPIDI_CH3I_RDMA_Process.posted_bufs[i], i);
+                                            mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[i], i);
 
                             }
 
-                            pthread_spin_unlock(&MPIDI_CH3I_RDMA_Process.
+                            pthread_spin_unlock(&mv2_MPIDI_CH3I_RDMA_Process.
                                     srq_post_spin_lock);
                         } else {
                             --vc->mrail.srp.credits[v->rail].preposts;
@@ -846,7 +846,7 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
 	#endif
 	                do {    
 	                    ret = ibv_get_cq_event(
-	                            MPIDI_CH3I_RDMA_Process.comp_channel[i], 
+	                            mv2_MPIDI_CH3I_RDMA_Process.comp_channel[i], 
 	                            &ev_cq, &ev_ctx);
 	                    if (ret && errno != EINTR) {
 	                        ibv_va_error_abort(IBV_RETURN_ERR,
@@ -860,35 +860,35 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
 	#endif
 	
                     if (num_cqs == 1) {
-		                if (ev_cq != MPIDI_CH3I_RDMA_Process.cq_hndl[i]) {
+		                if (ev_cq != mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[i]) {
 		                    ibv_error_abort(IBV_STATUS_ERR,
                                              "Event in unknown CQ\n");
 		                }
 		
-	                   ibv_ack_cq_events(MPIDI_CH3I_RDMA_Process.cq_hndl[i], 1);
+	                   ibv_ack_cq_events(mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[i], 1);
 		
 		                if (ibv_req_notify_cq(
-                                    MPIDI_CH3I_RDMA_Process.cq_hndl[i], 0)) {
+                                    mv2_MPIDI_CH3I_RDMA_Process.cq_hndl[i], 0)) {
 		                    ibv_error_abort(IBV_RETURN_ERR,
 		                            "Couldn't request for CQ notification\n");
 		                }
                     } else {
-		                if (ev_cq == MPIDI_CH3I_RDMA_Process.send_cq_hndl[i]) {
+		                if (ev_cq == mv2_MPIDI_CH3I_RDMA_Process.send_cq_hndl[i]) {
 	                        ibv_ack_cq_events(
-                                    MPIDI_CH3I_RDMA_Process.send_cq_hndl[i], 1);
+                                    mv2_MPIDI_CH3I_RDMA_Process.send_cq_hndl[i], 1);
 		
 		                    if (ibv_req_notify_cq(
-                                  MPIDI_CH3I_RDMA_Process.send_cq_hndl[i], 0)) {
+                                  mv2_MPIDI_CH3I_RDMA_Process.send_cq_hndl[i], 0)) {
 		                        ibv_error_abort(IBV_RETURN_ERR,
 		                           "Couldn't request for CQ notification\n");
 		                    }
                         } else if (ev_cq == 
-                                    MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i]) {
+                                    mv2_MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i]) {
 	                        ibv_ack_cq_events(
-                                    MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i], 1);
+                                    mv2_MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i], 1);
 		
 		                    if (ibv_req_notify_cq(
-                                  MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i], 0)) {
+                                  mv2_MPIDI_CH3I_RDMA_Process.recv_cq_hndl[i], 0)) {
 		                        ibv_error_abort(IBV_RETURN_ERR,
 		                           "Couldn't request for CQ notification\n");
 		                    }
@@ -967,12 +967,12 @@ void async_thread(void *context)
         }
 
         for(i = 0; i < rdma_num_hcas; i++) {
-            if(MPIDI_CH3I_RDMA_Process.nic_context[i] == context) {
+            if(mv2_MPIDI_CH3I_RDMA_Process.nic_context[i] == context) {
                 hca_num = i;
             }
         }
 
-        pthread_mutex_lock(&MPIDI_CH3I_RDMA_Process.async_mutex_lock[hca_num]);
+        pthread_mutex_lock(&mv2_MPIDI_CH3I_RDMA_Process.async_mutex_lock[hca_num]);
 #ifdef _ENABLE_XRC_        
         if (event.event_type & IBV_XRC_QP_EVENT_FLAG) {
             event.event_type ^= IBV_XRC_QP_EVENT_FLAG;
@@ -991,7 +991,7 @@ void async_thread(void *context)
                 break;
             case IBV_EVENT_PATH_MIG_ERR:
 #ifdef DEBUG
-                if(MPIDI_CH3I_RDMA_Process.has_apm) {
+                if(mv2_MPIDI_CH3I_RDMA_Process.has_apm) {
                     DEBUG_PRINT("Path Migration Failed\n");
                 }
 #endif /* ifdef DEBUG */
@@ -999,12 +999,12 @@ void async_thread(void *context)
                         event.event_type);
                 break;
             case IBV_EVENT_PATH_MIG:
-                if(MPIDI_CH3I_RDMA_Process.has_apm && !apm_tester){
+                if(mv2_MPIDI_CH3I_RDMA_Process.has_apm && !apm_tester){
                     DEBUG_PRINT("Path Migration Successful\n");
                     reload_alternate_path((&event)->element.qp);
                 }
 
-                if(!MPIDI_CH3I_RDMA_Process.has_apm) {
+                if(!mv2_MPIDI_CH3I_RDMA_Process.has_apm) {
                     ibv_va_error_abort(GEN_EXIT_ERR, "Got FATAL event %d\n",
                             event.event_type);
                 }
@@ -1029,7 +1029,7 @@ void async_thread(void *context)
 
             case IBV_EVENT_SRQ_LIMIT_REACHED:
 
-                pthread_spin_lock(&MPIDI_CH3I_RDMA_Process.srq_post_spin_lock);
+                pthread_spin_lock(&mv2_MPIDI_CH3I_RDMA_Process.srq_post_spin_lock);
 
                 if(-1 == hca_num) {
                     /* Was not able to find the context,
@@ -1048,60 +1048,60 @@ void async_thread(void *context)
                      (viadev_srq_fill_size - 100) : (viadev_srq_fill_size / 2);
                 
                 /* Need to post more to the SRQ */
-                post_new = MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num];
+                post_new = mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num];
 
-                MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num] +=
+                mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num] +=
                     viadev_post_srq_buffers(viadev_srq_fill_size -
                             viadev_srq_limit, hca_num);
 
-                post_new = MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num] - 
+                post_new = mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num] - 
                     post_new;
 
-                pthread_spin_unlock(&MPIDI_CH3I_RDMA_Process.
+                pthread_spin_unlock(&mv2_MPIDI_CH3I_RDMA_Process.
                         srq_post_spin_lock);
 
                 if(!post_new) {
                     pthread_mutex_lock(
-                            &MPIDI_CH3I_RDMA_Process.
+                            &mv2_MPIDI_CH3I_RDMA_Process.
                             srq_post_mutex_lock[hca_num]);
 
-                    ++MPIDI_CH3I_RDMA_Process.srq_zero_post_counter[hca_num];
+                    ++mv2_MPIDI_CH3I_RDMA_Process.srq_zero_post_counter[hca_num];
 
-                    while(MPIDI_CH3I_RDMA_Process.srq_zero_post_counter[hca_num] >= 1 
-                            && !(*(volatile int*)&MPIDI_CH3I_RDMA_Process.is_finalizing)) {
+                    while(mv2_MPIDI_CH3I_RDMA_Process.srq_zero_post_counter[hca_num] >= 1 
+                            && !(*(volatile int*)&mv2_MPIDI_CH3I_RDMA_Process.is_finalizing)) {
                         /* Cannot post to SRQ, since all WQEs
                          * might be waiting in CQ to be pulled out */
                         pthread_cond_wait(
-                                &MPIDI_CH3I_RDMA_Process.
+                                &mv2_MPIDI_CH3I_RDMA_Process.
                                 srq_post_cond[hca_num],
-                                &MPIDI_CH3I_RDMA_Process.
+                                &mv2_MPIDI_CH3I_RDMA_Process.
                                 srq_post_mutex_lock[hca_num]);
                     }
-                    pthread_mutex_unlock(&MPIDI_CH3I_RDMA_Process.
+                    pthread_mutex_unlock(&mv2_MPIDI_CH3I_RDMA_Process.
                             srq_post_mutex_lock[hca_num]);
                 } else {
                     /* Was able to post some, so erase old counter */
-                    if(MPIDI_CH3I_RDMA_Process.
+                    if(mv2_MPIDI_CH3I_RDMA_Process.
                             srq_zero_post_counter[hca_num]) {
-                        MPIDI_CH3I_RDMA_Process.
+                        mv2_MPIDI_CH3I_RDMA_Process.
                             srq_zero_post_counter[hca_num] = 0;
                     }
                 }
 
-                pthread_spin_lock(&MPIDI_CH3I_RDMA_Process.srq_post_spin_lock);
+                pthread_spin_lock(&mv2_MPIDI_CH3I_RDMA_Process.srq_post_spin_lock);
 
                 srq_attr.max_wr = viadev_srq_fill_size;
                 srq_attr.max_sge = 1;
                 srq_attr.srq_limit = viadev_srq_limit;
 
-                if (ibv_modify_srq(MPIDI_CH3I_RDMA_Process.srq_hndl[hca_num], 
+                if (ibv_modify_srq(mv2_MPIDI_CH3I_RDMA_Process.srq_hndl[hca_num], 
                             &srq_attr, IBV_SRQ_LIMIT)) {
                     ibv_va_error_abort(GEN_EXIT_ERR,
                             "Couldn't modify SRQ limit (%u) after posting %d\n",
                             viadev_srq_limit, post_new);
                 }
 
-                pthread_spin_unlock(&MPIDI_CH3I_RDMA_Process.srq_post_spin_lock);
+                pthread_spin_unlock(&mv2_MPIDI_CH3I_RDMA_Process.srq_post_spin_lock);
 
                 break;
             default:
@@ -1117,7 +1117,7 @@ void async_thread(void *context)
 #endif
 
         ibv_ack_async_event(&event);
-        pthread_mutex_unlock(&MPIDI_CH3I_RDMA_Process.async_mutex_lock[hca_num]);
+        pthread_mutex_unlock(&mv2_MPIDI_CH3I_RDMA_Process.async_mutex_lock[hca_num]);
     }
 }
 
@@ -1179,7 +1179,7 @@ int reload_alternate_path(struct ibv_qp *qp)
     attr.alt_port_num = attr.port_num;
     attr.alt_ah_attr.src_path_bits =
         (attr.ah_attr.src_path_bits + rdma_num_qp_per_port) %
-        power_two(MPIDI_CH3I_RDMA_Process.lmc);
+        power_two(mv2_MPIDI_CH3I_RDMA_Process.lmc);
     attr.alt_ah_attr.dlid =
         attr.ah_attr.dlid - attr.ah_attr.src_path_bits
         + attr.alt_ah_attr.src_path_bits;
@@ -1247,8 +1247,8 @@ void
 MPIDI_CH3I_Cleanup_after_connection(MPIDI_VC_t *vc)
 {
     int i;
-#define pset        MPIDI_CH3I_RDMA_Process.polling_set
-#define pgrsz       MPIDI_CH3I_RDMA_Process.polling_group_size
+#define pset        mv2_MPIDI_CH3I_RDMA_Process.polling_set
+#define pgrsz       mv2_MPIDI_CH3I_RDMA_Process.polling_group_size
 
     if(0 == pgrsz)
         return;

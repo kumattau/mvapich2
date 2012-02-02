@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -23,17 +23,7 @@
 #endif
 
 #ifdef _ENABLE_XRC_
-#include "rdma_impl.h"
-#include "cm.h"
-#define XRC_CM_LOCK() do {          \
-    if (USE_XRC) MPICM_lock ();     \
-} while (0); 
-#define XRC_CM_UNLOCK() do {        \
-    if (USE_XRC) MPICM_unlock ();   \
-} while (0); 
-#else
-#define XRC_CM_LOCK();
-#define XRC_CM_UNLOCK();
+void remove_vc_xrc_hash (MPIDI_VC_t *vc);
 #endif
 
 /* Count the number of outstanding close requests */

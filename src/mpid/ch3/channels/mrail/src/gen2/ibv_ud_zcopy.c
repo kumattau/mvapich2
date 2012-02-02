@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -234,7 +234,7 @@ static inline void mv2_ud_post_zcopy_recv(MPID_Request *req, mv2_ud_zcopy_info_t
 void MPIDI_CH3I_MRAIL_Prepare_rndv_zcopy(MPIDI_VC_t * vc, MPID_Request * req)
 {
     mv2_rndv_qp_t *rqp = NULL;
-    MPIDI_CH3I_RDMA_Process_t *proc = &MPIDI_CH3I_RDMA_Process;
+    mv2_MPIDI_CH3I_RDMA_Process_t *proc = &mv2_MPIDI_CH3I_RDMA_Process;
 
     
     /* Make sure free QPs available */
@@ -452,7 +452,7 @@ void MPIDI_CH3_Rendezvous_zcopy_finish(MPIDI_VC_t * vc,
             ibv_error_abort(IBV_RETURN_ERR, "Error in UD RNDV completion\n");
         }
         
-        MV2_RELEASE_RNDV_QP(rqp, &MPIDI_CH3I_RDMA_Process);
+        MV2_RELEASE_RNDV_QP(rqp, &mv2_MPIDI_CH3I_RDMA_Process);
         
     } else {
         PRINT_DEBUG(DEBUG_ZCY_verbose>1, "zcopy Rndv recv failed. "
@@ -461,7 +461,7 @@ void MPIDI_CH3_Rendezvous_zcopy_finish(MPIDI_VC_t * vc,
         if (posted_buffers != count) {
             MPIU_Assert(posted_buffers > count);
             mv2_flush_zcopy_rndv_qp(rqp, posted_buffers - count);
-            mv2_ud_post_zcopy_recv(rreq, &MPIDI_CH3I_RDMA_Process.zcopy_info);
+            mv2_ud_post_zcopy_recv(rreq, &mv2_MPIDI_CH3I_RDMA_Process.zcopy_info);
             MPIDI_CH3_Rendezvous_zcopy_resend_cts(vc, rreq, rqp);
         }
     }

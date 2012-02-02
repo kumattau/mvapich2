@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -108,13 +108,10 @@ int MPID_Recv(void * buf, int count, MPI_Datatype datatype, int rank, int tag,
     }
 
 #ifdef _ENABLE_CUDA_
-    int mem_type = 0;
-    cuPointerGetAttribute((void*) &mem_type, 
-        CU_POINTER_ATTRIBUTE_MEMORY_TYPE, (CUdeviceptr) buf);
     if (rdma_enable_cuda) {
-        if (mem_type == CU_MEMORYTYPE_DEVICE) {
+        if (is_device_buffer(buf)) {
             /* buf is in the GPU device memory */
-            rreq->mrail.cuda_transfer_mode = CONT_DEVICE_TO_DEVICE;
+            rreq->mrail.cuda_transfer_mode = DEVICE_TO_DEVICE;
         } else {
             /* buf is in the host memory*/
             rreq->mrail.cuda_transfer_mode = NONE;

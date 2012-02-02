@@ -6,6 +6,11 @@ LDADD = ../util/mtest.o
 DEPADD = @MPILIBLOC@ ../util/mtest.o
 smvar_do_sharedlibs = 0
 #
+strided_acc_indexed_LDADD       = -lm
+strided_acc_onelock_LDADD       = -lm
+strided_acc_subarray_LDADD      = -lm
+strided_get_indexed_LDADD       = -lm
+strided_putget_indexed_LDADD    = -lm
 allocmem_SOURCES = allocmem.c
 ircpi_SOURCES = ircpi.c
 ircpi_LDADD = -lm

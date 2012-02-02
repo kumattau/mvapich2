@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -345,7 +345,7 @@ static void cr_ftb_finalize()
 
 #ifdef CR_AGGRE
 /// we have started a proc-migration using Aggregation-based strategy
-static int cr_ftb_aggre_based_mig(char *msg)
+int cr_ftb_aggre_based_mig(char *msg)
 {
     int i, j;
     int num_mig_procs = 0;

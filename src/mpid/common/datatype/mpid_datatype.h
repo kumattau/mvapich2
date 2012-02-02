@@ -713,5 +713,12 @@ void MPID_Type_release_contents(MPI_Datatype type,
 				MPI_Aint **aints_p,
 				MPI_Datatype **types_p);
 
+#if defined(_ENABLE_CUDA_)
+void MPID_Segment_pack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
+        DLOOP_Offset *lastp, MPID_Datatype *dt_ptr, void *streambuf);
+void MPID_Segment_unpack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
+        DLOOP_Offset *lastp, struct MPID_Datatype *dt_ptr, void *inbuf);
+#endif
+
 /* end of file */
 #endif

@@ -53,29 +53,27 @@ int MPIR_Unpack_impl(void *inbuf, int insize, int *position,
         data_sz    = outcount * dt_ptr->size;
     }
 
+#if defined(_ENABLE_CUDA_)
+    int outbuf_isdev = 0;
+    cudaError_t cuda_error = cudaSuccess;
+    outbuf_isdev = is_device_buffer(outbuf);
+#endif
+
     if (contig) {
 #if defined(_ENABLE_CUDA_)
-        if (rdma_enable_cuda && enable_device_ptr_checks) {
-            int outbuf_isdev = 0;
-            cudaError_t cuda_error = cudaSuccess;
-
-            outbuf_isdev = is_device_buffer(outbuf);
-
-            if(outbuf_isdev) {
-                cuda_error = cudaMemcpy((void *) ((char *)outbuf + *position),
-                       (void *) ((char *)inbuf + dt_true_lb),
-                       data_sz,
-                       cudaMemcpyHostToDevice);
-                if (cuda_error != cudaSuccess) {
-                    MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**cudamemcpy");
-                }
+        if (rdma_enable_cuda && enable_device_ptr_checks && outbuf_isdev) {
+            cuda_error = cudaMemcpy((void *) ((char *)outbuf + *position),
+                    (void *) ((char *)inbuf + dt_true_lb),
+                    data_sz,
+                    cudaMemcpyHostToDevice);
+            if (cuda_error != cudaSuccess) {
+                MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**cudamemcpy");
             }
-        } else {
+        } else
 #endif
+        {
             MPIU_Memcpy((char *) outbuf + dt_true_lb, (char *)inbuf + *position, data_sz);
-#if defined(_ENABLE_CUDA_)        
         }
-#endif
         *position = (int)((MPI_Aint)*position + data_sz);
         goto fn_exit;
     }
@@ -97,10 +95,21 @@ int MPIR_Unpack_impl(void *inbuf, int insize, int *position,
     MPID_Ensure_Aint_fits_in_pointer((MPI_VOID_PTR_CAST_TO_MPI_AINT inbuf) +
 				     (MPI_Aint) *position);
 
-    MPID_Segment_unpack(segp,
+#if defined(_ENABLE_CUDA_)
+    if (outbuf_isdev) {
+        MPID_Datatype *dt_ptr;
+        MPID_Datatype_get_ptr(datatype, dt_ptr);
+        last = data_sz;
+        MPID_Segment_unpack_cuda(segp, first, &last, 
+            dt_ptr, (void *) ((char *) inbuf + *position));
+    } else
+# endif
+    {
+        MPID_Segment_unpack(segp,
 			first,
 			&last,
 			(void *) ((char *) inbuf + *position));
+    }
 
     /* Ensure that calculation fits into an int datatype. */
     MPID_Ensure_Aint_fits_in_int((MPI_Aint)*position + last);

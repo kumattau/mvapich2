@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -40,7 +40,7 @@ int rdma_cm_connect_to_server(MPIDI_VC_t *vc, int ipnum, int rail_index);
 int *rdma_cm_get_hostnames(int pg_rank, MPIDI_PG_t *pg);
 
 /* Initialize rdma_cm resources + cm_ids + bind port + connection thrd */
-int ib_init_rdma_cm(struct MPIDI_CH3I_RDMA_Process_t *proc,
+int ib_init_rdma_cm(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
 		     int pg_rank, int pg_size);
 
 /* Finalize rdma_cm specific resources */

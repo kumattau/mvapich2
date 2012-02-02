@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -67,9 +67,9 @@ MPIDI_CH3I_MRAILI_Get_rndv_rput (MPIDI_VC_t * vc,
           v = get_vbuf ();
           MPIU_Assert (v != NULL);
           nbytes = req->mrail.rndv_buf_sz - req->mrail.rndv_buf_off;
-          if (nbytes > MPIDI_CH3I_RDMA_Process.maxtransfersize)
+          if (nbytes > mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize)
             {
-                nbytes = MPIDI_CH3I_RDMA_Process.maxtransfersize;
+                nbytes = mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize;
             }
           DEBUG_PRINT ("[buffer content]: offset %d\n",
                        sreq->mrail.rndv_buf_off);

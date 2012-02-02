@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -396,6 +396,8 @@ typedef struct MPIDI_Request {
     /* CUDA has a large CTS packet. It is ineffitient to have static 
        MPIDI_CH3_PktGeneric_t var */
     void *pending_pkt;
+    void *cuda_srbuf_entry;
+    int is_device_tmpbuf;
 #else
     MPIDI_CH3_PktGeneric_t pending_pkt;
 #endif

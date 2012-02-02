@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -411,8 +411,6 @@ typedef enum MPICR_cr_state
 } MPICR_cr_state;
 
 MPICR_cr_state MPIDI_CH3I_CR_Get_state();
-
-void MPIDI_CH3I_CR_Sync_ckpt_request();
 
 #endif
 

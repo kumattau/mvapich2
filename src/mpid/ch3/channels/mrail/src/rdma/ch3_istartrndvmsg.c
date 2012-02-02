@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -43,14 +43,24 @@ static inline void MPIDI_CH3_Prepare_rndv(MPIDI_VC_t *vc, MPID_Request *sreq)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_PREPARE_RNDV);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_PREPARE_RNDV);
-    if (SMP_INIT && vc->smp.local_nodes >= 0 &&
-        vc->smp.local_nodes != g_smpi.my_local_id) {
+
+#if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
+    if (!SMP_INIT 
+        && rdma_enable_cuda
+        && rdma_cuda_ipc) { 
+        if (MPIDI_CH3I_MRAIL_Prepare_rndv_cuda_ipc (vc, sreq)) goto fn_exit;
+    }
+#endif
+
+    if (SMP_INIT && vc->smp.local_nodes >= 0) { 
         sreq->mrail.protocol = VAPI_PROTOCOL_R3;
         sreq->mrail.d_entry = NULL;
     } else 
     {
         MPIDI_CH3I_MRAIL_Prepare_rndv(vc, sreq);
     }
+
+fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_PREPARE_RNDV);
 }
 

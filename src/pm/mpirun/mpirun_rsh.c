@@ -13,7 +13,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -48,6 +48,8 @@
 #include <stdint.h>
 #include <math.h>
 #include <assert.h>
+
+#include <src/db/text.h>
 
 /*
  * When an error occurs in the init phase, mpirun_rsh doesn't have the pid
@@ -122,7 +124,6 @@ void cleanup_handler(int);
 void nostop_handler(int);
 void alarm_handler(int);
 void child_handler(int);
-void usage(void);
 void cleanup(void);
 char *skip_white(char *s);
 int read_param_file(char *paramfile, char **env);
@@ -845,16 +846,11 @@ void free_memory(void)
     }
 
     if (plist) {
-        while (nprocs--) {
-            if (plist[nprocs].device)
-                free(plist[nprocs].device);
-            if (plist[nprocs].hostname)
-                free(plist[nprocs].hostname);
-        }
-
         free(plist);
         plist = NULL;
     }
+
+    db_clear();
 }
 
 void cleanup(void)
@@ -1307,7 +1303,7 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env)
     if (!configfile_on) {
         if (!dpm && aout_index == argc) {
             fprintf(stderr, "Incorrect number of arguments.\n");
-            usage();
+            usage(argv[0]);
             exit(EXIT_FAILURE);
         }
     }
@@ -2008,7 +2004,7 @@ void spawn_one(int argc, char *argv[], char *totalview_cmd, char *env, int fasts
     if (!configfile_on) {
         if (aout_index == argc) {
             fprintf(stderr, "Incorrect number of arguments.\n");
-            usage();
+            usage(argv[0]);
             exit(EXIT_FAILURE);
         }
 

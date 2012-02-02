@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -225,7 +225,7 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
         MPID_Seqnum_t seqnum;
 #endif /* defined(_OSU_MVAPICH_) && defined(MPID_USE_SEQUENCE_NUMBERS) */
 	
-	MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"posted request found");
+	MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"posted request found");	
 	
 #if defined(_OSU_MVAPICH_)
         if(MPIDI_CH3_RNDV_PROTOCOL_IS_READ(rts_pkt)) {
@@ -242,13 +242,39 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
                 MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|rndv");
             }
 
-            mpi_errno = MPIDI_CH3_Rndv_transfer(vc,
-                    NULL, rreq, NULL, rts_pkt);
-            if (mpi_errno != MPI_SUCCESS && rreq != NULL) {
-                MPIU_ERR_SETANDJUMP(mpi_errno,
-                        MPI_ERR_OTHER,"**ch3|senddata");
+#if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
+            if  (vc->smp.local_rank != -1
+                && rdma_enable_cuda
+                && rdma_cuda_ipc
+                && rts_pkt->rndv.cuda_transfer_mode != NONE) {
+ 
+                /*revert to RGET if using IPC and rdma is possible*/
+                if (VAPI_PROTOCOL_RPUT == rreq->mrail.protocol) {
+                    rreq->mrail.protocol = VAPI_PROTOCOL_RGET;
+                }
+ 
+                if (VAPI_PROTOCOL_RGET == rreq->mrail.protocol) {
+                    if (MPIDI_CH3I_MRAIL_Rndv_transfer_cuda_ipc (vc, rreq, rts_pkt)) {
+                        *rreqp = NULL;
+                        goto fn_exit;
+                    }
+                }
+            } 
+#endif
+
+            if (VAPI_PROTOCOL_RGET == rreq->mrail.protocol) {
+                mpi_errno = MPIDI_CH3_Rndv_transfer(vc,
+                        NULL, rreq, NULL, rts_pkt);
+                if (mpi_errno != MPI_SUCCESS && rreq != NULL) {
+                    MPIU_ERR_SETANDJUMP(mpi_errno,
+                            MPI_ERR_OTHER,"**ch3|senddata");
+                }
+
+                *rreqp = NULL;
+                goto fn_exit;
             }
-        } else {
+            /*else send back CTS with R3 protocol and fallback*/
+        }
 #endif /* defined(_OSU_MVAPICH_) */
 	
 	/* FIXME: What if the receive user buffer is not big enough to
@@ -311,21 +337,23 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 	    MPID_Request_release(cts_req);
 	}
     }
-#if defined(_OSU_MVAPICH_)
-    }
-#endif /* defined(_OSU_MVAPICH_) */
     else
     {
 	MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"unexpected request allocated");
 #if defined(_OSU_MVAPICH_)
-#if 1 /* FIXME */
         /* If the request is a read and is unexpected,
          * we have to buffer the remote information till
          * this request is matched and then processed */
         if(MPIDI_CH3_RNDV_PROTOCOL_IS_READ(rts_pkt)) {
-            memcpy(&rreq->ch.pkt, pkt, sizeof(MPIDI_CH3_Pkt_t));
+#if(_ENABLE_CUDA_)
+            /*If this is cuda is enabled, the pkt size is large, allocate 
+              a buffer and then copy the rts packet*/
+            rreq->dev.pending_pkt = MPIU_Malloc(sizeof(MPIDI_CH3_Pkt_rndv_req_to_send_t));
+            MPIU_Memcpy(rreq->dev.pending_pkt, rts_pkt, sizeof(MPIDI_CH3_Pkt_rndv_req_to_send_t));
+#else
+            MPIU_Memcpy(&rreq->ch.pkt, pkt, sizeof(MPIDI_CH3_Pkt_t));
+#endif
         }
-#endif /* if 0 */
 #endif /* defined(_OSU_MVAPICH_) */
 	/*
 	 * A MPID_Probe() may be waiting for the request we just 
@@ -342,6 +370,7 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     
     *rreqp = NULL;
 
+ fn_exit:
  fn_fail:
     return mpi_errno;
 }
@@ -562,31 +591,56 @@ int MPIDI_CH3_RecvRndv( MPIDI_VC_t * vc, MPID_Request *rreq )
     }
 
     if(MPIDI_CH3_RECV_REQ_IS_READ(rreq)) {
-        MPIDI_CH3_Pkt_t * tmp_pkt = (MPIDI_CH3_Pkt_t *) &(rreq->ch.pkt);
-        rts_pkt = &(tmp_pkt->rndv_req_to_send);
-
-        /*
-           rts_pkt = &(rreq->ch.pkt.rndv_req_to_send);
-           */
+#if defined(_ENABLE_CUDA_)
+        /*when cuda is enabled, the rts packet is in a dynamically allocated buffer*/
+        rts_pkt = (MPIDI_CH3_Pkt_rndv_req_to_send_t *) rreq->dev.pending_pkt;
+#else
+        MPIDI_CH3_Pkt_t *tmp_pkt = (MPIDI_CH3_Pkt_t *) &(rreq->ch.pkt);
+        rts_pkt = &(tmp_pkt->rndv_req_to_send);;
+#endif
 
         mpi_errno = MPIDI_CH3_Prepare_rndv_get(vc, rreq);
         if (mpi_errno != MPI_SUCCESS) {
             MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**ch3|rndv");
         }
 
-        mpi_errno = MPIDI_CH3_Rndv_transfer(vc,
-                NULL, rreq, NULL, rts_pkt);
-        if (mpi_errno != MPI_SUCCESS && rreq != NULL) {
-            MPIU_ERR_SETANDJUMP(mpi_errno,
-                    MPI_ERR_OTHER,"**ch3|senddata");
-        }
-    } else {
-        mpi_errno = MPIDI_CH3_iStartRndvTransfer (vc, rreq);
+#if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
+        if  (vc->smp.local_rank != -1
+            && rdma_enable_cuda
+            && rdma_cuda_ipc
+            && rts_pkt->rndv.cuda_transfer_mode != NONE) {
 
-        if (mpi_errno != MPI_SUCCESS) {
-            MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,
-                    "**ch3|ctspkt");
+            /*revert to RGET if using IPC and rdma is possible*/
+            if (VAPI_PROTOCOL_RPUT == rreq->mrail.protocol) {
+                rreq->mrail.protocol = VAPI_PROTOCOL_RGET;
+            }
+
+            if (VAPI_PROTOCOL_RGET == rreq->mrail.protocol) {
+                if (MPIDI_CH3I_MRAIL_Rndv_transfer_cuda_ipc (vc, rreq, rts_pkt)) {
+                    goto fn_exit;
+                }
+            }
         }
+#endif
+
+        if (VAPI_PROTOCOL_RGET == rreq->mrail.protocol) {
+           mpi_errno = MPIDI_CH3_Rndv_transfer(vc,
+                    NULL, rreq, NULL, rts_pkt);
+            if (mpi_errno != MPI_SUCCESS && rreq != NULL) {
+                MPIU_ERR_SETANDJUMP(mpi_errno,
+                     MPI_ERR_OTHER,"**ch3|senddata");
+            
+            }
+            goto fn_exit;
+        }
+        /*else send back CTS with R3 protocol and fallback*/
+    } 
+
+    mpi_errno = MPIDI_CH3_iStartRndvTransfer (vc, rreq);
+
+    if (mpi_errno != MPI_SUCCESS) {
+        MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,
+                "**ch3|ctspkt");
     }
     
 #else
@@ -616,6 +670,7 @@ int MPIDI_CH3_RecvRndv( MPIDI_VC_t * vc, MPID_Request *rreq )
     }
 #endif
 
+ fn_exit:
  fn_fail:    
     return mpi_errno;
 }

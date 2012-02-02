@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -19,6 +19,9 @@
 
 #include "mpidi_ch3_impl.h"
 #include "pmi.h"
+#if defined(HAVE_LIBHWLOC)
+#include "hwloc_bind.h"
+#endif
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Flush
@@ -81,6 +84,12 @@ int MPIDI_CH3_Finalize()
 	mpi_errno = MPIDI_CH3I_SMP_finalize();
 	if(mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
+#if defined(HAVE_LIBHWLOC)
+    if(mv2_enable_affinity == 1) { 
+       hwloc_topology_destroy(topology);
+    } 
+#endif
+
 
 fn_exit:
     MPIDI_DBG_PRINTF((50, FCNAME, "exiting"));

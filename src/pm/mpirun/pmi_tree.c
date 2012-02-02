@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1027,7 +1027,7 @@ int mtpmi_init(void)
     int *children_subtree = (int *) malloc(sizeof(int) * MPISPAWN_NCHILD);
 
     for (i = 0; i < MPISPAWN_NCHILD; i++) {
-        read(MPISPAWN_CHILD_FDS[i], &tmp, sizeof(int));
+        read_size(MPISPAWN_CHILD_FDS[i], &tmp, sizeof(int));
         children_subtree[i] = tmp;
         nchild_subtree += tmp;
     }
@@ -1130,7 +1130,7 @@ int mtpmi_processops(void)
             if (MPISPAWN_HAS_PARENT && FD_ISSET(MPISPAWN_PARENT_FD, &child_socks)) {
                 cleanup1 = 1;
                 ready--;
-                read(MPISPAWN_PARENT_FD, &hdr, msg_hdr_s);
+                read_size(MPISPAWN_PARENT_FD, &hdr, msg_hdr_s);
                 //read_size (MPISPAWN_PARENT_FD, buf, hdr.msg_len);
                 dbg("*****   mtpmi_process(v) 1: cleanup1 buf=%s ready=%d\n\n", buf, ready);
                 rv = handle_mt_peer(MPISPAWN_PARENT_FD, &hdr);
@@ -1143,7 +1143,7 @@ int mtpmi_processops(void)
                 if (FD_ISSET(MPISPAWN_CHILD_FDS[i], &child_socks)) {
                     cleanup2 = 1;
                     ready--;
-                    read(MPISPAWN_CHILD_FDS[i], &hdr, msg_hdr_s);
+                    read_size(MPISPAWN_CHILD_FDS[i], &hdr, msg_hdr_s);
                     //read_size (MPISPAWN_CHILD_FDS[i], buf, hdr.msg_len);
                     dbg("**** mtpmi_process(v) : cleanup2 buf=%s ready=%d\n\n", buf, ready);
                     rv = handle_mt_peer(MPISPAWN_CHILD_FDS[i], &hdr);
@@ -1185,7 +1185,7 @@ int mtpmi_processops(void)
         }
         if (MPISPAWN_HAS_PARENT && FD_ISSET(MPISPAWN_PARENT_FD, &child_socks)) {
             ready--;
-            read(MPISPAWN_PARENT_FD, &hdr, msg_hdr_s);
+            read_size(MPISPAWN_PARENT_FD, &hdr, msg_hdr_s);
             dbg(">mtpmi_process(v) handle_mt_PARENT:ready=%d\n\n", ready);
             rv = handle_mt_peer(MPISPAWN_PARENT_FD, &hdr);
             if (rv != 0) {
@@ -1195,7 +1195,7 @@ int mtpmi_processops(void)
         for (i = 0; rv == 0 && ready > 0 && i < MPISPAWN_NCHILD; i++) {
             if (FD_ISSET(MPISPAWN_CHILD_FDS[i], &child_socks)) {
                 ready--;
-                read(MPISPAWN_CHILD_FDS[i], &hdr, msg_hdr_s);
+                read_size(MPISPAWN_CHILD_FDS[i], &hdr, msg_hdr_s);
                 dbg(">mtpmi_process(v) MT_CHILD (%d of %d): msg-len=%d, ready=%d\n\n", i, MPISPAWN_NCHILD, hdr.msg_len, ready);
                 rv = handle_mt_peer(MPISPAWN_CHILD_FDS[i], &hdr);
                 if (rv != 0) {
@@ -1276,11 +1276,11 @@ char *handle_spawn_request(int fd, char *buf, int buflen)
     }
     /* now mpirun_rsh is waiting for the spawn request to be sent,
        read MAXLINE at a time and pump it to mpirun. */
-    read(fd, &spcnt, sizeof(uint32_t));
+    read_size(fd, &spcnt, sizeof(uint32_t));
     /* read in spawn cnt */
 
 /*    fprintf(stderr, "spawn count = %d\n", spcnt); */
-    read(fd, &totsp, sizeof(uint32_t));
+    read_size(fd, &totsp, sizeof(uint32_t));
 
 /*    fprintf(stderr, "total spawn datasets = %d\n", totsp); */
 
@@ -1292,7 +1292,7 @@ char *handle_spawn_request(int fd, char *buf, int buflen)
          * It first read the size of the message and then the message.
          * It writes each message in the tmp file. */
         do {
-            read(fd, &size, sizeof(int));
+            read_size(fd, &size, sizeof(int));
             readline(fd, buf, size);
             write(fileno(fp), buf, size);
         } while (strstr(buf, "endcmd") == NULL);

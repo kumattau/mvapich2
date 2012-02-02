@@ -58,29 +58,27 @@ int MPIR_Pack_impl(void *inbuf,
         data_sz    = incount * dt_ptr->size;
     }
 
+#if defined(_ENABLE_CUDA_)
+    int inbuf_isdev = 0;
+    cudaError_t cuda_error = cudaSuccess;
+    inbuf_isdev = is_device_buffer(inbuf);
+#endif
+
     if (contig) {
 #if defined(_ENABLE_CUDA_)
-        if (rdma_enable_cuda && enable_device_ptr_checks) {
-            int inbuf_isdev = 0;
-            cudaError_t cuda_error = cudaSuccess;
-
-            inbuf_isdev = is_device_buffer(inbuf);
-
-            if (inbuf_isdev) { 
-                cuda_error = cudaMemcpy((void *) ((char *)outbuf + *position),
-                       (void *) ((char *)inbuf + dt_true_lb),
-                       data_sz,
-                       cudaMemcpyDeviceToHost);
-                if (cuda_error != cudaSuccess) {
-                    MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**cudamemcpy");
-                }
+        if (rdma_enable_cuda && inbuf_isdev) {
+            cuda_error = cudaMemcpy((void *) ((char *)outbuf + *position),
+                    (void *) ((char *)inbuf + dt_true_lb),
+                    data_sz,
+                    cudaMemcpyDeviceToHost);
+            if (cuda_error != cudaSuccess) {
+                MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**cudamemcpy");
             }
-        } else {
+        } else
 #endif
+        {
             MPIU_Memcpy((char *) outbuf + *position, (char *)inbuf + dt_true_lb, data_sz);
-#if defined(_ENABLE_CUDA_)
         }
-#endif
         *position = (int)((MPI_Aint)*position + data_sz);
         goto fn_exit;
     }
@@ -104,11 +102,21 @@ int MPIR_Pack_impl(void *inbuf,
     /* Ensure that pointer increment fits in a pointer */
     MPID_Ensure_Aint_fits_in_pointer((MPI_VOID_PTR_CAST_TO_MPI_AINT outbuf) +
 				     (MPI_Aint) *position);
-
-    MPID_Segment_pack(segp,
+#if defined(_ENABLE_CUDA_)
+    if (inbuf_isdev) {
+        MPID_Datatype *dt_ptr;
+        MPID_Datatype_get_ptr(datatype, dt_ptr);
+        last = data_sz;
+        MPID_Segment_pack_cuda(segp, first, &last, dt_ptr, 
+                        (void *) ((char *) outbuf + *position));
+    } else 
+#endif
+    {
+        MPID_Segment_pack(segp,
 		      first,
 		      &last,
 		      (void *) ((char *) outbuf + *position));
+    }
 
     /* Ensure that calculation fits into an int datatype. */
     MPID_Ensure_Aint_fits_in_int((MPI_Aint)*position + last);

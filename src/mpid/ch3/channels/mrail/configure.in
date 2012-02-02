@@ -13,7 +13,7 @@ dnl Definitions will be placed in this file rather than in the DEFS variable
 dnl
 AC_CONFIG_HEADER(include/mpidi_ch3i_rdma_conf.h)
 AH_TOP([/* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -164,8 +164,13 @@ AC_ARG_ENABLE(rdma-cm,
 [--enable-rdma-cm - Enable support for RDMA CM.],,enable_rdma_cm=default)
 AC_ARG_ENABLE(registration-cache,
 [--enable-registration-cache - Enable registration caching on Linux.],,enable_registration_cache=default)
-AC_ARG_ENABLE(xrc,
-[--enable-xrc - Compile MVAPICH2 with XRC.],,enable_xrc=no)
+
+AC_ARG_ENABLE([xrc],
+              [AS_HELP_STRING([--disable-xrc],
+                              [compile MVAPICH2 without XRC support])
+              ],
+              [],
+              [enable_xrc=check])
 
 dnl This setup_channel.args and other setup_* files should really be in the
 dnl configure.in file(s)
@@ -362,7 +367,6 @@ AS_IF([test "x$enable_ckpt" = xyes], [
 
 if test "$with_rdma" = "gen2"; then
     AC_MSG_CHECKING([for the InfiniBand includes path])
-
     if test -n "$with_ib_include"; then
         AC_MSG_RESULT($with_ib_include)
     else
@@ -409,13 +413,16 @@ if test "$with_rdma" = "gen2"; then
     AC_CHECK_HEADER([infiniband/verbs.h],,[AC_MSG_ERROR(['infiniband/verbs.h not found. Did you specify --with-ib-include=?'])])
     mrail_libs="-libverbs -libumad $mrail_libs"
 
+    # Check for available functions after finding header files
+    AC_CHECK_FUNCS([ibv_open_xrc_domain])
    
-    AC_MSG_CHECKING([whether to enable support for XRC])
-    AC_MSG_RESULT($enable_xrc)
-
-    if test "$enable_xrc" = "yes"; then
-        AC_DEFINE(_ENABLE_XRC_, 1, [Define to use XRC])
-    fi
+    AS_CASE([$ac_cv_func_ibv_open_xrc_domain],
+            [no], [AS_CASE([$enable_xrc],
+                           [check], [AC_MSG_WARN([support for XRC is disabled])],
+                           [yes], [AC_MSG_ERROR([infiniband/verbs.h does not provide support for XRC])])],
+            [yes], [AS_CASE([$enable_xrc],
+                            [no], [],
+                            [AC_DEFINE([_ENABLE_XRC_], [1], [Define to enable XRC support])])])
 
     if test "$enable_rdma_cm" = "yes"; then
         AC_CHECKING([for RDMA CM support])

@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -179,7 +179,7 @@ int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
     MPIU_OBJ_PUBLISH_HANDLE(*newcomm, newcomm_ptr->handle);
 
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
-    if (enable_shmem_collectives){
+    if (mv2_enable_shmem_collectives){
         if (check_split_comm(pthread_self())){
             if (*newcomm != MPI_COMM_NULL){
 

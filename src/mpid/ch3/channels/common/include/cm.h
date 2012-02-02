@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH software package developed by the
@@ -71,11 +71,6 @@ Cleanup ud related data structures
 */
 int MPICM_Finalize_UD(void);
 
-/*Interface to lock/unlock connection manager*/
-void MPICM_lock(void);
-
-void MPICM_unlock(void);
-
 #ifdef _ENABLE_XRC_
 typedef struct _xrc_hash {
     struct _xrc_hash        *next;
@@ -92,7 +87,6 @@ void cm_activate_xrc_qp_reuse (int peer_rank);
 int compute_xrc_hash (uint32_t v);
 void clear_xrc_hash (void);
 void add_vc_xrc_hash (MPIDI_VC_t *vc);
-void remove_vc_xrc_hash (MPIDI_VC_t *vc);
 int cm_send_xrc_cm_msg (MPIDI_VC_t *vc, MPIDI_VC_t *orig_vc);
 int cm_qp_reuse (MPIDI_VC_t *vc, MPIDI_VC_t *orig);
 

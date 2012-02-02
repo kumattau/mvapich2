@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -341,6 +341,23 @@ int MPIDI_CH3U_Receive_data_found(MPID_Request *rreq, char *buf, MPIDI_msg_sz_t 
            iov and let the channel unpack */
         if (data_sz == rreq->dev.recv_data_sz && *buflen >= data_sz)
         {
+#if defined(_ENABLE_CUDA_)
+            if (rdma_enable_cuda && 
+                    rreq->mrail.cuda_transfer_mode == DEVICE_TO_DEVICE) {
+                mpi_errno = MPIDI_CH3U_Request_load_recv_iov(rreq);
+                if (mpi_errno != MPI_SUCCESS) {
+                    MPIU_ERR_SETFATALANDJUMP(mpi_errno,MPI_ERR_OTHER,
+                            "**ch3|loadrecviov");
+                }
+                MPIU_Memcpy_CUDA((char*)(rreq->dev.iov[0].MPID_IOV_BUF) + dt_true_lb,
+                        buf, data_sz, cudaMemcpyHostToDevice);
+
+                *buflen = data_sz;
+                *complete = TRUE;
+                return mpi_errno;
+            }
+
+#endif
             MPIDI_msg_sz_t last;
             MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"Copying noncontiguous data to user buffer");
             last = data_sz;

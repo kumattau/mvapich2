@@ -1,3 +1,9 @@
+OSU Micro Benchmarks v3.5.1 (2/02/12)
+* New Features & Enhancements
+    - Provide script to set GPU affinity for MPI processes
+* Bug Fixes
+    - Removed GPU binding after MPI_Init to avoid switching context
+
 OSU Micro Benchmarks v3.5 (11/09/11)
 * New Features & Enhancements
     - Extension of osu_latency, osu_bw, and osu_bibw benchmarks to evaluate the

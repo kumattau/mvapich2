@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -22,12 +22,11 @@
 #define FTB_MAX_SUBSCRIPTION_STR 64
 
 #define FTB_MIGRATE_EVENT_INFO {            \
-        {"CR_FTB_RTM", "info"}, \
+        {"FTB_MIGRATE_TRIGGER", "info"}, \
 }
 
 /* Index into the Event Info Table */
 #define FTB_MIGRATE_TRIGGER 0
-#define CR_FTB_RTM  0
 
 /* Type of event to throw */
 #define FTB_EVENT_NORMAL   1

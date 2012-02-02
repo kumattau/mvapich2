@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -170,6 +170,20 @@ eager_send:
         else 
         {
             MPIDI_Request_create_sreq(sreq, mpi_errno, goto fn_exit);
+#ifdef _ENABLE_CUDA_
+            if(HANDLE_GET_KIND(datatype) != HANDLE_KIND_BUILTIN &&
+                            sreq->dev.datatype_ptr == NULL) {
+                sreq->dev.datatype_ptr = dt_ptr;
+                MPID_Datatype_add_ref(dt_ptr);
+            }
+            if (rdma_enable_cuda && is_device_buffer((void *)buf)) {
+                /* buf is in the GPU device memory */
+                sreq->mrail.cuda_transfer_mode = DEVICE_TO_DEVICE;
+            } else {
+                /* buf is in the main memory */
+                sreq->mrail.cuda_transfer_mode = NONE;
+            }
+#endif
             MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_SEND);
             mpi_errno = MPIDI_CH3_EagerNoncontigSend( &sreq, 
                                                           MPIDI_CH3_PKT_EAGER_SEND,
@@ -182,11 +196,14 @@ eager_send:
 	MPIDI_Request_create_sreq(sreq, mpi_errno, goto fn_exit);
 #ifdef _ENABLE_CUDA_
     sreq->mrail.cts_received = 0;
-    int mem_type = 0;
-    cuPointerGetAttribute((void*) &mem_type, CU_POINTER_ATTRIBUTE_MEMORY_TYPE, (CUdeviceptr) buf);
-    if (rdma_enable_cuda && mem_type == CU_MEMORYTYPE_DEVICE) {
+    if(HANDLE_GET_KIND(datatype) != HANDLE_KIND_BUILTIN &&
+                sreq->dev.datatype_ptr == NULL) {
+        sreq->dev.datatype_ptr = dt_ptr;
+        MPID_Datatype_add_ref(dt_ptr);
+    }
+    if (rdma_enable_cuda && is_device_buffer((void *)buf)) {
         /* buf is in the GPU device memory */
-        sreq->mrail.cuda_transfer_mode = CONT_DEVICE_TO_DEVICE;
+        sreq->mrail.cuda_transfer_mode = DEVICE_TO_DEVICE;
     } else {
         /* buf is in the main memory */
         sreq->mrail.cuda_transfer_mode = NONE;

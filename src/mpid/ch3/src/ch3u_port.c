@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -16,9 +16,6 @@
  */
 
 #include "mpidi_ch3_impl.h"
-#ifdef _ENABLE_XRC_
-#include "rdma_impl.h"
-#endif
 
 /*
  * This file replaces ch3u_comm_connect.c and ch3u_comm_accept.c .  These

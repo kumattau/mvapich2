@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -94,6 +94,13 @@ typedef struct MPIDI_CH3I_MRAILI_Rndv_info {
     uint32_t            num_cuda_blocks;
     uint32_t            buffer_rkey[MAX_CUDA_RNDV_BLOCKS][MAX_NUM_HCAS];
     void                *buffer_addr[MAX_CUDA_RNDV_BLOCKS];
+#if defined(HAVE_CUDA_IPC)
+    void                *ipc_baseptr;
+    uint64_t            ipc_size;
+    uint64_t            ipc_displ;
+    cudaIpcMemHandle_t  ipc_memhandle;
+    cudaIpcEventHandle_t ipc_eventhandle;
+#endif
 #endif
 } MPIDI_CH3I_MRAILI_Rndv_info_t;
 
@@ -109,9 +116,25 @@ struct dreg_entry;
 #else
 #define MPIDI_CH3I_MRAILI_ZCOPY_REQ_DECL
 #endif
+
+#if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
+#define MPIDI_CH3I_MRAILI_CUDA_IPC_REQ_DECL \
+        void *ipc_baseptr;                  \
+        uint64_t ipc_size;                  \
+        uint64_t ipc_displ;                 \
+        cuda_event_t *ipc_cuda_event;       \
+        cudaEvent_t  ipc_event;             \
+        cudaIpcMemHandle_t ipc_memhandle;   \
+        cudaIpcEventHandle_t ipc_eventhandle;   \
+        cuda_regcache_entry_t *cuda_reg;
+#else
+#define MPIDI_CH3I_MRAILI_CUDA_IPC_REQ_DECL
+#endif
+
 #ifdef _ENABLE_CUDA_
 #define MPIDI_CH3I_MRAILI_CUDA_REQ_DECL \
-        enum cuda_transfer_mode_t  cuda_transfer_mode; \
+        cuda_transfer_mode_t  cuda_transfer_mode;   \
+        cuda_stream_t *cuda_stream;                 \
         vbuf *cuda_vbuf[MAX_CUDA_RNDV_BLOCKS]; \
         void *cuda_remote_addr[MAX_CUDA_RNDV_BLOCKS]; \
         uint32_t cuda_remote_rkey[MAX_CUDA_RNDV_BLOCKS][MAX_NUM_HCAS]; \
@@ -122,7 +145,8 @@ struct dreg_entry;
         uint8_t num_remote_cuda_pending;    \
         uint8_t num_remote_cuda_done;       \
         uint8_t is_cuda_pipeline;           \
-        uint8_t cts_received;               
+        uint8_t cts_received;               \
+        MPIDI_CH3I_MRAILI_CUDA_IPC_REQ_DECL 
 #else
 #define MPIDI_CH3I_MRAILI_CUDA_REQ_DECL 
 #endif
@@ -419,6 +443,13 @@ typedef struct MPIDI_CH3I_MRAIL_PG {
 #endif
 } MPIDI_CH3I_MRAIL_PG_t;
 
+#ifdef _ENABLE_XRC_
+#define USE_XRC (rdma_use_xrc)
+#endif
+/*Interface to lock/unlock connection manager*/
+void MPICM_lock(void);
+void MPICM_unlock(void);
+
 #define MPIDI_CH3I_RDMA_PG_DECL MPIDI_CH3I_MRAIL_PG_t mrail;
 
 /* structure MPIDI_CH3I_RDMA_Ops_list is the queue pool to record every
@@ -432,41 +463,13 @@ typedef struct MPIDI_CH3I_RDMA_put_get_list_t
 MPIDI_CH3I_RDMA_put_get_list;
 
 #ifdef _ENABLE_CUDA_
-enum cuda_transfer_mode_t {
+typedef enum cuda_transfer_mode {
     NONE            = 0,  /* default: HOST_TO_HOST */
-    CONT_DEVICE_TO_DEVICE,
-    CONT_HOST_TO_DEVICE,
-    CONT_DEVICE_TO_HOST
-};
+    DEVICE_TO_DEVICE,
+    HOST_TO_DEVICE,
+    DEVICE_TO_HOST
+} cuda_transfer_mode_t;
 
-enum cuda_stream_op {
-    SEND = 0,
-    RECV,
-};
-
-typedef struct cuda_stream {
-    cudaStream_t stream;
-    enum cuda_stream_op op_type;
-    uint8_t is_finish;
-    uint8_t is_query_done;
-    uint32_t size;
-    uint32_t displacement;
-    void *vc;
-    void *req;
-    vbuf *cuda_vbuf;
-    struct cuda_stream *next, *prev;
-} cuda_stream_t;
-
-extern void *cuda_stream_region;
-extern cuda_stream_t *free_cuda_stream_list_head;
-extern cuda_stream_t *busy_cuda_stream_list_head;
-extern cuda_stream_t *busy_cuda_stream_list_tail;
-
-int allocate_cuda_streams();
-void deallocate_cuda_streams();
-void progress_cuda_streams();
-cuda_stream_t *get_cuda_stream();
 #endif
-
 
 #endif /* mpidi_ch3_rdma_pre_h */

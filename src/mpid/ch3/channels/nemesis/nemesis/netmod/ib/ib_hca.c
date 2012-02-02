@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -53,7 +53,6 @@ int ib_hca_num_ports = 1;
  * The list of the HCAs found in the system.
  */
 MPID_nem_ib_nem_hca hca_list[MAX_NUM_HCAS];
-
 
 /**
  * Check the ibv_port_attr and ibv_device_attr.
@@ -156,170 +155,6 @@ static int rdma_find_active_port(struct ibv_context *context,struct ibv_device *
     }
 
     return -1;
-}
-
-static int get_rate(umad_ca_t *umad_ca)
-{
-    int i;
-
-    for (i = 1; i <= umad_ca->numports; i++) {
-        if (IBV_PORT_ACTIVE == umad_ca->ports[i]->state) {
-            return umad_ca->ports[i]->rate;
-        }
-    }
-    return 0;
-}
-
-
-#undef FUNCNAME
-#define FUNCNAME hcaNameToType
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-/**
- * Get the type of a device, from name.
- *
- * Output in hca_type
- *
- */
-int hcaNameToType(char *dev_name, HCA_Type* hca_type)
-{
-    MPIDI_STATE_DECL(MPID_STATE_HCANAMETOTYPE);
-    MPIDI_FUNC_ENTER(MPID_STATE_HCANAMETOTYPE);
-    int mpi_errno = MPI_SUCCESS;
-    int rate;
-
-    *hca_type = UNKNOWN_HCA;
-
-    if (!strncmp(dev_name, "mlx4", 4) || !strncmp(dev_name, "mthca", 5)) {
-        umad_ca_t umad_ca;
-
-        *hca_type = MLX_PCI_X;
-
-        if (umad_init() < 0) {
-            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**umadinit");
-        }
-
-        memset(&umad_ca, 0, sizeof(umad_ca_t));
-        if (umad_get_ca(dev_name, &umad_ca) < 0) {
-            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**umadgetca");
-        }
-
-        rate = get_rate(&umad_ca);
-        if (!rate) {
-            umad_release_ca(&umad_ca);
-            umad_done();
-            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**umadgetrate");
-        }
-
-        if (!strncmp(dev_name, "mthca", 5)) {
-            *hca_type = MLX_PCI_X;
-
-            if (!strncmp(umad_ca.ca_type, "MT25", 4)) {
-                switch (rate) {
-                case 20:
-                    *hca_type = MLX_PCI_EX_DDR;
-                    break;
-                case 10:
-                    *hca_type = MLX_PCI_EX_SDR;
-                    break;
-                default:
-                    *hca_type = MLX_PCI_EX_SDR;
-                    break;
-                }
-            } else if (!strncmp(umad_ca.ca_type, "MT23", 4)) {
-                *hca_type = MLX_PCI_X;
-            } else {
-                *hca_type = MLX_PCI_EX_SDR;
-            }
-        } else { /* mlx4 */
-            switch(rate) {
-            case 40:
-                *hca_type = MLX_CX_QDR;
-                break;
-            case 20:
-                *hca_type = MLX_CX_DDR;
-                break;
-            case 10:
-                *hca_type = MLX_CX_SDR;
-                break;
-            default:
-                *hca_type = MLX_CX_SDR;
-                break;
-            }
-        }
-
-        umad_release_ca(&umad_ca);
-        umad_done();
-    } else if(!strncmp(dev_name, "ipath", 5)) {
-        *hca_type = PATH_HT;
-    } else if(!strncmp(dev_name, "ehca", 4)) {
-        *hca_type = IBM_EHCA;
-    } else if (!strncmp(dev_name, "cxgb3", 5)) {
-        *hca_type = CHELSIO_T3;
-    } else if (!strncmp(dev_name, "cxgb4", 5)) {
-        *hca_type = CHELSIO_T4;
-    } else {
-        *hca_type = UNKNOWN_HCA;
-    }
-
-fn_fail:
-    MPIDI_FUNC_EXIT(MPID_STATE_HCANAMETOTYPE);
-    return mpi_errno;
-}
-
-
-
-#undef FUNCNAME
-#define FUNCNAME get_hca_type
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-/**
- * Get the type of a device.
- *
- * @param dev the device.
- * @param ctx the device context.
- * @param hca_type the type (output).
- *
- * @return MPI_SUCCESS if succeded, MPI_ERR_OTHER if failed
- *
- * \see HCA_Type
- */
-static inline int get_hca_type (struct ibv_device* dev, struct ibv_context* ctx, HCA_Type* hca_type)
-{
-    MPIDI_STATE_DECL(MPID_STATE_GET_HCA_TYPE);
-    MPIDI_FUNC_ENTER(MPID_STATE_GET_HCA_TYPE);
-    int ret;
-    int mpi_errno = MPI_SUCCESS;
-    struct ibv_device_attr dev_attr;
-
-    memset(&dev_attr, 0, sizeof(struct ibv_device_attr));
-
-    char* dev_name = (char*) ibv_get_device_name(dev);
-    if (!dev_name)
-    {
-        MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**ibv_get_device_name");
-    }
-
-    ret = ibv_query_device(ctx, &dev_attr);
-    if (ret)
-    {
-        MPIU_ERR_SETANDJUMP1(
-            mpi_errno,
-            MPI_ERR_OTHER,
-            "**ibv_query_device",
-            "**ibv_query_device %s",
-            dev_name
-        );
-    }
-
-    if ((mpi_errno = hcaNameToType(dev_name, hca_type)) != MPI_SUCCESS)
-    {
-        MPIU_ERR_POP(mpi_errno);
-    }
-
-fn_fail:
-    MPIDI_FUNC_EXIT(MPID_STATE_GET_HCA_TYPE);
-    return mpi_errno;
 }
 
 
@@ -470,14 +305,10 @@ int MPID_nem_ib_init_hca()
         }
         else
     #endif /* defined(RDMA_CM) */
-
-		mpi_errno = get_hca_type(hca_list[nHca].ib_dev, hca_list[nHca].nic_context, &hca_list[nHca].hca_type);
-        if (mpi_errno != MPI_SUCCESS)
         {
-        	fprintf(stderr, "[%s, %d] Error in get_hca_type", __FILE__, __LINE__ );
-            MPIU_ERR_POP(mpi_errno);
+            process_info.hca_type = hca_list[nHca].hca_type = mv2_get_hca_type(hca_list[nHca].ib_dev);
+            process_info.arch_hca_type = mv2_get_arch_hca_type(hca_list[nHca].ib_dev);
         }
-
     }
 
 

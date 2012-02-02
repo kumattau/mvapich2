@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -47,6 +47,7 @@ int MPIDI_Use_pmi2_api = 0;
 #if defined(_OSU_MVAPICH_) && defined(CKPT)
 pthread_mutex_t MVAPICH2_sync_ckpt_lock;
 pthread_cond_t MVAPICH2_sync_ckpt_cond;
+int MVAPICH2_Sync_Checkpoint();
 #endif /* defined(_OSU_MVAPICH_) && defined(CKPT) */
 
 
@@ -61,6 +62,9 @@ static int failed_procs_delete_fn(MPI_Comm comm, int keyval, void *attr_val, voi
 
 MPIDI_Process_t MPIDI_Process = { NULL };
 MPIDI_CH3U_SRBuf_element_t * MPIDI_CH3U_SRBuf_pool = NULL;
+#if defined(_ENABLE_CUDA_)
+MPIDI_CH3U_CUDA_SRBuf_element_t * MPIDI_CH3U_CUDA_SRBuf_pool = NULL;
+#endif
 
 
 #if defined(_OSU_MVAPICH_)
@@ -485,6 +489,11 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     pthread_cond_init(&MVAPICH2_sync_ckpt_cond, NULL);
 #endif /* defined(_OSU_MVAPICH_) && defined(CKPT) */
 
+#if defined(_OSU_MVAPICH_) && defined(_ENABLE_CUDA_)
+    if (rdma_enable_cuda) {
+        cuda_init(pg);
+    }
+#endif /* defined(_OSU_MVAPICH_) && defined(_ENABLE_CUDA_) */
 
     /* create attribute to list failed processes */
     mpi_errno = MPIR_Comm_create_keyval_impl(MPI_COMM_NULL_COPY_FN,
@@ -809,6 +818,7 @@ int MVAPICH2_Sync_Checkpoint()
     pthread_mutex_lock(&MVAPICH2_sync_ckpt_lock);
     pthread_cond_wait(&MVAPICH2_sync_ckpt_cond,&MVAPICH2_sync_ckpt_lock);
     pthread_mutex_unlock(&MVAPICH2_sync_ckpt_lock);
+    return 0;
 }
 #endif /* defined(_OSU_MVAPICH_) && defined(CKPT) */
 

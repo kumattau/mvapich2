@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -158,6 +158,7 @@ MPIDI_Process_t;
 #if defined(_OSU_MVAPICH_) && defined(CKPT)
 extern pthread_mutex_t MVAPICH2_sync_ckpt_lock;
 extern pthread_cond_t  MVAPICH2_sync_ckpt_cond;
+void MPIDI_CH3I_CR_Sync_ckpt_request();
 #endif /* defined(_OSU_MVAPICH_) && defined(CKPT) */
 
 extern MPIDI_Process_t MPIDI_Process;
@@ -955,6 +956,65 @@ extern MPIDI_CH3U_SRBuf_element_t * MPIDI_CH3U_SRBuf_pool;
  	    (req_)->dev.tmpbuf_sz = 0;					\
  	}								\
     }
+#endif
+
+#if defined(_ENABLE_CUDA_)
+#if !defined(MPIDI_CH3U_CUDA_SRBuf_size)
+#    define MPIDI_CH3U_CUDA_SRBuf_size (256 * 1024)
+#endif
+
+typedef struct __MPIDI_CH3U_CUDA_SRBuf_element {
+    /* Keep the buffer at the top to help keep the memory alignment */
+    char   *buf;
+    struct __MPIDI_CH3U_CUDA_SRBuf_element * next;
+} MPIDI_CH3U_CUDA_SRBuf_element_t;
+
+extern MPIDI_CH3U_CUDA_SRBuf_element_t * MPIDI_CH3U_CUDA_SRBuf_pool;
+
+#if !defined (MPIDI_CH3U_CUDA_SRBuf_get)
+#   define MPIDI_CH3U_CUDA_SRBuf_get(req_)                              \
+{                                                                       \
+    MPIDI_CH3U_CUDA_SRBuf_element_t * tmp;                              \
+    if (!MPIDI_CH3U_CUDA_SRBuf_pool) {                                  \
+        MPIDI_CH3U_CUDA_SRBuf_pool =                                    \
+        MPIU_Malloc(sizeof(MPIDI_CH3U_CUDA_SRBuf_element_t));           \
+        MPIDI_CH3U_CUDA_SRBuf_pool->next = NULL;                        \
+        MPIU_Malloc_CUDA(MPIDI_CH3U_CUDA_SRBuf_pool->buf,               \
+                MPIDI_CH3U_CUDA_SRBuf_size);                            \
+    }                                                                   \
+    tmp = MPIDI_CH3U_CUDA_SRBuf_pool;                                   \
+    MPIDI_CH3U_CUDA_SRBuf_pool = MPIDI_CH3U_CUDA_SRBuf_pool->next;      \
+    tmp->next = NULL;                                                   \
+    (req_)->dev.tmpbuf = tmp->buf;                                      \
+    (req_)->dev.cuda_srbuf_entry = tmp;                                 \
+}
+#endif
+#if !defined (MPIDI_CH3U_CUDA_SRBuf_free)
+#   define MPIDI_CH3U_CUDA_SRBuf_free(req_)                             \
+{                                                                       \
+    MPIDI_CH3U_CUDA_SRBuf_element_t * tmp;                              \
+    tmp =  (req_)->dev.cuda_srbuf_entry;                                \
+    tmp->next = MPIDI_CH3U_CUDA_SRBuf_pool;                             \
+    MPIDI_CH3U_CUDA_SRBuf_pool = tmp;                                   \
+    req->dev.cuda_srbuf_entry = NULL;                                   \
+}           
+#endif
+#if !defined(MPIDI_CH3U_CUDA_SRBuf_alloc)
+#   define MPIDI_CH3U_CUDA_SRBuf_alloc(req_, size_)                     \
+{                                                                       \
+    if (size_ <= MPIDI_CH3U_CUDA_SRBuf_size) {                          \
+        MPIDI_CH3U_CUDA_SRBuf_get(req_);                                \
+        if ((req_)->dev.tmpbuf != NULL) {                               \
+            (req_)->dev.tmpbuf_sz = MPIDI_CH3U_CUDA_SRBuf_size;         \
+        }                                                               \
+    }                                                                   \
+    else {                                                              \
+        (req_)->dev.tmpbuf_sz = 0;                                      \
+        (req_)->dev.tmpbuf = NULL;                                      \
+    }                                                                   \
+}
+#endif
+
 #endif
 /*-------------------------------
   END SEND/RECEIVE BUFFER SECTION
@@ -1986,6 +2046,8 @@ int MPIDI_CH3_ReqHandler_GetSendRespComplete( MPIDI_VC_t *, MPID_Request *,
 int MPIDI_CH3_Prepare_rndv_cts_cuda(MPIDI_VC_t * vc, 
         MPIDI_CH3_Pkt_rndv_clr_to_send_t * cts_pkt,
         MPID_Request * rreq);
+int MPIDI_CH3_ReqHandler_unpack_cudabuf(MPIDI_VC_t * vc, MPID_Request * rreq, int *);
+int MPIDI_CH3_ReqHandler_pack_cudabuf(MPIDI_VC_t * vc, MPID_Request * rreq, int *);
 #endif
 int MPIDI_CH3_ContigSend(MPID_Request **sreq_p,
                          MPIDI_CH3_Pkt_type_t reqtype,

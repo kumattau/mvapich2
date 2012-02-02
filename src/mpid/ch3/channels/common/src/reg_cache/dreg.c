@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -915,7 +915,7 @@ void flush_dereg_mrs_external()
 #ifdef NEMESIS_BUILD
             if(process_info.has_lazy_mem_unregister) {
 #else
-            if(MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister) {
+            if(mv2_MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister) {
 #endif
                 DREG_REMOVE_FROM_UNUSED_LIST(d);
             }
@@ -1064,7 +1064,7 @@ void dreg_decr_refcount(dreg_entry* d)
 #ifdef NEMESIS_BUILD
         if (process_info.has_lazy_mem_unregister)
 #else
-        if (MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister)
+        if (mv2_MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister)
 #endif
         {
             DREG_ADD_TO_UNUSED_LIST(d);
@@ -1269,7 +1269,7 @@ void find_and_free_dregs_inside(void* buf, size_t len)
             !process_info.has_lazy_mem_unregister) {
 #else
     if(!g_is_dreg_initialized ||
-            !MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister) {
+            !mv2_MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister) {
 #endif
         return;
     }

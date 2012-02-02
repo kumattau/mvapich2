@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -37,7 +37,6 @@
 #include "pmi.h"
 #include "smp_smpi.h"
 #include "mpiutil.h"
-#include "ch3_hwloc_bind.h"
 #include "mv2_arch_hca_detect.h"
 #include "coll_shmem.h"
 
@@ -71,18 +70,6 @@
 } while (0)
 
 /* Macros for flow control and rqueues management */
-#define SMPI_TOTALIN(sender,receiver)                               \
-    g_smpi_shmem->rqueues_flow[sender * g_smpi.num_local_nodes + receiver]->msgs_total_in
-
-#define SMPI_TOTALOUT(sender,receiver)                              \
-    g_smpi_shmem->rqueues_flow[receiver * g_smpi.num_local_nodes + sender]->msgs_total_out
-
-#define SMPI_CURRENT(sender,receiver)                               \
-    g_smpi_shmem->rqueues_params_c[sender].current
-
-#define SMPI_NEXT(sender,receiver)                                  \
-    g_smpi_shmem->rqueues_params_n[receiver].next
-
 #define SMPI_FIRST_S(sender,receiver)                                 \
     g_smpi_shmem->rqueues_limits_s[receiver].first
 
@@ -94,6 +81,23 @@
 
 #define SMPI_LAST_R(sender,receiver)                                  \
     g_smpi_shmem->rqueues_limits_r[sender].last
+
+/* Shared Tail Pointer: updated by receiver after every receive;
+ * read by sender when local header meets local tail. */
+#define SMPI_SHARED_TAIL(sender,receiver)                             \
+    g_smpi_shmem->shared_tails[receiver][sender].ptr
+
+#define SMPI_BUF_POOL_PTR(destination,index) \
+    ((SEND_BUF_T *) ((unsigned long) s_buffer_head[destination] \
+     + (sizeof(SEND_BUF_T) + s_smp_block_size)*index))    
+
+#define SMPI_MY_BUF_POOL_PTR(index) \
+    ((SEND_BUF_T *) ((unsigned long) s_my_buffer_head \
+     + (sizeof(SEND_BUF_T) + s_smp_block_size)*index)) 
+
+#define    SMP_CBUF_FREE 0
+#define    SMP_CBUF_BUSY 1
+#define    SMP_CBUF_END -1
 
 struct smpi_var g_smpi;
 struct shared_mem *g_smpi_shmem;
@@ -109,6 +113,12 @@ static int* s_total_bytes = NULL;
 static char *shmem_file = NULL;
 static char *pool_file = NULL;
 
+/* local header/tail for send and receive pointing to cyclic buffer */
+static int* s_header_ptr_s = NULL;
+static int* s_tail_ptr_s = NULL;
+static int* avail = NULL;
+static int* s_header_ptr_r = NULL;
+
 int g_size_shmem = 0;
 int g_size_pool = 0; 
 
@@ -118,6 +128,7 @@ int g_smp_eagersize;
 int s_smpi_length_queue;
 int s_smp_num_send_buffer;
 int s_smp_batch_size;
+int s_smp_block_size;
 
 #if defined(_SMP_LIMIC_)
 int limic_fd;
@@ -129,11 +140,11 @@ extern MPID_Request * create_request(void * hdr, MPIDI_msg_sz_t hdr_sz,
                                             MPIU_Size_t nb);
 #endif
 
-extern int enable_shmem_collectives;
-extern struct MPIDI_CH3I_RDMA_Process_t MPIDI_CH3I_RDMA_Process;
+extern int mv2_enable_shmem_collectives;
+extern struct mv2_MPIDI_CH3I_RDMA_Process_t mv2_MPIDI_CH3I_RDMA_Process;
 
 extern int MPIDI_Get_num_nodes();
-extern int rdma_set_smp_parameters(struct MPIDI_CH3I_RDMA_Process_t *proc);
+extern int rdma_set_smp_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc);
 extern void MPIDI_CH3I_SHMEM_COLL_Cleanup();
 
 #if defined(MAC_OSX) || defined(_PPC64_) 
@@ -207,55 +218,99 @@ static inline int get_host_id(char *myhostname, int hostname_len)
     return host_id;
 }
 
-static inline int smpi_get_avail_length(int dest)
+/*
+ * called by sender after every successful write to cyclic buffer, in order to
+ * set current flag, set data size, clear next flag and update local send  header
+ * pointer.
+ */
+static inline void smpi_complete_send(unsigned int destination,
+    unsigned int length, int data_sz,
+    volatile void *ptr, volatile void *ptr_head, volatile void *ptr_flag)
 {
-    int avail;
+    s_header_ptr_s[destination] += length + sizeof(int)*2;
+    /* set next flag to free */
+    *((volatile int *) ptr_head) = data_sz;
+    *((volatile int *) ptr) = SMP_CBUF_FREE;
     WRITEBAR();
-    if (SMPI_TOTALIN(g_smpi.my_local_id, dest) >=
-        SMPI_TOTALOUT(g_smpi.my_local_id, dest)) {
-    WRITEBAR();
-    avail = (g_smpi.available_queue_length -
-        (SMPI_TOTALIN(g_smpi.my_local_id, dest) -
-         SMPI_TOTALOUT(g_smpi.my_local_id, dest)));
-    } else {
-    WRITEBAR();
-    avail = g_smpi.available_queue_length -
-        (SMPI_MAX_INT - SMPI_TOTALOUT(g_smpi.my_local_id, dest) +
-         SMPI_TOTALIN(g_smpi.my_local_id, dest));
-    }
-
-    avail = ((avail / (int) SMPI_CACHE_LINE_SIZE) * SMPI_CACHE_LINE_SIZE) -
-    SMPI_CACHE_LINE_SIZE;
-
-    if (avail < 0) avail = 0;
-    return avail;
+    /* set current flag to busy */
+    *((volatile int *) ptr_flag) = SMP_CBUF_BUSY;
+    avail[destination] -= length + sizeof(int)*2;
 }
 
-static inline void smpi_complete_send(unsigned int my_id,
-    unsigned int destination,
-    unsigned int length)
-{
-    SMPI_NEXT(my_id, destination) += SMPI_ALIGN(length);
-
-    if (SMPI_NEXT(my_id, destination) > SMPI_LAST_S(my_id, destination)) {
-    SMPI_NEXT(my_id, destination) = SMPI_FIRST_S(my_id, destination);
-    }
-    WRITEBAR();
-    SMPI_TOTALIN(my_id, destination) += SMPI_ALIGN(length);
-
-}
-
+/*
+ * called by receiver after every successful read from cyclic buffer, in order
+ * to clear flag, update shared tail, update local receive header pointer.
+ */
 static inline void smpi_complete_recv(unsigned int from_grank,
     unsigned int my_id,
     unsigned int length)
 {
-    SMPI_CURRENT(from_grank, my_id) += SMPI_ALIGN(length);
+    /* update shared tail */
+    SMPI_SHARED_TAIL(from_grank, my_id) =
+        s_header_ptr_r[from_grank] + length
+        + sizeof(int)*2 - 1;
+    volatile void *ptr_flag = (volatile void *)((unsigned long)g_smpi_shmem->pool +
+            s_header_ptr_r[from_grank]);
+    unsigned long header;
+    header = s_header_ptr_r[from_grank];
+    s_header_ptr_r[from_grank] =
+        s_header_ptr_r[from_grank] +
+        length + sizeof(int)*2;
+    READBAR();
+    if(header == SMPI_FIRST_R(from_grank, my_id))
+        *(volatile int *)ptr_flag = SMP_CBUF_FREE;
+}
 
-    if (SMPI_CURRENT(from_grank, my_id) > SMPI_LAST_R(from_grank, my_id)) {
-    SMPI_CURRENT(from_grank, my_id) = SMPI_FIRST_R(from_grank, my_id);
+/*
+ * called by sender before every send in order to check if enough room left in
+ * cyclic buffer.
+ */
+static inline int smpi_check_avail(int rank, int len,
+    volatile void **pptr_flag)
+{
+    /* check if avail is less than data size */
+    if(avail[rank] < len + sizeof(int)*3) {
+        /* update local tail according to shared tail */
+        if (s_header_ptr_s[rank] + len + sizeof(int)*3 >=
+                SMPI_LAST_S(g_smpi.my_local_id, rank)) {
+            /* check if the beginning of the cyclic buffer is already free */
+            if(*(int *)((unsigned long)g_smpi_shmem->pool +
+                SMPI_FIRST_S(g_smpi.my_local_id, rank))) {
+                return 0;
+            }
+            s_tail_ptr_s[rank] =
+                SMPI_SHARED_TAIL(g_smpi.my_local_id, rank);
+            if (s_tail_ptr_s[rank] == 
+                    SMPI_FIRST_S(g_smpi.my_local_id, rank)) {
+                avail[rank] = SMPI_LAST_S(g_smpi.my_local_id, rank) -
+                        s_header_ptr_s[rank];
+                return 0;
+            }
+            s_header_ptr_s[rank] =
+                SMPI_FIRST_S(g_smpi.my_local_id, rank);
+            volatile void *ptr_flag;
+            ptr_flag = *pptr_flag;
+
+            *(volatile int *)ptr_flag = SMP_CBUF_END;
+            ptr_flag = (volatile void *) ((g_smpi_shmem->pool) +
+                    s_header_ptr_s[rank]);
+            *pptr_flag = ptr_flag;
+        } else {
+            s_tail_ptr_s[rank] =
+                SMPI_SHARED_TAIL(g_smpi.my_local_id, rank);
+        }
+
+        /* update avail */
+        READBAR();
+        avail[rank] = (s_tail_ptr_s[rank] >=
+                s_header_ptr_s[rank] ?
+                (s_tail_ptr_s[rank] - s_header_ptr_s[rank]) :
+                (SMPI_LAST_S(g_smpi.my_local_id, rank) -
+                        s_header_ptr_s[rank]));
+        if(avail[rank] < len + sizeof(int)*3)
+            return 0;
     }
-    WRITEBAR();
-    SMPI_TOTALOUT(from_grank, my_id) += SMPI_ALIGN(length);
+    return 1;
 }
 
 #undef FUNCNAME
@@ -400,8 +455,7 @@ static inline int MPIDI_CH3I_SMP_Process_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t*
             s_current_bytes[vc->smp.local_nodes] = 0;        
             smpi_complete_recv(vc->smp.local_nodes,
                     g_smpi.my_local_id,
-                    s_total_bytes[vc->smp.local_nodes] +
-                    sizeof(int));
+                    s_total_bytes[vc->smp.local_nodes]);
             s_total_bytes[vc->smp.local_nodes] = 0;
             goto fn_exit;
         }
@@ -452,7 +506,6 @@ int MPIDI_CH3I_SMP_write_progress(MPIDI_PG_t *pg)
             continue;
 #endif /* defined(CKPT) */
 
-        vc->smp.send_current_pkt_type = SMP_RNDV_MSG_CONT;
 /*
         if (vc->smp.send_active)
 */
@@ -880,11 +933,10 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SMP_INIT);
     int mpi_errno = MPI_SUCCESS;
     unsigned int i, j, pid, wait;
-    int sh_size, pid_len, rq_len;
+    int sh_size, pid_len, st_len;
     struct stat file_status;
     struct stat file_status_pool;
     int pagesize = getpagesize();
-    char *value;
     struct shared_mem *shmem;
     SEND_BUF_T *send_buf = NULL;
 #if defined(SOLARIS)
@@ -899,7 +951,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 #endif /* defined(_X86_64_) */
     
     /* Set SMP params based on architecture */
-    rdma_set_smp_parameters(&MPIDI_CH3I_RDMA_Process);
+    rdma_set_smp_parameters(&mv2_MPIDI_CH3I_RDMA_Process);
 
     if(rdma_use_blocking) {
         /* blocking is enabled, so
@@ -909,11 +961,6 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     }
 
     if (!rdma_use_smp) {
-#if defined(HAVE_LIBHWLOC)
-        /* Shared Memory is turned off. We cannot do 
-         * any CPU Affinity in this case */ 
-        mv2_enable_affinity = 0;
-#endif
         return MPI_SUCCESS;
     }
 
@@ -933,48 +980,12 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     }
     pathlen = strlen(shmem_dir);
 #if defined(_SMP_LIMIC_)
+    char *value;
     if ((value = getenv("MV2_SMP_USE_LIMIC2")) != NULL) {
         g_smp_use_limic2 = atoi(value);
     }
 #endif
 
-#if defined(HAVE_LIBHWLOC)
-    if ((value = getenv("MV2_ENABLE_AFFINITY")) != NULL) {
-        mv2_enable_affinity = atoi(value);
-    }
-
-    if (mv2_enable_affinity && (value = getenv("MV2_CPU_MAPPING")) != NULL) {
-        /* Affinity is on and the user has supplied a cpu mapping string */
-        int linelen = strlen(value);
-        if (linelen < s_cpu_mapping_line_max)
-        {
-            s_cpu_mapping_line_max = linelen;
-        }
-        s_cpu_mapping = (char*) MPIU_Malloc(sizeof(char) * (s_cpu_mapping_line_max + 1));
-        strncpy(s_cpu_mapping, value, s_cpu_mapping_line_max);
-        s_cpu_mapping[s_cpu_mapping_line_max] = '\0';
-    } 
-
-    if(mv2_enable_affinity && (value = getenv("MV2_CPU_MAPPING")) == NULL ) {
-        /* Affinity is on and the user has not specified a mapping string */
-        if ((value = getenv("MV2_CPU_BINDING_POLICY")) != NULL) {
-            /* User has specified a binding policy */
-            if (!strcmp(value, "bunch")  ||  !strcmp(value, "BUNCH")) {
-                    policy = POLICY_BUNCH;
-            } else if (!strcmp(value, "scatter") || !strcmp(value, "SCATTER")) {
-                    policy = POLICY_SCATTER;
-            } else {
-                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                                    "**fail", "**fail %s",
-                                                    "CPU_BINDING_PRIMITIVE: Policy should be bunch or scatter.");
-            } 
-         } else {
-            /* User has not specified a binding policy.
-             * We are going to do "bunch" binding, by default  */
-            policy = POLICY_BUNCH;
-         }
-    } 
-#endif  /* defined(HAVE_LIBHWLOC) */
 
     if (gethostname(s_hostname, sizeof(char) * HOSTNAME_LEN) < 0) {
        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
@@ -1006,9 +1017,9 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 
     if (g_smp_eagersize > s_smpi_length_queue / 2) {
        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-           "**fail %s", "SMP_EAGERSIZE should not exceed half of "
-           "SMPI_LENGTH_QUEUE. Note that SMP_EAGERSIZE "
-           "and SMPI_LENGTH_QUEUE are set in KBytes.");
+           "**fail %s", "MV2_SMP_EAGERSIZE should not exceed half of "
+           "MV2_SMPI_LENGTH_QUEUE. Note that MV2_SMP_EAGERSIZE "
+           "and MV2_SMPI_LENGTH_QUEUE are set in KBytes.");
     }
 
     g_smpi.fd = -1;
@@ -1078,10 +1089,10 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     /* pid_len need to be padded to cache aligned, in order to make sure the
      * following flow control structures cache aligned. */
     pid_len = pid_len + SMPI_CACHE_LINE_SIZE - (pid_len % SMPI_CACHE_LINE_SIZE);
-    rq_len = sizeof(smpi_rqueues) * g_smpi.num_local_nodes *
-        (g_smpi.num_local_nodes - 1);
+    st_len = sizeof(smpi_shared_tails) * g_smpi.num_local_nodes * 
+          (g_smpi.num_local_nodes - 1);
     sh_size = sizeof(struct shared_mem) + pid_len 
-          + SMPI_ALIGN(rq_len) + SMPI_CACHE_LINE_SIZE * 2;
+          + SMPI_ALIGN(st_len) + SMPI_CACHE_LINE_SIZE * 3;
 
     g_size_shmem = (SMPI_CACHE_LINE_SIZE + sh_size + pagesize 
           + (g_smpi.num_local_nodes * (g_smpi.num_local_nodes - 1) 
@@ -1090,8 +1101,9 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     DEBUG_PRINT("sizeof shm file %d\n", g_size_shmem);
 
     g_size_pool =
-    SMPI_ALIGN (sizeof (SEND_BUF_T) * s_smp_num_send_buffer +
-        pagesize) * g_smpi.num_local_nodes + SMPI_CACHE_LINE_SIZE;
+    SMPI_ALIGN ((sizeof (SEND_BUF_T) + s_smp_block_size) 
+                * s_smp_num_send_buffer + pagesize) 
+                * g_smpi.num_local_nodes + SMPI_CACHE_LINE_SIZE;
 	
     DEBUG_PRINT("sizeof pool file %d\n", g_size_pool);
     if (g_smpi.my_local_id == 0) 
@@ -1189,7 +1201,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
        }
     }
 
-    if (enable_shmem_collectives) {
+    if (mv2_enable_shmem_collectives) {
         /* Shared memory for collectives */
         if ((mpi_errno = MPIDI_CH3I_SHMEM_COLL_init(pg, g_smpi.my_local_id)) != MPI_SUCCESS)
         {
@@ -1264,7 +1276,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 
     for(i=0; i < g_smpi.num_local_nodes; ++i) {
        s_buffer_head[i] = (SEND_BUF_T *)((unsigned long)g_smpi.send_buf_pool_ptr +
-           SMPI_ALIGN(sizeof(SEND_BUF_T) * s_smp_num_send_buffer +
+           SMPI_ALIGN((sizeof(SEND_BUF_T) + s_smp_block_size) * s_smp_num_send_buffer +
                pagesize) * i);
 
        if (((long) s_buffer_head[i] & (SMPI_CACHE_LINE_SIZE - 1)) != 0) {
@@ -1299,7 +1311,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 
 #if defined(_X86_64_)
     for (i = 0; i < s_smp_num_send_buffer; ++i) {
-       send_buf =&(s_my_buffer_head[i]);
+       send_buf = SMPI_MY_BUF_POOL_PTR(i); 
        send_buf->myindex = i;
        send_buf->next = i+1;
        send_buf->busy = 0;
@@ -1307,8 +1319,8 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
        send_buf->has_next = 0;
        send_buf->msg_complete = 0;
 
-       for (j = 0; j < SMP_SEND_BUF_SIZE; j += pagesize) {
-           tmpchar = (send_buf->buf)[j];
+       for (j = 0; j < s_smp_block_size; j += pagesize) {
+           tmpchar = *((char *) &send_buf->buf + j);
        }
     }
     send_buf->next = -1;
@@ -1316,7 +1328,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     if (0 == g_smpi.my_local_id) {
        for(j = 0; j < g_smpi.num_local_nodes; ++j){
            for (i = 0; i < s_smp_num_send_buffer; ++i) {
-              send_buf = &s_buffer_head[j][i];
+              send_buf = SMPI_BUF_POOL_PTR(j, i);
               send_buf->myindex = i;
               send_buf->next = i+1;
               send_buf->busy = 0;
@@ -1332,60 +1344,35 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     /* Initialize shared_mem pointers */
     g_smpi_shmem->pid = (int *) shmem;
 
-    g_smpi_shmem->rqueues_params_c =
-        (smpi_params_c *) MPIU_Malloc(sizeof(smpi_params_c)*g_smpi.num_local_nodes);
-    g_smpi_shmem->rqueues_params_n =
-        (smpi_params_n *) MPIU_Malloc(sizeof(smpi_params_n)*g_smpi.num_local_nodes);
-    g_smpi_shmem->rqueues_flow =
-        (smpi_rqueues **) MPIU_Malloc(sizeof(smpi_rqueues *)*g_smpi.num_local_nodes * g_smpi.num_local_nodes);
     g_smpi_shmem->rqueues_limits_s =
         (smpi_rq_limit *) MPIU_Malloc(sizeof(smpi_rq_limit)*g_smpi.num_local_nodes);
     g_smpi_shmem->rqueues_limits_r =
         (smpi_rq_limit *) MPIU_Malloc(sizeof(smpi_rq_limit)*g_smpi.num_local_nodes);
+    g_smpi_shmem->shared_tails = (smpi_shared_tails **)
+        MPIU_Malloc(sizeof(smpi_shared_tails *)*g_smpi.num_local_nodes);
 
-    if (g_smpi_shmem->rqueues_params_c == NULL ||
-        g_smpi_shmem->rqueues_params_n == NULL ||
-        g_smpi_shmem->rqueues_flow == NULL ||
-        g_smpi_shmem->rqueues_limits_s == NULL ||
-        g_smpi_shmem->rqueues_limits_r == NULL ) {
+    if (g_smpi_shmem->rqueues_limits_s == NULL ||
+        g_smpi_shmem->rqueues_limits_r == NULL ||
+        g_smpi_shmem->shared_tails == NULL ) {
          mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
                   FCNAME, __LINE__, MPI_ERR_OTHER, "**nomem", 0);
          goto cleanup_files;
     }
 
     if (g_smpi.num_local_nodes > 1) {
-        g_smpi_shmem->rqueues_flow[0*g_smpi.num_local_nodes + 1] = 
-            (smpi_rqueues *)((char *)shmem + 
-                    pid_len + SMPI_CACHE_LINE_SIZE);
-
-        for (i = 2; i < g_smpi.num_local_nodes; ++i) {
-            g_smpi_shmem->rqueues_flow[0*g_smpi.num_local_nodes + i] = 
-                (smpi_rqueues *)((char*)g_smpi_shmem->rqueues_flow[0*g_smpi.num_local_nodes + i - 1] + 
-                        SMPI_CACHE_LINE_SIZE);
-        }
-
-        smpi_rqueues * tmp_rqueues =
-            g_smpi_shmem->rqueues_flow[0*g_smpi.num_local_nodes + g_smpi.num_local_nodes - 1];
+        g_smpi_shmem->shared_tails[0] = 
+                (smpi_shared_tails *)((char *)shmem +  pid_len + SMPI_CACHE_LINE_SIZE);
 
         for (i = 1; i < g_smpi.num_local_nodes; ++i) {
-            for (j = 0; j < g_smpi.num_local_nodes; ++j) {
-                if(j == i) continue;
-                if(i < j) {
-                    g_smpi_shmem->rqueues_flow[i*g_smpi.num_local_nodes + j] = 
-                        tmp_rqueues = (smpi_rqueues *)((char*)tmp_rqueues + SMPI_CACHE_LINE_SIZE);
-                } else {
-                    g_smpi_shmem->rqueues_flow[i*g_smpi.num_local_nodes + j] =
-                        (smpi_rqueues*)((char*)g_smpi_shmem->rqueues_flow[j*g_smpi.num_local_nodes
-                                + i] + (SMPI_CACHE_LINE_SIZE/2));
-                }
-            }
+            g_smpi_shmem->shared_tails[i] = (smpi_shared_tails *)
+                (g_smpi_shmem->shared_tails[i-1]+ g_smpi.num_local_nodes);
         }
 
         g_smpi_shmem->pool =
-            (char *)((char *)g_smpi_shmem->rqueues_flow[1] + SMPI_ALIGN(rq_len) +
+            (char *)((char *)g_smpi_shmem->shared_tails[1] + SMPI_ALIGN(st_len) +
                     SMPI_CACHE_LINE_SIZE);
     } else {
-        g_smpi_shmem->rqueues_flow[0] = NULL;
+        g_smpi_shmem->shared_tails[0] = NULL;
         g_smpi_shmem->pool =
             (char *)((char *)shmem + pid_len + SMPI_CACHE_LINE_SIZE);
     }
@@ -1411,31 +1398,13 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
                 (g_smpi.my_local_id * (g_smpi.num_local_nodes - 1) + 
                 (i > g_smpi.my_local_id ? (i - 1): i)) + 
                 g_smpi.available_queue_length);
-        g_smpi_shmem->rqueues_params_c[i].current = 
-            SMPI_ALIGN(pagesize + (pagesize + s_smpi_length_queue) *
-                (g_smpi.my_local_id * (g_smpi.num_local_nodes - 1) + 
-                (i > g_smpi.my_local_id ? (i - 1): i)));
-        g_smpi_shmem->rqueues_params_n[i].next = 
-            SMPI_ALIGN(pagesize + (pagesize + s_smpi_length_queue) *
-                (i * (g_smpi.num_local_nodes - 1) + 
-                (g_smpi.my_local_id > i ? (g_smpi.my_local_id - 1) : g_smpi.my_local_id)));
+        g_smpi_shmem->shared_tails[g_smpi.my_local_id][i].ptr =
+            g_smpi_shmem->rqueues_limits_r[i].first;
+        *(int *)((unsigned long)(g_smpi_shmem->pool) + 
+            g_smpi_shmem->rqueues_limits_r[i].first) = 0;
     }
 
-    /* init rqueues in shared memory */
-    if (0 == g_smpi.my_local_id) {
-       for (i = 0; i < g_smpi.num_local_nodes; ++i) {
-           for (j = 0; j < g_smpi.num_local_nodes; ++j) {
-           if (i != j) {
-               READBAR();
-               g_smpi_shmem->rqueues_flow[j*g_smpi.num_local_nodes + i]->msgs_total_in = 0;
-               g_smpi_shmem->rqueues_flow[i*g_smpi.num_local_nodes + j]->msgs_total_out = 0;
-               READBAR();
-           }
-           }
-       }
-    }
-
-    if (enable_shmem_collectives) {
+    if (mv2_enable_shmem_collectives) {
         /* Memory Mapping shared files for collectives*/
         if ((mpi_errno = MPIDI_CH3I_SHMEM_COLL_Mmap(pg, g_smpi.my_local_id)) != MPI_SUCCESS)
         {
@@ -1485,7 +1454,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 
     /* Unlinking shared memory files*/
     MPIDI_CH3I_SMP_unlink();
-    if (enable_shmem_collectives){
+    if (mv2_enable_shmem_collectives){
         MPIDI_CH3I_SHMEM_COLL_Unlink();
     }
 
@@ -1534,10 +1503,45 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
            "**nomem %s", "s_total_bytes");
     }
 
+    s_header_ptr_s = (int *) MPIU_Malloc(sizeof(int) * g_smpi.num_local_nodes);
+
+    if(!s_header_ptr_s) {
+    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+        "**nomem %s", "s_header_ptr");
+    }
+
+    s_header_ptr_r = (int *) MPIU_Malloc(sizeof(int) * g_smpi.num_local_nodes);
+
+    if(!s_header_ptr_r) {
+    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+        "**nomem %s", "s_header_ptr");
+    }
+
+    s_tail_ptr_s = (int *) MPIU_Malloc(sizeof(int) * g_smpi.num_local_nodes);
+
+    if(!s_tail_ptr_s) {
+    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+        "**nomem %s", "s_tail_ptr");
+    }
+
+    avail = (int *) MPIU_Malloc(sizeof(int) * g_smpi.num_local_nodes);
+
+    if(!avail) {
+    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+        "**nomem %s", "avail");
+    }
+
     for (i = 0; i < g_smpi.num_local_nodes; ++i) {
        s_current_ptr[i] = NULL;
        s_current_bytes[i] = 0;
        s_total_bytes[i] = 0;
+
+       if ( i == g_smpi.my_local_id)
+           continue;
+       s_header_ptr_r[i] = SMPI_FIRST_R(i, g_smpi.my_local_id);
+       s_header_ptr_s[i] = SMPI_FIRST_S(g_smpi.my_local_id, i);
+       s_tail_ptr_s[i] = SMPI_LAST_S(g_smpi.my_local_id, i);
+       avail[i] = s_tail_ptr_s[i] - s_header_ptr_s[i];
     }
 
 #ifdef _SMP_LIMIC_
@@ -1560,7 +1564,7 @@ fn_exit:
 
 cleanup_files:
     MPIDI_CH3I_SMP_cleanup();
-    if (enable_shmem_collectives){
+    if (mv2_enable_shmem_collectives){
         MPIDI_CH3I_SHMEM_COLL_Cleanup();
     }
 fn_fail:
@@ -1588,60 +1592,64 @@ int MPIDI_CH3I_SMP_finalize()
     }
 
     if (g_smpi.l2g_rank) {
-    MPIU_Free(g_smpi.l2g_rank);
+        MPIU_Free(g_smpi.l2g_rank);
     } 
 
-    if(g_smpi_shmem) {
-       if(g_smpi_shmem->rqueues_params_c != NULL) { 
-          MPIU_Free(g_smpi_shmem->rqueues_params_c);
-       } 
-       if(g_smpi_shmem->rqueues_params_n != NULL) { 
-          MPIU_Free(g_smpi_shmem->rqueues_params_n);
-       } 
-       if(g_smpi_shmem->rqueues_flow != NULL) { 
-          MPIU_Free(g_smpi_shmem->rqueues_flow);
-       } 
-       if(g_smpi_shmem->rqueues_limits_s != NULL) { 
-          MPIU_Free(g_smpi_shmem->rqueues_limits_s);
-       }
-       if(g_smpi_shmem->rqueues_limits_r != NULL) { 
-          MPIU_Free(g_smpi_shmem->rqueues_limits_r);
-       }
-       if(g_smpi_shmem != NULL) { 
-          MPIU_Free(g_smpi_shmem);
-       }
+    if (g_smpi_shmem) {
+        if (g_smpi_shmem->rqueues_limits_s != NULL) { 
+            MPIU_Free(g_smpi_shmem->rqueues_limits_s);
+        }
+        if (g_smpi_shmem->rqueues_limits_r != NULL) { 
+            MPIU_Free(g_smpi_shmem->rqueues_limits_r);
+        }
+        if (g_smpi_shmem->shared_tails != NULL) {
+            MPIU_Free(g_smpi_shmem->shared_tails);
+        }
+        if(g_smpi_shmem != NULL) { 
+            MPIU_Free(g_smpi_shmem);
+        }
     }
 
-    if(s_current_ptr) {
-    MPIU_Free(s_current_ptr);
+    if (s_current_ptr) {
+        MPIU_Free(s_current_ptr);
     }
 
-    if(s_current_bytes) {
-    MPIU_Free(s_current_bytes);
+    if (s_current_bytes) {
+        MPIU_Free(s_current_bytes);
     }
 
-    if(s_total_bytes) {
-    MPIU_Free(s_total_bytes);
+    if (s_total_bytes) {
+        MPIU_Free(s_total_bytes);
     }
 
-    if(s_sh_buf_pool.send_queue) {
-    MPIU_Free(s_sh_buf_pool.send_queue);
+    if (s_header_ptr_s) {
+        MPIU_Free(s_header_ptr_s);
     }
 
-    if(s_sh_buf_pool.tail) {
-    MPIU_Free(s_sh_buf_pool.tail);
+    if (s_header_ptr_r) {
+        MPIU_Free(s_header_ptr_r);
     }
 
-	if (enable_shmem_collectives){
-    /* Freeing up shared memory collective resources*/
-    MPIDI_CH3I_SHMEM_COLL_finalize( g_smpi.my_local_id, g_smpi.num_local_nodes);
+    if (s_tail_ptr_s) {
+        MPIU_Free(s_tail_ptr_s);
     }
 
-#if defined(HAVE_LIBHWLOC)
-    if(mv2_enable_affinity == 1) { 
-       hwloc_topology_destroy(topology);
-    } 
-#endif
+    if (avail) {
+        MPIU_Free(avail);
+    }    
+
+    if (s_sh_buf_pool.send_queue) {
+        MPIU_Free(s_sh_buf_pool.send_queue);
+    }
+
+    if (s_sh_buf_pool.tail) {
+        MPIU_Free(s_sh_buf_pool.tail);
+    }
+
+    if (mv2_enable_shmem_collectives){
+        /* Freeing up shared memory collective resources*/
+        MPIDI_CH3I_SHMEM_COLL_finalize( g_smpi.my_local_id, g_smpi.num_local_nodes);
+    }
 
 #ifdef _SMP_LIMIC_
     limic_close(limic_fd);
@@ -1658,11 +1666,9 @@ int MPIDI_CH3I_SMP_finalize()
 void MPIDI_CH3I_SMP_writev_rndv_header(MPIDI_VC_t * vc, const MPID_IOV * iov,
     const int n, int *num_bytes_ptr)
 {
-    int pkt_avail;
     int pkt_len = 0;
-    volatile void *ptr_volatile;
-    void *ptr_head, *ptr;
-    int i, offset = 0;
+    volatile void *ptr_head, *ptr, *ptr_flag;
+    int i;
     MPIDI_CH3_Pkt_rndv_r3_data_t *pkt_header;
 #if defined(_SMP_LIMIC_)
     size_t err;
@@ -1673,23 +1679,13 @@ void MPIDI_CH3I_SMP_writev_rndv_header(MPIDI_VC_t * vc, const MPID_IOV * iov,
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_WRITEV_RNDV_HEADER);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_WRITEV_RNDV_HEADER);
 
-    pkt_avail = smpi_get_avail_length(vc->smp.local_nodes);
-
-    if (!pkt_avail) {
-    *num_bytes_ptr = 0;
-    goto fn_exit;
-    }
-
-    ptr_volatile = (void *) ((g_smpi_shmem->pool)
-        + SMPI_NEXT(g_smpi.my_local_id,
-        vc->smp.local_nodes));
-    ptr_head = ptr = (void *) ptr_volatile;
-
-    pkt_avail = (pkt_avail > g_smp_eagersize) ? g_smp_eagersize : pkt_avail;
-    pkt_avail -= sizeof(int);
+    ptr_flag = (volatile void *) ((g_smpi_shmem->pool) +
+            s_header_ptr_s[vc->smp.local_nodes]);
+    int len = iov[0].MPID_IOV_LEN;
 
     /* iov[0] is the header pkt */
     pkt_header = (MPIDI_CH3_Pkt_rndv_r3_data_t *)(iov[0].MPID_IOV_BUF);
+    *num_bytes_ptr = 0;
 
 #if defined(_SMP_LIMIC_)
     /* sreq is the send request handle for the data */
@@ -1703,19 +1699,20 @@ void MPIDI_CH3I_SMP_writev_rndv_header(MPIDI_VC_t * vc, const MPID_IOV * iov,
         /* The last sizeof(int) is the total num of data bytes */
         pkt_len = iov[0].MPID_IOV_LEN + sizeof(limic_user) * sreq->dev.iov_count + sizeof(int);
 
-        if (pkt_avail < pkt_len) {
-            *num_bytes_ptr = 0;
+        /* check if avail is less than data size */
+        if(!smpi_check_avail(vc->smp.local_nodes, pkt_len, (volatile void **)&ptr_flag)) {
             goto fn_exit;
         }
 
         /* number of bytes */
-        ptr = (void *) ((unsigned long) ptr + sizeof(int));
+        ptr_head = (volatile void *) ((unsigned long) ptr_flag + sizeof(int));
+        ptr = (volatile void *) ((unsigned long) ptr_flag + sizeof(int)*2);
 
         /* header format:
-         * normal header | lu | total_num_bytes
+         * flag | pkt_len | normal header | lu | total_num_size
          */
-        MPIU_Memcpy(ptr, iov[0].MPID_IOV_BUF, iov[0].MPID_IOV_LEN);
-        ptr = (void *) ((unsigned long) ptr +
+        MPIU_Memcpy((void *)ptr, iov[0].MPID_IOV_BUF, iov[0].MPID_IOV_LEN);
+        ptr = (volatile void *) ((unsigned long) ptr +
                   iov[0].MPID_IOV_LEN);
 
         for(i = 0; i < sreq->dev.iov_count; ++i) {
@@ -1731,94 +1728,48 @@ void MPIDI_CH3I_SMP_writev_rndv_header(MPIDI_VC_t * vc, const MPID_IOV * iov,
             /* copy the limic_user information to the shared memory
                and move the shared memory pointer properly
              */
-            MPIU_Memcpy(ptr, &lu, sizeof(limic_user));
-            ptr = (void *) ((unsigned long) ptr + sizeof(limic_user));
+            MPIU_Memcpy((void *)ptr, &lu, sizeof(limic_user));
+            ptr = (volatile void *) ((unsigned long) ptr + sizeof(limic_user));
         }
 
-        *((int *) ptr) = total_bytes;
-        ptr = (void *) ((unsigned long) ptr + sizeof(int));
+        *((volatile int *) ptr) = total_bytes;
+        ptr = (volatile void *) ((unsigned long) ptr + sizeof(int));
 
-        /* the first element will be pkt_len (header len) */
-        *((int *) ptr_head) = pkt_len;
         *num_bytes_ptr = iov[0].MPID_IOV_LEN;
 
-        smpi_complete_send(g_smpi.my_local_id, vc->smp.local_nodes,
-            pkt_len + sizeof(int));
+        smpi_complete_send(vc->smp.local_nodes, pkt_len, pkt_len, ptr, ptr_head, ptr_flag);
     } else {
 #endif /* _SMP_LIMIC */
 
-    if (pkt_avail < SMPI_SMALLEST_SIZE) {
-    *num_bytes_ptr = 0;
-    goto fn_exit;
-    }
+    /* check if avail is less than data size */
+    if(!smpi_check_avail(vc->smp.local_nodes, len, (volatile void **)&ptr_flag))
+        return;
 
     send_buf_reclaim();
 
     if (s_sh_buf_pool.free_head == -1) {
-    *num_bytes_ptr = 0;
-    goto fn_exit;
+        goto fn_exit;
     }
 
     pkt_header->src.smp_index = s_sh_buf_pool.free_head;
 
-    ptr = (void *) ((unsigned long) ptr + sizeof(int));
+    ptr_head = (volatile void *) ((unsigned long) ptr_flag + sizeof(int));
+    ptr = (volatile void *) ((unsigned long) ptr_flag + sizeof(int)*2);
 
     i = 0;
-    *num_bytes_ptr = 0;
-    do {
-    pkt_len = 0;
-    for (; i < n;) {
-        DEBUG_PRINT
-        ("i %d, iov[i].len %d, (len-offset) %d, pkt_avail %d\n", i,
-         iov[i].MPID_IOV_LEN, (iov[i].MPID_IOV_LEN - offset),
-         pkt_avail);
-        if (pkt_avail >= (iov[i].MPID_IOV_LEN - offset)) {
-        if (offset != 0) {
-          MPIU_Memcpy(ptr,
-                (void *) ((unsigned long) iov[i].MPID_IOV_BUF +
-                offset),
-                iov[i].MPID_IOV_LEN - offset);
-            pkt_avail -= (iov[i].MPID_IOV_LEN - offset);
-            ptr =
-            (void *) ((unsigned long) ptr +
-                iov[i].MPID_IOV_LEN - offset);
-            pkt_len += (iov[i].MPID_IOV_LEN - offset);
-            offset = 0;
-        } else {
-          MPIU_Memcpy(ptr, iov[i].MPID_IOV_BUF, iov[i].MPID_IOV_LEN);
-            pkt_avail -= iov[i].MPID_IOV_LEN;
-            ptr =
-            (void *) ((unsigned long) ptr +
+    for (i = 0; i < n; i++) {
+        MPIU_Memcpy((void *)ptr,
+                (void *) ((unsigned long) iov[i].MPID_IOV_BUF),
                 iov[i].MPID_IOV_LEN);
-            pkt_len += iov[i].MPID_IOV_LEN;
-        }
-        ++i;
-        } else if (pkt_avail > 0) {
-          MPIU_Memcpy(ptr,
-            (void *) ((unsigned long) iov[i].MPID_IOV_BUF +
-                offset), pkt_avail);
-        ptr = (void *) ((unsigned long) ptr + pkt_avail);
-        pkt_len += pkt_avail;
-        offset += pkt_avail;
-        pkt_avail = 0;
-        break;
-        }
+        ptr =
+            (volatile void *) ((unsigned long) ptr + iov[i].MPID_IOV_LEN);
+        pkt_len += iov[i].MPID_IOV_LEN;
     }
 
-    DEBUG_PRINT("current pkt consumed, pkt_len %d\n", pkt_len);
+    MPIU_Assert(len == pkt_len);
+    smpi_complete_send(vc->smp.local_nodes, len, len, ptr, ptr_head, ptr_flag);
+
     *num_bytes_ptr += pkt_len;
-    *((int *) ptr_head) = pkt_len;
-
-    smpi_complete_send(g_smpi.my_local_id, vc->smp.local_nodes,
-        pkt_len + sizeof(int));
-    if (i == n) {
-        DEBUG_PRINT("counter value, in %d, out %d\n",
-            SMPI_TOTALIN(0, 1), SMPI_TOTALOUT(0, 1));
-        break;
-    }
-
-    DEBUG_PRINT("new pkt avail %d\n", pkt_avail);
-    } while (pkt_avail > 0);
 #if defined(_SMP_LIMIC_)
     }
 #endif /* _SMP_LIMIC_ */
@@ -1841,8 +1792,7 @@ fn_fail:
 void MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, const MPID_IOV * iov,
     const int n, int *num_bytes_ptr)
 {
-    volatile void *ptr_volatile;
-    void *ptr_head;
+    volatile void *ptr_head, *ptr_flag, *ptr;
     int pkt_avail;
     int pkt_len = 0;
     int i, offset = 0;
@@ -1858,15 +1808,19 @@ void MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, const MPID_IOV * iov,
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_WRITEV_RNDV_DATA_CONT);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_WRITEV_RNDV_DATA_CONT);
-
-    pkt_avail = smpi_get_avail_length(vc->smp.local_nodes);
-
-    if (pkt_avail < 2*sizeof(int)) {
     *num_bytes_ptr = 0;
-    goto fn_exit;
-    }
 
-    pkt_avail = SMP_SEND_BUF_SIZE;
+    int len;
+    len = sizeof(int);
+
+    ptr_flag = (volatile void *) ((g_smpi_shmem->pool) +
+            s_header_ptr_s[vc->smp.local_nodes]);
+
+    /* check if avail is less than data size */
+    if(!smpi_check_avail(vc->smp.local_nodes, len, (volatile void **)&ptr_flag))
+        return;
+
+    pkt_avail = s_smp_block_size;
 
     send_buf_reclaim();
 
@@ -1906,7 +1860,7 @@ void MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, const MPID_IOV * iov,
         if (offset != 0) {
 #if defined(_ENABLE_CUDA_) 
             if (iov_isdev) {
-                cuda_error = cudaMemcpy(send_buf->buf,
+                cuda_error = cudaMemcpy(&send_buf->buf,
                             (void *) ((unsigned long) iov[i].MPID_IOV_BUF +
                             offset),
                             iov[i].MPID_IOV_LEN - offset, 
@@ -1917,7 +1871,7 @@ void MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, const MPID_IOV * iov,
             } else  
 #endif
             { 
-                MPIU_Memcpy(send_buf->buf,
+                MPIU_Memcpy(&send_buf->buf,
                     (void *) ((unsigned long) iov[i].MPID_IOV_BUF +
                     offset),
                     iov[i].MPID_IOV_LEN - offset);
@@ -1934,7 +1888,7 @@ void MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, const MPID_IOV * iov,
         } else {
 #if defined(_ENABLE_CUDA_) 
             if (iov_isdev) {
-                cuda_error = cudaMemcpy(send_buf->buf, iov[i].MPID_IOV_BUF,
+                cuda_error = cudaMemcpy(&send_buf->buf, iov[i].MPID_IOV_BUF,
                         iov[i].MPID_IOV_LEN,
                         cudaMemcpyDeviceToHost);
                 if (cuda_error != cudaSuccess) {
@@ -1943,7 +1897,7 @@ void MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, const MPID_IOV * iov,
             } else  
 #endif
             {
-                MPIU_Memcpy(send_buf->buf, iov[i].MPID_IOV_BUF, 
+                MPIU_Memcpy(&send_buf->buf, iov[i].MPID_IOV_BUF, 
                         iov[i].MPID_IOV_LEN);
             }
             send_buf->busy = 1;
@@ -1959,7 +1913,7 @@ void MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, const MPID_IOV * iov,
         } else if (pkt_avail > 0) {
 #if defined(_ENABLE_CUDA_) 
             if (iov_isdev) {
-                cuda_error = cudaMemcpy(send_buf->buf,
+                cuda_error = cudaMemcpy(&send_buf->buf,
                     (void *) ((unsigned long) iov[i].MPID_IOV_BUF + offset),
                     pkt_avail,
                     cudaMemcpyDeviceToHost);
@@ -1969,7 +1923,7 @@ void MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, const MPID_IOV * iov,
             } else  
 #endif
             { 
-                MPIU_Memcpy(send_buf->buf,
+                MPIU_Memcpy(&send_buf->buf,
                     (void *) ((unsigned long) iov[i].MPID_IOV_BUF + offset),
                     pkt_avail);
             }
@@ -2002,17 +1956,13 @@ void MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, const MPID_IOV * iov,
     tmp_buf->has_next = 0;
     }
 
-    ptr_volatile = (void *) ((g_smpi_shmem->pool)
-        + SMPI_NEXT(g_smpi.my_local_id,
-        vc->smp.local_nodes));
-    ptr_head = (void *) ptr_volatile;
-    (*((int *) ptr_head)) = (*num_bytes_ptr);
+    ptr_head = (volatile void *) ((unsigned long) ptr_flag + sizeof(int));
+    ptr = (volatile void *) ((unsigned long) ptr_flag + sizeof(int)*2);
 
-    ptr_head =(void *) ((unsigned long)ptr_head + sizeof(int));
-    (*((int *) ptr_head)) = first_index;
-
-    smpi_complete_send(g_smpi.my_local_id, vc->smp.local_nodes,
-        2*sizeof(int));
+    *((volatile int *) ptr) = first_index;
+    ptr = (volatile void *) ((unsigned long) ptr + sizeof(int));
+    /* update(header) */
+    smpi_complete_send(vc->smp.local_nodes, len, *num_bytes_ptr, ptr, ptr_head, ptr_flag);
 
 fn_exit:
     DEBUG_PRINT("writev_rndv_data_cont returns bytes %d\n", *num_bytes_ptr);
@@ -2026,8 +1976,7 @@ fn_exit:
 int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, const MPID_IOV * iov,
     const int n, int *num_bytes_ptr)
 {
-    volatile void *ptr_volatile;
-    void *ptr_head;
+    volatile void *ptr_head, *ptr_flag, *ptr;
     int pkt_avail;
     int pkt_len = 0;
     int i, offset = 0;
@@ -2044,7 +1993,16 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, const MPID_IOV * iov,
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_WRITE_RNDV_DATA);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_WRITE_RNDV_DATA);
 
-    pkt_avail = SMP_SEND_BUF_SIZE;
+    ptr_flag = (volatile void *) ((g_smpi_shmem->pool) +
+            s_header_ptr_s[vc->smp.local_nodes]);
+    int len = 0;
+    *num_bytes_ptr = 0;
+
+    /* check if avail is less than data size */
+    if(!smpi_check_avail(vc->smp.local_nodes, len, (volatile void **)&ptr_flag))
+        return mpi_errno;
+
+    pkt_avail = s_smp_block_size;
 
     if(s_sh_buf_pool.free_head == -1) {
     MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
@@ -2059,7 +2017,6 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, const MPID_IOV * iov,
 #endif
 
     i = 0;
-    *num_bytes_ptr = 0;
     do {
     pkt_len = 0;
     for (; i < n;) {
@@ -2079,7 +2036,7 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, const MPID_IOV * iov,
         if (offset != 0) {
 #if defined(_ENABLE_CUDA_)
             if (iov_isdev) { 
-                cuda_error = cudaMemcpy(send_buf->buf,
+                cuda_error = cudaMemcpy(&send_buf->buf,
                     (void *) ((unsigned long) iov[i].MPID_IOV_BUF +
                     offset),
                     iov[i].MPID_IOV_LEN - offset,
@@ -2090,7 +2047,7 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, const MPID_IOV * iov,
             } else 
 #endif
             {
-                MPIU_Memcpy(send_buf->buf,
+                MPIU_Memcpy(&send_buf->buf,
                     (void *) ((unsigned long) iov[i].MPID_IOV_BUF +
                     offset),
                     iov[i].MPID_IOV_LEN - offset);
@@ -2107,7 +2064,7 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, const MPID_IOV * iov,
         } else {
 #if defined(_ENABLE_CUDA_)
             if (iov_isdev) {
-                cuda_error = cudaMemcpy(send_buf->buf, iov[i].MPID_IOV_BUF, 
+                cuda_error = cudaMemcpy(&send_buf->buf, iov[i].MPID_IOV_BUF, 
                         iov[i].MPID_IOV_LEN, cudaMemcpyDeviceToHost);
                 if (cuda_error != cudaSuccess) {
                      smp_error_abort(SMP_EXIT_ERR,"cudaMemcpy to host failed\n");
@@ -2115,7 +2072,7 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, const MPID_IOV * iov,
             } else 
 #endif
             {
-                MPIU_Memcpy(send_buf->buf, iov[i].MPID_IOV_BUF, 
+                MPIU_Memcpy(&send_buf->buf, iov[i].MPID_IOV_BUF, 
                         iov[i].MPID_IOV_LEN);
             }
             send_buf->busy = 1;
@@ -2131,7 +2088,7 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, const MPID_IOV * iov,
         } else if (pkt_avail > 0) {
 #if defined(_ENABLE_CUDA_)
             if (iov_isdev) { 
-                cuda_error = cudaMemcpy(send_buf->buf,
+                cuda_error = cudaMemcpy(&send_buf->buf,
                     (void *) ((unsigned long) iov[i].MPID_IOV_BUF +
                     offset),
                     pkt_avail,
@@ -2142,7 +2099,7 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, const MPID_IOV * iov,
             } else 
 #endif
             {    
-                MPIU_Memcpy(send_buf->buf,
+                MPIU_Memcpy(&send_buf->buf,
                     (void *) ((unsigned long) iov[i].MPID_IOV_BUF +
                     offset),
                     pkt_avail);
@@ -2176,14 +2133,11 @@ int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, const MPID_IOV * iov,
     tmp_buf->has_next = 0;
     }
 
-    ptr_volatile = (void *) ((g_smpi_shmem->pool)
-        + SMPI_NEXT(g_smpi.my_local_id,
-        vc->smp.local_nodes));
-    ptr_head = (void *) ptr_volatile;
-    (*((int *) ptr_head)) = (*num_bytes_ptr);
+    ptr_head = (volatile void *) ((unsigned long) ptr_flag + sizeof(int));
+    ptr = (volatile void *) ((unsigned long) ptr_flag + sizeof(int)*2);
 
-    smpi_complete_send(g_smpi.my_local_id, vc->smp.local_nodes,
-        sizeof(int));
+    /* update(header) */
+    smpi_complete_send(vc->smp.local_nodes, len, *num_bytes_ptr, ptr, ptr_head, ptr_flag);
 
 fn_exit:
     DEBUG_PRINT("writev_rndv_data returns bytes %d\n", *num_bytes_ptr);
@@ -2201,11 +2155,10 @@ fn_fail:
 void MPIDI_CH3I_SMP_writev(MPIDI_VC_t * vc, const MPID_IOV * iov,
     const int n, int *num_bytes_ptr)
 {
-    int pkt_avail;
     int pkt_len = 0;
-    volatile void *ptr_volatile;
-    void *ptr_head, *ptr;
-    int i, offset = 0;
+    volatile void *ptr_head, *ptr, *ptr_flag;
+    int i;
+    int len;
 #if defined(_ENABLE_CUDA_)
     int iov_isdev = 0; 
     cudaError_t cuda_error = cudaSuccess;
@@ -2214,137 +2167,51 @@ void MPIDI_CH3I_SMP_writev(MPIDI_VC_t * vc, const MPID_IOV * iov,
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SMP_WRITEV);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SMP_WRITEV);
 
-    pkt_avail = smpi_get_avail_length(vc->smp.local_nodes);
+    Calculate_IOV_len(iov, n, len);
+    ptr_flag = (volatile void *) ((g_smpi_shmem->pool) +
+            s_header_ptr_s[vc->smp.local_nodes]);
 
-    if (!pkt_avail) {
     *num_bytes_ptr = 0;
-    goto fn_exit;
-    }
 
-    ptr_volatile = (void *) ((g_smpi_shmem->pool)
-        + SMPI_NEXT(g_smpi.my_local_id,
-        vc->smp.local_nodes));
-    ptr_head = ptr = (void *) ptr_volatile;
+    /* check if avail is less than data size */
+    if(!smpi_check_avail(vc->smp.local_nodes, len, (volatile void **)&ptr_flag))
+        return;
 
-    pkt_avail = (pkt_avail > g_smp_eagersize) ? g_smp_eagersize : pkt_avail;
-    pkt_avail -= sizeof(int);
+    ptr_head = (volatile void *) ((unsigned long) ptr_flag + sizeof(int));
+    ptr = (volatile void *) ((unsigned long) ptr_flag + sizeof(int)*2);
 
-    if (pkt_avail < iov[0].MPID_IOV_LEN) {
-    *num_bytes_ptr = 0;
-    goto fn_exit;
-    }
-
-    ptr = (void *) ((unsigned long) ptr + sizeof(int));
-
-    i = 0;
-    *num_bytes_ptr = 0;
-    do {
-    pkt_len = 0;
-    for (; i < n;) {
+    for (i = 0; i < n; i++) {
 #if defined(_ENABLE_CUDA_)
         if (rdma_enable_cuda) {
             iov_isdev = is_device_buffer((void *) iov[i].MPID_IOV_BUF);
         }
 #endif
-        DEBUG_PRINT
-        ("i %d, iov[i].len %d, (len-offset) %d, pkt_avail %d\n", i,
-         iov[i].MPID_IOV_LEN, (iov[i].MPID_IOV_LEN - offset),
-         pkt_avail);
-        if (pkt_avail >= (iov[i].MPID_IOV_LEN - offset)) {
-        if (offset != 0) {
 #if defined(_ENABLE_CUDA_)
-            if (iov_isdev) {
-                cuda_error = cudaMemcpy(ptr,
-                        (void *) ((unsigned long) iov[i].MPID_IOV_BUF + offset),
-                        iov[i].MPID_IOV_LEN - offset,
-                        cudaMemcpyDeviceToHost);
-                if (cuda_error != cudaSuccess) {
-                     smp_error_abort(SMP_EXIT_ERR,"cudaMemcpy to host failed\n");
-                } 
-            } else 
+        if (iov_isdev) {
+            cuda_error = cudaMemcpy((void *)ptr,
+                    (void *) ((unsigned long) iov[i].MPID_IOV_BUF),
+                    iov[i].MPID_IOV_LEN,
+                    cudaMemcpyDeviceToHost);
+            if (cuda_error != cudaSuccess) {
+                smp_error_abort(SMP_EXIT_ERR,"cudaMemcpy to host failed\n");
+            } 
+        } else 
 #endif
-            {
-                 MPIU_Memcpy(ptr,
-                        (void *) ((unsigned long) iov[i].MPID_IOV_BUF + offset),
-                         iov[i].MPID_IOV_LEN - offset);
-            }
-            pkt_avail -= (iov[i].MPID_IOV_LEN - offset);
-            ptr =
-            (void *) ((unsigned long) ptr +
-                iov[i].MPID_IOV_LEN - offset);
-            pkt_len += (iov[i].MPID_IOV_LEN - offset);
-            offset = 0;
-        } else {
-#if defined(_ENABLE_CUDA_)
-            if (iov_isdev) {
-                cuda_error = cudaMemcpy(ptr, iov[i].MPID_IOV_BUF, iov[i].MPID_IOV_LEN, 
-                            cudaMemcpyDeviceToHost);
-                if (cuda_error != cudaSuccess) {
-                     smp_error_abort(SMP_EXIT_ERR,"cudaMemcpy to host failed\n");
-                } 
-            } else 
-#endif
-            {
-                MPIU_Memcpy(ptr, iov[i].MPID_IOV_BUF, iov[i].MPID_IOV_LEN);
-            }
-            pkt_avail -= iov[i].MPID_IOV_LEN;
-            ptr =
-            (void *) ((unsigned long) ptr +
-                iov[i].MPID_IOV_LEN);
-            pkt_len += iov[i].MPID_IOV_LEN;
+        {
+            MPIU_Memcpy((void *)ptr,
+                    (void *) ((unsigned long) iov[i].MPID_IOV_BUF),
+                    iov[i].MPID_IOV_LEN);
         }
-        ++i;
-        } else if (pkt_avail > 0) {
-#if defined(_ENABLE_CUDA_)
-            if (iov_isdev) {
-                cuda_error = cudaMemcpy(ptr, 
-                           (void *) ((unsigned long) iov[i].MPID_IOV_BUF +
-                           offset), pkt_avail,
-                           cudaMemcpyDeviceToHost);
-                if (cuda_error != cudaSuccess) {
-                     smp_error_abort(SMP_EXIT_ERR,"cudaMemcpy to host failed\n");
-                } 
-            } else 
-#endif
-            {
-                MPIU_Memcpy(ptr,
-                    (void *) ((unsigned long) iov[i].MPID_IOV_BUF +
-                    offset), pkt_avail);
-            }
-            ptr = (void *) ((unsigned long) ptr + pkt_avail);
-            pkt_len += pkt_avail;
-            offset += pkt_avail;
-            pkt_avail = 0;
-            break;
-        }
+        ptr =
+            (volatile void *) ((unsigned long) ptr + iov[i].MPID_IOV_LEN);
+        pkt_len += iov[i].MPID_IOV_LEN;
     }
 
-    DEBUG_PRINT("current pkt consumed, pkt_len %d\n", pkt_len);
+    /* update(header) */
+    smpi_complete_send(vc->smp.local_nodes, len, len, ptr, ptr_head, ptr_flag);
+
     *num_bytes_ptr += pkt_len;
-    *((int *) ptr_head) = pkt_len;
 
-    smpi_complete_send(g_smpi.my_local_id, vc->smp.local_nodes,
-        (pkt_len + sizeof(int)));
-
-    if (i == n) {
-        DEBUG_PRINT("counter value, in %d, out %d\n",
-            SMPI_TOTALIN(0, 1), SMPI_TOTALOUT(0, 1));
-        break;
-    }
-
-    pkt_avail = smpi_get_avail_length(vc->smp.local_nodes);
-    if (pkt_avail != 0) {
-        pkt_avail =
-        (pkt_avail > g_smp_eagersize) ? g_smp_eagersize : pkt_avail;
-        pkt_avail -= sizeof(int);
-        ptr_head = (void *) ((g_smpi_shmem->pool)
-            + SMPI_NEXT(g_smpi.my_local_id,
-            vc->smp.local_nodes));
-        ptr = (void *) ((unsigned long) ptr_head + sizeof(int));
-    }
-    DEBUG_PRINT("new pkt avail %d\n", pkt_avail);
-    } while (pkt_avail > 0);
-fn_exit:
     DEBUG_PRINT("writev returns bytes %d\n", *num_bytes_ptr);
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SMP_WRITEV);
 }
@@ -2361,10 +2228,8 @@ void MPIDI_CH3I_SMP_write_contig(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t reqtype,
 #if defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
 #endif
-    int pkt_avail;
-    int pkt_len = 0;
-    volatile void *ptr_volatile;
-    void *ptr_head, *ptr;
+    volatile void *ptr_head, *ptr, *ptr_flag;
+    int len;
 #if defined(_ENABLE_CUDA_)
     int buf_isdev = 0;
     cudaError_t cuda_error = cudaSuccess;
@@ -2372,23 +2237,21 @@ void MPIDI_CH3I_SMP_write_contig(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t reqtype,
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SMP_WRITE_CONTIG);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SMP_WRITE_CONTIG);
+    *num_bytes_ptr = 0;
 
-    pkt_avail = smpi_get_avail_length(vc->smp.local_nodes);
+    len = data_sz + sizeof(MPIDI_CH3_Pkt_eager_send_t);
+    ptr_flag = (volatile void *) ((g_smpi_shmem->pool) +
+            s_header_ptr_s[vc->smp.local_nodes]);
 
-    pkt_len = sizeof(MPIDI_CH3_Pkt_eager_send_t) + data_sz;
-    if (pkt_avail < pkt_len + sizeof(int) ) {
-        *num_bytes_ptr = 0;
+    /* check if avail is less than data size */
+    if(!smpi_check_avail(vc->smp.local_nodes, len, (volatile void **)&ptr_flag))
         return;
-    }
+
+    ptr_head = (volatile void *) ((unsigned long) ptr_flag + sizeof(int));
+    ptr = (volatile void *) ((unsigned long) ptr_flag + sizeof(int)*2);
 
     MPIDI_CH3_Pkt_t *upkt;
     MPIDI_CH3_Pkt_eager_send_t * eager_pkt;
-    ptr_volatile = (void *) ((g_smpi_shmem->pool)
-        + SMPI_NEXT(g_smpi.my_local_id,
-        vc->smp.local_nodes));
-    ptr_head = ptr = (void *) ptr_volatile;
-    
-    ptr = (void *) ((unsigned long) ptr + sizeof(int));
     *num_bytes_ptr = 0;
 
     upkt = (MPIDI_CH3_Pkt_t *) ptr;
@@ -2403,13 +2266,14 @@ void MPIDI_CH3I_SMP_write_contig(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t reqtype,
     MPIDI_VC_FAI_send_seqnum(vc, seqnum);
     MPIDI_Pkt_set_seqnum(eager_pkt, seqnum);
 
+    ptr = (void *)((unsigned long) ptr + sizeof(MPIDI_CH3_Pkt_eager_send_t));
+
 #if defined(_ENABLE_CUDA_)
     if (rdma_enable_cuda) {
         buf_isdev = is_device_buffer((void *) buf);
     }
     if (buf_isdev) { 
-        cuda_error = cudaMemcpy((void *) ((unsigned long) ptr +
-                     sizeof(MPIDI_CH3_Pkt_eager_send_t)), buf, data_sz,
+        cuda_error = cudaMemcpy((void *) ptr, buf, data_sz,
                      cudaMemcpyDeviceToHost);
         if (cuda_error != cudaSuccess) {
             smp_error_abort(SMP_EXIT_ERR,"cudaMemcpy to host failed\n");
@@ -2417,15 +2281,15 @@ void MPIDI_CH3I_SMP_write_contig(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t reqtype,
     } else 
 #endif
     {
-        memcpy((void *) ((unsigned long) ptr +
-                     sizeof(MPIDI_CH3_Pkt_eager_send_t)), buf, data_sz);
+        memcpy((void *)ptr, buf, data_sz);
     }
 
-    *num_bytes_ptr += pkt_len;
-    *((int *) ptr_head) = pkt_len;
+    ptr = (volatile void *)((unsigned long) ptr + data_sz);
 
-    smpi_complete_send(g_smpi.my_local_id, vc->smp.local_nodes,
-        (pkt_len + sizeof(int)));
+    /* FIXME: memcpy or MPIU_Memcpy?*/
+    *num_bytes_ptr += len;
+    /* update(header) */
+    smpi_complete_send(vc->smp.local_nodes, len, len, ptr, ptr_head, ptr_flag);
     
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SMP_WRITE_CONTIG);
 }
@@ -2453,7 +2317,6 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
     void *current_buf;
     SEND_BUF_T *recv_buf;
 #if defined(_SMP_LIMIC_)
-    int i;
     size_t err, old_len;
     int total_bytes = l_header->total_bytes;
 #endif
@@ -2474,7 +2337,7 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
         msglen = total_bytes;
         iov_len = iov[0].MPID_IOV_LEN;
 
-        for (i = 0; total_bytes > 0 && iov_off < iovlen; ) {
+        for (; total_bytes > 0 && iov_off < iovlen; ) {
             if (msglen == iov_len) {
                 err = limic_rx_comp(limic_fd,
                       (void *) ((unsigned long)iov[iov_off].MPID_IOV_BUF + buf_off),
@@ -2538,19 +2401,26 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
             "!= 0");
     }
 
-    if (SMPI_TOTALIN(recv_vc_ptr->smp.local_nodes, g_smpi.my_local_id) ==
-        SMPI_TOTALOUT(recv_vc_ptr->smp.local_nodes, g_smpi.my_local_id)) {
-        goto fn_exit;
+    void *ptr;
+    ptr = (void*)(g_smpi_shmem->pool +
+            s_header_ptr_r[recv_vc_ptr->smp.local_nodes]);
+    volatile int *ptr_flag;
+    ptr_flag = (volatile int *) ptr;
+
+    if(*ptr_flag == SMP_CBUF_FREE) goto fn_exit;
+    if(*ptr_flag == SMP_CBUF_END) {
+        s_header_ptr_r[recv_vc_ptr->smp.local_nodes] =
+            SMPI_FIRST_R(recv_vc_ptr->smp.local_nodes, g_smpi.my_local_id);
+        ptr = (void*)(g_smpi_shmem->pool +
+                s_header_ptr_r[recv_vc_ptr->smp.local_nodes]);
+        ptr_flag = (volatile int *) ptr;
+        if(*ptr_flag == SMP_CBUF_FREE) goto fn_exit;
     }
 
     READBAR();
-    s_current_ptr[recv_vc_ptr->smp.local_nodes] =
-        (void *) ((g_smpi_shmem->pool) +
-            SMPI_CURRENT(recv_vc_ptr->smp.local_nodes,
-            g_smpi.my_local_id));
-    WRITEBAR();
-    s_total_bytes[recv_vc_ptr->smp.local_nodes] =
-        *((int *) s_current_ptr[recv_vc_ptr->smp.local_nodes]);
+    s_current_ptr[recv_vc_ptr->smp.local_nodes] = ptr;
+    s_total_bytes[recv_vc_ptr->smp.local_nodes] = *(int*)((unsigned long)ptr +
+            sizeof(int));
     s_current_bytes[recv_vc_ptr->smp.local_nodes] =
         s_total_bytes[recv_vc_ptr->smp.local_nodes];
 
@@ -2563,10 +2433,10 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
 
     s_current_ptr[recv_vc_ptr->smp.local_nodes] =
         (void *)((unsigned long) s_current_ptr[recv_vc_ptr->smp.local_nodes] +
-            sizeof(int));
+            sizeof(int)*2);
     current_index = *((int *) s_current_ptr[recv_vc_ptr->smp.local_nodes]);
     smpi_complete_recv(recv_vc_ptr->smp.local_nodes,
-        g_smpi.my_local_id, 2*sizeof(int));
+        g_smpi.my_local_id, sizeof(int));
     } else {
     s_total_bytes[recv_vc_ptr->smp.local_nodes] =
         s_current_bytes[recv_vc_ptr->smp.local_nodes];
@@ -2580,7 +2450,7 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
         iov_off, s_current_bytes[recv_vc_ptr->smp.local_nodes],
         iov[iov_off].MPID_IOV_LEN);
 
-    recv_buf = &s_buffer_head[destination][current_index];
+    recv_buf = SMPI_BUF_POOL_PTR(destination, current_index);
 
     if(recv_buf->busy != 1) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
@@ -2588,7 +2458,7 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
     }
 
     msglen = recv_buf->len - recv_offset;
-    current_buf = (void *)((unsigned long)recv_buf->buf + recv_offset);
+    current_buf = (void *)((unsigned long) &recv_buf->buf + recv_offset);
     iov_len = iov[0].MPID_IOV_LEN;
 
 #if defined(_ENABLE_CUDA_)
@@ -2636,7 +2506,7 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
         if (iov_off >= iovlen) {
             recv_vc_ptr->smp.read_index = current_index;
             recv_vc_ptr->smp.read_off = (unsigned long) current_buf -
-            (unsigned long) recv_buf->buf;
+            (unsigned long) &recv_buf->buf;
             break;
         }
 
@@ -2700,10 +2570,10 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
 
         current_index = recv_buf->next;
         recv_buf->busy = 0;
-        recv_buf = &s_buffer_head[destination][current_index];
+        recv_buf = SMPI_BUF_POOL_PTR(destination, current_index);
         MPIU_Assert(recv_buf->busy == 1);
         msglen = recv_buf->len;
-        current_buf = (void *)recv_buf->buf;
+        current_buf = (void *) &recv_buf->buf;
 
         } else if (msglen > 0) {
         READBAR();
@@ -2742,10 +2612,10 @@ int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * io
 
         current_index = recv_buf->next;
         recv_buf->busy = 0;
-        recv_buf = &s_buffer_head[destination][current_index];
+        recv_buf = SMPI_BUF_POOL_PTR(destination, current_index);
         MPIU_Assert(recv_buf->busy == 1);
         msglen = recv_buf->len;
-        current_buf = (void *)recv_buf->buf;
+        current_buf = (void *) &recv_buf->buf;
         }
     }
     *num_bytes_ptr += received_bytes;
@@ -2808,7 +2678,6 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
     size_t msglen, iov_len;
     /* all variable must be declared before the state declarations */
 #if defined(_SMP_LIMIC_)
-    int i;
     size_t  err, old_len;
     size_t total_bytes = l_header->total_bytes;
 #endif
@@ -2837,8 +2706,7 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
 
     smpi_complete_recv(recv_vc_ptr->smp.local_nodes,
         g_smpi.my_local_id,
-        s_total_bytes[recv_vc_ptr->smp.local_nodes] +
-        sizeof(int));
+        s_total_bytes[recv_vc_ptr->smp.local_nodes]);
 
     DEBUG_PRINT("total in %d, total out %d\n",
         SMPI_TOTALIN(recv_vc_ptr->smp.local_nodes,
@@ -2854,7 +2722,7 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
         msglen = total_bytes;
         iov_len = iov[0].MPID_IOV_LEN;
 
-        for (i = 0; total_bytes > 0 && iov_off < iovlen; ) {
+        for (; total_bytes > 0 && iov_off < iovlen; ) {
             if (msglen == iov_len) {
                 err = limic_rx_comp(limic_fd,
                       (void *) ((unsigned long)iov[iov_off].MPID_IOV_BUF + buf_off),
@@ -2908,21 +2776,31 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
         l_header->total_bytes -= received_bytes;
     } else {
 #endif /* _SMP_LIMIC_ */
-    while (SMPI_TOTALIN(recv_vc_ptr->smp.local_nodes, g_smpi.my_local_id) ==
-        SMPI_TOTALOUT(recv_vc_ptr->smp.local_nodes, g_smpi.my_local_id));
+
+    volatile void *ptr;
+    volatile int *ptr_flag;
+    ptr = (void*)((unsigned long)g_smpi_shmem->pool + 
+            s_header_ptr_r[recv_vc_ptr->smp.local_nodes]);
+    ptr_flag = (volatile int *) ptr;
+    while(*ptr_flag == SMP_CBUF_FREE);
+
+    if(*ptr_flag == SMP_CBUF_END) {
+    s_header_ptr_r[recv_vc_ptr->smp.local_nodes] =
+            SMPI_FIRST_R(recv_vc_ptr->smp.local_nodes, g_smpi.my_local_id);
+    ptr = (volatile void*)((unsigned long)g_smpi_shmem->pool +
+            s_header_ptr_r[recv_vc_ptr->smp.local_nodes]);
+    ptr_flag = (volatile int *)ptr;
+    while(*ptr_flag == SMP_CBUF_FREE);
+    }
 
     READBAR();
-    s_current_ptr[recv_vc_ptr->smp.local_nodes] =
-    (void *) ((g_smpi_shmem->pool) +
-        SMPI_CURRENT(recv_vc_ptr->smp.local_nodes,
-            g_smpi.my_local_id));
-    WRITEBAR();
-    s_total_bytes[recv_vc_ptr->smp.local_nodes] =
-    *((int *) s_current_ptr[recv_vc_ptr->smp.local_nodes]);
+    s_current_ptr[recv_vc_ptr->smp.local_nodes] = (void *)ptr;
+    s_total_bytes[recv_vc_ptr->smp.local_nodes] = *(int*)((unsigned long)ptr +
+            sizeof(int));
     s_current_bytes[recv_vc_ptr->smp.local_nodes] =
     s_total_bytes[recv_vc_ptr->smp.local_nodes];
     smpi_complete_recv(recv_vc_ptr->smp.local_nodes,
-        g_smpi.my_local_id,sizeof(int));
+        g_smpi.my_local_id,0);
     DEBUG_PRINT
     ("current byte %d, total bytes %d, iovlen %d, iov[0].len %d\n",
      s_current_bytes[recv_vc_ptr->smp.local_nodes],
@@ -2937,7 +2815,7 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
         iov_off, s_current_bytes[recv_vc_ptr->smp.local_nodes],
         iov[iov_off].MPID_IOV_LEN);
 
-    recv_buf = &s_buffer_head[destination][current_index];
+    recv_buf = SMPI_BUF_POOL_PTR(destination, current_index);
 
     if(recv_buf->busy != 1) {
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
@@ -2945,7 +2823,7 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
     }
 
     msglen = recv_buf->len;
-    current_buf = (void *)recv_buf->buf;
+    current_buf = (void *) &recv_buf->buf;
     iov_len = iov[0].MPID_IOV_LEN;
 
 #if defined(_ENABLE_CUDA_)
@@ -2994,7 +2872,7 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
         if (iov_off >= iovlen) {
             recv_vc_ptr->smp.read_index = current_index;
             recv_vc_ptr->smp.read_off = (unsigned long) current_buf -
-            (unsigned long) recv_buf->buf;
+            (unsigned long) &recv_buf->buf;
             break;
         }
         if (s_current_bytes[recv_vc_ptr->smp.local_nodes] <= 0) {
@@ -3058,7 +2936,7 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
 
         current_index = recv_buf->next;
         recv_buf->busy = 0;
-        recv_buf = &s_buffer_head[destination][current_index];
+        recv_buf = SMPI_BUF_POOL_PTR(destination, current_index);
 
         if(recv_buf->busy != 1) {
             MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
@@ -3066,7 +2944,7 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
         }
 
         msglen = recv_buf->len;
-        current_buf = (void *)recv_buf->buf;
+        current_buf = (void *) &recv_buf->buf;
 
         } else if (msglen > 0) {
         READBAR();
@@ -3105,7 +2983,7 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
 
         current_index = recv_buf->next;
         recv_buf->busy = 0;
-        recv_buf = &s_buffer_head[destination][current_index];
+        recv_buf = SMPI_BUF_POOL_PTR(destination, current_index);
 
         if(recv_buf->busy != 1) {
             MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
@@ -3113,7 +2991,7 @@ int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
         }
 
         msglen = recv_buf->len;
-        current_buf = (void *)recv_buf->buf;
+        current_buf = (void *) &recv_buf->buf;
         }
     }
     *num_bytes_ptr += received_bytes;
@@ -3167,7 +3045,7 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
 {
     int mpi_errno = MPI_SUCCESS;
 
-    int iov_off = 0, buf_off = 0;
+    int iov_off = 0, buf_off=0;
     int received_bytes = 0;
 #if defined(_ENABLE_CUDA_)
     int iov_isdev = 0;
@@ -3180,223 +3058,200 @@ int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
 
     *num_bytes_ptr = 0;
 
-    DEBUG_PRINT
-    ("current byte %d, total bytes %d, iovlen %d, iov[0].len %d\n",
-     s_current_bytes[recv_vc_ptr->smp.local_nodes],
-     s_total_bytes[recv_vc_ptr->smp.local_nodes], iovlen,
-     iov[0].MPID_IOV_LEN);
-    WRITEBAR();
     if (s_current_ptr[recv_vc_ptr->smp.local_nodes] != NULL) {
-    /** last smp packet has not been drained up yet **/
-    DEBUG_PRINT("iov_off %d, current bytes %d, iov len %d\n",
-        iov_off, s_current_bytes[recv_vc_ptr->smp.local_nodes],
-        iov[iov_off].MPID_IOV_LEN);
-    for (;
-        iov_off < iovlen
-        && s_current_bytes[recv_vc_ptr->smp.local_nodes] > 0;) {
+        for (;
+                iov_off < iovlen
+                && s_current_bytes[recv_vc_ptr->smp.local_nodes] > 0;) {
 #if defined(_ENABLE_CUDA_)
-        if (rdma_enable_cuda) {
-            iov_isdev = is_device_buffer((void *) iov[iov_off].MPID_IOV_BUF);
-        }
+            if (rdma_enable_cuda) {
+                iov_isdev = is_device_buffer((void *) iov[iov_off].MPID_IOV_BUF);
+            }
 #endif
-        if (s_current_bytes[recv_vc_ptr->smp.local_nodes] >=
-            iov[iov_off].MPID_IOV_LEN) {
-        READBAR();
+            if (s_current_bytes[recv_vc_ptr->smp.local_nodes] >=
+                    iov[iov_off].MPID_IOV_LEN) {
+
+                READBAR();
 #if defined(_ENABLE_CUDA_)
-        if (iov_isdev) {
-            cuda_error = cudaMemcpy((void *) iov[iov_off].MPID_IOV_BUF,
-                (void *) s_current_ptr[recv_vc_ptr->smp.local_nodes],
-                iov[iov_off].MPID_IOV_LEN,
-                cudaMemcpyHostToDevice);
-            if (cuda_error != cudaSuccess) {
-                 smp_error_abort(SMP_EXIT_ERR,"cudaMemcpy to device failed\n");
-            } 
-        } else 
+                if (iov_isdev) {
+                    cuda_error = cudaMemcpy((void *) iov[iov_off].MPID_IOV_BUF,
+                            (void *) s_current_ptr[recv_vc_ptr->smp.local_nodes],
+                            iov[iov_off].MPID_IOV_LEN,
+                            cudaMemcpyHostToDevice);
+                    if (cuda_error != cudaSuccess) {
+                        smp_error_abort(SMP_EXIT_ERR,"cudaMemcpy to device failed\n");
+                    } 
+                } else 
 #endif
-        {
-            MPIU_Memcpy((void *) iov[iov_off].MPID_IOV_BUF,
-                (void *) s_current_ptr[recv_vc_ptr->smp.local_nodes],
-                iov[iov_off].MPID_IOV_LEN);
-        }
-        READBAR();
-        s_current_ptr[recv_vc_ptr->smp.local_nodes] =
-            (void *) ((unsigned long)
-                s_current_ptr[recv_vc_ptr->smp.local_nodes] +
-                iov[iov_off].MPID_IOV_LEN);
-        s_current_bytes[recv_vc_ptr->smp.local_nodes] -=
-            iov[iov_off].MPID_IOV_LEN;
-        received_bytes += iov[iov_off].MPID_IOV_LEN;
-        ++iov_off;
-        } else if (s_current_bytes[recv_vc_ptr->smp.local_nodes] > 0) {
-        READBAR();
+                {
+                    MPIU_Memcpy((void *) iov[iov_off].MPID_IOV_BUF,
+                            s_current_ptr[recv_vc_ptr->smp.local_nodes],
+                            iov[iov_off].MPID_IOV_LEN);
+                }
+                READBAR();
+                s_current_ptr[recv_vc_ptr->smp.local_nodes] =
+                    (void *) ((unsigned long)
+                            s_current_ptr[recv_vc_ptr->smp.local_nodes] +
+                            iov[iov_off].MPID_IOV_LEN);
+                s_current_bytes[recv_vc_ptr->smp.local_nodes] -=
+                    iov[iov_off].MPID_IOV_LEN;
+                received_bytes += iov[iov_off].MPID_IOV_LEN;
+                ++iov_off;
+            } else if (s_current_bytes[recv_vc_ptr->smp.local_nodes] > 0) {
+                READBAR();
 #if defined(_ENABLE_CUDA_)
-        if (iov_isdev) {
-            cuda_error = cudaMemcpy((void *) iov[iov_off].MPID_IOV_BUF,
-                (void *) s_current_ptr[recv_vc_ptr->smp.local_nodes],
-                s_current_bytes[recv_vc_ptr->smp.local_nodes],
-                cudaMemcpyHostToDevice);
-            if (cuda_error != cudaSuccess) {
-                 smp_error_abort(SMP_EXIT_ERR,"cudaMemcpy to device failed\n");
-            } 
-        } else 
+                if (iov_isdev) {
+                    cuda_error = cudaMemcpy((void *) iov[iov_off].MPID_IOV_BUF,
+                            (void *) s_current_ptr[recv_vc_ptr->smp.local_nodes],
+                            s_current_bytes[recv_vc_ptr->smp.local_nodes],
+                            cudaMemcpyHostToDevice);
+                    if (cuda_error != cudaSuccess) {
+                        smp_error_abort(SMP_EXIT_ERR,"cudaMemcpy to device failed\n");
+                    } 
+                } else 
 #endif
-        {
-            MPIU_Memcpy((void *) iov[iov_off].MPID_IOV_BUF,
-                (void *) s_current_ptr[recv_vc_ptr->smp.local_nodes],
-                s_current_bytes[recv_vc_ptr->smp.local_nodes]);
+                {
+                    MPIU_Memcpy((void *) iov[iov_off].MPID_IOV_BUF,
+                            (void *) s_current_ptr[recv_vc_ptr->smp.local_nodes],
+                            s_current_bytes[recv_vc_ptr->smp.local_nodes]);
+                }
+                READBAR();
+                s_current_ptr[recv_vc_ptr->smp.local_nodes] =
+                    (void *) ((unsigned long)
+                            s_current_ptr[recv_vc_ptr->smp.local_nodes] +
+                            s_current_bytes[recv_vc_ptr->smp.local_nodes]);
+                received_bytes +=
+                    s_current_bytes[recv_vc_ptr->smp.local_nodes];
+                buf_off = s_current_bytes[recv_vc_ptr->smp.local_nodes];
+                s_current_bytes[recv_vc_ptr->smp.local_nodes] = 0;
+            }
         }
-        READBAR();
-        s_current_ptr[recv_vc_ptr->smp.local_nodes] =
-            (void *) ((unsigned long)
-                s_current_ptr[recv_vc_ptr->smp.local_nodes] +
-                s_current_bytes[recv_vc_ptr->smp.local_nodes]);
-        received_bytes +=
-            s_current_bytes[recv_vc_ptr->smp.local_nodes];
-        buf_off = s_current_bytes[recv_vc_ptr->smp.local_nodes];
-        s_current_bytes[recv_vc_ptr->smp.local_nodes] = 0;
+        *num_bytes_ptr += received_bytes;
+        if (0 == s_current_bytes[recv_vc_ptr->smp.local_nodes]) {
+            s_current_ptr[recv_vc_ptr->smp.local_nodes] = NULL;
+
+            smpi_complete_recv(recv_vc_ptr->smp.local_nodes,
+                    g_smpi.my_local_id,
+                    s_total_bytes[recv_vc_ptr->smp.local_nodes]);
+
+            s_total_bytes[recv_vc_ptr->smp.local_nodes] = 0;
         }
+
+        received_bytes = 0;
+        if (iov_off == iovlen) {
+            /* assert: s_current_ptr[recv_vc_ptr->smp.local_nodes] == 0 */
+            goto fn_exit;
+        }
+
     }
-    *num_bytes_ptr += received_bytes;
-    DEBUG_PRINT
-        ("current bytes %d, num_bytes %d, iov_off %d, iovlen %d\n",
-         s_current_bytes[recv_vc_ptr->smp.local_nodes], *num_bytes_ptr,
-         iov_off, iovlen);
-
-    if (0 == s_current_bytes[recv_vc_ptr->smp.local_nodes]) {
-        READBAR();
-        s_current_ptr[recv_vc_ptr->smp.local_nodes] = NULL;
-        DEBUG_PRINT("total in %d, total out %d\n",
-            SMPI_TOTALIN(recv_vc_ptr->smp.local_nodes,
-            g_smpi.my_local_id),
-            SMPI_TOTALOUT(recv_vc_ptr->smp.local_nodes,
-            g_smpi.my_local_id));
-
-        smpi_complete_recv(recv_vc_ptr->smp.local_nodes,
-            g_smpi.my_local_id,
-            s_total_bytes[recv_vc_ptr->smp.local_nodes] +
-            sizeof(int));
-
-        DEBUG_PRINT("total in %d, total out %d\n",
-            SMPI_TOTALIN(recv_vc_ptr->smp.local_nodes,
-            g_smpi.my_local_id),
-            SMPI_TOTALOUT(recv_vc_ptr->smp.local_nodes,
-            g_smpi.my_local_id));
-
-        s_total_bytes[recv_vc_ptr->smp.local_nodes] = 0;
-    }
-    received_bytes = 0;
-    if (iov_off == iovlen) {
-        /* assert: s_current_ptr[recv_vc_ptr->smp.local_nodes] == 0 */
-        goto fn_exit;
-    }
-    }
-
     WRITEBAR();
-    while (SMPI_TOTALIN(recv_vc_ptr->smp.local_nodes, g_smpi.my_local_id) !=
-        SMPI_TOTALOUT(recv_vc_ptr->smp.local_nodes, g_smpi.my_local_id)) {
-    /****** received the next smp packet **************/
-    READBAR();
-    s_current_ptr[recv_vc_ptr->smp.local_nodes] =
-        (void *) ((g_smpi_shmem->pool) +
-            SMPI_CURRENT(recv_vc_ptr->smp.local_nodes,
-            g_smpi.my_local_id));
-    WRITEBAR();
-    s_total_bytes[recv_vc_ptr->smp.local_nodes] =
-        *((int *) s_current_ptr[recv_vc_ptr->smp.local_nodes]);
-    s_current_bytes[recv_vc_ptr->smp.local_nodes] =
-        s_total_bytes[recv_vc_ptr->smp.local_nodes];
-    READBAR();
-    s_current_ptr[recv_vc_ptr->smp.local_nodes] =
-        (void *) ((unsigned long)
-            s_current_ptr[recv_vc_ptr->smp.local_nodes] +
-            sizeof(int));
 
-    /****** starting to fill the iov buffers *********/
-    for (;
-        iov_off < iovlen
-        && s_current_bytes[recv_vc_ptr->smp.local_nodes] > 0;) {
-#if defined(_ENABLE_CUDA_)
-        if (rdma_enable_cuda) {
-            iov_isdev = is_device_buffer((void *) iov[iov_off].MPID_IOV_BUF);
+    void *ptr;
+    volatile int *ptr_flag;
+    ptr = (void*)(g_smpi_shmem->pool + s_header_ptr_r[recv_vc_ptr->smp.local_nodes]);
+    ptr_flag = (volatile int*)ptr;
+
+    while(*ptr_flag != SMP_CBUF_FREE) {
+        if(*ptr_flag == SMP_CBUF_END) {
+            s_header_ptr_r[recv_vc_ptr->smp.local_nodes] =
+                SMPI_FIRST_R(recv_vc_ptr->smp.local_nodes, g_smpi.my_local_id);
+
+            ptr = (void*)(g_smpi_shmem->pool +
+                    s_header_ptr_r[recv_vc_ptr->smp.local_nodes]);
+            ptr_flag = (volatile int*)ptr;
+
+            if(*ptr_flag == SMP_CBUF_FREE)
+                goto fn_exit;
         }
-#endif
-        if (s_current_bytes[recv_vc_ptr->smp.local_nodes] >=
-            iov[iov_off].MPID_IOV_LEN - buf_off) {
+
+        s_total_bytes[recv_vc_ptr->smp.local_nodes] = *(int*)((unsigned long)ptr +
+                sizeof(int));
+        ptr = (void *)((unsigned long)ptr + sizeof(int)*2);
         WRITEBAR();
-#if defined(_ENABLE_CUDA_)
-        if (iov_isdev) {
-            cuda_error = cudaMemcpy((void *) ((unsigned long) iov[iov_off].
-                MPID_IOV_BUF + buf_off),
-                (void *) s_current_ptr[recv_vc_ptr->smp.local_nodes],
-                iov[iov_off].MPID_IOV_LEN - buf_off,
-                cudaMemcpyHostToDevice);
-            if (cuda_error != cudaSuccess) {
-                 smp_error_abort(SMP_EXIT_ERR,"cudaMemcpy to device failed\n");
-            } 
-        } else 
-#endif
-        {
-            MPIU_Memcpy((void *) ((unsigned long) iov[iov_off].
-                MPID_IOV_BUF + buf_off),
-                (void *) s_current_ptr[recv_vc_ptr->smp.local_nodes],
-                iov[iov_off].MPID_IOV_LEN - buf_off);
-        }
-        s_current_bytes[recv_vc_ptr->smp.local_nodes] -=
-            (iov[iov_off].MPID_IOV_LEN - buf_off);
+        s_current_bytes[recv_vc_ptr->smp.local_nodes] =
+            s_total_bytes[recv_vc_ptr->smp.local_nodes];
         READBAR();
-        s_current_ptr[recv_vc_ptr->smp.local_nodes] =
-            (void *) ((unsigned long)
-                s_current_ptr[recv_vc_ptr->smp.local_nodes] +
-                (iov[iov_off].MPID_IOV_LEN - buf_off));
-        received_bytes += (iov[iov_off].MPID_IOV_LEN - buf_off);
-        ++iov_off;
-        buf_off = 0;
-        } else if (s_current_bytes[recv_vc_ptr->smp.local_nodes] > 0) {
+        s_current_ptr[recv_vc_ptr->smp.local_nodes] = ptr;
+
+        /****** starting to fill the iov buffers *********/
+        for (;
+                iov_off < iovlen
+                && s_current_bytes[recv_vc_ptr->smp.local_nodes] > 0;) {
+#if defined(_ENABLE_CUDA_)
+            if (rdma_enable_cuda) {
+                iov_isdev = is_device_buffer((void *) iov[iov_off].MPID_IOV_BUF);
+            }
+#endif
+            if (s_current_bytes[recv_vc_ptr->smp.local_nodes] >=
+                    iov[iov_off].MPID_IOV_LEN - buf_off) {
+
+                WRITEBAR();
+#if defined(_ENABLE_CUDA_)
+                if (iov_isdev) {
+                    cuda_error = cudaMemcpy((void *) ((unsigned long) iov[iov_off].
+                                MPID_IOV_BUF + buf_off),
+                            ptr, iov[iov_off].MPID_IOV_LEN - buf_off,
+                            cudaMemcpyHostToDevice);
+                    if (cuda_error != cudaSuccess) {
+                        smp_error_abort(SMP_EXIT_ERR,"cudaMemcpy to device failed\n");
+                    } 
+                } else 
+#endif
+                {
+                    MPIU_Memcpy((void *) ((unsigned long) iov[iov_off].
+                                MPID_IOV_BUF + buf_off),
+                            ptr, iov[iov_off].MPID_IOV_LEN - buf_off);
+                }
+                READBAR();
+                s_current_bytes[recv_vc_ptr->smp.local_nodes] -=
+                    (iov[iov_off].MPID_IOV_LEN - buf_off);
+                received_bytes += ( iov[iov_off].MPID_IOV_LEN - buf_off);
+                ptr = (void*)((unsigned long)ptr + 
+                        (iov[iov_off].MPID_IOV_LEN - buf_off));
+                ++iov_off;
+                buf_off = 0;
+            } else if (s_current_bytes[recv_vc_ptr->smp.local_nodes] > 0) {
+                WRITEBAR();
+#if defined(_ENABLE_CUDA_)
+                if (iov_isdev) {
+                    cuda_error = cudaMemcpy((void *) ((unsigned long) iov[iov_off].
+                                MPID_IOV_BUF + buf_off),
+                            ptr, s_current_bytes[recv_vc_ptr->smp.local_nodes],
+                            cudaMemcpyHostToDevice);
+                    if (cuda_error != cudaSuccess) {
+                        smp_error_abort(SMP_EXIT_ERR,"cudaMemcpy to device failed\n");
+                    } 
+                } else  
+#endif
+                {
+                    MPIU_Memcpy((void *) ((unsigned long) iov[iov_off].
+                                MPID_IOV_BUF + buf_off),
+                            ptr, s_current_bytes[recv_vc_ptr->smp.local_nodes]);
+                }
+                READBAR();
+                ptr = (void*)((unsigned long)ptr + s_current_bytes[recv_vc_ptr->smp.local_nodes]);
+                received_bytes +=
+                    s_current_bytes[recv_vc_ptr->smp.local_nodes];
+                buf_off += s_current_bytes[recv_vc_ptr->smp.local_nodes];
+                s_current_bytes[recv_vc_ptr->smp.local_nodes] = 0;
+            }
+        }
+        *num_bytes_ptr += received_bytes;
+        s_current_ptr[recv_vc_ptr->smp.local_nodes] = ptr;
+
+        /* update header */
+        if (0 == s_current_bytes[recv_vc_ptr->smp.local_nodes]) {
+            READBAR();
+            s_current_ptr[recv_vc_ptr->smp.local_nodes] = NULL;
+            smpi_complete_recv(recv_vc_ptr->smp.local_nodes,
+                    g_smpi.my_local_id,
+                    s_total_bytes[recv_vc_ptr->smp.local_nodes]);
+            s_total_bytes[recv_vc_ptr->smp.local_nodes] = 0;
+        }
+        received_bytes = 0;
+        if (iov_off == iovlen) {
+            goto fn_exit;
+        }
         WRITEBAR();
-#if defined(_ENABLE_CUDA_)
-        if (iov_isdev) {
-            cuda_error = cudaMemcpy((void *) ((unsigned long) iov[iov_off].
-                MPID_IOV_BUF + buf_off),
-                (void *) s_current_ptr[recv_vc_ptr->smp.local_nodes],
-                s_current_bytes[recv_vc_ptr->smp.local_nodes],
-                cudaMemcpyHostToDevice);
-            if (cuda_error != cudaSuccess) {
-                 smp_error_abort(SMP_EXIT_ERR,"cudaMemcpy to device failed\n");
-            } 
-        } else  
-#endif
-        {
-            MPIU_Memcpy((void *) ((unsigned long) iov[iov_off].
-                MPID_IOV_BUF + buf_off),
-                (void *) s_current_ptr[recv_vc_ptr->smp.local_nodes],
-                s_current_bytes[recv_vc_ptr->smp.local_nodes]);
-        }
-        READBAR();
-        s_current_ptr[recv_vc_ptr->smp.local_nodes] =
-            (void *) ((unsigned long)
-                s_current_ptr[recv_vc_ptr->smp.local_nodes] +
-                s_current_bytes[recv_vc_ptr->smp.local_nodes]);
-        received_bytes +=
-            s_current_bytes[recv_vc_ptr->smp.local_nodes];
-        buf_off += s_current_bytes[recv_vc_ptr->smp.local_nodes];
-        s_current_bytes[recv_vc_ptr->smp.local_nodes] = 0;
-        }
-    }
-    *num_bytes_ptr += received_bytes;
-    if (0 == s_current_bytes[recv_vc_ptr->smp.local_nodes]) {
-        READBAR();
-        s_current_ptr[recv_vc_ptr->smp.local_nodes] = NULL;
-        smpi_complete_recv(recv_vc_ptr->smp.local_nodes,
-            g_smpi.my_local_id,
-            s_total_bytes[recv_vc_ptr->smp.local_nodes] +
-            sizeof(int));
-        s_total_bytes[recv_vc_ptr->smp.local_nodes] = 0;
-    }
-    received_bytes = 0;
-    if (iov_off == iovlen) {
-        goto fn_exit;
-    }
-    WRITEBAR();
     }
 fn_exit:
     DEBUG_PRINT("return with nb %d\n", *num_bytes_ptr);
@@ -3412,70 +3267,44 @@ int MPIDI_CH3I_SMP_pull_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t** pkt_head)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SMP_PULL_HEADER);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SMP_PULL_HEADER);
-    if (s_current_bytes[vc->smp.local_nodes] != 0)
-    {
-        MPIU_Error_printf(
-            "current bytes %d, total bytes %d, remote id %d\n",
-            s_current_bytes[vc->smp.local_nodes],
-            s_total_bytes[vc->smp.local_nodes],
-            vc->smp.local_nodes
-        );
-        MPIU_Assert(s_current_bytes[vc->smp.local_nodes] == 0);
-    }
 
-    if (s_total_bytes[vc->smp.local_nodes] != 0)
-    {
-        READBAR();
+    if(s_total_bytes[vc->smp.local_nodes] != 0) {
         s_current_ptr[vc->smp.local_nodes] = NULL;
-        smpi_complete_recv(
-            vc->smp.local_nodes,
-            g_smpi.my_local_id,
-            s_total_bytes[vc->smp.local_nodes] + sizeof(int)
-        );
+        smpi_complete_recv(vc->smp.local_nodes,
+                    g_smpi.my_local_id,
+                    s_total_bytes[vc->smp.local_nodes]);
         s_total_bytes[vc->smp.local_nodes] = 0;
-        s_current_bytes[vc->smp.local_nodes] = 0;
     }
 
-    WRITEBAR();
+    void *ptr;
+    volatile int *ptr_flag;
+    ptr = (void*)(g_smpi_shmem->pool + s_header_ptr_r[vc->smp.local_nodes]);
+    ptr_flag = (volatile int*)ptr;
 
-    if (SMPI_TOTALIN(vc->smp.local_nodes, g_smpi.my_local_id) !=
-        SMPI_TOTALOUT(vc->smp.local_nodes, g_smpi.my_local_id))
-    {
-        DEBUG_PRINT(
-            "remote %d, local %d, total in %d, total out %d\n",
-            vc->smp.local_nodes,
-            g_smpi.my_local_id,
-            SMPI_TOTALIN(vc->smp.local_nodes, g_smpi.my_local_id),
-            SMPI_TOTALOUT(vc->smp.local_nodes, g_smpi.my_local_id)
-        );
-
-        READBAR();
-        s_current_ptr[vc->smp.local_nodes] = (void*)(g_smpi_shmem->pool +
-            SMPI_CURRENT(vc->smp.local_nodes, g_smpi.my_local_id));
-        WRITEBAR();
-        s_total_bytes[vc->smp.local_nodes] = *((int*) s_current_ptr[vc->smp.local_nodes]);
-        WRITEBAR();
-        *pkt_head = (void*) ((unsigned long) s_current_ptr[vc->smp.local_nodes] + sizeof(int));
-        DEBUG_PRINT(
-            "bytes arrived %d, head type %d, headersize %d\n",
-            s_total_bytes[vc->smp.local_nodes],
-            ((MPIDI_CH3_Pkt_t*) *pkt_head)->type,
-            MPIDI_CH3U_PKT_SIZE(*pkt_head)
-        );
-        s_current_bytes[vc->smp.local_nodes] = s_total_bytes[vc->smp.local_nodes] - MPIDI_CH3U_PKT_SIZE(*pkt_head);
-        READBAR();
-        s_current_ptr[vc->smp.local_nodes] = (void*)(
-            (unsigned long) s_current_ptr[vc->smp.local_nodes]
-            + sizeof(int)
-            + MPIDI_CH3U_PKT_SIZE(*pkt_head)
-        );
-        DEBUG_PRINT("current bytes %d\n", s_current_bytes[vc->smp.local_nodes]);
-    }
-    else
-    {
+    if(*ptr_flag == SMP_CBUF_FREE) {
         *pkt_head = NULL;
+    } else {
+        if(*ptr_flag == SMP_CBUF_END) {
+            *pkt_head = NULL;
+            s_header_ptr_r[vc->smp.local_nodes] =
+                SMPI_FIRST_R(vc->smp.local_nodes, g_smpi.my_local_id);
+            ptr = (void*)(g_smpi_shmem->pool +
+                    s_header_ptr_r[vc->smp.local_nodes]);
+            ptr_flag = (volatile int*)ptr;
+
+            if(*ptr_flag == SMP_CBUF_FREE)
+                goto fn_exit;
+        }
+        s_total_bytes[vc->smp.local_nodes] = *(int*)((unsigned long)ptr + sizeof(int));
+        *pkt_head = (void *)((unsigned long)ptr + sizeof(int)*2);
+        WRITEBAR();
+        s_current_bytes[vc->smp.local_nodes] =
+            s_total_bytes[vc->smp.local_nodes] - MPIDI_CH3U_PKT_SIZE(*pkt_head);
+        s_current_ptr[vc->smp.local_nodes] = (void*)((unsigned long) *pkt_head
+                + MPIDI_CH3U_PKT_SIZE(*pkt_head));
     }
 
+fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SMP_PULL_HEADER);
     return MPI_SUCCESS;
 }
@@ -3506,15 +3335,6 @@ static int smpi_exchange_info(MPIDI_PG_t *pg)
     /* Get my VC */
     MPIDI_PG_Get_vc(pg, pg_rank, &vc);
     g_smpi.my_local_id = vc->smp.local_nodes;
-
-#if defined(HAVE_LIBHWLOC)
-    if (mv2_enable_affinity) {
-        mpi_errno = smpi_setaffinity();
-        if (mpi_errno != MPI_SUCCESS) {
-            MPIU_ERR_POP(mpi_errno);
-        }
-    }
-#endif /* defined(HAVE_LIBHWLOC) */
 
     DEBUG_PRINT("num local nodes %d, my local id %d\n",
         g_smpi.num_local_nodes, g_smpi.my_local_id);
@@ -3559,7 +3379,7 @@ get_buf_from_pool ()
     if (s_sh_buf_pool.free_head == -1) 
     return NULL;
 
-    ptr = &s_my_buffer_head[s_sh_buf_pool.free_head];
+    ptr = SMPI_MY_BUF_POOL_PTR(s_sh_buf_pool.free_head); 
     s_sh_buf_pool.free_head = ptr->next;
     ptr->next = -1;
 
@@ -3579,7 +3399,7 @@ static inline void send_buf_reclaim ()
         last_index = -1;
         ptr = NULL;
         while (index != -1) {
-        ptr = &s_my_buffer_head[index];
+        ptr = SMPI_MY_BUF_POOL_PTR(index);
         if(ptr->busy == 1)
             break;
         last_index = index;
@@ -3602,7 +3422,7 @@ put_buf_to_pool (int head, int tail)
     MPIU_Assert (head != -1);
     MPIU_Assert (tail != -1);
 
-    ptr = &s_my_buffer_head[tail];
+    ptr = SMPI_MY_BUF_POOL_PTR(tail);
 
     ptr->next = s_sh_buf_pool.free_head;
     s_sh_buf_pool.free_head = head;
@@ -3613,7 +3433,7 @@ static inline void link_buf_to_send_queue (int dest, int index)
     if (s_sh_buf_pool.send_queue[dest] == -1) {
         s_sh_buf_pool.send_queue[dest] = index;
     } else {
-        s_my_buffer_head[(s_sh_buf_pool.tail[dest])].next = index;
+        SMPI_MY_BUF_POOL_PTR(s_sh_buf_pool.tail[dest])->next = index;
     }
     s_sh_buf_pool.tail[dest] = index;
 }
@@ -3655,9 +3475,7 @@ void MPIDI_CH3I_SMP_send_limic_comp(struct limic_header *l_header,
 {
     MPIDI_CH3_Pkt_limic_comp_t pkt;
     int pkt_sz = sizeof(MPIDI_CH3_Pkt_limic_comp_t);
-    int pkt_avail;
-    volatile void *ptr_volatile;
-    void *ptr_head, *ptr;
+    volatile void *ptr_head, *ptr, *ptr_flag;
     MPID_Request *sreq = NULL;
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SMP_SEND_LIMIC_COMP);
@@ -3674,27 +3492,24 @@ void MPIDI_CH3I_SMP_send_limic_comp(struct limic_header *l_header,
         return;
     }
 
-    pkt_avail = smpi_get_avail_length(vc->smp.local_nodes);
-    if (pkt_avail < pkt_sz+sizeof(int)) {
+    ptr_flag = (volatile void *) ((g_smpi_shmem->pool) +
+        s_header_ptr_s[vc->smp.local_nodes]);
+
+        /* check if avail is less than data size */
+    if(!smpi_check_avail(vc->smp.local_nodes, pkt_sz, (volatile void **)&ptr_flag))
+    {
         /* queue the message */
         sreq = create_request(&pkt, pkt_sz, 0);
         MPIDI_CH3I_SMP_SendQ_enqueue(vc, sreq);
         return;
     }
 
-    ptr_volatile = (void *) ((g_smpi_shmem->pool)
-            + SMPI_NEXT(g_smpi.my_local_id,
-                vc->smp.local_nodes));
-    ptr_head = ptr = (void *) ptr_volatile;
+    ptr_head = (volatile void *) ((unsigned long) ptr_flag + sizeof(int));
+    ptr = (volatile void *) ((unsigned long) ptr_flag + sizeof(int)*2);
+    MPIU_Memcpy((void *)ptr, &pkt, pkt_sz);
 
-    ptr = (void *) ((unsigned long) ptr + sizeof(int));
-    MPIU_Memcpy(ptr, &pkt, pkt_sz);
-
-    ptr = (void *) ((unsigned long) ptr + pkt_sz);
-    *((int *) ptr_head) = pkt_sz;
-
-    smpi_complete_send(g_smpi.my_local_id, vc->smp.local_nodes,
-        pkt_sz + sizeof(int));
+    ptr = (volatile void *) ((unsigned long) ptr + pkt_sz);
+    smpi_complete_send(vc->smp.local_nodes, pkt_sz, pkt_sz, ptr, ptr_head, ptr_flag);
 
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SMP_SEND_LIMIC_COMP);
     return;

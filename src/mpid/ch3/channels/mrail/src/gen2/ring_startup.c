@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -41,7 +41,7 @@ struct addr_packet {
     int         host_id;
     int         lid;
     int         rail;
-    uint32_t    hca_type;
+    mv2_arch_hca_type    arch_hca_type;
     union  ibv_gid gid;
     struct host_addr_inf val[0];
 };
@@ -97,7 +97,7 @@ static uint16_t get_local_lid(struct ibv_context * ctx, int port)
         return -1;
     }
 
-    MPIDI_CH3I_RDMA_Process.lmc = attr.lmc;
+    mv2_MPIDI_CH3I_RDMA_Process.lmc = attr.lmc;
 
     return attr.lid;
 }
@@ -239,7 +239,7 @@ static int _find_active_port(struct ibv_context *context)
 }
 
 static int _setup_ib_boot_ring(struct init_addr_inf * neighbor_addr,
-                              struct MPIDI_CH3I_RDMA_Process_t *proc,
+                              struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                               int port)
 {
     struct ibv_qp_attr      qp_attr;
@@ -371,7 +371,7 @@ int rdma_ring_exchange_host_id(MPIDI_PG_t * pg, int pg_rank, int pg_size)
     int my_hostid =  gethostid();
     hostid_all[pg_rank] = my_hostid;
     mpi_errno = rdma_ring_based_allgather(&my_hostid, sizeof my_hostid,
-                                      pg_rank, hostid_all, pg_size, &MPIDI_CH3I_RDMA_Process);
+                                      pg_rank, hostid_all, pg_size, &mv2_MPIDI_CH3I_RDMA_Process);
     if (mpi_errno) {
         MPIU_ERR_POP(mpi_errno);
     }
@@ -390,7 +390,7 @@ fn_fail:
 #define FUNCNAME rdma_setup_startup_ring
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int rdma_setup_startup_ring(struct MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
+int rdma_setup_startup_ring(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                         int pg_size)
 {
     struct init_addr_inf neighbor_addr[2];
@@ -522,7 +522,7 @@ out:
 #define FUNCNAME rdma_cleanup_startup_ring
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int rdma_cleanup_startup_ring(struct MPIDI_CH3I_RDMA_Process_t *proc)
+int rdma_cleanup_startup_ring(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 {
     int mpi_errno = MPI_SUCCESS;
 
@@ -556,7 +556,7 @@ fn_fail:
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int rdma_ring_based_allgather(void *sbuf, int data_size,
         int pg_rank, void *rbuf, int pg_size,
-        struct MPIDI_CH3I_RDMA_Process_t *proc)
+        struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 {
     int i; 
     struct ibv_mr *addr_hndl = NULL;
@@ -732,7 +732,7 @@ fn_fail:
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
-        struct MPIDI_CH3I_RDMA_Process_t *proc, MPIDI_PG_t *pg, int pg_rank,
+        struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, MPIDI_PG_t *pg, int pg_rank,
         struct process_init_info *info)
 {
     int i, ne, index_to_send, rail_index, pg_size;
@@ -820,7 +820,7 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
             MPIDI_PG_Get_vc(pg, i, &vc); 
 			if (!qp_required(vc, pg_rank, i)) {
                 send_packet->val[i].sr_qp_num = -1;
-                info->hca_type[i] = MPIDI_CH3I_RDMA_Process.hca_type;
+                info->arch_hca_type[i] = mv2_MPIDI_CH3I_RDMA_Process.arch_hca_type;
             } else {
 
                 send_packet->lid     = vc->mrail.rails[rail_index].lid;
@@ -828,7 +828,7 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
                 send_packet->val[i].sr_qp_num =
                     vc->mrail.rails[rail_index].qp_hndl->qp_num;
                 send_packet->val[i].vc_addr  = (uintptr_t)vc;
-                send_packet->hca_type = MPIDI_CH3I_RDMA_Process.hca_type;
+                send_packet->arch_hca_type = mv2_MPIDI_CH3I_RDMA_Process.arch_hca_type;
             }
         }
 
@@ -901,8 +901,8 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
                             recv_packet->gid;
                         info->hostid[recv_packet->rank][rail_index] =
                             recv_packet->host_id;
-                        info->hca_type[recv_packet->rank] =
-                            recv_packet->hca_type;
+                        info->arch_hca_type[recv_packet->rank] =
+                            recv_packet->arch_hca_type;
                         info->vc_addr[recv_packet->rank] =
                                 recv_packet->val[pg_rank].vc_addr;
 
@@ -974,7 +974,7 @@ fn_fail:
 #define FUNCNAME rdma_ring_boot_exchange
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int rdma_ring_boot_exchange(struct MPIDI_CH3I_RDMA_Process_t *proc,
+int rdma_ring_boot_exchange(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                       MPIDI_PG_t *pg, int pg_rank, struct process_init_info *info)
 {
     struct ibv_mr * addr_hndl;

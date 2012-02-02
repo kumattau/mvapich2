@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -22,7 +22,7 @@
 #include "udapl_priv.h"
 
 #define SET_CREDIT(header, vc, rail) \
-if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path)                 \
+if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path)                 \
 {                                                               \
     vc->mrail.rfp.ptail_RDMA_send += header->rdma_credit; \
     if (vc->mrail.rfp.ptail_RDMA_send >= num_rdma_buffer)       \
@@ -105,7 +105,7 @@ MPIDI_CH3I_MRAIL_Parse_header (MPIDI_VC_t * vc,
           {
               DEBUG_PRINT ("[recv: parse header] pkt eager send\n");
 #ifndef MV2_DISABLE_HEADER_CACHING 
-              if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path 
+              if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path 
                   && v->padding != NORMAL_VBUF_FLAG)
                 {
                     /* Only cache header if the packet is from RdMA path 
@@ -280,7 +280,7 @@ MPIDI_CH3I_MRAIL_Parse_header (MPIDI_VC_t * vc,
       }
     /* if any credits remain, schedule rendezvous progress */
     if ((vc->mrail.srp.remote_credit[v->subchannel.rail_index] > 0
-         || (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path
+         || (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path
          && vc->mrail.rfp.ptail_RDMA_send != vc->mrail.rfp.phead_RDMA_send)
         ) && (vc->mrail.sreq_head != NULL))
       {
@@ -352,7 +352,7 @@ MRAILI_Prepost_R3 ()
 void
 MPIDI_CH3I_MRAIL_Release_vbuf (vbuf * v)
 {
-    if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+    if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
         if (v->padding == NORMAL_VBUF_FLAG || v->padding == RPUT_VBUF_FLAG)
             MRAILI_Release_vbuf (v);
         else

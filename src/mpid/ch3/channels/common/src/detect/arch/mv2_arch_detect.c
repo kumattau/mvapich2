@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -14,6 +14,10 @@
 #include <string.h>
 #include <infiniband/verbs.h>
 
+#ifndef NEMESIS_BUILD
+#include <mpidi_ch3i_rdma_conf.h>
+#endif
+
 #ifdef HAVE_LIBHWLOC
 #include <hwloc.h>
 #include <dirent.h>
@@ -24,15 +28,16 @@
 static mv2_arch_type g_mv2_arch_type = MV2_ARCH_UNKWN;
 static int g_mv2_num_cpus = -1;
 
-
 #define CONFIG_FILE         "/proc/cpuinfo"
 #define MAX_LINE_LENGTH     512
-#define MAX_NAME_LENGTH     64
+#define MAX_NAME_LENGTH     512
 
 #define CLOVERTOWN_MODEL    15
 #define HARPERTOWN_MODEL    23
 #define NEHALEM_MODEL       26
 #define INTEL_E5630_MODEL   44
+#define INTEL_X5650_MODEL   44
+#define INTEL_E5_2670_MODEL 45
 
 #define MV2_STR_VENDOR_ID    "vendor_id"
 #define MV2_STR_AUTH_AMD     "AuthenticAMD"
@@ -42,7 +47,7 @@ static int g_mv2_num_cpus = -1;
 
 #ifndef HAVE_LIBHWLOC
 
-#define MAX_NUM_CPUS 32
+#define MAX_NUM_CPUS 256
 int INTEL_XEON_DUAL_MAPPING[]      = {0,1,0,1};
 int INTEL_CLOVERTOWN_MAPPING[]     = {0,0,1,1,0,0,1,1};                  /*        ((0,1),(4,5))((2,3),(6,7))             */
 int INTEL_HARPERTOWN_LEG_MAPPING[] = {0,1,0,1,0,1,0,1};                  /* legacy ((0,2),(4,6))((1,3),(5,7))             */
@@ -50,8 +55,11 @@ int INTEL_HARPERTOWN_COM_MAPPING[] = {0,0,0,0,1,1,1,1};                  /* comm
 int INTEL_NEHALEM_LEG_MAPPING[]    = {0,1,0,1,0,1,0,1,0,1,0,1,0,1,0,1};  /* legacy (0,2,4,6)(1,3,5,7) with hyperthreading */
 int INTEL_NEHALEM_COM_MAPPING[]    = {0,0,0,0,1,1,1,1,0,0,0,0,1,1,1,1};  /* common (0,1,2,3)(4,5,6,7) with hyperthreading */
 int AMD_OPTERON_DUAL_MAPPING[]     = {0,0,1,1};
+int INTEL_E2_2670_MAPPING[]	   = {0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1};
 int AMD_BARCELONA_MAPPING[]        = {0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3};
 int AMD_MAGNY_CRS_MAPPING[]        = {1,1,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2};
+int AMD_OPTERON_32_MAPPING[]       = {1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,4,4,4,4,4,4,4,4};
+int AMD_OPTERON_64_MAPPING[]	   = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3};
 
 #endif /* #ifndef HAVE_LIBHWLOC */
 
@@ -61,6 +69,54 @@ typedef enum{
     CPU_FAMILY_INTEL,
     CPU_FAMILY_AMD,
 } mv2_cpu_type;
+
+typedef struct _mv2_arch_types_log_t{
+    uint64_t arch_type;
+    char *arch_name;
+}mv2_arch_types_log_t;
+
+#define MV2_ARCH_LAST_ENTRY -1
+static mv2_arch_types_log_t mv2_arch_types_log[] = 
+{
+    /* Intel Architectures */
+    {MV2_ARCH_INTEL_GENERIC,        "MV2_ARCH_INTEL_GENERIC"},
+    {MV2_ARCH_INTEL_CLOVERTOWN_8,   "MV2_ARCH_INTEL_CLOVERTOWN_8"},
+    {MV2_ARCH_INTEL_NEHALEM_8,      "MV2_ARCH_INTEL_NEHALEM_8"},
+    {MV2_ARCH_INTEL_NEHALEM_16,     "MV2_ARCH_INTEL_NEHALEM_16"},
+    {MV2_ARCH_INTEL_HARPERTOWN_8,   "MV2_ARCH_INTEL_HARPERTOWN_8"},
+    {MV2_ARCH_INTEL_XEON_DUAL_4,    "MV2_ARCH_INTEL_XEON_DUAL_4"},
+    {MV2_ARCH_INTEL_XEON_E5630_8,   "MV2_ARCH_INTEL_XEON_E5630_8"},
+    {MV2_ARCH_INTEL_XEON_X5650_12,  "MV2_ARCH_INTEL_XEON_X5650_12"},
+    {MV2_ARCH_INTEL_XEON_E5_2670_16,"MV2_ARCH_INTEL_XEON_E5_2670_16"},
+
+    /* AMD Architectures */
+    {MV2_ARCH_AMD_GENERIC,          "MV2_ARCH_AMD_GENERIC"},
+    {MV2_ARCH_AMD_BARCELONA_16,     "MV2_ARCH_AMD_BARCELONA_16"},
+    {MV2_ARCH_AMD_MAGNY_COURS_24,   "MV2_ARCH_AMD_MAGNY_COURS_24"},
+    {MV2_ARCH_AMD_OPTERON_DUAL_4,   "MV2_ARCH_AMD_OPTERON_DUAL_4"},
+    {MV2_ARCH_AMD_OPTERON_6136_32,  "MV2_ARCH_AMD_OPTERON_6136_32"},
+    {MV2_ARCH_AMD_OPTERON_6276_64,  "MV2_ARCH_AMD_OPTERON_6276_64"},
+
+    /* IBM Architectures */
+    {MV2_ARCH_IBM_PPC,              "MV2_ARCH_IBM_PPC"},
+
+    /* Unknown */
+    {MV2_ARCH_UNKWN,                "MV2_ARCH_UNKWN"},
+    {MV2_ARCH_LAST_ENTRY,           "MV2_ARCH_LAST_ENTRY"},
+};
+
+char*  mv2_get_arch_name(mv2_arch_type arch_type)
+{
+    int i=0;
+    while(mv2_arch_types_log[i].arch_type != MV2_ARCH_LAST_ENTRY){
+
+        if(mv2_arch_types_log[i].arch_type == arch_type){
+            return(mv2_arch_types_log[i].arch_name);
+        }
+        i++;
+    }
+    return("MV2_ARCH_UNKWN");
+}
 
 
 /* Identify architecture type */
@@ -100,7 +156,7 @@ mv2_arch_type mv2_get_arch_type()
             fprintf(stderr, "Warning: %s: Failed to determine number of processors.\n", __func__ );
             return arch_type;
         }
-        if(! (num_cpus = hwloc_get_nbobjs_by_depth(topology, depth))) {
+        if(! (num_cpus = hwloc_get_nbobjs_by_type(topology, HWLOC_OBJ_CORE))){
             fprintf(stderr, "Warning: %s: Failed to determine number of processors.\n", __func__);
             return arch_type;
         }
@@ -119,7 +175,7 @@ mv2_arch_type mv2_get_arch_type()
         hwloc_topology_destroy( topology );
 
         /* Parse /proc/cpuinfo for additional useful things */
-        if(fp = fopen(CONFIG_FILE, "r")) { 
+        if((fp = fopen(CONFIG_FILE, "r"))) { 
 
             while(! feof(fp)) {
                 memset(line, 0, MAX_LINE_LENGTH);
@@ -157,7 +213,7 @@ mv2_arch_type mv2_get_arch_type()
             fclose(fp);
 
             if( CPU_FAMILY_INTEL == cpu_type ) {
-                arch_type = MV2_ARCH_INTEL;
+                arch_type = MV2_ARCH_INTEL_GENERIC;
 
                 if(2 == num_sockets ) {
 
@@ -179,16 +235,24 @@ mv2_arch_type mv2_get_arch_type()
                             arch_type = MV2_ARCH_INTEL_XEON_E5630_8;
                         } 
 
+                    } else if(12 == num_cpus) {
+                        if(INTEL_X5650_MODEL == cpu_model) {  
+                            /* Westmere EP model, Lonestar */
+                            arch_type = MV2_ARCH_INTEL_XEON_X5650_12;
+                        }
                     } else if(16 == num_cpus) {
 
                         if(NEHALEM_MODEL == cpu_model) {  /* nehalem with smt on */
                             arch_type = MV2_ARCH_INTEL_NEHALEM_16;
+                        
+			}else if(INTEL_E5_2670_MODEL == cpu_model) {
+                            arch_type = MV2_ARCH_INTEL_XEON_E5_2670_16;
                         }
                     }
                 }
 
             } else if(CPU_FAMILY_AMD == cpu_type) {
-                arch_type = MV2_ARCH_AMD;
+                arch_type = MV2_ARCH_AMD_GENERIC;
 
                 if(2 == num_sockets) {
 
@@ -202,6 +266,12 @@ mv2_arch_type mv2_get_arch_type()
 
                     if(16 == num_cpus) {
                         arch_type =  MV2_ARCH_AMD_BARCELONA_16;
+
+                    } else if(32 == num_cpus) {
+                        arch_type =  MV2_ARCH_AMD_OPTERON_6136_32;
+                    
+		    } else if(64 == num_cpus) {
+                        arch_type =  MV2_ARCH_AMD_OPTERON_6276_64;
                     }
                 }
             }
@@ -242,8 +312,7 @@ mv2_arch_type mv2_get_arch_type()
             fprintf( stderr, "Cannot open cpuinfo file\n");
             return arch_type;
         }
-
-        memset(core_mapping, 0, sizeof(core_mapping));
+        memset(core_mapping, 0, sizeof(int) * MAX_NUM_CPUS);
 
         while(!feof(fp)){
             memset(line,0,MAX_LINE_LENGTH);
@@ -258,10 +327,10 @@ mv2_arch_type mv2_get_arch_type()
                     sscanf(line,"%s%s%s",bogus1, bogus2, input);
                     if (strcmp(input, MV2_STR_AUTH_AMD ) == 0) {
                         cpu_type = CPU_FAMILY_AMD;
-                        arch_type = MV2_ARCH_AMD;
+                        arch_type = MV2_ARCH_AMD_GENERIC;
                     } else {
                         cpu_type = CPU_FAMILY_INTEL;
-                        arch_type = MV2_ARCH_INTEL;
+                        arch_type = MV2_ARCH_INTEL_GENERIC;
                     }
                     vendor_set = 1;
                 }
@@ -308,13 +377,25 @@ mv2_arch_type mv2_get_arch_type()
                     arch_type = MV2_ARCH_INTEL_XEON_E5630_8;
                 }
             }
+        } else if ( 12 == num_cpus ) {
+            if( CPU_FAMILY_INTEL == cpu_type ) {
+                if(INTEL_X5650_MODEL == model) { 
+                     /* Westmere EP model, Lonestar */
+                     arch_type = MV2_ARCH_INTEL_XEON_X5650_12;
+                }
+            } 
         } else if ( 16 == num_cpus ) {
+
             if( CPU_FAMILY_INTEL == cpu_type ) {
                 if( NEHALEM_MODEL == model ) {
                     arch_type = MV2_ARCH_INTEL_NEHALEM_16;
+
+                } else if((0 == memcmp(INTEL_E2_2670_MAPPING, core_mapping,
+                            sizeof(int)*num_cpus)) && INTEL_E5_2670_MODEL == model) {
+                    arch_type = MV2_ARCH_INTEL_XEON_E5_2670_16;
                 }
-            }
-            else if( CPU_FAMILY_AMD == cpu_type ) {
+            
+	    } else if( CPU_FAMILY_AMD == cpu_type ) {
                 if(0 == memcmp(AMD_BARCELONA_MAPPING,core_mapping,
                             sizeof(int)*num_cpus) ) {
                     arch_type = MV2_ARCH_AMD_BARCELONA_16;
@@ -325,6 +406,20 @@ mv2_arch_type mv2_get_arch_type()
                 if (0 == memcmp(AMD_MAGNY_CRS_MAPPING,core_mapping,
                             sizeof(int)*num_cpus) ) {
                     arch_type = MV2_ARCH_AMD_MAGNY_COURS_24;
+                }
+            }
+        } else if  ( 32 == num_cpus ){
+            if ( CPU_FAMILY_AMD == cpu_type ){
+                if (0 == memcmp(AMD_OPTERON_32_MAPPING, core_mapping,
+                            sizeof(int)*num_cpus) ) {
+                    arch_type = MV2_ARCH_AMD_OPTERON_6136_32;
+                }
+            }
+        } else if  ( 64 == num_cpus ){
+            if ( CPU_FAMILY_AMD == cpu_type ){
+                if (0 == memcmp(AMD_OPTERON_64_MAPPING, core_mapping,
+                            sizeof(int)*num_cpus) ) {
+                    arch_type = MV2_ARCH_AMD_OPTERON_6276_64;
                 }
             }
         }

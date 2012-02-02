@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -153,9 +153,9 @@ void deallocate_vbufs(int hca_num)
     vbuf_region *r = vbuf_region_head;
 
 #if !defined(CKPT)
-    if (MPIDI_CH3I_RDMA_Process.has_srq
+    if (mv2_MPIDI_CH3I_RDMA_Process.has_srq
 #if defined(RDMA_CM)
-        || MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
+        || mv2_MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
 #endif /* defined(RDMA_CM) */
         || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
 #endif /* !defined(CKPT) */
@@ -190,14 +190,14 @@ void deallocate_vbufs(int hca_num)
                 r = r->next;
             } 
         }
-        deallocate_cuda_streams();
+        cuda_cleanup();
     }
 #endif
 
 #if !defined(CKPT)
-    if (MPIDI_CH3I_RDMA_Process.has_srq
+    if (mv2_MPIDI_CH3I_RDMA_Process.has_srq
 #if defined(RDMA_CM)
-        || MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
+        || mv2_MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
 #endif /* defined(RDMA_CM) */
         || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
 #endif /* !defined(CKPT) */
@@ -558,7 +558,6 @@ static int allocate_vbuf_pool(vbuf_pool_t *rdma_vbuf_pool)
         cur->eager = 0;
         cur->content_size = 0;
         cur->coalesce = 0;
-        cur->rdma_cuda_block_size = rdma_cuda_block_size;
     }
 
 
@@ -594,9 +593,9 @@ vbuf* get_cuda_vbuf(int offset)
     vbuf_pool_t *rdma_vbuf_pool = &rdma_vbuf_pools[offset];
 
 #if !defined(CKPT)
-    if (MPIDI_CH3I_RDMA_Process.has_srq
+    if (mv2_MPIDI_CH3I_RDMA_Process.has_srq
 #if defined(RDMA_CM)
-            || MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
+            || mv2_MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
 #endif /* defined(RDMA_CM) */
             || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
 #endif /* !defined(CKPT) */
@@ -628,9 +627,9 @@ vbuf* get_cuda_vbuf(int offset)
     v->transport = IB_TRANSPORT_RC;
 
 #if !defined(CKPT)
-    if (MPIDI_CH3I_RDMA_Process.has_srq
+    if (mv2_MPIDI_CH3I_RDMA_Process.has_srq
 #if defined(RDMA_CM)
-            || MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
+            || mv2_MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
 #endif /* defined(RDMA_CM) */
             || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
 #endif /* !defined(CKPT) */
@@ -647,9 +646,9 @@ void release_cuda_vbuf(vbuf* v)
 
     /* note this correctly handles appending to empty free list */
 #if !defined(CKPT)
-    if (MPIDI_CH3I_RDMA_Process.has_srq
+    if (mv2_MPIDI_CH3I_RDMA_Process.has_srq
 #if defined(RDMA_CM)
-            || MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
+            || mv2_MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
 #endif /* defined(RDMA_CM) */
             || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
 #endif /* !defined(CKPT) */
@@ -678,9 +677,9 @@ void release_cuda_vbuf(vbuf* v)
     ++rdma_vbuf_pool->num_free;
 
 #if !defined(CKPT)
-    if (MPIDI_CH3I_RDMA_Process.has_srq
+    if (mv2_MPIDI_CH3I_RDMA_Process.has_srq
 #if defined(RDMA_CM)
-            || MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
+            || mv2_MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
 #endif /* defined(RDMA_CM) */
             || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
 #endif /* !defined(CKPT) */
@@ -710,15 +709,9 @@ int allocate_vbufs(struct ibv_pd* ptag[], int nvbufs)
                     "VBUF CUDA reagion allocation failed. Pool size %d\n",
                     vbuf_n_allocated);
         }
-
-        /* allocate cuda stream region */
-        if (allocate_cuda_streams() != 0) {
-            ibv_va_error_abort(GEN_EXIT_ERR,
-                    "CUDA stream allocation failed, \n");
-        }
-
     } else 
 #endif
+
     if(allocate_vbuf_region(nvbufs) != 0) {
         ibv_va_error_abort(GEN_EXIT_ERR,
             "VBUF reagion allocation failed. Pool size %d\n", 
@@ -739,9 +732,9 @@ vbuf* get_vbuf(void)
 #endif
 
 #if !defined(CKPT)
-    if (MPIDI_CH3I_RDMA_Process.has_srq
+    if (mv2_MPIDI_CH3I_RDMA_Process.has_srq
 #if defined(RDMA_CM)
-        || MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
+        || mv2_MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
 #endif /* defined(RDMA_CM) */
         || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
 #endif /* !defined(CKPT) */
@@ -787,9 +780,9 @@ vbuf* get_vbuf(void)
     v->transport = IB_TRANSPORT_RC;
 
 #if !defined(CKPT)
-    if (MPIDI_CH3I_RDMA_Process.has_srq
+    if (mv2_MPIDI_CH3I_RDMA_Process.has_srq
 #if defined(RDMA_CM)
-        || MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
+        || mv2_MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
 #endif /* defined(RDMA_CM) */
         || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
 #endif /* !defined(CKPT) */
@@ -821,9 +814,9 @@ void MRAILI_Release_vbuf(vbuf* v)
 
     /* note this correctly handles appending to empty free list */
 #if !defined(CKPT)
-    if (MPIDI_CH3I_RDMA_Process.has_srq
+    if (mv2_MPIDI_CH3I_RDMA_Process.has_srq
 #if defined(RDMA_CM)
-        || MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
+        || mv2_MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
 #endif /* defined(RDMA_CM) */
         || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
 #endif /* !defined(CKPT) */
@@ -866,9 +859,9 @@ void MRAILI_Release_vbuf(vbuf* v)
     v->vc = NULL;
 
 #if !defined(CKPT)
-    if (MPIDI_CH3I_RDMA_Process.has_srq
+    if (mv2_MPIDI_CH3I_RDMA_Process.has_srq
 #if defined(RDMA_CM)
-        || MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
+        || mv2_MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
 #endif /* defined(RDMA_CM) */
         || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
 #endif /* !defined(CKPT) */
@@ -1007,9 +1000,9 @@ vbuf* get_ud_vbuf(void)
     vbuf* v = NULL;
 
 #if !defined(CKPT)
-    if (MPIDI_CH3I_RDMA_Process.has_srq
+    if (mv2_MPIDI_CH3I_RDMA_Process.has_srq
 #if defined(RDMA_CM)
-            || MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
+            || mv2_MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
 #endif /* defined(RDMA_CM) */
             || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
 #endif /* !defined(CKPT) */
@@ -1053,9 +1046,9 @@ vbuf* get_ud_vbuf(void)
     /* Decide which transport need to assign here */
 
 #if !defined(CKPT)
-    if (MPIDI_CH3I_RDMA_Process.has_srq
+    if (mv2_MPIDI_CH3I_RDMA_Process.has_srq
 #if defined(RDMA_CM)
-            || MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
+            || mv2_MPIDI_CH3I_RDMA_Process.use_rdma_cm_on_demand
 #endif /* defined(RDMA_CM) */
             || MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND)
 #endif /* !defined(CKPT) */
@@ -1362,7 +1355,7 @@ void vbuf_reregister_all()
 
     for (; i < rdma_num_hcas; ++i)
     {
-        ptag_save[i] = MPIDI_CH3I_RDMA_Process.ptag[i];
+        ptag_save[i] = mv2_MPIDI_CH3I_RDMA_Process.ptag[i];
     }
 
     while (vr)
@@ -1387,35 +1380,5 @@ void vbuf_reregister_all()
     MPIDI_FUNC_EXIT(MPID_STATE_VBUF_REREGISTER_ALL);
 }
 #endif /* defined(CKPT) */
-
-#if defined(_ENABLE_CUDA_)
-void ibv_cuda_register(void *ptr, size_t size)
-{
-    cudaError_t cuerr = cudaSuccess;
-    if(ptr == NULL) {
-        return;
-    }
-    cuerr = cudaHostRegister(ptr, size, cudaHostRegisterPortable);
-    if (cuerr != cudaSuccess) {
-        ibv_error_abort(GEN_EXIT_ERR, "cudaHostRegister Failed");
-    }
-    PRINT_DEBUG(DEBUG_CUDA_verbose, 
-            "cudaHostRegister success ptr:%p size:%d\n", ptr, size);
-}
-
-void ibv_cuda_unregister(void *ptr)
-{
-    cudaError_t cuerr = cudaSuccess;
-    if (ptr == NULL) {
-        return;
-    }
-    cuerr = cudaHostUnregister(ptr);
-    if (cuerr != cudaSuccess) {
-        ibv_error_abort(GEN_EXIT_ERR,"cudaHostUnegister Failed");
-    }
-    PRINT_DEBUG(DEBUG_CUDA_verbose, "cudaHostUnregister success ptr:%p\n", ptr);
-}
-
-#endif
 
 /* vi:set sw=4 tw=80: */

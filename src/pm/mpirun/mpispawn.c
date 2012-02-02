@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -42,6 +42,7 @@ typedef struct {
 //     char *viadev_device;
 //     char *viadev_default_port;
     char *mpirun_rank;
+    char *local_rank;
 } lvalues;
 
 // Static variables
@@ -180,6 +181,7 @@ lvalues get_lvalues(int i)
 int setup_global_environment()
 {
     char my_host_name[MAX_HOST_LEN + MAX_PORT_LEN];
+    char tmp[MAX_HOST_LEN + 1];
 
     int i = env2int("MPISPAWN_GENERIC_ENV_COUNT");
 
@@ -189,13 +191,15 @@ int setup_global_environment()
     setenv("MV2_NUM_NODES_IN_JOB", getenv("MPISPAWN_NNODES"), 1);
 
     /* Ranks now connect to mpispawn */
-    int rv = gethostname(my_host_name, MAX_HOST_LEN);
+    int rv = gethostname(tmp, MAX_HOST_LEN);
+    tmp[MAX_HOST_LEN] = '\0';
+
     if ( rv == -1 ) {
         PRINT_ERROR_ERRNO("gethostname() failed", errno);
         return -1;
     }
 
-    sprintf(my_host_name, "%s:%d", my_host_name, c_port);
+    sprintf(my_host_name, "%s:%d", tmp, c_port);
 
     setenv("PMI_PORT", my_host_name, 2);
 
@@ -251,6 +255,7 @@ int setup_global_environment()
 void setup_local_environment(lvalues lv)
 {
     setenv("PMI_ID", lv.mpirun_rank, 1);
+    setenv("MV2_COMM_WORLD_LOCAL_RANK", lv.local_rank, 1);
 
 #ifdef CKPT
     setenv("MV2_CKPT_FILE", ckpt_filename, 1);
@@ -301,6 +306,7 @@ void spawn_processes(int n)
             int argc, nwritten;
             char **argv, buffer[80];
             lvalues lv = get_lvalues(i);
+            lv.local_rank = mkstr("%d", i);
 
             setup_local_environment(lv);
 
@@ -819,6 +825,10 @@ signal_processor (int signal)
         case SIGCHLD:
             child_handler(signal);
             break;
+	case SIGUSR2:
+            PRINT_ERROR("Caught SIGUSR2 (signal %d)\n", signal);
+            report_error(MPISPAWN_TRIGGER_MIGRATION);
+            break;
         default:
             PRINT_ERROR("Caught unexpected signal %d\n, killing job", signal);
             cleanup_handler(signal);
@@ -836,6 +846,7 @@ setup_signal_handling_thread (void)
     sigaddset(&sigmask, SIGINT);
     sigaddset(&sigmask, SIGTERM);
     sigaddset(&sigmask, SIGCHLD);
+    sigaddset(&sigmask, SIGUSR2);
 
     start_sp_thread(sigmask, signal_processor, 1);
 }

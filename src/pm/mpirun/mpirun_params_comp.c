@@ -13,7 +13,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -25,6 +25,8 @@
  *
  */
 
+#include <stdlib.h>
+#include <string.h>
 #include <mpirunconf.h>
 #include "mpirun_rsh.h"
 #include <errno.h>
@@ -37,6 +39,11 @@
 #include "mpirun_dbg.h"
 #include "mpirun_params.h"
 #include "mpirun_ckpt.h"
+#include <libgen.h>
+#include "src/db/text.h"
+#include "src/slurm/slurm_startup.h"
+#include "src/pbs/pbs_startup.h"
+#include <debug_utils.h>
 
 #if defined(_NSIG)
 #define NSIG _NSIG
@@ -76,6 +83,9 @@ char hostfile[HOSTFILE_LEN + 1];
   The group active for mpispawn. NULL if no group change is required.
  */
 char *change_group = NULL;
+
+static int using_slurm = 0;
+static int using_pbs = 0;
 
 #define PARAM_NP    0
 #define PARAM_SG    17
@@ -177,7 +187,7 @@ static void check_option(int argc, char *argv[], int option_index, char *totalvi
     case PARAM_N:              /* -n */
         nprocs = atoi(optarg);
         if (nprocs < 1) {
-            usage();
+            usage(argv[0]);
             exit(EXIT_FAILURE);
         }
         break;
@@ -188,8 +198,10 @@ static void check_option(int argc, char *argv[], int option_index, char *totalvi
     case 2:                    /* -xterm */
         xterm_on = 1;
         break;
-    case 3:                    /* -hostfile */
+    case 3:                    /* -machinefile */
         hostfile_on = 1;
+        using_slurm = 0;
+        using_pbs = 0;
         strncpy(hostfile, optarg, HOSTFILE_LEN);
         if (strlen(optarg) >= HOSTFILE_LEN - 1)
             hostfile[HOSTFILE_LEN] = '\0';
@@ -204,7 +216,7 @@ static void check_option(int argc, char *argv[], int option_index, char *totalvi
         use_rsh = 0;
         break;
     case 7:
-        usage();
+        usage(argv[0]);
         exit(EXIT_SUCCESS);
         break;
     case 8:
@@ -251,6 +263,8 @@ static void check_option(int argc, char *argv[], int option_index, char *totalvi
         debug_on = 1;
         break;
     case 12:                   /* spawnspec given */
+        using_slurm = 0;
+        using_pbs = 0;
         spawnfile = strdup(optarg);
         DBG(fprintf(stderr, "spawn spec file = %s\n", spawnfile));
         break;
@@ -265,6 +279,8 @@ static void check_option(int argc, char *argv[], int option_index, char *totalvi
         //With this option the user want to activate the mpmd
     case 15:
         configfile_on = 1;
+        using_slurm = 0;
+        using_pbs = 0;
         strncpy(configfile, optarg, CONFILE_LEN);
         if (strlen(optarg) >= CONFILE_LEN - 1)
             configfile[CONFILE_LEN] = '\0';
@@ -297,12 +313,12 @@ static void check_option(int argc, char *argv[], int option_index, char *totalvi
         optind++;
         break;
     case 20:
-        usage();
+        usage(argv[0]);
         exit(EXIT_SUCCESS);
         break;
     default:
         fprintf(stderr, "Unknown option\n");
-        usage();
+        usage(argv[0]);
         exit(EXIT_FAILURE);
         break;
     }
@@ -311,21 +327,27 @@ static void check_option(int argc, char *argv[], int option_index, char *totalvi
 /**
  * Command line analysis function.
  *
- * mpirun [-debug] [-xterm] -np N [-hostfile hfile] a.out [args]
+ * mpirun [-debug] [-xterm] -np N [-machinefile hfile] a.out [args]
  */
 void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
 {
     int i;
     int c, option_index;
 
-    size_t hostname_len = 0;
+    if (check_for_slurm()) {
+        using_slurm = 1;
+    }
+    
+    else if (check_for_pbs()) {
+        using_pbs = 1;
+    }
 
     do {
         c = getopt_long_only(argc, argv, "+", option_table, &option_index);
         switch (c) {
         case '?':
         case ':':
-            usage();
+            usage(argv[0]);
             exit(EXIT_FAILURE);
             break;
         case EOF:
@@ -335,15 +357,20 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
             break;
         default:
             fprintf(stderr, "Unreachable statement!\n");
-            usage();
+            usage(argv[0]);
             exit(EXIT_FAILURE);
             break;
         }
-    }
-    while (c != EOF);
+    } while (c != EOF);
 
-    if (!nprocs && !configfile_on) {
-        usage();
+    aout_index = optind;
+
+    if (using_slurm && !nprocs) {
+       nprocs = slurm_nprocs(); 
+    }
+
+    if (!(nprocs || configfile_on)) {
+        usage(argv[0]);
         exit(EXIT_FAILURE);
     }
 
@@ -351,6 +378,7 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
     if (strlen(binary_dirname) == 1 && argv[0][0] != '.') {
         use_dirname = 0;
     }
+
     //If the mpmd is active we need to parse the configuration file
     if (configfile_on) {
         /*TODO In the future the user can add the nprocs on the command line. Now the
@@ -365,14 +393,14 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
      * There is no hostfile given
      */
     if (!hostfile_on) {
-        aout_index = optind;
-
         /*
          * Check for default hostfile
          */
-        sprintf(hostfile, "%s/.mpirun_hosts", env2str("HOME"));
-        if (file_exists(hostfile)) {
-            hostfile_on = 1;
+        if (!(using_slurm || using_pbs)) {
+            sprintf(hostfile, "%s/.mpirun_hosts", env2str("HOME"));
+            if (file_exists(hostfile)) {
+                hostfile_on = 1;
+            }
         }
     }
 
@@ -393,11 +421,30 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
         }
     }
 
-    /* grab hosts from command line or file */
-    /* TODO: remove  hostname_len variable */
-    hostname_len = 0;
+    /*
+     * Populate plist
+     */ 
     if (hostfile_on) {
-        hostname_len = read_hostfile(hostfile);
+        read_hostfile(hostfile);
+    }
+
+    /*
+     * SLURM environment handling
+     */
+    else if (using_slurm) {
+        if (slurm_startup(nprocs)) {
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    /*
+     * PBS environment handling
+     */
+    else if (using_pbs) {
+        if (read_hostfile(pbs_nodefile())) {
+            PRINT_ERROR("Unable to parse PBS_NODEFILE [%s]", pbs_nodefile());
+            exit(EXIT_FAILURE);
+        }
     }
 
     /*
@@ -405,17 +452,16 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
      */
     else {
         for (i = 0; i < nprocs; i++) {
-            plist[i].hostname = (char *) strdup("localhost");
-            if (hostname_len < strlen(plist[i].hostname)) {
-                hostname_len = strlen(plist[i].hostname);
-            }
+            plist[i].hostname = "localhost";
         }
     }
 }
 
-void usage(void)
+void usage (char const * arg0)
 {
-    fprintf(stderr, "usage: mpirun_rsh [-v] [-sg group] [-rsh|-ssh] " "[-gdb] -[tv] [-xterm] [-show] [-legacy] -n N" "[-machinefile hfile] a.out args | -config configfile [-hostfile hfile]\n");
+    char * path = strdup(arg0);
+
+    fprintf(stderr, "usage: %s [-v] [-sg group] [-rsh|-ssh] " "[-gdb] -[tv] [-xterm] [-show] [-legacy] -n N" "[-machinefile hfile] a.out args | -config configfile\n", basename(path));
     fprintf(stderr, "Where:\n");
     fprintf(stderr, "\tsg         =>  execute the processes as different group ID\n");
     fprintf(stderr, "\trsh        =>  to use rsh for connecting\n");
@@ -431,6 +477,8 @@ void usage(void)
     fprintf(stderr, "\targs       =>  arguments for MPI binary\n");
     fprintf(stderr, "\tconfig     =>  name of file containing the exe information: each line has the form -n numProc : exe args\n");
     fprintf(stderr, "\n");
+
+    free(path);
 }
 
 int file_exists(char *filename)

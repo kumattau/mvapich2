@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -46,7 +46,7 @@ int psm_dofinalize()
 
     psm_deallocate_vbuf();
 
-    if (enable_shmem_collectives){
+    if (mv2_enable_shmem_collectives){
         MPIDI_PG_Get_vc(MPIDI_Process.my_pg, MPIDI_Process.my_pg_rank, &vc);
 	    /* Freeing up shared memory collective resources*/
      	MPIDI_CH3I_SHMEM_COLL_finalize(vc->smp.local_rank, MPIDI_Process.my_pg->ch.num_local_processes);

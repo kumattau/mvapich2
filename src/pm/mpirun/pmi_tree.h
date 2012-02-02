@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -30,7 +30,7 @@
 
 #define KVS_MAX_NAME    64
 #define KVS_MAX_KEY     64
-#define KVS_MAX_VAL     64
+#define KVS_MAX_VAL     128
 
 #define MT_MSG_UNDEF        0   /* Undefined */
 #define MT_MSG_BPUTS        1   /* Bunched puts */

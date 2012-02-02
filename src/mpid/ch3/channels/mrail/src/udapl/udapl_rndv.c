@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -220,7 +220,7 @@ MRAILI_RDMA_Put_finish (MPIDI_VC_t * vc, MPID_Request * sreq,
     MPIDI_VC_FAI_send_seqnum(vc, seqnum);
     MPIDI_Pkt_set_seqnum(&rput_pkt, seqnum);
 
-    if (MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+    if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
         rdma_ok =
             MPIDI_CH3I_MRAILI_Fast_rdma_ok (vc,
                                             sizeof (MPIDI_CH3_Pkt_rput_finish_t));
@@ -302,9 +302,9 @@ MPIDI_CH3I_MRAILI_Rendezvous_rput_push (MPIDI_VC_t * vc, MPID_Request * sreq)
       {
           v = get_vbuf ();
           nbytes = sreq->mrail.rndv_buf_sz - sreq->mrail.rndv_buf_off;
-          if (nbytes > MPIDI_CH3I_RDMA_Process.maxtransfersize)
+          if (nbytes > mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize)
             {
-                nbytes = MPIDI_CH3I_RDMA_Process.maxtransfersize;
+                nbytes = mv2_MPIDI_CH3I_RDMA_Process.maxtransfersize;
             }
             DEBUG_PRINT("[buffer content]: %02x,%02x,%02x, offset %d, remote buf %p\n",
                        ((char *) sreq->mrail.rndv_buf)[0],

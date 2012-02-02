@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -41,9 +41,9 @@ unsigned int comm_registry [MAX_NUM_COMM];
 unsigned int comm_registered = 0;
 unsigned int comm_count = 0;
 
-int shmem_comm_count = 0;
+int mv2_shmem_comm_count = 0;
 static pthread_mutex_t comm_lock  = PTHREAD_MUTEX_INITIALIZER;
-extern int g_shmem_coll_blocks;
+extern int mv2_g_shmem_coll_blocks;
 
 #define MAX_NUM_THREADS 1024
 pthread_t thread_reg[MAX_NUM_THREADS];
@@ -110,6 +110,26 @@ int free_2level_comm (MPID_Comm* comm_ptr)
     fn_fail:
        goto fn_exit;
 }
+
+inline void MPIR_pof2_comm(MPID_Comm * comm_ptr, int size, int my_rank)
+{
+    int v = 1, old_v = 1;
+
+    //*  Check if comm is a pof2 or not */
+    comm_ptr->ch.is_pof2 = (size & (size - 1)) ? 0 : 1;
+
+    /* retrieve the greatest power of two < size of comm */
+    if (comm_ptr->ch.is_pof2) {
+        comm_ptr->ch.gpof2 = size;
+    } else {
+        while (v < size) {
+            old_v = v;
+            v = v << 1;
+        }
+        comm_ptr->ch.gpof2 = old_v;
+    }
+}
+
 
 int create_2level_comm (MPI_Comm comm, int size, int my_rank)
 {
@@ -308,21 +328,21 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
 
     if (my_local_id == 0){
         lock_shmem_region();
-        increment_shmem_comm_count();
-        shmem_comm_count = get_shmem_comm_count();
+        increment_mv2_shmem_comm_count();
+        mv2_shmem_comm_count = get_mv2_shmem_comm_count();
         unlock_shmem_region();
     }
     
     shmem_ptr->ch.shmem_coll_ok = 0; 
     /* To prevent Bcast taking the knomial_2level_bcast route */
-    mpi_errno = MPIR_Bcast_impl (&shmem_comm_count, 1, MPI_INT, 0, shmem_ptr, &errflag);
+    mpi_errno = MPIR_Bcast_impl (&mv2_shmem_comm_count, 1, MPI_INT, 0, shmem_ptr, &errflag);
      if(mpi_errno) {
        MPIU_ERR_POP(mpi_errno);
     }
 
 
-    if (shmem_comm_count <= g_shmem_coll_blocks){
-        shmem_ptr->ch.shmem_comm_rank = shmem_comm_count-1;
+    if (mv2_shmem_comm_count <= mv2_g_shmem_coll_blocks){
+        shmem_ptr->ch.shmem_comm_rank = mv2_shmem_comm_count-1;
         input_flag = 1;
     } else{
         input_flag = 0;
@@ -333,7 +353,7 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
        MPIU_ERR_POP(mpi_errno);
     }
     comm_ptr->ch.allgather_comm_ok = 0;
-    if (allgather_ranking){
+    if (mv2_allgather_ranking){
         int is_contig =1, check_leader =1, check_size=1, is_local_ok=0,is_block=0;
         int PPN;
         int shmem_grp_size = my_local_size;

@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -25,7 +25,7 @@ static inline void mv2_ud_flush_ext_window(MPIDI_VC_t *vc)
     while (q->head != NULL && 
             vc->mrail.ud.send_window.count < rdma_default_ud_sendwin_size) {
         next = (q->head)->extwin_msg.next;
-        MPIDI_CH3I_RDMA_Process.post_send(vc, q->head, (q->head)->rail);
+        mv2_MPIDI_CH3I_RDMA_Process.post_send(vc, q->head, (q->head)->rail);
         PRINT_DEBUG(DEBUG_UD_verbose>1,"Send ext window message(%p) nextseqno :"
                 "%d\n", next, vc->mrail.seqnum_next_tosend);
         q->head = next;
@@ -47,7 +47,7 @@ static inline void mv2_ud_process_ack(MPIDI_VC_t *vc, int acknum)
             INCL_BETWEEN (acknum, sendwin_head->seqnum, vc->mrail.seqnum_next_tosend))
     {
         mv2_ud_send_window_remove(&vc->mrail.ud.send_window, sendwin_head);
-        mv2_ud_unack_queue_remove(&(MPIDI_CH3I_RDMA_Process.unack_queue), sendwin_head);
+        mv2_ud_unack_queue_remove(&(mv2_MPIDI_CH3I_RDMA_Process.unack_queue), sendwin_head);
         MRAILI_Process_send(sendwin_head);
         sendwin_head = vc->mrail.ud.send_window.head;
     }
@@ -120,7 +120,7 @@ int post_ud_send(MPIDI_VC_t* vc, vbuf* v, int rail, mv2_ud_ctx_t *send_ud_ctx)
 
     MPIU_Assert(v->desc.sg_entry.length <= MRAIL_MAX_UD_SIZE);
     if (send_ud_ctx == NULL ) {
-        ud_ctx = MPIDI_CH3I_RDMA_Process.ud_rails[rail];
+        ud_ctx = mv2_MPIDI_CH3I_RDMA_Process.ud_rails[rail];
     }
     v->vc = (void *)vc;
     p->rail = rail;
@@ -142,7 +142,7 @@ int post_ud_send(MPIDI_VC_t* vc, vbuf* v, int rail, mv2_ud_ctx_t *send_ud_ctx)
 
     IBV_UD_POST_SR(v, vc->mrail.ud, ud_ctx);
 
-    mv2_ud_track_send(&vc->mrail.ud, &MPIDI_CH3I_RDMA_Process.unack_queue, v);     
+    mv2_ud_track_send(&vc->mrail.ud, &mv2_MPIDI_CH3I_RDMA_Process.unack_queue, v);     
 
     return 0;
 }
@@ -153,7 +153,7 @@ void mv2_send_control_msg(MPIDI_VC_t *vc, vbuf *v)
     mv2_ud_ctx_t *ud_ctx;
     MPIDI_CH3I_MRAILI_Pkt_comm_header *p = v->pheader;
 
-    ud_ctx = MPIDI_CH3I_RDMA_Process.ud_rails[p->rail];
+    ud_ctx = mv2_MPIDI_CH3I_RDMA_Process.ud_rails[p->rail];
     v->vc = (void *)vc;
     p->src.rank  = MPIDI_Process.my_pg_rank;
     MPIU_Assert(v->transport == IB_TRANSPORT_UD);
@@ -192,7 +192,7 @@ static inline void mv2_ud_ext_sendq_send(MPIDI_VC_t *vc, mv2_ud_ctx_t *ud_ctx)
 void mv2_ud_update_send_credits(vbuf *v)
 {
     mv2_ud_ctx_t *ud_ctx;
-    ud_ctx = MPIDI_CH3I_RDMA_Process.ud_rails[v->rail];
+    ud_ctx = mv2_MPIDI_CH3I_RDMA_Process.ud_rails[v->rail];
     ud_ctx->send_wqes_avail++;
     PRINT_DEBUG(DEBUG_UD_verbose>2,"available wqes : %d seqno:%d \n",ud_ctx->send_wqes_avail, v->seqnum);
     if (NULL != ud_ctx->ext_send_queue.head 
@@ -241,13 +241,13 @@ void mv2_ud_resend(vbuf *v)
     if (p->type == MPIDI_CH3_PKT_ZCOPY_FINISH) {
         int found;
         int hca_index = ((MPIDI_CH3_Pkt_zcopy_finish_t *)p)->hca_index;
-        ud_ctx = MPIDI_CH3I_RDMA_Process.zcopy_info.rndv_ud_qps[hca_index];
+        ud_ctx = mv2_MPIDI_CH3I_RDMA_Process.zcopy_info.rndv_ud_qps[hca_index];
         do {
-            mv2_ud_zcopy_poll_cq(&MPIDI_CH3I_RDMA_Process.zcopy_info, 
+            mv2_ud_zcopy_poll_cq(&mv2_MPIDI_CH3I_RDMA_Process.zcopy_info, 
                                             ud_ctx, v, hca_index, &found);
         } while( ud_ctx->send_wqes_avail <=0 || found);
     } else {
-        ud_ctx = MPIDI_CH3I_RDMA_Process.ud_rails[v->rail];
+        ud_ctx = mv2_MPIDI_CH3I_RDMA_Process.ud_rails[v->rail];
     }
     p->acknum = vc->mrail.seqnum_next_toack;
     MARK_ACK_COMPLETED(vc);
@@ -297,7 +297,7 @@ fn_exit:
 
 void mv2_check_resend()
 {
-    mv2_ud_unackq_traverse(&MPIDI_CH3I_RDMA_Process.unack_queue);
+    mv2_ud_unackq_traverse(&mv2_MPIDI_CH3I_RDMA_Process.unack_queue);
 }
 
 #endif

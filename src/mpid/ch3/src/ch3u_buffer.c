@@ -270,9 +270,8 @@ void MPIDI_CH3U_Buffer_copy_cuda(
     if (sdt_contig && rdt_contig)
     {
         MPIDI_FUNC_ENTER(MPID_STATE_MEMCPY);
-        //	MPIU_Memcpy((char *)rbuf + rdt_true_lb, (const char *)sbuf + sdt_true_lb, sdata_sz);
         cuda_error = cudaMemcpy((char *)rbuf + rdt_true_lb, 
-                (const char *)sbuf + sdt_true_lb, sdata_sz, cudaMemcpyDeviceToDevice);
+                (const char *)sbuf + sdt_true_lb, sdata_sz, cudaMemcpyDefault);
         if (cuda_error != cudaSuccess) {
             *rmpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME, 
                                     __LINE__, MPI_ERR_OTHER, "**cudamemcpy", 0);
@@ -290,7 +289,7 @@ void MPIDI_CH3U_Buffer_copy_cuda(
         last = sdata_sz;
         MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST, 
                     "pre-unpack last=" MPIDI_MSG_SZ_FMT, last ));
-        MPID_Segment_unpack(&seg, 0, &last, (char*)sbuf + sdt_true_lb);
+        MPID_Segment_unpack_cuda(&seg, 0, &last, rdt_ptr, (char*)sbuf + sdt_true_lb);
         MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
                     "pre-unpack last=" MPIDI_MSG_SZ_FMT, last ));
         /* --BEGIN ERROR HANDLING-- */
@@ -311,7 +310,7 @@ void MPIDI_CH3U_Buffer_copy_cuda(
         last = sdata_sz;
         MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
                     "pre-pack last=" MPIDI_MSG_SZ_FMT, last ));
-        MPID_Segment_pack(&seg, 0, &last, (char*)rbuf + rdt_true_lb);
+        MPID_Segment_pack_cuda(&seg, 0, &last, sdt_ptr, (char*)rbuf + rdt_true_lb);
         MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
                     "post-pack last=" MPIDI_MSG_SZ_FMT, last ));
         /* --BEGIN ERROR HANDLING-- */
@@ -332,7 +331,7 @@ void MPIDI_CH3U_Buffer_copy_cuda(
         MPID_Segment rseg;
         MPIDI_msg_sz_t rfirst;
 
-        buf = MPIU_Malloc(MPIDI_COPY_BUFFER_SZ);
+        MPIU_Malloc_CUDA(buf, MPIDI_COPY_BUFFER_SZ);
         /* --BEGIN ERROR HANDLING-- */
         if (buf == NULL)
         {
@@ -368,7 +367,7 @@ void MPIDI_CH3U_Buffer_copy_cuda(
             MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
                         "pre-pack first=" MPIDI_MSG_SZ_FMT ", last=" MPIDI_MSG_SZ_FMT, 
                         sfirst, last ));
-            MPID_Segment_pack(&sseg, sfirst, &last, buf + buf_off);
+            MPID_Segment_pack_cuda(&sseg, sfirst, &last, sdt_ptr, buf + buf_off);
             MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
                         "post-pack first=" MPIDI_MSG_SZ_FMT ", last=" MPIDI_MSG_SZ_FMT, 
                         sfirst, last ));
@@ -382,7 +381,7 @@ void MPIDI_CH3U_Buffer_copy_cuda(
             MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
                         "pre-unpack first=" MPIDI_MSG_SZ_FMT ", last=" MPIDI_MSG_SZ_FMT, 
                         rfirst, last ));
-            MPID_Segment_unpack(&rseg, rfirst, &last, buf);
+            MPID_Segment_unpack_cuda(&rseg, rfirst, &last, rdt_ptr, buf);
             MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
                         "post-unpack first=" MPIDI_MSG_SZ_FMT ", last=" MPIDI_MSG_SZ_FMT, 
                         rfirst, last ));
@@ -417,7 +416,7 @@ void MPIDI_CH3U_Buffer_copy_cuda(
         }
 
         *rsz = rfirst;
-        MPIU_Free(buf);
+        MPIU_Free_CUDA(buf);
     }
 
 fn_exit:
