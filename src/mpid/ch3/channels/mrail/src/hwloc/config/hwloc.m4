@@ -1,7 +1,7 @@
 dnl -*- Autoconf -*-
 dnl
-dnl Copyright (c) 2009-2010 INRIA.  All rights reserved.
-dnl Copyright (c) 2009-2011 Université Bordeaux 1
+dnl Copyright (c) 2009-2010 inria.  All rights reserved.
+dnl Copyright (c) 2009-2012 Université Bordeaux 1
 dnl Copyright (c) 2004-2005 The Trustees of Indiana University and Indiana
 dnl                         University Research and Technology
 dnl                         Corporation.  All rights reserved.
@@ -234,20 +234,28 @@ EOF])
           4)
             AC_DEFINE(HWLOC_X86_32_ARCH, 1, [Define to 1 on x86_32])
             hwloc_x86_32=yes
+	    HWLOC_MS_LIB_ARCH=X86
             AC_MSG_RESULT([x86_32])
             ;;
           8)
             AC_DEFINE(HWLOC_X86_64_ARCH, 1, [Define to 1 on x86_64])
             hwloc_x86_64=yes
+	    HWLOC_MS_LIB_ARCH=X64
             AC_MSG_RESULT([x86_64])
             ;;
           *)
             AC_DEFINE(HWLOC_X86_64_ARCH, 1, [Define to 1 on x86_64])
             hwloc_x86_64=yes
+	    HWLOC_MS_LIB_ARCH=X64
             AC_MSG_RESULT([unknown -- assuming x86_64])
             ;;
         esac
+        ;;
+      *)
+        AC_MSG_RESULT([unknown])
+        ;;
     esac
+    AC_SUBST(HWLOC_MS_LIB_ARCH)
     
     AC_CHECK_SIZEOF([unsigned long])
     AC_DEFINE_UNQUOTED([HWLOC_SIZEOF_UNSIGNED_LONG], $ac_cv_sizeof_unsigned_long, [The size of `unsigned long', as computed by sizeof])
@@ -257,26 +265,13 @@ EOF])
     #
     # Check for compiler attributes and visibility
     #
+    _HWLOC_C_COMPILER_VENDOR([hwloc_c_vendor])
     _HWLOC_CHECK_ATTRIBUTES
     _HWLOC_CHECK_VISIBILITY
     HWLOC_CFLAGS="$HWLOC_FLAGS $HWLOC_VISIBILITY_CFLAGS"
     AS_IF([test "$HWLOC_VISIBILITY_CFLAGS" != ""],
           [AC_MSG_WARN(["$HWLOC_VISIBILITY_CFLAGS" has been added to the hwloc CFLAGS])])
 
-    #
-    # Check for inline compatibility support
-    #
-    AC_MSG_CHECKING([for inline compatibility keyword])
-    AC_TRY_COMPILE([static void __inline__ f(void) { }], [],
-      [__hwloc_inline=__inline__],
-      [AC_TRY_COMPILE([static void __inline f(void) {}], [],
-        [__hwloc_inline=__inline],
-        [__hwloc_inline=]
-      )]
-    )
-    AC_MSG_RESULT([$__hwloc_inline])
-    AC_DEFINE_UNQUOTED(__hwloc_inline, $__hwloc_inline, [Define this to a keyword that can safely replace inline in installed headers])
-    
     #
     # Now detect support
     #
@@ -297,6 +292,8 @@ EOF])
     ])
     AC_CHECK_HEADERS([sys/mman.h])
     
+    old_CPPFLAGS="$CPPFLAGS"
+    CPPFLAGS="$CPPFLAGS -D_WIN32_WINNT=0x0601"
     AC_CHECK_TYPES([KAFFINITY,
                     PROCESSOR_CACHE_TYPE,
                     CACHE_DESCRIPTOR,
@@ -313,6 +310,7 @@ EOF])
 		    PSAPI_WORKING_SET_EX_BLOCK,
 		    PSAPI_WORKING_SET_EX_INFORMATION],
                     [],[],[[#include <windows.h>]])
+    CPPFLAGS="$old_CPPFLAGS"
     AC_CHECK_LIB([gdi32], [main],
                  [HWLOC_LIBS="-lgdi32 $HWLOC_LIBS"
                   AC_DEFINE([HAVE_LIBGDI32], 1, [Define to 1 if we have -lgdi32])])
@@ -332,6 +330,8 @@ EOF])
                     AC_DEFINE([HAVE_LIBKSTAT], 1, [Define to 1 if we have -lkstat])])
     ])
     
+    AC_CHECK_HEADERS([picl.h])
+
     AC_CHECK_DECLS([_SC_NPROCESSORS_ONLN,
     		_SC_NPROCESSORS_CONF,
     		_SC_NPROC_ONLN,
@@ -515,6 +515,7 @@ EOF])
     fi
     AC_SUBST(HWLOC_LINUX_LIBNUMA_LIBS)
     # If we asked for Linux libnuma support but couldn't deliver, fail
+    HWLOC_LIBS="$HWLOC_LIBS $HWLOC_LINUX_LIBNUMA_LIBS"
     AS_IF([test "$enable_libnuma" = "yes" -a "$hwloc_linux_libnuma_happy" = "no"],
           [AC_MSG_WARN([Specified --enable-libnuma switch, but could not])
            AC_MSG_WARN([find appropriate support])
@@ -583,6 +584,7 @@ EOF])
         ])
     fi
     AC_SUBST(HWLOC_PCI_LIBS)
+    HWLOC_LIBS="$HWLOC_LIBS $HWLOC_PCI_LIBS"
     # If we asked for pci support but couldn't deliver, fail
     AS_IF([test "$enable_pci" = "yes" -a "$hwloc_pci_happy" = "no"],
           [AC_MSG_WARN([Specified --enable-pci switch, but could not])
@@ -619,8 +621,8 @@ EOF])
       fi
 
       HWLOC_REQUIRES="libpci $HWLOC_REQUIRES"
-      dnl    AC_DEFINE([HWLOC_HAVE_LIBPCI], [1], [Define to 1 if you have the `libpci' library.])
-      dnl    AC_SUBST([HWLOC_HAVE_LIBPCI], [1])
+      dnl AC_DEFINE([HWLOC_HAVE_LIBPCI], [1], [Define to 1 if you have the `libpci' library.])
+      dnl AC_SUBST([HWLOC_HAVE_LIBPCI], [1])
       CFLAGS="$tmp_save_CFLAGS"
       LIBS="$tmp_save_LIBS"
     else
@@ -646,6 +648,7 @@ EOF])
                AC_MSG_ERROR([Cannot continue])])
     fi
     HWLOC_CFLAGS="$HWLOC_CFLAGS $HWLOC_LIBXML2_CFLAGS"    
+    HWLOC_LIBS="$HWLOC_LIBS $HWLOC_LIBXML2_LIBS"
 
     # Setup HWLOC's C, CPP, and LD flags, and LIBS
     AC_SUBST(HWLOC_REQUIRES)
@@ -658,14 +661,21 @@ EOF])
 
     # Set these values explicitly for embedded builds.  Exporting
     # these values through *_EMBEDDED_* values gives us the freedom to
-    # do something different someday if we ever need to.
-    HWLOC_EMBEDDED_CFLAGS=$HWLOC_CFLAGS
+    # do something different someday if we ever need to.  There's no
+    # need to fill these values in unless we're in embedded mode.
+    # Indeed, if we're building in embedded mode, we want HWLOC_LIBS
+    # to be empty so that nothing is linked into libhwloc_embedded.la
+    # itself -- only the upper-layer will link in anything required.
+
+    AS_IF([test "$hwloc_mode" = "embedded"],
+          [HWLOC_EMBEDDED_CFLAGS=$HWLOC_CFLAGS
+           HWLOC_EMBEDDED_CPPFLAGS=$HWLOC_CPPFLAGS
+           HWLOC_EMBEDDED_LDADD='$(HWLOC_top_builddir)/src/libhwloc_embedded.la'
+           HWLOC_EMBEDDED_LIBS=$HWLOC_LIBS
+           HWLOC_LIBS=])
     AC_SUBST(HWLOC_EMBEDDED_CFLAGS)
-    HWLOC_EMBEDDED_CPPFLAGS=$HWLOC_CPPFLAGS
     AC_SUBST(HWLOC_EMBEDDED_CPPFLAGS)
-    HWLOC_EMBEDDED_LDADD='$(HWLOC_top_builddir)/src/libhwloc_embedded.la'
     AC_SUBST(HWLOC_EMBEDDED_LDADD)
-    HWLOC_EMBEDDED_LIBS=$HWLOC_LIBS
     AC_SUBST(HWLOC_EMBEDDED_LIBS)
 
     # Try to compile the cpuid inlines
@@ -674,6 +684,7 @@ EOF])
     CFLAGS="$CFLAGS -I$HWLOC_top_srcdir/include"
     AC_LINK_IFELSE([AC_LANG_PROGRAM([[
         #include <stdio.h>
+        #define __hwloc_inline
         #include <private/cpuid.h>
       ]], [[
         if (hwloc_have_cpuid()) {

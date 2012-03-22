@@ -42,6 +42,7 @@ static mv2_hca_types_log_t mv2_hca_types_log[] = {
     {MV2_HCA_MLX_CX_SDR,    "MV2_HCA_MLX_CX_SDR"},
     {MV2_HCA_MLX_CX_DDR,    "MV2_HCA_MLX_CX_DDR"},
     {MV2_HCA_MLX_CX_QDR,    "MV2_HCA_MLX_CX_QDR"},
+    {MV2_HCA_MLX_CX_FDR,    "MV2_HCA_MLX_CX_FDR"},
     {MV2_HCA_MLX_PCI_X,     "MV2_HCA_MLX_PCI_X"},
 
     /* Qlogic Cards */
@@ -146,6 +147,10 @@ static mv2_hca_type mv2_hca_name_to_type ( char *dev_name )
         } else { /* mlx4 */ 
 
             switch(rate) {
+		case 56:
+                    hca_type = MV2_HCA_MLX_CX_FDR;
+                    break;
+
                 case 40:
                     hca_type = MV2_HCA_MLX_CX_QDR;
                     break;

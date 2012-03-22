@@ -103,6 +103,7 @@ static inline MPID_Request * create_request(MPID_IOV * iov, int iov_count,
     /*
         MPIU_Assert(iov[0].MPID_IOV_LEN == sizeof(MPIDI_CH3_Pkt_t));
     */
+    
         sreq->dev.pending_pkt = *(MPIDI_CH3_PktGeneric_t *) iov[0].MPID_IOV_BUF;
         sreq->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) &sreq->dev.pending_pkt;
     }
@@ -274,7 +275,6 @@ int MPIDI_nem_ib_packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
         MPIDI_nem_ib_eager_send(vc, iov, n_iov, pkt_len, &nb, &buf);
 
     if (MPI_SUCCESS != mpi_errno && MPI_MRAIL_MSG_QUEUED != mpi_errno) {
-        VC_FIELD(vc, state) = MPIDI_CH3I_VC_STATE_FAILED;
         sreq->status.MPI_ERROR = MPI_ERR_INTERN;
         MPIDI_CH3U_Request_complete(sreq);
         goto fn_exit;
@@ -310,7 +310,6 @@ int MPIDI_nem_ib_packetized_send(MPIDI_VC_t * vc, MPID_Request * sreq)
 
             if (MPI_SUCCESS != mpi_errno
                 && MPI_MRAIL_MSG_QUEUED != mpi_errno) {
-                VC_FIELD(vc, state) = MPIDI_CH3I_VC_STATE_FAILED;
                 sreq->status.MPI_ERROR = MPI_ERR_INTERN;
                 MPIDI_CH3U_Request_complete(sreq);
                 goto fn_exit;
@@ -534,6 +533,7 @@ int MPIDI_nem_ib_eager_send(MPIDI_VC_t * vc,
         return MPIDI_nem_ib_fast_rdma_send_complete(vc, iov, n_iov, num_bytes_ptr, buf_handle);
     }
 
+
     /* otherwise we can always take the send/recv path */
     vbuf* v = MPIDI_nem_ib_get_vbuf(vc, pkt_len);
     DEBUG_PRINT("[eager send]vbuf addr %p, buffer: %p\n", v, v->buffer);
@@ -593,6 +593,10 @@ int MPID_nem_ib_iSendContig(MPIDI_VC_t *vc, MPID_Request *sreq, void *hdr, MPIDI
     int n_iov=2;
     void *databuf = NULL;
 
+#ifdef ENABLE_CHECKPOINTING
+    MPID_nem_ib_vc_area *vc_ib = VC_IB(vc);
+    if (!MPID_nem_ib_vc_send_paused(vc_ib)) {
+#endif
     /* The RDMA implementation uses a fixed length header, the size of which is the maximum of all possible packet headers */
 
     /* check whether sendq is empty */
@@ -728,6 +732,14 @@ int MPID_nem_ib_iSendContig(MPIDI_VC_t *vc, MPID_Request *sreq, void *hdr, MPIDI
         isend_update_request(sreq, hdr, hdr_sz, 0);
         SENDQ_ENQUEUE(&VC_FIELD(vc, send_queue), sreq);
     }
+#ifdef ENABLE_CHECKPOINTING
+    }
+    else
+    {
+        isend_update_request(sreq, hdr, hdr_sz, 0);
+        SENDQ_ENQUEUE(&VC_FIELD(vc, paused_send_queue), sreq);
+    }
+#endif
 
 fn_exit:
     if (databuf)
@@ -753,31 +765,36 @@ int MPID_nem_ib_iStartContigMsg(MPIDI_VC_t *vc, void *hdr, MPIDI_msg_sz_t hdr_sz
     MPID_Request *sreq = NULL;
     MPID_IOV iov[2];
     int n_iov=2;
+    int nb;
+    int pkt_len;
+    vbuf *buf;
 
     MPIDI_STATE_DECL(MPID_STATE_MPID_NEM_IB_ISTARTCONTIGMSG);
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_NEM_IB_ISTARTCONTIGMSG);
 
-    if (SENDQ_EMPTY(VC_FIELD(vc, send_queue))) {
-        int nb;
-        int pkt_len;
-        vbuf *buf;
- 
-        /* MT - need some signalling to lock down our right to use the
-           channel, thus insuring that the progress engine does also try to
-           write */
+    /* MT - need some signalling to lock down our right to use the
+       channel, thus insuring that the progress engine does also try to
+       write */
 
-        /* the channel use fixed header size*/
-        hdr_sz = sizeof(MPIDI_CH3_Pkt_t);
-        iov[0].MPID_IOV_BUF = hdr;
-        iov[0].MPID_IOV_LEN = hdr_sz;
-        if(data_sz == 0) {
-            n_iov = 1;
-            pkt_len = hdr_sz;
-        } else {
-            iov[1].MPID_IOV_BUF = data;
-            iov[1].MPID_IOV_LEN = data_sz;
-            Calculate_IOV_len(iov, n_iov, pkt_len);
-        }
+    /* the channel use fixed header size*/
+    hdr_sz = sizeof(MPIDI_CH3_Pkt_t);
+    iov[0].MPID_IOV_BUF = hdr;
+    iov[0].MPID_IOV_LEN = hdr_sz;
+    if(data_sz == 0) {
+        n_iov = 1;
+        pkt_len = hdr_sz;
+    } else {
+        iov[1].MPID_IOV_BUF = data;
+        iov[1].MPID_IOV_LEN = data_sz;
+        Calculate_IOV_len(iov, n_iov, pkt_len);
+    }
+
+#ifdef ENABLE_CHECKPOINTING
+    MPID_nem_ib_vc_area *vc_ib = VC_IB(vc);
+    if (!MPID_nem_ib_vc_send_paused(vc_ib)) {
+#endif
+
+    if (SENDQ_EMPTY(VC_FIELD(vc, send_queue))) {
 
         if (pkt_len > MRAIL_MAX_EAGER_SIZE) {
             sreq = create_request(iov, n_iov, 0, 0);
@@ -821,13 +838,21 @@ int MPID_nem_ib_iStartContigMsg(MPIDI_VC_t *vc, void *hdr, MPIDI_msg_sz_t hdr_sz
              * */
             sreq->status.MPI_ERROR = MPI_ERR_INTERN;
         }
-    } else {
+    } else { /* if(!SENDQ_EMPTY(VC_FIELD(vc, send_queue))) */
         MPIDI_DBG_PRINTF((55, FCNAME,
                           "send in progress, request enqueued"));
+
         sreq = create_request(iov, n_iov, 0, 0);
         SENDQ_ENQUEUE(&VC_FIELD(vc, send_queue), sreq);
     }
-
+#ifdef ENABLE_CHECKPOINTING
+    }
+    else /* if(MPID_nem_ib_vc_send_paused(vc)) */
+    {
+        sreq = create_request(iov, n_iov, 0, 0);
+        SENDQ_ENQUEUE(&VC_FIELD(vc, paused_send_queue), sreq);        
+    }
+#endif
 
 fn_exit:
     *sreq_ptr = sreq;
@@ -837,6 +862,105 @@ fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_NEM_IB_ISTARTCONTIGMSG);
     return mpi_errno;
 }
+
+#ifdef ENABLE_CHECKPOINTING
+#undef FUNCNAME
+#define FUNCNAME MPID_nem_ib_iStartContigMsg_paused
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int MPID_nem_ib_iStartContigMsg_paused(MPIDI_VC_t *vc, void *hdr, MPIDI_msg_sz_t hdr_sz, void *data, MPIDI_msg_sz_t data_sz,
+                                    MPID_Request **sreq_ptr)
+{
+    int mpi_errno = MPI_SUCCESS;
+    MPID_Request *sreq = NULL;
+    MPID_IOV iov[2];
+    int n_iov=2;
+
+    MPIDI_STATE_DECL(MPID_STATE_MPID_NEM_IB_ISTARTCONTIGMSG_PAUSED);
+    MPIDI_FUNC_ENTER(MPID_STATE_MPID_NEM_IB_ISTARTCONTIGMSG_PAUSED);
+
+    int nb;
+    int pkt_len;
+    vbuf *buf;
+
+    /* MT - need some signalling to lock down our right to use the
+       channel, thus insuring that the progress engine does also try to
+       write */
+
+    /* the channel use fixed header size*/
+    hdr_sz = sizeof(MPIDI_CH3_Pkt_t);
+    iov[0].MPID_IOV_BUF = hdr;
+    iov[0].MPID_IOV_LEN = hdr_sz;
+    if(data_sz == 0) {
+        n_iov = 1;
+        pkt_len = hdr_sz;
+    } else {
+        iov[1].MPID_IOV_BUF = data;
+        iov[1].MPID_IOV_LEN = data_sz;
+        Calculate_IOV_len(iov, n_iov, pkt_len);
+    }
+
+    if (SENDQ_EMPTY(VC_FIELD(vc, send_queue)))
+    {
+
+        if (pkt_len > MRAIL_MAX_EAGER_SIZE) {
+            sreq = create_request(iov, n_iov, 0, 0);
+            mpi_errno = MPIDI_nem_ib_packetized_send(vc, sreq);
+            if (MPI_MRAIL_MSG_QUEUED == mpi_errno) {
+                mpi_errno = MPI_SUCCESS;
+            }
+            goto fn_exit;
+        }
+
+
+        mpi_errno = MPIDI_nem_ib_eager_send(vc, iov, n_iov, pkt_len, &nb, &buf);
+        mpi_errno = MPI_SUCCESS
+        DEBUG_PRINT("[istartmsg_paused] mpierr %d, nb %d\n", mpi_errno, nb);
+        if (mpi_errno == MPI_SUCCESS) {
+            DEBUG_PRINT("[send path] eager send return %d bytes\n", nb);
+        /* eager poking */
+        /* if (nb == pkt_len)
+           mpi_errno = MPID_Progress_test();
+         */
+            goto fn_exit;
+        /*rfp codes*/
+        } else if (MPI_MRAIL_MSG_QUEUED == mpi_errno) {
+            /* fast rdma ok but cannot send: there is no send wqe available */
+            sreq = create_request(iov, n_iov, 0, 0);
+            buf->sreq = (void *) sreq;
+            mpi_errno = MPI_SUCCESS;
+            goto fn_exit;
+        } else {
+            sreq = MPID_Request_create();
+            if (sreq == NULL) {
+                mpi_errno =
+                    MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL,
+                                         FCNAME, __LINE__,
+                                         MPI_ERR_OTHER, "**nomem", 0);
+                goto fn_exit;
+            }
+            sreq->kind = MPID_REQUEST_SEND;
+            sreq->cc = 0;
+            /* TODO: Create an appropriate error message based on the value of errno
+             */
+            sreq->status.MPI_ERROR = MPI_ERR_INTERN;
+        }
+    } else {
+        MPIDI_DBG_PRINTF((55, FCNAME,
+                          "send in progress, request enqueued"));
+        sreq = create_request(iov, n_iov, 0, 0);
+        SENDQ_ENQUEUE(&VC_FIELD(vc, send_queue), sreq);
+    }
+
+fn_exit:
+    *sreq_ptr = sreq;
+
+    DEBUG_PRINT("Exiting istartmsg_paused\n");
+    MPIDI_DBG_PRINTF((50, FCNAME, "exiting"));
+    MPIDI_FUNC_EXIT(MPID_STATE_MPID_NEM_IB_ISTARTCONTIGMSG_PAUSED);
+    return mpi_errno;
+}
+#endif /* ENABLE_CHECKPOINTING */
 
 
 #undef FUNCNAME
@@ -857,6 +981,11 @@ int MPID_nem_ib_iSendNoncontig (MPIDI_VC_t *vc, MPID_Request *sreq, void *header
     iov[0].MPID_IOV_BUF = header;
     /* the channel use fixed header size*/
     iov[0].MPID_IOV_LEN = sizeof(MPIDI_CH3_Pkt_t);
+
+#ifdef ENABLE_CHECKPOINTING
+    MPID_nem_ib_vc_area *vc_ib = VC_IB(vc);
+    if (!MPID_nem_ib_vc_send_paused(vc_ib)) {
+#endif
 
     if (SENDQ_EMPTY(VC_FIELD(vc, send_queue))) {
 
@@ -956,6 +1085,14 @@ int MPID_nem_ib_iSendNoncontig (MPIDI_VC_t *vc, MPID_Request *sreq, void *header
         isend_update_request(sreq, header, hdr_sz, 0);
         SENDQ_ENQUEUE(&VC_FIELD(vc, send_queue), sreq);
     }
+#ifdef ENABLE_CHECKPOINTING
+    }
+    else
+    {
+        isend_update_request(sreq, header, hdr_sz, 0);
+        SENDQ_ENQUEUE(&VC_FIELD(vc, paused_send_queue), sreq);
+    }
+#endif
 
 fn_exit:
     if (databuf)
@@ -967,8 +1104,6 @@ fn_fail:
     goto fn_exit;
 
 }
-
-
 
 #undef FUNCNAME
 #define FUNCNAME MRAILI_Backlog_send
@@ -1208,6 +1343,10 @@ int MRAILI_Process_send(void *vbuf_addr)
     case MPIDI_NEM_PKT_LMT_CTS:
     case MPIDI_NEM_PKT_LMT_COOKIE:
     case MPIDI_CH3_PKT_RNDV_R3_ACK:
+#ifdef ENABLE_CHECKPOINTING
+    case MPIDI_NEM_PKT_CKPT_MARKER: 
+    case MPIDI_NEM_IB_PKT_UNPAUSE: 
+#endif
         DEBUG_PRINT("[process send] get %d\n", p->type);
 
         if (v->padding == NORMAL_VBUF_FLAG) {
@@ -1696,3 +1835,134 @@ int MPIDI_nem_ib_lmt_r3_ack_send(MPIDI_VC_t *vc)
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_NEM_IB_LMT_R3_ACK_SEND);
     return mpi_errno;
 }
+
+#ifdef ENABLE_CHECKPOINTING
+#undef FUNCNAME
+#define FUNCNAME MPID_nem_ib_send_queued
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int MPID_nem_ib_send_queued(MPIDI_VC_t *vc, MPIDI_nem_ib_request_queue_t *send_queue)
+{
+    int mpi_errno = MPI_SUCCESS;
+    MPID_Request *sreq;
+    MPIDI_msg_sz_t offset;
+    MPID_IOV *iov;
+    int complete;
+    MPID_nem_ib_vc_area *vc_ib = VC_IB(vc);
+
+    vbuf *buf;
+    int nb, n_iov, pkt_len = 0;
+
+    MPIDI_STATE_DECL(MPID_STATE_MPID_NEM_IB_SEND_QUEUED);
+
+    MPIDI_FUNC_ENTER(MPID_STATE_MPID_NEM_IB_SEND_QUEUED);
+
+    MPIU_DBG_MSG_P(CH3_CHANNEL, VERBOSE, "vc = %p", vc);
+    MPIU_Assert(vc != NULL);
+
+    if (MPIDI_CH3I_Sendq_empty(*send_queue))
+    goto fn_exit;
+
+    while (!MPIDI_CH3I_Sendq_empty(*send_queue))
+    {
+        sreq = MPIDI_CH3I_Sendq_head(*send_queue);
+        MPIU_DBG_MSG_P(CH3_CHANNEL, VERBOSE, "Sending %p", sreq);
+
+        iov = &sreq->dev.iov[sreq->dev.iov_offset];
+
+        Calculate_IOV_len(iov, n_iov, pkt_len);
+
+
+        mpi_errno = MPIDI_nem_ib_eager_send(vc, iov, n_iov, pkt_len, &nb, &buf);
+
+        if (mpi_errno == MPI_SUCCESS)
+        {
+            DEBUG_PRINT("[send path] eager send return %d bytes\n", nb);
+            goto fn_exit;
+        /*rfp codes*/
+        }
+        else if (MPI_MRAIL_MSG_QUEUED == mpi_errno)
+        {
+            /* fast rdma ok but cannot send: there is no send wqe available */
+            sreq = create_request(iov, n_iov, 0, 0);
+            buf->sreq = (void *) sreq;
+            mpi_errno = MPI_SUCCESS;
+            goto fn_exit;
+        }
+        else
+        {
+            sreq = MPID_Request_create();
+            if (sreq == NULL)
+            {
+                mpi_errno =
+                    MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_FATAL,
+                                         FCNAME, __LINE__,
+                                         MPI_ERR_OTHER, "**nomem", 0);
+                goto fn_exit;
+            }
+            sreq->kind = MPID_REQUEST_SEND;
+            sreq->cc = 0;
+            /* TODO: Create an appropriate error message based on the value of errno
+             * */
+            sreq->status.MPI_ERROR = MPI_ERR_INTERN;
+        }
+
+
+        complete = 1;
+        for (iov = &sreq->dev.iov[sreq->dev.iov_offset]; iov < &sreq->dev.iov[sreq->dev.iov_offset + sreq->dev.iov_count]; ++iov)
+        {
+            if (offset < iov->MPID_IOV_LEN)
+            {
+                iov->MPID_IOV_BUF = (char *)iov->MPID_IOV_BUF + offset;
+                iov->MPID_IOV_LEN -= offset;
+                /* iov_count should be equal to the number of iov's remaining */
+                sreq->dev.iov_count -= ((iov - sreq->dev.iov) - sreq->dev.iov_offset);
+                sreq->dev.iov_offset = iov - sreq->dev.iov;
+                complete = 0;
+                break;
+            }
+            offset -= iov->MPID_IOV_LEN;
+        }
+        if (!complete)
+        {
+            /* writev couldn't write the entire iov, give up for now */
+            break;
+        }
+        else
+        {
+            /* sent whole message */
+            int (*reqFn)(MPIDI_VC_t *, MPID_Request *, int *);
+
+            reqFn = sreq->dev.OnDataAvail;
+            if (!reqFn)
+            {
+                MPIU_Assert(MPIDI_Request_get_type(sreq) != MPIDI_REQUEST_TYPE_GET_RESP);
+                MPIDI_CH3U_Request_complete(sreq);
+                MPIU_DBG_MSG(CH3_CHANNEL, VERBOSE, ".... complete");
+                MPIDI_CH3I_Sendq_dequeue(send_queue, &sreq);
+                continue;
+            }
+
+            complete = 0;
+            mpi_errno = reqFn(vc, sreq, &complete);
+            if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+            if (complete)
+            {
+                MPIU_DBG_MSG(CH3_CHANNEL, VERBOSE, ".... complete");
+                MPIDI_CH3I_Sendq_dequeue(send_queue, &sreq);
+                continue;
+            }
+            sreq->dev.iov_offset = 0;
+        }
+    }
+
+fn_exit:
+    MPIDI_FUNC_EXIT(MPID_STATE_MPID_NEM_IB_SEND_QUEUED);
+    return mpi_errno;
+fn_fail:
+    goto fn_exit;
+}
+
+
+#endif

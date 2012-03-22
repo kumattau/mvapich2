@@ -715,8 +715,8 @@ int MPIDI_CH3I_RDMA_finalize(void)
     /* Show memory usage statistics */
     if (DEBUG_MEM_verbose) {
         if(pg_rank == 0 || DEBUG_MEM_verbose > 1) {
-            print_mem_usage();
-            print_vbuf_usage();
+            mv2_print_mem_usage();
+            mv2_print_vbuf_usage_usage();
         }
     }
 
@@ -1579,8 +1579,8 @@ int MPIDI_CH3I_CM_Finalize(void)
     /* Show memory usage statistics */
     if (DEBUG_MEM_verbose) {
         if(pg_rank == 0 || DEBUG_MEM_verbose > 1) {
-            print_mem_usage();
-            print_vbuf_usage();
+            mv2_print_mem_usage();
+            mv2_print_vbuf_usage_usage();
         }
     }
 

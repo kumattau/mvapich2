@@ -46,7 +46,14 @@ int MPID_nem_ib_get_business_card (int my_rank, char **bc_val_p, int *val_max_sz
 int MPID_nem_ib_ckpt_shutdown (void);
 int MPID_nem_ib_connect_to_root (const char *business_card, MPIDI_VC_t *new_vc);
 
+#ifdef ENABLE_CHECKPOINTING
+typedef struct MPIDI_nem_ib_pkt_unpause
+{
+    MPID_nem_pkt_type_t type;
+    unsigned subtype;
+} MPIDI_nem_ib_pkt_unpause_t;
+#endif
 
-
+typedef GENERIC_Q_DECL(struct MPID_Request) MPIDI_nem_ib_request_queue_t;
 
 #endif /* IB_INIT_H */

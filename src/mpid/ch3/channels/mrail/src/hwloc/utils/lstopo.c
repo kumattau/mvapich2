@@ -1,6 +1,6 @@
 /*
  * Copyright © 2009 CNRS
- * Copyright © 2009-2011 INRIA.  All rights reserved.
+ * Copyright © 2009-2011 inria.  All rights reserved.
  * Copyright © 2009-2011 Université Bordeaux 1
  * Copyright © 2009-2011 Cisco Systems, Inc.  All rights reserved.
  * See COPYING in top-level directory.
@@ -36,8 +36,7 @@ int show_cpuset = 0;
 int taskset = 0;
 unsigned int fontsize = 10;
 unsigned int gridsize = 10;
-unsigned int force_horiz = 0;
-unsigned int force_vert = 0;
+enum lstopo_orient_e force_orient[HWLOC_OBJ_TYPE_MAX];
 unsigned int legend = 1;
 unsigned int top = 0;
 hwloc_pid_t pid = (hwloc_pid_t) -1;
@@ -226,7 +225,7 @@ void usage(const char *name, FILE *where)
 		  ", svg"
 #endif /* CAIRO_HAS_SVG_SURFACE */
 #endif /* HWLOC_HAVE_CAIRO */
-		  ", xml"
+		  ", xml, synthetic"
 		  "\n");
   fprintf (where, "\nFormatting options:\n");
   fprintf (where, "  -l --logical          Display hwloc logical object indexes\n");
@@ -266,8 +265,8 @@ void usage(const char *name, FILE *where)
   fprintf (where, "Graphical output options:\n");
   fprintf (where, "  --fontsize 10         Set size of text font\n");
   fprintf (where, "  --gridsize 10         Set size of margin between elements\n");
-  fprintf (where, "  --horiz               Horizontal graphical layout instead of nearly 4/3 ratio\n");
-  fprintf (where, "  --vert                Vertical graphical layout instead of nearly 4/3 ratio\n");
+  fprintf (where, "  --horiz[=<type,...>]  Horizontal graphical layout instead of nearly 4/3 ratio\n");
+  fprintf (where, "  --vert[=<type,...>]   Vertical graphical layout instead of nearly 4/3 ratio\n");
   fprintf (where, "  --no-legend           Remove the text legend at the bottom\n");
   fprintf (where, "Miscellaneous options:\n");
   fprintf (where, "  --ps --top            Display processes within the hierarchy\n");
@@ -277,6 +276,7 @@ void usage(const char *name, FILE *where)
 enum output_format {
   LSTOPO_OUTPUT_DEFAULT,
   LSTOPO_OUTPUT_CONSOLE,
+  LSTOPO_OUTPUT_SYNTHETIC,
   LSTOPO_OUTPUT_TEXT,
   LSTOPO_OUTPUT_FIG,
   LSTOPO_OUTPUT_PNG,
@@ -293,6 +293,8 @@ parse_output_format(const char *name, char *callname)
     return LSTOPO_OUTPUT_DEFAULT;
   else if (!strncasecmp(name, "console", 3))
     return LSTOPO_OUTPUT_CONSOLE;
+  else if (!strcasecmp(name, "synthetic"))
+    return LSTOPO_OUTPUT_SYNTHETIC;
   else if (!strcasecmp(name, "txt"))
     return LSTOPO_OUTPUT_TEXT;
   else if (!strcasecmp(name, "fig"))
@@ -331,6 +333,17 @@ main (int argc, char *argv[])
   enum output_format output_format = LSTOPO_OUTPUT_DEFAULT;
   char *restrictstring = NULL;
   int opt;
+  unsigned i;
+
+  for(i=0; i<HWLOC_OBJ_TYPE_MAX; i++)
+    force_orient[i] = LSTOPO_ORIENT_NONE;
+  force_orient[HWLOC_OBJ_PU] = LSTOPO_ORIENT_HORIZ;
+  force_orient[HWLOC_OBJ_CACHE] = LSTOPO_ORIENT_HORIZ;
+  force_orient[HWLOC_OBJ_NODE] = LSTOPO_ORIENT_HORIZ;
+
+  /* enable verbose backends */
+  putenv("HWLOC_XML_VERBOSE=1");
+  putenv("HWLOC_SYNTHETIC_VERBOSE=1");
 
 #ifdef HAVE_SETLOCALE
   setlocale(LC_ALL, "");
@@ -407,10 +420,32 @@ main (int argc, char *argv[])
 	}
 	restrictstring = strdup(argv[2]);
 	opt = 1;
-      } else if (!strcmp (argv[1], "--horiz"))
-        force_horiz = 1;
+      }
+
+      else if (!strcmp (argv[1], "--horiz"))
+	for(i=0; i<HWLOC_OBJ_TYPE_MAX; i++)
+	  force_orient[i] = LSTOPO_ORIENT_HORIZ;
       else if (!strcmp (argv[1], "--vert"))
-        force_vert = 1;
+	for(i=0; i<HWLOC_OBJ_TYPE_MAX; i++)
+	  force_orient[i] = LSTOPO_ORIENT_VERT;
+      else if (!strncmp (argv[1], "--horiz=", 8)
+	       || !strncmp (argv[1], "--vert=", 7)) {
+	enum lstopo_orient_e orient = (argv[1][2] == 'h') ? LSTOPO_ORIENT_HORIZ : LSTOPO_ORIENT_VERT;
+	char *tmp = argv[1] + ((argv[1][2] == 'h') ? 8 : 7);
+	while (tmp) {
+	  char *end = strchr(tmp, ',');
+	  hwloc_obj_type_t type;
+	  if (end)
+	    *end = '\0';
+	  type = hwloc_obj_type_of_string(tmp);
+	  if (type != (hwloc_obj_type_t) -1)
+	    force_orient[type] = orient;
+	  if (!end)
+	    break;
+	  tmp = end+1;
+        }
+      }
+
       else if (!strcmp (argv[1], "--fontsize")) {
 	if (argc <= 2) {
 	  usage (callname, stderr);
@@ -579,6 +614,9 @@ main (int argc, char *argv[])
 
     case LSTOPO_OUTPUT_CONSOLE:
       output_console(topology, filename, logical, legend, verbose_mode);
+      break;
+    case LSTOPO_OUTPUT_SYNTHETIC:
+      output_synthetic(topology, filename, logical, legend, verbose_mode);
       break;
     case LSTOPO_OUTPUT_TEXT:
       output_text(topology, filename, logical, legend, verbose_mode);

@@ -22,6 +22,7 @@ typedef struct yy_buffer_state * YY_BUFFER_STATE;
 extern int yylex();
 void yyerror (char const *);
 extern YY_BUFFER_STATE nodelist_yy_scan_string (char const *);
+extern void nodelist_yy_delete_buffer (YY_BUFFER_STATE);
 
 static void slurm_add_hostname(const char *);
 static void slurm_add_hostnames(const char *, sl_handle);
@@ -34,8 +35,10 @@ static void slurm_add_hostnames(const char *, sl_handle);
 }
 
 %{
+#if YYDEBUG
 static void print_token_value (FILE *, int, YYSTYPE);
 #define YYPRINT(file, type, value) print_token_value (file, type, value)
+#endif
 %}
 
     
@@ -43,8 +46,6 @@ static void print_token_value (FILE *, int, YYSTYPE);
 %type <sl> suffixlist
 %type <sr> suffixrange
 %type <text> hostname prefix suffix
-
-%name-prefix "nodelist_yy"
 
 %%
 
@@ -111,7 +112,7 @@ slurm_init_nodelist (char const * const nodelist_spec, size_t nnodes, char
     nodes[nnodes][256])
 {
     YY_BUFFER_STATE buffer_state = nodelist_yy_scan_string(nodelist_spec);
-    int exit_code, i;
+    int exit_code;
 
     nodelist = nodes;
     num_nodes = nnodes;
@@ -129,6 +130,7 @@ yyerror (char const * s)
     PRINT_ERROR("Error parsing slurm nodelist `%s'\n", s);
 }
 
+#if YYDEBUG
 static void
 print_token_value (FILE * file, int type, YYSTYPE value)
 {
@@ -138,3 +140,4 @@ print_token_value (FILE * file, int type, YYSTYPE value)
             break;
     }
 }
+#endif

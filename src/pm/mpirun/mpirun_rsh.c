@@ -66,8 +66,6 @@ pthread_mutex_t wait_socks_succ_lock = PTHREAD_MUTEX_INITIALIZER;
 void spawn_one(int argc, char *argv[], char *totalview_cmd, char *env, int fastssh_nprocs_thres);
 
 process_groups *pglist = NULL;
-int totalprocs = 0;
-char *TOTALPROCS;
 int port;
 char *wd;                       /* working directory of current process */
 char *custpath, *custwd;
@@ -119,9 +117,11 @@ void pglist_insert(const char *const, const int);
 void rkill_fast(void);
 void rkill_linear(void);
 void spawn_fast(int, char *[], char *, char *);
-void spawn_linear(int, char *[], char *, char *);
 void cleanup_handler(int);
-void nostop_handler(int);
+void sigtstp_handler(int);
+void send_signal(char const sig[16]);
+void remote_signal(char const host[256], char const signal[16],
+        pid_t const pid[], size_t npids);
 void alarm_handler(int);
 void child_handler(int);
 void cleanup(void);
@@ -254,7 +254,7 @@ signal_processor (int signal)
             cleanup_handler(signal);
             break;
         case SIGTSTP:
-            nostop_handler(signal);
+            sigtstp_handler(signal);
             break;
         case SIGALRM:
             alarm_handler(signal);
@@ -634,9 +634,6 @@ void pglist_print(void)
 
 }
 
-//Used when dpm is enabled
-int index_dpm_spawn = 1;
-
 void pglist_insert(const char *const hostname, const int plist_index)
 {
     const size_t increment = nprocs > 4 ? nprocs / 4 : 1;
@@ -646,10 +643,13 @@ void pglist_insert(const char *const hostname, const int plist_index)
     process_group *pg;
     void *backup_ptr;
 
-    if (alloc_error)
+    if (alloc_error) {
         return;
-    if (pglist == NULL)
+    }
+
+    if (pglist == NULL) {
         goto init_pglist;
+    }
 
     top = pglist->npgs - 1;
     index = (top + bottom) / 2;
@@ -663,49 +663,60 @@ void pglist_insert(const char *const hostname, const int plist_index)
             top = index - 1;
         }
 
-        if (bottom > top)
+        if (bottom > top) {
             break;
+        }
+
         index = (top + bottom) / 2;
     }
 
-    //We need to add another control (we need to understand if the exe is different from the others inserted)
+    /*
+     * We need to add another control (we need to understand if the exe is
+     * different from the others inserted)
+     */
     if (configfile_on && strcmp_result == 0) {
-        /* Check if the previous name of exexutable and args in the pglist are equal.
-         * If they are different we need to add this exe to another group.*/
-        int index_previous = pglist->index[index]->plist_indices[0];
-        if ((strcmp_result = strcmp(plist[plist_index].executable_name, plist[index_previous].executable_name)) == 0) {
-            //If both the args are different from NULL we need to compare these
-            if (plist[plist_index].executable_args != NULL && plist[index_previous].executable_args != NULL)
-                strcmp_result = strcmp(plist[plist_index].executable_args, plist[index_previous].executable_args);
-            //If both are null they are the same
-            else if (plist[plist_index].executable_args == NULL && plist[index_previous].executable_args == NULL)
-                strcmp_result = 0;
-            //If one is null and the other one is not null they are different
-            else
-                strcmp_result = 1;
+        int index_previous;
+        /*
+         * Check if the previous name of exexutable and args in the pglist are
+         * equal.  If they are different we need to add this exe to another
+         * group.
+         */
+
+        index_previous = pglist->index[index]->plist_indices[0];
+        strcmp_result = strcmp(plist[plist_index].executable_name,
+                plist[index_previous].executable_name);
+
+        if (0 == strcmp_result) {
+            /*
+             * Make sure both args are not NULL before comparing.
+             */
+            if (plist[plist_index].executable_args
+                    && plist[index_previous].executable_args) {
+                strcmp_result = strcmp(plist[plist_index].executable_args,
+                        plist[index_previous].executable_args);
+            }
+
+            /*
+             * At least one is NULL, do a simple pointer comparison to see if
+             * they are the same or not.
+             */
+            else {
+                strcmp_result = plist[plist_index].executable_args !=
+                    plist[index_previous].executable_args;
+            }
         }
     }
-    //if (!dpm && !strcmp_result)
-    //  goto insert_pid;
-    //If dpm is enabled mpirun_rsh should know how many spawn to start
-    if (dpm) {
-        if (index_dpm_spawn < spinf.totspawns) {
-            index_dpm_spawn++;
-            if (strcmp_result > 0)
-                index++;
-            goto add_process_group;
-        } else
-            goto insert_pid;
-    }
+
     if (!strcmp_result)
         goto insert_pid;
 
-    if (strcmp_result > 0)
+    if (strcmp_result > 0) {
         index++;
+    }
 
     goto add_process_group;
 
-  init_pglist:
+init_pglist:
     pglist = malloc(sizeof(process_groups));
 
     if (pglist) {
@@ -717,7 +728,7 @@ void pglist_insert(const char *const hostname, const int plist_index)
         goto register_alloc_error;
     }
 
-  add_process_group:
+add_process_group:
     if (pglist->npgs == pglist->npgs_allocated) {
         process_group *pglist_data_backup = pglist->data;
         ptrdiff_t offset;
@@ -725,7 +736,8 @@ void pglist_insert(const char *const hostname, const int plist_index)
         pglist->npgs_allocated += increment;
 
         backup_ptr = pglist->data;
-        pglist->data = realloc(pglist->data, sizeof(process_group) * pglist->npgs_allocated);
+        pglist->data = realloc(pglist->data, sizeof(process_group) *
+                pglist->npgs_allocated);
 
         if (pglist->data == NULL) {
             pglist->data = backup_ptr;
@@ -733,7 +745,8 @@ void pglist_insert(const char *const hostname, const int plist_index)
         }
 
         backup_ptr = pglist->index;
-        pglist->index = realloc(pglist->index, sizeof(process_group *) * pglist->npgs_allocated);
+        pglist->index = realloc(pglist->index, sizeof(process_group *) *
+                pglist->npgs_allocated);
 
         if (pglist->index == NULL) {
             pglist->index = backup_ptr;
@@ -743,7 +756,8 @@ void pglist_insert(const char *const hostname, const int plist_index)
         offset = (size_t) pglist->data - (size_t) pglist_data_backup;
         if (offset) {
             for (i = 0; i < pglist->npgs; i++) {
-                pglist->index[i] = (process_group *) ((size_t) pglist->index[i] + offset);
+                pglist->index[i] = (process_group *) ((size_t) pglist->index[i]
+                        + offset);
             }
         }
     }
@@ -760,7 +774,7 @@ void pglist_insert(const char *const hostname, const int plist_index)
 
     pglist->index[index] = &pglist->data[pglist->npgs++];
 
-  insert_pid:
+insert_pid:
 #if defined(CKPT) && defined(CR_FTB)
     /* This is a spare host. Create a PG but do not insert a PID */
     if (plist_index == -1)
@@ -781,7 +795,8 @@ void pglist_insert(const char *const hostname, const int plist_index)
         }
 
         backup_ptr = pg->plist_indices;
-        pg->plist_indices = realloc(pg->plist_indices, pg->npids_allocated * sizeof(int));
+        pg->plist_indices = realloc(pg->plist_indices, pg->npids_allocated *
+                sizeof(int));
 
         if (pg->plist_indices == NULL) {
             pg->plist_indices = backup_ptr;
@@ -793,7 +808,7 @@ void pglist_insert(const char *const hostname, const int plist_index)
 
     return;
 
-  register_alloc_error:
+register_alloc_error:
     if (pglist) {
         if (pglist->data) {
             for (pg = pglist->data; pglist->npgs--; pg++) {
@@ -918,6 +933,89 @@ void cleanup(void)
     }
 }
 
+void remote_signal(char const host[256], char const signal[16],
+        pid_t const pid[], size_t npids)
+{
+    char remote_command[1024];
+    char * pid_start;
+    pid_t const * next_pid = pid;
+
+    if (use_rsh) {
+        sprintf(remote_command, "%s %s kill -s %s", RSH_CMD, host, signal);
+    } else {
+        sprintf(remote_command, "%s %s -x %s kill -s %s", SSH_CMD, SSH_ARG,
+                host, signal);
+    }
+
+    pid_start = remote_command + strlen(remote_command);
+
+    while (npids--) {
+        char pid_string[256];
+        int pid_len;
+
+        pid_len = sprintf(pid_string, " %lu", (unsigned long)*next_pid);
+
+        if (1000 < pid_len + strlen(remote_command)) {
+            strcat(remote_command, " >/dev/null 2>&1");
+
+            PRINT_DEBUG(DEBUG_Fork_verbose, "%s", remote_command);
+            system(remote_command);
+
+            *pid_start = '\0';
+        }
+
+        strcat(remote_command, pid_string);
+        next_pid++;
+    }
+
+    strcat(remote_command, " >/dev/null 2>&1");
+
+    PRINT_DEBUG(DEBUG_Fork_verbose, "%s", remote_command);
+    system(remote_command);
+}
+
+void send_signal(char const sig[16])
+{
+    int i, j;
+
+    if (pglist) {
+        for (i = 0; i < NSPAWNS; i++) {
+            /*
+             * We're no longer the mpirun_rsh process but a child process
+             * used to signal a specific instance of mpispawn.  No exit
+             * codes or state transitions should be called here.
+             */
+            if (pglist->index[i]->pid != -1) {
+                const process_group *pg = pglist->index[i];
+
+                if (legacy_startup) {
+                    pid_t pids[pg->npids];
+
+                    for (j = 0; j < pg->npids; j++) {
+                        pids[j] = plist[pg->plist_indices[j]].remote_pid;
+                    }
+
+                    remote_signal(pg->hostname, sig, pids, pg->npids);
+                } else {
+                    remote_signal(pg->hostname, sig, &pg->pid, 1);
+                }
+            } 
+        }
+    } else {
+        for (i = 0; i < nprocs; i++) {
+            /*
+             * We're no longer the mpirun_rsh process but a child process
+             * used to signal a specific instance of mpispawn.  No exit
+             * codes or state transitions should be called here.
+             */
+            if (plist[i].remote_pid) {
+                remote_signal(plist[i].hostname, sig, &plist[i].remote_pid,
+                        1);
+            }
+        }
+    }
+}
+
 void rkill_fast(void)
 {
     int tryagain, spawned_pid[pglist->npgs];
@@ -928,40 +1026,22 @@ void rkill_fast(void)
             /*
              * We're no longer the mpirun_rsh process but a child process
              * used to kill a specific instance of mpispawn.  No exit codes
-             * are state transitions should be called here.
+             * or state transitions should be called here.
              */
-            dbg("pglist->index[%d]->pid=%d\n", i, pglist->index[i]->pid);
             if (pglist->index[i]->pid != -1) {
-                const size_t bufsize = 40 + 10 * pglist->index[i]->npids;
                 const process_group *pg = pglist->index[i];
-                char kill_cmd[bufsize], tmp[10];
-
-                kill_cmd[0] = '\0';
 
                 if (legacy_startup) {
-                    strcat(kill_cmd, "kill -s 9");
+                    pid_t pids[pg->npids];
+
                     for (j = 0; j < pg->npids; j++) {
-                        snprintf(tmp, 10, " %d", plist[pg->plist_indices[j]].remote_pid);
-                        strcat(kill_cmd, tmp);
+                        pids[j] = plist[pg->plist_indices[j]].remote_pid;
                     }
+
+                    remote_signal(pg->hostname, "15", pids, pg->npids);
                 } else {
-                    strcat(kill_cmd, "kill");
-                    snprintf(tmp, 10, " %d", pg->pid);
-                    strcat(kill_cmd, tmp);
+                    remote_signal(pg->hostname, "15", &pg->pid, 1);
                 }
-
-                strcat(kill_cmd, " >&/dev/null");
-
-                if (use_rsh) {
-                    PRINT_DEBUG(DEBUG_Fork_verbose, "FORK kill mpispawn[%ld] (pid=%d): %s %s %s %s\n", i, getpid(), RSH_CMD, RSH_CMD, pg->hostname, kill_cmd);
-                    execl(RSH_CMD, RSH_CMD, pg->hostname, kill_cmd, NULL);
-                } else {
-                    PRINT_DEBUG(DEBUG_Fork_verbose, "FORK kill mpispawn[%ld] (pid=%d): %s %s %s %s %s %s\n", i, getpid(), SSH_CMD, SSH_CMD, SSH_ARG, "-x", pg->hostname, kill_cmd);
-                    execl(SSH_CMD, SSH_CMD, SSH_ARG, "-x", pg->hostname, kill_cmd, NULL);
-                }
-
-                perror("Here");
-                exit(EXIT_FAILURE);
             } 
 
             exit(EXIT_SUCCESS);
@@ -1024,26 +1104,13 @@ void rkill_linear(void)
             /*
              * We're no longer the mpirun_rsh process but a child process
              * used to kill a specific instance of mpispawn.  No exit codes
-             * are state transitions should be called here.
+             * or state transitions should be called here.
              */
-            char kill_cmd[80];
-
-            if (!plist[i].remote_pid) {
-                exit(EXIT_SUCCESS);
+            if (plist[i].remote_pid) {
+                remote_signal(plist[i].hostname, "15", &plist[i].remote_pid, 1);
             }
 
-            snprintf(kill_cmd, 80, "kill -s 9 %d >&/dev/null", plist[i].remote_pid);
-
-            if (use_rsh) {
-                PRINT_DEBUG(DEBUG_Fork_verbose, "FORK kill remote processes (pid=%d): %s %s %s %s\n", getpid(), RSH_CMD, RSH_CMD, plist[i].hostname, kill_cmd);
-                execl(RSH_CMD, RSH_CMD, plist[i].hostname, kill_cmd, NULL);
-            } else {
-                PRINT_DEBUG(DEBUG_Fork_verbose, "FORK kill remote processes (pid=%d): %s %s %s %s %s %s\n", getpid(), SSH_CMD, SSH_CMD, SSH_ARG, "-x", plist[i].hostname, kill_cmd);
-                execl(SSH_CMD, SSH_CMD, SSH_ARG, "-x", plist[i].hostname, kill_cmd, NULL);
-            }
-
-            perror(NULL);
-            exit(EXIT_FAILURE);
+            exit(EXIT_SUCCESS);
         }
     }
 
@@ -1070,7 +1137,8 @@ void rkill_linear(void)
         fprintf(stderr, "The following processes may have not been killed:\n");
         for (i = 0; i < nprocs; i++) {
             if (spawned_pid[i]) {
-                fprintf(stderr, "%s [%d]\n", plist[i].hostname, plist[i].remote_pid);
+                fprintf(stderr, "%s [%d]\n", plist[i].hostname,
+                        plist[i].remote_pid);
             }
         }
     }
@@ -1493,14 +1561,6 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env)
                 }
             }
 
-            tmp = mkstr("%s MPISPAWN_LOCAL_NPROCS=%d", mpispawn_env, pglist->data[i].npids);
-            if (tmp) {
-                free(mpispawn_env);
-                mpispawn_env = tmp;
-            } else {
-                goto allocation_error;
-            }
-
             tmp = mkstr("%s MPIRUN_COMM_MULTIPLE=%d", mpispawn_env, multival);
             if (tmp) {
                 free(mpispawn_env);
@@ -1509,23 +1569,23 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env)
                 goto allocation_error;
             }
             template2 = strdup(mpispawn_env);
-        } else {
-            tmp = mkstr("%s MPISPAWN_LOCAL_NPROCS=%d", mpispawn_env, pglist->data[i].npids);
-            if (tmp) {
-                free(mpispawn_env);
-                mpispawn_env = tmp;
-            } else {
-                goto allocation_error;
-            }
         }
 
-      done_spawn_read:
+done_spawn_read:
+        tmp = mkstr("%s MPISPAWN_LOCAL_NPROCS=%d", mpispawn_env,
+                pglist->data[i].npids);
+        if (tmp) {
+            free(mpispawn_env);
+            mpispawn_env = tmp;
+        } else {
+            goto allocation_error;
+        }
 
         if (!(pglist->data[i].pid = fork())) {
             /*
              * We're no longer the mpirun_rsh process but a child process
              * used to launch a specific instance of mpispawn.  No exit codes
-             * are state transitions should be called here.
+             * or state transitions should be called here.
              */
             size_t arg_offset = 0;
             const char *nargv[7];
@@ -2054,7 +2114,7 @@ void spawn_one(int argc, char *argv[], char *totalview_cmd, char *env, int fasts
             /*
              * We're no longer the mpirun_rsh process but a child process
              * used to launch a specific instance of mpispawn.  No exit codes
-             * are state transitions should be called here.
+             * or state transitions should be called here.
              */
             size_t arg_offset = 0;
             const char *nargv[7];
@@ -2277,9 +2337,11 @@ void make_command_strings(int argc, char *argv[], char *totalview_cmd, char *com
     }
 }
 
-void nostop_handler(int signal)
+void sigtstp_handler(int signal)
 {
-    printf("Stopping from the terminal not allowed\n");
+    send_signal("SIGTSTP");
+    raise(SIGSTOP);
+    send_signal("SIGCONT");
 }
 
 void alarm_handler(int signal)
@@ -2654,6 +2716,8 @@ int handle_spawn_req(int readsock)
     int done = 0;
     char *chptr, *hdptr;
     uint32_t size, spcnt;
+    static int totalprocs = 0;
+    static char *TOTALPROCS;
 
     memset(&spinf, 0, sizeof(spawn_info_t));
 
@@ -2688,8 +2752,10 @@ int handle_spawn_req(int readsock)
         return 1;
     }
 
-    if (totalprocs == 0)
+    if (totalprocs == 0) {
         totalprocs = nprocs;
+    }
+
     TOTALPROCS = mkstr("TOTALPROCS=%d", totalprocs);
     putenv(TOTALPROCS);
     totalprocs = totalprocs + spcnt;
@@ -2758,14 +2824,12 @@ void launch_newmpirun(int total)
     }
     DBG(fprintf(stderr, "launching %s\n", newbuf));
     DBG(fprintf(stderr, "numhosts = %s, hostfile = %s, spawnfile = %s\n", spinf.buf, spinf.linebuf, spinf.spawnfile));
-    char nspawns[MAXLINE];
-    sprintf(nspawns, "%d", spinf.totspawns);
     PRINT_DEBUG(DEBUG_Fork_verbose, "FORK new mpirun (pid=%d)\n", getpid());
     PRINT_DEBUG(DEBUG_Fork_verbose > 1, "new mpirun command line: %s\n", newbuf);
     if (dpmenv) {
-        execl(newbuf, newbuf, "-np", spinf.buf, "-hostfile", spinf.linebuf, "-spawnfile", spinf.spawnfile, "-dpmspawn", nspawns, "-dpm", dpmenv, NULL);
+        execl(newbuf, newbuf, "-np", spinf.buf, "-hostfile", spinf.linebuf, "-spawnfile", spinf.spawnfile, "-dpm", dpmenv, NULL);
     } else {
-        execl(newbuf, newbuf, "-np", spinf.buf, "-hostfile", spinf.linebuf, "-spawnfile", spinf.spawnfile, "-dpmspawn", nspawns, "-dpm", NULL);
+        execl(newbuf, newbuf, "-np", spinf.buf, "-hostfile", spinf.linebuf, "-spawnfile", spinf.spawnfile, "-dpm", NULL);
     }
 
     perror("execl failed\n");
@@ -2818,4 +2882,4 @@ void dpm_add_env(char *buf, char *optval)
 
 #undef ENVLEN
 
-/* vi:set sw=4 sts=4 tw=76 expandtab: */
+/* vi:set sw=4 sts=4 tw=80 expandtab: */

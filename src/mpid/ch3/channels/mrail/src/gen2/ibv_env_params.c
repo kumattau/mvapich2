@@ -12,6 +12,7 @@
 #include "rdma_impl.h"
 #include "ibv_param.h"
 #include "coll_shmem_internal.h"
+#include "gather_tuning.h"
 #if defined(HAVE_LIBHWLOC)
 #include "hwloc_bind.h"
 #endif
@@ -1403,6 +1404,14 @@ mv2_env_param_list_t  param_list[] = {
     1,
     NULL    },
 {
+    MV2_CPU_BINDING_LEVEL,
+    MV2_PARAM_TYPE_INVALID,
+    MV2_PARAM_GROUP_intranode,
+    "MV2_CPU_BINDING_LEVEL",
+    NULL,
+    1,
+    NULL    },
+{
     MV2_USE_HWLOC_CPU_BINDING,
     MV2_PARAM_TYPE_INT,
     MV2_PARAM_GROUP_intranode,
@@ -1418,6 +1427,7 @@ mv2_env_param_list_t  param_list[] = {
     NULL,
     1,
     NULL    },
+#if defined(HAVE_LIBHWLOC)
 {
     MV2_ENABLE_AFFINITY,
     MV2_PARAM_TYPE_INT,
@@ -1434,6 +1444,7 @@ mv2_env_param_list_t  param_list[] = {
     &mv2_enable_leastload,
     0,
     NULL    },
+#endif
 #if defined(_SMP_LIMIC_)
 {
     MV2_LIMIC_GET_THRESHOLD,
@@ -1509,7 +1520,7 @@ mv2_env_param_list_t  param_list[] = {
     1,
     NULL    },
 /* cuda */
-#if defined(_ENABLE_CUDA)
+#if defined(_ENABLE_CUDA_)
 {
     MV2_CUDA_BLOCK_SIZE,
     MV2_PARAM_TYPE_INT,
@@ -1599,7 +1610,143 @@ mv2_env_param_list_t  param_list[] = {
     &rdma_cuda_enable_ipc_cache,
     0,
     NULL    },
-#endif
+{
+    MV2_CUDA_IPC_MAX_CACHE_ENTRIES,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_cuda,
+    "MV2_CUDA_IPC_MAX_CACHE_ENTRIES",
+    &cudaipc_cache_max_entries,
+    0,
+    NULL    },
+{
+    MV2_CUDA_IPC_NUM_STAGE_BUFFERS,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_cuda,
+    "MV2_CUDA_IPC_NUM_STAGE_BUFFERS",
+    &cudaipc_num_stage_buffers,
+    0,
+    NULL    },
+{
+    MV2_CUDA_IPC_STAGE_BUF_SIZE,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_cuda,
+    "MV2_CUDA_IPC_STAGE_BUF_SIZE",
+    &cudaipc_stage_buffer_size,
+    0,
+    NULL    },
+{
+    MV2_CUDA_IPC_BUFFERED,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_cuda,
+    "MV2_CUDA_IPC_BUFFERED",
+    &cudaipc_stage_buffered,
+    0,
+    NULL    },
+{
+    MV2_CUDA_IPC_BUFFERED_LIMIT,
+    MV2_PARAM_TYPE_LONG,
+    MV2_PARAM_GROUP_cuda,
+    "MV2_CUDA_IPC_BUFFERED_LIMIT",
+    &cudaipc_stage_buffered_limit,
+    0,
+    NULL    },
+{
+    MV2_CUDA_IPC_SYNC_LIMIT,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_cuda,
+    "MV2_CUDA_IPC_SYNC_LIMIT",
+    &cudaipc_sync_limit,
+    0,
+    NULL    },
+#endif /*#if defined(HAVE_CUDA_IPC)*/
+{
+    MV2_CUDA_USE_NAIVE,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_cuda,
+    "MV2_CUDA_USE_NAIVE",
+    &rdma_cuda_use_naive,
+    0,
+    NULL    },
+{
+    MV2_CUDA_REGISTER_NAIVE_BUF,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_cuda,
+    "MV2_CUDA_REGISTER_NAIVE_BUF",
+    &rdma_cuda_register_naive_buf,
+    0,
+    NULL    },
+{
+    MV2_CUDA_GATHER_NAIVE_LIMIT,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_cuda,
+    "MV2_CUDA_GATHER_NAIVE_LIMIT",
+    &rdma_cuda_gather_naive_limit,
+    0,
+    NULL    },
+{
+    MV2_CUDA_SCATTER_NAIVE_LIMIT,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_cuda,
+    "MV2_CUDA_SCATTER_NAIVE_LIMIT",
+    &rdma_cuda_scatter_naive_limit,
+    0,
+    NULL    },
+{
+    MV2_CUDA_ALLGATHER_NAIVE_LIMIT,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_cuda,
+    "MV2_CUDA_ALLGATHER_NAIVE_LIMIT",
+    &rdma_cuda_allgather_naive_limit,
+    0,
+    NULL    },
+{
+    MV2_CUDA_ALLGATHERV_NAIVE_LIMIT,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_cuda,
+    "MV2_CUDA_ALLGATHERV_NAIVE_LIMIT",
+    &rdma_cuda_allgatherv_naive_limit,
+    0,
+    NULL    },
+{
+    MV2_CUDA_ALLTOALL_NAIVE_LIMIT,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_cuda,
+    "MV2_CUDA_ALLTOALL_NAIVE_LIMIT",
+    &rdma_cuda_alltoall_naive_limit,
+    0,
+    NULL    },
+{
+    MV2_CUDA_ALLTOALLV_NAIVE_LIMIT,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_cuda,
+    "MV2_CUDA_ALLTOALLV_NAIVE_LIMIT",
+    &rdma_cuda_alltoallv_naive_limit,
+    0,
+    NULL    },
+{
+    MV2_CUDA_BCAST_NAIVE_LIMIT,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_cuda,
+    "MV2_CUDA_BCAST_NAIVE_LIMIT",
+    &rdma_cuda_bcast_naive_limit,
+    0,
+    NULL    },
+{
+    MV2_CUDA_GATHERV_NAIVE_LIMIT,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_cuda,
+    "MV2_CUDA_GATHERV_NAIVE_LIMIT",
+    &rdma_cuda_gatherv_naive_limit,
+    0,
+    NULL    },
+{
+    MV2_CUDA_SCATTERV_NAIVE_LIMIT,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_cuda,
+    "MV2_CUDA_SCATTERV_NAIVE_LIMIT",
+    &rdma_cuda_scatterv_naive_limit,
+    0,
+    NULL    },
 #endif /*_ENABLE_CUDA */
 /* debug */
 {

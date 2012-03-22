@@ -6,15 +6,15 @@ mpi_sources = allreduce.c barrier.c op_create.c op_free.c \
  gather.c scatterv.c gatherv.c scan.c exscan.c allgather.c allgatherv.c \
  red_scat.c alltoallw.c reduce_local.c op_commutative.c red_scat_block.c \
  allgather_osu.c allgatherv_osu.c allreduce_osu.c alltoall_osu.c alltoallv_osu.c \
- barrier_osu.c bcast_osu.c gather_osu.c\
+ barrier_osu.c bcast_osu.c gather_osu.c gather_tuning.c \
  reduce_osu.c scatter_osu.c red_scat_osu.c ch3_shmem_coll.c 
 
 lib${MPILIBNAME}_a_SOURCES = $(mpi_sources) \
  helper_fns.c opsum.c opmax.c opmin.c opband.c opbor.c opbxor.c \
  opland.c oplor.c oplxor.c opprod.c opminloc.c opmaxloc.c
 
-INCLUDES = -I../../include -I${top_srcdir}/src/include -I${top_srcdir}/src/mpi/datatype -I${top_srcdir}/src/mpid/ch3/channels/mrail/src/rdma/ 
-#-I/home/singhas/Builds/exp3/src/mpid/ch3/channels/mrail/include
+INCLUDES = -I../../include -I${top_srcdir}/src/include -I${top_srcdir}/src/mpi/datatype -I${top_srcdir}/src/mpid/ch3/channels/mrail/src/rdma/ -I${top_srcdir}/src/mpid/ch3/channels/common/include
+
 profilelib_${MPILIBNAME} = ${PMPILIBNAME}
 profilelib_${MPILIBNAME}_SOURCES = ${mpi_sources}
 

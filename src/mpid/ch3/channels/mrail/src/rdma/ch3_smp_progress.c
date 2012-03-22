@@ -392,6 +392,9 @@ static inline int MPIDI_CH3I_SMP_Process_header(MPIDI_VC_t* vc, MPIDI_CH3_Pkt_t*
     DEBUG_PRINT("R3 data received, don't need to proceed\n");
     vc->smp.recv_active = rreq;
     goto fn_exit;
+    } else if (pkt->type == MPIDI_CH3_PKT_RGET_FINISH) {
+        MPIDI_CH3_Rendezvous_rget_send_finish(vc, (MPIDI_CH3_Pkt_rget_finish_t *) pkt);
+        goto fn_exit;
     }
 
 #if defined(CKPT)
@@ -675,6 +678,12 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
 
         MPIDI_PG_Get_vc(pg, g_smpi.l2g_rank[from], &vc);
 
+#if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
+        if (rdma_enable_cuda && vc->smp.local_rank == -1) {
+            continue;
+        }
+#endif
+
         if (!vc->smp.recv_active)
         {
             MPIDI_CH3I_SMP_pull_header(vc, &pkt_head);
@@ -855,18 +864,25 @@ void MPIDI_CH3I_set_smp_only()
         return;
     }
 
-#ifdef _ENABLE_CUDA_
-    /* CUDA transger efficient in loop back mode.  Remove this
-    ** code when efficient SHMEM intra node CUDA transfer in place.
-    */
-    if (rdma_enable_cuda) {
-        rdma_use_smp = 0; 
-    }    
-#endif
-
     if ((value = getenv("MV2_USE_SHARED_MEM")) != NULL) {
         rdma_use_smp = !!atoi(value);
     }
+#if defined(_ENABLE_CUDA_)
+    else {
+        if (rdma_enable_cuda) {
+#if defined(HAVE_CUDA_IPC)
+            if (!rdma_cuda_ipc)
+#endif
+            {
+                /* disable shared memory dy default if cuda IPC not
+                ** supported or turned off. Loopback is more efficient 
+                ** than shared memory transfer when IPC is not supported */
+                rdma_use_smp = 0;
+            }
+            return;
+        }
+    }
+#endif
 
     if ((value = getenv("MV2_USE_BLOCKING")) != NULL) {
         rdma_use_blocking = !!atoi(value);
@@ -888,6 +904,10 @@ void MPIDI_CH3I_SMP_Init_VC(MPIDI_VC_t *vc)
     vc->mrail.sreq_tail = NULL;
     vc->mrail.nextflow  = NULL;
     vc->mrail.inflow    = 0;
+#if defined (_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
+    vc->mrail.cudaipc_sreq_head = NULL;
+    vc->mrail.cudaipc_sreq_tail = NULL;
+#endif
 }
 
 void MPIDI_CH3I_SMP_cleanup() 
@@ -1658,6 +1678,44 @@ int MPIDI_CH3I_SMP_finalize()
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_SMP_FINALIZE);
     return MPI_SUCCESS;
 }
+
+#if defined (_ENABLE_CUDA_)
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_SMP_cuda_init
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+void MPIDI_CH3I_CUDA_SMP_cuda_init(MPIDI_PG_t *pg)
+{
+    int id, local_id;
+    MPIDI_VC_t *vc = NULL;
+
+    for (id = 0; id < pg->size; ++id) {
+        MPIDI_PG_Get_vc(pg, id, &vc);
+        local_id = vc->smp.local_nodes;
+        if (local_id != -1) { 
+            ibv_cuda_register(s_buffer_head[local_id], (sizeof(SEND_BUF_T) + s_smp_block_size) * s_smp_num_send_buffer);
+        }
+    }
+}
+
+#undef FUNCNAME
+#define FUNCNAME MPIDI_CH3I_SMP_cuda_finalize
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+void MPIDI_CH3I_CUDA_SMP_cuda_finalize(MPIDI_PG_t *pg)
+{
+    int id, local_id;
+    MPIDI_VC_t *vc = NULL;
+
+    for (id = 0; id < pg->size; ++id) {
+        MPIDI_PG_Get_vc(pg, id, &vc);
+        local_id = vc->smp.local_nodes;
+        if (local_id != -1) {           
+            ibv_cuda_unregister(s_buffer_head[local_id]);
+        }
+    }
+}
+#endif
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_SMP_writev_rndv_header

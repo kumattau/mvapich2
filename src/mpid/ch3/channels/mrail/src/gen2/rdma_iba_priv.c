@@ -39,7 +39,11 @@ int qp_required(MPIDI_VC_t* vc, int my_rank, int dst_rank)
 	int qp_reqd = 1;
 
 	if ((my_rank == dst_rank) ||
-		(rdma_use_smp && (vc->smp.local_rank != -1))) {
+		    (rdma_use_smp 
+#if defined(_ENABLE_CUDA_)
+            && !rdma_enable_cuda
+#endif
+            && (vc->smp.local_rank != -1))) {
 		/* Process is local */
 		qp_reqd = 0;
 	}
@@ -1472,6 +1476,10 @@ void MRAILI_Init_vc(MPIDI_VC_t * vc)
     vc->mrail.sreq_tail = NULL;
     vc->mrail.nextflow  = NULL;
     vc->mrail.inflow    = 0;
+#if defined (_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
+    vc->mrail.cudaipc_sreq_head = NULL;
+    vc->mrail.cudaipc_sreq_tail = NULL;
+#endif
 
     for (i = 0; i < vc->mrail.num_rails; i++) {
         if (!mv2_MPIDI_CH3I_RDMA_Process.has_srq 

@@ -100,8 +100,12 @@ void allocate_cuda_rndv_streams()
 
 void deallocate_cuda_rndv_streams()
 {
-    cudaStreamDestroy(stream_d2h);
-    cudaStreamDestroy(stream_h2d);
+    if (stream_d2h) {
+        cudaStreamDestroy(stream_d2h);
+    }
+    if (stream_h2d) {
+        cudaStreamDestroy(stream_h2d);
+    }
 }
 
 void process_cuda_stream_op(cuda_stream_t * stream)
@@ -227,6 +231,34 @@ void process_cuda_stream_op(cuda_stream_t * stream)
         }
 
         MRAILI_RDMA_Get_finish(vc, req, 0);
+    } else if (stream->op_type == CUDAIPC_SEND) {
+        int complete;
+        if (req->mrail.rndv_buf_alloc == 1 && 
+                req->mrail.rndv_buf != NULL) { 
+            /* a temporary host rndv buffer would have been allocaed only when the 
+               sender buffers is noncontiguous and is in the host memory */
+            MPIU_Assert(req->mrail.cuda_transfer_mode == HOST_TO_DEVICE);
+            MPIU_Free_CUDA_HOST(req->mrail.rndv_buf);
+            req->mrail.rndv_buf_alloc = 0;
+            req->mrail.rndv_buf = NULL;
+        }
+        MPIDI_CH3U_Handle_send_req(vc, req, &complete);
+        MPIU_Assert(complete == TRUE);
+        if (stream->flags == CUDA_STREAM_DEDICATED) {
+            deallocate_cuda_stream(&req->mrail.cuda_stream);
+        }
+    } else if (stream->op_type == CUDAIPC_RECV) {
+        int complete;
+        int mpi_errno = MPI_SUCCESS;
+        mpi_errno = MPIDI_CH3U_Handle_recv_req(vc, req, &complete);
+        if (mpi_errno != MPI_SUCCESS) {
+            ibv_error_abort(IBV_RETURN_ERR,
+                    "MPIDI_CH3U_Handle_recv_req returned error");
+        }
+        MPIU_Assert(complete == TRUE);
+        if (stream->flags == CUDA_STREAM_DEDICATED) {
+            deallocate_cuda_stream(&req->mrail.cuda_stream);
+        }
 #endif
     } else { 
         ibv_error_abort(IBV_RETURN_ERR, "Invalid op type in stream");
@@ -238,7 +270,6 @@ void progress_cuda_streams()
     cudaError_t result = cudaSuccess;
     cuda_stream_t *curr_stream = busy_cuda_stream_list_head;
     cuda_stream_t *next_stream;
-    cuda_async_op_t op_type;
 
     while (NULL != curr_stream) {
         if (!curr_stream->is_query_done) {
@@ -268,12 +299,12 @@ void progress_cuda_streams()
 
                 curr_stream->is_query_done = 0;
                 curr_stream->next = curr_stream->prev = NULL;
-                op_type = curr_stream->op_type;
 
                 /* process finished stream */
                 process_cuda_stream_op(curr_stream);
 
-                /* Dedicated stream will be deallocated after the request is finished*/
+                /* Dedicated stream will be deallocated after the 
+                ** request is finished*/
                 if (curr_stream->flags == CUDA_STREAM_FREE_POOL) {
                     curr_stream->next = free_cuda_stream_list_head;
                     free_cuda_stream_list_head = curr_stream;
@@ -286,7 +317,7 @@ void progress_cuda_streams()
     }
 }
 
-cuda_stream_t *get_cuda_stream()
+cuda_stream_t *get_cuda_stream(int add_to_polling)
 {
 
     cuda_stream_t *curr_stream;
@@ -303,14 +334,10 @@ cuda_stream_t *get_cuda_stream()
     free_cuda_stream_list_head = free_cuda_stream_list_head->next;
     curr_stream->next = curr_stream->prev = NULL;
 
-    /* Enqueue stream to the busy list*/
-    if (NULL == busy_cuda_stream_list_head) {
-        busy_cuda_stream_list_head = curr_stream;
-        busy_cuda_stream_list_tail = curr_stream;
-    } else {
-        busy_cuda_stream_list_tail->next = curr_stream;
-        curr_stream->prev = busy_cuda_stream_list_tail;
-        busy_cuda_stream_list_tail = curr_stream;
+    if (add_to_polling) {
+        /* Enqueue stream to the busy list*/
+        CUDA_LIST_ADD(curr_stream, 
+            busy_cuda_stream_list_head, busy_cuda_stream_list_tail);
     }
     curr_stream->is_query_done = 0;
     return curr_stream;

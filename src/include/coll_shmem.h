@@ -118,6 +118,8 @@ void MV2_Read_env_vars(void);
 #define MEDIUM                  1
 #define LARGE                   2
 
+#define MV2_MAX_NB_THRESHOLDS  10
+
 extern int mv2_tuning_table[COLL_COUNT][COLL_SIZE]; 
 
 struct scatter_tuning{
@@ -158,15 +160,9 @@ void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int, int, int, void**);
 void MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(int, int, int);
 
 extern int mv2_tune_parameter;
-/* Use for gather_osu.c*/
-#define MPIR_GATHER_BINOMIAL_MEDIUM_MSG 16384
-extern int mv2_user_gather_switch_point;
-extern int mv2_size_mv2_gather_mv2_tuning_table;
-extern struct gather_tuning mv2_gather_mv2_tuning_table[8];
-extern int mv2_use_two_level_gather; 
-extern int mv2_gather_direct_system_size_small;
-extern int mv2_gather_direct_system_size_medium; 
-extern int mv2_use_direct_gather; 
+
+/* Use for collective tuning based on arch detection*/
+void MV2_collectives_arch_init();
 
 /* Use for allgather_osu.c */
 #define MV2_ALLGATHER_SMALL_SYSTEM_SIZE       128
@@ -259,5 +255,12 @@ int free_2level_comm (MPID_Comm *);
 int enable_split_comm(pthread_t);
 void MPIR_pof2_comm(MPID_Comm *, int, int);
 
+#ifdef _ENABLE_CUDA_
+int cuda_stage_alloc(void **, int, void **, int,
+                      int, int, int);
+void cuda_stage_free (void **, void **, int, int, 
+                        int);
+void CUDA_COLL_Finalize ();                        
+#endif /*_ENABLE_CUDA_*/
 
 #endif  /* _COLL_SHMEM_ */

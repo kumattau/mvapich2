@@ -21,19 +21,20 @@ typedef struct yy_buffer_state * YY_BUFFER_STATE;
 extern int yylex();
 void yyerror (char const *);
 extern YY_BUFFER_STATE tasklist_yy_scan_string (char const *);
+extern void tasklist_yy_delete_buffer (YY_BUFFER_STATE);
 
 static void slurm_add_ntask(size_t);
 static void slurm_add_ntasks(size_t, size_t);
 
 #define YYSTYPE size_t 
 
+#if YYDEBUG
 static void print_token_value (FILE *, int, YYSTYPE);
 #define YYPRINT(file, type, value) print_token_value (file, type, value)
+#endif
 %}
 
 %token DECIMAL
-
-%name-prefix "tasklist_yy"
 
 %%
 
@@ -99,12 +100,14 @@ yyerror (char const * s)
     PRINT_ERROR("Error parsing slurm tasks per node `%s'\n", s);
 }
 
+#if YYDEBUG
 static void
 print_token_value (FILE * file, int type, YYSTYPE value)
 {
     switch (type) {
         case DECIMAL:
-            fprintf(file, "%d", value);
+            fprintf(file, "%d", (int)value);
             break;
     }
 }
+#endif

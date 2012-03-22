@@ -38,7 +38,7 @@ static size_t multiplier = 1;
 static size_t n_ranks = 0;
 static size_t n_alloc = 0;
 static struct rank_s * rank = NULL;
-static char * hostfile = NULL;
+static char const * hostfile = NULL;
 static int lineno = 1;
 
 %}
@@ -50,8 +50,6 @@ static int lineno = 1;
 
 %token <decimal> DECIMAL
 %token <text> TEXT
-
-%name-prefix "hostfile_yy"
 
 %%
 
@@ -157,7 +155,7 @@ commit(void)
 }
 
 extern int
-read_hostfile(char * pathname)
+read_hostfile(char const * pathname)
 {
     int rv;
     int i, offset = dpm ? env2int("TOTALPROCS") : 0;
@@ -226,7 +224,7 @@ free_memory(void)
 void
 yyerror (char const * s)
 {
-    extern char * hostfile;
+    extern char const * hostfile;
     extern int lineno;
 
     PRINT_ERROR("Error parsing hostfile `%s' line %d - %s\n", hostfile, lineno, s);

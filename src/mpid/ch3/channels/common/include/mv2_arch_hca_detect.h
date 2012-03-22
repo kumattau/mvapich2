@@ -43,7 +43,8 @@
 #define MV2_HCA_MLX_CX_SDR          4
 #define MV2_HCA_MLX_CX_DDR          5
 #define MV2_HCA_MLX_CX_QDR          6
-#define MV2_HCA_MLX_PCI_X           7
+#define MV2_HCA_MLX_CX_FDR          7
+#define MV2_HCA_MLX_PCI_X           8
 #define MV2_HCA_MLX_END             1000
 
 /* Qlogic Cards */

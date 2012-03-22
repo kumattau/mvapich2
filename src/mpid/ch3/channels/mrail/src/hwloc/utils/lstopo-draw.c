@@ -1,6 +1,6 @@
 /*
  * Copyright © 2009 CNRS
- * Copyright © 2009-2010 INRIA.  All rights reserved.
+ * Copyright © 2009-2010 inria.  All rights reserved.
  * Copyright © 2009-2011 Université Bordeaux 1
  * Copyright © 2009-2011 Cisco Systems, Inc.  All rights reserved.
  * See COPYING in top-level directory.
@@ -233,46 +233,55 @@ static foo_draw get_type_fun(hwloc_obj_type_t type);
 RECURSE_BEGIN(obj, border) \
     /* Total width for subobjects */ \
     unsigned obj_totwidth = 0, obj_totheight = 0; \
-    unsigned obj_avgwidth, obj_avgheight; \
     /* Total area for subobjects */ \
     unsigned area = 0; \
-    float idealtotheight; \
     unsigned rows, columns; \
-    float under_ratio, over_ratio; \
     RECURSE_FOR() \
       RECURSE_CALL_FUN(&null_draw_methods); \
       obj_totwidth += width + (separator); \
       obj_totheight += height + (separator); \
       area += (width + (separator)) * (height + (separator)); \
     } \
-    /* Average object size */ \
-    obj_avgwidth = obj_totwidth / numsubobjs; \
-    obj_avgheight = obj_totheight / numsubobjs; \
-    /* Ideal total height for spreading that area with RATIO */ \
-    idealtotheight = (float) sqrt(area/RATIO); \
-    /* approximation of number of rows */ \
-    rows = idealtotheight / obj_avgheight; \
-    columns = rows ? (numsubobjs + rows - 1) / rows : 1; \
-    /* Ratio obtained by underestimation */ \
-    under_ratio = (float) (columns * obj_avgwidth) / (rows * obj_avgheight); \
-    \
-    /* try to overestimate too */ \
-    rows++; \
-    columns = (numsubobjs + rows - 1) / rows; \
-    /* Ratio obtained by overestimation */ \
-    over_ratio = (float) (columns * obj_avgwidth) / (rows * obj_avgheight); \
-    /* Did we actually preferred underestimation? (good row/column fit or good ratio) */ \
-    if (rows > 1 && prefer_ratio(under_ratio, over_ratio)) { \
-      rows--; \
-      columns = (numsubobjs + rows - 1) / rows; \
-    } \
-    if (force_horiz) { \
+    if (force_orient[obj->type] == LSTOPO_ORIENT_HORIZ) { \
       rows =  1; \
       columns = numsubobjs; \
-    } \
-    if (force_vert) { \
+    } else if (force_orient[obj->type] == LSTOPO_ORIENT_VERT) { \
       columns =  1; \
       rows = numsubobjs; \
+    } else { \
+      unsigned found = 0; \
+      /* Try to find a fitting rectangle */ \
+      for (rows = floor(sqrt(numsubobjs)); rows >= ceil(pow(numsubobjs,0.33)) && rows > 1; rows--) { \
+        columns = numsubobjs / rows; \
+        if (columns > 1 && columns * rows == numsubobjs) { \
+          found = 1; \
+          break; \
+        } \
+      } \
+      if (!found) { \
+        /* Average object size */ \
+        unsigned obj_avgwidth = obj_totwidth / numsubobjs; \
+        unsigned obj_avgheight = obj_totheight / numsubobjs; \
+        /* Ideal total height for spreading that area with RATIO */ \
+        float idealtotheight = (float) sqrt(area/RATIO); \
+        float under_ratio, over_ratio; \
+        /* approximation of number of rows */ \
+        rows = idealtotheight / obj_avgheight; \
+        columns = rows ? (numsubobjs + rows - 1) / rows : 1; \
+        /* Ratio obtained by underestimation */ \
+        under_ratio = (float) (columns * obj_avgwidth) / (rows * obj_avgheight); \
+        \
+        /* try to overestimate too */ \
+        rows++; \
+        columns = (numsubobjs + rows - 1) / rows; \
+        /* Ratio obtained by overestimation */ \
+        over_ratio = (float) (columns * obj_avgwidth) / (rows * obj_avgheight); \
+        /* Did we actually preferred underestimation? (good row/column fit or good ratio) */ \
+        if (rows > 1 && prefer_ratio(under_ratio, over_ratio)) { \
+          rows--; \
+          columns = (numsubobjs + rows - 1) / rows; \
+        } \
+      } \
     } \
     \
     maxheight = 0; \
@@ -371,7 +380,7 @@ prefer_vert(hwloc_topology_t topology, int logical, hwloc_obj_t level, void *out
   horiz_ratio = (float)totwidth / totheight;
   RECURSE_VERT(level, &null_draw_methods, separator, 0);
   vert_ratio = (float)totwidth / totheight;
-  return force_vert || (!force_horiz && prefer_ratio(vert_ratio, horiz_ratio));
+  return force_orient[level->type] == LSTOPO_ORIENT_VERT || (force_orient[level->type] != LSTOPO_ORIENT_HORIZ && prefer_ratio(vert_ratio, horiz_ratio));
 }
 
 static int
@@ -517,7 +526,7 @@ pu_draw(hwloc_topology_t topology, struct draw_methods *methods, int logical, hw
 
   DYNA_CHECK();
 
-  RECURSE_HORIZ(level, &null_draw_methods, 0, gridsize);
+  RECURSE_RECT(level, &null_draw_methods, 0, gridsize);
 
   if (hwloc_bitmap_isset(level->online_cpuset, level->os_index))
     if (!hwloc_bitmap_isset(level->allowed_cpuset, level->os_index))
@@ -546,7 +555,7 @@ pu_draw(hwloc_topology_t topology, struct draw_methods *methods, int logical, hw
       methods->text(output, 0xff, 0xff, 0xff, fontsize, depth-1, x + gridsize, y + gridsize, text);
   }
 
-  RECURSE_HORIZ(level, methods, 0, gridsize);
+  RECURSE_RECT(level, methods, 0, gridsize);
 
   DYNA_SAVE();
 }
@@ -562,7 +571,7 @@ cache_draw(hwloc_topology_t topology, struct draw_methods *methods, int logical,
 
   DYNA_CHECK();
 
-  RECURSE_HORIZ(level, &null_draw_methods, separator, 0);
+  RECURSE_RECT(level, &null_draw_methods, separator, 0);
 
   methods->box(output, CACHE_R_COLOR, CACHE_G_COLOR, CACHE_B_COLOR, depth, x, totwidth, y, myheight - gridsize);
 
@@ -573,7 +582,7 @@ cache_draw(hwloc_topology_t topology, struct draw_methods *methods, int logical,
     methods->text(output, 0, 0, 0, fontsize, depth-1, x + gridsize, y + gridsize, text);
   }
 
-  RECURSE_HORIZ(level, methods, separator, 0);
+  RECURSE_RECT(level, methods, separator, 0);
 
   DYNA_SAVE();
 }
@@ -644,7 +653,7 @@ node_draw(hwloc_topology_t topology, struct draw_methods *methods, int logical, 
   DYNA_CHECK();
 
   /* Compute the size needed by sublevels */
-  RECURSE_HORIZ(level, &null_draw_methods, gridsize, gridsize);
+  RECURSE_RECT(level, &null_draw_methods, gridsize, gridsize);
 
   /* Draw the epoxy box */
   methods->box(output, NODE_R_COLOR, NODE_G_COLOR, NODE_B_COLOR, depth, x, totwidth, y, totheight);
@@ -659,7 +668,7 @@ node_draw(hwloc_topology_t topology, struct draw_methods *methods, int logical, 
   }
 
   /* Restart, now really drawing sublevels */
-  RECURSE_HORIZ(level, methods, gridsize, gridsize);
+  RECURSE_RECT(level, methods, gridsize, gridsize);
 
   /* Save result for dynamic programming */
   DYNA_SAVE();
@@ -689,6 +698,47 @@ machine_draw(hwloc_topology_t topology, struct draw_methods *methods, int logica
   DYNA_SAVE();
 }
 
+#define NETWORK_DRAW_BEGIN() do { \
+  /* network of machines, either horizontal or vertical */ \
+  if (vert) { \
+    mywidth += gridsize; \
+    RECURSE_VERT(level, &null_draw_methods, gridsize, gridsize); \
+  } else \
+    RECURSE_HORIZ(level, &null_draw_methods, gridsize, gridsize); \
+} while(0)
+
+#define NETWORK_DRAW_END() do { \
+  if (vert) { \
+    unsigned top = 0, bottom = 0; \
+    unsigned center; \
+    RECURSE_BEGIN(level, gridsize) \
+    RECURSE_FOR() \
+      RECURSE_CALL_FUN(methods); \
+      center = y + totheight + height / 2; \
+      if (!top) \
+        top = center; \
+      bottom = center; \
+      methods->line(output, 0, 0, 0, depth, x + mywidth, center, x + mywidth + gridsize, center); \
+    RECURSE_END_VERT(gridsize, gridsize); \
+ \
+    methods->line(output, 0, 0, 0, depth, x + mywidth, top, x + mywidth, bottom); \
+  } else { \
+    unsigned left = 0, right = 0; \
+    unsigned center; \
+    RECURSE_BEGIN(level, gridsize) \
+    RECURSE_FOR() \
+      RECURSE_CALL_FUN(methods); \
+      center = x + totwidth + width / 2; \
+      if (!left) \
+        left = center; \
+      right = center; \
+      methods->line(output, 0, 0, 0, depth, center, y + myheight, center, y + myheight + gridsize); \
+    RECURSE_END_HORIZ(gridsize, gridsize); \
+ \
+    methods->line(output, 0, 0, 0, depth, left, y + myheight, right, y + myheight); \
+  } \
+} while(0)
+
 static void
 system_draw(hwloc_topology_t topology, struct draw_methods *methods, int logical, hwloc_obj_t level, void *output, unsigned depth, unsigned x, unsigned *retwidth, unsigned y, unsigned *retheight)
 {
@@ -699,14 +749,9 @@ system_draw(hwloc_topology_t topology, struct draw_methods *methods, int logical
 
   DYNA_CHECK();
 
-  if (level->arity > 1 && level->children[0]->type == HWLOC_OBJ_MACHINE) {
-    /* network of machines, either horizontal or vertical */
-    if (vert) {
-      mywidth += gridsize;
-      RECURSE_VERT(level, &null_draw_methods, gridsize, gridsize);
-    } else
-      RECURSE_HORIZ(level, &null_draw_methods, gridsize, gridsize);
-  } else
+  if (level->arity > 1 && (level->children[0]->type == HWLOC_OBJ_MACHINE || !level->children[0]->cpuset))
+    NETWORK_DRAW_BEGIN();
+  else
     RECURSE_RECT(level, &null_draw_methods, gridsize, gridsize);
 
   methods->box(output, SYSTEM_R_COLOR, SYSTEM_G_COLOR, SYSTEM_B_COLOR, depth, x, totwidth, y, totheight);
@@ -717,39 +762,9 @@ system_draw(hwloc_topology_t topology, struct draw_methods *methods, int logical
     methods->text(output, 0, 0, 0, fontsize, depth-1, x + gridsize, y + gridsize, text);
   }
 
-  if (level->arity > 1 && level->children[0]->type == HWLOC_OBJ_MACHINE) {
-    if (vert) {
-      unsigned top = 0, bottom = 0;
-      unsigned center;
-      RECURSE_BEGIN(level, gridsize)
-      RECURSE_FOR()
-	RECURSE_CALL_FUN(methods);
-        center = y + totheight + height / 2;
-	if (!top)
-	  top = center;
-	bottom = center;
-	methods->line(output, 0, 0, 0, depth, x + mywidth, center, x + mywidth + gridsize, center);
-      RECURSE_END_VERT(gridsize, gridsize);
-
-      if (level->arity > 1 && level->children[0]->type == HWLOC_OBJ_MACHINE)
-	methods->line(output, 0, 0, 0, depth, x + mywidth, top, x + mywidth, bottom);
-    } else {
-      unsigned left = 0, right = 0;
-      unsigned center;
-      RECURSE_BEGIN(level, gridsize)
-      RECURSE_FOR()
-	RECURSE_CALL_FUN(methods);
-        center = x + totwidth + width / 2;
-	if (!left)
-	  left = center;
-	right = center;
-	methods->line(output, 0, 0, 0, depth, center, y + myheight, center, y + myheight + gridsize);
-      RECURSE_END_HORIZ(gridsize, gridsize);
-
-      if (level->arity > 1 && level->children[0]->type == HWLOC_OBJ_MACHINE)
-	methods->line(output, 0, 0, 0, depth, left, y + myheight, right, y + myheight);
-    }
-  } else
+  if (level->arity > 1 && (level->children[0]->type == HWLOC_OBJ_MACHINE || !level->children[0]->cpuset))
+    NETWORK_DRAW_END();
+  else
     RECURSE_RECT(level, methods, gridsize, gridsize);
 
   DYNA_SAVE();
@@ -761,6 +776,7 @@ group_draw(hwloc_topology_t topology, struct draw_methods *methods, int logical,
   unsigned myheight = (fontsize ? (fontsize + gridsize) : 0), totheight;
   unsigned mywidth = 0, totwidth;
   unsigned textwidth = level->name ? strlen(level->name) * fontsize : 6*fontsize;
+  int vert = prefer_vert(topology, logical, level, output, depth, x, y, gridsize);
 
   DYNA_CHECK();
 
@@ -771,7 +787,10 @@ group_draw(hwloc_topology_t topology, struct draw_methods *methods, int logical,
   }
 #endif
 
-  RECURSE_RECT(level, &null_draw_methods, gridsize, gridsize);
+  if (level->arity > 1 && (level->children[0]->type == HWLOC_OBJ_MACHINE || !level->children[0]->cpuset))
+    NETWORK_DRAW_BEGIN();
+  else
+    RECURSE_RECT(level, &null_draw_methods, gridsize, gridsize);
 
   methods->box(output, MISC_R_COLOR, MISC_G_COLOR, MISC_B_COLOR, depth, x, totwidth, y, totheight);
 
@@ -785,7 +804,10 @@ group_draw(hwloc_topology_t topology, struct draw_methods *methods, int logical,
     }
   }
 
-  RECURSE_RECT(level, methods, gridsize, gridsize);
+  if (level->arity > 1 && (level->children[0]->type == HWLOC_OBJ_MACHINE || !level->children[0]->cpuset))
+    NETWORK_DRAW_END();
+  else
+    RECURSE_RECT(level, methods, gridsize, gridsize);
 
   DYNA_SAVE();
 }
@@ -797,10 +819,14 @@ misc_draw(hwloc_topology_t topology, struct draw_methods *methods, int logical, 
   unsigned myheight = boxheight + (level->arity?gridsize:0), totheight;
   unsigned mywidth = 0, totwidth;
   unsigned textwidth = level->name ? strlen(level->name) * fontsize : 6*fontsize;
+  int vert = prefer_vert(topology, logical, level, output, depth, x, y, gridsize);
 
   DYNA_CHECK();
 
-  RECURSE_HORIZ(level, &null_draw_methods, gridsize, 0);
+  if (level->arity > 1 && (level->children[0]->type == HWLOC_OBJ_MACHINE || !level->children[0]->cpuset))
+    NETWORK_DRAW_BEGIN();
+  else
+    RECURSE_HORIZ(level, &null_draw_methods, gridsize, 0);
 
   methods->box(output, MISC_R_COLOR, MISC_G_COLOR, MISC_B_COLOR, depth, x, totwidth, y, boxheight);
 
@@ -814,7 +840,10 @@ misc_draw(hwloc_topology_t topology, struct draw_methods *methods, int logical, 
     }
   }
 
-  RECURSE_HORIZ(level, methods, gridsize, 0);
+  if (level->arity > 1 && (level->children[0]->type == HWLOC_OBJ_MACHINE || !level->children[0]->cpuset))
+    NETWORK_DRAW_END();
+  else
+    RECURSE_HORIZ(level, methods, gridsize, 0);
 
   DYNA_SAVE();
 }

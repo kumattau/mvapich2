@@ -1,0 +1,249 @@
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
+
+#include <regex.h>
+#include "gather_tuning.h"
+
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#include "mv2_arch_hca_detect.h"
+/* array used to tune gather */
+int mv2_size_gather_tuning_table=7;
+mv2_gather_tuning_table mv2_gather_thresholds_table[]={
+        {16,
+	    1,{{0, -1, &MPIR_Gather_MV2_Direct}},
+	    1,{{0, -1, &MPIR_Gather_MV2_Direct}}},
+        {24,
+	    2,{{0, 512, &MPIR_Gather_MV2_two_level_Direct}, {512, -1, &MPIR_Gather_MV2_Direct}},
+	    1,{{0, -1, &MPIR_Gather_intra}}},
+        {32,
+	    2,{{0, 1024, &MPIR_Gather_MV2_two_level_Direct}, {1024, -1, &MPIR_Gather_MV2_Direct}},
+	    1,{{0, -1, &MPIR_Gather_intra}}},
+	    {128,
+	    2,{{0, 2048, &MPIR_Gather_MV2_two_level_Direct}, {2048, -1, &MPIR_Gather_MV2_Direct}},
+	    1,{{0, -1, &MPIR_Gather_intra}}},
+	    {256,
+	    2,{{0, 512, &MPIR_Gather_MV2_two_level_Direct}, {512, -1, &MPIR_Gather_MV2_Direct}},
+	    1,{{0, -1, &MPIR_Gather_intra}}},
+	    {512,
+	    3,{{0, 32, &MPIR_Gather_intra}, {32, 8196, &MPIR_Gather_MV2_two_level_Direct}, {8196, -1, &MPIR_Gather_MV2_Direct}},
+	    1,{{0, -1, &MPIR_Gather_intra}}},
+	    {1024,
+	    2,{{0, 32, &MPIR_Gather_intra}, {32, -1, &MPIR_Gather_MV2_two_level_Direct}},
+	    1,{{0, -1, &MPIR_Gather_MV2_Direct}}}};
+
+int MV2_set_gather_tuning_table()
+{
+   
+#if defined(_OSU_PSM_)
+    /* use default settings for PSM */ 
+    switch (-1) {
+#else
+    switch (MV2_get_arch_hca_type()) {
+#endif
+
+      
+    default:
+        mv2_size_gather_tuning_table=7;
+        mv2_gather_tuning_table mv2_tmp_gather_thresholds_table[]={
+            {16,
+	        1,{{0, -1, &MPIR_Gather_MV2_Direct}},
+	        1,{{0, -1, &MPIR_Gather_MV2_Direct}}},
+            {24,
+	        2,{{0, 512, &MPIR_Gather_MV2_two_level_Direct}, {512, -1, &MPIR_Gather_MV2_Direct}},
+	        1,{{0, -1, &MPIR_Gather_intra}}},
+            {32,
+	        2,{{0, 1024, &MPIR_Gather_MV2_two_level_Direct}, {1024, -1, &MPIR_Gather_MV2_Direct}},
+	        1,{{0, -1, &MPIR_Gather_intra}}},
+	        {128,
+	        2,{{0, 2048, &MPIR_Gather_MV2_two_level_Direct}, {2048, -1, &MPIR_Gather_MV2_Direct}},
+	        1,{{0, -1, &MPIR_Gather_intra}}},
+	        {256,
+	        2,{{0, 512, &MPIR_Gather_MV2_two_level_Direct}, {512, -1, &MPIR_Gather_MV2_Direct}},
+	        1,{{0, -1, &MPIR_Gather_intra}}},
+	        {512,
+	        3,{{0, 32, &MPIR_Gather_intra}, {32, 8196, &MPIR_Gather_MV2_two_level_Direct}, 
+                {8196, -1, &MPIR_Gather_MV2_Direct}},
+	        1,{{0, -1, &MPIR_Gather_intra}}},
+	        {1024,
+	        2,{{0, 32, &MPIR_Gather_intra}, {32, -1, &MPIR_Gather_MV2_two_level_Direct}},
+	        1,{{0, -1, &MPIR_Gather_MV2_Direct}}}};
+        
+        memcpy(&mv2_gather_thresholds_table, &mv2_tmp_gather_thresholds_table, sizeof
+           (mv2_gather_tuning_table));
+    }
+    
+    return 0;
+}
+
+/* Return the number of separator inside a string */
+static int count_sep(char *string)
+{
+    return *string == '\0' ? 0 : (count_sep(string + 1) + (*string == ','));
+}
+
+int MV2_internode_Gather_is_define(char *mv2_user_gather_inter,
+                                   char *mv2_user_gather_intra)
+{
+
+    int i;
+
+    int nb_element = count_sep(mv2_user_gather_inter) + 1;
+    mv2_gather_tuning_table mv2_tmp_gather_thresholds_table[1];
+    mv2_size_gather_tuning_table = 1;
+
+    if (nb_element == 1) {
+        mv2_tmp_gather_thresholds_table[0].numproc = 1;
+        mv2_tmp_gather_thresholds_table[0].size_inter_table = 1;
+        mv2_tmp_gather_thresholds_table[0].inter_leader[0].min = 0;
+        mv2_tmp_gather_thresholds_table[0].inter_leader[0].max = -1;
+        switch (atoi(mv2_user_gather_inter)) {
+        case 1:
+            mv2_tmp_gather_thresholds_table[0].inter_leader[0].MV2_pt_Gather_function =
+                &MPIR_Gather_intra;
+            break;
+        case 2:
+            mv2_tmp_gather_thresholds_table[0].inter_leader[0].MV2_pt_Gather_function =
+                &MPIR_Gather_MV2_Direct;
+            break;
+        case 3:
+            mv2_tmp_gather_thresholds_table[0].inter_leader[0].MV2_pt_Gather_function =
+                &MPIR_Gather_MV2_two_level_Direct;
+            break;
+        default:
+            mv2_tmp_gather_thresholds_table[0].inter_leader[0].MV2_pt_Gather_function =
+                &MPIR_Gather_MV2_Direct;
+        }
+        if (mv2_user_gather_intra == NULL) {
+            mv2_tmp_gather_thresholds_table[0].intra_node[0].MV2_pt_Gather_function =
+                &MPIR_Gather_MV2_Direct;
+        } else {
+            if (atoi(mv2_user_gather_intra) == 1) {
+                mv2_gather_thresholds_table[0].
+                intra_node[0].MV2_pt_Gather_function = &MPIR_Gather_intra;
+            } else {
+                mv2_gather_thresholds_table[0].
+                intra_node[0].MV2_pt_Gather_function =
+                    &MPIR_Gather_MV2_Direct;
+            }
+
+        }
+    } else {
+        char *dup, *p, *save_p;
+        regmatch_t match[NMATCH];
+        regex_t preg;
+        const char *regexp = "([0-9]+):([0-9]+)-([0-9]+|\\+)";
+
+        if (!(dup = MPIU_Strdup(mv2_user_gather_inter))) {
+            fprintf(stderr, "failed to duplicate `%s'\n",
+                    mv2_user_gather_inter);
+            return 1;
+        }
+
+        if (regcomp(&preg, regexp, REG_EXTENDED)) {
+            fprintf(stderr, "failed to compile regexp `%s'\n",
+                    mv2_user_gather_inter);
+            MPIU_Free(dup);
+            return 2;
+        }
+
+        mv2_tmp_gather_thresholds_table[0].numproc = 1;
+        mv2_tmp_gather_thresholds_table[0].size_inter_table = nb_element;
+        i = 0;
+        for (p = strtok_r(dup, ",", &save_p); p;
+                p = strtok_r(NULL, ",", &save_p)) {
+            if (regexec(&preg, p, NMATCH, match, 0)) {
+                fprintf(stderr, "failed to match on `%s'\n", p);
+                regfree(&preg);
+                MPIU_Free(dup);
+                return 2;
+            }
+            /* given () start at 1 */
+            switch (atoi(p + match[1].rm_so)) {
+            case 1:
+                mv2_tmp_gather_thresholds_table[0].inter_leader[i].MV2_pt_Gather_function =
+                    &MPIR_Gather_intra;
+                break;
+            case 2:
+                mv2_tmp_gather_thresholds_table[0].inter_leader[i].MV2_pt_Gather_function =
+                    &MPIR_Gather_MV2_Direct;
+                break;
+            case 3:
+                mv2_tmp_gather_thresholds_table[0].inter_leader[i].MV2_pt_Gather_function =
+                    &MPIR_Gather_MV2_two_level_Direct;
+                break;
+            default:
+                mv2_tmp_gather_thresholds_table[0].inter_leader[i].MV2_pt_Gather_function =
+                    &MPIR_Gather_MV2_Direct;
+            }
+            mv2_tmp_gather_thresholds_table[0].inter_leader[i].min = atoi(p + match[2].rm_so);
+
+            if (p[match[3].rm_so] == '+') {
+                mv2_tmp_gather_thresholds_table[0].inter_leader[i].max = -1;
+            } else {
+                mv2_tmp_gather_thresholds_table[0].inter_leader[i].max =
+                    atoi(p + match[3].rm_so);
+            }
+
+            i++;
+        }
+        MPIU_Free(dup);
+        regfree(&preg);
+    }
+    mv2_tmp_gather_thresholds_table[0].size_intra_table = 1;
+    if (mv2_user_gather_intra == NULL) {
+        mv2_tmp_gather_thresholds_table[0].intra_node[0].MV2_pt_Gather_function =
+            &MPIR_Gather_MV2_Direct;
+    } else {
+        if (atoi(mv2_user_gather_intra) == 1) {
+            mv2_tmp_gather_thresholds_table[0].intra_node[0].MV2_pt_Gather_function =
+                &MPIR_Gather_intra;
+        } else {
+            mv2_tmp_gather_thresholds_table[0].intra_node[0].MV2_pt_Gather_function =
+                &MPIR_Gather_MV2_Direct;
+        }
+    }
+    memcpy(&mv2_gather_thresholds_table, &mv2_tmp_gather_thresholds_table, sizeof
+           (mv2_gather_tuning_table));
+    return 0;
+}
+
+int MV2_intranode_Gather_is_define(char *mv2_user_gather_intra)
+{
+
+    int i, j;
+    for (i = 0; i < mv2_size_gather_tuning_table; i++) {
+        for (j = 0; j < mv2_gather_thresholds_table[i].size_intra_table; j++) {
+            if (atoi(mv2_user_gather_intra) == 1) {
+                mv2_gather_thresholds_table[i].
+                intra_node[j].MV2_pt_Gather_function = &MPIR_Gather_intra;
+            } else {
+                mv2_gather_thresholds_table[i].
+                intra_node[j].MV2_pt_Gather_function =
+                    &MPIR_Gather_MV2_Direct;
+            }
+        }
+    }
+    return 0;
+}
+
+void MV2_user_gather_switch_point_is_define(int mv2_user_gather_switch_point)
+{
+    int i;
+    for (i = 0; i < mv2_size_gather_tuning_table; i++) {
+        mv2_gather_thresholds_table[0].inter_leader[1].min =
+            mv2_user_gather_switch_point;
+        mv2_gather_thresholds_table[0].inter_leader[0].max =
+            mv2_user_gather_switch_point;
+    }
+}
+
+#endif /* if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */

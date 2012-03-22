@@ -256,6 +256,9 @@ void setup_local_environment(lvalues lv)
 {
     setenv("PMI_ID", lv.mpirun_rank, 1);
     setenv("MV2_COMM_WORLD_LOCAL_RANK", lv.local_rank, 1);
+    setenv("MV2_COMM_WORLD_RANK", lv.mpirun_rank, 1);
+    setenv("MV2_COMM_WORLD_LOCAL_SIZE", mkstr("%d", NCHILD), 1);
+    setenv("MV2_COMM_WORLD_SIZE", mkstr("%d", N), 1);
 
 #ifdef CKPT
     setenv("MV2_CKPT_FILE", ckpt_filename, 1);
@@ -461,6 +464,35 @@ void process_cleanup(void)
     process_cleanup_complete = 1;
 }
 
+void local_signal(int sig, pid_t const pid[], size_t npids)
+{
+    size_t i;
+
+    for (i = 0; i < npids; i++) {
+        PRINT_DEBUG(DEBUG_Fork_verbose, "kill(%d, %d)\n", pid[i], sig);
+        kill(pid[i], sig);
+    }
+}
+
+void send_signal(int sig)
+{
+    pid_t pids[npids];
+    int i;
+
+    for (i = 0; i < npids; i++) {
+        pids[i] = local_processes[i].pid;
+    }
+
+    local_signal(sig, pids, npids);
+}
+
+void sigtstp_handler(int signal)
+{
+    send_signal(SIGSTOP);
+    raise(SIGSTOP);
+    send_signal(SIGCONT);
+}
+
 void cleanup_handler(int sig)
 {
     mpispawn_abort(MPISPAWN_CLEANUP_SIGNAL);
@@ -516,8 +548,8 @@ void child_handler(int signal)
 #ifdef CKPT
                     cr_cleanup();
 #endif
-                    PRINT_DEBUG(DEBUG_Fork_verbose, "exit(EXIT_SUCCESS)\n");
-                    exit(EXIT_SUCCESS);
+                    PRINT_DEBUG(DEBUG_Fork_verbose, "_exit(EXIT_SUCCESS)\n");
+                    _exit(EXIT_SUCCESS);
                 } else {
                     return;
                 }
@@ -555,8 +587,8 @@ void child_handler(int signal)
 #endif
                 cr_cleanup();
 #endif
-                PRINT_DEBUG(DEBUG_Fork_verbose, "exit(EXIT_SUCCESS)\n");
-                exit(EXIT_SUCCESS);
+                PRINT_DEBUG(DEBUG_Fork_verbose, "_exit(EXIT_SUCCESS)\n");
+                _exit(EXIT_SUCCESS);
             }
         } else {
             rank = -1;
@@ -829,6 +861,9 @@ signal_processor (int signal)
             PRINT_ERROR("Caught SIGUSR2 (signal %d)\n", signal);
             report_error(MPISPAWN_TRIGGER_MIGRATION);
             break;
+        case SIGTSTP:
+            sigtstp_handler(signal);
+            break;
         default:
             PRINT_ERROR("Caught unexpected signal %d\n, killing job", signal);
             cleanup_handler(signal);
@@ -846,6 +881,7 @@ setup_signal_handling_thread (void)
     sigaddset(&sigmask, SIGINT);
     sigaddset(&sigmask, SIGTERM);
     sigaddset(&sigmask, SIGCHLD);
+    sigaddset(&sigmask, SIGTSTP);
     sigaddset(&sigmask, SIGUSR2);
 
     start_sp_thread(sigmask, signal_processor, 1);

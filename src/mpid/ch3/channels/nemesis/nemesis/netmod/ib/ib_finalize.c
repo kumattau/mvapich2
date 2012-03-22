@@ -55,7 +55,7 @@ int MPIDI_nem_ib_flush()
         continue;
         }
 
-        MPIDI_PG_Get_vc_set_active(pg, i, &vc);
+        MPIDI_PG_Get_vc(pg, i, &vc);
         vc_ch = (MPIDI_CH3I_VC *)vc->channel_private;
 
         /* Skip SMP VCs */
@@ -181,56 +181,23 @@ int MPID_nem_ib_finalize (void)
 
     /* make sure everything has been sent */
     MPIDI_nem_ib_flush();
-    for (i = 0; i < pg_size; i++) {
-        if (i == pg_rank) {
-            continue;
-        }
-
-        MPIDI_PG_Get_vc_set_active(pg, i, &vc);
-        vc_ch = (MPIDI_CH3I_VC *)vc->channel_private;
-
-        if (vc_ch->is_local)
-        {
-            continue;
-        }
-
-        for (rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
-            while((rdma_default_max_send_wqe) != VC_FIELD(vc, connection)->rails[rail_index].send_wqes_avail) {
-                    /* only do inter-node polling now. Intra-node fbox has been
-                     * finalized. */
-                   MPID_nem_ib_poll(FALSE); 
-            }
-        }
-
-    }
 
 #ifndef DISABLE_PTMALLOC
     mvapich2_mfin();
 #endif
 
-    /*barrier to make sure queues are initialized before continuing */
-    error = PMI_Barrier();
-
-    /*
-    if (error != PMI_SUCCESS) {
-    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-        "**pmi_barrier", "**pmi_barrier %d", error);
-    }
-    */
-
     for (i = 0; i < pg_size; i++) {
         if (i == pg_rank) {
             continue;
         }
 
-        MPIDI_PG_Get_vc_set_active(pg, i, &vc);
+        MPIDI_PG_Get_vc(pg, i, &vc);
         vc_ch = (MPIDI_CH3I_VC *)vc->channel_private;
 
         if (vc_ch->is_local)
         {
             continue;
         }
-    
 
         for (hca_index = 0; hca_index < ib_hca_num_hcas; hca_index++) {
             if (VC_FIELD(vc, connection)->rfp.RDMA_send_buf_mr[hca_index]) {

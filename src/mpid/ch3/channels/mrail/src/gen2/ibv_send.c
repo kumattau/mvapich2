@@ -154,7 +154,15 @@ static inline void MRAILI_Ext_sendq_send(MPIDI_VC_t *c, int rail)
 
         if(1 == v->coalesce) {
             DEBUG_PRINT("Sending coalesce vbuf %p\n", v);
+            MPIDI_CH3I_MRAILI_Pkt_comm_header *p = v->pheader;
             vbuf_init_send(v, v->content_size, v->rail);
+
+            if (p->type == MPIDI_CH3_PKT_NOOP) {
+                v->seqnum = p->seqnum = -1;
+            } else {
+                v->seqnum = p->seqnum = c->mrail.seqnum_next_tosend;
+                c->mrail.seqnum_next_tosend++;
+            }
 
             if(c->mrail.coalesce_vbuf == v) {
                 c->mrail.coalesce_vbuf = NULL;

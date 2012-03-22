@@ -1,4 +1,4 @@
-# Copyright © 2009-2011 INRIA.  All rights reserved.
+# Copyright © 2009-2011 inria.  All rights reserved.
 # Copyright © 2009-2011 Université Bordeaux 1
 # Copyright © 2009-2010 Cisco Systems, Inc.  All rights reserved.
 # See COPYING in top-level directory.
@@ -27,8 +27,10 @@ DOX_TAG = $(DOX_DIR)/$(PACKAGE).tag
 # tree (e.g., everything in the man and latex directories).
 #
 
+# images already available in repository
 PREBUILT_IMAGES = images/dudley.png images/emmett.png images/hagrid.png
-image_built_sources = images/diagram.png images/diagram.eps
+# images built from repository before inclusion in make dist
+BUILT_IMAGES = images/diagram.png images/diagram.eps
 
 EXTRA_DIST = \
         hwloc.doxy \
@@ -48,7 +50,7 @@ EXTRA_DIST = \
         www.open-mpi.org-footer.inc \
         www.open-mpi.org-header.inc \
         $(PREBUILT_IMAGES) \
-        $(image_built_sources)
+        $(BUILT_IMAGES)
 
 #
 # Files where the doxygen inputs live (i.e., dependencies).  Make the
@@ -81,7 +83,7 @@ dox_inputs = $(DOX_CONFIG) \
 #
 
 if HWLOC_BUILD_DOXYGEN
-BUILT_SOURCES = $(image_built_sources)
+BUILT_SOURCES = $(BUILT_IMAGES)
 
 images/diagram.png: $(srcdir)/images/diagram.fig
 	$(MKDIR_P) images
@@ -150,16 +152,18 @@ if HWLOC_DOXYGEN_BROKEN_SHORT_NAMES
 	-@mv -f $(DOX_DIR)/latex/cpu_mem_bind.tex $(DOX_DIR)/latex/a00004.tex
 	-@mv -f $(DOX_DIR)/html/iodevices.html $(DOX_DIR)/html/a00005.html
 	-@mv -f $(DOX_DIR)/latex/iodevices.tex $(DOX_DIR)/latex/a00005.tex
-	-@mv -f $(DOX_DIR)/html/xml.html $(DOX_DIR)/html/a00006.html
-	-@mv -f $(DOX_DIR)/latex/xml.tex $(DOX_DIR)/latex/a00006.tex
-	-@mv -f $(DOX_DIR)/html/interoperability.html $(DOX_DIR)/html/a00007.html
-	-@mv -f $(DOX_DIR)/latex/interoperability.tex $(DOX_DIR)/latex/a00007.tex
-	-@mv -f $(DOX_DIR)/html/threadsafety.html $(DOX_DIR)/html/a00008.html
-	-@mv -f $(DOX_DIR)/latex/threadsafety.tex $(DOX_DIR)/latex/a00008.tex
-	-@mv -f $(DOX_DIR)/html/embed.html $(DOX_DIR)/html/a00009.html
-	-@mv -f $(DOX_DIR)/latex/embed.tex $(DOX_DIR)/latex/a00009.tex
-	-@mv -f $(DOX_DIR)/html/faq.html $(DOX_DIR)/html/a00010.html
-	-@mv -f $(DOX_DIR)/latex/faq.tex $(DOX_DIR)/latex/a00010.tex
+	-@mv -f $(DOX_DIR)/html/multinode.html $(DOX_DIR)/html/a00006.html
+	-@mv -f $(DOX_DIR)/latex/multinode.tex $(DOX_DIR)/latex/a00006.tex
+	-@mv -f $(DOX_DIR)/html/xml.html $(DOX_DIR)/html/a00007.html
+	-@mv -f $(DOX_DIR)/latex/xml.tex $(DOX_DIR)/latex/a00007.tex
+	-@mv -f $(DOX_DIR)/html/interoperability.html $(DOX_DIR)/html/a00008.html
+	-@mv -f $(DOX_DIR)/latex/interoperability.tex $(DOX_DIR)/latex/a00008.tex
+	-@mv -f $(DOX_DIR)/html/threadsafety.html $(DOX_DIR)/html/a00009.html
+	-@mv -f $(DOX_DIR)/latex/threadsafety.tex $(DOX_DIR)/latex/a00009.tex
+	-@mv -f $(DOX_DIR)/html/embed.html $(DOX_DIR)/html/a00010.html
+	-@mv -f $(DOX_DIR)/latex/embed.tex $(DOX_DIR)/latex/a00010.tex
+	-@mv -f $(DOX_DIR)/html/faq.html $(DOX_DIR)/html/a00011.html
+	-@mv -f $(DOX_DIR)/latex/faq.tex $(DOX_DIR)/latex/a00011.tex
 endif
 endif
 
@@ -369,6 +373,8 @@ man3_MANS = \
         $(DOX_MAN_DIR)/man3/hwloc_cpuset_to_nodeset_strict.3 \
         $(DOX_MAN_DIR)/man3/hwloc_cuda_get_device_cpuset.3 \
         $(DOX_MAN_DIR)/man3/hwloc_cudart_get_device_cpuset.3 \
+        $(DOX_MAN_DIR)/man3/hwloc_custom_insert_topology.3 \
+        $(DOX_MAN_DIR)/man3/hwloc_custom_insert_group_object_by_parent.3 \
         $(DOX_MAN_DIR)/man3/hwloc_distribute.3 \
         $(DOX_MAN_DIR)/man3/hwloc_distributev.3 \
         $(DOX_MAN_DIR)/man3/hwloc_free.3 \
@@ -410,6 +416,7 @@ man3_MANS = \
         $(DOX_MAN_DIR)/man3/hwloc_get_obj_by_depth.3 \
         $(DOX_MAN_DIR)/man3/hwloc_get_obj_by_type.3 \
         $(DOX_MAN_DIR)/man3/hwloc_get_obj_covering_cpuset.3 \
+        $(DOX_MAN_DIR)/man3/hwloc_get_obj_index_inside_cpuset.3 \
         $(DOX_MAN_DIR)/man3/hwloc_get_obj_inside_cpuset_by_depth.3 \
         $(DOX_MAN_DIR)/man3/hwloc_get_obj_inside_cpuset_by_type.3 \
         $(DOX_MAN_DIR)/man3/hwloc_get_pcidev_by_busid.3 \
@@ -507,6 +514,7 @@ man3_MANS = \
         $(DOX_MAN_DIR)/man3/hwloc_topology_load.3 \
         $(DOX_MAN_DIR)/man3/hwloc_topology_membind_support.3 \
         $(DOX_MAN_DIR)/man3/hwloc_topology_restrict.3 \
+        $(DOX_MAN_DIR)/man3/hwloc_topology_set_custom.3 \
         $(DOX_MAN_DIR)/man3/hwloc_topology_set_flags.3 \
         $(DOX_MAN_DIR)/man3/hwloc_topology_set_fsroot.3 \
         $(DOX_MAN_DIR)/man3/hwloc_topology_set_pid.3 \
@@ -525,6 +533,7 @@ man3_MANS = \
         $(DOX_MAN_DIR)/man3/hwlocality_creation.3 \
         $(DOX_MAN_DIR)/man3/hwlocality_cuda.3 \
         $(DOX_MAN_DIR)/man3/hwlocality_cudart.3 \
+        $(DOX_MAN_DIR)/man3/hwlocality_custom.3 \
         $(DOX_MAN_DIR)/man3/hwlocality_distances.3 \
         $(DOX_MAN_DIR)/man3/hwlocality_glibc_sched.3 \
         $(DOX_MAN_DIR)/man3/hwlocality_helper_binding.3 \

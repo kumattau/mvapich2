@@ -461,7 +461,6 @@ void *MPIDI_CH3I_Alloc_mem (size_t size, MPID_Info *info)
       ptr = MPIU_Malloc(size);
    }
 
-fn_exit:
    return ptr;
 }
 

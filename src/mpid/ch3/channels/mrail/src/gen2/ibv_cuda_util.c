@@ -12,6 +12,7 @@
 
 #include "rdma_impl.h"
 #include "ibv_param.h"
+#include "mv2_utils.h"
 #include "ibv_cuda_util.h"
 
 #if defined(_ENABLE_CUDA_)
@@ -281,11 +282,81 @@ void ibv_cuda_unregister(void *ptr)
     PRINT_DEBUG(DEBUG_CUDA_verbose, "cudaHostUnregister success ptr:%p\n", ptr);
 }
 
+void cuda_get_user_parameters() {
+    char *value = NULL; 
+
+    if ((value = getenv("MV2_EAGER_CUDAHOST_REG")) != NULL) {
+        rdma_eager_cudahost_reg = atoi(value);
+    }
+
+    if ((value = getenv("MV2_CUDA_VECTOR_OPT")) != NULL) {
+        rdma_cuda_vector_dt_opt= atoi(value);
+    }
+
+    if ((value = getenv("MV2_CUDA_NUM_STREAMS")) != NULL) {
+        rdma_cuda_stream_count = atoi(value);
+    }
+
+    if ((value = getenv("MV2_CUDA_NUM_EVENTS")) != NULL) {
+        rdma_cuda_event_count = atoi(value);
+    }
+
+    if ((value = getenv("MV2_CUDA_EVENT_SYNC")) != NULL) {
+        rdma_cuda_event_sync = atoi(value);
+    }
+
+#if defined(HAVE_CUDA_IPC)
+    if ((value = getenv("MV2_CUDA_IPC")) != NULL) {
+        rdma_cuda_ipc = atoi(value);
+    }
+
+    if (rdma_cuda_ipc
+        && CUDART_VERSION < 4010) {
+        PRINT_DEBUG(DEBUG_CUDA_verbose > 1, "IPC is availabe only"
+            "from version 4.1 or later, version availabe : %d",
+            CUDART_VERSION);
+        rdma_cuda_ipc = 0;
+    }
+
+    if ((value = getenv("MV2_CUDA_ENABLE_IPC_CACHE")) != NULL) {
+        rdma_cuda_enable_ipc_cache= atoi(value);
+    }
+
+    if ((value = getenv("MV2_CUDA_IPC_MAX_CACHE_ENTRIES")) != NULL) {
+        cudaipc_cache_max_entries = atoi(value);
+    }
+    
+    if ((value = getenv("MV2_CUDA_IPC_NUM_STAGE_BUFFERS")) != NULL) {
+        cudaipc_num_stage_buffers = atoi(value);
+    }
+    if ((value = getenv("MV2_CUDA_IPC_STAGE_BUF_SIZE")) != NULL) {
+        cudaipc_stage_buffer_size = atoi(value);
+    }
+    if ((value = getenv("MV2_CUDA_IPC_BUFFERED")) != NULL) {
+        cudaipc_stage_buffered = atoi(value);
+    }
+    if (cudaipc_stage_buffered) {
+        rdma_cuda_ipc_threshold = 0;
+    }
+    if ((value = getenv("MV2_CUDA_IPC_THRESHOLD")) != NULL) {
+        rdma_cuda_ipc_threshold = user_val_to_bytes(value, "MV2_CUDA_IPC_THRESHOLD");
+    }
+    if ((value = getenv("MV2_CUDA_IPC_BUFFERED_LIMIT")) != NULL) {
+        cudaipc_stage_buffered_limit = atoi(value);
+    }
+    if ((value = getenv("MV2_CUDA_IPC_SYNC_LIMIT")) != NULL) {
+        cudaipc_sync_limit = atoi(value);
+    }
+    MPIU_Assert(cudaipc_stage_buffered_limit >= rdma_cuda_ipc_threshold);
+
+#endif
+}
+
 void cuda_init(MPIDI_PG_t * pg)
 {
 #if defined(HAVE_CUDA_IPC)
     int mpi_errno = MPI_SUCCESS, errflag = 0;
-    int i, num_processes, num_local_processes, my_rank; 
+    int i, num_processes, my_rank, has_cudaipc_peer = 0; 
     int *device = NULL;
     MPID_Comm *comm_world = NULL;
     MPIDI_VC_t* vc = NULL;
@@ -328,34 +399,64 @@ void cuda_init(MPIDI_PG_t * pg)
                     ibv_error_abort(GEN_EXIT_ERR,"cudaDeviceCanAccessPeer failed");
                 }
             }
+            if (vc->smp.can_access_peer) {
+                has_cudaipc_peer = 1;
+            }
+            
+            if (rdma_cuda_ipc && !SMP_ONLY && !vc->smp.can_access_peer) {
+                vc->smp.local_rank = vc->smp.local_nodes = -1;
+            }
         }
     }
+    
+    cudaipc_num_local_procs =  MPIDI_Num_local_processes(pg);
+    cudaipc_my_local_id = MPIDI_Get_local_process_id(pg);
 
-    num_local_processes =  MPIDI_Num_local_processes(pg);
-    if (rdma_cuda_ipc && rdma_cuda_enable_ipc_cache) {
-        cudaipc_initialize_cache(num_local_processes);
+    if (rdma_cuda_ipc && cudaipc_stage_buffered) {
+        if (has_cudaipc_peer) {
+            cudaipc_initialize(pg, num_processes, my_rank);
+        } else {
+            /* remove this barrier when shared mem barrier implemented
+                in cudaipc_initialize */
+            int errflag;
+            MPIR_Barrier_impl(MPIR_Process.comm_world, &errflag);
+        }
     }
-
+     
+    if (rdma_cuda_ipc && !cudaipc_stage_buffered 
+            && rdma_cuda_enable_ipc_cache && has_cudaipc_peer) {
+        cudaipc_initialize_cache();
+    }
+    MPIU_Free(device);
 #endif
+
+    if (SMP_INIT && pg->ch.num_local_processes > 1) {
+        MPIDI_CH3I_CUDA_SMP_cuda_init(pg);
+    }
 }
+
 void cuda_cleanup()
 {
-    if (free_cuda_event_list_head) {
-        deallocate_cuda_events();
-        deallocate_cuda_rndv_streams();
-    }
-    if (!rdma_cuda_event_sync) {
-        deallocate_cuda_streams();
-    }
+    deallocate_cuda_events();
+    deallocate_cuda_rndv_streams();
+    deallocate_cuda_streams();
+
 #if defined(HAVE_CUDA_IPC)
-    if (rdma_cuda_ipc && rdma_cuda_enable_ipc_cache) {
+    if (rdma_cuda_ipc && cudaipc_stage_buffered) {
+        cudaipc_finalize();
+    }
+    if (rdma_cuda_ipc && rdma_cuda_enable_ipc_cache && !cudaipc_stage_buffered) {
         int i;
-        for (i = 0; i < num_cuda_local_procs; i++) {
+        for (i = 0; i < cudaipc_num_local_procs; i++) {
             cudaipc_flush_regcache(i, num_cudaipc_cache_entries[i]);
         }
         MPIU_Free(cudaipc_cache_list);
         MPIU_Free(num_cudaipc_cache_entries);
     }
 #endif
+
+    if (SMP_INIT && MPIDI_Process.my_pg->ch.num_local_processes > 1) {
+        MPIDI_CH3I_CUDA_SMP_cuda_finalize(MPIDI_Process.my_pg);
+    }
 }
 #endif

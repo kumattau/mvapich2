@@ -1,7 +1,7 @@
 /*
  * Copyright © 2009 CNRS
- * Copyright © 2009-2010 INRIA.  All rights reserved.
- * Copyright © 2009-2011 Université Bordeaux 1
+ * Copyright © 2009-2010 inria.  All rights reserved.
+ * Copyright © 2009-2012 Université Bordeaux 1
  * Copyright © 2009-2011 Cisco Systems, Inc.  All rights reserved.
  * See COPYING in top-level directory.
  */
@@ -36,6 +36,7 @@
 #endif /* HWLOC_HAVE_LIBTERMCAP */
 
 #include "lstopo.h"
+#include "misc.h"
 
 #define indent(output, i) \
   fprintf (output, "%*s", (int) i, "");
@@ -68,7 +69,7 @@ output_console_obj (hwloc_obj_t l, FILE *output, int logical, int verbose_mode)
     len = hwloc_obj_attr_snprintf (NULL, 0, l, " ", verbose_mode-1);
     attr = malloc(len+1);
     *attr = '\0';
-    len = hwloc_obj_attr_snprintf (attr, len+1, l, " ", verbose_mode-1);
+    hwloc_obj_attr_snprintf (attr, len+1, l, " ", verbose_mode-1);
     if (*phys || *attr) {
       const char *separator = *phys != '\0' && *attr!= '\0' ? " " : "";
       fprintf(output, " (%s%s%s)",
@@ -164,14 +165,26 @@ void output_console(hwloc_topology_t topology, const char *filename, int logical
   }
 
   if (verbose_mode > 1 || !verbose_mode) {
-    unsigned depth;
+    unsigned depth, nbobjs;
     for (depth = 0; depth < topodepth; depth++) {
       hwloc_obj_type_t type = hwloc_get_depth_type (topology, depth);
-      unsigned nbobjs = hwloc_get_nbobjs_by_depth (topology, depth);
+      nbobjs = hwloc_get_nbobjs_by_depth (topology, depth);
       indent(output, depth);
       fprintf (output, "depth %u:\t%u %s%s (type #%u)\n",
 	       depth, nbobjs, hwloc_obj_type_string (type), nbobjs>1?"s":"", type);
     }
+    nbobjs = hwloc_get_nbobjs_by_depth (topology, HWLOC_TYPE_DEPTH_BRIDGE);
+    if (nbobjs)
+      fprintf (output, "Special depth %d:\t%u %s%s (type #%u)\n",
+	       HWLOC_TYPE_DEPTH_BRIDGE, nbobjs, "Bridge", nbobjs>1?"s":"", HWLOC_OBJ_BRIDGE);
+    nbobjs = hwloc_get_nbobjs_by_depth (topology, HWLOC_TYPE_DEPTH_PCI_DEVICE);
+    if (nbobjs)
+      fprintf (output, "Special depth %d:\t%u %s%s (type #%u)\n",
+	       HWLOC_TYPE_DEPTH_PCI_DEVICE, nbobjs, "PCI Device", nbobjs>1?"s":"", HWLOC_OBJ_PCI_DEVICE);
+    nbobjs = hwloc_get_nbobjs_by_depth (topology, HWLOC_TYPE_DEPTH_OS_DEVICE);
+    if (nbobjs)
+      fprintf (output, "Special depth %d:\t%u %s%s (type #%u)\n",
+	       HWLOC_TYPE_DEPTH_OS_DEVICE, nbobjs, "OS Device", nbobjs>1?"s":"", HWLOC_OBJ_OS_DEVICE);
   }
 
   if (verbose_mode > 1) {
@@ -179,29 +192,14 @@ void output_console(hwloc_topology_t topology, const char *filename, int logical
     unsigned depth;
 
     for (depth = 0; depth < topodepth; depth++) {
-      unsigned nbobjs;
-      unsigned i, j;
-
       distances = hwloc_get_whole_distance_matrix_by_depth(topology, depth);
       if (!distances || !distances->latency)
         continue;
-      nbobjs = distances->nbobjs;
-
-      printf("depth %u distance matrix:\n", depth);
-      /* column header */
-      printf("  index");
-      for(j=0; j<nbobjs; j++)
-        printf(" % 5d", (int) j);
-      printf("\n");
-      /* each line */
-      for(i=0; i<nbobjs; i++) {
-        /* row header */
-        printf("  % 5d", (int) i);
-        /* each value */
-        for(j=0; j<nbobjs; j++)
-          printf(" %2.3f", distances->latency[i*nbobjs+j]);
-        printf("\n");
-      }
+      printf("latency matrix between %ss (depth %u) by %s indexes:\n",
+	     hwloc_obj_type_string(hwloc_get_depth_type(topology, depth)),
+	     depth,
+	     logical ? "logical" : "physical");
+      hwloc_utils_print_distance_matrix(topology, hwloc_get_root_obj(topology), distances->nbobjs, depth, distances->latency, logical);
     }
   }
 
@@ -259,6 +257,36 @@ void output_console(hwloc_topology_t topology, const char *filename, int logical
 
   if (output != stdout)
     fclose(output);
+}
+
+void output_synthetic(hwloc_topology_t topology, const char *filename, int logical __hwloc_attribute_unused, int legend __hwloc_attribute_unused, int verbose_mode __hwloc_attribute_unused)
+{
+  FILE *output;
+  hwloc_obj_t obj = hwloc_get_root_obj(topology);
+  int arity;
+
+  if (!filename || !strcmp(filename, "-"))
+    output = stdout;
+  else {
+    output = open_file(filename, "w");
+    if (!output) {
+      fprintf(stderr, "Failed to open %s for writing (%s)\n", filename, strerror(errno));
+      return;
+    }
+  }
+
+  if (!obj->symmetric_subtree) {
+    fprintf(stderr, "Cannot output assymetric topology in synthetic format\n");
+    return;
+  }
+
+  arity = obj->arity;
+  while (arity) {
+    obj = obj->first_child;
+    fprintf(output, "%s:%u ", hwloc_obj_type_string(obj->type), arity);
+    arity = obj->arity;
+  }
+  fprintf(output, "\n");
 }
 
 /*
@@ -637,7 +665,7 @@ text_text(void *output, int r, int g, int b, int size __hwloc_attribute_unused, 
   x /= (gridsize/2);
   y /= gridsize;
 
-#ifdef HAVE_PUTWC
+#if defined(HAVE_PUTWC) && !defined(__MINGW32__)
   {
     size_t len = strlen(text) + 1;
     wchar_t *wbuf = malloc(len * sizeof(wchar_t)), *wtext;

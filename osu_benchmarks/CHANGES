@@ -1,3 +1,7 @@
+OSU Micro Benchmarks v3.5.2 (3/22/12)
+* Bug Fixes
+    - Fix typo which led to use of incorrect buffers
+
 OSU Micro Benchmarks v3.5.1 (2/02/12)
 * New Features & Enhancements
     - Provide script to set GPU affinity for MPI processes

@@ -164,7 +164,7 @@ int main(int argc, char *argv[])
                 (char *) (((unsigned long) s_buf_original + (align_size - 1)) /
                     align_size * align_size);
             r_buf_rev =
-                (char *) (((unsigned long) s_buf_original + (align_size - 1)) /
+                (char *) (((unsigned long) r_buf_original + (align_size - 1)) /
                     align_size * align_size);
         } else if (1 == myid) {
             cuerr = cudaMalloc((void**) &r_buf, MYBUFSIZE);
@@ -202,7 +202,7 @@ int main(int argc, char *argv[])
                 (char *) (((unsigned long) r_buf_original + (align_size - 1)) /
                   align_size * align_size);
             s_buf_rev =
-                (char *) (((unsigned long) r_buf_original + (align_size - 1)) /
+                (char *) (((unsigned long) s_buf_original + (align_size - 1)) /
                   align_size * align_size);
         }
     } else {

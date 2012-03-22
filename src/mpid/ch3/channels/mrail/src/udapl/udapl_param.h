@@ -16,6 +16,7 @@
 #include "mpidi_ch3i_rdma_conf.h"
 #include "udapl_arch.h"
 #include "debug_utils.h"
+#include "mv2_arch_hca_detect.h"
 
 extern unsigned long rdma_default_max_cq_size;
 extern int rdma_default_port;
@@ -476,4 +477,5 @@ typedef enum mv2_polling_level {
 } mv2_polling_level; 
                                
 extern mv2_polling_level    rdma_polling_level;
+mv2_arch_hca_type MV2_get_arch_hca_type();
 #endif /* _UDAPL_PARAM_H */

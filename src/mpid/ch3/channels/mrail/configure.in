@@ -221,6 +221,14 @@ AS_IF([test "$use_internal_hwloc" = "yes"],
                         ])
        ])
 
+hwloc_targets=""
+AS_IF([test "$use_internal_hwloc" = "yes"],
+      [AS_IF([test "x$enable_shared" != xno],
+             [hwloc_targets="$hwloc_targets hwloc_shared"])
+       AS_IF([test "x$enable_static" != xno],
+             [hwloc_targets="$hwloc_targets hwloc_static"])
+      ])
+
 AS_IF([test "x$enable_3dtorus_support" != xno],
       [AC_DEFINE([ENABLE_3DTORUS_SUPPORT], [1],
                  [Define to enable 3D Torus support])])
@@ -630,7 +638,7 @@ AC_SUBST(channel_name)
 AC_SUBST(master_top_srcdir)
 AC_SUBST(master_top_builddir)
 AC_SUBST(other_subdirs)
-AC_SUBST(use_internal_hwloc)
+AC_SUBST(hwloc_targets)
 dnl
 dnl Dependency handling
 AC_SUBST(MAKE_DEPEND_C)

@@ -13,6 +13,7 @@
 #include "mpidi_ch3_impl.h"
 #include "mpid_mrail_rndv.h"
 #include "rdma_impl.h"
+#include "coll_shmem.h"
 #if defined(HAVE_LIBHWLOC)
 #include "hwloc_bind.h"
 #endif
@@ -70,7 +71,30 @@ int MPIDI_CH3I_set_affinity(MPIDI_PG_t * pg, int pg_rank)
              * We are going to do "bunch" binding, by default  */
             policy = POLICY_BUNCH;
          }
-    } 
+    }
+
+    if(mv2_enable_affinity && (value = getenv("MV2_CPU_MAPPING")) == NULL ) {
+        /* Affinity is on and the user has not specified a mapping string */
+        if ((value = getenv("MV2_CPU_BINDING_LEVEL")) != NULL) {
+            /* User has specified a binding level */
+            if (!strcmp(value, "core")  ||  !strcmp(value, "CORE")) {
+                    level = LEVEL_CORE;
+            } else if (!strcmp(value, "socket") || !strcmp(value, "SOCKET")) {
+                    level = LEVEL_SOCKET;
+            } else if (!strcmp(value, "numanode") || !strcmp(value, "NUMANODE")) {
+                    level = LEVEL_NUMANODE;
+            } else {
+                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                                                    "**fail", "**fail %s",
+                                                    "CPU_BINDING_PRIMITIVE: Level should be core, socket, or numanode.");
+            }
+         } else {
+            /* User has not specified a binding level.
+             * We are going to do "core" binding, by default  */
+            level = LEVEL_CORE;
+         }
+    }
+
     /* Get my VC */
     MPIDI_PG_Get_vc(pg, pg_rank, &vc);
     my_local_id = vc->smp.local_rank;
@@ -153,6 +177,9 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         if (atoi(value)) {
 #ifdef _ENABLE_CUDA_
             rdma_enable_cuda = atoi(value);
+            if (rdma_enable_cuda) { 
+                cuda_get_user_parameters();
+            }
 #else
             MPIU_Error_printf("GPU CUDA support is not configured. "
                 "Please reconfigure MVAPICH2 library with --enable-cuda option.\n");
@@ -290,6 +317,8 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     }
     MPIU_Free(conn_info);
 
+    MV2_collectives_arch_init();
+    
 #if defined(HAVE_LIBHWLOC)
     if (MPIDI_CH3I_set_affinity(pg, pg_rank) != MPI_SUCCESS) {
         MPIU_ERR_POP(mpi_errno);

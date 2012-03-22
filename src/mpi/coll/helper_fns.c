@@ -4,6 +4,17 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
 
 #include "mpiimpl.h"
 #include "datatype.h"
@@ -353,15 +364,16 @@ int MPIR_Localcopy(void *sendbuf, int sendcount, MPI_Datatype sendtype,
     MPID_Datatype *sdt_ptr, *rdt_ptr;
     MPID_Datatype_get_ptr(sendtype, sdt_ptr);
     MPID_Datatype_get_ptr(recvtype, rdt_ptr);
-    sbuf_isdev = is_device_buffer(sendbuf); 
-    rbuf_isdev = is_device_buffer(recvbuf); 
+    if (enable_device_ptr_checks) { 
+        sbuf_isdev = is_device_buffer(sendbuf); 
+        rbuf_isdev = is_device_buffer(recvbuf); 
+    }
 #endif
 
     if (sendtype_iscontig && recvtype_iscontig)
     {
 #if defined(_ENABLE_CUDA_)
-        if (rdma_enable_cuda && enable_device_ptr_checks
-                && (sbuf_isdev || rbuf_isdev)) { 
+        if (rdma_enable_cuda && (sbuf_isdev || rbuf_isdev)) { 
                 MPIU_Memcpy_CUDA((void *) ((char *)recvbuf + recvtype_true_lb),
                     (void *) ((char *)sendbuf + sendtype_true_lb),
                     copy_sz, cudaMemcpyDefault); 

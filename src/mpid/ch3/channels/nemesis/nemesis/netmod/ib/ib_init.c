@@ -40,18 +40,24 @@
  * Using Infiniband Nemesis netmod              *
  ************************************************/
 
+#ifdef ENABLE_CHECKPOINTING
+static int ib_ckpt_precheck(void);
+static int ib_ckpt_restart(void);
+static int ib_ckpt_continue(void);
+static int ib_ckpt_release_network(void);
+#endif
+
 /**
  * Nemesis access function structure.
  */
 MPID_nem_netmod_funcs_t MPIDI_nem_ib_funcs = {
     MPID_nem_ib_init,
     MPID_nem_ib_finalize,
-    /* MPID_nem_ib_ckpt_shutdown, */
-    #ifdef ENABLE_CHECKPOINTING
-    NULL,
-    NULL,
-    NULL,
-    #endif
+#ifdef ENABLE_CHECKPOINTING
+    ib_ckpt_precheck,
+    ib_ckpt_restart,
+    ib_ckpt_continue,
+#endif
     MPID_nem_ib_poll,
     MPID_nem_ib_get_business_card,
     MPID_nem_ib_connect_to_root,
@@ -477,3 +483,324 @@ fn_exit:
 fn_fail:
     goto fn_exit;
 }
+
+
+#ifdef ENABLE_CHECKPOINTING
+
+#undef FUNCNAME
+#define FUNCNAME ib_ckpt_precheck
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+static int ib_ckpt_precheck(void)
+{
+    int ret = 0;
+
+    ret = MPIDI_nem_ib_flush();
+    if (ret)
+        fprintf(stderr,"MPIDI_nem_ib_flush() failed \n");
+
+    ret = ib_ckpt_release_network();
+    if (ret)
+        fprintf(stderr,"ib_ckpt_release_network() failed \n");
+
+    return ret;
+
+}
+
+
+#undef FUNCNAME
+#define FUNCNAME ib_ckpt_restart
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+static int ib_ckpt_restart(void)
+{
+    int mpi_errno = MPI_SUCCESS;
+    char *publish_bc_orig = NULL;
+    char *bc_val          = NULL;
+    int val_max_sz;
+    int i;
+    MPIDI_STATE_DECL(MPID_STATE_IB_CKPT_RESTART);
+
+    MPIDI_FUNC_ENTER(MPID_STATE_IB_CKPT_RESTART);
+    DEBUG_PRINT("Entering ib_ckpt_restart\n");
+
+    /* First, clean up.  We didn't shut anything down before the
+     * checkpoint, so we need to go close and free any resources */
+
+    /* Initialize the new business card */
+    mpi_errno = MPIDI_CH3I_BCInit(&bc_val, &val_max_sz);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    publish_bc_orig = bc_val;
+
+    /* Now we can restart */
+    mpi_errno = MPID_nem_ib_init(MPIDI_Process.my_pg, MPIDI_Process.my_pg_rank, &bc_val, &val_max_sz);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+    /* publish business card */
+    mpi_errno = MPIDI_PG_SetConnInfo(MPIDI_Process.my_pg_rank, (const char *)publish_bc_orig);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    MPIU_Free(publish_bc_orig);
+
+    for (i = 0; i < MPIDI_Process.my_pg->size; ++i) {
+        MPIDI_VC_t *vc;
+        MPIDI_CH3I_VC *vc_ib;
+        if (i == MPIDI_Process.my_pg_rank)
+            continue;
+        MPIDI_PG_Get_vc(MPIDI_Process.my_pg, i, &vc);
+        vc_ib = VC_CH(vc);
+        if (!vc_ib->is_local) {
+            mpi_errno = vc_ib->ckpt_restart_vc(vc);
+            if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+        }
+    }
+
+
+fn_exit:
+    MPIDI_FUNC_EXIT(MPID_STATE_IB_CKPT_RESTART);
+    return mpi_errno;
+fn_fail:
+
+    goto fn_exit;
+}
+
+#undef FUNCNAME
+#define FUNCNAME ib_ckpt_continue
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+static int ib_ckpt_continue(void)
+{
+    int mpi_errno = MPI_SUCCESS;
+    char *publish_bc_orig = NULL;
+    char *bc_val          = NULL;
+    int val_max_sz;
+    int i;
+    MPIDI_STATE_DECL(MPID_STATE_IB_CKPT_CONTINUE);
+
+    MPIDI_FUNC_ENTER(MPID_STATE_IB_CKPT_CONTINUE);
+    DEBUG_PRINT("Entering ib_ckpt_continue\n");
+    fprintf(stderr,"Entering ib_ckpt_continue\n");
+
+    /* Initialize the new business card */
+    mpi_errno = MPIDI_CH3I_BCInit(&bc_val, &val_max_sz);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    publish_bc_orig = bc_val;
+
+    /* Now we can continue */
+    mpi_errno = MPID_nem_ib_init(MPIDI_Process.my_pg, MPIDI_Process.my_pg_rank, &bc_val, &val_max_sz);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+    /* publish business card */
+    mpi_errno = MPIDI_PG_SetConnInfo(MPIDI_Process.my_pg_rank, (const char *)publish_bc_orig);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    MPIU_Free(publish_bc_orig);
+
+    for (i = 0; i < MPIDI_Process.my_pg->size; ++i) {
+        MPIDI_VC_t *vc;
+        MPIDI_CH3I_VC *vc_ib;
+        if (i == MPIDI_Process.my_pg_rank)
+            continue;
+        MPIDI_PG_Get_vc(MPIDI_Process.my_pg, i, &vc);
+        vc_ib = VC_CH(vc);
+        if (!vc_ib->is_local) {
+            mpi_errno = vc_ib->ckpt_restart_vc(vc);
+            if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+        }
+    }
+
+
+fn_exit:
+    MPIDI_FUNC_EXIT(MPID_STATE_IB_CKPT_CONTINUE);
+    return mpi_errno;
+fn_fail:
+
+    goto fn_exit;
+}
+
+
+#undef FUNCNAME
+#define FUNCNAME ib_ckpt_release_network
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+static int ib_ckpt_release_network(void)
+{
+
+    /* No rdma functions will be called after this function */
+    int error ATTRIBUTE((unused));
+    int pg_rank;
+    int pg_size;
+    int i;
+    int rail_index;
+    int hca_index;
+
+    MPIDI_PG_t *pg;
+    MPIDI_VC_t *vc;
+    MPIDI_CH3I_VC *vc_ch;
+    int err;
+    int mpi_errno = MPI_SUCCESS;
+
+    /* Insert implementation here */
+    pg = MPIDI_Process.my_pg;
+    pg_rank = MPIDI_Process.my_pg_rank;
+    pg_size = MPIDI_PG_Get_size(pg);
+
+    if (!use_iboeth && (rdma_3dtorus_support || rdma_path_sl_query)) {
+        mv2_release_3d_torus_resources();
+    }
+
+    /* make sure everything has been sent */
+    MPIDI_nem_ib_flush();
+
+#ifndef DISABLE_PTMALLOC
+    mvapich2_mfin();
+#endif
+
+    for (i = 0; i < pg_size; i++) {
+        if (i == pg_rank) {
+            continue;
+        }
+
+        MPIDI_PG_Get_vc(pg, i, &vc);
+        vc_ch = (MPIDI_CH3I_VC *)vc->channel_private;
+
+        if (vc_ch->is_local)
+        {
+            continue;
+        }
+        for (hca_index = 0; hca_index < ib_hca_num_hcas; hca_index++) {
+            if (VC_FIELD(vc, connection)->rfp.RDMA_send_buf_mr[hca_index]) {
+                err = ibv_dereg_mr(VC_FIELD(vc, connection)->rfp.RDMA_send_buf_mr[hca_index]);
+                if (err)
+                MPIU_Error_printf("Failed to deregister mr (%d)\n", err);
+            }
+            if (VC_FIELD(vc, connection)->rfp.RDMA_recv_buf_mr[hca_index]) {
+                err = ibv_dereg_mr(VC_FIELD(vc, connection)->rfp.RDMA_recv_buf_mr[hca_index]);
+                if (err)
+                MPIU_Error_printf("Failed to deregister mr (%d)\n", err);
+            }
+        }
+
+        if (VC_FIELD(vc, connection)->rfp.RDMA_send_buf_DMA)
+            MPIU_Free(VC_FIELD(vc, connection)->rfp.RDMA_send_buf_DMA);
+        if (VC_FIELD(vc, connection)->rfp.RDMA_recv_buf_DMA)
+            MPIU_Free(VC_FIELD(vc, connection)->rfp.RDMA_recv_buf_DMA);
+        if (VC_FIELD(vc, connection)->rfp.RDMA_send_buf)
+            MPIU_Free(VC_FIELD(vc, connection)->rfp.RDMA_send_buf);
+        if (VC_FIELD(vc, connection)->rfp.RDMA_recv_buf)
+            MPIU_Free(VC_FIELD(vc, connection)->rfp.RDMA_recv_buf);
+
+#ifndef MV2_DISABLE_HEADER_CACHING 
+        if( NULL != VC_FIELD(vc, connection)) {
+        MPIU_Free(VC_FIELD(vc, connection)->rfp.cached_incoming);
+        MPIU_Free(VC_FIELD(vc, connection)->rfp.cached_outgoing);
+        MPIU_Free(VC_FIELD(vc, connection)->rfp.cached_incoming_iheader);
+        MPIU_Free(VC_FIELD(vc, connection)->rfp.cached_outgoing_iheader);
+        }
+#endif
+
+    }
+
+
+    /* STEP 2: destroy all the qps, tears down all connections */
+    for (i = 0; i < pg_size; i++) {
+        if (pg_rank == i) {
+            continue;
+        }
+
+
+        for (rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
+            err = ibv_destroy_qp(conn_info.connections[i].rails[rail_index].qp_hndl);
+            if (err)
+            MPIU_Error_printf("Failed to destroy QP (%d)\n", err);
+        }
+
+        MPIU_Free(conn_info.connections[i].rails);
+        MPIU_Free(cmanagers[i].msg_channels);
+        MPIU_Free(conn_info.connections[i].srp.credits);
+    }
+    /* STEP 3: release all the cq resource,
+     *         release all the unpinned buffers, 
+     *         release the ptag and finally, 
+     *         release the hca */
+
+    for (i = 0; i < ib_hca_num_hcas; i++) {
+        if (process_info.has_srq) {
+            pthread_cond_signal(&srq_info.srq_post_cond[i]);
+            pthread_mutex_lock(&srq_info.async_mutex_lock[i]);
+            pthread_mutex_lock(&srq_info.srq_post_mutex_lock[i]);
+            pthread_mutex_unlock(&srq_info.srq_post_mutex_lock[i]);
+            pthread_cond_destroy(&srq_info.srq_post_cond[i]);
+            pthread_mutex_destroy(&srq_info.srq_post_mutex_lock[i]);
+            pthread_cancel(srq_info.async_thread[i]);
+            pthread_join(srq_info.async_thread[i], NULL);
+            err = ibv_destroy_srq(hca_list[i].srq_hndl);
+            pthread_mutex_unlock(&srq_info.async_mutex_lock[i]);
+            pthread_mutex_destroy(&srq_info.async_mutex_lock[i]);
+            if (err)
+                MPIU_Error_printf("Failed to destroy SRQ (%d)\n", err);
+        }
+
+
+        err = ibv_destroy_cq(hca_list[i].cq_hndl);
+        if (err)
+            MPIU_Error_printf("[%d] Failed to destroy CQ (%d)\n", pg_rank, err);
+
+        if (hca_list[i].send_cq_hndl) {
+            err = ibv_destroy_cq(hca_list[i].send_cq_hndl);
+            if (err) {
+                MPIU_Error_printf("[%d] Failed to destroy send CQ (%d)\n", pg_rank, err);
+            }
+        }
+
+        if (hca_list[i].recv_cq_hndl) {
+            err = ibv_destroy_cq(hca_list[i].recv_cq_hndl);
+            if (err) {
+                MPIU_Error_printf("[%d] Failed to destroy recv CQ (%d)\n", pg_rank, err);
+            }
+        }
+
+        if(rdma_use_blocking) {
+            err = ibv_destroy_comp_channel(hca_list[i].comp_channel);
+            if(err)
+            MPIU_Error_printf("[%d] Failed to destroy CQ channel (%d)\n", pg_rank, err);
+        }
+
+        deallocate_vbufs(i);
+        deallocate_vbuf_region();
+        err = dreg_finalize();
+
+        err = ibv_dealloc_pd(hca_list[i].ptag);
+
+        if (err)  {
+            MPIU_Error_printf("[%d] Failed to dealloc pd (%s)\n",
+                pg_rank, strerror(errno));
+        }
+
+        err = ibv_close_device(hca_list[i].nic_context);
+
+        if (err) {
+            MPIU_Error_printf("[%d] Failed to close ib device (%s)\n",
+                pg_rank, strerror(errno));
+        }
+
+    }
+
+    if(process_info.polling_set != NULL) {
+      MPIU_Free(process_info.polling_set);
+    }
+
+    if(cmanagers != NULL) {
+        MPIU_Free(cmanagers);
+    }
+
+
+    if(conn_info.connections != NULL) {
+        MPIU_Free(conn_info.connections);
+    }
+
+    return err;
+
+}
+
+
+#endif
+

@@ -106,6 +106,11 @@ int MPID_Finalize(void)
       *    request, we need to to search the pending send queue and
       *    cancel it, in which case an error shouldn't be generated.
       */
+#ifdef _ENABLE_CUDA_
+    if (rdma_enable_cuda) {
+        cuda_cleanup();
+    }
+#endif
     
 #ifdef _ENABLE_XRC_
     MPIDI_CH3_Flush();

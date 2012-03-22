@@ -929,6 +929,7 @@ int MPIR_Allgatherv_MV2(void *sendbuf, int sendcount, MPI_Datatype sendtype,
                                       recvbuf, recvcounts, displs,
                                       recvtype, comm_ptr, errflag);
 #endif                          /* (_OSU_MVAPICH_) || defined(_OSU_PSM_) */
+
     if (mpi_errno)
         MPIU_ERR_POP(mpi_errno);
 

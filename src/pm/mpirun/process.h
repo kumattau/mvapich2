@@ -26,8 +26,8 @@ typedef enum {
 } process_state;
 
 typedef struct {
-    char *hostname;
-    char *device;
+    char const * hostname;
+    char const * device;
     pid_t pid;
     pid_t remote_pid;
     int port;

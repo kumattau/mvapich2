@@ -320,5 +320,4 @@ int viadev_post_srq_buffers(int, int);
 void async_thread(void *ctx);
 
 int MPIDI_CH3I_MRAILI_Flush(void);
-
 #endif /* MPIDI_CH3_RDMA_POST_H */

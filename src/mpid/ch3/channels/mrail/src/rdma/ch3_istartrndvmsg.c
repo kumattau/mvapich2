@@ -45,10 +45,18 @@ static inline void MPIDI_CH3_Prepare_rndv(MPIDI_VC_t *vc, MPID_Request *sreq)
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_PREPARE_RNDV);
 
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-    if (!SMP_INIT 
-        && rdma_enable_cuda
-        && rdma_cuda_ipc) { 
-        if (MPIDI_CH3I_MRAIL_Prepare_rndv_cuda_ipc (vc, sreq)) goto fn_exit;
+    if (rdma_enable_cuda
+        && rdma_cuda_ipc) {
+        if (cudaipc_stage_buffered &&
+            sreq->dev.iov[0].MPID_IOV_LEN < cudaipc_stage_buffered_limit) {
+            if (MPIDI_CH3I_MRAIL_Prepare_rndv_cuda_ipc_buffered (vc, sreq)) {
+                goto fn_exit;
+            }
+        } else {
+            if (MPIDI_CH3I_MRAIL_Prepare_rndv_cuda_ipc (vc, sreq)) {
+                goto fn_exit;
+            }
+        }
     }
 #endif
 

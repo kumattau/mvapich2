@@ -239,6 +239,7 @@ struct MPIDI_CH3I_Request						\
     (_rreq)->mrail.cuda_transfer_mode = 0;           \
     (_rreq)->mrail.pipeline_nm = 0;                  \
     (_rreq)->mrail.cuda_stream = NULL;               \
+    (_rreq)->mrail.cuda_event = NULL;                \
     (_rreq)->dev.pending_pkt = NULL;                 \
     (_rreq)->dev.cuda_srbuf_entry = NULL;            \
     (_rreq)->dev.is_device_tmpbuf = 0;
@@ -248,6 +249,7 @@ struct MPIDI_CH3I_Request						\
 
 #if defined(HAVE_CUDA_IPC)
 #define MPIDI_CH3_REQUEST_INIT_CUDA_IPC(_rreq)      \
+    (_rreq)->mrail.cudaipc_stage_index = 0;         \
     (_rreq)->mrail.ipc_cuda_event = NULL;           \
     (_rreq)->mrail.ipc_baseptr = NULL;              \
     (_rreq)->mrail.ipc_size = 0;                    \

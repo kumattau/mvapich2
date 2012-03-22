@@ -32,8 +32,8 @@ typedef struct _process_info {
 } process_info_t;
 
 struct MPIR_PROCDESC {
-    char *host_name;
-    char *executable_name;
+    char const * host_name;
+    char const * executable_name;
     long pid;
 };
 

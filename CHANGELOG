@@ -3,6 +3,54 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2-1.8rc1 (03/22/2012)
+
+* Features & Enhancements (since 1.8a2):
+    - New design for intra-node communication from GPU Device buffers using
+      CUDA IPC for better performance and correctness
+        - Thanks to Joel Scherpelz from NVIDIA for his suggestions
+    - Enabled shared memory communication for host transfers when CUDA is
+      enabled
+    - Optimized and tuned collectives for GPU device buffers
+    - Enhanced pipelined inter-node device transfers
+    - Enhanced shared memory design for GPU device transfers for large messages
+    - Enhanced support for CPU binding with socket and numanode level
+      granularity
+    - Support suspend/resume functionality with mpirun_rsh
+    - Exporting local rank, local size, global rank and global size through
+      environment variables (both mpirun_rsh and hydra)
+    - Update to hwloc v1.4
+    - Checkpoint-Restart support in OFA-IB-Nemesis interface
+    - Enabling run-through stabilization support to handle process failures in
+      OFA-IB-Nemesis interface
+    - Enhancing OFA-IB-Nemesis interface to handle IB errors gracefully
+    - Performance tuning on various architecture clusters
+    - Support for Mellanox IB FDR adapter
+
+* Bug-Fixes (since 1.8a2):
+    - Fix a hang issue on InfiniHost SDR/DDR cards
+        - Thanks to Nirmal Seenu from Fermilab for the report
+    - Fix an issue with runtime parameter MV2_USE_COALESCE usage
+    - Fix an issue with LiMIC2 when CUDA is enabled
+    - Fix an issue with intra-node communication using datatypes and GPU device
+      buffers
+    - Fix an issue with Dynamic Process Management when launching processes on
+      multiple nodes
+    -  Thanks to Rutger Hofman from VU Amsterdam for the report
+    - Fix build issue in hwloc source with mcmodel=medium flags
+        - Thanks to Nirmal Seenu from Fermilab for the report
+    - Fix a build issue in hwloc with --disable-shared or --disabled-static
+      options
+    - Use portable stdout and stderr redirection
+        - Thanks to Dr. Axel Philipp from *MTU* Aero Engines for the patch
+    - Fix a build issue with PGI 12.2
+        - Thanks to Thomas Rothrock from U.S. Army SMDC for the patch
+    - Fix an issue with send message queue in OFA-IB-Nemesis interface
+    - Fix a process cleanup issue in Hydra when MPI_ABORT is called (upstream
+      MPICH2 patch)
+    - Fix an issue with non-contiguous datatypes in MPI_Gather
+    - Fix a few memory leaks and warnings
+
 MVAPICH2-1.8a2 (02/02/2012)
 
 * Features and Enhancements (since 1.8a1p1):

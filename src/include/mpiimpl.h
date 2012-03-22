@@ -3353,6 +3353,12 @@ int MPIR_Localcopy(void *sendbuf, int sendcount, MPI_Datatype sendtype,
 #ifdef _ENABLE_CUDA_
 int enable_device_ptr_checks;
 int is_device_buffer(void *buffer);
+int cuda_stage_alloc_v (void **, int *, MPI_Datatype, int **, int,
+            void **, int *, MPI_Datatype, int **, int,
+            int , int, int);
+void cuda_stage_free_v (void **, int *, MPI_Datatype, int **, int,
+            void **, int *, MPI_Datatype, int **, int,
+            int , int, int);
 #endif
 int MPIC_Irecv(void *buf, int count, MPI_Datatype datatype, int
                source, int tag, MPI_Comm comm, MPI_Request *request);

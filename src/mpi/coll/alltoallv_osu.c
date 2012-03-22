@@ -16,6 +16,8 @@
  */
 
 #include "mpiimpl.h"
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#include "coll_shmem.h"
 
 /* This is the default implementation of alltoallv. The algorithm is:
    
@@ -39,7 +41,6 @@
 
 /* begin:nested */
 /* not declared static because a machine-specific function may call this one in some cases */
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #undef FUNCNAME
 #define FUNCNAME MPIR_Alltoallv_intra_MV2
 #undef FCNAME
@@ -204,6 +205,7 @@ int MPIR_Alltoallv_MV2(void *sendbuf, int *sendcnts, int *sdispls,
                                      sendtype, recvbuf, recvcnts,
                                      rdispls, recvtype, comm_ptr, errflag);
 #endif                          /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
+
     if (mpi_errno)
         MPIU_ERR_POP(mpi_errno);
 

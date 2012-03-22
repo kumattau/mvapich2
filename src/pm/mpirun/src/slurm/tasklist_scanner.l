@@ -11,7 +11,7 @@
  * copyright file COPYRIGHT in the top level MVAPICH2 directory.
  */
 
-#include <tasklist_parser.h>
+#include <libtasklist_a-tasklist_parser.h>
 #include <string.h>
 %}
 

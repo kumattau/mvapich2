@@ -17,7 +17,8 @@
 #include "dreg.h"
 
 #ifdef _ENABLE_CUDA_
-cuda_event_region_t *cuda_event_region_list = NULL;
+void *cuda_event_region = NULL;
+cuda_event_t *free_cudaipc_event_list_head = NULL;
 cuda_event_t *free_cuda_event_list_head = NULL;
 cuda_event_t *busy_cuda_event_list_head = NULL;
 cuda_event_t *busy_cuda_event_list_tail = NULL;
@@ -27,21 +28,20 @@ void allocate_cuda_events()
     int i;
     cudaError_t result;
     cuda_event_t *curr;
-    cuda_event_region_t *cuda_event_region = MPIU_Malloc(sizeof(cuda_event_region_t));
-    cuda_event_region->list = (void *) MPIU_Malloc(sizeof(cuda_event_t)
+    cuda_event_region = (void *) MPIU_Malloc(sizeof(cuda_event_t)
                                               * rdma_cuda_event_count);
     if (stream_d2h == 0 && stream_h2d == 0) {
         allocate_cuda_rndv_streams();
     }
     MPIU_Assert(free_cuda_event_list_head == NULL);
-    free_cuda_event_list_head = cuda_event_region->list;
-    curr = (cuda_event_t *) cuda_event_region->list;
+    free_cuda_event_list_head = cuda_event_region;
+    curr = (cuda_event_t *) cuda_event_region;
     for (i = 1; i <= rdma_cuda_event_count; i++) {
-        curr->next = (cuda_event_t *) ((size_t) cuda_event_region->list +
+        curr->next = (cuda_event_t *) ((size_t) cuda_event_region +
                                         i * sizeof(cuda_event_t));
         result = cudaEventCreateWithFlags(&(curr->event), cudaEventDisableTiming
 #if defined(HAVE_CUDA_IPC)
-                         | cudaEventInterprocess
+            | cudaEventInterprocess
 #endif
             );
         if (result != cudaSuccess) {
@@ -52,19 +52,13 @@ void allocate_cuda_events()
             curr->next = NULL;
         }
         curr->prev = NULL;
+        curr->flags =  CUDA_EVENT_FREE_POOL;
         curr = curr->next;
     }
-
-    cuda_event_region->next = NULL;
-    if (cuda_event_region_list != NULL) {
-        cuda_event_region->next = cuda_event_region_list;
-    }
-    cuda_event_region_list = cuda_event_region;
 }
 
 void deallocate_cuda_events()
 {
-    cuda_event_region_t *curr = NULL, *next = NULL;
     cuda_event_t *curr_event = free_cuda_event_list_head;
     MPIU_Assert(busy_cuda_event_list_head == NULL);
     while(curr_event) {
@@ -72,14 +66,69 @@ void deallocate_cuda_events()
         curr_event = curr_event->next;
     }
 
-    curr = cuda_event_region_list;
-    while (curr != NULL) {
-        next = curr->next;
-        MPIU_Free(curr->list);
-        MPIU_Free(curr);
-        curr = next;
+    if (cuda_event_region != NULL) {
+        MPIU_Free(cuda_event_region);
+        cuda_event_region = NULL;
+    }
+    /* Free IPC event pool */
+    while(free_cudaipc_event_list_head) {
+        curr_event = free_cudaipc_event_list_head;
+        cudaEventDestroy(curr_event->event);
+        free_cudaipc_event_list_head = free_cudaipc_event_list_head->next;
+        MPIU_Free(curr_event);
     }
 }
+
+int allocate_cuda_event(cuda_event_t **cuda_event)
+{
+    cudaError_t result;
+    *cuda_event = (cuda_event_t *) MPIU_Malloc(sizeof(cuda_event_t));
+    result = cudaEventCreateWithFlags(&((*cuda_event)->event), cudaEventDisableTiming
+#if defined(HAVE_CUDA_IPC)
+            | cudaEventInterprocess
+#endif
+            );
+    if (result != cudaSuccess) {
+        ibv_error_abort(GEN_EXIT_ERR, "Cuda Event Creation failed \n");
+    }
+    (*cuda_event)->next = (*cuda_event)->prev = NULL;
+    (*cuda_event)->cuda_vbuf_head = (*cuda_event)->cuda_vbuf_tail = NULL;
+    (*cuda_event)->flags = CUDA_EVENT_DEDICATED;
+    return 0;
+}
+
+void deallocate_cuda_event(cuda_event_t **cuda_event)
+{
+    cudaEventDestroy((*cuda_event)->event);
+    MPIU_Free(*cuda_event);
+    *cuda_event = NULL;
+}
+
+#if defined(HAVE_CUDA_IPC)
+cuda_event_t *get_free_cudaipc_event()
+{
+    cuda_event_t *curr_event;
+
+    if (NULL == free_cudaipc_event_list_head) {
+        allocate_cuda_event(&curr_event);
+    } else {
+        curr_event = free_cudaipc_event_list_head;
+        free_cudaipc_event_list_head = free_cudaipc_event_list_head->next;
+    }
+
+    curr_event->next = curr_event->prev = NULL;
+    curr_event->is_query_done = 0;
+
+    return curr_event;
+}
+
+void release_cudaipc_event(cuda_event_t *event) 
+{
+    /* add event to the free list */
+    event->next = free_cudaipc_event_list_head;
+    free_cudaipc_event_list_head = event; 
+}
+#endif
 
 void process_cuda_event_op(cuda_event_t * event)
 {
@@ -160,6 +209,10 @@ void process_cuda_event_op(cuda_event_t * event)
         if (event->is_finish) {
             int complete = 0;
             MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(req);
+            /* deallocate the stream if request is finished */
+            if (req->mrail.cuda_event) {
+                deallocate_cuda_event(&req->mrail.cuda_event);
+            }
             
             mpi_errno = MPIDI_CH3U_Handle_recv_req(vc, req, &complete);
             if (mpi_errno != MPI_SUCCESS) {
@@ -184,17 +237,51 @@ void process_cuda_event_op(cuda_event_t * event)
             ibv_error_abort(IBV_RETURN_ERR,"cudaStreamWaitEvent failed\n");
         }
 
+
         cudaerr = cudaEventDestroy(req->mrail.ipc_event);
         if (cudaerr != cudaSuccess) {
             ibv_error_abort(IBV_RETURN_ERR,"cudaEventDestroy failed\n");
+        }
+
+        /* deallocate the stream if it is allocated */
+        if (req->mrail.cuda_event) {
+            deallocate_cuda_event(&req->mrail.cuda_event);
         }
 
         if (req->mrail.cuda_reg) {
             cudaipc_deregister(req->mrail.cuda_reg);
             req->mrail.cuda_reg = NULL;
         }
-
         MRAILI_RDMA_Get_finish(vc, req, 0);
+
+    } else if (event->op_type == CUDAIPC_SEND) {
+        int complete;
+        if (req->mrail.rndv_buf_alloc == 1 && 
+                req->mrail.rndv_buf != NULL) { 
+            /* a temporary host rndv buffer would have been allocaed only when the 
+               sender buffers is noncontiguous and is in the host memory */
+            MPIU_Assert(req->mrail.cuda_transfer_mode == HOST_TO_DEVICE);
+            MPIU_Free_CUDA_HOST(req->mrail.rndv_buf);
+            req->mrail.rndv_buf_alloc = 0;
+            req->mrail.rndv_buf = NULL;
+        }
+        MPIDI_CH3U_Handle_send_req(vc, req, &complete);
+        MPIU_Assert(complete == TRUE);
+        if (event->flags == CUDA_EVENT_DEDICATED) {
+            deallocate_cuda_event(&req->mrail.cuda_event);
+        }
+    } else if (event->op_type == CUDAIPC_RECV) {
+        int complete;
+        int mpi_errno = MPI_SUCCESS;
+        mpi_errno = MPIDI_CH3U_Handle_recv_req(vc, req, &complete);
+        if (mpi_errno != MPI_SUCCESS) {
+            ibv_error_abort(IBV_RETURN_ERR,
+                    "MPIDI_CH3U_Handle_recv_req returned error");
+        }
+        MPIU_Assert(complete == TRUE);
+        if (event->flags == CUDA_EVENT_DEDICATED) {
+            deallocate_cuda_event(&req->mrail.cuda_event);
+        }
 #endif
     } else { 
         ibv_error_abort(IBV_RETURN_ERR, "Invalid op type in event");
@@ -206,7 +293,6 @@ void progress_cuda_events()
     cudaError_t result = cudaSuccess;
     cuda_event_t *curr_event = busy_cuda_event_list_head;
     cuda_event_t *next_event;
-    cuda_async_op_t op_type;
 
     while (NULL != curr_event) {
         if (!curr_event->is_query_done) {
@@ -236,14 +322,16 @@ void progress_cuda_events()
 
                 curr_event->is_query_done = 0;
                 curr_event->next = curr_event->prev = NULL;
-                op_type = curr_event->op_type;
 
                 /* process finished event */
                 process_cuda_event_op(curr_event);
 
-                /* add event to the free list */
-                curr_event->next = free_cuda_event_list_head;
-                free_cuda_event_list_head = curr_event;
+                /* Dedicated event will be deallocated after 
+                ** the request is finished*/
+                if (curr_event->flags == CUDA_EVENT_FREE_POOL) {
+                    curr_event->next = free_cuda_event_list_head;
+                    free_cuda_event_list_head = curr_event;
+                }
                 
                 curr_event = next_event;
             }
@@ -259,7 +347,11 @@ cuda_event_t *get_cuda_event()
     cuda_event_t *curr_event;
    
     if (NULL == free_cuda_event_list_head) {
-        allocate_cuda_events();
+        if (NULL != busy_cuda_event_list_head) {
+            return NULL;
+        } else {
+            allocate_cuda_events();
+        }
     } 
 
     curr_event = free_cuda_event_list_head;
@@ -277,28 +369,5 @@ cuda_event_t *get_cuda_event()
     }
     curr_event->is_query_done = 0;
     return curr_event;
-}
-
-cuda_event_t *get_free_cuda_event()
-{
-    cuda_event_t *curr_event;
-
-    if (NULL == free_cuda_event_list_head) {
-        allocate_cuda_events();
-    }    
-
-    curr_event = free_cuda_event_list_head;
-    free_cuda_event_list_head = free_cuda_event_list_head->next;
-    curr_event->next = curr_event->prev = NULL;
-    curr_event->is_query_done = 0;
-
-    return curr_event;
-}
-
-void release_cuda_event(cuda_event_t *event) 
-{
-    /* add event to the free list */
-    event->next = free_cuda_event_list_head;
-    free_cuda_event_list_head = event; 
 }
 #endif

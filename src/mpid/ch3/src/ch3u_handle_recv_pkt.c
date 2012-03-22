@@ -349,7 +349,7 @@ int MPIDI_CH3U_Receive_data_found(MPID_Request *rreq, char *buf, MPIDI_msg_sz_t 
                     MPIU_ERR_SETFATALANDJUMP(mpi_errno,MPI_ERR_OTHER,
                             "**ch3|loadrecviov");
                 }
-                MPIU_Memcpy_CUDA((char*)(rreq->dev.iov[0].MPID_IOV_BUF) + dt_true_lb,
+                MPIU_Memcpy_CUDA((char*)(rreq->dev.iov[0].MPID_IOV_BUF),
                         buf, data_sz, cudaMemcpyHostToDevice);
 
                 *buflen = data_sz;

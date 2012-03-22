@@ -95,7 +95,7 @@ void dump_vbuf(char* msg, vbuf* v)
 }
 #endif /* defined(DEBUG) */
 
-void print_vbuf_usage()
+void mv2_print_vbuf_usage_usage()
 {
     int tot_mem = 0;
 
@@ -190,7 +190,6 @@ void deallocate_vbufs(int hca_num)
                 r = r->next;
             } 
         }
-        cuda_cleanup();
     }
 #endif
 

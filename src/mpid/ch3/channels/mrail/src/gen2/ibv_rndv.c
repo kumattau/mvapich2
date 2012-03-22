@@ -120,10 +120,18 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv(MPIDI_VC_t * vc, MPID_Request * req)
 #endif
 
     /* Step 2: try register and decide the protocol */
-
-    if (VAPI_PROTOCOL_RPUT == req->mrail.protocol ||
+    /* The additional check for intra-node peer has been added to handle 
+       case when RGET is used for CUDA IPC communication when shared memory 
+       is enabled. In this case registration cache is not initialized and 
+       hence dreg_register leads to a hang. Better separation of thsee cases
+       might be possible */
+    if (
+#ifdef _ENABLE_CUDA_
+        (!rdma_enable_cuda || !SMP_INIT || vc->smp.local_nodes == -1) && 
+#endif
+        (VAPI_PROTOCOL_RPUT == req->mrail.protocol ||
             VAPI_PROTOCOL_RGET == req->mrail.protocol ||
-                VAPI_PROTOCOL_UD_ZCOPY == req->mrail.protocol) {
+                VAPI_PROTOCOL_UD_ZCOPY == req->mrail.protocol)) {
         DEBUG_PRINT("[cts] size registered %d, addr %p\n",
                 req->mrail.rndv_buf_sz, req->mrail.rndv_buf);
         reg_entry =
@@ -309,29 +317,47 @@ void MRAILI_RDMA_Get_finish(MPIDI_VC_t * vc,
     int mpi_errno = MPI_SUCCESS;
     MPID_Seqnum_t seqnum;
 
-    vbuf *buf;
-
     MPIDI_Pkt_init(&rget_pkt, MPIDI_CH3_PKT_RGET_FINISH);
     rget_pkt.sender_req_id = rreq->dev.sender_req_id;
     MPIDI_VC_FAI_send_seqnum(vc, seqnum);
     MPIDI_Pkt_set_seqnum(&rget_pkt, seqnum); 
 
-    iov.MPID_IOV_BUF = &rget_pkt;
-    iov.MPID_IOV_LEN = sizeof(MPIDI_CH3_Pkt_rget_finish_t);
-
     DEBUG_PRINT("Sending RGET FINISH\n");
 
-    mpi_errno =
-        MPIDI_CH3I_MRAILI_rget_finish(vc, &iov, n_iov, &nb, &buf, rail);
-    if (mpi_errno != MPI_SUCCESS && 
-            mpi_errno != MPI_MRAIL_MSG_QUEUED) {
-        ibv_error_abort(IBV_STATUS_ERR,
-                "Cannot send rput through send/recv path");
+    if (SMP_INIT && vc->smp.local_nodes >= 0) {
+        MPID_Request *new_req = NULL; 
+
+        MPIDI_CH3_Rendezvous_rget_recv_finish(vc, rreq); 
+
+        mpi_errno = 
+            MPIDI_CH3_SMP_iStartMsg(vc, &rget_pkt, 
+                    sizeof(MPIDI_CH3_Pkt_rget_finish_t), &new_req);
+        if (mpi_errno != MPI_SUCCESS) { 
+            ibv_error_abort(IBV_STATUS_ERR,
+                    "Failed sending rget finish through SMP channel \n");
+        }
+
+        if (new_req != NULL) {
+            MPID_Request_release(new_req);
+        }
+    } else { 
+        vbuf *buf;
+
+        iov.MPID_IOV_BUF = &rget_pkt;
+        iov.MPID_IOV_LEN = sizeof(MPIDI_CH3_Pkt_rget_finish_t);
+
+        mpi_errno =
+            MPIDI_CH3I_MRAILI_rget_finish(vc, &iov, n_iov, &nb, &buf, rail);
+        if (mpi_errno != MPI_SUCCESS && 
+                mpi_errno != MPI_MRAIL_MSG_QUEUED) {
+            ibv_error_abort(IBV_STATUS_ERR,
+                    "Cannot send rput through send/recv path");
+        }
+
+        buf->sreq = (void *) rreq;
+        DEBUG_PRINT("VBUF ASSOCIATED: %p, %08x\n", buf, buf->desc.u.sr.wr_id);
     }
 
-    buf->sreq = (void *) rreq;
-
-    DEBUG_PRINT("VBUF ASSOCIATED: %p, %08x\n", buf, buf->desc.u.sr.wr_id);
 }
 
 void MPIDI_CH3I_MRAILI_Rendezvous_rget_push(MPIDI_VC_t * vc,

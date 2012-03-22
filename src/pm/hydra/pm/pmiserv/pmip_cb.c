@@ -3,6 +3,17 @@
  *  (C) 2008 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
 
 #include "hydra.h"
 #include "pmip.h"
@@ -734,6 +745,22 @@ static HYD_status launch_procs(void)
                 str = HYDU_int_to_str(HYD_pmcd_pmip.system_global.global_process_count);
                 status = HYDU_append_env_to_list("PMI_SIZE", str, &force_env);
                 HYDU_ERR_POP(status, "unable to add env to list\n");
+
+                /* mvapich2 specific flags */
+                /* _OSU_MVAPICH_ */
+                status = HYDU_append_env_to_list("MV2_COMM_WORLD_SIZE", str, &force_env);
+                HYDU_ERR_POP(status, "unable to add env to list\n");
+                str = HYDU_int_to_str(HYD_pmcd_pmip.local.proxy_process_count);
+                status = HYDU_append_env_to_list("MV2_COMM_WORLD_LOCAL_SIZE", str, &force_env);
+                HYDU_ERR_POP(status, "unable to add env to list\n");
+                str = HYDU_int_to_str(process_id);
+                status = HYDU_append_env_to_list("MV2_COMM_WORLD_LOCAL_RANK", str, &force_env);
+                HYDU_ERR_POP(status, "unable to add env to list\n");
+                str = HYDU_int_to_str(HYD_pmcd_pmip.downstream.pmi_rank[process_id]);
+                status = HYDU_append_env_to_list("MV2_COMM_WORLD_RANK", str, &force_env);
+                HYDU_ERR_POP(status, "unable to add env to list\n");
+                /* _OSU_MVAPICH_ */
+
                 HYDU_FREE(str);
             }
 

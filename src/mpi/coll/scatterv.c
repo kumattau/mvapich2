@@ -4,6 +4,17 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
 
 #include "mpiimpl.h"
 
@@ -176,10 +187,76 @@ int MPIR_Scatterv_impl(void *sendbuf, int *sendcnts, int *displs, MPI_Datatype s
     int mpi_errno = MPI_SUCCESS;
 
 #if defined(_ENABLE_CUDA_)
+    int i, rank, comm_size;
+    int sendbuf_on_device = 0, recvbuf_on_device = 0;
+    int sendtype_extent = 0, recvtype_extent = 0, total_count = 0;
+    int total_size = 0, total_msgs = 0, avg_size = 0;
+    int *recv_displs;
+
     if (rdma_enable_cuda) {
-        if (is_device_buffer(sendbuf)
-            || is_device_buffer(recvbuf)) {
+        rank = comm_ptr->rank;
+        if (comm_ptr->comm_kind == MPID_INTRACOMM) {
+            comm_size = comm_ptr->local_size;
+        } else {
+            comm_size = comm_ptr->remote_size;
+        }
+
+        if (((comm_ptr->comm_kind == MPID_INTRACOMM) && (root == rank)) ||
+            ((comm_ptr->comm_kind == MPID_INTERCOMM) && (root == MPI_ROOT))) {
+            sendbuf_on_device = is_device_buffer(sendbuf);
+            MPID_Datatype_get_extent_macro(sendtype, sendtype_extent);
+            for (i = 0; i < comm_size; i++) {
+                total_count += sendcnts[i];
+            }
+            total_size = total_count * sendtype_extent;
+            total_msgs = comm_size;
+        }
+
+        if (recvbuf != MPI_IN_PLACE) {
+            recvbuf_on_device = is_device_buffer(recvbuf);
+            MPID_Datatype_get_extent_macro(recvtype, recvtype_extent); 
+            total_size += recvcnt * recvtype_extent;
+            total_msgs += 1;
+        }
+
+        avg_size = total_size / total_msgs;
+
+        if (sendbuf_on_device || recvbuf_on_device) {
             enable_device_ptr_checks = 1;
+        }
+
+        if ((sendbuf_on_device || recvbuf_on_device) &&
+             rdma_cuda_use_naive &&
+             avg_size <= rdma_cuda_scatterv_naive_limit) {
+
+            recv_displs = (int *) MPIU_Malloc(sizeof(int));
+            if (recv_displs == NULL) {
+                mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
+                   FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
+                   "memory allocation failed", strerror(errno));
+                MPIU_ERR_POP(mpi_errno);
+            }
+            recv_displs[0] = 0;
+
+            if (((comm_ptr->comm_kind == MPID_INTRACOMM) && (root == rank)) ||
+                ((comm_ptr->comm_kind == MPID_INTERCOMM) && (root == MPI_ROOT))) {
+                mpi_errno = cuda_stage_alloc_v (&sendbuf, sendcnts, sendtype,
+                         &displs, comm_size,
+                         &recvbuf, &recvcnt, recvtype,
+                         &recv_displs, 1,
+                         sendbuf_on_device, recvbuf_on_device,
+                         rank);
+            } else {
+                mpi_errno = cuda_stage_alloc_v (NULL, NULL, sendtype,
+                         NULL, 0, 
+                         &recvbuf, &recvcnt, recvtype,
+                         &recv_displs, 1, 
+                         sendbuf_on_device, recvbuf_on_device,
+                         rank);
+            }
+            if (mpi_errno) {
+                MPIU_ERR_POP(mpi_errno);
+            }
         }
     }
 #endif       
@@ -195,6 +272,35 @@ int MPIR_Scatterv_impl(void *sendbuf, int *sendcnts, int *displs, MPI_Datatype s
                                   root, comm_ptr, errflag);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
+
+#if defined(_ENABLE_CUDA_)
+    if (rdma_enable_cuda) {
+        if ((sendbuf_on_device || recvbuf_on_device) &&
+             rdma_cuda_use_naive &&
+             avg_size <= rdma_cuda_scatterv_naive_limit) {
+
+            if (((comm_ptr->comm_kind == MPID_INTRACOMM) && (root == rank)) ||
+                ((comm_ptr->comm_kind == MPID_INTERCOMM) && (root == MPI_ROOT))) {
+                cuda_stage_free_v (&sendbuf, sendcnts, sendtype,
+                         &displs, comm_size,
+                         &recvbuf, &recvcnt, recvtype,
+                         &recv_displs, 1,
+                         sendbuf_on_device, recvbuf_on_device,
+                         rank);
+            } else {
+                cuda_stage_free_v (NULL, NULL, sendtype,
+                         NULL, 0,
+                         &recvbuf, &recvcnt, recvtype,
+                         &recv_displs, 1,
+                         sendbuf_on_device, recvbuf_on_device,
+                         rank);
+            }
+
+            MPIU_Free(recv_displs);
+
+        }
+    }
+#endif
 
  fn_exit:
 #if defined(_ENABLE_CUDA_)

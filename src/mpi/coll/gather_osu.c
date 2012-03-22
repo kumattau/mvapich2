@@ -17,13 +17,31 @@
 
 #include "mpiimpl.h"
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
-#include "coll_shmem.h"
+#include "gather_tuning.h"
+
+int (*MV2_Gather_intra_node_function) (void *sendbuf,
+                                       int sendcnt,
+                                       MPI_Datatype sendtype,
+                                       void *recvbuf,
+                                       int recvcnt,
+                                       MPI_Datatype recvtype,
+                                       int root, MPID_Comm * comm_ptr, int *errflag) =
+    NULL;
+
+int (*MV2_Gather_inter_leader_function) (void *sendbuf,
+                                         int sendcnt,
+                                         MPI_Datatype sendtype,
+                                         void *recvbuf,
+                                         int recvcnt,
+                                         MPI_Datatype recvtype,
+                                         int root, MPID_Comm * comm_ptr, int *errflag) =
+    NULL;
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Gather_MV2_Direct
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-static int MPIR_Gather_MV2_Direct(void *sendbuf,
+int MPIR_Gather_MV2_Direct(void *sendbuf,
                                   int sendcnt,
                                   MPI_Datatype sendtype,
                                   void *recvbuf,
@@ -144,7 +162,7 @@ static int MPIR_Gather_MV2_Direct(void *sendbuf,
 #define FUNCNAME MPIR_Gather_MV2_two_level_Direct
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-static int MPIR_Gather_MV2_two_level_Direct(void *sendbuf,
+int MPIR_Gather_MV2_two_level_Direct(void *sendbuf,
                                             int sendcnt,
                                             MPI_Datatype sendtype,
                                             void *recvbuf,
@@ -236,16 +254,16 @@ static int MPIR_Gather_MV2_two_level_Direct(void *sendbuf,
         }
     }
 
-    /* Ok, lets first do the intra-node gather */
+ /* Ok, lets first do the intra-node gather */
     if (rank == root && sendbuf == MPI_IN_PLACE) {
-        mpi_errno = MPIR_Gather_MV2_Direct(recvbuf +
-                                           rank * recvcnt * recvtype_extent,
-                                           recvcnt, recvtype, tmp_buf, nbytes,
-                                           MPI_BYTE, 0, shmem_commptr, errflag);
+        mpi_errno = MV2_Gather_intra_node_function(recvbuf +
+                                                   rank * recvcnt * recvtype_extent,
+                                                   recvcnt, recvtype, tmp_buf, nbytes,
+                                                   MPI_BYTE, 0, shmem_commptr, errflag);
     } else {
-        mpi_errno = MPIR_Gather_MV2_Direct(sendbuf, sendcnt, sendtype,
-                                           tmp_buf, nbytes, MPI_BYTE,
-                                           0, shmem_commptr, errflag);
+        mpi_errno = MV2_Gather_intra_node_function(sendbuf, sendcnt, sendtype,
+                                                   tmp_buf, nbytes, MPI_BYTE,
+                                                   0, shmem_commptr, errflag);
     }
     if (mpi_errno) {
         MPIU_ERR_POP(mpi_errno);
@@ -299,27 +317,38 @@ static int MPIR_Gather_MV2_two_level_Direct(void *sendbuf,
                                                      "**nomem", 0);
                     return mpi_errno;
                 }
-                recvcnts[0] = node_sizes[0] * nbytes;
-                displs[0] = 0;
-
-                for (i = 1; i < leader_comm_size; i++) {
-                    displs[i] = displs[i - 1] + node_sizes[i - 1] * nbytes;
-                    recvcnts[i] = node_sizes[i] * nbytes;
-                }
             }
 
             if (root == leader_of_root) {
                 /* The root of the gather operation is also the node 
                  * leader. Receive into recvbuf and we are done */
+                if (leader_comm_rank == leader_root) {
+                    recvcnts[0] = node_sizes[0] * recvcnt;
+                    displs[0] = 0;
+
+                    for (i = 1; i < leader_comm_size; i++) {
+                        displs[i] = displs[i - 1] + node_sizes[i - 1] * recvcnt;
+                        recvcnts[i] = node_sizes[i] * recvcnt;
+                    }
+                } 
                 mpi_errno = MPIR_Gatherv(tmp_buf,
                                          local_size * nbytes,
                                          MPI_BYTE, recvbuf, recvcnts,
-                                         displs, MPI_BYTE,
+                                         displs, recvtype,
                                          leader_root, leader_commptr, errflag);
             } else {
                 /* The root of the gather operation is not the node leader. 
                  * Receive into leader_gather_buf and then send 
                  * to the root */
+                if (leader_comm_rank == leader_root) {
+                    recvcnts[0] = node_sizes[0] * nbytes;
+                    displs[0] = 0;
+
+                    for (i = 1; i < leader_comm_size; i++) {
+                        displs[i] = displs[i - 1] + node_sizes[i - 1] * nbytes;
+                        recvcnts[i] = node_sizes[i] * nbytes;
+                    }
+                } 
                 mpi_errno = MPIR_Gatherv(tmp_buf, local_size * nbytes,
                                          MPI_BYTE, leader_gather_buf,
                                          recvcnts, displs, MPI_BYTE,
@@ -429,6 +458,7 @@ int MPIR_Gather_MV2(void *sendbuf,
     int mpi_errno = MPI_SUCCESS;
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     int range = 0;
+    int range_threshold = 0;
     int nbytes = 0;
     int comm_size = 0;
     int recvtype_size, sendtype_size;
@@ -451,14 +481,59 @@ int MPIR_Gather_MV2(void *sendbuf,
         MPID_Datatype_get_size_macro(sendtype, sendtype_size);
         nbytes = sendcnt * sendtype_size;
     }
-
-    while ((range < mv2_size_mv2_gather_mv2_tuning_table) &&
-           (comm_size > mv2_gather_mv2_tuning_table[range].numproc)) {
+    /* Search for the corresponding system size inside the tuning table */
+    while ((range < (mv2_size_gather_tuning_table - 1)) &&
+           (comm_size > mv2_gather_thresholds_table[range].numproc)) {
         range++;
     }
-#if defined(_ENABLE_CUDA_)
+    /* Search for corresponding inter-leader function */
+    while ((range_threshold < (mv2_gather_thresholds_table[range].size_inter_table - 1))
+           && (nbytes >
+               mv2_gather_thresholds_table[range].inter_leader[range_threshold].max)
+           && (mv2_gather_thresholds_table[range].inter_leader[range_threshold].max !=
+               -1)) {
+        range_threshold++;
+    }
+#ifdef _ENABLE_CUDA_
+   MPI_Aint sendtype_extent;
+   MPID_Datatype_get_extent_macro(sendtype, sendtype_extent);
+   int recvtype_extent = 0;
+   MPID_Datatype_get_extent_macro(recvtype, recvtype_extent);
+   int send_mem_type = 0;
+   int recv_mem_type = 0;
+   if (rdma_enable_cuda) {
+       send_mem_type = is_device_buffer(sendbuf);
+       recv_mem_type = is_device_buffer(recvbuf);
+   }
+   if (rdma_enable_cuda && (send_mem_type || recv_mem_type) &&
+       rdma_cuda_use_naive && (nbytes <= rdma_cuda_gather_naive_limit/comm_size)) {
+       if (sendbuf != MPI_IN_PLACE) {
+            if (rank == root) {
+                mpi_errno = cuda_stage_alloc (NULL, 0,
+                          &recvbuf, recvcnt*recvtype_extent*comm_size, 
+                          0, recv_mem_type, 
+                          0);
+            } else {
+                mpi_errno = cuda_stage_alloc (&sendbuf, sendcnt*sendtype_extent,
+                          NULL, 0, 
+                          send_mem_type, 0, 
+                          0);
+            }
+       } else {
+            mpi_errno = cuda_stage_alloc (&sendbuf, recvcnt*recvtype_extent,
+                      &recvbuf, recvcnt*recvtype_extent*comm_size, 
+                      0, recv_mem_type, 
+                      rank*recvcnt*recvtype_extent);
+       }
+       if (mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+       }
+   }
+
+
     /* Use Direct algorithm in cuda configuration */
-    if (rdma_enable_cuda) {
+    if (rdma_enable_cuda && (((nbytes > rdma_cuda_gather_naive_limit/comm_size) &&
+        rdma_cuda_use_naive) || !rdma_cuda_use_naive)) {
         mpi_errno = MPIR_Gather_MV2_Direct(sendbuf, sendcnt,
                                            sendtype, recvbuf, recvcnt, recvtype,
                                            root, comm_ptr, errflag);
@@ -467,55 +542,19 @@ int MPIR_Gather_MV2(void *sendbuf,
 
     if (comm_ptr->ch.is_global_block == 1 && mv2_use_direct_gather == 1 &&
             mv2_use_two_level_gather == 1 && comm_ptr->ch.shmem_coll_ok == 1) {
-        if (comm_size < mv2_gather_direct_system_size_small) {
-            /* Small system sizes : 
-               Small messages : Two-level-direct gather
-               Large messages : Direct gather */
-            if (nbytes <= mv2_gather_mv2_tuning_table[range].switchp) {
-                mpi_errno = MPIR_Gather_MV2_two_level_Direct(sendbuf, sendcnt,
-                                                             sendtype, recvbuf,
-                                                             recvcnt, recvtype,
-                                                             root, comm_ptr,
-                                                             errflag);
-            } else {
-                mpi_errno = MPIR_Gather_MV2_Direct(sendbuf, sendcnt,
-                                                   sendtype, recvbuf, recvcnt,
-                                                   recvtype, root, comm_ptr,
-                                                   errflag);
-            }
-        } else if (comm_size >= mv2_gather_direct_system_size_small &&
-                   comm_size <= mv2_gather_direct_system_size_medium) {
-            /* Medium system sizes 
-               Small messages : Binomial gather
-               Large messages : Direct gather */
-            if (nbytes <= mv2_gather_mv2_tuning_table[range].switchp) {
-                mpi_errno = MPIR_Gather_intra(sendbuf, sendcnt,
-                                              sendtype, recvbuf, recvcnt,
-                                              recvtype, root, comm_ptr,
-                                              errflag);
-            } else {
-                mpi_errno = MPIR_Gather_MV2_Direct(sendbuf, sendcnt,
-                                                   sendtype, recvbuf, recvcnt,
-                                                   recvtype, root, comm_ptr,
-                                                   errflag);
-            }
-        } else {
-            /* Larger system sizes
-               Small messages : Binomial
-               Large messages : Two-level Gather */
-            if (nbytes <= MPIR_GATHER_BINOMIAL_MEDIUM_MSG) {
-                mpi_errno = MPIR_Gather_intra(sendbuf, sendcnt,
-                                              sendtype, recvbuf, recvcnt,
-                                              recvtype, root, comm_ptr,
-                                              errflag);
-            } else {
-                mpi_errno = MPIR_Gather_MV2_two_level_Direct(sendbuf,
-                                                             sendcnt, sendtype,
-                                                             recvbuf, recvcnt,
-                                                             recvtype, root,
-                                                             comm_ptr, errflag);
-            }
-        }
+        /* Set intra-node function pt for gather_two_level */
+        MV2_Gather_intra_node_function =
+            mv2_gather_thresholds_table[range].intra_node[0].
+            MV2_pt_Gather_function;
+        /* Set inter-leader pt */
+        MV2_Gather_inter_leader_function =
+            mv2_gather_thresholds_table[range].inter_leader[range_threshold].
+            MV2_pt_Gather_function;
+        /* We call Gather function */
+        mpi_errno =
+            MV2_Gather_inter_leader_function(sendbuf, sendcnt, sendtype, recvbuf, recvcnt,
+                                             recvtype, root, comm_ptr, errflag);
+
     } else {
 #endif                          /* #if defined(_OSU_MVAPICH_) */
         mpi_errno = MPIR_Gather_intra(sendbuf, sendcnt, sendtype,
@@ -523,11 +562,27 @@ int MPIR_Gather_MV2(void *sendbuf,
                                       root, comm_ptr, errflag);
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     }
+
+#ifdef _ENABLE_CUDA_ 
+    if (rdma_enable_cuda && (send_mem_type || recv_mem_type) &&
+        rdma_cuda_use_naive && (nbytes <= rdma_cuda_gather_naive_limit/comm_size)){
+        if (rank == root) {
+            cuda_stage_free (NULL, 
+                        &recvbuf, recvcnt*recvtype_extent*comm_size,
+                        0, recv_mem_type);
+        } else {
+            cuda_stage_free (&sendbuf, 
+                        NULL, 0,
+                        send_mem_type, 0);
+        }
+    }
+#endif                          /*#ifdef _ENABLE_CUDA_*/     
+
 #endif                          /* #if defined(_OSU_MVAPICH_) */
     if (mpi_errno) {
         MPIU_ERR_POP(mpi_errno);
     }
-
+    
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT(comm_ptr);
 

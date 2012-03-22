@@ -129,6 +129,6 @@ extern int DEBUG_CUDA_verbose;
 // Initialize the verbosity level of the above variables
 extern int initialize_debug_variables();
 
-extern void print_mem_usage();
+extern void mv2_print_mem_usage();
 
 #endif

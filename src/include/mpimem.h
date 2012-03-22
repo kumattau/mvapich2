@@ -504,7 +504,6 @@ void MPIU_Basename(char *path, char **basename);
 #define MPIU_MEM_CHECK_MEMSET(dst_,c_,len_)                  \
     do {                                                     \
           MPIU_Assert( len_>0 );                              \
-          MPIU_Assert((dst_) != NULL);                       \
           MPL_VG_CHECK_MEM_IS_ADDRESSABLE((dst_),(len_));   \
     } while (0)
 /* #endif / * defined(_OSU_MVAPICH_) */

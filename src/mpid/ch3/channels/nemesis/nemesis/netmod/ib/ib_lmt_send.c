@@ -352,7 +352,6 @@ int MPIDI_nem_ib_r3_send(MPIDI_VC_t * vc, MPID_Request * sreq)
 
             if (MPI_SUCCESS != mpi_errno
                 && MPI_MRAIL_MSG_QUEUED != mpi_errno) {
-                VC_FIELD(vc, state) = MPIDI_CH3I_VC_STATE_FAILED;
                 sreq->status.MPI_ERROR = MPI_ERR_INTERN;
                 MPIDI_CH3U_Request_complete(sreq);
                 goto fn_exit;

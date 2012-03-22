@@ -29,6 +29,8 @@
 #include "ib_process.h"
 #include "ib_lmt.h"
 
+#define PKTARRAY_SIZE (MPIDI_NEM_PKT_END+1)
+static MPIDI_CH3_PktHandler_Fcn *pktArray[PKTARRAY_SIZE];
 
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_vc_init
@@ -57,6 +59,14 @@ int MPID_nem_ib_vc_init (MPIDI_VC_t *vc )
 
     vc_ch->iStartContigMsg    = MPID_nem_ib_iStartContigMsg;
     vc_ch->iSendContig        = MPID_nem_ib_iSendContig;
+#ifdef ENABLE_CHECKPOINTING
+    vc_ch->ckpt_pause_send_vc = MPID_nem_ib_ckpt_pause_send_vc;
+    vc_ch->ckpt_continue_vc   = MPID_nem_ib_ckpt_continue_vc;
+    vc_ch->ckpt_restart_vc    = MPID_nem_ib_ckpt_restart_vc;
+    
+    pktArray[MPIDI_NEM_IB_PKT_UNPAUSE] = MPID_nem_ib_pkt_unpause_handler;
+#endif
+
 
     /*
     int ud_qpn, dlid, out_len, i;

@@ -472,6 +472,8 @@ int deregister_memory(struct ibv_mr * mr);
 int MRAILI_Backlog_send(MPIDI_VC_t * vc, int subrail);
 int rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc);
 int rdma_find_active_port(struct ibv_context *context, struct ibv_device *ib_dev);
+int rdma_find_network_type(struct ibv_device **dev_list, int num_devices,
+                           int *num_usable_hcas);
 int rdma_get_process_to_rail_mapping(int mrail_user_defined_p2r_type);
 int  rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc);
 void  rdma_set_default_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc);
@@ -553,9 +555,5 @@ int reload_alternate_path(struct ibv_qp *qp);
 
 int power_two(int x);
 int qp_required(MPIDI_VC_t* vc, int my_rank, int dst_rank);
-#if defined(_ENABLE_CUDA_)
-void cuda_cleanup();
-void cuda_init(MPIDI_PG_t * pg);
-#endif
 
 #endif                          /* RDMA_IMPL_H */

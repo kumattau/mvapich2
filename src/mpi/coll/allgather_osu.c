@@ -680,23 +680,51 @@ int MPIR_Allgather_MV2(void *sendbuf, int sendcount, MPI_Datatype sendtype,
     MPID_Datatype_get_size_macro(recvtype, recvtype_size);
     nbytes = recvtype_size * recvcount;
 
+    int i, rank;
+    MPI_Aint recvtype_extent;
+    MPID_Datatype_get_extent_macro(recvtype, recvtype_extent);
+    mpi_errno = PMPI_Comm_rank(comm_ptr->handle, &rank);
+    if (mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+
+#ifdef _ENABLE_CUDA_
+   MPI_Aint sendtype_extent;
+   MPID_Datatype_get_extent_macro(sendtype, sendtype_extent);
+   int send_mem_type = 0;
+   int recv_mem_type = 0;
+   if (rdma_enable_cuda) {
+       send_mem_type = is_device_buffer(sendbuf);
+       recv_mem_type = is_device_buffer(recvbuf);
+   }
+
+   if (rdma_enable_cuda && (send_mem_type || recv_mem_type) &&
+       rdma_cuda_use_naive && (nbytes <= rdma_cuda_allgather_naive_limit)) {
+       if (sendbuf != MPI_IN_PLACE) {
+            mpi_errno = cuda_stage_alloc (&sendbuf, sendcount*sendtype_extent,
+                          &recvbuf, recvcount*recvtype_extent*comm_size, 
+                          send_mem_type, recv_mem_type, 
+                          0);
+       } else {
+            mpi_errno = cuda_stage_alloc (&sendbuf, recvcount*recvtype_extent,
+                          &recvbuf, recvcount*recvtype_extent*comm_size, 
+                          send_mem_type, recv_mem_type, 
+                          rank*recvcount*recvtype_extent);
+       }
+       if (mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+       }
+   }
+#endif /*#ifdef _ENABLE_CUDA_*/    
+
     /* intracommunicator */
     if (mv2_allgather_ranking == 1 && comm_ptr->ch.allgather_comm_ok == 1 &&
         (nbytes <= allgather_tuning(comm_size, comm_size_is_pof2))) {
-        int i, rank;
-        MPI_Aint recvtype_extent;
         int sendtype_iscontig = 0, recvtype_iscontig = 0;
         void *tmp_recv_buf = NULL;
-
         if (sendtype != MPI_DATATYPE_NULL && recvtype != MPI_DATATYPE_NULL) {
             MPIR_Datatype_iscontig(sendtype, &sendtype_iscontig);
             MPIR_Datatype_iscontig(recvtype, &recvtype_iscontig);
-        }
-
-        MPID_Datatype_get_extent_macro(recvtype, recvtype_extent);
-        mpi_errno = PMPI_Comm_rank(comm_ptr->handle, &rank);
-        if (mpi_errno) {
-            MPIU_ERR_POP(mpi_errno);
         }
 
         MPID_Comm *allgather_comm_ptr;
@@ -763,6 +791,16 @@ int MPIR_Allgather_MV2(void *sendbuf, int sendcount, MPI_Datatype sendtype,
                                          comm_ptr, errflag);
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     }
+
+#ifdef _ENABLE_CUDA_ 
+    if (rdma_enable_cuda && (send_mem_type || recv_mem_type) &&
+        rdma_cuda_use_naive && (nbytes <= rdma_cuda_allgather_naive_limit)){
+        cuda_stage_free (&sendbuf, 
+                        &recvbuf, recvcount*recvtype_extent*comm_size,
+                        send_mem_type, recv_mem_type);
+    }
+#endif                          /*#ifdef _ENABLE_CUDA_*/     
+
 #endif                          /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
     if (mpi_errno) {
         MPIU_ERR_POP(mpi_errno);

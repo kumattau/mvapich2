@@ -1,5 +1,5 @@
 /*
- * Copyright © 2011 INRIA.  All rights reserved.
+ * Copyright © 2011 inria.  All rights reserved.
  * Copyright © 2011 Cisco Systems, Inc.  All rights reserved.
  * See COPYING in top-level directory.
  */
@@ -10,6 +10,12 @@
 #include <stdio.h>
 #include <string.h>
 #include <assert.h>
+
+/* testing of adding/replacing/removing distance matrices
+   with set_distance_matrix or the environment,
+   grouping with/without accuracy
+ */
+
 
 int main(void)
 {
@@ -64,6 +70,27 @@ int main(void)
   width = hwloc_get_nbobjs_by_depth(topology, 4);
   assert(width == 16);
 
+  /* play with accuracy */
+  distances[0] = 2.9; /* diagonal, instead of 3 (0.0333% error) */
+  distances[1] = 5.1; distances[16] = 5.2; /* smallest group, instead of 5 (0.02% error) */
+  assert(!hwloc_topology_set_distance_matrix(topology, HWLOC_OBJ_CORE, 16, indexes, distances));
+  putenv("HWLOC_GROUPING_ACCURACY=0.1"); /* ok */
+  hwloc_topology_load(topology);
+  depth = hwloc_topology_get_depth(topology);
+  assert(depth == 6);
+  putenv("HWLOC_GROUPING_ACCURACY=try"); /* ok */
+  hwloc_topology_load(topology);
+  depth = hwloc_topology_get_depth(topology);
+  assert(depth == 6);
+  putenv("HWLOC_GROUPING_ACCURACY=0.01"); /* too small, cannot group */
+  hwloc_topology_load(topology);
+  depth = hwloc_topology_get_depth(topology);
+  assert(depth == 4);
+  putenv("HWLOC_GROUPING_ACCURACY=0"); /* full accuracy, cannot group */
+  hwloc_topology_load(topology);
+  depth = hwloc_topology_get_depth(topology);
+  assert(depth == 4);
+
   /* revert to default 2*8*1 */
   assert(!hwloc_topology_set_distance_matrix(topology, HWLOC_OBJ_CORE, 0, NULL, NULL));
   hwloc_topology_load(topology);
@@ -109,7 +136,7 @@ int main(void)
   assert(width == 32);
 
   /* 2*4*4 and group 4cores as 2*2 and 4PUs as 2*2 */
-  putenv("HWLOC_PU_DISTANCES=0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31:16*2");
+  putenv("HWLOC_PU_DISTANCES=0-31:16*2");
   hwloc_topology_load(topology);
   depth = hwloc_topology_get_depth(topology);
   assert(depth == 6);
@@ -128,7 +155,7 @@ int main(void)
 
   /* replace previous core distances with useless ones (grouping as the existing numa nodes) */
   /* 2*4*4 and group 4PUs as 2*2 */
-  putenv("HWLOC_Core_DISTANCES=0,1,2,3,4,5,6,7:2*4");
+  putenv("HWLOC_Core_DISTANCES=0-7:2*4");
   hwloc_topology_load(topology);
   depth = hwloc_topology_get_depth(topology);
   assert(depth == 5);

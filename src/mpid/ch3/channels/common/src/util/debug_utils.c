@@ -86,7 +86,7 @@ int initialize_debug_variables() {
     return 0;
 }
 
-void print_mem_usage()
+void mv2_print_mem_usage()
 {
     FILE *file = fopen ("/proc/self/status", "r");
     char vmpeak[100], vmhwm[100];

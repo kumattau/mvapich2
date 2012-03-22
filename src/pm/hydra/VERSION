@@ -4,10 +4,10 @@
 #
 
 # Version Information
-MPICH2_VERSION=1.4.1p1
+MPICH2_VERSION=1.8rc1
 
 # Release date
-MPICH2_RELEASE_DATE="unreleased development copy"
+MPICH2_RELEASE_DATE="Thu Mar 22 10:21:00 EDT 2012"
 
 # For libtool ABI versioning rules see:
 # http://www.gnu.org/software/libtool/manual/libtool.html#Updating-version-info

@@ -1846,6 +1846,9 @@ int MPIDI_GetTagFromPort( const char *, int * );
 
 /* Here are the packet handlers */
 #if defined(_OSU_MVAPICH_)
+int MPIDI_CH3_SMP_iStartMsg(MPIDI_VC_t * vc, void *pkt,
+                                          MPIDI_msg_sz_t pkt_sz,
+                                          MPID_Request ** sreq_ptr);
 int MPIDI_CH3_PktHandler_EagerSend_Contig( MPIDI_VC_t *, MPIDI_CH3_Pkt_t *, 
                   MPIDI_msg_sz_t *, MPID_Request ** );
 #endif
@@ -2043,11 +2046,31 @@ int MPIDI_CH3_ReqHandler_GetSendRespComplete( MPIDI_VC_t *, MPID_Request *,
 
 #if defined(_OSU_MVAPICH_)
 #if defined(_ENABLE_CUDA_)
+#if defined(HAVE_CUDA_IPC)
+void cudaipc_initialize(MPIDI_PG_t *pg, int num_processes, int my_rank);
+void MPIDI_CH3_CUDAIPC_Rendezvous_recv(MPIDI_VC_t * vc, MPID_Request * rreq);
+void MPIDI_CH3_CUDAIPC_Rendezvous_push(MPIDI_VC_t * vc, MPID_Request * sreq);
+int MPIDI_CH3I_MRAIL_Prepare_rndv_recv_cuda_ipc_buffered(MPIDI_VC_t * vc, 
+                                            MPID_Request * rreq);
+int MPIDI_CH3I_MRAIL_Prepare_rndv_cuda_ipc_buffered (MPIDI_VC_t * vc, 
+                                            MPID_Request * sreq); 
+int MPIDI_CH3I_MRAIL_Revert_rndv_cuda_ipc_buffered (MPIDI_VC_t * vc,
+                                            MPID_Request * sreq);
+int MPIDI_CH3I_MRAIL_Prepare_rndv_cuda_ipc (MPIDI_VC_t * vc, 
+                                            MPID_Request * sreq); 
+int MPIDI_CH3I_MRAIL_Rndv_transfer_cuda_ipc (MPIDI_VC_t * vc, 
+                                MPID_Request * rreq, 
+                                MPIDI_CH3_Pkt_rndv_req_to_send_t *rts_pkt);
+#endif
 int MPIDI_CH3_Prepare_rndv_cts_cuda(MPIDI_VC_t * vc, 
         MPIDI_CH3_Pkt_rndv_clr_to_send_t * cts_pkt,
         MPID_Request * rreq);
 int MPIDI_CH3_ReqHandler_unpack_cudabuf(MPIDI_VC_t * vc, MPID_Request * rreq, int *);
 int MPIDI_CH3_ReqHandler_pack_cudabuf(MPIDI_VC_t * vc, MPID_Request * rreq, int *);
+void MPIDI_CH3I_CUDA_SMP_cuda_init(MPIDI_PG_t * pg);
+void MPIDI_CH3I_CUDA_SMP_cuda_finalize(MPIDI_PG_t * pg);
+void cuda_cleanup();
+void cuda_init(MPIDI_PG_t * pg);
 #endif
 int MPIDI_CH3_ContigSend(MPID_Request **sreq_p,
                          MPIDI_CH3_Pkt_type_t reqtype,

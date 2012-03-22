@@ -1,6 +1,6 @@
 /*
  * Copyright © 2009 CNRS
- * Copyright © 2009-2011 INRIA.  All rights reserved.
+ * Copyright © 2009-2011 inria.  All rights reserved.
  * Copyright © 2009-2011 Université Bordeaux 1
  * Copyright © 2009-2011 Cisco Systems, Inc.  All rights reserved.
  * See COPYING in top-level directory.
@@ -75,7 +75,7 @@ extern "C" {
  */
 
 /** \brief Indicate at build time which hwloc API version is being used. */
-#define HWLOC_API_VERSION 0x00010300
+#define HWLOC_API_VERSION 0x00010400
 
 /** \brief Indicate at runtime which hwloc API version was used at build time. */
 HWLOC_DECLSPEC unsigned hwloc_get_api_version(void);
@@ -338,7 +338,11 @@ struct hwloc_obj {
 					 * may be \c NULL if no attribute value was found */
 
   /* global position */
-  unsigned depth;			/**< \brief Vertical index in the hierarchy */
+  unsigned depth;			/**< \brief Vertical index in the hierarchy.
+					 * If the topology is symmetric, this is equal to the
+					 * parent depth plus one, and also equal to the number
+					 * of parent/child links from the root object to here.
+					 */
   unsigned logical_index;		/**< \brief Horizontal index in the whole list of similar objects,
 					 * could be a "cousin_rank" since it's the rank within the "cousin" list below */
   signed os_level;			/**< \brief OS-provided physical level, -1 if unknown or meaningless */
@@ -455,6 +459,10 @@ struct hwloc_obj {
 
   struct hwloc_obj_info_s *infos;	/**< \brief Array of stringified info type=name. */
   unsigned infos_count;			/**< \brief Size of infos array. */
+
+  int symmetric_subtree;		/**< \brief Set if the subtree of objects below this object is symmetric,
+					  * which means all children and their children have identical subtrees.
+					  */
 };
 /**
  * \brief Convenience typedef; a pointer to a struct hwloc_obj.
@@ -717,6 +725,22 @@ enum hwloc_topology_flags_e {
  */
 HWLOC_DECLSPEC int hwloc_topology_set_flags (hwloc_topology_t topology, unsigned long flags);
 
+/** \brief Change which pid the topology is viewed from
+ *
+ * On some systems, processes may have different views of the machine, for
+ * instance the set of allowed CPUs. By default, hwloc exposes the view from
+ * the current process. Calling hwloc_topology_set_pid() permits to make it
+ * expose the topology of the machine from the point of view of another
+ * process.
+ *
+ * \note \p hwloc_pid_t is \p pid_t on Unix platforms,
+ * and \p HANDLE on native Windows platforms.
+ *
+ * \note -1 is returned and errno is set to ENOSYS on platforms that do not
+ * support this feature.
+ */
+HWLOC_DECLSPEC int hwloc_topology_set_pid(hwloc_topology_t __hwloc_restrict topology, hwloc_pid_t pid);
+
 /** \brief Change the file-system root path when building the topology from sysfs/procfs.
  *
  * On Linux system, use sysfs and procfs files as if they were mounted on the given
@@ -730,28 +754,18 @@ HWLOC_DECLSPEC int hwloc_topology_set_flags (hwloc_topology_t topology, unsigned
  * still need to invoke hwloc_topology_load() to actually load the
  * topology information.
  *
+ * \return -1 with errno set to ENOSYS on non-Linux and on Linux systems that
+ * do not support it.
+ * \return -1 with the appropriate errno if \p fsroot_path cannot be used.
+ *
  * \note For convenience, this backend provides empty binding hooks which just
  * return success.  To have hwloc still actually call OS-specific hooks, the
  * HWLOC_TOPOLOGY_FLAG_IS_THISSYSTEM has to be set to assert that the loaded
  * file is really the underlying system.
+ *
+ * \note The existing topology is cleared even on failure.
  */
 HWLOC_DECLSPEC int hwloc_topology_set_fsroot(hwloc_topology_t __hwloc_restrict topology, const char * __hwloc_restrict fsroot_path);
-
-/** \brief Change which pid the topology is viewed from
- *
- * On some systems, processes may have different views of the machine, for
- * instance the set of allowed CPUs. By default, hwloc exposes the view from
- * the current process. Calling hwloc_topology_set_pid() permits to make it
- * expose the topology of the machine from the point of view of another
- * process.
- *
- * \note \p hwloc_pid_t is \p pid_t on Unix platforms,
- * and \p HANDLE on native Windows platforms.
- * 
- * \note -1 is returned and errno is set to ENOSYS on platforms that do not
- * support this feature.
- */
-HWLOC_DECLSPEC int hwloc_topology_set_pid(hwloc_topology_t __hwloc_restrict topology, hwloc_pid_t pid);
 
 /** \brief Enable synthetic topology.
  *
@@ -774,6 +788,8 @@ HWLOC_DECLSPEC int hwloc_topology_set_pid(hwloc_topology_t __hwloc_restrict topo
  *
  * \note For convenience, this backend provides empty binding hooks which just
  * return success.
+ *
+ * \note The existing topology is cleared even on failure.
  */
 HWLOC_DECLSPEC int hwloc_topology_set_synthetic(hwloc_topology_t __hwloc_restrict topology, const char * __hwloc_restrict description);
 
@@ -781,17 +797,22 @@ HWLOC_DECLSPEC int hwloc_topology_set_synthetic(hwloc_topology_t __hwloc_restric
  *
  * Gather topology information from the XML file given at \p xmlpath.
  * Setting the environment variable HWLOC_XMLFILE may also result in this behavior.
- * This file may have been generated earlier with lstopo file.xml.
+ * This file may have been generated earlier with hwloc_topology_export_xml()
+ * or lstopo file.xml.
  *
  * Note that this function does not actually load topology
  * information; it just tells hwloc where to load it from.  You'll
  * still need to invoke hwloc_topology_load() to actually load the
  * topology information.
  *
+ * \return -1 with errno set to EINVAL on failure to read the XML file.
+ *
  * \note For convenience, this backend provides empty binding hooks which just
  * return success.  To have hwloc still actually call OS-specific hooks, the
  * HWLOC_TOPOLOGY_FLAG_IS_THISSYSTEM has to be set to assert that the loaded
  * file is really the underlying system.
+ *
+ * \note The existing topology is cleared even on failure.
  */
 HWLOC_DECLSPEC int hwloc_topology_set_xml(hwloc_topology_t __hwloc_restrict topology, const char * __hwloc_restrict xmlpath);
 
@@ -807,8 +828,27 @@ HWLOC_DECLSPEC int hwloc_topology_set_xml(hwloc_topology_t __hwloc_restrict topo
  * still need to invoke hwloc_topology_load() to actually load the
  * topology information.
  *
+ * \return -1 with errno set to EINVAL on failure to read the XML buffer.
+ *
+ * \note For convenience, this backend provides empty binding hooks which just
+ * return success.  To have hwloc still actually call OS-specific hooks, the
+ * HWLOC_TOPOLOGY_FLAG_IS_THISSYSTEM has to be set to assert that the loaded
+ * file is really the underlying system.
+ *
+ * \note The existing topology is cleared even on failure.
  */
 HWLOC_DECLSPEC int hwloc_topology_set_xmlbuffer(hwloc_topology_t __hwloc_restrict topology, const char * __hwloc_restrict buffer, int size);
+
+/** \brief Prepare the topology for custom assembly.
+ *
+ * The topology then contains a single root object.
+ * It may then be built by inserting other topologies with
+ * hwloc_custom_insert_topology() or single objects with
+ * hwloc_custom_insert_group_object_by_parent().
+ * hwloc_topology_load() must be called to finalize the new
+ * topology as usual.
+ */
+HWLOC_DECLSPEC int hwloc_topology_set_custom(hwloc_topology_t topology);
 
 /** \brief Provide a distance matrix.
  *
@@ -824,6 +864,8 @@ HWLOC_DECLSPEC int hwloc_topology_set_xmlbuffer(hwloc_topology_t __hwloc_restric
  * it will be replaced by the given one.
  * If \p nbobjs is \c 0, \p os_index is \c NULL and \p distances is \c NULL,
  * the existing distance matrix for the given type is removed.
+ *
+ * \note Distance matrices are ignored in multi-node topologies.
  */
 HWLOC_DECLSPEC int hwloc_topology_set_distance_matrix(hwloc_topology_t __hwloc_restrict topology,
 						      hwloc_obj_type_t type, unsigned nbobjs,
@@ -1935,6 +1977,56 @@ HWLOC_DECLSPEC void *hwloc_alloc_membind(hwloc_topology_t topology, size_t len, 
  * or hwloc_alloc_membind().
  */
 HWLOC_DECLSPEC int hwloc_free(hwloc_topology_t topology, void *addr, size_t len);
+
+/** @} */
+
+
+
+/** \defgroup hwlocality_custom Building Custom Topologies
+ *
+ * A custom topology may be initialized by calling hwloc_topology_set_custom()
+ * after hwloc_topology_init(). It may then be modified by inserting objects
+ * or entire topologies. Once done assembling, hwloc_topology_load() should
+ * be invoked as usual to finalize the topology.
+ * @{
+ */
+
+/** \brief Insert an existing topology inside a custom topology
+ *
+ * Duplicate the existing topology \p oldtopology inside a new
+ * custom topology \p newtopology as a leaf of object \p newparent.
+ *
+ * If \p oldroot is not \c NULL, duplicate \p oldroot and all its
+ * children instead of the entire \p oldtopology. Passing the root
+ * object of \p oldtopology in \p oldroot is equivalent to passing
+ * \c NULL.
+ *
+ * The custom topology \p newtopology must have been prepared with
+ * hwloc_topology_set_custom() and not loaded with hwloc_topology_load()
+ * yet.
+ *
+ * \p newparent may be either the root of \p newtopology or an object
+ * that was added through hwloc_custom_insert_group_object_by_parent().
+ */
+HWLOC_DECLSPEC int hwloc_custom_insert_topology(hwloc_topology_t newtopology, hwloc_obj_t newparent, hwloc_topology_t oldtopology, hwloc_obj_t oldroot);
+
+/** \brief Insert a new group object inside a custom topology
+ *
+ * An object with type ::HWLOC_OBJ_GROUP is inserted as a new child
+ * of object \p parent.
+ *
+ * \p groupdepth is the depth attribute to be given to the new object.
+ * It may for instance be 0 for top-level groups, 1 for their children,
+ * and so on.
+ *
+ * The custom topology \p newtopology must have been prepared with
+ * hwloc_topology_set_custom() and not loaded with hwloc_topology_load()
+ * yet.
+ *
+ * \p parent may be either the root of \p topology or an object that
+ * was added earlier through hwloc_custom_insert_group_object_by_parent().
+ */
+HWLOC_DECLSPEC hwloc_obj_t hwloc_custom_insert_group_object_by_parent(hwloc_topology_t topology, hwloc_obj_t parent, int groupdepth);
 
 /** @} */
 

@@ -69,7 +69,8 @@ typedef enum {
     VAPI_PROTOCOL_R3,
     VAPI_PROTOCOL_RPUT,
     VAPI_PROTOCOL_RGET,
-    VAPI_PROTOCOL_UD_ZCOPY
+    VAPI_PROTOCOL_UD_ZCOPY,
+    VAPI_PROTOCOL_CUDAIPC
 } MRAILI_Protocol_t;
 
 #define MAX_CUDA_RNDV_BLOCKS            (64)
@@ -119,6 +120,7 @@ struct dreg_entry;
 
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
 #define MPIDI_CH3I_MRAILI_CUDA_IPC_REQ_DECL \
+        uint8_t cudaipc_stage_index;        \
         void *ipc_baseptr;                  \
         uint64_t ipc_size;                  \
         uint64_t ipc_displ;                 \
@@ -135,7 +137,8 @@ struct dreg_entry;
 #define MPIDI_CH3I_MRAILI_CUDA_REQ_DECL \
         cuda_transfer_mode_t  cuda_transfer_mode;   \
         cuda_stream_t *cuda_stream;                 \
-        vbuf *cuda_vbuf[MAX_CUDA_RNDV_BLOCKS]; \
+        cuda_event_t *cuda_event;                   \
+        vbuf *cuda_vbuf[MAX_CUDA_RNDV_BLOCKS];      \
         void *cuda_remote_addr[MAX_CUDA_RNDV_BLOCKS]; \
         uint32_t cuda_remote_rkey[MAX_CUDA_RNDV_BLOCKS][MAX_NUM_HCAS]; \
         uint16_t num_cuda_blocks;           \
@@ -399,8 +402,13 @@ typedef struct MPIDI_CH3I_MRAIL_VC_t
      * the connection is currently on the flowlist. This is needed
      * to prevent a circular list.
      */
+
     void    *nextflow;
     int     inflow;
+#if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
+    void    *cudaipc_sreq_head; 
+    void    *cudaipc_sreq_tail;
+#endif
     /* used to distinguish which VIA barrier synchronozations have
      * completed on this connection.  Currently, only used during
      * process teardown.

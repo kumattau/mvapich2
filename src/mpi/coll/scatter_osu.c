@@ -1324,6 +1324,46 @@ int MPIR_Scatter_MV2(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
 {
     int mpi_errno = MPI_SUCCESS;
 
+#ifdef _ENABLE_CUDA_
+   MPI_Aint sendtype_extent, recvtype_extent;
+   MPID_Datatype_get_extent_macro(sendtype, sendtype_extent);
+   MPID_Datatype_get_extent_macro(recvtype, recvtype_extent);
+   int nbytes = recvtype_extent * recvcnt;
+   int send_mem_type = 0;
+   int recv_mem_type = 0;
+   int comm_size = comm_ptr->local_size;
+   int rank = comm_ptr->rank;
+   if (rdma_enable_cuda) {
+       send_mem_type = is_device_buffer(sendbuf);
+       recv_mem_type = is_device_buffer(recvbuf);
+   }
+
+   if (rdma_enable_cuda && (send_mem_type || recv_mem_type) &&
+       rdma_cuda_use_naive && (nbytes <= rdma_cuda_scatter_naive_limit/comm_size)) {
+       if (sendbuf != MPI_IN_PLACE) {
+            if (rank == root) {
+                mpi_errno = cuda_stage_alloc (&sendbuf, sendcnt*sendtype_extent*comm_size,
+                          NULL, 0, 
+                          send_mem_type, 0, 
+                          0);
+            } else {
+                mpi_errno = cuda_stage_alloc (NULL, 0,
+                          &recvbuf, recvcnt*recvtype_extent, 
+                          0, recv_mem_type, 
+                          0);
+            }
+       } else {
+            mpi_errno = cuda_stage_alloc (&sendbuf, recvcnt*recvtype_extent*comm_size,
+                      &recvbuf, recvcnt*recvtype_extent, 
+                      0, recv_mem_type, 
+                      rank*recvcnt*recvtype_extent);
+       }
+       if (mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+       }
+   }
+#endif /*#ifdef _ENABLE_CUDA_*/    
+
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     mpi_errno = MPIR_Scatter_intra_MV2(sendbuf, sendcnt, sendtype,
                                        recvbuf, recvcnt, recvtype, root,
@@ -1334,6 +1374,22 @@ int MPIR_Scatter_MV2(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
                                    comm_ptr, errflag);
 
 #endif                          /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
+
+#ifdef _ENABLE_CUDA_ 
+    if (rdma_enable_cuda && (send_mem_type || recv_mem_type) &&
+        rdma_cuda_use_naive && (nbytes <= rdma_cuda_scatter_naive_limit/comm_size)){
+        if (rank == root) {
+            cuda_stage_free (&sendbuf, 
+                        &recvbuf, 0,
+                        send_mem_type, recv_mem_type);
+        } else {
+            cuda_stage_free (NULL, 
+                        &recvbuf, recvcnt*recvtype_extent,
+                        send_mem_type, recv_mem_type);
+        }
+    }
+#endif                          /*#ifdef _ENABLE_CUDA_*/     
+
     if (mpi_errno)
         MPIU_ERR_POP(mpi_errno);
 

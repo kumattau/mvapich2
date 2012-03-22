@@ -176,6 +176,17 @@ skip_self_send:
             /* buf is in the host memory*/
             sreq->mrail.cuda_transfer_mode = NONE;
         }
+#ifdef HAVE_CUDA_IPC
+        if (rdma_cuda_ipc &&
+            cudaipc_stage_buffered &&
+            vc->smp.can_access_peer == 1 &&
+            dt_contig &&
+            sreq->mrail.cuda_transfer_mode != NONE &&
+            data_sz >= rdma_cuda_ipc_threshold) {
+            /*force RNDV for CUDA transfers when buffered CUDA IPC is enabled*/
+            goto rndv_send;
+        }
+#endif
     }
 #endif
 
@@ -218,6 +229,9 @@ eager_send:
     }
     else
     {
+#if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
+rndv_send:
+#endif
 	/* Note that the sreq was created above */
 	MPIDI_Request_set_msg_type( sreq, MPIDI_REQUEST_RNDV_MSG );
 

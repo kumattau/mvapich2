@@ -49,7 +49,7 @@
 #define NSIG _NSIG
 #endif                          /* defined(_NSIG) */
 
-extern int read_hostfile(char *hostfile_name);
+extern int read_hostfile(char const * hostfile_name);
 
 process *plist = NULL;
 int nprocs = 0;

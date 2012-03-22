@@ -260,7 +260,7 @@ void flush_dereg_mrs_external();
 void find_and_free_dregs_inside(void *buf, size_t len);
 #endif
 
-#ifdef CKPT
+#if defined(CKPT) || defined(ENABLE_CHECKPOINTING)
 void dreg_deregister_all();
 void dreg_reregister_all();
 #endif

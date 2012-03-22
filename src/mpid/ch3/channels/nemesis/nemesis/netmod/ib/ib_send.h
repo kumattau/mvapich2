@@ -15,6 +15,7 @@
 
 #define _GNU_SOURCE
 #include "mpid_nem_impl.h"
+#include "ib_init.h"
 #include <infiniband/verbs.h>
 
 #define MPI_MRAIL_MSG_QUEUED (-1)
@@ -30,7 +31,11 @@ typedef enum MPIDI_nem_ib_Pkt_type
     MPIDI_CH3_PKT_PACKETIZED_SEND_DATA,
     MPIDI_CH3_PKT_RNDV_R3_DATA, 
     MPIDI_CH3_PKT_RNDV_R3_ACK,
+#ifdef ENABLE_CHECKPOINTING
+    MPIDI_NEM_IB_PKT_UNPAUSE,
+#endif
     MPIDI_NEM_IB_PKT_END
+
 }
 MPIDI_nem_ib_Pkt_type_t;
 
@@ -149,4 +154,5 @@ int MPIDI_nem_ib_eager_send(MPIDI_VC_t * vc,
                         int *num_bytes_ptr,
                         vbuf **buf_handle);
 int MPIDI_nem_ib_lmt_r3_ack_send(MPIDI_VC_t *vc);
+int MPID_nem_ib_send_queued(MPIDI_VC_t *vc, MPIDI_nem_ib_request_queue_t *send_queue);
 #endif

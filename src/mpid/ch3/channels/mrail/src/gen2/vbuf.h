@@ -219,7 +219,7 @@ void dump_vbuf(char* msg, vbuf* v);
 #define dump_vbuf(msg, v)
 #endif /* defined(DEBUG) */
 
-void print_vbuf_usage();
+void mv2_print_vbuf_usage_usage();
 int init_vbuf_lock(void);
 
 /*

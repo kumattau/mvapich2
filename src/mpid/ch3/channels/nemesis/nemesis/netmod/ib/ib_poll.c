@@ -28,6 +28,33 @@
 #define PKTARRAY_SIZE (MPIDI_NEM_PKT_END+1)
 static MPIDI_CH3_PktHandler_Fcn *pktArray[PKTARRAY_SIZE];
 
+/* This is called whenever a vc has been closed as a result of an
+   error.  The VC is put into an error state and cannot be opened
+   again. */
+#undef FUNCNAME
+#define FUNCNAME error_closed
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+static int error_closed(MPIDI_VC_t *const vc)
+{
+    int mpi_errno = MPI_SUCCESS;
+    int rail_index;
+    MPIDI_STATE_DECL(MPID_STATE_ERROR_CLOSED);
+
+    MPIDI_FUNC_ENTER(MPID_STATE_ERROR_CLOSED);
+
+    VC_FIELD(vc, state) = MPID_NEM_IB_VC_STATE_ERROR;
+
+    mpi_errno = MPIDI_CH3U_Handle_connection(vc, MPIDI_VC_EVENT_TERMINATED);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+ fn_exit:
+    MPIDI_FUNC_EXIT(MPID_STATE_ERROR_CLOSED);
+    return mpi_errno;
+ fn_fail:
+    goto fn_exit;
+}
+
 
 static inline vbuf * MPIDI_CH3I_RDMA_poll(MPIDI_VC_t * vc)
 {
@@ -87,6 +114,11 @@ int MPIDI_nem_ib_handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* heade
     MPID_Request* req = VC_FIELD(vc, recv_active);
 
     MPID_nem_lmt_pkthandler_init(pktArray, PKTARRAY_SIZE);
+
+#ifdef ENABLE_CHECKPOINTING
+    MPIDI_nem_ckpt_pkthandler_init(pktArray, PKTARRAY_SIZE);
+#endif 
+
     MPIDI_msg_sz_t lmt_len;
     switch(((MPIDI_nem_ib_pkt_comm_header* )buffer->iheader)->type)
     {   
@@ -106,6 +138,14 @@ int MPIDI_nem_ib_handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* heade
             mpi_errno = pktArray[header->type](vc, buffer->pheader,
                                      &(lmt_len), &req);
             goto fn_exit;
+#ifdef ENABLE_CHECKPOINTING
+        case MPIDI_NEM_PKT_CKPT_MARKER:
+        case MPIDI_NEM_IB_PKT_UNPAUSE:
+            lmt_len = sizeof(MPIDI_CH3_Pkt_t);
+            mpi_errno = pktArray[header->type](vc, buffer->pheader,
+                                     &(lmt_len), &req);
+            goto fn_exit;
+#endif
     }
 
     switch(((MPIDI_nem_ib_pkt_comm_header* )buffer->iheader)->type)
@@ -518,6 +558,9 @@ static inline int GetSeqNumVbuf(vbuf * buf)
         case MPIDI_NEM_PKT_LMT_CTS:
         case MPIDI_NEM_PKT_LMT_DONE:
         case MPIDI_NEM_PKT_LMT_COOKIE:
+#ifdef ENABLE_CHECKPOINTING
+        case MPIDI_NEM_PKT_CKPT_MARKER:
+#endif
             {
                 return ((MPIDI_nem_ib_pkt_comm_header *)(buf->iheader))->seqnum;
             }
@@ -625,14 +668,9 @@ int MPIDI_nem_ib_cq_poll(vbuf **vbuf_handle,
                         } else {
                             fprintf(stderr, "recv desc error, %d\n", wc.opcode);
                         }
-
-                        ibv_va_error_abort(IBV_STATUS_ERR,
-                                "[] Got completion with error %d, "
-                                "vendor code=%x, dest rank=%d\n",
-                                wc.status,
-                                wc.vendor_err,
-                                ((MPIDI_VC_t *)v->vc)->pg_rank
-                                );
+                        error_closed(vc);
+                        MRAILI_Release_vbuf(v);
+                        goto fn_exit;
                     }
 
                 if (2 == num_cqs) {

@@ -15,6 +15,7 @@
 
 #include <infiniband/verbs.h>
 #include "debug_utils.h"
+#include "mv2_arch_hca_detect.h"
 
 /* Support multiple QPs/port, multiple ports, multiple HCAs and combinations */
 extern int                  rdma_num_hcas;
@@ -153,8 +154,19 @@ extern int rdma_cuda_ipc;
 extern int rdma_cuda_enable_ipc_cache;
 extern int rdma_cuda_ipc_threshold;
 extern int cudaipc_cache_max_entries;
-#endif
-#endif
+#endif /*#if defined(HAVE_CUDA_IPC)*/
+extern int rdma_cuda_use_naive;
+extern int rdma_cuda_register_naive_buf;
+extern int rdma_cuda_gather_naive_limit;
+extern int rdma_cuda_scatter_naive_limit;
+extern int rdma_cuda_gatherv_naive_limit;
+extern int rdma_cuda_scatterv_naive_limit;
+extern int rdma_cuda_allgather_naive_limit;
+extern int rdma_cuda_allgatherv_naive_limit;
+extern int rdma_cuda_alltoall_naive_limit;
+extern int rdma_cuda_alltoallv_naive_limit;
+extern int rdma_cuda_bcast_naive_limit;
+#endif /*#ifdef _ENABLE_CUDA_*/
 
 
 #ifdef _ENABLE_UD_
@@ -508,6 +520,7 @@ typedef enum mv2_env_param_id
     MV2_USE_RoCE,
     /* smp */
     MV2_CPU_BINDING_POLICY,
+    MV2_CPU_BINDING_LEVEL,
     MV2_USE_HWLOC_CPU_BINDING,
     MV2_CPU_MAPPING,
     MV2_ENABLE_AFFINITY,
@@ -530,11 +543,26 @@ typedef enum mv2_env_param_id
     MV2_USE_CUDA,
     MV2_CUDA_NUM_EVENTS,
     MV2_CUDA_EVENT_SYNC,
-#if defined(HAVE_CUDA_IPC)
     MV2_CUDA_IPC,
     MV2_CUDA_IPC_THRESHOLD,
     MV2_CUDA_ENABLE_IPC_CACHE,
-#endif
+    MV2_CUDA_IPC_MAX_CACHE_ENTRIES,
+    MV2_CUDA_IPC_NUM_STAGE_BUFFERS,
+    MV2_CUDA_IPC_STAGE_BUF_SIZE,
+    MV2_CUDA_IPC_BUFFERED,
+    MV2_CUDA_IPC_BUFFERED_LIMIT,
+    MV2_CUDA_IPC_SYNC_LIMIT,
+    MV2_CUDA_USE_NAIVE,
+    MV2_CUDA_REGISTER_NAIVE_BUF,
+    MV2_CUDA_GATHER_NAIVE_LIMIT,
+    MV2_CUDA_SCATTER_NAIVE_LIMIT,
+    MV2_CUDA_ALLGATHER_NAIVE_LIMIT,
+    MV2_CUDA_ALLGATHERV_NAIVE_LIMIT,
+    MV2_CUDA_ALLTOALL_NAIVE_LIMIT,
+    MV2_CUDA_ALLTOALLV_NAIVE_LIMIT,
+    MV2_CUDA_BCAST_NAIVE_LIMIT,
+    MV2_CUDA_GATHERV_NAIVE_LIMIT,
+    MV2_CUDA_SCATTERV_NAIVE_LIMIT,
     /* debug */
     MV2_DEBUG_CORESIZE,
     MV2_DEBUG_SHOW_BACKTRACE,
@@ -647,5 +675,5 @@ typedef struct mv2_env_param_list
 
 extern mv2_env_param_list_t  param_list[];
 void mv2_show_all_params();
-
+mv2_arch_hca_type MV2_get_arch_hca_type();
 #endif /* _RDMA_PARAM_H */

@@ -1,4 +1,4 @@
-# Copyright © 2009      INRIA.  All rights reserved.
+# Copyright © 2009      inria.  All rights reserved.
 # Copyright © 2009      Université Bordeaux 1
 # Copyright © 2009-2010 Cisco Systems, Inc.  All rights reserved.
 # See COPYING in top-level directory.
@@ -66,7 +66,6 @@ if HWLOC_BUILD_STANDALONE
 doc readme:
 	$(MAKE) -C doc readme
 endif HWLOC_BUILD_STANDALONE
-
 mandoc:
 htmldoc:
 latexdoc:

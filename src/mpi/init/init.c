@@ -96,9 +96,9 @@ int MPI_Init( int *argc, char ***argv )
 #endif
 
     MPID_MPI_INIT_FUNC_ENTER(MPID_STATE_MPI_INIT);
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#if defined(_OSU_PSM_)
     MV2_Read_env_vars();
-#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
+#endif /* defined(_OSU_PSM_) */
 
 #   ifdef HAVE_ERROR_CHECKING
     {

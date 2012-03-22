@@ -52,10 +52,11 @@ int HARPERTOWN_MODEL=23;
 int NEHALEM_MODEL=26;
 
 int ip            = 0;
-int *core_mapping = NULL;
+unsigned long *core_mapping = NULL;
 int *obj_tree     = NULL;
 
 policy_type_t policy;
+level_type_t level;
 hwloc_topology_t topology;
 
 static int INTEL_XEON_DUAL_MAPPING[]      = {0,1,0,1};
@@ -663,10 +664,61 @@ static void get_first_obj_bunch(hwloc_obj_t *result) {
   return;
 }
 
+static void get_first_socket_bunch(hwloc_obj_t *result, hwloc_obj_type_t binding_level) {
+  hwloc_obj_t *objs;
+  ancestor_type *array;
+  int i, j, k, num_objs, num_ancestors;
+
+  if((num_objs = hwloc_get_nbobjs_by_type(topology, binding_level)) <= 0) {
+    return;
+  }
+
+  if((objs = (hwloc_obj_t *)MPIU_Malloc(num_objs * sizeof(hwloc_obj_t))) == NULL) {
+    return;
+  }
+
+  for(i = 0; i < num_objs; i++) {
+    objs[i] = hwloc_get_obj_by_type(topology, binding_level, i);
+  }
+
+  num_ancestors = num_objs * (num_objs - 1) / 2;
+
+  if((array = (ancestor_type *)MPIU_Malloc(num_ancestors * sizeof(ancestor_type))) == NULL) {
+    return;
+  }
+
+  k = 0;
+  for (i = 0; i < (num_objs-1) ; i++) {
+    for (j = i + 1; j < num_objs; j++) {
+        array[k].obja = objs[i];
+        array[k].objb = objs[j];
+        array[k].ancestor =  hwloc_get_common_ancestor_obj(topology, objs[i], objs[j]);
+        k++;
+    }
+  }
+
+  qsort(array, num_ancestors, sizeof(ancestor_type), cmpdepth_smt);
+
+  for (i = 0; i < (num_ancestors - 1); i++) {
+    if ((array[i+1].ancestor)->depth < (array[i].ancestor)->depth) {
+        break;
+    }
+  }
+
+  if (i < num_ancestors - 1)
+      qsort(array, (i + 1), sizeof(ancestor_type), cmparity_smt);
+
+  *result = array[0].obja;
+
+  MPIU_Free(objs);
+  MPIU_Free(array);
+  return;
+}
+
 /*
  * Yields "scatter" affinity scenario in core_mapping.
  */
-void map_scatter(int num_cpus) {
+void map_scatter_core(int num_cpus) {
   hwloc_obj_t *objs, obj, a;
   unsigned    *pdist, maxd;
   int         i, j, ix, jp, d, s;
@@ -753,10 +805,104 @@ void map_scatter(int num_cpus) {
   return;
  }
 
+void map_scatter_socket(int num_sockets, hwloc_obj_type_t binding_level) {
+  hwloc_obj_t *objs, obj, a;
+  unsigned    *pdist, maxd;
+  int         i, j, ix, jp, d, s, num_cores;
+
+  /* Init and load HWLOC_OBJ_SOCKET or HWLOC_OBJ_NODE objects */
+  if((objs = (hwloc_obj_t *)MPIU_Malloc(num_sockets * sizeof(hwloc_obj_t *))) == NULL)
+    return;
+
+  if((num_cores = hwloc_get_nbobjs_by_type(topology, HWLOC_OBJ_CORE)) <= 0) {
+    return;
+  }
+
+  obj = NULL;
+  i   = 0;
+  while((obj = hwloc_get_next_obj_by_type(topology, binding_level, obj)) != NULL)
+    objs[i++] = obj;
+  if(i != num_sockets) {
+    MPIU_Free(objs);
+    return;
+  }
+
+  /* Sort HWLOC_OBJ_SOCKET or HWLOC_OBJ_NODE objects according to sibling_rank */
+  qsort(objs, num_sockets, sizeof(hwloc_obj_t *), cmpproc_smt);
+
+  /* Init cumulative distances */
+  if((pdist = (unsigned *)MPIU_Malloc(num_sockets * sizeof(unsigned))) == NULL) {
+    MPIU_Free(objs);
+    return;
+  }
+
+  /* Loop over objects, ix is index in objs where sorted objects start */
+  ix = num_sockets;
+  s  = -1;
+  while(ix > 0) {
+    /* If new group of SMT processors starts, zero distances */
+    if(s != objs[0]->sibling_rank) {
+      s = objs[0]->sibling_rank;
+      for(j = 0; j < ix; j++)
+        pdist[j] = 0;
+    }
+    /*
+     * Determine object that has max. distance to all already stored objects.
+     * Consider only groups of SMT processors with same sibling_rank.
+     */
+    maxd = 0;
+    jp   = 0;
+    for(j = 0; j < ix; j++) {
+      if((j) && (objs[j-1]->sibling_rank != objs[j]->sibling_rank))
+        break;
+      if(pdist[j] > maxd) {
+        maxd = pdist[j];
+        jp   = j;
+      }
+    }
+
+    /* Rotate found object to the end of the list, map out found object from distances */
+    obj = objs[jp];
+    for(j = jp; j < num_sockets - 1; j++) {
+      objs[j]  = objs[j+1];
+      pdist[j] = pdist[j+1];
+    }
+    objs[j] = obj;
+    ix--;
+
+    /*
+     * Update cumulative distances of all remaining objects with new stored one.
+     * If two HWLOC_OBJ_SOCKET or HWLOC_OBJ_NODE objects don't share a common ancestor, the topology is broken.
+     * Our scheme cannot be used in this case.
+     */
+    for(j = 0; j < ix; j++) {
+      if((a = hwloc_get_common_ancestor_obj(topology, obj, objs[j])) == NULL) {
+        MPIU_Free(pdist);
+        MPIU_Free(objs);
+        return;
+      }
+      d = objs[j]->depth + obj->depth - 2*a->depth;
+      pdist[j] += d*d;
+     }
+  }
+
+  /* Collect os_indexes into core_mapping */
+  for(i = 0, j = 0; i < num_cores; i++, j++) {
+    if (j == num_sockets) {
+        j = 0;
+    }
+    core_mapping[i] = hwloc_bitmap_to_ulong((hwloc_const_bitmap_t)(objs[j]->cpuset));
+  }
+
+  MPIU_Free(pdist);
+  MPIU_Free(objs);
+  return;
+ }
+
  /*
   * Yields "bunch" affinity scenario in core_mapping.
   */
-void map_bunch(int num_cpus) {
+void map_bunch_core(int num_cpus) {
   hwloc_obj_t *objs, obj, a;
   unsigned    *pdist, mind;
   int         i, j, ix, jp, d, s, num_cores, num_pus;
@@ -887,9 +1033,168 @@ void map_bunch(int num_cpus) {
   return;
 }
 
-static int num_digits(int numcpus)
+int check_num_child(hwloc_obj_t obj) {
+  int i = 0, k, num_cores;
+  
+  if((num_cores = hwloc_get_nbobjs_by_type(topology, HWLOC_OBJ_CORE)) <= 0) {
+      return 0;
+  }
+
+  for (k = 0; k < num_cores; k++) {
+      if (hwloc_bitmap_isset((hwloc_const_bitmap_t)(obj->cpuset), k)) {
+          i++;
+      }
+  }
+
+  return i;
+}
+
+void map_bunch_socket(int num_sockets, hwloc_obj_type_t binding_level) {
+  hwloc_obj_t *objs, obj, a;
+  unsigned    *pdist, mind;
+  int         i, j, ix, jp, d, s, num_cores, num_pus;
+
+  /* Init and load HWLOC_OBJ_PU objects */
+  if((objs = (hwloc_obj_t *)MPIU_Malloc(num_sockets * sizeof(hwloc_obj_t *))) == NULL)
+    return;
+
+  obj = NULL;
+  i   = 0;
+
+  if((num_cores = hwloc_get_nbobjs_by_type(topology, HWLOC_OBJ_CORE)) <= 0) {
+    free(objs);
+    return;
+  }
+
+  if((num_pus = hwloc_get_nbobjs_by_type(topology, HWLOC_OBJ_PU)) <= 0) {
+    free(objs);
+    return;
+  }
+
+  /* SMT Disabled */
+  if (num_cores == num_pus) {
+
+    get_first_socket_bunch(&obj, binding_level);
+
+    if (obj == NULL) {
+      MPIU_Free(objs);
+      return;
+    }
+
+    objs[i] = obj;
+    i++;
+
+    while((obj = hwloc_get_next_obj_by_type(topology, binding_level, obj)) != NULL) {
+      objs[i] = obj;
+      i++;
+    }
+
+    obj = NULL;
+    while(i != num_sockets) {
+      obj = hwloc_get_next_obj_by_type(topology, binding_level, obj);
+      objs[i++] = obj;
+    }
+
+    if(i != num_sockets) {
+      MPIU_Free(objs);
+      return;
+    }
+
+  } else {  /* SMT Enabled */
+
+    while((obj = hwloc_get_next_obj_by_type(topology, binding_level, obj)) != NULL)
+      objs[i++] = obj;
+ 
+    if(i != num_sockets) {
+      free(objs);
+      return;
+    }
+ 
+    /* Sort HWLOC_OBJ_SOCKET or HWLOC_OBJ_NODE objects according to sibling_rank */
+    qsort(objs, num_sockets, sizeof(hwloc_obj_t *), cmpproc_smt);
+
+  }
+
+  /* Init cumulative distances */
+  if((pdist = (unsigned *)MPIU_Malloc(num_sockets * sizeof(unsigned))) == NULL) {
+    MPIU_Free(objs);
+    return;
+  }
+
+  /* Loop over objects, ix is index in objs where sorted objects start */
+  ix = num_sockets;
+  s  = -1;
+  while(ix > 0) {
+    /* If new group of SMT processors starts, zero distances */
+    if(s != objs[0]->sibling_rank) {
+      s = objs[0]->sibling_rank;
+      for(j = 0; j < ix; j++)
+        pdist[j] = UINT_MAX;
+    }
+    /*
+     * Determine object that has min. distance to all already stored objects.
+     * Consider only groups of SMT processors with same sibling_rank.
+     */
+    mind = UINT_MAX;
+    jp   = 0;
+    for(j = 0; j < ix; j++) {
+      if((j) && (objs[j-1]->sibling_rank != objs[j]->sibling_rank))
+        break;
+      if(pdist[j] < mind) {
+        mind = pdist[j];
+        jp   = j;
+      }
+    }
+
+    /* Rotate found object to the end of the list, map out found object from distances */
+    obj = objs[jp];
+    for(j = jp; j < num_sockets - 1; j++) {
+      objs[j]  = objs[j+1];
+      pdist[j] = pdist[j+1];
+    }
+    objs[j] = obj;
+    ix--;
+
+    /*
+     * Update cumulative distances of all remaining objects with new stored one.
+     * If two HWLOC_OBJ_SOCKET or HWLOC_OBJ_NODE objects don't share a common ancestor, the topology is broken.
+     * Our scheme cannot be used in this case.
+     */
+    for(j = 0; j < ix; j++) {
+      if((a = hwloc_get_common_ancestor_obj(topology, obj, objs[j])) == NULL) {
+        MPIU_Free(pdist);
+        MPIU_Free(objs);
+        return;
+      }
+      d = objs[j]->depth + obj->depth - 2*a->depth;
+      pdist[j] += d*d;
+     }
+  }
+
+  /* Collect os_indexes into core_mapping */
+  int num_child_in_socket[num_sockets];
+
+  for(i = 0; i < num_sockets; i++) {
+    num_child_in_socket[i] = check_num_child(objs[i]);
+  }
+ 
+  for(i = 1; i < num_sockets; i++) num_child_in_socket[i] += num_child_in_socket[i - 1];
+
+  for(i = 0, j = 0; i < num_cores; i++) {
+    if (i == num_child_in_socket[j]) {
+      j++;
+    } 
+    core_mapping[i] = hwloc_bitmap_to_ulong((hwloc_const_bitmap_t)(objs[j]->cpuset));
+  }
+
+  MPIU_Free(pdist);
+  MPIU_Free(objs);
+  return;
+}
+
+static int num_digits(unsigned long numcpus)
 {
-    int n_digits = 1;
+    int n_digits = 0;
     while(numcpus > 0) {
        n_digits++;
        numcpus /= 10;
@@ -901,7 +1206,8 @@ int get_cpu_mapping_hwloc(long N_CPUs_online, hwloc_topology_t tp)
 {
     unsigned topodepth = -1, depth = -1;
     int num_processes = 0, rc = 0, i;
-    int num_sockets ATTRIBUTE ((unused)) = 0;
+    int num_sockets = 0;
+    int num_numanodes = 0;
     int num_cpus=0; 
     char *s;
     struct dirent **namelist;
@@ -937,19 +1243,28 @@ int get_cpu_mapping_hwloc(long N_CPUs_online, hwloc_topology_t tp)
       num_sockets = hwloc_get_nbobjs_by_depth(tp, depth);
     }
 
+    /* Count number of numanodes */
+    depth = hwloc_get_type_depth(tp, HWLOC_OBJ_NODE);
+    if(depth == HWLOC_TYPE_DEPTH_UNKNOWN) {
+      num_numanodes = -1;
+    } else {
+      num_numanodes = hwloc_get_nbobjs_by_depth(tp, depth);
+    }
+
     if(s_cpu_mapping == NULL) {
       /* We need to do allocate memory for the custom_cpu_mapping array
        * and determine the current load on the different cpu's only
        * when the user has not specified a mapping string. If the user
        * has provided a mapping string, it overrides everything.
        */
-      custom_cpu_mapping = MPIU_Malloc(sizeof(char) * num_cpus* (num_digits(num_cpus)) + 1);
+      /*TODO: might need a better representation as number of cores per node increases*/
+      unsigned long num_bit_mask = 1UL<<num_cpus; 
+      custom_cpu_mapping = MPIU_Malloc(sizeof(char) * num_cpus* (num_digits(num_bit_mask)) + 1);
       if(custom_cpu_mapping == NULL) {
         goto error_free;
       }
-      MPIU_Memset(custom_cpu_mapping, 0, sizeof(char) * num_cpus* (num_digits(num_cpus)) + 1);
-
-      core_mapping =  MPIU_Malloc(num_cpus * sizeof(int));
+      MPIU_Memset(custom_cpu_mapping, 0, sizeof(char) * num_cpus* (num_digits(num_bit_mask)) + 1);
+      core_mapping =  (unsigned long *) MPIU_Malloc(num_cpus * sizeof(unsigned long));
       if(core_mapping == NULL) {
         goto error_free;
       }
@@ -1026,10 +1341,37 @@ int get_cpu_mapping_hwloc(long N_CPUs_online, hwloc_topology_t tp)
         /* MV2_ENABLE_LEASTLOAD != 1 or MV2_ENABLE_LEASTLOAD == NULL, map_bunch or map_scatter is used */
         if (policy == POLICY_SCATTER) {
             /* Scatter */
-    	    map_scatter(num_cpus);
+            hwloc_obj_type_t binding_level = HWLOC_OBJ_SOCKET; 
+            if (level == LEVEL_SOCKET) {
+		map_scatter_socket(num_sockets, binding_level);
+            } else if (level == LEVEL_NUMANODE) {
+		if (num_numanodes == -1) {
+		  /* There is not numanode, fallback to socket */
+		  map_scatter_socket(num_sockets, binding_level);
+		} else {
+                  binding_level = HWLOC_OBJ_NODE;
+		  map_scatter_socket(num_numanodes, binding_level);
+                }
+	    } else { 
+      		map_scatter_core(num_cpus);
+            }
+       
         } else if (policy == POLICY_BUNCH) {
             /* Bunch */
-            map_bunch(num_cpus);
+	    hwloc_obj_type_t binding_level = HWLOC_OBJ_SOCKET;
+            if (level == LEVEL_SOCKET) {
+                map_bunch_socket(num_sockets, binding_level);
+            } else if (level == LEVEL_NUMANODE) {
+		if (num_numanodes == -1) {
+                  /* There is not numanode, fallback to socket */
+                  map_bunch_socket(num_sockets, binding_level);
+                } else {
+                  binding_level = HWLOC_OBJ_NODE;
+                  map_bunch_socket(num_numanodes, binding_level);
+                }
+	    } else {
+                map_bunch_core(num_cpus);
+            }
         } else {
             goto error_free;
         }
@@ -1038,7 +1380,7 @@ int get_cpu_mapping_hwloc(long N_CPUs_online, hwloc_topology_t tp)
       /* Assemble custom_cpu_mapping string */
       s = custom_cpu_mapping;
       for(i = 0; i < num_cpus; i++) {
-         sprintf(s, "%d:", core_mapping[i]);
+         sprintf(s, "%lu:", core_mapping[i]);
          s = custom_cpu_mapping + strlen(custom_cpu_mapping);
       }
       i = strlen(custom_cpu_mapping);
@@ -1397,7 +1739,11 @@ int smpi_setaffinity (int my_local_id)
 
                     if (j == my_local_id)
                     {
-                        hwloc_bitmap_only(cpuset, atoi(tp_str));
+                        if (level == LEVEL_CORE) {
+                            hwloc_bitmap_only(cpuset, atol(tp_str));
+                        } else {
+                            hwloc_bitmap_from_ulong(cpuset, atol(tp_str));
+                        }
                         hwloc_set_cpubind(topology, cpuset, 0);
                         break;
                     }

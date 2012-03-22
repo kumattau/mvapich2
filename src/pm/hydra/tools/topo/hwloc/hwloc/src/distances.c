@@ -10,7 +10,13 @@
 #include <private/private.h>
 #include <private/debug.h>
 
+#if (defined (_GNU_SOURCE)&&(__PGIC__==12)&&(__PGIC_MINOR__==2))
+#undef _GNU_SOURCE
 #include <float.h>
+#define _GNU_SOURCE
+#else
+#include <float.h>
+#endif
 
 /* called during topology init */
 void hwloc_topology_distances_init(struct hwloc_topology *topology)

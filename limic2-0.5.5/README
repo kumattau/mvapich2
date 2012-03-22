@@ -82,7 +82,7 @@ of CAC 2005, April 2005.
 	http://mvapich.cse.ohio-state.edu for MVAPICH2+LiMIC2 package
 
 3.2 Compiling LiMIC2 Library + Kernel Module
-	./configure --enable-module
+	./configure --enable-module --prefix=/usr --sysconfdir=/etc
 	make 
 
 3.3 Installation

@@ -79,7 +79,7 @@ int MPIDI_CH3_Pkt_size_index[] = {
 }
 
 #undef FUNCNAME
-#define FUNCNAME MPIDI_nem_ib_pass_header
+#define FUNCNAME MPIDI_nem_ib_parse_header
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 /**
@@ -186,7 +186,12 @@ int MPIDI_CH3I_nem_ib_parse_header(MPIDI_VC_t * vc,
     case MPIDI_NEM_PKT_LMT_CTS:
     case MPIDI_NEM_PKT_LMT_DONE:
     case MPIDI_NEM_PKT_LMT_COOKIE:
-/* CKPT codes */
+/* Packet type for CKPT in IB-Netmod */
+#ifdef ENABLE_CHECKPOINTING
+    case MPIDI_NEM_PKT_CKPT_MARKER:
+#endif
+
+/* Legacy CKPT packet types from CH3 */
 #ifdef CKPT
     case MPIDI_CH3_PKT_CM_SUSPEND:
     case MPIDI_CH3_PKT_CM_REACTIVATION_DONE:
@@ -320,6 +325,13 @@ int MPIDI_CH3I_nem_ib_parse_header(MPIDI_VC_t * vc,
             *pkt = vstart;
             break;
         }
+#ifdef ENABLE_CHECKPOINTING
+    case MPIDI_NEM_IB_PKT_UNPAUSE:
+        {
+            *pkt = vstart;
+        }
+        break;
+#endif
     case MPIDI_CH3_PKT_CLOSE:
         {
             *pkt = vstart;

@@ -312,8 +312,18 @@ int MPIDI_CH3_PktHandler_RndvReqToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
         }
 
 #if defined(_ENABLE_CUDA_)
-        if(rdma_enable_cuda && rreq->mrail.cuda_transfer_mode != NONE
-                && vc->smp.local_nodes == -1) {
+        if (rdma_enable_cuda  &&
+            ((rreq->mrail.cuda_transfer_mode != NONE &&
+                (vc->smp.local_nodes == -1)) 
+#ifdef HAVE_CUDA_IPC
+            || (rdma_cuda_ipc && cudaipc_stage_buffered && 
+                rreq->mrail.cuda_transfer_mode != NONE && 
+                vc->smp.can_access_peer) ||
+                (rreq->mrail.protocol == VAPI_PROTOCOL_CUDAIPC) 
+            
+#endif
+           ))
+        {
     	    mpi_errno = MPIDI_CH3_Prepare_rndv_cts_cuda(vc, cts_pkt, rreq);
         } else
 #endif
@@ -404,6 +414,16 @@ int MPIDI_CH3_PktHandler_RndvClrToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     MPIU_DBG_PRINTF(("received cts, count=%d\n", sreq->dev.user_count));
     
 #if defined(_OSU_MVAPICH_)
+#if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
+    /* if receiver has set protocol to VAPI_PROTOCOL_CUDAIPC 
+     * revert protocol to VAPI_PROTOCOL_CUDAIPC */
+    if (rdma_enable_cuda && rdma_cuda_ipc && 
+        cts_pkt->rndv.protocol == VAPI_PROTOCOL_CUDAIPC && 
+        sreq->mrail.protocol != VAPI_PROTOCOL_CUDAIPC) {
+        MPIDI_CH3I_MRAIL_Revert_rndv_cuda_ipc_buffered (vc, sreq);
+    }
+#endif
+
     if (sreq->mrail.rndv_buf_off != 0 && 
             sreq->mrail.protocol == VAPI_PROTOCOL_RPUT) {
         MPIU_Assert(sreq->mrail.rndv_buf_off == 0);

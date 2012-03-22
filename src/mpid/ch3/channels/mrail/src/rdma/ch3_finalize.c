@@ -55,6 +55,10 @@ int MPIDI_CH3_Finalize()
     if(mpi_errno) MPIU_ERR_POP(mpi_errno);
 #endif
 
+#ifdef _ENABLE_CUDA_
+    CUDA_COLL_Finalize();
+#endif
+
     /* Shutdown the progress engine */
     mpi_errno = MPIDI_CH3I_Progress_finalize();
     if(mpi_errno) MPIU_ERR_POP(mpi_errno);

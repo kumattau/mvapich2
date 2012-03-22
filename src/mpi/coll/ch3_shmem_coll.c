@@ -42,6 +42,7 @@
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include "coll_shmem.h"
 #include "coll_shmem_internal.h"
+#include "gather_tuning.h"
 
 typedef unsigned long addrint_t;
 
@@ -78,19 +79,6 @@ struct scatter_tuning mv2_scatter_mv2_tuning_table[] = {
                                                {256, 4096, 8192},
                                                {512, 4096, 8192}
                                                };
-
-/*array used to tune gather */
-int mv2_size_mv2_gather_mv2_tuning_table=8;
-struct gather_tuning mv2_gather_mv2_tuning_table[] = {
-                                             {32, 256},
-                                             {64, 512},
-                                             {128, 2048},
-                                             {256, 2048},
-                                             {384, 8196},
-                                             {512, 8196},
-                                             {768,8196},
-                                             {1024,8196}
-                                             };
 
 /* array used to tune allgatherv */
 int mv2_size_mv2_allgatherv_mv2_tuning_table=4;
@@ -130,6 +118,8 @@ int mv2_user_scatter_medium_msg = 0;
 
 /* Runtime threshold for gather */
 int mv2_user_gather_switch_point = 0;
+char *mv2_user_gather_intra = NULL;
+char *mv2_user_gather_inter = NULL;
 
 /* Runtime threshold for allgatherv */
 int mv2_user_allgatherv_switch_point = 0;
@@ -168,43 +158,77 @@ void *smc_store;
 int smc_store_set;
 #endif
 
+#ifdef _ENABLE_CUDA_
+void *host_send_buf = NULL;
+void *host_recv_buf = NULL;
+void *dev_sr_buf = NULL; 
+int host_sendbuf_size = 0;
+int host_recvbuf_size = 0;
+int dev_srbuf_size = 0;
+int *host_send_displs = NULL;
+int *host_recv_displs = NULL;
+int host_send_peers = 0;
+int host_recv_peers = 0;
+int *original_send_displs = NULL;
+int *original_recv_displs = NULL;
+void *original_send_buf = NULL;
+void *original_recv_buf = NULL;
+#endif
+
+void MV2_collectives_arch_init(){
+
+#if defined(_OSU_MVAPICH_)
+   MV2_set_gather_tuning_table();
+   MV2_Read_env_vars();
+#endif /* defined(_OSU_MVAPICH_) */
+
+}    
+
 /* Change the values set inside the array by the one define by the user */
-int tuning_init(){
+static int tuning_runtime_init(){
 
     int i;
 
-    /* If MV2_SCATTER_SMALL_MSG is define*/
+    /* If MV2_SCATTER_SMALL_MSG is define */
     if(mv2_user_scatter_small_msg>0){
-        for(i=0; i <= mv2_size_mv2_scatter_mv2_tuning_table; i++){
+        for(i=0; i < mv2_size_mv2_scatter_mv2_tuning_table; i++){
             mv2_scatter_mv2_tuning_table[i].small = mv2_user_scatter_small_msg;
         }
     }
 
     /* If MV2_SCATTER_MEDIUM_MSG is define */
     if(mv2_user_scatter_medium_msg>0){
-        for(i=0; i <= mv2_size_mv2_scatter_mv2_tuning_table; i++){
-            if(mv2_scatter_mv2_tuning_table[i].small < mv2_user_scatter_medium_msg){ 
+        for(i=0; i < mv2_size_mv2_scatter_mv2_tuning_table; i++){
+            if(mv2_scatter_mv2_tuning_table[i].small < mv2_user_scatter_medium_msg){
                 mv2_scatter_mv2_tuning_table[i].medium = mv2_user_scatter_medium_msg;
             }
         }
     }
 
-    /* If MV2_GATHER_SWITCH_POINT is define  */
-    if(mv2_user_gather_switch_point>0){
-        for(i=0; i <= mv2_size_mv2_gather_mv2_tuning_table; i++){
-            mv2_gather_mv2_tuning_table[i].switchp = mv2_user_gather_switch_point;
-        }
+    /* If MV2_GATHER_SWITCH_POINT is define and if MV2_INTRA_GATHER_TUNING && MV2_INTER_GATHER_TUNING are not define */
+    if(mv2_user_gather_switch_point>0 && mv2_user_gather_inter == NULL){
+        MV2_user_gather_switch_point_is_define(mv2_user_gather_switch_point);
     }
-    
-    /* If MV2_ALLGATHERV_RD_THRESHOLD is define  */
+
+    /* If MV2_INTRA_GATHER_TUNING is define && MV2_INTER_GATHER_TUNING is not define */
+    if(mv2_user_gather_intra != NULL && mv2_user_gather_inter == NULL){
+       MV2_intranode_Gather_is_define(mv2_user_gather_intra);
+    }
+
+    /* if MV2_INTER_GATHER_TUNING is define with/without MV2_INTRA_GATHER_TUNING */
+    if(mv2_user_gather_inter != NULL){
+       MV2_internode_Gather_is_define(mv2_user_gather_inter, mv2_user_gather_intra);
+    }
+
+    /* If MV2_ALLGATHERV_RD_THRESHOLD is define */
     if(mv2_user_allgatherv_switch_point>0){
-        for(i=0; i <= mv2_size_mv2_allgatherv_mv2_tuning_table; i++){
+        for(i=0; i < mv2_size_mv2_allgatherv_mv2_tuning_table; i++){
             mv2_allgatherv_mv2_tuning_table[i].switchp = mv2_user_allgatherv_switch_point;
         }
     }
 
     return 0;
-} 
+}  
 
 void MPIDI_CH3I_SHMEM_COLL_Cleanup()
 {
@@ -358,7 +382,7 @@ int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t *pg, int local_id)
     }
 
     if(mv2_tune_parameter==1){
-        tuning_init();
+        tuning_runtime_init();
     }
     
 fn_exit:
@@ -868,17 +892,6 @@ void MV2_Read_env_vars(void){
             mv2_use_anl_collectives = 1;
         }
     }
-#ifdef _ENABLE_CUDA_
-    if ((value = getenv("MV2_USE_CUDA")) != NULL) {
-        flag = (int)atoi(value); 
-        if (flag > 0) mv2_enable_shmem_collectives = 0;
-    }
-    if ((value = getenv("MV2_USE_SHARED_MEM")) != NULL){
-            flag = (int)atoi(value);
-            if (flag > 0) mv2_enable_shmem_collectives = 1;
-    }
-#endif 
-
     if ((value = getenv("MV2_USE_SHMEM_COLL")) != NULL){
         flag = (int)atoi(value); 
         if (flag > 0) mv2_enable_shmem_collectives = 1;
@@ -967,6 +980,14 @@ void MV2_Read_env_vars(void){
     }
     if ((value = getenv("MV2_GATHER_SWITCH_PT")) != NULL) {
             mv2_user_gather_switch_point = atoi(value);
+            mv2_tune_parameter=1;
+    }
+    if ((value = getenv("MV2_INTRA_GATHER_TUNING")) != NULL) {
+            mv2_user_gather_intra = value;
+            mv2_tune_parameter=1;
+    }
+    if ((value = getenv("MV2_INTER_GATHER_TUNING")) != NULL) {
+            mv2_user_gather_inter = value;
             mv2_tune_parameter=1;
     }
     if ((value = getenv("MV2_SHMEM_REDUCE_MSG")) != NULL){
@@ -1117,5 +1138,356 @@ void MV2_Read_env_vars(void){
 
     init_thread_reg();
 }
+
+#ifdef _ENABLE_CUDA_
+/******************************************************************/
+//Checks if cuda stage buffer size is sufficient, if not allocates//
+//more memory.                                                    //
+/******************************************************************/
+int cuda_stage_alloc(void **send_buf, int sendsize,
+                      void **recv_buf, int recvsize,
+                      int send_on_device, 
+                      int recv_on_device, int disp) 
+{
+    int page_size = getpagesize();
+    int result, mpi_errno = MPI_SUCCESS;
+
+    if (send_on_device && *send_buf != MPI_IN_PLACE && host_sendbuf_size < sendsize) {
+        if (host_send_buf) {
+            if (host_sendbuf_size >= rdma_cuda_register_naive_buf) {
+                ibv_cuda_unregister(host_send_buf);
+            }
+            free(host_send_buf);
+        }
+        host_sendbuf_size = sendsize < rdma_cuda_block_size ? rdma_cuda_block_size : sendsize;
+        result = posix_memalign(&host_send_buf, page_size, host_sendbuf_size);
+        if ((result!=0) || (NULL == host_send_buf)) {
+            mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                   FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
+                   "posix_memalign", strerror(errno));
+            return (mpi_errno);
+        }
+        if (host_sendbuf_size >= rdma_cuda_register_naive_buf) {
+            ibv_cuda_register(host_send_buf, host_sendbuf_size);
+        }
+    }
+    if (recv_on_device && host_recvbuf_size < recvsize) {
+        if (host_recv_buf) {
+            if (host_recvbuf_size >= rdma_cuda_register_naive_buf) {
+                ibv_cuda_unregister(host_recv_buf);
+            }
+            free (host_recv_buf);
+        }
+        host_recvbuf_size = recvsize < rdma_cuda_block_size ? rdma_cuda_block_size : recvsize;
+        result = posix_memalign(&host_recv_buf, page_size, host_recvbuf_size);
+        if ((result!=0) || (NULL == host_recv_buf)) {
+            mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                   FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
+                   "posix_memalign", strerror(errno));
+            return (mpi_errno);
+        }
+        if (host_recvbuf_size >= rdma_cuda_register_naive_buf) {
+            ibv_cuda_register(host_recv_buf, host_recvbuf_size);
+        }
+    }
+    
+    if ( send_on_device && *send_buf != MPI_IN_PLACE) {
+        if (send_on_device) {
+            MPIU_Memcpy_CUDA(host_send_buf, *send_buf, 
+            sendsize, cudaMemcpyDeviceToHost );
+        }
+    } else {
+        if (recv_on_device) {
+            MPIU_Memcpy_CUDA(((char *)(host_recv_buf) + disp),
+                ((char *)(*recv_buf) + disp),
+                sendsize,
+                cudaMemcpyDeviceToHost );
+        }
+    }
+
+    if (send_on_device && send_buf != MPI_IN_PLACE) {
+        original_send_buf = *send_buf;
+        *send_buf = host_send_buf;
+    } else {
+        original_send_buf = NULL;
+    }
+    if (recv_on_device) {
+        original_recv_buf = *recv_buf;
+        *recv_buf = host_recv_buf;
+    } else {
+        original_recv_buf = NULL;
+    }
+    return mpi_errno;
+}
+
+/******************************************************************/
+//After performing the cuda collective operation, sendbuf and recv//
+//-buf are made to point back to device buf.                      //
+/******************************************************************/
+void cuda_stage_free (void **send_buf, 
+                      void **recv_buf, int recvsize,
+                      int send_on_device, int recv_on_device) 
+{
+
+    if (send_on_device && original_send_buf && send_buf != MPI_IN_PLACE) {
+        if (!recv_on_device && !original_recv_buf) {
+            MPIU_Memcpy_CUDA(original_send_buf, *send_buf, 
+                        recvsize, cudaMemcpyHostToDevice );
+        }
+        *send_buf = original_send_buf;
+        original_send_buf = NULL;
+    }
+    if (recv_on_device && original_recv_buf) {
+        MPIU_Memcpy_CUDA(original_recv_buf, *recv_buf, 
+                    recvsize, cudaMemcpyHostToDevice );
+        *recv_buf = original_recv_buf;
+        original_recv_buf = NULL;
+    }
+}
+
+int cuda_stage_alloc_v (void **send_buf, int *send_counts, MPI_Datatype send_type, 
+                        int **send_displs, int send_peers, 
+                        void **recv_buf, int *recv_counts, MPI_Datatype recv_type, 
+                        int **recv_displs, int recv_peers, 
+                        int send_buf_on_device, int recv_buf_on_device, 
+                        int rank) 
+{
+    int mpi_errno = MPI_SUCCESS;
+    int i, page_size, result;
+    int total_send_size = 0, total_recv_size = 0, total_buf_size = 0, offset = 0;
+    int recv_type_contig = 0;
+    MPI_Aint send_type_extent, recv_type_extent, recv_type_size;
+    MPID_Datatype *dtp;
+    cudaError_t cuda_err = cudaSuccess;
+    
+    page_size = getpagesize();
+    MPID_Datatype_get_extent_macro(send_type, send_type_extent);
+    MPID_Datatype_get_extent_macro(recv_type, recv_type_extent);
+    MPID_Datatype_get_size_macro(recv_type, recv_type_size);
+
+    if (HANDLE_GET_KIND(recv_type) == HANDLE_KIND_BUILTIN)
+        recv_type_contig = 1;
+    else {
+        MPID_Datatype_get_ptr(recv_type, dtp);
+        recv_type_contig = dtp->is_contig;
+    }
+
+    if (send_buf_on_device && *send_buf != MPI_IN_PLACE) { 
+        for (i = 0; i < send_peers; i++) {
+            total_send_size += send_counts[i] * send_type_extent;
+        }
+    }
+    if (recv_buf_on_device && *recv_buf != MPI_IN_PLACE) { 
+        for (i = 0; i < recv_peers; i++) { 
+            total_recv_size += recv_counts[i] * recv_type_extent;
+        }
+    }
+    total_buf_size = (total_send_size > total_recv_size) ? total_send_size : total_recv_size;
+
+    /* Allocate the packing buffer on device if one does not exist 
+     * or is not large enough. Free the older one */
+    if (dev_srbuf_size < total_buf_size) { 
+        if (dev_sr_buf) {   
+            cudaFree(dev_sr_buf);
+        }
+        dev_srbuf_size = total_buf_size;
+        cuda_err = cudaMalloc(&dev_sr_buf, dev_srbuf_size); 
+        if (cuda_err != cudaSuccess) {
+            mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
+                   FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
+                   "cudaMalloc failed", cudaGetErrorString(cuda_err));
+            return (mpi_errno); 
+        }
+    } 
+
+    /* Allocate the stage out (send) host buffers if they do not exist 
+     * or are not large enough. Free the older one */
+    if (send_buf_on_device && *send_buf != MPI_IN_PLACE) {
+        /*allocate buffer to stage displacements*/ 
+        if (host_send_peers < send_peers) { 
+            if (host_send_displs) { 
+                MPIU_Free(host_send_displs);    
+            }
+            host_send_peers = send_peers; 
+            host_send_displs = MPIU_Malloc(sizeof(int) * host_send_peers);
+            MPIU_Memset((void *)host_send_displs, 0, sizeof(int) * host_send_peers);
+        }
+        /*allocate buffer to stage the data*/
+        if (host_sendbuf_size < total_send_size) {
+            if (host_send_buf) {
+                if (host_sendbuf_size >= rdma_cuda_register_naive_buf) {
+                    ibv_cuda_unregister(host_send_buf);
+                }
+                free(host_send_buf);
+            }
+            host_sendbuf_size = total_send_size < rdma_cuda_block_size ? 
+                    rdma_cuda_block_size : total_send_size;
+            result = posix_memalign(&host_send_buf, page_size, host_sendbuf_size);
+            if ((result!=0) || (NULL == host_send_buf)) {
+                mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                    FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
+                    "posix_memalign", strerror(errno));
+                return (mpi_errno);
+            }
+            if (host_sendbuf_size >= rdma_cuda_register_naive_buf) {
+                ibv_cuda_register(host_send_buf, host_sendbuf_size);
+            }
+        }
+    }
+
+    /* allocate the stage in (recv) host buffers if they do not exist 
+     * or are not large enough */
+    if (recv_buf_on_device && *recv_buf != MPI_IN_PLACE) {
+        /*allocate buffer to stage displacements*/
+        if (host_recv_peers < recv_peers) {
+            if (host_recv_displs) {
+                MPIU_Free(host_recv_displs);
+            }
+            host_recv_peers = recv_peers;
+            host_recv_displs = MPIU_Malloc(sizeof(int) * host_recv_peers);
+            MPIU_Memset(host_recv_displs, 0, sizeof(int) * host_recv_peers);
+        }
+        /*allocate buffer to stage the data*/
+        if (host_recvbuf_size < total_recv_size) { 
+            if (host_recv_buf) {
+                if (host_recvbuf_size >= rdma_cuda_register_naive_buf) {
+                    ibv_cuda_unregister(host_recv_buf);
+                }
+                free (host_recv_buf);
+            }
+            host_recvbuf_size = total_recv_size < rdma_cuda_block_size ? 
+                    rdma_cuda_block_size : total_recv_size;
+            result = posix_memalign(&host_recv_buf, page_size, host_recvbuf_size);
+            if ((result!=0) || (NULL == host_recv_buf)) {
+                mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
+                       FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
+                       "posix_memalign", strerror(errno));
+                return (mpi_errno);
+            }
+            if (host_recvbuf_size >= rdma_cuda_register_naive_buf) {
+                ibv_cuda_register(host_recv_buf, host_recvbuf_size);
+            }
+        }
+    }
+  
+    /*Stage out the data to be sent, set the send buffer and displaceemnts*/ 
+    offset = 0; 
+    if (send_buf_on_device && *send_buf != MPI_IN_PLACE) {
+        for (i = 0; i < send_peers; i++) {
+            MPIU_Memcpy_CUDA(
+                    (void *) ((char *)dev_sr_buf 
+                        + offset*send_type_extent), 
+                    (void*) ((char *)(*send_buf) 
+                        + (*send_displs)[i]*send_type_extent), 
+                    send_counts[i]*send_type_extent, 
+                    cudaMemcpyDeviceToDevice);
+            host_send_displs[i] = offset;
+            offset += send_counts[i];
+        }
+        MPIU_Memcpy_CUDA(host_send_buf, dev_sr_buf, 
+            total_send_size, cudaMemcpyDeviceToHost);
+
+        original_send_buf = *send_buf;
+        original_send_displs = *send_displs;
+        *send_buf = host_send_buf;
+        *send_displs = host_send_displs; 
+    }
+
+    /*Stage out buffer into which data is to be received and set the stage in 
+      (recv) displacements*/
+    offset = 0;
+    if (recv_buf_on_device && *recv_buf != MPI_IN_PLACE) {
+        for (i = 0; i < recv_peers; i++) {
+            host_recv_displs[i] = offset;
+            offset += recv_counts[i];
+        }
+        /*If data type is not contig, copy the device receive buffer out onto host receive buffer 
+          to maintain the original data in un-touched parts while copying back */
+        if (!recv_type_contig) { 
+            for (i = 0; i < recv_peers; i++) {
+                MPIU_Memcpy_CUDA(
+                    (void *) ((char *)dev_sr_buf
+                        + host_recv_displs[i]*recv_type_extent),
+                    (void*) ((char *)(*recv_buf)
+                        + (*recv_displs)[i]*recv_type_extent),
+                    recv_counts[i]*recv_type_extent,
+                    cudaMemcpyDeviceToDevice);
+            }
+            MPIU_Memcpy_CUDA(host_recv_buf, dev_sr_buf,
+                total_recv_size, cudaMemcpyDeviceToHost);
+        }
+        original_recv_buf = *recv_buf;
+        original_recv_displs = *recv_displs;
+        *recv_buf = host_recv_buf;  
+        *recv_displs = host_recv_displs;
+    }
+
+    return mpi_errno;
+}
+
+void cuda_stage_free_v (void **send_buf, int *send_counts, MPI_Datatype send_type,
+                        int **send_displs, int send_peers,
+                        void **recv_buf, int *recv_counts, MPI_Datatype recv_type,
+                        int **recv_displs, int recv_peers,
+                        int send_buf_on_device, int recv_buf_on_device,
+                        int rank)
+{
+    int i, total_recv_size = 0;
+    MPI_Aint recv_type_extent;
+
+    if (recv_buf_on_device && *recv_buf != MPI_IN_PLACE) {
+        MPID_Datatype_get_extent_macro(recv_type, recv_type_extent);
+        for (i = 0; i < recv_peers; i++) {
+            total_recv_size += recv_counts[i] * recv_type_extent;
+        }
+    }
+
+    if (send_buf_on_device && *send_buf != MPI_IN_PLACE) { 
+        MPIU_Assert(original_send_buf != NULL);
+        *send_buf = original_send_buf;
+        *send_displs = original_send_displs;
+        original_send_buf = NULL;
+        original_send_displs = NULL;
+    }
+
+    if (recv_buf_on_device && *recv_buf != MPI_IN_PLACE) {
+        MPIU_Memcpy_CUDA (dev_sr_buf, *recv_buf, total_recv_size, 
+                cudaMemcpyHostToDevice);
+        for (i = 0; i < recv_peers; i++) {
+            if (send_buf_on_device && *send_buf == MPI_IN_PLACE && i == rank) continue;
+            MPIU_Memcpy_CUDA((void *)((char *)original_recv_buf 
+                    + original_recv_displs[i]*recv_type_extent),
+                (void *)((char *)dev_sr_buf 
+                    + (*recv_displs)[i]*recv_type_extent),
+                recv_counts[i]*recv_type_extent,
+                cudaMemcpyDeviceToDevice);
+        }
+        *recv_buf = original_recv_buf;
+        *recv_displs = original_recv_displs;
+        original_recv_buf = NULL;
+        original_recv_displs = NULL;
+    }
+}
+
+/******************************************************************/
+//Freeing the stage buffers during finalize                       //
+/******************************************************************/
+void CUDA_COLL_Finalize () {
+    if (host_recv_buf) {
+        if (host_recvbuf_size >= rdma_cuda_register_naive_buf) {
+            ibv_cuda_unregister(host_recv_buf);
+        }
+        free(host_recv_buf);
+        host_recv_buf = NULL;
+    }
+    if (host_send_buf) {
+        if (host_sendbuf_size >= rdma_cuda_register_naive_buf) {
+            ibv_cuda_unregister(host_send_buf);
+        }
+        free(host_send_buf);
+        host_send_buf = NULL;
+    }
+}
+#endif /* #ifdef _ENABLE_CUDA_ */
 
 #endif /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */ 

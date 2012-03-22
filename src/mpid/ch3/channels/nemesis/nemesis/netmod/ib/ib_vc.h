@@ -26,6 +26,10 @@
 #include "mpid_nem_impl.h"
 #include "ib_cm.h"
 
+typedef enum{MPID_NEM_IB_VC_STATE_DISCONNECTED,
+             MPID_NEM_IB_VC_STATE_CONNECTED,
+             MPID_NEM_IB_VC_STATE_ERROR
+} MPID_nem_ib_vc_state_t;
 
 /**
  *  The vc provides a generic buffer in which network modules can store
@@ -44,12 +48,20 @@ typedef struct
         struct MPID_Request *tail;
     } send_queue;
 
+#ifdef ENABLE_CHECKPOINTING
+    struct
+    {
+        struct MPID_Request *head;
+        struct MPID_Request *tail;
+    } paused_send_queue;
+#endif
+
     struct MPID_Request * send_active;
     struct MPID_Request * recv_active;
     /** Address handler */
     struct ibv_ah *ud_ah;
 
-    volatile MPIDI_CH3I_VC_state_t state;
+    MPID_nem_ib_vc_state_t state;
     MPID_nem_ib_cm_conn_type_t conn_status;
     struct ibv_qp *qp;
     struct MPID_nem_ib_queue_t *ib_send_queue;
@@ -76,6 +88,8 @@ typedef struct
 
     int force_rndv;
 
+    int send_paused;
+
     int pending_r3_data;
     int received_r3_data;
 } MPID_nem_ib_vc_area;
@@ -84,6 +98,7 @@ typedef struct
  *  accessor macro to private fields in VC
  */
 #define VC_FIELD(vc, field) (((MPID_nem_ib_vc_area *)(&((MPIDI_CH3I_VC *)(vc)->channel_private)->netmod_area))->field)
+#define VC_IB(vc) ((MPID_nem_ib_vc_area *)VC_CH((vc))->netmod_area.padding)
 
 #define MPID_NEM_IB_UD_QPN_KEY      "ud_qp_key"
 #define MPID_NEM_IB_LID_KEY         "lid_key"
@@ -92,5 +107,18 @@ typedef struct
 int MPID_nem_ib_vc_init (MPIDI_VC_t *vc);
 int MPID_nem_ib_vc_destroy(MPIDI_VC_t *vc);
 int MPID_nem_ib_vc_terminate (MPIDI_VC_t *vc);
+
+
+#ifdef ENABLE_CHECKPOINTING
+int MPID_nem_ib_ckpt_pause_send_vc(MPIDI_VC_t *vc);
+int MPID_nem_ib_ckpt_continue_vc(MPIDI_VC_t *vc);
+int MPID_nem_ib_ckpt_restart_vc(MPIDI_VC_t *vc);
+int MPID_nem_ib_pkt_unpause_handler(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, MPIDI_msg_sz_t *buflen, MPID_Request **rreqp);
+
+#define MPID_nem_ib_vc_send_paused(vc_ib) (vc_ib->send_paused)
+//int MPID_nem_ib_ckpt_shutdown(void);
+#endif
+
+
 
 #endif /* IB_VC_H */

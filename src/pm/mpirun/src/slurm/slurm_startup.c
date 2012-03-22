@@ -12,14 +12,16 @@
 #include <process.h>
 #include <mpirun_util.h>
 #include <suffixlist.h>
-#include <nodelist_parser.h>
-#include <tasklist_parser.h>
+#include <libnodelist_a-nodelist_parser.h>
+#include <libtasklist_a-tasklist_parser.h>
 #include <db/text.h>
 
 #include <stdlib.h>
 #include <stdio.h>
 
 extern int dpm;
+extern int slurm_init_nodelist (char const * const, size_t, char [][256]);
+extern int slurm_init_tasklist (char const * const , size_t, size_t (*)[]);
 
 static char const * slurm_get_nodelist()
 {
@@ -56,7 +58,7 @@ static int slurm_fill_plist (
         return -1;
     }
 
-    if (slurm_init_tasklist(tasks_per_node, nnodes, ntasks)) {
+    if (slurm_init_tasklist(tasks_per_node, nnodes, (size_t (*)[])ntasks)) {
         return -1;
     }
 
@@ -91,8 +93,6 @@ int slurm_startup (int nprocs)
     char const * const nodelist = slurm_get_nodelist();
     int const nnodes = slurm_get_num_nodes();
     char const * const tasks_per_node = slurm_get_tasks_per_node();
-    int procs_left = nprocs;
-    int i;
 
     if (!(nodelist && nnodes && tasks_per_node)) {
         /*

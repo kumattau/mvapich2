@@ -39,7 +39,11 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
 #if defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
 #endif    
-    int mpi_errno = MPI_SUCCESS;    
+    int mpi_errno = MPI_SUCCESS;   
+#ifdef _ENABLE_CUDA_
+    int cuda_transfer_mode = 0;
+#endif 
+
     MPIDI_STATE_DECL(MPID_STATE_MPID_SEND);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPID_SEND);
@@ -132,7 +136,30 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
 	
 	goto fn_exit;
     }
-    
+
+#ifdef _ENABLE_CUDA_
+    if (rdma_enable_cuda) { 
+        if (is_device_buffer((void *)buf)) {
+            /* buf is in the GPU device memory */
+            cuda_transfer_mode = DEVICE_TO_DEVICE;
+        } else {
+            /* buf is in the main memory */
+            cuda_transfer_mode = NONE;
+        }
+#ifdef HAVE_CUDA_IPC
+        if (rdma_cuda_ipc && 
+            cudaipc_stage_buffered &&
+            vc->smp.can_access_peer == 1 && 
+            dt_contig && 
+            cuda_transfer_mode != NONE &&
+            data_sz >= rdma_cuda_ipc_threshold) { 
+            /*force RNDV for CUDA transfers when buffered CUDA IPC is enabled*/ 
+            goto rndv_send; 
+        }
+#endif
+    } 
+#endif   
+ 
     /* FIXME: flow control: limit number of outstanding eager messsages 
        containing data and need to be buffered by the receiver */
 #ifdef USE_EAGER_SHORT
@@ -172,16 +199,13 @@ eager_send:
             MPIDI_Request_create_sreq(sreq, mpi_errno, goto fn_exit);
 #ifdef _ENABLE_CUDA_
             if(HANDLE_GET_KIND(datatype) != HANDLE_KIND_BUILTIN &&
-                            sreq->dev.datatype_ptr == NULL) {
+                        sreq->dev.datatype_ptr == NULL) {
                 sreq->dev.datatype_ptr = dt_ptr;
                 MPID_Datatype_add_ref(dt_ptr);
             }
-            if (rdma_enable_cuda && is_device_buffer((void *)buf)) {
+            if (rdma_enable_cuda) {
                 /* buf is in the GPU device memory */
-                sreq->mrail.cuda_transfer_mode = DEVICE_TO_DEVICE;
-            } else {
-                /* buf is in the main memory */
-                sreq->mrail.cuda_transfer_mode = NONE;
+                sreq->mrail.cuda_transfer_mode = cuda_transfer_mode;
             }
 #endif
             MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_SEND);
@@ -193,20 +217,19 @@ eager_send:
         }
     }
     else {
+#if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
+rndv_send:
+#endif
 	MPIDI_Request_create_sreq(sreq, mpi_errno, goto fn_exit);
 #ifdef _ENABLE_CUDA_
     sreq->mrail.cts_received = 0;
     if(HANDLE_GET_KIND(datatype) != HANDLE_KIND_BUILTIN &&
-                sreq->dev.datatype_ptr == NULL) {
+                    sreq->dev.datatype_ptr == NULL) {
         sreq->dev.datatype_ptr = dt_ptr;
         MPID_Datatype_add_ref(dt_ptr);
     }
-    if (rdma_enable_cuda && is_device_buffer((void *)buf)) {
-        /* buf is in the GPU device memory */
-        sreq->mrail.cuda_transfer_mode = DEVICE_TO_DEVICE;
-    } else {
-        /* buf is in the main memory */
-        sreq->mrail.cuda_transfer_mode = NONE;
+    if (rdma_enable_cuda) {
+        sreq->mrail.cuda_transfer_mode = cuda_transfer_mode;
     }
 #endif
 	MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_SEND);

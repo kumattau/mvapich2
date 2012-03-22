@@ -127,8 +127,8 @@ typedef struct MPIDI_CH3_PktGeneric { int32_t kind; int32_t *pktptrs[1]; int32_t
 #if defined (_OSU_PSM_)
     int32_t osu_psm_pktbytes[8];
 #endif
-                                                                                              }
-    MPIDI_CH3_PktGeneric_t;
+                                                                                              
+} MPIDI_CH3_PktGeneric_t;
 
 /*
  * THIS IS OBSOLETE AND UNUSED, BUT RETAINED FOR ITS DESCRIPTIONS OF THE

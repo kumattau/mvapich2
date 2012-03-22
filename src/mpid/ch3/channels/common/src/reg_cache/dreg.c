@@ -1363,7 +1363,7 @@ find_buf:
 }
 #endif /* !defined(DISABLE_PTMALLOC) */
 
-#if defined(CKPT)
+#if defined(CKPT) || defined(ENABLE_CHECKPOINTING)
 void dreg_deregister_all()
 {
     int i = 0;

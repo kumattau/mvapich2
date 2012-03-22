@@ -758,14 +758,11 @@ int MPIR_Allreduce_MV2(void *sendbuf,
 
 #ifdef _ENABLE_CUDA_
     cudaError_t  cuerr = cudaSuccess;
-    int type_size = 0;
     int recv_mem_type = 0;
     int send_mem_type = 0;
     char *recv_host_buf = NULL;
     char *send_host_buf = NULL;
     char *temp_recvbuf = recvbuf;
-
-    MPID_Datatype_get_size_macro(datatype, type_size);
 
     if (rdma_enable_cuda) {
        recv_mem_type = is_device_buffer(recvbuf);

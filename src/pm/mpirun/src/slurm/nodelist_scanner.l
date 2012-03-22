@@ -12,7 +12,7 @@
  */
 
 #include <suffixlist.h>
-#include <nodelist_parser.h>
+#include <libnodelist_a-nodelist_parser.h>
 #include <string.h>
 %}
 

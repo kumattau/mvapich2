@@ -13,6 +13,10 @@ SUBDIRS_other_subdirs = hwloc gen2 udapl
 SUBDIRS = rdma @other_subdirs@
 NOTSIMPLEMAKE_SUBDIRS = hwloc
 
-all-postamble:
-	test "x@use_internal_hwloc@" = "xno" ||\
-            { ar crv @master_top_builddir@/lib/lib${MPILIBNAME}.a hwloc/src/*.o && ar crv @master_top_builddir@/lib/lib${MPILIBNAME}.la hwloc/src/.libs/*.o; }
+all-postamble: @hwloc_targets@
+
+hwloc_static:
+	ar crv @master_top_builddir@/lib/lib${MPILIBNAME}.a hwloc/src/*.o
+
+hwloc_shared:
+	ar crv @master_top_builddir@/lib/lib${MPILIBNAME}.la hwloc/src/.libs/*.o
