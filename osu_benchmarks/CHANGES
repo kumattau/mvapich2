@@ -1,3 +1,22 @@
+OSU Micro Benchmarks v3.6 (4/30/12)
+* New Features & Enhancements
+    - New collective benchmarks
+        * osu_allgather
+        * osu_allgatherv
+        * osu_allreduce
+        * osu_alltoall
+        * osu_alltoallv
+        * osu_barrier
+        * osu_bcast
+        * osu_gather
+        * osu_gatherv
+        * osu_reduce
+        * osu_reduce_scatter
+        * osu_scatter
+        * osu_scatterv
+* Bug Fixes
+    - Fix GPU binding issue when running with HH mode
+
 OSU Micro Benchmarks v3.5.2 (3/22/12)
 * Bug Fixes
     - Fix typo which led to use of incorrect buffers

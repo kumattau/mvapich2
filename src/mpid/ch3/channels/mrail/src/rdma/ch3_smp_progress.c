@@ -691,6 +691,7 @@ int MPIDI_CH3I_SMP_read_progress (MPIDI_PG_t* pg)
             if (pkt_head)
             {
 #if defined(_SMP_LIMIC_)
+                use_limic = 0;
                 mpi_errno = MPIDI_CH3I_SMP_Process_header(vc, pkt_head, &index, &l_header, &use_limic);
 #else
                 mpi_errno = MPIDI_CH3I_SMP_Process_header(vc, pkt_head, &index);

@@ -25,8 +25,8 @@ MPILIBNAME="@MPILIBNAME@"
 PMPILIBNAME="@PMPILIBNAME@"
 NEEDSPLIB="@NEEDSPLIB@"
 #
-# MPICH2_VERSION is the version of the MPICH2 library that mpif77 is intended for
-MPICH2_VERSION="@MPICH2_VERSION@"
+# MVAPICH2_VERSION is the version of the MVAPICH2 library that mpif77 is intended for
+MVAPICH2_VERSION="@MVAPICH2_VERSION@"
 #
 # ----------------------------------------------------------------------------
 # We also keep track of properties of the compilation system.  These

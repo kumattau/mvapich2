@@ -1339,7 +1339,7 @@ int MPIR_Scatter_MV2(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
    }
 
    if (rdma_enable_cuda && (send_mem_type || recv_mem_type) &&
-       rdma_cuda_use_naive && (nbytes <= rdma_cuda_scatter_naive_limit/comm_size)) {
+       rdma_cuda_use_naive && (nbytes <= rdma_cuda_scatter_naive_limit*comm_size)) {
        if (sendbuf != MPI_IN_PLACE) {
             if (rank == root) {
                 mpi_errno = cuda_stage_alloc (&sendbuf, sendcnt*sendtype_extent*comm_size,
@@ -1377,7 +1377,7 @@ int MPIR_Scatter_MV2(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
 
 #ifdef _ENABLE_CUDA_ 
     if (rdma_enable_cuda && (send_mem_type || recv_mem_type) &&
-        rdma_cuda_use_naive && (nbytes <= rdma_cuda_scatter_naive_limit/comm_size)){
+        rdma_cuda_use_naive && (nbytes <= rdma_cuda_scatter_naive_limit*comm_size)){
         if (rank == root) {
             cuda_stage_free (&sendbuf, 
                         &recvbuf, 0,

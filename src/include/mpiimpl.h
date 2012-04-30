@@ -3359,6 +3359,11 @@ int cuda_stage_alloc_v (void **, int *, MPI_Datatype, int **, int,
 void cuda_stage_free_v (void **, int *, MPI_Datatype, int **, int,
             void **, int *, MPI_Datatype, int **, int,
             int , int, int);
+int MPIR_Alltoall_CUDA_intra_MV2(void *, int, MPI_Datatype, void *, 
+            int, MPI_Datatype, MPID_Comm *, int *);
+int MPIR_Alltoall_CUDA_cleanup();
+int MPIR_Allgather_cuda_intra_MV2 (void *, int, MPI_Datatype, void *,
+            int, MPI_Datatype, MPID_Comm*, int *);
 #endif
 int MPIC_Irecv(void *buf, int count, MPI_Datatype datatype, int
                source, int tag, MPI_Comm comm, MPI_Request *request);

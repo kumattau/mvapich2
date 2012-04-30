@@ -16,11 +16,9 @@
 #include <assert.h>
 #include <getopt.h>
 
-int skip = 100;
-int loop = 1000;
-int skip_large = 10;
-int loop_large = 100;
-int large_message_size = 8192;
+#define SKIP_LARGE  10
+#define LOOP_LARGE  100
+#define LARGE_MESSAGE_SIZE  8192
 
 #define MAX_ALIGNMENT 65536
 #define MAX_SIZE (1<<22)
@@ -45,11 +43,13 @@ int main (int argc, char *argv[])
     int         rank, nprocs, i;
     int         count, page_size;
     int         *s_buf=NULL, *r_buf=NULL;
-	int         *A = NULL, *B = NULL;
+    int         *A = NULL, *B = NULL;
     int         size, no_hints = 0;
     MPI_Win     win;
     MPI_Info    win_info;
     double      t_start = 0.0, t_end = 0.0;
+    int skip = 100;
+    int loop = 1000;
 
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
@@ -137,9 +137,9 @@ int main (int argc, char *argv[])
     for (count = 0; count <= MAX_SIZE/sizeof(int); count = (count ? count*2 : count+1)) {
         size = count * sizeof(int);
 
-        if (size > large_message_size) {
-            loop = loop_large;
-            skip = skip_large;
+        if (size > LARGE_MESSAGE_SIZE) {
+            loop = LOOP_LARGE;
+            skip = SKIP_LARGE;
         }
 
         MPI_Win_create(r_buf, size, 1, MPI_INFO_NULL, MPI_COMM_WORLD, &win);

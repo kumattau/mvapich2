@@ -9,61 +9,29 @@
  * copyright file COPYRIGHT in the top level OMB directory.
  */
 
-#include <mpi.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <stdio.h>
-#include <math.h>
-
-#define MAX_MSG_SIZE (1<<14)
-#define SKIP 500
-#define ITERATIONS 1000
-#define SKIP_LARGE 10
-#define ITERATIONS_LARGE 100
-#define SKIP_TEST 500
-#define ITERATIONS_TEST 1000
-#define SKIP_LARGE_TEST 10
-#define ITERATIONS_LARGE_TEST 50
-int large_message_size = 8192;
-
-#define ROOT 0
-
-void get_ack_time(int,int);
-int get_far_proc(int,int,int);
-
-char x[MAX_MSG_SIZE];
-char y[4] = {0,0,0,0};
-double ack_time = 0.0;
-int numprocs;
-double t[ITERATIONS_TEST+1];
-
-#ifdef PACKAGE_VERSION
-#   define HEADER "# " BENCHMARK " v" PACKAGE_VERSION "\n"
-#else
-#   define HEADER "# " BENCHMARK "\n"
-#endif
-
-#ifndef FIELD_WIDTH
-#   define FIELD_WIDTH 20
-#endif
-
-#ifndef FLOAT_PRECISION
-#   define FLOAT_PRECISION 2
-#endif
+#include <osu_coll.h>
 
 int main(int argc, char *argv[])
 {
-    int i = 0, rank, size, mpi_errno = MPI_SUCCESS;
-    int far_proc = 0, skip, iterations;
-    double latency = 0, total = 0, tmp1 = 0, tmp2 = 0;
-    MPI_Status status;
+    int i = 0, rank, size;
+    int skip, numprocs;
+    double avg_time = 0.0, max_time = 0.0, min_time = 0.0;
+    double latency = 0.0, t_start = 0.0, t_stop = 0.0;
+    double timer=0.0;
+    char *buffer=NULL;
+    int max_msg_size = 1048576, full = 0;
 
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
 
+    if (process_args(argc, argv, rank, &max_msg_size, &full)) {
+        MPI_Finalize();
+        return EXIT_SUCCESS;
+    }
+    
     if(numprocs < 2) {
-        if(rank == ROOT) {
+        if(rank == 0) {
             fprintf(stderr, "This test requires at least two processes\n");
         }
 
@@ -72,188 +40,57 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    if(rank == ROOT) {
-        fprintf(stdout, HEADER);
-        fprintf(stdout, "%-*s%*s\n", 10, "# Size", FIELD_WIDTH, "Latency (us)");
-        fflush(stdout);
+    print_header(rank, full);
+
+    buffer = malloc(max_msg_size * sizeof(char));
+    if(NULL == buffer) {
+        fprintf(stderr, "malloc failed.\n");
+        exit(1);
     }
+    
+    memset(buffer,1, max_msg_size);
 
-    for(i = 0; i < MAX_MSG_SIZE; i++) {
-        x[i] = 'a';
-    }
-
-    for(size=1; size <= MAX_MSG_SIZE; size *= 2) {
-        MPI_Barrier(MPI_COMM_WORLD);
-
-        far_proc = get_far_proc(numprocs, rank, size);
-        get_ack_time(far_proc, rank);
-
-        if(size > large_message_size) {
+    for(size=1; size <=max_msg_size; size *= 2) {
+        if(size > LARGE_MESSAGE_SIZE) {
             skip = SKIP_LARGE;
-            iterations = ITERATIONS_LARGE;
+            iterations = iterations_large;
         }
-
         else {
             skip = SKIP;
-            iterations = ITERATIONS;
         }
 
-        MPI_Barrier(MPI_COMM_WORLD);
-
+        timer=0.0;        
         for(i=0; i < iterations + skip ; i++) {
-            if(i == skip && rank == ROOT) {
-                tmp1 = MPI_Wtime();
-            }
+            t_start = MPI_Wtime();
+            MPI_Bcast(buffer, size, MPI_CHAR, 0, MPI_COMM_WORLD);
+            t_stop = MPI_Wtime();
 
-            MPI_Bcast(&x, size, MPI_CHAR, 0, MPI_COMM_WORLD);         
+            if(i>=skip){
+                timer+=t_stop-t_start;
+            } 
+            MPI_Barrier(MPI_COMM_WORLD);
 
-            if(rank == ROOT) {
-                mpi_errno = MPI_Recv(&y, 0, MPI_CHAR, far_proc, 1,
-                        MPI_COMM_WORLD, &status);
-
-                if(mpi_errno != MPI_SUCCESS) {
-                    fprintf(stderr, "Receive failed\n");
-                }
-            }
-
-            if(rank == far_proc) {
-                mpi_errno = MPI_Send(&y, 0, MPI_CHAR, ROOT, 1, MPI_COMM_WORLD);
-
-                if(mpi_errno != MPI_SUCCESS) {
-                    fprintf(stderr, "Send failed\n");
-                }
-            }
         }
-
-        if(rank == ROOT) {
-            tmp2 = MPI_Wtime();
-            total = tmp2 - tmp1;
-            latency = (double)total*1e6/iterations;
-
-            fprintf(stdout, "%-*d%*.*f\n", 10, size, FIELD_WIDTH,
-                    FLOAT_PRECISION, latency - ack_time);
-            fflush(stdout);
-        }
-
+            
         MPI_Barrier(MPI_COMM_WORLD);
+
+        latency = (timer * 1e6) / iterations;
+
+        MPI_Reduce(&latency, &min_time, 1, MPI_DOUBLE, MPI_MIN, 0,
+                MPI_COMM_WORLD);
+        MPI_Reduce(&latency, &max_time, 1, MPI_DOUBLE, MPI_MAX, 0, 
+                MPI_COMM_WORLD);
+        MPI_Reduce(&latency, &avg_time, 1, MPI_DOUBLE, MPI_SUM, 0,
+                MPI_COMM_WORLD);
+        avg_time = avg_time/numprocs;
+
+        print_data(rank, full, size, avg_time, min_time, max_time, iterations);
     }
 
+    free(buffer);  
     MPI_Finalize();
-
+   
     return EXIT_SUCCESS;
-}
-
-void get_ack_time(int far_proc, int myid) {
-    int i;
-    double t_start = 0.0, t_end = 0.0;
-    MPI_Status reqstat;
-
-    if(myid == ROOT) {
-        for(i = 0; i < ITERATIONS + SKIP; i++) {
-            if(i == SKIP) {
-                t_start = MPI_Wtime();
-            }
-
-            MPI_Send(x, 0, MPI_CHAR, far_proc, 1, MPI_COMM_WORLD);
-            MPI_Recv(y, 0, MPI_CHAR, far_proc, 1, MPI_COMM_WORLD, &reqstat);
-        }
-
-        t_end = MPI_Wtime();
-        ack_time = (t_end - t_start) * 1e6 / (2.0 * ITERATIONS);
-    }
-
-    else if(myid == far_proc) {
-        for(i = 0; i < ITERATIONS + SKIP; i++) {
-            MPI_Recv(y, 0, MPI_CHAR, 0, 1, MPI_COMM_WORLD, &reqstat);
-            MPI_Send(x, 0, MPI_CHAR, 0, 1, MPI_COMM_WORLD);
-        }
-    }
-}
-
-int get_far_proc(int numprocs, int rank, int size)
-{
-    int i = 0, j = 0, iter = 0, mpi_errno = 0;
-    int far_proc = 0, skip, iterations, k;
-    double max_latency = 0, mean, std_dev, temp;
-    MPI_Status status;
-
-    if(size < large_message_size) {
-        skip = SKIP_TEST;
-        iterations = ITERATIONS_TEST;
-    }
-
-    else {
-        skip = SKIP_LARGE_TEST;
-        iterations = ITERATIONS_LARGE_TEST;
-    }
-
-    MPI_Barrier(MPI_COMM_WORLD);
-
-    for(i = 1; i < numprocs; i++) {
-        for(iter = 0; iter < skip + iterations; iter++) {
-
-            if(iter >= skip && rank == ROOT) {
-                t[iter-skip] = MPI_Wtime()*1e6;
-            }
-
-            MPI_Bcast(&x, size, MPI_CHAR, 0, MPI_COMM_WORLD);         
-
-            if(rank == ROOT) {
-                mpi_errno = MPI_Recv(&y, 0, MPI_CHAR, i, 1, MPI_COMM_WORLD,
-                        &status);
-
-                if(mpi_errno != MPI_SUCCESS) {
-                   fprintf(stderr, "Receive failed\n");
-                }
-            }
-
-            if(rank == i) {
-                mpi_errno = MPI_Send(&y, 0, MPI_CHAR, ROOT, 1, MPI_COMM_WORLD);
-
-                if (mpi_errno != MPI_SUCCESS) {
-                    fprintf(stderr, "Send failed\n");
-                }
-            }
-        }
-
-        if(rank == ROOT) {
-            t[iter-skip] = MPI_Wtime()*1e6;
-
-            for(j = 1, mean = 0; j <= iterations; j++) {
-                mean += (t[j]-t[j-1]);
-            }
-
-            mean /= iterations;
-
-            for(j = 1, std_dev = 0; j <= iterations; j++) {
-                std_dev += (t[j] - t[j-1] - mean) * (t[j] - t[j-1] - mean);
-            }
-
-            std_dev /= iterations;
-            std_dev = sqrt(std_dev);
-
-            for(j = 1, k = temp = 0; j <= iterations; j++) {
-                if((t[j]-t[j-1]>mean-1.5*std_dev) && 
-                   (t[j]-t[j-1]<mean+1.5*std_dev)) {
-                    temp+=t[j]-t[j-1];
-                    k++;
-                }
-            }
-
-            if(k != 0) {
-                mean = (double)temp / k;
-            }
-
-            if(mean > max_latency) {
-                far_proc = i;
-                max_latency = mean;
-            }
-        }
-    }
-
-    MPI_Bcast(&far_proc, 1, MPI_INT, 0, MPI_COMM_WORLD);      
-
-    return far_proc;
 }
 
 /* vi: set sw=4 sts=4 tw=80: */

@@ -48,41 +48,32 @@ int MPIDI_nem_ib_flush()
     pg_rank = MPIDI_Process.my_pg_rank;
     pg_size = MPIDI_PG_Get_size(pg);
 
-    for (i = 0; i < pg_size; i++)
-    {
-        if (i == pg_rank)
-        {
-        continue;
+    for (i = 0; i < pg_size; i++) {
+        if (i == pg_rank) {
+            continue;
         }
 
         MPIDI_PG_Get_vc(pg, i, &vc);
-        vc_ch = (MPIDI_CH3I_VC *)vc->channel_private;
+        vc_ch = (MPIDI_CH3I_VC *) vc->channel_private;
 
         /* Skip SMP VCs */
-        if (vc_ch->is_local)
-        {
+        if (vc_ch->is_local) {
             continue;
         }
 
-        if (VC_FIELD(vc, state) != MPIDI_CH3I_VC_STATE_CONNECTED)
-        {
+        if (VC_FIELD(vc, state) != MPIDI_CH3I_VC_STATE_CONNECTED) {
             continue;
         }
 
-        for (rail = 0; rail < rdma_num_rails; rail++)
-        {
-            while (0 != VC_FIELD(vc, connection)->srp.credits[rail].backlog.len)
-            {
-                if ((mpi_errno = MPID_Progress_test()) != MPI_SUCCESS)
-                {
+        for (rail = 0; rail < rdma_num_rails; rail++) {
+            while (0 != VC_FIELD(vc, connection)->srp.credits[rail].backlog.len) {
+                if ((mpi_errno = MPID_Progress_test()) != MPI_SUCCESS) {
                     MPIU_ERR_POP(mpi_errno);
                 }
             }
 
-            while (NULL != VC_FIELD(vc, connection)->rails[rail].ext_sendq_head)
-            {
-                if ((mpi_errno = MPID_Progress_test()) != MPI_SUCCESS)
-                {
+            while (NULL != VC_FIELD(vc, connection)->rails[rail].ext_sendq_head) {
+                if ((mpi_errno = MPID_Progress_test()) != MPI_SUCCESS) {
                     MPIU_ERR_POP(mpi_errno);
                 }
             }
@@ -91,9 +82,9 @@ int MPIDI_nem_ib_flush()
 
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_NEM_IB_FLUSH);
 
-fn_exit:
+  fn_exit:
     return mpi_errno;
-fn_fail:
+  fn_fail:
     goto fn_exit;
 
 }
@@ -102,46 +93,41 @@ fn_fail:
 #define FUNCNAME MPIDI_NEM_IB_FREE_VC
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_nem_ib_free_vc (MPIDI_VC_t *vc)
+int MPIDI_nem_ib_free_vc(MPIDI_VC_t * vc)
 {
     int mpi_errno = MPI_SUCCESS;
     int rail;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_NEM_IB_FREE_VC);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_NEM_IB_FREE_VC);
 
-    for (rail = 0; rail < rdma_num_rails; rail++)
-    {
-        while (0 != VC_FIELD(vc, connection)->srp.credits[rail].backlog.len)
-        {
-            if ((mpi_errno = MPID_Progress_test()) != MPI_SUCCESS)
-            {
+    for (rail = 0; rail < rdma_num_rails; rail++) {
+        while (0 != VC_FIELD(vc, connection)->srp.credits[rail].backlog.len) {
+            if ((mpi_errno = MPID_Progress_test()) != MPI_SUCCESS) {
                 MPIU_ERR_POP(mpi_errno);
             }
         }
 
-        while (NULL != VC_FIELD(vc, connection)->rails[rail].ext_sendq_head)
-        {
-            if ((mpi_errno = MPID_Progress_test()) != MPI_SUCCESS)
-            {
+        while (NULL != VC_FIELD(vc, connection)->rails[rail].ext_sendq_head) {
+            if ((mpi_errno = MPID_Progress_test()) != MPI_SUCCESS) {
                 MPIU_ERR_POP(mpi_errno);
             }
         }
 
-        while((rdma_default_max_send_wqe) != VC_FIELD(vc, connection)->rails[rail].send_wqes_avail) {
-            if ((mpi_errno = MPID_Progress_test()) != MPI_SUCCESS)
-            {
+        while ((rdma_default_max_send_wqe) !=
+               VC_FIELD(vc, connection)->rails[rail].send_wqes_avail) {
+            if ((mpi_errno = MPID_Progress_test()) != MPI_SUCCESS) {
                 MPIU_ERR_POP(mpi_errno);
             }
-        } 
+        }
 
     }
 
 
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_NEM_IB_FREE_VC);
 
-fn_exit:
+  fn_exit:
     return mpi_errno;
-fn_fail:
+  fn_fail:
     goto fn_exit;
 
 }
@@ -150,7 +136,7 @@ fn_fail:
 #define FUNCNAME MPID_nem_ib_finalize
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPID_nem_ib_finalize (void)
+int MPID_nem_ib_finalize(void)
 {
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_NEM_IB_FINALIZE);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_NEM_IB_FINALIZE);
@@ -163,6 +149,8 @@ int MPID_nem_ib_finalize (void)
     int i;
     int rail_index;
     int hca_index;
+    int run_through_stb = 0;
+    char *value = NULL;
 
     MPIDI_PG_t *pg;
     MPIDI_VC_t *vc;
@@ -186,29 +174,43 @@ int MPID_nem_ib_finalize (void)
     mvapich2_mfin();
 #endif
 
+    if ((value = getenv("MV2_RUN_THROUGH_STABILIZATION")) != NULL) {
+        run_through_stb = atoi(value);
+    }
+
+    if (!run_through_stb) {
+        /* PMI barrier is to make sure that remote peer complete the conn close
+         ** protocol in MPIDI_CH3U_VC_WaitForClose. In hydra it is removed to
+         ** support run-through stabilization. */
+        PMI_Barrier();
+    }
+
     for (i = 0; i < pg_size; i++) {
         if (i == pg_rank) {
             continue;
         }
 
         MPIDI_PG_Get_vc(pg, i, &vc);
-        vc_ch = (MPIDI_CH3I_VC *)vc->channel_private;
+        vc_ch = (MPIDI_CH3I_VC *) vc->channel_private;
 
-        if (vc_ch->is_local)
-        {
+        if (vc_ch->is_local) {
             continue;
         }
 
         for (hca_index = 0; hca_index < ib_hca_num_hcas; hca_index++) {
             if (VC_FIELD(vc, connection)->rfp.RDMA_send_buf_mr[hca_index]) {
-                err = ibv_dereg_mr(VC_FIELD(vc, connection)->rfp.RDMA_send_buf_mr[hca_index]);
+                err =
+                    ibv_dereg_mr(VC_FIELD(vc, connection)->
+                                 rfp.RDMA_send_buf_mr[hca_index]);
                 if (err)
-                MPIU_Error_printf("Failed to deregister mr (%d)\n", err);
+                    MPIU_Error_printf("Failed to deregister mr (%d)\n", err);
             }
             if (VC_FIELD(vc, connection)->rfp.RDMA_recv_buf_mr[hca_index]) {
-                err = ibv_dereg_mr(VC_FIELD(vc, connection)->rfp.RDMA_recv_buf_mr[hca_index]);
+                err =
+                    ibv_dereg_mr(VC_FIELD(vc, connection)->
+                                 rfp.RDMA_recv_buf_mr[hca_index]);
                 if (err)
-                MPIU_Error_printf("Failed to deregister mr (%d)\n", err);
+                    MPIU_Error_printf("Failed to deregister mr (%d)\n", err);
             }
         }
 
@@ -221,12 +223,12 @@ int MPID_nem_ib_finalize (void)
         if (VC_FIELD(vc, connection)->rfp.RDMA_recv_buf)
             MPIU_Free(VC_FIELD(vc, connection)->rfp.RDMA_recv_buf);
 
-#ifndef MV2_DISABLE_HEADER_CACHING 
-        if( NULL != VC_FIELD(vc, connection)) {
-        MPIU_Free(VC_FIELD(vc, connection)->rfp.cached_incoming);
-        MPIU_Free(VC_FIELD(vc, connection)->rfp.cached_outgoing);
-        MPIU_Free(VC_FIELD(vc, connection)->rfp.cached_incoming_iheader);
-        MPIU_Free(VC_FIELD(vc, connection)->rfp.cached_outgoing_iheader);
+#ifndef MV2_DISABLE_HEADER_CACHING
+        if (NULL != VC_FIELD(vc, connection)) {
+            MPIU_Free(VC_FIELD(vc, connection)->rfp.cached_incoming);
+            MPIU_Free(VC_FIELD(vc, connection)->rfp.cached_outgoing);
+            MPIU_Free(VC_FIELD(vc, connection)->rfp.cached_incoming_iheader);
+            MPIU_Free(VC_FIELD(vc, connection)->rfp.cached_outgoing_iheader);
         }
 #endif
 
@@ -241,9 +243,11 @@ int MPID_nem_ib_finalize (void)
 
 
         for (rail_index = 0; rail_index < rdma_num_rails; rail_index++) {
-            err = ibv_destroy_qp(conn_info.connections[i].rails[rail_index].qp_hndl);
+            err =
+                ibv_destroy_qp(conn_info.connections[i].
+                               rails[rail_index].qp_hndl);
             if (err)
-            MPIU_Error_printf("Failed to destroy QP (%d)\n", err);
+                MPIU_Error_printf("Failed to destroy QP (%d)\n", err);
         }
 
         MPIU_Free(conn_info.connections[i].rails);
@@ -252,9 +256,9 @@ int MPID_nem_ib_finalize (void)
     }
 
 
-    /* STEP 3: release all the cq resource, 
-     * release all the unpinned buffers, 
-     * release the ptag and finally, 
+    /* STEP 3: release all the cq resource,
+     * release all the unpinned buffers,
+     * release the ptag and finally,
      * release the hca */
 
     for (i = 0; i < ib_hca_num_hcas; i++) {
@@ -282,21 +286,24 @@ int MPID_nem_ib_finalize (void)
         if (hca_list[i].send_cq_hndl) {
             err = ibv_destroy_cq(hca_list[i].send_cq_hndl);
             if (err) {
-                MPIU_Error_printf("[%d] Failed to destroy send CQ (%d)\n", pg_rank, err);
+                MPIU_Error_printf("[%d] Failed to destroy send CQ (%d)\n",
+                                  pg_rank, err);
             }
         }
 
         if (hca_list[i].recv_cq_hndl) {
             err = ibv_destroy_cq(hca_list[i].recv_cq_hndl);
             if (err) {
-                MPIU_Error_printf("[%d] Failed to destroy recv CQ (%d)\n", pg_rank, err);
+                MPIU_Error_printf("[%d] Failed to destroy recv CQ (%d)\n",
+                                  pg_rank, err);
             }
         }
 
-        if(rdma_use_blocking) {
+        if (rdma_use_blocking) {
             err = ibv_destroy_comp_channel(hca_list[i].comp_channel);
-            if(err)
-            MPIU_Error_printf("[%d] Failed to destroy CQ channel (%d)\n", pg_rank, err);
+            if (err)
+                MPIU_Error_printf("[%d] Failed to destroy CQ channel (%d)\n",
+                                  pg_rank, err);
         }
 
         deallocate_vbufs(i);
@@ -305,30 +312,30 @@ int MPID_nem_ib_finalize (void)
 
         err = ibv_dealloc_pd(hca_list[i].ptag);
 
-        if (err)  {
+        if (err) {
             MPIU_Error_printf("[%d] Failed to dealloc pd (%s)\n",
-                pg_rank, strerror(errno));
+                              pg_rank, strerror(errno));
         }
 
         err = ibv_close_device(hca_list[i].nic_context);
 
         if (err) {
             MPIU_Error_printf("[%d] Failed to close ib device (%s)\n",
-                pg_rank, strerror(errno));
+                              pg_rank, strerror(errno));
         }
 
     }
 
-    if(process_info.polling_set != NULL) {
-      MPIU_Free(process_info.polling_set);
+    if (process_info.polling_set != NULL) {
+        MPIU_Free(process_info.polling_set);
     }
 
-    if(cmanagers != NULL) {
+    if (cmanagers != NULL) {
         MPIU_Free(cmanagers);
     }
 
 
-    if(conn_info.connections != NULL) {
+    if (conn_info.connections != NULL) {
         MPIU_Free(conn_info.connections);
     }
 

@@ -20,15 +20,15 @@
 #define MAX_STEPS    (22+1)
 #define MAXBUFSIZE (MAX_MSG_SIZE + MAX_ALIGNMENT)
 #define LARGE_MSG_SIZE (8192)
+#define LOOP_SMALL  10000
+#define SKIP_SMALL  100
+#define LOOP_LARGE  1000
+#define SKIP_LARGE  10
 
 char s_buf1[MAXBUFSIZE];
 char r_buf1[MAXBUFSIZE];
 char *s_buf, *r_buf;
 
-int loop_small = 10000;
-int skip_small = 100;
-int loop_large = 1000;
-int skip_large = 10;
 
 static void multi_latency(int rank, int pairs);
 
@@ -102,11 +102,11 @@ static void multi_latency(int rank, int pairs)
         MPI_Barrier(MPI_COMM_WORLD);
 
         if(size > LARGE_MSG_SIZE) {
-            loop = loop_large;
-            skip = skip_large;
+            loop = LOOP_LARGE;
+            skip = SKIP_LARGE;
         } else {
-            loop = loop_small;
-            skip = skip_small;
+            loop = LOOP_SMALL;
+            skip = SKIP_SMALL;
         }
 
         if (rank < pairs) {

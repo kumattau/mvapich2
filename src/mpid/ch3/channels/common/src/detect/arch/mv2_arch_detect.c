@@ -446,3 +446,30 @@ int mv2_get_num_cpus()
     return g_mv2_num_cpus;
 }
 
+/* Check arch-hca type */
+int mv2_is_arch_hca_type(mv2_arch_hca_type arch_hca_type, 
+        mv2_arch_type arch_type, mv2_hca_type hca_type)
+{
+    int ret;
+    if (MV2_ARCH_ANY == arch_type && MV2_HCA_ANY == hca_type){
+        ret = 1;
+
+    } else if (MV2_ARCH_ANY == arch_type){
+        mv2_arch_hca_type tmp = UINT32_MAX;
+        mv2_arch_hca_type input = arch_hca_type & tmp;
+        ret = (input==hca_type) ? 1: 0;
+
+    } else if (MV2_HCA_ANY == hca_type){
+        mv2_arch_hca_type tmp = UINT32_MAX;
+        tmp = tmp << 32;
+        mv2_arch_hca_type input = arch_hca_type & tmp;
+        ret = (input==arch_type) ? 1: 0;
+
+    } else{
+        uint64_t value = arch_type;
+        value = value << 32 | hca_type;
+        ret = (value==arch_hca_type) ? 1:0;
+    }
+    return ret;
+}
+

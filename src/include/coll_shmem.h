@@ -261,6 +261,10 @@ int cuda_stage_alloc(void **, int, void **, int,
 void cuda_stage_free (void **, void **, int, int, 
                         int);
 void CUDA_COLL_Finalize ();                        
+void cuda_coll_pack (void **, int *, MPI_Datatype *,
+                     void **, int *, MPI_Datatype *,
+                     int, int, int);
+void cuda_coll_unpack (int *, int);
 #endif /*_ENABLE_CUDA_*/
 
 #endif  /* _COLL_SHMEM_ */

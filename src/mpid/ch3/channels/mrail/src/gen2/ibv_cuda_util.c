@@ -17,6 +17,7 @@
 
 #if defined(_ENABLE_CUDA_)
 #define CUDA_DEBUG 0
+static int cudaipc_init = 0;
 
 void MPIU_IOV_pack_cuda(void *buf, MPID_IOV *iov, int n_iov, int position) 
 {
@@ -411,18 +412,19 @@ void cuda_init(MPIDI_PG_t * pg)
     
     cudaipc_num_local_procs =  MPIDI_Num_local_processes(pg);
     cudaipc_my_local_id = MPIDI_Get_local_process_id(pg);
+        
+    mpi_errno = MPIR_Allreduce_impl(&has_cudaipc_peer, &cudaipc_init, 1, 
+                            MPI_INT, MPI_SUM, comm_world, &errflag);
+    if(mpi_errno) {
+        ibv_error_abort (GEN_EXIT_ERR, "MPIR_Allgather_impl returned error");
+    }
 
     if (rdma_cuda_ipc && cudaipc_stage_buffered) {
-        if (has_cudaipc_peer) {
+        if (cudaipc_init) {
             cudaipc_initialize(pg, num_processes, my_rank);
-        } else {
-            /* remove this barrier when shared mem barrier implemented
-                in cudaipc_initialize */
-            int errflag;
-            MPIR_Barrier_impl(MPIR_Process.comm_world, &errflag);
         }
     }
-     
+
     if (rdma_cuda_ipc && !cudaipc_stage_buffered 
             && rdma_cuda_enable_ipc_cache && has_cudaipc_peer) {
         cudaipc_initialize_cache();
@@ -442,7 +444,7 @@ void cuda_cleanup()
     deallocate_cuda_streams();
 
 #if defined(HAVE_CUDA_IPC)
-    if (rdma_cuda_ipc && cudaipc_stage_buffered) {
+    if (rdma_cuda_ipc && cudaipc_stage_buffered && cudaipc_init) {
         cudaipc_finalize();
     }
     if (rdma_cuda_ipc && rdma_cuda_enable_ipc_cache && !cudaipc_stage_buffered) {

@@ -173,6 +173,16 @@ int *original_send_displs = NULL;
 int *original_recv_displs = NULL;
 void *original_send_buf = NULL;
 void *original_recv_buf = NULL;
+void *allgather_store_buf = NULL;
+int allgather_store_buf_size = 256*1024;
+cudaEvent_t *sync_event = NULL;
+void *cuda_coll_pack_buf = 0;
+int cuda_coll_pack_buf_size = 0;
+void *cuda_coll_unpack_buf = 0;
+int cuda_coll_unpack_buf_size = 0;
+void *orig_recvbuf = NULL;
+int orig_recvcount = 0;
+MPI_Datatype orig_recvtype;
 #endif
 
 void MV2_collectives_arch_init(){
@@ -1133,8 +1143,12 @@ void MV2_Read_env_vars(void){
         if (flag > 0) mv2_red_scat_long_msg  = flag;
     }
 
-    /* Override MPICH2 default env values */
+    /* Override MPICH2 default env values for Gatherv*/
     MPIR_PARAM_GATHERV_INTER_SSEND_MIN_PROCS = 1024;
+    if ((value = getenv("MV2_GATHERV_SSEND_MIN_PROCS")) != NULL) {
+        flag = (int)atoi(value);
+        if(flag > 0) MPIR_PARAM_GATHERV_INTER_SSEND_MIN_PROCS = flag;
+    } 
 
     init_thread_reg();
 }
@@ -1256,14 +1270,13 @@ int cuda_stage_alloc_v (void **send_buf, int *send_counts, MPI_Datatype send_typ
     int i, page_size, result;
     int total_send_size = 0, total_recv_size = 0, total_buf_size = 0, offset = 0;
     int recv_type_contig = 0;
-    MPI_Aint send_type_extent, recv_type_extent, recv_type_size;
+    MPI_Aint send_type_extent, recv_type_extent;
     MPID_Datatype *dtp;
     cudaError_t cuda_err = cudaSuccess;
     
     page_size = getpagesize();
     MPID_Datatype_get_extent_macro(send_type, send_type_extent);
     MPID_Datatype_get_extent_macro(recv_type, recv_type_extent);
-    MPID_Datatype_get_size_macro(recv_type, recv_type_size);
 
     if (HANDLE_GET_KIND(recv_type) == HANDLE_KIND_BUILTIN)
         recv_type_contig = 1;
@@ -1433,7 +1446,7 @@ void cuda_stage_free_v (void **send_buf, int *send_counts, MPI_Datatype send_typ
                         int rank)
 {
     int i, total_recv_size = 0;
-    MPI_Aint recv_type_extent;
+    MPI_Aint recv_type_extent = 0;
 
     if (recv_buf_on_device && *recv_buf != MPI_IN_PLACE) {
         MPID_Datatype_get_extent_macro(recv_type, recv_type_extent);
@@ -1487,6 +1500,117 @@ void CUDA_COLL_Finalize () {
         free(host_send_buf);
         host_send_buf = NULL;
     }
+
+    if (allgather_store_buf) {
+        ibv_cuda_unregister(allgather_store_buf);
+        free(allgather_store_buf);
+        allgather_store_buf = NULL;
+    }
+
+    if (sync_event) {
+        cudaEventDestroy(*sync_event);
+        MPIU_Free(sync_event);
+    }
+
+    if (cuda_coll_pack_buf_size) {
+        MPIU_Free_CUDA(cuda_coll_pack_buf);
+        cuda_coll_pack_buf_size = 0;
+    }
+
+    if (cuda_coll_unpack_buf_size) {
+        MPIU_Free_CUDA(cuda_coll_unpack_buf);
+        cuda_coll_unpack_buf_size = 0;
+    }
+}
+
+/******************************************************************/
+//Packing non-contig sendbuf                                      //
+/******************************************************************/
+void cuda_coll_pack (void **sendbuf, int *sendcount, MPI_Datatype *sendtype,
+                     void **recvbuf, int *recvcount, MPI_Datatype *recvtype,
+                     int disp, int procs_in_sendbuf, int comm_size) {
+    
+    int sendtype_size = 0, recvtype_size = 0, sendsize = 0, recvsize = 0,
+            send_copy_size = 0;
+    int sendtype_iscontig = 0, recvtype_iscontig = 0;
+    
+    if (*sendtype != MPI_DATATYPE_NULL) {
+        MPIR_Datatype_iscontig(*sendtype, &sendtype_iscontig);
+    }
+    if (*recvtype != MPI_DATATYPE_NULL) {
+        MPIR_Datatype_iscontig(*recvtype, &recvtype_iscontig);
+    }
+
+    MPID_Datatype_get_size_macro(*sendtype, sendtype_size);
+    MPID_Datatype_get_size_macro(*recvtype, recvtype_size);
+
+    /*Calulating size of data in recv and send buffers*/
+    if (*sendbuf != MPI_IN_PLACE) {
+        sendsize = *sendcount*sendtype_size;
+        send_copy_size = *sendcount*sendtype_size*procs_in_sendbuf;
+    } else {
+        sendsize = *recvcount*recvtype_size;
+        send_copy_size = *recvcount*recvtype_size*procs_in_sendbuf;
+    }
+    recvsize = *recvcount*recvtype_size*comm_size;
+
+    /*Creating packing and unpacking buffers*/
+    if (!sendtype_iscontig && send_copy_size > cuda_coll_pack_buf_size) {
+        MPIU_Free_CUDA (cuda_coll_pack_buf);
+        MPIU_Malloc_CUDA (cuda_coll_pack_buf, send_copy_size);
+        cuda_coll_pack_buf_size = send_copy_size;
+    }
+    if (!recvtype_iscontig && recvsize > cuda_coll_unpack_buf_size) {
+        MPIU_Free_CUDA (cuda_coll_unpack_buf);
+        MPIU_Malloc_CUDA (cuda_coll_unpack_buf, recvsize);
+        cuda_coll_unpack_buf_size = recvsize;
+    }
+    
+    /*Packing of data to sendbuf*/
+    if (*sendbuf != MPI_IN_PLACE && !sendtype_iscontig) {
+        MPIR_Localcopy(*sendbuf, *sendcount*procs_in_sendbuf, *sendtype,
+                        cuda_coll_pack_buf, send_copy_size, MPI_BYTE);
+        *sendbuf = cuda_coll_pack_buf;
+        *sendcount = sendsize;
+        *sendtype = MPI_BYTE;
+    } else if (*sendbuf == MPI_IN_PLACE && !recvtype_iscontig) {
+        MPIR_Localcopy((void *)((char *)(*recvbuf) + disp), 
+                        (*recvcount)*procs_in_sendbuf, *recvtype,
+                        cuda_coll_pack_buf, send_copy_size, MPI_BYTE);
+        *sendbuf = cuda_coll_pack_buf;
+        *sendcount = sendsize;
+        *sendtype = MPI_BYTE;
+    }
+
+    /*Changing recvbuf to contig temp recvbuf*/
+    if (!recvtype_iscontig) {
+        orig_recvbuf = *recvbuf;
+        orig_recvcount = *recvcount;
+        orig_recvtype = *recvtype;
+        *recvbuf = cuda_coll_unpack_buf;
+        *recvcount = *recvcount*recvtype_size;
+        *recvtype = MPI_BYTE;
+    }
+}
+
+/******************************************************************/
+//Unpacking data to non-contig recvbuf                            //
+/******************************************************************/
+void cuda_coll_unpack (int *recvcount, int comm_size) {
+
+    int recvtype_iscontig = 0;
+    
+    if (orig_recvbuf && orig_recvtype != MPI_DATATYPE_NULL) {
+        MPIR_Datatype_iscontig(orig_recvtype, &recvtype_iscontig);
+    }
+
+    /*Unpacking of data to recvbuf*/
+    if (orig_recvbuf && !recvtype_iscontig) {
+        MPIR_Localcopy(cuda_coll_unpack_buf, *recvcount*comm_size, MPI_BYTE,
+                        orig_recvbuf, orig_recvcount*comm_size, orig_recvtype);
+    }
+
+    orig_recvbuf = NULL;
 }
 #endif /* #ifdef _ENABLE_CUDA_ */
 

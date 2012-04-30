@@ -616,11 +616,11 @@ echo
 echo_n "Updating the README... "
 . ./maint/Version
 if [ -f README.vin ] ; then
-    sed -e "s/%VERSION%/${MPICH2_VERSION}/g" README.vin > README
+    sed -e "s/%VERSION%/${MPICH2_VERSION}/g" README.vin > README_MPICH2
     echo "done"
 else
     echo "error"
-    error "README.vin file not present, unable to update README version number (perhaps we are running in a release tarball source tree?)"
+    error "README.vin file not present, unable to update README_MPICH2 version number (perhaps we are running in a release tarball source tree?)"
 fi
 
 

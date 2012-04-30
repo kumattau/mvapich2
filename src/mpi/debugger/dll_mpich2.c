@@ -1,5 +1,14 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*  
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *  
  *  (C) 2005 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
@@ -45,7 +54,7 @@ static void initLogFile(void)
    (a more precise name might be mpi_tv_interface.h) */
 #include "mpi_interface.h"
 /* mpich2_dll_defs.h defines the structures for a particular MPI 
-   implementation (MPICH2 in this case) */
+   implementation (MVAPICH2 in this case) */
 #include "mpich2_dll_defs.h"
 
 /* style: allow:strncpy:1 sig:0 */
@@ -164,7 +173,7 @@ int mqs_version_compatibility ( void )
 
 char *mqs_version_string ( void )
 {
-    return (char *)"MPICH message queue support for MPICH2 " MPICH2_VERSION " compiled on " __DATE__;
+    return (char *)"Message queue support for MVAPICH2 " MVAPICH2_VERSION " compiled on " __DATE__;
 } 
 
 /* Allow the debugger to discover the size of an address type */

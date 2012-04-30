@@ -1504,6 +1504,7 @@ is too big (> MPIU_SHMW_GHND_SZ)
 **ch3|contigsend: Unable to create eager contig send request
 # <_OSU_MVAPICH_>
 **cudamemcpy:failure occured while cudaMemcpy
+**cudaEventRecord:failure occured while cudaEventRecord
 # <_OSU_MVAPICH_>
 
 # MPIR functions

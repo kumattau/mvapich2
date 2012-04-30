@@ -22,6 +22,8 @@
 #include "coll_shmem.h"
 extern struct coll_runtime mv2_coll_param;
 
+#define FGP_SWITCH_FACTOR 4     /*Used to determine switch between naive and FGP design */
+
 int allgather_tuning(int comm_size, int pof2)
 {
 
@@ -36,7 +38,7 @@ int allgather_tuning(int comm_size, int pof2)
          * Just use that value */
         return mv2_coll_param.allgather_bruck_threshold;
     } else {
-        /* User has not used any run-time parameters. 
+        /* User has not used any run-time parameters.
          */
         if (comm_size <= MV2_ALLGATHER_SMALL_SYSTEM_SIZE) {
             return mv2_tuning_table[ALLGATHER_ID][SMALL];
@@ -50,7 +52,7 @@ int allgather_tuning(int comm_size, int pof2)
 }
 
 /* This is the default implementation of allgather. The algorithm is:
-   
+
    Algorithm: MPI_Allgather
 
    For short messages and non-power-of-two no. of processes, we use
@@ -89,12 +91,12 @@ int allgather_tuning(int comm_size, int pof2)
    neighbor) performs twice as fast as recursive doubling for long
    messages (on Myrinet and IBM SP).
 
-   Possible improvements: 
+   Possible improvements:
 
    End Algorithm: MPI_Allgather
 */
 /* begin:nested */
-/* not declared static because a machine-specific function may call this 
+/* not declared static because a machine-specific function may call this
    one in some cases */
 #undef FUNCNAME
 #define FUNCNAME MPIR_Allgather_intra_MV2
@@ -157,7 +159,7 @@ int MPIR_Allgather_intra_MV2(void *sendbuf,
 
         if (is_homogeneous) {
             /* homogeneous. no need to pack into tmp_buf on each node. copy
-               local data into recvbuf */
+             * local data into recvbuf */
             if (sendbuf != MPI_IN_PLACE) {
                 mpi_errno = MPIR_Localcopy(sendbuf, sendcount, sendtype,
                                            ((char *) recvbuf +
@@ -175,10 +177,10 @@ int MPIR_Allgather_intra_MV2(void *sendbuf,
             while (mask < comm_size) {
                 dst = rank ^ mask;
 
-                /* find offset into send and recv buffers. zero out 
-                   the least significant "i" bits of rank and dst to 
-                   find root of src and dst subtrees. Use ranks of 
-                   roots as index to send from and recv into buffer */
+                /* find offset into send and recv buffers. zero out
+                 * the least significant "i" bits of rank and dst to
+                 * find root of src and dst subtrees. Use ranks of
+                 * roots as index to send from and recv into buffer */
 
                 dst_tree_root = dst >> i;
                 dst_tree_root <<= i;
@@ -213,28 +215,28 @@ int MPIR_Allgather_intra_MV2(void *sendbuf,
                 }
 
                 /* if some processes in this process's subtree in this step
-                   did not have any destination process to communicate with
-                   because of non-power-of-two, we need to send them the
-                   data that they would normally have received from those
-                   processes. That is, the haves in this subtree must send to
-                   the havenots. We use a logarithmic recursive-halfing algorithm
-                   for this. */
+                 * did not have any destination process to communicate with
+                 * because of non-power-of-two, we need to send them the
+                 * data that they would normally have received from those
+                 * processes. That is, the haves in this subtree must send to
+                 * the havenots. We use a logarithmic recursive-halfing algorithm
+                 * for this. */
 
                 /* This part of the code will not currently be
-                   executed because we are not using recursive
-                   doubling for non power of two. Mark it as experimental
-                   so that it doesn't show up as red in the coverage
-                   tests. */
+                 * executed because we are not using recursive
+                 * doubling for non power of two. Mark it as experimental
+                 * so that it doesn't show up as red in the coverage
+                 * tests. */
 
                 /* --BEGIN EXPERIMENTAL-- */
                 if (dst_tree_root + mask > comm_size) {
                     nprocs_completed = comm_size - my_tree_root - mask;
                     /* nprocs_completed is the number of processes in this
-                       subtree that have all the data. Send data to others
-                       in a tree fashion. First find root of current tree
-                       that is being divided into two. k is the number of
-                       least-significant bits in this process's rank that
-                       must be zeroed out to find the rank of the root */
+                     * subtree that have all the data. Send data to others
+                     * in a tree fashion. First find root of current tree
+                     * that is being divided into two. k is the number of
+                     * least-significant bits in this process's rank that
+                     * must be zeroed out to find the rank of the root */
                     j = mask;
                     k = 0;
                     while (j) {
@@ -255,8 +257,8 @@ int MPIR_Allgather_intra_MV2(void *sendbuf,
                         tree_root <<= k;
 
                         /* send only if this proc has data and destination
-                           doesn't have data. at any step, multiple processes
-                           can send if they have the data */
+                         * doesn't have data. at any step, multiple processes
+                         * can send if they have the data */
                         if ((dst > rank) &&
                             (rank < tree_root + nprocs_completed)
                             && (dst >= tree_root + nprocs_completed)) {
@@ -265,8 +267,8 @@ int MPIR_Allgather_intra_MV2(void *sendbuf,
                                              last_recv_cnt, recvtype, dst,
                                              MPIR_ALLGATHER_TAG, comm, errflag);
                             /* last_recv_cnt was set in the previous
-                               receive. that's the amount of data to be
-                               sent now. */
+                             * receive. that's the amount of data to be
+                             * sent now. */
                             if (mpi_errno) {
                                 /* for communication errors, just record the error but continue */
                                 *errflag = TRUE;
@@ -276,7 +278,7 @@ int MPIR_Allgather_intra_MV2(void *sendbuf,
                             }
                         }
                         /* recv only if this proc. doesn't have data and sender
-                           has data */
+                         * has data */
                         else if ((dst < rank) &&
                                  (dst < tree_root + nprocs_completed) &&
                                  (rank >= tree_root + nprocs_completed)) {
@@ -288,7 +290,7 @@ int MPIR_Allgather_intra_MV2(void *sendbuf,
                                              dst, MPIR_ALLGATHER_TAG, comm,
                                              &status, errflag);
                             /* nprocs_completed is also equal to the
-                               no. of processes whose data we don't have */
+                             * no. of processes whose data we don't have */
                             if (mpi_errno) {
                                 /* for communication errors, just record the error but continue */
                                 *errflag = TRUE;
@@ -329,12 +331,12 @@ int MPIR_Allgather_intra_MV2(void *sendbuf,
             /* --END ERROR HANDLING-- */
 
             /* calculate the value of nbytes, the number of bytes in packed
-               representation that each process contributes. We can't simply divide
-               tmp_buf_size by comm_size because tmp_buf_size is an upper
-               bound on the amount of memory required. (For example, for
-               a single integer, MPICH-1 returns pack_size=12.) Therefore, we
-               actually pack some data into tmp_buf and see by how much
-               'position' is incremented. */
+             * representation that each process contributes. We can't simply divide
+             * tmp_buf_size by comm_size because tmp_buf_size is an upper
+             * bound on the amount of memory required. (For example, for
+             * a single integer, MPICH-1 returns pack_size=12.) Therefore, we
+             * actually pack some data into tmp_buf and see by how much
+             * 'position' is incremented. */
 
             position = 0;
             MPIR_Pack_impl(recvbuf, 1, recvtype, tmp_buf, tmp_buf_size,
@@ -360,10 +362,10 @@ int MPIR_Allgather_intra_MV2(void *sendbuf,
             while (mask < comm_size) {
                 dst = rank ^ mask;
 
-                /* find offset into send and recv buffers. zero out 
-                   the least significant "i" bits of rank and dst to 
-                   find root of src and dst subtrees. Use ranks of 
-                   roots as index to send from and recv into buffer. */
+                /* find offset into send and recv buffers. zero out
+                 * the least significant "i" bits of rank and dst to
+                 * find root of src and dst subtrees. Use ranks of
+                 * roots as index to send from and recv into buffer. */
 
                 dst_tree_root = dst >> i;
                 dst_tree_root <<= i;
@@ -396,21 +398,21 @@ int MPIR_Allgather_intra_MV2(void *sendbuf,
                 }
 
                 /* if some processes in this process's subtree in this step
-                   did not have any destination process to communicate with
-                   because of non-power-of-two, we need to send them the
-                   data that they would normally have received from those
-                   processes. That is, the haves in this subtree must send to
-                   the havenots. We use a logarithmic recursive-halfing 
-                   algorithm for this. */
+                 * did not have any destination process to communicate with
+                 * because of non-power-of-two, we need to send them the
+                 * data that they would normally have received from those
+                 * processes. That is, the haves in this subtree must send to
+                 * the havenots. We use a logarithmic recursive-halfing
+                 * algorithm for this. */
 
                 if (dst_tree_root + mask > comm_size) {
                     nprocs_completed = comm_size - my_tree_root - mask;
                     /* nprocs_completed is the number of processes in this
-                       subtree that have all the data. Send data to others
-                       in a tree fashion. First find root of current tree
-                       that is being divided into two. k is the number of
-                       least-significant bits in this process's rank that
-                       must be zeroed out to find the rank of the root */
+                     * subtree that have all the data. Send data to others
+                     * in a tree fashion. First find root of current tree
+                     * that is being divided into two. k is the number of
+                     * least-significant bits in this process's rank that
+                     * must be zeroed out to find the rank of the root */
                     j = mask;
                     k = 0;
                     while (j) {
@@ -428,8 +430,8 @@ int MPIR_Allgather_intra_MV2(void *sendbuf,
                         tree_root <<= k;
 
                         /* send only if this proc has data and destination
-                           doesn't have data. at any step, multiple processes
-                           can send if they have the data */
+                         * doesn't have data. at any step, multiple processes
+                         * can send if they have the data */
                         if ((dst > rank) &&
                             (rank < tree_root + nprocs_completed)
                             && (dst >= tree_root + nprocs_completed)) {
@@ -439,8 +441,8 @@ int MPIR_Allgather_intra_MV2(void *sendbuf,
                                              last_recv_cnt, MPI_BYTE, dst,
                                              MPIR_ALLGATHER_TAG, comm, errflag);
                             /* last_recv_cnt was set in the previous
-                               receive. that's the amount of data to be
-                               sent now. */
+                             * receive. that's the amount of data to be
+                             * sent now. */
                             if (mpi_errno) {
                                 /* for communication errors, just record the error but continue */
                                 *errflag = TRUE;
@@ -450,7 +452,7 @@ int MPIR_Allgather_intra_MV2(void *sendbuf,
                             }
                         }
                         /* recv only if this proc. doesn't have data and sender
-                           has data */
+                         * has data */
                         else if ((dst < rank) &&
                                  (dst < tree_root + nprocs_completed) &&
                                  (rank >= tree_root + nprocs_completed)) {
@@ -460,7 +462,7 @@ int MPIR_Allgather_intra_MV2(void *sendbuf,
                                                   MPIR_ALLGATHER_TAG,
                                                   comm, &status, errflag);
                             /* nprocs_completed is also equal to the
-                               no. of processes whose data we don't have */
+                             * no. of processes whose data we don't have */
                             if (mpi_errno) {
                                 /* for communication errors, just record the error but continue */
                                 *errflag = TRUE;
@@ -487,7 +489,7 @@ int MPIR_Allgather_intra_MV2(void *sendbuf,
 
             MPIU_Free(tmp_buf);
         }
-#endif                          /* MPID_HAS_HETERO */
+#endif /* MPID_HAS_HETERO */
     } else if (recvcount * type_size <=
                allgather_tuning(comm_size, comm_size_is_pof2)) {
         /* Short message and non-power-of-two no. of processes. Use
@@ -602,8 +604,8 @@ int MPIR_Allgather_intra_MV2(void *sendbuf,
         }
 
         MPIU_Free((char *) tmp_buf + recvtype_true_lb);
-    } else {                    /* long message or medium-size message and non-power-of-two
-                                 * no. of processes. use ring algorithm. */
+    } else {    /* long message or medium-size message and non-power-of-two
+                 * no. of processes. use ring algorithm. */
 
         /* First, load the "local" version in the recvbuf. */
         if (sendbuf != MPI_IN_PLACE) {
@@ -616,9 +618,9 @@ int MPIR_Allgather_intra_MV2(void *sendbuf,
             }
         }
 
-        /* 
-           Now, send left to right.  This fills in the receive area in 
-           reverse order.
+        /*
+         * Now, send left to right.  This fills in the receive area in
+         * reverse order.
          */
         left = (comm_size + rank - 1) % comm_size;
         right = (rank + 1) % comm_size;
@@ -654,7 +656,7 @@ int MPIR_Allgather_intra_MV2(void *sendbuf,
 }
 
 /* end:nested */
-#endif                          /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
+#endif /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Allgather_MV2
@@ -687,35 +689,76 @@ int MPIR_Allgather_MV2(void *sendbuf, int sendcount, MPI_Datatype sendtype,
     if (mpi_errno) {
         MPIU_ERR_POP(mpi_errno);
     }
-
 #ifdef _ENABLE_CUDA_
-   MPI_Aint sendtype_extent;
-   MPID_Datatype_get_extent_macro(sendtype, sendtype_extent);
-   int send_mem_type = 0;
-   int recv_mem_type = 0;
-   if (rdma_enable_cuda) {
-       send_mem_type = is_device_buffer(sendbuf);
-       recv_mem_type = is_device_buffer(recvbuf);
-   }
+    int send_mem_type = 0;
+    int recv_mem_type = 0;
+    int snbytes = INT_MAX;
+    MPI_Aint sendtype_extent;
+    if (rdma_enable_cuda) {
+        send_mem_type = is_device_buffer(sendbuf);
+        recv_mem_type = is_device_buffer(recvbuf);
+    }
 
-   if (rdma_enable_cuda && (send_mem_type || recv_mem_type) &&
-       rdma_cuda_use_naive && (nbytes <= rdma_cuda_allgather_naive_limit)) {
-       if (sendbuf != MPI_IN_PLACE) {
-            mpi_errno = cuda_stage_alloc (&sendbuf, sendcount*sendtype_extent,
-                          &recvbuf, recvcount*recvtype_extent*comm_size, 
-                          send_mem_type, recv_mem_type, 
-                          0);
-       } else {
-            mpi_errno = cuda_stage_alloc (&sendbuf, recvcount*recvtype_extent,
-                          &recvbuf, recvcount*recvtype_extent*comm_size, 
-                          send_mem_type, recv_mem_type, 
-                          rank*recvcount*recvtype_extent);
-       }
-       if (mpi_errno) {
+    /*Handling Non-contig datatypes */
+    if (rdma_enable_cuda && (send_mem_type || recv_mem_type)) {
+        cuda_coll_pack(&sendbuf, &sendcount, &sendtype,
+                       &recvbuf, &recvcount, &recvtype,
+                       rank * recvcount * recvtype_extent, 1, comm_size);
+    }
+
+    MPID_Datatype_get_extent_macro(sendtype, sendtype_extent);
+    MPID_Datatype_get_extent_macro(recvtype, recvtype_extent);
+    if (sendbuf != MPI_IN_PLACE) {
+        snbytes = sendtype_extent * sendcount;
+    }
+    MPID_Datatype_get_size_macro(recvtype, recvtype_size);
+    nbytes = recvtype_size * recvcount;
+
+    if (rdma_enable_cuda && rdma_cuda_allgather_fgp &&
+        send_mem_type && recv_mem_type &&
+        snbytes >
+        rdma_cuda_allgather_naive_limit / (FGP_SWITCH_FACTOR * comm_size) &&
+        nbytes >
+        rdma_cuda_allgather_naive_limit / (FGP_SWITCH_FACTOR * comm_size)) {
+        if (sendbuf != MPI_IN_PLACE) {
+            mpi_errno =
+                MPIR_Allgather_cuda_intra_MV2(sendbuf, sendcount, sendtype,
+                                              recvbuf, recvcount, recvtype,
+                                              comm_ptr, errflag);
+        } else {
+            mpi_errno =
+                MPIR_Allgather_cuda_intra_MV2(recvbuf +
+                                              rank * recvcount *
+                                              recvtype_extent, recvcount,
+                                              recvtype, recvbuf, recvcount,
+                                              recvtype, comm_ptr, errflag);
+        }
+        if (mpi_errno) {
             MPIU_ERR_POP(mpi_errno);
-       }
-   }
-#endif /*#ifdef _ENABLE_CUDA_*/    
+        }
+        goto fn_exit;
+    } else if (rdma_enable_cuda && (send_mem_type || recv_mem_type) &&
+               rdma_cuda_use_naive &&
+               (nbytes <= rdma_cuda_allgather_naive_limit)) {
+        if (sendbuf != MPI_IN_PLACE) {
+            mpi_errno = cuda_stage_alloc(&sendbuf, sendcount * sendtype_extent,
+                                         &recvbuf,
+                                         recvcount * recvtype_extent *
+                                         comm_size, send_mem_type,
+                                         recv_mem_type, 0);
+        } else {
+            mpi_errno = cuda_stage_alloc(&sendbuf, recvcount * recvtype_extent,
+                                         &recvbuf,
+                                         recvcount * recvtype_extent *
+                                         comm_size, send_mem_type,
+                                         recv_mem_type,
+                                         rank * recvcount * recvtype_extent);
+        }
+        if (mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+        }
+    }
+#endif /*#ifdef _ENABLE_CUDA_ */
 
     /* intracommunicator */
     if (mv2_allgather_ranking == 1 && comm_ptr->ch.allgather_comm_ok == 1 &&
@@ -773,9 +816,9 @@ int MPIR_Allgather_MV2(void *sendbuf, int sendcount, MPI_Datatype sendtype,
                                                      recvtype_extent),
                                            recvcount, recvtype,
                                            (void *) ((char *) recvbuf +
-                                                     (comm_ptr->ch.
-                                                      allgather_new_ranks[i]) *
-                                                     recvcount *
+                                                     (comm_ptr->
+                                                      ch.allgather_new_ranks[i])
+                                                     * recvcount *
                                                      recvtype_extent),
                                            recvcount, recvtype);
                 if (mpi_errno) {
@@ -785,28 +828,36 @@ int MPIR_Allgather_MV2(void *sendbuf, int sendcount, MPI_Datatype sendtype,
         }
         MPIU_Free(tmp_recv_buf);
     } else {
-#endif                          /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
+#endif /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
         mpi_errno = MPIR_Allgather_intra(sendbuf, sendcount, sendtype,
                                          recvbuf, recvcount, recvtype,
                                          comm_ptr, errflag);
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     }
 
-#ifdef _ENABLE_CUDA_ 
+#ifdef _ENABLE_CUDA_
     if (rdma_enable_cuda && (send_mem_type || recv_mem_type) &&
-        rdma_cuda_use_naive && (nbytes <= rdma_cuda_allgather_naive_limit)){
-        cuda_stage_free (&sendbuf, 
-                        &recvbuf, recvcount*recvtype_extent*comm_size,
+        rdma_cuda_use_naive && (nbytes <= rdma_cuda_allgather_naive_limit)) {
+        cuda_stage_free(&sendbuf,
+                        &recvbuf, recvcount * recvtype_extent * comm_size,
                         send_mem_type, recv_mem_type);
     }
-#endif                          /*#ifdef _ENABLE_CUDA_*/     
+#endif /*#ifdef _ENABLE_CUDA_ */
 
-#endif                          /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
+#endif /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
     if (mpi_errno) {
         MPIU_ERR_POP(mpi_errno);
     }
 
   fn_exit:
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#ifdef _ENABLE_CUDA_
+    /*Handling Non-Contig datatypes */
+    if (rdma_enable_cuda && (send_mem_type || recv_mem_type)) {
+        cuda_coll_unpack(&recvcount, comm_size);
+    }
+#endif /*#ifdef _ENABLE_CUDA_ */
+#endif /*defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
     return mpi_errno;
   fn_fail:
     goto fn_exit;

@@ -4,7 +4,7 @@
 #
 
 # Version Information
-MPICH2_VERSION=1.8rc1
+MPICH2_VERSION=1.4.1p1
 
 # Release date
 MPICH2_RELEASE_DATE="Thu Mar 22 10:21:00 EDT 2012"

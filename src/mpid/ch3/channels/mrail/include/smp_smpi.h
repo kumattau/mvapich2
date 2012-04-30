@@ -144,7 +144,7 @@ typedef struct send_buf_t {
     int len;
     volatile int has_next;
     int msg_complete;
-    char buf;
+    char buf[];
 } SEND_BUF_T;
 
 /* send queue, to be initialized */

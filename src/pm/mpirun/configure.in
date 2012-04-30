@@ -298,8 +298,8 @@ CPPFLAGS="$CPPFLAGS $MPICH2_INCLUDE_FLAGS"
 AM_CONDITIONAL([WANT_RDYNAMIC], [test "x$GCC" = xyes])
 AM_CONDITIONAL([WANT_CKPT_RUNTIME], [test "x$enable_ckpt" = xyes])
 
-# MPICH2_VERSION is exported from the top level configure
-AC_DEFINE_UNQUOTED([MVAPICH2_VERSION], ["$MPICH2_VERSION"], [Set to current version of mvapich2 package])
+# MVAPICH2_VERSION is exported from the top level configure
+AC_DEFINE_UNQUOTED([MVAPICH2_VERSION], ["$MVAPICH2_VERSION"], [Set to current version of mvapich2 package])
 
 AC_SUBST(MVAPICH2_VERSION)
 AC_SUBST(MAKE_DEPEND_C)

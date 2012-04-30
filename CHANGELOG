@@ -3,6 +3,36 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2-1.8 (04/30/2012)
+
+* Features and Enhancements (since 1.8rc1):
+    - Introduced a unified run time parameter MV2_USE_ONLY_UD to enable UD only
+      mode
+    - Enhanced designs for Alltoall and Allgather collective communication from
+      GPU device buffers
+    - Tuned collective communication from GPU device buffers
+    - Tuned Gather collective
+    - Introduced a run time parameter MV2_SHOW_CPU_BINDING to show current CPU
+      bindings
+    - Updated to hwloc v1.4.1
+    - Remove dependency on LEX and YACC
+
+
+* Bug-Fixes (since 1.8rc1):
+    - Fix hang with multiple GPU configuration
+        - Thanks to Jens Glaser from University of Minnesota for the report
+    - Fix buffer alignment issues to improve intra-node performance
+    - Fix a DPM multispawn behavior
+    - Enhanced error reporting in DPM functionality
+    - Quote environment variables in job startup to protect from shell
+    - Fix hang when LIMIC is enabled
+    - Fix hang in environments with heterogeneous HCAs
+    - Fix issue when using multiple HCA ports in RDMA_CM mode
+        - Thanks to Steve Wise from Open Grid Computing for the report
+    - Fix hang during MPI_Finalize in Nemesis IB netmod
+    - Fix for a start-up issue in Nemesis with heterogeneous architectures
+    - Fix few memory leaks and warnings
+
 MVAPICH2-1.8rc1 (03/22/2012)
 
 * Features & Enhancements (since 1.8a2):

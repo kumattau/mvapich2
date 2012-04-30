@@ -41,7 +41,8 @@
 #include <wfe_mpirun.h>
 #include <m_state.h>
 #include <process.h>
-
+#include <spawn_info.h>
+#include <read_specfile.h>
 
 #include <errno.h>
 #include <signal.h>
@@ -68,7 +69,6 @@ void spawn_one(int argc, char *argv[], char *totalview_cmd, char *env, int fasts
 process_groups *pglist = NULL;
 int port;
 char *wd;                       /* working directory of current process */
-char *custpath, *custwd;
 #define MAX_HOST_LEN 256
 char mpirun_host[MAX_HOST_LEN]; /* hostname of current process */
 
@@ -131,8 +131,6 @@ int set_fds(fd_set * rfds, fd_set * efds);
 void make_command_strings(int argc, char *argv[], char *totalview_cmd, char *command_name, char *command_name_tv);
 void launch_newmpirun(int total);
 static void get_line(void *buf, char *fill, int buf_or_file);
-static void store_info(char *key, char *val);
-static int check_info(char *str);
 void dpm_add_env(char *, char *);
 
 /*
@@ -634,14 +632,49 @@ void pglist_print(void)
 
 }
 
+int
+pglist_cmp (char const * hostname, int index, spawn_info_t const * si)
+{
+    int result = strcmp(hostname, pglist->index[index]->hostname);
+
+
+    if (!result) {
+        if (si) {
+            result = si - pglist->index[index]->si;
+        }
+    }
+
+    return result;
+}
+
 void pglist_insert(const char *const hostname, const int plist_index)
 {
     const size_t increment = nprocs > 4 ? nprocs / 4 : 1;
     size_t i, index = 0;
     static size_t alloc_error = 0;
-    int strcmp_result, bottom = 0, top;
+    int result, bottom = 0, top;
     process_group *pg;
     void *backup_ptr;
+    static int read_dpmfile = 1;
+    static spawn_info_t * si = NULL;
+    static int si_count = 0;
+
+    /**
+     * Only read the dpm file once in the beginning
+     */
+    if (read_dpmfile) {
+        if (dpm) {
+            si = read_dpm_specfile(spinf.totspawns);
+        }
+        read_dpmfile = 0;
+    }
+
+    if (si) {
+        if (si_count++ == si->nprocs) {
+            si = si->next;
+            si_count = 1;
+        }
+    }
 
     if (alloc_error) {
         return;
@@ -654,8 +687,8 @@ void pglist_insert(const char *const hostname, const int plist_index)
     top = pglist->npgs - 1;
     index = (top + bottom) / 2;
 
-    while ((strcmp_result = strcmp(hostname, pglist->index[index]->hostname))) {
-        if (strcmp_result > 0) {
+    while ((result = pglist_cmp(hostname, index, si))) {
+        if (result > 0) {
             bottom = index + 1;
         }
 
@@ -674,7 +707,7 @@ void pglist_insert(const char *const hostname, const int plist_index)
      * We need to add another control (we need to understand if the exe is
      * different from the others inserted)
      */
-    if (configfile_on && strcmp_result == 0) {
+    if (configfile_on && result == 0) {
         int index_previous;
         /*
          * Check if the previous name of exexutable and args in the pglist are
@@ -683,16 +716,16 @@ void pglist_insert(const char *const hostname, const int plist_index)
          */
 
         index_previous = pglist->index[index]->plist_indices[0];
-        strcmp_result = strcmp(plist[plist_index].executable_name,
+        result = strcmp(plist[plist_index].executable_name,
                 plist[index_previous].executable_name);
 
-        if (0 == strcmp_result) {
+        if (0 == result) {
             /*
              * Make sure both args are not NULL before comparing.
              */
             if (plist[plist_index].executable_args
                     && plist[index_previous].executable_args) {
-                strcmp_result = strcmp(plist[plist_index].executable_args,
+                result = strcmp(plist[plist_index].executable_args,
                         plist[index_previous].executable_args);
             }
 
@@ -701,16 +734,16 @@ void pglist_insert(const char *const hostname, const int plist_index)
              * they are the same or not.
              */
             else {
-                strcmp_result = plist[plist_index].executable_args !=
+                result = plist[plist_index].executable_args !=
                     plist[index_previous].executable_args;
             }
         }
     }
 
-    if (!strcmp_result)
+    if (!result)
         goto insert_pid;
 
-    if (strcmp_result > 0) {
+    if (result > 0) {
         index++;
     }
 
@@ -771,6 +804,7 @@ add_process_group:
     pglist->data[pglist->npgs].plist_indices = NULL;
     pglist->data[pglist->npgs].npids = 0;
     pglist->data[pglist->npgs].npids_allocated = 0;
+    pglist->data[pglist->npgs].si = si;
 
     pglist->index[index] = &pglist->data[pglist->npgs++];
 
@@ -1196,11 +1230,9 @@ static inline char *append2env(char *env, char *name, char *value)
 */
 void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env)
 {
-    char *mpispawn_env, *tmp, *ld_library_path, *template;
-    char *template2 = NULL;
+    char *mpispawn_env, *tmp, *ld_library_path;
     char *name, *value;
-    int i, n, tmp_i, argind, multichk = 1, multival = 0;
-    FILE *fp = NULL;
+    int i, tmp_i;
     char pathbuf[PATH_MAX];
 
     if ((ld_library_path = getenv("LD_LIBRARY_PATH"))) {
@@ -1430,157 +1462,9 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env)
         goto allocation_error;
     }
 
-    if (dpm) {
-        fp = fopen(spawnfile, "r");
-        if (!fp) {
-            fprintf(stderr, "spawn specification file not found\n");
-            goto allocation_error;
-        }
-        spinf.dpmindex = spinf.dpmtot = 0;
-        tmp = mkstr("%s PMI_SPAWNED=1", mpispawn_env);
-        if (tmp) {
-            free(mpispawn_env);
-            mpispawn_env = tmp;
-        } else {
-            goto allocation_error;
-        }
-
-    }
-
-    template = strdup(mpispawn_env);    /* save the string at this level */
-    argind = tmp_i;
-    i = 0;
     dbg("%d forks to be done, with env:=  %s\n", pglist->npgs, mpispawn_env);
+
     for (i = 0; i < pglist->npgs; i++) {
-
-        free(mpispawn_env);
-        mpispawn_env = strdup(template);
-        tmp_i = argind;
-        if (dpm) {
-            int ret = 1, keyin = 0;
-            char *key = NULL;
-            int tot_args = 1, arg_done = 0, infonum = 0;
-
-            ++tmp_i;            /* argc index starts from 1 */
-            if (spinf.dpmindex < spinf.dpmtot) {
-                DBG(fprintf(stderr, "one more fork of same binary\n"));
-                ++spinf.dpmindex;
-                free(mpispawn_env);
-                mpispawn_env = strdup(template2);
-                goto done_spawn_read;
-            }
-
-            spinf.dpmindex = 0;
-            get_line(fp, spinf.linebuf, 1);
-            spinf.dpmtot = atoi(spinf.linebuf);
-            get_line(fp, spinf.runbuf, 1);
-            DBG(fprintf(stderr, "Spawning %d instances of %s\n", spinf.dpmtot, spinf.runbuf));
-            if (multichk) {
-                if (spinf.dpmtot == pglist->npgs)
-                    multival = 0;
-                else
-                    multival = 1;
-                multichk = 0;
-            }
-
-            ret = 1;
-            /* first data is arguments */
-            while (ret) {
-                get_line(fp, spinf.linebuf, 1);
-
-                if (infonum) {
-                    char *infokey;
-                    /* is it an info we are about ? */
-                    if (check_info(spinf.linebuf)) {
-                        infokey = strdup(spinf.linebuf);
-                        get_line(fp, spinf.linebuf, 1);
-                        store_info(infokey, spinf.linebuf);
-                        free(infokey);
-                    } else {
-                        get_line(fp, spinf.linebuf, 1);
-                    }
-                    --infonum;
-                    continue;
-                }
-
-                if (keyin) {
-                    sprintf(spinf.buf, "%s='%s'", key, spinf.linebuf);
-                    free(key);
-                    keyin = 0;
-                }
-
-                if (0 == (strncmp(spinf.linebuf, ARG, strlen(ARG)))) {
-                    key = index(spinf.linebuf, '=');
-                    ++key;
-                    tmp = mkstr("%s MPISPAWN_ARGV_%d=\"%s\"", mpispawn_env, tmp_i++, key);
-                    if (tmp) {
-                        free(mpispawn_env);
-                        mpispawn_env = tmp;
-                    } else {
-                        goto allocation_error;
-                    }
-
-                    ++tot_args;
-                }
-
-                if (0 == (strncmp(spinf.linebuf, ENDARG, strlen(ENDARG)))) {
-
-                    tmp = mkstr("%s MPISPAWN_ARGC=%d", mpispawn_env, tot_args);
-                    if (tmp) {
-                        free(mpispawn_env);
-                        mpispawn_env = tmp;
-                    } else {
-                        goto allocation_error;
-                    }
-
-                    tot_args = 0;
-                    arg_done = 1;
-                }
-
-                if (0 == (strncmp(spinf.linebuf, END, strlen(END)))) {
-                    ret = 0;
-                    ++spinf.dpmindex;
-                }
-                if (0 == (strncmp(spinf.linebuf, PORT, strlen(PORT)))) {
-                    keyin = 1;
-                    key = strdup(spinf.linebuf);
-                }
-                if (0 == (strncmp(spinf.linebuf, INFN, strlen(INFN)))) {
-                    /* info num parsed */
-                    infonum = atoi(index(spinf.linebuf, '=') + 1);
-                }
-
-            }
-            if (!arg_done) {
-                tmp = mkstr("%s MPISPAWN_ARGC=%d", mpispawn_env, 1);
-                if (tmp) {
-                    free(mpispawn_env);
-                    mpispawn_env = tmp;
-                } else {
-                    goto allocation_error;
-                }
-            }
-
-            tmp = mkstr("%s MPIRUN_COMM_MULTIPLE=%d", mpispawn_env, multival);
-            if (tmp) {
-                free(mpispawn_env);
-                mpispawn_env = tmp;
-            } else {
-                goto allocation_error;
-            }
-            template2 = strdup(mpispawn_env);
-        }
-
-done_spawn_read:
-        tmp = mkstr("%s MPISPAWN_LOCAL_NPROCS=%d", mpispawn_env,
-                pglist->data[i].npids);
-        if (tmp) {
-            free(mpispawn_env);
-            mpispawn_env = tmp;
-        } else {
-            goto allocation_error;
-        }
-
         if (!(pglist->data[i].pid = fork())) {
             /*
              * We're no longer the mpirun_rsh process but a child process
@@ -1589,7 +1473,18 @@ done_spawn_read:
              */
             size_t arg_offset = 0;
             const char *nargv[7];
-            char *command;
+            char const * command = NULL, * custpath = NULL, * custwd = NULL;
+            int n = 0;
+            arg_list * arg = dpm ? &pglist->data[i].si->command : NULL;
+
+            tmp = mkstr("%s MPISPAWN_LOCAL_NPROCS=%d", mpispawn_env,
+                    pglist->data[i].npids);
+            if (tmp) {
+                free(mpispawn_env);
+                mpispawn_env = tmp;
+            } else {
+                goto allocation_error;
+            }
 
 #if defined(CKPT) && defined(CR_FTB) && defined(CR_AGGRE)
             if (use_aggre > 0 && use_aggre_mig > 0) {   // use Aggre-based migration
@@ -1604,7 +1499,7 @@ done_spawn_read:
             }
 #endif
             if (dpm) {
-                tmp = mkstr("%s MPISPAWN_ARGV_0=%s", mpispawn_env, spinf.runbuf);
+                tmp = mkstr("%s PMI_SPAWNED=1", mpispawn_env);
                 if (tmp) {
                     free(mpispawn_env);
                     mpispawn_env = tmp;
@@ -1612,7 +1507,8 @@ done_spawn_read:
                     goto allocation_error;
                 }
 
-                tmp = mkstr("%s %s", mpispawn_env, spinf.buf);
+                tmp = mkstr("%s MPIRUN_COMM_MULTIPLE=%d", mpispawn_env,
+                        spinf.totspawns != 1);
                 if (tmp) {
                     free(mpispawn_env);
                     mpispawn_env = tmp;
@@ -1620,9 +1516,50 @@ done_spawn_read:
                     goto allocation_error;
                 }
 
+                if (pglist->data[i].si->wdir) {
+                    custwd = pglist->data[i].si->wdir;
+                }
+
+                if (pglist->data[i].si->path) {
+                    custpath = pglist->data[i].si->path;
+                }
+
+                if (pglist->data[i].si->port) {
+                    tmp = mkstr("%s %s", mpispawn_env,
+                            pglist->data[i].si->port);
+                    if (tmp) {
+                        free(mpispawn_env);
+                        mpispawn_env = tmp;
+                    } else {
+                        goto allocation_error;
+                    }
+                }
+
+                while (arg) {
+                    tmp = mkstr("%s MPISPAWN_ARGV_%d='%s'", mpispawn_env, n,
+                            arg->arg);
+                    if (tmp) {
+                        free(mpispawn_env);
+                        mpispawn_env = tmp;
+                    } else {
+                        goto allocation_error;
+                    }
+
+                    n++;
+                    arg = arg->next;
+                }
+
+                tmp = mkstr("%s MPISPAWN_ARGC=%d", mpispawn_env, n);
+                if (tmp) {
+                    free(mpispawn_env);
+                    mpispawn_env = tmp;
+                } else {
+                    goto allocation_error;
+                }
             }
+
             //If the config option is activated, the executable information are taken from the pglist.
-            if (configfile_on) {
+            else if (configfile_on) {
                 int index_plist = pglist->data[i].plist_indices[0];
                 /* When the config option is activated we need to put in the mpispawn the number of argument of the exe. */
                 tmp = mkstr("%s MPISPAWN_ARGC=%d", mpispawn_env, plist[index_plist].argc);
@@ -1641,19 +1578,26 @@ done_spawn_read:
                     goto allocation_error;
                 }
 
-            } else {
+            }
 
-                if (!dpm) {
-                    while (aout_index < argc) {
-                        tmp = mkstr("%s MPISPAWN_ARGV_%d=%s", mpispawn_env, tmp_i++, argv[aout_index++]);
-                        if (tmp) {
-                            free(mpispawn_env);
-                            mpispawn_env = tmp;
-                        } else {
-                            goto allocation_error;
-                        }
-
+            else {
+                while (aout_index < argc) {
+                    tmp = mkstr("%s MPISPAWN_ARGV_%d='%s'", mpispawn_env,
+                            tmp_i++, argv[aout_index++]);
+                    if (tmp) {
+                        free(mpispawn_env);
+                        mpispawn_env = tmp;
+                    } else {
+                        goto allocation_error;
                     }
+                }
+
+                tmp = mkstr("%s MPISPAWN_ARGC=%d", mpispawn_env, tmp_i);
+                if (tmp) {
+                    free(mpispawn_env);
+                    mpispawn_env = tmp;
+                } else {
+                    goto allocation_error;
                 }
             }
 
@@ -1687,8 +1631,6 @@ done_spawn_read:
                 } else {
                     goto allocation_error;
                 }
-                free(custpath);
-                custpath = NULL;
             }
 
             /* user may specifiy custom working dir via MPI_Info */
@@ -1700,9 +1642,6 @@ done_spawn_read:
                 } else {
                     goto allocation_error;
                 }
-
-                free(custwd);
-                custwd = NULL;
             } else {
                 tmp = mkstr("%s MPISPAWN_WORKING_DIR=%s", mpispawn_env, wd);
                 if (tmp) {
@@ -2061,7 +2000,7 @@ void spawn_one(int argc, char *argv[], char *totalview_cmd, char *env, int fasts
         }
     }
 
-    if (!configfile_on) {
+    if (!(configfile_on || dpm)) {
         if (aout_index == argc) {
             fprintf(stderr, "Incorrect number of arguments.\n");
             usage(argv[0]);
@@ -2824,40 +2763,18 @@ void launch_newmpirun(int total)
     }
     DBG(fprintf(stderr, "launching %s\n", newbuf));
     DBG(fprintf(stderr, "numhosts = %s, hostfile = %s, spawnfile = %s\n", spinf.buf, spinf.linebuf, spinf.spawnfile));
+    char nspawns[MAXLINE];
+    sprintf(nspawns, "%d", spinf.totspawns);
     PRINT_DEBUG(DEBUG_Fork_verbose, "FORK new mpirun (pid=%d)\n", getpid());
     PRINT_DEBUG(DEBUG_Fork_verbose > 1, "new mpirun command line: %s\n", newbuf);
     if (dpmenv) {
-        execl(newbuf, newbuf, "-np", spinf.buf, "-hostfile", spinf.linebuf, "-spawnfile", spinf.spawnfile, "-dpm", dpmenv, NULL);
+        execl(newbuf, newbuf, "-np", spinf.buf, "-hostfile", spinf.linebuf, "-spawnfile", spinf.spawnfile, "-dpmspawn", nspawns, "-dpm", dpmenv, NULL);
     } else {
-        execl(newbuf, newbuf, "-np", spinf.buf, "-hostfile", spinf.linebuf, "-spawnfile", spinf.spawnfile, "-dpm", NULL);
+        execl(newbuf, newbuf, "-np", spinf.buf, "-hostfile", spinf.linebuf, "-spawnfile", spinf.spawnfile, "-dpmspawn", nspawns, "-dpm", NULL);
     }
 
     perror("execl failed\n");
     exit(EXIT_FAILURE);
-}
-
-/**
- *
- */
-static int check_info(char *str)
-{
-    if (0 == (strcmp(str, "wdir")))
-        return 1;
-    if (0 == (strcmp(str, "path")))
-        return 1;
-    return 0;
-}
-
-/**
- *
- */
-static void store_info(char *key, char *val)
-{
-    if (0 == (strcmp(key, "wdir")))
-        custwd = strdup(val);
-
-    if (0 == (strcmp(key, "path")))
-        custpath = strdup(val);
 }
 
 #define ENVLEN 20480

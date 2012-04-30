@@ -142,10 +142,12 @@ AC_SUBST(CONFIGURE_ARGS_CLEAN)
 if test -s "$srcdir/maint/Version" ; then
     . $srcdir/maint/Version
     export MPICH2_VERSION
+    export MVAPICH2_VERSION
 else
     AC_MSG_ERROR([Version information not found. Configuration aborted.])
 fi
 AC_SUBST(MPICH2_RELEASE_DATE)
+AC_SUBST(MVAPICH2_RELEASE_DATE)
 # Produce a numeric version assuming the following format:
 # Version: [MAJ].[MIN].[REV][EXT][EXT_NUMBER]
 # Example: 1.0.7rc1 has
@@ -164,6 +166,35 @@ AC_SUBST(MPICH2_RELEASE_DATE)
 #
 # Numeric version will have 1 digit for MAJ, 2 digits for MIN,
 # 2 digits for REV, 1 digit for EXT and 2 digits for EXT_NUMBER.
+changequote(<<,>>)
+V1=`expr $MVAPICH2_VERSION : '\([0-9]*\)\.[0-9]*\.*[0-9]*[a-zA-Z]*[0-9]*'`
+V2=`expr $MVAPICH2_VERSION : '[0-9]*\.\([0-9]*\)\.*[0-9]*[a-zA-Z]*[0-9]*'`
+V3=`expr $MVAPICH2_VERSION : '[0-9]*\.[0-9]*\.*\([0-9]*\)[a-zA-Z]*[0-9]*'`
+V4=`expr $MVAPICH2_VERSION : '[0-9]*\.[0-9]*\.*[0-9]*\([a-zA-Z]*\)[0-9]*'`
+V5=`expr $MVAPICH2_VERSION : '[0-9]*\.[0-9]*\.*[0-9]*[a-zA-Z]*\([0-9]*\)'`
+changequote([,])
+
+if test "$V2" -le 9 ; then V2=0$V2 ; fi
+if test "$V3" = "" ; then V3=0; fi
+if test "$V3" -le 9 ; then V3=0$V3 ; fi
+if test "$V4" = "a" ; then
+    V4=0
+elif test "$V4" = "b" ; then
+    V4=1
+elif test "$V4" = "rc" ; then
+    V4=2
+elif test "$V4" = "" ; then
+    V4=3
+    V5=0
+elif test "$V4" = "p" ; then
+    V4=3
+fi
+if test "$V5" -le 9 ; then V5=0$V5 ; fi
+
+MVAPICH2_NUMVERSION=`expr $V1$V2$V3$V4$V5 + 0`
+AC_SUBST(MVAPICH2_NUMVERSION)
+AC_SUBST(MVAPICH2_VERSION)
+
 changequote(<<,>>)
 V1=`expr $MPICH2_VERSION : '\([0-9]*\)\.[0-9]*\.*[0-9]*[a-zA-Z]*[0-9]*'`
 V2=`expr $MPICH2_VERSION : '[0-9]*\.\([0-9]*\)\.*[0-9]*[a-zA-Z]*[0-9]*'`
@@ -204,9 +235,9 @@ AC_SUBST(ABIVERSION)
 CONFIGURE_ARGUMENTS="$ac_configure_args"
 AC_SUBST(CONFIGURE_ARGUMENTS)
 if test -n "$ac_configure_args" ; then
-    echo "Configuring MVAPICH2 version $MPICH2_VERSION with $ac_configure_args"
+    echo "Configuring MVAPICH2 version $MVAPICH2_VERSION with $ac_configure_args"
 else 
-    echo "Configuring MVAPICH2 version $MPICH2_VERSION"
+    echo "Configuring MVAPICH2 version $MVAPICH2_VERSION"
 fi
 
 # Add the information on the system:

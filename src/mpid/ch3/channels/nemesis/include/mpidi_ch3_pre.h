@@ -31,7 +31,11 @@ typedef enum MPIDI_CH3I_VC_state
 MPIDI_CH3I_VC_state_t;
 
 /* size of private data area in vc and req for network modules */
+#ifdef ENABLE_CHECKPOINTING
+#define MPID_NEM_VC_NETMOD_AREA_LEN 144
+#else
 #define MPID_NEM_VC_NETMOD_AREA_LEN 128
+#endif
 #define MPID_NEM_REQ_NETMOD_AREA_LEN 64
 
 struct MPIDI_CH3I_Request

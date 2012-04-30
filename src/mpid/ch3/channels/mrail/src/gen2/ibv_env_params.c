@@ -1747,6 +1747,30 @@ mv2_env_param_list_t  param_list[] = {
     &rdma_cuda_scatterv_naive_limit,
     0,
     NULL    },
+{
+    MV2_CUDA_ALLTOALL_DYNAMIC,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_cuda,
+    "MV2_CUDA_ALLTOALL_DYNAMIC",
+    &rdma_cuda_alltoall_dynamic,
+    0,
+    NULL    },
+{
+    MV2_CUDA_ALLGATHER_RD_LIMIT,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_cuda,
+    "MV2_CUDA_ALLGATHER_RD_LIMIT",
+    &rdma_cuda_allgather_rd_limit,
+    0,
+    NULL    },
+{
+    MV2_CUDA_ALLGATHER_FGP,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_cuda,
+    "MV2_CUDA_ALLGATHER_FGP",
+    &rdma_cuda_allgather_fgp,
+    0,
+    NULL    },
 #endif /*_ENABLE_CUDA */
 /* debug */
 {
@@ -2136,6 +2160,14 @@ mv2_env_param_list_t  param_list[] = {
     "MV2_USE_UD_HYBRID",
     &rdma_enable_hybrid,
     1,
+    NULL    },
+{
+    MV2_USE_ONLY_UD,
+    MV2_PARAM_TYPE_INT8,
+    MV2_PARAM_GROUP_hybrid,
+    "MV2_USE_ONLY_UD",
+    &rdma_enable_only_ud,
+    0,
     NULL    },
 {
     MV2_USE_UD_SRQ,

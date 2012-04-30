@@ -45,13 +45,71 @@ int MV2_set_gather_tuning_table()
    
 #if defined(_OSU_PSM_)
     /* use default settings for PSM */ 
-    switch (-1) {
+    if (-1) {
 #else
-    switch (MV2_get_arch_hca_type()) {
-#endif
+    if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+        MV2_ARCH_AMD_OPTERON_6136_32, MV2_HCA_MLX_CX_QDR)){
 
+        mv2_size_gather_tuning_table=7;
+        mv2_gather_tuning_table mv2_tmp_gather_thresholds_table[]={
+            {32,
+            1,{{0, -1, &MPIR_Gather_MV2_Direct}},
+            1,{{0, -1, &MPIR_Gather_MV2_Direct}}},
+            {64,
+            2,{{0, 256, &MPIR_Gather_MV2_two_level_Direct}, {256, -1, &MPIR_Gather_MV2_Direct}},
+            1,{{0, -1, &MPIR_Gather_intra}}},
+            {128,
+            3,{{0, 256, &MPIR_Gather_MV2_two_level_Direct}, {256, 512,&MPIR_Gather_intra},
+                {512, -1, &MPIR_Gather_MV2_Direct}},
+            1,{{0, -1, &MPIR_Gather_intra}}},
+            {256,
+            2,{{0, 512, &MPIR_Gather_MV2_two_level_Direct}, {512, -1, &MPIR_Gather_MV2_Direct}},
+            1,{{0, -1, &MPIR_Gather_intra}}},
+            {512,
+            2,{{0,1024, &MPIR_Gather_MV2_two_level_Direct}, {1024, -1, &MPIR_Gather_MV2_Direct}},
+            1,{{0, -1, &MPIR_Gather_intra}}},
+            {1024,
+            2,{{0, 32, &MPIR_Gather_intra}, {32, -1, &MPIR_Gather_MV2_two_level_Direct}},
+            1,{{0, -1, &MPIR_Gather_MV2_Direct}}}
+            };
+
+        MPIU_Memcpy(mv2_gather_thresholds_table, mv2_tmp_gather_thresholds_table,
+               mv2_size_gather_tuning_table * sizeof (mv2_gather_tuning_table));
       
-    default:
+    } else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+        MV2_ARCH_INTEL_XEON_X5650_12, MV2_HCA_MLX_CX_QDR)){
+        
+        mv2_size_gather_tuning_table=8;
+        mv2_gather_tuning_table mv2_tmp_gather_thresholds_table[]={
+            {12,
+            1,{{0, -1, &MPIR_Gather_MV2_Direct}},
+            1,{{0, -1, &MPIR_Gather_MV2_Direct}}},
+            {24,
+            2,{{0, 512, &MPIR_Gather_MV2_two_level_Direct}, {512, -1, &MPIR_Gather_MV2_Direct}},
+            1,{{0, -1, &MPIR_Gather_intra}}},
+            {48,
+            2,{{0, 1024, &MPIR_Gather_MV2_two_level_Direct}, {1024, -1, &MPIR_Gather_MV2_Direct}},
+            1,{{0, -1, &MPIR_Gather_intra}}},
+            {96,
+            2,{{0, 2048, &MPIR_Gather_MV2_two_level_Direct}, {2048, -1, &MPIR_Gather_MV2_Direct}},
+            1,{{0, -1, &MPIR_Gather_intra}}},
+            {192,
+            2,{{0, 1024, &MPIR_Gather_MV2_two_level_Direct}, {1024, -1, &MPIR_Gather_MV2_Direct}},
+            1,{{0, -1, &MPIR_Gather_intra}}},
+            {384,
+            2,{{0, 1024, &MPIR_Gather_MV2_two_level_Direct}, {1024, -1, &MPIR_Gather_MV2_Direct}},
+            1,{{0, -1, &MPIR_Gather_intra}}},
+            {768,
+            2,{{0, 64, &MPIR_Gather_intra}, {64, -1, &MPIR_Gather_MV2_Direct}},
+            1,{{0, -1, &MPIR_Gather_intra}}},
+            {1024,
+            2,{{0, 32, &MPIR_Gather_intra}, {32, -1, &MPIR_Gather_MV2_two_level_Direct}},
+            1,{{0, -1, &MPIR_Gather_intra}}}};
+
+        MPIU_Memcpy(mv2_gather_thresholds_table, mv2_tmp_gather_thresholds_table,
+            mv2_size_gather_tuning_table * sizeof (mv2_gather_tuning_table));
+#endif
+    } else {
         mv2_size_gather_tuning_table=7;
         mv2_gather_tuning_table mv2_tmp_gather_thresholds_table[]={
             {16,
@@ -77,8 +135,8 @@ int MV2_set_gather_tuning_table()
 	        2,{{0, 32, &MPIR_Gather_intra}, {32, -1, &MPIR_Gather_MV2_two_level_Direct}},
 	        1,{{0, -1, &MPIR_Gather_MV2_Direct}}}};
         
-        memcpy(&mv2_gather_thresholds_table, &mv2_tmp_gather_thresholds_table, sizeof
-           (mv2_gather_tuning_table));
+        MPIU_Memcpy(mv2_gather_thresholds_table, mv2_tmp_gather_thresholds_table,
+               mv2_size_gather_tuning_table * sizeof (mv2_gather_tuning_table));
     }
     
     return 0;
@@ -211,7 +269,7 @@ int MV2_internode_Gather_is_define(char *mv2_user_gather_inter,
                 &MPIR_Gather_MV2_Direct;
         }
     }
-    memcpy(&mv2_gather_thresholds_table, &mv2_tmp_gather_thresholds_table, sizeof
+    MPIU_Memcpy(mv2_gather_thresholds_table, mv2_tmp_gather_thresholds_table, sizeof
            (mv2_gather_tuning_table));
     return 0;
 }

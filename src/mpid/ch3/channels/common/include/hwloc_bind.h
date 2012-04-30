@@ -18,15 +18,15 @@
 #include <hwloc.h>
 #include <dirent.h>
 
-typedef enum{
-        POLICY_BUNCH,
-        POLICY_SCATTER,
+typedef enum {
+    POLICY_BUNCH,
+    POLICY_SCATTER,
 } policy_type_t;
 
-typedef enum{
-        LEVEL_CORE,
-        LEVEL_SOCKET,
-        LEVEL_NUMANODE,
+typedef enum {
+    LEVEL_CORE,
+    LEVEL_SOCKET,
+    LEVEL_NUMANODE,
 } level_type_t;
 
 typedef struct {
@@ -36,9 +36,9 @@ typedef struct {
 } ancestor_type;
 
 typedef struct {
-        hwloc_obj_t obj;
-        cpu_set_t cpuset;
-        float load;
+    hwloc_obj_t obj;
+    cpu_set_t cpuset;
+    float load;
 } obj_attribute_type;
 
 extern policy_type_t policy;
@@ -48,17 +48,17 @@ extern unsigned int mv2_enable_affinity;
 extern unsigned int mv2_enable_leastload;
 
 extern int s_cpu_mapping_line_max;
-extern char* s_cpu_mapping;
+extern char *s_cpu_mapping;
 
-void map_scatter_load (obj_attribute_type * tree);
-void map_bunch_load (obj_attribute_type * tree);
-void map_scatter_core (int num_cpus);
+void map_scatter_load(obj_attribute_type * tree);
+void map_bunch_load(obj_attribute_type * tree);
+void map_scatter_core(int num_cpus);
 void map_scatter_socket(int num_sockets, hwloc_obj_type_t binding_level);
-void map_bunch_core (int num_cpus);
+void map_bunch_core(int num_cpus);
 void map_bunch_socket(int num_sockets, hwloc_obj_type_t binding_level);
-int get_cpu_mapping_hwloc (long N_CPUs_online, hwloc_topology_t topology);
-int get_cpu_mapping (long N_CPUs_online);
-int smpi_setaffinity (int my_local_id);
+int get_cpu_mapping_hwloc(long N_CPUs_online, hwloc_topology_t topology);
+int get_cpu_mapping(long N_CPUs_online);
+int smpi_setaffinity(int my_local_id);
 
 #endif
 

@@ -22,15 +22,12 @@
 
 /* Note we have a upper limit for buffer size, so be extremely careful
  * if you want to change the loop size or warm up size */
-int loop = 100;
-int window_size = 32;
-int skip = 20;
 
-int loop_large = 30;
-int window_size_large = 32;
-int skip_large = 10;
+#define LOOP_LARGE  30
+#define WINDOW_SIZE_LARGE  32
+#define SKIP_LARGE  10
 
-int large_message_size = 8192;
+#define LARGE_MESSAGE_SIZE  8192
 
 #ifdef PACKAGE_VERSION
 #   define HEADER "# " BENCHMARK " v" PACKAGE_VERSION "\n"
@@ -57,6 +54,9 @@ int main (int argc, char *argv[])
     MPI_Group   comm_group, group;
     MPI_Win     win;
     MPI_Info    win_info;
+    int loop = 100;
+    int window_size = 32;
+    int skip = 20;
 
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
@@ -147,10 +147,10 @@ int main (int argc, char *argv[])
 
     /* Bandwidth test */
     for (size = 1; size <= MAX_MSG_SIZE; size *= 2) {
-        if (size > large_message_size) {
-            loop = loop_large;
-            skip = skip_large;
-            window_size = window_size_large;
+        if (size > LARGE_MESSAGE_SIZE) {
+            loop = LOOP_LARGE;
+            skip = SKIP_LARGE;
+            window_size = WINDOW_SIZE_LARGE;
         }
 
         /* Window creation and warming-up */

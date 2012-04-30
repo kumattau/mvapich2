@@ -21,6 +21,10 @@
 #define MESSAGE_ALIGNMENT 64
 #define MAX_MSG_SIZE (1<<22)
 #define MYBUFSIZE (MAX_MSG_SIZE + MESSAGE_ALIGNMENT)
+#define SKIP_LARGE  10
+#define LOOP_LARGE  100
+#define LARGE_MESSAGE_SIZE  8192
+
 
 #ifdef _ENABLE_CUDA_
 #include <cuda.h>
@@ -32,10 +36,6 @@ char r_buf_original[MYBUFSIZE];
 
 int skip = 1000;
 int loop = 10000;
-int skip_large = 10;
-int loop_large = 100;
-int large_message_size = 8192;
-
 #ifdef PACKAGE_VERSION
 #   define HEADER "# " BENCHMARK " v" PACKAGE_VERSION "\n"
 #else
@@ -72,11 +72,8 @@ int main(int argc, char *argv[])
     CUdevice cuDevice;
 
     if (3 != argc && 1 != argc) {
-        if (0 == myid) {
-            fprintf(stdout, "Enter source and destination type.\n"
-                "FORMAT: EXE SOURCE DESTINATION, where SOURCE and DESTINATION can be either of D or H\n");
-        }
-
+        fprintf(stdout, "Enter source and destination type.\n"
+            "FORMAT: EXE SOURCE DESTINATION, where SOURCE and DESTINATION can be either of D or H\n");
         return EXIT_FAILURE;
     } else if (1 == argc) {
         src = 'H';
@@ -88,25 +85,23 @@ int main(int argc, char *argv[])
 #endif
 
 #ifdef _ENABLE_CUDA_
-    if (src == 'D' || desti == 'D') {
-        dev_id = 0;
-        if ((str = getenv("LOCAL_RANK")) != NULL) {
-            cudaGetDeviceCount(&dev_count);
-            local_rank = atoi(str);
-            dev_id = local_rank % dev_count;
-        }
-        curesult = cuInit(0);
-        if (curesult != CUDA_SUCCESS) {
-            return EXIT_FAILURE;
-        }
-        curesult = cuDeviceGet(&cuDevice, dev_id);
-        if (curesult != CUDA_SUCCESS) {
-            return EXIT_FAILURE;
-        }
-        curesult = cuCtxCreate(&cuContext, 0, cuDevice);
-        if (curesult != CUDA_SUCCESS) {
-            return EXIT_FAILURE;
-        }
+    dev_id = 0;
+    if ((str = getenv("LOCAL_RANK")) != NULL) {
+        cudaGetDeviceCount(&dev_count);
+        local_rank = atoi(str);
+        dev_id = local_rank % dev_count;
+    }
+    curesult = cuInit(0);
+    if (curesult != CUDA_SUCCESS) {
+        return EXIT_FAILURE;
+    }
+    curesult = cuDeviceGet(&cuDevice, dev_id);
+    if (curesult != CUDA_SUCCESS) {
+        return EXIT_FAILURE;
+    }
+    curesult = cuCtxCreate(&cuContext, 0, cuDevice);
+    if (curesult != CUDA_SUCCESS) {
+        return EXIT_FAILURE;
     }
 #endif
     
@@ -257,9 +252,9 @@ int main(int argc, char *argv[])
         }
 #endif
 
-        if(size > large_message_size) {
-            loop = loop_large;
-            skip = skip_large;
+        if(size > LARGE_MESSAGE_SIZE) {
+            loop = LOOP_LARGE;
+            skip = SKIP_LARGE;
         }
 
         MPI_Barrier(MPI_COMM_WORLD);

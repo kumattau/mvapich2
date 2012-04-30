@@ -46,7 +46,7 @@ my $param_file = "src/util/param/params.yml";
 # output source files
 my $header_file = "src/include/mpich_param_vals.h";
 my $c_file      = "src/util/param/param_vals.c";
-my $readme_file = "README.envvar";
+my $readme_file = "README_MPICH2.envvar";
 
 GetOptions(
     "help!"       => \&print_usage_and_exit,

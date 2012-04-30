@@ -30,15 +30,12 @@
 #include <cuda_runtime.h>
 #endif
 
-int loop = 100;
-int window_size = 64;
-int skip = 10;
 
-int loop_large = 20;
-int window_size_large = 64;
-int skip_large = 2;
+#define LOOP_LARGE  20
+#define WINDOW_SIZE_LARGE  64
+#define SKIP_LARGE  2
 
-int large_message_size = 8192;
+int LARGE_MESSAGE_SIZE = 8192;
 
 char s_buf_original[MYBUFSIZE];
 char r_buf_original[MYBUFSIZE];
@@ -67,6 +64,10 @@ int main(int argc, char *argv[])
     int size, align_size;
     char *s_buf, *r_buf;
     double t_start = 0.0, t_end = 0.0, t = 0.0;
+    int loop = 100;
+    int window_size = 64;
+    int skip = 10;
+
 #ifdef _ENABLE_CUDA_
     char *str = NULL;
     int dev_id, local_rank, dev_count;
@@ -81,11 +82,8 @@ int main(int argc, char *argv[])
     CUdevice cuDevice;
 
     if (3 != argc && 1 != argc) {
-        if (0 == myid) {
-            printf("Enter source and destination type.\n"
-                "FORMAT: EXE SOURCE DESTINATION, where SOURCE and DESTINATION can be either of D or H\n");
-        }
-
+        printf("Enter source and destination type.\n"
+            "FORMAT: EXE SOURCE DESTINATION, where SOURCE and DESTINATION can be either of D or H\n");
         return EXIT_FAILURE;
     } else if (1 == argc) {
         src = 'H';
@@ -97,25 +95,23 @@ int main(int argc, char *argv[])
 #endif
 
 #ifdef _ENABLE_CUDA_
-    if (src == 'D' || desti == 'D') {
-        dev_id = 0;
-        if ((str = getenv("LOCAL_RANK")) != NULL) {
-            cudaGetDeviceCount(&dev_count);
-            local_rank = atoi(str);
-            dev_id = local_rank % dev_count;
-        }
-        curesult = cuInit(0);
-        if (curesult != CUDA_SUCCESS) {
-            return EXIT_FAILURE;
-        }
-        curesult = cuDeviceGet(&cuDevice, dev_id);
-        if (curesult != CUDA_SUCCESS) {
-            return EXIT_FAILURE;
-        }
-        curesult = cuCtxCreate(&cuContext, 0, cuDevice);
-        if (curesult != CUDA_SUCCESS) {
-            return EXIT_FAILURE;
-        }
+    dev_id = 0;
+    if ((str = getenv("LOCAL_RANK")) != NULL) {
+        cudaGetDeviceCount(&dev_count);
+        local_rank = atoi(str);
+        dev_id = local_rank % dev_count;
+    }
+    curesult = cuInit(0);
+    if (curesult != CUDA_SUCCESS) {
+        return EXIT_FAILURE;
+    }
+    curesult = cuDeviceGet(&cuDevice, dev_id);
+    if (curesult != CUDA_SUCCESS) {
+        return EXIT_FAILURE;
+    }
+    curesult = cuCtxCreate(&cuContext, 0, cuDevice);
+    if (curesult != CUDA_SUCCESS) {
+        return EXIT_FAILURE;
     }
 #endif
 
@@ -268,10 +264,10 @@ int main(int argc, char *argv[])
         }
 #endif
 
-        if(size > large_message_size) {
-            loop = loop_large;
-            skip = skip_large;
-            window_size = window_size_large;
+        if(size > LARGE_MESSAGE_SIZE) {
+            loop = LOOP_LARGE;
+            skip = SKIP_LARGE;
+            window_size = WINDOW_SIZE_LARGE;
         }
 
         if(myid == 0) {

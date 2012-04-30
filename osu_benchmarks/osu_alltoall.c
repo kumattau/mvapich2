@@ -9,48 +9,42 @@
  * copyright file COPYRIGHT in the top level OMB directory.
  */
 
-#include <mpi.h>
-#include <unistd.h>
-#include <stdlib.h>
-#include <stdio.h>
-
-#define MAX_MSG_SIZE (1 << 20)
-#define SKIP 300
-#define ITERATIONS 1000
-#define SKIP_LARGE 10
-#define ITERATIONS_LARGE 100
-#define MAX_ALIGNMENT 16384
-
-int numprocs, large_message_size = 8192;
-
-#ifdef PACKAGE_VERSION
-#   define HEADER "# " BENCHMARK " v" PACKAGE_VERSION "\n"
-#else
-#   define HEADER "# " BENCHMARK "\n"
-#endif
-
-#ifndef FIELD_WIDTH
-#   define FIELD_WIDTH 20
-#endif
-
-#ifndef FLOAT_PRECISION
-#   define FLOAT_PRECISION 2
-#endif
+#include <osu_coll.h>
 
 int main(int argc, char *argv[])
 {
-    int i = 0, rank = 0, size;
-    int  skip, iterations, align_size;
-    double tmp1 = 0.0, tmp2 = 0.0;
+    int i = 0, rank = 0, size, numprocs;
+    int  skip, align_size;
+    double latency=0.0, t_start = 0.0, t_stop = 0.0;
+    double timer=0.0;
+    double avg_time = 0.0, max_time = 0.0, min_time = 0.0;
     char *sendbuf, *recvbuf, *s_buf1, *r_buf1;
+    int max_msg_size = 1048576, full = 0;
 
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
 
+    if (process_args(argc, argv, rank, &max_msg_size, &full)) {
+        MPI_Finalize();
+        return EXIT_SUCCESS;
+    }
+
+    if(numprocs < 2) {
+        if(rank == 0) {
+            fprintf(stderr, "This test requires at least two processes\n");
+        }
+
+        MPI_Finalize();
+
+        return EXIT_FAILURE;
+    }
+
+    print_header(rank, full);
+
     s_buf1 = r_buf1 = NULL;
 
-    s_buf1 = (char *)malloc(sizeof(char) * MAX_MSG_SIZE * numprocs +
+    s_buf1 = (char *)malloc(sizeof(char) * max_msg_size * numprocs +
             MAX_ALIGNMENT);
 
     if(NULL == s_buf1) {
@@ -59,7 +53,7 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    r_buf1 = (char *) malloc (sizeof(char) * MAX_MSG_SIZE * numprocs +
+    r_buf1 = (char *) malloc (sizeof(char) * max_msg_size * numprocs +
             MAX_ALIGNMENT);
 
     if(NULL == r_buf1) {
@@ -74,41 +68,46 @@ int main(int argc, char *argv[])
     recvbuf = (char *)(((unsigned long) r_buf1 + (align_size - 1)) / align_size
             * align_size);
 
-    if(0 == rank) {
-        fprintf(stdout, HEADER);
-        fprintf(stdout, "%-*s%*s\n", 10, "# Size", FIELD_WIDTH, "Latency (us)");
-        fflush(stdout);
-    }
-
 
     MPI_Barrier(MPI_COMM_WORLD);
 
-    for(size = 1; size <= MAX_MSG_SIZE; size *= 2) {
-        if(size > large_message_size) {
+    for(size = 1; size <= max_msg_size; size *= 2) {
+        if(size > LARGE_MESSAGE_SIZE) {
             skip = SKIP_LARGE;
-            iterations = ITERATIONS_LARGE;
+            iterations = iterations_large;
         }
 
         else {
             skip = SKIP;
-            iterations = ITERATIONS;
+            
         }
-
+        timer=0.0;
         for(i = 0; i < iterations + skip; i++) {
-            if(i == skip) {
-                tmp1 = MPI_Wtime();
-            }
-
+            t_start = MPI_Wtime();
             MPI_Alltoall(sendbuf, size, MPI_CHAR, recvbuf, size, MPI_CHAR,
                     MPI_COMM_WORLD);
+            t_stop = MPI_Wtime();
+
+            if(i>=skip)
+            {
+                timer+=t_stop-t_start;
+            }
+            MPI_Barrier(MPI_COMM_WORLD);  
         }
 
-        if(0 == rank) {
-            tmp2 = MPI_Wtime();
-            fprintf(stdout, "%-*d%*.*f\n", 10, size, FIELD_WIDTH,
-                    FLOAT_PRECISION, (tmp2 - tmp1) * 1e6 / iterations);
-            fflush(stdout);
-        }
+        latency = (double)(timer * 1e6) / iterations;
+
+        MPI_Reduce(&latency, &min_time, 1, MPI_DOUBLE, MPI_MIN, 0,
+                MPI_COMM_WORLD);
+        MPI_Reduce(&latency, &max_time, 1, MPI_DOUBLE, MPI_MAX, 0,
+                MPI_COMM_WORLD);
+        MPI_Reduce(&latency, &avg_time, 1, MPI_DOUBLE, MPI_SUM, 0,
+                MPI_COMM_WORLD);
+        avg_time = avg_time/numprocs;
+
+        print_data(rank, full, size, avg_time, min_time, max_time, iterations);
+
+        MPI_Barrier(MPI_COMM_WORLD);
     }
 
     free(s_buf1);

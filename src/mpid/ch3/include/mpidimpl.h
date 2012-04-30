@@ -901,6 +901,37 @@ int MPIDI_VC_Init( MPIDI_VC_t *, MPIDI_PG_t *, int );
 #    define MPIDI_CH3U_Offsetof(struct_, field_) ((MPI_Aint) &((struct_*)0)->field_)
 #endif
 
+typedef struct __MPIDI_CH3U_COLL_SRBuf_element {
+    /* Keep the buffer at the top to help keep the memory alignment */
+    char   *buf;
+    struct __MPIDI_CH3U_COLL_SRBuf_element * next;
+} MPIDI_CH3U_COLL_SRBuf_element_t;
+
+extern MPIDI_CH3U_COLL_SRBuf_element_t * MPIDI_CH3U_COLL_SRBuf_pool;
+#if !defined (MPIDI_CH3U_COLL_SRBuf_alloc)  
+#   define MPIDI_CH3U_COLL_SRBuf_alloc(srbuf)                               \
+    {                                                                       \
+        if (!MPIDI_CH3U_COLL_SRBuf_pool) {                                  \
+            MPIDI_CH3U_COLL_SRBuf_pool = (MPIDI_CH3U_COLL_SRBuf_element_t *)\
+                   MPIU_Malloc(sizeof(MPIDI_CH3U_COLL_SRBuf_element_t));    \
+            MPIU_Malloc_CUDA_HOST(MPIDI_CH3U_COLL_SRBuf_pool->buf,          \
+                            rdma_cuda_block_size);                          \
+            MPIDI_CH3U_COLL_SRBuf_pool->next = NULL;                        \
+        }                                                                   \
+        srbuf = MPIDI_CH3U_COLL_SRBuf_pool;                                 \
+        MPIDI_CH3U_COLL_SRBuf_pool = MPIDI_CH3U_COLL_SRBuf_pool->next;      \
+    }
+#endif
+
+#if !defined (MPIDI_CH3U_COLL_SRBuf_free)
+#   define MPIDI_CH3U_COLL_SRBuf_free(srbuf)                            \
+    {                                                                   \
+        srbuf->next = MPIDI_CH3U_COLL_SRBuf_pool;                       \
+        MPIDI_CH3U_COLL_SRBuf_pool = srbuf;                             \
+    }
+#endif  
+
+
 #if !defined(MPIDI_CH3U_SRBuf_size)
 #    define MPIDI_CH3U_SRBuf_size (256 * 1024)
 #endif
@@ -912,7 +943,6 @@ typedef struct __MPIDI_CH3U_SRBuf_element {
 } MPIDI_CH3U_SRBuf_element_t;
 
 extern MPIDI_CH3U_SRBuf_element_t * MPIDI_CH3U_SRBuf_pool;
-
 #if !defined (MPIDI_CH3U_SRBuf_get)
 #   define MPIDI_CH3U_SRBuf_get(req_)                                   \
     {                                                                   \
@@ -2099,6 +2129,7 @@ int MPIDI_CH3_Get_rndv_recv(MPIDI_VC_t * vc, MPID_Request * req);
 
 int MPIDI_Num_local_processes(MPIDI_PG_t *pg);
 int MPIDI_Get_local_process_id(MPIDI_PG_t *pg);
+void mv2_show_cpu_affinity(MPIDI_PG_t *pg);
 
 #define MPIDI_CH3U_PKT_SIZE(_pkt) \
     (MPIDI_CH3_Pkt_size_index[((MPIDI_CH3_Pkt_t *)(_pkt))->type])

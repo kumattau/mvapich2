@@ -154,12 +154,22 @@ do {                                            \
     }                                           \
 }while(0)
 
+#define MPIU_Memcpy_CUDA_Async(_dst, _src, _size, _type, _stream)  \
+do {                                                               \
+    cudaError_t cuerr = cudaSuccess;                               \
+    cuerr = cudaMemcpyAsync(_dst, _src, _size, _type, _stream);    \
+    if (cuerr != cudaSuccess) {                                    \
+        PRINT_INFO(1, "cudaMemcpyAsync failed with %d at %d\n", cuerr, __LINE__);  \
+        exit(-1);                                                  \
+    }                                                              \
+}while(0)
+
 #define MPIU_Memcpy_CUDA(_dst, _src, _size, _type)      \
 do {                                                    \
     cudaError_t cuerr = cudaSuccess;                    \
     cuerr = cudaMemcpy(_dst, _src, _size, _type);       \
     if (cuerr != cudaSuccess) {                         \
-        PRINT_INFO(1, "cudaMemcpy failed\n");           \
+        PRINT_INFO(1, "cudaMemcpy failed with %d at %d\n", cuerr, __LINE__);  \
         exit(-1);                                       \
     }                                                   \
 }while(0)

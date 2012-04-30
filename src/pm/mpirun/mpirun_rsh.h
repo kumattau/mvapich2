@@ -80,20 +80,6 @@
 
 #define PMGR_VERSION PMGR_COLLECTIVE
 
-#define MAXLINE 1024
-typedef struct {
-    int totspawns;
-    int spawnsdone;
-    int dpmtot;
-    int dpmindex;
-    int launch_num;
-    char buf[MAXLINE];
-    char linebuf[MAXLINE];
-    char runbuf[MAXLINE];
-    char argbuf[MAXLINE];
-    char *spawnfile;
-} spawn_info_t;
-
 /*This list is used for dpm to take care of the mpirun_rsh started.*/
 typedef struct list_pid_mpirun {
     pid_t pid;

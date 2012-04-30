@@ -15,12 +15,11 @@
 /* style: allow:printf:8 sig:0 */
 
 /*
- * This program reports on properties of the MPICH library, such as the
- * version, device, and what patches have been applied.  This is available
- * only since MPICH2 1.0.6.  
+ * This program reports on properties of the MVAPICH library, such as the
+ * version, device, and what patches have been applied.
  *
  * The reason that this program doesn't directly include the info is that it
- * can be compiled and then linked with the MPICH2 library to discover
+ * can be compiled and then linked with the MVAPICH2 library to discover
  * the information about the version of the library.  If built with shared
  * libraries, this will give the information about the currently installed
  * shared library.
@@ -41,18 +40,18 @@ typedef enum { Version_number=0, Date=1,
              } fields;
 
 /*D
-  mpich2version - Report on the MPICH version
+  mpich2version - Report on the MVAPICH2 version
 
   Command Line Arguments:
-+ -version - Show the version of MPICH
++ -version - Show the version of MVAPICH2
 . -date    - Show the release date of this version
 . -patches - Show the identifiers for any applied patches
-. -configure - Show the configure arguments used to build MPICH
-- -device  - Show the device for which MPICH was configured
+. -configure - Show the configure arguments used to build MVAPICH2
+- -device  - Show the device for which MVAPICH2 was configured
 
   Using this program:
   To use this program, link it against 'libmpich.a' (use 'mpicc' or 
-  the whichever compiler command is used to create MPICH programs)
+  the whichever compiler command is used to create MVAPICH2 programs)
   D*/
 
 int main( int argc, char *argv[] )
@@ -98,22 +97,22 @@ int main( int argc, char *argv[] )
 
     /* Print out the information, one item per line */
     if (flags[Version_number]) {
-	printf( "MPICH2 Version:    \t%s\n", MPIR_Version_string );
+	printf( "MVAPICH2 Version:     \t%s\n", MPIR_Version_string );
     }
     if (flags[Date]) {
-	printf( "MPICH2 Release date:\t%s\n", MPIR_Version_date );
+	printf( "MVAPICH2 Release date:\t%s\n", MPIR_Version_date );
     }
     if (flags[Device]) {
-	printf( "MPICH2 Device:    \t%s\n", MPIR_Version_device );
+	printf( "MVAPICH2 Device:      \t%s\n", MPIR_Version_device );
     }
     if (flags[Configure_args]) {
-	printf( "MPICH2 configure: \t%s\n", MPIR_Version_configure );
+	printf( "MVAPICH2 configure:   \t%s\n", MPIR_Version_configure );
     }
     if (flags[Compilers]) {
-	printf( "MPICH2 CC: \t%s\n", MPIR_Version_CC );
-	printf( "MPICH2 CXX: \t%s\n", MPIR_Version_CXX );
-	printf( "MPICH2 F77: \t%s\n", MPIR_Version_F77 );
-	printf( "MPICH2 FC: \t%s\n", MPIR_Version_FC );
+	printf( "MVAPICH2 CC:  \t%s\n", MPIR_Version_CC );
+	printf( "MVAPICH2 CXX: \t%s\n", MPIR_Version_CXX );
+	printf( "MVAPICH2 F77: \t%s\n", MPIR_Version_F77 );
+	printf( "MVAPICH2 FC:  \t%s\n", MPIR_Version_FC );
     }
 
     return 0;

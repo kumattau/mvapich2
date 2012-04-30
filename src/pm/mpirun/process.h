@@ -14,6 +14,7 @@
 
 #include <unistd.h>
 #include <sys/types.h>
+#include <spawn_info.h>
 
 typedef enum {
     P_NOTSTARTED,
@@ -44,6 +45,7 @@ typedef struct {
     pid_t pid;
     int *plist_indices;
     size_t npids, npids_allocated;
+    spawn_info_t * si;
 
     pid_t local_pid;            //the local forked() proc pid
 } process_group;

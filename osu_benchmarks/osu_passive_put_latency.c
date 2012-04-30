@@ -21,11 +21,9 @@
 #define MAX_SIZE (1<<22)
 #define MYBUFSIZE (MAX_SIZE + MAX_ALIGNMENT)
 
-int skip = 1000;
-int loop = 10000;
-int skip_large = 10;
-int loop_large = 100;
-int large_message_size = 8192;
+#define SKIP_LARGE  10
+#define LOOP_LARGE  100
+#define LARGE_MESSAGE_SIZE  8192
 
 #ifdef PACKAGE_VERSION
 #   define HEADER "# " BENCHMARK " v" PACKAGE_VERSION "\n"
@@ -51,6 +49,8 @@ int main (int argc, char *argv[])
     int         page_size;
     int         size, no_hints = 0;
     double      t_start = 0.0, t_end = 0.0;
+    int         skip = 1000;
+    int         loop = 10000;
 
     MPI_Init(&argc, &argv);
     MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
@@ -136,9 +136,9 @@ int main (int argc, char *argv[])
     }
 
     for (size = 0; size <= MAX_SIZE; size = (size ? size * 2 : size + 1)) {
-        if(size > large_message_size) {
-            loop = loop_large;
-            skip = skip_large;
+        if(size > LARGE_MESSAGE_SIZE) {
+            loop = LOOP_LARGE;
+            skip = SKIP_LARGE;
         }
         
 	    MPI_Win_create(r_buf, size, 1, MPI_INFO_NULL, MPI_COMM_WORLD, &win);

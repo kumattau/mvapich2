@@ -1780,7 +1780,7 @@ int MPID_nem_ib_setup_startup_ring(MPIDI_PG_t *pg, int rank)
 {
     int mpi_errno = MPI_SUCCESS;
     int pg_size;
-    uint64_t my_hca_type;
+    uint64_t my_arch_hca_type;
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_SETUP_STARTUP_RING);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_SETUP_STARTUP_RING);
@@ -1796,9 +1796,9 @@ int MPID_nem_ib_setup_startup_ring(MPIDI_PG_t *pg, int rank)
             MPIU_ERR_POP(mpi_errno);
         }
 
-        my_hca_type = hca_list[0].hca_type;
+        my_arch_hca_type = process_info.arch_hca_type;
 
-        mpi_errno = rdma_ring_based_allgather(&my_hca_type, sizeof my_hca_type,
+        mpi_errno = rdma_ring_based_allgather(&my_arch_hca_type, sizeof(my_arch_hca_type),
                                         rank, conn_info.init_info->arch_hca_type, pg_size);
         if (mpi_errno) {
             MPIU_ERR_POP(mpi_errno);

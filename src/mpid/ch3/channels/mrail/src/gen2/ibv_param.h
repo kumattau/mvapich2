@@ -18,127 +18,127 @@
 #include "mv2_arch_hca_detect.h"
 
 /* Support multiple QPs/port, multiple ports, multiple HCAs and combinations */
-extern int                  rdma_num_hcas;
-extern int                  rdma_num_req_hcas;
-extern int                  rdma_num_ports;
-extern int                  rdma_num_qp_per_port;
-extern int                  rdma_num_rails;
+extern int rdma_num_hcas;
+extern int rdma_num_req_hcas;
+extern int rdma_num_ports;
+extern int rdma_num_qp_per_port;
+extern int rdma_num_rails;
 
-extern unsigned long        rdma_default_max_cq_size;
-extern int                  rdma_default_port;
-extern int                  rdma_default_max_send_wqe;
-extern int                  rdma_default_max_recv_wqe;
-extern uint32_t             rdma_default_max_sg_list;
-extern uint16_t             rdma_default_pkey_ix;
-extern uint16_t             rdma_default_pkey;
-extern uint8_t              rdma_default_qp_ous_rd_atom;
-extern uint8_t              rdma_default_max_rdma_dst_ops;
-extern enum ibv_mtu         rdma_default_mtu;
-extern uint32_t             rdma_default_psn;
-extern uint8_t              rdma_default_min_rnr_timer;
-extern uint8_t              rdma_default_service_level;
-extern uint8_t              rdma_default_static_rate;
-extern uint8_t              rdma_default_src_path_bits;
-extern uint8_t              rdma_default_time_out;
-extern uint8_t              rdma_default_retry_count;
-extern uint8_t              rdma_default_rnr_retry;
-extern int                  rdma_default_put_get_list_size;
-extern float                rdma_credit_update_threshold;   
-extern int                  num_rdma_buffer;
-extern int                  rdma_iba_eager_threshold;
-extern unsigned int         rdma_ndreg_entries;
-extern int                  rdma_vbuf_max;
-extern int                  rdma_vbuf_pool_size;
-extern int                  rdma_vbuf_secondary_pool_size;
-extern int                  rdma_initial_prepost_depth;
-extern int                  rdma_prepost_depth;
-extern int                  rdma_prepost_threshold;
-extern int                  rdma_prepost_noop_extra;
-extern int                  rdma_initial_credits;
-extern int                  rdma_prepost_rendezvous_extra;
-extern int                  rdma_dynamic_credit_threshold;
-extern int                  rdma_credit_notify_threshold;
-extern int                  rdma_credit_preserve;
-extern int                  rdma_rq_size;
-extern unsigned long        rdma_dreg_cache_limit;
-extern int                  rdma_rndv_protocol;
-extern int                  rdma_r3_threshold;
-extern int                  rdma_r3_threshold_nocache;
-extern int                  rdma_max_r3_pending_data;
-extern int                  rdma_vbuf_total_size;
-extern int                  rdma_max_inline_size;
-extern int                  rdma_local_id;
-extern int                  rdma_num_local_procs; 
+extern unsigned long rdma_default_max_cq_size;
+extern int rdma_default_port;
+extern int rdma_default_max_send_wqe;
+extern int rdma_default_max_recv_wqe;
+extern uint32_t rdma_default_max_sg_list;
+extern uint16_t rdma_default_pkey_ix;
+extern uint16_t rdma_default_pkey;
+extern uint8_t rdma_default_qp_ous_rd_atom;
+extern uint8_t rdma_default_max_rdma_dst_ops;
+extern enum ibv_mtu rdma_default_mtu;
+extern uint32_t rdma_default_psn;
+extern uint8_t rdma_default_min_rnr_timer;
+extern uint8_t rdma_default_service_level;
+extern uint8_t rdma_default_static_rate;
+extern uint8_t rdma_default_src_path_bits;
+extern uint8_t rdma_default_time_out;
+extern uint8_t rdma_default_retry_count;
+extern uint8_t rdma_default_rnr_retry;
+extern int rdma_default_put_get_list_size;
+extern float rdma_credit_update_threshold;
+extern int num_rdma_buffer;
+extern int rdma_iba_eager_threshold;
+extern unsigned int rdma_ndreg_entries;
+extern int rdma_vbuf_max;
+extern int rdma_vbuf_pool_size;
+extern int rdma_vbuf_secondary_pool_size;
+extern int rdma_initial_prepost_depth;
+extern int rdma_prepost_depth;
+extern int rdma_prepost_threshold;
+extern int rdma_prepost_noop_extra;
+extern int rdma_initial_credits;
+extern int rdma_prepost_rendezvous_extra;
+extern int rdma_dynamic_credit_threshold;
+extern int rdma_credit_notify_threshold;
+extern int rdma_credit_preserve;
+extern int rdma_rq_size;
+extern unsigned long rdma_dreg_cache_limit;
+extern int rdma_rndv_protocol;
+extern int rdma_r3_threshold;
+extern int rdma_r3_threshold_nocache;
+extern int rdma_max_r3_pending_data;
+extern int rdma_vbuf_total_size;
+extern int rdma_max_inline_size;
+extern int rdma_local_id;
+extern int rdma_num_local_procs;
 
-extern uint32_t             viadev_srq_alloc_size;
-extern uint32_t             viadev_srq_fill_size;
-extern uint32_t             viadev_srq_limit;
-extern uint32_t             viadev_max_r3_oust_send;
+extern uint32_t viadev_srq_alloc_size;
+extern uint32_t viadev_srq_fill_size;
+extern uint32_t viadev_srq_limit;
+extern uint32_t viadev_max_r3_oust_send;
 
-extern int                  rdma_polling_set_threshold;
-extern int                  rdma_polling_set_limit;
-extern int                  rdma_fp_buffer_size;
-extern int                  rdma_fp_sendconn_accepted;
-extern int                  rdma_pending_conn_request;
-extern int                  rdma_eager_limit;
-extern int                  rdma_rndv_ext_sendq_size;
-extern int                  rdma_global_ext_sendq_size;
-extern int                  rdma_num_extra_polls;
+extern int rdma_polling_set_threshold;
+extern int rdma_polling_set_limit;
+extern int rdma_fp_buffer_size;
+extern int rdma_fp_sendconn_accepted;
+extern int rdma_pending_conn_request;
+extern int rdma_eager_limit;
+extern int rdma_rndv_ext_sendq_size;
+extern int rdma_global_ext_sendq_size;
+extern int rdma_num_extra_polls;
 
-extern int                  rdma_pin_pool_size;
-extern int                  rdma_put_fallback_threshold;
-extern int                  rdma_get_fallback_threshold; 
-extern int                  rdma_iba_eager_threshold;
-extern long                 rdma_eagersize_1sc;
-extern int                  rdma_qos_num_sls;
-extern int                  rdma_use_qos;
-extern int                  rdma_3dtorus_support;
-extern int                  rdma_path_sl_query;
-extern int                  rdma_num_sa_query_retries;
-extern int                  rdma_multirail_usage_policy;
-extern int                  rdma_small_msg_rail_sharing_policy;
-extern int                  rdma_med_msg_rail_sharing_policy;
-extern int                  rdma_med_msg_rail_sharing_threshold;
-extern int                  rdma_large_msg_rail_sharing_threshold;
+extern int rdma_pin_pool_size;
+extern int rdma_put_fallback_threshold;
+extern int rdma_get_fallback_threshold;
+extern int rdma_iba_eager_threshold;
+extern long rdma_eagersize_1sc;
+extern int rdma_qos_num_sls;
+extern int rdma_use_qos;
+extern int rdma_3dtorus_support;
+extern int rdma_path_sl_query;
+extern int rdma_num_sa_query_retries;
+extern int rdma_multirail_usage_policy;
+extern int rdma_small_msg_rail_sharing_policy;
+extern int rdma_med_msg_rail_sharing_policy;
+extern int rdma_med_msg_rail_sharing_threshold;
+extern int rdma_large_msg_rail_sharing_threshold;
 
 
-extern int                  mv2_on_demand_ud_info_exchange;
-extern int                  mv2_show_env_info;
+extern int mv2_on_demand_ud_info_exchange;
+extern int mv2_show_env_info;
 /* HSAM Definitions */
 
-extern  int                 striping_threshold;
-extern  int                 rdma_rail_sharing_policy;
-extern  int                 alpha;
-extern  int                 stripe_factor;
-extern  int                 apm_tester;
+extern int striping_threshold;
+extern int rdma_rail_sharing_policy;
+extern int alpha;
+extern int stripe_factor;
+extern int apm_tester;
 
-extern int                  rdma_coalesce_threshold;
-extern int                  rdma_use_coalesce;
+extern int rdma_coalesce_threshold;
+extern int rdma_use_coalesce;
 
-extern int                  rdma_use_blocking;
-extern unsigned long        rdma_blocking_spin_count_threshold;
-extern unsigned long        rdma_polling_spin_count_threshold;
-extern int                  mv2_use_thread_yield; 
-extern int                  mv2_spins_before_lock;
-extern int                  rdma_use_xrc;
-extern int                  xrc_rdmafp_init;
-extern int                  rdma_use_smp;
-extern int                  use_iboeth;
-extern int                  rdma_iwarp_multiple_cq_threshold;
-extern int                  rdma_iwarp_use_multiple_cq;
-extern int                  using_mpirun_rsh;
+extern int rdma_use_blocking;
+extern unsigned long rdma_blocking_spin_count_threshold;
+extern unsigned long rdma_polling_spin_count_threshold;
+extern int mv2_use_thread_yield;
+extern int mv2_spins_before_lock;
+extern int rdma_use_xrc;
+extern int xrc_rdmafp_init;
+extern int rdma_use_smp;
+extern int use_iboeth;
+extern int rdma_iwarp_multiple_cq_threshold;
+extern int rdma_iwarp_use_multiple_cq;
+extern int using_mpirun_rsh;
 
-extern int                  use_hwloc_cpu_binding; 
-extern int                  max_rdma_connect_attempts;
-extern int                  rdma_cm_connect_retry_interval;
-extern int                  rdma_num_rails_per_hca;
-extern int                  rdma_process_binding_rail_offset;
+extern int use_hwloc_cpu_binding;
+extern int max_rdma_connect_attempts;
+extern int rdma_cm_connect_retry_interval;
+extern int rdma_num_rails_per_hca;
+extern int rdma_process_binding_rail_offset;
 
 /* Use of LIMIC of RMA Communication */
-extern int                  limic_put_threshold;
-extern int                  limic_get_threshold;
+extern int limic_put_threshold;
+extern int limic_get_threshold;
 
-extern int                  rdma_enable_hugepage;
+extern int rdma_enable_hugepage;
 
 #ifdef _ENABLE_CUDA_
 extern int rdma_cuda_block_size;
@@ -154,7 +154,7 @@ extern int rdma_cuda_ipc;
 extern int rdma_cuda_enable_ipc_cache;
 extern int rdma_cuda_ipc_threshold;
 extern int cudaipc_cache_max_entries;
-#endif /*#if defined(HAVE_CUDA_IPC)*/
+#endif /*#if defined(HAVE_CUDA_IPC) */
 extern int rdma_cuda_use_naive;
 extern int rdma_cuda_register_naive_buf;
 extern int rdma_cuda_gather_naive_limit;
@@ -166,40 +166,44 @@ extern int rdma_cuda_allgatherv_naive_limit;
 extern int rdma_cuda_alltoall_naive_limit;
 extern int rdma_cuda_alltoallv_naive_limit;
 extern int rdma_cuda_bcast_naive_limit;
-#endif /*#ifdef _ENABLE_CUDA_*/
+extern int rdma_cuda_alltoall_dynamic;
+extern int rdma_cuda_allgather_rd_limit;
+extern int rdma_cuda_allgather_fgp;
+#endif /*#ifdef _ENABLE_CUDA_ */
 
 
 #ifdef _ENABLE_UD_
-extern uint8_t              rdma_enable_hybrid;
-extern uint8_t              rdma_use_ud_zcopy;
-extern uint32_t             rdma_hybrid_enable_threshold;
-extern uint32_t             rdma_default_max_ud_send_wqe;
-extern uint32_t             rdma_default_max_ud_recv_wqe;
-extern uint32_t             rdma_default_ud_sendwin_size;
-extern uint32_t             rdma_default_ud_recvwin_size;
-extern long                 rdma_ud_progress_timeout;
-extern long                 rdma_ud_retry_timeout;
-extern long                 rdma_ud_max_retry_timeout;
-extern long                 rdma_ud_last_check;
-extern uint16_t             rdma_ud_max_retry_count;
-extern uint16_t             rdma_ud_progress_spin;
-extern uint16_t             rdma_ud_max_ack_pending;
-extern uint16_t             rdma_default_ud_mtu;
-extern uint16_t             rdma_ud_num_rndv_qps;
-extern uint32_t             rdma_ud_num_msg_limit;
-extern uint32_t             rdma_ud_vbuf_pool_size;
-extern uint32_t             rdma_ud_zcopy_threshold;
-extern uint32_t             rdma_ud_zcopy_rq_size;
-extern uint16_t             rdma_hybrid_max_rc_conn;
-extern uint16_t             rdma_hybrid_pending_rc_conn;
+extern uint8_t rdma_enable_hybrid;
+extern uint8_t rdma_enable_only_ud;
+extern uint8_t rdma_use_ud_zcopy;
+extern uint32_t rdma_hybrid_enable_threshold;
+extern uint32_t rdma_default_max_ud_send_wqe;
+extern uint32_t rdma_default_max_ud_recv_wqe;
+extern uint32_t rdma_default_ud_sendwin_size;
+extern uint32_t rdma_default_ud_recvwin_size;
+extern long rdma_ud_progress_timeout;
+extern long rdma_ud_retry_timeout;
+extern long rdma_ud_max_retry_timeout;
+extern long rdma_ud_last_check;
+extern uint16_t rdma_ud_max_retry_count;
+extern uint16_t rdma_ud_progress_spin;
+extern uint16_t rdma_ud_max_ack_pending;
+extern uint16_t rdma_default_ud_mtu;
+extern uint16_t rdma_ud_num_rndv_qps;
+extern uint32_t rdma_ud_num_msg_limit;
+extern uint32_t rdma_ud_vbuf_pool_size;
+extern uint32_t rdma_ud_zcopy_threshold;
+extern uint32_t rdma_ud_zcopy_rq_size;
+extern uint16_t rdma_hybrid_max_rc_conn;
+extern uint16_t rdma_hybrid_pending_rc_conn;
 #ifdef _MV2_UD_DROP_PACKET_RATE_
-extern uint32_t             ud_drop_packet_rate;
+extern uint32_t ud_drop_packet_rate;
 #endif
 #endif /* _ENABLE_UD_ */
 
-extern int                  rdma_default_async_thread_stack_size;
+extern int rdma_default_async_thread_stack_size;
 
-#define PKEY_MASK 0x7fff /* the last bit is reserved */
+#define PKEY_MASK 0x7fff        /* the last bit is reserved */
 #define RDMA_PIN_POOL_SIZE              (2*1024*1024)
 #define RDMA_DEFAULT_MAX_CQ_SIZE        (40000)
 #define RDMA_DEFAULT_IWARP_CQ_SIZE      (8192)
@@ -220,7 +224,7 @@ extern int                  rdma_default_async_thread_stack_size;
 #define RDMA_DEFAULT_STATIC_RATE        (0)
 #define RDMA_DEFAULT_SRC_PATH_BITS      (0)
 #define RDMA_DEFAULT_TIME_OUT          (20)
-#define RDMA_DEFAULT_RETRY_COUNT        (7)  
+#define RDMA_DEFAULT_RETRY_COUNT        (7)
 #define RDMA_DEFAULT_RNR_RETRY          (7)
 #define RDMA_DEFAULT_PUT_GET_LIST_SIZE  (200)
 #define RDMA_IBA_NULL_HCA               "nohca"
@@ -278,10 +282,10 @@ extern int                  rdma_default_async_thread_stack_size;
 #define NUM_BOOTSTRAP_BARRIERS  2
 
 /* Statistically sending a stripe below this may not lead
- * to benefit */                               
+ * to benefit */
 #define STRIPING_THRESHOLD              8 * 1024
-extern char                 rdma_iba_hcas[MAX_NUM_HCAS][32];
-                               
+extern char rdma_iba_hcas[MAX_NUM_HCAS][32];
+
 typedef enum _mv2_iba_network_classes {
     MV2_NETWORK_CLASS_UNKNOWN = 0,
     MV2_NETWORK_CLASS_IB = 1,
@@ -291,7 +295,7 @@ typedef enum _mv2_iba_network_classes {
 /* Below ROUND_ROBIN refers to the rails where the rails are alternately
  * given to any process asking for it. Where as FIXED_MAPPING refers
  * to a scheduling policy where processes are bound to rails in a round
- * robin manner. So once a process is bound to a rail it will use only 
+ * robin manner. So once a process is bound to a rail it will use only
  * that rail to send out messages */
 
 typedef enum _mv2_multirail_policies {
@@ -310,10 +314,10 @@ typedef enum _mv2_rail_sharing_policies {
 } mv2_rail_sharing_policies;
 
 /* This is to allow users to specify rail mapping at run time */
-extern int                  mrail_use_default_mapping;
-extern int                  mrail_user_defined_p2r_mapping;
-extern char*                mrail_p2r_string;
-extern int                  mrail_p2r_length;
+extern int mrail_use_default_mapping;
+extern int mrail_user_defined_p2r_mapping;
+extern char *mrail_p2r_string;
+extern int mrail_p2r_length;
 
 #define DYNAMIC_TOTAL_WEIGHT            (3* 1024)
 
@@ -321,27 +325,26 @@ extern int                  mrail_p2r_length;
 #define INTEL_NE020_RNIC                "nes0"
 
 /* MV2_POLLING_LEVEL
-Level 1 : Exit on finding a message on any channel 
+Level 1 : Exit on finding a message on any channel
 Level 2 : Exit on finding a message on RDMA_FP or SMP channel.
           Continue on ibv_poll_cq success.
 Level 3 : Exit on finding a message on RDMA_FP channel.
           Continue polling on SMP and ibv_poll_cq channels
           until no more messages.
-Level 4 : Exit only after processing all the messages on 
+Level 4 : Exit only after processing all the messages on
           all the channels
 */
 typedef enum mv2_polling_level {
-    MV2_POLLING_LEVEL_1 = 1, 
-    MV2_POLLING_LEVEL_2, 
-    MV2_POLLING_LEVEL_3, 
+    MV2_POLLING_LEVEL_1 = 1,
+    MV2_POLLING_LEVEL_2,
+    MV2_POLLING_LEVEL_3,
     MV2_POLLING_LEVEL_4,
-} mv2_polling_level; 
-                               
-extern mv2_polling_level    rdma_polling_level;
+} mv2_polling_level;
+
+extern mv2_polling_level rdma_polling_level;
 
 /* enum list of MV2 runtime environment variables */
-typedef enum mv2_env_param_id
-{
+typedef enum mv2_env_param_id {
     /* mpirun_rsh */
     MV2_COMM_WORLD_LOCAL_RANK,
     PMI_ID,
@@ -563,6 +566,9 @@ typedef enum mv2_env_param_id
     MV2_CUDA_BCAST_NAIVE_LIMIT,
     MV2_CUDA_GATHERV_NAIVE_LIMIT,
     MV2_CUDA_SCATTERV_NAIVE_LIMIT,
+    MV2_CUDA_ALLTOALL_DYNAMIC,
+    MV2_CUDA_ALLGATHER_RD_LIMIT,
+    MV2_CUDA_ALLGATHER_FGP,
     /* debug */
     MV2_DEBUG_CORESIZE,
     MV2_DEBUG_SHOW_BACKTRACE,
@@ -615,6 +621,7 @@ typedef enum mv2_env_param_id
     MV2_UD_ZCOPY_THRESHOLD,
     MV2_USE_UD_ZCOPY,
     MV2_USE_UD_HYBRID,
+    MV2_USE_ONLY_UD,
     MV2_USE_UD_SRQ,
     MV2_HYBRID_ENABLE_THRESHOLD,
     MV2_HYBRID_MAX_RC_CONN,
@@ -662,18 +669,17 @@ typedef enum mv2_env_param_group {
 } mv2_env_param_group_t;
 
 /* runtime environment list structure */
-typedef struct mv2_env_param_list
-{
-    mv2_env_param_id_t id;          /* param id */
-    mv2_env_param_type_t type;      /* param datatype */
-    mv2_env_param_group_t group;    /* param category */
-    char *name;                     /* param name */
-    void *value;                    /* param value store addr*/
-    int extrenal_visible;           /* 1 or 0 */
-    char *descrption;               /* param descrption */
+typedef struct mv2_env_param_list {
+    mv2_env_param_id_t id;      /* param id */
+    mv2_env_param_type_t type;  /* param datatype */
+    mv2_env_param_group_t group;        /* param category */
+    char *name;                 /* param name */
+    void *value;                /* param value store addr */
+    int extrenal_visible;       /* 1 or 0 */
+    char *descrption;           /* param descrption */
 } mv2_env_param_list_t;
 
-extern mv2_env_param_list_t  param_list[];
+extern mv2_env_param_list_t param_list[];
 void mv2_show_all_params();
 mv2_arch_hca_type MV2_get_arch_hca_type();
 #endif /* _RDMA_PARAM_H */

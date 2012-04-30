@@ -19,7 +19,8 @@
 #include "mpiimpl.h"
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include "coll_shmem.h"
-
+#include "math.h"
+#include "unistd.h"
 
 /* This is the default implementation of alltoall. The algorithm is:
    
@@ -616,7 +617,7 @@ int MPIR_Alltoall_MV2(void *sendbuf, int sendcount, MPI_Datatype sendtype,
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #ifdef _ENABLE_CUDA_
     MPI_Aint sendtype_extent, recvtype_extent;
-    int comm_size, nbytes;
+    int comm_size, nbytes = 0, snbytes = 0;
     int send_mem_type = 0, recv_mem_type = 0;
 
     if (rdma_enable_cuda) {
@@ -630,9 +631,38 @@ int MPIR_Alltoall_MV2(void *sendbuf, int sendcount, MPI_Datatype sendtype,
 
     MPID_Datatype_get_extent_macro(recvtype, recvtype_extent);
     MPID_Datatype_get_extent_macro(sendtype, sendtype_extent);
+    if (sendbuf != MPI_IN_PLACE) {
+        snbytes = sendtype_extent * sendcount;
+    }
     nbytes = recvtype_extent * recvcount;
 
-    if (rdma_enable_cuda &&
+    /*Handling Non-contig datatypes*/
+    if (rdma_enable_cuda && (send_mem_type || recv_mem_type) &&
+        (nbytes < rdma_cuda_block_size && snbytes < rdma_cuda_block_size)) {
+        cuda_coll_pack(&sendbuf, &sendcount, &sendtype,
+                        &recvbuf, &recvcount, &recvtype,
+                        0, comm_size, comm_size);
+
+        MPID_Datatype_get_extent_macro(recvtype, recvtype_extent);
+        MPID_Datatype_get_extent_macro(sendtype, sendtype_extent);
+        if (sendbuf != MPI_IN_PLACE) {
+            snbytes = sendtype_extent * sendcount;
+        }
+        nbytes = recvtype_extent * recvcount;
+    }
+
+    if (rdma_enable_cuda && 
+        rdma_cuda_alltoall_dynamic &&
+        send_mem_type && recv_mem_type &&
+        nbytes <= rdma_cuda_block_size &&
+        snbytes <= rdma_cuda_block_size &&
+        nbytes*comm_size > rdma_cuda_block_size) {
+        mpi_errno = MPIR_Alltoall_CUDA_intra_MV2(sendbuf, sendcount, sendtype,
+                                       recvbuf, recvcount, recvtype,
+                                       comm_ptr, errflag);
+        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+        goto fn_exit;
+    } else if (rdma_enable_cuda &&
         rdma_cuda_use_naive && 
         (send_mem_type || recv_mem_type) &&
         nbytes <= rdma_cuda_alltoall_naive_limit) {
@@ -672,12 +702,16 @@ int MPIR_Alltoall_MV2(void *sendbuf, int sendcount, MPI_Datatype sendtype,
                         &recvbuf, recvcount*recvtype_extent*comm_size,
                         send_mem_type, recv_mem_type);
     }
+
 #endif /*#ifdef _ENABLE_CUDA_*/
     
  fn_exit:
+#ifdef _ENABLE_CUDA_
+    if (rdma_enable_cuda && (send_mem_type || recv_mem_type)) {
+        cuda_coll_unpack(&recvcount, comm_size);
+    }
+#endif
     return mpi_errno;
  fn_fail:
     goto fn_exit;
 }
-
-

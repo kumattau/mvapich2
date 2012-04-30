@@ -48,12 +48,24 @@ the rank to host mapping.
 
 MPI-1
 -----
-osu_bcast	- Broadcast Latency Test
-osu_bibw	- Bidirectional Bandwidth Test
-osu_bw		- Bandwidth Test
-osu_latency	- Latency Test
-osu_mbw_mr	- Multiple Bandwidth / Message Rate Test
-osu_multi_lat   - Multi-pair Latency Test
+osu_bibw	      - Bidirectional Bandwidth Test
+osu_bw	 	      - Bandwidth Test
+osu_latency	      - Latency Test
+osu_mbw_mr    	  - Multiple Bandwidth / Message Rate Test
+osu_multi_lat     - Multi-pair Latency Test
+osu_allgather     - MPI_Allgather Latency Test
+osu_allgatherv    - MPI_Allgatherv Latency Test
+osu_allreduce     - MPI_Allreduce Latency Test
+osu_alltoall      - MPI_Alltoall Latency Test
+osu_alltoallv     - MPI_Alltoallv Latency Test
+osu_barrier       - MPI_Barrier Latency Test
+osu_bcast         - MPI_Bcast Latency Test
+osu_gather        - MPI_Gather Latency Test
+osu_gatherv       - MPI_Gatherv Latency Test
+osu_reduce        - MPI_Reduce Latency Test
+osu_reduce_scater - MPI_Reduce_scatter Latency Test
+osu_scatter       - MPI_Scatter Latency Test
+osu_scatterv      - MPI_Scatterv Latency Test
 
 MPI-2
 -----
@@ -127,15 +139,6 @@ Multi-pair Latency Test
     * instant multiple pairs are performing the same test simultaneously.
     * In order to perform the test across just two nodes the hostnames must
     * be specified in block fashion.
-
-Broadcast Latency Test
-    * Broadcast Latency Test: The Broadcast latency test was carried out in the
-    * following manner. After doing a MPI_Bcast the root node waits for an ack
-    * from the last receiver. This ack is in the form of a zero byte message
-    * from the receiver to the root. This test is carried out for a large number
-    * (1000) of iterations. The Broadcast latency is obtained by subtracting the
-    * time taken for the ack from the total time. We compute the ack time
-    * initially by doing a ping-pong test. This test is available here.
 
 Latency Test for Put with Active Synchronization (MPI-2 Benchmark)
     * Post-Wait/Start-Complete synchronization is used in this test. The origin
@@ -296,7 +299,27 @@ Latency Test for Accumulate with Passive Synchronization (MPI-2 Benchmark)
     * specific to MVAPICH2 and the hint is ignored by other MPI libraries. It
     * does not have an impact on internode performance.  This optimization can
     * be disabled by providing '-n' or '-no-hints' option to the benchmark.
- 
+
+Collective Latency Tests
+    * The latest OMB Version includes benchmarks for various MPI collective
+    * operations (MPI_Allgather, MPI_Alltoall, MPI_Allreduce, MPI_Barrier,
+    * MPI_Bcast, MPI_Gather, MPI_Reduce, MPI_Reduce_Scatter, MPI_Scatter and
+    * vector collectives). These benchmarks work in the following manner.
+    * Suppose users run the osu_bcast benchmark with N processes, the benchmark
+    * measures the min, max and the average latency of the MPI_Bcast collective
+    * operation across N processes, for various message lengths, over a large
+    * number of iterations. In the default version, these benchmarks report the
+    * average latency for each message length. Additionally, the benchmarks
+    * offer the following options: 
+    * "-f" can be used to report additional statistics of the benchmark,
+           such as min and max latencies and the number of iterations. 
+    * "-m" option can be used to set the maximum message length to be used in a
+           benchmark. In the default version, the benchmarks report the
+           latencies for up to 1MB message lengths. 
+    * "-i" can be used to set the number of iterations to run for each message
+           length. 
+
+
 CUDA Extensions to OMB
 ----------------------
 CUDA Extensions to OMB can be enable by configuring the benchmark suite with

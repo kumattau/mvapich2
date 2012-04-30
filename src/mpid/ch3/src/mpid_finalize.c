@@ -180,7 +180,23 @@ int MPID_Finalize(void)
 	    p = pNext;
 	}
     }
+
 #if defined(_ENABLE_CUDA_)
+    /* Release any COLL SRbuf pool storage */
+    if (MPIDI_CH3U_COLL_SRBuf_pool) {
+	MPIDI_CH3U_COLL_SRBuf_element_t *p, *pNext;
+	p = MPIDI_CH3U_COLL_SRBuf_pool;
+	while (p) {
+	    pNext = p->next;
+	    MPIU_Free_CUDA_HOST(p->buf);
+        MPIU_Free(p);
+	    p = pNext;
+	}
+    }
+
+    /*free cuda resources allocated in Alltoall*/
+    MPIR_Alltoall_CUDA_cleanup();
+
     /* Release any CUDA SRbuf storage */
     if (MPIDI_CH3U_CUDA_SRBuf_pool) {
         MPIDI_CH3U_CUDA_SRBuf_element_t *p, *pNext;

@@ -19,15 +19,15 @@
 #define MAX_MSG_SIZE (1<<22)
 #define MYBUFSIZE (MAX_MSG_SIZE + MESSAGE_ALIGNMENT)
 #define THREADS 2
+#define SKIP_LARGE  10
+#define LOOP_LARGE  100
+#define LARGE_MESSAGE_SIZE  8192
 
 char        s_buf1[MYBUFSIZE];
 char        r_buf1[MYBUFSIZE];
-
 int         skip = 1000;
 int         loop = 10000;
-int         skip_large = 10;
-int         loop_large = 100;
-int         large_message_size = 8192;
+
 
 pthread_mutex_t finished_size_mutex;
 pthread_cond_t  finished_size_cond;
@@ -61,7 +61,6 @@ int main(int argc, char *argv[])
 {
     int numprocs, provided, myid, err;
     int i = 0;
-
     pthread_t sr_threads[THREADS];
     thread_tag_t tags[THREADS];
 
@@ -170,9 +169,9 @@ void * recv_thread(void *arg) {
             pthread_mutex_unlock(&finished_size_mutex);
         }
 
-        if(size > large_message_size) {
-            loop = loop_large;
-            skip = skip_large;
+        if(size > LARGE_MESSAGE_SIZE) {
+            loop = LOOP_LARGE;
+            skip = SKIP_LARGE;
         }  
 
         /* touch the data */
@@ -215,9 +214,9 @@ void * send_thread(void *arg) {
     for(size = 0, iter = 0; size <= MAX_MSG_SIZE; size = (size ? size * 2 : 1)) {
         MPI_Barrier(MPI_COMM_WORLD);
 
-        if(size > large_message_size) {
-            loop = loop_large;
-            skip = skip_large;
+        if(size > LARGE_MESSAGE_SIZE) {
+            loop = LOOP_LARGE;
+            skip = SKIP_LARGE;
         }  
 
         /* touch the data */

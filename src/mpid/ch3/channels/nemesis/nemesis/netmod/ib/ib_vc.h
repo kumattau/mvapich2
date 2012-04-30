@@ -88,7 +88,9 @@ typedef struct
 
     int force_rndv;
 
+#ifdef ENABLE_CHECKPOINTING
     int send_paused;
+#endif
 
     int pending_r3_data;
     int received_r3_data;

@@ -1620,6 +1620,8 @@ int CR_IBU_Rebuild_network()
                            &(gid_all[i].global.interface_id));
                 }
             }
+            MPIU_Free(key);
+            MPIU_Free(val);
         }
     }
 
@@ -1637,6 +1639,10 @@ int CR_IBU_Rebuild_network()
     }
 
     CR_DBG("CR_IBU_Rebuild_network finish\n");
+
+    MPIU_Free(ud_qpn_all);
+    MPIU_Free(lid_all);
+    MPIU_Free(gid_all);
 
   fn_exit:
     return mpi_errno;
@@ -1990,6 +1996,7 @@ int CR_IBU_Reactivate_channels()
     if ((retval = MPIDI_CH3I_CM_Reactivate(vc_vector))) {
         return retval;
     }
+    MPIU_Free(vc_vector);
 
     return retval;
 }

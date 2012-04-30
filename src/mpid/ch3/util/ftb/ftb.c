@@ -1,5 +1,14 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/*
+/* Copyright (c) 2003-2012, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
@@ -41,8 +50,8 @@ int MPIDU_Ftb_init(void)
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDU_FTB_INIT);
 
-    MPIU_Strncpy(ci.event_space, "ftb.mpi.mpich2", sizeof(ci.event_space));
-    MPIU_Strncpy(ci.client_name, "mpich2 " MPICH2_VERSION, sizeof(ci.client_name));
+    MPIU_Strncpy(ci.event_space, "ftb.mpi.mvapich2", sizeof(ci.event_space));
+    MPIU_Strncpy(ci.client_name, "mvapich2 " MVAPICH2_VERSION, sizeof(ci.client_name));
     MPIU_Strncpy(ci.client_subscription_style, "FTB_SUBSCRIPTION_NONE", sizeof(ci.client_subscription_style));
     ci.client_polling_queue_len = -1;
     

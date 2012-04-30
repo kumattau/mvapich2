@@ -64,6 +64,7 @@ MPIDI_Process_t MPIDI_Process = { NULL };
 MPIDI_CH3U_SRBuf_element_t * MPIDI_CH3U_SRBuf_pool = NULL;
 #if defined(_ENABLE_CUDA_)
 MPIDI_CH3U_CUDA_SRBuf_element_t * MPIDI_CH3U_CUDA_SRBuf_pool = NULL;
+MPIDI_CH3U_COLL_SRBuf_element_t * MPIDI_CH3U_COLL_SRBuf_pool = NULL;
 #endif
 
 
@@ -465,6 +466,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 
 #ifdef HAVE_LIBHWLOC
         int affinity_env = 1;
+        int show_cpu_binding = 0;
 
         /*
          * Check to see if the user has explicitly disabled affinity.  If not
@@ -477,6 +479,10 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
              * MPICH_THREAD_LEVEL in this case.
              */
             *provided = MPI_THREAD_SINGLE;
+        }
+        MPL_env2bool("MV2_SHOW_CPU_BINDING", &show_cpu_binding);
+        if (show_cpu_binding) {
+            mv2_show_cpu_affinity(pg);
         }
 #endif /* HAVE_LIBHWLOC */
 #endif /* defined(_OSU_MVAPICH_) */

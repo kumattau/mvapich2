@@ -7,7 +7,8 @@ mpi_sources = allreduce.c barrier.c op_create.c op_free.c \
  red_scat.c alltoallw.c reduce_local.c op_commutative.c red_scat_block.c \
  allgather_osu.c allgatherv_osu.c allreduce_osu.c alltoall_osu.c alltoallv_osu.c \
  barrier_osu.c bcast_osu.c gather_osu.c gather_tuning.c \
- reduce_osu.c scatter_osu.c red_scat_osu.c ch3_shmem_coll.c 
+ reduce_osu.c scatter_osu.c red_scat_osu.c ch3_shmem_coll.c alltoall_cuda_osu.c \
+ allgather_cuda_osu.c
 
 lib${MPILIBNAME}_a_SOURCES = $(mpi_sources) \
  helper_fns.c opsum.c opmax.c opmin.c opband.c opbor.c opbxor.c \
