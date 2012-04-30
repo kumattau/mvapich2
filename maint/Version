@@ -9,7 +9,7 @@ MVAPICH2_VERSION=1.8
 
 # Release date
 MPICH2_RELEASE_DATE="Thu Mar 22 10:21:00 EDT 2012"
-MVAPICH2_RELEASE_DATE="unreleased development copy"
+MVAPICH2_RELEASE_DATE="Mon Apr 30 14:56:40 EDT 2012"
 
 # For libtool ABI versioning rules see:
 # http://www.gnu.org/software/libtool/manual/libtool.html#Updating-version-info
