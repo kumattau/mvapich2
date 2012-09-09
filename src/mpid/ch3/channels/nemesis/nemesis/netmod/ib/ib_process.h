@@ -1,5 +1,5 @@
 /*!\file */
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -47,7 +47,7 @@ typedef struct  {
 
     int rails;
 
-    uint8_t                     heterogenity;
+    uint8_t                     heterogeneity;
     uint8_t                     has_srq;
     uint8_t                     has_hsam;
     uint8_t                     has_apm;

@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -514,11 +514,26 @@ int MPIDI_CH3I_SMP_finalize(void);
 void MPIDI_CH3I_SMP_writev_rndv_header(MPIDI_VC_t * vc, const MPID_IOV * iov,
 	const int n, int *num_bytes_ptr);
 	
-void MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, const MPID_IOV * iov,
-	const int n, int *num_bytes_ptr);
+void MPIDI_CH3I_SMP_writev_rndv_data_cont(MPIDI_VC_t * vc, MPID_Request *req,
+    const MPID_IOV * iov, const int n, int *num_bytes_ptr);
 	
-int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, const MPID_IOV * iov,
-	const int n, int *num_bytes_ptr);
+int MPIDI_CH3I_SMP_writev_rndv_data(MPIDI_VC_t * vc, MPID_Request *req, 
+    const MPID_IOV * iov, const int n, int *num_bytes_ptr);
+
+#if defined(_ENABLE_CUDA_)
+int MPIDI_CH3I_SMP_writev_rndv_data_cuda(MPIDI_VC_t * vc, MPID_Request *req,
+    const MPID_IOV * iov, const int n, int *num_bytes_ptr, int is_cont);
+
+void smp_cuda_send_copy_complete(MPIDI_VC_t * vc, MPID_Request *req, 
+    void *ptr_flag);
+
+int MPIDI_CH3I_SMP_readv_rndv_cuda(MPIDI_VC_t *recv_vc_ptr, MPID_Request *req,
+    const MPID_IOV * iov, const int iov_count, int index, size_t *num_bytes_ptr, 
+    int is_cont);
+
+void smp_cuda_recv_copy_complete(MPIDI_VC_t * vc, MPID_Request *req, 
+    void *recv_buf_ptr);
+#endif
 
 void MPIDI_CH3I_SMP_writev(MPIDI_VC_t * vc, const MPID_IOV * iov,
                           const int n, int *num_bytes_ptr);

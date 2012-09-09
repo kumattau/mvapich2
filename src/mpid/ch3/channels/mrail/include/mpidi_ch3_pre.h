@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -304,6 +304,13 @@ typedef struct MPIDI_CH3I_comm
     MPI_Comm     leader_comm;
     MPI_Comm     shmem_comm;
     MPI_Comm     allgather_comm;
+#if defined(_SMP_LIMIC_)    
+    MPI_Comm     intra_sock_comm;
+    MPI_Comm     intra_sock_leader_comm;
+    int*         socket_size;
+    int          is_socket_uniform;
+    int          use_intra_sock_comm;
+#endif    
     int*    leader_map;
     int*    leader_rank;
     int*    node_sizes; 
@@ -315,7 +322,14 @@ typedef struct MPIDI_CH3I_comm
     int     leader_group_size;
     int     is_global_block;
     int     is_pof2; /* Boolean to know if comm size is equal to pof2  */
-    int     gpof2; /* Greater pof2 < size of comm */ 
+    int     gpof2; /* Greater pof2 < size of comm */
+    int     intra_node_done; /* Used to check if intra node communication has been done 
+                                with mcast and bcast */
+#if defined(_MCST_SUPPORT_)
+    int     is_mcast_ok;
+    void    *bcast_info;
+#endif
+    void    *shmem_info; /* intra node shmem info */
 } MPIDI_CH3I_comm_t;
 
 #define MPID_DEV_COMM_DECL MPIDI_CH3I_comm_t ch;

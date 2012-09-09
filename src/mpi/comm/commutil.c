@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
- /* Copyright (c) 2003-2012, The Ohio State University. All rights
+ /* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -18,6 +18,10 @@
 
 #include "mpiimpl.h"
 #include "mpicomm.h"
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#include "coll_shmem.h"
+#endif /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */ 
+
 
 /* This is the utility file for comm that contains the basic comm items
    and storage management */
@@ -117,6 +121,21 @@ int MPIR_Comm_init(MPID_Comm *comm_p)
     comm_p->ch.leader_comm=MPI_COMM_NULL;
     comm_p->ch.shmem_comm=MPI_COMM_NULL;
     comm_p->ch.allgather_comm=MPI_COMM_NULL;
+    comm_p->ch.intra_node_done = 0;
+#if defined(_MCST_SUPPORT_)
+    comm_p->ch.is_mcast_ok = 0;
+    comm_p->ch.bcast_info = NULL;
+#endif
+    comm_p->ch.shmem_info = NULL;
+
+#if defined(_SMP_LIMIC)    
+    comm_p->ch.socket_size=MPI_COMM_NULL;
+    comm_p->ch.use_intra_sock_comm=0;
+    comm_p->ch.is_socket_uniform=0;
+    comm_p->ch.intra_sock_comm=MPI_COMM_NULL;
+    comm_p->ch.intra_sock_leader_comm=MPI_COMM_NULL;
+#endif /*defined(_SMP_LIMIC) */
+
 #endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
     /* Fields not set include context_id, remote and local size, and

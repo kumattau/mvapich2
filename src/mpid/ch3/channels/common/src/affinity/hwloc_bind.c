@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1326,14 +1326,15 @@ int get_cpu_mapping_hwloc(long N_CPUs_online, hwloc_topology_t tp)
          * has provided a mapping string, it overrides everything.
          */
         /*TODO: might need a better representation as number of cores per node increases */
-        unsigned long num_bit_mask = 1UL << num_cpus;
+        unsigned long long_max = ULONG_MAX;
+        int n_digits = num_digits(long_max);
         custom_cpu_mapping =
-            MPIU_Malloc(sizeof(char) * num_cpus * (num_digits(num_bit_mask)) + 1);
+            MPIU_Malloc(sizeof(char) * num_cpus * (n_digits + 1) + 1);
         if (custom_cpu_mapping == NULL) {
             goto error_free;
         }
         MPIU_Memset(custom_cpu_mapping, 0,
-                    sizeof(char) * num_cpus * (num_digits(num_bit_mask)) + 1);
+                    sizeof(char) * num_cpus * (n_digits + 1) + 1);
         core_mapping = (unsigned long *) MPIU_Malloc(num_cpus * sizeof(unsigned long));
         if (core_mapping == NULL) {
             goto error_free;

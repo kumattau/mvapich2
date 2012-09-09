@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -17,7 +17,6 @@
  */
 
 #include <infiniband/verbs.h>
-#include <infiniband/umad.h>
 
 #include "mpidimpl.h"
 #include "mpidbg.h"
@@ -221,10 +220,6 @@ int MPID_nem_ib_init_hca()
         MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
 	            "**fail %s", "No IB device found");
     }
-
-    if (umad_init() < 0)
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-	            "**fail %s", "Can't init UMAD library");
 
     /* Runtime checks */
     MPIU_Assert( num_devices<=MAX_NUM_HCAS );

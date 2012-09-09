@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -69,17 +69,6 @@ void MPIDI_CH3I_RDMA_util_get_ia_addr (DAT_SOCK_ADDR * ia_addr,
 static void conn_server (int n, int pg_rank, int pg_size);
 
 static void conn_server_1sc (int n, int pg_rank, int pg_size);
-
-static inline int
-get_host_id (char *myhostname, int hostname_len)
-{
-    int host_id = 0;
-    struct hostent *hostent;
-
-    hostent = gethostbyname (myhostname);
-    host_id = (int) ((struct in_addr *) hostent->h_addr_list[0])->s_addr;
-    return host_id;
-}
 
 #ifdef USE_MPD_RING
 int

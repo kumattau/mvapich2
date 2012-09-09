@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -45,6 +45,8 @@ int psm_dofinalize()
     MPIU_Free(psmdev_cw.epaddrs);
 
     psm_deallocate_vbuf();
+
+    MV2_collectives_arch_finalize();
 
     if (mv2_enable_shmem_collectives){
         MPIDI_PG_Get_vc(MPIDI_Process.my_pg, MPIDI_Process.my_pg_rank, &vc);

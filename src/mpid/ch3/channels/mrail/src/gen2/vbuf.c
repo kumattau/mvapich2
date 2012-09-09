@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -61,7 +61,7 @@ static long num_free_vbuf = 0;
 static long num_vbuf_get = 0;
 static long num_vbuf_freed = 0;
 
-#ifdef _ENABLE_UD_
+#if defined(_ENABLE_UD_) || defined(_MCST_SUPPORT_)
 static vbuf *ud_free_vbuf_head = NULL;
 static int ud_vbuf_n_allocated = 0;
 static long ud_num_free_vbuf = 0;
@@ -99,7 +99,7 @@ void mv2_print_vbuf_usage_usage()
 {
     int tot_mem = 0;
 
-#if defined(_ENABLE_UD_)
+#if defined(_ENABLE_UD_) || defined(_MCST_SUPPORT_)
     tot_mem = (vbuf_n_allocated * (rdma_vbuf_total_size + sizeof(struct vbuf)));
     tot_mem += (ud_vbuf_n_allocated * (rdma_default_ud_mtu + sizeof(struct vbuf))); 
     PRINT_INFO(DEBUG_MEM_verbose, "RC VBUFs:%d  UD VBUFs:%d TOT MEM:%d kB\n",
@@ -800,14 +800,25 @@ void MRAILI_Release_vbuf(vbuf* v)
         return;
     }
 #endif
-#ifdef _ENABLE_UD_
+#if defined(_ENABLE_UD_) || defined(_MCST_SUPPORT_)
     /* This message might be in progress. Wait for ib send completion 
      * to release this buffer to avoid to reusing buffer
      */
-    if(v->transport== IB_TRANSPORT_UD 
-        && v->flags & UD_VBUF_SEND_INPROGRESS) {
-        v->flags |= UD_VBUF_FREE_PENIDING;
-        return;
+    if (v->flags & UD_VBUF_MCAST_MSG) {
+        v->pending_send_polls--;
+        if(v->transport== IB_TRANSPORT_UD 
+           && (v->flags & UD_VBUF_SEND_INPROGRESS || v->pending_send_polls > 0)) {
+            if (v->pending_send_polls == 0) {
+                v->flags |= UD_VBUF_FREE_PENIDING;
+            }
+            return;
+        }
+    } else {
+        if(v->transport== IB_TRANSPORT_UD 
+                && (v->flags & UD_VBUF_SEND_INPROGRESS)) {
+            v->flags |= UD_VBUF_FREE_PENIDING;
+            return;
+        }
     }
 #endif
 
@@ -825,7 +836,7 @@ void MRAILI_Release_vbuf(vbuf* v)
 
     DEBUG_PRINT("release_vbuf: releasing %p previous head = %p, padding %d\n", v, free_vbuf_head, v->padding);
 
-#ifdef _ENABLE_UD_
+#if defined( _ENABLE_UD_) || defined(_MCST_SUPPORT_)
     if(v->transport == IB_TRANSPORT_UD) {
         MPIU_Assert(v != ud_free_vbuf_head);
         v->desc.next = ud_free_vbuf_head;
@@ -869,7 +880,7 @@ void MRAILI_Release_vbuf(vbuf* v)
     }
 }
 
-#ifdef _ENABLE_UD_
+#if defined( _ENABLE_UD_) || defined(_MCST_SUPPORT_)
 static int allocate_ud_vbuf_region(int nvbufs)
 {
 
@@ -1032,6 +1043,7 @@ vbuf* get_ud_vbuf(void)
     v->transport = IB_TRANSPORT_UD;
     v->retry_count = 0;
     v->flags = 0;
+    v->pending_send_polls = 0;
 
     /* this is probably not the right place to initialize shandle to NULL.
      * Do it here for now because it will make sure it is always initialized.
@@ -1064,9 +1076,6 @@ vbuf* get_ud_vbuf(void)
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 void vbuf_init_ud_recv(vbuf* v, unsigned long len, int hca_num)
 {
-    MPIDI_STATE_DECL(MPID_STATE_VBUF_INIT_UD_RECV);
-    MPIDI_FUNC_ENTER(MPID_STATE_VBUF_INIT_UD_RECV);
-
     MPIU_Assert(v != NULL);
 
     v->desc.u.rr.next = NULL;
@@ -1079,10 +1088,9 @@ void vbuf_init_ud_recv(vbuf* v, unsigned long len, int hca_num)
     v->padding = NORMAL_VBUF_FLAG;
     v->rail = hca_num;
 
-    MPIDI_FUNC_EXIT(MPID_STATE_VBUF_INIT_RECV);
 }
 
-#endif /* _ENABLE_UD_ */
+#endif /* _ENABLE_UD_ || _MCST_SUPPORT_*/
 
 void MRAILI_Release_recv_rdma(vbuf* v)
 {

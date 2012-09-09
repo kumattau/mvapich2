@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -19,6 +19,7 @@
 #include "mpiimpl.h"
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include "coll_shmem.h"
+#include "bcast_tuning.h"
 
 /* This is the default implementation of allreduce. The algorithm is:
    
@@ -690,7 +691,7 @@ int MPIR_Allreduce_shmem_MV2(void *sendbuf,
     if (local_size > 1) {
         if (stride <= mv2_knomial_intra_node_threshold) {
             mpi_errno = MPIR_Shmem_Bcast_MV2(recvbuf, count, datatype,
-                                             0, shmem_commptr);
+                                             0, shmem_commptr, errflag);
         } else {
             mpi_errno =
                 MPIR_Knomial_Bcast_intra_node_MV2(recvbuf, count, datatype, 0,
@@ -714,6 +715,156 @@ int MPIR_Allreduce_shmem_MV2(void *sendbuf,
   fn_fail:
     goto fn_exit;
 }
+
+
+#if defined(_MCST_SUPPORT_)
+#undef FCNAME
+#define FCNAME "MPIR_Allreduce_mcst_MV2"
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPIR_Allreduce_mcst_MV2(void *sendbuf,
+                             void *recvbuf,
+                             int count,
+                             MPI_Datatype datatype,
+                             MPI_Op op, MPID_Comm * comm_ptr,
+                             int stride, int *errflag)
+{
+   /*We use reduce (at rank =0) followed by mcst-bcast to implement the 
+ *     * allreduce operation */
+    int root=0, nbytes=0, position=0;
+    int type_size=0; 
+    int mpi_errno=MPI_SUCCESS;
+    int mpi_errno_ret=MPI_SUCCESS;
+    int rank = comm_ptr->rank, is_contig=0, is_commutative=0;
+    MPIU_CHKLMEM_DECL(1);
+    MPID_Datatype *dtp=NULL;
+    void *tmp_buf=NULL; 
+    MPID_Op *op_ptr=NULL;
+    MPID_Datatype_get_size_macro(datatype, type_size);
+    nbytes = type_size * count;
+
+ 
+    if (HANDLE_GET_KIND(datatype) == HANDLE_KIND_BUILTIN) { 
+        is_contig = 1;
+    } else {
+        MPID_Datatype_get_ptr(datatype, dtp);
+        is_contig = dtp->is_contig;
+    }
+
+    if (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) {
+        is_commutative = 1;
+    } else {
+        MPID_Op_get_ptr(op, op_ptr);
+        if (op_ptr->kind == MPID_OP_USER_NONCOMMUTE) {
+            is_commutative = 0;
+        } else {
+            is_commutative = 1;
+        }
+    }
+
+
+   if(is_commutative == 0) { 
+       reduce_fn = &MPIR_Reduce_binomial_MV2; 
+   } else { 
+       if(stride <= mv2_mcast_allreduce_small_msg_size) {
+            reduce_fn = &MPIR_Reduce_two_level_helper_MV2;
+       } else {
+            reduce_fn = &MPIR_Reduce_redscat_gather_MV2;
+       } 
+   } 
+
+    /* First do a reduction at rank = 0 */
+    if(rank == root) {
+        mpi_errno = reduce_fn(sendbuf, recvbuf, count, datatype,
+                                op, root, comm_ptr, errflag);
+    } else {
+        if(sendbuf != MPI_IN_PLACE) {
+            mpi_errno = reduce_fn(sendbuf, recvbuf, count, datatype,
+                                op, root, comm_ptr, errflag);
+        } else {
+            mpi_errno = reduce_fn(recvbuf, NULL, count, datatype,
+                                op, root, comm_ptr, errflag);
+        }
+    }
+    if (mpi_errno) {
+        /* for communication errors, just record the error but continue */
+        *errflag = TRUE;
+        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+    }
+
+    /* Now do a mcst-bcast operation with rank0 as the root */
+    if(!is_contig) {
+        /* Mcast cannot handle non-regular datatypes. We need to pack
+         * as bytes before sending it*/ 
+        MPIU_CHKLMEM_MALLOC(tmp_buf, void *, nbytes, mpi_errno, "tmp_buf");
+
+        position = 0;
+        if (rank == root) {
+            mpi_errno = MPIR_Pack_impl(recvbuf, count, datatype, tmp_buf, nbytes,
+                                       &position);
+            if (mpi_errno)
+                MPIU_ERR_POP(mpi_errno);
+        }
+        mpi_errno = MPIR_Mcast_inter_node_MV2(tmp_buf, nbytes, MPI_BYTE,
+                                     root, comm_ptr, errflag);
+    } else { 
+        mpi_errno = MPIR_Mcast_inter_node_MV2(recvbuf, count, datatype,
+                                     root, comm_ptr, errflag);
+    } 
+   
+    if (mpi_errno) {
+        /* for communication errors, just record the error but continue */
+        *errflag = TRUE;
+        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+    }
+    
+    if (!is_contig) {
+        /* We are done, lets pack the data back the way the user 
+         * needs it */ 
+        if (rank != root) {
+            position = 0;
+            mpi_errno = MPIR_Unpack_impl(tmp_buf, nbytes, &position, recvbuf,
+                                         count, datatype);
+            if (mpi_errno)
+                MPIU_ERR_POP(mpi_errno);
+        }
+    }
+
+    /* check to see if the intra-node mcast is not done. 
+     * if this is the case, do it either through shmem or knomial */ 
+    if(comm_ptr->ch.intra_node_done == 0) { 
+        MPID_Comm *shmem_commptr=NULL; 
+        MPID_Comm_get_ptr(comm_ptr->ch.shmem_comm, shmem_commptr); 
+        int local_size = shmem_commptr->local_size; 
+        if (local_size > 1) {
+            if (stride <= mv2_knomial_intra_node_threshold) {
+                mpi_errno = MPIR_Shmem_Bcast_MV2(recvbuf, count, datatype,
+                                                 0, shmem_commptr, errflag);
+            } else {
+                mpi_errno =
+                    MPIR_Knomial_Bcast_intra_node_MV2(recvbuf, count, datatype, 0,
+                                                      shmem_commptr, errflag);
+            }
+            if (mpi_errno) {
+                /* for communication errors, just record the error but continue */
+                *errflag = TRUE;
+                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            }
+        }
+    } 
+
+
+  fn_exit:
+    MPIU_CHKLMEM_FREEALL();
+    return (mpi_errno);
+
+  fn_fail:
+    goto fn_exit;
+}
+#endif /*  #if defined(_MCST_SUPPORT_) */ 
 #endif                          /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
 #undef FUNCNAME
@@ -796,19 +947,31 @@ int MPIR_Allreduce_MV2(void *sendbuf,
     }
 #endif
 
-    if ((comm_ptr->ch.shmem_coll_ok == 1)
-        && (stride < mv2_coll_param.allreduce_2level_threshold)
-        && (mv2_disable_shmem_allreduce == 0)
-        && (is_commutative)
-        && (mv2_enable_shmem_collectives)) {
-        mpi_errno = MPIR_Allreduce_shmem_MV2(sendbuf, recvbuf, count, datatype,
-                                             op, comm_ptr, errflag);
+#if defined(_MCST_SUPPORT_)
+    if(comm_ptr->ch.is_mcast_ok == 1
+       && comm_ptr->ch.shmem_coll_ok == 1
+       && mv2_use_mcast_allreduce == 1
+       && stride >= mv2_mcast_allreduce_small_msg_size 
+       && stride <= mv2_mcast_allreduce_large_msg_size){
+        mpi_errno = MPIR_Allreduce_mcst_MV2(sendbuf, recvbuf, count, datatype,
+                                     op, comm_ptr, stride, errflag);
+    } else
+#endif /* #if defined(_MCST_SUPPORT_) */ 
+    {
+        if ((comm_ptr->ch.shmem_coll_ok == 1)
+            && (stride < mv2_coll_param.allreduce_2level_threshold)
+            && (mv2_disable_shmem_allreduce == 0)
+            && (is_commutative)
+            && (mv2_enable_shmem_collectives)) {
+            mpi_errno = MPIR_Allreduce_shmem_MV2(sendbuf, recvbuf, count, datatype,
+                                                 op, comm_ptr, errflag);
 
-    } else {
-        mpi_errno = MPIR_Allreduce_pt2pt_MV2(sendbuf, recvbuf, count, datatype,
-                                             op, comm_ptr, errflag);
+        } else {
+            mpi_errno = MPIR_Allreduce_pt2pt_MV2(sendbuf, recvbuf, count, datatype,
+                                                 op, comm_ptr, errflag);
 
-    }
+        }
+    } 
 #else                           /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
     mpi_errno = MPIR_Allreduce_intra(sendbuf, recvbuf, count, datatype,
                                      op, comm_ptr, errflag);
@@ -840,7 +1003,10 @@ int MPIR_Allreduce_MV2(void *sendbuf,
         }
     }
 #endif
-
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+	comm_ptr->ch.intra_node_done=0;
+#endif
+	
     if (mpi_errno) {
         MPIU_ERR_POP(mpi_errno);
     }

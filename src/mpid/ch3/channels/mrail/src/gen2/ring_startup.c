@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -62,29 +62,11 @@ struct ring_packet {
     int     value;
 };
 
-/* gethostname does return a NULL-terminated string if
- * the hostname length is less than "HOSTNAME_LEN". Otherwise,
- * it is unspecified.
- */
-/*
- * TODO add error handling
- */
-static inline int get_host_id(char *myhostname, int hostname_len)
-{
-    int host_id = 0;
-    struct hostent *hostent;
-
-    hostent = gethostbyname(myhostname);
-    host_id = (int) ((struct in_addr *) hostent->h_addr_list[0])->s_addr;
-
-    return host_id;
-}
-
 static union ibv_gid get_local_gid(struct ibv_context * ctx, int port)
 {
     union ibv_gid gid;
 
-    ibv_query_gid(ctx, port, 0, &gid);
+    ibv_query_gid(ctx, port, rdma_default_gid_index, &gid);
 
     return gid;
 }
@@ -282,7 +264,7 @@ static int _setup_ib_boot_ring(struct init_addr_inf * neighbor_addr,
         qp_attr.ah_attr.grh.dgid.global.subnet_prefix = 0;
         qp_attr.ah_attr.grh.dgid.global.interface_id = 0;
         qp_attr.ah_attr.grh.flow_label = 0;
-        qp_attr.ah_attr.grh.sgid_index = 0;
+        qp_attr.ah_attr.grh.sgid_index = rdma_default_gid_index;
         qp_attr.ah_attr.grh.hop_limit = 1;
         qp_attr.ah_attr.grh.traffic_class = 0;
         qp_attr.ah_attr.is_global      = 1;
@@ -409,6 +391,9 @@ int rdma_setup_startup_ring(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_r
         
     if ((value = getenv("MV2_DEFAULT_PORT")) != NULL) {
         rdma_default_port = atoi(value);
+    }
+    if ((value = getenv("MV2_DEFAULT_GID_INDEX")) != NULL) {
+        rdma_default_gid_index = atoi(value);
     }
 
     if (rdma_default_port < 0 || rdma_num_ports > 1) {
@@ -737,6 +722,7 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
 {
     int i, ne, index_to_send, rail_index, pg_size;
     int hostid;
+    struct hostent *hostent;
     char hostname[HOSTNAME_LEN + 1];
     int mpi_errno = MPI_SUCCESS;
     uint64_t last_send = 0;
@@ -798,7 +784,14 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
         MPIU_Error_printf("Could not get hostname\n");
         exit(1);
     }
-    hostid = get_host_id(hostname, HOSTNAME_LEN);
+    hostent = gethostbyname(hostname);
+    if (hostent == NULL) {
+        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER,
+                "**gethostbyname", "**gethostbyname %s %d", 
+                hstrerror(h_errno), h_errno );
+
+    }
+    hostid = (int) ((struct in_addr *) hostent->h_addr_list[0])->s_addr;
 
     /* send information for each rail */
 

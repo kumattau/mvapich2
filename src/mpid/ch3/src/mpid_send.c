@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -146,15 +146,33 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
             /* buf is in the main memory */
             cuda_transfer_mode = NONE;
         }
+
+        /*forces rndv for non IPC based CUDA transfers*/
+        if (SMP_INIT && 
+            vc->smp.local_rank != -1 &&
+            cuda_transfer_mode != NONE) {
+#ifdef HAVE_CUDA_IPC
+            if (rdma_cuda_ipc == 0 || 
+                vc->smp.can_access_peer == 0) 
+#endif
+            {
+                goto rndv_send;
+            }
+        }
+
+        /*forces rndv for some IPC based CUDA transfers*/
 #ifdef HAVE_CUDA_IPC
         if (rdma_cuda_ipc && 
             cudaipc_stage_buffered &&
             vc->smp.can_access_peer == 1 && 
             dt_contig && 
             cuda_transfer_mode != NONE &&
-            data_sz >= rdma_cuda_ipc_threshold) { 
-            /*force RNDV for CUDA transfers when buffered CUDA IPC is enabled*/ 
-            goto rndv_send; 
+            data_sz >= rdma_cuda_ipc_threshold)  { 
+            /*force RNDV for CUDA transfers when buffered CUDA IPC is enabled or 
+            ** if rdma_cuda_smp_ipc is set off */
+            if (!rdma_cuda_smp_ipc) {
+                goto rndv_send;
+            }
         }
 #endif
     } 
@@ -178,7 +196,8 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
 #endif
 
 #if defined(_OSU_MVAPICH_)
-    if (data_sz + sizeof(MPIDI_CH3_Pkt_eager_send_t) <=	 vc->eager_max_msg_sz && ! vc->force_rndv)
+    if (data_sz + sizeof(MPIDI_CH3_Pkt_eager_send_t) <=	 vc->eager_max_msg_sz 
+            && ! vc->force_rndv)
 #else /* defined(_OSU_MVAPICH_) */
     if (data_sz + sizeof(MPIDI_CH3_Pkt_eager_send_t) <= vc->eager_max_msg_sz)
 #endif /* defined(_OSU_MVAPICH_) */

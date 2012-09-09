@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -16,6 +16,9 @@
 #include "coll_shmem.h"
 #if defined(HAVE_LIBHWLOC)
 #include "hwloc_bind.h"
+#endif
+#if defined(_MCST_SUPPORT_)
+#include "ibv_mcast.h"
 #endif
 
 #define MPIDI_CH3I_HOST_DESCRIPTION_KEY "description"
@@ -39,6 +42,9 @@ int MPIDI_CH3I_set_affinity(MPIDI_PG_t * pg, int pg_rank)
 
     if ((value = getenv("MV2_ENABLE_AFFINITY")) != NULL) {
         mv2_enable_affinity = atoi(value);
+        #if defined(_SMP_LIMIC_)
+        g_use_limic2_coll = atoi(value);
+        #endif /*#if defined(_SMP_LIMIC_)*/
     }
 
     if (mv2_enable_affinity && (value = getenv("MV2_CPU_MAPPING")) != NULL) {
@@ -313,7 +319,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     }
     MPIU_Free(conn_info);
 
-    MV2_collectives_arch_init();
+    MV2_collectives_arch_init(mv2_MPIDI_CH3I_RDMA_Process.heterogeneity);
 
 #if defined(HAVE_LIBHWLOC)
     if (MPIDI_CH3I_set_affinity(pg, pg_rank) != MPI_SUCCESS) {
@@ -361,6 +367,29 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     if (pg_rank == 0 && mv2_show_env_info) {
         mv2_print_env_info(&mv2_MPIDI_CH3I_RDMA_Process);
     }
+#endif
+
+#if defined(_MCST_SUPPORT_) || defined(_ENABLE_UD_)
+    mv2_init_timers();
+#if defined(_MCST_SUPPORT_)
+    if (rdma_enable_mcast) {
+        /* TODO : Is there a better way to seed? */
+        srand(time(NULL) * pg_rank);
+
+        /* initialize comm table */
+        for (p = 0; p <= MV2_MCAST_MAX_COMMS; p++) {
+            comm_table[p] = NULL;
+        }
+        /* init mcast context */
+        mcast_ctx = MPIU_Malloc (sizeof(mcast_context_t));
+        mcast_ctx->init_list = NULL;
+        mcast_ctx->ud_ctx = mv2_mcast_prepare_ud_ctx();
+        if (mcast_ctx->ud_ctx == NULL) {
+            PRINT_ERROR("Error in create multicast UD context for multicast\n");
+            exit(1);
+        }
+    }
+#endif
 #endif
 
   fn_exit:

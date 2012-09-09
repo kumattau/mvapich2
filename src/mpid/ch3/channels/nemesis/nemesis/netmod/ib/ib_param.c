@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -516,6 +516,17 @@ int MPID_nem_ib_set_default_params()
                 MV2_ARCH_INTEL_XEON_E5630_8, MV2_HCA_MLX_CX_QDR)){
 
         rdma_vbuf_total_size = 17 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc           = 4 * 1024;
+        rdma_put_fallback_threshold  = 8 * 1024;
+        rdma_get_fallback_threshold  = 0; 
+    }
+
+    else if(MV2_IS_ARCH_HCA_TYPE(process_info.arch_hca_type,
+                MV2_ARCH_AMD_BULLDOZER_4274HE_16, MV2_HCA_MLX_CX_QDR)){
+
+        rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
         rdma_fp_buffer_size = 5 * 1024;
         rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
         rdma_eagersize_1sc           = 4 * 1024;
@@ -1163,7 +1174,7 @@ void mv2_print_env_info()
     fprintf(stderr, "\tHCA NAME                       : %s\n",
                             mv2_get_hca_name(hca_type));
     fprintf(stderr, "\tHETEROGENEOUS HCA              : %s\n",
-                            (process_info.heterogenity)?"YES":"NO");
+                            (process_info.heterogeneity)?"YES":"NO");
     fprintf(stderr, "\tMV2_VBUF_TOTAL_SIZE            : %d\n", rdma_vbuf_total_size);
     fprintf(stderr, "\tMV2_IBA_EAGER_THRESHOLD        : %d\n", rdma_iba_eager_threshold);
     fprintf(stderr, "\tMV2_RDMA_FAST_PATH_BUF_SIZE    : %d\n", rdma_fp_buffer_size);

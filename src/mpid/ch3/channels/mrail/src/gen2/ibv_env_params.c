@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -858,6 +858,14 @@ mv2_env_param_list_t  param_list[] = {
     0,
     NULL    },
 {
+    MV2_DEFAULT_GID_INDEX,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_startup,
+    "MV2_DEFAULT_GID_INDEX",
+    &rdma_default_gid_index,
+    0,
+    NULL    },
+{
     MV2_DEFAULT_PSN,
     MV2_PARAM_TYPE_INT,
     MV2_PARAM_GROUP_startup,
@@ -1470,6 +1478,14 @@ mv2_env_param_list_t  param_list[] = {
     &g_smp_use_limic2,
     1,
     NULL    },
+{
+    MV2_USE_LIMIC2_COLL,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_intranode,
+    "MV2_USE_LIMIC2_COLL",
+    &g_use_limic2_coll,
+    1,
+    NULL    },
 #endif
 {
     MV2_SMP_BATCH_SIZE,
@@ -1769,6 +1785,22 @@ mv2_env_param_list_t  param_list[] = {
     MV2_PARAM_GROUP_cuda,
     "MV2_CUDA_ALLGATHER_FGP",
     &rdma_cuda_allgather_fgp,
+    0,
+    NULL    },
+{
+    MV2_SMP_CUDA_PIPELINE,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_cuda,
+    "MV2_SMP_CUDA_PIPELINE",
+    &s_smp_cuda_pipeline,
+    0,
+    NULL    },
+{
+    MV2_CUDA_INIT_CONTEXT,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_cuda,
+    "MV2_CUDA_INIT_CONTEXT",
+    &rdma_cuda_init_context,
     0,
     NULL    },
 #endif /*_ENABLE_CUDA */

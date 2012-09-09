@@ -38,7 +38,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#include <osu_coll.h>
+#include "osu_coll.h"
 
 int main(int argc, char *argv[])
 {
@@ -47,7 +47,7 @@ int main(int argc, char *argv[])
     double latency = 0.0, t_start = 0.0, t_stop = 0.0;
     double timer=0.0;
     double avg_time = 0.0, max_time = 0.0, min_time = 0.0; 
-    char *buffer, *buf1;
+    char *recvbuff, *sendbuff, *r_buf1, *s_buf1;
     int max_msg_size = 1048576, full = 0;
 
     MPI_Init(&argc, &argv);
@@ -71,22 +71,28 @@ int main(int argc, char *argv[])
 
     print_header(rank, full);
 
-    buf1 = NULL;
+    r_buf1 = s_buf1=NULL;
 
-    buf1 = (char *) malloc(sizeof(char)*max_msg_size*numprocs + MAX_ALIGNMENT);
-    if(NULL == buf1) {
+    r_buf1 = (char *) malloc(sizeof(char)*max_msg_size*numprocs + MAX_ALIGNMENT);
+    if(NULL == r_buf1) {
         fprintf(stderr, "malloc failed.\n");
         exit(1);
     }
     
+    s_buf1 = (char *) malloc(sizeof(char)*max_msg_size + MAX_ALIGNMENT);
+    if(NULL == s_buf1) {
+        fprintf(stderr, "malloc failed.\n");
+        exit(1);
+    }
 
     align_size = getpagesize();
 
-    buffer = (char *)(((unsigned long) buf1 + (align_size - 1)) / align_size
+    recvbuff = (char *)(((unsigned long) r_buf1 + (align_size - 1)) / align_size
                     * align_size);
-
-    memset(buffer, 1, max_msg_size*numprocs);
-
+    sendbuff = (char *)(((unsigned long) s_buf1 + (align_size - 1)) / align_size
+                    * align_size);
+    memset(recvbuff, 1, max_msg_size*numprocs);
+    memset(sendbuff, 0, max_msg_size);
 
     for(size=1; size <= max_msg_size; size *= 2) {
 
@@ -102,8 +108,8 @@ int main(int argc, char *argv[])
         timer=0.0;
         for(i=0; i < iterations + skip ; i++) {
             t_start = MPI_Wtime();
-            MPI_Allgather( MPI_IN_PLACE, -1, MPI_DATATYPE_NULL,
-                           buffer, size, MPI_CHAR, MPI_COMM_WORLD );
+            MPI_Allgather( sendbuff, size, MPI_CHAR,
+                           recvbuff, size, MPI_CHAR, MPI_COMM_WORLD );
 
             t_stop = MPI_Wtime();
 
@@ -130,8 +136,8 @@ int main(int argc, char *argv[])
         MPI_Barrier(MPI_COMM_WORLD);
     }
     
-    free(buf1);
-
+    free(r_buf1);
+    free(s_buf1);
     MPI_Finalize();
 
     return EXIT_SUCCESS;

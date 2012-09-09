@@ -13,7 +13,7 @@ dnl Definitions will be placed in this file rather than in the DEFS variable
 dnl
 AC_CONFIG_HEADER(include/mpidi_ch3i_rdma_conf.h)
 AH_TOP([/* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -57,6 +57,13 @@ AC_ARG_WITH([limic2],
                     [Enable use of LiMIC2 for intra-node communication])
     ],
     [AC_DEFINE([_SMP_LIMIC_], 1, [Define when using LiMIC2])])
+
+AC_ARG_ENABLE([mcast],
+              [AS_HELP_STRING([--enable-mcast],
+                              [enable hardware multicast])
+              ],
+              [],
+              [enable_mcast=yes])
 
 AC_ARG_ENABLE([3dtorus-support],
               [AS_HELP_STRING([--enable-3dtorus-support],
@@ -145,7 +152,7 @@ AC_ARG_WITH(dapl-libpath,
 AC_ARG_WITH(dapl-provider,
 [--with-dapl-provider=type - Specify the dapl provider.],,with_dapl_provider=default)
 AC_ARG_WITH(dapl-version,
-[--with-dapl-version=version - Specify the dapl version.],,with_dapl_version=1.2)
+[--with-dapl-version=version - Specify the dapl version.],,with_dapl_version=2.0)
 AC_ARG_ENABLE(header-caching,
 [--enable-header-caching - Enable header caching.],,enable_header_caching=yes)
 AC_ARG_WITH(ib-include,
@@ -415,11 +422,24 @@ if test "$with_rdma" = "gen2"; then
 
     AC_SEARCH_LIBS(dlopen, dl,,[AC_MSG_ERROR(['libdl not found'])])
     mrail_libs="-ldl $mrail_libs"
-    AC_SEARCH_LIBS(umad_init, ibumad,,[AC_MSG_ERROR(['libibumad not found. Did you specify --with-ib-libpath=?'])],)
     AC_SEARCH_LIBS(ibv_open_device, ibverbs,,[AC_MSG_ERROR(['libibverbs not found. Did you specify --with-ib-libpath=?'])],)
-    AC_CHECK_HEADER([infiniband/umad.h],,[AC_MSG_ERROR(['infiniband/umad.h not found. Did you specify --with-ib-include=?'])])
     AC_CHECK_HEADER([infiniband/verbs.h],,[AC_MSG_ERROR(['infiniband/verbs.h not found. Did you specify --with-ib-include=?'])])
-    mrail_libs="-libverbs -libumad $mrail_libs"
+    mrail_libs="-libverbs $mrail_libs"
+
+    AC_CHECKING([checking for infiniband umad installation])
+    AC_SEARCH_LIBS(umad_init, ibumad, lib_umad_found="yes", lib_umad_found="no",)
+    if test $lib_umad_found = "yes"; then
+        AC_CHECK_HEADER([infiniband/umad.h],,lib_umad_found="no")
+        if test $lib_umad_found = "yes"; then
+            AC_DEFINE(HAVE_LIBIBUMAD, 1, [UMAD installation found.])
+            mrail_libs="-libumad $mrail_libs"
+            AC_MSG_NOTICE([infiniband libumand found])
+        else 
+            AC_MSG_NOTICE([infiniband libumand not found])
+        fi
+    else
+        AC_MSG_NOTICE([infiniband libumand not found])
+    fi
 
     # Check for available functions after finding header files
     AC_CHECK_FUNCS([ibv_open_xrc_domain])
@@ -454,6 +474,14 @@ if test "$with_rdma" = "gen2"; then
         else
             AC_MSG_NOTICE([RDMA CM support disabled])
         fi
+    fi
+
+    if test "$enable_mcast" != "no"; then
+        AC_CHECKING([for Hardware multicast support enabled])
+        AC_CHECK_HEADER([infiniband/mad.h],,[AC_MSG_ERROR(['infiniband/mad.h not found. Please retry with --disable-mcast'])])
+        AC_DEFINE(_MCST_SUPPORT_, 1 , [Define to enable Hardware multicast support.])
+        mrail_libs="-libmad $mrail_libs"
+        AC_MSG_NOTICE([Hardware multicast support enabled])
     fi
 
 elif test "$with_rdma" = "udapl"; then

@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -83,6 +83,10 @@ char *MPIDI_CH3_Pkt_type_to_string[MPIDI_CH3_PKT_END_ALL+1] = {
     [MPIDI_CH3_PKT_RGET_FINISH] = "MPIDI_CH3_PKT_RGET_FINISH",
     [MPIDI_CH3_PKT_ZCOPY_FINISH] = "MPIDI_CH3_PKT_ZCOPY_FINISH",
     [MPIDI_CH3_PKT_ZCOPY_ACK] = "MPIDI_CH3_PKT_ZCOPY_ACK",
+    [MPIDI_CH3_PKT_MCST] = "MPIDI_CH3_PKT_MCST",
+    [MPIDI_CH3_PKT_MCST_NACK] = "MPIDI_CH3_PKT_MCST_NACK",
+    [MPIDI_CH3_PKT_MCST_INIT] = "MPIDI_CH3_PKT_MCST_INIT",
+    [MPIDI_CH3_PKT_MCST_INIT_ACK] = "MPIDI_CH3_PKT_MCST_INIT_ACK",
     [MPIDI_CH3_PKT_NOOP] = "MPIDI_CH3_PKT_NOOP",
     [MPIDI_CH3_PKT_RMA_RNDV_CLR_TO_SEND] = "MPIDI_CH3_PKT_RMA_RNDV_CLR_TO_SEND",
     [MPIDI_CH3_PKT_CUDA_CTS_CONTI] = "MPIDI_CH3_PKT_CUDA_CTS_CONTI",
@@ -143,17 +147,29 @@ char *MPIDI_CH3_Pkt_type_to_string[MPIDI_CH3_PKT_END_ALL+1] = {
 
 void init_debug1() {
     // Set coresize limit
-    char* coresize = getenv("MV2_DEBUG_CORESIZE");
-    set_coresize_limit( coresize );
+    char *value = NULL;
+    int backtrace = 0;
+    int setup_sighandler = 1;
+
+    value = getenv("MV2_DEBUG_CORESIZE");
+    set_coresize_limit(value);
     // ignore error code, failure if not fatal
 
     // Set an error signal handler
-    char* bt = getenv("MV2_DEBUG_SHOW_BACKTRACE");
-    int backtrace = 0;
-    if ( bt != NULL ) {
-        backtrace = !!atoi( bt );
+    value = getenv("MV2_DEBUG_SHOW_BACKTRACE");
+    if (value != NULL) {
+        backtrace = !!atoi(value);
     }
-    setup_error_sighandler( backtrace );
+
+    value = getenv("MV2_DEBUG_SETUP_SIGHDLR");
+    if (value != NULL) {
+        setup_sighandler = !!atoi(value);
+    }
+    
+    if (setup_sighandler) {
+        setup_error_sighandler( backtrace );
+    }
+
     // ignore error code, failure if not fatal
     
     // Initialize DEBUG variables

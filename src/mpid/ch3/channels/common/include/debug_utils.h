@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -125,6 +125,12 @@ extern int DEBUG_MEM_verbose;
 
 // Verbosity level for GPU CUDA
 extern int DEBUG_CUDA_verbose;
+
+// Verbosity level for IB MULTICAST
+extern int DEBUG_MCST_verbose;
+
+// Verbosity level for SHMEM Collectives
+extern int DEBUG_SHM_verbose;
 
 // Initialize the verbosity level of the above variables
 extern int initialize_debug_variables();

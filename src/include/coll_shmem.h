@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -24,7 +24,10 @@
 #include <pthread.h>
 #include "mpidimpl.h"
 
-/*********** Macro defines of local variables ************/
+#if defined(_SMP_LIMIC_)
+#define LIMIC_COLL_NUM_COMM  128
+#endif /* #if defined(_SMP_LIMIC_) */ 
+
 #define PID_CHAR_LEN 22
 
 #define SHMEM_COLL_HOSTNAME_LEN  (255)
@@ -120,6 +123,8 @@ void MV2_Read_env_vars(void);
 
 #define MV2_MAX_NB_THRESHOLDS  10
 
+#define MV2_PARA_PACKET_SIZE    5
+
 extern int mv2_tuning_table[COLL_COUNT][COLL_SIZE]; 
 
 struct scatter_tuning{
@@ -162,7 +167,8 @@ void MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(int, int, int);
 extern int mv2_tune_parameter;
 
 /* Use for collective tuning based on arch detection*/
-void MV2_collectives_arch_init();
+void MV2_collectives_arch_init(int heterogeneity);
+void MV2_collectives_arch_finalize();
 
 /* Use for allgather_osu.c */
 #define MV2_ALLGATHER_SMALL_SYSTEM_SIZE       128
@@ -181,13 +187,22 @@ extern int mv2_user_scatter_medium_msg;
 extern int mv2_size_mv2_scatter_mv2_tuning_table;
 extern struct scatter_tuning mv2_scatter_mv2_tuning_table[4];
 extern int mv2_use_two_level_scatter; 
-extern int mv2_use_direct_scatter; 
+extern int mv2_use_direct_scatter;
+#if defined(_MCST_SUPPORT_)
+extern int mv2_use_mcast_scatter;
+extern int mv2_mcast_scatter_msg_size; 
+extern int mv2_mcast_scatter_small_sys_size;
+extern int mv2_mcast_scatter_large_sys_size;
+#endif  /* #if defined(_MCST_SUPPORT_) */ 
 
 
 /* Use inside allreduce_osu.c*/
 extern int mv2_disable_shmem_allreduce;
-int check_comm_registry(MPI_Comm);
-
+#if defined(_MCST_SUPPORT_)
+extern int mv2_use_mcast_allreduce; 
+extern int mv2_mcast_allreduce_small_msg_size; 
+extern int mv2_mcast_allreduce_large_msg_size; 
+#endif  /* #if defined(_MCST_SUPPORT_) */ 
 
 /* Use inside alltoall_osu.h */
 extern int mv2_use_xor_alltoall; 
@@ -197,6 +212,7 @@ extern int mv2_use_xor_alltoall;
 extern int mv2_disable_shmem_barrier;
 extern void MPIDI_CH3I_SHMEM_COLL_Barrier_gather(int, int, int);
 extern void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int, int, int);
+
 
 /* Use inside bcast_osu.c */
 extern int  mv2_bcast_short_msg; 
@@ -213,15 +229,39 @@ extern int  mv2_knomial_inter_leader_threshold;
 extern int  mv2_knomial_inter_leader_bcast;
 extern int  mv2_enable_shmem_bcast;
 extern int  mv2_bcast_two_level_system_size; 
-extern int MPIR_Shmem_Bcast_MV2( void *,  int ,  MPI_Datatype , int ,  MPID_Comm *);
-extern int MPIR_Knomial_Bcast_intra_node_MV2(void *, int ,  MPI_Datatype, int , MPID_Comm *, int *);
-extern int MPIR_Knomial_Bcast_inter_node_MV2(void *, int ,  MPI_Datatype, int , int * , MPID_Comm *, int *);
 
+extern int mv2_bcast_scatter_ring_overlap;
+extern int mv2_bcast_scatter_ring_overlap_msg_upperbound;
+extern int mv2_bcast_scatter_ring_overlap_cores_lowerbound;
 
-
-/* Use inside reduce_osu.c */
+/* Used inside reduce_osu.c */
 extern int mv2_disable_shmem_reduce;
-int check_comm_registry(MPI_Comm);
+extern int mv2_use_knomial_reduce;
+extern int mv2_reduce_knomial_factor;
+extern int MPIR_Reduce_two_level_helper_MV2(void *sendbuf,
+                                     void *recvbuf,
+                                     int count,
+                                     MPI_Datatype datatype,
+                                     MPI_Op op,
+                                     int root,
+                                     MPID_Comm * comm_ptr, int *errflag); 
+extern int MPIR_Reduce_redscat_gather_MV2(void *sendbuf,
+                                          void *recvbuf,
+                                          int count,
+                                          MPI_Datatype datatype,
+                                          MPI_Op op,
+                                          int root,
+                                          MPID_Comm * comm_ptr, int *errflag); 
+extern int MPIR_Reduce_binomial_MV2(void *sendbuf,
+                                    void *recvbuf,
+                                    int count,
+                                    MPI_Datatype datatype,
+                                    MPI_Op op,
+                                    int root,
+                                    MPID_Comm * comm_ptr, int *errflag); 
+
+
+
 
 
 /* Use inside red_scat_osu.c */
@@ -237,14 +277,22 @@ void unlock_shmem_region(void);
 /* utils */
 void increment_mv2_shmem_comm_count(void);
 int get_mv2_shmem_comm_count(void);
-
+int MPIDI_CH3I_SHMEM_Coll_get_free_block(); 
+void MPIDI_CH3I_SHMEM_Coll_Block_Clear_Status(int block_id); 
+#if defined(_SMP_LIMIC_)
+void UpdateNumCoresPerSock(int numcores);
+void UpdateNumSocketsPerNode(int numSocketsNode);
+void increment_mv2_limic_comm_count();
+int get_mv2_limic_comm_count();
+extern int mv2_max_limic_comms;
+extern int limic_fd;
+#endif
 void MPIDI_CH3I_SHMEM_Bcast_GetBuf(int, int, int, void**);
 void MPIDI_CH3I_SHMEM_Bcast_Complete(int ,int , int);
 int init_thread_reg(void);
 
 extern int mv2_use_osu_collectives;
 extern int mv2_use_anl_collectives;
-
 
 /* Comm functions*/
 extern int split_comm;
@@ -254,6 +302,13 @@ int create_2level_comm (MPI_Comm, int, int);
 int free_2level_comm (MPID_Comm *);
 int enable_split_comm(pthread_t);
 void MPIR_pof2_comm(MPID_Comm *, int, int);
+
+/*Fn pointers for collectives */
+int (*reduce_fn)(void *sendbuf,
+                             void *recvbuf,
+                             int count,
+                             MPI_Datatype datatype,
+                             MPI_Op op, int root, MPID_Comm * comm_ptr, int *errflag);
 
 #ifdef _ENABLE_CUDA_
 int cuda_stage_alloc(void **, int, void **, int,
@@ -266,5 +321,51 @@ void cuda_coll_pack (void **, int *, MPI_Datatype *,
                      int, int, int);
 void cuda_coll_unpack (int *, int);
 #endif /*_ENABLE_CUDA_*/
+
+extern int mv2_shm_window_size;
+extern int mv2_shm_slot_len;
+extern int mv2_use_slot_shmem_coll;
+extern int mv2_use_slot_shmem_bcast;
+extern int mv2_use_mcast_pipeline_shm;
+
+#define MV2_SHM_ALIGN (128)
+
+#define MV2_SHM_ALIGN_LEN(len, align_unit)          \
+{                                                   \
+    len = ((int)(((len)+align_unit-1) /             \
+                align_unit)) * align_unit;          \
+}
+#define IS_SHMEM_WINDOW_FULL(start, end) \
+    ((((int)(start) - (end)) >= mv2_shm_window_size -1) ? 1 : 0)
+
+typedef struct shm_slot_t {
+    volatile uint32_t psn __attribute__((aligned(MV2_SHM_ALIGN)));
+    char buf[] __attribute__((aligned(MV2_SHM_ALIGN)));
+} shm_slot_t;
+
+typedef struct shm_queue_t {
+    shm_slot_t **shm_slots;
+}shm_queue_t;
+
+typedef struct shm_info_t {
+    char *buffer;
+    char *file_name;
+    int local_rank;
+    int local_size;
+    int file_fd;
+    int size;
+    int count;
+    int write;
+    int read;
+    int tail;
+    shm_queue_t *queue;
+} shmem_info_t;
+
+shmem_info_t * mv2_shm_coll_init(int id, int local_rank, int local_size);
+void mv2_shm_coll_cleanup(shmem_info_t * shmem);
+void mv2_shm_barrier(shmem_info_t * shmem);
+void mv2_shm_bcast(shmem_info_t * shmem, char *buf, int len, int root);
+void mv2_shm_reduce(shmem_info_t *shmem, char *buf, int len, 
+                        int count, int root, MPI_User_function *uop, MPI_Datatype datatype);
 
 #endif  /* _COLL_SHMEM_ */

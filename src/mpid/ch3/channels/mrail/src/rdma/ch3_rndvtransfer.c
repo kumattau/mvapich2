@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -303,9 +303,12 @@ int MPIDI_CH3_Rndv_transfer(MPIDI_VC_t * vc,
 #endif
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
     case VAPI_PROTOCOL_CUDAIPC:
+            if (cts_pkt->rndv.protocol != VAPI_PROTOCOL_CUDAIPC) {
+                sreq->mrail.protocol = cts_pkt->rndv.protocol;
+                MPIU_Assert(sreq->mrail.protocol == VAPI_PROTOCOL_R3);
+            }
             rndv = (cts_pkt == NULL) ? NULL : &cts_pkt->rndv;
             sreq->mrail.partner_id = cts_pkt->receiver_req_id;
-            MPIU_Assert(rndv->protocol == VAPI_PROTOCOL_CUDAIPC);
         break;
 #endif
     default:
@@ -405,6 +408,10 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
     int mpi_errno;
     MPIDI_CH3_Pkt_rndv_r3_data_t pkt_head;
     MPID_Request * send_req;
+#if defined (_ENABLE_CUDA_)
+    int iov_isdev = 0;
+#endif
+
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SMP_RNDV_PUSH);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SMP_RNDV_PUSH);
 
@@ -464,6 +471,12 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
 
     DEBUG_PRINT("r3 sent req is %p\n", sreq);
     if (MPIDI_CH3I_SMP_SendQ_empty(vc)) {
+#if defined(_ENABLE_CUDA_)
+        if (rdma_enable_cuda && s_smp_cuda_pipeline) {
+            iov_isdev = is_device_buffer((void *) sreq->dev.iov[sreq->dev.iov_offset].MPID_IOV_BUF);
+        }
+#endif
+
         vc->smp.send_current_pkt_type = SMP_RNDV_MSG;
         for (;;) {
             DEBUG_PRINT("iov count (sreq): %d, offset %d, len[1] %d\n",
@@ -471,16 +484,42 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
                         sreq->dev.iov[0].MPID_IOV_LEN);
 
             if (vc->smp.send_current_pkt_type == SMP_RNDV_MSG) {
-                mpi_errno = MPIDI_CH3I_SMP_writev_rndv_data(vc, 
-                                &sreq->dev.iov[sreq->dev.iov_offset], 
-                                sreq->dev.iov_count - sreq->dev.iov_offset,
-                                &nb);
+#if defined(_ENABLE_CUDA_)
+                if (iov_isdev) { 
+                    mpi_errno = MPIDI_CH3I_SMP_writev_rndv_data_cuda(vc,
+                          sreq,
+                          &sreq->dev.iov[sreq->dev.iov_offset],
+                          sreq->dev.iov_count - sreq->dev.iov_offset,
+                          &nb,
+                          0/*is_cont*/);
+                } else
+#endif
+                {
+                    mpi_errno = MPIDI_CH3I_SMP_writev_rndv_data(vc, 
+                                    sreq,
+                                    &sreq->dev.iov[sreq->dev.iov_offset], 
+                                    sreq->dev.iov_count - sreq->dev.iov_offset,
+                                    &nb);
+                }
             } else {
                 MPIU_Assert(vc->smp.send_current_pkt_type == SMP_RNDV_MSG_CONT);
-                MPIDI_CH3I_SMP_writev_rndv_data_cont(vc,
-                                &sreq->dev.iov[sreq->dev.iov_offset],
-                                sreq->dev.iov_count - sreq->dev.iov_offset,
-                                &nb);
+#if defined(_ENABLE_CUDA_)
+                if (iov_isdev) {
+                    mpi_errno = MPIDI_CH3I_SMP_writev_rndv_data_cuda(vc,
+                          sreq,
+                          &sreq->dev.iov[sreq->dev.iov_offset],
+                          sreq->dev.iov_count - sreq->dev.iov_offset,
+                          &nb,
+                          1/*is_cont*/);
+                } else
+#endif
+                {
+                    MPIDI_CH3I_SMP_writev_rndv_data_cont(vc,
+                                    sreq,
+                                    &sreq->dev.iov[sreq->dev.iov_offset],
+                                    sreq->dev.iov_count - sreq->dev.iov_offset,
+                                    &nb);
+                }
             }
 
             if (MPI_SUCCESS != mpi_errno) {
@@ -492,6 +531,15 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
 
             if (nb > 0) {
                 if (MPIDI_CH3I_Request_adjust_iov(sreq, nb)) {
+#if defined(_ENABLE_CUDA_)
+                    if (iov_isdev) {
+                        /* the request is completed when the device to 
+                         * host copy is complete*/
+                        sreq->mrail.nearly_complete = 1;
+                        break;
+                    } 
+#endif
+
                     MPIDI_CH3U_Handle_send_req(vc, sreq, &complete);
                     if (complete) {
                         sreq->mrail.nearly_complete = 1;

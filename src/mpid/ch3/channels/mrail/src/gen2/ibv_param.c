@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -15,7 +15,6 @@
 #include <stdio.h>
 #include <ctype.h>
 #include <infiniband/verbs.h>
-#include <infiniband/umad.h>
 #include "rdma_impl.h"
 #include "vbuf.h"
 #include "ibv_param.h"
@@ -43,6 +42,7 @@ int rdma_num_rails;
 int rdma_pin_pool_size = RDMA_PIN_POOL_SIZE;
 unsigned long rdma_default_max_cq_size = RDMA_DEFAULT_MAX_CQ_SIZE;
 int rdma_default_port = RDMA_DEFAULT_PORT;
+int rdma_default_gid_index = RDMA_DEFAULT_GID_INDEX;
 int rdma_default_max_send_wqe = RDMA_DEFAULT_MAX_SEND_WQE;
 int rdma_default_max_recv_wqe = RDMA_DEFAULT_MAX_RECV_WQE;
 uint32_t rdma_default_max_sg_list = RDMA_DEFAULT_MAX_SG_LIST;
@@ -157,7 +157,8 @@ int rdma_prepost_noop_extra = 6;
 int rdma_credit_preserve;
 int rdma_initial_credits = 0;
 
-#ifdef _ENABLE_UD_
+uint16_t rdma_default_ud_mtu = 2048;
+#if defined(_ENABLE_UD_)
 uint8_t rdma_enable_hybrid = 1;
 uint8_t rdma_enable_only_ud = 0;
 uint8_t rdma_use_ud_zcopy = 1;
@@ -178,7 +179,6 @@ long rdma_ud_last_check;
 uint32_t rdma_ud_zcopy_threshold;
 uint32_t rdma_ud_zcopy_rq_size = 4096;
 uint32_t rdma_hybrid_enable_threshold = 1024;
-uint16_t rdma_default_ud_mtu = 2048;
 uint16_t rdma_ud_progress_spin = 1200;
 uint16_t rdma_ud_max_retry_count = 1000;
 uint16_t rdma_ud_max_ack_pending;
@@ -188,7 +188,21 @@ uint16_t rdma_hybrid_pending_rc_conn = 0;
 #ifdef _MV2_UD_DROP_PACKET_RATE_
 uint32_t ud_drop_packet_rate = 0;
 #endif
-#endif /* _ENABLE_UD_ */
+#endif
+#if defined(_MCST_SUPPORT_)
+uint8_t rdma_enable_mcast = 0;
+uint8_t mcast_enable_rel = 1;
+uint8_t mcast_use_mcast_nack = 1;
+uint16_t mcast_window_size = 256;
+uint16_t mcast_drop_packet_rate = 0;
+uint32_t mcast_num_nodes_threshold = 8;
+uint32_t mcast_max_ud_recv_wqe = 2096;
+long mcast_retry_timeout = 500000;
+long mcast_max_retry_timeout = 20000000;
+long mcast_comm_init_timeout = 5000;
+int mcast_comm_init_retries = 128;
+int mcast_nspin_threshold = 1200;
+#endif
 
 /* Max number of entries on the RecvQ of QPs per connection.
  * computed to be:
@@ -260,6 +274,7 @@ int rdma_eager_cudahost_reg = 0;
 int rdma_cuda_vector_dt_opt = 1;
 #if defined(HAVE_CUDA_IPC)
 int rdma_cuda_ipc = 1;
+int rdma_cuda_smp_ipc = 0;
 int rdma_cuda_enable_ipc_cache = 0;
 int rdma_cuda_ipc_threshold = 512 * 1024;
 int cudaipc_cache_max_entries = 1;
@@ -278,6 +293,7 @@ int rdma_cuda_bcast_naive_limit = 2097152;
 int rdma_cuda_alltoall_dynamic = 1;
 int rdma_cuda_allgather_rd_limit = 1024;
 int rdma_cuda_allgather_fgp = 1;
+int rdma_cuda_init_context = 1;
 #endif /*#ifdef _ENABLE_CUDA_ */
 
 typedef enum _mv2_user_defined_mapping_policies {
@@ -338,19 +354,15 @@ static inline int get_hca_type(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     int ret = 0;
     char *dev_name = NULL;
     int mpi_errno = MPI_SUCCESS;
-    int num_devices = 0;
     struct ibv_device_attr dev_attr;
-    struct ibv_device **dev_list = NULL;
 
     MPIDI_STATE_DECL(MPID_STATE_GET_HCA_TYPE);
     MPIDI_FUNC_ENTER(MPID_STATE_GET_HCA_TYPE);
 
 
-    dev_list = ibv_get_device_list(&num_devices);
-
     MPIU_Memset(&dev_attr, 0, sizeof(struct ibv_device_attr));
 
-    for (i = 0; i < num_devices; ++i) {
+    for (i = 0; i < rdma_num_hcas; ++i) {
 
         dev_name = (char *) ibv_get_device_name(proc->ib_dev[i]);
 
@@ -366,8 +378,8 @@ static inline int get_hca_type(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
                                  "**ibv_query_device %s", dev_name);
         }
 
-        proc->hca_type = mv2_get_hca_type(dev_list[i]);
-        proc->arch_hca_type = mv2_get_arch_hca_type(dev_list[i]);
+        proc->hca_type = mv2_get_hca_type(proc->ib_dev[i]);
+        proc->arch_hca_type = mv2_get_arch_hca_type(proc->ib_dev[i]);
         if (MV2_HCA_UNKWN != proc->hca_type) {
             /* We've found the HCA */
             break;
@@ -375,7 +387,6 @@ static inline int get_hca_type(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     }
 
   fn_fail:
-    ibv_free_device_list(dev_list);
     MPIDI_FUNC_EXIT(MPID_STATE_GET_HCA_TYPE);
 
     return mpi_errno;
@@ -735,6 +746,18 @@ int rdma_set_smp_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
             s_smp_block_size = 16384;
             break;
 
+        case MV2_ARCH_AMD_BULLDOZER_4274HE_16:
+#if defined(_SMP_LIMIC_)
+            g_smp_eagersize = 8192;
+#else
+            g_smp_eagersize = 16384;
+#endif
+            s_smpi_length_queue = 65536;
+            s_smp_num_send_buffer = 16;
+            s_smp_batch_size = 8;
+            s_smp_block_size = 8192;
+            break;
+
         default:
             g_smp_eagersize = 16384;
             s_smpi_length_queue = 65536;
@@ -743,6 +766,31 @@ int rdma_set_smp_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
             s_smp_block_size = 8192;
             break;
     }
+
+#if defined(_ENABLE_CUDA_)
+    s_smp_h2h_block_size = s_smp_block_size;
+
+    if ((value = getenv("MV2_CUDA_SMP_PIPELINE")) != NULL) {
+        s_smp_cuda_pipeline = atoi(value);
+    }
+
+    if (rdma_enable_cuda && s_smp_cuda_pipeline) {
+        s_smp_h2h_block_size = s_smp_block_size;
+        s_smp_block_size = 128*1024;
+    }
+
+#if defined(HAVE_CUDA_IPC)
+    smp_cuda_region_size = g_smp_eagersize * 4;
+
+    if ((value = getenv("SMPI_CUDA_REGION_SIZE")) != NULL) {
+        smp_cuda_region_size = user_val_to_bytes(value,"SMPI_CUDA_REGION_SIZE");
+    }
+
+    if (smp_cuda_region_size <= g_smp_eagersize * 4) {
+        smp_cuda_region_size = g_smp_eagersize * 4;
+    }
+#endif
+#endif
 
     /* Set Limic Thresholds */
     set_limic_thresholds(proc);
@@ -800,7 +848,6 @@ int rdma_set_smp_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 {
-    int i = 0;
     int size = -1;
     int pg_size = ERROR;
     int my_rank = -1;
@@ -871,44 +918,6 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
         rdma_cm_connect_retry_interval = atoi(value);
         if (rdma_cm_connect_retry_interval <= 0) {
             rdma_cm_connect_retry_interval = RDMA_DEFAULT_CONNECT_INTERVAL;
-        }
-    }
-
-    if ((value = getenv("MV2_NUM_HCAS")) != NULL) {
-        rdma_num_req_hcas = atoi(value);
-
-        rdma_multirail_usage_policy = MV2_MRAIL_SHARING;
-
-        if (rdma_num_req_hcas > MAX_NUM_HCAS) {
-            rdma_num_req_hcas = MAX_NUM_HCAS;
-
-            MPIU_Msg_printf("Warning, max hca is %d, change %s in ibv_param.h "
-                            "to overide the option\n", MAX_NUM_HCAS,
-                            "MAX_NUM_HCAS");
-        }
-    }
-
-    for (i = 0; i < MAX_NUM_HCAS; ++i) {
-        strncpy(rdma_iba_hcas[i], RDMA_IBA_NULL_HCA, 32);
-    }
-
-    if ((value = getenv("MV2_IBA_HCA")) != NULL) {
-        rdma_multirail_usage_policy = MV2_MRAIL_SHARING;
-        rdma_num_req_hcas = 0;
-        {
-            char *tok = NULL;
-            char *inp = value;
-
-            tok = strtok(inp, ":");
-            inp = NULL;
-            while (tok != NULL) {
-                strncpy(rdma_iba_hcas[rdma_num_req_hcas], tok, 32);
-                tok = strtok(inp, ":");
-                DEBUG_PRINT("tok = %s, hca name = %s, hca num = %d\n", tok,
-                            rdma_iba_hcas[rdma_num_req_hcas],
-                            rdma_num_req_hcas);
-                rdma_num_req_hcas++;
-            }
         }
     }
 
@@ -1360,6 +1369,17 @@ static void rdma_set_default_parameters_numrail_4(struct
     }
 
     else if (MV2_IS_ARCH_HCA_TYPE
+             (proc->arch_hca_type, MV2_ARCH_AMD_BULLDOZER_4274HE_16,
+              MV2_HCA_MLX_CX_QDR)) {
+        rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc = 8 * 1024;
+        rdma_put_fallback_threshold = 8 * 1024;
+        rdma_get_fallback_threshold = 0;
+    }
+
+    else if (MV2_IS_ARCH_HCA_TYPE
              (proc->arch_hca_type, MV2_ARCH_INTEL_CLOVERTOWN_8,
               MV2_HCA_MLX_CX_DDR)) {
         rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
@@ -1563,6 +1583,17 @@ static void rdma_set_default_parameters_numrail_3(struct
         rdma_fp_buffer_size = 5 * 1024;
         rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
         rdma_eagersize_1sc = 4 * 1024;
+        rdma_put_fallback_threshold = 8 * 1024;
+        rdma_get_fallback_threshold = 0;
+    }
+
+    else if (MV2_IS_ARCH_HCA_TYPE
+             (proc->arch_hca_type, MV2_ARCH_AMD_BULLDOZER_4274HE_16,
+              MV2_HCA_MLX_CX_QDR)) {
+        rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc = 8 * 1024;
         rdma_put_fallback_threshold = 8 * 1024;
         rdma_get_fallback_threshold = 0;
     }
@@ -1776,6 +1807,17 @@ static void rdma_set_default_parameters_numrail_2(struct
     }
 
     else if (MV2_IS_ARCH_HCA_TYPE
+             (proc->arch_hca_type, MV2_ARCH_AMD_BULLDOZER_4274HE_16,
+              MV2_HCA_MLX_CX_QDR)) {
+        rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc = 8 * 1024;
+        rdma_put_fallback_threshold = 8 * 1024;
+        rdma_get_fallback_threshold = 0;
+    }
+
+    else if (MV2_IS_ARCH_HCA_TYPE
              (proc->arch_hca_type, MV2_ARCH_AMD_OPTERON_6136_32,
               MV2_HCA_MLX_CX_QDR)) {
         rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
@@ -1984,6 +2026,17 @@ static void rdma_set_default_parameters_numrail_1(struct
     }
 
     else if (MV2_IS_ARCH_HCA_TYPE
+             (proc->arch_hca_type, MV2_ARCH_AMD_BULLDOZER_4274HE_16,
+              MV2_HCA_MLX_CX_QDR)) {
+        rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc = 8 * 1024;
+        rdma_put_fallback_threshold = 8 * 1024;
+        rdma_get_fallback_threshold = 0;
+    }
+
+    else if (MV2_IS_ARCH_HCA_TYPE
              (proc->arch_hca_type, MV2_ARCH_AMD_OPTERON_6136_32,
               MV2_HCA_MLX_CX_QDR)) {
         rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
@@ -2186,6 +2239,17 @@ static void rdma_set_default_parameters_numrail_unknwn(struct
         rdma_vbuf_total_size = 17 * 1024 + EAGER_THRESHOLD_ADJUST;
         rdma_fp_buffer_size = 5 * 1024;
         rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_put_fallback_threshold = 8 * 1024;
+        rdma_get_fallback_threshold = 0;
+    }
+
+    else if (MV2_IS_ARCH_HCA_TYPE
+             (proc->arch_hca_type, MV2_ARCH_AMD_BULLDOZER_4274HE_16,
+              MV2_HCA_MLX_CX_QDR)) {
+        rdma_vbuf_total_size = 16 * 1024 + EAGER_THRESHOLD_ADJUST;
+        rdma_fp_buffer_size = 5 * 1024;
+        rdma_iba_eager_threshold = VBUF_BUFFER_SIZE;
+        rdma_eagersize_1sc = 8 * 1024;
         rdma_put_fallback_threshold = 8 * 1024;
         rdma_get_fallback_threshold = 0;
     }
@@ -2452,7 +2516,7 @@ void rdma_set_default_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     return;
 }
 
-/* rdma_param_handle_heterogenity resets control parameters given the arch_hca_type
+/* rdma_param_handle_heterogeneity resets control parameters given the arch_hca_type
  * from all ranks. Parameters may change:
  *      rdma_default_mtu
  *      rdma_iba_eager_threshold
@@ -2465,11 +2529,11 @@ void rdma_set_default_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
  *      num_rdma_buffer
  *      rdma_vbuf_total_size
  */
-void rdma_param_handle_heterogenity(mv2_arch_hca_type arch_hca_type[],
+void rdma_param_handle_heterogeneity(mv2_arch_hca_type arch_hca_type[],
                                     int pg_size)
 {
     mv2_arch_hca_type type;
-    mv2_MPIDI_CH3I_RDMA_Process.heterogenity = 0;
+    mv2_MPIDI_CH3I_RDMA_Process.heterogeneity = 0;
     int i;
 
     type = arch_hca_type[0];
@@ -2500,13 +2564,13 @@ void rdma_param_handle_heterogenity(mv2_arch_hca_type arch_hca_type[],
         }
 
         if (arch_hca_type[i] != type) {
-            mv2_MPIDI_CH3I_RDMA_Process.heterogenity = 1;
+            mv2_MPIDI_CH3I_RDMA_Process.heterogeneity = 1;
         }
 
         DEBUG_PRINT("rank %d, type %d\n", i, arch_hca_type[i]);
     }
 
-    if (mv2_MPIDI_CH3I_RDMA_Process.heterogenity) {
+    if (mv2_MPIDI_CH3I_RDMA_Process.heterogeneity) {
         DEBUG_PRINT("heterogenous hcas detected\n");
         rdma_default_mtu = IBV_MTU_1024;
         rdma_vbuf_total_size = 8 * 1024 + EAGER_THRESHOLD_ADJUST;
@@ -2637,63 +2701,6 @@ void rdma_get_user_parameters(int num_proc, int me)
             rdma_num_cuda_rndv_blocks = atoi(value);
         }
 
-        if ((value = getenv("MV2_CUDA_USE_NAIVE")) != NULL) {
-            rdma_cuda_use_naive = atoi(value);
-        }
-
-        if ((value = getenv("MV2_CUDA_ALLTOALL_DYNAMIC")) != NULL) {
-            rdma_cuda_alltoall_dynamic = atoi(value);
-        }
-
-        if ((value = getenv("MV2_CUDA_REGISTER_NAIVE_BUF")) != NULL) {
-            rdma_cuda_register_naive_buf = atoi(value);
-        }
-
-        if ((value = getenv("MV2_CUDA_GATHER_NAIVE_LIMIT")) != NULL) {
-            rdma_cuda_gather_naive_limit = atoi(value);
-        }
-
-        if ((value = getenv("MV2_CUDA_SCATTER_NAIVE_LIMIT")) != NULL) {
-            rdma_cuda_scatter_naive_limit = atoi(value);
-        }
-
-        if ((value = getenv("MV2_CUDA_ALLTOALL_NAIVE_LIMIT")) != NULL) {
-            rdma_cuda_alltoall_naive_limit = atoi(value);
-        }
-
-        if ((value = getenv("MV2_CUDA_ALLTOALLV_NAIVE_LIMIT")) != NULL) {
-            rdma_cuda_alltoallv_naive_limit = atoi(value);
-        }
-
-        if ((value = getenv("MV2_CUDA_ALLGATHER_NAIVE_LIMIT")) != NULL) {
-            rdma_cuda_allgather_naive_limit = atoi(value);
-        }
-
-        if ((value = getenv("MV2_CUDA_ALLGATHERV_NAIVE_LIMIT")) != NULL) {
-            rdma_cuda_allgatherv_naive_limit = atoi(value);
-        }
-
-        if ((value = getenv("MV2_CUDA_BCAST_NAIVE_LIMIT")) != NULL) {
-            rdma_cuda_bcast_naive_limit = atoi(value);
-        }
-
-        if ((value = getenv("MV2_CUDA_GATHERV_NAIVE_LIMIT")) != NULL) {
-            rdma_cuda_gatherv_naive_limit = atoi(value);
-        }
-
-        if ((value = getenv("MV2_CUDA_SCATTERV_NAIVE_LIMIT")) != NULL) {
-            rdma_cuda_scatterv_naive_limit = atoi(value);
-        }
-
-        if ((value = getenv("MV2_CUDA_ALLGATHER_RD_LIMIT")) != NULL) {
-            rdma_cuda_allgather_rd_limit = atoi(value);
-        }
-    
-        if ((value = getenv("MV2_CUDA_ALLGATHER_FGP")) != NULL) {
-            rdma_cuda_allgather_fgp = atoi(value);
-        }
-
-
         rdma_vbuf_pools = (vbuf_pool_t *)
             MPIU_Malloc(sizeof(vbuf_pool_t) * rdma_num_vbuf_pools);
         MPIU_Memset(rdma_vbuf_pools, 0,
@@ -2806,6 +2813,9 @@ void rdma_get_user_parameters(int num_proc, int me)
     }
     if ((value = getenv("MV2_DEFAULT_PORT")) != NULL) {
         rdma_default_port = atoi(value);
+    }
+    if ((value = getenv("MV2_DEFAULT_GID_INDEX")) != NULL) {
+        rdma_default_gid_index = atoi(value);
     }
     if ((value = getenv("MV2_DEFAULT_QP_OUS_RD_ATOM")) != NULL) {
         rdma_default_qp_ous_rd_atom = (uint8_t) atoi(value);
@@ -2929,6 +2939,45 @@ void rdma_get_user_parameters(int num_proc, int me)
 #endif
 
 #endif
+#if defined(_MCST_SUPPORT_)
+    if ((value = getenv("MV2_USE_MCAST")) != NULL) {
+        rdma_enable_mcast = atoi(value);
+    }
+    if ((value = getenv("MV2_MCAST_ENABLE_REL")) != NULL) {
+        mcast_enable_rel = atoi(value);
+    }
+    if ((value = getenv("MV2_MCAST_USE_MCAST_NACK")) != NULL) {
+        mcast_use_mcast_nack = atoi(value);
+    }
+    if ((value = getenv("MV2_MCAST_NUM_NODES_THRESHOLD")) != NULL) {
+        mcast_num_nodes_threshold = atoi(value);
+    }
+    if ((value = getenv("MV2_MCAST_MAX_RECV_WQE")) != NULL) {
+        mcast_max_ud_recv_wqe = atoi(value);
+    }
+    if ((value = getenv("MV2_MCAST_WINDOW_SIZE")) != NULL) {
+        mcast_window_size = atoi(value);
+    }
+    if ((value = getenv("MV2_MCAST_DROP_PACKET_RATE")) != NULL) {
+        mcast_drop_packet_rate = atoi(value);
+    }
+    if ((value = getenv("MV2_MCAST_RETRY_TIMEOUT")) != NULL) {
+        mcast_retry_timeout = atoi(value);
+    }
+    if ((value = getenv("MV2_MCAST_MAX_RETRY_TIMEOUT")) != NULL) {
+        mcast_max_retry_timeout = atoi(value);
+    }
+    if ((value = getenv("MV2_MCAST_NSPIN_THRESHOLD")) != NULL) {
+        mcast_nspin_threshold = atoi(value);
+    }
+    if ((value = getenv("MV2_MCAST_COMM_INIT_TIMEOUT")) != NULL) {
+        mcast_comm_init_timeout = atoi(value);
+    }
+    if ((value = getenv("MV2_MCAST_COMM_INIT_RETRIES")) != NULL) {
+        mcast_comm_init_retries = atoi(value);
+    }
+#endif
+
     if ((value = getenv("MV2_DEFAULT_MAX_RECV_WQE")) != NULL) {
         rdma_default_max_recv_wqe = atol(value);
     }
@@ -3051,7 +3100,7 @@ static int check_hsam_parameters(void)
 
 void rdma_get_pm_parameters(mv2_MPIDI_CH3I_RDMA_Process_t * proc)
 {
-    int ring_setup;
+    int ring_setup, i;
     char *value;
     value = getenv("MPIRUN_RSH_LAUNCH");
     if (value == NULL || (atoi(value) != 1)) {
@@ -3098,6 +3147,45 @@ void rdma_get_pm_parameters(mv2_MPIDI_CH3I_RDMA_Process_t * proc)
             proc->has_ring_startup = 0;
         }
     }
+
+    if ((value = getenv("MV2_NUM_HCAS")) != NULL) {
+        rdma_num_req_hcas = atoi(value);
+
+        rdma_multirail_usage_policy = MV2_MRAIL_SHARING;
+
+        if (rdma_num_req_hcas > MAX_NUM_HCAS) {
+            rdma_num_req_hcas = MAX_NUM_HCAS;
+
+            MPIU_Msg_printf("Warning, max hca is %d, change %s in ibv_param.h "
+                            "to overide the option\n", MAX_NUM_HCAS,
+                            "MAX_NUM_HCAS");
+        }
+    }
+
+    for (i = 0; i < MAX_NUM_HCAS; ++i) {
+        strncpy(rdma_iba_hcas[i], RDMA_IBA_NULL_HCA, 32);
+    }
+
+    if ((value = getenv("MV2_IBA_HCA")) != NULL) {
+        rdma_multirail_usage_policy = MV2_MRAIL_SHARING;
+        rdma_num_req_hcas = 0;
+        {
+            char *tok = NULL;
+            char *inp = value;
+
+            tok = strtok(inp, ":");
+            inp = NULL;
+            while (tok != NULL) {
+                strncpy(rdma_iba_hcas[rdma_num_req_hcas], tok, 32);
+                tok = strtok(inp, ":");
+                DEBUG_PRINT("tok = %s, hca name = %s, hca num = %d\n", tok,
+                            rdma_iba_hcas[rdma_num_req_hcas],
+                            rdma_num_req_hcas);
+                rdma_num_req_hcas++;
+            }
+        }
+    }
+
 }
 
 void mv2_print_env_info(mv2_MPIDI_CH3I_RDMA_Process_t * proc)
@@ -3113,7 +3201,7 @@ void mv2_print_env_info(mv2_MPIDI_CH3I_RDMA_Process_t * proc)
     fprintf(stderr, "\tHCA NAME                       : %s\n",
             mv2_get_hca_name(hca_type));
     fprintf(stderr, "\tHETEROGENEOUS HCA              : %s\n",
-            (mv2_MPIDI_CH3I_RDMA_Process.heterogenity) ? "YES" : "NO");
+            (mv2_MPIDI_CH3I_RDMA_Process.heterogeneity) ? "YES" : "NO");
     fprintf(stderr, "\tMV2_VBUF_TOTAL_SIZE            : %d\n",
             rdma_vbuf_total_size);
     fprintf(stderr, "\tMV2_IBA_EAGER_THRESHOLD        : %d\n",

@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -98,6 +98,7 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
 {
     int verno_major, verno_minor;
     int pg_size, mpi_errno;
+    int heterogeneity = 0; 
     psm_epid_t myid, *epidlist = NULL;
     psm_error_t *errs = NULL, err;
 
@@ -107,6 +108,10 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
     verno_major = PSM_VERNO_MAJOR;
     verno_minor = PSM_VERNO_MINOR;
 
+    /* initialize tuning-table for collectives. 
+     * Its ok to pass heterogeneity as 0. We anyway fall-back to the 
+     * basic case for PSM */ 
+    MV2_collectives_arch_init(heterogeneity); 
     /* initialize shared memory for collectives */
     if (mv2_enable_shmem_collectives) {
         if ((mpi_errno = MPIDI_CH3I_SHMEM_COLL_init(pg, pg->ch.local_process_id)) != MPI_SUCCESS)

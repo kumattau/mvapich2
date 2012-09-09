@@ -9,7 +9,7 @@
  * copyright file COPYRIGHT in the top level OMB directory.
  */
 
-#include <osu_coll.h>
+#include "osu_coll.h"
 
 int main(int argc, char *argv[])
 {

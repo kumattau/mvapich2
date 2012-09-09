@@ -38,7 +38,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#include <osu_coll.h>
+#include "osu_coll.h"
 
 int main(int argc, char *argv[])
 {

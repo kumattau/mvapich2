@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -2098,8 +2098,9 @@ void MPIDI_CH3I_SHM_win_create(void *base, MPI_Aint size, MPID_Win ** win_ptr)
               new_fd = shm_open(file_info_exchange[remote_rank].filename,
                      O_RDWR, S_IRWXU);
               if (-1 == new_fd) {
-                 ibv_error_abort (GEN_EXIT_ERR, 
-                        "rdma_iba_1sc: error in shm_open \n");
+                 ibv_va_error_abort (GEN_EXIT_ERR, 
+                        "rdma_iba_1sc: error in shm_openshm: %s\n", 
+                        strerror(errno));
               }
 
               /*mapping memory to the shared file*/

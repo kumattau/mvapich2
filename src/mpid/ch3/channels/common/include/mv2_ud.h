@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -15,6 +15,32 @@
 
 #include <vbuf.h>
 #include <infiniband/verbs.h>
+
+#define LOG2(_v, _r)                            \
+do {                                            \
+    (_r) = ((_v) & 0xFF00) ? 8 : 0;             \
+    if ( (_v) & ( 0x0F << (_r + 4 ))) (_r)+=4;  \
+    if ( (_v) & ( 0x03 << (_r + 2 ))) (_r)+=2;  \
+    if ( (_v) & ( 0x01 << (_r + 1 ))) (_r)+=1;  \
+} while(0)
+
+/*
+** We should check if the ackno had been handled before.
+** We process this only if ackno had advanced.
+** There are 2 cases to consider:
+** 1. ackno_handled < seqnolast (normal case)
+** 2. ackno_handled > seqnolast (wraparound case)
+*/
+#define INCL_BETWEEN(_val, _start, _end)                            \
+    (((_start > _end) && (_val >= _start || _val <= _end)) ||       \
+     ((_end > _start) && (_val >= _start && _val <= _end)) ||       \
+     ((_end == _start) && (_end == _val)))
+
+#define EXCL_BETWEEN(_val, _start, _end)                            \
+    (((_start > _end) && (_val > _start || _val < _end)) ||         \
+     ((_end > _start) && (_val > _start && _val < _end)))
+
+
 
 #define UD_ACK_PROGRESS_TIMEOUT (((mv2_get_time_us() - rdma_ud_last_check) > rdma_ud_progress_timeout))
 

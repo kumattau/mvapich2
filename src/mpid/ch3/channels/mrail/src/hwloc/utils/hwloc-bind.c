@@ -1,6 +1,6 @@
 /*
  * Copyright © 2009 CNRS
- * Copyright © 2009-2011 inria.  All rights reserved.
+ * Copyright © 2009-2012 inria.  All rights reserved.
  * Copyright © 2009-2010 Université Bordeaux 1
  * Copyright © 2009 Cisco Systems, Inc.  All rights reserved.
  * See COPYING in top-level directory.
@@ -10,7 +10,9 @@
 #include <hwloc-calc.h>
 #include <hwloc.h>
 
+#ifdef HAVE_UNISTD_H
 #include <unistd.h>
+#endif
 #include <errno.h>
 
 static void usage(FILE *where)
@@ -61,7 +63,7 @@ int main(int argc, char *argv[])
   membind_set = hwloc_bitmap_alloc();
 
   hwloc_topology_init(&topology);
-  hwloc_topology_set_flags(topology, HWLOC_TOPOLOGY_FLAG_WHOLE_IO);
+  hwloc_topology_set_flags(topology, HWLOC_TOPOLOGY_FLAG_WHOLE_IO|HWLOC_TOPOLOGY_FLAG_ICACHES);
   hwloc_topology_load(topology);
   depth = hwloc_topology_get_depth(topology);
 

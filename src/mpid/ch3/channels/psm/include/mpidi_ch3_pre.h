@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -129,8 +129,10 @@ typedef struct MPIDI_CH3I_comm
      int     allgather_comm_ok;
      int     leader_group_size;
      int     is_global_block;
+     int     intra_node_done;
      int     is_pof2; /* Boolean to know if comm size is equal to pof2  */
      int     gpof2; /* Greater pof2 < size of comm */ 
+     void    *shmem_info; /* intra node shmem info */
  } MPIDI_CH3I_comm_t;
  
  #define MPID_DEV_COMM_DECL MPIDI_CH3I_comm_t ch;

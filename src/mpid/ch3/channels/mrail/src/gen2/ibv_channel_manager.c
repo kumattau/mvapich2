@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -20,6 +20,9 @@
 #include "rdma_impl.h"
 #include "mpiutil.h"
 #include <debug_utils.h>
+#if defined(_MCST_SUPPORT_)
+#include "ibv_mcast.h"
+#endif
 
 #undef DEBUG_PRINT
 #ifdef DEBUG
@@ -607,7 +610,7 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
                                        MPIDI_Process.my_pg_rank);
                        }     
                 }
- 
+
 	            if(!is_send_completion && (mv2_MPIDI_CH3I_RDMA_Process.has_srq
                                     || v->transport == IB_TRANSPORT_UD)) {
                     SET_PKT_LEN_HEADER(v, wc);
@@ -625,9 +628,10 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
 	            /* get the VC and increase its wqe */
 	            if (is_send_completion) {
 #ifdef _ENABLE_UD_
-                if (rdma_enable_hybrid) {
+                p = v->pheader;
+                if (rdma_enable_hybrid && !IS_MCAST_MSG(p)) {
                     if(v->transport == IB_TRANSPORT_RC  || 
-                        (v->pheader && IS_CNTL_MSG(v->pheader))) {
+                        (v->pheader && IS_CNTL_MSG(p))) {
                         MRAILI_Process_send(v);
                     }
                     if (v->transport == IB_TRANSPORT_UD) {
@@ -658,7 +662,16 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
                     SET_PKT_HEADER_OFFSET(v);
                     v->seqnum =  seqnum;
                     p = v->pheader;
-                    PRINT_DEBUG(DEBUG_UD_verbose>1,"Received from rank:%d seqnum :%d ack:%d size:%d type:%d trasport :%d \n",vc->pg_rank, v->seqnum, p->acknum, v->content_size, p->type, v->transport);
+                    PRINT_DEBUG(DEBUG_UD_verbose>1,"Received from rank:%d seqnum :%d "
+                            "ack:%d size:%d type:%d trasport :%d \n",vc->pg_rank, 
+                            v->seqnum, p->acknum, v->content_size, p->type, v->transport);
+
+#ifdef _MCST_SUPPORT_
+                    if (IS_MCAST_MSG(p)) {
+                        mv2_process_mcast_msg(v);
+                        return T_CHANNEL_NO_ARRIVE;
+                    }
+#endif
 #ifdef _ENABLE_UD_
                     if (v->transport == IB_TRANSPORT_UD)
                     {

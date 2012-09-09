@@ -1,7 +1,7 @@
 /*
  * Copyright © 2009 CNRS
- * Copyright © 2009-2011 inria.  All rights reserved.
- * Copyright © 2009-2011 Université Bordeaux 1
+ * Copyright © 2009-2012 Inria.  All rights reserved.
+ * Copyright © 2009-2012 Université Bordeaux 1
  * Copyright © 2009-2011 Cisco Systems, Inc.  All rights reserved.
  * See COPYING in top-level directory.
  */
@@ -15,12 +15,16 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#ifdef HAVE_DIRENT_H
 #include <dirent.h>
+#endif
 #include <fcntl.h>
 #include <assert.h>
 
+#ifdef LSTOPO_HAVE_GRAPHICS
 #ifdef HWLOC_HAVE_CAIRO
 #include <cairo.h>
+#endif
 #endif
 
 #ifdef HAVE_SETLOCALE
@@ -84,6 +88,7 @@ static hwloc_obj_t insert_task(hwloc_topology_t topology, hwloc_cpuset_t cpuset,
 
 static void add_process_objects(hwloc_topology_t topology)
 {
+#ifdef HAVE_DIRENT_H
   hwloc_obj_t root;
   hwloc_bitmap_t cpuset;
 #ifdef HWLOC_LINUX_SYS
@@ -204,6 +209,7 @@ static void add_process_objects(hwloc_topology_t topology)
   hwloc_bitmap_free(task_cpuset);
 #endif /* HWLOC_LINUX_SYS */
   closedir(dir);
+#endif /* HAVE_DIRENT_H */
 }
 
 void usage(const char *name, FILE *where)
@@ -211,7 +217,7 @@ void usage(const char *name, FILE *where)
   fprintf (where, "Usage: %s [ options ] ... [ filename.format ]\n\n", name);
   fprintf (where, "See lstopo(1) for more details.\n\n");
   fprintf (where, "Supported output file formats: console, txt, fig"
-#ifdef HWLOC_HAVE_CAIRO
+#ifdef LSTOPO_HAVE_GRAPHICS
 #if CAIRO_HAS_PDF_SURFACE
 		  ", pdf"
 #endif /* CAIRO_HAS_PDF_SURFACE */
@@ -224,7 +230,7 @@ void usage(const char *name, FILE *where)
 #if CAIRO_HAS_SVG_SURFACE
 		  ", svg"
 #endif /* CAIRO_HAS_SVG_SURFACE */
-#endif /* HWLOC_HAVE_CAIRO */
+#endif /* LSTOPO_HAVE_GRAPHICS */
 		  ", xml, synthetic"
 		  "\n");
   fprintf (where, "\nFormatting options:\n");
@@ -247,6 +253,7 @@ void usage(const char *name, FILE *where)
   fprintf (where, "  --no-caches           Do not show caches\n");
   fprintf (where, "  --no-useless-caches   Do not show caches which do not have a hierarchical\n"
                   "                        impact\n");
+  fprintf (where, "  --no-icaches          Do not show instruction caches\n");
   fprintf (where, "  --merge               Do not show levels that do not have a hierarchical\n"
                   "                        impact\n");
   fprintf (where, "  --restrict <cpuset>   Restrict the topology to processors listed in <cpuset>\n");
@@ -289,9 +296,9 @@ enum output_format {
 static enum output_format
 parse_output_format(const char *name, char *callname)
 {
-  if (!strncasecmp(name, "default", 3))
+  if (!hwloc_strncasecmp(name, "default", 3))
     return LSTOPO_OUTPUT_DEFAULT;
-  else if (!strncasecmp(name, "console", 3))
+  else if (!hwloc_strncasecmp(name, "console", 3))
     return LSTOPO_OUTPUT_CONSOLE;
   else if (!strcasecmp(name, "synthetic"))
     return LSTOPO_OUTPUT_SYNTHETIC;
@@ -324,7 +331,7 @@ main (int argc, char *argv[])
   int verbose_mode = LSTOPO_VERBOSE_MODE_DEFAULT;
   hwloc_topology_t topology;
   const char *filename = NULL;
-  unsigned long flags = HWLOC_TOPOLOGY_FLAG_IO_DEVICES | HWLOC_TOPOLOGY_FLAG_IO_BRIDGES;
+  unsigned long flags = HWLOC_TOPOLOGY_FLAG_IO_DEVICES | HWLOC_TOPOLOGY_FLAG_IO_BRIDGES | HWLOC_TOPOLOGY_FLAG_ICACHES;
   int merge = 0;
   int ignorecache = 0;
   char * callname;
@@ -401,6 +408,8 @@ main (int argc, char *argv[])
 	ignorecache = 2;
       else if (!strcmp (argv[1], "--no-useless-caches"))
 	ignorecache = 1;
+      else if (!strcmp (argv[1], "--no-icaches"))
+	flags &= ~HWLOC_TOPOLOGY_FLAG_ICACHES;
       else if (!strcmp (argv[1], "--whole-system"))
 	flags |= HWLOC_TOPOLOGY_FLAG_WHOLE_SYSTEM;
       else if (!strcmp (argv[1], "--no-io"))
@@ -588,7 +597,7 @@ main (int argc, char *argv[])
 
   switch (output_format) {
     case LSTOPO_OUTPUT_DEFAULT:
-#ifdef HWLOC_HAVE_CAIRO
+#ifdef LSTOPO_HAVE_GRAPHICS
 #if CAIRO_HAS_XLIB_SURFACE && defined HWLOC_HAVE_X11
       if (getenv("DISPLAY")) {
         if (logical == -1)
@@ -596,14 +605,15 @@ main (int argc, char *argv[])
         output_x11(topology, NULL, logical, legend, verbose_mode);
       } else
 #endif /* CAIRO_HAS_XLIB_SURFACE */
-#endif /* HWLOC_HAVE_CAIRO */
 #ifdef HWLOC_WIN_SYS
       {
         if (logical == -1)
           logical = 0;
         output_windows(topology, NULL, logical, legend, verbose_mode);
       }
-#else
+#endif
+#endif /* !LSTOPO_HAVE_GRAPHICS */
+#if !defined HWLOC_WIN_SYS || !defined LSTOPO_HAVE_GRAPHICS
       {
         if (logical == -1)
           logical = 1;
@@ -624,7 +634,7 @@ main (int argc, char *argv[])
     case LSTOPO_OUTPUT_FIG:
       output_fig(topology, filename, logical, legend, verbose_mode);
       break;
-#ifdef HWLOC_HAVE_CAIRO
+#ifdef LSTOPO_HAVE_GRAPHICS
 # if CAIRO_HAS_PNG_FUNCTIONS
     case LSTOPO_OUTPUT_PNG:
       output_png(topology, filename, logical, legend, verbose_mode);
@@ -645,7 +655,7 @@ main (int argc, char *argv[])
       output_svg(topology, filename, logical, legend, verbose_mode);
       break;
 #endif /* CAIRO_HAS_SVG_SURFACE */
-#endif /* HWLOC_HAVE_CAIRO */
+#endif /* LSTOPO_HAVE_GRAPHICS */
     case LSTOPO_OUTPUT_XML:
       output_xml(topology, filename, logical, legend, verbose_mode);
       break;

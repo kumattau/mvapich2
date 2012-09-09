@@ -163,14 +163,14 @@ for net in $nemesis_networks ; do
                                    [infiniband/verbs.h],
                                    [ibverbs],
                                    [ibv_query_device])
-        PAC_CHECK_HEADER_LIB_FATAL([umad],
-                                   [infiniband/umad.h],
-                                   [ibumad],
-                                   [umad_init])
-        PAC_CHECK_HEADER_LIB_FATAL([rdmacm],
-                                   [rdma/rdma_cma.h],
-                                   [rdmacm],
-                                   [rdma_connect])
+        have_umad=yes;
+        PAC_CHECK_HEADER_LIB(umad, infiniband/umad.h, ibumad, umad_init, have_umad=yes, have_umad=no)
+        if test "$have_umad" = "yes" ; then
+            AC_DEFINE(HAVE_LIBIBUMAD, 1, [UMAD installation found.])
+        else
+            AC_MSG_NOTICE([infiniband libumand not found])
+        fi 
+        
         AC_SEARCH_LIBS([dlsym],
                        [dl],
                        [],

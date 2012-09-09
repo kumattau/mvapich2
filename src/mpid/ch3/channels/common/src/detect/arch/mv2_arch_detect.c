@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -24,6 +24,19 @@
 #endif /* #ifdef HAVE_LIBHWLOC */
 
 #include "mv2_arch_hca_detect.h"
+
+#if defined(_SMP_LIMIC_)
+#define SOCKETS 32
+#define CORES 32
+#define HEX_FORMAT 16
+#define CORES_REP_AS_BITS 32
+
+/*global variables*/
+static int node[SOCKETS][CORES] = {{0}};
+static int no_sockets=0;
+static int socket_bound=-1; 
+static int numcores_persocket[SOCKETS]={0};
+#endif /*#if defined(_SMP_LIMIC_)*/
 
 static mv2_arch_type g_mv2_arch_type = MV2_ARCH_UNKWN;
 static int g_mv2_num_cpus = -1;
@@ -60,6 +73,7 @@ int AMD_BARCELONA_MAPPING[]        = {0,0,0,0,1,1,1,1,2,2,2,2,3,3,3,3};
 int AMD_MAGNY_CRS_MAPPING[]        = {1,1,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2};
 int AMD_OPTERON_32_MAPPING[]       = {1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,4,4,4,4,4,4,4,4};
 int AMD_OPTERON_64_MAPPING[]	   = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3};
+int AMD_BULLDOZER_4274HE_16_MAPPING[] = {0,0,0,0,0,0,0,0,1,1,1,1,1,1,1,1};
 
 #endif /* #ifndef HAVE_LIBHWLOC */
 
@@ -96,6 +110,7 @@ static mv2_arch_types_log_t mv2_arch_types_log[] =
     {MV2_ARCH_AMD_OPTERON_DUAL_4,   "MV2_ARCH_AMD_OPTERON_DUAL_4"},
     {MV2_ARCH_AMD_OPTERON_6136_32,  "MV2_ARCH_AMD_OPTERON_6136_32"},
     {MV2_ARCH_AMD_OPTERON_6276_64,  "MV2_ARCH_AMD_OPTERON_6276_64"},
+    {MV2_ARCH_AMD_BULLDOZER_4274HE_16,"MV2_ARCH_AMD_BULLDOZER_4274HE_16"},
 
     /* IBM Architectures */
     {MV2_ARCH_IBM_PPC,              "MV2_ARCH_IBM_PPC"},
@@ -258,6 +273,9 @@ mv2_arch_type mv2_get_arch_type()
 
                     if(4 == num_cpus) {
                         arch_type = MV2_ARCH_AMD_OPTERON_DUAL_4;
+                    
+                    } else if(16 == num_cpus) {
+                        arch_type =  MV2_ARCH_AMD_BULLDOZER_4274HE_16;
 
                     } else if(24 == num_cpus) {
                         arch_type =  MV2_ARCH_AMD_MAGNY_COURS_24;
@@ -399,6 +417,10 @@ mv2_arch_type mv2_get_arch_type()
                 if(0 == memcmp(AMD_BARCELONA_MAPPING,core_mapping,
                             sizeof(int)*num_cpus) ) {
                     arch_type = MV2_ARCH_AMD_BARCELONA_16;
+                
+                } else if(0 == memcmp(AMD_BULLDOZER_4274HE_16_MAPPING, core_mapping,
+                            sizeof(int)*num_cpus)){
+                    arch_type = MV2_ARCH_AMD_BULLDOZER_4274HE_16;
                 }
             }
         } else if  ( 24 == num_cpus ){
@@ -472,4 +494,183 @@ int mv2_is_arch_hca_type(mv2_arch_hca_type arch_hca_type,
     }
     return ret;
 }
+#if defined(_SMP_LIMIC_)
+void hwlocSocketDetection(int print_details)
+{
+    int depth;
+    unsigned i, j;
+    char *str;
+    char * pEnd;
+    char * pch;
+    int more32bit=0,offset=0;
+    long int core_cnt[2];
+    hwloc_topology_t topology;
+    hwloc_cpuset_t cpuset;
+    hwloc_obj_t sockets;
+    /* Allocate and initialize topology object. */
+    hwloc_topology_init(&topology);
+    
+    /* Perform the topology detection. */
+    hwloc_topology_load(topology);
+    /*clear all the socket information and reset to -1*/
+    for(i=0;i<SOCKETS;i++)
+        for(j=0;j<CORES;j++)
+            node[i][j]=-1;
+    
+    depth = hwloc_get_type_depth(topology, HWLOC_OBJ_SOCKET);
+    no_sockets=hwloc_get_nbobjs_by_depth(topology, depth);
+    if(print_details)
+        printf("Total number of sockets=%d\n", no_sockets);
+    for(i=0;i<no_sockets;i++)
+    {   
+        sockets = hwloc_get_obj_by_type(topology, HWLOC_OBJ_SOCKET, i); 
+        cpuset = sockets->cpuset;
+        hwloc_bitmap_asprintf(&str, cpuset);
 
+        /*tokenize the str*/
+        pch = strtok (str,",");
+        while (pch != NULL)
+        {   
+            pch = strtok (NULL, ",");
+            if(pch != NULL)
+            {   
+                more32bit=1;
+                break;
+            }   
+        }   
+        
+        core_cnt[0]= strtol (str,&pEnd,HEX_FORMAT);
+        /*if more than bits, then explore the values*/
+        if(more32bit)
+        {   
+            /*tells multiple of 32 bits(eg if 0, then 64 bits)*/
+            core_cnt[1] = strtol (pEnd,NULL,0);
+            offset = (core_cnt[1] + 1)*CORES_REP_AS_BITS;
+        }   
+
+        for(j=0;j<CORES_REP_AS_BITS;j++)
+        {   
+            if(core_cnt[0] & 1)
+            {   
+                node[i][j]=j+offset;
+                (numcores_persocket[i])++;
+            }   
+            core_cnt[0] = (core_cnt[0] >> 1); 
+        } 
+        
+        if(print_details)
+        {
+            printf("Socket %d, num of cores / socket=%d\n", i, (numcores_persocket[i]));
+            printf("core id\n");
+        }
+        
+        for(j=0;j<CORES_REP_AS_BITS;j++)
+        {                 
+            if(print_details)
+                printf("%d\t", node[i][j]); 
+        }         
+        if(print_details)
+             printf("\n");
+    }   
+    free(str);
+
+    hwloc_topology_destroy(topology);
+
+}
+
+//Check the core, where the process is bound to
+int getProcessBinding(pid_t pid)
+{
+    int res,i=0,j=0;
+    char *str=NULL;
+    char *pEnd=NULL;
+    char *pch=NULL;
+    int more32bit=0,offset=0;
+    unsigned int core_bind[2];
+    hwloc_bitmap_t cpubind_set;
+    hwloc_topology_t topology;
+
+    /* Allocate and initialize topology object. */
+    hwloc_topology_init(&topology);
+    
+    /* Perform the topology detection. */
+    hwloc_topology_load(topology);
+    cpubind_set = hwloc_bitmap_alloc();
+    res = hwloc_get_proc_cpubind(topology, pid, cpubind_set, 0);
+    if(-1 == res)
+        printf("getProcessBinding(): Error in getting cpubinding of process");
+
+    hwloc_bitmap_asprintf(&str, cpubind_set);
+    
+    /*tokenize the str*/
+    pch = strtok (str,",");
+    while (pch != NULL)
+    {   
+        pch = strtok (NULL, ",");
+        if(pch != NULL)
+        {   
+            more32bit=1;
+            break;
+        }   
+    }   
+
+    core_bind[0]= strtol (str,&pEnd,HEX_FORMAT);
+    
+    /*if more than bits, then explore the values*/
+    if(more32bit)
+    {   
+        /*tells multiple of 32 bits(eg if 0, then 64 bits)*/
+        printf("more bits set\n");
+        core_bind[1] = strtol (pEnd,NULL,0);
+        printf("core_bind[1]=%x\n", core_bind[1]);
+        offset = (core_bind[1] + 1)*CORES_REP_AS_BITS;
+        printf("Offset=%d\n", offset);
+    }   
+
+    for(j=0;j<CORES_REP_AS_BITS;j++)
+    {   
+        if(core_bind[0] & 1)
+        {   
+            core_bind[0]=j+offset;
+            break;
+        }   
+        core_bind[0]= (core_bind[0] >> 1); 
+    }   
+
+    /*find the socket, where the core is present*/
+    for(i=0;i<no_sockets;i++)
+    {   
+        j=core_bind[0]-offset;
+        if(node[i][j]== j+offset)
+        {
+	        free(str);
+            hwloc_bitmap_free(cpubind_set);
+            hwloc_topology_destroy(topology);
+            return i; /*index of socket where the process is bound*/
+        }
+    }   
+    printf("Error: Process not bound on any core ??\n");
+    free(str);
+    hwloc_bitmap_free(cpubind_set);
+    hwloc_topology_destroy(topology);
+    return -1;
+}
+
+int numOfCoresPerSocket(int socket)
+{
+    return numcores_persocket[socket];
+}
+
+int numofSocketsPerNode (void)
+{
+    return no_sockets;
+}
+
+int get_socket_bound(void)
+{ 
+   if(socket_bound == -1) { 
+       socket_bound = getProcessBinding(getpid()); 
+   } 
+   return socket_bound; 
+} 
+#endif /*#if defined(_SMP_LIMIC_)*/

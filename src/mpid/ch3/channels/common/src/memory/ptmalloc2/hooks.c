@@ -81,6 +81,18 @@ static int disallow_malloc_check;
 void
 __malloc_check_init()
 {
+/* _OSU_MVAPICH_ */
+    char *s;
+    int disable_malloc_check = 1;
+    s = getenv("MV2_ENABLE_MALLOC_CHECK");
+    if (s && atoi(s) > 0) {
+        disable_malloc_check = 0;
+    }
+    if (disable_malloc_check) {
+        return;
+    }
+/* _OSU_MVAPICH_ */
+
   if (disallow_malloc_check) {
     disallow_malloc_check = 0;
     return;

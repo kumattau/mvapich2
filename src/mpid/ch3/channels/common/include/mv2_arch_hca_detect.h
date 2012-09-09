@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -14,7 +14,6 @@
 #define MV2_ARCH_HCA_DETECT_H
 
 #include <infiniband/verbs.h>
-#include <infiniband/umad.h>
 
 /* HCA Types */
 #define MV2_HCA_UNKWN   0
@@ -114,14 +113,15 @@
 #define MV2_ARCH_INTEL_END              1000
 
 /* AMD Architectures */
-#define MV2_ARCH_AMD_START              1001
-#define MV2_ARCH_AMD_GENERIC            1002
-#define MV2_ARCH_AMD_BARCELONA_16       1003
-#define MV2_ARCH_AMD_MAGNY_COURS_24     1004
-#define MV2_ARCH_AMD_OPTERON_DUAL_4     1005
-#define MV2_ARCH_AMD_OPTERON_6136_32    1006
-#define MV2_ARCH_AMD_OPTERON_6276_64    1007
-#define MV2_ARCH_AMD_END                2000
+#define MV2_ARCH_AMD_START                  1001
+#define MV2_ARCH_AMD_GENERIC                1002
+#define MV2_ARCH_AMD_BARCELONA_16           1003
+#define MV2_ARCH_AMD_MAGNY_COURS_24         1004
+#define MV2_ARCH_AMD_OPTERON_DUAL_4         1005
+#define MV2_ARCH_AMD_OPTERON_6136_32        1006
+#define MV2_ARCH_AMD_OPTERON_6276_64        1007
+#define MV2_ARCH_AMD_BULLDOZER_4274HE_16    1008
+#define MV2_ARCH_AMD_END                    2000
     
 /* IBM Architectures */
 #define MV2_ARCH_IBM_START  3001
@@ -177,6 +177,23 @@ void mv2_log_arch_hca_type(mv2_arch_hca_type arch_hca);
 
 char* mv2_get_hca_name(mv2_hca_type hca_type);
 char* mv2_get_arch_name(mv2_arch_type arch_type);
+
+#if defined(_SMP_LIMIC_)
+/*Detecting number of cores in a socket, and number of sockets*/
+void hwlocSocketDetection(int print_details);
+
+/*Returns the socket where the process is bound*/
+int getProcessBinding(pid_t pid);
+
+/*Returns the number of cores in the socket*/
+int numOfCoresPerSocket(int socket);
+
+/*Returns the total number of sockets within the node*/
+int numofSocketsPerNode(void);
+
+/*Return socket bind to */
+int get_socket_bound(void);
+#endif /* defined(_SMP_LIMIC_) */
 
 #endif /*  #ifndef MV2_ARCH_HCA_DETECT_H */
 

@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -143,6 +143,8 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
     case (MPIDI_CH3_PKT_RPUT_FINISH):
     case (MPIDI_CH3_PKT_ZCOPY_FINISH):
     case (MPIDI_CH3_PKT_ZCOPY_ACK):
+    case (MPIDI_CH3_PKT_MCST_NACK):
+    case (MPIDI_CH3_PKT_MCST_INIT_ACK):
     case (MPIDI_CH3_PKT_NOOP):
     case MPIDI_CH3_PKT_EAGER_SYNC_ACK:
     case MPIDI_CH3_PKT_CANCEL_SEND_REQ:

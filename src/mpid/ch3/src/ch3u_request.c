@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -699,9 +699,10 @@ int MPIDI_CH3U_Request_unpack_uebuf(MPID_Request * rreq)
         MPIDI_FUNC_ENTER(MPID_STATE_MEMCPY);
 #ifdef _ENABLE_CUDA_
         cudaError_t cuda_error = cudaSuccess;
-        if (rdma_enable_cuda && rreq->mrail.cuda_transfer_mode != NONE) {
+        if (rdma_enable_cuda && (rreq->mrail.cuda_transfer_mode != NONE
+	    || is_device_buffer((void *)rreq->dev.tmpbuf))) {
             cuda_error = cudaMemcpy((char *)rreq->dev.user_buf + dt_true_lb,
-                    rreq->dev.tmpbuf, unpack_sz, cudaMemcpyHostToDevice);
+                    rreq->dev.tmpbuf, unpack_sz, cudaMemcpyDefault);
             if (cuda_error != cudaSuccess) {
                 MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**cudamemcpy");
             }

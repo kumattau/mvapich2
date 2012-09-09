@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -14,7 +14,6 @@
 #define RDMA_3DTORUS_H
 #include <netinet/in.h>
 #include <infiniband/verbs.h>
-#include <infiniband/umad.h>
 #include <sys/time.h>
 #include <mpidi_ch3_impl.h>
 

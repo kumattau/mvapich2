@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -39,11 +39,7 @@ int qp_required(MPIDI_VC_t * vc, int my_rank, int dst_rank)
 {
     int qp_reqd = 1;
 
-    if ((my_rank == dst_rank) || (rdma_use_smp
-#if defined(_ENABLE_CUDA_)
-                                  && !rdma_enable_cuda
-#endif
-                                  && (vc->smp.local_rank != -1))) {
+    if ((my_rank == dst_rank) || (rdma_use_smp && (vc->smp.local_rank != -1))) {
         /* Process is local */
         qp_reqd = 0;
     }
@@ -396,7 +392,7 @@ void ring_rdma_close_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
 int ring_rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 {
-    int i = 0;
+    int i = 0, j = 0;
     int num_devices = 0;
     int err;
     struct ibv_device *ib_dev = NULL;
@@ -411,9 +407,22 @@ int ring_rdma_open_hca(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
             goto fn_exit;
         }
 
-        proc->boot_device = ib_dev;
+        if ((getenv("MV2_IBA_HCA") != NULL) &&
+            (strcmp(rdma_iba_hcas[0], RDMA_IBA_NULL_HCA))) {
+            int device_match = 0;
+            for (j = 0; j < rdma_num_req_hcas; j++) {
+                if (!strcmp(ibv_get_device_name(ib_dev), rdma_iba_hcas[j])) {
+                    device_match = 1;
+                    break;
+                }
+            }
+            if (!device_match) {
+                continue;
+            }
+        }
 
-        proc->boot_context = ibv_open_device(ib_dev);
+        proc->boot_device = ib_dev;
+        proc->boot_context = ibv_open_device(proc->boot_device);
         if (!proc->boot_context) {
             /* Go to next device */
             continue;
@@ -649,19 +658,16 @@ int rdma_iba_hca_init_noqp(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                     (port_attr.state == IBV_PORT_ACTIVE) &&
                     (port_attr.lid || (!port_attr.lid && use_iboeth))) {
 
-                    if (use_iboeth) {
-                        if (ibv_query_gid
-                            (mv2_MPIDI_CH3I_RDMA_Process.nic_context[i], j, 0,
+                    if (ibv_query_gid
+                            (mv2_MPIDI_CH3I_RDMA_Process.nic_context[i], j, rdma_default_gid_index,
                              &gid)) {
-                            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                                      "**fail",
-                                                      "Failed to retrieve gid on rank %d",
-                                                      pg_rank);
-                        }
-                        mv2_MPIDI_CH3I_RDMA_Process.gids[i][k] = gid;
-                    } else {
-                        mv2_MPIDI_CH3I_RDMA_Process.lids[i][k] = port_attr.lid;
+                        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                                "**fail",
+                                "Failed to retrieve gid on rank %d",
+                                pg_rank);
                     }
+                    mv2_MPIDI_CH3I_RDMA_Process.gids[i][k] = gid;
+                    mv2_MPIDI_CH3I_RDMA_Process.lids[i][k] = port_attr.lid;
 
                     mv2_MPIDI_CH3I_RDMA_Process.ports[i][k++] = j;
 
@@ -696,19 +702,15 @@ int rdma_iba_hca_init_noqp(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                                           "query or not ACTIVE\n",
                                           rdma_default_port);
             }
-            if (use_iboeth) {
-                if (ibv_query_gid(mv2_MPIDI_CH3I_RDMA_Process.nic_context[i],
-                                  rdma_default_port, 0, &gid)) {
-                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                              "**fail",
-                                              "Failed to retrieve gid on rank %d",
-                                              pg_rank);
-                }
-                mv2_MPIDI_CH3I_RDMA_Process.gids[i][0] = gid;
-            } else {
-                mv2_MPIDI_CH3I_RDMA_Process.lids[i][0] = port_attr.lid;
+            if (ibv_query_gid(mv2_MPIDI_CH3I_RDMA_Process.nic_context[i],
+                        rdma_default_port, rdma_default_gid_index, &gid)) {
+                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                        "**fail",
+                        "Failed to retrieve gid on rank %d",
+                        pg_rank);
             }
-
+            mv2_MPIDI_CH3I_RDMA_Process.gids[i][0] = gid;
+            mv2_MPIDI_CH3I_RDMA_Process.lids[i][0] = port_attr.lid;
             mv2_MPIDI_CH3I_RDMA_Process.ports[i][0] = rdma_default_port;
 
             if (check_attrs(&port_attr, &dev_attr)) {
@@ -842,26 +844,26 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                           &port_attr)) && (port_attr.state == IBV_PORT_ACTIVE)
                         && (port_attr.lid || (!port_attr.lid && use_iboeth))) {
 
-                        if (use_iboeth) {
-                            if (ibv_query_gid
+                        if (ibv_query_gid
                                 (mv2_MPIDI_CH3I_RDMA_Process.nic_context[i], j,
-                                 0, &gids[i][k])) {
-                                MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
-                                                          MPI_ERR_OTHER,
-                                                          "**fail",
-                                                          "Failed to retrieve gid on rank %d",
-                                                          pg_rank);
-                            }
-                            DEBUG_PRINT("[%d] %s(%d): Getting gid[%d][%d] for"
-                                        " port %d subnet_prefix = %llx,"
-                                        " intf_id = %llx\r\n",
-                                        pg_rank, __FUNCTION__, __LINE__, i, k,
-                                        k, gids[i][k].global.subnet_prefix,
-                                        gids[i][k].global.interface_id);
-                        } else {
-                            lids[i][k] = port_attr.lid;
+                                 rdma_default_gid_index, &gids[i][k])) {
+                            MPIU_ERR_SETFATALANDJUMP1(mpi_errno,
+                                    MPI_ERR_OTHER,
+                                    "**fail",
+                                    "Failed to retrieve gid on rank %d",
+                                    pg_rank);
                         }
+                        DEBUG_PRINT("[%d] %s(%d): Getting gid[%d][%d] for"
+                                " port %d subnet_prefix = %llx,"
+                                " intf_id = %llx\r\n",
+                                pg_rank, __FUNCTION__, __LINE__, i, k,
+                                k, gids[i][k].global.subnet_prefix,
+                                gids[i][k].global.interface_id);
+                        lids[i][k] = port_attr.lid;
+                        mv2_MPIDI_CH3I_RDMA_Process.ports[i][k] = j;
+                        mv2_MPIDI_CH3I_RDMA_Process.gids[i][k] = gids[i][k];
                         ports[i][k++] = j;
+
 
                         if (check_attrs(&port_attr, &dev_attr)) {
                             MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
@@ -887,25 +889,24 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
                 }
 
                 ports[i][0] = rdma_default_port;
+                mv2_MPIDI_CH3I_RDMA_Process.ports[i][0] = rdma_default_port;
 
-                if (use_iboeth) {
-                    if (ibv_query_gid
+                if (ibv_query_gid
                         (mv2_MPIDI_CH3I_RDMA_Process.nic_context[i],
-                         rdma_default_port, 0, &gids[i][0])) {
-                        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                                  "**fail",
-                                                  "Failed to retrieve gid on rank %d",
-                                                  pg_rank);
-                    }
-
-                    if (check_attrs(&port_attr, &dev_attr)) {
-                        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                                  "**fail", "**fail %s",
-                                                  "Attributes failed sanity check");
-                    }
-                } else {
-                    lids[i][0] = port_attr.lid;
+                         rdma_default_port, rdma_default_gid_index, &gids[i][0])) {
+                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                            "**fail",
+                            "Failed to retrieve gid on rank %d",
+                            pg_rank);
                 }
+
+                if (check_attrs(&port_attr, &dev_attr)) {
+                    MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                            "**fail", "**fail %s",
+                            "Attributes failed sanity check");
+                }
+                mv2_MPIDI_CH3I_RDMA_Process.gids[i][0] = gids[i][0];
+                lids[i][0] = port_attr.lid;
             }
 
             if (rdma_use_blocking) {
@@ -1255,7 +1256,7 @@ rdma_iba_enable_connections(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
         qp_attr.ah_attr.grh.dgid.global.subnet_prefix = 0;
         qp_attr.ah_attr.grh.dgid.global.interface_id = 0;
         qp_attr.ah_attr.grh.flow_label = 0;
-        qp_attr.ah_attr.grh.sgid_index = 0;
+        qp_attr.ah_attr.grh.sgid_index = rdma_default_gid_index;
         qp_attr.ah_attr.grh.hop_limit = 1;
         qp_attr.ah_attr.grh.traffic_class = 0;
         qp_attr.ah_attr.is_global = 1;
@@ -1823,7 +1824,7 @@ int cm_qp_create(MPIDI_VC_t * vc, int force, int qptype)
                          */
                         match = 1;
                         break;
-                    } else if (memcmp(&vc->mrail.gid[hca_index][port_index],
+                    } else if (use_iboeth && memcmp(&vc->mrail.gid[hca_index][port_index],
                                       &iter->vc->mrail.
                                       gid[hca_index][port_index],
                                       sizeof(union ibv_gid))) {
@@ -1903,7 +1904,7 @@ int cm_qp_move_to_rtr(MPIDI_VC_t * vc, uint16_t * lids, union ibv_gid *gids,
             qp_attr.ah_attr.grh.dgid.global.subnet_prefix = 0;
             qp_attr.ah_attr.grh.dgid.global.interface_id = 0;
             qp_attr.ah_attr.grh.flow_label = 0;
-            qp_attr.ah_attr.grh.sgid_index = 0;
+            qp_attr.ah_attr.grh.sgid_index = rdma_default_gid_index;
             qp_attr.ah_attr.grh.hop_limit = 1;
             qp_attr.ah_attr.grh.traffic_class = 0;
             qp_attr.ah_attr.is_global = 1;

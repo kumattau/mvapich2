@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -417,11 +417,10 @@ int MPIDI_CH3_PktHandler_RndvClrToSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
     /* if receiver has set protocol to VAPI_PROTOCOL_CUDAIPC 
      * revert protocol to VAPI_PROTOCOL_CUDAIPC */
-    if (rdma_enable_cuda && rdma_cuda_ipc && 
-        cts_pkt->rndv.protocol == VAPI_PROTOCOL_CUDAIPC && 
+    if (cts_pkt->rndv.protocol == VAPI_PROTOCOL_CUDAIPC && 
         sreq->mrail.protocol != VAPI_PROTOCOL_CUDAIPC) {
         MPIDI_CH3I_MRAIL_Revert_rndv_cuda_ipc_buffered (vc, sreq);
-    }
+    } 
 #endif
 
     if (sreq->mrail.rndv_buf_off != 0 && 

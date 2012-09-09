@@ -1,3 +1,13 @@
+OSU Micro Benchmarks v3.7 (09/07/12)
+* New Features & Enhancements
+    - New OpenSHMEM benchmarks 
+        - osu_oshm_put, osu_oshm_get, osu_oshm_put_mr and  
+          osu_oshm_atomics
+* Bug fixes
+    - Fix issue with IN_PLACE in osu_gather, osu_scatter and 
+      osu_allgather benchmarks
+    - Destroy the CUDA context at the end in CUDA supported benchmarks
+
 OSU Micro Benchmarks v3.6 (4/30/12)
 * New Features & Enhancements
     - New collective benchmarks

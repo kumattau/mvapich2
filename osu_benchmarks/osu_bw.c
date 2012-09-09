@@ -297,7 +297,11 @@ int main(int argc, char *argv[])
     }
     if (desti == 'D'){
         cudaFree(r_buf);
-    }    
+    }   
+    curesult = cuCtxDestroy(cuContext);
+    if (curesult != CUDA_SUCCESS) {
+        return EXIT_FAILURE;
+    } 
 #endif
 
     return EXIT_SUCCESS;

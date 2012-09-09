@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -36,6 +36,7 @@ typedef struct mv2_MPIDI_CH3I_RDMA_Process_t
        structure like this to avoid name collisions */
     int num_hcas;
     mv2_arch_type arch_type;
+    uint8_t                     heterogeneity;
 
     uint8_t                     has_lazy_mem_unregister;
     uint8_t                     has_rdma_fast_path;

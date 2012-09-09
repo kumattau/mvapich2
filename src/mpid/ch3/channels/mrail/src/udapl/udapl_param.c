@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -224,6 +224,7 @@ rdma_init_parameters (mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 {
     char* value = NULL;
     proc->arch_type = mv2_get_arch_type();
+    proc->heterogeneity = 0;
 
     if ((value = (char *) getenv ("MV2_DAPL_PROVIDER")) != NULL)
       {

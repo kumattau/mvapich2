@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -21,18 +21,6 @@ enum {
     MSG_QUEUED_RECVWIN,
     MSG_IN_RECVWIN
 };
-/*
-** We should check if the ackno had been handled before.
-** We process this only if ackno had advanced.
-** There are 2 cases to consider:
-** 1. ackno_handled < seqnolast (normal case)
-** 2. ackno_handled > seqnolast (wraparound case)
-*/
-#define INCL_BETWEEN(_val, _start, _end)                            \
-    (((_start > _end) && (_val >= _start || _val <= _end)) ||       \
-     ((_end > _start) && (_val >= _start && _val <= _end)) ||       \
-     ((_end == _start) && (_end == _val)))
-
 #define IBV_UD_POST_SR(_v, _ud_vc, _ud_ctx) {                       \
     int __ret;                                                      \
     if(((_v)->desc.sg_entry.length <= rdma_max_inline_size))        \
@@ -68,14 +56,6 @@ enum {
         return 0;                                                       \
     }                                                                   \
 }
-
-#define LOG2(_v, _r)                            \
-do {                                            \
-    (_r) = ((_v) & 0xFF00) ? 8 : 0;             \
-    if ( (_v) & ( 0x0F << (_r + 4 ))) (_r)+=4;  \
-    if ( (_v) & ( 0x03 << (_r + 2 ))) (_r)+=2;  \
-    if ( (_v) & ( 0x01 << (_r + 1 ))) (_r)+=1;  \
-} while(0)
 
 static inline void mv2_ud_ext_sendq_queue(message_queue_t *q, vbuf *v)
 {

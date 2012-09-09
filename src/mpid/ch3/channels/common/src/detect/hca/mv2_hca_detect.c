@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -12,10 +12,20 @@
 
 #include <stdio.h>
 #include <string.h>
-#include <infiniband/verbs.h>
+
+#ifdef NEMESIS_BUILD
+#include "mpidi_ch3i_nemesis_conf.h"
+#else
+#include "mpidi_ch3i_rdma_conf.h"
+#endif
+
+#if defined(HAVE_LIBIBUMAD)
 #include <infiniband/umad.h>
+#endif
 
 #include "mv2_arch_hca_detect.h"
+
+#include "debug_utils.h"
 
 static mv2_multirail_info_type g_mv2_multirail_info = mv2_num_rail_unknown;
 
@@ -77,6 +87,7 @@ char* mv2_get_hca_name(mv2_hca_type hca_type)
     return("MV2_HCA_UNKWN");
 }
 
+#if defined(HAVE_LIBIBUMAD)
 static int get_rate(umad_ca_t *umad_ca)
 {
     int i;
@@ -88,18 +99,67 @@ static int get_rate(umad_ca_t *umad_ca)
     }    
     return 0;
 }
+#else
+static const int get_link_width(uint8_t width)
+{
+    switch (width) {
+    case 1:  return 1;
+    case 2:  return 4;
+    case 4:  return 8;
+    case 8:  return 12;
+    default: return 0;
+    }   
+}
 
-static mv2_hca_type mv2_hca_name_to_type ( char *dev_name )
+static const float get_link_speed(uint8_t speed)
+{
+    switch (speed) {
+    case 1:  return 2.5;  /* SDR */
+    case 2:  return 5.0;  /* DDR */
+
+    case 4:  /* fall through */
+    case 8:  return 10.0; /* QDR */
+
+    case 16: return 14.0; /* FDR */
+    case 32: return 25.0; /* EDR */
+    default: return 0;    /* Invalid speed */
+    }   
+}
+
+#endif
+
+mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
 {
     int rate=0;
+    char *dev_name;
     mv2_hca_type hca_type = MV2_HCA_UNKWN;
+
+    dev_name = (char*) ibv_get_device_name( dev );
+
+    if (!dev_name) {
+        return MV2_HCA_UNKWN;
+    }
 
     if (!strncmp(dev_name, MV2_STR_MLX4, 4) || !strncmp(dev_name,
                 MV2_STR_MTHCA, 5)) {
-        umad_ca_t umad_ca;
 
         hca_type = MV2_HCA_MLX_PCI_X;
+#if !defined(HAVE_LIBIBUMAD)
+        struct ibv_context *ctx= NULL;
+        struct ibv_port_attr port_attr;
 
+        ctx = ibv_open_device(dev);
+        if (!ctx) {
+            return MV2_HCA_UNKWN;
+        }
+
+        if (!ibv_query_port(ctx, 1, &port_attr)) {
+            rate = (int) (get_link_width( port_attr.active_width)
+                    * get_link_speed( port_attr.active_speed));
+            PRINT_DEBUG(0, "rate : %d\n", rate);
+        }
+#else
+        umad_ca_t umad_ca;
         if (umad_init() < 0) {
             return hca_type;
         }
@@ -119,11 +179,14 @@ static mv2_hca_type mv2_hca_name_to_type ( char *dev_name )
             }
         }
 
+        umad_release_ca(&umad_ca);
+        umad_done();
+
         if (!strncmp(dev_name, MV2_STR_MTHCA, 5)) {
             hca_type = MV2_HCA_MLX_PCI_X;
 
-            if (!strncmp(umad_ca.ca_type, "MT25", 4)) {
 
+            if (!strncmp(umad_ca.ca_type, "MT25", 4)) {
                 switch (rate) {
                     case 20:
                         hca_type = MV2_HCA_MLX_PCI_EX_DDR;
@@ -144,10 +207,11 @@ static mv2_hca_type mv2_hca_name_to_type ( char *dev_name )
             } else {
                 hca_type = MV2_HCA_MLX_PCI_EX_SDR; 
             }
-        } else { /* mlx4 */ 
-
+        } else 
+#endif
+        { /* mlx4 */ 
             switch(rate) {
-		case 56:
+                case 56:
                     hca_type = MV2_HCA_MLX_CX_FDR;
                     break;
 
@@ -168,9 +232,6 @@ static mv2_hca_type mv2_hca_name_to_type ( char *dev_name )
                     break;
             }
         }
-
-        umad_release_ca(&umad_ca);
-        umad_done();
 
     } else if(!strncmp(dev_name, MV2_STR_IPATH, 5)) {
         hca_type = MV2_HCA_QLGIC_PATH_HT;
@@ -194,20 +255,6 @@ static mv2_hca_type mv2_hca_name_to_type ( char *dev_name )
         hca_type = MV2_HCA_UNKWN;
     }    
     return hca_type;
-}
-
-/* Identify hca type */
-mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
-{
-    char* dev_name = NULL;
-
-    dev_name = (char*) ibv_get_device_name( dev );
-
-    if (!dev_name) {
-        return MV2_HCA_UNKWN;
-    } else {
-        return mv2_hca_name_to_type( dev_name );
-    }
 }
 
 mv2_arch_hca_type mv2_get_arch_hca_type ( struct ibv_device *dev )

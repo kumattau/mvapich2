@@ -13,7 +13,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -43,6 +43,7 @@
 #include <process.h>
 #include <spawn_info.h>
 #include <read_specfile.h>
+#include <gethostip.h>
 
 #include <errno.h>
 #include <signal.h>
@@ -70,7 +71,8 @@ process_groups *pglist = NULL;
 int port;
 char *wd;                       /* working directory of current process */
 #define MAX_HOST_LEN 256
-char mpirun_host[MAX_HOST_LEN]; /* hostname of current process */
+char mpirun_host[MAX_HOST_LEN + 1]; /* hostname of current process */
+char mpirun_hostip[MAX_HOST_LEN + 1]; /* ip address of current process */
 
 /* xxx need to add checking for string overflow, do this more carefully ... */
 
@@ -337,7 +339,8 @@ int main(int argc, char *argv[])
     }
 
     wd = get_current_dir_name();
-    gethostname(mpirun_host, MAX_HOST_LEN);
+    gethostname(mpirun_host, sizeof(mpirun_host));
+    gethostip(mpirun_hostip, sizeof(mpirun_hostip));
 
     get_display_str();
 
@@ -1277,6 +1280,14 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env)
         goto allocation_error;
     }
 
+    tmp = mkstr("%s MPISPAWN_MPIRUN_HOSTIP=%s", mpispawn_env, mpirun_hostip);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
     tmp = mkstr("%s MPIRUN_RSH_LAUNCH=1", mpispawn_env);
     if (tmp) {
         free(mpispawn_env);
@@ -1824,6 +1835,14 @@ void spawn_one(int argc, char *argv[], char *totalview_cmd, char *env, int fasts
     }
 
     tmp = mkstr("%s MPISPAWN_MPIRUN_HOST=%s", mpispawn_env, mpirun_host);
+    if (tmp) {
+        free(mpispawn_env);
+        mpispawn_env = tmp;
+    } else {
+        goto allocation_error;
+    }
+
+    tmp = mkstr("%s MPISPAWN_MPIRUN_HOSTIP=%s", mpispawn_env, mpirun_hostip);
     if (tmp) {
         free(mpispawn_env);
         mpispawn_env = tmp;

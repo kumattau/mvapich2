@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -18,9 +18,15 @@
 
 
 #include "mpidi_ch3_impl.h"
+#include "rdma_impl.h"
+#include "debug_utils.h"
 #include "pmi.h"
+#include "coll_shmem.h"
 #if defined(HAVE_LIBHWLOC)
 #include "hwloc_bind.h"
+#endif
+#if defined(_MCST_SUPPORT_)
+#include "ibv_mcast.h"
 #endif
 
 #undef FUNCNAME
@@ -63,6 +69,13 @@ int MPIDI_CH3_Finalize()
     mpi_errno = MPIDI_CH3I_Progress_finalize();
     if(mpi_errno) MPIU_ERR_POP(mpi_errno);
 
+#if defined(_MCST_SUPPORT_)
+    if (rdma_enable_mcast) {
+        mv2_ud_destroy_ctx(mcast_ctx->ud_ctx);
+        MPIU_Free(mcast_ctx);
+    }
+#endif
+
     if (!SMP_ONLY) 
     {
         /* allocate rmda memory and set up the queues */
@@ -84,17 +97,17 @@ int MPIDI_CH3_Finalize()
         if(mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
 
+    MV2_collectives_arch_finalize();
+
     if (SMP_INIT) {
-	mpi_errno = MPIDI_CH3I_SMP_finalize();
-	if(mpi_errno) MPIU_ERR_POP(mpi_errno);
+        mpi_errno = MPIDI_CH3I_SMP_finalize();
+        if(mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
 #if defined(HAVE_LIBHWLOC)
     if(mv2_enable_affinity == 1) { 
        hwloc_topology_destroy(topology);
     } 
 #endif
-
-
 fn_exit:
     MPIDI_DBG_PRINTF((50, FCNAME, "exiting"));
     MPIDI_FUNC_EXIT(MPIDI_CH3_FINALIZE);

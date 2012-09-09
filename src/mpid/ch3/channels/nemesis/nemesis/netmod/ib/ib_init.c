@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -418,6 +418,8 @@ int MPID_nem_ib_init (MPIDI_PG_t *pg_p,
             MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**fail",
                                    "**fail %s", "Failed to initialize registration cache");
         }
+    } else {
+        process_info.has_lazy_mem_unregister = 0;
     }
 #else /* !defined(DISABLE_PTMALLOC) */
     mallopt(M_TRIM_THRESHOLD, -1);
@@ -766,7 +768,9 @@ static int ib_ckpt_release_network(void)
 
         deallocate_vbufs(i);
         deallocate_vbuf_region();
-        err = dreg_finalize();
+        if (process_info.has_lazy_mem_unregister) {
+            dreg_finalize();
+        }
 
         err = ibv_dealloc_pd(hca_list[i].ptag);
 

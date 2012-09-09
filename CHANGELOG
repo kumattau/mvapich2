@@ -3,6 +3,64 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2-1.9a (09/07/2012)
+
+* Features and Enhancements (since 1.8):
+    - Support for InfiniBand hardware UD-multicast 
+    - UD-multicast-based designs for collectives
+      (Bcast, Allreduce and Scatter)  
+    - Enhanced Bcast and Reduce collectives with pt-to-pt communication 
+    - LiMIC-based design for Gather collective
+    - Improved performance for shared-memory-aware collectives  
+    - Improved intra-node communication performance with GPU buffers 
+      using pipelined design
+    - Improved inter-node communication performance with GPU buffers 
+      with non-blocking CUDA copies
+    - Improved small message communication performance with 
+      GPU buffers using CUDA IPC design
+    - Improved automatic GPU device selection and CUDA context management 
+    - Optimal communication channel selection for different 
+      GPU communication modes (DD, DH and HD) in different
+      configurations (intra-IOH and inter-IOH)
+    - Removed libibumad dependency for building the library
+    - Option for selecting non-default gid-index in a loss-less 
+      fabric setup in RoCE mode
+    - Option to disable signal handler setup
+    - Tuned thresholds for various architectures
+    - Set DAPL-2.0 as the default version for the uDAPL interface
+    - Updated to hwloc v1.5
+    - Option to use IP address as a fallback if hostname 
+      cannot be resolved
+    - Improved error reporting 
+
+* Bug-Fixes (since 1.8):
+    - Fix issue in intra-node knomial bcast 
+    - Handle gethostbyname return values gracefully
+    - Fix corner case issue in two-level gather code path
+    - Fix bug in CUDA events/streams pool management
+    - Fix ptmalloc initialization issue when MALLOC_CHECK_ is 
+      defined in the environment
+        - Thanks to Mehmet Belgin from Georgia Institute of 
+          Technology for the report
+    - Fix memory corruption and handle heterogeneous architectures 
+      in gather collective 
+    - Fix issue in detecting the correct HCA type
+    - Fix issue in ring start-up to select correct HCA when 
+      MV2_IBA_HCA is specified 
+    - Fix SEGFAULT in MPI_Finalize when IB loop-back is used
+    - Fix memory corruption on nodes with 64-cores
+        - Thanks to M Xie for the report
+    - Fix hang in MPI_Finalize with Nemesis interface when 
+      ptmalloc initialization fails
+        - Thanks to Carson Holt from OICR for the report
+    - Fix memory corruption in shared memory communication
+        - Thanks to Craig Tierney from NOAA for the report 
+          and testing the patch
+    - Fix issue in IB ring start-up selection with mpiexec.hydra
+    - Fix issue in selecting CUDA run-time variables when running 
+      on single node in SMP only mode
+    - Fix few memory leaks and warnings
+
 MVAPICH2-1.8 (04/30/2012)
 
 * Features and Enhancements (since 1.8rc1):

@@ -38,7 +38,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 */
 
-#include <osu_coll.h>
+#include "osu_coll.h"
 
 int main(int argc, char *argv[])
 {
@@ -75,15 +75,7 @@ int main(int argc, char *argv[])
 
     s_buf1 = r_buf1 = NULL;
 
-    if(rank!=0)
-    {
-        s_buf1 = (char *) malloc(sizeof(char)*max_msg_size + MAX_ALIGNMENT);
-        if(NULL == s_buf1) {
-            fprintf(stderr, "malloc failed.\n");
-            exit(1);
-        }
-    }
-    else
+    if(rank==0)
     {
         r_buf1 = (char *) malloc(sizeof(char)*max_msg_size * numprocs + MAX_ALIGNMENT);
         if(NULL == r_buf1) {
@@ -92,24 +84,27 @@ int main(int argc, char *argv[])
         }
     }
 
+    s_buf1 = (char *) malloc(sizeof(char)*max_msg_size + MAX_ALIGNMENT);
+        if(NULL == s_buf1) {
+            fprintf(stderr, "malloc failed.\n");
+            exit(1);
+    }
+
     align_size = getpagesize();
 
-    if(rank!=0){
-        sendbuf = (char *)(((unsigned long) s_buf1 + (align_size - 1)) / align_size
-                    * align_size);
-    }
-    else{
+    if(rank==0){
         recvbuf = (char *)(((unsigned long) r_buf1 + (align_size - 1)) / align_size
-                    * align_size);
+                        * align_size);
     }
+ 
+    sendbuf = (char *)(((unsigned long) s_buf1 + (align_size - 1)) / align_size
+                * align_size);
 
-    if (rank!=0){
-        memset(sendbuf, 1, max_msg_size);
-    }
-    else{
+    if (rank==0){
         memset(recvbuf, 0, max_msg_size * numprocs);
     }
-
+    
+    memset(sendbuf, 1, max_msg_size);
 
     for(size=1; size <= max_msg_size; size *= 2) {
 
@@ -124,19 +119,11 @@ int main(int argc, char *argv[])
         MPI_Barrier(MPI_COMM_WORLD);
         timer=0.0;
         for(i=0; i < iterations + skip ; i++) {
-            if (0 == rank ){
-                t_start = MPI_Wtime();
-                MPI_Gather(MPI_IN_PLACE, size, MPI_CHAR, recvbuf, size, MPI_CHAR, 0,
-                      MPI_COMM_WORLD);
-                t_stop = MPI_Wtime();
-            } 
-            else {
-                t_start = MPI_Wtime();
-    	        MPI_Gather(sendbuf, size, MPI_CHAR, recvbuf, size, MPI_CHAR, 0,
-                      MPI_COMM_WORLD);
-                t_stop = MPI_Wtime();
+            t_start = MPI_Wtime();
+            MPI_Gather(sendbuf, size, MPI_CHAR, recvbuf, size, MPI_CHAR, 0,
+                    MPI_COMM_WORLD);
+            t_stop = MPI_Wtime();
 
-            }
             if(i >= skip) {
                 timer+= t_stop-t_start;
             }
@@ -159,10 +146,10 @@ int main(int argc, char *argv[])
         print_data(rank, full, size, avg_time, min_time, max_time, iterations);
         MPI_Barrier(MPI_COMM_WORLD);
     }
-    if(rank!=0)
-        free(s_buf1);
-    else
+    if(rank==0)
         free(r_buf1);
+    
+    free(s_buf1);
 
     MPI_Finalize();
 

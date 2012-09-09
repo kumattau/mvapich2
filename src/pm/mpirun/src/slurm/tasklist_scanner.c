@@ -473,7 +473,7 @@ char *tasklist_yytext;
 #line 1 "tasklist_scanner.l"
 #line 2 "tasklist_scanner.l"
 /*
- * Copyright (c) 2003-2012, The Ohio State University. All rights
+ * Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the

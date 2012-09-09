@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -26,6 +26,7 @@ extern int rdma_num_rails;
 
 extern unsigned long rdma_default_max_cq_size;
 extern int rdma_default_port;
+extern int rdma_default_gid_index;
 extern int rdma_default_max_send_wqe;
 extern int rdma_default_max_recv_wqe;
 extern uint32_t rdma_default_max_sg_list;
@@ -151,6 +152,7 @@ extern int rdma_eager_cudahost_reg;
 extern int rdma_cuda_vector_dt_opt;
 #if defined(HAVE_CUDA_IPC)
 extern int rdma_cuda_ipc;
+extern int rdma_cuda_smp_ipc;
 extern int rdma_cuda_enable_ipc_cache;
 extern int rdma_cuda_ipc_threshold;
 extern int cudaipc_cache_max_entries;
@@ -169,10 +171,12 @@ extern int rdma_cuda_bcast_naive_limit;
 extern int rdma_cuda_alltoall_dynamic;
 extern int rdma_cuda_allgather_rd_limit;
 extern int rdma_cuda_allgather_fgp;
+extern int rdma_cuda_init_context;
 #endif /*#ifdef _ENABLE_CUDA_ */
 
 
-#ifdef _ENABLE_UD_
+extern uint16_t rdma_default_ud_mtu;
+#if defined(_ENABLE_UD_)
 extern uint8_t rdma_enable_hybrid;
 extern uint8_t rdma_enable_only_ud;
 extern uint8_t rdma_use_ud_zcopy;
@@ -188,7 +192,6 @@ extern long rdma_ud_last_check;
 extern uint16_t rdma_ud_max_retry_count;
 extern uint16_t rdma_ud_progress_spin;
 extern uint16_t rdma_ud_max_ack_pending;
-extern uint16_t rdma_default_ud_mtu;
 extern uint16_t rdma_ud_num_rndv_qps;
 extern uint32_t rdma_ud_num_msg_limit;
 extern uint32_t rdma_ud_vbuf_pool_size;
@@ -199,7 +202,21 @@ extern uint16_t rdma_hybrid_pending_rc_conn;
 #ifdef _MV2_UD_DROP_PACKET_RATE_
 extern uint32_t ud_drop_packet_rate;
 #endif
-#endif /* _ENABLE_UD_ */
+#endif
+#if defined(_MCST_SUPPORT_)
+extern uint8_t rdma_enable_mcast;
+extern uint8_t mcast_enable_rel;
+extern uint8_t mcast_use_mcast_nack;
+extern uint16_t mcast_window_size;
+extern uint16_t mcast_drop_packet_rate;
+extern uint32_t mcast_num_nodes_threshold;
+extern uint32_t mcast_max_ud_recv_wqe;
+extern long mcast_retry_timeout;
+extern long mcast_max_retry_timeout;
+extern long mcast_comm_init_timeout;
+extern int mcast_comm_init_retries;
+extern int mcast_nspin_threshold;
+#endif
 
 extern int rdma_default_async_thread_stack_size;
 
@@ -208,6 +225,7 @@ extern int rdma_default_async_thread_stack_size;
 #define RDMA_DEFAULT_MAX_CQ_SIZE        (40000)
 #define RDMA_DEFAULT_IWARP_CQ_SIZE      (8192)
 #define RDMA_DEFAULT_PORT               (-1)
+#define RDMA_DEFAULT_GID_INDEX          (0)
 #define RDMA_DEFAULT_MAX_PORTS          (2)
 #define RDMA_DEFAULT_MAX_SEND_WQE       (64)
 #define RDMA_DEFAULT_MAX_RECV_WQE       (128)
@@ -453,6 +471,7 @@ typedef enum mv2_env_param_id {
     MV2_DEFAULT_MTU,
     MV2_DEFAULT_PKEY,
     MV2_DEFAULT_PORT,
+    MV2_DEFAULT_GID_INDEX,
     MV2_DEFAULT_PSN,
     MV2_DEFAULT_MAX_RECV_WQE,
     MV2_DEFAULT_MAX_SEND_WQE,
@@ -531,6 +550,7 @@ typedef enum mv2_env_param_id {
     MV2_LIMIC_GET_THRESHOLD,
     MV2_LIMIC_PUT_THRESHOLD,
     MV2_SMP_USE_LIMIC2,
+    MV2_USE_LIMIC2_COLL,
     MV2_SMP_BATCH_SIZE,
     MV2_SMP_EAGERSIZE,
     MV2_SMPI_LENGTH_QUEUE,
@@ -569,6 +589,8 @@ typedef enum mv2_env_param_id {
     MV2_CUDA_ALLTOALL_DYNAMIC,
     MV2_CUDA_ALLGATHER_RD_LIMIT,
     MV2_CUDA_ALLGATHER_FGP,
+    MV2_SMP_CUDA_PIPELINE,
+    MV2_CUDA_INIT_CONTEXT,
     /* debug */
     MV2_DEBUG_CORESIZE,
     MV2_DEBUG_SHOW_BACKTRACE,

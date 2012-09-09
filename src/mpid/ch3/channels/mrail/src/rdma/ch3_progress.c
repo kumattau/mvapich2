@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -22,6 +22,9 @@
 #include "mpidrma.h"
 #ifdef _ENABLE_XRC_
 #include "cm.h"
+#endif
+#if defined(_MCST_SUPPORT_)
+#include "ibv_mcast.h"
 #endif
 
 #ifdef DEBUG
@@ -309,6 +312,11 @@ start_polling:
                 }
             }
 #endif
+#if defined(_MCST_SUPPORT_)
+            if (rdma_enable_mcast && mcast_ctx->init_list) {
+                mv2_mcast_process_comm_init_req(mcast_ctx->init_list);
+            }
+#endif  
         } 
 
         if (flowlist) { 
@@ -563,6 +571,11 @@ int MPIDI_CH3I_Progress_test()
                 }
             }
         }
+#if defined(_MCST_SUPPORT_)
+        if (rdma_enable_mcast && mcast_ctx->init_list) {
+            mv2_mcast_process_comm_init_req(mcast_ctx->init_list);
+        }
+#endif  
     }
 
     /* issue RDMA write ops if we got a clr_to_send */
@@ -1268,6 +1281,14 @@ static int handle_read_individual(MPIDI_VC_t* vc, vbuf* buffer, int* header_type
     case MPIDI_CH3_PKT_ZCOPY_ACK:
             PRINT_DEBUG(DEBUG_ZCY_verbose>1, "zcopy ack received from:%d\n", vc->pg_rank);
             MPIDI_CH3_Rendezvous_zcopy_ack(vc , (void *) header);
+        goto fn_exit;
+#endif
+#if defined(_MCST_SUPPORT_)
+    case MPIDI_CH3_PKT_MCST_NACK:
+        mv2_mcast_handle_nack((void *) header);
+        goto fn_exit;
+    case MPIDI_CH3_PKT_MCST_INIT_ACK:
+        mv2_mcast_handle_init_ack((void *) header);
         goto fn_exit;
 #endif
     case MPIDI_CH3_PKT_CM_ESTABLISH:

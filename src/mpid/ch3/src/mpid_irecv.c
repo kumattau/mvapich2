@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -169,7 +169,17 @@ int MPID_Irecv(void * buf, int count, MPI_Datatype datatype, int rank, int tag,
                 if (rreq->dev.recv_data_sz > 0)
                 {
                     MPIDI_CH3U_Request_unpack_uebuf(rreq);
+#if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
+                if (rdma_enable_cuda && rdma_cuda_smp_ipc 
+                        && is_device_buffer(rreq->dev.tmpbuf)) {
+                   cudaFree(rreq->dev.tmpbuf);
+                }
+                else
+#endif
+                {
                     MPIU_Free(rreq->dev.tmpbuf);
+                }
+
                 }
 
                 mpi_errno = rreq->status.MPI_ERROR;

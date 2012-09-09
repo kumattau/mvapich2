@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -18,6 +18,7 @@
 #if defined(_ENABLE_CUDA_)
 #define CUDA_DEBUG 0
 static int cudaipc_init = 0;
+static CUcontext mv2_cuda_context = NULL;
 
 void MPIU_IOV_pack_cuda(void *buf, MPID_IOV *iov, int n_iov, int position) 
 {
@@ -306,9 +307,77 @@ void cuda_get_user_parameters() {
         rdma_cuda_event_sync = atoi(value);
     }
 
+    if ((value = getenv("MV2_CUDA_INIT_CONTEXT")) != NULL) {
+        rdma_cuda_init_context = atoi(value);
+    }
+
+    if ((value = getenv("MV2_CUDA_USE_NAIVE")) != NULL) {
+        rdma_cuda_use_naive = atoi(value);
+    }
+
+    if ((value = getenv("MV2_CUDA_ALLTOALL_DYNAMIC")) != NULL) {
+        rdma_cuda_alltoall_dynamic = atoi(value);
+    }
+
+    if ((value = getenv("MV2_CUDA_REGISTER_NAIVE_BUF")) != NULL) {
+        rdma_cuda_register_naive_buf = atoi(value);
+    }
+
+    if ((value = getenv("MV2_CUDA_GATHER_NAIVE_LIMIT")) != NULL) {
+        rdma_cuda_gather_naive_limit = atoi(value);
+    }
+
+    if ((value = getenv("MV2_CUDA_SCATTER_NAIVE_LIMIT")) != NULL) {
+        rdma_cuda_scatter_naive_limit = atoi(value);
+    }
+
+    if ((value = getenv("MV2_CUDA_ALLTOALL_NAIVE_LIMIT")) != NULL) {
+        rdma_cuda_alltoall_naive_limit = atoi(value);
+    }
+
+    if ((value = getenv("MV2_CUDA_ALLTOALLV_NAIVE_LIMIT")) != NULL) {
+        rdma_cuda_alltoallv_naive_limit = atoi(value);
+    }
+
+    if ((value = getenv("MV2_CUDA_ALLGATHER_NAIVE_LIMIT")) != NULL) {
+        rdma_cuda_allgather_naive_limit = atoi(value);
+    }
+
+    if ((value = getenv("MV2_CUDA_ALLGATHERV_NAIVE_LIMIT")) != NULL) {
+        rdma_cuda_allgatherv_naive_limit = atoi(value);
+    }
+
+    if ((value = getenv("MV2_CUDA_BCAST_NAIVE_LIMIT")) != NULL) {
+        rdma_cuda_bcast_naive_limit = atoi(value);
+    }
+
+    if ((value = getenv("MV2_CUDA_GATHERV_NAIVE_LIMIT")) != NULL) {
+        rdma_cuda_gatherv_naive_limit = atoi(value);
+    }
+
+    if ((value = getenv("MV2_CUDA_SCATTERV_NAIVE_LIMIT")) != NULL) {
+        rdma_cuda_scatterv_naive_limit = atoi(value);
+    }
+
+    if ((value = getenv("MV2_CUDA_ALLGATHER_RD_LIMIT")) != NULL) {
+        rdma_cuda_allgather_rd_limit = atoi(value);
+    }
+
+    if ((value = getenv("MV2_CUDA_ALLGATHER_FGP")) != NULL) {
+        rdma_cuda_allgather_fgp = atoi(value);
+    }
+
+
 #if defined(HAVE_CUDA_IPC)
     if ((value = getenv("MV2_CUDA_IPC")) != NULL) {
         rdma_cuda_ipc = atoi(value);
+    }
+
+    if ((value = getenv("MV2_CUDA_SMP_IPC")) != NULL) {
+        rdma_cuda_smp_ipc = atoi(value);
+    }
+    if (!rdma_cuda_ipc) { 
+        rdma_cuda_smp_ipc = 0;
     }
 
     if (rdma_cuda_ipc
@@ -317,6 +386,7 @@ void cuda_get_user_parameters() {
             "from version 4.1 or later, version availabe : %d",
             CUDART_VERSION);
         rdma_cuda_ipc = 0;
+        rdma_cuda_smp_ipc = 0;
     }
 
     if ((value = getenv("MV2_CUDA_ENABLE_IPC_CACHE")) != NULL) {
@@ -357,15 +427,48 @@ void cuda_init(MPIDI_PG_t * pg)
 {
 #if defined(HAVE_CUDA_IPC)
     int mpi_errno = MPI_SUCCESS, errflag = 0;
-    int i, num_processes, my_rank, has_cudaipc_peer = 0; 
+    int i, num_processes, my_rank, has_cudaipc_peer = 0;
+    int my_local_rank, dev_count, my_dev_id; 
     int *device = NULL;
     MPID_Comm *comm_world = NULL;
     MPIDI_VC_t* vc = NULL;
     cudaError_t cudaerr = cudaSuccess;
-
+    CUresult curesult = CUDA_SUCCESS;
+    CUcontext user_context;
+    CUdevice cudevice; 
+    
     comm_world = MPIR_Process.comm_world;
     num_processes = comm_world->local_size;
     my_rank = comm_world->rank;
+
+    curesult = cuCtxGetCurrent(&user_context); 
+    if (curesult != CUDA_SUCCESS || user_context == NULL) { 
+        if (rdma_cuda_init_context) { 
+            /*use has not selected a device or not created a context, 
+             *select device internally*/
+            my_local_rank = MPIDI_Process.my_pg->ch.local_process_id; 
+            curesult = cuInit(0);
+            if (curesult != CUDA_SUCCESS) {
+                ibv_error_abort(GEN_EXIT_ERR,"cuInit failed\n");
+            }
+            cudaerr = cudaGetDeviceCount(&dev_count);
+            if (cudaerr != cudaSuccess) { 
+                ibv_error_abort(GEN_EXIT_ERR,"get device count failed \n");
+            }
+            my_dev_id = my_local_rank % dev_count;
+            curesult = cuDeviceGet(&cudevice, my_dev_id);
+            if (curesult != CUDA_SUCCESS) {
+                ibv_error_abort(GEN_EXIT_ERR,"cuDeviceGet failed \n");
+            }
+            curesult = cuCtxCreate(&mv2_cuda_context, 0, cudevice);
+            if (curesult != CUDA_SUCCESS) {
+                ibv_error_abort(GEN_EXIT_ERR,"cuCtxCreate failed \n");
+            }
+        } else { 
+            ibv_error_abort(GEN_EXIT_ERR,"Active CUDA context not detected.\
+                 Select a device and create context before MPI_Init.\n");
+        }
+    }
 
     device = (int *) MPIU_Malloc (sizeof(int)*num_processes);
     if (device == NULL) {
@@ -403,10 +506,6 @@ void cuda_init(MPIDI_PG_t * pg)
             if (vc->smp.can_access_peer) {
                 has_cudaipc_peer = 1;
             }
-            
-            if (rdma_cuda_ipc && !SMP_ONLY && !vc->smp.can_access_peer) {
-                vc->smp.local_rank = vc->smp.local_nodes = -1;
-            }
         }
     }
     
@@ -432,13 +531,15 @@ void cuda_init(MPIDI_PG_t * pg)
     MPIU_Free(device);
 #endif
 
-    if (SMP_INIT && pg->ch.num_local_processes > 1) {
+    if (SMP_INIT) {
         MPIDI_CH3I_CUDA_SMP_cuda_init(pg);
     }
 }
 
 void cuda_cleanup()
 {
+    CUresult curesult = CUDA_SUCCESS; 
+
     deallocate_cuda_events();
     deallocate_cuda_rndv_streams();
     deallocate_cuda_streams();
@@ -457,8 +558,15 @@ void cuda_cleanup()
     }
 #endif
 
-    if (SMP_INIT && MPIDI_Process.my_pg->ch.num_local_processes > 1) {
+    if (SMP_INIT) {
         MPIDI_CH3I_CUDA_SMP_cuda_finalize(MPIDI_Process.my_pg);
+    }
+
+    if (mv2_cuda_context != NULL) {
+        curesult = cuCtxDestroy(mv2_cuda_context);
+        if (curesult != CUDA_SUCCESS) {
+            ibv_error_abort (GEN_EXIT_ERR, "cuCtxDestroy returned error in finalize\n");
+        }
     }
 }
 #endif

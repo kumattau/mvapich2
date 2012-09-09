@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -37,16 +37,42 @@ typedef struct {
                                   int *errflag);
 } mv2_gather_tuning_element;
 
+#if defined(_SMP_LIMIC_)
+
+typedef enum limic_gather_algo
+{
+    USE_GATHER_PT_PT_BINOMIAL      = 1,
+    USE_GATHER_PT_PT_DIRECT        = 2,
+    USE_GATHER_PT_LINEAR_BINOMIAL  = 3,
+    USE_GATHER_PT_LINEAR_DIRECT    = 4,
+    USE_GATHER_LINEAR_PT_BINOMIAL  = 5,
+    USE_GATHER_LINEAR_PT_DIRECT    = 6,
+    USE_GATHER_LINEAR_LINEAR       = 7,
+    USE_GATHER_SINGLE_LEADER       = 8
+
+} limic_gather_algo;
+
+typedef struct {
+    int min;
+    int max;
+    limic_gather_algo scheme;
+} list_limic_scheme;
+
+#endif /*#if defined(_SMP_LIMIC_)*/
 typedef struct {
     int numproc;
     int size_inter_table;
     mv2_gather_tuning_element inter_leader[MV2_MAX_NB_THRESHOLDS];
     int size_intra_table;
     mv2_gather_tuning_element intra_node[MV2_MAX_NB_THRESHOLDS];
+#if defined(_SMP_LIMIC_)
+    int nb_limic_scheme;
+    list_limic_scheme limic_gather_scheme[MV2_MAX_NB_THRESHOLDS];
+#endif /*#if defined(_SMP_LIMIC_)*/
 } mv2_gather_tuning_table;
 
 extern int mv2_size_gather_tuning_table;
-extern mv2_gather_tuning_table mv2_gather_thresholds_table[];
+extern mv2_gather_tuning_table * mv2_gather_thresholds_table;
 
 extern int mv2_user_gather_switch_point;
 extern int mv2_use_two_level_gather;
@@ -62,12 +88,24 @@ extern int MPIR_Gather_MV2_two_level_Direct(void *sendbuf, int sendcnt,
             MPI_Datatype sendtype, void *recvbuf, int recvcnt,
             MPI_Datatype recvtype, int root, MPID_Comm * comm_ptr,
             int *errflag);
+
+#if defined(_SMP_LIMIC_)
+extern int MPIR_Intra_node_LIMIC_Gather_MV2(void *sendbuf,int sendcnt, MPI_Datatype sendtype,
+                                     void *recvbuf, int recvcnt,MPI_Datatype recvtype,
+                                     int root, MPID_Comm * comm_ptr, int *errflag);
+#endif /*#if defined(_SMP_LIMIC_)*/
+
 /* Architecture detection tuning */
-int MV2_set_gather_tuning_table();
+int MV2_set_gather_tuning_table(int heterogeneity);
+void MV2_cleanup_gather_tuning_table(); 
 
 /* Function used inside ch3_shmem_coll.c to tune gather thresholds */
 int MV2_internode_Gather_is_define(char *mv2_user_gather_inter, char *mv2_user_gather_intra);
 int MV2_intranode_Gather_is_define(char *mv2_user_gather_intra);
+int MV2_intranode_multi_lvl_Gather_is_define(char *mv2_user_gather_inter,
+                                             char *mv2_user_gather_intra,
+                                             char *mv2_user_gather_intra_multi_lvl);
+
 void MV2_user_gather_switch_point_is_define(int mv2_user_gather_switch_point);
 
 #endif

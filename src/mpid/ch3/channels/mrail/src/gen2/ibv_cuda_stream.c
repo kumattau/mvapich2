@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -270,6 +270,7 @@ void progress_cuda_streams()
     cudaError_t result = cudaSuccess;
     cuda_stream_t *curr_stream = busy_cuda_stream_list_head;
     cuda_stream_t *next_stream;
+    uint8_t stream_pool_flag;
 
     while (NULL != curr_stream) {
         if (!curr_stream->is_query_done) {
@@ -299,13 +300,14 @@ void progress_cuda_streams()
 
                 curr_stream->is_query_done = 0;
                 curr_stream->next = curr_stream->prev = NULL;
+                stream_pool_flag = curr_stream->flags;
 
                 /* process finished stream */
                 process_cuda_stream_op(curr_stream);
 
                 /* Dedicated stream will be deallocated after the 
                 ** request is finished*/
-                if (curr_stream->flags == CUDA_STREAM_FREE_POOL) {
+                if (stream_pool_flag == CUDA_STREAM_FREE_POOL) {
                     curr_stream->next = free_cuda_stream_list_head;
                     free_cuda_stream_list_head = curr_stream;
                 }

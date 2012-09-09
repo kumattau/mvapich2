@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2011, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -283,6 +283,16 @@ void process_cuda_event_op(cuda_event_t * event)
             deallocate_cuda_event(&req->mrail.cuda_event);
         }
 #endif
+    } else if (event->op_type == SMP_SEND) {
+        smp_cuda_send_copy_complete(event->vc, event->req, event->smp_ptr);
+        if (event->flags == CUDA_EVENT_DEDICATED) {
+            deallocate_cuda_event(&event);
+        }         
+    } else if (event->op_type == SMP_RECV) {
+        smp_cuda_recv_copy_complete(event->vc, event->req, event->smp_ptr);
+        if (event->flags == CUDA_EVENT_DEDICATED) {
+            deallocate_cuda_event(&event);
+        }
     } else { 
         ibv_error_abort(IBV_RETURN_ERR, "Invalid op type in event");
     }
@@ -293,6 +303,7 @@ void progress_cuda_events()
     cudaError_t result = cudaSuccess;
     cuda_event_t *curr_event = busy_cuda_event_list_head;
     cuda_event_t *next_event;
+    uint8_t event_pool_flag;
 
     while (NULL != curr_event) {
         if (!curr_event->is_query_done) {
@@ -322,13 +333,14 @@ void progress_cuda_events()
 
                 curr_event->is_query_done = 0;
                 curr_event->next = curr_event->prev = NULL;
+                event_pool_flag = curr_event->flags;
 
                 /* process finished event */
                 process_cuda_event_op(curr_event);
 
                 /* Dedicated event will be deallocated after 
                 ** the request is finished*/
-                if (curr_event->flags == CUDA_EVENT_FREE_POOL) {
+                if (event_pool_flag == CUDA_EVENT_FREE_POOL) {
                     curr_event->next = free_cuda_event_list_head;
                     free_cuda_event_list_head = curr_event;
                 }

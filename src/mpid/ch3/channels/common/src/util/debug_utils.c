@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -60,6 +60,12 @@ int DEBUG_MEM_verbose = 0;
 // Verbosity level for GPU CUDA
 int DEBUG_CUDA_verbose = 0;
 
+// Verbosity level for IB MULTICAST
+int DEBUG_MCST_verbose = 0;
+
+// Verbosity level for SHMEM Collectives
+int DEBUG_SHM_verbose;
+
 static inline int env2int (char *name)
 {
     char* env_str = getenv( name );
@@ -83,6 +89,8 @@ int initialize_debug_variables() {
     DEBUG_UDSTAT_verbose = env2int( "MV2_DEBUG_UDSTAT_VERBOSE" );
     DEBUG_MEM_verbose = env2int( "MV2_DEBUG_MEM_USAGE_VERBOSE" );
     DEBUG_CUDA_verbose = env2int( "MV2_DEBUG_CUDA_VERBOSE" );
+    DEBUG_MCST_verbose = env2int( "MV2_DEBUG_MCST_VERBOSE" );
+    DEBUG_SHM_verbose = env2int( "MV2_DEBUG_SHM_VERBOSE" );
     return 0;
 }
 

@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -163,8 +163,7 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
 
     rdma_get_pm_parameters(&mv2_MPIDI_CH3I_RDMA_Process);
 
-    if ((pg_size > 1) &&
-        ((!using_mpirun_rsh) || mv2_MPIDI_CH3I_RDMA_Process.has_ring_startup)) {
+    if (pg_size > 1 && mv2_MPIDI_CH3I_RDMA_Process.has_ring_startup) {
         mpi_errno =
             rdma_setup_startup_ring(&mv2_MPIDI_CH3I_RDMA_Process, pg_rank,
                                     pg_size);
@@ -336,8 +335,8 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
             }
         }
 
-        /* Check heterogenity */
-        rdma_param_handle_heterogenity(init_info->arch_hca_type, pg_size);
+        /* Check heterogeneity */
+        rdma_param_handle_heterogeneity(init_info->arch_hca_type, pg_size);
     }
 
     if (mv2_MPIDI_CH3I_RDMA_Process.has_apm) {
@@ -1124,9 +1123,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
         rdma_cm_exchange_hostid(pg, pg_rank, pg_size);
     } else
 #endif
-    if ((pg_size > 1) &&
-            ((!using_mpirun_rsh) ||
-                 mv2_MPIDI_CH3I_RDMA_Process.has_ring_startup)) {
+    if (pg_size > 1 && mv2_MPIDI_CH3I_RDMA_Process.has_ring_startup) {
         mpi_errno =
             rdma_setup_startup_ring(&mv2_MPIDI_CH3I_RDMA_Process, pg_rank,
                                     pg_size);
@@ -1277,8 +1274,8 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
             }
         }
 
-        /* Check heterogenity */
-        rdma_param_handle_heterogenity(arch_hca_type_all, pg_size);
+        /* Check heterogeneity */
+        rdma_param_handle_heterogeneity(arch_hca_type_all, pg_size);
     }
 
     rdma_num_rails = rdma_num_hcas * rdma_num_ports * rdma_num_qp_per_port;
@@ -1427,6 +1424,11 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
                                   "**fail %s", "Could not get hostname");
     }
     hostent = gethostbyname(hostname);
+    if (hostent == NULL) {
+        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, 
+                 "**gethostbyname", "**gethostbyname %s %d",
+                        hstrerror(h_errno), h_errno );
+    }
     hostid = (int) ((struct in_addr *) hostent->h_addr_list[0])->s_addr;
 
     if (pg_size > 1) {
@@ -1468,6 +1470,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
                 lid_all[i] = all_info[i].lid[0][0];
                 gid_all[i] = all_info[i].gid[0][0];
             }
+            MPIU_Free(all_info);
         } else {
             /*Exchange the information about HCA_lid and qp_num */
 
@@ -1577,6 +1580,11 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
                                           "Could not get hostname");
             }
             hostent = gethostbyname(hostname);
+            if (hostent == NULL) {
+                MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, 
+                        "**gethostbyname", "**gethostbyname %s %d",
+                        hstrerror(h_errno), h_errno );
+            }
             pg->ch.mrail.xrc_hostid[0] =
                 (int) ((struct in_addr *) hostent->h_addr_list[0])->s_addr;
             MPIDI_PG_Get_vc(pg, 0, &vc);
@@ -1676,8 +1684,6 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
                                                  pg_size)) != MPI_SUCCESS) {
             MPIU_ERR_POP(mpi_errno);
         }
-
-        mv2_init_timers();
     }
 #endif /* _ENABLE_UD_ */
 
@@ -1833,7 +1839,7 @@ int MPIDI_CH3I_CM_Finalize(void)
                     /* Destroy SEND QP */
 #endif
                 {
-                    if (vc->mrail.rails[rail_index].qp_hndl) {
+                    if (vc->mrail.rails && vc->mrail.rails[rail_index].qp_hndl) {
                         ibv_destroy_qp(vc->mrail.rails[rail_index].qp_hndl);
                     }
                 }

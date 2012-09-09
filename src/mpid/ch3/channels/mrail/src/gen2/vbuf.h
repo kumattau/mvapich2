@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -110,6 +110,11 @@ typedef enum {
     IB_TRANSPORT_RC = 2,
 } ib_transport;
 
+#define UD_VBUF_FREE_PENIDING       (0x01)
+#define UD_VBUF_SEND_INPROGRESS     (0x02)
+#define UD_VBUF_RETRY_ALWAYS        (0x04)
+#define UD_VBUF_MCAST_MSG           (0x08)
+
 #ifdef _ENABLE_UD_
 #define MRAILI_Get_buffer(_vc, _v)                  \
 do {                                                \
@@ -119,10 +124,6 @@ do {                                                \
         (_v) = get_ud_vbuf();                       \
     }                                               \
 } while (0)
-
-#define UD_VBUF_FREE_PENIDING       (0x01)
-#define UD_VBUF_SEND_INPROGRESS     (0x02)
-#define UD_VBUF_RETRY_ALWAYS        (0x04)
 
 #else
 #define MRAILI_Get_buffer(_vc, _v)  \
@@ -138,8 +139,13 @@ do {                                \
 
 /* extend this macro if there is more control messages */
 #define IS_CNTL_MSG(p) \
-(((MPIDI_CH3I_MRAILI_Pkt_comm_header *)p)->type ==  MPIDI_CH3_PKT_FLOW_CNTL_UPDATE || \
- ((MPIDI_CH3I_MRAILI_Pkt_comm_header *)p)->type ==  MPIDI_CH3_PKT_NOOP)
+    (p->type ==  MPIDI_CH3_PKT_FLOW_CNTL_UPDATE || \
+        p->type ==  MPIDI_CH3_PKT_NOOP)
+
+#define IS_MCAST_MSG(p) \
+    (p->type == MPIDI_CH3_PKT_MCST || \
+        p->type == MPIDI_CH3_PKT_MCST_INIT || \
+            (mcast_use_mcast_nack && p->type == MPIDI_CH3_PKT_MCST_NACK))
 
 #define SET_PKT_LEN_HEADER(_v, _wc) {                                       \
     if(IB_TRANSPORT_UD == (_v)->transport) {                                \
@@ -191,15 +197,22 @@ typedef struct vbuf
      */
     ib_transport transport;
     uint16_t seqnum;
-#ifdef _ENABLE_UD_
+#if defined(_ENABLE_UD_) || defined(_MCST_SUPPORT_)
     uint16_t retry_count;
+    uint16_t pending_send_polls;
     uint8_t flags;
+    double timestamp;
+#if defined(_ENABLE_UD_)
     uint8_t in_sendwin;
     LINK sendwin_msg;
     LINK recvwin_msg;
     LINK extwin_msg;
     LINK unack_msg;
-    double timestamp;
+#endif
+#if defined(_MCST_SUPPORT_)
+    LINK mcast_sendwin_msg;
+    LINK mcast_recvwin_msg;
+#endif
 #endif
 #ifdef _ENABLE_CUDA_
     void *pool_index;
@@ -311,7 +324,7 @@ void deallocate_vbuf_region(void);
 
 vbuf* get_vbuf(void);
 
-#ifdef _ENABLE_UD_
+#if defined(_ENABLE_UD_) || defined(_MCST_SUPPORT_)
 vbuf* get_ud_vbuf(void);
 int allocate_ud_vbufs(int nvbufs);
 void vbuf_init_ud_recv(vbuf* v, unsigned long len, int rail);

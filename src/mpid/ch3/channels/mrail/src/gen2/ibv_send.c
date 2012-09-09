@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -25,6 +25,9 @@
 #include "mpiutil.h"
 #include "dreg.h"
 #include "debug_utils.h"
+#if defined(_MCST_SUPPORT_)
+#include "ibv_mcast.h"
+#endif 
 
 #undef DEBUG_PRINT
 #ifdef DEBUG
@@ -1649,6 +1652,31 @@ int MRAILI_Process_send(void *vbuf_addr)
         }
 
         break;
+#if defined(_MCST_SUPPORT_)
+    case MPIDI_CH3_PKT_MCST:
+    case MPIDI_CH3_PKT_MCST_INIT:
+        PRINT_DEBUG(DEBUG_MCST_verbose > 4, 
+                "mcast send completion\n");
+        mcast_ctx->ud_ctx->send_wqes_avail++;
+        if (v->padding == NORMAL_VBUF_FLAG) {
+            MRAILI_Release_vbuf(v);
+        } else {
+            v->padding = FREE_FLAG;
+        }
+        break;
+    case MPIDI_CH3_PKT_MCST_NACK:
+        if (mcast_use_mcast_nack) {
+            mcast_ctx->ud_ctx->send_wqes_avail++;
+        }
+    case MPIDI_CH3_PKT_MCST_INIT_ACK:
+        if (v->padding == NORMAL_VBUF_FLAG) {
+            MRAILI_Release_vbuf(v);
+        } else {
+            v->padding = FREE_FLAG;
+        }
+        break;
+    
+#endif
     case MPIDI_CH3_PKT_NOOP:
     case MPIDI_CH3_PKT_ADDRESS:
     case MPIDI_CH3_PKT_ADDRESS_REPLY:

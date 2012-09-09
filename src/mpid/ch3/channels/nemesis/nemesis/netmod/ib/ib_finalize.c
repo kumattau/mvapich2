@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -308,7 +308,9 @@ int MPID_nem_ib_finalize(void)
 
         deallocate_vbufs(i);
         deallocate_vbuf_region();
-        err = dreg_finalize();
+        if (process_info.has_lazy_mem_unregister) {
+            dreg_finalize();
+        }
 
         err = ibv_dealloc_pd(hca_list[i].ptag);
 

@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -11,7 +11,6 @@
  */
 
 #include <infiniband/verbs.h>
-#include <infiniband/umad.h>
 #include <netdb.h>
 
 #include "mpidimpl.h"
@@ -87,24 +86,6 @@ struct ring_packet {
     int     type;
     int     value;
 };
-
-/* gethostname does return a NULL-terminated string if
- * the hostname length is less than "HOSTNAME_LEN". Otherwise,
- * it is unspecified.
- */
-/*
- * TODO add error handling
- */
-static inline int get_host_id(char *myhostname, int hostname_len)
-{
-    int host_id = 0;
-    struct hostent *hostent;
-
-    hostent = gethostbyname(myhostname);
-    host_id = (int) ((struct in_addr *) hostent->h_addr_list[0])->s_addr;
-
-    return host_id;
-}
 
 static inline int round_left(int current, int size)
 {
@@ -742,7 +723,7 @@ fn_fail:
     goto fn_exit;
 }
 
-/* rdma_param_handle_heterogenity resets control parameters given the arch_hca_type 
+/* rdma_param_handle_heterogeneity resets control parameters given the arch_hca_type 
  * from all ranks. Parameters may change:
  *      rdma_default_mtu
  *      rdma_iba_eager_threshold
@@ -755,10 +736,10 @@ fn_fail:
  *      num_rdma_buffer
  *      rdma_vbuf_total_size
  */
-void rdma_param_handle_heterogenity(mv2_arch_hca_type arch_hca_type[], int pg_size)
+void rdma_param_handle_heterogeneity(mv2_arch_hca_type arch_hca_type[], int pg_size)
 {       
     mv2_arch_hca_type type;                           
-    process_info.heterogenity = 0;
+    process_info.heterogeneity = 0;
     int i;  
 
     type = arch_hca_type[0];
@@ -790,12 +771,12 @@ void rdma_param_handle_heterogenity(mv2_arch_hca_type arch_hca_type[], int pg_si
         }
 
         if (arch_hca_type[i] != type)
-            process_info.heterogenity = 1;
+            process_info.heterogeneity = 1;
 
         DEBUG_PRINT("rank %d, arch_hca_type %d\n", i, arch_hca_type[i]);
     }
 
-    if (process_info.heterogenity) {
+    if (process_info.heterogeneity) {
         rdma_default_mtu = IBV_MTU_1024;
         rdma_vbuf_total_size = 8 * 1024;
         rdma_fp_buffer_size = 8 * 1024;
@@ -816,6 +797,7 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
 {
     int i, ne, index_to_send, rail_index, pg_size;
     int hostid;
+    struct hostent *hostent;
     char hostname[HOSTNAME_LEN + 1];
     int mpi_errno = MPI_SUCCESS;
     uint64_t last_send = 0;
@@ -876,7 +858,14 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
         MPIU_Error_printf("Could not get hostname\n");
         exit(1);
     }
-    hostid = get_host_id(hostname, HOSTNAME_LEN);
+
+    hostent = gethostbyname(hostname);
+    if (hostent == NULL) {
+        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER,
+                "**gethostbyname", "**gethostbyname %s %d",
+                hstrerror(h_errno), h_errno );
+    }
+    hostid = (int) ((struct in_addr *) hostent->h_addr_list[0])->s_addr;
 
     /* send information for each rail */
 
@@ -1118,7 +1107,7 @@ int MPID_nem_ib_exchange_conn(MPIDI_PG_t *pg, int rank)
                 MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**fail",
                         "**fail %s", "Failed to get HCA attrs");
             }
-            rdma_param_handle_heterogenity(conn_info.init_info->arch_hca_type, conn_info.size);
+            rdma_param_handle_heterogeneity(conn_info.init_info->arch_hca_type, conn_info.size);
         }
     }
 
@@ -1803,8 +1792,8 @@ int MPID_nem_ib_setup_startup_ring(MPIDI_PG_t *pg, int rank)
         if (mpi_errno) {
             MPIU_ERR_POP(mpi_errno);
         }
-        /* Check heterogenity */
-        rdma_param_handle_heterogenity(conn_info.init_info->arch_hca_type, pg_size);
+        /* Check heterogeneity */
+        rdma_param_handle_heterogeneity(conn_info.init_info->arch_hca_type, pg_size);
     }
 
 fn_exit:

@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -32,6 +32,23 @@ extern int                  s_smpi_length_queue;
 extern int                  s_smp_num_send_buffer;
 extern int                  s_smp_batch_size;
 extern int                  s_smp_block_size;
+
+#if defined _ENABLE_CUDA_
+extern int                  s_smp_cuda_pipeline;
+extern int                  s_smp_h2h_block_size;
+#endif
+
+
+#if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
+extern void **smp_cuda_region_send;
+extern void **smp_cuda_region_recv;
+extern int smp_cuda_region_size;
+
+extern CUevent *sr_event;
+extern CUevent *sr_event_local;
+extern CUevent *loop_event;
+extern CUevent *loop_event_local;
+#endif 
 
 /*********** Macro defines of local variables ************/
 #define PID_CHAR_LEN 22
@@ -113,6 +130,14 @@ typedef struct {
     char pad[SMPI_CACHE_LINE_SIZE/2 - 8];
 } smpi_rqueues;
 
+#if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
+typedef struct {
+    volatile unsigned int cuda_head; 
+    volatile unsigned int cuda_tail;    
+    char pad[SMPI_CACHE_LINE_SIZE/2 - 8];
+} smpi_cu_ipc_attr;
+#endif  
+
 typedef struct {
     volatile unsigned int ptr;
     char pad[SMPI_CACHE_LINE_SIZE - sizeof(unsigned int)];
@@ -128,6 +153,10 @@ struct shared_mem {
     volatile int *pid;   /* use for initial synchro */
 
     smpi_shared_tails **shared_tails;
+
+#if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
+    smpi_cu_ipc_attr **cu_attrbs;
+#endif
 
     smpi_rq_limit *rqueues_limits_s;
     smpi_rq_limit *rqueues_limits_r;
@@ -161,6 +190,7 @@ struct limic_header {
     struct MPID_Request *send_req_id;
 };
 extern int g_smp_use_limic2;
+extern int g_use_limic2_coll;
 #endif
 
 extern struct smpi_var g_smpi;

@@ -1,5 +1,5 @@
 
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -26,6 +26,8 @@ typedef enum cuda_async_op {
     RGET,
     CUDAIPC_SEND,
     CUDAIPC_RECV,
+    SMP_SEND,
+    SMP_RECV,
 } cuda_async_op_t;
 
 typedef struct cuda_stream {
@@ -42,7 +44,7 @@ typedef struct cuda_stream {
     struct cuda_stream *next, *prev;
 } cuda_stream_t;
 
-/* cuda strem flags */
+/* cuda stream pool flags */
 #define CUDA_STREAM_FREE_POOL 0x01
 #define CUDA_STREAM_DEDICATED 0x02
 
@@ -57,9 +59,10 @@ typedef struct cuda_event {
     void *vc;
     void *req;
     struct vbuf *cuda_vbuf_head, *cuda_vbuf_tail;
+    void *smp_ptr;
     struct cuda_event *next, *prev;
 } cuda_event_t;
-/* cuda strem flags */
+/* cuda event pool flags */
 #define CUDA_EVENT_FREE_POOL 0x01
 #define CUDA_EVENT_DEDICATED 0x02
 
@@ -106,11 +109,8 @@ do {                                            \
 #define MV2_CUDA_PROGRESS()                     \
 do {                                            \
     if (rdma_enable_cuda) {                     \
-        if (rdma_cuda_event_sync) {             \
-            progress_cuda_events();             \
-        } else {                                \
-            progress_cuda_streams();            \
-        }                                       \
+        progress_cuda_events();                 \
+        progress_cuda_streams();                \
     }                                           \
 } while(0)
 
@@ -185,6 +185,16 @@ do {                                                    \
     MPIU_Assert(cudaSuccess == result);                 \
 } while (0)
 
+#define CU_CHECK(stmt)                                  \
+do {                                                    \
+    CUresult result = (stmt);                           \
+    if (CUDA_SUCCESS != result) {                       \
+        PRINT_ERROR("[%s:%d] cuda failed with %d \n",   \
+         __FILE__, __LINE__,result);                    \
+        exit(-1);                                       \
+    }                                                   \
+    MPIU_Assert(CUDA_SUCCESS == result);                \
+} while (0)
 void ibv_cuda_register(void * ptr, size_t size);
 void ibv_cuda_unregister(void *ptr);
 void CUDA_COLL_Finalize ();

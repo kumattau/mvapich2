@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -49,6 +49,10 @@ typedef enum MPIDI_CH3_Pkt_type
     MPIDI_CH3_PKT_RGET_FINISH,
     MPIDI_CH3_PKT_ZCOPY_FINISH,
     MPIDI_CH3_PKT_ZCOPY_ACK,
+    MPIDI_CH3_PKT_MCST,
+    MPIDI_CH3_PKT_MCST_NACK,
+    MPIDI_CH3_PKT_MCST_INIT,
+    MPIDI_CH3_PKT_MCST_INIT_ACK,
     MPIDI_CH3_PKT_NOOP,
     MPIDI_CH3_PKT_RMA_RNDV_CLR_TO_SEND,
     MPIDI_CH3_PKT_CUDA_CTS_CONTI,
@@ -123,6 +127,10 @@ typedef struct MPIDI_CH3_Pkt_send
     MPI_Request sender_req_id;	/* needed for ssend and send cancel */
     MPIDI_Message_match match;
     MPIDI_msg_sz_t data_sz;
+#if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
+    uint8_t in_cuda_region;
+    CUipcEventHandle ipcEventHandle;
+#endif
 }
 MPIDI_CH3_Pkt_send_t;
 
@@ -293,6 +301,19 @@ typedef struct MPIDI_CH3_Pkt_zcopy_ack_t
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
     MPI_Request sender_req_id; 
 } MPIDI_CH3_Pkt_zcopy_ack_t;
+
+typedef struct MPIDI_CH3_Pkt_mcast_t
+{
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+    int comm_id;
+    int src_rank;
+    int root;
+    uint32_t psn;
+} MPIDI_CH3_Pkt_mcast_t;
+typedef MPIDI_CH3_Pkt_mcast_t MPIDI_CH3_Pkt_mcast_nack_t;
+typedef MPIDI_CH3_Pkt_mcast_t MPIDI_CH3_Pkt_mcast_init_t;
+typedef MPIDI_CH3_Pkt_mcast_t MPIDI_CH3_Pkt_mcast_init_ack_t;
 
 typedef struct MPIDI_CH3_Pkt_rget_finish_t
 {

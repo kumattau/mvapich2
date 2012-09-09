@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -65,7 +65,7 @@ typedef struct mv2_MPIDI_CH3I_RDMA_Process_t {
     mv2_arch_type                arch_type;
     mv2_arch_hca_type            arch_hca_type;
     int                         cluster_size;
-    uint8_t                     heterogenity;
+    uint8_t                     heterogeneity;
     uint8_t                     has_srq;
     uint8_t                     has_hsam;
     uint8_t                     has_apm;
@@ -488,7 +488,7 @@ int rdma_iba_allocate_memory(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                  int pg_rank, int pg_size);
 int rdma_iba_enable_connections(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                 int pg_rank, MPIDI_PG_t *pg, struct process_init_info *);
-void rdma_param_handle_heterogenity(mv2_arch_hca_type hca_type[], int pg_size);
+void rdma_param_handle_heterogeneity(mv2_arch_hca_type hca_type[], int pg_size);
 int MRAILI_Process_send(void *vbuf_addr);
 void MRAILI_Process_recv(vbuf *v); 
 int post_send(MPIDI_VC_t *vc, vbuf *v, int rail);

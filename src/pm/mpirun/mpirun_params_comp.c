@@ -13,7 +13,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -88,14 +88,15 @@ static int using_slurm = 0;
 static int using_pbs = 0;
 
 #define PARAM_NP    0
-#define PARAM_SG    17
-#define PARAM_N     18
-#define PARAM_ENV   19
+#define PARAM_SG    18
+#define PARAM_N     19
+#define PARAM_ENV   20
 
 static struct option option_table[] = {
     {"np", required_argument, 0, 0},
     {"gdb", no_argument, 0, 0},
     {"xterm", no_argument, 0, 0},
+    {"f", required_argument, 0, 0},
     {"machinefile", required_argument, 0, 0},
     {"show", no_argument, 0, 0},
     {"rsh", no_argument, 0, 0},
@@ -198,7 +199,8 @@ static void check_option(int argc, char *argv[], int option_index, char *totalvi
     case 2:                    /* -xterm */
         xterm_on = 1;
         break;
-    case 3:                    /* -machinefile */
+    case 3:                     /* -f */
+    case 4:                     /* -machinefile */
         hostfile_on = 1;
         using_slurm = 0;
         using_pbs = 0;
@@ -206,24 +208,24 @@ static void check_option(int argc, char *argv[], int option_index, char *totalvi
         if (strlen(optarg) >= HOSTFILE_LEN - 1)
             hostfile[HOSTFILE_LEN] = '\0';
         break;
-    case 4:
+    case 5:
         show_on = 1;
         break;
-    case 5:
+    case 6:
         use_rsh = 1;
         break;
-    case 6:
+    case 7:
         use_rsh = 0;
         break;
-    case 7:
+    case 8:
         usage(argv[0]);
         exit(EXIT_SUCCESS);
         break;
-    case 8:
+    case 9:
         PRINT_MVAPICH2_VERSION();
         exit(EXIT_SUCCESS);
         break;
-    case 9:
+    case 10:
         {
             /* -tv */
             char *tv_env;
@@ -254,30 +256,30 @@ static void check_option(int argc, char *argv[], int option_index, char *totalvi
 
         }
         break;
-    case 10:
+    case 11:
         legacy_startup = 1;
         break;
-    case 11:
+    case 12:
         /* -startedByTv */
         use_totalview = 1;
         debug_on = 1;
         break;
-    case 12:                   /* spawnspec given */
+    case 13:                   /* spawnspec given */
         using_slurm = 0;
         using_pbs = 0;
         spawnfile = strdup(optarg);
         DBG(fprintf(stderr, "spawn spec file = %s\n", spawnfile));
         break;
-    case 13:
+    case 14:
         dpm = 1;
         break;
-    case 14:                   /* -fastssh */
+    case 15:                   /* -fastssh */
 #ifndef CKPT
         USE_LINEAR_SSH = 0;
 #endif                          /* CKPT */
         break;
         //With this option the user want to activate the mpmd
-    case 15:
+    case 16:
         configfile_on = 1;
         using_slurm = 0;
         using_pbs = 0;
@@ -285,7 +287,7 @@ static void check_option(int argc, char *argv[], int option_index, char *totalvi
         if (strlen(optarg) >= CONFILE_LEN - 1)
             configfile[CONFILE_LEN] = '\0';
         break;
-    case 16:
+    case 17:
         spinf.totspawns = atoi(optarg);
         break;
     case PARAM_SG:
@@ -312,7 +314,7 @@ static void check_option(int argc, char *argv[], int option_index, char *totalvi
         }
         optind++;
         break;
-    case 20:
+    case 21:
         usage(argv[0]);
         exit(EXIT_SUCCESS);
         break;
@@ -461,7 +463,7 @@ void usage (char const * arg0)
 {
     char * path = strdup(arg0);
 
-    fprintf(stderr, "usage: %s [-v] [-sg group] [-rsh|-ssh] " "[-gdb] -[tv] [-xterm] [-show] [-legacy] -n N" "[-machinefile hfile] a.out args | -config configfile\n", basename(path));
+    fprintf(stderr, "usage: %s [-v] [-sg group] [-rsh|-ssh] " "[-gdb] -[tv] [-xterm] [-show] [-legacy] -n N" "[-machinefile hfile | -f hfile] a.out args | -config configfile\n", basename(path));
     fprintf(stderr, "Where:\n");
     fprintf(stderr, "\tsg         =>  execute the processes as different group ID\n");
     fprintf(stderr, "\trsh        =>  to use rsh for connecting\n");

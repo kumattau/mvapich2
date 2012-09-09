@@ -3,7 +3,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -73,6 +73,10 @@ int MPIDI_CH3_Pkt_size_index[] = {
     sizeof(MPIDI_CH3_Pkt_rget_finish_t),
     sizeof(MPIDI_CH3_Pkt_zcopy_finish_t),
     sizeof(MPIDI_CH3_Pkt_zcopy_ack_t),
+    sizeof(MPIDI_CH3_Pkt_mcast_t),
+    sizeof(MPIDI_CH3_Pkt_mcast_nack_t),
+    sizeof(MPIDI_CH3_Pkt_mcast_init_t),
+    sizeof(MPIDI_CH3_Pkt_mcast_init_ack_t),
     sizeof(MPIDI_CH3I_MRAILI_Pkt_noop),
     sizeof(MPIDI_CH3_Pkt_rndv_clr_to_send_t),
     sizeof(MPIDI_CH3_Pkt_rndv_clr_to_send_t),
@@ -287,7 +291,8 @@ int MPIDI_CH3U_Receive_data_found(MPID_Request *rreq, char *buf, MPIDI_msg_sz_t 
         {
             MPIU_DBG_MSG(CH3_OTHER,VERBOSE,"Copying contiguous data to user buffer");
             /* copy data out of the receive buffer */
-#if defined(_ENABLE_CUDA_) 
+
+#if defined(_ENABLE_CUDA_)
             cudaError_t cuda_error = cudaSuccess;
             if (rdma_enable_cuda) {
                 userbuf_isdev = is_device_buffer((void *) rreq->dev.user_buf);
@@ -295,11 +300,21 @@ int MPIDI_CH3U_Receive_data_found(MPID_Request *rreq, char *buf, MPIDI_msg_sz_t 
             if (userbuf_isdev) {
                 cuda_error = cudaMemcpy((void *) ((char*)(rreq->dev.user_buf) + dt_true_lb),
                         buf, data_sz,
-                        cudaMemcpyHostToDevice);
+                        cudaMemcpyDefault);
                 if (cuda_error != cudaSuccess) {
                     MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**cudamemcpy");
                 }
-            } else
+            }
+            else if (!is_device_buffer(rreq->dev.user_buf)
+                    && is_device_buffer(buf)) {
+                cuda_error = cudaMemcpy((void *) ((char*)(rreq->dev.user_buf) + dt_true_lb),
+                        buf, data_sz,
+                        cudaMemcpyDeviceToHost);
+                if (cuda_error != cudaSuccess) {
+                    MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**cudamemcpy");
+                }
+            }
+            else
 #endif
             {
                 MPIU_Memcpy((char*)(rreq->dev.user_buf) + dt_true_lb, buf, data_sz);
@@ -350,7 +365,7 @@ int MPIDI_CH3U_Receive_data_found(MPID_Request *rreq, char *buf, MPIDI_msg_sz_t 
                             "**ch3|loadrecviov");
                 }
                 MPIU_Memcpy_CUDA((char*)(rreq->dev.iov[0].MPID_IOV_BUF),
-                        buf, data_sz, cudaMemcpyHostToDevice);
+                        buf, data_sz, cudaMemcpyDefault);
 
                 *buflen = data_sz;
                 *complete = TRUE;
@@ -412,6 +427,36 @@ int MPIDI_CH3U_Receive_data_unexpected(MPID_Request * rreq, char *buf, MPIDI_msg
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3U_RECEIVE_DATA_UNEXPECTED);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3U_RECEIVE_DATA_UNEXPECTED);
+
+#if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)  
+    int buf_isdev = 0;
+    cudaError_t cuda_error = cudaSuccess;
+    if (rdma_enable_cuda) {
+        buf_isdev = is_device_buffer((void *) buf);
+    }   
+    if (buf_isdev && rdma_cuda_smp_ipc) {
+        cuda_error = cudaMalloc((void **) &(rreq->dev.tmpbuf), rreq->dev.recv_data_sz);       
+        if (cuda_error != cudaSuccess) {
+            MPIU_ERR_SETANDJUMP1(mpi_errno,MPI_ERR_OTHER,"**nomem","**nomem %d",
+                    rreq->dev.recv_data_sz);
+        }
+        rreq->dev.tmpbuf_sz = rreq->dev.recv_data_sz;
+
+        if (rreq->dev.recv_data_sz <= *buflen)
+        {
+            cudaMemcpy((void *) rreq->dev.tmpbuf, (void *) buf,
+                    rreq->dev.recv_data_sz, cudaMemcpyDefault);
+            *buflen = rreq->dev.recv_data_sz;
+            rreq->dev.recv_pending_count = 1;
+            *complete = TRUE;
+            rreq->dev.OnDataAvail = MPIDI_CH3_ReqHandler_UnpackUEBufComplete;
+            return mpi_errno;
+        } else {
+            PRINT_ERROR("Complete data not received in device transfers, unhandled scenario for device transfers \n");
+            exit(-1);
+        }
+    }
+#endif
 
     /* FIXME: to improve performance, allocate temporary buffer from a 
        specialized buffer pool. */

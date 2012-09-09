@@ -1,4 +1,4 @@
-/* Copyright (c) 2003-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -21,6 +21,7 @@
 #include <mpispawn_ckpt.h>
 #include <signal_processor.h>
 #include <mpispawn_error_codes.h>
+#include <gethostip.h>
 
 #include <signal.h>
 #include <stdio.h>
@@ -125,9 +126,13 @@ void report_error(int abort_code)
 
     mpirun_hostent = gethostbyname(env2str("MPISPAWN_MPIRUN_HOST"));
     if (NULL == mpirun_hostent) {
-        /* Oops! */
-        PRINT_ERROR("gethostbyname() failed: %s (%d)\n", hstrerror(h_errno), h_errno);
-        exit(EXIT_FAILURE);
+        mpirun_hostent = gethostbyname(env2str("MPISPAWN_MPIRUN_HOSTIP"));
+        if (NULL == mpirun_hostent) {
+            /* Oops! */
+            PRINT_ERROR("gethostbyname() failed: %s (%d)\n",
+                    hstrerror(h_errno), h_errno);
+            exit(EXIT_FAILURE);
+        }
     }
 
     sockaddr.sin_family = AF_INET;
@@ -673,8 +678,11 @@ void mpispawn_checkin(in_port_t l_port)
 
     mpirun_hostent = gethostbyname(getenv("MPISPAWN_MPIRUN_HOST"));
     if (mpirun_hostent == NULL) {
-        herror("gethostbyname");
-        exit(EXIT_FAILURE);
+        mpirun_hostent = gethostbyname(getenv("MPISPAWN_MPIRUN_HOSTIP"));
+        if (mpirun_hostent == NULL) {
+            herror("gethostbyname");
+            exit(EXIT_FAILURE);
+        }
     }
 
     sockaddr.sin_family = AF_INET;
@@ -902,7 +910,8 @@ int main(int argc, char *argv[])
     char **host;
     int *np;
     char *command, *args, *mpispawn_env = NULL;
-    char hostname[MAX_HOST_LEN];
+    char hostname[MAX_HOST_LEN + 1];
+    char hostnameip[MAX_HOST_LEN + 1];
     int port;
 
     // Global variable
@@ -928,7 +937,8 @@ int main(int argc, char *argv[])
         add_kvc("PARENT_ROOT_PORT_NAME", portname, 1);
     }
 
-    gethostname(hostname, MAX_HOST_LEN);
+    gethostname(hostname, sizeof(hostname));
+    gethostip(hostnameip, sizeof(hostnameip));
 
 #if defined(CKPT) && defined(CR_AGGRE)
     int rv = init_ckpt_aggregation();
@@ -1007,7 +1017,11 @@ int main(int argc, char *argv[])
 
         command = mkstr("cd %s; %s", env2str("MPISPAWN_WD"), ENV_CMD);
 
-        mpispawn_env = mkstr("MPISPAWN_MPIRUN_HOST=%s" " MPISPAWN_CHECKIN_PORT=%d MPISPAWN_MPIRUN_PORT=%d", hostname, port, port);
+        mpispawn_env = mkstr("MPISPAWN_MPIRUN_HOST=%s"
+                " MPISPAWN_MPIRUN_HOSTIP=%s"
+                " MPISPAWN_CHECKIN_PORT=%d"
+                " MPISPAWN_MPIRUN_PORT=%d",
+                hostname, hostnameip, port, port);
 
         i = 0;
         while (environ[i] != NULL) {
@@ -1017,7 +1031,10 @@ int main(int argc, char *argv[])
             val = var + strlen(var) + 1;
             if (val &&
                 0 != strcmp(var, "MPISPAWN_ID") &&
-                0 != strcmp(var, "MPISPAWN_LOCAL_NPROCS") && 0 != strcmp(var, "MPISPAWN_MPIRUN_HOST") && 0 != strcmp(var, "MPISPAWN_CHECKIN_PORT") && 0 != strcmp(var, "MPISPAWN_MPIRUN_PORT")) {
+                0 != strcmp(var, "MPISPAWN_LOCAL_NPROCS") &&
+                0 != strcmp(var, "MPISPAWN_MPIRUN_HOST") &&
+                0 != strcmp(var, "MPISPAWN_CHECKIN_PORT") &&
+                0 != strcmp(var, "MPISPAWN_MPIRUN_PORT")) {
 
                 if (strchr(val, ' ') != NULL) {
                     mpispawn_env = mkstr("%s %s='%s'", mpispawn_env, var, val);
