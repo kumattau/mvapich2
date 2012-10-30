@@ -243,7 +243,7 @@ int is_device_buffer(void *buffer)
     int memory_type;
     cudaError_t cu_err;
 
-    if (!rdma_enable_cuda) {
+    if (!rdma_enable_cuda  || buffer == NULL || buffer == MPI_IN_PLACE) {
         return 0;
     }
 
