@@ -10,7 +10,7 @@
  *
  */
 
-#include <mpirunconf.h>
+#include <mpichconf.h>
 #include <mpirun_util.h>
 #include <mpispawn_tree.h>
 #include <pmi_tree.h>

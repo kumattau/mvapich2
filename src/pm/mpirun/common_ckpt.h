@@ -14,7 +14,7 @@
 #define _COMMON_CKPT_H
 
 
-#include "mpirunconf.h"
+#include "mpichconf.h"
 
 #ifdef CKPT
 

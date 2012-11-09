@@ -14,7 +14,7 @@
 #define _MEM_HOOKS_H
 
 #ifndef NEMESIS_BUILD
-#include "mpidi_ch3i_rdma_conf.h"
+#include "mpichconf.h"
 #endif
 
 #ifndef DISABLE_PTMALLOC

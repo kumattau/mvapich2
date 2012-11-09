@@ -217,7 +217,7 @@
 
 /* <_OSU_MVAPICH_> */
 #ifndef NEMESIS_BUILD
-#include "mpidi_ch3i_rdma_conf.h"
+#include "mpichconf.h"
 #endif
 #include "dreg.h"
 #if !defined(DISABLE_PTMALLOC)

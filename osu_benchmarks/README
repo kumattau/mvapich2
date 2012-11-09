@@ -1,51 +1,5 @@
 OMB (OSU Micro-Benchmarks)
 --------------------------
-The OSU Micro-Benchmarks now use the GNU build system.  Therefore you can
-simply use the following steps if mpicc is in your PATH.
-
-Example:
-	./configure
-	make
-	make install
-
-If your mpicc is not in your path or you would like to use another particular
-version you can tell configure by setting CC.
-
-Example:
-	./configure CC=/path/to/mpicc
-	make
-	make install
-
-Configure will detect whether your library supports MPI-2 and compile the
-corresponding benchmarks.  See http://mvapich.cse.ohio-state.edu/benchmarks/ to
-download the latest version of this package.
-
-Note:
-All benchmarks are run using 2 processes with the exception of osu_bcast and
-osu_mbw_mr which can use more than 2.  
-
-
-The Multiple Bandwidth / Message Rate Test (osu_mbw_mr) is intended to be used
-with block assigned ranks.  This means that all processes on the same machine
-are assigned ranks sequentially.
-
-Rank	Block   Cyclic
-----------------------
-0	host1	host1
-1	host1	host2
-2	host1	host1
-3	host1	host2
-4	host2	host1
-5	host2	host2
-6	host2	host1
-7	host2	host2
-
-If you're using mpirun_rsh with mvapich the ranks are assigned in the order
-they are seen in the hostfile or on the command line.  Please see your process
-managers' documentation for information on how to control the distribution of
-the rank to host mapping.
-
-
 MPI-1
 -----
 osu_bibw	      - Bidirectional Bandwidth Test
@@ -133,6 +87,26 @@ Multiple Bandwidth / Message Rate test
     * achieved bandwidth and message rate from one node to another node with a
     * configurable number of processes running on each node. The test is
     * available here.
+    *
+    * The Multiple Bandwidth / Message Rate Test (osu_mbw_mr) is intended to be
+    * used with block assigned ranks.  This means that all processes on the
+    * same machine are assigned ranks sequentially.
+    * 
+    * Rank	Block   Cyclic
+    * ----------------------
+    * 0	host1	host1
+    * 1	host1	host2
+    * 2	host1	host1
+    * 3	host1	host2
+    * 4	host2	host1
+    * 5	host2	host2
+    * 6	host2	host1
+    * 7	host2	host2
+    * 
+    * If you're using mpirun_rsh with mvapich the ranks are assigned in the
+    * order they are seen in the hostfile or on the command line.  Please see
+    * your process managers' documentation for information on how to control
+    * the distribution of the rank to host mapping.
 
 Multi-pair Latency Test
     * This test is very similar to the latency test. However, at the same 
@@ -322,28 +296,13 @@ Collective Latency Tests
 
 CUDA Extensions to OMB
 ----------------------
-CUDA Extensions to OMB can be enable by configuring the benchmark suite with
---enable-cuda option as shown below. The MPI library used should be able to
-support MPI_Send/MPI_Recv from buffers in GPU Device memory. 
-
-    ./configure CC=/path/to/mpicc 
-                --enable-cuda 
-                --with-cuda-include=/path/to/cuda/include
-                --with-cuda-lib=/path/to/cuda/lib
-    make
-    make install
-
-The following benchmarks have been extended to evaluate performance of
-MPI_Send/MPI_Recv from and to buffers on NVIDIA GPU devices. 
+CUDA Extensions to OMB are enabled when MVAPICH2 is configured with CUDA
+support.  The following benchmarks have been extended to evaluate performance
+of MPI_Send/MPI_Recv from and to buffers on NVIDIA GPU devices. 
 
     osu_bibw    - Bidirectional Bandwidth Test
     osu_bw      - Bandwidth Test
     osu_latency - Latency Test
-
-These extensions are enabled when the benchmark suite is configured with
---enable-cuda option, as shown above. Whether a process allocates its
-communication buffers on the GPU device or on the host can be controlled at
-run-time.
 
 Each of these benchmarks takes two input parameters. The first parameter
 indicates the location of the buffers at rank 0 and the second parameter

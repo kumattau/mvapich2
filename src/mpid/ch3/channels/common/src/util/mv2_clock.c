@@ -179,9 +179,11 @@ static double proc_get_cpu_mhz()
             continue;
         }
         if (mhz != m) {
-            PRINT_ERROR("Conflicting CPU frequency values"
-                    " detected: %lf != %lf\n", mhz, m);
-            PRINT_ERROR("Test integrity may be harmed !\n");
+            if (DEBUG) {
+                PRINT_ERROR("Conflicting CPU frequency values"
+                        " detected: %lf != %lf\n", mhz, m);
+                PRINT_ERROR("Test integrity may be harmed !\n");
+            }
             continue;
         }
     }

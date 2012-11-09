@@ -10,7 +10,7 @@
  *
  */
 
-#include "mpidi_ch3i_rdma_conf.h"
+#include "mpichconf.h"
 #include <mpimem.h>
 #include "rdma_impl.h"
 #include "pmi.h"

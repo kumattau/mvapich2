@@ -20,7 +20,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include "rdma_impl.h"
-#include "mpidi_ch3i_rdma_conf.h"
+#include "mpichconf.h"
 #include "mem_hooks.h"
 #include "pmi.h"
 #include "vbuf.h"
@@ -632,7 +632,7 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
                 rdma_ring_boot_exchange(&mv2_MPIDI_CH3I_RDMA_Process, pg,
                                         pg_rank, init_info);
             if (mpi_errno) {
-                MPIU_ERR_POP(mpi_errno)
+                MPIU_ERR_POP(mpi_errno);
             }
         }
     }

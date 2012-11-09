@@ -326,6 +326,14 @@ start_polling:
 #if defined(_ENABLE_CUDA_)
         MV2_CUDA_PROGRESS();
 #endif
+        
+        /* make progress on NBC schedules */
+        int made_progress = FALSE;
+        mpi_errno = MPIDU_Sched_progress(&made_progress);
+        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+        if (made_progress) {
+            MPIDI_CH3_Progress_signal_completion();
+        }
  
 #ifdef CKPT
         if (MPIDI_CH3I_CR_Get_state()==MPICR_STATE_REQUESTED) {
@@ -587,6 +595,15 @@ int MPIDI_CH3I_Progress_test()
 #if defined(_ENABLE_CUDA_)
     MV2_CUDA_PROGRESS();
 #endif
+
+    /* make progress on NBC schedules */
+    int made_progress = FALSE;
+    mpi_errno = MPIDU_Sched_progress(&made_progress);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    if (made_progress) {
+        MPIDI_CH3_Progress_signal_completion();
+    }
+
 #ifdef _ENABLE_UD_
     if ( !SMP_ONLY && rdma_enable_hybrid && UD_ACK_PROGRESS_TIMEOUT) {
         mv2_check_resend();
@@ -627,8 +644,11 @@ int MPIDI_CH3I_Progress_init()
 
 #if (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE)
     MPIU_THREAD_CHECK_BEGIN
-    MPID_Thread_cond_create(
-            &MPIDI_CH3I_progress_completion_cond, NULL);
+    {
+        int err;
+	    MPID_Thread_cond_create(&MPIDI_CH3I_progress_completion_cond, &err);
+        MPIU_Assert(err == 0);
+    }
     MPIU_THREAD_CHECK_END
 #endif /* (MPICH_THREAD_LEVEL == MPI_THREAD_MULTIPLE) */
 

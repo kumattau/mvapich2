@@ -12,7 +12,7 @@
 #ifndef _MPIRUN_CKPT_H
 #define _MPIRUN_CKPT_H
 
-#include "mpirunconf.h"
+#include "mpichconf.h"
 
 #ifdef CKPT
 

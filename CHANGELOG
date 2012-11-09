@@ -3,6 +3,38 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2-1.9a2 (11/08/2012)
+* Features and Enhancements (since 1.9a):
+    - Based on MPICH2-1.5
+    - Initial support for MPI-3:
+      (Available for all interfaces: OFA-IB-CH3, OFA-IWARP-CH3, OFA-RoCE-CH3, uDAPL-CH3, OFA-IB-Nemesis, PSM-CH3)
+        - Nonblocking collective functions available as "MPIX_" functions (e.g., "MPIX_Ibcast")
+        - Neighborhood collective routines available as "MPIX_" functions (e.g., "MPIX_Neighbor_allgather")
+        - MPI_Comm_split_type function available as an "MPIX_" function
+        - Support for MPIX_Type_create_hindexed_block
+        - Nonblocking communicator duplication routine MPIX_Comm_idup (will only work for single-threaded programs)
+        - MPIX_Comm_create_group support
+        - Support for matched probe functionality (e.g., MPIX_Mprobe, MPIX_Improbe, MPIX_Mrecv, and MPIX_Imrecv), 
+          (Not Available for PSM)
+        - Support for "Const" (disabled by default)
+    - Efficient vector, hindexed datatype processing on GPU buffers
+    - Tuned alltoall, Scatter and Allreduce collectives
+    - Support for Mellanox Connect-IB HCA
+    - Adaptive number of registration cache entries based on job size
+    - Revamped Build system:
+        - Uses automake instead of simplemake,
+        - Allows for parallel builds ("make -j8" and similar)
+
+* Bug-Fixes (since 1.9a):
+    - CPU frequency mismatch warning shown under debug
+    - Fix issue with MPI_IN_PLACE buffers with CUDA
+    - Fix ptmalloc initialization issue due to compiler optimization
+          - Thanks to Kyle Sheumaker from ACT for the report
+    - Adjustable MAX_NUM_PORTS at build time to support more than two ports
+    - Fix issue with MPI_Allreduce with MPI_IN_PLACE send buffer
+    - Fix memleak in MPI_Cancel with PSM interface
+            - Thanks to Andrew Friedley from LLNL for the report
+
 MVAPICH2-1.9a (09/07/2012)
 
 * Features and Enhancements (since 1.8):

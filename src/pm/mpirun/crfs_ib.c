@@ -13,7 +13,7 @@
 // for pwrite()
 #define _GNU_SOURCE
 
-#include <mpirunconf.h>
+#include <mpichconf.h>
 
 #ifdef CR_AGGRE
 

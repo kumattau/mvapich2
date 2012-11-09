@@ -19,7 +19,7 @@
 #include "ibv_param.h"
 #include "dreg.h"
 #include "mpidimpl.h"
-#include "mpidi_ch3i_rdma_conf.h"
+#include "mpichconf.h"
 
 #if defined(CKPT)
 
@@ -47,8 +47,13 @@
 #include "mpiutil.h"
 #include "error_handling.h"
 #include "debug_utils.h"
+
 #if defined(HAVE_LIBHWLOC)
 #include "hwloc_bind.h"
+#endif
+
+#ifdef ENABLE_SCR
+#include "scr.h"
 #endif
 
 #ifdef CR_FTB
@@ -587,6 +592,12 @@ static int connect_to_migration_target(char *tgt)
 int CR_Thread_loop()
 {
 
+#ifdef ENABLE_SCR
+    if ( MPICR_pg_rank == 0 )
+        printf("SCR has been enabled!\n");
+    int use_scr=0;
+#endif
+
 #ifdef CR_FTB
     char my_hostname[256];
 #else
@@ -640,7 +651,6 @@ int CR_Thread_loop()
 
         {
             /* begin phase 1: Suspend */
-
             char cr_file[CRU_MAX_VAL_LEN];
             int cr_file_fd;
 #ifdef CR_FTB
@@ -671,8 +681,18 @@ int CR_Thread_loop()
 #endif
                 sprintf(cr_file, "%s.%d.%d", valstr, checkpoint_count, MPICR_pg_rank);
             dbg("cr_file= %s\n", cr_file);
-            CR_Set_state(MPICR_STATE_REQUESTED);
 
+#ifdef ENABLE_SCR
+            if (0 == MPICR_pg_rank)
+                fprintf(stderr,"Starting SCR checkpoint\n");
+            SCR_Start_checkpoint();
+            int scr_valid = 1;
+            char scr_file[SCR_MAX_FILENAME];
+            SCR_Route_file(cr_file, scr_file);
+#endif
+
+
+            CR_Set_state(MPICR_STATE_REQUESTED);
             /*
              * Let the shared memory collectives know that a checkpoint
              * has been requested
@@ -728,7 +748,16 @@ int CR_Thread_loop()
             }
 #endif
 
+#ifdef ENABLE_SCR
+            /* open the file given to us by SCR instead */
+            fprintf(stderr,"[Rank %d] opening file %s..\n",MPICR_pg_rank,scr_file);
+            cr_file_fd = open(scr_file, O_CREAT | O_WRONLY | O_TRUNC, 0666);
+
+#else
+            fprintf(stderr,"[Rank %d] opening file %s..\n",MPICR_pg_rank,cr_file);
             cr_file_fd = open(cr_file, O_CREAT | O_WRONLY | O_TRUNC, 0666);
+
+#endif
 
             if (cr_file_fd < 0) {
                 PRINT_ERROR_ERRNO("Failed to open file '%s'", errno, cr_file);
@@ -737,6 +766,24 @@ int CR_Thread_loop()
             }
 
             MPICR_callback_fin = 0;
+
+#ifdef ENABLE_SCR
+            /* BLCR would be the component that gets control during a restart
+             * and it will look for cr_file instead of scr_file. As a way to
+             * work around this, a symbolic link between cr_file directory entry
+             * and scr_file directory entry are created.
+             */
+
+            /*TODO: a smarter way to work around this*/
+            ret = symlink(scr_file,cr_file); 
+            if (ret < 0 ) {
+                perror("symlink()");
+                fprintf(stderr,"Can't link %s to %s\n",scr_file, cr_file);
+                CR_MPDU_Ckpt_fail();
+                CR_ERR_ABORT("Checkpoint aborting!\n");
+                
+            }
+#endif
 
             ret = cr_initialize_checkpoint_args_t(&cr_args);
             if (ret < 0) {
@@ -750,7 +797,11 @@ int CR_Thread_loop()
             cr_args.cr_signal = 0;
             cr_args.cr_timeout = 0;
             cr_args.cr_flags &= ~CR_CHKPT_DUMP_ALL; // Save None
+#ifdef ENABLE_SCR
+            PRINT_DEBUG( DEBUG_FT_verbose, "cr_request_checkpoint() with file '%s'\n", scr_file );
+#else
             PRINT_DEBUG( DEBUG_FT_verbose, "cr_request_checkpoint() with file '%s'\n", cr_file );
+#endif
             ret = cr_request_checkpoint(&cr_args, &cr_handle);
             PRINT_DEBUG( DEBUG_FT_verbose, "cr_request_checkpoint() returned %d\n", ret );
             if (ret < 0) {
@@ -758,6 +809,7 @@ int CR_Thread_loop()
                 CR_MPDU_Ckpt_fail();
                 CR_ERR_ABORT("Checkpoint failed, aborting...\n");
             }
+
             // Retry while interrupted
             PRINT_DEBUG( DEBUG_FT_verbose, "cr_poll_checkpoint()\n" );
             do {
@@ -808,6 +860,7 @@ int CR_Thread_loop()
                 }
                 dbg("close cr-file %s: ret=%d\n", cr_file, ret);
             }
+
             /* end of phase 2 */
 
 #ifdef CR_FTB
@@ -895,8 +948,14 @@ int CR_Thread_loop()
 
             /* end of phase 4 */
 
+#ifdef ENABLE_SCR
+            SCR_Complete_checkpoint(scr_valid);
+            if ( 0 == MPICR_pg_rank )
+                fprintf(stderr,"Completed SCR checkpoint\n");
+#endif
+
             MPICR_is_restarting = 0;
-            if (MPICR_pg_rank == 0 || MPICR_pg_rank == MPICR_pg_size - 1)
+            if (MPICR_pg_rank == 0)
                 printf("[%d]:  CR completed...\n", MPICR_pg_rank);
 
         }                       // finished a ckpt-req

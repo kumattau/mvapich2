@@ -55,7 +55,7 @@ int MPIC_Probe(int source, int tag, MPI_Comm comm, MPI_Status *status)
 #define FUNCNAME MPIC_Send
 #undef FCNAME
 #define FCNAME "MPIC_Send"
-int MPIC_Send(void *buf, int count, MPI_Datatype datatype, int dest, int tag,
+int MPIC_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
               MPI_Comm comm)
 {
     int mpi_errno, context_id;
@@ -138,7 +138,7 @@ int MPIC_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
 #define FUNCNAME MPIC_Ssend
 #undef FCNAME
 #define FCNAME "MPIC_Ssend"
-int MPIC_Ssend(void *buf, int count, MPI_Datatype datatype, int dest, int tag,
+int MPIC_Ssend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
                MPI_Comm comm)
 {
     int mpi_errno, context_id;
@@ -176,7 +176,7 @@ int MPIC_Ssend(void *buf, int count, MPI_Datatype datatype, int dest, int tag,
 #define FUNCNAME MPIC_Sendrecv
 #undef FCNAME
 #define FCNAME "MPIC_Sendrecv"
-int MPIC_Sendrecv(void *sendbuf, int sendcount, MPI_Datatype sendtype,
+int MPIC_Sendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                   int dest, int sendtag, void *recvbuf, int recvcount,
                   MPI_Datatype recvtype, int source, int recvtag,
                   MPI_Comm comm, MPI_Status *status) 
@@ -323,7 +323,7 @@ fn_fail:
 #define FUNCNAME MPIR_Localcopy
 #undef FCNAME
 #define FCNAME "MPIR_Localcopy"
-int MPIR_Localcopy(void *sendbuf, int sendcount, MPI_Datatype sendtype,
+int MPIR_Localcopy(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                    void *recvbuf, int recvcount, MPI_Datatype recvtype)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -436,7 +436,7 @@ int MPIR_Localcopy(void *sendbuf, int sendcount, MPI_Datatype sendtype,
 	MPIDI_msg_sz_t rfirst;
 #if defined (_ENABLE_CUDA_)
     if (rdma_enable_cuda && (sbuf_isdev || rbuf_isdev)) {
-        MPIU_Malloc_CUDA(buf, COPY_BUFFER_SZ);
+         MPIU_Malloc_CUDA(buf, copy_sz);
     } else
 #endif   
     {
@@ -449,68 +449,60 @@ int MPIR_Localcopy(void *sendbuf, int sendcount, MPI_Datatype sendtype,
 	sfirst = 0;
 	rfirst = 0;
 	buf_off = 0;
-	
-	while (1)
-	{
-	    MPI_Aint last;
-	    char * buf_end;
 
-	    if (copy_sz - sfirst > COPY_BUFFER_SZ - buf_off)
-	    {
-		last = sfirst + (COPY_BUFFER_SZ - buf_off);
-	    }
-	    else
-	    {
-		last = copy_sz;
-	    }
-	    
-#if defined(_ENABLE_CUDA_)
-        if (rdma_enable_cuda && (sbuf_isdev || rbuf_isdev)) {
-	        MPID_Segment_pack_cuda(&sseg, sfirst, &last, rdt_ptr, buf + buf_off);
-        } else
-#endif
-        {
-	        MPID_Segment_pack(&sseg, sfirst, &last, buf + buf_off);
-        }
+#if defined (_ENABLE_CUDA_)
+    if (rdma_enable_cuda && (sbuf_isdev || rbuf_isdev)) {
+        MPI_Aint last;
+        last = copy_sz;
 
-	    MPIU_Assert(last > sfirst);
-	    
-	    buf_end = buf + buf_off + (last - sfirst);
-	    sfirst = last;
-	    
-#if defined(_ENABLE_CUDA_)
-        if (rdma_enable_cuda && (sbuf_isdev || rbuf_isdev)) {
-	        MPID_Segment_unpack_cuda(&rseg, rfirst, &last, sdt_ptr, buf);
-        } else 
-#endif
-        {
-	        MPID_Segment_unpack(&rseg, rfirst, &last, buf);
-        }
-	    MPIU_Assert(last > rfirst);
-
-	    rfirst = last;
-
-	    if (rfirst == copy_sz)
-	    {
-		/* successful completion */
-		break;
-	    }
-
-            /* if the send side finished, but the recv side couldn't unpack it, there's a datatype mismatch */
-            MPIU_ERR_CHKANDJUMP(sfirst == copy_sz, mpi_errno, MPI_ERR_TYPE, "**dtypemismatch");        
-
-            /* if not all data was unpacked, copy it to the front of the buffer for next time */
-	    buf_off = sfirst - rfirst;
-	    if (buf_off > 0)
-	    {
-		memmove(buf, buf_end - buf_off, buf_off);
-	    }
-	}
-#if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda && (sbuf_isdev || rbuf_isdev) && buf) {
+        MPID_Segment_pack_cuda(&sseg, sfirst, &last, rdt_ptr, buf);
+        MPID_Segment_unpack_cuda(&rseg, rfirst, &last, sdt_ptr, buf);
         MPIU_Free_CUDA(buf);
-    }
+    } else 
 #endif
+        {
+	    while (1)
+	    {
+	        MPI_Aint last;
+	        char * buf_end;
+             
+	        if (copy_sz - sfirst > COPY_BUFFER_SZ - buf_off)
+	        {
+	            last = sfirst + (COPY_BUFFER_SZ - buf_off);
+	        }
+	        else
+	        {
+	            last = copy_sz;
+	        }
+	        
+	        MPID_Segment_pack(&sseg, sfirst, &last, buf + buf_off);
+	        MPIU_Assert(last > sfirst);
+	        
+	        buf_end = buf + buf_off + (last - sfirst);
+	        sfirst = last;
+	        
+	        MPID_Segment_unpack(&rseg, rfirst, &last, buf);
+	        MPIU_Assert(last > rfirst);
+             
+	        rfirst = last;
+             
+	        if (rfirst == copy_sz)
+	        {
+	            /* successful completion */
+	            break;
+	        }
+             
+                /* if the send side finished, but the recv side couldn't unpack it, there's a datatype mismatch */
+                MPIU_ERR_CHKANDJUMP(sfirst == copy_sz, mpi_errno, MPI_ERR_TYPE, "**dtypemismatch");        
+             
+                /* if not all data was unpacked, copy it to the front of the buffer for next time */
+	        buf_off = sfirst - rfirst;
+	        if (buf_off > 0)
+	        {
+	            memmove(buf, buf_end - buf_off, buf_off);
+	        }
+	    }
+        }
     }
     
     
@@ -527,7 +519,7 @@ int MPIR_Localcopy(void *sendbuf, int sendcount, MPI_Datatype sendtype,
 #define FUNCNAME MPIC_Isend
 #undef FCNAME
 #define FCNAME "MPIC_Isend"
-int MPIC_Isend(void *buf, int count, MPI_Datatype datatype, int dest, int tag,
+int MPIC_Isend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
               MPI_Comm comm, MPI_Request *request)
 {
     int mpi_errno, context_id;
@@ -645,7 +637,7 @@ int MPIC_Wait(MPID_Request * request_ptr)
 #define FUNCNAME MPIC_Send_ft
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIC_Send_ft(void *buf, int count, MPI_Datatype datatype, int dest, int tag,
+int MPIC_Send_ft(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
                  MPI_Comm comm, int *errflag)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -716,7 +708,7 @@ int MPIC_Recv_ft(void *buf, int count, MPI_Datatype datatype, int source, int ta
 #define FUNCNAME MPIC_Ssend_ft
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIC_Ssend_ft(void *buf, int count, MPI_Datatype datatype, int dest, int tag,
+int MPIC_Ssend_ft(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
                   MPI_Comm comm, int *errflag)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -742,7 +734,7 @@ int MPIC_Ssend_ft(void *buf, int count, MPI_Datatype datatype, int dest, int tag
 #define FUNCNAME MPIC_Sendrecv_ft
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIC_Sendrecv_ft(void *sendbuf, int sendcount, MPI_Datatype sendtype,
+int MPIC_Sendrecv_ft(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                      int dest, int sendtag, void *recvbuf, int recvcount,
                      MPI_Datatype recvtype, int source, int recvtag,
                      MPI_Comm comm, MPI_Status *status, int *errflag)
@@ -856,7 +848,7 @@ int MPIC_Sendrecv_replace_ft(void *buf, int count, MPI_Datatype datatype,
 #define FUNCNAME MPIC_Isend_ft
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIC_Isend_ft(void *buf, int count, MPI_Datatype datatype, int dest, int tag,
+int MPIC_Isend_ft(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
                   MPI_Comm comm, MPI_Request *request, int *errflag)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -919,6 +911,12 @@ int MPIC_Waitall_ft(int numreq, MPI_Request requests[], MPI_Status statuses[], i
 
     MPIU_DBG_MSG_S(PT2PT, TYPICAL, "IN: errflag = %s", *errflag?"TRUE":"FALSE");
 
+    /* The MPI_TAG field is not set for send oeprations, so if we want
+       to check for MPIR_ERROR_TAG below, we should initialize all tag
+       fields here. */
+    for (i = 0; i < numreq; ++i)
+        statuses[i].MPI_TAG = 0;
+    
     mpi_errno = MPIR_Waitall_impl(numreq, requests, statuses);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 

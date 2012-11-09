@@ -109,7 +109,7 @@ one in some cases */
 #define FUNCNAME MPIR_Allgather_RD_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-static int MPIR_Allgather_RD_MV2(void *sendbuf,
+static int MPIR_Allgather_RD_MV2(const void *sendbuf,
                                  int sendcount,
                                  MPI_Datatype sendtype,
                                  void *recvbuf,
@@ -478,7 +478,7 @@ static int MPIR_Allgather_RD_MV2(void *sendbuf,
 #define FUNCNAME MPIR_Allgather_Bruck_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-static int MPIR_Allgather_Bruck_MV2(void *sendbuf,
+static int MPIR_Allgather_Bruck_MV2(const void *sendbuf,
                                     int sendcount,
                                     MPI_Datatype sendtype,
                                     void *recvbuf,
@@ -617,7 +617,7 @@ static int MPIR_Allgather_Bruck_MV2(void *sendbuf,
 #define FUNCNAME MPIR_Allgather_Ring_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-static int MPIR_Allgather_Ring_MV2(void *sendbuf,
+static int MPIR_Allgather_Ring_MV2(const void *sendbuf,
                                    int sendcount,
                                    MPI_Datatype sendtype,
                                    void *recvbuf,
@@ -689,7 +689,7 @@ static int MPIR_Allgather_Ring_MV2(void *sendbuf,
 #define FUNCNAME MPIR_Allgather_intra_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Allgather_intra_MV2(void *sendbuf,
+int MPIR_Allgather_intra_MV2(const void *sendbuf,
                              int sendcount,
                              MPI_Datatype sendtype,
                              void *recvbuf,
@@ -742,7 +742,7 @@ int MPIR_Allgather_intra_MV2(void *sendbuf,
     return (mpi_errno);
 }
 
-int MPIR_2lvl_Allgather_MV2(void *sendbuf,int sendcnt, MPI_Datatype sendtype,
+int MPIR_2lvl_Allgather_MV2(const void *sendbuf,int sendcnt, MPI_Datatype sendtype,
                             void *recvbuf, int recvcnt,MPI_Datatype recvtype,
                             MPID_Comm * comm_ptr, int *errflag)
 {
@@ -873,7 +873,7 @@ int MPIR_2lvl_Allgather_MV2(void *sendbuf,int sendcnt, MPI_Datatype sendtype,
 #define FUNCNAME MPIR_Allgather_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Allgather_MV2(void *sendbuf, int sendcount, MPI_Datatype sendtype,
+int MPIR_Allgather_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                        void *recvbuf, int recvcount, MPI_Datatype recvtype,
                        MPID_Comm * comm_ptr, int *errflag)
 {

@@ -25,7 +25,7 @@
  *
  */
 
-#include <mpirunconf.h>
+#include <mpichconf.h>
 #include <mpirun_rsh.h>
 #include <mpispawn_tree.h>
 #include <mpirun_util.h>

@@ -64,7 +64,7 @@ MPID_Request * create_request(void * hdr, MPIDI_msg_sz_t hdr_sz,
     MPIU_Memcpy(sreq->dev.pending_pkt, (char *)hdr + nb, hdr_sz - nb);
     sreq->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)((char *)sreq->dev.pending_pkt);
 #else
-    sreq->dev.pending_pkt = *(MPIDI_CH3_PktGeneric_t *) hdr;
+    sreq->dev.pending_pkt = *(MPIDI_CH3_Pkt_t *) hdr;
     sreq->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST)((char *) &sreq->dev.pending_pkt + nb);
 #endif
     sreq->ch.reqtype = REQUEST_NORMAL;

@@ -104,7 +104,7 @@ int MPID_Irsend(const void * buf, int count, MPI_Datatype datatype, int rank, in
 	MPIDI_Request_set_seqnum(sreq, seqnum);
 	
 	MPIU_THREAD_CS_ENTER(CH3COMM,vc);
-	mpi_errno = MPIU_CALL(MPIDI_CH3,iSend(vc, sreq, ready_pkt, sizeof(*ready_pkt)));
+	mpi_errno = MPIDI_CH3_iSend(vc, sreq, ready_pkt, sizeof(*ready_pkt));
 	MPIU_THREAD_CS_EXIT(CH3COMM,vc);
 	/* --BEGIN ERROR HANDLING-- */
 	if (mpi_errno != MPI_SUCCESS)
@@ -123,30 +123,34 @@ int MPID_Irsend(const void * buf, int count, MPI_Datatype datatype, int rank, in
     /* OSU-MPI2 use rndv protocol for ready send */
     if (data_sz + sizeof(MPIDI_CH3_Pkt_eager_send_t) <= vc->eager_max_msg_sz 
         && ! vc->force_rndv) {
-#endif /* defined(_OSU_MVAPICH_) */
-    if (dt_contig) {
-	mpi_errno = MPIDI_CH3_EagerContigIsend( &sreq, 
-						MPIDI_CH3_PKT_READY_SEND,
-						(char*)buf + dt_true_lb, 
-						data_sz, rank, tag, 
-						comm, context_offset );
-
-    }
-    else {
-	mpi_errno = MPIDI_CH3_EagerNoncontigSend( &sreq, 
-                                                  MPIDI_CH3_PKT_READY_SEND,
-                                                  buf, count, datatype,
-                                                  data_sz, rank, tag, 
-                                                  comm, context_offset );
-	/* If we're not complete, then add a reference to the datatype */
-	if (sreq && sreq->dev.OnDataAvail) {
-	    sreq->dev.datatype_ptr = dt_ptr;
-	    MPID_Datatype_add_ref(dt_ptr);
-	}
-    }
+#else /* defined(_OSU_MVAPICH_) */
+	if (vc->ready_eager_max_msg_sz < 0 || data_sz + sizeof(MPIDI_CH3_Pkt_ready_send_t) <= vc->ready_eager_max_msg_sz) {
+#endif
+       if (dt_contig) {
+            mpi_errno = MPIDI_CH3_EagerContigIsend( &sreq,
+                                                    MPIDI_CH3_PKT_READY_SEND,
+                                                    (char*)buf + dt_true_lb,
+                                                    data_sz, rank, tag,
+                                                    comm, context_offset );
+            
+        }
+        else {
+            mpi_errno = MPIDI_CH3_EagerNoncontigSend( &sreq,
+                                                      MPIDI_CH3_PKT_READY_SEND,
+                                                      buf, count, datatype,
+                                                      data_sz, rank, tag,
+                                                      comm, context_offset );
+            /* If we're not complete, then add a reference to the datatype */
+            if (sreq && sreq->dev.OnDataAvail) {
+                sreq->dev.datatype_ptr = dt_ptr;
+                MPID_Datatype_add_ref(dt_ptr);
+            }
+        }
+    } else {
+ 	/* Do rendezvous.  This will be sent as a regular send not as
+           a ready send, so the receiver won't know to send an error
+           if the receive has not been posted */
 #if defined(_OSU_MVAPICH_)
-    } 
-    else {
 	MPIDI_Request_create_sreq(sreq, mpi_errno, goto fn_exit);
 	MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_RSEND);
 	mpi_errno = MPIDI_CH3_RndvSend( &sreq, buf, count, datatype, dt_contig,
@@ -155,8 +159,18 @@ int MPID_Irsend(const void * buf, int count, MPI_Datatype datatype, int rank, in
 	/* Note that we don't increase the ref count on the datatype
 	   because this is a blocking call, and the calling routine
 	   must wait until sreq completes */
+#else
+	MPIDI_Request_set_msg_type( sreq, MPIDI_REQUEST_RNDV_MSG );
+	mpi_errno = vc->rndvSend_fn( &sreq, buf, count, datatype, dt_contig,
+                                     data_sz, dt_true_lb, rank, tag, comm,
+                                     context_offset );
+	if (sreq && dt_ptr != NULL) {
+	    sreq->dev.datatype_ptr = dt_ptr;
+	    MPID_Datatype_add_ref(dt_ptr);
+	}
+#endif
     }
-#endif /* defined(_OSU_MVAPICH_) */
+
  
   fn_exit:
     *request = sreq;

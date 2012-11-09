@@ -19,7 +19,7 @@
 #ifndef MPIDI_CH3_RDMA_POST_H
 #define MPIDI_CH3_RDMA_POST_H
 
-#include "mpidi_ch3i_rdma_conf.h"
+#include "mpichconf.h"
 #include "vbuf.h"
 
 /* Use this header to add implementation specific structures

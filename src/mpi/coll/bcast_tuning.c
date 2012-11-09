@@ -83,7 +83,87 @@ int MV2_set_bcast_tuning_table(int heterogeneity)
         };
         MPIU_Memcpy(mv2_bcast_thresholds_table, mv2_tmp_bcast_thresholds_table,
                     mv2_size_bcast_tuning_table * sizeof (mv2_bcast_tuning_table));
+    } else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+                MV2_ARCH_INTEL_XEON_E5_2680_16, MV2_HCA_MLX_CX_FDR) && !heterogeneity){
+        mv2_size_bcast_tuning_table=7;
+        mv2_bcast_thresholds_table = MPIU_Malloc(mv2_size_bcast_tuning_table *
+                                                 sizeof (mv2_bcast_tuning_table));
+
+         mv2_bcast_tuning_table mv2_tmp_bcast_thresholds_table[]={
+            {16,
+             8192, 4, 4,
+             {1, 1},
+             2, {{0, 8192, &MPIR_Bcast_binomial_MV2},
+                 {8192, -1, &MPIR_Pipelined_Bcast_MV2},
+                },
+             1, {{0, -1, &MPIR_Shmem_Bcast_MV2}}
+            },
+            {32,
+             8192, 4, 4,
+             {1, 1, 1},
+             3, {{0, 16384, &MPIR_Bcast_binomial_MV2},
+                 {8192, 524288, &MPIR_Pipelined_Bcast_MV2},
+                 {524288, -1, &MPIR_Bcast_scatter_ring_allgather_shm_MV2}
+                },
+             1, {{0, -1, &MPIR_Shmem_Bcast_MV2}}
+            },
+            {64,
+             8192, 4, 4,
+             {1, 1, 1, 0},
+             4, {{0, 4096, &MPIR_Knomial_Bcast_inter_node_wrapper_MV2},
+                 {4096, 8192, &MPIR_Bcast_binomial_MV2},
+                 {8192, 262144, &MPIR_Pipelined_Bcast_MV2},
+                 {262144, -1, &MPIR_Bcast_scatter_ring_allgather_MV2}
+                },
+             1, {{0, -1, &MPIR_Shmem_Bcast_MV2}}
+            },
+            {128,
+             8192, 4, 4,
+             {1, 1, 1, 0},
+             4, {{0, 2048, &MPIR_Knomial_Bcast_inter_node_wrapper_MV2},
+                 {2048, 16384, &MPIR_Bcast_binomial_MV2},
+                 {16384, 524288, &MPIR_Pipelined_Bcast_MV2},
+                 {52488, -1, &MPIR_Bcast_scatter_ring_allgather_MV2}
+                },
+             1, {{0, -1, &MPIR_Shmem_Bcast_MV2}}
+            },
+            {256,
+             8192, 4, 4,
+             {1, 1, 1, 0},
+             4, {{0, 2048, &MPIR_Knomial_Bcast_inter_node_wrapper_MV2},
+                 {2048, 8192, &MPIR_Bcast_binomial_MV2},
+                 {8192, 524288, &MPIR_Pipelined_Bcast_MV2},
+                 {524288, -1, &MPIR_Bcast_scatter_ring_allgather_MV2}
+                },
+             1, {{0, -1, &MPIR_Shmem_Bcast_MV2}}
+            },
+            {512,
+             8192, 4, 4,
+             {1, 1, 1, 1},
+             4, {{0,  4096, &MPIR_Knomial_Bcast_inter_node_wrapper_MV2},
+                 {4096, 16384, &MPIR_Bcast_binomial_MV2},
+                 {16384, 262144, &MPIR_Pipelined_Bcast_MV2},
+                 {262144, -1, &MPIR_Bcast_scatter_ring_allgather_shm_MV2}
+                },
+             1, {{0, -1, &MPIR_Shmem_Bcast_MV2}}
+            },
+            {1024,
+             8192, 4, 4,
+             {1, 1, 1, 1},
+             4, {{0,  4096, &MPIR_Knomial_Bcast_inter_node_wrapper_MV2},
+                 {4096, 16384, &MPIR_Bcast_binomial_MV2},
+                 {16384, 262144, &MPIR_Pipelined_Bcast_MV2},
+                 {262144, -1, &MPIR_Bcast_scatter_ring_allgather_shm_MV2}
+                },
+             1, {{0, -1, &MPIR_Shmem_Bcast_MV2}}
+            }
+
+      };
+
+        MPIU_Memcpy(mv2_bcast_thresholds_table, mv2_tmp_bcast_thresholds_table,
+                    mv2_size_bcast_tuning_table * sizeof (mv2_bcast_tuning_table));
     } else 
+
 #endif /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
     {
         mv2_size_bcast_tuning_table = 7;

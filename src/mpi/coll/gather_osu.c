@@ -32,7 +32,7 @@ extern int MPIR_Limic_Gather_OSU( void *sendbuf, int sendbytes, void *recvbuf,
                                   int recvbytes, MPID_Comm *shmem_comm_ptr );
 #endif /*#if defined(_SMP_LIMIC_)*/
 
-typedef int (*MV2_Gather_function_ptr) (void *sendbuf,
+typedef int (*MV2_Gather_function_ptr) (const void *sendbuf,
                                         int sendcnt,
                                         MPI_Datatype sendtype,
                                         void *recvbuf,
@@ -47,7 +47,7 @@ MV2_Gather_function_ptr MV2_Gather_intra_node_function = NULL;
 #define FUNCNAME MPIR_Gather_MV2_Direct
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Gather_MV2_Direct(void *sendbuf,
+int MPIR_Gather_MV2_Direct(const void *sendbuf,
                                   int sendcnt,
                                   MPI_Datatype sendtype,
                                   void *recvbuf,
@@ -185,7 +185,7 @@ int MPIR_Gather_MV2_Direct(void *sendbuf,
  *                      intra node gather function  
  * errflag           - (out) to record errors
  */
-int MPIR_pt_pt_intra_gather(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
+int MPIR_pt_pt_intra_gather(const void *sendbuf, int sendcnt, MPI_Datatype sendtype,
                             void *recvbuf, int recvcnt, MPI_Datatype recvtype,
                             int root, int rank, 
                             void *tmp_buf, int nbytes,
@@ -235,7 +235,7 @@ int MPIR_pt_pt_intra_gather(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
 #define FUNCNAME MPIR_Gather_MV2_two_level_Direct
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Gather_MV2_two_level_Direct(void *sendbuf,
+int MPIR_Gather_MV2_two_level_Direct(const void *sendbuf,
                                             int sendcnt,
                                             MPI_Datatype sendtype,
                                             void *recvbuf,
@@ -1629,7 +1629,7 @@ int MPIR_Intra_node_LIMIC_Gather_MV2(
 #define FUNCNAME MPIR_Gather_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Gather_MV2(void *sendbuf,
+int MPIR_Gather_MV2(const void *sendbuf,
                     int sendcnt,
                     MPI_Datatype sendtype,
                     void *recvbuf,

@@ -150,6 +150,7 @@ extern int rdma_cuda_event_sync;
 extern int rdma_enable_cuda;
 extern int rdma_eager_cudahost_reg;
 extern int rdma_cuda_vector_dt_opt;
+extern int rdma_cuda_kernel_dt_opt;
 #if defined(HAVE_CUDA_IPC)
 extern int rdma_cuda_ipc;
 extern int rdma_cuda_smp_ipc;
@@ -249,7 +250,9 @@ extern int rdma_default_async_thread_stack_size;
 #define RDMA_DEFAULT_POLLING_SET_LIMIT  (64)
 #define RDMA_FP_DEFAULT_BUF_SIZE        (4096)
 #define MAX_NUM_HCAS                    (4)
+#ifndef MAX_NUM_PORTS
 #define MAX_NUM_PORTS                   (2)
+#endif
 #define MAX_NUM_QP_PER_PORT             (4)
 #define RDMA_QOS_MAX_NUM_SLS	        (15)
 #define RDMA_QOS_DEFAULT_NUM_SLS	    (8)
@@ -263,6 +266,7 @@ extern int rdma_default_async_thread_stack_size;
                                          MAX_NUM_QP_PER_PORT)
 
 #define RDMA_NDREG_ENTRIES              (1100)
+#define RDMA_NDREG_ENTRIES_MAX          (4096)
 #define RDMA_VBUF_POOL_SIZE             (512)
 #define RDMA_UD_VBUF_POOL_SIZE          (8192)
 #define RDMA_MIN_VBUF_POOL_SIZE         (512)
@@ -562,6 +566,7 @@ typedef enum mv2_env_param_id {
     MV2_CUDA_NUM_RNDV_BLOCKS,
     MV2_CUDA_NUM_STREAMS,
     MV2_CUDA_VECTOR_OPT,
+    MV2_CUDA_KERNEL_OPT,
     MV2_EAGER_CUDAHOST_REG,
     MV2_USE_CUDA,
     MV2_CUDA_NUM_EVENTS,

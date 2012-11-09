@@ -22,7 +22,7 @@
 #include <sys/time.h>
 #include <sys/stat.h>
 #include <sys/sendfile.h>
-#include "mpirunconf.h"
+#include "mpichconf.h"
 #include "debug_utils.h"
 #include <mpispawn_error_codes.h>
 

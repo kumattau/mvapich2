@@ -10,7 +10,7 @@
  *
  */
 
-#include "mpirunconf.h"
+#include "mpichconf.h"
 
 #ifdef CKPT
 

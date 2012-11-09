@@ -108,6 +108,9 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
     verno_major = PSM_VERNO_MAJOR;
     verno_minor = PSM_VERNO_MINOR;
 
+    mpi_errno = MPIDI_CH3U_Comm_register_create_hook(MPIDI_CH3I_comm_create, NULL);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    
     /* initialize tuning-table for collectives. 
      * Its ok to pass heterogeneity as 0. We anyway fall-back to the 
      * basic case for PSM */ 
@@ -193,6 +196,11 @@ int psm_doinit(int has_parent, MPIDI_PG_t *pg, int pg_rank)
 
     /* initialize VC state, eager size value, queues etc */
     psm_other_init(pg);
+
+    mpi_errno = MPIDI_CH3U_Comm_register_destroy_hook(MPIDI_CH3I_comm_destroy, NULL);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+
 
     MPIU_Free(errs);
     MPIU_Free(epidlist);

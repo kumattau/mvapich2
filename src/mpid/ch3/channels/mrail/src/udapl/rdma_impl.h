@@ -19,7 +19,7 @@
 #ifndef RDMA_IMPL_H
 #define RDMA_IMPL_H
 
-#include "mpidi_ch3i_rdma_conf.h"
+#include "mpichconf.h"
 #include "udapl_param.h"
 #include "udapl_header.h"
 #include "mpidi_ch3_impl.h"
@@ -101,4 +101,7 @@ int MRAILI_Process_send(void *vbuf_addr);
 
 void rdma_init_parameters (mv2_MPIDI_CH3I_RDMA_Process_t *proc);
 
+int MPIDI_CH3I_comm_create(MPID_Comm *comm, void *param);
+
+int MPIDI_CH3I_comm_destroy(MPID_Comm *comm, void *param);
 #endif /* RDMA_IMPL_H */

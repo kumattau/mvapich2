@@ -1,19 +1,28 @@
-MVAPICH2 is a high performance MPI-2 implementation for InfiniBand,
-10GigE/iWARP and RoCE.  MVAPICH2 delivers best performance, scalability and
-fault tolerance for high-end computing systems and servers.  MVAPICH2 provides
-underlying support for several interfaces (such as OFA-IB, OFA-iWARP, OFA-RoCE,
-PSM, uDAPL, Shared Memory, and TCP) for portability across multiple networks. 
+MVAPICH2 is a high performance MPI-2 implementation (with initial support for
+MPI-3) for InfiniBand, 10GigE/iWARP and RoCE.  MVAPICH2 delivers best
+performance, scalability and fault tolerance for high-end computing systems and
+servers.  MVAPICH2 provides underlying support for several interfaces (such as
+OFA-IB, OFA-iWARP, OFA-RoCE, PSM, uDAPL, Shared Memory, and TCP) for
+portability across multiple networks. 
 
 This package uses the basic GNU build system.  To install a default build of
 MVAPICH2 from the release tarball you can issue the following commands:
 
     ./configure --prefix=/path/to/install/mvapich2
-    make
+    make            # make -j<num threads> for parallel build
     make install    
 
 The latest MVAPICH2 release tarball can be downloaded from:
 
     http://mvapich.cse.ohio-state.edu/download/mvapich2/
+
+If you are downloading MVAPICH2 from svn, you can use the following steps to
+install a default build.
+
+    ./autogen.sh
+    ./configure --prefix=/path/to/install/mvapich2
+    make            # make -j<num threads> for parallel build
+    make install    
 
 For more information about this package and the MVAPICH project please refer to
 the project web site.  This site is frequently updated with latest releases,

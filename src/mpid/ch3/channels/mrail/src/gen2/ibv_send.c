@@ -16,7 +16,7 @@
  *
  */
 
-#include "mpidi_ch3i_rdma_conf.h"
+#include "mpichconf.h"
 #include <mpimem.h>
 #include "rdma_impl.h"
 #include "ibv_impl.h"
@@ -214,7 +214,7 @@ int MPIDI_CH3I_RDMA_put_datav(MPIDI_VC_t * vc, MPID_IOV * iov, int n,
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_PUT_DATAV);
 
     /* Insert implementation here */
-    fprintf( stderr, "Function not implemented\n" );
+    PRINT_ERROR("MPIDI_CH3I_RDMA_put_datav is not implemented\n" );
     exit(EXIT_FAILURE);
 
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_PUT_DATAV);
@@ -235,7 +235,7 @@ int MPIDI_CH3I_RDMA_read_datav(MPIDI_VC_t * recv_vc_ptr, MPID_IOV * iov,
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_RDMA_READ_DATAV);
 
     /* Insert implementation here */
-    fprintf( stderr, "Function not implemented\n" );
+    PRINT_ERROR("MPIDI_CH3I_RDMA_read_datav Function not implemented\n");
     exit(EXIT_FAILURE);
 
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_RDMA_READ_DATAV);
@@ -1128,14 +1128,12 @@ int MPIDI_CH3I_MRAILI_Eager_send(MPIDI_VC_t * vc,
 
     if (vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE) {
         /*MPIDI_CH3I_MRAILI_Pkt_comm_header * p = (MPIDI_CH3I_MRAILI_Pkt_comm_header *) v->pheader;*/
-        /*printf("%d:log message vbuf %p to vc %p, vc state %d, type %d\n",
-                MPIDI_Process.my_pg_rank, v, vc, vc->ch.state, p->type);*/
         MPIDI_CH3I_CR_msg_log_queue_entry_t *entry;
         if (rdma_use_coalesce) {
             entry = MSG_LOG_QUEUE_TAIL(vc);
             if (entry->buf == v) /*since the vbuf is already filled, no need to queue it again*/
             {
-                fprintf(stderr,"coalesced buffer\n");
+                PRINT_DEBUG(DEBUG_FT_verbose, "coalesced buffer\n");
                 return MPI_MRAIL_MSG_QUEUED;
             }
         }
@@ -1252,7 +1250,7 @@ int MRAILI_Backlog_send(MPIDI_VC_t * vc, int rail)
 
 #ifdef CKPT
     if (mv2_MPIDI_CH3I_RDMA_Process.has_srq) {
-        fprintf( stderr, "{%s, %d] CKPT has_srq error\n", __FILE__, __LINE__  );
+        PRINT_ERROR("{%s, %d] CKPT has_srq error\n", __FILE__, __LINE__  );
         exit(EXIT_FAILURE);
     }
 #endif
@@ -1699,6 +1697,11 @@ int MRAILI_Process_send(void *vbuf_addr)
     case MPIDI_CH3_PKT_PT_RMA_DONE:
     case MPIDI_CH3_PKT_LOCK_GET_UNLOCK: /* optimization for single gets */
     case MPIDI_CH3_PKT_ACCUM_IMMED: 
+    case MPIDI_CH3_PKT_CAS:
+    case MPIDI_CH3_PKT_CAS_UNLOCK:
+    case MPIDI_CH3_PKT_CAS_RESP:
+    case MPIDI_CH3_PKT_FOP:
+    case MPIDI_CH3_PKT_FOP_RESP:
     case MPIDI_CH3_PKT_FLOW_CNTL_UPDATE:
     case MPIDI_CH3_PKT_RNDV_R3_ACK:
     case MPIDI_CH3_PKT_ZCOPY_FINISH:
@@ -1725,7 +1728,7 @@ int MRAILI_Process_send(void *vbuf_addr)
         vc->pending_close_ops -= 1;
         if (vc->disconnect == 1 && vc->pending_close_ops == 0)
         {
-            mpi_errno = MPIU_CALL(MPIDI_CH3,Connection_terminate(vc));
+            mpi_errno = MPIDI_CH3_Connection_terminate(vc);
             if(mpi_errno)
             {
               MPIU_ERR_POP(mpi_errno);

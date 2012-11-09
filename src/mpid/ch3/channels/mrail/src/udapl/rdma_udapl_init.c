@@ -16,7 +16,7 @@
  *
  */
 
-#include "mpidi_ch3i_rdma_conf.h"
+#include "mpichconf.h"
 #include <sched.h>
 #include <mpimem.h>
 #include "rdma_impl.h"

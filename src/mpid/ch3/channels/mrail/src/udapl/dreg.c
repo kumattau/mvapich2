@@ -27,7 +27,7 @@
  * the registration cache implementation.
  */
 
-#include "mpidi_ch3i_rdma_conf.h"
+#include "mpichconf.h"
 
 #include <mpimem.h>
 #include <stdlib.h>
@@ -567,7 +567,7 @@ void vma_db_init (void)
     vma_list.list_count = 0;
 }
 
-void dreg_init()
+int dreg_init()
 {
     int i;
 
@@ -632,8 +632,13 @@ void dreg_init()
     INIT_FREE_LIST(&entry_free_list);
     
 #endif
+    return 0;
 }
 
+int dreg_finalize()
+{
+
+}
 #ifndef DISABLE_PTMALLOC
 
 int have_dereg() 

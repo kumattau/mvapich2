@@ -325,14 +325,12 @@ void MPIDI_CH3U_Buffer_copy_cuda(
     else
     {
         char * buf;
-        MPIDI_msg_sz_t buf_off;
         MPID_Segment sseg;
         MPIDI_msg_sz_t sfirst;
         MPID_Segment rseg;
         MPIDI_msg_sz_t rfirst;
 
-        MPIU_Malloc_CUDA(buf, MPIDI_COPY_BUFFER_SZ);
-        /* --BEGIN ERROR HANDLING-- */
+        MPIU_Malloc_CUDA(buf, sdata_sz);
         if (buf == NULL)
         {
             MPIU_DBG_MSG(CH3_OTHER,TYPICAL,"SRBuf allocation failure");
@@ -341,79 +339,36 @@ void MPIDI_CH3U_Buffer_copy_cuda(
             *rsz = 0;
             goto fn_exit;
         }
-        /* --END ERROR HANDLING-- */
 
         MPID_Segment_init(sbuf, scount, sdt, &sseg, 0);
         MPID_Segment_init(rbuf, rcount, rdt, &rseg, 0);
 
         sfirst = 0;
         rfirst = 0;
-        buf_off = 0;
+        MPI_Aint last = sdata_sz;
 
-        for(;;)
-        {
-            MPI_Aint last;
-            char * buf_end;
+        MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
+                    "pre-pack first=" MPIDI_MSG_SZ_FMT ", last=" MPIDI_MSG_SZ_FMT, 
+                    sfirst, last ));
+        MPID_Segment_pack_cuda(&sseg, sfirst, &last, sdt_ptr, buf);
+        MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
+                    "post-pack first=" MPIDI_MSG_SZ_FMT ", last=" MPIDI_MSG_SZ_FMT, 
+                    sfirst, last ));
 
-            if (sdata_sz - sfirst > MPIDI_COPY_BUFFER_SZ - buf_off)
-            {
-                last = sfirst + (MPIDI_COPY_BUFFER_SZ - buf_off);
-            }
-            else
-            {
-                last = sdata_sz;
-            }
+        MPIU_Assert(last > sfirst);
 
-            MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
-                        "pre-pack first=" MPIDI_MSG_SZ_FMT ", last=" MPIDI_MSG_SZ_FMT, 
-                        sfirst, last ));
-            MPID_Segment_pack_cuda(&sseg, sfirst, &last, sdt_ptr, buf + buf_off);
-            MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
-                        "post-pack first=" MPIDI_MSG_SZ_FMT ", last=" MPIDI_MSG_SZ_FMT, 
-                        sfirst, last ));
-            /* --BEGIN ERROR HANDLING-- */
-            MPIU_Assert(last > sfirst);
-            /* --END ERROR HANDLING-- */
+        sfirst = last;
 
-            buf_end = buf + buf_off + (last - sfirst);
-            sfirst = last;
+        MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
+                    "pre-unpack first=" MPIDI_MSG_SZ_FMT ", last=" MPIDI_MSG_SZ_FMT, 
+                    rfirst, last ));
+        MPID_Segment_unpack_cuda(&rseg, rfirst, &last, rdt_ptr, buf);
+        MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
+                    "post-unpack first=" MPIDI_MSG_SZ_FMT ", last=" MPIDI_MSG_SZ_FMT, 
+                    rfirst, last ));
+        MPIU_Assert(last > rfirst);
 
-            MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
-                        "pre-unpack first=" MPIDI_MSG_SZ_FMT ", last=" MPIDI_MSG_SZ_FMT, 
-                        rfirst, last ));
-            MPID_Segment_unpack_cuda(&rseg, rfirst, &last, rdt_ptr, buf);
-            MPIU_DBG_MSG_FMT(CH3_OTHER,VERBOSE,(MPIU_DBG_FDEST,
-                        "post-unpack first=" MPIDI_MSG_SZ_FMT ", last=" MPIDI_MSG_SZ_FMT, 
-                        rfirst, last ));
-            /* --BEGIN ERROR HANDLING-- */
-            MPIU_Assert(last > rfirst);
-            /* --END ERROR HANDLING-- */
-
-            rfirst = last;
-
-            if (rfirst == sdata_sz)
-            {
-                /* successful completion */
-                break;
-            }
-
-            /* --BEGIN ERROR HANDLING-- */
-            if (sfirst == sdata_sz)
-            {
-                /* datatype mismatch -- remaining bytes could not be unpacked */
-                *rmpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPIR_ERR_RECOVERABLE, FCNAME, __LINE__, MPI_ERR_TYPE, "**dtypemismatch", 0);
-                break;
-            }
-            /* --END ERROR HANDLING-- */
-
-            buf_off = sfirst - rfirst;
-            if (buf_off > 0)
-            {
-                MPIU_DBG_MSG_FMT(CH3_OTHER, VERBOSE, (MPIU_DBG_FDEST,
-                            "moved " MPIDI_MSG_SZ_FMT " bytes to the beginning of the tmp buffer", buf_off));
-                memmove(buf, buf_end - buf_off, buf_off);
-            }
-        }
+        rfirst = last;
 
         *rsz = rfirst;
         MPIU_Free_CUDA(buf);

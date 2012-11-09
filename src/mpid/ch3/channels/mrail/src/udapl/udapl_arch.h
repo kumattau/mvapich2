@@ -27,7 +27,7 @@
 #ifndef _VIA64_H
 #define _VIA64_H
 
-#include "mpidi_ch3i_rdma_conf.h"
+#include "mpichconf.h"
 #include <sys/types.h>
 /*
  * typedefs and macros that make it easier to make things

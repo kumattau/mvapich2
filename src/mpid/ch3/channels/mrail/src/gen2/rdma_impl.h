@@ -556,4 +556,6 @@ int reload_alternate_path(struct ibv_qp *qp);
 int power_two(int x);
 int qp_required(MPIDI_VC_t* vc, int my_rank, int dst_rank);
 
+int MPIDI_CH3I_comm_create(MPID_Comm *comm, void *param);
+int MPIDI_CH3I_comm_destroy(MPID_Comm *comm, void *param);
 #endif                          /* RDMA_IMPL_H */

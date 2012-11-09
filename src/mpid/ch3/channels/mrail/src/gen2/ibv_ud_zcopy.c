@@ -10,7 +10,7 @@
  *
  */
 
-#include "mpidi_ch3i_rdma_conf.h"
+#include "mpichconf.h"
 #include <mpimem.h>
 #include "rdma_impl.h"
 #include "ibv_impl.h"
@@ -80,8 +80,7 @@ static inline int MPIDI_CH3_Rendezvous_zcopy_resend_cts(MPIDI_VC_t * vc,
     cts_pkt->rndv.rndv_qpn = rqp->ud_qp->qp_num;
     cts_pkt->rndv.hca_index = rqp->hca_num;
 
-    mpi_errno = MPIU_CALL(MPIDI_CH3,iStartMsg(vc, cts_pkt, 
-                sizeof(*cts_pkt), &cts_req));
+    mpi_errno = MPIDI_CH3_iStartMsg(vc, cts_pkt, sizeof(*cts_pkt), &cts_req);
     if (mpi_errno != MPI_SUCCESS) {
         MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,
                 "**ch3|ctspkt");

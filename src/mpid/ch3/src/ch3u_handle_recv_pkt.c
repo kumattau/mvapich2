@@ -16,9 +16,7 @@
  */
 
 #include "mpidimpl.h"
-#if defined(_OSU_MVAPICH_)
 #include "mpidrma.h"
-#endif
 
 /*
  * This file contains the dispatch routine called by the ch3 progress 
@@ -123,6 +121,11 @@ int MPIDI_CH3_Pkt_size_index[] = {
     sizeof(MPIDI_CH3_Pkt_lock_get_unlock_t),
     sizeof(MPIDI_CH3_Pkt_lock_accum_unlock_t),
     sizeof(MPIDI_CH3_Pkt_accum_immed_t),
+    sizeof(MPIDI_CH3_Pkt_cas_t),
+    sizeof(MPIDI_CH3_Pkt_cas_t),
+    sizeof(MPIDI_CH3_Pkt_cas_resp_t),
+    sizeof(MPIDI_CH3_Pkt_fop_t),
+    sizeof(MPIDI_CH3_Pkt_fop_resp_t),
     sizeof(MPIDI_CH3I_MRAILI_Pkt_flow_cntl),
     sizeof(MPIDI_CH3_Pkt_close_t),
     -1
@@ -845,6 +848,16 @@ int MPIDI_CH3_PktHandler_Init( MPIDI_CH3_PktHandler_Fcn *pktArray[],
 	MPIDI_CH3_PktHandler_LockGetUnlock;
     pktArray[MPIDI_CH3_PKT_ACCUM_IMMED] = 
 	MPIDI_CH3_PktHandler_Accumulate_Immed;
+    pktArray[MPIDI_CH3_PKT_CAS] =
+        MPIDI_CH3_PktHandler_CAS;
+    pktArray[MPIDI_CH3_PKT_CAS_UNLOCK] =
+        MPIDI_CH3_PktHandler_CAS;
+    pktArray[MPIDI_CH3_PKT_CAS_RESP] =
+        MPIDI_CH3_PktHandler_CASResp;
+    pktArray[MPIDI_CH3_PKT_FOP] =
+        MPIDI_CH3_PktHandler_FOP;
+    pktArray[MPIDI_CH3_PKT_FOP_RESP] =
+        MPIDI_CH3_PktHandler_FOPResp;
     /* End of default RMA operations */
 
  fn_fail:

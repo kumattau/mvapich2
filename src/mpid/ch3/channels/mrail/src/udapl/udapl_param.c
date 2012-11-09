@@ -113,7 +113,8 @@ int rdma_num_extra_polls = 0;
 int rdma_use_smp = 1;
 int rdma_use_blocking = 0;
 
-unsigned int  rdma_ndreg_entries = RDMA_NDREG_ENTRIES;
+unsigned int  rdma_ndreg_entries = 0;
+unsigned int  rdma_ndreg_entries_max = RDMA_NDREG_ENTRIES_MAX; 
 unsigned long rdma_dreg_cache_limit = 0;
 
 mv2_polling_level rdma_polling_level = MV2_POLLING_LEVEL_1;
@@ -223,8 +224,10 @@ void
 rdma_init_parameters (mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 {
     char* value = NULL;
+    int pg_size=0; 
     proc->arch_type = mv2_get_arch_type();
     proc->heterogeneity = 0;
+    PMI_Get_size(&pg_size);
 
     if ((value = (char *) getenv ("MV2_DAPL_PROVIDER")) != NULL)
       {
@@ -339,9 +342,18 @@ rdma_init_parameters (mv2_MPIDI_CH3I_RDMA_Process_t *proc)
       {
           rdma_default_max_sg_list = (u_int32_t) atol (value);
       }
-    if ((value = getenv("MV2_NDREG_ENTRIES")) != NULL) {
-        rdma_ndreg_entries = (unsigned int)atoi(value);
+    if ((value = getenv("MV2_NDREG_ENTRIES_MAX")) != NULL) {
+        rdma_ndreg_entries_max = atol(value);
     }
+    if ((value = getenv("MV2_NDREG_ENTRIES")) != NULL) {
+        rdma_ndreg_entries = 
+           (((unsigned int)atoi(value) < rdma_ndreg_entries_max) ?
+            (unsigned int)atoi(value) : rdma_ndreg_entries_max);
+    } else { 
+        rdma_ndreg_entries = 
+           ((RDMA_NDREG_ENTRIES + 2*pg_size < rdma_ndreg_entries_max) ?
+             RDMA_NDREG_ENTRIES + 2*pg_size : rdma_ndreg_entries_max);
+    } 
     if ((value = (char *) getenv ("MV2_VBUF_MAX")) != NULL)
       {
           udapl_vbuf_max = (int) atoi (value);

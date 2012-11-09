@@ -153,6 +153,11 @@ GetSeqNumVbuf (vbuf * buf)
       case MPIDI_CH3_PKT_PUT_RNDV:
       case MPIDI_CH3_PKT_ACCUMULATE_RNDV:
       case MPIDI_CH3_PKT_GET_RNDV:
+      case MPIDI_CH3_PKT_CAS:
+      case MPIDI_CH3_PKT_CAS_UNLOCK:
+      case MPIDI_CH3_PKT_CAS_RESP:
+      case MPIDI_CH3_PKT_FOP:
+      case MPIDI_CH3_PKT_FOP_RESP:
           {
               return ((MPIDI_CH3_Pkt_put_t *)(buf->pheader))->seqnum;
           }

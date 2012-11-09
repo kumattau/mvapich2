@@ -64,7 +64,7 @@ static inline MPID_Request * create_eagercontig_request(MPIDI_VC_t * vc,
             sreq->dev.iov[0].MPID_IOV_BUF, sreq->dev.iov[0].MPID_IOV_LEN);
     sreq->dev.iov[0].MPID_IOV_BUF = (MPID_IOV_BUF_CAST) sreq->dev.pending_pkt;
 #else
-    sreq->dev.pending_pkt = *(MPIDI_CH3_PktGeneric_t *) sreq->dev.iov[0].MPID_IOV_BUF;
+    sreq->dev.pending_pkt = *(MPIDI_CH3_Pkt_t *) sreq->dev.iov[0].MPID_IOV_BUF;
     sreq->dev.iov[0].MPID_IOV_BUF = (void *)&sreq->dev.pending_pkt;
 #endif
     sreq->ch.reqtype = REQUEST_NORMAL;

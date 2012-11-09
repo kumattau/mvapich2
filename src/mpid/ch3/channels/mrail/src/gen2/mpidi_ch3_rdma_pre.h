@@ -19,7 +19,7 @@
 #ifndef MPIDI_CH3_RDMA_PRE_H
 #define MPIDI_CH3_RDMA_PRE_H
 
-#include "mpidi_ch3i_rdma_conf.h"
+#include "mpichconf.h"
 #include "vbuf.h"
 #include "mpiimpl.h"
 #include "ibv_param.h"

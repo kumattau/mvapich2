@@ -198,6 +198,7 @@ extern int mv2_mcast_scatter_large_sys_size;
 
 /* Use inside allreduce_osu.c*/
 extern int mv2_disable_shmem_allreduce;
+extern int mv2_user_allreduce_two_level;
 #if defined(_MCST_SUPPORT_)
 extern int mv2_use_mcast_allreduce; 
 extern int mv2_mcast_allreduce_small_msg_size; 
@@ -229,6 +230,7 @@ extern int  mv2_knomial_inter_leader_threshold;
 extern int  mv2_knomial_inter_leader_bcast;
 extern int  mv2_enable_shmem_bcast;
 extern int  mv2_bcast_two_level_system_size; 
+extern int  mv2_alltoall_inplace_old;
 
 extern int mv2_bcast_scatter_ring_overlap;
 extern int mv2_bcast_scatter_ring_overlap_msg_upperbound;
@@ -238,21 +240,21 @@ extern int mv2_bcast_scatter_ring_overlap_cores_lowerbound;
 extern int mv2_disable_shmem_reduce;
 extern int mv2_use_knomial_reduce;
 extern int mv2_reduce_knomial_factor;
-extern int MPIR_Reduce_two_level_helper_MV2(void *sendbuf,
+extern int MPIR_Reduce_two_level_helper_MV2(const void *sendbuf,
                                      void *recvbuf,
                                      int count,
                                      MPI_Datatype datatype,
                                      MPI_Op op,
                                      int root,
                                      MPID_Comm * comm_ptr, int *errflag); 
-extern int MPIR_Reduce_redscat_gather_MV2(void *sendbuf,
+extern int MPIR_Reduce_redscat_gather_MV2(const void *sendbuf,
                                           void *recvbuf,
                                           int count,
                                           MPI_Datatype datatype,
                                           MPI_Op op,
                                           int root,
                                           MPID_Comm * comm_ptr, int *errflag); 
-extern int MPIR_Reduce_binomial_MV2(void *sendbuf,
+extern int MPIR_Reduce_binomial_MV2(const void *sendbuf,
                                     void *recvbuf,
                                     int count,
                                     MPI_Datatype datatype,
@@ -304,7 +306,7 @@ int enable_split_comm(pthread_t);
 void MPIR_pof2_comm(MPID_Comm *, int, int);
 
 /*Fn pointers for collectives */
-int (*reduce_fn)(void *sendbuf,
+int (*reduce_fn)(const void *sendbuf,
                              void *recvbuf,
                              int count,
                              MPI_Datatype datatype,

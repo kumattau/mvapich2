@@ -278,7 +278,98 @@ int MV2_set_gather_tuning_table(int heterogeneity)
 #endif        
         MPIU_Memcpy(mv2_gather_thresholds_table, mv2_tmp_gather_thresholds_table,
                 mv2_size_gather_tuning_table * sizeof (mv2_gather_tuning_table));
-    } else 
+    } else if(MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+              MV2_ARCH_INTEL_XEON_E5_2680_16, MV2_HCA_MLX_CX_FDR) && !heterogeneity){
+        mv2_size_gather_tuning_table=7;
+        mv2_gather_thresholds_table = MPIU_Malloc(mv2_size_gather_tuning_table*
+                sizeof (mv2_gather_tuning_table)); 
+#if defined(_SMP_LIMIC_)
+        mv2_gather_tuning_table mv2_tmp_gather_thresholds_table[]={
+            {16,
+                1,{{0, -1, &MPIR_Gather_MV2_Direct}},
+                1,{{0, -1, &MPIR_Gather_MV2_Direct}},
+                1,{{0, -1, 0}}
+            },
+            {24,
+                2,{{0, 512, &MPIR_Gather_MV2_two_level_Direct}, 
+                    {512,-1, &MPIR_Gather_MV2_Direct}},
+                1,{{0, -1,  &MPIR_Gather_intra}},
+                1,{{0, -1, 0}}
+            },
+            {32,
+                2,{{0, 1024, &MPIR_Gather_MV2_two_level_Direct}, 
+                    {1024,-1, &MPIR_Gather_MV2_Direct}},
+                1,{{0, -1, &MPIR_Gather_intra}},
+                1,{{0, -1, 0}}
+            },
+            {128,
+                2,{{0, 2048, &MPIR_Gather_MV2_two_level_Direct}, 
+                    {2048,-1, &MPIR_Gather_MV2_Direct}},
+                1,{{0, -1, &MPIR_Gather_intra}},
+                1,{{0, -1, 0}}
+            },
+            {256,
+                2,{{0, 512, &MPIR_Gather_MV2_two_level_Direct}, 
+                    {512, -1, &MPIR_Gather_MV2_Direct}},
+                1,{{0, -1, &MPIR_Gather_intra}}, 
+                1,{{0, -1, 0}}
+            },
+            {512,
+                3,{{0, 32, &MPIR_Gather_intra}, 
+                    {32, 8196, &MPIR_Gather_MV2_two_level_Direct},
+                    {8196, -1, &MPIR_Gather_MV2_Direct}},
+                1,{{0, -1, &MPIR_Gather_intra}}, 
+                1,{{0, -1, 0}}
+            },
+            {1024,
+                2,{{0, 32, &MPIR_Gather_intra}, 
+                    {32, -1, &MPIR_Gather_MV2_two_level_Direct}},
+                1,{{0, -1, &MPIR_Gather_MV2_Direct}}, 
+                1,{{0, -1, 0}}
+            }
+        };
+#else /*#if defined(_SMP_LIMIC_)*/
+        mv2_gather_tuning_table mv2_tmp_gather_thresholds_table[]={
+            {16,
+                2,{{0, 524288, &MPIR_Gather_MV2_Direct},
+                   {524288, -1, &MPIR_Gather_intra}},
+                1,{{0, -1, &MPIR_Gather_MV2_Direct}}},
+            {32,
+                3,{{0, 16384, &MPIR_Gather_MV2_Direct}, 
+                    {16384, 131072, &MPIR_Gather_intra},
+                    {131072, -1, &MPIR_Gather_MV2_two_level_Direct}},
+                1,{{0, -1, &MPIR_Gather_intra}}},
+            {64,
+                3,{{0, 256, &MPIR_Gather_MV2_two_level_Direct}, 
+                    {256, 16384, &MPIR_Gather_MV2_Direct},
+                    {256, -1, &MPIR_Gather_MV2_two_level_Direct}},
+                1,{{0, -1, &MPIR_Gather_intra}}},
+            {128,
+                3,{{0, 512, &MPIR_Gather_MV2_two_level_Direct}, 
+                    {512, 16384, &MPIR_Gather_MV2_Direct},
+                    {16384, -1, &MPIR_Gather_MV2_two_level_Direct}},
+                1,{{0, -1, &MPIR_Gather_intra}}},
+            {256,
+                3,{{0, 512, &MPIR_Gather_MV2_two_level_Direct}, 
+                    {512, 16384, &MPIR_Gather_MV2_Direct},
+                    {16384, -1, &MPIR_Gather_MV2_two_level_Direct}},
+                1,{{0, -1, &MPIR_Gather_intra}}},
+            {512,
+                3,{{0, 512, &MPIR_Gather_MV2_two_level_Direct}, 
+                    {512, 16384, &MPIR_Gather_MV2_Direct},
+                    {8196, -1, &MPIR_Gather_MV2_two_level_Direct}},
+                1,{{0, -1, &MPIR_Gather_intra}}},
+            {1024,
+                3,{{0, 512, &MPIR_Gather_MV2_two_level_Direct}, 
+                    {512, 16384, &MPIR_Gather_MV2_Direct},
+                    {8196, -1, &MPIR_Gather_MV2_two_level_Direct}},
+                1,{{0, -1, &MPIR_Gather_intra}}},
+        };
+#endif
+
+        MPIU_Memcpy(mv2_gather_thresholds_table, mv2_tmp_gather_thresholds_table,
+                mv2_size_gather_tuning_table * sizeof (mv2_gather_tuning_table));
+    } else
 #endif /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
     { 
         mv2_size_gather_tuning_table=7;

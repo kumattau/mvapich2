@@ -11,7 +11,7 @@
  */
 
 #include "rdma_impl.h"
-#include "mpidi_ch3i_rdma_conf.h"
+#include "mpichconf.h"
 #include "pmi.h"
 #include "vbuf.h"
 #include "ibv_param.h"

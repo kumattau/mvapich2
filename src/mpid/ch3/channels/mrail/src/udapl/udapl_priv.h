@@ -13,7 +13,7 @@
 #ifndef _UDAPL_PRIV_H__
 #define _UDAPL_PRIV_H__
 
-#include "mpidi_ch3i_rdma_conf.h"
+#include "mpichconf.h"
 
 typedef struct rdma_iba_addr_tb
 {

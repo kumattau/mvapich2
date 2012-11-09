@@ -52,6 +52,7 @@ typedef struct sorttype {
     int orig_idx;
 } sorttype;
 
+#if defined(HAVE_QSORT)
 static int sorttype_compare(const void *v1, const void *v2) {
     const sorttype *s1 = v1;
     const sorttype *s2 = v2;
@@ -67,8 +68,11 @@ static int sorttype_compare(const void *v1, const void *v2) {
     else if (s1->orig_idx < s2->orig_idx)
         return -1;
 
+    /* --BEGIN ERROR HANDLING-- */
     return 0; /* should never happen */
+    /* --END ERROR HANDLING-- */
 }
+#endif
 
 /* Sort the entries in keytable into increasing order by key.  A stable
    sort should be used incase the key values are not unique. */
@@ -90,6 +94,7 @@ static void MPIU_Sort_inttable( sorttype *keytable, int size )
     else
 #endif
     {
+        /* --BEGIN USEREXTENSION-- */
         /* fall through to insertion sort if qsort is unavailable/disabled */
         for (i = 1; i < size; ++i) {
             tmp = keytable[i];
@@ -107,6 +112,7 @@ static void MPIU_Sort_inttable( sorttype *keytable, int size )
             }
             keytable[j+1] = tmp;
         }
+        /* --END USEREXTENSION-- */
     }
 }
 
@@ -363,8 +369,6 @@ int MPIR_Comm_split_impl(MPID_Comm *comm_ptr, int color, int key, MPID_Comm **ne
 	}
         MPIU_THREAD_CS_EXIT(MPI_OBJ, comm_ptr);
 
-        /* Notify the device of this new communicator */
-	MPID_Dev_comm_create_hook( *newcomm_ptr );
         mpi_errno = MPIR_Comm_commit(*newcomm_ptr);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     }
@@ -440,7 +444,6 @@ int MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm)
         MPID_BEGIN_ERROR_CHECKS;
         {
 	    MPIR_ERRTEST_COMM(comm, mpi_errno);
-            if (mpi_errno) goto fn_fail;
 	}
         MPID_END_ERROR_CHECKS;
     }

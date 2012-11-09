@@ -142,6 +142,9 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 
     pg_size = MPIDI_PG_Get_size(pg);
 
+    mpi_errno = MPIDI_CH3U_Comm_register_create_hook(MPIDI_CH3I_comm_create, NULL);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    
     /*Determine to use which connection management */
     threshold = MPIDI_CH3I_CM_DEFAULT_ON_DEMAND_THRESHOLD;
 
@@ -392,6 +395,11 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 #endif
 #endif
 
+    mpi_errno = MPIDI_CH3U_Comm_register_destroy_hook(MPIDI_CH3I_comm_destroy, NULL);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+
+
   fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_INIT);
     return mpi_errno;
@@ -485,19 +493,6 @@ int MPIDI_CH3_PortFnsInit(MPIDI_PortFns * portFns)
         MPIU_UNREFERENCED_ARG(portFns);
 
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_RDMA_PORTFNSINIT);
-    return MPI_SUCCESS;
-}
-
-#undef FUNCNAME
-#define FUNCNAME MPIDI_CH3_RMAFnsInit
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_CH3_RMAFnsInit(MPIDI_RMAFns * RMAFns)
-{
-    MPIDI_STATE_DECL(MPIDI_CH3_RMAFNSINIT);
-    MPIDI_FUNC_ENTER(MPIDI_CH3_RMAFNSINIT);
-
-    MPIDI_FUNC_EXIT(MPIDI_CH3_RMAFNSINIT);
     return MPI_SUCCESS;
 }
 

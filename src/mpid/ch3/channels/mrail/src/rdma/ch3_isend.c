@@ -33,7 +33,7 @@ static void isend_update_request(MPID_Request* sreq, void* pkt, int pkt_sz, int 
     MPIU_Memcpy(sreq->dev.pending_pkt, (char *) pkt+ nb,  pkt_sz - nb);
     sreq->dev.iov[0].MPID_IOV_BUF = (char *) sreq->dev.pending_pkt;
 #else
-    sreq->dev.pending_pkt = *(MPIDI_CH3_PktGeneric_t *) pkt;
+    sreq->dev.pending_pkt = *(MPIDI_CH3_Pkt_t *) pkt;
     sreq->dev.iov[0].MPID_IOV_BUF = (char *) &sreq->dev.pending_pkt + nb;
 #endif
     sreq->dev.iov[0].MPID_IOV_LEN = pkt_sz - nb;

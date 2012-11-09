@@ -78,6 +78,7 @@ int psm_do_cancel(MPID_Request *req)
 {
     psm_error_t psmerr;
     int mpi_errno = MPI_SUCCESS;
+    psm_mq_status_t status;
 
     if(req->psm_flags & PSM_SEND_CANCEL) {
         printf("send cancel unsupported\n");
@@ -93,10 +94,15 @@ int psm_do_cancel(MPID_Request *req)
         _psm_exit_;
         if(unlikely(psmerr != PSM_OK)) {
             MPIU_ERR_POP(mpi_errno);
+        } else {
+            psmerr = psm_mq_test(&(req->mqreq), &status);
+            if (psmerr == PSM_OK) {
+                req->status.cancelled = TRUE;
+                req->status.count = 0;
+            } else {
+                MPIU_ERR_POP(mpi_errno);
+            }
         }
-
-        req->status.cancelled = TRUE;
-        req->status.count = 0;
     }
 
 fn_fail:
@@ -200,6 +206,14 @@ int psm_progress_wait(int blocking)
 
     _psm_enter_;
     do {
+      /* make progress on NBC schedules */
+      int made_progress = FALSE;
+      mpi_errno = MPIDU_Sched_progress(&made_progress);
+      if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+      if (made_progress) {
+          goto out_2; 
+      }
+
       psmerr = psm_mq_ipeek(psmdev_cw.mq, &gblpsmreq, NULL);
     
       if(psmerr == PSM_OK) {

@@ -110,6 +110,7 @@
 #define MV2_ARCH_INTEL_XEON_E5630_8     8
 #define MV2_ARCH_INTEL_XEON_X5650_12    9
 #define MV2_ARCH_INTEL_XEON_E5_2670_16  10
+#define MV2_ARCH_INTEL_XEON_E5_2680_16  11
 #define MV2_ARCH_INTEL_END              1000
 
 /* AMD Architectures */

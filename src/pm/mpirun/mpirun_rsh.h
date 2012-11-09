@@ -74,7 +74,7 @@
 #include <assert.h>
 #include <libgen.h>
 #include "mpirun_util.h"
-#include <mpirunconf.h>
+#include <mpichconf.h>
 
 #define PRINT_MVAPICH2_VERSION() printf("Version: mvapich2-" MVAPICH2_VERSION "\n")
 

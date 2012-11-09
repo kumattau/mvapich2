@@ -20,7 +20,6 @@
 #if !defined(MPICH_MPIDPRE_H_INCLUDED)
 #define MPICH_MPIDPRE_H_INCLUDED
 
-#include "mpidi_ch3_conf.h"
 
 /* Tell the compiler that we're going to declare struct MPID_Request later */
 struct MPID_Request;
@@ -34,6 +33,9 @@ struct MPID_Request;
 typedef MPIR_Pint MPIDI_msg_sz_t;
 
 #include "mpid_dataloop.h"
+
+/* FIXME: Include here? */
+#include "opa_primitives.h"
 
 /* Include definitions from the channel which must exist before items in this 
    file (mpidpre.h) or the file it includes (mpiimpl.h) can be defined. */
@@ -77,6 +79,9 @@ typedef int32_t MPIR_Rank_t;
 typedef MPIR_Rank_t MPID_Node_id_t;
 
 
+/* provides "pre" typedefs and such for NBC scheduling mechanism */
+#include "mpid_sched_pre.h"
+
 /* For the typical communication system for which the ch3 channel is
    appropriate, 16 bits is sufficient for the rank.  By also using 16
    bits for the context, we can reduce the size of the match
@@ -108,27 +113,14 @@ typedef union {
     MPIDI_Message_match_parts_t parts;
     MPIR_Upint whole;
 } MPIDI_Message_match;
+/* NOTE-T1: We set MPIR_Process.attrs.tag_ub to this value during MPID_Init, but
+ * upper level code may then modify this value after MPID_Init and before the
+ * end of MPIR_Init_thread.  Don't use this value directly, always check the
+ * runtime global value. */
 #define MPIDI_TAG_UB (0x7fffffff)
 
-/* Packet types are defined in mpidpkt.h .  The intent is to remove the
-   need for packet definitions outside of the device directories.
-   Currently, the request contains a block of storage in which a 
-   packet header can be copied in the event that a message cannot be
-   send immediately.  
-*/
-typedef struct MPIDI_CH3_PktGeneric { int32_t kind; int32_t *pktptrs[1]; int32_t pktwords[6];
-#if defined(_OSU_MVAPICH_)
-#if defined(_SMP_LIMIC_)
-    int32_t osu_pktwords[20];
-#else
-    int32_t osu_pktwords[18];
-#endif
-#endif /* defined(_OSU_MVAPICH_) */
-#if defined (_OSU_PSM_)
-    int32_t osu_psm_pktbytes[8];
-#endif
-                                                                                              
-} MPIDI_CH3_PktGeneric_t;
+/* Provides MPIDI_CH3_Pkt_t.  Must come after MPIDI_Message_match definition. */
+#include "mpidpkt.h"
 
 /*
  * THIS IS OBSOLETE AND UNUSED, BUT RETAINED FOR ITS DESCRIPTIONS OF THE
@@ -176,6 +168,57 @@ typedef struct MPIDI_CH3_PktGeneric { int32_t kind; int32_t *pktptrs[1]; int32_t
  * by the channel instance.
  */
 
+#define HAVE_DEV_COMM_HOOK
+#define MPID_Dev_comm_create_hook(comm_) MPIDI_CH3I_Comm_create_hook(comm_)
+#define MPID_Dev_comm_destroy_hook(comm_) MPIDI_CH3I_Comm_destroy_hook(comm_)
+
+#define MPIDI_CH3I_Comm_AS_enabled(comm) ((comm)->ch.anysource_enabled)
+
+typedef struct MPIDI_CH3I_comm
+{
+    int coll_active;        /* TRUE iff this communicator is collectively active */
+    int anysource_enabled;  /* TRUE iff this anysource recvs can be posted on this communicator */
+    struct MPID_nem_barrier_vars *barrier_vars; /* shared memory variables used in barrier */
+    struct MPID_Comm *next; /* next pointer for list of communicators */
+    struct MPID_Comm *prev; /* prev pointer for list of communicators */
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+    MPI_Comm     leader_comm;
+    MPI_Comm     shmem_comm;
+    MPI_Comm     allgather_comm;
+    int*    leader_map;
+    int*    leader_rank;
+    int*    node_sizes; 
+    int*    allgather_new_ranks;
+    int     is_uniform; 
+    int     shmem_comm_rank;
+    int     shmem_coll_ok;
+    int     allgather_comm_ok; 
+    int     leader_group_size;
+    int     is_global_block;
+    int     is_pof2; /* Boolean to know if comm size is equal to pof2  */
+    int     gpof2; /* Greater pof2 < size of comm */
+    int     intra_node_done; /* Used to check if intra node communication has been done 
+                                with mcast and bcast */
+    void    *shmem_info; /* intra node shmem info */
+#if defined(_OSU_MVAPICH_)
+#if defined(_SMP_LIMIC_)    
+    MPI_Comm     intra_sock_comm;
+    MPI_Comm     intra_sock_leader_comm;
+    int*         socket_size;
+    int          is_socket_uniform;
+    int          use_intra_sock_comm;
+#endif    
+#if defined(_MCST_SUPPORT_)
+    int     is_mcast_ok;
+    void    *bcast_info;
+#endif
+#endif /* _OSU_MVAPICH_ */
+#endif /* _OSU_MVAPICH_ || _OSU_PSM_*/
+}
+MPIDI_CH3I_comm_t;
+
+#define MPID_DEV_COMM_DECL MPIDI_CH3I_comm_t ch;
+
 #ifndef HAVE_MPIDI_VCRT
 #define HAVE_MPIDI_VCRT
 typedef struct MPIDI_VCRT * MPID_VCRT;
@@ -193,7 +236,6 @@ typedef struct MPIDI_VC * MPID_VCR;
 
 #if defined (_OSU_PSM_)
 #define MPIDI_CH3_WIN_DECL      \
-    int my_rank;                \
     int *rank_mapping;          \
     int16_t outstanding_rma;
 #endif
@@ -293,7 +335,8 @@ typedef struct MPIDI_VC * MPID_VCR;
                                processes. */                             \
     volatile int my_pt_rma_puts_accs;  /* no. of passive target puts/accums  \
                                           that this process has          \
-                                          completed as target */
+                                          completed as target */         \
+    MPI_Aint *sizes;      /* array of sizes of all windows */            \
  
 #ifdef MPIDI_CH3_WIN_DECL
 #define MPID_DEV_WIN_DECL \
@@ -394,12 +437,12 @@ typedef struct MPIDI_Request {
        a fixed spot in the request? */
 #ifdef _ENABLE_CUDA_
     /* CUDA has a large CTS packet. It is ineffitient to have static 
-       MPIDI_CH3_PktGeneric_t var */
+       MPIDI_CH3_Pkt_t var */
     void *pending_pkt;
     void *cuda_srbuf_entry;
     int is_device_tmpbuf;
 #else
-    MPIDI_CH3_PktGeneric_t pending_pkt;
+    MPIDI_CH3_Pkt_t pending_pkt;
 #endif
     struct MPID_Request * next;
 } MPIDI_Request;

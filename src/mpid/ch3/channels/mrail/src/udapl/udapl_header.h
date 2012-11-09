@@ -13,7 +13,7 @@
 #ifndef _UDAPL_HEADER_H
 #define _UDAPL_HEADER_H
 
-#include "mpidi_ch3i_rdma_conf.h"
+#include "mpichconf.h"
 
 #include "udapl_param.h"
 #include "udapl_arch.h"

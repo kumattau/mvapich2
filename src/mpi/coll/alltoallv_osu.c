@@ -46,13 +46,13 @@
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
 
-int MPIR_Alltoallv_intra_MV2(void *sendbuf,
-                             int *sendcnts,
-                             int *sdispls,
+int MPIR_Alltoallv_intra_MV2(const void *sendbuf,
+                             const int *sendcnts,
+                             const int *sdispls,
                              MPI_Datatype sendtype,
                              void *recvbuf,
-                             int *recvcnts,
-                             int *rdispls,
+                             const int *recvcnts,
+                             const int *rdispls,
                              MPI_Datatype recvtype,
                              MPID_Comm * comm_ptr, int *errflag)
 {
@@ -177,9 +177,6 @@ int MPIR_Alltoallv_intra_MV2(void *sendbuf,
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT(comm_ptr);
     return (mpi_errno);
-
-  fn_fail:
-    goto fn_exit;
 }
 
 /* end:nested */
@@ -189,9 +186,9 @@ int MPIR_Alltoallv_intra_MV2(void *sendbuf,
 #define FUNCNAME MPIR_Alltoallv_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Alltoallv_MV2(void *sendbuf, int *sendcnts, int *sdispls,
-                       MPI_Datatype sendtype, void *recvbuf, int *recvcnts,
-                       int *rdispls, MPI_Datatype recvtype,
+int MPIR_Alltoallv_MV2(const void *sendbuf, const int *sendcnts, const int *sdispls,
+                       MPI_Datatype sendtype, void *recvbuf, const int *recvcnts,
+                       const int *rdispls, MPI_Datatype recvtype,
                        MPID_Comm * comm_ptr, int *errflag)
 {
     int mpi_errno = MPI_SUCCESS;

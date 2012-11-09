@@ -27,7 +27,7 @@
 #ifndef _VIUTIL_H
 #define _VIUTIL_H
 
-#include "mpidi_ch3i_rdma_conf.h"
+#include "mpichconf.h"
 
 #include <string.h>
 #include <errno.h>

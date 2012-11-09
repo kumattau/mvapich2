@@ -101,40 +101,4 @@ typedef struct MPIDI_CH3I_Process_group_s
         __p->pkbuf = 0;              \
         __p->pksz = 0                \
 
-#define HAVE_DEV_COMM_HOOK
-#define MPID_Dev_comm_create_hook(comm_) do {       \
-	int _mpi_errno;                                 \
-	_mpi_errno = MPIDI_CH3I_comm_create (comm_);    \
-	if (_mpi_errno) MPIU_ERR_POP (_mpi_errno);      \
-} while(0)
-
-#define MPID_Dev_comm_destroy_hook(comm_) do {      \
-	int _mpi_errno;                                 \
-	_mpi_errno = MPIDI_CH3I_comm_destroy (comm_);   \
-	if (_mpi_errno) MPIU_ERR_POP (_mpi_errno);      \
-} while(0)
-
-typedef struct MPIDI_CH3I_comm
-{
-     MPI_Comm     leader_comm;
-     MPI_Comm     shmem_comm;
-     MPI_Comm     allgather_comm;
-     int*    leader_map;
-     int*    leader_rank;
-     int*    node_sizes; 
-     int*    allgather_new_ranks;
-     int     is_uniform; 
-     int     shmem_comm_rank;
-     int     shmem_coll_ok;
-     int     allgather_comm_ok;
-     int     leader_group_size;
-     int     is_global_block;
-     int     intra_node_done;
-     int     is_pof2; /* Boolean to know if comm size is equal to pof2  */
-     int     gpof2; /* Greater pof2 < size of comm */ 
-     void    *shmem_info; /* intra node shmem info */
- } MPIDI_CH3I_comm_t;
- 
- #define MPID_DEV_COMM_DECL MPIDI_CH3I_comm_t ch;
-
 #endif

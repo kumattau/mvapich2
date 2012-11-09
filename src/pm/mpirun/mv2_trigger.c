@@ -13,7 +13,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include "mpirunconf.h"
+#include "mpichconf.h"
 
 #ifdef CR_FTB
 

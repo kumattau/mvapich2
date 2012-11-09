@@ -13,7 +13,7 @@
 #ifndef __COMMON_CRFS_H__
 #define __COMMON_CRFS_H__
 
-#include "mpirunconf.h"
+#include "mpichconf.h"
 
 #ifdef CKPT
 

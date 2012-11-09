@@ -29,7 +29,7 @@
 #define FUNCNAME MPIR_Reduce_binomial_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Reduce_binomial_MV2(void *sendbuf,
+int MPIR_Reduce_binomial_MV2(const void *sendbuf,
                                     void *recvbuf,
                                     int count,
                                     MPI_Datatype datatype,
@@ -283,7 +283,7 @@ int MPIR_Reduce_binomial_MV2(void *sendbuf,
 #define FUNCNAME MPIR_Reduce_redscat_gather_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Reduce_redscat_gather_MV2(void *sendbuf,
+int MPIR_Reduce_redscat_gather_MV2(const void *sendbuf,
                                           void *recvbuf,
                                           int count,
                                           MPI_Datatype datatype,
@@ -686,7 +686,7 @@ int MPIR_Reduce_redscat_gather_MV2(void *sendbuf,
 #define FUNCNAME MPIR_Shmem_Reduce_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Reduce_shmem_MV2(void *sendbuf,
+int MPIR_Reduce_shmem_MV2(const void *sendbuf,
                           void *recvbuf,
                           int count,
                           MPI_Datatype datatype,
@@ -865,7 +865,7 @@ int MPIR_Reduce_knomial_trace(int root, MPID_Comm *comm_ptr, int *dst,
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIR_Reduce_knomial_MV2 (
-        void *sendbuf,
+        const void *sendbuf,
         void *recvbuf,
         int count,
         MPI_Datatype datatype,
@@ -1053,7 +1053,7 @@ fn_fail:
 #define FUNCNAME MPIR_Reduce_two_level_helper_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Reduce_two_level_helper_MV2(void *sendbuf,
+int MPIR_Reduce_two_level_helper_MV2(const void *sendbuf,
                                      void *recvbuf,
                                      int count,
                                      MPI_Datatype datatype,
@@ -1111,19 +1111,34 @@ int MPIR_Reduce_two_level_helper_MV2(void *sendbuf,
         if (comm_ptr->ch.shmem_coll_ok == 1 &&
             stride <= mv2_coll_param.shmem_intra_reduce_msg &&
             mv2_disable_shmem_reduce == 0 && is_commutative == 1) {
-            out_buf = recvbuf;
-            if (sendbuf != MPI_IN_PLACE) {
-                in_buf = sendbuf;
-            } else {
-                in_buf = recvbuf;
-            }
-            if (local_rank == 0 && my_rank != root) {
+            if (local_rank == 0 ) {
                 MPIU_CHKLMEM_MALLOC(tmp_buf, void *, count *
                                     (MPIR_MAX(extent, true_extent)),
                                     mpi_errno, "receive buffer");
                 tmp_buf = (void *) ((char *) tmp_buf - true_lb);
-                out_buf = tmp_buf;
             }
+
+            if (sendbuf != MPI_IN_PLACE) {
+                in_buf = (void *)sendbuf;
+            } else {
+                in_buf = recvbuf;
+            }
+
+            if (local_rank == 0) { 
+                 if( my_rank != root) {
+                     out_buf = tmp_buf;
+                 } else { 
+                     out_buf = recvbuf; 
+                     if(in_buf == out_buf) { 
+                        in_buf = MPI_IN_PLACE; 
+                        out_buf = recvbuf; 
+                     } 
+                 } 
+            } else {
+                in_buf  = sendbuf; 
+                out_buf = NULL;
+            }
+
             mpi_errno = MPIR_Reduce_shmem_MV2(in_buf, out_buf, count,
                                               datatype, op,
                                               0, shmem_commptr, errflag);
@@ -1168,9 +1183,8 @@ int MPIR_Reduce_two_level_helper_MV2(void *sendbuf,
                             mpi_errno, "receive buffer");
         tmp_buf = (void *) ((char *) tmp_buf - true_lb);
     }
-
     if (sendbuf != MPI_IN_PLACE) {
-        in_buf = sendbuf;
+        in_buf = (void *)sendbuf;
     } else {
         in_buf = recvbuf;
     }
@@ -1224,8 +1238,13 @@ int MPIR_Reduce_two_level_helper_MV2(void *sendbuf,
                 /* I am the root of the leader-comm, and the 
                  * root of the reduce op. So, I will write the 
                  * final result directly into my recvbuf */
-                in_buf = tmp_buf;
-                out_buf = recvbuf;
+                if(tmp_buf != recvbuf) { 
+                    in_buf = tmp_buf;
+                    out_buf = recvbuf;
+                } else { 
+                    in_buf = MPI_IN_PLACE; 
+                    out_buf = recvbuf; 
+                } 
             } else {
                 in_buf = MPI_IN_PLACE;
                 out_buf = tmp_buf;
@@ -1359,7 +1378,7 @@ int MPIR_Reduce_two_level_helper_MV2(void *sendbuf,
 #define FUNCNAME MPIR_Reduce_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Reduce_MV2(void *sendbuf,
+int MPIR_Reduce_MV2(const void *sendbuf,
                     void *recvbuf,
                     int count,
                     MPI_Datatype datatype,

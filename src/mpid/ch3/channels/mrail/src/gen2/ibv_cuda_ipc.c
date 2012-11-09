@@ -407,7 +407,7 @@ void cudaipc_finalize()
         if (vc->smp.can_access_peer) {
             local_index = CUDAIPC_BUF_LOCAL_IDX(vc->smp.local_rank);
             for (i = 0; i < cudaipc_num_stage_buffers; i++) {
-                CUDA_CHECK(cudaEventDestroy(cudaipc_local_data[local_index + i].ipcEvent));
+                CUDA_CHECK(cudaEventDestroy(cudaipc_remote_data[local_index + i].ipcEvent));        
                 CUDA_CHECK(cudaIpcCloseMemHandle(cudaipc_remote_data[local_index + i].buffer));
             }
         }
@@ -422,6 +422,7 @@ void cudaipc_finalize()
         if (vc->smp.can_access_peer) {
             local_index = CUDAIPC_BUF_LOCAL_IDX(vc->smp.local_rank);
             for (i = 0; i < cudaipc_num_stage_buffers; i++) {
+                CUDA_CHECK(cudaEventDestroy(cudaipc_local_data[local_index + i].ipcEvent));
                 CUDA_CHECK(cudaFree(cudaipc_local_data[local_index + i].buffer));
             }
         }

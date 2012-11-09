@@ -10,8 +10,9 @@
  *
  */
 
+#include "mpichconf.h"
+
 #ifndef NEMESIS_BUILD
-#include "mpidi_ch3i_rdma_conf.h"
 #ifndef DAPL_DEFAULT_PROVIDER
 #include "ibv_param.h"
 #else
@@ -19,7 +20,6 @@
 #endif
 #else
 #define _GNU_SOURCE 1
-#include "mpidi_ch3i_nemesis_conf.h"
 #include "ib_param.h"
 #endif
 
@@ -40,6 +40,7 @@
 #include <pthread.h>
 #include "debug_utils.h"
 
+#define PT_TEST_ALLOC_SIZE (64)
 static int mem_hook_init = 0;
 
 #if !(defined(HAVE_SYSCALL) && defined(__NR_munmap))
@@ -168,12 +169,16 @@ int mvapich2_minit()
 
     memset(&mvapich2_minfo, 0, sizeof(mvapich2_malloc_info_t));
 
-    ptr_malloc = malloc(64);
-    ptr_calloc = calloc(64, 1);
-    ptr_realloc = realloc(ptr_malloc, 64);
-    ptr_valloc = valloc(64);
-    ptr_memalign = memalign(64, 64);
+    ptr_malloc = malloc(PT_TEST_ALLOC_SIZE);
+    ptr_calloc = calloc(PT_TEST_ALLOC_SIZE, 1);
+    ptr_realloc = realloc(ptr_malloc, PT_TEST_ALLOC_SIZE);
+    ptr_valloc = valloc(PT_TEST_ALLOC_SIZE);
+    ptr_memalign = memalign(64, PT_TEST_ALLOC_SIZE);
 
+    memset(ptr_calloc, 0, PT_TEST_ALLOC_SIZE);
+    memset(ptr_realloc, 0, PT_TEST_ALLOC_SIZE);
+    memset(ptr_valloc, 0, PT_TEST_ALLOC_SIZE);
+    memset(ptr_memalign, 0, PT_TEST_ALLOC_SIZE);
 
     free(ptr_calloc);
     free(ptr_valloc);

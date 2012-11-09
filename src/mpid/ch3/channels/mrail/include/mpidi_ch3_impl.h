@@ -19,7 +19,7 @@
 #if !defined(MPICH_MPIDI_CH3_IMPL_H_INCLUDED)
 #define MPICH_MPIDI_CH3_IMPL_H_INCLUDED
 
-#include "mpidi_ch3i_rdma_conf.h"
+#include "mpichconf.h"
 #include "mpidimpl.h"
 #include "mpiu_os_wrappers.h"
 

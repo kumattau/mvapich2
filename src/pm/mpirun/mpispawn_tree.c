@@ -24,7 +24,7 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include "mpirunconf.h"
+#include "mpichconf.h"
 #include <math.h>
 #include <netdb.h>
 

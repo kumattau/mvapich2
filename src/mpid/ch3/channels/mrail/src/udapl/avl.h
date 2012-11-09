@@ -25,7 +25,7 @@
 #ifndef AVL_H
 #define AVL_H
 
-#include "mpidi_ch3i_rdma_conf.h"
+#include "mpichconf.h"
 
 #ifdef __STDC__
 # define _P(x)  x

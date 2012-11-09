@@ -10,7 +10,7 @@
  *
  */
 
-#include "mpirunconf.h"
+#include "mpichconf.h"
 #include "mpirun_util.h"
 #include "debug_utils.h"
 #include "string.h"

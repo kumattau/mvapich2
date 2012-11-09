@@ -13,11 +13,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#ifdef NEMESIS_BUILD
-#include "mpidi_ch3i_nemesis_conf.h"
-#else
-#include "mpidi_ch3i_rdma_conf.h"
-#endif
+#include "mpichconf.h"
 
 #if defined(HAVE_LIBIBUMAD)
 #include <infiniband/umad.h>
@@ -30,6 +26,7 @@
 static mv2_multirail_info_type g_mv2_multirail_info = mv2_num_rail_unknown;
 
 #define MV2_STR_MLX4         "mlx4"
+#define MV2_STR_MLX5         "mlx5"
 #define MV2_STR_MTHCA        "mthca"
 #define MV2_STR_IPATH        "ipath"
 #define MV2_STR_QIB          "qib"
@@ -140,8 +137,9 @@ mv2_hca_type mv2_get_hca_type( struct ibv_device *dev )
         return MV2_HCA_UNKWN;
     }
 
-    if (!strncmp(dev_name, MV2_STR_MLX4, 4) || !strncmp(dev_name,
-                MV2_STR_MTHCA, 5)) {
+    if (!strncmp(dev_name, MV2_STR_MLX4, 4)
+        || !strncmp(dev_name, MV2_STR_MLX5, 4) 
+        || !strncmp(dev_name, MV2_STR_MTHCA, 5)) {
 
         hca_type = MV2_HCA_MLX_PCI_X;
 #if !defined(HAVE_LIBIBUMAD)

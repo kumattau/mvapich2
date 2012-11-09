@@ -13,7 +13,7 @@
 #ifndef FTB_HELPER_H
 #define FTB_HELPER_H
 
-#include "mpirunconf.h"
+#include "mpichconf.h"
 
 #ifdef CR_FTB
 

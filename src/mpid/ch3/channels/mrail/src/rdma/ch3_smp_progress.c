@@ -18,7 +18,7 @@
  *
  */
 
-#include "mpidi_ch3i_rdma_conf.h"
+#include "mpichconf.h"
 #include "mpidi_ch3_impl.h"
 #include <mpimem.h>
 #include <limits.h>
@@ -1101,10 +1101,12 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     char *value;
     if ((value = getenv("MV2_SMP_USE_LIMIC2")) != NULL) {
         g_smp_use_limic2 = atoi(value);
-        
+#if defined(HAVE_LIBHWLOC)
         if(mv2_enable_affinity == 1) {
             g_use_limic2_coll = atoi(value);
-        } else {
+        } else 
+#endif
+        {
             g_use_limic2_coll = 0;
         }
 
@@ -1112,9 +1114,13 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
 
     if ((value = getenv("MV2_USE_LIMIC2_COLL")) != NULL) {
         
+#if defined(HAVE_LIBHWLOC)
         if(mv2_enable_affinity == 1 && g_smp_use_limic2 == 1) {
             g_use_limic2_coll = atoi(value);
-        } else {
+        } else
+#endif
+
+        {
             g_use_limic2_coll = 0;
         }
     }

@@ -20,6 +20,11 @@
 #include "pmi.h"
 #endif
 
+#ifdef ENABLE_SCR
+#include "scr.h"
+#endif
+
+
 /* FIXME: This routine needs to be factored into finalize actions per module,
    In addition, we should consider registering callbacks for those actions
    rather than direct routine calls.
@@ -106,6 +111,11 @@ int MPID_Finalize(void)
       *    request, we need to to search the pending send queue and
       *    cancel it, in which case an error shouldn't be generated.
       */
+
+#if defined(_OSU_MVAPICH_) && defined(ENABLE_SCR)
+    SCR_Finalize();
+#endif    
+
 #ifdef _ENABLE_CUDA_
     if (rdma_enable_cuda) {
         cuda_cleanup();
@@ -156,9 +166,6 @@ int MPID_Finalize(void)
     mpi_errno = MPIDI_CH3_Finalize();
     if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
 
-    MPIR_Comm_free_keyval_impl(MPICH_ATTR_FAILED_PROCESSES);
-    MPICH_ATTR_FAILED_PROCESSES = MPI_KEYVAL_INVALID;
-    
     /* Tell the process group code that we're done with the process groups.
        This will notify PMI (with PMI_Finalize) if necessary.  It
        also frees all PG structures, including the PG for COMM_WORLD, whose 
@@ -209,7 +216,6 @@ int MPID_Finalize(void)
         }
     }
 #endif
-    
     MPIDU_Ftb_finalize();
 
  fn_exit:

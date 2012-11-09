@@ -10,7 +10,7 @@
  *
  */
 
-#include <mpirunconf.h>
+#include <mpichconf.h>
 
 #ifdef CR_AGGRE
 #include "fuse_params.h"

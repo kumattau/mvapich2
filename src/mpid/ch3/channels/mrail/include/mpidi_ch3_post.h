@@ -19,7 +19,7 @@
 #if !defined(MPICH_MPIDI_CH3_POST_H_INCLUDED)
 #define MPICH_MPIDI_CH3_POST_H_INCLUDED
 
-#include "mpidi_ch3i_rdma_conf.h"
+#include "mpichconf.h"
 
 extern int g_smp_eagersize;
 

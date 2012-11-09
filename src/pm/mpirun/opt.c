@@ -9,7 +9,7 @@
  * copyright file COPYRIGHT in the top level MVAPICH2 directory.
  *
  */
-#include <mpirunconf.h>
+#include <mpichconf.h>
 #include <signal_processor.h>
 
 #ifdef CR_AGGRE

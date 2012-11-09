@@ -10,7 +10,7 @@
 *
 **/
 
-#include "mpidi_ch3i_rdma_conf.h"
+#include "mpichconf.h"
 
   /* definition of a NULL action and a NULL tree */
 #define NULL_ACTION    ((void(*)()) NULL)

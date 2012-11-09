@@ -24,7 +24,7 @@
  *
  */
 
-#include <mpirunconf.h>
+#include <mpichconf.h>
 #include "mpirun_rsh.h"
 #include <errno.h>
 #include <signal.h>

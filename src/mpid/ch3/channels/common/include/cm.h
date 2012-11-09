@@ -13,7 +13,7 @@
 #ifndef MVAPICH2_GEN2_CM_H
 #define MVAPICH2_GEN2_CM_H
 
-#include "mpidi_ch3i_rdma_conf.h"
+#include "mpichconf.h"
 
 #include <stdio.h>
 #include <stdlib.h>

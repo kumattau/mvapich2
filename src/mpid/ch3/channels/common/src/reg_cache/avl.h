@@ -26,7 +26,7 @@
 #define AVL_H
 
 #ifndef NEMESIS_BUILD
-#include "mpidi_ch3i_rdma_conf.h"
+#include "mpichconf.h"
 #endif
 
 #if defined(__STDC__)

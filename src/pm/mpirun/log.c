@@ -15,7 +15,7 @@
 // its data structures.  This file contains macros and functions to
 // accomplish this.
 
-#include <mpirunconf.h>
+#include <mpichconf.h>
 
 #ifdef CR_AGGRE
 

@@ -31,7 +31,7 @@
 typedef struct {
     int min;
     int max;
-    int (*MV2_pt_Gather_function)(void *sendbuf, int sendcnt,
+    int (*MV2_pt_Gather_function)(const void *sendbuf, int sendcnt,
                                   MPI_Datatype sendtype, void *recvbuf, int recvcnt,
                                   MPI_Datatype recvtype, int root, MPID_Comm * comm_ptr,
                                   int *errflag);
@@ -80,11 +80,11 @@ extern int mv2_gather_direct_system_size_small;
 extern int mv2_gather_direct_system_size_medium;
 extern int mv2_use_direct_gather;
 
-extern int MPIR_Gather_MV2_Direct(void *sendbuf, int sendcnt,
+extern int MPIR_Gather_MV2_Direct(const void *sendbuf, int sendcnt,
                                       MPI_Datatype sendtype, void *recvbuf, int recvcnt,
                                       MPI_Datatype recvtype, int root, MPID_Comm * comm_ptr,
                                       int *errflag);
-extern int MPIR_Gather_MV2_two_level_Direct(void *sendbuf, int sendcnt,
+extern int MPIR_Gather_MV2_two_level_Direct(const void *sendbuf, int sendcnt,
             MPI_Datatype sendtype, void *recvbuf, int recvcnt,
             MPI_Datatype recvtype, int root, MPID_Comm * comm_ptr,
             int *errflag);

@@ -60,12 +60,12 @@
 #define FUNCNAME MPIR_Allgatherv_Rec_Doubling_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-static int MPIR_Allgatherv_Rec_Doubling_MV2(void *sendbuf,
+static int MPIR_Allgatherv_Rec_Doubling_MV2(const void *sendbuf,
                                             int sendcount,
                                             MPI_Datatype sendtype,
                                             void *recvbuf,
-                                            int *recvcounts,
-                                            int *displs,
+                                            const int *recvcounts,
+                                            const int *displs,
                                             MPI_Datatype recvtype,
                                             MPID_Comm * comm_ptr, int *errflag)
 {
@@ -541,12 +541,12 @@ static int MPIR_Allgatherv_Rec_Doubling_MV2(void *sendbuf,
 #define FUNCNAME MPIR_Allgatherv_Bruck_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-static int MPIR_Allgatherv_Bruck_MV2(void *sendbuf,
+static int MPIR_Allgatherv_Bruck_MV2(const void *sendbuf,
                                      int sendcount,
                                      MPI_Datatype sendtype,
                                      void *recvbuf,
-                                     int *recvcounts,
-                                     int *displs,
+                                     const int *recvcounts,
+                                     const int *displs,
                                      MPI_Datatype recvtype,
                                      MPID_Comm * comm_ptr, int *errflag)
 {
@@ -709,12 +709,12 @@ static int MPIR_Allgatherv_Bruck_MV2(void *sendbuf,
 #define FUNCNAME MPIR_Allgatherv_Ring_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-static int MPIR_Allgatherv_Ring_MV2(void *sendbuf,
+static int MPIR_Allgatherv_Ring_MV2(const void *sendbuf,
                                     int sendcount,
                                     MPI_Datatype sendtype,
                                     void *recvbuf,
-                                    int *recvcounts,
-                                    int *displs,
+                                    const int *recvcounts,
+                                    const int *displs,
                                     MPI_Datatype recvtype,
                                     MPID_Comm * comm_ptr, int *errflag)
 {
@@ -871,8 +871,8 @@ static int MPIR_Allgatherv_Ring_MV2(void *sendbuf,
 #define FUNCNAME MPIR_Allgatherv_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Allgatherv_MV2(void *sendbuf, int sendcount, MPI_Datatype sendtype,
-                        void *recvbuf, int *recvcounts, int *displs,
+int MPIR_Allgatherv_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
+                        void *recvbuf, const int *recvcounts, const int *displs,
                         MPI_Datatype recvtype, MPID_Comm * comm_ptr,
                         int *errflag)
 {

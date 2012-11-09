@@ -13,8 +13,6 @@
 #include "psmpriv.h"
 #include <pthread.h>
 
-/* this file has all the MPIU_CALL functions called from CH3 layer */
-
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3_Init
 #undef FCNAME

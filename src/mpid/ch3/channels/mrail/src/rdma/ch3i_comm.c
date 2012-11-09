@@ -20,47 +20,6 @@
 
 #define NULL_CONTEXT_ID -1
 
-static MPID_Collops collective_functions_osu = {
-    0,    /* ref_count */
-    MPIR_Barrier_MV2, /* Barrier */ 
-    MPIR_Bcast_MV2, /* Bcast intra*/
-    MPIR_Gather_MV2, /* Gather */
-    MPIR_Gatherv, /* Gatherv */
-    MPIR_Scatter_MV2, /* Scatter */
-    MPIR_Scatterv, /* Scatterv */
-    MPIR_Allgather_MV2, /* Allgather */
-    MPIR_Allgatherv_MV2, /* Allgatherv */
-    MPIR_Alltoall_MV2, /* Alltoall */
-    MPIR_Alltoallv_MV2, /* Alltoallv */
-    MPIR_Alltoallw, /* Alltoallw */
-    MPIR_Reduce_MV2, /* Reduce */
-    MPIR_Allreduce_MV2, /* Allreduce */
-    MPIR_Reduce_scatter_MV2, /* Reduce_scatter */
-    MPIR_Scan, /* Scan */
-    NULL  /* Exscan */
-};
-
-static MPID_Collops collective_functions_anl = {
-    0,    /* ref_count */
-    MPIR_Barrier, /* Barrier */
-    MPIR_Bcast, /* Bcast intra*/
-    MPIR_Gather, /* Gather */
-    MPIR_Gatherv, /* Gatherv */
-    MPIR_Scatter, /* Scatter */
-    MPIR_Scatterv, /* Scatterv */
-    MPIR_Allgather, /* Allgather */
-    MPIR_Allgatherv, /* Allgatherv */
-    MPIR_Alltoall, /* Alltoall */
-    MPIR_Alltoallv, /* Alltoallv */
-    MPIR_Alltoallw, /* Alltoallw */
-    MPIR_Reduce, /* Reduce */
-    MPIR_Allreduce, /* Allreduce */
-	MPIR_Reduce_scatter, /* Reduce_scatter */
-    MPIR_Scan, /* Scan */
-    NULL  /* Exscan */
-};
-
-
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3I_comm_create
 #undef FCNAME
@@ -73,9 +32,23 @@ int MPIDI_CH3I_comm_create (MPID_Comm *comm)
 
     if(mv2_use_osu_collectives == 1 && 
         comm->comm_kind == MPID_INTRACOMM)  { 
-        comm->coll_fns = &collective_functions_osu;
-    } else { 
-        comm->coll_fns = &collective_functions_anl;
+
+        comm->coll_fns->Barrier = MPIR_Barrier_MV2;
+        comm->coll_fns->Bcast = MPIR_Bcast_MV2;
+        comm->coll_fns->Gather = MPIR_Gather_MV2;
+        comm->coll_fns->Gatherv = MPIR_Gatherv;
+        comm->coll_fns->Scatter = MPIR_Scatter_MV2;
+        comm->coll_fns->Scatterv = MPIR_Scatterv; 
+        comm->coll_fns->Allgather = MPIR_Allgather_MV2; 
+        comm->coll_fns->Allgatherv = MPIR_Allgatherv_MV2; 
+        comm->coll_fns->Alltoall = MPIR_Alltoall_MV2; 
+        comm->coll_fns->Alltoallv = MPIR_Alltoallv_MV2; 
+        comm->coll_fns->Alltoallw = MPIR_Alltoallw; 
+        comm->coll_fns->Reduce = MPIR_Reduce_MV2; 
+        comm->coll_fns->Allreduce = MPIR_Allreduce_MV2;
+        comm->coll_fns->Reduce_scatter = MPIR_Reduce_scatter_MV2;
+        comm->coll_fns->Scan = MPIR_Scan;
+
     }
     MPIR_pof2_comm(comm, comm->local_size, comm->rank);
 

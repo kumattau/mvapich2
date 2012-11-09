@@ -1570,6 +1570,14 @@ mv2_env_param_list_t  param_list[] = {
     0,
     NULL    },
 {
+    MV2_CUDA_KERNEL_OPT,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_cuda,
+    "MV2_CUDA_KERNEL_OPT",
+    &rdma_cuda_kernel_dt_opt,
+    0,
+    NULL    },
+{
     MV2_EAGER_CUDAHOST_REG,
     MV2_PARAM_TYPE_INT,
     MV2_PARAM_GROUP_cuda,

@@ -16,9 +16,7 @@
  */
 
 #include "mpidimpl.h"
-#if defined(_OSU_MVAPICH_)
 #include "mpidrma.h"
-#endif
 
 #undef FUNCNAME
 #define FUNCNAME MPIDI_CH3U_Handle_send_req

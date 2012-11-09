@@ -20,6 +20,15 @@
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include "coll_shmem.h"
 #include "bcast_tuning.h"
+#include "scatter_tuning.h"
+
+int (*MV2_Scatter_function) (const void *sendbuf, int sendcount, MPI_Datatype sendtype,
+                             void *recvbuf, int recvcount, MPI_Datatype recvtype,
+                             int root, MPID_Comm *comm_ptr, int *errflag)=NULL;
+
+int (*MV2_Scatter_intra_function) (const void *sendbuf, int sendcount, MPI_Datatype sendtype,
+                             void *recvbuf, int recvcount, MPI_Datatype recvtype,
+                             int root, MPID_Comm *comm_ptr, int *errflag)=NULL;
 
 /* This is the default implementation of scatter. The algorithm is:
    
@@ -50,7 +59,7 @@
 #define FUNCNAME MPIR_Scatter_mcst_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Scatter_mcst_MV2(void *sendbuf,
+int MPIR_Scatter_mcst_MV2(const void *sendbuf,
                               int sendcnt,
                               MPI_Datatype sendtype,
                               void *recvbuf,
@@ -111,7 +120,7 @@ int MPIR_Scatter_mcst_MV2(void *sendbuf,
         in_count = nbytes * comm_size; 
         in_type  = MPI_BYTE; 
     } else { 
-        in_buf   = sendbuf; 
+        in_buf   = (void *)sendbuf; 
         in_count = sendcnt * comm_size; 
         in_type  = sendtype; 
     } 
@@ -223,10 +232,25 @@ int MPIR_Scatter_mcst_MV2(void *sendbuf,
 
 
 #undef FUNCNAME
+#define FUNCNAME MPIR_mcst_wrap_MV2
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPIR_Scatter_mcst_wrap_MV2(const void *sendbuf,
+                              int sendcnt,
+                              MPI_Datatype sendtype,
+                              void *recvbuf,
+                              int recvcnt,
+                              MPI_Datatype recvtype,
+                              int root, MPID_Comm * comm_ptr, int *errflag)
+{
+    return 0;
+}
+
+#undef FUNCNAME
 #define FUNCNAME MPIR_Scatter_MV2_Binomial
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Scatter_MV2_Binomial(void *sendbuf,
+int MPIR_Scatter_MV2_Binomial(const void *sendbuf,
                               int sendcnt,
                               MPI_Datatype sendtype,
                               void *recvbuf,
@@ -637,7 +661,7 @@ int MPIR_Scatter_MV2_Binomial(void *sendbuf,
 #define FUNCNAME MPIR_Scatter_MV2_Direct
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Scatter_MV2_Direct(void *sendbuf,
+int MPIR_Scatter_MV2_Direct(const void *sendbuf,
                             int sendcnt,
                             MPI_Datatype sendtype,
                             void *recvbuf,
@@ -645,7 +669,6 @@ int MPIR_Scatter_MV2_Direct(void *sendbuf,
                             MPI_Datatype recvtype,
                             int root, MPID_Comm * comm_ptr, int *errflag)
 {
-
     int rank, comm_size;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
@@ -760,7 +783,7 @@ int MPIR_Scatter_MV2_Direct(void *sendbuf,
 #define FUNCNAME MPIR_Scatter_MV2_two_level_Binomial
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Scatter_MV2_two_level_Binomial(void *sendbuf,
+int MPIR_Scatter_MV2_two_level_Binomial(const void *sendbuf,
                                         int sendcnt,
                                         MPI_Datatype sendtype,
                                         void *recvbuf,
@@ -969,11 +992,11 @@ int MPIR_Scatter_MV2_two_level_Binomial(void *sendbuf,
         /* The leaders are now done with the inter-leader part. Scatter the data within the nodes */
 
         if (rank == root && recvbuf == MPI_IN_PLACE) {
-            mpi_errno = MPIR_Scatter_MV2_Direct(tmp_buf, nbytes, MPI_BYTE,
-                                                sendbuf, sendcnt, sendtype,
+            mpi_errno = MV2_Scatter_intra_function(tmp_buf, nbytes, MPI_BYTE,
+                                                (void *)sendbuf, sendcnt, sendtype,
                                                 0, shmem_commptr, errflag);
         } else {
-            mpi_errno = MPIR_Scatter_MV2_Direct(tmp_buf, nbytes, MPI_BYTE,
+            mpi_errno = MV2_Scatter_intra_function(tmp_buf, nbytes, MPI_BYTE,
                                                 recvbuf, recvcnt, recvtype,
                                                 0, shmem_commptr, errflag);
         }
@@ -1006,7 +1029,7 @@ int MPIR_Scatter_MV2_two_level_Binomial(void *sendbuf,
 #define FUNCNAME MPIR_Scatter_MV2_two_level_Direct
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Scatter_MV2_two_level_Direct(void *sendbuf,
+int MPIR_Scatter_MV2_two_level_Direct(const void *sendbuf,
                                       int sendcnt,
                                       MPI_Datatype sendtype,
                                       void *recvbuf,
@@ -1212,11 +1235,11 @@ int MPIR_Scatter_MV2_two_level_Direct(void *sendbuf,
         /* The leaders are now done with the inter-leader part. Scatter the data within the nodes */
 
         if (rank == root && recvbuf == MPI_IN_PLACE) {
-            mpi_errno = MPIR_Scatter_MV2_Direct(tmp_buf, nbytes, MPI_BYTE,
-                                                sendbuf, sendcnt, sendtype,
+            mpi_errno = MV2_Scatter_intra_function(tmp_buf, nbytes, MPI_BYTE,
+                                                (void *)sendbuf, sendcnt, sendtype,
                                                 0, shmem_commptr, errflag);
         } else {
-            mpi_errno = MPIR_Scatter_MV2_Direct(tmp_buf, nbytes, MPI_BYTE,
+            mpi_errno = MV2_Scatter_intra_function(tmp_buf, nbytes, MPI_BYTE,
                                                 recvbuf, recvcnt, recvtype,
                                                 0, shmem_commptr, errflag);
         }
@@ -1242,10 +1265,10 @@ int MPIR_Scatter_MV2_two_level_Direct(void *sendbuf,
 }
 
 #undef FUNCNAME
-#define FUNCNAME MPIR_Scatter_intra_MV2
+#define FUNCNAME MPIR_Scatter_tune_intra_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Scatter_intra_MV2(void *sendbuf,
+int MPIR_Scatter_tune_intra_MV2(const void *sendbuf,
                            int sendcnt,
                            MPI_Datatype sendtype,
                            void *recvbuf,
@@ -1253,7 +1276,106 @@ int MPIR_Scatter_intra_MV2(void *sendbuf,
                            MPI_Datatype recvtype,
                            int root, MPID_Comm * comm_ptr, int *errflag)
 {
+    int range = 0, range_threshold = 0, range_threshold_intra = 0;
+    int mpi_errno = MPI_SUCCESS;
+    int mpi_errno_ret = MPI_SUCCESS;
+    int rank, nbytes, comm_size;
+    int recvtype_size, sendtype_size;
+    MPIU_THREADPRIV_DECL;
 
+    MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER(comm_ptr);
+    mpi_errno = PMPI_Comm_size(comm_ptr->handle, &comm_size);
+    if (mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+    mpi_errno = PMPI_Comm_rank(comm_ptr->handle, &rank);
+    if (mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+    MPIU_THREADPRIV_GET;
+
+    if (rank == root) {
+        MPID_Datatype_get_size_macro(recvtype, recvtype_size);
+        nbytes = recvcnt * recvtype_size;
+    } else {
+        MPID_Datatype_get_size_macro(sendtype, sendtype_size);
+        nbytes = sendcnt * sendtype_size;
+    }
+
+    /* Search for the corresponding system size inside the tuning table */
+    while ((range < (mv2_size_scatter_tuning_table - 1)) &&
+           (comm_size > mv2_scatter_thresholds_table[range].numproc)) {
+        range++;
+    }
+    /* Search for corresponding inter-leader function */
+    while ((range_threshold < (mv2_scatter_thresholds_table[range].size_inter_table - 1))
+           && (nbytes >
+           mv2_scatter_thresholds_table[range].inter_leader[range_threshold].max)
+           && (mv2_scatter_thresholds_table[range].inter_leader[range_threshold].max != -1)) {
+           range_threshold++;
+    }
+
+    /* Search for corresponding intra-node function */
+    while ((range_threshold_intra <
+           (mv2_scatter_thresholds_table[range].size_intra_table - 1))
+            && (nbytes >
+            mv2_scatter_thresholds_table[range].intra_node[range_threshold_intra].max)
+            && (mv2_scatter_thresholds_table[range].intra_node[range_threshold_intra].max !=
+            -1)) {
+            range_threshold_intra++;
+    }
+
+    MV2_Scatter_function = mv2_scatter_thresholds_table[range].inter_leader[range_threshold]
+                            .MV2_pt_Scatter_function;
+
+    if(MV2_Scatter_function == MPIR_Scatter_mcst_wrap_MV2) { 
+#if defined(_MCST_SUPPORT_)
+        if(comm_ptr->ch.is_mcast_ok == 1
+           && mv2_use_mcast_scatter == 1){
+            MV2_Scatter_function = &MPIR_Scatter_mcst_MV2; 
+        } else
+#endif /*#if defined(_MCST_SUPPORT_) */
+        {
+            MV2_Scatter_function = mv2_scatter_thresholds_table[range].inter_leader[range_threshold + 1]
+                                                                          .MV2_pt_Scatter_function;
+        } 
+    } 
+    
+    MV2_Scatter_intra_function = mv2_scatter_thresholds_table[range].intra_node[range_threshold_intra]
+                            .MV2_pt_Scatter_function;
+
+    mpi_errno =
+               MV2_Scatter_function(sendbuf, sendcnt, sendtype,
+                                    recvbuf, recvcnt, recvtype, root,
+                                    comm_ptr, errflag);
+
+    if (mpi_errno) {
+        /* for communication errors, just record the error but continue */
+        *errflag = TRUE;
+        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+    }
+
+  fn_fail:
+    /* check if multiple threads are calling this collective function */
+    MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT(comm_ptr);
+
+    return (mpi_errno);
+
+}
+
+#undef FUNCNAME
+#define FUNCNAME MPIR_Scatter_intra_MV2
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPIR_Scatter_intra_MV2(const void *sendbuf,
+                           int sendcnt,
+                           MPI_Datatype sendtype,
+                           void *recvbuf,
+                           int recvcnt,
+                           MPI_Datatype recvtype,
+                           int root, MPID_Comm * comm_ptr, int *errflag)
+{
     int range = 0;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
@@ -1351,6 +1473,9 @@ int MPIR_Scatter_intra_MV2(void *sendbuf,
     return (mpi_errno);
 
 }
+
+
+
 
 /* begin:nested */
 /* not declared static because a machine-specific function may call this one in some cases */
@@ -1508,7 +1633,7 @@ int MPIR_Scatter_inter_MV2(void *sendbuf,
 #define FUNCNAME MPIR_Scatter_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Scatter_MV2(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
+int MPIR_Scatter_MV2(const void *sendbuf, int sendcnt, MPI_Datatype sendtype,
                      void *recvbuf, int recvcnt, MPI_Datatype recvtype,
                      int root, MPID_Comm * comm_ptr, int *errflag)
 {
@@ -1555,9 +1680,15 @@ int MPIR_Scatter_MV2(void *sendbuf, int sendcnt, MPI_Datatype sendtype,
 #endif /*#ifdef _ENABLE_CUDA_*/    
 
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
-    mpi_errno = MPIR_Scatter_intra_MV2(sendbuf, sendcnt, sendtype,
+    if (mv2_use_old_scatter == 1 ) {
+        mpi_errno = MPIR_Scatter_intra_MV2(sendbuf, sendcnt, sendtype,
                                        recvbuf, recvcnt, recvtype, root,
                                        comm_ptr, errflag);
+    } else {
+        mpi_errno = MPIR_Scatter_tune_intra_MV2(sendbuf, sendcnt, sendtype,
+                                       recvbuf, recvcnt, recvtype, root,
+                                       comm_ptr, errflag);
+    }
 #else
     mpi_errno = MPIR_Scatter_intra(sendbuf, sendcnt, sendtype,
                                    recvbuf, recvcnt, recvtype, root,

@@ -155,4 +155,6 @@ int psm_do_pack(int count, MPI_Datatype datatype, MPID_Comm *comm, MPID_Request
 void psm_do_ncrecv_complete(MPID_Request *req);
 void psm_dequeue_compreq(MPID_Request *req);
 void psm_prepost_1sc();
+int MPIDI_CH3I_comm_create(MPID_Comm *comm);
+int MPIDI_CH3I_comm_destroy(MPID_Comm *comm);
 #endif 

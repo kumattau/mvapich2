@@ -13,7 +13,7 @@
 #ifndef MPISPAWN_CKPT_H
 #define MPISPAWN_CKPT_H
 
-#include "mpirunconf.h"
+#include "mpichconf.h"
 
 #ifdef CKPT
 

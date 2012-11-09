@@ -44,6 +44,9 @@
 #include "coll_shmem_internal.h"
 #include "gather_tuning.h"
 #include "bcast_tuning.h"
+#include "alltoall_tuning.h"
+#include "scatter_tuning.h"
+#include "allreduce_tuning.h"
 
 #if defined(_OSU_PSM_)
 // TODO : expose debug infra structure to PSM interface
@@ -122,6 +125,10 @@ int mv2_gather_direct_system_size_medium = MV2_GATHER_DIRECT_SYSTEM_SIZE_MEDIUM;
 int mv2_use_xor_alltoall = 1;
 int mv2_enable_shmem_bcast = 1;
 int mv2_use_old_bcast = 0;
+int mv2_use_old_alltoall = 0;
+int mv2_alltoall_inplace_old = 0;
+int mv2_use_old_scatter = 0;
+int mv2_use_old_allreduce = 0;
 int mv2_scatter_rd_inter_leader_bcast = 1;
 int mv2_scatter_ring_inter_leader_bcast = 1;
 int mv2_knomial_inter_leader_bcast = 1;
@@ -149,9 +156,21 @@ char *mv2_user_gather_intra = NULL;
 char *mv2_user_gather_inter = NULL;
 char *mv2_user_gather_intra_multi_lvl = NULL;
 
+/* runtime flag for alltoall tuning  */
+char *mv2_user_alltoall = NULL;
+
 /* Runtime threshold for bcast */
 char *mv2_user_bcast_intra = NULL;
 char *mv2_user_bcast_inter = NULL;
+
+/* Runtime threshold for scatter */
+char *mv2_user_scatter_intra = NULL;
+char *mv2_user_scatter_inter = NULL;
+
+/* Runtime threshold for allreduce */
+char *mv2_user_allreduce_intra = NULL;
+char *mv2_user_allreduce_inter = NULL;
+int mv2_user_allreduce_two_level = 0;
 
 /* Runtime threshold for allgatherv */
 int mv2_user_allgatherv_switch_point = 0;
@@ -241,6 +260,9 @@ void MV2_collectives_arch_init(int heterogeneity)
     MV2_Read_env_vars();
     MV2_set_gather_tuning_table(heterogeneity);
     MV2_set_bcast_tuning_table(heterogeneity);
+    MV2_set_alltoall_tuning_table(heterogeneity);
+    MV2_set_scatter_tuning_table(heterogeneity);
+    MV2_set_allreduce_tuning_table(heterogeneity);
 #endif                          /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
 }
@@ -317,6 +339,27 @@ static int tuning_runtime_init()
         MV2_internode_Bcast_is_define(mv2_user_bcast_inter, mv2_user_bcast_intra);
     }
 
+    /* If MV2_INTRA_SCATTER_TUNING is define && MV2_INTER_SCATTER_TUNING is not
+       define */
+    if (mv2_user_scatter_intra != NULL && mv2_user_scatter_inter == NULL) {
+        MV2_intranode_Scatter_is_define(mv2_user_scatter_intra);
+    }
+
+    /* if MV2_INTER_SCATTER_TUNING is define with/without MV2_INTRA_SCATTER_TUNING */
+    if (mv2_user_scatter_inter != NULL) {
+        MV2_internode_Scatter_is_define(mv2_user_scatter_inter, mv2_user_scatter_intra);
+    }
+
+    /* If MV2_INTRA_ALLREDUCE_TUNING is define && MV2_INTER_ALLREDUCE_TUNING is not define */
+    if (mv2_user_allreduce_intra != NULL && mv2_user_allreduce_inter == NULL) {
+        MV2_intranode_Allreduce_is_define(mv2_user_allreduce_intra);
+    }
+
+    /* if MV2_INTER_ALLREDUCE_TUNING is define with/without MV2_INTRA_ALLREDUCE_TUNING */
+    if (mv2_user_allreduce_inter != NULL) {
+        MV2_internode_Allreduce_is_define(mv2_user_allreduce_inter, mv2_user_allreduce_intra);
+    }
+
     /* If MV2_ALLGATHERV_RD_THRESHOLD is define */
     if (mv2_user_allgatherv_switch_point > 0) {
         for (i = 0; i < mv2_size_mv2_allgatherv_mv2_tuning_table; i++) {
@@ -324,6 +367,10 @@ static int tuning_runtime_init()
         }
     }
 
+    /* If MV2_ALLTOALL_TUNING is define  */
+    if (mv2_user_alltoall != NULL ) {
+        MV2_Alltoall_is_define(mv2_user_alltoall);
+    }
     return 0;
 }
 
@@ -331,6 +378,9 @@ void MV2_collectives_arch_finalize()
 {
     MV2_cleanup_gather_tuning_table();
     MV2_cleanup_bcast_tuning_table();
+    MV2_cleanup_alltoall_tuning_table();
+    MV2_cleanup_scatter_tuning_table();
+    MV2_cleanup_allreduce_tuning_table();
 }
 
 void MPIDI_CH3I_SHMEM_COLL_Cleanup()
@@ -1224,12 +1274,40 @@ void MV2_Read_env_vars(void)
         else
             mv2_use_old_bcast = 0;
     }
+    if ((value = getenv("MV2_USE_OLD_SCATTER")) != NULL) {
+        flag = (int) atoi(value);
+        if (flag > 0)
+            mv2_use_old_scatter = 1;
+        else
+            mv2_use_old_scatter = 0;
+    }
+    if ((value = getenv("MV2_USE_OLD_ALLREDUCE")) != NULL) {
+        flag = (int) atoi(value);
+        if (flag > 0)
+            mv2_use_old_allreduce = 1;
+        else
+            mv2_use_old_allreduce = 0;
+    }
     if ((value = getenv("MV2_USE_SHMEM_BCAST")) != NULL) {
         flag = (int) atoi(value);
         if (flag > 0)
             mv2_enable_shmem_bcast = 1;
         else
             mv2_enable_shmem_bcast = 0;
+    }
+    if ((value = getenv("MV2_USE_OLD_ALLTOALL")) != NULL) {
+        flag = (int) atoi(value);
+        if (flag > 0)
+            mv2_use_old_alltoall = 1;
+        else
+            mv2_use_old_alltoall = 0;
+    }
+    if ((value = getenv("MV2_ALLTOALL_INPLACE_OLD")) != NULL) {
+        flag = (int) atoi(value);
+        if (flag > 0)
+            mv2_alltoall_inplace_old = 1;
+        else
+            mv2_alltoall_inplace_old = 0;
     }
     if ((value = getenv("MV2_USE_TWO_LEVEL_GATHER")) != NULL) {
         flag = (int) atoi(value);
@@ -1343,6 +1421,33 @@ void MV2_Read_env_vars(void)
     if ((value = getenv("MV2_INTER_BCAST_TUNING")) != NULL) {
         mv2_user_bcast_inter = value;
         mv2_tune_parameter = 1;
+    }
+    if ((value = getenv("MV2_ALLTOALL_TUNING")) != NULL) {
+        mv2_user_alltoall = value;
+        mv2_tune_parameter = 1;
+    }
+
+    if ((value = getenv("MV2_INTRA_SCATTER_TUNING")) != NULL) {
+        mv2_user_scatter_intra = value;
+        mv2_tune_parameter = 1;
+    }
+    if ((value = getenv("MV2_INTER_SCATTER_TUNING")) != NULL) {
+        mv2_user_scatter_inter = value;
+        mv2_tune_parameter = 1;
+    }
+
+    if ((value = getenv("MV2_INTRA_ALLREDUCE_TUNING")) != NULL) {
+        mv2_user_allreduce_intra = value;
+        mv2_tune_parameter = 1;
+    }
+    if ((value = getenv("MV2_INTER_ALLREDUCE_TUNING")) != NULL) {
+        mv2_user_allreduce_inter = value;
+        mv2_tune_parameter = 1;
+    }
+    if ((value = getenv("MV2_INTER_ALLREDUCE_TUNING_TWO_LEVEL")) != NULL) {
+        flag = (int) atoi(value);
+        if (flag > 0)
+            mv2_user_allreduce_two_level = flag;
     }
     if ((value = getenv("MV2_SHMEM_COLL_SPIN_COUNT")) != NULL) {
         flag = (int) atoi(value);

@@ -24,7 +24,7 @@
  *
  */
 
-#include "mpidi_ch3i_rdma_conf.h"
+#include "mpichconf.h"
 #include <mpimem.h>
 
 #include "mem_hooks.h"

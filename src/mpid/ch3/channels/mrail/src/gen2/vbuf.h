@@ -27,7 +27,7 @@
 #ifndef _VBUF_H_
 #define _VBUF_H_
 
-#include "mpidi_ch3i_rdma_conf.h"
+#include "mpichconf.h"
 #include "infiniband/verbs.h"
 #include "ibv_param.h"
 #include "mv2_clock.h"

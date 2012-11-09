@@ -9,7 +9,7 @@
  * copyright file COPYRIGHT in the top level MVAPICH2 directory.
  *
  */
-#include "mpidi_ch3i_rdma_conf.h"
+#include "mpichconf.h"
 #include "mpidi_ch3_impl.h"
 #include <mpimem.h>
 #include <limits.h>

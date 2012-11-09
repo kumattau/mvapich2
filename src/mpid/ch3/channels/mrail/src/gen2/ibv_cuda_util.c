@@ -17,6 +17,10 @@
 
 #if defined(_ENABLE_CUDA_)
 #define CUDA_DEBUG 0
+#define INITIAL_PACKUNPACK_OPT -1
+#define SUCCESS_PACKUNPACK_OPT 0
+#define FAILURE_PACKUNPACK_OPT 1
+
 static int cudaipc_init = 0;
 static CUcontext mv2_cuda_context = NULL;
 
@@ -51,15 +55,15 @@ void MPIU_IOV_unpack_cuda(void *buf, MPID_IOV *iov, int n_iov,
     *bytes_unpacked = total_len;
 }
 
-void vector_pack_cudabuf(MPID_Request *req, MPID_IOV *iov)
+void vector_pack_cudabuf(void *buf, MPID_IOV *iov, int size)
 {
     cudaError_t cerr = cudaSuccess;
-    cerr = cudaMemcpy2D(req->dev.tmpbuf,
+    cerr = cudaMemcpy2D(buf,
                 iov[0].MPID_IOV_LEN,
                 iov[0].MPID_IOV_BUF,
                 iov[1].MPID_IOV_BUF - iov[0].MPID_IOV_BUF,
                 iov[0].MPID_IOV_LEN,
-                req->dev.segment_size / iov[0].MPID_IOV_LEN,
+                size / iov[0].MPID_IOV_LEN,
                 cudaMemcpyDeviceToDevice);
     if (cerr != cudaSuccess) {
         PRINT_INFO(1,"Error in cudaMemcpy2D\n");
@@ -67,21 +71,291 @@ void vector_pack_cudabuf(MPID_Request *req, MPID_IOV *iov)
     PRINT_DEBUG(CUDA_DEBUG, "cuda vector pack with cudaMemcpy2D\n");
 }
 
-void vector_unpack_cudabuf(MPID_Request *req, MPID_IOV *iov)
+void vector_unpack_cudabuf(void *buf, MPID_IOV *iov, int size)
 {
     cudaError_t cerr = cudaSuccess;
     cerr = cudaMemcpy2D(iov[0].MPID_IOV_BUF,
                 iov[1].MPID_IOV_BUF - iov[0].MPID_IOV_BUF,
-                req->dev.tmpbuf,
+                buf,
                 iov[0].MPID_IOV_LEN,
                 iov[0].MPID_IOV_LEN,
-                req->dev.segment_size / iov[0].MPID_IOV_LEN,
+                size / iov[0].MPID_IOV_LEN,
                 cudaMemcpyDeviceToDevice);
     if (cerr != cudaSuccess) {
         PRINT_INFO(1,"Error in cudaMemcpy2D\n");
     }
     PRINT_DEBUG(CUDA_DEBUG, "cuda vector unpack with cudaMemcpy2D\n");
 }
+
+
+#if defined(USE_GPU_KERNEL)
+int hindexed_pack_cudabuf(void *dst, MPID_IOV *iov, MPID_Datatype *dtp, int size) 
+{
+    int i, element_size;
+    int struct_sz = sizeof(MPID_Datatype_contents);
+    int types_sz  = dtp->contents->nr_types * sizeof(MPI_Datatype);
+    int ints_sz   = dtp->contents->nr_ints  * sizeof(int);
+    int align_sz = 8, epsilon;
+
+    int subarray_struct_sz = sizeof(MPID_Datatype_contents);
+    int subarray_types_sz;
+    int *subarray_array_of_ints;
+
+    int array_numb = dtp->contents->nr_aints;
+
+    MPID_Datatype *old_dtp, *sub_dtp;
+    MPI_Datatype *array_of_types, *sub_array_of_types;
+    MPI_Aint *array_of_aints;
+    MPI_Aint base_displs, array_displs[array_numb];
+
+    MPI_Address(iov[0].MPID_IOV_BUF, &base_displs);
+
+    if ((epsilon = struct_sz % align_sz)) {
+        struct_sz += align_sz - epsilon;
+    }
+
+    if ((epsilon = types_sz % align_sz)) {
+        types_sz += align_sz - epsilon;
+    }
+
+    if ((epsilon = ints_sz % align_sz)) {
+        ints_sz += align_sz - epsilon;
+    }
+
+    array_of_aints = (MPI_Aint *) ((char *)dtp->contents + struct_sz + types_sz + ints_sz);
+    array_of_types = (MPI_Datatype *) ((char *)dtp->contents + struct_sz);
+
+    for (i = 0; i < dtp->contents->nr_types; i++) {
+        if (HANDLE_GET_KIND(array_of_types[i]) != HANDLE_KIND_BUILTIN) {
+            MPID_Datatype_get_ptr(array_of_types[i], old_dtp);
+            if (old_dtp->contents->combiner != MPI_COMBINER_SUBARRAY
+		|| old_dtp->contents->nr_ints != 11) {
+                /* only handle subarray type and nr_ints must be 11 for 3 ndims*/
+                break;
+            } else { continue; }
+        } else { return FAILURE_PACKUNPACK_OPT; }
+    }
+
+    if (i != dtp->contents->nr_types) { return FAILURE_PACKUNPACK_OPT; }
+
+    void *src;
+
+    if (HANDLE_GET_KIND(array_of_types[0]) != HANDLE_KIND_BUILTIN) {
+
+        MPID_Datatype_get_ptr(array_of_types[0], old_dtp);
+
+        if (old_dtp->contents->combiner == MPI_COMBINER_SUBARRAY) {
+            subarray_types_sz  = old_dtp->contents->nr_types * sizeof(MPI_Datatype);
+            if ((epsilon = subarray_struct_sz % align_sz)) {
+                subarray_struct_sz += align_sz - epsilon;
+            }
+            if ((epsilon = subarray_types_sz % align_sz)) {
+                subarray_types_sz += align_sz - epsilon;
+            }
+
+            sub_array_of_types = (MPI_Datatype *) ((char *)old_dtp->contents + subarray_struct_sz);
+            element_size = old_dtp->element_size;
+            if (HANDLE_GET_KIND(sub_array_of_types[0]) != HANDLE_KIND_BUILTIN) {
+                int cont_types_sz;
+                MPI_Datatype *cont_array_of_types;
+
+                MPID_Datatype_get_ptr(sub_array_of_types[0], sub_dtp);
+
+                if (sub_dtp->contents->combiner == MPI_COMBINER_CONTIGUOUS) {
+                    cont_types_sz = sub_dtp->contents->nr_types * sizeof(MPI_Datatype);
+                    if ((epsilon = cont_types_sz % align_sz)) {
+                        cont_types_sz += align_sz - epsilon;
+                    }
+                 
+                    cont_array_of_types = (MPI_Datatype *) ((char *)sub_dtp->contents + subarray_struct_sz);
+                 
+                    if (HANDLE_GET_KIND(cont_array_of_types[0]) == HANDLE_KIND_BUILTIN) {
+                        element_size = sub_dtp->n_elements * MPID_Datatype_get_basic_size(cont_array_of_types[0]);
+                    } else { return FAILURE_PACKUNPACK_OPT; }
+                } else { return FAILURE_PACKUNPACK_OPT; }
+            }
+
+            subarray_array_of_ints = (int *) ((char *)old_dtp->contents + subarray_struct_sz + subarray_types_sz);
+
+            int ndims = subarray_array_of_ints[0];
+            int order = subarray_array_of_ints[10];
+
+            if (ndims == 3 && order == MPI_ORDER_FORTRAN) {
+                int array_of_sizes[ndims];
+                int array_of_subsizes[ndims];
+                int array_of_starts[ndims];
+
+                array_of_sizes[0] = subarray_array_of_ints[1];
+                array_of_sizes[1] = subarray_array_of_ints[2];
+                array_of_sizes[2] = subarray_array_of_ints[3];
+                array_of_subsizes[0] = subarray_array_of_ints[4];
+                array_of_subsizes[1] = subarray_array_of_ints[5];
+                array_of_subsizes[2] = subarray_array_of_ints[6];
+                array_of_starts[0] = subarray_array_of_ints[7];
+                array_of_starts[1] = subarray_array_of_ints[8];
+                array_of_starts[2] = subarray_array_of_ints[9];
+
+                base_displs -= (array_of_starts[0] + array_of_sizes[0] * array_of_starts[1] + array_of_sizes[0] * array_of_sizes[1] * array_of_starts[2]) 
+					* element_size;
+
+                for (i = 0; i < array_numb; i++) {
+                    
+                    array_displs[i] = base_displs + array_of_aints[i];
+                    src = (void *)array_displs[i];
+      
+                    if (element_size == 1 || element_size == 4 || element_size == 8) {
+                        pack_subarray(dst, src, array_of_sizes[0], array_of_sizes[1], array_of_sizes[2], 
+    			    			array_of_subsizes[0], array_of_subsizes[1], array_of_subsizes[2], 
+    			    			array_of_starts[0], array_of_starts[1], array_of_starts[2], element_size);
+                        dst += array_of_subsizes[0] * array_of_subsizes[1] * array_of_subsizes[2] * element_size;
+                    } else {
+                        return FAILURE_PACKUNPACK_OPT;
+                    }
+                }
+            } else {
+                return FAILURE_PACKUNPACK_OPT;
+            }
+            
+        } else { return FAILURE_PACKUNPACK_OPT; }
+    } else { return FAILURE_PACKUNPACK_OPT; }
+    return SUCCESS_PACKUNPACK_OPT;
+
+}
+
+int hindexed_unpack_cudabuf(void *src, MPID_IOV *iov, MPID_Datatype *dtp, int size) 
+{
+    int i, element_size;
+    int struct_sz = sizeof(MPID_Datatype_contents);
+    int types_sz  = dtp->contents->nr_types * sizeof(MPI_Datatype);
+    int ints_sz   = dtp->contents->nr_ints  * sizeof(int);
+    int align_sz = 8, epsilon;
+
+    int subarray_struct_sz = sizeof(MPID_Datatype_contents);
+    int subarray_types_sz;
+    int *subarray_array_of_ints;
+
+    int array_numb = dtp->contents->nr_aints;
+
+    MPID_Datatype *old_dtp, *sub_dtp;
+    MPI_Datatype *array_of_types, *sub_array_of_types;
+    MPI_Aint *array_of_aints;
+    MPI_Aint base_displs, array_displs[array_numb];
+
+    MPI_Address(iov[0].MPID_IOV_BUF, &base_displs);
+
+    if ((epsilon = struct_sz % align_sz)) {
+        struct_sz += align_sz - epsilon;
+    }
+
+    if ((epsilon = types_sz % align_sz)) {
+        types_sz += align_sz - epsilon;
+    }
+
+    if ((epsilon = ints_sz % align_sz)) {
+        ints_sz += align_sz - epsilon;
+    }
+
+    array_of_aints = (MPI_Aint *) ((char *)dtp->contents + struct_sz + types_sz + ints_sz);
+    array_of_types = (MPI_Datatype *) ((char *)dtp->contents + struct_sz);
+
+    for (i = 0; i < dtp->contents->nr_types; i++) {
+        if (HANDLE_GET_KIND(array_of_types[i]) != HANDLE_KIND_BUILTIN) {
+            MPID_Datatype_get_ptr(array_of_types[i], old_dtp);
+            if (old_dtp->contents->combiner != MPI_COMBINER_SUBARRAY
+		|| old_dtp->contents->nr_ints != 11) {
+                /* only handle subarray type and nr_ints must be 11 for 3 ndims*/
+                break;
+            } else { continue; }
+        } else { return FAILURE_PACKUNPACK_OPT; }
+    }
+
+    if (i != dtp->contents->nr_types) { return FAILURE_PACKUNPACK_OPT; }
+
+    void *dst;
+
+    if (HANDLE_GET_KIND(array_of_types[0]) != HANDLE_KIND_BUILTIN) {
+
+        MPID_Datatype_get_ptr(array_of_types[0], old_dtp);
+
+        if (old_dtp->contents->combiner == MPI_COMBINER_SUBARRAY) {
+
+            subarray_types_sz  = old_dtp->contents->nr_types * sizeof(MPI_Datatype);
+            if ((epsilon = subarray_struct_sz % align_sz)) {
+                subarray_struct_sz += align_sz - epsilon;
+            }
+            if ((epsilon = subarray_types_sz % align_sz)) {
+                subarray_types_sz += align_sz - epsilon;
+            }
+
+            sub_array_of_types = (MPI_Datatype *) ((char *)old_dtp->contents + subarray_struct_sz);
+            element_size = old_dtp->element_size;
+            if (HANDLE_GET_KIND(sub_array_of_types[0]) != HANDLE_KIND_BUILTIN) {
+                int cont_types_sz;
+                MPI_Datatype *cont_array_of_types;
+
+                MPID_Datatype_get_ptr(sub_array_of_types[0], sub_dtp);
+
+                if (sub_dtp->contents->combiner == MPI_COMBINER_CONTIGUOUS) {
+                    cont_types_sz = sub_dtp->contents->nr_types * sizeof(MPI_Datatype);
+                    if ((epsilon = cont_types_sz % align_sz)) {
+                        cont_types_sz += align_sz - epsilon;
+                    }
+
+                    cont_array_of_types = (MPI_Datatype *) ((char *)sub_dtp->contents + subarray_struct_sz);
+
+                    if (HANDLE_GET_KIND(cont_array_of_types[0]) == HANDLE_KIND_BUILTIN) {
+                        element_size = sub_dtp->n_elements * MPID_Datatype_get_basic_size(cont_array_of_types[0]);
+                    } else { return FAILURE_PACKUNPACK_OPT; }
+                } else { return FAILURE_PACKUNPACK_OPT; }
+            }
+
+            subarray_array_of_ints = (int *) ((char *)old_dtp->contents + subarray_struct_sz + subarray_types_sz);
+
+            int ndims = subarray_array_of_ints[0];
+            int order = subarray_array_of_ints[10];
+
+            if (ndims == 3 && order == MPI_ORDER_FORTRAN) {
+                int array_of_sizes[ndims];
+                int array_of_subsizes[ndims];
+                int array_of_starts[ndims];
+
+                array_of_sizes[0] = subarray_array_of_ints[1];
+                array_of_sizes[1] = subarray_array_of_ints[2];
+                array_of_sizes[2] = subarray_array_of_ints[3];
+                array_of_subsizes[0] = subarray_array_of_ints[4];
+                array_of_subsizes[1] = subarray_array_of_ints[5];
+                array_of_subsizes[2] = subarray_array_of_ints[6];
+                array_of_starts[0] = subarray_array_of_ints[7];
+                array_of_starts[1] = subarray_array_of_ints[8];
+                array_of_starts[2] = subarray_array_of_ints[9];
+
+                base_displs -= (array_of_starts[0] + array_of_sizes[0] * array_of_starts[1] + array_of_sizes[0] * array_of_sizes[1] * array_of_starts[2]) 
+					* element_size;
+
+                for (i = 0; i < array_numb; i++) {
+
+                    array_displs[i] = base_displs + array_of_aints[i];
+                    dst = (void *)array_displs[i];
+                    
+                    if (element_size == 1 || element_size == 4 || element_size == 8) {
+                        unpack_subarray(dst, src, array_of_sizes[0], array_of_sizes[1], array_of_sizes[2], 
+    	            				array_of_subsizes[0], array_of_subsizes[1], array_of_subsizes[2], 
+    	            				array_of_starts[0], array_of_starts[1], array_of_starts[2], element_size);
+                        src += array_of_subsizes[0] * array_of_subsizes[1] * array_of_subsizes[2] * element_size;
+                    } else {
+                        return FAILURE_PACKUNPACK_OPT;
+                    }
+                }                                 
+
+            } else {
+                return FAILURE_PACKUNPACK_OPT;
+            }
+        } else { return FAILURE_PACKUNPACK_OPT; }
+    } else { return FAILURE_PACKUNPACK_OPT; }
+    return SUCCESS_PACKUNPACK_OPT;
+
+}
+#endif
 
 int MPIDI_CH3_ReqHandler_pack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)), 
                     MPID_Request *req, int *complete ATTRIBUTE((unused)))
@@ -102,10 +376,38 @@ int MPIDI_CH3_ReqHandler_pack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)),
                 req->dev.segment_first, &last, iov, &iov_n);
         if (req->dev.datatype_ptr->contents->combiner == MPI_COMBINER_VECTOR
             && (req->dev.segment_ptr->builtin_loop.loop_params.count == 1)
-            && rdma_cuda_vector_dt_opt)  {
-            /* cuda optimization for vector */
-            vector_pack_cudabuf(req, iov);
+            && (rdma_cuda_vector_dt_opt || rdma_cuda_kernel_dt_opt))  {
+#if defined(USE_GPU_KERNEL)
+            if (rdma_cuda_kernel_dt_opt) {
+                pack_unpack_vector_kernel(req->dev.tmpbuf,
+                                          iov[0].MPID_IOV_LEN,
+                                          iov[0].MPID_IOV_BUF,
+                                          iov[1].MPID_IOV_BUF - iov[0].MPID_IOV_BUF,
+                                          iov[0].MPID_IOV_LEN,
+                                          req->dev.segment_size / iov[0].MPID_IOV_LEN);
+            } else
+#endif
+            {
+                vector_pack_cudabuf(req->dev.tmpbuf, iov, req->dev.segment_size);
+            }
             last = req->dev.segment_size;
+#if defined(USE_GPU_KERNEL)
+        } else if (req->dev.datatype_ptr->contents->combiner == MPI_COMBINER_HINDEXED
+                   && rdma_cuda_kernel_dt_opt) {
+
+            int return_hindexed_pack = INITIAL_PACKUNPACK_OPT;
+            return_hindexed_pack = hindexed_pack_cudabuf((void *)req->dev.tmpbuf, iov, req->dev.datatype_ptr, req->dev.segment_size);
+       
+            if (return_hindexed_pack == SUCCESS_PACKUNPACK_OPT) {
+                last = req->dev.segment_size;
+            } else if (return_hindexed_pack == FAILURE_PACKUNPACK_OPT) {
+                MPIU_IOV_pack_cuda(req->dev.tmpbuf, iov, iov_n,
+                    req->dev.segment_first);
+            } else {
+                MPIU_IOV_pack_cuda(req->dev.tmpbuf, iov, iov_n,
+                    req->dev.segment_first);
+            }
+#endif
         } else {
             MPIU_IOV_pack_cuda(req->dev.tmpbuf, iov, iov_n, 
                     req->dev.segment_first);
@@ -136,10 +438,38 @@ int MPIDI_CH3_ReqHandler_unpack_cudabuf(MPIDI_VC_t *vc ATTRIBUTE((unused)), MPID
 
         if (req->dev.datatype_ptr->contents->combiner == MPI_COMBINER_VECTOR
             && (req->dev.segment_ptr->builtin_loop.loop_params.count == 1)
-            && rdma_cuda_vector_dt_opt)  {
-            /* cuda optimization for vector */
-            vector_unpack_cudabuf(req, iov);
+            && (rdma_cuda_vector_dt_opt || rdma_cuda_kernel_dt_opt))  {
+#if defined(USE_GPU_KERNEL)
+            if (rdma_cuda_kernel_dt_opt) {
+                pack_unpack_vector_kernel(iov[0].MPID_IOV_BUF,
+                                          iov[1].MPID_IOV_BUF - iov[0].MPID_IOV_BUF,
+                                          req->dev.tmpbuf,
+                                          iov[0].MPID_IOV_LEN,
+                                          iov[0].MPID_IOV_LEN,
+                                          req->dev.segment_size / iov[0].MPID_IOV_LEN);
+            } else
+#endif
+            {
+                vector_unpack_cudabuf(req->dev.tmpbuf, iov, req->dev.segment_size);
+            }
             last = bytes_copied = req->dev.segment_size;
+#if defined(USE_GPU_KERNEL)
+        } else if (req->dev.datatype_ptr->contents->combiner == MPI_COMBINER_HINDEXED
+                   && rdma_cuda_kernel_dt_opt) {
+
+            int return_hindexed_unpack = INITIAL_PACKUNPACK_OPT;
+            return_hindexed_unpack = hindexed_unpack_cudabuf(req->dev.tmpbuf, iov, req->dev.datatype_ptr, req->dev.segment_size);
+
+            if (return_hindexed_unpack == SUCCESS_PACKUNPACK_OPT) {
+                last = bytes_copied = req->dev.segment_size;
+            } else if (return_hindexed_unpack == FAILURE_PACKUNPACK_OPT) {
+                MPIU_IOV_unpack_cuda(req->dev.tmpbuf, iov, iov_n,
+                    req->dev.segment_first, &bytes_copied);
+            } else {
+                MPIU_IOV_unpack_cuda(req->dev.tmpbuf, iov, iov_n,
+                    req->dev.segment_first, &bytes_copied);
+            }
+#endif
         } else {
             MPIU_IOV_unpack_cuda(req->dev.tmpbuf, iov, iov_n, 
                     req->dev.segment_first, &bytes_copied);
@@ -164,6 +494,9 @@ void MPID_Segment_pack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
     void *tmpbuf = NULL;
     MPID_IOV iov[MPID_IOV_LIMIT];
     DLOOP_Offset segment_first, segment_last;
+    int segment_size;
+    int sbuf_isdev = 0;
+    int sbuf_isdev_check = 0;
 
     /* allocate temp device pack buffer */
     if (!is_device_buffer(streambuf)) {
@@ -174,6 +507,7 @@ void MPID_Segment_pack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
     }
 
     segment_first = first;
+    segment_size = *lastp - segment_first;
     do {
         segment_last = *lastp;
         iov_n = MPID_IOV_LIMIT;
@@ -183,7 +517,50 @@ void MPID_Segment_pack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
 
         MPID_Segment_pack_vector(segp, segment_first, &segment_last,
                 iov, &iov_n);
-        MPIU_IOV_pack_cuda((char *)tmpbuf, iov, iov_n, buff_off);
+
+        if (!sbuf_isdev_check)  {
+            if (is_device_buffer(iov[0].MPID_IOV_BUF)) {
+                sbuf_isdev = 1;
+            }
+            sbuf_isdev_check = 1;
+        }
+
+        if (sbuf_isdev && dt_ptr->contents->combiner == MPI_COMBINER_VECTOR
+            && (segp->builtin_loop.loop_params.count == 1)
+            && (rdma_cuda_vector_dt_opt || rdma_cuda_kernel_dt_opt))  {
+#if defined(USE_GPU_KERNEL)
+            if (rdma_cuda_kernel_dt_opt) {
+                pack_unpack_vector_kernel(tmpbuf,
+                                          iov[0].MPID_IOV_LEN,
+                                          iov[0].MPID_IOV_BUF,
+                                          iov[1].MPID_IOV_BUF - iov[0].MPID_IOV_BUF,
+                                          iov[0].MPID_IOV_LEN,
+                                          segment_size / iov[0].MPID_IOV_LEN);
+            } else
+#endif
+            {
+                vector_pack_cudabuf(tmpbuf, iov, segment_size);
+            }
+            segment_last = *lastp;
+#if defined(USE_GPU_KERNEL)
+        } else if (sbuf_isdev && dt_ptr->contents->combiner == MPI_COMBINER_HINDEXED
+                   && rdma_cuda_kernel_dt_opt) {
+
+            int return_hindexed_pack = INITIAL_PACKUNPACK_OPT;
+            return_hindexed_pack = hindexed_pack_cudabuf(tmpbuf, iov, dt_ptr, segment_size);
+
+            if (return_hindexed_pack == SUCCESS_PACKUNPACK_OPT) {
+                segment_last = *lastp;
+            } else if (return_hindexed_pack == FAILURE_PACKUNPACK_OPT) {
+                MPIU_IOV_pack_cuda((char *)tmpbuf, iov, iov_n, buff_off);
+            } else {
+                MPIU_IOV_pack_cuda((char *)tmpbuf, iov, iov_n, buff_off);
+            }
+#endif
+        } else {
+            MPIU_IOV_pack_cuda((char *)tmpbuf, iov, iov_n, buff_off);
+        }
+
         buff_off += (segment_last - segment_first);
         segment_first = segment_last;
         
@@ -207,6 +584,9 @@ void MPID_Segment_unpack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
     void *tmpbuf;
     MPID_IOV iov[MPID_IOV_LIMIT];
     DLOOP_Offset segment_first, segment_last;
+    int segment_size;
+    int rbuf_isdev = 0;
+    int rbuf_isdev_check = 0;
 
     /* allocate temp device unpack buffer */
     if (!is_device_buffer(inbuf)) {
@@ -218,6 +598,8 @@ void MPID_Segment_unpack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
     }
     
     segment_first = first;
+    segment_size = *lastp - segment_first;
+
     do {
         segment_last = *lastp;
         iov_n = MPID_IOV_LIMIT;
@@ -227,7 +609,52 @@ void MPID_Segment_unpack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
 
         MPID_Segment_unpack_vector(segp, segment_first, &segment_last,
                                      iov, &iov_n);
-        MPIU_IOV_unpack_cuda(tmpbuf, iov, iov_n, buff_off, &bytes_unpacked);
+
+        if (!rbuf_isdev_check)  {
+            if (is_device_buffer(iov[0].MPID_IOV_BUF)) {
+                rbuf_isdev = 1;
+            }
+            rbuf_isdev_check = 1;
+        }
+
+        if (rbuf_isdev && dt_ptr->contents->combiner == MPI_COMBINER_VECTOR
+            && (segp->builtin_loop.loop_params.count == 1)
+            && (rdma_cuda_vector_dt_opt || rdma_cuda_kernel_dt_opt))  {
+#if defined(USE_GPU_KERNEL)
+            if (rdma_cuda_kernel_dt_opt) {
+                pack_unpack_vector_kernel(iov[0].MPID_IOV_BUF,
+                                          iov[1].MPID_IOV_BUF - iov[0].MPID_IOV_BUF,
+                                          tmpbuf,
+                                          iov[0].MPID_IOV_LEN,
+                                          iov[0].MPID_IOV_LEN,
+                                          segment_size / iov[0].MPID_IOV_LEN);
+            } else
+#endif
+            {
+                vector_unpack_cudabuf(tmpbuf, iov, segment_size);
+            }
+            segment_last = *lastp;
+            bytes_unpacked = segment_last - segment_first;
+#if defined(USE_GPU_KERNEL)
+        } else if (rbuf_isdev && dt_ptr->contents->combiner == MPI_COMBINER_HINDEXED
+                   && rdma_cuda_kernel_dt_opt) {
+
+            int return_hindexed_unpack = INITIAL_PACKUNPACK_OPT;
+            return_hindexed_unpack = hindexed_unpack_cudabuf(tmpbuf, iov, dt_ptr, segment_size);
+
+            if (return_hindexed_unpack == SUCCESS_PACKUNPACK_OPT) {
+                segment_last = *lastp;
+                bytes_unpacked = segment_last - segment_first;
+            } else if (return_hindexed_unpack == FAILURE_PACKUNPACK_OPT) {
+                MPIU_IOV_unpack_cuda(tmpbuf, iov, iov_n, buff_off, &bytes_unpacked);
+            } else {
+                MPIU_IOV_unpack_cuda(tmpbuf, iov, iov_n, buff_off, &bytes_unpacked);
+            }
+#endif
+        } else {
+                MPIU_IOV_unpack_cuda(tmpbuf, iov, iov_n, buff_off, &bytes_unpacked);
+        }
+
         MPIU_Assert(bytes_unpacked == (segment_last - segment_first));
         segment_first = segment_last;
         buff_off += bytes_unpacked;
@@ -294,6 +721,16 @@ void cuda_get_user_parameters() {
     if ((value = getenv("MV2_CUDA_VECTOR_OPT")) != NULL) {
         rdma_cuda_vector_dt_opt= atoi(value);
     }
+
+#if defined(USE_GPU_KERNEL)
+    if ((value = getenv("MV2_CUDA_KERNEL_OPT")) != NULL) {
+        rdma_cuda_kernel_dt_opt= atoi(value);
+    }
+#else
+    {
+        rdma_cuda_kernel_dt_opt = 0;
+    }
+#endif
 
     if ((value = getenv("MV2_CUDA_NUM_STREAMS")) != NULL) {
         rdma_cuda_stream_count = atoi(value);

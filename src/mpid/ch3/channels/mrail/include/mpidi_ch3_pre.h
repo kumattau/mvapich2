@@ -19,7 +19,7 @@
 #if !defined(MPICH_MPIDI_CH3_PRE_H_INCLUDED)
 #define MPICH_MPIDI_CH3_PRE_H_INCLUDED
 
-#include "mpidi_ch3i_rdma_conf.h"
+#include "mpichconf.h"
 #include "mpidi_ch3_rdma_pre.h"
 #include "smp_smpi.h"
 
@@ -227,7 +227,7 @@ struct MPIDI_CH3I_Request						\
 {									\
     /*  pkt is used to temporarily store a packet header associated	\
        with this request */						\
-    MPIDI_CH3_PktGeneric_t pkt;                        \
+    MPIDI_CH3_Pkt_t pkt;                        \
     enum REQ_TYPE   reqtype;						\
     /* For CKPT, hard to put in ifdef because it's in macro define*/    \
     struct MPID_Request *cr_queue_next;                                 \
@@ -283,55 +283,5 @@ MPIDI_CH3I_Progress_state;
 extern volatile unsigned int MPIDI_CH3I_progress_completion_count;
 
 #define MPIDI_CH3_PROGRESS_STATE_DECL MPIDI_CH3I_Progress_state ch;
-
-#define HAVE_DEV_COMM_HOOK
-#define MPID_Dev_comm_create_hook(comm_) do {           \
-        int _mpi_errno;                                 \
-        _mpi_errno = MPIDI_CH3I_comm_create (comm_);    \
-        if (_mpi_errno) MPIU_ERR_POP (_mpi_errno);      \
-    } while(0)
-
-
-#define MPID_Dev_comm_destroy_hook(comm_) do {          \
-        int _mpi_errno;                                 \
-        _mpi_errno = MPIDI_CH3I_comm_destroy (comm_);   \
-        if (_mpi_errno) MPIU_ERR_POP (_mpi_errno);      \
-    } while(0)
-
-
-typedef struct MPIDI_CH3I_comm
-{
-    MPI_Comm     leader_comm;
-    MPI_Comm     shmem_comm;
-    MPI_Comm     allgather_comm;
-#if defined(_SMP_LIMIC_)    
-    MPI_Comm     intra_sock_comm;
-    MPI_Comm     intra_sock_leader_comm;
-    int*         socket_size;
-    int          is_socket_uniform;
-    int          use_intra_sock_comm;
-#endif    
-    int*    leader_map;
-    int*    leader_rank;
-    int*    node_sizes; 
-    int*    allgather_new_ranks;
-    int     is_uniform; 
-    int     shmem_comm_rank;
-    int     shmem_coll_ok;
-    int     allgather_comm_ok; 
-    int     leader_group_size;
-    int     is_global_block;
-    int     is_pof2; /* Boolean to know if comm size is equal to pof2  */
-    int     gpof2; /* Greater pof2 < size of comm */
-    int     intra_node_done; /* Used to check if intra node communication has been done 
-                                with mcast and bcast */
-#if defined(_MCST_SUPPORT_)
-    int     is_mcast_ok;
-    void    *bcast_info;
-#endif
-    void    *shmem_info; /* intra node shmem info */
-} MPIDI_CH3I_comm_t;
-
-#define MPID_DEV_COMM_DECL MPIDI_CH3I_comm_t ch;
 
 #endif /* !defined(MPICH_MPIDI_CH3_PRE_H_INCLUDED) */

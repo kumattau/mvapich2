@@ -4,6 +4,17 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2001-2012, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
 
 #include "mpiimpl.h"
 #include <unistd.h>
@@ -61,9 +72,9 @@ do {                                                                            
 #define FUNCNAME MPIR_Reduce_scatter_noncomm_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-static int MPIR_Reduce_scatter_noncomm_MV2(void *sendbuf,
+static int MPIR_Reduce_scatter_noncomm_MV2(const void *sendbuf,
 										   void *recvbuf,
-										   int *recvcnts,
+										   const int *recvcnts,
 										   MPI_Datatype datatype,
 										   MPI_Op op,
 										   MPID_Comm * comm_ptr, int *errflag)
@@ -225,9 +236,9 @@ static int MPIR_Reduce_scatter_noncomm_MV2(void *sendbuf,
 #define FUNCNAME MPIR_Reduce_Scatter_Basic_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-static int MPIR_Reduce_Scatter_Basic_MV2(void *sendbuf,
+static int MPIR_Reduce_Scatter_Basic_MV2(const void *sendbuf,
 										 void *recvbuf,
-										 int *recvcnts,
+										 const int *recvcnts,
 										 MPI_Datatype datatype,
 										 MPI_Op op,
 										 MPID_Comm * comm_ptr, int *errflag)
@@ -322,9 +333,9 @@ static int MPIR_Reduce_Scatter_Basic_MV2(void *sendbuf,
 #define FUNCNAME MPIR_Reduce_scatter_Rec_Halving_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-static int MPIR_Reduce_scatter_Rec_Halving_MV2(void *sendbuf,
+static int MPIR_Reduce_scatter_Rec_Halving_MV2(const void *sendbuf,
 											   void *recvbuf,
-											   int *recvcnts,
+											   const int *recvcnts,
 											   MPI_Datatype datatype,
 											   MPI_Op op,
 											   MPID_Comm * comm_ptr,
@@ -663,9 +674,9 @@ static int MPIR_Reduce_scatter_Rec_Halving_MV2(void *sendbuf,
 #define FUNCNAME MPIR_Reduce_scatter_Pair_Wise_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-static int MPIR_Reduce_scatter_Pair_Wise_MV2(void *sendbuf,
+static int MPIR_Reduce_scatter_Pair_Wise_MV2(const void *sendbuf,
 											 void *recvbuf,
-											 int *recvcnts,
+											 const int *recvcnts,
 											 MPI_Datatype datatype,
 											 MPI_Op op,
 											 MPID_Comm * comm_ptr, int *errflag)
@@ -893,9 +904,9 @@ static int MPIR_Reduce_scatter_Pair_Wise_MV2(void *sendbuf,
 #define FUNCNAME MPIR_Reduce_scatter_non_comm_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-static int MPIR_Reduce_scatter_non_comm_MV2(void *sendbuf,
+static int MPIR_Reduce_scatter_non_comm_MV2(const void *sendbuf,
 											void *recvbuf,
-											int *recvcnts,
+											const int *recvcnts,
 											MPI_Datatype datatype,
 											MPI_Op op,
 											MPID_Comm * comm_ptr, int *errflag)
@@ -1291,7 +1302,7 @@ static int MPIR_Reduce_scatter_non_comm_MV2(void *sendbuf,
 #define FUNCNAME MPIR_Reduce_scatter_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Reduce_scatter_MV2(void *sendbuf, void *recvbuf, int *recvcnts,
+int MPIR_Reduce_scatter_MV2(const void *sendbuf, void *recvbuf, const int *recvcnts,
 							MPI_Datatype datatype, MPI_Op op,
 							MPID_Comm * comm_ptr, int *errflag)
 {

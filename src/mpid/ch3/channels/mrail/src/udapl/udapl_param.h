@@ -13,7 +13,7 @@
 #ifndef _UDAPL_PARAM_H
 #define _UDAPL_PARAM_H
 
-#include "mpidi_ch3i_rdma_conf.h"
+#include "mpichconf.h"
 #include "udapl_arch.h"
 #include "debug_utils.h"
 #include "mv2_arch_hca_detect.h"
@@ -72,6 +72,7 @@ extern int mv2_spins_before_lock;
 
 
 #define RDMA_NDREG_ENTRIES              (1100)
+#define RDMA_NDREG_ENTRIES_MAX          (4096)
 #define RDMA_PIN_POOL_SIZE         (2*1024*1024)        /* for small size message */
 #define RDMA_DEFAULT_MAX_CQ_SIZE        (6000)
 #define RDMA_DEFAULT_PORT               (1)
