@@ -1,9 +1,9 @@
-/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -112,10 +112,6 @@ int MPID_Finalize(void)
       *    cancel it, in which case an error shouldn't be generated.
       */
 
-#if defined(_OSU_MVAPICH_) && defined(ENABLE_SCR)
-    SCR_Finalize();
-#endif    
-
 #ifdef _ENABLE_CUDA_
     if (rdma_enable_cuda) {
         cuda_cleanup();
@@ -152,7 +148,8 @@ int MPID_Finalize(void)
     /* FIXME: The close actions should use the same code as the other
        connection close code */
 #if !defined (_OSU_PSM_)
-    MPIDI_PG_Close_VCs();
+    mpi_errno = MPIDI_PG_Close_VCs();
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
     /*
      * Wait for all VCs to finish the close protocol
      */

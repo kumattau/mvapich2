@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -173,7 +173,6 @@ int MPIR_Alltoallv_intra_MV2(const void *sendbuf,
         }
     }
 
-  fn_exit:
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT(comm_ptr);
     return (mpi_errno);

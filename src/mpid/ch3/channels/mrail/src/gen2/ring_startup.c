@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -781,8 +781,8 @@ int _ring_boot_exchange(struct ibv_mr * addr_hndl, void * addr_pool,
 
     result = gethostname(hostname, HOSTNAME_LEN);
     if (result!=0) {
-        MPIU_Error_printf("Could not get hostname\n");
-        exit(1);
+        PRINT_ERROR_ERRNO("Could not get hostname.", errno);
+        exit(EXIT_FAILURE);
     }
     hostent = gethostbyname(hostname);
     if (hostent == NULL) {

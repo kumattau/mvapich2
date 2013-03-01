@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -2145,7 +2145,7 @@ int MPIR_Bcast_tune_intra_MV2(void *buffer,
 #else
         mv2_bcast_thresholds_table[range].is_two_level_bcast[range_threshold];
 #endif
-    if (comm_ptr->ch.shmem_coll_ok == 0) {
+    if (comm_ptr->ch.shmem_coll_ok != 1) {
 
         mpi_errno = MPIR_Bcast_intra(buffer, count, datatype, root, comm_ptr, errflag);
 

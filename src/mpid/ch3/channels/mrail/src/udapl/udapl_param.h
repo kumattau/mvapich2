@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -111,11 +111,7 @@ extern int mv2_spins_before_lock;
 #define DAPL_GEN2_MAX_MSG_SIZE               (2147483648)
 #define HOSTNAME_LEN    (255)
 
-#if defined(_DDR_)
-    #define RDMA_DEFAULT_MTU_SIZE_IBA            (2048)
-#else
-    #define RDMA_DEFAULT_MTU_SIZE_IBA            (1024)
-#endif
+#define RDMA_DEFAULT_MTU_SIZE_IBA            (2048)
 
 #ifdef _IB_GEN2_
 

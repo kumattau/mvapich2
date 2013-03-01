@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -23,6 +23,14 @@
 #endif                          /* #if defined(_OSU_MVAPICH_) */
 
 #define NMATCH (3+1)
+
+/* Alltoall tuning flags
+ *  BRUCK: MV2_ALLTOALL_TUNING=0
+ *  RD: MV2_ALLTOALL_TUNING=1
+ *  SCATTER_DEST: MV2_ALLTOALL_TUNING=2
+ *  PAIRWISE: MV2_ALLTOALL_TUNING=3
+ *  INPLACE: MV2_ALLTOALL_TUNING=4
+ */
 
 enum {
     ALLTOALL_BRUCK_MV2=0,

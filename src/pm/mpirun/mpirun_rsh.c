@@ -13,7 +13,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -44,6 +44,7 @@
 #include <spawn_info.h>
 #include <read_specfile.h>
 #include <gethostip.h>
+#include <mpirun_environ.h>
 
 #include <errno.h>
 #include <signal.h>
@@ -2512,6 +2513,10 @@ void mpispawn_checkin(int s)
 
         address[id] = addr;
         ((struct sockaddr_in *) &address[id])->sin_port = port;
+
+        if (send_environ(sock)) {
+            socket_error = 1;
+        }
 
         if (!(id == 0 && use_totalview))
             close(sock);

@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -57,10 +57,6 @@
 #   if defined(_EM64T_)
 #       error Multiple build cpu settings defined.
 #   endif
-#endif
-
-#if defined(_DDR_) && defined(_SDR_)
-#error Only one of _DDR_ and _SDR_ can be defined
 #endif
 
 #if defined(_PCI_X_) && defined(_PCI_EX_)

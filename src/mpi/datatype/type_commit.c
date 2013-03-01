@@ -1,4 +1,4 @@
-/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
  *
  *  (C) 2001 by Argonne National Laboratory.
@@ -58,7 +58,7 @@ int MPIR_Type_commit_impl(MPI_Datatype *datatype)
 /*@
     MPI_Type_commit - Commits the datatype
 
-Input Parameter:
+Input Parameters:
 . datatype - datatype (handle) 
 
 .N ThreadSafe

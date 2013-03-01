@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -23,9 +23,9 @@
 #include "coll_shmem.h"
 #include "unistd.h"
 
-extern void *allgather_store_buf;
-extern int allgather_store_buf_size;
-extern cudaEvent_t *sync_event;
+extern void *mv2_cuda_allgather_store_buf;
+extern int mv2_cuda_allgather_store_buf_size;
+extern cudaEvent_t *mv2_cuda_sync_event;
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Allgather_cuda_intra_MV2
@@ -73,29 +73,29 @@ int MPIR_Allgather_cuda_intra_MV2(void *sendbuf,
     /*Creating Store Buffer*/
     page_size = getpagesize();
 
-    max_size = allgather_store_buf_size < recvcount * comm_size * recvtype_extent ? 
-            recvcount * comm_size * recvtype_extent : allgather_store_buf_size;
+    max_size = mv2_cuda_allgather_store_buf_size < recvcount * comm_size * recvtype_extent ? 
+            recvcount * comm_size * recvtype_extent : mv2_cuda_allgather_store_buf_size;
 
-    if (allgather_store_buf_size < max_size || !allgather_store_buf){
-        if(allgather_store_buf){
-            ibv_cuda_unregister(allgather_store_buf);
-            free (allgather_store_buf);
+    if (mv2_cuda_allgather_store_buf_size < max_size || !mv2_cuda_allgather_store_buf){
+        if(mv2_cuda_allgather_store_buf){
+            ibv_cuda_unregister(mv2_cuda_allgather_store_buf);
+            free (mv2_cuda_allgather_store_buf);
         } 
-        result = posix_memalign(&allgather_store_buf, page_size, max_size);
-        if ((result!=0) || (NULL == allgather_store_buf)) {
+        result = posix_memalign(&mv2_cuda_allgather_store_buf, page_size, max_size);
+        if ((result!=0) || (NULL == mv2_cuda_allgather_store_buf)) {
             mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPI_ERR_OTHER,
                     FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
                     "posix_memalign", strerror(errno));
             MPIU_ERR_POP (mpi_errno);
         }
-        ibv_cuda_register(allgather_store_buf, max_size);
-        allgather_store_buf_size = max_size;
+        ibv_cuda_register(mv2_cuda_allgather_store_buf, max_size);
+        mv2_cuda_allgather_store_buf_size = max_size;
     }
 
     /*Creating event to synchronize at end*/
-    if (!sync_event) {
-        sync_event = (cudaEvent_t *) MPIU_Malloc(sizeof(cudaEvent_t));
-        cudaerr = cudaEventCreateWithFlags(sync_event, cudaEventDisableTiming);
+    if (!mv2_cuda_sync_event) {
+        mv2_cuda_sync_event = (cudaEvent_t *) MPIU_Malloc(sizeof(cudaEvent_t));
+        cudaerr = cudaEventCreateWithFlags(mv2_cuda_sync_event, cudaEventDisableTiming);
         if(cudaerr != cudaSuccess) {
             mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME,
                     __LINE__, MPI_ERR_OTHER, "**nomem", 0);
@@ -123,7 +123,7 @@ int MPIR_Allgather_cuda_intra_MV2(void *sendbuf,
         j     = rank;
         jnext = left;
 
-        mpi_errno = MPIC_Irecv( ((char *)allgather_store_buf + jnext*recvcount*recvtype_extent),
+        mpi_errno = MPIC_Irecv( ((char *)mv2_cuda_allgather_store_buf + jnext*recvcount*recvtype_extent),
                                 recvcount*recvtype_extent,
                                 MPI_BYTE,
                                 left,
@@ -146,7 +146,7 @@ int MPIR_Allgather_cuda_intra_MV2(void *sendbuf,
 	    }
 
         MPIU_Memcpy_CUDA_Async((void *)((char *)recvbuf + jnext*recvcount*recvtype_extent),
-                (void *)((char *)allgather_store_buf + jnext*recvcount*recvtype_extent),
+                (void *)((char *)mv2_cuda_allgather_store_buf + jnext*recvcount*recvtype_extent),
                 recvcount*recvtype_extent,
                 cudaMemcpyHostToDevice,
                 0 );
@@ -164,14 +164,14 @@ int MPIR_Allgather_cuda_intra_MV2(void *sendbuf,
 
         /*Intermediate steps of communication*/
         for (i=2; i<comm_size-1; i++) {
-            mpi_errno = MPIC_Irecv( ((char *)allgather_store_buf + jnext*recvcount*recvtype_extent),
+            mpi_errno = MPIC_Irecv( ((char *)mv2_cuda_allgather_store_buf + jnext*recvcount*recvtype_extent),
                                     recvcount,
                                     recvtype,
                                     left,
                                     MPIR_ALLGATHER_TAG,
                                     comm,
                                     &recv_req );
-            mpi_errno = MPIC_Isend(((char *)allgather_store_buf + j*recvcount*recvtype_extent),
+            mpi_errno = MPIC_Isend(((char *)mv2_cuda_allgather_store_buf + j*recvcount*recvtype_extent),
                                     recvcount,
                                     recvtype,
                                     right,
@@ -187,7 +187,7 @@ int MPIR_Allgather_cuda_intra_MV2(void *sendbuf,
 	        }
                     
             MPIU_Memcpy_CUDA_Async((void *)((char *)recvbuf + jnext*recvcount*recvtype_extent),
-                    (void *)((char *)allgather_store_buf + jnext*recvcount*recvtype_extent),
+                    (void *)((char *)mv2_cuda_allgather_store_buf + jnext*recvcount*recvtype_extent),
                     recvcount*recvtype_extent,
                     cudaMemcpyHostToDevice,
                     0 );
@@ -213,7 +213,7 @@ int MPIR_Allgather_cuda_intra_MV2(void *sendbuf,
                     MPIR_ALLGATHER_TAG,
                     comm,
                     &recv_req );
-            mpi_errno = MPIC_Isend(((char *)allgather_store_buf + j*recvcount*recvtype_extent),
+            mpi_errno = MPIC_Isend(((char *)mv2_cuda_allgather_store_buf + j*recvcount*recvtype_extent),
                     recvcount,
                     recvtype,
                     right,
@@ -269,19 +269,19 @@ int MPIR_Allgather_cuda_intra_MV2(void *sendbuf,
             recv_offset = dst_tree_root * recvcount * recvtype_extent;
             
             if (dst < comm_size) {
-                MPIU_Memcpy_CUDA((void*)((char *)allgather_store_buf + rank*recvcount*recvtype_extent), 
+                MPIU_Memcpy_CUDA((void*)((char *)mv2_cuda_allgather_store_buf + rank*recvcount*recvtype_extent), 
                                         (void*)((char *)recvbuf + rank*recvcount*recvtype_extent), 
                                         recvcount * recvtype_extent, 
                                         cudaMemcpyDeviceToHost);
 
-                mpi_errno = MPIC_Irecv( ((char *)allgather_store_buf + recv_offset),
+                mpi_errno = MPIC_Irecv( ((char *)mv2_cuda_allgather_store_buf + recv_offset),
                                         (mask)*recvcount, 
                                         recvtype, 
                                         dst, 
                                         MPIR_ALLGATHER_TAG,
                                         comm,
                                         &recv_req );
-                mpi_errno = MPIC_Isend(((char *)allgather_store_buf + send_offset),
+                mpi_errno = MPIC_Isend(((char *)mv2_cuda_allgather_store_buf + send_offset),
                                         curr_cnt, 
                                         recvtype, 
                                         dst, 
@@ -298,7 +298,7 @@ int MPIR_Allgather_cuda_intra_MV2(void *sendbuf,
                 }
 
                 MPIU_Memcpy_CUDA_Async((void*)((char *)recvbuf + recv_offset),
-                                    (void*)((char *)allgather_store_buf + recv_offset),
+                                    (void*)((char *)mv2_cuda_allgather_store_buf + recv_offset),
                                     (mask)*recvcount*recvtype_extent,
                                     cudaMemcpyHostToDevice,
                                     0 );
@@ -345,7 +345,7 @@ int MPIR_Allgather_cuda_intra_MV2(void *sendbuf,
                                                 comm,
                                                 &recv_req );
                     } else {
-                        mpi_errno = MPIC_Irecv( ((char *)allgather_store_buf + recv_offset),
+                        mpi_errno = MPIC_Irecv( ((char *)mv2_cuda_allgather_store_buf + recv_offset),
                                                 (mask)*recvcount, 
                                                 recvtype, 
                                                 dst, 
@@ -353,7 +353,7 @@ int MPIR_Allgather_cuda_intra_MV2(void *sendbuf,
                                                 comm,
                                                 &recv_req );
                     }
-                    mpi_errno = MPIC_Isend(((char *)allgather_store_buf + send_offset),
+                    mpi_errno = MPIC_Isend(((char *)mv2_cuda_allgather_store_buf + send_offset),
                                             curr_cnt, 
                                             recvtype, 
                                             dst, 
@@ -370,7 +370,7 @@ int MPIR_Allgather_cuda_intra_MV2(void *sendbuf,
 
                     if (mask < comm_size/2) {
                         MPIU_Memcpy_CUDA_Async(((void*) ((char *)recvbuf + recv_offset)),
-                                            (void *)((char *)allgather_store_buf + recv_offset),
+                                            (void *)((char *)mv2_cuda_allgather_store_buf + recv_offset),
                                             (mask)*recvcount*recvtype_extent,
                                             cudaMemcpyHostToDevice,
                                             0 );
@@ -392,13 +392,13 @@ int MPIR_Allgather_cuda_intra_MV2(void *sendbuf,
     }
 
     /* wait for the receive copies into the device to complete */
-    cudaerr = cudaEventRecord(*sync_event, 0);
+    cudaerr = cudaEventRecord(*mv2_cuda_sync_event, 0);
     if (cudaerr != cudaSuccess) {
         mpi_errno = MPIR_Err_create_code(mpi_errno, MPIR_ERR_RECOVERABLE, FCNAME,
                 __LINE__, MPI_ERR_OTHER, "**cudaEventRecord", 0);
         return mpi_errno;
     }
-    cudaEventSynchronize(*sync_event);
+    cudaEventSynchronize(*mv2_cuda_sync_event);
 
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT(comm_ptr);

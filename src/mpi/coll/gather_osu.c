@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -567,7 +567,7 @@ int MPIR_Gather_MV2_two_level_Direct(const void *sendbuf,
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
 static int MPIR_Limic_Gather_Scheme_PT_PT(
-                                         void *sendbuf,int sendcnt, MPI_Datatype sendtype,
+                                         const void *sendbuf,int sendcnt, MPI_Datatype sendtype,
                                          void *recvbuf, int recvcnt,MPI_Datatype recvtype,
                                          int root, MPID_Comm * comm_ptr, 
                                          MV2_Gather_function_ptr intra_node_fn_ptr, 
@@ -797,7 +797,7 @@ fn_fail:
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
 static int MPIR_Limic_Gather_Scheme_PT_LINEAR(
-                                         void *sendbuf,int sendcnt, MPI_Datatype sendtype,
+                                         const void *sendbuf,int sendcnt, MPI_Datatype sendtype,
                                          void *recvbuf, int recvcnt,MPI_Datatype recvtype,
                                          int root, MPID_Comm * comm_ptr, 
                                          MV2_Gather_function_ptr intra_node_fn_ptr, 
@@ -875,7 +875,7 @@ static int MPIR_Limic_Gather_Scheme_PT_LINEAR(
         MPIU_CHKLMEM_MALLOC(local_sendbuf, void *, send_nbytes, mpi_errno, "local_sendbuf");
         MPIR_Pack_impl(sendbuf, sendcnt, sendtype, local_sendbuf, send_nbytes, &position);
     } else {
-        local_sendbuf = sendbuf;
+        local_sendbuf = (void *)sendbuf;
         send_nbytes=nbytes;
     }
 
@@ -1051,7 +1051,7 @@ fn_fail:
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
 static int MPIR_Limic_Gather_Scheme_LINEAR_PT(
-                                         void *sendbuf,int sendcnt, MPI_Datatype sendtype,
+                                         const void *sendbuf,int sendcnt, MPI_Datatype sendtype,
                                          void *recvbuf, int recvcnt,MPI_Datatype recvtype,
                                          int root, MPID_Comm * comm_ptr, 
                                          MV2_Gather_function_ptr intra_node_fn_ptr, 
@@ -1196,7 +1196,7 @@ fn_fail:
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
 static int MPIR_Limic_Gather_Scheme_LINEAR_LINEAR(
-                                         void *sendbuf,int sendcnt, MPI_Datatype sendtype,
+                                         const void *sendbuf,int sendcnt, MPI_Datatype sendtype,
                                          void *recvbuf, int recvcnt,MPI_Datatype recvtype,
                                          int root, MPID_Comm * comm_ptr, 
                                          int *errflag) 
@@ -1275,7 +1275,7 @@ static int MPIR_Limic_Gather_Scheme_LINEAR_LINEAR(
         MPIR_Pack_impl(sendbuf, sendcnt, sendtype, local_sendbuf, send_nbytes, &position);
     }
     else {
-        local_sendbuf = sendbuf;
+        local_sendbuf = (void *)sendbuf;
         send_nbytes = nbytes;
     }
 
@@ -1367,7 +1367,7 @@ fn_fail:
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
 static int MPIR_Limic_Gather_Scheme_SINGLE_LEADER(
-                                         void *sendbuf,int sendcnt, MPI_Datatype sendtype,
+                                         const void *sendbuf,int sendcnt, MPI_Datatype sendtype,
                                          void *recvbuf, int recvcnt,MPI_Datatype recvtype,
                                          int root, MPID_Comm * comm_ptr, 
                                          int *errflag) 
@@ -1431,7 +1431,7 @@ static int MPIR_Limic_Gather_Scheme_SINGLE_LEADER(
         MPIR_Pack_impl(sendbuf, sendcnt, sendtype, local_sendbuf, send_nbytes, &position);
     }
     else {
-        local_sendbuf = sendbuf;
+        local_sendbuf = (void *)sendbuf;
         send_nbytes = nbytes; 
     }
 
@@ -1485,7 +1485,7 @@ fn_fail:
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIR_Intra_node_LIMIC_Gather_MV2(
-                                     void *sendbuf,int sendcnt, MPI_Datatype sendtype,
+                                     const void *sendbuf,int sendcnt, MPI_Datatype sendtype,
                                      void *recvbuf, int recvcnt,MPI_Datatype recvtype,
                                      int root, MPID_Comm * comm_ptr, int *errflag)
 {

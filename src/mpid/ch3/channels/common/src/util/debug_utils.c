@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -35,6 +35,9 @@ int DEBUG_Fork_verbose = 0;
 
 // Verbosity level for Fault Tolerance operations
 int DEBUG_FT_verbose = 0;
+
+// Verbosity level for Checkpoint/Restart operations
+int DEBUG_CR_verbose = 0;
 
 // Verbosity level for Migration operations
 int DEBUG_MIG_verbose = 0;
@@ -81,6 +84,7 @@ static inline int env2int (char *name)
 int initialize_debug_variables() {
     DEBUG_Fork_verbose = env2int( "MV2_DEBUG_FORK_VERBOSE" );
     DEBUG_FT_verbose = env2int( "MV2_DEBUG_FT_VERBOSE" );
+    DEBUG_CR_verbose = env2int( "MV2_DEBUG_CR_VERBOSE" );
     DEBUG_MIG_verbose = env2int( "MV2_DEBUG_MIG_VERBOSE" );
     DEBUG_UD_verbose = env2int( "MV2_DEBUG_UD_VERBOSE" );
     DEBUG_ZCY_verbose = env2int( "MV2_DEBUG_ZCOPY_VERBOSE" );

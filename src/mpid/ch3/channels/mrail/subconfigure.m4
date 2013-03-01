@@ -22,12 +22,34 @@ AC_CHECK_HEADERS(                       \
     stdlib.h                            \
     unistd.h                            \
     pthread.h                           \
+    openacc.h                           \
 )
 
 AC_CHECK_HEADERS([sys/syscall.h syscall.h], [
                   AC_CHECK_FUNCS([syscall])
                   break
                   ])
+
+AC_ARG_WITH([scr],
+    [AS_HELP_STRING([--with-scr],
+        [Enable use of Scalable Checkpoint / Restart (SCR) for checkpointing])
+    ],
+    [AS_IF([test x$with_scr = xyes], [
+        AC_DEFINE([ENABLE_SCR], [1], [Define to use SCR for checkpointing])
+        AC_SEARCH_LIBS([crc32], [z])
+        AS_IF([test $ac_cv_search_crc32 = no], [
+            AC_MSG_ERROR([libz not found (required by scr)])
+            ])
+        ])
+    ],
+    [with_scr=no])
+
+AC_ARG_WITH([cma],
+    [AS_HELP_STRING([--with-cma],
+        [Enable use of CMA for intra-node communication])
+    ],
+    [],
+    [with_cma=no])
 
 AC_ARG_WITH([limic2],
     [AS_HELP_STRING([--with-limic2=@<:@LiMIC2 installation path@:>@],
@@ -60,6 +82,12 @@ AC_ARG_WITH([limic2-libpath],
         esac
         test "x$with_limic2" != "xno" || with_limic2="yes"
     ])
+
+AS_IF([test x$with_cma != xno],
+        [AC_DEFINE([_SMP_CMA_], [1],
+            [Define to enable intra-node communication via CMA])
+         AC_CHECK_FUNCS([process_vm_readv])
+        ])
 
 AC_DEFINE(_OSU_MVAPICH_,1,[Define to enable MVAPICH2 customizations.])
 AC_DEFINE(MPIDI_CH3_CHANNEL_RNDV,1,[Define to enable channel rendezvous (Required by MVAPICH2).])
@@ -206,8 +234,6 @@ AC_ARG_WITH(ib-libpath,
 [--with-ib-libpath=path - Specify the path to the infiniband libraries.],,with_ib_libpath=default)
 AC_ARG_WITH(io-bus,
 [--with-io-bus=type - Specify the i/o bus type.],,with_io_bus=PCI_EX) 
-AC_ARG_WITH(link,
-[--with-link=type - Specify the link speed.],,with_link=DDR)
 AC_ARG_WITH(pmi,
 [--with-pmi=name - Specify the PMI interface.],,)
 AC_ARG_WITH(rdma,
@@ -353,6 +379,9 @@ AS_IF([test "x$enable_ckpt" = xyes], [
        AC_MSG_RESULT($enable_ftb_cr)
 
        AS_IF([test "x$enable_ckpt_migration" = xyes], [
+              AC_CHECK_HEADER([attr/xattr.h],
+                              [],
+                              [AC_MSG_ERROR(['attr/xattr.h not found.  Needed for migration support'])])
               AC_CHECK_HEADER([libftb.h],
                               [],
                               [AC_MSG_ERROR(['libftb.h not found. Please specify --with-ftb-include'])])
@@ -673,16 +702,6 @@ elif test "$with_rdma" = "udapl"; then
 
     AC_MSG_CHECKING([for the link speed])
 
-    if test "$with_link" = "SDR"; then
-        AC_DEFINE(_SDR_, 1, [Define to specify the link speed.])
-    elif test "$with_link" = "DDR"; then
-        AC_DEFINE(_DDR_, 1, [Define to specify the link speed.])
-    else
-        AC_MSG_ERROR([Invalid input for link speed.])
-    fi
-
-    AC_MSG_RESULT($with_link)
-
     AC_MSG_CHECKING([for the i/o bus type])
 
     if test "$with_io_bus" = "PCI_EX"; then
@@ -763,10 +782,13 @@ fi
 
     dnl automake conditionals should not appear in conditional blocks as this
     dnl can cause confusion in the makefiles
+    AM_CONDITIONAL([BUILD_MRAIL_OPENACC],
+            [test X$ac_cv_header_openacc_h = Xyes])
     AM_CONDITIONAL([BUILD_MRAIL_CUDA], [test X$build_mrail_cuda = Xyes])
     AM_CONDITIONAL([BUILD_MRAIL_CUDA_KERNELS],
             [test X$build_mrail_cuda_kernels = Xyes])
     AM_CONDITIONAL([BUILD_MRAIL_HWLOC], [test X$build_mrail_hwloc = Xyes])
     AM_CONDITIONAL([BUILD_LIB_CH3AFFINITY], [test X$build_mrail = Xyes])
+    AM_CONDITIONAL([BUILD_LIB_SCR], [test X$with_scr = Xyes])
 ])dnl end _BODY
 [#] end of __file__

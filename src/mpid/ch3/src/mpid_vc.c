@@ -1,9 +1,9 @@
-/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1214,6 +1214,46 @@ int MPIDI_Get_num_nodes()
     return g_num_nodes;
 }
 
+int MPIDI_Get_local_host_mpirun_mapping(MPIDI_PG_t *pg, int our_pg_rank)
+{
+    int i = 0, node_id, local_peer_rank;
+    int mpi_errno = MPI_SUCCESS;
+    MPIDI_VC_t* vc = NULL;
+    char *val, buffer[32];
+
+    val = getenv("MV2_COMM_WORLD_LOCAL_SIZE");
+    MPIU_Assert(val != NULL);
+    pg->ch.num_local_processes = atoi(val);
+
+    val = getenv("MV2_NODE_ID");
+    MPIU_Assert(val != NULL);
+    node_id = atoi(val);
+
+    for (i = 0; i < pg->size; ++i) {
+        MPIDI_PG_Get_vc(pg, i, &vc);
+        vc->smp.local_rank = -1;
+    }
+
+    for (i = 0; i < pg->ch.num_local_processes; i++) {
+        sprintf(buffer, "MPISPAWN_MPIRUN_RANK_%d", i);
+        val = getenv(buffer);
+        MPIU_Assert(val != NULL);
+        local_peer_rank = atoi(val);
+        MPIDI_PG_Get_vc(pg, local_peer_rank, &vc);
+        vc->smp.local_rank = i;
+        vc->node_id = node_id;
+        if (our_pg_rank == local_peer_rank) {
+            pg->ch.local_process_id = i;
+        }
+    }
+
+    val = getenv("MV2_NUM_NODES_IN_JOB");
+    MPIU_Assert(val != NULL);
+    g_num_nodes = atoi(val);
+
+    return mpi_errno;
+}
+
 int MPIDI_Get_local_host(MPIDI_PG_t *pg, int our_pg_rank)
 {
     int i = 0, j = 0;
@@ -1497,7 +1537,19 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
     }
     else {
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
-        mpi_errno = MPIDI_Get_local_host(pg, our_pg_rank);
+        int mv2_use_mpirun_mapping = 1;
+        char *val;
+
+        val = getenv("MV2_USE_MPIRUN_MAPPING");
+        if (val) {
+            mv2_use_mpirun_mapping = atoi(val);
+        }
+
+        if ((str && (atoi(str) == 1)) && mv2_use_mpirun_mapping) {
+            mpi_errno = MPIDI_Get_local_host_mpirun_mapping(pg, our_pg_rank);
+        } else {
+            mpi_errno = MPIDI_Get_local_host(pg, our_pg_rank);
+        }
         if (mpi_errno) {
             MPIU_ERR_POP(mpi_errno);
         }

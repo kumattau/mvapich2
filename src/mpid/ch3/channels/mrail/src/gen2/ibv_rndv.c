@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -96,8 +96,11 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv(MPIDI_VC_t * vc, MPID_Request * req)
     req->mrail.rndv_buf_off = 0;
 
     /* Step 1.5: If use R3 for smaller messages */
-    if (req->mrail.rndv_buf_sz <= rdma_r3_threshold)
-    {
+    if (req->mrail.rndv_buf_sz <= rdma_r3_threshold
+#ifdef _ENABLE_CUDA_
+        && !rdma_enable_cuda
+#endif
+        ) {
         req->mrail.protocol = VAPI_PROTOCOL_R3;
     }
 #ifdef _ENABLE_CUDA_

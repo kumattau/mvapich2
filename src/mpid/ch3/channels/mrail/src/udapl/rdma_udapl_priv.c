@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -528,7 +528,7 @@ static int
 rdma_pmi_exchange_addresses (int pg_rank, int pg_size,
                              void *localaddr, int addrlen, void *alladdrs)
 {
-    int ret, i, j, lhs, rhs, len_local, len_remote, key_max_sz, val_max_sz;
+    int ret, j, len_local, len_remote, key_max_sz, val_max_sz;
     char attr_buff[IBA_PMI_ATTRLEN];
     char val_buff[IBA_PMI_VALLEN];
     char *temp_localaddr = (char *) localaddr;
@@ -621,11 +621,9 @@ rdma_iba_hca_init (struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
 {
     DAT_EP_ATTR ep_attr;
     DAT_EVD_HANDLE async_evd_handle = DAT_HANDLE_NULL;
-    DAT_EVENT event;
     DAT_IA_ATTR ia_attr;
     DAT_EP_PARAM param;
 
-    unsigned int act_num_cqe;
     int i;
     DAT_RETURN ret = DAT_SUCCESS;
 
@@ -860,13 +858,9 @@ int
 rdma_iba_hca_init_noep (struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                    MPIDI_VC_t * vc, int pg_rank, int pg_size)
 {
-    DAT_EP_ATTR ep_attr;
     DAT_EVD_HANDLE async_evd_handle = DAT_HANDLE_NULL;
-    DAT_EVENT event;
     DAT_IA_ATTR ia_attr;
-    DAT_EP_PARAM param;
 
-    unsigned int act_num_cqe;
     int i;
     DAT_RETURN ret = DAT_SUCCESS;
 
@@ -984,8 +978,6 @@ void cm_ep_create(MPIDI_VC_t *vc)
     DAT_EP_PARAM param;
     DAT_EVD_HANDLE async_evd_handle = DAT_HANDLE_NULL;
 
-    unsigned int act_num_cqe;
-    int i;
     DAT_RETURN ret = DAT_SUCCESS;
     mv2_MPIDI_CH3I_RDMA_Process_t *proc = &mv2_MPIDI_CH3I_RDMA_Process;
 
@@ -1082,13 +1074,12 @@ int
 rdma_iba_allocate_memory (struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                           MPIDI_VC_t * vc, int pg_rank, int pg_size)
 {
-    int ret, i = 0;
+    int i = 0;
     int iter_hca;
 
   if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
     /*The memory for sending the long int variable */
 
-    VIP_MEM_HANDLE mem_handle;
     DAT_REGION_DESCRIPTION region;
     DAT_VLEN reg_size;
     DAT_VADDR reg_addr;
@@ -1097,7 +1088,6 @@ rdma_iba_allocate_memory (struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
     /* First allocate space for RDMA fast path for every connection */
     for (i = 0; i < pg_size; i++)
       {
-          int tmp_index, j;
           if (i == pg_rank)
               continue;
 
@@ -1463,12 +1453,7 @@ void
 MPIDI_CH3I_RDMA_util_get_ia_addr (DAT_SOCK_ADDR * ia_addr,
                                   DAT_SOCK_ADDR * ret_addr)
 {
-    int i;
-    char *p;
-    static char hostname[255];
-
     MPIU_Memcpy (ret_addr, ia_addr, sizeof (DAT_SOCK_ADDR));
-
 }
 
 /*  convert DAT_SOCK_ADDR to string  */

@@ -1,4 +1,4 @@
-/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -26,99 +26,6 @@
  fn_fail:                                                       \
     goto fn_exit;                                               \
     /* --END ERROR HANDLING-- */
-
-
-#undef FUNCNAME
-#define FUNCNAME MPIDI_Rput
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_Rput(const void *origin_addr, int origin_count,
-               MPI_Datatype origin_datatype, int target_rank, MPI_Aint target_disp,
-               int target_count, MPI_Datatype target_datatype, MPID_Win *win,
-               MPID_Request **request)
-{
-    MPIDI_FUNC_NOTIMPL(RPUT)
-}
-
-
-#undef FUNCNAME
-#define FUNCNAME MPIDI_Rget
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_Rget(void *origin_addr, int origin_count,
-               MPI_Datatype origin_datatype, int target_rank, MPI_Aint target_disp,
-               int target_count, MPI_Datatype target_datatype, MPID_Win *win,
-               MPID_Request **request)
-{
-    MPIDI_FUNC_NOTIMPL(RGET)
-}
-
-
-#undef FUNCNAME
-#define FUNCNAME MPIDI_Raccumulate
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_Raccumulate(const void *origin_addr, int origin_count,
-                      MPI_Datatype origin_datatype, int target_rank, MPI_Aint target_disp,
-                      int target_count, MPI_Datatype target_datatype, MPI_Op op, MPID_Win *win,
-                      MPID_Request **request)
-{
-    MPIDI_FUNC_NOTIMPL(RACCUMULATE)
-}
-
-
-#undef FUNCNAME
-#define FUNCNAME MPIDI_Rget_accumulate
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_Rget_accumulate(const void *origin_addr, int origin_count,
-                          MPI_Datatype origin_datatype, void *result_addr, int result_count,
-                          MPI_Datatype result_datatype, int target_rank, MPI_Aint target_disp,
-                          int target_count, MPI_Datatype target_datatype, MPI_Op op, MPID_Win *win,
-                          MPID_Request **request)
-{
-    MPIDI_FUNC_NOTIMPL(RGET_ACCUMULATE)
-}
-
-
-#undef FUNCNAME
-#define FUNCNAME MPIDI_Win_flush
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_Win_flush(int rank, MPID_Win *win)
-{
-    MPIDI_FUNC_NOTIMPL(WIN_FLUSH)
-}
-
-
-#undef FUNCNAME
-#define FUNCNAME MPIDI_Win_flush_all
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_Win_flush_all(MPID_Win *win)
-{
-    MPIDI_FUNC_NOTIMPL(WIN_FLUSH_ALL)
-}
-
-
-#undef FUNCNAME
-#define FUNCNAME MPIDI_Win_flush_local
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_Win_flush_local(int rank, MPID_Win *win)
-{
-    MPIDI_FUNC_NOTIMPL(WIN_FLUSH_LOCAL)
-}
-
-
-#undef FUNCNAME
-#define FUNCNAME MPIDI_Win_flush_local_all
-#undef FCNAME
-#define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_Win_flush_local_all(MPID_Win *win)
-{
-    MPIDI_FUNC_NOTIMPL(WIN_FLUSH_LOCAL_ALL)
-}
 
 
 #undef FUNCNAME

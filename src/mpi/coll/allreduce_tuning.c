@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -477,25 +477,25 @@ int MV2_internode_Allreduce_is_define(char *mv2_user_allreduce_inter, char
             /* given () start at 1 */
             switch (atoi(p + match[1].rm_so)) {
             case ALLREDUCE_P2P_RD:
-                mv2_tmp_allreduce_thresholds_table[0].inter_leader[0].MV2_pt_Allreduce_function =
+                mv2_tmp_allreduce_thresholds_table[0].inter_leader[i].MV2_pt_Allreduce_function =
                     &MPIR_Allreduce_pt2pt_rd_MV2;
                 break;
             case ALLREDUCE_P2P_RS:
-                mv2_tmp_allreduce_thresholds_table[0].inter_leader[0].MV2_pt_Allreduce_function =
+                mv2_tmp_allreduce_thresholds_table[0].inter_leader[i].MV2_pt_Allreduce_function =
                     &MPIR_Allreduce_pt2pt_rs_MV2;
                 break;
 #if defined(_MCST_SUPPORT_)
             case ALLREDUCE_MCAST_2LEVEL:
-                mv2_tmp_allreduce_thresholds_table[0].inter_leader[0].MV2_pt_Allreduce_function =
+                mv2_tmp_allreduce_thresholds_table[0].inter_leader[i].MV2_pt_Allreduce_function =
                     &MPIR_Allreduce_mcst_reduce_two_level_helper_MV2;
                 break;
             case ALLREDUCE_MCAST_RSA:
-                mv2_tmp_allreduce_thresholds_table[0].inter_leader[0].MV2_pt_Allreduce_function =
+                mv2_tmp_allreduce_thresholds_table[0].inter_leader[i].MV2_pt_Allreduce_function =
                     &MPIR_Allreduce_mcst_reduce_redscat_gather_MV2;
                 break;
 #endif /* #if defined(_MCST_SUPPORT_) */
             default:
-                mv2_tmp_allreduce_thresholds_table[0].inter_leader[0].MV2_pt_Allreduce_function =
+                mv2_tmp_allreduce_thresholds_table[0].inter_leader[i].MV2_pt_Allreduce_function =
                     &MPIR_Allreduce_pt2pt_rd_MV2;
             }
 

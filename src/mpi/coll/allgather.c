@@ -1,4 +1,4 @@
-/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
  *
  *  (C) 2001 by Argonne National Laboratory.
@@ -6,6 +6,9 @@
  */
 
 #include "mpiimpl.h"
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#include "coll_shmem.h"
+#endif
 
 /* -- Begin Profiling Symbol Block for routine MPI_Allgather */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -846,7 +849,7 @@ Input Parameters:
 . recvtype - data type of receive buffer elements (handle) 
 - comm - communicator (handle) 
 
-Output Parameter:
+Output Parameters:
 . recvbuf - address of receive buffer (choice) 
 
 Notes:
@@ -877,7 +880,7 @@ Notes:
 .N MPI_ERR_TYPE
 .N MPI_ERR_BUFFER
 @*/
-int MPI_Allgather(MPICH2_CONST void *sendbuf, int sendcount, MPI_Datatype sendtype,
+int MPI_Allgather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                   void *recvbuf, int recvcount, MPI_Datatype recvtype,
                   MPI_Comm comm)
 {
@@ -959,6 +962,14 @@ int MPI_Allgather(MPICH2_CONST void *sendbuf, int sendcount, MPI_Datatype sendty
                                     recvbuf, recvcount, recvtype,
                                     comm_ptr, &errflag);
     if (mpi_errno) goto fn_fail;
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+    if(comm_ptr->ch.allgather_comm_ok >= 0) {
+        mpi_errno = mv2_increment_allgather_coll_counter(comm_ptr);
+        if (mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+        }
+    } 
+#endif /*   #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */ 
     
     /* ... end of body of routine ... */
     

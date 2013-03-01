@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -545,7 +545,8 @@ int psm_1sided_input(MPID_Request *req, int inlen)
         MPIDI_CH3_Pkt_lock_granted_t *grpkt = (MPIDI_CH3_Pkt_lock_granted_t *) pkt;
         MPID_Win *win_ptr;
         MPID_Win_get_ptr(grpkt->source_win_handle, win_ptr);
-        win_ptr->lock_granted = 1;
+        MPIDI_Comm_get_vc(win_ptr->comm_ptr, grpkt->target_rank, &vc);
+        psm_pkthndl[pkt->type](vc, pkt, &msg, &(vc->ch.recv_active));
         DBG("granted lock\n");
         goto end;
     }

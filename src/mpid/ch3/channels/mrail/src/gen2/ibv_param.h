@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -104,7 +104,9 @@ extern int rdma_large_msg_rail_sharing_threshold;
 
 
 extern int mv2_on_demand_ud_info_exchange;
+extern int mv2_homogeneous_cluster;
 extern int mv2_show_env_info;
+extern int mv2_show_runlog_level;
 /* HSAM Definitions */
 
 extern int striping_threshold;
@@ -173,6 +175,7 @@ extern int rdma_cuda_alltoall_dynamic;
 extern int rdma_cuda_allgather_rd_limit;
 extern int rdma_cuda_allgather_fgp;
 extern int rdma_cuda_init_context;
+extern int rdma_check_cuda_attribute;
 #endif /*#ifdef _ENABLE_CUDA_ */
 
 
@@ -217,6 +220,7 @@ extern long mcast_max_retry_timeout;
 extern long mcast_comm_init_timeout;
 extern int mcast_comm_init_retries;
 extern int mcast_nspin_threshold;
+extern int mcast_skip_loopback;
 #endif
 
 extern int rdma_default_async_thread_stack_size;
@@ -501,6 +505,7 @@ typedef enum mv2_env_param_id {
     MV2_PREPOST_DEPTH,
     MV2_USER_CONFIG,
     MV2_USE_RING_STARTUP,
+    MV2_HOMOGENEOUS_CLUSTER,
     /* pt-pt */
     MV2_COALESCE_THRESHOLD,
     MV2_DREG_CACHE_LIMIT,
@@ -555,6 +560,7 @@ typedef enum mv2_env_param_id {
     MV2_LIMIC_PUT_THRESHOLD,
     MV2_SMP_USE_LIMIC2,
     MV2_USE_LIMIC2_COLL,
+    MV2_SMP_USE_CMA,
     MV2_SMP_BATCH_SIZE,
     MV2_SMP_EAGERSIZE,
     MV2_SMPI_LENGTH_QUEUE,
@@ -708,5 +714,10 @@ typedef struct mv2_env_param_list {
 
 extern mv2_env_param_list_t param_list[];
 void mv2_show_all_params();
+void mv2_show_runlog_info(int level);
+
 mv2_arch_hca_type MV2_get_arch_hca_type();
+
+
+extern int dreg_max_use_count;
 #endif /* _RDMA_PARAM_H */

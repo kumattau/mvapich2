@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -23,6 +23,21 @@
 #endif                          /* #if defined(_OSU_MVAPICH_) */
 
 #define NMATCH (3+1)
+
+/* Scatter tuning flag
+ * Binomial: MV2_INTER_SCATTER_TUNING=1
+ * Direct: MV2_INTER_SCATTER_TUNING=2
+ * Mcast: MV2_INTER_SCATTER_TUNING=5
+ *        MV2_USE_MCAST_SCATTER=1 MV2_USE_MCAST_PIPELINE_SHM=1 MV2_USE_MCAST=1 
+ * 2-level inter-binomial-intra-binomial: 
+ *        MV2_INTER_SCATTER_TUNING=3 MV2_INTRA_SCATTER_TUNING=1 
+ * 2-level inter-binomial-intra-direct:
+ *        MV2_INTER_SCATTER_TUNING=3 MV2_INTRA_SCATTER_TUNING=2 
+ * 2-level inter-direct-intra-binomial: 
+ *        MV2_INTER_SCATTER_TUNING=4 MV2_INTRA_SCATTER_TUNING=1
+ * 2-level inter-direct-intra-direct: 
+ *        MV2_INTER_SCATTER_TUNING=4 MV2_INTRA_SCATTER_TUNING=2
+ */
 
 typedef struct {
     int min;

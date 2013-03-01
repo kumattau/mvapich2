@@ -1,4 +1,4 @@
-/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
  *  (C) 2008 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -722,11 +722,6 @@ HYD_status HYD_pmcd_pmip_get_params(char **t_argv)
          * for it. */
         status = HYDT_bsci_query_proxy_id(&HYD_pmcd_pmip.local.id);
         HYDU_ERR_POP(status, "unable to query launcher for proxy ID\n");
-    }
-
-    if (HYD_pmcd_pmip.system_global.jobid == NULL) {
-        status = HYDT_bsci_query_jobid(&HYD_pmcd_pmip.system_global.jobid);
-        HYDU_ERR_POP(status, "unable to query launcher for job ID\n");
     }
 
     if (HYD_pmcd_pmip.local.id == -1)

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -14,9 +14,10 @@
 #include <stdlib.h>
 #include <unistd.h>
 #include <string.h>
-#include <mpimem.h>
-#include <mv2_ud.h>
-#include <debug_utils.h>
+#include "mpichconf.h"
+#include "mpimem.h"
+#include "mv2_ud.h"
+#include "debug_utils.h"
 
 /* create UD context */
 struct ibv_qp * mv2_ud_create_qp(mv2_ud_qp_info_t *qp_info)

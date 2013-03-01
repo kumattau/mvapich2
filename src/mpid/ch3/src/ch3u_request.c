@@ -1,9 +1,9 @@
-/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -98,6 +98,7 @@ MPID_Request * MPID_Request_create(void)
 	req->dev.dtype_info	   = NULL;
 	req->dev.dataloop	   = NULL;
 	req->dev.iov_offset        = 0;
+        req->dev.resp_request_handle = MPI_REQUEST_NULL;
 #ifdef MPIDI_CH3_REQUEST_INIT
 	MPIDI_CH3_REQUEST_INIT(req);
 #endif
@@ -756,7 +757,7 @@ int MPIDI_CH3U_Request_unpack_uebuf(MPID_Request * rreq)
 
 /* 
  * Export the function to set a request as completed for use by
- * the generalized request functions in mpich2/src/pt2pt/greq_complete.c
+ * the generalized request functions in mpich/src/pt2pt/greq_complete.c
  */
 void MPID_Request_set_completed( MPID_Request *req )
 {

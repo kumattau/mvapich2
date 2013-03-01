@@ -33,7 +33,7 @@
  *
  * Author: Michael S. Tsirkin <mst@mellanox.co.il>
  */
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the

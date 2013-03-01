@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -90,7 +90,7 @@ extern int MPIR_Gather_MV2_two_level_Direct(const void *sendbuf, int sendcnt,
             int *errflag);
 
 #if defined(_SMP_LIMIC_)
-extern int MPIR_Intra_node_LIMIC_Gather_MV2(void *sendbuf,int sendcnt, MPI_Datatype sendtype,
+extern int MPIR_Intra_node_LIMIC_Gather_MV2(const void *sendbuf,int sendcnt, MPI_Datatype sendtype,
                                      void *recvbuf, int recvcnt,MPI_Datatype recvtype,
                                      int root, MPID_Comm * comm_ptr, int *errflag);
 #endif /*#if defined(_SMP_LIMIC_)*/

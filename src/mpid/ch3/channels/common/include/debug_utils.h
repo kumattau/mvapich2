@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -36,12 +36,21 @@ do { fprintf( stderr, "[%s][%s] "FMT, get_output_prefix(), __func__, ##args ); }
 do { _COMMON_PRINT_( FMT, ##args ); } while(0)
 
 // Print (always) an error message with the errno error message
+#if defined(_GNU_SOURCE)
+#define MV2_STRERROR_R( ERRCODE, buf, BUF_SIZE, str )             \
+  str = strerror_r( ERRCODE, buf, BUF_SIZE );
+#else
+#define MV2_STRERROR_R( ERRCODE, buf, BUF_SIZE, str )             \
+  strerror_r( ERRCODE, buf, BUF_SIZE );                           \
+  str = (char *) buf;
+#endif
+
 #define MAX_ERR_MSG 200
 #define PRINT_ERROR_ERRNO( FMT, ERRCODE, args... )                \
 do {                                                              \
-  char err_msg[MAX_ERR_MSG];                                      \
-  strerror_r( ERRCODE, err_msg, MAX_ERR_MSG );                    \
-  _COMMON_PRINT_( FMT": %s (%d)\n", ##args, err_msg, ERRCODE );   \
+  char err_msg[MAX_ERR_MSG], *str = NULL;                         \
+  MV2_STRERROR_R( ERRCODE, err_msg, MAX_ERR_MSG, str );           \
+  _COMMON_PRINT_( FMT": %s (%d)\n", ##args, str, ERRCODE );       \
 } while(0)
 
 // Check condition and if true, print the message
@@ -101,6 +110,9 @@ extern int DEBUG_Fork_verbose;
 
 // Verbosity level for Fault Tolerance operations
 extern int DEBUG_FT_verbose;
+
+// Verbosity level for Checkpoint/Restart operations
+extern int DEBUG_CR_verbose;
 
 // Verbosity level for Migration operations
 extern int DEBUG_MIG_verbose;

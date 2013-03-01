@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -99,8 +99,8 @@ typedef struct
 /**
  *  accessor macro to private fields in VC
  */
-#define VC_FIELD(vc, field) (((MPID_nem_ib_vc_area *)(&((MPIDI_CH3I_VC *)(vc)->channel_private)->netmod_area))->field)
-#define VC_IB(vc) ((MPID_nem_ib_vc_area *)VC_CH((vc))->netmod_area.padding)
+#define VC_FIELD(vcp, field) (((MPID_nem_ib_vc_area *)vcp->ch.netmod_area.padding)->field)
+#define VC_IB(vcp) ((MPID_nem_ib_vc_area *)vcp->ch.netmod_area.padding)
 
 #define MPID_NEM_IB_UD_QPN_KEY      "ud_qp_key"
 #define MPID_NEM_IB_LID_KEY         "lid_key"

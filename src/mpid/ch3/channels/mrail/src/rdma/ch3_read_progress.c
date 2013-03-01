@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -167,8 +167,8 @@ int MPIDI_CH3I_read_progress(MPIDI_VC_t ** vc_pptr, vbuf ** v_ptr, int *rdmafp_f
             } else if (T_CHANNEL_EXACT_ARRIVE == type) {
 		DEBUG_PRINT("Get out of order delivered msg\n");
             } else {
-                fprintf(stderr, "Error recving run return type\n");
-                exit(1);
+                PRINT_ERROR("Error recving run return type\n");
+                exit(EXIT_FAILURE);
             }
             break;
         case (T_CHANNEL_CONTROL_MSG_ARRIVE):

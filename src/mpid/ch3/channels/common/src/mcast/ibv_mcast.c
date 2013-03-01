@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -902,7 +902,7 @@ static inline void mv2_mcast_resend(bcast_info_t * bcast_info, uint32_t psn)
     
     IBV_POST_MCAST_SEND(v, mcast_ctx);
 
-    PRINT_DEBUG(DEBUG_MCST_verbose > 2, "mcast resend psn:%d \n", p->psn);
+    PRINT_DEBUG(DEBUG_MCST_verbose > 2, "mcast resend psn:%d \n", psn);
 }
 
 
@@ -1087,6 +1087,12 @@ void mv2_process_mcast_msg(vbuf * v)
 
     comm_ptr = mv2_mcast_find_comm(p->comm_id);
     if (comm_ptr == NULL) {
+        MRAILI_Release_vbuf(v);
+        return;
+    }
+
+    if (mcast_skip_loopback && p->src_rank == comm_ptr->rank) {
+        /* multicast loopback message */
         MRAILI_Release_vbuf(v);
         return;
     }

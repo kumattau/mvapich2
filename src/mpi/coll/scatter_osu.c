@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1328,26 +1328,48 @@ int MPIR_Scatter_tune_intra_MV2(const void *sendbuf,
     MV2_Scatter_function = mv2_scatter_thresholds_table[range].inter_leader[range_threshold]
                             .MV2_pt_Scatter_function;
 
-    if(MV2_Scatter_function == MPIR_Scatter_mcst_wrap_MV2) { 
+    if(MV2_Scatter_function == &MPIR_Scatter_mcst_wrap_MV2) { 
 #if defined(_MCST_SUPPORT_)
-        if(comm_ptr->ch.is_mcast_ok == 1
-           && mv2_use_mcast_scatter == 1){
+        if(comm_ptr->ch.is_mcast_ok == 1 
+           && mv2_use_mcast_scatter == 1 
+           && comm_ptr->ch.shmem_coll_ok == 1) {
             MV2_Scatter_function = &MPIR_Scatter_mcst_MV2; 
         } else
 #endif /*#if defined(_MCST_SUPPORT_) */
         {
-            MV2_Scatter_function = mv2_scatter_thresholds_table[range].inter_leader[range_threshold + 1]
+            if(mv2_scatter_thresholds_table[range].inter_leader[range_threshold + 1].
+               MV2_pt_Scatter_function != NULL) { 
+                  MV2_Scatter_function = mv2_scatter_thresholds_table[range].inter_leader[range_threshold + 1]
                                                                           .MV2_pt_Scatter_function;
+            } else { 
+                  /* Fallback! */ 
+                  MV2_Scatter_function = &MPIR_Scatter_MV2_Binomial; 
+            }  
         } 
     } 
-    
-    MV2_Scatter_intra_function = mv2_scatter_thresholds_table[range].intra_node[range_threshold_intra]
-                            .MV2_pt_Scatter_function;
+ 
+    if( (MV2_Scatter_function == &MPIR_Scatter_MV2_two_level_Direct) || 
+        (MV2_Scatter_function == &MPIR_Scatter_MV2_two_level_Binomial)) { 
+         if( comm_ptr->ch.shmem_coll_ok == 1) {
+             MV2_Scatter_intra_function = mv2_scatter_thresholds_table[range].intra_node[range_threshold_intra]
+                                .MV2_pt_Scatter_function;
 
-    mpi_errno =
-               MV2_Scatter_function(sendbuf, sendcnt, sendtype,
+             mpi_errno =
+                   MV2_Scatter_function(sendbuf, sendcnt, sendtype,
+                                        recvbuf, recvcnt, recvtype, root,
+                                        comm_ptr, errflag);
+         } else {
+             mpi_errno = MPIR_Scatter_MV2_Binomial(sendbuf, sendcnt, sendtype,
+                                        recvbuf, recvcnt, recvtype, root,
+                                        comm_ptr, errflag);
+
+         }
+    } else { 
+         mpi_errno = MV2_Scatter_function(sendbuf, sendcnt, sendtype,
                                     recvbuf, recvcnt, recvtype, root,
                                     comm_ptr, errflag);
+    } 
+
 
     if (mpi_errno) {
         /* for communication errors, just record the error but continue */

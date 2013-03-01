@@ -1,9 +1,9 @@
-/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -746,9 +746,9 @@ static int connToStringKVS( char **buf_p, int *slen, MPIDI_PG_t *pg )
     char *string = 0;
     char *pg_idStr = (char *)pg->id;      /* In the PMI/KVS space,
 					     the pg id is a string */
-    char buf[MPIDI_MAX_KVS_VALUE_LEN];
-    int   i, j, vallen, rc, mpi_errno = MPI_SUCCESS, len;
-    int   curSlen;
+    char   buf[MPIDI_MAX_KVS_VALUE_LEN];
+    int    i, j, rc, mpi_errno = MPI_SUCCESS, len;
+    size_t vallen, curSlen;
 
     /* Make an initial allocation of a string with an estimate of the
        needed space */
@@ -798,7 +798,7 @@ static int connToStringKVS( char **buf_p, int *slen, MPIDI_PG_t *pg )
 	if (len + vallen + 1 >= curSlen) {
 	    char *nstring = 0;
             curSlen += (pg->size - i) * (vallen + 1 );
-	    nstring = MPIU_Realloc( string, curSlen);
+	    nstring = MPIU_Realloc( string, curSlen );
 	    if (!nstring) {
 		MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**nomem");
 	    }
@@ -1231,18 +1231,18 @@ int MPIDI_PG_Close_VCs( void )
 #ifdef _ENABLE_UD_ 
                 && VC_XST_ISSET (vc, XF_UD_CONNECTED)
 #endif
-            ))
+            )) {
 #else
 
-	    if (vc->state == MPIDI_VC_STATE_ACTIVE || 
-		vc->state == MPIDI_VC_STATE_REMOTE_CLOSE)
+	    if (vc->state == MPIDI_VC_STATE_ACTIVE ||
+		vc->state == MPIDI_VC_STATE_REMOTE_CLOSE) {
 #endif
-	    {
 #ifdef _ENABLE_XRC_
         PRINT_DEBUG(DEBUG_XRC_verbose>0, "SendClose %d 0x%08x %d\n", vc->pg_rank, vc->ch.xrc_flags, 
                 vc->ch.state);
 #endif
-		MPIDI_CH3U_VC_SendClose( vc, i );
+		mpi_errno = MPIDI_CH3U_VC_SendClose( vc, i );
+                if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 	    } else if (vc->state == MPIDI_VC_STATE_INACTIVE ||
                        vc->state == MPIDI_VC_STATE_MORIBUND) {
                 /* XXX DJG FIXME-MT should we be checking this? */
@@ -1270,8 +1270,11 @@ int MPIDI_PG_Close_VCs( void )
        connections are in fact closed (by the final progress loop that
        handles any close requests that this code generates) */
 
+ fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_PG_CLOSE_VCS);
     return mpi_errno;
+ fn_fail:
+    goto fn_exit;
 }
 
 /*

@@ -1,6 +1,6 @@
 #! /bin/sh
 #
-# Copyright (c) 2001-2012, The Ohio State University. All rights reserved.
+# Copyright (c) 2001-2013, The Ohio State University. All rights reserved.
 #  
 # This file is part of the MVAPICH2 software package developed by the team
 # members of The Ohio State University's Network-Based Computing Laboratory
@@ -17,7 +17,7 @@
 # This script knows the default flags and libraries, and can handle
 # alternative C compilers and the associated flags and libraries.
 # The important terms are:
-#    includedir, libdir - Directories containing an *installed* mpich2
+#    includedir, libdir - Directories containing an *installed* mpich
 #    prefix, execprefix - Often used to define includedir and libdir
 #    CC                 - C compiler
 #    WRAPPER_CFLAGS        - Any special flags needed to compile 
@@ -156,14 +156,6 @@ for arg in "$@" ; do
     # a special case, lib<name>.so or lib<name>.la may be used
     # if the library is in $libdir
     profConf=`echo A$arg | sed -e 's/A-profile=//g'`
-    addarg=no
-    # Loading the profConf file is handled below
-    ;;
-    -mpe=*)
-    # Pass the name of a profiling configuration; this is a special
-    # case for the MPE libs.  See -profile
-    profConf=`echo A$arg | sed -e 's/A-mpe=//g'`
-    profConf="mpe_$profConf"
     addarg=no
     # Loading the profConf file is handled below
     ;;

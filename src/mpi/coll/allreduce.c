@@ -1,4 +1,4 @@
-/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -6,6 +6,9 @@
 
 #include "mpiimpl.h"
 #include "collutil.h"
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#include "coll_shmem.h"
+#endif
 
 /* -- Begin Profiling Symbol Block for routine MPI_Allreduce */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -763,7 +766,7 @@ Input Parameters:
 . op - operation (handle) 
 - comm - communicator (handle) 
 
-Output Parameter:
+Output Parameters:
 . recvbuf - starting address of receive buffer (choice) 
 
 .N ThreadSafe
@@ -779,7 +782,7 @@ Output Parameter:
 .N MPI_ERR_OP
 .N MPI_ERR_COMM
 @*/
-int MPI_Allreduce(MPICH2_CONST void *sendbuf, void *recvbuf, int count,
+int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count,
                   MPI_Datatype datatype, MPI_Op op, MPI_Comm comm)
 {
     static const char FCNAME[] = "MPI_Allreduce";
@@ -859,6 +862,13 @@ int MPI_Allreduce(MPICH2_CONST void *sendbuf, void *recvbuf, int count,
 
     mpi_errno = MPIR_Allreduce_impl(sendbuf, recvbuf, count, datatype, op, comm_ptr, &errflag);
     if (mpi_errno) goto fn_fail;
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+    mpi_errno = mv2_increment_shmem_coll_counter(comm_ptr);
+    if (mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+#endif /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
+
 
     /* ... end of body of routine ... */
     

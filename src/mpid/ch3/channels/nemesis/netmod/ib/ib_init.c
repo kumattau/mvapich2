@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -549,9 +549,8 @@ static int ib_ckpt_restart(void)
         if (i == MPIDI_Process.my_pg_rank)
             continue;
         MPIDI_PG_Get_vc(MPIDI_Process.my_pg, i, &vc);
-        vc_ib = VC_CH(vc);
-        if (!vc_ib->is_local) {
-            mpi_errno = vc_ib->ckpt_restart_vc(vc);
+        if (!vc->ch.is_local) {
+            mpi_errno = vc->ch.ckpt_restart_vc(vc);
             if (mpi_errno) MPIU_ERR_POP(mpi_errno);
         }
     }
@@ -598,13 +597,11 @@ static int ib_ckpt_continue(void)
 
     for (i = 0; i < MPIDI_Process.my_pg->size; ++i) {
         MPIDI_VC_t *vc;
-        MPIDI_CH3I_VC *vc_ib;
         if (i == MPIDI_Process.my_pg_rank)
             continue;
         MPIDI_PG_Get_vc(MPIDI_Process.my_pg, i, &vc);
-        vc_ib = VC_CH(vc);
-        if (!vc_ib->is_local) {
-            mpi_errno = vc_ib->ckpt_restart_vc(vc);
+        if (!vc->ch.is_local) {
+            mpi_errno = vc->ch.ckpt_restart_vc(vc);
             if (mpi_errno) MPIU_ERR_POP(mpi_errno);
         }
     }
@@ -636,7 +633,6 @@ static int ib_ckpt_release_network(void)
 
     MPIDI_PG_t *pg;
     MPIDI_VC_t *vc;
-    MPIDI_CH3I_VC *vc_ch;
     int err;
     int mpi_errno = MPI_SUCCESS;
 
@@ -662,9 +658,8 @@ static int ib_ckpt_release_network(void)
         }
 
         MPIDI_PG_Get_vc(pg, i, &vc);
-        vc_ch = (MPIDI_CH3I_VC *)vc->channel_private;
 
-        if (vc_ch->is_local)
+        if (vc->ch.is_local)
         {
             continue;
         }

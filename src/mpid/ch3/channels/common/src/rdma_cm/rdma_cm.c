@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -200,7 +200,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
                     " %d attempts\n", ret, connect_attempts);
             }
 
-            MPIU_Free(conn_param.private_data);
+            MPIU_Free((void *)conn_param.private_data);
 
         break;
         case RDMA_CM_EVENT_CONNECT_REQUEST:
@@ -291,7 +291,7 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
                 ibv_va_error_abort(IBV_RETURN_ERR,
                     "rdma_accept error: %d\n", ret);
             }
-            MPIU_Free(conn_param.private_data);
+            MPIU_Free((void *)conn_param.private_data);
 
         break;
         case RDMA_CM_EVENT_ESTABLISHED:
@@ -1378,8 +1378,8 @@ void ib_finalize_rdma_cm(int pg_rank, MPIDI_PG_t *pg)
 
     MPIU_Free(rdma_base_listen_port);
     MPIU_Free(rdma_cm_accept_count);
-    MPIU_Free(rdma_cm_connect_count);
-    MPIU_Free(rdma_cm_iwarp_msg_count);
+    MPIU_Free((void *)rdma_cm_connect_count);
+    MPIU_Free((void *)rdma_cm_iwarp_msg_count);
     MPIU_Free(rdma_cm_local_ips);
     pg_size = MPIDI_PG_Get_size(pg);
 

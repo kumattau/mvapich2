@@ -1,6 +1,6 @@
 #define BENCHMARK "OSU Scatter Latency Test"
 /*
- * Copyright (C) 2002-2012 the Network-Based Computing Laboratory
+ * Copyright (C) 2002-2013 the Network-Based Computing Laboratory
  * (NBCL), The Ohio State University. 
  *
  * Contact: Dr. D. K. Panda (panda@cse.ohio-state.edu)
@@ -49,7 +49,7 @@ int main(int argc, char *argv[])
     double timer=0.0;
 
     double avg_time = 0.0, max_time = 0.0, min_time = 0.0;
-    char *sendbuf, *recvbuf, *s_buf1, *r_buf1;
+    char *sendbuf = NULL, *recvbuf = NULL, *s_buf1 = NULL, *r_buf1 = NULL;
     int max_msg_size = 1048576, full = 0;
 
     MPI_Init(&argc, &argv);
@@ -73,8 +73,6 @@ int main(int argc, char *argv[])
 
     print_header(rank, full);
 
-    s_buf1 = r_buf1 = NULL;
-    
     if(rank==0)
     {
         s_buf1 = (char *) malloc(sizeof(char)*max_msg_size * numprocs +

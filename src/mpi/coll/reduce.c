@@ -1,4 +1,4 @@
-/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
  *
  *  (C) 2001 by Argonne National Laboratory.
@@ -7,6 +7,9 @@
 
 #include "mpiimpl.h"
 #include "collutil.h"
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#include "coll_shmem.h"
+#endif
 
 /* -- Begin Profiling Symbol Block for routine MPI_Reduce */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -1076,7 +1079,7 @@ Input Parameters:
 . root - rank of root process (integer) 
 - comm - communicator (handle) 
 
-Output Parameter:
+Output Parameters:
 . recvbuf - address of receive buffer (choice, 
  significant only at 'root') 
 
@@ -1095,7 +1098,7 @@ Output Parameter:
 .N MPI_ERR_BUFFER_ALIAS
 
 @*/
-int MPI_Reduce(MPICH2_CONST void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
+int MPI_Reduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
 	       MPI_Op op, int root, MPI_Comm comm)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -1215,6 +1218,16 @@ int MPI_Reduce(MPICH2_CONST void *sendbuf, void *recvbuf, int count, MPI_Datatyp
 
     mpi_errno = MPIR_Reduce_impl(sendbuf, recvbuf, count, datatype, op, root, comm_ptr, &errflag);
     if (mpi_errno) goto fn_fail;
+
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+    if(comm_ptr->ch.shmem_coll_ok == 0) { 
+        mpi_errno = mv2_increment_shmem_coll_counter(comm_ptr);
+        if (mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+        }
+    } 
+#endif /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
+
     
     /* ... end of body of routine ... */
     

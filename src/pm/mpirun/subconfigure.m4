@@ -24,6 +24,31 @@ AC_ARG_ENABLE([rsh],
               [],
               [enable_rsh=no])
 
+AC_ARG_WITH([fuse],
+    [AS_HELP_STRING([--with-fuse@[:@=path@:]@],
+        [provide path to fuse package])
+    ],
+    [],
+    [with_fuse=check])
+
+AC_ARG_WITH([fuse-include],
+    [AS_HELP_STRING([--with-fuse-include=@<:@path@:>@],
+        [specify the path to the fuse header files])
+    ],
+    [AS_CASE([$with_fuse_include],
+        [yes|no], [AC_MSG_ERROR([arg to --with-fuse-include must be a path])])
+    ],
+    [])
+
+AC_ARG_WITH([fuse-libpath],
+    [AS_HELP_STRING([--with-fuse-libpath=@<:@path@:>@],
+        [specify the path to the fuse library])
+    ],
+    [AS_CASE([$with_fuse_libpath],
+        [yes|no], [AC_MSG_ERROR([arg to --with-fuse-libpath must be a path])])
+    ],
+    [])
+
 AC_PROG_YACC
 AC_PROG_LEX
 
@@ -180,13 +205,13 @@ if test "$enable_rsh" = "yes"; then
     AC_DEFINE(USE_RSH, 1, [Define to enable use of rsh for command execution by default.])
 fi
 
-AM_CONDITIONAL([WANT_RDYNAMIC], [test "x$GCC" = xyes])
-AM_CONDITIONAL([WANT_CKPT_RUNTIME], [test "x$enable_ckpt" = xyes])
-
 # MVAPICH2_VERSION is exported from the top level configure
 AC_DEFINE_UNQUOTED([MVAPICH2_VERSION], ["$MVAPICH2_VERSION"], [Set to current version of mvapich2 package])
 
 ])
+
+AM_CONDITIONAL([WANT_RDYNAMIC], [test "x$GCC" = xyes])
+AM_CONDITIONAL([WANT_CKPT_RUNTIME], [test "x$enable_ckpt" = xyes])
 
 dnl AC_MSG_NOTICE([RUNNING CONFIGURE FOR MPIRUN PROCESS MANAGERS])
 # do nothing extra here for now

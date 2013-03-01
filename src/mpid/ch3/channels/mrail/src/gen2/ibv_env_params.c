@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -24,6 +24,7 @@
 **      datatype,
 **      name,
 **      addr of variables which stores the param value
+**      default on/off
 **      descrption of the parameter.
 **  }
 */
@@ -1065,6 +1066,15 @@ mv2_env_param_list_t  param_list[] = {
     NULL,
     1,
     NULL    },
+{
+    MV2_HOMOGENEOUS_CLUSTER,
+    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_GROUP_startup,
+    "MV2_HOMOGENEOUS_CLUSTER",
+    &mv2_homogeneous_cluster,
+    0,
+    NULL    },
+/* pt-pt */
 /* pt-pt */
 {
     MV2_COALESCE_THRESHOLD,
@@ -2048,7 +2058,8 @@ mv2_env_param_list_t  param_list[] = {
     1,
     NULL    },
 /* hybrid */
-#if defined (_ENABLE_HYBRID_)
+#if defined (_ENABLE_UD_)
+#if defined (_MV2_UD_DROP_PACKET_RATE_)
 {
     MV2_UD_DROP_PACKET_RATE,
     MV2_PARAM_TYPE_INT,
@@ -2057,9 +2068,10 @@ mv2_env_param_list_t  param_list[] = {
     &ud_drop_packet_rate,
     0,
     NULL    },
+#endif
 {
     MV2_UD_MAX_ACK_PENDING,
-    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_TYPE_INT16,
     MV2_PARAM_GROUP_hybrid,
     "MV2_UD_MAX_ACK_PENDING",
     &rdma_ud_max_ack_pending,
@@ -2075,7 +2087,7 @@ mv2_env_param_list_t  param_list[] = {
     NULL    },
 {
     MV2_UD_MAX_RETRY_TIMEOUT,
-    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_TYPE_LONG,
     MV2_PARAM_GROUP_hybrid,
     "MV2_UD_MAX_RETRY_TIMEOUT",
     &rdma_ud_max_retry_timeout,
@@ -2086,12 +2098,12 @@ mv2_env_param_list_t  param_list[] = {
     MV2_PARAM_TYPE_INT,
     MV2_PARAM_GROUP_hybrid,
     "MV2_UD_MAX_SEND_WQE",
-    &&rdma_default_max_ud_send_wqe,
+    &rdma_default_max_ud_send_wqe,
     0,
     NULL    },
 {
     MV2_UD_MTU,
-    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_TYPE_INT16,
     MV2_PARAM_GROUP_hybrid,
     "MV2_UD_MTU",
     &rdma_default_ud_mtu,
@@ -2107,7 +2119,7 @@ mv2_env_param_list_t  param_list[] = {
     NULL    },
 {
     MV2_UD_NUM_ZCOPY_RNDV_QPS,
-    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_TYPE_INT16,
     MV2_PARAM_GROUP_hybrid,
     "MV2_UD_NUM_ZCOPY_RNDV_QPS",
     &rdma_ud_num_rndv_qps,
@@ -2115,7 +2127,7 @@ mv2_env_param_list_t  param_list[] = {
     NULL    },
 {
     MV2_UD_PROGRESS_SPIN,
-    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_TYPE_INT16,
     MV2_PARAM_GROUP_hybrid,
     "MV2_UD_PROGRESS_SPIN",
     &rdma_ud_progress_spin,
@@ -2134,12 +2146,12 @@ mv2_env_param_list_t  param_list[] = {
     MV2_PARAM_TYPE_INT,
     MV2_PARAM_GROUP_hybrid,
     "MV2_UD_RECVWINDOW_SIZE",
-    &rdma_default_ud_recvwin_size;
+    &rdma_default_ud_recvwin_size,
     0,
     NULL    },
 {
     MV2_UD_RETRY_COUNT,
-    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_TYPE_INT16,
     MV2_PARAM_GROUP_hybrid,
     "MV2_UD_RETRY_COUNT",
     &rdma_ud_max_retry_count,
@@ -2187,7 +2199,7 @@ mv2_env_param_list_t  param_list[] = {
     NULL    },
 {
     MV2_USE_UD_ZCOPY,
-    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_TYPE_INT8,
     MV2_PARAM_GROUP_hybrid,
     "MV2_USE_UD_ZCOPY",
     &rdma_use_ud_zcopy,
@@ -2227,7 +2239,7 @@ mv2_env_param_list_t  param_list[] = {
     NULL    },
 {
     MV2_HYBRID_MAX_RC_CONN,
-    MV2_PARAM_TYPE_INT,
+    MV2_PARAM_TYPE_INT16,
     MV2_PARAM_GROUP_hybrid,
     "MV2_HYBRID_MAX_RC_CONN",
     &rdma_hybrid_max_rc_conn,
@@ -2360,4 +2372,119 @@ void mv2_show_all_params()
                                 param_list[i].name, value);
         }
     }
-}        
+}
+
+/* List of all runtime info.
+** Format of the parameter info
+**  {
+**      description,
+**      addr of variables which stores the param value
+**      datatype,
+**   }
+***/
+
+typedef struct mv2_runlog_info_list {
+    char *description;
+    void *param;
+    MPI_Datatype datatype;
+} mv2_runlog_info_list_t;
+
+int mv2_show_runlog_level = 0;
+
+mv2_runlog_info_list_t runlog_info[] = {
+{"Max dreg entries used",            &dreg_max_use_count,         MPI_INT},
+};
+
+#undef FUNCNAME
+#define FUNCNAME mv2_print_param_info
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+static inline int mv2_print_param_info(MPID_Comm *comm_ptr, mv2_runlog_info_list_t *item, int level)
+{
+    char param_avg[16], param_min[16], param_max[16];
+    int root=0;
+    int mpi_errno = MPI_SUCCESS;
+    int errflag = FALSE;
+
+    if (level == 2 ) {
+        mpi_errno =  MPIR_Reduce_binomial_MV2(item->param, param_max, 1, item->datatype,
+                MPI_MAX, root, comm_ptr, &errflag);
+        if (mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+        }
+        mpi_errno = MPIR_Reduce_binomial_MV2(item->param, param_min, 1, item->datatype,
+                MPI_MIN, root, comm_ptr, &errflag);
+        if (mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+        }
+        mpi_errno = MPIR_Reduce_binomial_MV2(item->param, param_avg, 1, item->datatype,
+                MPI_SUM, root, comm_ptr, &errflag);
+        if (mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+        }
+    }
+
+    if(comm_ptr->rank == 0) {
+        if (level == 2) {
+            if(item->datatype == MPI_LONG) {
+                long *pavg, *pmin, *pmax;
+                pavg = (long *) param_avg;
+                pmin = (long *) param_min;
+                pmax = (long *) param_max;
+                *pavg =  *pavg / comm_ptr->local_size;
+                fprintf(stderr, "\t%-30s  : Min: %-8lu  Max: %-8lu Avg: %-8lu \n",
+                        item->description, *pmin, *pmax, *pavg);
+            } else {
+                int *pavg, *pmin, *pmax;
+                pavg = (int *) param_avg;
+                pmin = (int *) param_min;
+                pmax = (int *) param_max;
+                *pavg /= comm_ptr->local_size;
+                fprintf(stderr, "\t%-30s  : Min: %-8d  Max: %-8d Avg: %-8d \n",
+                        item->description, *pmin, *pmax, *pavg);
+            }
+        } else {
+            if(item->datatype == MPI_LONG) {
+                fprintf(stderr, "\t%-30s  : %-8lu\n",
+                        item->description, *(long *)item->param);
+            } else {
+                fprintf(stderr, "\t%-30s  :%-8d \n",
+                        item->description, *(int *)item->param);
+            }
+        }
+    }
+
+fn_exit:
+    return mpi_errno;
+fn_fail:
+    goto fn_exit;
+
+}
+
+void mv2_show_runlog_info(int level)
+{
+    int pg_rank;
+    int n_params, i;
+
+    MPID_Comm *comm_ptr = NULL;
+
+    MPID_Comm_get_ptr(MPI_COMM_WORLD, comm_ptr);
+    pg_rank = comm_ptr->rank;
+
+    n_params = sizeof(runlog_info)/sizeof(runlog_info[0]);
+
+    if (pg_rank == 0) {
+        fprintf(stderr, "\n-------------------------------");
+        fprintf(stderr, "\n\n MVAPICH2 DEBUG RUN LOG\n\n");
+    }
+
+    for (i = 0; i <n_params; i++) {
+        mv2_print_param_info(comm_ptr, &runlog_info[i], level);
+    }
+
+    if (pg_rank == 0) {
+        fprintf(stderr, "-------------------------------\n");
+    }
+
+}
+

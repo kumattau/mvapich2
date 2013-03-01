@@ -1,9 +1,9 @@
-/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -16,6 +16,9 @@
  */
 
 #include "mpidimpl.h"
+#if defined(_OSU_MVAPICH_)
+#include "dreg.h"
+#endif
 
 #undef FUNCNAME
 #define FUNCNAME MPID_Cancel_recv
@@ -58,7 +61,9 @@ int MPID_Cancel_recv(MPID_Request * rreq)
 	    "request 0x%08x already matched, unable to cancel", rreq->handle);
     }
 
+#if defined (_OSU_PSM_)
 fn_exit:
+#endif
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_CANCEL_RECV);
     return MPI_SUCCESS;
 }

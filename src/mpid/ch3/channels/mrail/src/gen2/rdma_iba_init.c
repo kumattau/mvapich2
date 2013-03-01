@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1041,6 +1041,8 @@ static int mv2_xrc_init(MPIDI_PG_t * pg)
 
         if (NULL == proc->xrc_domain[i]) {
             perror("xrc_domain");
+            close(proc->xrc_fd[i]);
+            unlink(xrc_file);
             MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_INTERN, "**fail",
                                       "**fail %s", "Can't open XRC domain");
         }
@@ -1091,7 +1093,8 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
     int mpi_errno = MPI_SUCCESS;
     ud_addr_info_t self_info;
     ud_addr_info_t *all_info;
-    char hostname[HOSTNAME_LEN + 1], *key, *val;
+    char hostname[HOSTNAME_LEN + 1];
+    char *key = NULL, *val = NULL;
     int hostid;
     int result;
     struct hostent *hostent;
@@ -1136,6 +1139,41 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
             rdma_ring_exchange_host_id(pg, pg_rank, pg_size);
         }
         ring_setup_done = 1;
+    } else {
+        /* Allocate space for pmi keys and values */
+        error = PMI_KVS_Get_key_length_max(&key_max_sz);
+        if (error != PMI_SUCCESS) {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                    "**fail %s",
+                    "Error getting max key length");
+        }
+
+        ++key_max_sz;
+        key = MPIU_Malloc(key_max_sz);
+        if (key == NULL) {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+                    "**nomem %s", "PMI key");
+        }
+
+        error = PMI_KVS_Get_value_length_max(&val_max_sz);
+        if (error != PMI_SUCCESS) {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
+                    "**fail %s",
+                    "Error getting max value length");
+        }
+
+        ++val_max_sz;
+        val = MPIU_Malloc(val_max_sz);
+        if (val == NULL) {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
+                    "**nomem %s", "PMI value");
+        }
+
+        if (key_max_sz < 20 || val_max_sz < 40) {
+            MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
+                    "**fail", "**fail %s",
+                    "PMI value too small");
+        }
     }
 
     rdma_local_id = MPIDI_Get_local_process_id(pg);
@@ -1172,7 +1210,7 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
         pthread_mutex_init(&mv2_MPIDI_CH3I_RDMA_Process.async_mutex_lock[i], 0);
     }
 
-    if (pg_size > 1
+    if (pg_size > 1 && !mv2_homogeneous_cluster
 #if defined(RDMA_CM)
         && !mv2_MPIDI_CH3I_RDMA_Process.use_rdma_cm
 #endif /* defined(RDMA_CM) */
@@ -1190,40 +1228,6 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
             }
 
         } else {
-            /* Allocate space for pmi keys and values */
-            error = PMI_KVS_Get_key_length_max(&key_max_sz);
-            if (error != PMI_SUCCESS) {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                                          "**fail %s",
-                                          "Error getting max key length");
-            }
-
-            ++key_max_sz;
-            key = MPIU_Malloc(key_max_sz);
-            if (key == NULL) {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
-                                          "**nomem %s", "PMI key");
-            }
-
-            error = PMI_KVS_Get_value_length_max(&val_max_sz);
-            if (error != PMI_SUCCESS) {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                                          "**fail %s",
-                                          "Error getting max value length");
-            }
-
-            ++val_max_sz;
-            val = MPIU_Malloc(val_max_sz);
-            if (val == NULL) {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**nomem",
-                                          "**nomem %s", "PMI value");
-            }
-
-            if (key_max_sz < 20 || val_max_sz < 40) {
-                MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER,
-                                          "**fail", "**fail %s",
-                                          "PMI value too small");
-            }
 
             /* Generate the key and value pair */
             MPIU_Snprintf(key, key_max_sz, "ARCH-HCA-%08x", pg_rank);

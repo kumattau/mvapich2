@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -68,8 +68,6 @@ int MRAILI_Send_select_rail(MPIDI_VC_t * vc)
 int vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
 {
     vbuf * v;
-    int vbuf_alignment = 64;
-    int pagesize = getpagesize();
     int i;
     struct ibv_mr *mem_handle[MAX_NUM_HCAS];
 
@@ -88,7 +86,7 @@ int vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
         vbuf_ctrl_buf = MPIU_Malloc(sizeof(struct vbuf) * num_rdma_buffer);
 #else
 	/* allocate vbuf struct buffers */
-        if(posix_memalign((void **) &vbuf_ctrl_buf, vbuf_alignment,
+        if(posix_memalign((void **) &vbuf_ctrl_buf, 64,
             sizeof(struct vbuf) * num_rdma_buffer)) {
             DEBUG_PRINT("malloc failed: vbuf in vbuf_fast_rdma_alloc\n");
             goto fn_fail;
@@ -104,6 +102,7 @@ int vbuf_fast_rdma_alloc (MPIDI_VC_t * c, int dir)
             goto fn_exit;
         }
 #else
+        int pagesize = getpagesize();
         /* allocate vbuf RDMA buffers */
         if(posix_memalign((void **)&vbuf_rdma_buf, pagesize,
                             rdma_fp_buffer_size * num_rdma_buffer)) {

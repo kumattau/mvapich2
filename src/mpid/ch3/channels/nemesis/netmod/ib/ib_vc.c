@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -46,7 +46,7 @@ int MPID_nem_ib_vc_init (MPIDI_VC_t *vc )
         /*const char *business_card)*/
 {
     int mpi_errno = MPI_SUCCESS;
-    MPIDI_CH3I_VC *vc_ch = (MPIDI_CH3I_VC *)vc->channel_private;
+    MPIDI_CH3I_VC *vc_ch = &vc->ch;
     int pg_size;
     int i;
     PMI_Get_size(&pg_size);

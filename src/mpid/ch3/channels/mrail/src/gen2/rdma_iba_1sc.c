@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -146,10 +146,10 @@ static int Post_Put_Put_Get_List(MPID_Win *, MPIDI_msg_sz_t,  dreg_entry *,
         MPIDI_VC_t *, vbuf **, void *local_buf[], void *remote_buf[], int length,
         uint32_t lkeys[], uint32_t rkeys[], rail_select_t rail_select);
 
-static int iba_put(MPIDI_RMA_ops *, MPID_Win *, MPIDI_msg_sz_t);
-static int iba_get(MPIDI_RMA_ops *, MPID_Win *, MPIDI_msg_sz_t);
-int     iba_lock(MPID_Win *, MPIDI_RMA_ops *, int);
-int     iba_unlock(MPID_Win *, MPIDI_RMA_ops *, int);
+static int iba_put(MPIDI_RMA_Op_t *, MPID_Win *, MPIDI_msg_sz_t);
+static int iba_get(MPIDI_RMA_Op_t *, MPID_Win *, MPIDI_msg_sz_t);
+int     iba_lock(MPID_Win *, MPIDI_RMA_Op_t *, int);
+int     iba_unlock(MPID_Win *, MPIDI_RMA_Op_t *, int);
 int MRAILI_Handle_one_sided_completions(vbuf * v);                            
 
 #undef FUNCNAME
@@ -534,6 +534,8 @@ int MPIDI_CH3I_SHM_win_lock (int dest_rank, int lock_type_requested,
                     == MPID_LOCK_NONE) {
                 win_ptr->shm_lock[l_dest_rank] = MPI_LOCK_EXCLUSIVE;
                 lock_acquired = MPI_LOCK_EXCLUSIVE;
+                win_ptr->targets[dest_rank].remote_lock_state = MPIDI_CH3_WIN_LOCK_GRANTED;
+                win_ptr->targets[dest_rank].remote_lock_mode = MPI_LOCK_EXCLUSIVE;
             }
             mpi_errno = MPIDI_CH3I_SHM_win_mutex_unlock(win_ptr, l_dest_rank); 
             if (mpi_errno != MPI_SUCCESS) {
@@ -557,6 +559,8 @@ int MPIDI_CH3I_SHM_win_lock (int dest_rank, int lock_type_requested,
                 win_ptr->shm_lock[l_dest_rank] = MPI_LOCK_SHARED;
                 win_ptr->shm_shared_lock_count[l_dest_rank] += 1;
                 lock_acquired = MPI_LOCK_SHARED;
+                win_ptr->targets[dest_rank].remote_lock_state = MPIDI_CH3_WIN_LOCK_GRANTED;
+                win_ptr->targets[dest_rank].remote_lock_mode = MPI_LOCK_SHARED;
             }
             mpi_errno = MPIDI_CH3I_SHM_win_mutex_unlock(win_ptr, l_dest_rank); 
             if (mpi_errno != MPI_SUCCESS) {
@@ -588,6 +592,8 @@ void MPIDI_CH3I_SHM_win_unlock (int dest_rank, MPID_Win *win_ptr)
         }
         win_ptr->shm_lock[l_dest_rank] = MPID_LOCK_NONE;
         win_ptr->shm_lock_released[l_dest_rank] = 1;
+        win_ptr->targets[dest_rank].remote_lock_state = MPIDI_CH3_WIN_LOCK_NONE;
+        win_ptr->targets[dest_rank].remote_lock_mode = 0;
         mpi_errno = MPIDI_CH3I_SHM_win_mutex_unlock(win_ptr, l_dest_rank);
         if (mpi_errno != MPI_SUCCESS) {
             ibv_error_abort (GEN_EXIT_ERR, "mutex unlock error \n");
@@ -601,6 +607,8 @@ void MPIDI_CH3I_SHM_win_unlock (int dest_rank, MPID_Win *win_ptr)
         if(*((volatile long *)
               &win_ptr->shm_shared_lock_count[l_dest_rank]) == 0) {
              win_ptr->shm_lock[l_dest_rank] = MPID_LOCK_NONE;
+             win_ptr->targets[dest_rank].remote_lock_state = MPIDI_CH3_WIN_LOCK_NONE;
+             win_ptr->targets[dest_rank].remote_lock_mode = 0;
              win_ptr->shm_lock_released[l_dest_rank] = 1;
         }
         mpi_errno = MPIDI_CH3I_SHM_win_mutex_unlock(win_ptr, l_dest_rank);
@@ -703,7 +711,7 @@ MPIDI_CH3I_RDMA_complete(MPID_Win * win_ptr,
     int *nops_to_proc;
     int mpi_errno = MPI_SUCCESS;
     MPID_Comm *comm_ptr;
-    MPIDI_RMA_ops *curr_ptr;
+    MPIDI_RMA_Op_t *curr_ptr;
     MPIDI_VC_t* vc = NULL;
 
     comm_ptr = win_ptr->comm_ptr;
@@ -733,7 +741,7 @@ MPIDI_CH3I_RDMA_complete(MPID_Win * win_ptr,
     {
         nops_to_proc[i] = 0;
     }
-    curr_ptr = win_ptr->rma_ops_list_head;
+    curr_ptr = MPIDI_CH3I_RMA_Ops_head(&win_ptr->at_rma_ops_list);
     while (curr_ptr != NULL) {
         ++nops_to_proc[curr_ptr->target_rank];
         curr_ptr = curr_ptr->next;
@@ -787,7 +795,7 @@ void MPIDI_CH3I_INTRANODE_complete(MPID_Win * win_ptr,
     int i, my_rank, my_local_rank, rank, local_rank;
     int *nops_to_proc;
     MPID_Comm *comm_ptr;
-    MPIDI_RMA_ops *curr_ptr;
+    MPIDI_RMA_Op_t *curr_ptr;
 
     comm_ptr = win_ptr->comm_ptr; 
     my_rank = comm_ptr->rank;
@@ -801,7 +809,7 @@ void MPIDI_CH3I_INTRANODE_complete(MPID_Win * win_ptr,
     /* Check if there are more communication operations to be issued to 
        each traget process */
     MPIU_Memset((void *) nops_to_proc, 0, win_ptr->shm_l_ranks*sizeof(int));
-    curr_ptr = win_ptr->rma_ops_list_head;
+    curr_ptr = MPIDI_CH3I_RMA_Ops_head(&win_ptr->at_rma_ops_list);
     while (curr_ptr != NULL) { 
         local_rank = win_ptr->shm_g2l_rank[curr_ptr->target_rank]; 
         if (local_rank != -1) { 
@@ -855,14 +863,14 @@ fn_fail:
 void
 MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive)
 {
-    MPIDI_RMA_ops *curr_ptr = NULL, *prev_ptr = NULL, *tmp_ptr;
-    MPIDI_RMA_ops **list_head = NULL, **list_tail = NULL;
+    MPIDI_RMA_Op_t *curr_ptr = NULL;
+    MPIDI_RMA_Op_t *head = NULL;
     MPIDI_msg_sz_t size, origin_type_size, target_type_size;
 #ifdef _SCHEDULE
     int curr_put = 1;
     int fall_back = 0;
     int force_to_progress = 0, issued = 0;
-    MPIDI_RMA_ops * skipped_op = NULL;
+    MPIDI_RMA_Op_t * skipped_op = NULL;
 #endif
     MPIDI_VC_t* vc = NULL;
     MPID_Comm* comm_ptr = NULL;
@@ -871,10 +879,9 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive)
     {
         comm_ptr = win_ptr->comm_ptr;
     }
-
-    list_head = &win_ptr->rma_ops_list_head;
-    list_tail = &win_ptr->rma_ops_list_tail;
-    prev_ptr = curr_ptr = *list_head;
+    MPIDI_RMA_Ops_list_t *ops_list = &win_ptr->at_rma_ops_list;
+    head = MPIDI_CH3I_RMA_Ops_head(ops_list);
+    curr_ptr = head;
 
 #ifdef _SCHEDULE
     while (curr_ptr != NULL || skipped_op != NULL)
@@ -899,7 +906,6 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive)
         MPIDI_Comm_get_vc(comm_ptr, curr_ptr->target_rank, &vc);
 
         if (vc->smp.local_nodes != -1)  {
-            prev_ptr = curr_ptr;
             curr_ptr = curr_ptr->next;
             continue;
         }
@@ -931,31 +937,7 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive)
 #endif
                         ++win_ptr->rma_issued;
                         iba_put(curr_ptr, win_ptr, size);
-
-                        if (*list_head == curr_ptr)
-                        {
-                            if (*list_head == *list_tail) 
-                            {
-                               *list_head = *list_tail = NULL;
-                            } 
-                            else 
-                            {
-                               *list_head = prev_ptr = curr_ptr->next; 
-                            }
-                        }
-                        else if (*list_tail == curr_ptr)
-                        {
-                            *list_tail = prev_ptr;
-                            (*list_tail)->next = NULL;
-                        }
-                        else
-                        {
-                            prev_ptr->next = curr_ptr->next;
-                        }
-
-                        tmp_ptr = curr_ptr->next;
-                        MPIU_Free(curr_ptr);
-                        curr_ptr = tmp_ptr;
+                         MPIDI_CH3I_RMA_Ops_free_and_next(ops_list, &curr_ptr);
 #ifdef _SCHEDULE
                         curr_put = 1;
                         ++issued;
@@ -966,7 +948,6 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive)
                         if (skipped_op == NULL)
                         {
                             skipped_op = curr_ptr;
-                            prev_ptr = curr_ptr;
                             curr_ptr = curr_ptr->next;
                         }
                     }
@@ -974,18 +955,15 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive)
                  }                 
                  else
                  {
-                     prev_ptr = curr_ptr;
                      curr_ptr = curr_ptr->next;
                  }
 
                  break;
               }
             case MPIDI_RMA_ACCUMULATE:
-                prev_ptr = curr_ptr;
                 curr_ptr = curr_ptr->next;
                 break;
             case MPIDI_RMA_ACC_CONTIG:
-                prev_ptr = curr_ptr;
                 curr_ptr = curr_ptr->next;
                 break;
             case MPIDI_RMA_GET:
@@ -1008,31 +986,7 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive)
 #endif
                         ++win_ptr->rma_issued;
                         iba_get(curr_ptr, win_ptr, size);
-
-                        if (*list_head == curr_ptr)
-                        {
-                            if (*list_head == *list_tail)
-                            {
-                               *list_head = *list_tail = NULL;
-                            }
-                            else
-                            {
-                               *list_head = prev_ptr = curr_ptr->next;
-                            }
-                        }
-                        else if (*list_tail == curr_ptr)
-                        {
-                            *list_tail = prev_ptr;
-                            (*list_tail)->next = NULL;
-                        }
-                        else
-                        {
-                            prev_ptr->next = curr_ptr->next;
-                        }
-
-                        tmp_ptr = curr_ptr->next;
-                        MPIU_Free(curr_ptr);
-                        curr_ptr = tmp_ptr;
+                        MPIDI_CH3I_RMA_Ops_free_and_next(ops_list, &curr_ptr);
 #ifdef _SCHEDULE
                         curr_put = 0;
                         ++issued;
@@ -1044,14 +998,12 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive)
                             skipped_op = curr_ptr;
                         }
 
-                        prev_ptr = curr_ptr;
                         curr_ptr = curr_ptr->next;
                     }
 #endif
                 }
                 else
                 {
-                    prev_ptr = curr_ptr;
                     curr_ptr = curr_ptr->next;
                 }
 
@@ -1065,7 +1017,6 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive)
         }
         else
         {
-            prev_ptr = curr_ptr;
             curr_ptr = curr_ptr->next;
         }
     }
@@ -1077,19 +1028,35 @@ MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive)
 #define FUNCNAME MPIDI_CH3I_LIMIC_try_rma
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_CH3I_LIMIC_try_rma(MPID_Win * win_ptr)
+int MPIDI_CH3I_LIMIC_try_rma(MPID_Win * win_ptr, int target_rank)
 {
     int mpi_errno = MPI_SUCCESS;
     int complete_size;
     int target_type_size, msg_size;
     int origin_dt_derived, target_dt_derived, target_l_rank;
     int offset, initial_offset, initial_len;
-    MPIDI_RMA_ops *curr_ptr, *prev_ptr, *tmp_ptr;
-    MPIDI_RMA_ops **list_head, **list_tail;
+    MPIDI_RMA_Op_t *curr_ptr;
+    MPIDI_RMA_Op_t *head;
+    MPIDI_RMA_Ops_list_t *ops_list;
+    
+    if (target_rank == -1) {
+        /* active target */
+        ops_list = &win_ptr->at_rma_ops_list;
+    } else {
+        ops_list = MPIDI_CH3I_RMA_Get_ops_list(win_ptr, target_rank);
+    }
 
-    list_head = &win_ptr->rma_ops_list_head;
-    list_tail = &win_ptr->rma_ops_list_tail;
-    prev_ptr = curr_ptr = *list_head; 
+    head = MPIDI_CH3I_RMA_Ops_head(ops_list);
+
+    if (head == NULL) {
+        return mpi_errno;
+    }
+
+    if (head->type == MPIDI_RMA_LOCK) {
+        curr_ptr = head->next;
+    } else {
+        curr_ptr = head;
+    }
 
     while (curr_ptr != NULL) {
         complete_size = 0;
@@ -1097,7 +1064,6 @@ int MPIDI_CH3I_LIMIC_try_rma(MPID_Win * win_ptr)
 
         /*if target is on a remote node*/
         if(target_l_rank == -1) {
-            prev_ptr = curr_ptr;
             curr_ptr = curr_ptr->next;
             continue;
         }
@@ -1108,7 +1074,6 @@ int MPIDI_CH3I_LIMIC_try_rma(MPID_Win * win_ptr)
                   HANDLE_KIND_BUILTIN ? 1 : 0;
 
         if(origin_dt_derived || target_dt_derived) {
-            prev_ptr = curr_ptr;
             curr_ptr = curr_ptr->next;
             continue;
         }
@@ -1126,7 +1091,6 @@ int MPIDI_CH3I_LIMIC_try_rma(MPID_Win * win_ptr)
         switch (curr_ptr->type) {
             case MPIDI_RMA_PUT:
                 if (msg_size < limic_put_threshold) {
-                    prev_ptr = curr_ptr;
                     curr_ptr = curr_ptr->next;
                     continue;
                 }
@@ -1135,7 +1099,6 @@ int MPIDI_CH3I_LIMIC_try_rma(MPID_Win * win_ptr)
                 break;
             case MPIDI_RMA_GET:
                 if (msg_size < limic_get_threshold) {
-                    prev_ptr = curr_ptr;
                     curr_ptr = curr_ptr->next;
                     continue;
                 }
@@ -1151,31 +1114,8 @@ int MPIDI_CH3I_LIMIC_try_rma(MPID_Win * win_ptr)
 
         if( complete_size == msg_size ){
             win_ptr->rma_issued++;
-            if (*list_head == curr_ptr)
-            {
-                if (*list_head == *list_tail)
-                {
-                   *list_head = *list_tail = NULL;
-                }
-                else
-                {
-                   *list_head = prev_ptr = curr_ptr->next;
-                }
-            }
-            else if (*list_tail == curr_ptr)
-            {
-                *list_tail = prev_ptr;
-                (*list_tail)->next = NULL;
-            }
-            else
-            {
-                prev_ptr->next = curr_ptr->next;
-            }
-            tmp_ptr = curr_ptr->next;
-            MPIU_Free(curr_ptr);
-            curr_ptr = tmp_ptr;
+            MPIDI_CH3I_RMA_Ops_free_and_next(ops_list, &curr_ptr); 
         } else {
-            prev_ptr = curr_ptr;
             curr_ptr = curr_ptr->next;
         }
     }
@@ -1188,26 +1128,41 @@ int MPIDI_CH3I_LIMIC_try_rma(MPID_Win * win_ptr)
 #define FUNCNAME MPIDI_CH3I_SHM_try_rma
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_CH3I_SHM_try_rma(MPID_Win * win_ptr)
+int MPIDI_CH3I_SHM_try_rma(MPID_Win * win_ptr, int target_rank)
 {
     int mpi_errno = MPI_SUCCESS;
     int target_type_size, msg_size;
     int origin_dt_derived, target_dt_derived, target_l_rank;
     void *target_addr;
-    MPIDI_RMA_ops *curr_ptr = NULL, *prev_ptr = NULL, *tmp_ptr;
-    MPIDI_RMA_ops **list_head = NULL, **list_tail = NULL;
+    MPIDI_RMA_Op_t *curr_ptr = NULL;
+    MPIDI_RMA_Op_t *head = NULL;
     MPI_User_function *uop;
+    MPIDI_RMA_Ops_list_t *ops_list;
+    
+    if (target_rank == -1) {
+        /* active target */
+        ops_list = &win_ptr->at_rma_ops_list;
+    } else {
+        ops_list = MPIDI_CH3I_RMA_Get_ops_list(win_ptr, target_rank);
+    }
 
-    list_head = &win_ptr->rma_ops_list_head;
-    list_tail = &win_ptr->rma_ops_list_tail;
-    prev_ptr = curr_ptr = *list_head; 
+    head = MPIDI_CH3I_RMA_Ops_head(ops_list);
+
+    if (head == NULL) {
+        return mpi_errno;
+    }
+
+    if (head->type == MPIDI_RMA_LOCK) {
+        curr_ptr = head->next;
+    } else {
+        curr_ptr = head;
+    }
 
     while (curr_ptr != NULL) {
         target_l_rank = win_ptr->shm_g2l_rank[curr_ptr->target_rank]; 
 
         /*if target is on a remote node*/
         if(target_l_rank == -1) {
-            prev_ptr = curr_ptr;
             curr_ptr = curr_ptr->next;
             continue;
         }
@@ -1218,7 +1173,6 @@ int MPIDI_CH3I_SHM_try_rma(MPID_Win * win_ptr)
                   HANDLE_KIND_BUILTIN ? 1 : 0;
 
         if(origin_dt_derived || target_dt_derived) {
-            prev_ptr = curr_ptr;
             curr_ptr = curr_ptr->next;
             continue;
         }
@@ -1279,35 +1233,12 @@ int MPIDI_CH3I_SHM_try_rma(MPID_Win * win_ptr)
                 }
                 break;
             default:
-                prev_ptr = curr_ptr;
                 curr_ptr = curr_ptr->next;
                 continue;
         }
 
         win_ptr->rma_issued++;
-        if (*list_head == curr_ptr)
-        {
-            if (*list_head == *list_tail)
-            {
-               *list_head = *list_tail = NULL;
-            }
-            else
-            {
-               *list_head = prev_ptr = curr_ptr->next;
-            }
-        }
-        else if (*list_tail == curr_ptr)
-        {
-            *list_tail = prev_ptr;
-            (*list_tail)->next = NULL;
-        }
-        else
-        {
-            prev_ptr->next = curr_ptr->next;
-        }
-        tmp_ptr = curr_ptr->next;
-        MPIU_Free(curr_ptr);
-        curr_ptr = tmp_ptr;
+        MPIDI_CH3I_RMA_Ops_free_and_next(ops_list, &curr_ptr);
     }
 
 fn_fail:
@@ -2686,7 +2617,7 @@ fn_fail:
     return mpi_errno;
 }
 
-static int iba_put(MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr, MPIDI_msg_sz_t size)
+static int iba_put(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr, MPIDI_msg_sz_t size)
 {
     char                *remote_address;
     int                 mpi_errno = MPI_SUCCESS;
@@ -2749,7 +2680,7 @@ static int iba_put(MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr, MPIDI_msg_sz_t si
 }
 
 
-int iba_get(MPIDI_RMA_ops * rma_op, MPID_Win * win_ptr, MPIDI_msg_sz_t size)
+int iba_get(MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr, MPIDI_msg_sz_t size)
 {
     int                 mpi_errno = MPI_SUCCESS;
     int                 hca_index;

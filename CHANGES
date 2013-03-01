@@ -1,4 +1,80 @@
 ===============================================================================
+                               Changes in 3.0.2
+===============================================================================
+
+ # PM/PMI: Upgrade to hwloc-1.6.1
+
+ # RMA: Performance enhancements for shared memory windows.
+
+ # COMPILER INTEGRATION: minor improvements and fixes to the clang static type
+   checking annotation macros.
+
+ # MPI-IO (ROMIO): improved error checking for user errors, contributed by IBM.
+
+ # MPI-3 TOOLS INTERFACE: new MPI_T performance variables providing information
+   about nemesis communication behavior and and CH3 message matching queues.
+
+ # TEST SUITE: "make testing" now also outputs a "summary.tap" file that can be
+   interpreted with standard TAP consumer libraries and tools.  The
+   "summary.xml" format remains unchanged.
+
+ # GIT: This is the first release built from the new git repository at
+   git.mpich.org.  A few build system mechanisms have changed because of this
+   switch.
+
+ # BUG FIX: resolved a compilation error related to LLONG_MAX that affected
+   several users (ticket #1776).
+
+ # BUG FIX: nonblocking collectives now properly make progress when MPICH is
+   configured with the ch3:sock channel (ticket #1785).
+
+ # Several other minor bug fixes, memory leak fixes, and code cleanup.
+   A full list of changes is available at the following link:
+
+     http://git.mpich.org/mpich.git/shortlog/v3.0.1..v3.0.2
+
+
+===============================================================================
+                               Changes in 3.0.1
+===============================================================================
+
+ # PM/PMI: Critical bug-fix in Hydra to work correctly in multi-node
+   tests.
+
+ # A full list of changes is available using:
+
+     svn log -r10790:HEAD https://svn.mcs.anl.gov/repos/mpi/mpich2/tags/release/mpich-3.0.1
+
+     ... or at the following link:
+
+     https://trac.mcs.anl.gov/projects/mpich2/log/mpich2/tags/release/mpich-3.0.1?action=follow_copy&rev=HEAD&stop_rev=10790&mode=follow_copy
+
+
+===============================================================================
+                               Changes in 3.0
+===============================================================================
+
+ # MPI-3: All MPI-3 features are now implemented and the MPI_VERSION
+   bumped up to 3.0.
+
+ # OVERALL: Added support for ARM-v7 native atomics
+
+ # MPE: MPE is now separated out of MPICH and can be downloaded/used
+   as a separate package.
+
+ # PM/PMI: Upgraded to hwloc-1.6
+
+ # Several other minor bug fixes, memory leak fixes, and code cleanup.
+   A full list of changes is available using:
+
+     svn log -r10344:HEAD https://svn.mcs.anl.gov/repos/mpi/mpich2/tags/release/mpich-3.0
+
+     ... or at the following link:
+
+     https://trac.mcs.anl.gov/projects/mpich2/log/mpich2/tags/release/mpich-3.0?action=follow_copy&rev=HEAD&stop_rev=10344&mode=follow_copy
+
+
+===============================================================================
                                Changes in 1.5
 ===============================================================================
 

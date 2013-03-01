@@ -13,7 +13,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -38,6 +38,7 @@
 #include "mpmd.h"
 #include "mpirun_dbg.h"
 #include "mpirun_params.h"
+#include <mpirun_environ.h>
 #include "mpirun_ckpt.h"
 #include <libgen.h>
 #include "src/db/text.h"
@@ -335,6 +336,8 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
 {
     int i;
     int c, option_index;
+
+    enable_send_environ();
 
     if (check_for_slurm()) {
         using_slurm = 1;

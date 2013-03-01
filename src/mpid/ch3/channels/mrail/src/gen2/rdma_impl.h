@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -170,26 +170,24 @@ extern mv2_MPIDI_CH3I_RDMA_Process_t mv2_MPIDI_CH3I_RDMA_Process;
 #define IBV_STATUS_ERR   -4     /*  gen2 function status error */
 
 #define ibv_va_error_abort(code, message, args...)  {           \
-    int my_rank;                                                \
-    PMI_Get_rank(&my_rank);                                     \
-    fprintf(stderr, "[%d] Abort: ", my_rank);                   \
-    fprintf(stderr, message, ##args);                           \
-    fprintf(stderr, " at line %d in file %s\n", __LINE__,       \
-            __FILE__);                                          \
+    if (errno) {                                                \
+        PRINT_ERROR_ERRNO( "%s:%d: " message, errno, __FILE__, __LINE__, ##args);     \
+    } else {                                                    \
+        PRINT_ERROR( "%s:%d: " message "\n", __FILE__, __LINE__, ##args);     \
+    }                                                           \
     fflush (stderr);                                            \
     exit(code);                                                 \
 }
 
 #define ibv_error_abort(code, message)                          \
 {                                                               \
-	int my_rank;                                                \
-	PMI_Get_rank(&my_rank);                                     \
-	fprintf(stderr, "[%d] Abort: ", my_rank);                   \
-	fprintf(stderr, message);                                   \
-	fprintf(stderr, " at line %d in file %s\n", __LINE__,       \
-	    __FILE__);                                              \
+    if (errno) {                                                \
+        PRINT_ERROR_ERRNO( "%s:%d: " message, errno, __FILE__, __LINE__);     \
+    } else {                                                    \
+        PRINT_ERROR( "%s:%d: " message "\n", __FILE__, __LINE__);     \
+    }                                                           \
     fflush (stderr);                                            \
-	exit(code);                                                 \
+    exit(code);                                                 \
 }
 
 #define PACKET_SET_RDMA_CREDIT(_p, _c)                          \
@@ -386,7 +384,7 @@ do {                                                  \
     if (ret) {                                        \
         fprintf(stderr, "[%s:%d]: %s\n",              \
                 __FILE__,__LINE__, s);                \
-    exit(1);                                          \
+    exit(EXIT_FAILURE);                               \
     }                                                 \
 } while (0)
 
@@ -395,7 +393,7 @@ do {                                                    \
     if (ret) {                                          \
     fprintf(stderr, "[%s:%d] error(%d): %s\n",          \
         __FILE__,__LINE__, ret, s);                     \
-    exit(1);                                            \
+    exit(EXIT_FAILURE);                                 \
     }                                                   \
 }                                                       \
 while (0)

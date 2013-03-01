@@ -1,10 +1,10 @@
-/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -65,6 +65,9 @@ int MPIC_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int t
 
     MPIDI_PT2PT_FUNC_ENTER_FRONT(MPID_STATE_MPIC_SEND);
 
+    MPIU_ERR_CHKANDJUMP1((count < 0), mpi_errno, MPI_ERR_COUNT,
+                         "**countneg", "**countneg %d", count);
+
     MPID_Comm_get_ptr( comm, comm_ptr );
     context_id = (comm_ptr->comm_kind == MPID_INTRACOMM) ?
         MPID_CONTEXT_INTRA_COLL : MPID_CONTEXT_INTER_COLL;
@@ -102,6 +105,9 @@ int MPIC_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
     MPIDI_STATE_DECL(MPID_STATE_MPIC_RECV);
 
     MPIDI_PT2PT_FUNC_ENTER_BACK(MPID_STATE_MPIC_RECV);
+
+    MPIU_ERR_CHKANDJUMP1((count < 0), mpi_errno, MPI_ERR_COUNT,
+                         "**countneg", "**countneg %d", count);
 
     MPID_Comm_get_ptr( comm, comm_ptr );
     context_id = (comm_ptr->comm_kind == MPID_INTRACOMM) ?
@@ -148,6 +154,9 @@ int MPIC_Ssend(const void *buf, int count, MPI_Datatype datatype, int dest, int 
 
     MPIDI_PT2PT_FUNC_ENTER_FRONT(MPID_STATE_MPIC_SSEND);
 
+    MPIU_ERR_CHKANDJUMP1((count < 0), mpi_errno, MPI_ERR_COUNT,
+                         "**countneg", "**countneg %d", count);
+
     MPID_Comm_get_ptr( comm, comm_ptr );
     context_id = (comm_ptr->comm_kind == MPID_INTRACOMM) ?
         MPID_CONTEXT_INTRA_COLL : MPID_CONTEXT_INTER_COLL;
@@ -187,6 +196,11 @@ int MPIC_Sendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     MPIDI_STATE_DECL(MPID_STATE_MPIC_SENDRECV);
 
     MPIDI_PT2PT_FUNC_ENTER_BOTH(MPID_STATE_MPIC_SENDRECV);
+
+    MPIU_ERR_CHKANDJUMP1((sendcount < 0), mpi_errno, MPI_ERR_COUNT,
+                         "**countneg", "**countneg %d", sendcount);
+    MPIU_ERR_CHKANDJUMP1((recvcount < 0), mpi_errno, MPI_ERR_COUNT,
+                         "**countneg", "**countneg %d", recvcount);
 
     MPID_Comm_get_ptr( comm, comm_ptr );
     context_id = (comm_ptr->comm_kind == MPID_INTRACOMM) ?
@@ -245,7 +259,10 @@ int MPIC_Sendrecv_replace(void *buf, int count, MPI_Datatype datatype,
 #endif
 
     MPIDI_PT2PT_FUNC_ENTER_BOTH(MPID_STATE_MPIC_SENDRECV_REPLACE);
-    
+
+    MPIU_ERR_CHKANDJUMP1((count < 0), mpi_errno, MPI_ERR_COUNT,
+                         "**countneg", "**countneg %d", count);
+
     MPID_Comm_get_ptr( comm, comm_ptr );
     context_id_offset = (comm_ptr->comm_kind == MPID_INTRACOMM) ?
         MPID_CONTEXT_INTRA_COLL : MPID_CONTEXT_INTER_COLL;
@@ -529,6 +546,9 @@ int MPIC_Isend(const void *buf, int count, MPI_Datatype datatype, int dest, int 
 
     MPIDI_PT2PT_FUNC_ENTER_FRONT(MPID_STATE_MPIC_ISEND);
 
+    MPIU_ERR_CHKANDJUMP1((count < 0), mpi_errno, MPI_ERR_COUNT,
+                         "**countneg", "**countneg %d", count);
+
     MPID_Comm_get_ptr( comm, comm_ptr );
     context_id = (comm_ptr->comm_kind == MPID_INTRACOMM) ?
         MPID_CONTEXT_INTRA_COLL : MPID_CONTEXT_INTER_COLL;
@@ -560,6 +580,9 @@ int MPIC_Irecv(void *buf, int count, MPI_Datatype datatype, int
     MPIDI_STATE_DECL(MPID_STATE_MPIC_IRECV);
 
     MPIDI_PT2PT_FUNC_ENTER_BACK(MPID_STATE_MPIC_IRECV);
+
+    MPIU_ERR_CHKANDJUMP1((count < 0), mpi_errno, MPI_ERR_COUNT,
+                         "**countneg", "**countneg %d", count);
 
     MPID_Comm_get_ptr( comm, comm_ptr );
     context_id = (comm_ptr->comm_kind == MPID_INTRACOMM) ?

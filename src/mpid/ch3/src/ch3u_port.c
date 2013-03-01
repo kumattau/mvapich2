@@ -1,9 +1,9 @@
-/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1153,7 +1153,7 @@ fn_fail:
    new intercommunicator
 -  remote_pg - array of remote process groups
 
-   Input/Output Parameter:
+Input/Output Parameters:
 .  intercomm - New intercommunicator.  The intercommunicator must already
    have been allocated; this routine initializes many of the fields
 

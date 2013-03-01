@@ -1,4 +1,4 @@
-/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
  *
  *  (C) 2001 by Argonne National Laboratory.
@@ -38,7 +38,7 @@ Input Parameters:
 + comm1 - comm1 (handle) 
 - comm2 - comm2 (handle) 
 
-Output Parameter:
+Output Parameters:
 . result - integer which is 'MPI_IDENT' if the contexts and groups are the
 same, 'MPI_CONGRUENT' if different contexts but identical groups, 'MPI_SIMILAR'
 if different contexts but similar groups, and 'MPI_UNEQUAL' otherwise

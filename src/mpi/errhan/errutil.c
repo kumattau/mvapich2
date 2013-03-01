@@ -1,11 +1,11 @@
-/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -800,7 +800,7 @@ fn_exit:
 }
 
 /* 
- * If the error message level is all, MPICH2 supports instance-specific
+ * If the error message level is all, MPICH supports instance-specific
  * error messages.  Details above
  */
 #if MPICH_ERROR_MSG_LEVEL == MPICH_ERROR_MSG_ALL
@@ -1232,6 +1232,7 @@ static int vsnprintf_mpi(char *str, size_t maxlen, const char *fmt_orig,
     char *s;
     int t, i, d, mpi_errno=MPI_SUCCESS;
     long long ll;
+    MPI_Count c;
     void *p;
 
     fmt = MPIU_Strdup(fmt_orig);
@@ -1437,6 +1438,11 @@ static int vsnprintf_mpi(char *str, size_t maxlen, const char *fmt_orig,
 		MPIU_Snprintf(str, maxlen, "errh=0x%x", E);
 	    }
 	    break;
+        case (int)'c':
+            c = va_arg(list, MPI_Count);
+            MPIU_Assert(sizeof(long long) >= sizeof(MPI_Count));
+            MPIU_Snprintf(str, maxlen, "%lld", (long long)c);
+            break;
 	default:
 	    /* Error: unhandled output type */
 	    return 0;

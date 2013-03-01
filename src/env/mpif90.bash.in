@@ -1,6 +1,6 @@
 #! @BASH_SHELL@
 #
-# Copyright (c) 2001-2012, The Ohio State University. All rights reserved.
+# Copyright (c) 2001-2013, The Ohio State University. All rights reserved.
 #  
 # This file is part of the MVAPICH2 software package developed by the team
 # members of The Ohio State University's Network-Based Computing Laboratory
@@ -17,7 +17,7 @@
 # This script knows the default flags and libraries, and can handle
 # alternative C compilers and the associated flags and libraries.
 # The important terms are:
-#    includedir, libdir - Directories containing an *installed* mpich2
+#    includedir, libdir - Directories containing an *installed* mpich
 #    prefix, execprefix - Often used to define includedir and libdir
 #    FC                 - Fortran 90 compiler
 #    WRAPPER_FCFLAGS    - Any special flags needed to compile 
@@ -41,7 +41,6 @@ prefix=@prefix@
 exec_prefix=@exec_prefix@
 sysconfdir=@sysconfdir@
 includedir=@includedir@
-modincdir=@modincdir@
 libdir=@libdir@
 
 # Default settings for compiler, flags, and libraries
@@ -176,14 +175,6 @@ for arg in "$@" ; do
     # a special case, lib<name>.so or lib<name>.la may be used
     # if the library is in $libdir
     profConf=`echo A$arg | sed -e 's/A-profile=//g'`
-    addarg=no
-    # Loading the profConf file is handled below
-    ;;
-    -mpe=*)
-    # Pass the name of a profiling configuration; this is a special
-    # case for the MPE libs.  See -profile
-    profConf=`echo A$arg | sed -e 's/A-mpe=//g'`
-    profConf="mpe_$profConf"
     addarg=no
     # Loading the profConf file is handled below
     ;;
@@ -327,15 +318,14 @@ fi
 
 # Handle the specification of the directory containing the modules
 # For now, these are in the includedir (no choice argument supported)
-moduledir=$modincdir
 modulelib="@MPILIBNAME@f90"
 if [ -n "$FCMODINCSPEC" ] ; then
     newarg=`echo A"$FCMODINCSPEC" | \
-	sed -e 's/^A//' -e 's%<dir>%'"$moduledir%g" -e 's/<file>/mpi/g'`
+	sed -e 's/^A//' -e 's%<dir>%'"$includedir%g" -e 's/<file>/mpi/g'`
     FCMODDIRS="$newarg"
     FCMODLIBS="-l$modulelib"
 elif [ -n "$FCMODINC" ] ; then
-    FCMODDIRS="${FCMODINC}$moduledir"
+    FCMODDIRS="${FCMODINC}$includedir"
     FCMODLIBS="-l$modulelib"
 fi
 

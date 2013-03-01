@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -173,7 +173,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
 #else
             MPIU_Error_printf
                 ("XRC support is not configured. Please retry with "
-                 "MV2_USE_XRC=0 (or) Reconfiure MVAPICH2 library without --disable-xrc.\n");
+                 "MV2_USE_XRC=0 (or) Reconfigure MVAPICH2 library without --disable-xrc.\n");
             MPIU_ERR_SETFATALANDJUMP(mpi_errno, MPI_ERR_OTHER, "**fail");
 #endif
         }
@@ -389,7 +389,7 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
         mcast_ctx->ud_ctx = mv2_mcast_prepare_ud_ctx();
         if (mcast_ctx->ud_ctx == NULL) {
             PRINT_ERROR("Error in create multicast UD context for multicast\n");
-            exit(1);
+            exit(EXIT_FAILURE);
         }
     }
 #endif

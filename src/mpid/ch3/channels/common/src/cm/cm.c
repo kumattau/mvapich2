@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -927,7 +927,7 @@ int cm_rcv_qp_create(MPIDI_VC_t * vc, uint32_t * qpn)
     return 0;
 
   fn_err:
-    ibv_error_abort(GEN_EXIT_ERR, "Failed to create XRC rcv QP\n");
+    ibv_va_error_abort(GEN_EXIT_ERR, "Failed to create XRC rcv QP. Error: %d (%s)\n", errno, strerror(errno));
     return -1;
 }
 #endif

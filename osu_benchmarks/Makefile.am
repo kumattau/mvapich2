@@ -1,5 +1,5 @@
  #
- # Copyright (C) 2002-2012 the Network-Based Computing Laboratory
+ # Copyright (C) 2002-2013 the Network-Based Computing Laboratory
  # (NBCL), The Ohio State University. 
  #
  # Contact: Dr. D. K. Panda (panda@cse.ohio-state.edu)
@@ -40,9 +40,16 @@ pkglibexec_PROGRAMS =		\
     osu_passive_get_bw		\
     osu_passive_acc_latency
 
+AM_CPPFLAGS =
+
 if BUILD_MRAIL_CUDA
 dist_pkglibexec_SCRIPTS = get_local_rank
-AM_CPPFLAGS = -D_ENABLE_CUDA_
+AM_CPPFLAGS += -D_ENABLE_CUDA_
+endif
+
+if BUILD_MRAIL_OPENACC
+AM_CPPFLAGS += -D_ENABLE_OPENACC_
+AM_CFLAGS = -acc
 endif
 
 EXTRA_DIST = README CHANGES

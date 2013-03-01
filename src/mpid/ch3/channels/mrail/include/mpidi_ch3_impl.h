@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -36,7 +36,7 @@
 #include <sys/stat.h>
 #endif
 
-#if defined(_SMP_LIMIC_)
+#if defined(_SMP_LIMIC_) || defined (_SMP_CMA_)
 #include "smp_smpi.h"
 #endif
 
@@ -543,18 +543,35 @@ void MPIDI_CH3I_SMP_write_contig(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t reqtype,
                           int tag, MPID_Comm * comm, int context_offset, 
                           int *num_bytes_ptr);
                           
-#if defined(_SMP_LIMIC_)
+#if defined(_SMP_LIMIC_) && !defined(_SMP_CMA_)
 int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
         const int iovlen, int index, struct limic_header *l_header,
         size_t *num_bytes_ptr, int use_limic);
+#elif defined(_SMP_CMA_) && !defined(_SMP_LIMIC_)
+int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
+        const int iovlen, int index, struct cma_header *c_header,
+        size_t *num_bytes_ptr, int use_cma);
+#elif defined(_SMP_CMA_) && defined(_SMP_LIMIC_)
+int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
+        const int iovlen, int index, struct limic_header * l_header,
+        struct cma_header *c_header, size_t *num_bytes_ptr, int use_limic, int use_cma);
 #else
 int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
 	const int iovlen, int index, size_t *num_bytes_ptr);
 #endif
 	
-#if defined(_SMP_LIMIC_)
+#if defined(_SMP_LIMIC_) && !defined(_SMP_CMA_)
 int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
-        const int iovlen, int index, struct limic_header *l_header, size_t *num_bytes_ptr, int use_limic);
+        const int iovlen, int index, struct limic_header *l_header, size_t *num_bytes_ptr, 
+        int use_limic);
+#elif defined(_SMP_CMA_) && !defined(_SMP_LIMIC_)
+int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
+        const int iovlen, int index, struct cma_header *c_header, size_t *num_bytes_ptr, 
+        int use_cma);
+#elif defined(_SMP_CMA_) && defined(_SMP_LIMIC_)
+int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
+        const int iovlen, int index, struct limic_header *l_header, 
+        struct cma_header *c_header, size_t *num_bytes_ptr, int use_limic, int use_cma);
 #else
 int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
 	const int iovlen, int index, size_t *num_bytes_ptr);
@@ -567,5 +584,12 @@ int MPIDI_CH3I_SMP_pull_header(MPIDI_VC_t * vc,
                                MPIDI_CH3_Pkt_t ** pkt_head);
 
 /********* End of OSU-MPI2 *************************/
+
+/* Shared memory window atomic/accumulate mutex implementation */
+
+#define MPIDI_CH3I_SHM_MUTEX_LOCK(win_ptr)
+#define MPIDI_CH3I_SHM_MUTEX_UNLOCK(win_ptr)
+#define MPIDI_CH3I_SHM_MUTEX_INIT(win_ptr)
+#define MPIDI_CH3I_SHM_MUTEX_DESTROY(win_ptr)
 
 #endif /* !defined(MPICH_MPIDI_CH3_IMPL_H_INCLUDED) */

@@ -1,11 +1,11 @@
-/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
  *
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -400,7 +400,7 @@ Input Parameters:
   with the same color are in the same new communicator 
 - key - control of rank assigment (integer)
 
-Output Parameter:
+Output Parameters:
 . newcomm - new communicator (handle) 
 
 Notes:
@@ -476,35 +476,6 @@ int MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm)
     else
         *newcomm = MPI_COMM_NULL;
 
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
-    if (mv2_enable_shmem_collectives){
-        if (check_split_comm(pthread_self())){
-            if (*newcomm != MPI_COMM_NULL){
-
-                int flag;
-                PMPI_Comm_test_inter(*newcomm, &flag);
-                
-                if (flag == 0){
-                    int my_id, size;
-                    mpi_errno = PMPI_Comm_rank(*newcomm, &my_id);
-                     if(mpi_errno) {
-                        MPIU_ERR_POP(mpi_errno);
-                    }
-                    mpi_errno = PMPI_Comm_size(*newcomm, &size);
-                     if(mpi_errno) {
-                        MPIU_ERR_POP(mpi_errno);
-                    }
-                    disable_split_comm(pthread_self());
-                    mpi_errno = create_2level_comm(*newcomm, size, my_id);
-                     if(mpi_errno) {
-                        MPIU_ERR_POP(mpi_errno);
-                    }
-                    enable_split_comm(pthread_self());
-                }
-            }
-        }
-    }
-#endif /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
     /* ... end of body of routine ... */
 
   fn_exit:

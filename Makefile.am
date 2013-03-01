@@ -56,7 +56,7 @@ external_libs = -lmpl -lopa
 # The automake manual recommends thinking of DIST_SUBDIRS as the list of all
 # *configured* subdirectories.  The normal autotools model involves
 # unconditional configure steps for all/most directories with conditional make
-# steps (i.e., conditional inclusion in SUBDIRS).  But in the MPICH2 case we
+# steps (i.e., conditional inclusion in SUBDIRS).  But in the MPICH case we
 # almost always configure exactly the directories that will be included in
 # SUBDIRS.  So most additions to DIST_SUBDIRS should be conditional on the same
 # condition as the corresponding SUBDIRS addition.
@@ -65,7 +65,7 @@ SUBDIRS = ${external_subdirs}
 
 
 # lib/lib@MPILIBNAME@.la always contains the "PMPI_" functions and all of the
-# functions and symbols that actually make up the MPICH2 implementation.  If
+# functions and symbols that actually make up the MPICH implementation.  If
 # weak symbols are fully supported (such as on Linux), then this library also
 # contains weak symbols for "MPI_" aliasing the "PMPI_" symbols.  This lib also
 # always contains the F77 bindings, but not the F90 or C++ bindings.
@@ -125,7 +125,7 @@ lib_lib@PMPILIBNAME@_la_SOURCES += $(mpi_sources)
 endif BUILD_PROFILING_LIB
 
 # build the current directory and then the examples directory after everything else
-SUBDIRS += . examples osu_benchmarks src/env/mpiname
+SUBDIRS += . examples osu_benchmarks src/env/mpiname src/util/mv2_ckpt_rebuild
 DIST_SUBDIRS += . examples test
 
 EXTRA_DIST += README CHANGES COPYRIGHT README.envvar
@@ -146,11 +146,11 @@ install-exec-hook:
 	for e in ${DESTDIR}${bindir}/mpicc ${DESTDIR}${bindir}/mpicxx \
 		${DESTDIR}${bindir}/mpif77 ${DESTDIR}${bindir}/mpif90 ; do \
 		if test -e $${e} ; then \
-			sed -e "s+^prefix=.*+prefix=${prefix}+g" \
-				-e "s+^exec_prefix=.*+exec_prefix=${exec_prefix}+g" \
-				-e "s+^sysconfdir=.*+sysconfdir=${sysconfdir}+g" \
-				-e "s+^includdir=.*+includedir=${includedir}+g" \
-				-e "s+^libdir=.*+libdir=${libdir}+g" $${e} > $${e}.tmp ; \
+			sed -e 's|^prefix=.*|prefix=${prefix}|g' \
+				-e 's|^exec_prefix=.*|exec_prefix=${exec_prefix}|g' \
+				-e 's|^sysconfdir=.*|sysconfdir=${sysconfdir}|g' \
+				-e 's|^includdir=.*|includedir=${includedir}|g' \
+				-e 's|^libdir=.*|libdir=${libdir}|g' $${e} > $${e}.tmp ; \
 			$(INSTALL_SCRIPT) $${e}.tmp $${e} ; \
 			rm -f $${e}.tmp ; \
 		fi ; \
@@ -251,7 +251,7 @@ coverage-clean:
 
 else !BUILD_COVERAGE
 coverage:
-	@echo 'ERROR: MPICH2 was not configured with "--enable-coverage"'
+	@echo 'ERROR: MPICH was not configured with "--enable-coverage"'
 	exit 1
 endif !BUILD_COVERAGE
 
@@ -266,12 +266,14 @@ endif !BUILD_COVERAGE
 SUFFIXES += .man-phony .html-phony .man1-phony .html1-phony .txt
 
 # "make V=1" support for our documentation recipes
-doctextman_verbose = $(doctextman_verbose_$(V))
-doctextman_verbose_ = $(doctextman_verbose_$(AM_DEFAULT_VERBOSITY))
+doctextman_verbose = $(doctextman_verbose_@AM_V@)
+doctextman_verbose_ = $(doctextman_verbose_@AM_DEFAULT_V@)
 doctextman_verbose_0 = @echo "   DOCTEXTMAN  " $@;
-doctexthtml_verbose = $(doctexthtml_verbose_$(V))
-doctexthtml_verbose_ = $(doctexthtml_verbose_$(AM_DEFAULT_VERBOSITY))
+doctextman_verbose_1 =
+doctexthtml_verbose = $(doctexthtml_verbose_@AM_V@)
+doctexthtml_verbose_ = $(doctexthtml_verbose_@AM_DEFAULT_V@)
 doctexthtml_verbose_0 = @echo "   DOCTEXTHTML  " $@;
+doctexthtml_verbose_1 =
 
 # build dir paths for doc generation, used to override subdir (esp. ROMIO) doc
 # generation locations/options

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -233,7 +233,7 @@ void mv2_ud_resend(vbuf *v)
                 "topology and traffic patterns. Please try with increased "
                 "timeout using MV2_UD_RETRY_TIMEOUT\n", 
                 v->retry_count, v, rdma_ud_retry_timeout );
-        exit(0);
+        exit(EXIT_FAILURE);
     }
 
     p = v->pheader;

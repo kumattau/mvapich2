@@ -1,6 +1,6 @@
 #define BENCHMARK "OSU MPI Multiple Bandwidth / Message Rate Test"
 /*
- * Copyright (C) 2002-2012 the Network-Based Computing Laboratory
+ * Copyright (C) 2002-2013 the Network-Based Computing Laboratory
  * (NBCL), The Ohio State University. 
  *
  * Contact: Dr. D. K. Panda (panda@cse.ohio-state.edu)
@@ -302,7 +302,7 @@ void usage() {
 double calc_bw(int rank, int size, int num_pairs, int window_size, char *s_buf,
         char *r_buf)
 {
-    double t_start = 0, t_end = 0, t = 0, maxtime = 0, bw = 0;
+    double t_start = 0, t_end = 0, t = 0, sum_time = 0, bw = 0;
     int i, j, target;
     int loop, skip;
     int mult = (DEFAULT_WINDOW / window_size) > 0 ? (DEFAULT_WINDOW /
@@ -370,13 +370,14 @@ double calc_bw(int rank, int size, int num_pairs, int window_size, char *s_buf,
         MPI_Barrier(MPI_COMM_WORLD);
     }
 
-    MPI_Reduce(&t, &maxtime, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&t, &sum_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
 
     if(rank == 0) {
         double tmp = num_pairs * size / 1e6;
-
+        
+        sum_time /= num_pairs;
         tmp = tmp * loop * window_size;
-        bw = tmp / maxtime;
+        bw = tmp / sum_time;
 
         return bw;
     }

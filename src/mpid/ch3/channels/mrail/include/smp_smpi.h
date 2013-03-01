@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -182,6 +182,16 @@ struct shared_buffer_pool {
     int *send_queue;
     int *tail;
 };
+
+#if defined(_SMP_CMA_)
+struct cma_header {
+    struct iovec remote[1]; 
+    int total_bytes;
+    pid_t pid;
+    struct MPID_Request *csend_req_id;
+};
+extern int g_smp_use_cma;
+#endif
 
 #if defined(_SMP_LIMIC_)
 struct limic_header {

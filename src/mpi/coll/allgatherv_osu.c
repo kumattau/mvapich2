@@ -1,5 +1,5 @@
 /* -*- Mode: C; c-basic-offset:4 ; -*- */
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -18,6 +18,7 @@
 #include "mpiimpl.h"
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include "coll_shmem.h"
+#include "allgatherv_tuning.h"
 
 /* This is the default implementation of allgatherv. The algorithm is:
 
@@ -56,20 +57,27 @@
    End Algorithm: MPI_Allgatherv
 */
 
+int (*MV2_Allgatherv_function)(const void *sendbuf,
+                               int sendcount,
+                               MPI_Datatype sendtype,
+                               void *recvbuf,
+                               const int *recvcounts,
+                               const int *displs,
+                               MPI_Datatype recvtype,
+                               MPID_Comm * comm_ptr, int *errflag);
 #undef FUNCNAME
 #define FUNCNAME MPIR_Allgatherv_Rec_Doubling_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-static int MPIR_Allgatherv_Rec_Doubling_MV2(const void *sendbuf,
-                                            int sendcount,
-                                            MPI_Datatype sendtype,
-                                            void *recvbuf,
-                                            const int *recvcounts,
-                                            const int *displs,
-                                            MPI_Datatype recvtype,
-                                            MPID_Comm * comm_ptr, int *errflag)
+int MPIR_Allgatherv_Rec_Doubling_MV2(const void *sendbuf,
+                                     int sendcount,
+                                     MPI_Datatype sendtype,
+                                     void *recvbuf,
+                                     const int *recvcounts,
+                                     const int *displs,
+                                     MPI_Datatype recvtype,
+                                     MPID_Comm * comm_ptr, int *errflag)
 {
-
     MPI_Comm comm;
     int comm_size, rank, j, i;
     int mpi_errno = MPI_SUCCESS;
@@ -541,14 +549,14 @@ static int MPIR_Allgatherv_Rec_Doubling_MV2(const void *sendbuf,
 #define FUNCNAME MPIR_Allgatherv_Bruck_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-static int MPIR_Allgatherv_Bruck_MV2(const void *sendbuf,
-                                     int sendcount,
-                                     MPI_Datatype sendtype,
-                                     void *recvbuf,
-                                     const int *recvcounts,
-                                     const int *displs,
-                                     MPI_Datatype recvtype,
-                                     MPID_Comm * comm_ptr, int *errflag)
+int MPIR_Allgatherv_Bruck_MV2(const void *sendbuf,
+                              int sendcount,
+                              MPI_Datatype sendtype,
+                              void *recvbuf,
+                              const int *recvcounts,
+                              const int *displs,
+                              MPI_Datatype recvtype,
+                              MPID_Comm * comm_ptr, int *errflag)
 {
     MPI_Comm comm;
     int comm_size, rank, j, i;
@@ -709,14 +717,14 @@ static int MPIR_Allgatherv_Bruck_MV2(const void *sendbuf,
 #define FUNCNAME MPIR_Allgatherv_Ring_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-static int MPIR_Allgatherv_Ring_MV2(const void *sendbuf,
-                                    int sendcount,
-                                    MPI_Datatype sendtype,
-                                    void *recvbuf,
-                                    const int *recvcounts,
-                                    const int *displs,
-                                    MPI_Datatype recvtype,
-                                    MPID_Comm * comm_ptr, int *errflag)
+int MPIR_Allgatherv_Ring_MV2(const void *sendbuf,
+                             int sendcount,
+                             MPI_Datatype sendtype,
+                             void *recvbuf,
+                             const int *recvcounts,
+                             const int *displs,
+                             MPI_Datatype recvtype,
+                             MPID_Comm * comm_ptr, int *errflag)
 {
     MPI_Comm comm;
     int comm_size, rank, i, left, right, total_count;
@@ -879,6 +887,8 @@ int MPIR_Allgatherv_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtyp
     int mpi_errno = MPI_SUCCESS;
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
     int range = 0, comm_size, total_count, recvtype_size, i;
+    int range_threshold = 0;
+    int nbytes = 0;
 #endif                          /* (_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
@@ -891,37 +901,47 @@ int MPIR_Allgatherv_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtyp
         goto fn_exit;
 
     MPID_Datatype_get_size_macro(recvtype, recvtype_size);
+    nbytes = total_count * recvtype_size;
 
-    while ((range < mv2_size_mv2_allgatherv_mv2_tuning_table) &&
-           (comm_size > mv2_allgatherv_mv2_tuning_table[range].numproc)) {
+    /* Search for the corresponding system size inside the tuning table */
+    while ((range < (mv2_size_allgatherv_tuning_table - 1)) &&
+           (comm_size > mv2_allgatherv_thresholds_table[range].numproc)) {
         range++;
     }
-    if ((total_count * recvtype_size < mv2_allgatherv_mv2_tuning_table[range].switchp)
-        && !(comm_size & (comm_size - 1))) {
-        /* For short or medium-size messages and power-of-two no. of
-           processes, we use the recursive doubling algorithm. */
-        mpi_errno =
-            MPIR_Allgatherv_Rec_Doubling_MV2(sendbuf, sendcount,
-                                             sendtype, recvbuf,
-                                             recvcounts, displs,
-                                             recvtype, comm_ptr, errflag);
+    /* Search for corresponding inter-leader function */
+    while ((range_threshold < (mv2_allgatherv_thresholds_table[range].size_inter_table - 1))
+           && (nbytes >
+               comm_size * mv2_allgatherv_thresholds_table[range].inter_leader[range_threshold].max)
+           && (mv2_allgatherv_thresholds_table[range].inter_leader[range_threshold].max !=
+               -1)) {
+        range_threshold++;
+    }
+    /* Set inter-leader pt */
+    MV2_Allgatherv_function =
+                          mv2_allgatherv_thresholds_table[range].inter_leader[range_threshold].
+                          MV2_pt_Allgatherv_function;
 
-    } else if (total_count * recvtype_size <
-               mv2_allgatherv_mv2_tuning_table[range].switchp) {
-        /* Short message and non-power-of-two no. of processes. Use
-           Bruck algorithm (see description above). */
-        mpi_errno =
-            MPIR_Allgatherv_Bruck_MV2(sendbuf, sendcount, sendtype,
-                                      recvbuf, recvcounts, displs,
-                                      recvtype, comm_ptr, errflag);
+    if (MV2_Allgatherv_function == &MPIR_Allgatherv_Rec_Doubling_MV2)
+    {
+        if(!(comm_size & (comm_size - 1)))
+        {
+            mpi_errno =
+                MPIR_Allgatherv_Rec_Doubling_MV2(sendbuf, sendcount,
+                                                 sendtype, recvbuf,
+                                                 recvcounts, displs,
+                                                 recvtype, comm_ptr, errflag);
+        } else {
+            mpi_errno =
+                MPIR_Allgatherv_Bruck_MV2(sendbuf, sendcount,
+                                          sendtype, recvbuf,
+                                          recvcounts, displs,
+                                          recvtype, comm_ptr, errflag);
+        }
     } else {
-        /* long message or medium-size message and non-power-of-two
-           no. of processes. Use ring algorithm. */
         mpi_errno =
-            MPIR_Allgatherv_Ring_MV2(sendbuf, sendcount, sendtype,
-                                     recvbuf, recvcounts, displs,
-                                     recvtype, comm_ptr, errflag);
-
+            MV2_Allgatherv_function(sendbuf, sendcount, sendtype,
+                                    recvbuf, recvcounts, displs,
+                                    recvtype, comm_ptr, errflag);
     }
 #else                           /* (_OSU_MVAPICH_) || defined(_OSU_PSM_) */
     /* Call allgatherv of MPICH2 */

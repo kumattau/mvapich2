@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -456,21 +456,13 @@ int MPIDI_CH3I_MRAIL_Fill_Request(MPID_Request * req, vbuf * v,
     if ( rdma_enable_cuda && is_device_buffer(iov[0].MPID_IOV_BUF)) {
 
         *nb = 0;
-        MPIU_Assert(req->dev.iov_offset == 0);
-        if (n_iov > 1) {
-            MPIU_Assert(0);
-        } else {
-            cuda_error = cudaMemcpy(iov[0].MPID_IOV_BUF, 
-                    data_buf, 
-                    iov[0].MPID_IOV_LEN,
-                    cudaMemcpyHostToDevice);
-            *nb += iov[0].MPID_IOV_LEN;
-            len_avail -= iov[0].MPID_IOV_LEN;
-        }
-        if (cuda_error != cudaSuccess) { 
-            fprintf(stderr, "cuda memcpy failed in eager fill \n");
-            MPIU_Assert(0);
-        }
+        MPIU_Assert(req->dev.iov_offset == 0 && n_iov == 1);
+        MPIU_Memcpy_CUDA(iov[0].MPID_IOV_BUF, 
+                data_buf, 
+                iov[0].MPID_IOV_LEN,
+                cudaMemcpyHostToDevice);
+        *nb += iov[0].MPID_IOV_LEN;
+        len_avail -= iov[0].MPID_IOV_LEN;
     } else {
 #endif
 

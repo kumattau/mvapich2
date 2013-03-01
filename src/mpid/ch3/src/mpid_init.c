@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -9,7 +9,7 @@
  * copyright file COPYRIGHT in the top level MVAPICH2 directory.
  *
  */
-/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -89,7 +89,7 @@ static int split_type(MPID_Comm * comm_ptr, int stype, int key,
     mpi_errno = MPID_Get_node_id(comm_ptr, comm_ptr->rank, &id);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
-    nid = id;
+    nid = (stype == MPI_COMM_TYPE_SHARED) ? id : MPI_UNDEFINED;
     mpi_errno = MPIR_Comm_split_impl(comm_ptr, nid, key, newcomm_ptr);
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
@@ -487,7 +487,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
 	    MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, 
 				"**ch3|get_parent_port");
 	}
-	MPIU_DBG_MSG_S(CH3_CONNECT,VERBOSE,"Parent port is %s\n", parent_port);
+	MPIU_DBG_MSG_S(CH3_CONNECT,VERBOSE,"Parent port is %s", parent_port);
 	    
 	mpi_errno = MPID_Comm_connect(parent_port, NULL, 0, 
 				      MPIR_Process.comm_world, &comm);

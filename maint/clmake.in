@@ -44,6 +44,7 @@ $rootSrcDir = "";
 	      "Make completed",
 	      "echo", "cat",
 	      "CC", "CCLD", "AR", "RANLIB", "LIBTOOL", "MV", 
+              "MOD", "GEN", "F77", "FC", "CXXLD", "CXX", "FCLD",
 	      "CP", # "terse" make versions
 	      "\\(?cd",
 	      "\\(\\s*cd",
@@ -56,7 +57,6 @@ $rootSrcDir = "";
 	      "Copying Upshot",
 	      "Cleaning directory",
 	      "[*][*][*][*] Making .*\.\.\.\.",
-	      "Making .*\.\.\.\.",        # mpe writes this
 	      "Making upshot", "\\s*\$", );
 
 # OtherNoise is an array of patterns that describe blocks of

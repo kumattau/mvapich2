@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -35,6 +35,7 @@
 #include "mpmd.h"
 #include "mpirun_dbg.h"
 #include "mpirun_params.h"
+#include <mpirun_environ.h>
 #include "mpirun_ckpt.h"
 
 #if defined(_NSIG)
@@ -97,6 +98,7 @@ static struct option option_table[] = {
     {"dpmspawn", required_argument, 0, 0},
     // This option enables the group selection for mpispawns
     {"sg", required_argument, 0, 0},
+    {"export", no_argument, 0, 0},
 #if defined(CKPT) && defined(CR_FTB)
     {"sparehosts", required_argument, 0, 0},    // 19
 #endif
@@ -288,16 +290,17 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
                 DBG(printf("Group change requested: '%s'\n", change_group));
                 break;
             case 18:
+                enable_send_environ();
+                break;
 #if defined(CKPT) && defined(CR_FTB)
+            case 19:
                 sparehosts_on = 1;
                 strncpy(sparehostfile, optarg, HOSTFILE_LEN);
-                if (strlen(optarg) >= HOSTFILE_LEN - 1)
+                if (strlen(optarg) >= HOSTFILE_LEN - 1) {
                     sparehostfile[HOSTFILE_LEN] = 0;
-#else
-                usage(argv[0]);
-                exit(EXIT_SUCCESS);
-#endif
+                }
                 break;
+#endif
             default:
                 fprintf(stderr, "Unknown option\n");
                 usage(argv[0]);
@@ -383,7 +386,8 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
 
 void usage(const char * arg0)
 {
-    fprintf(stderr, "usage: mpirun_rsh [-v] [-sg group] [-rsh|-ssh] " "[-debug] -[tv] [-xterm] [-show] [-legacy] -np N"
+    fprintf(stderr, "usage: mpirun_rsh [-v] [-sg group] [-rsh|-ssh] "
+            "[-debug] -[tv] [-xterm] [-show] [-legacy] [-export] -np N"
 #if defined(CKPT) && defined(CR_FTB)
             " [-sparehosts sparehosts_file] "
 #endif
@@ -397,6 +401,7 @@ void usage(const char * arg0)
     fprintf(stderr, "\txterm      => " "run remote processes under xterm\n");
     fprintf(stderr, "\tshow       => " "show command for remote execution but don't run it\n");
     fprintf(stderr, "\tlegacy     => " "use old startup method (1 ssh/process)\n");
+    fprintf(stderr, "\texport     => " "automatically export environment to remote processes\n");
     fprintf(stderr, "\tnp         => " "specify the number of processes\n");
     fprintf(stderr, "\th1 h2...   => " "names of hosts where processes should run\n");
     fprintf(stderr, "or\thostfile   => " "name of file containing hosts, one per line\n");

@@ -4,7 +4,7 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -20,7 +20,15 @@
 #include <unistd.h>
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include "coll_shmem.h"
+#include "red_scat_tuning.h"
 #include <unistd.h>
+
+int (*MV2_Red_scat_function)(const void *sendbuf,
+                             void *recvbuf,
+                             const int *recvcnts,
+                             MPI_Datatype datatype,
+                             MPI_Op op,
+                             MPID_Comm * comm_ptr, int *errflag);
 
 /* Implements the "mirror permutation" of "bits" bits of an integer "x".
 
@@ -236,12 +244,12 @@ static int MPIR_Reduce_scatter_noncomm_MV2(const void *sendbuf,
 #define FUNCNAME MPIR_Reduce_Scatter_Basic_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-static int MPIR_Reduce_Scatter_Basic_MV2(const void *sendbuf,
-										 void *recvbuf,
-										 const int *recvcnts,
-										 MPI_Datatype datatype,
-										 MPI_Op op,
-										 MPID_Comm * comm_ptr, int *errflag)
+int MPIR_Reduce_Scatter_Basic_MV2(const void *sendbuf,
+                                  void *recvbuf,
+                                  const int *recvcnts,
+                                  MPI_Datatype datatype,
+                                  MPI_Op op,
+                                  MPID_Comm * comm_ptr, int *errflag)
 {
 	int mpi_errno = MPI_SUCCESS, i;
 	int rank, size;
@@ -333,13 +341,13 @@ static int MPIR_Reduce_Scatter_Basic_MV2(const void *sendbuf,
 #define FUNCNAME MPIR_Reduce_scatter_Rec_Halving_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-static int MPIR_Reduce_scatter_Rec_Halving_MV2(const void *sendbuf,
-											   void *recvbuf,
-											   const int *recvcnts,
-											   MPI_Datatype datatype,
-											   MPI_Op op,
-											   MPID_Comm * comm_ptr,
-											   int *errflag)
+int MPIR_Reduce_scatter_Rec_Halving_MV2(const void *sendbuf,
+                                        void *recvbuf,
+                                        const int *recvcnts,
+                                        MPI_Datatype datatype,
+                                        MPI_Op op,
+                                        MPID_Comm * comm_ptr,
+                                        int *errflag)
 {
 	int rank, comm_size, i;
 	MPI_Aint extent, true_extent, true_lb;
@@ -674,12 +682,12 @@ static int MPIR_Reduce_scatter_Rec_Halving_MV2(const void *sendbuf,
 #define FUNCNAME MPIR_Reduce_scatter_Pair_Wise_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-static int MPIR_Reduce_scatter_Pair_Wise_MV2(const void *sendbuf,
-											 void *recvbuf,
-											 const int *recvcnts,
-											 MPI_Datatype datatype,
-											 MPI_Op op,
-											 MPID_Comm * comm_ptr, int *errflag)
+int MPIR_Reduce_scatter_Pair_Wise_MV2(const void *sendbuf,
+                                      void *recvbuf,
+                                      const int *recvcnts,
+                                      MPI_Datatype datatype,
+                                      MPI_Op op,
+                                      MPID_Comm * comm_ptr, int *errflag)
 {
 	int rank, comm_size, i;
 	MPI_Aint extent, true_extent, true_lb;
@@ -810,7 +818,7 @@ static int MPIR_Reduce_scatter_Pair_Wise_MV2(const void *sendbuf,
 													datatype, uop);
 				} else
 #endif
-					(*uop) (tmp_recvbuf, recvbuf, &recvcnts[rank], &datatype);
+					(*uop) (tmp_recvbuf, recvbuf, (int *)&recvcnts[rank], &datatype);
 			} else {
 #ifdef HAVE_CXX_BINDING
 				if (is_cxx_uop) {
@@ -823,7 +831,7 @@ static int MPIR_Reduce_scatter_Pair_Wise_MV2(const void *sendbuf,
 #endif
 					(*uop) (tmp_recvbuf,
 							((char *) recvbuf + disps[rank] * extent),
-							&recvcnts[rank], &datatype);
+							(void *)&recvcnts[rank], &datatype);
 				/* we can't store the result at the beginning of
 				   recvbuf right here because there is useful data
 				   there that other process/processes need. at the
@@ -840,7 +848,7 @@ static int MPIR_Reduce_scatter_Pair_Wise_MV2(const void *sendbuf,
 													datatype, uop);
 				} else
 #endif
-					(*uop) (recvbuf, tmp_recvbuf, &recvcnts[rank], &datatype);
+					(*uop) (recvbuf, tmp_recvbuf, (int *)&recvcnts[rank], &datatype);
 				/* copy result back into recvbuf */
 				mpi_errno = MPIR_Localcopy(tmp_recvbuf, recvcnts[rank],
 										   datatype, recvbuf,
@@ -858,7 +866,7 @@ static int MPIR_Reduce_scatter_Pair_Wise_MV2(const void *sendbuf,
 				} else
 #endif
 					(*uop) (((char *) recvbuf + disps[rank] * extent),
-							tmp_recvbuf, &recvcnts[rank], &datatype);
+							tmp_recvbuf, (int *)&recvcnts[rank], &datatype);
 				/* copy result back into recvbuf */
 				mpi_errno = MPIR_Localcopy(tmp_recvbuf, recvcnts[rank],
 										   datatype,
@@ -1311,6 +1319,8 @@ int MPIR_Reduce_scatter_MV2(const void *sendbuf, void *recvbuf, const int *recvc
 	int mpi_errno_ret = MPI_SUCCESS;
 	int i = 0, comm_size = comm_ptr->local_size, total_count = 0, type_size =
 		0, nbytes = 0;
+    int range = 0;
+    int range_threshold = 0;
 	int is_commutative = 0;
 	MPID_Op *op_ptr = NULL;
 	int *disps = NULL;
@@ -1384,25 +1394,34 @@ int MPIR_Reduce_scatter_MV2(const void *sendbuf, void *recvbuf, const int *recvc
 #endif
 
 	if (is_commutative) {
-		if (nbytes <= mv2_red_scat_short_msg) {
-			mpi_errno = MPIR_Reduce_Scatter_Basic_MV2(sendbuf, recvbuf,
-													  recvcnts, datatype,
-													  op, comm_ptr, errflag);
-		} else if (nbytes <= mv2_red_scat_long_msg) {
-			mpi_errno = MPIR_Reduce_scatter_Rec_Halving_MV2(sendbuf, recvbuf,
-															recvcnts, datatype,
-															op, comm_ptr,
-															errflag);
-		} else {
-			mpi_errno = MPIR_Reduce_scatter_Pair_Wise_MV2(sendbuf, recvbuf,
-														  recvcnts, datatype,
-														  op, comm_ptr,
-														  errflag);
-		}
+
+        /* Search for the corresponding system size inside the tuning table */
+        while ((range < (mv2_size_red_scat_tuning_table - 1)) &&
+               (comm_size > mv2_red_scat_thresholds_table[range].numproc)) {
+            range++;
+        }
+        /* Search for corresponding inter-leader function */
+        while ((range_threshold < (mv2_red_scat_thresholds_table[range].size_inter_table - 1))
+               && (nbytes >
+                   mv2_red_scat_thresholds_table[range].inter_leader[range_threshold].max)
+               && (mv2_red_scat_thresholds_table[range].inter_leader[range_threshold].max !=
+                   -1)) {
+            range_threshold++;
+        }
+    
+        /* Set inter-leader pt */
+        MV2_Red_scat_function =
+                              mv2_red_scat_thresholds_table[range].inter_leader[range_threshold].
+                              MV2_pt_Red_scat_function;
+
+		mpi_errno = MV2_Red_scat_function(sendbuf, recvbuf,
+                                          recvcnts, datatype,
+                                          op, comm_ptr,
+                                          errflag);
 	} else {
-		mpi_errno = MPIR_Reduce_scatter_non_comm_MV2(sendbuf, recvbuf,
-													 recvcnts, datatype,
-													 op, comm_ptr, errflag);
+        mpi_errno = MPIR_Reduce_scatter_non_comm_MV2(sendbuf, recvbuf,
+                                                     recvcnts, datatype,
+                                                     op, comm_ptr, errflag);
 	}
 	if (mpi_errno) { 
 		MPIU_ERR_POP(mpi_errno);

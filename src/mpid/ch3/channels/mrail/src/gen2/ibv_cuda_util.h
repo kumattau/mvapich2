@@ -1,5 +1,5 @@
 
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -119,8 +119,9 @@ do {                                            \
     cudaError_t cuerr = cudaSuccess;            \
     cuerr = cudaMalloc((void **) &_buf,_size);  \
     if (cuerr != cudaSuccess) {                 \
-        PRINT_INFO(1, "cudaMalloc failed\n");   \
-        exit(-1);                               \
+        PRINT_INFO(1, "cudaMalloc failed with at %s:%d\n", \
+            cuerr, __FILE__, __LINE__);         \
+        exit(EXIT_FAILURE);                               \
     }                                           \
 }while(0)
 
@@ -129,8 +130,9 @@ do {                                            \
     cudaError_t cuerr = cudaSuccess;            \
     cuerr = cudaFree(_buf);                     \
     if (cuerr != cudaSuccess) {                 \
-        PRINT_INFO(1, "cudaFree failed\n");     \
-        exit(-1);                               \
+        PRINT_INFO(1, "cudaFree failed with at %s:%d\n",  \
+                    cuerr, __FILE__, __LINE__); \
+        exit(EXIT_FAILURE);                               \
     }                                           \
 }while(0)
 
@@ -139,8 +141,9 @@ do {                                            \
     cudaError_t cuerr = cudaSuccess;            \
     cuerr = cudaMallocHost((void **)&_buf,_size);\
     if (cuerr != cudaSuccess) {                 \
-        PRINT_INFO(1, "cudaMallocHost failed\n");\
-        exit(-1);                               \
+        PRINT_INFO(1, "cudaMallocHost failed with at %s:%d\n",  \
+                cuerr, __FILE__, __LINE__);     \
+        exit(EXIT_FAILURE);                               \
     }                                           \
 }while(0)
 
@@ -149,8 +152,9 @@ do {                                            \
     cudaError_t cuerr = cudaSuccess;            \
     cuerr = cudaFreeHost(_buf);                 \
     if (cuerr != cudaSuccess) {                 \
-        PRINT_INFO(1, "cudaFreeHost failed\n"); \
-        exit(-1);                               \
+        PRINT_INFO(1, "cudaFreeHost failed with at %s:%d\n",    \
+                cuerr, __FILE__, __LINE__);     \
+        exit(EXIT_FAILURE);                               \
     }                                           \
 }while(0)
 
@@ -159,8 +163,9 @@ do {                                                               \
     cudaError_t cuerr = cudaSuccess;                               \
     cuerr = cudaMemcpyAsync(_dst, _src, _size, _type, _stream);    \
     if (cuerr != cudaSuccess) {                                    \
-        PRINT_INFO(1, "cudaMemcpyAsync failed with %d at %d\n", cuerr, __LINE__);  \
-        exit(-1);                                                  \
+        PRINT_INFO(1, "cudaMemcpyAsync failed with %d at %s:%d\n", \
+                    cuerr, __FILE__,__LINE__);  \
+        exit(EXIT_FAILURE);                                                  \
     }                                                              \
 }while(0)
 
@@ -170,7 +175,7 @@ do {                                                    \
     cuerr = cudaMemcpy(_dst, _src, _size, _type);       \
     if (cuerr != cudaSuccess) {                         \
         PRINT_INFO(1, "cudaMemcpy failed with %d at %d\n", cuerr, __LINE__);  \
-        exit(-1);                                       \
+        exit(EXIT_FAILURE);                             \
     }                                                   \
 }while(0)
 
@@ -180,7 +185,7 @@ do {                                                    \
     if (cudaSuccess != result) {                        \
         PRINT_ERROR("[%s:%d] cuda failed with %d \n",   \
          __FILE__, __LINE__,result);                    \
-        exit(-1);                                       \
+        exit(EXIT_FAILURE);                             \
     }                                                   \
     MPIU_Assert(cudaSuccess == result);                 \
 } while (0)
@@ -191,7 +196,7 @@ do {                                                    \
     if (CUDA_SUCCESS != result) {                       \
         PRINT_ERROR("[%s:%d] cuda failed with %d \n",   \
          __FILE__, __LINE__,result);                    \
-        exit(-1);                                       \
+        exit(EXIT_FAILURE);                             \
     }                                                   \
     MPIU_Assert(CUDA_SUCCESS == result);                \
 } while (0)

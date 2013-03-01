@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -26,6 +26,9 @@
 #define EAGER_THRESHOLD_ADJUST    0
 #define INLINE_THRESHOLD_ADJUST  (40)
 extern const char MPIR_Version_string[];
+#if defined(HAVE_LIBHWLOC)
+extern int mv2_enable_affinity;
+#endif
 
 /*
  * ==============================================================
@@ -127,6 +130,7 @@ unsigned long rdma_polling_spin_count_threshold = 5;
 int mv2_use_thread_yield = 1;
 int mv2_spins_before_lock = 2000;
 int mv2_on_demand_ud_info_exchange = 0;
+int mv2_homogeneous_cluster = 0;
 int mv2_show_env_info = 0;
 /* If this number of eager sends are already outstanding
  * the message can be coalesced with other messages (and
@@ -203,6 +207,7 @@ long mcast_max_retry_timeout = 20000000;
 long mcast_comm_init_timeout = 10000;
 int mcast_comm_init_retries = 128;
 int mcast_nspin_threshold = 1200;
+int mcast_skip_loopback = 0;
 #endif
 
 /* Max number of entries on the RecvQ of QPs per connection.
@@ -296,6 +301,7 @@ int rdma_cuda_alltoall_dynamic = 1;
 int rdma_cuda_allgather_rd_limit = 1024;
 int rdma_cuda_allgather_fgp = 1;
 int rdma_cuda_init_context = 1;
+int rdma_check_cuda_attribute = 0;
 #endif /*#ifdef _ENABLE_CUDA_ */
 
 typedef enum _mv2_user_defined_mapping_policies {
@@ -638,20 +644,74 @@ int rdma_set_smp_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 {
     char *value = NULL;
 
+#if defined(_SMP_CMA_) || defined(_SMP_LIMIC_)
+#if defined(_SMP_CMA_)
+    if ((value = getenv("MV2_SMP_USE_CMA")) != NULL) {
+        g_smp_use_cma = atoi(value);
+    }
+#endif
+
+#if defined(_SMP_LIMIC_)
+    if ((value = getenv("MV2_SMP_USE_LIMIC2")) != NULL) {
+        g_smp_use_limic2 = atoi(value);
+    }
+    if ((value = getenv("MV2_USE_LIMIC2_COLL")) != NULL) {
+        g_use_limic2_coll = atoi(value);
+    }
+
+#if defined(HAVE_LIBHWLOC)
+        if(!mv2_enable_affinity || !g_smp_use_limic2) {
+            g_use_limic2_coll = 0;
+        } else
+#endif
+        {
+            g_use_limic2_coll = 0;
+        }
+
+#if defined(_SMP_CMA_)
+    if(g_smp_use_cma && g_smp_use_limic2) {
+        g_smp_use_cma = 0;
+    }
+#endif /* _SMP_CMA_ */
+#endif /* _SMP_LIMIC_ */
+#endif /* _SMP_CMA_ || _SMP_LIMIC */
+
     if (!proc->arch_type) {
         proc->arch_type = mv2_get_arch_type();
     }
 
     switch (proc->arch_type) {
-        case MV2_ARCH_INTEL_GENERIC:
         case MV2_ARCH_INTEL_XEON_E5630_8:
+#if defined(_SMP_CMA_)
+            if (g_smp_use_cma) {
+                g_smp_eagersize = 8192;
+            } else
+#endif
+#if defined(_SMP_LIMIC_)
+            if (g_smp_use_limic2) {
+                g_smp_eagersize = 8192;
+            } else
+#endif
+            {
+                g_smp_eagersize = 65536;
+            }
+            s_smpi_length_queue = 262144;
+            s_smp_num_send_buffer = 256;
+            s_smp_batch_size = 8;
+            s_smp_block_size = 8192;
+            break;
+
+        case MV2_ARCH_INTEL_GENERIC:
         case MV2_ARCH_INTEL_CLOVERTOWN_8:
         case MV2_ARCH_INTEL_XEON_DUAL_4:
 #if defined(_SMP_LIMIC_)
-            g_smp_eagersize = 8192;
-#else
-            g_smp_eagersize = 65536;
+            if (g_smp_use_limic2) {
+                g_smp_eagersize = 8192;
+            } else
 #endif
+            {
+                g_smp_eagersize = 65536;
+            }
             s_smpi_length_queue = 262144;
             s_smp_num_send_buffer = 256;
             s_smp_batch_size = 8;
@@ -660,10 +720,13 @@ int rdma_set_smp_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 
         case MV2_ARCH_INTEL_HARPERTOWN_8:
 #if defined(_SMP_LIMIC_)
-            g_smp_eagersize = 8192;
-#else
-            g_smp_eagersize = 32768;
+            if (g_smp_use_limic2) {
+                g_smp_eagersize = 8192;
+            } else
 #endif
+            {
+                g_smp_eagersize = 32768;
+            }
             s_smpi_length_queue = 262144;
             s_smp_num_send_buffer = 256;
             s_smp_batch_size = 8;
@@ -672,7 +735,14 @@ int rdma_set_smp_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 
         case MV2_ARCH_INTEL_NEHALEM_8:
         case MV2_ARCH_INTEL_NEHALEM_16:
-            g_smp_eagersize = 65536;
+#if defined(_SMP_CMA_)
+            if (g_smp_use_cma) {
+                g_smp_eagersize = 32768;
+            } else
+#endif
+            {
+                g_smp_eagersize = 65536;
+            }
             s_smpi_length_queue = 262144;
             s_smp_num_send_buffer = 256;
             s_smp_batch_size = 8;
@@ -681,10 +751,13 @@ int rdma_set_smp_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 
         case MV2_ARCH_AMD_BARCELONA_16:
 #if defined(_SMP_LIMIC_)
-            g_smp_eagersize = 8192;
-#else
-            g_smp_eagersize = 32768;
+            if (g_smp_use_limic2) {
+                g_smp_eagersize = 8192;
+            } else
 #endif
+            {
+                g_smp_eagersize = 32768;
+            }
             s_smpi_length_queue = 131072;
             s_smp_num_send_buffer = 32;
             s_smp_batch_size = 8;
@@ -701,11 +774,19 @@ int rdma_set_smp_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
             break;
 
         case MV2_ARCH_AMD_MAGNY_COURS_24:
-#if defined(_SMP_LIMIC_)
-            g_smp_eagersize = 8192;
-#else
-            g_smp_eagersize = 4096;
+#if defined(_SMP_CMA_)
+            if (g_smp_use_cma) {
+                g_smp_eagersize = 16384;
+            } else
 #endif
+#if defined(_SMP_LIMIC_)
+            if (g_smp_use_limic2) {
+                g_smp_eagersize = 8192;
+            } else
+#endif
+            {
+                g_smp_eagersize = 4096;
+            }
             s_smpi_length_queue = 65536;
             s_smp_num_send_buffer = 64;
             s_smp_batch_size = 8;
@@ -714,10 +795,13 @@ int rdma_set_smp_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 
         case MV2_ARCH_AMD_OPTERON_6136_32:
 #if defined(_SMP_LIMIC_)
-            g_smp_eagersize = 8192;
-#else
-            g_smp_eagersize = 16384;
+            if (g_smp_use_limic2) {
+                g_smp_eagersize = 8192;
+            } else
 #endif
+            {
+                g_smp_eagersize = 16384;
+            }
             s_smpi_length_queue = 65536;
             s_smp_num_send_buffer = 32;
             s_smp_batch_size = 8;
@@ -726,22 +810,53 @@ int rdma_set_smp_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 
         case MV2_ARCH_AMD_OPTERON_6276_64:
 #if defined(_SMP_LIMIC_)
-            g_smp_eagersize = 8192;
-#else
-            g_smp_eagersize = 16384;
+            if (g_smp_use_limic2) {
+                g_smp_eagersize = 8192;
+            } else
 #endif
+            {
+                g_smp_eagersize = 16384;
+            }
             s_smpi_length_queue = 65536;
             s_smp_num_send_buffer = 128;
             s_smp_batch_size = 8;
             s_smp_block_size = 8192;
             break;
 
-        case MV2_ARCH_INTEL_XEON_E5_2670_16:
-#if defined(_SMP_LIMIC_)
-            g_smp_eagersize = 8192;
-#else
-            g_smp_eagersize = 32768;
+        case MV2_ARCH_INTEL_XEON_X5650_12:
+#if defined(_SMP_CMA_)
+            if (g_smp_use_cma) {
+                g_smp_eagersize = 32768;
+            } else
 #endif
+#if defined(_SMP_LIMIC_)
+            if (g_smp_use_limic2) {
+                g_smp_eagersize = 8192;
+            } else
+#endif
+            {
+                g_smp_eagersize = 65536;
+            }
+            s_smpi_length_queue = 262144;
+            s_smp_num_send_buffer = 32;
+            s_smp_batch_size = 8;
+            s_smp_block_size = 16384;
+            break;
+
+        case MV2_ARCH_INTEL_XEON_E5_2670_16:
+#if defined(_SMP_CMA_)
+            if (g_smp_use_cma) {
+                g_smp_eagersize = 32768;
+            } else
+#endif
+#if defined(_SMP_LIMIC_)
+            if (g_smp_use_limic2) {
+                g_smp_eagersize = 8192;
+            } else
+#endif
+            {
+                g_smp_eagersize = 32768;
+            }
             s_smpi_length_queue = 131072;
             s_smp_num_send_buffer = 16;
             s_smp_batch_size = 8;
@@ -749,11 +864,19 @@ int rdma_set_smp_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
             break;
 
         case MV2_ARCH_INTEL_XEON_E5_2680_16:
-#if defined(_SMP_LIMIC_)
-            g_smp_eagersize = 8192;
-#else
-            g_smp_eagersize = 32768;
+#if defined(_SMP_CMA_)
+            if (g_smp_use_cma) {
+                g_smp_eagersize = 8192;
+            } else
 #endif
+#if defined(_SMP_LIMIC_)
+            if (g_smp_use_limic2) {
+                g_smp_eagersize = 8192;
+            } else
+#endif
+            {
+                g_smp_eagersize = 32768;
+            }
             s_smpi_length_queue = 524288;
             s_smp_num_send_buffer = 16;
             s_smp_batch_size = 8;
@@ -761,12 +884,22 @@ int rdma_set_smp_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
             break;
 
         case MV2_ARCH_AMD_BULLDOZER_4274HE_16:
-#if defined(_SMP_LIMIC_)
-            g_smp_eagersize = 8192;
-#else
-            g_smp_eagersize = 16384;
+#if defined(_SMP_CMA_)
+            if (g_smp_use_cma) {
+                g_smp_eagersize = 32768;
+                s_smpi_length_queue = 131072;
+            } else
 #endif
-            s_smpi_length_queue = 65536;
+#if defined(_SMP_LIMIC_)
+            if (g_smp_use_limic2) {
+                g_smp_eagersize = 8192;
+                s_smpi_length_queue = 65536;
+            } else
+#endif
+            {
+                g_smp_eagersize = 16384;
+                s_smpi_length_queue = 65536;
+            }
             s_smp_num_send_buffer = 16;
             s_smp_batch_size = 8;
             s_smp_block_size = 8192;
@@ -2896,11 +3029,6 @@ void rdma_get_user_parameters(int num_proc, int me)
         rdma_default_psn = (uint32_t) atoi(value);
     }
 
-    if ((value = getenv("MV2_DEFAULT_PKEY")) != NULL) {
-        rdma_default_pkey =
-            (uint16_t) strtol(value, (char **) NULL, 0) & PKEY_MASK;
-    }
-
     if ((value = getenv("MV2_DEFAULT_MIN_RNR_TIMER")) != NULL) {
         rdma_default_min_rnr_timer = (uint8_t) atoi(value);
     }
@@ -3044,6 +3172,9 @@ void rdma_get_user_parameters(int num_proc, int me)
     }
     if ((value = getenv("MV2_MCAST_COMM_INIT_RETRIES")) != NULL) {
         mcast_comm_init_retries = atoi(value);
+    }
+    if ((value = getenv("MV2_MCAST_SKIP_LOOPBACK")) != NULL) {
+        mcast_skip_loopback = atoi(value);
     }
 #endif
 
@@ -3264,6 +3395,9 @@ void rdma_get_pm_parameters(mv2_MPIDI_CH3I_RDMA_Process_t * proc)
         }
     }
 
+    if ((value = getenv("MV2_HOMOGENEOUS_CLUSTER")) != NULL) {
+        mv2_homogeneous_cluster = atoi(value);
+    }
 }
 
 void mv2_print_env_info(mv2_MPIDI_CH3I_RDMA_Process_t * proc)

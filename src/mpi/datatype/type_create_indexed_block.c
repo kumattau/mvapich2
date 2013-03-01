@@ -1,4 +1,4 @@
-/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
  *
  *  (C) 2001 by Argonne National Laboratory.
@@ -86,13 +86,13 @@ int MPIR_Type_create_indexed_block_impl(int count,
    MPI_Type_create_indexed_block - Create an indexed
      datatype with constant-sized blocks
 
-   Input Parameters:
+Input Parameters:
 + count - length of array of displacements (integer) 
 . blocklength - size of block (integer) 
 . array_of_displacements - array of displacements (array of integer) 
 - oldtype - old datatype (handle) 
 
-    Output Parameter:
+Output Parameters:
 . newtype - new datatype (handle) 
 
 Notes:
@@ -128,7 +128,7 @@ consider declaring the Fortran array with a zero origin
 @*/
 int MPI_Type_create_indexed_block(int count,
 				  int blocklength,
-				  MPICH2_CONST int array_of_displacements[],
+				  const int array_of_displacements[],
 				  MPI_Datatype oldtype,
 				  MPI_Datatype *newtype)
 {

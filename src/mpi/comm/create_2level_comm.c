@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -479,6 +479,126 @@ int create_intra_node_multi_level_comm(MPID_Comm* comm_ptr) {
 }
 #endif
 
+int create_allgather_comm(MPID_Comm * comm_ptr, int *errflag)
+{
+    static const char FCNAME[] = "create_allgather_comm";
+    int mpi_errno = MPI_SUCCESS; 
+    int is_contig =1, check_leader =1, check_size=1, is_local_ok=0,is_block=0;
+    int PPN, i=0;
+    int leader_rank; 
+    int size = comm_ptr->local_size; 
+    int my_rank = comm_ptr->rank; 
+    int grp_index=0, leader=0; 
+    MPID_Comm *shmem_ptr=NULL; 
+    MPI_Group allgather_group, comm_group; 
+    comm_ptr->ch.allgather_comm=MPI_COMM_NULL; 
+    comm_ptr->ch.allgather_new_ranks=NULL;
+
+    if(comm_ptr->ch.leader_comm != MPI_COMM_NULL) { 
+        PMPI_Comm_rank(comm_ptr->ch.leader_comm, &leader_rank); 
+    } 
+   if(comm_ptr->ch.shmem_comm != MPI_COMM_NULL){ 
+        MPID_Comm_get_ptr(comm_ptr->ch.shmem_comm, shmem_ptr); 
+    } 
+    int shmem_grp_size = shmem_ptr->local_size; 
+
+    int* shmem_group = MPIU_Malloc(sizeof(int) * size);
+    if (NULL == shmem_group){
+        mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
+                   FCNAME, __LINE__, MPI_ERR_OTHER, "**fail", "%s: %s",
+                   "memory allocation failed", strerror(errno));
+                   MPIU_ERR_POP(mpi_errno);
+    }              
+    
+    MPIDI_VC_t* vc = NULL;
+    for (; i < size ; ++i){
+       MPIDI_Comm_get_vc(comm_ptr, i, &vc);
+       if (my_rank == i || vc->smp.local_rank >= 0){
+           shmem_group[grp_index++] = i;
+       }   
+    }  
+    leader = shmem_group[0]; 
+
+    mpi_errno = PMPI_Comm_group(comm_ptr->handle, &comm_group);
+    if(mpi_errno) {
+       MPIU_ERR_POP(mpi_errno);
+    }
+
+    mpi_errno=MPIR_Bcast_impl(&leader_rank, 1, MPI_INT, 0, shmem_ptr, errflag);
+    if(mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    } 
+
+    for (i=1; i < shmem_grp_size; i++ ){
+        if (shmem_group[i] != shmem_group[i-1]+1){
+            is_contig =0; 
+            break;
+        }
+    }
+    if (leader != (shmem_grp_size*leader_rank)){
+        check_leader=0;
+    }
+
+    if (shmem_grp_size != (size/comm_ptr->ch.leader_group_size)){
+        check_size=0;
+    }
+
+    is_local_ok = is_contig && check_leader && check_size;
+
+    mpi_errno = MPIR_Allreduce_impl(&is_local_ok, &is_block, 1, 
+                                    MPI_INT, MPI_LAND, comm_ptr, errflag);
+    if(mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+
+    if (is_block) {
+        int counter=0,j;
+        comm_ptr->ch.allgather_new_ranks = MPIU_Malloc(sizeof(int)*size);
+        if (NULL == comm_ptr->ch.allgather_new_ranks){
+                mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, 
+                                              FCNAME, __LINE__, MPI_ERR_OTHER, 
+                                              "**nomem", 0 );
+                return mpi_errno;
+        }
+   
+        PPN = shmem_grp_size;
+        
+        for (j=0; j < PPN; j++){
+            for (i=0; i < comm_ptr->ch.leader_group_size; i++){
+                comm_ptr->ch.allgather_new_ranks[counter] = j + i*PPN;
+                counter++;
+            }
+        }
+
+        mpi_errno = PMPI_Group_incl(comm_group, size, 
+                                    comm_ptr->ch.allgather_new_ranks, 
+                                    &allgather_group);
+        if(mpi_errno) {
+             MPIU_ERR_POP(mpi_errno);
+        }  
+        mpi_errno = PMPI_Comm_create(comm_ptr->handle, allgather_group, 
+                                     &(comm_ptr->ch.allgather_comm));
+        if(mpi_errno) {
+           MPIU_ERR_POP(mpi_errno);
+        }
+        comm_ptr->ch.allgather_comm_ok = 1;
+        
+        mpi_errno=PMPI_Group_free(&allgather_group);
+        if(mpi_errno) {
+           MPIU_ERR_POP(mpi_errno);
+        }
+    } else {
+        /* Set this to -1 so that we never get back in here again
+         * for this cyclic comm */
+        comm_ptr->ch.allgather_comm_ok = -1;
+    }
+
+fn_exit: 
+    return mpi_errno;
+fn_fail: 
+    goto fn_exit; 
+} 
+
 int create_2level_comm (MPI_Comm comm, int size, int my_rank)
 {
     static const char FCNAME[] = "create_2level_comm";
@@ -627,6 +747,11 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
 
     MPID_Comm *leader_ptr;
     MPID_Comm_get_ptr( comm_ptr->ch.leader_comm, leader_ptr );
+    if(leader_ptr != NULL) { 
+        /* Set leader_ptr's shmem_coll_ok so that we dont call create_2level_comm on
+         * it again */ 
+        leader_ptr->ch.shmem_coll_ok = -1; 
+    } 
        
     MPIU_Free(leader_group);
     MPID_Group_get_ptr( subgroup1, group_ptr );
@@ -644,6 +769,11 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
 
     MPID_Comm *shmem_ptr;
     MPID_Comm_get_ptr(comm_ptr->ch.shmem_comm, shmem_ptr);
+    if(shmem_ptr != NULL) { 
+        /* Set shmem_ptr's shmem_coll_ok so that we dont call create_2level_comm on
+         * it again */ 
+        shmem_ptr->ch.shmem_coll_ok = -1; 
+    } 
     
     mpi_errno = PMPI_Comm_rank(comm_ptr->ch.shmem_comm, &my_local_id);
     if(mpi_errno) {
@@ -730,85 +860,7 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     }      
     
     comm_ptr->ch.allgather_comm_ok = 0;
-    if (mv2_allgather_ranking){
-        int is_contig =1, check_leader =1, check_size=1, is_local_ok=0,is_block=0;
-        int PPN;
-        int shmem_grp_size = my_local_size;
-        int leader_rank; 
-        MPI_Group allgather_group; 
-        comm_ptr->ch.allgather_comm=MPI_COMM_NULL; 
-        comm_ptr->ch.allgather_new_ranks=NULL;
 
-        if(comm_ptr->ch.leader_comm != MPI_COMM_NULL) { 
-            PMPI_Comm_rank(comm_ptr->ch.leader_comm, &leader_rank); 
-        } 
-
-        mpi_errno=MPIR_Bcast_impl(&leader_rank, 1, MPI_INT, 0, shmem_ptr, &errflag);
-        if(mpi_errno) {
-        	MPIU_ERR_POP(mpi_errno);
-        } 
-
-        for (i=1; i < shmem_grp_size; i++ ){
-            if (shmem_group[i] != shmem_group[i-1]+1){
-                is_contig =0; 
-                break;
-            }
-        }
-
-        if (leader != (shmem_grp_size*leader_rank)){
-            check_leader=0;
-        }
-
-        if (shmem_grp_size != (size/leader_group_size)){
-            check_size=0;
-        }
-
-        is_local_ok = is_contig && check_leader && check_size;
-
-        mpi_errno = MPIR_Allreduce_impl(&is_local_ok, &is_block, 1, 
-                                        MPI_INT, MPI_LAND, comm_ptr, &errflag);
-        if(mpi_errno) {
-            MPIU_ERR_POP(mpi_errno);
-        }
-
-        if (is_block) {
-            int counter=0,j;
-            comm_ptr->ch.allgather_new_ranks = MPIU_Malloc(sizeof(int)*size);
-            if (NULL == comm_ptr->ch.allgather_new_ranks){
-                    mpi_errno = MPIR_Err_create_code( MPI_SUCCESS, MPIR_ERR_RECOVERABLE, 
-                                                  FCNAME, __LINE__, MPI_ERR_OTHER, 
-                                                  "**nomem", 0 );
-                    return mpi_errno;
-            }
-   
-            PPN = shmem_grp_size;
-            
-            for (j=0; j < PPN; j++){
-                for (i=0; i < leader_group_size; i++){
-                    comm_ptr->ch.allgather_new_ranks[counter] = j + i*PPN;
-                    counter++;
-                }
-            }
-
-            mpi_errno = PMPI_Group_incl(comm_group, size, 
-                                        comm_ptr->ch.allgather_new_ranks, 
-                                        &allgather_group);
-            if(mpi_errno) {
-                 MPIU_ERR_POP(mpi_errno);
-            }  
-            mpi_errno = PMPI_Comm_create(comm_ptr->handle, allgather_group, 
-                                         &(comm_ptr->ch.allgather_comm));
-            if(mpi_errno) {
-               MPIU_ERR_POP(mpi_errno);
-            }
-            comm_ptr->ch.allgather_comm_ok = 1;
-            
-            mpi_errno=PMPI_Group_free(&allgather_group);
-            if(mpi_errno) {
-               MPIU_ERR_POP(mpi_errno);
-            }
-        }
-    }
     mpi_errno=PMPI_Group_free(&comm_group);
     if(mpi_errno) {
         MPIU_ERR_POP(mpi_errno);

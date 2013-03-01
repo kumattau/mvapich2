@@ -1,5 +1,5 @@
 ##
-## Copyright (c) 2001-2012, The Ohio State University. All rights
+## Copyright (c) 2001-2013, The Ohio State University. All rights
 ## reserved.
 ##
 ## This file is part of the MVAPICH2 software package developed by the
@@ -43,7 +43,8 @@ src_pm_mpirun_mpirun_rsh_SOURCES =  \
 	src/pm/mpirun/wfe_mpirun.c    \
 	src/pm/mpirun/m_state.c       \
 	src/pm/mpirun/read_specfile.c \
-	src/pm/mpirun/gethostip.c
+	src/pm/mpirun/gethostip.c     \
+	src/pm/mpirun/environ.c
 
 src_pm_mpirun_mpirun_rsh_LDADD = -lm       \
 	src/mpid/ch3/channels/common/src/util/mv2_config.o    \
@@ -65,7 +66,8 @@ src_pm_mpirun_mpiexec_mpirun_rsh_SOURCES =     \
 	src/pm/mpirun/wfe_mpirun.c    \
 	src/pm/mpirun/m_state.c       \
 	src/pm/mpirun/read_specfile.c \
-	src/pm/mpirun/gethostip.c
+	src/pm/mpirun/gethostip.c     \
+	src/pm/mpirun/environ.c
 
 src_pm_mpirun_mpiexec_mpirun_rsh_LDADD = -lm 	\
 	src/mpid/ch3/channels/common/src/util/mv2_config.o    \
@@ -101,7 +103,8 @@ src_pm_mpirun_mpispawn_SOURCES =    \
 	src/pm/mpirun/crfs_wa.c       \
 	src/pm/mpirun/mpispawn_ckpt.c \
 	src/pm/mpirun/signal_processor.c  \
-	src/pm/mpirun/gethostip.c
+	src/pm/mpirun/gethostip.c     \
+	src/pm/mpirun/environ.c
 
 src_pm_mpirun_mpispawn_LDADD = -lm -lpthread 	\
 	src/mpid/ch3/channels/common/src/util/error_handling.o 	\

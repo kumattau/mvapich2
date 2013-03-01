@@ -5,7 +5,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -20,6 +20,23 @@
 #include "mpiimpl.h"
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include "coll_shmem.h"
+#include "reduce_tuning.h"
+
+int (*MV2_Reduce_function)(const void *sendbuf,
+                           void *recvbuf,
+                           int count,
+                           MPI_Datatype datatype,
+                           MPI_Op op,
+                           int root,
+                           MPID_Comm * comm_ptr, int *errflag)=NULL;
+
+int (*MV2_Reduce_intra_function)(const void *sendbuf,
+                                 void *recvbuf,
+                                 int count,
+                                 MPI_Datatype datatype,
+                                 MPI_Op op,
+                                 int root,
+                                 MPID_Comm * comm_ptr, int *errflag)=NULL;
 
 /* This function implements a binomial tree reduce.
 
@@ -794,8 +811,8 @@ int MPIR_Reduce_shmem_MV2(const void *sendbuf,
 #define FUNCNAME MPIR_Reduce_kinomial_trace
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Reduce_knomial_trace(int root, MPID_Comm *comm_ptr, int *dst,
-        int *expected_send_count,
+int MPIR_Reduce_knomial_trace(int root, int mv2_reduce_knomial_factor,  
+        MPID_Comm *comm_ptr, int *dst, int *expected_send_count,
         int *expected_recv_count, int **src_array)
 {
     int mask=0x1, k, comm_size, src, rank, relative_rank, lroot=0;
@@ -871,8 +888,9 @@ int MPIR_Reduce_knomial_MV2 (
         MPI_Datatype datatype,
         MPI_Op op,
         int root,
+        int mv2_reduce_knomial_factor,
         MPID_Comm *comm_ptr,
-        int *errflag )
+        int *errflag)
 {
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
@@ -954,8 +972,8 @@ int MPIR_Reduce_knomial_MV2 (
 
 
 
-    MPIR_Reduce_knomial_trace(root, comm_ptr, &dst, &expected_send_count,
-            &expected_recv_count, &src_array);
+    MPIR_Reduce_knomial_trace(root, mv2_reduce_knomial_factor, comm_ptr, 
+           &dst, &expected_send_count, &expected_recv_count, &src_array);
 
     if(expected_recv_count > 0 ) {
         tmp_buf  = MPIU_Malloc(sizeof(void *)*expected_recv_count);
@@ -1050,6 +1068,58 @@ fn_fail:
 }
 
 #undef FUNCNAME
+#define FUNCNAME MPIR_Reduce_inter_knomial_wrapper_MV2
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPIR_Reduce_inter_knomial_wrapper_MV2 (
+        const void *sendbuf,
+        void *recvbuf,
+        int count,
+        MPI_Datatype datatype,
+        MPI_Op op,
+        int root,
+        MPID_Comm *comm_ptr,
+        int *errflag)
+{
+   int mpi_errno = MPI_SUCCESS;
+   mpi_errno = MPIR_Reduce_knomial_MV2 (sendbuf, recvbuf, count, datatype, op,
+               root, mv2_reduce_inter_knomial_factor, comm_ptr, errflag);
+
+   if (mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+   }
+
+fn_fail:
+   return mpi_errno;
+}
+
+#undef FUNCNAME
+#define FUNCNAME MPIR_Reduce_intra_knomial_wrapper_MV2
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPIR_Reduce_intra_knomial_wrapper_MV2 (
+        const void *sendbuf,
+        void *recvbuf,
+        int count,
+        MPI_Datatype datatype,
+        MPI_Op op,
+        int root,
+        MPID_Comm *comm_ptr,
+        int *errflag)
+{
+   int mpi_errno = MPI_SUCCESS;
+   mpi_errno = MPIR_Reduce_knomial_MV2 (sendbuf, recvbuf, count, datatype, op,
+               root, mv2_reduce_inter_knomial_factor, comm_ptr, errflag);
+
+   if (mpi_errno) {
+            MPIU_ERR_POP(mpi_errno);
+   }
+
+fn_fail:
+   return mpi_errno;
+}
+
+#undef FUNCNAME
 #define FUNCNAME MPIR_Reduce_two_level_helper_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
@@ -1070,13 +1140,10 @@ int MPIR_Reduce_two_level_helper_MV2(const void *sendbuf,
     MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
     void *in_buf = NULL, *out_buf = NULL, *tmp_buf = NULL;
     MPI_Aint true_lb, true_extent, extent;
-    int type_size;
     MPID_Op *op_ptr;
     int is_commutative = 0, stride = 0;
     int intra_node_root=0; 
     MPIU_CHKLMEM_DECL(1);
-
-    MPID_Datatype_get_size_macro(datatype, type_size);
 
     my_rank = comm_ptr->rank;
     total_size = comm_ptr->local_size;
@@ -1135,7 +1202,7 @@ int MPIR_Reduce_two_level_helper_MV2(const void *sendbuf,
                      } 
                  } 
             } else {
-                in_buf  = sendbuf; 
+                in_buf  = (void *)sendbuf; 
                 out_buf = NULL;
             }
 
@@ -1153,7 +1220,7 @@ int MPIR_Reduce_two_level_helper_MV2(const void *sendbuf,
             }
         } else {
             if(mv2_use_knomial_reduce == 1) { 
-                reduce_fn = &MPIR_Reduce_knomial_MV2; 
+                reduce_fn = &MPIR_Reduce_intra_knomial_wrapper_MV2; 
             } else { 
                 reduce_fn = &MPIR_Reduce_binomial_MV2; 
             } 
@@ -1201,22 +1268,24 @@ int MPIR_Reduce_two_level_helper_MV2(const void *sendbuf,
         /*Fix the input and outbuf buffers for the intra-node reduce.
          *Node leaders will have the reduced data in tmp_buf after 
          *this step*/
-
-        if (comm_ptr->ch.shmem_coll_ok == 1 &&
-            stride <= mv2_coll_param.shmem_reduce_msg &&
-            mv2_disable_shmem_reduce == 0 && is_commutative == 1) {
-            reduce_fn = &MPIR_Reduce_shmem_MV2; 
+        if (MV2_Reduce_intra_function == & MPIR_Reduce_shmem_MV2)
+        {
+            if (comm_ptr->ch.shmem_coll_ok == 1 &&
+                mv2_disable_shmem_reduce == 0 && is_commutative == 1) {
+                    mpi_errno = MV2_Reduce_intra_function(in_buf, out_buf, count,
+                                      datatype, op,
+                                      intra_node_root, shmem_commptr, errflag);
+            } else {
+                    mpi_errno = MPIR_Reduce_intra_knomial_wrapper_MV2(in_buf, out_buf, count,
+                                      datatype, op,
+                                      intra_node_root, shmem_commptr, errflag);
+            }
         } else {
-            if(mv2_use_knomial_reduce == 1) { 
-                reduce_fn = &MPIR_Reduce_knomial_MV2; 
-            } else { 
-                reduce_fn = &MPIR_Reduce_binomial_MV2; 
-            } 
-        }
 
-        mpi_errno = reduce_fn(in_buf, out_buf, count,
-                                  datatype, op,
-                                  intra_node_root, shmem_commptr, errflag);
+            mpi_errno = MV2_Reduce_intra_function(in_buf, out_buf, count,
+                                      datatype, op,
+                                      intra_node_root, shmem_commptr, errflag);
+        }
         if (mpi_errno) {
             /* for communication errors, just record the error but
              * continue */
@@ -1254,17 +1323,8 @@ int MPIR_Reduce_two_level_helper_MV2(const void *sendbuf,
             out_buf = NULL;
         }
 
-        if (count * type_size <= mv2_coll_param.reduce_short_msg) {
-            if(mv2_use_knomial_reduce == 1) { 
-                reduce_fn = &MPIR_Reduce_knomial_MV2; 
-            } else { 
-                reduce_fn = &MPIR_Reduce_binomial_MV2; 
-            } 
-        } else { 
-            reduce_fn = &MPIR_Reduce_redscat_gather_MV2; 
-        } 
- 
-        mpi_errno = reduce_fn(in_buf, out_buf, count,
+        /* inter-leader communication  */
+        mpi_errno = MV2_Reduce_function(in_buf, out_buf, count,
                               datatype, op,
                               leader_root, leader_commptr,
                               errflag);
@@ -1387,9 +1447,18 @@ int MPIR_Reduce_MV2(const void *sendbuf,
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+    int range = 0;
+    int range_threshold = 0;
+    int range_intra_threshold = 0;
     int is_commutative, pof2;
     MPID_Op *op_ptr;
-    int type_size;
+    int comm_size = 0;
+    int nbytes = 0;
+    int sendtype_size;
+    int is_two_level = 0;
+    comm_size = comm_ptr->local_size;
+    MPID_Datatype_get_size_macro(datatype, sendtype_size);
+    nbytes = count * sendtype_size;
 #endif                          /*  #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
     if (count == 0)
         return MPI_SUCCESS;
@@ -1397,8 +1466,6 @@ int MPIR_Reduce_MV2(const void *sendbuf,
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER(comm_ptr);
 
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
-
-    MPID_Datatype_get_size_macro(datatype, type_size);
 
     if (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) {
         is_commutative = 1;
@@ -1461,37 +1528,93 @@ int MPIR_Reduce_MV2(const void *sendbuf,
     }
 #endif
 
-    if (comm_ptr->ch.shmem_coll_ok == 1
-        && is_commutative == 1
-        && count * type_size < mv2_coll_param.reduce_2level_threshold) {
-            reduce_fn = &MPIR_Reduce_two_level_helper_MV2; 
-     } else {
-        if ((count * type_size > MPIR_PARAM_REDUCE_SHORT_MSG_SIZE) &&
-            (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) && (count >= pof2)) {
-            /* do a reduce-scatter followed by gather to root. */
-            reduce_fn = &MPIR_Reduce_redscat_gather_MV2; 
-        } else {
-            /* use knomial/binomial tree algorithm */
-            if(mv2_use_knomial_reduce == 1 
-               && is_commutative ==1) { 
-                reduce_fn = &MPIR_Reduce_knomial_MV2; 
-            } else { 
-                reduce_fn = &MPIR_Reduce_binomial_MV2; 
-            } 
-        }
-     } 
+    /* Search for the corresponding system size inside the tuning table */
+    while ((range < (mv2_size_reduce_tuning_table - 1)) &&
+           (comm_size > mv2_reduce_thresholds_table[range].numproc)) {
+        range++;
+    }
+    /* Search for corresponding inter-leader function */
+    while ((range_threshold < (mv2_reduce_thresholds_table[range].size_inter_table - 1))
+           && (nbytes >
+               mv2_reduce_thresholds_table[range].inter_leader[range_threshold].max)
+           && (mv2_reduce_thresholds_table[range].inter_leader[range_threshold].max !=
+               -1)) {
+        range_threshold++;
+    }
 
-     mpi_errno = reduce_fn(sendbuf, recvbuf, count,
-                           datatype, op,
-                           root, comm_ptr, errflag);
-     if (mpi_errno) {
+    /* Search for corresponding intra node function */
+    while ((range_intra_threshold < (mv2_reduce_thresholds_table[range].size_intra_table - 1))
+           && (nbytes >
+               mv2_reduce_thresholds_table[range].intra_node[range_intra_threshold].max)
+           && (mv2_reduce_thresholds_table[range].intra_node[range_intra_threshold].max !=
+               -1)) {
+        range_intra_threshold++;
+    }
+
+    /* Set intra-node function pt for reduce_two_level */
+    MV2_Reduce_intra_function = 
+                          mv2_reduce_thresholds_table[range].intra_node[range_intra_threshold].
+                          MV2_pt_Reduce_function;
+    /* Set inter-leader pt */
+    MV2_Reduce_function =
+                          mv2_reduce_thresholds_table[range].inter_leader[range_threshold].
+                          MV2_pt_Reduce_function;
+
+    if(mv2_reduce_intra_knomial_factor<0)
+    {
+        mv2_reduce_intra_knomial_factor = mv2_reduce_thresholds_table[range].intra_k_degree;
+    }
+    if(mv2_reduce_inter_knomial_factor<0)
+    {
+        mv2_reduce_inter_knomial_factor = mv2_reduce_thresholds_table[range].inter_k_degree;
+    }
+    if(mv2_reduce_thresholds_table[range].is_two_level_reduce[range_threshold] == 1){
+               is_two_level = 1;
+    }
+
+    /* We call Reduce function */
+    if(is_two_level == 1)
+    {
+        if (comm_ptr->ch.shmem_coll_ok == 1
+            && is_commutative == 1) {
+            mpi_errno = MPIR_Reduce_two_level_helper_MV2(sendbuf, recvbuf, count, 
+                                           datatype, op, root, comm_ptr, errflag);
+        } else {
+            mpi_errno = MPIR_Reduce_binomial_MV2(sendbuf, recvbuf, count, 
+                                           datatype, op, root, comm_ptr, errflag);
+        }
+    } else if(MV2_Reduce_function == &MPIR_Reduce_inter_knomial_wrapper_MV2 ){
+        if(is_commutative ==1)
+        {
+            mpi_errno = MV2_Reduce_function(sendbuf, recvbuf, count, 
+                                           datatype, op, root, comm_ptr, errflag);
+        } else {
+            mpi_errno = MPIR_Reduce_binomial_MV2(sendbuf, recvbuf, count, 
+                                           datatype, op, root, comm_ptr, errflag);
+        }
+    } else if(MV2_Reduce_function == &MPIR_Reduce_redscat_gather_MV2){
+        if ((HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) && (count >= pof2))
+        {
+            mpi_errno = MV2_Reduce_function(sendbuf, recvbuf, count, 
+                                            datatype, op, root, comm_ptr, errflag);
+        } else {
+            mpi_errno = MPIR_Reduce_binomial_MV2(sendbuf, recvbuf, count, 
+                                            datatype, op, root, comm_ptr, errflag);
+        }
+    } else {
+        mpi_errno = MV2_Reduce_function(sendbuf, recvbuf, count, 
+                                        datatype, op, root, comm_ptr, errflag);
+    }
+
+    if (mpi_errno) {
        /* for communication errors, just record the error but continue */
 
         *errflag = TRUE;
         MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
         MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
-     }
-
+    }
+    if (mpi_errno)
+        MPIU_ERR_POP(mpi_errno);
 #ifdef _ENABLE_CUDA_
     cuerr = cudaSuccess;
     if(rdma_enable_cuda && recv_mem_type && ( rank == root )){
@@ -1520,6 +1643,7 @@ int MPIR_Reduce_MV2(const void *sendbuf,
 #else
     mpi_errno = MPIR_Reduce_intra(sendbuf, recvbuf, count, datatype,
                                   op, root, comm_ptr, errflag);
+
     if (mpi_errno)
         MPIU_ERR_POP(mpi_errno);
 #endif                          /*  #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
@@ -1530,11 +1654,10 @@ int MPIR_Reduce_MV2(const void *sendbuf,
         mpi_errno = mpi_errno_ret;
     else if (*errflag)
         MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**coll_fail");
-#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
-    return mpi_errno;
-#endif
+
     fn_exit:
       return mpi_errno;
+
     fn_fail:
       goto fn_exit;
 }

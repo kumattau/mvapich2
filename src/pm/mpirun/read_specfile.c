@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -93,7 +93,7 @@ read_infn (spawn_info_t * si, FILE * fp, int num_pairs)
 extern spawn_info_t *
 read_dpm_specfile (int n_spawns)
 {
-    spawn_info_t * rv, * si = NULL;
+    spawn_info_t * rv = NULL, * si = NULL;
     FILE * fp = fopen(spawnfile, "r");
     int i;
     char buffer[1024];

@@ -3,7 +3,7 @@
 # (C) 2011 by Argonne National Laboratory.
 #     See COPYRIGHT in top-level directory.
 #
-# This file contains versioning information for MPICH2's configure process.
+# This file contains versioning information for MPICH's configure process.
 # This was previously (as "maint/Version") a bit of shell code that was sourced
 # by configure, but shell variables are not permitted in the modern form of
 # AC_INIT.  See "Rebuilding Makefiles" in the automake-1.11.1 manual.
@@ -14,10 +14,10 @@
 # changing this by playing with diversions, but then we would probably be
 # playing with autotools-fire.
 
-m4_define([MPICH2_VERSION_m4],[1.5])dnl
-m4_define([MPICH2_RELEASE_DATE_m4],[unreleased development copy])dnl
+m4_define([MPICH_VERSION_m4],[3.0.2])dnl
+m4_define([MPICH_RELEASE_DATE_m4],[unreleased development copy])dnl
 
-m4_define([MVAPICH2_VERSION_m4],[1.9a2])dnl
+m4_define([MVAPICH2_VERSION_m4],[1.9b])dnl
 m4_define([MVAPICH2_RELEASE_DATE_m4],[unreleased development copy])dnl
 
 # For libtool ABI versioning rules see:
@@ -34,6 +34,6 @@ m4_define([MVAPICH2_RELEASE_DATE_m4],[unreleased development copy])dnl
 #
 #     4. If any interfaces have been removed since the last public
 #     release, then set age to 0.
-m4_define([libmpich_so_version_m4],[8:1:0])dnl
+m4_define([libmpich_so_version_m4],[10:2:0])dnl
 
 [#] end of __file__

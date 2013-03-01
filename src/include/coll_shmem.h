@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -163,6 +163,7 @@ int is_shmem_collectives_enabled();
 extern struct coll_runtime mv2_coll_param;
 void MPIDI_CH3I_SHMEM_COLL_GetShmemBuf(int, int, int, void**);
 void MPIDI_CH3I_SHMEM_COLL_SetGatherComplete(int, int, int);
+int create_allgather_comm(MPID_Comm * comm_ptr, int *errflag);
 
 extern int mv2_tune_parameter;
 
@@ -195,6 +196,9 @@ extern int mv2_mcast_scatter_small_sys_size;
 extern int mv2_mcast_scatter_large_sys_size;
 #endif  /* #if defined(_MCST_SUPPORT_) */ 
 
+/* Use inside reduce_osu.c*/
+extern int mv2_user_reduce_two_level;
+extern int mv2_user_allgather_two_level;
 
 /* Use inside allreduce_osu.c*/
 extern int mv2_disable_shmem_allreduce;
@@ -239,7 +243,8 @@ extern int mv2_bcast_scatter_ring_overlap_cores_lowerbound;
 /* Used inside reduce_osu.c */
 extern int mv2_disable_shmem_reduce;
 extern int mv2_use_knomial_reduce;
-extern int mv2_reduce_knomial_factor;
+extern int mv2_reduce_inter_knomial_factor;
+extern int mv2_reduce_intra_knomial_factor;
 extern int MPIR_Reduce_two_level_helper_MV2(const void *sendbuf,
                                      void *recvbuf,
                                      int count,
@@ -277,6 +282,8 @@ void lock_shmem_region(void);
 void unlock_shmem_region(void);
 
 /* utils */
+inline int mv2_increment_shmem_coll_counter(MPID_Comm *comm_ptr); 
+inline int mv2_increment_allgather_coll_counter(MPID_Comm *comm_ptr); 
 void increment_mv2_shmem_comm_count(void);
 int get_mv2_shmem_comm_count(void);
 int MPIDI_CH3I_SHMEM_Coll_get_free_block(); 

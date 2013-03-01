@@ -1,4 +1,4 @@
-/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
  *
  *  (C) 2001 by Argonne National Laboratory.
@@ -6,6 +6,9 @@
  */
 
 #include "mpiimpl.h"
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#include "coll_shmem.h"
+#endif
 
 /* -- Begin Profiling Symbol Block for routine MPI_Barrier */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -351,7 +354,7 @@ int MPIR_Barrier_impl(MPID_Comm *comm_ptr, int *errflag)
 MPI_Barrier - Blocks until all processes in the communicator have
 reached this routine.  
 
-Input Parameter:
+Input Parameters:
 . comm - communicator (handle) 
 
 Notes:
@@ -410,6 +413,13 @@ int MPI_Barrier( MPI_Comm comm )
 
     mpi_errno = MPIR_Barrier_impl(comm_ptr, &errflag);
     if (mpi_errno) goto fn_fail;
+
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+    mpi_errno = mv2_increment_shmem_coll_counter(comm_ptr);
+    if (mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+#endif /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */ 
     
     /* ... end of body of routine ... */
 

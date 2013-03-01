@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -34,7 +34,9 @@ int MV2_set_scatter_tuning_table(int heterogeneity)
         MV2_ARCH_INTEL_XEON_X5650_12, MV2_HCA_MLX_CX_QDR) && !heterogeneity){
         mv2_size_scatter_tuning_table = 6;
         mv2_scatter_thresholds_table = MPIU_Malloc(mv2_size_scatter_tuning_table *
-                                                  sizeof (mv2_scatter_tuning_table));
+                                                  sizeof(mv2_scatter_tuning_table));
+        MPIU_Memset(mv2_scatter_thresholds_table, 0, mv2_size_scatter_tuning_table *
+                    sizeof(mv2_scatter_tuning_table)); 
         mv2_scatter_tuning_table mv2_tmp_scatter_thresholds_table[] = {
             {
                 12,
@@ -125,7 +127,9 @@ int MV2_set_scatter_tuning_table(int heterogeneity)
         MV2_ARCH_INTEL_XEON_E5_2680_16, MV2_HCA_MLX_CX_FDR) && !heterogeneity){
         mv2_size_scatter_tuning_table = 6;
         mv2_scatter_thresholds_table = MPIU_Malloc(mv2_size_scatter_tuning_table *
-                                                  sizeof (mv2_scatter_tuning_table));
+                                                  sizeof(mv2_scatter_tuning_table));
+        MPIU_Memset(mv2_scatter_thresholds_table, 0, mv2_size_scatter_tuning_table * 
+                    sizeof(mv2_scatter_tuning_table)); 
         mv2_scatter_tuning_table mv2_tmp_scatter_thresholds_table[] = {
             {
                 16,
@@ -228,7 +232,9 @@ int MV2_set_scatter_tuning_table(int heterogeneity)
     {
         mv2_size_scatter_tuning_table = 7;
         mv2_scatter_thresholds_table = MPIU_Malloc(mv2_size_scatter_tuning_table *
-                                                  sizeof (mv2_scatter_tuning_table));
+                                                  sizeof(mv2_scatter_tuning_table));
+        MPIU_Memset(mv2_scatter_thresholds_table, 0, mv2_size_scatter_tuning_table * 
+                    sizeof(mv2_scatter_tuning_table)); 
         mv2_scatter_tuning_table mv2_tmp_scatter_thresholds_table[] = {
             {
                 8,
@@ -377,8 +383,11 @@ int MV2_internode_Scatter_is_define(char *mv2_user_scatter_inter, char
 
     /* We realloc the space for the new scatter tuning table */
     mv2_scatter_thresholds_table = MPIU_Malloc(mv2_size_scatter_tuning_table *
-                                             sizeof (mv2_scatter_tuning_table));
+                                             sizeof(mv2_scatter_tuning_table));
 
+    MPIU_Memset(mv2_scatter_thresholds_table, 0, mv2_size_scatter_tuning_table * 
+                sizeof(mv2_scatter_tuning_table)); 
+    MPIU_Memset(&mv2_tmp_scatter_thresholds_table, 0, sizeof(mv2_scatter_tuning_table)); 
     if (nb_element == 1) {
         mv2_tmp_scatter_thresholds_table[0].numproc = 1;
         mv2_tmp_scatter_thresholds_table[0].size_inter_table = 1;
@@ -408,7 +417,7 @@ int MV2_internode_Scatter_is_define(char *mv2_user_scatter_inter, char
 #if defined(_MCST_SUPPORT_)
         case SCATTER_MCAST:
                 mv2_tmp_scatter_thresholds_table[0].inter_leader[0].MV2_pt_Scatter_function =
-                    &MPIR_Scatter_mcst_MV2;
+                    &MPIR_Scatter_mcst_wrap_MV2;
                 break;
 #endif /* #if defined(_MCST_SUPPORT_) */
         default:
@@ -466,7 +475,7 @@ int MV2_internode_Scatter_is_define(char *mv2_user_scatter_inter, char
 #if defined(_MCST_SUPPORT_)
             case SCATTER_MCAST:
                 mv2_tmp_scatter_thresholds_table[0].inter_leader[i].MV2_pt_Scatter_function =
-                    &MPIR_Scatter_mcst_MV2;
+                    &MPIR_Scatter_mcst_wrap_MV2;
                 break;
 #endif /* #if defined(_MCST_SUPPORT_) */
             default:

@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -40,7 +40,6 @@ int MPIDI_nem_ib_flush()
 
     MPIDI_PG_t *pg;
     MPIDI_VC_t *vc;
-    MPIDI_CH3I_VC *vc_ch;
     int i, pg_rank, pg_size, rail;
     int mpi_errno = MPI_SUCCESS;
 
@@ -54,10 +53,9 @@ int MPIDI_nem_ib_flush()
         }
 
         MPIDI_PG_Get_vc(pg, i, &vc);
-        vc_ch = (MPIDI_CH3I_VC *) vc->channel_private;
 
         /* Skip SMP VCs */
-        if (vc_ch->is_local) {
+        if (vc->ch.is_local) {
             continue;
         }
 
@@ -154,7 +152,6 @@ int MPID_nem_ib_finalize(void)
 
     MPIDI_PG_t *pg;
     MPIDI_VC_t *vc;
-    MPIDI_CH3I_VC *vc_ch;
     int err;
     int mpi_errno = MPI_SUCCESS;
 
@@ -191,9 +188,7 @@ int MPID_nem_ib_finalize(void)
         }
 
         MPIDI_PG_Get_vc(pg, i, &vc);
-        vc_ch = (MPIDI_CH3I_VC *) vc->channel_private;
-
-        if (vc_ch->is_local) {
+        if (vc->ch.is_local) {
             continue;
         }
 

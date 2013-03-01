@@ -12,7 +12,7 @@
  *          Michael Welcome  <mlwelcome@lbl.gov>
  */
 
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -235,12 +235,16 @@ extern struct dreg_entry *dreg_unused_tail;
     d = dreg_free_list;                                             \
     if (dreg_free_list != NULL) {                                   \
         dreg_free_list = dreg_free_list->next;                      \
+        dreg_inuse_count++;                                         \
+        if (dreg_max_use_count < dreg_inuse_count)                  \
+            dreg_max_use_count = dreg_inuse_count;                  \
     }                                                               \
 }
 
 #define DREG_ADD_TO_FREE_LIST(d) {                                  \
     d->next = dreg_free_list;                                       \
     dreg_free_list = d;                                             \
+    dreg_inuse_count--;                                             \
 }
 
 int dreg_init(void);

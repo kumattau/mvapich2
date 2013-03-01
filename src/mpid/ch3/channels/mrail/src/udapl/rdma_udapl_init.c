@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -31,9 +31,6 @@
 
 /* global rdma structure for the local process */
 mv2_MPIDI_CH3I_RDMA_Process_t mv2_MPIDI_CH3I_RDMA_Process;
-
-static int MPIDI_CH3I_PG_Compare_ids (void *id1, void *id2);
-static int MPIDI_CH3I_PG_Destroy (MPIDI_PG_t * pg, void *id);
 
 int cached_pg_size;
 int cached_pg_rank;
@@ -106,27 +103,9 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t *pg, int pg_rank)
     /* Initialize the rdma implemenation. */
     /* This function is called after the RDMA channel has initialized its 
        structures - like the vc_table. */
-    int ret;
-    int act_num_cqe;
-    DAT_EP_ATTR ep_attr;
-    DAT_EVD_HANDLE async_evd_handle = DAT_HANDLE_NULL;
-    DAT_EVENT event;
-    int count;
-    DAT_REGION_DESCRIPTION region;
-    DAT_VLEN dummy_registered_size;
-    DAT_VADDR dummy_registered_addr;
-    DAT_IA_ATTR ia_attr;
-    int tmp1;
-    int step;
-    int num_connected = 0;
-    int num_connected_1sc = 0;
 
-    DAT_CONN_QUAL local_service_id;
-    DAT_CONN_QUAL local_service_id_1sc;
-    DAT_SOCK_ADDR local_ia_addr;
-
-    MPIDI_VC_t *vc;
-    int         pg_size;
+    MPIDI_VC_t *vc = NULL;
+    int pg_size;
     int i, error;
     char *key;
     char *val;
@@ -964,51 +943,9 @@ MPIDI_CH3I_RDMA_finalize ()
     return MPI_SUCCESS;
 }
 
-
-static int
-MPIDI_CH3I_PG_Compare_ids (void *id1, void *id2)
-{
-    return (strcmp ((char *) id1, (char *) id2) == 0) ? TRUE : FALSE;
-}
-
-static int
-MPIDI_CH3I_PG_Destroy (MPIDI_PG_t * pg, void *id)
-{
-    if (pg->ch.kvs_name != NULL)
-      {
-          MPIU_Free (pg->ch.kvs_name);
-      }
-
-    if (id != NULL)
-      {
-          MPIU_Free (id);
-      }
-
-    return MPI_SUCCESS;
-}
-
 int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **str)
 {
-    int ret;
-    MPIDI_VC_t *vc;
-    int act_num_cqe;
-    DAT_EP_ATTR ep_attr;
-    DAT_EVD_HANDLE async_evd_handle = DAT_HANDLE_NULL;
-    DAT_EVENT event;
-    int count;
-    DAT_REGION_DESCRIPTION region;
-    DAT_VLEN dummy_registered_size;
-    DAT_VADDR dummy_registered_addr;
-    DAT_IA_ATTR ia_attr;
-    int tmp1;
-    int step;
-    int num_connected = 0;
-    int num_connected_1sc = 0;
-
-    DAT_CONN_QUAL local_service_id;
-    DAT_CONN_QUAL local_service_id_1sc;
-    DAT_SOCK_ADDR local_ia_addr;
-
+    MPIDI_VC_t *vc = NULL;
     int pg_size;
     int i, error;
     char *key;
@@ -1565,7 +1502,6 @@ static void *od_conn_server( void * arg )
 {
      DAT_RETURN status;
      DAT_EVENT event;
-     DAT_COUNT count;
      DAT_CR_ARRIVAL_EVENT_DATA cr_stat;
      DAT_CR_PARAM cr_param;
      DAT_EP_PARAM_MASK param_mask = 0xFFFF;
@@ -1817,7 +1753,7 @@ int MPIDI_CH3I_CM_Finalize()
 
 int MPIDI_CH3I_CM_Connect(MPIDI_VC_t * vc)
 {
-    int size, peer, count=0, limit=1000, nmore;
+    int size, peer, count=0, limit=1000;
     DAT_RETURN ret, ret_conn; 
     DAT_EVENT event;
     

@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1129,7 +1129,7 @@ static int cm_accept_new_vc(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_cm_establish_t *header
 int handle_read(MPIDI_VC_t * vc, vbuf * buffer)
 {
     int mpi_errno = MPI_SUCCESS;
-    int header_type;
+    int header_type = 0;
     MPIDI_STATE_DECL(MPID_STATE_HANDLE_READ);
     MPIDI_FUNC_ENTER(MPID_STATE_HANDLE_READ);
 

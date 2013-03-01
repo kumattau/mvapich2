@@ -1,9 +1,9 @@
-/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -107,6 +107,9 @@ typedef enum MPIDI_CH3_Pkt_type
 #if defined(_SMP_LIMIC_)
     MPIDI_CH3_PKT_LIMIC_COMP,
 #endif
+#if defined(_SMP_CMA_)
+    MPIDI_CH3_PKT_CMA_COMP,
+#endif
 #endif /* defined(_OSU_MVAPICH_) */
 #if defined(USE_EAGER_SHORT)
     MPIDI_CH3_PKT_EAGERSHORT_SEND,
@@ -125,6 +128,8 @@ typedef enum MPIDI_CH3_Pkt_type
     MPIDI_CH3_PKT_ACCUMULATE,
     MPIDI_CH3_PKT_LOCK,
     MPIDI_CH3_PKT_LOCK_GRANTED,
+    MPIDI_CH3_PKT_UNLOCK,
+    MPIDI_CH3_PKT_FLUSH,
     MPIDI_CH3_PKT_PT_RMA_DONE,
     MPIDI_CH3_PKT_LOCK_PUT_UNLOCK, /* optimization for single puts */
     MPIDI_CH3_PKT_LOCK_GET_UNLOCK, /* optimization for single gets */
@@ -137,6 +142,8 @@ typedef enum MPIDI_CH3_Pkt_type
     MPIDI_CH3_PKT_CAS_RESP,
     MPIDI_CH3_PKT_FOP,
     MPIDI_CH3_PKT_FOP_RESP,
+    MPIDI_CH3_PKT_GET_ACCUM,
+    MPIDI_CH3_PKT_GET_ACCUM_RESP,
     MPIDI_CH3_PKT_FLOW_CNTL_UPDATE,
     MPIDI_CH3_PKT_CLOSE,
     MPIDI_CH3_PKT_END_CH3
@@ -172,6 +179,16 @@ typedef struct MPIDI_CH3_Pkt_send
 MPIDI_CH3_Pkt_send_t;
 
 #if defined(_OSU_MVAPICH_)
+#if defined(_SMP_CMA_)
+typedef struct MPIDI_CH3_Pkt_cma_comp
+{
+    uint8_t type;
+    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
+    size_t nb;
+    MPI_Request *csend_req_id;
+} MPIDI_CH3_Pkt_cma_comp_t;
+#endif
+
 #if defined(_SMP_LIMIC_)
 typedef struct MPIDI_CH3_Pkt_limic_comp
 {
@@ -181,7 +198,7 @@ typedef struct MPIDI_CH3_Pkt_limic_comp
     MPI_Request *send_req_id;
 } MPIDI_CH3_Pkt_limic_comp_t;
 #endif
-#endif
+#endif /* defined(_OSU_MVAPICH_) */
 
 /* NOTE: Normal and synchronous eager sends, as well as all ready-mode sends, 
    use the same structure but have a different type value. */
@@ -307,6 +324,11 @@ typedef struct MPIDI_CH3_Pkt_packetized_send_data {
 #if defined(_SMP_LIMIC_)
     struct MPID_Request *send_req_id;
 #endif
+
+#if defined(_SMP_CMA_)
+    struct MPID_Request *csend_req_id;
+#endif
+
 } MPIDI_CH3_Pkt_packetized_send_data_t;
 
 typedef MPIDI_CH3_Pkt_packetized_send_data_t MPIDI_CH3_Pkt_rndv_r3_data_t;
@@ -538,11 +560,13 @@ MPIDI_CH3_Pkt_get_resp_t;
 
 
 #if defined(_OSU_MVAPICH_)
+/*top elements of MPIDI_CH3_Pkt_accum_rndv should match with MPIDI_CH3_Pkt_accum_t */
 typedef struct MPIDI_CH3_Pkt_accum_rndv
 {
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
     uint32_t rma_issued;
+    MPI_Request request_handle; /* For get_accumulate response */
     void *addr;
     int count;
     MPI_Datatype datatype;
@@ -572,6 +596,7 @@ typedef struct MPIDI_CH3_Pkt_accum
 #else /* defined(_OSU_MVAPICH_) */
     MPIDI_CH3_Pkt_type_t type;
 #endif /* defined(_OSU_MVAPICH_) */
+    MPI_Request request_handle; /* For get_accumulate response */
     void *addr;
     int count;
     MPI_Datatype datatype;
@@ -595,6 +620,13 @@ typedef struct MPIDI_CH3_Pkt_accum
 #endif    
 }
 MPIDI_CH3_Pkt_accum_t;
+
+typedef struct MPIDI_CH3_Pkt_get_accum_resp
+{
+    MPIDI_CH3_Pkt_type_t type;
+    MPI_Request request_handle;
+}
+MPIDI_CH3_Pkt_get_accum_resp_t;
 
 typedef struct MPIDI_CH3_Pkt_accum_immed
 {
@@ -712,9 +744,10 @@ typedef struct MPIDI_CH3_Pkt_lock
     int lock_type;
     MPI_Win target_win_handle;
     MPI_Win source_win_handle;
+    int target_rank;            /* Used in unluck/flush response to look up the
+                                   target state at the origin. */
 #if defined (_OSU_PSM_)
     int source_rank;
-    int target_rank;
     int mapped_srank;
     int mapped_trank;
 #endif
@@ -730,9 +763,10 @@ typedef struct MPIDI_CH3_Pkt_lock_granted
     MPIDI_CH3_Pkt_type_t type;
 #endif /* defined(_OSU_MVAPICH_) */
     MPI_Win source_win_handle;
+    int target_rank;            /* Used in pt_rma_done response to look up the
+                                   target state at the origin. */
 #if defined (_OSU_PSM_)
     int source_rank;
-    int target_rank;
     MPI_Win target_win_handle;
     int mapped_srank;
     int mapped_trank;
@@ -741,6 +775,8 @@ typedef struct MPIDI_CH3_Pkt_lock_granted
 MPIDI_CH3_Pkt_lock_granted_t;
 
 typedef MPIDI_CH3_Pkt_lock_granted_t MPIDI_CH3_Pkt_pt_rma_done_t;
+typedef MPIDI_CH3_Pkt_lock_t MPIDI_CH3_Pkt_unlock_t;
+typedef MPIDI_CH3_Pkt_lock_t MPIDI_CH3_Pkt_flush_t;
 
 typedef struct MPIDI_CH3_Pkt_lock_put_unlock
 {
@@ -844,6 +880,8 @@ typedef union MPIDI_CH3_Pkt
     MPIDI_CH3_Pkt_accum_immed_t accum_immed;
     MPIDI_CH3_Pkt_lock_t lock;
     MPIDI_CH3_Pkt_lock_granted_t lock_granted;
+    MPIDI_CH3_Pkt_unlock_t unlock;
+    MPIDI_CH3_Pkt_flush_t flush;
     MPIDI_CH3_Pkt_pt_rma_done_t pt_rma_done;    
     MPIDI_CH3_Pkt_lock_put_unlock_t lock_put_unlock;
     MPIDI_CH3_Pkt_lock_get_unlock_t lock_get_unlock;
@@ -853,6 +891,7 @@ typedef union MPIDI_CH3_Pkt
     MPIDI_CH3_Pkt_cas_resp_t cas_resp;
     MPIDI_CH3_Pkt_fop_t fop;
     MPIDI_CH3_Pkt_fop_resp_t fop_resp;
+    MPIDI_CH3_Pkt_get_accum_resp_t get_accum_resp;
 # if defined(MPIDI_CH3_PKT_DECL)
     MPIDI_CH3_PKT_DECL
 # endif

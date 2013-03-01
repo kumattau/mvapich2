@@ -42,8 +42,8 @@ AC_C_RESTRICT
 PAC_C_MACRO_VA_ARGS
 
 # TODO: could add a --enable-embedded or similar to also control this
-AC_ARG_VAR([FROM_MPICH2],[set to "yes" if building MPL inside of MPICH2])
-AM_CONDITIONAL([MPL_EMBEDDED_MODE],[test "x$FROM_MPICH2" = "xyes"])
+AC_ARG_VAR([FROM_MPICH],[set to "yes" if building MPL inside of MPICH])
+AM_CONDITIONAL([MPL_EMBEDDED_MODE],[test "x$FROM_MPICH" = "xyes"])
 
 # support gcov test coverage information
 PAC_ENABLE_COVERAGE
@@ -60,7 +60,7 @@ if test "$pac_cv_have___typeof" = "yes" ; then
 fi
 
 dnl Check if the necessary headers are available
-AC_CHECK_HEADERS(stdio.h stdlib.h string.h stdarg.h ctype.h)
+AC_CHECK_HEADERS(stdio.h stdlib.h string.h stdarg.h ctype.h search.h)
 
 # A C99 compliant compiler should have inttypes.h for fixed-size int types
 AC_CHECK_HEADERS(inttypes.h stdint.h)
@@ -75,7 +75,7 @@ if test "$with_valgrind" != "no" ; then
     savedCPPFLAGS="$CPPFLAGS"
     if test "$with_valgrind" != "yes" ; then
         # Clients of MPL will either need to respect the localdefs file (as in
-        # MPICH2) or add this entry to their own CPPFLAGS-equivalent.
+        # MPICH) or add this entry to their own CPPFLAGS-equivalent.
         # (TODO: a pkg-config file would help with this)
         PAC_APPEND_FLAG([-I${with_valgrind}], [CPPFLAGS])
     fi

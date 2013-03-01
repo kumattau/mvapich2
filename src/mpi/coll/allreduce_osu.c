@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -114,7 +114,7 @@ int MPIR_Allreduce_pt2pt_rd_MV2(const void *sendbuf,
                              MPI_Datatype datatype,
                              MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
 {
-    int comm_size, rank, type_size;
+    int comm_size, rank;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
     int mask, dst, is_commutative, pof2, newrank = 0, rem, newdst;
@@ -194,8 +194,6 @@ int MPIR_Allreduce_pt2pt_rd_MV2(const void *sendbuf,
         MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER,
                             "**fail");
     }
-
-    MPID_Datatype_get_size_macro(datatype, type_size);
 
     /* find nearest power-of-two less than or equal to comm_size */
     pof2 = comm_ptr->ch.gpof2;
@@ -380,7 +378,7 @@ int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
                              MPI_Datatype datatype,
                              MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
 {
-    int comm_size, rank, type_size;
+    int comm_size, rank;
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
     int mask, dst, is_commutative, pof2, newrank = 0, rem, newdst, i,
@@ -460,8 +458,6 @@ int MPIR_Allreduce_pt2pt_rs_MV2(const void *sendbuf,
         MPIU_ERR_CHKANDJUMP((mpi_errno), mpi_errno, MPI_ERR_OTHER,
                             "**fail");
     }
-
-    MPID_Datatype_get_size_macro(datatype, type_size);
 
     /* find nearest power-of-two less than or equal to comm_size */
     pof2 = comm_ptr->ch.gpof2;
@@ -1222,14 +1218,13 @@ int MPIR_Allreduce_reduce_shmem_MV2(const void *sendbuf,
     int is_cxx_uop = 0;
 #endif
     char *shmem_buf = NULL;
-    MPI_Comm shmem_comm = MPI_COMM_NULL, leader_comm = MPI_COMM_NULL;
-    MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
+    MPI_Comm shmem_comm = MPI_COMM_NULL;
+    MPID_Comm *shmem_commptr = NULL;
     int local_rank = -1, local_size = 0;
     void *local_buf = NULL;
     int stride = 0;
     is_commutative = 0;
-    int total_size, shmem_comm_rank;
-    MPIU_CHKLMEM_DECL(3);
+    int shmem_comm_rank;
 
     if (count == 0) {
         return MPI_SUCCESS;
@@ -1265,16 +1260,12 @@ int MPIR_Allreduce_reduce_shmem_MV2(const void *sendbuf,
         }
     }
 
-    total_size = comm_ptr->local_size;
     shmem_comm = comm_ptr->ch.shmem_comm;
     PMPI_Comm_size(shmem_comm, &local_size);
     MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
     local_rank = shmem_commptr->rank;
     local_size = shmem_commptr->local_size;
     shmem_comm_rank = shmem_commptr->ch.shmem_comm_rank;
-
-    leader_comm = comm_ptr->ch.leader_comm;
-    MPID_Comm_get_ptr(leader_comm, leader_commptr);
 
 #if defined(CKPT)
     MPIDI_CH3I_CR_lock();
@@ -1334,7 +1325,6 @@ int MPIR_Allreduce_reduce_shmem_MV2(const void *sendbuf,
 #endif
 
   fn_exit:
-    MPIU_CHKLMEM_FREEALL();
     return (mpi_errno);
 
   fn_fail:
@@ -1350,65 +1340,22 @@ int MPIR_Allreduce_reduce_p2p_MV2(const void *sendbuf,
 {
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
-    int is_commutative = 0;
-    MPI_Aint true_lb, true_extent, extent;
-    MPI_User_function *uop;
-    MPID_Op *op_ptr;
-#ifdef HAVE_CXX_BINDING
-    int is_cxx_uop = 0;
-#endif
-    MPI_Comm shmem_comm = MPI_COMM_NULL, leader_comm = MPI_COMM_NULL;
-    MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
+    MPI_Aint true_lb, true_extent;
+    MPI_Comm shmem_comm = MPI_COMM_NULL;
+    MPID_Comm *shmem_commptr = NULL;
     int local_rank = -1, local_size = 0;
-    int stride = 0;
-    is_commutative = 0;
-    int total_size, shmem_comm_rank;
-    MPIU_CHKLMEM_DECL(3);
 
     if (count == 0) {
         return MPI_SUCCESS;
     }
 
     MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
-    MPID_Datatype_get_extent_macro(datatype, extent);
-    stride = count * MPIR_MAX(extent, true_extent);
 
-    /* Get the operator and check whether it is commutative or not */
-    if (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) {
-        is_commutative = 1;
-        /* get the function by indexing into the op table */
-        uop = MPIR_Op_table[op % 16 - 1];
-    } else {
-        MPID_Op_get_ptr(op, op_ptr);
-        if (op_ptr->kind == MPID_OP_USER_NONCOMMUTE) {
-            is_commutative = 0;
-        } else {
-            is_commutative = 1;
-        }
-
-#if defined(HAVE_CXX_BINDING)
-        if (op_ptr->language == MPID_LANG_CXX) {
-            uop = (MPI_User_function *) op_ptr->function.c_function;
-            is_cxx_uop = 1;
-        } else
-#endif                          /* defined(HAVE_CXX_BINDING) */
-        if ((op_ptr->language == MPID_LANG_C)) {
-            uop = (MPI_User_function *) op_ptr->function.c_function;
-        } else {
-            uop = (MPI_User_function *) op_ptr->function.f77_function;
-        }
-    }
-
-    total_size = comm_ptr->local_size;
     shmem_comm = comm_ptr->ch.shmem_comm;
     PMPI_Comm_size(shmem_comm, &local_size);
     MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
     local_rank = shmem_commptr->rank;
     local_size = shmem_commptr->local_size;
-    shmem_comm_rank = shmem_commptr->ch.shmem_comm_rank;
-
-    leader_comm = comm_ptr->ch.leader_comm;
-    MPID_Comm_get_ptr(leader_comm, leader_commptr);
 
 #if defined(CKPT)
     MPIDI_CH3I_CR_lock();
@@ -1456,12 +1403,7 @@ int MPIR_Allreduce_reduce_p2p_MV2(const void *sendbuf,
     MPIDI_CH3I_CR_unlock();
 #endif
 
-  fn_exit:
-    MPIU_CHKLMEM_FREEALL();
     return (mpi_errno);
-
-  fn_fail:
-    goto fn_exit;
 }
 
 /* general two level allreduce helper function */
@@ -1473,54 +1415,17 @@ int MPIR_Allreduce_two_level_MV2(const void *sendbuf,
 {
     int mpi_errno = MPI_SUCCESS;
     int mpi_errno_ret = MPI_SUCCESS;
-    int is_commutative = 0;
-    MPI_Aint true_lb, true_extent, extent;
-    MPI_User_function *uop;
-    MPID_Op *op_ptr;
-#ifdef HAVE_CXX_BINDING
-    int is_cxx_uop = 0;
-#endif
+    int total_size = 0;
+    MPI_Aint true_lb, true_extent;
     MPI_Comm shmem_comm = MPI_COMM_NULL, leader_comm = MPI_COMM_NULL;
     MPID_Comm *shmem_commptr = NULL, *leader_commptr = NULL;
     int local_rank = -1, local_size = 0;
-    int stride = 0;
-    is_commutative = 0;
-    int total_size, shmem_comm_rank;
-    MPIU_CHKLMEM_DECL(3);
 
     if (count == 0) {
         return MPI_SUCCESS;
     }
 
     MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
-    MPID_Datatype_get_extent_macro(datatype, extent);
-    stride = count * MPIR_MAX(extent, true_extent);
-
-    /* Get the operator and check whether it is commutative or not */
-    if (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) {
-        is_commutative = 1;
-        /* get the function by indexing into the op table */
-        uop = MPIR_Op_table[op % 16 - 1];
-    } else {
-        MPID_Op_get_ptr(op, op_ptr);
-        if (op_ptr->kind == MPID_OP_USER_NONCOMMUTE) {
-            is_commutative = 0;
-        } else {
-            is_commutative = 1;
-        }
-
-#if defined(HAVE_CXX_BINDING)
-        if (op_ptr->language == MPID_LANG_CXX) {
-            uop = (MPI_User_function *) op_ptr->function.c_function;
-            is_cxx_uop = 1;
-        } else
-#endif                          /* defined(HAVE_CXX_BINDING) */
-        if ((op_ptr->language == MPID_LANG_C)) {
-            uop = (MPI_User_function *) op_ptr->function.c_function;
-        } else {
-            uop = (MPI_User_function *) op_ptr->function.f77_function;
-        }
-    }
 
     total_size = comm_ptr->local_size;
     shmem_comm = comm_ptr->ch.shmem_comm;
@@ -1528,7 +1433,6 @@ int MPIR_Allreduce_two_level_MV2(const void *sendbuf,
     MPID_Comm_get_ptr(shmem_comm, shmem_commptr);
     local_rank = shmem_commptr->rank;
     local_size = shmem_commptr->local_size;
-    shmem_comm_rank = shmem_commptr->ch.shmem_comm_rank;
 
     leader_comm = comm_ptr->ch.leader_comm;
     MPID_Comm_get_ptr(leader_comm, leader_commptr);
@@ -1606,7 +1510,6 @@ int MPIR_Allreduce_two_level_MV2(const void *sendbuf,
 #endif
 
   fn_exit:
-    MPIU_CHKLMEM_FREEALL();
     return (mpi_errno);
 
   fn_fail:
@@ -1637,7 +1540,6 @@ int MPIR_Allreduce_shmem_MV2(const void *sendbuf,
     int stride = 0;
     is_commutative = 0;
     int total_size, shmem_comm_rank;
-    MPIU_CHKLMEM_DECL(3);
 
     if (count == 0) {
         return MPI_SUCCESS;
@@ -1811,7 +1713,6 @@ int MPIR_Allreduce_shmem_MV2(const void *sendbuf,
 #endif
 
   fn_exit:
-    MPIU_CHKLMEM_FREEALL();
     return (mpi_errno);
 
   fn_fail:
@@ -1830,7 +1731,7 @@ int MPIR_Allreduce_mcst_MV2(const void *sendbuf,
                              MPI_Datatype datatype,
                              MPI_Op op, MPID_Comm * comm_ptr, int *errflag)
 {
-    MPI_Aint true_lb, true_extent, extent;
+    MPI_Aint true_lb, true_extent;
    /*We use reduce (at rank =0) followed by mcst-bcast to implement the 
     * allreduce operation */
     int root=0, nbytes=0, position=0;
@@ -1865,7 +1766,6 @@ int MPIR_Allreduce_mcst_MV2(const void *sendbuf,
     }
 
     MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
-    MPID_Datatype_get_extent_macro(datatype, extent);
 
    if(is_commutative == 0) { 
        reduce_fn = &MPIR_Reduce_binomial_MV2; 
@@ -2005,11 +1905,9 @@ int MPIR_Allreduce_new_MV2(const void *sendbuf,
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER(comm_ptr);
 
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
-    int stride = 0, is_commutative = 0;
-    MPI_Aint true_lb, true_extent, extent;
+    int is_commutative = 0;
+    MPI_Aint true_lb, true_extent;
     MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
-    MPID_Datatype_get_extent_macro(datatype, extent);
-    stride = count * MPIR_MAX(extent, true_extent);
     MPID_Op *op_ptr;
 
     if (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) {
@@ -2024,6 +1922,10 @@ int MPIR_Allreduce_new_MV2(const void *sendbuf,
     }
 
 #ifdef _ENABLE_CUDA_
+    MPI_Aint extent;
+    MPID_Datatype_get_extent_macro(datatype, extent);
+    int stride = 0;
+    stride = count * MPIR_MAX(extent, true_extent);
     cudaError_t  cuerr = cudaSuccess;
     int recv_mem_type = 0;
     int send_mem_type = 0;

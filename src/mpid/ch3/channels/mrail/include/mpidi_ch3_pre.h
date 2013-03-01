@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -183,6 +183,13 @@ typedef struct MPIDI_CH3I_SMP_VC
     int hostid;
     int read_index;
     int read_off;
+
+#if defined(_SMP_CMA_)
+    struct cma_header current_c_header;
+    int current_cnb;
+    int use_cma;
+#endif
+
 #if defined(_SMP_LIMIC_)
     struct limic_header current_l_header;
     int current_nb;

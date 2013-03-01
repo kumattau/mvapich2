@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1728,7 +1728,7 @@ static inline int cm_qp_conn_create(MPIDI_VC_t * vc, int qptype)
             ibv_create_qp(mv2_MPIDI_CH3I_RDMA_Process.ptag[hca_index], &attr);
 
         if (!vc->mrail.rails[rail_index].qp_hndl) {
-            ibv_error_abort(GEN_EXIT_ERR, "Failed to create QP\n");
+            ibv_va_error_abort(GEN_EXIT_ERR, "Failed to create QP. Error: %d (%s)\n", errno, strerror(errno));
         }
         vc->mrail.rails[rail_index].nic_context =
             mv2_MPIDI_CH3I_RDMA_Process.nic_context[hca_index];
@@ -2049,6 +2049,12 @@ int get_pkey_index(uint16_t pkey, int hca_num, int port_num, uint16_t * ix)
 
 void set_pkey_index(uint16_t * pkey_index, int hca_num, int port_num)
 {
+    char * value = NULL;
+    if ((value = getenv("MV2_DEFAULT_PKEY")) != NULL) {
+        rdma_default_pkey =
+            (uint16_t) strtol(value, (char **) NULL, 0) & PKEY_MASK;
+    }
+
     if (rdma_default_pkey == RDMA_DEFAULT_PKEY) {
         *pkey_index = rdma_default_pkey_ix;
     } else if (!get_pkey_index(rdma_default_pkey, hca_num, port_num, pkey_index)

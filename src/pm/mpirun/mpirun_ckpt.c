@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -68,7 +68,7 @@ static inline CR_state_t CR_state_transition_nolock( CR_state_t state )
 {
     CR_state_t old_state = cr_state;
     cr_state = state;
-    PRINT_DEBUG( DEBUG_FT_verbose>1, "cr_state transition: %d -> %d\n", old_state, state );
+    PRINT_DEBUG( DEBUG_CR_verbose>1, "cr_state transition: %d -> %d\n", old_state, state );
     return old_state;
 }
 
@@ -260,7 +260,7 @@ int CR_thread_start( unsigned int n )
 
 int CR_thread_stop( int blocking )
 {
-    PRINT_DEBUG( DEBUG_FT_verbose>1, "CR_thread_stop(blocking=%d) called\n", blocking);
+    PRINT_DEBUG( DEBUG_CR_verbose>1, "CR_thread_stop(blocking=%d) called\n", blocking);
     CR_state_transition( CR_STOPPED );
     nspawns = 0;
     if (cr_tid) {
@@ -447,12 +447,12 @@ static int request_checkpoint( const char* filename )
         CR_state_unlock();
         goto error;
     } else {
-        // All is ok, proceed to checkpoint request
+        /* Everything fine, proceed to checkpoint request */
         CR_state_transition_nolock( CR_REQUEST_CHECKPOINT );
     }
     CR_state_unlock();
 
-
+    fprintf(stderr,"mpirun_rsh opening file %s\n", filename);
     cr_fd = open(filename, O_CREAT | O_WRONLY | O_TRUNC, 0600);
     if ( cr_fd < 0 ) {
         PRINT_ERROR_ERRNO("Failed to open checkpoint file '%s'", errno, filename);
@@ -472,12 +472,12 @@ static int request_checkpoint( const char* filename )
     cr_file_args.cr_fd = cr_fd;
     cr_file_args.cr_signal = 0;
     cr_file_args.cr_timeout = 0;
-    cr_file_args.cr_flags &= ~CR_CHKPT_DUMP_ALL;    // Save None
+    cr_file_args.cr_flags &= ~CR_CHKPT_DUMP_ALL; /* Save None */
 
-    // Request a checkpoint
-    PRINT_DEBUG( DEBUG_FT_verbose, "cr_request_checkpoint() with file '%s'\n", filename );
+    /* Request a checkpoint */
+    PRINT_DEBUG( DEBUG_CR_verbose, "mpirun_rsh cr_request_checkpoint() with file '%s'\n", filename );
     ret = cr_request_checkpoint(&cr_file_args, &cr_handle);
-    PRINT_DEBUG( DEBUG_FT_verbose>1, "cr_request_checkpoint() returned %d\n", ret );
+    PRINT_DEBUG( DEBUG_CR_verbose>1, "cr_request_checkpoint() returned %d\n", ret );
     if (ret < 0) {
         PRINT_ERROR("BLCR call cr_request_checkpoint() failed with error %d: %s\n", errno, cr_strerror(errno));
         return_code = -3;
@@ -485,11 +485,11 @@ static int request_checkpoint( const char* filename )
     }
 
     // Wait for the end of the checkpoint, and retry while interrupted
-    PRINT_DEBUG( DEBUG_FT_verbose, "cr_poll_checkpoint()\n" );
+    PRINT_DEBUG( DEBUG_CR_verbose, "cr_poll_checkpoint()\n" );
     do {
         ret = cr_poll_checkpoint(&cr_handle, NULL);
     } while (ret == CR_POLL_CHKPT_ERR_PRE && errno == EINTR);
-    PRINT_DEBUG( DEBUG_FT_verbose>1, "cr_poll_checkpoint() returned %d\n", ret );
+    PRINT_DEBUG( DEBUG_CR_verbose>1, "cr_poll_checkpoint() returned %d\n", ret );
 
     // Check the result of the checkpoint
     if (ret == CR_POLL_CHKPT_ERR_POST && errno == CR_ERESTARTED) { 
@@ -518,7 +518,7 @@ static int request_checkpoint( const char* filename )
     ASSERT_MSG( cr_fd>=0, "Internal error\n");
     ret = close(cr_fd);
     cr_fd = -1;
-    PRINT_DEBUG( DEBUG_FT_verbose, "close() returned %d\n", ret );
+    PRINT_DEBUG( DEBUG_CR_verbose, "close() returned %d\n", ret );
     if (ret < 0) {
         PRINT_ERROR_ERRNO("Failed to close file '%s'", errno, filename);
         return_code = -5;
@@ -589,7 +589,7 @@ static void *CR_Loop(void *arg)
 #endif
 
     if ( checkpoint_interval > 0 ) {
-        PRINT_DEBUG( DEBUG_FT_verbose, "Checkpoint interval = %d s\n", checkpoint_interval );
+        PRINT_DEBUG( DEBUG_CR_verbose, "Checkpoint interval = %d s\n", checkpoint_interval );
     }
 
     while (1) {
@@ -598,7 +598,7 @@ static void *CR_Loop(void *arg)
         CR_state_lock();
         if (cr_state == CR_STOPPED) {
             CR_state_unlock();
-            PRINT_DEBUG( DEBUG_FT_verbose, "Exit CR thread\n" );
+            PRINT_DEBUG( DEBUG_CR_verbose, "Exit CR thread\n" );
             pthread_exit(NULL);
         }
         CR_state_unlock();
@@ -664,12 +664,12 @@ static void *CR_Loop(void *arg)
                     unsigned int current_version = checkpoint_version;
                     char buf[CR_MAX_FILENAME];
                     sprintf(buf, "%s.%d.sync", ckpt_filename, current_version);
-                    PRINT_DEBUG( DEBUG_FT_verbose, "Checkpoint request from the application\n" );
+                    PRINT_DEBUG( DEBUG_CR_verbose, "Checkpoint request from the application\n" );
                     int rv = request_checkpoint( buf );
                     if ( rv < 0 ) {
                         PRINT_ERROR( "Checkpoint failed\n" );
                     } else if ( rv > 0 ) {
-                        PRINT_DEBUG( DEBUG_FT_verbose, "Restarting from checkpoint\n" );
+                        PRINT_DEBUG( DEBUG_CR_verbose, "Restarting from checkpoint\n" );
                         // Terminate the thread
                         pthread_exit(NULL);
                     }
@@ -702,14 +702,14 @@ static void *CR_Loop(void *arg)
                 unsigned int current_version = checkpoint_version;
                 char buf[CR_MAX_FILENAME];
                 sprintf(buf, "%s.%d.auto", ckpt_filename, current_version);
-                PRINT_DEBUG( DEBUG_FT_verbose, "Automatic checkpoint request\n" );
+                PRINT_DEBUG( DEBUG_CR_verbose, "Automatic checkpoint request\n" );
                 int rv = request_checkpoint( buf );
                 if ( rv < 0 ) {
                     // Checkpoint failed
                     PRINT_ERROR( "Checkpoint failed\n" );
                 } else if ( rv > 0 ) {
                     // Restarting from checkpoint
-                    PRINT_DEBUG( DEBUG_FT_verbose, "Restarting from checkpoint\n" );
+                    PRINT_DEBUG( DEBUG_CR_verbose, "Restarting from checkpoint\n" );
                     // Terminate the thread
                     pthread_exit(NULL);
                 } else {
@@ -718,7 +718,7 @@ static void *CR_Loop(void *arg)
                     // Remove the ealier checkpoints
                     if ( (max_save_ckpts > 0) && (max_save_ckpts < current_version) ) {
                         sprintf(buf, "%s.%d.auto", ckpt_filename, current_version - max_save_ckpts);
-                        PRINT_DEBUG( DEBUG_FT_verbose, "[2] unlink() file '%s' \n", buf );
+                        PRINT_DEBUG( DEBUG_CR_verbose, "[2] unlink() file '%s' \n", buf );
                         int ret = unlink(buf);
                         if ( ret != 0) {
                             PRINT_ERROR_ERRNO("unlink() failed", errno);
@@ -775,7 +775,7 @@ void save_ckpt_vars(char *name, char *value)
 static int CR_Callback(void *arg)
 {
     int ret;
-    PRINT_DEBUG( DEBUG_FT_verbose, "CR_Callback() called\n" );
+    PRINT_DEBUG( DEBUG_CR_verbose, "CR_Callback() called\n" );
 
     // Check current state
     CR_state_lock();
@@ -825,7 +825,7 @@ static int CR_Callback(void *arg)
 
     checkpoint_version++;
 
-    PRINT_DEBUG( DEBUG_FT_verbose, "Proceed to checkpoint version %d\n", current_version );
+    PRINT_DEBUG( DEBUG_CR_verbose, "Proceed to checkpoint version %d\n", current_version );
 
 
 #ifdef CR_FTB
@@ -882,7 +882,7 @@ static int CR_Callback(void *arg)
                 continue;
 
             CR_MPDU_readline(mpirun_fd[i], buf, MAX_CR_MSG_LEN);
-            PRINT_DEBUG( DEBUG_FT_verbose>2, "CR_MPDU_readline: i=%d, buf=\"%s\"\n", i, buf );
+            PRINT_DEBUG( DEBUG_CR_verbose>2, "CR_MPDU_readline: i=%d, buf=\"%s\"\n", i, buf );
 
             if (CR_MPDU_parse_keyvals(buf) < 0) {
                 PRINT_ERROR("CR_MPDU_parse_keyvals() failed\n");
@@ -891,7 +891,7 @@ static int CR_Callback(void *arg)
             }
 
             CR_MPDU_getval("result", val, CRU_MAX_VAL_LEN);
-            PRINT_DEBUG( DEBUG_FT_verbose>2, "CR_MPDU_getval: i=%d, result=\"%s\"\n", i, buf );
+            PRINT_DEBUG( DEBUG_CR_verbose>2, "CR_MPDU_getval: i=%d, result=\"%s\"\n", i, buf );
 
             if (strcmp(val, "succeed") == 0) {
                 --Progressing;
@@ -949,7 +949,7 @@ static int CR_Callback(void *arg)
 #endif
 
     ret = cr_checkpoint(CR_CHECKPOINT_READY);
-    PRINT_DEBUG( DEBUG_FT_verbose, "cr_checkpoint() returned %d\n", ret );
+    PRINT_DEBUG( DEBUG_CR_verbose, "cr_checkpoint() returned %d\n", ret );
 
     if (ret < 0) {
         // The checkpoint failed
@@ -962,7 +962,7 @@ static int CR_Callback(void *arg)
 
     } else if (ret == 0) {
         // The checkpoint was successful
-        PRINT_DEBUG( DEBUG_FT_verbose, " Returned from cr_checkpoint(): resume execution normally\n" );
+        PRINT_DEBUG( DEBUG_CR_verbose, " Returned from cr_checkpoint(): resume execution normally\n" );
 
 #if defined(CKPT) && defined(CR_FTB)
         // Reconnect to FTB
@@ -975,7 +975,7 @@ static int CR_Callback(void *arg)
 
     } else if (ret) {
         // We are restarting from a checkpoint
-        PRINT_DEBUG( DEBUG_FT_verbose, " Returned from cr_checkpoint(): restart execution\n" );
+        PRINT_DEBUG( DEBUG_CR_verbose, " Returned from cr_checkpoint(: restart execution\n" );
 
         // Set the restart version, which will be used to restart the processes
         restart_version = current_version;
@@ -1086,13 +1086,13 @@ static void cr_ftb_finalize()
         usleep(20000);
         ret = FTB_Disconnect(ftb_handle);
     }
-    PRINT_DEBUG(DEBUG_FT_verbose, "Has close FTB: ftb_init_done=%d, ftb-disconnect ret %d\n", ftb_init_done, ret);
+    PRINT_DEBUG(DEBUG_CR_verbose, "Has close FTB: ftb_init_done=%d, ftb-disconnect ret %d\n", ftb_init_done, ret);
 }
 
 static int cr_ftb_wait_for_resp(int nprocs)
 {
     pthread_mutex_lock(&cr_ftb_ckpt_req_mutex);
-    PRINT_DEBUG(DEBUG_FT_verbose, "wait for nprocs %d \n", nprocs);
+    PRINT_DEBUG(DEBUG_CR_verbose, "wait for nprocs %d \n", nprocs);
     cr_ftb_ckpt_req += nprocs;
     while (cr_ftb_ckpt_req > 0)
         pthread_cond_wait(&cr_ftb_ckpt_req_cond, &cr_ftb_ckpt_req_mutex);
@@ -1101,7 +1101,7 @@ static int cr_ftb_wait_for_resp(int nprocs)
     if (cr_ftb_ckpt_req == 0) {
         return (0);
     } else {
-        PRINT_DEBUG(DEBUG_FT_verbose, "cr_ftb_wait_for_resp() returned %d\n", cr_ftb_ckpt_req);
+        PRINT_DEBUG(DEBUG_CR_verbose, "cr_ftb_wait_for_resp() returned %d\n", cr_ftb_ckpt_req);
         return (-1);
     }
 }
@@ -1118,7 +1118,7 @@ int cr_ftb_aggre_based_mig(char *src)
     char *tgt;
 
     tgt = sparehosts[sparehosts_idx];
-    PRINT_DEBUG(DEBUG_FT_verbose, "enter: src=%s, tgt=%s, tgt-idx=%d\n", src, tgt, sparehosts_idx);
+    PRINT_DEBUG(DEBUG_CR_verbose, "enter: src=%s, tgt=%s, tgt-idx=%d\n", src, tgt, sparehosts_idx);
 
     //// find src and tgt node idx
     for (i = 0; i < pglist->npgs; i++) {
@@ -1143,7 +1143,7 @@ int cr_ftb_aggre_based_mig(char *src)
         sprintf(tmpbuf, "%d ", pglist->data[isrc].plist_indices[i]);
         strncat(buf, tmpbuf, MAX_CR_MSG_LEN);
     }
-    PRINT_DEBUG(DEBUG_FT_verbose, "[Aggre-Based Mig]: init a mig: \"%s\"\n", buf);
+    PRINT_DEBUG(DEBUG_CR_verbose, "[Aggre-Based Mig]: init a mig: \"%s\"\n", buf);
 
     sparehosts_idx++;
 
@@ -1165,7 +1165,7 @@ int cr_ftb_callback(FTB_receive_event_t * revent, void *arg)
     int ret;
     char cnum[16];
     process_group tmp_pg;
-    PRINT_DEBUG(DEBUG_FT_verbose, "Got event %s from %s: payload=\"%s\"\n", revent->event_name, revent->client_name, revent->event_payload);
+    PRINT_DEBUG(DEBUG_CR_verbose, "Got event %s from %s: payload=\"%s\"\n", revent->event_name, revent->client_name, revent->event_payload);
 
     /* TODO: Do some sanity checking to see if this is the intended target */
 
@@ -1188,7 +1188,7 @@ int cr_ftb_callback(FTB_receive_event_t * revent, void *arg)
     }
 
     if (!strcmp(revent->event_name, EVENT(CR_FTB_RSRT_DONE))) {
-        PRINT_DEBUG(DEBUG_FT_verbose, "a proc has been migrated/restarted...\n");
+        PRINT_DEBUG(DEBUG_CR_verbose, "a proc has been migrated/restarted...\n");
         return 0;
     }
 
@@ -1228,7 +1228,7 @@ int cr_ftb_callback(FTB_receive_event_t * revent, void *arg)
 #endif
             snprintf(buf, MAX_CR_MSG_LEN, "%s %s", revent->event_payload, sparehosts[sparehosts_idx++]);
 
-            PRINT_DEBUG(DEBUG_FT_verbose, "[Migration]: init a mig: \"%s\"\n", buf);
+            PRINT_DEBUG(DEBUG_CR_verbose, "[Migration]: init a mig: \"%s\"\n", buf);
             SET_EVENT(eprop, FTB_EVENT_NORMAL, buf);
             ret = FTB_Publish(ftb_handle, EVENT(CR_FTB_MIGRATE), &eprop, &ehandle);
             if (ret != FTB_SUCCESS) {
@@ -1247,7 +1247,7 @@ int cr_ftb_callback(FTB_receive_event_t * revent, void *arg)
         /* Find Source & Target in the pglist */
         get_src_tgt(revent->event_payload, cr_mig_src_host, cr_mig_tgt_host);
 
-        PRINT_DEBUG(DEBUG_FT_verbose, " src_tgt payload=%s, src=%s:tgt=%s\n", revent->event_payload, cr_mig_src_host, cr_mig_tgt_host);
+        PRINT_DEBUG(DEBUG_MIG_verbose, " src_tgt payload=%s, src=%s:tgt=%s\n", revent->event_payload, cr_mig_src_host, cr_mig_tgt_host);
 
         for (i = 0; i < pglist->npgs; i++) {
             if (strcmp(pglist->data[i].hostname, cr_mig_src_host) == 0)
@@ -1268,7 +1268,7 @@ int cr_ftb_callback(FTB_receive_event_t * revent, void *arg)
         if (buf[i - 1] == ' ')
             buf[i - 1] = '\0';
 
-        PRINT_DEBUG(DEBUG_FT_verbose, "list of procs to migrate: %s\n", buf);
+        PRINT_DEBUG(DEBUG_CR_verbose, "list of procs to migrate: %s\n", buf);
 #ifdef SPAWN_DEBUG
         pglist_print();
 #endif
@@ -1297,7 +1297,7 @@ int cr_ftb_callback(FTB_receive_event_t * revent, void *arg)
             plist[pglist->data[itgt].plist_indices[index]].hostname = (char *) strdup(tgt_hostname);
         }
 
-        PRINT_DEBUG(DEBUG_FT_verbose, "mpirun_rsh: will do migrate...\n");
+        PRINT_DEBUG(DEBUG_MIG_verbose, "mpirun_rsh: will do migrate...\n");
 #ifdef SPAWN_DEBUG
         pglist_print();
         dump_pgrps();
@@ -1313,11 +1313,11 @@ int cr_ftb_callback(FTB_receive_event_t * revent, void *arg)
         if (tp >= ckptdir)
             *(tp + 1) = 0;
         sprintf(syscmd, "scp %s:%s.0* %s:%s", cr_mig_src_host, ckpt_filename, cr_mig_tgt_host, ckptdir);
-        PRINT_DEBUG(DEBUG_FT_verbose, "syscmd=%s\n", syscmd);
+        PRINT_DEBUG(DEBUG_MIG_verbose, "syscmd=%s\n", syscmd);
         system(syscmd);
 
         /* Initiate Phase II */
-        PRINT_DEBUG(DEBUG_FT_verbose, "move ckpt img complete...started phase II: send: \"%s\"\n", buf);
+        PRINT_DEBUG(DEBUG_MIG_verbose, "move ckpt img complete...started phase II: send: \"%s\"\n", buf);
         SET_EVENT(eprop, FTB_EVENT_NORMAL, buf);
         ret = FTB_Publish(ftb_handle, EVENT(CR_FTB_MIGRATE_PIIC), &eprop, &ehandle);
         if (ret != FTB_SUCCESS) {

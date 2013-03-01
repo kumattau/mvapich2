@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -24,6 +24,17 @@
 
 #define NMATCH (3+1)
 
+/* Allreduce tuning flags
+ * flat recursive doubling(rd): MV2_INTER_ALLREDUCE_TUNING=1
+ * flat reduce scatter allgather(rsa): MV2_INTER_ALLREDUCE_TUNING=2
+ * mcast: MV2_INTER_ALLREDUCE_TUNING_TWO_LEVEL=1 MV2_USE_MCAST_ALLREDUCE=1  
+ *        MV2_USE_MCAST=1 MV2_INTER_ALLREDUCE_TUNING=3
+ * 2-level: MV2_INTER_ALLREDUCE_TUNING_TWO_LEVEL=1
+ *          MV2_INTER_ALLREDUCE_TUNING=?  MV2_INTRA_ALLREDUCE_TUNING=?
+ *          intra-reduce flag can take 1(rd), 2(rsa), 5(shm), 6(p2p), while
+ *          inter-reduce flag can take 1(rd), 2(rsa)
+ */
+ 
 typedef struct {
     int min;
     int max;

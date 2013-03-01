@@ -3,18 +3,75 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2-1.9b (02/28/2013)
+
+* Features and Enhancements (since 1.9a2):
+    - Based on MPICH-3.0.2
+        - Support for all MPI-3 features
+    - Support for single copy intra-node communication using Linux supported
+      CMA (Cross Memory Attach)
+        - Provides flexibility for intra-node communication: shared memory,
+          LiMIC2, and CMA
+    - Checkpoint/Restart using LLNL's Scalable Checkpoint/Restart Library (SCR)
+        - Support for application-level checkpointing
+        - Support for hierarchical system-level checkpointing
+    - Improved job startup time
+        - Provided a new runtime variable MV2_HOMOGENEOUS_CLUSTER for optimized
+          startup on homogeneous clusters
+    - New version of LiMIC2 (v0.5.6)
+        - Provides support for unlocked ioctl calls
+    - Tuned Reduce, Allgather, Reduce_Scatter, Allgatherv collectives
+    - Introduced option to export environment variables automatically with
+      mpirun_rsh
+    - Updated to HWLOC v1.6.1
+    - Provided option to use CUDA libary call instead of CUDA driver to check
+      buffer pointer type
+        - Thanks to Christian Robert from Sandia for the suggestion
+    - Improved debug messages and error reporting 
+    
+* Bug-Fixes (since 1.9a2):
+    - Fix page fault with memory access violation with LiMIC2 exposed by newer
+      Linux kernels
+        - Thanks to Karl Schulz from TACC for the report
+    - Fix a failure when lazy memory registration is disabled and CUDA is
+      enabled
+        - Thanks to Jens Glaser from University of Minnesota for the report
+    - Fix an issue with variable initialization related to DPM support
+    - Rename a few internal variables to avoid name conflicts with external
+      applications
+        - Thanks to Adam Moody from LLNL for the report
+    - Check for libattr during configuration when Checkpoint/Restart and
+      Process Migration are requested
+        - Thanks to John Gilmore from Vastech for the report
+    - Fix build issue with --disable-cxx
+    - Set intra-node eager threshold correctly when configured with LiMIC2
+    - Fix an issue with MV2_DEFAULT_PKEY in partitioned InfiniBand network
+        - Thanks to Jesper Larsen from FCOO for the report
+    - Improve makefile rules to use automake macros
+        - Thanks to Carmelo Ponti from CSCS for the report
+    - Fix configure error with automake conditionals
+        - Thanks to Evren Yurtesen from Abo Akademi for the report
+    - Fix a few memory leaks and warnings
+    - Properly cleanup shared memory files (used by XRC) when applications fail
+
 MVAPICH2-1.9a2 (11/08/2012)
+
 * Features and Enhancements (since 1.9a):
     - Based on MPICH2-1.5
     - Initial support for MPI-3:
-      (Available for all interfaces: OFA-IB-CH3, OFA-IWARP-CH3, OFA-RoCE-CH3, uDAPL-CH3, OFA-IB-Nemesis, PSM-CH3)
-        - Nonblocking collective functions available as "MPIX_" functions (e.g., "MPIX_Ibcast")
-        - Neighborhood collective routines available as "MPIX_" functions (e.g., "MPIX_Neighbor_allgather")
+      (Available for all interfaces: OFA-IB-CH3, OFA-IWARP-CH3, OFA-RoCE-CH3,
+       uDAPL-CH3, OFA-IB-Nemesis, PSM-CH3)
+        - Nonblocking collective functions available as "MPIX_" functions
+          (e.g., "MPIX_Ibcast")
+        - Neighborhood collective routines available as "MPIX_" functions
+          (e.g., "MPIX_Neighbor_allgather")
         - MPI_Comm_split_type function available as an "MPIX_" function
         - Support for MPIX_Type_create_hindexed_block
-        - Nonblocking communicator duplication routine MPIX_Comm_idup (will only work for single-threaded programs)
+        - Nonblocking communicator duplication routine MPIX_Comm_idup (will
+          only work for single-threaded programs)
         - MPIX_Comm_create_group support
-        - Support for matched probe functionality (e.g., MPIX_Mprobe, MPIX_Improbe, MPIX_Mrecv, and MPIX_Imrecv), 
+        - Support for matched probe functionality (e.g., MPIX_Mprobe,
+          MPIX_Improbe, MPIX_Mrecv, and MPIX_Imrecv), 
           (Not Available for PSM)
         - Support for "Const" (disabled by default)
     - Efficient vector, hindexed datatype processing on GPU buffers
@@ -29,11 +86,11 @@ MVAPICH2-1.9a2 (11/08/2012)
     - CPU frequency mismatch warning shown under debug
     - Fix issue with MPI_IN_PLACE buffers with CUDA
     - Fix ptmalloc initialization issue due to compiler optimization
-          - Thanks to Kyle Sheumaker from ACT for the report
+        - Thanks to Kyle Sheumaker from ACT for the report
     - Adjustable MAX_NUM_PORTS at build time to support more than two ports
     - Fix issue with MPI_Allreduce with MPI_IN_PLACE send buffer
     - Fix memleak in MPI_Cancel with PSM interface
-            - Thanks to Andrew Friedley from LLNL for the report
+        - Thanks to Andrew Friedley from LLNL for the report
 
 MVAPICH2-1.9a (09/07/2012)
 

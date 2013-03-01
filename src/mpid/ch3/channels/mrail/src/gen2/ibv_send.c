@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -1250,7 +1250,7 @@ int MRAILI_Backlog_send(MPIDI_VC_t * vc, int rail)
 
 #ifdef CKPT
     if (mv2_MPIDI_CH3I_RDMA_Process.has_srq) {
-        PRINT_ERROR("{%s, %d] CKPT has_srq error\n", __FILE__, __LINE__  );
+        PRINT_ERROR("[%s, %d] CKPT has_srq error\n", __FILE__, __LINE__  );
         exit(EXIT_FAILURE);
     }
 #endif

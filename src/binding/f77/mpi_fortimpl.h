@@ -1,4 +1,4 @@
-/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
@@ -151,6 +151,7 @@ extern FORT_DLL_SPEC int  MPIR_F_NeedInit;
 extern FORT_DLL_SPEC void *MPIR_F_MPI_BOTTOM;
 extern FORT_DLL_SPEC void *MPIR_F_MPI_IN_PLACE;
 extern FORT_DLL_SPEC void *MPIR_F_MPI_UNWEIGHTED;
+extern FORT_DLL_SPEC void *MPIR_F_MPI_WEIGHTS_EMPTY;
 /* MPI_F_STATUS(ES)_IGNORE are defined in mpi.h and are intended for C 
    programs. */
 /*

@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -668,20 +668,28 @@ void MPID_Segment_unpack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
 int is_device_buffer(void *buffer) 
 {
     int memory_type;
-    cudaError_t cu_err;
+    cudaError_t cuda_err = cudaSuccess;
+    struct cudaPointerAttributes attributes;
+    CUresult cu_err = CUDA_SUCCESS;
 
     if (!rdma_enable_cuda  || buffer == NULL || buffer == MPI_IN_PLACE) {
         return 0;
     }
 
-    cu_err = cudaSuccess;
     cu_err = cuPointerGetAttribute(&memory_type, 
                     CU_POINTER_ATTRIBUTE_MEMORY_TYPE, 
                     (CUdeviceptr) buffer);
-    if (cu_err != cudaSuccess) {
+    if (cu_err != CUDA_SUCCESS) {
+        if (rdma_check_cuda_attribute) {
+            cuda_err = cudaPointerGetAttributes (&attributes, buffer);
+            if (cuda_err == cudaSuccess) {
+                return(attributes.memoryType == cudaMemoryTypeDevice);
+            }
+        }
         return 0;
+    } else {
+        return (memory_type == CU_MEMORYTYPE_DEVICE);
     }
-    return (memory_type == CU_MEMORYTYPE_DEVICE);
 }
 
 void ibv_cuda_register(void *ptr, size_t size)
@@ -746,6 +754,10 @@ void cuda_get_user_parameters() {
 
     if ((value = getenv("MV2_CUDA_INIT_CONTEXT")) != NULL) {
         rdma_cuda_init_context = atoi(value);
+    }
+
+    if ((value = getenv("MV2_CHECK_CUDA_ATTRIBUTE")) != NULL) {
+        rdma_check_cuda_attribute = atoi(value);
     }
 
     if ((value = getenv("MV2_CUDA_USE_NAIVE")) != NULL) {

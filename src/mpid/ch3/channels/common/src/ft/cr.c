@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -26,7 +26,9 @@
 #include <mpimem.h>
 #include <ctype.h>
 #include <sys/types.h>
+#ifdef CR_FTB
 #include <attr/xattr.h>
+#endif
 #include <unistd.h>
 #include <pthread.h>
 #include <sys/time.h>
@@ -270,17 +272,6 @@ static pthread_rwlock_t MPICR_cs_lock;
     fprintf(stderr, args);                                                                      \
 }while(0)
 
-//#define CR_DEBUG
-#ifdef CR_DEBUG
-#define CR_DBG(fmt, args...)  dbg(fmt, ##args)
-#else
-#define CR_DBG(args...)
-#endif
-
-/* #define dbg(fmt, args...)  do{ \
-  fprintf(stderr, "%s [cr_%d]:  "fmt, __func__, MPICR_pg_rank, ##args);fflush(stderr); } while(0) */
-#define dbg(fmt, args...)
-
 typedef struct MPICR_remote_update_msg {
     void *recv_mem_addr;
     uint32_t recv_buf_rkey[MAX_NUM_HCAS];
@@ -297,16 +288,20 @@ inline void MPIDI_CH3I_CR_lock()
 {
     pthread_rwlock_rdlock(&MPICR_cs_lock);
     lock2_count++;
-    // CR_DBG("vvv rwlock_rdlock: MPICR_cs_lock:%d: unlock count=%d\n",lock2_count, unlock2_count);
+    PRINT_DEBUG(DEBUG_CR_verbose > 2,"vvv rwlock_rdlock: MPICR_cs_lock:%d: unlock count=%d\n",
+                                                                                  lock2_count,
+                                                                                  unlock2_count);
 
 }
 
 inline void MPIDI_CH3I_CR_unlock()
 {
-    //  CR_DBG("rwlock_unlock: MPICR_cs_lock\n");
+    PRINT_DEBUG(DEBUG_CR_verbose > 2,"rwlock_unlock: MPICR_cs_lock\n");
     pthread_rwlock_unlock(&MPICR_cs_lock);
     unlock2_count++;
-    //CR_DBG("rwlck_rdulck: MPICR_cs_lock:%d: unlock count=%d\n",lock2_count, unlock2_count);
+    PRINT_DEBUG(DEBUG_CR_verbose > 2,"rwlck_rdulck: MPICR_cs_lock:%d: unlock count=%d\n",
+                                                                                lock2_count,
+                                                                                unlock2_count);
 }
 #endif
 
@@ -417,7 +412,7 @@ void CR_MPDU_Rsrt_succeed()
     if (ret != FTB_SUCCESS)
         fprintf(stdout, "CR_MPDU_Rsrt_succeed() failed\n");
     else
-        CR_DBG("CR_MPDU_Rsrt_succeed() \n");
+        PRINT_DEBUG(DEBUG_CR_verbose, "CR_MPDU_Rsrt_succeed() \n");
 #else
     char cr_msg_buf[MAX_CR_MSG_LEN];
     sprintf(cr_msg_buf, "cmd=rsrt_rep result=succeed\n");
@@ -456,18 +451,17 @@ int CR_MPDU_Reset_PMI_port()
     sprintf(cr_msg_buf, "cmd=query_pmi_port\n");
     CR_MPDU_writeline(MPICR_MPD_fd, cr_msg_buf);
     CR_MPDU_readline(MPICR_MPD_fd, cr_msg_buf, MAX_CR_MSG_LEN);
-    CR_DBG("received msg from MPD: %s\n", cr_msg_buf);
+    PRINT_DEBUG(DEBUG_CR_verbose > 1,"received msg from MPD: %s\n", cr_msg_buf);
     CR_MPDU_parse_keyvals(cr_msg_buf);
     CR_MPDU_getval("cmd", value_str, CRU_MAX_VAL_LEN);
 
     if (strcmp(value_str, "reply_pmi_port") != 0) {
-        dbg("fail to get pmi_port...\n");
+        PRINT_DEBUG(DEBUG_CR_verbose,"fail to get pmi_port...\n");
         return -1;
     }
 
     CR_MPDU_getval("val", value_str, CRU_MAX_VAL_LEN);
     setenv("PMI_PORT", value_str, 1);
-    //dbg("has reset PMI_PORT = %s\n", value_str );
     return 0;
 }
 
@@ -511,29 +505,29 @@ int CR_Set_state(MPICR_cr_state state)
 {
     switch (state) {
     case MPICR_STATE_CHECKPOINTING:
-        CR_DBG("MPICR_STATE_CHECKPOINTING\n");
+        PRINT_DEBUG(DEBUG_CR_verbose, "MPICR_STATE_CHECKPOINTING\n");
         break;
     case MPICR_STATE_ERROR:
-        CR_DBG("MPICR_STATE_ERROR\n");
+        PRINT_DEBUG(DEBUG_CR_verbose, "MPICR_STATE_ERROR\n");
         break;
     case MPICR_STATE_POST_COORDINATION:
-        CR_DBG("MPICR_STATE_POST_COORDINATION\n");
+        PRINT_DEBUG(DEBUG_CR_verbose, "MPICR_STATE_POST_COORDINATION\n");
         break;
     case MPICR_STATE_PRE_COORDINATION:
-        CR_DBG("MPICR_STATE_PRE_COORDINATION\n");
+        PRINT_DEBUG(DEBUG_CR_verbose, "MPICR_STATE_PRE_COORDINATION\n");
         break;
     case MPICR_STATE_REQUESTED:
-        CR_DBG("MPICR_STATE_REQUESTED\n");
+        PRINT_DEBUG(DEBUG_CR_verbose, "MPICR_STATE_REQUESTED\n");
         break;
     case MPICR_STATE_RESTARTING:
-        CR_DBG("MPICR_STATE_RESTARTING\n");
+        PRINT_DEBUG(DEBUG_CR_verbose, "MPICR_STATE_RESTARTING\n");
         MPICR_is_restarting = 1;
         break;
     case MPICR_STATE_RUNNING:
-        CR_DBG("MPICR_STATE_RUNNING\n");
+        PRINT_DEBUG(DEBUG_CR_verbose, "MPICR_STATE_RUNNING\n");
         break;
     default:
-        CR_DBG("Unknown state\n");
+        PRINT_DEBUG(DEBUG_CR_verbose, "Unknown state\n");
         return -1;
     }
 
@@ -552,39 +546,37 @@ static int connect_to_migration_target(char *tgt)
     snprintf(syncfile, 127, "/tmp/cr-%s-mig-begin", getenv("MV2_CKPT_SESSIONID"));
 
     int fd = open(lockfile, O_CREAT | O_EXCL | O_RDWR, 0660);
-    if (fd < 0)                 // another proc (a leader) has already create the file
+    if (fd < 0) /* another proc (a leader) has already create the file */
     {
-        //wait for the leader proc to complete connection...
+      /* wait for the leader proc to complete connection */
       wait_for_begin:
         ret = stat(syncfile, &sbuf);
         while (ret != 0) {
-            if (errno == ENOENT) {  // wait a while, then try again...
-                usleep(20000);  //wait for the leader proc to finish
-            } else {            // shouldn't come here...
-                dbg("%s: wait for sync-file %s: blocked...\n", __func__, syncfile);
-                usleep(20000);  // wait for leader proc   
+            if (errno == ENOENT) {  /* wait a while, then try again */
+                usleep(20000);      /* wait for the leader proc to finish */
+            } else {      
+                PRINT_DEBUG(DEBUG_MIG_verbose > 1,"%s: wait for sync-file %s: blocked...\n", __func__, syncfile);
+                usleep(20000);      /* wait for leader proc */
             }
             ret = stat(syncfile, &sbuf);
         }
-        dbg("Mig src: can start proc-mig now...\n");
+        PRINT_DEBUG(DEBUG_MIG_verbose,"Mig src: can start proc-mig now...\n");
         return 0;
     }
-    /// I'm the leader proc
-    dbg("has created lockfile: %s\n", lockfile);
+    PRINT_DEBUG(DEBUG_MIG_verbose > 1,"has created lockfile: %s\n", lockfile);
     close(fd);
     unlink(syncfile);
 
-    /// connect to target
+    /* connect to target */
     char migmnt[128];
     int run = 1;
     snprintf(migmnt, 127, "/tmp/cr-%s/mig/", getenv("MV2_CKPT_SESSIONID"));
-    dbg("will set xattr at: %s\n", migmnt);
+    PRINT_DEBUG(DEBUG_MIG_verbose > 1,"will set xattr at: %s\n", migmnt);
     ret = lsetxattr(migmnt, "migration.tgt", tgt, strlen(tgt), 0);
     ret = lsetxattr(migmnt, "migration.state", &run, sizeof(int), 0);
-    usleep(10000);              // wait for connection to be established...
+    usleep(10000);  /* wait for connection to be established */
     goto wait_for_begin;
 
-    ////
     return 0;
 }
 #endif
@@ -594,7 +586,7 @@ int CR_Thread_loop()
 
 #ifdef ENABLE_SCR
     if ( MPICR_pg_rank == 0 )
-        printf("SCR has been enabled!\n");
+        PRINT_DEBUG(DEBUG_CR_verbose,"SCR has been enabled!\n");
     int use_scr=0;
 #endif
 
@@ -609,13 +601,13 @@ int CR_Thread_loop()
     cr_checkpoint_args_t cr_args;
     char *no_sync_str = getenv("MV2_CKPT_NO_SYNC");
     int no_sync = ((no_sync_str != NULL) ? atoi(no_sync_str) : 0);
-    CR_DBG("CR_Thread_loop:\n");
+    PRINT_DEBUG(DEBUG_CR_verbose, "CR_Thread_loop:\n");
     char *aggre_mig_file = getenv("MV2_CKPT_AGGRE_MIG_FILE");
     if (aggre_mig_file) {
         use_aggre_mig = 1;
     } else
         use_aggre_mig = 0;
-    dbg("ckpt-file=%s, aggre-mig-file=%s\n", getenv("MV2_CKPT_FILE"), aggre_mig_file);
+    PRINT_DEBUG(DEBUG_CR_verbose > 1, "ckpt-file=%s, aggre-mig-file=%s\n", getenv("MV2_CKPT_FILE"), aggre_mig_file);
     while (1) {
         int ret = 0;
 #ifdef CR_FTB
@@ -642,7 +634,7 @@ int CR_Thread_loop()
         }
 
         CR_MPDU_readline(MPICR_MPD_fd, cr_msg_buf, MAX_CR_MSG_LEN);
-        CR_DBG("CR_Thread_loop:Got request from MPD %s\n", cr_msg_buf);
+        PRINT_DEBUG(DEBUG_CR_verbose, "CR_Thread_loop:Got request from MPD %s\n", cr_msg_buf);
         CR_MPDU_parse_keyvals(cr_msg_buf);
         CR_MPDU_getval("cmd", valstr, CRU_MAX_VAL_LEN);
 
@@ -669,10 +661,10 @@ int CR_Thread_loop()
 
 #ifdef CR_FTB
             if (cr_ftb_mig_req)
-                CR_DBG("CR_Thread_loop:Got migration request %s\n", valstr);
+                PRINT_DEBUG(DEBUG_MIG_verbose > 1, "CR_Thread_loop:Got migration request %s\n", valstr);
 
             if (cr_ftb_ckpt_req)
-                CR_DBG("Got checkpoint request %s\n", valstr);
+                PRINT_DEBUG(DEBUG_CR_verbose, "Got checkpoint request %s\n", valstr);
 
             if (cr_ftb_mig_req)
                 sprintf(cr_file, "%s.0.%d", valstr, MPICR_pg_rank);
@@ -680,7 +672,7 @@ int CR_Thread_loop()
             if (cr_ftb_ckpt_req)
 #endif
                 sprintf(cr_file, "%s.%d.%d", valstr, checkpoint_count, MPICR_pg_rank);
-            dbg("cr_file= %s\n", cr_file);
+            PRINT_DEBUG(DEBUG_CR_verbose > 1,"cr_file= %s\n", cr_file);
 
 #ifdef ENABLE_SCR
             if (0 == MPICR_pg_rank)
@@ -703,16 +695,16 @@ int CR_Thread_loop()
             pthread_rwlock_wrlock(&MPICR_cs_lock);
             wr_CR_lock_tid = pthread_self();
             lock2_count++;
-            CR_DBG("locking CR MPICR_cs_lock: lock2=%d, unlock2=%d \n", lock2_count, unlock2_count);
+            PRINT_DEBUG(DEBUG_CR_verbose > 2,"locking CR MPICR_cs_lock: lock2=%d, unlock2=%d \n", lock2_count, unlock2_count);
 
-            CR_DBG("locking CM\n");
+            PRINT_DEBUG(DEBUG_CR_verbose > 1,"locking CM\n");
             /* Lock will be finalized in suspension. */
             MPICM_lock();
-            CR_DBG("locked CM...\n");
+            PRINT_DEBUG(DEBUG_CR_verbose > 1, "locked CM...\n");
 
             CR_Set_state(MPICR_STATE_PRE_COORDINATION);
 
-            CR_DBG("CR_IBU_Suspend_channels()\n");
+            PRINT_DEBUG(DEBUG_CR_verbose, "CR_IBU_Suspend_channels()\n");
             if (CR_IBU_Suspend_channels()) {
                 CR_MPDU_Ckpt_fail();
                 CR_ERR_ABORT("CR_IBU_Suspend_channels failed\n");
@@ -723,28 +715,27 @@ int CR_Thread_loop()
 #ifdef CR_FTB
             if (MPICR_pg_rank == 0) {
                 if (cr_ftb_ckpt_req)
-                    PRINT_DEBUG(DEBUG_FT_verbose, "Begin checkpoint...\n");
+                    PRINT_DEBUG(DEBUG_CR_verbose, "Begin checkpoint...\n");
                 else
-                    PRINT_DEBUG(DEBUG_FT_verbose, "Begin migration: source = %s, target = %s\n", cr_mig_src_host, cr_mig_tgt_host);
+                    PRINT_DEBUG(DEBUG_MIG_verbose, "Begin migration: source = %s, target = %s\n", cr_mig_src_host, cr_mig_tgt_host);
             }
 #endif
             CR_Set_state(MPICR_STATE_CHECKPOINTING);
 
 #ifdef CR_FTB
             gethostname(my_hostname, 255);
-            PRINT_DEBUG(DEBUG_FT_verbose, "cr_mig_src_host = %s, cr_mig_tgt_host = %s \n", cr_mig_src_host, cr_mig_tgt_host);
+            PRINT_DEBUG(DEBUG_CR_verbose, "cr_mig_src_host = %s, cr_mig_tgt_host = %s \n", cr_mig_src_host, cr_mig_tgt_host);
 
             if (cr_ftb_mig_req && strstr(my_hostname, cr_mig_src_host) != my_hostname) {
-                PRINT_DEBUG(DEBUG_FT_verbose, "Skipping checkpoint\n");
+                PRINT_DEBUG(DEBUG_MIG_verbose, "Skipping checkpoint\n");
                 goto skip_checkpoint;
             }
             if (cr_ftb_mig_req && use_aggre_mig && strstr(my_hostname, cr_mig_src_host) == my_hostname) {
                 /*I'm at mig-src, use aggre-based migration.
                    Need to connect to mig-target first */
-
-                dbg("At %s: before mig: connect to tgt %s\n", cr_mig_src_host, cr_mig_tgt_host);
+                PRINT_DEBUG(DEBUG_MIG_verbose, "At %s: before mig: connect to tgt %s\n", cr_mig_src_host, cr_mig_tgt_host);
                 connect_to_migration_target(cr_mig_tgt_host);
-                dbg("%s:  Now, start mig data...\n", cr_mig_src_host);
+                PRINT_DEBUG(DEBUG_MIG_verbose,"%s:  Now, start mig data...\n", cr_mig_src_host);
             }
 #endif
 
@@ -798,12 +789,12 @@ int CR_Thread_loop()
             cr_args.cr_timeout = 0;
             cr_args.cr_flags &= ~CR_CHKPT_DUMP_ALL; // Save None
 #ifdef ENABLE_SCR
-            PRINT_DEBUG( DEBUG_FT_verbose, "cr_request_checkpoint() with file '%s'\n", scr_file );
+            PRINT_DEBUG( DEBUG_CR_verbose, "cr_request_checkpoint() with file '%s'\n", scr_file );
 #else
-            PRINT_DEBUG( DEBUG_FT_verbose, "cr_request_checkpoint() with file '%s'\n", cr_file );
+            PRINT_DEBUG( DEBUG_CR_verbose, "cr_request_checkpoint() with file '%s'\n", cr_file );
 #endif
             ret = cr_request_checkpoint(&cr_args, &cr_handle);
-            PRINT_DEBUG( DEBUG_FT_verbose, "cr_request_checkpoint() returned %d\n", ret );
+            PRINT_DEBUG( DEBUG_CR_verbose, "cr_request_checkpoint() returned %d\n", ret );
             if (ret < 0) {
                 CR_ERR("BLCR call cr_request_checkpoint() failed with error %d: %s\n", errno, cr_strerror(errno));
                 CR_MPDU_Ckpt_fail();
@@ -811,11 +802,11 @@ int CR_Thread_loop()
             }
 
             // Retry while interrupted
-            PRINT_DEBUG( DEBUG_FT_verbose, "cr_poll_checkpoint()\n" );
+            PRINT_DEBUG( DEBUG_CR_verbose, "cr_poll_checkpoint()\n" );
             do {
                 ret = cr_poll_checkpoint(&cr_handle, NULL);
             } while (ret == CR_POLL_CHKPT_ERR_PRE && errno == EINTR);
-            PRINT_DEBUG( DEBUG_FT_verbose, "cr_poll_checkpoint() returned %d\n", ret );
+            PRINT_DEBUG( DEBUG_CR_verbose, "cr_poll_checkpoint() returned %d\n", ret );
             if (ret == CR_POLL_CHKPT_ERR_POST && errno == CR_ERESTARTED) { 
                 // We are restarting, ignore this error code
                 // Wait for the CR_Callback thread to return from cr_checkpoint()
@@ -829,12 +820,12 @@ int CR_Thread_loop()
                 CR_ERR_ABORT("Bad assertion\n");
             }
 
-            CR_DBG("cr_request_fd\n");
+            PRINT_DEBUG(DEBUG_CR_verbose,"cr_request_fd\n");
 
             while (MPICR_callback_fin == 0) ;
 
             /*
-               CR_DBG("checkpointing, wait for callback to finish\n");
+               PRINT_DEBUG(DEBUG_CR_verbose > 1,"checkpointing, wait for callback to finish\n");
                pthread_mutex_lock(&MPICR_cond_callback_lock);
                pthread_cond_wait(&MPICR_cond_callback, &MPICR_cond_callback_lock);
                pthread_mutex_unlock(&MPICR_cond_callback_lock);
@@ -842,14 +833,14 @@ int CR_Thread_loop()
 
             if (!MPICR_is_restarting) {
                 if (no_sync == 0) {
-                    CR_DBG("fsync\n");
+                    PRINT_DEBUG(DEBUG_CR_verbose > 1,"Syncing checkpoint file to disk\n");
                     ret = fsync(cr_file_fd);
                     if (ret < 0) {
                         perror("fsync() failed!");
                         CR_MPDU_Ckpt_fail();
                         CR_ERR_ABORT("Checkpoint failed, aborting...\n");
                     }
-                    CR_DBG("fsync done\n");
+                    PRINT_DEBUG(DEBUG_CR_verbose > 1,"fsync done\n");
                 }
 
                 ret = close(cr_file_fd);
@@ -858,7 +849,7 @@ int CR_Thread_loop()
                     CR_MPDU_Ckpt_fail();
                     CR_ERR_ABORT("Checkpoint failed, aborting...\n");
                 }
-                dbg("close cr-file %s: ret=%d\n", cr_file, ret);
+                PRINT_DEBUG(DEBUG_CR_verbose > 1,"close cr-file %s: ret=%d\n", cr_file, ret);
             }
 
             /* end of phase 2 */
@@ -866,8 +857,8 @@ int CR_Thread_loop()
 #ifdef CR_FTB
             gethostname(my_hostname, 255);
             if (cr_ftb_mig_req && strstr(my_hostname, cr_mig_src_host) == my_hostname) {    // procs on src nodes, will exit soon
-                dbg("host=%s:rank %d: Src node exit\n", my_hostname, MPICR_pg_rank);
-                PRINT_DEBUG(DEBUG_FT_verbose, "Rank %d (pid=%d) on the source node is migrated -> exit\n", MPICR_pg_rank, getpid());
+                PRINT_DEBUG(DEBUG_MIG_verbose > 1,"host=%s:rank %d: Src node exit\n", my_hostname, MPICR_pg_rank);
+                PRINT_DEBUG(DEBUG_MIG_verbose, "Rank %d (pid=%d) on the source node is migrated -> exit\n", MPICR_pg_rank, getpid());
                 exit(0);
             }
             // Update error prefix with new hostname
@@ -881,8 +872,8 @@ int CR_Thread_loop()
                 set_output_prefix(output_prefix);
             }
 
-            dbg("======  Have resumed proc %d at %s\n", MPICR_pg_rank, my_hostname);
-            PRINT_DEBUG(DEBUG_FT_verbose, "Rank %d (pid=%d) is restarted on the target node\n", MPICR_pg_rank, getpid());
+            PRINT_DEBUG(DEBUG_MIG_verbose,"Resuming process %d in node %s\n", MPICR_pg_rank, my_hostname);
+            PRINT_DEBUG(DEBUG_MIG_verbose > 1, "Rank %d (pid=%d) is restarted on the target node\n", MPICR_pg_rank, getpid());
           skip_checkpoint:
 #endif
 
@@ -890,7 +881,7 @@ int CR_Thread_loop()
 
 #ifdef CR_FTB
             if (cr_ftb_mig_req) {
-                dbg("will enter mig_barrier...\n");
+                PRINT_DEBUG(DEBUG_MIG_verbose > 1,"Entering migration barrier\n");
                 if (PMI_Barrier() != 0)
                     fprintf(stderr, "At Migration: rank %d, PMI_Barrier failed\n", MPICR_pg_rank);
             }
@@ -898,10 +889,10 @@ int CR_Thread_loop()
 
             if (cr_ftb_mig_req && strstr(my_hostname, cr_mig_tgt_host) == my_hostname) {    // this proc is migrated from src-node
                 gethostname(my_hostname, 255);
-                dbg("\tHave mig [%d] to tgt-host=%s: Left migration-barrier.\n", MPICR_pg_rank, my_hostname);
+                PRINT_DEBUG(DEBUG_MIG_verbose > 1,"\tHave mig [%d] to tgt-host=%s: Left migration-barrier.\n", MPICR_pg_rank, my_hostname);
             }
 #endif
-            dbg("------  Reactivate channels...\n");
+            PRINT_DEBUG(DEBUG_MIG_verbose,"Reactivating communication channels\n");
 
             if (CR_IBU_Reactivate_channels()) {
                 if (MPICR_is_restarting) {
@@ -927,7 +918,7 @@ int CR_Thread_loop()
                 }
             }
 
-            CR_DBG("unlocking CR MPICR_cs_lock\n");
+            PRINT_DEBUG(DEBUG_CR_verbose > 1, "unlocking CR MPICR_cs_lock\n");
             pthread_rwlock_unlock(&MPICR_cs_lock);
             wr_CR_lock_tid = 0;
             unlock2_count++;
@@ -951,12 +942,12 @@ int CR_Thread_loop()
 #ifdef ENABLE_SCR
             SCR_Complete_checkpoint(scr_valid);
             if ( 0 == MPICR_pg_rank )
-                fprintf(stderr,"Completed SCR checkpoint\n");
+                PRINT_DEBUG(DEBUG_CR_verbose, "Completed SCR checkpoint\n");
 #endif
 
             MPICR_is_restarting = 0;
             if (MPICR_pg_rank == 0)
-                printf("[%d]:  CR completed...\n", MPICR_pg_rank);
+                PRINT_DEBUG(DEBUG_CR_verbose, "[%d]: CR completed.\n", MPICR_pg_rank);
 
         }                       // finished a ckpt-req
         else {
@@ -979,19 +970,19 @@ int CR_Reset_proc_info()
     MPIU_Free(MPIDI_Process.my_pg->ch.kvs_name);
     unsetenv("PMI_FD");
 
-    CR_DBG("unset PMI_FD\n");
+    PRINT_DEBUG(DEBUG_CR_verbose > 2,"unset PMI_FD\n");
 
     if (PMI_Init(&has_parent)) {
         CR_ERR_ABORT("PMI_Init failed\n");
     }
 
-    dbg("PMI_Init, has_parent=%d\n", has_parent);
+    PRINT_DEBUG(DEBUG_CR_verbose > 1,"PMI_Init, has_parent=%d\n", has_parent);
 
     if (PMI_KVS_Get_name_length_max(&pg_id_sz)) {
         CR_ERR_ABORT("PMI_KVS_Get_name_length_max failed\n");
     }
 
-    dbg("PMI_KVS_Get_name_length_max = %d\n", pg_id_sz);
+    PRINT_DEBUG(DEBUG_MIG_verbose > 1,"PMI_KVS_Get_name_length_max = %d\n", pg_id_sz);
     MPIDI_Process.my_pg->id = MPIU_Malloc(pg_id_sz + 1);
 
     if (NULL == MPIDI_Process.my_pg->id) {
@@ -1001,7 +992,7 @@ int CR_Reset_proc_info()
     if (PMI_KVS_Get_my_name(MPIDI_Process.my_pg->id, pg_id_sz)) {
         CR_ERR_ABORT("PMI_KVS_Get_my_name failed\n");
     }
-    dbg("get id=%d\n", MPIDI_Process.my_pg->id);
+    PRINT_DEBUG(DEBUG_CR_verbose > 2,"get id=%d\n", MPIDI_Process.my_pg->id);
     if (PMI_KVS_Get_name_length_max(&kvs_name_sz)) {
         CR_ERR_ABORT("PMI_KVS_Get_name_length_max failed\n");
     }
@@ -1022,7 +1013,6 @@ int CR_Reset_proc_info()
 
 static int CR_Callback(void *arg)
 {
-    dbg("***  In CR_Callback\n");
 
 #ifdef CR_FTB
     CR_FTB_Finalize();
@@ -1039,15 +1029,14 @@ static int CR_Callback(void *arg)
     {
         /*Build the pipe between mpdman and app procs */
         CR_Set_state(MPICR_STATE_RESTARTING);
-        //////////////////////////
+
 #ifdef CR_FTB
         if (CR_FTB_Init(MPICR_pg_rank, getenv("MV2_CKPT_SESSIONID")) != 0) {
             fprintf(stderr, "%s: Rank[%d] CR_FTB_Init() Failed\n", __func__, MPICR_pg_rank);
         } else {
-            CR_DBG("%s: Rank[%d] CR_FTB_Init()done\n", __func__, MPICR_pg_rank);
+            PRINT_DEBUG(DEBUG_CR_verbose > 1, "%s: Rank[%d] CR_FTB_Init()done\n", __func__, MPICR_pg_rank);
         }
 #endif
-        /////////////////////////////////
 
         ++restart_count;
 
@@ -1058,14 +1047,14 @@ static int CR_Callback(void *arg)
             CR_ERR_ABORT("CR_MPDU_connect_MPD failed\n");
         }
 
-        CR_DBG("MPD connected\n");
+        PRINT_DEBUG(DEBUG_CR_verbose, "MPD connected\n");
 
         if (CR_MPDU_Reset_PMI_port()) {
             CR_MPDU_Rsrt_fail();
             CR_ERR_ABORT("CR_MPDU_Reset_PMI_port failed\n");
         }
 
-        CR_DBG("PMI_port reset\n");
+        PRINT_DEBUG(DEBUG_CR_verbose > 1, "PMI_port reset\n");
 #endif                          /* !CR_FTB */
 
         if (CR_Reset_proc_info()) {
@@ -1073,7 +1062,7 @@ static int CR_Callback(void *arg)
             CR_ERR_ABORT("CR_Reset_proc_info failed\n");
         }
 
-        CR_DBG("proc info reset\n");
+        PRINT_DEBUG(DEBUG_CR_verbose > 2,"proc info reset\n");
     }
 #ifdef CR_FTB
     else if (rc == 0 && !cr_ftb_mig_req)    // normal ckpt
@@ -1088,7 +1077,7 @@ static int CR_Callback(void *arg)
 
     }
 
-    CR_DBG("Out CR_Callback\n");
+    PRINT_DEBUG(DEBUG_CR_verbose > 2,"Out CR_Callback\n");
     MPICR_callback_fin = 1;
 
     /* pthread_cond_signal(&MPICR_cond_callback); */
@@ -1121,7 +1110,7 @@ void *CR_Thread_entry(void *arg)
 
     if (temp) {
         MPICR_max_save_ckpts = atoi(temp);
-        CR_DBG("MV2_CKPT_MAX_SAVE_CKPTS  %s\n", temp);
+        PRINT_DEBUG(DEBUG_CR_verbose > 1,"MV2_CKPT_MAX_SAVE_CKPTS  %s\n", temp);
     } else {
         MPICR_max_save_ckpts = 0;
     }
@@ -1130,7 +1119,7 @@ void *CR_Thread_entry(void *arg)
     if (CR_FTB_Init(MPICR_pg_rank, getenv("MV2_CKPT_SESSIONID")) != 0)
         fprintf(stderr, "CR_FTB_Init() Failed\n");
 #else
-    CR_DBG("Connecting to MPD\n");
+    PRINT_DEBUG(DEBUG_CR_verbose > 1,"Connecting to MPD\n");
 
     if (CR_MPDU_connect_MPD()) {
         CR_ERR_ABORT("CR_MPDU_connect_MPD failed\n");
@@ -1139,7 +1128,7 @@ void *CR_Thread_entry(void *arg)
 
     CR_Set_state(MPICR_STATE_RUNNING);
     MPICR_is_initialized = 1;
-    CR_DBG("Finish initialization, going to CR_Thread_loop\n");
+    PRINT_DEBUG(DEBUG_CR_verbose > 1,"Finish initialization, going to CR_Thread_loop\n");
 
     CR_Thread_loop();
 
@@ -1160,7 +1149,7 @@ int MPIDI_CH3I_CR_Init(MPIDI_PG_t * pg, int rank, int size)
     pthread_rwlockattr_t attr;
     pthread_rwlockattr_init(&attr);
 
-    CR_DBG("Creating a new thread for running cr controller: MPICR_cs_lock\n");
+    PRINT_DEBUG(DEBUG_CR_verbose > 1,"Creating a new thread for running cr controller: MPICR_cs_lock\n");
     if (pthread_rwlock_init(&MPICR_cs_lock, &attr)) {
         MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail", "%s: %s", "pthread_mutex_init", strerror(errno)
             );
@@ -1168,7 +1157,7 @@ int MPIDI_CH3I_CR_Init(MPIDI_PG_t * pg, int rank, int size)
 
     pthread_rwlockattr_destroy(&attr);
 
-    CR_DBG("Creating a new thread for running cr controller\n");
+    PRINT_DEBUG(DEBUG_CR_verbose > 1,"Creating a new thread for running cr controller\n");
 
     if (pthread_create(&MPICR_child_thread, NULL, CR_Thread_entry, NULL)) {
         MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail", "%s: %s", "pthread_create", strerror(errno)
@@ -1210,29 +1199,29 @@ int MPIDI_CH3I_CR_Finalize()
         ftb_init_done = 0;
 
         SET_EVENT(eprop, FTB_EVENT_NORMAL, " ");
-        CR_DBG("\tCR_Finalize: FTB_publish() MPICR_cs_lock\n");
+        PRINT_DEBUG(DEBUG_CR_verbose > 1, "\tCR_Finalize: FTB_publish() MPICR_cs_lock\n");
         ret = FTB_Publish(ftb_handle, EVENT(CR_FTB_CKPT_FINALIZE), &eprop, &ehandle);
         if (ret != FTB_SUCCESS)
             fprintf(stderr, "MPIDI_CH3I_CR_Finalize() failed with %d\n", ret);
         FTB_Unsubscribe(&shandle);
         usleep(20000);
-        CR_DBG("\tCR_Finalize: done FTB_publish() MPICR_cs_lock\n");
+        PRINT_DEBUG(DEBUG_CR_verbose > 1, "\tCR_Finalize: done FTB_publish() MPICR_cs_lock\n");
         FTB_Disconnect(ftb_handle);
-        CR_DBG("\tCR_Finalize: done FTB_Disconnect() MPICR_cs_lock\n");
+        PRINT_DEBUG(DEBUG_CR_verbose > 1,"\tCR_Finalize: done FTB_Disconnect() MPICR_cs_lock\n");
 
     }
     pthread_cancel(MPICR_child_thread);
     pthread_join(MPICR_child_thread, NULL);
-    CR_DBG("\t destroy() MPICR_cs_lock\n");
+    PRINT_DEBUG(DEBUG_CR_verbose > 1,"\t destroy() MPICR_cs_lock\n");
     pthread_rwlock_destroy(&MPICR_cs_lock);
-    CR_DBG("\t done destroy() MPICR_cs_lock\n");
+    PRINT_DEBUG(DEBUG_CR_verbose > 1,"\t done destroy() MPICR_cs_lock\n");
 #else
 
     pthread_cancel(MPICR_child_thread);
     pthread_join(MPICR_child_thread, NULL);
-    CR_DBG("\t destroy() MPICR_cs_lock\n");
+    PRINT_DEBUG(DEBUG_CR_verbose > 1,"\t destroy() MPICR_cs_lock\n");
     pthread_rwlock_destroy(&MPICR_cs_lock);
-    CR_DBG("\t done destroy() MPICR_cs_lock\n");
+    PRINT_DEBUG(DEBUG_CR_verbose > 1,"\t done destroy() MPICR_cs_lock\n");
 
     if (!MPICR_pg_rank) {
         char cr_msg_buf[MAX_CR_MSG_LEN];
@@ -1250,7 +1239,7 @@ int MPIDI_CH3I_CR_Finalize()
 
     /* Uninitialize the shared memory collectives lock */
     MPIDI_SMC_CR_Finalize();
-    CR_DBG("\tCR_Finalize: success\n");
+    PRINT_DEBUG(DEBUG_CR_verbose,"\tCR_Finalize: success\n");
     return MPI_SUCCESS;
 }
 
@@ -1269,7 +1258,7 @@ void MPIDI_CH3I_CR_Sync_ckpt_request()
     if (ret != FTB_SUCCESS)
         fprintf(stderr, "MPIDI_CH3I_CR_Sync_ckpt_request() failed\n");
 #else
-    CR_DBG("Send ckpt request to MPD\n");
+    PRINT_DEBUG(DEBUG_CR_verbose,"Send ckpt request to MPD\n");
 
     char cr_msg_buf[MAX_CR_MSG_LEN];
     sprintf(cr_msg_buf, "cmd=app_ckpt_req\n");
@@ -1283,28 +1272,28 @@ void MPIDI_CH3I_CR_Handle_recv(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t msg_type, v
     MPICR_remote_update_msg *msg = NULL;
     struct MPID_Request *sreq = NULL;
     int found = 0;
-    CR_DBG("%s: [%d <= %d]: got msg: %s(%d)\n", __func__, MPIDI_Process.my_pg_rank, vc->pg_rank, MPIDI_CH3_Pkt_type_to_string[msg_type], msg_type);
+    PRINT_DEBUG(DEBUG_CR_verbose > 2,"%s: [%d <= %d]: got msg: %s(%d)\n", __func__, MPIDI_Process.my_pg_rank, vc->pg_rank, MPIDI_CH3_Pkt_type_to_string[msg_type], msg_type);
     switch (msg_type) {
     case MPIDI_CH3_PKT_CR_REMOTE_UPDATE:
-        CR_DBG("Received MPIDI_CH3_PKT_CR_REMOTE_UPDATE\n");
+        PRINT_DEBUG(DEBUG_CR_verbose > 2,"Received MPIDI_CH3_PKT_CR_REMOTE_UPDATE\n");
 
         msg = (MPICR_remote_update_msg *) (v->buffer + sizeof(MPIDI_CH3I_MRAILI_Pkt_comm_header));
         sreq = (struct MPID_Request *) vc->mrail.sreq_head;
 
-        CR_DBG("Looking for address match %p\n", msg->recv_mem_addr);
+        PRINT_DEBUG(DEBUG_CR_verbose > 2,"Looking for address match %p\n", msg->recv_mem_addr);
         found = 0;
 
         while (sreq) {
-            CR_DBG("Verifying request %p\n", sreq);
+            PRINT_DEBUG(DEBUG_CR_verbose > 2,"Verifying request %p\n", sreq);
 
             if (sreq->mrail.remote_addr == msg->recv_mem_addr) {
-                CR_DBG("Found a address match req: %p\n", sreq);
+                PRINT_DEBUG(DEBUG_CR_verbose > 2,"Found a address match req: %p\n", sreq);
 
                 /*FIXME: Is address match enough? */
                 MPIU_Memcpy(sreq->mrail.rkey, msg->recv_buf_rkey, sizeof(uint32_t) * MAX_NUM_HCAS);
                 found++;
                 if (vc->mrail.sreq_to_update <= 0) {
-                    CR_DBG("[%d <== %d]: %s: Warn: REM_UPDATE: sreq-to-up=%d...\n", MPICR_pg_rank, vc->pg_rank, __func__, vc->mrail.sreq_to_update);
+                    PRINT_DEBUG(DEBUG_CR_verbose > 2,"[%d <== %d]: %s: Warn: REM_UPDATE: sreq-to-up=%d...\n", MPICR_pg_rank, vc->pg_rank, __func__, vc->mrail.sreq_to_update);
                     /// a spurious REM_UPDATE msg, not a real bug...
                     //MPIU_Assert( vc->mrail.sreq_to_update > 0 );// don't need to crash the prog
                 } else
@@ -1314,13 +1303,13 @@ void MPIDI_CH3I_CR_Handle_recv(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t msg_type, v
                     //vc->ch.rput_stop = 0; // all pending sender rndv have been updated
                 }
 
-                CR_DBG("rkey updated hca0:%x\n", sreq->mrail.rkey[0]);
+                PRINT_DEBUG(DEBUG_CR_verbose > 2,"rkey updated hca0:%x\n", sreq->mrail.rkey[0]);
             }
 
             sreq = sreq->mrail.next_inflow;
         }
         if (!found) {
-            CR_DBG("[%d <== %d]: %s: Warn: REM_UPDATE: no match found...\n", MPICR_pg_rank, vc->pg_rank, __func__);
+            PRINT_DEBUG(DEBUG_CR_verbose > 2,"[%d <== %d]: %s: Warn: REM_UPDATE: no match found...\n", MPICR_pg_rank, vc->pg_rank, __func__);
         }
 #if defined(MPIDI_MRAILI_COALESCE_ENABLED)
         v->content_consumed += sizeof(MPICR_remote_update_msg);
@@ -1361,13 +1350,12 @@ int CR_IBU_Release_network()
 
     int pg_rank = MPIDI_Process.my_pg_rank;
     int pg_size = MPIDI_PG_Get_size(pg);
-    dbg("enter...\n");
     if (MPICM_Finalize_UD() != 0) {
         CR_ERR_ABORT("MPICM_Finalize_UD failed\n");
     } else {
-        CR_DBG("CR_IBU_Release_network: MPICM_Finalize_UD succeed.\n");
+        PRINT_DEBUG(DEBUG_CR_verbose > 1,"CR_IBU_Release_network: MPICM_Finalize_UD succeed.\n");
     }
-    dbg("has fin UD, size=%d, rank=%d\n", pg_size, pg_rank);
+    PRINT_DEBUG(DEBUG_CR_verbose > 2,"has fin UD, size=%d, rank=%d\n", pg_size, pg_rank);
     for (; i < pg_size; ++i) {
         if (i == pg_rank) {
             continue;
@@ -1399,7 +1387,7 @@ int CR_IBU_Release_network()
             MPIU_Free(vc->mrail.rfp.cached_outgoing);
 #endif                          /* !MV2_DISABLE_HEADER_CACHING */
     }
-    CR_DBG("CR_IBU_Release_network: CH3I_RDMA.has_srq\n");
+    PRINT_DEBUG(DEBUG_CR_verbose > 1,"CR_IBU_Release_network: CH3I_RDMA.has_srq\n");
     if (mv2_MPIDI_CH3I_RDMA_Process.has_srq) {
         for (i = 0; i < rdma_num_hcas; ++i) {
             pthread_cond_destroy(&mv2_MPIDI_CH3I_RDMA_Process.srq_post_cond[i]);
@@ -1412,7 +1400,7 @@ int CR_IBU_Release_network()
             }
         }
     }
-    CR_DBG("CR_IBU_Release_network: deregister_all\n");
+    PRINT_DEBUG(DEBUG_CR_verbose > 1,"CR_IBU_Release_network: deregister_all\n");
     dreg_deregister_all();
 
     for (i = 0; i < rdma_num_hcas; ++i) {
@@ -1427,7 +1415,7 @@ int CR_IBU_Release_network()
         ibv_dealloc_pd(mv2_MPIDI_CH3I_RDMA_Process.ptag[i]);
         ibv_close_device(mv2_MPIDI_CH3I_RDMA_Process.nic_context[i]);
     }
-    CR_DBG("CR_IBU_Release_network: ibv_close\n");
+    PRINT_DEBUG(DEBUG_CR_verbose > 1,"CR_IBU_Release_network: ibv_close\n");
 #if !defined(DISABLE_PTMALLOC)
     mvapich2_mfin();
 #endif                          /* !defined(DISABLE_PTMALLOC) */
@@ -1485,7 +1473,7 @@ int CR_IBU_Rebuild_network()
                                  MPIU_Malloc(pg_size * sizeof(union ibv_gid));
     rdma_num_rails = rdma_num_hcas * rdma_num_ports * rdma_num_qp_per_port;
 
-    dbg("num_qp_per_port %d, num_rails = %d\n", rdma_num_qp_per_port, rdma_num_rails);
+    PRINT_DEBUG(DEBUG_CR_verbose > 1,"num_qp_per_port %d, num_rails = %d\n", rdma_num_qp_per_port, rdma_num_rails);
 
     init_vbuf_lock();
 
@@ -1536,8 +1524,10 @@ int CR_IBU_Rebuild_network()
             }
 
             /* Start the async thread which watches for SRQ limit events. */
-            pthread_create(&mv2_MPIDI_CH3I_RDMA_Process.async_thread[i], NULL, (void *) async_thread, (void *) mv2_MPIDI_CH3I_RDMA_Process.nic_context[i]
-                );
+            pthread_create(&mv2_MPIDI_CH3I_RDMA_Process.async_thread[i],
+                                        NULL,
+                                        (void *) async_thread,
+                                        (void *) mv2_MPIDI_CH3I_RDMA_Process.nic_context[i]);
         }
 
         pthread_spin_unlock(&mv2_MPIDI_CH3I_RDMA_Process.srq_post_spin_lock);
@@ -1545,7 +1535,7 @@ int CR_IBU_Rebuild_network()
 
     uint32_t ud_qpn_self;
     mpi_errno = MPICM_Init_UD(&ud_qpn_self);
-    dbg("init UD ret %d\n", mpi_errno);
+    PRINT_DEBUG(DEBUG_CR_verbose > 1,"init UD ret %d\n", mpi_errno);
     if (mpi_errno) {
         MPIU_ERR_POP(mpi_errno);
     }
@@ -1557,7 +1547,7 @@ int CR_IBU_Rebuild_network()
     } else if (pg_size > 1) {
         if (mv2_MPIDI_CH3I_RDMA_Process.has_ring_startup) {
             ud_addr_info_t self_info;
-            dbg("****  Ring-based exchange\n");
+            PRINT_DEBUG(DEBUG_CR_verbose > 2,"Ring-based exchange\n");
 
             char hostname[HOSTNAME_LEN + 1];
 
@@ -1584,7 +1574,7 @@ int CR_IBU_Rebuild_network()
 
             mpi_errno = rdma_ring_based_allgather(&self_info, sizeof(self_info), pg_rank, all_info, pg_size, &mv2_MPIDI_CH3I_RDMA_Process);
             if (mpi_errno) {
-                dbg("rdma-ring-based-allgather failed, ret=%d...\n", mpi_errno);
+                PRINT_DEBUG(DEBUG_CR_verbose > 2,"rdma-ring-based-allgather failed, ret=%d...\n", mpi_errno);
                 MPIU_ERR_POP(mpi_errno);
             }
             for (i = 0; i < pg_size; ++i) {
@@ -1684,7 +1674,7 @@ int CR_IBU_Rebuild_network()
         }
     }
 
-    CR_DBG("Exchanging parameters done\n");
+    PRINT_DEBUG(DEBUG_CR_verbose > 1,"Exchanging parameters done\n");
 
     mpi_errno = MPICM_Init_UD_struct(MPICR_pg, ud_qpn_all, lid_all, gid_all);
     MPICM_Create_UD_threads();
@@ -1697,7 +1687,7 @@ int CR_IBU_Rebuild_network()
         CR_ERR_ABORT("PMI_Barrier failed\n");
     }
 
-    CR_DBG("CR_IBU_Rebuild_network finish\n");
+    PRINT_DEBUG(DEBUG_CR_verbose,"CR_IBU_Rebuild_network finish\n");
 
     MPIU_Free(ud_qpn_all);
     MPIU_Free(lid_all);
@@ -1742,7 +1732,7 @@ int CR_IBU_Prep_remote_update()
             continue;
         }
 
-        CR_DBG("Found a new memory address %p registered\n", temp->mrail.rndv_buf);
+        PRINT_DEBUG(DEBUG_CR_verbose > 1,"Found a new memory address %p registered\n", temp->mrail.rndv_buf);
         last_mem_addr = temp->mrail.rndv_buf;
 
         memset(rkey, 0, sizeof(uint32_t) * MAX_NUM_HCAS);
@@ -1757,21 +1747,21 @@ int CR_IBU_Prep_remote_update()
         }
 
         i = 0;
-        CR_DBG("Search msg log queue for CTS message with the address %p, in vc %p \n", temp->mrail.rndv_buf, vc);
+        PRINT_DEBUG(DEBUG_CR_verbose > 2,"Search msg log queue for CTS message with the address %p, in vc %p \n", temp->mrail.rndv_buf, vc);
         entry = vc->mrail.msg_log_queue_head;
 
         while (NULL != entry) {
             v = entry->buf;
             ++i;
             p = (MPIDI_CH3I_MRAILI_Pkt_comm_header *) v->pheader;
-            CR_DBG("In msg_log_Q, type %d\n", p->type);
+            PRINT_DEBUG(DEBUG_CR_verbose > 2,"In msg_log_Q, type %d\n", p->type);
 
             if (p->type == MPIDI_CH3_PKT_RNDV_CLR_TO_SEND) {
                 cts_header = (struct MPIDI_CH3_Pkt_rndv_clr_to_send *) p;
-                CR_DBG("CTS in msg_log_Q addr %p\n", cts_header->rndv.buf_addr);
+                PRINT_DEBUG(DEBUG_CR_verbose > 2,"CTS in msg_log_Q addr %p\n", cts_header->rndv.buf_addr);
 
                 if (cts_header->rndv.buf_addr == temp->mrail.rndv_buf) {
-                    CR_DBG("Found a match in local pending cts\n");
+                    PRINT_DEBUG(DEBUG_CR_verbose > 2,"Found a match in local pending cts\n");
                     MPIU_Memcpy(cts_header->rndv.rkey, rkey, sizeof(uint32_t) * MAX_NUM_HCAS);
                 }
             }
@@ -1779,28 +1769,28 @@ int CR_IBU_Prep_remote_update()
             entry = entry->next;
         }
 
-        CR_DBG("Searched %d packets in msg_log_Q\n", i);
-        CR_DBG("Checking CM queue for vc %p\n", vc);
+        PRINT_DEBUG(DEBUG_CR_verbose > 2,"Searched %d packets in msg_log_Q\n", i);
+        PRINT_DEBUG(DEBUG_CR_verbose > 2,"Checking CM queue for vc %p\n", vc);
 
         /* Check cm_sendq for all cts packets. */
         if (!MPIDI_CH3I_CM_SendQ_empty(vc)) {
-            CR_DBG("cm_send_Q is not empty\n");
+            PRINT_DEBUG(DEBUG_CR_verbose > 2,"cm_send_Q is not empty\n");
             struct MPID_Request *req = MPIDI_CH3I_CM_SendQ_head(vc);
-            CR_DBG("req %p\n", req);
+            PRINT_DEBUG(DEBUG_CR_verbose > 2,"req %p\n", req);
 
             i = 0;
 
             while (req != NULL) {
                 MPIDI_CH3_Pkt_t *upkt = (MPIDI_CH3_Pkt_t *) & (req->dev.pending_pkt);
                 ++i;
-                CR_DBG("In cm_send_Q, type %d\n", upkt->type);
+                PRINT_DEBUG(DEBUG_CR_verbose > 2,"In cm_send_Q, type %d\n", upkt->type);
 
                 if (upkt->type == MPIDI_CH3_PKT_RNDV_CLR_TO_SEND) {
                     cts_header = &(upkt->rndv_clr_to_send);
-                    CR_DBG("CTS in cm_send_Q addr %p\n", cts_header->rndv.buf_addr);
+                    PRINT_DEBUG(DEBUG_CR_verbose > 2,"CTS in cm_send_Q addr %p\n", cts_header->rndv.buf_addr);
 
                     if (cts_header->rndv.buf_addr == temp->mrail.rndv_buf) {
-                        CR_DBG("Found a match in local cm queue\n");
+                        PRINT_DEBUG(DEBUG_CR_verbose > 2,"Found a match in local cm queue\n");
                         MPIU_Memcpy(cts_header->rndv.rkey, rkey, sizeof(uint32_t) * MAX_NUM_HCAS);
                     }
                 }
@@ -1809,14 +1799,14 @@ int CR_IBU_Prep_remote_update()
             }
         }
 
-        CR_DBG("Searched %d packets in cm_send_Q\n", i);
+        PRINT_DEBUG(DEBUG_CR_verbose > 1,"Searched %d packets in cm_send_Q\n", i);
 
         /* Prepare remote update packet. */
         msg.recv_mem_addr = temp->mrail.rndv_buf;
         MPIU_Memcpy(msg.recv_buf_rkey, rkey, sizeof(uint32_t) * MAX_NUM_HCAS);
 
         /*FIXME: use recv_mem_addr as only identifier */
-        CR_DBG("recv_mem_addr %p, rkey0 %x\n", msg.recv_mem_addr, msg.recv_buf_rkey[0]);
+        PRINT_DEBUG(DEBUG_CR_verbose > 2,"recv_mem_addr %p, rkey0 %x\n", msg.recv_mem_addr, msg.recv_buf_rkey[0]);
 
         if(!SMP_ONLY)
         {
@@ -1836,7 +1826,7 @@ int CR_IBU_Prep_remote_update()
         entry->len = sizeof(MPIDI_CH3I_MRAILI_Pkt_comm_header) + sizeof(msg);
         entry->buf = v;
         MSG_LOG_ENQUEUE(vc, entry);
-        CR_DBG("%s: [%d => %d]: enq REM_UPDATE...\n", __func__, MPICR_pg_rank, vc->pg_rank);
+        PRINT_DEBUG(DEBUG_CR_verbose > 2,"[%d => %d]: enq REM_UPDATE...\n", MPICR_pg_rank, vc->pg_rank);
 
         temp = temp->ch.cr_queue_next;
     }
@@ -1874,7 +1864,7 @@ void CR_record_rndv(MPIDI_VC_t ** vc_vector)
         // this many rndv need to be updated with new rkey at restart
         vc->mrail.sreq_to_update = n;
         if (n > 0 || vc->ch.sendq_head || vc->ch.cm_sendq_head || vc->mrail.msg_log_queue_head) {
-            CR_DBG("%s: [%d vc_%d]: has  %d  rndv-send to update, ch.sendq_head = %p, ch.cm_sendq_head=%p, vc.mrail.msg_log_q_head=%p\n",
+            PRINT_DEBUG(DEBUG_CR_verbose > 2,"%s: [%d vc_%d]: has  %d  rndv-send to update, ch.sendq_head = %p, ch.cm_sendq_head=%p, vc.mrail.msg_log_q_head=%p\n",
                    __func__, MPICR_pg_rank, vc->pg_rank, n, vc->ch.sendq_head, vc->ch.cm_sendq_head, vc->mrail.msg_log_queue_head);
         }
 
@@ -1892,7 +1882,6 @@ void CR_record_flowlist(char *title)
     while (vc) {
         n++;
         MPIU_Assert(vc->mrail.inflow == 1);
-        //CR_DBG("[%d -> %d]: flowlist_%d: ...\n", MPICR_pg_rank, vc->pg_rank, n );
         vc = vc->mrail.nextflow;
     }
 
@@ -1904,7 +1893,7 @@ void CR_record_flowlist(char *title)
         temp = temp->ch.cr_queue_next;
     }
     if (n > 0 || cts > 0)
-        CR_DBG("[%d]: %s:  flowlist = %d, CTS = %d\n", MPICR_pg_rank, title, n, cts);
+        PRINT_DEBUG(DEBUG_CR_verbose > 2,"[%d]: %s:  flowlist = %d, CTS = %d\n", MPICR_pg_rank, title, n, cts);
 
 }
 
@@ -1919,7 +1908,7 @@ int CR_IBU_Suspend_channels()
         if (i == MPICR_pg_rank) {
             continue;
         }
-        CR_DBG("PG_get_vc=%d\n", i);
+        PRINT_DEBUG(DEBUG_CR_verbose > 2,"PG_get_vc=%d\n", i);
         MPIDI_PG_Get_vc(MPICR_pg, i, &vc);
 
 #if !defined(NDEBUG)
@@ -1947,7 +1936,7 @@ int CR_IBU_Suspend_channels()
     if ((retval = MPIDI_CH3I_CM_Suspend(vc_vector))) {
         return retval;
     }
-    CR_DBG("fin:  MPIDI_CH3I_CM_suspend\n");
+    PRINT_DEBUG(DEBUG_CR_verbose,"fin:  MPIDI_CH3I_CM_suspend\n");
 
     if(!SMP_ONLY)
     {
@@ -1955,7 +1944,7 @@ int CR_IBU_Suspend_channels()
         {
             return retval;
         }
-        CR_DBG("fin:  IBU_Release_network\n");
+        PRINT_DEBUG(DEBUG_CR_verbose,"fin:  IBU_Release_network\n");
     }
     else
     {
@@ -1966,10 +1955,10 @@ int CR_IBU_Suspend_channels()
         {
             MPICM_unlock();
         }
-        CR_DBG("fin:  MPICM_unlock\n");
+        PRINT_DEBUG(DEBUG_CR_verbose > 1,"fin:  MPICM_unlock\n");
     }
 
-    /// record num of rndvs(sender) to update at restart
+    /* record num of rndvs(sender) to update at restart */
     CR_record_rndv(vc_vector);
     //CR_record_flowlist("after susp-chan");
     MPIU_Free(vc_vector);
@@ -1983,7 +1972,7 @@ int CR_IBU_Reactivate_channels()
 
     if(!SMP_ONLY)
     {
-        CR_DBG("CR_IBU_Rebuild_network\n");
+        PRINT_DEBUG(DEBUG_CR_verbose,"CR_IBU_Rebuild_network\n");
         if ((retval = CR_IBU_Rebuild_network()))
         {
             return retval;
@@ -2001,14 +1990,14 @@ int CR_IBU_Reactivate_channels()
     }
 #endif
     /* Reinitialize the SMP channel */
-    CR_DBG("MPIDI_CH3I_SMP_init()\n");
+    PRINT_DEBUG(DEBUG_CR_verbose, "MPIDI_CH3I_SMP_init()\n");
     retval = MPIDI_CH3I_SMP_init(MPICR_pg);
     if (retval) {
         fprintf(stderr, "[%s:%d] MPIDI_CH3I_SMP_init() returned %d\n", __FILE__, __LINE__, retval);
         return (retval);
     }
 
-    CR_DBG("CR_IBU_Prep_remote_update\n");
+    PRINT_DEBUG(DEBUG_CR_verbose, "CR_IBU_Prep_remote_update\n");
     if ((retval = CR_IBU_Prep_remote_update())) {
         return retval;
     }
@@ -2041,7 +2030,7 @@ int CR_IBU_Reactivate_channels()
             vc->mrail.react_send_ready = 1;
             if (vc->mrail.react_entry)  // cm_thread has gotten REACT_DONE from peer:
             {                   //  enquue the REACT_DONE to be sent to peer
-                dbg("%s: [%d => %d]: REACT_DONE came earlier, enq now...\n", __func__, MPICR_pg_rank, vc->pg_rank);
+                PRINT_DEBUG(DEBUG_CR_verbose > 2,"%s: [%d => %d]: REACT_DONE came earlier, enq now...\n", __func__, MPICR_pg_rank, vc->pg_rank);
                 MSG_LOG_ENQUEUE(vc, vc->mrail.react_entry);
             }
             pthread_spin_unlock(&vc->mrail.cr_lock);
@@ -2050,7 +2039,7 @@ int CR_IBU_Reactivate_channels()
         }
     }
 
-    //dbg("MPIDI_CH3I_CM_Reactivate\n");
+    PRINT_DEBUG(DEBUG_CR_verbose > 1,"MPIDI_CH3I_CM_Reactivate\n");
 
     if ((retval = MPIDI_CH3I_CM_Reactivate(vc_vector))) {
         return retval;
@@ -2127,7 +2116,6 @@ static int CR_FTB_Init(int rank, char *sessionid)
     static int count = 0;
     count++;
 
-    //dbg("init count %d, rank=%d, session=%s\n", count, rank, sessionid );
 
     memset(&ftb_cinfo, 0, sizeof(ftb_cinfo));
     strcpy(ftb_cinfo.client_schema_ver, "0.5");
@@ -2161,7 +2149,7 @@ static int CR_FTB_Init(int rank, char *sessionid)
         goto err_malloc;
 
     snprintf(str, FTB_MAX_SUBSCRIPTION_STR, "event_space=FTB.STARTUP.MV2_MPIRUN , jobid=%s", sessionid);
-    CR_DBG("\t FTB_SUBSRIBE STR:%s: for rank %d\n", str, rank);
+    PRINT_DEBUG(DEBUG_CR_verbose > 1,"\t FTB_SUBSRIBE STR:%s: for rank %d\n", str, rank);
 
     ret = FTB_Subscribe(&shandle, ftb_handle, str, CR_FTB_Callback, NULL);
     //ret = FTB_Subscribe(&shandle, ftb_handle, str,NULL, NULL);
@@ -2186,12 +2174,11 @@ static int CR_FTB_Init(int rank, char *sessionid)
     if (ret < 0)
         goto err_read;
 
-    //dbg("use PMI_PORT=%s\n", str);
+    PRINT_DEBUG(DEBUG_CR_verbose > 1,"use PMI_PORT=%s\n", str);
     setenv("PMI_PORT", str, 1);
 
     MPIU_Free(str);
     ftb_init_done = 1;
-    //dbg("Succeed...\n");
     return (0);
 
   err_connect:
@@ -2248,12 +2235,12 @@ static void CR_FTB_Finalize()
         if (ret != FTB_SUCCESS) {
             fprintf(stderr, "FTB_Unsubscribe failed with code %d\n", ret);
         } else {
-            CR_DBG("FTB_unsubscribe succeeded %d\n", ret);
+            PRINT_DEBUG(DEBUG_CR_verbose ,"FTB_unsubscribe succeeded %d\n", ret);
         }
 
         //return ret;
         FTB_Disconnect(ftb_handle);
-        CR_DBG("\t %s:%d: [CR]rank =%d : Disconnected handle\n", __FILE__, __LINE__, MPIDI_Process.my_pg_rank);
+        PRINT_DEBUG(DEBUG_CR_verbose > 1,"\t %s:%d: [CR]rank =%d : Disconnected handle\n", __FILE__, __LINE__, MPIDI_Process.my_pg_rank);
     }
 }
 
@@ -2263,7 +2250,7 @@ static int parse_aggre_migration_string(char *msg, char *src, char *tgt)
 
     strncpy(buf, msg, 255);
     buf[255] = 0;
-    PRINT_DEBUG(DEBUG_FT_verbose, "buf = \"%s\"\n", buf);
+    PRINT_DEBUG(DEBUG_MIG_verbose > 1, "buf = \"%s\"\n", buf);
 
     /// "buf" is in format:  "srcnode  tgtnode  proc_cnt  procid1  procid2 ..."
     // parse this string to extract all infor
@@ -2274,7 +2261,7 @@ static int parse_aggre_migration_string(char *msg, char *src, char *tgt)
     tok = strtok(NULL, " \n\t");    // tgt
     strcpy(tgt, tok);
 
-    PRINT_DEBUG(DEBUG_FT_verbose, "msg=%s, src=%s, tgt=%s\n", msg, src, tgt);
+    PRINT_DEBUG(DEBUG_MIG_verbose > 1, "msg=%s, src=%s, tgt=%s\n", msg, src, tgt);
     return 0;
 }
 

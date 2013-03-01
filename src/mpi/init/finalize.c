@@ -1,10 +1,10 @@
-/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -129,6 +129,11 @@ thread that initialized MPI with either 'MPI_Init' or 'MPI_Init_thread'.
 @*/
 int MPI_Finalize( void )
 {
+#ifdef ENABLE_SCR
+    PRINT_DEBUG( DEBUG_CR_verbose, "Calling SCR_Finalize\n");
+    SCR_Finalize();
+#endif
+
     static const char FCNAME[] = "MPI_Finalize";
     int mpi_errno = MPI_SUCCESS;
 #if defined(HAVE_USLEEP) && defined(USE_COVERAGE)
@@ -229,11 +234,20 @@ int MPI_Finalize( void )
     specific entries need to be freed. */
     MPID_Comm *comm_ptr = NULL;
     int errflag = FALSE;
+    char *value = NULL;
     MPID_Comm_get_ptr( MPI_COMM_WORLD, comm_ptr );
     mpi_errno = MPIR_Barrier_impl(comm_ptr, &errflag); 
     if (mpi_errno) { 
              MPIU_ERR_POP(mpi_errno); 
     }
+#if !defined(DAPL_DEFAULT_PROVIDER) && !defined(_OSU_PSM_)
+    if ((value = getenv("MV2_SHOW_RUNLOG_INFO")) != NULL) {
+        mv2_show_runlog_level = atoi(value);
+        if (mv2_show_runlog_level) {
+            mv2_show_runlog_info(mv2_show_runlog_level);
+        }
+    }
+#endif
 #ifndef _OSU_PSM_ 
     if( MPIR_Process.comm_world->ch.shmem_coll_ok == 1) {
         mpi_errno = free_2level_comm(MPIR_Process.comm_world);
@@ -248,7 +262,7 @@ int MPI_Finalize( void )
     if (mpi_errno) {
 	MPIU_ERR_POP(mpi_errno);
     }
-    
+
     /* Call the low-priority (post Finalize) callbacks */
     MPIR_Call_finalize_callbacks( 0, MPIR_FINALIZE_CALLBACK_PRIO-1 );
 
@@ -263,7 +277,7 @@ int MPI_Finalize( void )
        finalize callbacks */
 
     /* FIXME The init/finalize paths in general need a big overhaul in order
-     * to account for the new MPIX_T_ code. */
+     * to account for the new MPI_T_ code. */
     if (!MPIR_T_is_initialized()) {
         MPIR_T_finalize_pvars();
 

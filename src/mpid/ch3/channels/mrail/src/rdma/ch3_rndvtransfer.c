@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -421,7 +421,64 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
     MPIDI_Pkt_set_seqnum(&pkt_head, seqnum);
     MPIDI_Request_set_seqnum(sreq, seqnum);
 
-#if defined(_SMP_LIMIC_)
+#if defined(_SMP_CMA_) && defined(_SMP_LIMIC_)
+    int use_cma = g_smp_use_cma; 
+    int use_limic = g_smp_use_limic2; 
+#if defined(_ENABLE_CUDA_)
+    if (rdma_enable_cuda && sreq->mrail.cuda_transfer_mode != NONE) {
+        use_cma = 0; 
+        use_limic = 0;
+    } 
+#endif 
+
+    /* Use cma for contiguous data 
+     * Use shared memory for non-contiguous data
+     */
+    if ((!use_cma && !use_limic) || 
+        sreq->dev.OnDataAvail == MPIDI_CH3_ReqHandler_SendReloadIOV ||
+        sreq->dev.iov_count > 1) {
+        pkt_head.csend_req_id = NULL;
+        pkt_head.send_req_id = NULL;
+    }
+    else if ((!use_cma && use_limic) || 
+        sreq->dev.OnDataAvail == MPIDI_CH3_ReqHandler_SendReloadIOV ||
+        sreq->dev.iov_count > 1) {
+        pkt_head.send_req_id = sreq;
+        pkt_head.csend_req_id = NULL;
+    }
+    else if ((use_cma && !use_limic) || 
+        sreq->dev.OnDataAvail == MPIDI_CH3_ReqHandler_SendReloadIOV ||
+        sreq->dev.iov_count > 1) {
+        pkt_head.csend_req_id = sreq;
+        pkt_head.send_req_id = NULL;
+    }
+    else {
+        pkt_head.send_req_id = sreq;
+        pkt_head.csend_req_id = NULL;
+    }
+#endif
+
+#if defined(_SMP_CMA_) && !defined(_SMP_LIMIC_)
+    int use_cma = g_smp_use_cma; 
+#if defined(_ENABLE_CUDA_)
+    if (rdma_enable_cuda && sreq->mrail.cuda_transfer_mode != NONE) {
+        use_cma = 0; 
+    } 
+#endif 
+
+    /* Use cma for contiguous data 
+     * Use shared memory for non-contiguous data
+     */
+    if (!use_cma ||
+        sreq->dev.OnDataAvail == MPIDI_CH3_ReqHandler_SendReloadIOV ||
+        sreq->dev.iov_count > 1) {
+        pkt_head.csend_req_id = NULL;
+    } else {
+        pkt_head.csend_req_id = sreq;
+    }
+#endif
+
+#if defined(_SMP_LIMIC_) && !defined(_SMP_CMA_)
     int use_limic = g_smp_use_limic2; 
 #if defined(_ENABLE_CUDA_)
     if (rdma_enable_cuda && sreq->mrail.cuda_transfer_mode != NONE) {
@@ -460,14 +517,27 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
         DEBUG_PRINT("r3 packet not sent \n");
         MPID_Request_release(send_req);
     }
+
+#if defined(_SMP_CMA_) && !defined(_SMP_LIMIC_)
+      if (pkt_head.csend_req_id) {
+        sreq->mrail.nearly_complete = 1;
+        return MPI_SUCCESS;
+    }
+#endif
  
-#if defined(_SMP_LIMIC_)
+#if defined(_SMP_LIMIC_) && !defined(_SMP_CMA_)
       if (pkt_head.send_req_id) {
         sreq->mrail.nearly_complete = 1;
         return MPI_SUCCESS;
     }
 #endif
 
+#if defined(_SMP_LIMIC_) && defined(_SMP_CMA_)
+      if (pkt_head.send_req_id || pkt_head.csend_req_id) {
+        sreq->mrail.nearly_complete = 1;
+        return MPI_SUCCESS;
+    }
+#endif
 
     DEBUG_PRINT("r3 sent req is %p\n", sreq);
     if (MPIDI_CH3I_SMP_SendQ_empty(vc)) {

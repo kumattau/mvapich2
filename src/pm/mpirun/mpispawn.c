@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -22,6 +22,7 @@
 #include <signal_processor.h>
 #include <mpispawn_error_codes.h>
 #include <gethostip.h>
+#include <mpirun_environ.h>
 
 #include <signal.h>
 #include <stdio.h>
@@ -39,12 +40,6 @@
 #include <sys/time.h>
 
 #define DBG(_stmt_)
-typedef struct {
-//     char *viadev_device;
-//     char *viadev_default_port;
-    char *mpirun_rank;
-    char *local_rank;
-} lvalues;
 
 // Static variables
 static int USE_LINEAR_SSH;
@@ -165,25 +160,20 @@ void mpispawn_abort(int abort_code)
     exit(EXIT_FAILURE);
 }
 
-lvalues get_lvalues(int i)
-{
-    lvalues v;
-    char *buffer = NULL;
-    if (USE_LINEAR_SSH) {
-        buffer = mkstr("MPISPAWN_MPIRUN_RANK_%d", i);
-        if (!buffer) {
-            fprintf(stderr, "%s:%d Insufficient memory\n", __FILE__, __LINE__);
-            exit(EXIT_FAILURE);
-        }
+static inline void get_lvalues(int index) {
+    char buffer[32], param_value[32];
+    sprintf(buffer, "MPISPAWN_MPIRUN_RANK_%d", index);
 
-        v.mpirun_rank = env2str(buffer);
-        free(buffer);
-    } else
-        v.mpirun_rank = mkstr("%d", ranks[mt_id][i]);
-    return v;
+    if (USE_LINEAR_SSH) {
+        local_processes[index].rank = env2int(buffer);
+    } else {
+        local_processes[index].rank = ranks[mt_id][index];
+        sprintf(param_value, "%d", local_processes[index].rank);
+        setenv(buffer, param_value, 1);
+    }
 }
 
-int setup_global_environment()
+static inline int setup_global_environment()
 {
     char my_host_name[MAX_HOST_LEN + MAX_PORT_LEN];
     char tmp[MAX_HOST_LEN + 1];
@@ -194,6 +184,7 @@ int setup_global_environment()
     setenv("MPIRUN_NPROCS", getenv("MPISPAWN_GLOBAL_NPROCS"), 1);
     setenv("MPIRUN_ID", getenv("MPISPAWN_MPIRUN_ID"), 1);
     setenv("MV2_NUM_NODES_IN_JOB", getenv("MPISPAWN_NNODES"), 1);
+    setenv("MV2_NODE_ID", getenv("MPISPAWN_ID"), 1);
 
     /* Ranks now connect to mpispawn */
     int rv = gethostname(tmp, MAX_HOST_LEN);
@@ -257,13 +248,22 @@ int setup_global_environment()
     return 0;
 }
 
-void setup_local_environment(lvalues lv)
+static inline void setup_local_environment(int index)
 {
-    setenv("PMI_ID", lv.mpirun_rank, 1);
-    setenv("MV2_COMM_WORLD_LOCAL_RANK", lv.local_rank, 1);
-    setenv("MV2_COMM_WORLD_RANK", lv.mpirun_rank, 1);
-    setenv("MV2_COMM_WORLD_LOCAL_SIZE", mkstr("%d", NCHILD), 1);
-    setenv("MV2_COMM_WORLD_SIZE", mkstr("%d", N), 1);
+    char buffer[32];
+     
+    sprintf(buffer,"%d", local_processes[index].rank);
+    setenv("PMI_ID", buffer, 1);
+    setenv("MV2_COMM_WORLD_RANK", buffer, 1);
+
+    sprintf(buffer,"%d", index);
+    setenv("MV2_COMM_WORLD_LOCAL_RANK", buffer, 1);
+
+    sprintf(buffer,"%d", NCHILD);
+    setenv("MV2_COMM_WORLD_LOCAL_SIZE", buffer, 1);
+
+    sprintf(buffer,"%d", N);
+    setenv("MV2_COMM_WORLD_SIZE", buffer, 1);
 
 #ifdef CKPT
     setenv("MV2_CKPT_FILE", ckpt_filename, 1);
@@ -300,6 +300,9 @@ void spawn_processes(int n)
     cr_mig_tgt = 0;
 #endif
 #endif
+    for (i = 0; i < n; i++) {
+        get_lvalues(i);
+    }
 
     for (i = 0; i < n; i++) {
         local_processes[i].pid = fork();
@@ -313,10 +316,8 @@ void spawn_processes(int n)
 
             int argc, nwritten;
             char **argv, buffer[80];
-            lvalues lv = get_lvalues(i);
-            lv.local_rank = mkstr("%d", i);
 
-            setup_local_environment(lv);
+            setup_local_environment(i);
 
             argc = env2int("MPISPAWN_ARGC");
 
@@ -366,16 +367,6 @@ void spawn_processes(int n)
             PRINT_DEBUG(DEBUG_Fork_verbose, "exit(EXIT_FAILURE)\n");
             exit(EXIT_FAILURE);
 
-        } else {
-
-            char *buffer;
-            buffer = mkstr("MPISPAWN_MPIRUN_RANK_%d", i);
-            if (!buffer) {
-                fprintf(stderr, "%s:%d Insufficient memory\n", __FILE__, __LINE__);
-                exit(EXIT_FAILURE);
-            }
-            local_processes[i].rank = env2int(buffer);
-            free(buffer);
         }
     }
 }
@@ -656,7 +647,10 @@ void mpispawn_checkin(in_port_t l_port)
                     perror("accept [mt_checkin]");
                 }
                 mpispawn_fds[i + offset] = sock;
-                if (read_socket(sock, &id, sizeof(int)) || read_socket(sock, &mpispawn_pids[i], sizeof(pid_t)) || read_socket(sock, &port, sizeof(in_port_t))) {
+
+                if (read_socket(sock, &id, sizeof(int))
+                        || read_socket(sock, &mpispawn_pids[i], sizeof(pid_t))
+                        || read_socket(sock, &port, sizeof(in_port_t))) {
                     PRINT_ERROR("read_socket() failed\n");
 #ifdef CKPT
                     cr_cleanup();
@@ -714,8 +708,24 @@ void mpispawn_checkin(in_port_t l_port)
         exit(EXIT_FAILURE);
     }
 
-    if (USE_LINEAR_SSH && !(mt_id == 0 && env2int("MPISPAWN_USE_TOTALVIEW")))
+    if (recv_environ(mpirun_socket)) {
+        fprintf(stderr, "Error writing receiving environ!\n");
         close(mpirun_socket);
+        exit(EXIT_FAILURE);
+    }
+
+    if (!USE_LINEAR_SSH) {
+        for (i = 0; i < MPISPAWN_NCHILD; i++) {
+            if (send_environ(mpispawn_fds[i + offset])) {
+                close(mpirun_socket);
+                exit(EXIT_FAILURE);
+            }
+        }
+    }
+
+    else if (!(mt_id == 0 && env2int("MPISPAWN_USE_TOTALVIEW"))) {
+        close(mpirun_socket);
+    }
 }
 
 in_port_t init_listening_socket(int *mc_socket)

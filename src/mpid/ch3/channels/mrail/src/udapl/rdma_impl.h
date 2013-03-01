@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -104,4 +104,7 @@ void rdma_init_parameters (mv2_MPIDI_CH3I_RDMA_Process_t *proc);
 int MPIDI_CH3I_comm_create(MPID_Comm *comm, void *param);
 
 int MPIDI_CH3I_comm_destroy(MPID_Comm *comm, void *param);
+
+void rdma_process_hostid(MPIDI_PG_t * pg, int *host_ids, int my_rank,
+                         int pg_size);
 #endif /* RDMA_IMPL_H */

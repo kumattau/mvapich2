@@ -4,7 +4,7 @@
  *      See COPYRIGHT in top-level directory.
  */
 
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -173,7 +173,7 @@ MRAILI_Fast_rdma_fill_start_buf (MPIDI_VC_t * vc,
                                  MPID_IOV * iov, int n_iov,
                                  int *num_bytes_ptr)
 {
-    MPIDI_CH3_Pkt_send_t *cached;
+    MPIDI_CH3_Pkt_send_t *cached = NULL;
 
     /* Here we assume that iov holds a packet header, 
        ATTN!: it is a must!! */
@@ -585,7 +585,6 @@ int MPIDI_CH3I_MRAILI_Eager_send (MPIDI_VC_t * vc,
                               int pkt_len,
                               int *num_bytes_ptr, vbuf ** buf_handle)
 {
-    MPIDI_CH3I_MRAILI_Pkt_comm_header *pheader;
     MRAILI_Channel_info channel;
     vbuf *v;
     int  mpi_errno;
@@ -609,7 +608,6 @@ int MPIDI_CH3I_MRAILI_Eager_send (MPIDI_VC_t * vc,
     MRAILI_Send_select_channel (vc, &channel);
     DEBUG_PRINT ("[eager send] len %d, selected channel hca %d, rail %d\n",
                  *num_bytes_ptr, channel.hca_index, channel.rail_index);
-    pheader = v->pheader;
 
     vbuf_init_send (v, *num_bytes_ptr, &channel);
     /* PACKET_SET_CREDIT (pheader, vc, channel.rail_index); */
@@ -625,7 +623,6 @@ int MPIDI_CH3I_MRAILI_rput_complete(MPIDI_VC_t * vc,
                                  int *num_bytes_ptr, vbuf ** buf_handle,
                                  int rail)
 {
-    MPIDI_CH3I_MRAILI_Pkt_comm_header *pheader;
     vbuf *v;
     int  mpi_errno;
     MRAILI_Channel_info channel;
@@ -642,7 +639,6 @@ int MPIDI_CH3I_MRAILI_rput_complete(MPIDI_VC_t * vc,
 
     DEBUG_PRINT("[eager send] len %d, selected rail hca %d, rail %d\n",
                 *num_bytes_ptr, vc->mrail.rails[rail].hca_index, rail);
-    pheader = v->pheader;
 
     vbuf_init_send(v, *num_bytes_ptr, &channel);
     /*PACKET_SET_CREDIT(pheader, vc, channel.rail_index);*/

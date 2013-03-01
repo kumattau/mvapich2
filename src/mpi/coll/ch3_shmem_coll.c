@@ -6,7 +6,7 @@
  * All rights reserved.
  */
 
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -20,6 +20,7 @@
 
 #define _GNU_SOURCE 1
 
+#include "mpichconf.h"
 #include <mpimem.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -47,6 +48,10 @@
 #include "alltoall_tuning.h"
 #include "scatter_tuning.h"
 #include "allreduce_tuning.h"
+#include "reduce_tuning.h"
+#include "allgather_tuning.h"
+#include "red_scat_tuning.h"
+#include "allgatherv_tuning.h"
 
 #if defined(_OSU_PSM_)
 // TODO : expose debug infra structure to PSM interface
@@ -72,8 +77,8 @@ int mv2_knomial_2level_bcast_system_size_threshold = 64;
 int mv2_shmem_coll_size = 0;
 char *mv2_shmem_coll_file = NULL;
 
-char hostname[SHMEM_COLL_HOSTNAME_LEN];
-int my_rank;
+static char mv2_hostname[SHMEM_COLL_HOSTNAME_LEN];
+static int mv2_my_rank;
 
 int mv2_g_shmem_coll_blocks = 8;
 #if defined(_SMP_LIMIC_)
@@ -107,6 +112,7 @@ struct allgatherv_tuning mv2_allgatherv_mv2_tuning_table[] = {
 int mv2_enable_shmem_collectives = 1;
 int mv2_allgather_ranking = 1;
 int mv2_disable_shmem_allreduce = 0;
+int shmem_coll_count_threshold=16; 
 #if defined(_MCST_SUPPORT_)
 int mv2_use_mcast_allreduce = 1;
 int mv2_mcast_allreduce_small_msg_size = 1024;
@@ -114,7 +120,8 @@ int mv2_mcast_allreduce_large_msg_size = 128 * 1024;
 #endif                          /*   #if defined(_MCST_SUPPORT_)  */
 int mv2_disable_shmem_reduce = 0;
 int mv2_use_knomial_reduce = 1;
-int mv2_reduce_knomial_factor = 4;
+int mv2_reduce_inter_knomial_factor = -1;
+int mv2_reduce_intra_knomial_factor = -1;
 int mv2_disable_shmem_barrier = 0;
 int mv2_use_two_level_gather = 1;
 int mv2_use_direct_gather = 1;
@@ -129,6 +136,7 @@ int mv2_use_old_alltoall = 0;
 int mv2_alltoall_inplace_old = 0;
 int mv2_use_old_scatter = 0;
 int mv2_use_old_allreduce = 0;
+int mv2_use_old_reduce = 0;
 int mv2_scatter_rd_inter_leader_bcast = 1;
 int mv2_scatter_ring_inter_leader_bcast = 1;
 int mv2_knomial_inter_leader_bcast = 1;
@@ -172,6 +180,22 @@ char *mv2_user_allreduce_intra = NULL;
 char *mv2_user_allreduce_inter = NULL;
 int mv2_user_allreduce_two_level = 0;
 
+/* Runtime threshold for reduce */
+char *mv2_user_reduce_intra = NULL;
+char *mv2_user_reduce_inter = NULL;
+int mv2_user_reduce_two_level = 0;
+int mv2_user_allgather_two_level = 0;
+
+/* Runtime threshold for allgather */
+char *mv2_user_allgather_intra = NULL;
+char *mv2_user_allgather_inter = NULL;
+
+/* Runtime threshold for red_scat */
+char *mv2_user_red_scat_inter = NULL;
+
+/* Runtime threshold for allgatherv */
+char *mv2_user_allgatherv_inter = NULL;
+
 /* Runtime threshold for allgatherv */
 int mv2_user_allgatherv_switch_point = 0;
 
@@ -188,7 +212,7 @@ int mv2_bcast_scatter_ring_overlap_cores_lowerbound = 32;
 int mv2_use_pipelined_bcast = 1;
 int bcast_segment_size = 8192;
 
-char *kvs_name;
+static char *mv2_kvs_name;
 
 int mv2_use_osu_collectives = 1;
 int mv2_use_anl_collectives = 0;
@@ -227,30 +251,30 @@ int smc_store_set;
 #endif
 
 #ifdef _ENABLE_CUDA_
-void *host_send_buf = NULL;
-void *host_recv_buf = NULL;
-void *dev_sr_buf = NULL;
-int host_sendbuf_size = 0;
-int host_recvbuf_size = 0;
-int dev_srbuf_size = 0;
-int *host_send_displs = NULL;
-int *host_recv_displs = NULL;
-int host_send_peers = 0;
-int host_recv_peers = 0;
-int *original_send_displs = NULL;
-int *original_recv_displs = NULL;
-void *original_send_buf = NULL;
-void *original_recv_buf = NULL;
-void *allgather_store_buf = NULL;
-int allgather_store_buf_size = 256 * 1024;
-cudaEvent_t *sync_event = NULL;
-void *cuda_coll_pack_buf = 0;
-int cuda_coll_pack_buf_size = 0;
-void *cuda_coll_unpack_buf = 0;
-int cuda_coll_unpack_buf_size = 0;
-void *orig_recvbuf = NULL;
-int orig_recvcount = 0;
-MPI_Datatype orig_recvtype;
+static void *mv2_cuda_host_send_buf = NULL;
+static void *mv2_cuda_host_recv_buf = NULL;
+static void *mv2_cuda_dev_sr_buf = NULL;
+static int mv2_cuda_host_sendbuf_size = 0;
+static int mv2_cuda_host_recvbuf_size = 0;
+static int mv2_cuda_dev_srbuf_size = 0;
+static int *mv2_cuda_host_send_displs = NULL;
+static int *mv2_cuda_host_recv_displs = NULL;
+static int mv2_cuda_host_send_peers = 0;
+static int mv2_cuda_host_recv_peers = 0;
+static int *mv2_cuda_original_send_displs = NULL;
+static int *mv2_cuda_original_recv_displs = NULL;
+static void *mv2_cuda_original_send_buf = NULL;
+static void *mv2_cuda_original_recv_buf = NULL;
+void *mv2_cuda_allgather_store_buf = NULL;
+int mv2_cuda_allgather_store_buf_size = 256 * 1024;
+cudaEvent_t *mv2_cuda_sync_event = NULL;
+static void *mv2_cuda_coll_pack_buf = 0;
+static int mv2_cuda_coll_pack_buf_size = 0;
+static void *mv2_cuda_coll_unpack_buf = 0;
+static int mv2_cuda_coll_unpack_buf_size = 0;
+static void *mv2_cuda_orig_recvbuf = NULL;
+static int mv2_cuda_orig_recvcount = 0;
+static MPI_Datatype mv2_cuda_orig_recvtype;
 #endif
 
 void MV2_collectives_arch_init(int heterogeneity)
@@ -263,6 +287,10 @@ void MV2_collectives_arch_init(int heterogeneity)
     MV2_set_alltoall_tuning_table(heterogeneity);
     MV2_set_scatter_tuning_table(heterogeneity);
     MV2_set_allreduce_tuning_table(heterogeneity);
+    MV2_set_reduce_tuning_table(heterogeneity);
+    MV2_set_allgather_tuning_table(heterogeneity);
+    MV2_set_red_scat_tuning_table(heterogeneity);
+    MV2_set_allgatherv_tuning_table(heterogeneity);
 #endif                          /* defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */
 
 }
@@ -360,6 +388,31 @@ static int tuning_runtime_init()
         MV2_internode_Allreduce_is_define(mv2_user_allreduce_inter, mv2_user_allreduce_intra);
     }
 
+    /* If MV2_INTRA_REDUCE_TUNING is define && MV2_INTER_REDUCE_TUNING is not define */
+    if (mv2_user_reduce_intra != NULL && mv2_user_reduce_inter == NULL) {
+        MV2_intranode_Reduce_is_define(mv2_user_reduce_intra);
+    }
+
+    /* if MV2_INTER_REDUCE_TUNING is define with/without MV2_INTRA_REDUCE_TUNING */
+    if (mv2_user_reduce_inter != NULL) {
+        MV2_internode_Reduce_is_define(mv2_user_reduce_inter, mv2_user_reduce_intra);
+    }
+
+    /* if MV2_INTER_ALLGATHER_TUNING is define with/without MV2_INTRA_ALLGATHER_TUNING */
+    if (mv2_user_allgather_inter != NULL) {
+        MV2_internode_Allgather_is_define(mv2_user_allgather_inter);
+    }
+
+    /* if MV2_INTER_RED_SCAT_TUNING is define with/without MV2_INTRA_RED_SCAT_TUNING */
+    if (mv2_user_red_scat_inter != NULL) {
+        MV2_internode_Red_scat_is_define(mv2_user_red_scat_inter);
+    }
+
+    /* if MV2_INTER_ALLGATHERV_TUNING is define */
+    if (mv2_user_allgatherv_inter != NULL) {
+        MV2_internode_Allgatherv_is_define(mv2_user_allgatherv_inter);
+    }
+
     /* If MV2_ALLGATHERV_RD_THRESHOLD is define */
     if (mv2_user_allgatherv_switch_point > 0) {
         for (i = 0; i < mv2_size_mv2_allgatherv_mv2_tuning_table; i++) {
@@ -381,6 +434,10 @@ void MV2_collectives_arch_finalize()
     MV2_cleanup_alltoall_tuning_table();
     MV2_cleanup_scatter_tuning_table();
     MV2_cleanup_allreduce_tuning_table();
+    MV2_cleanup_reduce_tuning_table();
+    MV2_cleanup_allgather_tuning_table();
+    MV2_cleanup_red_scat_tuning_table();
+    MV2_cleanup_allgatherv_tuning_table();
 }
 
 void MPIDI_CH3I_SHMEM_COLL_Cleanup()
@@ -444,13 +501,13 @@ int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t * pg, int local_id)
     if ((value = getenv("MV2_SHMEM_COLL_NUM_PROCS")) != NULL) {
         mv2_shmem_coll_num_procs = (int) atoi(value);
     }
-    if (gethostname(hostname, sizeof (char) * SHMEM_COLL_HOSTNAME_LEN) < 0) {
+    if (gethostname(mv2_hostname, sizeof (char) * SHMEM_COLL_HOSTNAME_LEN) < 0) {
         MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail", "%s: %s",
                                   "gethostname", strerror(errno));
     }
 
-    PMI_Get_rank(&my_rank);
-    MPIDI_PG_Get_vc(pg, my_rank, &vc);
+    PMI_Get_rank(&mv2_my_rank);
+    MPIDI_PG_Get_vc(pg, mv2_my_rank, &vc);
 
     /* add pid for unique file name */
     mv2_shmem_coll_file = (char *) MPIU_Malloc(pathlen +
@@ -461,10 +518,10 @@ int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t * pg, int local_id)
                                   "**nomem %s", "mv2_shmem_coll_file");
     }
 
-    MPIDI_PG_GetConnKVSname(&kvs_name);
+    MPIDI_PG_GetConnKVSname(&mv2_kvs_name);
     /* unique shared file name */
     sprintf(mv2_shmem_coll_file, "%s/ib_shmem_coll-%s-%s-%d.tmp",
-            shmem_dir, kvs_name, hostname, getuid());
+            shmem_dir, mv2_kvs_name, mv2_hostname, getuid());
 
     /* open the shared memory file */
     mv2_shmem_coll_obj.fd = open(mv2_shmem_coll_file, O_RDWR | O_CREAT,
@@ -472,7 +529,7 @@ int MPIDI_CH3I_SHMEM_COLL_init(MPIDI_PG_t * pg, int local_id)
     if (mv2_shmem_coll_obj.fd < 0) {
         /* Fallback */
         sprintf(mv2_shmem_coll_file, "/tmp/ib_shmem_coll-%s-%s-%d.tmp",
-                kvs_name, hostname, getuid());
+                mv2_kvs_name, mv2_hostname, getuid());
 
         mv2_shmem_coll_obj.fd = open(mv2_shmem_coll_file, O_RDWR | O_CREAT,
                                      S_IRWXU | S_IRWXG | S_IRWXO);
@@ -560,7 +617,7 @@ int MPIDI_CH3I_SHMEM_COLL_Mmap(MPIDI_PG_t * pg, int local_id)
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHMEM_COLLMMAP);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SHMEM_COLLMMAP);
 
-    MPIDI_PG_Get_vc(pg, my_rank, &vc);
+    MPIDI_PG_Get_vc(pg, mv2_my_rank, &vc);
 
     mv2_shmem_coll_obj.mmap_ptr = mmap(0, mv2_shmem_coll_size,
                                        (PROT_READ | PROT_WRITE), (MAP_SHARED),
@@ -1049,6 +1106,83 @@ int is_shmem_collectives_enabled()
     return mv2_enable_shmem_collectives;
 }
 
+inline int mv2_increment_shmem_coll_counter(MPID_Comm *comm_ptr)
+{
+   int mpi_errno = MPI_SUCCESS, flag=0; 
+   PMPI_Comm_test_inter(comm_ptr->handle, &flag);
+
+   if(flag == 0 && mv2_enable_shmem_collectives
+      && comm_ptr->ch.shmem_coll_ok == 0
+      && check_split_comm(pthread_self())) { 
+        comm_ptr->ch.shmem_coll_count++; 
+
+        if(comm_ptr->ch.shmem_coll_count >= shmem_coll_count_threshold) { 
+            disable_split_comm(pthread_self());
+            mpi_errno = create_2level_comm(comm_ptr->handle, comm_ptr->local_size, comm_ptr->rank);
+            if(mpi_errno) {
+               MPIU_ERR_POP(mpi_errno);
+            }
+            enable_split_comm(pthread_self());
+            if(mpi_errno) {
+               MPIU_ERR_POP(mpi_errno);
+            }
+        } 
+   } 
+
+fn_exit:
+  return mpi_errno;    
+
+fn_fail:
+  goto fn_exit; 
+} 
+
+inline int mv2_increment_allgather_coll_counter(MPID_Comm *comm_ptr)
+{   
+   int mpi_errno = MPI_SUCCESS, flag=0, errflag=0;
+   PMPI_Comm_test_inter(comm_ptr->handle, &flag);
+
+   if(flag == 0 
+      && mv2_allgather_ranking 
+      && mv2_enable_shmem_collectives
+      && comm_ptr->ch.allgather_comm_ok == 0
+      && check_split_comm(pthread_self())) {
+        comm_ptr->ch.allgather_coll_count++;
+
+        if(comm_ptr->ch.allgather_coll_count >= shmem_coll_count_threshold) {
+            disable_split_comm(pthread_self());
+            if(comm_ptr->ch.shmem_coll_ok == 0) { 
+                /* If comm_ptr does not have leader/shmem sub-communicators,
+                 * create them now */ 
+                mpi_errno = create_2level_comm(comm_ptr->handle, comm_ptr->local_size, comm_ptr->rank);
+                if(mpi_errno) {
+                   MPIU_ERR_POP(mpi_errno);
+                }
+            } 
+
+            if(comm_ptr->ch.shmem_coll_ok == 1) { 
+                /* Before we go ahead with allgather-comm creation, be sure that 
+                 * the sub-communicators are actually ready */ 
+                mpi_errno = create_allgather_comm(comm_ptr, &errflag);
+                if(mpi_errno) {
+                   MPIU_ERR_POP(mpi_errno);
+                }
+            } 
+            enable_split_comm(pthread_self());
+            if(mpi_errno) {
+               MPIU_ERR_POP(mpi_errno);
+            }
+        }
+   }
+
+fn_exit:
+  return mpi_errno;
+
+fn_fail:
+  goto fn_exit;
+}
+
+
+
 #if defined(_SMP_LIMIC_)
 void increment_mv2_limic_comm_count()
 {
@@ -1128,10 +1262,15 @@ void MV2_Read_env_vars(void)
         if (flag >= 0)
             mv2_use_knomial_reduce = flag;
     }
-    if ((value = getenv("MV2_USE_KNOMIAL_REDUCE_FACTOR")) != NULL) {
+    if ((value = getenv("MV2_USE_INTER_KNOMIAL_REDUCE_FACTOR")) != NULL) {
         flag = (int) atoi(value);
         if (flag >= 0)
-            mv2_reduce_knomial_factor = flag;
+            mv2_reduce_inter_knomial_factor = flag;
+    }
+    if ((value = getenv("MV2_USE_INTRA_KNOMIAL_REDUCE_FACTOR")) != NULL) {
+        flag = (int) atoi(value);
+        if (flag >= 0)
+            mv2_reduce_intra_knomial_factor = flag;
     }
     if ((value = getenv("MV2_USE_SHMEM_BARRIER")) != NULL) {
         flag = (int) atoi(value);
@@ -1288,6 +1427,14 @@ void MV2_Read_env_vars(void)
         else
             mv2_use_old_allreduce = 0;
     }
+    if ((value = getenv("MV2_USE_OLD_REDUCE")) != NULL) {
+        flag = (int) atoi(value);
+        if (flag > 0)
+            mv2_use_old_reduce = 1;
+        else
+            mv2_use_old_reduce = 0;
+    }
+
     if ((value = getenv("MV2_USE_SHMEM_BCAST")) != NULL) {
         flag = (int) atoi(value);
         if (flag > 0)
@@ -1444,11 +1591,47 @@ void MV2_Read_env_vars(void)
         mv2_user_allreduce_inter = value;
         mv2_tune_parameter = 1;
     }
+
+    if ((value = getenv("MV2_INTRA_REDUCE_TUNING")) != NULL) {
+        mv2_user_reduce_intra = value;
+        mv2_tune_parameter = 1;
+    }
+    if ((value = getenv("MV2_INTER_REDUCE_TUNING")) != NULL) {
+        mv2_user_reduce_inter = value;
+        mv2_tune_parameter = 1;
+    }
+    if ((value = getenv("MV2_INTER_ALLGATHER_TUNING")) != NULL) {
+        mv2_user_allgather_inter = value;
+        mv2_tune_parameter = 1;
+    }
+
+    if ((value = getenv("MV2_INTER_RED_SCAT_TUNING")) != NULL) {
+        mv2_user_red_scat_inter = value;
+        mv2_tune_parameter = 1;
+    }
+
+    if ((value = getenv("MV2_INTER_ALLGATHERV_TUNING")) != NULL) {
+        mv2_user_allgatherv_inter = value;
+        mv2_tune_parameter = 1;
+    }
+
     if ((value = getenv("MV2_INTER_ALLREDUCE_TUNING_TWO_LEVEL")) != NULL) {
         flag = (int) atoi(value);
         if (flag > 0)
             mv2_user_allreduce_two_level = flag;
     }
+
+    if ((value = getenv("MV2_INTER_REDUCE_TUNING_TWO_LEVEL")) != NULL) {
+        flag = (int) atoi(value);
+        if (flag > 0)
+            mv2_user_reduce_two_level = flag;
+    }
+    if ((value = getenv("MV2_INTER_ALLGATHER_TUNING_TWO_LEVEL")) != NULL) {
+        flag = (int) atoi(value);
+        if (flag > 0)
+            mv2_user_allgather_two_level = flag;
+    }
+
     if ((value = getenv("MV2_SHMEM_COLL_SPIN_COUNT")) != NULL) {
         flag = (int) atoi(value);
         if (flag > 0)
@@ -1563,6 +1746,9 @@ void MV2_Read_env_vars(void)
     if ((value = getenv("MV2_USE_MCAST_PIPELINE_SHM")) != NULL) {
         mv2_use_mcast_pipeline_shm = atoi(value);
     }
+    if ((value = getenv("MV2_TWO_LEVEL_COMM_THRESHOLD")) != NULL) {
+        shmem_coll_count_threshold = atoi(value);
+    }
 
     /* Override MPICH2 default env values for Gatherv */
     MPIR_PARAM_GATHERV_INTER_SSEND_MIN_PROCS = 1024;
@@ -1586,70 +1772,70 @@ int cuda_stage_alloc(void **send_buf, int sendsize,
     int page_size = getpagesize();
     int result, mpi_errno = MPI_SUCCESS;
 
-    if (send_on_device && *send_buf != MPI_IN_PLACE && host_sendbuf_size < sendsize) {
-        if (host_send_buf) {
-            if (host_sendbuf_size >= rdma_cuda_register_naive_buf) {
-                ibv_cuda_unregister(host_send_buf);
+    if (send_on_device && *send_buf != MPI_IN_PLACE && mv2_cuda_host_sendbuf_size < sendsize) {
+        if (mv2_cuda_host_send_buf) {
+            if (mv2_cuda_host_sendbuf_size >= rdma_cuda_register_naive_buf) {
+                ibv_cuda_unregister(mv2_cuda_host_send_buf);
             }
-            free(host_send_buf);
+            free(mv2_cuda_host_send_buf);
         }
-        host_sendbuf_size =
+        mv2_cuda_host_sendbuf_size =
             sendsize < rdma_cuda_block_size ? rdma_cuda_block_size : sendsize;
-        result = posix_memalign(&host_send_buf, page_size, host_sendbuf_size);
-        if ((result != 0) || (NULL == host_send_buf)) {
+        result = posix_memalign(&mv2_cuda_host_send_buf, page_size, mv2_cuda_host_sendbuf_size);
+        if ((result != 0) || (NULL == mv2_cuda_host_send_buf)) {
             mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
                                              FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
                                              "%s: %s", "posix_memalign", strerror(errno));
             return (mpi_errno);
         }
-        if (host_sendbuf_size >= rdma_cuda_register_naive_buf) {
-            ibv_cuda_register(host_send_buf, host_sendbuf_size);
+        if (mv2_cuda_host_sendbuf_size >= rdma_cuda_register_naive_buf) {
+            ibv_cuda_register(mv2_cuda_host_send_buf, mv2_cuda_host_sendbuf_size);
         }
     }
-    if (recv_on_device && host_recvbuf_size < recvsize) {
-        if (host_recv_buf) {
-            if (host_recvbuf_size >= rdma_cuda_register_naive_buf) {
-                ibv_cuda_unregister(host_recv_buf);
+    if (recv_on_device && mv2_cuda_host_recvbuf_size < recvsize) {
+        if (mv2_cuda_host_recv_buf) {
+            if (mv2_cuda_host_recvbuf_size >= rdma_cuda_register_naive_buf) {
+                ibv_cuda_unregister(mv2_cuda_host_recv_buf);
             }
-            free(host_recv_buf);
+            free(mv2_cuda_host_recv_buf);
         }
-        host_recvbuf_size =
+        mv2_cuda_host_recvbuf_size =
             recvsize < rdma_cuda_block_size ? rdma_cuda_block_size : recvsize;
-        result = posix_memalign(&host_recv_buf, page_size, host_recvbuf_size);
-        if ((result != 0) || (NULL == host_recv_buf)) {
+        result = posix_memalign(&mv2_cuda_host_recv_buf, page_size, mv2_cuda_host_recvbuf_size);
+        if ((result != 0) || (NULL == mv2_cuda_host_recv_buf)) {
             mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
                                              FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
                                              "%s: %s", "posix_memalign", strerror(errno));
             return (mpi_errno);
         }
-        if (host_recvbuf_size >= rdma_cuda_register_naive_buf) {
-            ibv_cuda_register(host_recv_buf, host_recvbuf_size);
+        if (mv2_cuda_host_recvbuf_size >= rdma_cuda_register_naive_buf) {
+            ibv_cuda_register(mv2_cuda_host_recv_buf, mv2_cuda_host_recvbuf_size);
         }
     }
 
     if (send_on_device && *send_buf != MPI_IN_PLACE) {
         if (send_on_device) {
-            MPIU_Memcpy_CUDA(host_send_buf, *send_buf, sendsize, cudaMemcpyDeviceToHost);
+            MPIU_Memcpy_CUDA(mv2_cuda_host_send_buf, *send_buf, sendsize, cudaMemcpyDeviceToHost);
         }
     } else {
         if (recv_on_device) {
-            MPIU_Memcpy_CUDA(((char *) (host_recv_buf) + disp),
+            MPIU_Memcpy_CUDA(((char *) (mv2_cuda_host_recv_buf) + disp),
                              ((char *) (*recv_buf) + disp),
                              sendsize, cudaMemcpyDeviceToHost);
         }
     }
 
     if (send_on_device && send_buf != MPI_IN_PLACE) {
-        original_send_buf = *send_buf;
-        *send_buf = host_send_buf;
+        mv2_cuda_original_send_buf = *send_buf;
+        *send_buf = mv2_cuda_host_send_buf;
     } else {
-        original_send_buf = NULL;
+        mv2_cuda_original_send_buf = NULL;
     }
     if (recv_on_device) {
-        original_recv_buf = *recv_buf;
-        *recv_buf = host_recv_buf;
+        mv2_cuda_original_recv_buf = *recv_buf;
+        *recv_buf = mv2_cuda_host_recv_buf;
     } else {
-        original_recv_buf = NULL;
+        mv2_cuda_original_recv_buf = NULL;
     }
     return mpi_errno;
 }
@@ -1663,18 +1849,18 @@ void cuda_stage_free(void **send_buf,
                      int send_on_device, int recv_on_device)
 {
 
-    if (send_on_device && original_send_buf && send_buf != MPI_IN_PLACE) {
-        if (!recv_on_device && !original_recv_buf) {
-            MPIU_Memcpy_CUDA(original_send_buf, *send_buf,
+    if (send_on_device && mv2_cuda_original_send_buf && send_buf != MPI_IN_PLACE) {
+        if (!recv_on_device && !mv2_cuda_original_recv_buf) {
+            MPIU_Memcpy_CUDA(mv2_cuda_original_send_buf, *send_buf,
                              recvsize, cudaMemcpyHostToDevice);
         }
-        *send_buf = original_send_buf;
-        original_send_buf = NULL;
+        *send_buf = mv2_cuda_original_send_buf;
+        mv2_cuda_original_send_buf = NULL;
     }
-    if (recv_on_device && original_recv_buf) {
-        MPIU_Memcpy_CUDA(original_recv_buf, *recv_buf, recvsize, cudaMemcpyHostToDevice);
-        *recv_buf = original_recv_buf;
-        original_recv_buf = NULL;
+    if (recv_on_device && mv2_cuda_original_recv_buf) {
+        MPIU_Memcpy_CUDA(mv2_cuda_original_recv_buf, *recv_buf, recvsize, cudaMemcpyHostToDevice);
+        *recv_buf = mv2_cuda_original_recv_buf;
+        mv2_cuda_original_recv_buf = NULL;
     }
 }
 
@@ -1718,12 +1904,12 @@ int cuda_stage_alloc_v(void **send_buf, int *send_counts, MPI_Datatype send_type
 
     /* Allocate the packing buffer on device if one does not exist 
      * or is not large enough. Free the older one */
-    if (dev_srbuf_size < total_buf_size) {
-        if (dev_sr_buf) {
-            cudaFree(dev_sr_buf);
+    if (mv2_cuda_dev_srbuf_size < total_buf_size) {
+        if (mv2_cuda_dev_sr_buf) {
+            cudaFree(mv2_cuda_dev_sr_buf);
         }
-        dev_srbuf_size = total_buf_size;
-        cuda_err = cudaMalloc(&dev_sr_buf, dev_srbuf_size);
+        mv2_cuda_dev_srbuf_size = total_buf_size;
+        cuda_err = cudaMalloc(&mv2_cuda_dev_sr_buf, mv2_cuda_dev_srbuf_size);
         if (cuda_err != cudaSuccess) {
             mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
                                              FCNAME, __LINE__, MPI_ERR_OTHER, "**fail",
@@ -1737,34 +1923,34 @@ int cuda_stage_alloc_v(void **send_buf, int *send_counts, MPI_Datatype send_type
      * or are not large enough. Free the older one */
     if (send_buf_on_device && *send_buf != MPI_IN_PLACE) {
         /*allocate buffer to stage displacements */
-        if (host_send_peers < send_peers) {
-            if (host_send_displs) {
-                MPIU_Free(host_send_displs);
+        if (mv2_cuda_host_send_peers < send_peers) {
+            if (mv2_cuda_host_send_displs) {
+                MPIU_Free(mv2_cuda_host_send_displs);
             }
-            host_send_peers = send_peers;
-            host_send_displs = MPIU_Malloc(sizeof (int) * host_send_peers);
-            MPIU_Memset((void *) host_send_displs, 0, sizeof (int) * host_send_peers);
+            mv2_cuda_host_send_peers = send_peers;
+            mv2_cuda_host_send_displs = MPIU_Malloc(sizeof (int) * mv2_cuda_host_send_peers);
+            MPIU_Memset((void *) mv2_cuda_host_send_displs, 0, sizeof (int) * mv2_cuda_host_send_peers);
         }
         /*allocate buffer to stage the data */
-        if (host_sendbuf_size < total_send_size) {
-            if (host_send_buf) {
-                if (host_sendbuf_size >= rdma_cuda_register_naive_buf) {
-                    ibv_cuda_unregister(host_send_buf);
+        if (mv2_cuda_host_sendbuf_size < total_send_size) {
+            if (mv2_cuda_host_send_buf) {
+                if (mv2_cuda_host_sendbuf_size >= rdma_cuda_register_naive_buf) {
+                    ibv_cuda_unregister(mv2_cuda_host_send_buf);
                 }
-                free(host_send_buf);
+                free(mv2_cuda_host_send_buf);
             }
-            host_sendbuf_size = total_send_size < rdma_cuda_block_size ?
+            mv2_cuda_host_sendbuf_size = total_send_size < rdma_cuda_block_size ?
                 rdma_cuda_block_size : total_send_size;
-            result = posix_memalign(&host_send_buf, page_size, host_sendbuf_size);
-            if ((result != 0) || (NULL == host_send_buf)) {
+            result = posix_memalign(&mv2_cuda_host_send_buf, page_size, mv2_cuda_host_sendbuf_size);
+            if ((result != 0) || (NULL == mv2_cuda_host_send_buf)) {
                 mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
                                                  FCNAME, __LINE__, MPI_ERR_OTHER,
                                                  "**fail", "%s: %s", "posix_memalign",
                                                  strerror(errno));
                 return (mpi_errno);
             }
-            if (host_sendbuf_size >= rdma_cuda_register_naive_buf) {
-                ibv_cuda_register(host_send_buf, host_sendbuf_size);
+            if (mv2_cuda_host_sendbuf_size >= rdma_cuda_register_naive_buf) {
+                ibv_cuda_register(mv2_cuda_host_send_buf, mv2_cuda_host_sendbuf_size);
             }
         }
     }
@@ -1773,34 +1959,34 @@ int cuda_stage_alloc_v(void **send_buf, int *send_counts, MPI_Datatype send_type
      * or are not large enough */
     if (recv_buf_on_device && *recv_buf != MPI_IN_PLACE) {
         /*allocate buffer to stage displacements */
-        if (host_recv_peers < recv_peers) {
-            if (host_recv_displs) {
-                MPIU_Free(host_recv_displs);
+        if (mv2_cuda_host_recv_peers < recv_peers) {
+            if (mv2_cuda_host_recv_displs) {
+                MPIU_Free(mv2_cuda_host_recv_displs);
             }
-            host_recv_peers = recv_peers;
-            host_recv_displs = MPIU_Malloc(sizeof (int) * host_recv_peers);
-            MPIU_Memset(host_recv_displs, 0, sizeof (int) * host_recv_peers);
+            mv2_cuda_host_recv_peers = recv_peers;
+            mv2_cuda_host_recv_displs = MPIU_Malloc(sizeof (int) * mv2_cuda_host_recv_peers);
+            MPIU_Memset(mv2_cuda_host_recv_displs, 0, sizeof (int) * mv2_cuda_host_recv_peers);
         }
         /*allocate buffer to stage the data */
-        if (host_recvbuf_size < total_recv_size) {
-            if (host_recv_buf) {
-                if (host_recvbuf_size >= rdma_cuda_register_naive_buf) {
-                    ibv_cuda_unregister(host_recv_buf);
+        if (mv2_cuda_host_recvbuf_size < total_recv_size) {
+            if (mv2_cuda_host_recv_buf) {
+                if (mv2_cuda_host_recvbuf_size >= rdma_cuda_register_naive_buf) {
+                    ibv_cuda_unregister(mv2_cuda_host_recv_buf);
                 }
-                free(host_recv_buf);
+                free(mv2_cuda_host_recv_buf);
             }
-            host_recvbuf_size = total_recv_size < rdma_cuda_block_size ?
+            mv2_cuda_host_recvbuf_size = total_recv_size < rdma_cuda_block_size ?
                 rdma_cuda_block_size : total_recv_size;
-            result = posix_memalign(&host_recv_buf, page_size, host_recvbuf_size);
-            if ((result != 0) || (NULL == host_recv_buf)) {
+            result = posix_memalign(&mv2_cuda_host_recv_buf, page_size, mv2_cuda_host_recvbuf_size);
+            if ((result != 0) || (NULL == mv2_cuda_host_recv_buf)) {
                 mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,
                                                  FCNAME, __LINE__, MPI_ERR_OTHER,
                                                  "**fail", "%s: %s", "posix_memalign",
                                                  strerror(errno));
                 return (mpi_errno);
             }
-            if (host_recvbuf_size >= rdma_cuda_register_naive_buf) {
-                ibv_cuda_register(host_recv_buf, host_recvbuf_size);
+            if (mv2_cuda_host_recvbuf_size >= rdma_cuda_register_naive_buf) {
+                ibv_cuda_register(mv2_cuda_host_recv_buf, mv2_cuda_host_recvbuf_size);
             }
         }
     }
@@ -1809,21 +1995,21 @@ int cuda_stage_alloc_v(void **send_buf, int *send_counts, MPI_Datatype send_type
     offset = 0;
     if (send_buf_on_device && *send_buf != MPI_IN_PLACE) {
         for (i = 0; i < send_peers; i++) {
-            MPIU_Memcpy_CUDA((void *) ((char *) dev_sr_buf
+            MPIU_Memcpy_CUDA((void *) ((char *) mv2_cuda_dev_sr_buf
                                        + offset * send_type_extent),
                              (void *) ((char *) (*send_buf)
                                        + (*send_displs)[i] * send_type_extent),
                              send_counts[i] * send_type_extent, cudaMemcpyDeviceToDevice);
-            host_send_displs[i] = offset;
+            mv2_cuda_host_send_displs[i] = offset;
             offset += send_counts[i];
         }
-        MPIU_Memcpy_CUDA(host_send_buf, dev_sr_buf,
+        MPIU_Memcpy_CUDA(mv2_cuda_host_send_buf, mv2_cuda_dev_sr_buf,
                          total_send_size, cudaMemcpyDeviceToHost);
 
-        original_send_buf = *send_buf;
-        original_send_displs = *send_displs;
-        *send_buf = host_send_buf;
-        *send_displs = host_send_displs;
+        mv2_cuda_original_send_buf = *send_buf;
+        mv2_cuda_original_send_displs = *send_displs;
+        *send_buf = mv2_cuda_host_send_buf;
+        *send_displs = mv2_cuda_host_send_displs;
     }
 
     /*Stage out buffer into which data is to be received and set the stage in 
@@ -1831,27 +2017,27 @@ int cuda_stage_alloc_v(void **send_buf, int *send_counts, MPI_Datatype send_type
     offset = 0;
     if (recv_buf_on_device && *recv_buf != MPI_IN_PLACE) {
         for (i = 0; i < recv_peers; i++) {
-            host_recv_displs[i] = offset;
+            mv2_cuda_host_recv_displs[i] = offset;
             offset += recv_counts[i];
         }
         /*If data type is not contig, copy the device receive buffer out onto host receive buffer 
            to maintain the original data in un-touched parts while copying back */
         if (!recv_type_contig) {
             for (i = 0; i < recv_peers; i++) {
-                MPIU_Memcpy_CUDA((void *) ((char *) dev_sr_buf
-                                           + host_recv_displs[i] * recv_type_extent),
+                MPIU_Memcpy_CUDA((void *) ((char *) mv2_cuda_dev_sr_buf
+                                           + mv2_cuda_host_recv_displs[i] * recv_type_extent),
                                  (void *) ((char *) (*recv_buf)
                                            + (*recv_displs)[i] * recv_type_extent),
                                  recv_counts[i] * recv_type_extent,
                                  cudaMemcpyDeviceToDevice);
             }
-            MPIU_Memcpy_CUDA(host_recv_buf, dev_sr_buf,
+            MPIU_Memcpy_CUDA(mv2_cuda_host_recv_buf, mv2_cuda_dev_sr_buf,
                              total_recv_size, cudaMemcpyDeviceToHost);
         }
-        original_recv_buf = *recv_buf;
-        original_recv_displs = *recv_displs;
-        *recv_buf = host_recv_buf;
-        *recv_displs = host_recv_displs;
+        mv2_cuda_original_recv_buf = *recv_buf;
+        mv2_cuda_original_recv_displs = *recv_displs;
+        *recv_buf = mv2_cuda_host_recv_buf;
+        *recv_displs = mv2_cuda_host_recv_displs;
     }
 
     return mpi_errno;
@@ -1874,28 +2060,28 @@ void cuda_stage_free_v(void **send_buf, int *send_counts, MPI_Datatype send_type
     }
 
     if (send_buf_on_device && *send_buf != MPI_IN_PLACE) {
-        MPIU_Assert(original_send_buf != NULL);
-        *send_buf = original_send_buf;
-        *send_displs = original_send_displs;
-        original_send_buf = NULL;
-        original_send_displs = NULL;
+        MPIU_Assert(mv2_cuda_original_send_buf != NULL);
+        *send_buf = mv2_cuda_original_send_buf;
+        *send_displs = mv2_cuda_original_send_displs;
+        mv2_cuda_original_send_buf = NULL;
+        mv2_cuda_original_send_displs = NULL;
     }
 
     if (recv_buf_on_device && *recv_buf != MPI_IN_PLACE) {
-        MPIU_Memcpy_CUDA(dev_sr_buf, *recv_buf, total_recv_size, cudaMemcpyHostToDevice);
+        MPIU_Memcpy_CUDA(mv2_cuda_dev_sr_buf, *recv_buf, total_recv_size, cudaMemcpyHostToDevice);
         for (i = 0; i < recv_peers; i++) {
             if (send_buf_on_device && *send_buf == MPI_IN_PLACE && i == rank)
                 continue;
-            MPIU_Memcpy_CUDA((void *) ((char *) original_recv_buf
-                                       + original_recv_displs[i] * recv_type_extent),
-                             (void *) ((char *) dev_sr_buf
+            MPIU_Memcpy_CUDA((void *) ((char *) mv2_cuda_original_recv_buf
+                                       + mv2_cuda_original_recv_displs[i] * recv_type_extent),
+                             (void *) ((char *) mv2_cuda_dev_sr_buf
                                        + (*recv_displs)[i] * recv_type_extent),
                              recv_counts[i] * recv_type_extent, cudaMemcpyDeviceToDevice);
         }
-        *recv_buf = original_recv_buf;
-        *recv_displs = original_recv_displs;
-        original_recv_buf = NULL;
-        original_recv_displs = NULL;
+        *recv_buf = mv2_cuda_original_recv_buf;
+        *recv_displs = mv2_cuda_original_recv_displs;
+        mv2_cuda_original_recv_buf = NULL;
+        mv2_cuda_original_recv_displs = NULL;
     }
 }
 
@@ -1904,40 +2090,40 @@ void cuda_stage_free_v(void **send_buf, int *send_counts, MPI_Datatype send_type
 /******************************************************************/
 void CUDA_COLL_Finalize()
 {
-    if (host_recv_buf) {
-        if (host_recvbuf_size >= rdma_cuda_register_naive_buf) {
-            ibv_cuda_unregister(host_recv_buf);
+    if (mv2_cuda_host_recv_buf) {
+        if (mv2_cuda_host_recvbuf_size >= rdma_cuda_register_naive_buf) {
+            ibv_cuda_unregister(mv2_cuda_host_recv_buf);
         }
-        free(host_recv_buf);
-        host_recv_buf = NULL;
+        free(mv2_cuda_host_recv_buf);
+        mv2_cuda_host_recv_buf = NULL;
     }
-    if (host_send_buf) {
-        if (host_sendbuf_size >= rdma_cuda_register_naive_buf) {
-            ibv_cuda_unregister(host_send_buf);
+    if (mv2_cuda_host_send_buf) {
+        if (mv2_cuda_host_sendbuf_size >= rdma_cuda_register_naive_buf) {
+            ibv_cuda_unregister(mv2_cuda_host_send_buf);
         }
-        free(host_send_buf);
-        host_send_buf = NULL;
+        free(mv2_cuda_host_send_buf);
+        mv2_cuda_host_send_buf = NULL;
     }
 
-    if (allgather_store_buf) {
-        ibv_cuda_unregister(allgather_store_buf);
-        free(allgather_store_buf);
-        allgather_store_buf = NULL;
+    if (mv2_cuda_allgather_store_buf) {
+        ibv_cuda_unregister(mv2_cuda_allgather_store_buf);
+        free(mv2_cuda_allgather_store_buf);
+        mv2_cuda_allgather_store_buf = NULL;
     }
 
-    if (sync_event) {
-        cudaEventDestroy(*sync_event);
-        MPIU_Free(sync_event);
+    if (mv2_cuda_sync_event) {
+        cudaEventDestroy(*mv2_cuda_sync_event);
+        MPIU_Free(mv2_cuda_sync_event);
     }
 
-    if (cuda_coll_pack_buf_size) {
-        MPIU_Free_CUDA(cuda_coll_pack_buf);
-        cuda_coll_pack_buf_size = 0;
+    if (mv2_cuda_coll_pack_buf_size) {
+        MPIU_Free_CUDA(mv2_cuda_coll_pack_buf);
+        mv2_cuda_coll_pack_buf_size = 0;
     }
 
-    if (cuda_coll_unpack_buf_size) {
-        MPIU_Free_CUDA(cuda_coll_unpack_buf);
-        cuda_coll_unpack_buf_size = 0;
+    if (mv2_cuda_coll_unpack_buf_size) {
+        MPIU_Free_CUDA(mv2_cuda_coll_unpack_buf);
+        mv2_cuda_coll_unpack_buf_size = 0;
     }
 }
 
@@ -1974,39 +2160,39 @@ void cuda_coll_pack(void **sendbuf, int *sendcount, MPI_Datatype * sendtype,
     recvsize = *recvcount * recvtype_size * comm_size;
 
     /*Creating packing and unpacking buffers */
-    if (!sendtype_iscontig && send_copy_size > cuda_coll_pack_buf_size) {
-        MPIU_Free_CUDA(cuda_coll_pack_buf);
-        MPIU_Malloc_CUDA(cuda_coll_pack_buf, send_copy_size);
-        cuda_coll_pack_buf_size = send_copy_size;
+    if (!sendtype_iscontig && send_copy_size > mv2_cuda_coll_pack_buf_size) {
+        MPIU_Free_CUDA(mv2_cuda_coll_pack_buf);
+        MPIU_Malloc_CUDA(mv2_cuda_coll_pack_buf, send_copy_size);
+        mv2_cuda_coll_pack_buf_size = send_copy_size;
     }
-    if (!recvtype_iscontig && recvsize > cuda_coll_unpack_buf_size) {
-        MPIU_Free_CUDA(cuda_coll_unpack_buf);
-        MPIU_Malloc_CUDA(cuda_coll_unpack_buf, recvsize);
-        cuda_coll_unpack_buf_size = recvsize;
+    if (!recvtype_iscontig && recvsize > mv2_cuda_coll_unpack_buf_size) {
+        MPIU_Free_CUDA(mv2_cuda_coll_unpack_buf);
+        MPIU_Malloc_CUDA(mv2_cuda_coll_unpack_buf, recvsize);
+        mv2_cuda_coll_unpack_buf_size = recvsize;
     }
 
     /*Packing of data to sendbuf */
     if (*sendbuf != MPI_IN_PLACE && !sendtype_iscontig) {
         MPIR_Localcopy(*sendbuf, *sendcount * procs_in_sendbuf, *sendtype,
-                       cuda_coll_pack_buf, send_copy_size, MPI_BYTE);
-        *sendbuf = cuda_coll_pack_buf;
+                       mv2_cuda_coll_pack_buf, send_copy_size, MPI_BYTE);
+        *sendbuf = mv2_cuda_coll_pack_buf;
         *sendcount = sendsize;
         *sendtype = MPI_BYTE;
     } else if (*sendbuf == MPI_IN_PLACE && !recvtype_iscontig) {
         MPIR_Localcopy((void *) ((char *) (*recvbuf) + disp),
                        (*recvcount) * procs_in_sendbuf, *recvtype,
-                       cuda_coll_pack_buf, send_copy_size, MPI_BYTE);
-        *sendbuf = cuda_coll_pack_buf;
+                       mv2_cuda_coll_pack_buf, send_copy_size, MPI_BYTE);
+        *sendbuf = mv2_cuda_coll_pack_buf;
         *sendcount = sendsize;
         *sendtype = MPI_BYTE;
     }
 
     /*Changing recvbuf to contig temp recvbuf */
     if (!recvtype_iscontig) {
-        orig_recvbuf = *recvbuf;
-        orig_recvcount = *recvcount;
-        orig_recvtype = *recvtype;
-        *recvbuf = cuda_coll_unpack_buf;
+        mv2_cuda_orig_recvbuf = *recvbuf;
+        mv2_cuda_orig_recvcount = *recvcount;
+        mv2_cuda_orig_recvtype = *recvtype;
+        *recvbuf = mv2_cuda_coll_unpack_buf;
         *recvcount = *recvcount * recvtype_size;
         *recvtype = MPI_BYTE;
     }
@@ -2020,17 +2206,17 @@ void cuda_coll_unpack(int *recvcount, int comm_size)
 
     int recvtype_iscontig = 0;
 
-    if (orig_recvbuf && orig_recvtype != MPI_DATATYPE_NULL) {
-        MPIR_Datatype_iscontig(orig_recvtype, &recvtype_iscontig);
+    if (mv2_cuda_orig_recvbuf && mv2_cuda_orig_recvtype != MPI_DATATYPE_NULL) {
+        MPIR_Datatype_iscontig(mv2_cuda_orig_recvtype, &recvtype_iscontig);
     }
 
     /*Unpacking of data to recvbuf */
-    if (orig_recvbuf && !recvtype_iscontig) {
-        MPIR_Localcopy(cuda_coll_unpack_buf, *recvcount * comm_size, MPI_BYTE,
-                       orig_recvbuf, orig_recvcount * comm_size, orig_recvtype);
+    if (mv2_cuda_orig_recvbuf && !recvtype_iscontig) {
+        MPIR_Localcopy(mv2_cuda_coll_unpack_buf, *recvcount * comm_size, MPI_BYTE,
+                       mv2_cuda_orig_recvbuf, mv2_cuda_orig_recvcount * comm_size, mv2_cuda_orig_recvtype);
     }
 
-    orig_recvbuf = NULL;
+    mv2_cuda_orig_recvbuf = NULL;
 }
 #endif                          /* #ifdef _ENABLE_CUDA_ */
 
@@ -2436,10 +2622,10 @@ shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size)
                                   "**nomem %s", "mv2_shmem_file");
     }
 
-    MPIDI_PG_GetConnKVSname(&kvs_name);
+    MPIDI_PG_GetConnKVSname(&mv2_kvs_name);
 
     sprintf(shmem->file_name, "%s/slot_shmem-coll-%s-%s-%d-%d.tmp",
-            shmem_dir, kvs_name, s_hostname, id, getuid());
+            shmem_dir, mv2_kvs_name, s_hostname, id, getuid());
     shmem->file_fd =
         open(shmem->file_name, O_RDWR | O_CREAT, S_IRWXU | S_IRWXG | S_IRWXO);
     if (shmem->file_fd < 0) {

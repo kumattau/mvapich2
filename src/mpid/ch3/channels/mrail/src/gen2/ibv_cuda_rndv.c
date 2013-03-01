@@ -1,4 +1,4 @@
-/* Copyright (c) 2001-2012, The Ohio State University. All rights
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
  * reserved.
  *
  * This file is part of the MVAPICH2 software package developed by the
@@ -39,10 +39,8 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv_cuda(MPIDI_VC_t * vc,
     if (VAPI_PROTOCOL_RPUT == rdma_rndv_protocol) {
         req->mrail.protocol = VAPI_PROTOCOL_RPUT;
     } else {
-        fprintf(stderr,
-                "RGET and R3 are not supported for GPU to GPU transfer \n");
-        fflush(stdout);
-        MPIU_Assert(0);
+        PRINT_ERROR("RGET and R3 are not supported for GPU to GPU transfer \n");
+        exit(EXIT_FAILURE);
     }
 
     /* Step 1: ready for user space (user buffer or pack) */
@@ -61,10 +59,8 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv_cuda(MPIDI_VC_t * vc,
         req->mrail.rndv_buf = MPIU_Malloc(req->mrail.rndv_buf_sz);
 
         if (req->mrail.rndv_buf == NULL) {
-            fprintf(stderr,
-                    "RGET and R3 are not supported for GPU to GPU transfer \n");
-            fflush(stdout);
-            MPIU_Assert(0);
+            PRINT_ERROR("RGET and R3 are not supported for GPU to GPU transfer \n");
+            exit(EXIT_FAILURE);
         } else {
             req->mrail.rndv_buf_alloc = 1;
         }
@@ -990,7 +986,7 @@ int MPIDI_CH3_Prepare_rndv_cts_cuda(MPIDI_VC_t * vc,
                 MPIDI_CH3I_MRAIL_Prepare_rndv_recv_cuda_ipc_buffered(vc, rreq);
 #else
                 PRINT_ERROR("CUDAIPC rndv is requested, but CUDA IPC is not supported\n");
-                MPIU_Assert(0);
+                mpi_errno = -1;
 #endif
                 break;
             }
@@ -1001,14 +997,9 @@ int MPIDI_CH3_Prepare_rndv_cts_cuda(MPIDI_VC_t * vc,
             }
         default:
             {
-                int rank;
-                PMI_Get_rank(&rank);
-                fprintf(stderr, "[%d][%s:%d] ", rank, __FILE__, __LINE__);
-                fprintf(stderr,
-                        "Unknown protocol %d type from rndv req to send\n",
+                PRINT_ERROR("Unknown protocol %d type from rndv req to send\n",
                         rreq->mrail.protocol);
                 mpi_errno = -1;
-                MPIU_Assert(0);
                 break;
             }
     }

@@ -1,4 +1,4 @@
-/* -*- Mode: C; c-basic-offset:4 ; -*- */
+/* -*- Mode: C; c-basic-offset:4 ; indent-tabs-mode:nil ; -*- */
 /*
  *
  *  (C) 2001 by Argonne National Laboratory.
@@ -7,6 +7,9 @@
 
 #include "mpiimpl.h"
 #include "collutil.h"
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+#include "coll_shmem.h"
+#endif
 
 /* -- Begin Profiling Symbol Block for routine MPI_Bcast */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -1437,7 +1440,7 @@ int MPIR_Bcast(void *buffer, int count, MPI_Datatype datatype, int root, MPID_Co
 MPI_Bcast - Broadcasts a message from the process with rank "root" to
             all other processes of the communicator
 
-Input/Output Parameter:
+Input/Output Parameters:
 . buffer - starting address of buffer (choice) 
 
 Input Parameters:
@@ -1522,6 +1525,14 @@ int MPI_Bcast( void *buffer, int count, MPI_Datatype datatype, int root,
     
     mpi_errno = MPIR_Bcast_impl( buffer, count, datatype, root, comm_ptr, &errflag );
     if (mpi_errno) goto fn_fail;
+
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+    mpi_errno = mv2_increment_shmem_coll_counter(comm_ptr);
+    if (mpi_errno) {
+        MPIU_ERR_POP(mpi_errno);
+    }
+#endif /*   #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */ 
+
 
     /* ... end of body of routine ... */
     
