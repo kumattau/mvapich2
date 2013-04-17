@@ -122,10 +122,17 @@ int MPIDI_CH3_InitCompleted()
 {
     
     if(MPIR_ThreadInfo.thread_provided == MPI_THREAD_MULTIPLE) {
-        psm_lock_fn = pthread_spin_lock;
-        psm_unlock_fn = pthread_spin_unlock;
+        if (!ipath_enable_func_lock) {
+            psm_lock_fn = psm_no_lock;
+            psm_unlock_fn = psm_no_lock;
+        } else {
+            psm_lock_fn = pthread_spin_lock;
+            psm_unlock_fn = pthread_spin_unlock;
+        }
+        psm_progress_lock_fn = pthread_spin_lock;
+        psm_progress_unlock_fn = pthread_spin_unlock;
     } else {
-        psm_lock_fn = psm_unlock_fn = psm_no_lock;
+        psm_lock_fn = psm_unlock_fn = psm_progress_lock_fn = psm_progress_unlock_fn = psm_no_lock;
     }
     return MPI_SUCCESS;
 }

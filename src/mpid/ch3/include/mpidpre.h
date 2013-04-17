@@ -333,6 +333,7 @@ typedef struct MPIDI_VC * MPID_VCR;
 
 enum MPIDI_CH3_Lock_states {
     MPIDI_CH3_WIN_LOCK_NONE = 0,
+    MPIDI_CH3_WIN_LOCK_CALLED,
     MPIDI_CH3_WIN_LOCK_REQUESTED,
     MPIDI_CH3_WIN_LOCK_GRANTED,
     MPIDI_CH3_WIN_LOCK_FLUSH
@@ -381,6 +382,8 @@ struct MPIDI_Win_target_state {
                                    (shared/exclusive) of the target
                                    process for passive target RMA. Valid
                                    whenever state != NONE. */
+    int remote_lock_assert;     /* Assertion value provided in the call
+                                   to Lock */
 };
 
 #define MPIDI_DEV_WIN_DECL                                               \
@@ -508,7 +511,7 @@ typedef struct MPIDI_Request {
     MPI_Request request_handle;
     MPI_Win     target_win_handle;
     MPI_Win     source_win_handle;
-    int single_op_opt;   /* to indicate a lock-put-unlock optimization case */
+    MPIDI_CH3_Pkt_flags_t flags; /* flags that were included in the original RMA packet header */
     struct MPIDI_Win_lock_queue *lock_queue_entry; /* for single lock-put-unlock optimization */
     MPI_Request resp_request_handle; /* Handle for get_accumulate response */
 

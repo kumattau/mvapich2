@@ -10,7 +10,7 @@
  *
  */
 
-#include <mpirun_rsh.h>
+#include <src/pm/mpirun/mpirun_rsh.h>
 #include <mpirun_ckpt.h>
 #include <wfe_mpirun.h>
 #include <debug_utils.h>

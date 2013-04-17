@@ -16,6 +16,9 @@
 #include "string.h"
 #include "stdio.h"
 #include <errno.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netdb.h>
 
 /*
  * ptr must be suitable for a call to realloc
@@ -147,6 +150,40 @@ int write_socket(int socket, void *buffer, size_t bytes)
     }
 
     return 0;
+}
+
+int connect_socket(char * hostname, char * port)
+{
+    struct addrinfo hints;
+    struct addrinfo *result, *rp;
+    int sfd, s;
+
+    memset(&hints, 0, sizeof(hints));
+    hints.ai_family = AF_INET; /* Once the rest of the code is updated we can
+                                  specify AF_UNSPEC here */
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_NUMERICSERV;
+
+    if (s = getaddrinfo(hostname, port, &hints, &result)) {
+        PRINT_ERROR("getaddrinfo [%s:%s]: %s\n", hostname, port,
+                gai_strerror(s));
+        return 0;
+    }
+
+    for (rp = result; rp != NULL; rp = rp->ai_next) {
+        sfd = socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        if (sfd == -1) continue;
+        if (connect(sfd, rp->ai_addr, rp->ai_addrlen) != -1) break;
+        close (sfd);
+    }
+
+    if (rp == NULL) {
+        PRINT_ERROR("could not connect to %s:%s\n", hostname, port);
+        sfd = 0;
+    }
+
+    freeaddrinfo(result);
+    return sfd;
 }
 
 #ifdef CKPT

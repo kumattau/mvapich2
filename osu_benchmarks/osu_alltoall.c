@@ -1,4 +1,4 @@
-#define BENCHMARK "OSU MPI All-to-All Personalized Exchange Latency Test"
+#define BENCHMARK "OSU MPI%s All-to-All Personalized Exchange Latency Test"
 /*
  * Copyright (C) 2002-2013 the Network-Based Computing Laboratory
  * (NBCL), The Ohio State University. 
@@ -11,91 +11,105 @@
 
 #include "osu_coll.h"
 
-int main(int argc, char *argv[])
+int
+main (int argc, char *argv[])
 {
-    int i = 0, rank = 0, size, numprocs;
-    int  skip, align_size;
-    double latency=0.0, t_start = 0.0, t_stop = 0.0;
+    int i, numprocs, rank, size;
+    int skip;
+    double latency = 0.0, t_start = 0.0, t_stop = 0.0;
     double timer=0.0;
     double avg_time = 0.0, max_time = 0.0, min_time = 0.0;
-    char *sendbuf, *recvbuf, *s_buf1, *r_buf1;
-    int max_msg_size = 1048576, full = 0;
+    char * sendbuf = NULL, * recvbuf = NULL;
+    int po_ret;
+    size_t bufsize;
+
+    set_header(HEADER);
+    set_benchmark_name("osu_alltoall");
+    enable_accel_support();
+    po_ret = process_options(argc, argv);
+
+    if (po_okay == po_ret && cuda == options.accel) {
+        if (init_cuda_context()) {
+            fprintf(stderr, "Error initializing cuda context\n");
+            exit(EXIT_FAILURE);
+        }
+    }
 
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
 
-    if (process_args(argc, argv, rank, &max_msg_size, &full)) {
-        MPI_Finalize();
-        return EXIT_SUCCESS;
+    switch (po_ret) {
+        case po_bad_usage:
+            print_bad_usage_message(rank);
+            MPI_Finalize();
+            exit(EXIT_FAILURE);
+        case po_help_message:
+            print_help_message(rank);
+            MPI_Finalize();
+            exit(EXIT_SUCCESS);
+        case po_version_message:
+            print_version_message(rank);
+            MPI_Finalize();
+            exit(EXIT_SUCCESS);
+        case po_okay:
+            break;
     }
 
     if(numprocs < 2) {
-        if(rank == 0) {
+        if (rank == 0) {
             fprintf(stderr, "This test requires at least two processes\n");
         }
 
         MPI_Finalize();
-
-        return EXIT_FAILURE;
+        exit(EXIT_FAILURE);
     }
 
-    print_header(rank, full);
-
-    s_buf1 = r_buf1 = NULL;
-
-    s_buf1 = (char *)malloc(sizeof(char) * max_msg_size * numprocs +
-            MAX_ALIGNMENT);
-
-    if(NULL == s_buf1) {
-        fprintf(stderr, "malloc failed.\n");
-
-        exit(1);
+    if ((options.max_message_size * numprocs) > options.max_mem_limit) {
+        options.max_message_size = options.max_mem_limit / numprocs;
     }
 
-    r_buf1 = (char *) malloc (sizeof(char) * max_msg_size * numprocs +
-            MAX_ALIGNMENT);
+    bufsize = options.max_message_size * numprocs;
 
-    if(NULL == r_buf1) {
-        fprintf(stderr, "malloc failed.\n");
-
-        exit(1);
+    if (allocate_buffer(&sendbuf, bufsize, options.accel)) {
+        fprintf(stderr, "Could Not Allocate Memory [rank %d]\n", rank);
+        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
     }
 
-    align_size = getpagesize();
-    sendbuf = (char *)(((unsigned long) s_buf1 + (align_size - 1)) / align_size
-            * align_size);
-    recvbuf = (char *)(((unsigned long) r_buf1 + (align_size - 1)) / align_size
-            * align_size);
+    set_buffer(sendbuf, options.accel, 1, bufsize);
 
+    if (allocate_buffer(&recvbuf, options.max_message_size * numprocs,
+                options.accel)) {
+        fprintf(stderr, "Could Not Allocate Memory [rank %d]\n", rank);
+        MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
+    }
 
-    MPI_Barrier(MPI_COMM_WORLD);
+    set_buffer(recvbuf, options.accel, 0, bufsize);
+    print_preamble(rank);
 
-    for(size = 1; size <= max_msg_size; size *= 2) {
-        if(size > LARGE_MESSAGE_SIZE) {
+    for (size=1; size <= options.max_message_size; size *= 2) {
+        if (size > LARGE_MESSAGE_SIZE) {
             skip = SKIP_LARGE;
-            iterations = iterations_large;
+            options.iterations = options.iterations_large;
+        } else {
+            skip = SKIP;
         }
 
-        else {
-            skip = SKIP;
-            
-        }
+        MPI_Barrier(MPI_COMM_WORLD);
         timer=0.0;
-        for(i = 0; i < iterations + skip; i++) {
+
+        for (i=0; i < options.iterations + skip ; i++) {
             t_start = MPI_Wtime();
             MPI_Alltoall(sendbuf, size, MPI_CHAR, recvbuf, size, MPI_CHAR,
                     MPI_COMM_WORLD);
             t_stop = MPI_Wtime();
 
-            if(i>=skip)
-            {
+            if (i >= skip) {
                 timer+=t_stop-t_start;
             }
-            MPI_Barrier(MPI_COMM_WORLD);  
+            MPI_Barrier(MPI_COMM_WORLD);
         }
-
-        latency = (double)(timer * 1e6) / iterations;
+        latency = (double)(timer * 1e6) / options.iterations;
 
         MPI_Reduce(&latency, &min_time, 1, MPI_DOUBLE, MPI_MIN, 0,
                 MPI_COMM_WORLD);
@@ -105,15 +119,21 @@ int main(int argc, char *argv[])
                 MPI_COMM_WORLD);
         avg_time = avg_time/numprocs;
 
-        print_data(rank, full, size, avg_time, min_time, max_time, iterations);
-
+        print_stats(rank, size, avg_time, min_time, max_time);
         MPI_Barrier(MPI_COMM_WORLD);
     }
 
-    free(s_buf1);
-    free(r_buf1);
+    free_buffer(sendbuf, options.accel);
+    free_buffer(recvbuf, options.accel);
 
     MPI_Finalize();
+
+    if (cuda == options.accel) {
+        if (destroy_cuda_context()) {
+            fprintf(stderr, "Error destroying cuda context\n");
+            exit(EXIT_FAILURE);
+        }
+    }
 
     return EXIT_SUCCESS;
 }

@@ -17,6 +17,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
+#include "mpitest.h"
 
 #define TRY(func)                           \
     do {                                    \
@@ -36,7 +37,6 @@ MPI_T_pvar_handle fbox_handle;
 /* Check that we can successfuly write to the variable. */
 void blank_test()
 {
-    int i;
     uint64_t temp[2] = { -1 };
 
     temp[0] = 0x1234; temp[1] = 0xABCD;
@@ -87,13 +87,13 @@ void send_first_test()
          * FIXME: Ideally this should use a barrier, but that uses messages
          *        internally and hence will sometimes screw up the asserts above.
          */
-        sleep(1);   
+        MTestSleep(1);
 
     } else if (rank == 1) {
         char recv_buf[BUF_COUNT];
         MPI_Status status;
 
-        sleep(1);   /* see above */
+        MTestSleep(1);   /* see above */
 
         MPI_Recv(recv_buf, BUF_COUNT, MPI_CHAR, 0, 0, MPI_COMM_WORLD, &status);
         MPI_Recv(recv_buf, BUF_COUNT, MPI_CHAR, 0, 0, MPI_COMM_WORLD, &status);

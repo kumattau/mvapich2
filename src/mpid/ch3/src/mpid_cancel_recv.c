@@ -35,7 +35,7 @@ int MPID_Cancel_recv(MPID_Request * rreq)
 #if defined (_OSU_PSM_)
     rreq->psm_flags |= PSM_RECV_CANCEL;
     if(psm_do_cancel(rreq) == MPI_SUCCESS) {
-        *(rreq->cc_ptr) = 0;
+        MPID_cc_set(rreq->cc_ptr, 0);
         MPID_Request_release(rreq);
     }
     goto fn_exit;

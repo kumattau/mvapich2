@@ -188,7 +188,7 @@ int MPIDI_CH3_iStartMsg(MPIDI_VC_t * vc, void *pkt, MPIDI_msg_sz_t pkt_sz,
                 goto fn_exit;
             }
             sreq->kind = MPID_REQUEST_SEND;
-            sreq->cc = 0;
+            MPID_cc_set(&sreq->cc, 0);
             /* TODO: Create an appropriate error message based on the value of errno
              * */
             sreq->status.MPI_ERROR = MPI_ERR_INTERN;

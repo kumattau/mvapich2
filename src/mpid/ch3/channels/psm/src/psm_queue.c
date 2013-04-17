@@ -65,7 +65,7 @@ void psm_complete_req(MPID_Request *req, psm_mq_status_t psmstat)
     if((&req->status) != MPI_STATUS_IGNORE) {
         psm_update_mpistatus(&(req->status), psmstat);
     }
-    *(req->cc_ptr) = 0;         //TODO: should i set to 0 or decrement ?
+    MPID_cc_set(req->cc_ptr, 0);         //TODO: should i set to 0 or decrement ?
     MPID_Request_release(req);
 //    MPIU_Object_release_ref(req, &inuse);
 }
@@ -177,7 +177,7 @@ int psm_try_complete(MPID_Request *req)
 {
     int mpi_errno = MPI_SUCCESS;
 
-    while(*(req->cc_ptr) != 0)
+    while(!MPID_cc_is_complete(req->cc_ptr))
       mpi_errno = psm_progress_wait(TRUE);
 
     return mpi_errno;
@@ -202,48 +202,53 @@ int psm_progress_wait(int blocking)
     psm_mq_req_t gblpsmreq;
     register MPID_Request *req;
     int mpi_errno = MPI_SUCCESS;
-    int yield_count = 3;
+    int yield_count = ipath_progress_yield_count;
 
-    _psm_enter_;
+    _psm_progress_enter_;
     do {
-      /* make progress on NBC schedules */
-      int made_progress = FALSE;
-      mpi_errno = MPIDU_Sched_progress(&made_progress);
-      if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-      if (made_progress) {
-          goto out_2; 
-      }
+        /* make progress on NBC schedules */
+        int made_progress = FALSE;
+        /* is MPIDU_Sched_progress psm critical section */
+        mpi_errno = MPIDU_Sched_progress(&made_progress);
+        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+        if (made_progress) {
+            _psm_progress_exit_;
+            goto out_2; 
+        }
 
-      psmerr = psm_mq_ipeek(psmdev_cw.mq, &gblpsmreq, NULL);
-    
-      if(psmerr == PSM_OK) {
-	psmerr = psm_mq_test(&gblpsmreq, &gblstatus);
-	_psm_exit_;
-	req = (MPID_Request *) gblstatus.context;
-	DBG("got bytes from %d\n", (gblstatus.msg_tag & SRC_RANK_MASK));
-	mpi_errno = psm_process_completion(req, gblstatus);
-	if(mpi_errno != MPI_SUCCESS) {
-	  MPIU_ERR_POP(mpi_errno);
-	}
-	goto out_2;
-      }
-      else if ((MPIR_ThreadInfo.thread_provided == MPI_THREAD_MULTIPLE) &&
-	       (--yield_count == 0))
-	goto out;
+        psmerr = psm_mq_ipeek(psmdev_cw.mq, &gblpsmreq, NULL);
+
+        if(psmerr == PSM_OK) {
+            psmerr = psm_mq_test(&gblpsmreq, &gblstatus);
+            _psm_progress_exit_;
+            req = (MPID_Request *) gblstatus.context;
+            DBG("got bytes from %d\n", (gblstatus.msg_tag & SRC_RANK_MASK));
+            mpi_errno = psm_process_completion(req, gblstatus);
+            if(mpi_errno != MPI_SUCCESS) {
+                MPIU_ERR_POP(mpi_errno);
+            }
+            goto out_2;
+        }
+        else {
+            if ((MPIR_ThreadInfo.thread_provided == MPI_THREAD_MULTIPLE) &&
+                (--yield_count == 0)) {
+                goto out;
+            }
+        }
     } while (blocking);
-    
- out:
-    _psm_exit_;
+
+out:
+    _psm_progress_exit_;
     if(unlikely(ipath_debug_enable)) {
-      psm_dump_debug();
+        psm_dump_debug();
     }
 
     if (MPIR_ThreadInfo.thread_provided == MPI_THREAD_MULTIPLE) {
-      psm_pe_yield();
+        psm_pe_yield();
     }
 
- out_2:
- fn_fail:
+out_2:
+fn_fail:
     return mpi_errno;
 }
 

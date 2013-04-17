@@ -45,6 +45,11 @@ typedef struct {
     size_t num_parents, num_children;
 } family_size;
 
+typedef struct {
+    char node[MAX_HOST_LEN + 1];
+    char serv[MAX_PORT_LEN + 1];
+} mpispawn_info_t;
+
 #if defined(CKPT) && defined(CR_FTB)
 /*struct spawn_info_s {
     char spawnhost[32];
@@ -57,7 +62,7 @@ extern int exclude_spare;
 
 static size_t id;
 static int l_socket;
-static struct sockaddr_storage *node_addr;
+static mpispawn_info_t *mpispawn_info;
 
 typedef enum {
     CONN_SUCCESS,
@@ -84,7 +89,7 @@ static CONN_STATUS conn2parent(size_t parent, int *p_socket)
     debug("verifying conn2parent [id: %d]\n", id);
     /*
      * Replace the following with a simple check of the sockaddr filled in
-     * by the accept call with the sockaddr stored at node_addr[arg->id]
+     * by the accept call with the sockaddr stored at mpispawn_info[arg->id]
      */
     if (read_socket(*p_socket, &p_id, sizeof(p_id))
         || p_id != parent || write_socket(*p_socket, &id, sizeof(id))) {
@@ -110,7 +115,7 @@ static CONN_STATUS conn2children(size_t const n, size_t const children[], int c_
             return CONN_LIB_FAILURE;
         }
 
-        if (connect(c_socket[i], (struct sockaddr *) &node_addr[children[i]], sizeof(struct sockaddr)) < 0) {
+        if (connect(c_socket[i], (struct sockaddr *) &mpispawn_info[children[i]], sizeof(struct sockaddr)) < 0) {
             while (i)
                 close(c_socket[--i]);
             return CONN_LIB_FAILURE;
@@ -235,21 +240,22 @@ extern int *mpispawn_tree_init(size_t me, const size_t degree, const size_t node
 
     debug("[id: %d] connected to parent\n", id);
 
-    node_addr = (struct sockaddr_storage *) calloc(sizeof(struct sockaddr_storage), node_count);
-    if (!node_addr) {
+    mpispawn_info = (mpispawn_info_t *) calloc(sizeof(mpispawn_info_t),
+            node_count);
+    if (!mpispawn_info) {
         perror("mpispawn_tree_init");
         goto close_p_socket;
     }
 
-    if (read_socket(p_socket, node_addr, sizeof(struct sockaddr_storage) * node_count)) {
+    if (read_socket(p_socket, mpispawn_info, sizeof(mpispawn_info_t) * node_count)) {
         perror("mpispawn_tree_init");
-        goto free_node_addr;
+        goto free_mpispawn_info;
     }
 #if defined(CKPT) && defined(CR_FTB)
     spawninfo = (struct spawn_info_s *) calloc(sizeof(struct spawn_info_s), node_count);
     if (!spawninfo) {
         perror("[CR_MIG] calloc(spawninfo)");
-        goto free_node_addr;
+        goto free_mpispawn_info;
     }
 
     if (read_socket(p_socket, spawninfo, sizeof(struct spawn_info_s) * node_count)) {
@@ -263,15 +269,16 @@ extern int *mpispawn_tree_init(size_t me, const size_t degree, const size_t node
 #endif
 
     for (i = 0; i < fs.num_children; ++i) {
-        int c_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-        socket_array[fs.num_parents + i] = c_socket;
+        int c_socket = connect_socket(mpispawn_info[child[i]].node,
+                mpispawn_info[child[i]].serv);
 
-        if (connect(c_socket, (struct sockaddr *) &node_addr[child[i]], sizeof(struct sockaddr)) < 0) {
-            perror("mpispawn_tree_init");
+        if (0 == c_socket) {
             goto free_spawninfo;
         }
 
-        if (write_socket(c_socket, node_addr, sizeof(struct sockaddr_storage) * node_count)) {
+        socket_array[fs.num_parents + i] = c_socket;
+
+        if (write_socket(c_socket, mpispawn_info, sizeof(mpispawn_info_t) * node_count)) {
             do {
                 close(socket_array[fs.num_parents + i]);
             } while (i--);
@@ -325,8 +332,8 @@ extern int *mpispawn_tree_init(size_t me, const size_t degree, const size_t node
     free(spawninfo);
 #endif
 
-  free_node_addr:
-    free(node_addr);
+  free_mpispawn_info:
+    free(mpispawn_info);
 
   close_p_socket:
     close(p_socket);

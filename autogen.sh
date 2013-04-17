@@ -172,7 +172,7 @@ MAKE=${MAKE-make}
 # external packages that require autogen.sh to be run for each of them
 externals="src/pm/hydra src/mpi/romio src/armci src/pm/mpd src/openpa src/mpid/ch3/channels/mrail/src/hwloc"
 # amdirs are the directories that make use of autoreconf
-amdirs=". src/mpl src/util/logging/rlog"
+amdirs=". src/mpl src/util/logging/rlog limic2-0.5.6"
 
 autoreconf_args="-if"
 export autoreconf_args
@@ -860,6 +860,15 @@ if [ -x ./maint/f77tof90 -a $do_f77tof90 = "yes" ] ; then
         fi
         maint/f77tof90 $dir test/mpi/f90/$leafDir Makefile.am Makefile.ap
         echo "timestamp" > test/mpi/f90/$leafDir/Makefile.am-stamp
+    done
+    for dir in test/mpi/errors/f77/* ; do
+        if [ ! -d $dir ] ; then continue ; fi
+	leafDir=`basename $dir`
+        if [ ! -d test/mpi/errors/f90/$leafDir ] ; then
+	    mkdir test/mpi/errors/f90/$leafDir
+        fi
+        maint/f77tof90 $dir test/mpi/errors/f90/$leafDir Makefile.am Makefile.ap
+        echo "timestamp" > test/mpi/errors/f90/$leafDir/Makefile.am-stamp
     done
     echo "done"
 fi

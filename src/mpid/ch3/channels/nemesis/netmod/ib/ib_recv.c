@@ -317,7 +317,6 @@ int MPIDI_CH3I_nem_ib_parse_header(MPIDI_VC_t * vc,
     case MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK:
     case MPIDI_CH3_PKT_ACCUM_IMMED:
     case MPIDI_CH3_PKT_CAS:
-    case MPIDI_CH3_PKT_CAS_UNLOCK:
     case MPIDI_CH3_PKT_CAS_RESP:
     case MPIDI_CH3_PKT_FOP:
     case MPIDI_CH3_PKT_FOP_RESP:

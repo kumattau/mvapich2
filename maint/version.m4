@@ -14,10 +14,10 @@
 # changing this by playing with diversions, but then we would probably be
 # playing with autotools-fire.
 
-m4_define([MPICH_VERSION_m4],[3.0.2])dnl
+m4_define([MPICH_VERSION_m4],[3.0.3])dnl
 m4_define([MPICH_RELEASE_DATE_m4],[unreleased development copy])dnl
 
-m4_define([MVAPICH2_VERSION_m4],[1.9b])dnl
+m4_define([MVAPICH2_VERSION_m4],[1.9rc1])dnl
 m4_define([MVAPICH2_RELEASE_DATE_m4],[unreleased development copy])dnl
 
 # For libtool ABI versioning rules see:
@@ -34,6 +34,6 @@ m4_define([MVAPICH2_RELEASE_DATE_m4],[unreleased development copy])dnl
 #
 #     4. If any interfaces have been removed since the last public
 #     release, then set age to 0.
-m4_define([libmpich_so_version_m4],[10:2:0])dnl
+m4_define([libmpich_so_version_m4],[10:3:0])dnl
 
 [#] end of __file__

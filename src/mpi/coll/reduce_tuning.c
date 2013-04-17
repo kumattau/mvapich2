@@ -17,11 +17,11 @@
 #include "mv2_arch_hca_detect.h"
 
 enum {
-    REDUCE_BINOMIAL = 1,
-    REDUCE_INTER_KNOMIAL,
-    REDUCE_INTRA_KNOMIAL,
-    REDUCE_SHMEM,
-    REDUCE_RDSC_GATHER,
+    REDUCE_BINOMIAL = 1,  //1 MPIR_Reduce_binomial_MV2
+    REDUCE_INTER_KNOMIAL, //2 MPIR_Reduce_inter_knomial_wrapper_MV2
+    REDUCE_INTRA_KNOMIAL, //3 MPIR_Reduce_intra_knomial_wrapper_MV2
+    REDUCE_SHMEM,         //4 MPIR_Reduce_shmem_MV2
+    REDUCE_RDSC_GATHER,   //5 MPIR_Reduce_redscat_gather_MV2
 };
 
 int mv2_size_reduce_tuning_table = 0;
@@ -58,12 +58,13 @@ int MV2_set_reduce_tuning_table(int heterogeneity)
                 24,
                 4,
                 4,
-                {1, 1, 1},
-                3,
+                {1, 1, 1, 0},
+                4,
                 {
                     {0, -1, &MPIR_Reduce_inter_knomial_wrapper_MV2},
                     {0, 262144, &MPIR_Reduce_redscat_gather_MV2},
-                    {262144, -1, &MPIR_Reduce_inter_knomial_wrapper_MV2},
+                    {262144, 1048576, &MPIR_Reduce_inter_knomial_wrapper_MV2},
+                    {1048576, -1, &MPIR_Reduce_redscat_gather_MV2},
                 },
                 2,
                 {
@@ -75,12 +76,13 @@ int MV2_set_reduce_tuning_table(int heterogeneity)
                 48,
                 4,
                 4,
-                {1, 1, 1},
-                3,
+                {1, 1, 1, 0},
+                4,
                 {
                     {0, 8192, &MPIR_Reduce_inter_knomial_wrapper_MV2},
                     {8192, 131072,  &MPIR_Reduce_binomial_MV2},
-                    {131072, -1, &MPIR_Reduce_binomial_MV2},
+                    {131072, 1048576, &MPIR_Reduce_binomial_MV2},
+                    {1048576, -1, &MPIR_Reduce_redscat_gather_MV2},
                 },
                 2,
                 {
@@ -92,12 +94,13 @@ int MV2_set_reduce_tuning_table(int heterogeneity)
                 96,
                 4,
                 4,
-                {1, 1, 1},
-                3,
+                {1, 1, 1, 0},
+                4,
                 {
                     {0, 4096, &MPIR_Reduce_inter_knomial_wrapper_MV2},
                     {4096, 16384,  &MPIR_Reduce_inter_knomial_wrapper_MV2},
-                    {16384, -1, &MPIR_Reduce_binomial_MV2},
+                    {16384, 1048576, &MPIR_Reduce_binomial_MV2},
+                    {1048576, -1, &MPIR_Reduce_redscat_gather_MV2},
                 },
                 2,
                 {
@@ -109,12 +112,13 @@ int MV2_set_reduce_tuning_table(int heterogeneity)
                 192,
                 4,
                 4,
-                {1, 1, 1},
-                3,
+                {1, 1, 1, 0},
+                4,
                 {
                     {0, 4096, &MPIR_Reduce_inter_knomial_wrapper_MV2},
                     {16384, 65536, &MPIR_Reduce_inter_knomial_wrapper_MV2},
-                    {131072, -1, &MPIR_Reduce_binomial_MV2},
+                    {131072, 1048576, &MPIR_Reduce_binomial_MV2},
+                    {1048576, -1, &MPIR_Reduce_redscat_gather_MV2},
                 },
                 2,
                 {
@@ -126,13 +130,14 @@ int MV2_set_reduce_tuning_table(int heterogeneity)
                 384,
                 4,
                 4,
-                {1, 1, 1, 1},
-                4,
+                {1, 1, 1, 1, 0},
+                5,
                 {
                     {0, 4096, &MPIR_Reduce_inter_knomial_wrapper_MV2},
                     {4096, 8192,  &MPIR_Reduce_inter_knomial_wrapper_MV2},
                     {8192, 65536,&MPIR_Reduce_binomial_MV2},
-                    {65536, -1, &MPIR_Reduce_binomial_MV2},
+                    {65536, 1048576, &MPIR_Reduce_binomial_MV2},
+                    {1048576, -1, &MPIR_Reduce_redscat_gather_MV2},
                 },
                 3,
                 {
@@ -146,7 +151,8 @@ int MV2_set_reduce_tuning_table(int heterogeneity)
                   mv2_size_reduce_tuning_table * sizeof (mv2_reduce_tuning_table));
     } else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
         MV2_ARCH_INTEL_XEON_E5_2680_16, MV2_HCA_MLX_CX_FDR) && !heterogeneity){
-        mv2_size_reduce_tuning_table = 6;
+        /*Stampede*/
+        mv2_size_reduce_tuning_table = 8;
         mv2_reduce_thresholds_table = MPIU_Malloc(mv2_size_reduce_tuning_table *
                                                   sizeof (mv2_reduce_tuning_table));
         mv2_reduce_tuning_table mv2_tmp_reduce_thresholds_table[] = {
@@ -154,11 +160,12 @@ int MV2_set_reduce_tuning_table(int heterogeneity)
                 16,
                 4,
                 4,
-                {1, 0},
-                2,
+                {1, 0, 0},
+                3,
                 {
                     {0, 262144, &MPIR_Reduce_inter_knomial_wrapper_MV2},
-                    {262144, -1, &MPIR_Reduce_binomial_MV2},
+                    {262144, 1048576, &MPIR_Reduce_binomial_MV2},
+                    {1048576, -1, &MPIR_Reduce_redscat_gather_MV2},
                 },
                 2,
                 {
@@ -170,15 +177,16 @@ int MV2_set_reduce_tuning_table(int heterogeneity)
                 32,
                 4,
                 4,
-                {1, 1, 1, 1, 0, 0},
-                6,
+                {1, 1, 1, 1, 0, 0, 0},
+                7,
                 {
                     {0, 8192, &MPIR_Reduce_inter_knomial_wrapper_MV2},
                     {8192, 16384, &MPIR_Reduce_inter_knomial_wrapper_MV2},
                     {16384, 32768, &MPIR_Reduce_inter_knomial_wrapper_MV2},
                     {32768, 65536, &MPIR_Reduce_binomial_MV2},
                     {65536, 262144, &MPIR_Reduce_inter_knomial_wrapper_MV2},
-                    {262144, -1, &MPIR_Reduce_binomial_MV2},
+                    {262144, 1048576, &MPIR_Reduce_binomial_MV2},
+                    {1048576, -1, &MPIR_Reduce_redscat_gather_MV2},
                 },
                 6,
                 {
@@ -194,7 +202,7 @@ int MV2_set_reduce_tuning_table(int heterogeneity)
                 64,
                 4,
                 4,
-                {1, 1, 1, 1, 1},
+                {1, 1, 1, 1, 0},
                 5,
                 {
                     {0, 8192, &MPIR_Reduce_inter_knomial_wrapper_MV2},
@@ -216,14 +224,15 @@ int MV2_set_reduce_tuning_table(int heterogeneity)
                 128,
                 4,
                 4,
-                {1, 0, 1, 0, 1},
-                5,
+                {1, 0, 1, 0, 1, 0},
+                6,
                 {
                     {0, 8192, &MPIR_Reduce_inter_knomial_wrapper_MV2},
                     {8192, 16384, &MPIR_Reduce_inter_knomial_wrapper_MV2},
                     {16384, 65536, &MPIR_Reduce_binomial_MV2},
                     {65536, 262144, &MPIR_Reduce_inter_knomial_wrapper_MV2},
-                    {262144, -1, &MPIR_Reduce_binomial_MV2},
+                    {262144, 1048576, &MPIR_Reduce_binomial_MV2},
+                    {1048576, -1, &MPIR_Reduce_redscat_gather_MV2},
                 },
                 5,
                 {
@@ -238,15 +247,16 @@ int MV2_set_reduce_tuning_table(int heterogeneity)
                 256,
                 4,
                 4,
-                {1, 1, 1, 0, 1, 1},
-                6,
+                {1, 1, 1, 0, 1, 1, 0},
+                7,
                 {
                     {0, 8192, &MPIR_Reduce_inter_knomial_wrapper_MV2},
                     {8192, 16384, &MPIR_Reduce_inter_knomial_wrapper_MV2},
                     {16384, 32768, &MPIR_Reduce_binomial_MV2},
                     {32768, 65536, &MPIR_Reduce_binomial_MV2},
                     {65536, 262144, &MPIR_Reduce_binomial_MV2},
-                    {262144, -1, &MPIR_Reduce_binomial_MV2},
+                    {262144, 1048576, &MPIR_Reduce_binomial_MV2},
+                    {1048576, -1, &MPIR_Reduce_redscat_gather_MV2},
                 },
                 6,
                 {
@@ -260,6 +270,29 @@ int MV2_set_reduce_tuning_table(int heterogeneity)
             },
             {
                 512,
+                4,
+                4,
+                {1, 0, 1, 1, 1, 0},
+                6,
+                {
+                    {0, 8192, &MPIR_Reduce_inter_knomial_wrapper_MV2},
+                    {8192, 16384, &MPIR_Reduce_inter_knomial_wrapper_MV2},
+                    {16384, 65536, &MPIR_Reduce_binomial_MV2},
+                    {65536, 262144, &MPIR_Reduce_binomial_MV2},
+                    {262144, 1048576, &MPIR_Reduce_binomial_MV2},
+                    {1048576, -1, &MPIR_Reduce_redscat_gather_MV2},
+                },
+                5,
+                {
+                    {0, 8192, &MPIR_Reduce_shmem_MV2},
+                    {8192, 16384, &MPIR_Reduce_intra_knomial_wrapper_MV2},
+                    {16384, 65536, &MPIR_Reduce_shmem_MV2},
+                    {65536, 262144, &MPIR_Reduce_intra_knomial_wrapper_MV2},
+                    {262144, -1, &MPIR_Reduce_binomial_MV2},
+                },
+            },
+            {
+                1024,
                 4,
                 4,
                 {1, 0, 1, 1, 1},
@@ -280,6 +313,30 @@ int MV2_set_reduce_tuning_table(int heterogeneity)
                     {262144, -1, &MPIR_Reduce_binomial_MV2},
                 },
             },
+            {
+                2048,
+                4,
+                4,
+                {1, 0, 1, 1, 1,1},
+                6,
+                {
+                    {0, 2048, &MPIR_Reduce_inter_knomial_wrapper_MV2},
+                    {2048, 4096, &MPIR_Reduce_inter_knomial_wrapper_MV2},
+                    {4096, 16384, &MPIR_Reduce_binomial_MV2},
+                    {16384, 65536, &MPIR_Reduce_binomial_MV2},
+                    {65536, 131072, &MPIR_Reduce_binomial_MV2},
+                    {131072, -1, &MPIR_Reduce_binomial_MV2},
+                },
+                6,
+                {
+                    {0, 2048, &MPIR_Reduce_shmem_MV2},
+                    {2048, 4096, &MPIR_Reduce_shmem_MV2},
+                    {4096, 16384, &MPIR_Reduce_shmem_MV2},
+                    {16384, 65536, &MPIR_Reduce_intra_knomial_wrapper_MV2},
+                    {65536, 131072, &MPIR_Reduce_binomial_MV2},
+                    {131072, -1, &MPIR_Reduce_shmem_MV2},
+                },
+            },
 
         }; 
         MPIU_Memcpy(mv2_reduce_thresholds_table, mv2_tmp_reduce_thresholds_table,
@@ -296,11 +353,12 @@ int MV2_set_reduce_tuning_table(int heterogeneity)
                 8,
                 4,
                 4,
-                {1, 0},
-                2,
+                {1, 0, 0},
+                3,
                 {
                     {0, 524288, &MPIR_Reduce_inter_knomial_wrapper_MV2},
-                    {524288, -1, &MPIR_Reduce_binomial_MV2},
+                    {524288, 1048576, &MPIR_Reduce_binomial_MV2},
+                    {1048576, -1, &MPIR_Reduce_redscat_gather_MV2},
                 },
                 2,
                 {
@@ -312,10 +370,11 @@ int MV2_set_reduce_tuning_table(int heterogeneity)
                 16,
                 4,
                 4,
-                {1},
-                1,
+                {1, 0},
+                2,
                 {
-                    {0, -1, &MPIR_Reduce_inter_knomial_wrapper_MV2},
+                    {0, 1048576, &MPIR_Reduce_inter_knomial_wrapper_MV2},
+                    {1048576, -1, &MPIR_Reduce_redscat_gather_MV2},
                 },
                 2,
                 {
@@ -327,12 +386,13 @@ int MV2_set_reduce_tuning_table(int heterogeneity)
                 32,
                 4,
                 4,
-                {1, 1, 1},
-                3,
+                {1, 1, 1, 0},
+                4,
                 {
                     {0, 8192, &MPIR_Reduce_inter_knomial_wrapper_MV2},
                     {8192, 131072,  &MPIR_Reduce_binomial_MV2},
-                    {131072, -1, &MPIR_Reduce_redscat_gather_MV2},
+                    {131072, 1048576, &MPIR_Reduce_redscat_gather_MV2},
+                    {1048576, -1, &MPIR_Reduce_redscat_gather_MV2},
                 },
                 3,
                 {
@@ -344,13 +404,14 @@ int MV2_set_reduce_tuning_table(int heterogeneity)
                 64,
                 4,
                 4,
-                {1, 0, 1, 1},
-                4,
+                {1, 0, 1, 1, 0},
+                5,
                 {
                     {0, 4096, &MPIR_Reduce_inter_knomial_wrapper_MV2},
                     {4096, 16384,  &MPIR_Reduce_inter_knomial_wrapper_MV2},
                     {16384, 131072,&MPIR_Reduce_binomial_MV2},
-                    {131072, -1, &MPIR_Reduce_redscat_gather_MV2},
+                    {131072, 1048576, &MPIR_Reduce_redscat_gather_MV2},
+                    {1048576, -1, &MPIR_Reduce_redscat_gather_MV2},
                 },
                 4,
                 {
@@ -363,13 +424,14 @@ int MV2_set_reduce_tuning_table(int heterogeneity)
                 128,
                 4,
                 4,
-                {1, 0, 1, 1},
-                4,
+                {1, 0, 1, 1, 0},
+                5,
                 {
                     {0, 4096, &MPIR_Reduce_inter_knomial_wrapper_MV2},
                     {4096, 16384,  &MPIR_Reduce_inter_knomial_wrapper_MV2},
                     {16384, 131072,&MPIR_Reduce_binomial_MV2},
-                    {131072, -1, &MPIR_Reduce_binomial_MV2},
+                    {131072, 1048576, &MPIR_Reduce_binomial_MV2},
+                    {1048576, -1, &MPIR_Reduce_redscat_gather_MV2},
                 },
                 4,
                 {
@@ -382,13 +444,14 @@ int MV2_set_reduce_tuning_table(int heterogeneity)
                 256,
                 4,
                 4,
-                {1, 0, 1, 1},
-                4,
+                {1, 0, 1, 1, 0},
+                5,
                 {
                     {0, 4096, &MPIR_Reduce_inter_knomial_wrapper_MV2},
                     {4096, 16384,  &MPIR_Reduce_inter_knomial_wrapper_MV2},
                     {16384, 131072,&MPIR_Reduce_binomial_MV2},
-                    {131072, -1, &MPIR_Reduce_binomial_MV2},
+                    {131072, 1048576, &MPIR_Reduce_binomial_MV2},
+                    {1048576, -1, &MPIR_Reduce_redscat_gather_MV2},
                 },
                 4,
                 {
@@ -401,13 +464,14 @@ int MV2_set_reduce_tuning_table(int heterogeneity)
                 512,
                 4,
                 4,
-                {1, 0, 1, 1},
-                4,
+                {1, 0, 1, 1, 0},
+                5,
                 {
                     {0, 4096, &MPIR_Reduce_inter_knomial_wrapper_MV2},
                     {4096, 16384,  &MPIR_Reduce_inter_knomial_wrapper_MV2},
                     {16384, 131072,&MPIR_Reduce_binomial_MV2},
-                    {131072, -1, &MPIR_Reduce_binomial_MV2},
+                    {131072, 1048576, &MPIR_Reduce_binomial_MV2},
+                    {1048576, -1, &MPIR_Reduce_redscat_gather_MV2},
                 },
                 4,
                 {

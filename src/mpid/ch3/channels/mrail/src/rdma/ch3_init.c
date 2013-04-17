@@ -445,6 +445,8 @@ int MPIDI_CH3_VC_Init(MPIDI_VC_t * vc)
     vc->ch.cm_sendq_tail = NULL;
     vc->ch.cm_1sc_sendq_head = NULL;
     vc->ch.cm_1sc_sendq_tail = NULL;
+    vc->ch.pending_r3_data = 0;
+    vc->ch.received_r3_data = 0;
 #ifdef _ENABLE_XRC_
     vc->ch.xrc_flags = 0;
     vc->ch.xrc_conn_queue = NULL;

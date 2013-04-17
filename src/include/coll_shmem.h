@@ -282,8 +282,8 @@ void lock_shmem_region(void);
 void unlock_shmem_region(void);
 
 /* utils */
-inline int mv2_increment_shmem_coll_counter(MPID_Comm *comm_ptr); 
-inline int mv2_increment_allgather_coll_counter(MPID_Comm *comm_ptr); 
+int mv2_increment_shmem_coll_counter(MPID_Comm *comm_ptr); 
+int mv2_increment_allgather_coll_counter(MPID_Comm *comm_ptr); 
 void increment_mv2_shmem_comm_count(void);
 int get_mv2_shmem_comm_count(void);
 int MPIDI_CH3I_SHMEM_Coll_get_free_block(); 

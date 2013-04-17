@@ -85,7 +85,8 @@ int MV2_set_bcast_tuning_table(int heterogeneity)
                     mv2_size_bcast_tuning_table * sizeof (mv2_bcast_tuning_table));
     } else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
                 MV2_ARCH_INTEL_XEON_E5_2680_16, MV2_HCA_MLX_CX_FDR) && !heterogeneity){
-        mv2_size_bcast_tuning_table=7;
+        /*Stampede,*/
+        mv2_size_bcast_tuning_table=8;
         mv2_bcast_thresholds_table = MPIU_Malloc(mv2_size_bcast_tuning_table *
                                                  sizeof (mv2_bcast_tuning_table));
 
@@ -156,6 +157,18 @@ int MV2_set_bcast_tuning_table(int heterogeneity)
                  {262144, -1, &MPIR_Bcast_scatter_ring_allgather_shm_MV2}
                 },
              1, {{0, -1, &MPIR_Shmem_Bcast_MV2}}
+            },
+            {2048,
+             8192, 4, 4,
+             {1, 1, 1},
+             3, {{0,  8192, &MPIR_Knomial_Bcast_inter_node_wrapper_MV2},
+                 {8192, 16384, &MPIR_Bcast_binomial_MV2},
+                 {16384, -1, &MPIR_Pipelined_Bcast_MV2}
+                },
+             3, {{0, 8192, &MPIR_Shmem_Bcast_MV2},
+                 {8192, 16384, &MPIR_Shmem_Bcast_MV2},
+                 {16384, -1, &MPIR_Shmem_Bcast_MV2}
+                }
             }
 
       };

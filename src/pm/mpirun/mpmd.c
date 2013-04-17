@@ -11,7 +11,7 @@
  */
 
 #include <mpmd.h>
-#include <mpirun_rsh.h>
+#include <src/pm/mpirun/mpirun_rsh.h>
 
 #include <ctype.h>
 

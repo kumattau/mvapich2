@@ -14,6 +14,7 @@
 #include "scr.h"
 #include "scr_io.h"
 #include "scr_err.h"
+#include "scr_util.h"
 #include "scr_hash.h"
 
 #include <stdlib.h>
@@ -38,7 +39,7 @@ int main(int argc, char* argv[])
   char* filename = strdup(argv[1]);
   if (filename != NULL) {
     /* get a hash to read in the file */
-    struct scr_hash* hash = scr_hash_new();
+    scr_hash* hash = scr_hash_new();
 
     /* read in the file */
     if (scr_hash_read(filename, hash) == SCR_SUCCESS) {
@@ -52,10 +53,10 @@ int main(int argc, char* argv[])
     }
 
     /* free the hash object */
-    scr_hash_delete(hash);
+    scr_hash_delete(&hash);
 
     /* free our strdup'd filename */
-    free(filename);
+    scr_free(&filename);
   } else {
     scr_err("Could not copy filename from command line @ %s:%d",
             __FILE__, __LINE__

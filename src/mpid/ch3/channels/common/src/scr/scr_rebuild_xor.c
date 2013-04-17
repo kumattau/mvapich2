@@ -14,10 +14,12 @@
 
 #include "scr.h"
 #include "scr_io.h"
+#include "scr_path.h"
 #include "scr_meta.h"
 #include "scr_err.h"
-#include "scr_copy_xor.h"
+#include "scr_util.h"
 #include "scr_filemap.h"
+#include "scr_dataset.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -37,9 +39,9 @@
 int buffer_size = 128*1024;
 
 /* execute xor operation with N-1 files and xor file: 
-     open each XOR file and read header to get info for full files
-     open each full file
-     open missing full file
+     open each XOR file and read header to get info for user files
+     open each user file
+     open missing user file
      open missing XOR file
      for all chunks
        read a chunk from missing file (xor file) into memory buffer A
@@ -49,6 +51,51 @@ int buffer_size = 128*1024;
        write chunk in memory buffer A to missing file
      close all files
 */
+
+static int scr_compute_crc(scr_filemap* map, int id, int rank, const char* file)
+{
+  /* compute crc for the file */
+  uLong crc_file;
+  if (scr_crc32(file, &crc_file) != SCR_SUCCESS) {
+    scr_err("Failed to compute crc for file %s @ %s:%d",
+      file, __FILE__, __LINE__
+    );
+    return SCR_FAILURE;
+  }
+
+  /* allocate a new meta data object */
+  scr_meta* meta = scr_meta_new();
+  if (meta == NULL) {
+    scr_abort(-1, "Failed to allocate meta data object @ %s:%d",
+      __FILE__, __LINE__
+    );
+  }
+
+  /* read meta data from filemap */
+  if (scr_filemap_get_meta(map, id, rank, file, meta) != SCR_SUCCESS) {
+    return SCR_FAILURE;
+  }
+
+  int rc = SCR_SUCCESS;
+
+  /* read crc value from meta data */
+  uLong crc_meta;
+  if (scr_meta_get_crc32(meta, &crc_meta) == SCR_SUCCESS) {
+    /* check that the values are the same */
+    if (crc_file != crc_meta) {
+      rc = SCR_FAILURE;
+    }
+  } else {
+    /* record crc in filemap */
+    scr_meta_set_crc32(meta, crc_file);
+    scr_filemap_set_meta(map, id, rank, file, meta);
+  }
+
+  /* free our meta data object */
+  scr_meta_delete(&meta);
+
+  return rc;
+}
 
 int main(int argc, char* argv[])
 {
@@ -61,12 +108,21 @@ int main(int argc, char* argv[])
     return 1;
   }
 
+  /* TODO: want to pass this on command line? */
+  /* get current working directory */
+  char dsetdir[SCR_MAX_FILENAME];
+  scr_getcwd(dsetdir, sizeof(dsetdir));
+
+  /* create and reduce path for dataset */
+  scr_path* path_dset = scr_path_from_str(dsetdir);
+  scr_path_reduce(path_dset);
+
   /* allocate buffers */
-  char*  buffer_A = malloc(buffer_size * sizeof(char));
-  char*  buffer_B = malloc(buffer_size * sizeof(char));
+  char* buffer_A = malloc(buffer_size * sizeof(char));
+  char* buffer_B = malloc(buffer_size * sizeof(char));
   if (buffer_A == NULL || buffer_B == NULL) {
     scr_err("Failed to allocate buffer memory @ %s:%d",
-           __FILE__, __LINE__
+      __FILE__, __LINE__
     );
     return 1;
   }
@@ -75,7 +131,7 @@ int main(int argc, char* argv[])
   int xor_set_size = (int) strtol(argv[index++], (char **)NULL, 10);
   if (xor_set_size <= 0) {
     scr_err("Invalid XOR set size argument %s @ %s:%d",
-           argv[index-1], __FILE__, __LINE__
+      argv[index-1], __FILE__, __LINE__
     );
     return 1;
   }
@@ -85,10 +141,10 @@ int main(int argc, char* argv[])
   int*   offsets    = malloc(xor_set_size * sizeof(int));
   char** xor_files  = malloc(xor_set_size * sizeof(char*));
   int*   xor_fds    = malloc(xor_set_size * sizeof(int));
-  struct scr_copy_xor_header* xor_headers = malloc(xor_set_size * sizeof(struct scr_copy_xor_header));
+  scr_hash** xor_headers = malloc(xor_set_size * sizeof(scr_hash*));
   if (num_files == NULL || offsets == NULL || xor_files == NULL || xor_fds == NULL || xor_headers == NULL) {
     scr_err("Failed to allocate buffer memory @ %s:%d",
-           __FILE__, __LINE__
+      __FILE__, __LINE__
     );
     return 1;
   }
@@ -97,7 +153,7 @@ int main(int argc, char* argv[])
   int root = (int) strtol(argv[index++], (char **)NULL, 10);
   if (root < 0 || root >= xor_set_size) {
     scr_err("Invalid root argument %s @ %s:%d",
-           argv[index-1], __FILE__, __LINE__
+      argv[index-1], __FILE__, __LINE__
     );
     return 1;
   }
@@ -106,7 +162,7 @@ int main(int argc, char* argv[])
   xor_files[0] = strdup(argv[index++]);
   if (xor_files[0] == NULL) {
     scr_err("Failed to dup XOR filename @ %s:%d",
-           __FILE__, __LINE__
+      __FILE__, __LINE__
     );
     return 1;
   }
@@ -114,6 +170,8 @@ int main(int argc, char* argv[])
   /* read in the xor filenames (expected to be in order of XOR segment number) */
   /* we order ranks so that root is index 0, the rank to the right of root is index 1, and so on */
   for (i=0; i < xor_set_size; i++) {
+    xor_headers[i] = scr_hash_new();
+
     /* we'll get the XOR file name for root from the header stored in the XOR file of the partner */
     if (i == root) {
       continue;
@@ -129,7 +187,7 @@ int main(int argc, char* argv[])
     xor_files[j] = strdup(argv[index++]);
     if (xor_files[j] == NULL) {
       scr_err("Failed to dup XOR filename @ %s:%d",
-             __FILE__, __LINE__
+        __FILE__, __LINE__
       );
       return 1;
     }
@@ -140,25 +198,117 @@ int main(int argc, char* argv[])
     /* open each xor file for reading */
     xor_fds[i] = scr_open(xor_files[i], O_RDONLY);
     if (xor_fds[i] < 0) {
-      scr_err("Opening xor segment file: scr_open(%s) errno=%d %m @ %s:%d",
-              xor_files[i], errno, __FILE__, __LINE__
+      scr_err("Opening xor segment file: scr_open(%s) errno=%d %s @ %s:%d",
+        xor_files[i], errno, strerror(errno), __FILE__, __LINE__
       );
       return 1;
     }
 
     /* read the header from this xor file */
-    struct scr_copy_xor_header* h = &xor_headers[i];
-    if (scr_copy_xor_header_read(xor_fds[i], h) != SCR_SUCCESS) {
+    if (scr_hash_read_fd(xor_files[i], xor_fds[i], xor_headers[i]) < 0) {
       scr_err("Failed to read XOR header from %s @ %s:%d",
-              xor_files[i], __FILE__, __LINE__
+        xor_files[i], __FILE__, __LINE__
       );
       return 1;
     }
-    scr_copy_xor_header_print(h);
+  }
 
-    /* record the number of files for this rank, as well as, the number of files of his partner */
-    num_files[i]   = h->my_nfiles;
-    num_files[i-1] = h->partner_nfiles;
+  /* build header for missing XOR file */
+  int partner_rank = -1;
+  if (xor_set_size >= 2) {
+    scr_hash_merge(xor_headers[0], xor_headers[1]);
+
+    /* fetch our own file list from rank to our right */
+    scr_hash* rhs_hash = scr_hash_get(xor_headers[1], SCR_KEY_COPY_XOR_PARTNER);
+    scr_hash* current_hash = scr_hash_new();
+    scr_hash_merge(current_hash, rhs_hash);
+    scr_hash_set(xor_headers[0], SCR_KEY_COPY_XOR_CURRENT, current_hash);
+
+    /* we are the partner to the rank to our left */
+    scr_hash* lhs_hash = scr_hash_get(xor_headers[xor_set_size-1], SCR_KEY_COPY_XOR_CURRENT);
+    scr_hash* partner_hash = scr_hash_new();
+    scr_hash_merge(partner_hash, lhs_hash);
+    scr_hash_set(xor_headers[0], SCR_KEY_COPY_XOR_PARTNER, partner_hash);
+
+    /* get global rank of partner */
+    if (scr_hash_util_get_int(lhs_hash, SCR_KEY_COPY_XOR_RANK, &partner_rank) != SCR_SUCCESS) {
+      scr_err("Failed to read partner rank from XOR file header in %s @ %s:%d",
+        xor_files[xor_set_size-1], __FILE__, __LINE__
+      );
+      return 1;
+    }
+  }
+
+  /* get a pointer to the current hash for the missing rank */
+  scr_hash* missing_current_hash = scr_hash_get(xor_headers[0], SCR_KEY_COPY_XOR_CURRENT);
+
+  /* read the rank */
+  int my_rank = -1;
+  if (scr_hash_util_get_int(missing_current_hash, SCR_KEY_COPY_XOR_RANK, &my_rank) != SCR_SUCCESS) {
+    scr_err("Failed to read rank from XOR file header in %s @ %s:%d",
+      xor_files[0], __FILE__, __LINE__
+    );
+    return 1;
+  }
+
+  /* get the dataset */
+  scr_dataset* dataset = scr_hash_get(xor_headers[0], SCR_KEY_COPY_XOR_DATASET);
+
+  /* read the dataset id */
+  int dset_id = -1;
+  if (scr_dataset_get_id(dataset, &dset_id) != SCR_SUCCESS) {
+    scr_err("Failed to read dataset id from XOR file header in %s @ %s:%d",
+      xor_files[0], __FILE__, __LINE__
+    );
+    return 1;
+  }
+
+  /* read the ranks */
+  int num_ranks = -1;
+  if (scr_hash_util_get_int(xor_headers[0], SCR_KEY_COPY_XOR_RANKS, &num_ranks) != SCR_SUCCESS) {
+    scr_err("Failed to read ranks from XOR file header in %s @ %s:%d",
+      xor_files[0], __FILE__, __LINE__
+    );
+    return 1;
+  }
+
+  /* get name of partner's .scrfilemap */
+  scr_path* path_partner_map = scr_path_from_str(".scr");
+  scr_path_append_strf(path_partner_map, "%d.scrfilemap", partner_rank);
+
+  /* extract partner's flush descriptor */
+  scr_hash* flushdesc = scr_hash_new();
+  scr_filemap* partner_map = scr_filemap_new();
+  scr_filemap_read(path_partner_map, partner_map);
+  scr_filemap_get_flushdesc(partner_map, dset_id, partner_rank, flushdesc);
+  scr_filemap_delete(&partner_map);
+
+  /* delete partner map path */
+  scr_path_delete(&path_partner_map);
+
+  /* determine whether we should preserve user directories */
+  int preserve_dirs = 0;
+  scr_hash_util_get_int(flushdesc, SCR_SCAVENGE_KEY_PRESERVE, &preserve_dirs);
+
+  /* read the chunk size */
+  unsigned long chunk_size = 0;
+  if (scr_hash_util_get_unsigned_long(xor_headers[0], SCR_KEY_COPY_XOR_CHUNK, &chunk_size) != SCR_SUCCESS) {
+    scr_err("Failed to read chunk size from XOR file header in %s @ %s:%d",
+      xor_files[0], __FILE__, __LINE__
+    );
+    return 1;
+  }
+
+  /* determine number of files each member wrote in XOR set */
+  for (i=0; i < xor_set_size; i++) {
+    /* record the number of files for this rank */
+    scr_hash* current_hash = scr_hash_get(xor_headers[i], SCR_KEY_COPY_XOR_CURRENT);
+    if (scr_hash_util_get_int(current_hash, SCR_KEY_COPY_XOR_FILES, &num_files[i]) != SCR_SUCCESS) {
+      scr_err("Failed to read number of files from %s @ %s:%d",
+        xor_files[i], __FILE__, __LINE__
+      );
+      return 1;
+    }
   }
   
   /* count the total number of files and set the offsets array */
@@ -168,119 +318,148 @@ int main(int argc, char* argv[])
     total_num_files += num_files[i];
   }
 
-  /* allocate space for a file descriptor, file name pointer, and filesize for each full file */
-  int* full_fds                 = (int*)           malloc(total_num_files * sizeof(int));
-  char** full_files             = (char**)         malloc(total_num_files * sizeof(char*));
-  unsigned long* full_filesizes = (unsigned long*) malloc(total_num_files * sizeof(unsigned long));
-  if (full_fds == NULL || full_files == NULL || full_filesizes == NULL) {
+  /* allocate space for a file descriptor, file name pointer, and filesize for each user file */
+  int* user_fds                 = (int*)           malloc(total_num_files * sizeof(int));
+  char** user_files             = (char**)         malloc(total_num_files * sizeof(char*));
+  char** user_rel_files         = (char**)         malloc(total_num_files * sizeof(char*));
+  unsigned long* user_filesizes = (unsigned long*) malloc(total_num_files * sizeof(unsigned long));
+  if (user_fds == NULL || user_files == NULL || user_rel_files == NULL || user_filesizes == NULL) {
     scr_err("Failed to allocate buffer memory @ %s:%d",
-           __FILE__, __LINE__
+      __FILE__, __LINE__
     );
     return 1;
   }
 
-  /* get file name, file size, and open each of the full files that we have */
-  for (i=1; i < xor_set_size; i++) {
-    struct scr_copy_xor_header* h = &xor_headers[i];
+  /* get file name, file size, and open each of the user files that we have */
+  for (i=0; i < xor_set_size; i++) {
+    scr_hash* current_hash = scr_hash_get(xor_headers[i], SCR_KEY_COPY_XOR_CURRENT);
+
+    /* for each file belonging to this rank, get filename, filesize, and open file */
     for (j=0; j < num_files[i]; j++) {
       int offset = offsets[i] + j;
-      struct scr_meta* m = &(h->my_files[j]);
-      full_files[offset]     = m->filename;
-      full_filesizes[offset] = m->filesize; 
-      full_fds[offset]       = scr_open(full_files[offset], O_RDONLY);
-      if (full_fds[offset] < 0) {
-        scr_err("Opening full file for reading: scr_open(%s) errno=%d %m @ %s:%d",
-                full_files[offset], errno, __FILE__, __LINE__
+
+      /* get the meta data for this file */
+      scr_meta* meta = scr_hash_get_kv_int(current_hash, SCR_KEY_COPY_XOR_FILE, j);
+      if (meta == NULL) {
+        scr_err("Failed to read meta data for file %d in %s @ %s:%d",
+          j, xor_files[i], __FILE__, __LINE__
         );
         return 1;
+      }
+
+      /* record the filesize of this file */
+      if (scr_meta_get_filesize(meta, &user_filesizes[offset]) != SCR_SUCCESS) {
+        scr_err("Failed to read filesize field for file %d in %s @ %s:%d",
+          j, xor_files[i], __FILE__, __LINE__
+        );
+        return 1;
+      }
+
+      /* get filename */
+      char* origname;
+      if (scr_meta_get_origname(meta, &origname) != SCR_SUCCESS) {
+        scr_err("Failed to read original name for file %d in %s @ %s:%d",
+          j, xor_files[i], __FILE__, __LINE__
+        );
+        return 1;
+      }
+
+      /* construct full path to user file */
+      scr_path* path_user_full = scr_path_from_str(origname);
+      if (preserve_dirs) {
+        /* get original path of file */
+        char* origpath;
+        if (scr_meta_get_origpath(meta, &origpath) != SCR_SUCCESS) {
+          scr_err("Failed to read original path for file %d in %s @ %s:%d",
+            j, xor_files[i], __FILE__, __LINE__
+          );
+          return 1;
+        }
+
+        /* construct full path to file */
+        scr_path_prepend_str(path_user_full, origpath);
+      } else {
+        /* construct full path to file */
+        scr_path_prepend(path_user_full, path_dset);
+      }
+
+      /* reduce path to user file */
+      scr_path_reduce(path_user_full);
+
+      /* make a copy of the full path */
+      user_files[offset] = scr_path_strdup(path_user_full);
+
+      /* make a copy of relative path */
+      scr_path* path_user_rel = scr_path_relative(path_dset, path_user_full);
+      user_rel_files[offset] = scr_path_strdup(path_user_rel);
+      scr_path_delete(&path_user_rel);
+
+      /* free the full path */
+      scr_path_delete(&path_user_full);
+
+      /* open the file */
+      if (i == 0) {
+        /* create directory for file */
+        scr_path* user_dir_path = scr_path_from_str(user_files[offset]);
+        scr_path_reduce(user_dir_path);
+        scr_path_dirname(user_dir_path);
+        if (! scr_path_is_null(user_dir_path)) {
+          char* user_dir = scr_path_strdup(user_dir_path);
+          mode_t mode_dir = scr_getmode(1, 1, 1);
+          if (scr_mkdir(user_dir, mode_dir) != SCR_SUCCESS) {
+            scr_err("Failed to create directory for user file %s @ %s:%d",
+              user_dir, __FILE__, __LINE__
+            );
+            return 1;
+          }
+          scr_free(&user_dir);
+        }
+        scr_path_delete(&user_dir_path);
+
+        /* open missing file for writing */
+        mode_t mode_file = scr_getmode(1, 1, 0);
+        user_fds[offset] = scr_open(user_files[offset], O_WRONLY | O_CREAT | O_TRUNC, mode_file);
+        if (user_fds[offset] < 0) {
+          scr_err("Opening user file for writing: scr_open(%s) errno=%d %s @ %s:%d",
+            user_files[offset], errno, strerror(errno), __FILE__, __LINE__
+          );
+          return 1;
+        }
+      } else {
+        /* open existing file for reading */
+        user_fds[offset] = scr_open(user_files[offset], O_RDONLY);
+        if (user_fds[offset] < 0) {
+          scr_err("Opening user file for reading: scr_open(%s) errno=%d %s @ %s:%d",
+            user_files[offset], errno, strerror(errno), __FILE__, __LINE__
+          );
+          return 1;
+        }
       }
     }
   }
 
-  /* now get file names, file sizes, and open files for the missing rank */
-  /* assumes ranks to the right of the missing rank is the correct partner */
-  i = 0;
-  struct scr_copy_xor_header* h = &xor_headers[1];
-  for (j=0; j < num_files[0]; j++) {
-    int offset = offsets[0] + j;
-    struct scr_meta* m = &(h->partner_files[j]);
-    full_files[offset]     = m->filename;
-    full_filesizes[offset] = m->filesize; 
-    full_fds[offset]       = scr_open(full_files[offset], O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-    if (full_fds[offset] < 0) {
-      scr_err("Opening full file for writing: scr_open(%s) errno=%d %m @ %s:%d",
-              full_files[offset], errno, __FILE__, __LINE__
-      );
-      return 1;
-    }
-  }
-
   /* finally, open the xor file for the missing rank */
-  xor_fds[0] = scr_open(xor_files[0], O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
+  mode_t mode_file = scr_getmode(1, 1, 0);
+  xor_fds[0] = scr_open(xor_files[0], O_WRONLY | O_CREAT | O_TRUNC, mode_file);
   if (xor_fds[0] < 0) {
-    scr_err("Opening xor file to be reconstructed: scr_open(%s) errno=%d %m @ %s:%d",
-            xor_files[0], errno, __FILE__, __LINE__
+    scr_err("Opening xor file to be reconstructed: scr_open(%s) errno=%d %s @ %s:%d",
+      xor_files[0], errno, strerror(errno), __FILE__, __LINE__
     );
     return 1;
-  }
-
-  /* fill in the XOR header values for the XOR file of the missing rank */
-  xor_headers[0].checkpoint_id = xor_headers[1].checkpoint_id;
-  xor_headers[0].chunk_size    = xor_headers[1].chunk_size;
-  xor_headers[0].nranks        = xor_headers[1].nranks;
-  xor_headers[0].xor_nranks    = xor_headers[1].xor_nranks;
-
-  /* record the list of ranks in this XOR set */
-  xor_headers[0].xor_ranks = malloc(xor_headers[0].xor_nranks * sizeof(int));
-  if (xor_headers[0].xor_ranks == NULL) {
-    scr_err("Failed to allocate buffer memory @ %s:%d",
-           __FILE__, __LINE__
-    );
-    return 1;
-  }
-  for (i=0; i < xor_headers[1].xor_nranks; i++) {
-    xor_headers[0].xor_ranks[i] = xor_headers[1].xor_ranks[i];
-  }
-
-  /* get our rank and the meta data for each of our files */
-  xor_headers[0].my_rank = xor_headers[1].partner_rank;
-  scr_copy_xor_header_alloc_my_files(&xor_headers[0], xor_headers[1].partner_rank, xor_headers[1].partner_nfiles);
-  if (xor_headers[1].partner_nfiles > 0 && xor_headers[0].my_files == NULL) {
-    scr_err("Failed to allocate meta data buffers for my files @ %s:%d",
-           __FILE__, __LINE__
-    );
-    return 1;
-  }
-  for (i=0; i < xor_headers[1].partner_nfiles; i++) {
-    scr_meta_copy(&(xor_headers[0].my_files[i]), &(xor_headers[1].partner_files[i]));
-  }
-
-  /* get the rank and file meta data for our partner */
-  xor_headers[0].partner_rank = xor_headers[xor_set_size-1].my_rank;
-  scr_copy_xor_header_alloc_partner_files(&xor_headers[0], xor_headers[xor_set_size-1].my_rank, xor_headers[xor_set_size-1].my_nfiles);
-  if (xor_headers[xor_set_size-1].my_nfiles > 0 && xor_headers[0].partner_files == NULL) {
-    scr_err("Failed to allocate meta data buffers for partner files @ %s:%d",
-           __FILE__, __LINE__
-    );
-    return 1;
-  }
-  for (i=0; i < xor_headers[xor_set_size-1].my_nfiles; i++) {
-    scr_meta_copy(&(xor_headers[0].partner_files[i]), &(xor_headers[xor_set_size-1].my_files[i]));
   }
 
   int rc = 0;
 
   /* write the header to the XOR file of the missing rank */
-  if (scr_copy_xor_header_write(xor_fds[0], &xor_headers[0]) != SCR_SUCCESS) {
+  if (scr_hash_write_fd(xor_files[0], xor_fds[0], xor_headers[0]) < 0) {
     rc = 1;
   }
-  scr_copy_xor_header_print(&xor_headers[0]);
 
   /* this offset array records the current position we are in the logical file for each rank */
   unsigned long* offset = malloc(xor_set_size * sizeof(unsigned long));
   if (offset == NULL) {
     scr_err("Failed to allocate buffer memory @ %s:%d",
-           __FILE__, __LINE__
+      __FILE__, __LINE__
     );
     return 1;
   }
@@ -290,7 +469,6 @@ int main(int argc, char* argv[])
 
   unsigned long write_pos = 0;
   int chunk_id;
-  unsigned long chunk_size = xor_headers[0].chunk_size;
   for (chunk_id = 0; chunk_id < xor_set_size && rc == 0; chunk_id++) {
     size_t nread = 0;
     while (nread < chunk_size && rc == 0) {
@@ -308,8 +486,8 @@ int main(int argc, char* argv[])
         /* read the next set of bytes for this chunk from my file into send_buf */
         if (chunk_id != ((i + root) % xor_set_size)) {
           /* read chunk from the logical file for this rank */
-          if (scr_read_pad_n(num_files[i], &full_files[offsets[i]], &full_fds[offsets[i]],
-                             buffer_B, count, offset[i], &full_filesizes[offsets[i]]) != SCR_SUCCESS)
+          if (scr_read_pad_n(num_files[i], &user_files[offsets[i]], &user_fds[offsets[i]],
+                             buffer_B, count, offset[i], &user_filesizes[offsets[i]]) != SCR_SUCCESS)
           {
             /* our read failed, set the return code to an error */
             rc = 1;
@@ -335,8 +513,8 @@ int main(int argc, char* argv[])
       /* at this point, we have the data from the missing rank, write it out */
       if (chunk_id != root) {
         /* write chunk to logical file for the missing rank */
-        if (scr_write_pad_n(num_files[0], &full_files[0], &full_fds[0],
-                            buffer_A, count, write_pos, &full_filesizes[0]) != SCR_SUCCESS)
+        if (scr_write_pad_n(num_files[0], &user_files[0], &user_fds[0],
+                            buffer_A, count, write_pos, &user_filesizes[0]) != SCR_SUCCESS)
         {
           /* our write failed, set the return code to an error */
           rc = 1;
@@ -354,9 +532,9 @@ int main(int argc, char* argv[])
     }
   }
 
-  /* close each of the full files */
+  /* close each of the user files */
   for (i=0; i < total_num_files; i++) {
-    if (scr_close(full_files[i], full_fds[i]) != SCR_SUCCESS) {
+    if (scr_close(user_files[i], user_fds[i]) != SCR_SUCCESS) {
       rc = 1;
     }
   }
@@ -371,21 +549,23 @@ int main(int argc, char* argv[])
   /* if the write failed, delete the files we just wrote, and return an error */
   if (rc != 0) {
     for (j=0; j < num_files[0]; j++) {
-      unlink(full_files[j]);
+      scr_file_unlink(user_files[j]);
     }
-    unlink(xor_files[0]);
+    scr_file_unlink(xor_files[0]);
     return 1;
   }
 
   /* check that filesizes are correct */
   unsigned long filesize;
   for (j=0; j < num_files[0]; j++) {
-    filesize = scr_filesize(full_files[j]);
-    if (filesize != xor_headers[0].my_files[j].filesize) {
+    filesize = scr_file_size(user_files[j]);
+    if (filesize != user_filesizes[j]) {
       /* the filesize check failed, so delete the file */
-      unlink(full_files[j]);
+      scr_file_unlink(user_files[j]);
 
-      xor_headers[0].my_files[j].complete = 0;
+      /* mark the file as incomplete */
+      scr_meta* meta = scr_hash_get_kv_int(missing_current_hash, SCR_KEY_COPY_XOR_FILE, j);
+      scr_meta_set_complete(meta, 0);
 
       rc = 1;
     }
@@ -396,121 +576,105 @@ int main(int argc, char* argv[])
   scr_filemap* map = scr_filemap_new();
   if (map == NULL) {
     scr_err("Failed to allocate filemap @ %s:%d",
-           __FILE__, __LINE__
+      __FILE__, __LINE__
     );
     return 1;
   }
 
-  /* write .scr file for each of the full files and add each one to the filemap */
+  /* record the dataset information in the filemap */
+  scr_filemap_set_dataset(map, dset_id, my_rank, dataset);
+
+  /* write meta data for each of the user files and add each one to the filemap */
   for (j=0; j < num_files[0]; j++) {
-    if (scr_meta_write(full_files[j], &(xor_headers[0].my_files[j])) != SCR_SUCCESS) {
-      rc = 1;
-    }
-    scr_filemap_add_file(map, xor_headers[0].checkpoint_id, xor_headers[0].my_rank, full_files[j]);
+    /* add user file to filemap and record meta data */
+    char* user_file_relative = user_rel_files[j];
+    scr_filemap_add_file(map, dset_id, my_rank, user_file_relative);
+    scr_meta* meta = scr_hash_get_kv_int(missing_current_hash, SCR_KEY_COPY_XOR_FILE, j);
+    scr_filemap_set_meta(map, dset_id, my_rank, user_file_relative, meta);
   }
 
-  /* write .scr file for xor file and add it to the filemap */
+  /* write meta data for xor file and add it to the filemap */
+  scr_filemap_add_file(map, dset_id, my_rank, xor_files[0]);
+  unsigned long full_chunk_filesize = scr_file_size(xor_files[0]);
   int missing_complete = 1;
-  struct scr_meta meta;
-  scr_meta_set(&meta, xor_files[0], xor_headers[0].my_rank, xor_headers[0].nranks, xor_headers[0].checkpoint_id, SCR_FILE_XOR, missing_complete);
-  if (scr_meta_write(xor_files[0], &meta) != SCR_SUCCESS) {
-    rc = 1;
-  }
-  scr_filemap_add_file(map, xor_headers[0].checkpoint_id, xor_headers[0].my_rank, xor_files[0]);
+  scr_meta* meta_chunk = scr_meta_new();
+  scr_meta_set_filename(meta_chunk, xor_files[0]);
+  scr_meta_set_filetype(meta_chunk, SCR_META_FILE_XOR);
+  scr_meta_set_filesize(meta_chunk, full_chunk_filesize);
+  /* TODO: remove this from meta file, for now it's needed in scr_index.c */
+  scr_meta_set_ranks(meta_chunk, num_ranks);
+  scr_meta_set_complete(meta_chunk, missing_complete);
+  scr_filemap_set_meta(map, dset_id, my_rank, xor_files[0], meta_chunk);
 
   /* set expected number of files for the missing rank */
-  scr_filemap_set_expected_files(map, xor_headers[0].checkpoint_id, xor_headers[0].my_rank,
-           scr_filemap_num_files(map, xor_headers[0].checkpoint_id, xor_headers[0].my_rank)
-  );
-
-  /* write filemap for this rank, and delete the map */
-  char map_file[SCR_MAX_FILENAME];
-  sprintf(map_file, "%d.scrfilemap", xor_headers[0].my_rank);
-  if (scr_filemap_write(map_file, map) != SCR_SUCCESS) {
-    rc = 1;
-  }
-  scr_filemap_delete(map);
+  int expected_num_files = scr_filemap_num_files(map, dset_id, my_rank);
+  scr_filemap_set_expected_files(map, dset_id, my_rank, expected_num_files);
 
   /* compute, check, and store crc values with files */
   for (j=0; j < num_files[0]; j++) {
-    if (scr_compute_crc(full_files[j]) != SCR_SUCCESS) {
+    /* compute crc on user file */
+    char* user_file_relative = user_rel_files[j];
+    if (scr_compute_crc(map, dset_id, my_rank, user_file_relative) != SCR_SUCCESS) {
       /* the crc check failed, so delete the file */
-      unlink(full_files[j]);
-
-      /* also record that the file is incomplete in the meta file */
-      xor_headers[0].my_files[j].complete = 0;
-      scr_meta_write(full_files[j], &(xor_headers[0].my_files[j]));
-
+      scr_file_unlink(user_files[j]);
       rc = 1;
     }
   }
-  if (scr_compute_crc(xor_files[0]) != SCR_SUCCESS) {
+  if (scr_compute_crc(map, dset_id, my_rank, xor_files[0]) != SCR_SUCCESS) {
     /* the crc check failed, so delete the file */
-    unlink(xor_files[0]);
-
-    /* also record that the file is incomplete in the meta file */
-    meta.complete = 0;
-    scr_meta_write(xor_files[0], &meta);
-
+    scr_file_unlink(xor_files[0]);
     rc = 1;
   }
 
-  if (offset != NULL) {
-    free(offset);
-    offset = NULL;
+  /* store flush descriptor */
+  scr_filemap_set_flushdesc(map, dset_id, my_rank, flushdesc);
+
+  /* write filemap for this rank */
+  scr_path* path_map = scr_path_from_str(".scr");
+  scr_path_append_strf(path_map, "%d.scrfilemap", my_rank);
+  if (scr_filemap_write(path_map, map) != SCR_SUCCESS) {
+    rc = 1;
+  }
+  scr_path_delete(&path_map);
+
+  /* delete the map */
+  scr_filemap_delete(&map);
+
+  scr_meta_delete(&meta_chunk);
+
+  /* delete the flush/scavenge descriptor */
+  scr_hash_delete(&flushdesc);
+
+  scr_free(&offset);
+
+  for (i=0; i < total_num_files; i++) {
+    scr_free(&user_rel_files[i]);
+    scr_free(&user_files[i]);
   }
 
-  if (full_filesizes != NULL) {
-    free(full_filesizes);
-    full_filesizes = NULL;
-  }
-  if (full_files != NULL) {
-    free(full_files);
-    full_files = NULL;
-  }
-  if (full_fds != NULL) {
-    free(full_fds);
-    full_fds = NULL;
+  scr_free(&user_filesizes);
+  scr_free(&user_rel_files);
+  scr_free(&user_files);
+  scr_free(&user_fds);
+
+  for (i=0; i < xor_set_size; i++) {
+    scr_hash_delete(&xor_headers[i]);
   }
 
   for (i=0; i < xor_set_size; i++) {
-    scr_copy_xor_header_free(&xor_headers[i]);
+    scr_free(&xor_files[i]);
   }
 
-  for (i=0; i < xor_set_size; i++) {
-    free(xor_files[i]);
-    xor_files[i] = NULL;
-  }
+  scr_free(&xor_headers);
+  scr_free(&xor_fds);
+  scr_free(&xor_files);
+  scr_free(&offsets);
+  scr_free(&num_files);
 
-  if (xor_headers != NULL) {
-    free(xor_headers);
-    xor_headers = NULL;
-  }
-  if (xor_fds != NULL) {
-    free(xor_fds);
-    xor_fds = NULL;
-  }
-  if (xor_files != NULL) {
-    free(xor_files);
-    xor_files = NULL;
-  }
-  if (offsets != NULL) {
-    free(offsets);
-    offsets = NULL;
-  }
-  if (num_files != NULL) {
-    free(num_files);
-    num_files = NULL;
-  }
+  scr_free(&buffer_B);
+  scr_free(&buffer_A);
 
-  if (buffer_B != NULL) {
-    free(buffer_B);
-    buffer_B = NULL;
-  }
-  if (buffer_A != NULL) {
-    free(buffer_A);
-    buffer_A = NULL;
-  }
+  scr_path_delete(&path_dset);
 
   return rc;
 }

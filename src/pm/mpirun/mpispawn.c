@@ -622,7 +622,7 @@ void child_handler(int signal)
     }
 }
 
-void mpispawn_checkin(in_port_t l_port)
+void mpispawn_checkin(char * l_port)
 {
     int connect_attempt = 0, max_connect_attempts = 5, i, sock;
     struct hostent *mpirun_hostent;
@@ -630,7 +630,7 @@ void mpispawn_checkin(in_port_t l_port)
     /*struct sockaddr_in c_sockaddr; */
     int offset = 0, id;
     pid_t pid = getpid();
-    int port;
+    char port[MAX_PORT_LEN + 1];
 
     if (!USE_LINEAR_SSH) {
         if (mt_id != 0) {
@@ -650,7 +650,7 @@ void mpispawn_checkin(in_port_t l_port)
 
                 if (read_socket(sock, &id, sizeof(int))
                         || read_socket(sock, &mpispawn_pids[i], sizeof(pid_t))
-                        || read_socket(sock, &port, sizeof(in_port_t))) {
+                        || read_socket(sock, &port, MAX_PORT_LEN + 1)) {
                     PRINT_ERROR("read_socket() failed\n");
 #ifdef CKPT
                     cr_cleanup();
@@ -702,7 +702,8 @@ void mpispawn_checkin(in_port_t l_port)
         exit(EXIT_FAILURE);
     }
 
-    if (write_socket(mpirun_socket, &l_port, sizeof(in_port_t))) {
+
+    if (write_socket(mpirun_socket, l_port, MAX_PORT_LEN + 1)) {
         fprintf(stderr, "Error writing l_port!\n");
         close(mpirun_socket);
         exit(EXIT_FAILURE);
@@ -728,10 +729,12 @@ void mpispawn_checkin(in_port_t l_port)
     }
 }
 
-in_port_t init_listening_socket(int *mc_socket)
+char * init_listening_socket(int *mc_socket)
 {
+    static char port[MAX_PORT_LEN + 1];
     struct sockaddr_in mc_sockaddr;
     socklen_t mc_sockaddr_len = sizeof(mc_sockaddr);
+    int s;
 
     *mc_socket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 
@@ -756,8 +759,14 @@ in_port_t init_listening_socket(int *mc_socket)
     }
 
     listen(*mc_socket, MT_MAX_DEGREE);
+    s = getnameinfo(&mc_sockaddr, mc_sockaddr_len, NULL, 0, port,
+            MAX_PORT_LEN + 1, NI_NUMERICSERV);
+    if (0 != s) {
+        PRINT_ERROR("%s\n", gai_strerror(s));
+        exit(EXIT_FAILURE);
+    }
 
-    return mc_sockaddr.sin_port;
+    return port;
 }
 
 void wait_for_errors(int s, struct sockaddr *sockaddr, unsigned int sockaddr_len)
@@ -910,7 +919,7 @@ int main(int argc, char *argv[])
     mpispawn_state = MPISPAWN_STATE_INITIALIZING;
     
     int l_socket, i;
-    in_port_t l_port = init_listening_socket(&l_socket);
+    char * l_port = init_listening_socket(&l_socket);
 
     int mt_nnodes;
     int j, k;

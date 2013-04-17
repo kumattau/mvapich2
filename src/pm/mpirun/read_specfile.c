@@ -9,7 +9,7 @@
  * copyright file COPYRIGHT in the top level MVAPICH2 directory.
  */
 
-#include <mpirun_rsh.h>
+#include <src/pm/mpirun/mpirun_rsh.h>
 #include <spawn_info.h>
 #include <mpirun_params.h>
 #include <string.h>

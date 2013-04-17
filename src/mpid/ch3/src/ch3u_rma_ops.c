@@ -177,6 +177,63 @@ int MPIDI_Win_free(MPID_Win **win_ptr)
 
 
 #undef FUNCNAME
+#define FUNCNAME MPIDI_SHM_Win_free
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int MPIDI_SHM_Win_free(MPID_Win **win_ptr)
+{
+    int mpi_errno = MPI_SUCCESS;
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_SHM_WIN_FREE);
+
+    MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_SHM_WIN_FREE);
+
+    /* Free memory allocated by the default shared memory window
+       implementation.  Note that this implementation works only for
+       MPI_COMM_SELF and does not map a shared segment. */
+
+    MPIU_Free((*win_ptr)->base);
+    MPIU_Free((*win_ptr)->shm_base_addrs);
+
+    mpi_errno = MPIDI_Win_free(win_ptr);
+    if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
+
+ fn_exit:
+    MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPIDI_SHM_WIN_FREE);
+    return mpi_errno;
+    /* --BEGIN ERROR HANDLING-- */
+ fn_fail:
+    goto fn_exit;
+    /* --END ERROR HANDLING-- */
+}
+
+
+#undef FUNCNAME
+#define FUNCNAME MPIDI_Win_shared_query
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+int MPIDI_Win_shared_query(MPID_Win *win_ptr, int target_rank, MPI_Aint *size,
+                           int *disp_unit, void *baseptr)
+{
+    int mpi_errno = MPI_SUCCESS;
+
+    MPIDI_STATE_DECL(MPID_STATE_MPIDI_WIN_SHARED_QUERY);
+    MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_WIN_SHARED_QUERY);
+
+    *(void**) baseptr = win_ptr->shm_base_addrs[0];
+    *size             = win_ptr->size;
+    *disp_unit        = win_ptr->disp_unit;
+
+ fn_exit:
+    MPIDI_RMA_FUNC_EXIT(MPID_STATE_MPIDI_WIN_SHARED_QUERY);
+    return mpi_errno;
+    /* --BEGIN ERROR HANDLING-- */
+ fn_fail:
+    goto fn_exit;
+    /* --END ERROR HANDLING-- */
+}
+
+
+#undef FUNCNAME
 #define FUNCNAME MPIDI_Put
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
@@ -193,6 +250,10 @@ int MPIDI_Put(const void *origin_addr, int origin_count, MPI_Datatype
         
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_PUT);
 
+    if (target_rank == MPI_PROC_NULL) {
+        goto fn_exit;
+    }
+
     if (win_ptr->epoch_state == MPIDI_EPOCH_NONE && win_ptr->fence_issued) {
         win_ptr->epoch_state = MPIDI_EPOCH_FENCE;
     }
@@ -203,8 +264,7 @@ int MPIDI_Put(const void *origin_addr, int origin_count, MPI_Datatype
     MPIDI_Datatype_get_info(origin_count, origin_datatype,
 			    dt_contig, data_sz, dtp,dt_true_lb); 
     
-    if ((data_sz == 0) || (target_rank == MPI_PROC_NULL))
-    {
+    if (data_sz == 0) {
 	goto fn_exit;
     }
 
@@ -307,6 +367,10 @@ int MPIDI_Get(void *origin_addr, int origin_count, MPI_Datatype
         
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_GET);
 
+    if (target_rank == MPI_PROC_NULL) {
+        goto fn_exit;
+    }
+
     if (win_ptr->epoch_state == MPIDI_EPOCH_NONE && win_ptr->fence_issued) {
         win_ptr->epoch_state = MPIDI_EPOCH_FENCE;
     }
@@ -317,8 +381,7 @@ int MPIDI_Get(void *origin_addr, int origin_count, MPI_Datatype
     MPIDI_Datatype_get_info(origin_count, origin_datatype,
 			    dt_contig, data_sz, dtp, dt_true_lb); 
 
-    if ((data_sz == 0) || (target_rank == MPI_PROC_NULL))
-    {
+    if (data_sz == 0) {
 	goto fn_exit;
     }
 
@@ -420,6 +483,10 @@ int MPIDI_Accumulate(const void *origin_addr, int origin_count, MPI_Datatype
     
     MPIDI_RMA_FUNC_ENTER(MPID_STATE_MPIDI_ACCUMULATE);
 
+    if (target_rank == MPI_PROC_NULL) {
+        goto fn_exit;
+    }
+
     if (win_ptr->epoch_state == MPIDI_EPOCH_NONE && win_ptr->fence_issued) {
         win_ptr->epoch_state = MPIDI_EPOCH_FENCE;
     }
@@ -430,8 +497,7 @@ int MPIDI_Accumulate(const void *origin_addr, int origin_count, MPI_Datatype
     MPIDI_Datatype_get_info(origin_count, origin_datatype,
 			    dt_contig, data_sz, dtp, dt_true_lb);  
     
-    if ((data_sz == 0) || (target_rank == MPI_PROC_NULL))
-    {
+    if (data_sz == 0) {
 	goto fn_exit;
     }
 

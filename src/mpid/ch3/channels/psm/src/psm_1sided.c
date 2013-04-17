@@ -782,13 +782,13 @@ int psm_getresp_rndv_complete(MPID_Request *req, int inlen)
         MPID_Request *savq = req->savedreq;
         psm_do_unpack(savq->dev.user_count, savq->dev.datatype, NULL, savq->dev.user_buf,
                 0, savq->dev.real_user_buf, inlen);
-        *(req->savedreq->cc_ptr) = 0;
+        MPID_cc_set(req->savedreq->cc_ptr, 0);
         MPIU_Free(savq->dev.user_buf);
         MPIU_Object_set_ref(req, 0);
         MPIDI_CH3_Request_destroy(req);
     }
     else {
-        *(req->savedreq->cc_ptr) = 0;
+        MPID_cc_set(req->savedreq->cc_ptr, 0);
         MPIU_Object_set_ref(req, 0);
         MPIDI_CH3_Request_destroy(req);
     }

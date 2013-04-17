@@ -373,7 +373,7 @@ double calc_bw(int rank, int size, int num_pairs, int window_size, char *s_buf,
     MPI_Reduce(&t, &sum_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
 
     if(rank == 0) {
-        double tmp = num_pairs * size / 1e6;
+        double tmp = size / 1e6 * num_pairs ;
         
         sum_time /= num_pairs;
         tmp = tmp * loop * window_size;

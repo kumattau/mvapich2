@@ -1295,11 +1295,11 @@ int MPIR_Scatter_tune_intra_MV2(const void *sendbuf,
     MPIU_THREADPRIV_GET;
 
     if (rank == root) {
-        MPID_Datatype_get_size_macro(recvtype, recvtype_size);
-        nbytes = recvcnt * recvtype_size;
-    } else {
         MPID_Datatype_get_size_macro(sendtype, sendtype_size);
         nbytes = sendcnt * sendtype_size;
+    } else {
+        MPID_Datatype_get_size_macro(recvtype, recvtype_size);
+        nbytes = recvcnt * recvtype_size;
     }
 
     /* Search for the corresponding system size inside the tuning table */
@@ -1350,7 +1350,8 @@ int MPIR_Scatter_tune_intra_MV2(const void *sendbuf,
  
     if( (MV2_Scatter_function == &MPIR_Scatter_MV2_two_level_Direct) || 
         (MV2_Scatter_function == &MPIR_Scatter_MV2_two_level_Binomial)) { 
-         if( comm_ptr->ch.shmem_coll_ok == 1) {
+         if( comm_ptr->ch.shmem_coll_ok == 1 && 
+             comm_ptr->ch.is_global_block == 1 ) {
              MV2_Scatter_intra_function = mv2_scatter_thresholds_table[range].intra_node[range_threshold_intra]
                                 .MV2_pt_Scatter_function;
 
@@ -1417,11 +1418,11 @@ int MPIR_Scatter_intra_MV2(const void *sendbuf,
     MPIU_THREADPRIV_GET;
 
     if (rank == root) {
-        MPID_Datatype_get_size_macro(recvtype, recvtype_size);
-        nbytes = recvcnt * recvtype_size;
-    } else {
         MPID_Datatype_get_size_macro(sendtype, sendtype_size);
         nbytes = sendcnt * sendtype_size;
+    } else {
+        MPID_Datatype_get_size_macro(recvtype, recvtype_size);
+        nbytes = recvcnt * recvtype_size;
     }
 
     while ((range < mv2_size_mv2_scatter_mv2_tuning_table)

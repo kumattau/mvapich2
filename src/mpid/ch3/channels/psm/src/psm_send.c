@@ -53,7 +53,7 @@ psm_error_t psm_send_pkt(MPID_Request **rptr, MPIDI_Message_match m,
                 flags, stag, buf, buflen);
         _psm_exit_;
         if(req) {
-            *(req->cc_ptr) = 0;
+            MPID_cc_set(req->cc_ptr, 0);
         }
     } else {
         if(!req) {

@@ -26,7 +26,7 @@
  */
 
 #include <mpichconf.h>
-#include <mpirun_rsh.h>
+#include <src/pm/mpirun/mpirun_rsh.h>
 #include <mpispawn_tree.h>
 #include <mpirun_util.h>
 #include <mpmd.h>
@@ -1438,7 +1438,7 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env)
     i = 0;
 
     if (debug_on && !use_totalview) {
-        tmp = mkstr("%s MPISPAWN_ARGV_%d=%s", mpispawn_env, i++, DEBUGGER);
+        tmp = mkstr("%s MPISPAWN_ARGV_%d=%s", mpispawn_env, i++, DBG_CMD);
         if (tmp) {
             free(mpispawn_env);
             mpispawn_env = tmp;
@@ -1698,12 +1698,12 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env)
             int local_hostname = 0;
             if ((strcmp(pglist->data[i].hostname, mpirun_host) == 0) && (!xterm_on)) {
                 local_hostname = 1;
-                nargv[arg_offset++] = BASH_CMD;
-                nargv[arg_offset++] = BASH_ARG;
+                nargv[arg_offset++] = SHELL_CMD;
+                nargv[arg_offset++] = SHELL_ARG;
             } else {
 
                 if (xterm_on) {
-                    nargv[arg_offset++] = XTERM;
+                    nargv[arg_offset++] = XTERM_CMD;
                     nargv[arg_offset++] = "-e";
                 }
 
@@ -2043,7 +2043,7 @@ void spawn_one(int argc, char *argv[], char *totalview_cmd, char *env, int fasts
     i = 0;
 
     if (debug_on && !use_totalview) {
-        tmp = mkstr("%s MPISPAWN_ARGV_%d=%s", mpispawn_env, i++, DEBUGGER);
+        tmp = mkstr("%s MPISPAWN_ARGV_%d=%s", mpispawn_env, i++, DBG_CMD);
         if (tmp) {
             free(mpispawn_env);
             mpispawn_env = tmp;
@@ -2149,7 +2149,7 @@ void spawn_one(int argc, char *argv[], char *totalview_cmd, char *env, int fasts
             }
 
             if (xterm_on) {
-                nargv[arg_offset++] = XTERM;
+                nargv[arg_offset++] = XTERM_CMD;
                 nargv[arg_offset++] = "-e";
             }
 
@@ -2266,7 +2266,7 @@ void make_command_strings(int argc, char *argv[], char *totalview_cmd, char *com
             sprintf(command_name_tv, "%s %s %s", keyval_list, totalview_cmd, argv[aout_index]);
             sprintf(command_name, "%s %s ", keyval_list, argv[aout_index]);
         } else {
-            sprintf(command_name, "%s %s %s", keyval_list, DEBUGGER, argv[aout_index]);
+            sprintf(command_name, "%s %s %s", keyval_list, DBG_CMD, argv[aout_index]);
         }
     } else {
         sprintf(command_name, "%s", argv[aout_index]);
@@ -2464,8 +2464,13 @@ void mpispawn_checkin(int s)
     int sock, id, i, n, mpispawn_root = -1;
     in_port_t port;
     socklen_t addrlen;
-    struct sockaddr_storage addr, address[pglist->npgs];
+    struct sockaddr_storage addr;
     int mt_degree;
+    struct {
+        char hostname[MAX_HOST_LEN + 1];
+        char port[MAX_PORT_LEN + 1];
+    } mpispawn_info[NSPAWNS];
+
     mt_degree = env2int("MV2_MT_DEGREE");
     if (!mt_degree) {
         mt_degree = ceil(pow(pglist->npgs, (1.0 / (MT_MAX_LEVEL - 1))));
@@ -2507,12 +2512,9 @@ void mpispawn_checkin(int s)
 
         if (read_socket(sock, &id, sizeof(int))
             || read_socket(sock, &pglist->data[id].pid, sizeof(pid_t))
-            || read_socket(sock, &port, sizeof(in_port_t))) {
+            || read_socket(sock, &mpispawn_info[id].port, MAX_PORT_LEN + 1)) {
             socket_error = 1;
         }
-
-        address[id] = addr;
-        ((struct sockaddr_in *) &address[id])->sin_port = port;
 
         if (send_environ(sock)) {
             socket_error = 1;
@@ -2549,6 +2551,12 @@ void mpispawn_checkin(int s)
     }
 
     if (USE_LINEAR_SSH) {
+        for (i = 0; i < NSPAWNS; i++) {
+            strncpy(mpispawn_info[i].hostname, pglist->data[i].hostname,
+                    MAX_HOST_LEN);
+            mpispawn_info[i].hostname[MAX_HOST_LEN] = '\0';
+        }
+
         sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
         if (sock < 0) {
             PRINT_ERROR_ERRNO("socket() failed", errno);
@@ -2557,19 +2565,18 @@ void mpispawn_checkin(int s)
             return;
         }
 
-        if (connect(sock, (struct sockaddr *) &address[0], sizeof(struct sockaddr)) < 0) {
-            PRINT_ERROR_ERRNO("connect() failed", errno);
+        sock = connect_socket(mpispawn_info[0].hostname, mpispawn_info[0].port);
+        if (0 == sock) {
             m_state_fail();
-
             return;
         }
 
         /*
-         * Send address array to address[0] (mpispawn with id 0).  The mpispawn
-         * processes will propagate this information to each other after
-         * connecting in a tree like structure.
+         * Send mpispawn_info array to mpispawn_info[0] (mpispawn with id 0).
+         * The mpispawn processes will propagate this information to each other
+         * after connecting in a tree like structure.
          */
-        if (write_socket(sock, &address, sizeof(addr) * pglist->npgs)
+        if (write_socket(sock, &mpispawn_info, sizeof(mpispawn_info))
 #if defined(CKPT) && defined(CR_FTB)
             || write_socket(sock, spawninfo, sizeof(struct spawn_info_s) * (pglist->npgs))
 #endif

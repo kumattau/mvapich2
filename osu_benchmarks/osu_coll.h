@@ -16,11 +16,34 @@
 #include <stdio.h>
 #include <math.h>
 #include <string.h>
+#include <stdint.h>
+
+#ifndef DEFAULT_MAX_MESSAGE_SIZE
+#define DEFAULT_MAX_MESSAGE_SIZE (1 << 20)
+#endif
 
 #define SKIP 200
 #define SKIP_LARGE 10
 #define LARGE_MESSAGE_SIZE 8192
 #define MAX_ALIGNMENT 16384
+#define MAX_MEM_LIMIT (512*1024*1024)
+#define MAX_MEM_LOWER_LIMIT (1*1024*1024)
+
+#ifdef _ENABLE_OPENACC_
+#   define OPENACC_ENABLED 1
+#else
+#   define OPENACC_ENABLED 0
+#endif
+
+#ifdef _ENABLE_CUDA_
+#   define CUDA_ENABLED 1
+#else
+#   define CUDA_ENABLED 0
+#endif
+
+#ifndef BENCHMARK
+#   define BENCHMARK "BENCHMARK NAME UNSET"
+#endif
 
 #ifdef PACKAGE_VERSION
 #   define HEADER "# " BENCHMARK " v" PACKAGE_VERSION "\n"
@@ -36,20 +59,23 @@
 #   define FLOAT_PRECISION 2
 #endif
 
-int iterations = 1000;
-int iterations_large = 100;
-int print_size = 0;
+static int iterations = 1000;
+static int iterations_large = 100;
+static int print_size = 0;
+static uint64_t max_mem_limit = MAX_MEM_LIMIT; 
 
-void print_usage(int rank, const char * prog, int has_size)
+static void print_usage(int rank, const char * prog, int has_size)
 {
     if (rank == 0) {
         if (has_size) {
-            fprintf(stdout, " USAGE : %s [-m SIZE] [-i ITER] [-f] [-hv] \n", prog);
+            fprintf(stdout, " USAGE : %s [-m SIZE] [-i ITER] [-f] [-hv] [-M SIZE]\n", prog);
             fprintf(stdout, "  -m : Set maximum message size to SIZE.\n");
             fprintf(stdout, "       By default, the value of SIZE is 1MB.\n");
             fprintf(stdout, "  -i : Set number of iterations per message size to ITER.\n");
             fprintf(stdout, "       By default, the value of ITER is 1000 for small messages\n");
             fprintf(stdout, "       and 100 for large messages.\n");
+            fprintf(stdout, "  -M : Set maximum memory consumption (per process) to SIZE. \n"); 
+            fprintf(stdout, "       By default, the value of SIZE is 512MB.\n");
         }
 
         else {
@@ -69,13 +95,13 @@ void print_usage(int rank, const char * prog, int has_size)
     }
 }
 
-void print_version()
+static void print_version()
 {
         fprintf(stdout, HEADER);
         fflush(stdout);
 }
 
-int process_args (int argc, char *argv[], int rank, int * size, int * full)
+static int process_args (int argc, char *argv[], int rank, int * size, int * full)
 {
     char c;
 
@@ -83,7 +109,7 @@ int process_args (int argc, char *argv[], int rank, int * size, int * full)
         print_size = 1;
     }
 
-    while ((c = getopt(argc, argv, ":hvfm:i:")) != -1) {
+    while ((c = getopt(argc, argv, ":hvfm:i:M:")) != -1) {
         switch (c) {
             case 'h':
                 print_usage(rank, argv[0], size != NULL);
@@ -124,6 +150,16 @@ int process_args (int argc, char *argv[], int rank, int * size, int * full)
                 *full = 1;
                 break;
 
+            case 'M': 
+                max_mem_limit = atoll(optarg); 
+                if (max_mem_limit < MAX_MEM_LOWER_LIMIT) {
+                    max_mem_limit = MAX_MEM_LOWER_LIMIT; 
+                    if(rank == 0) fprintf(stderr,"Requested memory limit too low. "); 
+                    if(rank == 0) fprintf(stderr,"Reverting to default lower-limit value %d\n", 
+                                          MAX_MEM_LOWER_LIMIT); 
+                }
+                break; 
+
             default:
                 if (rank == 0) {
                     print_usage(rank, argv[0], size != NULL);
@@ -136,7 +172,7 @@ int process_args (int argc, char *argv[], int rank, int * size, int * full)
     return 0;
 }
 
-void print_header (int rank, int full)
+static void print_header (int rank, int full)
 {
     if(rank == 0) {
         fprintf(stdout, HEADER);
@@ -164,7 +200,7 @@ void print_header (int rank, int full)
     }
 }
 
-void print_data (int rank, int full, int size, double avg_time, double
+static void print_data (int rank, int full, int size, double avg_time, double
         min_time, double max_time, int iterations)
 {
     if(rank == 0) {
@@ -191,5 +227,63 @@ void print_data (int rank, int full, int size, double avg_time, double
         fflush(stdout);
     }
 }
+
+enum po_ret_type {
+    po_cuda_not_avail,
+    po_openacc_not_avail,
+    po_bad_usage,
+    po_help_message,
+    po_version_message,
+    po_okay,
+};
+
+enum accel_type {
+    none,
+    cuda,
+    openacc
+};
+
+struct {
+    enum accel_type accel;
+    int show_size;
+    int show_full;
+    size_t max_message_size;
+    size_t iterations;
+    size_t iterations_large;
+    size_t max_mem_limit;
+} options;
+
+/*
+ * Option Processing
+ */
+enum po_ret_type process_options (int argc, char *argv[]);
+
+/*
+ * Print Information
+ */
+void print_bad_usage_message (int rank);
+void print_help_message (int rank);
+void print_version_message (int rank);
+void print_preamble (int rank);
+void print_stats (int rank, int size, double avg, double min, double max);
+
+/*
+ * Memory Management
+ */
+int allocate_buffer (void ** buffer, size_t size, enum accel_type type);
+void free_buffer (void * buffer, enum accel_type type);
+
+/*
+ * CUDA Context Management
+ */
+int init_cuda_context (void);
+int destroy_cuda_context (void);
+
+/*
+ * Set Benchmark Properties
+ */
+void set_header (const char * header);
+void set_benchmark_name (const char * name);
+void enable_accel_support (void);
 
 #endif

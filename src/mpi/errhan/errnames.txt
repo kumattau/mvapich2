@@ -194,6 +194,7 @@ MPI_TYPECLASS_INTEGER, or MPI_TYPECLASS_COMPLEX
 **rmatypenotatomic: Datatype not permitted for atomic operations
 **rmatypenotatomic %D: Datatype (%D) not permitted for atomic operations
 **winflavor: Window flavor is not compatible with the given operation
+**winflavor %s: Window flavor is not compatible with the given operation (expected %s)
 
 **typenotpredefined: Datatype must be predefined
 
@@ -419,6 +420,10 @@ be in the range 0 to %d
 **rmadisp:Invalid displacement argument in RMA call 
 **rmareqcancel:Request-based RMA operation cannot be cancelled
 **rmareqop:Error in request-based RMA operation
+**rmarange:Target memory is not contained within the window
+**rmaattach:Memory cannot be attached
+**rmashared:Memory cannot be shared
+**rmaflavor:Incorrect window flavor
 **assert:Invalid assert argument
 **lockassertval:Invalid assert argument passed to MPI_Win_lock
 **lockassertval %d: Invalid assert argument (%d) passed to MPI_Win_lock
@@ -772,8 +777,6 @@ is too big (> MPIU_SHMW_GHND_SZ)
 **windeserialize:deserializing win object
 **winnoprogress: Detected an error while in progress wait for RMA messages
 **winInvalidOp: Invalid RMA operation
-**winRMAmessage: RMA message operation failed
-**winRMArequest: RMA message operation failed; request returned error
 **open %s:open failed - %s
 **setenv:setenv failed
 **putenv:putenv failed

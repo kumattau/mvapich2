@@ -28,7 +28,7 @@ endif
 
 if WANT_CKPT_RUNTIME
 bin_PROGRAMS += src/pm/mpirun/mv2_trigger
-dist_bin_SCRIPTS = src/pm/mpirun/mv2_checkpoint
+dist_bin_SCRIPTS += src/pm/mpirun/mv2_checkpoint
 endif
 
 src_pm_mpirun_mpirun_rsh_SOURCES =  \

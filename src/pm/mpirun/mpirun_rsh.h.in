@@ -34,23 +34,19 @@
 #define USE_VIADEV_BARRIER  1
 #endif
 
-#define BASE_ENV_LEN        17
-#define COMMAND_LEN        20000
+#define BASE_ENV_LEN    17
+#define COMMAND_LEN     20000
 
-#define ENV_CMD            "/usr/bin/env"
-#define RSH_CMD            "/usr/bin/rsh"
-#define SSH_CMD            "/usr/bin/ssh"
-#define XTERM            "/usr/bin/xterm"
-#define SSH_ARG            "-q"
-#define RSH_ARG            "NOPARAM"
-#define BASH_CMD        "/bin/bash"
-#define BASH_ARG        "-c"
+#define RSH_CMD         "@RSH_CMD@"
+#define SSH_CMD         "@SSH_CMD@"
+#define ENV_CMD         "@ENV_CMD@"
+#define DBG_CMD         "@DBG_CMD@"
+#define XTERM_CMD       "@XTERM_CMD@"
+#define SHELL_CMD       "@SHELL_CMD@"
+#define TOTALVIEW_CMD   "@TOTALVIEW_CMD@"
 
-#ifdef USE_DDD
-#define DEBUGGER        "/usr/bin/ddd"
-#else
-#define DEBUGGER        "/usr/bin/gdb"
-#endif
+#define SSH_ARG         "-q"
+#define SHELL_ARG       "-c"
 
 #ifndef _GNU_SOURCE
 #define _GNU_SOURCE
@@ -103,7 +99,6 @@ extern int NSPAWNS;
 #define PARAM_GLOBAL "/etc/mvapich.conf"
 #endif
 
-#define TOTALVIEW_CMD "/usr/totalview/bin/totalview"
 #endif
 
 int handle_spawn_req(int readsock);

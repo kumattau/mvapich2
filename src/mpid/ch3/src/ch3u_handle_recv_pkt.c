@@ -128,7 +128,6 @@ int MPIDI_CH3_Pkt_size_index[] = {
     sizeof(MPIDI_CH3_Pkt_lock_accum_unlock_t),
     sizeof(MPIDI_CH3_Pkt_accum_immed_t),
     sizeof(MPIDI_CH3_Pkt_cas_t),
-    sizeof(MPIDI_CH3_Pkt_cas_t),
     sizeof(MPIDI_CH3_Pkt_cas_resp_t),
     sizeof(MPIDI_CH3_Pkt_fop_t),
     sizeof(MPIDI_CH3_Pkt_fop_resp_t),
@@ -864,8 +863,6 @@ int MPIDI_CH3_PktHandler_Init( MPIDI_CH3_PktHandler_Fcn *pktArray[],
     pktArray[MPIDI_CH3_PKT_ACCUM_IMMED] = 
 	MPIDI_CH3_PktHandler_Accumulate_Immed;
     pktArray[MPIDI_CH3_PKT_CAS] =
-        MPIDI_CH3_PktHandler_CAS;
-    pktArray[MPIDI_CH3_PKT_CAS_UNLOCK] =
         MPIDI_CH3_PktHandler_CAS;
     pktArray[MPIDI_CH3_PKT_CAS_RESP] =
         MPIDI_CH3_PktHandler_CASResp;

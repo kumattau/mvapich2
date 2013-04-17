@@ -1771,7 +1771,7 @@ int MPIR_Allreduce_mcst_MV2(const void *sendbuf,
        reduce_fn = &MPIR_Reduce_binomial_MV2; 
    } else { 
        if(MV2_Allreduce_function == &MPIR_Allreduce_mcst_reduce_two_level_helper_MV2) {
-            reduce_fn = &MPIR_Reduce_two_level_helper_MV2;
+            reduce_fn = &MPIR_Reduce_MV2;
        } else {
             reduce_fn = &MPIR_Reduce_redscat_gather_MV2;
        } 

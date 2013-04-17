@@ -413,7 +413,7 @@ AC_ARG_ENABLE(timing,
 AC_ARG_ENABLE(g,
 [  --enable-g=option - Control the level of debugging support in the
                       MVAPICH2 implementation.  option is a list of comma
-                      separated names including
+                       separated names including.  Default is "most".
         none     - No debugging
         handle   - Trace handle operations
         handlealloc - Trace handle allocations
@@ -429,6 +429,9 @@ AC_ARG_ENABLE(g,
         memarena - Check for overwrite errors in memory allocation arena
         mutex    - Enable error checking on pthread mutexes
         mutexnesting - Check for non-nesting of mutexes
+        most     - Most of the above options, excluding some with severe
+                   performance impacts.  Recommended for typical development.
+        yes      - synonym for "most" (*not* "all")
         all      - All of the above choices
 ],,enable_g=none)
 
@@ -647,6 +650,16 @@ AC_ARG_ENABLE([wrapper-rpath],
                                for your system (e.g., in LD_LIBRARY_PATH)])],
               [],[enable_wrapper_rpath=yes])
 AC_SUBST([enable_wrapper_rpath])
+
+AC_ARG_ENABLE([long-double],
+              [AC_HELP_STRING([--disable-long-double],
+                              [Pass --disable-long-double to prevent the MPI
+                               library from supporting the C "long double" type,
+                               even if the C compiler supports it.  "long
+                               double" support is enabled by default, provided
+                               the compiler supports it.])],
+              [],
+              [enable_long_double=yes])
 
 AC_ARG_WITH(cross,
 	AC_HELP_STRING([--with-cross=file],
@@ -1586,7 +1599,7 @@ for option in $enable_g ; do
 	perform_handlealloc=yes
 	;;
 	handle)
-	AC_DEFINE(MPICH_DEBUG_HANDLES,1,[Define to enable handle checking])
+        perform_handle=yes
 	;;
 	instr)
 	perform_instr=yes
@@ -1610,7 +1623,19 @@ for option in $enable_g ; do
 	mutexnesting)
 	perform_mutexnesting=yes
 	;;
-	all|yes)
+        most|yes)
+        perform_memtracing=yes
+        perform_dbglog=yes
+        enable_append_g=yes
+        perform_meminit=yes
+        perform_instr=yes
+        perform_dbgmutex=yes
+        perform_mutexnesting=yes
+        perform_handlealloc=yes
+        perform_handle=yes
+        ;;
+	all)
+        perform_memarena=yes
 	perform_memtracing=yes
 	perform_dbglog=yes
 	enable_append_g=yes
@@ -1619,6 +1644,7 @@ for option in $enable_g ; do
 	perform_dbgmutex=yes
 	perform_mutexnesting=yes
 	perform_handlealloc=yes
+        perform_handle=yes
 	;;
 	*)
 	IFS=$save_IFS
@@ -1651,6 +1677,8 @@ fi
 if test "$perform_instr" = yes ; then
     AC_DEFINE(USE_MPIU_INSTR,1,[Define this to enable internal instrumentation] )
 fi
+AS_IF([test "X$perform_handle" = "Xyes"],
+      [AC_DEFINE(MPICH_DEBUG_HANDLES,1,[Define to enable handle checking])])
 
 if test -n "$perform_memtracing" ; then
     enable_g_mem=yes
@@ -2124,6 +2152,66 @@ information to configure with the FCFLAGS environment variable.])
    PAC_F77_INIT_WORKS_WITH_C
    if test "$pac_f_init_works_with_c" = "yes" ; then
        AC_DEFINE(HAVE_MPI_F_INIT_WORKS_WITH_C,1,[Define if the Fortran init code for MPI works from C programs without special libraries])
+   fi
+
+   #
+   # Some Fortran compilers now pass CHARACTER length as a size_t instead
+   # of as an int.  This is hard to test for, since the data is passed by
+   # value and for characters less than about 2GB long, the correct
+   # value will be used.  In this case, we must use an approach similar to
+   # the one used by libtool for shared library options - look at the
+   # compiler name or vendor.
+   # Known compilers that use size_t instead of int:
+   #    Intel Fortran
+   #    gfortran
+   # Add others as they become known
+   AC_ARG_ENABLE(f77characterlen,
+       AC_HELP_STRING([--enable-f77characterlen],
+           [Select between int and size_t for the length of a Fortran CHARACTER, depending on the F77 compiler.  If --enable-f77characterlen=size_t is given, force the use of size_t.  This is used for passing Fortran CHARACTER data between C and Fortran, and is provided for experts.  Note that the documentation provided by compiler vendors on the calling convention may not be accurate.]),,enable_f77characterlen=no)
+
+   # Set the default
+   f77_uses_int_for_str=default
+
+   case "$enable_f77characterlen" in
+      yes|no)
+      ;;
+      size_t)
+         f77_uses_int_for_str=no
+	 enable_f77characterlen=yes
+      ;;
+      int)
+         f77_uses_int_for_str=yes
+	 enable_f77characterlen=yes
+      ;;
+      *)
+      AC_MSG_ERROR([Invalid value provided for --enable-f77characterlen])
+      ;;
+   esac
+
+   # If we might change the size (enable) and we haven't set the choice,
+   # attempt to determine it from the compiler name.  Risky, but we haven't
+   # found a reliable way to do this with test codes.
+   if test "$enable_f77characterlen" = "yes" -a \
+           "$f77_uses_int_for_str" = "default" ; then
+       f77_uses_int_for_str=yes
+       f77Basename=`basename $F77`
+       case $f77Basename in
+       ifort*)
+       f77_uses_int_for_str=no
+       ;;
+       gfortran*)
+       f77_uses_int_for_str=no
+       ;;
+       esac
+   fi
+   # This test is disabled for now.  Despite information in documentation
+   # on gfortran, it appears to pass lengths as int, at least in some
+   # builds (it used movl when tested in 2/2013).  Tests that failed
+   # included infotestf.f, in a call to mpi_info_get.
+   # Leave this as a place holder until a proper test can be determined.
+   if test  "$enable_f77characterlen" = "yes" -a \
+            "$f77_uses_int_for_str" = "no" ; then
+       AC_DEFINE(USE_FORT_STR_LEN_SIZET,1,[Define if the length of a CHARACTER*(*) string in Fortran should be passed as size_t instead of int] )
    fi
 
 fi
@@ -2880,7 +2968,7 @@ fi
 # types as well.  In addition, allow the device to suppress support for these
 # optional C types by setting MPID_NO_LONG_DOUBLE and/or MPID_NO_LONG_LONG
 # to yes.
-if test "$MPID_NO_LONG_DOUBLE" != "yes" ; then
+if test "$MPID_NO_LONG_DOUBLE" != "yes" && test "X$enable_long_double" != "Xno" ; then
     AC_CACHE_CHECK([whether long double is supported],
     pac_cv_have_long_double,[
     AC_TRY_COMPILE(,[long double a;],
@@ -3123,14 +3211,21 @@ AC_CHECK_SIZEOF([double _Complex],0,[
 #include <complex.h>
 #endif
 ])
-AC_CHECK_SIZEOF([long double _Complex],0,[
+AS_IF([test "X$pac_cv_have_long_double" = "Xyes"],[
+  AC_CHECK_SIZEOF([long double _Complex],0,[
 #ifdef HAVE_COMPLEX_H
 #include <complex.h>
 #endif
+  ])
 ])
+
 # we need really could just use the result of AC_CHECK_SIZEOF, but having a
 # HAVE_typename macro is useful for consistency
-AC_CHECK_TYPES([_Bool, float _Complex, double _Complex, long double _Complex])
+AC_CHECK_TYPES([_Bool, float _Complex, double _Complex])
+
+AS_IF([test "X$pac_cv_have_long_double" = "Xyes"],[
+  AC_CHECK_TYPES([long double _Complex])
+])
 
 # Generate a hex version of the size of each type
 for type in short int long long_long float double long_double wchar_t \
@@ -4345,10 +4440,13 @@ fi
 # C++ types
 
 # default to null types
-MPIR_CXX_BOOL=MPI_DATATYPE_NULL
-MPIR_CXX_COMPLEX=MPI_DATATYPE_NULL
-MPIR_CXX_DOUBLE_COMPLEX=MPI_DATATYPE_NULL
-MPIR_CXX_LONG_DOUBLE_COMPLEX=MPI_DATATYPE_NULL
+# Set to "0x0c000000" instead of "MPI_DATATYPE_NULL" because these values
+# sometimes are used in preprocessor tests where we cannot compare the
+# type-casted values.
+MPIR_CXX_BOOL=0x0c000000
+MPIR_CXX_COMPLEX=0x0c000000
+MPIR_CXX_DOUBLE_COMPLEX=0x0c000000
+MPIR_CXX_LONG_DOUBLE_COMPLEX=0x0c000000
 MPI_F77_CXX_BOOL=MPI_DATATYPE_NULL
 MPI_F77_CXX_FLOAT_COMPLEX=MPI_DATATYPE_NULL
 MPI_F77_CXX_DOUBLE_COMPLEX=MPI_DATATYPE_NULL
@@ -4435,13 +4533,17 @@ using namespace std;
            32)   MPIR_CXX_DOUBLE_COMPLEX=0x4c002035 ;;
            *) ;;
         esac
-        case "$ac_cv_sizeof_LongDoubleComplex" in 
-           8)    MPIR_CXX_LONG_DOUBLE_COMPLEX=0x4c000836 ;;
-           16)   MPIR_CXX_LONG_DOUBLE_COMPLEX=0x4c001036 ;;
-           24)   MPIR_CXX_LONG_DOUBLE_COMPLEX=0x4c001836 ;;
-           32)   MPIR_CXX_LONG_DOUBLE_COMPLEX=0x4c002036 ;;
-           *) ;;
-        esac
+        # only enable CXX "long double" if we have a C "long double", since we
+        # currently perform reductions on CXX "long double" types via C.
+        if test "X$pac_cv_have_long_double" = "Xyes" ; then
+            case "$ac_cv_sizeof_LongDoubleComplex" in
+               8)    MPIR_CXX_LONG_DOUBLE_COMPLEX=0x4c000836 ;;
+               16)   MPIR_CXX_LONG_DOUBLE_COMPLEX=0x4c001036 ;;
+               24)   MPIR_CXX_LONG_DOUBLE_COMPLEX=0x4c001836 ;;
+               32)   MPIR_CXX_LONG_DOUBLE_COMPLEX=0x4c002036 ;;
+               *) ;;
+            esac
+        fi
     fi
     AC_LANG_C
 
@@ -6192,6 +6294,7 @@ AC_OUTPUT(Makefile \
 	  src/env/mpif90.bash \
           src/env/parkill \
           src/env/mpiname/Makefile \
+          src/pm/mpirun/mpirun_rsh.h \
           src/util/mv2_ckpt_rebuild/Makefile \
 	  src/util/dbg/getfuncstack \
           src/include/mpi.h \

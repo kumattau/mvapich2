@@ -1,4 +1,40 @@
 ===============================================================================
+                               Changes in 3.0.3
+===============================================================================
+
+ # RMA: Added a new mechanism for piggybacking RMA synchronization operations,
+   which improves the performance of several synchronization operations,
+   including Flush.
+
+ # RMA: Added an optimization to utilize the MPI_MODE_NOCHECK assertion in
+   passive target RMA to improve performance by eliminating a lock request
+   message.
+
+ # RMA: Added a default implementation of shared memory windows to CH3.  This
+   adds support for this MPI 3.0 feature to the ch3:sock device.
+
+ # RMA: Fix a bug that resulted in an error when RMA operation request handles
+   where completed outside of a synchronization epoch.
+
+ # PM/PMI: Upgraded to hwloc-1.6.2rc1.  This version uses libpciaccess
+   instead of libpci, to workaround the GPL license used by libpci.
+
+ # PM/PMI: Added support for the Cobalt process manager.
+
+ # BUILD SYSTEM: allow MPI_LONG_DOUBLE_SUPPORT to be disabled with a configure
+   option.
+
+ # FORTRAN: fix MPI_WEIGHTS_EMPTY in the Fortran bindings
+
+ # MISC: fix a bug in MPI_Get_elements where it could return incorrect values
+
+ # Several other minor bug fixes, memory leak fixes, and code cleanup.
+   A full list of changes is available at the following link:
+
+     http://git.mpich.org/mpich.git/shortlog/v3.0.2..v3.0.3
+
+
+===============================================================================
                                Changes in 3.0.2
 ===============================================================================
 

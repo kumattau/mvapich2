@@ -16,7 +16,7 @@
 
 #ifdef CKPT
 
-#include "mpirun_rsh.h"
+#include <src/pm/mpirun/mpirun_rsh.h>
 #include "mpirun_dbg.h"
 #include "common_ckpt.h"
 

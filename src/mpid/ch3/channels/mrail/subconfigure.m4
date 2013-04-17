@@ -44,6 +44,21 @@ AC_ARG_WITH([scr],
     ],
     [with_scr=no])
 
+AC_ARG_VAR([PDSH_EXE], [path to pdsh command])
+AC_PATH_PROG([PDSH_EXE], [pdsh], [notfound])
+
+AC_ARG_VAR([DSHBAK_EXE], [path to dshbak command])
+AC_PATH_PROG([DSHBAK_EXE], [dshbak], [notfound])
+
+AS_IF([test x$with_scr != xno],
+        [AS_IF([test x$PDSH_EXE = xnotfound],
+            [AC_MSG_ERROR([pdsh not found, please set PDSH_EXE appropriately or disable SCR support])
+            ])
+         AS_IF([test x$DSHBAK_EXE = xnotfound],
+            [AC_MSG_ERROR([dshbak not found, please set DSHBAK_EXE appropriately or disable SCR support])
+            ])
+        ])
+
 AC_ARG_WITH([cma],
     [AS_HELP_STRING([--with-cma],
         [Enable use of CMA for intra-node communication])

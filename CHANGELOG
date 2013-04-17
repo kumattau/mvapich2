@@ -3,6 +3,42 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2-1.9RC1 (04/16/2013)
+
+* Features and Enhancements (since 1.9b):
+    - Based on MPICH-3.0.3
+    - Updated SCR to version 1.1.8
+    - Install utility scripts included with SCR
+    - Support for automatic detection of path to utilities used by mpirun_rsh
+      during configuration
+        - Utilities supported: rsh, ssh, xterm, totalview
+    - Support for launching jobs on heterogeneous networks with mpirun_rsh
+    - Tuned Bcast, Reduce, Scatter Collectives
+    - Tuned MPI performance on Kepler GPUs 
+    - Introduced MV2_RDMA_CM_CONF_FILE_PATH parameter which specifies path to
+      mv2.conf
+
+* Bug-Fixes (since 1.9b):
+    - Fix autoconf issue with LiMIC2 source-code
+        - Thanks to Doug Johnson from OH-TECH for the report
+    - Fix build errors with --enable-thread-cs=per-object and 
+      --enable-refcount=lock-free
+        - Thanks to Marcin Zalewski from Indiana University for the report
+    - Fix MPI_Scatter failure with MPI_IN_PLACE
+        - Thanks to Mellanox for the report
+    - Fix MPI_Scatter failure with cyclic host files
+    - Fix deadlocks in PSM interface for multi-threaded jobs
+        - Thanks to Marcin Zalewski from Indiana University for the report
+    - Fix MPI_Bcast failures in SCALAPACK 
+        - Thanks to Jerome Vienne from TACC for the report
+    - Fix build errors with newer Ekopath compiler
+    - Fix a bug with shmem collectives in PSM interface
+    - Fix memory corruption when more entries specified in mv2.conf than the
+      requested number of rails
+        - Thanks to Akihiro Nomura from Tokyo Institute of Technology for the
+          report
+    - Fix memory corruption with CR configuration in Nemesis interface
+
 MVAPICH2-1.9b (02/28/2013)
 
 * Features and Enhancements (since 1.9a2):

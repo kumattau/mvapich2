@@ -1052,11 +1052,7 @@ int MPIDI_CH3I_LIMIC_try_rma(MPID_Win * win_ptr, int target_rank)
         return mpi_errno;
     }
 
-    if (head->type == MPIDI_RMA_LOCK) {
-        curr_ptr = head->next;
-    } else {
-        curr_ptr = head;
-    }
+    curr_ptr = head;
 
     while (curr_ptr != NULL) {
         complete_size = 0;
@@ -1152,11 +1148,7 @@ int MPIDI_CH3I_SHM_try_rma(MPID_Win * win_ptr, int target_rank)
         return mpi_errno;
     }
 
-    if (head->type == MPIDI_RMA_LOCK) {
-        curr_ptr = head->next;
-    } else {
-        curr_ptr = head;
-    }
+    curr_ptr = head;
 
     while (curr_ptr != NULL) {
         target_l_rank = win_ptr->shm_g2l_rank[curr_ptr->target_rank]; 

@@ -1484,7 +1484,7 @@ int MPIR_Pipelined_Bcast_MV2(void *buffer,
     MPID_Comm *shmem_commptr = NULL;
     int local_rank = 0;
     int mpi_errno = MPI_SUCCESS;
-    int type_size = 0;
+    int type_size = 0, nbytes=0;
     int intra_node_root = 0;
     int rem_count = 0, bcast_segment_count = 0, bcast_curr_count = 0;
     MPI_Aint extent;
@@ -1495,39 +1495,39 @@ int MPIR_Pipelined_Bcast_MV2(void *buffer,
 
     local_rank = shmem_commptr->rank;
     MPID_Datatype_get_size_macro(datatype, type_size);
+    nbytes = count*extent; 
 
-    bcast_segment_count = bcast_segment_size / type_size;
-    rem_count = count;
-    bcast_segment_count = MIN(rem_count, bcast_segment_count);
+    rem_count = nbytes;
+    bcast_segment_count = MIN(rem_count, bcast_segment_size);
 
-    while (bcast_curr_count < count) {
+    while (bcast_curr_count < nbytes) {
         comm_ptr->ch.intra_node_done = 0;
         if (local_rank == 0) {
             mpi_errno = MPIR_Knomial_Bcast_inter_node_wrapper_MV2((char *) buffer +
-                                                          bcast_curr_count * extent,
+                                                          bcast_curr_count,
                                                           bcast_segment_count,
-                                                          datatype, root,
+                                                          MPI_BYTE, root,
                                                           comm_ptr, errflag);
         }
         if (comm_ptr->ch.intra_node_done != 1) {
             if (mv2_use_old_bcast == 0) {
                 mpi_errno = MV2_Bcast_intra_node_function((char *) buffer +
-                                                 bcast_curr_count * extent,
+                                                 bcast_curr_count,
                                                  bcast_segment_count,
-                                                 datatype, intra_node_root,
+                                                 MPI_BYTE, intra_node_root,
                                                  shmem_commptr, errflag);
             } else {
                 if (bcast_segment_count * type_size <= mv2_knomial_intra_node_threshold) {
                    mpi_errno = MPIR_Shmem_Bcast_MV2((char *) buffer +
-                                                     bcast_curr_count * extent,
+                                                     bcast_curr_count,
                                                      bcast_segment_count,
-                                                     datatype, intra_node_root,
+                                                     MPI_BYTE, intra_node_root,
                                                      shmem_commptr, errflag);
                 } else {
                     mpi_errno = MPIR_Knomial_Bcast_intra_node_MV2((char *) buffer +
-                                                                  bcast_curr_count * extent,
+                                                                  bcast_curr_count,
                                                                   bcast_segment_count,
-                                                                  datatype, intra_node_root,
+                                                                  MPI_BYTE, intra_node_root,
                                                                   shmem_commptr, errflag);
                 }
             }

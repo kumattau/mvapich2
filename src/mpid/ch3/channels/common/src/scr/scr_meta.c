@@ -12,8 +12,11 @@
 /* Implements an interface to read/write SCR meta data files. */
 
 #include "scr_err.h"
+#include "scr_util.h"
 #include "scr_io.h"
+#include "scr_path.h"
 #include "scr_meta.h"
+#include "scr_hash.h"
 
 #include <stdlib.h>
 #include <stdio.h>
@@ -36,212 +39,306 @@
 
 /*
 =========================================
-Metadata functions
+Allocate, delete, and copy functions
 =========================================
 */
 
-/* build meta data filename for input file */
-int scr_meta_name(char* metaname, const char* file)
+/* allocate a new meta data object */
+scr_meta* scr_meta_new()
 {
-    sprintf(metaname, "%s.scr", file);
-    return SCR_SUCCESS;
-}
-
-/* initialize meta structure to represent file, filetype, and complete */
-void scr_meta_set(struct scr_meta* meta, const char* file, int rank, int ranks, int checkpoint_id, int filetype, int complete)
-{
-    /* split file into path and name components */
-    char path[SCR_MAX_FILENAME];
-    char name[SCR_MAX_FILENAME];
-    scr_split_path(file, path, name);
-
-    meta->rank          = rank;
-    meta->ranks         = ranks;
-    meta->checkpoint_id = checkpoint_id;
-    meta->filetype      = filetype;
-
-    strcpy(meta->filename, name);
-    meta->filesize       = scr_filesize(file);
-    meta->complete       = complete;
-    meta->crc32_computed = 0;
-    meta->crc32          = crc32(0L, Z_NULL, 0);
-}
-
-/* initialize meta structure to represent file, filetype, and complete */
-void scr_meta_copy(struct scr_meta* m1, const struct scr_meta* m2)
-{
-    memcpy(m1, m2, sizeof(struct scr_meta));
-}
-
-/* read meta for file_orig and fill in meta structure */
-int scr_meta_read(const char* file_orig, struct scr_meta* meta)
-{
-  /* build meta filename */
-  char file[SCR_MAX_FILENAME];
-  scr_meta_name(file, file_orig);
-
-  /* can't read file, return error */
-  if (access(file, R_OK) < 0) { return SCR_FAILURE; }
-
-  FILE* fs = fopen(file, "r");
-  if (fs == NULL) {
-    scr_err("Opening meta file for read: fopen(%s, \"r\") errno=%d %m @ %s:%d",
-            file, errno, __FILE__, __LINE__
-    );
-    return SCR_FAILURE;
+  scr_meta* meta = scr_hash_new();
+  if (meta == NULL) {
+    scr_err("Failed to allocate meta data object @ %s:%d", __FILE__, __LINE__);
   }
+  return meta;
+}
 
-  /* read field / value pairs from file */
-  char field[SCR_MAX_FILENAME];
-  char value[SCR_MAX_FILENAME];
-  int n;
-  do {
-    n = fscanf(fs, "%s %s\n", field, value);
-    if (n != EOF) {
-      if (strcmp(field, "Rank:") == 0)         { meta->rank  = atoi(value); }
-      if (strcmp(field, "Ranks:") == 0)        { meta->ranks = atoi(value); }
-      if (strcmp(field, "CheckpointID:") == 0) { meta->checkpoint_id = atoi(value); }
-      if (strcmp(field, "Filetype:") == 0)     { meta->filetype = atoi(value); }
+/* free memory assigned to meta data object */
+int scr_meta_delete(scr_meta** ptr_meta)
+{
+  int rc = scr_hash_delete(ptr_meta);
+  return rc;
+}
 
-      /* we take the basename of filename for backwards compatibility */
-      if (strcmp(field, "Filename:") == 0)     { strcpy(meta->filename, basename(value)); }
-      if (strcmp(field, "Filesize:") == 0)     { meta->filesize = strtoul(value, NULL, 0); }
-      if (strcmp(field, "Complete:") == 0)     { meta->complete = atoi(value); }
-      if (strcmp(field, "CRC32Computed:") == 0){ meta->crc32_computed = atoi(value); }
-      if (strcmp(field, "CRC32:") == 0)        { meta->crc32 = strtoul(value, NULL, 0); }
+/* clear m1 and copy contents of m2 into m1 */
+int scr_meta_copy(scr_meta* m1, const scr_meta* m2)
+{
+  scr_hash_unset_all(m1);
+  int rc = scr_hash_merge(m1, m2);
+  return rc;
+}
+
+/*
+=========================================
+Set field values
+=========================================
+*/
+
+/* sets the checkpoint id in meta data to be the value specified */
+int scr_meta_set_checkpoint(scr_meta* meta, int ckpt)
+{
+  scr_hash_unset(meta, SCR_META_KEY_CKPT);
+  scr_hash_set_kv_int(meta, SCR_META_KEY_CKPT, ckpt);
+  return SCR_SUCCESS;
+}
+
+/* sets the rank in meta data to be the value specified */
+int scr_meta_set_rank(scr_meta* meta, int rank)
+{
+  scr_hash_unset(meta, SCR_META_KEY_RANK);
+  scr_hash_set_kv_int(meta, SCR_META_KEY_RANK, rank);
+  return SCR_SUCCESS;
+}
+
+/* sets the rank in meta data to be the value specified */
+int scr_meta_set_ranks(scr_meta* meta, int ranks)
+{
+  scr_hash_unset(meta, SCR_META_KEY_RANKS);
+  scr_hash_set_kv_int(meta, SCR_META_KEY_RANKS, ranks);
+  return SCR_SUCCESS;
+}
+
+/* sets the original filename value in meta data */
+int scr_meta_set_orig(scr_meta* meta, const char* file)
+{
+  scr_hash_unset(meta, SCR_META_KEY_ORIG);
+  scr_hash_set_kv(meta, SCR_META_KEY_ORIG, file);
+  return SCR_SUCCESS;
+}
+
+/* sets the full path to the original filename value in meta data */
+int scr_meta_set_origpath(scr_meta* meta, const char* file)
+{
+  scr_hash_unset(meta, SCR_META_KEY_PATH);
+  scr_hash_set_kv(meta, SCR_META_KEY_PATH, file);
+  return SCR_SUCCESS;
+}
+
+/* sets the full directory to the original filename value in meta data */
+int scr_meta_set_origname(scr_meta* meta, const char* file)
+{
+  scr_hash_unset(meta, SCR_META_KEY_NAME);
+  scr_hash_set_kv(meta, SCR_META_KEY_NAME, file);
+  return SCR_SUCCESS;
+}
+
+/* sets the filename value in meta data, strips any leading directory */
+int scr_meta_set_filename(scr_meta* meta, const char* file)
+{
+  /* extract file name */
+  scr_path* path_file = scr_path_from_str(file);
+  scr_path_basename(path_file);
+  char* name = scr_path_strdup(path_file);
+
+  scr_hash_unset(meta, SCR_META_KEY_FILE);
+  scr_hash_set_kv(meta, SCR_META_KEY_FILE, name);
+
+  /* free the path and string */
+  scr_free(&name);
+  scr_path_delete(&path_file);
+
+  return SCR_SUCCESS;
+}
+
+/* sets the filesize to be the value specified */
+int scr_meta_set_filesize(scr_meta* meta, unsigned long filesize)
+{
+  int rc = scr_hash_util_set_bytecount(meta, SCR_META_KEY_SIZE, filesize);
+  return rc;
+}
+
+/* sets the filename value in meta data, strips any leading directory */
+int scr_meta_set_filetype(scr_meta* meta, const char* filetype)
+{
+  scr_hash_unset(meta, SCR_META_KEY_TYPE);
+  scr_hash_set_kv(meta, SCR_META_KEY_TYPE, filetype);
+  return SCR_SUCCESS;
+}
+
+/* sets complete value in meta data, overwrites any existing value with new value */
+int scr_meta_set_complete(scr_meta* meta, int complete)
+{
+  scr_hash_unset(meta, SCR_META_KEY_COMPLETE);
+  scr_hash_set_kv_int(meta, SCR_META_KEY_COMPLETE, complete);
+  return SCR_SUCCESS;
+}
+
+/* sets crc value in meta data, overwrites any existing value with new value */
+int scr_meta_set_crc32(scr_meta* meta, uLong crc)
+{
+  int rc = scr_hash_util_set_crc32(meta, SCR_META_KEY_CRC, crc);
+  return rc;
+}
+
+/*
+=========================================
+Get field values
+=========================================
+*/
+
+/* gets checkpoint id recorded in meta data, returns SCR_SUCCESS if successful */
+int scr_meta_get_checkpoint(const scr_meta* meta, int* ckpt)
+{
+  int rc = scr_hash_util_get_int(meta, SCR_META_KEY_CKPT, ckpt);
+  return rc;
+}
+
+/* gets rank value recorded in meta data, returns SCR_SUCCESS if successful */
+int scr_meta_get_rank(const scr_meta* meta, int* rank)
+{
+  int rc = scr_hash_util_get_int(meta, SCR_META_KEY_RANK, rank);
+  return rc;
+}
+
+/* gets ranks value recorded in meta data, returns SCR_SUCCESS if successful */
+int scr_meta_get_ranks(const scr_meta* meta, int* ranks)
+{
+  int rc = scr_hash_util_get_int(meta, SCR_META_KEY_RANKS, ranks);
+  return rc;
+}
+
+/* gets original filename recorded in meta data, returns SCR_SUCCESS if successful */
+int scr_meta_get_orig(const scr_meta* meta, char** filename)
+{
+  int rc = scr_hash_util_get_str(meta, SCR_META_KEY_ORIG, filename);
+  return rc;
+}
+
+/* gets full path to the original filename recorded in meta data, returns SCR_SUCCESS if successful */
+int scr_meta_get_origpath(const scr_meta* meta, char** filename)
+{
+  int rc = scr_hash_util_get_str(meta, SCR_META_KEY_PATH, filename);
+  return rc;
+}
+
+/* gets the name of the original filename recorded in meta data, returns SCR_SUCCESS if successful */
+int scr_meta_get_origname(const scr_meta* meta, char** filename)
+{
+  int rc = scr_hash_util_get_str(meta, SCR_META_KEY_NAME, filename);
+  return rc;
+}
+
+/* gets filename recorded in meta data, returns SCR_SUCCESS if successful */
+int scr_meta_get_filename(const scr_meta* meta, char** filename)
+{
+  int rc = scr_hash_util_get_str(meta, SCR_META_KEY_FILE, filename);
+  return rc;
+}
+
+/* gets filesize recorded in meta data, returns SCR_SUCCESS if successful */
+int scr_meta_get_filesize(const scr_meta* meta, unsigned long* filesize)
+{
+  int rc = scr_hash_util_get_bytecount(meta, SCR_META_KEY_SIZE, filesize);
+  return rc;
+}
+
+/* gets filetype recorded in meta data, returns SCR_SUCCESS if successful */
+int scr_meta_get_filetype(const scr_meta* meta, char** filetype)
+{
+  int rc = scr_hash_util_get_str(meta, SCR_META_KEY_TYPE, filetype);
+  return rc;
+}
+
+/* get the completeness field in meta data, returns SCR_SUCCESS if successful */
+int scr_meta_get_complete(const scr_meta* meta, int* complete)
+{
+  int rc = scr_hash_util_get_int(meta, SCR_META_KEY_COMPLETE, complete);
+  return rc;
+}
+
+/* get the crc32 field in meta data, returns SCR_SUCCESS if a field is set */
+int scr_meta_get_crc32(const scr_meta* meta, uLong* crc)
+{
+  int rc = scr_hash_util_get_crc32(meta, SCR_META_KEY_CRC, crc);
+  return rc;
+}
+
+/*
+=========================================
+Check field values
+=========================================
+*/
+
+/* return SCR_SUCCESS if meta data is marked as complete */
+int scr_meta_is_complete(const scr_meta* meta)
+{
+  int complete = 0;
+  if (scr_hash_util_get_int(meta, SCR_META_KEY_COMPLETE, &complete) == SCR_SUCCESS) {
+    if (complete == 1) {
+      return SCR_SUCCESS;
     }
-  } while (n != EOF);
-
-  fclose(fs);
-
-  return SCR_SUCCESS;
+  }
+  return SCR_FAILURE;
 }
 
-/* creates corresponding .scr meta file for file to record completion info */
-int scr_meta_write(const char* file, const struct scr_meta* meta)
+/* return SCR_SUCCESS if rank is set in meta data, and if it matches the specified value */
+int scr_meta_check_rank(const scr_meta* meta, int rank)
 {
-  /* create the .scr extension */
-  char file_scr[SCR_MAX_FILENAME];
-  scr_meta_name(file_scr, file);
-
-  /* write out the meta data */
-  char buf[SCR_MAX_FILENAME];
-  int fd = scr_open(file_scr, O_WRONLY | O_CREAT | O_TRUNC, S_IRUSR | S_IWUSR);
-  if (fd < 0) {
-    scr_err("Opening meta file for write: scr_open(%s) errno=%d %m @ %s:%d",
-            file_scr, errno, __FILE__, __LINE__
-    );
-    return SCR_FAILURE;
-  }
-
-  /* task id */
-  sprintf(buf, "Rank: %d\n", meta->rank);
-  scr_write(fd, buf, strlen(buf));
-
-  /* number of tasks */
-  sprintf(buf, "Ranks: %d\n", meta->ranks);
-  scr_write(fd, buf, strlen(buf));
-
-  /* checkpoint id */
-  sprintf(buf, "CheckpointID: %d\n", meta->checkpoint_id);
-  scr_write(fd, buf, strlen(buf));
-
-  /* what type of file this is */
-  sprintf(buf, "Filetype: %d\n", meta->filetype);
-  scr_write(fd, buf, strlen(buf));
-
-  /* filename */
-  sprintf(buf, "Filename: %s\n", meta->filename);
-  scr_write(fd, buf, strlen(buf));
-
-  /* filesize in bytes */
-  sprintf(buf, "Filesize: %ld\n", meta->filesize);
-  scr_write(fd, buf, strlen(buf));
-
-  /* whether this file is complete */
-  sprintf(buf, "Complete: %d\n", meta->complete);
-  scr_write(fd, buf, strlen(buf));
-
-  /* whether a crc32 was computed for thie file */
-  sprintf(buf, "CRC32Computed: %d\n", meta->crc32_computed);
-  scr_write(fd, buf, strlen(buf));
-
-  /* crc32 value for this file */
-  sprintf(buf, "CRC32: 0x%lx\n", meta->crc32);
-  scr_write(fd, buf, strlen(buf));
-
-  /* flush and close the file */
-  scr_close(file_scr, fd);
-
-  return SCR_SUCCESS;
-}
-
-/* TODO: this file isn't the most obvious location to place this function, but it uses crc and meta data */
-/* compute crc32 for file and check value against meta data file, set it if not already set */
-int scr_compute_crc(const char* file)
-{
-  /* check that we got a filename */
-  if (file == NULL || strcmp(file, "") == 0) {
-    return SCR_FAILURE;
-  }
-
-  /* read in the meta data for this file */
-  struct scr_meta meta;
-  if (scr_meta_read(file, &meta) != SCR_SUCCESS) {
-    scr_err("Failed to read meta data file for file to compute CRC32: %s @ %s:%d",
-            file, __FILE__, __LINE__
-    );
-    return SCR_FAILURE;
-  }
-
-  /* check that the file is complete */
-  if (!meta.complete) {
-    scr_err("File is marked as incomplete: %s",
-            file, __FILE__, __LINE__
-    );
-    return SCR_FAILURE;
-  }
-
-  /* check that the filesize matches the value in the meta file */
-  unsigned long size = scr_filesize(file);
-  if (meta.filesize != size) {
-    scr_err("File size does not match size recorded in meta file: %s",
-            file, __FILE__, __LINE__
-    );
-    return SCR_FAILURE;
-  }
-
-  /* compute the CRC32 value for this file */
-  uLong crc = crc32(0L, Z_NULL, 0);
-  if (scr_crc32(file, &crc) != SCR_SUCCESS) {
-    scr_err("Computing CRC32 for file %s @ %s:%d",
-              file, __FILE__, __LINE__
-    );
-    return SCR_FAILURE;
-  }
-
-  /* now check the CRC32 value if it was set in the meta file, and set it if not */
-  if (meta.crc32_computed) {
-    /* the crc is already set in the meta file, let's check that we match */
-    if (meta.crc32 != crc) {
-      scr_err("CRC32 mismatch detected for file %s @ %s:%d",
-              file, __FILE__, __LINE__
-      );
-
-      /* crc check failed, mark file as invalid */
-      meta.complete = 0;
-      scr_meta_write(file, &meta);
-
-      return SCR_FAILURE;
+  int rank_meta;
+  if (scr_hash_util_get_int(meta, SCR_META_KEY_RANK, &rank_meta) == SCR_SUCCESS) {
+    if (rank == rank_meta) {
+      return SCR_SUCCESS;
     }
-  } else {
-    /* the crc was not set in the meta file, so let's set it now */
-    meta.crc32_computed     = 1;
-    meta.crc32              = crc;
-
-    /* and update the meta file on disk */
-    scr_meta_write(file, &meta);
   }
+  return SCR_FAILURE;
+}
 
-  return SCR_SUCCESS;
+/* return SCR_SUCCESS if ranks is set in meta data, and if it matches the specified value */
+int scr_meta_check_ranks(const scr_meta* meta, int ranks)
+{
+  int ranks_meta;
+  if (scr_hash_util_get_int(meta, SCR_META_KEY_RANKS, &ranks_meta) == SCR_SUCCESS) {
+    if (ranks == ranks_meta) {
+      return SCR_SUCCESS;
+    }
+  }
+  return SCR_FAILURE;
+}
+
+/* return SCR_SUCCESS if checkpoint_id is set in meta data, and if it matches the specified value */
+int scr_meta_check_checkpoint(const scr_meta* meta, int ckpt)
+{
+  int ckpt_meta;
+  if (scr_hash_util_get_int(meta, SCR_META_KEY_CKPT, &ckpt_meta) == SCR_SUCCESS) {
+    if (ckpt == ckpt_meta) {
+      return SCR_SUCCESS;
+    }
+  }
+  return SCR_FAILURE;
+}
+
+/* return SCR_SUCCESS if filename is set in meta data, and if it matches the specified value */
+int scr_meta_check_filename(const scr_meta* meta, const char* filename)
+{
+  char* filename_meta = scr_hash_elem_get_first_val(meta, SCR_META_KEY_FILE);
+  if (filename_meta != NULL) {
+    if (strcmp(filename, filename_meta) == 0) {
+      return SCR_SUCCESS;
+    }
+  } 
+  return SCR_FAILURE;
+}
+
+/* return SCR_SUCCESS if filetype is set in meta data, and if it matches the specified value */
+int scr_meta_check_filetype(const scr_meta* meta, const char* filetype)
+{
+  char* filetype_meta = scr_hash_elem_get_first_val(meta, SCR_META_KEY_TYPE);
+  if (filetype_meta != NULL) {
+    if (strcmp(filetype, filetype_meta) == 0) {
+      return SCR_SUCCESS;
+    }
+  } 
+  return SCR_FAILURE;
+}
+
+/* returns SCR_SUCCESS if filesize is set in meta data, and if it matches specified value */
+int scr_meta_check_filesize(const scr_meta* meta, unsigned long filesize)
+{
+  unsigned long filesize_meta = 0;
+  if (scr_hash_util_get_bytecount(meta, SCR_META_KEY_SIZE, &filesize_meta) == SCR_SUCCESS) {
+    if (filesize == filesize_meta) {
+      return SCR_SUCCESS;
+    }
+  }
+  return SCR_FAILURE;
 }

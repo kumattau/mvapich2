@@ -613,6 +613,7 @@ int MPIDI_CH3I_SHMEM_COLL_Mmap(MPIDI_PG_t * pg, int local_id)
     int j = 0;
     char *buf = NULL;
     int mpi_errno = MPI_SUCCESS;
+    int num_cntrl_bufs=5; 
     MPIDI_VC_t *vc = NULL;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_SHMEM_COLLMMAP);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_SHMEM_COLLMMAP);
@@ -643,6 +644,14 @@ int MPIDI_CH3I_SHMEM_COLL_Mmap(MPIDI_PG_t * pg, int local_id)
     buf =
         &shmem_coll->shmem_coll_buf +
         (mv2_g_shmem_coll_blocks * 2 * SHMEM_COLL_BLOCK_SIZE);
+
+    if (local_id == 0) {
+#if defined(_SMP_LIMIC_)
+        num_cntrl_bufs = 6;
+#endif
+        MPIU_Memset(buf, 0, num_cntrl_bufs*SHMEM_COLL_SYNC_ARRAY_SIZE);
+    }  
+
     shmem_coll_block_status = (volatile int *) buf;
     buf += SHMEM_COLL_STATUS_ARRAY_SIZE;
     child_complete_bcast = (volatile int *) buf;
@@ -660,8 +669,6 @@ int MPIDI_CH3I_SHMEM_COLL_Mmap(MPIDI_PG_t * pg, int local_id)
 #endif
 
     if (local_id == 0) {
-        MPIU_Memset(mv2_shmem_coll_obj.mmap_ptr, 0, mv2_shmem_coll_size);
-
         for (j = 0; j < mv2_shmem_coll_num_comm; ++j) {
             for (i = 0; i < mv2_shmem_coll_num_procs; ++i) {
                 SHMEM_COLL_SYNC_CLR(child_complete_bcast, j, i);
@@ -1106,7 +1113,7 @@ int is_shmem_collectives_enabled()
     return mv2_enable_shmem_collectives;
 }
 
-inline int mv2_increment_shmem_coll_counter(MPID_Comm *comm_ptr)
+int mv2_increment_shmem_coll_counter(MPID_Comm *comm_ptr)
 {
    int mpi_errno = MPI_SUCCESS, flag=0; 
    PMPI_Comm_test_inter(comm_ptr->handle, &flag);
@@ -1136,7 +1143,7 @@ fn_fail:
   goto fn_exit; 
 } 
 
-inline int mv2_increment_allgather_coll_counter(MPID_Comm *comm_ptr)
+int mv2_increment_allgather_coll_counter(MPID_Comm *comm_ptr)
 {   
    int mpi_errno = MPI_SUCCESS, flag=0, errflag=0;
    PMPI_Comm_test_inter(comm_ptr->handle, &flag);

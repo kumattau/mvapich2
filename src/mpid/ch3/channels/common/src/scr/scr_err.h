@@ -12,14 +12,19 @@
 #ifndef SCR_ERR_H
 #define SCR_ERR_H
 
+#define SCR_ERR_VERSION "v1.1-8"
+
 /*
 =========================================
 Error and Debug Messages
 =========================================
 */
 
-/* print message to stderr */
+/* print error message to stdout */
 void scr_err(const char *fmt, ...);
+
+/* print warning message to stdout */
+void scr_warn(const char *fmt, ...);
 
 /* print message to stdout if scr_debug is set and it is >= level */
 void scr_dbg(int level, const char *fmt, ...);

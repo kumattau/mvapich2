@@ -25,10 +25,13 @@
 /* redundancy shemes: enum as powers of two for binary and/or operations,
  * don't change these */
 #define SCR_COPY_NULL    (0)
-#define SCR_COPY_LOCAL   (1)
+#define SCR_COPY_SINGLE  (1)
 #define SCR_COPY_PARTNER (2)
 #define SCR_COPY_XOR     (4)
 #define SCR_COPY_FILE    (8)
+
+#define SCR_GROUP_NODE  "NODE"
+#define SCR_GROUP_WORLD "WORLD"
 
 /* whether SCR is enabled by default */
 #ifndef SCR_ENABLE
@@ -71,7 +74,7 @@
 
 /* default cache size (max number of checkpoints to keep in cache) */
 #ifndef SCR_CACHE_SIZE
-#define SCR_CACHE_SIZE (2)
+#define SCR_CACHE_SIZE (1)
 #endif
 
 /* default redundancy scheme */
@@ -85,8 +88,8 @@
 #endif
 
 /* default hop distance */
-#ifndef SCR_HOP_DISTANCE
-#define SCR_HOP_DISTANCE (1)
+#ifndef SCR_GROUP
+#define SCR_GROUP (SCR_GROUP_NODE)
 #endif
 
 /* =========================================================================
@@ -175,6 +178,18 @@
 /* whether to compute and check CRC values when deleting a file */
 #ifndef SCR_CRC_ON_DELETE
 #define SCR_CRC_ON_DELETE (0)
+#endif
+
+#ifndef SCR_PRESERVE_DIRECTORIES
+#define SCR_PRESERVE_DIRECTORIES (0)
+#endif
+
+#ifndef SCR_USE_CONTAINERS
+#define SCR_USE_CONTAINERS (0)
+#endif
+
+#ifndef SCR_CONTAINER_SIZE
+#define SCR_CONTAINER_SIZE (100*1024*1024*1024ULL)
 #endif
 
 /* =========================================================================

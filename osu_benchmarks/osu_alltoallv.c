@@ -21,6 +21,7 @@ int main(int argc, char *argv[])
     char *sendbuf=NULL, *recvbuf=NULL, *s_buf1=NULL, *r_buf1=NULL;
     int *rdispls=NULL, *recvcounts=NULL, *sdispls=NULL, *sendcounts=NULL;
     int max_msg_size = 1048576, full = 0;
+    uint64_t requested_mem_limit = 0; 
 
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -41,8 +42,12 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    print_header(rank, full);
+    requested_mem_limit = (uint64_t) (max_msg_size) * numprocs; 
+    if( requested_mem_limit > max_mem_limit) {
+      max_msg_size = max_mem_limit/numprocs;
+    } 
 
+    print_header(rank, full);
 
     recvcounts = (int *) malloc (numprocs*sizeof(int));
     if(NULL == recvcounts) {

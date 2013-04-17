@@ -1251,7 +1251,6 @@ int MRAILI_Process_send(void *vbuf_addr)
     case MPIDI_CH3_PKT_ACCUMULATE:
     case MPIDI_CH3_PKT_ACCUM_IMMED:
     case MPIDI_CH3_PKT_CAS:
-    case MPIDI_CH3_PKT_CAS_UNLOCK:
     case MPIDI_CH3_PKT_CAS_RESP:
     case MPIDI_CH3_PKT_FOP:
     case MPIDI_CH3_PKT_FOP_RESP:

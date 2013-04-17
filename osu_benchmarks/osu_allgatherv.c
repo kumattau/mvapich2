@@ -50,6 +50,7 @@ int main(int argc, char *argv[])
     char *sendbuf, *recvbuf, *s_buf1, *r_buf1;
     int *rdispls=NULL, *recvcounts=NULL;
     int max_msg_size = 1048576, full = 0;
+    uint64_t requested_mem_limit = 0; 
 
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -68,6 +69,11 @@ int main(int argc, char *argv[])
         MPI_Finalize();
 
         return EXIT_FAILURE;
+    }
+
+    requested_mem_limit = (uint64_t) (max_msg_size) * numprocs;
+    if( requested_mem_limit > max_mem_limit) {
+      max_msg_size = max_mem_limit/numprocs;
     }
 
     print_header(rank, full);

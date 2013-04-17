@@ -24,6 +24,7 @@ char *append_str(char *, char const *const);
 
 int read_socket(int, void *, size_t);
 int write_socket(int, void *, size_t);
+int connect_socket(char *, char *);
 
 typedef struct _process_info {
     /* pid_t pid; */

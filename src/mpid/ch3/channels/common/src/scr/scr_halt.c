@@ -14,6 +14,7 @@
 #include "scr.h"
 #include "scr_io.h"
 #include "scr_err.h"
+#include "scr_util.h"
 #include "scr_halt.h"
 
 #include <stdio.h>
@@ -27,85 +28,91 @@
 #include <unistd.h>
 
 /* given the name of a halt file, read it and fill in hash */
-int scr_halt_read(const char* file, struct scr_hash* hash)
+int scr_halt_read(const scr_path* path_file, scr_hash* hash)
 {
-  /* check whether halt file even exists */
-  if (scr_file_exists(file) != SCR_SUCCESS) {
-    return SCR_FAILURE;
+  /* assume we'll fail */
+  int rc = SCR_FAILURE;
+
+  /* get file name */
+  char* file = scr_path_strdup(path_file);
+
+  /* check whether we can read the halt file */
+  if (scr_file_is_readable(file) != SCR_SUCCESS) {
+    goto cleanup;
   }
 
   /* TODO: sleep and try the open several times if the first fails */
   /* open the halt file for reading */
   int fd = scr_open(file, O_RDONLY);
   if (fd < 0) {
-    scr_err("Opening file for read: scr_open(%s) errno=%d %m @ %s:%d",
-            file, errno, __FILE__, __LINE__
+    scr_err("Opening file for read: scr_open(%s) errno=%d %s @ %s:%d",
+      file, errno, strerror(errno), __FILE__, __LINE__
     );
-    return SCR_FAILURE;
+    goto cleanup;
   }
 
   /* acquire a file lock before reading */
-  /* since the file is opened for reading, use a shared lock
-   * (AIX flock man page seems to imply this requirement) */
-  if (flock(fd, LOCK_SH) != 0) {
-    scr_err("Failed to acquire file lock on %s: flock(%d, %d) errno=%d %m @ %s:%d",
-            file, fd, LOCK_EX, errno, __FILE__, __LINE__
-    );
-    return SCR_FAILURE;
+  /* since the file is opened for reading, use a shared lock */
+  int ret = scr_file_lock_read(file, fd);
+  if (ret != SCR_SUCCESS) {
+    scr_close(file,fd);
+    rc = ret;
+    goto cleanup;
   }
 
   /* read in the hash */
   scr_hash_read_fd(file, fd, hash);
 
   /* release the file lock */
-  if (flock(fd, LOCK_UN) != 0) {
-    scr_err("Failed to release file lock on %s: flock(%d, %d) errno=%d %m @ %s:%d",
-            file, fd, LOCK_UN, errno, __FILE__, __LINE__
-    );
-    return SCR_FAILURE;
-  }
+  scr_file_unlock(file, fd);
 
   /* close file */
   scr_close(file, fd);
 
-  return SCR_SUCCESS;
+  /* success if we make it this far */
+  rc = SCR_SUCCESS;
+
+cleanup:
+  scr_free(&file);
+
+  return rc;
 }
 
 /* read in halt file (which user may have changed via scr_halt), update internal data structure,
  * optionally decrement the checkpoints_left field, and write out halt file all while locked */
-int scr_halt_sync_and_decrement(const char* file, struct scr_hash* hash, int dec_count)
+int scr_halt_sync_and_decrement(const scr_path* file_path, scr_hash* hash, int dec_count)
 {
-  /* set the mode on the file to be readable/writable by all
-   * (enables a sysadmin to halt a user's job via scr_halt --all) */
-  mode_t old_mode = umask(0000);
+  /* assume we'll fail */
+  int rc = SCR_FAILURE;
+
+  /* get file name */
+  char* file = scr_path_strdup(file_path);
 
   /* record whether file already exists before we open it */
   int exists = (scr_file_exists(file) == SCR_SUCCESS);
 
   /* TODO: sleep and try the open several times if the first fails */
   /* open the halt file for reading */
-  int fd = scr_open(file, O_RDWR | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+  mode_t mode_file = scr_getmode(1, 1, 0);
+  int fd = scr_open(file, O_RDWR | O_CREAT, mode_file);
   if (fd < 0) {
-    scr_err("Opening file for write: scr_open(%s) errno=%d %m @ %s:%d",
-            file, errno, __FILE__, __LINE__
+    scr_err("Opening file for write: scr_open(%s) errno=%d %s @ %s:%d",
+      file, errno, strerror(errno), __FILE__, __LINE__
     );
     /* restore the normal file mask */
-    umask(old_mode);
-    return SCR_FAILURE;
+    goto cleanup;
   }
 
-  /* acquire an exclusive file lock before read/modify/write */
-  if (flock(fd, LOCK_EX) != 0) {
-    scr_err("Failed to acquire file lock on %s: flock(%d, %d) errno=%d %m @ %s:%d",
-            file, fd, LOCK_EX, errno, __FILE__, __LINE__
-    );
-    /* restore the normal file mask */
-    umask(old_mode);
-    return SCR_FAILURE;
+  /* acquire a file lock before read/modify/write */
+  int ret = scr_file_lock_read(file, fd);
+  if (ret != SCR_SUCCESS) {
+    scr_close(file,fd);
+    rc = ret;
+    goto cleanup;
   }
 
   /* get a new blank hash to read in file */
-  struct scr_hash* file_hash = scr_hash_new();
+  scr_hash* file_hash = scr_hash_new();
 
   /* read in the file data */
   scr_hash_read_fd(file, fd, file_hash);
@@ -130,13 +137,13 @@ int scr_halt_sync_and_decrement(const char* file, struct scr_hash* hash, int dec
     if (save_reason != NULL) {
       scr_hash_unset(hash, SCR_HALT_KEY_EXIT_REASON);
       scr_hash_set_kv(hash, SCR_HALT_KEY_EXIT_REASON, save_reason);
-      free(save_reason);
+      scr_free(&save_reason);
       save_reason = NULL;
     }
   }
 
   /* free the file_hash */
-  scr_hash_delete(file_hash);
+  scr_hash_delete(&file_hash);
 
   /* decrement the number of remaining checkpoints */
   char* ckpts_str = scr_hash_elem_get_first_val(hash, SCR_HALT_KEY_CHECKPOINTS);
@@ -162,21 +169,18 @@ int scr_halt_sync_and_decrement(const char* file, struct scr_hash* hash, int dec
   }
 
   /* release the file lock */
-  if (flock(fd, LOCK_UN) != 0) {
-    scr_err("Failed to release file lock on %s: flock(%d, %d) errno=%d %m @ %s:%d",
-            file, fd, LOCK_UN, errno, __FILE__, __LINE__
-    );
-    /* restore the normal file mask */
-    umask(old_mode);
-    return SCR_FAILURE;
-  }
+  scr_file_unlock(file, fd);
 
   /* close file */
   scr_close(file, fd);
 
-  /* restore the normal file mask */
-  umask(old_mode);
+  /* success if we make it this far */
+  rc = SCR_SUCCESS;
+
+cleanup:
+  /* free the file string */
+  scr_free(&file);
 
   /* write current values to halt file */
-  return SCR_SUCCESS;
+  return rc;
 }

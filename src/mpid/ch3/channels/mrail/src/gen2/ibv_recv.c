@@ -291,7 +291,6 @@ int MPIDI_CH3I_MRAIL_Parse_header(MPIDI_VC_t * vc,
             break;
         }
     case MPIDI_CH3_PKT_CAS:
-    case MPIDI_CH3_PKT_CAS_UNLOCK:
         {
             *header_size = sizeof(MPIDI_CH3_Pkt_cas_t);
             *pkt = vstart;

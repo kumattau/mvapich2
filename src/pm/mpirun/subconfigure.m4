@@ -24,6 +24,27 @@ AC_ARG_ENABLE([rsh],
               [],
               [enable_rsh=no])
 
+AC_ARG_VAR([RSH_CMD], [path to rsh command])
+AC_PATH_PROG([RSH_CMD], [rsh], [/usr/bin/rsh])
+
+AC_ARG_VAR([SSH_CMD], [path to ssh command])
+AC_PATH_PROG([SSH_CMD], [ssh], [/usr/bin/ssh])
+
+AC_ARG_VAR([ENV_CMD], [path to env command])
+AC_PATH_PROG([ENV_CMD], [env], [/usr/bin/env])
+
+AC_ARG_VAR([DBG_CMD], [path to debugger command])
+AC_PATH_PROG([DBG_CMD], [gdb], [/usr/bin/gdb])
+
+AC_ARG_VAR([XTERM_CMD], [path to xterm command])
+AC_PATH_PROG([XTERM_CMD], [xterm], [/usr/bin/xterm])
+
+AC_ARG_VAR([SHELL_CMD], [path to shell command])
+AC_PATH_PROG([SHELL_CMD], [bash], [/bin/bash])
+
+AC_ARG_VAR([TOTALVIEW_CMD], [path to totalview command])
+AC_PATH_PROG([TOTALVIEW_CMD], [totalview], [/usr/totalview/bin/totalview])
+
 AC_ARG_WITH([fuse],
     [AS_HELP_STRING([--with-fuse@[:@=path@:]@],
         [provide path to fuse package])

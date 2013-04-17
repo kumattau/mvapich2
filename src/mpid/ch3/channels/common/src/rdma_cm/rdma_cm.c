@@ -1089,21 +1089,30 @@ int rdma_cm_get_local_ip(){
     char ip[32];
     char fname[512];
     int i = 0;
+    char *value;
     MPIDI_STATE_DECL(MPID_STATE_RDMA_CM_GET_LOCAL_IP);
     MPIDI_FUNC_ENTER(MPID_STATE_RDMA_CM_GET_LOCAL_IP);
 
-    sprintf(fname, "/etc/mv2.conf");
+    value = getenv("MV2_RDMA_CM_CONF_FILE_PATH");
+
+    if (value == NULL) {
+        sprintf(fname, "/etc/mv2.conf");
+    } else {
+        strncpy(fname, value, strlen(value));
+        sprintf(fname + strlen(value), "/mv2.conf");
+    }
+
     fp_port = fopen(fname, "r");
 
     if (NULL == fp_port){
-        ibv_error_abort(GEN_EXIT_ERR, 
-            "Error opening file \"/etc/mv2.conf\". "
-            "Local rdma_cm address required in this file.\n");
+        ibv_va_error_abort(GEN_EXIT_ERR, 
+            "Error opening file %s"
+            "Local rdma_cm address required in this file.\n", fname);
     }
 
     rdma_cm_local_ips = MPIU_Malloc(rdma_num_hcas*rdma_num_ports*sizeof(int));
 
-    while ((fscanf(fp_port, "%s\n", ip)) != EOF){
+    while ((fscanf(fp_port, "%s\n", ip)) != EOF && (i < (rdma_num_hcas*rdma_num_ports))){
         rdma_cm_local_ips[i] = inet_addr(ip);
         i++;
     }

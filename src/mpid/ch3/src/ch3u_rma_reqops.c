@@ -30,10 +30,16 @@ static int MPIDI_CH3I_Rma_req_poll(void *state, MPI_Status *status)
 
     MPIU_UNREFERENCED_ARG(status);
 
-    /* Call flush to complete the operation */
+    /* Call flush to complete the operation.  Check that a passive target epoch
+     * is still active first; the user could complete the request after calling
+     * unlock. */
     /* FIXME: We need per-operation completion to make this more efficient. */
-    mpi_errno = req_state->win_ptr->RMAFns.Win_flush(req_state->target_rank,
-                                                     req_state->win_ptr);
+    if (req_state->win_ptr->targets[req_state->target_rank].remote_lock_state
+        != MPIDI_CH3_WIN_LOCK_NONE)
+    {
+        mpi_errno = req_state->win_ptr->RMAFns.Win_flush(req_state->target_rank,
+                                                         req_state->win_ptr);
+    }
 
     if (mpi_errno != MPI_SUCCESS) { MPIU_ERR_POP(mpi_errno); }
 
@@ -137,6 +143,10 @@ int MPIDI_Rput(const void *origin_addr, int origin_count,
                MPID_Request **request)
 {
     int mpi_errno = MPI_SUCCESS;
+    int dt_contig ATTRIBUTE((unused));
+    MPID_Datatype *dtp;
+    MPI_Aint dt_true_lb ATTRIBUTE((unused));
+    MPIDI_msg_sz_t data_sz;
     MPIDI_CH3I_Rma_req_state_t *req_state;
     MPIU_CHKPMEM_DECL(1);
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_RPUT);
@@ -144,7 +154,8 @@ int MPIDI_Rput(const void *origin_addr, int origin_count,
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_RPUT);
 
     MPIU_ERR_CHKANDJUMP(win_ptr->epoch_state != MPIDI_EPOCH_LOCK &&
-                        win_ptr->epoch_state != MPIDI_EPOCH_LOCK_ALL,
+                        win_ptr->epoch_state != MPIDI_EPOCH_LOCK_ALL &&
+                        target_rank != MPI_PROC_NULL,
                         mpi_errno, MPI_ERR_RMA_SYNC, "**rmasync");
 
     MPIU_CHKPMEM_MALLOC(req_state, MPIDI_CH3I_Rma_req_state_t*,
@@ -154,8 +165,11 @@ int MPIDI_Rput(const void *origin_addr, int origin_count,
     req_state->win_ptr = win_ptr;
     req_state->target_rank = target_rank;
 
+    MPIDI_Datatype_get_info(origin_count, origin_datatype,
+                            dt_contig, data_sz, dtp, dt_true_lb);
+
     /* Enqueue or perform the RMA operation */
-    if (target_rank != MPI_PROC_NULL) {
+    if (target_rank != MPI_PROC_NULL && data_sz != 0) {
         mpi_errno = win_ptr->RMAFns.Put(origin_addr, origin_count,
                                         origin_datatype, target_rank,
                                         target_disp, target_count,
@@ -168,7 +182,7 @@ int MPIDI_Rput(const void *origin_addr, int origin_count,
      * Otherwise, generate a grequest. */
     /* FIXME: We still may need to flush or sync for shared memory windows */
     if (target_rank == MPI_PROC_NULL || target_rank == win_ptr->myrank ||
-        win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED)
+        win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED || data_sz == 0)
     {
         mpi_errno = MPIR_Grequest_start_impl(MPIDI_CH3I_Rma_req_query,
                                              MPIDI_CH3I_Rma_req_free,
@@ -210,6 +224,10 @@ int MPIDI_Rget(void *origin_addr, int origin_count,
                MPID_Request **request)
 {
     int mpi_errno = MPI_SUCCESS;
+    int dt_contig ATTRIBUTE((unused));
+    MPID_Datatype *dtp;
+    MPI_Aint dt_true_lb ATTRIBUTE((unused));
+    MPIDI_msg_sz_t data_sz;
     MPIDI_CH3I_Rma_req_state_t *req_state;
     MPIU_CHKPMEM_DECL(1);
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_RGET);
@@ -217,7 +235,8 @@ int MPIDI_Rget(void *origin_addr, int origin_count,
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_RGET);
 
     MPIU_ERR_CHKANDJUMP(win_ptr->epoch_state != MPIDI_EPOCH_LOCK &&
-                        win_ptr->epoch_state != MPIDI_EPOCH_LOCK_ALL,
+                        win_ptr->epoch_state != MPIDI_EPOCH_LOCK_ALL &&
+                        target_rank != MPI_PROC_NULL,
                         mpi_errno, MPI_ERR_RMA_SYNC, "**rmasync");
 
     MPIU_CHKPMEM_MALLOC(req_state, MPIDI_CH3I_Rma_req_state_t*,
@@ -227,8 +246,11 @@ int MPIDI_Rget(void *origin_addr, int origin_count,
     req_state->win_ptr = win_ptr;
     req_state->target_rank = target_rank;
 
+    MPIDI_Datatype_get_info(origin_count, origin_datatype,
+                            dt_contig, data_sz, dtp, dt_true_lb);
+
     /* Enqueue or perform the RMA operation */
-    if (target_rank != MPI_PROC_NULL) {
+    if (target_rank != MPI_PROC_NULL && data_sz != 0) {
         mpi_errno = win_ptr->RMAFns.Get(origin_addr, origin_count,
                                         origin_datatype, target_rank,
                                         target_disp, target_count,
@@ -241,7 +263,7 @@ int MPIDI_Rget(void *origin_addr, int origin_count,
      * Otherwise, generate a grequest. */
     /* FIXME: We still may need to flush or sync for shared memory windows */
     if (target_rank == MPI_PROC_NULL || target_rank == win_ptr->myrank ||
-        win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED)
+        win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED || data_sz == 0)
     {
         mpi_errno = MPIR_Grequest_start_impl(MPIDI_CH3I_Rma_req_query,
                                              MPIDI_CH3I_Rma_req_free,
@@ -283,6 +305,10 @@ int MPIDI_Raccumulate(const void *origin_addr, int origin_count,
                       MPID_Request **request)
 {
     int mpi_errno = MPI_SUCCESS;
+    int dt_contig ATTRIBUTE((unused));
+    MPID_Datatype *dtp;
+    MPI_Aint dt_true_lb ATTRIBUTE((unused));
+    MPIDI_msg_sz_t data_sz;
     MPIDI_CH3I_Rma_req_state_t *req_state;
     MPIU_CHKPMEM_DECL(1);
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_RACCUMULATE);
@@ -290,7 +316,8 @@ int MPIDI_Raccumulate(const void *origin_addr, int origin_count,
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_RACCUMULATE);
 
     MPIU_ERR_CHKANDJUMP(win_ptr->epoch_state != MPIDI_EPOCH_LOCK &&
-                        win_ptr->epoch_state != MPIDI_EPOCH_LOCK_ALL,
+                        win_ptr->epoch_state != MPIDI_EPOCH_LOCK_ALL &&
+                        target_rank != MPI_PROC_NULL,
                         mpi_errno, MPI_ERR_RMA_SYNC, "**rmasync");
 
     MPIU_CHKPMEM_MALLOC(req_state, MPIDI_CH3I_Rma_req_state_t*,
@@ -300,8 +327,11 @@ int MPIDI_Raccumulate(const void *origin_addr, int origin_count,
     req_state->win_ptr = win_ptr;
     req_state->target_rank = target_rank;
 
+    MPIDI_Datatype_get_info(origin_count, origin_datatype,
+                            dt_contig, data_sz, dtp, dt_true_lb);
+
     /* Enqueue or perform the RMA operation */
-    if (target_rank != MPI_PROC_NULL) {
+    if (target_rank != MPI_PROC_NULL && data_sz != 0) {
         mpi_errno = win_ptr->RMAFns.Accumulate(origin_addr, origin_count,
                                                origin_datatype, target_rank,
                                                target_disp, target_count,
@@ -313,7 +343,7 @@ int MPIDI_Raccumulate(const void *origin_addr, int origin_count,
      * Otherwise, generate a grequest. */
     /* FIXME: We still may need to flush or sync for shared memory windows */
     if (target_rank == MPI_PROC_NULL || target_rank == win_ptr->myrank ||
-        win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED)
+        win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED || data_sz == 0)
     {
         mpi_errno = MPIR_Grequest_start_impl(MPIDI_CH3I_Rma_req_query,
                                              MPIDI_CH3I_Rma_req_free,
@@ -356,6 +386,10 @@ int MPIDI_Rget_accumulate(const void *origin_addr, int origin_count,
                           MPID_Request **request)
 {
     int mpi_errno = MPI_SUCCESS;
+    int dt_contig ATTRIBUTE((unused));
+    MPID_Datatype *dtp;
+    MPI_Aint dt_true_lb ATTRIBUTE((unused));
+    MPIDI_msg_sz_t data_sz, trg_data_sz;
     MPIDI_CH3I_Rma_req_state_t *req_state;
     MPIU_CHKPMEM_DECL(1);
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_RGET_ACCUMULATE);
@@ -363,7 +397,8 @@ int MPIDI_Rget_accumulate(const void *origin_addr, int origin_count,
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_RGET_ACCUMULATE);
 
     MPIU_ERR_CHKANDJUMP(win_ptr->epoch_state != MPIDI_EPOCH_LOCK &&
-                        win_ptr->epoch_state != MPIDI_EPOCH_LOCK_ALL,
+                        win_ptr->epoch_state != MPIDI_EPOCH_LOCK_ALL &&
+                        target_rank != MPI_PROC_NULL,
                         mpi_errno, MPI_ERR_RMA_SYNC, "**rmasync");
 
     MPIU_CHKPMEM_MALLOC(req_state, MPIDI_CH3I_Rma_req_state_t*,
@@ -373,8 +408,14 @@ int MPIDI_Rget_accumulate(const void *origin_addr, int origin_count,
     req_state->win_ptr = win_ptr;
     req_state->target_rank = target_rank;
 
+    /* Note that GACC is only a no-op if no data goes in both directions */
+    MPIDI_Datatype_get_info(origin_count, origin_datatype,
+                            dt_contig, data_sz, dtp, dt_true_lb);
+    MPIDI_Datatype_get_info(origin_count, origin_datatype,
+                            dt_contig, trg_data_sz, dtp, dt_true_lb);
+
     /* Enqueue or perform the RMA operation */
-    if (target_rank != MPI_PROC_NULL) {
+    if (target_rank != MPI_PROC_NULL && (data_sz != 0 || trg_data_sz != 0)) {
         mpi_errno = win_ptr->RMAFns.Get_accumulate(origin_addr, origin_count,
                                                    origin_datatype, result_addr,
                                                    result_count, result_datatype,
@@ -388,7 +429,8 @@ int MPIDI_Rget_accumulate(const void *origin_addr, int origin_count,
      * Otherwise, generate a grequest. */
     /* FIXME: We still may need to flush or sync for shared memory windows */
     if (target_rank == MPI_PROC_NULL || target_rank == win_ptr->myrank ||
-        win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED)
+        win_ptr->create_flavor == MPI_WIN_FLAVOR_SHARED ||
+        (data_sz == 0 && trg_data_sz == 0))
     {
         mpi_errno = MPIR_Grequest_start_impl(MPIDI_CH3I_Rma_req_query,
                                              MPIDI_CH3I_Rma_req_free,

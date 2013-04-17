@@ -47,6 +47,7 @@ int main(int argc, char *argv[])
     double latency = 0.0, t_start = 0.0, t_stop = 0.0;
     double timer=0.0;
     int max_msg_size = 1048576, full = 0; 
+    uint64_t requested_mem_limit = 0; 
     double avg_time = 0.0, max_time = 0.0, min_time = 0.0; 
     char *sendbuf, *recvbuf, *s_buf1, *r_buf1;
     int *rdispls, *recvcounts;
@@ -68,6 +69,12 @@ int main(int argc, char *argv[])
 
         return EXIT_FAILURE;
     }
+
+    requested_mem_limit = (uint64_t) (max_msg_size) * numprocs;
+    if( requested_mem_limit > max_mem_limit) {
+      max_msg_size = max_mem_limit/numprocs;
+    }
+
 
     print_header(rank, full);
 

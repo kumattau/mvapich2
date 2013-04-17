@@ -40,6 +40,10 @@ pkglibexec_PROGRAMS =		\
     osu_passive_get_bw		\
     osu_passive_acc_latency
 
+osu_scatter_SOURCES = osu_scatter.c osu_coll.c osu_coll.h
+osu_gather_SOURCES = osu_gather.c osu_coll.c osu_coll.h
+osu_alltoall_SOURCES = osu_alltoall.c osu_coll.c osu_coll.h
+
 AM_CPPFLAGS =
 
 if BUILD_MRAIL_CUDA

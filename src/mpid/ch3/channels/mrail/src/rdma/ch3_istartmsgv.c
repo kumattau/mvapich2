@@ -213,7 +213,7 @@ int MPIDI_CH3_iStartMsgv(MPIDI_VC_t * vc, MPID_IOV * iov, int n_iov,
                 MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**nomem");
             }
             sreq->kind = MPID_REQUEST_SEND;
-            sreq->cc = 0;
+            MPID_cc_set(&sreq->cc, 0);
             /* TODO: Create an appropriate error message based on the value of errno
              * */
             sreq->status.MPI_ERROR = MPI_ERR_INTERN;

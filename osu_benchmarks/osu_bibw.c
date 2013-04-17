@@ -250,10 +250,10 @@ void
 usage (void)
 {
     if (CUDA_ENABLED || OPENACC_ENABLED) {
-        printf("Usage: osu_bibw [options] [SRC DEST]\n\n");
-        printf("SRC and DEST may be `D' or `H' which specifies whether\n"
+        printf("Usage: osu_bibw [options] [RANK0 RANK1]\n\n");
+        printf("RANK0 and RANK1 may be `D' or `H' which specifies whether\n"
                "the buffer is allocated on the accelerator device or host\n"
-               "memory for the source and destination mpi ranks\n\n");
+               "memory for each mpi rank\n\n");
     }
 
     else {

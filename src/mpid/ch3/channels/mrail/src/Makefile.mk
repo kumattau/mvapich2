@@ -121,7 +121,7 @@ AM_CPPFLAGS += -I$(top_srcdir)/src/mpid/ch3/channels/mrail/src/hwloc/include 	\
 
 
 lib_lib@MPILIBNAME@_la_LDFLAGS += -L$(top_builddir)/src/mpid/ch3/channels/mrail/src/hwloc/src
-lib_lib@MPILIBNAME@_la_LIBADD += -lhwloc_embedded
+lib_lib@MPILIBNAME@_la_LIBADD += $(top_builddir)/src/mpid/ch3/channels/mrail/src/hwloc/src/libhwloc_embedded.la
 endif
 
 if BUILD_MRAIL_CUDA_KERNELS

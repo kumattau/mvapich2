@@ -17,12 +17,12 @@
 #include "mv2_arch_hca_detect.h"
 
 enum {
-    ALLREDUCE_P2P_RD = 1,
-    ALLREDUCE_P2P_RS,
-    ALLREDUCE_MCAST_2LEVEL,
-    ALLREDUCE_MCAST_RSA,
-    ALLREDUCE_SHMEM_REDUCE,
-    ALLREDUCE_P2P_REDUCE,
+    ALLREDUCE_P2P_RD = 1,      //1 &MPIR_Allreduce_pt2pt_rd_MV2
+    ALLREDUCE_P2P_RS,          //2 &MPIR_Allreduce_pt2pt_rs_MV2
+    ALLREDUCE_MCAST_2LEVEL,    //3 &MPIR_Allreduce_mcst_reduce_two_level_helper_MV2
+    ALLREDUCE_MCAST_RSA,       //4 &MPIR_Allreduce_mcst_reduce_redscat_gather_MV2
+    ALLREDUCE_SHMEM_REDUCE,    //5 &MPIR_Allreduce_reduce_shmem_MV2
+    ALLREDUCE_P2P_REDUCE,      //6 &MPIR_Allreduce_reduce_p2p_MV2
 };
 
 int mv2_size_allreduce_tuning_table = 0;
@@ -133,7 +133,8 @@ int MV2_set_allreduce_tuning_table(int heterogeneity)
                   mv2_size_allreduce_tuning_table * sizeof (mv2_allreduce_tuning_table));
     } else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
         MV2_ARCH_INTEL_XEON_E5_2680_16, MV2_HCA_MLX_CX_FDR) && !heterogeneity){
-        mv2_size_allreduce_tuning_table = 6;
+        /*Stampede,*/
+        mv2_size_allreduce_tuning_table = 8;
         mv2_allreduce_thresholds_table = MPIU_Malloc(mv2_size_allreduce_tuning_table *
                                                   sizeof (mv2_allreduce_tuning_table));
         mv2_allreduce_tuning_table mv2_tmp_allreduce_thresholds_table[] = {
@@ -242,6 +243,24 @@ int MV2_set_allreduce_tuning_table(int heterogeneity)
                     {512, 8192, &MPIR_Allreduce_pt2pt_rd_MV2},
                     {8192, 65536, &MPIR_Allreduce_pt2pt_rs_MV2},
                     {65536, -1, &MPIR_Allreduce_pt2pt_rs_MV2},
+                },
+                2,
+                {
+                    {0, 512, &MPIR_Allreduce_reduce_shmem_MV2},
+                    {512, -1, &MPIR_Allreduce_reduce_p2p_MV2},
+                },
+            },
+            {
+                2048,
+                0,
+                {1, 1, 1, 0},
+                4,
+                {
+                    {0, 64, &MPIR_Allreduce_pt2pt_rd_MV2},
+                    {64, 512, &MPIR_Allreduce_reduce_p2p_MV2},
+                    {512, 4096, &MPIR_Allreduce_mcst_reduce_two_level_helper_MV2},
+                    {4096, 16384, &MPIR_Allreduce_pt2pt_rs_MV2},
+                    {16384, -1, &MPIR_Allreduce_pt2pt_rs_MV2},
                 },
                 2,
                 {

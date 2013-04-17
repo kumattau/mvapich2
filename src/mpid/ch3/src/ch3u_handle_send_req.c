@@ -59,25 +59,24 @@ int MPIDI_CH3_ReqHandler_GetSendRespComplete( MPIDI_VC_t *vc ATTRIBUTE((unused))
 					      int *complete )
 {
     int mpi_errno = MPI_SUCCESS;
-#if defined(_OSU_MVAPICH_)
     MPID_Win *win_ptr;
+#if defined(_OSU_MVAPICH_)
     MPID_Win_get_ptr(sreq->dev.target_win_handle, win_ptr);
     win_ptr->outstanding_rma --;
     int rank, l_rank;   
 #endif /* defined(_OSU_MVAPICH_) */
 
-    /* FIXME: Should this test be an MPIU_Assert? */
-    if (sreq->dev.source_win_handle != MPI_WIN_NULL) {
-	MPID_Win *win_ptr;
+	MPID_Win_get_ptr(sreq->dev.target_win_handle, win_ptr);
+
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+    if (sreq->dev.flags & MPIDI_CH3_PKT_FLAG_RMA_UNLOCK) {
 	/* Last RMA operation (get) from source. If active target RMA,
 	   decrement window counter. If passive target RMA, 
 	   release lock on window and grant next lock in the 
 	   lock queue if there is any; no need to send rma done 
 	   packet since the last operation is a get. */
 	
-	MPID_Win_get_ptr(sreq->dev.target_win_handle, win_ptr);
 
-#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
 #if defined (_SMP_LIMIC_)
     if ((!win_ptr->limic_fallback || !win_ptr->shm_fallback) 
             && vc->smp.local_nodes != -1)
@@ -89,27 +88,28 @@ int MPIDI_CH3_ReqHandler_GetSendRespComplete( MPIDI_VC_t *vc ATTRIBUTE((unused))
         l_rank = win_ptr->shm_g2l_rank[rank];
         if (*((volatile int *) &win_ptr->shm_lock[l_rank]) != MPID_LOCK_NONE) {
             MPIDI_CH3I_SHM_win_unlock(rank, win_ptr);
-            goto fn_exit;
+            goto fn_done;
         }
+    }
     }
 #endif
 
-	if (win_ptr->current_lock_type == MPID_LOCK_NONE) {
-	    /* FIXME: MT: this has to be done atomically */
-	    win_ptr->my_counter -= 1;
-	}
-	else {
-	    mpi_errno = MPIDI_CH3I_Release_lock(win_ptr);
-	}
-    }
+    MPID_Win_get_ptr(sreq->dev.target_win_handle, win_ptr);
+
+    mpi_errno = MPIDI_CH3_Finish_rma_op_target(NULL, win_ptr, FALSE, sreq->dev.flags, MPI_WIN_NULL);
+    if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
 
 #if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
-fn_exit:
+fn_done:
 #endif
     /* mark data transfer as complete and decrement CC */
     MPIDI_CH3U_Request_complete(sreq);
     *complete = TRUE;
+
+ fn_exit:
     return mpi_errno;
+ fn_fail:
+    goto fn_exit;
 }
 
 int MPIDI_CH3_ReqHandler_SendReloadIOV( MPIDI_VC_t *vc ATTRIBUTE((unused)), MPID_Request *sreq, 

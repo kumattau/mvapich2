@@ -1412,7 +1412,7 @@ int MPIDI_Populate_vc_node_ids(MPIDI_PG_t *pg, int our_pg_rank)
 
     if (pg->size == 1) {
         pg->vct[0].node_id = g_num_nodes++;
-#ifdef _OSU_MVAPICH_ 
+#if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
         pg->ch.local_process_id = 0;
         pg->ch.num_local_processes = 1;
         pg->vct[0].smp.local_rank = 0;

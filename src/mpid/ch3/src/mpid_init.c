@@ -75,37 +75,11 @@ MPIDI_CH3U_COLL_SRBuf_element_t * MPIDI_CH3U_COLL_SRBuf_pool = NULL;
 #endif
 MPIDI_CH3U_Win_fns_t MPIDI_CH3U_Win_fns = { NULL };
 
+
 #undef FUNCNAME
-#define FUNCNAME split_type
+#define FUNCNAME finalize_failed_procs_group
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-static int split_type(MPID_Comm * comm_ptr, int stype, int key,
-                      MPID_Info *info_ptr, MPID_Comm ** newcomm_ptr)
-{
-    MPID_Node_id_t id;
-    MPIR_Rank_t nid;
-    int mpi_errno = MPI_SUCCESS;
-
-    mpi_errno = MPID_Get_node_id(comm_ptr, comm_ptr->rank, &id);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-
-    nid = (stype == MPI_COMM_TYPE_SHARED) ? id : MPI_UNDEFINED;
-    mpi_errno = MPIR_Comm_split_impl(comm_ptr, nid, key, newcomm_ptr);
-    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-
-  fn_exit:
-    return mpi_errno;
-
-    /* --BEGIN ERROR HANDLING-- */
-  fn_fail:
-    goto fn_exit;
-    /* --END ERROR HANDLING-- */
-}
-
-static MPID_CommOps comm_fns = {
-    split_type
-};
-
 static int finalize_failed_procs_group(void *param)
 {
     int mpi_errno = MPI_SUCCESS;
@@ -182,7 +156,6 @@ char *MPIDI_CH3_Pkt_type_to_string[MPIDI_CH3_PKT_END_ALL+1] = {
     [MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK] = "MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK",
     [MPIDI_CH3_PKT_ACCUM_IMMED] = "MPIDI_CH3_PKT_ACCUM_IMMED",
     [MPIDI_CH3_PKT_CAS] = "MPIDI_CH3_PKT_CAS",
-    [MPIDI_CH3_PKT_CAS_UNLOCK] = "MPIDI_CH3_PKT_CAS_UNLOCK",
     [MPIDI_CH3_PKT_CAS_RESP] = "MPIDI_CH3_PKT_CAS_RESP",
     [MPIDI_CH3_PKT_FOP] = "MPIDI_CH3_PKT_FOP",
     [MPIDI_CH3_PKT_FOP_RESP] = "MPIDI_CH3_PKT_FOP_RESP",
@@ -352,9 +325,6 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     mpi_errno = MPIDU_Ftb_init();
     if (mpi_errno) MPIU_ERR_POP(mpi_errno);
 
-    /* Override split_type */
-    MPID_Comm_fns = &comm_fns;
-    
     /* Initialize Window functions table with defaults, then call the channel's
        init function. */
     MPIDI_Win_fns_init(&MPIDI_CH3U_Win_fns);

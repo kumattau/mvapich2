@@ -302,7 +302,7 @@ int psm_send_noncontig(MPIDI_VC_t *vc, MPID_Request *sreq,
         }
 
         if(!(sreq->psm_flags & PSM_NON_BLOCKING_SEND)) {
-            *(sreq->cc_ptr) = 0;
+            MPID_cc_set(sreq->cc_ptr, 0);
             MPIU_Object_release_ref(sreq, &inuse);
         }
     }

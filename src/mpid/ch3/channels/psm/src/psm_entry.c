@@ -25,6 +25,8 @@ struct psmdev_info_t    psmdev_cw;
 uint32_t                ipath_rndv_thresh;
 uint8_t                 ipath_debug_enable;
 uint32_t                ipath_dump_frequency;
+uint8_t                 ipath_enable_func_lock;
+uint32_t                ipath_progress_yield_count;
 
 static char    scratch[WRBUFSZ];
 static char             *kvsid;
@@ -452,6 +454,14 @@ static void psm_other_init(MPIDI_PG_t *pg)
     ipath_dump_frequency = 10;
     if((flag = getenv("MV2_PSM_DUMP_FREQUENCY")) != NULL) {
         ipath_dump_frequency = atoi(flag);
+    }
+    ipath_enable_func_lock = 1;
+    if((flag = getenv("MV2_PSM_ENABLE_FUNC_LOCK")) != NULL) {
+        ipath_enable_func_lock = atoi(flag);
+    }
+    ipath_progress_yield_count = 3;
+    if((flag = getenv("MV2_PSM_YIELD_COUNT")) != NULL) {
+        ipath_progress_yield_count = atoi(flag);
     }
 
     psm_queue_init();

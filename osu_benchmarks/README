@@ -292,6 +292,8 @@ Collective Latency Tests
            latencies for up to 1MB message lengths. 
     * "-i" can be used to set the number of iterations to run for each message
            length. 
+    * "-M" can be used to set per process maximum memory consumption.  By
+           default the benchmarks are limited to 512MB allocations.
 
 
 CUDA and OpenACC Extensions to OMB
@@ -299,23 +301,44 @@ CUDA and OpenACC Extensions to OMB
 CUDA Extensions to OMB are enabled when MVAPICH2 is configured with CUDA
 support.  OpenACC Extensions are enabled when MVAPICH2 detects OpenACC support
 at configure time.  The following benchmarks have been extended to evaluate
-performance of MPI_Send/MPI_Recv from and to buffers on NVIDIA GPU devices. 
+performance of MPI communication using buffers on NVIDIA GPU devices. 
 
-    osu_bibw    - Bidirectional Bandwidth Test
-    osu_bw      - Bandwidth Test
-    osu_latency - Latency Test
+    osu_bibw        - Bidirectional Bandwidth Test
+    osu_bw          - Bandwidth Test
+    osu_latency     - Latency Test
+    osu_alltoall    - MPI_Alltoall Latency Test
+    osu_gather      - MPI_Gather Latency Test
+    osu_scatter     - MPI_Scatter Latency Test
 
-Each of these benchmarks takes two input parameters. The first parameter
+If both CUDA and OpenACC support is enabled you can switch between the modes
+using the -d [cuda|openacc] option to the benchmarks.  Whether a process
+allocates its communication buffers on the GPU device or on the host can be
+controlled at run-time.  Use the -h option for more help.
+
+    ./osu_latency -h
+    Usage: osu_latency [options] [RANK0 RANK1]
+
+    RANK0 and RANK1 may be `D' or `H' which specifies whether
+    the buffer is allocated on the accelerator device or host
+    memory for each mpi rank
+
+    options:
+      -d TYPE   accelerator device buffers can be of TYPE `cuda' or `openac'
+      -h        print this help message
+
+Each of the pt2pt benchmarks takes two input parameters. The first parameter
 indicates the location of the buffers at rank 0 and the second parameter
 indicates the location of the buffers at rank 1. The value of each of these
 parameters can be either 'H' or 'D' to indicate if the buffers are to be on the
 host or on the device respectively. When no parameters are specified, the
-buffers are allocated on the host.
+buffers are allocated on the host.  The collective benchmarks will use buffers
+allocated on the device if the -d option is used otherwise the buffers will be
+allocated on the host.
 
 Examples:
 
-    - mpirun_rsh -np 2 -hostfile hostfile MV2_USE_CUDA=1 osu_latency D D 
-    
+    - mpirun_rsh -np 2 -hostfile hostfile MV2_USE_CUDA=1 osu_latency D D
+
 In this run, the latency test allocates buffers at both rank 0 and rank 1 on
 the GPU devices.
 
@@ -324,31 +347,15 @@ the GPU devices.
 In this run, the bandwidth test allocates buffers at rank 0 on the GPU device
 and buffers at rank 1 on the host.
 
-If both CUDA and OpenACC support is enabled you can switch between the modes
-using the -d [cuda|openacc] option to the benchmarks.  Use the -h option for
-more help.
-
-    ./osu_latency -h
-    Usage: osu_latency [options] [SRC DEST]
-    
-    SRC and DEST may be `D' or `H' which specifies whether
-    the buffer is allocated on the accelerator device or host
-    memory for the source and destination mpi ranks
-    
-    options:
-      -d TYPE       accelerator device buffers can be of TYPE `cuda' or `openacc
-      -h            print this help message
-
 Setting GPU affinity
 --------------------
-GPU affinity for processes should be set before MPI_Init is called.  The
-process rank on a node is normally used to do this and different MPI launchers
-expose this information through different environment variables. The benchmarks
-use an environment variable called LOCAL_RANK to get this information. 
+GPU affinity for processes should be set before MPI_Init is called.  The process
+rank on a node is normally used to do this and different MPI launchers expose
+this information through different environment variables. The benchmarks use an
+environment variable called LOCAL_RANK to get this information. 
 
 A script like below can be used to export this environment variable when using
-mpirun_rsh.  This can be adapted to work with other MPI launchers and
-libraries.
+mpirun_rsh.  This can be adapted to work with other MPI launchers and libraries.
 
     #!/bin/bash
 
@@ -358,5 +365,6 @@ libraries.
 A copy of this script is installed as get_local_rank alongside the benchmarks.
 It can be used as follows: 
 
-    mpirun_rsh -np 2 -hostfile hostfile MV2_USE_CUDA=1 get_local_rank ./osu_latency D D
+    mpirun_rsh -np 2 -hostfile hostfile MV2_USE_CUDA=1 get_local_rank \
+        ./osu_latency D D
 
