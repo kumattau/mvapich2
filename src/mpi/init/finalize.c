@@ -234,13 +234,13 @@ int MPI_Finalize( void )
     specific entries need to be freed. */
     MPID_Comm *comm_ptr = NULL;
     int errflag = FALSE;
-    char *value = NULL;
     MPID_Comm_get_ptr( MPI_COMM_WORLD, comm_ptr );
     mpi_errno = MPIR_Barrier_impl(comm_ptr, &errflag); 
     if (mpi_errno) { 
              MPIU_ERR_POP(mpi_errno); 
     }
 #if !defined(DAPL_DEFAULT_PROVIDER) && !defined(_OSU_PSM_)
+    char *value = NULL;
     if ((value = getenv("MV2_SHOW_RUNLOG_INFO")) != NULL) {
         mv2_show_runlog_level = atoi(value);
         if (mv2_show_runlog_level) {

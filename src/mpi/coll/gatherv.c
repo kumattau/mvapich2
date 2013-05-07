@@ -263,14 +263,14 @@ int MPIR_Gatherv_impl(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
 
             if (((comm_ptr->comm_kind == MPID_INTRACOMM) && (root == rank)) ||
                 ((comm_ptr->comm_kind == MPID_INTERCOMM) && (root == MPI_ROOT))) {
-                mpi_errno = cuda_stage_alloc_v (&sendbuf, &sendcount, sendtype,
+                mpi_errno = cuda_stage_alloc_v ((void **)&sendbuf, &sendcount, sendtype,
                          &send_displs, 1,
-                         &recvbuf, recvcounts, recvtype,
-                         &displs, comm_size,
+                         &recvbuf, (int *)recvcounts, recvtype,
+                         (int **)&displs, comm_size,
                          sendbuf_on_device, recvbuf_on_device,
                          rank);
             } else {
-                mpi_errno = cuda_stage_alloc_v (&sendbuf, &sendcount, sendtype,
+                mpi_errno = cuda_stage_alloc_v ((void **)&sendbuf, &sendcount, sendtype,
                          &send_displs, 1,
                          NULL, NULL, recvtype,
                          NULL, 0,
@@ -306,14 +306,14 @@ int MPIR_Gatherv_impl(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
 
             if (((comm_ptr->comm_kind == MPID_INTRACOMM) && (root == rank)) ||
                 ((comm_ptr->comm_kind == MPID_INTERCOMM) && (root == MPI_ROOT))) {
-                cuda_stage_free_v (&sendbuf, &sendcount, sendtype,
+                cuda_stage_free_v ((void **)&sendbuf, &sendcount, sendtype,
                          &send_displs, 1,
-                         &recvbuf, recvcounts, recvtype,
-                         &displs, comm_size,
+                         &recvbuf, (int *)recvcounts, recvtype,
+                         (int **)&displs, comm_size,
                          sendbuf_on_device, recvbuf_on_device,
                          rank);
             } else {
-                cuda_stage_free_v (&sendbuf, &sendcount, sendtype,
+                cuda_stage_free_v ((void **)&sendbuf, &sendcount, sendtype,
                          &send_displs, 1,
                          NULL, NULL, recvtype,
                          NULL, 0,

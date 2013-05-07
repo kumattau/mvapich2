@@ -95,6 +95,7 @@ struct {
 
 void usage (void);
 int init_cuda_context (void);
+int destroy_cuda_context (void);
 int process_options (int argc, char *argv[]);
 int allocate_memory (char **sbuf, char **rbuf, int rank);
 void print_header (int rank);
@@ -350,7 +351,6 @@ int
 init_cuda_context (void)
 {
 #ifdef _ENABLE_CUDA_
-    cudaError_t  cuerr = cudaSuccess;
     CUresult curesult = CUDA_SUCCESS;
     CUdevice cuDevice;
     int local_rank, dev_count;
@@ -391,7 +391,7 @@ allocate_device_buffer (char ** buffer)
     switch (options.accel) {
 #ifdef _ENABLE_CUDA_
         case cuda:
-            cuerr = cudaMalloc(buffer, MYBUFSIZE);
+            cuerr = cudaMalloc((void **)buffer, MYBUFSIZE);
 
             if (cudaSuccess != cuerr) {
                 fprintf(stderr, "Could not allocate device memory\n");

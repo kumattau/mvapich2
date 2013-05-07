@@ -15,5 +15,6 @@
 
 
 int MPID_nem_ib_finalize (void);
+int MPIDI_nem_ib_flush();
 
 #endif

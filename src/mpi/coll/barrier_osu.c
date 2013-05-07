@@ -20,6 +20,9 @@
 #include "mpiimpl.h"
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include "coll_shmem.h"
+#ifdef MRAIL_GEN2_INTERFACE
+#include <cr.h>
+#endif
 
 static int MPIR_Pairwise_Barrier_MV2(MPID_Comm * comm_ptr, int *errflag)
 {

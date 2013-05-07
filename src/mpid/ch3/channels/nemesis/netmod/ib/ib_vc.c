@@ -30,7 +30,9 @@
 #include "ib_lmt.h"
 
 #define PKTARRAY_SIZE (MPIDI_NEM_PKT_END+1)
+#ifdef ENABLE_CHECKPOINTING
 static MPIDI_CH3_PktHandler_Fcn *pktArray[PKTARRAY_SIZE];
+#endif
 
 #undef FUNCNAME
 #define FUNCNAME MPID_nem_ib_vc_init

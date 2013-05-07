@@ -23,6 +23,7 @@
 
 static int cudaipc_init = 0;
 static CUcontext mv2_cuda_context = NULL;
+static CUcontext mv2_save_cuda_context = NULL;
 
 void MPIU_IOV_pack_cuda(void *buf, MPID_IOV *iov, int n_iov, int position) 
 {
@@ -665,7 +666,7 @@ void MPID_Segment_unpack_cuda(DLOOP_Segment *segp, DLOOP_Offset first,
     }
 }
 
-int is_device_buffer(void *buffer) 
+int is_device_buffer(const void *buffer) 
 {
     int memory_type;
     cudaError_t cuda_err = cudaSuccess;
@@ -883,15 +884,14 @@ void cuda_init(MPIDI_PG_t * pg)
     MPIDI_VC_t* vc = NULL;
     cudaError_t cudaerr = cudaSuccess;
     CUresult curesult = CUDA_SUCCESS;
-    CUcontext user_context;
     CUdevice cudevice; 
     
     comm_world = MPIR_Process.comm_world;
     num_processes = comm_world->local_size;
     my_rank = comm_world->rank;
 
-    curesult = cuCtxGetCurrent(&user_context); 
-    if (curesult != CUDA_SUCCESS || user_context == NULL) { 
+    curesult = cuCtxGetCurrent(&mv2_save_cuda_context); 
+    if (curesult != CUDA_SUCCESS || mv2_save_cuda_context == NULL) { 
         if (rdma_cuda_init_context) { 
             /*use has not selected a device or not created a context, 
              *select device internally*/
@@ -917,6 +917,7 @@ void cuda_init(MPIDI_PG_t * pg)
             ibv_error_abort(GEN_EXIT_ERR,"Active CUDA context not detected.\
                  Select a device and create context before MPI_Init.\n");
         }
+        mv2_save_cuda_context = mv2_cuda_context;
     }
 
     device = (int *) MPIU_Malloc (sizeof(int)*num_processes);
@@ -1016,6 +1017,16 @@ void cuda_cleanup()
         if (curesult != CUDA_SUCCESS) {
             ibv_error_abort (GEN_EXIT_ERR, "cuCtxDestroy returned error in finalize\n");
         }
+    }
+}
+
+void cuda_init_thread_context()
+{
+    CUresult curesult = CUDA_SUCCESS;
+    curesult = cuCtxSetCurrent(mv2_save_cuda_context); 
+    if (curesult != CUDA_SUCCESS) {
+        ibv_error_abort (GEN_EXIT_ERR, "Error in setting cuda context in a thread\n");
+
     }
 }
 #endif

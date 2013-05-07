@@ -1,4 +1,4 @@
-#define BENCHMARK "OSU Barrier Latency Test"
+#define BENCHMARK "OSU MPI%s Barrier Latency Test"
 /*
  * Copyright (C) 2002-2013 the Network-Based Computing Laboratory
  * (NBCL), The Ohio State University. 

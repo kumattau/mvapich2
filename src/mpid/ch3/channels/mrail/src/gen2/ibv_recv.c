@@ -451,7 +451,6 @@ int MPIDI_CH3I_MRAIL_Fill_Request(MPID_Request * req, vbuf * v,
 
 
 #ifdef _ENABLE_CUDA_
-    cudaError_t cuda_error = cudaSuccess;
     if ( rdma_enable_cuda && is_device_buffer(iov[0].MPID_IOV_BUF)) {
 
         *nb = 0;

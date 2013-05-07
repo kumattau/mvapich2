@@ -378,7 +378,7 @@ int MPIR_Alltoallv_impl(const void *sendbuf, const int *sendcounts, const int *s
 #if defined(_ENABLE_CUDA_)
     int i, rank, comm_size;
     int sendbuf_on_device = 0, recvbuf_on_device = 0;
-    int recvtype_extent = 0, sendtype_extent = 0, total_count = 0;
+    int recvtype_extent = 0, total_count = 0;
     int total_size = 0, total_msgs = 0, avg_size = 0;
 
     if (rdma_enable_cuda) {
@@ -391,7 +391,6 @@ int MPIR_Alltoallv_impl(const void *sendbuf, const int *sendcounts, const int *s
 
         if (sendbuf != MPI_IN_PLACE) {
             sendbuf_on_device = is_device_buffer(sendbuf);
-            MPID_Datatype_get_extent_macro(sendtype, sendtype_extent);
             for (i = 0; i < comm_size; i++) {
                 total_count += sendcounts[i];
             }
@@ -419,10 +418,10 @@ int MPIR_Alltoallv_impl(const void *sendbuf, const int *sendcounts, const int *s
              rdma_cuda_use_naive &&
              avg_size <= rdma_cuda_alltoallv_naive_limit) {
 
-            mpi_errno = cuda_stage_alloc_v (&sendbuf, sendcounts, sendtype,
-                     &sdispls, comm_size,
-                     &recvbuf, recvcounts, recvtype,
-                     &rdispls, comm_size,
+            mpi_errno = cuda_stage_alloc_v ((void **) &sendbuf, (int *)sendcounts, sendtype,
+                     (int **)&sdispls, comm_size,
+                     &recvbuf, (int *)recvcounts, recvtype,
+                     (int **)&rdispls, comm_size,
                      sendbuf_on_device, recvbuf_on_device,
                      rank);
             if (mpi_errno) {
@@ -452,10 +451,10 @@ int MPIR_Alltoallv_impl(const void *sendbuf, const int *sendcounts, const int *s
              rdma_cuda_use_naive &&
              avg_size <= rdma_cuda_alltoallv_naive_limit) {
 
-            cuda_stage_free_v (&sendbuf, sendcounts, sendtype,
-               &sdispls, comm_size,
-               &recvbuf, recvcounts, recvtype,
-               &rdispls, comm_size,
+            cuda_stage_free_v ((void **)&sendbuf, (int *)sendcounts, sendtype,
+               (int **)&sdispls, comm_size,
+               &recvbuf, (int *)recvcounts, recvtype,
+               (int **)&rdispls, comm_size,
                sendbuf_on_device, recvbuf_on_device,
                rank);
 

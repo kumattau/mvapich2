@@ -59,7 +59,7 @@ int MPIDI_nem_ib_flush()
             continue;
         }
 
-        if (VC_FIELD(vc, state) != MPIDI_CH3I_VC_STATE_CONNECTED) {
+        if (VC_FIELD(vc, state) != MPID_NEM_IB_VC_STATE_CONNECTED) {
             continue;
         }
 

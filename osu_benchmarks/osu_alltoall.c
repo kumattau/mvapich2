@@ -71,14 +71,14 @@ main (int argc, char *argv[])
 
     bufsize = options.max_message_size * numprocs;
 
-    if (allocate_buffer(&sendbuf, bufsize, options.accel)) {
+    if (allocate_buffer((void**)&sendbuf, bufsize, options.accel)) {
         fprintf(stderr, "Could Not Allocate Memory [rank %d]\n", rank);
         MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
     }
 
     set_buffer(sendbuf, options.accel, 1, bufsize);
 
-    if (allocate_buffer(&recvbuf, options.max_message_size * numprocs,
+    if (allocate_buffer((void**)&recvbuf, options.max_message_size * numprocs,
                 options.accel)) {
         fprintf(stderr, "Could Not Allocate Memory [rank %d]\n", rank);
         MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);

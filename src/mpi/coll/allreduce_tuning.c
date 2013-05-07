@@ -17,12 +17,12 @@
 #include "mv2_arch_hca_detect.h"
 
 enum {
-    ALLREDUCE_P2P_RD = 1,      //1 &MPIR_Allreduce_pt2pt_rd_MV2
-    ALLREDUCE_P2P_RS,          //2 &MPIR_Allreduce_pt2pt_rs_MV2
-    ALLREDUCE_MCAST_2LEVEL,    //3 &MPIR_Allreduce_mcst_reduce_two_level_helper_MV2
-    ALLREDUCE_MCAST_RSA,       //4 &MPIR_Allreduce_mcst_reduce_redscat_gather_MV2
-    ALLREDUCE_SHMEM_REDUCE,    //5 &MPIR_Allreduce_reduce_shmem_MV2
-    ALLREDUCE_P2P_REDUCE,      //6 &MPIR_Allreduce_reduce_p2p_MV2
+    ALLREDUCE_P2P_RD = 1,      
+    ALLREDUCE_P2P_RS,          
+    ALLREDUCE_MCAST_2LEVEL,    
+    ALLREDUCE_MCAST_RSA,       
+    ALLREDUCE_SHMEM_REDUCE,    
+    ALLREDUCE_P2P_REDUCE,      
 };
 
 int mv2_size_allreduce_tuning_table = 0;
@@ -272,6 +272,181 @@ int MV2_set_allreduce_tuning_table(int heterogeneity)
         }; 
         MPIU_Memcpy(mv2_allreduce_thresholds_table, mv2_tmp_allreduce_thresholds_table,
                   mv2_size_allreduce_tuning_table * sizeof (mv2_allreduce_tuning_table));
+    } else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+                MV2_ARCH_AMD_OPTERON_6136_32, MV2_HCA_MLX_CX_QDR) && !heterogeneity){
+        /*Trestles*/
+        mv2_size_allreduce_tuning_table = 6;
+        mv2_allreduce_thresholds_table = MPIU_Malloc(mv2_size_allreduce_tuning_table *
+                                                  sizeof (mv2_allreduce_tuning_table));
+        mv2_allreduce_tuning_table mv2_tmp_allreduce_thresholds_table[] = {
+            {
+                32,
+                0,
+                {1, 0, 0},
+                3,
+                {
+/*
+
+32	
+4-64m	5 &MPIR_Allreduce_pt2pt_rd_MV2 &MPIR_Allreduce_reduce_shmem_MV2
+64m-1k	1 &MPIR_Allreduce_pt2pt_rd_MV2
+1k-	2 &MPIR_Allreduce_pt2pt_rs_MV2
+
+*/
+                    {0, 64, &MPIR_Allreduce_pt2pt_rd_MV2},
+                    {64, 1024, &MPIR_Allreduce_pt2pt_rd_MV2},
+                    {1024, -1, &MPIR_Allreduce_pt2pt_rs_MV2},
+                },
+                3,
+                {
+                    {0, 64, &MPIR_Allreduce_reduce_shmem_MV2},
+                    {64, 1024, &MPIR_Allreduce_pt2pt_rd_MV2},
+                    {1024, -1, &MPIR_Allreduce_pt2pt_rs_MV2},
+                },
+            },
+            {
+                64,
+                0,
+                {1, 1, 0},
+                3,
+                {
+/*
+
+64	
+4-128m	5 &MPIR_Allreduce_pt2pt_rd_MV2 &MPIR_Allreduce_reduce_shmem_MV2
+128m-4k	6 &MPIR_Allreduce_pt2pt_rd_MV2 &MPIR_Allreduce_reduce_p2p_MV2
+4k-	2 &MPIR_Allreduce_pt2pt_rs_MV2
+
+
+*/
+                    {0, 128, &MPIR_Allreduce_pt2pt_rd_MV2},
+                    {128, 4096, &MPIR_Allreduce_pt2pt_rd_MV2},
+                    {4096, -1, &MPIR_Allreduce_pt2pt_rs_MV2},
+                },
+                3,
+                {
+                    {0, 128, &MPIR_Allreduce_reduce_shmem_MV2},
+                    {128, 4096, &MPIR_Allreduce_reduce_p2p_MV2},
+                    {4096, -1, &MPIR_Allreduce_pt2pt_rs_MV2},
+                },
+            },
+            {
+                128,
+                0,
+                {1, 1, 0},
+                3,
+                {
+/*
+
+128	
+4-256m	5 &MPIR_Allreduce_pt2pt_rd_MV2 &MPIR_Allreduce_reduce_shmem_MV2
+256m-4k	6 &MPIR_Allreduce_pt2pt_rd_MV2 &MPIR_Allreduce_reduce_p2p_MV2
+4k-	2 &MPIR_Allreduce_pt2pt_rs_MV2
+
+*/
+                    {0, 256, &MPIR_Allreduce_pt2pt_rd_MV2},
+                    {256, 4096, &MPIR_Allreduce_pt2pt_rd_MV2},
+                    {4096, -1, &MPIR_Allreduce_pt2pt_rs_MV2},
+                },
+                3,
+                {
+                    {0, 256, &MPIR_Allreduce_reduce_shmem_MV2},
+                    {256, 4096, &MPIR_Allreduce_reduce_p2p_MV2},
+                    {4096, -1, &MPIR_Allreduce_pt2pt_rs_MV2},
+                },
+            },
+            {
+                256,
+                0,
+                {1, 1, 1, 0},
+                4,
+                {
+/*
+
+256	
+4-256m	5 &MPIR_Allreduce_pt2pt_rd_MV2 &MPIR_Allreduce_reduce_shmem_MV2
+256m-4k	6 &MPIR_Allreduce_pt2pt_rd_MV2 &MPIR_Allreduce_reduce_p2p_MV2
+4k-8k	8 &MPIR_Allreduce_pt2pt_rs_MV2 &MPIR_Allreduce_pt2pt_rs_MV2
+8k-	2 &MPIR_Allreduce_pt2pt_rs_MV2
+
+*/
+                    {0, 256, &MPIR_Allreduce_pt2pt_rd_MV2},
+                    {256, 4096, &MPIR_Allreduce_pt2pt_rd_MV2},
+                    {4096, 8192, &MPIR_Allreduce_pt2pt_rs_MV2},
+                    {8192, -1, &MPIR_Allreduce_pt2pt_rs_MV2},
+                },
+                4,
+                {
+                    {0, 256, &MPIR_Allreduce_reduce_shmem_MV2},
+                    {256, 4096, &MPIR_Allreduce_reduce_p2p_MV2},
+                    {4096, 8192, &MPIR_Allreduce_pt2pt_rs_MV2},
+                    {8192, -1, &MPIR_Allreduce_pt2pt_rs_MV2},
+                },
+            },
+            {
+                512,
+                0,
+                {1, 1, 1, 0},
+                4,
+                {
+/*
+
+512	
+4-256m	5 &MPIR_Allreduce_pt2pt_rd_MV2 &MPIR_Allreduce_reduce_shmem_MV2
+256m-4k	6 &MPIR_Allreduce_pt2pt_rd_MV2 &MPIR_Allreduce_reduce_p2p_MV2
+4k-16k	8 &MPIR_Allreduce_pt2pt_rs_MV2 &MPIR_Allreduce_pt2pt_rs_MV2
+16k-	2 &MPIR_Allreduce_pt2pt_rs_MV2
+
+*/
+                    {0, 256, &MPIR_Allreduce_pt2pt_rd_MV2},
+                    {256, 4096, &MPIR_Allreduce_pt2pt_rd_MV2},
+                    {4096, 16384, &MPIR_Allreduce_pt2pt_rs_MV2},
+                    {16384, -1, &MPIR_Allreduce_pt2pt_rs_MV2},
+                },
+                4,
+                {
+                    {0, 256, &MPIR_Allreduce_reduce_shmem_MV2},
+                    {256, 4096, &MPIR_Allreduce_reduce_p2p_MV2},
+                    {4096, 16384, &MPIR_Allreduce_pt2pt_rs_MV2},
+                    {16384, -1, &MPIR_Allreduce_pt2pt_rs_MV2},
+                },
+            },
+            {
+                1024,
+                0,
+                {1, 1, 1, 1, 0},
+                5,
+                {
+/*
+
+1024	
+4-256m	5 &MPIR_Allreduce_pt2pt_rd_MV2 &MPIR_Allreduce_reduce_shmem_MV2
+256m-1k	6 &MPIR_Allreduce_pt2pt_rd_MV2 &MPIR_Allreduce_reduce_p2p_MV2
+1k-4k	4 &MPIR_Allreduce_pt2pt_rd_MV2 &MPIR_Allreduce_pt2pt_rs_MV2
+4k-16k	8 &MPIR_Allreduce_pt2pt_rs_MV2 &MPIR_Allreduce_pt2pt_rs_MV2
+16k-	2 &MPIR_Allreduce_pt2pt_rs_MV2
+
+*/
+                    {0, 256, &MPIR_Allreduce_pt2pt_rd_MV2},
+                    {256, 1024, &MPIR_Allreduce_pt2pt_rd_MV2},
+                    {1024, 4096, &MPIR_Allreduce_pt2pt_rd_MV2},
+                    {4096, 16384, &MPIR_Allreduce_pt2pt_rs_MV2},
+                    {16384, -1, &MPIR_Allreduce_pt2pt_rs_MV2},
+                },
+                5,
+                {
+                    {0, 256, &MPIR_Allreduce_reduce_shmem_MV2},
+                    {256, 1024, &MPIR_Allreduce_reduce_p2p_MV2},
+                    {1024, 4096, &MPIR_Allreduce_pt2pt_rs_MV2},
+                    {4096, 16384, &MPIR_Allreduce_pt2pt_rs_MV2},
+                    {16384, -1, &MPIR_Allreduce_pt2pt_rs_MV2},
+                },
+            },
+ 
+        }; 
+        MPIU_Memcpy(mv2_allreduce_thresholds_table, mv2_tmp_allreduce_thresholds_table,
+                  mv2_size_allreduce_tuning_table * sizeof (mv2_allreduce_tuning_table));
+
     } else
 
 #endif /* (_OSU_MVAPICH_) && !defined(_OSU_PSM_) */

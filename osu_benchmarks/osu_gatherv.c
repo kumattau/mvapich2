@@ -1,4 +1,4 @@
-#define BENCHMARK "OSU Gatherv Latency Test"
+#define BENCHMARK "OSU MPI%s Gatherv Latency Test"
 /*
  * Copyright (C) 2002-2013 the Network-Based Computing Laboratory
  * (NBCL), The Ohio State University. 

@@ -972,10 +972,10 @@ int MPIR_Allgatherv_impl(const void *sendbuf, int sendcount, MPI_Datatype sendty
             }
             send_displs[0] = 0;
 
-            mpi_errno = cuda_stage_alloc_v (&sendbuf, &sendcount, sendtype,
+            mpi_errno = cuda_stage_alloc_v ((void **)&sendbuf, &sendcount, sendtype,
                      &send_displs, 1,
-                     &recvbuf, recvcounts, recvtype, 
-                     &displs, comm_size,
+                     &recvbuf, (int *)recvcounts, recvtype, 
+                     (int **)&displs, comm_size,
                      sendbuf_on_device, recvbuf_on_device,
                      rank);
             if (mpi_errno) {
@@ -1004,10 +1004,10 @@ int MPIR_Allgatherv_impl(const void *sendbuf, int sendcount, MPI_Datatype sendty
              rdma_cuda_use_naive && 
              avg_size <= rdma_cuda_allgatherv_naive_limit) {
 
-            cuda_stage_free_v (&sendbuf, &sendcount, sendtype,
+            cuda_stage_free_v ((void **)&sendbuf, &sendcount, sendtype,
                &send_displs, 1,
-               &recvbuf, recvcounts, recvtype,
-               &displs, comm_size,
+               &recvbuf, (int *)recvcounts, recvtype,
+               (int **)&displs, comm_size,
                sendbuf_on_device, recvbuf_on_device,
                rank);
 

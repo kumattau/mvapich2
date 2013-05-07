@@ -268,9 +268,9 @@ static void psm_preinit(int pg_size)
         PMI_Barrier();
         DBG("localid %d localranks %d\n", id, n);
         snprintf(scratch, sizeof(scratch), "%d", n);
-	setenv("MPI_LOCALNRANKS", scratch, 0);
+	setenv("MPI_LOCALNRANKS", scratch, 1);
         snprintf(scratch, sizeof(scratch), "%d", id);
-	setenv("MPI_LOCALRANKID", scratch, 0);
+	setenv("MPI_LOCALRANKID", scratch, 1);
 
         /* Should not override user settings. Updating to handle all 
          * possible scenarios. Refer to TRAC Ticket #457 */

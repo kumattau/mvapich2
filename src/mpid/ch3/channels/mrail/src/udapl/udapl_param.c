@@ -11,9 +11,9 @@
  */
 
 #include "udapl_arch.h"
-#include "mpi.h"
 #include "udapl_param.h"
 #include "udapl_header.h"
+#include "pmi.h"
 #include "vbuf.h"
 #include "rdma_impl.h"
 #include "smp_smpi.h"
@@ -398,7 +398,7 @@ rdma_init_parameters (mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 mv2_arch_hca_type MV2_get_arch_hca_type()
 {
     struct mv2_MPIDI_CH3I_RDMA_Process_t *proc = &mv2_MPIDI_CH3I_RDMA_Process;
-    mv2_arch_hca_type arch_hca_type;
+    mv2_arch_hca_type arch_hca_type = MV2_HCA_UNKWN;
     if (!proc->arch_type) {
         proc->arch_type = mv2_get_arch_type();
         arch_hca_type = (uint64_t)proc->arch_type << 32 | MV2_HCA_ANY;

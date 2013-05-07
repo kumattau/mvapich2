@@ -13,7 +13,10 @@
 #ifndef _PSMPRIV_H
 #define _PSMPRIV_H
 
+#ifndef _GNU_SOURCE
 #define _GNU_SOURCE
+#endif
+
 #include <stdint.h>
 #include <psm.h>
 #include <psm_mq.h>
@@ -162,6 +165,10 @@ int psm_do_pack(int count, MPI_Datatype datatype, MPID_Comm *comm, MPID_Request
 void psm_do_ncrecv_complete(MPID_Request *req);
 void psm_dequeue_compreq(MPID_Request *req);
 void psm_prepost_1sc();
-int MPIDI_CH3I_comm_create(MPID_Comm *comm);
-int MPIDI_CH3I_comm_destroy(MPID_Comm *comm);
+int MPIDI_CH3_Probe(int source, int tag, int context, MPI_Status *stat,
+                    int *complete, int blk);
+int MPID_Probe(int source, int tag, MPID_Comm * comm, int context_offset, 
+	       MPI_Status * status);
+int MPIDI_CH3I_comm_create(MPID_Comm *comm, void *param);
+int MPIDI_CH3I_comm_destroy(MPID_Comm *comm, void *param);
 #endif 

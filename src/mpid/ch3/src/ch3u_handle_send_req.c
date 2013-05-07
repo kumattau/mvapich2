@@ -63,7 +63,6 @@ int MPIDI_CH3_ReqHandler_GetSendRespComplete( MPIDI_VC_t *vc ATTRIBUTE((unused))
 #if defined(_OSU_MVAPICH_)
     MPID_Win_get_ptr(sreq->dev.target_win_handle, win_ptr);
     win_ptr->outstanding_rma --;
-    int rank, l_rank;   
 #endif /* defined(_OSU_MVAPICH_) */
 
 	MPID_Win_get_ptr(sreq->dev.target_win_handle, win_ptr);
@@ -84,6 +83,7 @@ int MPIDI_CH3_ReqHandler_GetSendRespComplete( MPIDI_VC_t *vc ATTRIBUTE((unused))
     if (!win_ptr->shm_fallback && vc->smp.local_nodes != -1)
 #endif
     {
+        int rank, l_rank;   
         rank = win_ptr->my_id;
         l_rank = win_ptr->shm_g2l_rank[rank];
         if (*((volatile int *) &win_ptr->shm_lock[l_rank]) != MPID_LOCK_NONE) {

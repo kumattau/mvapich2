@@ -931,7 +931,7 @@ int MPIR_Allgather_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtype
 
     /*Handling Non-contig datatypes */
     if (rdma_enable_cuda && (send_mem_type || recv_mem_type)) {
-        cuda_coll_pack(&sendbuf, &sendcount, &sendtype,
+        cuda_coll_pack((void **)&sendbuf, &sendcount, &sendtype,
                        &recvbuf, &recvcount, &recvtype,
                        rank * recvcount * recvtype_extent, 1, comm_size);
     }
@@ -969,12 +969,12 @@ int MPIR_Allgather_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtype
     } else if (rdma_enable_cuda && (send_mem_type || recv_mem_type) &&
                rdma_cuda_use_naive && (nbytes <= rdma_cuda_allgather_naive_limit)) {
         if (sendbuf != MPI_IN_PLACE) {
-            mpi_errno = cuda_stage_alloc(&sendbuf, sendcount * sendtype_extent,
+            mpi_errno = cuda_stage_alloc((void **)&sendbuf, sendcount * sendtype_extent,
                                          &recvbuf,
                                          recvcount * recvtype_extent *
                                          comm_size, send_mem_type, recv_mem_type, 0);
         } else {
-            mpi_errno = cuda_stage_alloc(&sendbuf, recvcount * recvtype_extent,
+            mpi_errno = cuda_stage_alloc((void **)&sendbuf, recvcount * recvtype_extent,
                                          &recvbuf,
                                          recvcount * recvtype_extent *
                                          comm_size, send_mem_type,
@@ -1108,7 +1108,7 @@ int MPIR_Allgather_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtype
 #ifdef _ENABLE_CUDA_
     if (rdma_enable_cuda && (send_mem_type || recv_mem_type) &&
         rdma_cuda_use_naive && (nbytes <= rdma_cuda_allgather_naive_limit)) {
-        cuda_stage_free(&sendbuf,
+        cuda_stage_free((void **)&sendbuf,
                         &recvbuf, recvcount * recvtype_extent * comm_size,
                         send_mem_type, recv_mem_type);
     }

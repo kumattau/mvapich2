@@ -42,7 +42,7 @@
 #endif
 
 #ifndef BENCHMARK
-#   define BENCHMARK "BENCHMARK NAME UNSET"
+#   define BENCHMARK "MPI%s BENCHMARK NAME UNSET"
 #endif
 
 #ifdef PACKAGE_VERSION
@@ -63,6 +63,10 @@ static int iterations = 1000;
 static int iterations_large = 100;
 static int print_size = 0;
 static uint64_t max_mem_limit = MAX_MEM_LIMIT; 
+static int process_args (int argc, char *argv[], int rank, int * size, int * full) __attribute__((unused));
+static void print_header (int rank, int full) __attribute__((unused));
+static void print_data (int rank, int full, int size, double avg_time, double
+        min_time, double max_time, int iterations) __attribute__((unused));
 
 static void print_usage(int rank, const char * prog, int has_size)
 {
@@ -97,7 +101,7 @@ static void print_usage(int rank, const char * prog, int has_size)
 
 static void print_version()
 {
-        fprintf(stdout, HEADER);
+        fprintf(stdout, HEADER, "");
         fflush(stdout);
 }
 
@@ -175,7 +179,7 @@ static int process_args (int argc, char *argv[], int rank, int * size, int * ful
 static void print_header (int rank, int full)
 {
     if(rank == 0) {
-        fprintf(stdout, HEADER);
+        fprintf(stdout, HEADER, "");
 
         if (print_size) {
             fprintf(stdout, "%-*s", 10, "# Size");
@@ -272,6 +276,7 @@ void print_stats (int rank, int size, double avg, double min, double max);
  */
 int allocate_buffer (void ** buffer, size_t size, enum accel_type type);
 void free_buffer (void * buffer, enum accel_type type);
+void set_buffer (void * buffer, enum accel_type type, int data, size_t size);
 
 /*
  * CUDA Context Management

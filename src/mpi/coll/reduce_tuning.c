@@ -17,11 +17,11 @@
 #include "mv2_arch_hca_detect.h"
 
 enum {
-    REDUCE_BINOMIAL = 1,  //1 MPIR_Reduce_binomial_MV2
-    REDUCE_INTER_KNOMIAL, //2 MPIR_Reduce_inter_knomial_wrapper_MV2
-    REDUCE_INTRA_KNOMIAL, //3 MPIR_Reduce_intra_knomial_wrapper_MV2
-    REDUCE_SHMEM,         //4 MPIR_Reduce_shmem_MV2
-    REDUCE_RDSC_GATHER,   //5 MPIR_Reduce_redscat_gather_MV2
+    REDUCE_BINOMIAL = 1,  
+    REDUCE_INTER_KNOMIAL, 
+    REDUCE_INTRA_KNOMIAL, 
+    REDUCE_SHMEM,         
+    REDUCE_RDSC_GATHER,   
 };
 
 int mv2_size_reduce_tuning_table = 0;
@@ -341,7 +341,138 @@ int MV2_set_reduce_tuning_table(int heterogeneity)
         }; 
         MPIU_Memcpy(mv2_reduce_thresholds_table, mv2_tmp_reduce_thresholds_table,
                   mv2_size_reduce_tuning_table * sizeof (mv2_reduce_tuning_table));
+    } else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+        MV2_ARCH_AMD_OPTERON_6136_32, MV2_HCA_MLX_CX_QDR) && !heterogeneity){
+        /*Trestles*/
+        mv2_size_reduce_tuning_table = 6;
+        mv2_reduce_thresholds_table = MPIU_Malloc(mv2_size_reduce_tuning_table *
+                                                  sizeof (mv2_reduce_tuning_table));
+        mv2_reduce_tuning_table mv2_tmp_reduce_thresholds_table[] = {
+            {
+                32,
+                4,
+                4,
+                {1, 0, 0, 1},
+                4,
+                {
+                    {0, 1024, &MPIR_Reduce_redscat_gather_MV2},
+                    {1024, 131072, &MPIR_Reduce_inter_knomial_wrapper_MV2},
+                    {131072, 524288, &MPIR_Reduce_binomial_MV2},
+                    {524288, -1, &MPIR_Reduce_redscat_gather_MV2},
+                },
+                4,
+                {
+                    {0, 1024, &MPIR_Reduce_binomial_MV2},
+                    {1024, 131072, &MPIR_Reduce_inter_knomial_wrapper_MV2},
+                    {131072, 524288, &MPIR_Reduce_binomial_MV2},
+                    {524288, -1, &MPIR_Reduce_intra_knomial_wrapper_MV2},
+                },
+            },
+            {
+                64,
+                4,
+                4,
+                {1, 0, 1, 1},
+                4,
+                {
+                    {0, 1024, &MPIR_Reduce_binomial_MV2},
+                    {1024, 131072, &MPIR_Reduce_inter_knomial_wrapper_MV2},
+                    {131072, 524288, &MPIR_Reduce_redscat_gather_MV2},
+                    {524288, -1, &MPIR_Reduce_binomial_MV2},
+                },
+                4,
+                {
+                    {0, 1024, &MPIR_Reduce_intra_knomial_wrapper_MV2},
+                    {1024, 131072, &MPIR_Reduce_inter_knomial_wrapper_MV2},
+                    {131072, 524288, &MPIR_Reduce_binomial_MV2},
+                    {524288, -1, &MPIR_Reduce_intra_knomial_wrapper_MV2},
+                },
+            },
+            {
+                128,
+                4,
+                4,
+                {1, 0, 1, 1},
+                4,
+                {
+                    {0, 1024, &MPIR_Reduce_inter_knomial_wrapper_MV2},
+                    {1024, 131072, &MPIR_Reduce_inter_knomial_wrapper_MV2},
+                    {131072, 524288, &MPIR_Reduce_redscat_gather_MV2},
+                    {524288, -1, &MPIR_Reduce_redscat_gather_MV2},
+                },
+                4,
+                {
+                    {0, 1024, &MPIR_Reduce_shmem_MV2},
+                    {1024, 131072, &MPIR_Reduce_inter_knomial_wrapper_MV2},
+                    {131072, 524288, &MPIR_Reduce_binomial_MV2},
+                    {524288, -1, &MPIR_Reduce_intra_knomial_wrapper_MV2},
+                },
+            },
+            {
+                256,
+                4,
+                4,
+                {1, 0, 1, 1},
+                4,
+                {
+                    {0, 1024, &MPIR_Reduce_binomial_MV2},
+                    {1024, 131072, &MPIR_Reduce_inter_knomial_wrapper_MV2},
+                    {131072, 524288, &MPIR_Reduce_redscat_gather_MV2},
+                    {524288, -1, &MPIR_Reduce_binomial_MV2},
+                },
+                4,
+                {
+                    {0, 1024, &MPIR_Reduce_intra_knomial_wrapper_MV2},
+                    {1024, 131072, &MPIR_Reduce_inter_knomial_wrapper_MV2},
+                    {131072, 524288, &MPIR_Reduce_binomial_MV2},
+                    {524288, -1, &MPIR_Reduce_intra_knomial_wrapper_MV2},
+                },
+            },
+            {
+                512,
+                4,
+                4,
+                {1, 0, 1, 1},
+                4,
+                {
+                    {0, 1024, &MPIR_Reduce_binomial_MV2},
+                    {1024, 131072, &MPIR_Reduce_inter_knomial_wrapper_MV2},
+                    {131072, 524288, &MPIR_Reduce_binomial_MV2},
+                    {524288, -1, &MPIR_Reduce_binomial_MV2},
+                },
+                4,
+                {
+                    {0, 1024, &MPIR_Reduce_intra_knomial_wrapper_MV2},
+                    {1024, 131072, &MPIR_Reduce_inter_knomial_wrapper_MV2},
+                    {131072, 524288, &MPIR_Reduce_binomial_MV2},
+                    {524288, -1, &MPIR_Reduce_intra_knomial_wrapper_MV2},
+                },
+            },
+            {
+                1024,
+                4,
+                4,
+                {1, 0, 1, 1},
+                4,
+                {
+                    {0, 1024, &MPIR_Reduce_inter_knomial_wrapper_MV2},
+                    {1024, 131072, &MPIR_Reduce_inter_knomial_wrapper_MV2},
+                    {131072, 524288, &MPIR_Reduce_binomial_MV2},
+                    {524288, -1, &MPIR_Reduce_binomial_MV2},
+                },
+                4,
+                {
+                    {0, 1024, &MPIR_Reduce_shmem_MV2},
+                    {1024, 131072, &MPIR_Reduce_inter_knomial_wrapper_MV2},
+                    {131072, 524288, &MPIR_Reduce_binomial_MV2},
+                    {524288, -1, &MPIR_Reduce_intra_knomial_wrapper_MV2},
+                },
+            },
+        };
+        MPIU_Memcpy(mv2_reduce_thresholds_table, mv2_tmp_reduce_thresholds_table,
+                  mv2_size_reduce_tuning_table * sizeof (mv2_reduce_tuning_table)); 
     } else
+
 
 #endif /* (_OSU_MVAPICH_) && !defined(_OSU_PSM_) */
     {

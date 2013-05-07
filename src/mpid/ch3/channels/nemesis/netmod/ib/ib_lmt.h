@@ -113,7 +113,7 @@ typedef struct{
     }                                                           \
 }
 
-int MPID_nem_lmt_ib_initiate_lmt(struct MPIDI_VC *vc, struct MPID_nem_pkt_lmt_rts *rts_pkt,
+int MPID_nem_lmt_ib_initiate_lmt(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *rts_pkt,
                                            struct MPID_Request *req);
 int MPID_nem_lmt_ib_start_send(struct MPIDI_VC *vc, struct MPID_Request *sreq,
                                            MPID_IOV r_cookie);

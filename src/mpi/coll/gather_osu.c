@@ -1720,13 +1720,13 @@ int MPIR_Gather_MV2(const void *sendbuf,
                           0, recv_mem_type, 
                           0);
             } else {
-                mpi_errno = cuda_stage_alloc (&sendbuf, sendcnt*sendtype_extent,
+                mpi_errno = cuda_stage_alloc ((void **)&sendbuf, sendcnt*sendtype_extent,
                           NULL, 0, 
                           send_mem_type, 0, 
                           0);
             }
        } else {
-            mpi_errno = cuda_stage_alloc (&sendbuf, recvcnt*recvtype_extent,
+            mpi_errno = cuda_stage_alloc ((void **)&sendbuf, recvcnt*recvtype_extent,
                       &recvbuf, recvcnt*recvtype_extent*comm_size, 
                       0, recv_mem_type, 
                       rank*recvcnt*recvtype_extent);
@@ -1777,7 +1777,7 @@ int MPIR_Gather_MV2(const void *sendbuf,
                         &recvbuf, recvcnt*recvtype_extent*comm_size,
                         0, recv_mem_type);
         } else {
-            cuda_stage_free (&sendbuf, 
+            cuda_stage_free ((void **)&sendbuf, 
                         NULL, 0,
                         send_mem_type, 0);
         }

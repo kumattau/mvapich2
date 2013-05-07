@@ -35,6 +35,12 @@ static void progress_fn(void * data)
      * directly. */
     MPIU_THREAD_CS_ENTER(ALLFUNC,);
 
+#if defined(_ENABLE_CUDA_)
+    if (rdma_enable_cuda) {
+        cuda_init_thread_context();
+    }
+#endif
+
     /* FIXME: We assume that waiting on some request forces progress
      * on all requests. With fine-grained threads, will this still
      * work as expected? We can imagine an approach where a request on

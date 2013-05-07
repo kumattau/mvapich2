@@ -59,6 +59,7 @@ void map_bunch_socket(int num_sockets, hwloc_obj_type_t binding_level);
 int get_cpu_mapping_hwloc(long N_CPUs_online, hwloc_topology_t topology);
 int get_cpu_mapping(long N_CPUs_online);
 int smpi_setaffinity(int my_local_id);
+int MPIDI_CH3I_set_affinity(MPIDI_PG_t * pg, int pg_rank);
 
 #endif
 

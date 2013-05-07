@@ -235,13 +235,12 @@ MPIDI_CH3I_RDMA_finish_rma (MPID_Win * win_ptr)
 void
 MPIDI_CH3I_RDMA_try_rma (MPID_Win * win_ptr, int passive)
 {
-    MPIDI_RMA_Op_t *curr_ptr = NULL, *prev_ptr = NULL, *tmp_ptr;
-    MPIDI_RMA_Op_t *head = NULL, *tail = NULL;
+    MPIDI_RMA_Op_t *curr_ptr = NULL;
+    MPIDI_RMA_Op_t *head = NULL;
     int size, origin_type_size, target_type_size;
 #ifdef _SCHEDULE
-    int curr_put = 1;
     int fall_back = 0;
-    int force_to_progress = 0, issued = 0;
+    int issued = 0;
     MPIDI_RMA_Op_t *skipped_op = NULL;
 #endif
 
@@ -255,7 +254,6 @@ MPIDI_CH3I_RDMA_try_rma (MPID_Win * win_ptr, int passive)
 
     MPIDI_RMA_Ops_list_t *ops_list = &win_ptr->at_rma_ops_list;
     head = MPIDI_CH3I_RMA_Ops_head(ops_list);
-    tail = MPIDI_CH3I_RMA_Ops_tail(ops_list);
     curr_ptr = head;
 
 #ifdef _SCHEDULE
@@ -266,13 +264,7 @@ MPIDI_CH3I_RDMA_try_rma (MPID_Win * win_ptr, int passive)
                 curr_ptr = skipped_op;
                 skipped_op = NULL;
                 fall_back++;
-                if (issued == 0)
-                  {
-                      force_to_progress = 1;
-                  }
-                else
-                  {
-                      force_to_progress = 0;
+                if (issued != 0) {
                       issued = 0;
                   }
             }
@@ -286,7 +278,6 @@ MPIDI_CH3I_RDMA_try_rma (MPID_Win * win_ptr, int passive)
 
           if (vc->smp.local_nodes != -1)
             {
-                prev_ptr = curr_ptr;
                 curr_ptr = curr_ptr->next;
                 continue;
             }
@@ -339,13 +330,11 @@ MPIDI_CH3I_RDMA_try_rma (MPID_Win * win_ptr, int passive)
                       }
                   case (MPIDI_RMA_ACCUMULATE):
                       {
-                          prev_ptr = curr_ptr;
                           curr_ptr = curr_ptr->next;
                           break;
                       }
                   case MPIDI_RMA_ACC_CONTIG:
                     {
-                        prev_ptr = curr_ptr;
                         curr_ptr = curr_ptr->next;
                         break;
                     }
@@ -395,7 +384,6 @@ MPIDI_CH3I_RDMA_try_rma (MPID_Win * win_ptr, int passive)
             }
           else
             {
-                prev_ptr = curr_ptr;
                 curr_ptr = curr_ptr->next;
             }
       }
@@ -790,16 +778,13 @@ Decrease_CC (MPID_Win * win_ptr, int target_rank)
 {
     int mpi_errno = MPI_SUCCESS;
     uint32_t r_key2, l_key2;
-    int ret;
     long long *cc;
-    DAT_EP_HANDLE qp_hndl;
 
     MPIDI_VC_t *tmp_vc;
     MPID_Comm *comm_ptr;
 
     comm_ptr = win_ptr->comm_ptr;
     MPIDI_Comm_get_vc (comm_ptr, target_rank, &tmp_vc);
-    qp_hndl = tmp_vc->mrail.qp_hndl_1sc;
     Get_Pinned_Buf (win_ptr, (char **) &cc, sizeof (long long));
     *((long long *) cc) = 1;
     l_key2 = win_ptr->pinnedpool_1sc_dentry->memhandle.lkey;
@@ -1021,7 +1006,7 @@ Consume_signals (MPID_Win * winptr, aint_t expected)
                 else
                   {
                       fprintf (stderr, "Error! rank %d, Undefined op_type, op type %d, \
-                list id %u, expecting id %u\n",
+                list id %p, expecting id %lu\n",
                                winptr->my_id, list_entry->op_type, list_entry, expected);
                       ibv_error_abort (GEN_EXIT_ERR, "rdma_udapl_1sc");
                   }
@@ -1050,16 +1035,12 @@ IBA_PUT (MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr, int size)
     char *remote_address;
     int mpi_errno = MPI_SUCCESS;
     uint32_t r_key, l_key;
-    int ret;
-    DAT_EP_HANDLE qp_hndl;
-    int origin_type_size;
     dreg_entry *tmp_dreg = NULL;
     char *origin_addr;
 
     MPIDI_VC_t *tmp_vc;
     MPID_Comm *comm_ptr;
 
-    int index;
 
     /*part 1 prepare origin side buffer target buffer and keys */
     remote_address = (char *) win_ptr->base_addrs[rma_op->target_rank]
@@ -1086,7 +1067,6 @@ IBA_PUT (MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr, int size)
     r_key = win_ptr->win_rkeys[rma_op->target_rank];
     comm_ptr = win_ptr->comm_ptr;
     MPIDI_Comm_get_vc (comm_ptr, rma_op->target_rank, &tmp_vc);
-    qp_hndl = tmp_vc->mrail.qp_hndl_1sc;
 
     /*part 2 Do RDMA WRITE */
     tmp_vc->mrail.ddesc1sc[win_ptr->put_get_list_tail].completion_flag =
@@ -1123,9 +1103,7 @@ IBA_GET (MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr, int size)
     int mpi_errno = MPI_SUCCESS;
     uint32_t r_key, l_key;
     /* int ret = 0; */
-    DAT_EP_HANDLE qp_hndl;
-    int index;
-    dreg_entry *tmp_dreg;
+    dreg_entry *tmp_dreg = NULL;
     char *origin_addr;
 
     MPIDI_VC_t *tmp_vc;
@@ -1156,7 +1134,6 @@ IBA_GET (MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr, int size)
     r_key = win_ptr->win_rkeys[rma_op->target_rank];
     comm_ptr = win_ptr->comm_ptr;
     MPIDI_Comm_get_vc (comm_ptr, rma_op->target_rank, &tmp_vc);
-    qp_hndl = tmp_vc->mrail.qp_hndl_1sc;
 
     tmp_vc->mrail.ddesc1sc[win_ptr->put_get_list_tail].completion_flag =
         DAT_COMPLETION_DEFAULT_FLAG;
@@ -1180,12 +1157,12 @@ IBA_GET (MPIDI_RMA_Op_t * rma_op, MPID_Win * win_ptr, int size)
     tmp_vc->mrail.ddesc1sc[win_ptr->put_get_list_tail].remote_iov.
         segment_length = size;
     if (size <= rdma_eagersize_1sc)
-        index = POST_GET_PUT_GET_LIST (win_ptr, size, rma_op->origin_addr,
+        POST_GET_PUT_GET_LIST (win_ptr, size, rma_op->origin_addr,
                                        origin_addr, NULL, tmp_vc,
                                        &tmp_vc->mrail.ddesc1sc[win_ptr->
                                                                put_get_list_tail]);
     else
-        index = POST_GET_PUT_GET_LIST (win_ptr, size, NULL, NULL,
+        POST_GET_PUT_GET_LIST (win_ptr, size, NULL, NULL,
                                        tmp_dreg, tmp_vc,
                                        &tmp_vc->mrail.ddesc1sc[win_ptr->
                                                                put_get_list_tail]);

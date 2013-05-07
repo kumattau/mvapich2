@@ -545,7 +545,6 @@ static int ib_ckpt_restart(void)
 
     for (i = 0; i < MPIDI_Process.my_pg->size; ++i) {
         MPIDI_VC_t *vc;
-        MPIDI_CH3I_VC *vc_ib;
         if (i == MPIDI_Process.my_pg_rank)
             continue;
         MPIDI_PG_Get_vc(MPIDI_Process.my_pg, i, &vc);
@@ -634,7 +633,6 @@ static int ib_ckpt_release_network(void)
     MPIDI_PG_t *pg;
     MPIDI_VC_t *vc;
     int err;
-    int mpi_errno = MPI_SUCCESS;
 
     /* Insert implementation here */
     pg = MPIDI_Process.my_pg;

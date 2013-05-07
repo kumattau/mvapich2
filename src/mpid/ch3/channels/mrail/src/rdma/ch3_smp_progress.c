@@ -1244,7 +1244,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
     char *shmem_dir, *shmdir;
     size_t pathlen;
 #if defined(_X86_64_)
-    volatile char tmpchar;
+    volatile char tmpchar ATTRIBUTE((unused));
 #endif /* defined(_X86_64_) */
 
     /* Set SMP params based on architecture */
@@ -1816,7 +1816,7 @@ int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg)
  
        for (receiver = 0; receiver < g_smpi.num_local_nodes; ++receiver) {
            volatile char *ptr = g_smpi_shmem->pool;
-           volatile char tmp;
+           volatile char tmp ATTRIBUTE((unused));
  
            sender = g_smpi.my_local_id;
            if (sender != receiver) {

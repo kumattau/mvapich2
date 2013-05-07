@@ -1924,6 +1924,7 @@ int MPIDI_CH3_InitCompleted( void );
 #endif
 #if defined (_OSU_PSM_)
 #include "psmpriv.h"
+#include "psm_vbuf.h"
 #endif
 
 /* Routines in support of ch3 */

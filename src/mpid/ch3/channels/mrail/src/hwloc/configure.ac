@@ -33,7 +33,7 @@ EOF
 AC_CANONICAL_TARGET
 
 # Init automake
-AM_INIT_AUTOMAKE([1.10 dist-bzip2 subdir-objects foreign tar-ustar -Wall -Werror])
+AM_INIT_AUTOMAKE([1.11 dist-bzip2 subdir-objects foreign tar-ustar parallel-tests -Wall -Werror])
 m4_ifdef([AM_SILENT_RULES], [AM_SILENT_RULES([yes])])
 
 # We want new Libtool.  None of that old stuff.  Pfft.    
@@ -86,7 +86,7 @@ AC_SUBST([libhwloc_so_version])
 # Setup the header file
 AH_TOP([/* -*- c -*-
  *
- * Copyright © 2009, 2012 CNRS, inria., Université Bordeaux 1  All rights reserved.
+ * Copyright © 2009, 2011, 2012 CNRS, inria., Université Bordeaux 1  All rights reserved.
  * Copyright © 2009 Cisco Systems, Inc.  All rights reserved.
  * $COPYRIGHT$
  * 
@@ -184,6 +184,10 @@ if test "x$hwloc_have_plugins" = xyes; then
   HWLOC_LIBS_PRIVATE="$HWLOC_LIBS_PRIVATE $lt_cv_dlopen_libs"
 fi
 
+# Is ltdl included?
+AM_CONDITIONAL([HWLOC_LTDL_INCLUDED], [test "x$with_included_ltdl" = xyes])
+
+
 # Party on
 AC_OUTPUT
 
@@ -202,9 +206,31 @@ append_env() {
     eval "[$]1=\"$new_value\""
 }
 
+# Warn about PCI support
+if test x$hwloc_warn_may_use_libpci = xyes; then
+  echo
+  echo "***********************************************************************"
+  echo "PCI support could not be enabled because libpciaccess is not available."
+  echo "libpci could be used instead but hwloc may be tainted by the GPL"
+  echo "license of pciutils. Add --enable-libpci to enable it."
+  echo "***********************************************************************"
+fi
+
 # Show which optional support we'll be building
 hwloc_xml_status=basic
 AS_IF([test "$hwloc_libxml2_happy" = "yes"], [hwloc_xml_status=full])
+
+# Prepare the I/O summary
+hwloc_probeio_list=
+test "x$hwloc_pci_happy" = "xyes" && hwloc_probeio_list="$hwloc_probeio_list PCI"
+test "x$hwloc_opencl_happy" = "xyes" && hwloc_probeio_list="$hwloc_probeio_list OpenCL"
+test "x$hwloc_have_cudart" = "xyes" && hwloc_probeio_list="$hwloc_probeio_list CUDA"
+test "x$hwloc_nvml_happy" = "xyes" && hwloc_probeio_list="$hwloc_probeio_list NVML"
+test "x$hwloc_gl_happy" = "xyes" && hwloc_probeio_list="$hwloc_probeio_list GL"
+# if anything but PCI, that anything will be useless
+test "x$hwloc_pci_happy" != "xyes" && test "x$hwloc_probeio_list" != "x" && hwloc_probeio_list="$hwloc_probeio_list (cannot work without PCI)"
+# if nothing, say "no"
+test "x$hwloc_probeio_list" = "x" && hwloc_probeio_list=" no"
 
 # Beginning of generic support
 cat <<EOF
@@ -212,16 +238,22 @@ cat <<EOF
 -----------------------------------------------------------------------------
 Hwloc optional build support status (more details can be found above):
 
-Probe / display PCI devices: $hwloc_pci_happy
+Probe / display I/O devices:$hwloc_probeio_list
 Graphical output (Cairo):    $hwloc_cairo_happy
 XML input / output:          $hwloc_xml_status
-Plugin support:              $hwloc_have_plugins
 EOF
 
 # Linux specific support
 AS_IF([test "$hwloc_linux" = "yes"], [cat <<EOF
 libnuma memory support:      $hwloc_linux_libnuma_happy
 EOF])
+
+# Plugin support
+hwloc_plugin_summary=$hwloc_have_plugins
+test "x$hwloc_plugin_components" != "x" && hwloc_plugin_summary="yes ("`echo $hwloc_plugin_components`")" # echo removes the starting space
+cat <<EOF
+Plugin support:              $hwloc_plugin_summary
+EOF
 
 # End of generic support
 cat <<EOF

@@ -992,7 +992,7 @@ int CR_Reset_proc_info()
     if (PMI_KVS_Get_my_name(MPIDI_Process.my_pg->id, pg_id_sz)) {
         CR_ERR_ABORT("PMI_KVS_Get_my_name failed\n");
     }
-    PRINT_DEBUG(DEBUG_CR_verbose > 2,"get id=%d\n", MPIDI_Process.my_pg->id);
+    PRINT_DEBUG(DEBUG_CR_verbose > 2,"get id=%p\n", MPIDI_Process.my_pg->id);
     if (PMI_KVS_Get_name_length_max(&kvs_name_sz)) {
         CR_ERR_ABORT("PMI_KVS_Get_name_length_max failed\n");
     }

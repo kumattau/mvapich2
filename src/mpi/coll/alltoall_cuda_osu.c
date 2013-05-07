@@ -76,7 +76,7 @@ int MPIR_Alltoall_CUDA_cleanup ()
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
 int MPIR_Alltoall_CUDA_intra_MV2( 
-    void *sendbuf, 
+    const void *sendbuf, 
     int sendcount, 
     MPI_Datatype sendtype, 
     void *recvbuf, 

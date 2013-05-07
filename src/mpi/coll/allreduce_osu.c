@@ -21,6 +21,9 @@
 #include "coll_shmem.h"
 #include "allreduce_tuning.h"
 #include "bcast_tuning.h"
+#ifdef MRAIL_GEN2_INTERFACE
+#include <cr.h>
+#endif
 
 int (*MV2_Allreduce_function)(const void *sendbuf,
                              void *recvbuf,
@@ -1880,9 +1883,7 @@ int MPIR_Allreduce_new_MV2(const void *sendbuf,
 #endif
 
     int mpi_errno = MPI_SUCCESS;
-    int range = 0, range_threshold = 0, range_threshold_intra = 0;
-    int nbytes = 0, rank = 0, comm_size = 0, sendtype_size = 0;
-    int is_two_level = 0;
+    int rank = 0, comm_size = 0;
    
     mpi_errno = PMPI_Comm_size(comm_ptr->handle, &comm_size);
     if (mpi_errno) {
@@ -1892,8 +1893,6 @@ int MPIR_Allreduce_new_MV2(const void *sendbuf,
     if (mpi_errno) {
         MPIU_ERR_POP(mpi_errno);
     }
-    MPID_Datatype_get_size_macro(datatype, sendtype_size);
-    nbytes = count * sendtype_size;
 
     if (count == 0) {
         return MPI_SUCCESS;
@@ -1905,8 +1904,15 @@ int MPIR_Allreduce_new_MV2(const void *sendbuf,
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER(comm_ptr);
 
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
+    int sendtype_size = 0, nbytes = 0;
+    int range = 0, range_threshold = 0, range_threshold_intra = 0;
+    int is_two_level = 0;
     int is_commutative = 0;
     MPI_Aint true_lb, true_extent;
+
+    MPID_Datatype_get_size_macro(datatype, sendtype_size);
+    nbytes = count * sendtype_size;
+
     MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
     MPID_Op *op_ptr;
 

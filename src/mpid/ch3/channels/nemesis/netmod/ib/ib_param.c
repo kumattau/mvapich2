@@ -1199,7 +1199,7 @@ void mv2_print_env_info()
     fprintf(stderr, "\tMV2_VBUF_TOTAL_SIZE            : %d\n", rdma_vbuf_total_size);
     fprintf(stderr, "\tMV2_IBA_EAGER_THRESHOLD        : %d\n", rdma_iba_eager_threshold);
     fprintf(stderr, "\tMV2_RDMA_FAST_PATH_BUF_SIZE    : %d\n", rdma_fp_buffer_size);
-    fprintf(stderr, "\tMV2_EAGERSIZE_1SC              : %d\n", rdma_eagersize_1sc);
+    fprintf(stderr, "\tMV2_EAGERSIZE_1SC              : %ld\n", rdma_eagersize_1sc);
     fprintf(stderr, "\tMV2_PUT_FALLBACK_THRESHOLD     : %d\n", rdma_put_fallback_threshold);
     fprintf(stderr, "\tMV2_GET_FALLBACK_THRESHOLD     : %d\n", rdma_get_fallback_threshold);
     fprintf(stderr, "---------------------------------------------------------------------\n");

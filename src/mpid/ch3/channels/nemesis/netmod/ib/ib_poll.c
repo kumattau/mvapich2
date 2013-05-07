@@ -38,7 +38,6 @@ static MPIDI_CH3_PktHandler_Fcn *pktArray[PKTARRAY_SIZE];
 static int error_closed(MPIDI_VC_t *const vc)
 {
     int mpi_errno = MPI_SUCCESS;
-    int rail_index;
     MPIDI_STATE_DECL(MPID_STATE_ERROR_CLOSED);
 
     MPIDI_FUNC_ENTER(MPID_STATE_ERROR_CLOSED);

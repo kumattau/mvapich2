@@ -327,7 +327,7 @@ print_stats (int rank, int size, double avg_time, double min_time, double
     }
 
     if (options.show_full) {
-        fprintf(stdout, "%*.*f%*.*f%*d\n", 
+        fprintf(stdout, "%*.*f%*.*f%*lu\n", 
                 FIELD_WIDTH, FLOAT_PRECISION, min_time,
                 FIELD_WIDTH, FLOAT_PRECISION, max_time,
                 12, options.iterations);
@@ -352,19 +352,19 @@ set_buffer (void * buffer, enum accel_type type, int data, size_t size)
         case none:
             memset(buffer, data, size);
             break;
-#ifdef _ENABLE_CUDA_
         case cuda:
+#ifdef _ENABLE_CUDA_
             cudaMemset(buffer, data, size);
-            break;
 #endif
-#ifdef _ENABLE_OPENACC_
+            break;
         case openacc:
+#ifdef _ENABLE_OPENACC_
 #pragma acc parallel loop deviceptr(p)
             for(i = 0; i < size; i++) {
                 p[i] = data;
             }
-            break;
 #endif
+            break;
     }
 }
 
@@ -413,16 +413,16 @@ free_buffer (void * buffer, enum accel_type type)
         case none:
             free(buffer);
             break;
-#ifdef _ENABLE_CUDA_
         case cuda:
+#ifdef _ENABLE_CUDA_
             cudaFree(buffer);
-            break;
 #endif
-#ifdef _ENABLE_OPENACC_
+            break;
         case openacc:
+#ifdef _ENABLE_OPENACC_
             acc_free(buffer);
-            break;
 #endif
+            break;
     }
 }
 
@@ -430,7 +430,6 @@ int
 init_cuda_context (void)
 {
 #ifdef _ENABLE_CUDA_
-    cudaError_t  cuerr = cudaSuccess;
     CUresult curesult = CUDA_SUCCESS;
     CUdevice cuDevice;
     int local_rank, dev_count;

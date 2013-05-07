@@ -52,6 +52,12 @@
 #include "allgather_tuning.h"
 #include "red_scat_tuning.h"
 #include "allgatherv_tuning.h"
+#ifdef MRAIL_GEN2_INTERFACE
+#include <cr.h>
+#endif
+#if defined(_ENABLE_CUDA_)
+#include "datatype.h"
+#endif
 
 #if defined(_OSU_PSM_)
 // TODO : expose debug infra structure to PSM interface
@@ -2013,8 +2019,8 @@ int cuda_stage_alloc_v(void **send_buf, int *send_counts, MPI_Datatype send_type
         MPIU_Memcpy_CUDA(mv2_cuda_host_send_buf, mv2_cuda_dev_sr_buf,
                          total_send_size, cudaMemcpyDeviceToHost);
 
-        mv2_cuda_original_send_buf = *send_buf;
-        mv2_cuda_original_send_displs = *send_displs;
+        mv2_cuda_original_send_buf = (void *) *send_buf;
+        mv2_cuda_original_send_displs = (int *)*send_displs;
         *send_buf = mv2_cuda_host_send_buf;
         *send_displs = mv2_cuda_host_send_displs;
     }

@@ -17,7 +17,7 @@
 m4_define([MPICH_VERSION_m4],[3.0.3])dnl
 m4_define([MPICH_RELEASE_DATE_m4],[unreleased development copy])dnl
 
-m4_define([MVAPICH2_VERSION_m4],[1.9rc1])dnl
+m4_define([MVAPICH2_VERSION_m4],[1.9])dnl
 m4_define([MVAPICH2_RELEASE_DATE_m4],[unreleased development copy])dnl
 
 # For libtool ABI versioning rules see:

@@ -65,7 +65,7 @@ __LINE__,(_rail), (_v)->rail);
 #define FUNCNAME MPID_nem_ib_rndv_initiate
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPID_nem_lmt_ib_initiate_lmt(struct MPIDI_VC *vc, struct MPID_nem_pkt_lmt_rts *rts_pkt,
+int MPID_nem_lmt_ib_initiate_lmt(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
                                            struct MPID_Request *req) 
 {
    int dt_contig;
@@ -74,6 +74,8 @@ int MPID_nem_lmt_ib_initiate_lmt(struct MPIDI_VC *vc, struct MPID_nem_pkt_lmt_rt
    MPID_Datatype * dt_ptr; 
    struct dreg_entry *d_entry;
    int mpi_errno = MPI_SUCCESS;
+
+   MPID_nem_pkt_lmt_rts_t *rts_pkt = (MPID_nem_pkt_lmt_rts_t *) pkt;
    MPID_nem_ib_lmt_cookie *cookie = MPIU_Malloc(sizeof(MPID_nem_ib_lmt_cookie));
 
    /*all variable declarations must be done before state declaration*/

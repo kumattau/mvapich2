@@ -1,5 +1,10 @@
 # Warning suppression file
 
+.* : the comparison will always evaluate as 'true' for the address of '.*' will never be NULL
+
+src/mpid/ch3/channels/common/src/memory/ptmalloc2/hooks.c : variable 'nb' set but not used
+src/mpid/ch3/channels/common/src/memory/ptmalloc2/mvapich_malloc.c : variable 'ret' set but not used
+
 pm/pmiserv/pmip_cb.c : null argument where non-null required
 
 src/mpltrmem.c : variable 'old_head' set but not used
@@ -116,6 +121,7 @@ src/mpi_t/pvar_write.c : label 'fn_fail' defined but not used
 src/binding/f77/attr_getf.c : dereferencing type-punned pointer will break strict-aliasing rules
 src/mpi/coll/barrier_group.c : label 'fn_fail' defined but not used
 src/mpi/coll/helper_fns.c : label 'fn_fail' defined but not used
+src/mpi/coll/helper_fns.c : 'mpi_errno' may be used uninitialized in this function
 src/mpi/comm/commutil.c : label 'fn_fail' defined but not used
 src/mpi/comm/commutil.c : label 'fn_exit' defined but not used
 src/mpi/pt2pt/mpir_request.c : label 'fn_exit' defined but not used
@@ -125,6 +131,9 @@ src/mpid/ch3/src/ch3u_comm.c : label 'fn_fail' defined but not used
 src/mpid/ch3/src/ch3u_handle_connection.c : label 'fn_fail' defined but not used
 src/mpid/ch3/src/ch3u_recvq.c : variable 'mpi_errno' set but not used
 src/mpid/ch3/src/ch3u_recvq.c : label 'fn_fail' defined but not used
+src/mpid/ch3/src/ch3u_recvq.c : 'simple_aint_creator' defined but not used
+src/mpid/ch3/src/ch3u_recvq.c : 'simple_uint_creator' defined but not used
+src/mpid/ch3/src/ch3u_recvq.c : 'simple_double_creator' defined but not used
 src/mpid/ch3/src/ch3u_rma_sync.c : unused variable 'iovcnt'
 src/mpid/ch3/src/ch3u_rma_sync.c : unused variable 'iov'
 src/mpid/ch3/src/ch3u_rma_sync.c : unused variable 'accum_pkt'
@@ -132,7 +141,16 @@ src/mpid/ch3/src/ch3u_rma_sync.c : label 'fn_fail' defined but not used
 src/mpid/ch3/src/ch3u_rma_sync.c : variable 'data_buf' set but not used
 src/mpid/ch3/src/ch3u_rma_sync.c : unused variable 'complete'
 src/mpid/ch3/src/ch3u_rma_sync.c : 'mpiu_chkpmem_stk_\[0\]' may be used uninitialized in this function
+src/mpid/ch3/src/ch3u_rma_sync.c : 'MPIDI_CH3I_Send_flush_msg' defined but not used
+src/mpid/ch3/src/ch3u_rma_sync.c : 'source_win_handle' may be used uninitialized in this function
+src/mpid/ch3/src/ch3u_rma_sync.c : 'MPIDI_CH3I_Send_lock_put_or_acc' defined but not used
+src/mpid/ch3/src/ch3u_rma_sync.c : 'MPIDI_CH3I_Send_lock_get' defined but not used
+src/mpid/ch3/src/ch3u_rma_sync.c : 'target_tsz' may be used uninitialized in this function
 src/mpid/ch3/src/ch3u_win_fns.c : label 'fn_fail' defined but not used
+src/mpid/ch3/src/ch3u_win_fns.c : unused variable 'result'
+src/mpid/ch3/src/ch3u_win_fns.c : unused variable 'group_self'
+src/mpid/ch3/src/ch3u_win_fns.c : unused variable 'group_comm'
+src/mpid/ch3/src/ch3u_win_fns.c : unused variable 'comm_self_ptr'
 src/mpid/ch3/src/mpid_abort.c : passing argument 2 of 'MPIDI_CH3_Abort' discards 'const' qualifier from pointer target type
 src/mpid/ch3/src/mpid_cancel_recv.c : implicit declaration of function 'dreg_unregister'
 src/mpid/ch3/src/mpid_cancel_recv.c : label 'fn_exit' defined but not used
@@ -160,3 +178,18 @@ src/mpid/common/datatype/mpid_type_debug.c : variable 'dtp' set but not used
 src/mpid/common/datatype/mpir_type_flatten.c : variable 'datatype_ptr' set but not used
 src/mpid/common/sched/mpid_sched.c : label 'fn_fail' defined but not used
 src/nameserv/file/file_nameserv.c : unused variable 'FCNAME'
+src/mpid/ch3/channels/nemesis/src/mpid_nem_lmt_dma.c : left-hand operand of comma expression has no effect
+src/mpid/ch3/channels/nemesis/netmod/none/none.c : initialization from incompatible pointer type
+src/mpid/ch3/channels/nemesis/netmod/none/none.c : (near initialization for 'MPIDI_nem_none_funcs.ckpt_precheck')
+src/mpid/ch3/channels/nemesis/netmod/none/none.c : initialization from incompatible pointer type
+src/mpid/ch3/channels/nemesis/netmod/none/none.c : (near initialization for 'MPIDI_nem_none_funcs.ckpt_restart')
+src/mpid/ch3/channels/nemesis/netmod/none/none.c : initialization from incompatible pointer type
+src/mpid/ch3/channels/nemesis/netmod/none/none.c : (near initialization for 'MPIDI_nem_none_funcs.ckpt_continue')
+src/mpid/ch3/channels/nemesis/netmod/none/none.c : initialization from incompatible pointer type
+src/mpid/ch3/channels/nemesis/netmod/none/none.c : (near initialization for 'MPIDI_nem_none_funcs.poll')
+src/mpid/ch3/channels/nemesis/netmod/none/none.c : initialization from incompatible pointer type
+src/mpid/ch3/channels/nemesis/netmod/none/none.c : (near initialization for 'MPIDI_nem_none_funcs.get_business_card')
+src/mpid/ch3/channels/nemesis/netmod/none/none.c : initialization from incompatible pointer type
+src/mpid/ch3/channels/nemesis/netmod/none/none.c : (near initialization for 'MPIDI_nem_none_funcs.connect_to_root')
+src/mpid/ch3/channels/mrail/src/udapl/rdma_udapl_init.c : format '%ld' expects argument of type 'long int', but argument 4 has type 'DAT_RMR_CONTEXT'
+src/mpid/ch3/channels/mrail/src/udapl/rdma_udapl_init.c : format '%ld' expects argument of type 'long int', but argument 4 has type 'DAT_RMR_CONTEXT'

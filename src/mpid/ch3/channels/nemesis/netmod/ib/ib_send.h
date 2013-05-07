@@ -156,4 +156,8 @@ int MPIDI_nem_ib_eager_send(MPIDI_VC_t * vc,
                         vbuf **buf_handle);
 int MPIDI_nem_ib_lmt_r3_ack_send(MPIDI_VC_t *vc);
 int MPID_nem_ib_send_queued(MPIDI_VC_t *vc, MPIDI_nem_ib_request_queue_t *send_queue);
+#ifdef ENABLE_CHECKPOINTING
+int MPID_nem_ib_iStartContigMsg_paused(MPIDI_VC_t *vc, void *hdr, MPIDI_msg_sz_t hdr_sz, void *data, MPIDI_msg_sz_t data_sz,
+                                    MPID_Request **sreq_ptr);
+#endif
 #endif

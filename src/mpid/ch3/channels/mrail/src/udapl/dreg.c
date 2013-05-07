@@ -639,7 +639,7 @@ int dreg_init()
 
 int dreg_finalize()
 {
-
+    return MPI_SUCCESS;
 }
 #ifndef DISABLE_PTMALLOC
 
@@ -913,9 +913,7 @@ void dreg_incr_refcount(dreg_entry * d)
  */
 int dreg_evict()
 {
-    void *buf;
     dreg_entry *d;
-    unsigned long bufint;
     int hca_index;
 
     d = dreg_unused_tail;
@@ -927,8 +925,6 @@ int dreg_evict()
     DREG_REMOVE_FROM_UNUSED_LIST(d);
 
     MPIU_Assert(d->refcount == 0);
-    bufint = d->pagenum << DREG_PAGEBITS;
-    buf = (void *) bufint;
 
     for (hca_index = 0; hca_index < rdma_num_hcas; hca_index ++) {          
 

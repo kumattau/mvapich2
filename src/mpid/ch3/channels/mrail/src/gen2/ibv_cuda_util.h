@@ -119,7 +119,7 @@ do {                                            \
     cudaError_t cuerr = cudaSuccess;            \
     cuerr = cudaMalloc((void **) &_buf,_size);  \
     if (cuerr != cudaSuccess) {                 \
-        PRINT_INFO(1, "cudaMalloc failed with at %s:%d\n", \
+        PRINT_INFO(1, "cudaMalloc failed with error:%d at %s:%d\n", \
             cuerr, __FILE__, __LINE__);         \
         exit(EXIT_FAILURE);                               \
     }                                           \
@@ -130,7 +130,7 @@ do {                                            \
     cudaError_t cuerr = cudaSuccess;            \
     cuerr = cudaFree(_buf);                     \
     if (cuerr != cudaSuccess) {                 \
-        PRINT_INFO(1, "cudaFree failed with at %s:%d\n",  \
+        PRINT_INFO(1, "cudaFree failed with error:%d at %s:%d\n",  \
                     cuerr, __FILE__, __LINE__); \
         exit(EXIT_FAILURE);                               \
     }                                           \
@@ -141,7 +141,7 @@ do {                                            \
     cudaError_t cuerr = cudaSuccess;            \
     cuerr = cudaMallocHost((void **)&_buf,_size);\
     if (cuerr != cudaSuccess) {                 \
-        PRINT_INFO(1, "cudaMallocHost failed with at %s:%d\n",  \
+        PRINT_INFO(1, "cudaMallocHost failed with error:%d at %s:%d\n",  \
                 cuerr, __FILE__, __LINE__);     \
         exit(EXIT_FAILURE);                               \
     }                                           \
@@ -152,7 +152,7 @@ do {                                            \
     cudaError_t cuerr = cudaSuccess;            \
     cuerr = cudaFreeHost(_buf);                 \
     if (cuerr != cudaSuccess) {                 \
-        PRINT_INFO(1, "cudaFreeHost failed with at %s:%d\n",    \
+        PRINT_INFO(1, "cudaFreeHost failed with error:%d at %s:%d\n",    \
                 cuerr, __FILE__, __LINE__);     \
         exit(EXIT_FAILURE);                               \
     }                                           \
@@ -287,6 +287,11 @@ extern int cudaipc_stage_buffered;
 extern size_t cudaipc_stage_buffered_limit;
 extern int cudaipc_sync_limit;
 #endif
+#endif
+#if defined(USE_GPU_KERNEL)
+void pack_subarray( void *dst, void *src, int nx, int ny, int nz, int sub_nx, int sub_ny, int sub_nz, int h_x, int h_y, int h_z, int el_size );
+void unpack_subarray( void *dst, void *src, int nx, int ny, int nz, int sub_nx, int sub_ny, int sub_nz, int h_x, int h_y, int h_z, int el_size);
+void pack_unpack_vector_kernel( void *dst, int dpitch, void *src, int spitch, int width, int height);
 #endif
 #endif /* _IBV_CUDA_UTIL_H_ */
 

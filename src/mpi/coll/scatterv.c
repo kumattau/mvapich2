@@ -232,8 +232,8 @@ int MPIR_Scatterv_impl(const void *sendbuf, const int *sendcounts, const int *di
 
             if (((comm_ptr->comm_kind == MPID_INTRACOMM) && (root == rank)) ||
                 ((comm_ptr->comm_kind == MPID_INTERCOMM) && (root == MPI_ROOT))) {
-                mpi_errno = cuda_stage_alloc_v (&sendbuf, sendcounts, sendtype,
-                         &displs, comm_size,
+                mpi_errno = cuda_stage_alloc_v ((void **)&sendbuf, (int *)sendcounts, sendtype,
+                         (int **)&displs, comm_size,
                          &recvbuf, &recvcount, recvtype,
                          &recv_displs, 1,
                          sendbuf_on_device, recvbuf_on_device,
@@ -275,8 +275,8 @@ int MPIR_Scatterv_impl(const void *sendbuf, const int *sendcounts, const int *di
 
             if (((comm_ptr->comm_kind == MPID_INTRACOMM) && (root == rank)) ||
                 ((comm_ptr->comm_kind == MPID_INTERCOMM) && (root == MPI_ROOT))) {
-                cuda_stage_free_v (&sendbuf, sendcounts, sendtype,
-                         &displs, comm_size,
+                cuda_stage_free_v ((void **)&sendbuf, (int *)sendcounts, sendtype,
+                         (int **)&displs, comm_size,
                          &recvbuf, &recvcount, recvtype,
                          &recv_displs, 1,
                          sendbuf_on_device, recvbuf_on_device,

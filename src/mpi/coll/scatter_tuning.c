@@ -16,28 +16,13 @@
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include "mv2_arch_hca_detect.h"
 
-/*
-  1 MV2_INTER_SCATTER_TUNING=1
-  2 MV2_INTER_SCATTER_TUNING=2
-  3 MV2_INTER_SCATTER_TUNING=3 MV2_INTRA_SCATTER_TUNING=1
-  4 MV2_INTER_SCATTER_TUNING=3 MV2_INTRA_SCATTER_TUNING=2
-  5 MV2_INTER_SCATTER_TUNING=4 MV2_INTRA_SCATTER_TUNING=1
-  6 MV2_INTER_SCATTER_TUNING=4 MV2_INTRA_SCATTER_TUNING=2
-
-64k-256k	6
-16k-64k	2
-1k-16k	6
-128-1024	5
-0-128	3
-*/
-
 
 enum {
-    SCATTER_BINOMIAL = 1,             //1 &MPIR_Scatter_MV2_Binomial
-    SCATTER_DIRECT,                   //2 &MPIR_Scatter_MV2_Direct
-    SCATTER_TWO_LEVEL_BINOMIAL,       //3 &MPIR_Scatter_MV2_two_level_Binomial
-    SCATTER_TWO_LEVEL_DIRECT,         //4 &MPIR_Scatter_MV2_two_level_Direct
-    SCATTER_MCAST,                    //5 &MPIR_Scatter_mcst_wrap_MV2
+    SCATTER_BINOMIAL = 1,            
+    SCATTER_DIRECT,                  
+    SCATTER_TWO_LEVEL_BINOMIAL,     
+    SCATTER_TWO_LEVEL_DIRECT,        
+    SCATTER_MCAST,                    
 };
 
 int mv2_size_scatter_tuning_table = 0;
@@ -266,6 +251,108 @@ int MV2_set_scatter_tuning_table(int heterogeneity)
                     {1024, 16384, &MPIR_Scatter_MV2_Direct},
                     {16384, 65536, &MPIR_Scatter_MV2_Direct},
                     {65536, -1, &MPIR_Scatter_MV2_Direct},
+                },
+            }, 
+        };
+    
+        MPIU_Memcpy(mv2_scatter_thresholds_table, mv2_tmp_scatter_thresholds_table,
+                  mv2_size_scatter_tuning_table * sizeof (mv2_scatter_tuning_table));
+
+    } else if (MV2_IS_ARCH_HCA_TYPE(MV2_get_arch_hca_type(),
+        MV2_ARCH_AMD_OPTERON_6136_32, MV2_HCA_MLX_CX_QDR) && !heterogeneity){
+        /*Trestles*/
+        mv2_size_scatter_tuning_table = 6;
+        mv2_scatter_thresholds_table = MPIU_Malloc(mv2_size_scatter_tuning_table *
+                                                  sizeof(mv2_scatter_tuning_table));
+        MPIU_Memset(mv2_scatter_thresholds_table, 0, mv2_size_scatter_tuning_table * 
+                    sizeof(mv2_scatter_tuning_table)); 
+        mv2_scatter_tuning_table mv2_tmp_scatter_thresholds_table[] = {
+            {
+                32,
+                2,
+                {
+                    {0, 32, &MPIR_Scatter_MV2_Binomial},
+                    {32, -1, &MPIR_Scatter_MV2_two_level_Direct},
+                },
+                2,
+                {
+                    {0, 32, &MPIR_Scatter_MV2_Binomial},
+                    {32, -1, &MPIR_Scatter_MV2_Direct},
+                },
+            }, 
+            {
+                64,
+                3,
+                {
+                    {0, 64, &MPIR_Scatter_MV2_Binomial},
+                    {64, 1024, &MPIR_Scatter_MV2_two_level_Binomial},
+                    {1024, -1, &MPIR_Scatter_MV2_Direct},
+                },
+                3,
+                {
+                    {0, 64, &MPIR_Scatter_MV2_Direct},
+                    {64, 1024, &MPIR_Scatter_MV2_Direct},
+                    {1024, -1, &MPIR_Scatter_MV2_Direct},
+                },
+            }, 
+            {
+                128,
+                3,
+                {
+                    {0, 64, &MPIR_Scatter_MV2_two_level_Direct},
+                    {64, 2048, &MPIR_Scatter_MV2_two_level_Direct},
+                    {2048, -1, &MPIR_Scatter_MV2_Direct},
+                },
+                3,
+                {
+                    {0, 64, &MPIR_Scatter_MV2_Binomial},
+                    {64, 2048, &MPIR_Scatter_MV2_Direct},
+                    {2048, -1, &MPIR_Scatter_MV2_Direct},
+                },
+            }, 
+            {
+                256,
+                3,
+                {
+                    {0, 128, &MPIR_Scatter_MV2_two_level_Direct},
+                    {128, 8192,  &MPIR_Scatter_MV2_two_level_Direct},
+                    {8192, -1, &MPIR_Scatter_MV2_Direct},
+                },
+                3,
+                {
+                    {0, 128, &MPIR_Scatter_MV2_Binomial},
+                    {128, 8192,  &MPIR_Scatter_MV2_Direct},
+                    {8192, -1, &MPIR_Scatter_MV2_Direct},
+                },
+            }, 
+            {
+                512,
+                3,
+                {
+                    {0, 256, &MPIR_Scatter_MV2_two_level_Direct},
+                    {256, 16384,  &MPIR_Scatter_MV2_two_level_Direct},
+                    {16384, -1, &MPIR_Scatter_MV2_Direct},
+                },
+                3,
+                {
+                    {0, 256, &MPIR_Scatter_MV2_Binomial},
+                    {256, 16384,  &MPIR_Scatter_MV2_Direct},
+                    {16384, -1, &MPIR_Scatter_MV2_Direct},
+                },
+            }, 
+            {
+                1024,
+                3,
+                {
+                    {0, 16, &MPIR_Scatter_MV2_two_level_Binomial},
+                    {16, 16384,  &MPIR_Scatter_MV2_two_level_Direct},
+                    {16384, -1, &MPIR_Scatter_MV2_Direct},
+                },
+                3,
+                {
+                    {0, 16, &MPIR_Scatter_MV2_Binomial},
+                    {16, 16384,  &MPIR_Scatter_MV2_Direct},
+                    {16384, -1, &MPIR_Scatter_MV2_Direct},
                 },
             }, 
         };

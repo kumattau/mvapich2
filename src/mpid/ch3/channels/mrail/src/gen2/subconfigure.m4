@@ -15,6 +15,8 @@ dnl _BODY handles the former role of configure in the subsystem
 AC_DEFUN([PAC_SUBCFG_BODY_]PAC_SUBCFG_AUTO_SUFFIX, [
     AM_COND_IF([BUILD_MRAIL_GEN2], [
 	AC_MSG_NOTICE([RUNNING CONFIGURE FOR ch3:mrail:gen2])
+        AC_DEFINE([MRAIL_GEN2_INTERFACE], [1],
+            [Define to enable GEN2 interface])
     ])dnl end AM_COND_IF(BUILD_MRAIL_GEN2,...)
 ])dnl end _BODY
 [#] end of __file__

@@ -25,7 +25,7 @@
 #define FUNCNAME MPIDI_CH3I_comm_create
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_CH3I_comm_create (MPID_Comm *comm)
+int MPIDI_CH3I_comm_create (MPID_Comm *comm, void *param)
 {
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_COMM_CREATE);
@@ -57,7 +57,7 @@ int MPIDI_CH3I_comm_create (MPID_Comm *comm)
 #define FUNCNAME MPIDI_CH3I_comm_destroy
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int MPIDI_CH3I_comm_destroy (MPID_Comm *comm)
+int MPIDI_CH3I_comm_destroy (MPID_Comm *comm, void *param)
 {
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_COMM_DESTROY);

@@ -3,6 +3,21 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2-1.9 (05/06/2013)
+
+* Features and Enhancements (since 1.9rc1):
+    - Updated to hwloc v1.7 
+    - Tuned Reduce, AllReduce, Scatter, Reduce-Scatter and
+        Allgatherv Collectives
+
+* Bug-Fixes (since 1.9rc1):
+    - Fix cuda context issue with async progress thread
+        - Thanks to Osuna Escamilla Carlos from env.ethz.ch for the report
+    - Overwrite pre-existing PSM environment variables
+        - Thanks to Adam Moody from LLNL for the patch
+    - Fix several warnings
+        - Thanks to Adam Moody from LLNL for some of the patches
+
 MVAPICH2-1.9RC1 (04/16/2013)
 
 * Features and Enhancements (since 1.9b):

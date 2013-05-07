@@ -164,7 +164,9 @@ int connect_socket(char * hostname, char * port)
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_NUMERICSERV;
 
-    if (s = getaddrinfo(hostname, port, &hints, &result)) {
+    s = getaddrinfo(hostname, port, &hints, &result);
+
+    if (s) {
         PRINT_ERROR("getaddrinfo [%s:%s]: %s\n", hostname, port,
                 gai_strerror(s));
         return 0;

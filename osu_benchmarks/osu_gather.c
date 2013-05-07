@@ -72,7 +72,7 @@ main (int argc, char *argv[])
     bufsize = options.max_message_size * numprocs;
 
     if (0 == rank) {
-        if (allocate_buffer(&recvbuf, bufsize, options.accel)) {
+        if (allocate_buffer((void**)&recvbuf, bufsize, options.accel)) {
             fprintf(stderr, "Could Not Allocate Memory [rank %d]\n", rank);
             MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);
         }
@@ -80,7 +80,7 @@ main (int argc, char *argv[])
         set_buffer(recvbuf, options.accel, 1, bufsize);
     }
 
-    if (allocate_buffer(&sendbuf, options.max_message_size * numprocs,
+    if (allocate_buffer((void**)&sendbuf, options.max_message_size * numprocs,
                 options.accel)) {
         fprintf(stderr, "Could Not Allocate Memory [rank %d]\n", rank);
         MPI_Abort(MPI_COMM_WORLD, EXIT_FAILURE);

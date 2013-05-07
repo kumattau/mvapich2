@@ -34,8 +34,12 @@
      /* some common #defines used throughout most of my files */
 #define  PUBLIC   /* default */
 #define  PRIVATE  static
+#ifndef FALSE
 #define  FALSE    0
+#endif
+#ifndef TRUE
 #define  TRUE     !FALSE
+#endif
 
      /* some defines for debugging purposes */
 #ifdef NDEBUG

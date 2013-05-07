@@ -71,7 +71,7 @@ int MPID_nem_ib_pkt_unpause_handler(MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt, MPIDI_
 
     /* There may be a unpause message in the send queue.  If so, just enqueue everything on the send queue. */
     if (MPIDI_CH3I_Sendq_empty(vc_ib->send_queue))
-        mpi_errno = MPID_nem_ib_send_queued(vc, &vc_ib->paused_send_queue); /*Need to implement for IB*/
+        mpi_errno = MPID_nem_ib_send_queued(vc, (MPIDI_nem_ib_request_queue_t *)&vc_ib->paused_send_queue); /*Need to implement for IB*/
         
     /* if anything is left on the paused queue, put it on the send queue and wait for the reconnect */
     if (!MPIDI_CH3I_Sendq_empty(vc_ib->paused_send_queue)) {

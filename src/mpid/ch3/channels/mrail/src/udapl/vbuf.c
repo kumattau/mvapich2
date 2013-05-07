@@ -474,7 +474,7 @@ void
 dump_vbuf (char *msg, vbuf * v)
 {
     int i, len;
-    MPIDI_CH3I_MRAILI_Pkt_comm_header *header;
+    MPIDI_CH3I_MRAILI_Pkt_comm_header *header ATTRIBUTE((unused));
     header = v->pheader;
     DEBUG_PRINT ("%s: dump of vbuf %p, type = %d\n", msg, v, header->type);
     len = 100;

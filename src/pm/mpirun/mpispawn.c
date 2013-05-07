@@ -759,8 +759,8 @@ char * init_listening_socket(int *mc_socket)
     }
 
     listen(*mc_socket, MT_MAX_DEGREE);
-    s = getnameinfo(&mc_sockaddr, mc_sockaddr_len, NULL, 0, port,
-            MAX_PORT_LEN + 1, NI_NUMERICSERV);
+    s = getnameinfo((struct sockaddr *)&mc_sockaddr, mc_sockaddr_len, NULL, 0,
+            port, MAX_PORT_LEN + 1, NI_NUMERICSERV);
     if (0 != s) {
         PRINT_ERROR("%s\n", gai_strerror(s));
         exit(EXIT_FAILURE);

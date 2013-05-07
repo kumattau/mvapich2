@@ -1744,6 +1744,7 @@ static void *od_conn_server( void * arg )
           } /* if */
 
       }/* while */
+      return NULL;
 }
 
 int MPIDI_CH3I_CM_Finalize()
@@ -1753,7 +1754,9 @@ int MPIDI_CH3I_CM_Finalize()
 
 int MPIDI_CH3I_CM_Connect(MPIDI_VC_t * vc)
 {
-    int size, peer, count=0, limit=1000;
+    int count=0, limit=1000;
+    int peer ATTRIBUTE((unused));
+    int size ATTRIBUTE((unused));
     DAT_RETURN ret, ret_conn; 
     DAT_EVENT event;
     

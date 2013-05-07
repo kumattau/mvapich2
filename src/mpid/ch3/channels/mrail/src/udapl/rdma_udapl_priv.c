@@ -59,6 +59,9 @@ MPIDI_CH3I_RDMA_util_atos (char *str, DAT_SOCK_ADDR * addr);
 void
 MPIDI_CH3I_RDMA_util_stoa (DAT_SOCK_ADDR * addr, char *str); 
 
+static int
+rdma_pmi_exchange_addresses (int pg_rank, int pg_size,
+                             void *localaddr, int addrlen, void *alladdrs) ATTRIBUTE((unused));
 
 /* gethostname does return a NULL-terminated string if
  * the hostname length is less than "HOSTNAME_LEN". Otherwise,
@@ -528,7 +531,8 @@ static int
 rdma_pmi_exchange_addresses (int pg_rank, int pg_size,
                              void *localaddr, int addrlen, void *alladdrs)
 {
-    int ret, j, len_local, len_remote, key_max_sz, val_max_sz;
+    int ret, j, len_local, key_max_sz, val_max_sz;
+    int len_remote ATTRIBUTE((unused));
     char attr_buff[IBA_PMI_ATTRLEN];
     char val_buff[IBA_PMI_VALLEN];
     char *temp_localaddr = (char *) localaddr;

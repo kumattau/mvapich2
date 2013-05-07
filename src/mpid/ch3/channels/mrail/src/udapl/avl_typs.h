@@ -18,8 +18,12 @@
 
 
         /* MIN and MAX macros (used for rebalancing) */
+#ifndef MIN
 #define  MIN(a,b)    ((a) < (b) ? (a) : (b))
+#endif
+#ifndef MAX
 #define  MAX(a,b)    ((a) > (b) ? (a) : (b))
+#endif
 
 
        /* Directional Definitions */

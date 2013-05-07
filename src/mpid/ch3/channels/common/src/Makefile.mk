@@ -11,3 +11,8 @@
 ##
 
 include $(top_srcdir)/src/mpid/ch3/channels/common/src/util/Makefile.mk
+
+if BUILD_MRAIL_GEN2
+AM_CPPFLAGS += -I$(top_srcdir)/src/mpid/ch3/channels/common/src/ft
+lib_lib@MPILIBNAME@_la_SOURCES += src/mpid/ch3/channels/common/src/ft/cr.c
+endif

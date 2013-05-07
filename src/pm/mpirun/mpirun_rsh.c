@@ -2462,7 +2462,6 @@ void child_handler(int signal)
 void mpispawn_checkin(int s)
 {
     int sock, id, i, n, mpispawn_root = -1;
-    in_port_t port;
     socklen_t addrlen;
     struct sockaddr_storage addr;
     int mt_degree;

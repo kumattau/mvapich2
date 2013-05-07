@@ -66,7 +66,6 @@ lib_lib@MPILIBNAME@_la_SOURCES	+=					\
     src/mpid/ch3/channels/common/src/reg_cache/avl.c		\
     src/mpid/ch3/channels/common/src/cm/cm.c				\
     src/mpid/ch3/channels/common/src/rdma_cm/rdma_cm.c		\
-    src/mpid/ch3/channels/common/src/ft/cr.c				\
     src/mpid/ch3/channels/mrail/src/gen2/ring_startup.c				\
     src/mpid/ch3/channels/mrail/src/gen2/sysreport.c				\
     src/mpid/ch3/channels/common/src/detect/arch/mv2_arch_detect.c 	\

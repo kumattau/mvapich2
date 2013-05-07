@@ -198,4 +198,9 @@ int MPID_nem_ib_set_default_params();
 int MPID_nem_ib_get_control_params();
 int MPID_nem_ib_get_control_params_after_hcainit();
 
+/**
+ * Print values of important environment variables.
+ */
+void mv2_print_env_info();
+
 #endif /* _RDMA_PARAM_H */

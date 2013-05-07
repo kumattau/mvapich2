@@ -31,7 +31,7 @@ extern cudaEvent_t *mv2_cuda_sync_event;
 #define FUNCNAME MPIR_Allgather_cuda_intra_MV2
 #undef FCNAME
 #define FCNAME MPIU_QUOTE(FUNCNAME)
-int MPIR_Allgather_cuda_intra_MV2(void *sendbuf,
+int MPIR_Allgather_cuda_intra_MV2(const void *sendbuf,
                              int sendcount,
                              MPI_Datatype sendtype,
                              void *recvbuf,

@@ -1852,7 +1852,6 @@ int MPID_nem_ib_send_queued(MPIDI_VC_t *vc, MPIDI_nem_ib_request_queue_t *send_q
     MPIDI_msg_sz_t offset;
     MPID_IOV *iov;
     int complete;
-    MPID_nem_ib_vc_area *vc_ib = VC_IB(vc);
 
     vbuf *buf;
     int nb, n_iov, pkt_len = 0;
@@ -1873,6 +1872,7 @@ int MPID_nem_ib_send_queued(MPIDI_VC_t *vc, MPIDI_nem_ib_request_queue_t *send_q
         MPIU_DBG_MSG_P(CH3_CHANNEL, VERBOSE, "Sending %p", sreq);
 
         iov = &sreq->dev.iov[sreq->dev.iov_offset];
+        n_iov = sreq->dev.iov_count;
 
         Calculate_IOV_len(iov, n_iov, pkt_len);
 

@@ -45,10 +45,8 @@ MPIDI_CH3I_MRAILI_Get_rndv_rput (MPIDI_VC_t * vc,
      * get_resp_kt as rput finsh. Currently, we assume the local buffer is contiguous,
      * datatype cases will be considered later */
     int nbytes;
-    dreg_entry *reg_entry;
     MRAILI_Channel_info channel;
     vbuf *v;
-    int mpi_errno = MPI_SUCCESS;
 
     channel.hca_index = 0;
     channel.rail_index = 0;
