@@ -132,13 +132,23 @@ extern MPIDI_Win_pending_lock_t *pending_lock_winlist;
 /* Routine use to tune RMA optimizations */
 void MPIDI_CH3_RMA_SetAccImmed( int flag );
 #if defined(_OSU_MVAPICH_)
+typedef enum {
+   /*local process gets the shared memory lock*/
+   ACQUIRE_SHARED_LOCK,
+   /*Before granting lock to others, local process 
+    *  acquire this shared memory lock */
+   BLOCK_OTHERS,
+   RELEASE_LOCK,
+   REMOVE_BLOCK
+} shared_memory_lock_flag_t;
+
 void *MPIDI_CH3I_Alloc_mem (size_t size, MPID_Info *info);
 void MPIDI_CH3I_Free_mem (void *ptr);
 void MPIDI_CH3I_RDMA_win_create(void *base, MPI_Aint size, int comm_size,
                            int rank, MPID_Win ** win_ptr, MPID_Comm * comm_ptr);
 void MPIDI_CH3I_RDMA_win_free(MPID_Win ** win_ptr);
 void MPIDI_CH3I_RDMA_start(MPID_Win * win_ptr, int start_grp_size, int *ranks_in_win_grp);
-void MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive);
+void MPIDI_CH3I_RDMA_try_rma(MPID_Win * win_ptr, int passive, int target_rank);
 int MPIDI_CH3I_RDMA_post(MPID_Win * win_ptr, int target_rank);
 int MPIDI_CH3I_RDMA_complete(MPID_Win * win_ptr, int start_grp_size, int *ranks_in_win_grp);
 int MPIDI_CH3I_RDMA_finish_rma(MPID_Win * win_ptr);
@@ -147,8 +157,10 @@ void MPIDI_CH3I_SHM_win_create(void *base, MPI_Aint size, MPID_Win ** win_ptr);
 void MPIDI_CH3I_SHM_win_free(MPID_Win ** win_ptr);
 int MPIDI_CH3I_SHM_try_rma(MPID_Win * win_ptr, int dest);
 int MPIDI_CH3I_SHM_win_lock (int dest_rank, int lock_type_requested, 
-                MPID_Win *win_ptr, int blocking);
-void MPIDI_CH3I_SHM_win_unlock (int dest_rank, MPID_Win *win_ptr);
+                MPID_Win *win_ptr, int blocking, 
+                shared_memory_lock_flag_t type);
+void MPIDI_CH3I_SHM_win_unlock (int dest_rank, MPID_Win *win_ptr,
+                shared_memory_lock_flag_t type);
 void MPIDI_CH3I_SHM_win_lock_enqueue (MPID_Win *win_ptr);
 int MPIDI_CH3I_Process_locks();
 void MPIDI_CH3I_INTRANODE_start(MPID_Win * win_ptr, int start_grp_size, int *ranks_in_win_grp);
@@ -347,7 +359,8 @@ static inline MPIDI_RMA_Ops_list_t *MPIDI_CH3I_RMA_Get_ops_list(MPID_Win *win_pt
 {
     if (win_ptr->epoch_state == MPIDI_EPOCH_FENCE ||
         win_ptr->epoch_state == MPIDI_EPOCH_START ||
-        win_ptr->epoch_state == MPIDI_EPOCH_PSCW)
+        win_ptr->epoch_state == MPIDI_EPOCH_PSCW  ||
+        target == -1)
     {
         return &win_ptr->at_rma_ops_list;
     }

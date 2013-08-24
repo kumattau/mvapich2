@@ -18,6 +18,11 @@
 
 #include "mpiimpl.h"
 #include "mpicomm.h"
+#include "mpiinfo.h"    /* MPIU_Info_free */
+
+#include "mpl_utlist.h"
+#include "mpiu_uthash.h"
+
 #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_)
 #include "coll_shmem.h"
 #endif /* #if defined(_OSU_MVAPICH_) || defined(_OSU_PSM_) */ 
@@ -38,7 +43,14 @@ MPIU_Object_alloc_t MPID_Comm_mem = { 0, 0, 0, 0, MPID_COMM,
                                       MPID_COMM_PREALLOC};
 
 /* Communicator creation functions */
-struct MPID_CommOps  *MPID_Comm_fns = NULL;
+struct MPID_CommOps *MPID_Comm_fns = NULL;
+struct MPIR_Comm_hint_fn_elt {
+    char name[MPI_MAX_INFO_KEY];
+    MPIR_Comm_hint_fn_t fn;
+    void *state;
+    UT_hash_handle hh;
+};
+static struct MPIR_Comm_hint_fn_elt *MPID_hint_fns = NULL;
 
 /* utility function to pretty print a context ID for debugging purposes, see
  * mpiimpl.h for more info on the various fields */
@@ -108,6 +120,7 @@ int MPIR_Comm_init(MPID_Comm *comm_p)
     comm_p->coll_fns     = NULL;
     comm_p->topo_fns     = NULL;
     comm_p->name[0]      = '\0';
+    comm_p->info         = NULL;
 
     comm_p->hierarchy_kind  = MPID_HIERARCHY_FLAT;
     comm_p->node_comm       = NULL;
@@ -640,12 +653,22 @@ int MPIR_Comm_is_node_consecutive(MPID_Comm * comm)
 static uint32_t context_mask[MPIR_MAX_CONTEXT_MASK];
 static int initialize_context_mask = 1;
 
-#ifdef USE_DBG_LOGGING
 /* Create a string that contains the context mask.  This is
    used only with the logging interface, and must be used by one thread at 
    a time (should this be enforced by the logging interface?).
-   Converts the mask to hex and returns a pointer to that string */
-static char *MPIR_ContextMaskToStr( void )
+   Converts the mask to hex and returns a pointer to that string.
+
+   Callers should own the context ID critical section, or should be prepared to
+   suffer data races in any fine-grained locking configuration.
+
+   This routine is no longer static in order to allow advanced users and
+   developers to debug context ID problems "in the field".  We provide a
+   prototype here to keep the compiler happy, but users will need to put a
+   (possibly "extern") copy of the prototype in their own code in order to call
+   this routine.
+ */
+char *MPIR_ContextMaskToStr( void );
+char *MPIR_ContextMaskToStr( void )
 {
     static char bufstr[MPIR_MAX_CONTEXT_MASK*8+1];
     int i;
@@ -660,7 +683,41 @@ static char *MPIR_ContextMaskToStr( void )
     }
     return bufstr;
 }
-#endif
+
+/* Returns useful debugging information about the context ID mask bit-vector.
+ * This includes the total number of possibly valid IDs (the size of the ID
+ * space) and the number of free IDs remaining in the mask.  NULL arguments are
+ * fine, they will be ignored.
+ *
+ * This routine is for debugging in very particular situations and does not
+ * attempt to control concurrent access to the mask vector.
+ *
+ * Callers should own the context ID critical section, or should be prepared to
+ * suffer data races in any fine-grained locking configuration.
+ *
+ * The routine is non-static in order to permit "in the field debugging".  We
+ * provide a prototype here to keep the compiler happy. */
+void MPIR_ContextMaskStats(int *free_ids, int *total_ids);
+void MPIR_ContextMaskStats(int *free_ids, int *total_ids)
+{
+    if (free_ids) {
+        int i, j;
+        *free_ids = 0;
+
+        /* if this ever needs to be fast, use a lookup table to do a per-nibble
+         * or per-byte lookup of the popcount instead of checking each bit at a
+         * time (or just track the count when manipulating the mask and keep
+         * that count stored in a variable) */
+        for (i = 0; i < MPIR_MAX_CONTEXT_MASK; ++i) {
+            for (j = 0; j < sizeof(context_mask[0])*8; ++j) {
+                *free_ids += (context_mask[i] & (0x1 << j)) >> j;
+            }
+        }
+    }
+    if (total_ids) {
+        *total_ids = MPIR_MAX_CONTEXT_MASK*sizeof(context_mask[0])*8;
+    }
+}
 
 #ifdef MPICH_DEBUG_HANDLEALLOC
 static int MPIU_CheckContextIDsOnFinalize(void *context_mask_ptr)
@@ -856,11 +913,25 @@ int MPIR_Get_contextid_sparse_group(MPID_Comm *comm_ptr, MPID_Group *group_ptr, 
 
     if (ignore_id) {
         *context_id = MPIR_Locate_context_bit(local_mask);
-        MPIU_ERR_CHKANDJUMP(!(*context_id), mpi_errno, MPIR_ERR_RECOVERABLE, "**toomanycomm");
+        if (*context_id == 0) {
+            int nfree = -1;
+            int ntotal = -1;
+            MPIR_ContextMaskStats(&nfree, &ntotal);
+            MPIU_ERR_SETANDJUMP3(mpi_errno, MPIR_ERR_RECOVERABLE,
+                                 "**toomanycomm", "**toomanycomm %d %d %d",
+                                 nfree, ntotal, ignore_id);
+        }
     }
     else {
         *context_id = MPIR_Find_and_allocate_context_id(local_mask);
-        MPIU_ERR_CHKANDJUMP(!(*context_id), mpi_errno, MPIR_ERR_RECOVERABLE, "**toomanycomm");
+        if (*context_id == 0) {
+            int nfree = -1;
+            int ntotal = -1;
+            MPIR_ContextMaskStats(&nfree, &ntotal);
+            MPIU_ERR_SETANDJUMP3(mpi_errno, MPIR_ERR_RECOVERABLE,
+                                 "**toomanycomm", "**toomanycomm %d %d %d",
+                                 nfree, ntotal, ignore_id);
+        }
     }
 
 fn_exit:
@@ -1111,6 +1182,8 @@ int MPIR_Get_contextid_sparse_group(MPID_Comm *comm_ptr, MPID_Group *group_ptr, 
          * succeed because there is no common context ID. */
         if (*context_id == 0 && local_mask[ALL_OWN_MASK_FLAG] == 1) {
             /* --BEGIN ERROR HANDLING-- */
+            int nfree = 0;
+            int ntotal = 0;
             if (own_mask) {
                 MPIU_THREAD_CS_ENTER(CONTEXTID,);
                 mask_in_use = 0;
@@ -1121,7 +1194,10 @@ int MPIR_Get_contextid_sparse_group(MPID_Comm *comm_ptr, MPID_Group *group_ptr, 
                 MPIU_THREAD_CS_EXIT(CONTEXTID,);
             }
 
-            MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**toomanycomm");
+            MPIR_ContextMaskStats(&nfree, &ntotal);
+            MPIU_ERR_SETANDJUMP3(mpi_errno, MPIR_ERR_RECOVERABLE,
+                                 "**toomanycommfrag", "**toomanycommfrag %d %d %d",
+                                 nfree, ntotal, ignore_id);
             /* --END ERROR HANDLING-- */
         }
 
@@ -1166,7 +1242,14 @@ static int gcn_helper(MPID_Comm *comm, int tag, void *state)
     MPIR_Context_id_t newctxid;
 
     newctxid = MPIR_Find_and_allocate_context_id(st->local_mask);
-    MPIU_ERR_CHKANDJUMP(!newctxid, mpi_errno, MPIR_ERR_RECOVERABLE, "**toomanycomm");
+    if (!newctxid) {
+        int nfree = -1;
+        int ntotal = -1;
+        MPIR_ContextMaskStats(&nfree, &ntotal);
+        MPIU_ERR_SETANDJUMP3(mpi_errno, MPIR_ERR_RECOVERABLE,
+                             "**toomanycomm", "**toomanycomm %d %d %d",
+                             nfree, ntotal, /*ignore_id=*/0);
+    }
 
     if (st->ctx0)
         *st->ctx0 = newctxid;
@@ -1525,7 +1608,12 @@ int MPIR_Comm_copy( MPID_Comm *comm_ptr, int size, MPID_Comm **outcomm_ptr )
     }
     /* --BEGIN ERROR HANDLING-- */
     if (new_context_id == 0) {
-        MPIU_ERR_SETANDJUMP(mpi_errno, MPI_ERR_OTHER, "**toomanycomm" );
+        int nfree = -1;
+        int ntotal = -1;
+        MPIR_ContextMaskStats(&nfree, &ntotal);
+        MPIU_ERR_SETANDJUMP3(mpi_errno, MPIR_ERR_RECOVERABLE,
+                             "**toomanycomm", "**toomanycomm %d %d %d",
+                             nfree, ntotal, /*ignore_id=*/0);
     }
     /* --END ERROR HANDLING-- */
 
@@ -1608,6 +1696,13 @@ int MPIR_Comm_copy( MPID_Comm *comm_ptr, int size, MPID_Comm **outcomm_ptr )
 
     /* Start with no attributes on this communicator */
     newcomm_ptr->attributes = 0;
+
+    /* Copy over the info hints from the original communicator. */
+    mpi_errno = MPIR_Info_dup_impl(comm_ptr->info, &(newcomm_ptr->info));
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+    mpi_errno = MPIR_Comm_apply_hints(newcomm_ptr, newcomm_ptr->info);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
     *outcomm_ptr = newcomm_ptr;
 
  fn_fail:
@@ -1737,7 +1832,12 @@ int MPIR_Comm_delete_internal(MPID_Comm * comm_ptr, int isDisconnect)
            destroyed */
         mpi_errno = MPID_Dev_comm_destroy_hook(comm_ptr);
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
-        
+
+        /* Free info hints */
+        if (comm_ptr->info != NULL) {
+            MPIU_Info_free(comm_ptr->info);
+        }
+
         /* release our reference to the collops structure, comes after the
          * destroy_hook to allow the device to manage these vtables in a custom
          * fashion */
@@ -1859,3 +1959,98 @@ int MPIR_Comm_release_always(MPID_Comm *comm_ptr, int isDisconnect)
     goto fn_exit;
 }
 
+/* Apply all known info hints in the specified info chain to the given
+ * communicator. */
+#undef FUNCNAME
+#define FUNCNAME MPIR_Comm_apply_hints
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPIR_Comm_apply_hints(MPID_Comm *comm_ptr, MPID_Info *info_ptr)
+{
+    int mpi_errno = MPI_SUCCESS;
+    MPID_Info *hint = NULL;
+    char hint_name[MPI_MAX_INFO_KEY] = { 0 };
+    struct MPIR_Comm_hint_fn_elt *hint_fn = NULL;
+    MPID_MPI_STATE_DECL(MPID_STATE_MPIR_COMM_APPLY_HINTS);
+
+    MPID_MPI_FUNC_ENTER(MPID_STATE_MPIR_COMM_APPLY_HINTS);
+
+    MPL_LL_FOREACH(info_ptr, hint) {
+        /* Have we hit the default, empty info hint? */
+        if (hint->key == NULL) continue;
+
+        strncpy(hint_name, hint->key, MPI_MAX_INFO_KEY);
+
+        HASH_FIND_STR(MPID_hint_fns, hint_name, hint_fn);
+
+        /* Skip hints that MPICH doesn't recognize. */
+        if (hint_fn) {
+            mpi_errno = hint_fn->fn(comm_ptr, hint, hint_fn->state);
+            if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+        }
+    }
+
+ fn_exit:
+    MPID_MPI_FUNC_EXIT(MPID_STATE_MPIR_COMM_APPLY_HINTS);
+    return mpi_errno;
+ fn_fail:
+    goto fn_exit;
+}
+
+#undef FUNCNAME
+#define FUNCNAME MPIR_Comm_free_hint_handles
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+static int MPIR_Comm_free_hint_handles(void *ignore)
+{
+    int mpi_errno = MPI_SUCCESS;
+    struct MPIR_Comm_hint_fn_elt *curr_hint = NULL, *tmp = NULL;
+    MPID_MPI_STATE_DECL(MPID_STATE_MPIR_COMM_FREE_HINT_HANDLES);
+
+    MPID_MPI_FUNC_ENTER(MPID_STATE_MPIR_COMM_FREE_HINT_HANDLES);
+
+    if (MPID_hint_fns) {
+        HASH_ITER(hh, MPID_hint_fns, curr_hint, tmp) {
+            HASH_DEL(MPID_hint_fns, curr_hint);
+            MPIU_Free(curr_hint);
+        }
+    }
+
+ fn_exit:
+    MPID_MPI_FUNC_EXIT(MPID_STATE_MPIR_COMM_FREE_HINT_HANDLES);
+    return mpi_errno;
+ fn_fail:
+    goto fn_exit;
+}
+
+/* The hint logic is stored in a uthash, with hint name as key and
+ * the function responsible for applying the hint as the value. */
+#undef FUNCNAME
+#define FUNCNAME MPIR_Comm_register_hint
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPIR_Comm_register_hint(const char *hint_key, MPIR_Comm_hint_fn_t fn, void *state)
+{
+    int mpi_errno = MPI_SUCCESS;
+    struct MPIR_Comm_hint_fn_elt *hint_elt = NULL;
+    MPID_MPI_STATE_DECL(MPID_STATE_MPIR_COMM_REGISTER_HINT);
+
+    MPID_MPI_FUNC_ENTER(MPID_STATE_MPIR_COMM_REGISTER_HINT);
+
+    if (MPID_hint_fns == NULL) {
+        MPIR_Add_finalize(MPIR_Comm_free_hint_handles, NULL, MPIR_FINALIZE_CALLBACK_PRIO - 1);
+    }
+
+    hint_elt = MPIU_Malloc(sizeof(struct MPIR_Comm_hint_fn_elt));
+    strncpy(hint_elt->name, hint_key, MPI_MAX_INFO_KEY);
+    hint_elt->state = state;
+    hint_elt->fn = fn;
+
+    HASH_ADD_STR(MPID_hint_fns, name, hint_elt);
+
+ fn_exit:
+    MPID_MPI_FUNC_EXIT(MPID_STATE_MPIR_COMM_REGISTER_HINT);
+    return mpi_errno;
+ fn_fail:
+    goto fn_exit;
+}

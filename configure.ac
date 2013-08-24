@@ -442,6 +442,7 @@ AC_ARG_ENABLE([mpit_pvars],
         none     - No performance info recorded
         recvq    - All message queue-related
         nem      - All nemesis-related
+        mvapich2 - All MVAPICH2 releated
         all      - All variables above
 ],[],[enable_mpit_pvars=none])
 
@@ -953,6 +954,37 @@ AC_SUBST(master_top_builddir)
 AC_SUBST(master_top_srcdir)
 export master_top_builddir
 export master_top_srcdir
+
+# ----------------------------------------------------------------------------
+dnl Export important "precious" variables so that any directories configured via
+dnl PAC_CONFIG_SUBDIR will agree with the top-level configure about these
+dnl critical variables (esp. compiler selection).  These exports should come
+dnl before any subconfigures in this script.
+dnl
+dnl This list is arguably incomplete, and should possibly be automatically
+dnl generated from "$ac_precious_vars" using code similar to the implementation
+dnl of PAC_CONFIG_SUBDIR.
+dnl
+dnl To be clear, without these exports any variable values determined by this
+dnl configure script will not be seen by child scripts.  Instead they will dnl
+dnl receive the only the original inherited environment and configure args used
+dnl when this configure script was invoked.
+export AR
+export AR_FLAGS
+export CC
+export CFLAGS
+export CPPFLAGS
+export CXX
+export CXXFLAGS
+export F77
+export FC
+export FCFLAGS
+export FFLAGS
+export LDFLAGS
+export LIBS
+export MPILIBNAME
+export PMPILIBNAME
+export RANLIB
 
 # ----------------------------------------------------------------------------
 # with-device
@@ -2012,9 +2044,12 @@ for var in $enable_mpit_pvars ; do
     AS_CASE(["$var"],
             [nem],[enable_nem_pvars=yes],
             [recvq],[enable_recvq_pvars=yes],
+            [recvq],[enable_recvq_pvars=yes],
+            [mvapich2],[enable_mv2_pvars=yes],
             [all|yes],
             [enable_nem_pvars=yes
-             enable_recvq_pvars=yes],
+             enable_recvq_pvars=yes
+             enable_mv2_pvars=yes],
             [no|none],[],
             [IFS=$save_IFS
              AC_MSG_WARN([Unknown value ($option) for enable-mpit-pvars])
@@ -2037,6 +2072,14 @@ else
 fi
 AC_DEFINE_UNQUOTED(ENABLE_RECVQ_STATISTICS,$status_recvq_pvars,
           [Define to 1 to enable message receive queue-related MPI_T performance variables])
+
+if test -n "$enable_mv2_pvars" ; then
+    status_mv2_pvars=1
+else
+    status_mv2_pvars=0
+fi
+AC_DEFINE_UNQUOTED(OSU_MPIT,$status_mv2_pvars,
+          [Define to 1 to enable message MVAPIVH2 related MPI_T performance variables])
 
 # ---------------------------------------------------------------------------
 # Support for the language bindings: Fortran 77, Fortran 90, and C++
@@ -5414,7 +5457,6 @@ fi
 
 dnl Configure any subdirectories.  Note that config.status will *not* 
 dnl reexecute these!
-dnl Export any important variables first:
 dnl 
 dnl Gastly problem.  CONFIG_SUBDIRS only adds the directories to the
 dnl list of directories to be configured.  It does NOT control the
@@ -5425,25 +5467,7 @@ dnl uses to handle the subdir configure.  However, later versions of
 dnl autoconf did this in a way that caused problems, paritcularly with 
 dnl errors reported as inconsistent cache files.  Instead, we simply
 dnl invoke the configure scripts (if present) directly.
-export AR
-export AR_FLAGS
-export RANLIB
-export MPILIBNAME
-export PMPILIBNAME
-export CC
-export CPPFLAGS
-export LIBS
-export CXX
-export CXXFLAGS
-export FFLAGS
-export CFLAGS
-export FCFLAGS
-export LDFLAGS
-# Make sure that any Fortran 77 and Fortran 90 compilers are exported to 
-# the subdir builds (in particular, ROMIO may try to use the Fortran 90
-# compiler to determine the Fortran 90 KINDS for MPI_OFFSET_KIND).
-export F77
-export FC
+
 #
 # -----------------------------------------------------------------------------
 # Configure threads first.  This is necessary to obtain all required

@@ -109,11 +109,8 @@ enum MPIDI_CH3_Pkt_types
     MPIDI_CH3_PKT_CM_REACTIVATION_DONE,
     MPIDI_CH3_PKT_CR_REMOTE_UPDATE,
 #endif /* defined(CKPT) */
-#if defined(_SMP_LIMIC_)
-    MPIDI_CH3_PKT_LIMIC_COMP,
-#endif
-#if defined(_SMP_CMA_)
-    MPIDI_CH3_PKT_CMA_COMP,
+#if defined(_SMP_LIMIC_) || defined(_SMP_CMA_)
+    MPIDI_CH3_PKT_SMP_DMA_COMP,
 #endif
 #endif /* defined(_OSU_MVAPICH_) */
 #if defined(USE_EAGER_SHORT)
@@ -197,24 +194,14 @@ typedef struct MPIDI_CH3_Pkt_send
 MPIDI_CH3_Pkt_send_t;
 
 #if defined(_OSU_MVAPICH_)
-#if defined(_SMP_CMA_)
-typedef struct MPIDI_CH3_Pkt_cma_comp
-{
-    uint8_t type;
-    MPIDI_CH3I_MRAILI_IBA_PKT_DECL
-    size_t nb;
-    MPI_Request *csend_req_id;
-} MPIDI_CH3_Pkt_cma_comp_t;
-#endif
-
-#if defined(_SMP_LIMIC_)
-typedef struct MPIDI_CH3_Pkt_limic_comp
+#if defined(_SMP_LIMIC_) || defined(_SMP_CMA_)
+typedef struct MPIDI_CH3_Pkt_comp
 {
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
     size_t nb;
     MPI_Request *send_req_id;
-} MPIDI_CH3_Pkt_limic_comp_t;
+} MPIDI_CH3_Pkt_comp_t;
 #endif
 #endif /* defined(_OSU_MVAPICH_) */
 
@@ -339,14 +326,10 @@ typedef struct MPIDI_CH3_Pkt_packetized_send_data {
     uint8_t type;
     MPIDI_CH3I_MRAILI_IBA_PKT_DECL
     MPI_Request receiver_req_id;
-#if defined(_SMP_LIMIC_)
+#if defined(_SMP_LIMIC_) || defined(_SMP_CMA_)
     struct MPID_Request *send_req_id;
-#endif
-
-#if defined(_SMP_CMA_)
     struct MPID_Request *csend_req_id;
 #endif
-
 } MPIDI_CH3_Pkt_packetized_send_data_t;
 
 typedef MPIDI_CH3_Pkt_packetized_send_data_t MPIDI_CH3_Pkt_rndv_r3_data_t;

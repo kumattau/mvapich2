@@ -334,7 +334,7 @@ int MPIDI_Put(const void *origin_addr, int origin_count, MPI_Datatype
 
 #if defined(_OSU_MVAPICH_) && !defined(_SCHEDULE)
     if (win_ptr->fall_back != 1 && win_ptr->using_lock != 1) {
-        MPIDI_CH3I_RDMA_try_rma(win_ptr, 0);
+        MPIDI_CH3I_RDMA_try_rma(win_ptr, 0, target_rank);
     }
 #endif /* defined(_OSU_MVAPICH_) && !defined(_SCHEDULE) */
 
@@ -447,8 +447,8 @@ int MPIDI_Get(void *origin_addr, int origin_count, MPI_Datatype
     }
 
 #if defined(_OSU_MVAPICH_) && !defined(_SCHEDULE)
-    if (win_ptr->fall_back != 1 && win_ptr->using_lock !=1) {
-        MPIDI_CH3I_RDMA_try_rma(win_ptr, 0);
+    if (win_ptr->fall_back != 1 && win_ptr->using_lock != 1) {
+        MPIDI_CH3I_RDMA_try_rma(win_ptr, 0, target_rank);
     }
 #endif /* defined(_OSU_MVAPICH_) && !defined(_SCHEDULE) */
 

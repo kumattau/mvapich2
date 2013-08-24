@@ -97,11 +97,8 @@ int MPIDI_CH3_Pkt_size_index[] = {
     sizeof(MPIDI_CH3I_MRAILI_Pkt_noop),
     sizeof(MPIDI_CH3I_MRAILI_Pkt_noop),
 #endif /* defined(CKPT) */
-#if defined(_SMP_LIMIC_)
-    sizeof(MPIDI_CH3_Pkt_limic_comp_t),
-#endif
-#if defined(_SMP_CMA_)
-    sizeof(MPIDI_CH3_Pkt_cma_comp_t),
+#if defined(_SMP_LIMIC_) || defined(_SMP_CMA_)
+    sizeof(MPIDI_CH3_Pkt_comp_t),
 #endif
 #if defined(USE_EAGER_SHORT)
     sizeof(MPIDI_CH3_Pkt_eagershort_send_t),
@@ -675,7 +672,7 @@ int MPIDI_CH3I_Try_acquire_win_lock(MPID_Win *win_ptr, int requested_lock)
 #endif
         {
             if(MPIDI_CH3I_SHM_win_lock (win_ptr->my_id, requested_lock, 
-                            win_ptr, 0) == 0) {
+                            win_ptr, 0, BLOCK_OTHERS) == 0) {
                 MPIDI_FUNC_EXIT(MPID_STATE_MPIDI_CH3I_TRY_ACQUIRE_WIN_LOCK);
                 return 0;
             } 

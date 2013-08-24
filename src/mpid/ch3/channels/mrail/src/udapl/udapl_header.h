@@ -38,11 +38,6 @@ typedef struct
     DAT_RMR_CONTEXT rkey;
 } VIP_MEM_HANDLE;
 
-#if 0
-#define D_PRINT(fmt, args...)	{fprintf(stderr, "[%d][%s:%d]", viadev.me, __FILE__, __LINE__);\
-				 fprintf(stderr, fmt, ## args); fflush(stderr);}
-#else
 #define D_PRINT(fmt, args...)
-#endif
 
 #endif

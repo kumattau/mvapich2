@@ -126,7 +126,7 @@ int MPIDI_CH3_iStartMsg(MPIDI_VC_t * vc, void *pkt, MPIDI_msg_sz_t pkt_sz,
     MPIDI_CH3_Pkt_t *upkt = (MPIDI_CH3_Pkt_t *)pkt;
     if (upkt->type == MPIDI_CH3_PKT_RNDV_CLR_TO_SEND) {
         MPIDI_CH3_Pkt_rndv_clr_to_send_t * cts_pkt = &(upkt->rndv_clr_to_send);
-        if (cts_pkt->rndv.protocol == VAPI_PROTOCOL_RPUT) {
+        if (cts_pkt->rndv.protocol == MV2_RNDV_PROTOCOL_RPUT) {
             /*If using rput protocol, keep track of the request*/
             MPID_Request *rreq;
             MPID_Request_get_ptr(cts_pkt->receiver_req_id, rreq);

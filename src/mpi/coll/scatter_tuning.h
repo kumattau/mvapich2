@@ -98,6 +98,14 @@ extern int MPIR_Scatter_MV2_Direct(const void *sendbuf,
                               MPI_Datatype recvtype,
                               int root, MPID_Comm * comm_ptr, int *errflag);
 
+extern int MPIR_Scatter_MV2_Direct_Blk(const void *sendbuf,
+                              int sendcnt,
+                              MPI_Datatype sendtype,
+                              void *recvbuf,
+                              int recvcnt,
+                              MPI_Datatype recvtype,
+                              int root, MPID_Comm * comm_ptr, int *errflag);
+
 
 extern int MPIR_Scatter_MV2_two_level_Binomial(const void *sendbuf,
                               int sendcnt,

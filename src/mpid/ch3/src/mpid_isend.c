@@ -51,6 +51,7 @@ int MPID_Isend(const void * buf, int count, MPI_Datatype datatype, int rank,
 #if defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
 #endif    
+    int eager_threshold = -1;
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_MPID_ISEND);
 
@@ -175,33 +176,45 @@ skip_self_send:
             sreq->mrail.cuda_transfer_mode = NONE;
         }
 
+        /*forces rndv for some IPC based CUDA transfers*/
+#ifdef HAVE_CUDA_IPC
+        if (vc->smp.local_rank != -1 &&
+            sreq->mrail.cuda_transfer_mode != NONE &&
+            rdma_cuda_ipc) { 
+
+            /*initialize IPC buffered channel if not initialized*/
+            if (rdma_cuda_dynamic_init && 
+                cuda_initialized && 
+                vc->smp.can_access_peer == CUDA_IPC_UNINITIALIZED) {
+                cudaipc_init_dynamic (vc);
+            }
+
+            if (vc->smp.can_access_peer == CUDA_IPC_ENABLED &&
+                cudaipc_stage_buffered &&
+                dt_contig &&
+                data_sz >= rdma_cuda_ipc_threshold)  {
+                /* force RNDV for CUDA transfers when buffered CUDA IPC is enabled or
+                 * if rdma_cuda_smp_ipc is set off */
+                if (!rdma_cuda_smp_ipc) {
+                    goto rndv_send;
+                }
+            }
+        }
+#endif
+
         /*forces rndv for non IPC based CUDA transfers*/
         if (SMP_INIT && 
             vc->smp.local_rank != -1 &&
             sreq->mrail.cuda_transfer_mode != NONE) {
 #ifdef HAVE_CUDA_IPC
             if (rdma_cuda_ipc == 0 || 
-                vc->smp.can_access_peer == 0) 
+                vc->smp.can_access_peer != CUDA_IPC_ENABLED) 
 #endif
             {
                 goto rndv_send;
             }
         }
 
-        /*forces rndv for some IPC based CUDA transfers*/
-#ifdef HAVE_CUDA_IPC
-        if (rdma_cuda_ipc &&
-            cudaipc_stage_buffered &&
-            vc->smp.can_access_peer == 1 &&
-            dt_contig &&
-            sreq->mrail.cuda_transfer_mode != NONE &&
-            data_sz >= rdma_cuda_ipc_threshold) {
-            /*force RNDV for CUDA transfers when buffered CUDA IPC is enabled*/
-            if (!rdma_cuda_smp_ipc) {
-               goto rndv_send;
-            }
-        }
-#endif
     }
 #endif
 
@@ -209,7 +222,11 @@ skip_self_send:
     if (data_sz + sizeof(MPIDI_CH3_Pkt_eager_send_t) <=	vc->eager_max_msg_sz
         && !vc->force_rndv)
 #else /* defined(_OSU_MVAPICH_) */
-    if (data_sz + sizeof(MPIDI_CH3_Pkt_eager_send_t) <=	vc->eager_max_msg_sz)
+    MPIDI_CH3_GET_EAGER_THRESHOLD(&eager_threshold, comm, vc);
+
+    /* FIXME: flow control: limit number of outstanding eager messages
+       containing data and need to be buffered by the receiver */
+    if (data_sz + sizeof(MPIDI_CH3_Pkt_eager_send_t) <= eager_threshold)
 #endif /* defined(_OSU_MVAPICH_) */
     {
 #if defined (_OSU_PSM_)

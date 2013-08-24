@@ -71,10 +71,10 @@ extern int                  rdma_max_r3_pending_data;
 extern int                  rdma_vbuf_total_size;
 extern int                  rdma_max_inline_size;
 
-extern uint32_t             viadev_srq_alloc_size;
-extern uint32_t             viadev_srq_fill_size;
-extern uint32_t             viadev_srq_limit;
-extern uint32_t             viadev_max_r3_oust_send;
+extern uint32_t             mv2_srq_alloc_size;
+extern uint32_t             mv2_srq_fill_size;
+extern uint32_t             mv2_srq_limit;
+extern uint32_t             mv2_max_r3_oust_send;
 
 extern int                  rdma_polling_set_threshold;
 extern int                  rdma_polling_set_limit;

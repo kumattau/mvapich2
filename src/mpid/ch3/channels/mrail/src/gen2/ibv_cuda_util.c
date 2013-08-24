@@ -21,7 +21,9 @@
 #define SUCCESS_PACKUNPACK_OPT 0
 #define FAILURE_PACKUNPACK_OPT 1
 
-static int cudaipc_init = 0;
+static int can_use_cuda = 0;
+int cudaipc_init = 0;
+static int cudaipc_init_global = 0;
 static CUcontext mv2_cuda_context = NULL;
 static CUcontext mv2_save_cuda_context = NULL;
 
@@ -673,8 +675,17 @@ int is_device_buffer(const void *buffer)
     struct cudaPointerAttributes attributes;
     CUresult cu_err = CUDA_SUCCESS;
 
-    if (!rdma_enable_cuda  || buffer == NULL || buffer == MPI_IN_PLACE) {
+    if (!rdma_enable_cuda  || buffer == NULL || buffer == MPI_IN_PLACE || !can_use_cuda) {
         return 0;
+    }
+
+    if (rdma_enable_cuda && rdma_cuda_dynamic_init 
+        && cuda_preinitialized && !cuda_initialized) {
+        cu_err = cuCtxGetCurrent(&mv2_save_cuda_context);
+        if (cu_err != CUDA_SUCCESS || mv2_save_cuda_context == NULL) { 
+            return 0;
+        }
+        cuda_init_dynamic (MPIDI_Process.my_pg);
     }
 
     cu_err = cuPointerGetAttribute(&memory_type, 
@@ -696,9 +707,11 @@ int is_device_buffer(const void *buffer)
 void ibv_cuda_register(void *ptr, size_t size)
 {
     cudaError_t cuerr = cudaSuccess;
-    if(ptr == NULL) {
+
+    if(ptr == NULL || (rdma_cuda_dynamic_init && !cuda_initialized)) {
         return;
     }
+
     cuerr = cudaHostRegister(ptr, size, cudaHostRegisterPortable);
     if (cuerr != cudaSuccess) {
         ibv_error_abort(GEN_EXIT_ERR, "cudaHostRegister Failed");
@@ -710,7 +723,7 @@ void ibv_cuda_register(void *ptr, size_t size)
 void ibv_cuda_unregister(void *ptr)
 {
     cudaError_t cuerr = cudaSuccess;
-    if (ptr == NULL) {
+    if (ptr == NULL || (rdma_cuda_dynamic_init && !cuda_initialized)) {
         return;
     }
     cuerr = cudaHostUnregister(ptr);
@@ -870,10 +883,19 @@ void cuda_get_user_parameters() {
     }
     MPIU_Assert(cudaipc_stage_buffered_limit >= rdma_cuda_ipc_threshold);
 
+    if ((value = getenv("MV2_CUDA_DYNAMIC_INIT")) != NULL) {
+        rdma_cuda_dynamic_init = atoi(value);
+    }
+
+    /*TODO: remove this dependency*/
+    /*disabling cuda_smp_ipc (disabled by default) when dynamic initialization us used*/
+    if (rdma_cuda_dynamic_init) { 
+        rdma_cuda_smp_ipc = 0;
+    }
 #endif
 }
 
-void cuda_init(MPIDI_PG_t * pg)
+void cuda_init (MPIDI_PG_t * pg)
 {
 #if defined(HAVE_CUDA_IPC)
     int mpi_errno = MPI_SUCCESS, errflag = 0;
@@ -885,7 +907,7 @@ void cuda_init(MPIDI_PG_t * pg)
     cudaError_t cudaerr = cudaSuccess;
     CUresult curesult = CUDA_SUCCESS;
     CUdevice cudevice; 
-    
+
     comm_world = MPIR_Process.comm_world;
     num_processes = comm_world->local_size;
     my_rank = comm_world->rank;
@@ -940,22 +962,25 @@ void cuda_init(MPIDI_PG_t * pg)
     for (i=0; i<num_processes; i++) {
         if (i == my_rank) continue;
         MPIDI_Comm_get_vc(comm_world, i, &vc);
-        vc->smp.can_access_peer = 0;
+        vc->smp.can_access_peer = CUDA_IPC_UNINITIALIZED;
         if (vc->smp.local_rank != -1) {
             /*if both processes are using the same device, IPC works 
               but cudaDeviceCanAccessPeer returns 0, or
               else decide based on result of cudaDeviceCanAccessPeer*/
             if (device[my_rank] == device[i]) { 
-                vc->smp.can_access_peer = 1;
-            } else { 
+                vc->smp.can_access_peer = CUDA_IPC_ENABLED;
+            } else {
                 cudaerr = cudaDeviceCanAccessPeer(&vc->smp.can_access_peer, device[my_rank], device[i]);
                 if (cudaerr != cudaSuccess) {
                     ibv_error_abort(GEN_EXIT_ERR,"cudaDeviceCanAccessPeer failed");
                 }
+                vc->smp.can_access_peer = (vc->smp.can_access_peer == 0) ? CUDA_IPC_DISABLED : CUDA_IPC_ENABLED;
             }
-            if (vc->smp.can_access_peer) {
+            if (vc->smp.can_access_peer == CUDA_IPC_ENABLED) {
                 has_cudaipc_peer = 1;
             }
+        } else { 
+            vc->smp.can_access_peer = CUDA_IPC_DISABLED;
         }
     }
     
@@ -967,6 +992,7 @@ void cuda_init(MPIDI_PG_t * pg)
     if(mpi_errno) {
         ibv_error_abort (GEN_EXIT_ERR, "MPIR_Allgather_impl returned error");
     }
+    cudaipc_init_global = cudaipc_init;
 
     if (rdma_cuda_ipc && cudaipc_stage_buffered) {
         if (cudaipc_init) {
@@ -981,13 +1007,126 @@ void cuda_init(MPIDI_PG_t * pg)
     MPIU_Free(device);
 #endif
 
+    can_use_cuda = 1;
+    cuda_initialized = 1; 
+
+    if (stream_d2h == 0 && stream_h2d == 0) {
+        allocate_cuda_rndv_streams();
+    }
+
     if (SMP_INIT) {
         MPIDI_CH3I_CUDA_SMP_cuda_init(pg);
     }
 }
 
+void cuda_preinit (MPIDI_PG_t * pg)
+{
+    int dev_count; 
+    cudaError_t cuda_err = CUDA_SUCCESS; 
+#if defined(HAVE_CUDA_IPC)
+    int mpi_errno = MPI_SUCCESS, errflag = 0;
+    int i, num_processes, my_rank;
+    MPID_Comm *comm_world = NULL;
+    MPIDI_VC_t* vc = NULL;
+#endif
+
+    cuda_err = cudaGetDeviceCount(&dev_count);
+    if (cuda_err == CUDA_SUCCESS && dev_count > 0) {
+        can_use_cuda = 1; 
+    }
+
+#if defined(HAVE_CUDA_IPC)
+    if (rdma_cuda_ipc) { 
+        comm_world = MPIR_Process.comm_world;
+        num_processes = comm_world->local_size;
+        my_rank = comm_world->rank;
+
+        cudaipc_num_local_procs =  MPIDI_Num_local_processes(pg);
+        cudaipc_my_local_id = MPIDI_Get_local_process_id(pg);
+
+        /*check if any one of the nodes have multiple processes/node and a GPU*/
+        cudaipc_init = (cudaipc_num_local_procs > 1 && can_use_cuda == 1) ? 1 : 0; 
+        mpi_errno = MPIR_Allreduce_impl (&cudaipc_init, &cudaipc_init_global, 1,
+                            MPI_INT, MPI_SUM, comm_world, &errflag);
+
+    
+        if (cudaipc_init) {
+            /*set can_access_peer to pre-setup value*/
+            for (i=0; i<num_processes; i++) {
+                MPIDI_Comm_get_vc(comm_world, i, &vc);
+                vc->smp.can_access_peer = CUDA_IPC_UNINITIALIZED;
+            }
+        } else {
+            /*set can_access_peer to disabled value*/
+            for (i=0; i<num_processes; i++) {
+                MPIDI_Comm_get_vc(comm_world, i, &vc);
+                vc->smp.can_access_peer = CUDA_IPC_DISABLED;
+            }
+        }    
+    
+        if (cudaipc_init_global) {
+            /*allocate shared memory region to exchange ipc info*/
+            cudaipc_allocate_shared_region (pg, num_processes, my_rank);
+        }
+    }
+#endif
+
+    cuda_preinitialized = 1;
+}
+
+void cuda_init_dynamic (MPIDI_PG_t * pg)
+{
+    int i, num_processes, my_rank;
+    MPID_Comm *comm_world = NULL;
+    MPIDI_VC_t *vc = NULL; 
+
+    cuda_initialized = 1; 
+
+    /*allocate CUDA streams*/
+    MPIU_Assert(stream_d2h == 0 && stream_h2d == 0);
+    allocate_cuda_rndv_streams();
+
+    /*initialize and register shared memory buffers*/
+    if (SMP_INIT) {
+        MPIDI_CH3I_CUDA_SMP_cuda_init(pg);
+    }
+
+    /*register vbufs*/
+    register_cuda_vbuf_regions();
+
+    /*register rdma fastpath buffers*/
+    comm_world = MPIR_Process.comm_world;
+    num_processes = comm_world->local_size;
+    my_rank = comm_world->rank;   
+ 
+    for (i=0; i<num_processes; i++) {
+        MPIDI_Comm_get_vc (comm_world, i, &vc); 
+        if (vc->mrail.rfp.RDMA_send_buf_DMA) {
+            if (rdma_eager_cudahost_reg) {
+                ibv_cuda_register (vc->mrail.rfp.RDMA_send_buf_DMA, 
+                        num_rdma_buffer * rdma_fp_buffer_size);
+            }
+        }
+    }
+
+    if (rdma_cuda_ipc && cudaipc_init) { 
+        if (cudaipc_stage_buffered) {
+            /*allocate ipc region locally*/
+            cudaipc_allocate_ipc_region (pg, num_processes, my_rank);
+        } else { 
+            if (rdma_cuda_enable_ipc_cache) {
+                /*set device info in shared region*/
+                cudaipc_share_device_info ();
+                /*initialize ipc cache*/
+                cudaipc_initialize_cache();
+            }
+        }
+    }
+}
+
 void cuda_cleanup()
 {
+
     CUresult curesult = CUDA_SUCCESS; 
 
     deallocate_cuda_events();
@@ -995,9 +1134,10 @@ void cuda_cleanup()
     deallocate_cuda_streams();
 
 #if defined(HAVE_CUDA_IPC)
-    if (rdma_cuda_ipc && cudaipc_stage_buffered && cudaipc_init) {
+    if (rdma_cuda_ipc && cudaipc_init_global) {
         cudaipc_finalize();
     }
+
     if (rdma_cuda_ipc && rdma_cuda_enable_ipc_cache && !cudaipc_stage_buffered) {
         int i;
         for (i = 0; i < cudaipc_num_local_procs; i++) {

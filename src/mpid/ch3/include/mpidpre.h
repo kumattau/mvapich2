@@ -194,6 +194,7 @@ typedef union {
 
 typedef struct MPIDI_CH3I_comm
 {
+    int eager_max_msg_sz;   /* comm-wide eager/rendezvous message threshold */
     int coll_active;        /* TRUE iff this communicator is collectively active */
     int anysource_enabled;  /* TRUE iff this anysource recvs can be posted on this communicator */
     struct MPID_nem_barrier_vars *barrier_vars; /* shared memory variables used in barrier */
@@ -316,6 +317,7 @@ typedef struct MPIDI_VC * MPID_VCR;
     MPIDI_CH3I_RDMA_put_get_list * put_get_list;                                 \
     int put_get_list_size;                                                       \
     int put_get_list_tail;                                                       \
+    int * put_get_list_size_per_process;                                         \
     int wait_for_complete;                                                       \
     int rma_issued;                                                              \
     /* Preregistered buffer for small msg */                                     \
@@ -424,6 +426,8 @@ struct MPIDI_Win_target_state {
                            fence) to ensure that the fence state across  \
                            all processes remains consistent. */          \
     int start_assert;   /* assert passed to MPI_Win_start */             \
+    int cas_complete;    /*flag for compare-and-swap to increase counter  \
+                          and release lock*/                               
 
 #ifdef MPIDI_CH3_WIN_DECL
 #define MPID_DEV_WIN_DECL \

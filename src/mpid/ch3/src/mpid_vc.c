@@ -799,13 +799,12 @@ int MPIDI_VC_Init( MPIDI_VC_t *vc, MPIDI_PG_t *pg, int rank )
      * initialization when the status of SMP (SMP_INIT) is known.
      */
 #else /* defined(_OSU_MVAPICH_) */
-    #if !defined (_OSU_PSM_)
-        vc->eager_max_msg_sz      = MPIDI_CH3_EAGER_MAX_MSG_SIZE;
-    #else
-        vc->eager_max_msg_sz      = -1;
-    #endif
-#endif /* defined(_OSU_MVAPICH_) */
     vc->ready_eager_max_msg_sz = -1; /* no limit */;
+    vc->eager_max_msg_sz = MPIR_PARAM_CH3_EAGER_MAX_MSG_SIZE;
+#if defined (_OSU_PSM_)
+    vc->eager_max_msg_sz      = -1;
+#endif
+#endif /* defined(_OSU_MVAPICH_) */
 
     vc->sendNoncontig_fn = MPIDI_CH3_SendNoncontig_iov;
 #ifdef ENABLE_COMM_OVERRIDES

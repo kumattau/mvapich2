@@ -242,8 +242,9 @@ int static ib_cma_event_handler(struct rdma_cm_id *cma_id,
             vc->mrail.remote_vc_addr = (uint64_t) gotvc;
 
             /* Both ranks are trying to connect. Clearing race condition */
-            if (((vc->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_CLI) &&
-                (pg_rank > rank)) || vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE)
+            if (((vc->ch.state == MPIDI_CH3I_VC_STATE_CONNECTING_CLI) && (pg_rank > rank)) 
+                || vc->ch.state == MPIDI_CH3I_VC_STATE_IDLE 
+                || vc->ch.state == MPIDI_CH3I_VC_STATE_IWARP_CLI_WAITING )
             {
                 DEBUG_PRINT("Passive size rejecting connect request: "
                     "Crossing connection requests expected\n");

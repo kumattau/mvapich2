@@ -36,8 +36,8 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv_cuda(MPIDI_VC_t * vc,
         ("[prepare cts] rput protocol, recv size %d, segsize %d, io count %d\n",
          req->dev.recv_data_sz, req->dev.segment_size, req->dev.iov_count);
 
-    if (VAPI_PROTOCOL_RPUT == rdma_rndv_protocol) {
-        req->mrail.protocol = VAPI_PROTOCOL_RPUT;
+    if (MV2_RNDV_PROTOCOL_RPUT == rdma_rndv_protocol) {
+        req->mrail.protocol = MV2_RNDV_PROTOCOL_RPUT;
     } else {
         PRINT_ERROR("RGET and R3 are not supported for GPU to GPU transfer \n");
         exit(EXIT_FAILURE);
@@ -291,14 +291,14 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv_cuda_ipc_buffered (MPIDI_VC_t * vc,
                                             MPID_Request * sreq) 
 {
     if (vc->smp.local_rank == -1
-        || vc->smp.can_access_peer == 0
+        || vc->smp.can_access_peer != CUDA_IPC_ENABLED
         || sreq->mrail.cuda_transfer_mode == NONE
         || sreq->dev.iov_count > 1 
         || sreq->dev.iov[0].MPID_IOV_LEN < rdma_cuda_ipc_threshold) {
         return 0;
     }
 
-    sreq->mrail.protocol = VAPI_PROTOCOL_CUDAIPC;
+    sreq->mrail.protocol = MV2_RNDV_PROTOCOL_CUDAIPC;
     sreq->mrail.d_entry = NULL;
     sreq->mrail.cudaipc_stage_index = 0;
 
@@ -324,7 +324,7 @@ int MPIDI_CH3I_MRAIL_Revert_rndv_cuda_ipc_buffered (MPIDI_VC_t * vc,
         MPIU_Free(sreq->mrail.rndv_buf);
         sreq->mrail.rndv_buf = NULL;
     }
-    sreq->mrail.protocol = VAPI_PROTOCOL_CUDAIPC;
+    sreq->mrail.protocol = MV2_RNDV_PROTOCOL_CUDAIPC;
     sreq->mrail.cudaipc_stage_index = 0;
 
     if (1 == sreq->dev.iov_count && (sreq->dev.OnDataAvail == NULL
@@ -378,7 +378,7 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv_recv_cuda_ipc_buffered(MPIDI_VC_t * vc,
                                             MPID_Request * rreq) 
 {
 
-    rreq->mrail.protocol = VAPI_PROTOCOL_R3;
+    rreq->mrail.protocol = MV2_RNDV_PROTOCOL_R3;
     rreq->mrail.d_entry = NULL;
     rreq->mrail.cudaipc_stage_index = 0;
 
@@ -400,7 +400,7 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv_cuda_ipc(MPIDI_VC_t * vc,
     CUdeviceptr baseptr;
 
     if (vc->smp.local_rank == -1
-        || vc->smp.can_access_peer == 0
+        || vc->smp.can_access_peer != CUDA_IPC_ENABLED
         || sreq->mrail.cuda_transfer_mode == NONE
         || sreq->dev.iov_count > 1 
         || sreq->dev.iov[0].MPID_IOV_LEN < rdma_cuda_ipc_threshold) {
@@ -408,7 +408,7 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv_cuda_ipc(MPIDI_VC_t * vc,
         goto fn_exit;
     }
 
-    sreq->mrail.protocol = VAPI_PROTOCOL_RGET;
+    sreq->mrail.protocol = MV2_RNDV_PROTOCOL_RGET;
     sreq->mrail.d_entry = NULL;
 
     cuerr = cuMemGetAddressRange(&baseptr, &size, (CUdeviceptr) sreq->dev.iov[0].MPID_IOV_BUF);
@@ -953,22 +953,22 @@ int MPIDI_CH3_Prepare_rndv_cts_cuda(MPIDI_VC_t * vc,
 #endif
 
 #if defined(HAVE_CUDA_IPC)
-    if (rdma_cuda_ipc && cudaipc_stage_buffered && vc->smp.can_access_peer) {
-        if ((rreq->mrail.protocol == VAPI_PROTOCOL_CUDAIPC && 
+    if (rdma_cuda_ipc && cudaipc_stage_buffered && vc->smp.can_access_peer == CUDA_IPC_ENABLED) {
+        if ((rreq->mrail.protocol == MV2_RNDV_PROTOCOL_CUDAIPC && 
                 rreq->mrail.cuda_transfer_mode == NONE) ||
-            (rreq->mrail.protocol != VAPI_PROTOCOL_CUDAIPC &&
+            (rreq->mrail.protocol != MV2_RNDV_PROTOCOL_CUDAIPC &&
                 rreq->mrail.cuda_transfer_mode != NONE)) {
             if (vc->smp.local_nodes >= 0) {
-                rreq->mrail.protocol = VAPI_PROTOCOL_R3;
+                rreq->mrail.protocol = MV2_RNDV_PROTOCOL_R3;
             } else {
-                rreq->mrail.protocol = VAPI_PROTOCOL_CUDAIPC;
+                rreq->mrail.protocol = MV2_RNDV_PROTOCOL_CUDAIPC;
             }
         }
     }
 #endif
 
     switch (rreq->mrail.protocol) {
-        case VAPI_PROTOCOL_RPUT:
+        case MV2_RNDV_PROTOCOL_RPUT:
             {
                 MPIDI_CH3I_MRAIL_Prepare_rndv_cuda(vc, NULL, rreq);
                 MPIDI_CH3I_MRAIL_SET_PKT_RNDV_CUDA(cts_pkt, rreq);
@@ -979,10 +979,10 @@ int MPIDI_CH3_Prepare_rndv_cts_cuda(MPIDI_VC_t * vc,
                 MPIDI_CH3I_MRAIL_REVERT_RPUT(rreq);
                 break;
             }
-        case VAPI_PROTOCOL_CUDAIPC:
+        case MV2_RNDV_PROTOCOL_CUDAIPC:
             {
 #if defined(HAVE_CUDA_IPC)
-                cts_pkt->rndv.protocol = VAPI_PROTOCOL_CUDAIPC;
+                cts_pkt->rndv.protocol = MV2_RNDV_PROTOCOL_CUDAIPC;
                 MPIDI_CH3I_MRAIL_Prepare_rndv_recv_cuda_ipc_buffered(vc, rreq);
 #else
                 PRINT_ERROR("CUDAIPC rndv is requested, but CUDA IPC is not supported\n");
@@ -990,9 +990,9 @@ int MPIDI_CH3_Prepare_rndv_cts_cuda(MPIDI_VC_t * vc,
 #endif
                 break;
             }
-        case VAPI_PROTOCOL_R3:
+        case MV2_RNDV_PROTOCOL_R3:
             {
-                cts_pkt->rndv.protocol = VAPI_PROTOCOL_R3;
+                cts_pkt->rndv.protocol = MV2_RNDV_PROTOCOL_R3;
                 break;
             }
         default:

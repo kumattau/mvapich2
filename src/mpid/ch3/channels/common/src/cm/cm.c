@@ -884,7 +884,8 @@ int cm_rcv_qp_create(MPIDI_VC_t * vc, uint32_t * qpn)
                     (sizeof(*vc->mrail.srp.credits) * vc->mrail.num_rails));
     }
 
-    attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ;
+    attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ |
+                            IBV_ACCESS_REMOTE_ATOMIC;
     attr.qp_state = IBV_QPS_INIT;
 
     for (rail_index = 0; rail_index < vc->mrail.num_rails; rail_index++) {

@@ -79,6 +79,7 @@ int mv2_enable_knomial_2level_bcast = 1;
 int mv2_inter_node_knomial_factor = 4;
 int mv2_knomial_2level_bcast_message_size_threshold = 2048;
 int mv2_knomial_2level_bcast_system_size_threshold = 64;
+int mv2_enable_zcpy_bcast=1; 
 
 int mv2_shmem_coll_size = 0;
 char *mv2_shmem_coll_file = NULL;
@@ -149,7 +150,9 @@ int mv2_knomial_inter_leader_bcast = 1;
 int mv2_knomial_intra_node_threshold = 128 * 1024;
 int mv2_knomial_inter_leader_threshold = 64 * 1024;
 int mv2_bcast_two_level_system_size = 64;
-int mv2_pipelined_knomial_factor=2;
+int mv2_pipelined_knomial_factor = 2;
+int mv2_pipelined_zcpy_knomial_factor = -1;
+int zcpy_knomial_factor = 2;
 int mv2_intra_node_knomial_factor = 4;
 int mv2_shmem_coll_spin_count = 5;
 
@@ -255,6 +258,12 @@ extern void Wait_for_CR_Completion();
 void *smc_store;
 int smc_store_set;
 #endif
+
+#if OSU_MPIT
+int mv2_num_2level_comm_requests            = 0; 
+int mv2_num_2level_comm_success             = 0; 
+int mv2_num_shmem_coll_calls                = 0;
+#endif /* OSU_MPIT */
 
 #ifdef _ENABLE_CUDA_
 static void *mv2_cuda_host_send_buf = NULL;
@@ -1687,6 +1696,16 @@ void MV2_Read_env_vars(void)
             mv2_inter_node_knomial_factor = MV2_INTER_NODE_KNOMIAL_FACTOR_MAX;
         }
     }
+    if ((value = getenv("MV2_USE_PIPELINED_ZCPY_BCAST_KNOMIAL_FACTOR")) != NULL) {
+        flag = (int) atoi(value);
+        if (flag >= 0)
+           mv2_pipelined_zcpy_knomial_factor = flag;
+    }
+    if ((value = getenv("MV2_USE_ZCOPY_BCAST")) != NULL) {
+        flag = (int) atoi(value);
+        if (flag >= 0)
+           mv2_enable_zcpy_bcast = flag;
+    }
 
     if ((value = getenv("MV2_RED_SCAT_SHORT_MSG")) != NULL) {
         flag = (int) atoi(value);
@@ -1762,6 +1781,16 @@ void MV2_Read_env_vars(void)
     if ((value = getenv("MV2_TWO_LEVEL_COMM_THRESHOLD")) != NULL) {
         shmem_coll_count_threshold = atoi(value);
     }
+
+    if(mv2_use_slot_shmem_coll == 0 || mv2_use_slot_shmem_bcast  ==0 
+#if defined(_MCST_SUPPORT_)
+        || rdma_enable_mcast  == 1
+#endif /* #if defined(_MCST_SUPPORT_) */ 
+      ) { 
+       /* Disable zero-copy bcsat if slot-shmem, or slot-shmem-bcast params
+        * are off, or when mcast is on */ 
+       mv2_enable_zcpy_bcast = 0; 
+    } 
 
     /* Override MPICH2 default env values for Gatherv */
     MPIR_PARAM_GATHERV_INTER_SSEND_MIN_PROCS = 1024;
@@ -2551,34 +2580,36 @@ void mv2_shm_bcast(shmem_info_t * shmem, char *buf, int len, int root)
     int nspin = 0;
     int windex = shmem->write % mv2_shm_window_size;
     int rindex = shmem->read % mv2_shm_window_size;
-    if (shmem->local_rank == root) {
+    if(shmem->local_size > 0) { 
+        if (shmem->local_rank == root) {
 #if defined(_ENABLE_CUDA_)
-        if (rdma_enable_cuda) { 
-            MPIR_Localcopy(buf, len, MPI_BYTE, 
-                shmem->queue[root].shm_slots[windex]->buf, len, MPI_BYTE);
-        } else
+            if (rdma_enable_cuda) { 
+                MPIR_Localcopy(buf, len, MPI_BYTE, 
+                    shmem->queue[root].shm_slots[windex]->buf, len, MPI_BYTE);
+            } else
 #endif
-        {
-            MPIU_Memcpy(shmem->queue[root].shm_slots[windex]->buf, buf, len);
-        }
-        shmem->queue[root].shm_slots[windex]->psn = shmem->write;
-    } else {
-        while (shmem->queue[root].shm_slots[rindex]->psn != shmem->read) {
-            nspin++;
-            if (nspin % mv2_shmem_coll_spin_count == 0) {
-                mv2_shm_progress(&nspin);
+            {
+                MPIU_Memcpy(shmem->queue[root].shm_slots[windex]->buf, buf, len);
+            }
+            shmem->queue[root].shm_slots[windex]->psn = shmem->write;
+        } else {
+            while (shmem->queue[root].shm_slots[rindex]->psn != shmem->read) {
+                nspin++;
+                if (nspin % mv2_shmem_coll_spin_count == 0) {
+                    mv2_shm_progress(&nspin);
+                }
+            }
+#if defined(_ENABLE_CUDA_)
+            if (rdma_enable_cuda) { 
+                MPIR_Localcopy(shmem->queue[root].shm_slots[rindex]->buf, len, MPI_BYTE, 
+                                buf, len, MPI_BYTE);
+            } else 
+#endif
+            {
+                MPIU_Memcpy(buf, shmem->queue[root].shm_slots[rindex]->buf, len);
             }
         }
-#if defined(_ENABLE_CUDA_)
-        if (rdma_enable_cuda) { 
-            MPIR_Localcopy(shmem->queue[root].shm_slots[rindex]->buf, len, MPI_BYTE, 
-                            buf, len, MPI_BYTE);
-        } else 
-#endif
-        {
-            MPIU_Memcpy(buf, shmem->queue[root].shm_slots[rindex]->buf, len);
-        }
-    }
+    } 
     shmem->write++;
     shmem->read++;
     if (IS_SHMEM_WINDOW_FULL(shmem->write, shmem->tail)) {
@@ -2587,6 +2618,233 @@ void mv2_shm_bcast(shmem_info_t * shmem, char *buf, int len, int root)
         shmem->tail = shmem->read;
     }
 }
+
+
+#if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER) 
+int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
+                       int src, int expected_recv_count,
+                       int *dst_array, int expected_send_count,
+                       int knomial_degree,
+                       MPID_Comm *comm_ptr)
+{
+    int mpi_errno = MPI_SUCCESS;
+    int errflag = FALSE;
+    int nspin = 0, i=0, intra_node_root=0;
+    int windex = shmem->write % mv2_shm_window_size;
+    int rindex = shmem->read % mv2_shm_window_size;
+    MPIDI_VC_t *vc=NULL;
+    MPID_Comm *shmem_commptr=NULL, *leader_commptr=NULL;
+    shm_coll_pkt pkt;
+    shm_coll_pkt *remote_handle_info_parent = shmem->remote_handle_info_parent;
+    shm_coll_pkt *remote_handle_info_children = shmem->remote_handle_info_children;
+
+    MPID_Comm_get_ptr(comm_ptr->ch.shmem_comm, shmem_commptr);
+    MPID_Comm_get_ptr(comm_ptr->ch.leader_comm, leader_commptr);
+
+    if(shmem->buffer_registered == 0) {
+       if(shmem_commptr->rank == 0 && leader_commptr->local_size > 1) {
+           mpi_errno = mv2_shm_coll_reg_buffer(shmem->buffer, shmem->size,
+                                               shmem->mem_handle, &(shmem->buffer_registered));
+           if(mpi_errno) {
+                    MPIU_ERR_POP(mpi_errno);
+           }
+       }
+    }
+
+
+    if (shmem->local_rank == intra_node_root) {
+        MPID_Comm *leader_commptr=NULL;
+        MPID_Comm_get_ptr(comm_ptr->ch.leader_comm, leader_commptr);
+
+        if(leader_commptr->local_size > 1) {
+            /*Exchange keys, (if needed) */
+            if(shmem->exchange_rdma_keys == 1) {
+                if(remote_handle_info_parent != NULL) {
+                    MPIU_Free(remote_handle_info_parent);
+                    remote_handle_info_parent = NULL;
+                }
+                if(remote_handle_info_children != NULL) {
+                    MPIU_Free(remote_handle_info_children);
+                    remote_handle_info_children = NULL;
+                }
+                if(expected_recv_count > 0) {
+                    remote_handle_info_parent = MPIU_Malloc(sizeof(shm_coll_pkt)*1);
+                    i=0;
+                    do {
+                       pkt.key[i]  =  shmem->mem_handle[i]->rkey;
+                       pkt.addr[i] =  (uintptr_t) (shmem->buffer);
+                       i++;
+                    } while( i < rdma_num_hcas);
+
+                    mpi_errno = MPIC_Send(&pkt, sizeof(shm_coll_pkt), MPI_BYTE, src,
+                                             MPIR_BCAST_TAG, comm_ptr->ch.leader_comm);
+                    if (mpi_errno) {
+                                MPIU_ERR_POP(mpi_errno);
+                    }
+                    remote_handle_info_parent->peer_rank = src;
+                }
+
+                if(expected_send_count > 0) {
+                    remote_handle_info_children = MPIU_Malloc(sizeof(shm_coll_pkt)*expected_send_count);
+                }
+
+                for(i=0 ; i< expected_send_count; i++) {
+                    /* Sending to dst. Receive its key info */
+                    int j=0;
+                    mpi_errno = MPIC_Recv(&pkt, sizeof(shm_coll_pkt), MPI_BYTE, dst_array[i],
+                                              MPIR_BCAST_TAG, comm_ptr->ch.leader_comm, MPI_STATUS_IGNORE);
+                    if (mpi_errno) {
+                        MPIU_ERR_POP(mpi_errno);
+                    }
+
+                    do {
+                        remote_handle_info_children[i].key[j] = pkt.key[j];
+                        remote_handle_info_children[i].addr[j] = pkt.addr[j];
+                        j++;
+                    } while( j < rdma_num_hcas);
+                    remote_handle_info_children[i].peer_rank = dst_array[i];
+                }
+                shmem->exchange_rdma_keys          = 0;
+                shmem->bcast_knomial_factor        = knomial_degree;
+                shmem->remote_handle_info_parent   = remote_handle_info_parent;
+                shmem->remote_handle_info_children = remote_handle_info_children;
+                shmem->bcast_expected_send_count   = expected_send_count;
+            }
+
+            /********************************************
+             * the RDMA keys for the shmem buffer has been exchanged
+             * We are ready to move the data around
+              **************************************/
+            if(leader_commptr->rank != root) {
+                /* node-level leader, but not the root of the bcast */
+                shmem->queue[intra_node_root].shm_slots[windex]->tail_psn =  (volatile uint32_t *)
+                                 ((char *) (shmem->queue[intra_node_root].shm_slots[windex]->buf) + len);
+                /* Wait until the peer is yet to update the psn flag and 
+                 * until the psn and the tail flags have the same values*/
+                while(shmem->write !=
+                        (volatile uint32_t ) *(shmem->queue[intra_node_root].shm_slots[windex]->tail_psn)) {
+                    mv2_shm_progress(&nspin);
+                }
+                shmem->queue[intra_node_root].shm_slots[windex]->psn = shmem->write;
+            } else {
+                /* node-level leader, and the root of the bcast */
+#if defined(_ENABLE_CUDA_)
+                if (rdma_enable_cuda) {
+                    MPIR_Localcopy(buf, len, MPI_BYTE,
+                            shmem->queue[intra_node_root].shm_slots[windex]->buf, len, MPI_BYTE);
+                } else
+#endif
+                {
+
+                    MPIU_Memcpy(shmem->queue[intra_node_root].shm_slots[windex]->buf, buf, len);
+                }
+                shmem->queue[intra_node_root].shm_slots[windex]->psn = shmem->write;
+                shmem->queue[intra_node_root].shm_slots[windex]->tail_psn = (volatile uint32_t *)
+                            ((char *) (shmem->queue[intra_node_root].shm_slots[windex]->buf) + len);
+                *((volatile uint32_t *) shmem->queue[intra_node_root].shm_slots[windex]->tail_psn) =
+                                  shmem->write;
+            }
+
+            /* Post the rdma-writes to all the children in the tree */
+            for(i=0; i< shmem->bcast_expected_send_count; i++) {
+                uint32_t local_rdma_key, remote_rdma_key;
+                uint64_t local_rdma_addr, remote_rdma_addr, offset;
+                int rail=0, hca_num;
+
+                MPIDI_Comm_get_vc(leader_commptr, remote_handle_info_children[i].peer_rank, &vc);
+                offset= ((uintptr_t ) (shmem->queue[intra_node_root].shm_slots[windex]->buf) -
+                          (uintptr_t ) (shmem->buffer));
+                rail = MRAILI_Send_select_rail(vc);
+                hca_num = rail / (rdma_num_rails / rdma_num_hcas);
+
+                local_rdma_addr  =  (uint64_t) (shmem->queue[intra_node_root].shm_slots[windex]->buf);
+                local_rdma_key   = (shmem->mem_handle[hca_num])->lkey;
+                remote_rdma_addr =  (uint64_t) remote_handle_info_children[i].addr[hca_num] + offset;
+                remote_rdma_key  = remote_handle_info_children[i].key[hca_num];
+
+                mv2_shm_coll_prepare_post_send(local_rdma_addr, remote_rdma_addr, 
+                                  local_rdma_key, remote_rdma_key,
+                                  len + sizeof(volatile uint32_t), rail,  vc);
+            }
+
+            /* If a node-leader is not root, we finally copy the data back into 
+             * the user-level buffer */
+            if(leader_commptr->rank != root) {
+#if defined(_ENABLE_CUDA_)
+                if (rdma_enable_cuda) {
+                    mpi_errno = MPIR_Localcopy(shmem->queue[intra_node_root].shm_slots[windex]->buf,
+                                   len, MPI_BYTE,
+                                   buf, len, MPI_BYTE);
+                    if (mpi_errno) {
+                        MPIU_ERR_POP(mpi_errno);
+                    }
+                } else
+#endif
+                {
+                    MPIU_Memcpy(buf, shmem->queue[intra_node_root].shm_slots[windex]->buf, len);
+                }
+            }
+        } else {
+#if defined(_ENABLE_CUDA_)
+            if (rdma_enable_cuda) {
+                mpi_errno = MPIR_Localcopy(buf, len, MPI_BYTE,
+                    shmem->queue[intra_node_root].shm_slots[windex]->buf, len, MPI_BYTE);
+                if (mpi_errno) {
+                    MPIU_ERR_POP(mpi_errno);
+                }
+            } else
+#endif
+            {
+                MPIU_Memcpy(shmem->queue[intra_node_root].shm_slots[windex]->buf, buf, len);
+            }
+            shmem->queue[intra_node_root].shm_slots[windex]->psn = shmem->write;
+        }
+    } else {
+        while (shmem->queue[intra_node_root].shm_slots[rindex]->psn != shmem->read) {
+            nspin++;
+            if (nspin % mv2_shmem_coll_spin_count == 0) {
+                mv2_shm_progress(&nspin);
+            }
+        }
+#if defined(_ENABLE_CUDA_)
+        if (rdma_enable_cuda) {
+            mpi_errno = MPIR_Localcopy(shmem->queue[intra_node_root].shm_slots[rindex]->buf, len, MPI_BYTE,
+                            buf, len, MPI_BYTE);
+            if (mpi_errno) {
+                MPIU_ERR_POP(mpi_errno);
+            }
+        } else
+#endif
+        {
+            MPIU_Memcpy(buf, shmem->queue[intra_node_root].shm_slots[rindex]->buf, len);
+        }
+    }
+    shmem->write++;
+    shmem->read++;
+
+    if (IS_SHMEM_WINDOW_FULL(shmem->write, shmem->tail)) {
+        PRINT_DEBUG(DEBUG_SHM_verbose > 1, "shmem window full: %d \n", shmem->write);
+        mv2_shm_barrier(shmem);
+        if (shmem->local_rank == intra_node_root) {
+            MPID_Comm *leader_commptr=NULL;
+            MPID_Comm_get_ptr(comm_ptr->ch.leader_comm, leader_commptr);
+            if(leader_commptr->local_size > 1) {
+                MPIR_Barrier_MV2(leader_commptr, &errflag);
+            }
+        }
+        shmem->tail = shmem->read;
+    }
+
+fn_exit:
+    return mpi_errno;
+fn_fail:
+    goto fn_exit;
+}
+#endif /* #if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER) */ 
+
+
+
+
 
 shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size)
 {
@@ -2612,10 +2870,10 @@ shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size)
     shmem->local_rank = local_rank;
     shmem->local_size = local_size;
 
-    slot_len = mv2_shm_slot_len + sizeof (shm_slot_t);
+    slot_len = mv2_shm_slot_len + sizeof (shm_slot_t) + sizeof(volatile uint32_t);
     MV2_SHM_ALIGN_LEN(slot_len, MV2_SHM_ALIGN)
 
-        size = (shmem->count) * slot_len * local_size;
+    size = (shmem->count) * slot_len * local_size;
 
     MV2_SHM_ALIGN_LEN(size, MV2_SHM_ALIGN);
 
@@ -2673,6 +2931,7 @@ shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size)
     }
     shmem->size = size;
 
+
     ptr = shmem->buffer;
     shmem->queue = (shm_queue_t *) malloc(sizeof (shm_queue_t *) * local_size);
     for (k = 0; k < local_size; k++) {
@@ -2683,6 +2942,18 @@ shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size)
             ptr += slot_len;
         }
     }
+
+#if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER) 
+    shmem->remote_handle_info_parent = NULL; 
+    shmem->remote_handle_info_children = NULL; 
+    shmem->bcast_knomial_factor = -1; 
+    shmem->exchange_rdma_keys   = 1; 
+    shmem->buffer_registered = 0;  
+    shmem->bcast_expected_send_count = 0;  
+    for ( k = 0 ; k < rdma_num_hcas; k++ ) {
+        shmem->mem_handle[k] = NULL; 
+    } 
+#endif /* #if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER)  */ 
 
     mv2_shm_barrier(shmem);
 
@@ -2706,10 +2977,26 @@ shmem_info_t *mv2_shm_coll_init(int id, int local_rank, int local_size)
 
 }
 
+
 void mv2_shm_coll_cleanup(shmem_info_t * shmem)
 {
     PRINT_DEBUG(DEBUG_SHM_verbose > 0, " Cleanup shmem file:%s fd:%d size:%d\n",
                 shmem->file_name, shmem->file_fd, shmem->size);
+#if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER)
+    int i=0; 
+    if(shmem->local_rank == 0) { 
+        if(shmem->buffer_registered == 1) { 
+            mv2_shm_coll_dereg_buffer(shmem->mem_handle); 
+        } 
+        shmem->buffer_registered = 0; 
+    } 
+    if(shmem->remote_handle_info_parent != NULL) { 
+        MPIU_Free(shmem->remote_handle_info_parent); 
+    } 
+    if(shmem->remote_handle_info_children != NULL) { 
+        MPIU_Free(shmem->remote_handle_info_children); 
+    } 
+#endif /*#if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER) */
     if (shmem->buffer != NULL) {
         munmap(shmem->buffer, shmem->size);
     }

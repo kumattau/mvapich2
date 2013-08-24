@@ -314,6 +314,10 @@ int MPIDI_CH3I_nem_ib_parse_header(MPIDI_VC_t * vc,
             *pkt = vstart;
             break;
         }
+    case MPIDI_CH3_PKT_FLUSH:
+    case MPIDI_CH3_PKT_UNLOCK:
+    case MPIDI_CH3_PKT_GET_ACCUM:
+    case MPIDI_CH3_PKT_GET_ACCUM_RESP:
     case MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK:
     case MPIDI_CH3_PKT_ACCUM_IMMED:
     case MPIDI_CH3_PKT_CAS:

@@ -1289,7 +1289,7 @@ mv2_env_param_list_t  param_list[] = {
     MV2_PARAM_TYPE_INT,
     MV2_PARAM_GROUP_pt2pt,
     "MV2_SRQ_LIMIT",
-    &viadev_srq_limit,
+    &mv2_srq_limit,
     1,
     NULL    },
 {
@@ -1297,7 +1297,7 @@ mv2_env_param_list_t  param_list[] = {
     MV2_PARAM_TYPE_INT,
     MV2_PARAM_GROUP_pt2pt,
     "MV2_SRQ_MAX_SIZE",
-    &viadev_srq_alloc_size,
+    &mv2_srq_alloc_size,
     1,
     NULL    },
 {
@@ -1305,7 +1305,7 @@ mv2_env_param_list_t  param_list[] = {
     MV2_PARAM_TYPE_INT,
     MV2_PARAM_GROUP_pt2pt,
     "MV2_SRQ_SIZE",
-    &viadev_srq_fill_size,
+    &mv2_srq_fill_size,
     1,
     NULL    },
 {

@@ -21,7 +21,6 @@
 #include <fcntl.h>
 #include "rdma_impl.h"
 #include "mpichconf.h"
-#include "mem_hooks.h"
 #include "pmi.h"
 #include "vbuf.h"
 #include "ibv_param.h"
@@ -191,16 +190,6 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
 
     rdma_set_default_parameters(&mv2_MPIDI_CH3I_RDMA_Process);
     rdma_get_user_parameters(pg_size, pg_rank);
-
-#if !defined(DISABLE_PTMALLOC)
-    if (mvapich2_minit()) {
-        mv2_MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister = 0;
-    }
-#else /* !defined(DISABLE_PTMALLOC) */
-    mallopt(M_TRIM_THRESHOLD, -1);
-    mallopt(M_MMAP_MAX, 0);
-    mv2_MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister = 0;
-#endif /* !defined(DISABLE_PTMALLOC) */
 
     if (!mv2_MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister) {
         rdma_r3_threshold = rdma_r3_threshold_nocache;
@@ -658,9 +647,6 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t * pg, int pg_rank)
                                 pg, init_info);
     DEBUG_PRINT("Finishing enabling connection\n");
 
-    /*barrier to make sure queues are initialized before continuing */
-    /*  error = bootstrap_barrier(&mv2_MPIDI_CH3I_RDMA_Process, pg_rank, pg_size);
-     *  */
     error = PMI_Barrier();
 
     if (error != PMI_SUCCESS) {
@@ -837,10 +823,6 @@ int MPIDI_CH3I_RDMA_finalize(void)
             }
         }
     }
-
-#ifndef DISABLE_PTMALLOC
-    mvapich2_mfin();
-#endif
 
     /*barrier to make sure queues are initialized before continuing */
     error = PMI_Barrier();
@@ -1101,17 +1083,6 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **conn_info_ptr)
 
     MPIDI_STATE_DECL(MPID_STATE_CH3I_CM_INIT);
     MPIDI_FUNC_ENTER(MPID_STATE_CH3I_CM_INIT);
-
-#ifndef DISABLE_PTMALLOC
-    if (mvapich2_minit()) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail",
-                                  "**fail %s",
-                                  "Error initializing MVAPICH2 ptmalloc2 library");
-    }
-#else
-    mallopt(M_TRIM_THRESHOLD, -1);
-    mallopt(M_MMAP_MAX, 0);
-#endif
 
     pg_size = MPIDI_PG_Get_size(pg);
 
@@ -1733,10 +1704,6 @@ int MPIDI_CH3I_CM_Finalize(void)
 
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_CM_FINALIZE);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_CM_FINALIZE);
-
-#ifndef DISABLE_PTMALLOC
-    mvapich2_mfin();
-#endif
 
 #ifdef _ENABLE_UD_
     if (rdma_enable_hybrid && DEBUG_UDSTAT_verbose) {

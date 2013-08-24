@@ -318,17 +318,17 @@ int MPIDI_CH3_Rndv_transfer(MPIDI_VC_t * vc,
 
     switch (req->mrail.protocol)
     {
-    case VAPI_PROTOCOL_RPUT:
+    case MV2_RNDV_PROTOCOL_RPUT:
             rndv = (cts_pkt == NULL) ? NULL : &cts_pkt->rndv;
             sreq->mrail.partner_id = cts_pkt->receiver_req_id;
             MPIDI_CH3I_MRAIL_Prepare_rndv_transfer(sreq, rndv);
         break;
-    case VAPI_PROTOCOL_R3:
+    case MV2_RNDV_PROTOCOL_R3:
             rndv = (cts_pkt == NULL) ? NULL : &cts_pkt->rndv;
             sreq->mrail.partner_id = cts_pkt->receiver_req_id;
-            MPIU_Assert(rndv->protocol == VAPI_PROTOCOL_R3);
+            MPIU_Assert(rndv->protocol == MV2_RNDV_PROTOCOL_R3);
         break;
-    case VAPI_PROTOCOL_RGET:
+    case MV2_RNDV_PROTOCOL_RGET:
             rndv = (rts_pkt == NULL) ? NULL : &rts_pkt->rndv;
             MPIDI_CH3I_MRAIL_Prepare_rndv_transfer(rreq, rndv);
         break;

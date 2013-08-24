@@ -209,20 +209,24 @@ int read_user_config (unsigned long * crc)
     }
 
     /*
-     * Initialize error information in case of error processing file
+     * Only read file if user_config is set.
      */
-    strcpy(config_error.filename, user_config);
-    config_error.lineno = 0;
+    if (user_config != NULL) {
+        /*
+         * Initialize error information in case of error processing file
+         */
+        strcpy(config_error.filename, user_config);
+        config_error.lineno = 0;
 
-    /*
-     * Open and process configuration file
-     */
-    if ((config_file = fopen(user_config, "r"))) {
-        return read_config(config_file, crc);
-    } else if (report_fopen_error) {
-        config_error.msg = strerror(errno);
-
-        return -1;
+        /*
+         * Open and process configuration file
+         */
+        if ((config_file = fopen(user_config, "r"))) {
+            return read_config(config_file, crc);
+        } else if (report_fopen_error) {
+            config_error.msg = strerror(errno);
+            return -1;
+        }
     }
 
     return 0;

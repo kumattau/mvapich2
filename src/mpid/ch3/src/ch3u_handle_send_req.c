@@ -87,7 +87,7 @@ int MPIDI_CH3_ReqHandler_GetSendRespComplete( MPIDI_VC_t *vc ATTRIBUTE((unused))
         rank = win_ptr->my_id;
         l_rank = win_ptr->shm_g2l_rank[rank];
         if (*((volatile int *) &win_ptr->shm_lock[l_rank]) != MPID_LOCK_NONE) {
-            MPIDI_CH3I_SHM_win_unlock(rank, win_ptr);
+            MPIDI_CH3I_SHM_win_unlock(rank, win_ptr, REMOVE_BLOCK);
             goto fn_done;
         }
     }

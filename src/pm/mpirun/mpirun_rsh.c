@@ -426,9 +426,11 @@ int main(int argc, char *argv[])
     USE_LINEAR_SSH = dpm ? 1 : USE_LINEAR_SSH;
 
 #ifdef CKPT
-    // Force USE_LINEAR_SSH==1 because CKPT assumes this
-    // Could this be fixed?
+
+#ifdef CR_FTB
+    /* force the use of linear startup if process migration is enabled */
     USE_LINEAR_SSH = 1;
+#endif
 
     ret_ckpt = CR_thread_start(pglist->npgs);
     if ( ret_ckpt  < 0 ) {
@@ -1684,15 +1686,6 @@ void spawn_fast(int argc, char *argv[], char *totalview_cmd, char *env)
                     }
 
                 }
-#if 0
-                tmp = mkstr("%s MPISPAWN_VIADEV_DEFAULT_PORT_%d=%d", mpispawn_env, n, plist[pglist->data[i].plist_indices[n]].port);
-                if (tmp) {
-                    free(mpispawn_env);
-                    mpispawn_env = tmp;
-                } else {
-                    goto allocation_error;
-                }
-#endif
             }
 
             int local_hostname = 0;

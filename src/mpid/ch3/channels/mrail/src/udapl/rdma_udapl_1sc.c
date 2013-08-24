@@ -233,7 +233,7 @@ MPIDI_CH3I_RDMA_finish_rma (MPID_Win * win_ptr)
 
 /* Go through RMA op list once, and start as many RMA ops as possible */
 void
-MPIDI_CH3I_RDMA_try_rma (MPID_Win * win_ptr, int passive)
+MPIDI_CH3I_RDMA_try_rma (MPID_Win * win_ptr, int passive, int target_rank)
 {
     MPIDI_RMA_Op_t *curr_ptr = NULL;
     MPIDI_RMA_Op_t *head = NULL;

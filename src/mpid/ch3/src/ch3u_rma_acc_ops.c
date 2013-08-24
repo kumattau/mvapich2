@@ -3,6 +3,17 @@
  *  (C) 2001 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
 
 #include "mpidi_ch3_impl.h"
 #include "mpidrma.h"
@@ -352,6 +363,13 @@ int MPIDI_Compare_and_swap(const void *origin_addr, const void *compare_addr,
         new_ptr->compare_count = 1;
         new_ptr->compare_datatype = datatype;
         MPIU_INSTR_DURATION_END(rmaqueue_set);
+
+#if defined(_OSU_MVAPICH_)
+        if (win_ptr->fall_back != 1 && win_ptr->using_lock != 1) {
+            MPIDI_CH3I_RDMA_try_rma(win_ptr, 0, target_rank);
+        }
+#endif
+
     }
 
 fn_exit:
@@ -458,6 +476,13 @@ int MPIDI_Fetch_and_op(const void *origin_addr, void *result_addr,
         new_ptr->result_datatype = datatype;
         new_ptr->op = op;
         MPIU_INSTR_DURATION_END(rmaqueue_set);
+
+#if defined(_OSU_MVAPICH_)
+        if (win_ptr->fall_back != 1 && op == MPI_SUM 
+            && win_ptr->using_lock != 1) {
+            MPIDI_CH3I_RDMA_try_rma(win_ptr, 0, target_rank);
+        }
+#endif
     }
 
 fn_exit:

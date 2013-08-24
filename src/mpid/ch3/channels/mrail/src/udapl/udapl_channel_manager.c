@@ -146,6 +146,8 @@ GetSeqNumVbuf (vbuf * buf)
       case MPIDI_CH3_PKT_ACCUM_IMMED:
       case MPIDI_CH3_PKT_LOCK:
       case MPIDI_CH3_PKT_LOCK_GRANTED:
+      case MPIDI_CH3_PKT_UNLOCK:
+      case MPIDI_CH3_PKT_FLUSH:
       case MPIDI_CH3_PKT_LOCK_PUT_UNLOCK:
       case MPIDI_CH3_PKT_LOCK_GET_UNLOCK:
       case MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK:
@@ -157,6 +159,8 @@ GetSeqNumVbuf (vbuf * buf)
       case MPIDI_CH3_PKT_CAS_RESP:
       case MPIDI_CH3_PKT_FOP:
       case MPIDI_CH3_PKT_FOP_RESP:
+      case MPIDI_CH3_PKT_GET_ACCUM:
+      case MPIDI_CH3_PKT_GET_ACCUM_RESP:
           {
               return ((MPIDI_CH3_Pkt_put_t *)(buf->pheader))->seqnum;
           }

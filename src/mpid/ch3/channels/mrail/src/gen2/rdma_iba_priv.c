@@ -135,10 +135,10 @@ struct ibv_srq *create_srq(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
     MPIU_Memset(&srq_init_attr, 0, sizeof(srq_init_attr));
 
     srq_init_attr.srq_context = proc->nic_context[hca_num];
-    srq_init_attr.attr.max_wr = viadev_srq_alloc_size;
+    srq_init_attr.attr.max_wr = mv2_srq_alloc_size;
     srq_init_attr.attr.max_sge = 1;
     /* The limit value should be ignored during SRQ create */
-    srq_init_attr.attr.srq_limit = viadev_srq_limit;
+    srq_init_attr.attr.srq_limit = mv2_srq_limit;
 
 #ifdef _ENABLE_XRC_
     if (USE_XRC) {
@@ -192,10 +192,10 @@ static int check_attrs(struct ibv_port_attr *port_attr,
             ret = 1;
         }
 
-        if (dev_attr->max_srq_wr < viadev_srq_alloc_size) {
+        if (dev_attr->max_srq_wr < mv2_srq_alloc_size) {
             fprintf(stderr,
                     "Max MV2_SRQ_SIZE is %d, set to %d\n",
-                    dev_attr->max_srq_wr, (int) viadev_srq_alloc_size);
+                    dev_attr->max_srq_wr, (int) mv2_srq_alloc_size);
             ret = 1;
         }
     } else {
@@ -963,7 +963,9 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
     /* step 2: create qps for all vc */
     qp_attr.qp_state = IBV_QPS_INIT;
     qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE |
-        IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ;
+        IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
+        IBV_ACCESS_REMOTE_ATOMIC;
+
 
     for (i = 0; i < pg_size; i++) {
         MPIDI_PG_Get_vc(pg, i, &vc);
@@ -1056,7 +1058,8 @@ int rdma_iba_hca_init(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc, int pg_rank,
 
             qp_attr.qp_state = IBV_QPS_INIT;
             qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE |
-                IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ;
+                IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
+                IBV_ACCESS_REMOTE_ATOMIC;
 
             qp_attr.port_num = ports[hca_index][port_index];
             set_pkey_index(&qp_attr.pkey_index, hca_index, qp_attr.port_num);
@@ -1177,13 +1180,13 @@ rdma_iba_allocate_memory(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                               srq_post_cond[hca_num], 0);
             mv2_MPIDI_CH3I_RDMA_Process.srq_zero_post_counter[hca_num] = 0;
             mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num] =
-                viadev_post_srq_buffers(viadev_srq_fill_size, hca_num);
+                mv2_post_srq_buffers(mv2_srq_fill_size, hca_num);
 
             {
                 struct ibv_srq_attr srq_attr;
-                srq_attr.max_wr = viadev_srq_alloc_size;
+                srq_attr.max_wr = mv2_srq_alloc_size;
                 srq_attr.max_sge = 1;
-                srq_attr.srq_limit = viadev_srq_limit;
+                srq_attr.srq_limit = mv2_srq_limit;
 
                 if (ibv_modify_srq
                     (mv2_MPIDI_CH3I_RDMA_Process.srq_hndl[hca_num], &srq_attr,
@@ -1562,6 +1565,7 @@ void MRAILI_Init_vc(MPIDI_VC_t * vc)
 
     vc->mrail.seqnum_next_tosend = 0;
     vc->mrail.seqnum_next_torecv = 0;
+    vc->mrail.seqnum_next_toack = UINT16_MAX;
 #ifdef _ENABLE_UD_
     if (rdma_enable_hybrid && !(vc->mrail.state & MRAILI_UD_CONNECTED)) {
 
@@ -1657,7 +1661,8 @@ static inline int cm_qp_conn_create(MPIDI_VC_t * vc, int qptype)
 
     qp_attr.qp_state = IBV_QPS_INIT;
     qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE |
-        IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ;
+        IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
+        IBV_ACCESS_REMOTE_ATOMIC;
 
 
     vc->mrail.num_rails = rdma_num_rails;
@@ -1749,7 +1754,8 @@ static inline int cm_qp_conn_create(MPIDI_VC_t * vc, int qptype)
 
         qp_attr.qp_state = IBV_QPS_INIT;
         qp_attr.qp_access_flags = IBV_ACCESS_REMOTE_WRITE |
-            IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ;
+            IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ |
+            IBV_ACCESS_REMOTE_ATOMIC;
 
         qp_attr.port_num =
             mv2_MPIDI_CH3I_RDMA_Process.ports[hca_index][port_index];

@@ -704,36 +704,36 @@ int MPIR_Scatter_MV2_Direct(const void *sendbuf,
                                          sendtype_extent);
 
         MPIU_CHKLMEM_MALLOC(reqarray, MPI_Request *,
-                            comm_size * sizeof (MPI_Request), mpi_errno,
-                            "reqarray");
+                    comm_size * sizeof (MPI_Request), mpi_errno,
+                    "reqarray");
         MPIU_CHKLMEM_MALLOC(starray, MPI_Status *,
-                            comm_size * sizeof (MPI_Status), mpi_errno,
-                            "starray");
+                    comm_size * sizeof (MPI_Status), mpi_errno,
+                    "starray");
 
         reqs = 0;
         for (i = 0; i < comm_size; i++) {
             if (sendcnt) {
-                if ((comm_ptr->comm_kind == MPID_INTRACOMM) && (i == rank)) {
-                    if (recvbuf != MPI_IN_PLACE) {
-                        mpi_errno =
-                            MPIR_Localcopy(((char *) sendbuf +
-                                            rank * sendcnt * sendtype_extent),
-                                           sendcnt, sendtype, recvbuf, recvcnt,
-                                           recvtype);
-                    }
-                } else {
-                    mpi_errno =
-                        MPIC_Isend_ft(((char *) sendbuf +
-                                       i * sendcnt * sendtype_extent), sendcnt,
-                                      sendtype, i, MPIR_SCATTER_TAG, comm,
-                                      &reqarray[reqs++], errflag);
+            if ((comm_ptr->comm_kind == MPID_INTRACOMM) && (i == rank)) {
+                if (recvbuf != MPI_IN_PLACE) {
+                mpi_errno =
+                    MPIR_Localcopy(((char *) sendbuf +
+                            rank * sendcnt * sendtype_extent),
+                           sendcnt, sendtype, recvbuf, recvcnt,
+                           recvtype);
                 }
-                if (mpi_errno) {
-                    /* for communication errors, just record the error but continue */
-                    *errflag = TRUE;
-                    MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                    MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
-                }
+            } else {
+                mpi_errno =
+                MPIC_Isend_ft(((char *) sendbuf +
+                           i * sendcnt * sendtype_extent), sendcnt,
+                          sendtype, i, MPIR_SCATTER_TAG, comm,
+                          &reqarray[reqs++], errflag);
+            }
+            if (mpi_errno) {
+                /* for communication errors, just record the error but continue */
+                *errflag = TRUE;
+                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            }
             }
         }
         /* ... then wait for *all* of them to finish: */
@@ -741,21 +741,19 @@ int MPIR_Scatter_MV2_Direct(const void *sendbuf,
         /* --BEGIN ERROR HANDLING-- */
         if (mpi_errno == MPI_ERR_IN_STATUS) {
             for (i = 0; i < reqs; i++) {
-                if (starray[i].MPI_ERROR != MPI_SUCCESS)
-                    mpi_errno = starray[i].MPI_ERROR;
-                if (mpi_errno) {
-                    /* for communication errors, just record the error but continue */
-                    *errflag = TRUE;
-                    MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-                    MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
-                }
+            if (starray[i].MPI_ERROR != MPI_SUCCESS)
+                mpi_errno = starray[i].MPI_ERROR;
+            if (mpi_errno) {
+                /* for communication errors, just record the error but continue */
+                *errflag = TRUE;
+                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            }
 
             }
         }
         /* --END ERROR HANDLING-- */
-    }
-
-    else if (root != MPI_PROC_NULL) {   /* non-root nodes, and in the intercomm. case, non-root nodes on remote side */
+    } else if (root != MPI_PROC_NULL) {   /* non-root nodes, and in the intercomm. case, non-root nodes on remote side */
         if (recvcnt) {
             mpi_errno = MPIC_Recv_ft(recvbuf, recvcnt, recvtype, root,
                                      MPIR_SCATTER_TAG, comm, MPI_STATUS_IGNORE,
@@ -778,6 +776,101 @@ int MPIR_Scatter_MV2_Direct(const void *sendbuf,
   fn_fail:
     goto fn_exit;
 }
+
+
+#undef FUNCNAME
+#define FUNCNAME MPIR_Scatter_MV2_Direct_Blk
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPIR_Scatter_MV2_Direct_Blk(const void *sendbuf,
+                            int sendcnt,
+                            MPI_Datatype sendtype,
+                            void *recvbuf,
+                            int recvcnt,
+                            MPI_Datatype recvtype,
+                            int root, MPID_Comm * comm_ptr, int *errflag)
+{
+    int rank, comm_size;
+    int mpi_errno = MPI_SUCCESS;
+    int mpi_errno_ret = MPI_SUCCESS;
+    MPI_Comm comm;
+    MPI_Aint sendtype_extent;
+    int i, reqs;
+
+    comm = comm_ptr->handle;
+    rank = comm_ptr->rank;
+
+    /* check if multiple threads are calling this collective function */
+    MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER(comm_ptr);
+
+    /* If I'm the root, then scatter */
+    if (((comm_ptr->comm_kind == MPID_INTRACOMM) && (root == rank)) ||
+        ((comm_ptr->comm_kind == MPID_INTERCOMM) && (root == MPI_ROOT))) {
+        if (comm_ptr->comm_kind == MPID_INTRACOMM)
+            comm_size = comm_ptr->local_size;
+        else
+            comm_size = comm_ptr->remote_size;
+
+        MPID_Datatype_get_extent_macro(sendtype, sendtype_extent);
+        /* We need a check to ensure extent will fit in a
+         * pointer. That needs extent * (max count) but we can't get
+         * that without looping over the input data. This is at least
+         * a minimal sanity check. Maybe add a global var since we do
+         * loop over sendcount[] in MPI_Scatterv before calling
+         * this? */
+        MPID_Ensure_Aint_fits_in_pointer(MPI_VOID_PTR_CAST_TO_MPI_AINT sendbuf +
+                                         sendtype_extent);
+
+        reqs = 0;
+        for (i = 0; i < comm_size; i++) {
+            if (sendcnt) {
+                if ((comm_ptr->comm_kind == MPID_INTRACOMM) && (i == rank)) {
+                    if (recvbuf != MPI_IN_PLACE) {
+                    mpi_errno =
+                        MPIR_Localcopy(((char *) sendbuf +
+                                rank * sendcnt * sendtype_extent),
+                               sendcnt, sendtype, recvbuf, recvcnt,
+                               recvtype);
+                        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                    }
+                } else {
+                    mpi_errno =
+                    MPIC_Send_ft(((char *) sendbuf +
+                               i * sendcnt * sendtype_extent), sendcnt,
+                              sendtype, i, MPIR_SCATTER_TAG, comm,
+                              errflag);
+                }
+                if (mpi_errno) {
+                    /* for communication errors, just record the error but continue */
+                    *errflag = TRUE;
+                    MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                    MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+                }
+            }
+        }
+    } else if (root != MPI_PROC_NULL) {   /* non-root nodes, and in the intercomm. case, non-root nodes on remote side */
+        if (recvcnt) {
+            mpi_errno = MPIC_Recv_ft(recvbuf, recvcnt, recvtype, root,
+                                     MPIR_SCATTER_TAG, comm, MPI_STATUS_IGNORE,
+                                     errflag);
+            if (mpi_errno) {
+                /* for communication errors, just record the error but continue */
+                *errflag = TRUE;
+                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            }
+        }
+    }
+
+    /* check if multiple threads are calling this collective function */
+    MPIDU_ERR_CHECK_MULTIPLE_THREADS_EXIT(comm_ptr);
+
+  fn_exit:
+    return mpi_errno;
+  fn_fail:
+    goto fn_exit;
+}
+
 
 #undef FUNCNAME
 #define FUNCNAME MPIR_Scatter_MV2_two_level_Binomial
@@ -811,6 +904,9 @@ int MPIR_Scatter_MV2_two_level_Binomial(const void *sendbuf,
     comm = comm_ptr->handle;
     comm_size = comm_ptr->local_size;
     rank = comm_ptr->rank;
+    #if OSU_MPIT
+        mv2_num_shmem_coll_calls++;
+    #endif
 
     if (((rank == root) && (recvcnt == 0))
         || ((rank != root) && (sendcnt == 0))) {
@@ -1062,6 +1158,9 @@ int MPIR_Scatter_MV2_two_level_Direct(const void *sendbuf,
         || ((rank != root) && (sendcnt == 0))) {
         return MPI_SUCCESS;
     }
+    #if OSU_MPIT
+        mv2_num_shmem_coll_calls++;
+    #endif
     /* check if multiple threads are calling this collective function */
     MPIDU_ERR_CHECK_MULTIPLE_THREADS_ENTER(comm_ptr);
     /* extract the rank,size information for the intra-node

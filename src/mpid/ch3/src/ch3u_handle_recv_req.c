@@ -99,7 +99,7 @@ int MPIDI_CH3U_Handle_recv_req(MPIDI_VC_t * vc, MPID_Request * rreq,
     }
 #if defined(_OSU_MVAPICH_)
 fn_exit:
-    if (TRUE == *complete && VAPI_PROTOCOL_R3 == rreq->mrail.protocol) {
+    if (TRUE == *complete && MV2_RNDV_PROTOCOL_R3 == rreq->mrail.protocol) {
         MPIDI_CH3I_MRAILI_RREQ_RNDV_FINISH(rreq);
     }
     else if (PARTIAL_COMPLETION == *complete) {
@@ -261,23 +261,6 @@ int MPIDI_CH3_ReqHandler_PutAccumRespComplete( MPIDI_VC_t *vc,
     
 #if defined(_OSU_MVAPICH_)
     win_ptr->outstanding_rma--;
-
-    /* if intranode peer and sync is passive, increment pt_rma_puts_accs 
-     * counter to indicate completion of an operation. The case of internode 
-     * peers is handled by the next if check*/
-#if !defined(DAPL_DEFAULT_PROVIDER)
-#if defined (_SMP_LIMIC_)
-    if ((!win_ptr->limic_fallback || !win_ptr->shm_fallback)
-        && vc->smp.local_nodes != -1)
-#else
-    if (!win_ptr->shm_fallback && vc->smp.local_nodes != -1)
-#endif
-    {
-        if (*((volatile int *) &win_ptr->shm_lock[l_rank]) != MPID_LOCK_NONE) {
-            win_ptr->my_pt_rma_puts_accs++;
-        }
-    }
-#endif /* !defined(DAPL_DEFAULT_PROVIDER) */
 #endif /* defined(_OSU_MVAPICH_) */
    
     mpi_errno = MPIDI_CH3_Finish_rma_op_target(vc, win_ptr, TRUE, rreq->dev.flags,
@@ -349,10 +332,10 @@ int MPIDI_CH3_ReqHandler_PutRespDerivedDTComplete( MPIDI_VC_t *vc ATTRIBUTE((unu
 #endif
 
 #if defined(_OSU_MVAPICH_)
-    if (VAPI_PROTOCOL_EAGER == rreq->mrail.protocol) {
+    if (MV2_RNDV_PROTOCOL_EAGER == rreq->mrail.protocol) {
         *complete = FALSE;
-    } else if (VAPI_PROTOCOL_RPUT == rreq->mrail.protocol ||
-               VAPI_PROTOCOL_R3 == rreq->mrail.protocol) {
+    } else if (MV2_RNDV_PROTOCOL_RPUT == rreq->mrail.protocol ||
+               MV2_RNDV_PROTOCOL_R3 == rreq->mrail.protocol) {
         MPID_Request *cts_req;
         MPIDI_CH3_Pkt_t upkt;
         MPIDI_CH3_Pkt_rndv_clr_to_send_t *cts_pkt =
@@ -459,12 +442,12 @@ int MPIDI_CH3_ReqHandler_AccumRespDerivedDTComplete( MPIDI_VC_t *vc ATTRIBUTE((u
 	rreq->dev.OnDataAvail = MPIDI_CH3_ReqHandler_PutAccumRespComplete;
     
 #if defined(_OSU_MVAPICH_)
-    if (VAPI_PROTOCOL_EAGER == rreq->mrail.protocol) {
+    if (MV2_RNDV_PROTOCOL_EAGER == rreq->mrail.protocol) {
 #endif /* defined(_OSU_MVAPICH_) */
     *complete = FALSE;
 #if defined(_OSU_MVAPICH_)
-    } else if (VAPI_PROTOCOL_RPUT == rreq->mrail.protocol ||
-               VAPI_PROTOCOL_R3 == rreq->mrail.protocol) {
+    } else if (MV2_RNDV_PROTOCOL_RPUT == rreq->mrail.protocol ||
+               MV2_RNDV_PROTOCOL_R3 == rreq->mrail.protocol) {
     MPID_Request *cts_req;
     MPIDI_CH3_Pkt_t upkt;
     MPIDI_CH3_Pkt_rndv_clr_to_send_t *cts_pkt =
@@ -635,9 +618,9 @@ int MPIDI_CH3_ReqHandler_GetRespDerivedDTComplete( MPIDI_VC_t *vc,
     MPIDI_VC_FAI_send_seqnum(vc, seqnum);
     MPIDI_Pkt_set_seqnum(get_resp_pkt, seqnum);
 
-    if (sreq->mrail.protocol == VAPI_PROTOCOL_EAGER)
+    if (sreq->mrail.protocol == MV2_RNDV_PROTOCOL_EAGER)
     {
-    get_resp_pkt->protocol = VAPI_PROTOCOL_EAGER;
+    get_resp_pkt->protocol = MV2_RNDV_PROTOCOL_EAGER;
 #endif //defined(_OSU_MVAPICH_)
     /* Because this is in a packet handler, it is already within a critical section */	
     /* MPIU_THREAD_CS_ENTER(CH3COMM,vc); */
@@ -654,8 +637,8 @@ int MPIDI_CH3_ReqHandler_GetRespDerivedDTComplete( MPIDI_VC_t *vc,
     /* --END ERROR HANDLING-- */
 #if defined(_OSU_MVAPICH_)
     }
-    else if (sreq->mrail.protocol == VAPI_PROTOCOL_RPUT 
-        || sreq->mrail.protocol == VAPI_PROTOCOL_R3)
+    else if (sreq->mrail.protocol == MV2_RNDV_PROTOCOL_RPUT 
+        || sreq->mrail.protocol == MV2_RNDV_PROTOCOL_R3)
     {
     sreq->dev.iov_count = MPID_IOV_LIMIT;
     mpi_errno = MPIDI_CH3U_Request_load_send_iov(sreq,sreq->dev.iov,&sreq->dev.iov_count);
@@ -710,7 +693,7 @@ int MPIDI_CH3_ReqHandler_SinglePutAccumComplete( MPIDI_VC_t *vc,
     MPID_Win_get_ptr(rreq->dev.target_win_handle, win_ptr);
     
     lock_queue_entry = rreq->dev.lock_queue_entry;
-    
+  
     if (MPIDI_CH3I_Try_acquire_win_lock(win_ptr, 
 					lock_queue_entry->lock_type) == 1)
     {
@@ -1288,7 +1271,7 @@ int MPIDI_CH3I_Process_locks()
                                          "**ch3|rmamsg");
                             } 
 
-                            MPIDI_CH3I_SHM_win_unlock(rank, win_ptr);
+                            MPIDI_CH3I_SHM_win_unlock(rank, win_ptr, REMOVE_BLOCK);
  	    
                  			/* release the lock */
                  			if (win_ptr->current_lock_type == MPI_LOCK_SHARED) {
@@ -1405,7 +1388,7 @@ int MPIDI_CH3I_Release_lock(MPID_Win *win_ptr)
     {
         rank = win_ptr->my_id;
         l_rank = win_ptr->shm_g2l_rank[rank];
-        MPIDI_CH3I_SHM_win_unlock (rank, win_ptr);
+        MPIDI_CH3I_SHM_win_unlock (rank, win_ptr, REMOVE_BLOCK);
     }
 #endif /*_OSU_MVAPICH_ && !DAPL_DEFAULT_PROVIDER*/
 
@@ -1567,7 +1550,7 @@ int MPIDI_CH3I_Release_lock(MPID_Win *win_ptr)
                 if (!win_ptr->shm_fallback)
 #endif
                 {
-                    MPIDI_CH3I_SHM_win_unlock (rank, win_ptr);
+                    MPIDI_CH3I_SHM_win_unlock (rank, win_ptr, REMOVE_BLOCK);
                 }
 #endif /*_OSU_MVAPICH_ && !DAPL_DEFAULT_PROVIDER*/			
 	

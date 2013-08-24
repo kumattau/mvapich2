@@ -105,7 +105,7 @@ void MPIDI_CH3I_SHMEM_COLL_Unlink(void);
 void MV2_Read_env_vars(void);
 
 #define SHMEM_COLL_BLOCK_SIZE (MPIDI_Process.my_pg->ch.num_local_processes * mv2_g_shmem_coll_max_msg_size)
-
+#define MPICH_LARGE_MSG_COLLECTIVE_SIZE (1*1024*1024*1024)
 
 #define COLL_COUNT              7
 #define COLL_SIZE               3
@@ -121,7 +121,7 @@ void MV2_Read_env_vars(void);
 #define MEDIUM                  1
 #define LARGE                   2
 
-#define MV2_MAX_NB_THRESHOLDS  10
+#define MV2_MAX_NB_THRESHOLDS  20
 
 #define MV2_PARA_PACKET_SIZE    5
 
@@ -212,6 +212,8 @@ extern int mv2_mcast_allreduce_large_msg_size;
 /* Use inside alltoall_osu.h */
 extern int mv2_use_xor_alltoall; 
 
+extern char *mv2_user_bcast_intra;
+extern char *mv2_user_bcast_inter;
 
 /* Use inside barrier_osu.c*/
 extern int mv2_disable_shmem_barrier;
@@ -220,6 +222,15 @@ extern void MPIDI_CH3I_SHMEM_COLL_Barrier_bcast(int, int, int);
 
 
 /* Use inside bcast_osu.c */
+typedef struct bcast_ring_allgather_shm_packet
+{
+   int j;
+   int jnext;
+   int root;
+   MPIDI_msg_sz_t nbytes;
+   MPIDI_msg_sz_t scatter_size;
+} bcast_ring_allgather_shm_packet;
+
 extern int  mv2_bcast_short_msg; 
 extern int  mv2_bcast_large_msg; 
 extern int  mv2_knomial_2level_bcast_system_size_threshold;
@@ -239,6 +250,7 @@ extern int  mv2_alltoall_inplace_old;
 extern int mv2_bcast_scatter_ring_overlap;
 extern int mv2_bcast_scatter_ring_overlap_msg_upperbound;
 extern int mv2_bcast_scatter_ring_overlap_cores_lowerbound;
+extern int mv2_enable_zcpy_bcast; 
 
 /* Used inside reduce_osu.c */
 extern int mv2_disable_shmem_reduce;
@@ -347,8 +359,17 @@ extern int mv2_use_mcast_pipeline_shm;
 #define IS_SHMEM_WINDOW_FULL(start, end) \
     ((((int)(start) - (end)) >= mv2_shm_window_size -1) ? 1 : 0)
 
+#if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER)
+typedef struct shm_coll_pkt{
+     int  peer_rank;
+     uint32_t key[MAX_NUM_HCAS]; 
+     uint64_t addr[MAX_NUM_HCAS]; 
+} shm_coll_pkt; 
+#endif /* #if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER) */ 
+
 typedef struct shm_slot_t {
     volatile uint32_t psn __attribute__((aligned(MV2_SHM_ALIGN)));
+    volatile uint32_t *tail_psn __attribute__((aligned(MV2_SHM_ALIGN)));
     char buf[] __attribute__((aligned(MV2_SHM_ALIGN)));
 } shm_slot_t;
 
@@ -368,6 +389,15 @@ typedef struct shm_info_t {
     int read;
     int tail;
     shm_queue_t *queue;
+#if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER)
+    int exchange_rdma_keys; 
+    int buffer_registered; 
+    int bcast_knomial_factor; 
+    int bcast_expected_send_count; 
+    struct ibv_mr *mem_handle[MAX_NUM_HCAS]; /* mem hndl for entire region */
+    shm_coll_pkt  *remote_handle_info_parent; 
+    shm_coll_pkt  *remote_handle_info_children; 
+#endif /* #if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER)  */ 
 } shmem_info_t;
 
 shmem_info_t * mv2_shm_coll_init(int id, int local_rank, int local_size);
@@ -376,5 +406,17 @@ void mv2_shm_barrier(shmem_info_t * shmem);
 void mv2_shm_bcast(shmem_info_t * shmem, char *buf, int len, int root);
 void mv2_shm_reduce(shmem_info_t *shmem, char *buf, int len, 
                         int count, int root, MPI_User_function *uop, MPI_Datatype datatype);
+#if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER)
+int mv2_shm_coll_reg_buffer(void *buffer, int size, struct ibv_mr *mem_handle[], 
+                           int *buffer_registered); 
+void mv2_shm_coll_prepare_post_send(uint64_t local_rdma_addr, uint64_t remote_rdma_addr,
+                      uint32_t local_rdma_key, uint32_t remote_rdma_key,
+                      int len, int rail, MPIDI_VC_t * vc); 
+int mv2_shm_zcpy_bcast(shmem_info_t * shmem, char *buf, int len, int root,
+                       int src, int expected_recv_count,
+                       int *dst_array, int expected_send_count,
+                       int knomial_degree,
+                       MPID_Comm *comm_ptr); 
+#endif /* #if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER)  */ 
 
 #endif  /* _COLL_SHMEM_ */

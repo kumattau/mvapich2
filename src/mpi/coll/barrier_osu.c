@@ -102,6 +102,9 @@ static int MPIR_shmem_barrier_MV2(MPID_Comm * comm_ptr, int *errflag)
     shmem_comm_rank = shmem_commptr->ch.shmem_comm_rank;
     leader_comm = comm_ptr->ch.leader_comm;
     MPID_Comm_get_ptr(leader_comm, leader_commptr);
+    #if OSU_MPIT
+        mv2_num_shmem_coll_calls++;
+    #endif
 
     if (local_size > 1) {
         MPIDI_CH3I_SHMEM_COLL_Barrier_gather(local_size, local_rank,

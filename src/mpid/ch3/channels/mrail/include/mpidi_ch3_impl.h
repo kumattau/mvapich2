@@ -497,7 +497,15 @@ struct smpi_var {
     */
 };
 
+typedef enum{
+    SMP_DMA_NONE,
+    SMP_DMA_LIMIC,
+    SMP_DMA_CMA
+}smp_dma_flag_t;
+
 extern struct smpi_var g_smpi;
+
+extern int mv2_shmem_pool_init;
 
 void MPIDI_CH3I_set_smp_only();
 
@@ -508,6 +516,8 @@ int MPIDI_CH3I_SMP_write_progress(MPIDI_PG_t *pg);
 int MPIDI_CH3I_SMP_read_progress(MPIDI_PG_t *pg);
 
 int MPIDI_CH3I_SMP_init(MPIDI_PG_t *pg);
+
+inline int MPIDI_CH3I_SMP_attach_shm_pool();
 
 int MPIDI_CH3I_SMP_finalize(void);
 
@@ -543,39 +553,13 @@ void MPIDI_CH3I_SMP_write_contig(MPIDI_VC_t * vc, MPIDI_CH3_Pkt_type_t reqtype,
                           int tag, MPID_Comm * comm, int context_offset, 
                           int *num_bytes_ptr);
                           
-#if defined(_SMP_LIMIC_) && !defined(_SMP_CMA_)
 int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
-        const int iovlen, int index, struct limic_header *l_header,
-        size_t *num_bytes_ptr, int use_limic);
-#elif defined(_SMP_CMA_) && !defined(_SMP_LIMIC_)
-int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
-        const int iovlen, int index, struct cma_header *c_header,
-        size_t *num_bytes_ptr, int use_cma);
-#elif defined(_SMP_CMA_) && defined(_SMP_LIMIC_)
-int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
-        const int iovlen, int index, struct limic_header * l_header,
-        struct cma_header *c_header, size_t *num_bytes_ptr, int use_limic, int use_cma);
-#else
-int MPIDI_CH3I_SMP_readv_rndv_cont(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
-	const int iovlen, int index, size_t *num_bytes_ptr);
-#endif
+        const int iovlen, int index, void * l_header,
+        void *c_header, size_t *num_bytes_ptr, smp_dma_flag_t dma_flag);
 	
-#if defined(_SMP_LIMIC_) && !defined(_SMP_CMA_)
 int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
-        const int iovlen, int index, struct limic_header *l_header, size_t *num_bytes_ptr, 
-        int use_limic);
-#elif defined(_SMP_CMA_) && !defined(_SMP_LIMIC_)
-int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
-        const int iovlen, int index, struct cma_header *c_header, size_t *num_bytes_ptr, 
-        int use_cma);
-#elif defined(_SMP_CMA_) && defined(_SMP_LIMIC_)
-int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
-        const int iovlen, int index, struct limic_header *l_header, 
-        struct cma_header *c_header, size_t *num_bytes_ptr, int use_limic, int use_cma);
-#else
-int MPIDI_CH3I_SMP_readv_rndv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
-	const int iovlen, int index, size_t *num_bytes_ptr);
-#endif
+        const int iovlen, int index, void *l_header, 
+        void *c_header, size_t *num_bytes_ptr, smp_dma_flag_t dma_flag);
 
 int MPIDI_CH3I_SMP_readv(MPIDI_VC_t * recv_vc_ptr, const MPID_IOV * iov,
                          const int iovlen, size_t *num_bytes_ptr);

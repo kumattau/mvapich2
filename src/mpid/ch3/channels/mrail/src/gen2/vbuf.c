@@ -362,7 +362,8 @@ static int allocate_vbuf_region(int nvbufs)
             ptag_save[i],
             vbuf_dma_buffer,
             nvbufs * rdma_vbuf_total_size,
-            IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+            IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE |
+            IBV_ACCESS_REMOTE_ATOMIC);
 
         if (!reg->mem_handle[i])
         {
@@ -535,7 +536,8 @@ static int allocate_vbuf_pool(vbuf_pool_t *rdma_vbuf_pool)
     // for posix_memalign
     for (i = 0; i < rdma_num_hcas; ++i) {
         region->mem_handle[i] = ibv_reg_mr(ptag_save[i], vbuf_buffer,
-                nvbufs * buf_size, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+                nvbufs * buf_size, IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE |
+                IBV_ACCESS_REMOTE_ATOMIC );
         if (!region->mem_handle[i]) {
             fprintf(stderr, "[%s %d] Cannot register vbuf region\n", __FILE__, __LINE__);
             return -1;	
@@ -584,6 +586,28 @@ int allocate_cuda_vbufs(struct ibv_pd* ptag[])
         }
     }
     return mpi_errno;
+}
+
+void register_cuda_vbuf_regions()
+{
+    int i; 
+    vbuf_pool_t *rdma_vbuf_pool; 
+    struct vbuf_region *region = NULL;
+
+    MPIU_Assert (rdma_cuda_dynamic_init == 1);
+    
+    for (i=0; i<rdma_num_vbuf_pools; i++) {
+        rdma_vbuf_pool = &rdma_vbuf_pools[i];        
+        if (rdma_vbuf_pool->index == CUDA_RNDV_BLOCK_BUF ||
+           (rdma_eager_cudahost_reg && rdma_vbuf_pool->index == CUDA_EAGER_BUF)) {
+            region = rdma_vbuf_pool->region_head;
+            while (region != NULL) { 
+                ibv_cuda_register(region->malloc_buf_start, 
+                        (uint64_t)region->malloc_buf_end - (uint64_t)region->malloc_buf_start);
+                region = region->next;
+            }
+        }
+    }
 }
 
 vbuf* get_cuda_vbuf(int offset)
@@ -660,7 +684,8 @@ void release_cuda_vbuf(vbuf* v)
     if (v->padding != NORMAL_VBUF_FLAG
             && v->padding != RPUT_VBUF_FLAG
             && v->padding != RGET_VBUF_FLAG
-            && v->padding != RDMA_ONE_SIDED)
+            && v->padding != RDMA_ONE_SIDED
+            && v->padding != COLL_VBUF_FLAG)
     {
         ibv_error_abort(GEN_EXIT_ERR, "vbuf not correct.\n");
     }
@@ -857,6 +882,7 @@ void MRAILI_Release_vbuf(vbuf* v)
     if (v->padding != NORMAL_VBUF_FLAG
         && v->padding != RPUT_VBUF_FLAG
         && v->padding != RGET_VBUF_FLAG
+        && v->padding != COLL_VBUF_FLAG
         && v->padding != RDMA_ONE_SIDED)
     {
         ibv_error_abort(GEN_EXIT_ERR, "vbuf not correct.\n");
@@ -1346,6 +1372,72 @@ void vbuf_init_rma_put(vbuf *v, void *l_addr, uint32_t lkey,
     MPIDI_FUNC_EXIT(MPID_STATE_VBUF_INIT_RMA_PUT);
 }
 
+#undef FUNCNAME
+#define FUNCNAME vbuf_init_rma_fetch_and_add 
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+void vbuf_init_rma_fetch_and_add(vbuf *v, void *l_addr, uint32_t lkey,
+        void *r_addr, uint32_t rkey, uint64_t add,
+        int rail)
+{   
+    MPIDI_STATE_DECL(MPID_STATE_VBUF_INIT_RMA_FETCH_AND_ADD);
+    MPIDI_FUNC_ENTER(MPID_STATE_VBUF_INIT_RMA_FETCH_AND_ADD);
+
+    v->desc.u.sr.next = NULL;
+    v->desc.u.sr.opcode = IBV_WR_ATOMIC_FETCH_AND_ADD;
+    v->desc.u.sr.send_flags = IBV_SEND_SIGNALED;
+    v->desc.u.sr.wr_id = (uintptr_t) v;
+
+    v->desc.u.sr.num_sge = 1;
+    v->desc.u.sr.wr.atomic.remote_addr = (uintptr_t)(r_addr);
+    v->desc.u.sr.wr.atomic.rkey = rkey;
+    v->desc.u.sr.wr.atomic.compare_add = add;
+
+    v->desc.u.sr.sg_list = &(v->desc.sg_entry);
+    v->desc.sg_entry.length = sizeof(uint64_t);
+    v->desc.sg_entry.lkey = lkey;
+    v->desc.sg_entry.addr = (uintptr_t)(l_addr);
+    v->padding = RDMA_ONE_SIDED;
+    v->rail = rail;
+
+    MPIDI_FUNC_EXIT(MPID_STATE_VBUF_INIT_RMA_FETCH_AND_ADD);
+}
+
+#undef FUNCNAME
+#define FUNCNAME vbuf_init_rma_compare_and_swap
+#undef FCNAME
+#define FCNAME MPIDI_QUOTE(FUNCNAME)
+void vbuf_init_rma_compare_and_swap(vbuf *v, void *l_addr, uint32_t lkey,
+                        void *r_addr, uint32_t rkey, uint64_t compare, 
+                        uint64_t swap, int rail)
+{
+    MPIDI_STATE_DECL(MPID_STATE_VBUF_INIT_RMA_COMPARE_AND_SWAP);
+    MPIDI_FUNC_ENTER(MPID_STATE_VBUF_INIT_RMA_COMPARE_AND_SWAP);
+
+    v->desc.u.sr.next = NULL;
+    v->desc.u.sr.opcode = IBV_WR_ATOMIC_CMP_AND_SWP;
+    v->desc.u.sr.send_flags = IBV_SEND_SIGNALED;
+    v->desc.u.sr.wr_id  = (uintptr_t) v;
+    v->desc.u.sr.num_sge = 1;
+    v->desc.u.sr.wr.atomic.remote_addr = (uintptr_t)(r_addr);
+    v->desc.u.sr.wr.atomic.rkey = rkey;
+    v->desc.u.sr.wr.atomic.compare_add = compare;
+    v->desc.u.sr.wr.atomic.swap = swap;
+
+    v->desc.u.sr.sg_list = &(v->desc.sg_entry);
+
+    v->desc.sg_entry.length = sizeof(uint64_t);
+    v->desc.sg_entry.lkey = lkey;
+    v->desc.sg_entry.addr = (uintptr_t)(v->buffer);
+
+    v->padding = RDMA_ONE_SIDED;
+    v->rail = rail;
+
+    MPIDI_FUNC_EXIT(MPID_STATE_VBUF_INIT_RMA_COMPARE_AND_SWAP);
+
+}
+ 
+
 #if defined(CKPT)
 
 #undef FUNCNAME
@@ -1373,7 +1465,8 @@ void vbuf_reregister_all()
                 ptag_save[i],
                 vr->malloc_buf_start,
                 vr->count * rdma_vbuf_total_size,
-                IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE);
+                IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE |
+                IBV_ACCESS_REMOTE_ATOMIC);
 
             if (!vr->mem_handle[i])
             {

@@ -58,12 +58,12 @@ int MVAPICH2_Sync_Checkpoint();
 #endif /* _OSU_MVAPICH_ */
 
 
-static int InitPG( int *argc_p, char ***argv_p,
+static int init_pg( int *argc_p, char ***argv_p,
 		   int *has_args, int *has_env, int *has_parent, 
 		   int *pg_rank_p, MPIDI_PG_t **pg_p );
-static int MPIDI_CH3I_PG_Compare_ids(void * id1, void * id2);
-static int MPIDI_CH3I_PG_Destroy(MPIDI_PG_t * pg );
-
+static int pg_compare_ids(void * id1, void * id2);
+static int pg_destroy(MPIDI_PG_t * pg );
+static int set_eager_threshold(MPID_Comm *comm_ptr, MPID_Info *info, void *state);
 
 MPIDI_Process_t MPIDI_Process = { NULL };
 MPIDI_CH3U_SRBuf_element_t * MPIDI_CH3U_SRBuf_pool = NULL;
@@ -90,6 +90,31 @@ static int finalize_failed_procs_group(void *param)
     
  fn_fail:
     return mpi_errno;
+}
+
+#undef FUNCNAME
+#define FUNCNAME set_eager_threshold
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+static int set_eager_threshold(MPID_Comm *comm_ptr, MPID_Info *info, void *state)
+{
+    int mpi_errno = MPI_SUCCESS;
+    char *endptr;
+    MPID_MPI_STATE_DECL(MPID_STATE_MPIDI_CH3_SET_EAGER_THRESHOLD);
+
+    MPID_MPI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_SET_EAGER_THRESHOLD);
+
+    comm_ptr->ch.eager_max_msg_sz = strtol(info->value, &endptr, 0);
+
+    MPIU_ERR_CHKANDJUMP1(*endptr, mpi_errno, MPI_ERR_ARG,
+                         "**infohintparse", "**infohintparse %s",
+                         info->key);
+
+ fn_exit:
+    MPID_MPI_FUNC_EXIT(MPID_STATE_MPIDI_CH3_SET_EAGER_THRESHOLD);
+    return mpi_errno;
+ fn_fail:
+    goto fn_exit;
 }
 
 #if defined(_OSU_MVAPICH_)
@@ -217,7 +242,6 @@ void init_debug2(int mpi_rank) {
 }
 #endif
 
-
 #undef FUNCNAME
 #define FUNCNAME MPID_Init
 #undef FCNAME
@@ -290,7 +314,7 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     /*
      * Perform channel-independent PMI initialization
      */
-    mpi_errno = InitPG( argc, argv, 
+    mpi_errno = init_pg( argc, argv,
 			has_args, has_env, &has_parent, &pg_rank, &pg );
     if (mpi_errno) {
 	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER, "**ch3|ch3_init");
@@ -541,11 +565,13 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     pthread_cond_init(&MVAPICH2_sync_ckpt_cond, NULL);
 #endif /* defined(_OSU_MVAPICH_) && defined(CKPT) */
 
-
-
 #if defined(_OSU_MVAPICH_) && defined(_ENABLE_CUDA_)
     if (rdma_enable_cuda) {
-        cuda_init(pg);
+        if (rdma_cuda_dynamic_init) { 
+            cuda_preinit(pg);
+        } else {
+            cuda_init(pg);
+        }
     }
 #endif /* defined(_OSU_MVAPICH_) && defined(_ENABLE_CUDA_) */
 
@@ -554,6 +580,11 @@ int MPID_Init(int *argc, char ***argv, int requested, int *provided,
     SCR_Init();
 #endif
     
+    mpi_errno = MPIR_Comm_register_hint("eager_rendezvous_threshold",
+                                        set_eager_threshold,
+                                        NULL);
+    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
   fn_exit:
     MPIDI_FUNC_EXIT(MPID_STATE_MPID_INIT);
     return mpi_errno;
@@ -579,7 +610,7 @@ int MPID_InitCompleted( void )
  * process group structures.
  * 
  */
-static int InitPG( int *argc, char ***argv, 
+static int init_pg( int *argc, char ***argv,
 		   int *has_args, int *has_env, int *has_parent, 
 		   int *pg_rank_p, MPIDI_PG_t **pg_p )
 {
@@ -709,7 +740,7 @@ static int InitPG( int *argc, char ***argv,
      * Initialize the process group tracking subsystem
      */
     mpi_errno = MPIDI_PG_Init(argc, argv, 
-			     MPIDI_CH3I_PG_Compare_ids, MPIDI_CH3I_PG_Destroy);
+			     pg_compare_ids, pg_destroy);
     if (mpi_errno != MPI_SUCCESS) {
 	MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**dev|pg_init");
     }
@@ -809,13 +840,13 @@ int MPIDI_CH3I_BCFree( char *bc_val )
 
 /* FIXME: The PG code should supply these, since it knows how the 
    pg_ids and other data are represented */
-static int MPIDI_CH3I_PG_Compare_ids(void * id1, void * id2)
+static int pg_compare_ids(void * id1, void * id2)
 {
     return (strcmp((char *) id1, (char *) id2) == 0) ? TRUE : FALSE;
 }
 
 
-static int MPIDI_CH3I_PG_Destroy(MPIDI_PG_t * pg)
+static int pg_destroy(MPIDI_PG_t * pg)
 {
     if (pg->id != NULL)
     { 

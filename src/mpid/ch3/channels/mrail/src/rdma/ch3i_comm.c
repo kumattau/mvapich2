@@ -30,6 +30,9 @@ int MPIDI_CH3I_comm_create (MPID_Comm *comm)
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_COMM_CREATE);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_COMM_CREATE);
 
+    /* Use the VC's eager threshold by default. */
+    comm->ch.eager_max_msg_sz = -1;
+
     if(mv2_use_osu_collectives == 1 && 
         comm->comm_kind == MPID_INTRACOMM)  { 
 

@@ -40,29 +40,29 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv(MPIDI_VC_t * vc, MPID_Request * req)
         req->dev.recv_data_sz, req->dev.segment_size, req->dev.iov_count);
 #ifdef _ENABLE_UD_
     if (rdma_enable_hybrid && (!(vc->mrail.state & MRAILI_RC_CONNECTED) || 
-                    req->mrail.protocol == VAPI_PROTOCOL_UD_ZCOPY)) {
+                    req->mrail.protocol == MV2_RNDV_PROTOCOL_UD_ZCOPY)) {
 #ifdef _ENABLE_XRC_
         if (USE_XRC && !(vc->mrail.state & MRAILI_RC_CONNECTED) &&
-                req->mrail.protocol == VAPI_PROTOCOL_RPUT) {
-            req->mrail.protocol = VAPI_PROTOCOL_R3;
+                req->mrail.protocol == MV2_RNDV_PROTOCOL_RPUT) {
+            req->mrail.protocol = MV2_RNDV_PROTOCOL_R3;
             return 0;
         }
 #endif        
-        req->mrail.protocol = VAPI_PROTOCOL_R3;
+        req->mrail.protocol = MV2_RNDV_PROTOCOL_R3;
         if (rdma_use_ud_zcopy) {
-            req->mrail.protocol = VAPI_PROTOCOL_UD_ZCOPY;
+            req->mrail.protocol = MV2_RNDV_PROTOCOL_UD_ZCOPY;
         }
     } else
 #endif
-    if (VAPI_PROTOCOL_RPUT == rdma_rndv_protocol) {
-        req->mrail.protocol = VAPI_PROTOCOL_RPUT;
-    } else if (VAPI_PROTOCOL_RGET == rdma_rndv_protocol) {
-        req->mrail.protocol = VAPI_PROTOCOL_RGET;
+    if (MV2_RNDV_PROTOCOL_RPUT == rdma_rndv_protocol) {
+        req->mrail.protocol = MV2_RNDV_PROTOCOL_RPUT;
+    } else if (MV2_RNDV_PROTOCOL_RGET == rdma_rndv_protocol) {
+        req->mrail.protocol = MV2_RNDV_PROTOCOL_RGET;
     } else {
-        req->mrail.protocol = VAPI_PROTOCOL_R3;
+        req->mrail.protocol = MV2_RNDV_PROTOCOL_R3;
     }
 
-    if (req->mrail.protocol == VAPI_PROTOCOL_R3) {
+    if (req->mrail.protocol == MV2_RNDV_PROTOCOL_R3) {
         return 0;
     }
 
@@ -87,7 +87,7 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv(MPIDI_VC_t * vc, MPID_Request * req)
             /* fall back to r3 if cannot allocate tmp buf */
 
             DEBUG_PRINT("[rndv sent] set info: cannot allocate space\n");
-            req->mrail.protocol = VAPI_PROTOCOL_R3;
+            req->mrail.protocol = MV2_RNDV_PROTOCOL_R3;
             req->mrail.rndv_buf_sz = 0;
         } else {
             req->mrail.rndv_buf_alloc = 1;
@@ -101,12 +101,12 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv(MPIDI_VC_t * vc, MPID_Request * req)
         && !rdma_enable_cuda
 #endif
         ) {
-        req->mrail.protocol = VAPI_PROTOCOL_R3;
+        req->mrail.protocol = MV2_RNDV_PROTOCOL_R3;
     }
 #ifdef _ENABLE_CUDA_
     if (rdma_enable_cuda && req->mrail.cuda_transfer_mode != NONE) {
-        if ( (VAPI_PROTOCOL_RPUT == req->mrail.protocol) ||
-                (VAPI_PROTOCOL_RGET == req->mrail.protocol) ) {
+        if ( (MV2_RNDV_PROTOCOL_RPUT == req->mrail.protocol) ||
+                (MV2_RNDV_PROTOCOL_RGET == req->mrail.protocol) ) {
             return 1;
         } else {
             return 0;
@@ -117,7 +117,7 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv(MPIDI_VC_t * vc, MPID_Request * req)
     if (rdma_enable_hybrid && (req->mrail.rndv_buf_sz < rdma_ud_zcopy_threshold
      || req->mrail.rndv_buf_sz > (rdma_default_ud_mtu * rdma_ud_zcopy_rq_size))) {
             /*len <= (rdma_default_ud_mtu * 4096) */
-        req->mrail.protocol = VAPI_PROTOCOL_R3;
+        req->mrail.protocol = MV2_RNDV_PROTOCOL_R3;
         MPIDI_CH3I_MRAIL_FREE_RNDV_BUFFER(req);
     }
 #endif
@@ -132,24 +132,24 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv(MPIDI_VC_t * vc, MPID_Request * req)
 #ifdef _ENABLE_CUDA_
         (!rdma_enable_cuda || !SMP_INIT || vc->smp.local_nodes == -1) && 
 #endif
-        (VAPI_PROTOCOL_RPUT == req->mrail.protocol ||
-            VAPI_PROTOCOL_RGET == req->mrail.protocol ||
-                VAPI_PROTOCOL_UD_ZCOPY == req->mrail.protocol)) {
+        (MV2_RNDV_PROTOCOL_RPUT == req->mrail.protocol ||
+            MV2_RNDV_PROTOCOL_RGET == req->mrail.protocol ||
+                MV2_RNDV_PROTOCOL_UD_ZCOPY == req->mrail.protocol)) {
         DEBUG_PRINT("[cts] size registered %d, addr %p\n",
                 req->mrail.rndv_buf_sz, req->mrail.rndv_buf);
         reg_entry =
             dreg_register(req->mrail.rndv_buf, req->mrail.rndv_buf_sz);
         if (NULL == reg_entry) {
-            req->mrail.protocol = VAPI_PROTOCOL_R3;
+            req->mrail.protocol = MV2_RNDV_PROTOCOL_R3;
             MPIDI_CH3I_MRAIL_FREE_RNDV_BUFFER(req);
             /*MRAILI_Prepost_R3(); */
         }
         DEBUG_PRINT("[prepare cts] register success\n");
     }
 
-    if (VAPI_PROTOCOL_RPUT == req->mrail.protocol ||
-            VAPI_PROTOCOL_RGET == req->mrail.protocol ||
-                VAPI_PROTOCOL_UD_ZCOPY == req->mrail.protocol) {
+    if (MV2_RNDV_PROTOCOL_RPUT == req->mrail.protocol ||
+            MV2_RNDV_PROTOCOL_RGET == req->mrail.protocol ||
+                MV2_RNDV_PROTOCOL_UD_ZCOPY == req->mrail.protocol) {
         req->mrail.completion_counter = 0;
         req->mrail.d_entry = reg_entry;
         return 1;
@@ -164,7 +164,7 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv_transfer(MPID_Request * sreq,
 {
     int hca_index;
 
-    if (rndv->protocol == VAPI_PROTOCOL_R3) {
+    if (rndv->protocol == MV2_RNDV_PROTOCOL_R3) {
         if (sreq->mrail.d_entry != NULL) {
             dreg_unregister(sreq->mrail.d_entry);
             sreq->mrail.d_entry = NULL;
@@ -182,10 +182,10 @@ int MPIDI_CH3I_MRAIL_Prepare_rndv_transfer(MPID_Request * sreq,
 
         for (hca_index = 0; hca_index < rdma_num_hcas; hca_index ++)
             sreq->mrail.rkey[hca_index] = 0;
-        sreq->mrail.protocol = VAPI_PROTOCOL_R3;
+        sreq->mrail.protocol = MV2_RNDV_PROTOCOL_R3;
     } else {
 #ifdef _ENABLE_UD_
-        if(rndv->protocol == VAPI_PROTOCOL_UD_ZCOPY) {
+        if(rndv->protocol == MV2_RNDV_PROTOCOL_UD_ZCOPY) {
             PRINT_DEBUG(DEBUG_ZCY_verbose>0, "Received CTS.remote qpn:%d\n", rndv->rndv_qpn);
             sreq->mrail.remote_qpn = rndv->rndv_qpn;
             sreq->mrail.hca_index = rndv->hca_index;
@@ -827,7 +827,7 @@ int MPIDI_CH3I_MRAIL_Finish_request(MPID_Request *rreq)
 {
     rreq->mrail.completion_counter++;
 
-    if(rreq->mrail.protocol == VAPI_PROTOCOL_RGET) {
+    if(rreq->mrail.protocol == MV2_RNDV_PROTOCOL_RGET) {
         return 1;
     }
 

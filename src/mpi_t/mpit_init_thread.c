@@ -3,8 +3,20 @@
  *  (C) 2011 by Argonne National Laboratory.
  *      See COPYRIGHT in top-level directory.
  */
+/* Copyright (c) 2001-2013, The Ohio State University. All rights
+ * reserved.
+ *
+ * This file is part of the MVAPICH2 software package developed by the
+ * team members of The Ohio State University's Network-Based Computing
+ * Laboratory (NBCL), headed by Professor Dhabaleswar K. (DK) Panda.
+ *
+ * For detailed copyright and licensing information, please refer to the
+ * copyright file COPYRIGHT in the top level MVAPICH2 directory.
+ *
+ */
 
 #include "mpiimpl.h"
+#include "mpidi_common_statistics.h"
 
 /* -- Begin Profiling Symbol Block for routine MPI_T_init_thread */
 #if defined(HAVE_PRAGMA_WEAK)
@@ -54,6 +66,11 @@ int MPIR_T_init_thread_impl(int required, int *provided)
          * MPI_Init does */
         mpi_errno = MPIR_Param_init_params();
         if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+
+#if defined (_OSU_MVAPICH_) && OSU_MPIT
+        mpi_errno = MV2_init_mpit_params();
+        if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+#endif /* (_OSU_MVAPICH_) && OSU_MPIT */
     }
 
 fn_exit:

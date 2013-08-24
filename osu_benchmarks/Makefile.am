@@ -38,7 +38,9 @@ pkglibexec_PROGRAMS =		\
     osu_passive_put_bw		\
     osu_passive_get_latency	\
     osu_passive_get_bw		\
-    osu_passive_acc_latency
+    osu_passive_acc_latency	\
+    osu_cas_flush		\
+    osu_fop_flush
 
 osu_scatter_SOURCES = osu_scatter.c osu_coll.c osu_coll.h
 osu_gather_SOURCES = osu_gather.c osu_coll.c osu_coll.h

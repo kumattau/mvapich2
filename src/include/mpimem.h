@@ -279,10 +279,28 @@ void MPIU_trdump(FILE *, int);
 
 #else /* USE_MEMORY_TRACING */
 /* No memory tracing; just use native functions */
+
+#if defined (_OSU_MVAPICH_) && OSU_MPIT
+
+void *MPIT_malloc(size_t);
+void *MPIT_calloc(size_t,size_t);
+void *MPIT_realloc(void *, size_t);
+void *MPIT_strdup(const char *);
+void MPIT_free(void *);
+
+#define MPIU_Malloc(a)       MPIT_malloc(a)
+#define MPIU_Calloc(a,b)     MPIT_calloc(a,b)
+#define MPIU_Free(a)         MPIT_free(a)
+#define MPIU_Strdup(a)       MPIT_strdup(a)
+#define MPIU_Realloc(a,b)    MPIT_realloc(a,b)
+
+#else
+
 #define MPIU_Malloc(a)    malloc((size_t)(a))
 #define MPIU_Calloc(a,b)  calloc((size_t)(a),(size_t)(b))
 #define MPIU_Free(a)      free((void *)(a))
 #define MPIU_Realloc(a,b)  realloc((void *)(a),(size_t)(b))
+
 
 #ifdef HAVE_STRDUP
 /* Watch for the case where strdup is defined as a macro by a header include */
@@ -293,6 +311,8 @@ extern char *strdup( const char * );
 #else
 /* Don't define MPIU_Strdup, provide it in safestr.c */
 #endif /* HAVE_STRDUP */
+
+#endif /* (_OSU_MVAPICH_) && OSU_MPI */ 
 
 #endif /* USE_MEMORY_TRACING */
 

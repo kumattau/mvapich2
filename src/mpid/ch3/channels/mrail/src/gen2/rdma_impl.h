@@ -73,6 +73,7 @@ typedef struct mv2_MPIDI_CH3I_RDMA_Process_t {
     uint8_t                     has_ring_startup;
     uint8_t                     has_lazy_mem_unregister;
     uint8_t                     has_one_sided;
+    uint8_t                     has_flush;
     uint8_t                     has_limic_one_sided;
     uint8_t                     has_shm_one_sided;
     int                         maxtransfersize;
@@ -248,7 +249,9 @@ do {                                                                    \
         MPIU_Assert (!USE_XRC || VC_XST_ISUNSET ((_c), XF_INDIRECT_CONN));  \
         int __ret;                                                          \
         if(((_v)->desc.sg_entry.length <= rdma_max_inline_size)       \
-                && ((_v)->desc.u.sr.opcode != IBV_WR_RDMA_READ))      \
+                && ((_v)->desc.u.sr.opcode != IBV_WR_RDMA_READ)      \
+                && ((_v)->desc.u.sr.opcode != IBV_WR_ATOMIC_CMP_AND_SWP) \
+                && ((_v)->desc.u.sr.opcode != IBV_WR_ATOMIC_FETCH_AND_ADD)) \
         {                                                             \
            (_v)->desc.u.sr.send_flags = (enum ibv_send_flags)         \
                                         (IBV_SEND_SIGNALED |          \
@@ -315,7 +318,9 @@ inline static void print_info(vbuf* v, char* title, int err)
     {                                                                 \
         int __ret;                                                    \
         if(((_v)->desc.sg_entry.length <= rdma_max_inline_size)       \
-                && ((_v)->desc.u.sr.opcode != IBV_WR_RDMA_READ))      \
+                && ((_v)->desc.u.sr.opcode != IBV_WR_RDMA_READ)      \
+                && ((_v)->desc.u.sr.opcode != IBV_WR_ATOMIC_CMP_AND_SWP) \
+                && ((_v)->desc.u.sr.opcode != IBV_WR_ATOMIC_FETCH_AND_ADD)) \
         {                                                             \
            (_v)->desc.u.sr.send_flags = (enum ibv_send_flags)         \
                                         (IBV_SEND_SIGNALED |          \
@@ -446,6 +451,8 @@ void MRAILI_Init_vc_network(MPIDI_VC_t * vc);
 #define SIGNAL_FOR_GET        (2)
 #define SIGNAL_FOR_LOCK_ACT   (3)
 #define SIGNAL_FOR_DECR_CC    (4)
+#define SIGNAL_FOR_FETCH_AND_ADD (5)
+#define SIGNAL_FOR_COMPARE_AND_SWAP (6)
 
 /* Prototype for ring based startup */
 int rdma_ring_boot_exchange(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,

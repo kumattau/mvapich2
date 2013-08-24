@@ -142,7 +142,7 @@ int MPIDI_CH3_EagerNoncontigSend( MPID_Request **sreq_p,
     eager_pkt->in_cuda_region = 0;
     if (rdma_enable_cuda && rdma_cuda_smp_ipc && 
             SMP_INIT && vc->smp.local_nodes >= 0 &&
-            vc->smp.can_access_peer && is_device_buffer((void *)buf)) {
+            vc->smp.can_access_peer == CUDA_IPC_ENABLED && is_device_buffer((void *)buf)) {
         eager_pkt->in_cuda_region = 1;
     }
 #endif
@@ -244,7 +244,7 @@ int MPIDI_CH3_EagerContigSend( MPID_Request **sreq_p,
     eager_pkt->in_cuda_region = 0;
     if (rdma_enable_cuda && rdma_cuda_smp_ipc && 
             SMP_INIT && vc->smp.local_nodes >= 0 &&
-            vc->smp.can_access_peer && is_device_buffer((void *)buf)) {
+            vc->smp.can_access_peer == CUDA_IPC_ENABLED && is_device_buffer((void *)buf)) {
         eager_pkt->in_cuda_region = 1;
     }
 #endif
@@ -624,7 +624,7 @@ int MPIDI_CH3_EagerContigIsend( MPID_Request **sreq_p,
     eager_pkt->in_cuda_region = 0;
     if (rdma_enable_cuda && rdma_cuda_smp_ipc && 
             SMP_INIT && vc->smp.local_nodes >= 0 &&
-            vc->smp.can_access_peer && is_device_buffer((void *)buf)) {
+            vc->smp.can_access_peer == CUDA_IPC_ENABLED && is_device_buffer((void *)buf)) {
         eager_pkt->in_cuda_region = 1;
     }
 #endif
@@ -718,7 +718,7 @@ int MPIDI_CH3_PktHandler_EagerSend_Contig( MPIDI_VC_t *vc,
             && rreq->dev.recv_data_sz > 0
             && rdma_enable_cuda
             && rdma_cuda_smp_ipc
-            && vc->smp.can_access_peer) {
+            && vc->smp.can_access_peer == CUDA_IPC_ENABLED) {
 
         *buflen = eager_pkt->data_sz;
         data_len = ((*buflen >= rreq->dev.recv_data_sz)
@@ -784,7 +784,7 @@ int MPIDI_CH3_PktHandler_EagerSend_Contig( MPIDI_VC_t *vc,
 
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
    if (rdma_enable_cuda && rdma_cuda_smp_ipc && eager_pkt->in_cuda_region == 1
-       && vc->smp.can_access_peer) {
+       && vc->smp.can_access_peer == CUDA_IPC_ENABLED) {
        if (0 == cur_t) {
            ((smpi_cu_ipc_attr *)rem_base + my_rank)->cuda_tail = data_len;
        } else {
@@ -877,7 +877,7 @@ int MPIDI_CH3_PktHandler_EagerSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
     if (vc->smp.local_nodes != -1 && eager_pkt->in_cuda_region == 1 &&
             rreq->dev.recv_data_sz > 0 && rdma_enable_cuda && rdma_cuda_smp_ipc
-            && vc->smp.can_access_peer) {
+            && vc->smp.can_access_peer == CUDA_IPC_ENABLED) {
 
         *buflen += eager_pkt->data_sz;
         data_len = ((*buflen - sizeof(MPIDI_CH3_Pkt_t) >= rreq->dev.recv_data_sz)
@@ -934,7 +934,7 @@ int MPIDI_CH3_PktHandler_EagerSend( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
     if (rdma_enable_cuda && rdma_cuda_smp_ipc && eager_pkt->in_cuda_region == 1
-         && vc->smp.can_access_peer) {
+         && vc->smp.can_access_peer == CUDA_IPC_ENABLED) {
         if (0 == cur_t) {
             ((smpi_cu_ipc_attr *)rem_base + my_rank)->cuda_tail = data_len;
         } else {

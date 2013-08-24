@@ -16,6 +16,7 @@
  *
  */
 
+#include "mpiimpl.h"
 #include "mpidi_ch3_impl.h"
 #include "mpiutil.h"
 #include "rdma_impl.h"
@@ -74,6 +75,11 @@ volatile unsigned int MPIDI_CH3I_progress_completion_count = 0;
     volatile int MPIDI_CH3I_progress_wakeup_signalled = FALSE;
     MPID_Thread_cond_t MPIDI_CH3I_progress_completion_cond;
 #endif
+
+#if defined (_OSU_MVAPICH_) && OSU_MPIT
+unsigned long mpit_progress_poll = 0;
+#endif /* (_OSU_MVAPICH_) && OSU_MPIT */
+
 
 inline static int MPIDI_CH3I_Seq(int type)
 { 
@@ -196,6 +202,10 @@ int MPIDI_CH3I_Progress(int is_blocking, MPID_Progress_state * state)
     {
 
 start_polling:
+        #if defined (_OSU_MVAPICH_) && OSU_MPIT
+            mpit_progress_poll++;
+        #endif /* (_OSU_MVAPICH_) && OSU_MPIT */
+
         smp_completions = MPIDI_CH3I_progress_completion_count;
         smp_found = 0;
         /*needed if early send complete does not occur */
@@ -307,6 +317,9 @@ start_polling:
                     if (UD_ACK_PROGRESS_TIMEOUT) {
                         rdma_ud_last_check = mv2_get_time_us();
                         mv2_check_resend();
+                        #if OSU_MPIT
+                            rdma_ud_retransmissions++;
+                        #endif
                         MV2_UD_SEND_ACKS();
                     }
                 }
@@ -411,6 +424,9 @@ start_polling:
 #ifdef _ENABLE_UD_
     if ( !SMP_ONLY && rdma_enable_hybrid && UD_ACK_PROGRESS_TIMEOUT) {
         mv2_check_resend();
+        #if OSU_MPIT
+            rdma_ud_retransmissions++;
+        #endif
         MV2_UD_SEND_ACKS();
         rdma_ud_last_check = mv2_get_time_us();
     }
@@ -607,6 +623,9 @@ int MPIDI_CH3I_Progress_test()
 #ifdef _ENABLE_UD_
     if ( !SMP_ONLY && rdma_enable_hybrid && UD_ACK_PROGRESS_TIMEOUT) {
         mv2_check_resend();
+        #if OSU_MPIT
+            rdma_ud_retransmissions++;
+        #endif
         MV2_UD_SEND_ACKS();
         rdma_ud_last_check = mv2_get_time_us();
     }

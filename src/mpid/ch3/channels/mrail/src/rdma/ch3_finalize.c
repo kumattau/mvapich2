@@ -19,6 +19,7 @@
 
 #include "mpidi_ch3_impl.h"
 #include "rdma_impl.h"
+#include "mem_hooks.h"
 #include "debug_utils.h"
 #include "pmi.h"
 #include "coll_shmem.h"
@@ -78,6 +79,10 @@ int MPIDI_CH3_Finalize()
 
     if (!SMP_ONLY) 
     {
+
+#ifndef DISABLE_PTMALLOC
+        mvapich2_mfin();
+#endif
         /* allocate rmda memory and set up the queues */
         if (MPIDI_CH3I_Process.cm_type == MPIDI_CH3I_CM_ON_DEMAND) {
             /*FillMe:call MPIDI_CH3I_CM_Finalize here*/

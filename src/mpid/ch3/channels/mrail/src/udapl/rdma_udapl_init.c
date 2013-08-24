@@ -117,18 +117,6 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t *pg, int pg_rank)
     char rdmavalue[512];
     char tmp[512];
 
-#ifndef DISABLE_PTMALLOC    
-    if(mvapich2_minit()) {
-        fprintf(stderr,
-                "[%s:%d] Error initializing MVAPICH2 malloc library\n",
-                __FILE__, __LINE__);
-        return MPI_ERR_OTHER;
-    }
-#elif !defined(SOLARIS) 
-    mallopt(M_TRIM_THRESHOLD, -1);
-    mallopt(M_MMAP_MAX, 0);
-#endif
-
     cached_pg = pg;
     cached_pg_rank = pg_rank;
     pg_size = MPIDI_PG_Get_size (pg);
@@ -207,218 +195,217 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t *pg, int pg_rank)
     rdma_iba_allocate_memory (&mv2_MPIDI_CH3I_RDMA_Process, vc, pg_rank, pg_size);
 
     if (pg_size > 1)
-      {
-#if !defined(USE_MPD_RING)
-          /*Exchange the information about HCA_lid and qp_num */
-          /* Allocate space for pmi keys and values */
-          error = PMI_KVS_Get_key_length_max (&key_max_sz);
-          MPIU_Assert(error == PMI_SUCCESS);
-          ++key_max_sz;
-          key = MPIU_Malloc (key_max_sz);
+    {
+        /*Exchange the information about HCA_lid and qp_num */
+        /* Allocate space for pmi keys and values */
+        error = PMI_KVS_Get_key_length_max (&key_max_sz);
+        MPIU_Assert(error == PMI_SUCCESS);
+        ++key_max_sz;
+        key = MPIU_Malloc (key_max_sz);
 
-          if (key == NULL)
+        if (key == NULL)
+        {
+            error =
+                MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
+                        __LINE__, MPI_ERR_OTHER, "**nomem",
+                        "**nomem %s", "pmi key");
+            return error;
+        }
+
+        PMI_KVS_Get_value_length_max (&val_max_sz);
+        MPIU_Assert (error == PMI_SUCCESS);
+        ++val_max_sz;
+        val = MPIU_Malloc (val_max_sz);
+
+        if (val == NULL)
+        {
+            error =
+                MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
+                        __LINE__, MPI_ERR_OTHER, "**nomem",
+                        "**nomem %s", "pmi value");
+            return error;
+        }
+        /* STEP 1: Exchange HCA_lid */
+
+        sprintf (rdmakey, "MV2HCA%08d", pg_rank);
+
+        MPIDI_CH3I_RDMA_util_atos (rdmavalue,
+                &(rdma_iba_addr_table.
+                    ia_addr[pg_rank][0]));
+
+        /* put the kvs into PMI */
+        MPIU_Strncpy (key, rdmakey, key_max_sz);
+        MPIU_Strncpy (val, rdmavalue, val_max_sz);
+        error = PMI_KVS_Put (pg->ch.kvs_name, key, val);
+        if (error != 0)
+        {
+            error =
+                MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
+                        FCNAME, __LINE__,
+                        MPI_ERR_OTHER,
+                        "**pmi_kvs_put",
+                        "**pmi_kvs_put %d", error);
+            return error;
+        }
+
+        error = PMI_KVS_Commit (pg->ch.kvs_name);
+        if (error != 0)
+        {
+            error =
+                MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
+                        FCNAME, __LINE__,
+                        MPI_ERR_OTHER,
+                        "**pmi_kvs_commit",
+                        "**pmi_kvs_commit %d", error);
+            return error;
+        }
+
+        error = PMI_Barrier ();
+        if (error != 0)
+        {
+            error =
+                MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
+                        __LINE__, MPI_ERR_OTHER,
+                        "**pmi_barrier", "**pmi_barrier %d",
+                        error);
+            return error;
+        }
+
+
+        /* Here, all the key and value pairs are put, now we can get them */
+        for (i = 0; i < pg_size; ++i)
+        {
+            if (pg_rank == i)
             {
-                error =
-                    MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
-                                          __LINE__, MPI_ERR_OTHER, "**nomem",
-                                          "**nomem %s", "pmi key");
-                return error;
+                continue;
             }
-
-          PMI_KVS_Get_value_length_max (&val_max_sz);
-          MPIU_Assert (error == PMI_SUCCESS);
-          ++val_max_sz;
-          val = MPIU_Malloc (val_max_sz);
-
-          if (val == NULL)
-            {
-                error =
-                    MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
-                                          __LINE__, MPI_ERR_OTHER, "**nomem",
-                                          "**nomem %s", "pmi value");
-                return error;
-            }
-          /* STEP 1: Exchange HCA_lid */
-
-          sprintf (rdmakey, "MV2HCA%08d", pg_rank);
-
-          MPIDI_CH3I_RDMA_util_atos (rdmavalue,
-                                     &(rdma_iba_addr_table.
-                                       ia_addr[pg_rank][0]));
-
-          /* put the kvs into PMI */
-          MPIU_Strncpy (key, rdmakey, key_max_sz);
-          MPIU_Strncpy (val, rdmavalue, val_max_sz);
-          error = PMI_KVS_Put (pg->ch.kvs_name, key, val);
-          if (error != 0)
-            {
-                error =
-                    MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
-                                          FCNAME, __LINE__,
-                                          MPI_ERR_OTHER,
-                                          "**pmi_kvs_put",
-                                          "**pmi_kvs_put %d", error);
-                return error;
-            }
-
-          error = PMI_KVS_Commit (pg->ch.kvs_name);
-          if (error != 0)
-            {
-                error =
-                    MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
-                                          FCNAME, __LINE__,
-                                          MPI_ERR_OTHER,
-                                          "**pmi_kvs_commit",
-                                          "**pmi_kvs_commit %d", error);
-                return error;
-            }
-
-          error = PMI_Barrier ();
-          if (error != 0)
-            {
-                error =
-                    MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
-                                          __LINE__, MPI_ERR_OTHER,
-                                          "**pmi_barrier", "**pmi_barrier %d",
-                                          error);
-                return error;
-            }
-
-
-          /* Here, all the key and value pairs are put, now we can get them */
-          for (i = 0; i < pg_size; ++i)
-            {
-                if (pg_rank == i)
-                  {
-                      continue;
-                  }
-                /* generate the key */
-                sprintf (rdmakey, "MV2HCA%08d", i);
-                MPIU_Strncpy (key, rdmakey, key_max_sz);
-                error = PMI_KVS_Get (pg->ch.kvs_name, key, val, val_max_sz);
-                if (error != 0)
-                  {
-                      error =
-                          MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
-                                                FCNAME, __LINE__,
-                                                MPI_ERR_OTHER,
-                                                "**pmi_kvs_get",
-                                                "**pmi_kvs_get %d", error);
-                      return error;
-                  }
-                MPIU_Strncpy (rdmavalue, val, val_max_sz);
-                MPIDI_CH3I_RDMA_util_stoa (&
-                                           (rdma_iba_addr_table.
-                                            ia_addr[i][0]), rdmavalue);
-            }
-
-          /* this barrier is to prevent some process from
-             overwriting values that has not been get yet */
-          error = PMI_Barrier ();
-          if (error != 0)
-            {
-                error =
-                    MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
-                                          __LINE__, MPI_ERR_OTHER,
-                                          "**pmi_barrier", "**pmi_barrier %d",
-                                          error);
-                return error;
-            }
-
-          /* STEP 2: Exchange qp_num and host id*/
-                /* generate the key and value pair for each connection */
-          hostid_all[pg_rank] =  gethostid();
-          sprintf (rdmakey, "MV2QP%08d", pg_rank);
-          sprintf (rdmavalue, "%08d-%016d",
-                   (int) rdma_iba_addr_table.service_id[pg_rank][0],
-                    hostid_all[pg_rank]);
-
-          /* put the kvs into PMI */
-          MPIU_Strncpy (key, rdmakey, key_max_sz);
-          MPIU_Strncpy (val, rdmavalue, val_max_sz);
-          error = PMI_KVS_Put (pg->ch.kvs_name, key, val);
-          if (error != 0)
+            /* generate the key */
+            sprintf (rdmakey, "MV2HCA%08d", i);
+            MPIU_Strncpy (key, rdmakey, key_max_sz);
+            error = PMI_KVS_Get (pg->ch.kvs_name, key, val, val_max_sz);
+            if (error != 0)
             {
                 error =
                     MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
-                                          FCNAME, __LINE__,
-                                          MPI_ERR_OTHER,
-                                          "**pmi_kvs_put",
-                                          "**pmi_kvs_put %d", error);
+                            FCNAME, __LINE__,
+                            MPI_ERR_OTHER,
+                            "**pmi_kvs_get",
+                            "**pmi_kvs_get %d", error);
                 return error;
             }
-          error = PMI_KVS_Commit (pg->ch.kvs_name);
-          if (error != 0)
+            MPIU_Strncpy (rdmavalue, val, val_max_sz);
+            MPIDI_CH3I_RDMA_util_stoa (&
+                    (rdma_iba_addr_table.
+                     ia_addr[i][0]), rdmavalue);
+        }
+
+        /* this barrier is to prevent some process from
+           overwriting values that has not been get yet */
+        error = PMI_Barrier ();
+        if (error != 0)
+        {
+            error =
+                MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
+                        __LINE__, MPI_ERR_OTHER,
+                        "**pmi_barrier", "**pmi_barrier %d",
+                        error);
+            return error;
+        }
+
+        /* STEP 2: Exchange qp_num and host id*/
+        /* generate the key and value pair for each connection */
+        hostid_all[pg_rank] =  gethostid();
+        sprintf (rdmakey, "MV2QP%08d", pg_rank);
+        sprintf (rdmavalue, "%08d-%016d",
+                (int) rdma_iba_addr_table.service_id[pg_rank][0],
+                hostid_all[pg_rank]);
+
+        /* put the kvs into PMI */
+        MPIU_Strncpy (key, rdmakey, key_max_sz);
+        MPIU_Strncpy (val, rdmavalue, val_max_sz);
+        error = PMI_KVS_Put (pg->ch.kvs_name, key, val);
+        if (error != 0)
+        {
+            error =
+                MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
+                        FCNAME, __LINE__,
+                        MPI_ERR_OTHER,
+                        "**pmi_kvs_put",
+                        "**pmi_kvs_put %d", error);
+            return error;
+        }
+        error = PMI_KVS_Commit (pg->ch.kvs_name);
+        if (error != 0)
+        {
+            error =
+                MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
+                        FCNAME, __LINE__,
+                        MPI_ERR_OTHER,
+                        "**pmi_kvs_commit",
+                        "**pmi_kvs_commit %d", error);
+            return error;
+        }
+
+
+        error = PMI_Barrier ();
+        if (error != 0)
+        {
+            error =
+                MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
+                        __LINE__, MPI_ERR_OTHER,
+                        "**pmi_barrier", "**pmi_barrier %d",
+                        error);
+            return error;
+        }
+
+        /* Here, all the key and value pairs are put, now we can get them */
+        for (i = 0; i < pg_size; ++i)
+        {
+            if (pg_rank == i)
+                continue;
+            /* generate the key */
+            sprintf (rdmakey, "MV2QP%08d", i);
+            MPIU_Strncpy (key, rdmakey, key_max_sz);
+            error = PMI_KVS_Get (pg->ch.kvs_name, key, val, val_max_sz);
+            if (error != 0)
             {
                 error =
                     MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
-                                          FCNAME, __LINE__,
-                                          MPI_ERR_OTHER,
-                                          "**pmi_kvs_commit",
-                                          "**pmi_kvs_commit %d", error);
+                            FCNAME, __LINE__,
+                            MPI_ERR_OTHER,
+                            "**pmi_kvs_get",
+                            "**pmi_kvs_get %d", error);
                 return error;
             }
+            MPIU_Strncpy (rdmavalue, val, val_max_sz);
+
+            strncpy (tmp, rdmavalue, 8);
+            tmp[8] = '\0';
+            rdma_iba_addr_table.service_id[i][0] = atoll (tmp);
+            strncpy (tmp, rdmavalue + 8 + 1, 16);
+            tmp[16] = '\0';
+            hostid_all[i] = atoi(tmp);
+        }
+
+        rdma_process_hostid(pg, hostid_all, pg_rank, pg_size);
+        MPIU_Free(hostid_all);
 
 
-          error = PMI_Barrier ();
-          if (error != 0)
-            {
-                error =
-                    MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
-                                          __LINE__, MPI_ERR_OTHER,
-                                          "**pmi_barrier", "**pmi_barrier %d",
-                                          error);
-                return error;
-            }
+        error = PMI_Barrier ();
+        if (error != 0)
+        {
+            error =
+                MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
+                        __LINE__, MPI_ERR_OTHER,
+                        "**pmi_barrier", "**pmi_barrier %d",
+                        error);
+            return error;
+        }
+        DEBUG_PRINT ("After barrier\n");
 
-          /* Here, all the key and value pairs are put, now we can get them */
-          for (i = 0; i < pg_size; ++i)
-            {
-                if (pg_rank == i)
-                    continue;
-                /* generate the key */
-                sprintf (rdmakey, "MV2QP%08d", i);
-                MPIU_Strncpy (key, rdmakey, key_max_sz);
-                error = PMI_KVS_Get (pg->ch.kvs_name, key, val, val_max_sz);
-                if (error != 0)
-                  {
-                      error =
-                          MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
-                                                FCNAME, __LINE__,
-                                                MPI_ERR_OTHER,
-                                                "**pmi_kvs_get",
-                                                "**pmi_kvs_get %d", error);
-                      return error;
-                  }
-                MPIU_Strncpy (rdmavalue, val, val_max_sz);
-
-                strncpy (tmp, rdmavalue, 8);
-                tmp[8] = '\0';
-                rdma_iba_addr_table.service_id[i][0] = atoll (tmp);
-                strncpy (tmp, rdmavalue + 8 + 1, 16);
-                tmp[16] = '\0';
-                hostid_all[i] = atoi(tmp);
-            }
-
-            rdma_process_hostid(pg, hostid_all, pg_rank, pg_size);
-            MPIU_Free(hostid_all);
-            
-
-          error = PMI_Barrier ();
-          if (error != 0)
-            {
-                error =
-                    MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
-                                          __LINE__, MPI_ERR_OTHER,
-                                          "**pmi_barrier", "**pmi_barrier %d",
-                                          error);
-                return error;
-            }
-          DEBUG_PRINT ("After barrier\n");
-
-      if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
-          /* STEP 3: exchange the information about remote buffer */
-          for (i = 0; i < pg_size; ++i)
+        if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+            /* STEP 3: exchange the information about remote buffer */
+            for (i = 0; i < pg_size; ++i)
             {
                 if (pg_rank == i)
                     continue;
@@ -426,60 +413,60 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t *pg, int pg_rank)
                 MPIDI_PG_Get_vc (pg, i, &vc);
 
                 DEBUG_PRINT ("vc: %p, %p, i %d, pg_rank %d\n", vc,
-                             vc->mrail.rfp.RDMA_recv_buf, i, pg_rank);
+                        vc->mrail.rfp.RDMA_recv_buf, i, pg_rank);
 
                 /* generate the key and value pair for each connection */
                 sprintf (rdmakey, "MV2BUF%08d-%08d", pg_rank, i);
                 sprintf (rdmavalue, "%032ld-%016ld",
-                         (aint_t) vc->mrail.rfp.RDMA_recv_buf,
-                         (DAT_RMR_CONTEXT) vc->mrail.rfp.
-                         RDMA_recv_buf_hndl[0].rkey);
+                        (aint_t) vc->mrail.rfp.RDMA_recv_buf,
+                        (DAT_RMR_CONTEXT) vc->mrail.rfp.
+                        RDMA_recv_buf_hndl[0].rkey);
 
                 DEBUG_PRINT ("Put %d recv_buf %016lX, key %08X\n",
-                             i, (aint_t) vc->mrail.rfp.RDMA_recv_buf,
-                             (DAT_RMR_CONTEXT) vc->mrail.rfp.
-                             RDMA_recv_buf_hndl[0].rkey);
+                        i, (aint_t) vc->mrail.rfp.RDMA_recv_buf,
+                        (DAT_RMR_CONTEXT) vc->mrail.rfp.
+                        RDMA_recv_buf_hndl[0].rkey);
 
                 /* put the kvs into PMI */
                 MPIU_Strncpy (key, rdmakey, key_max_sz);
                 MPIU_Strncpy (val, rdmavalue, val_max_sz);
                 error = PMI_KVS_Put (pg->ch.kvs_name, key, val);
                 if (error != 0)
-                  {
-                      error =
-                          MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
-                                                FCNAME, __LINE__,
-                                                MPI_ERR_OTHER,
-                                                "**pmi_kvs_put",
-                                                "**pmi_kvs_put %d", error);
-                      return error;
-                  }
+                {
+                    error =
+                        MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
+                                FCNAME, __LINE__,
+                                MPI_ERR_OTHER,
+                                "**pmi_kvs_put",
+                                "**pmi_kvs_put %d", error);
+                    return error;
+                }
                 error = PMI_KVS_Commit (pg->ch.kvs_name);
                 if (error != 0)
-                  {
-                      error =
-                          MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
-                                                FCNAME, __LINE__,
-                                                MPI_ERR_OTHER,
-                                                "**pmi_kvs_commit",
-                                                "**pmi_kvs_commit %d", error);
-                      return error;
-                  }
+                {
+                    error =
+                        MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
+                                FCNAME, __LINE__,
+                                MPI_ERR_OTHER,
+                                "**pmi_kvs_commit",
+                                "**pmi_kvs_commit %d", error);
+                    return error;
+                }
             }
 
-          error = PMI_Barrier ();
-          if (error != 0)
+            error = PMI_Barrier ();
+            if (error != 0)
             {
                 error =
                     MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
-                                          __LINE__, MPI_ERR_OTHER,
-                                          "**pmi_barrier", "**pmi_barrier %d",
-                                          error);
+                            __LINE__, MPI_ERR_OTHER,
+                            "**pmi_barrier", "**pmi_barrier %d",
+                            error);
                 return error;
             }
 
-          /* Here, all the key and value pairs are put, now we can get them */
-          for (i = 0; i < pg_size; ++i)
+            /* Here, all the key and value pairs are put, now we can get them */
+            for (i = 0; i < pg_size; ++i)
             {
                 if (pg_rank == i)
                     continue;
@@ -490,15 +477,15 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t *pg, int pg_rank)
                 MPIU_Strncpy (key, rdmakey, key_max_sz);
                 error = PMI_KVS_Get (pg->ch.kvs_name, key, val, val_max_sz);
                 if (error != 0)
-                  {
-                      error =
-                          MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
-                                                FCNAME, __LINE__,
-                                                MPI_ERR_OTHER,
-                                                "**pmi_kvs_get",
-                                                "**pmi_kvs_get %d", error);
-                      return error;
-                  }
+                {
+                    error =
+                        MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
+                                FCNAME, __LINE__,
+                                MPI_ERR_OTHER,
+                                "**pmi_kvs_get",
+                                "**pmi_kvs_get %d", error);
+                    return error;
+                }
                 MPIU_Strncpy (rdmavalue, val, val_max_sz);
 
                 /* we get the remote addresses, now the SendBufferTail.buffer
@@ -520,71 +507,71 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t *pg, int pg_rank)
                 tmp[32] = '\0';
 
                 DEBUG_PRINT ("Get %d recv_buf %016lX, key %08X, local_credit %016lX, credit \
-                    key %08X\n",
-                             i, (aint_t) vc->mrail.rfp.remote_RDMA_buf, (DAT_RMR_CONTEXT) vc->mrail.rfp.remote_RDMA_buf_hndl[0].rkey,
-                             (aint_t) (vc->mrail.rfp.remote_credit_array), (DAT_RMR_CONTEXT) vc->mrail.rfp.remote_credit_update_hndl.
-                             rkey);
+                        key %08X\n",
+                        i, (aint_t) vc->mrail.rfp.remote_RDMA_buf, (DAT_RMR_CONTEXT) vc->mrail.rfp.remote_RDMA_buf_hndl[0].rkey,
+                        (aint_t) (vc->mrail.rfp.remote_credit_array), (DAT_RMR_CONTEXT) vc->mrail.rfp.remote_credit_update_hndl.
+                        rkey);
             }
-          error = PMI_Barrier ();
-          if (error != 0)
+            error = PMI_Barrier ();
+            if (error != 0)
             {
                 error =
                     MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
-                                          __LINE__, MPI_ERR_OTHER,
-                                          "**pmi_barrier", "**pmi_barrier %d",
-                                          error);
+                            __LINE__, MPI_ERR_OTHER,
+                            "**pmi_barrier", "**pmi_barrier %d",
+                            error);
                 return error;
             }
-      }
+        }
 
-      if (mv2_MPIDI_CH3I_RDMA_Process.has_one_sided) {
-          /* Exchange qp_num */
-          /* generate the key and value pair for each connection */
-          sprintf (rdmakey, "MV2OS%08d", pg_rank);
-          sprintf (rdmavalue, "%08d",
-                   (int) rdma_iba_addr_table.
-                   service_id_1sc[pg_rank][0]);
+        if (mv2_MPIDI_CH3I_RDMA_Process.has_one_sided) {
+            /* Exchange qp_num */
+            /* generate the key and value pair for each connection */
+            sprintf (rdmakey, "MV2OS%08d", pg_rank);
+            sprintf (rdmavalue, "%08d",
+                    (int) rdma_iba_addr_table.
+                    service_id_1sc[pg_rank][0]);
 
-          /* put the kvs into PMI */
-          MPIU_Strncpy (key, rdmakey, key_max_sz);
-          MPIU_Strncpy (val, rdmavalue, val_max_sz);
-          error = PMI_KVS_Put (pg->ch.kvs_name, key, val);
-          if (error != 0)
+            /* put the kvs into PMI */
+            MPIU_Strncpy (key, rdmakey, key_max_sz);
+            MPIU_Strncpy (val, rdmavalue, val_max_sz);
+            error = PMI_KVS_Put (pg->ch.kvs_name, key, val);
+            if (error != 0)
             {
                 error =
                     MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
-                                          FCNAME, __LINE__,
-                                          MPI_ERR_OTHER,
-                                          "**pmi_kvs_put",
-                                          "**pmi_kvs_put %d", error);
+                            FCNAME, __LINE__,
+                            MPI_ERR_OTHER,
+                            "**pmi_kvs_put",
+                            "**pmi_kvs_put %d", error);
                 return error;
             }
-          error = PMI_KVS_Commit (pg->ch.kvs_name);
-          if (error != 0)
+            error = PMI_KVS_Commit (pg->ch.kvs_name);
+            if (error != 0)
             {
                 error =
                     MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
-                                          FCNAME, __LINE__,
-                                          MPI_ERR_OTHER,
-                                          "**pmi_kvs_commit",
-                                          "**pmi_kvs_commit %d", error);
+                            FCNAME, __LINE__,
+                            MPI_ERR_OTHER,
+                            "**pmi_kvs_commit",
+                            "**pmi_kvs_commit %d", error);
                 return error;
             }
 
 
-          error = PMI_Barrier ();
-          if (error != 0)
+            error = PMI_Barrier ();
+            if (error != 0)
             {
                 error =
                     MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
-                                          __LINE__, MPI_ERR_OTHER,
-                                          "**pmi_barrier", "**pmi_barrier %d",
-                                          error);
+                            __LINE__, MPI_ERR_OTHER,
+                            "**pmi_barrier", "**pmi_barrier %d",
+                            error);
                 return error;
             }
 
-          /* Here, all the key and value pairs are put, now we can get them */
-          for (i = 0; i < pg_size; ++i)
+            /* Here, all the key and value pairs are put, now we can get them */
+            for (i = 0; i < pg_size; ++i)
             {
                 if (pg_rank == i)
                     continue;
@@ -593,43 +580,36 @@ int MPIDI_CH3I_RDMA_init(MPIDI_PG_t *pg, int pg_rank)
                 MPIU_Strncpy (key, rdmakey, key_max_sz);
                 error = PMI_KVS_Get (pg->ch.kvs_name, key, val, val_max_sz);
                 if (error != 0)
-                  {
-                      error =
-                          MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
-                                                FCNAME, __LINE__,
-                                                MPI_ERR_OTHER,
-                                                "**pmi_kvs_get",
-                                                "**pmi_kvs_get %d", error);
-                      return error;
-                  }
+                {
+                    error =
+                        MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
+                                FCNAME, __LINE__,
+                                MPI_ERR_OTHER,
+                                "**pmi_kvs_get",
+                                "**pmi_kvs_get %d", error);
+                    return error;
+                }
                 MPIU_Strncpy (rdmavalue, val, val_max_sz);
                 rdma_iba_addr_table.service_id_1sc[i][0] = atoll (rdmavalue);
 
             }
 
-          error = PMI_Barrier ();
-          if (error != 0)
+            error = PMI_Barrier ();
+            if (error != 0)
             {
                 error =
                     MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
-                                          __LINE__, MPI_ERR_OTHER,
-                                          "**pmi_barrier", "**pmi_barrier %d",
-                                          error);
+                            __LINE__, MPI_ERR_OTHER,
+                            "**pmi_barrier", "**pmi_barrier %d",
+                            error);
                 return error;
             }
 
 
-          MPIU_Free (val);
-          MPIU_Free (key);
-      }
-#else /*  end  f !defined (USE_MPD_RING) */
-
-          /* Exchange the information about HCA_lid, qp_num, and memory,
-           * With the ring-based queue pair */
-          rdma_iba_exchange_info (&mv2_MPIDI_CH3I_RDMA_Process,
-                                  vc, pg_rank, pg_size);
-#endif
-      }
+            MPIU_Free (val);
+            MPIU_Free (key);
+        }
+    }
 
     /* Enable all the queue pair connections */
     rdma_iba_enable_connections (&mv2_MPIDI_CH3I_RDMA_Process,
@@ -959,17 +939,6 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **str)
     char tmp[512];
 
     *str = NULL; /* We do not support dynamic process management */
-#ifndef DISABLE_PTMALLOC
-    if(mvapich2_minit()) {
-        fprintf(stderr,
-                "[%s:%d] Error initializing MVAPICH2 malloc library\n",
-                __FILE__, __LINE__);
-        return MPI_ERR_OTHER;
-    }
-#elif !defined(SOLARIS)
-    mallopt(M_TRIM_THRESHOLD, -1);
-    mallopt(M_MMAP_MAX, 0);
-#endif
 
     cached_pg = pg;
     cached_pg_rank = pg_rank;
@@ -1050,213 +1019,211 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **str)
     rdma_iba_allocate_memory (&mv2_MPIDI_CH3I_RDMA_Process, vc, pg_rank, pg_size);
 
     if (pg_size > 1)
-      {
+    {
+        /*Exchange the information about HCA_lid and qp_num */
+        /* Allocate space for pmi keys and values */
+        error = PMI_KVS_Get_key_length_max (&key_max_sz);
+        MPIU_Assert (error == PMI_SUCCESS);
+        ++key_max_sz;
+        key = MPIU_Malloc (key_max_sz);
 
-#if !defined(USE_MPD_RING)
-          /*Exchange the information about HCA_lid and qp_num */
-          /* Allocate space for pmi keys and values */
-          error = PMI_KVS_Get_key_length_max (&key_max_sz);
-          MPIU_Assert (error == PMI_SUCCESS);
-          ++key_max_sz;
-          key = MPIU_Malloc (key_max_sz);
+        if (key == NULL)
+        {
+            error =
+                MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
+                        __LINE__, MPI_ERR_OTHER, "**nomem",
+                        "**nomem %s", "pmi key");
+            return error;
+        }
 
-          if (key == NULL)
+        PMI_KVS_Get_value_length_max (&val_max_sz);
+        MPIU_Assert (error == PMI_SUCCESS);
+        ++val_max_sz;
+        val = MPIU_Malloc (val_max_sz);
+
+        if (val == NULL)
+        {
+            error =
+                MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
+                        __LINE__, MPI_ERR_OTHER, "**nomem",
+                        "**nomem %s", "pmi value");
+            return error;
+        }
+        /* STEP 1: Exchange HCA_lid */
+        sprintf (rdmakey, "MV2HCAR%08d", pg_rank);
+
+        MPIDI_CH3I_RDMA_util_atos (rdmavalue,
+                &(rdma_iba_addr_table.
+                    ia_addr[pg_rank][0]));
+
+        /* put the kvs into PMI */
+        MPIU_Strncpy (key, rdmakey, key_max_sz);
+        MPIU_Strncpy (val, rdmavalue, val_max_sz);
+        error = PMI_KVS_Put (pg->ch.kvs_name, key, val);
+        if (error != 0)
+        {
+            error =
+                MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
+                        FCNAME, __LINE__,
+                        MPI_ERR_OTHER,
+                        "**pmi_kvs_put",
+                        "**pmi_kvs_put %d", error);
+            return error;
+        }
+
+        error = PMI_KVS_Commit (pg->ch.kvs_name);
+        if (error != 0)
+        {
+            error =
+                MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
+                        FCNAME, __LINE__,
+                        MPI_ERR_OTHER,
+                        "**pmi_kvs_commit",
+                        "**pmi_kvs_commit %d", error);
+            return error;
+        }
+        error = PMI_Barrier ();
+        if (error != 0)
+        {
+            error =
+                MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
+                        __LINE__, MPI_ERR_OTHER,
+                        "**pmi_barrier", "**pmi_barrier %d",
+                        error);
+            return error;
+        }
+
+
+        /* Here, all the key and value pairs are put, now we can get them */
+        for (i = 0; i < pg_size; ++i)
+        {
+            if (pg_rank == i)
             {
-                error =
-                    MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
-                                          __LINE__, MPI_ERR_OTHER, "**nomem",
-                                          "**nomem %s", "pmi key");
-                return error;
+                continue;
             }
-
-          PMI_KVS_Get_value_length_max (&val_max_sz);
-          MPIU_Assert (error == PMI_SUCCESS);
-          ++val_max_sz;
-          val = MPIU_Malloc (val_max_sz);
-
-          if (val == NULL)
-            {
-                error =
-                    MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
-                                          __LINE__, MPI_ERR_OTHER, "**nomem",
-                                          "**nomem %s", "pmi value");
-                return error;
-            }
-          /* STEP 1: Exchange HCA_lid */
-          sprintf (rdmakey, "MV2HCAR%08d", pg_rank);
-
-          MPIDI_CH3I_RDMA_util_atos (rdmavalue,
-                                     &(rdma_iba_addr_table.
-                                       ia_addr[pg_rank][0]));
-
-          /* put the kvs into PMI */
-          MPIU_Strncpy (key, rdmakey, key_max_sz);
-          MPIU_Strncpy (val, rdmavalue, val_max_sz);
-          error = PMI_KVS_Put (pg->ch.kvs_name, key, val);
-          if (error != 0)
-            {
-                error =
-                    MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
-                                          FCNAME, __LINE__,
-                                          MPI_ERR_OTHER,
-                                          "**pmi_kvs_put",
-                                          "**pmi_kvs_put %d", error);
-                return error;
-            }
-
-          error = PMI_KVS_Commit (pg->ch.kvs_name);
-          if (error != 0)
-            {
-                error =
-                    MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
-                                          FCNAME, __LINE__,
-                                          MPI_ERR_OTHER,
-                                          "**pmi_kvs_commit",
-                                          "**pmi_kvs_commit %d", error);
-                return error;
-            }
-          error = PMI_Barrier ();
-          if (error != 0)
-            {
-                error =
-                    MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
-                                          __LINE__, MPI_ERR_OTHER,
-                                          "**pmi_barrier", "**pmi_barrier %d",
-                                          error);
-                return error;
-            }
-
-
-          /* Here, all the key and value pairs are put, now we can get them */
-          for (i = 0; i < pg_size; ++i)
-            {
-                if (pg_rank == i)
-                  {
-                      continue;
-                  }
-                /* generate the key */
-                sprintf (rdmakey, "MV2HCAR%08d", i);
-                MPIU_Strncpy (key, rdmakey, key_max_sz);
-                error = PMI_KVS_Get (pg->ch.kvs_name, key, val, val_max_sz);
-                if (error != 0)
-                  {
-                      error =
-                          MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
-                                                FCNAME, __LINE__,
-                                                MPI_ERR_OTHER,
-                                                "**pmi_kvs_get",
-                                                "**pmi_kvs_get %d", error);
-                      return error;
-                  }
-                MPIU_Strncpy (rdmavalue, val, val_max_sz);
-                MPIDI_CH3I_RDMA_util_stoa (&
-                                           (rdma_iba_addr_table.
-                                            ia_addr[i][0]), rdmavalue);
-            }
-
-          /* this barrier is to prevent some process from
-             overwriting values that has not been get yet */
-          error = PMI_Barrier ();
-          if (error != 0)
-            {
-                error =
-                    MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
-                                          __LINE__, MPI_ERR_OTHER,
-                                          "**pmi_barrier", "**pmi_barrier %d",
-                                          error);
-                return error;
-            }
-
-          /* STEP 2: Exchange qp_num and host id*/
-          /* generate the key and value pair for each connection */
-          hostid_all[pg_rank] = gethostid();
-          sprintf (rdmakey, "MV2QPR%08d", pg_rank);
-          sprintf (rdmavalue, "%08d-%016d",
-                   (int) rdma_iba_addr_table.service_id[pg_rank][0],hostid_all[pg_rank]);
-
-          /* put the kvs into PMI */
-          MPIU_Strncpy (key, rdmakey, key_max_sz);
-          MPIU_Strncpy (val, rdmavalue, val_max_sz);
-          error = PMI_KVS_Put (pg->ch.kvs_name, key, val);
-          if (error != 0)
+            /* generate the key */
+            sprintf (rdmakey, "MV2HCAR%08d", i);
+            MPIU_Strncpy (key, rdmakey, key_max_sz);
+            error = PMI_KVS_Get (pg->ch.kvs_name, key, val, val_max_sz);
+            if (error != 0)
             {
                 error =
                     MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
-                                          FCNAME, __LINE__,
-                                          MPI_ERR_OTHER,
-                                          "**pmi_kvs_put",
-                                          "**pmi_kvs_put %d", error);
+                            FCNAME, __LINE__,
+                            MPI_ERR_OTHER,
+                            "**pmi_kvs_get",
+                            "**pmi_kvs_get %d", error);
                 return error;
             }
-          error = PMI_KVS_Commit (pg->ch.kvs_name);
-          if (error != 0)
+            MPIU_Strncpy (rdmavalue, val, val_max_sz);
+            MPIDI_CH3I_RDMA_util_stoa (&
+                    (rdma_iba_addr_table.
+                     ia_addr[i][0]), rdmavalue);
+        }
+
+        /* this barrier is to prevent some process from
+           overwriting values that has not been get yet */
+        error = PMI_Barrier ();
+        if (error != 0)
+        {
+            error =
+                MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
+                        __LINE__, MPI_ERR_OTHER,
+                        "**pmi_barrier", "**pmi_barrier %d",
+                        error);
+            return error;
+        }
+
+        /* STEP 2: Exchange qp_num and host id*/
+        /* generate the key and value pair for each connection */
+        hostid_all[pg_rank] = gethostid();
+        sprintf (rdmakey, "MV2QPR%08d", pg_rank);
+        sprintf (rdmavalue, "%08d-%016d",
+                (int) rdma_iba_addr_table.service_id[pg_rank][0],hostid_all[pg_rank]);
+
+        /* put the kvs into PMI */
+        MPIU_Strncpy (key, rdmakey, key_max_sz);
+        MPIU_Strncpy (val, rdmavalue, val_max_sz);
+        error = PMI_KVS_Put (pg->ch.kvs_name, key, val);
+        if (error != 0)
+        {
+            error =
+                MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
+                        FCNAME, __LINE__,
+                        MPI_ERR_OTHER,
+                        "**pmi_kvs_put",
+                        "**pmi_kvs_put %d", error);
+            return error;
+        }
+        error = PMI_KVS_Commit (pg->ch.kvs_name);
+        if (error != 0)
+        {
+            error =
+                MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
+                        FCNAME, __LINE__,
+                        MPI_ERR_OTHER,
+                        "**pmi_kvs_commit",
+                        "**pmi_kvs_commit %d", error);
+            return error;
+        }
+
+        error = PMI_Barrier ();
+        if (error != 0)
+        {
+            error =
+                MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
+                        __LINE__, MPI_ERR_OTHER,
+                        "**pmi_barrier", "**pmi_barrier %d",
+                        error);
+            return error;
+        }
+
+        /* Here, all the key and value pairs are put, now we can get them */
+        for (i = 0; i < pg_size; ++i)
+        {
+            if (pg_rank == i)
+                continue;
+            /* generate the key */
+            sprintf (rdmakey, "MV2QPR%08d", i);
+            MPIU_Strncpy (key, rdmakey, key_max_sz);
+            error = PMI_KVS_Get (pg->ch.kvs_name, key, val, val_max_sz);
+            if (error != 0)
             {
                 error =
                     MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
-                                          FCNAME, __LINE__,
-                                          MPI_ERR_OTHER,
-                                          "**pmi_kvs_commit",
-                                          "**pmi_kvs_commit %d", error);
+                            FCNAME, __LINE__,
+                            MPI_ERR_OTHER,
+                            "**pmi_kvs_get",
+                            "**pmi_kvs_get %d", error);
                 return error;
             }
 
-          error = PMI_Barrier ();
-          if (error != 0)
-            {
-                error =
-                    MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
-                                          __LINE__, MPI_ERR_OTHER,
-                                          "**pmi_barrier", "**pmi_barrier %d",
-                                          error);
-                return error;
-            }
+            MPIU_Strncpy (rdmavalue, val, val_max_sz);
+            strncpy (tmp, rdmavalue, 8);
+            tmp[8] = '\0';
+            rdma_iba_addr_table.service_id[i][0] = atoll (tmp);
+            strncpy (tmp, rdmavalue + 8 + 1, 16);
+            tmp[16] = '\0';
+            hostid_all[i] = atoi(tmp);
+        }
+        rdma_process_hostid(pg, hostid_all, pg_rank, pg_size);
+        MPIU_Free(hostid_all);
 
-          /* Here, all the key and value pairs are put, now we can get them */
-          for (i = 0; i < pg_size; ++i)
-            {
-                if (pg_rank == i)
-                    continue;
-                /* generate the key */
-                sprintf (rdmakey, "MV2QPR%08d", i);
-                MPIU_Strncpy (key, rdmakey, key_max_sz);
-                error = PMI_KVS_Get (pg->ch.kvs_name, key, val, val_max_sz);
-                if (error != 0)
-                  {
-                      error =
-                          MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
-                                                FCNAME, __LINE__,
-                                                MPI_ERR_OTHER,
-                                                "**pmi_kvs_get",
-                                                "**pmi_kvs_get %d", error);
-                      return error;
-                  }
+        error = PMI_Barrier ();
+        if (error != 0)
+        {
+            error =
+                MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
+                        __LINE__, MPI_ERR_OTHER,
+                        "**pmi_barrier", "**pmi_barrier %d",
+                        error);
+            return error;
+        }
+        DEBUG_PRINT ("After barrier\n");
 
-                MPIU_Strncpy (rdmavalue, val, val_max_sz);
-                strncpy (tmp, rdmavalue, 8);
-                tmp[8] = '\0';
-                rdma_iba_addr_table.service_id[i][0] = atoll (tmp);
-                strncpy (tmp, rdmavalue + 8 + 1, 16);
-                tmp[16] = '\0';
-                hostid_all[i] = atoi(tmp);
-            }
-            rdma_process_hostid(pg, hostid_all, pg_rank, pg_size);
-            MPIU_Free(hostid_all);
-
-          error = PMI_Barrier ();
-          if (error != 0)
-            {
-                error =
-                    MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
-                                          __LINE__, MPI_ERR_OTHER,
-                                          "**pmi_barrier", "**pmi_barrier %d",
-                                          error);
-                return error;
-            }
-          DEBUG_PRINT ("After barrier\n");
-
-      if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
-          /* STEP 3: exchange the information about remote buffer */
-          for (i = 0; i < pg_size; ++i)
+        if (mv2_MPIDI_CH3I_RDMA_Process.has_rdma_fast_path) {
+            /* STEP 3: exchange the information about remote buffer */
+            for (i = 0; i < pg_size; ++i)
             {
                 if (pg_rank == i)
                     continue;
@@ -1264,60 +1231,60 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **str)
                 MPIDI_PG_Get_vc (pg, i, &vc);
 
                 DEBUG_PRINT ("vc: %p, %p, i %d, pg_rank %d\n", vc,
-                             vc->mrail.rfp.RDMA_recv_buf, i, pg_rank);
+                        vc->mrail.rfp.RDMA_recv_buf, i, pg_rank);
 
                 /* generate the key and value pair for each connection */
                 sprintf (rdmakey, "MV2BUFR%08d-%08d", pg_rank, i);
                 sprintf (rdmavalue, "%032ld-%016ld",
-                         (aint_t) vc->mrail.rfp.RDMA_recv_buf,
-                         (DAT_RMR_CONTEXT) vc->mrail.rfp.
-                         RDMA_recv_buf_hndl[0].rkey);
+                        (aint_t) vc->mrail.rfp.RDMA_recv_buf,
+                        (DAT_RMR_CONTEXT) vc->mrail.rfp.
+                        RDMA_recv_buf_hndl[0].rkey);
 
                 DEBUG_PRINT ("Put %d recv_buf %016lX, key %08X\n",
-                             i, (aint_t) vc->mrail.rfp.RDMA_recv_buf,
-                             (DAT_RMR_CONTEXT) vc->mrail.rfp.
-                             RDMA_recv_buf_hndl[0].rkey);
+                        i, (aint_t) vc->mrail.rfp.RDMA_recv_buf,
+                        (DAT_RMR_CONTEXT) vc->mrail.rfp.
+                        RDMA_recv_buf_hndl[0].rkey);
 
                 /* put the kvs into PMI */
                 MPIU_Strncpy (key, rdmakey, key_max_sz);
                 MPIU_Strncpy (val, rdmavalue, val_max_sz);
                 error = PMI_KVS_Put (pg->ch.kvs_name, key, val);
                 if (error != 0)
-                  {
-                      error =
-                          MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
-                                                FCNAME, __LINE__,
-                                                MPI_ERR_OTHER,
-                                                "**pmi_kvs_put",
-                                                "**pmi_kvs_put %d", error);
-                      return error;
-                  }
+                {
+                    error =
+                        MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
+                                FCNAME, __LINE__,
+                                MPI_ERR_OTHER,
+                                "**pmi_kvs_put",
+                                "**pmi_kvs_put %d", error);
+                    return error;
+                }
                 error = PMI_KVS_Commit (pg->ch.kvs_name);
                 if (error != 0)
-                  {
-                      error =
-                          MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
-                                                FCNAME, __LINE__,
-                                                MPI_ERR_OTHER,
-                                                "**pmi_kvs_commit",
-                                                "**pmi_kvs_commit %d", error);
-                      return error;
-                  }
+                {
+                    error =
+                        MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
+                                FCNAME, __LINE__,
+                                MPI_ERR_OTHER,
+                                "**pmi_kvs_commit",
+                                "**pmi_kvs_commit %d", error);
+                    return error;
+                }
             }
 
-          error = PMI_Barrier ();
-          if (error != 0)
+            error = PMI_Barrier ();
+            if (error != 0)
             {
                 error =
                     MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
-                                          __LINE__, MPI_ERR_OTHER,
-                                          "**pmi_barrier", "**pmi_barrier %d",
-                                          error);
+                            __LINE__, MPI_ERR_OTHER,
+                            "**pmi_barrier", "**pmi_barrier %d",
+                            error);
                 return error;
             }
 
-          /* Here, all the key and value pairs are put, now we can get them */
-          for (i = 0; i < pg_size; ++i)
+            /* Here, all the key and value pairs are put, now we can get them */
+            for (i = 0; i < pg_size; ++i)
             {
                 if (pg_rank == i)
                     continue;
@@ -1328,15 +1295,15 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **str)
                 MPIU_Strncpy (key, rdmakey, key_max_sz);
                 error = PMI_KVS_Get (pg->ch.kvs_name, key, val, val_max_sz);
                 if (error != 0)
-                  {
-                      error =
-                          MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
-                                                FCNAME, __LINE__,
-                                                MPI_ERR_OTHER,
-                                                "**pmi_kvs_get",
-                                                "**pmi_kvs_get %d", error);
-                      return error;
-                  }
+                {
+                    error =
+                        MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
+                                FCNAME, __LINE__,
+                                MPI_ERR_OTHER,
+                                "**pmi_kvs_get",
+                                "**pmi_kvs_get %d", error);
+                    return error;
+                }
                 MPIU_Strncpy (rdmavalue, val, val_max_sz);
 
                 /* we get the remote addresses, now the SendBufferTail.buffer
@@ -1358,70 +1325,70 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **str)
                 tmp[32] = '\0';
 
                 DEBUG_PRINT ("Get %d recv_buf %016lX, key %08X, local_credit %016lX, credit \
-                    key %08X\n",
-                             i, (aint_t) vc->mrail.rfp.remote_RDMA_buf, (DAT_RMR_CONTEXT) vc->mrail.rfp.remote_RDMA_buf_hndl[0].rkey,
-                             (aint_t) (vc->mrail.rfp.remote_credit_array), (DAT_RMR_CONTEXT) vc->mrail.rfp.remote_credit_update_hndl.
-                             rkey);
+                        key %08X\n",
+                        i, (aint_t) vc->mrail.rfp.remote_RDMA_buf, (DAT_RMR_CONTEXT) vc->mrail.rfp.remote_RDMA_buf_hndl[0].rkey,
+                        (aint_t) (vc->mrail.rfp.remote_credit_array), (DAT_RMR_CONTEXT) vc->mrail.rfp.remote_credit_update_hndl.
+                        rkey);
             }
-          error = PMI_Barrier ();
-          if (error != 0)
+            error = PMI_Barrier ();
+            if (error != 0)
             {
                 error =
                     MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
-                                          __LINE__, MPI_ERR_OTHER,
-                                          "**pmi_barrier", "**pmi_barrier %d",
-                                          error);
+                            __LINE__, MPI_ERR_OTHER,
+                            "**pmi_barrier", "**pmi_barrier %d",
+                            error);
                 return error;
             }
-      }
+        }
 
-      if (mv2_MPIDI_CH3I_RDMA_Process.has_one_sided) {
-          /* Exchange qp_num */
-          /* generate the key and value pair for each connection */
-          sprintf (rdmakey, "MV2OSR%08d", pg_rank);
-          sprintf (rdmavalue, "%08d",
-                   (int) rdma_iba_addr_table.
-                   service_id_1sc[pg_rank][0]);
+        if (mv2_MPIDI_CH3I_RDMA_Process.has_one_sided) {
+            /* Exchange qp_num */
+            /* generate the key and value pair for each connection */
+            sprintf (rdmakey, "MV2OSR%08d", pg_rank);
+            sprintf (rdmavalue, "%08d",
+                    (int) rdma_iba_addr_table.
+                    service_id_1sc[pg_rank][0]);
 
-          /* put the kvs into PMI */
-          MPIU_Strncpy (key, rdmakey, key_max_sz);
-          MPIU_Strncpy (val, rdmavalue, val_max_sz);
-          error = PMI_KVS_Put (pg->ch.kvs_name, key, val);
-          if (error != 0)
+            /* put the kvs into PMI */
+            MPIU_Strncpy (key, rdmakey, key_max_sz);
+            MPIU_Strncpy (val, rdmavalue, val_max_sz);
+            error = PMI_KVS_Put (pg->ch.kvs_name, key, val);
+            if (error != 0)
             {
                 error =
                     MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
-                                          FCNAME, __LINE__,
-                                          MPI_ERR_OTHER,
-                                          "**pmi_kvs_put",
-                                          "**pmi_kvs_put %d", error);
+                            FCNAME, __LINE__,
+                            MPI_ERR_OTHER,
+                            "**pmi_kvs_put",
+                            "**pmi_kvs_put %d", error);
                 return error;
             }
-          error = PMI_KVS_Commit (pg->ch.kvs_name);
-          if (error != 0)
+            error = PMI_KVS_Commit (pg->ch.kvs_name);
+            if (error != 0)
             {
                 error =
                     MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
-                                          FCNAME, __LINE__,
-                                          MPI_ERR_OTHER,
-                                          "**pmi_kvs_commit",
-                                          "**pmi_kvs_commit %d", error);
+                            FCNAME, __LINE__,
+                            MPI_ERR_OTHER,
+                            "**pmi_kvs_commit",
+                            "**pmi_kvs_commit %d", error);
                 return error;
             }
 
-          error = PMI_Barrier ();
-          if (error != 0)
+            error = PMI_Barrier ();
+            if (error != 0)
             {
                 error =
                     MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
-                                          __LINE__, MPI_ERR_OTHER,
-                                          "**pmi_barrier", "**pmi_barrier %d",
-                                          error);
+                            __LINE__, MPI_ERR_OTHER,
+                            "**pmi_barrier", "**pmi_barrier %d",
+                            error);
                 return error;
             }
 
-          /* Here, all the key and value pairs are put, now we can get them */
-          for (i = 0; i < pg_size; ++i)
+            /* Here, all the key and value pairs are put, now we can get them */
+            for (i = 0; i < pg_size; ++i)
             {
                 if (pg_rank == i)
                     continue;
@@ -1430,43 +1397,36 @@ int MPIDI_CH3I_CM_Init(MPIDI_PG_t * pg, int pg_rank, char **str)
                 MPIU_Strncpy (key, rdmakey, key_max_sz);
                 error = PMI_KVS_Get (pg->ch.kvs_name, key, val, val_max_sz);
                 if (error != 0)
-                  {
-                      error =
-                          MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
-                                                FCNAME, __LINE__,
-                                                MPI_ERR_OTHER,
-                                                "**pmi_kvs_get",
-                                                "**pmi_kvs_get %d", error);
-                      return error;
-                  }
+                {
+                    error =
+                        MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL,
+                                FCNAME, __LINE__,
+                                MPI_ERR_OTHER,
+                                "**pmi_kvs_get",
+                                "**pmi_kvs_get %d", error);
+                    return error;
+                }
                 MPIU_Strncpy (rdmavalue, val, val_max_sz);
                 rdma_iba_addr_table.service_id_1sc[i][0] = atoll (rdmavalue);
 
             }
 
-          error = PMI_Barrier ();
-          if (error != 0)
+            error = PMI_Barrier ();
+            if (error != 0)
             {
                 error =
                     MPIR_Err_create_code (MPI_SUCCESS, MPIR_ERR_FATAL, FCNAME,
-                                          __LINE__, MPI_ERR_OTHER,
-                                          "**pmi_barrier", "**pmi_barrier %d",
-                                          error);
+                            __LINE__, MPI_ERR_OTHER,
+                            "**pmi_barrier", "**pmi_barrier %d",
+                            error);
                 return error;
             }
 
 
-          MPIU_Free (val);
-          MPIU_Free (key);
-      }
-#else /*  end  f !defined (USE_MPD_RING) */
-
-          /* Exchange the information about HCA_lid, qp_num, and memory,
-           * With the ring-based queue pair */
-          rdma_iba_exchange_info (&mv2_MPIDI_CH3I_RDMA_Process,
-                                  vc, pg_rank, pg_size);
-#endif
-      }
+            MPIU_Free (val);
+            MPIU_Free (key);
+        }
+    }
 
     /*barrier to make sure queues are initialized before continuing */
     error = PMI_Barrier ();

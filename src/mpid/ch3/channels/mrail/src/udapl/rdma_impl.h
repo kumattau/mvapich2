@@ -88,11 +88,6 @@ int
 rdma_iba_allocate_memory(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                          MPIDI_VC_t * vc, int pg_rank, int pg_size);
 
-#ifdef USE_MPD_RING
-int
-rdma_iba_exchange_info(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
-                       MPIDI_VC_t * vc, int pg_rank, int pg_size);
-#endif
 int
 rdma_iba_enable_connections(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc,
                             MPIDI_VC_t * vc, int pg_rank, int pg_size);

@@ -50,16 +50,15 @@
 
 typedef enum
 {
-    /* rendezvous with RDMA read from receiver */
-    VAPI_PROTOCOL_RENDEZVOUS_UNSPECIFIED = 0,
-    /*    VIADEV_PROTOCOL_SHORT=1, */
-    VAPI_PROTOCOL_EAGER,
+    MV2_RNDV_PROTOCOL_RENDEZVOUS_UNSPECIFIED = 0,
     /* eager in several vbufs. short is special case */
-    VAPI_PROTOCOL_R3,
+    MV2_RNDV_PROTOCOL_EAGER,
     /* rendezvous through receiver vbufs */
-    VAPI_PROTOCOL_RPUT,
+    MV2_RNDV_PROTOCOL_R3,
     /* rendezvous with RDMA write from sender */
-    VAPI_PROTOCOL_RGET,
+    MV2_RNDV_PROTOCOL_RPUT,
+    /* rendezvous with RDMA read from receiver */
+    MV2_RNDV_PROTOCOL_RGET,
 } MRAILI_Protocol_t;
 
 typedef struct MPIDI_CH3I_MRAILI_Rndv_info

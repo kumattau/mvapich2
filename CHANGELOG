@@ -3,6 +3,40 @@ MVAPICH2 Changelog
 This file briefly describes the changes to the MVAPICH2 software
 package.  The logs are arranged in the "most recent first" order.
 
+MVAPICH2-2.0a (08/24/2013)
+
+* Features and Enhancements (since 1.9):
+    - Based on MPICH-3.0.4
+    - Dynamic CUDA initialization. Support GPU device selection after MPI_Init
+    - Support for running on heterogeneous clusters with GPU and non-GPU nodes 
+    - Supporting MPI-3 RMA atomic operations and flush operations with CH3-Gen2
+      interface
+    - Exposing internal performance variables to MPI-3 Tools information
+      interface (MPIT)
+    - Enhanced MPI_Bcast performance
+    - Enhanced performance for large message MPI_Scatter and MPI_Gather
+    - Enhanced intra-node SMP performance
+    - Tuned SMP eager threshold parameters
+    - Reduced memory footprint
+    - Improved job-startup performance
+    - Warn and continue when ptmalloc fails to initialize
+    - Enable hierarchical SSH-based startup with Checkpoint-Restart
+    - Enable the use of Hydra launcher with Checkpoint-Restart
+
+* Bug-Fixes (since 1.9):
+    - Fix data validation issue with MPI_Bcast
+        - Thanks to Claudio J. Margulis from University of Iowa for the report
+    - Fix buffer alignment for large message shared memory transfers
+    - Fix a bug in One-Sided shared memory backed windows
+    - Fix a flow-control bug in UD transport
+        - Thanks to Benjamin M. Auer from NASA for the report
+    - Fix bugs with MPI-3 RMA in Nemesis IB interface
+    - Fix issue with very large message (>2GB bytes) MPI_Bcast
+        - Thanks to Lu Qiyue for the report
+    - Handle case where $HOME is not set during search for MV2 user config file
+        - Thanks to Adam Moody from LLNL for the patch
+    - Fix a hang in connection setup with RDMA-CM
+
 MVAPICH2-1.9 (05/06/2013)
 
 * Features and Enhancements (since 1.9rc1):

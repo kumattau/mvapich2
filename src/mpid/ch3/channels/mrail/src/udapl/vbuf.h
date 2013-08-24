@@ -64,49 +64,6 @@
 
     #endif
 
-  #elif defined(_IB_VAPI_)
-
-    #if defined(MAC_OSX)
-        #define VBUF_TOTAL_SIZE (16*1024)
-
-    #elif defined(_X86_64_)
-        #if defined(_PCI_X_)
-                #define VBUF_TOTAL_SIZE (12*1024)
-        #elif defined(_PCI_EX_)
-                #define VBUF_TOTAL_SIZE (12*1024)
-        #else
-                #define VBUF_TOTAL_SIZE (12*1024)
-        #endif
-
-    #elif defined(_EM64T_)
-        #if defined(_PCI_X_)
-                #define VBUF_TOTAL_SIZE (12*1024)
-        #elif defined(_PCI_EX_)
-                #define VBUF_TOTAL_SIZE (4*1024)
-        #else
-                #define VBUF_TOTAL_SIZE (6*1024)
-        #endif
-
-    #elif defined(_IA32_)
-        #if defined(_PCI_X_)
-                #define VBUF_TOTAL_SIZE (12*1024)
-        #elif defined(_PCI_EX_)
-                #define VBUF_TOTAL_SIZE (6*1024)
-        #else
-                #define VBUF_TOTAL_SIZE (12*1024)
-        #endif
-
-    #else
-        #if defined(_PCI_X_)
-                #define VBUF_TOTAL_SIZE (12*1024)
-        #elif defined(_PCI_EX_)
-                #define VBUF_TOTAL_SIZE (6*1024)
-        #else
-                #define VBUF_TOTAL_SIZE (12*1024)
-        #endif
-
-    #endif
-
   #elif defined(SOLARIS)
     #define VBUF_TOTAL_SIZE (12 * 1024)
 
@@ -228,7 +185,7 @@ typedef struct vbuf
     void *pheader;
     /* NULL shandle means not send or not complete. Non-null
      * means pointer to send handle that is now complete. Used
-     * by viadev_process_send
+     * by MRAILI_Process_send
      */
     void *sreq;
     struct vbuf_region *region;

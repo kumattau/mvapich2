@@ -130,21 +130,21 @@ int rdma_initial_credits        = 0;
 
 /* Max number of entries on the RecvQ of QPs per connection.
  * computed to be:
- * prepost_depth + rdma_prepost_rendezvous_extra + viadev_prepost_noop_extra
+ * prepost_depth + rdma_prepost_rendezvous_extra + rdma_prepost_noop_extra
  * Must be within NIC MaxQpEntries limit.
  */
 int rdma_rq_size;
 
-uint32_t viadev_srq_alloc_size = 4096;
-uint32_t viadev_srq_fill_size = 256;
-uint32_t viadev_srq_limit = 30;
-uint32_t viadev_max_r3_oust_send = 32;
+uint32_t mv2_srq_alloc_size = 4096;
+uint32_t mv2_srq_fill_size = 256;
+uint32_t mv2_srq_limit = 30;
+uint32_t mv2_max_r3_oust_send = 32;
 
 
 /* The number of "extra" vbufs that will be posted as receives
  * on a connection in anticipation of an R3 rendezvous message.
  * The TOTAL number of VBUFs posted on a receive queue at any
- * time is rdma_prepost_depth + viadev_prepost_rendezvous_extra
+ * time is rdma_prepost_depth + rdma_prepost_rendezvous_extra
  * regardless of the number of outstanding R3 sends active on
  * a connection.
  */
@@ -435,7 +435,7 @@ int MPID_nem_ib_get_control_params_after_hcainit()
 #if FALSE
     if ((value = getenv("MV2_RNDV_PROTOCOL")) != NULL) {
         if (strncmp(value,"RPUT", 4) == 0) {
-            rdma_rndv_protocol = VAPI_PROTOCOL_RPUT;
+            rdma_rndv_protocol = MV2_RNDV_PROTOCOL_RPUT;
         } else if (strncmp(value,"RGET", 4) == 0
 #ifdef _ENABLE_XRC_
                 && !USE_XRC
@@ -444,19 +444,19 @@ int MPID_nem_ib_get_control_params_after_hcainit()
 #if defined(CKPT)
             MPIU_Usage_printf("MV2_RNDV_PROTOCOL "
                     "must be either \"RPUT\" or \"R3\" when checkpoint is enabled\n");
-            rdma_rndv_protocol = VAPI_PROTOCOL_RPUT;
+            rdma_rndv_protocol = MV2_RNDV_PROTOCOL_RPUT;
 #else /* defined(CKPT) */
-            rdma_rndv_protocol = VAPI_PROTOCOL_RGET;
+            rdma_rndv_protocol = MV2_RNDV_PROTOCOL_RGET;
 #endif /* defined(CKPT) */
         } else if (strncmp(value,"R3", 2) == 0) {
-            rdma_rndv_protocol = VAPI_PROTOCOL_R3;
+            rdma_rndv_protocol = MV2_RNDV_PROTOCOL_R3;
         } else {
 #ifdef _ENABLE_XRC_
             if(!USE_XRC)
 #endif
             MPIU_Usage_printf("MV2_RNDV_PROTOCOL "
                     "must be either \"RPUT\", \"RGET\", or \"R3\"\n");
-            rdma_rndv_protocol = VAPI_PROTOCOL_RPUT;
+            rdma_rndv_protocol = MV2_RNDV_PROTOCOL_RPUT;
         }
     }
 #endif
@@ -890,24 +890,24 @@ int MPID_nem_ib_get_user_params()
         rdma_num_qp_per_port * ib_hca_num_hcas;
 
     if ((value = getenv("MV2_SRQ_MAX_SIZE")) != NULL) {
-        viadev_srq_alloc_size = (uint32_t) atoi(value);
+        mv2_srq_alloc_size = (uint32_t) atoi(value);
     }
 
     if ((value = getenv("MV2_SRQ_SIZE")) != NULL) {
-        viadev_srq_fill_size = (uint32_t) atoi(value);
+        mv2_srq_fill_size = (uint32_t) atoi(value);
     }
 
     if ((value = getenv("MV2_SRQ_LIMIT")) != NULL) {
-        viadev_srq_limit = (uint32_t) atoi(value);
+        mv2_srq_limit = (uint32_t) atoi(value);
 
-        if(viadev_srq_limit > viadev_srq_fill_size) {
+        if(mv2_srq_limit > mv2_srq_fill_size) {
 	    MPIU_Usage_printf("SRQ limit shouldn't be greater than SRQ size\n");
         }
     }
 
     if (process_info.has_srq) {
-        rdma_credit_preserve = (viadev_srq_fill_size > 200) ?
-            (viadev_srq_fill_size - 100) : (viadev_srq_fill_size / 2);
+        rdma_credit_preserve = (mv2_srq_fill_size > 200) ?
+            (mv2_srq_fill_size - 100) : (mv2_srq_fill_size / 2);
     }
 
     if ((value = getenv("MV2_IBA_EAGER_THRESHOLD")) != NULL) {

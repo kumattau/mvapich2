@@ -550,6 +550,10 @@ static inline int GetSeqNumVbuf(vbuf * buf)
         case MPIDI_CH3_PKT_LOCK_GET_UNLOCK:
         case MPIDI_CH3_PKT_LOCK_ACCUM_UNLOCK:
         case MPIDI_CH3_PKT_ACCUM_IMMED:
+        case MPIDI_CH3_PKT_FLUSH:
+        case MPIDI_CH3_PKT_UNLOCK:
+        case MPIDI_CH3_PKT_GET_ACCUM:
+        case MPIDI_CH3_PKT_GET_ACCUM_RESP:
         case MPIDI_CH3_PKT_CAS:
         case MPIDI_CH3_PKT_CAS_RESP:
         case MPIDI_CH3_PKT_FOP:
@@ -738,7 +742,7 @@ int MPIDI_nem_ib_cq_poll(vbuf **vbuf_handle,
                                     rdma_credit_preserve) {
                                 /* Need to post more to the SRQ */
                                 srq_info.posted_bufs[i] +=
-                                    MPIDI_nem_ib_post_srq_buffers(viadev_srq_fill_size -
+                                    MPIDI_nem_ib_post_srq_buffers(mv2_srq_fill_size -
                                         srq_info.posted_bufs[i], i);
 
                             }
@@ -837,7 +841,7 @@ int MPIDI_nem_ib_cq_poll(vbuf **vbuf_handle,
                             if(srq_info.posted_bufs[i] <= rdma_credit_preserve) {
                                 /* Need to post more to the SRQ */
                                 srq_info.posted_bufs[i] +=
-                                    MPIDI_nem_ib_post_srq_buffers(viadev_srq_fill_size -
+                                    MPIDI_nem_ib_post_srq_buffers(mv2_srq_fill_size -
                                         srq_info.posted_bufs[i], i);
 
                             }

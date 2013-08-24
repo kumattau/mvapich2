@@ -67,7 +67,7 @@ MPIDI_CH3I_MRAIL_Prepare_rndv (MPIDI_VC_t * vc, MPID_Request * req)
     DEBUG_PRINT ("[prepare cts] rput protocol, recv size %d, segsize %d, io count %d\n",
         rreq->dev.recv_data_sz, req->dev.segment_size, req->dev.iov_count);
 
-    req->mrail.protocol = VAPI_PROTOCOL_RPUT;
+    req->mrail.protocol = MV2_RNDV_PROTOCOL_RPUT;
     /* Step 1: ready for user space (user buffer or pack) */
     if (1 == req->dev.iov_count && (req->dev.OnDataAvail == NULL ||
        (req->dev.OnDataAvail == req->dev.OnFinal) ||
@@ -86,7 +86,7 @@ MPIDI_CH3I_MRAIL_Prepare_rndv (MPIDI_VC_t * vc, MPID_Request * req)
             {
                 /* fall back to r3 if cannot allocate tmp buf */
                 DEBUG_PRINT ("[rndv sent] set info: cannot allocate space\n");
-                req->mrail.protocol = VAPI_PROTOCOL_R3;
+                req->mrail.protocol = MV2_RNDV_PROTOCOL_R3;
                 req->mrail.rndv_buf_sz = 0;
             }
           else
@@ -97,7 +97,7 @@ MPIDI_CH3I_MRAIL_Prepare_rndv (MPIDI_VC_t * vc, MPID_Request * req)
     req->mrail.rndv_buf_off = 0;
 
     /* Step 2: try register and decide the protocol */
-    if (VAPI_PROTOCOL_RPUT == req->mrail.protocol)
+    if (MV2_RNDV_PROTOCOL_RPUT == req->mrail.protocol)
       {
           DEBUG_PRINT ("[cts] size registered %d, addr %p\n",
                        req->mrail.rndv_buf_sz, req->mrail.rndv_buf);
@@ -105,7 +105,7 @@ MPIDI_CH3I_MRAIL_Prepare_rndv (MPIDI_VC_t * vc, MPID_Request * req)
               dreg_register (req->mrail.rndv_buf, req->mrail.rndv_buf_sz);
           if (NULL == reg_entry)
             {
-                req->mrail.protocol = VAPI_PROTOCOL_R3;
+                req->mrail.protocol = MV2_RNDV_PROTOCOL_R3;
                 if (1 == req->mrail.rndv_buf_alloc)
                   {
                       MPIU_Free (req->mrail.rndv_buf);
@@ -119,7 +119,7 @@ MPIDI_CH3I_MRAIL_Prepare_rndv (MPIDI_VC_t * vc, MPID_Request * req)
           DEBUG_PRINT ("[prepare cts] register success\n");
       }
 
-    if (VAPI_PROTOCOL_RPUT == req->mrail.protocol)
+    if (MV2_RNDV_PROTOCOL_RPUT == req->mrail.protocol)
       {
           req->mrail.d_entry = reg_entry;
           return 1;
@@ -132,7 +132,7 @@ int
 MPIDI_CH3I_MRAIL_Prepare_rndv_transfer (MPID_Request * sreq,    /* contains local info */
                                         MPIDI_CH3I_MRAILI_Rndv_info_t * rndv)
 {
-    if (rndv->protocol == VAPI_PROTOCOL_R3)
+    if (rndv->protocol == MV2_RNDV_PROTOCOL_R3)
       {
           if (sreq->mrail.d_entry != NULL)
             {
@@ -147,7 +147,7 @@ MPIDI_CH3I_MRAIL_Prepare_rndv_transfer (MPID_Request * sreq,    /* contains loca
             }
           sreq->mrail.remote_addr = NULL;
           sreq->mrail.remote_handle.hndl = DAT_HANDLE_NULL;
-          sreq->mrail.protocol = VAPI_PROTOCOL_R3;
+          sreq->mrail.protocol = MV2_RNDV_PROTOCOL_R3;
       }
     else
       {

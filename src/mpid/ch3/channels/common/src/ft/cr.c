@@ -20,6 +20,7 @@
 #include "dreg.h"
 #include "mpidimpl.h"
 #include "mpichconf.h"
+#include "mpidi_ch3_impl.h"
 
 #if defined(CKPT)
 
@@ -63,8 +64,6 @@
 #include <libftb.h>
 
 #define FTB_MAX_SUBSCRIPTION_STR 128
-/////////////////////////////////////////////////////////
-    // max-event-name-len=32,  max-severity-len=16
 #define CR_FTB_EVENT_INFO {               \
         {"CR_FTB_CHECKPOINT",    "info"}, \
         {"CR_FTB_MIGRATE",       "info"}, \
@@ -85,7 +84,7 @@
         {"MPI_PROCS_MIGRATE_FAIL", "info"} \
 }
 
-    // Index into the Event Info Table
+/* event info table indices */
 #define CR_FTB_CHECKPOINT    0
 #define CR_FTB_MIGRATE       1
 #define CR_FTB_MIGRATE_PIIC  2
@@ -97,7 +96,8 @@
 #define CR_FTB_CKPT_FINALIZE 8
 #define CR_FTB_MIGRATE_PIC   9
 #define FTB_MIGRATE_TRIGGER  10
-    // start of standard FTB MPI events
+
+/* standardized FTB-MPI events */
 #define MPI_PROCS_CKPTED        11
 #define MPI_PROCS_CKPT_FAIL     12
 #define MPI_PROCS_RESTARTED     13
@@ -106,9 +106,8 @@
 #define MPI_PROCS_MIGRATE_FAIL  16
 
 #define CR_FTB_EVENTS_MAX       17
-////////////////////////////////////////////////////
 
-/* Type of event to throw */
+/* Type of event to publish */
 #define FTB_EVENT_NORMAL   1
 #define FTB_EVENT_RESPONSE 2
 
@@ -191,15 +190,11 @@ static int lock2_count = 0;
 static int unlock2_count = 0;
 
 static int use_aggre_mig = 0;
-///////////////////////////for test only
-int CR_done = 0;
-int CR_show_print = 0;
-///////////////////////////////
 
 #ifdef CR_FTB
 static inline int set_event(FTB_event_properties_t * ep, int etype, int rank)
 {
-    char buf[32];               // assume:  proc-id length  won't exceed 32
+    char buf[32];
     snprintf(buf, 32, "%d", rank);
     buf[31] = 0;
     ep->event_type = etype;
@@ -279,31 +274,6 @@ typedef struct MPICR_remote_update_msg {
 
 int CR_IBU_Reactivate_channels();
 int CR_IBU_Suspend_channels();
-
-#if 0
-/*
-CR lock to protect upper layers from accessing communication channel
-*/
-inline void MPIDI_CH3I_CR_lock()
-{
-    pthread_rwlock_rdlock(&MPICR_cs_lock);
-    lock2_count++;
-    PRINT_DEBUG(DEBUG_CR_verbose > 2,"vvv rwlock_rdlock: MPICR_cs_lock:%d: unlock count=%d\n",
-                                                                                  lock2_count,
-                                                                                  unlock2_count);
-
-}
-
-inline void MPIDI_CH3I_CR_unlock()
-{
-    PRINT_DEBUG(DEBUG_CR_verbose > 2,"rwlock_unlock: MPICR_cs_lock\n");
-    pthread_rwlock_unlock(&MPICR_cs_lock);
-    unlock2_count++;
-    PRINT_DEBUG(DEBUG_CR_verbose > 2,"rwlck_rdulck: MPICR_cs_lock:%d: unlock count=%d\n",
-                                                                                lock2_count,
-                                                                                unlock2_count);
-}
-#endif
 
 #ifndef CR_FTB
 int CR_MPDU_readline(int fd, char *buf, int maxlen);
@@ -441,7 +411,6 @@ void CR_MPDU_Rsrt_fail()
 }
 
 #ifndef CR_FTB
-
 int CR_MPDU_Reset_PMI_port()
 {
     char cr_msg_buf[MAX_CR_MSG_LEN];
@@ -467,10 +436,10 @@ int CR_MPDU_Reset_PMI_port()
 
 #endif                          /* CR_FTB */
 
-static pthread_t wr_CR_lock_tid = 0;    // the thread which is holding the WR_CR-lock 
-/*
-CR lock to protect upper layers from accessing communication channel
-*/
+/* the thread holding the WR_CR-lock */
+static pthread_t wr_CR_lock_tid = 0;
+
+/* CR lock to protect upper layers from accessing communication channel */
 void MPIDI_CH3I_CR_lock()
 {
     /*
@@ -651,7 +620,8 @@ int CR_Thread_loop()
                 ++checkpoint_count;
 
 #ifdef CR_FTB
-            if (cr_ftb_mig_req && use_aggre_mig)    //use aggre-based migration 
+            if (cr_ftb_mig_req && use_aggre_mig)
+                /* use aggregation-based migration */
                 strcpy(valstr, aggre_mig_file);
             else
                 strcpy(valstr, getenv("MV2_CKPT_FILE"));
@@ -1020,12 +990,12 @@ static int CR_Callback(void *arg)
 
     int rc = cr_checkpoint(0);
 
-    if (rc < 0)                 // failed
+    if (rc < 0) /* cr_checkpoint() failed */
     {
         CR_ERR("BLCR call cr_checkpoint() failed with error %d: %s\n", rc, cr_strerror(-rc));
         CR_MPDU_Ckpt_fail();
         CR_ERR_ABORT("Checkpoint failed, aborting...\n");
-    } else if (rc > 0)          // restart
+    } else if (rc > 0) /* the procs are restarting */
     {
         /*Build the pipe between mpdman and app procs */
         CR_Set_state(MPICR_STATE_RESTARTING);
@@ -1159,9 +1129,14 @@ int MPIDI_CH3I_CR_Init(MPIDI_PG_t * pg, int rank, int size)
 
     PRINT_DEBUG(DEBUG_CR_verbose > 1,"Creating a new thread for running cr controller\n");
 
-    if (pthread_create(&MPICR_child_thread, NULL, CR_Thread_entry, NULL)) {
-        MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail", "%s: %s", "pthread_create", strerror(errno)
-            );
+    char *str = getenv("MPIRUN_RSH_LAUNCH");
+    if (str && (atoi(str) == 1)) {
+        if (pthread_create(&MPICR_child_thread, NULL, CR_Thread_entry, NULL)) {
+            MPIU_ERR_SETFATALANDJUMP2(mpi_errno, MPI_ERR_OTHER, "**fail",
+                                                                "%s: %s",
+                                                                "pthread_create",
+                                                                strerror(errno));
+        }
     }
 
     /* Initialize the shared memory collectives lock */
@@ -1446,21 +1421,6 @@ int CR_IBU_Release_network()
 int CR_IBU_Rebuild_network()
 {
     int mpi_errno = MPI_SUCCESS;
-
-#if 0 
-// Don't reinitialize memory at restart. It works without.
-// It should not be necessary until we find a real reason for this.
-#if !defined(DISABLE_PTMALLOC)
-    // mvapich2_minit() crashes with bad assertion when called a second time
-    if (mvapich2_minit()) {
-        MPIU_ERR_SETFATALANDJUMP1(mpi_errno, MPI_ERR_OTHER, "**fail", "**fail %s", "Error initializing MVAPICH2 malloc library");
-    }
-#else                           /* !defined(DISABLE_PTMALLOC) */
-    mallopt(M_TRIM_THRESHOLD, -1);
-    mallopt(M_MMAP_MAX, 0);
-#endif                          /* !defined(DISABLE_PTMALLOC) */
-#endif
-
     char tmp_hname[256];
     gethostname(tmp_hname, 255);
     MPIDI_PG_t *pg = MPICR_pg;
@@ -1513,11 +1473,11 @@ int CR_IBU_Rebuild_network()
             pthread_cond_init(&mv2_MPIDI_CH3I_RDMA_Process.srq_post_cond[i], 0);
 
             mv2_MPIDI_CH3I_RDMA_Process.srq_zero_post_counter[i] = 0;
-            mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[i] = viadev_post_srq_buffers(viadev_srq_fill_size, i);
+            mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[i] = mv2_post_srq_buffers(mv2_srq_fill_size, i);
 
-            srq_attr.max_wr = viadev_srq_fill_size;
+            srq_attr.max_wr = mv2_srq_fill_size;
             srq_attr.max_sge = 1;
-            srq_attr.srq_limit = viadev_srq_limit;
+            srq_attr.srq_limit = mv2_srq_limit;
 
             if (ibv_modify_srq(mv2_MPIDI_CH3I_RDMA_Process.srq_hndl[i], &srq_attr, IBV_SRQ_LIMIT)) {
                 ibv_error_abort(IBV_RETURN_ERR, "Couldn't modify SRQ limit\n");
@@ -1704,9 +1664,9 @@ int CR_IBU_Prep_remote_update()
 {
     struct MPID_Request *temp = MPICR_req_list_head;
 
-    /*Using this to reduce the number of update messages 
-       since all consecutive request to a same memory address 
-       will be combined to a single update message */
+    /* Using this to reduce the number of update messages 
+     * since all consecutive request to a same memory address 
+     * will be combined to a single update message */
     void *last_mem_addr = NULL;
 
     MPIDI_VC_t *vc = NULL;
@@ -1834,10 +1794,10 @@ int CR_IBU_Prep_remote_update()
     return 0;
 }
 
-/**
-Before ckpt, record the num of active rndv for each vc(as sender), so that
-we know how many rndvs need to be updated with their rkey during restart
-**/
+/*
+ * Before ckpt, record the num of active rndv for each vc(as sender), so that
+ * we know how many rndvs need to be updated with their rkey during restart
+ */
 void CR_record_rndv(MPIDI_VC_t ** vc_vector)
 {
     struct MPID_Request *sreq = NULL;
@@ -1856,20 +1816,22 @@ void CR_record_rndv(MPIDI_VC_t ** vc_vector)
 
         n = 0;
         sreq = (struct MPID_Request *) vc->mrail.sreq_head;
-        while (sreq)            // record: num of rndvs as sender
+
+        /* record: num of rndvs as sender */
+        while (sreq)
         {
             n++;
             sreq = sreq->mrail.next_inflow;
         }
-        // this many rndv need to be updated with new rkey at restart
+
+        /* number of rndvs that need to be updated with a new rkey at restart */
         vc->mrail.sreq_to_update = n;
         if (n > 0 || vc->ch.sendq_head || vc->ch.cm_sendq_head || vc->mrail.msg_log_queue_head) {
             PRINT_DEBUG(DEBUG_CR_verbose > 2,"%s: [%d vc_%d]: has  %d  rndv-send to update, ch.sendq_head = %p, ch.cm_sendq_head=%p, vc.mrail.msg_log_q_head=%p\n",
                    __func__, MPICR_pg_rank, vc->pg_rank, n, vc->ch.sendq_head, vc->ch.cm_sendq_head, vc->mrail.msg_log_queue_head);
         }
 
-    }                           // end of for( each vc )
-
+    } 
 }
 
 void CR_record_flowlist(char *title)
@@ -1885,7 +1847,7 @@ void CR_record_flowlist(char *title)
         vc = vc->mrail.nextflow;
     }
 
-    // cnt pending CTS at recv-side
+    /* count pending CTS at recv-side */
     struct MPID_Request *temp = MPICR_req_list_head;
     int cts = 0;
     while (temp) {
@@ -1917,8 +1879,8 @@ int CR_IBU_Suspend_channels()
         MPIU_Assert(vc->ch.state != MPIDI_CH3I_VC_STATE_REACTIVATING_CLI_1);
         MPIU_Assert(vc->ch.state != MPIDI_CH3I_VC_STATE_REACTIVATING_CLI_2);
         MPIU_Assert(vc->ch.state != MPIDI_CH3I_VC_STATE_REACTIVATING_SRV);
-#endif                          /* !defined(NDEBUG) */
-        ///////  init the fields to be used at resume
+#endif /* !defined(NDEBUG) */
+        /* init the fields to be used at resume */
         if (vc) {
             pthread_spin_init(&vc->mrail.cr_lock, 0);
             vc->mrail.react_send_ready = 0;
@@ -1938,23 +1900,17 @@ int CR_IBU_Suspend_channels()
     }
     PRINT_DEBUG(DEBUG_CR_verbose,"fin:  MPIDI_CH3I_CM_suspend\n");
 
-    if(!SMP_ONLY)
-    {
-        if ((retval = CR_IBU_Release_network()))
-        {
+    if(!SMP_ONLY) {
+        if ((retval = CR_IBU_Release_network())) {
             return retval;
         }
         PRINT_DEBUG(DEBUG_CR_verbose,"fin:  IBU_Release_network\n");
-    }
-    else
-    {
-        /*  The cm_conn_state_lock is unlocked inside CR_IBU_Release_network().
-            But for the SMP_ONLY case, we need to unlock it explicitly here
-            as CR_IBU_Release_network() is not called */
+    } else {
+        /* The cm_conn_state_lock is unlocked inside CR_IBU_Release_network().
+         * But for the SMP_ONLY case, we need to unlock it explicitly here
+         * as CR_IBU_Release_network() is not called */
         if (MPIDI_CH3I_CR_Get_state() == MPICR_STATE_PRE_COORDINATION)
-        {
             MPICM_unlock();
-        }
         PRINT_DEBUG(DEBUG_CR_verbose > 1,"fin:  MPICM_unlock\n");
     }
 
@@ -1997,6 +1953,15 @@ int CR_IBU_Reactivate_channels()
         return (retval);
     }
 
+    /* Attach shm pool if it has not been mmap'ed() already */
+    if ( mv2_shmem_pool_init ) {
+        PRINT_DEBUG(DEBUG_CR_verbose > 2,"Attempting to reattach SMP pool used for large-message exchange before checkpoint.\n");
+        if ((retval = MPIDI_CH3I_SMP_attach_shm_pool()) != MPI_SUCCESS) {
+            return (retval);
+        }
+        PRINT_DEBUG(DEBUG_CR_verbose > 2,"SMP pool init and attached.\n");
+    }
+
     PRINT_DEBUG(DEBUG_CR_verbose, "CR_IBU_Prep_remote_update\n");
     if ((retval = CR_IBU_Prep_remote_update())) {
         return retval;
@@ -2013,7 +1978,6 @@ int CR_IBU_Reactivate_channels()
 
         MPIDI_PG_Get_vc(MPICR_pg, i, &vc);
 
-//#if !defined(NDEBUG)
         /* Now all calling can only be small rank reactivate to big rank. */
         MPIU_Assert(vc->ch.state != MPIDI_CH3I_VC_STATE_CONNECTING_CLI);
         MPIU_Assert(vc->ch.state != MPIDI_CH3I_VC_STATE_CONNECTING_SRV);
@@ -2021,15 +1985,15 @@ int CR_IBU_Reactivate_channels()
         MPIU_Assert(vc->ch.state != MPIDI_CH3I_VC_STATE_IDLE);
         MPIU_Assert(vc->ch.state != MPIDI_CH3I_VC_STATE_REACTIVATING_CLI_1);
         MPIU_Assert(vc->ch.state != MPIDI_CH3I_VC_STATE_REACTIVATING_CLI_2);
-//#endif /* !defined(NDEBUG) */
 
         if (vc->ch.state == MPIDI_CH3I_VC_STATE_SUSPENDED || vc->ch.state == MPIDI_CH3I_VC_STATE_REACTIVATING_SRV) {
             vc_vector[i] = vc;
-            ///////////// make sure: REACT_DONE are behind REM_UPDATE(if any)
+
+            /* ensure that REACT_DONE are behind REM_UPDATE(if any) */
             pthread_spin_lock(&vc->mrail.cr_lock);
             vc->mrail.react_send_ready = 1;
-            if (vc->mrail.react_entry)  // cm_thread has gotten REACT_DONE from peer:
-            {                   //  enquue the REACT_DONE to be sent to peer
+            if (vc->mrail.react_entry) { /* cm_thread has gotten REACT_DONE from peer */
+                /* enquue the REACT_DONE to be sent to peer */
                 PRINT_DEBUG(DEBUG_CR_verbose > 2,"%s: [%d => %d]: REACT_DONE came earlier, enq now...\n", __func__, MPICR_pg_rank, vc->pg_rank);
                 MSG_LOG_ENQUEUE(vc, vc->mrail.react_entry);
             }
@@ -2121,19 +2085,10 @@ static int CR_FTB_Init(int rank, char *sessionid)
     strcpy(ftb_cinfo.client_schema_ver, "0.5");
     strcpy(ftb_cinfo.event_space, "FTB.MPI.MVAPICH2");
 
-// if(count == 1) 
-    {
-        snprintf(ftb_cinfo.client_name, FTB_MAX_CLIENT_NAME, "MVAPICH2.%d", rank);
-    }
-    // else
-    {
-        //  snprintf(ftb_cinfo.client_name, FTB_MAX_CLIENT_NAME, "MVAPICH2.%d.1", rank);
-    }
-
+    snprintf(ftb_cinfo.client_name, FTB_MAX_CLIENT_NAME, "MVAPICH2.%d", rank);
     snprintf(ftb_cinfo.client_jobid, FTB_MAX_CLIENT_JOBID, "%s", sessionid);
 
     strcpy(ftb_cinfo.client_subscription_style, "FTB_SUBSCRIPTION_BOTH");
-    //strcpy(ftb_cinfo.client_subscription_style, "FTB_SUBSCRIPTION_POLLING");    
     ftb_cinfo.client_polling_queue_len = 64;
 
     ret = FTB_Connect(&ftb_cinfo, &ftb_handle);
@@ -2152,15 +2107,8 @@ static int CR_FTB_Init(int rank, char *sessionid)
     PRINT_DEBUG(DEBUG_CR_verbose > 1,"\t FTB_SUBSRIBE STR:%s: for rank %d\n", str, rank);
 
     ret = FTB_Subscribe(&shandle, ftb_handle, str, CR_FTB_Callback, NULL);
-    //ret = FTB_Subscribe(&shandle, ftb_handle, str,NULL, NULL);
     if (ret != FTB_SUCCESS)
         goto err_subscribe;
-
-/*    snprintf(str, FTB_MAX_SUBSCRIPTION_STR,
-             "event_space=FTB.STARTUP.MV2_MPISPAWN , jobid=%s", sessionid);
-     ret = FTB_Subscribe(&shandle, ftb_handle, str, CR_FTB_Callback, NULL);
-     if (ret != FTB_SUCCESS) goto err_subscribe;
-*/
 
     /* Set PMI_PORT */
     snprintf(session_file, 64, "/tmp/cr.session.%s", getenv("MV2_CKPT_SESSIONID"));
@@ -2252,13 +2200,13 @@ static int parse_aggre_migration_string(char *msg, char *src, char *tgt)
     buf[255] = 0;
     PRINT_DEBUG(DEBUG_MIG_verbose > 1, "buf = \"%s\"\n", buf);
 
-    /// "buf" is in format:  "srcnode  tgtnode  proc_cnt  procid1  procid2 ..."
-    // parse this string to extract all infor
+    /* Format of "buf":  "srcnode  tgtnode  proc_cnt  procid1  procid2 ..." */
     char *tok;
-
-    tok = strtok(buf, " \n\t"); // src
+    /* extract source */
+    tok = strtok(buf, " \n\t");
     strcpy(src, tok);
-    tok = strtok(NULL, " \n\t");    // tgt
+    /* extract target */
+    tok = strtok(NULL, " \n\t");
     strcpy(tgt, tok);
 
     PRINT_DEBUG(DEBUG_MIG_verbose > 1, "msg=%s, src=%s, tgt=%s\n", msg, src, tgt);
@@ -2267,8 +2215,6 @@ static int parse_aggre_migration_string(char *msg, char *src, char *tgt)
 
 static int CR_FTB_Callback(FTB_receive_event_t * revent, void *arg)
 {
-    // fprintf(stdout, "Got event %s from %s\n",
-    //        revent->event_name, revent->client_name);
     char my_hostname[256];
     gethostname(my_hostname, 255);
 
@@ -2284,7 +2230,7 @@ static int CR_FTB_Callback(FTB_receive_event_t * revent, void *arg)
     }
 
     if (!strcmp(revent->event_name, EVENT(CR_FTB_MIGRATE))) {
-        if (use_aggre_mig)      // getenv("MV2_CKPT_AGGRE_MIG_FILE")!=NULL )
+        if (use_aggre_mig)
             parse_aggre_migration_string(revent->event_payload, cr_mig_src_host, cr_mig_tgt_host);
         else
             get_src_tgt(revent->event_payload, cr_mig_src_host, cr_mig_tgt_host);
@@ -2294,15 +2240,6 @@ static int CR_FTB_Callback(FTB_receive_event_t * revent, void *arg)
         pthread_cond_signal(&cr_ftb_cond);
         pthread_mutex_unlock(&cr_ftb_mutex);
 
-        /*  // int ret = FTB_Unsubscribe(shandle);
-           if (ret != FTB_SUCCESS) {
-           printf("FTB_Unsubscribe failed with code %d\n", ret);
-           //return ret;
-           }
-           fprintf(stderr, "/t %s:%d: [CR] rank=%d host:%s:  unsubscribe callback function: Unsubscribing the subscription string\n",
-           __FILE__,__LINE__,MPIDI_Process.my_pg_rank, my_hostname);
-
-         */
         return (0);
     }
     return (0);

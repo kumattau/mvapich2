@@ -76,7 +76,7 @@ struct MPIDI_CH3I_RDMA_put_get_list_t
             rreq->mrail.rndv_buf_off = rreq->mrail.rndv_buf_sz = 0; \
         } \
         rreq->mrail.d_entry = NULL;                         \
-	rreq->mrail.protocol = VAPI_PROTOCOL_RENDEZVOUS_UNSPECIFIED; \
+	rreq->mrail.protocol = MV2_RNDV_PROTOCOL_RENDEZVOUS_UNSPECIFIED; \
     }   \
 }
 
@@ -111,7 +111,7 @@ struct MPIDI_CH3I_RDMA_put_get_list_t
  * to complete message 2 based on the new piggybacked credits.
  *
  * The list head and tail are given by the shandle_head and
- * shandle_tail entries on viadev_connection_t and the list is linked
+ * shandle_tail entries on mv2_connection_t and the list is linked
  * through the nexthandle entry on a send handle.
  *
  * The queue is FIFO because we must preserve order, so we maintain
@@ -137,14 +137,14 @@ struct MPIDI_CH3I_RDMA_put_get_list_t
 
 #define MPIDI_CH3I_MRAIL_REVERT_RPUT(_sreq)                     \
 {                                                               \
-    if (VAPI_PROTOCOL_RGET == (_sreq)->mrail.protocol)          \
-        (_sreq)->mrail.protocol = VAPI_PROTOCOL_RPUT;           \
+    if (MV2_RNDV_PROTOCOL_RGET == (_sreq)->mrail.protocol)          \
+        (_sreq)->mrail.protocol = MV2_RNDV_PROTOCOL_RPUT;           \
 } 
 
 #define MPIDI_CH3I_MRAIL_SET_PKT_RNDV(_pkt, _req) \
 {   \
     (_pkt)->rndv.protocol = (_req)->mrail.protocol;  \
-    if (VAPI_PROTOCOL_RPUT == (_pkt)->rndv.protocol){   \
+    if (MV2_RNDV_PROTOCOL_RPUT == (_pkt)->rndv.protocol){   \
         (_pkt)->rndv.memhandle = ((_req)->mrail.d_entry)->memhandle; \
         (_pkt)->rndv.buf_addr = (_req)->mrail.rndv_buf;  \
     }   \

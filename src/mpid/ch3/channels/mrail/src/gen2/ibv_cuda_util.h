@@ -19,6 +19,7 @@
 #include "cuda_runtime.h"
 #include "vbuf.h"
 
+extern int cudaipc_init;
 
 typedef enum cuda_async_op {
     SEND = 0,
@@ -261,6 +262,8 @@ typedef struct cudaipc_shared_info
     cudaIpcEventHandle_t ipcEventHandle;
     cudaIpcMemHandle_t ipcMemHanlde;
 } cudaipc_shared_info_t;
+
+typedef volatile int cudaipc_device_id_t;
 
 /* sync flag */
 #define CUDAIPC_BUF_EMPTY 0

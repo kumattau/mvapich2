@@ -116,7 +116,7 @@ MRAILI_Ext_sendq_send (MPIDI_VC_t * c, const MRAILI_Channel_info * channel)
           v->desc.next = NULL;
           c->mrail.send_wqes_avail[channel->rail_index]--;
           UDAPL_POST_SR (v, c, (*channel),
-                         "Mrail_post_sr (viadev_ext_sendq_send)");
+                         "Mrail_post_sr (MRAILI_Ext_sendq_send)");
       }
 
     if (c->mrail.send_wqes_avail[channel->rail_index] > 0) {
@@ -684,7 +684,7 @@ int MRAILI_Backlog_send (MPIDI_VC_t * vc, const MRAILI_Channel_info * channel)
           vc->mrail.send_wqes_avail[channel->rail_index]--;
 
           UDAPL_POST_SR (v, vc, (*channel),
-                         "UDAPL_post_sr (viadev_backlog_push)");
+                         "UDAPL_post_sr (MRAILI_Backlog_send)");
       }
 
     MPIDI_FUNC_EXIT(MRAILI_BACKLOG_SEND);
@@ -838,7 +838,7 @@ int MRAILI_Process_send (void *vbuf_addr)
           v->sreq = NULL;
           if (NULL != req)
             {
-                if (VAPI_PROTOCOL_RPUT == req->mrail.protocol)
+                if (MV2_RNDV_PROTOCOL_RPUT == req->mrail.protocol)
                   {
                       if (req->mrail.d_entry != NULL)
                         {
@@ -889,6 +889,8 @@ int MRAILI_Process_send (void *vbuf_addr)
       case MPIDI_CH3_PKT_ACCUMULATE_RNDV:
       case MPIDI_CH3_PKT_LOCK:
       case MPIDI_CH3_PKT_LOCK_GRANTED:
+      case MPIDI_CH3_PKT_UNLOCK:
+      case MPIDI_CH3_PKT_FLUSH:
       case MPIDI_CH3_PKT_PT_RMA_DONE:
       case MPIDI_CH3_PKT_LOCK_GET_UNLOCK:      /* optimization for single gets */
       case MPIDI_CH3_PKT_ACCUM_IMMED:
@@ -896,6 +898,8 @@ int MRAILI_Process_send (void *vbuf_addr)
       case MPIDI_CH3_PKT_CAS_RESP:
       case MPIDI_CH3_PKT_FOP:
       case MPIDI_CH3_PKT_FOP_RESP:
+      case MPIDI_CH3_PKT_GET_ACCUM:
+      case MPIDI_CH3_PKT_GET_ACCUM_RESP:
       case MPIDI_CH3_PKT_FLOW_CNTL_UPDATE:
       case MPIDI_CH3_PKT_CLOSE:        /*24 */
           DEBUG_PRINT ("[process send] get %d\n", p->type);
@@ -928,7 +932,7 @@ int MRAILI_Process_send (void *vbuf_addr)
           dump_vbuf ("unknown packet (send finished)", v);
           udapl_error_abort (UDAPL_STATUS_ERR,
                              "Unknown packet type %d in "
-                             "viadev_process_send", p->type);
+                             "MRAILI_Process_send", p->type);
       }
     DEBUG_PRINT ("return from process send\n");
 
@@ -1009,11 +1013,11 @@ void MRAILI_RDMA_Put (MPIDI_VC_t * vc, vbuf * v,
     MPIDI_FUNC_ENTER(MRAILI_RDMA_PUT);
 
 #ifdef UDAPL_HAVE_RDMA_LIMIT
-    while (viadev.outstanding_rdmas >= viadev_rdma_limit)
+    while (mv2.outstanding_rdmas >= mv2_rdma_limit)
         MPID_DeviceCheck (MPID_BLOCKING);
-    viadev.outstanding_rdmas++;
+    mv2.outstanding_rdmas++;
 #endif
-    DEBUG_PRINT("viadev_rput: RDMA write, remote addr %p, rkey %p, nbytes %d, hca %d\n",
+    DEBUG_PRINT("MRAILI_RDMA_Put: RDMA write, remote addr %p, rkey %p, nbytes %d, hca %d\n",
                 remote_addr, rkey, nbytes, subchannel->hca_index);
 
     vbuf_init_rput (v, (void *) local_addr, local_hndl, remote_addr,
@@ -1028,7 +1032,7 @@ void MRAILI_RDMA_Put (MPIDI_VC_t * vc, vbuf * v,
       }
     vc->mrail.send_wqes_avail[subchannel->rail_index]--;
 
-    UDAPL_POST_SR (v, vc, (*subchannel), "viadev_post_rdmawrite");
+    UDAPL_POST_SR (v, vc, (*subchannel), "MRAILI_RDMA_Put");
 
     MPIDI_FUNC_EXIT(MRAILI_RDMA_PUT);
 }

@@ -50,6 +50,16 @@ extern CUevent *loop_event;
 extern CUevent *loop_event_local;
 #endif 
 
+extern int                  g_smp_delay_shmem_pool_init;
+
+extern int                  g_smp_priority_polling;
+extern int                  g_smp_polling_th;
+typedef struct polling_set_element {
+    int rank; 
+    int prev;
+    int next;
+} POLLING_ELEMENT_T;
+
 /*********** Macro defines of local variables ************/
 #define PID_CHAR_LEN 22
 
@@ -173,7 +183,7 @@ typedef struct send_buf_t {
     int len;
     volatile int has_next;
     int msg_complete;
-    char buf[];
+    char buf[] __attribute__((aligned(SMPI_CACHE_LINE_SIZE)));
 } SEND_BUF_T;
 
 /* send queue, to be initialized */

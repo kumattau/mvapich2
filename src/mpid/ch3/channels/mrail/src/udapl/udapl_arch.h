@@ -63,14 +63,6 @@
 #error Only one of _PCI_X_ and _PCI_EX_ can be defined
 #endif
 
-#if defined(_IB_GEN2_) && defined(_IB_VAPI_)
-#error Only one of _IB_GEN2_ and _IB_VAPI_ can be defined
-#endif
-
-#if defined(SOLARIS) && defined(_IB_VAPI_)
-#error The platform is Solaris. Please choose IBTL instead of VAPI. 
-#endif
-
 #if defined(SOLARIS) && defined(_IB_GEN2_)
 #error The platform is Solaris. Please choose IBTL instead of GEN2.
 #endif

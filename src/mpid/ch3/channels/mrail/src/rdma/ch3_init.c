@@ -13,6 +13,7 @@
 #include "mpidi_ch3_impl.h"
 #include "mpid_mrail_rndv.h"
 #include "rdma_impl.h"
+#include "mem_hooks.h"
 #include "coll_shmem.h"
 #if defined(HAVE_LIBHWLOC)
 #include "hwloc_bind.h"
@@ -214,6 +215,11 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     if (pg_size < rdma_hybrid_enable_threshold) {
         rdma_enable_hybrid = 0;
     }
+    if(rdma_enable_hybrid == 1) { 
+        /* The zero-copy bcast design is disabled when 
+         * hybrid is used */ 
+        mv2_enable_zcpy_bcast = 0; 
+    } 
 #endif
 
     if (pg_size > threshold || dpm
@@ -274,6 +280,21 @@ int MPIDI_CH3_Init(int has_parent, MPIDI_PG_t * pg, int pg_rank)
     MPIDI_CH3I_set_smp_only();
 
     if (!SMP_ONLY) {
+
+#if !defined(DISABLE_PTMALLOC)
+        if (mvapich2_minit()) {
+            if (pg_rank == 0) {
+                MPIU_Error_printf("WARNING: Error in initializing MVAPICH2 ptmalloc library."
+                "Continuing without InfiniBand registration cache support.\n");
+            }
+            mv2_MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister = 0;
+        }
+#else /* !defined(DISABLE_PTMALLOC) */
+        mallopt(M_TRIM_THRESHOLD, -1);
+        mallopt(M_MMAP_MAX, 0);
+        mv2_MPIDI_CH3I_RDMA_Process.has_lazy_mem_unregister = 0;
+#endif /* !defined(DISABLE_PTMALLOC) */
+
         switch (MPIDI_CH3I_Process.cm_type) {
                 /* allocate rmda memory and set up the queues */
             case MPIDI_CH3I_CM_ON_DEMAND:

@@ -618,6 +618,9 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
     if (size <= 1) {
         return mpi_errno;
     }
+    #if OSU_MPIT
+        mv2_num_2level_comm_requests++;
+    #endif
 
     MPID_Comm_get_ptr( comm, comm_ptr );
     int* shmem_group = MPIU_Malloc(sizeof(int) * size);
@@ -676,6 +679,9 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
         }
         goto fn_exit;
     }
+    #if OSU_MPIT
+        mv2_num_2level_comm_success++;
+    #endif
 
     /* Creating leader group */
     int leader = 0;
@@ -878,7 +884,7 @@ int create_2level_comm (MPI_Comm comm, int size, int my_rank)
 
     shmem_ptr->ch.shmem_comm_rank = mv2_shmem_coll_blk_stat; 
 
-    if (mv2_use_slot_shmem_coll && my_local_size > 1) {
+    if (mv2_use_slot_shmem_coll) {
         comm_ptr->ch.shmem_info = mv2_shm_coll_init(mv2_shmem_coll_blk_stat, my_local_id, my_local_size); 
         if (comm_ptr->ch.shmem_info == NULL) {
             mpi_errno = MPIR_Err_create_code(MPI_SUCCESS, MPI_ERR_OTHER,

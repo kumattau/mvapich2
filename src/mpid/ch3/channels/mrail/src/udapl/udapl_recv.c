@@ -213,6 +213,18 @@ MPIDI_CH3I_MRAIL_Parse_header (MPIDI_VC_t * vc,
               *pkt = vstart;
               break;
           }
+      case MPIDI_CH3_PKT_UNLOCK:
+          {
+            *header_size = sizeof(MPIDI_CH3_Pkt_unlock_t);
+            *pkt = vstart;
+            break;
+          }
+      case MPIDI_CH3_PKT_FLUSH:
+          {
+            *header_size = sizeof(MPIDI_CH3_Pkt_flush_t);
+            *pkt = vstart;
+            break;
+          }
       case MPIDI_CH3_PKT_PT_RMA_DONE:
           {
               *header_size = sizeof (MPIDI_CH3_Pkt_pt_rma_done_t);
@@ -267,7 +279,19 @@ MPIDI_CH3I_MRAIL_Parse_header (MPIDI_VC_t * vc,
             *pkt = vstart;
             break;
         }
-      case MPIDI_CH3_PKT_FLOW_CNTL_UPDATE:
+    case MPIDI_CH3_PKT_GET_ACCUM:
+        {
+            *header_size = sizeof(MPIDI_CH3_Pkt_accum_t);
+            *pkt = vstart;
+            break;
+        }
+    case MPIDI_CH3_PKT_GET_ACCUM_RESP:
+        {
+            *header_size = sizeof(MPIDI_CH3_Pkt_get_accum_resp_t);
+            *pkt = vstart;
+            break;
+        }
+    case MPIDI_CH3_PKT_FLOW_CNTL_UPDATE:
           {
               *pkt = vstart;
               break;

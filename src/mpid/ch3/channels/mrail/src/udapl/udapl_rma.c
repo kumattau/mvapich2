@@ -53,14 +53,14 @@ MPIDI_CH3I_MRAILI_Get_rndv_rput (MPIDI_VC_t * vc,
 
     MPIDI_CH3I_MRAIL_Prepare_rndv (vc, req);
 
-    if (VAPI_PROTOCOL_RPUT == req->mrail.protocol)
+    if (MV2_RNDV_PROTOCOL_RPUT == req->mrail.protocol)
       {
           MPIDI_CH3I_MRAIL_Prepare_rndv_transfer (req, rndv);
       }
 
     /* STEP 2: Push RDMA write */
     while ((req->mrail.rndv_buf_off < req->mrail.rndv_buf_sz)
-           && VAPI_PROTOCOL_RPUT == req->mrail.protocol)
+           && MV2_RNDV_PROTOCOL_RPUT == req->mrail.protocol)
       {
           v = get_vbuf ();
           MPIU_Assert (v != NULL);
@@ -81,7 +81,7 @@ MPIDI_CH3I_MRAILI_Get_rndv_rput (MPIDI_VC_t * vc,
           req->mrail.rndv_buf_off += nbytes;
       }
 
-    if (VAPI_PROTOCOL_RPUT == req->mrail.protocol) {
+    if (MV2_RNDV_PROTOCOL_RPUT == req->mrail.protocol) {
         MPIDI_CH3I_MRAILI_rput_complete(vc, iov, 1, &nbytes, &v, channel.rail_index);
         v->sreq = req;
     }

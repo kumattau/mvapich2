@@ -29,6 +29,7 @@ typedef struct {
     int max;
     int (*MV2_pt_Bcast_function) (void *buf, int count, MPI_Datatype datatype,
                                   int root, MPID_Comm * comm_ptr, int *errflag);
+    int zcpy_pipelined_knomial_factor;
 } mv2_bcast_tuning_element;
 
 typedef struct {
@@ -45,6 +46,8 @@ typedef struct {
 
 extern int mv2_use_pipelined_bcast;
 extern int mv2_pipelined_knomial_factor; 
+extern int mv2_pipelined_zcpy_knomial_factor; 
+extern int zcpy_knomial_factor;
 extern int bcast_segment_size;
 
 extern int mv2_size_bcast_tuning_table;
@@ -92,6 +95,7 @@ extern int MPIR_Pipelined_Bcast_MV2(void *buffer,
                                     MPI_Datatype datatype,
                                     int root, MPID_Comm * comm_ptr, int *errflag);
 
+
 /* Use for intra-node in case of two lvl algo */
 extern int MPIR_Shmem_Bcast_MV2(void *buffer,
                                 int count,
@@ -103,6 +107,28 @@ extern int MPIR_Knomial_Bcast_intra_node_MV2(void *buffer,
                                              MPI_Datatype datatype,
                                              int root,
                                              MPID_Comm * comm_ptr, int *errflag);
+
+extern int MPIR_Knomial_Bcast_inter_node_trace_MV2(int root, int mv2_bcast_knomial_factor,
+                 int *src, int *expected_send_count,
+                 int *expected_recv_count, int **dst_array,
+                 MPID_Comm *comm_ptr); 
+
+#if defined (_OSU_MVAPICH_)  && !defined (DAPL_DEFAULT_PROVIDER) 
+extern int MPIR_Pipelined_Bcast_Zcpy_MV2(void *buffer,
+                         int count,
+                         MPI_Datatype datatype,
+                         int root, MPID_Comm * comm_ptr, int *errflag); 
+#endif
+
+extern int MPIR_Shmem_Bcast_Zcpy_MV2(void *buffer,
+                         int count,
+                         MPI_Datatype datatype,
+                         int root,
+                         int src, int expected_recv_count,
+                         int *dst_array, int expected_send_count,
+                         int knomial_factor,
+                         MPID_Comm *comm_ptr,
+                         int *errflag); 
 
 #if defined(_MCST_SUPPORT_)
 extern int MPIR_Mcast_inter_node_MV2(void *buffer,

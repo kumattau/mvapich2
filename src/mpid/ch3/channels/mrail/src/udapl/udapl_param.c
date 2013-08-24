@@ -80,7 +80,7 @@ int udapl_sq_size = 200;
 
 /* Max number of entries on the RecvQ of QPs per connection.
  * computed to be:
- * prepost_depth + udapl_prepost_rendezvous_extra + viadev_prepost_noop_extra
+ * prepost_depth + udapl_prepost_rendezvous_extra + udapl_prepost_noop_extra
  * Must be within NIC MaxQpEntries limit.
  */
 int udapl_rq_size;
@@ -88,7 +88,7 @@ int udapl_rq_size;
 /* The number of "extra" vbufs that will be posted as receives
  * on a connection in anticipation of an R3 rendezvous message.
  * The TOTAL number of VBUFs posted on a receive queue at any
- * time is udapl_prepost_depth + viadev_prepost_rendezvous_extra
+ * time is udapl_prepost_depth + udapl_prepost_rendezvous_extra
  * regardless of the number of outstanding R3 sends active on
  * a connection.
  */

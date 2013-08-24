@@ -11,6 +11,13 @@
 #include "coll_shmem.h"
 #endif
 
+#if defined (_OSU_MVAPICH_) && OSU_MPIT
+unsigned long long mpit_bcast_smp = 0;
+unsigned long long mpit_bcast_binomial = 0;
+unsigned long long mpit_bcast_scatter_doubling_allgather = 0;
+unsigned long long mpit_bcast_scatter_ring_allgather = 0;
+#endif /* (_OSU_MVAPICH_) && OSU_MPIT */
+
 /* -- Begin Profiling Symbol Block for routine MPI_Bcast */
 #if defined(HAVE_PRAGMA_WEAK)
 #pragma weak MPI_Bcast = PMPI_Bcast
@@ -1156,6 +1163,9 @@ int MPIR_Bcast_intra (
 
 #if defined(USE_SMP_COLLECTIVES)
     if (MPIR_Comm_is_node_aware(comm_ptr)) {
+        #if OSU_MPIT
+            mpit_bcast_smp++;
+        #endif /* OSU_MPIT */
         mpi_errno = MPIR_SMP_Bcast(buffer, count, datatype, root, comm_ptr, errflag);
         if (mpi_errno) {
             /* for communication errors, just record the error but continue */
@@ -1195,6 +1205,9 @@ int MPIR_Bcast_intra (
 
     if ((nbytes < MPIR_PARAM_BCAST_SHORT_MSG_SIZE) || (comm_size < MPIR_PARAM_BCAST_MIN_PROCS))
     {
+        #if OSU_MPIT
+            mpit_bcast_binomial++;
+        #endif /* OSU_MPIT */
         mpi_errno = MPIR_Bcast_binomial(buffer, count, datatype, root, comm_ptr, errflag);
         if (mpi_errno) {
             /* for communication errors, just record the error but continue */
@@ -1207,6 +1220,9 @@ int MPIR_Bcast_intra (
     {
         if ((nbytes < MPIR_PARAM_BCAST_LONG_MSG_SIZE) && (MPIU_is_pof2(comm_size, NULL)))
         {
+            #if OSU_MPIT
+                mpit_bcast_scatter_doubling_allgather++;
+            #endif /* OSU_MPIT */
             mpi_errno = MPIR_Bcast_scatter_doubling_allgather(buffer, count, datatype, root, comm_ptr, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */
@@ -1220,6 +1236,9 @@ int MPIR_Bcast_intra (
             /* We want the ring algorithm whether or not we have a
                topologically aware communicator.  Doing inter/intra-node
                communication phases breaks the pipelining of the algorithm.  */
+            #if definedOSU_MPIT
+                mpit_bcast_scatter_ring_allgather++;
+            #endif /* OSU_MPIT */
             mpi_errno = MPIR_Bcast_scatter_ring_allgather(buffer, count, datatype, root, comm_ptr, errflag);
             if (mpi_errno) {
                 /* for communication errors, just record the error but continue */

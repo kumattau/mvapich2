@@ -1156,6 +1156,9 @@ int MPIR_Reduce_two_level_helper_MV2(const void *sendbuf,
 
     leader_of_root = comm_ptr->ch.leader_map[root];
     leader_root = comm_ptr->ch.leader_rank[leader_of_root];
+    #if OSU_MPIT
+        mv2_num_shmem_coll_calls++;
+    #endif
 
     if (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) {
         is_commutative = 1;

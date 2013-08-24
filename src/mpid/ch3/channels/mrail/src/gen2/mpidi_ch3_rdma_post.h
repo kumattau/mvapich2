@@ -50,6 +50,7 @@ struct MPIDI_CH3I_RDMA_put_get_list_t{
                              * NULL if big msg, do need to do mem cpy
                              */
     int     completion; /* deregister when complete is 0 */
+    int     target_rank;
     MPID_Win    *win_ptr;
     struct MPIDI_VC* vc_ptr;
 };
@@ -79,7 +80,7 @@ struct MPIDI_CH3I_RDMA_put_get_list_t{
         MPIDI_CH3I_MRAIL_FREE_RNDV_BUFFER(rreq);                    \
     }                                                               \
     rreq->mrail.d_entry = NULL;                                     \
-    rreq->mrail.protocol = VAPI_PROTOCOL_RENDEZVOUS_UNSPECIFIED;    \
+    rreq->mrail.protocol = MV2_RNDV_PROTOCOL_RENDEZVOUS_UNSPECIFIED;    \
 }                                                                   \
 
 #define PUSH_FLOWLIST(c) {                                      \
@@ -125,7 +126,7 @@ struct MPIDI_CH3I_RDMA_put_get_list_t{
  * to complete message 2 based on the new piggybacked credits.
  *
  * The list head and tail are given by the shandle_head and
- * shandle_tail entries on viadev_connection_t and the list is linked
+ * shandle_tail entries on mv2_connection_t and the list is linked
  * through the nexthandle entry on a send handle.
  *
  * The queue is FIFO because we must preserve order, so we maintain
@@ -159,8 +160,8 @@ struct MPIDI_CH3I_RDMA_put_get_list_t{
 
 #define MPIDI_CH3I_MRAIL_REVERT_RPUT(_sreq)                     \
 {                                                               \
-    if (VAPI_PROTOCOL_RGET == (_sreq)->mrail.protocol)          \
-        (_sreq)->mrail.protocol = VAPI_PROTOCOL_RPUT;           \
+    if (MV2_RNDV_PROTOCOL_RGET == (_sreq)->mrail.protocol)          \
+        (_sreq)->mrail.protocol = MV2_RNDV_PROTOCOL_RPUT;           \
 }
 
 #ifdef _ENABLE_CUDA_
@@ -169,8 +170,8 @@ struct MPIDI_CH3I_RDMA_put_get_list_t{
     int _i, _k;                                                     \
     (_pkt)->rndv.protocol = (_req)->mrail.protocol;             \
         (_pkt)->rndv.num_cuda_blocks = MIN(((_req)->mrail.num_cuda_blocks - (_req)->mrail.cuda_block_offset), rdma_num_cuda_rndv_blocks); \
-    if ( (VAPI_PROTOCOL_RPUT == (_pkt)->rndv.protocol) ||       \
-            (VAPI_PROTOCOL_RGET == (_pkt)->rndv.protocol) ) {   \
+    if ( (MV2_RNDV_PROTOCOL_RPUT == (_pkt)->rndv.protocol) ||       \
+            (MV2_RNDV_PROTOCOL_RGET == (_pkt)->rndv.protocol) ) {   \
         for (_i = 0; _i < (_pkt)->rndv.num_cuda_blocks; _i++) {   \
         (_pkt)->rndv.buffer_addr[_i] = (_req)->mrail.cuda_vbuf[_i]->buffer;    \
             for(_k = 0; _k < rdma_num_hcas; _k++) {             \
@@ -186,7 +187,7 @@ struct MPIDI_CH3I_RDMA_put_get_list_t{
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
 #define MPIDI_CH3I_MRAIL_SET_PKT_RNDV_CUDA_IPC(_pkt, _req)      \
 {                                                               \
-    if ( VAPI_PROTOCOL_RGET == (_pkt)->rndv.protocol            \
+    if ( MV2_RNDV_PROTOCOL_RGET == (_pkt)->rndv.protocol            \
          && IS_CUDA_RNDV_REQ(_req)) {                           \
         (_pkt)->rndv.ipc_displ = (_req)->mrail.ipc_displ;       \
         (_pkt)->rndv.ipc_baseptr = (_req)->mrail.ipc_baseptr;   \
@@ -207,8 +208,8 @@ struct MPIDI_CH3I_RDMA_put_get_list_t{
 {                                                               \
     int _i;                                                     \
     (_pkt)->rndv.protocol = (_req)->mrail.protocol;             \
-    if ( (VAPI_PROTOCOL_RPUT == (_pkt)->rndv.protocol) ||       \
-            (VAPI_PROTOCOL_RGET == (_pkt)->rndv.protocol) ) {   \
+    if ( (MV2_RNDV_PROTOCOL_RPUT == (_pkt)->rndv.protocol) ||       \
+            (MV2_RNDV_PROTOCOL_RGET == (_pkt)->rndv.protocol) ) {   \
         if (!IS_CUDA_RNDV_REQ(_req)) {                          \
             for (_i = 0; _i < rdma_num_hcas; _i ++) {           \
                 (_pkt)->rndv.rkey[_i] =                         \
@@ -275,7 +276,7 @@ int MPIDI_CH3I_MRAILI_Eager_send(   struct MPIDI_VC* vc,
                                     int * num_bytes_ptr,
                                     vbuf **buf_handle);
 
-/* Following functions are defined in vapi_channel_manager.c */
+/* Following functions are defined in ibv_channel_manager.c */
 
 /* return type predefinition */
 #define T_CHANNEL_NO_ARRIVE 0   
@@ -316,7 +317,7 @@ void MRAILI_Release_recv_rdma(vbuf *v);
 extern struct MPIDI_VC* flowlist;
 
 /* Post the buffers on an SRQ associated with a particular HCA */
-int viadev_post_srq_buffers(int, int);
+int mv2_post_srq_buffers(int, int);
 void async_thread(void *ctx);
 
 int MPIDI_CH3I_MRAILI_Flush(void);

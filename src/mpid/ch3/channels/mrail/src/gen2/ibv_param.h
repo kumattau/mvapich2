@@ -71,10 +71,10 @@ extern int rdma_max_inline_size;
 extern int rdma_local_id;
 extern int rdma_num_local_procs;
 
-extern uint32_t viadev_srq_alloc_size;
-extern uint32_t viadev_srq_fill_size;
-extern uint32_t viadev_srq_limit;
-extern uint32_t viadev_max_r3_oust_send;
+extern uint32_t mv2_srq_alloc_size;
+extern uint32_t mv2_srq_fill_size;
+extern uint32_t mv2_srq_limit;
+extern uint32_t mv2_max_r3_oust_send;
 
 extern int rdma_polling_set_threshold;
 extern int rdma_polling_set_limit;
@@ -150,9 +150,12 @@ extern int rdma_cuda_stream_count;
 extern int rdma_cuda_event_count;
 extern int rdma_cuda_event_sync;
 extern int rdma_enable_cuda;
+extern int rdma_cuda_dynamic_init;
 extern int rdma_eager_cudahost_reg;
 extern int rdma_cuda_vector_dt_opt;
 extern int rdma_cuda_kernel_dt_opt;
+extern int cuda_initialized; 
+extern int cuda_preinitialized; 
 #if defined(HAVE_CUDA_IPC)
 extern int rdma_cuda_ipc;
 extern int rdma_cuda_smp_ipc;
@@ -272,9 +275,12 @@ extern int rdma_default_async_thread_stack_size;
 #define RDMA_NDREG_ENTRIES              (1100)
 #define RDMA_NDREG_ENTRIES_MAX          (4096)
 #define RDMA_VBUF_POOL_SIZE             (512)
+#define RDMA_OPT_VBUF_POOL_SIZE         (256)
 #define RDMA_UD_VBUF_POOL_SIZE          (8192)
 #define RDMA_MIN_VBUF_POOL_SIZE         (512)
+#define RDMA_OPT_MIN_VBUF_POOL_SIZE     (256)
 #define RDMA_VBUF_SECONDARY_POOL_SIZE   (256)
+#define RDMA_OPT_VBUF_SECONDARY_POOL_SIZE   (128)
 #define RDMA_PREPOST_DEPTH              (64)
 #define RDMA_INITIAL_PREPOST_DEPTH      (10)
 #define RDMA_LOW_WQE_THRESHOLD          (10)

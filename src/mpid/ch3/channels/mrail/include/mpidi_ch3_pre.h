@@ -170,6 +170,15 @@ typedef enum SMP_pkt_type
     SMP_RNDV_MSG_CONT
 } SMP_pkt_type_t;
 
+#if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
+typedef enum CUDA_IPC_STATUS
+{ 
+    CUDA_IPC_UNINITIALIZED,
+    CUDA_IPC_ENABLED,
+    CUDA_IPC_DISABLED
+} cuda_ipc_status_t;
+#endif
+
 typedef struct MPIDI_CH3I_SMP_VC
 {
     struct MPID_Request * sendq_head;
@@ -184,19 +193,25 @@ typedef struct MPIDI_CH3I_SMP_VC
     int read_index;
     int read_off;
 
-#if defined(_SMP_CMA_)
-    struct cma_header current_c_header;
-    int current_cnb;
-    int use_cma;
-#endif
-
 #if defined(_SMP_LIMIC_)
     struct limic_header current_l_header;
+#else
+    int current_l_header;
+#endif 
+
+#if defined(_SMP_CMA_)
+    struct cma_header current_c_header;
+#else
+    int current_c_header;
+#endif
+
+    int current_cnb;
     int current_nb;
     int use_limic;
-#endif
+    int use_cma;
+
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-    int can_access_peer;
+    cuda_ipc_status_t can_access_peer;
 #endif
 } MPIDI_CH3I_SMP_VC;
 

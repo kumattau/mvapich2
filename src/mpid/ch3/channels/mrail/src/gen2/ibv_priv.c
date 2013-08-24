@@ -29,7 +29,7 @@ struct ibv_mr * register_memory(void * buf, int len, int hca_num)
 {
     struct ibv_mr * mr = ibv_reg_mr(mv2_MPIDI_CH3I_RDMA_Process.ptag[hca_num], buf, len,
             IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_WRITE |
-            IBV_ACCESS_REMOTE_READ );
+            IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_ATOMIC);
     DEBUG_PRINT("register return mr %p, buf %p, len %d\n", mr, buf, len);
     return mr;
 }

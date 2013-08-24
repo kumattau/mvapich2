@@ -77,10 +77,10 @@ int MPIDI_CH3I_Progress_test(void);
 }
 
 #define MPIDI_CH3_RNDV_PROTOCOL_IS_READ(rts_pkt) \
-    (VAPI_PROTOCOL_RGET == rts_pkt->rndv.protocol)
+    (MV2_RNDV_PROTOCOL_RGET == rts_pkt->rndv.protocol)
 
 #define MPIDI_CH3_RECV_REQ_IS_READ(rreq) \
-    (VAPI_PROTOCOL_RGET == rreq->mrail.protocol)
+    (MV2_RNDV_PROTOCOL_RGET == rreq->mrail.protocol)
 
 extern int SMP_INIT;
 extern int SMP_ONLY;

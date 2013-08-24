@@ -567,7 +567,8 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
 	
 	            if (wc.status != IBV_WC_SUCCESS) {
 	                if (wc.opcode == IBV_WC_SEND ||
-	                    wc.opcode == IBV_WC_RDMA_WRITE ) {
+                       wc.opcode == IBV_WC_RDMA_WRITE ||
+                       wc.opcode == IBV_WC_FETCH_ADD ) {
 			    		fprintf(stderr, "[%d->%d] send desc error, wc_opcode=%d\n",myrank, vc->pg_rank, wc.opcode );
 	                } else {
 			    		fprintf(stderr, "[%d<-%d] recv desc error, wc_opcode=%d\n",myrank, vc->pg_rank, wc.opcode);
@@ -588,7 +589,9 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
 
                 is_send_completion = (wc.opcode == IBV_WC_SEND
                     || wc.opcode == IBV_WC_RDMA_WRITE
-                    || wc.opcode == IBV_WC_RDMA_READ);
+                    || wc.opcode == IBV_WC_RDMA_READ
+                    || wc.opcode == IBV_WC_FETCH_ADD
+                    || wc.opcode == IBV_WC_COMP_SWAP);
 	
                 if (2 == num_cqs) {
     	            if (0 == cq_choice) {
@@ -698,7 +701,7 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
 	                            rdma_credit_preserve) {
 	                        /* Need to post more to the SRQ */
 	                        mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[i] +=
-	                            viadev_post_srq_buffers(viadev_srq_fill_size - 
+	                            mv2_post_srq_buffers(mv2_srq_fill_size - 
 	                                mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[i], i);
 	
 	                    }
@@ -809,7 +812,7 @@ int MPIDI_CH3I_MRAILI_Cq_poll(vbuf **vbuf_handle,
                             if(mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[i] <= rdma_credit_preserve) {
                                 /* Need to post more to the SRQ */
                                 mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[i] +=
-                                    viadev_post_srq_buffers(viadev_srq_fill_size - 
+                                    mv2_post_srq_buffers(mv2_srq_fill_size - 
                                             mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[i], i);
 
                             }
@@ -1052,20 +1055,20 @@ void async_thread(void *context)
                 }
 
                 /* dynamically re-size the srq to be larger */
-                viadev_srq_fill_size *= 2;
-                if (viadev_srq_fill_size > viadev_srq_alloc_size) {
-                    viadev_srq_fill_size = viadev_srq_alloc_size;
+                mv2_srq_fill_size *= 2;
+                if (mv2_srq_fill_size > mv2_srq_alloc_size) {
+                    mv2_srq_fill_size = mv2_srq_alloc_size;
                 }
 
-                rdma_credit_preserve = (viadev_srq_fill_size > 200) ?
-                     (viadev_srq_fill_size - 100) : (viadev_srq_fill_size / 2);
+                rdma_credit_preserve = (mv2_srq_fill_size > 200) ?
+                     (mv2_srq_fill_size - 100) : (mv2_srq_fill_size / 2);
                 
                 /* Need to post more to the SRQ */
                 post_new = mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num];
 
                 mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num] +=
-                    viadev_post_srq_buffers(viadev_srq_fill_size -
-                            viadev_srq_limit, hca_num);
+                    mv2_post_srq_buffers(mv2_srq_fill_size -
+                            mv2_srq_limit, hca_num);
 
                 post_new = mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num] - 
                     post_new;
@@ -1103,15 +1106,15 @@ void async_thread(void *context)
 
                 pthread_spin_lock(&mv2_MPIDI_CH3I_RDMA_Process.srq_post_spin_lock);
 
-                srq_attr.max_wr = viadev_srq_fill_size;
+                srq_attr.max_wr = mv2_srq_fill_size;
                 srq_attr.max_sge = 1;
-                srq_attr.srq_limit = viadev_srq_limit;
+                srq_attr.srq_limit = mv2_srq_limit;
 
                 if (ibv_modify_srq(mv2_MPIDI_CH3I_RDMA_Process.srq_hndl[hca_num], 
                             &srq_attr, IBV_SRQ_LIMIT)) {
                     ibv_va_error_abort(GEN_EXIT_ERR,
                             "Couldn't modify SRQ limit (%u) after posting %d\n",
-                            viadev_srq_limit, post_new);
+                            mv2_srq_limit, post_new);
                 }
 
                 pthread_spin_unlock(&mv2_MPIDI_CH3I_RDMA_Process.srq_post_spin_lock);

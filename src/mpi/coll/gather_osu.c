@@ -79,7 +79,6 @@ int MPIR_Gather_MV2_Direct(const void *sendbuf,
 
         MPID_Datatype_get_extent_macro(recvtype, extent);
         /* each node can make sure it is not going to overflow aint */
-
         MPID_Ensure_Aint_fits_in_pointer(MPI_VOID_PTR_CAST_TO_MPI_AINT
                                          recvbuf +
                                          (extent * recvcnt * comm_size));
@@ -137,9 +136,7 @@ int MPIR_Gather_MV2_Direct(const void *sendbuf,
             }
         }
         /* --END ERROR HANDLING-- */
-    }
-
-    else if (root != rank) {    /* non-root nodes proceses */
+    } else if (root != rank) {    /* non-root nodes proceses */
         if (sendcnt) {
             comm_size = comm_ptr->local_size;
             if (sendbuf != MPI_IN_PLACE) {
@@ -162,6 +159,100 @@ int MPIR_Gather_MV2_Direct(const void *sendbuf,
     MPIU_CHKLMEM_FREEALL();
 
     return (mpi_errno);
+}
+
+
+#undef FUNCNAME
+#define FUNCNAME MPIR_Gather_MV2_Direct_Blk
+#undef FCNAME
+#define FCNAME MPIU_QUOTE(FUNCNAME)
+int MPIR_Gather_MV2_Direct_Blk(const void *sendbuf,
+                                  int sendcnt,
+                                  MPI_Datatype sendtype,
+                                  void *recvbuf,
+                                  int recvcnt,
+                                  MPI_Datatype recvtype,
+                                  int root, MPID_Comm * comm_ptr, int *errflag)
+{
+    int comm_size, rank;
+    int mpi_errno = MPI_SUCCESS;
+    int mpi_errno_ret = MPI_SUCCESS;
+    MPI_Aint extent = 0;        /* Datatype extent */
+    MPI_Comm comm;
+    int reqs = 0, i = 0;
+
+    comm = comm_ptr->handle;
+    comm_size = comm_ptr->local_size;
+    rank = comm_ptr->rank;
+
+    if (((rank == root) && (recvcnt == 0)) ||
+        ((rank != root) && (sendcnt == 0))) {
+        return MPI_SUCCESS;
+    }
+
+    if (root == rank) {
+        comm_size = comm_ptr->local_size;
+
+        MPID_Datatype_get_extent_macro(recvtype, extent);
+        /* each node can make sure it is not going to overflow aint */
+        MPID_Ensure_Aint_fits_in_pointer(MPI_VOID_PTR_CAST_TO_MPI_AINT
+                                         recvbuf +
+                                         (extent * recvcnt * comm_size));
+
+        reqs = 0;
+        for (i = 0; i < comm_size; i++) {
+            if (i == rank) {
+                if (sendbuf != MPI_IN_PLACE) {
+                    mpi_errno = MPIR_Localcopy(sendbuf, sendcnt, sendtype,
+                                               ((char *) recvbuf +
+                                                rank * recvcnt * extent),
+                                               recvcnt, recvtype);
+                    if (mpi_errno) MPIU_ERR_POP(mpi_errno);
+                }
+            } else {
+                mpi_errno = MPIC_Recv_ft(((char *) recvbuf +
+                                           i * recvcnt * extent),
+                                          recvcnt, recvtype, i,
+                                          MPIR_GATHER_TAG, comm,
+                                          MPI_STATUS_IGNORE, errflag); 
+
+            }
+            /* --BEGIN ERROR HANDLING-- */
+            if (mpi_errno) {
+                mpi_errno = MPIR_Err_create_code(mpi_errno,
+                                                 MPIR_ERR_RECOVERABLE,
+                                                 FCNAME,
+                                                 __LINE__, MPI_ERR_OTHER,
+                                                 "**fail", 0);
+                return mpi_errno;
+            }
+            /* --END ERROR HANDLING-- */
+        }
+    } else if (root != rank) {    /* non-root nodes proceses */
+        if (sendcnt) {
+            comm_size = comm_ptr->local_size;
+            if (sendbuf != MPI_IN_PLACE) {
+                mpi_errno = MPIC_Send_ft(sendbuf, sendcnt, sendtype, root,
+                                         MPIR_GATHER_TAG, comm, errflag);
+            } else {
+                mpi_errno = MPIC_Send_ft(recvbuf, sendcnt, sendtype, root,
+                                         MPIR_GATHER_TAG, comm, errflag);
+            }
+            if (mpi_errno) {
+                /* for communication errors, just record the error but continue */
+                *errflag = TRUE;
+                MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+                MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
+            }
+        }
+    }
+
+ fn_exit:
+    return mpi_errno;
+ fn_fail:
+    goto fn_exit;
+
+
 }
 
 /* sendbuf           - (in) sender's buffer
@@ -197,6 +288,10 @@ int MPIR_pt_pt_intra_gather(const void *sendbuf, int sendcnt, MPI_Datatype sendt
     int mpi_errno = MPI_SUCCESS;
     MPI_Aint recvtype_extent = 0;  /* Datatype extent */
     MPI_Aint true_lb, sendtype_true_extent, recvtype_true_extent;
+
+    #if OSU_MPIT
+        mv2_num_shmem_coll_calls++;
+    #endif
 
     if (sendtype != MPI_DATATYPE_NULL) {
         MPIR_Type_get_true_extent_impl(sendtype, &true_lb,

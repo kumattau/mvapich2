@@ -21,6 +21,7 @@ mpi_sources +=                \
         src/mpi_t/enum_get_info.c       \
         src/mpi_t/enum_get_item.c       \
         src/mpi_t/mpit_finalize.c       \
+        src/mpi_t/mv2_mpit.c	       	\
         src/mpi_t/mpit_init_thread.c    \
         src/mpi_t/pvar_get_info.c       \
         src/mpi_t/pvar_get_num.c        \

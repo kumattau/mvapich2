@@ -30,6 +30,7 @@ static char *cuda_shmem_ptr = NULL;
 static int cuda_shmem_fd = -1;
 static int cuda_shmem_size = 0;
 cudaipc_shared_info_t *cudaipc_shared_data;
+cudaipc_device_id_t *cudaipc_shared_device_id;
 cudaipc_local_info_t *cudaipc_local_data;
 cudaipc_remote_info_t *cudaipc_remote_data;
 int cudaipc_num_stage_buffers = 2;
@@ -249,7 +250,7 @@ void cudaipc_shmem_cleanup()
     }
 }
 
-void cudaipc_initialize(MPIDI_PG_t *pg, int num_processes, int my_rank)
+void cudaipc_allocate_shared_region (MPIDI_PG_t *pg, int num_processes, int my_rank)
 {
     char *shmem_dir;
     char s_hostname[HOSTNAME_LEN];
@@ -271,8 +272,14 @@ void cudaipc_initialize(MPIDI_PG_t *pg, int num_processes, int my_rank)
     if(!cuda_shmem_file) {
         ibv_error_abort(GEN_EXIT_ERR,"mem alloacation filed\n");
     }
-    cuda_shmem_size = (cudaipc_num_local_procs * cudaipc_num_local_procs *  
+
+    if (cudaipc_stage_buffered) { 
+        cuda_shmem_size = (cudaipc_num_local_procs*sizeof(cudaipc_device_id_t)) + 
+                (cudaipc_num_local_procs * cudaipc_num_local_procs *  
                 cudaipc_num_stage_buffers * sizeof(cudaipc_shared_info_t));
+    } else {
+        cuda_shmem_size = (cudaipc_num_local_procs*sizeof(cudaipc_device_id_t));
+    }
     
     sprintf(cuda_shmem_file, "%s/cudaipc_shmem-%s-%s-%d.tmp",
         shmem_dir, pg->ch.kvs_name, s_hostname, getuid());
@@ -308,17 +315,59 @@ void cudaipc_initialize(MPIDI_PG_t *pg, int num_processes, int my_rank)
         PRINT_ERROR("mmap failed. file:%s\n", cuda_shmem_file);
         goto cleanup_shmem_file;
     }
+    if (vc->smp.local_rank == 0) { 
+        memset(cuda_shmem_ptr, 0, cuda_shmem_size);
+    }
 
-    cudaipc_local_data = (cudaipc_local_info_t *) 
-        MPIU_Malloc(cudaipc_num_local_procs * cudaipc_num_stage_buffers * 
+    cudaipc_shared_device_id = (cudaipc_device_id_t *)cuda_shmem_ptr;
+    if (vc->smp.local_rank == 0) {
+        for (i=0; i<cudaipc_num_local_procs; i++) { 
+            cudaipc_shared_device_id[i] = -1;
+        }
+    }
+
+    if (cudaipc_stage_buffered) {
+        cudaipc_shared_data = (cudaipc_shared_info_t *) ((uintptr_t) cuda_shmem_ptr 
+                    + sizeof(cudaipc_device_id_t) * cudaipc_num_local_procs);
+
+        cudaipc_local_data = (cudaipc_local_info_t *) 
+                    MPIU_Malloc(cudaipc_num_local_procs * cudaipc_num_stage_buffers * 
                             sizeof (cudaipc_local_info_t));
-    cudaipc_shared_data = (cudaipc_shared_info_t *)cuda_shmem_ptr;
+
+        cudaipc_remote_data = (cudaipc_remote_info_t *)
+                    MPIU_Malloc(cudaipc_num_local_procs * cudaipc_num_stage_buffers
+                                        * sizeof(cudaipc_remote_info_t));
+    }
+
+    MPIR_Barrier_impl(MPIR_Process.comm_world, &errflag);
+
+    /* unlink the shmem file */
+    if (cuda_shmem_file != NULL) {
+        unlink(cuda_shmem_file);
+    }
+
+    return;
+
+cleanup_shmem_file:
+    cudaipc_shmem_cleanup();
+    ibv_error_abort(GEN_EXIT_ERR, "cudaipc initialization failed\n");
+}
+
+void cudaipc_share_device_info ()
+{
+    CUDA_CHECK(cudaGetDevice(&cudaipc_shared_device_id[cudaipc_my_local_id]));
+}
+
+void cudaipc_allocate_ipc_region (MPIDI_PG_t *pg, int num_processes, int my_rank)
+{
+    int i, j, local_index, shared_index;
+    MPIDI_VC_t *vc;
 
     for (j=0; j < num_processes; j++) {
         if (j == my_rank) continue;
         MPIDI_PG_Get_vc(pg, j, &vc);
 
-        if (vc->smp.can_access_peer) {
+        if (vc->smp.local_rank != -1 && vc->smp.can_access_peer != CUDA_IPC_DISABLED) {
             local_index = CUDAIPC_BUF_LOCAL_IDX(vc->smp.local_rank);
             shared_index = 
             CUDAIPC_BUF_SHARED_IDX(cudaipc_my_local_id, vc->smp.local_rank);
@@ -343,22 +392,34 @@ void cudaipc_initialize(MPIDI_PG_t *pg, int num_processes, int my_rank)
             }
         }
     }
-    
+
+    CUDA_CHECK(cudaGetDevice(&cudaipc_shared_device_id[cudaipc_my_local_id]));
+}
+
+void cudaipc_initialize(MPIDI_PG_t *pg, int num_processes, int my_rank)
+{
+    int i, j, errflag, local_index, shared_index;
+    MPIDI_VC_t *vc;
+  
+    /*allocate shared memory region to exchange info*/ 
+    cudaipc_allocate_shared_region (pg, num_processes, my_rank); 
+   
+    /*allocate local IPC staging buffers and events*/
+    cudaipc_allocate_ipc_region (pg, num_processes, my_rank); 
+
     MPIR_Barrier_impl(MPIR_Process.comm_world, &errflag);
 
     /* Open remote ipc event and mem handles */
-   
-    cudaipc_remote_data = (cudaipc_remote_info_t *) 
-                    MPIU_Malloc(cudaipc_num_local_procs * cudaipc_num_stage_buffers 
-                                        * sizeof(cudaipc_remote_info_t));
-        
     for (j = 0; j < num_processes; j++) {
         if (j == my_rank) continue;
+
         MPIDI_PG_Get_vc(pg, j, &vc);
-        if (vc->smp.local_rank != -1 && vc->smp.can_access_peer) {
+        if (vc->smp.local_rank != -1 && vc->smp.can_access_peer == CUDA_IPC_ENABLED) {
             local_index = CUDAIPC_BUF_LOCAL_IDX(vc->smp.local_rank);
             shared_index = 
                 CUDAIPC_BUF_SHARED_IDX(vc->smp.local_rank, cudaipc_my_local_id);
+
+            MPIU_Assert (cudaipc_shared_device_id[vc->smp.local_rank] != -1);
 
             for (i = 0; i < cudaipc_num_stage_buffers; i++) {
                 CUDA_CHECK(cudaIpcOpenEventHandle(
@@ -375,61 +436,105 @@ void cudaipc_initialize(MPIDI_PG_t *pg, int num_processes, int my_rank)
             }
         }
     }
-        
-    PRINT_DEBUG(CUDAIPC_DEBUG, "cuda ipc intialized shmemfile:%s size:%d\n", 
-            cuda_shmem_file, cuda_shmem_size);
-    /* unlink the shmem file */
-    if (cuda_shmem_file != NULL) {
-        unlink(cuda_shmem_file);
-        MPIU_Free(cuda_shmem_file);
-        cuda_shmem_file = NULL;
+    
+    /*shared memory region is cleaned up during ipc finalize*/
+}
+
+void cudaipc_init_dynamic (MPIDI_VC_t *vc)
+{
+    int i, j, errflag, local_index, shared_index;
+    int my_device_id, peer_device_id;
+  
+    /*check if peer device is setup for the IPC buffered channel*/
+    if (cudaipc_shared_device_id[vc->smp.local_rank] == -1) { 
+        return;
     }
 
-    return;
-cleanup_shmem_file:
-    cudaipc_shmem_cleanup();
-    ibv_error_abort(GEN_EXIT_ERR, "cudaipc initialization failed\n");
+    /*check if peer device is IPC accessible*/
+    my_device_id = cudaipc_shared_device_id[cudaipc_my_local_id];
+    peer_device_id = cudaipc_shared_device_id[vc->smp.local_rank];   
+
+    if (my_device_id == peer_device_id) {
+        vc->smp.can_access_peer = CUDA_IPC_ENABLED;
+    } else {
+        CUDA_CHECK(cudaDeviceCanAccessPeer(&vc->smp.can_access_peer, 
+                           my_device_id, peer_device_id));
+        vc->smp.can_access_peer = (vc->smp.can_access_peer == 0) ? CUDA_IPC_DISABLED : CUDA_IPC_ENABLED;
+    }
+    
+    if (vc->smp.can_access_peer == CUDA_IPC_ENABLED && cudaipc_stage_buffered) {
+        /*compute the local and peer indices*/
+        local_index = CUDAIPC_BUF_LOCAL_IDX(vc->smp.local_rank);
+        shared_index = 
+             CUDAIPC_BUF_SHARED_IDX(vc->smp.local_rank, cudaipc_my_local_id);
+
+        /* Open remote ipc event and mem handles for the process*/
+        for (i = 0; i < cudaipc_num_stage_buffers; i++) {
+             CUDA_CHECK(cudaIpcOpenEventHandle(
+                 &cudaipc_remote_data[local_index + i].ipcEvent, 
+                 cudaipc_shared_data[shared_index + i].ipcEventHandle));
+             CUDA_CHECK(cudaIpcOpenMemHandle(
+                 (void **)&cudaipc_remote_data[ local_index + i].buffer,
+                 cudaipc_shared_data[shared_index + i].ipcMemHanlde,
+                 cudaIpcMemLazyEnablePeerAccess));
+             PRINT_DEBUG(CUDAIPC_DEBUG, "open: remote rank:%d shared_index:%d "
+                 "eventhandle:%lu memhandle:%lu\n", vc->smp.local_rank, shared_index + i,
+                 *((unsigned long *)&cudaipc_shared_data[shared_index + i].ipcEventHandle),
+                 *((unsigned long *)&cudaipc_shared_data[shared_index + i].ipcMemHanlde));
+        }
+    }
 }
+
 
 void cudaipc_finalize()
 {
     MPIDI_PG_t *pg;
     MPIDI_VC_t *vc;
     int i, j, pg_size, my_rank, local_index, errflag;
-    
-    pg = MPIDI_Process.my_pg;
-    my_rank = MPIDI_Process.my_pg_rank;
-    pg_size = MPIDI_PG_Get_size(pg);
-    for (j=0; j < pg_size; j++) {
-        if (j == my_rank) continue;
-        MPIDI_PG_Get_vc(pg, j, &vc);
-
-        if (vc->smp.can_access_peer) {
-            local_index = CUDAIPC_BUF_LOCAL_IDX(vc->smp.local_rank);
-            for (i = 0; i < cudaipc_num_stage_buffers; i++) {
-                CUDA_CHECK(cudaEventDestroy(cudaipc_remote_data[local_index + i].ipcEvent));        
-                CUDA_CHECK(cudaIpcCloseMemHandle(cudaipc_remote_data[local_index + i].buffer));
+ 
+    if (!cudaipc_stage_buffered) {
+        goto cleanup_shmem_file;
+    }
+  
+    if (cudaipc_init) {   
+        pg = MPIDI_Process.my_pg;
+        my_rank = MPIDI_Process.my_pg_rank;
+        pg_size = MPIDI_PG_Get_size(pg);
+        for (j=0; j < pg_size; j++) {
+            if (j == my_rank) continue;
+            MPIDI_PG_Get_vc(pg, j, &vc);
+ 
+            if (vc->smp.can_access_peer == CUDA_IPC_ENABLED) {
+                local_index = CUDAIPC_BUF_LOCAL_IDX(vc->smp.local_rank);
+                for (i = 0; i < cudaipc_num_stage_buffers; i++) {
+                    CUDA_CHECK(cudaEventDestroy(cudaipc_remote_data[local_index + i].ipcEvent));        
+                    CUDA_CHECK(cudaIpcCloseMemHandle(cudaipc_remote_data[local_index + i].buffer));
+                }
             }
         }
     }
-    
+   
     MPIR_Barrier_impl(MPIR_Process.comm_world, &errflag);
 
-    for (j=0; j < pg_size; j++) {
-        if (j == my_rank) continue;
-        MPIDI_PG_Get_vc(pg, j, &vc);
-
-        if (vc->smp.can_access_peer) {
-            local_index = CUDAIPC_BUF_LOCAL_IDX(vc->smp.local_rank);
-            for (i = 0; i < cudaipc_num_stage_buffers; i++) {
-                CUDA_CHECK(cudaEventDestroy(cudaipc_local_data[local_index + i].ipcEvent));
-                CUDA_CHECK(cudaFree(cudaipc_local_data[local_index + i].buffer));
+    if (cudaipc_init) { 
+        for (j=0; j < pg_size; j++) {
+            if (j == my_rank) continue;
+            MPIDI_PG_Get_vc(pg, j, &vc);
+ 
+            if (vc->smp.can_access_peer == CUDA_IPC_ENABLED) {
+                local_index = CUDAIPC_BUF_LOCAL_IDX(vc->smp.local_rank);
+                for (i = 0; i < cudaipc_num_stage_buffers; i++) {
+                    CUDA_CHECK(cudaEventDestroy(cudaipc_local_data[local_index + i].ipcEvent));
+                    CUDA_CHECK(cudaFree(cudaipc_local_data[local_index + i].buffer));
+                }
             }
         }
     }
+
     MPIU_Free(cudaipc_remote_data);
     MPIU_Free(cudaipc_local_data);
-                
+
+cleanup_shmem_file:
     cudaipc_shmem_cleanup();
 }
 #endif

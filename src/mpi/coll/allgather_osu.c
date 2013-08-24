@@ -1012,6 +1012,9 @@ int MPIR_Allgather_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtype
     if(is_two_level ==1){
         
         if(comm_ptr->ch.shmem_coll_ok == 1){
+            #if OSU_MPIT
+                mv2_num_shmem_coll_calls++;
+            #endif
             mpi_errno = MPIR_2lvl_Allgather_MV2(sendbuf, sendcount, sendtype,
                                                 recvbuf, recvcount, recvtype,
                                                 comm_ptr, errflag);
@@ -1022,6 +1025,9 @@ int MPIR_Allgather_MV2(const void *sendbuf, int sendcount, MPI_Datatype sendtype
         }
     } else if(MV2_Allgather_function == &MPIR_Allgather_RD_Allgather_Comm_MV2){
         if(comm_ptr->ch.allgather_comm_ok == 1) {
+            #if OSU_MPIT
+                mv2_num_shmem_coll_calls++;
+            #endif
             int sendtype_iscontig = 0, recvtype_iscontig = 0;
             void *tmp_recv_buf = NULL;
             if (sendtype != MPI_DATATYPE_NULL && recvtype != MPI_DATATYPE_NULL) {

@@ -122,7 +122,7 @@ typedef struct vbuf
 
     /* NULL shandle means not send or not complete. Non-null
      * means pointer to send handle that is now complete. Used
-     * by viadev_process_send
+     * by MRAILI_process_send
      */
 } vbuf;
 

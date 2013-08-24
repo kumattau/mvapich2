@@ -61,7 +61,7 @@ static inline void MPIDI_CH3_Prepare_rndv(MPIDI_VC_t *vc, MPID_Request *sreq)
 #endif
 
     if (SMP_INIT && vc->smp.local_nodes >= 0) { 
-        sreq->mrail.protocol = VAPI_PROTOCOL_R3;
+        sreq->mrail.protocol = MV2_RNDV_PROTOCOL_R3;
         sreq->mrail.d_entry = NULL;
     } else 
     {
@@ -103,8 +103,8 @@ int MPIDI_CH3_iStartRndvMsg(MPIDI_VC_t * vc,
         MPIDI_CH3I_MRAIL_SET_PKT_RNDV(rndv_pkt, sreq);
         if(1 == sreq->mrail.rndv_buf_alloc) {
             MPIDI_CH3I_MRAIL_REVERT_RPUT(sreq);
-            if (VAPI_PROTOCOL_RGET == rndv_pkt->rndv.protocol) {
-                rndv_pkt->rndv.protocol = VAPI_PROTOCOL_RPUT;
+            if (MV2_RNDV_PROTOCOL_RGET == rndv_pkt->rndv.protocol) {
+                rndv_pkt->rndv.protocol = MV2_RNDV_PROTOCOL_RPUT;
             }
         }
 
@@ -259,8 +259,8 @@ int MPIDI_CH3_iStartGetRndv(MPIDI_VC_t * vc,
     MPIDI_CH3I_MRAIL_REVERT_RPUT(sreq);
 
 #ifdef _ENABLE_UD_
-    if(rdma_enable_hybrid && sreq->mrail.protocol == VAPI_PROTOCOL_UD_ZCOPY) {
-        sreq->mrail.protocol = VAPI_PROTOCOL_R3;
+    if(rdma_enable_hybrid && sreq->mrail.protocol == MV2_RNDV_PROTOCOL_UD_ZCOPY) {
+        sreq->mrail.protocol = MV2_RNDV_PROTOCOL_R3;
         MPIDI_CH3I_MRAIL_FREE_RNDV_BUFFER(sreq);
     }
 #endif

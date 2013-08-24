@@ -1188,15 +1188,15 @@ extern char *MPIDI_DBG_parent_str;
 
 #define MPIDI_ERR_PRINTF(e) MPIDI_err_printf e
 
-#if defined(HAVE_CPP_VARARGS)
-#   define MPIDI_dbg_printf(level, func, fmt, args...)			\
+#if defined(HAVE_MACRO_VA_ARGS)
+#   define MPIDI_dbg_printf(level, func, fmt, ...)			\
     {									\
-    	MPIU_dbglog_printf("[%d] %s(): " fmt "\n", MPIR_Process.comm_world->rank, func, ## args);	\
+        MPIU_dbglog_printf("[%d] %s(): " fmt "\n", MPIR_Process.comm_world->rank, func, __VA_ARGS__);   \
     }
-#   define MPIDI_err_printf(func, fmt, args...)				\
+#   define MPIDI_err_printf(func, fmt, ...)				\
     {									\
-    	MPIU_Error_printf("[%d] ERROR - %s(): " fmt "\n", MPIR_Process.comm_world->rank, func, ## args);	\
-    	fflush(stdout);							\
+        MPIU_Error_printf("[%d] ERROR - %s(): " fmt "\n", MPIR_Process.comm_world->rank, func, __VA_ARGS__);    \
+        fflush(stdout);							\
     }
 #endif
 
@@ -2138,6 +2138,14 @@ int MPIDI_CH3_ReqHandler_GetSendRespComplete( MPIDI_VC_t *, MPID_Request *,
 
 #endif /* MPICH_IS_THREADED */
 
+#define MPIDI_CH3_GET_EAGER_THRESHOLD(eager_threshold_p, comm, vc)  \
+    do {                                                            \
+        if ((comm)->ch.eager_max_msg_sz != -1)                      \
+            *(eager_threshold_p) = (comm)->ch.eager_max_msg_sz;     \
+        else                                                        \
+            *(eager_threshold_p) = (vc)->eager_max_msg_sz;          \
+    } while (0)
+
 #if defined(_OSU_MVAPICH_)
 #if defined(_ENABLE_CUDA_)
 #if defined(HAVE_CUDA_IPC)
@@ -2165,6 +2173,8 @@ void MPIDI_CH3I_CUDA_SMP_cuda_init(MPIDI_PG_t * pg);
 void MPIDI_CH3I_CUDA_SMP_cuda_finalize(MPIDI_PG_t * pg);
 void cuda_cleanup();
 void cuda_init(MPIDI_PG_t * pg);
+void cuda_init_dynamic(MPIDI_PG_t * pg);
+void cudaipc_init_dynamic (MPIDI_VC_t *vc);
 #endif
 int MPIDI_CH3_ContigSend(MPID_Request **sreq_p,
                          MPIDI_CH3_Pkt_type_t reqtype,
@@ -2221,4 +2231,3 @@ void mv2_show_cpu_affinity(MPIDI_PG_t *pg);
 #endif
 
 #endif /* !defined(MPICH_MPIDIMPL_H_INCLUDED) */
-

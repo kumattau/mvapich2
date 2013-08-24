@@ -270,9 +270,10 @@ void commandLine(int argc, char *argv[], char *totalview_cmd, char **env)
                 dpm = 1;
                 break;
             case 14:           /* -fastssh */
-#ifndef CKPT
+#if !defined(CR_FTB)
+                /* disable hierarchical SSH if migration is enabled */
                 USE_LINEAR_SSH = 0;
-#endif                          /* CKPT */
+#endif 
                 break;
                 //With this option the user want to activate the mpmd
             case 15:

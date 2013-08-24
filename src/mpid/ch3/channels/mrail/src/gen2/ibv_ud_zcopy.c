@@ -75,7 +75,7 @@ static inline int MPIDI_CH3_Rendezvous_zcopy_resend_cts(MPIDI_VC_t * vc,
     }
 
     MPIDI_CH3I_MRAIL_SET_PKT_RNDV(cts_pkt, rreq);
-    MPIU_Assert(cts_pkt->rndv.protocol == VAPI_PROTOCOL_UD_ZCOPY);
+    MPIU_Assert(cts_pkt->rndv.protocol == MV2_RNDV_PROTOCOL_UD_ZCOPY);
 
     cts_pkt->rndv.rndv_qpn = rqp->ud_qp->qp_num;
     cts_pkt->rndv.hca_index = rqp->hca_num;
@@ -239,7 +239,7 @@ void MPIDI_CH3I_MRAIL_Prepare_rndv_zcopy(MPIDI_VC_t * vc, MPID_Request * req)
     /* Make sure free QPs available */
     if (proc->zcopy_info.rndv_qp_pool_free_head == NULL) {
         PRINT_DEBUG(DEBUG_ZCY_verbose>2, "No free rndv QP, fall back to R3. remote:%d\n", vc->pg_rank);
-        req->mrail.protocol = VAPI_PROTOCOL_R3;
+        req->mrail.protocol = MV2_RNDV_PROTOCOL_R3;
         proc->zcopy_info.no_free_rndv_qp++;
         return;
     }
@@ -247,13 +247,13 @@ void MPIDI_CH3I_MRAIL_Prepare_rndv_zcopy(MPIDI_VC_t * vc, MPID_Request * req)
     MPIDI_CH3I_MRAIL_Prepare_rndv(vc, req);
  
     /* return if selected protocl is R3 */
-    if (req->mrail.protocol == VAPI_PROTOCOL_R3) {
+    if (req->mrail.protocol == MV2_RNDV_PROTOCOL_R3) {
         return;
     }
     
     PRINT_DEBUG(DEBUG_ZCY_verbose>1, "Received RTS. Preparing zcopy rndv remote:%d\n", vc->pg_rank);
 
-    MPIU_Assert(req->mrail.protocol == VAPI_PROTOCOL_UD_ZCOPY);
+    MPIU_Assert(req->mrail.protocol == MV2_RNDV_PROTOCOL_UD_ZCOPY);
 
     MV2_GET_RNDV_QP(rqp, proc);
     req->mrail.rndv_qp_entry = rqp;

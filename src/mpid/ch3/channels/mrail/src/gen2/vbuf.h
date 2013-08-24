@@ -40,6 +40,7 @@
 #define RPUT_VBUF_FLAG (333)
 #define RGET_VBUF_FLAG (444)
 #define RDMA_ONE_SIDED (555)
+#define COLL_VBUF_FLAG (666)
 /*
 ** FIXME: Change the size of VBUF_FLAG_TYPE to 4 bytes when size of
 ** MPIDI_CH3_Pkt_send is changed to mutliple of 4. This will fix the 
@@ -193,7 +194,7 @@ typedef struct vbuf
 
     /* NULL shandle means not send or not complete. Non-null
      * means pointer to send handle that is now complete. Used
-     * by viadev_process_send
+     * by MRAILI_Process_send
      */
     ib_transport transport;
     uint16_t seqnum;
@@ -382,6 +383,7 @@ void vbuf_reregister_all();
 int allocate_cuda_vbufs(struct ibv_pd* ptag[]);
 vbuf* get_cuda_vbuf(int flag);
 void release_cuda_vbuf(vbuf* v);
+void register_cuda_vbuf_regions();
 #define IS_CUDA_VBUF(vbuf_pool) (vbuf_pool &&  (\
                                 (vbuf_pool)->index == CUDA_EAGER_BUF || \
                                 (vbuf_pool)->index == CUDA_RNDV_BLOCK_BUF))

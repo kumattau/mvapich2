@@ -220,7 +220,7 @@ static inline void MRAILI_Ext_sendq_send(MPIDI_VC_t *c, int rail)
         VC_FIELD(c, connection)->rails[rail].ext_sendq_size--;
 
 
-        MPIDI_nem_ib_POST_SR(v, VC_FIELD(c, connection), rail, "Mrail_post_sr (viadev_ext_sendq_send)");
+        MPIDI_nem_ib_POST_SR(v, VC_FIELD(c, connection), rail, "Mrail_post_sr (MRAILI_Ext_sendq_send)");
     }
 
     DEBUG_PRINT( "[ibv_send] dequeue, head %p, tail %p\n",
@@ -1152,7 +1152,7 @@ int MRAILI_Backlog_send(MPIDI_VC_t * vc, int rail)
         }
         --VC_FIELD(vc, connection)->rails[rail].send_wqes_avail;
 
-        MPIDI_nem_ib_POST_SR(v, VC_FIELD(vc, connection), rail, "ibv_post_sr (viadev_backlog_push)");
+        MPIDI_nem_ib_POST_SR(v, VC_FIELD(vc, connection), rail, "ibv_post_sr (MRAILI_Backlog_push)");
     }
 
     MPIDI_FUNC_EXIT(MPID_STATE_MRAILI_BACKLOG_SEND);
@@ -1254,6 +1254,10 @@ int MRAILI_Process_send(void *vbuf_addr)
     case MPIDI_CH3_PKT_CAS_RESP:
     case MPIDI_CH3_PKT_FOP:
     case MPIDI_CH3_PKT_FOP_RESP:
+    case MPIDI_CH3_PKT_FLUSH:
+    case MPIDI_CH3_PKT_UNLOCK:
+    case MPIDI_CH3_PKT_GET_ACCUM:
+    case MPIDI_CH3_PKT_GET_ACCUM_RESP:
         req = v->sreq;
         v->sreq = NULL;
         DEBUG_PRINT("[process send type: %d] complete for eager msg, req %p, seqnum = %d\n",
@@ -1757,7 +1761,7 @@ int MPIDI_nem_ib_post_srq_send(MPIDI_VC_t* vc, vbuf* v, int rail)
 
     if(srq_info.posted_bufs[hca_num] <= rdma_credit_preserve) {
         srq_info.posted_bufs[hca_num] +=
-            MPIDI_nem_ib_post_srq_buffers(viadev_srq_fill_size -
+            MPIDI_nem_ib_post_srq_buffers(mv2_srq_fill_size -
                     srq_info.posted_bufs[hca_num],
                     hca_num);
     }

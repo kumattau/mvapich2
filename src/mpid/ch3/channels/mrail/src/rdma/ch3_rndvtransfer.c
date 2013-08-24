@@ -57,7 +57,7 @@ int MPIDI_CH3_Prepare_rndv_get(MPIDI_VC_t * vc,
     MPIDI_CH3I_CR_lock();
 #endif
 
-    MPIU_Assert(VAPI_PROTOCOL_RGET == rreq->mrail.protocol);
+    MPIU_Assert(MV2_RNDV_PROTOCOL_RGET == rreq->mrail.protocol);
 
     MPIDI_CH3I_MRAIL_Prepare_rndv(vc, rreq);
 
@@ -94,20 +94,20 @@ int MPIDI_CH3_Prepare_rndv_cts(MPIDI_VC_t * vc,
 #endif
 
     switch (rreq->mrail.protocol) {
-    case VAPI_PROTOCOL_R3:
+    case MV2_RNDV_PROTOCOL_R3:
         {
-            cts_pkt->rndv.protocol = VAPI_PROTOCOL_R3;
+            cts_pkt->rndv.protocol = MV2_RNDV_PROTOCOL_R3;
             /*MRAILI_Prepost_R3(); */
             break;
         }
-    case VAPI_PROTOCOL_RPUT:
+    case MV2_RNDV_PROTOCOL_RPUT:
         {
             MPIDI_CH3I_MRAIL_Prepare_rndv(vc, rreq);
             MPIDI_CH3I_MRAIL_SET_PKT_RNDV(cts_pkt, rreq);
             MPIDI_CH3I_MRAIL_REVERT_RPUT(rreq);
             break;
         }
-    case VAPI_PROTOCOL_RGET:
+    case MV2_RNDV_PROTOCOL_RGET:
         {
             int rank;
             PMI_Get_rank(&rank);
@@ -118,11 +118,11 @@ int MPIDI_CH3_Prepare_rndv_cts(MPIDI_VC_t * vc,
         }
         break;
 #ifdef _ENABLE_UD_
-    case VAPI_PROTOCOL_UD_ZCOPY:
+    case MV2_RNDV_PROTOCOL_UD_ZCOPY:
         {
             MPIDI_CH3I_MRAIL_Prepare_rndv_zcopy(vc, rreq);
             MPIDI_CH3I_MRAIL_SET_PKT_RNDV(cts_pkt, rreq);
-            if (rreq->mrail.protocol == VAPI_PROTOCOL_UD_ZCOPY) {
+            if (rreq->mrail.protocol == MV2_RNDV_PROTOCOL_UD_ZCOPY) {
                 cts_pkt->rndv.rndv_qpn = ((mv2_rndv_qp_t *) 
                         rreq->mrail.rndv_qp_entry)->ud_qp->qp_num;
                 cts_pkt->rndv.hca_index = ((mv2_rndv_qp_t *)
@@ -188,8 +188,8 @@ int MPIDI_CH3_iStartRndvTransfer(MPIDI_VC_t * vc, MPID_Request * rreq)
 #ifdef HAVE_CUDA_IPC
        || (rdma_cuda_ipc && cudaipc_stage_buffered && 
            rreq->mrail.cuda_transfer_mode != NONE &&
-           vc->smp.can_access_peer) ||
-           (rreq->mrail.protocol == VAPI_PROTOCOL_CUDAIPC)
+           vc->smp.can_access_peer == CUDA_IPC_ENABLED) ||
+           (rreq->mrail.protocol == MV2_RNDV_PROTOCOL_CUDAIPC)
 #endif
        ))
     { 
@@ -276,24 +276,24 @@ int MPIDI_CH3_Rndv_transfer(MPIDI_VC_t * vc,
 
     switch (req->mrail.protocol)
     {
-    case VAPI_PROTOCOL_RPUT:
+    case MV2_RNDV_PROTOCOL_RPUT:
             rndv = (cts_pkt == NULL) ? NULL : &cts_pkt->rndv;
             sreq->mrail.partner_id = cts_pkt->receiver_req_id;
             MPIDI_CH3I_MRAIL_Prepare_rndv_transfer(sreq, rndv);
         break;
-    case VAPI_PROTOCOL_R3:
+    case MV2_RNDV_PROTOCOL_R3:
             rndv = (cts_pkt == NULL) ? NULL : &cts_pkt->rndv;
             sreq->mrail.partner_id = cts_pkt->receiver_req_id;
-            MPIU_Assert(rndv->protocol == VAPI_PROTOCOL_R3);
+            MPIU_Assert(rndv->protocol == MV2_RNDV_PROTOCOL_R3);
         break;
-    case VAPI_PROTOCOL_RGET:
+    case MV2_RNDV_PROTOCOL_RGET:
             rndv = (rts_pkt == NULL) ? ((cts_pkt == NULL) ? NULL : &cts_pkt->rndv) : &rts_pkt->rndv;
             MPIU_Assert (rndv != NULL);
             if (sreq != NULL && cts_pkt != NULL) sreq->mrail.partner_id = cts_pkt->receiver_req_id;
             MPIDI_CH3I_MRAIL_Prepare_rndv_transfer(req, rndv);
         break;
 #ifdef _ENABLE_UD_
-    case VAPI_PROTOCOL_UD_ZCOPY:
+    case MV2_RNDV_PROTOCOL_UD_ZCOPY:
             rndv = (cts_pkt == NULL) ? NULL : &cts_pkt->rndv;
             sreq->mrail.partner_id = cts_pkt->receiver_req_id;
             sreq->mrail.rndv_buf_off = 0;
@@ -302,10 +302,10 @@ int MPIDI_CH3_Rndv_transfer(MPIDI_VC_t * vc,
         break;
 #endif
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-    case VAPI_PROTOCOL_CUDAIPC:
-            if (cts_pkt->rndv.protocol != VAPI_PROTOCOL_CUDAIPC) {
+    case MV2_RNDV_PROTOCOL_CUDAIPC:
+            if (cts_pkt->rndv.protocol != MV2_RNDV_PROTOCOL_CUDAIPC) {
                 sreq->mrail.protocol = cts_pkt->rndv.protocol;
-                MPIU_Assert(sreq->mrail.protocol == VAPI_PROTOCOL_R3);
+                MPIU_Assert(sreq->mrail.protocol == MV2_RNDV_PROTOCOL_R3);
             }
             rndv = (cts_pkt == NULL) ? NULL : &cts_pkt->rndv;
             sreq->mrail.partner_id = cts_pkt->receiver_req_id;
@@ -358,31 +358,31 @@ int MPIDI_CH3_Rendezvous_push(MPIDI_VC_t * vc, MPID_Request * sreq)
     if (SMP_INIT
         && vc->smp.local_nodes >= 0
 #if defined(_ENABLE_CUDA_)
-        && sreq->mrail.protocol != VAPI_PROTOCOL_CUDAIPC
+        && sreq->mrail.protocol != MV2_RNDV_PROTOCOL_CUDAIPC
 #endif
         && vc->smp.local_nodes != g_smpi.my_local_id)
     {
-        MPIU_Assert(sreq->mrail.protocol == VAPI_PROTOCOL_R3);
+        MPIU_Assert(sreq->mrail.protocol == MV2_RNDV_PROTOCOL_R3);
         MPIDI_CH3_SMP_Rendezvous_push(vc, sreq);
         return MPI_SUCCESS;
     }
 
     switch (sreq->mrail.protocol)
     {
-    case VAPI_PROTOCOL_RPUT:
+    case MV2_RNDV_PROTOCOL_RPUT:
             MPIDI_CH3I_MRAILI_Rendezvous_rput_push(vc, sreq);
         break;
-    case VAPI_PROTOCOL_RGET:
+    case MV2_RNDV_PROTOCOL_RGET:
             MPIDI_CH3I_MRAILI_Rendezvous_rget_push(vc, sreq);
         break;
 #ifdef _ENABLE_UD_
-    case VAPI_PROTOCOL_UD_ZCOPY:
+    case MV2_RNDV_PROTOCOL_UD_ZCOPY:
             MPIDI_CH3I_MRAILI_Rendezvous_zcopy_push(vc, sreq,
                         &(mv2_MPIDI_CH3I_RDMA_Process.zcopy_info));
         break;
 #endif
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
-    case VAPI_PROTOCOL_CUDAIPC:
+    case MV2_RNDV_PROTOCOL_CUDAIPC:
             MPIDI_CH3_CUDAIPC_Rendezvous_push(vc, sreq);
         break;
 #endif
@@ -421,9 +421,17 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
     MPIDI_Pkt_set_seqnum(&pkt_head, seqnum);
     MPIDI_Request_set_seqnum(sreq, seqnum);
 
-#if defined(_SMP_CMA_) && defined(_SMP_LIMIC_)
+#if defined(_SMP_CMA_) || defined(_SMP_LIMIC_)
+#if defined(_SMP_CMA_)
     int use_cma = g_smp_use_cma; 
-    int use_limic = g_smp_use_limic2; 
+#else
+    int use_cma = 0;
+#endif
+#if defined(_SMP_LIMIC_)
+    int use_limic = g_smp_use_limic2;
+#else 
+    int use_limic = 0;
+#endif 
 #if defined(_ENABLE_CUDA_)
     if (rdma_enable_cuda && sreq->mrail.cuda_transfer_mode != NONE) {
         use_cma = 0; 
@@ -457,47 +465,7 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
         pkt_head.csend_req_id = NULL;
     }
 #endif
-
-#if defined(_SMP_CMA_) && !defined(_SMP_LIMIC_)
-    int use_cma = g_smp_use_cma; 
-#if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda && sreq->mrail.cuda_transfer_mode != NONE) {
-        use_cma = 0; 
-    } 
-#endif 
-
-    /* Use cma for contiguous data 
-     * Use shared memory for non-contiguous data
-     */
-    if (!use_cma ||
-        sreq->dev.OnDataAvail == MPIDI_CH3_ReqHandler_SendReloadIOV ||
-        sreq->dev.iov_count > 1) {
-        pkt_head.csend_req_id = NULL;
-    } else {
-        pkt_head.csend_req_id = sreq;
-    }
-#endif
-
-#if defined(_SMP_LIMIC_) && !defined(_SMP_CMA_)
-    int use_limic = g_smp_use_limic2; 
-#if defined(_ENABLE_CUDA_)
-    if (rdma_enable_cuda && sreq->mrail.cuda_transfer_mode != NONE) {
-        use_limic = 0; 
-    } 
-#endif 
-
-    /* Use limic2 for contiguous data 
-     * Use shared memory for non-contiguous data
-     */
-    if (!use_limic ||
-        sreq->dev.OnDataAvail == MPIDI_CH3_ReqHandler_SendReloadIOV ||
-        sreq->dev.iov_count > 1) {
-        pkt_head.send_req_id = NULL;
-    } else {
-        pkt_head.send_req_id = sreq;
-    }
-#endif
-
+    
     mpi_errno = MPIDI_CH3_iStartMsg(vc, &pkt_head,
                                     sizeof(MPIDI_CH3_Pkt_rndv_r3_data_t),
                                     &send_req);
@@ -518,21 +486,7 @@ static int MPIDI_CH3_SMP_Rendezvous_push(MPIDI_VC_t * vc,
         MPID_Request_release(send_req);
     }
 
-#if defined(_SMP_CMA_) && !defined(_SMP_LIMIC_)
-      if (pkt_head.csend_req_id) {
-        sreq->mrail.nearly_complete = 1;
-        return MPI_SUCCESS;
-    }
-#endif
- 
-#if defined(_SMP_LIMIC_) && !defined(_SMP_CMA_)
-      if (pkt_head.send_req_id) {
-        sreq->mrail.nearly_complete = 1;
-        return MPI_SUCCESS;
-    }
-#endif
-
-#if defined(_SMP_LIMIC_) && defined(_SMP_CMA_)
+#if defined(_SMP_LIMIC_) || defined(_SMP_CMA_)
       if (pkt_head.send_req_id || pkt_head.csend_req_id) {
         sreq->mrail.nearly_complete = 1;
         return MPI_SUCCESS;
@@ -778,11 +732,11 @@ void MPIDI_CH3I_MRAILI_Process_rndv()
     while (flowlist) {
 
         /* Push on the the first ongoing receive with
-         * viadev_rendezvous_push. If the receive
+         * MPIDI_CH3_Rendezvous_push. If the receive
          * finishes, it will advance the shandle_head
          * pointer on the connection.
          *
-         * xxx the side effect of viadev_rendezvous_push is
+         * xxx the side effect of MPIDI_CH3_Rendezvous_push is
          * bad practice. Find a way to do this so the logic
          * is obvious.
          */
@@ -807,7 +761,7 @@ void MPIDI_CH3I_MRAILI_Process_rndv()
         while (sreq != NULL) {
 #ifdef CKPT
             if (flowlist->ch.rput_stop
-             && VAPI_PROTOCOL_RPUT == sreq->mrail.protocol) {
+             && MV2_RNDV_PROTOCOL_RPUT == sreq->mrail.protocol) {
                 break; /*VC will be push back when the rput_stop becomes 0*/
             }
 #endif
@@ -882,18 +836,18 @@ int MPIDI_CH3_Rendezvouz_r3_recv_data(MPIDI_VC_t * vc, vbuf * buffer)
                                                             pheader))->
                          receiver_req_id, rreq);
 
-    if (!(VAPI_PROTOCOL_R3 == rreq->mrail.protocol ||
-          VAPI_PROTOCOL_RPUT == rreq->mrail.protocol)) {
+    if (!(MV2_RNDV_PROTOCOL_R3 == rreq->mrail.protocol ||
+          MV2_RNDV_PROTOCOL_RPUT == rreq->mrail.protocol)) {
         int rank;
         PMI_Get_rank(&rank);
 
         DEBUG_PRINT( "[rank %d]get wrong req protocol, req %p, protocol %d\n", rank,
             rreq, rreq->mrail.protocol);
-        MPIU_Assert(VAPI_PROTOCOL_R3 == rreq->mrail.protocol ||
-               VAPI_PROTOCOL_RPUT == rreq->mrail.protocol);
+        MPIU_Assert(MV2_RNDV_PROTOCOL_R3 == rreq->mrail.protocol ||
+               MV2_RNDV_PROTOCOL_RPUT == rreq->mrail.protocol);
     }
 
-    rreq->mrail.protocol = VAPI_PROTOCOL_R3;
+    rreq->mrail.protocol = MV2_RNDV_PROTOCOL_R3;
 
     mpi_errno = MPIDI_CH3I_MRAIL_Fill_Request(rreq, buffer, skipsize, &nb);
     if (mpi_errno != MPI_SUCCESS)
@@ -960,7 +914,7 @@ int MPIDI_CH3_Rendezvouz_r3_recv_data(MPIDI_VC_t * vc, vbuf * buffer)
             }
         }
         if (TRUE == complete) {
-            rreq->mrail.protocol = VAPI_PROTOCOL_RENDEZVOUS_UNSPECIFIED;
+            rreq->mrail.protocol = MV2_RNDV_PROTOCOL_RENDEZVOUS_UNSPECIFIED;
         }
     }
   fn_exit:
@@ -1327,7 +1281,7 @@ int MPIDI_CH3_Get_rndv_push(MPIDI_VC_t * vc,
     MPIDI_CH3I_CR_lock();
 #endif
 
-    if (VAPI_PROTOCOL_R3 == req->mrail.protocol) {
+    if (MV2_RNDV_PROTOCOL_R3 == req->mrail.protocol) {
         req->mrail.partner_id = get_resp_pkt->request_handle;
         if (vc->smp.local_nodes < 0) {
 	    MPIDI_VC_revoke_seqnum_send(vc, get_resp_pkt->seqnum);
@@ -1341,12 +1295,12 @@ int MPIDI_CH3_Get_rndv_push(MPIDI_VC_t * vc,
 
         iov.MPID_IOV_BUF = (void*) get_resp_pkt;
         iov.MPID_IOV_LEN = sizeof(MPIDI_CH3_Pkt_get_resp_t);
-        get_resp_pkt->protocol = VAPI_PROTOCOL_RPUT;
+        get_resp_pkt->protocol = MV2_RNDV_PROTOCOL_RPUT;
 
         MPIDI_CH3I_MRAIL_SET_REMOTE_RNDV_INFO(&rndv, req);
         MPIDI_CH3I_MRAILI_Get_rndv_rput(vc, req, &rndv, &iov);
 
-        if (VAPI_PROTOCOL_R3 == req->mrail.protocol) {
+        if (MV2_RNDV_PROTOCOL_R3 == req->mrail.protocol) {
             req->mrail.partner_id = get_resp_pkt->request_handle;
             if (vc->smp.local_nodes < 0) {
 	        MPIDI_VC_revoke_seqnum_send(vc, get_resp_pkt->seqnum);
@@ -1375,7 +1329,7 @@ int MPIDI_CH3_Get_rndv_recv(MPIDI_VC_t * vc, MPID_Request * req)
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3I_RNDV_RECV);
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3I_RNDV_RECV);
 
-    MPIU_Assert(req->mrail.protocol == VAPI_PROTOCOL_RPUT);
+    MPIU_Assert(req->mrail.protocol == MV2_RNDV_PROTOCOL_RPUT);
 
 #ifdef CKPT
     MPIDI_CH3I_CR_lock();

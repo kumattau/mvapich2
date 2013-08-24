@@ -24,6 +24,7 @@
 #endif /* _SMP_LIMIC_ && !DAPL_DEFAULT_PROVIDER*/
 
 #if defined(_OSU_MVAPICH_)
+#include "rdma_impl.h"
 #undef DEBUG_PRINT
 #if defined(DEBUG)
 #define DEBUG_PRINT(args...) \
@@ -409,7 +410,7 @@ int MPIDI_Win_fence(int assert, MPID_Win *win_ptr)
 	    }
 	    /* we are sure that all processes have started access epoch as this is the 
                second or later fence */
-	    MPIDI_CH3I_RDMA_try_rma(win_ptr, 0);
+	    MPIDI_CH3I_RDMA_try_rma(win_ptr, 0, -1);
             if (win_ptr->rma_issued != 0) {
                 MPIDI_CH3I_RDMA_finish_rma(win_ptr);
             }
@@ -2012,7 +2013,7 @@ static int MPIDI_CH3I_Recv_rma_msg(MPIDI_RMA_Op_t *rma_op, MPID_Win *win_ptr,
 	total_size = (MPIDI_msg_sz_t) origin_type_size * rma_op->origin_count +
 	    sizeof(MPIDI_CH3_Pkt_get_resp_t);
 	if (total_size <= vc->eager_max_msg_sz) {
-	    req->mrail.protocol = VAPI_PROTOCOL_EAGER;
+	    req->mrail.protocol = MV2_RNDV_PROTOCOL_EAGER;
 	    MPIDI_VC_FAI_send_seqnum(vc, seqnum);
 	    MPIDI_Pkt_set_seqnum(get_pkt, seqnum);
 #endif /* defined(_OSU_MVAPICH_) */
@@ -2162,7 +2163,7 @@ static int MPIDI_CH3I_Recv_rma_msg(MPIDI_RMA_Op_t *rma_op, MPID_Win *win_ptr,
 
 	if (total_size <= vc->eager_max_msg_sz) {
 	    /* basic datatype on target. simply send the get_pkt. */
-	    req->mrail.protocol = VAPI_PROTOCOL_EAGER;
+	    req->mrail.protocol = MV2_RNDV_PROTOCOL_EAGER;
 	    MPIDI_VC_FAI_send_seqnum(vc, seqnum);
 	    MPIDI_Pkt_set_seqnum(get_pkt, seqnum);
 #endif /* defined(_OSU_MVAPICH_) */	
@@ -2180,7 +2181,7 @@ static int MPIDI_CH3I_Recv_rma_msg(MPIDI_RMA_Op_t *rma_op, MPID_Win *win_ptr,
             /*The packed type should be set again because the memcpy would have 
               have overwritten it*/
             get_rndv.type = MPIDI_CH3_PKT_GET_RNDV;
-	    req->mrail.protocol = VAPI_PROTOCOL_RPUT;
+	    req->mrail.protocol = MV2_RNDV_PROTOCOL_RPUT;
 	    MPIDI_VC_FAI_send_seqnum(vc, seqnum);
 	    MPIDI_Pkt_set_seqnum(&get_rndv, seqnum);
         MPIU_THREAD_CS_ENTER(CH3COMM,vc);
@@ -2601,7 +2602,7 @@ int MPIDI_Win_complete(MPID_Win *win_ptr)
         {
             MPIDI_CH3I_RDMA_start(win_ptr, start_grp_size, ranks_in_win_grp);
         }
-        MPIDI_CH3I_RDMA_try_rma(win_ptr, 0);
+        MPIDI_CH3I_RDMA_try_rma(win_ptr, 0, -1);
         if (win_ptr->rma_issued != 0) {
             MPIDI_CH3I_RDMA_finish_rma(win_ptr);
         }
@@ -3267,20 +3268,11 @@ int MPIDI_Win_lock(int lock_type, int dest, int assert, MPID_Win *win_ptr)
     if (!win_ptr->shm_fallback)
 #endif
     {
-        if (MPIDI_CH3I_Try_acquire_win_lock(win_ptr, lock_type) == 0)
-        {
-    	    MPIU_INSTR_DURATION_START(winlock_getlocallock);
-            while (MPIDI_CH3I_Try_acquire_win_lock(win_ptr, lock_type) == 0) 
-            {
-                mpi_errno = MPID_Progress_test();
-                /* --BEGIN ERROR HANDLING-- */
-                if (mpi_errno != MPI_SUCCESS) {
-                    MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**winnoprogress");
-                }
-                /* --END ERROR HANDLING-- */
-            }
-            MPIU_INSTR_DURATION_END(winlock_getlocallock);
+        MPIDI_CH3I_SHM_win_lock(win_ptr->my_id, lock_type, win_ptr, 1, ACQUIRE_SHARED_LOCK);
+        if(win_ptr->targets[win_ptr->my_id].remote_lock_state != MPIDI_CH3_WIN_LOCK_GRANTED) {
+            MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**rmasync");
         }
+
     } else {
 #endif
         /* The target is this process itself. We must block until the lock
@@ -3310,6 +3302,7 @@ int MPIDI_Win_lock(int lock_type, int dest, int assert, MPID_Win *win_ptr)
         mpi_errno = MPIDI_CH3I_Send_lock_msg(dest, lock_type, win_ptr);
         MPIU_ERR_CHKANDJUMP(mpi_errno != MPI_SUCCESS, mpi_errno, MPI_ERR_OTHER, "**ch3|rma_msg");
     }
+
 #if defined(_OSU_MVAPICH_)
     win_ptr->using_lock = 1;
 #endif /* defined(_OSU_MVAPICH_) */
@@ -3397,7 +3390,9 @@ int MPIDI_Win_unlock(int dest, MPID_Win *win_ptr)
 #endif
     {
         /*Acquire the lock*/
-	    MPIDI_CH3I_SHM_win_lock(dest, win_ptr->targets[dest].remote_lock_mode, win_ptr, 1);
+        if (win_ptr->targets[dest].remote_lock_state == MPIDI_CH3_WIN_LOCK_CALLED) {
+            MPIDI_CH3I_SHM_win_lock(dest, win_ptr->targets[dest].remote_lock_mode, win_ptr, 1, ACQUIRE_SHARED_LOCK);
+        }
         if(win_ptr->targets[dest].remote_lock_state != MPIDI_CH3_WIN_LOCK_GRANTED) {
             MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**rmasync");
         } 
@@ -3445,7 +3440,7 @@ int MPIDI_Win_unlock(int dest, MPID_Win *win_ptr)
                 win_ptr->targets[dest].remote_lock_state = MPIDI_CH3_WIN_LOCK_NONE;
             }
         } else {
-            MPIDI_CH3I_SHM_win_unlock(dest, win_ptr);
+            MPIDI_CH3I_SHM_win_unlock(dest, win_ptr, RELEASE_LOCK);
         }
 
         win_ptr->using_lock = 0;
@@ -3623,6 +3618,10 @@ int MPIDI_Win_flush(int rank, MPID_Win *win_ptr)
 {
     int mpi_errno = MPI_SUCCESS;
     int wait_for_rma_done_pkt = 0;
+    int skip_rdma_ops = 1;
+#if defined (_OSU_MVAPICH_)
+    skip_rdma_ops = win_ptr->fall_back;
+#endif
     MPIDI_RMA_Op_t *rma_op;
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_WIN_FLUSH);
 
@@ -3666,7 +3665,7 @@ int MPIDI_Win_flush(int rank, MPID_Win *win_ptr)
     /* If there is no activity at this target (e.g. lock-all was called, but we
      * haven't communicated with this target), don't do anything. */
     if (win_ptr->targets[rank].remote_lock_state == MPIDI_CH3_WIN_LOCK_CALLED
-        && rma_op == NULL)
+        && rma_op == NULL && skip_rdma_ops == 1)
     {
         goto fn_exit;
     }
@@ -3690,18 +3689,60 @@ int MPIDI_Win_flush(int rank, MPID_Win *win_ptr)
         MPID_Progress_end(&progress_state);
     }
 
+#if defined (_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+    MPIDI_VC_t *vc;
+    MPIDI_Comm_get_vc_set_active(win_ptr->comm_ptr, rank, &vc);
+#if defined (_SMP_LIMIC_)
+    if ((!win_ptr->limic_fallback || !win_ptr->shm_fallback)
+        && vc->smp.local_nodes != -1)
+#else
+    if (!win_ptr->shm_fallback && vc->smp.local_nodes != -1)
+#endif
+    {
+       /*Acquire the lock*/
+        if (win_ptr->targets[rank].remote_lock_state == MPIDI_CH3_WIN_LOCK_CALLED) {
+            MPIDI_CH3I_SHM_win_lock(rank, MPI_LOCK_SHARED, win_ptr, 1, ACQUIRE_SHARED_LOCK);
+        }
+        if(win_ptr->targets[rank].remote_lock_state != MPIDI_CH3_WIN_LOCK_GRANTED) {
+            MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**rmasync");
+        }
+        /*Try and complete operations through SHM backed window*/
+        if (!win_ptr->shm_fallback) {
+            mpi_errno = MPIDI_CH3I_SHM_try_rma(win_ptr, rank);
+#if defined(_SMP_LIMIC_)
+        } else {
+            mpi_errno = MPIDI_CH3I_LIMIC_try_rma(win_ptr, rank);
+#endif
+        }
+        if (mpi_errno != MPI_SUCCESS) {
+            MPIU_ERR_POP(mpi_errno);
+        }
+     }
+    else
+#endif
+    {
     /* Send a lock packet over to the target, wait for the lock_granted
        reply, and perform the RMA ops. */
-
-    if (win_ptr->targets[rank].remote_lock_state == MPIDI_CH3_WIN_LOCK_CALLED) {
-        mpi_errno = MPIDI_CH3I_Send_lock_msg(rank, win_ptr->targets[rank].remote_lock_mode, win_ptr);
+        if (win_ptr->targets[rank].remote_lock_state == MPIDI_CH3_WIN_LOCK_CALLED) {
+            mpi_errno = MPIDI_CH3I_Send_lock_msg(rank, win_ptr->targets[rank].remote_lock_mode, win_ptr);
         if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
     }
 
-    if (win_ptr->targets[rank].remote_lock_state != MPIDI_CH3_WIN_LOCK_GRANTED) {
-        mpi_errno = MPIDI_CH3I_Wait_for_lock_granted(win_ptr, rank);
+        if (win_ptr->targets[rank].remote_lock_state != MPIDI_CH3_WIN_LOCK_GRANTED) {
+            mpi_errno = MPIDI_CH3I_Wait_for_lock_granted(win_ptr, rank);
         if (mpi_errno) { MPIU_ERR_POP(mpi_errno); }
     }
+    }
+
+#if defined (_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+    win_ptr->using_lock = 0;
+    if (win_ptr->fall_back != 1){
+        MPIDI_CH3I_RDMA_try_rma(win_ptr, 0, rank);
+    }
+    if (win_ptr->rma_issued != 0) {
+        MPIDI_CH3I_RDMA_finish_rma_target(win_ptr, rank);
+    }
+#endif
 
     win_ptr->targets[rank].remote_lock_state = MPIDI_CH3_WIN_LOCK_FLUSH;
     mpi_errno = MPIDI_CH3I_Do_passive_target_rma(win_ptr, rank, &wait_for_rma_done_pkt,
@@ -4655,7 +4696,7 @@ static int MPIDI_CH3I_Send_lock_get(MPID_Win *win_ptr, int target_rank)
     rreq->dev.target_win_handle = MPI_WIN_NULL;
     rreq->dev.source_win_handle = win_ptr->handle;
 #if defined(_OSU_MVAPICH_)
-    rreq->mrail.protocol = VAPI_PROTOCOL_RENDEZVOUS_UNSPECIFIED;
+    rreq->mrail.protocol = MV2_RNDV_PROTOCOL_RENDEZVOUS_UNSPECIFIED;
 #endif /* defined(_OSU_MVAPICH_) */
 
     MPIDI_CH3I_DATATYPE_IS_PREDEFINED(rreq->dev.datatype, predefined);
@@ -5101,12 +5142,12 @@ rndv_complete:
             req->dev.OnDataAvail = MPIDI_CH3_ReqHandler_PutRespDerivedDTComplete;
 #if defined(_OSU_MVAPICH_)
             if (MPIDI_CH3_PKT_PUT_RNDV == pkt->type) {
-                req->mrail.protocol = VAPI_PROTOCOL_RPUT;
+                req->mrail.protocol = MV2_RNDV_PROTOCOL_RPUT;
                 MPIDI_CH3_RNDV_SET_REQ_INFO(req,((MPIDI_CH3_Pkt_put_rndv_t * )(put_pkt)));
                 req->dev.sender_req_id = ((MPIDI_CH3_Pkt_put_rndv_t *)pkt)->sender_req_id;
                 req->dev.recv_data_sz = ((MPIDI_CH3_Pkt_put_rndv_t *)pkt)->data_sz;
             } else {
-                req->mrail.protocol = VAPI_PROTOCOL_EAGER;
+                req->mrail.protocol = MV2_RNDV_PROTOCOL_EAGER;
         }
             DEBUG_PRINT("put_rndv_t size %d, buf0 size %d, buf1 size %d, "
                 "sender_req_id %p, data_sz %d\n",
@@ -5226,7 +5267,7 @@ int MPIDI_CH3_PktHandler_Get( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
         MPIDI_Pkt_set_seqnum(get_resp_pkt, seqnum);
 
         if (MPIDI_CH3_PKT_GET == pkt->type ) {
-            get_resp_pkt->protocol = VAPI_PROTOCOL_EAGER;
+            get_resp_pkt->protocol = MV2_RNDV_PROTOCOL_EAGER;
 #endif /* defined(_OSU_MVAPICH_) */	
 
 #if defined (_OSU_PSM_)
@@ -5236,7 +5277,7 @@ int MPIDI_CH3_PktHandler_Get( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 #endif /* #if defined (_OSU_PSM_)   */ 
         MPIU_THREAD_CS_EXIT(CH3COMM,vc);
 #if defined(_OSU_MVAPICH_)      
-    req->mrail.protocol = VAPI_PROTOCOL_EAGER;
+    req->mrail.protocol = MV2_RNDV_PROTOCOL_EAGER;
 #endif /* defined(_OSU_MVAPICH_) */
 	/* --BEGIN ERROR HANDLING-- */
 	if (mpi_errno != MPI_SUCCESS)
@@ -5325,7 +5366,7 @@ int MPIDI_CH3_PktHandler_Get( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
             if (MPIDI_CH3_PKT_GET_RNDV == pkt->type) {
                 MPIDI_CH3I_MRAIL_SET_REQ_REMOTE_RNDV(req, (MPIDI_CH3_Pkt_get_rndv_t *)pkt);
             } else {
-                req->mrail.protocol = VAPI_PROTOCOL_EAGER;
+                req->mrail.protocol = MV2_RNDV_PROTOCOL_EAGER;
             }
 #endif /* defined(_OSU_MVAPICH_) */
             *buflen = sizeof(MPIDI_CH3_Pkt_t);
@@ -5619,14 +5660,14 @@ do_accumulate:
             *buflen = sizeof(MPIDI_CH3_Pkt_t);
 #if defined(_OSU_MVAPICH_)
             if (MPIDI_CH3_PKT_ACCUMULATE_RNDV == pkt->type) {
-                req->mrail.protocol = VAPI_PROTOCOL_RPUT;
+                req->mrail.protocol = MV2_RNDV_PROTOCOL_RPUT;
                 MPIDI_CH3_RNDV_SET_REQ_INFO(req,
                     ((MPIDI_CH3_Pkt_accum_rndv_t * )(accum_pkt)));
                 req->dev.sender_req_id =
                     ((MPIDI_CH3_Pkt_accum_rndv_t *)pkt)->sender_req_id;
                 req->dev.recv_data_sz = ((MPIDI_CH3_Pkt_accum_rndv_t *)pkt)->data_sz;
             } else {
-                req->mrail.protocol = VAPI_PROTOCOL_EAGER;
+                req->mrail.protocol = MV2_RNDV_PROTOCOL_EAGER;
             }
             DEBUG_PRINT("accum_rndv_t size %d, ender_req_id %p\n",
                 sizeof(MPIDI_CH3_Pkt_accum_rndv_t),
@@ -5751,21 +5792,6 @@ int MPIDI_CH3_PktHandler_Accumulate_Immed( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
 	MPID_Win_get_ptr(accum_pkt->target_win_handle, win_ptr);
 #if defined(_OSU_MVAPICH_)
     --win_ptr->outstanding_rma;
-
-    /* if passive target RMA, increment pt_rma_puts_accs counter */
-#if !defined(DAPL_DEFAULT_PROVIDER)
-#if defined (_SMP_LIMIC_)
-    if ((!win_ptr->limic_fallback || !win_ptr->shm_fallback)
-        && vc->smp.local_nodes != -1)
-#else
-    if (!win_ptr->shm_fallback && vc->smp.local_nodes != -1)
-#endif
-    {
-        if (*((volatile int *) &win_ptr->shm_lock[l_rank]) != MPID_LOCK_NONE) {
-            win_ptr->my_pt_rma_puts_accs++;
-        }
-    }
-#endif /* !defined(DAPL_DEFAULT_PROVIDER) */
 #endif /* defined(_OSU_MVAPICH_) */
 #if defined(_OSU_MVAPICH_)
         win_ptr->outstanding_rma += accum_pkt->rma_issued;
@@ -5846,6 +5872,16 @@ int MPIDI_CH3_PktHandler_CAS( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
        target RMA or the last operation from the source */
 
     MPID_Win_get_ptr(cas_pkt->target_win_handle, win_ptr);
+
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+#if defined (_SMP_LIMIC_)
+    if ((!win_ptr->limic_fallback || !win_ptr->shm_fallback)
+#else
+    if ((!win_ptr->shm_fallback)
+#endif
+        && vc != NULL && vc->smp.local_nodes != -1)
+        win_ptr->cas_complete = 1;
+#endif
 
     mpi_errno = MPIDI_CH3_Finish_rma_op_target(NULL, win_ptr, TRUE,
                                                cas_pkt->flags,
@@ -6382,7 +6418,7 @@ int MPIDI_CH3_PktHandler_LockGetUnlock( MPIDI_VC_t *vc, MPIDI_CH3_Pkt_t *pkt,
     *buflen = sizeof(MPIDI_CH3_Pkt_t);
 
     MPID_Win_get_ptr(lock_get_unlock_pkt->target_win_handle, win_ptr);
-    
+   
 #if defined(_OSU_MVAPICH_) && defined(DEBUG)
     if (lock_get_unlock_pkt->source_win_handle != MPI_WIN_NULL)
     {
@@ -6684,7 +6720,7 @@ int MPIDI_CH3_PktHandler_GetResp( MPIDI_VC_t *vc ATTRIBUTE((unused)),
  * MPIDI_CH3U_Receive_data_found (1.1). For now, I think we can comment out
  * 1076 - 1083 (exp2) so that make things are consistent with 1.0.
  * */
-    if (VAPI_PROTOCOL_RPUT == req->mrail.protocol)
+    if (MV2_RNDV_PROTOCOL_RPUT == req->mrail.protocol)
     {
         MPIDI_CH3_Get_rndv_recv(vc, req);
         vc->ch.recv_active = NULL;
@@ -7056,6 +7092,19 @@ int MPIDI_CH3_Finish_rma_op_target(MPIDI_VC_t *vc, MPID_Win *win_ptr, int is_rma
                                    MPIDI_CH3_Pkt_flags_t flags, MPI_Win source_win_handle)
 {
     int mpi_errno = MPI_SUCCESS;
+
+#if defined(_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+    int rank = -1, l_rank = -1;
+    rank = win_ptr->my_id;
+#if defined (_SMP_LIMIC_)
+    if (!win_ptr->limic_fallback || !win_ptr->shm_fallback){
+#else 
+    if (!win_ptr->shm_fallback) {
+#endif
+        l_rank = win_ptr->shm_g2l_rank[rank];
+    }
+#endif
+
     MPIDI_STATE_DECL(MPID_STATE_MPIDI_CH3_FINISH_RMA_OP_TARGET);
 
     MPIDI_FUNC_ENTER(MPID_STATE_MPIDI_CH3_FINISH_RMA_OP_TARGET);
@@ -7066,9 +7115,30 @@ int MPIDI_CH3_Finish_rma_op_target(MPIDI_VC_t *vc, MPID_Win *win_ptr, int is_rma
     /* If this is a passive target RMA update operation, increment counter.  This is
        needed in Win_free to ensure that all ops are completed before a window
        is freed. */
-    if (win_ptr->current_lock_type != MPID_LOCK_NONE && is_rma_update)
-        win_ptr->my_pt_rma_puts_accs++;
+#if defined (_OSU_MVAPICH_) && !defined(DAPL_DEFAULT_PROVIDER)
+#if defined (_SMP_LIMIC_)
+    if ((!win_ptr->limic_fallback || !win_ptr->shm_fallback)
+            && vc != NULL && vc->smp.local_nodes != -1 ||
+            win_ptr->cas_complete == 1)
+#else
+     if (!win_ptr->shm_fallback && vc != NULL && vc->smp.local_nodes != -1 || 
+            win_ptr->cas_complete == 1)
+#endif
+    { 
+        if (*((volatile int *) &win_ptr->shm_lock[l_rank]) != MPID_LOCK_NONE)
+            win_ptr->my_pt_rma_puts_accs++;
 
+    }
+    else if (win_ptr->current_lock_type != MPID_LOCK_NONE && is_rma_update)
+    {
+        win_ptr->my_pt_rma_puts_accs++;
+    }
+#else
+    if (win_ptr->current_lock_type != MPID_LOCK_NONE && is_rma_update)
+    {
+        win_ptr->my_pt_rma_puts_accs++;
+    }
+#endif
     /* Last RMA operation from source. If active target RMA, decrement window
        counter. */
     if (flags & MPIDI_CH3_PKT_FLAG_RMA_AT_COMPLETE) {
@@ -7089,24 +7159,29 @@ int MPIDI_CH3_Finish_rma_op_target(MPIDI_VC_t *vc, MPID_Win *win_ptr, int is_rma
 #if defined(_OSU_MVAPICH_)
 #if !defined(DAPL_DEFAULT_PROVIDER)
 #if defined (_SMP_LIMIC_)
-        if ((!win_ptr->limic_fallback || !win_ptr->shm_fallback)
-            && vc != NULL && vc->smp.local_nodes != -1)
+        if (!win_ptr->limic_fallback || !win_ptr->shm_fallback)
 #else
-        if (!win_ptr->shm_fallback && vc != NULL && vc->smp.local_nodes != -1)
+        if (!win_ptr->shm_fallback)
 #endif
         {
-            int l_rank = win_ptr->shm_g2l_rank[win_ptr->my_id];
-            if (*((volatile int *) &win_ptr->shm_lock[l_rank]) != MPID_LOCK_NONE) {
-                if(*((volatile int *) &win_ptr->shm_lock[l_rank]) == MPI_LOCK_SHARED) {
-                    mpi_errno = MPIDI_CH3I_Send_pt_rma_done_pkt(vc, win_ptr,
+            if (vc != NULL && vc->smp.local_nodes != -1 || win_ptr->cas_complete == 1){
+                int l_rank = win_ptr->shm_g2l_rank[win_ptr->my_id];
+                if (*((volatile int *) &win_ptr->shm_lock[l_rank]) != MPID_LOCK_NONE) {
+                    if(*((volatile int *) &win_ptr->shm_lock[l_rank]) == MPI_LOCK_SHARED) {
+
+                        if (flags & MPIDI_CH3_PKT_FLAG_RMA_REQ_ACK) {
+                            mpi_errno = MPIDI_CH3I_Send_pt_rma_done_pkt(vc, win_ptr,
                                     source_win_handle);
-                    if (mpi_errno) {
-                        MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**rmasync");
+                            if (mpi_errno) {
+                                MPIU_ERR_SETANDJUMP(mpi_errno,MPI_ERR_OTHER,"**rmasync");
+                            }
+                        }
+
                     }
+                    MPIDI_CH3I_SHM_win_unlock(win_ptr->my_id, win_ptr, REMOVE_BLOCK);
+                    MPIDI_CH3_Progress_signal_completion();
+                    goto fn_exit;
                 }
-                MPIDI_CH3I_SHM_win_unlock(win_ptr->my_id, win_ptr);
-                MPIDI_CH3_Progress_signal_completion();
-                goto fn_exit;
             }
         }
 #endif /* !defined(DAPL_DEFAULT_PROVIDER) */

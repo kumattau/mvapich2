@@ -172,7 +172,7 @@ static inline void MRAILI_Ext_sendq_send(MPIDI_VC_t *c, int rail)
             }
         } 
 
-        IBV_POST_SR(v, c, rail, "Mrail_post_sr (viadev_ext_sendq_send)");
+        IBV_POST_SR(v, c, rail, "Mrail_post_sr (MRAILI_Ext_sendq_send)");
     }
 
     DEBUG_PRINT( "[ibv_send] dequeue, head %p, tail %p\n",
@@ -586,10 +586,10 @@ int MPIDI_CH3I_MRAILI_Fast_rdma_ok(MPIDI_VC_t * vc, int len)
 } 
 
 #undef FUNCNAME
-#define FUNCNAME viadev_post_srq_buffers
+#define FUNCNAME mv2_post_srq_buffers
 #undef FCNAME
 #define FCNAME MPIDI_QUOTE(FUNCNAME)
-int viadev_post_srq_buffers(int num_bufs, int hca_num)
+int mv2_post_srq_buffers(int num_bufs, int hca_num)
 {
     int i = 0;
     vbuf* v = NULL;
@@ -597,13 +597,13 @@ int viadev_post_srq_buffers(int num_bufs, int hca_num)
     MPIDI_STATE_DECL(MPID_STATE_POST_SRQ_BUFFERS);
     MPIDI_FUNC_ENTER(MPID_STATE_POST_SRQ_BUFFERS);
 
-    if (num_bufs > viadev_srq_fill_size)
+    if (num_bufs > mv2_srq_fill_size)
     {
         ibv_va_error_abort(
             GEN_ASSERT_ERR,
             "Try to post %d to SRQ, max %d\n",
             num_bufs,
-            viadev_srq_fill_size);
+            mv2_srq_fill_size);
     }
 
     for (; i < num_bufs; ++i)
@@ -802,7 +802,7 @@ int post_srq_send(MPIDI_VC_t* vc, vbuf* v, int rail)
 
     if(mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num] <= rdma_credit_preserve) {
         mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num] +=
-            viadev_post_srq_buffers(viadev_srq_fill_size - 
+            mv2_post_srq_buffers(mv2_srq_fill_size - 
                     mv2_MPIDI_CH3I_RDMA_Process.posted_bufs[hca_num], 
                     hca_num);
     }
@@ -1311,7 +1311,7 @@ int MRAILI_Backlog_send(MPIDI_VC_t * vc, int rail)
         --vc->mrail.rails[rail].send_wqes_avail;
 
         IBV_POST_SR(v, vc, rail,
-                    "ibv_post_sr (viadev_backlog_push)");
+                    "ibv_post_sr (MRAILI_Backlog_send)");
     }
 
     MPIDI_FUNC_EXIT(MPID_STATE_MRAILI_BACKLOG_SEND);
@@ -1387,6 +1387,7 @@ int MRAILI_Process_send(void *vbuf_addr)
     
         ++orig_vc->mrail.rails[v->rail].send_wqes_avail;
 
+
         if(vc->free_vc) {
             if(vc->mrail.rails[v->rail].send_wqes_avail == rdma_default_max_send_wqe)   {
                 if (v->padding == NORMAL_VBUF_FLAG) {
@@ -1418,6 +1419,12 @@ int MRAILI_Process_send(void *vbuf_addr)
         if (orig_vc->mrail.rails[v->rail].ext_sendq_head) {
             MRAILI_Ext_sendq_send(orig_vc, v->rail);
         }
+
+        if(v->padding == COLL_VBUF_FLAG) { 
+            MRAILI_Release_vbuf(v);
+            goto fn_exit;
+        } 
+
         if (v->padding == RPUT_VBUF_FLAG) {
             /* HSAM is Activated */
             if (mv2_MPIDI_CH3I_RDMA_Process.has_hsam) {
@@ -1617,7 +1624,7 @@ int MRAILI_Process_send(void *vbuf_addr)
         req = (MPID_Request *) (v->sreq);
         v->sreq = NULL;
         if (NULL != req) {
-            if (VAPI_PROTOCOL_RPUT == req->mrail.protocol) {
+            if (MV2_RNDV_PROTOCOL_RPUT == req->mrail.protocol) {
                 if (req->mrail.d_entry != NULL) {
                     dreg_unregister(req->mrail.d_entry);
                     req->mrail.d_entry = NULL;
@@ -1694,6 +1701,8 @@ int MRAILI_Process_send(void *vbuf_addr)
     case MPIDI_CH3_PKT_ACCUMULATE_RNDV:
     case MPIDI_CH3_PKT_LOCK:
     case MPIDI_CH3_PKT_LOCK_GRANTED:
+    case MPIDI_CH3_PKT_UNLOCK:
+    case MPIDI_CH3_PKT_FLUSH:
     case MPIDI_CH3_PKT_PT_RMA_DONE:
     case MPIDI_CH3_PKT_LOCK_GET_UNLOCK: /* optimization for single gets */
     case MPIDI_CH3_PKT_ACCUM_IMMED: 
@@ -1701,6 +1710,8 @@ int MRAILI_Process_send(void *vbuf_addr)
     case MPIDI_CH3_PKT_CAS_RESP:
     case MPIDI_CH3_PKT_FOP:
     case MPIDI_CH3_PKT_FOP_RESP:
+    case MPIDI_CH3_PKT_GET_ACCUM:
+    case MPIDI_CH3_PKT_GET_ACCUM_RESP:
     case MPIDI_CH3_PKT_FLOW_CNTL_UPDATE:
     case MPIDI_CH3_PKT_RNDV_R3_ACK:
     case MPIDI_CH3_PKT_ZCOPY_FINISH:
@@ -1953,4 +1964,107 @@ void vbuf_address_reply_send(MPIDI_VC_t *vc, uint8_t data)
     
     vbuf_init_send(v, sizeof(MPIDI_CH3_Pkt_address_reply_t), rail);
     mv2_MPIDI_CH3I_RDMA_Process.post_send(vc, v, rail);
+}
+
+
+int mv2_shm_coll_post_send(vbuf *v, int rail, MPIDI_VC_t * vc)
+{ 
+   char cq_overflow = 0;
+   int mpi_errno = MPI_SUCCESS;
+
+   v->rail = rail; 
+   if(rdma_iwarp_use_multiple_cq) {
+      if ((NULL != vc->mrail.rails[rail].send_cq_hndl) &&
+          (mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq >=
+           rdma_default_max_cq_size)) {
+          /* We are monitoring CQ's and there is CQ overflow */
+          cq_overflow = 1;
+      }
+   } else {
+      if ((NULL != vc->mrail.rails[rail].send_cq_hndl) &&
+          ((mv2_MPIDI_CH3I_RDMA_Process.global_used_send_cq +
+             mv2_MPIDI_CH3I_RDMA_Process.global_used_recv_cq) >=
+             rdma_default_max_cq_size)) {
+          /* We are monitoring CQ's and there is CQ overflow */
+          cq_overflow = 1;
+      }
+   }
+
+    if (!vc->mrail.rails[rail].send_wqes_avail || cq_overflow) {
+        DEBUG_PRINT("[send: rdma_send] Warning! no send wqe or send cq available\n");
+        MRAILI_Ext_sendq_enqueue(vc, rail, v);
+        return MPI_MRAIL_MSG_QUEUED;
+    } else {
+        --vc->mrail.rails[rail].send_wqes_avail;
+
+        IBV_POST_SR(v, vc, rail, "ibv_post_sr (post_fast_rdma)");
+        DEBUG_PRINT("[send:post rdma] desc posted\n");
+    }
+
+    return mpi_errno; 
+}
+
+void mv2_shm_coll_prepare_post_send(uint64_t local_rdma_addr, uint64_t remote_rdma_addr, 
+                      uint32_t local_rdma_key, uint32_t remote_rdma_key, 
+                      int len, int rail, MPIDI_VC_t * vc)
+{
+    vbuf *v=NULL;
+    v = get_vbuf();
+    v->desc.u.sr.next = NULL;
+    v->desc.u.sr.opcode = IBV_WR_RDMA_WRITE;
+    v->desc.u.sr.send_flags = IBV_SEND_SIGNALED;
+    (v)->desc.u.sr.wr.rdma.remote_addr = (uintptr_t) (remote_rdma_addr);
+    (v)->desc.u.sr.wr.rdma.rkey = (remote_rdma_key);
+    v->desc.u.sr.wr_id = (uintptr_t) v;
+    v->desc.u.sr.num_sge = 1;
+    v->desc.u.sr.sg_list = &(v->desc.sg_entry);
+    (v)->desc.sg_entry.length = len;
+
+    (v)->desc.sg_entry.lkey = (local_rdma_key);
+    (v)->desc.sg_entry.addr =  (uintptr_t) (local_rdma_addr);
+    (v)->padding = COLL_VBUF_FLAG;
+    (v)->vc   = vc;
+    XRC_FILL_SRQN_FIX_CONN (v, vc, rail);
+    mv2_shm_coll_post_send(v, rail, vc);
+
+    return;
+}
+
+int mv2_shm_coll_reg_buffer(void *buffer, int size, struct ibv_mr *mem_handle[], 
+                           int *buffer_registered)
+{
+   int i=0;
+   int mpi_errno = MPI_SUCCESS;
+
+    for ( i = 0 ; i < rdma_num_hcas; i ++ ) {
+        mem_handle[i]  = (struct ibv_mr *) register_memory(buffer, size, i);
+
+        if (!mem_handle[i]) {
+            /* de-register already registered with other hcas*/
+            for (i = i-1; i >=0 ; --i)
+            {
+                if (mem_handle[i] != NULL) {
+                    deregister_memory(mem_handle[i]);
+                }
+            }
+            *buffer_registered = 0;
+        }
+    }
+    *buffer_registered = 1;
+
+    return mpi_errno;
+}
+
+int mv2_shm_coll_dereg_buffer(struct ibv_mr *mem_handle[])
+{ 
+   int i=0, mpi_errno = MPI_SUCCESS;
+   for ( i = 0 ; i < rdma_num_hcas; i ++ ) {
+       if (mem_handle[i] != NULL) {
+           if (deregister_memory(mem_handle[i])) { 
+               ibv_error_abort(IBV_RETURN_ERR,
+                                        "deregistration failed\n");
+           }
+       }
+   }
+   return mpi_errno; 
 }

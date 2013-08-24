@@ -35,6 +35,10 @@ int MPID_Ssend(const void * buf, int count, MPI_Datatype datatype, int rank, int
     MPID_Datatype * dt_ptr;
     MPID_Request * sreq = NULL;
     MPIDI_VC_t * vc;
+#if defined(MPID_USE_SEQUENCE_NUMBERS)
+    MPID_Seqnum_t seqnum;
+#endif    
+    int eager_threshold = -1;
     int mpi_errno = MPI_SUCCESS;
     MPIDI_STATE_DECL(MPID_STATE_MPID_SSEND);
 
@@ -123,7 +127,9 @@ psm_ssend:
     if (data_sz + sizeof(MPIDI_CH3_Pkt_eager_sync_send_t) <= vc->eager_max_msg_sz
         && ! vc->force_rndv)
 #else /* defined(_OSU_MVAPICH_) */
-    if (data_sz + sizeof(MPIDI_CH3_Pkt_eager_sync_send_t) <= vc->eager_max_msg_sz)
+    MPIDI_CH3_GET_EAGER_THRESHOLD(&eager_threshold, comm, vc);
+
+    if (data_sz + sizeof(MPIDI_CH3_Pkt_eager_sync_send_t) <= eager_threshold)
 #endif /* defined(_OSU_MVAPICH_) */
     {
 	mpi_errno = MPIDI_CH3_EagerSyncNoncontigSend( &sreq, buf, count,

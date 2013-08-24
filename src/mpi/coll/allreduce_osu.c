@@ -1236,6 +1236,9 @@ int MPIR_Allreduce_reduce_shmem_MV2(const void *sendbuf,
     MPIR_Type_get_true_extent_impl(datatype, &true_lb, &true_extent);
     MPID_Datatype_get_extent_macro(datatype, extent);
     stride = count * MPIR_MAX(extent, true_extent);
+    #if OSU_MPIT
+        mv2_num_shmem_coll_calls++;
+    #endif
 
     /* Get the operator and check whether it is commutative or not */
     if (HANDLE_GET_KIND(op) == HANDLE_KIND_BUILTIN) {
@@ -1498,14 +1501,12 @@ int MPIR_Allreduce_two_level_MV2(const void *sendbuf,
 
     /* Broadcasting the mesage from leader to the rest */
     /* Note: shared memory broadcast could improve the performance */
-    if (local_size > 1) {
-        MPIR_Shmem_Bcast_MV2(recvbuf, count, datatype, 0, shmem_commptr, errflag);
-        if (mpi_errno) {
-            /* for communication errors, just record the error but continue */
-            *errflag = TRUE;
-            MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
-            MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
-        }
+    mpi_errno = MPIR_Shmem_Bcast_MV2(recvbuf, count, datatype, 0, shmem_commptr, errflag);
+    if (mpi_errno) {
+        /* for communication errors, just record the error but continue */
+        *errflag = TRUE;
+        MPIU_ERR_SET(mpi_errno, MPI_ERR_OTHER, "**fail");
+        MPIU_ERR_ADD(mpi_errno_ret, mpi_errno);
     }
 
 #if defined(CKPT)

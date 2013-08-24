@@ -39,7 +39,8 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
 #if defined(MPID_USE_SEQUENCE_NUMBERS)
     MPID_Seqnum_t seqnum;
 #endif    
-    int mpi_errno = MPI_SUCCESS;   
+    int eager_threshold = -1;
+    int mpi_errno = MPI_SUCCESS;    
 #ifdef _ENABLE_CUDA_
     int cuda_transfer_mode = 0;
 #endif 
@@ -146,38 +147,50 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
             cuda_transfer_mode = NONE;
         }
 
+        /*forces rndv for some IPC based CUDA transfers*/
+#ifdef HAVE_CUDA_IPC
+        if (rdma_cuda_ipc &&
+            vc->smp.local_rank != -1 && 
+            cuda_transfer_mode != NONE) { 
+
+            /*initialize IPC buffered channel if not initialized*/
+            if (rdma_cuda_dynamic_init && 
+                cuda_initialized && 
+                vc->smp.can_access_peer == CUDA_IPC_UNINITIALIZED) {
+                cudaipc_init_dynamic (vc);    
+            }
+
+            if (vc->smp.can_access_peer == CUDA_IPC_ENABLED && 
+                cudaipc_stage_buffered &&
+                dt_contig && 
+                data_sz >= rdma_cuda_ipc_threshold)  { 
+                /*force RNDV for CUDA transfers when buffered CUDA IPC is enabled or 
+                 ** if rdma_cuda_smp_ipc is set off */
+                if (!rdma_cuda_smp_ipc) {
+                    goto rndv_send;
+                }
+            }
+        }
+#endif
+
         /*forces rndv for non IPC based CUDA transfers*/
         if (SMP_INIT && 
             vc->smp.local_rank != -1 &&
             cuda_transfer_mode != NONE) {
 #ifdef HAVE_CUDA_IPC
             if (rdma_cuda_ipc == 0 || 
-                vc->smp.can_access_peer == 0) 
+                vc->smp.can_access_peer != CUDA_IPC_ENABLED) 
 #endif
             {
                 goto rndv_send;
             }
         }
-
-        /*forces rndv for some IPC based CUDA transfers*/
-#ifdef HAVE_CUDA_IPC
-        if (rdma_cuda_ipc && 
-            cudaipc_stage_buffered &&
-            vc->smp.can_access_peer == 1 && 
-            dt_contig && 
-            cuda_transfer_mode != NONE &&
-            data_sz >= rdma_cuda_ipc_threshold)  { 
-            /*force RNDV for CUDA transfers when buffered CUDA IPC is enabled or 
-            ** if rdma_cuda_smp_ipc is set off */
-            if (!rdma_cuda_smp_ipc) {
-                goto rndv_send;
-            }
-        }
-#endif
     } 
 #endif   
  
-    /* FIXME: flow control: limit number of outstanding eager messsages 
+    MPIDI_CH3_GET_EAGER_THRESHOLD(&eager_threshold, comm, vc);
+
+    /* FIXME: flow control: limit number of outstanding eager messages
        containing data and need to be buffered by the receiver */
 #ifdef USE_EAGER_SHORT
     if (dt_contig && data_sz <= MPIDI_EAGER_SHORT_SIZE) {
@@ -198,23 +211,24 @@ int MPID_Send(const void * buf, int count, MPI_Datatype datatype, int rank,
     if (data_sz + sizeof(MPIDI_CH3_Pkt_eager_send_t) <=	 vc->eager_max_msg_sz 
             && ! vc->force_rndv)
 #else /* defined(_OSU_MVAPICH_) */
-    if (data_sz + sizeof(MPIDI_CH3_Pkt_eager_send_t) <= vc->eager_max_msg_sz)
+    if (data_sz + sizeof(MPIDI_CH3_Pkt_eager_send_t) <= eager_threshold)
 #endif /* defined(_OSU_MVAPICH_) */
     {
 
 #if defined(_OSU_PSM_)
 eager_send:
 #endif
-        if (dt_contig) {
-            mpi_errno = MPIDI_CH3_EagerContigSend( &sreq, 
-                               MPIDI_CH3_PKT_EAGER_SEND,
-                               (char *)buf + dt_true_lb,
-                               data_sz, rank, tag, comm, 
-                               context_offset );
-        }
-        else 
+	if (dt_contig)
         {
-            MPIDI_Request_create_sreq(sreq, mpi_errno, goto fn_exit);
+ 	    mpi_errno = MPIDI_CH3_EagerContigSend( &sreq, 
+						   MPIDI_CH3_PKT_EAGER_SEND,
+						   (char *)buf + dt_true_lb,
+						   data_sz, rank, tag, comm, 
+						   context_offset );
+	}
+	else
+        {
+	    MPIDI_Request_create_sreq(sreq, mpi_errno, goto fn_exit);
 #ifdef _ENABLE_CUDA_
             if(HANDLE_GET_KIND(datatype) != HANDLE_KIND_BUILTIN &&
                         sreq->dev.datatype_ptr == NULL) {
@@ -226,18 +240,20 @@ eager_send:
                 sreq->mrail.cuda_transfer_mode = cuda_transfer_mode;
             }
 #endif
-            MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_SEND);
-            mpi_errno = MPIDI_CH3_EagerNoncontigSend( &sreq, 
-                                                          MPIDI_CH3_PKT_EAGER_SEND,
-                                                          buf, count, datatype,
-                                                          data_sz, rank, tag, 
-                                                          comm, context_offset );
-        }
+	    MPIDI_Request_set_type(sreq, MPIDI_REQUEST_TYPE_SEND);
+	    mpi_errno = MPIDI_CH3_EagerNoncontigSend( &sreq, 
+                                                      MPIDI_CH3_PKT_EAGER_SEND,
+                                                      buf, count, datatype,
+                                                      data_sz, rank, tag, 
+                                                      comm, context_offset );
+	}
     }
-    else {
+    else 
+    {
 #if defined(_ENABLE_CUDA_) && defined(HAVE_CUDA_IPC)
 rndv_send:
 #endif
+
 	MPIDI_Request_create_sreq(sreq, mpi_errno, goto fn_exit);
 #ifdef _ENABLE_CUDA_
     sreq->mrail.cts_received = 0;

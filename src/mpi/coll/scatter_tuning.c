@@ -412,13 +412,14 @@ int MV2_set_scatter_tuning_table(int heterogeneity)
 
             {
                 64,
-                5,
+                6,
                 {
                     {0, 32, &MPIR_Scatter_mcst_wrap_MV2},
                     {0, 32, &MPIR_Scatter_MV2_two_level_Direct},
                     {32, 256, &MPIR_Scatter_MV2_two_level_Direct},
                     {256, 2048,  &MPIR_Scatter_MV2_two_level_Direct},
-                    {2048, -1, &MPIR_Scatter_MV2_Direct},
+                    {2048, 65536, &MPIR_Scatter_MV2_Direct},
+                    {65536, -1, &MPIR_Scatter_MV2_Direct_Blk},
                 },
                 2,
                 {
@@ -429,12 +430,13 @@ int MV2_set_scatter_tuning_table(int heterogeneity)
 
             {
                 128,
-                4,
+                5,
                 {
                     {0, 64, &MPIR_Scatter_mcst_wrap_MV2},
                     {0, 64, &MPIR_Scatter_MV2_Binomial},
                     {64, 4096, &MPIR_Scatter_MV2_two_level_Direct},
-                    {4096, -1, &MPIR_Scatter_MV2_Direct},
+                    {4096, 65536, &MPIR_Scatter_MV2_Direct},
+                    {65536, -1, &MPIR_Scatter_MV2_Direct_Blk},
                 },
                 2,
                 {
@@ -445,13 +447,14 @@ int MV2_set_scatter_tuning_table(int heterogeneity)
 
             {
                 256,
-                5,
+                6,
                 {
                     {0, 64, &MPIR_Scatter_mcst_wrap_MV2},
                     {0, 64, &MPIR_Scatter_MV2_Binomial},
                     {64, 256,  &MPIR_Scatter_MV2_two_level_Direct},
                     {256, 4096,  &MPIR_Scatter_MV2_two_level_Direct},
-                    {4096, -1, &MPIR_Scatter_MV2_Direct},
+                    {4096, 65536, &MPIR_Scatter_MV2_Direct},
+                    {65536, -1, &MPIR_Scatter_MV2_Direct_Blk},
                 },
                 2,
                 {

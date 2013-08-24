@@ -42,6 +42,7 @@ int rdma_num_req_hcas = 0;
 int rdma_num_ports = 1;
 int rdma_num_qp_per_port = 1;
 int rdma_num_rails;
+int rdma_memory_optimization = 1;
 int rdma_pin_pool_size = RDMA_PIN_POOL_SIZE;
 unsigned long rdma_default_max_cq_size = RDMA_DEFAULT_MAX_CQ_SIZE;
 int rdma_default_port = RDMA_DEFAULT_PORT;
@@ -51,7 +52,7 @@ int rdma_default_max_recv_wqe = RDMA_DEFAULT_MAX_RECV_WQE;
 uint32_t rdma_default_max_sg_list = RDMA_DEFAULT_MAX_SG_LIST;
 uint16_t rdma_default_pkey_ix = RDMA_DEFAULT_PKEY_IX;
 uint16_t rdma_default_pkey = RDMA_DEFAULT_PKEY;
-uint8_t rdma_default_qp_ous_rd_atom;
+uint8_t rdma_default_qp_ous_rd_atom = MV2_DEFAULT_QP_OUS_RD_ATOM;
 uint8_t rdma_default_max_rdma_dst_ops = RDMA_DEFAULT_MAX_RDMA_DST_OPS;
 enum ibv_mtu rdma_default_mtu;
 uint32_t rdma_default_psn = RDMA_DEFAULT_PSN;
@@ -77,7 +78,7 @@ char rdma_iba_hcas[MAX_NUM_HCAS][32];
 int rdma_max_inline_size;
 unsigned int rdma_ndreg_entries = 0;
 unsigned int rdma_ndreg_entries_max = RDMA_NDREG_ENTRIES_MAX; 
-int rdma_rndv_protocol = VAPI_PROTOCOL_RPUT;
+int rdma_rndv_protocol = MV2_RNDV_PROTOCOL_RPUT;
 int rdma_r3_threshold = 4096;
 int rdma_r3_threshold_nocache = 8192 * 4;
 int rdma_max_r3_pending_data = 512 * 1024;
@@ -129,7 +130,7 @@ int rdma_use_coalesce = 1;
 unsigned long rdma_polling_spin_count_threshold = 5;
 int mv2_use_thread_yield = 1;
 int mv2_spins_before_lock = 2000;
-int mv2_on_demand_ud_info_exchange = 0;
+int mv2_on_demand_ud_info_exchange = 1;
 int mv2_homogeneous_cluster = 0;
 int mv2_show_env_info = 0;
 /* If this number of eager sends are already outstanding
@@ -181,6 +182,7 @@ long rdma_ud_progress_timeout = 48000;
 long rdma_ud_retry_timeout = 500000;
 long rdma_ud_max_retry_timeout = 20000000;
 long rdma_ud_last_check;
+long rdma_ud_retransmissions=0;
 uint32_t rdma_ud_zcopy_threshold;
 uint32_t rdma_ud_zcopy_rq_size = 4096;
 uint32_t rdma_hybrid_enable_threshold = 1024;
@@ -212,22 +214,22 @@ int mcast_skip_loopback = 0;
 
 /* Max number of entries on the RecvQ of QPs per connection.
  * computed to be:
- * prepost_depth + rdma_prepost_rendezvous_extra + viadev_prepost_noop_extra
+ * prepost_depth + rdma_prepost_rendezvous_extra + rdma_prepost_noop_extra
  * Must be within NIC MaxQpEntries limit.
  */
 int rdma_rq_size;
 int using_mpirun_rsh = 1;
 
-uint32_t viadev_srq_alloc_size = 4096;
-uint32_t viadev_srq_fill_size = 256;
-uint32_t viadev_srq_limit = 30;
-uint32_t viadev_max_r3_oust_send = 32;
+uint32_t mv2_srq_alloc_size = 4096;
+uint32_t mv2_srq_fill_size = 256;
+uint32_t mv2_srq_limit = 30;
+uint32_t mv2_max_r3_oust_send = 32;
 
 
 /* The number of "extra" vbufs that will be posted as receives
  * on a connection in anticipation of an R3 rendezvous message.
  * The TOTAL number of VBUFs posted on a receive queue at any
- * time is rdma_prepost_depth + viadev_prepost_rendezvous_extra
+ * time is rdma_prepost_depth + rdma_prepost_rendezvous_extra
  * regardless of the number of outstanding R3 sends active on
  * a connection.
  */
@@ -276,6 +278,9 @@ int rdma_cuda_stream_count = DEFAULT_CUDA_STREAM_COUNT;
 int rdma_cuda_event_count = 64;
 int rdma_cuda_event_sync = 1;
 int rdma_enable_cuda = 0;
+int rdma_cuda_dynamic_init = 1;
+int cuda_initialized = 0;
+int cuda_preinitialized = 0;
 int rdma_eager_cudahost_reg = 0;
 int rdma_cuda_vector_dt_opt = 1;
 int rdma_cuda_kernel_dt_opt = 1;
@@ -880,7 +885,7 @@ int rdma_set_smp_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
             s_smpi_length_queue = 524288;
             s_smp_num_send_buffer = 16;
             s_smp_batch_size = 8;
-            s_smp_block_size = 16384;
+            s_smp_block_size = 14336;
             break;
 
         case MV2_ARCH_AMD_BULLDOZER_4274HE_16:
@@ -943,6 +948,18 @@ int rdma_set_smp_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     set_limic_thresholds(proc);
 
     /* Reading SMP user parameters */
+    if ((value = getenv("MV2_SMP_DELAY_SHMEM_POOL_INIT")) != NULL) {
+        g_smp_delay_shmem_pool_init = atoi(value);
+    }
+
+    if ((value = getenv("MV2_SMP_POLLING_TH")) != NULL) {
+        g_smp_polling_th = user_val_to_bytes(value, "MV2_SMP_POLLING_TH");
+    }
+
+    if ((value = getenv("MV2_SMP_PRIORITY_POLLING")) != NULL) {
+        g_smp_priority_polling = atoi(value);
+    }
+
     if ((value = getenv("MV2_SMP_EAGERSIZE")) != NULL) {
         g_smp_eagersize = user_val_to_bytes(value, "MV2_SMP_EAGERSIZE");
     }
@@ -1322,6 +1339,10 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
     }
 #endif /* defined(CKPT) */
 
+    proc->has_flush = (value =
+            getenv("MV2_USE_RMA_FLUSH")) !=
+        NULL ? !!atoi(value) : 1;
+
     if ((value = getenv("MV2_RNDV_EXT_SENDQ_SIZE")) != NULL) {
         rdma_rndv_ext_sendq_size = atoi(value);
         if (rdma_rndv_ext_sendq_size <= 1) {
@@ -1390,7 +1411,7 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 
     if ((value = getenv("MV2_RNDV_PROTOCOL")) != NULL) {
         if (strncmp(value, "RPUT", 4) == 0) {
-            rdma_rndv_protocol = VAPI_PROTOCOL_RPUT;
+            rdma_rndv_protocol = MV2_RNDV_PROTOCOL_RPUT;
         } else if (strncmp(value, "RGET", 4) == 0
 #ifdef _ENABLE_XRC_
                    && !USE_XRC
@@ -1399,19 +1420,19 @@ int rdma_get_control_parameters(struct mv2_MPIDI_CH3I_RDMA_Process_t *proc)
 #if defined(CKPT)
             MPIU_Usage_printf("MV2_RNDV_PROTOCOL "
                               "must be either \"RPUT\" or \"R3\" when checkpoint is enabled\n");
-            rdma_rndv_protocol = VAPI_PROTOCOL_RPUT;
+            rdma_rndv_protocol = MV2_RNDV_PROTOCOL_RPUT;
 #else /* defined(CKPT) */
-            rdma_rndv_protocol = VAPI_PROTOCOL_RGET;
+            rdma_rndv_protocol = MV2_RNDV_PROTOCOL_RGET;
 #endif /* defined(CKPT) */
         } else if (strncmp(value, "R3", 2) == 0) {
-            rdma_rndv_protocol = VAPI_PROTOCOL_R3;
+            rdma_rndv_protocol = MV2_RNDV_PROTOCOL_R3;
         } else {
 #ifdef _ENABLE_XRC_
             if (!USE_XRC)
 #endif
                 MPIU_Usage_printf("MV2_RNDV_PROTOCOL "
                                   "must be either \"RPUT\", \"RGET\", or \"R3\"\n");
-            rdma_rndv_protocol = VAPI_PROTOCOL_RPUT;
+            rdma_rndv_protocol = MV2_RNDV_PROTOCOL_RPUT;
         }
     }
 
@@ -2836,6 +2857,14 @@ void rdma_get_user_parameters(int num_proc, int me)
         }
     }
 
+    if ((value = getenv("MV2_MEMORY_OPTIMIZATION")) != NULL) {
+        rdma_memory_optimization = !!atoi(value);
+    }
+    if (rdma_memory_optimization) {
+        mv2_srq_fill_size = 128;
+        rdma_vbuf_pool_size = RDMA_OPT_VBUF_POOL_SIZE;
+        rdma_vbuf_secondary_pool_size = RDMA_OPT_VBUF_SECONDARY_POOL_SIZE;
+    }
     if ((value = getenv("MV2_PIN_POOL_SIZE")) != NULL) {
         rdma_pin_pool_size = atoi(value);
     }
@@ -2869,18 +2898,36 @@ void rdma_get_user_parameters(int num_proc, int me)
         rdma_polling_set_limit = RDMA_DEFAULT_POLLING_SET_LIMIT;
     }
     if ((value = getenv("MV2_VBUF_TOTAL_SIZE")) != NULL) {
-        if (RDMA_MIN_VBUF_POOL_SIZE <
-            user_val_to_bytes(value, "MV2_VBUF_TOTAL_SIZE")) {
-            rdma_vbuf_total_size =
-                user_val_to_bytes(value,
-                                  "MV2_VBUF_TOTAL_SIZE") +
-                EAGER_THRESHOLD_ADJUST;
+        if (rdma_memory_optimization) {
+            if (RDMA_OPT_MIN_VBUF_POOL_SIZE <
+                user_val_to_bytes(value, "MV2_VBUF_TOTAL_SIZE")) {
+                rdma_vbuf_total_size =
+                    user_val_to_bytes(value,
+                                      "MV2_VBUF_TOTAL_SIZE") +
+                    EAGER_THRESHOLD_ADJUST;
+            } else {
+                /* We do not accept vbuf size < RDMA_MIN_VBUF_POOL_SIZE */
+                MPIU_Usage_printf("Warning, it is inefficient to use a value for"
+                                  "VBUF which is less than %d. Retaining the"
+                                  " system default value of %d\n",
+                                  RDMA_OPT_MIN_VBUF_POOL_SIZE,
+                                  rdma_vbuf_total_size);
+            }
         } else {
-            /* We do not accept vbuf size < RDMA_MIN_VBUF_POOL_SIZE */
-            MPIU_Usage_printf("Warning, it is inefficient to use a value for"
-                              "VBUF which is less than %d. Retaining the system default"
-                              " value of %d\n", RDMA_MIN_VBUF_POOL_SIZE,
-                              rdma_vbuf_total_size);
+            if (RDMA_MIN_VBUF_POOL_SIZE <
+                user_val_to_bytes(value, "MV2_VBUF_TOTAL_SIZE")) {
+                rdma_vbuf_total_size =
+                    user_val_to_bytes(value,
+                                      "MV2_VBUF_TOTAL_SIZE") +
+                    EAGER_THRESHOLD_ADJUST;
+            } else {
+                /* We do not accept vbuf size < RDMA_MIN_VBUF_POOL_SIZE */
+                MPIU_Usage_printf("Warning, it is inefficient to use a value for"
+                                  "VBUF which is less than %d. Retaining the"
+                                  " system default value of %d\n",
+                                  RDMA_MIN_VBUF_POOL_SIZE,
+                                  rdma_vbuf_total_size);
+            }
         }
     }
 #ifdef _ENABLE_CUDA_
@@ -2939,25 +2986,25 @@ void rdma_get_user_parameters(int num_proc, int me)
         rdma_num_hcas;
 
     if ((value = getenv("MV2_SRQ_MAX_SIZE")) != NULL) {
-        viadev_srq_alloc_size = (uint32_t) atoi(value);
+        mv2_srq_alloc_size = (uint32_t) atoi(value);
     }
 
     if ((value = getenv("MV2_SRQ_SIZE")) != NULL) {
-        viadev_srq_fill_size = (uint32_t) atoi(value);
+        mv2_srq_fill_size = (uint32_t) atoi(value);
     }
 
     if ((value = getenv("MV2_SRQ_LIMIT")) != NULL) {
-        viadev_srq_limit = (uint32_t) atoi(value);
+        mv2_srq_limit = (uint32_t) atoi(value);
 
-        if (viadev_srq_limit > viadev_srq_fill_size) {
+        if (mv2_srq_limit > mv2_srq_fill_size) {
             MPIU_Usage_printf("SRQ limit shouldn't be greater than SRQ size\n");
         }
     }
 
     if (mv2_MPIDI_CH3I_RDMA_Process.has_srq) {
         rdma_credit_preserve =
-            (viadev_srq_fill_size >
-             200) ? (viadev_srq_fill_size - 100) : (viadev_srq_fill_size / 2);
+            (mv2_srq_fill_size >
+             200) ? (mv2_srq_fill_size - 100) : (mv2_srq_fill_size / 2);
     }
 
     if ((value = getenv("MV2_IBA_EAGER_THRESHOLD")) != NULL) {
@@ -3209,19 +3256,33 @@ void rdma_get_user_parameters(int num_proc, int me)
         rdma_dreg_cache_limit = atol(value);
     }
     if (rdma_vbuf_pool_size <= 10) {
-        rdma_vbuf_pool_size = RDMA_VBUF_POOL_SIZE;
-        MPIU_Usage_printf("Warning! Too small vbuf pool size (%d).  "
-                          "Reset to %d\n", rdma_vbuf_pool_size,
-                          RDMA_VBUF_POOL_SIZE);
+        if (rdma_memory_optimization) {
+            rdma_vbuf_pool_size = RDMA_OPT_VBUF_POOL_SIZE;
+            MPIU_Usage_printf("Warning! Too small vbuf pool size (%d).  "
+                              "Reset to %d\n", rdma_vbuf_pool_size,
+                              RDMA_OPT_VBUF_POOL_SIZE);
+        } else {
+            rdma_vbuf_pool_size = RDMA_VBUF_POOL_SIZE;
+            MPIU_Usage_printf("Warning! Too small vbuf pool size (%d).  "
+                              "Reset to %d\n", rdma_vbuf_pool_size,
+                              RDMA_VBUF_POOL_SIZE);
+        }
     }
     if ((value = getenv("MV2_VBUF_SECONDARY_POOL_SIZE")) != NULL) {
         rdma_vbuf_secondary_pool_size = atoi(value);
     }
     if (rdma_vbuf_secondary_pool_size <= 0) {
-        rdma_vbuf_secondary_pool_size = RDMA_VBUF_SECONDARY_POOL_SIZE;
-        MPIU_Usage_printf("Warning! Too small secondary vbuf pool size (%d).  "
-                          "Reset to %d\n", rdma_vbuf_secondary_pool_size,
-                          RDMA_VBUF_SECONDARY_POOL_SIZE);
+        if (rdma_memory_optimization) {
+            rdma_vbuf_secondary_pool_size = RDMA_OPT_VBUF_SECONDARY_POOL_SIZE;
+            MPIU_Usage_printf("Warning! Too small secondary vbuf pool size (%d)"
+                              ". Reset to %d\n", rdma_vbuf_secondary_pool_size,
+                              RDMA_OPT_VBUF_SECONDARY_POOL_SIZE);
+        } else {
+            rdma_vbuf_secondary_pool_size = RDMA_VBUF_SECONDARY_POOL_SIZE;
+            MPIU_Usage_printf("Warning! Too small secondary vbuf pool size (%d)"
+                              ". Reset to %d\n", rdma_vbuf_secondary_pool_size,
+                              RDMA_VBUF_SECONDARY_POOL_SIZE);
+        }
     }
     if (rdma_initial_prepost_depth <= rdma_prepost_noop_extra) {
         rdma_initial_credits = rdma_initial_prepost_depth;
@@ -3355,6 +3416,10 @@ void rdma_get_pm_parameters(mv2_MPIDI_CH3I_RDMA_Process_t * proc)
         if (mv2_on_demand_ud_info_exchange) {
             proc->has_ring_startup = 0;
         }
+    }
+
+    if (proc->has_ring_startup) {
+        mv2_on_demand_ud_info_exchange = 0;
     }
 
     if ((value = getenv("MV2_NUM_HCAS")) != NULL) {
